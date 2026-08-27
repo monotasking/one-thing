@@ -154,24 +154,16 @@ export const sessionReads = {
     return { messages: guard(sanitized.value ?? messages), changed: sanitized.changed }
   },
 
-  /**
-   * **store 侧**(reducer 推导)的那一份消息 —— 与读模式无关(F11)。
+  /*
+   * `listMessagesFromStore` —— **已删除**(F4-c c4,§16.24)。
    *
-   * 这不是 `listMessages` 的一个便利别名,而是恒等门(`session/shadow.ts`)唯一
-   * 合法的**验证器侧**取数。`listMessages` 自 S2a 起从事件投影取数(批 6b 之后是
-   * 唯一路)—— 恒等门拿它去比投影,两侧同源,门以错误的理由变绿(F11:判据污染)。
-   * 所以这里**故意不经过 `fromEvents`**。
-   *
-   * (F0,§16.2:哪一侧算真相已经翻成事件了,但"两侧必须是两条独立推导"这条纪律
-   * 与方向无关 —— 它守的是门有没有意义,不是谁被 blame。)
-   *
-   * 改动这个方法的人请先回答一个问题:恒等门的两侧还是两个来源吗?一旦这里也接上
-   * 事件读法,`sessions:shadow-battery` 会在 `shadow-read-mode.test.ts` 上当场红
-   * —— 那条用例故意让 store 与事件分岔,断言这道门**必须**报出来。
+   * 它是恒等门(`session/shadow.ts`)唯一合法的**验证器侧**取数:故意不经过
+   * `fromEvents`,好让门的两侧始终是两条独立推导(F11:判据污染)。恒等门 c4
+   * 退役之后它零消费者 —— 而"一条故意绕开投影的整会话读法"留在读门面上只会
+   * 变成下一个人的第二份真相。要 store 侧的整份消息,今天没有正当理由;
+   * 要**这条会话在不在**问 `hasSessionInStore`,要**活 run 写手视图**问
+   * `getLiveRunWriterMessage`,其余一律 `listMessages`(投影)。
    */
-  listMessagesFromStore(sessionId: string): readonly ChatMessage[] {
-    return guard(getSessionMessages(sessionId) ?? [])
-  },
 
   /**
    * **store 侧**按 id 取一条 —— **故意不经过 `fromEvents`**(F11,与

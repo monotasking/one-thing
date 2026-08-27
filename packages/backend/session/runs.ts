@@ -21,7 +21,7 @@ import { appendSurfaceAwareEvent } from './event-surface.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 import { flushSessionEventLog } from './event-log.js'
 import { scheduleSessionRefold } from './refold.js'
-import { scheduleSessionRunShadow } from './shadow.js'
+import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
 
 export interface BeginSessionRunInput {
   kind: SessionRunKind
@@ -268,22 +268,22 @@ export async function endSessionRun(
   // 收一次执行时"已落盘"必须是真的。`catch` 兜底是因为这个 promise 现在有两个
   // 消费者(返回值 + 下面那条链),而 flush 的失败不该变成收尾路径上的异常
   // —— 写失败自己的出口是 `appendFailures` 与裁定 7 的上抛,不是这里。
+  // F4-c c4:"这一轮跑了多少个 run"从前是恒等门顺手记的一笔;门退役之后由这里记
+  // (见 `SessionShadowStats.runs`)。它是 `run/end` 落账的事实,与哪道门在比无关。
+  if (isSessionShadowEnabled()) bumpSessionShadowStats({ runs: 1 })
   const flushed = flushSessionEventLog(sessionId).catch(() => undefined)
   //
-  // 影子断言排在检查点**之后**(§10.4:"`run/end` 落盘后"):比对读的是活投影,
+  // 对账排在检查点**之后**(§10.4:"`run/end` 落盘后"):比对读的是活投影,
   // 但一条还没落盘的 run 万一进程当场没了,记下的"相等"就没有对应的账。
+  //
+  // F4-c c4:这个缝上从前挂着两道门 —— 语义层的恒等门(`scheduleSessionRunShadow`)
+  // 与耐久层的 refold。恒等门已退役(§16.24),refold 留任,挂点与判据一字未动。
   void flushed
     // U0:换锚点递进来的那道闸(见 `EndSessionRunInput.shadowGate`)。
     .then(() => input.shadowGate)
     .then(() => {
-      scheduleSessionRunShadow(sessionId, {
-        runId: handle.runId,
-        assistantMessageId: handle.assistantMessageId,
-        ...(handle.triggerMessageId ? { triggerMessageId: handle.triggerMessageId } : {}),
-      })
-      // S3w-2(§14.3-B):耐久层的那道门挂在同一个缝上 —— 检查点之后、影子旁边。
-      // 两道门问的不是同一件事(语义 vs 落盘),但"文件字节此刻是全的"这个前提
-      // 只有这里成立,所以它们同缝而不同判据。自己按会话采样,不是每个 run 都跑。
+      // S3w-2(§14.3-B):耐久层这道门要的前提是"文件字节此刻是全的",而那只有
+      // 在语义检查点之后成立。自己按会话采样,不是每个 run 都跑。
       scheduleSessionRefold(sessionId, handle.runId)
     })
 

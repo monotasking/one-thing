@@ -1,34 +1,39 @@
 #!/usr/bin/env node
 /**
- * 恒等门(S1b 立为影子期的门 §10.4;F0 转向后是写模型 vs 读模型的常驻合同,§16.2)。
+ * 耐久门(refold)的报表 —— **F4-c c4 起是"仅 refold"口径**(§16.24)。
  *
  *   bun run sessions:shadow-report [--min-runs N] [--store PATH] [--json]
  *
- * ## 方向(F0,2026-08-27)
+ * ## c4 之前 / 之后
  *
- * 摘要的两列:**A = 事件侧(真相)**,**B = 内存 store / reducer(影子验证器)**;
- * `kind:'refold'` 那一类的 A 是 `events.jsonl` 的文件重折、B 是内存活投影。
- * 一次不等默认读成"**写模型没跟上账本**",不是"投影错了"。
- * 每行带 `truth:'events'` 的方向标记 —— **缺这个字段的行是 F0 之前记的**,
- * 它的两列语义正好相反(报表把两种行分开数出来给人看)。
+ * 这份报表从 S1b 起同时服务两道门:语义层的**恒等门**(`kind: 'messages'` /
+ * `'history'`,事件投影 vs 内存 store 两条独立推导)与耐久层的 **refold**
+ * (`kind: 'refold'`,`events.jsonl` 的文件字节重折 vs 内存活投影)。
+ *
+ * c4 把恒等门退役了(读侧早已只有投影一条路,验证器侧没有了消费者 ——
+ * 见 `packages/backend/session/shadow.ts` 的文件头)。于是:
+ *
+ *  - `mismatches` / `historyChecks` / `duplicates` / `skipped` / `byKind`
+ *    **不再产生**。字段与判据全部留着 —— 老 `session-shadow-stats.json` 里的
+ *    非零仍然必须是红,读老账不能读崩;
+ *  - **今天唯一在跑的比对是 refold**,所以门多一条:`refoldChecks > 0`。
+ *    少这一条,"那道门根本没跑"与"那道门全绿"在报表上长得一模一样。
  *
  * 读两份文件:
- *   `<store>/log/session-shadow-stats.json`  —— 计数(runs / mismatches / appendFailures / byKind)
+ *   `<store>/log/session-shadow-stats.json`  —— 计数(runs / refoldChecks / appendFailures / …)
  *   `<store>/log/session-shadow.jsonl`       —— 每一次不等的字段级摘要
  *
- * **门 = runs ≥ 200 ∧ mismatches = 0 ∧ appendFailures = 0 ∧ refoldMismatches = 0**
- * (§10.4 立的前三条,§14.3-B 加的第四条:refold 自洽环是停写之后耐久层的替身)。
- * `--min-runs` 只放宽第一条 —— 分批验证时用得着(S1b 自证跑的是 20)。另外两条
- * 不给开关:一次不等就是一次"S2 切读之后会看到另一段历史",没有"少量可接受"。
+ * **门 = runs ≥ 200 ∧ refoldChecks > 0 ∧ refoldMismatches = 0 ∧ mismatches = 0
+ * ∧ portMismatches = 0 ∧ appendFailures = 0**。`--min-runs` 只放宽第一条 ——
+ * 分批验证时用得着。
+ * 其余不给开关:一次不等就是一次"账本与内存分岔",没有"少量可接受"。
  *
- * `skipped` 只打印、**不进门**:跳过的是"没有可比的东西"(如老会话事件只覆盖
- * 历史尾巴 = `legacyPartial`),不是"比出来不等"。
+ * `runs` 的产地在 c4 换过一次:从前是恒等门的 run 断言顺手记的一笔,现在由
+ * `endSessionRun` 自己记(它回答的本来就是"这一轮跑了多少个 run")。判据一字未变。
  *
- * `historyChecks` / `duplicates` 同样只打印(F9,§13.2/§13.4):
- *   - `runs` 是 **run 粒度**(每个 run 收尾比一次消息),门数的是它;
- *   - `historyChecks` 是**请求粒度**(每轮请求比一次历史),一个 run 能有十几次
- *     —— 两个数分开摆着,免得"200 个干净 run"被当成"比过 200 次历史";
- *   - `duplicates` 是同一个 run 里**同一处**不等在后续每轮请求上的重复,已折叠。
+ * 摘要的两列:**A = `events.jsonl` 文件重折**,**B = 内存活投影**。老行
+ * (`kind: 'messages'` / `'history'`,或缺 `truth` 标记的 F0 之前那批)照它当时的
+ * 语义打印 —— 拿今天的名字贴老行等于把归因贴反。
  *
  * store 的解析与产品代码同口径:`--store` → `ONETHING_STORE_PATH` → `~/.onething`。
  */
@@ -65,6 +70,10 @@ export function readStats(logDir) {
       // 分开打印,免得"200 个干净 run"被读成"比过 200 次历史"。
       historyChecks: Number(parsed.historyChecks) || 0,
       mismatches: Number(parsed.mismatches) || 0,
+      // c4:端口事实断言(`port-fact-assert.ts`)对不上的次数。**进门,必须是 0。**
+      portMismatches: Number(parsed.portMismatches) || 0,
+      // c4:断言真的比过几次(`portMismatches = 0` 的分母)。只打印,不进门。
+      portChecks: Number(parsed.portChecks) || 0,
       duplicateMismatches: Number(parsed.duplicateMismatches) || 0,
       // F6/F13(§13.6):退化与丢账各一个数。老账单缺这两格读成 0,不读崩。
       projectionIssues: Number(parsed.projectionIssues) || 0,
@@ -86,6 +95,8 @@ export function readStats(logDir) {
       runs: 0,
       historyChecks: 0,
       mismatches: 0,
+      portMismatches: 0,
+      portChecks: 0,
       duplicateMismatches: 0,
       projectionIssues: 0,
       droppedParts: 0,
@@ -178,12 +189,14 @@ function main() {
     console.log(JSON.stringify({ store, ...report }, null, 2))
   } else {
     console.log(`[shadow] store: ${store}`)
-    // F0(§16.2):这道门今天问的是"写模型跟上账本了吗",不是"投影对不对"。
-    console.log('[shadow] direction     : A = events(真相) / B = store(影子验证器)   [F0]')
+    // c4(§16.24):今天在跑的只有 refold —— A = events.jsonl 文件重折 / B = 内存活投影。
+    console.log('[shadow] direction     : A = events 文件重折 / B = 内存活投影   [c4: 仅 refold]')
     if (stats.missing) console.log('[shadow] stats file absent — nothing has been recorded yet')
     console.log(`[shadow] runs           : ${stats.runs}   (run 粒度 —— 门只看它)`)
-    console.log(`[shadow] historyChecks  : ${stats.historyChecks}   (请求粒度,一个 run 可有多次)`)
-    console.log(`[shadow] mismatches     : ${stats.mismatches}`)
+    console.log(`[shadow] historyChecks  : ${stats.historyChecks}   (恒等门遗留,c4 起恒为 0)`)
+    console.log(`[shadow] mismatches     : ${stats.mismatches}   (恒等门遗留,c4 起恒为 0;老账非零仍红)`)
+    // c4:A 类端口的逐格断言(默认只在开发/测试期与 ONETHING_SESSION_PORT_ASSERT=1 下跑)。
+    console.log(`[shadow] portMismatches : ${stats.portMismatches}   (端口事实 vs 折叠值,比过 ${stats.portChecks} 次)`)
     // 同 run 同一处不等在后续每轮请求上重复出现 —— 折叠掉的次数(F9)。不进门。
     console.log(`[shadow] duplicates     : ${stats.duplicateMismatches}   (同 run 同一处,已折叠)`)
     // F6:投影退化(blob 换不回来 / 回合重放掉回 collapsed)。**不进门** ——
@@ -195,7 +208,7 @@ function main() {
     // S3w-1:兜底命中(events 模式下退回 messages.jsonl 的读)。不进门,S3w-3 前要量到 0。
     // S3w-2:refold 自洽环(文件字节重折 vs 内存活投影)。采样数只打印;
     // 不等**进门** —— 停写之后它就是耐久层仅剩的那道门(§14.3-B)。
-    console.log(`[shadow] refoldChecks   : ${stats.refoldChecks}   (采样次数,不进门)`)
+    console.log(`[shadow] refoldChecks   : ${stats.refoldChecks}   (采样次数 —— c4 起进门:必须 > 0)`)
     console.log(`[shadow] refoldMismatch : ${stats.refoldMismatches}`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见
@@ -226,17 +239,24 @@ function main() {
   const failures = []
   if (stats.runs < args.minRuns) failures.push(`runs ${stats.runs} < ${args.minRuns}`)
   if (stats.mismatches !== 0) failures.push(`mismatches ${stats.mismatches} ≠ 0`)
+  if (stats.portMismatches !== 0) failures.push(`portMismatches ${stats.portMismatches} ≠ 0`)
   if (stats.appendFailures !== 0) failures.push(`appendFailures ${stats.appendFailures} ≠ 0`)
   // S3w-2:refold 与 mismatches 同级 —— 一个是"写模型 vs 读模型",另一个是
   // "文件 vs 内存",停写之后两道都不许有"少量可接受"。
   if (stats.refoldMismatches !== 0) failures.push(`refoldMismatches ${stats.refoldMismatches} ≠ 0`)
+  // c4:恒等门退役之后 refold 是唯一在跑的比对 —— "一次都没跑"与"全绿"在报表上
+  // 长得一模一样,所以采样数本身进门。
+  if (stats.runs >= args.minRuns && stats.refoldChecks === 0) {
+    failures.push('refoldChecks 0 — 唯一在跑的那道门一次都没采样')
+  }
 
   if (failures.length > 0) {
     console.error(`\n[shadow] GATE RED: ${failures.join('; ')}`)
     process.exit(1)
   }
   console.log(
-    `\n[shadow] GATE GREEN (runs ≥ ${args.minRuns}, mismatches = 0, appendFailures = 0, refoldMismatches = 0)`,
+    `\n[shadow] GATE GREEN (runs ≥ ${args.minRuns}, refoldChecks ${stats.refoldChecks} > 0, refoldMismatches = 0, `
+    + 'mismatches = 0, portMismatches = 0, appendFailures = 0)',
   )
 }
 

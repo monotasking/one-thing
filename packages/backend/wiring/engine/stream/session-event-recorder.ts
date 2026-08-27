@@ -137,9 +137,11 @@ export interface SessionEventRecorderContext {
   /**
    * 配方写下去的那一刻(= 这次请求真正发出之前)的旁听口。
    *
-   * S1b 的历史影子断言挂在这里(`history-shadow.ts`)。留一个回调而不是就地
-   * import:那条断言要用 `buildHistoryMessages` 与读门面,而它们身后是整棵
-   * store 树 —— recorder 只该依赖会话事件那一层。
+   * S1b 的历史恒等门曾挂在这里(`history-shadow.ts`),F4-c c4 随恒等门退役
+   * (§16.24)。回调口留着:它是"配方写下去的那一刻"这个缝的通用旁听口,
+   * 而"留回调不就地 import"那条理由与那道门无关 —— 任何挂在这里的旁听者都要用
+   * 读门面 / `buildHistoryMessages`,它们身后是整棵 store 树,而 recorder 只该
+   * 依赖会话事件那一层。
    */
   onRequestRecipe?: (runId: string, requestIndex: number) => void
   /**
@@ -519,7 +521,7 @@ export function createSessionEventRecorder(
       messages: messages as unknown as { eventSeq: number; contentHash: string }[],
       ...(params ? { params } : {}),
     })
-    // S1b:配方写下去的同一刻比一次历史 —— 比的就是这次要发出去的那一份。
+    // 配方写下去的同一刻的旁听口(今天没有消费者,见类型上的说明)。
     try {
       ctx.onRequestRecipe?.(id, requestIndex)
     } catch (error) {

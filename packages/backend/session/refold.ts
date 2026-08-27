@@ -101,6 +101,27 @@ function shouldSample(sessionId: string): boolean {
   return (seen - 1) % refoldEvery() === 0
 }
 
+/**
+ * **把跳采的那一格还回来**(F4-c c4,用户 2026-08-27 裁定"refold 补采")。
+ *
+ * c3-a 给这道门加了一条守卫:活投影领先磁盘几条 delta 时不比(§16.19「比对点 =
+ * 编码器刷新点」)。守卫是对的,代价是**那一次采样白白花掉了** —— 计数已经加过,
+ * 下一次要再等 N 个 run。真机读数上它就是 refoldChecks 225 → 224 的那一格。
+ *
+ * 补法是把计数退回去,于是**下一个 run 立刻补采一次**:run 收尾链的
+ * `recorder.flush()` 排在 `endSessionRun` 之前,缓冲那时已经清空,补的那一次
+ * 几乎必然采得成。
+ *
+ * 为什么不按字面"收尾 flush 之后无条件必采一次":那会把一道 5 个 run 采一次的
+ * 耐久门变成**每个 run 都跑一遍全量重折**(真机大账本上每次 ≈22ms 连续阻塞,
+ * §15.14)。用户要的是"把跳采的格补回",不是换一档采样率 —— 换档是另一次拍板。
+ */
+function refundSample(sessionId: string): void {
+  const seen = runCounts.get(sessionId)
+  if (seen === undefined || seen <= 0) return
+  runCounts.set(sessionId, seen - 1)
+}
+
 function visibleNodes(state: SessionProjectionState): ProjectionNode[] {
   return state.nodes.filter(node => !node.hidden)
 }
@@ -171,7 +192,11 @@ export async function checkSessionRefold(
     // 折进来了、而它那一行还压在编码器写缓冲里 —— 那几条字节文件上还没有,
     // 此刻两侧本来就不可比。与上面那条游标守卫同一个道理:宁可少比一次,
     // 不许报一次假红。收尾链的 `flushAll` 会把缓冲清空,run 收尾这一刻通常是 0。
-    if (liveSessionProjectionAheadDeltas(sessionId) > 0) return 'skipped'
+    if (liveSessionProjectionAheadDeltas(sessionId) > 0) {
+      // 这一格不算数 —— 把采样计数退回去,下一个 run 补上(见 `refundSample`)。
+      refundSample(sessionId)
+      return 'skipped'
+    }
     const b = canonicalMessages(sessionId, live)
 
     // ---- 这之后可以 await:上面那份快照已经与活投影脱钩。

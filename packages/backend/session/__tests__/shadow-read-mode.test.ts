@@ -1,16 +1,19 @@
 /**
- * F11(§13.2/§13.4):**产品读路走投影之后,影子还能不能证明什么。**
+ * **读侧唯一真相**(F4-c c4 改判,§16.24;原 F11 §13.2/§13.4)。
  *
- * S2a 给 `sessionReads` 的七个方法开了投影取数(批 6b 之后是唯一路)。影子的
- * 真相侧当时用的就是 `listMessages` —— 于是"事实"与"投影"变成同一个来源:
- * 自己跟自己比,永远相等,`sessions:shadow-report` 以**错误的理由**变绿。判据
- * 被污染的门比没有门更坏。
+ * 夹具一字未动、结论翻了个面。原来这套用例服务于恒等门:它让抄本(store 那一份)
+ * 与事件**故意分岔**,断言门必须把它报出来 —— 判据同源(两侧都读投影)会让门以
+ * 错误的理由变绿,那比没有门更坏。
  *
- * 所以这一套用例让抄本(`messages.jsonl`)与事件**故意分岔**,断言影子必须把它
- * 报出来。修之前这里是绿的(自比),现在是红的 —— 这正是它存在的理由。
- * (从前还要显式把读模式钉在 `events` 上;批 6b 烧掉那个开关之后不必了。)
+ * c4 把恒等门退役了(读侧早已只有投影一条路,验证器侧因此没有了消费者)。同一份
+ * 分岔夹具于是改证**另一件事,也是 c4 真正要立的那一条**:
  *
- * 与 `shadow.test.ts` 的分工:那边把 `reads.js` 整个替身掉(测的是断言逻辑),
+ * > 内存 store 上那条消息被改成什么样,产品读面都只回答**事件折出来的那一份**。
+ *
+ * 它是"store 退化为物化缓存"这句话的可执行版本 —— 哪天有人把某个读口接回
+ * `getSessionMessages`,这里当场红。
+ *
+ * 与 `shadow.test.ts` 的分工:那边只测记录面(差异摘要 / 计数 / 关闸),
  * 这里跑**真的** `reads.ts`(测的是取数口),只替身最底下的会话仓库。
  */
 import fs from 'node:fs'
@@ -45,17 +48,8 @@ const { resetSessionProjectionCache } = await import('../projection-cache.js')
 const { resetSessionEventReadCache } = await import('../events-reads.js')
 const { resetSessionPrepareCache } = await import('../prepare.js')
 const { sessionReads } = await import('../reads.js')
-const {
-  checkSessionRunShadow,
-  getSessionShadowLogPath,
-  resetSessionShadowCache,
-  resetSessionShadowCoverageCache,
-} = await import('../shadow.js')
-const {
-  flushSessionEventStats,
-  readSessionShadowStats,
-  resetSessionEventStatsCache,
-} = await import('../event-stats.js')
+const { resetSessionShadowCache } = await import('../shadow.js')
+const { resetSessionEventStatsCache } = await import('../event-stats.js')
 
 const SESSION = 'read-mode-1'
 const RUN = 'run-1'
@@ -72,7 +66,6 @@ beforeEach(() => {
   resetSessionEventReadCache()
   resetSessionPrepareCache()
   resetSessionShadowCache()
-  resetSessionShadowCoverageCache()
 })
 
 afterEach(async () => {
@@ -127,48 +120,29 @@ function setTranscript(assistantText: string): void {
   ])
 }
 
-function shadowLineCount(): number {
-  try {
-    return fs.readFileSync(getSessionShadowLogPath(), 'utf8').split('\n').filter(Boolean).length
-  } catch {
-    return 0
-  }
-}
-
-describe('the transcript accessor never routes through the projection (F11)', () => {
-  it('listMessagesFromStore keeps answering from the store (§16.10: 名字已改口,取数面未变)', async () => {
+describe('every product read answers from the events, never from the store (F4-c c4)', () => {
+  it('a tampered store message changes nothing the read surface says', async () => {
     await recordRun('hello')
     setTranscript('TAMPERED')
 
-    // 产品线的读面给的是投影……
+    // 整会话 / 单条 / 遍历 / 预览 —— 四个入口,同一个答案。
     expect(sessionReads.listMessages(SESSION).messages.find(m => m.id === 'a1')?.content)
       .toBe('hello')
-    // ……而影子的取数口给的仍然是抄本。两者不同,正是这道断言唯一有意义的前提。
-    expect(sessionReads.listMessagesFromStore(SESSION).find(m => m.id === 'a1')?.content)
-      .toBe('TAMPERED')
+    expect(sessionReads.getMessage(SESSION, 'a1')?.content).toBe('hello')
+    expect([...sessionReads.iterateMessages(SESSION)].find(m => m.id === 'a1')?.content)
+      .toBe('hello')
+    expect(sessionReads.lastMessageOfRole(SESSION, 'assistant')?.content).toBe('hello')
   })
-})
 
-describe('run assertion', () => {
-  it('reports a transcript-vs-events divergence (would have been silently green if the shadow read the projection)', async () => {
+  /**
+   * 反证:这条会话的 store 侧**确实**被改过了。少这一句,上面那组断言在
+   * "替身根本没生效"的情况下也会绿。
+   */
+  it('the tampering really happened — the live-run writer view still sees it', async () => {
     await recordRun('hello')
     setTranscript('TAMPERED')
 
-    expect(checkSessionRunShadow(SESSION, { runId: RUN, assistantMessageId: 'a1', triggerMessageId: 'u1' }))
-      .toBe('mismatch')
-    flushSessionEventStats()
-    expect(readSessionShadowStats()).toMatchObject({ mismatches: 1, byKind: { messages: 1 } })
-    expect(shadowLineCount()).toBe(1)
-  })
-
-  it('still counts a clean run when the two sides agree', async () => {
-    await recordRun('hello')
-    setTranscript('hello')
-
-    expect(checkSessionRunShadow(SESSION, { runId: RUN, assistantMessageId: 'a1', triggerMessageId: 'u1' }))
-      .toBe('match')
-    flushSessionEventStats()
-    expect(readSessionShadowStats()).toMatchObject({ runs: 1, mismatches: 0 })
-    expect(shadowLineCount()).toBe(0)
+    // 写手视图是活 run 窗口内的正身(§16.17 共存口径),它照旧读 store。
+    expect(sessionReads.getLiveRunWriterMessage(SESSION, 'a1')?.content).toBe('TAMPERED')
   })
 })

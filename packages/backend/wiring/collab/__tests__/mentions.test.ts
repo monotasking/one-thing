@@ -33,7 +33,8 @@ vi.mock('../../../session/commands.js', async () => {
   return {
     sessionCommands: {
       ...facade.sessionCommands,
-      // 迁移前这条写走 `store.updateMessageMentions`;命令面上它是一次普通 patch。
+      // W14a 的 @身份盖章在命令面上是一次普通 patch(`message/patched`)。
+      // (迁移前它走 `store.updateMessageMentions` —— 那个端口 F4-c c4 已删,§16.24。)
       patchMessage: (
         sessionId: string,
         payload: { messageId: string; patch: { mentions?: FakeMessage['mentions'] } },
@@ -51,17 +52,6 @@ vi.mock('../../../store.js', () => ({
   getSettings: () => ({}),
   updateSessionWorkingDirectory: vi.fn(),
   getSession: (id: string) => mocks.sessions.get(id),
-  updateMessageMentions: (
-    sessionId: string,
-    messageId: string,
-    mentions: FakeMessage['mentions'],
-  ) => {
-    mocks.updateMessageMentions(sessionId, messageId, mentions)
-    const message = mocks.sessions.get(sessionId)?.messages.find(item => item.id === messageId)
-    if (!message) return false
-    message.mentions = mentions
-    return true
-  },
 }))
 
 vi.mock('../../../events/index.js', () => ({

@@ -154,8 +154,6 @@ vi.mock('../../../../store.js', () => ({
     if (session) session.permissionMode = mode
     return true
   },
-  updateMessageMentions: () => true,
-  updateMessageReplyTo: () => true,
   renameSession: (id: string, name: string) => {
     const session = mocks.sessions.get(id) as FakeSession | undefined
     if (session) session.name = name

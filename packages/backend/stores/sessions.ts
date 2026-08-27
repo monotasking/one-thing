@@ -56,6 +56,7 @@ import {
 	sanitizeSessionOnStartup,
 } from "@onething/core/session";
 import { assertContentPartIsCarriable } from '../session/content-part-guard.js'
+import { assertPortFactIsFolded } from '../session/port-fact-assert.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
 import type { HybridSessionStorageDriverOptions } from '@onething/runtime/sessions/storage-driver'
 import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger } from '@onething/runtime/sessions/session-repository'
@@ -891,7 +892,15 @@ export function updateMessageStreaming(
 	);
 }
 
-// Update message usage (does not affect sort order)
+/**
+ * Update message usage (does not affect sort order).
+ *
+ * **A 类端口**(§16.23 分类表 #15):这一格的事实早就在流上 ——
+ * `request/response.usage` 逐轮落账,投影 reducer 求和折进 `node.usage`
+ * (`reducer.ts:529`)。这里写的是**同一个事实的第二个落点**(活 run 写手视图
+ * 上那一条),F4-c c4 给它挂上逐格断言:两侧此刻不等 = 事实与写路分岔,
+ * 当场记一行(口径与边界全文见 `port-fact-assert.ts`)。
+ */
 export function updateMessageUsage(
 	sessionId: string,
 	messageId: string,
@@ -904,6 +913,7 @@ export function updateMessageUsage(
 		reasoningTokens?: number;
 	},
 ): boolean {
+	assertPortFactIsFolded(sessionId, messageId, 'usage', usage);
 	return sessionMessageRuntime!.updateMessageUsage(sessionId, messageId, usage);
 }
 
@@ -950,25 +960,48 @@ export function addMessageContentPart(
 	);
 }
 
-// Update message thinking time (does not affect sort order)
+/**
+ * Update message thinking time —— **F4-c c4 起空转**(§16.24,用户裁定
+ * "thinkingTime 取投影值")。
+ *
+ * 这一格从来不是引擎的事实,是**渲染层的回写**:`MessageList.vue` 算完那段
+ * "思考了几秒"再经 `chat` 域写回来(全仓唯一的生产写者)。而账本上它早就有
+ * 产地 —— 投影的 `deriveThinkingTime` 从 `assistant/chunks` 的时刻算出同一个数
+ * (`chat-messages.ts`),判据侧 `canonicalChatMessage` 更是把它列进
+ * `ALWAYS_DROPPED_KEYS`:两条推导谁也没在对账,写回来的那一份只是覆盖了一个
+ * 本来就折得出来的值。
+ *
+ * 于是这一口的实现只剩"这条消息在不在"—— RPC 面靠这个布尔回 `success`,渲染层
+ * 一行没改。**不再写 store,也不再产生 `message/patched`**:一格由 fold 推导的
+ * 派生态,多一个产地就是多一次分岔的机会(§16.23 第五节钉的同族判例)。
+ *
+ * 端口本身留着而不是删掉:`chatRouter.updateMessageThinkingTime` 是 `@shared/ipc`
+ * 上的契约,删它是一次传输面改动,与本批无关。
+ */
 export function updateMessageThinkingTime(
 	sessionId: string,
 	messageId: string,
-	thinkingTime: number,
+	_thinkingTime: number,
 ): boolean {
-	return sessionMessageRuntime!.updateMessageThinkingTime(
-		sessionId,
-		messageId,
-		thinkingTime,
+	return (
+		sessionRepository
+			.getSessionMessages(sessionId)
+			?.some((message) => message.id === messageId) ?? false
 	);
 }
 
-// Update message skill used (does not affect sort order)
+/**
+ * Update message skill used (does not affect sort order).
+ *
+ * **A 类端口**(§16.23 分类表 #9):产地是 `skill/activated`,折叠落点
+ * `run.skillUsed`(`reducer.ts:694`)。挂逐格断言,理由同 `updateMessageUsage`。
+ */
 export function updateMessageSkill(
 	sessionId: string,
 	messageId: string,
 	skillUsed: string,
 ): boolean {
+	assertPortFactIsFolded(sessionId, messageId, 'skillUsed', skillUsed);
 	return sessionMessageRuntime!.updateMessageSkill(
 		sessionId,
 		messageId,
@@ -976,12 +1009,18 @@ export function updateMessageSkill(
 	);
 }
 
-// Update message error details (for API errors during streaming)
+/**
+ * Update message error details (for API errors during streaming).
+ *
+ * **A 类端口**(§16.23 分类表 #10):产地是 `run/end.error`,折叠落点
+ * `run.errorDetails`(`reducer.ts:513`)。挂逐格断言,理由同 `updateMessageUsage`。
+ */
 export function updateMessageError(
 	sessionId: string,
 	messageId: string,
 	errorDetails: string,
 ): boolean {
+	assertPortFactIsFolded(sessionId, messageId, 'errorDetails', errorDetails);
 	return sessionMessageRuntime!.updateMessageError(
 		sessionId,
 		messageId,
@@ -989,61 +1028,38 @@ export function updateMessageError(
 	);
 }
 
-// Update IM emoji reactions (W8, rooms only; does not affect sort order)
-export function updateMessageReactions(
-	sessionId: string,
-	messageId: string,
-	reactions: NonNullable<ChatMessage["reactions"]>,
-): boolean {
-	return sessionMessageRuntime!.updateMessageReactions(
-		sessionId,
-		messageId,
-		reactions,
-	);
-}
-
-// Attach an IM quote-reply snapshot after the fact (W13.2, rooms only; does
-// not affect sort order)
-export function updateMessageReplyTo(
-	sessionId: string,
-	messageId: string,
-	replyTo: NonNullable<ChatMessage["replyTo"]>,
-): boolean {
-	return sessionMessageRuntime!.updateMessageReplyTo(
-		sessionId,
-		messageId,
-		replyTo,
-	);
-}
+/*
+ * `updateMessageReactions` / `updateMessageReplyTo` / `updateMessageMentions`
+ * —— **已删除**(F4-c c4,§16.24)。
+ *
+ * 三条 IM 元数据写路(W8 表情 / W13.2 引用快照 / W14a @身份)早在 P0.2 就整体迁到
+ * 命令面的 `patchMessage` 上了(`wiring/collab/` 那三处协调器);c3-a 的 18 端口
+ * 全量分类(§16.23 第二节)量明它们**生产上一次都不调**,只剩三只测试的 mock 还
+ * 认得这三个名字——而那三只测试的注释白纸黑字写着"迁移前这条写走
+ * `store.updateMessageXxx`;命令面上它是一次普通 patch"。
+ *
+ * 删除是纯减法:不需要任何新产地(命令面的 `message/patched` 就是它们的产地),
+ * 也不改变任何一条 IM 写路的行为。
+ */
 
 /**
  * Persist the turn-context delta on a user message (prompt-channels
  * 2026-08-18). Written once per turn by `SessionTurnContext`; does not affect
  * sort order.
+ *
+ * **A 类端口**(§16.23 分类表 #14):产地是 `context/turn-update`,折叠落点
+ * `node.turnContext`(`reducer.ts:684`)。挂逐格断言,理由同 `updateMessageUsage`。
  */
 export function updateMessageTurnContext(
 	sessionId: string,
 	messageId: string,
 	turnContext: NonNullable<ChatMessage["turnContext"]>,
 ): boolean {
+	assertPortFactIsFolded(sessionId, messageId, 'turnContext', turnContext);
 	return sessionMessageRuntime!.updateMessageTurnContext(
 		sessionId,
 		messageId,
 		turnContext,
-	);
-}
-
-// Stamp identity-resolved @mentions after the fact (W14a, rooms only; does
-// not affect sort order)
-export function updateMessageMentions(
-	sessionId: string,
-	messageId: string,
-	mentions: NonNullable<ChatMessage["mentions"]>,
-): boolean {
-	return sessionMessageRuntime!.updateMessageMentions(
-		sessionId,
-		messageId,
-		mentions,
 	);
 }
 

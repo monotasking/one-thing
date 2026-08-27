@@ -7829,13 +7829,13 @@ transport/ui)。
 | part-boundary 状态机(U0) | **编解码器的编码半边**(迁居,合同随迁) |
 | recorder 的打包段 | 编码器写入端(素门落账时机不变) |
 | 18 个热写端口 | 签名不动,实现=**发逻辑事件**(折叠前进即写) |
-| 老 reducer(core/session/commands.ts) | **删除**(c4) |
-| 恒等门(F0) | c4 告别对账后**退役** |
+| 老 reducer(core/session/commands.ts) | **删除**(c4)—— c4 停在诊断:它今天是**活 run 写手对象的唯一维护者**,删它要先退役写手窗口(§16.24 第五节) |
+| 恒等门(F0) | c4 告别对账后**退役** —— **已退役**(§16.24) |
 | refold | **保留**,唯一常驻耐久门(比对点=编码器刷新点,游标守卫语义不变) |
 | 投影 reducer | 唯一状态推导;学会折逻辑 delta(数组累积 O(1)) |
 | coalescer / IPC / renderer | **零变化** |
 | command-events / lifecycle-events | 原样(命令流已终局) |
-| getLiveRunWriterMessage(F4-b2) | 退役(窗口消失,c4) |
+| getLiveRunWriterMessage(F4-b2) | 退役(窗口消失,c4)—— c4 **保留**:工单口径是"写手活对象窗口按既有共存口径",窗口没消失(§16.24 第五节) |
 | canonical 豁免表 | 按定律三重述(短命=策略表条目,非杂项豁免) |
 
 **分期(c1–c5,每期是定律的一块)**:
@@ -7845,7 +7845,7 @@ transport/ui)。
 | **c1** | ~~出生事实补齐:run/start 携占位全字段,折叠出生占位(拍板 3 兑现)~~ **已改判并结案(§16.20):产地与折叠分支 F4-a 时就齐了,88 是取样窗口的读数**。c1 的实际产出 = 那份读数 + 窗口宽度记档,零生产改动 | ~~88→0~~ 改判:`run/start` 落账那一刻 88/88 逐格相等(实测) |
 | **c2** | 编解码器就位:状态机迁居、读侧解码折叠、素门/带 surface 门写入走编码器;decode∘encode 性质测试;老文件逐字节同折合同 | **✅ 已落地(§16.21)**:字节回归 0 差、decode∘encode 性质测试绿、全库 433 账本折叠指纹 0 差、性能 1.04×、battery GREEN |
 | **c3** | 18 端口翻转为发事件(分 2–3 小批,流式性能实测每 delta 折叠开销) | 探针 B 九路全零 + 性能预算 + battery。**c3-a 已落地(§16.23)**:18 口全量分类表 + 流式首刀(逻辑 delta 盖章即折)—— `reasoning` 18/18→**0**、`content` 126/126→**8/124**(残差 6 非前缀 + 2 整段,全是 C 类"另有产地"的非 provider 正文产地,不是滞后);`isStreaming` 按读数**改判不翻**(见 §16.23 第五节)。剩 c3-b(工具三口)/ c3-c(收尾三口) |
-| **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | 告别对账全绿为前置 |
+| **c4** | 非流式合一收尾、老 reducer 删除、告别对账、恒等门退役、session:check 改写、策略表+收敛测试落地 | **🟡 部分落地(§16.24)**:告别对账全绿(runs 321 / mismatches 0 / 真机 verify 无新增)→ **恒等门已退役**;三个死口删除;`thinkingTime` 兑现"取投影值";`refold` 补采;新立**端口事实断言**(逐格替身,battery 比过 265 次 0 失配)。**老 reducer 删除与 A 类端口空转停在诊断** —— 三条硬证据(settle 读写手视图的 `steps`/`data-steps` 锚点、abort 按 `isStreaming` 寻址、truncate 用量结算)都指向同一个根因:§16.17 的**活 run 写手窗口**今天由内存 store 承担,而本批口径是不动它。往下走要先裁定"写手窗口退役吗"(§16.24 第五节) |
 | **c5** | 三定律成文为系统宪法(§17),终态架构图,门清单 | — |
 
 规模:c3 为主,全程约 4–6 批。§16.14 战役表 b3/b4 由本节取代(b1/b2 成果原样有效:
@@ -8444,3 +8444,261 @@ c3-a 的做法保住了两侧同源性:**store 照旧自己写,折叠提前到�
      单独负责、`updateMessageContent` 在那三处不参与折叠对账?
   2. **`refold` 少采那一次**要不要补 —— 例如收尾链 `flushAll()` 之后**必采一次**,
      把守卫的代价还回来。
+
+### 16.24 F4-c c4 落地记录:恒等门告别退役 + 死口删除 + 端口事实断言;**reducer 收官停在诊断**(2026-08-27,opus 施工,未提交)
+
+#### 〇、一句话
+
+三定律的终局批交了**四件成品**与**一份诊断**。成品:三个死口纯减法删除、
+**恒等门告别退役**(告别对账读数在第一节)、`updateMessageThinkingTime` 兑现
+"取投影值"、`refold` 补采;诊断:**老 reducer 删不掉、A 类端口空转不了**,
+根因是同一条 —— §16.17 立的**活 run 写手窗口**今天由内存 store 承担,而工单
+第 3 步明写"引擎写手活对象窗口按既有共存口径"(即本批不动它)。三条硬证据
+在第五节,一条都不是"再等等"的谨慎。
+
+替代品不是一句相信:恒等门退役的同时立了**端口事实断言**
+(`session/port-fact-assert.ts`)—— 端口写下某一格的那一刻,与活投影上同一格
+的折叠值比一次,判据仍然是 `canonicalChatMessage` 那把**唯一的尺**。真机
+battery 上它**比过 265 次、0 失配**。
+
+#### 一、告别对账(退役**之前**最后一次两侧独立的全量读数)
+
+| | 读数 |
+|---|---|
+| `sessions:shadow-battery`(全量,27 场景 × 7 pass) | runs **321** / historyChecks **433** / mismatches **0** / duplicates 0 / projectionIssues 0 / droppedParts 0 / appendFailures 0 / refoldChecks 222 / refoldMismatches **0** / `session-shadow.jsonl` **0 行** |
+| 真机 `sessions:verify:gate`(只读) | FAILED,**仍是 §16.20 第七节那一条** `room-1 seq: expected seq 2 at position 1, got 3`,**无新增** |
+
+这是恒等门作为「事件投影(真相)vs 内存 store(验证器)」两条**独立推导**跑的
+最后一次全量。它从 S1b 立门(§10.4)一路护航到 F4-c,退役时手上是干净的。
+
+#### 二、退役清单(删了什么,以及为什么现在删)
+
+**判据先讲**:恒等门要有意义,两侧必须是两条独立推导(F11:判据同源 = 判据污染)。
+验证器侧唯一合法的取数口是 `sessionReads.listMessagesFromStore`(故意不经过投影)。
+而产品读路自 S2b + S3w-3 批 6b 起**只剩投影一条路** —— `listMessages` /
+`getMessage` / `pageMessages` / `iterateMessages` / `firstUserPreview` /
+`sliceForHistory` 全部 `fromEvents`。于是验证器侧那一口今天**零产品消费者**,
+留着它只会让下一个人把它当成第二份真相。
+
+| 删掉 | 位置 | 说明 |
+|---|---|---|
+| run 断言 `checkSessionRunShadow` / `scheduleSessionRunShadow` | `session/shadow.ts` | 每个 run 收尾比一次整条消息 |
+| 历史断言 `checkSessionHistoryShadow` + 入参类型 | `session/shadow.ts` | 每次请求发出前比一次模型历史 |
+| 接线 `history-shadow.ts` + 它的窗口闸用例 | `wiring/engine/stream/` | 整文件删除;`onRequestRecipe` 回调口**留着**(它是"配方写下去那一刻"的通用旁听口,不是那道门的私产) |
+| 不等去重 / `recordMismatch` / 老会话覆盖面豁免 / `countSessionShadowSkip` | `session/shadow.ts` | 只服务那两道断言 |
+| `listMessagesFromStore` | `session/reads.ts` | 验证器侧取数口,零消费者 |
+| `shadow-recipe-contract.test.ts` | `session/__tests__/` | F5 的"入参类型必须认得宿主配方每一格"—— 入参类型没了 |
+| 三个 IM 死口(见第三节) | `stores/sessions.ts` + `session-message-runtime.ts` | 纯减法 |
+
+**留下来的**:`session/shadow.ts` 变成**记录面** —— 差异摘要(2KB 预算)、
+`session-shadow.jsonl` 写入口、方向标记盖章。它今天服务两个写者:`refold`
+(耐久门,唯一常驻)与新的 `port` 断言。`SessionShadowKind` 从
+`'messages' | 'history' | 'refold'` 变成 `'refold' | 'port'`;**老日志里那两个
+取值照旧读得懂**(报表按字符串认,不靠联合类型),两列的标签仍按 `truth` 标记
+分开打印 —— 拿今天的名字贴老行等于把归因贴反。
+
+**`runs` 换了产地**:它从前是 run 断言顺手记的一笔,门退役就没人记了。现在由
+`endSessionRun` 自己记(`if (isSessionShadowEnabled()) bumpSessionShadowStats({ runs: 1 })`)
+—— 它回答的本来就是"这一轮跑了多少个 run",与哪道门在比无关。**读数自证**:
+搬家前后同一条 battery 都是 **321**。
+
+**报表与 battery 改成"仅 refold + 直接断言"口径**:
+`sessions:shadow-report` 的门 = `runs ≥ 200 ∧ refoldChecks > 0 ∧
+refoldMismatches = 0 ∧ mismatches = 0 ∧ portMismatches = 0 ∧ appendFailures = 0`。
+新加的 **`refoldChecks > 0`** 是一条纪律:恒等门退役之后 refold 是唯一在跑的
+比对,而"那道门根本没跑"与"那道门全绿"在报表上长得一模一样。
+`mismatches` / `historyChecks` 字段**留着且仍然进门** —— 老
+`session-shadow-stats.json` 里的非零必须仍然是红。
+
+#### 三、死口删除 + 5 个"零调用口"逐个判
+
+**三个死口整体删除**(§16.23 第二节的 #11 / #12 / #13),纯减法:
+`updateMessageReplyTo`(W13.2 引用快照)/ `updateMessageReactions`(W8 表情)/
+`updateMessageMentions`(W14a @身份)。三条 IM 写路早在 P0.2 就整体迁到命令面的
+`patchMessage`(产地 `message/patched`),生产上一次都不调。删的是
+`backend/stores/sessions.ts` 的三个导出、`stores/index.ts` + `store.ts` 的再导出、
+`session-message-runtime.ts` 的三个方法,以及五只测试里那几处认得旧名字的
+mock 属性。**消息形状不动**(`reactions` / `replyTo` / `mentions` 三格还在,
+`CoreSessionMessage*` 三个类型还在 —— 它们描述的是消息,不是那三扇门)。
+
+**5 个"零调用口"**(表里 `samples 0` 那几个)逐个判 —— 注意 `0 调用`说的是
+**本次 battery** 没走到,不是生产上没有调用点:
+
+| # | 端口 | 生产调用点 | 判 |
+|---|---|---|---|
+| 4 | `updateMessageContentParts` | `tool-orchestrator.ts:136` | **留**:活 run 写手视图的产地之一(见第五节) |
+| 5 | `updateMessageSteps` | `tool-orchestrator.ts:129` | **留**:同上 |
+| 8 | `updateMessageThinkingTime` | `rpc/domains/chat.ts`(**渲染层回写**) | **空转**(见下) |
+| 10 | `updateMessageError` | `agent-loop-executor.ts:210/2370` | **留 + 挂断言**:A 类,产地 `run/end.error` |
+| 14 | `updateMessageTurnContext` | `agent-loop-runtime.ts:266/271` | **留 + 挂断言**:A 类,产地 `context/turn-update` |
+
+**`updateMessageThinkingTime` 兑现"取投影值"**(用户已拍板):这一格从来不是
+引擎的事实,是渲染层算完"思考了几秒"再经 `chat` 域写回来的 —— 全仓唯一的生产
+写者是 `MessageList.vue`。账本上它早有产地(`deriveThinkingTime` 从
+`assistant/chunks` 的时刻算),判据侧 `canonicalChatMessage` 更是把它列进
+`ALWAYS_DROPPED_KEYS`。端口实现因此只剩"这条消息在不在"(RPC 面靠这个布尔回
+`success`),**不再写 store、不再产生 `message/patched`**。端口与 RPC 契约都留着
+—— 删 `chatRouter.updateMessageThinkingTime` 是一次传输面改动,与本批无关;
+渲染层**一行没改**。
+
+#### 四、端口事实断言:恒等门的逐格替身(`session/port-fact-assert.ts`,新增)
+
+§16.23 把 12 个端口判成 **A 类:事实已经在流上**。那句话从前的证据是恒等门每个
+run 比一次整条消息;门退役了,它就需要一个**逐口逐格**的替身,否则退化成一句相信。
+
+端口被调用的那一刻,拿它的入参与活投影上同一条消息的同一格比一次。四条边界:
+①默认关(`ONETHING_SESSION_PORT_ASSERT`,缺省跟 `ONETHING_SESSION_FREEZE` 走 =
+vitest 下开),关着时第一行就 return,生产零成本;②**不主动建表**(建表要同步读
+整份文件 —— §16.23 探针坑 3);③**永不抛进引擎**,不等只记一行
+`session-shadow.jsonl{kind:'port'}` + `portMismatches`;④**判据只有一把尺**:
+`canonicalChatMessage`。
+
+今天在表上的四格,以及每一格为什么在:
+
+| 端口 | 比的那一格 | 账本产地 |
+|---|---|---|
+| `updateMessageUsage` | `node.usage` | `request/response.usage` 求和(reducer:529) |
+| `updateMessageSkill` | `node.skillUsed` | `skill/activated`(reducer:694) |
+| `updateMessageError` | `node.errorDetails` | `run/end.error.message`(reducer:513) |
+| `updateMessageTurnContext` | `node.turnContext` | `context/turn-update`(reducer:684) |
+
+不在表上的按**为什么不比**分三堆:`content`/`reasoning` 的残差是 C 类产地议题
+(第七节);`isStreaming` 是两个时刻不是分岔(§16.23 第五节);
+`steps`/`toolCalls`/`contentParts`/`steps[].usage` 的正确判据是**整条消息的
+canonical 相等**,在这里手写第二个数组判官 = 把刚退役的那道门换个名字再建一遍。
+
+**两个自己踩的坑,都写进了代码注释,也都固化成了反证用例:**
+
+1. **第一版直接 `deepEqual`,battery 当场 265 条假红**,全是 `usage.durationMs`
+   —— 那一格 canonical 明文丢掉("一次流的墙钟量测,不是用量",`canonical.ts:233`)。
+   手写的第二个判官一定会与唯一的那把尺分叉,而分叉的方向永远是"报一堆假红,
+   把真的那条淹掉"。改法:两侧各包成 `{ [fact]: value }` 的单格消息,过同一个
+   `canonicalChatMessage` 再比。
+2. **拿 `content` / `reasoning` 试挂过一次,battery 报 `portMismatches` 0 ——
+   而那个读数什么都没证明**:`AssistantNode` 上根本没有这两格(正文住
+   `parts: Map<number, PartState>`),断言每一次都在 `folded === undefined`
+   那行就 return 了。于是加了 **`portChecks`**(真的比过几次)—— 与
+   `refoldChecks > 0` 是同一条纪律。往那张表加新一行的人请先看着这个数涨。
+
+**读数**:battery 全量 **`portChecks` 265 / `portMismatches` 0**。
+诚实地补一句覆盖面:265 次里绝大多数是 `usage`(`updateMessageSkill` 本 battery
+只有 2 次调用,`updateMessageError` / `updateMessageTurnContext` **0 次** ——
+与 §16.23 分类表的 `samples` 列一致)。那两口的断言是**装上了但还没被真正考过**,
+不能算已证。
+
+#### 五、**停在诊断**:老 reducer 删不掉、A 类端口空转不了(三条硬证据)
+
+工单第 2 步是「12 个 A 类端口改为空转 + 断言」,第 4 步是「老 reducer 分支删除
+(命令应用 = 事件 fold + 物化)」。两步都**停在诊断**,而且是同一个根因。
+
+**根因一句话**:§16.17 立的**活 run 写手窗口**——「活 run 窗口内,该 run 的
+assistant 消息由引擎写手对象持有并唯一可信」——今天的"写手对象"就是**内存
+store 上的那一条**,而维护它的正是那 18 个端口与老 reducer。工单第 3 步明写
+"引擎写手活对象窗口按既有共存口径",即**本批不动这个窗口**;窗口不动,喂它的
+端口就空转不得,维护它的 reducer 就删不得。
+
+三条证据,每一条都是一个具体的产品行为,不是"理论上可能":
+
+1. **收尾链读写手视图的 `steps[]` 与 `contentParts`**
+   (`wiring/engine/stream/agent-loop-executor.ts:530/575/629`)。
+   `contentParts` 上带着 `data-steps` **渲染锚点**,而锚点按 canonical **G4 故意
+   不进事件、不进投影**(裁定,不是缺口);settle 快照是**整体覆盖**广播给
+   renderer 的。喂它的是 `addMessageContentPart` / `updateMessageContentParts` /
+   `updateMessageStep` / `addMessageStep` / `updateMessageSteps` —— 这五口一空转,
+   §15.16「正文看不见」当场复发。
+2. **abort 按 `isStreaming` 寻址**:`runtime/src/sessions/stream-abort.ts:143`
+   的 `session.messages.find(message => message.isStreaming)` 读的是 store 上那条
+   消息。`updateMessageStreaming(false)` 一空转,这一格永远留着 `true`,下一次
+   停止会摸到一条早就收尾的消息。(§16.23 第五节判它"今天翻不得"的理由是恒等门
+   会红;门退役之后理由换成这一条,**结论没变**。)
+3. **truncate 的用量结算读 `message.usage`**:老 reducer 的 `applyTruncate` 把被
+   删消息的 token 用量从会话总量里扣回去(`meta.subtractedUsage` →
+   `logSubtractedMessageUsage`)。`updateMessageUsage` 一空转,扣减恒为 0。
+
+**要往下走,先要一次裁定**(不由执行侧顺手拍,§16.3 +「行为裁定须先问」):
+**活 run 写手窗口退役吗?** 退役意味着至少三件事各有出路 ——(a)`data-steps`
+锚点改由 renderer 自合成(S3w-0 的 `synthesizeToolAnchors` 已具备能力,但 settle
+的整体覆盖路今天不跑 `rebuildContentParts`);(b)abort 改按"当前开着的 run"
+寻址,而不是按 `isStreaming` 找消息;(c)truncate 的用量结算改从投影取。
+三件都是可感知行为的改动,应当列给用户选,而不是在收官批里夹带。
+
+**session:check 因此按"理由换了、名单没换"处理**:规则 B 的白名单仍然只有
+`packages/core/session/commands.ts`,但它守的东西从"命令面是唯一实现处"变成
+"**活 run 写手对象只有一个维护者**"。理由原文写进了 `scripts/session-check.mjs`。
+`session:gate` 仍然 0。
+
+#### 六、refold 补采(用户裁定已兑现,但按"补格"而不是"必采")
+
+c3-a 给 refold 加的 `aheadDeltas > 0` 守卫是对的,代价是**那一次采样白花了**
+(计数已经加过,下一次要再等 N 个 run)—— 就是 refoldChecks 225 → 224 的那一格。
+
+本批的补法:守卫命中时把采样计数**退回去**(`refundSample`),于是下一个 run
+立刻补采一次。run 收尾链的 `recorder.flush()` 排在 `endSessionRun` 之前,补的
+那一次几乎必然采得成。**读数**:同一条 battery 从 222 回到 **225 / 223 / 222**
+(三次跑,并发下有抖动),`refoldMismatches` 始终 0。
+
+**与用户原话的偏差,明账记着**:裁定原文是「run 收尾 flush 后**必采一次**」。
+按字面做会把一道"每 5 个 run 采一次"的耐久门变成**每个 run 都全量重折一遍**
+(真机大账本上每次 ≈22ms 连续阻塞,§15.14)。那是换一档采样率,不是"把跳采的
+格补回" —— 换档是另一次拍板。若用户要的就是字面那一档,把
+`ONETHING_SESSION_REFOLD_EVERY=1` 打开即可,不需要改代码。
+
+#### 七、C 类残差 8 为什么**没有**归零(它挂在第五节上)
+
+工单裁定「C 类正文认既有产地,残差 8 应随读侧物化消失」。**读侧物化这一步在
+c4 之前就已经完成了**(S2b + 批 6b:产品读路只剩投影一条路),所以 c4 没有可以
+"切换"的读侧 —— 这一批在读侧做的是**删掉那条故意绕开投影的验证器口**。
+
+而 §16.23 第四节量到的残差 8 是**「物化 ≡ store」**这个探针的读数,它归零的
+条件是那三条非 provider 正文路(生图失败分支 / 压缩卡片三处 / 生图收尾)
+**不再写 store** —— 也就是 `updateMessageContent` 在那三处空转。那正好落在
+第五节停手的那一格里(写手视图的正文也归它写)。所以:**残差 8 的归零与 A 类
+空转是同一件事的两个说法**,一起等那次裁定。
+
+本批没有重装 §16.18 的探针 B(它要 `git checkout` 卸载,而它量的那个数今天
+必然与 c3-a 相同 —— 中间没有任何一条端口的写路被改)。取而代之的是第四节那个
+**常驻的**逐格断言:它比探针便宜、进门、而且不会跑完就没。
+
+#### 八、验收(全部实跑)
+
+| 门 | 结果 |
+| --- | --- |
+| **告别对账**(退役前最后一次) | battery runs **321** / historyChecks **433** / mismatches **0** / refoldMismatches **0** / `shadow.jsonl` **0 行**;真机 verify **仅 room-1 已知条** |
+| `sessions:shadow-battery`(新口径,全量) | **GREEN** —— runs **321** / **portChecks 265 / portMismatches 0** / refoldChecks **222** / refoldMismatches **0** / mismatches 0 / appendFailures 0 / duplicates 0 / projectionIssues 0 / droppedParts 0 / `session-shadow.jsonl` **0 行** |
+| 真机 `sessions:verify:gate`(只读) | FAILED,**仍是那一条** `room-1 seq …`,**无新增**(本批全程未写 `~/.onething`) |
+| **字节回归** | **0 差** —— `session-chunk-bytes.test.ts` 原样绿(c2 录的金样,19 行 / 4262 字节) |
+| `typecheck` | **0** |
+| `boundary:gate` | ok — 0 failures |
+| `session:gate` | ok — 0 known, none new |
+| `log:gate` | ok — 4 known, none new |
+| `transport:gate` | ok — 42 常量 / 四壳 2392 行,不变 |
+| `ui:gate` | ok — 81 known, none new |
+| `packages/backend` + `packages/core` + `runtime/src/sessions` | **3522 passed / 0 failed / 3 skipped**(388 文件) |
+| 新增合同用例 | `port-fact-assert.test.ts` **5 条全绿**,含**三条反证**:①canonical 丢掉的那一格不许报(`usage.durationMs`);②没有活投影时一次都不比、`portChecks` 一次不涨;③总开关关掉时一条账都不记 |
+
+#### 九、本批的账
+
+- **生产代码**:新增 1 件(`session/port-fact-assert.ts`,182 行);
+  删除 1 件(`wiring/engine/stream/history-shadow.ts`);改 9 件
+  (`session/{shadow,reads,runs,refold,event-stats}.ts`、
+  `stores/{sessions,index}.ts` + `store.ts`、
+  `wiring/engine/stream/{agent-loop-executor,session-event-recorder}.ts`、
+  `runtime/src/sessions/session-message-runtime.ts`)。
+  **净 +374 / −1280**(含测试与脚本)。新增事件类型:**0**;
+  canonical 新豁免:**0**;磁盘格式变化:**0**;渲染层改动:**0**。
+- **测试**:新增 1 件(5 条含三条反证);删除 2 件(恒等门的两只);
+  改判 1 件(`shadow-read-mode.test.ts` —— 夹具一字未动、结论翻面:从
+  "门必须报出 store 与事件的分岔"改成"**store 被改成什么样,产品读面都只回答
+  事件折出来的那一份**",并补一条反证证明篡改确实发生过);
+  重写 1 件(`shadow.test.ts` 只剩记录面 + `runs` 产地 + 关闸)。
+- **脚本**:`session-shadow-report.mjs`(仅 refold 口径 + `refoldChecks > 0` +
+  `portMismatches` 进门)、`shadow-battery.mjs`(开 `ONETHING_SESSION_PORT_ASSERT`)、
+  `session-check.mjs`(规则 B 的理由改写)。
+- **留给下一批的工单**(全部挂在第五节那次裁定上):
+  1. **活 run 写手窗口退役吗**(a/b/c 三条出路,列给用户选);
+  2. 裁定之后:12 个 A 类端口空转、老 reducer 删除、`session:check` 规则 B 改写
+     成"只许在投影 reducer"、C 类残差 8 归零、`getLiveRunWriterMessage` 与
+     `getMessageFromStore` / `hasMessageInStore` / `findMessageFromStore` 三口
+     判据同源的退役(`hasSessionInStore` 是**永久例外**,§16.11 拍板 4);
+  3. `updateMessageError` / `updateMessageTurnContext` 的断言**还没被考过**
+     (本 battery 零调用)—— 给它们各补一个场景。

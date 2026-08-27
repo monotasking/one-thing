@@ -376,26 +376,18 @@ export class OnethingSessionMessageRuntime<
     return this.patchMessage(sessionId, messageId, { errorDetails } as Partial<TMessage>)
   }
 
-  // IM reactions (W8): metadata on an already-written message, so it rides the
-  // ordinary patch path — no truncation, no sort-order effect, no usage math.
-  updateMessageReactions(
-    sessionId: string,
-    messageId: string,
-    reactions: CoreSessionMessageReactions,
-  ): boolean {
-    return this.patchMessage(sessionId, messageId, { reactions } as Partial<TMessage>)
-  }
-
-  // IM quote reply (W13.2): the coordinator hangs a snapshot on an agent reply
-  // AFTER the stream settled. Metadata on an already-written message, so it
-  // rides the same ordinary patch path reactions do.
-  updateMessageReplyTo(
-    sessionId: string,
-    messageId: string,
-    replyTo: CoreSessionMessageReplyTo,
-  ): boolean {
-    return this.patchMessage(sessionId, messageId, { replyTo } as Partial<TMessage>)
-  }
+  /*
+   * `updateMessageReactions` (W8) / `updateMessageReplyTo` (W13.2) /
+   * `updateMessageMentions` (W14a) —— **deleted** in F4-c c4 (§16.24).
+   *
+   * All three were "stamp IM metadata onto an already-written message" wrappers
+   * around `patchMessage`. The three room coordinators that used to call them
+   * moved to the command surface (`sessionCommands.patchMessage`, whose origin
+   * event is `message/patched`) back in P0.2; the c3-a port census (§16.23)
+   * confirmed zero production callers. Pure subtraction — the message shape
+   * still carries `reactions` / `replyTo` / `mentions`, only the three
+   * redundant doorways are gone.
+   */
 
   /**
    * The turn-context delta delivered with a user message (prompt-channels
@@ -410,17 +402,6 @@ export class OnethingSessionMessageRuntime<
     turnContext: unknown,
   ): boolean {
     return this.patchMessage(sessionId, messageId, { turnContext } as unknown as Partial<TMessage>)
-  }
-
-  // Identity-resolved @mentions (W14a): the coordinator stamps ids onto an
-  // agent reply once the stream settled — metadata on an already-written
-  // message, same ordinary patch path reactions and quotes ride.
-  updateMessageMentions(
-    sessionId: string,
-    messageId: string,
-    mentions: CoreSessionMessageMentions,
-  ): boolean {
-    return this.patchMessage(sessionId, messageId, { mentions } as Partial<TMessage>)
   }
 
   addMessageStep(sessionId: string, messageId: string, step: TStep): boolean {

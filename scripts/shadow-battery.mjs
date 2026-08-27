@@ -11,8 +11,14 @@
  *
  *   起真 server(`dist/server/main.js`,不是测试替身)+ 假 provider
  *     → 在一个**临时 store** 上按场景表驱动**真引擎**
- *     → 每个 run 收尾时影子断言照常跑(`ONETHING_SESSION_SHADOW=1`)
+ *     → 每个 run 收尾采一次 refold(耐久门)+ A 类端口逐格事实断言
+ *       (`ONETHING_SESSION_SHADOW=1` + `ONETHING_SESSION_PORT_ASSERT=1`)
  *     → 最后 `sessions:shadow-report --min-runs 200` 当门。
+ *
+ * **F4-c c4 换过一次判据**:语义层的恒等门(`kind: 'messages'` / `'history'`)
+ * 退役了(§16.24),门从此是 **refold + 端口事实断言 + 各泳道自己的直接断言**。
+ * `session-shadow.jsonl` 那条"一行都不许有"的判据一字未变 —— 变的只是今天会往
+ * 里写的是谁。
  *
  * 三条纪律:
  *  1. **不碰真实 store**:全程 `ONETHING_STORE_PATH=<临时目录>`,收尾删掉。
@@ -1732,6 +1738,10 @@ async function bootProbeServer({ store, port, token, extraEnv, out }) {
     ONETHING_SERVER_PORT: String(port),
     ONETHING_SERVER_TOKEN: token,
     ONETHING_SESSION_SHADOW: '1',
+    // F4-c c4:A 类端口的逐格断言(`port-fact-assert.ts`)。生产默认关,这里必须
+    // 显式打开 —— 恒等门退役之后,"事实已经在流上"那句话在真引擎上的唯一证人
+    // 就是它。不等会记一行 `session-shadow.jsonl` + `portMismatches`,两样都进门。
+    ONETHING_SESSION_PORT_ASSERT: '1',
     ONETHING_LOG: 'warn',
     ...extraEnv,
   }
@@ -1896,6 +1906,8 @@ async function main() {
       ONETHING_SERVER_PORT: String(serverPort),
       ONETHING_SERVER_TOKEN: token,
       ONETHING_SESSION_SHADOW: '1',
+      // 同上:端口事实断言在两条起 server 的路上都要开。
+      ONETHING_SESSION_PORT_ASSERT: '1',
       ONETHING_LOG: 'warn',
     }
     // 从前这里要先把继承来的会话档位摘掉(免得开发者 shell 里导出过某一档,

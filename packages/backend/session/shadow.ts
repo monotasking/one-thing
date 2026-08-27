@@ -1,71 +1,50 @@
 /**
- * 恒等门(S1b 立为影子断言 §10.4;F0 转向后是**写模型 vs 读模型**的常驻合同,§16.2)。
+ * 耐久门(refold)的**记录面** —— 差异摘要 + `session-shadow.jsonl` 的写入口。
  *
- * 每个 run 收尾比一次消息,每次请求发出前比一次模型历史,不等就往
- * `<store>/log/session-shadow.jsonl` 记一行字段级摘要,并把计数加进
- * `session-shadow-stats.json`。
+ * ## 恒等门已经退役(F4-c c4,§16.24)
  *
- * ## 方向(F0,2026-08-27):谁是真相
+ * 这个文件从 S1b 起是**恒等门**:每个 run 收尾比一次消息(`kind: 'messages'`)、
+ * 每次请求发出前比一次模型历史(`kind: 'history'`),两侧是「事件投影(真相 a)」
+ * 与「内存 store(reducer 推导,验证器 b)」两条**独立推导**。它为 F0–F4-c 的整条
+ * 写模型翻转全程护航。
  *
- * S3w-3 之后事件账本是**唯一持久化**,F 线要把写路径翻成「命令 → 事件 → fold」。
- * 这道门的两侧一个字都没换,换的是**解读**:
+ * c4 把它按 §16.2 / §16.19 映射表的原定归宿退役了:
  *
- * | | 转向前(S1b–S3w) | 转向后(F0 起) |
- * |---|---|---|
- * | `a` | 内存 store(reducer 推导)= 真相 | **事件 / 活投影 = 真相** |
- * | `b` | 活投影(事件推导)= 影子 | **内存 store(reducer 推导)= 影子验证器** |
- * | 一次不等读成 | "投影错了" | "**写模型没跟上账本**" |
+ *  - **产品读路早已只走投影**(S2b + S3w-3 批 6b:`listMessages` / `getMessage` /
+ *    `pageMessages` … 全部 `fromEvents`),store 不再是任何一条产品读的真相来源;
+ *  - 因此验证器侧那一口(`sessionReads.listMessagesFromStore`)**没有了消费者**,
+ *    留着它只会让门"自己跟自己比"—— 以错误的理由变绿(F11 判据污染的反面)。
+ *  - 告别对账的读数记在 §16.24:退役**之前**最后一次全量 battery 是
+ *    runs 321 / historyChecks 433 / mismatches 0,真机只读 verify 无新增条目。
  *
- * 比对本身是对称的 —— **这次转向不改变任何一次判定**:同一对不等,昨天红今天
- * 也红。变的只有日志里两列的次序、报表的措辞、以及谁被 blame。它为 F1–F4 的写
- * 模型翻转全程护航,到 F4 reducer 退役、两条推导合一那天与 reducer 一起退役
- * (§16.2 F4 行)。
+ * 退役掉的是**比对**,不是记账:`refold`(耐久层,§14.3-B / S3w-2)是唯一常驻的
+ * 门,它比的是「`events.jsonl` 的文件字节重折」vs「内存活投影」—— 两条与 store
+ * 无关的独立路径,与恒等门问的从来不是同一件事。它写的那一行仍然走这里的
+ * `summarizeShadowDiff` / `appendSessionShadowLine`,统计仍然进
+ * `session-shadow-stats.json` 的 `refoldChecks` / `refoldMismatches`。
  *
- * 每一行记录带 `truth: 'events'` 的**方向标记**(缺这个字段的是转向前的老记录)。
+ * ## 两条纪律(留下来的那半边照旧)
  *
- * ## 四条纪律
- *
- * 1. **永不抛进引擎**。所有出口 try/catch 自吞:恒等门算错了最坏的结果是账记歪,
+ * 1. **永不抛进引擎**。所有出口 try/catch 自吞:门算错了最坏的结果是账记歪,
  *    绝不能是聊天挂掉。
- * 2. **便宜**。活投影按会话缓存,每次只折**新事件**(写入口把刚分配 seq 的记录
- *    挂在尾巴上,见 `event-log.ts` 的 `drainSessionLogEventTail`);store 侧只取
- *    这一个 run 的那几条,不整份重算。
- * 3. **不许调绿**。`canonicalChatMessage` 是唯一判据(它把"不等但不算数"的那
- *    部分一次性写死);这里不再额外豁免字段。真的不等就是真的不等 —— 那正是
- *    这道门存在的理由。
- * 4. **验证器侧永远是 store,不许经过投影**(F11,§13.2;F0 只翻解读,不翻取数)。
- *    store 侧取数只走 `sessionReads.listMessagesFromStore` —— 它不经过投影。
- *    走 `listMessages` 的话两侧就都是投影:自己跟自己比,永远相等,门以**错误的
- *    理由**变绿。两侧必须始终是**两条独立推导**(reducer ≠ projection reducer),
- *    与谁在给产品供数无关。
+ * 2. **不许调绿**。`canonicalChatMessage` 是唯一判据(它把"不等但不算数"的那
+ *    部分一次性写死);这里不再额外豁免字段。
  *
  * ## 关闸
  *
- * `ONETHING_SESSION_SHADOW=0` 关掉比对与记账(事件照旧落盘)。缺省开。
+ * `ONETHING_SESSION_SHADOW=0` 关掉记账(事件照旧落盘)。缺省开。
+ * refold 自己另有一道 `ONETHING_SESSION_REFOLD=0`(两道门问的不是同一件事)。
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
 import {
-  canonicalChatMessage,
-  canonicalHistoryMessages,
-  materializeModelHistory,
-  materializeNode,
-  type ProjectionNode,
-  type ProjectModelHistoryMeta,
-  type ProjectModelHistoryOptions,
-} from '@onething/core/session'
-import {
   getOnethingLogDir,
 } from '@onething/runtime/storage'
 import {
-  getLiveSessionProjection,
   peekSessionProjection,
   resetSessionProjectionCache,
 } from './projection-cache.js'
-import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
-import { sessionProjectionOptions } from './projection-blobs.js'
-import { sessionReads } from './reads.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.shadow')
@@ -87,14 +66,16 @@ const DIFF_VALUE_CHARS = 120
 /**
  * 一行记录属于哪一类断言。
  *
- * - `messages` / `history` —— 语义层(§14.3-1):活投影(事件推导,**真相 a**)
- *   vs 内存 store(reducer 推导,**影子验证器 b**),两条**独立推导**。
  * - `refold` —— 耐久层(§14.3-B,S3w-2):`events.jsonl` 的**文件字节**重折
- *   (**真相 a**)vs 内存活投影(**b**),两条**独立路径**。它由 `refold.ts` 写,
- *   不走 `recordMismatch`(计数进 `refoldMismatches`,不进 `mismatches` —— 两道门
- *   问的不是同一件事)。
+ *   (**真相 a**)vs 内存活投影(**b**),两条**独立路径**。
+ * - `port` —— 端口事实断言(c4,`port-fact-assert.ts`):某个
+ *   `sessionMessageRuntime` 端口的入参(**b**)vs 活投影上同一格的折叠值
+ *   (**a**)。它是恒等门退役之后"A 类端口的事实已经在流上"那句话的逐格替身。
+ *
+ * **老日志里仍然读得到 `'messages'` / `'history'` 两个取值** —— 那是 c4 之前记的
+ * 行,读日志的脚本按字符串认,不靠这个联合类型。
  */
-export type SessionShadowKind = 'messages' | 'history' | 'refold'
+export type SessionShadowKind = 'refold' | 'port'
 
 /**
  * 方向标记(F0,§16.2):`a` 侧代表谁。
@@ -253,76 +234,6 @@ export function appendSessionShadowLine(record: SessionShadowRecord): void {
   }
 }
 
-/**
- * F9(§13.2):**同一个 run 里同一处不等只记一次。**
- *
- * 历史断言是**每次请求**跑的(那正是它的正确性所在:第 2 轮发出去的历史和第 1 轮
- * 不是同一份)。但一个真实的不等——比如某条老消息的附件没回填——在一个 12 轮的
- * run 里会被原样记 12 次:`mismatches` 通胀 12 倍,`shadow.jsonl` 里 12 行一模一样
- * 的摘要,报告的 top10 变成"谁的回合多"排行榜。
- *
- * 指纹 = `kind` + 摘要本身(摘要已经是 ≤2KB 的字段级差异)。**同一个 run 里出现
- * 另一处不等照记不误** —— 折叠的是重复,不是不等。
- */
-const RUN_DEDUPE_MAX_RUNS = 200
-const seenRunMismatches = new Map<string, Set<string>>()
-
-function dedupeKey(sessionId: string, runId: string | undefined): string {
-  return `${sessionId}|${runId ?? '-'}`
-}
-
-/** @returns 这条不等是不是**新的**(旧的只计 `duplicateMismatches`,不进门)。 */
-function rememberMismatch(sessionId: string, runId: string | undefined, signature: string): boolean {
-  const key = dedupeKey(sessionId, runId)
-  let seen = seenRunMismatches.get(key)
-  if (!seen) {
-    seen = new Set()
-    seenRunMismatches.set(key, seen)
-    // Map 是插入序的:满了就丢最老的那个 run(它早就收尾了)。
-    while (seenRunMismatches.size > RUN_DEDUPE_MAX_RUNS) {
-      const oldest = seenRunMismatches.keys().next()
-      if (oldest.done) break
-      seenRunMismatches.delete(oldest.value)
-    }
-  }
-  if (seen.has(signature)) return false
-  seen.add(signature)
-  return true
-}
-
-/** 会话删除 / 测试:忘掉"这个 run 记过什么"。 */
-export function resetSessionShadowDedupe(): void {
-  seenRunMismatches.clear()
-}
-
-/**
- * @param truth 真相侧(F0:事件 / 活投影)—— 落进摘要的 `a` 列。
- * @param verifier 验证器侧(F0:内存 store / reducer)—— 落进摘要的 `b` 列。
- */
-function recordMismatch(
-  sessionId: string,
-  kind: SessionShadowKind,
-  runId: string | undefined,
-  truth: unknown,
-  verifier: unknown,
-): void {
-  const { diff, truncated } = summarizeShadowDiff(truth, verifier)
-  const signature = `${kind}|${JSON.stringify(diff)}|${truncated}`
-  if (!rememberMismatch(sessionId, runId, signature)) {
-    bumpSessionShadowStats({ duplicateMismatches: 1 })
-    return
-  }
-  appendSessionShadowLine({
-    time: Date.now(),
-    sessionId,
-    ...(runId ? { runId } : {}),
-    kind,
-    diff,
-    ...(truncated ? { truncated } : {}),
-  })
-  bumpSessionShadowStats({ mismatches: 1, byKind: { [kind]: 1 } })
-}
-
 // ============ 活投影 ============
 
 /**
@@ -335,255 +246,3 @@ export const resetSessionShadowCache = resetSessionProjectionCache
 
 /** 仅测试:直接看某条会话的活投影(不推进)。 */
 export const peekSessionShadowProjection = peekSessionProjection
-
-// ============ 事件覆盖面(老会话的豁免) ============
-
-/**
- * 这条会话的 `events.jsonl` **覆盖不全**吗?
- *
- * S1a 之前就存在的会话,事件日志是从升级那一刻才开始写的 —— 它只覆盖了历史的
- * 一段尾巴。对这种会话跑历史断言,比出来的永远是"事实 101 条 / 投影 1 条",
- * 那不是投影错了,是**没有可比的东西**(真机第一天 12 次不等里有 10 次是它,
- * 见 §10.9)。
- *
- * 判据是**消息侧有、事件侧不认识的 id**:messages.jsonl 里那些消息,投影的
- * `byMessageId` 一个都不该少。少了就说明前面那段历史没有对应的事件。
- * (比"第一条事件是不是 `session/created`"更直接:后者只认得出"从中间开始",
- * 认不出"中间掉了一段"。)
- *
- * 判定**每会话只做一次并缓存 `true`**:事件只增不减,一条会话一旦是"覆盖不全"
- * 就永远是。判成完整的则每次重算 —— 那正是这道断言要盯的东西,不能缓存掉。
- *
- * (F0 之后 store 侧是**验证器**而不是真相,但这条豁免的理由一字未变:事件覆盖
- * 不到的那段历史,两侧根本没有可比的东西。)
- */
-const legacyPartialSessions = new Set<string>()
-
-export function sessionEventCoverageIsPartial(
-  sessionId: string,
-  state: { byMessageId: Map<string, unknown> },
-): boolean {
-  if (legacyPartialSessions.has(sessionId)) return true
-  // F11:验证器侧只认 store 这一口。走 `listMessages` 的话这一侧就是投影自己 ——
-  // 每条 id 当然都认得,永远判成"覆盖完整"。
-  const messages = sessionReads.listMessagesFromStore(sessionId)
-  for (const message of messages) {
-    if (!state.byMessageId.has(message.id)) {
-      legacyPartialSessions.add(sessionId)
-      return true
-    }
-  }
-  return false
-}
-
-/** 会话删除 / 测试:忘掉"覆盖不全"的判定(顺带清掉这条会话的不等指纹)。 */
-export function resetSessionShadowCoverageCache(sessionId?: string): void {
-  if (sessionId) legacyPartialSessions.delete(sessionId)
-  else legacyPartialSessions.clear()
-  resetSessionShadowDedupe()
-}
-
-/**
- * 一次跳过的理由。跳过的是"**没有可比的东西**",不是"比出来不等" —— 只记账,
- * 不进 `mismatches`,也不进 `historyChecks`(报告里单独一行打印,门不受影响)。
- *
- * - `legacyPartial` —— 老会话的 `events.jsonl` 只覆盖了历史的一段尾巴(§10.9)。
- * - `history-steer-window` —— steering 换锚点的同步点与消费侧之间那一小段窗口
- *   (§15.15)。判据在接线层,见 `wiring/engine/stream/history-shadow.ts`。
- */
-export type SessionShadowSkipReason = 'legacyPartial' | 'history-steer-window'
-
-/** 一次跳过:只记账,不进 `mismatches`(门不受影响)。 */
-function countSkip(reason: SessionShadowSkipReason): 'skipped' {
-  bumpSessionShadowStats({ skipped: { [reason]: 1 } })
-  return 'skipped'
-}
-
-/**
- * 宿主接线层的一次跳过。
- *
- * 判据留在接线层是因为它问的是**引擎内部的时序**(那次换锚点消费侧接手了没有),
- * 这里只认得会话与事件 —— 把那个判断搬进来等于让影子模块认识执行器的状态机。
- * 关闸(`ONETHING_SESSION_SHADOW=0`)时连账都不记,与其它出口同一条纪律。
- */
-export function countSessionShadowSkip(reason: SessionShadowSkipReason): 'skipped' {
-  if (!isSessionShadowEnabled()) return 'skipped'
-  return countSkip(reason)
-}
-
-// ============ run 断言(kind: 'messages') ============
-
-export interface SessionRunShadowInput {
-  runId: string
-  assistantMessageId: string
-  /** 触发这次执行的那条用户消息 —— 它与助手那条一起构成"这个 run 的消息"。 */
-  triggerMessageId?: string
-}
-
-function nodeMessageId(node: ProjectionNode): string {
-  return node.messageId
-}
-
-/**
- * 一个 run 收尾时的消息断言。**同步**执行(调用方负责把它挪出热路径)。
- *
- * @returns 'match' | 'mismatch' | 'skipped'(关闸 / 这条会话不记账 / 出错)
- */
-export function checkSessionRunShadow(
-  sessionId: string,
-  input: SessionRunShadowInput,
-): 'match' | 'mismatch' | 'skipped' {
-  if (!isSessionShadowEnabled()) return 'skipped'
-  try {
-    const state = getLiveSessionProjection(sessionId)
-    // 这条会话一条事件都没有(legacy 整文件会话)= 没有可比的东西。
-    if (state.nodes.length === 0) return 'skipped'
-
-    const selected = new Set<string>([input.assistantMessageId])
-    if (input.triggerMessageId) selected.add(input.triggerMessageId)
-
-    // F11:验证器侧只走 store 这一口(见 `listMessagesFromStore` 的注释)。
-    const storeMessages = sessionReads.listMessagesFromStore(sessionId).filter(
-      message => selected.has(message.id) || message.runId === input.runId,
-    )
-    for (const message of storeMessages) selected.add(message.id)
-
-    // run 断言在老会话上照常跑 —— 这个 run 自己的消息**是**事件覆盖的。
-    // 唯一的例外是触发消息比事件还老(对一条老消息 retry / edit-resend):
-    // store 侧有它、事件侧没有,比出来是"少一条"而不是"哪一侧错了"。
-    if (input.triggerMessageId
-      && !state.byMessageId.has(input.triggerMessageId)
-      && storeMessages.some(message => message.id === input.triggerMessageId)) {
-      return countSkip('legacyPartial')
-    }
-
-    const projected = state.nodes.filter(node => {
-      if (node.hidden) return false
-      if (node.kind === 'assistant' && node.runId === input.runId) return true
-      return selected.has(nodeMessageId(node))
-    })
-
-    // 两侧都空 = 这个 run 在两份账里都不存在(图片流之外不该发生),不算数。
-    if (storeMessages.length === 0 && projected.length === 0) return 'skipped'
-
-    // F0:`a` = 事件侧(真相),`b` = store 侧(验证器)。比对是对称的,所以这次
-    // 对调**不改变任何一次判定** —— 它改的是摘要里两列的次序与不等的归因。
-    // A8/A9(§13.6):blob 回放已经在物化里了(附件 base64、工具大结果、生图
-    // 正文全走同一份选项),这里不再补第二刀。
-    const materialize = sessionProjectionOptions(sessionId)
-    const a = projected.map(node =>
-      canonicalChatMessage(materializeNode(node, materialize) as unknown as Record<string, unknown>),
-    )
-    const b = storeMessages.map(
-      message => canonicalChatMessage(message as unknown as Record<string, unknown>),
-    )
-
-    if (deepEqual(a, b)) {
-      bumpSessionShadowStats({ runs: 1 })
-      return 'match'
-    }
-    recordMismatch(sessionId, 'messages', input.runId, a, b)
-    return 'mismatch'
-  } catch (error) {
-    log.warn('run assertion failed', { sessionId }, error)
-    return 'skipped'
-  }
-}
-
-/**
- * 把 run 断言挪到响应交付之后再跑(§10.4:"不在热路径上")。
- *
- * `setTimeout(0)` 而不是 `queueMicrotask`:微任务仍然在同一个宏任务里,它前面
- * 排着的正是把最后一批 chunk 发给渲染层的那些回调。
- */
-export function scheduleSessionRunShadow(sessionId: string, input: SessionRunShadowInput): void {
-  if (!isSessionShadowEnabled()) return
-  const timer = setTimeout(() => {
-    checkSessionRunShadow(sessionId, input)
-  }, 0)
-  const unref = (timer as unknown as { unref?: () => void }).unref
-  if (typeof unref === 'function') unref.call(timer)
-}
-
-// ============ 历史断言(kind: 'history') ============
-
-export interface SessionHistoryShadowInput {
-  runId?: string
-  /**
-   * **验证器侧**的那一份历史:内存 store 的消息过 `buildHistoryMessages`。
-   *
-   * F0 之前这一格叫 `actual`(它当时是"今天真正发出去的那一份")。产品线自
-   * S2b 起发的就是投影那一份,而这道断言的两侧取数口径**一字未变**(F11):
-   * 始终是"store 推导 vs 事件推导"两条独立链 —— F0 换的只是哪一条算真相。
-   */
-  fromStore: readonly unknown[]
-  /** 老会话的摘要锚点(没有 `session/compacted` 事件时投影才读它)。 */
-  meta?: ProjectModelHistoryMeta
-  /**
-   * 宿主注入的**整份配方** —— 必须与真实请求走**同一组函数**(G8 的"落点与
-   * 回放同一函数")。传别的进来,这道断言就只是在比两份不同的构造法。
-   *
-   * F5(§13.2):这里原来只声明了三格(`buildMessageContent` / `getAIToolName` /
-   * `failureResultForAI`),而宿主配方 `historyProjectionRecipe` 还带着
-   * `prepareMessages`(房投影 / goal drive 折叠 / 用户消息上模型面)与
-   * `providerDataFromContentPart`——它们只是**顺着 spread 活下来的**,类型上
-   * 一格都没记着。哪天有人按类型重构一次这个入参,那两格会静默消失:两侧从此
-   * 比的是两种构造法,而门照绿(不等的那一份被 `legacyPartial` 之外的任何理由
-   * 掩盖不掉,但"两侧同时少了同一遍预处理"恰恰仍然相等)。所以类型必须把
-   * 配方的**全集**写出来。
-   */
-  build?: Pick<
-    ProjectModelHistoryOptions<unknown>,
-    | 'buildMessageContent'
-    | 'getAIToolName'
-    | 'failureResultForAI'
-    | 'prepareMessages'
-    | 'providerDataFromContentPart'
-  >
-}
-
-/**
- * 下一次请求发出前的历史断言。
- *
- * 比的是**序列化之后的字节**:两侧都是 provider 形状的历史数组,任何一处不同
- * 都意味着"两套推导会让模型看到不同的一段历史"。真相侧走的是活投影
- * (O(新事件),`materializeModelHistory`),验证器侧是 store 过
- * `buildHistoryMessages` —— 两侧共用同一份配方(`build`),差别只有消息从哪来。
- */
-export function checkSessionHistoryShadow(
-  sessionId: string,
-  input: SessionHistoryShadowInput,
-): 'match' | 'mismatch' | 'skipped' {
-  if (!isSessionShadowEnabled()) return 'skipped'
-  try {
-    const state = getLiveSessionProjection(sessionId)
-    if (state.nodes.length === 0) return 'skipped'
-    // 老会话的事件只覆盖了历史的尾巴 —— 迁移之前这道断言对它没有意义。
-    if (sessionEventCoverageIsPartial(sessionId, state)) return countSkip('legacyPartial')
-
-    const projected = materializeModelHistory(state, input.meta ?? {}, {
-      ...(input.build ?? {}),
-      ...sessionProjectionOptions(sessionId),
-    })
-
-    // F0:`a` = 事件投影(真相),`b` = store(验证器)。
-    const a = canonicalHistory(projected as readonly unknown[])
-    const b = canonicalHistory(input.fromStore)
-    // F9(b):历史断言**每次请求**跑一遍,它的次数与 `runs`(每个 run 一次)
-    // 不是一回事 —— 分开记,报告里两个数都看得见,谁也别替谁说话。
-    bumpSessionShadowStats({ historyChecks: 1 })
-    if (a === b) return 'match'
-
-    recordMismatch(sessionId, 'history', input.runId, JSON.parse(a), JSON.parse(b))
-    return 'mismatch'
-  } catch (error) {
-    log.warn('history assertion failed', { sessionId }, error)
-    return 'skipped'
-  }
-}
-
-/**
- * 判据住在 core(`canonicalHistoryMessages`,与 `canonicalChatMessage` 并排)——
- * S0 的合同测试与这里的影子断言必须用**同一把尺**,各写一份迟早分叉。
- */
-export const canonicalHistory = canonicalHistoryMessages

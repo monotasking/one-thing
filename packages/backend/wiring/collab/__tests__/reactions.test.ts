@@ -54,7 +54,8 @@ vi.mock('../../../session/commands.js', async () => {
   return {
     sessionCommands: {
       ...facade.sessionCommands,
-      // 迁移前这条写走 `store.updateMessageReactions`;命令面上它是一次普通 patch。
+      // W8 的表情写入在命令面上是一次普通 patch(`message/patched`)。
+      // (迁移前它走 `store.updateMessageReactions` —— 那个端口 F4-c c4 已删,§16.24。)
       patchMessage: (
         sessionId: string,
         payload: { messageId: string; patch: { reactions?: FakeMessage['reactions'] } },
@@ -88,14 +89,6 @@ vi.mock('../../../store.js', () => ({
   addMessage: (sessionId: string, message: FakeMessage) => {
     const session = mocks.sessions.get(sessionId) as FakeSession | undefined
     session?.messages.push(message)
-  },
-  updateMessageReactions: (sessionId: string, messageId: string, reactions: FakeMessage['reactions']) => {
-    mocks.updateMessageReactions(sessionId, messageId, reactions)
-    const session = mocks.sessions.get(sessionId) as FakeSession | undefined
-    const message = session?.messages.find(candidate => candidate.id === messageId)
-    if (!message) return false
-    message.reactions = reactions
-    return true
   },
   updateSessionAgent: vi.fn(),
   updateSessionCollab: vi.fn(() => true),

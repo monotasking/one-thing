@@ -228,9 +228,11 @@ describe('批 6b — 事件折不出历史时不再退回仓库', () => {
     expect(sessionReads.lastMessageOfRole(NO_EVENTS, 'user')).toBeUndefined()
   })
 
-  it('store 侧那几口(F11 的验证器面)照旧读得到 —— 它们本来就不经过投影', () => {
-    expect(sessionReads.listMessagesFromStore(NO_EVENTS).map(m => m.content)).toEqual(['legacy'])
+  it('store 侧那两口(写侧判据同源 / 活 run 写手视图)照旧读得到 —— 它们本来就不经过投影', () => {
+    // `listMessagesFromStore` 随恒等门一起删了(F4-c c4);留任的这两口不是
+    // "第二份真相",它们各自回答的问题在投影上没有产地,理由见 `reads.ts`。
     expect(sessionReads.getMessageFromStore(NO_EVENTS, 'u1')?.content).toBe('legacy')
+    expect(sessionReads.getLiveRunWriterMessage(NO_EVENTS, 'u1')?.content).toBe('legacy')
   })
 })
 

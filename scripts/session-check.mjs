@@ -53,7 +53,26 @@ const RULE_A_ALLOWED = new Set([
   'packages/onething-runtime/src/sessions/session-repository.ts',
 ])
 
-/** 规则 B 的白名单:唯一允许改消息/step/toolCall 字段的地方。 */
+/**
+ * 规则 B 的白名单:唯一允许改消息/step/toolCall 字段的地方。
+ *
+ * **F4-c c4 复核过这一条,理由换了、名单没换**(§16.24)。
+ *
+ * c4 的原计划是把它改成「消息字段赋值只许在**投影 reducer**」—— 前提是老 reducer
+ * (`core/session/commands.ts`)随命令面翻成"事件 fold + 物化"一起退役。那一步
+ * **停在诊断**:活 run 窗口内那条 assistant 消息由引擎写手对象持有(§16.17 共存
+ * 口径),而写手对象今天就是内存 store 上的那一条,维护它的正是这个 reducer ——
+ * 收尾链读它的 `steps[]` 结局与 `contentParts` 上的 `data-steps` 渲染锚点
+ * (锚点按 canonical G4 **故意不进事件、不进投影**),abort 靠它的 `isStreaming`
+ * 寻址,truncate 靠它的 `usage` 结算扣减。删 reducer = 先退役写手窗口,那是一次
+ * 单独的裁定,不是顺手翻面。
+ *
+ * 所以名单一字未动,而**它守的东西变了**:从前守"命令面是唯一实现处",今天守
+ * "活 run 写手对象只有一个维护者"。往这个名单里加文件之前请先读 §16.24 第五节。
+ *
+ * (投影 reducer 改的是 `ProjectionNode`,不是 `ChatMessage`/`Step`/`ToolCall`,
+ * 规则 B 本来就够不着它 —— 名单里不需要有它。)
+ */
 const RULE_B_ALLOWED = new Set([
   'packages/core/session/commands.ts',
 ])

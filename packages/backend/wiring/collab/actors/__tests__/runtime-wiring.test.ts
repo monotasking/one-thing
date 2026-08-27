@@ -162,8 +162,6 @@ vi.mock('../../../../store.js', () => ({
   },
   updateSessionWorkingDirectory: () => true,
   updateSessionPermissionMode: () => true,
-  updateMessageMentions: () => true,
-  updateMessageReplyTo: () => true,
   renameSession: () => true,
   onSessionsDeleted: (listener: (ids: readonly string[]) => void) => {
     mocks.deleteListeners.push(listener)

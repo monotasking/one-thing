@@ -28,19 +28,39 @@ export const SESSION_SHADOW_STATS_FILENAME = 'session-shadow-stats.json'
 export interface SessionShadowStats {
   /** 事件/blob 写失败的总次数。门:必须是 0。 */
   appendFailures: number
-  /** 完成并比对过的 run 数。门:≥ 200(`--min-runs` 可覆盖)。**每个 run 一次**。 */
+  /**
+   * 收尾到语义检查点的 run 数。门:≥ 200(`--min-runs` 可覆盖)。**每个 run 一次**。
+   *
+   * **F4-c c4 换了产地**:从前它由恒等门的 run 断言(`checkSessionRunShadow`)顺手
+   * 记一笔 —— 门退役了,这个数就没人记了。现在它由 `endSessionRun` 自己记:它
+   * 回答的本来就是"这一轮跑了多少个 run",与哪道门在比无关。判据一字未变
+   * (关闸 `ONETHING_SESSION_SHADOW=0` 时照旧不记)。
+   */
   runs: number
   /**
-   * 历史断言跑过的次数(F9,§13.2)。
-   *
-   * 它**不是** `runs` 的另一种说法:历史断言每次请求跑一遍,一个 12 轮的 run 会
-   * 跑 12 次。从前这两件事共用一个"比过多少次"的直觉,于是"200 个干净 run"这道
-   * 门被读成了远比实际大的覆盖面。分开记之后,报告里 `runs`(run 粒度)与
-   * `historyChecks`(请求粒度)各说各的,门仍然只认 `runs`。
+   * 历史恒等门跑过的次数(F9,§13.2)。**F4-c c4 起不再产生**(那道门已退役,
+   * §16.24);字段留着是为了读得懂 c4 之前的老 `session-shadow-stats.json`。
    */
   historyChecks: number
-  /** 投影与消息不等的次数(同 run 同一处只计一次)。门:必须是 0。 */
+  /**
+   * 投影与 store 不等的次数(同 run 同一处只计一次)。**F4-c c4 起不再产生**
+   * (恒等门退役);字段留着读老账,门仍然认它 —— 老账里的非零必须仍然是红。
+   */
   mismatches: number
+  /**
+   * **端口事实断言**对不上的次数(c4,`port-fact-assert.ts`)。**进门,必须是 0。**
+   *
+   * 它是恒等门退役之后"A 类端口的事实已经在流上"那句话的逐格替身:端口写下某一格
+   * 的那一刻,活投影上同一格折出来的是不是同一个值。默认只在开发/测试期与
+   * `ONETHING_SESSION_PORT_ASSERT=1` 下跑(生产零成本),所以真机账上通常是 0
+   * 且**没跑过** —— 它的战场是 `sessions:shadow-battery`。
+   */
+  portMismatches: number
+  /**
+   * 端口事实断言**真的比过**几次(c4)。只打印、不进门,但它是
+   * `portMismatches = 0` 那句话的分母 —— 0 次比较的"全对"什么都不是。
+   */
+  portChecks: number
   /**
    * 被折叠掉的**重复**不等(F9):同一个 run 里同一处不等在后续每轮请求上又出现
    * 一次。它不进门也不写 `shadow.jsonl` —— 记一个数只是为了让"折叠了多少"看得见。
@@ -98,6 +118,8 @@ const EMPTY: SessionShadowStats = {
   runs: 0,
   historyChecks: 0,
   mismatches: 0,
+  portMismatches: 0,
+  portChecks: 0,
   duplicateMismatches: 0,
   projectionIssues: 0,
   droppedParts: 0,
@@ -126,6 +148,8 @@ function load(): SessionShadowStats {
       runs: Number(parsed.runs) || 0,
       historyChecks: Number(parsed.historyChecks) || 0,
       mismatches: Number(parsed.mismatches) || 0,
+      portMismatches: Number(parsed.portMismatches) || 0,
+      portChecks: Number(parsed.portChecks) || 0,
       duplicateMismatches: Number(parsed.duplicateMismatches) || 0,
       // 老账单缺这两格读成 0(而不是读崩)。
       projectionIssues: Number(parsed.projectionIssues) || 0,
@@ -192,6 +216,8 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
   if (patch.duplicateMismatches) stats.duplicateMismatches += patch.duplicateMismatches
   if (patch.projectionIssues) stats.projectionIssues += patch.projectionIssues
   if (patch.droppedParts) stats.droppedParts += patch.droppedParts
+  if (patch.portMismatches) stats.portMismatches += patch.portMismatches
+  if (patch.portChecks) stats.portChecks += patch.portChecks
   if (patch.refoldChecks) stats.refoldChecks += patch.refoldChecks
   if (patch.refoldMismatches) stats.refoldMismatches += patch.refoldMismatches
   if (patch.mismatches) {

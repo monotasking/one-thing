@@ -36,7 +36,8 @@ vi.mock('../../../session/commands.js', async () => {
   return {
     sessionCommands: {
       ...facade.sessionCommands,
-      // 迁移前这条写走 `store.updateMessageReplyTo`;命令面上它是一次普通 patch。
+      // W13.2 的引用快照在命令面上是一次普通 patch(`message/patched`)。
+      // (迁移前它走 `store.updateMessageReplyTo` —— 那个端口 F4-c c4 已删,§16.24。)
       patchMessage: (
         sessionId: string,
         payload: { messageId: string; patch: { replyTo?: FakeMessage['replyTo'] } },
@@ -54,13 +55,6 @@ vi.mock('../../../store.js', () => ({
   // 用户身份现取(agent-dm-user.md §2.2):引用快照的作者行读它。
   getSettings: () => mocks.settings,
   getSession: (id: string) => mocks.sessions.get(id),
-  updateMessageReplyTo: (sessionId: string, messageId: string, replyTo: FakeMessage['replyTo']) => {
-    mocks.updateMessageReplyTo(sessionId, messageId, replyTo)
-    const message = mocks.sessions.get(sessionId)?.messages.find(item => item.id === messageId)
-    if (!message) return false
-    message.replyTo = replyTo
-    return true
-  },
 }))
 
 vi.mock('../../../events/index.js', () => ({

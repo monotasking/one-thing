@@ -37,7 +37,6 @@ import {
 	type BuildAgentLoopStreamRuntimeResult,
 } from "./agent-loop-runtime.js";
 import { createSessionCredentialRotator } from "../../providers/credential-rotation.js";
-import { checkSessionHistoryShadowForRequest } from "./history-shadow.js";
 import { resolveAgentProfileForSession } from "../../agents/profile.js";
 import { saveMediaImage } from "@onething/runtime/media/save-image";
 import { applyOnethingAgentLoopProviderData } from "@onething/runtime/agent-loop/providers";
@@ -253,9 +252,11 @@ function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
 		state.ctx.sessionId,
 		assistantMessage,
 	);
-	// 影子的闸:旧 run 现在收得比引擎写完上一条消息**早**,所以比对要等一下
+	// 收尾门的闸:旧 run 现在收得比引擎写完上一条消息**早**,所以对账要等一下
 	// (见 `EndSessionRunInput.shadowGate`)。开闸的两处 = 消费侧接手完成、
 	// 以及执行收尾的 finally(闸永远不开就等于这条 run 不比)。
+	// F4-c c4 之后闸下面只剩 refold 那一道门(恒等门已退役),闸本身照旧:
+	// 采样撞上"上一条消息还没写完"仍然只会比出假红。
 	let releaseShadow: () => void = () => {};
 	const shadowGate = new Promise<void>((resolve) => {
 		releaseShadow = resolve;
@@ -888,14 +889,9 @@ export async function executeAgentLoopStreamGeneration(
 						role: message.role,
 						content: message.content,
 					})),
-				// S1b:发出去之前比一次历史(§10.4 第二条;F0 之后是恒等门,§16.2)。
-				// §15.15:换锚点的同步点与消费侧之间那一小段窗口里不比 —— store 侧
-				// 现算的历史会被上一条 assistant 的 `isStreaming` 整条滤掉,比出来
-				// 差一整轮而两侧都没错(与 run 断言的 `shadowGate` 同一条判例)。
-				onRequestRecipe: (runId) =>
-					checkSessionHistoryShadowForRequest(ctx.sessionId, runId, {
-						pendingAssistantRotation: Boolean(state.pendingAssistantRotation),
-					}),
+				// (S1b 的历史恒等门曾挂在 `onRequestRecipe` 上,F4-c c4 随恒等门
+				// 一起退役 —— 见 `session/shadow.ts` 的文件头。回调口本身留着:
+				// 它是"配方写下去的那一刻"这个缝的通用旁听口,不是那道门的私产。)
 				// A6+A7(§13.1):工具身份归一交给**引擎那一个函数**。记录器不再
 				// 自己实现一遍别名表 / MCP 折叠 —— 一个判定点,两处落点。
 				resolveToolIdentity: (toolName, args) =>
