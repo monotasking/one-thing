@@ -1,6 +1,6 @@
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
+import { getOnethingDebugDir } from '../storage/paths.js'
 import type {
   ApplyThemeResponse,
   GetThemeResponse,
@@ -74,7 +74,10 @@ export class OnethingThemeRuntime {
       await this.initialize()
       const debugCallback = (data: ThemeDebugData) => {
         try {
-          const dir = path.join(os.homedir(), '.onething', 'debug', 'theme-tokens')
+          // §16.22:落点走 store 口,不再 `os.homedir()` 直拼 —— 直拼的那份对
+          // `ONETHING_STORE_PATH` 完全无感,于是任何指了别处 store 的进程
+          // (测试、dev-self、server)照样往用户真机库里写调试快照。
+          const dir = path.join(getOnethingDebugDir(), 'theme-tokens')
           fs.mkdirSync(dir, { recursive: true })
           fs.writeFileSync(
             path.join(dir, `${data.themeId}-${data.mode}.json`),

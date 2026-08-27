@@ -1,4 +1,6 @@
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { getOnethingStorePath } from '../../storage/paths.js'
 import { OnethingThemeRuntime } from '../theme-runtime.js'
 
 describe('OnethingThemeRuntime', () => {
@@ -33,8 +35,10 @@ describe('OnethingThemeRuntime', () => {
       return ''
     })).resolves.toEqual({ success: true })
 
-    expect(openedPaths[0]).toContain('.onething')
-    expect(openedPaths[0]).toContain('themes')
+    // §16.22 改判:从前这里断言路径含 `.onething` —— 那是在给"直拼 home"背书
+    // (而且顺手在真机库里 mkdir 了一个 themes/)。落点收编进 store 口之后,
+    // 该断言的是"它在**当前 store** 底下、名字叫 themes",而不是 store 叫什么。
+    expect(openedPaths[0]).toBe(path.join(getOnethingStorePath(), 'themes'))
   })
 
   it('normalizes themes folder open failures', async () => {

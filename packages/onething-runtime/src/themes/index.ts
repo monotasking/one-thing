@@ -22,6 +22,7 @@ import {
 import { generateSkinVariables } from './skin.js'
 import { parseBase46Lua, convertBase46ToTheme } from './base46-parser.js'
 import type { ThemeDebugData } from './theme-debug.js'
+import { getOnethingStorePath } from '../storage/paths.js'
 
 import { getLogger } from '../logging/index.js'
 
@@ -438,7 +439,10 @@ function applyThemeInternal(
  * Get the themes folder path (for "Open Themes Folder" button)
  */
 export function getThemesFolderPath(): string {
-  const themesPath = path.join(os.homedir(), '.onething', 'themes')
+  // §16.22:与 theme-runtime 的调试落点同一条纪律 —— app 层路径一律经 store 口。
+  // 这一句还会 mkdir,直拼就意味着任何指了别处 store 的进程照样在用户真机库里
+  // 建目录。
+  const themesPath = path.join(getOnethingStorePath(), 'themes')
 
   // Ensure directory exists
   if (!fs.existsSync(themesPath)) {

@@ -8099,3 +8099,114 @@ refold 门照常(battery 里 225 次采样,0 失配)。
 - **未做,留给 c3**:18 个热写端口翻转为发事件(那一期才是"store = fold"落地),
   以及 `stream-coalescer` 侧的 UI 小批 —— 它今天吃的就是编码器盖过章的 delta,
   形状没变,所以本批一个字都不用改。
+
+---
+
+### 16.22 真机 store 测试污染三修落地记录(2026-08-27,opus 施工,未提交)
+
+#### 〇、一句话
+
+`vitest` 的某些用例用换 `HOME` 隔离 store,而事件账本的**落盘是排队异步的** ——
+seq 在临时库同步分配,`appendFile` 的路径却写在队列回调里、要等回调跑到才解析;
+回调常常跨过 `HOME` 恢复点,于是那条事件的字节**写进了真机库**,零异常、零记账。
+三修:(a) 落点在同步段钉死并闭包进队列;(b) vitest 全局 setup 把 `HOME` 换成
+per-worker 临时目录,让测试进程**结构上**够不着 `~/.onething`;(c) 收编三处
+`os.homedir()+'.onething'` 直拼。数据清理与 verify 主人判据是 (d),**本批不做**。
+
+#### 一、(a) 根治跨库写 —— `packages/backend/session/event-log.ts`
+
+一条新纪律,一个新字段:`SessionEventLogState.logPath` —— **这本账钉死的落点**,
+在"启用"那一刻解析一次,之后一律用它。语义边界说得出口:**一个会话的账本属于
+它启用时的那个 store**;生产里 store 路径整个进程只解析出一个值,所以对生产
+**逐字节无变化**,跨 store 的只有测试,而那正是要挡的(测试换 store 后想重新认路,
+走 `resetSessionEventLogCache()` —— 所有 store 相关用例本来就这么做)。
+
+逐处判定(全文件的路径解析点一个不落):
+
+| 位置 | 从前 | 现在 | 理由 |
+| --- | --- | --- | --- |
+| `appendSessionLogEvent` 的队列回调 | 回调**里面**现算 | 同步段取 `state.logPath`,闭包进回调 | **这就是那个 bug**:seq/`expectedBytes` 记在旧 state 上,字节落进新 store,两边都不报错、两边的账都错 |
+| `tryEnable` / `ensureSessionEventDir` | 各自现算 | **仅有的两个解析点**,解析后写进 `state.logPath` | 启用 = 认路 |
+| `reloadCounters` | 自己现算 | 改收 `logPath` 参数 | 让解析点只有上面那两个 |
+| `guardForeignWriter` 的 `statSync`(G12) | 现算 | `state.logPath` | 本来就在同步段,但它必须 stat **队列将要写的那份文件**;拿别的 store 的字节数去比,得出的"外写者在场"是假的 |
+| `flushSessionEventLog` → `fsyncSessionLog` | `await state.queue` **之后**现算 | 新增 `flushOneSessionEventLog`:**第一个 await 之前**取 `logPath`,`fsyncSessionLog(logPath)` 收路径不收 sessionId | 与 append 同一类延迟解析。顺带:没有 state = 这个进程没往这个会话写过东西,自然没有在途写入要刷(从前那一次 fsync 打开的是"当前 store 里同名会话"的文件,能刷到什么纯属巧合) |
+| `findLastSessionEventSync` / `readSessionEvents` / `readSessionLogEvents` / `readSessionLogEventsSync` | 现算 | `sessionLogPathFor()`(有 state 用钉死的,没有才现算) | 读侧必须读**写侧写的那份文件**;而且读的两处 `await` 版本现在都在**进 await 之前**同步解析 |
+| `blob-store.ts` 的 `putSessionBlob` / `readSessionBlob*` | 现算 | **不动** | 逐一确认过:blob 那一路**全程同步**,没有"路径解析晚于调用"的窗口 |
+
+反证用例:`packages/backend/session/__tests__/event-log-store-pinning.test.ts`
+(2 条,不 mock 任何东西,就用真的 store 解析口)。在 append 与 flush 之间把
+`ONETHING_STORE_PATH` 从 A 换到 B,并且**预先把 B 库里同名会话的目录摆好** ——
+那正是真机的样子(目录存在 = 旧代码那次跨库写安安静静地成功,而不是 ENOENT)。
+**修前 2/2 红**(`git stash` 掉 `event-log.ts` 实跑,字节确实落在 B),
+**修后 2/2 绿**。
+
+#### 二、(b) 全局硬闸 —— `vitest.setup.ts`
+
+闸门装在 **`HOME`** 上,**不**装在 `ONETHING_STORE_PATH` 上。这一处与诊断给的
+措辞不同,理由是实跑出来的:
+
+- 装 `HOME`:默认 store 变成 `<临时 HOME>/.onething`,真机库结构上够不着;
+  而已有那 9 个"自己换 `HOME` 做隔离"的用例**照旧生效**(它们只是把 `HOME` 从
+  闸门给的临时目录换成自己的),显式设 `ONETHING_STORE_PATH` 的用例也照旧优先。
+  顺带还盖住了 store 口以外的 home 直拼(rg 二进制目录、`login-shell-env` 缓存……)。
+- 装 `ONETHING_STORE_PATH`:env 优先级高于 home,那 9 个用例的换 `HOME` 会当场
+  变成一句空话 —— **实跑验证过**:`presence` / `sessions-delete-cascade` /
+  `skill-review` 当场红 6 条(隔离没了,同 worker 内互相串味)。
+
+粒度是 **per-worker**:同一个 worker 进程会顺序跑多个测试文件(env 在进程里活着),
+所以用 vitest 自己的 `VITEST_WORKER_ID`(退到 `VITEST_POOL_ID` / pid),
+`mkdtemp` 的随机后缀保证跨轮次不撞;`process.on('exit')` 收摊,
+`ONETHING_VITEST_KEEP_STORE=1` 保留现场,`ONETHING_VITEST_REAL_HOME=1` 是逃生口。
+`setupFiles` 在每个测试文件的模块求值之前跑,所以任何模块级 `getOnething*Path()` /
+`os.homedir()`(Node 的 homedir 读 `$HOME`)也已经在闸后。
+
+**9 个换 HOME 的用例在硬闸下全绿,一个字都没改。**
+
+#### 三、(c) 收编硬编码
+
+`rg` 全仓扫 `homedir()`(除 `scripts/` 与 `scratchpad/`),真正绕开 store 口的
+直拼 **3 处,全收**:
+
+| 文件 | 从前 | 现在 |
+| --- | --- | --- |
+| `runtime/src/themes/theme-runtime.ts:77` | `homedir()/.onething/debug/theme-tokens` | `path.join(getOnethingDebugDir(), 'theme-tokens')` |
+| `runtime/src/themes/index.ts:441`(`getThemesFolderPath`,**还会 mkdir**) | `homedir()/.onething/themes` | `path.join(getOnethingStorePath(), 'themes')` |
+| `backend/rpc/domains/evals.ts:118`(自动夹具**写**目录) | `homedir()/.onething/evals/fixtures/auto` | `getOnethingEvalsFixturesAutoDir()` |
+
+一处**改判**:`themes/__tests__/theme-runtime.test.ts` 从前断言路径含 `.onething` ——
+那是在给"直拼 home"背书(而且顺手在真机库里 mkdir 了一个 `themes/`)。改成
+断言它**就是** `path.join(getOnethingStorePath(), 'themes')`:该断言的是"在当前
+store 底下、名字叫 themes",不是 store 叫什么。
+
+**留档不改(逐条理由)**:
+
+- `runtime/src/files/ripgrep.ts:101`(`adapters.homeDir ?? homedir()` + `.onething/bin`)
+  —— 是 **rg 二进制的安装位置**,不是 store 数据;改吃 store 根会让已下载的二进制
+  找不到,而且会静默丢掉那个注入口。
+- `apps/electron/src/app/login-shell-env.ts:68` —— 桌面启动期的机器级缓存,不是
+  store 数据;搬家是可感知的行为变化,不在本批授权内。
+- `apps/web/dev-api-proxy.ts` / `apps/electron/src/main/cli/paths.ts` /
+  `gateway/src/core/storage.ts` / `core/storage/paths.ts` —— **不是违规**:它们是
+  各自的 store 根解析器,`ONETHING_STORE_PATH || homedir()/.onething` 一字不差,
+  而且后两个所在的包按边界规则本来就不能 import runtime 的 paths。
+
+#### 四、验收(全部实跑)
+
+| 门 | 读数 |
+| --- | --- |
+| 反证用例 `event-log-store-pinning` | **修前 2/2 红 / 修后 2/2 绿** |
+| `typecheck` | **0** |
+| `boundary:gate` / `transport:gate`(42 常量 / 四壳 2392 行)/ `log:gate` / `session:gate` / `ui:gate` | **五门全 ok,无上升** |
+| 全量 `vitest` | **11940 passed / 8 skipped**,唯一失败是 `App.container-layout.test.ts`(另一路在途的 renderer 改动,基线同样红,与本批无关);抖动的 `sessions-delete-cascade` / `server/http` 每轮不同、单跑与整目录跑 3/3 绿 —— 本机满载的老毛病 |
+| **真机零写入哨兵**(本批的真机门) | 哨兵文件落地 → 跑完一整轮全量 vitest → `find ~/.onething -newer <哨兵>` = **0**。**对照组**:把三修整体 `stash` 之后跑同一轮,同一道 `find` 数出 **7** 条 —— `app-state.json`、`channel-identity.json`、`debug/theme-tokens/flexoki-dark.json`、`evals/traces/s1/m1/round-{1,2,3}.json`(泄漏是活的,这就是它) |
+| `sessions:shadow-battery` | **GREEN** —— runs 321 / historyChecks 449 / mismatches 0 / appendFailures 0 / refoldMismatches 0 |
+| 真机 `sessions:verify:gate`(只读) | 仍是 §16.20 第七节那一条 `room-1 seq: expected seq 2 at position 1, got 3`,**无新增**(`events.jsonl` mtime 停在本批开工前的诊断复现那一刻) |
+
+#### 五、本批的账
+
+- **生产代码**:改 4 件(`backend/session/event-log.ts` / `backend/rpc/domains/evals.ts` /
+  `runtime/src/themes/theme-runtime.ts` / `runtime/src/themes/index.ts`)。
+- **测试基建**:`vitest.setup.ts` 加硬闸;新增反证用例 1 件;改判断言 1 处。
+- **未做((d),等用户拍板)**:真机夹具沉积的**数据清理**(`~/.onething` 里那些
+  测试年代留下的会话 / traces / debug 快照),以及 `room-1` 断号那条 verify 红线的
+  **主人判据**(是收进基线、还是修数据)。本批全程只读真机库。

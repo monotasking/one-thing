@@ -43,8 +43,8 @@
  * evals 面自己的根。两条都过才放行。
  */
 import fs from 'node:fs'
-import { homedir } from 'node:os'
 import path from 'node:path'
+import { getOnethingEvalsFixturesAutoDir } from '@onething/runtime/storage'
 import type {
   ContextSnapshotMessage,
   EvalCaseMeta,
@@ -115,7 +115,10 @@ function clampEvalsWirePath(
 // ── Helpers(逐字搬自 @main/ipc/evals.ts)────────────────
 
 function getEvalsFixturesAutoDir(): string {
-  return path.join(homedir(), '.onething', 'evals', 'fixtures', 'auto')
+  // §16.22:逐字搬过来的这一句原本是 `homedir()/.onething/...` 直拼,对
+  // `ONETHING_STORE_PATH` 无感 —— 而这个目录是**写**目录(自动夹具落这里)。
+  // runtime 早有同义口,改吃它;生产 store 路径不变,逐字节等价。
+  return getOnethingEvalsFixturesAutoDir()
 }
 
 function getEvalsFixturesDir(repoDir: string): string {

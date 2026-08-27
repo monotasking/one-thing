@@ -178,6 +178,23 @@ interface SessionEventLogState {
    * 只记两类是为了不把 40KB 的目录按会话数留在内存里。
    */
   lastByType: Map<string, SessionLogEventRecord>
+  /**
+   * §16.22:这本账**钉死**的落点。启用那一刻解析一次,之后一律用它。
+   *
+   * 从前每一处都现算 `getSessionEventsLogPath(sessionId)`,而那个函数一路走到
+   * `getOnethingStorePath()` → `process.env.ONETHING_STORE_PATH || os.homedir()`
+   * —— 它读的是**调用那一刻**的进程环境。append 的落盘是排队异步的:seq 在
+   * 同步段分配,`appendFile` 的路径却要等队列回调跑到才解析。测试用换 `HOME`
+   * 隔离 store 时,那个回调常常跨过 HOME 恢复点,于是字节写进了**真机库**,
+   * 而且零异常、零记账(seq 与 expectedBytes 都记在临时库那份 state 上,真机
+   * 那份文件只看到一段凭空插进来的行 —— 真机 room-1 的断号即此)。
+   *
+   * 钉死的语义边界:一个会话的账本属于**它启用时的那个 store**。生产里 store
+   * 路径整个进程只解析出一个值,所以这条纪律对生产逐字节无变化;跨 store 的
+   * 只有测试,而那正是要挡的。测试换 store 后想重新认路,走
+   * `resetSessionEventLogCache()`(所有 store 相关测试本来就这么做)。
+   */
+  logPath: string
 }
 
 /** 会记在内存里的类型(见 `lastByType`)。 */
@@ -208,11 +225,23 @@ function resolveEnabled(sessionId: string): boolean {
   return fs.existsSync(sessionDirPath(sessionId))
 }
 
+/**
+ * 这个会话的账本落点。启用过就用钉死的那份(见 `SessionEventLogState.logPath`),
+ * 没启用过才现算 —— "还没有账本"的会话本来就该按当前 store 去找。
+ */
+function sessionLogPathFor(sessionId: string): string {
+  return states.get(sessionId)?.logPath || getSessionEventsLogPath(sessionId)
+}
+
 /** 若目录已出现则就地启用:恢复计数器与字节数。失败保持 disabled。 */
 function tryEnable(state: SessionEventLogState, sessionId: string): void {
   try {
     if (!resolveEnabled(sessionId)) return
-    reloadCounters(state, sessionId)
+    // §16.22:启用 = 认路。这一处与 `ensureSessionEventDir` 是**仅有的**两个
+    // 解析点,之后一切读写都吃 `state.logPath`。
+    const logPath = getSessionEventsLogPath(sessionId)
+    reloadCounters(state, logPath)
+    state.logPath = logPath
     state.enabled = true
   } catch {
     // 保持 disabled,下次 append 再试。
@@ -220,8 +249,7 @@ function tryEnable(state: SessionEventLogState, sessionId: string): void {
 }
 
 /** 从盘上那份文件重新装载 seq / requestIndex / 字节数。 */
-function reloadCounters(state: SessionEventLogState, sessionId: string): void {
-  const logPath = getSessionEventsLogPath(sessionId)
+function reloadCounters(state: SessionEventLogState, logPath: string): void {
   if (!fs.existsSync(logPath)) {
     state.expectedBytes = 0
     return
@@ -253,6 +281,7 @@ function ensureState(sessionId: string): SessionEventLogState {
     shadowTail: [],
     shadowTailOverflowed: false,
     lastByType: new Map(),
+    logPath: '',
   }
   tryEnable(state, sessionId)
   states.set(sessionId, state)
@@ -290,7 +319,9 @@ function guardForeignWriter(state: SessionEventLogState, sessionId: string): boo
   state.lastForeignCheckAt = now
   let size: number
   try {
-    size = fs.statSync(getSessionEventsLogPath(sessionId)).size
+    // §16.22:这一句本来就在同步段上,但它必须 stat **队列将要写的那份文件** ——
+    // 拿现算的路径去比一份别的 store 的字节数,得出的"外写者在场"是假的。
+    size = fs.statSync(state.logPath).size
   } catch {
     // 文件还不存在 / stat 失败:什么都不做,append 自己会报错并计数。
     return false
@@ -314,7 +345,10 @@ function ensureSessionEventDir(state: SessionEventLogState, sessionId: string): 
   if (state.enabled) return
   try {
     fs.mkdirSync(sessionDirPath(sessionId), { recursive: true })
-    reloadCounters(state, sessionId)
+    // §16.22:第二个(也是最后一个)解析点 —— 见 `tryEnable`。
+    const logPath = getSessionEventsLogPath(sessionId)
+    reloadCounters(state, logPath)
+    state.logPath = logPath
     state.enabled = true
   } catch (error) {
     countSessionEventFailure(sessionId, error, 'event dir create failed')
@@ -439,9 +473,15 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
     state.shadowTail.push(record)
   }
 
+  // §16.22:**落点在同步段就定死**,闭包进队列回调。从前这里是
+  // `getSessionEventsLogPath(sessionId)` 写在回调**里面**,于是路径要等队列跑到
+  // 那一刻才解析 —— 中间进程的 store 环境(`ONETHING_STORE_PATH` / `HOME`)若已
+  // 变过,这条属于旧 store 的事件就落进新 store 的库里,seq 与 expectedBytes 却
+  // 还记在旧 state 上:两边都不报错,两边的账都是错的。
+  const logPath = state.logPath
   state.queue = state.queue
     .then(async () => {
-      await fs.promises.appendFile(getSessionEventsLogPath(sessionId), line, 'utf8')
+      await fs.promises.appendFile(logPath, line, 'utf8')
     })
     .catch(error => {
       countSessionEventFailure(sessionId, error, 'event log write failed')
@@ -509,7 +549,9 @@ export function findLastSessionEventSync<TType extends SessionEventType>(
   const remembered = states.get(sessionId)?.lastByType.get(type)
   if (remembered) return remembered as Extract<SessionEventRecord, { type: TType }>
   try {
-    const logPath = getSessionEventsLogPath(sessionId)
+    // §16.22:读侧也吃钉死的落点 —— 判定"要不要写"的依据必须来自**我们自己
+    // 那本账**,读到别的 store 的同名会话只会得出一个说不通的答案。
+    const logPath = sessionLogPathFor(sessionId)
     if (!fs.existsSync(logPath)) return undefined
     return findLastSessionEventInLog(fs.readFileSync(logPath, 'utf8'), type)
   } catch {
@@ -526,14 +568,28 @@ export function findLastSessionEventSync<TType extends SessionEventType>(
  */
 export async function flushSessionEventLog(sessionId?: string): Promise<void> {
   if (sessionId) {
-    await states.get(sessionId)?.queue
-    await fsyncSessionLog(sessionId)
+    await flushOneSessionEventLog(sessionId)
     return
   }
-  await Promise.all([...states.keys()].map(async id => {
-    await states.get(id)?.queue
-    await fsyncSessionLog(id)
-  }))
+  await Promise.all([...states.keys()].map(flushOneSessionEventLog))
+}
+
+/**
+ * §16.22:排空 + fsync 一个会话,**路径在 await 之前取**。
+ *
+ * fsync 是 `await state.queue` 之后才做的事,从前 `fsyncSessionLog(sessionId)`
+ * 在那之后现算路径 —— 与 append 是同一类延迟解析。这里在第一个 await 之前把
+ * 钉死的落点取出来,fsync 到的就一定是刚刚排空的那份文件。
+ *
+ * 没有 state = 这个进程没往这个会话写过任何东西,自然也没有在途写入要刷 ——
+ * 从前那一次 fsync 打开的是"当前 store 里同名会话"的文件,能刷到什么纯属巧合。
+ */
+async function flushOneSessionEventLog(sessionId: string): Promise<void> {
+  const state = states.get(sessionId)
+  if (!state) return
+  const logPath = state.logPath
+  await state.queue
+  if (logPath) await fsyncSessionLog(logPath)
 }
 
 /**
@@ -603,10 +659,10 @@ export async function flushSessionEventLedger(
   return result
 }
 
-async function fsyncSessionLog(sessionId: string): Promise<void> {
+async function fsyncSessionLog(logPath: string): Promise<void> {
   let handle: fs.promises.FileHandle | undefined
   try {
-    handle = await fs.promises.open(getSessionEventsLogPath(sessionId), 'r')
+    handle = await fs.promises.open(logPath, 'r')
     await handle.sync()
   } catch {
     // 文件不存在(这个会话还没记过账)不是错误;fsync 本身失败也不该炸 ——
@@ -622,7 +678,9 @@ async function fsyncSessionLog(sessionId: string): Promise<void> {
  */
 export async function readSessionEvents(sessionId: string): Promise<SessionEventRecord[]> {
   try {
-    const text = await fs.promises.readFile(getSessionEventsLogPath(sessionId), 'utf8')
+    // §16.22:路径在**进 await 之前**解析(`sessionLogPathFor` 是同步的),
+    // 且吃钉死的落点 —— 与写侧读同一份文件。
+    const text = await fs.promises.readFile(sessionLogPathFor(sessionId), 'utf8')
     return parseSessionEventLog(text)
   } catch {
     return []
@@ -632,7 +690,7 @@ export async function readSessionEvents(sessionId: string): Promise<SessionEvent
 /** 读回整份事件日志(**v2 全集**)。投影 / surface 索引走这条。 */
 export async function readSessionLogEvents(sessionId: string): Promise<SessionLogEventRecord[]> {
   try {
-    const text = await fs.promises.readFile(getSessionEventsLogPath(sessionId), 'utf8')
+    const text = await fs.promises.readFile(sessionLogPathFor(sessionId), 'utf8')
     return parseSessionLogEventLog(text)
   } catch {
     return []
@@ -662,7 +720,7 @@ export function drainSessionLogEventTail(
 /** 同步版:surface 索引首次建表要在同步路径上作答(seq 是同步分配的)。 */
 export function readSessionLogEventsSync(sessionId: string): SessionLogEventRecord[] {
   try {
-    return parseSessionLogEventLog(fs.readFileSync(getSessionEventsLogPath(sessionId), 'utf8'))
+    return parseSessionLogEventLog(fs.readFileSync(sessionLogPathFor(sessionId), 'utf8'))
   } catch {
     return []
   }
