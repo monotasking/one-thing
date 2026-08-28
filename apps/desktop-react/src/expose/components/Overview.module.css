@@ -70,6 +70,8 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* 滚动条进出不挤动居中内容:两侧各留恒定槽位(08-29 用户报折叠组时 UI 左右晃) */
+  scrollbar-gutter: stable both-edges;
 }
 
 .inner {

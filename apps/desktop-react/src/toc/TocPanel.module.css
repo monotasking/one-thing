@@ -6,7 +6,10 @@
 .rail {
   position: absolute;
   top: 50%;
-  right: var(--toc-right);
+  /* 锚在聊天列右缘:50% - 列半宽 - 键宽 - 间距(列居中,故右缘 = 中线 + 列半宽)。
+   * 窗格窄到算式小于兜底值时,max() 退回贴窗格边 —— 键永远不压进文本列。
+   * 08-29 用户报"键太靠右":旧写法钉窗格边,宽窗下离它管的文本 300px 远。 */
+  right: max(var(--toc-right), calc(50% - var(--chat-col) / 2 - var(--toc-key-w-on) - var(--toc-col-gap)));
   transform: translateY(-50%);
   z-index: var(--z-sticky);
   /*
