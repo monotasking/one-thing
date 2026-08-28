@@ -6,10 +6,19 @@
   background: var(--surface-0);
 }
 
+/* 三明治网格。四条架子各占一格(格名由 EdgeShelf 自己声明 grid-area),
+ * 中间那一格是主区。auto 轨道在没人占时塌成 0,所以「空架子不渲染」= 不占一丝布局;
+ * 架子的厚度写在它自己的内联 width/height 上,轨道跟着它长。 */
 .main {
   flex: 1;
   min-height: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'shelfTop    shelfTop shelfTop'
+    'shelfLeft   center   shelfRight'
+    'shelfBottom shelfBottom shelfBottom';
   transition: transform var(--dur-enter) var(--ease-out), opacity var(--dur-enter) var(--ease-out);
 }
 
@@ -20,8 +29,9 @@
 }
 
 .center {
-  flex: 1;
+  grid-area: center;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -36,7 +46,7 @@
 
 /* ── Dock 浮层律 ──────────────────────────────────────────────────────────────
  * Dock 永远是 fixed 浮层,不占一格布局 —— 两种显示模式共用这一个容器,
- * 差别只是 autohide 平时把它推出屏外(.hidden),指针进热区才滑回来。
+ * 差别只是 autohide 平时把它推出屏外(.hidden),指针进边缘带才滑回来。
  * 舞台的 scrim 恒铺满,Dock 靠 --z-dock 压在它之上,所以舞台开着时 Dock 仍可点。
  *
  * 定位分两截,互不干涉,各写进一个 CSS 变量最后合成一次 transform:
@@ -77,12 +87,5 @@
 .edgeLeft.hidden { --dock-hide-x: calc(-100% - var(--sp-5)); }
 .edgeRight.hidden { --dock-hide-x: calc(100% + var(--sp-5)); }
 
-.hotzone {
-  position: fixed;
-  z-index: var(--z-dock);
-}
-
-.hotzoneBottom { left: 0; right: 0; bottom: 0; height: var(--dock-hotzone); }
-.hotzoneTop { left: 0; right: 0; top: 0; height: var(--dock-hotzone); }
-.hotzoneLeft { top: 0; bottom: 0; left: 0; width: var(--dock-hotzone); }
-.hotzoneRight { top: 0; bottom: 0; right: 0; width: var(--dock-hotzone); }
+/* W2 起没有 .hotzone 这个元素了:感应带是 window pointermove 上的一次距离判定
+ * (AppShell 的 useEffect + transitions.withinDockEdgeBand),所以它盖不住任何东西。 */

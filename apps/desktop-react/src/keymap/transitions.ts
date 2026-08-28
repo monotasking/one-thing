@@ -43,7 +43,7 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
     labelKey: 'item.sessions',
     defaultCombo: DEFAULT_COMBOS['expose.toggle'] ?? null,
   },
-  { id: 'shelf.right.toggle', labelKey: 'pinned.label', defaultCombo: null },
+  { id: 'shelf.right.toggle', labelKey: 'shelf.labelRight', defaultCombo: null },
   // TOC 面板不是 StageItem,但它的开关同样是命令类快捷键(08-29 全称拍板:都可设置)
   { id: 'toc.toggle', labelKey: 'toc.title', defaultCombo: DEFAULT_COMBOS['toc.toggle'] ?? null },
 ]

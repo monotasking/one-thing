@@ -1,3 +1,4 @@
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, X } from '../components/icons'
 import { useT } from '../i18n'
 import s from './Tabs.module.css'
@@ -22,10 +23,16 @@ interface TabsProps {
   activeId: string | null
   onSelect: (id: string) => void
   onClose?: (id: string) => void
+  /**
+   * 谁摆 Tabs 谁决定「按住一个 tab 意味着什么」。Tabs 自己不认识拖拽 ——
+   * 它只把按下这件事连同 id 递出去,拖不拖得动、拖出去变成什么,是宿主的语法。
+   * 不接就是不接:没给这个 prop 时 tab 的行为与从前逐字相同(按下 → 松开 → onSelect)。
+   */
+  onTabPointerDown?: (id: string, e: ReactPointerEvent<HTMLElement>) => void
   label?: string
 }
 
-export function Tabs({ items, activeId, onSelect, onClose, label }: TabsProps) {
+export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, label }: TabsProps) {
   const t = useT()
   return (
     <div className={s.bar} role="tablist" aria-label={label}>
@@ -40,6 +47,7 @@ export function Tabs({ items, activeId, onSelect, onClose, label }: TabsProps) {
               role="tab"
               aria-selected={on}
               onClick={() => onSelect(tab.id)}
+              onPointerDown={onTabPointerDown ? (e) => onTabPointerDown(tab.id, e) : undefined}
             >
               {Icon && <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
               <span className={s.label}>{tab.label}</span>

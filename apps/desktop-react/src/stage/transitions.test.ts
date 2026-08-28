@@ -5,19 +5,22 @@ import {
   FLOAT_KEEP,
   FLOAT_MIN_H,
   FLOAT_MIN_W,
-  PIN_MIN,
   SHELF_DEFAULT_THICKNESS,
+  SHELF_MIN_THICKNESS,
   STAGE_PERSIST_VERSION,
   activateShelfTab,
   clamp,
   clampFloatRect,
+  clampShelfThickness,
   clickDockIcon,
   closeStage,
   closeToDock,
   defaultFloatRect,
   edgeToFloat,
+  floatRectForGrab,
   floatToEdge,
   focusFloat,
+  formIn,
   formOf,
   initialStageSettings,
   initialStageState,
@@ -30,11 +33,17 @@ import {
   resizeFrom,
   resolveOpen,
   setShelfThickness,
+  shelfViewportExtent,
+  shouldTearOff,
+  snapSideAt,
   stageIdOf,
   stageToEdge,
   stageToFloat,
+  tearOffDistance,
+  thicknessFromPointer,
   togglePlacement,
   toggleShelfCollapsed,
+  withinDockEdgeBand,
   withoutStagePlacements,
 } from './transitions'
 import { STAGE_ITEMS, findItem } from './items'
@@ -623,27 +632,134 @@ describe('withoutStagePlacements(存盘前摘舞台)', () => {
   })
 })
 
-describe('setShelfThickness', () => {
+describe('厚度钳制(W2:下界 240 绝对值,上界 55% 比例)', () => {
   it('区间内的厚度原样通过', () => {
-    expect(rightShelf(setShelfThickness(base, 'right', 500, 1600)).thickness).toBe(500)
+    expect(clampShelfThickness(500, 1600)).toBe(500)
   })
 
-  it('小于 320 抬到 320', () => {
-    expect(rightShelf(setShelfThickness(base, 'right', 100, 1600)).thickness).toBe(PIN_MIN)
+  it('小于 240 抬到 240', () => {
+    expect(clampShelfThickness(100, 1600)).toBe(SHELF_MIN_THICKNESS)
   })
 
-  it('大于视口一半压回视口一半', () => {
-    expect(rightShelf(setShelfThickness(base, 'right', 1400, 1600)).thickness).toBe(800)
+  it('大于视口的 55% 压回 55%', () => {
+    expect(clampShelfThickness(1400, 1600)).toBe(880)
   })
 
-  it('视口太窄时下界赢(不会算出小于 320 的上界)', () => {
-    expect(rightShelf(setShelfThickness(base, 'right', 400, 500)).thickness).toBe(PIN_MIN)
+  it('视口太窄时下界赢(不会算出小于 240 的上界)', () => {
+    expect(clampShelfThickness(400, 300)).toBe(SHELF_MIN_THICKNESS)
+  })
+
+  it('setShelfThickness 走的是同一个钳子', () => {
+    expect(rightShelf(setShelfThickness(base, 'right', 100, 1600)).thickness).toBe(
+      SHELF_MIN_THICKNESS,
+    )
+    expect(rightShelf(setShelfThickness(base, 'right', 1400, 1600)).thickness).toBe(880)
   })
 
   it('改的是这一条边的厚度,别的边不动', () => {
     const st = setShelfThickness(base, 'left', 500, 1600)
     expect(st.shelves.left.thickness).toBe(500)
     expect(st.shelves.right.thickness).toBe(SHELF_DEFAULT_THICKNESS)
+  })
+
+  it('竖边量宽、横边量高 —— 同一个数换个轴读', () => {
+    const vp = { w: 1600, h: 900 }
+    expect(shelfViewportExtent('left', vp)).toBe(1600)
+    expect(shelfViewportExtent('right', vp)).toBe(1600)
+    expect(shelfViewportExtent('top', vp)).toBe(900)
+    expect(shelfViewportExtent('bottom', vp)).toBe(900)
+  })
+
+  it('从指针反推厚度:量的是外缘到指针那一段,四条边各一个方向', () => {
+    // 右架子外缘在 1600,指针在 1200 → 厚 400;左架子外缘在 0,指针在 400 → 也是 400。
+    expect(thicknessFromPointer('right', { x: 1200, y: 0 }, 1600)).toBe(400)
+    expect(thicknessFromPointer('left', { x: 400, y: 0 }, 0)).toBe(400)
+    expect(thicknessFromPointer('bottom', { x: 0, y: 700 }, 900)).toBe(200)
+    // 顶架子的外缘不是 0(它在 TopBar 之下),所以外缘必须由宿主量出来递进来。
+    expect(thicknessFromPointer('top', { x: 0, y: 344 }, 44)).toBe(300)
+  })
+})
+
+describe('snapSideAt(拖到边缘要不要吸)', () => {
+  const VIEWPORT = { w: 1000, h: 800 }
+
+  it('四条边各自的热带里各吸各的', () => {
+    expect(snapSideAt({ x: 5, y: 400 }, VIEWPORT)).toBe('left')
+    expect(snapSideAt({ x: 995, y: 400 }, VIEWPORT)).toBe('right')
+    expect(snapSideAt({ x: 500, y: 3 }, VIEWPORT)).toBe('top')
+    expect(snapSideAt({ x: 500, y: 797 }, VIEWPORT)).toBe('bottom')
+  })
+
+  it('带外一律 null —— 不吸,松手照常落位', () => {
+    expect(snapSideAt({ x: 500, y: 400 }, VIEWPORT)).toBeNull()
+    // 恰好差一个像素出带:24 进、25 出。
+    expect(snapSideAt({ x: 24, y: 400 }, VIEWPORT)).toBe('left')
+    expect(snapSideAt({ x: 25, y: 400 }, VIEWPORT)).toBeNull()
+  })
+
+  it('角落归**最近**的那条边,不是归先写的那条', () => {
+    // 左 5、上 20 → 左近;左 20、上 5 → 上近。
+    expect(snapSideAt({ x: 5, y: 20 }, VIEWPORT)).toBe('left')
+    expect(snapSideAt({ x: 20, y: 5 }, VIEWPORT)).toBe('top')
+  })
+
+  it('平手优先左右(竖架子是主力形态)', () => {
+    expect(snapSideAt({ x: 10, y: 10 }, VIEWPORT)).toBe('left')
+    expect(snapSideAt({ x: 990, y: 790 }, VIEWPORT)).toBe('right')
+  })
+
+  it('band 是参数,不是写死的数', () => {
+    expect(snapSideAt({ x: 40, y: 400 }, VIEWPORT)).toBeNull()
+    expect(snapSideAt({ x: 40, y: 400 }, VIEWPORT, 60)).toBe('left')
+  })
+})
+
+describe('tab 从架子上撕下来的阈值', () => {
+  it('四条边各朝主区那个方向量距离', () => {
+    // 右架子内缘在 1200,指针越往左走距离越大。
+    expect(tearOffDistance('right', { x: 1160, y: 0 }, 1200)).toBe(40)
+    expect(tearOffDistance('left', { x: 340, y: 0 }, 300)).toBe(40)
+    expect(tearOffDistance('bottom', { x: 0, y: 560 }, 600)).toBe(40)
+    expect(tearOffDistance('top', { x: 0, y: 240 }, 200)).toBe(40)
+  })
+
+  it('还压在架子那一侧是负数 —— 不可能撕下来', () => {
+    expect(tearOffDistance('right', { x: 1260, y: 0 }, 1200)).toBe(-60)
+    expect(shouldTearOff('right', { x: 1260, y: 0 }, 1200)).toBe(false)
+  })
+
+  it('没过 24 就不算撕:一次没拖动的按下松开仍然是普通点击', () => {
+    expect(shouldTearOff('right', { x: 1180, y: 0 }, 1200)).toBe(false)
+    expect(shouldTearOff('right', { x: 1176, y: 0 }, 1200)).toBe(false)
+    expect(shouldTearOff('right', { x: 1175, y: 0 }, 1200)).toBe(true)
+  })
+
+  it('撕下来那一刻:指针是标题栏的中心(横向居中、纵向落在标题栏一半高处)', () => {
+    const rect = floatRectForGrab({ x: 600, y: 300 }, { w: 400, h: 300 }, { w: 1000, h: 800 }, 40)
+    expect(rect).toEqual({ x: 400, y: 280, w: 400, h: 300 })
+  })
+
+  it('撕下来的矩形也过浮窗钳制(不许一半在屏外)', () => {
+    const rect = floatRectForGrab({ x: 10, y: 10 }, { w: 400, h: 300 }, { w: 1000, h: 800 }, 40)
+    expect(rect.x).toBeGreaterThanOrEqual(FLOAT_KEEP - rect.w)
+    expect(rect.y).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('Dock 自动隐藏的边缘带(去元素化后就是一次距离判定)', () => {
+  const VIEWPORT = { w: 1000, h: 800 }
+
+  it('四条边各问各的那一维', () => {
+    expect(withinDockEdgeBand({ x: 500, y: 795 }, VIEWPORT, 'bottom')).toBe(true)
+    expect(withinDockEdgeBand({ x: 500, y: 3 }, VIEWPORT, 'top')).toBe(true)
+    expect(withinDockEdgeBand({ x: 3, y: 400 }, VIEWPORT, 'left')).toBe(true)
+    expect(withinDockEdgeBand({ x: 997, y: 400 }, VIEWPORT, 'right')).toBe(true)
+  })
+
+  it('8 进、9 出;停在别的边不算进这条边的带', () => {
+    expect(withinDockEdgeBand({ x: 500, y: 792 }, VIEWPORT, 'bottom')).toBe(true)
+    expect(withinDockEdgeBand({ x: 500, y: 791 }, VIEWPORT, 'bottom')).toBe(false)
+    expect(withinDockEdgeBand({ x: 500, y: 3 }, VIEWPORT, 'bottom')).toBe(false)
   })
 })
 
@@ -668,6 +784,13 @@ describe('formOf / placementOf / clamp', () => {
 
   it('clamp 在 max < min 时返回 min', () => {
     expect(clamp(50, 320, 100)).toBe(320)
+  })
+
+  it('formIn 与 formOf 同一条规则(投影层只订阅 placements 也问得出形态)', () => {
+    const state = openAs(withShelf(['diff']), 'files', STAGE)
+    expect(formIn(state.placements, 'files')).toBe('stage')
+    expect(formIn(state.placements, 'diff')).toBe('edge')
+    expect(formIn(state.placements, 'terminal')).toBe('dock')
   })
 })
 

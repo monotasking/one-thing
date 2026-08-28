@@ -7,6 +7,7 @@ import { useMagnify } from './useMagnify'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
+import { formIn } from '../stage/transitions'
 import { DOCK_AXIS } from '../stage/types'
 import type { DockEdge, DockSize, OpenBehavior, StageItemSpec } from '../stage/types'
 import type { LabelSide } from './DockTile'
@@ -93,6 +94,9 @@ export function Dock({ dimmed }: Props) {
   return (
     <div
       ref={stripRef}
+      /* 条本身的身份标记:同一块内容在舞台/浮窗里也叫同一个名字,
+       * 所以「这一块是坞里的那一块」得有个不靠文案的说法。 */
+      data-dock="strip"
       className={[
         s.strip,
         SIZE_CLASS[dockSize],
@@ -128,6 +132,13 @@ export function Dock({ dimmed }: Props) {
               factor={factors[i] ?? REST_FACTOR}
               tileRef={setTileRef(i)}
               labelSide={LABEL_SIDE[dockEdge]}
+              // 只有还收在坞里的才预览:已经看得见的东西不必再给一眼。
+              // 接管型也不预览 —— 它没有 Placement,「换一整屏」缩成 320×220 也不是那回事。
+              previewId={
+                !tile.item.takeover && formIn(placements, tile.item.id) === 'dock'
+                  ? tile.item.id
+                  : undefined
+              }
               onClick={() => (tile.item.takeover ? toggleExpose() : click(tile.item.id))}
               onContextMenu={(e) => {
                 e.preventDefault()

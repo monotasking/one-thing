@@ -57,9 +57,14 @@ export const zh = {
   'stage.toFloat': '变浮窗',
   'float.toStage': '上舞台',
   'float.toDock': '收回 Dock',
-  'pinned.label': '钉栏',
-  'pinned.collapse': '收起钉栏',
-  'pinned.expand': '展开钉栏',
+  /* ── 四边架子(W2:钉栏泛化成四条边,名字按边给) ─────────────────── */
+  'shelf.labelLeft': '左侧栏',
+  'shelf.labelRight': '右侧栏',
+  'shelf.labelTop': '顶栏',
+  'shelf.labelBottom': '底栏',
+  'shelf.collapse': '收起{name}',
+  'shelf.expand': '展开{name}',
+  'shelf.resize': '调整{name}厚度',
 
   /* ── 设置面 ───────────────────────────────────────────────────────── */
   'settings.dockDisplay': 'Dock 显示方式',
@@ -88,6 +93,9 @@ export const zh = {
   'keymap.resetOf': '恢复「{name}」的默认组合',
   'keymap.recordOf': '为「{name}」设置快捷键',
   'keymap.structuralNote': 'Esc 逐层退出、总览的方向键与回车、浮窗拖拽是形态语法的一部分,不参与改键',
+
+  /* ── Dock 预览泡 ─────────────────────────────────────────────────── */
+  'dock.previewOf': '{name} 预览',
 
   /* ── 浏览器面(壳,不是页面内容) ─────────────────────────────────── */
   'browser.pagePlaceholder': '页面占位',

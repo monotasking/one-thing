@@ -1,0 +1,70 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { AppShell } from '../AppShell'
+import { useStageStore } from '../../stage/store'
+import { initialStageState } from '../../stage/transitions'
+import type { ShelfSide } from '../../stage/types'
+
+/**
+ * 四边架子的挂载路径:形态机说「它在某条边上」,外壳就该在那条边画出一条架子。
+ * 厚度算术与吸附判定在 transitions 的纯函数里测(那里能给定视口),
+ * 这里只钉四件事:哪条边有 tab 就画哪条、空的一条都不画、收得起来、点细梁展得开。
+ */
+beforeEach(() => {
+  useStageStore.setState({ ...initialStageState, locale: 'zh' })
+})
+
+/** store 在 React 事件之外被推动,所以得进 act —— 否则断言会读到上一帧。 */
+function openOnEdge(id: string, side: ShelfSide) {
+  act(() => useStageStore.getState().openAs(id, { kind: 'edge', side }))
+}
+
+const NAME: Record<ShelfSide, string> = {
+  left: '左侧栏',
+  right: '右侧栏',
+  top: '顶栏',
+  bottom: '底栏',
+}
+
+describe('四边架子', () => {
+  it('四条边各挂一个:哪条边上有 tab 就画哪一条', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'left')
+    openOnEdge('diff', 'right')
+    openOnEdge('terminal', 'top')
+    openOnEdge('browser', 'bottom')
+    for (const side of ['left', 'right', 'top', 'bottom'] as ShelfSide[]) {
+      expect(screen.getByRole('complementary', { name: NAME[side] })).toBeTruthy()
+    }
+  })
+
+  it('空架子不渲染 —— 也就不占一丝布局', () => {
+    render(<AppShell />)
+    expect(screen.queryByRole('complementary')).toBeNull()
+    openOnEdge('files', 'top')
+    expect(screen.getAllByRole('complementary')).toHaveLength(1)
+    expect(screen.getByRole('complementary', { name: NAME.top })).toBeTruthy()
+  })
+
+  it('收起后只剩细梁:tab 条与内容都不在了,展开键还在', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'bottom')
+    fireEvent.click(screen.getByLabelText('收起底栏'))
+    expect(useStageStore.getState().shelves.bottom.collapsed).toBe(true)
+    expect(screen.queryByRole('tablist')).toBeNull()
+    expect(screen.getByLabelText('展开底栏')).toBeTruthy()
+  })
+
+  it('点细梁展开回去,tab 次序与活动 tab 一个都没动', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'left')
+    openOnEdge('diff', 'left')
+    fireEvent.click(screen.getByLabelText('收起左侧栏'))
+    fireEvent.click(screen.getByLabelText('展开左侧栏'))
+    const shelf = useStageStore.getState().shelves.left
+    expect(shelf.collapsed).toBe(false)
+    expect(shelf.tabs).toEqual(['files', 'diff'])
+    expect(shelf.activeId).toBe('diff')
+    expect(screen.getByRole('tablist', { name: NAME.left })).toBeTruthy()
+  })
+})

@@ -96,7 +96,9 @@ export const useStageStore = create<StageStore>()(
       activateShelfTab: (side, id) => set((s) => T.activateShelfTab(s, side, id)),
       toggleShelfCollapsed: (side) => set((s) => T.toggleShelfCollapsed(s, side)),
       setShelfThickness: (side, thickness) =>
-        set((s) => T.setShelfThickness(s, side, thickness, window.innerWidth)),
+        set((s) =>
+          T.setShelfThickness(s, side, thickness, T.shelfViewportExtent(side, viewport())),
+        ),
       setDockDisplay: (dockDisplay) => set({ dockDisplay }),
       setDockEdge: (dockEdge) => set({ dockEdge }),
       setDockAlign: (dockAlign) => set({ dockAlign }),

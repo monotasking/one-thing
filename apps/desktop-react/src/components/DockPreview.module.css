@@ -1,0 +1,82 @@
+@keyframes previewIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 浮层配方与浮窗 / 舞台同一份的降一档:r-3 / surface-2 / sh-2 / 1px line-1。
+ * 身量固定 —— 预览的意义是「一眼」,不是「一块可以变大的面」。 */
+.bubble {
+  position: absolute;
+  width: var(--preview-w);
+  height: var(--preview-h);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+  pointer-events: none;
+  z-index: var(--z-tooltip);
+  animation: previewIn var(--dur-enter) var(--ease-out);
+}
+
+.head {
+  flex: none;
+  height: var(--preview-head-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 缩放的两半:viewport 负责裁,stage 负责缩。
+ * stage 的身量由缩放比反推 —— 改 --preview-scale 一个数,内容的取景范围跟着变。 */
+.viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage {
+  width: calc(var(--preview-w) / var(--preview-scale));
+  height: calc((var(--preview-h) - var(--preview-head-h)) / var(--preview-scale));
+  transform: scale(var(--preview-scale));
+  transform-origin: top left;
+}
+
+/* 翻向与名字标签同一套规则:永远朝内 —— 停下边就浮在上方,停左边就浮在右侧。 */
+.atTop {
+  bottom: calc(100% + var(--preview-lift));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.atBottom {
+  top: calc(100% + var(--preview-lift));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.atLeft {
+  right: calc(100% + var(--preview-lift));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.atRight {
+  left: calc(100% + var(--preview-lift));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble { animation: none; }
+}

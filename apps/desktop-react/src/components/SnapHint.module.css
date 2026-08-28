@@ -1,0 +1,24 @@
+@keyframes filmIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 薄膜是纯预示:不吃指针、不占布局,只贴在那条边上淡入一次。
+ * 层级压在浮窗之上(拖着的那扇窗要能看见自己要去哪),让位给 Dock 与 tooltip。 */
+.film {
+  position: fixed;
+  z-index: var(--z-overlay);
+  pointer-events: none;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-ring);
+  animation: filmIn var(--dur-enter) var(--ease-out);
+}
+
+.left { top: 0; bottom: 0; left: 0; width: var(--snap-film); }
+.right { top: 0; bottom: 0; right: 0; width: var(--snap-film); }
+.top { left: 0; right: 0; top: 0; height: var(--snap-film); }
+.bottom { left: 0; right: 0; bottom: 0; height: var(--snap-film); }
+
+@media (prefers-reduced-motion: reduce) {
+  .film { animation: none; }
+}

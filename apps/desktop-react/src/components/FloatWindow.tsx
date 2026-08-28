@@ -2,14 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useStageStore } from '../stage/store'
 import { findItem } from '../stage/items'
-import { clampFloatRect, resizeFrom } from '../stage/transitions'
+import { clampFloatRect, resizeFrom, snapSideAt } from '../stage/transitions'
+import { setSnapSide } from './snap-hint'
 import { renderContent } from '../content'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
 import { resolveIcon, Maximize2, Pin, X } from './icons'
 import { EXIT_MS } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
-import type { FloatRect } from '../stage/types'
+import type { FloatRect, ShelfSide } from '../stage/types'
 import type { ResizeDir } from '../stage/transitions'
 import s from './FloatWindow.module.css'
 
@@ -63,11 +64,15 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
       e.preventDefault()
       focusFloat(id)
       const el = e.currentTarget
-      el.setPointerCapture(e.pointerId)
+      // 捕获失败(如 pen 抬笔竞态、合成指针)不放弃拖拽:capture 只是锦上添花,
+      // 监听本来就挂在元素上,丢 capture 最多丢"指针滑出元素后的帧"。
+      try { el.setPointerCapture(e.pointerId) } catch { /* 不阻断 */ }
       const from = rect
       const startX = e.clientX
       const startY = e.clientY
       const vp = { w: window.innerWidth, h: window.innerHeight }
+      // 只有「拖着整扇窗走」才谈吸附;拉把手改身量与落到哪条边无关。
+      let landing: ShelfSide | null = null
 
       const move = (ev: PointerEvent) => {
         const dx = ev.clientX - startX
@@ -78,6 +83,9 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
         )
         liveRef.current = next
         setLive(next)
+        if (dir) return
+        landing = snapSideAt({ x: ev.clientX, y: ev.clientY }, vp)
+        setSnapSide(landing)
       }
       const up = () => {
         el.removeEventListener('pointermove', move)
@@ -86,15 +94,22 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
         const final = liveRef.current
         liveRef.current = null
         setLive(null)
+        setSnapSide(null)
         if (!final) return
-        if (dir) resizeFloat(id, final)
+        if (dir) {
+          resizeFloat(id, final)
+          return
+        }
+        // 松手在热带里 = 钉上去(浮窗塌进架子,那一次形变走 --dur-enter);
+        // 不在热带里就照常落位 —— 高亮散了不改变松手的语义。
+        if (landing) floatToEdge(id, landing)
         else moveFloat(id, final.x, final.y)
       }
       el.addEventListener('pointermove', move)
       el.addEventListener('pointerup', up)
       el.addEventListener('pointercancel', up)
     },
-    [rect, id, focusFloat, moveFloat, resizeFloat],
+    [rect, id, focusFloat, moveFloat, resizeFloat, floatToEdge],
   )
 
   if (!item || !rect) return null

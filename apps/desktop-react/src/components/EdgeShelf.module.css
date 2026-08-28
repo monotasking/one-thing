@@ -1,0 +1,169 @@
+@keyframes shelfFlash {
+  0%, 100% { border-color: var(--line-1); }
+  50% { border-color: var(--accent); }
+}
+
+/* 厚度是布局的:收/展必然推动主区,所以它走**一次性过渡**,
+ * 里面的内容当场换掉不再叠第二段动画(实现三约束·布局必动只动一次)。
+ *
+ * 四条边共用这一份配方,只有三样东西按边分:占哪个格(grid-area)、
+ * 哪一侧画分隔线、厚度写进 width 还是 height。 */
+.shelf {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-1);
+  border: 0 solid var(--line-1);
+}
+
+/* 竖边:厚度 = 宽,主区在旁边;线画在朝主区那一侧。 */
+.sideLeft,
+.sideRight {
+  height: 100%;
+  min-width: var(--shelf-min);
+  transition: width var(--dur-enter) var(--ease-out);
+}
+
+.sideLeft {
+  grid-area: shelfLeft;
+  border-right-width: 1px;
+}
+
+.sideRight {
+  grid-area: shelfRight;
+  border-left-width: 1px;
+}
+
+/* 横边:厚度 = 高,主区在上下;线同样画在朝主区那一侧。 */
+.sideTop,
+.sideBottom {
+  width: 100%;
+  min-height: var(--shelf-min);
+  transition: height var(--dur-enter) var(--ease-out);
+}
+
+.sideTop {
+  grid-area: shelfTop;
+  border-bottom-width: 1px;
+}
+
+.sideBottom {
+  grid-area: shelfBottom;
+  border-top-width: 1px;
+}
+
+/* 收起态:整栏折成贴边一条细梁。min-* 必须一起让开,否则下界把它撑住。 */
+.collapsed {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 跟手期零过渡 —— 拖厚度时布局必须逐帧贴着指针,一格缓动都不许有。 */
+.dragging {
+  transition: none;
+}
+
+/* flashSide 指到自己时闪两下:告诉用户「你要的东西已经在这儿了」。 */
+.flashing {
+  animation: shelfFlash calc(var(--dur-flash) / 2) var(--ease) 2;
+}
+
+/* 细梁本身就是展开按钮:铺满收起后的那一条,可点,hover 一层薄膜。 */
+.rail {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  transition: background var(--dur) var(--ease);
+}
+
+.rail:hover {
+  background: var(--st-hover);
+}
+
+/* 把手是不可见热区:贴在**内缘**(朝主区那一侧),自己不画一个像素。 */
+.handle {
+  position: absolute;
+  z-index: var(--z-sticky);
+  background: transparent;
+  touch-action: none;
+  transition: background var(--dur) var(--ease);
+}
+
+.handle:hover {
+  background: var(--st-hover);
+}
+
+.sideLeft .handle,
+.sideRight .handle {
+  top: 0;
+  bottom: 0;
+  width: var(--shelf-handle);
+  cursor: col-resize;
+}
+
+.sideTop .handle,
+.sideBottom .handle {
+  left: 0;
+  right: 0;
+  height: var(--shelf-handle);
+  cursor: row-resize;
+}
+
+.sideRight .handle { left: 0; }
+.sideLeft .handle { right: 0; }
+.sideBottom .handle { top: 0; }
+.sideTop .handle { bottom: 0; }
+
+/* 头 = tab 条 + 收起键。tab 条自己带底缘线,收起键补上同一条线,两半接成一根。
+ * 上下架子的 tab 条也是这一条横排 —— 「架子横过来」改的是外形,不是头的排法。 */
+.head {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+}
+
+.tabsWrap {
+  flex: 1;
+  min-width: 0;
+  /* tab 可以被按住拖出去变浮窗,所以按住时不许顺手选中标题文字。
+   * 用 user-select 而不是在 pointerdown 里 preventDefault:后者在某些浏览器上
+   * 会连带吞掉 click,而「没拖动的一次按下松开仍然是普通点击」是这条交互的前提。 */
+  user-select: none;
+}
+
+.collapse {
+  flex: none;
+  width: var(--tab-h);
+  height: var(--tab-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid var(--line-1);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.collapse:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.collapseIcon {
+  width: var(--tab-icon);
+  height: var(--tab-icon);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sideLeft,
+  .sideRight,
+  .sideTop,
+  .sideBottom { transition: none; }
+  .flashing { animation: none; }
+}

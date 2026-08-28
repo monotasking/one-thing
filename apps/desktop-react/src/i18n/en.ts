@@ -55,9 +55,13 @@ export const en: Record<MessageKey, string> = {
   'stage.toFloat': 'Float',
   'float.toStage': 'To stage',
   'float.toDock': 'Back to Dock',
-  'pinned.label': 'Pinned panel',
-  'pinned.collapse': 'Collapse pinned panel',
-  'pinned.expand': 'Expand pinned panel',
+  'shelf.labelLeft': 'Left shelf',
+  'shelf.labelRight': 'Right shelf',
+  'shelf.labelTop': 'Top shelf',
+  'shelf.labelBottom': 'Bottom shelf',
+  'shelf.collapse': 'Collapse {name}',
+  'shelf.expand': 'Expand {name}',
+  'shelf.resize': 'Resize {name}',
 
   /* ── settings ─────────────────────────────────────────────────────── */
   'settings.dockDisplay': 'Dock display',
@@ -88,6 +92,8 @@ export const en: Record<MessageKey, string> = {
   'keymap.structuralNote': 'Esc stepping back, the overview arrow keys and Enter, and float-window dragging are part of the layout grammar and are not rebindable',
 
   /* ── browser shell ────────────────────────────────────────────────── */
+  'dock.previewOf': '{name} preview',
+
   'browser.pagePlaceholder': 'Page placeholder',
 
   /* ── session exposé ───────────────────────────────────────────────── */

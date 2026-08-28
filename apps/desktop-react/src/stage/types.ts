@@ -58,6 +58,15 @@ export interface Viewport {
 }
 
 /**
+ * 视口坐标里的一个点(指针)。吸附判定、撕离判定、Dock 边缘带都吃它 ——
+ * 纯函数不认识 PointerEvent,宿主量一次 clientX/clientY 递进来。
+ */
+export interface Point {
+  x: number
+  y: number
+}
+
+/**
  * 一条边上的架子。四条边各有一份(本批只有 right 有真 UI,另三条 W2 接管),
  * thickness 是「厚度」而不是宽度 —— 竖边量宽、横边量高,同一个数换个轴读。
  */
@@ -81,6 +90,11 @@ export interface StageState {
   shelves: Record<ShelfSide, ShelfState>
   /** 递增计数,触发架子闪烁 */
   flashPinned: number
+  /**
+   * 该闪的是**哪一条**架子。W2 四边都有 UI 之后,光有一个计数会让四条边一起闪 ——
+   * 闪烁是「你要的东西在这儿」,所以它必须指得出那个「这儿」。
+   */
+  flashSide: ShelfSide | null
 }
 
 /**

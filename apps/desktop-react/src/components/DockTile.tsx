@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
+import { DockPreview } from './DockPreview'
 import type { StageBadge } from '../stage/types'
-import { TOOLTIP_DELAY_MS } from './motion'
+import { PREVIEW_DELAY_MS, TOOLTIP_DELAY_MS } from './motion'
 import s from './DockTile.module.css'
 
 /** 名字标签浮在瓦的哪一侧。由 Dock 按停靠边算好递进来 —— 瓦不认识「边」。 */
@@ -35,6 +36,11 @@ interface Props {
   factor: number
   tileRef: (el: HTMLElement | null) => void
   labelSide?: LabelSide
+  /**
+   * 给了就出预览泡,不给就不出。**该不该出是 Dock 的判断**(它知道形态),
+   * 瓦只知道「悬停够久了」——「已经看得见的东西不必再预览」这条规则不该抄两份。
+   */
+  previewId?: string
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
 }
@@ -48,20 +54,39 @@ export function DockTile({
   factor,
   tileRef,
   labelSide = 'top',
+  previewId,
   onClick,
   onContextMenu,
 }: Props) {
   const [labelVisible, setLabelVisible] = useState(false)
+  const [previewVisible, setPreviewVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current)
+      if (previewTimer.current) clearTimeout(previewTimer.current)
+    },
+    [],
+  )
 
+  /**
+   * 两级悬停:300ms 出名字,600ms 出预览。第二级到了就把第一级收掉 ——
+   * 一次一个主角:泡里已经写着标题,标签留着就是同一句话说两遍。
+   * 移开即散(退场谦逊律:不给退场动画,直接消失)。
+   */
   const enter = () => {
     timer.current = setTimeout(() => setLabelVisible(true), TOOLTIP_DELAY_MS)
+    if (previewId) {
+      previewTimer.current = setTimeout(() => setPreviewVisible(true), PREVIEW_DELAY_MS)
+    }
   }
   const leave = () => {
     if (timer.current) clearTimeout(timer.current)
+    if (previewTimer.current) clearTimeout(previewTimer.current)
     setLabelVisible(false)
+    setPreviewVisible(false)
   }
 
   const Icon = plus ? Plus : resolveIcon(icon ?? '')
@@ -69,7 +94,12 @@ export function DockTile({
 
   return (
     <div className={s.wrap} onMouseEnter={enter} onMouseLeave={leave}>
-      {labelVisible && <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>}
+      {labelVisible && !previewVisible && (
+        <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>
+      )}
+      {previewVisible && previewId && (
+        <DockPreview id={previewId} title={title} side={labelSide} />
+      )}
       <button
         type="button"
         ref={tileRef as (el: HTMLButtonElement | null) => void}

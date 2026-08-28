@@ -1,7 +1,9 @@
 import type {
+  DockEdge,
   FloatRect,
   OpenBehavior,
   Placement,
+  Point,
   ResolvedOpen,
   ShelfSide,
   ShelfState,
@@ -11,8 +13,12 @@ import type {
   Viewport,
 } from './types'
 
-/** 架子最小厚度,与 --pin-min 同一事实。 */
-export const PIN_MIN = 320
+/**
+ * 架子厚度的两条界。下界是绝对值(--shelf-min 同一事实),上界是比例 ——
+ * 「架子最多吃掉视口的多少」是相对的,写死一个 px 在小屏上会把主区挤没。
+ */
+export const SHELF_MIN_THICKNESS = 240
+export const SHELF_MAX_RATIO = 0.55
 export const SHELF_DEFAULT_THICKNESS = 400
 
 /** 浮窗的四条硬约束:最小身量、必须留在视口内的那一截、新窗默认身量。 */
@@ -29,6 +35,19 @@ export const FLOAT_DEFAULT_H = 520
 export const FALLBACK_VIEWPORT: Viewport = { w: 1280, h: 800 }
 
 export const SHELF_SIDES: ShelfSide[] = ['left', 'right', 'top', 'bottom']
+
+/**
+ * 拖着一扇浮窗靠近视口边缘多少像素算「要钉上去」。
+ * 撕离用的是同一个数(24):进这么多算吸,出这么多算撕,一进一出对称。
+ */
+export const SNAP_BAND = 24
+export const TEAR_OFF_DISTANCE = 24
+
+/** Dock 自动隐藏的感应带厚度。它是**指针到那条边的距离**,不再是一个盖在别人身上的元素。 */
+export const DOCK_EDGE_BAND = 8
+
+/** 浮窗标题栏高度,与 --float-header-h 同一事实(从架子上撕下来时要按它对准指针)。 */
+export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
 export const STAGE_PERSIST_VERSION = 3
@@ -49,6 +68,7 @@ export const initialStageState: StageState = {
   floatOrder: [],
   shelves: emptyShelves(),
   flashPinned: 0,
+  flashSide: null,
 }
 
 export const initialStageSettings: StageSettings = {
@@ -72,7 +92,15 @@ export function placementOf(state: StageState, id: string): Placement {
 }
 
 export function formOf(state: StageState, id: string): StageForm {
-  return placementOf(state, id).kind
+  return formIn(state.placements, id)
+}
+
+/**
+ * 只拿到 placements 表时的形态查询。规则与 formOf 逐字相同(缺席 = dock)——
+ * 存在的理由是投影层(Dock)只订阅了那张表,不该为了问一句形态去订阅整个 state。
+ */
+export function formIn(placements: Record<string, Placement>, id: string): StageForm {
+  return (placements[id] ?? DOCK).kind
 }
 
 /** 舞台至多一个,所以「谁在舞台上」是个查询而不是一个字段。 */
@@ -263,6 +291,7 @@ export function clickDockIcon(
       ...state,
       shelves: { ...state.shelves, [current.side]: { ...shelf, activeId: id, collapsed: false } },
       flashPinned: state.flashPinned + 1,
+      flashSide: current.side,
     }
   }
 
@@ -377,21 +406,135 @@ export function toggleShelfCollapsed(state: StageState, side: ShelfSide): StageS
   return setShelfCollapsed(state, side, !state.shelves[side].collapsed)
 }
 
-/** 架子厚度 clamp 到 [320, 视口一半];视口太窄时下界赢。 */
+/**
+ * 「厚度」换个轴读的唯一一处:竖边(左/右)量宽,横边(上/下)量高。
+ * 钳制、拖拽反推、CSS 写哪个维度,三处都问这一个函数,不各判各的。
+ */
+export function shelfViewportExtent(side: ShelfSide, viewport: Viewport): number {
+  return side === 'left' || side === 'right' ? viewport.w : viewport.h
+}
+
+/**
+ * 架子厚度钳到 [240, 视口对应维度的 55%];视口太窄时下界赢(clamp 自己保证)。
+ * 上界取整:厚度最终是一个 px,55% 算出来的浮点尾巴不该被存进档案。
+ */
+export function clampShelfThickness(thickness: number, viewportExtent: number): number {
+  return clamp(
+    Math.round(thickness),
+    SHELF_MIN_THICKNESS,
+    Math.round(viewportExtent * SHELF_MAX_RATIO),
+  )
+}
+
+/**
+ * 拖把手时从指针位置反推厚度。量的是「外缘 → 指针」那一段:
+ * 外缘(架子贴着视口的那一侧)在整个拖拽期间不动,所以宿主只需在按下时测一次。
+ */
+export function thicknessFromPointer(side: ShelfSide, pointer: Point, outerEdge: number): number {
+  if (side === 'left') return pointer.x - outerEdge
+  if (side === 'right') return outerEdge - pointer.x
+  if (side === 'top') return pointer.y - outerEdge
+  return outerEdge - pointer.y
+}
+
 export function setShelfThickness(
   state: StageState,
   side: ShelfSide,
   thickness: number,
-  viewport: number,
+  viewportExtent: number,
 ): StageState {
   const shelf = state.shelves[side]
   return {
     ...state,
     shelves: {
       ...state.shelves,
-      [side]: { ...shelf, thickness: clamp(thickness, PIN_MIN, viewport * 0.5) },
+      [side]: { ...shelf, thickness: clampShelfThickness(thickness, viewportExtent) },
     },
   }
+}
+
+/* ── 拖拽吸附(纯判定:输入是坐标,输出是「该落哪条边」) ────────────────────── */
+
+/** 边 → 指针到这条边的距离。四条边只在这一张表里被写成坐标,别处不许再拼。 */
+const EDGE_DISTANCE: Record<ShelfSide, (p: Point, v: Viewport) => number> = {
+  left: (p) => p.x,
+  right: (p, v) => v.w - p.x,
+  top: (p) => p.y,
+  bottom: (p, v) => v.h - p.y,
+}
+
+/**
+ * 指针落在哪条边的热带里 —— 落不进任何一条就是 null(不吸,松手照常落位)。
+ * 角落归最近的那条边;**平手优先左右**,理由是竖架子是主力形态(右栏是出厂默认),
+ * 判据写死在这张表的次序里(left/right 排在前,严格小于才换人)。
+ */
+export function snapSideAt(pointer: Point, viewport: Viewport, band: number = SNAP_BAND): ShelfSide | null {
+  let best: ShelfSide | null = null
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const side of SHELF_SIDES) {
+    const d = EDGE_DISTANCE[side](pointer, viewport)
+    if (d > band) continue
+    if (d < bestDistance) {
+      best = side
+      bestDistance = d
+    }
+  }
+  return best
+}
+
+/**
+ * 从架子上往主区方向拖了多远。为负 = 还压在架子那一侧。
+ * innerEdge 是架子朝主区那一侧的坐标(宿主量 DOM 得到)。
+ */
+export function tearOffDistance(side: ShelfSide, pointer: Point, innerEdge: number): number {
+  if (side === 'right') return innerEdge - pointer.x
+  if (side === 'left') return pointer.x - innerEdge
+  if (side === 'bottom') return innerEdge - pointer.y
+  return pointer.y - innerEdge
+}
+
+/** 拖过阈值才算「撕下来」——够不着阈值的一次按下松开仍然是一次普通点击。 */
+export function shouldTearOff(
+  side: ShelfSide,
+  pointer: Point,
+  innerEdge: number,
+  threshold: number = TEAR_OFF_DISTANCE,
+): boolean {
+  return tearOffDistance(side, pointer, innerEdge) > threshold
+}
+
+/**
+ * 刚被撕下来的那扇窗落在哪:指针是**标题栏的中心**(横向居中、纵向落在标题栏一半高处),
+ * 所以手指底下那一点仍然是「用户抓着的地方」。身量由调用方给(有记忆就用记忆)。
+ */
+export function floatRectForGrab(
+  pointer: Point,
+  size: { w: number; h: number },
+  viewport: Viewport,
+  headerHeight: number = FLOAT_HEADER_H,
+): FloatRect {
+  return clampFloatRect(
+    { w: size.w, h: size.h, x: pointer.x - size.w / 2, y: pointer.y - headerHeight / 2 },
+    viewport,
+  )
+}
+
+/* ── Dock 自动隐藏的边缘带(去元素化:热区是一次距离判定,不是一个盖住别人的 div) ── */
+
+const DOCK_EDGE_DISTANCE: Record<DockEdge, (p: Point, v: Viewport) => number> = {
+  left: (p) => p.x,
+  right: (p, v) => v.w - p.x,
+  top: (p) => p.y,
+  bottom: (p, v) => v.h - p.y,
+}
+
+export function withinDockEdgeBand(
+  pointer: Point,
+  viewport: Viewport,
+  edge: DockEdge,
+  band: number = DOCK_EDGE_BAND,
+): boolean {
+  return DOCK_EDGE_DISTANCE[edge](pointer, viewport) <= band
 }
 
 /* ── persist ───────────────────────────────────────────────────────────────── */
