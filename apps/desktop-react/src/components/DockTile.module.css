@@ -17,9 +17,8 @@
   border: 1px solid var(--line-1);
   color: var(--text-1);
   box-shadow: var(--sh-1);
-  /* 磁性放大是唯一的位移豁免 */
-  transform-origin: 50% 100%;
-  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+  /* 磁性放大走布局尺寸(见 useMagnify 头注);释放回位 --dur-release,跟手期由 .tracking 关闭过渡 */
+  transition: width var(--tile-size-dur, var(--dur-release)) var(--ease-out), height var(--tile-size-dur, var(--dur-release)) var(--ease-out), background var(--dur) var(--ease);
 }
 
 .tile:hover {
@@ -39,8 +38,9 @@
 }
 
 .icon {
-  width: var(--tile-icon);
-  height: var(--tile-icon);
+  /* 随瓷砖长大:41% ≈ 静止态的 18/44 */
+  width: 41%;
+  height: 41%;
 }
 
 /* 徽本身归 ui/Badge;这里只说「贴在瓷砖右上角」。 */
@@ -62,6 +62,7 @@
 }
 
 .label {
+  animation: labelIn var(--dur-enter) var(--ease-out);
   position: absolute;
   bottom: calc(100% + var(--tooltip-lift));
   left: 50%;
@@ -75,4 +76,14 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: var(--z-tooltip);
+}
+
+@keyframes labelIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile { transition: background var(--dur) var(--ease); }
+  .label { animation: none; }
 }

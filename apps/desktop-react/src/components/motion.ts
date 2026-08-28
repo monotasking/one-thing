@@ -5,6 +5,7 @@
  */
 export const DUR_MS = 120 // --dur
 export const EXIT_MS = 120 // --dur-exit
+export const RELEASE_MS = 160 // --dur-release
 export const FLASH_MS = 240 // --dur-flash
 export const TOOLTIP_DELAY_MS = 300 // --dur-tooltip-delay
 export const SCROLL_SETTLE_MS = 400 // --dur-scroll-settle

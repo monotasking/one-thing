@@ -46,6 +46,8 @@
   --ease-out: cubic-bezier(0, 0, 0.2, 1);
   /* 派生时长(仍属 token 文件,组件只许引用) */
   --dur-exit: 120ms;
+  /* 跟手形变(Dock 放大/拖拽)在手离开后的回位档(动效板·释放回位) */
+  --dur-release: 160ms;
   --dur-flash: 240ms;
   --dur-tooltip-delay: 300ms;
   --dur-scroll-settle: 400ms;

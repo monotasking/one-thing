@@ -9,7 +9,7 @@ import type { MessageKey } from '../i18n'
 import type { OpenBehavior, StageItemSpec } from '../stage/types'
 import s from './Dock.module.css'
 
-const REST = { scale: 1, lift: 0 }
+const REST_FACTOR = 1
 
 /** 瓷砖在条上的线性次序 —— 磁性放大按这个次序索引,分隔线不占位。 */
 type Tile =
@@ -50,12 +50,12 @@ export function Dock({ dimmed }: Props) {
   const [menu, setMenu] = useState<{ id: string; title: string; x: number; y: number } | null>(null)
   const closeMenu = () => setMenu(null)
 
-  const { stripRef, setTileRef, transforms, onMouseMove, onMouseLeave } = useMagnify(TILES.length)
+  const { stripRef, setTileRef, factors, tracking, onMouseMove, onMouseLeave } = useMagnify(TILES.length)
 
   return (
     <div
       ref={stripRef}
-      className={dimmed ? `${s.strip} ${s.dimmed}` : s.strip}
+      className={[s.strip, dimmed && s.dimmed, tracking && s.tracking].filter(Boolean).join(' ')}
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
     >
@@ -66,7 +66,7 @@ export function Dock({ dimmed }: Props) {
               key="__plus"
               title={t('dock.add')}
               plus
-              transform={transforms[i] ?? REST}
+              factor={factors[i] ?? REST_FACTOR}
               tileRef={setTileRef(i)}
             />
           ) : (
@@ -76,7 +76,7 @@ export function Dock({ dimmed }: Props) {
               icon={tile.item.icon}
               badge={tile.item.badge}
               running={tile.item.id === stageId || pinned.includes(tile.item.id)}
-              transform={transforms[i] ?? REST}
+              factor={factors[i] ?? REST_FACTOR}
               tileRef={setTileRef(i)}
               onClick={() => click(tile.item.id)}
               onContextMenu={(e) => {

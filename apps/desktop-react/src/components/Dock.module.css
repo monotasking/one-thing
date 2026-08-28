@@ -26,3 +26,8 @@
   align-self: center;
   flex: none;
 }
+
+/* 跟手定律(动效板):指针在条上时瓷砖零过渡逐帧跟,离开才走 --dur-release 回位。
+ * 开关经 CSS 变量传给瓷砖:--tile-size-dur 在跟手期归零。 */
+.strip { --tile-size-dur: var(--dur-release); }
+.tracking { --tile-size-dur: 0ms; }

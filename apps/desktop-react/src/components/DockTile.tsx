@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
-import type { MagnifyTransform } from './useMagnify'
 import type { StageBadge } from '../stage/types'
 import { TOOLTIP_DELAY_MS } from './motion'
 import s from './DockTile.module.css'
@@ -14,13 +13,14 @@ interface Props {
   badge?: StageBadge
   running?: boolean
   plus?: boolean
-  transform: MagnifyTransform
+  /** 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。 */
+  factor: number
   tileRef: (el: HTMLElement | null) => void
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
 }
 
-export function DockTile({ title, icon, badge, running, plus, transform, tileRef, onClick, onContextMenu }: Props) {
+export function DockTile({ title, icon, badge, running, plus, factor, tileRef, onClick, onContextMenu }: Props) {
   const [labelVisible, setLabelVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -44,7 +44,7 @@ export function DockTile({ title, icon, badge, running, plus, transform, tileRef
         type="button"
         ref={tileRef as (el: HTMLButtonElement | null) => void}
         className={plus ? `${s.tile} ${s.plus}` : s.tile}
-        style={{ transform: `translateY(${transform.lift}px) scale(${transform.scale})` }}
+        style={{ width: `calc(var(--tile-size) * ${factor})`, height: `calc(var(--tile-size) * ${factor})` }}
         onClick={onClick}
         onContextMenu={onContextMenu}
         aria-label={title}
