@@ -21,6 +21,7 @@ import {
   installUiRefoldHandle,
   scheduleUiRefold,
 } from '@/stores/ui-refold'
+import { installRowSkippingHandle } from '@/stores/row-skipping'
 import {
   clearFoldTail,
   feedFoldTail,
@@ -134,6 +135,8 @@ export function initializeIPCHub() {
   installUiRefoldHandle()
   // §17.8.7 U2-a:回旧路的现场把手(`window.__onethingUiFoldTree.disable()`)。
   installFoldTreeHandle()
+  // §17.8.8 U3:消息行惰性渲染的 A/B 把手(`window.__onethingRowSkipping`)。
+  installRowSkippingHandle()
 
   // ── Unified event channel ─────────────────────
   // All structured events (steps, tools, stream lifecycle, etc.)

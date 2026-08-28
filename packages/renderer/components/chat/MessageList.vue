@@ -28,7 +28,7 @@
         v-else
         ref="messageListContentRef"
         class="message-list-content"
-        :class="{ 'rows-skippable': rowsSkippable }"
+        :class="{ 'rows-skippable': rowsSkippableClass }"
       >
         <Button
           v-if="pageHistorySummary"
@@ -199,6 +199,7 @@
 
 <script setup lang="ts">
 import Button from '@/components/common/Button.vue'
+import { isRowSkippingEnabled } from '@/stores/row-skipping'
 import Scrollbar from '@/components/common/Scrollbar.vue'
 import { ref, watch, nextTick, computed, onMounted, onUnmounted, toRaw, onUpdated } from 'vue'
 import type {
@@ -343,6 +344,11 @@ const messageListContentRef = ref<HTMLElement | null>(null)
 // stale for skipped rows. See the .rows-skippable rule.
 const rowsSkippable = ref(false)
 let rowsSkippableFrame: number | null = null
+// U3(§17.8.8):A/B 开关。默认开(这套惰性渲染 2026-08-19 就在生产上);
+// `window.__onethingRowSkipping.disable()` + 刷新 = 回到"每行都完整 layout/paint"
+// 那一档,用来做对照读数与一键回退。开关只在这一处读 —— 类挂不上,别的什么都不变。
+const rowSkippingEnabled = isRowSkippingEnabled()
+const rowsSkippableClass = computed(() => rowSkippingEnabled && rowsSkippable.value)
 
 function rearmRowSkipping() {
   rowsSkippable.value = false

@@ -11169,3 +11169,81 @@ refoldChecks 224、refold/mismatches/port/account/append 全 0;
 字节回归 · S0 合同 · 账预检 · ephemeral(含指针闸)全绿;**五棘轮**全绿未动基线;
 `sessions:verify` 本机 0 / 外来存量 9 零新增;真机 store 只读(支架临时库跑完删除)。
 **未提交。**
+
+### 17.8.8 U3 落地记录:惰性渲染**已在生产上**,本批补的是开关与读数(2026-08-28,opus 施工,未提交)
+
+*一、勘察更正:B 级方案 2026-08-19 就落地了*
+
+工单要"引入 `content-visibility: auto` + `contain-intrinsic-size`"。勘察发现**它已经在
+生产上跑了一年半**(`MessageList.vue`,2026-08-19 那批"工具行展开卡顿"的产物):
+
+```
+.message-list-row            { overflow-anchor: none; contain-intrinsic-size: auto 240px; }
+.message-list-content.rows-skippable .message-list-row {
+  content-visibility: auto;
+  padding-inline: 24px; margin-inline: -24px; box-sizing: content-box;  /* 见下 */
+}
+```
+
+而且三个已知坑当时就处理过了,这一批逐条复核属实:
+
+1. **`overflow-anchor` 交互**:行上是 `overflow-anchor: none`(位置由 `scrollCoordinator`
+   说了算,不交给浏览器原生锚定)。`content-visibility` 因此不会与原生锚定打架 —— 两者
+   本来就不在同一条路上。
+2. **估高策略 = 最近实高记忆**(`contain-intrinsic-size: **auto** 240px`):`auto` 关键字
+   让浏览器记住这一行**上次真实布局的尺寸**,240px 只是"从没渲染过"时的兜底。配套纪律
+   在 `rowsSkippable`:行集合或列宽一变就**摘掉**这个类,**两帧之后**再挂回去 —— 第一帧
+   让每一行按真高布局并被记住,第二帧才开始跳过。所以被跳过的行用的永远是**它自己的
+   实高**,不是估值。这一批的读数正证了这一条:**开/关两种模式下整列高度逐像素相同
+   (77449px)**,滚动条不跳。
+3. **paint 溢出**:`content-visibility: auto` 带 paint containment,会裁掉行盒外的绘制
+   (导航高亮那圈 20px 光晕)。用"对称 padding + 负 margin + `box-sizing: content-box`"
+   把绘制盒撑宽而内容盒不动。
+
+*二、本批做的事:A/B 开关*
+
+`stores/row-skipping.ts`(与 `fold-tree.ts` 同款:`globalThis` 覆盖 + `localStorage`
+持久化 + `window.__onethingRowSkipping` 把手,**不进设置页**)。`MessageList.vue` 只多读
+一次:`rowsSkippableClass = 开关 && rowsSkippable`。关掉 = 类挂不上 = 每行都完整
+layout/paint,也就是 2026-08-19 之前那一档。
+
+回滚一行:`window.__onethingRowSkipping.disable()` 之后刷新。
+
+*三、读数对比(真机支架,同一条 300 条消息的会话,整列 77449px)*
+
+| | 惰性渲染 **开** | **关** |
+|---|---|---|
+| 整列高度 | 77449px | 77449px(**逐像素相同**) |
+| 300 条上屏 | 53ms | 53ms |
+| 顶→底整程滚动 | 4575ms / 553 帧 | 4540ms / 542 帧 |
+| 帧间隔 p50 / p90 / p99 | 8 / 10 / 17ms | 8 / 10 / 18ms |
+| **最坏一帧** | **79ms** | **107ms** |
+| 长任务 | 2 次 / 最长 86ms | 1 次 / 最长 118ms |
+| **JS 堆(滚完)** | **405MB** | **774MB** |
+
+结论:这个规模上**帧率分位数没有可见差别**(两边都在 8–10ms),差别在**最坏一帧**
+(79 vs 107ms)与**内存**(−48%)。会话打开耗时无差别。整列高度逐像素相同 = 估高策略
+(最近实高)在这条路上是准的。
+
+*四、七个碰面(红线:一格不许变)*
+
+| # | 碰面 | 结果 |
+|---|---|---|
+| 1 | 跟底 | 开会话即距底 **1px** ✅ |
+| 2 | 拖滚脱跟底 | 上滚 900px 后距底恒 **901**,没被拽回 ✅ |
+| 3 | 发送 hold-top | 既有用例绿(`useMessageScrollCoordinator` / MessageList 组);U2-a 那批真机量过 −50px,本批未改动这条路 |
+| 4 | regenerate hold | 既有用例绿;真机未驱动 ⚠️ |
+| 5 | 跳转 / 导航 | **真机验过**:`scrollIntoView` 跳到中段(未渲染区)那条消息,落点在视口内、行高读出 **112px 真实高度**(不是 240 兜底)✅ |
+| 6 | `goalSummariesByIndex` | 它是**同一棵渲染数组**的 computed,惰性渲染不改数组;夹具无 goal,真机未正证 ⚠️ |
+| 7 | work-group 展开 | 既有用例绿(`work-group.test.ts` 等 838 只);真机未驱动 ⚠️ |
+
+零 error 日志。4/6/7 三项与 U2-a 那批同样"未驱动"——它们需要更完整的交互链路或专门
+夹具,如实报。
+
+*五、门读数*
+
+typecheck 0;renderer 全绿(唯一红 `App.container-layout` 是外壳布局在途批,不认领);
+七碰面测试面 **838 只全绿**(chat 组件 + `useFollowScroll` + `useMessageScrollCoordinator`
++ work-group + steps-panel);**五棘轮**全绿,**`ui:gate` 81 条已知基线一条未加**
+(新样式一行都没写 —— 样式本来就在,本批只加了开关);真机 store 只读(支架临时库,
+跑完删除)。**未提交。**
