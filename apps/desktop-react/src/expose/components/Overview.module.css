@@ -169,3 +169,31 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--expose-gap);
 }
+
+/* 折叠过渡:高度用 grid-template-rows 1fr→0fr 连续收合(--dur-enter --ease-out),
+   下方组随之滑动而非瞬跳;opacity 同步淡出让内容不在收合中被"裁切"式露出。
+   尊重 prefers-reduced-motion:关动画,回到即时切换。 */
+.body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--dur-enter) var(--ease-out),
+    opacity var(--dur-enter) var(--ease-out);
+  opacity: 1;
+}
+
+.bodyClosed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.bodyInner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .body {
+    transition: none;
+  }
+}

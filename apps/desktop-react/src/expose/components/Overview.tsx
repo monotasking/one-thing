@@ -104,20 +104,27 @@ export function Overview() {
                     </Button>
                   </header>
 
-                  {!collapsed && (
-                    <div className={s.grid}>
-                      {group.sessions.map((session) => (
-                        <SessionCard
-                          key={session.id}
-                          session={session}
-                          current={session.id === state.currentSessionId}
-                          focused={session.id === state.focusId}
-                          onEnter={() => state.enterSession(session.id)}
-                          onQuickLook={() => state.openQuickLook(session.id)}
-                        />
-                      ))}
+                  {/*
+                    折叠 = 高度过渡而非瞬跳(用户 08-28 实机反馈:卡区瞬间消失、下方组咣当上移,变化不连续)。
+                    grid-template-rows 1fr→0fr 技法:卡区保持挂载,收合时下方内容连续滑上来;
+                    inert 把折叠态的卡从焦点序/命中区里摘掉(视觉隐藏 ≠ 可交互)。
+                  */}
+                  <div className={collapsed ? `${s.body} ${s.bodyClosed}` : s.body} inert={collapsed || undefined}>
+                    <div className={s.bodyInner}>
+                      <div className={s.grid}>
+                        {group.sessions.map((session) => (
+                          <SessionCard
+                            key={session.id}
+                            session={session}
+                            current={session.id === state.currentSessionId}
+                            focused={session.id === state.focusId}
+                            onEnter={() => state.enterSession(session.id)}
+                            onQuickLook={() => state.openQuickLook(session.id)}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </section>
               )
             })
