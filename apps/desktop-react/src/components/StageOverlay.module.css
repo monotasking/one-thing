@@ -8,9 +8,11 @@
   to { opacity: 1; transform: scale(1); }
 }
 
+/* 下缘让出 Dock 保留带:Dock 是保留区,永远可交互,scrim 不许盖住它。
+ * --dock-reserved 由 AppShell 按 dock 显示模式在根上给出(always=带高 / autohide=0)。 */
 .scrim {
   position: fixed;
-  inset: 0;
+  inset: 0 0 var(--dock-reserved) 0;
   z-index: var(--z-overlay);
   background: var(--scrim);
   display: flex;

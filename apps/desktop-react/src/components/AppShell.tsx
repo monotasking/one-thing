@@ -38,7 +38,7 @@ export function AppShell() {
   const autohide = dockDisplay === 'autohide'
 
   return (
-    <div className={s.shell}>
+    <div className={autohide ? `${s.shell} ${s.shellAutohide}` : s.shell}>
       <TopBar />
 
       <main className={exposeOpen ? `${s.main} ${s.mainDimmed}` : s.main}>

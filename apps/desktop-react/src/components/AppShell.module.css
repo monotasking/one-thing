@@ -1,9 +1,16 @@
+/* --dock-reserved = 舞台 scrim 下缘要让出的高度。always 让出整条带;
+ * autohide 带高 0 无可让,滑起的 Dock 改靠 --z-dock 压过 scrim。 */
 .shell {
+  --dock-reserved: var(--dock-band);
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--surface-0);
+}
+
+.shellAutohide {
+  --dock-reserved: 0px;
 }
 
 .main {
@@ -57,14 +64,14 @@
   right: 0;
   bottom: 0;
   height: var(--dock-hotzone-h);
-  z-index: var(--z-dropdown);
+  z-index: var(--z-dock);
 }
 
 .floating {
   position: fixed;
   left: 50%;
   bottom: var(--sp-3);
-  z-index: var(--z-dropdown);
+  z-index: var(--z-dock);
   transform: translateX(-50%) translateY(calc(100% + var(--sp-5)));
   transition: transform var(--dur-enter) var(--ease-out);
 }

@@ -65,6 +65,8 @@
   --z-dropdown: 100;
   --z-overlay: 500;
   --z-modal: 600;
+  /* Dock 保留区在舞台之上、在 tooltip 之下 */
+  --z-dock: 650;
   --z-tooltip: 700;
   --z-toast: 800;
 
