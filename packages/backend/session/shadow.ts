@@ -80,7 +80,7 @@ const DIFF_VALUE_CHARS = 120
  * **老日志里仍然读得到 `'messages'` / `'history'` 两个取值** —— 那是 c4 之前记的
  * 行,读日志的脚本按字符串认,不靠这个联合类型。
  */
-export type SessionShadowKind = 'refold' | 'port' | 'account'
+export type SessionShadowKind = 'refold' | 'port' | 'account' | 'usage'
 
 /**
  * 方向标记(F0,§16.2):`a` 侧代表谁。

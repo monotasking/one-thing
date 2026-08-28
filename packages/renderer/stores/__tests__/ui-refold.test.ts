@@ -425,18 +425,19 @@ describe('ui-refold:具名豁免的反证(拿掉就红)', () => {
     expect(compareUiRefold(hand, LEDGER).match).toBe(true)
   })
 
-  it('④ tool-call 锚点:live 一种形状、重放另一种(设计,不是失配)', () => {
+  it('④ tool-call 锚点:**尺子自己丢它**(§17.7 #4 归并之后)', () => {
     resetSeq()
     const ledger = foldLedgerMessages(LEDGER)
     const hand = handSide()
-    hand[1] = {
+    const withAnchor = {
       ...hand[1],
-      contentParts: [
-        ...(hand[1].contentParts ?? []),
-        { type: 'tool-call', toolCalls: [] },
-      ],
+      contentParts: [...(hand[1].contentParts ?? []), { type: 'tool-call', toolCalls: [] }],
     } as ChatMessage
-    expect(sameUnderRuler(hand[1], ledger[1] as ChatMessage)).toBe(false)
-    expect(compareUiRefold(hand, LEDGER).match).toBe(true)
+    // 裸比:锚点是一格实实在在的差。
+    expect(JSON.stringify(withAnchor.contentParts))
+      .not.toBe(JSON.stringify(ledger[1].contentParts))
+    // 过尺:G4 认两种锚点形状,所以归一之后相等 —— 门里不再需要第二层排除。
+    expect(sameUnderRuler(withAnchor, ledger[1] as ChatMessage)).toBe(true)
+    expect(compareUiRefold([hand[0], withAnchor], LEDGER).match).toBe(true)
   })
 })

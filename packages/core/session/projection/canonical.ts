@@ -30,7 +30,7 @@
  * | `sessionId` | 丢 | 上下文字段,同一条消息在不同读法下有无都算对 |
  * | `thinkingTime` | 丢 | G5:**派生量**(投影从 chunks 时刻算,消息里常常没有)。它是策略表 `message.thinking-activity` 的**替身**,不是短命事实本身 |
  * | `isStreaming` | 只保留 `true` | `false` 与缺席是同一件事。**这一格本身是策略表条目**(`run/end` 取代),这里只是那条 `false ≡ 缺席` 的归一 |
- * | `data-steps` part | 丢 | G4:步骤面板的**渲染锚点**,位置算得出来,不是正文。它不会被任何事件"取代",所以不进策略表 |
+ * | `data-steps` / `tool-call` part | 丢 | G4:工具行的两种**渲染锚点**(重放合成前者、流式落后者,core `render-anchors.ts` 并列写着),位置算得出来,不是正文。不会被任何事件"取代",所以不进策略表 |
  * | `undefined` 值的键 | 丢 | `{a: undefined}` 与 `{}` 是同一条消息 |
  * | 空数组 | 丢 | `toolCalls: []` 与没有 toolCalls 是同一件事 |
  * | `steps` / `toolCalls` 顺序 | 按 id 排序 | 数组序是派生物(到达序 vs 落盘序),身份是 id |
@@ -91,16 +91,29 @@ const DERIVED_CLOCK_KEYS = new Set(['timestamp', 'startTime', 'endTime', 'receiv
 /**
  * **G4(§10.1):渲染锚点,不是短命事实。**
  *
- * `data-steps` 是步骤面板的**锚点**:位置由"这一轮有没有工具调用"算得出来
- * (`planAgentLoopTurnContentPersistence` / `core/session/render-anchors.ts`),
- * 事件里没有它也不该有它 —— 它不是正文,是一个渲染坐标。
+ * 工具行的锚点有**两种形状**,core 自己把它们并列写在一处
+ * (`core/session/render-anchors.ts` 的 `hasCoreRenderToolAnchor`):
  *
- * 它**不进策略表**:没有任何一条持久事件"取代"它,它压根不是一件被记录的事实。
+ *  - `data-steps` —— 位置由"这一轮有没有工具调用"算得出来
+ *    (`planAgentLoopTurnContentPersistence` / `synthesizeCoreToolAnchors`);
+ *  - `tool-call` —— **流式期间**渲染侧当场落的那一个。重放时合成的是 `data-steps`,
+ *    而且明文**不去冲掉** live 的这一个(同文件 119-120 行,冲掉会让工具行 remount)。
+ *
+ * 所以"live 一种、重放另一种"是设计,不是失配。从前这里只丢前一种,因为 S 线的
+ * 影子是**折 vs 折**、两侧都不会有 live 的 `tool-call`;U 线(ui-refold)第一次把
+ * live 侧摆上台,于是它在门内自己又排除了一次 —— **两把尺**。§17.7 #4 归并:
+ * 尺只有这一把,U 线那份具名豁免撤销(留账 18 结清)。
+ *
+ * 它们**不进策略表**:没有任何一条持久事件"取代"它们,它们压根不是被记录的事实。
  * 这一条与 `isEphemeralContentPart` 分开写,正是为了让"被取代"与"算得出来"
  * 两种理由各自可辨认。
  */
+const RENDER_ANCHOR_PART_TYPES = new Set(['data-steps', 'tool-call'])
+
 function isRenderAnchorPart(part: unknown): boolean {
-  return !!part && typeof part === 'object' && (part as { type?: unknown }).type === 'data-steps'
+  if (!part || typeof part !== 'object') return false
+  const type = (part as { type?: unknown }).type
+  return typeof type === 'string' && RENDER_ANCHOR_PART_TYPES.has(type)
 }
 
 function canonicalValue(value: unknown): unknown {

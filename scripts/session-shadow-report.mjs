@@ -89,6 +89,8 @@ export function readStats(logDir) {
       // 耐久判据并进 refold 那一栏);字段留着读老账,`accountMismatches` 仍进门。
       accountChecks: Number(parsed.accountChecks) || 0,
       accountMismatches: Number(parsed.accountMismatches) || 0,
+      usageChecks: Number(parsed.usageChecks) || 0,
+      usageMismatches: Number(parsed.usageMismatches) || 0,
       byKind: parsed.byKind && typeof parsed.byKind === 'object' ? parsed.byKind : {},
       skipped: parsed.skipped && typeof parsed.skipped === 'object' ? parsed.skipped : {},
       lastMismatchAt: Number(parsed.lastMismatchAt) || undefined,
@@ -109,6 +111,8 @@ export function readStats(logDir) {
       refoldMismatches: 0,
       accountChecks: 0,
       accountMismatches: 0,
+      usageChecks: 0,
+      usageMismatches: 0,
       byKind: {},
       skipped: {},
       missing: true,
@@ -217,6 +221,9 @@ function main() {
     console.log(`[shadow] refoldChecks   : ${stats.refoldChecks}   (采样次数 —— c4 起进门:必须 > 0)`)
     console.log(`[shadow] refoldMismatch : ${stats.refoldMismatches}`)
     console.log(`[shadow] accountMismatch: ${stats.accountMismatches}   (批 3 起并入 refold 栏;老账读数,比过 ${stats.accountChecks} 次)`)
+    // §17.7 #15:usage 三格对拍(折叠账 vs 会话容器上那三格)。**这一批只报不进门**
+    // —— 它是"该不该接管"的勘察读数,红了要查产地而不是调判据。
+    console.log(`[shadow] usageMismatch  : ${stats.usageMismatches}   (比过 ${stats.usageChecks} 次;#15 勘察列,暂不进门)`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见
     // —— `legacyPartial` = 老会话的 events.jsonl 只覆盖了历史尾巴(§10.9)。

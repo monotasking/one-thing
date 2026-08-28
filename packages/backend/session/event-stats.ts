@@ -110,6 +110,17 @@ export interface SessionShadowStats {
    * 门仍然认它 —— 老账里的非零必须仍然是红。
    */
   accountMismatches: number
+  /**
+   * §17.7 #15:**usage 三格对拍**比过几次 —— 折叠账的
+   * `totalInputTokens/totalOutputTokens/totalTokens` + `contextSize` /
+   * `lastInputTokens` 对**会话容器上此刻那三格**(三个就地写者的产物)。
+   *
+   * 这一批只对拍不接管:红了说明两边口径有差(时序 / 重复计数 / 没有产地),
+   * 差在哪要查产地,不许调判据。
+   */
+  usageChecks: number
+  /** usage 三格对不上的次数。 */
+  usageMismatches: number
   /** 按断言种类拆的不等计数(`messages` / `history`)。 */
   byKind: Record<string, number>
   /**
@@ -139,6 +150,8 @@ const EMPTY: SessionShadowStats = {
   refoldMismatches: 0,
   accountChecks: 0,
   accountMismatches: 0,
+  usageChecks: 0,
+  usageMismatches: 0,
   byKind: {},
   skipped: {},
 }
@@ -172,6 +185,8 @@ function load(): SessionShadowStats {
       refoldMismatches: Number(parsed.refoldMismatches) || 0,
       accountChecks: Number(parsed.accountChecks) || 0,
       accountMismatches: Number(parsed.accountMismatches) || 0,
+      usageChecks: Number(parsed.usageChecks) || 0,
+      usageMismatches: Number(parsed.usageMismatches) || 0,
       byKind: normalizeByKind(parsed.byKind),
       skipped: normalizeByKind(parsed.skipped),
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
@@ -238,6 +253,8 @@ export function bumpSessionShadowStats(patch: Partial<SessionShadowStats>): void
   if (patch.refoldMismatches) stats.refoldMismatches += patch.refoldMismatches
   if (patch.accountChecks) stats.accountChecks += patch.accountChecks
   if (patch.accountMismatches) stats.accountMismatches += patch.accountMismatches
+  if (patch.usageChecks) stats.usageChecks += patch.usageChecks
+  if (patch.usageMismatches) stats.usageMismatches += patch.usageMismatches
   if (patch.mismatches) {
     stats.mismatches += patch.mismatches
     stats.lastMismatchAt = Date.now()

@@ -128,6 +128,22 @@ export interface AgentLoopExecutorState {
 		cacheWriteTokens?: number;
 		reasoningTokens?: number;
 	};
+	/**
+	 * **已经计进会话总账的那一截**(§17.7 #15)。
+	 *
+	 * `accumulatedUsage` 是**这次执行到此刻的累计**,而 `updateUsage` 每跑完一次
+	 * **流生成**就调一次 —— 一次带工具的回合有两次生成(初始 + 工具结果之后的
+	 * 续跑),于是同一截用量被加进会话总账两遍。真机 battery 上这一格稳定读出
+	 * 「容器 = 账本 × 2」(265 次对拍里 8 次不等,全是多次生成的那几条)。
+	 *
+	 * 记下"已经写进去多少",每次只写**增量**:会话总账从此与账本
+	 * (`request/response.usage` 累加)逐格相等。
+	 */
+	usageWrittenToSession?: {
+		inputTokens: number;
+		outputTokens: number;
+		totalTokens: number;
+	};
 	lastTurnUsage?: {
 		inputTokens: number;
 		outputTokens: number;
@@ -1029,11 +1045,29 @@ export async function executeAgentLoopStreamGeneration(
 				ctx.assistantMessageId,
 				state.accumulatedUsage,
 			);
-			updateSessionUsage(
-				ctx.sessionId,
-				state.accumulatedUsage,
-				state.lastTurnUsage,
-			);
+			// **只写增量**(§17.7 #15):消息上那一格要的是"这次执行到此刻的累计"
+			// (上面那一行),而会话总账是个**加法器** —— 把累计值再加一遍就是把
+			// 前面几次生成的用量重复计进去。一次带工具的回合有两次生成,从前正是
+			// 这样把总账翻了倍(battery 实测「容器 = 账本 × 2」)。
+			const written = state.usageWrittenToSession ?? {
+				inputTokens: 0,
+				outputTokens: 0,
+				totalTokens: 0,
+			};
+			const delta = {
+				inputTokens: Math.max(0, state.accumulatedUsage.inputTokens - written.inputTokens),
+				outputTokens: Math.max(0, state.accumulatedUsage.outputTokens - written.outputTokens),
+				totalTokens: Math.max(0, state.accumulatedUsage.totalTokens - written.totalTokens),
+			};
+			state.usageWrittenToSession = {
+				inputTokens: state.accumulatedUsage.inputTokens,
+				outputTokens: state.accumulatedUsage.outputTokens,
+				totalTokens: state.accumulatedUsage.totalTokens,
+			};
+			if (delta.inputTokens === 0 && delta.outputTokens === 0 && delta.totalTokens === 0) {
+				return;
+			}
+			updateSessionUsage(ctx.sessionId, delta, state.lastTurnUsage);
 		},
 		completeStream: (prepared) => {
 			void prepared;

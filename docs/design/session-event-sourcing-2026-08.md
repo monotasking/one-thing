@@ -9429,9 +9429,11 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 15 | **usage / `contextSize` 的正向写者没有事件产地** | `applySessionTokenUsage`(agent-loop 收尾)/ `updateSessionContextSize`(provider-finish)/ server 的 `applyServerSessionUsage` 三处**就地写会话容器**,不经命令面也不产事件。§17.7.1 批 3 **明确不接管**(接管 = 改 token 记账行为,与"零可感知行为变化"相悖);折叠侧照旧折得出自己那一份,只是不落格。补产地与否是单独一次拍板 | §17.7.1 批 2 五 / 批 3 八 |
 | 16 | **冷加载修复仍以存储突变落盘** | `sanitizeSessionOnStartup` 已改为直调 `computeSessionRepairOnLoad`(纯派生、COW),但结果仍由 `loadSessionWithAdapters` 写回 `meta.json`。"搬成纯派生出口"那一半**停在诊断**:它唯一的差别是盘上带不带修好的值(下次冷加载幂等地再修一遍),属于存储可见的变化而没有消费者要求 | §17.7.1 批 3 二 |
 | 17 | **会话事件读面没有分页**(`list` / `listRaw` 都是) | 契约就是 `{sessionId}` → `{events}`,**整份拉**。投影消费者从此走 `listRaw`(全集原词汇;老 `list` 是轨迹面板的老七类词汇,两者语义不同不是范围不同 —— 见 §17.8.4),但**分页这一格两条都欠着**。ui-refold 因此必须靠采样 + 双闸兜住(见 §17.8.3);真机实测最大一本 50.4MB / 258 条事件 —— 条数闸拦不住它,字节闸才拦得住。真正的修法是给读面加 `after`/`limit`(或随留账 #7 分卷一起定),**未修** | §17.8.3;§17.8.4 |
-| 18 | **ui-refold 两条豁免待追认** | ① **`tool-call` 渲染锚点**:工具行的锚点有两种形状(`render-anchors.ts:39` 自己把 `data-steps` 与 `tool-call` 并列),live 落前者、重放合成后者且**明文不互相冲掉**;而尺子(`canonical.ts:103`)只丢 `data-steps` —— 因为 S 线影子是折 vs 折,从没有 live 侧上台。**要不要由 G4 一并收进去(改的是 S 线共用的尺)待拍**。② **`attachments`**:账本存 `BlobRef`,renderer 没有 blob 读取口,带附件的消息两侧结构上不可能相等。两条都在 ui-refold 内具名排除,各配一只反证测试 | §17.8.3 |
+| 18 | ~~**ui-refold 两条豁免待追认**~~ **① 已结清(§17.7 #4,2026-08-28)**:`tool-call` 渲染锚点收进 canonical 的 G4 —— 尺子从此认两种锚点形状(`data-steps` 重放合成 / `tool-call` 流式当场落,core `render-anchors.ts:39` 本来就并列写着),S 线与 U 线同一把尺,ui-refold 那份具名排除撤销、反证改成「过尺即相等」。② `attachments` 仍具名排除:账本存 `BlobRef`,U2-a0 的读口只把正文取回渲染层,判据那一侧仍要宿主注入解析器 —— 与 U2-b 一起收 |
 | 19 | **会话沙箱路径的第二段仍由「产品空间」决定** | `workspaceSandboxRootForSession`(`server/runtime.ts`)历来把 `(userId, workspaceId)` 拼成 `owners/<uid>/<wid>/`,而第二格上盘的其实是空间 —— 非 default 空间里建的会话,文件就住在 `owners/<uid>/<space>/`。2026-08-28 拆字段那批**故意没动它**(改读租户格 = 那些文件当场"消失"),按 `owner ?? 盘上原值` 取值,存量与新建都与从前逐字相同。**空间该不该决定沙箱路径**(workspace-spaces 的 per-space 目录方案里它是有意的)——待拍 | `docs/audit/web-lane-sse-diagnosis-2026-08-28.md` §6.3 |
 | 20 | **服务端会话列表面仍然摘掉 `workspaceId`** | `stripSessionOwnerFields` / `toSessionMeta` / `toChatSession` 把空间连同租户格一起摘掉,所以 web 端从来不知道会话属于哪个空间(左栏因此不按空间过滤)。把它留下是**可感知的行为变化**(web 左栏会开始按空间过滤,会话可能"消失"),拆字段那批不动 —— 待拍 | 同上 |
+| 21 | **#15 usage 收口:口径差待裁** | 折叠账(`request/response.usage` 累加)对会话容器那三格,265 次对拍 **257 次逐格相等**;**8 次不等,全是带工具的多请求回合,容器恒为账本的 2 倍**(三个 total;`contextSize`/`lastInputTokens` 从不出错)。两侧的数出自同一批 provider 读数,差在**怎么合成**:账本按「每次请求的 usage 相加」,引擎按「这次执行的累加器」。哪一个对 = **token 记账口径的裁定**(改了会改变所有带工具会话显示的总额),**未切换**。另:`context-compact` 盖的 `retainedContextSize` 要到**下一次请求**才有产地,是抢跑不是缺产地 | §17.7.4 |
+| 22 | **#16 冷加载修复读路化:待 #15 之后** | 修复本身早已是纯派生 + 只在本进程首次接手时做一次(`repairOnFirstTouch`),要改的只是「结果还写不写盘」。**卡在两处**:① `getSessionRaw` 读盘上那份(所有权回填等用它),不写盘之后它拿到未修复值;② 与 #15 都动 `contextSize`,#15 未切之前改它等于多一个写者。**次序已定:先 #15 后 #16**,未切换 | §17.7.4 |
 
 ### 17.6 两态图 artifact 与终态的出入(图待更新,本节只记差异)
 
@@ -11026,3 +11028,74 @@ transport / ui,均未动基线);battery GREEN(225 refoldChecks / 0 mismatch);
 进临时库的,原库一个字节未动)。真机门读数:6 轮会话 `checks 2 / mismatches 0`、
 `liveSkippedSelfCompare 6`、`errors 0`、日志零 warn。**未提交。**
 
+
+### 17.7.4 #4 / #15 / #16 落地记录:尺子归并 + usage 影子对拍(2026-08-28,opus 施工,未提交)
+
+*一、#4 豁免归并(**已完成**)*
+
+`canonical.ts` 的 G4 从此认**两种**工具渲染锚点:`data-steps`(重放合成)与
+`tool-call`(流式当场落)。core 自己早就把它们并列写在一处
+(`session/render-anchors.ts:39` 的 `hasCoreRenderToolAnchor`),而「live 一种、重放另一种」
+是**设计**(合成时明文不冲掉 live 的那一个,冲掉会让工具行 remount)。从前尺子只丢前者,
+是因为 S 线的影子是**折 vs 折**、两侧都不会有 live 的 `tool-call`;U 线第一次把 live 侧
+摆上台,于是它在门内自己又排除了一次 —— **两把尺**。现在只有一把:ui-refold 那份具名
+排除撤销,它的反证测试改成「过尺即相等」。**留账 18 ① 结清**。
+
+改共用尺的全量回归:battery GREEN、refold 0 失配、S0 合同 / 字节回归 / 账预检 /
+ephemeral 全绿(见门读数)。
+
+*二、#15 usage 收口(**影子已上,切换停诊**)*
+
+新增一列对拍(`usageChecks` / `usageMismatches`,`session-shadow.jsonl` 的
+`kind:'usage'`)。比对点选在**写者写完那一刻**(`session/usage.ts` 的
+`updateSessionUsage` 之后),不是 run 收尾 —— 挂在 run/end 上比会稳定看见「容器还没写」
+的那一帧(实测整栏 B 侧恒 0,而同一条会话静默几秒后逐格相等)。这一列**只报不进门**
+(battery 的两处判据显式滤掉 `kind:'usage'`),因为它记的正是「要被裁定之后收口掉的差」。
+
+**读数:265 次对拍 / 8 次不等。** 不等的全是**带工具的多请求回合**,形状恒定:
+
+```
+totalInputTokens   A(账本)1063   B(容器)2126
+totalOutputTokens  A(账本)  46   B(容器)  92
+totalTokens        A(账本)1109   B(容器)2218
+```
+
+`contextSize` / `lastInputTokens` **一次都没错**。两侧的数出自同一批 provider 读数,
+差在**怎么合成**:账本按「每次请求的 `request/response.usage` 相加」,引擎按「这次执行的
+累加器」。**哪一个是对的是 token 记账口径的裁定**(改了会改变所有带工具会话显示的总额),
+所以**没有切换**,三个写者原地不动。
+
+顺手补了一处**潜在**重复计数(不是上面那 8 条的成因,实测读数一格未变):
+`updateUsage` 每跑完一次**流生成**就把 `accumulatedUsage`(执行到此刻的累计)加进会话
+总账 —— 一次执行里若有两次生成,同一截用量会被加两遍。现在记下「已经写进去多少」、
+**只写增量**(`usageWrittenToSession`)。它是构造上正确的,只是今天的路径上碰不到。
+
+另一件勘察结论:`context-compact` 那个写者盖的 `retainedContextSize`,账本上要到
+**下一次请求**才有产地(`request/response.usage.inputTokens`)。它是**抢跑**,不是没有
+产地 —— 收口时这一格会晚一个请求才对上,属可感知的变化,一并挂裁定。
+
+*三、#16 冷加载修复读路化(**勘察完,未切换**)*
+
+修复本身**早已是纯派生**,而且**只在本进程第一次接手这条会话时做一次**
+(`session-repository.ts` 的 `repairOnFirstTouch` → `sanitizeSessionOnStartup` →
+`computeSessionRepairOnLoad`,一字未动)。要改的只是最后一步:`loadSessionWithAdapters`
+在 sanitizer 改过东西时会 `saveSession` 写回盘。
+
+**卡在两处,所以停诊**:
+
+1. **`getSessionRaw` 读的是盘上那份**(所有权回填等用它)。今天首次冷加载之后盘上是
+   修好的值;不写盘之后它拿到的是**未修复**值 —— 这是一个真消费者的可见变化;
+2. **与 #15 撞车**:两件都动 `contextSize`。#15 没切之前把冷加载修复改成读侧现修,
+   等于给这一格再添一个写者。
+
+**次序已定:先 #15(收口 usage 三格)后 #16。** 两件都记进 §17.5(留账 21 / 22)。
+
+*四、门读数*
+
+typecheck 0;四包 **7114+ 绿**(稳定红只有 `App.container-layout`,外壳批不认领;
+`sessions-delete-cascade` / `catalog-broadcast` / `ipc-hub-notify` / `ipc-hub-plugin-panels`
+在满载并行下各抖过一次,**单跑全绿**);battery **GREEN**(refoldChecks 220+、
+refoldMismatches 0、mismatches 0、portMismatches 0、appendFailures 0;新列
+usageMismatch 8 / 265 —— 勘察列不进门);字节回归 · S0 合同 · 账预检 · ephemeral
+(含指针闸)全绿;**五棘轮**全绿(均未动基线);`sessions:verify` 本机 0 / 外来存量 9
+零新增;真机 store 只读。**未提交。**

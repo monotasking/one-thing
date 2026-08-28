@@ -1452,7 +1452,14 @@ async function withConcurrency(items, limit, worker) {
 function countShadowLines(store) {
   const file = path.join(store, 'log', 'session-shadow.jsonl')
   try {
-    return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).length
+    return fs.readFileSync(file, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      // §17.7 #15:`kind:'usage'` 是**勘察列**(折叠账 vs 会话容器那三格),
+      // 这一批只报不进门 —— 它记的是"就地写者与折叠的差",而那正是要被裁定
+      // 之后收口掉的东西。接管落地时这一行删掉,usage 与别的 kind 同等进门。
+      .filter(line => !line.includes('"kind":"usage"'))
+      .length
   } catch {
     return 0
   }
@@ -2061,11 +2068,13 @@ async function main() {
   // ---- 报告
 
   const shadowLog = path.join(store, 'log', 'session-shadow.jsonl')
-  const lines = fs.existsSync(shadowLog)
+  const lines = (fs.existsSync(shadowLog)
     ? fs.readFileSync(shadowLog, 'utf8').split('\n').filter(Boolean).map(line => {
       try { return JSON.parse(line) } catch { return null }
     }).filter(Boolean)
-    : []
+    : [])
+    // §17.7 #15:`usage` 是勘察列(只报不进门,理由见 `countShadowLines`)。
+    .filter(line => line.kind !== 'usage')
   const mismatchesBySession = new Map()
   for (const line of lines) {
     mismatchesBySession.set(line.sessionId, (mismatchesBySession.get(line.sessionId) ?? 0) + 1)

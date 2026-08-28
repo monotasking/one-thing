@@ -53,7 +53,7 @@
  * (`addLocalMessage`:它说的正是"这条没能到达账本")。它们住在
  * `stores/session-overlays.ts` 那条显式车道里。
  *
- * ## 三条具名豁免(各配一只反证)+ 一条已撤
+ * ## 两条具名豁免(各配一只反证)+ 两条已撤
  *
  * 1. **`data-steps` 渲染锚点**(G4):`canonicalChatMessage` 自己就把它丢掉
  *    (`canonical.ts` 的 `isRenderAnchorPart`)。裁定要求"两侧同过 core
@@ -68,7 +68,9 @@
  *    (`{hash,bytes,mime}`,§10.1 G8),物化时由**宿主注入的 blob 读取口**换回真身
  *    —— 而 renderer 没有那个口(blob 在主进程的 `sessions/<id>/blobs/`)。于是带
  *    附件的消息两侧必然不同,且那**不是** bug。同样具名排除,反证同款。
- * 4. **`tool-call` 渲染锚点**(施工中发现,待追认):工具行的锚点有**两种形状**,
+ * 4. ~~**`tool-call` 渲染锚点**~~ **已归并进尺子(§17.7 #4,留账 18 结清)**:
+ *    canonical 的 G4 从此认两种锚点形状,S 线与 U 线同一把尺,这里不再自己排除。
+ *    原文如下:工具行的锚点有**两种形状**,
  *    core 自己把它们并列写在一处(`session/render-anchors.ts:39`
  *    `hasCoreRenderToolAnchor`:`data-steps` 或 `tool-call`)。流式期间手写侧当场
  *    落一个 `tool-call` 块;从账本重放时 `synthesizeCoreToolAnchors` 合成的是
@@ -196,7 +198,8 @@ function shouldSample(sessionId: string): boolean {
 type AnyRecord = Record<string, unknown>
 
 /**
- * 拿掉具名豁免里**尺子管不到**的那两条(附件 / `tool-call` 锚点,见文件头)。
+ * 拿掉具名豁免里**尺子管不到**的那一条(附件),外加 overlay 车道那一格
+ * (`image-loading`)—— 见文件头。
  *
  * `data-steps` 不在这里 —— `canonicalChatMessage` 自己就丢它,再拿掉一次就是在
  * 尺子之外加了第二层归一(纪律 10)。
@@ -204,11 +207,9 @@ type AnyRecord = Record<string, unknown>
 function stripNamedExemptions(message: ChatMessage): AnyRecord {
   const { attachments: _attachments, ...rest } = message as unknown as AnyRecord
   const parts = (rest.contentParts as AnyRecord[] | undefined)?.filter(part => !(
-    // 工具渲染锚点的**第二种形状**(见文件头豁免)。
-    part?.type === 'tool-call'
     // **overlay 车道**(§17.8 前置批):占位型瞬态不是消息树的一部分,账本上
     // 按定义没有它(追加即撤)。这不是豁免一格事实,是车道划分。
-    || part?.type === 'image-loading'
+    part?.type === 'image-loading'
   ))
   if (parts) rest.contentParts = parts
   return rest
