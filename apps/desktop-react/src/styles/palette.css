@@ -27,6 +27,8 @@
   --st-sel-hover: rgba(124, 111, 160, 0.16);
   /* 薄膜落在 surface-2 上的实色版:渐变/透明叠层没法做 background-color 过渡 */
   --surface-2-hover: color-mix(in srgb, var(--text-1) 6%, var(--surface-2));
+  --surface-2-sel: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+  --surface-2-sel-hover: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
 
   --scrim: rgba(43, 42, 38, 0.4);
 

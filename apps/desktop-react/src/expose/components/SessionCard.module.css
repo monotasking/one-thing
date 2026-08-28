@@ -30,14 +30,23 @@
   border-color: var(--line-2);
 }
 
-/* 柔环用 outline 而不是 box-shadow —— 这样 hover 的 sh-2 和它可以叠加而不互相盖掉。 */
-.focused,
-.current {
+/* 键盘焦点:柔光环。只属于键盘会话 —— 别的语义不许借用这圈光。 */
+.focused {
   outline: var(--focus-ring-w) solid var(--accent-ring);
   outline-offset: 0;
 }
 
+/*
+ * 当前会话 = selected 词汇(交互态板):accent 10% 薄膜底 + accent 边。
+ * 08-29 拍:此前借焦点柔光环当"当前"徽记,看着像卡片永久卡着焦点光晕,已废。
+ */
 .current {
+  border-color: var(--accent);
+  background: var(--surface-2-sel);
+}
+
+.current:hover {
+  background: var(--surface-2-sel-hover);
   border-color: var(--accent);
 }
 
