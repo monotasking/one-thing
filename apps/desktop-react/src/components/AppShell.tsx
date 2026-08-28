@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { useExposeStore } from '../expose/store'
 import { ExposeOverlay } from '../expose/components/ExposeOverlay'
@@ -8,6 +8,7 @@ import { ComposerMock } from './ComposerMock'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
 import { PinnedPanel } from './PinnedPanel'
+import { FloatLayer } from './FloatWindow'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
 import { SCROLL_SETTLE_MS } from './motion'
@@ -40,9 +41,24 @@ export function AppShell() {
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockAlign = useStageStore((st) => st.dockAlign)
-  const pinnedCount = useStageStore((st) => st.pinned.length)
+  const pinnedCount = useStageStore((st) => st.shelves.right.tabs.length)
+  const toggleItem = useStageStore((st) => st.toggleItem)
   // L2 接线:总览开着时主区缩暗,总览层自己盖在上面。
   const exposeOpen = useExposeStore((st) => st.view.mode !== 'closed')
+
+  /**
+   * ⌘P = 开关检索面板(08-29 拍板:与 Dock 上那块瓦同一个东西,不再是"盖一层总览")。
+   * 全局常驻监听住在外壳这一层:它得能在面板关着时把它叫起来,而面板此刻并不挂载。
+   */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'p') return
+      e.preventDefault()
+      toggleItem('search')
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [toggleItem])
 
   // 聊天滚动容器只有一个 ref,两个消费者:Dock 降淡 与 TOC 当前键。
   const chatRef = useRef<HTMLDivElement>(null)
@@ -99,6 +115,9 @@ export function AppShell() {
       <div className={dockClass} onMouseLeave={autohide ? () => setPeeking(false) : undefined}>
         <Dock dimmed={dimmed} />
       </div>
+
+      {/* 浮窗层:在内容之上、在舞台 scrim 之下(--z-float 200 < --z-overlay 500)。 */}
+      <FloatLayer />
 
       <StageOverlay />
       <ExposeOverlay />

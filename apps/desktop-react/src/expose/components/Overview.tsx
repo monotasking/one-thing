@@ -1,7 +1,6 @@
 import { useRef } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search } from '../../components/icons'
 import { Button } from '../../ui/Button'
-import { Kbd } from '../../ui/Kbd'
 import { plural, useT } from '../../i18n'
 import { GROUPS } from '../data'
 import { useExposeStore } from '../store'
@@ -39,7 +38,6 @@ export function Overview() {
             placeholder={t('expose.searchPlaceholder')}
             aria-label={t('expose.searchLabel')}
           />
-          <Kbd>{t('shortcut.palette')}</Kbd>
         </div>
         <Button variant="ghost" pill className={s.newProject}>
           <Plus className={s.newIcon} strokeWidth={1.75} aria-hidden="true" />

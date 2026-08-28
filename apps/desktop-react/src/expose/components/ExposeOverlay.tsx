@@ -30,7 +30,6 @@ export function ExposeOverlay() {
   const view = useExposeStore((st) => st.view)
   const focusId = useExposeStore((st) => st.focusId)
   const query = useExposeStore((st) => st.query)
-  const toggle = useExposeStore((st) => st.toggle)
   const escape = useExposeStore((st) => st.escape)
   const setQuery = useExposeStore((st) => st.setQuery)
   const moveFocus = useExposeStore((st) => st.moveFocus)
@@ -52,17 +51,7 @@ export function ExposeOverlay() {
     return () => clearTimeout(t)
   }, [view, held])
 
-  // ⌘P 是唯一的常驻监听:它得能在总览关着的时候把总览叫起来。
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'p') return
-      e.preventDefault()
-      toggle()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [toggle])
-
+  // ⌘P 归检索面板(08-29 拍板),不再叫总览 —— 总览的入口是顶栏标题与 Dock 上的会话总览瓦。
   // 其余按键只在总览开着时接管;关着时这个 effect 直接返回 = 零监听,不碰 composer。
   useEffect(() => {
     if (view.mode === 'closed') return

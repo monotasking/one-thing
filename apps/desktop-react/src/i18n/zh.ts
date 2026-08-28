@@ -26,6 +26,7 @@ export const zh = {
   'dock.openWith': '打开方式',
   'dock.openDefault': '跟随默认',
   'dock.openStage': '弹窗',
+  'dock.openFloat': '浮窗',
   'dock.openPinned': '钉在右侧',
   'dock.edge': '停靠边',
   'dock.edgeBottom': '下边',
@@ -40,17 +41,22 @@ export const zh = {
   'dock.sizeSm': '小',
   'dock.sizeMd': '中',
   'dock.sizeLg': '大',
-  'dock.settings': '设置…',
+  'dock.settings': 'Dock 设置…',
 
   /* ── Dock 上那几块瓷砖的名字(是界面标签,不是内容) ───────────────── */
   'item.files': '文件',
   'item.diff': '改动',
   'item.terminal': '终端',
   'item.browser': '浏览器',
+  'item.sessions': '会话总览',
+  'item.search': '检索',
   'item.settings': '设置',
 
   /* ── 舞台 / 钉栏 ──────────────────────────────────────────────────── */
-  'stage.pinToRight': '钉到右侧',
+  'stage.pinToEdge': '钉到边',
+  'stage.toFloat': '变浮窗',
+  'float.toStage': '上舞台',
+  'float.toDock': '收回 Dock',
   'pinned.label': '钉栏',
   'pinned.collapse': '收起钉栏',
   'pinned.expand': '展开钉栏',
@@ -61,7 +67,7 @@ export const zh = {
   'settings.dockAlways': '常驻',
   'settings.dockAutohide': '自动隐藏',
   'settings.defaultOpen': '默认打开方式',
-  'settings.defaultOpenHint': '点 Dock 图标时的落点:弹窗居中,钉栏常驻右侧',
+  'settings.defaultOpenHint': '点 Dock 图标时的落点:弹窗居中,浮窗可拖可缩,钉栏常驻右侧',
   'settings.overrideNote': '每个图标可在右键菜单里单独覆盖',
   'settings.workdir': '工作目录',
   'settings.language': '语言 / Language',
@@ -95,6 +101,7 @@ export const zh = {
 
   /* ── 搜索结果 ─────────────────────────────────────────────────────── */
   'search.youPrefix': '你:',
+  'search.empty': '输入关键词,搜会话、章节与消息',
 
   /* ── Quick Look ───────────────────────────────────────────────────── */
   'quicklook.enter': '进入 ↵',

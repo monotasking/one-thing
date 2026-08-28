@@ -1,0 +1,102 @@
+@keyframes floatIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 浮窗面的配方与舞台面板同一份:r-3 / surface-2 / sh-3 / 1px line-1。
+ * 差别只在它自己定位、自己叠序 —— 位置与身量是内联的(它们是数据,不是样式),
+ * 叠序是 --z-float 加 floatOrder 的次序。
+ * 这里没有 transition:拖移与缩放要跟手,一格过渡都不许有。 */
+.win {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+  animation: floatIn var(--dur-enter) var(--ease-out);
+}
+
+/* 出场:反向播放同一条曲线,时长走 --dur-exit —— 同 StageOverlay 的判例。 */
+.leaving {
+  pointer-events: none;
+  animation: floatIn var(--dur-exit) var(--ease) reverse;
+}
+
+.head {
+  height: var(--float-header-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+  user-select: none;
+  touch-action: none;
+}
+
+.headIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-2);
+  flex: none;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.action {
+  flex: none;
+  width: var(--btn-sm);
+  height: var(--btn-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-2);
+  color: var(--text-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.action:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.icon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 把手是不可见热区:自己不画一个像素,只提供光标与指针命中。 */
+.handle {
+  position: absolute;
+  touch-action: none;
+}
+
+.hN { top: 0; left: 0; right: 0; height: var(--float-handle); cursor: ns-resize; }
+.hS { bottom: 0; left: 0; right: 0; height: var(--float-handle); cursor: ns-resize; }
+.hW { top: 0; bottom: 0; left: 0; width: var(--float-handle); cursor: ew-resize; }
+.hE { top: 0; bottom: 0; right: 0; width: var(--float-handle); cursor: ew-resize; }
+
+/* 角压在边之上(DOM 里排在后面),所以贴角拖的是两轴而不是一轴。 */
+.hNW { top: 0; left: 0; width: var(--float-handle); height: var(--float-handle); cursor: nwse-resize; }
+.hNE { top: 0; right: 0; width: var(--float-handle); height: var(--float-handle); cursor: nesw-resize; }
+.hSW { bottom: 0; left: 0; width: var(--float-handle); height: var(--float-handle); cursor: nesw-resize; }
+.hSE { bottom: 0; right: 0; width: var(--float-handle); height: var(--float-handle); cursor: nwse-resize; }

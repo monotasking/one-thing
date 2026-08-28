@@ -2,9 +2,22 @@ import type { Locale, MessageKey } from '../i18n'
 
 /**
  * 形态机的形状。这里只有数据,没有 React、没有 DOM。
- * 三种形态:dock(收在坞里)/ stage(舞台,居中浮层,一次一个)/ pinned(钉在右栏,一组 tab)。
+ *
+ * W1 起形态不再是三态枚举,而是 **Placement** —— 一个 item 当下落在哪儿:
+ * dock(收在坞里,缺省)/ stage(舞台,全系统至多一个)/ float(浮窗)/ edge(停在某条边的架子上)。
+ * 这四个是互斥的:placements 表是唯一事实源,一个 id 在表里只有一条记录,
+ * 「它在钉栏还是在浮窗」不再靠两个数组各说各话。
  */
-export type StageForm = 'dock' | 'stage' | 'pinned'
+export type ShelfSide = 'left' | 'right' | 'top' | 'bottom'
+
+export type Placement =
+  | { kind: 'dock' }
+  | { kind: 'stage' }
+  | { kind: 'float' }
+  | { kind: 'edge'; side: ShelfSide }
+
+/** 形态的名字 = Placement 的 kind。组件想分支时读它,别自己拼条件。 */
+export type StageForm = Placement['kind']
 
 export type BadgeTone = 'danger' | 'ok'
 
@@ -23,30 +36,61 @@ export interface StageItemSpec {
   /** lucide 图标名 */
   icon: string
   badge?: StageBadge
+  /**
+   * 接管型:点它是「换一整屏」(会话总览),不是「开一个面」。
+   * 这种 item 只有一种打开法,所以它不进 Placement —— 也就没有打开方式可选。
+   */
+  takeover?: boolean
+}
+
+/** 浮窗矩形。按 item 记忆,所以收回 Dock 再开还在老位置。 */
+export interface FloatRect {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** 视口尺寸。钳制要用它,而纯函数不许读 window —— 所以由调用方递进来。 */
+export interface Viewport {
+  w: number
+  h: number
+}
+
+/**
+ * 一条边上的架子。四条边各有一份(本批只有 right 有真 UI,另三条 W2 接管),
+ * thickness 是「厚度」而不是宽度 —— 竖边量宽、横边量高,同一个数换个轴读。
+ */
+export interface ShelfState {
+  tabs: string[]
+  activeId: string | null
+  thickness: number
+  collapsed: boolean
+}
+
+export interface StageState {
+  /**
+   * 唯一事实源:id → 它当下在哪。缺席 = dock(所以初始表是空的,不是全量表)。
+   * 「舞台至多一个」是 transitions 维护的不变式,不是类型能表达的。
+   */
+  placements: Record<string, Placement>
+  /** 浮窗矩形按 item 记忆 —— 收回 Dock 不擦,再开还在老位置。 */
+  floats: Record<string, FloatRect>
+  /** 浮窗置顶序,末位最上。只登记当下是 float 的 id。 */
+  floatOrder: string[]
+  shelves: Record<ShelfSide, ShelfState>
+  /** 递增计数,触发架子闪烁 */
+  flashPinned: number
 }
 
 /**
  * 「打开方式」:每个图标可覆盖的落点。
  * 'default' 是「不表态」,真正落点由全局默认决定 —— 所以它只存在于设置层,
- * 形态机接到的永远是已解析的 ResolvedOpen。
+ * 形态机接到的永远是已解析的 Placement。
+ * 'pinned' 的语义 = edge:right;值不改名是为了旧档案兼容,翻译收在 placementForOpen 一处。
  */
-export type OpenBehavior = 'default' | 'stage' | 'pinned'
+export type OpenBehavior = 'default' | 'stage' | 'float' | 'pinned'
 export type ResolvedOpen = Exclude<OpenBehavior, 'default'>
-
-export interface StageState {
-  stageId: string | null
-  /** 钉栏里的 tab 次序;空数组 = 整栏不存在。 */
-  pinned: string[]
-  activePinnedId: string | null
-  pinnedWidth: number
-  /**
-   * 钉栏收起态。收起的是「整栏」而不是某个 tab —— 栏还在(细梁),
-   * 所以它是栏的状态,不是 tab 的;pinned/activePinnedId 一个都不动。
-   */
-  pinnedCollapsed: boolean
-  /** 递增计数,触发钉栏闪烁 */
-  flashPinned: number
-}
 
 /**
  * 设置层:不参与形态推导,只参与「点一下该去哪」的解析。
@@ -86,3 +130,15 @@ export const DOCK_AXIS: Record<DockEdge, 'x' | 'y'> = {
   left: 'y',
   right: 'y',
 }
+
+/**
+ * 「钉到边」的四个选项。舞台头和浮窗头各摆一次同一个菜单,
+ * 所以这张「值 → 文案键」的表只该有一份 —— 与 DOCK_AXIS 同一个理由住在这里。
+ * 文案复用 Dock 那四个边键:同一句话不该有第二个键。
+ */
+export const SHELF_SIDE_CHOICES: Array<{ value: ShelfSide; labelKey: MessageKey }> = [
+  { value: 'right', labelKey: 'dock.edgeRight' },
+  { value: 'left', labelKey: 'dock.edgeLeft' },
+  { value: 'top', labelKey: 'dock.edgeTop' },
+  { value: 'bottom', labelKey: 'dock.edgeBottom' },
+]

@@ -9,24 +9,24 @@ import { ChevronsRight } from './icons'
 import { FLASH_MS } from './motion'
 import s from './PinnedPanel.module.css'
 
+/** 本批只有右边这条架子有真 UI(W2 接管另外三条),所以这个常量就是本组件的边。 */
+const SIDE = 'right' as const
+
 /**
- * 钉栏 = 一组 tab 的容器。它自己不画 tab 条 —— 那是 ui/Tabs 的活;
- * 这里只做四件事:把 pinned 翻成 TabSpec、渲染活动 tab 的内容、拖宽、收/展。
+ * 钉栏 = 右边那条架子的界面。它自己不画 tab 条 —— 那是 ui/Tabs 的活;
+ * 这里只做四件事:把 shelf.tabs 翻成 TabSpec、渲染活动 tab 的内容、拖宽、收/展。
  *
  * 收起态是「同一个 <aside> 变窄」,不是换一个组件:aside 在 React 树里位置不变,
  * DOM 节点复用,所以宽度那一次过渡真的会跑;里面的内容当场换掉,不叠第二段动画。
  */
 export function PinnedPanel() {
   const t = useT()
-  const pinned = useStageStore((st) => st.pinned)
-  const activePinnedId = useStageStore((st) => st.activePinnedId)
-  const pinnedWidth = useStageStore((st) => st.pinnedWidth)
-  const collapsed = useStageStore((st) => st.pinnedCollapsed)
+  const shelf = useStageStore((st) => st.shelves[SIDE])
   const flashPinned = useStageStore((st) => st.flashPinned)
-  const setPinnedWidth = useStageStore((st) => st.setPinnedWidth)
-  const toggleCollapsed = useStageStore((st) => st.togglePinnedCollapsed)
-  const unpin = useStageStore((st) => st.unpin)
-  const activate = useStageStore((st) => st.activatePinnedTab)
+  const setShelfThickness = useStageStore((st) => st.setShelfThickness)
+  const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
+  const closeToDock = useStageStore((st) => st.closeToDock)
+  const activateShelfTab = useStageStore((st) => st.activateShelfTab)
 
   const [flashing, setFlashing] = useState(false)
   const firstFlash = useRef(true)
@@ -41,12 +41,15 @@ export function PinnedPanel() {
     return () => clearTimeout(t)
   }, [flashPinned])
 
+  const toggleCollapsed = useCallback(() => toggleShelfCollapsed(SIDE), [toggleShelfCollapsed])
+  const activate = useCallback((id: string) => activateShelfTab(SIDE, id), [activateShelfTab])
+
   // 拖柄:pointer events + capture,松手前不丢事件(拖到 iframe/浮层上也不断)。
   const onPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.currentTarget.setPointerCapture(e.pointerId)
       const move = (ev: PointerEvent) => {
-        setPinnedWidth(window.innerWidth - ev.clientX, window.innerWidth)
+        setShelfThickness(SIDE, window.innerWidth - ev.clientX)
       }
       const up = () => {
         window.removeEventListener('pointermove', move)
@@ -55,29 +58,31 @@ export function PinnedPanel() {
       window.addEventListener('pointermove', move)
       window.addEventListener('pointerup', up)
     },
-    [setPinnedWidth],
+    [setShelfThickness],
   )
 
   // 持久化过的 id 可能已经不在 items 表里(将来 items 换来源时),查不到就当它不存在。
   const tabs = useMemo<TabSpec[]>(
     () =>
-      pinned.flatMap((id) => {
+      shelf.tabs.flatMap((id) => {
         const item = findItem(id)
         return item ? [{ id: item.id, label: t(item.titleKey), icon: item.icon }] : []
       }),
-    [pinned, t],
+    [shelf.tabs, t],
   )
 
   if (tabs.length === 0) return null
-  const active = tabs.some((t) => t.id === activePinnedId) ? activePinnedId : null
+  const active = tabs.some((tab) => tab.id === shelf.activeId) ? shelf.activeId : null
 
   return (
     <aside
-      className={[s.panel, collapsed && s.collapsed, flashing && s.flashing].filter(Boolean).join(' ')}
-      style={{ width: collapsed ? 'var(--pin-rail-w)' : `${pinnedWidth}px` }}
+      className={[s.panel, shelf.collapsed && s.collapsed, flashing && s.flashing]
+        .filter(Boolean)
+        .join(' ')}
+      style={{ width: shelf.collapsed ? 'var(--pin-rail-w)' : `${shelf.thickness}px` }}
       aria-label={t('pinned.label')}
     >
-      {collapsed ? (
+      {shelf.collapsed ? (
         <button
           type="button"
           className={s.rail}
@@ -89,7 +94,13 @@ export function PinnedPanel() {
           <div className={s.resize} onPointerDown={onPointerDown} role="separator" aria-orientation="vertical" />
           <div className={s.head}>
             <div className={s.tabsWrap}>
-              <Tabs items={tabs} activeId={active} onSelect={activate} onClose={unpin} label={t('pinned.label')} />
+              <Tabs
+                items={tabs}
+                activeId={active}
+                onSelect={activate}
+                onClose={closeToDock}
+                label={t('pinned.label')}
+              />
             </div>
             <button
               type="button"

@@ -1,23 +1,53 @@
 import type {
+  FloatRect,
   OpenBehavior,
+  Placement,
   ResolvedOpen,
+  ShelfSide,
+  ShelfState,
   StageForm,
   StageSettings,
   StageState,
+  Viewport,
 } from './types'
 
-/** 钉栏最小宽度,与 --pin-min 同一事实。 */
+/** 架子最小厚度,与 --pin-min 同一事实。 */
 export const PIN_MIN = 320
+export const SHELF_DEFAULT_THICKNESS = 400
+
+/** 浮窗的四条硬约束:最小身量、必须留在视口内的那一截、新窗默认身量。 */
+export const FLOAT_MIN_W = 280
+export const FLOAT_MIN_H = 200
+export const FLOAT_KEEP = 40
+export const FLOAT_DEFAULT_W = 720
+export const FLOAT_DEFAULT_H = 520
+
+/**
+ * 纯函数不许读 window,所以视口由调用方递进来;测试里给定值,store 里给真视口。
+ * 这个兜底只在「谁都没给」时用,存在的意义是让签名可选而不是让它有第二套真相。
+ */
+export const FALLBACK_VIEWPORT: Viewport = { w: 1280, h: 800 }
+
+export const SHELF_SIDES: ShelfSide[] = ['left', 'right', 'top', 'bottom']
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 2
+export const STAGE_PERSIST_VERSION = 3
+
+const DOCK: Placement = { kind: 'dock' }
+
+function emptyShelf(): ShelfState {
+  return { tabs: [], activeId: null, thickness: SHELF_DEFAULT_THICKNESS, collapsed: false }
+}
+
+export function emptyShelves(): Record<ShelfSide, ShelfState> {
+  return { left: emptyShelf(), right: emptyShelf(), top: emptyShelf(), bottom: emptyShelf() }
+}
 
 export const initialStageState: StageState = {
-  stageId: null,
-  pinned: [],
-  activePinnedId: null,
-  pinnedWidth: 400,
-  pinnedCollapsed: false,
+  placements: {},
+  floats: {},
+  floatOrder: [],
+  shelves: emptyShelves(),
   flashPinned: 0,
 }
 
@@ -30,116 +60,362 @@ export const initialStageSettings: StageSettings = {
   dockSize: 'md',
 }
 
-/**
- * v2 新增字段的缺省值。单独列一张表,是因为它同时是两处的事实:
- * 初始态(上面两个 initial)与旧档案迁移(下面 migrate)必须给出同一套默认。
- */
-const V2_DEFAULTS = {
-  dockEdge: initialStageSettings.dockEdge,
-  dockAlign: initialStageSettings.dockAlign,
-  dockSize: initialStageSettings.dockSize,
-  pinnedCollapsed: initialStageState.pinnedCollapsed,
-} as const
+/* ── 派生 ──────────────────────────────────────────────────────────────────── */
 
 /**
- * 形态是「派生」的,不是存的:一个 id 的形态完全由 state 决定。
+ * 形态是「派生」的,不是存的:一个 id 的落点完全由 placements 决定。
  * 组件只能读这个函数,不许自己拼条件。
- * 注意:钉栏里的非活动 tab 也是 pinned —— 形态说的是「它在哪」,不是「它可见吗」。
+ * 注意:架子上的非活动 tab 也是 edge —— 形态说的是「它在哪」,不是「它可见吗」。
  */
+export function placementOf(state: StageState, id: string): Placement {
+  return state.placements[id] ?? DOCK
+}
+
 export function formOf(state: StageState, id: string): StageForm {
-  if (state.stageId === id) return 'stage'
-  if (state.pinned.includes(id)) return 'pinned'
-  return 'dock'
+  return placementOf(state, id).kind
+}
+
+/** 舞台至多一个,所以「谁在舞台上」是个查询而不是一个字段。 */
+export function stageIdOf(state: StageState): string | null {
+  for (const [id, p] of Object.entries(state.placements)) {
+    if (p.kind === 'stage') return id
+  }
+  return null
 }
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
+/* ── 打开方式 → 落点 ───────────────────────────────────────────────────────── */
+
+/**
+ * 设置层的「打开方式」翻成形态机认识的 Placement。全仓唯一一处翻译:
+ * 'pinned' 这个历史值的语义就是「钉到右边那条架子」,别处不许再判一次。
+ */
+export function placementForOpen(open: ResolvedOpen): Placement {
+  if (open === 'stage') return { kind: 'stage' }
+  if (open === 'float') return { kind: 'float' }
+  return { kind: 'edge', side: 'right' }
+}
+
 /**
  * 解析「打开方式」:图标自己的覆盖优先,没表态(或没登记)才落到全局默认。
- * 这是设置层与形态机之间唯一的翻译,形态机本身不认识 'default'。
+ * 直接给出 Placement —— 形态机本身不认识 'default',也不认识 'pinned'。
  */
 export function resolveOpen(
   id: string,
   overrides: Record<string, OpenBehavior>,
   defaultOpen: ResolvedOpen,
-): ResolvedOpen {
+): Placement {
   const own = overrides[id] ?? 'default'
-  return own === 'default' ? defaultOpen : own
+  return placementForOpen(own === 'default' ? defaultOpen : own)
+}
+
+/* ── 浮窗几何(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
+
+/**
+ * 钳制一个浮窗矩形:身量不小于最小档,且至少 FLOAT_KEEP 那么一截留在视口里。
+ * 纵向下界是 0 而不是「露出 40px」—— 标题栏被推出屏顶就再也拖不回来了。
+ */
+export function clampFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
+  const w = Math.max(FLOAT_MIN_W, Math.round(rect.w))
+  const h = Math.max(FLOAT_MIN_H, Math.round(rect.h))
+  return {
+    w,
+    h,
+    x: clamp(Math.round(rect.x), FLOAT_KEEP - w, viewport.w - FLOAT_KEEP),
+    y: clamp(Math.round(rect.y), 0, viewport.h - FLOAT_KEEP),
+  }
+}
+
+/** 新浮窗:居中、默认身量(视口比默认还小就取视口)。 */
+export function defaultFloatRect(viewport: Viewport): FloatRect {
+  const w = Math.min(FLOAT_DEFAULT_W, viewport.w)
+  const h = Math.min(FLOAT_DEFAULT_H, viewport.h)
+  return clampFloatRect({ w, h, x: (viewport.w - w) / 2, y: (viewport.h - h) / 2 }, viewport)
+}
+
+export type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+/**
+ * 从一个把手拖出 (dx, dy) 之后的矩形。拖北/西两边时最小档卡住的是**身量**,
+ * 坐标要跟着回推,否则窗子会一边缩到最小一边继续往外跑。
+ */
+export function resizeFrom(rect: FloatRect, dir: ResizeDir, dx: number, dy: number): FloatRect {
+  let { x, y, w, h } = rect
+  if (dir.includes('e')) w = Math.max(FLOAT_MIN_W, rect.w + dx)
+  if (dir.includes('s')) h = Math.max(FLOAT_MIN_H, rect.h + dy)
+  if (dir.includes('w')) {
+    w = Math.max(FLOAT_MIN_W, rect.w - dx)
+    x = rect.x + rect.w - w
+  }
+  if (dir.includes('n')) {
+    h = Math.max(FLOAT_MIN_H, rect.h - dy)
+    y = rect.y + rect.h - h
+  }
+  return { x, y, w, h }
+}
+
+/* ── 落点变更(唯一的写入口,不变式都在这里维护) ──────────────────────────── */
+
+/** 把 id 从它当下待的地方摘出来:架子 tab 与浮窗序。摘架子的活动 tab 时焦点先右后左。 */
+function detach(state: StageState, id: string): StageState {
+  let shelves = state.shelves
+  let touched = false
+  for (const side of SHELF_SIDES) {
+    const shelf = shelves[side]
+    const at = shelf.tabs.indexOf(id)
+    if (at < 0) continue
+    const tabs = shelf.tabs.filter((x) => x !== id)
+    const activeId = shelf.activeId === id ? (tabs[at] ?? tabs[at - 1] ?? null) : shelf.activeId
+    shelves = { ...shelves, [side]: { ...shelf, tabs, activeId } }
+    touched = true
+  }
+  const inFloat = state.floatOrder.includes(id)
+  if (!touched && !inFloat) return state
+  return {
+    ...state,
+    shelves,
+    floatOrder: inFloat ? state.floatOrder.filter((x) => x !== id) : state.floatOrder,
+  }
 }
 
 /**
- * 点 Dock 图标。四条互斥规则,按顺序判:
- *  - 已在舞台 → 关舞台(再点一次收回去)
- *  - 已在钉栏 → 不新开。这条自己再分两半,判据是「它现在看得见吗」:
+ * 把 id 放到某个落点。**全系统唯一改 placements 的函数** —— 三条不变式都在这里:
+ *  1. 一个 id 只在一处:先从旧落点摘干净(架子 tab / 浮窗序),再登记新的;
+ *  2. 舞台至多一个:新的上台,旧的落回 dock;
+ *  3. dock 是缺席态:落回 dock 就是把它从表里删掉,不留一条 {kind:'dock'}。
+ * 浮窗矩形不在这里擦 —— 那是记忆,收回 Dock 再开还要用。
+ */
+export function openAs(
+  state: StageState,
+  id: string,
+  placement: Placement,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): StageState {
+  let next = detach(state, id)
+
+  const placements = { ...next.placements }
+  if (placement.kind === 'stage') {
+    for (const [other, p] of Object.entries(placements)) {
+      if (p.kind === 'stage' && other !== id) delete placements[other]
+    }
+  }
+  if (placement.kind === 'dock') delete placements[id]
+  else placements[id] = placement
+  next = { ...next, placements }
+
+  if (placement.kind === 'edge') {
+    const shelf = next.shelves[placement.side]
+    // 新入架子顺手展开:用户的动作意图是「让它看得见」。
+    next = {
+      ...next,
+      shelves: {
+        ...next.shelves,
+        [placement.side]: { ...shelf, tabs: [...shelf.tabs, id], activeId: id, collapsed: false },
+      },
+    }
+  }
+
+  if (placement.kind === 'float') {
+    const rect = clampFloatRect(next.floats[id] ?? defaultFloatRect(viewport), viewport)
+    next = {
+      ...next,
+      floats: { ...next.floats, [id]: rect },
+      floatOrder: [...next.floatOrder, id],
+    }
+  }
+
+  return next
+}
+
+/** 收回 Dock。已经在 Dock 里的是恒等变换;浮窗矩形留着当记忆。 */
+export function closeToDock(state: StageState, id: string): StageState {
+  if (placementOf(state, id).kind === 'dock') return state
+  return openAs(state, id, DOCK)
+}
+
+/**
+ * 点 Dock 图标。先问「它现在在哪」,再决定这一下是什么意思:
+ *  - 在舞台 → 关舞台(再点一次收回去)
+ *  - 在架子上 → 不新开。判据是「它现在看得见吗」:
  *      看不见(不是活动 tab,或整栏收着)→ 激活 + 展开 + 闪一下,告诉用户"它在那儿";
  *      看得见(是活动 tab 且栏展开着)  → 再点一次是"收回去",与舞台那条同一个手感。
- *  - behavior='pinned' → 追加成新 tab 并激活;舞台开着的话不动它,两者正交
- *  - behavior='stage' → 上舞台。舞台一次只有一个,直接替换,不排队。
+ *  - 已是浮窗 → 置顶它(浮窗可以有好几个,所以这一下是"把它翻到最上面")
+ *  - 在 Dock 里 → 按解析出的落点开。
  */
-export function clickDockIcon(state: StageState, id: string, behavior: ResolvedOpen): StageState {
-  if (state.stageId === id) return { ...state, stageId: null }
-  if (state.pinned.includes(id)) {
-    const visible = state.activePinnedId === id && !state.pinnedCollapsed
-    if (visible) return { ...state, pinnedCollapsed: true }
-    return { ...state, activePinnedId: id, pinnedCollapsed: false, flashPinned: state.flashPinned + 1 }
-  }
-  if (behavior === 'pinned') {
-    // 新入钉栏顺手展开:判据与上面同一条 —— 用户的动作意图是"让它看得见"。
-    return { ...state, pinned: [...state.pinned, id], activePinnedId: id, pinnedCollapsed: false }
-  }
-  return { ...state, stageId: id }
-}
+export function clickDockIcon(
+  state: StageState,
+  id: string,
+  placement: Placement,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): StageState {
+  const current = placementOf(state, id)
 
-/** 把当前舞台落成钉栏里的一个 tab(追加到末尾并激活),舞台清空。没有舞台时是恒等变换。 */
-export function pinStage(state: StageState): StageState {
-  const id = state.stageId
-  if (id === null) return state
-  const pinned = state.pinned.includes(id) ? state.pinned : [...state.pinned, id]
-  // 同 clickDockIcon 的新钉分支:入栏即展开,点了不能"看起来什么都没发生"。
-  return { ...state, pinned, activePinnedId: id, stageId: null, pinnedCollapsed: false }
+  if (current.kind === 'stage') return closeToDock(state, id)
+
+  if (current.kind === 'edge') {
+    const shelf = state.shelves[current.side]
+    const visible = shelf.activeId === id && !shelf.collapsed
+    if (visible) return setShelfCollapsed(state, current.side, true)
+    return {
+      ...state,
+      shelves: { ...state.shelves, [current.side]: { ...shelf, activeId: id, collapsed: false } },
+      flashPinned: state.flashPinned + 1,
+    }
+  }
+
+  if (current.kind === 'float') return focusFloat(state, id)
+
+  return openAs(state, id, placement, viewport)
 }
 
 /**
- * 摘掉一个 tab。摘的若是活动 tab,焦点落到相邻 tab —— 先右后左,和浏览器一致;
- * 摘光了就是 null(整栏随之不存在)。
+ * ⌘P 那种「开关一块面」的语义:在 Dock 里就按打开方式开,在别处(舞台/浮窗/架子)
+ * 就收回 Dock。它与 clickDockIcon 的区别只有一条 —— 快捷键没有"收起整栏"这个中间态,
+ * 按第二下就是关掉,所以它不判架子看不看得见。
  */
-export function unpin(state: StageState, id: string): StageState {
-  const at = state.pinned.indexOf(id)
-  if (at < 0) return state
-  const pinned = state.pinned.filter((x) => x !== id)
-  const activePinnedId =
-    state.activePinnedId === id ? (pinned[at] ?? pinned[at - 1] ?? null) : state.activePinnedId
-  return { ...state, pinned, activePinnedId }
+export function togglePlacement(
+  state: StageState,
+  id: string,
+  placement: Placement,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): StageState {
+  if (placementOf(state, id).kind === 'dock') return openAs(state, id, placement, viewport)
+  return closeToDock(state, id)
 }
 
-/** 激活一个已有 tab。不在钉栏里、或已经是活动的,都是恒等变换。 */
-export function activatePinnedTab(state: StageState, id: string): StageState {
-  if (!state.pinned.includes(id)) return state
-  if (state.activePinnedId === id) return state
-  return { ...state, activePinnedId: id }
-}
-
-/** 收/展整栏。tab 次序与活动 tab 一个都不动 —— 收起的是栏,不是内容。 */
-export function togglePinnedCollapsed(state: StageState): StageState {
-  return { ...state, pinnedCollapsed: !state.pinnedCollapsed }
-}
+/* ── 舞台 ──────────────────────────────────────────────────────────────────── */
 
 export function closeStage(state: StageState): StageState {
-  if (state.stageId === null) return state
-  return { ...state, stageId: null }
+  const id = stageIdOf(state)
+  if (id === null) return state
+  return openAs(state, id, DOCK)
 }
 
-/** 钉栏宽度 clamp 到 [320, 视口一半];视口太窄时下界赢。 */
-export function setPinnedWidth(state: StageState, w: number, viewport: number): StageState {
-  return { ...state, pinnedWidth: clamp(w, PIN_MIN, viewport * 0.5) }
+/** 舞台 → 浮窗。没有舞台时是恒等变换。 */
+export function stageToFloat(state: StageState, viewport: Viewport = FALLBACK_VIEWPORT): StageState {
+  const id = stageIdOf(state)
+  if (id === null) return state
+  return openAs(state, id, { kind: 'float' }, viewport)
+}
+
+/** 舞台 → 某条边的架子。没有舞台时是恒等变换。 */
+export function stageToEdge(state: StageState, side: ShelfSide): StageState {
+  const id = stageIdOf(state)
+  if (id === null) return state
+  return openAs(state, id, { kind: 'edge', side })
+}
+
+/* ── 浮窗 ──────────────────────────────────────────────────────────────────── */
+
+/** 置顶:挪到 floatOrder 末位。不是浮窗、或已经在末位,都是恒等变换。 */
+export function focusFloat(state: StageState, id: string): StageState {
+  const order = state.floatOrder
+  const at = order.indexOf(id)
+  if (at < 0 || at === order.length - 1) return state
+  return { ...state, floatOrder: [...order.filter((x) => x !== id), id] }
+}
+
+export function moveFloat(
+  state: StageState,
+  id: string,
+  x: number,
+  y: number,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): StageState {
+  const rect = state.floats[id]
+  if (!rect) return state
+  return { ...state, floats: { ...state.floats, [id]: clampFloatRect({ ...rect, x, y }, viewport) } }
+}
+
+export function resizeFloat(
+  state: StageState,
+  id: string,
+  rect: FloatRect,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): StageState {
+  if (!state.floats[id]) return state
+  return { ...state, floats: { ...state.floats, [id]: clampFloatRect(rect, viewport) } }
+}
+
+/** 浮窗 → 架子。不是浮窗时是恒等变换。 */
+export function floatToEdge(state: StageState, id: string, side: ShelfSide): StageState {
+  if (placementOf(state, id).kind !== 'float') return state
+  return openAs(state, id, { kind: 'edge', side })
+}
+
+/** 架子 → 浮窗。不在架子上时是恒等变换;有旧矩形就回到旧位置。 */
+export function edgeToFloat(
+  state: StageState,
+  id: string,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): StageState {
+  if (placementOf(state, id).kind !== 'edge') return state
+  return openAs(state, id, { kind: 'float' }, viewport)
+}
+
+/* ── 架子 ──────────────────────────────────────────────────────────────────── */
+
+/** 激活一条边上的某个 tab。不在这条边上、或已经是活动的,都是恒等变换。 */
+export function activateShelfTab(state: StageState, side: ShelfSide, id: string): StageState {
+  const shelf = state.shelves[side]
+  if (!shelf.tabs.includes(id)) return state
+  if (shelf.activeId === id) return state
+  return { ...state, shelves: { ...state.shelves, [side]: { ...shelf, activeId: id } } }
+}
+
+function setShelfCollapsed(state: StageState, side: ShelfSide, collapsed: boolean): StageState {
+  const shelf = state.shelves[side]
+  if (shelf.collapsed === collapsed) return state
+  return { ...state, shelves: { ...state.shelves, [side]: { ...shelf, collapsed } } }
+}
+
+/** 收/展整条架子。tab 次序与活动 tab 一个都不动 —— 收起的是栏,不是内容。 */
+export function toggleShelfCollapsed(state: StageState, side: ShelfSide): StageState {
+  return setShelfCollapsed(state, side, !state.shelves[side].collapsed)
+}
+
+/** 架子厚度 clamp 到 [320, 视口一半];视口太窄时下界赢。 */
+export function setShelfThickness(
+  state: StageState,
+  side: ShelfSide,
+  thickness: number,
+  viewport: number,
+): StageState {
+  const shelf = state.shelves[side]
+  return {
+    ...state,
+    shelves: {
+      ...state.shelves,
+      [side]: { ...shelf, thickness: clamp(thickness, PIN_MIN, viewport * 0.5) },
+    },
+  }
+}
+
+/* ── persist ───────────────────────────────────────────────────────────────── */
+
+/**
+ * 存盘前把舞台那条摘掉:架子和浮窗是用户摆好的工作台,理应留着;
+ * 舞台是「当下正在看的那一眼」,重开该从收拢态开始(与 W1 之前同一条判例)。
+ */
+export function withoutStagePlacements(
+  placements: Record<string, Placement>,
+): Record<string, Placement> {
+  const out: Record<string, Placement> = {}
+  for (const [id, p] of Object.entries(placements)) {
+    if (p.kind !== 'stage') out[id] = p
+  }
+  return out
 }
 
 /**
- * persist 迁移。逐版顺着往上补,不跳级 —— v0 的档案要连过两段。
+ * persist 迁移。逐版顺着往上补,不跳级 —— v0 的档案要连过三段。
  *  v0 → v1:存的是单值 `pinnedId`,v1 起是 tab 数组。
  *  v1 → v2:多了 Dock 四边/沿边位置/大小与钉栏收起态,旧档案缺哪条补哪条。
+ *  v2 → v3:三态枚举升 Placement —— 旧的 pinned/activePinnedId/pinnedWidth/pinnedCollapsed
+ *           整组翻成 shelves.right + placements(每条 tab 一条 edge:right)。
  * 放在这里(而不是 store 里)是为了它能被当成纯函数测 —— 迁移只有一次机会跑对。
  */
 export function migrateStagePersisted(persisted: unknown, version: number): unknown {
@@ -152,7 +428,27 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
   }
   if (version < 2) {
     // 缺省补默认:已有的值赢,所以这里是「铺底」而不是「覆盖」。
-    out = { ...V2_DEFAULTS, ...out }
+    out = {
+      dockEdge: initialStageSettings.dockEdge,
+      dockAlign: initialStageSettings.dockAlign,
+      dockSize: initialStageSettings.dockSize,
+      pinnedCollapsed: false,
+      ...out,
+    }
+  }
+  if (version < 3) {
+    const { pinned, activePinnedId, pinnedWidth, pinnedCollapsed, ...rest } = out
+    const tabs = Array.isArray(pinned) ? pinned.filter((x): x is string => typeof x === 'string') : []
+    const placements: Record<string, Placement> = {}
+    for (const id of tabs) placements[id] = { kind: 'edge', side: 'right' }
+    const shelves = emptyShelves()
+    shelves.right = {
+      tabs,
+      activeId: typeof activePinnedId === 'string' && tabs.includes(activePinnedId) ? activePinnedId : (tabs[tabs.length - 1] ?? null),
+      thickness: typeof pinnedWidth === 'number' ? pinnedWidth : SHELF_DEFAULT_THICKNESS,
+      collapsed: pinnedCollapsed === true,
+    }
+    out = { ...rest, placements, floats: {}, floatOrder: [], shelves }
   }
   return out
 }

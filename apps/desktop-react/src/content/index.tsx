@@ -4,6 +4,7 @@ import { DiffMock } from './DiffMock'
 import { BrowserMock } from './BrowserMock'
 import { TerminalMock } from './TerminalMock'
 import { SettingsMock } from './SettingsMock'
+import { SearchPanel } from '../expose/components/SearchPanel'
 
 /**
  * 内容按 id 查表 —— 舞台和钉栏共用同一张表,
@@ -15,6 +16,7 @@ const RENDERERS: Record<string, () => ReactNode> = {
   browser: BrowserMock,
   terminal: TerminalMock,
   settings: SettingsMock,
+  search: SearchPanel,
 }
 
 export function renderContent(id: string | null): ReactNode {

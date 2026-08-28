@@ -1,261 +1,411 @@
 import { describe, it, expect } from 'vitest'
 import {
+  FLOAT_DEFAULT_H,
+  FLOAT_DEFAULT_W,
+  FLOAT_KEEP,
+  FLOAT_MIN_H,
+  FLOAT_MIN_W,
   PIN_MIN,
+  SHELF_DEFAULT_THICKNESS,
   STAGE_PERSIST_VERSION,
-  activatePinnedTab,
+  activateShelfTab,
   clamp,
+  clampFloatRect,
   clickDockIcon,
   closeStage,
+  closeToDock,
+  defaultFloatRect,
+  edgeToFloat,
+  floatToEdge,
+  focusFloat,
   formOf,
   initialStageSettings,
   initialStageState,
   migrateStagePersisted,
-  pinStage,
+  moveFloat,
+  openAs,
+  placementForOpen,
+  placementOf,
+  resizeFloat,
+  resizeFrom,
   resolveOpen,
-  setPinnedWidth,
-  togglePinnedCollapsed,
-  unpin,
+  setShelfThickness,
+  stageIdOf,
+  stageToEdge,
+  stageToFloat,
+  togglePlacement,
+  toggleShelfCollapsed,
+  withoutStagePlacements,
 } from './transitions'
-import type { OpenBehavior, StageState } from './types'
+import { STAGE_ITEMS, findItem } from './items'
+import type { OpenBehavior, Placement, ShelfSide, StageState, Viewport } from './types'
 
 const base: StageState = initialStageState
 
-/** 造一个「钉栏里有几个 tab」的态,省得每个用例手拼。 */
-function withPinned(pinned: string[], activePinnedId = pinned[pinned.length - 1] ?? null): StageState {
-  return { ...base, pinned, activePinnedId }
+const STAGE: Placement = { kind: 'stage' }
+const FLOAT: Placement = { kind: 'float' }
+const RIGHT: Placement = { kind: 'edge', side: 'right' }
+const DOCK: Placement = { kind: 'dock' }
+
+/** 一块大得放得下默认浮窗的视口,免得每个用例都被钳制干扰。 */
+const VP: Viewport = { w: 1600, h: 1000 }
+
+/** 造一个「某条边的架子上有几个 tab」的态,省得每个用例手拼。 */
+function withShelf(
+  tabs: string[],
+  activeId: string | null = tabs[tabs.length - 1] ?? null,
+  side: ShelfSide = 'right',
+): StageState {
+  let st = base
+  for (const id of tabs) st = openAs(st, id, { kind: 'edge', side })
+  return activeId ? activateShelfTab(st, side, activeId) : st
 }
 
-describe('resolveOpen', () => {
+const rightShelf = (st: StageState) => st.shelves.right
+
+describe('resolveOpen / placementForOpen', () => {
   it("override 为 'default' → 跟随全局默认", () => {
-    expect(resolveOpen('files', { files: 'default' }, 'stage')).toBe('stage')
-    expect(resolveOpen('files', { files: 'default' }, 'pinned')).toBe('pinned')
+    expect(resolveOpen('files', { files: 'default' }, 'stage')).toEqual(STAGE)
+    expect(resolveOpen('files', { files: 'default' }, 'pinned')).toEqual(RIGHT)
   })
 
   it('没登记过的 id 等价于 default(所以初始表是空的)', () => {
-    expect(resolveOpen('files', {}, 'pinned')).toBe('pinned')
+    expect(resolveOpen('files', {}, 'pinned')).toEqual(RIGHT)
   })
 
   it("override 'stage' 压过默认 'pinned'", () => {
-    expect(resolveOpen('files', { files: 'stage' }, 'pinned')).toBe('stage')
+    expect(resolveOpen('files', { files: 'stage' }, 'pinned')).toEqual(STAGE)
   })
 
   it("override 'pinned' 压过默认 'stage'", () => {
-    expect(resolveOpen('files', { files: 'pinned' }, 'stage')).toBe('pinned')
+    expect(resolveOpen('files', { files: 'pinned' }, 'stage')).toEqual(RIGHT)
+  })
+
+  it("override 'float' 压过默认 'stage'", () => {
+    expect(resolveOpen('files', { files: 'float' }, 'stage')).toEqual(FLOAT)
   })
 
   it('覆盖只作用于自己那一个 id', () => {
     const o: Record<string, OpenBehavior> = { files: 'pinned' }
-    expect(resolveOpen('diff', o, 'stage')).toBe('stage')
+    expect(resolveOpen('diff', o, 'stage')).toEqual(STAGE)
+  })
+
+  it("'pinned' 这个历史值的语义就是 edge:right,翻译只此一处", () => {
+    expect(placementForOpen('pinned')).toEqual({ kind: 'edge', side: 'right' })
+    expect(placementForOpen('stage')).toEqual(STAGE)
+    expect(placementForOpen('float')).toEqual(FLOAT)
+  })
+
+  it('检索面板是普通的一块瓦:参与 resolveOpen 全套', () => {
+    expect(resolveOpen('search', {}, 'stage')).toEqual(STAGE)
+    expect(resolveOpen('search', { search: 'float' }, 'stage')).toEqual(FLOAT)
   })
 })
 
 describe('clickDockIcon', () => {
-  it("从收拢态点一下(behavior='stage') → 上舞台", () => {
-    expect(clickDockIcon(base, 'files', 'stage').stageId).toBe('files')
+  it("从收拢态点一下(落点 stage)→ 上舞台", () => {
+    expect(stageIdOf(clickDockIcon(base, 'files', STAGE))).toBe('files')
   })
 
   it('舞台上的同一个再点一下 → 关舞台', () => {
-    const opened = clickDockIcon(base, 'files', 'stage')
-    expect(clickDockIcon(opened, 'files', 'stage').stageId).toBeNull()
+    const opened = clickDockIcon(base, 'files', STAGE)
+    expect(stageIdOf(clickDockIcon(opened, 'files', STAGE))).toBeNull()
   })
 
   it('舞台一次只有一个:点另一个是直接替换,不排队', () => {
-    const opened = clickDockIcon(base, 'files', 'stage')
-    const next = clickDockIcon(opened, 'diff', 'stage')
-    expect(next.stageId).toBe('diff')
+    const opened = clickDockIcon(base, 'files', STAGE)
+    const next = clickDockIcon(opened, 'diff', STAGE)
+    expect(stageIdOf(next)).toBe('diff')
     expect(formOf(next, 'files')).toBe('dock')
   })
 
-  it("behavior='pinned' → 追加成新 tab 并激活,不上舞台", () => {
-    const next = clickDockIcon(base, 'files', 'pinned')
-    expect(next.pinned).toEqual(['files'])
-    expect(next.activePinnedId).toBe('files')
-    expect(next.stageId).toBeNull()
-    expect(formOf(next, 'files')).toBe('pinned')
+  it('落点 edge → 追加成新 tab 并激活,不上舞台', () => {
+    const next = clickDockIcon(base, 'files', RIGHT)
+    expect(rightShelf(next).tabs).toEqual(['files'])
+    expect(rightShelf(next).activeId).toBe('files')
+    expect(stageIdOf(next)).toBeNull()
+    expect(formOf(next, 'files')).toBe('edge')
   })
 
-  it('连开两个 pinned → 两个 tab 共存,次序即点击次序,活动的是后来的那个', () => {
-    const next = clickDockIcon(clickDockIcon(base, 'files', 'pinned'), 'diff', 'pinned')
-    expect(next.pinned).toEqual(['files', 'diff'])
-    expect(next.activePinnedId).toBe('diff')
-    expect(formOf(next, 'files')).toBe('pinned')
+  it('连开两个 edge → 两个 tab 共存,次序即点击次序,活动的是后来的那个', () => {
+    const next = clickDockIcon(clickDockIcon(base, 'files', RIGHT), 'diff', RIGHT)
+    expect(rightShelf(next).tabs).toEqual(['files', 'diff'])
+    expect(rightShelf(next).activeId).toBe('diff')
+    expect(formOf(next, 'files')).toBe('edge')
   })
 
-  it("behavior='pinned' 时舞台开着也不动它:钉栏与舞台正交", () => {
-    const state: StageState = { ...base, stageId: 'terminal' }
-    const next = clickDockIcon(state, 'files', 'pinned')
-    expect(next.stageId).toBe('terminal')
-    expect(next.pinned).toEqual(['files'])
+  it('落点 edge 时舞台开着也不动它:架子与舞台正交', () => {
+    const state = openAs(base, 'terminal', STAGE)
+    const next = clickDockIcon(state, 'files', RIGHT)
+    expect(stageIdOf(next)).toBe('terminal')
+    expect(rightShelf(next).tabs).toEqual(['files'])
   })
 
   it('已钉且看得见(活动 tab + 栏展开)的再点 → 收起整栏,不开舞台也不重复追加', () => {
-    const state = withPinned(['diff'])
-    const next = clickDockIcon(state, 'diff', 'stage')
-    expect(next.stageId).toBeNull()
-    expect(next.pinned).toEqual(['diff'])
-    expect(next.pinnedCollapsed).toBe(true)
-    expect(next.activePinnedId).toBe('diff')
+    const state = withShelf(['diff'])
+    const next = clickDockIcon(state, 'diff', STAGE)
+    expect(stageIdOf(next)).toBeNull()
+    expect(rightShelf(next).tabs).toEqual(['diff'])
+    expect(rightShelf(next).collapsed).toBe(true)
+    expect(rightShelf(next).activeId).toBe('diff')
     // 收起不是「找到它」,所以不闪
     expect(next.flashPinned).toBe(state.flashPinned)
   })
 
   it('已钉但栏收着的再点 → 激活 + 展开 + 闪一下(看不见就等于"找它")', () => {
-    const state: StageState = { ...withPinned(['diff']), pinnedCollapsed: true }
-    const next = clickDockIcon(state, 'diff', 'stage')
-    expect(next.pinnedCollapsed).toBe(false)
-    expect(next.activePinnedId).toBe('diff')
+    const state = toggleShelfCollapsed(withShelf(['diff']), 'right')
+    const next = clickDockIcon(state, 'diff', STAGE)
+    expect(rightShelf(next).collapsed).toBe(false)
+    expect(rightShelf(next).activeId).toBe('diff')
     expect(next.flashPinned).toBe(state.flashPinned + 1)
   })
 
   it('收 → 展 → 收:同一块瓦点三下走一个来回', () => {
-    const a = clickDockIcon(withPinned(['diff']), 'diff', 'stage')
-    expect(a.pinnedCollapsed).toBe(true)
-    const b = clickDockIcon(a, 'diff', 'stage')
-    expect(b.pinnedCollapsed).toBe(false)
+    const a = clickDockIcon(withShelf(['diff']), 'diff', STAGE)
+    expect(rightShelf(a).collapsed).toBe(true)
+    const b = clickDockIcon(a, 'diff', STAGE)
+    expect(rightShelf(b).collapsed).toBe(false)
     expect(b.flashPinned).toBe(1)
-    const c = clickDockIcon(b, 'diff', 'stage')
-    expect(c.pinnedCollapsed).toBe(true)
+    const c = clickDockIcon(b, 'diff', STAGE)
+    expect(rightShelf(c).collapsed).toBe(true)
     expect(c.flashPinned).toBe(1)
   })
 
   it('栏收着时点「非活动」的那个 → 切过去并展开', () => {
-    const state: StageState = { ...withPinned(['files', 'diff'], 'diff'), pinnedCollapsed: true }
-    const next = clickDockIcon(state, 'files', 'stage')
-    expect(next.activePinnedId).toBe('files')
-    expect(next.pinnedCollapsed).toBe(false)
+    const state = toggleShelfCollapsed(withShelf(['files', 'diff'], 'diff'), 'right')
+    const next = clickDockIcon(state, 'files', STAGE)
+    expect(rightShelf(next).activeId).toBe('files')
+    expect(rightShelf(next).collapsed).toBe(false)
     expect(next.flashPinned).toBe(1)
   })
 
-  it('点钉栏里「非活动」的那个 → 活动 tab 切过去(behavior 是什么都一样)', () => {
-    const state = withPinned(['files', 'diff'], 'diff')
-    const next = clickDockIcon(state, 'files', 'pinned')
-    expect(next.activePinnedId).toBe('files')
-    expect(next.pinned).toEqual(['files', 'diff'])
+  it('点架子上「非活动」的那个 → 活动 tab 切过去(落点是什么都一样)', () => {
+    const state = withShelf(['files', 'diff'], 'diff')
+    const next = clickDockIcon(state, 'files', RIGHT)
+    expect(rightShelf(next).activeId).toBe('files')
+    expect(rightShelf(next).tabs).toEqual(['files', 'diff'])
     expect(next.flashPinned).toBe(1)
   })
 
   it('闪烁是累加的:两次「找它」记两次', () => {
-    const state = withPinned(['files', 'diff'], 'diff')
-    const twice = clickDockIcon(clickDockIcon(state, 'files', 'stage'), 'diff', 'stage')
+    const state = withShelf(['files', 'diff'], 'diff')
+    const twice = clickDockIcon(clickDockIcon(state, 'files', STAGE), 'diff', STAGE)
     expect(twice.flashPinned).toBe(2)
   })
 
   it('钉住 A 时点 B 上舞台,两者共存', () => {
-    const state = withPinned(['diff'])
-    const next = clickDockIcon(state, 'files', 'stage')
-    expect(next.stageId).toBe('files')
-    expect(next.pinned).toEqual(['diff'])
+    const state = withShelf(['diff'])
+    const next = clickDockIcon(state, 'files', STAGE)
+    expect(stageIdOf(next)).toBe('files')
+    expect(rightShelf(next).tabs).toEqual(['diff'])
     expect(next.flashPinned).toBe(0)
   })
 
+  it('已是浮窗的再点 → 置顶它,不关也不新开第二扇', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = openAs(st, 'diff', FLOAT, VP)
+    const next = clickDockIcon(st, 'files', STAGE, VP)
+    expect(next.floatOrder).toEqual(['diff', 'files'])
+    expect(formOf(next, 'files')).toBe('float')
+  })
+
   it('是纯函数:不改原对象', () => {
-    const before = { ...base, pinned: [...base.pinned] }
-    clickDockIcon(base, 'files', 'pinned')
+    const before = JSON.parse(JSON.stringify(base))
+    clickDockIcon(base, 'files', RIGHT)
     expect(base).toEqual(before)
   })
 })
 
-describe('togglePinnedCollapsed', () => {
-  it('收/展往返:两次回到原点,tab 次序与活动 tab 一个都不动', () => {
-    const state = withPinned(['files', 'diff'], 'files')
-    const collapsed = togglePinnedCollapsed(state)
-    expect(collapsed.pinnedCollapsed).toBe(true)
-    expect(collapsed.pinned).toEqual(['files', 'diff'])
-    expect(collapsed.activePinnedId).toBe('files')
+describe('togglePlacement(⌘P 那种开关语义)', () => {
+  it('收着 → 按打开方式开(不问架子看不看得见)', () => {
+    const next = togglePlacement(base, 'search', STAGE, VP)
+    expect(stageIdOf(next)).toBe('search')
+  })
 
-    const back = togglePinnedCollapsed(collapsed)
-    expect(back.pinnedCollapsed).toBe(false)
+  it('开着(任一形态)→ 再按一次收回 Dock', () => {
+    const onStage = togglePlacement(base, 'search', STAGE, VP)
+    expect(formOf(togglePlacement(onStage, 'search', STAGE, VP), 'search')).toBe('dock')
+
+    const onShelf = togglePlacement(base, 'search', RIGHT, VP)
+    expect(formOf(togglePlacement(onShelf, 'search', RIGHT, VP), 'search')).toBe('dock')
+    expect(rightShelf(togglePlacement(onShelf, 'search', RIGHT, VP)).tabs).toEqual([])
+
+    const onFloat = togglePlacement(base, 'search', FLOAT, VP)
+    expect(formOf(togglePlacement(onFloat, 'search', FLOAT, VP), 'search')).toBe('dock')
+  })
+})
+
+describe('placements 是唯一事实源', () => {
+  it('一个 id 只在一处:上舞台会把它从架子上摘走', () => {
+    const st = openAs(withShelf(['files', 'diff'], 'files'), 'files', STAGE)
+    expect(formOf(st, 'files')).toBe('stage')
+    expect(rightShelf(st).tabs).toEqual(['diff'])
+    expect(rightShelf(st).activeId).toBe('diff')
+  })
+
+  it('变浮窗会把它从架子上摘走,反过来也一样', () => {
+    const floated = edgeToFloat(withShelf(['files']), 'files', VP)
+    expect(floated.floatOrder).toEqual(['files'])
+    expect(rightShelf(floated).tabs).toEqual([])
+
+    const back = floatToEdge(floated, 'files', 'left')
+    expect(back.floatOrder).toEqual([])
+    expect(back.shelves.left.tabs).toEqual(['files'])
+    expect(placementOf(back, 'files')).toEqual({ kind: 'edge', side: 'left' })
+  })
+
+  it('dock 是缺席态:收回 Dock 就是从表里消失,不留一条 {kind:dock}', () => {
+    const st = closeToDock(openAs(base, 'files', STAGE), 'files')
+    expect('files' in st.placements).toBe(false)
+    expect(placementOf(st, 'files')).toEqual(DOCK)
+  })
+
+  it('舞台至多一个:第二个上台,第一个落回 dock', () => {
+    const st = openAs(openAs(base, 'files', STAGE), 'diff', STAGE)
+    expect(Object.values(st.placements).filter((p) => p.kind === 'stage')).toHaveLength(1)
+    expect(stageIdOf(st)).toBe('diff')
+  })
+
+  it('四条边各有一份架子,互不干涉', () => {
+    let st = openAs(base, 'files', { kind: 'edge', side: 'left' })
+    st = openAs(st, 'diff', { kind: 'edge', side: 'bottom' })
+    expect(st.shelves.left.tabs).toEqual(['files'])
+    expect(st.shelves.bottom.tabs).toEqual(['diff'])
+    expect(st.shelves.right.tabs).toEqual([])
+    expect(st.shelves.top.tabs).toEqual([])
+  })
+})
+
+describe('toggleShelfCollapsed', () => {
+  it('收/展往返:两次回到原点,tab 次序与活动 tab 一个都不动', () => {
+    const state = withShelf(['files', 'diff'], 'files')
+    const collapsed = toggleShelfCollapsed(state, 'right')
+    expect(rightShelf(collapsed).collapsed).toBe(true)
+    expect(rightShelf(collapsed).tabs).toEqual(['files', 'diff'])
+    expect(rightShelf(collapsed).activeId).toBe('files')
+
+    const back = toggleShelfCollapsed(collapsed, 'right')
+    expect(rightShelf(back).collapsed).toBe(false)
     expect(back).toEqual(state)
   })
 
-  it('初始是展开的', () => {
-    expect(initialStageState.pinnedCollapsed).toBe(false)
+  it('初始四条边都是展开的', () => {
+    for (const side of ['left', 'right', 'top', 'bottom'] as ShelfSide[]) {
+      expect(initialStageState.shelves[side].collapsed).toBe(false)
+    }
+  })
+
+  it('收的是这一条边,不碰别的边', () => {
+    const st = toggleShelfCollapsed(withShelf(['files']), 'right')
+    expect(st.shelves.left.collapsed).toBe(false)
   })
 })
 
-describe('pinStage', () => {
+describe('stageToEdge / stageToFloat', () => {
   it('把舞台落成新 tab 并激活,舞台清空', () => {
-    const opened = clickDockIcon(base, 'files', 'stage')
-    const next = pinStage(opened)
-    expect(next.pinned).toEqual(['files'])
-    expect(next.activePinnedId).toBe('files')
-    expect(next.stageId).toBeNull()
-    expect(formOf(next, 'files')).toBe('pinned')
+    const opened = clickDockIcon(base, 'files', STAGE)
+    const next = stageToEdge(opened, 'right')
+    expect(rightShelf(next).tabs).toEqual(['files'])
+    expect(rightShelf(next).activeId).toBe('files')
+    expect(stageIdOf(next)).toBeNull()
+    expect(formOf(next, 'files')).toBe('edge')
   })
 
   it('已有 tab 时追加到末尾,不再是替换', () => {
-    const state: StageState = { ...withPinned(['diff']), stageId: 'files' }
-    const next = pinStage(state)
-    expect(next.pinned).toEqual(['diff', 'files'])
-    expect(next.activePinnedId).toBe('files')
+    const state = openAs(withShelf(['diff']), 'files', STAGE)
+    const next = stageToEdge(state, 'right')
+    expect(rightShelf(next).tabs).toEqual(['diff', 'files'])
+    expect(rightShelf(next).activeId).toBe('files')
   })
 
-  it('舞台上的东西已经在钉栏里 → 去重,只激活它', () => {
-    const state: StageState = { ...withPinned(['diff', 'files'], 'diff'), stageId: 'files' }
-    const next = pinStage(state)
-    expect(next.pinned).toEqual(['diff', 'files'])
-    expect(next.activePinnedId).toBe('files')
-    expect(next.stageId).toBeNull()
+  it('钉到别的边去:落到那条边,右边那条一个都不多', () => {
+    const next = stageToEdge(openAs(base, 'files', STAGE), 'top')
+    expect(next.shelves.top.tabs).toEqual(['files'])
+    expect(next.shelves.right.tabs).toEqual([])
   })
 
-  it('没有舞台时是恒等变换', () => {
-    expect(pinStage(base)).toBe(base)
+  it('没有舞台时两者都是恒等变换', () => {
+    expect(stageToEdge(base, 'right')).toBe(base)
+    expect(stageToFloat(base, VP)).toBe(base)
+  })
+
+  it('舞台变浮窗:居中默认身量,舞台清空', () => {
+    const next = stageToFloat(openAs(base, 'files', STAGE), VP)
+    expect(formOf(next, 'files')).toBe('float')
+    expect(stageIdOf(next)).toBeNull()
+    expect(next.floats.files).toEqual(defaultFloatRect(VP))
+  })
+
+  it('收起态下舞台钉到边,栏展开(点了不能"看起来什么都没发生")', () => {
+    const st = stageToEdge(
+      toggleShelfCollapsed(openAs(base, 'files', STAGE), 'right'),
+      'right',
+    )
+    expect(rightShelf(st).tabs).toContain('files')
+    expect(rightShelf(st).collapsed).toBe(false)
+  })
+
+  it('收起态下新图标入架子,栏展开', () => {
+    const st = clickDockIcon(toggleShelfCollapsed(base, 'right'), 'files', RIGHT)
+    expect(rightShelf(st).tabs).toContain('files')
+    expect(rightShelf(st).collapsed).toBe(false)
   })
 })
 
-describe('unpin', () => {
-  it('摘掉唯一的 tab → 钉栏空,活动为 null,该 item 回 dock 形态', () => {
-    const next = unpin(withPinned(['diff']), 'diff')
-    expect(next.pinned).toEqual([])
-    expect(next.activePinnedId).toBeNull()
+describe('closeToDock(摘 tab 那一路)', () => {
+  it('摘掉唯一的 tab → 架子空,活动为 null,该 item 回 dock 形态', () => {
+    const next = closeToDock(withShelf(['diff']), 'diff')
+    expect(rightShelf(next).tabs).toEqual([])
+    expect(rightShelf(next).activeId).toBeNull()
     expect(formOf(next, 'diff')).toBe('dock')
   })
 
   it('摘掉活动 tab → 焦点先落右边那个', () => {
-    const next = unpin(withPinned(['files', 'diff', 'terminal'], 'diff'), 'diff')
-    expect(next.pinned).toEqual(['files', 'terminal'])
-    expect(next.activePinnedId).toBe('terminal')
+    const next = closeToDock(withShelf(['files', 'diff', 'terminal'], 'diff'), 'diff')
+    expect(rightShelf(next).tabs).toEqual(['files', 'terminal'])
+    expect(rightShelf(next).activeId).toBe('terminal')
   })
 
   it('摘掉最右的活动 tab → 右边没有了,退回左边', () => {
-    const next = unpin(withPinned(['files', 'diff'], 'diff'), 'diff')
-    expect(next.pinned).toEqual(['files'])
-    expect(next.activePinnedId).toBe('files')
+    const next = closeToDock(withShelf(['files', 'diff'], 'diff'), 'diff')
+    expect(rightShelf(next).tabs).toEqual(['files'])
+    expect(rightShelf(next).activeId).toBe('files')
   })
 
   it('摘掉非活动 tab → 活动的不动', () => {
-    const next = unpin(withPinned(['files', 'diff'], 'diff'), 'files')
-    expect(next.pinned).toEqual(['diff'])
-    expect(next.activePinnedId).toBe('diff')
+    const next = closeToDock(withShelf(['files', 'diff'], 'diff'), 'files')
+    expect(rightShelf(next).tabs).toEqual(['diff'])
+    expect(rightShelf(next).activeId).toBe('diff')
   })
 
-  it('摘一个不在钉栏里的 → 恒等变换', () => {
-    const state = withPinned(['diff'])
-    expect(unpin(state, 'files')).toBe(state)
-    expect(unpin(base, 'files')).toBe(base)
+  it('收一个本来就在 Dock 里的 → 恒等变换', () => {
+    const state = withShelf(['diff'])
+    expect(closeToDock(state, 'files')).toBe(state)
+    expect(closeToDock(base, 'files')).toBe(base)
   })
 })
 
-describe('activatePinnedTab', () => {
+describe('activateShelfTab', () => {
   it('切换活动 tab', () => {
-    const next = activatePinnedTab(withPinned(['files', 'diff'], 'diff'), 'files')
-    expect(next.activePinnedId).toBe('files')
-    expect(next.pinned).toEqual(['files', 'diff'])
+    const next = activateShelfTab(withShelf(['files', 'diff'], 'diff'), 'right', 'files')
+    expect(rightShelf(next).activeId).toBe('files')
+    expect(rightShelf(next).tabs).toEqual(['files', 'diff'])
   })
 
-  it('已经是活动的 / 不在钉栏里 → 都是恒等变换', () => {
-    const state = withPinned(['files', 'diff'], 'diff')
-    expect(activatePinnedTab(state, 'diff')).toBe(state)
-    expect(activatePinnedTab(state, 'terminal')).toBe(state)
+  it('已经是活动的 / 不在这条边上 → 都是恒等变换', () => {
+    const state = withShelf(['files', 'diff'], 'diff')
+    expect(activateShelfTab(state, 'right', 'diff')).toBe(state)
+    expect(activateShelfTab(state, 'right', 'terminal')).toBe(state)
+    expect(activateShelfTab(state, 'left', 'files')).toBe(state)
   })
 })
 
 describe('closeStage', () => {
-  it('closeStage 关舞台,不动钉栏', () => {
-    const state: StageState = { ...withPinned(['diff']), stageId: 'files' }
+  it('closeStage 关舞台,不动架子', () => {
+    const state = openAs(withShelf(['diff']), 'files', STAGE)
     const next = closeStage(state)
-    expect(next.stageId).toBeNull()
-    expect(next.pinned).toEqual(['diff'])
+    expect(stageIdOf(next)).toBeNull()
+    expect(rightShelf(next).tabs).toEqual(['diff'])
   })
 
   it('无舞台时是恒等变换', () => {
@@ -263,23 +413,127 @@ describe('closeStage', () => {
   })
 })
 
-describe('migrateStagePersisted', () => {
-  it('v0 的单值 pinnedId → v1 的 tab 数组 + 活动 tab', () => {
-    const out = migrateStagePersisted({ pinnedId: 'diff', pinnedWidth: 500 }, 0) as Record<string, unknown>
-    expect(out.pinned).toEqual(['diff'])
-    expect(out.activePinnedId).toBe('diff')
-    expect(out.pinnedWidth).toBe(500)
-    expect('pinnedId' in out).toBe(false)
+describe('浮窗', () => {
+  it('开一扇:登记落点、进置顶序、给一个居中的默认矩形', () => {
+    const st = openAs(base, 'files', FLOAT, VP)
+    expect(formOf(st, 'files')).toBe('float')
+    expect(st.floatOrder).toEqual(['files'])
+    expect(st.floats.files).toEqual({
+      w: FLOAT_DEFAULT_W,
+      h: FLOAT_DEFAULT_H,
+      x: (VP.w - FLOAT_DEFAULT_W) / 2,
+      y: (VP.h - FLOAT_DEFAULT_H) / 2,
+    })
   })
 
-  it('v0 但没有 pinnedId(或是 null)→ 只是把这个字段丢掉', () => {
+  it('置顶:挪到序末;已经在末位或根本不是浮窗都是恒等变换', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = openAs(st, 'diff', FLOAT, VP)
+    expect(st.floatOrder).toEqual(['files', 'diff'])
+    const raised = focusFloat(st, 'files')
+    expect(raised.floatOrder).toEqual(['diff', 'files'])
+    expect(focusFloat(raised, 'files')).toBe(raised)
+    expect(focusFloat(raised, 'terminal')).toBe(raised)
+  })
+
+  it('拖移钳制:横向至少留 40px 在视口内,纵向不许推出屏顶', () => {
+    const st = openAs(base, 'files', FLOAT, VP)
+    const far = moveFloat(st, 'files', 9999, 9999, VP)
+    expect(far.floats.files.x).toBe(VP.w - FLOAT_KEEP)
+    expect(far.floats.files.y).toBe(VP.h - FLOAT_KEEP)
+
+    const near = moveFloat(st, 'files', -9999, -9999, VP)
+    expect(near.floats.files.x).toBe(FLOAT_KEEP - FLOAT_DEFAULT_W)
+    expect(near.floats.files.y).toBe(0)
+  })
+
+  it('拖移不改身量,也不动别的窗', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = openAs(st, 'diff', FLOAT, VP)
+    const before = st.floats.diff
+    const moved = moveFloat(st, 'files', 10, 20, VP)
+    expect(moved.floats.files.w).toBe(FLOAT_DEFAULT_W)
+    expect(moved.floats.files.h).toBe(FLOAT_DEFAULT_H)
+    expect(moved.floats.diff).toBe(before)
+  })
+
+  it('缩放钳到最小身量', () => {
+    const st = openAs(base, 'files', FLOAT, VP)
+    const tiny = resizeFloat(st, 'files', { x: 100, y: 100, w: 10, h: 10 }, VP)
+    expect(tiny.floats.files.w).toBe(FLOAT_MIN_W)
+    expect(tiny.floats.files.h).toBe(FLOAT_MIN_H)
+  })
+
+  it('拖北/西两边到最小时坐标跟着回推,窗子不会一边缩一边跑', () => {
+    const from = { x: 400, y: 300, w: 300, h: 220 }
+    const w = resizeFrom(from, 'w', 9999, 0)
+    expect(w.w).toBe(FLOAT_MIN_W)
+    expect(w.x).toBe(from.x + from.w - FLOAT_MIN_W)
+
+    const n = resizeFrom(from, 'n', 0, 9999)
+    expect(n.h).toBe(FLOAT_MIN_H)
+    expect(n.y).toBe(from.y + from.h - FLOAT_MIN_H)
+  })
+
+  it('拖东南角同时改两轴,坐标不动', () => {
+    const from = { x: 100, y: 100, w: 400, h: 300 }
+    expect(resizeFrom(from, 'se', 50, 60)).toEqual({ x: 100, y: 100, w: 450, h: 360 })
+  })
+
+  it('收回 Dock 再开,还在老位置(矩形按 item 记忆)', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = moveFloat(st, 'files', 42, 84, VP)
+    const remembered = st.floats.files
+    st = closeToDock(st, 'files')
+    expect(st.floatOrder).toEqual([])
+    expect(st.floats.files).toEqual(remembered)
+    st = openAs(st, 'files', FLOAT, VP)
+    expect(st.floats.files).toEqual(remembered)
+  })
+
+  it('不是浮窗的 id:拖移 / 缩放都是恒等变换', () => {
+    expect(moveFloat(base, 'files', 10, 10, VP)).toBe(base)
+    expect(resizeFloat(base, 'files', { x: 0, y: 0, w: 500, h: 400 }, VP)).toBe(base)
+  })
+
+  it('视口比默认身量还小:新窗取视口那么大', () => {
+    const small: Viewport = { w: 500, h: 400 }
+    expect(defaultFloatRect(small)).toEqual({ x: 0, y: 0, w: 500, h: 400 })
+  })
+
+  it('clampFloatRect 是纯算术,两处(拖拽预览与落库)共用同一把尺', () => {
+    expect(clampFloatRect({ x: 10, y: 10, w: 900, h: 700 }, VP)).toEqual({
+      x: 10,
+      y: 10,
+      w: 900,
+      h: 700,
+    })
+  })
+})
+
+describe('migrateStagePersisted', () => {
+  it('v0 的单值 pinnedId → 一路翻成 v3 的右架子 + placements', () => {
+    const out = migrateStagePersisted({ pinnedId: 'diff', pinnedWidth: 500 }, 0) as Record<string, unknown>
+    const shelves = out.shelves as Record<string, { tabs: string[]; thickness: number; activeId: string | null }>
+    expect(shelves.right.tabs).toEqual(['diff'])
+    expect(shelves.right.activeId).toBe('diff')
+    expect(shelves.right.thickness).toBe(500)
+    expect(out.placements).toEqual({ diff: { kind: 'edge', side: 'right' } })
+    expect('pinnedId' in out).toBe(false)
+    expect('pinned' in out).toBe(false)
+    expect('pinnedWidth' in out).toBe(false)
+  })
+
+  it('v0 但没有 pinnedId(或是 null)→ 空架子,别的字段原样留着', () => {
     const out = migrateStagePersisted({ pinnedId: null, dockDisplay: 'autohide' }, 0) as Record<string, unknown>
-    expect(out.pinned).toBeUndefined()
+    const shelves = out.shelves as Record<string, { tabs: string[]; activeId: string | null }>
+    expect(shelves.right.tabs).toEqual([])
+    expect(shelves.right.activeId).toBeNull()
     expect(out.dockDisplay).toBe('autohide')
     expect('pinnedId' in out).toBe(false)
   })
 
-  it('v1 → v2:缺的 Dock 四边 / 沿边位置 / 大小 / 钉栏收起态按默认补齐', () => {
+  it('v1 → v2 的那段仍在:缺的 Dock 四边 / 沿边位置 / 大小按默认补齐', () => {
     const out = migrateStagePersisted({ pinned: ['files'], activePinnedId: 'files' }, 1) as Record<
       string,
       unknown
@@ -287,8 +541,9 @@ describe('migrateStagePersisted', () => {
     expect(out.dockEdge).toBe(initialStageSettings.dockEdge)
     expect(out.dockAlign).toBe(initialStageSettings.dockAlign)
     expect(out.dockSize).toBe(initialStageSettings.dockSize)
-    expect(out.pinnedCollapsed).toBe(false)
-    expect(out.pinned).toEqual(['files'])
+    const shelves = out.shelves as Record<string, { tabs: string[]; collapsed: boolean }>
+    expect(shelves.right.tabs).toEqual(['files'])
+    expect(shelves.right.collapsed).toBe(false)
   })
 
   it('v1 档案里已有的值赢:补默认是铺底,不是覆盖', () => {
@@ -301,54 +556,114 @@ describe('migrateStagePersisted', () => {
     expect(out.dockAlign).toBe(initialStageSettings.dockAlign)
   })
 
-  it('v0 一路连过两段:pinnedId 展开成数组,同时补上 v2 的新字段', () => {
-    const out = migrateStagePersisted({ pinnedId: 'diff', dockDisplay: 'autohide' }, 0) as Record<
+  it('v2 → v3:钉栏那四个字段整组翻成右架子,收起态与厚度都带过去', () => {
+    const out = migrateStagePersisted(
+      {
+        pinned: ['files', 'diff'],
+        activePinnedId: 'files',
+        pinnedWidth: 520,
+        pinnedCollapsed: true,
+        dockEdge: 'left',
+      },
+      2,
+    ) as Record<string, unknown>
+    const shelves = out.shelves as Record<
+      string,
+      { tabs: string[]; activeId: string | null; thickness: number; collapsed: boolean }
+    >
+    expect(shelves.right).toEqual({
+      tabs: ['files', 'diff'],
+      activeId: 'files',
+      thickness: 520,
+      collapsed: true,
+    })
+    expect(shelves.left.tabs).toEqual([])
+    expect(out.placements).toEqual({
+      files: { kind: 'edge', side: 'right' },
+      diff: { kind: 'edge', side: 'right' },
+    })
+    expect(out.floats).toEqual({})
+    expect(out.floatOrder).toEqual([])
+    expect(out.dockEdge).toBe('left')
+    expect('pinnedCollapsed' in out).toBe(false)
+  })
+
+  it('v2 档案里活动 tab 已不在名单上 → 退回最后一个,不留悬空 id', () => {
+    const out = migrateStagePersisted({ pinned: ['files'], activePinnedId: 'gone' }, 2) as Record<
       string,
       unknown
     >
-    expect(out.pinned).toEqual(['diff'])
-    expect(out.activePinnedId).toBe('diff')
-    expect(out.dockEdge).toBe(initialStageSettings.dockEdge)
-    expect(out.pinnedCollapsed).toBe(false)
-    expect(out.dockDisplay).toBe('autohide')
-    expect('pinnedId' in out).toBe(false)
+    const shelves = out.shelves as Record<string, { activeId: string | null }>
+    expect(shelves.right.activeId).toBe('files')
+  })
+
+  it('v2 没有钉栏字段 → 四条空架子 + 默认厚度', () => {
+    const out = migrateStagePersisted({ locale: 'zh' }, 2) as Record<string, unknown>
+    const shelves = out.shelves as Record<string, { tabs: string[]; thickness: number }>
+    expect(shelves.right.tabs).toEqual([])
+    expect(shelves.right.thickness).toBe(SHELF_DEFAULT_THICKNESS)
+    expect(out.locale).toBe('zh')
   })
 
   it('已经是当前版本的原样放行', () => {
-    const current = { pinned: ['files'], dockEdge: 'right' }
+    const current = { placements: {}, dockEdge: 'right' }
     expect(migrateStagePersisted(current, STAGE_PERSIST_VERSION)).toBe(current)
   })
 })
 
-describe('setPinnedWidth', () => {
-  it('区间内的宽度原样通过', () => {
-    expect(setPinnedWidth(base, 500, 1600).pinnedWidth).toBe(500)
-  })
-
-  it('小于 320 抬到 320', () => {
-    expect(setPinnedWidth(base, 100, 1600).pinnedWidth).toBe(PIN_MIN)
-  })
-
-  it('大于视口一半压回视口一半', () => {
-    expect(setPinnedWidth(base, 1400, 1600).pinnedWidth).toBe(800)
-  })
-
-  it('视口太窄时下界赢(不会算出小于 320 的上界)', () => {
-    expect(setPinnedWidth(base, 400, 500).pinnedWidth).toBe(PIN_MIN)
+describe('withoutStagePlacements(存盘前摘舞台)', () => {
+  it('架子与浮窗留着,舞台那条不存', () => {
+    let st = openAs(base, 'diff', RIGHT)
+    st = openAs(st, 'browser', FLOAT, VP)
+    st = openAs(st, 'files', STAGE)
+    const saved = withoutStagePlacements(st.placements)
+    expect('files' in saved).toBe(false)
+    expect(saved.diff).toEqual(RIGHT)
+    expect(saved.browser).toEqual(FLOAT)
   })
 })
 
-describe('formOf / clamp', () => {
-  it('三种形态互斥,默认 dock', () => {
-    const state: StageState = { ...withPinned(['diff']), stageId: 'files' }
-    expect(formOf(state, 'files')).toBe('stage')
-    expect(formOf(state, 'diff')).toBe('pinned')
-    expect(formOf(state, 'terminal')).toBe('dock')
+describe('setShelfThickness', () => {
+  it('区间内的厚度原样通过', () => {
+    expect(rightShelf(setShelfThickness(base, 'right', 500, 1600)).thickness).toBe(500)
   })
 
-  it('钉栏里的非活动 tab 也是 pinned 形态(形态说的是「在哪」不是「可见吗」)', () => {
-    const state = withPinned(['files', 'diff'], 'diff')
-    expect(formOf(state, 'files')).toBe('pinned')
+  it('小于 320 抬到 320', () => {
+    expect(rightShelf(setShelfThickness(base, 'right', 100, 1600)).thickness).toBe(PIN_MIN)
+  })
+
+  it('大于视口一半压回视口一半', () => {
+    expect(rightShelf(setShelfThickness(base, 'right', 1400, 1600)).thickness).toBe(800)
+  })
+
+  it('视口太窄时下界赢(不会算出小于 320 的上界)', () => {
+    expect(rightShelf(setShelfThickness(base, 'right', 400, 500)).thickness).toBe(PIN_MIN)
+  })
+
+  it('改的是这一条边的厚度,别的边不动', () => {
+    const st = setShelfThickness(base, 'left', 500, 1600)
+    expect(st.shelves.left.thickness).toBe(500)
+    expect(st.shelves.right.thickness).toBe(SHELF_DEFAULT_THICKNESS)
+  })
+})
+
+describe('formOf / placementOf / clamp', () => {
+  it('四种形态互斥,默认 dock', () => {
+    const state = openAs(withShelf(['diff']), 'files', STAGE)
+    expect(formOf(state, 'files')).toBe('stage')
+    expect(formOf(state, 'diff')).toBe('edge')
+    expect(formOf(state, 'terminal')).toBe('dock')
+    expect(formOf(openAs(base, 'browser', FLOAT, VP), 'browser')).toBe('float')
+  })
+
+  it('架子上的非活动 tab 也是 edge(形态说的是「在哪」不是「可见吗」)', () => {
+    const state = withShelf(['files', 'diff'], 'diff')
+    expect(formOf(state, 'files')).toBe('edge')
+  })
+
+  it('placementOf 连边一起给出来 —— 光知道 kind 不够定位', () => {
+    const st = openAs(base, 'files', { kind: 'edge', side: 'bottom' })
+    expect(placementOf(st, 'files')).toEqual({ kind: 'edge', side: 'bottom' })
   })
 
   it('clamp 在 max < min 时返回 min', () => {
@@ -356,16 +671,17 @@ describe('formOf / clamp', () => {
   })
 })
 
-describe('新入钉栏顺手展开(收起态下点了不能"看起来什么都没发生")', () => {
-  it('收起态下 behavior=pinned 的新图标入栏,栏展开', () => {
-    const st = clickDockIcon({ ...initialStageState, pinnedCollapsed: true }, 'files', 'pinned')
-    expect(st.pinned).toContain('files')
-    expect(st.pinnedCollapsed).toBe(false)
+describe('items 表', () => {
+  it('会话总览是接管型(它只有一种打开法,所以不进 Placement)', () => {
+    expect(findItem('sessions')?.takeover).toBe(true)
   })
 
-  it('收起态下舞台"钉到右侧",栏展开', () => {
-    const st = pinStage({ ...initialStageState, stageId: 'files', pinnedCollapsed: true })
-    expect(st.pinned).toContain('files')
-    expect(st.pinnedCollapsed).toBe(false)
+  it('检索是普通瓦,不接管', () => {
+    expect(findItem('search')?.takeover).toBeUndefined()
+  })
+
+  it('除了会话总览,其余都不是接管型', () => {
+    const takeovers = STAGE_ITEMS.filter((i) => i.takeover).map((i) => i.id)
+    expect(takeovers).toEqual(['sessions'])
   })
 })

@@ -24,6 +24,7 @@ export const en: Record<MessageKey, string> = {
   'dock.openWith': 'Open as',
   'dock.openDefault': 'Follow default',
   'dock.openStage': 'Popup',
+  'dock.openFloat': 'Float',
   'dock.openPinned': 'Pin to the right',
   'dock.edge': 'Dock edge',
   'dock.edgeBottom': 'Bottom',
@@ -38,17 +39,22 @@ export const en: Record<MessageKey, string> = {
   'dock.sizeSm': 'Small',
   'dock.sizeMd': 'Medium',
   'dock.sizeLg': 'Large',
-  'dock.settings': 'Settings…',
+  'dock.settings': 'Dock settings…',
 
   /* ── dock tiles ───────────────────────────────────────────────────── */
   'item.files': 'Files',
   'item.diff': 'Changes',
   'item.terminal': 'Terminal',
   'item.browser': 'Browser',
+  'item.sessions': 'Sessions',
+  'item.search': 'Search',
   'item.settings': 'Settings',
 
   /* ── stage / pinned ───────────────────────────────────────────────── */
-  'stage.pinToRight': 'Pin to the right',
+  'stage.pinToEdge': 'Pin to edge',
+  'stage.toFloat': 'Float',
+  'float.toStage': 'To stage',
+  'float.toDock': 'Back to Dock',
   'pinned.label': 'Pinned panel',
   'pinned.collapse': 'Collapse pinned panel',
   'pinned.expand': 'Expand pinned panel',
@@ -59,7 +65,7 @@ export const en: Record<MessageKey, string> = {
   'settings.dockAlways': 'Always shown',
   'settings.dockAutohide': 'Auto-hide',
   'settings.defaultOpen': 'Default open behavior',
-  'settings.defaultOpenHint': 'Where a Dock icon lands: a popup opens centered, a pin stays on the right',
+  'settings.defaultOpenHint': 'Where a Dock icon lands: a popup opens centered, a float window can be dragged and resized, a pin stays on the right',
   'settings.overrideNote': 'Each icon can override this from its context menu',
   'settings.workdir': 'Working directory',
   'settings.language': '语言 / Language',
@@ -93,6 +99,7 @@ export const en: Record<MessageKey, string> = {
 
   /* ── search results ───────────────────────────────────────────────── */
   'search.youPrefix': 'You: ',
+  'search.empty': 'Type to search sessions, sections and messages',
 
   /* ── quick look ───────────────────────────────────────────────────── */
   'quicklook.enter': 'Open ↵',
