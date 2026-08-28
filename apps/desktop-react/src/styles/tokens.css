@@ -186,4 +186,44 @@
 
   /* 键帽族 */
   --kbd-pad-x: 4px;
+
+  /* ── L1.5 第二批:输入族 / 勾选族 / 浮层三件套 / 加载 ────────────────────
+   * 数来自规范画布:Controls 板(控件·按钮/输入/选择)、Elevation 板(浮层三件套)、
+   * Feedback 板(loading 两层)。板上没有的那几个在下面逐条注明推导依据。
+   * ────────────────────────────────────────────────────────────────────── */
+  /* 输入框族。板上是「高 34 一档」,本批按拍板改三档 —— 高度沿用按钮族的
+   * --btn-sm 28 / --btn-md 32,只补一个 lg;所以输入框和按钮同行时基线一致。 */
+  --input-lg: 38px;
+  --input-pad-x: 12px;
+  --input-gap: 8px;
+  --input-icon: 14px;
+
+  /* 勾选族(Controls 板:Checkbox 16 / Radio 16 / Switch 20×36) */
+  --check-size: 16px;
+  --check-border: 1.5px;
+  --check-icon: 11px;
+  --radio-ring: 5px; /* 板上「Radio 用环不用点」= 选中态就是一圈 5px 的 accent 边 */
+  --switch-w: 36px;
+  --switch-h: 20px;
+  --switch-pad: 2px;
+  --switch-knob: 16px;
+
+  /* 选择族(Controls 板:面板超过这个高度就滚自己) */
+  --select-menu-max-h: 280px;
+
+  /* 对话框(Elevation 板:宽 400 / 480 / 600 三档,本批只落最小档) */
+  --dialog-w: 400px;
+
+  /* Toast。板上是底部居中 2.6s;本批按拍板改右上角堆叠 4s,
+   * 入场位移沿用板上的 8px(全系统唯一允许位移的入场)。 */
+  --toast-w: 320px;
+  --toast-lift: 8px;
+  --dur-toast-life: 4000ms;
+
+  /* Spinner(Feedback 板:控件级 loading = 700ms linear;板上给的尺寸是按钮里的 13)
+   * md 档板上未定,取 --badge-size 同档的 16,好与徽、勾选族对齐。 */
+  --spinner-sm: 13px;
+  --spinner-md: 16px;
+  --spinner-w: 1.5px;
+  --dur-spin: 700ms;
 }

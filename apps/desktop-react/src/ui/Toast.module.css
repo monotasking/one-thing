@@ -1,0 +1,59 @@
+/* 全系统唯一允许位移的入场(板上原话)。淡入 + 8px 上移,走浮层入场那条曲线。 */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(var(--toast-lift)); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stack {
+  position: fixed;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  pointer-events: none;
+}
+
+.toast {
+  width: var(--toast-w);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-2);
+  border: 1px solid var(--line-1);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  /* 堆里其余的不吃事件,但每一条自己要能被 hover 暂停 */
+  pointer-events: auto;
+  animation: toastIn var(--dur-enter) var(--ease-out);
+}
+
+.icon {
+  flex: none;
+  width: var(--input-icon);
+  height: var(--input-icon);
+  margin-top: var(--sp-1);
+}
+
+/* 状态色只上左侧图标,不换底 —— 三个变体的差别只有这一行。 */
+.info .icon {
+  color: var(--text-3);
+}
+
+.success .icon {
+  color: var(--ok);
+}
+
+.danger .icon {
+  color: var(--danger);
+}
+
+.message {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.5;
+}

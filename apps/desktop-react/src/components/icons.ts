@@ -12,6 +12,10 @@ import {
   Search,
   Check,
   Eye,
+  Minus,
+  Info,
+  CircleCheck,
+  CircleAlert,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -33,10 +37,15 @@ const REGISTRY: Record<string, LucideIcon> = {
   Search,
   Check,
   Eye,
+  Minus,
+  Info,
+  CircleCheck,
+  CircleAlert,
 }
 
 export function resolveIcon(name: string): LucideIcon {
   return REGISTRY[name] ?? FolderTree
 }
 
-export { Plus, X, Pin, ChevronDown, ChevronRight, Search, Check, Eye }
+export { Plus, X, Pin, ChevronDown, ChevronRight, Search, Check, Eye, Minus, Info, CircleCheck, CircleAlert }
+export type { LucideIcon }

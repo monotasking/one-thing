@@ -9,6 +9,8 @@ export const en: Record<MessageKey, string> = {
   /* ── common ───────────────────────────────────────────────────────── */
   'common.close': 'Close',
   'common.closeTab': 'Close {label}',
+  'common.confirm': 'Confirm',
+  'common.cancel': 'Cancel',
 
   /* ── top bar ──────────────────────────────────────────────────────── */
   'topbar.newSession': 'New session',

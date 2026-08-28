@@ -1,0 +1,35 @@
+@keyframes spin {
+  to { transform: rotate(1turn); }
+}
+
+/*
+ * 一枚缺口环:整圈 --line-2,顶边透明 —— 转起来那道缺口就是进度感。
+ * 700ms linear 是板上写死的第二个动效例外(第一个是浮层入场)。
+ */
+.ring {
+  display: inline-block;
+  flex: none;
+  border: var(--spinner-w) solid var(--line-2);
+  border-top-color: transparent;
+  border-radius: var(--r-full);
+  animation: spin var(--dur-spin) linear infinite;
+}
+
+.sm {
+  width: var(--spinner-sm);
+  height: var(--spinner-sm);
+}
+
+.md {
+  width: var(--spinner-md);
+  height: var(--spinner-md);
+}
+
+/* 降级不是「关掉反馈」:环还在,只是不转,也不再靠缺口说话。 */
+@media (prefers-reduced-motion: reduce) {
+  .ring {
+    animation: none;
+    border-top-color: var(--line-2);
+    opacity: var(--btn-disabled-o);
+  }
+}

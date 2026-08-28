@@ -10,3 +10,4 @@ export const TOOLTIP_DELAY_MS = 300 // --dur-tooltip-delay
 export const SCROLL_SETTLE_MS = 400 // --dur-scroll-settle
 export const TOC_HOVER_MS = 150 // --dur-toc-hover:悬停多久才把目录长出来
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
+export const TOAST_LIFE_MS = 4000 // --dur-toast-life:一条 toast 自动消失前活多久

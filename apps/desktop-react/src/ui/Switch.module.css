@@ -1,0 +1,39 @@
+.track {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  width: var(--switch-w);
+  height: var(--switch-h);
+  padding: var(--switch-pad);
+  border-radius: var(--r-full);
+  background: var(--line-2);
+  transition: background var(--dur) var(--ease);
+}
+
+.on {
+  background: var(--accent);
+}
+
+.track:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}
+
+.track:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+/* 钮走 transform 位移:轨的盒模型一帧不变,所以开关不会推动同一行里的别的东西。 */
+.knob {
+  width: var(--switch-knob);
+  height: var(--switch-knob);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  transition: transform var(--dur) var(--ease);
+}
+
+.on .knob {
+  transform: translateX(calc(var(--switch-w) - var(--switch-knob) - var(--switch-pad) * 2));
+}

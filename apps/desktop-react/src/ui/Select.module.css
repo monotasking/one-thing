@@ -1,0 +1,50 @@
+/*
+ * 「触发器同输入框」不是抄一遍配方,是 composes 同一条 —— 改 Input 这里跟着改。
+ * 三档高度也一并复用,所以 Select 和 Input 并排时基线一致。
+ */
+.trigger {
+  composes: field from './Input.module.css';
+  justify-content: space-between;
+  width: 100%;
+  font-size: var(--fs-label);
+  text-align: left;
+}
+
+.sm {
+  composes: sm from './Input.module.css';
+}
+
+.md {
+  composes: md from './Input.module.css';
+}
+
+.lg {
+  composes: lg from './Input.module.css';
+}
+
+.disabled {
+  composes: disabled from './Input.module.css';
+  cursor: default;
+}
+
+.value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  width: var(--input-icon);
+  height: var(--input-icon);
+  color: var(--text-3);
+}
+
+/* 板上唯一为选择族单列的那条:选项多过这个高度,滚的是面板自己。 */
+.list {
+  max-height: var(--select-menu-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

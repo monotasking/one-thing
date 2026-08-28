@@ -1,0 +1,65 @@
+.box {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--check-size);
+  height: var(--check-size);
+  border: var(--check-border) solid var(--line-2);
+  border-radius: var(--r-1);
+  background: var(--surface-2);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.box:hover {
+  border-color: var(--text-3);
+}
+
+/* 已表态(选中 / 半选)是同一条配方:accent 实底 + 无边框色差。 */
+.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.on:hover {
+  border-color: var(--accent);
+}
+
+.disabled {
+  opacity: var(--btn-disabled-o);
+}
+
+/*
+ * 视觉隐藏而不是 display:none —— 隐掉的输入框拿不到焦点,键盘就没法勾。
+ * 它铺满整个盒:点哪儿都是点它,所以不需要额外的点击代理。
+ */
+.native {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.native:disabled {
+  cursor: default;
+}
+
+.box:has(.native:focus-visible) {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+.mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--on-accent);
+  pointer-events: none;
+}
+
+.icon {
+  width: var(--check-icon);
+  height: var(--check-icon);
+}

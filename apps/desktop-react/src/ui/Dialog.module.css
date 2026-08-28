@@ -1,0 +1,61 @@
+/* 与 StageOverlay 同一组关键帧:系统里只有一种浮层入场,不给对话框单造一条。 */
+@keyframes dialogScrimIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialogPanelIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: dialogScrimIn var(--dur-enter) var(--ease-out);
+}
+
+.panel {
+  position: relative;
+  z-index: var(--z-modal);
+  width: var(--dialog-w);
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+  animation: dialogPanelIn var(--dur-enter) var(--ease-out);
+}
+
+/* 面板拿焦点只是为了让键盘落进来,不该画环 —— 环是给可操作元素的。 */
+.panel:focus {
+  outline: none;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.body {
+  font-size: var(--fs-label);
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+/* 逃生口在左、确定在右;两个都是兄弟节点,不嵌套。 */
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}

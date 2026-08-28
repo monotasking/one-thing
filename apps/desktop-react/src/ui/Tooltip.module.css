@@ -1,0 +1,28 @@
+@keyframes tipIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/*
+ * 反色墨底、r-1、无箭头。位移只在「相对锚点摆位」里出现(translate 是它的坐标,
+ * 不是入场动画)—— 入场动的只有 opacity,板上写死的「无位移」。
+ */
+.tip {
+  position: fixed;
+  z-index: var(--z-tooltip);
+  max-width: var(--menu-w);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - var(--sp-2)));
+  animation: tipIn var(--dur-enter) var(--ease-out);
+}
+
+/* 顶不下时翻到下方:同一枚间距,只换方向。 */
+.below {
+  transform: translate(-50%, var(--sp-2));
+}

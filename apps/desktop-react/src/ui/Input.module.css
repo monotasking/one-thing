@@ -1,0 +1,87 @@
+/* 「控件 · 输入」板配方。几何全部来自 tokens.css,这里一个字面值都没有。 */
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--input-gap);
+  height: var(--btn-md);
+  padding: 0 var(--input-pad-x);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  color: var(--text-1);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.sm {
+  height: var(--btn-sm);
+}
+
+.md {
+  height: var(--btn-md);
+}
+
+.lg {
+  height: var(--input-lg);
+}
+
+/* hover 只升一档边线,不涂底 —— 输入框的底永远是抬升面。 */
+.field:hover:not(.disabled) {
+  border-color: var(--line-2);
+}
+
+/*
+ * 文本输入类是「焦点环只在 :focus-visible」那条规矩的例外:
+ * 鼠标点进来也亮环。所以这里用 :focus-within 而不是 :focus-visible。
+ */
+.field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 var(--focus-ring-w) var(--accent-ring);
+}
+
+/* 错误只换边色。聚焦时红边仍然压过 accent 边 —— 错还没改完,不该显得没事了。 */
+.invalid,
+.invalid:hover:not(.disabled),
+.invalid:focus-within {
+  border-color: var(--danger);
+}
+
+.disabled {
+  opacity: var(--btn-disabled-o);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  outline: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-label);
+}
+
+.input::placeholder {
+  color: var(--text-4);
+}
+
+.input:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+/* 图标槽:固定尺寸,给了才占位。 */
+.slot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--input-icon);
+  height: var(--input-icon);
+  color: var(--text-3);
+}
+
+.slot > svg {
+  width: var(--input-icon);
+  height: var(--input-icon);
+}

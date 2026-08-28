@@ -1,0 +1,54 @@
+/* 规格页自己的排版。同样零字面色值 —— 它是给人看配方的,自己先守规矩。 */
+.page {
+  min-height: 100%;
+  padding: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  background: var(--surface-0);
+}
+
+.head {
+  margin: 0;
+  font-size: var(--fs-display);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-3);
+  background: var(--surface-1);
+}
+
+.name {
+  margin: 0;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: var(--menu-section-ls);
+  color: var(--text-3);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.cell {
+  width: var(--menu-w);
+}
+
+.wide {
+  width: 100%;
+}
+
+.note {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
