@@ -221,6 +221,113 @@ describe('ipc-hub → ui-refold 挂点', () => {
     expect(stats.mismatches).toBe(0)
   })
 
+  /** 新管:把一段账本原词汇按序喂进来(与生产上 `session:ledger-event` 同形)。 */
+  async function feed(records: readonly unknown[]): Promise<void> {
+    for (const record of records) {
+      eventCallback?.({ sessionId: SESSION, event: { type: 'session:ledger-event', record } as never })
+    }
+    await new Promise(resolve => setTimeout(resolve, 0))
+  }
+
+  it('B 期两消费者对拍:新管实时折 ≡ 手写拼装,0 失配', async () => {
+    const { refold } = await boot()
+    listMock.mockResolvedValue({ events: ledger('在的') })
+
+    await feed(ledger('在的'))
+    await settle('stream:complete')
+
+    const stats = refold.getUiRefoldStats()
+    expect(stats.liveEvents).toBe(8)
+    expect(stats.liveChecks).toBe(1)
+    expect(stats.liveMismatches).toBe(0)
+    // 两道门互补,各比各的:拉账本那道照常也比了一次。
+    expect(stats.checks).toBe(1)
+    expect(stats.mismatches).toBe(0)
+  })
+
+  it('两侧真不同 → 活折那道也报红(不是永远绿)', async () => {
+    const { refold } = await boot('在的')
+    listMock.mockResolvedValue({ events: ledger('在的') })
+
+    // 新管说的是另一句话。
+    await feed(ledger('不在'))
+    await settle('stream:complete')
+
+    expect(refold.getUiRefoldStats().liveMismatches).toBe(1)
+  })
+
+  it('缺号:不补拼,整会话经 listRaw 重折', async () => {
+    const { refold } = await boot()
+    const full = ledger('在的')
+    listMock.mockResolvedValue({ events: full })
+
+    // 前三条正常,然后跳过两条(模拟推送丢段)。
+    await feed(full.slice(0, 3))
+    await feed(full.slice(5))
+    await new Promise(resolve => setTimeout(resolve, 5))
+
+    const stats = refold.getUiRefoldStats()
+    expect(stats.liveGaps).toBeGreaterThanOrEqual(1)
+    expect(stats.liveRefolds).toBe(1)
+    // 重折之后活折接得上,收尾对拍照样 0 失配。
+    await settle('stream:complete')
+    expect(refold.getUiRefoldStats().liveMismatches).toBe(0)
+  })
+
+  it('缺号的重折有节流:窗口内多次缺号合并成一次拉', async () => {
+    const { refold } = await boot()
+    const full = ledger('在的')
+    listMock.mockResolvedValue({ events: full })
+
+    await feed(full.slice(0, 2))
+    // 连着三次缺号(窗口内)。
+    await feed([full[4], full[6], full[7]])
+    await new Promise(resolve => setTimeout(resolve, 5))
+
+    expect(refold.getUiRefoldStats().liveRefolds).toBe(1)
+    // 拉的那一次是重折自己拉的(收尾还没发生)。
+    expect(listMock).toHaveBeenCalledTimes(1)
+    expect(refold.UI_REFOLD_LIVE_REFOLD_MS).toBeGreaterThan(0)
+  })
+
+  it('中途入场(第一条不是 seq 1)→ 先整份重折再跟车', async () => {
+    const { refold } = await boot()
+    const full = ledger('在的')
+    listMock.mockResolvedValue({ events: full })
+
+    await feed(full.slice(4))
+    await new Promise(resolve => setTimeout(resolve, 5))
+
+    expect(refold.getUiRefoldStats().liveRefolds).toBe(1)
+    await settle('stream:complete')
+    expect(refold.getUiRefoldStats().liveMismatches).toBe(0)
+  })
+
+  it('新管补两格:turnContext / runId 落到手写消息上', async () => {
+    const { store } = await boot()
+    listMock.mockResolvedValue({ events: ledger('在的') })
+
+    await feed([
+      {
+        seq: 100,
+        time: 2000,
+        type: 'context/turn-update',
+        data: { messageId: 'u1', set: { datetime: '2026-08-28' } },
+      },
+      {
+        seq: 101,
+        time: 2001,
+        type: 'message/patched',
+        data: { messageId: 'a1', patch: { runId: 'r-live' } },
+      },
+    ])
+
+    const messages = store.sessionMessages.get(SESSION)!
+    expect(messages.find(message => message.id === 'u1')?.turnContext)
+      .toEqual({ set: { datetime: '2026-08-28' } })
+    expect(messages.find(message => message.id === 'a1')?.runId).toBe('r-live')
+  })
+
   it('拉账本炸了 → 自吞记一次 error,收尾路径不受影响', async () => {
     const { refold } = await boot()
     listMock.mockRejectedValue(new Error('boom'))

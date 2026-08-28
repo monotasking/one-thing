@@ -18,6 +18,7 @@ import type { InteractionAnswer, InteractionRequest } from '@onething/core/inter
 import type { JsonObject } from '../json.js'
 import type { SessionCommand } from './session-commands.js'
 import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import type { SessionLogEventRecord } from '@onething/core/session/events'
 import type { SessionEventType } from '@onething/core/events'
 
 // ── Type registry ───────────────────────────────
@@ -495,6 +496,28 @@ export interface SessionCollabUpdatedEvent {
   room: NonNullable<ChatSession['room']>
 }
 
+// ── 事件账本(B 期,§17.8)─────────────────────────────
+
+/**
+ * **账本原词汇下发**:`events.jsonl` 里逐字同一条记录,原样推到渲染层。
+ *
+ * 为什么骑 `session:event` 这条既有推送面而不是新开通道:桌面 IPCBridge 与 web SSE
+ * 都是**观察总线**的,一条总线事件自动两边都有;新开通道意味着 preload / 四壳 /
+ * `transport:gate` 数字棘轮一起动,而这条事件没有任何"通道级"的特殊需求。
+ *
+ * 载荷不是 UI 词汇的投影,而是**事实那一条**(定律一)。打包行(`assistant/chunks`)
+ * 原样下发,消费侧过 `decode` 展开 —— 打包是存储编码,不是语义(定律二),所以
+ * 这里不需要第二套节流。
+ *
+ * 消费者(本批唯一一个):渲染层的影子 fold。旧的 `session:event` / `session:stream`
+ * 双发**一字不动**,退役是 U2 之后单独一刀。
+ */
+export interface SessionLedgerEvent {
+  type: typeof SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT
+  /** 账本记录本体(自带 `seq`,消费侧靠它查缺号)。 */
+  record: SessionLogEventRecord
+}
+
 // ── Steering events ─────────────────────────────
 
 /** A steering message was persisted and queued; retractable until consumed. */
@@ -662,6 +685,7 @@ export type SessionEvent =
   | ToolMetadataEvent
   | SessionRenamedEvent
   | SessionCollabUpdatedEvent
+  | SessionLedgerEvent
   | SteeringQueuedEvent
   | SteeringConsumedEvent
   | SteeringRetractedEvent

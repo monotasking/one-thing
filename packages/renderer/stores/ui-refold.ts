@@ -103,6 +103,14 @@ export const UI_REFOLD_MAX_MESSAGES = 300
 export const UI_REFOLD_MAX_EVENTS = 5000
 /** 同一道学费闸的**字节**那一半(真机量出来的那条 50MB/258 事件的账本走这里)。 */
 export const UI_REFOLD_MAX_BYTES = 4_000_000
+/**
+ * 活账本(B 期新管)漏序之后**重折的节流**:同一条会话最多这么频繁地整份重拉一次。
+ *
+ * 漏序不补拼(无快照裁定):缺号就把整会话经 `listRaw` 重折一遍。重折要整份拉,
+ * 所以必须有节流 —— 一条抖动的连接不该把账本拉成风暴。窗口内再缺号只记一次,
+ * 到点合并成一次重折。
+ */
+export const UI_REFOLD_LIVE_REFOLD_MS = 3000
 
 export interface UiRefoldStats {
   /** 真的比过几次(`mismatches = 0` 那句话的分母)。 */
@@ -119,6 +127,16 @@ export interface UiRefoldStats {
   skippedNoLedger: number
   /** 出错自吞的次数(门自己坏了,不该影响任何人)。 */
   errors: number
+  /** 第二道门:**两消费者对拍**(手写拼装 vs 新管实时折)比过几次。 */
+  liveChecks: number
+  /** 两消费者对不上的次数。 */
+  liveMismatches: number
+  /** 新管收到的账本行数(真机上"管子通没通"的读数)。 */
+  liveEvents: number
+  /** 检出缺号几次(每次都会安排一次重折)。 */
+  liveGaps: number
+  /** 因缺号 / 中途入场而整份重折了几次。 */
+  liveRefolds: number
 }
 
 function emptyStats(): UiRefoldStats {
@@ -130,6 +148,11 @@ function emptyStats(): UiRefoldStats {
     skippedOversized: 0,
     skippedNoLedger: 0,
     errors: 0,
+    liveChecks: 0,
+    liveMismatches: 0,
+    liveEvents: 0,
+    liveGaps: 0,
+    liveRefolds: 0,
   }
 }
 
@@ -183,6 +206,140 @@ export function foldLedgerMessages(events: readonly unknown[]): ChatMessage[] {
   let state = createSessionProjectionState()
   for (const event of events) state = reduceSessionProjection(state, event as never)
   return materializeChatMessages(state).messages as unknown as ChatMessage[]
+}
+
+/**
+ * ============ 新管:活账本折叠(B 期,§17.8)============
+ *
+ * U1-b 的**字面形态**在这里复活:同一批事实喂两个消费者 —— 手写拼装管道、
+ * core 折叠器 —— 然后对拍。B 期之前它造不出来(UI 事件流没有折叠器要的词汇,
+ * 硬做就得在 renderer 里写翻译器 = 门喂自己);现在推送面直接下发**账本原词汇**
+ * (`session:ledger-event`),两侧的输入终于同源而且都不出自渲染层的手。
+ *
+ * 与"收尾拉 `listRaw` 对拍"是**互补**的两道:
+ *
+ *  - 拉 `listRaw`:屏幕 ≡ **耐久账本**(证的是落盘那份对);
+ *  - 活折对拍:  屏幕 ≡ **推送面实时喂出来的那份**(证的是管子那份对)。
+ *
+ * 两道同时绿,才叫"管子没丢段、拼装器也没算错" —— 这正是 U1-b 当初被迫接受的
+ * 那个"同色代价"的解药。
+ */
+
+interface LiveFold {
+  state: ReturnType<typeof createSessionProjectionState>
+  /** 已折进去的最后一条 seq。0 = 还没起底。 */
+  lastSeq: number
+  /** 起底/重折还没完成时,新到的行一律丢掉(重折读的整份账本里本来就有它们)。 */
+  pending: boolean
+  /** 上次重折的时刻(节流)。 */
+  lastRefoldAt: number
+  /** 已排了一次重折(窗口内再缺号不再排第二次)。 */
+  refoldScheduled: boolean
+}
+
+const liveFolds = new Map<string, LiveFold>()
+
+function newLiveFold(): LiveFold {
+  return {
+    state: createSessionProjectionState(),
+    lastSeq: 0,
+    pending: true,
+    lastRefoldAt: 0,
+    refoldScheduled: false,
+  }
+}
+
+/**
+ * 新管来了一条账本行。
+ *
+ * 三种情况:
+ *  - **接得上**(`seq === lastSeq + 1`):当场折进去,零拷贝零节流 —— 账本行本身
+ *    就是打包过的(`assistant/chunks` 一行一段 delta),不需要第二套合批。
+ *  - **旧行**(`seq <= lastSeq`):重折之后追上来的回声,丢掉(幂等)。
+ *  - **缺号 / 中途入场**:**不补拼**(无快照裁定),整会话经 `listRaw` 重折,
+ *    节流见 `UI_REFOLD_LIVE_REFOLD_MS`。
+ */
+export function feedUiRefoldLedgerEvent(sessionId: string, record: unknown): void {
+  try {
+    if (!isEnabled()) return
+    const seq = (record as { seq?: unknown })?.seq
+    if (typeof seq !== 'number' || !Number.isFinite(seq)) return
+    stats.liveEvents += 1
+
+    let fold = liveFolds.get(sessionId)
+    if (!fold) {
+      fold = newLiveFold()
+      liveFolds.set(sessionId, fold)
+      // 中途入场(页面开在会话中间)= 天然缺号:seq 1 之外的第一条一律先重折。
+      if (seq !== 1) {
+        scheduleLiveRefold(sessionId, fold)
+        return
+      }
+      fold.pending = false
+    }
+
+    if (fold.pending) return
+    if (seq <= fold.lastSeq) return
+    if (seq !== fold.lastSeq + 1) {
+      stats.liveGaps += 1
+      scheduleLiveRefold(sessionId, fold)
+      return
+    }
+
+    fold.state = reduceSessionProjection(fold.state, record as never)
+    fold.lastSeq = seq
+  } catch (error) {
+    stats.errors += 1
+    log.debug('ui-refold live feed failed', { sessionId }, error)
+  }
+}
+
+/** 缺号之后的整份重折 —— 节流,窗口内合并成一次。 */
+function scheduleLiveRefold(sessionId: string, fold: LiveFold): void {
+  fold.pending = true
+  if (fold.refoldScheduled) return
+  fold.refoldScheduled = true
+  const wait = Math.max(0, fold.lastRefoldAt + UI_REFOLD_LIVE_REFOLD_MS - Date.now())
+  setTimeout(() => {
+    void runLiveRefold(sessionId)
+  }, wait)
+}
+
+async function runLiveRefold(sessionId: string): Promise<void> {
+  const fold = liveFolds.get(sessionId)
+  if (!fold) return
+  fold.refoldScheduled = false
+  fold.lastRefoldAt = Date.now()
+  try {
+    const { events } = await sessionEventsApi.listRaw({ sessionId })
+    let state = createSessionProjectionState()
+    let lastSeq = 0
+    for (const event of events ?? []) {
+      state = reduceSessionProjection(state, event as never)
+      const seq = (event as { seq?: number }).seq
+      if (typeof seq === 'number' && seq > lastSeq) lastSeq = seq
+    }
+    fold.state = state
+    fold.lastSeq = lastSeq
+    fold.pending = false
+    stats.liveRefolds += 1
+  } catch (error) {
+    // 重折失败:保持 pending,下一条缺号会再排一次(节流仍然生效)。
+    stats.errors += 1
+    log.debug('ui-refold live refold failed', { sessionId }, error)
+  }
+}
+
+/** 这条会话的活折此刻物化成什么样(还没起底时是 `undefined`)。 */
+function liveMessages(sessionId: string): ChatMessage[] | undefined {
+  const fold = liveFolds.get(sessionId)
+  if (!fold || fold.pending || fold.lastSeq === 0) return undefined
+  return materializeChatMessages(fold.state).messages as unknown as ChatMessage[]
+}
+
+/** 会话没了就把它的活折一起丢掉(测试与会话删除都用得上)。 */
+export function forgetUiRefoldLiveFold(sessionId: string): void {
+  liveFolds.delete(sessionId)
 }
 
 export interface UiRefoldDiffEntry {
@@ -271,16 +428,15 @@ export function scheduleUiRefold(
 ): void {
   try {
     if (!isEnabled()) return
-    if (oversized.has(sessionId)) {
-      stats.skippedOversized += 1
-      return
-    }
-    if (!shouldSample(sessionId)) {
-      stats.skippedSampled += 1
-      return
-    }
+    // 采样只管**拉账本**那一道(它要整份传输)。**两消费者对拍不采样** ——
+    // 活折就在内存里,比一次只有物化 + 逐格比,没有传输那一笔。
+    const alreadyOversized = oversized.has(sessionId)
+    const sampled = shouldSample(sessionId)
+    if (alreadyOversized) stats.skippedOversized += 1
+    else if (!sampled) stats.skippedSampled += 1
+    const pull = sampled && !alreadyOversized
     setTimeout(() => {
-      void runUiRefold(sessionId, readMessages)
+      void runUiRefold(sessionId, readMessages, pull)
     }, 0)
   } catch (error) {
     stats.errors += 1
@@ -303,13 +459,48 @@ function approximateBytes(events: readonly unknown[]): number {
   }
 }
 
+/**
+ * 第二道门:**两消费者对拍**。
+ *
+ * 一侧是手写拼装管道(屏幕上那份),另一侧是新管实时喂出来的 core 折叠。判据、
+ * 豁免、方向标记与另一道完全一致(同一把尺,纪律 10)——差别只在"账本从哪来":
+ * 一个是耐久文件,一个是推送面。
+ */
+function compareAgainstLiveFold(
+  sessionId: string,
+  handMessages: readonly ChatMessage[],
+): void {
+  const live = liveMessages(sessionId)
+  if (!live) return
+  const ledger = canonicalSide(live)
+  const hand = canonicalSide(handMessages)
+  const diff: UiRefoldDiffEntry[] = []
+  const match = collectDiff(ledger, hand, '', diff)
+  stats.liveChecks += 1
+  if (match) return
+  stats.liveMismatches += 1
+  log.warn('ui-refold live mismatch', {
+    sessionId,
+    hand: handMessages.length,
+    live: live.length,
+    diff,
+  })
+}
+
 async function runUiRefold(
   sessionId: string,
   readMessages: (sessionId: string) => readonly ChatMessage[],
+  pull: boolean,
 ): Promise<void> {
   try {
     const handMessages = readMessages(sessionId)
     if (handMessages.length === 0) return
+    // 第一道:**两消费者对拍**(手写拼装 vs 新管实时折)。不拉账本,所以不采样;
+    // 只受消息条数闸约束(比一次的成本与条数成正比)。
+    if (handMessages.length <= UI_REFOLD_MAX_MESSAGES) {
+      compareAgainstLiveFold(sessionId, handMessages)
+    }
+    if (!pull) return
     if (handMessages.length > UI_REFOLD_MAX_MESSAGES) {
       // 免费闸:拉都不拉(消息条数与账本体积强相关)。
       stats.skippedTooManyMessages += 1
@@ -367,6 +558,7 @@ export function resetUiRefold(): void {
   settleCounts.clear()
   oversized.clear()
   weighed.clear()
+  liveFolds.clear()
   Object.assign(stats, emptyStats())
 }
 

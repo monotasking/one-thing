@@ -15,7 +15,7 @@ import { getLogger } from '@/services/log'
  */
 
 import { useChatStore } from '@/stores/chat'
-import { installUiRefoldHandle, scheduleUiRefold } from '@/stores/ui-refold'
+import { feedUiRefoldLedgerEvent, installUiRefoldHandle, scheduleUiRefold } from '@/stores/ui-refold'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useInteractionsStore } from '@/stores/interactions'
 import { useScratchpadStore } from '@/stores/scratchpad'
@@ -67,6 +67,52 @@ function readHandMessages(sessionId: string) {
   return useChatStore().sessionMessages.get(sessionId) ?? []
 }
 
+/**
+ * 账本行里**手写侧也该知道的那两格**(B 期,用户裁定"随 B 下发")。
+ *
+ * 只有两格,而且各有产地:
+ *
+ *  - `context/turn-update` → 用户消息上的 `turnContext`(尾块去重的那份持久化,
+ *    折叠器的写法见 `core/session/projection/reducer.ts` 的同名分支 —— 这里逐字
+ *    照抄它的形状,**不许自己另起一套**,否则两侧又是两份推导);
+ *  - `message/patched` 里的 `runId` → assistant 消息的归属 run。
+ *
+ * 其余字段一概不碰:消息树整体改读折叠产物是 U2 的事。
+ */
+function applyLedgerFactsToHandMessages(
+  store: ReturnType<typeof useChatStore>,
+  sessionId: string,
+  record: unknown,
+): void {
+  try {
+    const row = record as { type?: string; data?: Record<string, unknown> } | undefined
+    const data = row?.data
+    if (!data) return
+    if (row?.type === 'context/turn-update') {
+      const messageId = typeof data.messageId === 'string' ? data.messageId : ''
+      if (!messageId) return
+      const set = data.set as Record<string, string> | undefined
+      const removed = data.removed as string[] | undefined
+      store.updateSessionMessage(sessionId, messageId, {
+        turnContext: {
+          ...(set ? { set } : {}),
+          ...(removed ? { removed } : {}),
+        },
+      })
+      return
+    }
+    if (row?.type === 'message/patched') {
+      const messageId = typeof data.messageId === 'string' ? data.messageId : ''
+      const patch = data.patch as { runId?: unknown } | undefined
+      if (!messageId || typeof patch?.runId !== 'string') return
+      store.updateSessionMessage(sessionId, messageId, { runId: patch.runId })
+    }
+  } catch (error) {
+    // 补两格失败不该影响任何既有链路。
+    log.debug('ledger fact not applied', { sessionId }, error)
+  }
+}
+
 export function initializeIPCHub() {
   if (initialized) {
     log.debug('hub already initialized, skipping')
@@ -103,6 +149,25 @@ export function initializeIPCHub() {
         store.handleStreamComplete({ sessionId, aborted: true })
         scheduleUiRefold(sessionId, readHandMessages)
         break
+
+      /**
+       * B 期(§17.8):**账本原词汇**下发。本批只有两个消费者:
+       *
+       *  1. 渲染层的影子 fold(`feedUiRefoldLedgerEvent`)—— 两消费者对拍的
+       *     那一侧;
+       *  2. 手写侧的**两格补齐**(`context/turn-update` 的 `turnContext`、
+       *     `message/patched` 的 `runId`)。这两格是服务端记的账、渲染层从来
+       *     没收到过,U1-b 的门第一次把它们抓成了 live↔重放不一致
+       *     (§17.8.3 五);用户裁定"随 B 下发"。**只补这两格** ——
+       *     消息树整体改读折叠产物是 U2 的事,不在这批。
+       *
+       * 旧的 `session:event` / `session:stream` 双发一字不动(U2 之后单独退役)。
+       */
+      case SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT: {
+        feedUiRefoldLedgerEvent(sessionId, event.record)
+        applyLedgerFactsToHandMessages(store, sessionId, event.record)
+        break
+      }
 
       // Per-turn usage: snaps the composer's live token readout to real numbers.
       case SESSION_EVENT_TYPES.STREAM_USAGE:

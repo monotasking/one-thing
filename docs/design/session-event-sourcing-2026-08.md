@@ -10737,3 +10737,96 @@ diff: [ { path: '.0.turnContext', a: '{"set":{"skills":…}}(4609 字符)', b: '
 同一次复跑还撞出一条**与本批无关的真缺陷**并查到根因(SSE 广播按会话归属误滤,产品用 UI
 建的会话在 standalone server 上收不到任何推送),证据链与修复方向见
 `docs/audit/web-lane-sse-diagnosis-2026-08-28.md` 第五节;**未修**。
+
+### 17.8.5 B 落地记录:换管(双发期)—— 推送面开始说账本词汇(2026-08-28,opus 施工,未提交)
+
+*一、通道选择与棘轮处置*
+
+**没有新通道。** 账本行骑既有的 `session:event` 推送面,做法是**多一个事件型**:
+`SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT = 'session:ledger-event'`(core 那张唯一权威表)
++ `SessionLedgerEvent { type, record: SessionLogEventRecord }`(shared 联合,双向穷尽断言
+自动逼着两边同步)。
+
+为什么这样够:桌面 IPCBridge 与 web SSE **都是总线的观察者**,而且都**不做类型白名单**
+(`ipc-bridge.ts:180` 一句 `safeSend(IPC_CHANNELS.SESSION_EVENT, envelope)`;
+`server/http.ts:495` 一句 `writeSse(response, 'session:event', envelope, envelope.sequence)`)
+—— 一条总线事件自动两个传输都有。于是:
+
+- `transport:gate` **零改动**(IPC_CHANNELS 仍 42 个常量、四壳仍 2392 行);
+- preload / 四壳 / 客户端 **一行没动**;
+- 归属过滤**没有绕过**:它和别的会话事件走同一条总线,web 侧照旧逐条过
+  `canReadSession` → `ownerMatchesContext`(87c02798 刚拆干净的那把尺)。
+
+*二、观察者挂点*
+
+`packages/backend/session/event-broadcast.ts` —— 挂在**写入口的观察者面**
+(`registerSessionEventObserver`,门保证在 `writeSessionEvent` 返回之前、同一个同步段里
+交付)。挂这里而不是引擎里的理由是**没有第二个产地**:不管事件是谁写的(引擎 / 权限链 /
+压缩 / 迁移),推送面看到的就是账本上那一条,一条不多一条不少。
+
+- 观察者是同步段,`EventBus.emit` 是异步的 → 按会话串一条 promise 链,同一条会话按 seq
+  上总线,不同会话互不阻塞;
+- 链上出错只记一行 warn:**推送坏了不许影响写账**(测试里钉了这一条)。
+- 装配点:`createOnethingBackend` 里 `initializeEventSystem()` / `initializeSessionLayer()`
+  之后一行,`shutdown` 里对称拆掉。
+
+*三、频率:不需要第二套节流*
+
+账本行本身就是**打包过的**:`assistant/chunks` 由 core 的编码器按 **2s / 64 条**两道闸
+刷行(`session-event-recorder.ts:569-591`),所以一轮对话的账本行是**个位数到几十条**
+(真机三轮 = 46 条),与既有 `session:event` 同一量级。打包行原样下发、消费侧过 `decode`
+展开 —— 打包是存储编码不是语义(定律二),**不该再造一套 16ms 合批**(那是
+`SessionStreamCoalescer` 给 `session:stream` 那条真高频面用的)。
+
+*四、消费侧:两消费者对拍 + 漏序重折*
+
+渲染层 `stores/ui-refold.ts` 长出**活折**(`feedUiRefoldLedgerEvent`):
+
+- 接得上(`seq === lastSeq + 1`)→ 当场折进去;
+- 旧行(`seq <= lastSeq`)→ 丢掉(重折之后的回声,幂等);
+- **缺号 / 中途入场** → **不补拼**(无快照裁定照旧),整会话经 `listRaw` 重折。
+  节流 `UI_REFOLD_LIVE_REFOLD_MS = 3000`:窗口内多次缺号**合并成一次**拉,重折期间新到
+  的行一律丢(重折读的整份账本里本来就有它们)。
+
+于是 U1-b 的**字面形态复活**,门从此有两道互补的对拍:
+
+| 门 | 比什么 | 采样 |
+|---|---|---|
+| 收尾拉 `listRaw` | 屏幕 ≡ **耐久账本**(落盘那份对吗) | 1/5,+ 条数/字节闸(要整份传输) |
+| **活折对拍**(新) | 屏幕 ≡ **推送面实时喂出来的那份**(管子那份对吗) | **不采样**(内存里,没有传输那一笔),只受消息条数闸约束 |
+
+两道同时绿才叫"管子没丢段、拼装器也没算错" —— U1-b 当初被迫接受的"管损与拼错同色"
+这个代价,到这里解掉。
+
+*五、turnContext / runId 随新管下发(用户裁定)*
+
+`ipc-hub.ts` 的账本分支除了喂活折,还把**两格**补到手写侧消息上:
+`context/turn-update` → `message.turnContext`(形状逐字照抄折叠器的同名分支,不另起一套)、
+`message/patched.patch.runId` → `message.runId`。**只补这两格** —— 消息树整体改读折叠产物
+是 U2 的事。这两格正是 §17.8.3 五那条"门第一次抓到的真 live↔重放不一致"。
+
+*六、真机读数(支架复跑,三轮对话)*
+
+```
+liveEvents 46   liveChecks 3   liveMismatches 0   liveGaps 0   liveRefolds 0
+checks 1        mismatches 0   skippedSampled 2   errors 0
+```
+
+**验收钉命中**:`listRaw` 那道的 `mismatches` 从 §17.8.4 的 **1(turnContext + runId 两格)**
+变成 **0**;手写侧消息实测已带 `turnContext`(用户消息)与 `runId`(assistant 消息)。
+活折那道三次全绿、零缺号零重折、零 error、日志零 warn。
+
+*七、旧管照旧*
+
+`session:event` / `session:stream` **一字未动**,新管在这批只有渲染层影子 fold 一个消费者
+(外加上面那两格)。旧管退役放到 U2 之后单独一刀(先证后删)。
+
+*八、验收*
+
+typecheck 0;renderer + core/backend/shared 7095 绿(两处红:`App.container-layout` 是外壳
+布局在途批不认领;`sessions-delete-cascade` 是满载并行下的老抖动,单跑绿——它在本批之前的
+并行跑里同样红过);battery GREEN(225 refoldChecks / 0 mismatch);boundary·session·log·
+**transport** 四棘轮全绿(transport **未动基线**);`sessions:verify` 本机 0 / 外来存量 9
+零新增;真机 store 只读(支架临时 store,跑完删除)。新增测试 4(广播)+ 6(活折/漏序/
+节流/补两格),既有 18 只全绿。**未提交。**
+

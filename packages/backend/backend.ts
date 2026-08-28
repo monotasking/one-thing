@@ -36,6 +36,10 @@ import {
 import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
 import { installSessionPermissionEventRecorders } from './session/permission-events.js'
 import {
+  installSessionLedgerEventBroadcaster,
+  uninstallSessionLedgerEventBroadcaster,
+} from './session/event-broadcast.js'
+import {
   initializeStreamEngine,
   shutdownStreamEngine,
   getStreamEngine,
@@ -162,6 +166,10 @@ export async function createOnethingBackend(
 
   initializeEventSystem()
   initializeSessionLayer()
+  // B 期(§17.8):写入口每落一条事件,原样在总线上广播一份 —— 桌面 IPC 与
+  // web SSE 都观察总线,于是"两个传输同步"是构造性的。必须在事件系统之后
+  // (它要 `getEventBus()`),在任何一条事件被写下之前。
+  installSessionLedgerEventBroadcaster()
   initializeStreamEngine()
   registerBuiltinTriggers()
 
@@ -321,6 +329,7 @@ export async function createOnethingBackend(
       shutdownStreamEngine()
       Permission.shutdown()
       Interaction.shutdown()
+      uninstallSessionLedgerEventBroadcaster()
       shutdownSessionLayer()
       shutdownEventSystem()
       try {

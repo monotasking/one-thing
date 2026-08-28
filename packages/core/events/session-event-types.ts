@@ -70,6 +70,13 @@ export const SESSION_EVENT_TYPES = {
   COLLAB_TURN_ACTIVE: 'collab:turn-active',
   COLLAB_COORDINATOR_CHANGED: 'collab:coordinator-changed',
   COLLAB_AGENT_CHANGED: 'collab:agent-changed',
+  /**
+   * B 期(§17.8):**事件账本原词汇**下发。载荷是 `events.jsonl` 里逐字同一条
+   * `SessionLogEventRecord` —— 推送面从此有一种"事实"的说法,而不只是 UI 词汇。
+   * 骑的是既有的 `session:event` 推送面(桌面 IPCBridge / web SSE 都观察总线),
+   * 所以**没有新通道常量**。
+   */
+  SESSION_LEDGER_EVENT: 'session:ledger-event',
 } as const satisfies Record<string, `${string}:${string}`>
 
 export type SessionEventType = (typeof SESSION_EVENT_TYPES)[keyof typeof SESSION_EVENT_TYPES]
