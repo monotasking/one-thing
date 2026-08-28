@@ -1,0 +1,27 @@
+.group {
+  display: inline-flex;
+  padding: var(--sp-1);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+  gap: var(--sp-1);
+  flex: none;
+}
+
+.seg {
+  padding: var(--seg-pad-y) var(--seg-pad-x);
+  border-radius: var(--r-1);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.seg:hover {
+  background: var(--st-hover);
+}
+
+/* 选中段抬起一层:换底 + sh-1,不动尺寸 */
+.segOn {
+  background: var(--surface-2);
+  color: var(--text-1);
+  box-shadow: var(--sh-1);
+}

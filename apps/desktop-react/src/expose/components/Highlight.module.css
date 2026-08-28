@@ -1,0 +1,6 @@
+.mark {
+  background: var(--st-sel);
+  color: inherit;
+  border-radius: var(--r-1);
+  padding: 0 var(--sp-1);
+}

@@ -1,0 +1,42 @@
+.wrap {
+  flex: none;
+  width: 100%;
+  max-width: var(--chat-col);
+  margin: 0 auto;
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+
+.box {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+
+.box:focus-within {
+  border-color: var(--line-2);
+  box-shadow: var(--sh-2);
+}
+
+/* 多行自增由 rows 模拟:框向上生长,底缘钉死在 Dock 之上。 */
+.input {
+  flex: 1;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-chat);
+  line-height: 1.6;
+  max-height: var(--sp-8);
+}
+
+.input::placeholder {
+  color: var(--text-4);
+}

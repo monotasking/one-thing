@@ -1,0 +1,188 @@
+/*
+ * 壳:卡与预览按钮的共同定位参考系。它自己不画任何东西 ——
+ * 卡铺满它,所以网格里的几何和以前逐像素相同。
+ */
+.wrap {
+  position: relative;
+  display: flex;
+}
+
+.card {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: var(--card-min-h);
+  padding: var(--sp-3) var(--sp-4);
+  text-align: left;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+  /* 无位移原则:hover 只加影子和边色,不动位置。 */
+  transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.card:hover {
+  box-shadow: var(--sh-2);
+  border-color: var(--line-2);
+}
+
+/* 柔环用 outline 而不是 box-shadow —— 这样 hover 的 sh-2 和它可以叠加而不互相盖掉。 */
+.focused,
+.current {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+.current {
+  border-color: var(--accent);
+}
+
+/*
+ * 300ms 淡入的幽灵入口。常驻占位,只动 opacity:
+ * hover 之外它 pointer-events: none,所以看不见的时候也点不到,
+ * 但它一直在原位 —— 出现时不会有任何位移(无位移原则)。
+ */
+.peek {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  color: var(--text-3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-hover-fade) var(--ease);
+}
+
+.wrap:hover .peek,
+.peek:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.peekIcon {
+  width: var(--fs-title);
+  height: var(--fs-title);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-card);
+  font-weight: 650;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatars {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.avatar {
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  border: 1px solid var(--surface-2);
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+}
+
+.avatar + .avatar {
+  margin-left: var(--avatar-overlap);
+}
+
+.tintAccent {
+  background: var(--tint-accent);
+}
+
+.tintOk {
+  background: var(--tint-ok);
+}
+
+.tintDanger {
+  background: var(--tint-danger);
+}
+
+.summary {
+  margin: 0;
+  flex: 1;
+  font-size: var(--fs-meta);
+  line-height: 1.65;
+  color: var(--text-3);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.live {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.liveDot {
+  flex: none;
+  width: var(--status-dot);
+  height: var(--status-dot);
+  border-radius: var(--r-full);
+  background: var(--ok);
+}
+
+.liveText {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.diffDot {
+  width: var(--status-dot);
+  height: var(--status-dot);
+  border-radius: var(--r-full);
+  background: var(--danger);
+}
+
+.okDot {
+  width: var(--status-dot);
+  height: var(--status-dot);
+  border-radius: var(--r-full);
+  background: var(--ok);
+}
+
+.time {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-4);
+}

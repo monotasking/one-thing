@@ -1,0 +1,183 @@
+/* ── mock 内容的局部演示色 ────────────────────────────────────────────────────
+ * 铁律里说组件文件禁字面色值。这里是 content/ ——「被展示的东西」而不是外壳,
+ * diff 的红绿、终端的深底是内容自己的语义,不是设计系统的一层。所以它们:
+ *   1) 只允许出现在本文件;
+ *   2) 全部先落成局部变量,消费处照样只写 var();
+ *   3) 接真实内容时整块替换,外壳一行不动。
+ * ────────────────────────────────────────────────────────────────────────── */
+.demo {
+  --demo-del-bg: rgba(196, 72, 61, 0.08);
+  --demo-del-fg: #a84b42;
+  --demo-add-bg: rgba(111, 143, 78, 0.1);
+  --demo-add-fg: #55703b;
+  --demo-term-bg: #23221f;
+  --demo-term-fg: #8fbf6a;
+  --demo-term-dim: #6b6a63;
+
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+/* ── 文件树 ───────────────────────────────────────────────────────────── */
+.tree {
+  padding: var(--sp-2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--row-h);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-1);
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  transition: background var(--dur) var(--ease);
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+.rowIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-3);
+  flex: none;
+}
+
+.indent1 {
+  padding-left: var(--sp-5);
+}
+
+.indent2 {
+  padding-left: var(--sp-7);
+}
+
+/* ── diff ─────────────────────────────────────────────────────────────── */
+.diffHead {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--line-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.diffBody {
+  padding: var(--sp-2) 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  line-height: 1.7;
+}
+
+.diffLine {
+  padding: 0 var(--sp-3);
+  white-space: pre;
+  color: var(--text-3);
+}
+
+.diffDel {
+  background: var(--demo-del-bg);
+  color: var(--demo-del-fg);
+}
+
+.diffAdd {
+  background: var(--demo-add-bg);
+  color: var(--demo-add-fg);
+}
+
+/* ── 浏览器 ───────────────────────────────────────────────────────────── */
+.browserBar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.addr {
+  flex: 1;
+  height: var(--btn-sm);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-1);
+  background: var(--surface-1);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.viewport {
+  margin: 0 var(--sp-3) var(--sp-3);
+  min-height: var(--sp-8);
+  height: calc(100% - var(--sp-8) - var(--sp-5));
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-4);
+  font-size: var(--fs-meta);
+}
+
+/* ── 终端 ─────────────────────────────────────────────────────────────── */
+.term {
+  height: 100%;
+  padding: var(--sp-3);
+  background: var(--demo-term-bg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1.8;
+  color: var(--demo-term-fg);
+  white-space: pre-wrap;
+}
+
+.termDim {
+  color: var(--demo-term-dim);
+}
+
+/* ── 设置 ─────────────────────────────────────────────────────────────── */
+.form {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+}
+
+.fieldLabel {
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+.fieldHint {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/* 整段说明:跟在它解释的那个 field 底下,所以往上收一格抵掉 form 的 gap。 */
+.fieldNote {
+  margin-top: calc(var(--sp-3) * -1);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.stub {
+  height: var(--btn-sm);
+  flex: 1;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+}

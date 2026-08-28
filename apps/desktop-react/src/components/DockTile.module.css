@@ -1,0 +1,78 @@
+.wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tile {
+  position: relative;
+  width: var(--tile-size);
+  height: var(--tile-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-tile);
+  background: var(--surface-2);
+  border: 1px solid var(--line-1);
+  color: var(--text-1);
+  box-shadow: var(--sh-1);
+  /* 磁性放大是唯一的位移豁免 */
+  transform-origin: 50% 100%;
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.tile:hover {
+  background: var(--surface-1);
+}
+
+.tile:active {
+  background: var(--st-active);
+}
+
+.plus {
+  border-style: dashed;
+  border-color: var(--line-2);
+  color: var(--text-3);
+  box-shadow: none;
+  background: transparent;
+}
+
+.icon {
+  width: var(--tile-icon);
+  height: var(--tile-icon);
+}
+
+/* 徽本身归 ui/Badge;这里只说「贴在瓷砖右上角」。 */
+.badgeAt {
+  position: absolute;
+  top: var(--badge-offset);
+  right: var(--badge-offset);
+}
+
+.dot {
+  position: absolute;
+  bottom: var(--dot-offset);
+  left: 50%;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  margin-left: calc(var(--dot-size) / -2);
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.label {
+  position: absolute;
+  bottom: calc(100% + var(--tooltip-lift));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: var(--z-tooltip);
+}

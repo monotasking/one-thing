@@ -1,0 +1,42 @@
+@keyframes pinFlash {
+  0%, 100% { border-left-color: var(--line-1); }
+  50% { border-left-color: var(--accent); }
+}
+
+.panel {
+  position: relative;
+  flex: none;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: var(--pin-min);
+  background: var(--surface-1);
+  border-left: 1px solid var(--line-1);
+}
+
+/* flashPinned 变化时闪两下:告诉用户「你要的东西已经在这儿了」。 */
+.flashing {
+  animation: pinFlash calc(var(--dur-flash) / 2) var(--ease) 2;
+}
+
+.resize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--pin-resize-w);
+  height: 100%;
+  cursor: col-resize;
+  z-index: var(--z-sticky);
+  background: transparent;
+  transition: background var(--dur) var(--ease);
+}
+
+.resize:hover {
+  background: var(--st-hover);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-2);
+}

@@ -1,0 +1,18 @@
+/*
+ * 只负责「把行栈钉在哪」:右缘钉死 + 垂直居中。
+ * 宽度是 shrink-to-fit —— 展开时文本列长出来,容器往**左**变宽,
+ * right 不变 ⇒ 键的 x 坐标零变化(几何不变式第 1 条的落点就是这里的 right)。
+ */
+.rail {
+  position: absolute;
+  top: 50%;
+  right: var(--toc-right);
+  transform: translateY(-50%);
+  z-index: var(--z-sticky);
+  /*
+   * 悬停热区比键列本身宽一点、高一点(键列本体只有 22px 宽,太难碰)。
+   * padding 只往左 / 上下长 —— **右侧一律 0**,右缘就是 right 那条线,
+   * 所以热区再怎么放宽,键的坐标一步不动。
+   */
+  padding: var(--sp-2) 0 var(--sp-2) var(--sp-4);
+}

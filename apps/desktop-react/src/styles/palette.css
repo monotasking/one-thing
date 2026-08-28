@@ -1,0 +1,45 @@
+/* ── 颜色占位 ─────────────────────────────────────────────────────────────────
+ * L1 是写死值;之后由 theme-bridge 换掉「值的来源」,变量名保持不变。
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  --surface-0: #f5f4f1;
+  --surface-1: #faf9f7;
+  --surface-2: #ffffff;
+  --surface-3: #ffffff;
+
+  --text-1: #2b2a26;
+  --text-2: #5f5d56;
+  --text-3: #94918a;
+  --text-4: #b7b4ac;
+
+  --line-1: #e6e4de;
+  --line-2: #d3d0c8;
+
+  --accent: #7c6fa0;
+  --accent-deep: #655887;
+
+  --ok: #6f8f4e;
+  --danger: #c4483d;
+
+  --st-hover: rgba(43, 42, 38, 0.06);
+  --st-active: rgba(43, 42, 38, 0.1);
+  --st-sel: rgba(124, 111, 160, 0.1);
+  --st-sel-hover: rgba(124, 111, 160, 0.16);
+
+  --scrim: rgba(43, 42, 38, 0.4);
+
+  /* 派生:Dock 毛玻璃、分隔线、标签反色、钉住态底色 */
+  --glass: rgba(255, 255, 255, 0.55);
+  --dock-sep: rgba(43, 42, 38, 0.14);
+  --tooltip-bg: #2b2a26;
+  --tooltip-text: #faf9f7;
+  --accent-soft: rgba(124, 111, 160, 0.12);
+  --on-accent: #ffffff;
+
+  /* L2 派生:焦点柔环、头像底色、未读丸前景 */
+  --accent-ring: rgba(124, 111, 160, 0.18);
+  --tint-accent: rgba(124, 111, 160, 0.12);
+  --tint-ok: rgba(111, 143, 78, 0.12);
+  --tint-danger: rgba(196, 72, 61, 0.12);
+  --on-danger: #ffffff;
+}

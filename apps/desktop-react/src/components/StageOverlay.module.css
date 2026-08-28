@@ -1,0 +1,111 @@
+@keyframes scrimIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: scrimIn var(--dur-enter) var(--ease-out);
+}
+
+.panel {
+  position: relative;
+  z-index: var(--z-modal);
+  width: var(--stage-w);
+  height: var(--stage-h);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+  animation: panelIn var(--dur-enter) var(--ease-out);
+}
+
+/* 出场:反向播放同一条曲线,时长走 --dur-exit。 */
+.scrimLeaving {
+  animation: scrimIn var(--dur-exit) var(--ease) reverse;
+}
+
+.leaving {
+  animation: panelIn var(--dur-exit) var(--ease) reverse;
+}
+
+.header {
+  height: var(--stage-header-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+}
+
+.headIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-2);
+  flex: none;
+}
+
+.title {
+  flex: 1;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--btn-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-2);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.action:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.icon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+.close {
+  width: var(--btn-sm);
+  height: var(--btn-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-2);
+  color: var(--text-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.close:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+}

@@ -1,0 +1,70 @@
+/* 规范画布「按钮族」配方。几何全部来自 tokens.css,这里一个字面值都没有。 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  flex: none;
+  height: var(--btn-sm);
+  padding: 0 var(--btn-pad-x);
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  font-size: var(--fs-meta);
+  font-weight: var(--btn-weight);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.md {
+  height: var(--btn-md);
+}
+
+/* 丸变体只换圆角,不换尺寸 —— 所以同一行里丸和方的基线一致。 */
+.pill {
+  border-radius: var(--r-full);
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-deep);
+}
+
+.ghost {
+  border-color: var(--line-1);
+  color: var(--text-2);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--st-hover);
+  border-color: var(--line-2);
+}
+
+/* 图标按钮:正方、无内边距、不画边框(边框留 1px transparent 占位,尺寸不变)。 */
+.iconOnly {
+  width: var(--btn-sm);
+  padding: 0;
+}
+
+.md.iconOnly {
+  width: var(--btn-md);
+}
+
+.ghost.iconOnly {
+  border-color: transparent;
+  color: var(--text-3);
+}
+
+.ghost.iconOnly:hover:not(:disabled) {
+  background: var(--st-hover);
+  border-color: transparent;
+  color: var(--text-1);
+}
+
+.btn:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}

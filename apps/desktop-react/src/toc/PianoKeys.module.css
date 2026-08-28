@@ -1,0 +1,156 @@
+/* ── 几何不变式:这一份 CSS 就是「同一套几何栈」本身 ──────────────────────────
+ *
+ * 键列(常态)与展开的 panel **不是两套布局**,是同一棵行栈的两个状态:
+ *
+ *  1. 行栈右对齐、容器右缘钉死(.rows 里每行 justify-content: flex-end,
+ *     容器由 TocPanel 用 right: var(--toc-right) 绝对定位)。
+ *     → 任何「向左长出来」的东西(文本列、更宽的当前键)都只往左推,
+ *       键的 x 坐标物理上不可能变。
+ *  2. 行高恒等于 --toc-key-pitch,章节隙恒等于 --toc-gap,两态都不例外。
+ *     展开后出现的文本 / 章节标签都被 overflow: hidden 的定高行框住,
+ *     字号再大也撑不高它 → 键的 y 坐标零变化。
+ *  3. 展开态多出来的东西**不是条件渲染**,是同一批节点改 opacity / width:
+ *     .label 从 width 0 长到 --toc-label-w,.chapter 从 max-width 0 长到同一个数。
+ *     行数、行序、DOM 结构两态逐条相同(PianoKeys.test.tsx 钉这一条)。
+ *  4. panel 的白面是 .backdrop —— 一个绝对定位的**兄弟**节点,不是包在外面的
+ *     带 padding 的壳。它 inset 负 --toc-pad 往外撑,永远不参与行栈的布局计算。
+ *     (这是第 4 条也是最关键的一条:padding 会挪坐标,绝对定位的背景板不会。)
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* 行栈的定位参考系。它自己不带 padding —— 见不变式 4。 */
+.keys {
+  position: relative;
+}
+
+.backdrop {
+  position: absolute;
+  inset: calc(-1 * var(--toc-pad));
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-enter) var(--ease-out);
+}
+
+.open .backdrop {
+  opacity: 1;
+}
+
+/*
+ * 滚动分工:目录自己是一个滚动容器,overscroll-behavior: contain 挡住滚动链 ——
+ * 在目录里滚轮只滚目录,滚到头也不会接着滚聊天。
+ * 本批 mock 只有 9 条键(9×22 + 3×16 = 246px),不会溢出;
+ * 结构先摆好,键多起来时不用改代码。
+ */
+.rows {
+  position: relative;
+  max-height: var(--toc-max-h);
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 章节隙:定高,标签装在里面但撑不高它(见不变式 2)。 */
+.gap {
+  flex: none;
+  height: var(--toc-gap);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+
+/*
+ * 右侧留出键宽 + 间距,让章节标签和下面那批消息文本右缘对齐。
+ * 只在展开态给 —— 常态下给了,这一格空白就会把整条 rail 撑宽,
+ * 悬停热区跟着变宽(键的坐标倒是不受影响:行栈右对齐)。
+ */
+.open .gap {
+  padding-right: calc(var(--toc-key-w-on) + var(--toc-label-gap));
+}
+
+.chapter {
+  /* 同 .label:常态下宽度归零,免得几个汉字把整条 rail 撑成一片宽热区 */
+  max-width: 0;
+  font-size: var(--fs-chapter);
+  line-height: var(--toc-gap);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: max-width var(--dur-enter) var(--ease-out),
+    opacity var(--dur-enter) var(--ease-out);
+}
+
+.open .chapter {
+  max-width: var(--toc-label-w);
+  opacity: 1;
+}
+
+/* 一行键。两态同高、同对齐方式,只有背景与子元素宽度在变。 */
+.row {
+  flex: none;
+  height: var(--toc-key-pitch);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--toc-label-gap);
+  border-radius: var(--r-1);
+  background: transparent;
+  transition: background-color var(--dur) var(--ease);
+}
+
+/* 明暗斑只在展开态画:常态下那一片是「键列」,不是可点的行。 */
+.open .row:hover,
+.open .rowHover {
+  background: var(--st-hover);
+}
+
+.label {
+  /* 常态宽 0:它存在于 DOM 里(结构两态相同),但不占任何横向位置 */
+  width: 0;
+  opacity: 0;
+  flex: none;
+  text-align: right;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: width var(--dur-enter) var(--ease-out), opacity var(--dur-enter) var(--ease-out);
+}
+
+.open .label {
+  width: var(--toc-label-w);
+  opacity: 1;
+}
+
+.key {
+  flex: none;
+  width: var(--toc-key-w);
+  height: var(--toc-key-h);
+  border-radius: var(--r-full);
+  background: var(--line-2);
+  transition: width var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+
+/* 当前键:更宽 + accent。宽度只向左长(行右对齐),右缘一步不动。 */
+.current .key {
+  width: var(--toc-key-w-on);
+  background: var(--accent);
+}
+
+/* 悬停行对应的键「变深」 */
+.open .row:hover .key,
+.open .rowHover .key {
+  background: var(--text-2);
+}
+
+.open .current:hover .key,
+.open .current.rowHover .key {
+  background: var(--accent-deep);
+}

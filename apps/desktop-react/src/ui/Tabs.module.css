@@ -1,0 +1,89 @@
+.bar {
+  height: var(--tab-h);
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line-1);
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.bar::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  position: relative;
+  flex: none;
+  max-width: var(--tab-max-w);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--tab-pad-x);
+  gap: var(--tab-gap);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.tab:hover {
+  background: var(--st-hover);
+}
+
+/* 活动态:只换字色 + 底缘指示条。inset 阴影不占布局,所以切 tab 不产生位移。 */
+.tabOn {
+  color: var(--text-1);
+  box-shadow: inset 0 calc(var(--tab-indicator) * -1) 0 var(--accent);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--tab-gap);
+  color: inherit;
+  font-size: var(--fs-meta);
+  font-weight: 500;
+}
+
+.icon {
+  width: var(--tab-icon);
+  height: var(--tab-icon);
+  flex: none;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* × 的位子一直占着,只有 opacity 在变 —— hover 不引起重排 */
+.close {
+  flex: none;
+  width: var(--tab-close);
+  height: var(--tab-close);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-1);
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.tab:hover .close,
+.close:focus-visible {
+  opacity: 1;
+}
+
+.close:hover {
+  background: var(--st-active);
+  color: var(--text-1);
+}
+
+.closeIcon {
+  width: var(--tab-close);
+  height: var(--tab-close);
+}

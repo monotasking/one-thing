@@ -1,0 +1,173 @@
+@keyframes qlIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes qlPanelIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.scrim {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-dropdown);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--scrim);
+  animation: qlIn var(--dur-enter) var(--ease-out);
+}
+
+.panel {
+  width: var(--ql-w);
+  height: var(--ql-h);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+  animation: qlPanelIn var(--dur-enter) var(--ease-out);
+}
+
+.header {
+  flex: none;
+  height: var(--ql-header-h);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+}
+
+.title {
+  font-size: var(--fs-label);
+  font-weight: 650;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kind {
+  flex: none;
+  width: var(--kind-badge);
+  height: var(--kind-badge);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-2);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+}
+
+/* 按钮配方在 ui/Button;这里只说「推到标题行最右」。 */
+.enter {
+  margin-left: auto;
+}
+
+.close {
+  flex: none;
+  width: var(--btn-sm);
+  height: var(--btn-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-2);
+  color: var(--text-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.close:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.closeIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  animation: qlIn var(--dur) var(--ease);
+}
+
+.column {
+  width: 100%;
+  max-width: var(--ql-col);
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.user {
+  align-self: flex-end;
+  max-width: 80%;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-2);
+  background: var(--st-sel);
+  color: var(--text-1);
+  font-size: var(--fs-meta);
+}
+
+.replyTime {
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-4);
+}
+
+/* 助手正文在 Quick Look 里只给占位:总览是「找会话」,不是「读会话」。 */
+.reply {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.line {
+  height: var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+}
+
+.lineShort {
+  width: 62%;
+}
+
+.footer {
+  flex: none;
+  height: var(--ql-footer-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  border-top: 1px solid var(--line-1);
+  background: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+
+/* 键帽之间不留空,键帽与说明之间留一格 —— 「← → 换会话」读起来仍是一组。 */
+.hint {
+  margin-right: var(--sp-1);
+}
+
+.dot {
+  margin-right: var(--sp-1);
+}

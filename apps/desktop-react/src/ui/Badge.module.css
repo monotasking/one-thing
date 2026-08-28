@@ -1,0 +1,36 @@
+/* 三个 tone 的几何各自不同(徽标 16 / 未读丸 18),所以尺寸写在 tone 上而不是基类。 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-full);
+  line-height: 1;
+}
+
+.danger {
+  min-width: var(--badge-size);
+  height: var(--badge-size);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  background: var(--danger);
+  color: var(--on-accent);
+}
+
+.ok {
+  min-width: var(--badge-size);
+  height: var(--badge-size);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  background: var(--ok);
+  color: var(--on-accent);
+}
+
+.unread {
+  min-width: var(--unread-size);
+  height: var(--unread-size);
+  font-size: var(--fs-nano);
+  background: var(--danger);
+  color: var(--on-danger);
+}

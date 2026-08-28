@@ -1,0 +1,171 @@
+.overview {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.top {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--expose-pad) var(--expose-pad) var(--sp-5);
+}
+
+.searchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: var(--expose-search-w);
+  height: var(--expose-search-h);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-1);
+  background: var(--surface-2);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.searchWrap:focus-within {
+  border-color: var(--accent);
+}
+
+.searchIcon {
+  flex: none;
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-3);
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+}
+
+.search::placeholder {
+  color: var(--text-4);
+}
+
+/* 按钮配方在 ui/Button;这里只说「贴在总览右上角」。 */
+.newProject {
+  position: absolute;
+  right: var(--expose-pad);
+}
+
+.newIcon {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.inner {
+  width: 100%;
+  max-width: var(--expose-max-w);
+  margin: 0 auto;
+  padding: 0 var(--expose-pad) var(--expose-pad);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/*
+ * 组头在折叠 / 展开两态里是同一行:固定高度、固定位置、命中区不变。
+ * (曾经折叠态是另一个组件 .collapsedRow,几何和它不一样 —— 于是切一次之后
+ *  指针底下的元素就换了,原地再点点不动。那是这个文件里唯一的历史坑。)
+ */
+.groupHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  height: var(--list-row-h);
+}
+
+/* 开关占满组头剩余宽度 = 命中区尽可能大;负 margin 抵掉内边距,组名位置不动。 */
+.groupToggle {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-2);
+  margin-left: calc(-1 * var(--sp-2));
+  border-radius: var(--r-2);
+  text-align: left;
+  transition: background var(--dur) var(--ease);
+}
+
+.groupToggle:hover {
+  background: var(--st-hover);
+}
+
+.caret {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  color: var(--text-3);
+  align-self: center;
+}
+
+.groupName {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.groupPath {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex: none;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.count:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.plusIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--expose-gap);
+}

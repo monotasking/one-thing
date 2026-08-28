@@ -1,0 +1,74 @@
+.shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-0);
+}
+
+.main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  transition: transform var(--dur-enter) var(--ease-out), opacity var(--dur-enter) var(--ease-out);
+}
+
+/* L2:总览入场时聊天层缩暗。只改视觉,不改布局 —— transform 不占位。 */
+.mainDimmed {
+  transform: scale(var(--dim-scale));
+  opacity: var(--dim-opacity);
+}
+
+.center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 聊天区 = 滚动列 + 钉在它右缘的钢琴键目录。position: relative 是 TOC 的参考系。 */
+.chatArea {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ── Dock 保留带律 ────────────────────────────────────────────────────────────
+ * always:带占 var(--dock-band) 高,composer 在它之上 —— 结构上不可能重叠。
+ * autohide:带高 0,Dock 改为 fixed 覆盖滑起;此时才需要 z-index。
+ * ────────────────────────────────────────────────────────────────────────── */
+.band {
+  flex: none;
+  height: var(--dock-band);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bandCollapsed {
+  height: 0;
+  overflow: visible;
+}
+
+.hotzone {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--dock-hotzone-h);
+  z-index: var(--z-dropdown);
+}
+
+.floating {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-3);
+  z-index: var(--z-dropdown);
+  transform: translateX(-50%) translateY(calc(100% + var(--sp-5)));
+  transition: transform var(--dur-enter) var(--ease-out);
+}
+
+.floatingUp {
+  transform: translateX(-50%) translateY(0);
+}

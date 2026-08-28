@@ -1,0 +1,187 @@
+/* ── 结构 token ───────────────────────────────────────────────────────────────
+ * 铁律:组件文件(components/*.module.css)里不许出现字面色值 / px 圆角 / ms 时长。
+ * 一切几何、时长、层级都在这里命名一次,组件只许 var()。
+ * 唯一豁免:content/ 下的 mock 内容可用 diff 红绿等语义演示色(集中在
+ * content/mocks.module.css 顶部并注明)。
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* 字体栈 */
+  --font-ui: 'Schibsted Grotesk', 'Noto Sans SC', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 圆角 */
+  --r-1: 6px;
+  --r-2: 10px;
+  --r-3: 14px;
+  --r-full: 999px;
+
+  /* 间距梯 4/8/12/16/24/32/40/48 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 40px;
+  --sp-8: 48px;
+
+  /* 字号 */
+  --fs-display: 22px;
+  --fs-headline: 18px;
+  --fs-title: 16px;
+  --fs-chat: 15px;
+  --fs-body: 14px;
+  --fs-label: 13px;
+  --fs-meta: 12px;
+  --fs-micro: 11px;
+  /* L2 总览用的三级细字号(卡标题 13.5 / 快捷键条 10.5 / mono 元信息 10) */
+  --fs-card: 13.5px;
+  --fs-hint: 10.5px;
+  --fs-nano: 10px;
+
+  /* 手势:全局唯一 var(--dur) var(--ease);浮层入场例外 --dur-enter --ease-out */
+  --dur: 120ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-enter: 140ms;
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  /* 派生时长(仍属 token 文件,组件只许引用) */
+  --dur-exit: 120ms;
+  --dur-flash: 240ms;
+  --dur-tooltip-delay: 300ms;
+  --dur-scroll-settle: 400ms;
+  /* 悬停淡入(会话卡上的幽灵入口):比 --dur 慢,是为了「不抢眼」而不是「慢」 */
+  --dur-hover-fade: 300ms;
+  /* L3 钢琴键 TOC:悬停多久长出面板 / 落点消息高亮多久(JS 侧镜像见 components/motion.ts) */
+  --dur-toc-hover: 150ms;
+  --dur-toc-flash: 1200ms;
+
+  /* 投影 */
+  --sh-1: 0 1px 3px rgba(43, 42, 38, 0.08);
+  --sh-2: 0 8px 24px rgba(43, 42, 38, 0.14);
+  --sh-3: 0 20px 48px rgba(43, 42, 38, 0.22);
+
+  /* 层级 */
+  --z-sticky: 10;
+  --z-dropdown: 100;
+  --z-overlay: 500;
+  --z-modal: 600;
+  --z-tooltip: 700;
+  --z-toast: 800;
+
+  /* 外壳几何 */
+  --dock-band: 64px;
+  --pin-min: 320px;
+  --topbar-h: 44px;
+  --chat-col: 640px;
+  --pin-default: 400px;
+  --pin-header-h: 38px;
+  --pin-resize-w: 5px;
+  --stage-header-h: 40px;
+  --stage-w: 76%;
+  --stage-h: 78%;
+  --dock-hotzone-h: 8px;
+
+  /* Dock 几何 */
+  --r-dock: 16px;
+  --r-tile: 11px;
+  --dock-pad-y: 8px;
+  --dock-pad-x: 10px;
+  --dock-gap: 9px;
+  --dock-blur: 20px;
+  --tile-size: 44px;
+  --tile-icon: 18px;
+  --dock-sep-h: 36px;
+  --dock-sep-w: 1px;
+  --badge-size: 16px;
+  --badge-offset: -5px;
+  --dot-size: 4px;
+  --dot-offset: -8px;
+  --tooltip-lift: 30px;
+
+  /* Dock 降淡(滚动中) */
+  --dock-dim: 0.4;
+
+  /* 其它元件 */
+  --btn-sm: 28px;
+  --row-h: 28px;
+
+  /* ── L2 会话总览 Exposé 几何 ─────────────────────────────────────────── */
+  --r-card: 16px;
+  --expose-pad: 32px;
+  --expose-search-w: 440px;
+  --expose-search-h: 36px;
+  --expose-gap: 14px;
+  --expose-max-w: 1120px;
+  --card-min-h: 118px;
+  --focus-ring-w: 3px;
+  --dim-scale: 0.98;
+  --dim-opacity: 0.4;
+  --avatar-size: 20px;
+  --avatar-overlap: -6px;
+  --unread-size: 18px;
+  --kind-badge: 18px;
+  --status-dot: 6px;
+  --list-row-h: 40px;
+  --indent-1: 26px;
+  --indent-2: 42px;
+  --ql-w: 62%;
+  --ql-h: 78%;
+  --ql-header-h: 44px;
+  --ql-footer-h: 32px;
+  --ql-col: 560px;
+
+  /* ── L3 钢琴键会话目录(TOC)几何 ────────────────────────────────────────
+   * 这一节就是「几何栈」本身:键列与展开面板**共用**这几个数,
+   * 两个状态渲染同一套行结构,面板只加背景板与文字,键的坐标零变化。
+   * 变这里的任何一个数,两态一起变 —— 这是不变式能成立的前提。
+   * ────────────────────────────────────────────────────────────────────── */
+  --toc-key-pitch: 22px; /* 一行键的行高 = 键的纵向节拍 */
+  --toc-gap: 16px; /* 章节隙的高度(隙里放章节小标签,标签不撑高它) */
+  --toc-key-w: 18px; /* 常态键宽 */
+  --toc-key-h: 3px; /* 键厚 */
+  --toc-key-w-on: 22px; /* 当前键更宽:只向左长,右缘不动 */
+  --toc-right: 12px; /* 键列距聊天列右缘 */
+  --toc-label-w: 292px; /* 展开后消息文本列宽(向左长出去的那一段) */
+  --toc-label-gap: 12px; /* 文本与键之间 */
+  --toc-pad: 12px; /* 背景板比行栈四周各大出多少 */
+  --toc-max-h: 60vh; /* 键多过视口时,滚的是目录自己 */
+  --fs-chapter: 9.5px; /* 章节小标签 */
+
+  /* ── L1.5 自建组件库 src/ui/ 的几何 ──────────────────────────────────────
+   * 这一节是「规范画布上那几块板」的尺寸落地:菜单族 / Tabs 族 / 分段器族。
+   * ui/ 组件只许引用这里,业务组件连引用都不需要 —— 它们只消费组件。
+   * ────────────────────────────────────────────────────────────────────── */
+  /* 菜单族 */
+  --menu-w: 176px;
+  --menu-pad: 4px;
+  --menu-item-h: 30px;
+  --menu-item-pad-x: 8px;
+  --menu-item-gap: 8px;
+  --menu-check: 12px;
+  --menu-section-h: 22px;
+  --menu-section-ls: 0.06em;
+  --menu-sep-my: 4px;
+  --fs-menu: 12.5px;
+
+  /* Tabs 族 */
+  --tab-h: 36px;
+  --tab-pad-x: 10px;
+  --tab-gap: 6px;
+  --tab-icon: 12px;
+  --tab-close: 12px;
+  --tab-indicator: 2px;
+  --tab-max-w: 160px;
+
+  /* 分段器族 */
+  --seg-pad-y: 4px;
+  --seg-pad-x: 12px;
+
+  /* 按钮族(--btn-sm 在上面「其它元件」里,两档共用同一个 28) */
+  --btn-md: 32px;
+  --btn-pad-x: 12px;
+  --btn-weight: 600;
+  --btn-disabled-o: 0.45;
+
+  /* 键帽族 */
+  --kbd-pad-x: 4px;
+}

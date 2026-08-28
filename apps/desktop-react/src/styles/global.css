@@ -1,0 +1,53 @@
+/* ── 两条同级的铁律 ───────────────────────────────────────────────────────────
+ * 1. 组件文件里不落**字面色值 / px 圆角 / ms 时长** —— 一切几何、时长、层级
+ *    在 tokens.css / palette.css 里命名一次,组件只许 var()。
+ * 2. 组件文件里不落**字面 UI 文案** —— 一切界面文字在 src/i18n/zh.ts 里命名一次,
+ *    组件只许 useT()(纯函数 / 投影用 t())。什么算界面文案、什么是模拟用户数据,
+ *    边界写在 src/i18n/index.ts 顶部。
+ * 两条都可机械验证。第二条的查法(注释与 it() 用例名是中文,是本仓风格,不在规矩内):
+ *   grep -rn '[一-龥]' src/components src/ui src/expose/components src/toc --include='*.tsx' \
+ *     | grep -v '\*' | grep -v '//' | grep -v '\.test\.'
+ *   应当为空 —— 有输出就是有人把文案写回了组件里。
+ * ────────────────────────────────────────────────────────────────────────── */
+@import './tokens.css';
+@import './palette.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+kbd,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* 无位移原则:hover/active 一律不位移。唯二例外 = Dock 磁性放大、(未来的)弹跳提醒。 */

@@ -1,0 +1,28 @@
+.strip {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--dock-gap);
+  padding: var(--dock-pad-y) var(--dock-pad-x);
+  border-radius: var(--r-dock);
+  /* backdrop-filter 全系统只许出现在这里 */
+  background: var(--glass);
+  backdrop-filter: blur(var(--dock-blur));
+  -webkit-backdrop-filter: blur(var(--dock-blur));
+  border: 1px solid var(--line-1);
+  box-shadow: var(--sh-2);
+  transition: opacity var(--dur) var(--ease);
+}
+
+/* 滚动降淡:只动透明度,不动空间 —— 空间一动就是位移。 */
+.dimmed {
+  opacity: var(--dock-dim);
+}
+
+.sep {
+  width: var(--dock-sep-w);
+  height: var(--dock-sep-h);
+  background: var(--dock-sep);
+  align-self: center;
+  flex: none;
+}

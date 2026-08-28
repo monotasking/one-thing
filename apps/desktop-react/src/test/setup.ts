@@ -1,0 +1,32 @@
+/**
+ * 测试环境的一处环境补丁,不是产品代码。
+ *
+ * 这台 node 自带一个残缺的全局 localStorage(有对象、没有 setItem),它盖掉了 jsdom
+ * 提供的那一份;于是任何经过 zustand persist 的 setState 都炸在 storage.setItem。
+ * 这里在**缺方法时**补一个内存实现 —— 生产代码一行不改,store 的持久化配置也不动。
+ */
+function memoryStorage(): Storage {
+  const map = new Map<string, string>()
+  return {
+    get length() {
+      return map.size
+    },
+    key: (i: number) => Array.from(map.keys())[i] ?? null,
+    getItem: (k: string) => map.get(k) ?? null,
+    setItem: (k: string, v: string) => void map.set(k, String(v)),
+    removeItem: (k: string) => void map.delete(k),
+    clear: () => map.clear(),
+  } as Storage
+}
+
+const broken =
+  typeof globalThis.localStorage !== 'object' ||
+  typeof globalThis.localStorage?.setItem !== 'function'
+
+if (broken) {
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: memoryStorage(),
+    configurable: true,
+    writable: true,
+  })
+}

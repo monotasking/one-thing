@@ -1,0 +1,62 @@
+.bar {
+  height: var(--topbar-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+}
+
+/* L2:会话名变成总览入口,加内衬底 + hover 态;字号字重和原来逐字相同。 */
+.titleBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--row-h);
+  padding: 0 var(--sp-2);
+  margin-left: calc(var(--sp-2) * -1);
+  border-radius: var(--r-2);
+  transition: background var(--dur) var(--ease);
+}
+
+.titleBtn:hover {
+  background: var(--st-hover);
+}
+
+.title {
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.titleIcon {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--btn-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-1);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.chip:hover {
+  background: var(--st-hover);
+  border-color: var(--line-2);
+}
+
+.chipIcon {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+}
