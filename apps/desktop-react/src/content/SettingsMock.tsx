@@ -1,18 +1,24 @@
+import type { ReactNode } from 'react'
 import { useStageStore } from '../stage/store'
 import { Segmented } from '../ui/Segmented'
 import type { SegmentedOption } from '../ui/Segmented'
 import { useT } from '../i18n'
 import type { Locale, MessageKey } from '../i18n'
 import type { DockAlign, DockDisplay, DockEdge, DockSize, ResolvedOpen } from '../stage/types'
+import { KeymapSettings } from './KeymapSettings'
 import s from './mocks.module.css'
 
 /**
  * 选项表只存 key,渲染时才翻译 —— 表是常量,文案是当下的语言,两件事分开。
  * 唯一一个真接 store 的 mock:切换它,Dock 的形状 / 打开方式 / 界面语言当场生效。
  *
- * Dock 的边 / 沿边位置 / 大小从右键菜单搬到这里(08-29 拍板:统一的设置放设置里)——
- * 判据是既有的那条「配置形状的交互归设置页,菜单只留当下这一块的事」。
- * 文案键直接复用 dock.* 那批,不为同一句话造第二个键。
+ * ── 版式:按**领域**分区(08-29 拍板)────────────────────────────────────────
+ * 通用 / Dock / 打开方式 / 快捷键。一个控件属于哪个区,判据是「用户想改的是哪件事」,
+ * 不是「它接的是哪个 store 字段」。所以 Dock 的显示方式 / 边 / 沿边位置 / 大小归一区,
+ * 而「点图标落到哪」是另一件事,单独一区。
+ * 分区不分页:左侧竖向锚点导航等设置真长到那个量级再说。
+ * 这一页里**不许有游离在分区外的控件** —— 加一个控件就得先回答它属于哪个领域。
+ * ──────────────────────────────────────────────────────────────────────────
  */
 const DOCK_OPTIONS: Array<{ value: DockDisplay; labelKey: MessageKey }> = [
   { value: 'always', labelKey: 'settings.dockAlways' },
@@ -50,6 +56,20 @@ const LOCALE_OPTIONS: Array<{ value: Locale; labelKey: MessageKey }> = [
   { value: 'en', labelKey: 'settings.localeEn' },
 ]
 
+/**
+ * 一个领域一节:小节标题 + 若干行。标题走 <h3> 是为了让辅助技术读得出层级,
+ * 视觉上它只是一行 11px 的小字 —— 层级由标签给,分量由 CSS 给,两件事不混。
+ */
+function Section({ titleKey, children }: { titleKey: MessageKey; children: ReactNode }) {
+  const t = useT()
+  return (
+    <section className={s.section}>
+      <h3 className={s.sectionTitle}>{t(titleKey)}</h3>
+      {children}
+    </section>
+  )
+}
+
 export function SettingsMock() {
   const t = useT()
   const dockDisplay = useStageStore((st) => st.dockDisplay)
@@ -72,77 +92,87 @@ export function SettingsMock() {
   return (
     <div className={s.demo}>
       <div className={s.form}>
-        <div className={s.field}>
-          <div>
-            <div className={s.fieldLabel}>{t('settings.dockDisplay')}</div>
-            <div className={s.fieldHint}>{t('settings.dockDisplayHint')}</div>
+        <Section titleKey="settings.sectionGeneral">
+          <div className={s.field}>
+            <div className={s.fieldLabel}>{t('settings.language')}</div>
+            <Segmented
+              options={opts(LOCALE_OPTIONS)}
+              value={locale}
+              onChange={setLocale}
+              label={t('settings.language')}
+            />
           </div>
-          <Segmented
-            options={opts(DOCK_OPTIONS)}
-            value={dockDisplay}
-            onChange={setDockDisplay}
-            label={t('settings.dockDisplay')}
-          />
-        </div>
 
-        <div className={s.field}>
-          <div className={s.fieldLabel}>{t('dock.edge')}</div>
-          <Segmented
-            options={opts(EDGE_OPTIONS)}
-            value={dockEdge}
-            onChange={setDockEdge}
-            label={t('dock.edge')}
-          />
-        </div>
-
-        <div className={s.field}>
-          <div className={s.fieldLabel}>{t('dock.align')}</div>
-          <Segmented
-            options={opts(ALIGN_OPTIONS)}
-            value={dockAlign}
-            onChange={setDockAlign}
-            label={t('dock.align')}
-          />
-        </div>
-
-        <div className={s.field}>
-          <div className={s.fieldLabel}>{t('dock.size')}</div>
-          <Segmented
-            options={opts(SIZE_OPTIONS)}
-            value={dockSize}
-            onChange={setDockSize}
-            label={t('dock.size')}
-          />
-        </div>
-
-        <div className={s.field}>
-          <div>
-            <div className={s.fieldLabel}>{t('settings.defaultOpen')}</div>
-            <div className={s.fieldHint}>{t('settings.defaultOpenHint')}</div>
+          <div className={s.field}>
+            <div className={s.fieldLabel}>{t('settings.workdir')}</div>
+            <div className={s.stub} />
           </div>
-          <Segmented
-            options={opts(OPEN_OPTIONS)}
-            value={defaultOpen}
-            onChange={setDefaultOpen}
-            label={t('settings.defaultOpen')}
-          />
-        </div>
-        <div className={s.fieldNote}>{t('settings.overrideNote')}</div>
+        </Section>
 
-        <div className={s.field}>
-          <div className={s.fieldLabel}>{t('settings.language')}</div>
-          <Segmented
-            options={opts(LOCALE_OPTIONS)}
-            value={locale}
-            onChange={setLocale}
-            label={t('settings.language')}
-          />
-        </div>
+        <Section titleKey="settings.sectionDock">
+          <div className={s.field}>
+            <div>
+              <div className={s.fieldLabel}>{t('settings.dockDisplay')}</div>
+              <div className={s.fieldHint}>{t('settings.dockDisplayHint')}</div>
+            </div>
+            <Segmented
+              options={opts(DOCK_OPTIONS)}
+              value={dockDisplay}
+              onChange={setDockDisplay}
+              label={t('settings.dockDisplay')}
+            />
+          </div>
 
-        <div className={s.field}>
-          <div className={s.fieldLabel}>{t('settings.workdir')}</div>
-          <div className={s.stub} />
-        </div>
+          <div className={s.field}>
+            <div className={s.fieldLabel}>{t('dock.edge')}</div>
+            <Segmented
+              options={opts(EDGE_OPTIONS)}
+              value={dockEdge}
+              onChange={setDockEdge}
+              label={t('dock.edge')}
+            />
+          </div>
+
+          <div className={s.field}>
+            <div className={s.fieldLabel}>{t('dock.align')}</div>
+            <Segmented
+              options={opts(ALIGN_OPTIONS)}
+              value={dockAlign}
+              onChange={setDockAlign}
+              label={t('dock.align')}
+            />
+          </div>
+
+          <div className={s.field}>
+            <div className={s.fieldLabel}>{t('dock.size')}</div>
+            <Segmented
+              options={opts(SIZE_OPTIONS)}
+              value={dockSize}
+              onChange={setDockSize}
+              label={t('dock.size')}
+            />
+          </div>
+        </Section>
+
+        <Section titleKey="dock.openWith">
+          <div className={s.field}>
+            <div>
+              <div className={s.fieldLabel}>{t('settings.defaultOpen')}</div>
+              <div className={s.fieldHint}>{t('settings.defaultOpenHint')}</div>
+            </div>
+            <Segmented
+              options={opts(OPEN_OPTIONS)}
+              value={defaultOpen}
+              onChange={setDefaultOpen}
+              label={t('settings.defaultOpen')}
+            />
+          </div>
+          <div className={s.fieldNote}>{t('settings.overrideNote')}</div>
+        </Section>
+
+        <Section titleKey="settings.sectionKeymap">
+          <KeymapSettings />
+        </Section>
       </div>
     </div>
   )

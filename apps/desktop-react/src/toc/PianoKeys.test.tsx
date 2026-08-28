@@ -137,18 +137,13 @@ describe('目录面板:展开、收起、落点', () => {
     expect(useTocStore.getState().open).toBe(false)
   })
 
-  it('⌘⇧O 开合(目录收着的时候也叫得起来)', () => {
+  it('⌘⇧O 已收编 keymap 注册表:本组件不再挂键盘监听,快捷键照常经派发器开合', () => {
+    // 端到端派发在 keymap/dispatch.test;这里钉两件事:组件自身零监听、store 开关语义仍在。
     render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
     fireEvent.keyDown(window, { key: 'O', metaKey: true, shiftKey: true })
+    expect(useTocStore.getState().open).toBe(false) // 没有派发器在场,组件不私自应答
+    useTocStore.getState().togglePanel()
     expect(useTocStore.getState().open).toBe(true)
-    fireEvent.keyDown(window, { key: 'O', metaKey: true, shiftKey: true })
-    expect(useTocStore.getState().open).toBe(false)
-  })
-
-  it('没按 Shift 的 ⌘O 不归它管(别抢别人的键)', () => {
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
-    fireEvent.keyDown(window, { key: 'o', metaKey: true })
-    expect(useTocStore.getState().open).toBe(false)
   })
 
   it('点一行 = 抛出那条消息的 index 并把 panel 收起来', () => {

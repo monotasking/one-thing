@@ -29,7 +29,6 @@ export function TocPanel({ currentIndex, onPick }: Props) {
   const hoverIndex = useTocStore((st) => st.hoverIndex)
   const openPanel = useTocStore((st) => st.openPanel)
   const closePanel = useTocStore((st) => st.closePanel)
-  const togglePanel = useTocStore((st) => st.togglePanel)
   const hoverKey = useTocStore((st) => st.hoverKey)
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -37,15 +36,7 @@ export function TocPanel({ currentIndex, onPick }: Props) {
   const keys = useMemo(() => tocKeys(CHAT_CHAPTERS, CHAT_TURNS.length), [])
   const labels = useMemo(() => CHAT_TURNS.map((turn) => turn.user), [])
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== 'o') return
-      e.preventDefault()
-      togglePanel()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [togglePanel])
+  // ⌘⇧O 已收编进 keymap 注册表('toc.toggle'),这里不再挂第二个 window keydown。
 
   // 卸载时把待发的展开定时器掐掉,免得组件没了还在 set。
   useEffect(() => () => void (timer.current && clearTimeout(timer.current)), [])

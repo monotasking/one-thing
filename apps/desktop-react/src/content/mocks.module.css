@@ -143,11 +143,29 @@
 }
 
 /* ── 设置 ─────────────────────────────────────────────────────────────── */
+/* 页 = 若干个领域节;节之间的间距比节内行距大一档,分组靠的是这个差值而不是分隔线。 */
 .form {
   padding: var(--sp-4);
   display: flex;
   flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
   gap: var(--sp-4);
+}
+
+/* 节标:11px 粗体 + 字距,顶上一条细线把它和上一节隔开(第一节不画)。 */
+.sectionTitle {
+  margin: 0;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line-1);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--ls-section);
+  color: var(--text-3);
 }
 
 .field {
@@ -167,9 +185,15 @@
   color: var(--text-3);
 }
 
-/* 整段说明:跟在它解释的那个 field 底下,所以往上收一格抵掉 form 的 gap。 */
+/* 整段说明:跟在它解释的那个 field 底下,所以往上收一格抵掉节内的 gap。 */
 .fieldNote {
   margin-top: calc(var(--sp-3) * -1);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 整节的说明(节标底下 / 节末尾):不贴着某一行,所以不往上收。 */
+.sectionNote {
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
@@ -180,4 +204,53 @@
   border: 1px solid var(--line-1);
   border-radius: var(--r-1);
   background: var(--surface-1);
+}
+
+/* ── 快捷键区 ─────────────────────────────────────────────────────────────
+ * 键位面是一颗按钮(点它进录制态),「恢复默认」是它的兄弟而不是它的孩子 ——
+ * 嵌套 button 既是禁令也确实点不动。录制态只换底色与描边,尺寸一格不动:
+ * 无位移原则在这儿尤其要紧,因为用户此刻正盯着这一行等它变。
+ * ────────────────────────────────────────────────────────────────────── */
+.keyRight {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.keyConflict {
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.keySlot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  min-width: var(--key-slot-w);
+  height: var(--btn-sm);
+  padding: 0 var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.keySlot:hover {
+  background: var(--st-hover);
+}
+
+.keySlot:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+.keySlotOn,
+.keySlotOn:hover {
+  background: var(--st-sel);
+  border-color: var(--accent-ring);
+}
+
+.keyMuted {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
 }

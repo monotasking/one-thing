@@ -75,6 +75,20 @@ export const zh = {
   'settings.localeZh': '中文',
   'settings.localeEn': 'English',
 
+  'settings.sectionGeneral': '通用',
+  'settings.sectionDock': 'Dock',
+  'settings.sectionKeymap': '快捷键',
+
+  /* ── 快捷键设置区 ─────────────────────────────────────────────────── */
+  'keymap.hint': '点一行的键位再按下组合;Esc 取消,Backspace 解绑',
+  'keymap.recording': '按下组合…',
+  'keymap.unbound': '未绑定',
+  'keymap.conflict': '与「{name}」冲突',
+  'keymap.reset': '恢复默认',
+  'keymap.resetOf': '恢复「{name}」的默认组合',
+  'keymap.recordOf': '为「{name}」设置快捷键',
+  'keymap.structuralNote': 'Esc 逐层退出、总览的方向键与回车、浮窗拖拽是形态语法的一部分,不参与改键',
+
   /* ── 浏览器面(壳,不是页面内容) ─────────────────────────────────── */
   'browser.pagePlaceholder': '页面占位',
 
@@ -126,7 +140,6 @@ export const zh = {
   'toc.jumpTo': '跳到第 {index} 条消息',
 
   /* ── 快捷键字面(两种语言相同,但仍走字典:组件里不落字面文案) ────── */
-  'shortcut.palette': '⌘P',
   'shortcut.left': '←',
   'shortcut.right': '→',
   'shortcut.space': 'Space',

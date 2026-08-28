@@ -73,6 +73,20 @@ export const en: Record<MessageKey, string> = {
   'settings.localeZh': '中文',
   'settings.localeEn': 'English',
 
+  'settings.sectionGeneral': 'General',
+  'settings.sectionDock': 'Dock',
+  'settings.sectionKeymap': 'Shortcuts',
+
+  /* ── shortcut settings ────────────────────────────────────────────── */
+  'keymap.hint': 'Click a binding, then press the combo; Esc cancels, Backspace unbinds',
+  'keymap.recording': 'Press a combo…',
+  'keymap.unbound': 'Unbound',
+  'keymap.conflict': 'Conflicts with “{name}”',
+  'keymap.reset': 'Reset',
+  'keymap.resetOf': 'Reset the default combo for “{name}”',
+  'keymap.recordOf': 'Set a shortcut for “{name}”',
+  'keymap.structuralNote': 'Esc stepping back, the overview arrow keys and Enter, and float-window dragging are part of the layout grammar and are not rebindable',
+
   /* ── browser shell ────────────────────────────────────────────────── */
   'browser.pagePlaceholder': 'Page placeholder',
 
@@ -124,7 +138,6 @@ export const en: Record<MessageKey, string> = {
   'toc.jumpTo': 'Jump to message {index}',
 
   /* ── shortcut glyphs (same in both languages, still dictionary-owned) ─ */
-  'shortcut.palette': '⌘P',
   'shortcut.left': '←',
   'shortcut.right': '→',
   'shortcut.space': 'Space',
