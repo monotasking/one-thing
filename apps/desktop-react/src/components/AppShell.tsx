@@ -11,10 +11,35 @@ import { PinnedPanel } from './PinnedPanel'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
 import { SCROLL_SETTLE_MS } from './motion'
+import { DOCK_AXIS } from '../stage/types'
+import type { DockAlign, DockEdge } from '../stage/types'
 import s from './AppShell.module.css'
+
+/** 贴边类:边 → 那条边的物理坐标。 */
+const EDGE_CLASS: Record<DockEdge, string> = {
+  bottom: s.edgeBottom,
+  top: s.edgeTop,
+  left: s.edgeLeft,
+  right: s.edgeRight,
+}
+
+/** 沿边类:先按轴分两套,再按三档取一 —— 轴由 DOCK_AXIS 说了算,这里不再判一次边。 */
+const ALIGN_CLASS: Record<'x' | 'y', Record<DockAlign, string>> = {
+  x: { start: s.alignXStart, center: s.alignXCenter, end: s.alignXEnd },
+  y: { start: s.alignYStart, center: s.alignYCenter, end: s.alignYEnd },
+}
+
+const HOTZONE_CLASS: Record<DockEdge, string> = {
+  bottom: s.hotzoneBottom,
+  top: s.hotzoneTop,
+  left: s.hotzoneLeft,
+  right: s.hotzoneRight,
+}
 
 export function AppShell() {
   const dockDisplay = useStageStore((st) => st.dockDisplay)
+  const dockEdge = useStageStore((st) => st.dockEdge)
+  const dockAlign = useStageStore((st) => st.dockAlign)
   const pinnedCount = useStageStore((st) => st.pinned.length)
   // L2 接线:总览开着时主区缩暗,总览层自己盖在上面。
   const exposeOpen = useExposeStore((st) => st.view.mode !== 'closed')
@@ -36,9 +61,19 @@ export function AppShell() {
 
   const [peeking, setPeeking] = useState(false)
   const autohide = dockDisplay === 'autohide'
+  const hidden = autohide && !peeking
+
+  const dockClass = [
+    s.dock,
+    EDGE_CLASS[dockEdge],
+    ALIGN_CLASS[DOCK_AXIS[dockEdge]][dockAlign],
+    hidden && s.hidden,
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
-    <div className={autohide ? `${s.shell} ${s.shellAutohide}` : s.shell}>
+    <div className={s.shell}>
       <TopBar />
 
       <main className={exposeOpen ? `${s.main} ${s.mainDimmed}` : s.main}>
@@ -53,21 +88,17 @@ export function AppShell() {
         {pinnedCount > 0 && <PinnedPanel />}
       </main>
 
-      <div className={autohide ? `${s.band} ${s.bandCollapsed}` : s.band}>
-        {!autohide && <Dock dimmed={dimmed} />}
-      </div>
-
       {autohide && (
-        <>
-          <div className={s.hotzone} onMouseEnter={() => setPeeking(true)} />
-          <div
-            className={peeking ? `${s.floating} ${s.floatingUp}` : s.floating}
-            onMouseLeave={() => setPeeking(false)}
-          >
-            <Dock dimmed={dimmed} />
-          </div>
-        </>
+        <div
+          className={`${s.hotzone} ${HOTZONE_CLASS[dockEdge]}`}
+          onMouseEnter={() => setPeeking(true)}
+        />
       )}
+
+      {/* 两种显示模式共用这一个浮层容器:always 从不加 .hidden,autohide 平时藏着。 */}
+      <div className={dockClass} onMouseLeave={autohide ? () => setPeeking(false) : undefined}>
+        <Dock dimmed={dimmed} />
+      </div>
 
       <StageOverlay />
       <ExposeOverlay />

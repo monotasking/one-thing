@@ -9,6 +9,7 @@ import {
   Pin,
   ChevronDown,
   ChevronRight,
+  ChevronsRight,
   Search,
   Check,
   Eye,
@@ -34,6 +35,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   Pin,
   ChevronDown,
   ChevronRight,
+  ChevronsRight,
   Search,
   Check,
   Eye,
@@ -47,5 +49,19 @@ export function resolveIcon(name: string): LucideIcon {
   return REGISTRY[name] ?? FolderTree
 }
 
-export { Plus, X, Pin, ChevronDown, ChevronRight, Search, Check, Eye, Minus, Info, CircleCheck, CircleAlert }
+export {
+  Plus,
+  X,
+  Pin,
+  ChevronDown,
+  ChevronRight,
+  ChevronsRight,
+  Search,
+  Check,
+  Eye,
+  Minus,
+  Info,
+  CircleCheck,
+  CircleAlert,
+}
 export type { LucideIcon }

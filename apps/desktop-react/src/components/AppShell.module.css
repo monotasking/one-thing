@@ -1,16 +1,9 @@
-/* --dock-reserved = 舞台 scrim 下缘要让出的高度。always 让出整条带;
- * autohide 带高 0 无可让,滑起的 Dock 改靠 --z-dock 压过 scrim。 */
 .shell {
-  --dock-reserved: var(--dock-band);
   height: 100%;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: var(--surface-0);
-}
-
-.shellAutohide {
-  --dock-reserved: 0px;
 }
 
 .main {
@@ -41,41 +34,55 @@
   display: flex;
 }
 
-/* ── Dock 保留带律 ────────────────────────────────────────────────────────────
- * always:带占 var(--dock-band) 高,composer 在它之上 —— 结构上不可能重叠。
- * autohide:带高 0,Dock 改为 fixed 覆盖滑起;此时才需要 z-index。
+/* ── Dock 浮层律 ──────────────────────────────────────────────────────────────
+ * Dock 永远是 fixed 浮层,不占一格布局 —— 两种显示模式共用这一个容器,
+ * 差别只是 autohide 平时把它推出屏外(.hidden),指针进热区才滑回来。
+ * 舞台的 scrim 恒铺满,Dock 靠 --z-dock 压在它之上,所以舞台开着时 Dock 仍可点。
+ *
+ * 定位分两截,互不干涉,各写进一个 CSS 变量最后合成一次 transform:
+ *   贴边  = 那条边的物理坐标(bottom/top/left/right: var(--sp-3));
+ *   沿边  = 「百分比 + 反向 translate」:start 贴前端、center 50% 再 -50% 拉回、end 贴后端。
  * ────────────────────────────────────────────────────────────────────────── */
-.band {
-  flex: none;
-  height: var(--dock-band);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.bandCollapsed {
-  height: 0;
-  overflow: visible;
-}
-
-.hotzone {
+.dock {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--dock-hotzone-h);
   z-index: var(--z-dock);
-}
-
-.floating {
-  position: fixed;
-  left: 50%;
-  bottom: var(--sp-3);
-  z-index: var(--z-dock);
-  transform: translateX(-50%) translateY(calc(100% + var(--sp-5)));
+  --dock-align-x: 0px;
+  --dock-align-y: 0px;
+  --dock-hide-x: 0px;
+  --dock-hide-y: 0px;
+  transform: translate(
+    calc(var(--dock-align-x) + var(--dock-hide-x)),
+    calc(var(--dock-align-y) + var(--dock-hide-y))
+  );
   transition: transform var(--dur-enter) var(--ease-out);
 }
 
-.floatingUp {
-  transform: translateX(-50%) translateY(0);
+/* 贴边 */
+.edgeBottom { bottom: var(--sp-3); }
+.edgeTop { top: var(--sp-3); }
+.edgeLeft { left: var(--sp-3); }
+.edgeRight { right: var(--sp-3); }
+
+/* 沿边:横边(上/下)沿 x 定位,竖边(左/右)沿 y —— 同一个 start/center/end,两套坐标。 */
+.alignXStart { left: var(--sp-3); }
+.alignXCenter { left: 50%; --dock-align-x: -50%; }
+.alignXEnd { right: var(--sp-3); }
+.alignYStart { top: var(--sp-3); }
+.alignYCenter { top: 50%; --dock-align-y: -50%; }
+.alignYEnd { bottom: var(--sp-3); }
+
+/* 藏:朝各自那条边推出屏外一整个身位 + 一段余量(余量保证投影也看不见)。 */
+.edgeBottom.hidden { --dock-hide-y: calc(100% + var(--sp-5)); }
+.edgeTop.hidden { --dock-hide-y: calc(-100% - var(--sp-5)); }
+.edgeLeft.hidden { --dock-hide-x: calc(-100% - var(--sp-5)); }
+.edgeRight.hidden { --dock-hide-x: calc(100% + var(--sp-5)); }
+
+.hotzone {
+  position: fixed;
+  z-index: var(--z-dock);
 }
+
+.hotzoneBottom { left: 0; right: 0; bottom: 0; height: var(--dock-hotzone); }
+.hotzoneTop { left: 0; right: 0; top: 0; height: var(--dock-hotzone); }
+.hotzoneLeft { top: 0; bottom: 0; left: 0; width: var(--dock-hotzone); }
+.hotzoneRight { top: 0; bottom: 0; right: 0; width: var(--dock-hotzone); }

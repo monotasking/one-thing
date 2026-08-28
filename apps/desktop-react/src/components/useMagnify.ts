@@ -20,6 +20,10 @@ import { useCallback, useRef, useState } from 'react'
  * 纯几何:d = |指针 x − 瓷砖静止中心 x|,余弦钟形衰减(08-28 试衣间拍定:
  * 峰圆、半径边缘平滑接 0,macOS 的"波浪感"来自这条),d ≥ RADIUS 归 1。
  * 这些数字是「行为常量」不是样式字面量,所以留在这里而不是 token 文件。
+ *
+ * 轴向:Dock 停在竖边时条排成一列,「沿条的方向」就从 x 变成 y。变的只有
+ * **量哪个坐标** —— 静止中心取 box.top+h/2、指针取 clientY,几何一模一样,
+ * 所以 magnifyAt 一个字都不用改(它算的是一维距离,不是横向距离)。
  */
 const MAX_GROW = 0.35 // 尺寸最多长大 35%
 const RADIUS = 96 // px,影响半径
@@ -36,7 +40,7 @@ export function magnifyAt(pointerX: number, centers: number[]): number[] {
   })
 }
 
-export function useMagnify(count: number) {
+export function useMagnify(count: number, axis: 'x' | 'y' = 'x') {
   const stripRef = useRef<HTMLDivElement | null>(null)
   const tiles = useRef<Array<HTMLElement | null>>([])
   const restCenters = useRef<number[] | null>(null)
@@ -57,13 +61,14 @@ export function useMagnify(count: number) {
         // 是因为 wrap 的盒子不直接受瓷砖尺寸动画中间态影响得那么剧烈。
         restCenters.current = tiles.current.slice(0, count).map((el) => {
           const box = el?.parentElement?.getBoundingClientRect()
-          return box ? box.left + box.width / 2 : Number.POSITIVE_INFINITY
+          if (!box) return Number.POSITIVE_INFINITY
+          return axis === 'x' ? box.left + box.width / 2 : box.top + box.height / 2
         })
       }
-      setFactors(magnifyAt(e.clientX, restCenters.current))
+      setFactors(magnifyAt(axis === 'x' ? e.clientX : e.clientY, restCenters.current))
       setTracking(true)
     },
-    [count],
+    [count, axis],
   )
 
   const onMouseLeave = useCallback(() => {

@@ -17,6 +17,23 @@
   transition: opacity var(--dur) var(--ease);
 }
 
+/* 竖排(停左/右边):对称于横排钉死高度的那条规则 —— 条的**宽度**钉死
+ * (瓦 + 左右内距 + 左右边框),放大的瓦向内侧长出条外,条只变长不变宽。
+ * 内距跟着转个身:钉死的那一维用 --dock-pad-y,长的那一维用 --dock-pad-x。 */
+.vertical {
+  flex-direction: column;
+  height: auto;
+  width: calc(var(--tile-size) + 2 * var(--dock-pad-y) + 2px);
+  padding: var(--dock-pad-x) var(--dock-pad-y);
+}
+
+/* 瓦朝「内侧」长出条外。内侧在交叉轴的哪一端,只取决于停哪条边:
+ * 下 / 右 → 内侧是交叉轴起点,瓦锚在末端(默认的 flex-end);
+ * 上 / 左 → 内侧是交叉轴末端,瓦锚在起点。 */
+.anchorStart {
+  align-items: flex-start;
+}
+
 /* 滚动降淡:只动透明度,不动空间 —— 空间一动就是位移。 */
 .dimmed {
   opacity: var(--dock-dim);
@@ -29,6 +46,17 @@
   align-self: center;
   flex: none;
 }
+
+/* 竖排时分隔线也转个身:长短两维对调。 */
+.vertical .sep {
+  width: var(--dock-sep-h);
+  height: var(--dock-sep-w);
+}
+
+/* 大小三档:只在 Dock 根节点上覆写这两个变量,瓦、圆角、图标(41% 比例)全自动跟。 */
+.sizeSm { --tile-size: var(--tile-size-sm); --r-tile: var(--r-tile-sm); }
+.sizeMd { --tile-size: var(--tile-size-md); --r-tile: var(--r-tile-md); }
+.sizeLg { --tile-size: var(--tile-size-lg); --r-tile: var(--r-tile-lg); }
 
 /* 跟手定律(动效板):指针在条上时瓷砖零过渡逐帧跟,离开才走 --dur-release 回位。
  * 开关经 CSS 变量传给瓷砖:--tile-size-dur 在跟手期归零。 */

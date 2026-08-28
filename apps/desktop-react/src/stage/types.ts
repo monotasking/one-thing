@@ -39,6 +39,11 @@ export interface StageState {
   pinned: string[]
   activePinnedId: string | null
   pinnedWidth: number
+  /**
+   * 钉栏收起态。收起的是「整栏」而不是某个 tab —— 栏还在(细梁),
+   * 所以它是栏的状态,不是 tab 的;pinned/activePinnedId 一个都不动。
+   */
+  pinnedCollapsed: boolean
   /** 递增计数,触发钉栏闪烁 */
   flashPinned: number
 }
@@ -53,6 +58,31 @@ export interface StageSettings {
   locale: Locale
   /** 未登记的 id 等价于 'default',所以初始值是空表而不是全量表。 */
   openOverrides: Record<string, OpenBehavior>
+  /** 停靠哪条边。 */
+  dockEdge: DockEdge
+  /** 沿边方向的三档定位 —— 「沿边」是相对的:横边是左右,竖边是上下。 */
+  dockAlign: DockAlign
+  /** 瓦的大小档。 */
+  dockSize: DockSize
 }
 
 export type DockDisplay = 'always' | 'autohide'
+
+/** 四条边。Dock 永远是浮层,所以「停靠」只决定贴哪儿,不决定谁让位。 */
+export type DockEdge = 'bottom' | 'top' | 'left' | 'right'
+
+/** 沿边方向的位置。start/end 指的是那条边自己的起点/终点,不是屏幕的上下左右。 */
+export type DockAlign = 'start' | 'center' | 'end'
+
+export type DockSize = 'sm' | 'md' | 'lg'
+
+/**
+ * 边 → 条的主轴。横边(上/下)排成一行走 x,竖边(左/右)排成一列走 y。
+ * 磁性放大按哪个轴量、沿边定位改哪个坐标,都只问这一张表。
+ */
+export const DOCK_AXIS: Record<DockEdge, 'x' | 'y'> = {
+  bottom: 'x',
+  top: 'x',
+  left: 'y',
+  right: 'y',
+}

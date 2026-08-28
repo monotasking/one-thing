@@ -1,16 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import {
   PIN_MIN,
+  STAGE_PERSIST_VERSION,
   activatePinnedTab,
   clamp,
   clickDockIcon,
   closeStage,
   formOf,
+  initialStageSettings,
   initialStageState,
   migrateStagePersisted,
   pinStage,
   resolveOpen,
   setPinnedWidth,
+  togglePinnedCollapsed,
   unpin,
 } from './transitions'
 import type { OpenBehavior, StageState } from './types'
@@ -85,13 +88,42 @@ describe('clickDockIcon', () => {
     expect(next.pinned).toEqual(['files'])
   })
 
-  it('已在钉栏的再点 → 聚焦那个 tab + 闪一下,不开舞台也不重复追加', () => {
+  it('已钉且看得见(活动 tab + 栏展开)的再点 → 收起整栏,不开舞台也不重复追加', () => {
     const state = withPinned(['diff'])
     const next = clickDockIcon(state, 'diff', 'stage')
     expect(next.stageId).toBeNull()
     expect(next.pinned).toEqual(['diff'])
-    expect(next.flashPinned).toBe(state.flashPinned + 1)
+    expect(next.pinnedCollapsed).toBe(true)
     expect(next.activePinnedId).toBe('diff')
+    // 收起不是「找到它」,所以不闪
+    expect(next.flashPinned).toBe(state.flashPinned)
+  })
+
+  it('已钉但栏收着的再点 → 激活 + 展开 + 闪一下(看不见就等于"找它")', () => {
+    const state: StageState = { ...withPinned(['diff']), pinnedCollapsed: true }
+    const next = clickDockIcon(state, 'diff', 'stage')
+    expect(next.pinnedCollapsed).toBe(false)
+    expect(next.activePinnedId).toBe('diff')
+    expect(next.flashPinned).toBe(state.flashPinned + 1)
+  })
+
+  it('收 → 展 → 收:同一块瓦点三下走一个来回', () => {
+    const a = clickDockIcon(withPinned(['diff']), 'diff', 'stage')
+    expect(a.pinnedCollapsed).toBe(true)
+    const b = clickDockIcon(a, 'diff', 'stage')
+    expect(b.pinnedCollapsed).toBe(false)
+    expect(b.flashPinned).toBe(1)
+    const c = clickDockIcon(b, 'diff', 'stage')
+    expect(c.pinnedCollapsed).toBe(true)
+    expect(c.flashPinned).toBe(1)
+  })
+
+  it('栏收着时点「非活动」的那个 → 切过去并展开', () => {
+    const state: StageState = { ...withPinned(['files', 'diff'], 'diff'), pinnedCollapsed: true }
+    const next = clickDockIcon(state, 'files', 'stage')
+    expect(next.activePinnedId).toBe('files')
+    expect(next.pinnedCollapsed).toBe(false)
+    expect(next.flashPinned).toBe(1)
   })
 
   it('点钉栏里「非活动」的那个 → 活动 tab 切过去(behavior 是什么都一样)', () => {
@@ -102,9 +134,9 @@ describe('clickDockIcon', () => {
     expect(next.flashPinned).toBe(1)
   })
 
-  it('闪烁是累加的,连点两次记两次', () => {
-    const state = withPinned(['diff'])
-    const twice = clickDockIcon(clickDockIcon(state, 'diff', 'stage'), 'diff', 'stage')
+  it('闪烁是累加的:两次「找它」记两次', () => {
+    const state = withPinned(['files', 'diff'], 'diff')
+    const twice = clickDockIcon(clickDockIcon(state, 'files', 'stage'), 'diff', 'stage')
     expect(twice.flashPinned).toBe(2)
   })
 
@@ -120,6 +152,24 @@ describe('clickDockIcon', () => {
     const before = { ...base, pinned: [...base.pinned] }
     clickDockIcon(base, 'files', 'pinned')
     expect(base).toEqual(before)
+  })
+})
+
+describe('togglePinnedCollapsed', () => {
+  it('收/展往返:两次回到原点,tab 次序与活动 tab 一个都不动', () => {
+    const state = withPinned(['files', 'diff'], 'files')
+    const collapsed = togglePinnedCollapsed(state)
+    expect(collapsed.pinnedCollapsed).toBe(true)
+    expect(collapsed.pinned).toEqual(['files', 'diff'])
+    expect(collapsed.activePinnedId).toBe('files')
+
+    const back = togglePinnedCollapsed(collapsed)
+    expect(back.pinnedCollapsed).toBe(false)
+    expect(back).toEqual(state)
+  })
+
+  it('初始是展开的', () => {
+    expect(initialStageState.pinnedCollapsed).toBe(false)
   })
 })
 
@@ -229,9 +279,44 @@ describe('migrateStagePersisted', () => {
     expect('pinnedId' in out).toBe(false)
   })
 
-  it('已经是 v1 的原样放行', () => {
-    const v1 = { pinned: ['files'], activePinnedId: 'files' }
-    expect(migrateStagePersisted(v1, 1)).toBe(v1)
+  it('v1 → v2:缺的 Dock 四边 / 沿边位置 / 大小 / 钉栏收起态按默认补齐', () => {
+    const out = migrateStagePersisted({ pinned: ['files'], activePinnedId: 'files' }, 1) as Record<
+      string,
+      unknown
+    >
+    expect(out.dockEdge).toBe(initialStageSettings.dockEdge)
+    expect(out.dockAlign).toBe(initialStageSettings.dockAlign)
+    expect(out.dockSize).toBe(initialStageSettings.dockSize)
+    expect(out.pinnedCollapsed).toBe(false)
+    expect(out.pinned).toEqual(['files'])
+  })
+
+  it('v1 档案里已有的值赢:补默认是铺底,不是覆盖', () => {
+    const out = migrateStagePersisted({ dockEdge: 'left', dockSize: 'lg' }, 1) as Record<
+      string,
+      unknown
+    >
+    expect(out.dockEdge).toBe('left')
+    expect(out.dockSize).toBe('lg')
+    expect(out.dockAlign).toBe(initialStageSettings.dockAlign)
+  })
+
+  it('v0 一路连过两段:pinnedId 展开成数组,同时补上 v2 的新字段', () => {
+    const out = migrateStagePersisted({ pinnedId: 'diff', dockDisplay: 'autohide' }, 0) as Record<
+      string,
+      unknown
+    >
+    expect(out.pinned).toEqual(['diff'])
+    expect(out.activePinnedId).toBe('diff')
+    expect(out.dockEdge).toBe(initialStageSettings.dockEdge)
+    expect(out.pinnedCollapsed).toBe(false)
+    expect(out.dockDisplay).toBe('autohide')
+    expect('pinnedId' in out).toBe(false)
+  })
+
+  it('已经是当前版本的原样放行', () => {
+    const current = { pinned: ['files'], dockEdge: 'right' }
+    expect(migrateStagePersisted(current, STAGE_PERSIST_VERSION)).toBe(current)
   })
 })
 
@@ -268,5 +353,19 @@ describe('formOf / clamp', () => {
 
   it('clamp 在 max < min 时返回 min', () => {
     expect(clamp(50, 320, 100)).toBe(320)
+  })
+})
+
+describe('新入钉栏顺手展开(收起态下点了不能"看起来什么都没发生")', () => {
+  it('收起态下 behavior=pinned 的新图标入栏,栏展开', () => {
+    const st = clickDockIcon({ ...initialStageState, pinnedCollapsed: true }, 'files', 'pinned')
+    expect(st.pinned).toContain('files')
+    expect(st.pinnedCollapsed).toBe(false)
+  })
+
+  it('收起态下舞台"钉到右侧",栏展开', () => {
+    const st = pinStage({ ...initialStageState, stageId: 'files', pinnedCollapsed: true })
+    expect(st.pinned).toContain('files')
+    expect(st.pinnedCollapsed).toBe(false)
   })
 })

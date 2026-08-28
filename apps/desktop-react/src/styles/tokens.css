@@ -73,26 +73,33 @@
   --z-toast: 800;
 
   /* 外壳几何 */
-  --dock-band: 64px;
   --pin-min: 320px;
   --topbar-h: 44px;
   --chat-col: 720px; /* 08-29 用户嫌 640 窄,加一档 */
   --pin-default: 400px;
   --pin-header-h: 38px;
   --pin-resize-w: 5px;
+  --pin-rail-w: 12px; /* 钉栏收起后剩下的那条细梁 */
   --stage-header-h: 40px;
   --stage-w: 76%;
   --stage-h: 78%;
-  --dock-hotzone-h: 8px;
+  --dock-hotzone: 8px; /* 自动隐藏时贴边的感应带厚度(横边算高、竖边算宽) */
 
-  /* Dock 几何 */
+  /* Dock 几何。--tile-size / --r-tile 是「当下这档」,默认 md;
+   * Dock 根节点按大小档就地覆写这两个,瓦与图标(41% 比例)自动跟。 */
   --r-dock: 16px;
-  --r-tile: 11px;
+  --r-tile: var(--r-tile-md);
+  --tile-size-sm: 36px;
+  --tile-size-md: 44px;
+  --tile-size-lg: 52px;
+  --r-tile-sm: 9px;
+  --r-tile-md: 11px;
+  --r-tile-lg: 13px;
   --dock-pad-y: 8px;
   --dock-pad-x: 10px;
   --dock-gap: 9px;
   --dock-blur: 20px;
-  --tile-size: 44px;
+  --tile-size: var(--tile-size-md);
   --tile-icon: 18px;
   --dock-sep-h: 36px;
   --dock-sep-w: 1px;

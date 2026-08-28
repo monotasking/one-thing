@@ -25,6 +25,19 @@ export const en: Record<MessageKey, string> = {
   'dock.openDefault': 'Follow default',
   'dock.openStage': 'Popup',
   'dock.openPinned': 'Pin to the right',
+  'dock.edge': 'Dock edge',
+  'dock.edgeBottom': 'Bottom',
+  'dock.edgeTop': 'Top',
+  'dock.edgeLeft': 'Left',
+  'dock.edgeRight': 'Right',
+  'dock.align': 'Position along edge',
+  'dock.alignStart': 'Start',
+  'dock.alignCenter': 'Center',
+  'dock.alignEnd': 'End',
+  'dock.size': 'Size',
+  'dock.sizeSm': 'Small',
+  'dock.sizeMd': 'Medium',
+  'dock.sizeLg': 'Large',
   'dock.settings': 'Settings…',
 
   /* ── dock tiles ───────────────────────────────────────────────────── */
@@ -37,10 +50,12 @@ export const en: Record<MessageKey, string> = {
   /* ── stage / pinned ───────────────────────────────────────────────── */
   'stage.pinToRight': 'Pin to the right',
   'pinned.label': 'Pinned panel',
+  'pinned.collapse': 'Collapse pinned panel',
+  'pinned.expand': 'Expand pinned panel',
 
   /* ── settings ─────────────────────────────────────────────────────── */
   'settings.dockDisplay': 'Dock display',
-  'settings.dockDisplayHint': 'When always shown, the Dock takes layout space and the composer stays above it',
+  'settings.dockDisplayHint': 'The Dock always floats above the UI; on auto-hide it slides out when you reach that edge',
   'settings.dockAlways': 'Always shown',
   'settings.dockAutohide': 'Auto-hide',
   'settings.defaultOpen': 'Default open behavior',

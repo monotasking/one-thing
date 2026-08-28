@@ -27,6 +27,19 @@ export const zh = {
   'dock.openDefault': '跟随默认',
   'dock.openStage': '弹窗',
   'dock.openPinned': '钉在右侧',
+  'dock.edge': '停靠边',
+  'dock.edgeBottom': '下边',
+  'dock.edgeTop': '上边',
+  'dock.edgeLeft': '左边',
+  'dock.edgeRight': '右边',
+  'dock.align': '沿边位置',
+  'dock.alignStart': '靠前',
+  'dock.alignCenter': '居中',
+  'dock.alignEnd': '靠后',
+  'dock.size': '大小',
+  'dock.sizeSm': '小',
+  'dock.sizeMd': '中',
+  'dock.sizeLg': '大',
   'dock.settings': '设置…',
 
   /* ── Dock 上那几块瓷砖的名字(是界面标签,不是内容) ───────────────── */
@@ -39,10 +52,12 @@ export const zh = {
   /* ── 舞台 / 钉栏 ──────────────────────────────────────────────────── */
   'stage.pinToRight': '钉到右侧',
   'pinned.label': '钉栏',
+  'pinned.collapse': '收起钉栏',
+  'pinned.expand': '展开钉栏',
 
   /* ── 设置面 ───────────────────────────────────────────────────────── */
   'settings.dockDisplay': 'Dock 显示方式',
-  'settings.dockDisplayHint': '常驻时 Dock 占布局,输入框永远在它之上',
+  'settings.dockDisplayHint': 'Dock 始终是浮层;自动隐藏时移到那条边才滑出来',
   'settings.dockAlways': '常驻',
   'settings.dockAutohide': '自动隐藏',
   'settings.defaultOpen': '默认打开方式',

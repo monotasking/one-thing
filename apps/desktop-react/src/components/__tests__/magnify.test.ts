@@ -24,4 +24,13 @@ describe('magnifyAt(纯几何:布局尺寸系数)', () => {
     expect(f.every((v) => v >= 1)).toBe(true)
     expect(new Set(f.map((v) => v.toFixed(4))).size).toBeGreaterThan(1)
   })
+
+  it('竖轴同一套几何:Dock 停左/右边时喂的是 clientY 与各瓦纵向中心,结果逐条相同', () => {
+    // 同样的五个中心,这次它们是 y 坐标 —— magnifyAt 算的是一维距离,不是横向距离,
+    // 所以轴向只改「量哪个坐标」(useMagnify 的事),纯函数一个字都不用变。
+    const byY = magnifyAt(128, centers)
+    expect(byY[2]).toBeCloseTo(1.35, 5)
+    expect(byY[0]).toBe(1)
+    expect(byY[1]).toBeCloseTo(byY[3], 5)
+  })
 })

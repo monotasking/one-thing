@@ -6,6 +6,24 @@ import type { StageBadge } from '../stage/types'
 import { TOOLTIP_DELAY_MS } from './motion'
 import s from './DockTile.module.css'
 
+/** 名字标签浮在瓦的哪一侧。由 Dock 按停靠边算好递进来 —— 瓦不认识「边」。 */
+export type LabelSide = 'top' | 'bottom' | 'left' | 'right'
+
+/* 运行点贴朝外侧 = 标签(朝内侧)的对面 */
+const DOT_CLASS: Record<LabelSide, string> = {
+  top: 'dotBottom',
+  bottom: 'dotTop',
+  left: 'dotRight',
+  right: 'dotLeft',
+}
+
+const LABEL_CLASS: Record<LabelSide, string> = {
+  top: s.labelTop,
+  bottom: s.labelBottom,
+  left: s.labelLeft,
+  right: s.labelRight,
+}
+
 interface Props {
   /** 已经过 i18n 的成品文案 —— 瓷砖不认识 key,谁摆它谁翻译。 */
   title: string
@@ -16,11 +34,23 @@ interface Props {
   /** 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。 */
   factor: number
   tileRef: (el: HTMLElement | null) => void
+  labelSide?: LabelSide
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
 }
 
-export function DockTile({ title, icon, badge, running, plus, factor, tileRef, onClick, onContextMenu }: Props) {
+export function DockTile({
+  title,
+  icon,
+  badge,
+  running,
+  plus,
+  factor,
+  tileRef,
+  labelSide = 'top',
+  onClick,
+  onContextMenu,
+}: Props) {
   const [labelVisible, setLabelVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -39,7 +69,7 @@ export function DockTile({ title, icon, badge, running, plus, factor, tileRef, o
 
   return (
     <div className={s.wrap} onMouseEnter={enter} onMouseLeave={leave}>
-      {labelVisible && <span className={s.label}>{title}</span>}
+      {labelVisible && <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>}
       <button
         type="button"
         ref={tileRef as (el: HTMLButtonElement | null) => void}
@@ -57,7 +87,7 @@ export function DockTile({ title, icon, badge, running, plus, factor, tileRef, o
             {badgeText}
           </Badge>
         )}
-        {running && <span className={s.dot} aria-hidden="true" />}
+        {running && <span className={`${s.dot} ${s[DOT_CLASS[labelSide]]}`} aria-hidden="true" />}
       </button>
     </div>
   )

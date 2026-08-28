@@ -50,23 +50,23 @@
   right: var(--badge-offset);
 }
 
+/* 运行点贴瓦的**朝外侧**(Dock 条靠屏幕边那一侧)= 标签的对面;四向各一类。 */
 .dot {
   position: absolute;
-  bottom: var(--dot-offset);
-  left: 50%;
   width: var(--dot-size);
   height: var(--dot-size);
-  margin-left: calc(var(--dot-size) / -2);
   border-radius: var(--r-full);
   background: var(--accent);
 }
 
+.dotBottom { bottom: var(--dot-offset); left: 50%; margin-left: calc(var(--dot-size) / -2); }
+.dotTop { top: var(--dot-offset); left: 50%; margin-left: calc(var(--dot-size) / -2); }
+.dotLeft { left: var(--dot-offset); top: 50%; margin-top: calc(var(--dot-size) / -2); }
+.dotRight { right: var(--dot-offset); top: 50%; margin-top: calc(var(--dot-size) / -2); }
+
 .label {
   animation: labelIn var(--dur-enter) var(--ease-out);
   position: absolute;
-  bottom: calc(100% + var(--tooltip-lift));
-  left: 50%;
-  transform: translateX(-50%);
   padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-1);
   background: var(--tooltip-bg);
@@ -76,6 +76,32 @@
   white-space: nowrap;
   pointer-events: none;
   z-index: var(--z-tooltip);
+}
+
+/* 标签翻到朝内那一侧。--tooltip-lift 是「离瓦多远」,四侧共用同一个数;
+ * 它要盖过瓦放大后长出来的那一截,所以比看上去该有的大。 */
+.labelTop {
+  bottom: calc(100% + var(--tooltip-lift));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.labelBottom {
+  top: calc(100% + var(--tooltip-lift));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.labelLeft {
+  right: calc(100% + var(--tooltip-lift));
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.labelRight {
+  left: calc(100% + var(--tooltip-lift));
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 @keyframes labelIn {
