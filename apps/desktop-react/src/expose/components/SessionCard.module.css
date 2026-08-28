@@ -19,12 +19,14 @@
   border: 1px solid var(--line-1);
   border-radius: var(--r-card);
   background: var(--surface-2);
-  /* 无位移原则:hover 只加影子和边色,不动位置。 */
-  transition: box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
+  /* 无位移原则:hover 只上薄膜和边色,不动位置。
+   * 08-29 拍:统一交互态词汇 —— hover = 前景 6% 薄膜(同 Button/Menu),
+   * 旧的 sh-2 投影超档(影三档里 sh-2 属浮层),已废。 */
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .card:hover {
-  box-shadow: var(--sh-2);
+  background: var(--surface-2-hover);
   border-color: var(--line-2);
 }
 

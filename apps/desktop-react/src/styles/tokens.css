@@ -76,7 +76,7 @@
   --dock-band: 64px;
   --pin-min: 320px;
   --topbar-h: 44px;
-  --chat-col: 640px;
+  --chat-col: 720px; /* 08-29 用户嫌 640 窄,加一档 */
   --pin-default: 400px;
   --pin-header-h: 38px;
   --pin-resize-w: 5px;

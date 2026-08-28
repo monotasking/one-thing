@@ -82,8 +82,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0;
-  transition: max-width var(--dur-enter) var(--ease-out),
-    opacity var(--dur-enter) var(--ease-out);
+  /* 同 .label:宽度瞬间到位,只淡入 */
+  transition: opacity var(--dur-enter) var(--ease-out);
 }
 
 .open .chapter {
@@ -121,7 +121,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: width var(--dur-enter) var(--ease-out), opacity var(--dur-enter) var(--ease-out);
+  /* 08-29 拍:hover 即完整显示 —— 宽度瞬间到位不做过渡(过渡会呈"从右往左扫出"),只留淡入 */
+  transition: opacity var(--dur-enter) var(--ease-out);
 }
 
 .open .label {
