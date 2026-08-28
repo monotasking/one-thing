@@ -44,10 +44,17 @@ export function useMagnify(count: number) {
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const strip = stripRef.current
     if (!strip) return
-    const x = e.clientX - strip.getBoundingClientRect().left
-    // offsetLeft/offsetWidth 是布局值,不受自身 transform 影响 —— 中心点因此稳定,
-    // 否则放大会推着中心跑,产生自激振荡。
-    const centers = tiles.current.map((el) => (el ? el.offsetLeft + el.offsetWidth / 2 : Number.POSITIVE_INFINITY))
+    const stripLeft = strip.getBoundingClientRect().left
+    const x = e.clientX - stripLeft
+    // 中心点量的是 wrap(瓷砖的父层)的布局盒:wrap 从不形变,所以中心稳定,
+    // 放大不会推着中心跑产生自激振荡。
+    // 曾经用 offsetLeft 踩过的坑:wrap 带 position:relative,offsetLeft 量出来是
+    // 「瓷砖在 wrap 里的偏移」—— 每块都是 0,六个中心叠在同一点,整条 Dock 同胀同缩
+    // (08-28 用户报「hover 很奇怪」的真身)。
+    const centers = tiles.current.map((el) => {
+      const box = el?.parentElement?.getBoundingClientRect()
+      return box ? box.left - stripLeft + box.width / 2 : Number.POSITIVE_INFINITY
+    })
     setTransforms(magnifyAt(x, centers))
   }, [])
 
