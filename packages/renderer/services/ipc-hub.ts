@@ -15,7 +15,18 @@ import { getLogger } from '@/services/log'
  */
 
 import { useChatStore } from '@/stores/chat'
-import { feedUiRefoldLedgerEvent, installUiRefoldHandle, scheduleUiRefold } from '@/stores/ui-refold'
+import {
+  ensureUiRefoldLiveFold,
+  feedUiRefoldLedgerEvent,
+  installUiRefoldHandle,
+  scheduleUiRefold,
+} from '@/stores/ui-refold'
+import {
+  clearFoldTail,
+  feedFoldTail,
+  installFoldTreeHandle,
+  scheduleFoldTreePush,
+} from '@/stores/fold-tree'
 import { useCollabBoardStore } from '@/stores/collabBoard'
 import { useInteractionsStore } from '@/stores/interactions'
 import { useScratchpadStore } from '@/stores/scratchpad'
@@ -121,6 +132,8 @@ export function initializeIPCHub() {
   initialized = true
   // §17.8 U1-b:ui-refold 的现场把手(`window.__onethingUiRefold.stats()`)。
   installUiRefoldHandle()
+  // §17.8.7 U2-a:回旧路的现场把手(`window.__onethingUiFoldTree.disable()`)。
+  installFoldTreeHandle()
 
   // ── Unified event channel ─────────────────────
   // All structured events (steps, tools, stream lifecycle, etc.)
@@ -133,6 +146,9 @@ export function initializeIPCHub() {
       case SESSION_EVENT_TYPES.STREAM_COMPLETE:
         log.trace('session event stream:complete', { sessionId, event })
         store.handleStreamComplete({ sessionId, ...event.data })
+        // U2-a:这一轮完了,尾巴不再有主 —— 丢掉并推最后一次(账本那份已经全了)。
+        clearFoldTail(sessionId)
+        scheduleFoldTreePush(sessionId)
         // §17.8 U1-b:**收尾采样** —— 屏幕上那份 ≡ 账本折出来的那份。
         // 挂在分发口这一处(不散进 chatStore),现有 case 的行为一格未改;
         // 判定同步、比对丢宏任务,自吞不进渲染路径(见 `ui-refold.ts`)。
@@ -142,11 +158,15 @@ export function initializeIPCHub() {
       case SESSION_EVENT_TYPES.STREAM_ERROR:
         log.trace('session event stream:error', { sessionId, event })
         store.handleStreamError({ sessionId, ...event.data })
+        clearFoldTail(sessionId)
+        scheduleFoldTreePush(sessionId)
         scheduleUiRefold(sessionId, readHandMessages)
         break
 
       case SESSION_EVENT_TYPES.STREAM_ABORTED:
         store.handleStreamComplete({ sessionId, aborted: true })
+        clearFoldTail(sessionId)
+        scheduleFoldTreePush(sessionId)
         scheduleUiRefold(sessionId, readHandMessages)
         break
 
@@ -166,6 +186,12 @@ export function initializeIPCHub() {
       case SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT: {
         feedUiRefoldLedgerEvent(sessionId, event.record)
         applyLedgerFactsToHandMessages(store, sessionId, event.record)
+        // U2-a:打包行一到,活尾巴整段丢掉 —— 它装的那几条 delta 已经在 fold 里,
+        // 两份逐字节相同(c2 的 `decode∘encode ≡ id` 合同)。
+        if ((event.record as { type?: string })?.type === 'assistant/chunks') {
+          clearFoldTail(sessionId)
+        }
+        scheduleFoldTreePush(sessionId)
         break
       }
 
@@ -429,10 +455,17 @@ export function initializeIPCHub() {
 
     switch (chunk.type) {
       case 'text-delta':
+        // U2-a:**活尾巴**吃的就是这一条 —— 打包行还没刷出来的那一截正文。
+        // 手写拼装照旧跑(它的写在 `setSessionMessages` 那道闸上被忽略),
+        // 开关一翻就整条回来。
+        feedFoldTail(sessionId, chunk.messageId || '', 'text', chunk.text)
+        scheduleFoldTreePush(sessionId)
         store.handleStreamChunk({ type: 'text', sessionId, messageId: chunk.messageId || '', content: chunk.text, turnIndex: chunk.turnIndex })
         break
 
       case 'reasoning-delta':
+        feedFoldTail(sessionId, chunk.messageId || '', 'reasoning', chunk.reasoning)
+        scheduleFoldTreePush(sessionId)
         store.handleStreamChunk({ type: 'reasoning', sessionId, messageId: chunk.messageId || '', content: '', reasoning: chunk.reasoning, turnIndex: chunk.turnIndex, placement: chunk.placement })
         break
 

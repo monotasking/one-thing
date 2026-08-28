@@ -1,4 +1,8 @@
 /**
+ * **旧路用例**(U2-a §17.8.7):驱动手写拼装管道并对着 `sessionMessages` 断言。
+ * 新路上那棵树由账本折叠产出、手写侧的写在写入口那道闸上被忽略(休眠可回滚),
+ * 新路的等价覆盖在 `stores/__tests__/fold-tree.test.ts`。
+ *
  * 待审批权限收敛成一本账(架构收敛 C4 §5)。
  *
  * 收敛前这件事有三个消费者、两种存储模型:collabBoard 的反查计数、ipc-hub 按
@@ -15,6 +19,7 @@
  */
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { setFoldTreeEnabled } from '@/stores/fold-tree'
 import { useCollabBoardStore } from '../collabBoard'
 import { useChatStore } from '../chat'
 import type { ChatMessage, ToolCall } from '@/types'
@@ -97,6 +102,8 @@ function emit(sessionId: string, event: unknown): void {
 }
 
 beforeEach(() => {
+  // 旧路用例(见文件头):把 U2-a 的开关按回手写拼装。
+  setFoldTreeEnabled(false)
   mocks.handlers.length = 0
   mocks.getPendingPermissions.mockReset()
   mocks.getPendingPermissions.mockResolvedValue({ success: true, pending: [] })

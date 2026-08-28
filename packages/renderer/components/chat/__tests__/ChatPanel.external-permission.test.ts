@@ -1,8 +1,18 @@
+/**
+ * **这只用例跑的是「旧路」**(U2-a,§17.8.7):它驱动的是手写拼装管道
+ * (`handleStreamChunk` 等)并对着 `sessionMessages` 断言,而新路上那棵树由账本
+ * 折叠产出、手写侧的写在 `setSessionMessages` 那道闸上被忽略(休眠)。
+ *
+ * 休眠不是删除 —— 开关一翻整条回来,所以它必须**继续有用例守着**。这里显式把
+ * 开关按到旧路,断言一个字未改;新路的等价覆盖在 `fold-tree.test.ts`
+ * (新旧路 canonical 对拍)。
+ */
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h, nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { setFoldTreeEnabled } from '@/stores/fold-tree'
 import { Permission } from '@onething/core/permission'
 import ChatPanel from '../ChatPanel.vue'
 import { useChatStore } from '@/stores/chat'
@@ -106,6 +116,8 @@ function userMessage(): ChatMessage {
 
 describe('后台子代理的审批卡(真 core 快照 → 真 ChatPanel DOM)', () => {
   beforeEach(() => {
+    // 旧路用例(见文件头):把 U2-a 的开关按回手写拼装。
+    setFoldTreeEnabled(false)
     setActivePinia(createPinia())
     Permission.clearSession('s1')
     vi.stubGlobal('ResizeObserver', class {

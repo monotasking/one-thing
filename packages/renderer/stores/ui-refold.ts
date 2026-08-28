@@ -101,6 +101,7 @@ import { sessionEventsApi } from '@/platform/session-events-client'
 // 今天 fold 只喂门,门在收尾时才物化一次,迟到的正文下一次物化自然带上。
 import { createSessionBlobResolver } from '@/stores/session-blobs'
 import { overlayLocalMessageIds } from '@/stores/session-overlays'
+import { flushFoldTreePush, isFoldTreeEnabled } from '@/stores/fold-tree'
 import { getLogger } from '@/services/log'
 import type { ChatMessage } from '@/types'
 
@@ -148,6 +149,8 @@ export interface UiRefoldStats {
   liveGaps: number
   /** 因缺号 / 中途入场而整份重折了几次。 */
   liveRefolds: number
+  /** 新路上跳过的"自比"次数(屏幕就是活折物化的,比它没有信息)。 */
+  liveSkippedSelfCompare: number
 }
 
 function emptyStats(): UiRefoldStats {
@@ -164,6 +167,7 @@ function emptyStats(): UiRefoldStats {
     liveEvents: 0,
     liveGaps: 0,
     liveRefolds: 0,
+    liveSkippedSelfCompare: 0,
   }
 }
 
@@ -208,6 +212,16 @@ function stripNamedExemptions(message: ChatMessage): AnyRecord {
   ))
   if (parts) rest.contentParts = parts
   return rest
+}
+
+/**
+ * 对外的归一口(U2-a 的新旧路对拍用它)—— **同一把尺**,不许有第二份。
+ */
+export function canonicalizeTreeForCompare(
+  messages: readonly ChatMessage[],
+  sessionId?: string,
+): unknown[] {
+  return canonicalSide(messages, sessionId)
 }
 
 /**
@@ -331,6 +345,22 @@ export function feedUiRefoldLedgerEvent(sessionId: string, record: unknown): voi
   }
 }
 
+/**
+ * 把活折**追到这份账本的末尾**(门在比之前用它对齐时刻)。
+ *
+ * 只折 `seq > lastSeq` 的那几条 —— 已经折过的天然幂等地跳过,不重折整份。
+ */
+function catchUpLiveFold(sessionId: string, events: readonly unknown[]): void {
+  const fold = liveFolds.get(sessionId)
+  if (!fold || fold.pending) return
+  for (const event of events) {
+    const seq = (event as { seq?: number }).seq
+    if (typeof seq !== 'number' || seq <= fold.lastSeq) continue
+    fold.state = reduceSessionProjection(fold.state, event as never)
+    fold.lastSeq = seq
+  }
+}
+
 /** 缺号之后的整份重折 —— 节流,窗口内合并成一次。 */
 function scheduleLiveRefold(sessionId: string, fold: LiveFold): void {
   fold.pending = true
@@ -360,11 +390,54 @@ async function runLiveRefold(sessionId: string): Promise<void> {
     fold.lastSeq = lastSeq
     fold.pending = false
     stats.liveRefolds += 1
+    // 起底/重折完成 = 屏幕那棵树此刻才有底,马上推一次(新路上会话打开走的
+    // 正是这条路;不推的话打开会话是空白 —— 排队那一次发生在起底之前)。
+    flushFoldTreePush(sessionId)
   } catch (error) {
     // 重折失败:保持 pending,下一条缺号会再排一次(节流仍然生效)。
     stats.errors += 1
     log.debug('ui-refold live refold failed', { sessionId }, error)
   }
+}
+
+/** 这条会话有活折了吗(起底完成 = 可以拿它当屏幕上那棵树的底)。 */
+export function hasUiRefoldLiveFold(sessionId: string): boolean {
+  const fold = liveFolds.get(sessionId)
+  return Boolean(fold && !fold.pending && fold.lastSeq > 0)
+}
+
+/**
+ * 起底(U2-a):会话被打开时把整份账本折一遍。**幂等**:已经有活折就什么都不做,
+ * 正在起底也不重复排队 —— 复用缺号那条重折路,只是理由不同。
+ */
+export function ensureUiRefoldLiveFold(sessionId: string): void {
+  if (!sessionId) return
+  const fold = liveFolds.get(sessionId)
+  if (fold && !fold.pending) return
+  if (fold) {
+    scheduleLiveRefold(sessionId, fold)
+    return
+  }
+  const created = newLiveFold()
+  liveFolds.set(sessionId, created)
+  scheduleLiveRefold(sessionId, created)
+}
+
+/** 屏幕那棵树的底(U2-a 的取数口)。还没起底 = `undefined`。 */
+export function getUiRefoldLiveMessages(sessionId: string): ChatMessage[] | undefined {
+  return liveMessages(sessionId)
+}
+
+/**
+ * 这条会话此刻有没有在跑的 run(U2-a 的**等待指示**由它派生,而不是靠流里那格
+ * 瞬态 part —— 瞬态是 overlay 车道的东西,run 态是账本的事实)。
+ */
+export function getUiRefoldActiveRun(
+  sessionId: string,
+): { runId: string; messageId: string } | undefined {
+  const fold = liveFolds.get(sessionId)
+  if (!fold || fold.pending) return undefined
+  return materializeChatMessages(fold.state).activeRun
 }
 
 /** 这条会话的活折此刻物化成什么样(还没起底时是 `undefined`)。 */
@@ -510,6 +583,14 @@ function compareAgainstLiveFold(
   sessionId: string,
   handMessages: readonly ChatMessage[],
 ): void {
+  // **U2-a 之后这道门退化为自比**:屏幕上那棵树本身就是活折物化出来的
+  // (`fold-tree.ts`),再拿它跟活折比等于"自己跟自己相等",恒绿而无信息。
+  // 所以新路上**停掉**这一道;另一道(收尾拉 `listRaw` 对拍耐久账本)反向留任,
+  // 它现在守的正是转正后的新路。旧路(开关翻回)上它照旧是那道两消费者对拍。
+  if (isFoldTreeEnabled()) {
+    stats.liveSkippedSelfCompare += 1
+    return
+  }
   const live = liveMessages(sessionId)
   if (!live) return
   const ledger = canonicalSide(live, sessionId)
@@ -570,7 +651,17 @@ async function runUiRefold(
       weighed.add(sessionId)
     }
 
-    const result = compareUiRefold(handMessages, events as unknown[], sessionId)
+    // 新路上屏幕是**按帧推**的,而这里刚从盘上读回了此刻的全份账本 —— 先把活折
+    // 追到文件那一刻、把屏幕强推一次,再比。不这样的话比到的是"上一帧的屏幕"对
+    // "此刻的文件",最后那一两格(usage / isStreaming)会被记成失配,而它其实只是
+    // 一帧的时差。
+    let compared = handMessages
+    if (isFoldTreeEnabled()) {
+      catchUpLiveFold(sessionId, events as unknown[])
+      flushFoldTreePush(sessionId)
+      compared = readMessages(sessionId)
+    }
+    const result = compareUiRefold(compared, events as unknown[], sessionId)
     stats.checks += 1
     if (result.match) return
 

@@ -42,6 +42,11 @@ describe('IPC hub → plugin status reaches the message', () => {
   })
 
   async function setup() {
+    // 旧路用例(U2-a §17.8.7):它驱动手写拼装管道并对着 sessionMessages 断言;
+    // 新路上未结算状态行走 overlay 车道(见 fold-tree.test.ts)。开关必须在
+    // `vi.resetModules()` 之后按 —— 模块换了实例,状态也换了。
+    const { setFoldTreeEnabled } = await import('@/stores/fold-tree')
+    setFoldTreeEnabled(false)
     const { initializeIPCHub } = await import('../ipc-hub')
     const { useChatStore } = await import('@/stores/chat')
     const store = useChatStore()

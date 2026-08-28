@@ -66,6 +66,12 @@ import {
 	clearOverlayTransientParts,
 	setOverlayTransientPart,
 } from "@/stores/session-overlays";
+import {
+	installFoldTreeApplier,
+	isFoldTreeEnabled,
+	scheduleFoldTreePush,
+} from "@/stores/fold-tree";
+import { ensureUiRefoldLiveFold } from "@/stores/ui-refold";
 
 type RequestSnapshot = RequestSnapshotEvent["snapshot"];
 
@@ -877,7 +883,14 @@ export const useChatStore = defineStore("chat", () => {
 	 */
 	function getSessionState(sessionId: string) {
 		return {
-			messages: computed(() => sessionMessages.value.get(sessionId) || []),
+			messages: computed(() => {
+				// U2-a:**读即起底**。新路上这棵树来自账本折叠,而"什么时候折"没有
+				// 一个统一的产品事件可挂(会话切换有好几条入口,`loadMessages` 只是
+				// 其中一条)。挂在读面上就没有漏网的入口:谁要显示这条会话的消息,
+				// 谁就把它的账本折起来。幂等 —— 已经有活折就是一次 Map 查询。
+				if (isFoldTreeEnabled()) ensureUiRefoldLiveFold(sessionId);
+				return sessionMessages.value.get(sessionId) || [];
+			}),
 			isLoading: computed(() => sessionLoading.value.get(sessionId) || false),
 			isGenerating: computed(
 				() => sessionGenerating.value.get(sessionId) || false,
@@ -1014,9 +1027,21 @@ export const useChatStore = defineStore("chat", () => {
 	}
 
 	/**
-	 * Update messages for a session and trigger reactivity
+	 * Update messages for a session and trigger reactivity.
+	 *
+	 * **U2-a 的切换点就是这一行**(§17.8.7):新路上这棵树只有一个写者 ——
+	 * 账本折叠(`source: 'fold'`)。手写拼装那半边照旧跑、照旧算,但它的写**在这里
+	 * 被忽略**(休眠,不是删除):开关一翻就整条回来。
+	 *
+	 * 为什么闸在写入口而不是逐个 case 改:`sessionMessages` 全仓只有这一处落笔,
+	 * 42 个 case 的 19 个改树分支全部经过它 —— 一个判据管住全部,回滚也只有这一处。
 	 */
-	function setSessionMessages(sessionId: string, messages: ChatMessage[]) {
+	function setSessionMessages(
+		sessionId: string,
+		messages: ChatMessage[],
+		source: "hand" | "fold" = "hand",
+	) {
+		if (source !== "fold" && isFoldTreeEnabled()) return;
 		// Ensure every message carries its sessionId so that downstream
 		// components (e.g. MessageActions downvote) can reference it.
 		for (const msg of messages) {
@@ -1025,6 +1050,12 @@ export const useChatStore = defineStore("chat", () => {
 		sessionMessages.value.set(sessionId, messages);
 		triggerRef(sessionMessages);
 	}
+
+	/** 新路的唯一写口 —— `fold-tree.ts` 组合好的那棵树。 */
+	function applyFoldTree(sessionId: string, messages: ChatMessage[]) {
+		setSessionMessages(sessionId, messages, "fold");
+	}
+	installFoldTreeApplier(applyFoldTree);
 
 	function logTime(): string {
 		return new Date().toISOString();
@@ -1335,7 +1366,27 @@ export const useChatStore = defineStore("chat", () => {
 	/**
 	 * Get messages for a session (mutable reference)
 	 */
+	/**
+	 * 手写拼装那半边的**可变工作数组**。
+	 *
+	 * U2-a(§17.8.7):新路上屏幕那棵树由折叠产出,而手写侧的很多写法是**就地改**
+	 * (`messages.push(...)` / `messages[i] = ...`)再调 `setSessionMessages` ——
+	 * 就地那一半绕不过写入口那道闸。所以新路上把手写侧整条**接到另一个数组**上:
+	 * 它照旧跑、照旧算(休眠不是删除,开关一翻整条回来),但它改的不是屏幕上那棵树。
+	 *
+	 * 旧路上这两者是同一个数组,逐字与从前相同。
+	 */
+	const dormantHandMessages = new Map<string, ChatMessage[]>();
+
 	function getSessionMessagesRef(sessionId: string): ChatMessage[] {
+		if (isFoldTreeEnabled()) {
+			let dormant = dormantHandMessages.get(sessionId);
+			if (!dormant) {
+				dormant = [...(sessionMessages.value.get(sessionId) ?? [])];
+				dormantHandMessages.set(sessionId, dormant);
+			}
+			return dormant;
+		}
 		let messages = sessionMessages.value.get(sessionId);
 		if (!messages) {
 			messages = [];
@@ -1620,6 +1671,18 @@ export const useChatStore = defineStore("chat", () => {
 				// 格子语义:同 (pluginId, id) 更新 label,cleared 则移除。
 				if (applyPluginStatus(parts, newPart)) {
 					message.contentParts = [...parts];
+				}
+				// overlay 车道:**未结算**的状态行是流内瞬态(策略表
+				// `contentPart.plugin-status.unsettled`),账本上按定义没有它;
+				// 结算态另有产地(§17.8.6),不进 overlay。
+				if (newPart.durationMs === undefined) {
+					if (newPart.cleared) {
+						clearOverlayTransientParts(sessionId, resolvedMsgId);
+					} else {
+						setOverlayTransientPart(sessionId, resolvedMsgId, {
+							...newPart,
+						} as ContentPart);
+					}
 				}
 			} else if (newPart.type === "image-loading") {
 				pushImageLoading(parts, newPart.turnIndex, newPart.label);
@@ -2074,6 +2137,10 @@ export const useChatStore = defineStore("chat", () => {
 	 * streaming message to maintain UI state continuity during session switches
 	 */
 	async function loadMessages(sessionId: string) {
+		// U2-a:会话被打开 = 把整份账本折一遍起底(幂等)。新路的树从这里来;
+		// 旧路照旧走下面的分页加载,两条互不影响。
+		ensureUiRefoldLiveFold(sessionId);
+		scheduleFoldTreePush(sessionId);
 		try {
 			const response = await sessionsApi.get({ sessionId });
 			if (response.success && response.session) {
@@ -3156,6 +3223,7 @@ export const useChatStore = defineStore("chat", () => {
 		clearComposerDraft,
 		isComposerDraftEmpty,
 		addLocalMessage,
+		applyFoldTree,
 		addMessageToState,
 		removeMessage,
 

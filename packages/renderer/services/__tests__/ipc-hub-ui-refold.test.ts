@@ -87,6 +87,11 @@ describe('ipc-hub → ui-refold 挂点', () => {
 
   /** 起 hub,顺便把手写侧摆成"与账本同形"的样子。 */
   async function boot(assistantText = '在的') {
+    // 这一组钉的是**两消费者对拍**(手写拼装 vs 新管实时折)—— 它只在旧路上有
+    // 意义:新路的屏幕树本身就是活折物化的,再比就是自比(见下面那一组)。
+    // 开关必须在 `vi.resetModules()` **之后**按:模块换了实例,状态也换了。
+    const { setFoldTreeEnabled: setForThisModuleInstance } = await import('@/stores/fold-tree')
+    setForThisModuleInstance(false)
     const { initializeIPCHub } = await import('../ipc-hub')
     const { useChatStore } = await import('@/stores/chat')
     const refold = await import('@/stores/ui-refold')
@@ -337,6 +342,59 @@ describe('ipc-hub → ui-refold 挂点', () => {
     const stats = refold.getUiRefoldStats()
     expect(stats.errors).toBe(1)
     expect(stats.checks).toBe(0)
+    expect(stats.mismatches).toBe(0)
+  })
+})
+
+/**
+ * **新路(U2-a 默认)下这道门的去向**:屏幕树 = 活折物化 → 两消费者对拍退化为
+ * 自比,停掉并记数;另一道(收尾拉 `listRaw` 对拍耐久账本)反向留任 —— 它现在
+ * 守的正是转正后的新路。
+ */
+describe('ipc-hub → ui-refold:新路下的两道门', () => {
+  let eventCallback: ((envelope: { sessionId: string; event: Record<string, unknown> }) => void) | undefined
+
+  beforeEach(async () => {
+    // 这一组跑**新路**(默认):把上一组按下去的开关放回来。
+    const { setFoldTreeEnabled } = await import('@/stores/fold-tree')
+    setFoldTreeEnabled(undefined)
+    vi.resetModules()
+    setActivePinia(createPinia())
+    eventCallback = undefined
+    listMock.mockReset()
+    listMock.mockResolvedValue({ events: [] })
+    Object.defineProperty(window, 'electronAPI', {
+      configurable: true,
+      value: {
+        onSessionEvent: vi.fn((callback: typeof eventCallback) => {
+          eventCallback = callback
+          return vi.fn()
+        }),
+        onSessionStream: vi.fn(() => vi.fn()),
+        saveUIState: vi.fn(async () => ({ success: true })),
+      },
+    })
+  })
+
+  it('自比停掉:liveChecks 不涨,skip 计数涨;拉账本那道照跑', async () => {
+    const { initializeIPCHub } = await import('../ipc-hub')
+    const { useChatStore } = await import('@/stores/chat')
+    const refold = await import('@/stores/ui-refold')
+    refold.resetUiRefold()
+    initializeIPCHub()
+    const store = useChatStore()
+    store.sessionMessages.set(SESSION, refold.foldLedgerMessages(ledger('在的')))
+    listMock.mockResolvedValue({ events: ledger('在的') })
+
+    eventCallback?.({ sessionId: SESSION, event: { type: 'stream:complete', data: {} } })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await Promise.resolve()
+
+    const stats = refold.getUiRefoldStats()
+    expect(stats.liveChecks).toBe(0)
+    expect(stats.liveSkippedSelfCompare).toBe(1)
+    // 屏幕 ≡ 耐久账本那道**照旧**跑,而且是绿的。
+    expect(stats.checks).toBe(1)
     expect(stats.mismatches).toBe(0)
   })
 })

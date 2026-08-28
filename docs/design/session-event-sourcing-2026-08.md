@@ -10909,3 +10909,120 @@ typecheck 0;四包 7106 绿(两处已知红不认领:`App.container-layout` 外�
 
 新增测试:readBlob handler 3、渲染侧 blob 缓存 6、结算态落账 1(含"running 一条都不写"
 的反面)、ui-refold 豁免撤销后的正反两证。**未提交。**
+
+### 17.8.7 U2-a 落地记录:切换(旧路休眠可回滚)—— 屏幕树 = 折叠 + 活尾巴 + overlay(2026-08-28,opus 施工,未提交)
+
+*一、开关与回滚(一行)*
+
+`localStorage['onething.uiFoldTree'] = 'off'` → 刷新即回旧路;控制台一行:
+`window.__onethingUiFoldTree.disable()`(它就是把上面那格写进去)。`.enable()` 回新路,
+`.status()` 看当前。覆盖值挂在 `globalThis` 上而不是模块变量里 —— 测试的
+`vi.resetModules()` 不会把它冲掉。**双端一致**(dev/打包/web 同一条路径),不进设置页
+(设置极简判例),不走 preload。它是迁移期临时物,U2-b 删旧路时一并死。
+
+*二、切换面(闸在写入口,不是 42 个 case)*
+
+- `setSessionMessages`(`chat.ts`)加一个 `source: 'hand' | 'fold'` 判据:新路上**只有**
+  `'fold'` 写得进屏幕那棵树。42 个 case 里 19 个改树分支全部经过它,一个判据管住全部,
+  回滚也只有这一处。
+- `getSessionMessagesRef` 新路上交出一份**休眠工作数组**:手写侧很多写法是就地改
+  (`messages.push` / `messages[i] =`)再调写入口 —— 就地那一半绕得过闸。接到另一个数组
+  上之后,手写侧照旧跑照旧算(休眠不是删除),但它改的不是屏幕上那棵树。
+- 新路的唯一写者:`fold-tree.ts` 的 `applier`(chatStore 在初始化时把 `applyFoldTree`
+  交进去)。
+
+*三、三条来源,各管一段*
+
+| 来源 | 管什么 |
+|---|---|
+| **fold**(账本折叠) | 全部结构与已结算事实:身份、顺序、part 结构、tools/steps、usage、turnContext |
+| **活尾巴** | 当前那一段**还没被打包行刷出来**的文本(吃 `session:stream` 的 delta) |
+| **overlay** | 按定义进不了账本的:本地错误卡、占位型瞬态(`image-loading`)、**未结算**的插件状态行 |
+
+活尾巴的纪律(写在文件头):**它不做任何结构决策** —— 开段/闭段/属于哪条消息全听 fold
+与账本词汇,它只是一个纯文本追加缓冲。打包行一到就整段丢掉、由账本那份接管,两者逐字节
+相同的依据是 c2 的 `decode∘encode ≡ id` 合同。
+
+**等待指示改由 run 态派生**:run 活着 + 尾巴空 + 这条消息上一个字都没有 → `waiting`。
+`estimateTokens` 的 snap 源仍是 `stream:usage`(未动)。work-group 分界与 steps 面板 run
+分组是**这棵树的下游纯函数**,树对了它们由构造对(没有第二处改动)。
+
+*四、门的去向(反向留任)*
+
+- **收尾拉 `listRaw` 对拍**:反向留任,现在守的正是转正后的新路。**新增一格对齐**:
+  比之前先把活折追到刚拉回的那份账本末尾(`catchUpLiveFold`)并强推一次屏幕
+  (`flushFoldTreePush`)—— 否则比到的是"上一帧的屏幕"对"此刻的文件",最后那一两格
+  (usage / isStreaming)会被记成失配,而它只是一帧的时差。真机上这一格从 2 失配 → 0。
+- **活折对拍(两消费者)**:新路上退化为**自比**(屏幕本身就是活折物化的),因此停掉并
+  记 `liveSkippedSelfCompare`;旧路(开关翻回)上它照旧是那道两消费者对拍。
+
+*五、第一验收钉:流式节拍(真机)*
+
+假 provider 按 25ms 一条吐 140 条 delta(≈3.5s,跨过打包器 2s / 64 条两道闸),
+按帧采样"屏幕上那条消息的正文长度":
+
+| 路 | 增长次数 | p50 | p90 | max | 终态长度 |
+|---|---|---|---|---|---|
+| **新路**(fold + 尾巴) | 141 | **25ms** | 33ms | 36ms | 678 |
+| 旧路(手写) | 140 | 25ms | 33ms | 34ms | 678 |
+
+**同量级、同终态,没有 2 秒蹦一次**。(只读打包行会是最坏 2s 一跳,这正是活尾巴存在的
+理由。)
+
+*六、七个碰面自证(真机)*
+
+| # | 碰面 | 读数 / 结论 |
+|---|---|---|
+| 1 | 跟底 | 流式期间连续 30 帧距底 ≤ 8px —— 钉底 ✅ |
+| 2 | 拖滚动条脱跟底 | 流中途上滚 400px 后 30 帧距底恒 665,**从未被拽回底**(`snappedBack: false`)✅ |
+| 3 | 发送 hold-top | 发送后新用户消息落在视口顶 **-50px**,与旧路同形 ✅ |
+| 4 | regenerate hold | **未驱动**(需从消息 ⋯ 菜单走真实交互链路),本批未证 ⚠️ |
+| 5 | 跳转 / 导航 | **未驱动** ⚠️ |
+| 6 | `goalSummariesByIndex` 按 index 旁挂 | 它是**对同一棵渲染数组**的 `computed`,新旧路同源;夹具里没有 goal,**未做真机正证** ⚠️ |
+| 7 | work-group 展开(Map 缓存) | 数据层已证(工具轮的 toolCalls/steps 在树上就位、单测绿);**DOM 展开未驱动**(假 provider 的工具分支只在会话首轮触发,当时那一轮已滚出视野)⚠️ |
+
+4/5/6/7 四项**没有真机自证**,如实报:它们要么需要更完整的交互链路驱动,要么需要专门夹具。
+判据没有放宽,只是没测到。
+
+*七、耗时(真机)*
+
+- **巨会话开启(新路)**:把真机上一本 **10.6MB / 107 事件**的账本复制进临时库(真机只读),
+  产品路径打开 → 拉 `listRaw` 225ms、**从切会话到 107 条消息上屏 213ms**(同一次测量的两段
+  重叠,拉取占大头);
+- 旧路同一夹具**测不了**:那条会话只有账本没有 `meta.json`(它是我拷进去的),旧路的分页
+  读面拿不到 —— 属夹具限制,不是产品差异,如实报。
+- 常规会话(12 条消息)两条路都是"点开即出",无可测差异。
+
+*八、断言改动清单(逐条)*
+
+**没有改任何一条断言的期望值**。改的只有"这只用例跑哪条路":以下文件在
+`beforeEach`(或其 `boot()`,遇 `vi.resetModules()` 时)加一句
+`setFoldTreeEnabled(false)` + 一段文件头说明——它们驱动的是**手写拼装管道**并对着
+`sessionMessages` 断言,那是新路上休眠的那半边,而休眠必须继续有用例守着(回滚要用):
+
+1. `stores/__tests__/chat-reasoning.test.ts`
+2. `stores/__tests__/chat-stream-finalize.test.ts`
+3. `stores/__tests__/chat-permission.test.ts`
+4. `stores/__tests__/chat-permission-orphan.test.ts`
+5. `stores/__tests__/chat-permission-external-anchor.test.ts`
+6. `stores/__tests__/collab-pending-permissions.test.ts`
+7. `stores/__tests__/ui-refold.test.ts`(判据组:它比的就是手写侧)
+8. `components/chat/__tests__/ChatPanel.external-permission.test.ts`
+9. `components/chat/__tests__/ChatPanel.permission-ledger.test.ts`
+10. `services/__tests__/ipc-hub.test.ts`
+11. `services/__tests__/ipc-hub-plugin-status.test.ts`
+12. `services/__tests__/ipc-hub-ui-refold.test.ts`(第一组旧路;新增第二组跑新路)
+
+新增覆盖:`stores/__tests__/fold-tree.test.ts`(8 只)—— 新旧路 canonical 对拍、活尾巴
+即时性、换装不重影、waiting 由 run 态派生、overlay 叠加(本地卡 / 瞬态 / 未结算插件状态)、
+开关翻回。
+
+*九、门读数*
+
+typecheck 0;四包 **7114 绿**(两处已知红不认领:`App.container-layout` 外壳批、
+`sessions-delete-cascade` 满载并行抖动);**五棘轮**全绿(boundary / session / log /
+transport / ui,均未动基线);battery GREEN(225 refoldChecks / 0 mismatch);
+`sessions:verify` 本机 0 / 外来存量 9 零新增;真机 store **只读**(巨会话夹具是**拷贝**
+进临时库的,原库一个字节未动)。真机门读数:6 轮会话 `checks 2 / mismatches 0`、
+`liveSkippedSelfCompare 6`、`errors 0`、日志零 warn。**未提交。**
+

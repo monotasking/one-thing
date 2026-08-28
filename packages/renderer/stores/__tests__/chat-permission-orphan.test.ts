@@ -1,4 +1,10 @@
+/**
+ * **旧路用例**(U2-a §17.8.7):驱动手写拼装管道并对着 `sessionMessages` 断言。
+ * 新路上那棵树由账本折叠产出、手写侧的写在写入口那道闸上被忽略(休眠可回滚),
+ * 新路的等价覆盖在 `stores/__tests__/fold-tree.test.ts`。
+ */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { setFoldTreeEnabled } from '@/stores/fold-tree'
 import { createPinia, setActivePinia } from 'pinia'
 import { useChatStore } from '../chat'
 import { getToolRenderStatus } from '../helpers/tool-status'
@@ -33,6 +39,8 @@ function assistantMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
 
 describe('绑定丢失后的审批卡', () => {
   beforeEach(() => {
+  // 旧路用例(见文件头):把 U2-a 的开关按回手写拼装。
+  setFoldTreeEnabled(false)
     setActivePinia(createPinia())
     vi.stubGlobal('window', { electronAPI: {} })
   })

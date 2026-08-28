@@ -51,6 +51,10 @@ describe('IPC hub stream subscriptions', () => {
   })
 
   it('routes unified session stream chunks into the chat store in realtime', async () => {
+    // 旧路用例(U2-a §17.8.7):驱动手写拼装并对着 sessionMessages 断言。
+    // 新路的等价覆盖在 `stores/__tests__/fold-tree.test.ts`。
+    const { setFoldTreeEnabled } = await import('@/stores/fold-tree')
+    setFoldTreeEnabled(false)
     const { initializeIPCHub } = await import('../ipc-hub')
     const { useChatStore } = await import('@/stores/chat')
     const store = useChatStore()
@@ -84,6 +88,10 @@ describe('IPC hub stream subscriptions', () => {
   })
 
   it('routes reasoning and text stream chunks without waiting for completion', async () => {
+    // 旧路用例(U2-a §17.8.7):驱动手写拼装并对着 sessionMessages 断言。
+    // 新路的等价覆盖在 `stores/__tests__/fold-tree.test.ts`。
+    const { setFoldTreeEnabled } = await import('@/stores/fold-tree')
+    setFoldTreeEnabled(false)
     const { initializeIPCHub } = await import('../ipc-hub')
     const { useChatStore } = await import('@/stores/chat')
     const store = useChatStore()
@@ -136,6 +144,10 @@ describe('IPC hub stream subscriptions', () => {
   })
 
   it('routes final message updates so waiting does not survive until restart', async () => {
+    // 旧路用例(U2-a §17.8.7):驱动手写拼装并对着 sessionMessages 断言。
+    // 新路的等价覆盖在 `stores/__tests__/fold-tree.test.ts`。
+    const { setFoldTreeEnabled } = await import('@/stores/fold-tree')
+    setFoldTreeEnabled(false)
     const { initializeIPCHub } = await import('../ipc-hub')
     const { useChatStore } = await import('@/stores/chat')
     const store = useChatStore()
@@ -183,6 +195,10 @@ describe('IPC hub stream subscriptions', () => {
    * 存储模型。现在三条事件都只是一句"这个会话的欠账动了",交给账本去重新问。
    */
   it('hands every permission event to the pending ledger instead of applying deltas', async () => {
+    // 旧路用例(U2-a §17.8.7):驱动手写拼装并对着 sessionMessages 断言。
+    // 新路的等价覆盖在 `stores/__tests__/fold-tree.test.ts`。
+    const { setFoldTreeEnabled } = await import('@/stores/fold-tree')
+    setFoldTreeEnabled(false)
     const { initializeIPCHub } = await import('../ipc-hub')
     const { useChatStore } = await import('@/stores/chat')
     const { useCollabBoardStore } = await import('@/stores/collabBoard')
