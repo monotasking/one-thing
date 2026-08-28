@@ -509,14 +509,22 @@ export function loadSessionWithAdapters<
   const repaired = sanitize(session)
   const loaded = repaired ?? session
   if (repaired) {
-    // **写回还留着,但它的意思变了**(S3w-3 批 6b,§15.22):抄本写代码删掉之后,
-    // 这一次 `saveSession` 落到盘上的只有 `meta.json` —— 修复的**消息半边**从此
-    // 只活在内存写模型里(每次冷加载现算一遍,幂等;事件账本里没有这次修复的产地,
-    // 见 §13.6 R-a)。留着是因为**会话半边仍然落盘**:
-    // `computeSessionTimelineMetadataRepair` 修的 summary / contextSize /
-    // lastInputTokens 正是住 `meta.json` 的那几格。
-    options.saveSession?.(options.sessionId, repaired)
-    options.syncSession?.(repaired)
+    /*
+     * **修复不再写盘**(§17.7 #16,2026-08-28)。
+     *
+     * 修复本来就是**纯派生**(`computeSessionRepairOnLoad`,一字未动)而且只在
+     * 本进程第一次接手这条会话时跑一次;它的结果每次冷加载都算得出来,把它写回
+     * 盘只是让"盘上带不带修好的值"多出一种状态,而没有任何消费者要求那种状态:
+     *
+     *  - `getSessionRaw` 的三个消费者(所有权回填、`iterateMessagesRaw`、
+     *    `scanSessionsForSearch`)在契约里就写着**raw 语义:不 sanitize、不回写**
+     *    —— 它们本来就不该看见修复过的值;
+     *  - 产品读路一律走 `getSession`,那条路现修现给(幂等)。
+     *
+     * `syncSession` 同理:SQLite 那份镜像跟着内存那份走,不需要一次额外的落盘。
+     * (S3w-3 批 6b 起这里落盘的只剩 `meta.json` 的 summary / contextSize /
+     * lastInputTokens 三格,而 #15 收口之后那三格的产地是**会话账**,不是修复。)
+     */
   }
 
   options.cache?.set(options.sessionId, loaded)
@@ -840,6 +848,36 @@ export function applySessionTokenUsage<TSession extends CoreSessionUsageFields>(
   if (lastTurnUsage) {
     session.lastInputTokens = Math.max(0, lastTurnUsage.inputTokens)
     session.contextSize = Math.max(0, lastTurnUsage.inputTokens)
+  }
+  return session
+}
+
+/**
+ * **按账落格**(§17.7 #15 裁定 1):把会话账折出来的用量三格 + 上下文两格**盖**上去。
+ *
+ * 与 `applySessionTokenUsage` 的区别是**覆盖 vs 加法**:折叠账已经是"这条会话到此刻
+ * 的总量",再加一次就是重复计数 —— 那正是收口前那个"容器 = 账本 × 2"的病根。
+ * 产地是账本(`request/response.usage` 累加 / `session/compacted.retainedContextSize`),
+ * 这里只是搬运。
+ */
+export function landSessionAccountUsage<TSession extends CoreSessionUsageFields>(
+  session: TSession,
+  snapshot: {
+    totalInputTokens: number
+    totalOutputTokens: number
+    totalTokens: number
+    contextSize?: number
+    lastInputTokens?: number
+  },
+): TSession {
+  session.totalInputTokens = Math.max(0, snapshot.totalInputTokens)
+  session.totalOutputTokens = Math.max(0, snapshot.totalOutputTokens)
+  session.totalTokens = Math.max(0, snapshot.totalTokens)
+  if (snapshot.contextSize !== undefined) {
+    session.contextSize = Math.max(0, snapshot.contextSize)
+  }
+  if (snapshot.lastInputTokens !== undefined) {
+    session.lastInputTokens = Math.max(0, snapshot.lastInputTokens)
   }
   return session
 }

@@ -621,6 +621,22 @@ export function updateSessionTokenUsage(
 	});
 }
 
+/**
+ * **按账落格**(§17.7 #15 裁定 1)。产地是会话账折叠,这里只是搬运到容器。
+ */
+export function landSessionAccountUsage(
+  sessionId: string,
+  snapshot: {
+    totalInputTokens: number
+    totalOutputTokens: number
+    totalTokens: number
+    contextSize?: number
+    lastInputTokens?: number
+  },
+): boolean {
+  return sessionRepository.landSessionAccountUsage(sessionId, snapshot);
+}
+
 export function updateSessionContextSize(
 	sessionId: string,
 	contextSize: number,

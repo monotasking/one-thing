@@ -382,7 +382,9 @@ describe('core session store helpers', () => {
     })
     expect(session.messages[0].isStreaming).toBe(true)
     expect(cache.get('s1')).toBe(loaded.session)
-    expect(calls).toEqual(['save:s1:false', 'sync:s1', 'cache:s1'])
+    // §17.7 #16:**修复不再写盘**。修好的那份只进缓存(每次冷加载现算一遍,幂等);
+    // `getSessionRaw` 的三个消费者契约上本来就是 raw 语义(不 sanitize、不回写)。
+    expect(calls).toEqual(['cache:s1'])
 
     const cached = loadSessionWithAdapters({
       sessionId: 's1',

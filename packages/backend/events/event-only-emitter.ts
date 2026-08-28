@@ -7,6 +7,7 @@
  */
 
 import * as store from '../store.js'
+import { landSessionAccountUsage } from '../session/usage.js'
 import type { SessionEvent, StreamChunk } from '@shared/events/index.js'
 import type { ContentPart, Step, ToolCall, ToolPartialResult, ToolResult } from '@shared/ipc.js'
 import type { StreamContext } from '../wiring/engine/stream/stream-processor.js'
@@ -70,8 +71,14 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
   const storePort: CoreEventOnlyStoreHooks<Step> = {
     addMessageStep: store.addMessageStep,
     updateMessageStep: store.updateMessageStep,
-    updateSessionContextSize: (targetSessionId, contextSize) =>
-      store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish'),
+    // §17.7 #15 裁定 1:上下文两格的产地是**会话账**
+    // (`request/response.usage.inputTokens` / `session/compacted.retainedContextSize`)。
+    // 这里只在原落点时刻把账落格;账落不下来(没记账的泳道)才回落老写者,
+    // 行为逐字如旧。
+    updateSessionContextSize: (targetSessionId, contextSize) => {
+      if (landSessionAccountUsage(targetSessionId)) return
+      store.updateSessionContextSize(targetSessionId, contextSize, 'provider-finish')
+    },
     /*
      * S3.1(§10.11):技能宣告的**两个落点挂在同一次宣告上** —— 消息上的
      * `skillUsed`(产品事实)与事件账本的 `skill/activated`(那条 run 的账)。

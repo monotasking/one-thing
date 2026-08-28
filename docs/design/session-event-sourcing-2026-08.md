@@ -9432,8 +9432,8 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 18 | ~~**ui-refold 两条豁免待追认**~~ **① 已结清(§17.7 #4,2026-08-28)**:`tool-call` 渲染锚点收进 canonical 的 G4 —— 尺子从此认两种锚点形状(`data-steps` 重放合成 / `tool-call` 流式当场落,core `render-anchors.ts:39` 本来就并列写着),S 线与 U 线同一把尺,ui-refold 那份具名排除撤销、反证改成「过尺即相等」。② `attachments` 仍具名排除:账本存 `BlobRef`,U2-a0 的读口只把正文取回渲染层,判据那一侧仍要宿主注入解析器 —— 与 U2-b 一起收 |
 | 19 | **会话沙箱路径的第二段仍由「产品空间」决定** | `workspaceSandboxRootForSession`(`server/runtime.ts`)历来把 `(userId, workspaceId)` 拼成 `owners/<uid>/<wid>/`,而第二格上盘的其实是空间 —— 非 default 空间里建的会话,文件就住在 `owners/<uid>/<space>/`。2026-08-28 拆字段那批**故意没动它**(改读租户格 = 那些文件当场"消失"),按 `owner ?? 盘上原值` 取值,存量与新建都与从前逐字相同。**空间该不该决定沙箱路径**(workspace-spaces 的 per-space 目录方案里它是有意的)——待拍 | `docs/audit/web-lane-sse-diagnosis-2026-08-28.md` §6.3 |
 | 20 | **服务端会话列表面仍然摘掉 `workspaceId`** | `stripSessionOwnerFields` / `toSessionMeta` / `toChatSession` 把空间连同租户格一起摘掉,所以 web 端从来不知道会话属于哪个空间(左栏因此不按空间过滤)。把它留下是**可感知的行为变化**(web 左栏会开始按空间过滤,会话可能"消失"),拆字段那批不动 —— 待拍 | 同上 |
-| 21 | **#15 usage 收口:口径差待裁** | 折叠账(`request/response.usage` 累加)对会话容器那三格,265 次对拍 **257 次逐格相等**;**8 次不等,全是带工具的多请求回合,容器恒为账本的 2 倍**(三个 total;`contextSize`/`lastInputTokens` 从不出错)。两侧的数出自同一批 provider 读数,差在**怎么合成**:账本按「每次请求的 usage 相加」,引擎按「这次执行的累加器」。哪一个对 = **token 记账口径的裁定**(改了会改变所有带工具会话显示的总额),**未切换**。另:`context-compact` 盖的 `retainedContextSize` 要到**下一次请求**才有产地,是抢跑不是缺产地 | §17.7.4 |
-| 22 | **#16 冷加载修复读路化:待 #15 之后** | 修复本身早已是纯派生 + 只在本进程首次接手时做一次(`repairOnFirstTouch`),要改的只是「结果还写不写盘」。**卡在两处**:① `getSessionRaw` 读盘上那份(所有权回填等用它),不写盘之后它拿到未修复值;② 与 #15 都动 `contextSize`,#15 未切之前改它等于多一个写者。**次序已定:先 #15 后 #16**,未切换 | §17.7.4 |
+| 21 | ~~**#15 usage 收口**~~ **已结清(§17.7.4 增补,2026-08-28)**:用户裁定**账本口径为准**(每次 provider 报的 usage 恰好计一次),容器 ×2 定性为重复计数缺陷。三格改由账在写者原落点落格(`landSessionAccountUsage`),三写者退役(第三个 `applyServerSessionUsage` 只服务无账本的 echo 泳道,原地留任)。`retainedContextSize` 按裁定 2 补进 `session/compacted`(append-only,缺席即不盖)。usage 对拍列**转正进门**:切换后 `usageMismatches 0 / 265`;带工具会话的总量变小变准 |
+| 22 | ~~**#16 冷加载修复读路化**~~ **已结清(§17.7.4 增补)**:上一批那条阻碍勘察不成立 —— `getSessionRaw` 的三个消费者(所有权回填 / `iterateMessagesRaw` / `scanSessionsForSearch`)契约上就是 raw 语义(不 sanitize、不回写),对修复的三件都不敏感。`loadSessionWithAdapters` 的写回删除,修复每次冷加载幂等现修;`computeSessionRepairOnLoad` 一字未动,存量不回滚 |
 
 ### 17.6 两态图 artifact 与终态的出入(图待更新,本节只记差异)
 
@@ -11099,3 +11099,73 @@ refoldMismatches 0、mismatches 0、portMismatches 0、appendFailures 0;新列
 usageMismatch 8 / 265 —— 勘察列不进门);字节回归 · S0 合同 · 账预检 · ephemeral
 (含指针闸)全绿;**五棘轮**全绿(均未动基线);`sessions:verify` 本机 0 / 外来存量 9
 零新增;真机 store 只读。**未提交。**
+
+#### 17.7.4 增补:#15 切换 + #16 读路化落地(2026-08-28,opus 施工,未提交)
+
+*一、裁定 2 先落(补产地)*
+
+`session/compacted` 事件加一格 **append-only 可选** `retainedContextSize`
+(`core/session/events/types.ts`);采集点(`lifecycle-events.ts` 的 `sessionCompacted`)
+按缺席即不写的口径带上它;压缩写者(`wiring/engine/context-compact.ts`)把
+`computeRetainedContextSizeAfterCompact` 的结果交给它 —— 那是**写者当刻亲知的事实**
+(§13.8 合规:账本上要到下一次请求的 `request/response.usage.inputTokens` 才知道,
+而屏幕此刻就要读它)。账折叠(`core/session/account.ts`)消费这一格,失败的压缩不盖。
+**老账缺席 = 折叠维持原状**(成对交付,纪律 9)。**留账 22 结清。**
+
+*二、裁定 1:三写者退役,三格改由账落格*
+
+新落格口 `landSessionAccountUsage`:core 的 `store-helpers.ts`(**覆盖**语义,与老
+`applySessionTokenUsage` 的**加法**语义正相反 —— 账已经是总量,再加一次就是重复计数)
+→ 仓库 → `backend/stores/sessions.ts` → `backend/session/usage.ts` 的
+`landSessionAccountUsage(sessionId)`(读 `peekSessionAccount`,落 5 格,返回落没落成)。
+
+三个原落点各调它一次:
+
+| # | 原写者 | 处置 |
+|---|---|---|
+| 1 | `applySessionTokenUsage`(引擎收尾,`session/usage.ts` 的 `updateSessionUsage`) | **改为落格**。加法那条只在「这条会话没有账」时回落(echo / 测试替身泳道),行为逐字如旧 |
+| 2 | `applySessionContextSize`(provider-finish,`events/event-only-emitter.ts`) | **改为落格**,同款回落 |
+| 2′ | 同上(压缩收尾,`wiring/engine/context-compact.ts`) | **改为落格**;落点从写事件之**前**挪到之**后**一行 —— 账要先知道这件事才落得出来 |
+| 3 | `applyServerSessionUsage`(`server/runtime.ts`) | **原地不动**:它只在 `!backend.persistsMessages` 的 echo/测试后端上跑,那条泳道没有折叠账(没有 `request/response`),落格口对它恒返回 `false`。它现在是那条泳道**自己的**写者,不再与真引擎那条并存 |
+
+**比对点**沿用勘察结论:写者写完那一刻(不是 run/end)。
+
+*三、切换前后的数字(同一批场景、同一 seed)*
+
+battery 的 usage 对拍列:
+
+| | totalInputTokens | totalOutputTokens | totalTokens |
+|---|---|---|---|
+| **切换前** 账本(A) | 1063 | 46 | 1109 |
+| **切换前** 容器(B) | **2126** | **92** | **2218** |
+| **切换后** | 两侧相等 —— `usageMismatches 0 / 265` | | |
+
+真机支架另跑一条**带工具的两请求回合**(切换后):容器与账本逐格相等
+`{in 32, out 15, total 47, contextSize 12, lastInputTokens 12}`,`requests in the run: 2`。
+带工具会话的总量因此**变小变准**(不再把同一截用量计两遍)。
+
+**usage 对拍列转正进门**:`sessions:shadow-report` 的 GATE 判据加上
+`usageMismatches = 0`,battery 两处"滤掉 `kind:'usage'`"的临时豁免删除。
+
+*四、#16 冷加载修复读路化(**已切**)*
+
+上一批停诊的那条阻碍**经勘察不成立**:`getSessionRaw` 的三个消费者
+(`server/runtime.ts` 的所有权回填、`session/reads.ts` 的 `iterateMessagesRaw` 与
+`scanSessionsForSearch`)在契约里就写着 **raw 语义:不进 LRU、不 sanitize、不回写**
+—— 它们本来就不该看见修复过的值;回填只读 owner 两格,另两个是全库搜索取正文,
+对 `isStreaming` / 取消的 step / summary 三件都不敏感。
+
+于是 `loadSessionWithAdapters` 里那次 `saveSession` / `syncSession` **删掉**:修复仍然
+是纯派生、仍然只在本进程首次接手时跑一次,只是结果不再写盘 —— 每次冷加载幂等现修。
+`computeSessionRepairOnLoad` 家族**一字未动**。盘上已修过的存量不回滚不重写。
+配套断言改一处(`core-session-store-helpers.test.ts`:调用序从 `save/sync/cache` 变成
+`cache`)。**留账 22(#16 那半)结清。**
+
+*五、门读数*
+
+typecheck 0;四包绿(稳定红只有 `App.container-layout`,外壳批不认领);
+battery **GREEN**,含 **`usageMismatches = 0(比过 265 次)`进门**;
+refoldChecks 224、refold/mismatches/port/account/append 全 0;
+字节回归 · S0 合同 · 账预检 · ephemeral(含指针闸)全绿;**五棘轮**全绿未动基线;
+`sessions:verify` 本机 0 / 外来存量 9 零新增;真机 store 只读(支架临时库跑完删除)。
+**未提交。**

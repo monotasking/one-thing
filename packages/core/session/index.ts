@@ -69,6 +69,7 @@ export {
   applySessionSideEffectMutationWithAdapters,
   applySessionSummary,
   applySessionTokenUsage,
+  landSessionAccountUsage,
   applySessionUpdatedAtToMeta,
   applySessionVariables,
   applySessionWorkingDirectory,

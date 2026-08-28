@@ -410,6 +410,17 @@ export interface SessionCompactedEventData {
   /** 失败的压缩也记一条 —— 它在 UI 上是一张红卡,不是"什么都没发生"。 */
   status?: 'completed' | 'failed'
   error?: string
+  /**
+   * 压完之后**还留在上下文里**的 token 数(§17.7 #15 裁定 2)。
+   *
+   * 它是压缩写者**当刻亲知的事实**(`computeRetainedContextSizeAfterCompact` 按保留
+   * 下来的那几条消息现算),不是二次派生 —— §13.8 的判据("这句话在别处有没有产地")
+   * 在这里的答案是:账本上要到**下一次请求**的 `request/response.usage.inputTokens`
+   * 才知道,而屏幕上的上下文表此刻就要读它。
+   *
+   * **append-only 可选格**:老账本缺席 = 折叠维持原状(成对交付,纪律 9)。
+   */
+  retainedContextSize?: number
 }
 
 /** `replaceAll{clear}` / collab 的 MESSAGES_REPLACED(§9.3)。 */

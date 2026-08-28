@@ -4,6 +4,7 @@ import { generateChatResponse } from '../providers/index.js'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/runtime/plugins/lifecycle.wiring'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
+import { landSessionAccountUsage } from '../../session/usage.js'
 import { sessionLifecycleEvents } from '../../session/lifecycle-events.js'
 import { billCompactUsage } from '../usage/bill-side-line.js'
 import {
@@ -225,7 +226,6 @@ export async function compactSessionContext(options: {
       configWithApiKey: options.configWithApiKey,
       settings: options.settings,
     })
-    store.updateSessionContextSize(options.sessionId, retainedContextSize, 'context-compact-retained-usage')
     await options.onMessageUpdated?.(compactMessage.id, { content: finalContent })
 
     // S1a(§10.6 第 5 条):压缩是 surface 上的一次 replace —— 被压掉的那一段
@@ -239,7 +239,19 @@ export async function compactSessionContext(options: {
       model: options.configWithApiKey.model,
       provider: options.providerId,
       status: 'completed',
+      // #15 裁定 2:压完还剩多少上下文,是这一刻只有写者知道的事实 —— 落进账本,
+      // 折叠侧从此不必等下一次请求才对上。
+      retainedContextSize,
     })
+    // #15 裁定 1:容器上那两格由**账**落格。落点从写事件之**前**挪到之**后**
+    // 一行 —— 账要先知道这件事,才落得出来;落不下来(没记账)回落老写者。
+    if (!landSessionAccountUsage(options.sessionId)) {
+      store.updateSessionContextSize(
+        options.sessionId,
+        retainedContextSize,
+        'context-compact-retained-usage',
+      )
+    }
 
     return {
       success: true,

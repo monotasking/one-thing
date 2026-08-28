@@ -18,6 +18,7 @@ import {
   applySessionSideEffectMutationWithAdapters,
   applySessionSummary,
   applySessionTokenUsage,
+  landSessionAccountUsage,
   applySessionUpdatedAtToMeta,
   applySessionVariables,
   applySessionWorkingDirectory,
@@ -496,6 +497,26 @@ export class OnethingSessionRepository<
   ): boolean {
     return this.applySideEffectMutation(sessionId, {
       mutateSession: session => applySessionTokenUsage(session, usage, lastTurnUsage),
+      syncSession: session => this.syncSessionUsageToSqliteIfReady(session, '[Sessions] Failed to sync usage to SQLite:'),
+    })
+  }
+
+  /**
+   * **按账落格**(§17.7 #15):用量三格 + 上下文两格由**会话账**说了算,这里只搬运。
+   * 与 `updateSessionTokenUsage`(加法)不同,它是**覆盖** —— 账已经是总量。
+   */
+  landSessionAccountUsage(
+    sessionId: string,
+    snapshot: {
+      totalInputTokens: number
+      totalOutputTokens: number
+      totalTokens: number
+      contextSize?: number
+      lastInputTokens?: number
+    },
+  ): boolean {
+    return this.applySideEffectMutation(sessionId, {
+      mutateSession: session => landSessionAccountUsage(session, snapshot),
       syncSession: session => this.syncSessionUsageToSqliteIfReady(session, '[Sessions] Failed to sync usage to SQLite:'),
     })
   }

@@ -256,6 +256,7 @@ export function reduceSessionAccount(
       messageId?: string
       compactedThroughMessageId?: string
       status?: string
+      retainedContextSize?: number
     } | undefined
     if (data?.status !== 'failed' && typeof data?.summary === 'string' && data.summary.length > 0) {
       const target = mutate()
@@ -263,6 +264,14 @@ export function reduceSessionAccount(
       const anchor = data.compactedThroughMessageId ?? data.messageId
       if (anchor) target.summaryUpToMessageId = anchor
       target.summaryCreatedAt = event.time
+    }
+    // #15 裁定 2:压完还剩多少上下文由这条事件亲口说(写者当刻亲知)。
+    // **缺席 = 不盖**(成对交付):老账本没有这一格,折叠维持原状 —— 那正是
+    // 补产地之前的事实(要等下一次请求的 `request/response.usage` 才对上)。
+    if (data?.status !== 'failed' && typeof data?.retainedContextSize === 'number') {
+      const target = mutate()
+      target.contextSize = Math.max(0, data.retainedContextSize)
+      target.lastInputTokens = Math.max(0, data.retainedContextSize)
     }
   }
 

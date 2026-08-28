@@ -237,6 +237,10 @@ vi.mock("../../prompt/system-prompt.js", () => ({
 
 vi.mock("../../../../session/usage.js", () => ({
 	updateSessionUsage: mocks.updateSessionUsage,
+	// §17.7 #15:上下文两格由**账**落格(`event-only-emitter` 的 provider-finish
+	// 落点调它)。替身给 `false` = "这条会话没有账",于是走回落 —— 这一组用例钉的
+	// 是引擎链路,不是记账口径。
+	landSessionAccountUsage: () => false,
 }));
 
 vi.mock("../../triggers/index.js", () => ({

@@ -24,7 +24,7 @@
  *   `<store>/log/session-shadow.jsonl`       —— 每一次不等的字段级摘要
  *
  * **门 = runs ≥ 200 ∧ refoldChecks > 0 ∧ refoldMismatches = 0 ∧ mismatches = 0
- * ∧ portMismatches = 0 ∧ accountMismatches = 0 ∧ appendFailures = 0**。`--min-runs` 只放宽第一条 ——
+ * ∧ portMismatches = 0 ∧ accountMismatches = 0 ∧ usageMismatches = 0 ∧ appendFailures = 0**。`--min-runs` 只放宽第一条 ——
  * 分批验证时用得着。
  * 其余不给开关:一次不等就是一次"账本与内存分岔",没有"少量可接受"。
  *
@@ -223,7 +223,7 @@ function main() {
     console.log(`[shadow] accountMismatch: ${stats.accountMismatches}   (批 3 起并入 refold 栏;老账读数,比过 ${stats.accountChecks} 次)`)
     // §17.7 #15:usage 三格对拍(折叠账 vs 会话容器上那三格)。**这一批只报不进门**
     // —— 它是"该不该接管"的勘察读数,红了要查产地而不是调判据。
-    console.log(`[shadow] usageMismatch  : ${stats.usageMismatches}   (比过 ${stats.usageChecks} 次;#15 勘察列,暂不进门)`)
+    console.log(`[shadow] usageMismatch  : ${stats.usageMismatches}   (比过 ${stats.usageChecks} 次;#15 收口后转正进门)`)
     console.log(`[shadow] byKind         : ${JSON.stringify(stats.byKind)}`)
     // 跳过 ≠ 不等:门只看 mismatches。列出来是为了让"这条会话为什么没被比"看得见
     // —— `legacyPartial` = 老会话的 events.jsonl 只覆盖了历史尾巴(§10.9)。
@@ -259,6 +259,8 @@ function main() {
   // "文件 vs 内存",停写之后两道都不许有"少量可接受"。
   if (stats.refoldMismatches !== 0) failures.push(`refoldMismatches ${stats.refoldMismatches} ≠ 0`)
   if (stats.accountMismatches !== 0) failures.push(`accountMismatches ${stats.accountMismatches} ≠ 0`)
+  // §17.7 #15 裁定 1:用量三格收口之后,容器 ≡ 折叠账 —— 这一列与别的同等进门。
+  if (stats.usageMismatches !== 0) failures.push(`usageMismatches ${stats.usageMismatches} ≠ 0`)
   // c4:恒等门退役之后 refold 是唯一在跑的比对 —— "一次都没跑"与"全绿"在报表上
   // 长得一模一样,所以采样数本身进门。
   if (stats.runs >= args.minRuns && stats.refoldChecks === 0) {
@@ -272,6 +274,7 @@ function main() {
   console.log(
     `\n[shadow] GATE GREEN (runs ≥ ${args.minRuns}, refoldChecks ${stats.refoldChecks} > 0, refoldMismatches = 0, `
     + `mismatches = 0, portMismatches = 0, accountMismatches = 0 (比过 ${stats.accountChecks} 次), `
+    + `usageMismatches = 0 (比过 ${stats.usageChecks} 次), `
     + 'appendFailures = 0)',
   )
 }

@@ -88,6 +88,8 @@ export const sessionLifecycleEvents = {
       provider?: string
       status: 'completed' | 'failed'
       error?: string
+      /** 压完之后还留在上下文里的 token 数(#15 裁定 2;写者当刻亲知)。 */
+      retainedContextSize?: number
     },
   ): void {
     if (!isSessionTranslationEnabled(sessionId)) return
@@ -129,6 +131,9 @@ export const sessionLifecycleEvents = {
           ...(data.provider ? { provider: data.provider } : {}),
           status: data.status,
           ...(data.error ? { error: data.error } : {}),
+          ...(typeof data.retainedContextSize === 'number'
+            ? { retainedContextSize: data.retainedContextSize }
+            : {}),
         },
         covered.length > 0
           ? {

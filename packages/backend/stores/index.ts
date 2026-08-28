@@ -49,6 +49,7 @@ export {
   inheritSessionWorkingDirectory,
   updateSessionTokenUsage,
   updateSessionContextSize,
+  landSessionAccountUsage,
   updateSessionPromptContext,
   getSessionTokenUsage,
   deriveRetainedContextSize,

@@ -22,14 +22,53 @@ export function updateSessionUsage(
   usage: TokenUsage,
   lastTurnUsage?: { inputTokens: number; outputTokens: number },
 ): void {
-  updateOnethingSessionUsage({
-    sessionId,
-    usage,
-    lastTurnUsage,
-    updateSessionTokenUsage: (id, nextUsage, nextLastTurnUsage) =>
-      store.updateSessionTokenUsage(id, nextUsage, nextLastTurnUsage),
-  })
+  // §17.7 #15 裁定 1:**账本口径为准**。会话账已经把每一次请求的 usage 各计一次
+  // (`request/response.usage` 累加),所以这里不再往容器上做加法 —— 落格即可。
+  // 落不了(这条会话没有账:echo / 测试替身那条泳道)才回落老加法,行为逐字如旧。
+  if (!landSessionAccountUsage(sessionId)) {
+    updateOnethingSessionUsage({
+      sessionId,
+      usage,
+      lastTurnUsage,
+      updateSessionTokenUsage: (id, nextUsage, nextLastTurnUsage) =>
+        store.updateSessionTokenUsage(id, nextUsage, nextLastTurnUsage),
+    })
+  }
   compareSessionUsageAgainstLedger(sessionId)
+}
+
+/**
+ * **按账落格**(§17.7 #15 裁定 1 的落点)。
+ *
+ * 三个就地写者的原落点时刻各调它一次:引擎收尾(用量三格)、provider-finish 与
+ * 压缩收尾(上下文两格)。产地只有一个 —— 会话账折叠。
+ *
+ * @returns 落没落成。`false` = 这条会话此刻没有账(没记账的泳道 / 账还没起底),
+ *          调用方回落老写法,行为与收口前逐字相同(成对交付)。
+ */
+export function landSessionAccountUsage(sessionId: string): boolean {
+  const account = peekSessionAccount(sessionId)
+  if (!account) return false
+  // 账上一格都没有(这条会话还没有过一次请求)= 没什么可落的。让老写者说话,
+  // 否则会把 echo 泳道那份就地写的用量抹成 0。
+  if (
+    account.totalTokens === 0
+    && account.totalInputTokens === 0
+    && account.totalOutputTokens === 0
+    && account.contextSize === undefined
+    && account.lastInputTokens === undefined
+  ) {
+    return false
+  }
+  return store.landSessionAccountUsage(sessionId, {
+    totalInputTokens: account.totalInputTokens,
+    totalOutputTokens: account.totalOutputTokens,
+    totalTokens: account.totalTokens,
+    ...(account.contextSize !== undefined ? { contextSize: account.contextSize } : {}),
+    ...(account.lastInputTokens !== undefined
+      ? { lastInputTokens: account.lastInputTokens }
+      : {}),
+  })
 }
 
 /**
