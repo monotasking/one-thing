@@ -17,7 +17,8 @@ import { useCallback, useRef, useState } from 'react'
  * 跟手定律(动效板):指针在条上时逐帧照算、零过渡;离开才用 --dur-release
  * 缓回静止位。过渡开关由 tracking 经 CSS 类切换。
  *
- * 纯几何:d = |指针 x − 瓷砖静止中心 x|,线性衰减到 d ≥ RADIUS 归 1。
+ * 纯几何:d = |指针 x − 瓷砖静止中心 x|,余弦钟形衰减(08-28 试衣间拍定:
+ * 峰圆、半径边缘平滑接 0,macOS 的"波浪感"来自这条),d ≥ RADIUS 归 1。
  * 这些数字是「行为常量」不是样式字面量,所以留在这里而不是 token 文件。
  */
 const MAX_GROW = 0.35 // 尺寸最多长大 35%
@@ -29,7 +30,8 @@ export const REST_FACTOR = 1
 /** 纯函数,给定指针位置与各瓷砖静止中心(同一坐标系),算每块的尺寸系数。 */
 export function magnifyAt(pointerX: number, centers: number[]): number[] {
   return centers.map((c) => {
-    const k = Math.max(0, 1 - Math.abs(pointerX - c) / RADIUS)
+    const d = Math.abs(pointerX - c)
+    const k = d >= RADIUS ? 0 : (1 + Math.cos((Math.PI * d) / RADIUS)) / 2
     return 1 + MAX_GROW * k
   })
 }
