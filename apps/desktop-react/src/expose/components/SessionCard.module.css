@@ -80,6 +80,9 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  /* 常驻让出右上角 peek 眼睛的槽位(无位移原则:hover 时谁都不挪,
+   * 所以空间平时就留着)—— 否则房间卡的成员章会和眼睛重叠(08-29 报)。 */
+  padding-right: var(--sp-5);
 }
 
 .title {
