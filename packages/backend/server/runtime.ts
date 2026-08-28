@@ -328,12 +328,66 @@ const log = getLogger('server.runtime')
 const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger & OnethingSessionRepositoryLogger = consolePort(log)
 
 
+/**
+ * 服务端视角的会话。
+ *
+ * **`workspaceId` 不在这里** —— 它是 `ChatSession` 自己的字段,语义是**产品空间**
+ * (`docs/design/workspace-spaces-2026-08.md` 批 B:「归属的 space,缺席 = default」),
+ * 侧栏分组 / `resolveSessionSpaceId` / `countSessionsInWorkspace` 读的都是它。
+ * 服务端的**租户归属**从此住在自己的 `owner*` 两格里,不再借用产品那一格:借用的
+ * 后果是 UI 建的会话被盖了半个章(有空间、没 userId),归属判据把它的事件从 SSE
+ * 广播里整只滤掉(诊断:`docs/audit/web-lane-sse-diagnosis-2026-08-28.md` 第五节)。
+ *
+ * `userId` 保留为**存量租户字段**:它历来只由服务端盖(见 `stampOwner`),所以老会话
+ * 上的它仍按租户读(`sessionOwner`),但新代码一律写 `ownerUserId`。
+ */
 type ServerChatSession = ChatSession & {
+	/** @deprecated 存量租户 userId(只读兼容,新写走 `ownerUserId`)。 */
 	userId?: string;
-	workspaceId?: string;
+	/** 服务端租户:主体。缺席 = 这一格不参与判定(见 `ownsSession`)。 */
+	ownerUserId?: string;
+	/** 服务端租户:作用域。**不是**产品空间 —— 那是 `workspaceId`。 */
+	ownerWorkspaceId?: string;
 	messageCount?: number;
 	previewText?: string;
 };
+
+/** 一条会话的租户归属(两格都可能缺席 —— 缺席 = 无主,见 `ownsSession`)。 */
+interface ServerSessionOwner {
+	userId?: string;
+	workspaceId?: string;
+}
+
+/**
+ * 读一条会话/元数据的**租户归属**。
+ *
+ * 存量兼容只认 `userId` 那一格:老盘上的 `workspaceId` 存的是**产品空间**,把它读成
+ * 租户正是要修的那个 bug,所以这里**故意不回落**到它。
+ */
+function sessionOwner(
+	record: { userId?: string; ownerUserId?: string; ownerWorkspaceId?: string },
+): ServerSessionOwner {
+	return {
+		userId: record.ownerUserId ?? record.userId,
+		workspaceId: record.ownerWorkspaceId,
+	};
+}
+
+/**
+ * 归属判定:**两格都空 = 无主,谁都读得到**(单用户服务端的常态);有值的那格才比。
+ * 缺席的一格不参与比较 —— 老会话只盖过 `userId` 的那种,不该因为「没有租户作用域」
+ * 就对所有人隐身。
+ */
+function ownerMatchesContext(
+	owner: ServerSessionOwner,
+	context: RuntimeRequestContext,
+): boolean {
+	if (!owner.userId && !owner.workspaceId) return true;
+	return (
+		(owner.userId ?? context.userId) === context.userId &&
+		(owner.workspaceId ?? context.workspaceId) === context.workspaceId
+	);
+}
 
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
@@ -2558,6 +2612,8 @@ function toSessionMeta(session: ServerChatSession): SessionMeta {
 	const {
 		messages: _messages,
 		userId: _userId,
+		ownerUserId: _ownerUserId,
+		ownerWorkspaceId: _ownerWorkspaceId,
 		workspaceId: _workspaceId,
 		...meta
 	} = session;
@@ -2573,6 +2629,8 @@ function toSessionMeta(session: ServerChatSession): SessionMeta {
 function toChatSession(session: ServerChatSession): ChatSession {
 	const {
 		userId: _userId,
+		ownerUserId: _ownerUserId,
+		ownerWorkspaceId: _ownerWorkspaceId,
 		workspaceId: _workspaceId,
 		...chatSession
 	} = session;
@@ -2656,11 +2714,7 @@ function ownsSession(
 	session: ServerChatSession,
 	context = defaultRequestContext(),
 ): boolean {
-	if (!session.userId && !session.workspaceId) return true;
-	return (
-		session.userId === context.userId &&
-		session.workspaceId === context.workspaceId
-	);
+	return ownerMatchesContext(sessionOwner(session), context);
 }
 
 /**
@@ -2669,18 +2723,27 @@ function ownsSession(
  * 不加载消息体就完成 owner 过滤。ownerVersion 缺失表示存量条目尚未回填。
  */
 type ServerSessionIndexMeta = SessionMeta & {
+	/** @deprecated 存量租户 userId(只读兼容)。 */
 	userId?: string;
-	workspaceId?: string;
+	/** 服务端租户(`workspaceId` 是产品空间,继承自 `SessionMeta`,不是归属)。 */
+	ownerUserId?: string;
+	ownerWorkspaceId?: string;
 	ownerVersion?: number;
 	workingDirectory?: string;
 };
 
-const SESSION_INDEX_OWNER_VERSION = 1;
+/**
+ * 2:租户归属从 `userId`/`workspaceId` 换到 `owner*` 两格。版本一升,存量 index 条目
+ * 全部重新回填 —— 那些被错误抄成「空间 = 租户」的旧值就此清掉。
+ */
+const SESSION_INDEX_OWNER_VERSION = 2;
 
 /** 会话工作区推导所需的最小字段集,ServerChatSession 与 index 元数据均满足。 */
 interface SessionWorkspaceRef {
 	id: string;
 	userId?: string;
+	ownerUserId?: string;
+	ownerWorkspaceId?: string;
 	workspaceId?: string;
 	workingDirectory?: string;
 }
@@ -2689,15 +2752,21 @@ function ownsSessionMeta(
 	meta: ServerSessionIndexMeta,
 	context = defaultRequestContext(),
 ): boolean {
-	if (!meta.userId && !meta.workspaceId) return true;
-	return (
-		meta.userId === context.userId && meta.workspaceId === context.workspaceId
-	);
+	return ownerMatchesContext(sessionOwner(meta), context);
 }
 
+/**
+ * 交给客户端之前摘掉**服务端内部**的归属格。
+ *
+ * `workspaceId`(产品空间)照旧一并摘 —— 它今天就没出过这道门,现在把它留下等于
+ * 让 web 端的左栏突然开始按空间过滤会话(可感知的行为变化)。**本批只修 bug、不改
+ * 这件事**;要不要把空间交给 web,单独拍(留账见 §17.5)。
+ */
 function stripSessionOwnerFields(meta: ServerSessionIndexMeta): SessionMeta {
 	const {
 		userId: _userId,
+		ownerUserId: _ownerUserId,
+		ownerWorkspaceId: _ownerWorkspaceId,
 		workspaceId: _workspaceId,
 		ownerVersion: _ownerVersion,
 		...rest
@@ -2947,8 +3016,10 @@ export function createAppBackedServerSessionStore(
 			patch: fields,
 			mutateIndexMeta: (meta) =>
 				Object.assign(meta, toSessionMeta(normalized), {
-					userId: normalized.userId,
-					workspaceId: normalized.workspaceId,
+					// 租户两格(产品空间不是归属,不进这里 —— 它随 `toSessionMeta`
+					// 已经在会话元数据里了)。
+					ownerUserId: sessionOwner(normalized).userId,
+					ownerWorkspaceId: sessionOwner(normalized).workspaceId,
 					ownerVersion: SESSION_INDEX_OWNER_VERSION,
 				}),
 		});
@@ -2958,8 +3029,11 @@ export function createAppBackedServerSessionStore(
 		context: RuntimeRequestContext,
 	): ServerChatSession => {
 		if (!isDefaultServerRequestContext(context)) {
-			session.userId = context.userId;
-			session.workspaceId = context.workspaceId;
+			// 盖的是**租户**章。产品空间(`session.workspaceId`)一个字不碰 ——
+			// 从前这里把它覆盖成 `context.workspaceId`,等于用租户默认值抹掉用户
+			// 选的空间。
+			session.ownerUserId = context.userId;
+			session.ownerWorkspaceId = context.workspaceId;
 			save(session);
 		}
 		return normalizeAppSession(session);
@@ -3011,8 +3085,8 @@ export function createAppBackedServerSessionStore(
 			const normalized = normalizeAppSession(session);
 			updateAppStoreSessionsIndexMeta(normalized.id, (meta) =>
 				Object.assign(meta, toSessionMeta(normalized), {
-					userId: normalized.userId,
-					workspaceId: normalized.workspaceId,
+					ownerUserId: sessionOwner(normalized).userId,
+					ownerWorkspaceId: sessionOwner(normalized).workspaceId,
 					ownerVersion: SESSION_INDEX_OWNER_VERSION,
 				}),
 			);
@@ -3146,8 +3220,9 @@ export function createLocalServerSessionStore(
 				// 只读加载(不 sanitize、不入队写会话体):避免 headless server 在启动 backfill 时
 				// 重写 Electron 拥有的会话体,与其 suffix 写竞态损坏 messages.jsonl。
 				const session = repository.getSessionRaw(meta.id);
-				meta.userId = session?.userId;
-				meta.workspaceId = session?.workspaceId;
+				const owner = sessionOwner((session ?? {}) as ServerChatSession);
+				meta.ownerUserId = owner.userId;
+				meta.ownerWorkspaceId = owner.workspaceId;
 				meta.ownerVersion = SESSION_INDEX_OWNER_VERSION;
 			}
 			repository.saveSessionsIndex(index);
@@ -3176,8 +3251,8 @@ export function createLocalServerSessionStore(
 		}
 		repository.updateSessionsIndexMeta(normalized.id, (meta) =>
 			Object.assign(meta, toSessionMeta(normalized), {
-				userId: normalized.userId,
-				workspaceId: normalized.workspaceId,
+				ownerUserId: sessionOwner(normalized).userId,
+				ownerWorkspaceId: sessionOwner(normalized).workspaceId,
 				ownerVersion: SESSION_INDEX_OWNER_VERSION,
 			}),
 		);
@@ -3214,8 +3289,9 @@ export function createLocalServerSessionStore(
 				created,
 				readMessages(sessionId),
 			);
-			session.userId = context.userId;
-			session.workspaceId = context.workspaceId;
+			// 租户章;产品空间由建会话的入参决定,这里不覆盖。
+			session.ownerUserId = context.userId;
+			session.ownerWorkspaceId = context.workspaceId;
 			refreshSessionMeta(session, readMessages(sessionId), {
 				preserveUpdatedAt: true,
 			});
@@ -3247,8 +3323,9 @@ export function createLocalServerSessionStore(
 				created,
 				readMessages(sessionId),
 			);
-			session.userId = context.userId;
-			session.workspaceId = context.workspaceId;
+			// 租户章;产品空间由建会话的入参决定,这里不覆盖。
+			session.ownerUserId = context.userId;
+			session.ownerWorkspaceId = context.workspaceId;
 			refreshSessionMeta(session, readMessages(sessionId), {
 				preserveUpdatedAt: true,
 			});
@@ -3265,8 +3342,8 @@ export function createLocalServerSessionStore(
 			);
 			repository.updateSessionsIndexMeta(normalized.id, (meta) =>
 				Object.assign(meta, toSessionMeta(normalized), {
-					userId: normalized.userId,
-					workspaceId: normalized.workspaceId,
+					ownerUserId: sessionOwner(normalized).userId,
+					ownerWorkspaceId: sessionOwner(normalized).workspaceId,
 					ownerVersion: SESSION_INDEX_OWNER_VERSION,
 				}),
 			);
@@ -3474,8 +3551,11 @@ function toPendingPermissionInfo(
 		targetChannel:
 			typeof event.targetChannel === "string" ? event.targetChannel : "api",
 		workingDirectory: session.workingDirectory,
-		userId: session.userId,
-		workspaceId: session.workspaceId,
+		// 授权记录的归属被 `permission-grants` 域按**租户**过滤
+		// (`rpc/domains/permission-grants.ts:72-73`),所以这里给的是租户两格,
+		// 不是产品空间。
+		userId: sessionOwner(session).userId,
+		workspaceId: sessionOwner(session).workspaceId,
 	};
 }
 
@@ -3897,14 +3977,30 @@ export function createServerRpcDispatchContext(
 	};
 }
 
+/**
+ * 会话文件落在哪 —— **本批一个字节都不许挪**。
+ *
+ * 这条路径历来由 `(userId, workspaceId)` 推出来,而第二格上盘的其实是**产品空间**:
+ * 在非 default 空间里建的会话,它的文件今天就住在 `owners/<uid>/<space>/` 下面。
+ * 拆字段之后如果改读租户格,那些文件会当场"消失"(路径变了)。所以这里按
+ * **租户优先、回落到盘上原值**的顺序取,存量与新建两种情况都与今天逐字相同。
+ *
+ * 「空间到底该不该决定沙箱路径」是另一个问题(workspace-spaces 的 per-space 目录
+ * 方案里它是有意的),**留给单独一次拍板**,见 §17.5 留账。
+ */
 function workspaceSandboxRootForSession(
 	workspaceRoot: string,
 	session: SessionWorkspaceRef,
 ): string {
+	const owner = sessionOwner(session);
 	return join(
 		workspaceRoot,
-		safePathSegment(session.userId ?? defaultRequestContext().userId),
-		safePathSegment(session.workspaceId ?? defaultRequestContext().workspaceId),
+		safePathSegment(owner.userId ?? defaultRequestContext().userId),
+		safePathSegment(
+			owner.workspaceId
+				?? session.workspaceId
+				?? defaultRequestContext().workspaceId,
+		),
 	);
 }
 

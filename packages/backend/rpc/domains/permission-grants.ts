@@ -54,8 +54,14 @@ const GRANT_NOT_FOUND = 'Permission grant not found'
  */
 type OwnedSessionMeta = {
   id: string
+  /** @deprecated 存量租户 userId(只读兼容;新写走 ownerUserId)。 */
   userId?: string
-  workspaceId?: string
+  /**
+   * 服务端租户两格。**产品空间 `workspaceId` 不在这里** —— 把空间当归属正是
+   * `docs/audit/web-lane-sse-diagnosis-2026-08-28.md` 第五节那条 bug。
+   */
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   workingDirectory?: string
 }
 
@@ -69,8 +75,12 @@ type OwnedSessionMeta = {
 function listOwnedSessions(context: RpcDispatchContext): OwnedSessionMeta[] {
   const metas = getSessionsList() as unknown as OwnedSessionMeta[]
   return metas.filter(meta => {
-    if (!meta.userId && !meta.workspaceId) return true
-    return meta.userId === context.ownerUid && meta.workspaceId === context.workspaceId
+    // 租户两格;存量只回落 `userId`(它历来只由服务端盖)。缺席的一格不参与比较。
+    const ownerUserId = meta.ownerUserId ?? meta.userId
+    const ownerWorkspaceId = meta.ownerWorkspaceId
+    if (!ownerUserId && !ownerWorkspaceId) return true
+    return (ownerUserId ?? context.ownerUid) === context.ownerUid
+      && (ownerWorkspaceId ?? context.workspaceId) === context.workspaceId
   })
 }
 

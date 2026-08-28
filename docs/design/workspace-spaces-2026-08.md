@@ -1,5 +1,11 @@
 # Workspace（Space）与 Project 多根 —— 需求共识与分期蓝图
 
+> **2026-08-28 勘察补记:`session.workspaceId` 只属于空间。** 服务端一度把同一格当成
+> HTTP 租户归属(`ownsSession`),于是"UI 建的会话只盖了空间没盖 userId"被判成别人的,
+> 它的事件在 SSE 广播上整只消失。修法是把**租户**挪到自己的 `ownerUserId` /
+> `ownerWorkspaceId` 两格,本文档说的 `workspaceId` = 空间这句话保持不变、盘上零迁移。
+> 详见 `docs/audit/web-lane-sse-diagnosis-2026-08-28.md` 第五、六节。
+
 日期：2026-08-13。本文是与用户逐轮对齐后的最终共识，实施以此为准。
 调研底稿：project-dirs / connectedDirectories / workspace 三线现状盘点（见 §7 现状附录）。
 

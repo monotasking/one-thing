@@ -9430,6 +9430,8 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 16 | **冷加载修复仍以存储突变落盘** | `sanitizeSessionOnStartup` 已改为直调 `computeSessionRepairOnLoad`(纯派生、COW),但结果仍由 `loadSessionWithAdapters` 写回 `meta.json`。"搬成纯派生出口"那一半**停在诊断**:它唯一的差别是盘上带不带修好的值(下次冷加载幂等地再修一遍),属于存储可见的变化而没有消费者要求 | §17.7.1 批 3 二 |
 | 17 | **会话事件读面没有分页**(`list` / `listRaw` 都是) | 契约就是 `{sessionId}` → `{events}`,**整份拉**。投影消费者从此走 `listRaw`(全集原词汇;老 `list` 是轨迹面板的老七类词汇,两者语义不同不是范围不同 —— 见 §17.8.4),但**分页这一格两条都欠着**。ui-refold 因此必须靠采样 + 双闸兜住(见 §17.8.3);真机实测最大一本 50.4MB / 258 条事件 —— 条数闸拦不住它,字节闸才拦得住。真正的修法是给读面加 `after`/`limit`(或随留账 #7 分卷一起定),**未修** | §17.8.3;§17.8.4 |
 | 18 | **ui-refold 两条豁免待追认** | ① **`tool-call` 渲染锚点**:工具行的锚点有两种形状(`render-anchors.ts:39` 自己把 `data-steps` 与 `tool-call` 并列),live 落前者、重放合成后者且**明文不互相冲掉**;而尺子(`canonical.ts:103`)只丢 `data-steps` —— 因为 S 线影子是折 vs 折,从没有 live 侧上台。**要不要由 G4 一并收进去(改的是 S 线共用的尺)待拍**。② **`attachments`**:账本存 `BlobRef`,renderer 没有 blob 读取口,带附件的消息两侧结构上不可能相等。两条都在 ui-refold 内具名排除,各配一只反证测试 | §17.8.3 |
+| 19 | **会话沙箱路径的第二段仍由「产品空间」决定** | `workspaceSandboxRootForSession`(`server/runtime.ts`)历来把 `(userId, workspaceId)` 拼成 `owners/<uid>/<wid>/`,而第二格上盘的其实是空间 —— 非 default 空间里建的会话,文件就住在 `owners/<uid>/<space>/`。2026-08-28 拆字段那批**故意没动它**(改读租户格 = 那些文件当场"消失"),按 `owner ?? 盘上原值` 取值,存量与新建都与从前逐字相同。**空间该不该决定沙箱路径**(workspace-spaces 的 per-space 目录方案里它是有意的)——待拍 | `docs/audit/web-lane-sse-diagnosis-2026-08-28.md` §6.3 |
+| 20 | **服务端会话列表面仍然摘掉 `workspaceId`** | `stripSessionOwnerFields` / `toSessionMeta` / `toChatSession` 把空间连同租户格一起摘掉,所以 web 端从来不知道会话属于哪个空间(左栏因此不按空间过滤)。把它留下是**可感知的行为变化**(web 左栏会开始按空间过滤,会话可能"消失"),拆字段那批不动 —— 待拍 | 同上 |
 
 ### 17.6 两态图 artifact 与终态的出入(图待更新,本节只记差异)
 

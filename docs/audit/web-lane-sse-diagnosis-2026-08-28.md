@@ -222,3 +222,65 @@ SSE 的 `handleEvents`(`server/http.ts:491-496`)订阅的是通配 `'*'`,每条�
 第二节那两条支架接错(store 环境变量取空、探针 `sendMessage` 签名用错)**都是真的**,
 它们解释了"探针为什么收不到";但产品静默的真因是本节这条。**改判为:(a) 生产 web 泳道
 在 standalone server 上确有缺陷**(用 UI 建的会话收不到推送),(c) 只覆盖探针那一半。
+
+---
+
+## 六、修复:空间与归属拆成两个字段(2026-08-28,opus 施工,未提交)
+
+用户拍板:**不走"没有 userId 就判无主"的窄修,把两个语义拆开**。
+
+### 6.1 拆法与理由
+
+| | 字段 | 语义 | 谁读 |
+|---|---|---|---|
+| 保留原名 | `session.workspaceId` | **产品空间**(侧栏那个"默认空间") | `resolveSessionSpaceId` / `countSessionsInWorkspace` / 每 space 的凭证·设置·项目目录·usage 归因 / renderer `sessionBelongsToSpace` 与侧栏过滤 —— 勘察到 **17 处读者**,全是这个语义 |
+| **新增** | `session.ownerUserId` / `session.ownerWorkspaceId` | **服务端租户**(HTTP 主体作用域,来自 `x-onething-*` 头) | `ownsSession` / `ownsSessionMeta`(`server/runtime.ts`)、`permission-grants` 域的同款判据 —— 勘察到 **2 处判据 + 5 处盖章**,全在服务端 |
+
+**为什么不是反过来**(把产品空间改名 `spaceId`、`workspaceId` 留给租户):
+
+1. **改动面**:产品语义有 17 处读者 + 5 层契约(`ChatSession` / `SessionMeta` /
+   `CreateSessionOptions` / `SessionsCreateRequest` / `CoreSessionMeta`)+ 盘上每条会话的
+   `meta.json`/`index.json`;租户语义只有服务端那一小片。**动少的那一半**。
+2. **语义诚实**:`workspaceId` 这个名字是 workspace-spaces 方案给**空间**起的
+   (`docs/design/workspace-spaces-2026-08.md` §批 B:「归属的 space,缺席 = default」),
+   契约注释里写的也一直是空间。后来居上、借用这一格的是**服务端租户**,所以该改名的是它。
+3. **存量数据不用动**:盘上会话的 `workspaceId` 存的本来就是空间 —— 保持原样即正确。
+   租户两格对所有存量会话**缺席**,而缺席 = 无主 = 谁都读得到,**bug 自动消失,零迁移**。
+
+### 6.2 落点
+
+- `packages/backend/server/runtime.ts`:`ServerChatSession` / `ServerSessionIndexMeta` /
+  `SessionWorkspaceRef` 加 `ownerUserId` / `ownerWorkspaceId`;新增 `sessionOwner()`(读租户,
+  **故意不回落** `workspaceId`)与 `ownerMatchesContext()`(两格全空 = 无主;**缺席的一格不参与
+  比较** —— 老会话只盖过 `userId` 的那种不该因为"没有租户作用域"就对所有人隐身);
+  `ownsSession` / `ownsSessionMeta` 改用它们;5 处盖章(`stampOwner`、两个 store 的
+  `createSession`/`createBranchSession`、三处 index meta `Object.assign`)改写 owner 两格,
+  **不再覆盖 `session.workspaceId`**(从前 `stampOwner` 会把用户选的空间抹成租户默认值);
+  `backfillSessionIndexOwnership` 改填 owner 两格,`SESSION_INDEX_OWNER_VERSION` 1 → **2**
+  (版本一升,存量 index 里那些"空间被当成租户"的旧值全部重填清掉);
+  `toSessionMeta` / `toChatSession` / `stripSessionOwnerFields` 补摘新字段。
+- `packages/backend/rpc/domains/permission-grants.ts`:同款判据的**第二份拷贝**同步改
+  (`listOwnedSessions`),否则 index 换了字段名它会把所有会话当无主 —— 这一格由
+  `http.test.ts` 的 alice/bob 用例当场抓住。
+
+### 6.3 两处**故意不动**(各是一次单独拍板)
+
+1. **会话沙箱路径**`workspaceSandboxRootForSession` 仍按 `owner ?? 盘上原值` 取第二段 ——
+   非 default 空间里建的会话,它的文件今天就住在 `owners/<uid>/<space>/`;改读租户格会让那些
+   文件当场"消失"。本批**一个字节都不挪**,「空间该不该决定沙箱路径」留账待拍。
+2. **服务端列表面仍然摘掉 `workspaceId`**(`stripSessionOwnerFields` / `toSessionMeta`)——
+   它今天就没出过这道门;留下来等于让 web 端左栏突然开始按空间过滤会话(可感知的行为变化)。
+   留账待拍。
+
+### 6.4 验证
+
+- **单元**:`session-scan.test.ts` 三只 —— 回填写的是 owner 两格且 `ownerVersion=2`;
+  空间不被抄进租户格;**只带空间的会话事件照常上通配订阅**(这一只是本条 bug 的钉子);
+  真租户章(`userId: 'u1'`)仍然拦得住默认上下文。`http.test.ts` 的 alice/bob 用例
+  (跨租户看不到彼此的授权/会话)保持绿 —— 多租户隔离没有被这次放宽削弱。
+- **真机支架**:同一条产品路径(浏览器点 New Chat → 输入 → 回车),裸 node SSE 客户端
+  对那条会话的读数从 **0 帧** 变成 **10 条 `session:event` + 2 条 `session:stream`**;
+  浏览器里消息实时上屏,chatStore 拿到 2 条。盘上 `meta.json` 是
+  `{ workspaceId: 'default', ownerUserId: —, ownerWorkspaceId: — }`:空间照旧、租户无主、
+  **没有任何数据被迁移**。
+
