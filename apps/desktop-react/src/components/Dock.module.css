@@ -2,6 +2,9 @@
   position: relative;
   display: flex;
   align-items: flex-end;
+  /* 条的高度钉死(瓦 + 上下内距 + 上下边框):放大的瓦向上长出条外,
+   * 条只变宽不变高 —— 动效板「Dock 放大」的既定条款,漏钉会让条像气球一样鼓。 */
+  height: calc(var(--tile-size) + 2 * var(--dock-pad-y) + 2px);
   gap: var(--dock-gap);
   padding: var(--dock-pad-y) var(--dock-pad-x);
   border-radius: var(--r-dock);
