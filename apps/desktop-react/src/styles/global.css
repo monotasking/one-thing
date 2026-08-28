@@ -51,3 +51,29 @@ button {
 }
 
 /* 无位移原则:hover/active 一律不位移。唯二例外 = Dock 磁性放大、(未来的)弹跳提醒。 */
+
+/*
+ * 滚动条(08-29 拍):全局一种形态 —— 轨道透明(纸面自透,不画白色轨道带),
+ * 拇指 4px 墨色圆条(10px 命中区,3px 透明边 + content-box 裁出视觉细条),hover 加深。
+ * 用 webkit 伪元素而不是 scrollbar-color:后者一旦设置,Chrome 会忽略伪元素定制。
+ */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: var(--r-full);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

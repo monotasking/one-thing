@@ -29,6 +29,9 @@
   --surface-2-hover: color-mix(in srgb, var(--text-1) 6%, var(--surface-2));
   --surface-2-sel: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
   --surface-2-sel-hover: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+  /* 滚动条:拇指是前景墨的低透明度圆条,轨道透明让纸面自己透出来 */
+  --scrollbar-thumb: color-mix(in srgb, var(--text-1) 18%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--text-1) 32%, transparent);
 
   --scrim: rgba(43, 42, 38, 0.4);
 
