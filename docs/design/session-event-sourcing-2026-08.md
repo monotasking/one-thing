@@ -11318,3 +11318,49 @@ typecheck 0;renderer 全绿(唯一红 `App.container-layout` 外壳批不认领;
 `ipc-hub-*` 四只在满载并行下抖过一轮,单跑全绿);**五棘轮**全绿未动基线;
 battery GREEN(refoldChecks 225 / usageMismatches 0 / 全 0);真机 store **只读**
 (诊断只读那条会话的 `events.jsonl`,零写入)。旧路一行未动。**未提交。**
+
+#### 17.8.9 增补:输入框相位读数在新路上消失(2026-08-28,用户报障,opus 施工,未提交)
+
+用户原话:「inputbox 的 waiting 等状态没有了似乎」。
+
+*断点(两处,同一条链)*
+
+1. **`chat.ts:2823`(`getGenerationStatus`)读错了树**。相位判据 `derivePhase(message)` 本身
+   是纯函数、对任何树都成立;错的是**喂给它哪棵**——它读的是 `getSessionMessagesRef()`,
+   而 U2-a 之后那是**手写侧的休眠工作数组**(`chat.ts:1362`),不是屏幕上那棵。相位说的是
+   「用户此刻看到的这条消息在干什么」,读错树的后果就是读数整条消失。
+2. **`chat.ts:1548-1550`(`noteGenerationChars`)排在消息查找之后**。查不到消息就
+   `queuePendingStreamChunk` + `return`(:1528-1532),于是 ≈tokens 计数器一次都没跑,
+   读数恒为 0 —— 与相位同一条链上的第二处。
+
+*修法(相位只有一个产地)*
+
+- 相位改读**屏幕那棵树**(`sessionMessages`):新路上它是折叠产物 + 活尾巴 + overlay 的
+  组合,旧路上它与手写数组是同一个数组 —— **一个产地,两条路都成立**,旧路行为逐字不变。
+  没有"fold run 态派生一半、overlay 派生一半"这回事:`appendWaiting` 只负责把 waiting 这
+  一格**放进那棵树**,判据仍然只有 `derivePhase` 一处。
+- 计数器提到消息查找**之前**:它是纯计数器,与"这条消息在不在手写侧那棵树上"无关。
+
+*新增流中态测试(先红后绿)*
+
+`stores/__tests__/generation-phase-fold.test.ts` 两只,只跑新路:
+
+1. **全相位序列**:`stream:start` → 账本 run/request 开张(**waiting**)→ 顶部推理尾巴
+   (**thinking**)→ 正文尾巴(**responding**)→ 收尾(读数收起来 = `null`);
+2. **≈tokens 同一条链**:估算累计 > 0 且 `outputTokensExact:false`,`stream:usage` 之后
+   snap 成精确值(5)、`inputTokens` 12。
+
+红证:修之前两只全红(相位卡在 `waiting`、`outputTokens` 恒 0);修之后两只绿。
+
+*真机复跑(支架,新路默认)*
+
+一次 send 的相位序列(每 150ms 采样、压掉连续重复):
+`waiting/7 → responding/15 → … → responding/98`,第二轮收尾处
+`… responding/162 → null`。相位与 ≈tokens 两样都回来了。
+
+*门读数*
+
+typecheck 0;renderer 全绿(唯一红 `App.container-layout` 外壳批不认领;`ipc-hub-*` 一族
+在满载并行下抖了两轮,**单跑 16 文件 135 只全绿**,第三轮整包也只剩那一条已知红);
+五棘轮全绿未动基线;battery GREEN(refoldChecks 220 / usageMismatches 0 / 全 0);
+真机 store 只读。旧路一行未动。**未提交。**

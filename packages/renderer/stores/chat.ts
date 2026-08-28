@@ -1525,6 +1525,13 @@ export const useChatStore = defineStore("chat", () => {
 			return;
 		}
 
+		// **读数的计数在查消息之前**(§17.8.9 增补):它是纯计数器,与"这条消息在不在
+		// 手写侧那棵树上"无关。放在查找之后的话,新路上手写侧找不到消息就整条 return,
+		// ≈tokens 永远是 0 —— 与相位读数消失是同一条链上的两处。
+		if (chunk.type === "text") noteGenerationChars(sessionId, chunk.content);
+		else if (chunk.type === "reasoning") noteGenerationChars(sessionId, chunk.reasoning);
+		else if (chunk.type === "tool_input_delta") noteGenerationChars(sessionId, chunk.argsTextDelta);
+
 		const messageIndex = messages.findIndex((m) => m.id === resolvedMsgId);
 		if (messageIndex === -1) {
 			queuePendingStreamChunk(sessionId, resolvedMsgId, chunk);
@@ -1544,10 +1551,6 @@ export const useChatStore = defineStore("chat", () => {
 		}
 
 		const parts = message.contentParts;
-
-		if (chunk.type === "text") noteGenerationChars(sessionId, chunk.content);
-		else if (chunk.type === "reasoning") noteGenerationChars(sessionId, chunk.reasoning);
-		else if (chunk.type === "tool_input_delta") noteGenerationChars(sessionId, chunk.argsTextDelta);
 
 		if (chunk.type === "text") {
 			if (chunk.replace) {
@@ -2821,8 +2824,14 @@ export const useChatStore = defineStore("chat", () => {
 		const stats = generationStats.get(sessionId);
 		if (!stats || !isSessionGenerating(sessionId)) return null;
 		const messageId = activeStreams.value.get(sessionId);
+		// **读屏幕上那棵树**,不是手写侧那份工作数组(§17.8.9 增补)。
+		// U2-a 之后两者在新路上是两棵树:手写侧休眠在 `dormantHandMessages` 里,
+		// 屏幕由折叠产出。相位说的是"用户此刻看到的这条消息在干什么",所以判据
+		// 只能读用户看到的那一份 —— 读错那棵的后果就是用户报的那条:输入框那行
+		// 读数整条消失(手写侧那份在新路上可能一条消息都没有)。
+		// 旧路上两者是同一个数组,行为逐字不变。
 		const message = messageId
-			? getSessionMessagesRef(sessionId).find((m) => m.id === messageId)
+			? (sessionMessages.value.get(sessionId) ?? []).find((m) => m.id === messageId)
 			: undefined;
 		const derived = message ? derivePhase(message) : { phase: "waiting" as const };
 		if (derived.phase !== stats.phase) {
