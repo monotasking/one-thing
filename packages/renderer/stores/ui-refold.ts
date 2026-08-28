@@ -46,17 +46,24 @@
  *    所以判据必须落在字节上。称重本身要钱(整份 `JSON.stringify`),于是**每条会话
  *    只称一次**:称过合格就记进 `weighed`,以后不再称。
  *
- * ## 四条具名豁免(各配一只反证)
+ * ## overlay 车道不进对拍(§17.8 前置批裁定)
+ *
+ * 两类东西**按定义**不在消息树上,因此两道门都不比它们:占位型瞬态
+ * (`image-loading`:追加即撤,append-only 表达不了)与本地错误卡
+ * (`addLocalMessage`:它说的正是"这条没能到达账本")。它们住在
+ * `stores/session-overlays.ts` 那条显式车道里。
+ *
+ * ## 三条具名豁免(各配一只反证)+ 一条已撤
  *
  * 1. **`data-steps` 渲染锚点**(G4):`canonicalChatMessage` 自己就把它丢掉
  *    (`canonical.ts` 的 `isRenderAnchorPart`)。裁定要求"两侧同过 core
  *    `render-anchors` 再比" —— 这里两侧都不做二次合成,因为**同一把尺已经把它
  *    归一了**(纪律 10:判据只有一把尺,不许在尺之外再加一层归一)。反证见测试:
  *    绕开 canonical 直接比,锚点当场把两侧比红。
- * 2. **已结算 `plugin-status`**:`isEphemeralContentPart` 只认**未结算**那一条
- *    (`durationMs === undefined`),结算之后它要参与比较 —— 而它**写侧零生产者**
- *    (§17.7.2 四-2:`plugin/status` 只有词表条目,没有任何采集点)。账本里永远
- *    没有它,手写侧永远有它。**具名排除,指针挂留账 #10;#10 补完即撤。**
+ * 2. ~~**已结算 `plugin-status`**~~ **豁免已撤(§17.8 前置批,留账 #10 结清)**:
+ *    结算态从此有产地(结算那一刻经单门写 `plugin/status`,唯一生产者是后台
+ *    子代理指示器),折叠侧把它物化在这一轮正文之后 —— 两侧从此该逐格相等,
+ *    比不上就是**真失配**。
  * 3. **`attachments`**(施工中发现,待追认):账本里的附件是 `BlobRef`
  *    (`{hash,bytes,mime}`,§10.1 G8),物化时由**宿主注入的 blob 读取口**换回真身
  *    —— 而 renderer 没有那个口(blob 在主进程的 `sessions/<id>/blobs/`)。于是带
@@ -90,6 +97,10 @@ import {
 import { materializeChatMessages } from '@onething/core/session/projection/chat-messages'
 import { canonicalChatMessage } from '@onething/core/session/projection/canonical'
 import { sessionEventsApi } from '@/platform/session-events-client'
+// `onSessionBlobLoaded`(正文迟到之后重物化)是 **U2-a 切换那批**的订阅点:
+// 今天 fold 只喂门,门在收尾时才物化一次,迟到的正文下一次物化自然带上。
+import { createSessionBlobResolver } from '@/stores/session-blobs'
+import { overlayLocalMessageIds } from '@/stores/session-overlays'
 import { getLogger } from '@/services/log'
 import type { ChatMessage } from '@/types'
 
@@ -181,7 +192,7 @@ function shouldSample(sessionId: string): boolean {
 type AnyRecord = Record<string, unknown>
 
 /**
- * 拿掉四条具名豁免里**尺子管不到**的那三条(见文件头)。
+ * 拿掉具名豁免里**尺子管不到**的那两条(附件 / `tool-call` 锚点,见文件头)。
  *
  * `data-steps` 不在这里 —— `canonicalChatMessage` 自己就丢它,再拿掉一次就是在
  * 尺子之外加了第二层归一(纪律 10)。
@@ -189,23 +200,49 @@ type AnyRecord = Record<string, unknown>
 function stripNamedExemptions(message: ChatMessage): AnyRecord {
   const { attachments: _attachments, ...rest } = message as unknown as AnyRecord
   const parts = (rest.contentParts as AnyRecord[] | undefined)?.filter(part => !(
-    (part?.type === 'plugin-status' && part?.durationMs !== undefined)
-    // 工具渲染锚点的**第二种形状**(见文件头豁免 4)。
-    || part?.type === 'tool-call'
+    // 工具渲染锚点的**第二种形状**(见文件头豁免)。
+    part?.type === 'tool-call'
+    // **overlay 车道**(§17.8 前置批):占位型瞬态不是消息树的一部分,账本上
+    // 按定义没有它(追加即撤)。这不是豁免一格事实,是车道划分。
+    || part?.type === 'image-loading'
   ))
   if (parts) rest.contentParts = parts
   return rest
 }
 
-function canonicalSide(messages: readonly ChatMessage[]): unknown[] {
-  return messages.map(message => canonicalChatMessage(stripNamedExemptions(message)))
+/**
+ * `sessionId` 给的是 **overlay 车道**的地址:本地错误卡(`addLocalMessage`)是
+ * 渲染层自己的东西 —— 它说的正是"这条消息没能到达账本",所以账本上永远没有它。
+ * 摘掉它不是豁免一格事实,是**它不在被比的那棵树上**。
+ */
+function canonicalSide(
+  messages: readonly ChatMessage[],
+  sessionId?: string,
+): unknown[] {
+  const localIds = sessionId ? overlayLocalMessageIds(sessionId) : undefined
+  const tree = localIds?.size
+    ? messages.filter(message => !localIds.has(message.id))
+    : messages
+  return tree.map(message => canonicalChatMessage(stripNamedExemptions(message)))
 }
 
-/** 一段账本 → core 折叠 → 物化(与主进程走的是同一台 reducer、同一个物化口)。 */
-export function foldLedgerMessages(events: readonly unknown[]): ChatMessage[] {
+/**
+ * 一段账本 → core 折叠 → 物化(与主进程走的是同一台 reducer、同一个物化口)。
+ *
+ * `sessionId` 给的是 **blob 解析器**的地址(U2-a0):超 64KB 的正文在账本里只有
+ * `BlobRef`,换回真身要读主进程的 `blobs/` 目录。不给 sessionId 就没有解析器,
+ * 那一格照实留引用(`onMissing:'keep'`)—— 判据测试喂夹具时走的正是这一档。
+ */
+export function foldLedgerMessages(
+  events: readonly unknown[],
+  sessionId?: string,
+): ChatMessage[] {
   let state = createSessionProjectionState()
   for (const event of events) state = reduceSessionProjection(state, event as never)
-  return materializeChatMessages(state).messages as unknown as ChatMessage[]
+  return materializeChatMessages(
+    state,
+    sessionId ? { resolveBlob: createSessionBlobResolver(sessionId) } : {},
+  ).messages as unknown as ChatMessage[]
 }
 
 /**
@@ -334,7 +371,9 @@ async function runLiveRefold(sessionId: string): Promise<void> {
 function liveMessages(sessionId: string): ChatMessage[] | undefined {
   const fold = liveFolds.get(sessionId)
   if (!fold || fold.pending || fold.lastSeq === 0) return undefined
-  return materializeChatMessages(fold.state).messages as unknown as ChatMessage[]
+  return materializeChatMessages(fold.state, {
+    resolveBlob: createSessionBlobResolver(sessionId),
+  }).messages as unknown as ChatMessage[]
 }
 
 /** 会话没了就把它的活折一起丢掉(测试与会话删除都用得上)。 */
@@ -408,9 +447,10 @@ export interface UiRefoldComparison {
 export function compareUiRefold(
   handMessages: readonly ChatMessage[],
   ledgerEvents: readonly unknown[],
+  sessionId?: string,
 ): UiRefoldComparison {
-  const ledger = canonicalSide(foldLedgerMessages(ledgerEvents))
-  const hand = canonicalSide(handMessages)
+  const ledger = canonicalSide(foldLedgerMessages(ledgerEvents, sessionId))
+  const hand = canonicalSide(handMessages, sessionId)
   const diff: UiRefoldDiffEntry[] = []
   const match = collectDiff(ledger, hand, '', diff)
   return { match, diff, handCount: handMessages.length, ledgerCount: ledger.length }
@@ -472,8 +512,8 @@ function compareAgainstLiveFold(
 ): void {
   const live = liveMessages(sessionId)
   if (!live) return
-  const ledger = canonicalSide(live)
-  const hand = canonicalSide(handMessages)
+  const ledger = canonicalSide(live, sessionId)
+  const hand = canonicalSide(handMessages, sessionId)
   const diff: UiRefoldDiffEntry[] = []
   const match = collectDiff(ledger, hand, '', diff)
   stats.liveChecks += 1
@@ -530,7 +570,7 @@ async function runUiRefold(
       weighed.add(sessionId)
     }
 
-    const result = compareUiRefold(handMessages, events as unknown[])
+    const result = compareUiRefold(handMessages, events as unknown[], sessionId)
     stats.checks += 1
     if (result.match) return
 

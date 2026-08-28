@@ -9421,7 +9421,7 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | 7 | **`events.jsonl` 分卷轮转** | 只出了方案要点(触发条件 = 字节 + 语义边界,不是时间;归档 = 分卷 + 清单,不是 gzip 覆盖;refold 的"文件字节此刻是全的"前提要重定义),**待拍板** | §15.12 B3 |
 | 8 | **`legacy-backup/` 381.4MB** | S1a 迁移留下的原抄本副本,**没有治理器**。同批的 `messages.cleared-*`(14MB)同理。只测量未治理 | §15.12;裁定 10 |
 | 9 | **真机夹具沉积清理 + `room-1` 主人判据** —— **§17.7.3 已给判据与清单(零删除)**:`session/created` 带产地印章,verify 分三栏;`room-1` 的现场只读读出来了(夹具 + 08-27 一次已修复的测试外溢,`seq=2` 从未落盘),定性**不是引擎 bug**,删/收基线两个选项待用户拍。全表见 `docs/audit/session-ledger-origin-2026-08-28.md` | | `~/.onething` 里测试年代留下的会话 / traces / debug 快照要不要删;`room-1 seq: expected seq 2 at position 1, got 3` 这条 verify 红是**收进基线**还是**修数据**——**待用户拍板**。它自 §16.20 起**每一批原样复现**(c5 这批仍是它,无新增) | §16.20 七;§16.22 五(d) |
-| 10 | **结算态 `plugin-status` 无产地** | **§17.7.2 勘察更正:上一版这一行的"取代事件已落盘"是错的** —— `plugin/status` 只有词表条目与一条"记录在案但不改投影"的归约分支,**全仓零生产者**;插件状态这一格从头到尾是流内的(`CorePluginStatusRegistry` → chunk 流 → renderer `content-parts.ts`)。缺的不是折叠少折一步,是**写侧没有采集点**。补它 = 新起一条 plugins → 账本的采集线 + 裁定"重开会话后还看不看得到已结算的状态行"(**可感知的行为变化**)—— 停在诊断,待拍板 | §17.7.2 四-2 |
+| 10 | ~~**结算态 `plugin-status` 无产地**~~ **已结清(§17.8 前置批,2026-08-28)** —— 用户拍板"做":结算那一刻经单门写 `plugin/status`(带 `durationMs`),折叠侧把它物化成这一轮正文之后的一格。**产地只有一个**:后台子代理指示器(`backend/wiring/external-agents/background-status.ts` 的 `recordSettledStatus`)—— 勘察更正了工单里的落点(`CorePluginStatusRegistry` **没有结算路径**,它只有 show / clear;全仓唯一产出 `durationMs` 的是那个指示器)。成对交付:老账本没有这条事件 = 没有这一格 = 与从前"重开就没了"逐字相同;`content-part-guard` 的"红"档因此收掉,`ephemeral-policy` 的取代者转真并补了指针测试,ui-refold 的具名豁免撤销 | §17.8.6 |
 | 11 | ~~**`toolCall.argsFinalizedBy` 无采集点**~~ **已结清(§17.7.2 四-1)** —— 定性为**采集过程的注记**("我们的流式层怎么知道参数说完了"),不是会话事实;实测全仓零消费者(只有生产者),进 canonical 豁免表是**终态**而不是欠一条产地 | §10.8;§17.7.2 |
 | 12 | **两个端口断言没被考过** | `updateMessageError` / `updateMessageTurnContext` 的 A 类断言在 battery 里**零调用**,各欠一个场景 | §16.24 九-3 |
 | 13 | **U1 / U2 + B 期路线** | B 期换管 + U1 renderer fold/影子 + U2 切换删旧(renderer 一次大动),细案届时出 | §16.11 尾;`docs/design/ui-event-stream-2026-08.md` |
@@ -10830,3 +10830,82 @@ typecheck 0;renderer + core/backend/shared 7095 绿(两处红:`App.container-lay
 零新增;真机 store 只读(支架临时 store,跑完删除)。新增测试 4(广播)+ 6(活折/漏序/
 节流/补两格),既有 18 只全绿。**未提交。**
 
+
+### 17.8.6 U2 前置批落地记录:附件读口 + 结算态产地 + overlay 车道(2026-08-28,opus 施工,未提交)
+
+U2-a 停诊报出的四个阻断项,这一批处置了三个(第四个 `waiting` 早有裁定,随 U2-a 做)。
+
+*一、U2-a0:`sessionEvents.readBlob`(附件读口)*
+
+形状与 `listRaw` 同款两步:契约 `@shared/ipc/session-events.ts`
+(`ReadSessionBlobRequest{sessionId,hash}` → `ReadSessionBlobResponse{base64?,bytes?}`)+
+handler `backend/rpc/domains/session-events.ts`(走 `blob-store.ts` 的 `readSessionBlob`,
+**读口自带 sha256 自校验**,对不上当读不到);客户端由 `createRouterClient` 现生成,
+**四壳与 transport 棘轮零改动**。入参消毒:会话 id 走既有那道门,hash 卡死十六进制
+(它是路径片段)。读不到 = 空对象,不是错误。
+
+渲染侧 `stores/session-blobs.ts`:折叠器要的是**同步**解析器,而拿正文只能**异步** ——
+这个文件就是那道落差。没命中当场返回 `undefined`(折叠侧照实留占位,那正是此刻的
+事实),同时排一次拉取;拉回来写缓存 + 通知订阅者重物化。双闸(64 条 / 24MB,按插入
+序淘汰)、同 hash 只拉一次、读不到记 `missing` 不再重复问、全程不抛。
+`onSessionBlobLoaded` 的**订阅点属于 U2-a**(今天 fold 只喂门,收尾时才物化一次)。
+
+真机实证(支架 + 真浏览器):120KB 的文件附件进账本变成
+`base64Data: {hash:'bc0b2480f484ccb4', bytes:90000, mime:…}`,浏览器经代理调
+`readBlob` 取回 `base64Len 120000` 且**与发出去的字节逐字相同**(`matches: true`)。
+顺带查明:**图片附件还多一条路** —— 引擎把它落进媒体库(`mediaAssetId`/`filePath`),
+所以图片那一格在 fold 树上本来就不靠 blob。
+
+*二、#10 结清:结算态 `plugin/status` 补产地*
+
+**勘察更正**(工单里的落点不成立):`CorePluginStatusRegistry` **没有"结算路径"** ——
+它只有 `show` / `clear` / `clearSession`,从不产出 `durationMs`。全仓**唯一**产出结算态
+的是**后台子代理指示器**(`backend/wiring/external-agents/background-status.ts`,
+2026-08-11 那次"我以为它跑完了"事故的产物)。所以采集点落在那里:
+
+- `recordSettledStatus`(新):`phase==='settled'` 时经**单门** `writeSessionEvent`
+  写 `plugin/status`(pluginId/id/label/startedAt/durationMs + 当前 runId);
+  **只记结算态**(未结算归策略表,`cleared` 是撤下不是事实);绝不抛。
+- 折叠侧:`AssistantNode.pluginStatuses` + `materializeContentParts` 末尾一格。
+  **位置为什么是末尾**:唯一那个生产者一条会话只有一格(`id:'background-tasks'`)、
+  且在这一轮正文流完之后才结算 —— 末尾就是它当时的位置,不是近似。将来若有"流中途
+  结算"的生产者,位置会与屏幕不等,而那正是 ui-refold 要抓的(判据不为此放宽)。
+- `content-part-guard`:"已结算 plugin-status" 从**红**档进**承载**档(文档表 + 代码
+  各一处),那格公开缺口关闭。
+- `ephemeral-policy`:`contentPart.plugin-status.unsettled` 的取代者**转真**,note 改写,
+  并补了一条指针证明(指向新的产地测试;指针解析闸照旧绿)。
+- **ui-refold 的 plugin-status 具名豁免撤销** —— 它就是为等这个。反证测试改成正反两面:
+  账本没有那条事件时**当场判红**(不再放行),账本有那条事件时两侧逐格相等。
+
+成对交付:老账本里没有 `plugin/status` = 折叠侧没有这一格 = 与今天"重开会话就没了"
+逐字相同;**变化只发生在新写的会话上**。
+
+*三、overlay 车道(`stores/session-overlays.ts`)*
+
+两类东西**按定义**进不了账本,给它们一条显式具名的车道:本地错误卡
+(`addLocalMessage` —— 它说的正是"这条消息没能到达账本")与占位型瞬态
+(`image-loading` —— 追加即撤,append-only 表达不了)。
+
+本批**只加不改**:老路照旧往数组里插(行为一个字不变),同一条记进 overlay(双写);
+瞬态的清扫与数组同一时刻(两处 `removeTransientIndicators` 调用点各配一次
+`clearOverlayTransientParts`)。U2-a 把树换成 fold 产物那一刻,渲染侧改读 overlay。
+**这样做是风险最小的**:今天动渲染路径 = 动那七个滚动/交互碰面,而它们的判例是这个仓
+里最贵的一批。
+
+ui-refold 两道门都**不比 overlay**:`image-loading` part 与本地卡消息在对拍前摘掉 ——
+这不是豁免一格事实,是车道划分(门比的是树,树上没有它)。
+
+*四、门读数*
+
+typecheck 0;四包 7106 绿(两处已知红不认领:`App.container-layout` 外壳批、
+`sessions-delete-cascade` 满载并行抖动);battery GREEN(225 refoldChecks / 0 mismatch);
+**五棘轮**全绿(boundary / session / log / transport / ui,transport 与 ui 均未动基线);
+字节回归 · S0 合同 · 账预检 · ephemeral 策略表(含指针闸)全绿;`sessions:verify`
+本机 0 / 外来存量 9 零新增;真机 store 只读(支架临时库,跑完删除)。
+
+支架复跑读数(豁免撤销之后,含一次带附件会话):
+`checks 3 / mismatches 0`、`liveChecks 4 / liveMismatches 0`、`liveEvents 83`、
+`liveGaps 0 / liveRefolds 0`、`errors 0`,日志零 warn。
+
+新增测试:readBlob handler 3、渲染侧 blob 缓存 6、结算态落账 1(含"running 一条都不写"
+的反面)、ui-refold 豁免撤销后的正反两证。**未提交。**

@@ -83,6 +83,8 @@ const CONTRACT = 'packages/core/session/__tests__/projection-contract.test.ts'
 const POLICY = 'packages/core/session/__tests__/ephemeral-policy.test.ts'
 const CODEC = 'packages/core/session/__tests__/session-chunk-codec.test.ts'
 const PLUGIN_STATUS = 'packages/renderer/stores/__tests__/plugin-status-parts.test.ts'
+/** 结算态的产地(§17.8 前置批,留账 #10 结清)。 */
+const PLUGIN_STATUS_LANDING = 'packages/backend/wiring/external-agents/__tests__/background-status.test.ts'
 
 export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[] = [
   {
@@ -170,15 +172,16 @@ export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[
       { file: PLUGIN_STATUS, test: 'is stream-scoped transient, not placeholder transient' },
       { file: PLUGIN_STATUS, test: '已结算的那条不再是 transient —— 定格的总耗时活过回合收尾' },
       { file: PLUGIN_STATUS, test: '回合收尾:在跑的被扫掉,已结算的留下' },
+      // 取代者**转真**:结算那一刻真的写下了一条 `plugin/status`。
+      { file: PLUGIN_STATUS_LANDING, test: 'settled 写一条 plugin/status;running 一条都不写' },
     ],
-    note: '**留账 #10(§17.7 #7 勘察更正,2026-08-28)**:上一版这里写的是"取代事件'
-      + '已经落盘,只是折叠侧不物化" —— **实测是错的**。`plugin/status` 只有词表条目'
-      + '(`events/types.ts`)与一条"记录在案但不改投影"的归约分支,**全仓没有任何'
-      + '生产者往账本写过它**:插件状态这一格从头到尾是流内的 —— `CorePluginStatusRegistry`'
-      + '把 part 推进 chunk 流,renderer 的 `content-parts.ts` 就地更新那一格。'
-      + '所以结算态在消息上没有产地,不是"折叠少折了一步",是**写侧根本没有采集点**。'
-      + '补它 = 新起一条 plugins → 会话账本的采集线,并且要裁定"重开会话之后还看不看'
-      + '得到那条状态行"(可感知的行为变化)—— 停在诊断,记在 §17.5 #10。',
+    note: '**留账 #10 已结清(§17.8 前置批,2026-08-28)**:结算态从此有产地 —— '
+      + '全仓唯一的结算态生产者(后台子代理指示器,`backend/wiring/external-agents/'
+      + 'background-status.ts` 的 `recordSettledStatus`)在结算那一刻经单门写下 '
+      + '`plugin/status`(带 `durationMs`),折叠侧把它物化成这一轮正文之后的一格 '
+      + '(`materializeContentParts` 末尾)。**成对交付**:老账本没有这条事件 = 折叠侧'
+      + '没有这一格 = 与从前"重开会话就没了"逐字相同,变化只发生在新写的会话上。'
+      + '未结算的那一档仍然是短命的 —— 这条策略表条目说的正是它。'
   },
   {
     id: 'codec.unflushed-delta',

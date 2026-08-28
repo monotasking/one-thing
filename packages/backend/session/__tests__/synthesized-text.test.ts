@@ -151,21 +151,23 @@ describe('翻译器守卫:进消息的 part 事件账本承载得了吗', () => 
       { type: 'image-loading' },
       { type: 'data-steps', turnIndex: 1 },
       { type: 'plugin-status', pluginId: 'p', id: 's', label: 'x' },
+      // §17.8 前置批:**已结算**的那一格从此有产地(`plugin/status` 带
+      // `durationMs`),于是它从"红"进了"承载"档 —— 留账 #10 结清。
+      { type: 'plugin-status', pluginId: 'p', id: 's', label: 'x', durationMs: 12 },
     ]) {
       expect(describeUncarriableContentPart(part)).toBeUndefined()
     }
   })
 
   it('throws in dev on a part the ledger cannot carry, and warns in prod', () => {
-    // 已结算的插件状态**要参与比较**,而账本上没有任何东西记过它。
-    const settled = { type: 'plugin-status', pluginId: 'p', id: 's', label: 'x', durationMs: 12 }
-    expect(describeUncarriableContentPart(settled)).toContain('plugin-status')
-    expect(describeUncarriableContentPart({ type: 'tool-call', toolCalls: [] })).toContain('tool-call')
+    // 账本上真的没有落点的那一种(渲染锚点的第二形状:`tool-call` 块)。
+    const uncarriable = { type: 'tool-call', toolCalls: [] }
+    expect(describeUncarriableContentPart(uncarriable)).toContain('tool-call')
 
     setSessionFreezeEnabled(true)
-    expect(() => assertContentPartIsCarriable(SESSION, settled)).toThrow(TypeError)
+    expect(() => assertContentPartIsCarriable(SESSION, uncarriable)).toThrow(TypeError)
     setSessionFreezeEnabled(false)
-    expect(() => assertContentPartIsCarriable(SESSION, settled)).not.toThrow()
+    expect(() => assertContentPartIsCarriable(SESSION, uncarriable)).not.toThrow()
     setSessionFreezeEnabled(true)
   })
 })

@@ -76,3 +76,61 @@ describe('后台电平翻译成流内状态格子', () => {
     expect(first.pluginId).toBe(second.pluginId)
   })
 })
+
+/**
+ * **结算态落账**(§17.8 前置批,留账 #10 结清)。
+ *
+ * 从前这一格整条链只活在流里,于是"重开会话那条定格的状态行就没了"。现在结算
+ * 那一刻经单门写一条 `plugin/status`,折叠侧物化成消息上的一格。
+ */
+describe('结算态进账本', () => {
+  it('settled 写一条 plugin/status;running 一条都不写', async () => {
+    const fs = await import('node:fs')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const store = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-bg-status-'))
+    const previous = process.env.ONETHING_STORE_PATH
+    process.env.ONETHING_STORE_PATH = store
+    const { resetSessionEventLogCache, readSessionLogEvents, flushSessionEventLog } =
+      await import('../../../session/event-log.js')
+    const { initializeEventSystem, shutdownEventSystem } =
+      await import('../../../events/index.js')
+    const { publishExternalAgentBackgroundStatus } = await import('../background-status.js')
+    resetSessionEventLogCache()
+    initializeEventSystem()
+
+    try {
+      // 账本得先开张(真机上这条会话早就有账了)。
+      const { writeSessionEvent } = await import('../../../session/event-writer.js')
+      writeSessionEvent(base.localSessionId, 'session/created', {
+        sessionId: base.localSessionId,
+      })
+      publishExternalAgentBackgroundStatus({ ...base, phase: 'running', count: 2 })
+      await flushSessionEventLog(base.localSessionId)
+      expect((await readSessionLogEvents(base.localSessionId)).map(event => event.type))
+        .toEqual(['session/created'])
+
+      publishExternalAgentBackgroundStatus({
+        ...base,
+        phase: 'settled',
+        count: 0,
+        elapsedMs: 4200,
+      })
+      await flushSessionEventLog(base.localSessionId)
+      const events = await readSessionLogEvents(base.localSessionId)
+      expect(events.map(event => event.type)).toEqual(['session/created', 'plugin/status'])
+      expect(events[1]?.data).toMatchObject({
+        pluginId: base.connectorId,
+        id: EXTERNAL_AGENT_BACKGROUND_STATUS_ID,
+        label: '后台子代理已完成',
+        startedAt: base.startedAt,
+        durationMs: 4200,
+      })
+    } finally {
+      shutdownEventSystem()
+      if (previous === undefined) delete process.env.ONETHING_STORE_PATH
+      else process.env.ONETHING_STORE_PATH = previous
+      fs.rmSync(store, { recursive: true, force: true })
+    }
+  })
+})

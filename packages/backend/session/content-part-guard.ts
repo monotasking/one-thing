@@ -14,7 +14,8 @@
  * | **承载** | `text` / `reasoning` / `provider-data` / `image` | 事件词表里有对应的 part kind |
  * | **豁免** | `waiting` / `image-loading` / 未结算的 `plugin-status` | **策略表条目**(定律三,`core/session/events/ephemeral-policy.ts` 的 `contentPart.placeholder` / `contentPart.plugin-status.unsettled`):有取代它的持久事件,判据当场丢掉它们 |
  * | **豁免** | `data-steps` | **渲染锚点**(G4),位置算得出来,不是正文 —— 与上一档不同源,理由也不同 |
- * | **红** | 其余(含**已结算**的 `plugin-status`) | 消息上有、账本上没有、判据也不放过 = 一条必然的不等 |
+ * | **承载** | **已结算**的 `plugin-status` | §17.8 前置批起有产地(`plugin/status` 带 `durationMs`,唯一生产者是后台子代理指示器),折叠侧物化在这一轮正文之后 |
+ * | **红** | 其余 | 消息上有、账本上没有、判据也不放过 = 一条必然的不等 |
  *
  * 前两档的名单**不在这里抄**:短命那一档从 `isEphemeralContentPart` 读(策略表
  * 是它的唯一产地),渲染锚点那一档只有一种,就地写死。
@@ -48,9 +49,11 @@ export function describeUncarriableContentPart(part: unknown): string | undefine
   const type = typeof record.type === 'string' ? record.type : undefined
   if (!type) return 'content part has no type'
   if (CARRIED_PART_TYPES.has(type)) return undefined
-  // 定律三登记在册的短命 part(占位型两种 + **未结算**的插件状态)。结算之后
-  // 那一格要参与比较,而账本上没有任何东西记过它 —— 那条留账写在策略表的 note 里。
+  // 定律三登记在册的短命 part(占位型两种 + **未结算**的插件状态)。
   if (isEphemeralContentPart(record)) return undefined
+  // **已结算**的插件/后台状态行:§17.8 前置批起有产地(`plugin/status` 带
+  // `durationMs`,写在结算那一刻),折叠侧把它物化在这一轮正文之后。留账 #10 结清。
+  if (type === 'plugin-status' && typeof record.durationMs === 'number') return undefined
   // G4 渲染锚点:算得出来,不是正文(与上一档不同源)。
   if (type === 'data-steps') return undefined
   return `content part '${type}' has no session-event landing (see content-part-guard.ts)`

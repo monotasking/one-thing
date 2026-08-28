@@ -381,21 +381,27 @@ describe('ui-refold:具名豁免的反证(拿掉就红)', () => {
     expect(sameUnderRuler(withAnchor, ledger[1] as ChatMessage)).toBe(true)
   })
 
-  it('② 已结算 plugin-status:尺子放行,靠具名排除', () => {
+  it('② 已结算 plugin-status:豁免已撤 —— 它现在有产地,比不上就该红', () => {
     resetSeq()
     const ledger = foldLedgerMessages(LEDGER)
     const hand = handSide()
+    const settled = { type: 'plugin-status', pluginId: 'p', id: 's', label: '好了', durationMs: 12 }
     hand[1] = {
       ...hand[1],
-      contentParts: [
-        ...(hand[1].contentParts ?? []),
-        { type: 'plugin-status', pluginId: 'p', id: 's', label: '好了', durationMs: 12 },
-      ],
+      contentParts: [...(hand[1].contentParts ?? []), settled],
     } as ChatMessage
-    // 反证:尺子不管这一格(账本里永远没有它 —— 写侧零生产者)
+    // 账本侧没有这条事件 = 没有这一格 → **真失配**(从前这里是"具名排除后相等")。
     expect(sameUnderRuler(hand[1], ledger[1] as ChatMessage)).toBe(false)
-    // 门:具名排除之后相等
-    expect(compareUiRefold(hand, LEDGER).match).toBe(true)
+    expect(compareUiRefold(hand, LEDGER).match).toBe(false)
+
+    // 账本侧也有那条事件时,两侧逐格相等 —— 这是"产地补上了"的正证。
+    const withStatus = [
+      ...LEDGER,
+      event('plugin/status', {
+        pluginId: 'p', id: 's', label: '好了', durationMs: 12, runId: 'r1',
+      }),
+    ]
+    expect(compareUiRefold(hand, withStatus).match).toBe(true)
   })
 
   it('③ attachments:账本存 BlobRef,renderer 没有 blob 读取口', () => {

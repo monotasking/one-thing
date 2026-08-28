@@ -106,6 +106,56 @@ async function pull(method: 'list' | 'listRaw'): Promise<unknown[]> {
   return (response as { ok: true; data: { events: unknown[] } }).data.events
 }
 
+describe('sessionEvents.readBlob → 渲染层的正文读口(U2-a0)', () => {
+  let unregister: (() => void) | undefined
+  let blobRoot = ''
+
+  beforeEach(async () => {
+    blobRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-readblob-'))
+    paths.sessionsDir = path.join(blobRoot, 'sessions')
+    fs.mkdirSync(paths.sessionsDir, { recursive: true })
+    const { registerRouterHandlers, sessionEventsRpcHandlers } = await loadDomain()
+    unregister = registerRouterHandlers(sessionEventsRouter, sessionEventsRpcHandlers)
+  })
+
+  afterEach(async () => {
+    unregister?.()
+    unregister = undefined
+    const { resetRpcRegistryForTests } = await loadDomain()
+    resetRpcRegistryForTests()
+    fs.rmSync(blobRoot, { recursive: true, force: true })
+  })
+
+  async function readBlob(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { dispatchRpc } = await loadDomain()
+    const response = await dispatchRpc({ domain: 'sessionEvents', method: 'readBlob', payload })
+    expect(response.ok).toBe(true)
+    return (response as { ok: true; data: Record<string, unknown> }).data
+  }
+
+  it('写下去的字节读得回来(base64 + 字节数)', async () => {
+    const { putSessionBlob } = await import('../../session/blob-store.js')
+    const bytes = Buffer.from('hello blob world')
+    const ref = putSessionBlob(SESSION_ID, bytes)
+    expect(ref).toBeTruthy()
+
+    const result = await readBlob({ sessionId: SESSION_ID, hash: ref!.hash })
+
+    expect(Buffer.from(result.base64 as string, 'base64').toString('utf8')).toBe('hello blob world')
+    expect(result.bytes).toBe(bytes.byteLength)
+  })
+
+  it('没这段字节 = 空对象,不是错误', async () => {
+    expect(await readBlob({ sessionId: SESSION_ID, hash: 'deadbeefdeadbeef' })).toEqual({})
+  })
+
+  it('非法 id / hash 在门口就没了(路径穿越拿不到任何东西)', async () => {
+    expect(await readBlob({ sessionId: '../../etc', hash: 'deadbeefdeadbeef' })).toEqual({})
+    expect(await readBlob({ sessionId: SESSION_ID, hash: '../../../etc/passwd' })).toEqual({})
+    expect(await readBlob({ sessionId: SESSION_ID, hash: 'NOTHEX' })).toEqual({})
+  })
+})
+
 describe('sessionEvents.listRaw → ui-refold 的账本侧', () => {
   let unregister: (() => void) | undefined
 

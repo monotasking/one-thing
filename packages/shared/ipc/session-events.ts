@@ -84,6 +84,23 @@ export interface ListRawSessionEventsResponse {
   events: SessionLogEventRecord[];
 }
 
+export interface ReadSessionBlobRequest {
+  sessionId: string;
+  /** `BlobRef.hash` —— 内容寻址的文件名(sha256 前 16 位)。 */
+  hash: string;
+}
+
+export interface ReadSessionBlobResponse {
+  /**
+   * 正文的 base64。**读不到就是 `undefined`** —— 文件不在、自校验没过(内容寻址下
+   * "文件名 ≠ 内容 hash" = 这段字节坏了)、id/hash 不合法,一律同一个答案:
+   * 没有这段正文。绝不返回半截或未校验的字节。
+   */
+  base64?: string;
+  /** 读到时的字节数(调用方对账用)。 */
+  bytes?: number;
+}
+
 export interface InspectSessionToolCallRequest {
   sessionId: string;
   callId: string;
@@ -137,6 +154,16 @@ export type SessionEventsRoutes = {
     input: ListRawSessionEventsRequest;
     output: ListRawSessionEventsResponse;
   };
+  /**
+   * 一段 blob 正文(U2-a0)。账本里超 64KB 的正文(图片附件、大工具结果)只留
+   * `BlobRef`,换回真身要读 `sessions/<id>/blobs/`——**渲染层够不着那个目录**,
+   * 所以给它一条读口。与 `listRaw` 同款两步(契约 + handler),客户端由
+   * `createRouterClient` 现生成,四壳零改动。
+   */
+  readBlob: {
+    input: ReadSessionBlobRequest;
+    output: ReadSessionBlobResponse;
+  };
   inspectCall: {
     input: InspectSessionToolCallRequest;
     output: InspectSessionToolCallResponse;
@@ -155,5 +182,5 @@ export type SessionEventsRoutes = {
 
 export const sessionEventsRouter = defineRouter<SessionEventsRoutes>(
   "sessionEvents",
-  ["list", "listRaw", "inspectCall", "getTrace", "getResponseText"],
+  ["list", "listRaw", "readBlob", "inspectCall", "getTrace", "getResponseText"],
 );

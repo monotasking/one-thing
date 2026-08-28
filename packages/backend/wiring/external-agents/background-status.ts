@@ -36,6 +36,8 @@
  */
 import type { CorePluginStatusPart } from '@onething/core/plugins'
 import { getEventBus } from '../../events/index.js'
+import { writeSessionEvent } from '../../session/event-writer.js'
+import { currentSessionRunId } from '../../session/runs.js'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 
@@ -99,7 +101,45 @@ export function publishExternalAgentBackgroundStatus(
     const part = buildExternalAgentBackgroundStatusPart(input)
     // 走既有的 `content:part` 轨道,不新开通道 —— 与 R6 §5.2 第 4 条同一条理由。
     void getEventBus().emit(input.localSessionId, { type: SESSION_EVENT_TYPES.CONTENT_PART, part } as never)
+    recordSettledStatus(input, part)
   } catch {
     // 观测绝不能变成第二个故障源。
+  }
+}
+
+/**
+ * **结算态落账**(留账 #10 结清,§17.8 前置批)。
+ *
+ * 从前这一格在账本上没有产地:状态行整条链只活在流里(chunk → renderer),
+ * 于是"重开会话那条定格的状态行就没了"。用户拍板**做**:结算态是消息上的事实
+ * (它定格、活过回合收尾),所以它该有一条自己的账。
+ *
+ * **只记结算态**:
+ *  - 未结算的那一档由策略表管(`contentPart.plugin-status.unsettled`,追加即撤);
+ *  - `cleared` 是撤下,不是事实。
+ *
+ * **成对交付**(纪律 9):老账本里没有这条事件 = 折叠侧没有这一格 = 与今天
+ * "重开就没了"逐字相同;变化只发生在**新写的会话**上。
+ *
+ * 绝不抛:它挂在外部回合的关键路径上,写账失败也不该把这一轮打崩(与上面
+ * 那条 `emit` 同一条理由)。
+ */
+function recordSettledStatus(
+  input: ExternalAgentBackgroundStatusInput,
+  part: CorePluginStatusPart,
+): void {
+  if (part.durationMs === undefined) return
+  try {
+    const runId = currentSessionRunId(input.localSessionId)
+    writeSessionEvent(input.localSessionId, 'plugin/status', {
+      pluginId: part.pluginId,
+      id: part.id,
+      label: part.label,
+      ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
+      durationMs: part.durationMs,
+      ...(runId ? { runId } : {}),
+    })
+  } catch {
+    // 记账问题不许打断聊天(§14.6 之外的这一条:观测口的契约优先)。
   }
 }

@@ -61,6 +61,11 @@ import {
 	type GenerationPhase,
 	type GenerationStatus,
 } from "./helpers/generation-status";
+import {
+	addOverlayLocalMessage,
+	clearOverlayTransientParts,
+	setOverlayTransientPart,
+} from "@/stores/session-overlays";
 
 type RequestSnapshot = RequestSnapshotEvent["snapshot"];
 
@@ -548,6 +553,8 @@ export const useChatStore = defineStore("chat", () => {
 		) {
 			message.contentParts = [...message.contentParts];
 		}
+		// overlay 车道与数组同一时刻收:瞬态的寿命只有"这一轮"。
+		if (message.sessionId) clearOverlayTransientParts(message.sessionId, message.id);
 		message.isStreaming = false;
 		if (usage) {
 			message.usage = usage;
@@ -1616,6 +1623,12 @@ export const useChatStore = defineStore("chat", () => {
 				}
 			} else if (newPart.type === "image-loading") {
 				pushImageLoading(parts, newPart.turnIndex, newPart.label);
+				// overlay 车道:占位型瞬态"追加即撤",append-only 的账本表达不了它。
+				setOverlayTransientPart(sessionId, resolvedMsgId, {
+					type: "image-loading",
+					turnIndex: newPart.turnIndex,
+					...(newPart.label ? { label: newPart.label } : {}),
+				} as ContentPart);
 				message.contentParts = [...parts];
 			} else if (newPart.type === "waiting") {
 				if (hasActiveToolWork(message, newPart.turnIndex)) {
@@ -1989,6 +2002,7 @@ export const useChatStore = defineStore("chat", () => {
 		if (!message?.contentParts?.length) return;
 
 		const nextParts = [...message.contentParts];
+		clearOverlayTransientParts(sessionId, resolvedMsgId);
 		if (!removeTransientIndicators(nextParts)) return;
 
 		message.contentParts = nextParts;
@@ -2611,6 +2625,10 @@ export const useChatStore = defineStore("chat", () => {
 			timestamp: Date.now(),
 		};
 		messages.push(localMessage);
+		// overlay 车道(§17.8 前置批):本地卡按定义进不了账本 —— 它说的正是
+		// "这条消息没能到达账本"。老路照旧插数组(行为一字不变),同一条记进
+		// overlay,U2-a 切换那刻渲染侧改读它。
+		addOverlayLocalMessage(sessionId, localMessage);
 		setSessionMessages(sessionId, [...messages]);
 	}
 

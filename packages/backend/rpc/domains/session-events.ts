@@ -12,6 +12,7 @@ import type { RouteHandlers } from '@onething/core/ipc'
 import type { SessionEventsRoutes } from '@shared/ipc/session-events.js'
 import { resolveToolCallInspection } from '@onething/runtime/sessions/session-events'
 import { readSessionEvents, readSessionLogEvents } from '../../session/event-log.js'
+import { readSessionBlob } from '../../session/blob-store.js'
 // 路径消毒的那道门与轨迹读实现同住一处:S3 之前它是本文件的私有函数,而 S3 把
 // 调用点从 2 个变成 4 个 —— 一道安全门有两份拷贝,迟早只改其中一份。
 import { isSafeSessionId, readSessionTrace, readSessionTraceResponseText } from '../../session/trace.js'
@@ -33,6 +34,22 @@ export const sessionEventsRpcHandlers: RouteHandlers<SessionEventsRoutes> = {
   async listRaw(request) {
     if (!isSafeSessionId(request?.sessionId)) return { events: [] }
     return { events: await readSessionLogEvents(request.sessionId) }
+  },
+  /**
+   * 一段 blob 正文(U2-a0)。**读口本身就是自校验的**(`readSessionBlob` 重算
+   * sha256,对不上当读不到),所以这里只做入参消毒:会话 id 走与别的方法同一道门,
+   * hash 卡死十六进制 —— 它是路径片段,`../` 之类必须在门口就没了。
+   *
+   * 读不到不是错误(账本引用的正文可能被清过 / 从别的机器同步过来只有账没有 blob),
+   * 交回空对象,调用方照实留占位。
+   */
+  async readBlob(request) {
+    if (!isSafeSessionId(request?.sessionId)) return {}
+    const hash = typeof request?.hash === 'string' ? request.hash : ''
+    if (!/^[0-9a-f]{8,128}$/.test(hash)) return {}
+    const buffer = readSessionBlob(request.sessionId, hash)
+    if (!buffer) return {}
+    return { base64: buffer.toString('base64'), bytes: buffer.byteLength }
   },
   async inspectCall(request) {
     if (!isSafeSessionId(request?.sessionId)) return { inspection: null }

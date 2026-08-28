@@ -286,6 +286,22 @@ export interface AssistantNode extends BaseNode {
    * 一格都没有。投影按同一条闸(§10.14 第 7 类)。
    */
   settledRequests: Set<number>
+  /**
+   * **已结算**的插件/后台状态行(`plugin/status`,带 `durationMs`)。
+   *
+   * 未结算的那一档是短命的(`ephemeral-policy` 的
+   * `contentPart.plugin-status.unsettled`),不进这里;结算之后它定格、活过回合
+   * 收尾,于是它是**消息上的事实**,需要一个产地(留账 #10)。
+   *
+   * 按 `(pluginId, id)` 去重就地更新 —— 与流内那一格的寻址口径逐字相同。
+   */
+  pluginStatuses?: Array<{
+    pluginId: string
+    id: string
+    label: string
+    startedAt?: number
+    durationMs: number
+  }>
   /** `run/start.continuesRunId`:这次 run 接着哪一次 run 的执行往下跑。 */
   continuesRunId?: string
   /**
@@ -798,12 +814,39 @@ export function reduceSessionProjection(
       state.sessionMeta = { ...state.sessionMeta, workingDirectory: event.data.to }
       break
 
+    case 'plugin/status': {
+      // **只有结算态进投影**(留账 #10 的落点):未结算的那一格是短命的,
+      // 由策略表管;`cleared` 是撤下,同样不留痕。结算态定格、活过回合收尾,
+      // 所以它是消息上的事实。
+      if (event.data.durationMs === undefined || event.data.cleared) break
+      // 没带 runId 就落到**此刻这条活 run** 上(状态行是流内的东西,它只可能
+      // 属于正在跑的那一次执行)。
+      const run = forWrite(
+        resolveRun(state, event.data.runId ?? state.activeRun?.runId, undefined),
+      )
+      if (!run) break
+      const entry = {
+        pluginId: event.data.pluginId,
+        id: event.data.id,
+        label: event.data.label,
+        ...(event.data.startedAt !== undefined ? { startedAt: event.data.startedAt } : {}),
+        durationMs: event.data.durationMs,
+      }
+      const existing = run.pluginStatuses ?? []
+      const index = existing.findIndex(
+        item => item.pluginId === entry.pluginId && item.id === entry.id,
+      )
+      run.pluginStatuses = index >= 0
+        ? existing.map((item, at) => (at === index ? entry : item))
+        : [...existing, entry]
+      break
+    }
+
     // 记录在案但不改投影:它们回答的是"什么时候发生了什么",不是"屏幕上有什么"。
     case 'request/tools':
     case 'request/header':
     case 'interaction/asked':
     case 'interaction/answered':
-    case 'plugin/status':
       break
   }
 
@@ -1781,6 +1824,27 @@ export function materializeContentParts(
       }
     }
     // `tool-input` 不进 contentParts:它喂的是 toolCalls[].arguments 那一路。
+  }
+  /**
+   * 已结算的状态行挂在**这一轮正文之后**(留账 #10)。
+   *
+   * 位置为什么是末尾而不是"它当时插在哪":今天全仓**唯一**的结算态生产者是
+   * 后台子代理指示器(`backend/wiring/external-agents/background-status.ts`),
+   * 它一条会话只有一格(`id: 'background-tasks'`),而且在**这一轮正文流完之后**
+   * 才结算 —— 末尾就是它当时的位置,不是近似。
+   *
+   * 将来若有"流中途就结算"的生产者,位置会与屏幕上那份不等 —— 那正是 ui-refold
+   * 两道门要抓的东西(判据不为此放宽)。
+   */
+  for (const status of run.pluginStatuses ?? []) {
+    parts.push({
+      type: 'plugin-status',
+      pluginId: status.pluginId,
+      id: status.id,
+      label: status.label,
+      ...(status.startedAt !== undefined ? { startedAt: status.startedAt } : {}),
+      durationMs: status.durationMs,
+    } as unknown as ProjectedContentPart)
   }
   return parts
 }
