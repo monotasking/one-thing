@@ -11247,3 +11247,74 @@ typecheck 0;renderer 全绿(唯一红 `App.container-layout` 是外壳布局在�
 + work-group + steps-panel);**五棘轮**全绿,**`ui:gate` 81 条已知基线一条未加**
 (新样式一行都没写 —— 样式本来就在,本批只加了开关);真机 store 只读(支架临时库,
 跑完删除)。**未提交。**
+
+### 17.8.9 U2-a 真机回归四修(2026-08-28,用户截图报障,opus 施工,未提交)
+
+四条症状全在**流中态**,而且**判据看不见其中两条** —— 这正是四只单测全绿、真机全错的原因:
+canonical 丢渲染锚点(G4)、丢 `thinkingTime`(G5)。门守的是"事实等不等",这四条错在
+**事实到屏幕之间那一段翻译**。
+
+真机只读诊断(用户那条含读文件工具的会话,`7ee4a6ab…`,250 事件 / 10 消息):
+
+```
+role=assistant thinkingTime=925    toolCalls=3 steps=3 parts=[]
+role=assistant thinkingTime=14132  toolCalls=5 steps=5 parts=[text]
+role=assistant thinkingTime=13784  toolCalls=2 steps=2 parts=[text,reasoning,text]
+```
+
+*症状 4 —— 工具 UI 整个没了*
+
+**根因**:折叠产物的 `contentParts` 只有 text / reasoning(锚点是 canonical G4 明文丢掉
+的东西),而工具行、work-group 分界全靠**渲染锚点**。手写侧从盘上读消息时走
+`chat.ts:1002 rebuildContentParts`,那里做了两件事:`linkStepsToToolCalls` 与
+`synthesizeToolAnchors`(core 单实现 `synthesizeCoreToolAnchors`)。新路一件都没做 ——
+上面那三条真机消息 `toolCalls=3/5/2` 而 `parts` 里一个锚点都没有,于是一个工具卡都不画。
+
+**修法**:`fold-tree.ts` 新增 `toRenderableMessage`(折叠产物 → 可渲染形态),在组合的
+**第一步**跑连线 + 锚点自合成。真机同一条会话修后:
+`[data-steps]` / `[text,data-steps,data-steps]` / `[text,data-steps,reasoning,text]`。
+
+*症状 2 —— "Thought · 261:40"*
+
+**根因**:折叠的 `thinkingTime` 是**毫秒**(`deriveThinkingTime` = 推理段首尾时刻差),
+而产品契约上这一格是**秒**(`@shared/ipc/chat.ts:506` 明写 "in seconds",手写侧写进去
+的也是秒:`MessageThinking` 的 `finalThinkingTime`)。14132ms 于是显示成 235 分钟。
+
+**修法**:在 `toRenderableMessage` 这个边界上**无条件**换算 ms → s(走到这里的只有折叠
+产物这一个来源)。第一版加过 `>1000` 的保险,被真机上那条 925ms 的思考证否(会显示成
+925 秒),已去掉。**更深处那条单位分歧**(core 产 ms、共享契约写 s,而且 canonical 丢掉
+这一格所以两边从没对过账)**挂裁定**,本批只在边界上纠正显示。
+
+*症状 1 / 3 —— 两个 Thought 块、思考正文串进正文区*
+
+**根因两条,都在活尾巴**:
+
+1. **落点丢了**:`session:stream` 的 reasoning-delta 带着 `placement`(引擎开段时定下的
+   事实),`top` 的那一段属于 `message.reasoning`(Thought 块),`inline` 才进
+   `contentParts`(手写侧同一条判据在 `chat.ts:1565`)。尾巴一律当行内挂进 parts,于是
+   同一段思考**既进 Thought 块又以正文渲染**(症状 3),还多出一个思考块(症状 1)。
+2. **回头找同类**:旧 `appendTail` 从尾往前找"第一段同类的"去追加 —— 一段**新的**行内
+   推理会被追加进它前面那个推理块(中间隔着正文)。
+
+**修法**:尾巴改成**按到达顺序的段**(`TailSegment[]`,段界与打包器开段的判据同源:
+同类连续归一段),`top` 推理单独存并落到 `message.reasoning`;组合时**只有第一截**可以
+延长账本那一段(它就是那一段还没打包的尾巴),其后每一截各起一格。纪律没变:尾巴仍然
+只做文本追加,段界与落点都来自流本身。
+
+*新增流中态测试(先红后绿,逐条验过)*
+
+`stores/__tests__/fold-tree.test.ts` 加一组「流中态回归(真机 2026-08-28)」四只:
+
+1. 顶部推理进 `message.reasoning`、**不**进 contentParts(回退落点修 → 红);
+2. 行内推理只延长最后一段,`[reasoning, text, reasoning]` 三格各自独立(回退段化修 → 红);
+3. `thinkingTime` 毫秒 → 秒(回退换算 → 红);
+4. 带工具的消息合成出渲染锚点(回退锚点合成 → 红)。
+
+红证:回退锚点 + 单位两处 → 2 红;回退落点 → 1 红;全部修上 → 12 绿。
+
+*门读数*
+
+typecheck 0;renderer 全绿(唯一红 `App.container-layout` 外壳批不认领;`status-band` /
+`ipc-hub-*` 四只在满载并行下抖过一轮,单跑全绿);**五棘轮**全绿未动基线;
+battery GREEN(refoldChecks 225 / usageMismatches 0 / 全 0);真机 store **只读**
+(诊断只读那条会话的 `events.jsonl`,零写入)。旧路一行未动。**未提交。**

@@ -37,6 +37,8 @@ import {
   hasUiRefoldLiveFold,
 } from '@/stores/ui-refold'
 import { getSessionOverlay } from '@/stores/session-overlays'
+import { synthesizeToolAnchors } from '@/stores/helpers/content-parts'
+import { linkStepsToToolCalls } from '@/stores/helpers/tool-calls'
 import type { ChatMessage, ContentPart } from '@/types'
 
 const log = getLogger('renderer.fold-tree')
@@ -101,11 +103,24 @@ export function installFoldTreeHandle(): void {
 
 // ============ 活尾巴 ============
 
+/**
+ * 尾巴里的一截:**同一种、连续到达**的文本。
+ *
+ * 分截的判据不是尾巴自己想出来的 —— 它与打包器开段的判据是同一条(`core` 的
+ * `CoreAssistantPartBoundary`:同类连续的 delta 归同一段,换了种就是新的一段)。
+ * 尾巴只是把"这一截还没打包"的那些字按到达顺序排好,依旧一个结构决策都不做。
+ */
+interface TailSegment {
+  kind: 'text' | 'reasoning'
+  text: string
+}
+
 interface Tail {
   messageId: string
-  /** 纯文本追加缓冲 —— **只有文本,没有结构**。 */
-  text: string
-  reasoning: string
+  /** 按到达顺序的段(**只有文本**,段界来自流本身)。 */
+  segments: TailSegment[]
+  /** 顶部推理(渲染成 Thought 块;它落在 `message.reasoning`,**不是** part)。 */
+  reasoningTop: string
 }
 
 const tails = new Map<string, Tail>()
@@ -119,14 +134,37 @@ export function feedFoldTail(
   messageId: string,
   kind: 'text' | 'reasoning',
   text: string,
+  /**
+   * 推理的**落点**,由流自己说(`session:stream` 的 reasoning-delta 带着它)。
+   *
+   * 这不是尾巴自己的结构决策:`top` / `inline` 是引擎在开这一段时就定下的事实
+   * (`core/engine/agent-loop-executor.ts` 的 `getAgentLoopReasoningPlacement`,
+   * 折叠侧的复刻在 `reducer.ts` 的 `topReasoningPartIndexes`),缺席时按手写侧
+   * 逐字相同的那条兜底(`chat.ts:1565`:这条消息还没有正文 = top)。
+   *
+   * **少了它就是真机上那两条回归**:top 推理被当成行内推理挂进 contentParts,
+   * 于是同一段思考既进 Thought 块又以正文渲染(症状 3),而且多出一个思考块
+   * (症状 1)。
+   */
+  placement?: 'top' | 'inline',
+  messageHasContent?: boolean,
 ): void {
   if (!messageId || !text) return
   const existing = tails.get(sessionId)
-  const tail = existing?.messageId === messageId
+  const tail: Tail = existing?.messageId === messageId
     ? existing
-    : { messageId, text: '', reasoning: '' }
-  if (kind === 'text') tail.text += text
-  else tail.reasoning += text
+    : { messageId, segments: [], reasoningTop: '' }
+  if (kind === 'reasoning') {
+    const resolved = placement ?? (messageHasContent ? 'inline' : 'top')
+    if (resolved === 'top') {
+      tail.reasoningTop += text
+      tails.set(sessionId, tail)
+      return
+    }
+  }
+  const last = tail.segments[tail.segments.length - 1]
+  if (last?.kind === kind) last.text += text
+  else tail.segments.push({ kind, text })
   tails.set(sessionId, tail)
 }
 
@@ -144,38 +182,66 @@ export function clearFoldTail(sessionId: string): void {
 
 // ============ 组合 ============
 
-/** 尾巴接在最后一段 `text` / `reasoning` part 上;没有那一段就自己不显示。 */
+/**
+ * 尾巴接到**最后那一段**上。
+ *
+ * 两条纪律(真机回归换来的):
+ *
+ * 1. **只看最后一段,不回头找**。从前是"从尾往前找第一段同类的",于是一段新的
+ *    行内推理会被追加进**上一个**推理块里(它前面隔着正文),屏幕上就成了
+ *    "两个思考块 + 文字跑错块"(症状 1)。段的开合是账本的事,尾巴只延长
+ *    **当前那一段**;当前那一段不是同类,就自己在末尾起一格显示用的。
+ * 2. **顶部推理不进 contentParts**。它的落点是 `message.reasoning`(Thought 块),
+ *    与手写侧逐字相同(`chat.ts:1566`)。从前一律当行内挂进 parts,于是同一段
+ *    思考既进 Thought 块又以正文渲染(症状 3)。
+ */
 function appendTail(messages: ChatMessage[], tail: Tail | undefined): ChatMessage[] {
-  if (!tail || (!tail.text && !tail.reasoning)) return messages
+  if (!tail) return messages
+  if (tail.segments.length === 0 && !tail.reasoningTop) return messages
   const index = messages.findIndex(message => message.id === tail.messageId)
   if (index < 0) return messages
   const message = messages[index]
   const parts = [...(message.contentParts ?? [])] as ContentPart[]
 
-  const appendTo = (kind: 'text' | 'reasoning', text: string): void => {
-    if (!text) return
-    for (let at = parts.length - 1; at >= 0; at--) {
-      const part = parts[at] as { type?: string; content?: string }
-      if (part?.type !== kind) continue
-      parts[at] = { ...(part as object), content: `${part.content ?? ''}${text}` } as ContentPart
-      return
+  // **只看最后一段**:第一截若与末段同类就延长它,否则自己起一格;后面每一截
+  // 都是新的一段(段界来自流)。从前是"从尾往前找同类",于是一段新的行内推理
+  // 会被追加进**上一个**推理块 —— 真机上那两个思考块就是这么来的。
+  // 只有**第一截**可以延长账本那一段(它就是那一段还没打包的尾巴);其后每一截
+  // 都是流上新的一段,各自起一格 —— 用一个局部标记表达,不留任何模块级状态。
+  let extendedLedgerPart = false
+  for (const segment of tail.segments) {
+    if (!segment.text) continue
+    const last = parts[parts.length - 1] as { type?: string; content?: string } | undefined
+    if (!extendedLedgerPart && last?.type === segment.kind) {
+      parts[parts.length - 1] = {
+        ...(last as object),
+        content: `${last.content ?? ''}${segment.text}`,
+      } as ContentPart
+    } else {
+      // 账本还没开出这一段(第一条打包行之前):在**末尾**挂一格显示用的尾巴。
+      // 它没有 turnIndex 之类的结构信息 —— 那些等账本说话。
+      parts.push({ type: segment.kind, content: segment.text } as ContentPart)
     }
-    // 账本还没开出这一段(第一条打包行之前):挂一格**显示用**的尾巴。它没有
-    // turnIndex 之类的结构信息 —— 那些等账本说话。
-    parts.push({ type: kind, content: text } as ContentPart)
+    extendedLedgerPart = true
   }
 
-  appendTo('text', tail.text)
-  appendTo('reasoning', tail.reasoning)
+  const tailText = tail.segments
+    .filter(segment => segment.kind === 'text')
+    .map(segment => segment.text)
+    .join('')
 
   const next = [...messages]
   next[index] = {
     ...message,
-    content: `${message.content ?? ''}${tail.text}`,
+    content: `${message.content ?? ''}${tailText}`,
+    ...(tail.reasoningTop
+      ? { reasoning: `${message.reasoning ?? ''}${tail.reasoningTop}` }
+      : {}),
     contentParts: parts,
   }
   return next
 }
+
 
 /**
  * **等待指示由 run 态派生**(U2-a 裁定):`run` 还活着、尾巴是空的、这条消息上
@@ -192,13 +258,19 @@ function appendWaiting(
 ): ChatMessage[] {
   const activeRun = getUiRefoldActiveRun(sessionId)
   if (!activeRun) return messages
-  if (tail?.text || tail?.reasoning) return messages
+  if (tail?.segments.length || tail?.reasoningTop) return messages
   const index = messages.findIndex(message => message.id === activeRun.messageId)
   if (index < 0) return messages
   const message = messages[index]
   const parts = (message.contentParts ?? []) as ContentPart[]
-  // 已经有正文/推理/工具的那一格就不再显示"在等第一个字"。
-  if (parts.length > 0 || (message.content ?? '').length > 0) return messages
+  // 已经有正文/推理/工具的那一格就不再显示"在等第一个字"。**顶部推理也算**
+  // (它不在 parts 里,在 `message.reasoning` 上)—— 漏了它就会在思考已经开始
+  // 的消息上再挂一个转圈。
+  if (
+    parts.length > 0
+    || (message.content ?? '').length > 0
+    || (message.reasoning ?? '').length > 0
+  ) return messages
   const next = [...messages]
   next[index] = {
     ...message,
@@ -206,6 +278,45 @@ function appendWaiting(
   }
   return next
 }
+
+/**
+ * **把折叠产物整理成"屏幕认得的那棵树"**。
+ *
+ * 折叠产物是**事实**,不是渲染形态。手写侧从盘上读回消息时走的是
+ * `chat.ts` 的 `rebuildContentParts`,那里做了两件渲染层依赖的事;新路上没人做,
+ * 于是真机上工具卡整片消失(症状 4):
+ *
+ * 1. **渲染锚点自合成**(`synthesizeCoreToolAnchors`,core 单实现):投影的
+ *    `contentParts` 只有 text / reasoning —— 锚点是 canonical G4 明文丢掉的东西,
+ *    所以**判据永远看不见这一格**(这也正是四只单测全绿而真机红的原因)。工具行、
+ *    work-group 分界全靠它;没有锚点,消息上有 toolCalls 也一个工具卡都不画。
+ * 2. **steps ↔ toolCalls 连线**:投影出来的两边是各自独立的对象,连线之后
+ *    后续更新才在两个消费者上同时可见(与手写侧同一个函数)。
+ *
+ * 另加一格**单位换算**:`thinkingTime` 在投影里是**毫秒**
+ * (`deriveThinkingTime` = 推理段首尾时刻差),而产品契约上这一格是**秒**
+ * (`@shared/ipc/chat.ts:506`,手写侧写进去的也是秒)。真机上 15.7s 的思考显示成
+ * "261:40" 就是这一格(症状 2)。canonical 把 `thinkingTime` 当派生量丢掉(G5),
+ * 判据同样看不见 —— **更深处那个单位分歧另挂裁定**,这里先在边界上换算,
+ * 让屏幕显示的是秒。
+ */
+function toRenderableMessage(message: ChatMessage): ChatMessage {
+  if (message.role !== 'assistant') return message
+  const linked = { ...message } as ChatMessage
+  linkStepsToToolCalls(linked)
+  const anchored = synthesizeToolAnchors(linked.contentParts ?? [], linked)
+  if (anchored) linked.contentParts = anchored
+  // **无条件换算**:走到这里的值只有一个来源 —— 折叠产物(毫秒)。手写侧那条路
+  // 不经过这个函数,所以不存在"已经是秒了"的输入。从前加过一道 `>1000` 的保险,
+  // 那反而让不足一秒的思考(真机上有 925ms 这一条)显示成 925 秒。
+  if (typeof linked.thinkingTime === 'number' && Number.isFinite(linked.thinkingTime)) {
+    linked.thinkingTime = linked.thinkingTime / 1000
+  }
+  return linked
+}
+
+/** 仅测试:把"折叠产物 → 可渲染形态"那一步单独拿出来钉。 */
+export const toRenderableMessageForTest = toRenderableMessage
 
 /** overlay:瞬态挂到对应消息的尾部,本地卡挂在整棵树末尾。 */
 function applyOverlay(sessionId: string, messages: ChatMessage[]): ChatMessage[] {
@@ -240,7 +351,11 @@ export function composeFoldTree(sessionId: string): ChatMessage[] | undefined {
   const base = getUiRefoldLiveMessages(sessionId)
   if (!base) return undefined
   const tail = tails.get(sessionId)
-  return applyOverlay(sessionId, appendWaiting(sessionId, appendTail(base, tail), tail))
+  // 顺序要紧:先把折叠产物整理成可渲染形态(锚点 / 连线 / 单位),再接尾巴、
+  // 补等待、叠 overlay —— 尾巴与 overlay 加的是**显示用**的格子,不该再被
+  // 锚点合成挪位置。
+  const renderable = base.map(toRenderableMessage)
+  return applyOverlay(sessionId, appendWaiting(sessionId, appendTail(renderable, tail), tail))
 }
 
 // ============ 推送 ============

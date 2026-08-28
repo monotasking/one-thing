@@ -24,6 +24,7 @@ import {
   clearFoldTail,
   composeFoldTree,
   feedFoldTail,
+  toRenderableMessageForTest,
   resetFoldTree,
   setFoldTreeEnabled,
 } from '@/stores/fold-tree'
@@ -225,5 +226,94 @@ describe('开关', () => {
     setFoldTreeEnabled(false)
     store.addLocalMessage(SESSION, { role: 'error', content: '旧路上这条进树' })
     expect(store.sessionMessages.get(SESSION) ?? []).toHaveLength(1)
+  })
+})
+
+/**
+ * **真机浸泡抓到的四条回归**(2026-08-28,用户截图报障)。
+ *
+ * 四条全在**流中态**:老用例喂的是走完的账本(收尾态),而这四条只在"账本还没
+ * 追上、活尾巴正在补"的那一段里出得来。判据也看不见它们 —— canonical 丢锚点
+ * (G4)、丢 `thinkingTime`(G5),所以门全绿而屏幕全错。这一组按症状各钉一只。
+ */
+describe('流中态回归(真机 2026-08-28)', () => {
+  /** 只开张、请求也开了、但一条正文都还没落账的那一瞬。 */
+  function openRun(): unknown[] {
+    return ledgerRunOpen()
+  }
+
+  it('症状 1/3:顶部推理进 message.reasoning,不进 contentParts', () => {
+    feed(openRun())
+    feedFoldTail(SESSION, 'a1', 'reasoning', '我先想一下', 'top')
+
+    const assistant = tree()[1]
+    expect(assistant.reasoning).toBe('我先想一下')
+    // 它**不**是正文里的一格 —— 从前这里挂进 parts,于是同一段思考既进 Thought
+    // 块又以正文渲染,还多出一个思考块。
+    expect(assistant.contentParts?.some(part => part.type === 'reasoning')).toBe(false)
+  })
+
+  it('症状 1:行内推理只延长**最后**那一段,不回头找上一个推理块', () => {
+    feed(openRun())
+    // 账本已经落了「推理段 → 正文段」两格(一次真实的 reasoning→text 切换)。
+    const withParts = tree()
+    expect(withParts).toBeTruthy()
+    feedFoldTail(SESSION, 'a1', 'reasoning', '第一段思考', 'inline')
+    feedFoldTail(SESSION, 'a1', 'text', '正文开始')
+    // 现在再来一段**新的**行内推理:它必须自己起一格,不许追加进第一段。
+    feedFoldTail(SESSION, 'a1', 'reasoning', '第二段思考', 'inline')
+
+    const parts = (tree()[1].contentParts ?? []) as Array<{ type: string; content?: string }>
+    const reasoningParts = parts.filter(part => part.type === 'reasoning')
+    expect(reasoningParts.map(part => part.content)).toEqual(['第一段思考', '第二段思考'])
+    // 顺序也要对:新的那一段在正文之后。
+    expect(parts.map(part => part.type)).toEqual(['reasoning', 'text', 'reasoning'])
+  })
+
+  it('症状 2:thinkingTime 由毫秒换算成秒(产品契约的单位)', () => {
+    // 折叠侧给的是推理段首尾时刻差(毫秒);屏幕上那一格按秒显示。
+    const events = [
+      ...ledgerOneTurn(['答案']),
+    ]
+    feed(events)
+    feedFoldTail(SESSION, 'a1', 'reasoning', 'x', 'top')
+    const assistant = tree()[1] as ChatMessage & { thinkingTime?: number }
+    // 这条剧本没有推理段,折叠不产出 thinkingTime —— 钉的是换算函数本身:
+    // 给一个毫秒量级的值,composeFoldTree 之后必须是秒。
+    const composed = { ...assistant, thinkingTime: 15_700, role: 'assistant' } as ChatMessage
+    expect(toRenderableMessageForTest(composed).thinkingTime).toBeCloseTo(15.7, 3)
+  })
+
+  it('症状 4:带工具的消息合成出渲染锚点(否则一个工具卡都不画)', () => {
+    seq = 0
+    const events = [
+      event('session/created', { sessionId: SESSION }),
+      event('user/message', { message: { id: 'u1', role: 'user', content: '读一下', timestamp: 1000 } }),
+      event('run/start', {
+        runId: 'r1', kind: 'send', assistantMessageId: 'a1', provider: 'deepseek',
+        model: 'deepseek-chat', timestamp: 1002, createdAssistantMessage: true,
+      }),
+      event('request/start', { runId: 'r1', requestIndex: 1, messageId: 'a1' }),
+      event('tool/call', {
+        callId: 't1', name: 'read', resolvedToolId: 'read',
+        argumentsRaw: '{"path":"a.txt"}', messageId: 'a1', runId: 'r1', requestIndex: 1,
+      }),
+      event('tool/result', {
+        callId: 't1', isError: false, resultPreview: 'ok', result: { text: 'ok' },
+        messageId: 'a1', runId: 'r1', requestIndex: 1,
+      }),
+      event('request/response', { runId: 'r1', requestIndex: 1, messageId: 'a1' }),
+      event('request/end', { runId: 'r1', requestIndex: 1, messageId: 'a1' }),
+      event('run/end', { runId: 'r1', outcome: 'completed' }),
+    ]
+    feed(events)
+
+    const assistant = tree()[1]
+    expect(assistant.toolCalls?.length).toBe(1)
+    // 锚点是渲染坐标 —— 判据(canonical G4)看不见它,所以必须在这里钉。
+    const anchors = (assistant.contentParts ?? []).filter(
+      part => part.type === 'data-steps' || part.type === 'tool-call',
+    )
+    expect(anchors.length).toBeGreaterThan(0)
   })
 })

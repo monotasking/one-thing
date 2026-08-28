@@ -467,7 +467,18 @@ export function initializeIPCHub() {
         break
 
       case 'reasoning-delta':
-        feedFoldTail(sessionId, chunk.messageId || '', 'reasoning', chunk.reasoning)
+        // **落点由流自己说**:`placement` 是引擎开这一段时定下的事实。缺席时按
+        // 手写侧逐字相同的兜底(这条消息还没有正文 = top),所以这里把"有没有
+        // 正文"一并递进去 —— 少了它,顶部推理会被当成行内推理挂进正文
+        // (真机症状 1 / 3)。
+        feedFoldTail(
+          sessionId,
+          chunk.messageId || '',
+          'reasoning',
+          chunk.reasoning,
+          chunk.placement,
+          Boolean(readHandMessages(sessionId).find(message => message.id === chunk.messageId)?.content),
+        )
         scheduleFoldTreePush(sessionId)
         store.handleStreamChunk({ type: 'reasoning', sessionId, messageId: chunk.messageId || '', content: '', reasoning: chunk.reasoning, turnIndex: chunk.turnIndex, placement: chunk.placement })
         break
