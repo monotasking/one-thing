@@ -149,9 +149,12 @@ describe('moveFocus', () => {
     expect(st.focusId).toBe('rm-release')
   })
 
-  it('到头就停,不回绕', () => {
-    expect(moveFocus(overview, 'left')).toBe(overview)
-    expect(moveFocus(overview, 'up')).toBe(overview)
+  it('到头就停,不回绕(环已亮时撞边是恒等变换)', () => {
+    // 第一下撞边会点亮 focusVisible(见「焦点环点亮时机」),所以恒等性在环亮之后测。
+    const lit = moveFocus(overview, 'left')
+    expect(lit.focusId).toBe(overview.focusId)
+    expect(moveFocus(lit, 'left')).toBe(lit)
+    expect(moveFocus(lit, 'up')).toBe(lit)
     let st = overview
     for (let i = 0; i < 20; i += 1) st = moveFocus(st, 'right')
     expect(st.focusId).toBe(seq[seq.length - 1])
@@ -288,5 +291,27 @@ describe('enterSession / timeBucket / 数据自洽', () => {
     const ids = GROUPS.flatMap((g) => g.sessions.map((s) => s.id))
     expect(new Set(ids).size).toBe(ids.length)
     expect(ids.sort()).toEqual(SESSIONS.map((s) => s.id).sort())
+  })
+})
+
+describe('焦点环点亮时机(focusVisible)', () => {
+  it('打开总览只设锚点不亮环:focusId 有值、focusVisible 为 false', () => {
+    const st = open(base)
+    expect(st.focusId).not.toBeNull()
+    expect(st.focusVisible).toBe(false)
+  })
+
+  it('按方向键才点亮;撞边不动位置也点亮', () => {
+    const st = moveFocus(open(base), 'right')
+    expect(st.focusVisible).toBe(true)
+    // 锚点在序列首时按 ← 撞边:位置不动,环也要亮
+    const edge = moveFocus({ ...open(base), focusId: null }, 'left')
+    expect(edge.focusVisible).toBe(true)
+  })
+
+  it('关掉再开,环回到熄灭(残留环就是 08-28 用户看见的"莫名阴影")', () => {
+    const lit = moveFocus(open(base), 'right')
+    const reopened = open(close(lit))
+    expect(reopened.focusVisible).toBe(false)
   })
 })

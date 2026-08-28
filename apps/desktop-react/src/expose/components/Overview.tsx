@@ -117,7 +117,7 @@ export function Overview() {
                             key={session.id}
                             session={session}
                             current={session.id === state.currentSessionId}
-                            focused={session.id === state.focusId}
+                            focused={state.focusVisible && session.id === state.focusId}
                             onEnter={() => state.enterSession(session.id)}
                             onQuickLook={() => state.openQuickLook(session.id)}
                           />

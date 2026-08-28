@@ -81,6 +81,8 @@ export interface ExposeState {
   view: ExposeView
   /** 总览里键盘焦点所在的卡;null = 还没落焦 */
   focusId: string | null
+  /** 焦点环是否点亮:只有键盘导航(方向键 / Quick Look 换卡)才点亮;打开总览只设锚点、不亮环 */
+  focusVisible: boolean
   /** 折叠的组 id。唯一被持久化的字段。 */
   collapsedGroups: string[]
   /** 搜索条内容;非空时总览的分组区换成搜索结果视图 */

@@ -14,6 +14,7 @@ export const CARD_COLS = 3
 export const initialExposeState: ExposeState = {
   view: { mode: 'closed' },
   focusId: null,
+  focusVisible: false,
   collapsedGroups: DEFAULT_COLLAPSED_GROUP_IDS,
   query: '',
   currentSessionId: CURRENT_SESSION_ID,
@@ -39,12 +40,15 @@ function clampIndex(i: number, len: number): number {
 
 /* ── 开关 ──────────────────────────────────────────────────────────────── */
 
-/** 打开总览:焦点落在当前会话上;当前会话被折叠藏起来时退到序列首。 */
+/**
+ * 打开总览:焦点**锚点**落在当前会话上(方向键第一下有起点),但环不点亮 ——
+ * 焦点环只属于键盘会话,打开总览本身不算(否则看起来像一张卡莫名带影)。
+ */
 export function open(state: ExposeState, groups: GroupMock[] = GROUPS): ExposeState {
   if (state.view.mode !== 'closed') return state
   const seq = visibleCardIds(state, groups)
   const focusId = seq.includes(state.currentSessionId) ? state.currentSessionId : (seq[0] ?? null)
-  return { ...state, view: { mode: 'overview' }, focusId, query: '' }
+  return { ...state, view: { mode: 'overview' }, focusId, focusVisible: false, query: '' }
 }
 
 export function close(state: ExposeState): ExposeState {
@@ -103,11 +107,12 @@ export function moveFocus(
   if (seq.length === 0) return state
   const cur = state.focusId ? seq.indexOf(state.focusId) : -1
   // 还没落焦(或焦点已被折叠藏起来)时,任何方向键都先把焦点放到序列首。
-  if (cur < 0) return { ...state, focusId: seq[0] }
+  if (cur < 0) return { ...state, focusId: seq[0], focusVisible: true }
   const step = dir === 'left' ? -1 : dir === 'right' ? 1 : dir === 'up' ? -CARD_COLS : CARD_COLS
   const next = clampIndex(cur + step, seq.length)
-  if (next === cur) return state
-  return { ...state, focusId: seq[next] }
+  // 撞边不动位置也要点亮环:用户按了方向键,就该看得见焦点在哪。
+  if (next === cur) return state.focusVisible ? state : { ...state, focusVisible: true }
+  return { ...state, focusId: seq[next], focusVisible: true }
 }
 
 /* ── Quick Look 内换会话 ───────────────────────────────────────────────── */
@@ -119,7 +124,7 @@ function quickLookStep(state: ExposeState, delta: number, groups: GroupMock[]): 
   if (i < 0) return state
   const j = clampIndex(i + delta, seq.length)
   if (j === i) return state
-  return { ...state, view: { mode: 'quicklook', sessionId: seq[j] }, focusId: seq[j] }
+  return { ...state, view: { mode: 'quicklook', sessionId: seq[j] }, focusId: seq[j], focusVisible: true }
 }
 
 /** 到头就停(不回绕):和 moveFocus 同一个边界口径,免得两种键有两种直觉。 */
