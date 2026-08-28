@@ -64,7 +64,9 @@
 
   /* 层级 */
   --z-sticky: 10;
-  --z-dropdown: 100;
+  /* 菜单/下拉是瞬态交互层:必须压过一切可锚它的面(含 modal 600 与 dock 650),
+   * 只让位给 tooltip/toast。08-29 判例:Dock(650)右键菜单曾走 100 被锚点自己盖住。 */
+  --z-dropdown: 680;
   --z-overlay: 500;
   --z-modal: 600;
   /* Dock 保留区在舞台之上、在 tooltip 之下 */
