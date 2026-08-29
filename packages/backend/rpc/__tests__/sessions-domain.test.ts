@@ -204,6 +204,36 @@ describe('sessions RPC domain', () => {
     expect(store.getSessionsList).toHaveBeenCalledTimes(2)
   })
 
+  /**
+   * **列表投影是"原样交出索引元数据"**(共享层读侧补齐 E 批的勘察结论)。
+   *
+   * 这一批立项时以为 `isPinned` 没进 `listMeta`;真机一查是**已经在**的
+   * (439 条里 11 条带着它)。域这一层根本没有投影 —— `listMeta` 就是
+   * `store.getSessionsList()` 本身,索引里有什么就交出什么。所以这里钉的不是
+   * "把 isPinned 加进来",而是**"别哪天有人在这里加一层挑字段的投影"**:那正是
+   * 让 `isPinned` / `kind` / `lastMessagePreview` 悄悄消失的唯一途径。
+   */
+  it('listMeta 原样交出索引元数据 —— isPinned / kind / 新增的两格一个都不掉', async () => {
+    const { dispatchRpc } = await loadDomain()
+    const meta = {
+      id: SESSION_ID,
+      name: 'Pinned one',
+      createdAt: 1,
+      updatedAt: 2,
+      isPinned: true,
+      kind: 'room',
+      messageCount: 12,
+      previewText: '第一句',
+      lastMessagePreview: '最近说到这儿',
+      workspaceId: 'default',
+    }
+    store.getSessionsList.mockReturnValue([meta])
+
+    await expect(
+      dispatchRpc({ domain: 'sessions', method: 'listMeta', payload: {} }),
+    ).resolves.toEqual({ ok: true, data: { success: true, sessions: [meta] } })
+  })
+
   it('keeps the three create-session rules — id shape, no adoption, kind is room-only', async () => {
     const { dispatchRpc } = await loadDomain()
 

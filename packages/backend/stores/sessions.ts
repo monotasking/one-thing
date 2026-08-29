@@ -50,8 +50,11 @@ import {
 	guardFrozenMessages,
 	guardFrozenSessionMessages,
 } from "../session/freeze.js";
+import { SESSION_EVENT_TYPES } from "@onething/core/events";
+import { getEventBus, isEventSystemInitialized } from "../events/index.js";
 import {
 	CORE_DEFAULT_AGENT_ID as DEFAULT_AGENT_ID,
+	collectSessionCascadeDeleteIds,
 	deriveRetainedContextSize,
 	getSessionTokenUsageSnapshot,
 	repairSessionTimelineMetadata,
@@ -477,8 +480,48 @@ export function onSessionsDeleted(listener: SessionsDeletedListener): () => void
 	};
 }
 
+/**
+ * **删会话的推送**(E 批)——`session:removed` 是一条会话事件,骑既有的
+ * `session:event` 面(桌面 IPCBridge / web SSE 都观察这条总线),零新通道。
+ *
+ * 三件事解释这段代码为什么长这样:
+ *
+ * 1. **必须发在真正删之前**。web 侧通配订阅逐条问"这条会话你读得到吗"
+ *    (`ownerMatchesContext` → `resolveSession`);会话删掉之后那把尺子只会回
+ *    false,删完再发等于发进黑洞。
+ * 2. **id 表因此要提前算**。级联的那批 id 是 `deleteSession` 内部的产物,所以
+ *    这里用**同一个纯函数**(`collectSessionCascadeDeleteIds`)在同一份索引上
+ *    先算一遍。中间没有 `await`,单线程下两次算的是同一个答案。
+ * 3. **每个 id 各发一条**。归属判据是逐会话问的,合成一条会让被级联掉的子会话
+ *    失去自己那次判定。
+ *
+ * `emit` 的扇出是同步段(`fanOut` 在 `emit` 的第一个 await 之前),所以"发完再删"
+ * 是真的先后,不是排队。发不出去只记一行 —— 删会话不能因为推送失败而失败。
+ */
+function announceSessionsAboutToBeDeleted(sessionId: string): void {
+	// 没装事件系统的进程(轻量单测 / 脚本)照样得能删会话 —— 问一句,而不是
+	// 让 `getEventBus()` 抛出来再吞掉。
+	if (!isEventSystemInitialized()) return;
+	try {
+		const cascadedSessionIds = collectSessionCascadeDeleteIds(
+			sessionRepository.getSessionsList(),
+			sessionId,
+		);
+		for (const deletedId of cascadedSessionIds) {
+			void getEventBus().emit(deletedId, {
+				type: SESSION_EVENT_TYPES.SESSION_REMOVED,
+				sessionId: deletedId,
+				cascadedSessionIds,
+			} as never);
+		}
+	} catch (error) {
+		log.warn("session deleted event not emitted", { sessionId }, error);
+	}
+}
+
 // Delete a session and all its child sessions (cascade delete)
 export function deleteSession(sessionId: string): DeleteSessionResult {
+	announceSessionsAboutToBeDeleted(sessionId);
 	const result = sessionRepository.deleteSession(sessionId);
 	// 会话目录整棵被 `rmSync(recursive)` 掉(events.jsonl 与 blobs/ 都在里面),
 	// 所以这里只需要把进程内那三张表跟着摘掉 —— 留着的话,同 id 的新会话会接着

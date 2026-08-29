@@ -149,7 +149,21 @@ export interface RuntimePermissionsAdapter<TPermissionResponse = unknown> {
  * 与回来合并两道护栏搬进 `backend/server/settings-projection.ts`,由域处理者在
  * `transport === 'http'` 那一支上调用。**本域在 server 上零推送**,所以 facade
  * 上一格不留(`SETTINGS_CHANGED` 是桌面独有的窗间广播)。
+ *
+ * **共享层读侧补齐 E 批把推送那一格加了回来**(读写四条仍然只走 `settingsRouter`,
+ * 那一段判词一字未改)。理由是"桌面独有"这句话在新壳上不成立:浏览器与 React 壳
+ * 都读同一本 `<store>/settings.json`,却听不见它变了,主题联动因此断在半路。
+ * 它只有订阅面 —— 出门那份**逐字复用 http 分叉已有的脱敏投影**
+ * (`sanitizeSettingsForClient`),所以 SSE 上流的与 `settings.getSettings` 在
+ * 同一条 Bearer 闸后交出去的是同一形状,不多一格。
  */
+export interface RuntimeSettingsAdapter {
+  subscribeChanged?(
+    handler: (settings: unknown) => void,
+    context?: RuntimeRequestContext,
+  ): RuntimeUnsubscribe
+}
+
 
 /**
  * 结构债 P4 终态批 A1-b:`query` 这一格没了 —— **数据面**随 `searchRouter` 走通用
@@ -295,6 +309,7 @@ export interface OnethingRuntimeFacadeOptions<
   events: RuntimeEventsAdapter<TEvent>
   streams?: RuntimeStreamsAdapter<TChunk>
   permissions?: RuntimePermissionsAdapter<TPermissionResponse>
+  settings?: RuntimeSettingsAdapter
   search?: RuntimeSearchAdapter
   files?: RuntimeFilesAdapter
   media?: RuntimeMediaAdapter
@@ -329,6 +344,7 @@ export interface OnethingRuntimeFacade<
   readonly events: RuntimeEventsAdapter<TEvent>
   readonly streams?: RuntimeStreamsAdapter<TChunk>
   readonly permissions?: RuntimePermissionsAdapter<TPermissionResponse>
+  readonly settings?: RuntimeSettingsAdapter
   readonly search?: RuntimeSearchAdapter
   readonly files?: RuntimeFilesAdapter
   readonly media?: RuntimeMediaAdapter
@@ -398,6 +414,7 @@ export function createOnethingRuntimeFacade<
     events: Object.freeze({ ...options.events }),
     streams: options.streams ? Object.freeze({ ...options.streams }) : undefined,
     permissions: options.permissions ? Object.freeze({ ...options.permissions }) : undefined,
+    settings: options.settings ? Object.freeze({ ...options.settings }) : undefined,
     search: options.search ? Object.freeze({ ...options.search }) : undefined,
     files: options.files ? Object.freeze({ ...options.files }) : undefined,
     media: options.media ? Object.freeze({ ...options.media }) : undefined,

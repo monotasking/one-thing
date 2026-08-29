@@ -118,6 +118,13 @@ import {
 	getOAuthEventBroadcaster,
 	type OAuthTokenEvent,
 } from "../wiring/auth/oauth-events.js";
+// E 批:设置变更的推送端口。数据面(读 / 存 / 系统深浅色 / 代理自检)仍然只走
+// `settingsRouter`,这里只串一条广播 —— 见下面 `settingsChangedHandlers`。
+import {
+	configureSettingsEventBroadcaster,
+	getSettingsEventBroadcaster,
+	type SettingsEvent,
+} from "../wiring/settings/events.js";
 // `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
 // 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
 import { isCollabV3RuntimeRunning } from "../wiring/collab/index.js";
@@ -253,6 +260,10 @@ import {
 	writeJsonFile as writeCoreJsonFile,
 	writeJsonFileAsync as writeCoreJsonFileAsync,
 } from "@onething/core/storage";
+import {
+	deriveSessionLastMessagePreview,
+	findLastPreviewableMessage,
+} from "@onething/core/session";
 import { mergeWithDefaults } from "@shared/defaults/settings.js";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
@@ -313,6 +324,7 @@ import { ServerMCPClient } from "./mcp-client.js";
 // 起设置面那半也搬到了 `./settings-projection.js`,两处都由域处理者的 http 分叉调用。
 // 这里只剩一条再导出 —— 测试与旧调用点从 `server/runtime.js` 取那个哨兵常量。
 export { SERVER_REDACTED_SECRET } from "./mcp-secrets.js";
+import { sanitizeSettingsForClient } from "./settings-projection.js";
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index.js";
 import { consolePort, getLogger } from '../wiring/logging/index.js'
@@ -321,7 +333,7 @@ import type { OnethingPromptStoreAdapters } from '@onething/runtime/prompts/stor
 import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimeEventsAdapter, RuntimeStreamsAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeMediaAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/core/runtime-facade'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
-import type { RuntimeSearchAdapter, RuntimeMutationResult } from '@onething/core/runtime-facade'
+import type { RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from '@onething/core/runtime-facade'
 
 const log = getLogger('server.runtime')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -350,6 +362,8 @@ type ServerChatSession = ChatSession & {
 	ownerWorkspaceId?: string;
 	messageCount?: number;
 	previewText?: string;
+	/** E 批:最后一条 user/assistant 消息的预览(经 `toSessionMeta` 落到索引元数据)。 */
+	lastMessagePreview?: string;
 };
 
 /** 一条会话的租户归属(两格都可能缺席 —— 缺席 = 无主,见 `ownsSession`)。 */
@@ -1276,6 +1290,47 @@ async function createServerRuntimeOverServerBackend(
 		configureOAuthEventBroadcaster(previousOAuthEventBroadcaster);
 		oauthTokenEventHandlers.clear();
 	};
+	/**
+	 * 设置变更(E 批)——**与 oauth 逐字同形**的单槽端口串联:先让宿主那只把
+	 * 事件推给窗口,再扇进这里的 SSE 订阅表;`shutdown()` 还原。
+	 *
+	 * 两件事故意与桌面那一侧不同,理由都写在这儿:
+	 *
+	 *  - **载荷脱敏**。桌面回灌的是整份 `AppSettings`(同一台机器,设置页要读到
+	 *    自己刚填的凭证);SSE 那头是网络对端,所以过一遍 `sanitizeSettingsForClient`
+	 *    —— **逐字复用** `settings.getSettings` 在 `transport === 'http'` 那一支上
+	 *    已经在用的那个投影,于是推送与读取交出去的是同一形状,一格不多。
+	 *  - **不排除发起窗**。`excludeCallerId` 说的是"哪扇 BrowserWindow 别收自己的
+	 *    回声",它是 `webContents.id`;SSE 连接里没有那样一个东西,而浏览器那侧
+	 *    发起保存后本来就要用回执刷新自己。原样全发。
+	 */
+	const settingsChangedHandlers = new Set<(settings: AppSettings) => void>();
+	const previousSettingsEventBroadcaster = getSettingsEventBroadcaster();
+	configureSettingsEventBroadcaster((event: SettingsEvent) => {
+		previousSettingsEventBroadcaster?.(event);
+		if (settingsChangedHandlers.size === 0) return;
+		const sanitized = sanitizeSettingsForClient(event.settings);
+		for (const handler of settingsChangedHandlers) {
+			try {
+				handler(sanitized);
+			} catch (error) {
+				log.error("settings changed broadcast failed", {}, error);
+			}
+		}
+	});
+	const restoreSettingsEventBroadcaster = (): void => {
+		configureSettingsEventBroadcaster(previousSettingsEventBroadcaster);
+		settingsChangedHandlers.clear();
+	};
+	const settingsPort: RuntimeSettingsAdapter = {
+		subscribeChanged(handler) {
+			const typedHandler = handler as (settings: AppSettings) => void;
+			settingsChangedHandlers.add(typedHandler);
+			return () => {
+				settingsChangedHandlers.delete(typedHandler);
+			};
+		},
+	};
 	const subscribeOAuthTokenEvents = (
 		handler: (event: OAuthTokenEvent) => void,
 	): RuntimeUnsubscribe => {
@@ -2136,8 +2191,10 @@ async function createServerRuntimeOverServerBackend(
 		// 出门脱敏与回来合并两道真护栏搬进 `server/settings-projection.ts`,由域处理者
 		// 在 `transport === 'http'` 那一支上逐字调用;读写的那份设置从 server 自己
 		// 那本 per-owner 缓存改成装配层单例(拍板 #20,同 mcp / oauth / agents 判例)。
-		// **本域推送不在这里**:`SETTINGS_CHANGED` 是桌面独有的窗间广播,旧 server
-		// 本来就没有它(web 壳上是个 noop 退订)。
+		// **推送那一格 E 批加了回来**(数据面四条一字未动):浏览器 / React 壳读的是
+		// 同一本 `<store>/settings.json`,却听不见它变了,主题联动因此断在半路。
+		// 它骑既有的 `GET /api/events`,不新开路由;出门那份过同一个脱敏投影。
+		settings: settingsPort,
 		// P4 终态批 A1-b:`query` 这一格没了 —— 数据面随 `searchRouter` 走通用 RPC,
 		// **实现一行没搬**(同一个闭包改成注册进 `server/search-providers.ts` 的单槽
 		// 端口,见上面的 `restoreServerSearchPort`)。留下的 `executeAction` 是**窗口
@@ -2245,6 +2302,7 @@ async function createServerRuntimeOverServerBackend(
 			configureTodoPlanHost(previousTodoPlanHostPorts);
 			configureScratchpadHost(previousScratchpadHostPorts);
 			restoreOAuthEventBroadcaster();
+			restoreSettingsEventBroadcaster();
 			restoreServerPluginCatalogPort();
 			restoreServerSearchPort();
 			for (const variableRuntime of variableRuntimesByOwner.values()) {
@@ -2487,6 +2545,10 @@ function refreshSessionMeta(
 	if (!options.preserveUpdatedAt) session.updatedAt = Date.now();
 	session.messageCount = messages.length;
 	session.previewText = sessionPreviewText(messages);
+	// E 批:与 `previewText`(第一句)并列的"最近说到哪儿",同一刻算,同一个纯函数。
+	session.lastMessagePreview = deriveSessionLastMessagePreview(
+		findLastPreviewableMessage(messages),
+	);
 	if (session.name === "New Chat" && session.previewText) {
 		session.name = session.previewText.slice(0, 40);
 	}
@@ -2623,6 +2685,11 @@ function toSessionMeta(session: ServerChatSession): SessionMeta {
 		// 这里不再自己数一遍 `session.messages`(两只仓库各有各的取数口)。
 		messageCount: session.messageCount ?? 0,
 		previewText: session.previewText,
+		// 条件展开而不是直给:这份投影被 `Object.assign(meta, ...)` 灌进索引元数据,
+		// 直给 undefined 会把命令面刚维护好的那一格洗掉。
+		...(session.lastMessagePreview !== undefined
+			? { lastMessagePreview: session.lastMessagePreview }
+			: {}),
 	};
 }
 
@@ -3376,6 +3443,9 @@ function normalizeStoredServerSession(
 	if (!session.lastModel) session.lastModel = "local-echo";
 	session.messageCount = messages.length;
 	session.previewText = session.previewText ?? sessionPreviewText(messages);
+	session.lastMessagePreview =
+		session.lastMessagePreview ??
+		deriveSessionLastMessagePreview(findLastPreviewableMessage(messages));
 	return session;
 }
 

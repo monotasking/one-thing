@@ -6,6 +6,7 @@ import type {
 	VoiceRuntimeCommand,
 } from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
+import type { AppSettings } from "@shared/ipc/settings.js";
 import type { RpcResponse } from "@shared/ipc/rpc.js";
 import { goalRouter } from "@shared/ipc/goal.js";
 import { promptsRouter } from "@shared/ipc/prompts.js";
@@ -483,7 +484,11 @@ const webApi = {
 	// 「开设置窗」在 web 上的等价物(改 hash)于 A1-a 搬进
 	// `shell-web/settings-window.ts`。留下的是三条 noop / 本地推送。
 	onSettingsNavigate: () => () => {},
-	onSettingsChanged: () => () => {},
+	// E 批:从空桩改成真订阅 —— 骑既有的 `GET /api/events`,server 侧把设置变更
+	// 作为一条具名 SSE 事件下发(载荷是脱敏过的整份设置,与 `settings.getSettings`
+	// 在同一道 Bearer 闸后交出去的逐字同形)。不新开路由、不新开通道。
+	onSettingsChanged: (callback: (settings: AppSettings) => void) =>
+		createEventSourceSubscription<AppSettings>("/api/events", "settings:changed", callback),
 	// web 端没有第二个窗口,也没有这条广播(批 B9-0):noop 退订即可。
 	onSpacesChanged: () => () => {},
 	// `searchQuery` 于 A1-b 迁到通用 RPC 通道的 backend `search` 域(域自己按

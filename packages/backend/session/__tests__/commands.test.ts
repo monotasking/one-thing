@@ -17,7 +17,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { SessionAccountState } from '@onething/core/session'
 
-const state = vi.hoisted(() => ({ messages: [] as ChatMessage[] }))
+const state = vi.hoisted(() => ({
+  messages: [] as ChatMessage[],
+  /**
+   * E 批:**写完之后**的那份投影。
+   *
+   * 生产里 `events?.<cmd>()` 在 `updateSessionsIndexMeta` 之前就把活投影推过去了
+   * (F1 同步可见),所以写门问 `sessionReads` 拿到的是**写后**的状态;而
+   * `hasMessage`(判据)问的是写**前**那份。这只 harness 把 `events` 关掉了,
+   * 两者于是会塌成同一个数组 —— 用这一格把"写后"那半单独摆出来。
+   * 缺席 = 两者相同(既有用例逐字不变)。
+   */
+  projection: undefined as ChatMessage[] | undefined,
+}))
+
+/** 写门问读门面时看到的那一份(写后)。 */
+const projected = () => state.projection ?? state.messages
 
 vi.mock('../events-reads.js', () => ({
   eventsHasMessage: (_sessionId: string, messageId: string) =>
@@ -29,7 +44,22 @@ vi.mock('../reads.js', () => ({
     getMessage: (_sessionId: string, messageId: string) =>
       state.messages.find(item => item.id === messageId),
     listMessages: () => ({ messages: state.messages, changed: false }),
-    countMessages: () => state.messages.length,
+    countMessages: () => projected().length,
+    // E 批:截断 / 删除之后写门要回头找"最后一条说过的话"补预览格。
+    findMessage: (
+      _sessionId: string,
+      predicate: (message: ChatMessage, index: number) => boolean,
+      options: { from?: 'start' | 'end' } = {},
+    ) => {
+      const messages = projected()
+      if (options.from === 'end') {
+        for (let index = messages.length - 1; index >= 0; index--) {
+          if (predicate(messages[index], index)) return messages[index]
+        }
+        return undefined
+      }
+      return messages.find(predicate)
+    },
   },
 }))
 
@@ -54,6 +84,7 @@ function harness(
   account: AccountSource = { totalInputTokens: 0, totalOutputTokens: 0, totalTokens: 0, updatedAt: NOW },
 ) {
   state.messages = messages
+  state.projection = undefined
   const session = {
     id: 's1',
     name: 's1',
@@ -320,5 +351,87 @@ describe('写门 —— 会话账落格(产地是折叠)', () => {
     expect(h.commands.truncateFrom('s1', { messageId: 'gone', inclusive: true })).toBe(false)
     expect(h.commands.truncateFrom('s1', { messageId: 'gone', inclusive: false, newContent: 'x' })).toBe(false)
     expect(h.saves).toEqual([])
+  })
+})
+
+/**
+ * **会话列表投影的两格**(E 批)——`lastMessagePreview` / `messageCount` 与
+ * `updatedAt` 同刻维护,一格不多一格不少。
+ *
+ * 规则那一层由 `backend/stores/__tests__/session-list-projection.test.ts` 守;
+ * 这里守的是**接线**:哪条命令盖、哪条不盖、盖的时候用的是哪一条消息。
+ */
+describe('写门 —— 会话列表投影(lastMessagePreview / messageCount)', () => {
+  it('appendMessage:预览取刚追加的那一条,计数取投影', () => {
+    const appended = message('m1', { role: 'user', content: '帮我看下' })
+    const h = harness([])
+    // 写后的投影里已经有这一条(F1 同步可见);写门问它要计数。
+    state.projection = [appended]
+    h.commands.appendMessage('s1', { message: appended })
+    expect(h.indexMetaUpdates.at(-1)).toMatchObject({
+      messageCount: 1,
+      lastMessagePreview: '帮我看下',
+    })
+  })
+
+  it('appendMessage:流式助手占位是空正文 —— 预览格不动,计数照走', () => {
+    const h = harness([message('m1', { role: 'user', content: '用户上一句' })])
+    state.projection = [...state.messages]
+    h.commands.appendMessage('s1', { message: state.messages[0] })
+    expect(h.indexMetaUpdates.at(-1)?.lastMessagePreview).toBe('用户上一句')
+
+    const placeholder = message('m2', { role: 'assistant', content: '', isStreaming: true })
+    state.projection = [...state.messages, placeholder]
+    h.commands.appendMessage('s1', { message: placeholder })
+    const meta = h.indexMetaUpdates.at(-1)
+    // 这一格在写门上没有产地(空正文),所以它保持缺席 —— 真索引里上一次写下的
+    // 那句话原样留着(写门是"就地改 meta",不是整份重建)。
+    expect('lastMessagePreview' in (meta ?? {})).toBe(false)
+    expect(meta?.messageCount).toBe(2)
+  })
+
+  it('patchMessage 一格都不盖 —— 逐 token 的补丁不该把会话顶到列表最前面', () => {
+    const h = harness([message('m1', { role: 'assistant', content: '' })])
+    h.commands.patchMessage('s1', { messageId: 'm1', patch: { content: '一个 token' } })
+    expect(h.indexMetaUpdates).toEqual([])
+  })
+
+  it('deleteMessage:预览回退到剩下的最后一条"说过的话"', () => {
+    const h = harness([
+      message('m1', { role: 'user', content: '第一句' }),
+      message('m2', { role: 'assistant', content: '第二句' }),
+    ])
+    // 删掉之后投影里只剩第一条(判据仍看写前那份 —— 与生产同序)。
+    state.projection = [state.messages[0]]
+    expect(h.commands.deleteMessage('s1', { messageId: 'm2' })).toBe(true)
+    expect(h.indexMetaUpdates.at(-1)).toMatchObject({
+      messageCount: 1,
+      lastMessagePreview: '第一句',
+    })
+  })
+
+  it('replaceAll(clear):计数归零,预览一起清掉', () => {
+    const h = harness([message('m1', { role: 'user', content: '会被清掉' })])
+    return h.commands.replaceAll('s1', { messages: [], reason: 'clear' }).then(() => {
+      const meta = h.indexMetaUpdates.at(-1)
+      expect(meta?.messageCount).toBe(0)
+      expect('lastMessagePreview' in (meta ?? {})).toBe(false)
+    })
+  })
+
+  it('replaceAll(replaced):预览取新那份的最后一条 user/assistant', () => {
+    const h = harness([message('m0', { role: 'user', content: '旧的' })])
+    const next = [
+      message('n1', { role: 'user', content: '新的第一句' }),
+      message('n2', { role: 'assistant', content: '新的最后一句' }),
+      // `ChatMessage['role']` 里没有 'tool' 这一档;系统标记同样不算"说过的话"。
+      message('n3', { role: 'system', content: '系统标记不算' }),
+    ]
+    return h.commands.replaceAll('s1', { messages: next, reason: 'replaced' }).then(() => {
+      expect(h.indexMetaUpdates.at(-1)).toMatchObject({
+        messageCount: 3,
+        lastMessagePreview: '新的最后一句',
+      })
+    })
   })
 })

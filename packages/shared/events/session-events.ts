@@ -518,6 +518,24 @@ export interface SessionLedgerEvent {
   record: SessionLogEventRecord
 }
 
+/**
+ * 这条会话被删了(E 批)。级联删子会话时**每个 id 各发一条**,各发在自己的
+ * `sessionId` 上 —— 通配订阅的归属判据是逐条问的,合成一条会让子会话失去自己的
+ * 那次判定。
+ *
+ * **它与 `global-events.ts` 的 `SessionDeletedEvent` 说的是同一件事,但不是同一
+ * 条车道**:那一只在全局总线上(`emitGlobal` / `onGlobal`),只有进程内的插件
+ * 订阅得到,既不进 IPCBridge 也不进 SSE。两张词汇表的**值必须不相交**(理由见
+ * `SESSION_EVENT_TYPES.SESSION_REMOVED` 的注释),所以这一条叫 `removed`。
+ */
+export interface SessionRemovedEvent {
+  type: typeof SESSION_EVENT_TYPES.SESSION_REMOVED
+  /** 冗余一份,便于消费侧不看信封也能用。与 envelope.sessionId 恒等。 */
+  sessionId: string
+  /** 这次删除动作里一起没掉的全部会话(含自己)。 */
+  cascadedSessionIds: readonly string[]
+}
+
 // ── Steering events ─────────────────────────────
 
 /** A steering message was persisted and queued; retractable until consumed. */
@@ -686,6 +704,7 @@ export type SessionEvent =
   | SessionRenamedEvent
   | SessionCollabUpdatedEvent
   | SessionLedgerEvent
+  | SessionRemovedEvent
   | SteeringQueuedEvent
   | SteeringConsumedEvent
   | SteeringRetractedEvent

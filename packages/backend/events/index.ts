@@ -31,6 +31,17 @@ export function getEventBus(): EventBus {
 }
 
 /**
+ * 事件系统立起来了没有 —— 给那些**"有就发,没有就算了"**的产地用。
+ *
+ * 第一个用户是删会话的推送(`stores/sessions.ts`):删会话在没装配事件系统的
+ * 进程里(轻量单测、脚本)照样得能删,而 `getEventBus()` 那一声 throw 会被
+ * try/catch 吞掉、留下一行没人需要的 warn。问一句比事后吞一个异常干净。
+ */
+export function isEventSystemInitialized(): boolean {
+  return eventBus !== null
+}
+
+/**
  * Get the singleton StreamChannel instance.
  * Throws if called before initializeEventSystem().
  */

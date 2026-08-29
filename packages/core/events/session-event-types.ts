@@ -77,6 +77,33 @@ export const SESSION_EVENT_TYPES = {
    * 所以**没有新通道常量**。
    */
   SESSION_LEDGER_EVENT: 'session:ledger-event',
+  /**
+   * 共享层读侧补齐 E 批:**这条会话没有了**。
+   *
+   * 为什么它必须是一条**会话事件**而不是全局总线事件(`emitGlobal`):全局那条
+   * 车道只有进程内的 `onGlobal` 订阅者(插件),它既不进 IPCBridge 也不进 SSE
+   * —— 浏览器/新壳因此永远听不见。骑既有的 `session:event` 推送面,桌面
+   * (`onAnySessionAny` → IPCBridge)与 web(`?sessionId=*` 的 SSE)是**同一条**
+   * 总线的两个观察者,一条事件两边都有,**零新通道**。
+   *
+   * 建会话那一半不需要新词:`session/created` 是账本的第一条,B 期起随
+   * `SESSION_LEDGER_EVENT` 原样下发。删会话在账本上没有对应的一条(目录连同
+   * `events.jsonl` 一起没了),所以这一格是它唯一的说法。
+   *
+   * **它必须在真正删之前发**:web 侧的通配订阅逐条问"这条会话你读得到吗"
+   * (`ownerMatchesContext`),删完再发就永远被那把尺子滤掉。
+   *
+   * ## 为什么是 `removed` 而不是 `deleted`
+   *
+   * 全局总线(`@shared/events/global-events.ts`)上已经有一个字面量
+   * `'session:deleted'`,那是插件订阅的那条车道。两张词汇表**必须值不相交** ——
+   * `scripts/headless-boundary-check.ts` 的
+   * `checkSessionVocabularyUsesTheRegistry` 用精确值集扫全仓禁手打字面量,它的
+   * 设计前提写在那个函数的注释里:"精确值集不会误伤全局事件 `session:created`"。
+   * 复用同一个字符串会让那把尺子把全局车道那四处合法字面量一起判红 —— 于是这里
+   * 换一个词,而不是去放宽守卫。
+   */
+  SESSION_REMOVED: 'session:removed',
 } as const satisfies Record<string, `${string}:${string}`>
 
 export type SessionEventType = (typeof SESSION_EVENT_TYPES)[keyof typeof SESSION_EVENT_TYPES]

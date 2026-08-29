@@ -49,8 +49,10 @@ import type {
   SessionMeta,
 } from '@shared/ipc.js'
 import {
+  applySessionListProjectionToMeta,
   applySessionMessageAppendToMeta,
   applySessionUpdatedAtToMeta,
+  findLastPreviewableMessage,
   type SessionAccountState,
   type SessionAccountTruncationEffect,
 } from '@onething/core/session'
@@ -303,6 +305,37 @@ export function createSessionCommands(
   const hasMessage = (sessionId: string, messageId: string): boolean =>
     eventsHasMessage(sessionId, messageId)
 
+  /**
+   * **会话列表投影**的两格(`messageCount` / `lastMessagePreview`)。
+   *
+   * 它挂在这批 `updateSessionsIndexMeta` 上,与 `updatedAt` 一起走,一格不多
+   * 一格不少 —— 于是"列表读只读索引元数据"这条纪律不用为了一行预览破例。
+   *
+   * `lastMessage` 由调用点给:追加那两支手上就是那一条(O(1),不物化);
+   * 截断 / 删除 / 整换那三支的最后一条变了,才去投影上倒着找一次。
+   *
+   * `countMessages` 走的是活投影的节点表(`eventsCountMessages`,过一遍 hidden
+   * 标记),不物化消息体。
+   */
+  const applyListProjection = (
+    sessionId: string,
+    meta: { [key: string]: unknown },
+    lastMessage: ChatMessage | Readonly<ChatMessage> | undefined,
+  ): void => {
+    applySessionListProjectionToMeta(meta as never, {
+      messageCount: sessionReads.countMessages(sessionId),
+      lastMessage,
+    })
+  }
+
+  /** 截断 / 删除之后"最后一条说过的话"是谁 —— 只有这两支需要回头找。 */
+  const lastPreviewableMessage = (sessionId: string): Readonly<ChatMessage> | undefined =>
+    sessionReads.findMessage(
+      sessionId,
+      message => message.role === 'user' || message.role === 'assistant',
+      { from: 'end' },
+    )
+
   return {
     appendMessage(sessionId, payload) {
       const message = payload.stampCollab && ports.stampCollabAgentId
@@ -322,8 +355,10 @@ export function createSessionCommands(
       events?.appendMessage(sessionId, message, at)
       landAccountIdentity(session, readAccount(sessionId), at, message)
       ports.saveSession(sessionId, session)
-      ports.updateSessionsIndexMeta(sessionId, meta =>
-        applySessionMessageAppendToMeta(meta as never, session as never, message as never))
+      ports.updateSessionsIndexMeta(sessionId, meta => {
+        applySessionMessageAppendToMeta(meta as never, session as never, message as never)
+        applyListProjection(sessionId, meta, message)
+      })
       return message
     },
 
@@ -346,8 +381,10 @@ export function createSessionCommands(
       ports.saveSession(sessionId, session)
       // 就地换掉那一支不动索引(归约器退役前 `indexMetaChanged: false`)。
       if (!existed) {
-        ports.updateSessionsIndexMeta(sessionId, meta =>
-          applySessionMessageAppendToMeta(meta as never, session as never, message as never))
+        ports.updateSessionsIndexMeta(sessionId, meta => {
+          applySessionMessageAppendToMeta(meta as never, session as never, message as never)
+          applyListProjection(sessionId, meta, message)
+        })
       }
       return true
     },
@@ -403,8 +440,10 @@ export function createSessionCommands(
       const effect = account?.lastTruncation
       if (effect && effect !== effectBefore) landTruncationEffect(session, effect)
       ports.saveSession(sessionId, session)
-      ports.updateSessionsIndexMeta(sessionId, meta =>
-        applySessionUpdatedAtToMeta(meta as never, session as never))
+      ports.updateSessionsIndexMeta(sessionId, meta => {
+        applySessionUpdatedAtToMeta(meta as never, session as never)
+        applyListProjection(sessionId, meta, lastPreviewableMessage(sessionId))
+      })
       return true
     },
 
@@ -425,8 +464,10 @@ export function createSessionCommands(
       landAccountIdentity(session, readAccount(sessionId), at)
       ports.saveSession(sessionId, session)
       // E4:老路径漏了这一步,列表里的 updatedAt 因此停在删除之前。
-      ports.updateSessionsIndexMeta(sessionId, meta =>
-        applySessionUpdatedAtToMeta(meta as never, session as never))
+      ports.updateSessionsIndexMeta(sessionId, meta => {
+        applySessionUpdatedAtToMeta(meta as never, session as never)
+        applyListProjection(sessionId, meta, lastPreviewableMessage(sessionId))
+      })
       return true
     },
 
@@ -452,8 +493,12 @@ export function createSessionCommands(
 
       ports.updateSessionsIndexMeta(sessionId, meta => {
         meta.updatedAt = session.updatedAt
-        meta.messageCount = payload.messages.length
         if (payload.messages.length === 0) delete meta.previewText
+        // 整换那一支手上就是新的全份消息 —— 计数与最后一条都从它取,不必回读投影。
+        applySessionListProjectionToMeta(meta as never, {
+          messageCount: payload.messages.length,
+          lastMessage: findLastPreviewableMessage(payload.messages),
+        })
       })
 
       if (isClear) await ports.flushSessionSave(sessionId)

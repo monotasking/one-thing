@@ -69,8 +69,23 @@
 #   lines:http.ts 726→743(+17):`checkRequestAuthorization` 多收一个 `url` 形参,
 #     **仅** `GET /api/events` 认 `?token=`(EventSource 带不了 header,别无他路),
 #     走同一个 `tokenMatches` 常时比较;名单只有这一条,请求日志只记 pathname。
+# 2026-08-29 共享层读侧补齐 E 批:**两项显式上调,通道数一条没动**。
+#   channels 42 / channels.ts 234 / bridge 674 全部不变 —— 本批没有新通道、没有新 REST 路由,
+#   涨的是既有那条 `GET /api/events` 上多下发**一种具名 SSE 事件**,以及 web 壳把对应的
+#   空桩换成真订阅。
+#   lines:http.ts 775→786(+11):`handleEvents` 里多一段 `settings:changed` 的订阅转发
+#     (`runtime.settings?.subscribeChanged` 在场才挂)。它**不进合批器、不占会话事件的 seq**
+#     —— 重连的 Last-Event-ID 只对会话事件序号有意义,注释就写在那一段上面。
+#     不新开 `/api/settings/events`:那会同时长一条路由与一条壳税,而这条推送与会话事件
+#     天然同一批订阅者(打开页面就要听)。
+#   lines:web.ts 770→775(+5):`onSettingsChanged` 从 `() => () => {}` 换成
+#     `createEventSourceSubscription("/api/events", "settings:changed", cb)`(+ 一个类型 import
+#     与三行解释)。桌面侧 `SETTINGS_CHANGED` 一行未动。
+#   会话生命周期(建 / 删)那一半**零行变化**:建骑既有的 `session:ledger-event`,
+#   删新增一条**会话事件词**(`SESSION_EVENT_TYPES.SESSION_REMOVED`,不是 `IPC_CHANNELS` 常量),
+#   渲染侧的折叠住在壳外一个模块 `platform/session-lifecycle.ts` —— 四壳一行不动。
 channels:IPC_CHANNELS 42
 lines:apps/electron/src/preload/bridge.ts 674
-lines:packages/backend/server/http.ts 775
-lines:packages/renderer/platform/web.ts 770
+lines:packages/backend/server/http.ts 786
+lines:packages/renderer/platform/web.ts 775
 lines:packages/shared/ipc/channels.ts 234

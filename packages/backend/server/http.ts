@@ -502,6 +502,17 @@ function handleEvents(context: RouteContext): void {
     }, options, context.requestContext))
   }
 
+  // 设置变更(E 批):**骑这条已有的 SSE**,不新开 `/api/settings/events` ——
+  // 它不是会话事件,所以不进合批器、不占 `session:event` 的 seq(重连的
+  // Last-Event-ID 只对会话事件序号有意义)。载荷是脱敏过的整份设置,与
+  // `settings.getSettings` 在 http 分叉上交出去的逐字同形。
+  const settingsAdapter = context.runtime.settings
+  if (settingsAdapter?.subscribeChanged) {
+    unsubs.push(settingsAdapter.subscribeChanged((settings: unknown) => {
+      writeSse(context.response, 'settings:changed', settings)
+    }, context.requestContext))
+  }
+
   context.request.on('close', () => {
     for (const unsubscribe of unsubs) unsubscribe()
     coalescer.dispose()

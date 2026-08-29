@@ -623,6 +623,15 @@ export interface SessionMeta {
   // Additional metadata for display (computed on save)
   messageCount?: number      // Number of messages in session
   previewText?: string       // First user message preview (truncated)
+  /**
+   * 最后一条 user/assistant 消息的纯文本预览(共享层读侧补齐 E 批)。
+   *
+   * 与 `previewText`(**第一条**用户消息)并列的另一格,不是它的替代:一个是
+   * "从哪句话开的",一个是"最近说到哪儿"。写侧与 `updatedAt` 同刻维护,所以
+   * 会话列表读仍然只是一次索引元数据读;缺席 = 这条会话自那一批上线后还没写过
+   * 一个字(**不做启动期全量回填**,理由见 `core/session/store-helpers.ts`)。
+   */
+  lastMessagePreview?: string
   // Active project directory, surfaced into the list so the sidebar can group
   // by project. Persisted per-session (meta.json); the fast index backfills it.
   workingDirectory?: string
