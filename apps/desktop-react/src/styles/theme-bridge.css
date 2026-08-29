@@ -40,8 +40,14 @@
   --text-4: var(--ui-text-faint-fg); /* 最淡的一档;placeholder/disabled 另有其键,新壳不用 */
 
   /* ── 线两档 ────────────────────────────────────────────────────────────── */
-  --line-1: var(--ui-border-subtle-border); /* 淡线:分隔、行间 */
-  --line-2: var(--ui-border-default-border); /* 深线:控件边、卡边 */
+  /* ── 线:从主题的墨现场兑,不吃主题的 border token ──────────────────────
+   * 真机取证(2026-08-29):flexoki 亮档 border-default 压在 panel 上只有 1.41:1,
+   * 用户的 after-rain-rainbow 亮档更是 1.03–1.13:1 —— 主题自带的边框 token
+   * 在低对比主题里等于没有,而新壳的深度全靠 1px 线。所以线改成
+   * 「前景墨 × 固定浓度」的派生:任何主题进来,线永远追着它自己的墨走,
+   * 浓度是新壳的规范值(淡线 12% / 深线 22%),色相自动继承主题。 */
+  --line-1: color-mix(in srgb, var(--ui-text-primary-fg) 12%, var(--ui-surface-panel-bg));
+  --line-2: color-mix(in srgb, var(--ui-text-primary-fg) 22%, var(--ui-surface-panel-bg));
 
   /* ── accent 与状态色 ──────────────────────────────────────────────────────
    * --accent-deep 在静态 palette 里是「按下去更重」的那一档;主题给的是
