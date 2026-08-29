@@ -162,6 +162,13 @@
   --expose-gap: 14px;
   --expose-max-w: 1120px;
   --card-min-h: 118px;
+  /*
+   * 卡的最小体面宽 —— 列数由它和容器宽度算出来(见 Overview.module.css 的 .grid)。
+   * 260 不是随手取的:舞台满宽(--expose-max-w 1120 减两侧 --expose-pad)下
+   * (1056 + 14) / (260 + 14) = 3.9 → 仍是 3 列,所以宽处的版式**逐像素不变**;
+   * 窄一档(约 550px 起)自然落到 2 列、再窄落到 1 列。
+   */
+  --card-min-w: 260px;
   --focus-ring-w: 3px;
   --avatar-size: 20px;
   --avatar-overlap: -6px;

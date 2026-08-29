@@ -166,6 +166,14 @@ export interface ExposeState {
   /** 焦点环是否点亮:只有键盘导航(方向键 / Quick Look 换卡)才点亮;打开总览只设锚点、不亮环 */
   focusVisible: boolean
   /**
+   * 卡网格「一行几张」。**产地是 CSS 的计算值**,不是这里算出来的:
+   * 网格用 `repeat(auto-fill, …)` 按容器宽度自适应(浮窗 / 架子的宽度连续可变),
+   * 渲染层读回那个数报进来(Overview 的 useGridColumns)。↑↓ 走一整行要用它,
+   * 所以它必须跟着屏幕走 —— 写死成 3 就会出现「窄到一列还跳三张」。
+   * 不持久化:它是当下这块面有多宽的事实,下次开可能完全不同。
+   */
+  columns: number
+  /**
    * 折叠的组 id。唯一被持久化的字段。
    *
    * D1 起**没有「默认折叠」这回事**:旧 mock 的 `ProjectMock.active` 在

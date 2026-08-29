@@ -32,6 +32,16 @@ if (broken) {
 }
 
 /**
+ * jsdom 不排版,于是也没有 `Element.prototype.scrollIntoView`(那是个布局动作)。
+ * 会话卡在拿到键盘焦点时会调它一次(SessionCard 的 focused 副作用),
+ * 所以任何「按方向键走卡」的用例都会炸在这里。补一个空实现:
+ * 真正要验的是**焦点落在哪张卡**,滚动到视野里是浏览器的事,不是这一层的断言对象。
+ */
+if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = function scrollIntoView() {}
+}
+
+/**
  * 会话数据源的端口:测试里默认是**一个什么都不回的假端口**。
  *
  * 不装这一手的话,任何渲染了会话侧的用例都会经 `sessionsPort()` 动态 import

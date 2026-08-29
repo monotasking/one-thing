@@ -1,10 +1,10 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search } from '../../components/icons'
 import { Button } from '../../ui/Button'
 import { plural, useT } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
-import { filterGroups, isCollapsed } from '../transitions'
+import { columnsFromTemplate, filterGroups, isCollapsed } from '../transitions'
 import { Highlight } from './Highlight'
 import { SessionCard } from './SessionCard'
 import s from './Overview.module.css'
@@ -22,19 +22,85 @@ import s from './Overview.module.css'
  * 退役的是 `SearchResults`(三层缩进的命中列表)—— 它是「搜索换一种呈现」那条路
  * 的全部实现,连同它的 CSS 与 `SearchHit` 形状一起删了。
  */
-export function Overview() {
+interface Props {
+  /**
+   * 这块面被摆出来了吗(ExposeView 算好递进来的同一份事实)。
+   * 只有真的摆出来才抢焦点 —— Dock 悬停预览泡里也渲染一份 Overview,
+   * 那一份 placed 恒为假:看一眼不该把光标从别处夺走。
+   */
+  placed?: boolean
+}
+
+/**
+ * 「一行几张」的产地:**读 CSS 的计算值**,不在 JS 里重算一遍 auto-fill 的公式。
+ * 两份公式就是两份真相,迟早对不上;这里只做「量一眼再报进状态机」。
+ *
+ * 量的时机 = 容器尺寸变了(ResizeObserver)+ 组数变了(网格可能刚出现 / 刚消失)。
+ * jsdom 没有 ResizeObserver、getComputedStyle 也算不出网格轨道,
+ * 所以两处都是「量不到就不动状态」—— 单测里列数保持出厂值,不会被环境噪声改写。
+ */
+function useGridColumns(
+  hostRef: RefObject<HTMLElement | null>,
+  report: (columns: number) => void,
+  groupCount: number,
+) {
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const measure = () => {
+      const grid = host.querySelector<HTMLElement>('[data-grid]')
+      if (!grid) return
+      const columns = columnsFromTemplate(getComputedStyle(grid).gridTemplateColumns)
+      if (columns !== null) report(columns)
+    }
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(host)
+    return () => observer.disconnect()
+  }, [hostRef, report, groupCount])
+}
+
+export function Overview({ placed = false }: Props) {
   const t = useT()
   const state = useExposeStore()
   const allGroups = useSessionsSource((st) => st.groups)
   const status = useSessionsSource((st) => st.status)
   const error = useSessionsSource((st) => st.error)
   const inputRef = useRef<HTMLInputElement>(null)
+  const innerRef = useRef<HTMLDivElement>(null)
   const query = state.query
   const searching = query.trim().length > 0
 
   const groups = useMemo(() => filterGroups(allGroups, query), [allGroups, query])
 
+  useGridColumns(innerRef, state.setColumns, groups.length)
+
+  /*
+   * 摆出来的那一刻,键盘归这块面 —— 焦点落进搜索条。
+   * 在此之前它归 Dock 上那块瓦(点开面板的那个按钮),于是「刚开完面板按一下空格」
+   * 会再次触发那颗按钮、把面板关掉:那是 08-30 用户报的键盘死区的另一半。
+   * 依赖是 placed 这个布尔量而不是挂载:舞台 ⇄ 浮窗 ⇄ 架子搬家时它不变,不会重复抢焦点。
+   */
+  useEffect(() => {
+    if (placed) inputRef.current?.focus()
+  }, [placed])
+
   const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    /*
+     * ↑↓ = 把键盘交给卡网格(词留着、输入框失焦),之后方向键 / 空格 / 回车
+     * 就都是总览那一套了。这是命令面板的通行手势(搜索条在上、结果在下)。
+     *
+     * ←→ **故意不接**:它们在一个还在编辑的输入框里是移光标,是文本编辑的基本盘;
+     * 为了「网格是二维的」把它抢走,代价是搜索条里没法改词。所以口径定成:
+     * 纵向交接、横向留给光标 —— 交接之后焦点在网格上,四个方向才一起归导航。
+     */
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      state.focusGrid()
+      inputRef.current?.blur()
+      return
+    }
     if (e.key !== 'Enter') return
     // 回车 = 进入**屏幕上第一张卡**。它就是过滤后的阅读次序的头一个,
     // 不再有第二套「命中排序」—— 看到什么,回车就进什么。
@@ -110,7 +176,7 @@ export function Overview() {
             */}
             <div className={collapsed ? `${s.body} ${s.bodyClosed}` : s.body} inert={collapsed || undefined}>
               <div className={s.bodyInner}>
-                <div className={s.grid}>
+                <div className={s.grid} data-grid>
                   {group.sessions.map((session) => (
                     <SessionCard
                       key={session.id}
@@ -185,7 +251,7 @@ export function Overview() {
       </header>
 
       <div className={s.scroll}>
-        <div className={s.inner}>{renderGroups()}</div>
+        <div className={s.inner} ref={innerRef}>{renderGroups()}</div>
       </div>
     </div>
   )

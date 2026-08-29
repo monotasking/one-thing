@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   CARD_COLS,
   backToOverview,
+  columnsFromTemplate,
   closeQuickLook,
   enterList,
   enterSession,
   escape,
+  focusGrid,
   initialExposeState,
   isCollapsed,
   moveFocus,
@@ -19,6 +21,7 @@ import {
   relativeTime,
   sessionMatchesQuery,
   sessionsRemoved,
+  setColumns,
   setQuery,
   splitHighlight,
   timeBucket,
@@ -148,6 +151,87 @@ describe('moveFocus', () => {
 
   it('↓ 走一整行(CARD_COLS 步)', () => {
     expect(moveFocus(overview, 'down', GROUPS).focusId).toBe(seq[CARD_COLS])
+  })
+
+  /*
+   * 08-30 用户报:窄成钉边架子时网格只剩一列,而 ↑↓ 仍固执地跳三张(旧代码里
+   * 列数是常量 CARD_COLS)。列数改成状态里的一格之后,「走一整行」就等于
+   * 「走 state.columns 张」—— 这三条把那个等式钉死,一列 / 两列 / 三列各一条。
+   */
+  it('↓ 走的是 state.columns 张 —— 一列时就走一张', () => {
+    const oneCol: ExposeState = { ...overview, columns: 1 }
+    expect(moveFocus(oneCol, 'down', GROUPS).focusId).toBe(seq[1])
+    const twoCols: ExposeState = { ...overview, columns: 2 }
+    expect(moveFocus(twoCols, 'down', GROUPS).focusId).toBe(seq[2])
+  })
+
+  it('↑ 同理,反向走 state.columns 张', () => {
+    const twoCols: ExposeState = { ...overview, columns: 2, focusId: seq[4], focusVisible: true }
+    expect(moveFocus(twoCols, 'up', GROUPS).focusId).toBe(seq[2])
+  })
+
+  it('列数是脏值时按一列算,不会因为一次量错就跳飞', () => {
+    const broken: ExposeState = { ...overview, columns: 0 }
+    expect(moveFocus(broken, 'down', GROUPS).focusId).toBe(seq[1])
+  })
+})
+
+/**
+ * 列数的产地是 CSS 的计算值 —— 这里只钉「怎么读那串字」与「读不出来怎么办」。
+ * 读不出来一律 null = 不动状态:jsdom 与「还没解析的 repeat()」都走这条路,
+ * 免得环境噪声把一个假列数写进状态机。
+ */
+describe('columnsFromTemplate / setColumns', () => {
+  it('计算值是解析过的轨道表,数轨道就是数列', () => {
+    expect(columnsFromTemplate('286.93px 286.93px 286.93px')).toBe(3)
+    expect(columnsFromTemplate('  300px   300px  ')).toBe(2)
+    expect(columnsFromTemplate('187px')).toBe(1)
+  })
+
+  it('读不出来一律 null:空串 / none / 还没解析的 repeat()', () => {
+    expect(columnsFromTemplate('')).toBeNull()
+    expect(columnsFromTemplate(null)).toBeNull()
+    expect(columnsFromTemplate(undefined)).toBeNull()
+    expect(columnsFromTemplate('none')).toBeNull()
+    expect(columnsFromTemplate('repeat(auto-fill, minmax(260px, 1fr))')).toBeNull()
+  })
+
+  it('setColumns 钳到 ≥1,值没变时是恒等变换(不触发重渲染)', () => {
+    expect(setColumns(overview, 2).columns).toBe(2)
+    expect(setColumns(overview, 0).columns).toBe(1)
+    expect(setColumns(overview, -3).columns).toBe(1)
+    expect(setColumns(overview, Number.NaN).columns).toBe(CARD_COLS)
+    expect(setColumns(overview, CARD_COLS)).toBe(overview)
+  })
+})
+
+/**
+ * 搜索框把键盘交给网格(08-30 键盘死区的修法):**只点亮,不移动**。
+ * 开场归位已经把锚点放好了,交接那一下要让用户看见锚点在哪 ——
+ * 顺手再走一步的话,他看见的是一个自己从没选过的位置。
+ */
+describe('focusGrid', () => {
+  it('锚点还在序列里:只点亮环,焦点一格不动', () => {
+    const dark: ExposeState = { ...overview, focusId: seq[2], focusVisible: false }
+    const lit = focusGrid(dark, GROUPS)
+    expect(lit.focusId).toBe(seq[2])
+    expect(lit.focusVisible).toBe(true)
+  })
+
+  it('环已经亮着时是恒等变换', () => {
+    const lit: ExposeState = { ...overview, focusId: seq[2], focusVisible: true }
+    expect(focusGrid(lit, GROUPS)).toBe(lit)
+  })
+
+  it('锚点被过滤 / 折叠藏起来了就落到序列首', () => {
+    const stale: ExposeState = { ...overview, focusId: 'not-on-screen', focusVisible: false }
+    expect(focusGrid(stale, GROUPS).focusId).toBe(seq[0])
+    const nofocus: ExposeState = { ...overview, focusId: null }
+    expect(focusGrid(nofocus, GROUPS).focusId).toBe(seq[0])
+  })
+
+  it('一条卡都没有时是恒等变换', () => {
+    expect(focusGrid(overview, [])).toBe(overview)
   })
 
   it('序列是展开组拼接的:方向键能从第一个项目组一路走到协作组', () => {

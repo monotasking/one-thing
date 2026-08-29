@@ -166,9 +166,26 @@
   height: var(--fs-label);
 }
 
+/*
+ * 列数不是常数,是**容器宽度除出来的**(08-30 用户报:浮窗 / 钉边窄下来时三列硬挤,
+ * 240px 的架子里每张卡只剩 42px,竖条状变形)。
+ *
+ * 选型:`repeat(auto-fill, minmax(min(--card-min-w, 100%), 1fr))`。
+ *  - 为什么不是容器查询手写断点:三种形态(舞台 / 浮窗 / 钉边)的宽度是**连续可变**的
+ *    (浮窗随手拖、架子厚度随手拽),断点表要维护一串阈值,而 auto-fill 只需要
+ *    「一张卡至少多宽」这一个事实,阈值由浏览器现算 —— 少一份会漂的真相。
+ *  - `min(…, 100%)` 是窄到极限时的护栏:架子厚度下限 240px、去掉内边距只剩百来 px,
+ *    没有这一层 minmax 的下界会撑出横向溢出(卡宽 260 > 容器),有了它就退化成
+ *    「一列,宽度=容器」。
+ *  - auto-fill 而非 auto-fit:空位不摊开,最后一行的卡与上一行同宽(auto-fit 会把
+ *    单张卡拉成整行宽,同一批数据在不同组里长得不一样)。
+ *
+ * ↑↓ 走一整行 = 走「一行几张」步,那个数由 Overview.tsx 现读这条 CSS 的计算值报进
+ * 状态机(见该文件 useGridColumns)—— 列数只有这一处产地,纯函数不再自带 3。
+ */
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-w), 100%), 1fr));
   gap: var(--expose-gap);
 }
 
@@ -189,9 +206,22 @@
   opacity: 0;
 }
 
+/*
+ * 这块 overflow 的**唯一职责是纵向**:收合到 0fr 时把卡区裁掉。
+ * 但 CSS 里没有「只裁一个方向」——`overflow-y: hidden` 会把 overflow-x 也算成 auto,
+ * 于是裁剪框在左右两边正好贴着网格边缘,而焦点柔光环是画在卡**外面**的 outline:
+ * 最左 / 最右那一列的环被这条边整整齐齐地削掉一条竖线(08-30 用户截图实锤,
+ * 真机量到首列 gapLeft=0、末列 gapRight=0,而中间列两边各留 300px)。
+ *
+ * 治法是把裁剪框横向撑开一个环宽:padding 让 padding box(= 裁剪框)变宽,
+ * 等量负 margin 把网格拉回原位 —— 卡的几何逐像素不变,只是环有地方画了。
+ * 纵向一格都不许加:0fr 收合时 padding 会留下残高,折叠动画当场破。
+ */
 .bodyInner {
   overflow: hidden;
   min-height: 0;
+  padding-inline: var(--focus-ring-w);
+  margin-inline: calc(-1 * var(--focus-ring-w));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -235,4 +265,38 @@
   text-align: center;
   font-size: var(--fs-meta);
   color: var(--text-3);
+}
+
+/*
+ * ── 窄版(容器 ≤ 560px:浮窗拖窄、钉边架子)────────────────────────────────
+ * 网格的列数是 auto-fill 自己算的,不需要断点;这里改的只有**它算不出来的两件事**:
+ *  1. 页边距 32px 在 240px 的架子里吃掉四分之一宽度 —— 收到 16px,把宽度还给卡;
+ *  2. 顶栏原本是「搜索条居中 + 新建按钮绝对定位贴右」,窄下来两者会重叠(实机截图
+ *     里 "+ Project" 正压在搜索框上)。窄版让它回到文档流里换行到第二行 ——
+ *     绝对定位那一套只在放得下的时候才成立。
+ * 阈值 560 是按形态取的:浮窗下限 280、架子下限 240 都在窄版里,
+ * 舞台(≈970)与拖宽的浮窗(≈700)都在宽版里,版式一格不动。
+ */
+@container expose (max-width: 560px) {
+  .top {
+    flex-wrap: wrap;
+    justify-content: stretch;
+    gap: var(--sp-2);
+    padding: var(--sp-4) var(--sp-4) var(--sp-4);
+  }
+
+  .searchWrap {
+    flex: 1 1 100%;
+    width: auto;
+  }
+
+  .newProject {
+    position: static;
+    justify-content: center;
+  }
+
+  .inner {
+    padding-inline: var(--sp-4);
+    padding-bottom: var(--sp-4);
+  }
 }

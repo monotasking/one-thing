@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useStageStore } from '../../stage/store'
@@ -169,5 +171,100 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
     type('transreader')
     fireEvent.keyDown(screen.getByLabelText('搜索会话'), { key: 'Enter' })
     expect(useExposeStore.getState().currentSessionId).toBe('tr-menubar')
+  })
+})
+
+
+/**
+ * ── 08-30 键盘死区(用户实机报)────────────────────────────────────────────
+ * 面板开出来之后键盘无处可去:焦点还在 Dock 那块瓦上,一按空格就把面板又关了;
+ * 点进搜索条之后 ↑↓←→ 与空格全被输入框吃掉,键盘党永远走不到卡上。
+ *
+ * 修法两条,这一组把两条都钉住:摆出来就把焦点交给搜索条;搜索条里的 ↑↓ 再把
+ * 焦点交给卡网格(词留着)。**←→ 故意不接** —— 它们在一个还在编辑的输入框里
+ * 是移光标,那是文本编辑的基本盘,不能为了「网格是二维的」抢走。
+ */
+describe('总览的键盘交接', () => {
+  const search = () => screen.getByLabelText('搜索会话') as HTMLInputElement
+
+  it('摆出来的那一刻焦点落进搜索条(不再留在 Dock 那块瓦上)', () => {
+    render(<Overview placed />)
+    expect(document.activeElement).toBe(search())
+  })
+
+  it('没摆出来就不抢焦点 —— Dock 悬停预览泡里也渲染一份,不该夺走光标', () => {
+    render(<Overview />)
+    expect(document.activeElement).not.toBe(search())
+  })
+
+  it('搜索条里按 ↓:焦点交给网格,搜索词原样留着', () => {
+    render(<Overview placed />)
+    fireEvent.change(search(), { target: { value: 'Exposé' } })
+    fireEvent.keyDown(search(), { key: 'ArrowDown' })
+    expect(useExposeStore.getState().query).toBe('Exposé')
+    expect(useExposeStore.getState().focusVisible).toBe(true)
+    expect(useExposeStore.getState().focusId).toBe('os-expose')
+    expect(document.activeElement).not.toBe(search())
+  })
+
+  it('↑ 同理:交接那一下只点亮锚点,不顺手再走一步', () => {
+    // 开场归位会把锚点放在当前会话上;这里直接摆一个,验的就是「它不动」。
+    useExposeStore.setState({ focusId: 'os-toolkit', focusVisible: false })
+    render(<Overview placed />)
+    fireEvent.keyDown(search(), { key: 'ArrowUp' })
+    expect(useExposeStore.getState().focusVisible).toBe(true)
+    expect(useExposeStore.getState().focusId).toBe('os-toolkit')
+  })
+
+  it('←→ 不接:焦点留在输入框里给光标用,状态机一格不动', () => {
+    render(<Overview placed />)
+    const before = useExposeStore.getState()
+    for (const key of ['ArrowLeft', 'ArrowRight']) {
+      const e = fireEvent.keyDown(search(), { key })
+      // fireEvent 返回 false 表示被 preventDefault 了 —— 这两个键必须没有。
+      expect(e).toBe(true)
+    }
+    expect(document.activeElement).toBe(search())
+    expect(useExposeStore.getState().focusVisible).toBe(before.focusVisible)
+    expect(useExposeStore.getState().focusId).toBe(before.focusId)
+  })
+})
+
+/**
+ * ── 08-30 靠边卡焦点环被截 + 三列硬挤(用户实机截图)────────────────────────
+ * 两件事同一处收口:卡网格那个盒子。几何断言在 jsdom 里做不了(不排版),
+ * 所以这里钉的是**规则本身**——真机量法与读数写在本批汇报里。
+ *
+ *  ① `.bodyInner` 的 overflow 只为纵向收合而存在,横向必须留出一个焦点环的余量;
+ *     没有这一条,最左 / 最右列的 outline 会被这条边削成一条竖线(真机量到
+ *     首列 gapLeft=0、末列 gapRight=0,修后两侧各 3px = --focus-ring-w)。
+ *  ② 列数由容器宽度算,不是写死的 3;窄到钉边架子(240px)时得退成一列,
+ *     而不是把卡挤成 42px 的竖条。
+ */
+describe('卡网格的两条几何规则(源码级钉死)', () => {
+  // 读源码而不是读 import.meta.url:vite 把测试文件的 URL 换成了 http 形式。
+  const css = readFileSync(resolve(process.cwd(), 'src/expose/components/Overview.module.css'), 'utf8')
+  const block = (selector: string) => {
+    const at = css.indexOf(selector + ' {')
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf('}', at))
+  }
+
+  it('.bodyInner 的裁剪框横向留出一个焦点环的余量(纵向一格都不许加)', () => {
+    const rule = block('.bodyInner')
+    expect(rule).toContain('overflow: hidden')
+    expect(rule).toContain('padding-inline: var(--focus-ring-w)')
+    expect(rule).toContain('margin-inline: calc(-1 * var(--focus-ring-w))')
+    // 纵向加了 padding 会在 0fr 收合时留残高,折叠动画当场破。
+    expect(rule).not.toContain('padding-block')
+    expect(rule).not.toMatch(/padding:\s/)
+  })
+
+  it('.grid 的列数按容器宽度算,且窄到极限时退化成一列而不是溢出', () => {
+    const rule = block('.grid')
+    expect(rule).toContain('repeat(auto-fill, minmax(min(var(--card-min-w), 100%), 1fr))')
+    expect(rule).not.toContain('repeat(3')
+    // auto-fit 会把最后一行的单张卡拉成整行宽 —— 同一批数据在不同组里长得不一样。
+    expect(rule).not.toContain('auto-fit')
   })
 })

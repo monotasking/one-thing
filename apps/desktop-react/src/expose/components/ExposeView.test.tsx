@@ -89,31 +89,66 @@ describe('Esc 的让位契约', () => {
     expect(placementOfSessions()).toEqual({ kind: 'stage' })
   })
 
-  it('内层消费不了才轮到宿主:总览上的 Esc 关掉这块面', async () => {
+  it('内层消费不了才轮到宿主:总览上的 Esc 关掉这块面(宿主同步判定,不欠一拍)', () => {
     render(<AppShell />)
     cmdE()
     esc()
-    // 宿主的判定在派发结束后的微任务里(注册序免疫修复),等一拍再看。
-    await act(async () => { await Promise.resolve() })
     expect(SESSIONS_ITEM_ID in useStageStore.getState().placements).toBe(false)
   })
 
-  it('注册序免疫:StrictMode 双挂载把内容层监听器排到宿主之后,Esc 仍只退一层', async () => {
-    /*
-     * 真机抓到的回归(2026-08-30):React StrictMode 开发期双挂载让 ExposeView
-     * 的 window 监听器卸了再挂,最终落在 StageOverlay 之后;宿主若**同步**看
-     * defaultPrevented,轮到它时内层还没标记,QuickLook 开着按 Esc 整块面板被关。
-     * 修复=宿主把判定推迟到派发结束后的微任务。本用例用 StrictMode 渲染真实
-     * 复现那个注册序(撤掉微任务修复它就红),断言 Esc 只收 QuickLook、面板还在。
-     */
+  /**
+   * ── 让位靠相位,不靠注册序 ────────────────────────────────────────────────
+   * 08-30 真机回归:QuickLook 开着按 Esc,整块面板被关。
+   *
+   * 病根有两层,两层都在这一条用例的射程里:
+   *  ① 内容层与宿主都听 window 的**同一个相位**,于是谁先消费由 addEventListener
+   *     的先后决定;React StrictMode 的开发期双挂载会把 ExposeView 的监听器卸了
+   *     再挂,最终排到 StageOverlay 之后。
+   *  ② 上一版修复让宿主 queueMicrotask 推迟判定,以为微任务落在整轮派发之后 ——
+   *     真事件由原生派发,每个监听器回调返回时 JS 栈就空了,微任务检查点当场跑,
+   *     于是宿主的判定落在内容层**之前**。jsdom 里的 fireEvent 是从 JS 派发的
+   *     (整轮派发都在一层 JS 栈上),微任务只好等到最后 —— 所以那版修复的单测
+   *     是绿的、真机是红的。这条教训的落点就是下面这个断言:**不测时序,测相位**。
+   *
+   * 测法:在渲染之前先挂一个冒泡相位的探针。它比任何组件都先注册,
+   * 所以「同相位 + 注册序」的旧写法下它必然先跑、看到的是 defaultPrevented=false;
+   * 只有内容层真的在**捕获相位**消费,它才看得见 true。
+   */
+  it('相位契约:先注册的冒泡监听器也能看见内层已消费(捕获相位在前)', () => {
+    const seen: boolean[] = []
+    const probe = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') seen.push(e.defaultPrevented)
+    }
+    window.addEventListener('keydown', probe)
+    try {
+      render(<AppShell />)
+      cmdE()
+      const focusId = useExposeStore.getState().focusId!
+      act(() => useExposeStore.getState().openQuickLook(focusId))
+      esc()
+      expect(seen.at(-1)).toBe(true)
+      expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
+      expect(placementOfSessions()).toEqual({ kind: 'stage' })
+    } finally {
+      window.removeEventListener('keydown', probe)
+    }
+  })
+
+  it('注册序免疫:StrictMode 双挂载把内容层监听器排到最后,Esc 仍只退一层', () => {
     render(<StrictMode><AppShell /></StrictMode>)
     cmdE()
-    const focusId = useExposeStore.getState().focusId
+    const focusId = useExposeStore.getState().focusId!
     act(() => useExposeStore.getState().openQuickLook(focusId))
     esc()
-    await act(async () => { await Promise.resolve() })
     expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
     expect(placementOfSessions()).toEqual({ kind: 'stage' })
+  })
+
+  it('浮窗形态上没有宿主关闭器:总览上的 Esc 什么都不关', () => {
+    render(<AppShell />)
+    act(() => useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'float' }))
+    esc()
+    expect(placementOfSessions()).toEqual({ kind: 'float' })
   })
 
   it('搜索词是 Esc 的第 0 层:先清词,面板与视图都不动', () => {

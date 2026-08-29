@@ -3,6 +3,18 @@
  * 背景交给宿主那一层:这块内容不该自带一层不透明底,否则它在浮窗里会盖掉窗的表面。
  * position 是 Quick Look 那层 scrim(absolute inset:0)的包含块,所以必须在这里立。
  */
+/*
+ * 这块面同时是一个**尺寸容器**(container-type: inline-size,名字 `expose`)。
+ * 三种形态共用同一份 CSS,而宽度在浮窗 / 架子里是随手拖出来的连续值 ——
+ * 所以「窄了怎么办」只能问所属容器有多宽,不能问窗口有多宽(媒体查询看的是窗口,
+ * 一个 360px 的浮窗在 1600px 的屏上会被判成宽版)。
+ * 查询规则写在 Overview.module.css 的 `@container expose` 里。
+ *
+ * 副作用先说清楚:container-type 蕴含 `contain: layout`,于是这块面成了绝对定位
+ * 后代的包含块 —— 它本来就是(position: relative,Quick Look 那层 scrim 靠它),
+ * 所以这一条不改变任何既有几何;浮层三件套(Menu / Tooltip)走 portal 挂在 body 上,
+ * 不在这棵树里,也不受影响。
+ */
 .view {
   position: relative;
   height: 100%;
@@ -10,4 +22,6 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  container-type: inline-size;
+  container-name: expose;
 }

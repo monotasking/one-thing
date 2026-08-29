@@ -43,23 +43,28 @@ export function StageOverlay() {
    * 面里的内容可能自己有层次(会话总览的 quicklook / list),那几层先退;
    * 它们退不动了就不 preventDefault,这一下才轮到关面板。
    * 判据是 e.defaultPrevented 而不是「内容是谁」:舞台不认识住在里面的东西。
+   *
+   * 「谁先」不靠注册序,靠**传播相位**:宿主听冒泡(这里,默认相位),内容层听捕获
+   * (ExposeView)。window 上的捕获监听器永远跑在同一个 window 上的冒泡监听器之前,
+   * 与两者谁先注册无关 —— 于是同步读 defaultPrevented 就是稳的。
+   *
+   * 曾经的两版错法,都留在这儿当判例:
+   *  ① 同相位 + 同步读:注册序说了算,而 React StrictMode 的开发期双挂载会把
+   *     ExposeView 的监听器卸了再挂,最终排到本组件之后 —— QuickLook 开着按 Esc
+   *     整块面板被关。
+   *  ② 同相位 + queueMicrotask 推迟判定:以为微任务落在「整轮派发结束后」。不是。
+   *     微任务检查点在**每个监听器回调返回后**就跑(真事件由原生派发,回调之间
+   *     JS 栈是空的),所以它落在下一个监听器**之前** —— 08-30 真机实录:宿主的
+   *     微任务先跑并 closeStage(),ExposeView 才拿到这一下。
+   *     jsdom 里测不出来:fireEvent 是从 JS 里派发的,整轮派发都在一层 JS 栈上,
+   *     微任务只好等到最后 —— 于是那版修复的单测是绿的,真机是红的。
    */
   useEffect(() => {
     if (!stageId) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      /*
-       * 判定推迟到**整轮派发结束后**(微任务),不在自己这一格同步看
-       * `defaultPrevented`:同目标同相位的监听器按注册序执行,而内容层的
-       * 监听器可能注册在宿主之后 —— 真机抓到的现场是 React StrictMode 的
-       * 开发期双挂载把 ExposeView 的监听器重排到了本组件后面,于是宿主先
-       * 拿到 Esc、看见「还没人消费」就把面板关了,QuickLook 的那层让位被跳过。
-       * `defaultPrevented` 在派发结束后是稳定的,微任务里读它,契约语义
-       * 一字不变(「内层没消费这一下才轮到关面板」),对注册序彻底免疫。
-       */
-      queueMicrotask(() => {
-        if (!e.defaultPrevented) closeStage()
-      })
+      if (e.defaultPrevented) return
+      closeStage()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

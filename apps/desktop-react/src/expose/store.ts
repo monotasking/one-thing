@@ -15,6 +15,10 @@ interface ExposeStore extends ExposeState {
   openQuickLook: (sessionId: string) => void
   closeQuickLook: () => void
   moveFocus: (dir: FocusDir) => void
+  /** 搜索框把键盘交给网格(只点亮锚点,不移动)。 */
+  focusGrid: () => void
+  /** 渲染层量到「一行几张」之后报进来 —— 唯一产地是 CSS 的计算值。 */
+  setColumns: (columns: number) => void
   quickLookPrev: () => void
   quickLookNext: () => void
   toggleGroupCollapsed: (groupId: string) => void
@@ -50,6 +54,8 @@ export const useExposeStore = create<ExposeStore>()(
       },
       closeQuickLook: () => set(T.closeQuickLook),
       moveFocus: (dir) => set((s) => T.moveFocus(s, dir, currentGroups())),
+      focusGrid: () => set((s) => T.focusGrid(s, currentGroups())),
+      setColumns: (columns) => set((s) => T.setColumns(s, columns)),
       quickLookPrev: () => {
         set((s) => T.quickLookPrev(s, currentGroups()))
         const view = useExposeStore.getState().view

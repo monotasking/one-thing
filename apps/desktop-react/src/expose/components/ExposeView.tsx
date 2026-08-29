@@ -32,9 +32,14 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * ── Esc 的让位契约 ────────────────────────────────────────────────────────
  * 内层先消费:quicklook / list 上的 Esc 退一层并 preventDefault();
  * 已经在总览这一层时**不拦**,宿主(StageOverlay 只在 !defaultPrevented 时关面板)
- * 才轮得到。所以监听必须比宿主先挂上:这个 effect 的依赖是空的,
- * 状态一律现问 getState() —— 一旦依赖里塞进 view / query,导航一次监听就重挂一次,
- * 顺序会翻到宿主后面,契约当场失效。
+ * 才轮得到。
+ *
+ * 「内层先」是**相位**保证的,不是注册序:这里听 `capture`,宿主听冒泡。
+ * window 上的捕获监听器跑在传播的最前面,冒泡监听器跑在最后,中间隔着整条路径 ——
+ * 谁先 addEventListener 都不影响。08-30 真机实录:靠注册序的旧写法在 React
+ * StrictMode 双挂载下当场失效(ExposeView 的监听器被卸了再挂,排到了宿主后面),
+ * 而「宿主用 queueMicrotask 推迟判定」这版修复同样失效 —— 微任务检查点在**每个
+ * 监听器回调返回后**就跑,于是宿主的判定落在本监听器**之前**。详见 StageOverlay。
  */
 export function ExposeView() {
   const view = useExposeStore((st) => st.view)
@@ -107,13 +112,13 @@ export function ExposeView() {
       }
     }
 
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [])
 
   return (
     <div className={s.view}>
-      {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview />}
+      {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview placed={placed} />}
       {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
     </div>
   )

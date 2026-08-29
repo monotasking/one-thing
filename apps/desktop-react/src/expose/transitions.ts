@@ -15,13 +15,54 @@ import type {
  * 组件调 store、store 从数据源取一次交进来,只此一条路。
  */
 
-/** 卡网格列数。↑↓ 走一整行 = 走 CARD_COLS 步,和 CSS 的 repeat(3,…) 是同一个事实。 */
+/**
+ * 卡网格的**出厂列数**。列数本身不再是常量 —— CSS 用 auto-fill 按容器宽度现算,
+ * 渲染层把算出来的那个数读回状态机(setColumns),↑↓ 走一整行就永远走对。
+ * 这个常量只是「还没量到之前先按几列算」的起手值,取 3 = 舞台满宽下的真实列数。
+ */
 export const CARD_COLS = 3
+
+/**
+ * 把 `grid-template-columns` 的**计算值**读成列数。
+ *
+ * 计算值是已解析的轨道列表('286.93px 286.93px 286.93px'),所以数轨道就是数列 ——
+ * 不重算一遍 auto-fill 的公式,也就不会和 CSS 漂移。读不出来(jsdom 给空串、
+ * 或还是没解析的 'repeat(...)' / 'none')一律回 null = 「这次没量到,别改状态」。
+ */
+export function columnsFromTemplate(template: string | null | undefined): number | null {
+  if (!template) return null
+  const text = template.trim()
+  if (!text || text === 'none' || text.includes('(')) return null
+  const tracks = text.split(/\s+/).filter(Boolean)
+  return tracks.length > 0 ? tracks.length : null
+}
+
+/** 列数只在 [1, …] 里有意义:量到 0 或负数一律读作 1 列。 */
+export function setColumns(state: ExposeState, columns: number): ExposeState {
+  const next = Number.isFinite(columns) ? Math.max(1, Math.round(columns)) : CARD_COLS
+  return next === state.columns ? state : { ...state, columns: next }
+}
+
+/**
+ * 「把键盘交给网格」—— 搜索框里按 ↑↓ 时走这一条。
+ *
+ * 它**只点亮不移动**:开场归位已经把焦点锚在当前会话(或序列首)上了,
+ * 交接的那一下要让用户看见锚点在哪,而不是从一个他还没看见的位置再走一步。
+ * 锚点失效(被过滤 / 被折叠藏起来)时才落到序列首。
+ */
+export function focusGrid(state: ExposeState, groups: SessionGroup[]): ExposeState {
+  const seq = visibleCardIds(state, groups)
+  if (seq.length === 0) return state
+  const anchored = state.focusId && seq.includes(state.focusId)
+  if (anchored) return state.focusVisible ? state : { ...state, focusVisible: true }
+  return { ...state, focusId: seq[0], focusVisible: true }
+}
 
 export const initialExposeState: ExposeState = {
   view: { mode: 'overview' },
   focusId: null,
   focusVisible: false,
+  columns: CARD_COLS,
   // 没有「默认折叠」:旧 mock 的 active 标记在 SessionMeta 上没有产地(见 types.ts)。
   collapsedGroups: [],
   query: '',
@@ -119,7 +160,10 @@ export function moveFocus(
   const cur = state.focusId ? seq.indexOf(state.focusId) : -1
   // 还没落焦(或焦点已被折叠藏起来)时,任何方向键都先把焦点放到序列首。
   if (cur < 0) return { ...state, focusId: seq[0], focusVisible: true }
-  const step = dir === 'left' ? -1 : dir === 'right' ? 1 : dir === 'up' ? -CARD_COLS : CARD_COLS
+  // 一整行有几张是**屏幕的事实**(state.columns 由渲染层现读 CSS 计算值报进来),
+  // 不是常量:窄成一列时 ↑↓ 就该走一张,而不是固执地跳三张。
+  const cols = Math.max(1, state.columns)
+  const step = dir === 'left' ? -1 : dir === 'right' ? 1 : dir === 'up' ? -cols : cols
   const next = clampIndex(cur + step, seq.length)
   // 撞边不动位置也要点亮环:用户按了方向键,就该看得见焦点在哪。
   if (next === cur) return state.focusVisible ? state : { ...state, focusVisible: true }
