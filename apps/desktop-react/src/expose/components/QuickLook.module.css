@@ -109,36 +109,45 @@
   gap: var(--sp-5);
 }
 
-.turn {
+/*
+ * D1:这里画的是**真消息**(sessions.getMessagesPage 的首页),纯文本。
+ * 富渲染(markdown / 工具卡 / 流式)是 D3 —— 总览是「找会话」,不是「读会话」,
+ * 所以这一层刻意停在「谁说的 + 说了什么」。
+ */
+.message {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-1);
 }
 
-.user {
+.role {
+  font-size: var(--fs-nano);
+  color: var(--text-4);
+}
+
+.text {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 用户那一侧靠右、带底 —— 一眼分得出谁在说话,不必读角色标签。 */
+.user .text {
   align-self: flex-end;
   max-width: 80%;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-2);
   background: var(--st-sel);
   color: var(--text-1);
-  font-size: var(--fs-meta);
 }
 
-.replyTime {
-  font-family: var(--font-mono);
-  font-size: var(--fs-nano);
-  color: var(--text-4);
+.user .role {
+  align-self: flex-end;
 }
 
-/* 助手正文在 Quick Look 里只给占位:总览是「找会话」,不是「读会话」。 */
-.reply {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-
+/* 骨架:150ms 之后才出(防闪),行数固定,不随内容跳。 */
 .line {
   height: var(--sp-2);
   border-radius: var(--r-1);
@@ -147,6 +156,14 @@
 
 .lineShort {
   width: 62%;
+}
+
+.empty {
+  margin: 0;
+  padding: var(--sp-6) 0;
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
 }
 
 .footer {

@@ -150,8 +150,15 @@ export const zh = {
   'expose.newSessionIn': '在 {name} 新建会话',
   'expose.noMatchingSessions': '没有匹配的会话',
   'expose.groupCollab': '协作',
+  'expose.groupCollabPath': '房间与私聊',
   'expose.groupLoose': '独立会话',
-  'expose.groupLoosePath': '不属于任何项目',
+  'expose.groupLoosePath': '没有工作目录',
+  /* 空态 / 载入态:数据源说了算,不留 mock 兜底 —— 假数据比空更糟。 */
+  'expose.loading': '正在读会话…',
+  'expose.emptyTitle': '这里还没有会话',
+  'expose.emptyHint': '在 onething 里开一条会话,它会出现在这里',
+  'expose.disconnectedTitle': '没连上 core',
+  'expose.disconnectedHint': '会话数据来自本机正在跑的 core;{error}',
 
   /* ── 列表视图 ─────────────────────────────────────────────────────── */
   'list.backToOverview': '‹ 总览',
@@ -160,9 +167,6 @@ export const zh = {
   'list.filter': '在本组内过滤',
   'list.bucketThisWeek': '本周',
   'list.bucketEarlier': '更早',
-
-  /* ── 搜索结果(SearchResults:总览顶部那条过滤条的三层结果) ────────── */
-  'search.youPrefix': '你:',
 
   /* ── 检索面板(search/:搜索行 + 一张平铺列表) ────────────────────── */
   'search.placeholder': '搜文件、章节、消息、会话…',
@@ -182,22 +186,46 @@ export const zh = {
   'quicklook.dismiss': '收回',
   'quicklook.hintSwitch': '换会话',
   'quicklook.hintEnter': '进入',
+  'quicklook.loading': '正在读消息…',
+  'quicklook.empty': '这条会话还没有消息',
+  'quicklook.roleUser': '你',
+  'quicklook.roleAssistant': 'AI',
+  'quicklook.roleSystem': '系统',
+  'quicklook.roleError': '错误',
 
   /* ── 会话种类徽(一个字的徽 + 它的悬停全称) ───────────────────────── */
   'kind.chatBadge': '话',
   'kind.roomBadge': '室',
   'kind.dmBadge': '私',
+  'kind.workBadge': '工',
+  'kind.agentBadge': '代',
   'kind.chat': '会话',
   'kind.room': '房间',
   'kind.dm': '私聊',
+  'kind.work': '派工',
+  'kind.agent': '代理执行',
 
   /* ── 会话卡 ───────────────────────────────────────────────────────── */
-  'card.passed': '通过',
   'card.preview': '预览',
 
   /* ── 钢琴键会话目录(键上的文本是消息内容,属于 mock,不在这儿) ────── */
   'toc.title': '会话目录',
   'toc.jumpTo': '跳到第 {index} 条消息',
+  'toc.empty': '这条会话还没有目录',
+  'toc.chapterTask': '任务',
+  'toc.chapterQuestion': '问答',
+
+  /* ── 相对时间(纯函数只产出标识,成品句子在这里拼) ─────────────────── */
+  'time.clock': '{hh}:{mm}',
+  'time.yesterday': '昨天',
+  'time.date': '{month}月{day}日',
+  'time.weekday0': '周日',
+  'time.weekday1': '周一',
+  'time.weekday2': '周二',
+  'time.weekday3': '周三',
+  'time.weekday4': '周四',
+  'time.weekday5': '周五',
+  'time.weekday6': '周六',
 
   /* ── 快捷键字面(两种语言相同,但仍走字典:组件里不落字面文案) ────── */
   'shortcut.left': '←',

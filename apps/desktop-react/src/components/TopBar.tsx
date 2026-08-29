@@ -1,5 +1,6 @@
 import { ChevronDown } from './icons'
-import { findSession } from '../expose/data'
+import { useSessionsSource } from '../data/sessions-source'
+import { findSession } from '../expose/projection'
 import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
 import { SESSIONS_ITEM_ID } from '../stage/items'
@@ -14,9 +15,11 @@ import s from './TopBar.module.css'
 export function TopBar() {
   const t = useT()
   const currentSessionId = useExposeStore((st) => st.currentSessionId)
+  const sessions = useSessionsSource((st) => st.sessions)
   const click = useStageStore((st) => st.clickDockIcon)
-  // 会话标题是 mock 数据,不翻译;只有「一个都没有」时的兜底名是界面文案。
-  const title = findSession(currentSessionId)?.title ?? t('topbar.newSession')
+  // 会话标题是**数据**(用户或后端给这条会话起的名),不翻译;
+  // 只有「还没有当前会话」时的兜底名才是界面文案。
+  const title = findSession(sessions, currentSessionId)?.title ?? t('topbar.newSession')
 
   return (
     <header className={s.bar}>

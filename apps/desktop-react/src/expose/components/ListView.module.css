@@ -119,21 +119,8 @@
   white-space: nowrap;
 }
 
-.diffDot,
-.okDot {
-  flex: none;
-  width: var(--status-dot);
-  height: var(--status-dot);
-  border-radius: var(--r-full);
-}
 
-.diffDot {
-  background: var(--danger);
-}
 
-.okDot {
-  background: var(--ok);
-}
 
 .rowTime {
   flex: none;

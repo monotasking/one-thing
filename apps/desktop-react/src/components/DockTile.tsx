@@ -28,6 +28,12 @@ const LABEL_CLASS: Record<LabelSide, string> = {
 interface Props {
   /** 已经过 i18n 的成品文案 —— 瓷砖不认识 key,谁摆它谁翻译。 */
   title: string
+  /**
+   * 这块瓦对应的 item id。它只作 `data-testid` 用 —— 门(scripts/gate-*.mjs)
+   * 要能在真机上点开一块面,而 aria-label 是**翻译过的**文案,跟着系统语言变,
+   * 拿它当选择器就是让门依赖用户的语言设置。
+   */
+  testId?: string
   icon?: string
   badge?: StageBadge
   running?: boolean
@@ -47,6 +53,7 @@ interface Props {
 
 export function DockTile({
   title,
+  testId,
   icon,
   badge,
   running,
@@ -108,6 +115,7 @@ export function DockTile({
         onClick={onClick}
         onContextMenu={onContextMenu}
         aria-label={title}
+        data-testid={testId}
         title=""
       >
         <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />

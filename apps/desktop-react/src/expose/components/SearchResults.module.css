@@ -76,27 +76,5 @@
   white-space: nowrap;
 }
 
-.turnRow {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-3);
-  min-width: 0;
-  padding: var(--sp-1) var(--sp-3) var(--sp-1) var(--indent-2);
-  font-size: var(--fs-micro);
-}
 
-.turnText {
-  flex: 1;
-  min-width: 0;
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.turnTime {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--fs-nano);
-  color: var(--text-4);
-}

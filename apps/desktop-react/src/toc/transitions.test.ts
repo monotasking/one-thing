@@ -10,9 +10,26 @@ import {
   toggleToc,
   tocKeys,
 } from './transitions'
-import { CHAT_CHAPTERS, CHAT_TURNS } from '../data/chat-mock'
-import type { ChatChapter } from '../data/chat-mock'
-import type { TocState } from './types'
+import { tocChapters } from './transitions'
+import type { SessionChapter, SessionMarker } from '../expose/types'
+import type { TocChapter, TocState } from './types'
+
+/**
+ * D1:章与键都是真数据的投影 —— 章来自 `sessions.getSegments`,
+ * 键来自 `sessions.getUserMarkers`。这批样本就是那两条线的形状。
+ */
+const MARKERS: SessionMarker[] = Array.from({ length: 9 }, (_, i) => ({
+  id: `m${i}`,
+  preview: `第 ${i} 条`,
+}))
+
+const SEGMENTS: SessionChapter[] = [
+  { id: 's0', title: '摸清三处读取点', detail: '', kind: 'task', startMessageId: 'm0' },
+  { id: 's1', title: '抽成一个判定函数', detail: '', kind: 'task', startMessageId: 'm3' },
+  { id: 's2', title: '目录缓存跟着目录键走', detail: '', kind: 'question', startMessageId: 'm6' },
+]
+
+const CHAPTERS: TocChapter[] = tocChapters(SEGMENTS, MARKERS)
 
 const base: TocState = initialTocState
 const opened = openToc(base)
@@ -52,11 +69,11 @@ describe('开合与悬停', () => {
 })
 
 describe('键列派生', () => {
-  const keys = tocKeys()
+  const keys = tocKeys(CHAPTERS, MARKERS.length)
 
-  it('键数恒等于轮次数 —— 这是几何不变式的第一条', () => {
-    expect(keys.length).toBe(CHAT_TURNS.length)
-    expect(keys.map((k) => k.index)).toEqual(CHAT_TURNS.map((_, i) => i))
+  it('键数恒等于用户消息数 —— 这是几何不变式的第一条', () => {
+    expect(keys.length).toBe(MARKERS.length)
+    expect(keys.map((k) => k.index)).toEqual(MARKERS.map((_, i) => i))
   })
 
   it('章节起点那一条属于新章(边界归下一章,不归上一章)', () => {
@@ -67,7 +84,7 @@ describe('键列派生', () => {
   })
 
   it('keysOfChapter 把三章切开,并起来还是原来那串', () => {
-    const groups = CHAT_CHAPTERS.map((_, i) => keysOfChapter(keys, i))
+    const groups = CHAPTERS.map((_, i) => keysOfChapter(keys, i))
     expect(groups.map((g) => g.length)).toEqual([3, 3, 3])
     expect(groups.flat().map((k) => k.index)).toEqual(keys.map((k) => k.index))
   })
@@ -79,14 +96,48 @@ describe('键列派生', () => {
   })
 
   it('第一章不从 0 开始时,前面那些键也不丢(算第 0 章)', () => {
-    const late: ChatChapter[] = [{ title: 'x', startIndex: 2 }]
+    const late: TocChapter[] = [{ title: 'x', startIndex: 2, kind: 'task' }]
     expect(tocKeys(late, 4).map((k) => k.chapterIdx)).toEqual([0, 0, 0, 0])
   })
 
   it('chapterOfTurn 与 tocKeys 逐条同口径', () => {
     for (const key of keys) {
-      expect(chapterOfTurn(key.index)).toBe(key.chapterIdx)
+      expect(chapterOfTurn(key.index, CHAPTERS)).toBe(key.chapterIdx)
     }
+  })
+})
+
+describe('后端章节 → 目录章节(tocChapters)', () => {
+  it('落位靠 startMessageId 在用户锚点列里的位置', () => {
+    expect(CHAPTERS).toEqual([
+      { title: '摸清三处读取点', startIndex: 0, kind: 'task' },
+      { title: '抽成一个判定函数', startIndex: 3, kind: 'task' },
+      { title: '目录缓存跟着目录键走', startIndex: 6, kind: 'question' },
+    ])
+  })
+
+  it('kind 如实转述,不合并成一种', () => {
+    expect(CHAPTERS.map((c) => c.kind)).toEqual(['task', 'task', 'question'])
+  })
+
+  it('落不了位的段整段丢掉 —— 猜一个位置会让点击跳到别处,比少一章更糟', () => {
+    const orphan: SessionChapter[] = [
+      { id: 'x', title: '没记起点', detail: '', kind: 'task' },
+      { id: 'y', title: '起点已被删', detail: '', kind: 'task', startMessageId: 'gone' },
+      ...SEGMENTS,
+    ]
+    expect(tocChapters(orphan, MARKERS).map((c) => c.title)).toEqual(
+      SEGMENTS.map((c) => c.title),
+    )
+  })
+
+  it('按 startIndex 升序出参 —— 章序乱了,章节隙就画在错的地方', () => {
+    const shuffled = [SEGMENTS[2], SEGMENTS[0], SEGMENTS[1]]
+    expect(tocChapters(shuffled, MARKERS).map((c) => c.startIndex)).toEqual([0, 3, 6])
+  })
+
+  it('一条锚点都没有时一章都落不下 —— 那就是空目录(rail 整个不在场)', () => {
+    expect(tocChapters(SEGMENTS, [])).toEqual([])
   })
 })
 
@@ -113,29 +164,5 @@ describe('当前键(从滚动位置投影)', () => {
 
   it('一条锚点都没有时回 -1(没有键可以点亮,而不是假装点亮第 0 条)', () => {
     expect(currentTurnIndex([], 0, 100)).toBe(-1)
-  })
-})
-
-describe('mock 数据自洽', () => {
-  it('9 条用户消息、3 个章节', () => {
-    expect(CHAT_TURNS.length).toBe(9)
-    expect(CHAT_CHAPTERS.length).toBe(3)
-  })
-
-  it('章节起点严格递增且都落在轮次范围内', () => {
-    for (let i = 0; i < CHAT_CHAPTERS.length; i += 1) {
-      expect(CHAT_CHAPTERS[i].startIndex).toBeGreaterThanOrEqual(0)
-      expect(CHAT_CHAPTERS[i].startIndex).toBeLessThan(CHAT_TURNS.length)
-      if (i > 0) {
-        expect(CHAT_CHAPTERS[i].startIndex).toBeGreaterThan(CHAT_CHAPTERS[i - 1].startIndex)
-      }
-    }
-  })
-
-  it('每一轮都有用户消息和回复正文', () => {
-    for (const turn of CHAT_TURNS) {
-      expect(turn.user.length).toBeGreaterThan(0)
-      expect(turn.body.length).toBeGreaterThan(0)
-    }
   })
 })

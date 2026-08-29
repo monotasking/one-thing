@@ -146,8 +146,14 @@ export const en: Record<MessageKey, string> = {
   'expose.newSessionIn': 'New session in {name}',
   'expose.noMatchingSessions': 'No matching sessions',
   'expose.groupCollab': 'Collaboration',
+  'expose.groupCollabPath': 'rooms and direct messages',
   'expose.groupLoose': 'Loose sessions',
-  'expose.groupLoosePath': 'not in any project',
+  'expose.groupLoosePath': 'no working directory',
+  'expose.loading': 'Loading sessions…',
+  'expose.emptyTitle': 'No sessions yet',
+  'expose.emptyHint': 'Start a session in onething and it shows up here',
+  'expose.disconnectedTitle': 'Not connected to a core',
+  'expose.disconnectedHint': 'Sessions come from the core running on this machine; {error}',
 
   /* ── list view ────────────────────────────────────────────────────── */
   'list.backToOverview': '‹ Overview',
@@ -158,7 +164,6 @@ export const en: Record<MessageKey, string> = {
   'list.bucketEarlier': 'Earlier',
 
   /* ── search results (SearchResults: the overview filter bar's three-layer hits) ─ */
-  'search.youPrefix': 'You: ',
 
   /* ── search panel (search/: one search row + one flat hit list) ───── */
   'search.placeholder': 'Search files, sections, messages, sessions…',
@@ -180,22 +185,44 @@ export const en: Record<MessageKey, string> = {
   'quicklook.dismiss': 'Dismiss',
   'quicklook.hintSwitch': 'switch session',
   'quicklook.hintEnter': 'open',
+  'quicklook.loading': 'Loading messages…',
+  'quicklook.empty': 'No messages in this session yet',
+  'quicklook.roleUser': 'You',
+  'quicklook.roleAssistant': 'AI',
+  'quicklook.roleSystem': 'System',
+  'quicklook.roleError': 'Error',
 
   /* ── session kinds ────────────────────────────────────────────────── */
   'kind.chatBadge': 'C',
   'kind.roomBadge': 'R',
   'kind.dmBadge': 'D',
+  'kind.workBadge': 'W',
+  'kind.agentBadge': 'A',
   'kind.chat': 'Chat',
   'kind.room': 'Room',
   'kind.dm': 'Direct message',
+  'kind.work': 'Dispatched work',
+  'kind.agent': 'Agent run',
 
   /* ── session card ─────────────────────────────────────────────────── */
-  'card.passed': 'passed',
   'card.preview': 'Quick Look',
 
   /* ── piano-key outline ────────────────────────────────────────────── */
   'toc.title': 'Session outline',
   'toc.jumpTo': 'Jump to message {index}',
+  'toc.empty': 'No outline for this session yet',
+  'toc.chapterTask': 'Task',
+  'toc.chapterQuestion': 'Question',
+  'time.clock': '{hh}:{mm}',
+  'time.yesterday': 'Yesterday',
+  'time.date': '{month}/{day}',
+  'time.weekday0': 'Sun',
+  'time.weekday1': 'Mon',
+  'time.weekday2': 'Tue',
+  'time.weekday3': 'Wed',
+  'time.weekday4': 'Thu',
+  'time.weekday5': 'Fri',
+  'time.weekday6': 'Sat',
 
   /* ── shortcut glyphs (same in both languages, still dictionary-owned) ─ */
   'shortcut.left': '←',

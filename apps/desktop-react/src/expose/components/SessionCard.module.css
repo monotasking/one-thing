@@ -96,38 +96,24 @@
   white-space: nowrap;
 }
 
-.avatars {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-}
 
-.avatar {
-  width: var(--avatar-size);
-  height: var(--avatar-size);
+
+
+
+
+
+/* kind 徽与 QuickLook 头上那颗是同一件东西,所以配方逐字相同。 */
+.kind {
+  flex: none;
+  width: var(--kind-badge);
+  height: var(--kind-badge);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--r-full);
-  border: 1px solid var(--surface-2);
+  border: 1px solid var(--line-2);
   font-size: var(--fs-nano);
-  color: var(--text-2);
-}
-
-.avatar + .avatar {
-  margin-left: var(--avatar-overlap);
-}
-
-.tintAccent {
-  background: var(--tint-accent);
-}
-
-.tintOk {
-  background: var(--tint-ok);
-}
-
-.tintDanger {
-  background: var(--tint-danger);
+  color: var(--text-3);
 }
 
 .summary {
@@ -143,28 +129,8 @@
   overflow: hidden;
 }
 
-.live {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-}
 
-.liveDot {
-  flex: none;
-  width: var(--status-dot);
-  height: var(--status-dot);
-  border-radius: var(--r-full);
-  background: var(--ok);
-}
 
-.liveText {
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 .meta {
   display: flex;
@@ -172,27 +138,8 @@
   gap: var(--sp-3);
 }
 
-.stat {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-}
 
-.diffDot {
-  width: var(--status-dot);
-  height: var(--status-dot);
-  border-radius: var(--r-full);
-  background: var(--danger);
-}
 
-.okDot {
-  width: var(--status-dot);
-  height: var(--status-dot);
-  border-radius: var(--r-full);
-  background: var(--ok);
-}
 
 .time {
   margin-left: auto;

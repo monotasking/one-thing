@@ -1,14 +1,17 @@
 import type { FileMock } from './types'
 
 /**
- * 文件侧的静态 mock 表。之后接真实数据(索引器 / ripgrep)时,只有这张表换来源,
- * transitions / 组件一行不改 —— 和 expose/data.ts、stage/items.ts 同一个理由。
+ * 文件侧的静态 mock 表 —— **D1 之后这里是全壳仅存的检索素材 mock**。
  *
- * 会话侧不在这里:它直接消费 expose/data.ts 的 SESSIONS,
- * 因为「检索面看到的会话」和「总览看到的会话」必须是同一批,不许有第二份事实。
+ * 会话侧已经接真数据(data/sessions-source.ts → sessions.listMeta / getSegments);
+ * 文件侧还没有,因为它要的是另一样东西:一个能在工作目录里按内容搜的服务
+ * (ripgrep / 索引器)。壳里没有,后端的 `search` 域是**网页搜索**不是文件搜索,
+ * 所以这一侧仍然是这张表 —— 这是一个诚实标注的缺口,不是忘了换。
  *
- * 路径取自 data/chat-mock.ts 那几张工具卡读过的真文件 —— 两处说的是同一批文件,
- * 所以在聊天里被读过的东西,在检索面里搜得到。
+ * 换的时候只有这张表换来源,transitions / 组件一行不改 ——
+ * 和会话侧刚刚走过的那条路一样。
+ *
+ * 路径取自 data/chat-mock.ts 那几张工具卡读过的真文件 —— 两处说的是同一批文件。
  */
 export const FILES: FileMock[] = [
   {

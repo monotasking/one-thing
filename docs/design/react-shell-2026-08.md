@@ -147,6 +147,54 @@ P0+P1 不依赖任何待拍项,可立即开工。
 | 组件库(2026-08-28 拍) | 基础件一律建 `src/ui/`(Button/Segmented/Tabs/Menu/Badge/Tooltip…),业务只消费 | 规范九板 = 组件规格书,散装实现必漂移 | — |
 
 
+### 5.9 D1 落地记录(会话侧接真数据,2026-08-29)
+
+P1 的会话那一半已落地(消息流式渲染与主题仍在 P1 内,未做)。四处 mock 退役:
+Exposé 总览、检索面板会话侧、Quick Look、钢琴键 TOC。
+
+**新增结构(只在 `apps/desktop-react` 里,共享层一行未改)**
+
+| 层 | 落点 | 职责 |
+| --- | --- | --- |
+| 端口 | `src/data/sessions-port.ts` | 平台调用面的**子集**(listMeta / getSegments / getMessagesPage / getUserMarkers / onSessionEvent),测试可换 |
+| 数据源 | `src/data/sessions-source.ts` | 全应用唯一的会话真数据源:启动拉列表 + 订 SSE + 三份按会话缓存 |
+| 投影 | `src/expose/projection.ts` | `SessionMeta` → 屏幕形状 + 分组(取代退役的 `expose/data.ts` mock 表) |
+| 形态机 | `src/expose/transitions.ts` | 不变,只是数据一律从**参数**进来(mock 默认值退役) |
+
+**三处裁量**
+
+1. **分组维度 = `SessionMeta.workingDirectory`**。它是 `SessionMeta` 上唯一被
+   注释写明「surfaced into the list so the sidebar can group by project」的字段,
+   Vue 壳的 `stores/projects.ts` 也是同一条判例(项目分组是**推导**出来的)。
+   项目名 = 路径末段;协作形态(room / dm)优先于项目归属,单独成组;
+   没有工作目录的进「独立会话」。空组不出现。
+2. **SSE:增量优先,只有一种情况重拉**。可到手的只有 `session:event`;
+   `session:created` / `session:deleted` 是全局事件,而 `@renderer/platform`
+   **没有开全局事件订阅面** —— 于是:信封的 sessionId 不在列表里 = 有新会话 →
+   整表重拉(合并到 ≤1 次/秒);`session:renamed` = 改一格标题;
+   message:\* / messages:replaced / stream:complete = 抬 updatedAt + 作废那条会话的
+   按需缓存(`stream:complete` 额外作废章节,章节是一轮跑完才推导的);其余忽略。
+   **删除是一个诚实缺口**:没有 per-session 事件说「我没了」,补法是开全局事件
+   订阅面(要动共享层),不在本批。
+3. **没有产地的字段整格删掉**,不留空壳:改动数 / 测试通过 / 未读数 /
+   房间头像字 / 房间实况行,以及旧 mock 的「不活跃项目默认折叠」
+   (`ProjectMock.active` 在 `SessionMeta` 上没有对应事实)。
+
+**本批新增/保留的诚实缺口**
+
+- **消息正文检索**:后端没有跨会话内容检索面,前端唯一替代是把每条会话每页
+  消息拉下来在内存里扫 —— 那是把缺口伪装成功能。检索面与总览搜索都只到
+  「标题 / 预览 / 已拉到手的章节」两层,判据写在 `expose/transitions.ts`。
+- **文件侧检索**:仍是 `search/data.ts` 的 mock 表(要的是 ripgrep / 索引器,
+  后端 `search` 域是**网页搜索**不是文件搜索)。
+- **TOC 点击落到 mock 聊天**:键来自真锚点,聊天区仍是 `ChatMock`(真消息流是
+  D3),所以两边的下标此刻不同源;点不到的锚点什么也不做,D3 自然对上。
+
+**门**:`npm run gate:data`(`scripts/gate-data.mjs`)—— 临时 store 起 core →
+用 token 直接 `sessions.create` ×2 + `addSystemMessage` → 拉起应用 → 断言
+**渲染出的会话集合(id + 标题)与 HTTP `listMeta` 逐条相等**(集合相等,多画一条
+假卡同样是红)→ 开 Quick Look 断言那条真消息的正文出现在 DOM 里。
+
 ## 6. 首版能力缺口(诚实清单)
 
 新应用走 HTTP transport,以下能力首版**没有**,与 `PlatformCapabilities` 能力位及各域 http 分叉的既有裁定一致:

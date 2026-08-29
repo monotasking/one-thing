@@ -72,6 +72,27 @@
   padding-right: calc(var(--toc-key-w-on) + var(--toc-label-gap));
 }
 
+/*
+ * 段的类型徽(任务 / 问答)。和 .chapter 同一套收放:常态下宽度归零,
+ * 否则它会把整条 rail 撑宽,悬停热区跟着变宽(不变式 2 的同一条理由)。
+ */
+.chapterKind {
+  max-width: 0;
+  margin-right: var(--sp-1);
+  font-size: var(--fs-nano);
+  line-height: var(--toc-gap);
+  color: var(--text-4);
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--dur-enter) var(--ease-out);
+}
+
+.open .chapterKind {
+  max-width: var(--toc-label-w);
+  opacity: 1;
+}
+
 .chapter {
   /* 同 .label:常态下宽度归零,免得几个汉字把整条 rail 撑成一片宽热区 */
   max-width: 0;

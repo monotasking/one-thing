@@ -1,12 +1,21 @@
-import { CURRENT_SESSION_ID, DEFAULT_COLLAPSED_GROUP_IDS, GROUPS, SESSIONS } from './data'
 import type {
   ExposeState,
   FocusDir,
-  GroupMock,
   HighlightPart,
   SearchHit,
-  SessionMock,
+  SessionChapter,
+  SessionGroup,
+  SessionSummary,
 } from './types'
+
+/**
+ * 会话总览的状态机 —— 纯函数,不认识 React、不发请求、**不认识数据源**。
+ *
+ * D1(接真数据)只改了一件事:凡是要看「有哪些组 / 哪些会话」的函数,
+ * 那份数据一律**从参数进来**,不再有 mock 表当默认值。默认值那条路是
+ * mock 时代的便利,接真数据之后它就是「第二份事实」的入口 ——
+ * 组件调 store、store 从数据源取一次交进来,只此一条路。
+ */
 
 /** 卡网格列数。↑↓ 走一整行 = 走 CARD_COLS 步,和 CSS 的 repeat(3,…) 是同一个事实。 */
 export const CARD_COLS = 3
@@ -15,9 +24,11 @@ export const initialExposeState: ExposeState = {
   view: { mode: 'overview' },
   focusId: null,
   focusVisible: false,
-  collapsedGroups: DEFAULT_COLLAPSED_GROUP_IDS,
+  // 没有「默认折叠」:旧 mock 的 active 标记在 SessionMeta 上没有产地(见 types.ts)。
+  collapsedGroups: [],
   query: '',
-  currentSessionId: CURRENT_SESSION_ID,
+  // 空串 = 还没有当前会话。开场归位时它会落到序列首。
+  currentSessionId: '',
 }
 
 export function isCollapsed(state: ExposeState, groupId: string): boolean {
@@ -28,7 +39,7 @@ export function isCollapsed(state: ExposeState, groupId: string): boolean {
  * 焦点序列 = 展开组的卡顺序拼接。折叠一个组,序列立刻变短 ——
  * 所以 moveFocus / quickLookPrev-Next 都只认这一个函数,不各算各的。
  */
-export function visibleCardIds(state: ExposeState, groups: GroupMock[] = GROUPS): string[] {
+export function visibleCardIds(state: ExposeState, groups: SessionGroup[]): string[] {
   return groups
     .filter((g) => !isCollapsed(state, g.id))
     .flatMap((g) => g.sessions.map((s) => s.id))
@@ -48,7 +59,7 @@ function clampIndex(i: number, len: number): number {
  * 「打开总览」的意思就是重新看一眼全部。至于这块面在不在场,那是 Placement 的事,
  * 状态机不问也答不出 —— 所以这里没有与之配对的 close()。
  */
-export function open(state: ExposeState, groups: GroupMock[] = GROUPS): ExposeState {
+export function open(state: ExposeState, groups: SessionGroup[]): ExposeState {
   const seq = visibleCardIds(state, groups)
   const focusId = seq.includes(state.currentSessionId) ? state.currentSessionId : (seq[0] ?? null)
   return { ...state, view: { mode: 'overview' }, focusId, focusVisible: false, query: '' }
@@ -96,7 +107,7 @@ export function closeQuickLook(state: ExposeState): ExposeState {
 export function moveFocus(
   state: ExposeState,
   dir: FocusDir,
-  groups: GroupMock[] = GROUPS,
+  groups: SessionGroup[],
 ): ExposeState {
   const seq = visibleCardIds(state, groups)
   if (seq.length === 0) return state
@@ -112,7 +123,7 @@ export function moveFocus(
 
 /* ── Quick Look 内换会话 ───────────────────────────────────────────────── */
 
-function quickLookStep(state: ExposeState, delta: number, groups: GroupMock[]): ExposeState {
+function quickLookStep(state: ExposeState, delta: number, groups: SessionGroup[]): ExposeState {
   if (state.view.mode !== 'quicklook') return state
   const seq = visibleCardIds(state, groups)
   const i = seq.indexOf(state.view.sessionId)
@@ -123,11 +134,11 @@ function quickLookStep(state: ExposeState, delta: number, groups: GroupMock[]): 
 }
 
 /** 到头就停(不回绕):和 moveFocus 同一个边界口径,免得两种键有两种直觉。 */
-export function quickLookPrev(state: ExposeState, groups: GroupMock[] = GROUPS): ExposeState {
+export function quickLookPrev(state: ExposeState, groups: SessionGroup[]): ExposeState {
   return quickLookStep(state, -1, groups)
 }
 
-export function quickLookNext(state: ExposeState, groups: GroupMock[] = GROUPS): ExposeState {
+export function quickLookNext(state: ExposeState, groups: SessionGroup[]): ExposeState {
   return quickLookStep(state, 1, groups)
 }
 
@@ -137,7 +148,7 @@ export function quickLookNext(state: ExposeState, groups: GroupMock[] = GROUPS):
 export function toggleGroupCollapsed(
   state: ExposeState,
   groupId: string,
-  groups: GroupMock[] = GROUPS,
+  groups: SessionGroup[],
 ): ExposeState {
   const collapsedGroups = isCollapsed(state, groupId)
     ? state.collapsedGroups.filter((g) => g !== groupId)
@@ -158,36 +169,45 @@ export function setQuery(state: ExposeState, query: string): ExposeState {
 
 /**
  * 「进入」= 换当前会话 + 内容回到起点(退出 quicklook / list、清掉搜索词)。
- * L2 到此为止,不真的切聊天内容。
  * 「顺手把这块面收回 Dock」是 Placement 的事,纯函数不认识落点 —— 那一步在 store 壳里。
  */
 export function enterSession(state: ExposeState, sessionId: string): ExposeState {
   return { ...state, currentSessionId: sessionId, view: { mode: 'overview' }, query: '' }
 }
 
-/* ── 派生:搜索与时间分桶 ──────────────────────────────────────────────── */
+/* ── 派生:搜索与时间 ──────────────────────────────────────────────────── */
 
 function has(text: string, needle: string): boolean {
   return text.toLowerCase().includes(needle)
 }
 
 /**
- * 全量子串过滤,三层一次算完:会话行 / 命中章节 / 命中消息。
- * 视图只负责画,不再自己 filter —— 否则三层会各自漂移。
+ * 两层一次算完:会话行(标题 / 预览)+ 命中章节。视图只负责画,不再自己 filter。
+ *
+ * `chapters` 是**已经拉到手**的那份按会话缓存(数据源的 chapters 表)——
+ * 没拉过的会话在这一轮就只按标题与预览命中,拉到之后下一轮渲染自然带上章节。
+ * 搜索不该反过来去驱动一场全量取数。
+ *
+ * ── 诚实缺口:消息正文搜不到 ─────────────────────────────────────────────
+ * D1 到此为止。后端**没有**跨会话的内容检索面(`sessions.*` 二十六条里没有一条
+ * 是「在所有会话里搜正文」,`search` 域是网页搜索不是会话搜索),前端唯一的替代
+ * 是把每条会话的每一页消息都拉下来在内存里扫 —— 那是把缺口伪装成功能。
+ * 所以第三层现在不存在,留待后批(需要后端先有一个真检索面)。
  */
-export function searchSessions(query: string, sessions: SessionMock[] = SESSIONS): SearchHit[] {
+export function searchSessions(
+  query: string,
+  sessions: SessionSummary[],
+  chapters: Record<string, SessionChapter[]> = {},
+): SearchHit[] {
   const q = query.trim().toLowerCase()
   if (!q) return []
   const hits: SearchHit[] = []
   for (const session of sessions) {
-    const segments = session.segments.filter((seg) => has(seg.title, q) || has(seg.detail, q))
-    const turns = session.userTurns
-      .map((text, index) => ({ text, index }))
-      .filter((t) => has(t.text, q))
-    const head = has(session.title, q) || has(session.summary, q)
-    if (head || segments.length > 0 || turns.length > 0) {
-      hits.push({ session, segments, turns })
-    }
+    const matched = (chapters[session.id] ?? []).filter(
+      (chapter) => has(chapter.title, q) || has(chapter.detail, q),
+    )
+    const head = has(session.title, q) || has(session.preview, q)
+    if (head || matched.length > 0) hits.push({ session, chapters: matched })
   }
   return hits
 }
@@ -217,10 +237,42 @@ export function splitHighlight(text: string, query: string): HighlightPart[] {
  */
 export type TimeBucket = 'thisWeek' | 'earlier'
 
-/** list 视图的时间分组。mock 的时间是文字,所以判据也只能是文字形状。 */
-export function timeBucket(time: string): TimeBucket {
-  if (time === '刚刚' || time === '昨天') return 'thisWeek'
-  if (/^\d{1,2}:\d{2}$/.test(time)) return 'thisWeek'
-  if (/^周[一二三四五六日]$/.test(time)) return 'thisWeek'
-  return 'earlier'
+export const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
+/** list 视图的时间分组。D1 起判据是**真时间戳**,不再是猜一个中文字符串的形状。 */
+export function timeBucket(updatedAt: number, now: number): TimeBucket {
+  return now - updatedAt < WEEK_MS ? 'thisWeek' : 'earlier'
+}
+
+/**
+ * 卡面右下角那一小行时间的**标识**。同 timeBucket:纯函数只产出「这是哪一类
+ * 时间」加上组成它的数,成品字符串由渲染层查字典拼(见 components/session-time.ts)。
+ */
+export type RelativeTimeLabel =
+  | { kind: 'clock'; hh: string; mm: string }
+  | { kind: 'yesterday' }
+  | { kind: 'weekday'; weekday: number }
+  | { kind: 'date'; month: number; day: number }
+
+function startOfDay(ts: number): number {
+  const date = new Date(ts)
+  date.setHours(0, 0, 0, 0)
+  return date.getTime()
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000
+
+export function relativeTime(updatedAt: number, now: number): RelativeTimeLabel {
+  const at = new Date(updatedAt)
+  const days = Math.round((startOfDay(now) - startOfDay(updatedAt)) / DAY_MS)
+  if (days <= 0) {
+    return {
+      kind: 'clock',
+      hh: String(at.getHours()).padStart(2, '0'),
+      mm: String(at.getMinutes()).padStart(2, '0'),
+    }
+  }
+  if (days === 1) return { kind: 'yesterday' }
+  if (days < 7) return { kind: 'weekday', weekday: at.getDay() }
+  return { kind: 'date', month: at.getMonth() + 1, day: at.getDate() }
 }

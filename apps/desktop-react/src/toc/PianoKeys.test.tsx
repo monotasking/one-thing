@@ -3,8 +3,12 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { PianoKeys } from './PianoKeys'
 import { TocPanel } from './TocPanel'
 import { useTocStore } from './store'
-import { initialTocState, tocKeys } from './transitions'
-import { CHAT_CHAPTERS, CHAT_TURNS } from '../data/chat-mock'
+import { initialTocState, tocChapters, tocKeys } from './transitions'
+import { seedSessionsSource, SESSIONS } from '../data/__fixtures__/sessions'
+import { useSessionsSource } from '../data/sessions-source'
+import { useExposeStore } from '../expose/store'
+import { initialExposeState } from '../expose/transitions'
+import type { SessionChapter, SessionMarker } from '../expose/types'
 
 /**
  * 几何不变式的**结构闸**。
@@ -14,7 +18,39 @@ import { CHAT_CHAPTERS, CHAT_TURNS } from '../data/chat-mock'
  * 行数、行序、每行的 DOM 形状逐条相同,展开态多出来的东西全是「原地改样式」而不是
  * 「多渲染一批节点」。这一条一旦破了(比如有人把文本列写成条件渲染),坐标必然会动。
  */
-const keys = tocKeys(CHAT_CHAPTERS, CHAT_TURNS.length)
+/**
+ * D1:章与键都是真数据的投影 —— 章来自 `sessions.getSegments`,
+ * 键来自 `sessions.getUserMarkers`(见 toc/transitions.ts)。
+ */
+const SESSION_ID = SESSIONS[0].id
+
+const MARKERS: SessionMarker[] = Array.from({ length: 9 }, (_, i) => ({
+  id: `m${i}`,
+  preview: `第 ${i} 条用户消息`,
+}))
+
+const SEGMENTS: SessionChapter[] = [
+  { id: 's0', title: '摸清三处读取点', detail: '', kind: 'task', startMessageId: 'm0' },
+  { id: 's1', title: '抽成一个判定函数', detail: '', kind: 'task', startMessageId: 'm3' },
+  { id: 's2', title: '目录缓存跟着目录键走', detail: '', kind: 'question', startMessageId: 'm6' },
+]
+
+const CHAPTERS = tocChapters(SEGMENTS, MARKERS)
+const LABELS = MARKERS.map((marker) => marker.preview)
+const keys = tocKeys(CHAPTERS, MARKERS.length)
+
+/** 目录面板从「当前会话」取素材,所以面板用例都得先把那条会话的两份缓存摆好。 */
+function seedToc(
+  chapters: SessionChapter[] = SEGMENTS,
+  markers: SessionMarker[] = MARKERS,
+): void {
+  seedSessionsSource()
+  useExposeStore.setState({ ...initialExposeState, currentSessionId: SESSION_ID })
+  useSessionsSource.setState({
+    chapters: { [SESSION_ID]: chapters },
+    markers: { [SESSION_ID]: markers },
+  })
+}
 
 function rowSignature(): string[] {
   return Array.from(document.querySelectorAll('[data-testid^="toc-key-"]')).map(
@@ -26,8 +62,8 @@ function renderKeys(open: boolean, onPick = vi.fn()) {
   return render(
     <PianoKeys
       keys={keys}
-      chapters={CHAT_CHAPTERS}
-      labels={CHAT_TURNS.map((t) => t.user)}
+      chapters={CHAPTERS}
+      labels={LABELS}
       open={open}
       currentIndex={0}
       hoverIndex={null}
@@ -45,21 +81,21 @@ describe('键列:两态同一套行结构', () => {
 
     renderKeys(true)
     expect(rowSignature()).toEqual(closedRows)
-    expect(closedRows.length).toBe(CHAT_TURNS.length)
+    expect(closedRows.length).toBe(MARKERS.length)
   })
 
   it('消息文本与章节标签在常态下也在 DOM 里(只是被样式收起来),不是条件渲染', () => {
     renderKeys(false)
     // 文本在 —— 所以展开时不需要「多插一批节点」,行的几何不会被重排
-    expect(screen.getByText(CHAT_TURNS[0].user)).toBeTruthy()
-    for (const chapter of CHAT_CHAPTERS) {
+    expect(screen.getByText(LABELS[0])).toBeTruthy()
+    for (const chapter of CHAPTERS) {
       expect(screen.getByText(chapter.title)).toBeTruthy()
     }
   })
 
   it('每章恰有一个章节标签位(每章前面都摆一个隙,含第一章)', () => {
     renderKeys(true)
-    for (const chapter of CHAT_CHAPTERS) {
+    for (const chapter of CHAPTERS) {
       expect(screen.getAllByText(chapter.title).length).toBe(1)
     }
   })
@@ -95,6 +131,7 @@ function tick(ms: number) {
 describe('目录面板:展开、收起、落点', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    seedToc()
     useTocStore.setState({ ...initialTocState })
   })
 
@@ -163,5 +200,39 @@ describe('目录面板:展开、收起、落点', () => {
     render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
     fireEvent.mouseEnter(screen.getByTestId('toc-key-2'))
     expect(useTocStore.getState().hoverIndex).toBe(2)
+  })
+})
+
+/**
+ * D1 的空态:目录说的是「这条会话有哪些段」。没有段、或者没有一条用户消息,
+ * 就没有目录可看 —— 这条 rail **整个不在场**,而不是留一条空细边在那儿。
+ */
+describe('目录面板:空态 = rail 不在场', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    useTocStore.setState({ ...initialTocState })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('后端还没推导出章节时不出 rail', () => {
+    seedToc([], MARKERS)
+    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    expect(screen.queryByTestId('toc-rail')).toBeNull()
+  })
+
+  it('一条用户消息都没有时不出 rail', () => {
+    seedToc(SEGMENTS, [])
+    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    expect(screen.queryByTestId('toc-rail')).toBeNull()
+  })
+
+  it('两样都在场才出 rail,键上写的是用户消息的预览', () => {
+    seedToc()
+    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    expect(screen.getByTestId('toc-rail')).toBeTruthy()
+    expect(screen.getByText(LABELS[0])).toBeTruthy()
   })
 })

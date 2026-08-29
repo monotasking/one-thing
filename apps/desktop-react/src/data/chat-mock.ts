@@ -4,9 +4,11 @@
  * 判据写在 i18n/index.ts 顶部)。它从 components/ChatMock.tsx 搬到这里,
  * 只为让「组件文件里不落字面文案」这条铁律能被 grep 机械验证。
  *
- * L3 起它多了一层结构:对话是**一串轮次**,轮次被**章节**切成三段。
- * 章节标题同样是 mock 数据(它描述的是「这段对话在谈什么」,换语言不该变),
- * 所以留在这里、不进字典;钢琴键 TOC 的界面文案(aria、快捷键条)才走字典。
+ * L3 起它多了一层结构:对话是**一串轮次**。
+ *
+ * D1(2026-08-29)搬走了章节表:钢琴键 TOC 的章节与键从此接**真数据**
+ * (`sessions.getSegments` / `getUserMarkers`,见 data/sessions-source.ts),
+ * 这里只剩聊天区自己的正文 mock —— 真消息流是 D3。
  */
 
 /** 一轮工具卡。mock 里最多一张,真实数据会是数组 —— 那是接真数据时才需要动的形状。 */
@@ -21,16 +23,6 @@ export interface ChatTurn {
   user: string
   body: string
   tool?: ChatToolCard
-}
-
-/**
- * 章节 = 从 startIndex 那一轮开始的一段。**只存起点,不存范围** ——
- * 范围由下一章的起点推导(toc/transitions.ts 的 tocKeys),
- * 免得起点和范围两份事实互相漂移。
- */
-export interface ChatChapter {
-  title: string
-  startIndex: number
 }
 
 export const CHAT_TURNS: ChatTurn[] = [
@@ -108,13 +100,6 @@ export const CHAT_TURNS: ChatTurn[] = [
   },
 ]
 
-export const CHAT_CHAPTERS: ChatChapter[] = [
-  { title: '摸清三处读取点', startIndex: 0 },
-  { title: '抽成一个判定函数', startIndex: 3 },
-  { title: '目录缓存跟着目录键走', startIndex: 6 },
-]
-
 export const CHAT_MOCK = {
   turns: CHAT_TURNS,
-  chapters: CHAT_CHAPTERS,
 } as const

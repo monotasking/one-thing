@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { TOC_HOVER_MS } from '../components/motion'
-import { CHAT_CHAPTERS, CHAT_TURNS } from '../data/chat-mock'
+import { useSessionsSource } from '../data/sessions-source'
+import { useExposeStore } from '../expose/store'
 import { useT } from '../i18n'
 import { PianoKeys } from './PianoKeys'
 import { useTocStore } from './store'
-import { tocKeys } from './transitions'
+import { tocChapters, tocKeys } from './transitions'
 import s from './TocPanel.module.css'
 
 interface Props {
@@ -22,6 +23,18 @@ interface Props {
  * - 鼠标进入键列区域,停够 TOC_HOVER_MS(150ms)才长出来 —— 路过不算意图;
  *   移出整个 rail(展开后 rail 就是 panel 本身)立刻收。
  * - ⌘⇧O 开合。它是常驻监听:目录收着的时候也得能把它叫起来。
+ *
+ * ── D1:素材接真数据 ────────────────────────────────────────────────────
+ * 键来自当前会话的用户消息锚点(`sessions.getUserMarkers`),章来自
+ * `sessions.getSegments`。**空态 = 这条 rail 整个不在场**:目录是「会话里有
+ * 哪些段」,一条会话还没有段(新会话 / 后端还没推导出来)时,一条空的细边
+ * 既没有可悬停的目标也没有可看的内容 —— 画一条出来只是在占位。
+ *
+ * ── 诚实缺口:它点的还是 mock 聊天 ──────────────────────────────────────
+ * onPick 抛给 useChatToc,后者按 `data-turn-index` 找锚点滚过去,而聊天区在
+ * D1 仍然是 ChatMock —— 真消息流是 D3。所以键的下标(真锚点列)与页面上的
+ * 锚点(mock 轮次)此刻并不同源:点得到的会滚过去,点不到的什么也不做
+ * (useChatToc 本来就守着 `top !== undefined`)。这一格在 D3 自然对上。
  */
 export function TocPanel({ currentIndex, onPick }: Props) {
   const t = useT()
@@ -31,10 +44,28 @@ export function TocPanel({ currentIndex, onPick }: Props) {
   const closePanel = useTocStore((st) => st.closePanel)
   const hoverKey = useTocStore((st) => st.hoverKey)
 
+  const sessionId = useExposeStore((st) => st.currentSessionId)
+  const chapterSource = useSessionsSource((st) => st.chapters[sessionId])
+  const markerSource = useSessionsSource((st) => st.markers[sessionId])
+  const ensureChapters = useSessionsSource((st) => st.ensureChapters)
+  const ensureMarkers = useSessionsSource((st) => st.ensureMarkers)
+
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const keys = useMemo(() => tocKeys(CHAT_CHAPTERS, CHAT_TURNS.length), [])
-  const labels = useMemo(() => CHAT_TURNS.map((turn) => turn.user), [])
+  // 目录的素材属于「当前会话」,所以换会话就重取一次(两个 ensure 自己幂等)。
+  useEffect(() => {
+    if (!sessionId) return
+    void ensureChapters(sessionId)
+    void ensureMarkers(sessionId)
+  }, [sessionId, ensureChapters, ensureMarkers])
+
+  const markers = useMemo(() => markerSource ?? [], [markerSource])
+  const chapters = useMemo(
+    () => tocChapters(chapterSource ?? [], markers),
+    [chapterSource, markers],
+  )
+  const keys = useMemo(() => tocKeys(chapters, markers.length), [chapters, markers.length])
+  const labels = useMemo(() => markers.map((marker) => marker.preview), [markers])
 
   // ⌘⇧O 已收编进 keymap 注册表('toc.toggle'),这里不再挂第二个 window keydown。
 
@@ -57,6 +88,9 @@ export function TocPanel({ currentIndex, onPick }: Props) {
     onPick(index)
   }
 
+  // 空态:没有章、或者没有键 —— 两者缺一就没有目录可看,rail 整个不在场。
+  if (chapters.length === 0 || keys.length === 0) return null
+
   return (
     <nav
       className={s.rail}
@@ -68,7 +102,7 @@ export function TocPanel({ currentIndex, onPick }: Props) {
     >
       <PianoKeys
         keys={keys}
-        chapters={CHAT_CHAPTERS}
+        chapters={chapters}
         labels={labels}
         open={open}
         currentIndex={currentIndex}

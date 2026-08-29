@@ -1,13 +1,20 @@
 import { Fragment } from 'react'
 import { useT } from '../i18n'
-import type { ChatChapter } from '../data/chat-mock'
+
 import { keysOfChapter } from './transitions'
-import type { TocKey } from './types'
+import type { TocChapter, TocKey } from './types'
+import type { MessageKey } from '../i18n'
 import s from './PianoKeys.module.css'
+
+/** 段的类型:后端只有这两种(runtime/src/toc:动过文件 = task,否则 question)。 */
+const CHAPTER_KIND_KEY: Record<TocChapter['kind'], MessageKey> = {
+  task: 'toc.chapterTask',
+  question: 'toc.chapterQuestion',
+}
 
 interface Props {
   keys: TocKey[]
-  chapters: ChatChapter[]
+  chapters: TocChapter[]
   /** 每一轮的用户消息文本,下标与 TocKey.index 对齐 */
   labels: string[]
   open: boolean
@@ -47,8 +54,10 @@ export function PianoKeys({
 
       <div className={s.rows}>
         {chapters.map((chapter, chapterIdx) => (
-          <Fragment key={chapter.startIndex}>
+          <Fragment key={`${chapter.startIndex}:${chapter.title}`}>
             <div className={s.gap}>
+              {/* kind 如实呈现:任务与问答是后端分好的两种段,不合并成一种。 */}
+              <span className={s.chapterKind}>{t(CHAPTER_KIND_KEY[chapter.kind])}</span>
               <span className={s.chapter}>{chapter.title}</span>
             </div>
             {keysOfChapter(keys, chapterIdx).map((key) => {

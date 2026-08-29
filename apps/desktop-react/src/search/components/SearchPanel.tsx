@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useStageStore } from '../../stage/store'
+import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../../expose/store'
 import { Highlight } from '../../expose/components/Highlight'
+import { useSessionTime } from '../../expose/components/session-time'
 import { Input } from '../../ui/Input'
 import { Segmented } from '../../ui/Segmented'
 import type { SegmentedOption } from '../../ui/Segmented'
@@ -11,6 +13,7 @@ import { Search } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import { SCOPES, moveRow, nextScope, originText, recentRows, searchRows, targetText } from '../transitions'
+import type { SearchMaterial } from '../transitions'
 import type { SearchBadge, SearchRow, SearchScope } from '../types'
 import s from './SearchPanel.module.css'
 
@@ -25,6 +28,9 @@ import s from './SearchPanel.module.css'
  * 它自己不写一行检索逻辑:命中、排序、轮转、走行全在 search/transitions 的纯函数里,
  * 组件只有「谁被选中」和「输入框里是什么」两个本地状态。
  */
+
+/** 一次搜索最多为多少条命中会话补拉章节(取数上限,不是结果上限)。 */
+const CHAPTER_PREFETCH_LIMIT = 8
 
 const SCOPE_LABELS: Record<SearchScope, MessageKey> = {
   all: 'search.scopeAll',
@@ -45,14 +51,41 @@ export function SearchPanel() {
   const [cursor, setCursor] = useState(0)
   const enterSession = useExposeStore((st) => st.enterSession)
   const closeToDock = useStageStore((st) => st.closeToDock)
+  const sessions = useSessionsSource((st) => st.sessions)
+  const chapters = useSessionsSource((st) => st.chapters)
+  const ensureChapters = useSessionsSource((st) => st.ensureChapters)
+  const timeOf = useSessionTime()
   const toast = useToast()
   const listRef = useRef<HTMLDivElement>(null)
 
   const searching = query.trim().length > 0
-  const rows = useMemo(
-    () => (searching ? searchRows(query, scope) : recentRows(scope)),
-    [query, scope, searching],
+  const material: SearchMaterial = useMemo(
+    () => ({ sessions, chapters, timeOf: (session) => timeOf(session.updatedAt) }),
+    [sessions, chapters, timeOf],
   )
+  const rows = useMemo(
+    () => (searching ? searchRows(query, scope, material) : recentRows(scope, material)),
+    [query, scope, searching, material],
+  )
+
+  /*
+   * 章节是**按需**拉的:标题 / 预览命中的那几条先把章节补回来,下一轮渲染里
+   * 它们的章节行就一起出现。上限是刻意的 —— 一个字母就为几十条会话各发一次
+   * 请求,那不叫按需。会话侧另外两样(标题、预览)本来就在 listMeta 里,即时滤。
+   */
+  useEffect(() => {
+    if (!searching || scope === 'files') return
+    const q = query.trim().toLowerCase()
+    let asked = 0
+    for (const session of sessions) {
+      if (asked >= CHAPTER_PREFETCH_LIMIT) break
+      if (!session.title.toLowerCase().includes(q) && !session.preview.toLowerCase().includes(q)) {
+        continue
+      }
+      asked += 1
+      void ensureChapters(session.id)
+    }
+  }, [searching, query, scope, sessions, ensureChapters])
 
   // 换词 / 换范围 = 换了一张列表,选中回到第一行。
   useEffect(() => {

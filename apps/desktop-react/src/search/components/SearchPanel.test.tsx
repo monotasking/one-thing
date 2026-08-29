@@ -6,7 +6,7 @@ import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../../expose/store'
 import { initialStageState } from '../../stage/transitions'
 import { useToastHub } from '../../ui/Toast'
-import { SESSIONS } from '../../expose/data'
+import { CHAPTERS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
 import { RECENT_LIMIT } from '../transitions'
 
 /**
@@ -15,6 +15,8 @@ import { RECENT_LIMIT } from '../transitions'
  */
 beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh', defaultOpen: 'stage' })
+  // 会话侧吃真数据源(D1);文件侧仍是 ../data.ts 那张 mock 表(诚实缺口)。
+  seedSessionsSource({ chapters: CHAPTERS })
   useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
   useToastHub.setState({ toasts: [] })
 })

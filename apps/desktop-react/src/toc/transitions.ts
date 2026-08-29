@@ -1,10 +1,13 @@
-import { CHAT_CHAPTERS, CHAT_TURNS } from '../data/chat-mock'
-import type { ChatChapter } from '../data/chat-mock'
-import type { TocKey, TocState } from './types'
+import type { SessionChapter, SessionMarker } from '../expose/types'
+import type { TocChapter, TocKey, TocState } from './types'
 
 /**
  * 钢琴键 TOC 的状态机 —— 纯函数,不碰 DOM、不认识 React。
  * 组件里只许调这里的函数,不许自己拼条件(和 stage/expose 同一条约定)。
+ *
+ * D1(接真数据)之后素材一律从参数进来:章节是 `sessions.getSegments`,
+ * 键是 `sessions.getUserMarkers`。mock 默认值全部退役 —— 那条路接真数据之后
+ * 就是「第二份事实」的入口。
  */
 
 export const initialTocState: TocState = { open: false, hoverIndex: null }
@@ -41,10 +44,7 @@ export function hoverKey(state: TocState, index: number | null): TocState {
  * 不抛错、不丢键:键数**恒等于**轮次数,这是几何不变式的第一条
  * (键列渲染出来的行数只由这个数决定,和展开与否无关)。
  */
-export function tocKeys(
-  chapters: ChatChapter[] = CHAT_CHAPTERS,
-  turnCount: number = CHAT_TURNS.length,
-): TocKey[] {
+export function tocKeys(chapters: TocChapter[], turnCount: number): TocKey[] {
   const keys: TocKey[] = []
   for (let index = 0; index < turnCount; index += 1) {
     let chapterIdx = 0
@@ -62,12 +62,39 @@ export function keysOfChapter(keys: TocKey[], chapterIdx: number): TocKey[] {
 }
 
 /** 某一轮属于第几章。搜索 / 高亮之类的旁路要用,单独开一个口,免得各算各的。 */
-export function chapterOfTurn(index: number, chapters: ChatChapter[] = CHAT_CHAPTERS): number {
+export function chapterOfTurn(index: number, chapters: TocChapter[]): number {
   let chapterIdx = 0
   for (let c = 0; c < chapters.length; c += 1) {
     if (chapters[c].startIndex <= index) chapterIdx = c
   }
   return chapterIdx
+}
+
+/**
+ * 后端章节 → 目录章节。
+ *
+ * 落位靠 `startMessageId`:它就是这一段**第一条用户消息**的 id
+ * (`runtime/src/toc/segment.ts` 的 `segmentFromTurns`:
+ * `startMessageId: first.userMessage.id`),所以它一定能在用户锚点列里找到位置。
+ *
+ * 找不到的段(旧账本没记 startMessageId,或那条消息已被删)**整段丢掉**,
+ * 不按 turnCount 累加去猜一个位置 —— 一个猜出来的落点会让点击跳到别处,
+ * 而那比少一章更糟。两套落位机制并存也必然漂移。
+ *
+ * 出参按 startIndex 升序:章节隙是靠相邻键的 chapterIdx 变化画出来的,
+ * 章序乱了隙就画在错的地方。
+ */
+export function tocChapters(chapters: SessionChapter[], markers: SessionMarker[]): TocChapter[] {
+  const at = new Map(markers.map((marker, index) => [marker.id, index]))
+  return chapters
+    .map((chapter) => {
+      const startIndex = chapter.startMessageId ? at.get(chapter.startMessageId) : undefined
+      return startIndex === undefined
+        ? undefined
+        : { title: chapter.title, kind: chapter.kind, startIndex }
+    })
+    .filter((chapter): chapter is TocChapter => chapter !== undefined)
+    .sort((a, b) => a.startIndex - b.startIndex)
 }
 
 /* ── 派生:当前键 ─────────────────────────────────────────────────────── */

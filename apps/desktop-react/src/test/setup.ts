@@ -30,3 +30,21 @@ if (broken) {
     writable: true,
   })
 }
+
+/**
+ * 会话数据源的端口:测试里默认是**一个什么都不回的假端口**。
+ *
+ * 不装这一手的话,任何渲染了会话侧的用例都会经 `sessionsPort()` 动态 import
+ * 真的 `@renderer/platform`,进而在 jsdom 里发出 fetch / SSE ——
+ * 单元测试**不该碰网**。要验取数的用例自己 `configureSessionsPort` 换一个。
+ */
+import { configureSessionsPort } from '../data/sessions-port'
+
+configureSessionsPort({
+  ready: async () => undefined,
+  listMeta: async () => ({ success: true, sessions: [] }),
+  getSegments: async () => ({ success: true, segments: [] }),
+  getMessagesPage: async () => ({ success: true, messages: [] }),
+  getUserMarkers: async () => ({ success: true, markers: [] }),
+  onSessionEvent: () => () => undefined,
+})

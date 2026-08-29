@@ -123,6 +123,7 @@ export function Dock({ dimmed }: Props) {
             <DockTile
               key={tile.item.id}
               title={t(tile.item.titleKey)}
+              testId={`dock-tile-${tile.item.id}`}
               icon={tile.item.icon}
               badge={tile.item.badge}
               running={tile.item.id in placements}

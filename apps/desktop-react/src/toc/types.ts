@@ -14,10 +14,25 @@ export interface TocState {
 }
 
 /**
- * 一枚键 = 一条用户消息。index 是它在 CHAT_TURNS 里的下标(也是 data-turn-index 的值),
+ * 一枚键 = 一条用户消息。index 是它在这条会话的**用户消息锚点**列里的下标
+ * (`sessions.getUserMarkers` 的次序,也是 data-turn-index 的值),
  * chapterIdx 是它属于第几章 —— 键列的「章节隙」就是靠相邻两键的 chapterIdx 不同推出来的。
  */
 export interface TocKey {
   index: number
   chapterIdx: number
+}
+
+/**
+ * 一章 = 目录上的一段。**只存起点,不存范围** —— 范围由下一章的起点推导
+ * (tocKeys),免得起点和范围两份事实互相漂移。
+ *
+ * 产地是 `sessions.getSegments`:title / kind 逐字来自后端那条 SessionSegment,
+ * startIndex 是它的 startMessageId 在用户锚点列里的位置(见 tocChapters)。
+ */
+export interface TocChapter {
+  title: string
+  startIndex: number
+  /** 后端的 'task' | 'question',如实呈现,不合并成一种。 */
+  kind: 'task' | 'question'
 }
