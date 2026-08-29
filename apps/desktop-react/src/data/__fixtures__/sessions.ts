@@ -35,6 +35,9 @@ export const SESSION_META: SessionMeta[] = [
     updatedAt: NOW - 8 * MINUTE,
     workingDirectory: ONETHING_DIR,
     previewText: '把 provider 的能力判定收敛到一处',
+    // 模型徽 / agent 徽的样本:只有这一条两格都有,好钉「有产地才画」。
+    lastModel: 'claude-opus-5',
+    agentId: 'reviewer',
   }),
   meta({
     id: 'os-compact',
@@ -42,6 +45,9 @@ export const SESSION_META: SessionMeta[] = [
     updatedAt: NOW - 3 * HOUR,
     workingDirectory: ONETHING_DIR,
     previewText: '为什么开了 goal 之后压缩会提前触发',
+    lastModel: 'deepseek-chat',
+    // 默认 agent 在投影里读作「没有绑定」—— 这一条钉的就是它**不**出徽。
+    agentId: 'default',
   }),
   meta({
     id: 'os-expose',

@@ -163,8 +163,6 @@ export const en: Record<MessageKey, string> = {
   'list.bucketThisWeek': 'This week',
   'list.bucketEarlier': 'Earlier',
 
-  /* ── search results (SearchResults: the overview filter bar's three-layer hits) ─ */
-
   /* ── search panel (search/: one search row + one flat hit list) ───── */
   'search.placeholder': 'Search files, sections, messages, sessions…',
   'search.label': 'Search',
@@ -204,6 +202,10 @@ export const en: Record<MessageKey, string> = {
   'quicklook.dismiss': 'Dismiss',
   'quicklook.hintSwitch': 'switch session',
   'quicklook.hintEnter': 'open',
+  'quicklook.prev': 'Previous session',
+  'quicklook.next': 'Next session',
+  'quicklook.modelTitle': 'Model · {model}',
+  'quicklook.agentTitle': 'Agent · {agent}',
   'quicklook.loading': 'Loading messages…',
   'quicklook.empty': 'No messages in this session yet',
   'quicklook.roleUser': 'You',

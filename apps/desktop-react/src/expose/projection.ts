@@ -1,3 +1,4 @@
+import { DEFAULT_AGENT_ID } from '@shared/ipc/agents'
 import type { SessionMeta } from '@shared/ipc/chat'
 import type { SessionSegment } from '@shared/ipc/toc'
 import type { UserMessageMarker } from '@shared/ipc/chat'
@@ -56,6 +57,25 @@ export function sessionKindOf(meta: SessionMeta): SessionKind {
   return 'chat'
 }
 
+/**
+ * 上一轮跑的模型。空串与缺席一样读作 null —— 「有这一格但它是空的」在屏幕上
+ * 分不出来,却会让渲染层多画一个空徽。
+ */
+export function sessionModelOf(meta: SessionMeta): string | null {
+  const model = (meta.lastModel ?? '').trim()
+  return model || null
+}
+
+/**
+ * 绑定的 agent。`DEFAULT_AGENT_ID` 在这里被读成 null:默认 agent 是**没有选择**
+ * 而不是一个选择,给它出一枚徽等于每条会话都挂一句废话。
+ */
+export function sessionAgentIdOf(meta: SessionMeta): string | null {
+  const agentId = (meta.agentId ?? '').trim()
+  if (!agentId || agentId === DEFAULT_AGENT_ID) return null
+  return agentId
+}
+
 /** 一条 SessionMeta → 一条列表事实。缺席的格一律给出诚实的空值,不编。 */
 export function toSessionSummary(meta: SessionMeta): SessionSummary {
   return {
@@ -65,6 +85,8 @@ export function toSessionSummary(meta: SessionMeta): SessionSummary {
     projectId: normalizeWorkingDirectory(meta.workingDirectory),
     preview: meta.previewText ?? '',
     updatedAt: meta.updatedAt,
+    model: sessionModelOf(meta),
+    agentId: sessionAgentIdOf(meta),
   }
 }
 

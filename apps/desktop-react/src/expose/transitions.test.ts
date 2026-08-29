@@ -13,8 +13,11 @@ import {
   openQuickLook,
   quickLookNext,
   quickLookPrev,
+  filterGroups,
+  groupMatchesQuery,
+  quickLookNeighbors,
   relativeTime,
-  searchSessions,
+  sessionMatchesQuery,
   setQuery,
   splitHighlight,
   timeBucket,
@@ -23,9 +26,9 @@ import {
 } from './transitions'
 import { findGroup, findSession, sessionsOfGroup } from './projection'
 import {
-  CHAPTERS,
   GROUPS,
   NOW,
+  ONETHING_DIR,
   SESSIONS,
 } from '../data/__fixtures__/sessions'
 import type { ExposeState } from './types'
@@ -55,7 +58,7 @@ describe('open(开场归位)', () => {
   })
 
   it('开场是**无条件**归位:停在 quicklook、带着搜索词,再开一次都回到总览', () => {
-    const deep = setQuery(openQuickLook(overview, 'os-expose'), 'provider')
+    const deep = setQuery(openQuickLook(overview, 'os-expose'), 'provider', GROUPS)
     const reopened = open(deep, GROUPS)
     expect(reopened.view).toEqual({ mode: 'overview' })
     expect(reopened.query).toBe('')
@@ -221,31 +224,94 @@ describe('toggleGroupCollapsed', () => {
   })
 })
 
-describe('搜索', () => {
-  it('标题命中', () => {
-    expect(searchSessions('Exposé', SESSIONS).map((h) => h.session.id)).toEqual(['os-expose'])
+describe('搜索 = 过滤器,不是第四种形态', () => {
+  /*
+   * F 批的裁定:输入搜索词之后屏幕仍是「项目头 + 卡网格」。所以搜索的**全部**
+   * 就是 filterGroups —— 一个分组事实 + 一个词 → 另一个分组事实。
+   * 这一批用例钉的正是那几种命中组合(卡命中 / 项目命中 / 两者并集 / 都不中)。
+   */
+  const onething = GROUPS.find((g) => g.id === ONETHING_DIR)!
+  const idsOf = (groups: typeof GROUPS) =>
+    groups.map((g) => [g.id, g.sessions.map((s) => s.id)] as const)
+
+  it('空词是恒等变换,而且原样返回同一个数组引用(不搜时零分配)', () => {
+    expect(filterGroups(GROUPS, '')).toBe(GROUPS)
+    expect(filterGroups(GROUPS, '   ')).toBe(GROUPS)
   })
 
-  it('预览(第一条用户消息)也算命中,归到会话行上', () => {
-    const hits = searchSessions('端口', SESSIONS)
-    expect(hits.map((h) => h.session.id)).toEqual(['tr-flask'])
+  it('按标题命中:留下的只有那一张卡,它所在的组只剩它,别的组整个消失', () => {
+    expect(idsOf(filterGroups(GROUPS, 'Exposé'))).toEqual([[ONETHING_DIR, ['os-expose']]])
   })
 
-  it('章节只在**已经拉到手**的那份缓存里找 —— 没拉过的会话不会凭空命中', () => {
-    expect(searchSessions('读取点', SESSIONS)).toEqual([])
-    const hits = searchSessions('读取点', SESSIONS, CHAPTERS)
-    expect(hits.map((h) => h.session.id)).toEqual(['os-provider'])
-    expect(hits[0].chapters.map((c) => c.id)).toEqual(['seg-1'])
+  it('预览(第一条用户消息)也算命中 —— 搜的格与卡上画的格是同一批', () => {
+    expect(idsOf(filterGroups(GROUPS, '端口'))).toEqual([
+      ['/Users/dev/code/transreader', ['tr-flask']],
+    ])
   })
 
-  it('空词返回空,不返回全量', () => {
-    expect(searchSessions('   ', SESSIONS)).toEqual([])
+  it('命中项目名(路径末段)时该组**整组保留**:组里每一条都在,一条不少', () => {
+    const kept = filterGroups(GROUPS, 'start-electron')
+    expect(kept.map((g) => g.id)).toEqual([ONETHING_DIR])
+    expect(kept[0].sessions.map((s) => s.id)).toEqual(onething.sessions.map((s) => s.id))
+  })
+
+  it('项目命中与卡命中取并集:整组的那一组 + 别的组里逐张命中的卡', () => {
+    // 'e' 同时出现在 start-electron(项目名)与 transreader 的两条标题/预览里,
+    // 所以并集 = onething 整组 + transreader 的命中卡。
+    const kept = filterGroups(GROUPS, 'transreader')
+    expect(kept.map((g) => g.id)).toEqual(['/Users/dev/code/transreader'])
+
+    const both = filterGroups(GROUPS, 'flask')
+    expect(idsOf(both)).toEqual([['/Users/dev/code/transreader', ['tr-flask']]])
+  })
+
+  it('组名命中不看**路径**:绝对路径里那截公共前缀会让过滤器等于没有', () => {
+    expect(groupMatchesQuery(onething, 'start-electron')).toBe(true)
+    expect(groupMatchesQuery(onething, '/Users/dev')).toBe(false)
+    expect(filterGroups(GROUPS, 'Users')).toEqual([])
+  })
+
+  it('合成组(协作 / 独立)不按组名命中 —— 那名字是界面文案,会随语言变', () => {
+    const collab = GROUPS.find((g) => g.id === 'collab')!
+    expect(collab.name).toBeUndefined()
+    expect(groupMatchesQuery(collab, '协作')).toBe(false)
+    // 但它组里的卡照常按标题 / 预览命中。
+    expect(idsOf(filterGroups(GROUPS, '发版房'))).toEqual([['collab', ['rm-release']]])
+  })
+
+  it('一条都不中时是空表(而不是全量)', () => {
+    expect(filterGroups(GROUPS, '这个词哪儿都没有')).toEqual([])
   })
 
   it('大小写不敏感', () => {
-    expect(searchSessions('PROVIDER', SESSIONS).length).toBe(
-      searchSessions('provider', SESSIONS).length,
+    expect(sessionMatchesQuery(SESSIONS[0], 'PROVIDER')).toBe(
+      sessionMatchesQuery(SESSIONS[0], 'provider'),
     )
+    expect(idsOf(filterGroups(GROUPS, 'START-ELECTRON'))).toEqual(
+      idsOf(filterGroups(GROUPS, 'start-electron')),
+    )
+  })
+
+  it('空词时 sessionMatchesQuery 一律为真 —— 「没在搜」不等于「都不中」', () => {
+    expect(SESSIONS.every((s) => sessionMatchesQuery(s, ''))).toBe(true)
+  })
+
+  it('焦点序列跟着过滤走:搜索之后方向键只在命中的卡之间移动', () => {
+    const searched = setQuery(overview, 'Exposé', GROUPS)
+    expect(visibleCardIds(searched, GROUPS)).toEqual(['os-expose'])
+    // 焦点原本在 os-provider 上,被过滤掉了 → 退到新序列首。
+    expect(searched.focusId).toBe('os-expose')
+  })
+
+  it('搜到一条都没有时焦点是 null,而不是指向一张不在屏幕上的卡', () => {
+    const searched = setQuery(overview, '这个词哪儿都没有', GROUPS)
+    expect(visibleCardIds(searched, GROUPS)).toEqual([])
+    expect(searched.focusId).toBeNull()
+  })
+
+  it('焦点还在命中集里时不动它 —— 打字不该把光标从我正看的那张卡上弹开', () => {
+    const searched = setQuery(overview, 'provider', GROUPS)
+    expect(searched.focusId).toBe(CURRENT)
   })
 
   it('splitHighlight 把命中段切出来', () => {
@@ -259,9 +325,49 @@ describe('搜索', () => {
   })
 })
 
+describe('Quick Look 的换会话序列(‹ › 与 ← → 同一个判据)', () => {
+  it('两头是 null,不回卷 —— 与 quickLookPrev / Next 的「到头就停」同一条口径', () => {
+    const first = openQuickLook(overview, seq[0])
+    expect(quickLookNeighbors(first, GROUPS).prev).toBeNull()
+    expect(quickLookNeighbors(first, GROUPS).next).toBe(seq[1])
+
+    const last = openQuickLook(overview, seq[seq.length - 1])
+    expect(quickLookNeighbors(last, GROUPS).next).toBeNull()
+    expect(quickLookNeighbors(last, GROUPS).prev).toBe(seq[seq.length - 2])
+
+    // 禁用的那一侧,键盘按下去也确实原地不动。
+    expect(quickLookPrev(first, GROUPS)).toBe(first)
+    expect(quickLookNext(last, GROUPS)).toBe(last)
+  })
+
+  it('中间两边都有邻居', () => {
+    const mid = openQuickLook(overview, seq[1])
+    expect(quickLookNeighbors(mid, GROUPS)).toEqual({ prev: seq[0], next: seq[2] })
+  })
+
+  it('序列是**搜索过滤之后**的那一条,不是全量', () => {
+    const searched = setQuery(overview, 'transreader', GROUPS)
+    const visible = visibleCardIds(searched, GROUPS)
+    expect(visible.length).toBeGreaterThan(1)
+    // 这一条在全量序列里**不是头一个**(它前面还有 onething 那四条),
+    // 所以「过滤没生效」的话 prev 会是那四条里的最后一条,而不是 null。
+    expect(seq.indexOf(visible[0])).toBeGreaterThan(0)
+
+    const st = openQuickLook(searched, visible[0])
+    expect(quickLookNeighbors(st, GROUPS)).toEqual({ prev: null, next: visible[1] })
+    // 同一条会话,不搜时的邻居是全量序列里的前一张。
+    const unfiltered = openQuickLook(overview, visible[0])
+    expect(quickLookNeighbors(unfiltered, GROUPS).prev).toBe(seq[seq.indexOf(visible[0]) - 1])
+  })
+
+  it('不在 quicklook 层时两边都是 null', () => {
+    expect(quickLookNeighbors(overview, GROUPS)).toEqual({ prev: null, next: null })
+  })
+})
+
 describe('enterSession / 时间', () => {
   it('进入 = 换当前会话 + 内容回到起点(收回 Dock 是 store 壳的事,不在纯函数里)', () => {
-    const next = enterSession(setQuery(overview, 'x'), 'tr-menubar')
+    const next = enterSession(setQuery(overview, 'x', GROUPS), 'tr-menubar')
     expect(next.currentSessionId).toBe('tr-menubar')
     expect(next.view).toEqual({ mode: 'overview' })
     expect(next.query).toBe('')

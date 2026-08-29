@@ -46,6 +46,17 @@ export interface SessionSummary {
   preview: string
   /** SessionMeta.updatedAt(毫秒时间戳)。显示成什么样是渲染层的事。 */
   updatedAt: number
+  /**
+   * SessionMeta.lastModel —— **上一轮实际跑的模型**,不是「这条会话绑定了哪个模型」
+   * (那要连 modelPinned 一起读才说得准)。缺席 = 这条会话还没跑过任何一轮,
+   * 于是这一格不存在,卡面与 Quick Look 都不画 —— 不拿一个默认模型名去顶。
+   */
+  model: string | null
+  /**
+   * SessionMeta.agentId。`DEFAULT_AGENT_ID`('default')与缺席在这里都读作 null:
+   * 「默认 agent」不是一条值得占一格徽的信息,满屏一个 default 等于没说。
+   */
+  agentId: string | null
 }
 
 /**
@@ -155,18 +166,17 @@ export interface ExposeState {
 
 export type FocusDir = 'up' | 'down' | 'left' | 'right'
 
-/**
- * 搜索命中:两层缩进各对应这里的一层。
+/*
+ * ── F 批:`SearchHit` 退役 ────────────────────────────────────────────────
+ * 曾经搜索是**另一种呈现**(三层缩进的命中列表),于是它需要一个自己的形状。
+ * 现在搜索只是**喂给分组纯函数的一个过滤参数** —— 屏幕上仍是「项目头 + 卡网格」,
+ * 只是不命中的卡与变空的组不在了(expose/transitions.ts 的 filterGroups)。
+ * 一个过滤器不需要自己的结果类型:结果就是 `SessionGroup[]`,和不搜时同一种东西。
  *
- * **第三层(消息正文)在 D1 不可得** —— 后端没有跨会话内容检索面
- * (`sessions.*` 二十六条里没有一条是「在所有会话里搜正文」),
- * 硬要做就得把每条会话的每一页消息都拉下来在前端扫,那不是缺口的补法。
- * 判据与缺口记在 expose/transitions.ts 的 searchSessions 上,留待后批。
+ * 随它一起退役的还有「章节也算命中」那一层:卡面上没有章节的位置,
+ * 一张因为章节命中而出现、却没有任何高亮的卡只会让人以为过滤器坏了。
+ * 章节数据本身没动(`ensureChapters` 仍在,检索面板与进入会话时照常用)。
  */
-export interface SearchHit {
-  session: SessionSummary
-  chapters: SessionChapter[]
-}
 
 /** 高亮切片:hit=true 的段落由视图包 <mark>。 */
 export interface HighlightPart {

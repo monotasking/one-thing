@@ -1,56 +1,53 @@
-import { useEffect, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search } from '../../components/icons'
 import { Button } from '../../ui/Button'
 import { plural, useT } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
-import { isCollapsed, searchSessions } from '../transitions'
+import { filterGroups, isCollapsed } from '../transitions'
+import { Highlight } from './Highlight'
 import { SessionCard } from './SessionCard'
-import { SearchResults } from './SearchResults'
 import s from './Overview.module.css'
 
 /**
- * 一次搜索最多为多少条命中会话补拉章节。
- * 它不是「结果上限」(结果不截断),只是取数上限。
+ * ── F 批:搜索是过滤器,不是第四层视图 ────────────────────────────────────
+ * 输入搜索词之后屏幕**仍是这一套**:项目头 + 会话卡网格,和默认打开时逐像素相同。
+ * 变的只有内容 —— 不命中的卡消失、变空的组消失、命中词在卡与组头上高亮。
+ *
+ * 所以这个组件里**一次 filter 都没有**:过滤是 `expose/transitions.ts` 的
+ * `filterGroups`(纯函数,可单测),这里只是把它的结果画出来。同一个纯函数也被
+ * `visibleCardIds` 用着,于是「屏幕上有哪些卡」与「方向键 / Quick Look 走哪些卡」
+ * 天生是同一份事实,不会漂移。
+ *
+ * 退役的是 `SearchResults`(三层缩进的命中列表)—— 它是「搜索换一种呈现」那条路
+ * 的全部实现,连同它的 CSS 与 `SearchHit` 形状一起删了。
  */
-const CHAPTER_PREFETCH_LIMIT = 8
-
 export function Overview() {
   const t = useT()
   const state = useExposeStore()
-  const groups = useSessionsSource((st) => st.groups)
-  const sessions = useSessionsSource((st) => st.sessions)
-  const chapters = useSessionsSource((st) => st.chapters)
+  const allGroups = useSessionsSource((st) => st.groups)
   const status = useSessionsSource((st) => st.status)
   const error = useSessionsSource((st) => st.error)
-  const ensureChapters = useSessionsSource((st) => st.ensureChapters)
   const inputRef = useRef<HTMLInputElement>(null)
-  const searching = state.query.trim().length > 0
+  const query = state.query
+  const searching = query.trim().length > 0
 
-  /*
-   * 搜到的会话**按需**把章节拉回来:标题命中的那几条先补上章节,下一轮渲染里
-   * 它们的章节就一起进命中表(searchSessions 只看已经到手的那份缓存)。
-   * 上限是刻意的 —— 一个字母就为几十条会话各发一次请求,那不叫按需。
-   */
-  useEffect(() => {
-    if (!searching) return
-    for (const hit of searchSessions(state.query, sessions).slice(0, CHAPTER_PREFETCH_LIMIT)) {
-      void ensureChapters(hit.session.id)
-    }
-  }, [searching, state.query, sessions, ensureChapters])
+  const groups = useMemo(() => filterGroups(allGroups, query), [allGroups, query])
 
   const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return
-    const first = searchSessions(state.query, sessions, chapters)[0]
+    // 回车 = 进入**屏幕上第一张卡**。它就是过滤后的阅读次序的头一个,
+    // 不再有第二套「命中排序」—— 看到什么,回车就进什么。
+    const first = groups.find((g) => !isCollapsed(state, g.id))?.sessions[0]
     if (first) {
       e.preventDefault()
-      state.enterSession(first.session.id)
+      state.enterSession(first.id)
     }
   }
 
   /**
-   * 分组区的三种「没有卡」。它们不是同一件事,所以不共用一句文案:
-   * 还在读 / 读失败(浏览器直开或 core 没起来)/ 真的一条会话都没有。
+   * 分组区的四种「没有卡」。它们不是同一件事,所以不共用一句文案:
+   * 搜不到 / 还在读 / 读失败(浏览器直开或 core 没起来)/ 真的一条会话都没有。
    * **一律不回退到 mock** —— 假数据比空更糟。
    */
   function renderGroups() {
@@ -79,7 +76,10 @@ export function Overview() {
                 onClick={() => state.toggleGroupCollapsed(group.id)}
               >
                 <Caret className={s.caret} strokeWidth={1.75} aria-hidden="true" />
-                <span className={s.groupName}>{name}</span>
+                {/* 组名也高亮:项目名命中时整组保留,不高亮就看不出这一组为什么还在。 */}
+                <span className={s.groupName}>
+                  <Highlight text={name ?? group.id} query={query} />
+                </span>
                 <span className={s.groupPath}>{path}</span>
               </button>
               <button
@@ -115,6 +115,7 @@ export function Overview() {
                     <SessionCard
                       key={session.id}
                       session={session}
+                      query={query}
                       current={session.id === state.currentSessionId}
                       focused={state.focusVisible && session.id === state.focusId}
                       onEnter={() => state.enterSession(session.id)}
@@ -127,6 +128,14 @@ export function Overview() {
           </section>
         )
       })
+    }
+
+    /*
+     * 搜不到 ≠ 没有会话:这里有会话,只是没有一条配得上这个词。
+     * 一行灰字就够 —— 插画会把「我打错了一个字」演成一场事故。
+     */
+    if (searching) {
+      return <p className={s.noMatch}>{t('expose.noMatchingSessions')}</p>
     }
 
     if (status === 'error') {
@@ -176,18 +185,7 @@ export function Overview() {
       </header>
 
       <div className={s.scroll}>
-        <div className={s.inner}>
-          {searching ? (
-            <SearchResults
-              query={state.query}
-              sessions={sessions}
-              chapters={chapters}
-              onEnter={state.enterSession}
-            />
-          ) : (
-            renderGroups()
-          )}
-        </div>
+        <div className={s.inner}>{renderGroups()}</div>
       </div>
     </div>
   )

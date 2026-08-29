@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_AGENT_ID } from '@shared/ipc/agents'
 import type { SessionMeta } from '@shared/ipc/chat'
 import {
   buildGroups,
   buildProjects,
   normalizeWorkingDirectory,
   projectNameOf,
+  sessionAgentIdOf,
   sessionKindOf,
+  sessionModelOf,
   toPreviewMessage,
   toSessionChapter,
   toSessionMarker,
@@ -143,5 +146,31 @@ describe('会话内部的两份按需数据', () => {
     expect(toSessionMarker({ id: 'm1', seq: 3, timestamp: 9, preview: '你好' })).toEqual({
       id: 'm1', preview: '你好',
     })
+  })
+})
+
+/**
+ * F 批新增的两格。判据都是「没有产地就是 null」,不给默认值 ——
+ * 一个永远显示某个模型名 / 永远挂着 default 的徽,和 D1 删掉的那批假徽是同一种病。
+ */
+describe('模型 / agent 两格的产地', () => {
+  it('lastModel 原样搬,空串与缺席都读作 null', () => {
+    expect(sessionModelOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0, lastModel: 'gpt-5.5' })).toBe('gpt-5.5')
+    expect(sessionModelOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0, lastModel: '  ' })).toBeNull()
+    expect(sessionModelOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0 })).toBeNull()
+  })
+
+  it("agentId 非 default 才算一格;'default' 与缺席都读作 null", () => {
+    expect(sessionAgentIdOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0, agentId: 'reviewer' })).toBe('reviewer')
+    expect(sessionAgentIdOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0, agentId: DEFAULT_AGENT_ID })).toBeNull()
+    expect(sessionAgentIdOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0 })).toBeNull()
+  })
+
+  it('两格都进 SessionSummary(卡面与 Quick Look 读的是同一份投影)', () => {
+    const summary = SESSIONS.find((s) => s.id === 'os-provider')!
+    expect(summary.model).toBe('claude-opus-5')
+    expect(summary.agentId).toBe('reviewer')
+    expect(SESSIONS.find((s) => s.id === 'os-compact')!.agentId).toBeNull()
+    expect(SESSIONS.find((s) => s.id === 'lo-notes')!.model).toBeNull()
   })
 })

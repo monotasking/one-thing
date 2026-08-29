@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { X } from '../../components/icons'
+import { ChevronLeft, ChevronRight, X } from '../../components/icons'
 import { SKELETON_DELAY_MS } from '../../components/motion'
 import { useDelayedFlag } from '../../components/useDelayedFlag'
 import { Button } from '../../ui/Button'
@@ -9,7 +9,9 @@ import type { MessageKey } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { findSession } from '../projection'
 import { useExposeStore } from '../store'
+import { quickLookNeighbors } from '../transitions'
 import type { SessionKind, SessionPreviewMessage } from '../types'
+import { useSessionTime } from './session-time'
 import s from './QuickLook.module.css'
 
 /** kind 徽的字面:一个字就够,鼠标不用悬停也认得出这是哪一类会话。 */
@@ -47,12 +49,26 @@ interface Props {
 
 export function QuickLook({ sessionId }: Props) {
   const t = useT()
+  const timeOf = useSessionTime()
   const closeQuickLook = useExposeStore((st) => st.closeQuickLook)
   const enterSession = useExposeStore((st) => st.enterSession)
+  const quickLookPrev = useExposeStore((st) => st.quickLookPrev)
+  const quickLookNext = useExposeStore((st) => st.quickLookNext)
   const sessions = useSessionsSource((st) => st.sessions)
+  const groups = useSessionsSource((st) => st.groups)
   const messages = useSessionsSource((st) => st.messages[sessionId])
   const ensureMessages = useSessionsSource((st) => st.ensureMessages)
   const session = findSession(sessions, sessionId)
+
+  /*
+   * ‹ › 的可用性和键盘的 ← → 共用**同一个判据**(quickLookNeighbors 读的正是
+   * quickLookStep 那条 visibleCardIds),所以不会出现「按钮灰着但方向键还能走」。
+   * 序列是**搜索过滤之后**的那一条:搜着词开预览,左右就在命中的几张卡之间走。
+   * 两个选择器各取一个 id 而不是一次取回 {prev,next} —— 后者每次渲染都是新对象,
+   * zustand 的 Object.is 会判成「变了」,当场变成无限重渲染。
+   */
+  const prevId = useExposeStore((st) => quickLookNeighbors(st, groups).prev)
+  const nextId = useExposeStore((st) => quickLookNeighbors(st, groups).next)
 
   /*
    * 取数的触发点有两个,这里是**兜底**的那一个:store 壳在 openQuickLook /
@@ -77,10 +93,65 @@ export function QuickLook({ sessionId }: Props) {
     >
       <section className={s.panel} role="dialog" aria-label={session.title}>
         <header className={s.header}>
-          <span className={s.title}>{session.title}</span>
-          <span className={s.kind} title={t(KIND_TITLE[session.kind])}>
-            {t(KIND_BADGE[session.kind])}
-          </span>
+          <div className={s.headText}>
+            <div className={s.titleLine}>
+              <span className={s.title}>{session.title}</span>
+              <span className={s.kind} title={t(KIND_TITLE[session.kind])}>
+                {t(KIND_BADGE[session.kind])}
+              </span>
+            </div>
+
+            {/*
+             * meta 行:模型 / agent / 时间。三格都有产地(SessionMeta 的
+             * lastModel / agentId / updatedAt),缺席的格不画。
+             *
+             * ── 共享层批的接缝 ────────────────────────────────────────────
+             * 消息数(`SessionMeta.messageCount`)与摘要格要等共享层那一批落地
+             * 之后才接:它们在这一行的末尾,和时间并排。本批不做。
+             */}
+            <div className={s.metaLine} data-testid="quicklook-meta">
+              {session.model && (
+                <span className={s.chip} title={t('quicklook.modelTitle', { model: session.model })}>
+                  {session.model}
+                </span>
+              )}
+              {session.agentId && (
+                <span
+                  className={s.chip}
+                  title={t('quicklook.agentTitle', { agent: session.agentId })}
+                >
+                  {session.agentId}
+                </span>
+              )}
+              <span className={s.time}>{timeOf(session.updatedAt)}</span>
+            </div>
+          </div>
+
+          {/*
+           * 鼠标党的那条路。键盘党走 ← →(ExposeView 的按键表),两条路同一对
+           * store action、同一个禁用判据 —— 到头就停,不回卷(与检索面板走行同判例)。
+           */}
+          <div className={s.nav}>
+            <Button
+              iconOnly
+              disabled={prevId === null}
+              aria-label={t('quicklook.prev')}
+              data-testid="quicklook-prev"
+              onClick={quickLookPrev}
+            >
+              <ChevronLeft className={s.navIcon} strokeWidth={1.75} aria-hidden="true" />
+            </Button>
+            <Button
+              iconOnly
+              disabled={nextId === null}
+              aria-label={t('quicklook.next')}
+              data-testid="quicklook-next"
+              onClick={quickLookNext}
+            >
+              <ChevronRight className={s.navIcon} strokeWidth={1.75} aria-hidden="true" />
+            </Button>
+          </div>
+
           <Button
             variant="primary"
             pill

@@ -224,3 +224,15 @@
   color: var(--text-3);
   max-width: 34ch;
 }
+
+/*
+ * 搜不到:一行灰字,居中,不出插画 —— 「没配上这个词」是一次很轻的事件,
+ * 和上面那三种「这里没有卡」不是同一个量级,所以不共用 .state 那块窄栏。
+ */
+.noMatch {
+  margin: 0;
+  padding: var(--sp-6) 0;
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}

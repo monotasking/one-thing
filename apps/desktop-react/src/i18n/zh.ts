@@ -205,6 +205,11 @@ export const zh = {
   'quicklook.dismiss': '收回',
   'quicklook.hintSwitch': '换会话',
   'quicklook.hintEnter': '进入',
+  'quicklook.prev': '上一个会话',
+  'quicklook.next': '下一个会话',
+  /* 模型 / agent 徽的悬停说明:徽面上是**数据**(模型名、agent id),说明才是文案。 */
+  'quicklook.modelTitle': '模型 · {model}',
+  'quicklook.agentTitle': 'Agent · {agent}',
   'quicklook.loading': '正在读消息…',
   'quicklook.empty': '这条会话还没有消息',
   'quicklook.roleUser': '你',

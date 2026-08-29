@@ -62,7 +62,8 @@ export const useExposeStore = create<ExposeStore>()(
       },
       toggleGroupCollapsed: (groupId) =>
         set((s) => T.toggleGroupCollapsed(s, groupId, currentGroups())),
-      setQuery: (query) => set((s) => T.setQuery(s, query)),
+      // 搜索词一变,焦点可能落到一张被过滤掉的卡上 —— 纯函数要那份分组事实才夹得住。
+      setQuery: (query) => set((s) => T.setQuery(s, query, currentGroups())),
       enterSession: (sessionId) => {
         set((s) => T.enterSession(s, sessionId))
         // 进了会话,目录(钢琴键)与首页消息就都成了「此刻要看的东西」。

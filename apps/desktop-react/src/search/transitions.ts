@@ -19,7 +19,7 @@ import type { FileMock, SearchOrigin, SearchRow, SearchScope, SearchTarget } fro
  *    「已经到手的那份缓存」,而不是一个会去发请求的取数函数。
  *
  * **消息正文搜不到**(诚实缺口):后端没有跨会话内容检索面,判据写在
- * expose/transitions.ts 的 searchSessions 上,两个面同一条口径,留待后批。
+ * expose/transitions.ts 的 sessionMatchesQuery 上,两个面同一条口径,留待后批。
  * 文件侧仍是 mock(FILES),见 ./data.ts 顶部。
  */
 export { splitHighlight }

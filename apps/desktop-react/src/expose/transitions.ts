@@ -2,8 +2,6 @@ import type {
   ExposeState,
   FocusDir,
   HighlightPart,
-  SearchHit,
-  SessionChapter,
   SessionGroup,
   SessionSummary,
 } from './types'
@@ -36,11 +34,15 @@ export function isCollapsed(state: ExposeState, groupId: string): boolean {
 }
 
 /**
- * 焦点序列 = 展开组的卡顺序拼接。折叠一个组,序列立刻变短 ——
- * 所以 moveFocus / quickLookPrev-Next 都只认这一个函数,不各算各的。
+ * 焦点序列 = **屏幕上真的画着的那些卡**,按阅读次序拼接。
+ * 两道减法,次序即语义:先按搜索词过滤(filterGroups),再摘掉折叠起来的组。
+ *
+ * 所以 moveFocus / quickLookPrev-Next 都只认这一个函数,不各算各的 ——
+ * F 批把搜索也并进来之后,这条规矩才真正兑现:搜索时按 → 走的是**过滤后**的
+ * 下一张卡,而不是一张已经不在屏幕上的卡。
  */
 export function visibleCardIds(state: ExposeState, groups: SessionGroup[]): string[] {
-  return groups
+  return filterGroups(groups, state.query)
     .filter((g) => !isCollapsed(state, g.id))
     .flatMap((g) => g.sessions.map((s) => s.id))
 }
@@ -60,9 +62,12 @@ function clampIndex(i: number, len: number): number {
  * 状态机不问也答不出 —— 所以这里没有与之配对的 close()。
  */
 export function open(state: ExposeState, groups: SessionGroup[]): ExposeState {
-  const seq = visibleCardIds(state, groups)
+  // 序列要按**清空搜索词之后**的屏幕算:开场就是重新看一眼全部,
+  // 拿上一次的过滤结果去落焦点会把焦点落到一张马上就要重新出现的邻居上。
+  const next: ExposeState = { ...state, view: { mode: 'overview' }, query: '' }
+  const seq = visibleCardIds(next, groups)
   const focusId = seq.includes(state.currentSessionId) ? state.currentSessionId : (seq[0] ?? null)
-  return { ...state, view: { mode: 'overview' }, focusId, focusVisible: false, query: '' }
+  return { ...next, focusId, focusVisible: false }
 }
 
 /**
@@ -142,6 +147,25 @@ export function quickLookNext(state: ExposeState, groups: SessionGroup[]): Expos
   return quickLookStep(state, 1, groups)
 }
 
+/**
+ * 左右两个邻居的 id,到头是 null。给 Quick Look 上那对 ‹ › 控件用:
+ * **禁用态得和键盘的「到头就停」是同一个判据**,否则会出现「按钮灰着但 ← 还能走」
+ * 这种两套直觉。所以它和 quickLookStep 读的是同一条 visibleCardIds(含搜索过滤)。
+ */
+export function quickLookNeighbors(
+  state: ExposeState,
+  groups: SessionGroup[],
+): { prev: string | null; next: string | null } {
+  if (state.view.mode !== 'quicklook') return { prev: null, next: null }
+  const seq = visibleCardIds(state, groups)
+  const i = seq.indexOf(state.view.sessionId)
+  if (i < 0) return { prev: null, next: null }
+  return {
+    prev: i > 0 ? seq[i - 1] : null,
+    next: i < seq.length - 1 ? seq[i + 1] : null,
+  }
+}
+
 /* ── 折叠 ──────────────────────────────────────────────────────────────── */
 
 /** 折叠一个组时,如果焦点正好在被藏起来的卡上,焦点退到新序列首。 */
@@ -163,8 +187,24 @@ export function toggleGroupCollapsed(
 
 /* ── 搜索 / 进入 ───────────────────────────────────────────────────────── */
 
-export function setQuery(state: ExposeState, query: string): ExposeState {
-  return { ...state, query }
+/**
+ * 改搜索词。它**不换形态** —— 这是 F 批的核心裁定:搜索是过滤器,不是第四层视图。
+ *
+ * 唯一的附带动作和 toggleGroupCollapsed 逐字相同:焦点所在的卡要是被过滤掉了,
+ * 焦点退到新序列首(否则方向键的第一下会从一张不存在的卡起步)。
+ * 所以它和折叠一样需要那份分组事实。
+ */
+export function setQuery(
+  state: ExposeState,
+  query: string,
+  groups: SessionGroup[],
+): ExposeState {
+  const next: ExposeState = { ...state, query }
+  const seq = visibleCardIds(next, groups)
+  if (next.focusId && !seq.includes(next.focusId)) {
+    return { ...next, focusId: seq[0] ?? null }
+  }
+  return next
 }
 
 /**
@@ -182,34 +222,57 @@ function has(text: string, needle: string): boolean {
 }
 
 /**
- * 两层一次算完:会话行(标题 / 预览)+ 命中章节。视图只负责画,不再自己 filter。
- *
- * `chapters` 是**已经拉到手**的那份按会话缓存(数据源的 chapters 表)——
- * 没拉过的会话在这一轮就只按标题与预览命中,拉到之后下一轮渲染自然带上章节。
- * 搜索不该反过来去驱动一场全量取数。
+ * 一条会话命不命中。看的正是卡面上写着的那两格:标题与预览
+ * —— 「命中的东西必须在卡上看得见」是 F 批的口径,所以搜的格与画的格是同一批。
  *
  * ── 诚实缺口:消息正文搜不到 ─────────────────────────────────────────────
- * D1 到此为止。后端**没有**跨会话的内容检索面(`sessions.*` 二十六条里没有一条
- * 是「在所有会话里搜正文」,`search` 域是网页搜索不是会话搜索),前端唯一的替代
- * 是把每条会话的每一页消息都拉下来在内存里扫 —— 那是把缺口伪装成功能。
- * 所以第三层现在不存在,留待后批(需要后端先有一个真检索面)。
+ * 后端**没有**跨会话的内容检索面(`sessions.*` 二十六条里没有一条是「在所有会话里
+ * 搜正文」,`search` 域是网页搜索不是会话搜索),前端唯一的替代是把每条会话的每一页
+ * 消息都拉下来在内存里扫 —— 那是把缺口伪装成功能。留待后批(需要后端先有一个真检索面)。
  */
-export function searchSessions(
-  query: string,
-  sessions: SessionSummary[],
-  chapters: Record<string, SessionChapter[]> = {},
-): SearchHit[] {
+export function sessionMatchesQuery(session: SessionSummary, query: string): boolean {
   const q = query.trim().toLowerCase()
-  if (!q) return []
-  const hits: SearchHit[] = []
-  for (const session of sessions) {
-    const matched = (chapters[session.id] ?? []).filter(
-      (chapter) => has(chapter.title, q) || has(chapter.detail, q),
-    )
-    const head = has(session.title, q) || has(session.preview, q)
-    if (head || matched.length > 0) hits.push({ session, chapters: matched })
+  if (!q) return true
+  return has(session.title, q) || has(session.preview, q)
+}
+
+/**
+ * 一个组命不命中。判据只有**项目名**(工作目录的末段)——
+ *
+ * 不判路径:绝对路径里 `/Users/<我>/code/` 这一截在几乎每个项目上都一样,
+ * 拿它当判据的话打三个字母就「全都命中」,过滤器等于没有。
+ * 不判合成组(协作 / 独立)的组名:那两个名字是**界面文案**(nameKey),
+ * 拿它当判据会让「搜什么词能保住这一组」随语言而变 —— 数据面的过滤器不该有这种事。
+ */
+export function groupMatchesQuery(group: SessionGroup, query: string): boolean {
+  const q = query.trim().toLowerCase()
+  if (!q) return false
+  return group.name !== undefined && has(group.name, q)
+}
+
+/**
+ * **搜索的全部**:一个分组事实 + 一个词 → 另一个分组事实。形态一格没变,
+ * 所以屏幕上仍是「项目头 + 卡网格」,卡照常能 QuickLook / 进入 / 键盘走查。
+ *
+ * 两种命中取**并集**(用户 08-29 拍板):
+ *  - 词命中项目名 → 该组**整组保留**(组里全部会话都在,组头自己会高亮);
+ *  - 否则 → 组内按卡过滤,一张不剩的组整个消失。
+ * 空词是恒等变换,而且**原样返回同一个数组引用** —— 不搜的那条路上一次多余的
+ * 分配都不该有(它是每次渲染、每次按方向键都要走的路)。
+ */
+export function filterGroups(groups: SessionGroup[], query: string): SessionGroup[] {
+  const q = query.trim()
+  if (!q) return groups
+  const kept: SessionGroup[] = []
+  for (const group of groups) {
+    if (groupMatchesQuery(group, q)) {
+      kept.push(group)
+      continue
+    }
+    const sessions = group.sessions.filter((session) => sessionMatchesQuery(session, q))
+    if (sessions.length > 0) kept.push({ ...group, sessions })
   }
-  return hits
+  return kept
 }
 
 /** 把一段文本按命中切片,视图给 hit=true 的片包 <mark>。 */

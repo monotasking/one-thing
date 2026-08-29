@@ -31,18 +31,83 @@
   animation: qlPanelIn var(--dur-enter) var(--ease-out);
 }
 
+/*
+ * 头部从「一行」变成「标题行 + meta 行」(F 批)。所以高度不再钉死:
+ * min-height 守住原来那 44px 的下限,内容多一行就长一点 ——
+ * 钉死高度的话 meta 行会被裁掉一半,那比让头部高一点难看得多。
+ */
 .header {
   flex: none;
-  height: var(--ql-header-h);
+  min-height: var(--ql-header-h);
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  padding: 0 var(--sp-2) 0 var(--sp-4);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
   border-bottom: 1px solid var(--line-1);
   background: var(--surface-1);
 }
 
+/* 标题与 meta 叠成一栏,右边那三组控件仍在同一条水平线上居中。 */
+.headText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.titleLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* meta 行:模型 / agent / 时间。缺席的格不画,所以这一行可能只有时间。 */
+.metaLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 模型徽 / agent 徽:与卡面上那颗同一个配方(空心 chip、等宽、截断)。 */
+.chip {
+  min-width: 0;
+  max-width: 22ch;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  line-height: var(--kind-badge);
+  color: var(--text-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-4);
+}
+
+/* ‹ › 一组,彼此不留空 —— 它们读起来是一个控件的两半。 */
+.nav {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.navIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
 .title {
+  min-width: 0;
   font-size: var(--fs-label);
   font-weight: 650;
   color: var(--text-1);
@@ -64,9 +129,9 @@
   color: var(--text-3);
 }
 
-/* 按钮配方在 ui/Button;这里只说「推到标题行最右」。 */
+/* 按钮配方在 ui/Button;这里只说「不被压扁」—— 推到最右的活由 .headText 的 flex:1 干。 */
 .enter {
-  margin-left: auto;
+  flex: none;
 }
 
 .close {

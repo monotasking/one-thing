@@ -135,13 +135,47 @@
 .meta {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/*
+ * 模型徽:空心 chip(同 kind 徽的描边词汇,只是它装的是一串字而不是一个字)。
+ * min-width: 0 + ellipsis —— 模型名比卡宽是常态,截断的是它,不是时间。
+ */
+.model {
+  min-width: 0;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-full);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  line-height: var(--kind-badge);
+  color: var(--text-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 摘要行的格位(共享层批的接缝,见 SessionCard.tsx 里同名注释)。
+ * `lastMessagePreview` 落地后这条会话摘要画在这里:单行、截断、比正文再淡一档。
+ * 现在没有产地,所以没有节点,也就不占高。
+ */
+.digest {
+  margin: 0;
+  font-size: var(--fs-nano);
+  color: var(--text-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 
 
 
 .time {
+  flex: none;
   margin-left: auto;
   font-family: var(--font-mono);
   font-size: var(--fs-nano);
