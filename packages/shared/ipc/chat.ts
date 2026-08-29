@@ -628,8 +628,9 @@ export interface SessionMeta {
    *
    * 与 `previewText`(**第一条**用户消息)并列的另一格,不是它的替代:一个是
    * "从哪句话开的",一个是"最近说到哪儿"。写侧与 `updatedAt` 同刻维护,所以
-   * 会话列表读仍然只是一次索引元数据读;缺席 = 这条会话自那一批上线后还没写过
-   * 一个字(**不做启动期全量回填**,理由见 `core/session/store-helpers.ts`)。
+   * 会话列表读仍然只是一次索引元数据读;存量会话由**启动后的一趟后台回填**
+   * 补上(E2,`backend/session/list-projection-backfill.ts`)—— E 批那句"不做
+   * 启动期全量回填"只对还在长的库成立,对存量库等于这一格不存在。
    */
   lastMessagePreview?: string
   // Active project directory, surfaced into the list so the sidebar can group

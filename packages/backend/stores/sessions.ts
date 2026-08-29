@@ -801,6 +801,11 @@ function stampCollabAgentId(sessionId: string, message: ChatMessage): ChatMessag
  * `updateSessionsIndexMetaForCommands` / `flushSessionSave` 四口。
  */
 
+/**
+ * 索引元数据的写门。命令面是它的第一个调用者,E2 的列表投影回填
+ * (`session/list-projection-backfill.ts`)是第二个 —— 两者写的是同一批格,
+ * 走同一扇门,所以"谁最后写的算数"这件事只有一处判据。
+ */
 export function updateSessionsIndexMetaForCommands(
 	sessionId: string,
 	update: (meta: { [key: string]: unknown }) => void,

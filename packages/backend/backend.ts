@@ -12,6 +12,7 @@
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { flushSessionEventLedger } from './session/event-log.js'
 import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
+import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-projection-backfill.js'
 import { getSettings, initializeSettings } from './stores/settings.js'
 import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from './wiring/agents/index.js'
@@ -269,12 +270,27 @@ export async function createOnethingBackend(
   // 它自己留不住进程;disposer 挂在下面的 shutdown 上。
   const cancelBlobGc = scheduleSessionBlobGcOnStartup()
 
+  /*
+   * E2:会话列表投影的**存量回填**。E 批把 `messageCount` / `lastMessagePreview`
+   * 挂在写侧("不回填、下次写自愈"),对存量库等于功能不存在 —— 真机 439 条
+   * 会话里 0 条带摘要格。这一趟把写侧本该留下的两格补上,读面纪律不动。
+   *
+   * 装在这里 = 两端都装:桌面与 standalone server 走的是同一个装配配方,而这
+   * 件事属于装配层(它只关心"这个 store 的索引里缺格"),不是哪个宿主特有的。
+   * 定时器 unref + 判据幂等,所以短命的 CLI daemon 顶多跑几条就随进程走。
+   */
+  const cancelListBackfill = scheduleSessionListProjectionBackfillOnStartup({
+    // 正在流式中的会话本轮跳过:它的账本此刻在长,而写侧本来就会把格盖上。
+    isSessionBusy: sessionId => getStreamEngine().getActiveSessionIds().includes(sessionId),
+  })
+
   return {
     engine: getStreamEngine(),
     eventBus: getEventBus(),
     streamChannel: getStreamChannel(),
     async shutdown() {
       cancelBlobGc?.()
+      cancelListBackfill?.()
       // Reversible registration: a second createOnethingBackend in the same
       // process (tests, host restarts) must not trip the duplicate-domain guard.
       await disposeRpcDomains()
