@@ -5,6 +5,7 @@ import {
   FLOAT_KEEP,
   FLOAT_MIN_H,
   FLOAT_MIN_W,
+  FALLBACK_VIEWPORT,
   SHELF_DEFAULT_THICKNESS,
   SHELF_MIN_THICKNESS,
   STAGE_PERSIST_VERSION,
@@ -16,6 +17,7 @@ import {
   closeStage,
   closeToDock,
   defaultFloatRect,
+  defaultOpenMemory,
   edgeToFloat,
   floatRectForGrab,
   floatToEdge,
@@ -24,9 +26,12 @@ import {
   formOf,
   initialStageSettings,
   initialStageState,
+  memoryIsAt,
+  memoryOf,
   migrateStagePersisted,
   moveFloat,
   openAs,
+  openFromMemory,
   placementForOpen,
   closeShelf,
   placementOf,
@@ -49,7 +54,7 @@ import {
   withoutStagePlacements,
 } from './transitions'
 import { SESSIONS_ITEM_ID, STAGE_ITEMS, findItem } from './items'
-import type { OpenBehavior, Placement, ShelfSide, StageState, Viewport } from './types'
+import type { Placement, PlacementMemory, ShelfSide, StageState, Viewport } from './types'
 
 const base: StageState = initialStageState
 
@@ -74,31 +79,58 @@ function withShelf(
 
 const rightShelf = (st: StageState) => st.shelves.right
 
-describe('resolveOpen / placementForOpen', () => {
-  it("override 为 'default' → 跟随全局默认", () => {
-    expect(resolveOpen('files', { files: 'default' }, 'stage')).toEqual(STAGE)
-    expect(resolveOpen('files', { files: 'default' }, 'pinned')).toEqual(RIGHT)
+/**
+ * 「排到那条边的末尾」——测试里最常要的那一条记忆。
+ * 记忆带次序,所以「开在哪条边」不再是一个能到处复用的常量:它总是相对某个当下的态。
+ */
+const atEnd = (st: StageState, side: ShelfSide = 'right'): PlacementMemory => ({
+  kind: 'edge',
+  side,
+  index: st.shelves[side].tabs.length,
+})
+
+/** 新浮窗那条记忆(矩形 = 这块视口下的默认身量)。 */
+const M_FLOAT: PlacementMemory = { kind: 'float', rect: defaultFloatRect(VP) }
+
+describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () => {
+  /** 造一个「这块瓦有这么一条记忆」的态。 */
+  const withMemory = (id: string, m: PlacementMemory): StageState => ({
+    ...base,
+    memory: { ...base.memory, [id]: m },
   })
 
-  it('没登记过的 id 等价于 default(所以初始表是空的)', () => {
-    expect(resolveOpen('files', {}, 'pinned')).toEqual(RIGHT)
+  it('没有记忆 → 落到全局默认档', () => {
+    expect(resolveOpen(base, 'files', 'stage', VP)).toEqual({ kind: 'stage' })
+    expect(resolveOpen(base, 'files', 'pinned', VP)).toEqual({
+      kind: 'edge',
+      side: 'right',
+      index: 0,
+    })
+    expect(resolveOpen(base, 'files', 'float', VP)).toEqual(M_FLOAT)
   })
 
-  it("override 'stage' 压过默认 'pinned'", () => {
-    expect(resolveOpen('files', { files: 'stage' }, 'pinned')).toEqual(STAGE)
+  it('有记忆 → 记忆赢,全局默认档一句话说不上', () => {
+    const st = withMemory('files', { kind: 'stage' })
+    expect(resolveOpen(st, 'files', 'pinned', VP)).toEqual({ kind: 'stage' })
+
+    const pinned = withMemory('files', { kind: 'edge', side: 'left', index: 2 })
+    expect(resolveOpen(pinned, 'files', 'stage', VP)).toEqual({
+      kind: 'edge',
+      side: 'left',
+      index: 2,
+    })
   })
 
-  it("override 'pinned' 压过默认 'stage'", () => {
-    expect(resolveOpen('files', { files: 'pinned' }, 'stage')).toEqual(RIGHT)
+  it('记忆只作用于自己那一个 id —— 别的瓦照旧跟默认档', () => {
+    const st = withMemory('files', { kind: 'float', rect: { x: 1, y: 2, w: 300, h: 400 } })
+    expect(resolveOpen(st, 'diff', 'stage', VP)).toEqual({ kind: 'stage' })
   })
 
-  it("override 'float' 压过默认 'stage'", () => {
-    expect(resolveOpen('files', { files: 'float' }, 'stage')).toEqual(FLOAT)
-  })
-
-  it('覆盖只作用于自己那一个 id', () => {
-    const o: Record<string, OpenBehavior> = { files: 'pinned' }
-    expect(resolveOpen('diff', o, 'stage')).toEqual(STAGE)
+  it('第三层「显式手势」不经过这个函数:手势自己说得出落点,直接调 openAs', () => {
+    // 记忆说钉左边,手势说上舞台 —— 手势赢,并且把记忆改写成舞台。
+    const st = openAs(withMemory('files', { kind: 'edge', side: 'left', index: 0 }), 'files', STAGE)
+    expect(formOf(st, 'files')).toBe('stage')
+    expect(st.memory.files).toEqual({ kind: 'stage' })
   })
 
   it("'pinned' 这个历史值的语义就是 edge:right,翻译只此一处", () => {
@@ -107,9 +139,19 @@ describe('resolveOpen / placementForOpen', () => {
     expect(placementForOpen('float')).toEqual(FLOAT)
   })
 
+  it('默认档补成记忆时,缺的那两件事按「就当它没来过」补', () => {
+    // 钉边:排到那条边现有的末尾,不是插到最前。
+    const two = withShelf(['files', 'diff'])
+    expect(defaultOpenMemory(two, 'pinned', VP)).toEqual({ kind: 'edge', side: 'right', index: 2 })
+    // 浮窗:新窗默认身量。
+    expect(defaultOpenMemory(base, 'float', VP)).toEqual(M_FLOAT)
+  })
+
   it('检索面板是普通的一块瓦:参与 resolveOpen 全套', () => {
-    expect(resolveOpen('search', {}, 'stage')).toEqual(STAGE)
-    expect(resolveOpen('search', { search: 'float' }, 'stage')).toEqual(FLOAT)
+    expect(resolveOpen(base, 'search', 'stage', VP)).toEqual({ kind: 'stage' })
+    expect(resolveOpen(withMemory('search', { kind: 'stage' }), 'search', 'pinned', VP)).toEqual({
+      kind: 'stage',
+    })
   })
 })
 
@@ -131,7 +173,7 @@ describe('clickDockIcon', () => {
   })
 
   it('落点 edge → 追加成新 tab 并激活,不上舞台', () => {
-    const next = clickDockIcon(base, 'files', RIGHT)
+    const next = clickDockIcon(base, 'files', atEnd(base))
     expect(rightShelf(next).tabs).toEqual(['files'])
     expect(rightShelf(next).activeId).toBe('files')
     expect(stageIdOf(next)).toBeNull()
@@ -139,7 +181,8 @@ describe('clickDockIcon', () => {
   })
 
   it('连开两个 edge → 两个 tab 共存,次序即点击次序,活动的是后来的那个', () => {
-    const next = clickDockIcon(clickDockIcon(base, 'files', RIGHT), 'diff', RIGHT)
+    const one = clickDockIcon(base, 'files', atEnd(base))
+    const next = clickDockIcon(one, 'diff', atEnd(one))
     expect(rightShelf(next).tabs).toEqual(['files', 'diff'])
     expect(rightShelf(next).activeId).toBe('diff')
     expect(formOf(next, 'files')).toBe('edge')
@@ -147,7 +190,7 @@ describe('clickDockIcon', () => {
 
   it('落点 edge 时舞台开着也不动它:架子与舞台正交', () => {
     const state = openAs(base, 'terminal', STAGE)
-    const next = clickDockIcon(state, 'files', RIGHT)
+    const next = clickDockIcon(state, 'files', atEnd(state))
     expect(stageIdOf(next)).toBe('terminal')
     expect(rightShelf(next).tabs).toEqual(['files'])
   })
@@ -192,7 +235,7 @@ describe('clickDockIcon', () => {
 
   it('点架子上「非活动」的那个 → 活动 tab 切过去(落点是什么都一样)', () => {
     const state = withShelf(['files', 'diff'], 'diff')
-    const next = clickDockIcon(state, 'files', RIGHT)
+    const next = clickDockIcon(state, 'files', atEnd(state))
     expect(rightShelf(next).activeId).toBe('files')
     expect(rightShelf(next).tabs).toEqual(['files', 'diff'])
     expect(next.flashPinned).toBe(1)
@@ -222,7 +265,7 @@ describe('clickDockIcon', () => {
 
   it('是纯函数:不改原对象', () => {
     const before = JSON.parse(JSON.stringify(base))
-    clickDockIcon(base, 'files', RIGHT)
+    clickDockIcon(base, 'files', atEnd(base))
     expect(base).toEqual(before)
   })
 })
@@ -237,12 +280,12 @@ describe('togglePlacement(⌘P 那种开关语义)', () => {
     const onStage = togglePlacement(base, 'search', STAGE, VP)
     expect(formOf(togglePlacement(onStage, 'search', STAGE, VP), 'search')).toBe('dock')
 
-    const onShelf = togglePlacement(base, 'search', RIGHT, VP)
-    expect(formOf(togglePlacement(onShelf, 'search', RIGHT, VP), 'search')).toBe('dock')
-    expect(rightShelf(togglePlacement(onShelf, 'search', RIGHT, VP)).tabs).toEqual([])
+    const onShelf = togglePlacement(base, 'search', atEnd(base), VP)
+    expect(formOf(togglePlacement(onShelf, 'search', atEnd(onShelf), VP), 'search')).toBe('dock')
+    expect(rightShelf(togglePlacement(onShelf, 'search', atEnd(onShelf), VP)).tabs).toEqual([])
 
-    const onFloat = togglePlacement(base, 'search', FLOAT, VP)
-    expect(formOf(togglePlacement(onFloat, 'search', FLOAT, VP), 'search')).toBe('dock')
+    const onFloat = togglePlacement(base, 'search', M_FLOAT, VP)
+    expect(formOf(togglePlacement(onFloat, 'search', M_FLOAT, VP), 'search')).toBe('dock')
   })
 })
 
@@ -357,7 +400,8 @@ describe('stageToEdge / stageToFloat', () => {
   })
 
   it('收起态下新图标入架子,栏展开', () => {
-    const st = clickDockIcon(toggleShelfCollapsed(base, 'right'), 'files', RIGHT)
+    const collapsed = toggleShelfCollapsed(base, 'right')
+    const st = clickDockIcon(collapsed, 'files', atEnd(collapsed))
     expect(rightShelf(st).tabs).toContain('files')
     expect(rightShelf(st).collapsed).toBe(false)
   })
@@ -806,8 +850,10 @@ describe('items 表', () => {
   it('检索也是普通瓦:两块瓦在同一张表里,没有第二种打开法', () => {
     expect(findItem('search')).toBeDefined()
     expect(findItem(SESSIONS_ITEM_ID)).toBeDefined()
-    // 落点解析也一视同仁:同一份设置,两块瓦解析出同一个 Placement。
-    expect(resolveOpen(SESSIONS_ITEM_ID, {}, 'float')).toEqual(resolveOpen('search', {}, 'float'))
+    // 落点解析也一视同仁:同一份设置、同一个没记忆的起点,两块瓦解析出同一条记忆。
+    expect(resolveOpen(base, SESSIONS_ITEM_ID, 'float', VP)).toEqual(
+      resolveOpen(base, 'search', 'float', VP),
+    )
   })
 
   it('接管型已退役:一块瓦都不许再带 takeover 字段', () => {
@@ -818,9 +864,9 @@ describe('items 表', () => {
 describe('closeShelf(整栏关闭)', () => {
   it('这条边上的 tab 全部收回 Dock,别的边不动', () => {
     let st = initialStageState
-    st = clickDockIcon(st, 'diff', { kind: 'edge', side: 'right' })
-    st = clickDockIcon(st, 'terminal', { kind: 'edge', side: 'right' })
-    st = clickDockIcon(st, 'files', { kind: 'edge', side: 'left' })
+    st = clickDockIcon(st, 'diff', atEnd(st))
+    st = clickDockIcon(st, 'terminal', atEnd(st))
+    st = clickDockIcon(st, 'files', atEnd(st, 'left'))
     st = closeShelf(st, 'right')
     expect(st.shelves.right.tabs).toEqual([])
     expect(st.shelves.right.activeId).toBeNull()
@@ -850,5 +896,268 @@ describe('withinDockHoldZone(自动隐藏留驻区)', () => {
 
   it('补边只朝所属边:right 的区不含左半屏', () => {
     expect(withinDockHoldZone({ x: 100, y: 400 }, vp, 'right', rect)).toBe(false)
+  })
+})
+
+/* ── G 批:位置记忆 ─────────────────────────────────────────────────────────── */
+
+describe('位置记忆:关闭是归档,不是删除', () => {
+  it('三种形态各走一趟归档-恢复往返', () => {
+    // 舞台
+    let st = openAs(base, 'files', STAGE, VP)
+    st = closeToDock(st, 'files')
+    expect(st.memory.files).toEqual({ kind: 'stage' })
+    expect(formOf(openFromMemory(st, 'files', st.memory.files, VP), 'files')).toBe('stage')
+
+    // 浮窗:连矩形一起回来
+    st = openAs(base, 'diff', FLOAT, VP)
+    st = moveFloat(st, 'diff', 123, 45, VP)
+    const rect = st.floats.diff
+    st = closeToDock(st, 'diff')
+    expect(st.memory.diff).toEqual({ kind: 'float', rect })
+    const backFloat = openFromMemory(st, 'diff', st.memory.diff, VP)
+    expect(formOf(backFloat, 'diff')).toBe('float')
+    expect(backFloat.floats.diff).toEqual(rect)
+
+    // 钉边:连边与次序一起回来
+    st = withShelf(['files', 'diff', 'terminal'])
+    st = closeToDock(st, 'diff')
+    expect(st.memory.diff).toEqual({ kind: 'edge', side: 'right', index: 1 })
+    const backEdge = openFromMemory(st, 'diff', st.memory.diff, VP)
+    expect(backEdge.shelves.right.tabs).toEqual(['files', 'diff', 'terminal'])
+  })
+
+  it('归档记的是**当下**那个落点,不是最早那个', () => {
+    let st = openAs(base, 'files', STAGE, VP)
+    st = openAs(st, 'files', { kind: 'edge', side: 'bottom' }, VP)
+    st = closeToDock(st, 'files')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'bottom', index: 0 })
+  })
+
+  it('本来就在 Dock 里的收一下是恒等变换:不擦上一次归档的记忆', () => {
+    const archived = closeToDock(openAs(base, 'files', STAGE, VP), 'files')
+    expect(closeToDock(archived, 'files')).toBe(archived)
+    expect(archived.memory.files).toEqual({ kind: 'stage' })
+  })
+
+  it('整栏关闭:次序在动手前整条拓下来,不会一路塌成一摞', () => {
+    const st = closeShelf(withShelf(['files', 'diff', 'terminal']), 'right')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'right', index: 0 })
+    expect(st.memory.diff).toEqual({ kind: 'edge', side: 'right', index: 1 })
+    expect(st.memory.terminal).toEqual({ kind: 'edge', side: 'right', index: 2 })
+    // 再一个个开回来,次序与关掉之前逐字相同。
+    let back = st
+    for (const id of ['terminal', 'files', 'diff']) {
+      back = openFromMemory(back, id, back.memory[id], VP)
+    }
+    expect(back.shelves.right.tabs).toEqual(['files', 'diff', 'terminal'])
+  })
+
+  it('整栏关闭不碰别的边的记忆', () => {
+    let st = openAs(base, 'files', { kind: 'edge', side: 'left' }, VP)
+    st = openAs(st, 'diff', { kind: 'edge', side: 'right' }, VP)
+    st = closeShelf(st, 'right')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'left', index: 0 })
+  })
+})
+
+describe('位置记忆:落定即写', () => {
+  it('菜单点名(= openAs)既执行也写记忆', () => {
+    const st = openAs(base, 'files', { kind: 'edge', side: 'top' }, VP)
+    expect(formOf(st, 'files')).toBe('edge')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'top', index: 0 })
+  })
+
+  it('浮窗移动 / 缩放落定当场写进记忆', () => {
+    let st = openAs(base, 'browser', FLOAT, VP)
+    st = moveFloat(st, 'browser', 200, 150, VP)
+    expect(st.memory.browser).toEqual({ kind: 'float', rect: st.floats.browser })
+    st = resizeFloat(st, 'browser', { x: 10, y: 20, w: 640, h: 480 }, VP)
+    expect(st.memory.browser).toEqual({ kind: 'float', rect: { x: 10, y: 20, w: 640, h: 480 } })
+  })
+
+  it('记忆里的矩形是**钳制之后**的那一个,不是「本来想放但没放成」的数', () => {
+    const st = moveFloat(openAs(base, 'browser', FLOAT, VP), 'browser', 99999, 99999, VP)
+    expect(st.memory.browser).toEqual({ kind: 'float', rect: st.floats.browser })
+    expect(st.floats.browser.x).toBeLessThanOrEqual(VP.w - FLOAT_KEEP)
+  })
+
+  it('不是浮窗时改 floats 不写记忆 —— 陈年矩形不许盖掉现在的钉边记忆', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = floatToEdge(st, 'files', 'left')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'left', index: 0 })
+    // floats.files 还留着(那是不擦的表),对它动手不该改写落点记忆。
+    st = moveFloat(st, 'files', 7, 7, VP)
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'left', index: 0 })
+  })
+
+  it('吸附成钉边 / tab 撕出成浮窗:两条拖拽路都经 openAs,所以都写到了', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = floatToEdge(st, 'files', 'bottom')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'bottom', index: 0 })
+
+    st = edgeToFloat(st, 'files', VP)
+    expect(st.memory.files).toEqual({ kind: 'float', rect: st.floats.files })
+  })
+
+  it('舞台转边 / 转浮窗也是落定', () => {
+    let st = stageToEdge(openAs(base, 'files', STAGE, VP), 'top')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'top', index: 0 })
+    st = stageToFloat(openAs(st, 'diff', STAGE, VP), VP)
+    expect(st.memory.diff).toEqual({ kind: 'float', rect: st.floats.diff })
+  })
+
+  it('memoryOf:在 Dock 里 = 折不出记忆', () => {
+    expect(memoryOf(base, 'files')).toBeNull()
+  })
+})
+
+describe('位置记忆:按记忆恢复(index 钳制与同边合流)', () => {
+  it('记着第 5 个,那条边现在只有 2 个 → 坐第 3 个位子(min(次序, 组长))', () => {
+    const st = withShelf(['files', 'diff'])
+    const back = openFromMemory(st, 'terminal', { kind: 'edge', side: 'right', index: 5 }, VP)
+    expect(back.shelves.right.tabs).toEqual(['files', 'diff', 'terminal'])
+  })
+
+  it('负数次序也钳得住(坏档案不许把 tab 排到数组之外)', () => {
+    const st = withShelf(['files', 'diff'])
+    const back = openFromMemory(st, 'terminal', { kind: 'edge', side: 'right', index: -3 }, VP)
+    expect(back.shelves.right.tabs).toEqual(['terminal', 'files', 'diff'])
+  })
+
+  it('两块瓦都记着同一条边:各自钳一下就都坐得下,不需要仲裁', () => {
+    let st = closeShelf(withShelf(['files', 'diff', 'terminal']), 'right')
+    // 先回来的那块记着 index 2,此刻组长 0 → 坐 0;后回来的记着 1,组长 1 → 坐 1。
+    st = openFromMemory(st, 'terminal', st.memory.terminal, VP)
+    st = openFromMemory(st, 'diff', st.memory.diff, VP)
+    expect(st.shelves.right.tabs).toEqual(['terminal', 'diff'])
+    // 一个 id 只在一处这条不变式仍然成立。
+    expect(st.shelves.right.tabs.filter((x) => x === 'diff')).toHaveLength(1)
+  })
+
+  it('记忆里的浮窗矩形要过与拖拽落定同一把视口尺', () => {
+    const tiny: Viewport = { w: 600, h: 400 }
+    const back = openFromMemory(
+      base,
+      'browser',
+      { kind: 'float', rect: { x: 5000, y: 5000, w: 900, h: 700 } },
+      tiny,
+    )
+    expect(back.floats.browser).toEqual(
+      clampFloatRect({ x: 5000, y: 5000, w: 900, h: 700 }, tiny),
+    )
+    expect(back.floats.browser.x).toBeLessThanOrEqual(tiny.w - FLOAT_KEEP)
+  })
+
+  it('点 Dock 图标走的就是这条路:无记忆 → 默认档;有记忆 → 记忆', () => {
+    const remembered: StageState = {
+      ...base,
+      memory: { files: { kind: 'edge', side: 'left', index: 0 } },
+    }
+    expect(
+      formOf(clickDockIcon(base, 'files', resolveOpen(base, 'files', 'stage', VP), VP), 'files'),
+    ).toBe('stage')
+    const next = clickDockIcon(
+      remembered,
+      'files',
+      resolveOpen(remembered, 'files', 'stage', VP),
+      VP,
+    )
+    expect(placementOf(next, 'files')).toEqual({ kind: 'edge', side: 'left' })
+  })
+})
+
+describe('memoryIsAt(菜单那排单选的判据)', () => {
+  it('比的是「放在哪」,不比矩形与次序', () => {
+    expect(memoryIsAt({ kind: 'stage' }, { kind: 'stage' })).toBe(true)
+    expect(memoryIsAt({ kind: 'float', rect: { x: 9, y: 9, w: 300, h: 300 } }, { kind: 'float' })).toBe(
+      true,
+    )
+    expect(
+      memoryIsAt({ kind: 'edge', side: 'left', index: 7 }, { kind: 'edge', side: 'left' }),
+    ).toBe(true)
+  })
+
+  it('边不同就不是同一个落点;没有记忆一行都不勾', () => {
+    expect(
+      memoryIsAt({ kind: 'edge', side: 'left', index: 0 }, { kind: 'edge', side: 'right' }),
+    ).toBe(false)
+    expect(memoryIsAt({ kind: 'stage' }, { kind: 'float' })).toBe(false)
+    expect(memoryIsAt(undefined, { kind: 'stage' })).toBe(false)
+  })
+})
+
+describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () => {
+  const v3 = (over: Record<string, unknown>) => ({
+    placements: {},
+    floats: { diff: { x: 10, y: 20, w: 400, h: 300 } },
+    floatOrder: [],
+    shelves: { ...emptyShelvesLike(), right: { tabs: ['files', 'terminal'], activeId: 'files', thickness: 400, collapsed: false } },
+    openOverrides: over,
+  })
+  function emptyShelvesLike() {
+    const one = { tabs: [] as string[], activeId: null, thickness: SHELF_DEFAULT_THICKNESS, collapsed: false }
+    return { left: { ...one }, right: { ...one }, top: { ...one }, bottom: { ...one } }
+  }
+
+  it('三种配置各一条:用户配过的一条不丢', () => {
+    const out = migrateStagePersisted(
+      v3({ browser: 'stage', diff: 'float', terminal: 'pinned' }),
+      3,
+    ) as Record<string, unknown>
+    const memory = out.memory as Record<string, PlacementMemory>
+    expect(memory.browser).toEqual({ kind: 'stage' })
+    // 'float' 带上老档里存过的那个矩形,不是一个新的默认窗。
+    expect(memory.diff).toEqual({ kind: 'float', rect: { x: 10, y: 20, w: 400, h: 300 } })
+    // 'pinned' 带上它当时在右架子里的次序(terminal 排第 2)。
+    expect(memory.terminal).toEqual({ kind: 'edge', side: 'right', index: 1 })
+  })
+
+  it("'default'(以及不认识的值)不写记忆 —— 它继续跟全局默认档走", () => {
+    const out = migrateStagePersisted(v3({ files: 'default', browser: 'wat' }), 3) as Record<
+      string,
+      unknown
+    >
+    expect(out.memory).toEqual({})
+  })
+
+  it("配了 'float' 但老档没存过矩形 → 给新窗的默认身量", () => {
+    const out = migrateStagePersisted(v3({ browser: 'float' }), 3) as Record<string, unknown>
+    const memory = out.memory as Record<string, PlacementMemory>
+    expect(memory.browser).toEqual({ kind: 'float', rect: defaultFloatRect(FALLBACK_VIEWPORT) })
+  })
+
+  it("配了 'pinned' 但当时不在右架子上 → 排到末尾", () => {
+    const out = migrateStagePersisted(v3({ browser: 'pinned' }), 3) as Record<string, unknown>
+    const memory = out.memory as Record<string, PlacementMemory>
+    expect(memory.browser).toEqual({ kind: 'edge', side: 'right', index: 2 })
+  })
+
+  it('openOverrides 这个键本身退役,活 placements / floats / shelves 照旧恢复', () => {
+    const out = migrateStagePersisted(v3({ browser: 'stage' }), 3) as Record<string, unknown>
+    expect('openOverrides' in out).toBe(false)
+    expect(out.floats).toEqual({ diff: { x: 10, y: 20, w: 400, h: 300 } })
+    expect((out.shelves as Record<string, { tabs: string[] }>).right.tabs).toEqual([
+      'files',
+      'terminal',
+    ])
+  })
+
+  it('老档根本没有 openOverrides → 空记忆表,别的字段原样留着', () => {
+    const out = migrateStagePersisted({ locale: 'en', floats: {}, shelves: emptyShelvesLike() }, 3) as Record<
+      string,
+      unknown
+    >
+    expect(out.memory).toEqual({})
+    expect(out.locale).toBe('en')
+  })
+
+  it('v0 的老档一路连过四段也到得了 v4', () => {
+    const out = migrateStagePersisted(
+      { pinnedId: 'diff', pinnedWidth: 500, openOverrides: { files: 'stage' } },
+      0,
+    ) as Record<string, unknown>
+    expect((out.memory as Record<string, PlacementMemory>).files).toEqual({ kind: 'stage' })
+    expect((out.shelves as Record<string, { tabs: string[] }>).right.tabs).toEqual(['diff'])
   })
 })

@@ -167,7 +167,7 @@ export function SettingsMock() {
               label={t('settings.defaultOpen')}
             />
           </div>
-          <div className={s.fieldNote}>{t('settings.overrideNote')}</div>
+          <div className={s.fieldNote}>{t('settings.defaultOpenNote')}</div>
         </Section>
 
         <Section titleKey="settings.sectionKeymap">

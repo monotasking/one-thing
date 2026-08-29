@@ -1,8 +1,9 @@
 import type {
   DockEdge,
   FloatRect,
-  OpenBehavior,
+  MemorablePlacement,
   Placement,
+  PlacementMemory,
   Point,
   ResolvedOpen,
   ShelfSide,
@@ -50,7 +51,7 @@ export const DOCK_EDGE_BAND = 8
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 3
+export const STAGE_PERSIST_VERSION = 4
 
 const DOCK: Placement = { kind: 'dock' }
 
@@ -67,6 +68,7 @@ export const initialStageState: StageState = {
   floats: {},
   floatOrder: [],
   shelves: emptyShelves(),
+  memory: {},
   flashPinned: 0,
   flashSide: null,
 }
@@ -74,7 +76,6 @@ export const initialStageState: StageState = {
 export const initialStageSettings: StageSettings = {
   defaultOpen: 'stage',
   locale: 'system',
-  openOverrides: {},
   dockEdge: 'bottom',
   dockAlign: 'center',
   dockSize: 'md',
@@ -115,29 +116,105 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), Math.max(min, max))
 }
 
+/* ── 位置记忆 ──────────────────────────────────────────────────────────────── */
+
+/**
+ * 把 id **此刻的落点**折成一条记忆。收在 Dock 里 = 没有落点可折,所以是 null。
+ * 「折」是这一批的核心动词:活表(placements / floats / shelves)散在三处,
+ * 记忆把它们压成一条能独立复原的记录 —— 关闭之后活表就问不出来了。
+ */
+export function memoryOf(
+  state: StageState,
+  id: string,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): PlacementMemory | null {
+  const p = placementOf(state, id)
+  if (p.kind === 'dock') return null
+  if (p.kind === 'stage') return { kind: 'stage' }
+  if (p.kind === 'float') {
+    return { kind: 'float', rect: state.floats[id] ?? defaultFloatRect(viewport) }
+  }
+  const at = state.shelves[p.side].tabs.indexOf(id)
+  return { kind: 'edge', side: p.side, index: at < 0 ? state.shelves[p.side].tabs.length : at }
+}
+
+/** 写一条记忆。null = 无可记(在 Dock 里),此时是恒等变换 —— 归档不擦旧记忆。 */
+function remember(state: StageState, id: string, m: PlacementMemory | null): StageState {
+  if (!m) return state
+  return { ...state, memory: { ...state.memory, [id]: m } }
+}
+
+/**
+ * 记忆与菜单里那一行说的是不是同一个落点。
+ * 浮窗矩形与边内次序**不参与**比对:菜单问的是「放在哪」,不是「放在哪儿的第几个」。
+ */
+export function memoryIsAt(m: PlacementMemory | undefined, placement: MemorablePlacement): boolean {
+  if (!m || m.kind !== placement.kind) return false
+  if (m.kind === 'edge' && placement.kind === 'edge') return m.side === placement.side
+  return true
+}
+
+/**
+ * 按一条记忆把 id 放回去。三种形态各自需要补的那一件事都在这里:
+ *  - edge:插回 min(记忆次序, 组长) —— 两块瓦记着同一条边,各自钳一下就都坐得下,不需要仲裁;
+ *  - float:矩形先过**与拖拽落定同一把**视口钳制 —— 显示器变小了不能把窗开到屏外;
+ *  - stage:什么都不用补(舞台没有第二个参数)。
+ */
+export function openFromMemory(
+  state: StageState,
+  id: string,
+  m: PlacementMemory,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): StageState {
+  if (m.kind === 'stage') return openAs(state, id, { kind: 'stage' }, viewport)
+  if (m.kind === 'edge') return openAs(state, id, { kind: 'edge', side: m.side }, viewport, m.index)
+  const seeded = { ...state, floats: { ...state.floats, [id]: clampFloatRect(m.rect, viewport) } }
+  return openAs(seeded, id, { kind: 'float' }, viewport)
+}
+
 /* ── 打开方式 → 落点 ───────────────────────────────────────────────────────── */
 
 /**
- * 设置层的「打开方式」翻成形态机认识的 Placement。全仓唯一一处翻译:
+ * 全局默认档翻成形态机认识的 Placement。全仓唯一一处翻译:
  * 'pinned' 这个历史值的语义就是「钉到右边那条架子」,别处不许再判一次。
  */
-export function placementForOpen(open: ResolvedOpen): Placement {
+export function placementForOpen(open: ResolvedOpen): MemorablePlacement {
   if (open === 'stage') return { kind: 'stage' }
   if (open === 'float') return { kind: 'float' }
   return { kind: 'edge', side: 'right' }
 }
 
 /**
- * 解析「打开方式」:图标自己的覆盖优先,没表态(或没登记)才落到全局默认。
- * 直接给出 Placement —— 形态机本身不认识 'default',也不认识 'pinned'。
+ * 全局默认档补成一条完整记忆 —— 缺的那两件事按「就当它没来过」补:
+ * 浮窗取新窗默认矩形,钉边排到那条边的末尾。
+ */
+export function defaultOpenMemory(
+  state: StageState,
+  open: ResolvedOpen,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): PlacementMemory {
+  const placement = placementForOpen(open)
+  if (placement.kind === 'stage') return { kind: 'stage' }
+  if (placement.kind === 'float') return { kind: 'float', rect: defaultFloatRect(viewport) }
+  return {
+    kind: 'edge',
+    side: placement.side,
+    index: state.shelves[placement.side].tabs.length,
+  }
+}
+
+/**
+ * 打开的解析序是三层:**显式手势 > 记忆 > 全局默认档**。
+ * 头一层不经过这个函数 —— 手势自己就说得出落点(它直接调 openAs),根本不必问;
+ * 这里回答的是剩下那句「没人点名时,它该回哪儿」,所以只剩后两层。
  */
 export function resolveOpen(
+  state: StageState,
   id: string,
-  overrides: Record<string, OpenBehavior>,
   defaultOpen: ResolvedOpen,
-): Placement {
-  const own = overrides[id] ?? 'default'
-  return placementForOpen(own === 'default' ? defaultOpen : own)
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): PlacementMemory {
+  return state.memory[id] ?? defaultOpenMemory(state, defaultOpen, viewport)
 }
 
 /* ── 浮窗几何(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
@@ -215,12 +292,20 @@ function detach(state: StageState, id: string): StageState {
  *  2. 舞台至多一个:新的上台,旧的落回 dock;
  *  3. dock 是缺席态:落回 dock 就是把它从表里删掉,不留一条 {kind:'dock'}。
  * 浮窗矩形不在这里擦 —— 那是记忆,收回 Dock 再开还要用。
+ *
+ * G 批起它还多做一件事:**落定即写记忆**。这是全系统唯一改 placements 的函数,
+ * 所以把记忆挂在这里,「菜单点名 / 拖拽吸附 / tab 撕出 / 舞台转边」四条路一次全接上,
+ * 不必每个组件在松手时另外记得写一次(散在组件里的记忆,迟早有一条忘了写)。
+ *
+ * edgeIndex 只在 placement 是 edge 时有意义:缺省 = 排到末尾(新来的排最后),
+ * 给了 = 按记忆插回去,并钳进 [0, 组长] —— 它记着第 5 个,那条边现在只有 2 个,就坐第 3 个位子。
  */
 export function openAs(
   state: StageState,
   id: string,
   placement: Placement,
   viewport: Viewport = FALLBACK_VIEWPORT,
+  edgeIndex?: number,
 ): StageState {
   let next = detach(state, id)
 
@@ -236,12 +321,16 @@ export function openAs(
 
   if (placement.kind === 'edge') {
     const shelf = next.shelves[placement.side]
+    const at =
+      edgeIndex === undefined ? shelf.tabs.length : clamp(Math.round(edgeIndex), 0, shelf.tabs.length)
+    const tabs = [...shelf.tabs]
+    tabs.splice(at, 0, id)
     // 新入架子顺手展开:用户的动作意图是「让它看得见」。
     next = {
       ...next,
       shelves: {
         ...next.shelves,
-        [placement.side]: { ...shelf, tabs: [...shelf.tabs, id], activeId: id, collapsed: false },
+        [placement.side]: { ...shelf, tabs, activeId: id, collapsed: false },
       },
     }
   }
@@ -255,13 +344,19 @@ export function openAs(
     }
   }
 
-  return next
+  // 落定即写:折的是 next(已经落好的那一份),所以 edge 记下的是真实插入位、
+  // float 记下的是钳制过的矩形 —— 记忆里没有一个「本来想放但没放成」的数。
+  return remember(next, id, memoryOf(next, id, viewport))
 }
 
-/** 收回 Dock。已经在 Dock 里的是恒等变换;浮窗矩形留着当记忆。 */
+/**
+ * 收回 Dock。**关闭是归档,不是删除**:先把当下的落点折成记忆,再摘活表 ——
+ * 顺序反了就什么都记不到(摘完之后 placements / shelves 里已经没有它了)。
+ * 已经在 Dock 里的是恒等变换(它的记忆是上次归档时留下的,这一下不该动它)。
+ */
 export function closeToDock(state: StageState, id: string): StageState {
   if (placementOf(state, id).kind === 'dock') return state
-  return openAs(state, id, DOCK)
+  return remember(openAs(state, id, DOCK), id, memoryOf(state, id))
 }
 
 /**
@@ -271,12 +366,12 @@ export function closeToDock(state: StageState, id: string): StageState {
  *      看不见(不是活动 tab,或整栏收着)→ 激活 + 展开 + 闪一下,告诉用户"它在那儿";
  *      看得见(是活动 tab 且栏展开着)  → 再点一次是"收回去",与舞台那条同一个手感。
  *  - 已是浮窗 → 置顶它(浮窗可以有好几个,所以这一下是"把它翻到最上面")
- *  - 在 Dock 里 → 按解析出的落点开。
+ *  - 在 Dock 里 → 按解析出的记忆开(见 resolveOpen 的三层序)。
  */
 export function clickDockIcon(
   state: StageState,
   id: string,
-  placement: Placement,
+  open: PlacementMemory,
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): StageState {
   const current = placementOf(state, id)
@@ -297,7 +392,7 @@ export function clickDockIcon(
 
   if (current.kind === 'float') return focusFloat(state, id)
 
-  return openAs(state, id, placement, viewport)
+  return openFromMemory(state, id, open, viewport)
 }
 
 /**
@@ -308,10 +403,10 @@ export function clickDockIcon(
 export function togglePlacement(
   state: StageState,
   id: string,
-  placement: Placement,
+  open: PlacementMemory,
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): StageState {
-  if (placementOf(state, id).kind === 'dock') return openAs(state, id, placement, viewport)
+  if (placementOf(state, id).kind === 'dock') return openFromMemory(state, id, open, viewport)
   return closeToDock(state, id)
 }
 
@@ -347,6 +442,19 @@ export function focusFloat(state: StageState, id: string): StageState {
   return { ...state, floatOrder: [...order.filter((x) => x !== id), id] }
 }
 
+/**
+ * 落定一个浮窗矩形。活位置写 floats,**同一下**写进记忆 ——
+ * 「拖到哪就记到哪」不该是组件在松手时另外记得做的第二件事。
+ *
+ * 只有此刻真是浮窗才写记忆:floats 是一张不擦的表(收回 Dock 也留着),
+ * 拿一条陈年矩形去盖掉它现在的钉边记忆,就等于用过去否掉现在。
+ */
+function withFloatRect(state: StageState, id: string, rect: FloatRect): StageState {
+  const next = { ...state, floats: { ...state.floats, [id]: rect } }
+  if (placementOf(state, id).kind !== 'float') return next
+  return remember(next, id, { kind: 'float', rect })
+}
+
 export function moveFloat(
   state: StageState,
   id: string,
@@ -356,7 +464,7 @@ export function moveFloat(
 ): StageState {
   const rect = state.floats[id]
   if (!rect) return state
-  return { ...state, floats: { ...state.floats, [id]: clampFloatRect({ ...rect, x, y }, viewport) } }
+  return withFloatRect(state, id, clampFloatRect({ ...rect, x, y }, viewport))
 }
 
 export function resizeFloat(
@@ -366,7 +474,7 @@ export function resizeFloat(
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): StageState {
   if (!state.floats[id]) return state
-  return { ...state, floats: { ...state.floats, [id]: clampFloatRect(rect, viewport) } }
+  return withFloatRect(state, id, clampFloatRect(rect, viewport))
 }
 
 /** 浮窗 → 架子。不是浮窗时是恒等变换。 */
@@ -387,9 +495,22 @@ export function edgeToFloat(
 
 /* ── 架子 ──────────────────────────────────────────────────────────────────── */
 
-/** 整栏关闭:这条边上的 tab 全部收回 Dock(逐个走 closeToDock,复用它的全部清理)。 */
+/**
+ * 整栏关闭:这条边上的 tab 全部收回 Dock(逐个走 closeToDock,复用它的全部清理)。
+ *
+ * 次序要在**动手之前**整条拓下来:逐个收会让后面的 tab 次序一路往前塌,
+ * 那样记下的就是塌过的次序 —— 整栏关掉再一个个开回来,三块瓦会挤成一摞。
+ * 所以先按原状折一遍记忆,收完再把这一份盖回去(只覆盖这条边上的 id,别人一条不碰)。
+ */
 export function closeShelf(state: StageState, side: ShelfSide): StageState {
-  return state.shelves[side].tabs.reduce((st, id) => closeToDock(st, id), state)
+  const tabs = state.shelves[side].tabs
+  if (tabs.length === 0) return state
+  const memory = { ...state.memory }
+  for (const id of tabs) {
+    const m = memoryOf(state, id)
+    if (m) memory[id] = m
+  }
+  return { ...tabs.reduce((st, id) => closeToDock(st, id), state), memory }
 }
 
 /** 激活一条边上的某个 tab。不在这条边上、或已经是活动的,都是恒等变换。 */
@@ -588,6 +709,8 @@ export function withoutStagePlacements(
  *  v1 → v2:多了 Dock 四边/沿边位置/大小与钉栏收起态,旧档案缺哪条补哪条。
  *  v2 → v3:三态枚举升 Placement —— 旧的 pinned/activePinnedId/pinnedWidth/pinnedCollapsed
  *           整组翻成 shelves.right + placements(每条 tab 一条 edge:right)。
+ *  v3 → v4:每瓦的「打开方式」配置(openOverrides)退役,并入位置记忆 ——
+ *           用户配过的一条都不丢,只是换了一种存在方式:配置变成初始记忆。
  * 放在这里(而不是 store 里)是为了它能被当成纯函数测 —— 迁移只有一次机会跑对。
  */
 export function migrateStagePersisted(persisted: unknown, version: number): unknown {
@@ -621,6 +744,29 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
       collapsed: pinnedCollapsed === true,
     }
     out = { ...rest, placements, floats: {}, floatOrder: [], shelves }
+  }
+  if (version < 4) {
+    const { openOverrides, ...rest } = out
+    // 活 placements / floats / shelves 照旧恢复,这一段只把**配置**翻成记忆。
+    const floats = (rest.floats ?? {}) as Record<string, FloatRect>
+    const shelves = (rest.shelves ?? emptyShelves()) as Record<ShelfSide, ShelfState>
+    const memory: Record<string, PlacementMemory> = {}
+    if (openOverrides && typeof openOverrides === 'object') {
+      for (const [id, value] of Object.entries(openOverrides as Record<string, unknown>)) {
+        if (value === 'stage') memory[id] = { kind: 'stage' }
+        else if (value === 'float') {
+          // 有存过的矩形就用存过的;没有就给新窗的默认身量(恢复时还会再过一次视口钳制)。
+          memory[id] = { kind: 'float', rect: floats[id] ?? defaultFloatRect(FALLBACK_VIEWPORT) }
+        } else if (value === 'pinned') {
+          const tabs = shelves.right?.tabs ?? []
+          const at = tabs.indexOf(id)
+          memory[id] = { kind: 'edge', side: 'right', index: at < 0 ? tabs.length : at }
+        }
+        // 'default'(以及任何不认识的值)= 这块瓦从没表过态,不写记忆:
+        // 它继续跟全局默认档走,与升级前逐字同一个结果。
+      }
+    }
+    out = { ...rest, memory }
   }
   return out
 }

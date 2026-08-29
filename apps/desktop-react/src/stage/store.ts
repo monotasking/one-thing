@@ -9,7 +9,6 @@ import type {
   DockEdge,
   DockSize,
   FloatRect,
-  OpenBehavior,
   Placement,
   ResolvedOpen,
   ShelfSide,
@@ -23,8 +22,9 @@ interface StageStore extends StageState, StageSettings {
   items: StageItemSpec[]
   dockDisplay: DockDisplay
 
-  /** 不给 behavior = 按设置解析;给了 = 调用方明确指定(菜单里的「打开方式」就走这条)。 */
-  clickDockIcon: (id: string, behavior?: ResolvedOpen) => void
+  /** 落点由 resolveOpen 解析(记忆 > 全局默认档);要点名落点的走 openAs。 */
+  clickDockIcon: (id: string) => void
+  /** 显式手势那一层:点名放到哪儿。它既执行也写记忆(记忆在 transitions 的 openAs 里落)。 */
   openAs: (id: string, placement: Placement) => void
   /** 快捷键用的开关语义:在 Dock 里就按打开方式开,在别处就收回 Dock。 */
   toggleItem: (id: string) => void
@@ -46,7 +46,6 @@ interface StageStore extends StageState, StageSettings {
   setDockAlign: (a: DockAlign) => void
   setDockSize: (z: DockSize) => void
   setDefaultOpen: (d: ResolvedOpen) => void
-  setOpenOverride: (id: string, v: OpenBehavior) => void
   setLocale: (l: Locale) => void
 }
 
@@ -61,7 +60,7 @@ function viewport(): Viewport {
 /**
  * store 只是 transitions 的一层壳:每个 action 都是 set(transitions.f)。
  * 逻辑不许写在这里 —— 写在这里就测不到了。
- * 唯一的「组合」是 clickDockIcon 里先 resolveOpen 再 clickDockIcon,两边都仍是纯函数。
+ * 唯一的「组合」是 clickDockIcon / toggleItem 里先 resolveOpen 再落形态,两边都仍是纯函数。
  */
 export const useStageStore = create<StageStore>()(
   persist(
@@ -71,20 +70,13 @@ export const useStageStore = create<StageStore>()(
       items: STAGE_ITEMS,
       dockDisplay: 'always',
 
-      clickDockIcon: (id, behavior) =>
-        set((s) =>
-          T.clickDockIcon(
-            s,
-            id,
-            behavior
-              ? T.placementForOpen(behavior)
-              : T.resolveOpen(id, s.openOverrides, s.defaultOpen),
-            viewport(),
-          ),
-        ),
+      clickDockIcon: (id) =>
+        set((s) => T.clickDockIcon(s, id, T.resolveOpen(s, id, s.defaultOpen, viewport()), viewport())),
       openAs: (id, placement) => set((s) => T.openAs(s, id, placement, viewport())),
       toggleItem: (id) =>
-        set((s) => T.togglePlacement(s, id, T.resolveOpen(id, s.openOverrides, s.defaultOpen), viewport())),
+        set((s) =>
+          T.togglePlacement(s, id, T.resolveOpen(s, id, s.defaultOpen, viewport()), viewport()),
+        ),
       closeToDock: (id) => set((s) => T.closeToDock(s, id)),
       closeStage: () => set(T.closeStage),
       stageToFloat: () => set((s) => T.stageToFloat(s, viewport())),
@@ -106,7 +98,6 @@ export const useStageStore = create<StageStore>()(
       setDockAlign: (dockAlign) => set({ dockAlign }),
       setDockSize: (dockSize) => set({ dockSize }),
       setDefaultOpen: (defaultOpen) => set({ defaultOpen }),
-      setOpenOverride: (id, v) => set((s) => ({ openOverrides: { ...s.openOverrides, [id]: v } })),
       setLocale: (locale) => set({ locale }),
     }),
     {
@@ -124,8 +115,9 @@ export const useStageStore = create<StageStore>()(
         floats: s.floats,
         floatOrder: s.floatOrder,
         shelves: s.shelves,
+        // 记忆比工作台活得久:舞台那条存盘要摘,它的记忆却要留 —— 下次点开还去舞台。
+        memory: s.memory,
         defaultOpen: s.defaultOpen,
-        openOverrides: s.openOverrides,
         locale: s.locale,
       }),
     },

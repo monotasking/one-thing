@@ -63,7 +63,6 @@ export const zh = {
   /* ── Dock 与右键菜单 ──────────────────────────────────────────────── */
   'dock.add': '添加',
   'dock.openWith': '打开方式',
-  'dock.openDefault': '跟随默认',
   'dock.openStage': '弹窗',
   'dock.openFloat': '浮窗',
   'dock.openPinned': '钉在右侧',
@@ -114,7 +113,7 @@ export const zh = {
   'settings.dockAutohide': '自动隐藏',
   'settings.defaultOpen': '默认打开方式',
   'settings.defaultOpenHint': '点 Dock 图标时的落点:弹窗居中,浮窗可拖可缩,钉栏常驻右侧',
-  'settings.overrideNote': '每个图标可在右键菜单里单独覆盖',
+  'settings.defaultOpenNote': '只有从没被放过的瓦才用得上它 —— 放过一次,它就记住你放的地方',
   'settings.workdir': '工作目录',
   'settings.language': '语言 / Language',
   'settings.localeSystem': '跟随系统',

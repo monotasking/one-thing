@@ -19,6 +19,29 @@ export type Placement =
 /** 形态的名字 = Placement 的 kind。组件想分支时读它,别自己拼条件。 */
 export type StageForm = Placement['kind']
 
+/**
+ * 「放得下东西」的那三种落点。dock 不在其中 —— dock 是**缺席**,不是一个地方,
+ * 所以「把它放到 dock」和「记得它在 dock」这两句话都没有意义。
+ */
+export type MemorablePlacement = Exclude<Placement, { kind: 'dock' }>
+
+/**
+ * 一块瓦的**位置记忆**:你把它放在哪,它就记得哪。
+ *
+ * 它不是配置 —— 配置是你事先声明的意图,记忆是你事后留下的事实。
+ * 所以它没有「跟随默认」这一档:一条记忆要么说得出具体落点,要么根本不存在。
+ *
+ * 与 Placement 的差别正好是「重开时还需要知道什么」:
+ *  - float 要 rect,不然回来的窗子身量和位置都得重猜(恢复时仍过一次视口钳制);
+ *  - edge  要 index,不然回到那条边只能排到末尾,而它当时是排在中间的。
+ * 架子厚度**不在**这里:厚度是架子的属性,归架子 —— 一条边只有一个厚度,
+ * 让每块瓦都记一份,就等于让最后关掉的那块瓦说了算。
+ */
+export type PlacementMemory =
+  | { kind: 'stage' }
+  | { kind: 'float'; rect: FloatRect }
+  | { kind: 'edge'; side: ShelfSide; index: number }
+
 export type BadgeTone = 'danger' | 'ok'
 
 /** 徽标是「内容的状态」,不是形态的一部分,所以它挂在 item 上而不是 state 上。 */
@@ -83,6 +106,13 @@ export interface StageState {
   /** 浮窗置顶序,末位最上。只登记当下是 float 的 id。 */
   floatOrder: string[]
   shelves: Record<ShelfSide, ShelfState>
+  /**
+   * 位置记忆:id → 它**该**在哪(而 placements 说的是它**正**在哪)。
+   * 关闭是归档不是删除,所以收回 Dock 时当下的落点先折进这里再摘活表;
+   * 每一次落定(菜单点名 / 拖拽吸附 / 撕出 / 移动缩放)也同步写这里。
+   * 缺席 = 这块瓦从没被放过,那才轮到全局默认档说话。
+   */
+  memory: Record<string, PlacementMemory>
   /** 递增计数,触发架子闪烁 */
   flashPinned: number
   /**
@@ -93,24 +123,22 @@ export interface StageState {
 }
 
 /**
- * 「打开方式」:每个图标可覆盖的落点。
- * 'default' 是「不表态」,真正落点由全局默认决定 —— 所以它只存在于设置层,
- * 形态机接到的永远是已解析的 Placement。
+ * 全局默认档:一块**从没被放过**的瓦点开时落在哪。
+ * 它只有这一个职责了 —— 每瓦的「打开方式」配置已并入位置记忆(G 批),
+ * 所以这里不再有 'default'(「不表态」)那一档:全局档自己就是最后一层,没有下家可推。
  * 'pinned' 的语义 = edge:right;值不改名是为了旧档案兼容,翻译收在 placementForOpen 一处。
  */
-export type OpenBehavior = 'default' | 'stage' | 'float' | 'pinned'
-export type ResolvedOpen = Exclude<OpenBehavior, 'default'>
+export type ResolvedOpen = 'stage' | 'float' | 'pinned'
 
 /**
  * 设置层:不参与形态推导,只参与「点一下该去哪」的解析。
  * 与 StageState 分开,是因为它跨会话持久,而形态是当下的。
  */
 export interface StageSettings {
+  /** 只服务「从没被放过、也没有记忆」的瓦 —— 有记忆的一律听记忆的。 */
   defaultOpen: ResolvedOpen
   /** 界面语言。'system' = 问浏览器;解析在 i18n/resolveLang,不在这里。 */
   locale: Locale
-  /** 未登记的 id 等价于 'default',所以初始值是空表而不是全量表。 */
-  openOverrides: Record<string, OpenBehavior>
   /** 停靠哪条边。 */
   dockEdge: DockEdge
   /** 沿边方向的三档定位 —— 「沿边」是相对的:横边是左右,竖边是上下。 */
@@ -150,4 +178,28 @@ export const SHELF_SIDE_CHOICES: Array<{ value: ShelfSide; labelKey: MessageKey 
   { value: 'left', labelKey: 'dock.edgeLeft' },
   { value: 'top', labelKey: 'dock.edgeTop' },
   { value: 'bottom', labelKey: 'dock.edgeBottom' },
+]
+
+/**
+ * 右键菜单那排落点。它与 SHELF_SIDE_CHOICES 同一个理由住在这里:
+ * 一张「值 → 文案键」的表只该有一份,四条边那四行直接由上面那张表长出来。
+ *
+ * 注意它给的是 **Placement 而不是 PlacementMemory**:菜单说得出「放到哪儿」,
+ * 说不出「浮窗多大」「排在第几个」—— 那两件事是落定的产物,由形态机在落定时自己记。
+ * `pin` 只是排版记号:从这一行起是「钉到边」那一组。
+ */
+export const OPEN_PLACEMENT_CHOICES: Array<{
+  key: string
+  placement: MemorablePlacement
+  labelKey: MessageKey
+  pin?: boolean
+}> = [
+  { key: 'stage', placement: { kind: 'stage' }, labelKey: 'dock.openStage' },
+  { key: 'float', placement: { kind: 'float' }, labelKey: 'dock.openFloat' },
+  ...SHELF_SIDE_CHOICES.map((c) => ({
+    key: `edge:${c.value}`,
+    placement: { kind: 'edge' as const, side: c.value },
+    labelKey: c.labelKey,
+    pin: true,
+  })),
 ]

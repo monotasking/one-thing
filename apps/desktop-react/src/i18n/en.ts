@@ -61,7 +61,6 @@ export const en: Record<MessageKey, string> = {
   /* ── dock & context menu ──────────────────────────────────────────── */
   'dock.add': 'Add',
   'dock.openWith': 'Open as',
-  'dock.openDefault': 'Follow default',
   'dock.openStage': 'Popup',
   'dock.openFloat': 'Float',
   'dock.openPinned': 'Pin to the right',
@@ -111,7 +110,7 @@ export const en: Record<MessageKey, string> = {
   'settings.dockAutohide': 'Auto-hide',
   'settings.defaultOpen': 'Default open behavior',
   'settings.defaultOpenHint': 'Where a Dock icon lands: a popup opens centered, a float window can be dragged and resized, a pin stays on the right',
-  'settings.overrideNote': 'Each icon can override this from its context menu',
+  'settings.defaultOpenNote': 'Only used for a tile you have never placed — place it once and it remembers where',
   'settings.workdir': 'Working directory',
   'settings.language': '语言 / Language',
   'settings.localeSystem': 'System',

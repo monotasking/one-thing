@@ -5,10 +5,9 @@ import { DockTile } from './DockTile'
 import { useMagnify } from './useMagnify'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { useT } from '../i18n'
-import type { MessageKey } from '../i18n'
-import { formIn } from '../stage/transitions'
-import { DOCK_AXIS } from '../stage/types'
-import type { DockEdge, DockSize, OpenBehavior, StageItemSpec } from '../stage/types'
+import { formIn, memoryIsAt } from '../stage/transitions'
+import { DOCK_AXIS, OPEN_PLACEMENT_CHOICES } from '../stage/types'
+import type { DockEdge, DockSize, StageItemSpec } from '../stage/types'
 import type { LabelSide } from './DockTile'
 import s from './Dock.module.css'
 
@@ -26,13 +25,8 @@ const TILES: Tile[] = [
 ]
 const SEP_AFTER = SESSION_ITEMS.length - 1
 
-/** 菜单里的四选:'default' 是「不表态」,另三个是明确落点。 */
-const OPEN_CHOICES: Array<{ value: OpenBehavior; labelKey: MessageKey }> = [
-  { value: 'default', labelKey: 'dock.openDefault' },
-  { value: 'stage', labelKey: 'dock.openStage' },
-  { value: 'float', labelKey: 'dock.openFloat' },
-  { value: 'pinned', labelKey: 'dock.openPinned' },
-]
+/** 「钉到边」那一组从第几行开始 —— 由表自己说,不写死一个数。 */
+const PIN_FROM = OPEN_PLACEMENT_CHOICES.findIndex((c) => c.pin)
 
 const SIZE_CLASS: Record<DockSize, string> = {
   sm: s.sizeSm,
@@ -65,18 +59,21 @@ interface Props {
  * 它自己不知道什么是舞台、什么是浮窗、什么是架子 —— 连「点开该去哪」也不知道,那是 store 里
  * resolveOpen 的事;Dock 只负责把右键菜单摆出来,并把选择转成 set*。
  *
- * 右键菜单只管「这一块」:它自己的打开方式,加一条通往设置页的门。
+ * 右键菜单只管「这一块」:它自己的位置记忆,加一条通往设置页的门。
+ * 那排单选显示的是**记忆**(这块瓦上次被放在哪),不是一份配置 —— 所以点一下
+ * 既是「改记忆」也是「现在就放过去」,两件事同一个动作(G 批拍板:位置是记忆,不是配置)。
+ * 一块从没被放过的瓦一行都不勾:它还没有位置,这时候说话的是设置页那个全局默认档。
  * 整条 Dock 的边 / 沿边位置 / 大小是**配置**,配置形状的交互归设置页(08-29 拍板),
  * 所以那三组不在这里 —— 这条菜单短到一眼能读完是它的目的,不是偷懒。
  */
 export function Dock({ dimmed }: Props) {
   const t = useT()
   const placements = useStageStore((st) => st.placements)
-  const overrides = useStageStore((st) => st.openOverrides)
+  const memory = useStageStore((st) => st.memory)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockSize = useStageStore((st) => st.dockSize)
   const click = useStageStore((st) => st.clickDockIcon)
-  const setOpenOverride = useStageStore((st) => st.setOpenOverride)
+  const openAs = useStageStore((st) => st.openAs)
 
   const [menu, setMenu] = useState<{ item: StageItemSpec; title: string; x: number; y: number } | null>(
     null,
@@ -159,19 +156,22 @@ export function Dock({ dimmed }: Props) {
 
       {menu && (
         <Menu x={menu.x} y={menu.y} onClose={closeMenu} label={menu.title}>
-          {/* 每块瓦都有打开方式可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}
+          {/* 每块瓦都有落点可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}
           <MenuSection>{t('dock.openWith')}</MenuSection>
-          {OPEN_CHOICES.map((c) => (
-            <MenuItem
-              key={c.value}
-              checked={(overrides[menu.item.id] ?? 'default') === c.value}
-              onClick={() => {
-                setOpenOverride(menu.item.id, c.value)
-                closeMenu()
-              }}
-            >
-              {t(c.labelKey)}
-            </MenuItem>
+          {OPEN_PLACEMENT_CHOICES.map((c, i) => (
+            <Fragment key={c.key}>
+              {i === PIN_FROM && <MenuSection>{t('stage.pinToEdge')}</MenuSection>}
+              <MenuItem
+                checked={memoryIsAt(memory[menu.item.id], c.placement)}
+                onClick={() => {
+                  // 既执行也写记忆:openAs 落定的那一刻自己就记下了,这里不必再记一次。
+                  openAs(menu.item.id, c.placement)
+                  closeMenu()
+                }}
+              >
+                {t(c.labelKey)}
+              </MenuItem>
+            </Fragment>
           ))}
           <MenuSeparator />
 
