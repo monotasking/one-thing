@@ -90,14 +90,16 @@ export interface StatusState extends StatusSpec {
   running: boolean
 }
 
-/**
- * 交出去的消息。Composer 只管「交」,谁来渲染是消费方的事(这一批是 ChatMock)——
- * 所以这里存的是**结构**不是文案:拒绝那条连字都不带,文案由渲染方走 i18n。
+/*
+ * D3(2026-08-29):`OutboxEntry` 与 `ComposerState.outbox` 已退役。
+ *
+ * 那条假队列存在的理由是「交出去」这件事还没有收件人 —— 现在收件人是会话命令
+ * 总线,交出去的东西变成账本上的真消息,屏幕上那一条由折叠器画。还没落账的
+ * 那一格(送出中 / 送不出去)归聊天数据源的 overlay 车道(`data/chat-fold.ts`
+ * 的 `PendingSend`),不归输入面板 —— 输入面板不该记得它交出去过什么。
+ *
+ * 接缝见 `composer/sink.ts`。
  */
-export type OutboxEntry =
-  | { id: string; kind: 'text'; text: string; attachments: number }
-  | { id: string; kind: 'ask'; lines: { tag: string; answer: string }[] }
-  | { id: string; kind: 'ask-rejected' }
 
 export interface ComposerState {
   drawerKind: DrawerKind
@@ -116,7 +118,6 @@ export interface ComposerState {
   /** 展开是**状态**,不是 hover 的副作用:删卡重排也保持展开 */
   attOpen: boolean
   status: StatusState | null
-  outbox: OutboxEntry[]
 }
 
 /** @ / 的触发结果。q 可以是空串(刚敲下 @ 就该出全表)。 */

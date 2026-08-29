@@ -30,11 +30,10 @@ interface Props {
  * 哪些段」,一条会话还没有段(新会话 / 后端还没推导出来)时,一条空的细边
  * 既没有可悬停的目标也没有可看的内容 —— 画一条出来只是在占位。
  *
- * ── 诚实缺口:它点的还是 mock 聊天 ──────────────────────────────────────
- * onPick 抛给 useChatToc,后者按 `data-turn-index` 找锚点滚过去,而聊天区在
- * D1 仍然是 ChatMock —— 真消息流是 D3。所以键的下标(真锚点列)与页面上的
- * 锚点(mock 轮次)此刻并不同源:点得到的会滚过去,点不到的什么也不做
- * (useChatToc 本来就守着 `top !== undefined`)。这一格在 D3 自然对上。
+ * ── D3:落点与键同源 ──────────────────────────────────────────────────
+ * onPick 抛给 useChatToc,后者按 `data-message-id` 找锚点滚过去 —— 而键本身
+ * 就是这条会话的用户消息锚点(`getUserMarkers` 的 id)。D1 那条「键的下标与
+ * 页面上的锚点不同源」的尾巴就此收掉:两边说的是同一个 id。
  */
 export function TocPanel({ currentIndex, onPick }: Props) {
   const t = useT()

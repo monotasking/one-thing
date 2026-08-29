@@ -14,7 +14,8 @@
     "app:build": "npm run build && npm run electron:build",
     "gate:connect": "node scripts/gate-connect.mjs",
     "gate:data": "node scripts/gate-data.mjs",
-    "gate:theme": "node scripts/gate-theme.mjs"
+    "gate:theme": "node scripts/gate-theme.mjs",
+    "gate:chat": "node scripts/gate-chat.mjs"
   },
   "dependencies": {
     "lucide-react": "latest",

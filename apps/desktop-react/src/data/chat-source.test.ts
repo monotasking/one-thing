@@ -1,0 +1,398 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
+import type { SessionEventEnvelope } from '@shared/events/envelope'
+import type { SessionStreamPayload } from '@renderer/platform/types'
+import { configureChatPort, type ChatPort } from './chat-port'
+import { REFOLD_THROTTLE_MS, useChatSource } from './chat-source'
+
+/**
+ * 聊天数据源的判据 —— 全是纯逻辑,所以这里一台 core 都不起:端口换成假的,
+ * 喂进去的是真词汇的账本行(与 `events.jsonl` 逐字同形)。
+ *
+ * 钉住的四件事:起底、增量折、缺号重折(节流)、活尾巴的接管与丢弃。
+ */
+
+const T0 = 1_700_000_000_000
+const SESSION = 's1'
+
+type Ledger = { seq: number; time: number; type: string; data: unknown }
+
+const created = (seq: number): Ledger => ({
+  seq,
+  time: T0,
+  type: 'session/created',
+  data: { sessionId: SESSION },
+})
+
+const userMessage = (seq: number, id: string, content: string): Ledger => ({
+  seq,
+  time: T0,
+  type: 'user/message',
+  data: { message: { id, role: 'user', content, timestamp: T0 } },
+})
+
+const runStart = (seq: number, runId: string, assistantMessageId: string): Ledger => ({
+  seq,
+  time: T0,
+  type: 'run/start',
+  data: { runId, kind: 'chat', assistantMessageId, timestamp: T0 },
+})
+
+/** 打包行 —— 消费侧不自己 decode,归约器里的解码器负责展开(定律二)。 */
+const chunks = (seq: number, runId: string, messageId: string, text: string[]): Ledger => ({
+  seq,
+  time: T0,
+  type: 'assistant/chunks',
+  data: {
+    runId,
+    requestIndex: 0,
+    messageId,
+    partIndex: 0,
+    kind: 'text',
+    time0: T0,
+    dt: text.map((_, index) => index),
+    text,
+  },
+})
+
+const runEnd = (seq: number, runId: string): Ledger => ({
+  seq,
+  time: T0,
+  type: 'run/end',
+  data: { runId, outcome: 'completed' },
+})
+
+interface Harness {
+  port: ChatPort
+  listRawCalls: number
+  ledger: Ledger[]
+  sent: string[]
+  sendResult: () => Promise<{ success: boolean; error?: string }>
+  emitEvent(envelope: SessionEventEnvelope): void
+  emitLedger(record: Ledger): void
+  emitStream(payload: SessionStreamPayload): void
+}
+
+function harness(initial: Ledger[]): Harness {
+  const eventSubs: ((envelope: SessionEventEnvelope) => void)[] = []
+  const streamSubs: ((payload: SessionStreamPayload) => void)[] = []
+  const h: Harness = {
+    listRawCalls: 0,
+    ledger: [...initial],
+    sent: [],
+    sendResult: async () => ({ success: true }),
+    port: {
+      ready: async () => undefined,
+      listRaw: async () => {
+        h.listRawCalls += 1
+        return { events: [...h.ledger] as never }
+      },
+      readBlob: async () => ({}),
+      onSessionEvent: (callback) => {
+        eventSubs.push(callback)
+        return () => void eventSubs.splice(eventSubs.indexOf(callback), 1)
+      },
+      onSessionStream: (callback) => {
+        streamSubs.push(callback)
+        return () => void streamSubs.splice(streamSubs.indexOf(callback), 1)
+      },
+      sendMessage: async (_sessionId, content) => {
+        h.sent.push(content)
+        return h.sendResult()
+      },
+    },
+    emitEvent: (envelope) => eventSubs.forEach((fn) => fn(envelope)),
+    emitLedger: (record) =>
+      h.emitEvent({
+        sessionId: SESSION,
+        sequence: record.seq,
+        timestamp: T0,
+        event: { type: SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT, record } as never,
+      }),
+    emitStream: (payload) => streamSubs.forEach((fn) => fn(payload)),
+  }
+  return h
+}
+
+/** 推屏按帧合并 —— 断言前把那一帧等掉。 */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
+
+const state = () => useChatSource.getState()
+const ids = () => state().messages.map((message) => message.id)
+
+beforeEach(() => {
+  useChatSource.getState().reset()
+})
+
+afterEach(() => {
+  useChatSource.getState().reset()
+  configureChatPort(undefined)
+  vi.useRealTimers()
+})
+
+describe('起底:进会话 = listRaw 全量折', () => {
+  it('折出来的就是 core 归约器的输出,渲染层零拼装', async () => {
+    const h = harness([
+      created(1),
+      userMessage(2, 'm1', '你好'),
+      runStart(3, 'r1', 'a1'),
+      chunks(4, 'r1', 'a1', ['你', '好']),
+      runEnd(5, 'r1'),
+    ])
+    configureChatPort(h.port)
+
+    await state().open(SESSION)
+    await settle()
+
+    expect(state().status).toBe('ready')
+    expect(ids()).toEqual(['m1', 'a1'])
+    expect(state().messages[1].content).toBe('你好')
+    // run 收了 = 没有在跑的那一条。
+    expect(state().activeMessageId).toBeUndefined()
+  })
+
+  it('空账本是一棵空树,不是错误', async () => {
+    const h = harness([])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    expect(state().status).toBe('ready')
+    expect(state().messages).toEqual([])
+  })
+
+  it('没有当前会话时归零,不把上一条会话的树留在屏幕上', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '你好')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    expect(ids()).toEqual(['m1'])
+
+    await state().open('')
+    expect(state().status).toBe('idle')
+    expect(state().messages).toEqual([])
+  })
+})
+
+describe('增量:账本活事件一条一条折', () => {
+  it('seq 接得上就当场折进去,不再拉 listRaw', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '第一句')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    expect(h.listRawCalls).toBe(1)
+
+    h.emitLedger(userMessage(3, 'm2', '第二句'))
+    await settle()
+
+    expect(ids()).toEqual(['m1', 'm2'])
+    expect(h.listRawCalls).toBe(1)
+  })
+
+  it('旧行是重折之后的回声,丢掉(幂等)', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '第一句')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitLedger(userMessage(2, 'm1', '第一句'))
+    await settle()
+    expect(ids()).toEqual(['m1'])
+  })
+
+  it('别的会话的信封一律不看', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '第一句')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitEvent({
+      sessionId: 'another',
+      sequence: 3,
+      timestamp: T0,
+      event: {
+        type: SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT,
+        record: userMessage(3, 'mX', '别人的'),
+      } as never,
+    })
+    await settle()
+    expect(ids()).toEqual(['m1'])
+  })
+
+  it('run 开着的时候 activeMessageId 指向那条助手消息', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '你好')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitLedger(runStart(3, 'r1', 'a1'))
+    await settle()
+    expect(state().activeMessageId).toBe('a1')
+
+    h.emitLedger(runEnd(4, 'r1'))
+    await settle()
+    expect(state().activeMessageId).toBeUndefined()
+  })
+})
+
+describe('缺号:不补拼,整会话重折(节流合并)', () => {
+  it('缺号触发一次 listRaw 重折,窗口内的多次缺号塌成一次', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '第一句')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    expect(h.listRawCalls).toBe(1)
+
+    vi.useFakeTimers()
+    // 断线重连补发时的样子:seq 4 先到,3 缺着 —— 不许拿 4 拼一棵半树。
+    h.ledger.push(userMessage(3, 'm2', '第二句'), userMessage(4, 'm3', '第三句'))
+    h.emitLedger(userMessage(4, 'm3', '第三句'))
+    h.emitLedger(userMessage(5, 'm4', '第四句'))
+    expect(h.listRawCalls).toBe(1)
+
+    await vi.advanceTimersByTimeAsync(REFOLD_THROTTLE_MS + 100)
+    vi.useRealTimers()
+    await settle()
+
+    expect(h.listRawCalls).toBe(2)
+    // 重折读的是**此刻整份账本**,所以缺的那条自己补上了,而 5 没落盘就没有。
+    expect(ids()).toEqual(['m1', 'm2', 'm3'])
+  })
+})
+
+describe('活尾巴:平滑上屏,打包行一到就换装', () => {
+  it('裸 delta 当场追加到正文上(不等 2s 的打包行)', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '好', messageId: 'a1' } as never })
+    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '的', messageId: 'a1' } as never })
+    await settle()
+
+    expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('好的')
+  })
+
+  it('打包行一到,尾巴整段丢掉 —— 不重影', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '好的', messageId: 'a1' } as never })
+    await settle()
+    h.emitLedger(chunks(4, 'r1', 'a1', ['好的']))
+    await settle()
+
+    // 账本那份接管;两者逐字节相同(decode∘encode ≡ id),所以屏幕上还是「好的」。
+    expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('好的')
+  })
+
+  it('收尾事件把尾巴丢掉(这一轮完了,尾巴不再有主)', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '半句', messageId: 'a1' } as never })
+    await settle()
+    expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('半句')
+
+    h.emitEvent({
+      sessionId: SESSION,
+      sequence: 9,
+      timestamp: T0,
+      event: { type: SESSION_EVENT_TYPES.STREAM_COMPLETE, data: {} } as never,
+    })
+    await settle()
+    expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('')
+  })
+
+  it('UI 事件流那几条不进尾巴 —— 它们与账本行同形,归折叠', async () => {
+    const h = harness([created(1), runStart(2, 'r1', 'a1')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({
+      sessionId: SESSION,
+      chunk: { type: 'assistant/delta', text: '不该上屏', messageId: 'a1' } as never,
+    })
+    await settle()
+    expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('')
+  })
+})
+
+describe('发送:pending 立刻上屏,账本认领之后丢掉', () => {
+  it('空话不发;没有当前会话也不发', async () => {
+    const h = harness([])
+    configureChatPort(h.port)
+    expect(state().send('   ')).toBe(false)
+    expect(state().send('有话')).toBe(false)
+    expect(h.sent).toEqual([])
+  })
+
+  it('发出去 = 一格 pending,账本长出那条用户消息就换装', async () => {
+    const h = harness([created(1)])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    expect(state().send('真发一条')).toBe(true)
+    expect(state().overlay).toHaveLength(1)
+    await settle()
+    expect(h.sent).toEqual(['真发一条'])
+
+    h.emitLedger(userMessage(2, 'm1', '真发一条'))
+    await settle()
+
+    expect(ids()).toEqual(['m1'])
+    expect(state().overlay).toEqual([])
+  })
+
+  it('发不出去 = 那一格转 failed 并带上后端说的那句话,重试再发一次', async () => {
+    const h = harness([created(1)])
+    h.sendResult = async () => ({ success: false, error: '引擎没接住' })
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    state().send('会失败的一条')
+    await settle()
+    const failed = state().overlay[0]
+    expect(failed).toMatchObject({ kind: 'pending', status: 'failed', error: '引擎没接住' })
+
+    h.sendResult = async () => ({ success: true })
+    state().retry(failed.id)
+    await settle()
+    expect(h.sent).toEqual(['会失败的一条', '会失败的一条'])
+    expect(state().overlay[0]).toMatchObject({ status: 'sending' })
+  })
+
+  it('本地提示进 overlay 车道,账本上永远没有它', async () => {
+    const h = harness([created(1)])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    state().notice('ask-rejected')
+    h.emitLedger(userMessage(2, 'm1', '别的话'))
+    await settle()
+
+    expect(state().overlay).toHaveLength(1)
+    expect(state().overlay[0]).toMatchObject({ kind: 'notice', notice: 'ask-rejected' })
+  })
+
+  it('换会话把 overlay 清空 —— 那几条属于上一条会话的屏幕', async () => {
+    const h = harness([created(1)])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    state().send('上一条会话的话')
+    expect(state().overlay).toHaveLength(1)
+
+    await state().open('s2')
+    await settle()
+    expect(state().overlay).toEqual([])
+  })
+})

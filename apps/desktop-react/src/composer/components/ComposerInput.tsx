@@ -123,6 +123,7 @@ export function ComposerInput({
     }
   }
 
+  // `data-testid` 是给门用的落点:aria-label 是翻译过的文案,会跟着系统语言变。
   return (
     <div
       ref={ref}
@@ -132,6 +133,7 @@ export function ComposerInput({
       role="textbox"
       aria-multiline="true"
       aria-label={placeholder}
+      data-testid="composer-input"
       data-placeholder={placeholder}
       onInput={() => onToken(ref.current ? (caretToken(ref.current)?.hit ?? null) : null)}
       onKeyDown={handleKeyDown}

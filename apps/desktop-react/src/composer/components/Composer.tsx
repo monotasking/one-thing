@@ -277,6 +277,7 @@ export function Composer() {
                   type="button"
                   className={s.sendBtn}
                   aria-label={t('composer.send')}
+                  data-testid="composer-send"
                   onClick={() => doSend(inputRef.current?.text() ?? '')}
                 >
                   <SendIcon className={s.sendIcon} strokeWidth={2.4} aria-hidden="true" />

@@ -1,12 +1,12 @@
 import { create } from 'zustand'
 import { DEFAULT_MODEL } from './data'
+import { composerSink } from './sink'
 import * as T from './transitions'
 import type {
   AskSpec,
   Attachment,
   ComposerState,
   DrawerKind,
-  OutboxEntry,
   StatusSpec,
 } from './types'
 
@@ -34,10 +34,9 @@ const initialState: ComposerState = {
   attachments: [],
   attOpen: false,
   status: null,
-  outbox: [],
 }
 
-/** 附件与出站消息的 id:自增就够(单进程、单窗口),不引 uuid。 */
+/** 附件 id:自增就够(单进程、单窗口),不引 uuid。 */
 let seq = 0
 const nextId = (prefix: string) => `${prefix}-${(seq += 1)}`
 
@@ -170,43 +169,41 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
       askIdx: T.moveAskIndex(s.askIdx, delta, s.askSpec?.questions.length ?? 0),
     })),
 
-  submitAsk: (lines) =>
-    set((s) => ({
-      outbox: [...s.outbox, { id: nextId('msg'), kind: 'ask', lines } as OutboxEntry],
-      mode: 'write',
-      askSpec: null,
-      askAnswers: [],
-      askIdx: 0,
-    })),
+  /**
+   * 交卷 = **一条真消息**:答完一组问题就是用户说了一段话,没有第三种东西。
+   * 这里只负责把它拼成一句(`标签: 答案`,一行一题),交给 sink;账本认下之后
+   * 屏幕上那一条由折叠器画。
+   */
+  submitAsk: (lines) => {
+    composerSink().send(lines.map((line) => `${line.tag}: ${line.answer}`).join('\n'), 0)
+    set({ mode: 'write', askSpec: null, askAnswers: [], askIdx: 0 })
+  },
 
-  rejectAsk: () =>
-    set((s) => ({
-      outbox: [...s.outbox, { id: nextId('msg'), kind: 'ask-rejected' } as OutboxEntry],
-      mode: 'write',
-      askSpec: null,
-      askAnswers: [],
-      askIdx: 0,
-    })),
+  /**
+   * 拒绝也进流:一次没回答**也是一次回答**,不该在记录里消失 —— 但它进不了
+   * 账本(引擎那边什么都没发生),所以走的是本地提示那条车道,不是发送。
+   */
+  rejectAsk: () => {
+    composerSink().notice('ask-rejected')
+    set({ mode: 'write', askSpec: null, askAnswers: [], askIdx: 0 })
+  },
 
   /**
    * 发送。空话不发(照设计稿);附件是这条消息的一部分,所以**随消息一起离开**,
    * 留在框里等下一条会是谎话。返回值告诉调用方「到底发没发」——
    * 输入框要不要清空由它决定,store 不去碰 DOM。
+   *
+   * D3 起真正的收件人是会话命令总线(经 `sink`)。**sink 说没交出去就当没发**:
+   * 还没有当前会话时输入框不该被清空,那句话还在人手里。附件计数照实带过去 ——
+   * 载荷本身不在 D3(纯文本 content),但「这条消息本来带着几个附件」是事实。
    */
   send: (text) => {
     const body = text.trim()
     if (!body) return false
     const atts = get().attachments
+    if (!composerSink().send(body, atts.length)) return false
     revoke(atts)
-    set((s) => ({
-      outbox: [
-        ...s.outbox,
-        { id: nextId('msg'), kind: 'text', text: body, attachments: atts.length } as OutboxEntry,
-      ],
-      attachments: [],
-      attOpen: false,
-      drawerKind: null,
-    }))
+    set({ attachments: [], attOpen: false, drawerKind: null })
     return true
   },
 }))

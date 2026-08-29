@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { useKeymapDispatch } from '../keymap/dispatch'
 import { TopBar } from './TopBar'
-import { ChatMock } from './ChatMock'
+import { ChatStream } from '../content/ChatStream'
 import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
@@ -46,7 +46,7 @@ export function AppShell() {
 
   // 聊天滚动容器只有一个 ref,两个消费者:Dock 降淡 与 TOC 当前键。
   const chatRef = useRef<HTMLDivElement>(null)
-  const { currentIndex, flashIndex, syncFromScroll, pickTurn } = useChatToc(chatRef)
+  const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(chatRef)
 
   // 滚动降淡:只在这里存一次,Dock 拿到的是结论而不是滚动事件。
   const [dimmed, setDimmed] = useState(false)
@@ -134,7 +134,7 @@ export function AppShell() {
         <div className={s.center}>
           {/* 键列钉在聊天区(不含输入框)的右缘,所以定位参考系是这一层 */}
           <div className={s.chatArea}>
-            <ChatMock scrollRef={chatRef} onScroll={onScroll} flashIndex={flashIndex} />
+            <ChatStream scrollRef={chatRef} onScroll={onScroll} flashMessageId={flashMessageId} />
             <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
           </div>
           <Composer />

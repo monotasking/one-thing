@@ -2,8 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { Composer } from './Composer'
 import { useComposerStore, resetComposerStore } from '../store'
+import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
 import { useStageStore } from '../../stage/store'
+
+/**
+ * D3 起 composer 不再自己攒一条假队列 —— 它把话**交给 sink**(见 composer/sink.ts)。
+ * 所以「到底交出去了什么」在这一层就是断言这只假 sink 收到了什么:形态机一条没变,
+ * 换的只是收件人从一个数组变成了一个接口。
+ */
+const handed: ({ kind: 'text'; text: string; attachments: number } | { kind: 'notice'; notice: string })[] = []
 
 /**
  * 组件层只钉「谁在场、谁让位、键盘归谁」—— 判断本身在 transitions.test.ts。
@@ -12,10 +20,19 @@ import { useStageStore } from '../../stage/store'
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   resetComposerStore()
+  handed.length = 0
+  configureComposerSink({
+    send: (text, attachments) => {
+      handed.push({ kind: 'text', text, attachments })
+      return true
+    },
+    notice: (notice) => void handed.push({ kind: 'notice', notice }),
+  })
 })
 
 afterEach(() => {
   vi.useRealTimers()
+  configureComposerSink(undefined)
 })
 
 const state = () => useComposerStore.getState()
@@ -127,7 +144,7 @@ describe('ask 形态:本体的另一副样子', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(state().mode).toBe('write')
-    expect(state().outbox.at(-1)).toMatchObject({ kind: 'ask-rejected' })
+    expect(handed.at(-1)).toEqual({ kind: 'notice', notice: 'ask-rejected' })
   })
 
   it('单选再点即取消;没答全时提交按钮不亮', () => {
@@ -157,16 +174,16 @@ describe('ask 形态:本体的另一副样子', () => {
     fireEvent.click(submit)
 
     expect(state().mode).toBe('write')
-    const sent = state().outbox.at(-1)
-    expect(sent).toMatchObject({ kind: 'ask' })
-    expect(sent?.kind === 'ask' && sent.lines).toEqual([
-      { tag: '徽标', answer: ASK_DEMO_SPEC.questions[0].opts[0].l },
-      {
-        tag: '验证',
-        answer: `${ASK_DEMO_SPEC.questions[1].opts[0].l}、${ASK_DEMO_SPEC.questions[1].opts[2].l}`,
-      },
-      { tag: '提交', answer: ASK_DEMO_SPEC.questions[2].opts[1].l },
-    ])
+    // 交卷 = 一条真消息:一行一题,`标签: 答案`。
+    expect(handed.at(-1)).toEqual({
+      kind: 'text',
+      attachments: 0,
+      text: [
+        `徽标: ${ASK_DEMO_SPEC.questions[0].opts[0].l}`,
+        `验证: ${ASK_DEMO_SPEC.questions[1].opts[0].l}、${ASK_DEMO_SPEC.questions[1].opts[2].l}`,
+        `提交: ${ASK_DEMO_SPEC.questions[2].opts[1].l}`,
+      ].join('\n'),
+    })
   })
 
   it('「其他」就在行里写,回车即答;点记号即取消,不新开任何输入框', () => {
@@ -245,11 +262,11 @@ describe('发送', () => {
     fireEvent.change(input, { target: { files: [new File(['x'], 'a.log')] } })
 
     fireEvent.click(screen.getByLabelText('发送'))
-    expect(state().outbox).toHaveLength(0)
+    expect(handed).toHaveLength(0)
 
     type(box, '把徽标那处也改了')
     fireEvent.click(screen.getByLabelText('发送'))
-    expect(state().outbox.at(-1)).toMatchObject({
+    expect(handed.at(-1)).toEqual({
       kind: 'text',
       text: '把徽标那处也改了',
       attachments: 1,

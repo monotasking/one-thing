@@ -48,3 +48,21 @@ configureSessionsPort({
   getUserMarkers: async () => ({ success: true, markers: [] }),
   onSessionEvent: () => () => undefined,
 })
+
+/**
+ * 聊天数据源的端口:同一条理由,同一手 —— 默认是**一个什么都不回的假端口**。
+ *
+ * 不装的话,任何渲染了聊天区的用例都会经 `chatPort()` 动态 import 真的
+ * `@renderer/platform`,进而在 jsdom 里发出 fetch / SSE。要验折叠的用例
+ * 自己 `configureChatPort` 换一个。
+ */
+import { configureChatPort } from '../data/chat-port'
+
+configureChatPort({
+  ready: async () => undefined,
+  listRaw: async () => ({ events: [] }),
+  readBlob: async () => ({}),
+  onSessionEvent: () => () => undefined,
+  onSessionStream: () => () => undefined,
+  sendMessage: async () => ({ success: true }),
+})

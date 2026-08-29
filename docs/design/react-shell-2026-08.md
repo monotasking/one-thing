@@ -73,7 +73,7 @@
 | --- | --- | --- | --- |
 | **P0** | 壳与连通 | 新 workspace 应用脚手架(electron + vite + React 19 + TS;root workspaces **单列**,不加 glob——mobile 教训);main 进程发现/拉起 core;preload 交 `{baseUrl, token}`;§5.6 的注入式传输面落地;React 挂载,一次 `POST /api/rpc` 往返 + SSE 收到一条 `session:event` | 脚本拉起应用 → 断言 rpc 往返成功 + SSE 事件到达;旧桌面在跑/不在跑两种路径各验一次 |
 | **P1** | 只读会话 + 主题 | 会话列表(`sessions` 域);历史消息渲染(contentParts → React 组件树,搬 `stores/helpers/` 纯函数;**不含流式**);`themes` 域拉变量表 apply + token CSS 引入;明暗切换 | 同一会话在 Vue 端与 React 端的消息树结构比对脚本;主题变量数逐项断言 |
-| **P2** | 聊天写面与流 | **待 §5.1 拍板**。路线 A:先落服务端事件流传输(带 eventSeq、`?after=` 重放),React 聊天状态 = `useReducer(core 归约器)`;路线 B:照抄现行 chunk+快照双流,重写拼装层 | 路线 A:发消息 → 断言归约态与 `sessionReads` 读面一致;断线重连补发用例。路线 B:对齐 Vue 端既有行为 |
+| **P2** | 聊天写面与流 | **已拍路线 A,2026-08-29 落地(§5.11)**:聊天态 = core 折叠器的输出 + 活尾巴 + overlay,React 侧零拼装 | `npm run gate:chat`:发消息进账本 / 注入经 SSE 活折上屏 / 折叠树 ≡ `getMessagesPage`。连跑两遍绿 |
 | **P3** | 权限与工具交互 | `permission:request`(SSE 携 targetChannel)→ 审批卡;respond 走 session-command HTTP(channel 收养逻辑服务端已有);工具调用展示、diff 渲染 | 真机脚本:触发一次需审批的工具 → React 端 respond → 工具执行完成 |
 | **P4** | 原生面 | 窗口系:标题栏 `hidden` + 拖拽区(判例:app-region 只算 content box、no-drag 须同分支子孙、CDP+CGEvent 验证法);本地 shell 表(dialog/notify/clipboard,与 shell-web 同构);菜单 | 拖拽区 CDP+CGEvent 脚本验证;shell 表逐域冒烟 |
 | **P5** | 桌面-only 能力逐项 | §6 缺口清单逐项单独拍板、单独排期,**不隐式承诺** | 每项自带门 |
@@ -86,9 +86,11 @@ P0+P1 不依赖任何待拍项,可立即开工。
 
 ## 5. 拍板点
 
-### 5.1 聊天数据层(挂起,等用户侧事项完事)
+### 5.1 聊天数据层(**已拍:路线 A**,2026-08-29 落地,见 §5.11)
 
-- **路线 A(建议)**:先做一期服务端工作把带序号的事件流暴露到 HTTP/SSE(即 U 线 `docs/design/ui-event-stream-2026-08.md` 的传输部分),React 聊天零拼装、断线可重放;对 Vue/web 端也是净收益。
+- **路线 A(已选)**:先做一期服务端工作把带序号的事件流暴露到 HTTP/SSE(即 U 线 `docs/design/ui-event-stream-2026-08.md` 的传输部分),React 聊天零拼装、断线可重放;对 Vue/web 端也是净收益。
+  服务端那一期在主仓 U 线随 §17.8 一并落地(`sessionEvents.listRaw` 全集原词汇读口、
+  账本活事件 `session:ledger-event` 骑既有推送面双传输),D3 直接吃现成的。
 - **路线 B**:React 照抄现行双流协议,快但拼装层是注定要扔的过渡品,且会重踩 Vue 版踩过的位置推断 bug。
 
 ### 5.2 应用名与目录
@@ -240,6 +242,81 @@ P1 的主题那一半已落地,`apps/desktop-react` 的颜色从此**全部来�
 与脚本一致、贴上的键数一致、**抽样 12 个横跨六族的 `--ui-*` 键在
 `getComputedStyle(:root)` 上与表逐字相等**、桥的标记在场、`--surface-2` 不再是
 palette 静态值且等于 `--ui-surface-panel-bg`、`color-scheme` 跟着明暗走。
+
+### 5.11 D3 落地记录(聊天流,路线 A,2026-08-29)
+
+P2 落地(路线 A)。`apps/desktop-react` 的聊天区从 `ChatMock` 换成**真会话**,
+`packages/*` 一行未改(只 import)。一句话:**屏幕上那棵树 = core 折叠器的输出 +
+活尾巴 + overlay**,React 侧零拼装。
+
+**新增结构(只在 `apps/desktop-react` 里)**
+
+| 层 | 落点 | 职责 |
+| --- | --- | --- |
+| 端口 | `src/data/chat-port.ts` | 平台调用面的**子集**(listRaw / readBlob / onSessionEvent / onSessionStream / sendMessage / ready),测试可换 |
+| 纯函数 | `src/data/chat-fold.ts` | 活尾巴的进料与接法、overlay 的认领;不认识 core、不认识网络 |
+| 数据源 | `src/data/chat-source.ts` | 起底 / 增量折 / 缺号重折 / 尾巴 / 发送;按帧推屏 |
+| 组件 | `src/content/ChatStream.tsx` + `.module.css` | 只管「怎么摆」,不推导任何结构 |
+| 接缝 | `src/composer/sink.ts` | 输入面板 → 聊天:composer 的 `outbox` 假队列整体退役 |
+
+**六处裁量**
+
+1. **折叠入口 = `reduceSessionProjection` + `materializeChatMessages`**
+   (`@onething/core/session/projection/{reducer,chat-messages}`,两条都在 core 的
+   exports 表里)。与主进程、与 Vue 壳跑的是**同一台**归约器 —— 不是"照它再写一份"。
+   `ProjectedMessage` 的类型从 `materializeChatMessages` 的返回值上推
+   (`ReturnType<…>['messages'][number]`),因为 `projection/types` 不在 exports 表里,
+   而本批不许动 `packages/*`。
+2. **打包行的 decode 在归约器里,消费侧不做第二次**。`reducer.ts` 的
+   `case 'assistant/chunks'` 自己经 `core/session/events/chunk-codec.ts` 展开 ——
+   把账本行原样喂进去就是了。这正是"打包是压缩,不是语义"那条定律的落点:
+   展开只在一处发生。React 侧因此**没有**任何 chunk-codec 的调用。
+3. **增量折,不是节流重折**。`seq === lastSeq + 1` 就当场折进去(账本行本身已经
+   打包过,不需要第二套合批);**缺号 / 中途入场则整会话经 `listRaw` 重折**,窗口内
+   合并成一次(`REFOLD_THROTTLE_MS = 3000`,与 Vue 壳同值)。断线重连由 SSE 自带
+   Last-Event-ID 补发,补发时的缺号走同一条重折路 —— 两条路殊途同归,不补拼
+   (无快照裁定)。
+4. **活尾巴只许做文本追加**,而且只吃**裸 delta**(`text-delta` / `reasoning-delta`)。
+   UI 事件流那几条(`assistant/*`)与账本行同形同名,归折叠 —— 尾巴碰了就是同一段
+   文字被两条路各画一遍。三条纪律逐条照 Vue 壳(8d72e236 的判例):**只延长最后
+   那一段不回头找**、**顶部推理落 `message.reasoning` 不进 contentParts**、
+   **`placement` 由流自己说**(缺席时按"这条消息还没有正文 = top"兜底)。打包行一到
+   尾巴整段丢掉 —— 宁可少一帧,不要重影(依据是 `decode∘encode ≡ id`)。
+5. **发送命令的形状:`{ type: 'command:send-message', content }`,一个字段都不多给**。
+   `channel` 缺席时引擎按会话自己的频道走(默认 `ipc`),渲染层替它拍板就是在两处
+   定义同一件事。@提及 / 附件不在本批,所以端口上也就没有那两个参数(附件**计数**
+   照实带到 overlay 上 —— "这条消息本来带着几个附件"是事实)。
+6. **出站消息归 overlay 车道,不归输入面板**。composer 的 `outbox` 与 `OutboxEntry`
+   整体退役,`send` / `submitAsk` / `rejectAsk` 改走 `sink`。还没落账的那一格
+   (`PendingSend`)住在聊天数据源里,**以折叠为准**:账本长出正文相同、且不在发出
+   那一刻快照里的用户消息时,那一格被认领并丢掉(连发同一句话不会一次消掉两格)。
+   失败的那一格不认领 —— 它说的正是"这条没到账本",留着让人重试。拒绝一组问题是
+   本地提示(`LocalNotice`),按定义永远不在账本上。
+
+**顺手收掉的两条尾巴**
+
+- **TOC 落点与键同源**(D1 留的"下标不同源"):锚点从 `data-turn-index` 换成
+  `data-message-id`,而键本来就是 `getUserMarkers` 的用户消息 id ——
+  两边现在说的是同一个 id。`useChatToc` 自己读同一份锚点列,判定仍归纯函数
+  `currentTurnIndex`(缺席的锚点先摘掉再把结果映回锚点列下标)。
+- **QuickLook 一行未动**:它是**预览面**,吃 `getMessagesPage` 的纯文本,不吃折叠。
+
+**诚实缺口(本批**不**做,不是漏做)**
+
+- **富渲染**:正文按纯文本画(`white-space: pre-wrap` 保留换行),工具调用折成
+  一行摘要(工具名 + 状态)。markdown / 代码高亮 / diff / 图片是后批
+  (streamdown + shiki),代码注释里就是这么写的。
+- **blob 正文**:端口有 `readBlob`,数据源里也接了一个同步解析器 + 异步补拉
+  (拉回来推一次屏)——但屏幕上今天还没有会用到它的格子(图片走富渲染那一批)。
+- **@提及 / 附件载荷**:命令只带 `content`。
+
+**门**:`npm run gate:chat`(`scripts/gate-chat.mjs`)。临时 store + 无 provider,
+所以门**只验数据面**,三条:① React 输入框里真敲真发 → 屏幕消息树上有它、
+HTTP `sessionEvents.listRaw` 里有对应 `user/message`、**屏幕上那条的 id 就是账本
+上那条的 id**;② 脚本侧 HTTP `session-command.emit` 注入第二条 → **不刷新**它经 SSE
+账本事件自己长出来;③ 屏幕折叠树的 id 序列与 `sessions.getMessagesPage` 逐条相等
+(同一份账本,两条路,同一个答案)。连跑两遍绿。
+**流式生成要真 provider,属真机手验 —— 门里说不出的话,门里就不说。**
 
 ## 6. 首版能力缺口(诚实清单)
 

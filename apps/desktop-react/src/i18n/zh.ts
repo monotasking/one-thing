@@ -181,6 +181,25 @@ export const zh = {
   'search.badgeMessage': '消息',
   'search.openedFile': '已打开 {file}',
 
+  /* ── 聊天区(D3:正文/工具名/错误原文都是**数据**,不在这儿) ────────── */
+  'chat.noSession': '还没有选中会话',
+  'chat.loading': '正在读这条会话…',
+  'chat.error': '读不到这条会话',
+  'chat.empty': '这条会话还没有消息',
+  'chat.errorCard': '出错了',
+  'chat.thought': '思考',
+  'chat.streaming': '正在生成',
+  'chat.retry': '重试',
+  'chat.discard': '不发了',
+  'chat.tool.pending': '待执行',
+  'chat.tool.queued': '排队中',
+  'chat.tool.received': '已收齐',
+  'chat.tool.executing': '执行中',
+  'chat.tool.completed': '已完成',
+  'chat.tool.failed': '失败',
+  'chat.tool.cancelled': '已取消',
+  'chat.tool.inputStreaming': '参数生成中',
+
   /* ── Quick Look ───────────────────────────────────────────────────── */
   'quicklook.enter': '进入 ↵',
   'quicklook.dismiss': '收回',

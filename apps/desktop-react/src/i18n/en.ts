@@ -180,6 +180,25 @@ export const en: Record<MessageKey, string> = {
   'search.badgeMessage': 'MSG',
   'search.openedFile': 'Opened {file}',
 
+  /* ── chat stream (D3: body text / tool names / error text are DATA) ─── */
+  'chat.noSession': 'No session selected yet',
+  'chat.loading': 'Loading this session…',
+  'chat.error': "Couldn't read this session",
+  'chat.empty': 'This session has no messages yet',
+  'chat.errorCard': 'Something went wrong',
+  'chat.thought': 'Thinking',
+  'chat.streaming': 'Generating',
+  'chat.retry': 'Retry',
+  'chat.discard': 'Discard',
+  'chat.tool.pending': 'pending',
+  'chat.tool.queued': 'queued',
+  'chat.tool.received': 'received',
+  'chat.tool.executing': 'running',
+  'chat.tool.completed': 'done',
+  'chat.tool.failed': 'failed',
+  'chat.tool.cancelled': 'cancelled',
+  'chat.tool.inputStreaming': 'streaming args',
+
   /* ── quick look ───────────────────────────────────────────────────── */
   'quicklook.enter': 'Open ↵',
   'quicklook.dismiss': 'Dismiss',
