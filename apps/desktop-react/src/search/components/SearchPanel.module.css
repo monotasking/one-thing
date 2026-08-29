@@ -77,7 +77,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: var(--search-chip-w);
+  width: var(--search-chip-w);
   height: var(--search-chip-h);
   padding: 0 var(--sp-1);
   border: 1px solid var(--line-2);
