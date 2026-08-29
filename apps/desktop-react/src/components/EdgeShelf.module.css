@@ -177,6 +177,31 @@
   flex: 1;
   min-height: 0;
   background: var(--surface-2);
+  /* 同组 tab 全部挂着,一层一个:所以 body 是它们的包含块。 */
+  position: relative;
+}
+
+/* 一个 tab 一层,互相盖住。绝对定位是为了让后台那几层**不占布局**——
+ * 若还留在文档流里,即便内容被跳过,盒子本身仍会把活动那一层挤扁。 */
+.layer {
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * 后台层:跳过后代的渲染,但**保留渲染状态**(滚动位置、已完成的布局)。
+ *
+ * 为什么不是 `display: none` —— 它销毁盒子,滚动位置当场归零,那正好抵消掉
+ * keep-alive 的用户可感知收益(「切回来还在原处」)。为什么不是
+ * `visibility: hidden` —— 它照样参与布局,省不下这一批面板真正贵的那部分。
+ *
+ * `contain-intrinsic-size: 0` 是显式声明:这一层被跳过时不许拿后代的尺寸说事
+ * (它的身量本来就由 inset: 0 给定,这一行只是把默认值写出来,防止将来有人
+ * 给 .layer 加 auto 尺寸时出现「隐藏后自己撑开」的怪相)。
+ */
+.layerHidden {
+  content-visibility: hidden;
+  contain-intrinsic-size: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

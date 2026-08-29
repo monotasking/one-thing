@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
+import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from './visibility'
+import type { PanelVisibility } from './visibility'
 import { FilesMock } from './FilesMock'
 import { DiffMock } from './DiffMock'
 import { BrowserMock } from './BrowserMock'
@@ -34,14 +36,25 @@ const RENDERERS: Record<string, () => ReactNode> = {
  *
  * 边界的 `where` 就是这块内容的 id:错误卡上显示的、崩溃日志里记的,
  * 与查表用的是同一个字符串,不另起一套人话名字。
+ *
+ * `visibility` 是**宿主对这一份实例的声明**(见 ./visibility.ts):同一块内容可能
+ * 同时挂着好几份(架子 keep-alive 的后台 tab、Dock 预览泡),谁算数由摆它的人说。
+ * 不传 = 又看得见又算数 —— 舞台 / 浮窗那种「只有一份」的宿主不必操心。
  */
-export function renderContent(id: string | null): ReactNode {
+export function renderContent(
+  id: string | null,
+  visibility: PanelVisibility = DEFAULT_PANEL_VISIBILITY,
+): ReactNode {
   if (!id) return null
   const R = RENDERERS[id]
   if (!R) return null
+  // 可见性挂在**边界外面**:错误卡也是这一份实例的一部分,后台那一份的错误卡
+  // 同样不该抢键盘。边界在里面,所以「重试」重挂的仍然只有面板自己。
   return (
-    <ErrorBoundary where={id}>
-      <R />
-    </ErrorBoundary>
+    <PanelVisibilityContext.Provider value={visibility}>
+      <ErrorBoundary where={id}>
+        <R />
+      </ErrorBoundary>
+    </PanelVisibilityContext.Provider>
   )
 }

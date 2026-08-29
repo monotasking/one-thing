@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useStageStore } from '../stage/store'
 import { findItem } from '../stage/items'
@@ -83,6 +83,31 @@ interface Props {
 }
 
 /**
+ * 架子 body 里的一层 = 一个 tab 的内容,**始终挂着**(keep-alive),只有显不显形在变。
+ *
+ * `memo` 不是优化点缀,是这套 keep-alive 的**前提**:EdgeShelf 每重渲染一次
+ * (拖厚度那一路是逐帧重渲的),没有 memo 的话每一层的元素树都会重造,React 就要
+ * 把后台那块 400 张卡的面板整棵对一遍 —— 于是「拖架子边」会比「切 tab」更卡。
+ * 有了 memo,只有 `on` 真的翻了的那两层才重渲。
+ *
+ * `inert` 与 `content-visibility: hidden` 分工不同,两个都要:前者管**可交互性**
+ * (焦点序、指针、辅助树),后者管**渲染开销**。少哪一个都会留下一个能摸到却看不见的面板。
+ */
+const ShelfTabLayer = memo(function ShelfTabLayer({ id, on }: { id: string; on: boolean }) {
+  const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
+  return (
+    <div
+      className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
+      data-panel-layer={id}
+      data-panel-on={on || undefined}
+      inert={!on || undefined}
+    >
+      {renderContent(id, visibility)}
+    </div>
+  )
+})
+
+/**
  * 一条边上的架子。W1 只有右边有 UI(那时它叫 PinnedPanel),W2 起四条边共用这一个组件 ——
  * 边是 prop,不是组件身份:同一套 tab 条 / 同一套收展 / 同一套拖厚度,换个轴读而已。
  *
@@ -91,6 +116,23 @@ interface Props {
  *
  * 收起态是「同一个 <aside> 变薄」,不是换一个组件:aside 在 React 树里位置不变,
  * DOM 节点复用,所以厚度那一次过渡真的会跑;里面的内容当场换掉,不叠第二段动画。
+ *
+ * ── 同组 tab 是 keep-alive 的(08-30) ────────────────────────────────────
+ * body 里挂的是**这条架子上的每一个 tab**,不是「活动那一个」。切 tab 只换
+ * 哪一层显形,不卸载谁 —— 于是重面板(会话总览那 400 张卡)不必每次切回都重建。
+ *
+ * 修之前:切到会话总览一次 65–130ms(点击回调里 React 重渲 ~36ms + Layout ~21ms,
+ * 随后一次 ~31ms 的 Commit),十次切换里出 2–4 帧 >50ms 的长帧;
+ * 轻面板 13–24ms。这就是用户报的「切 tab 感觉很卡」。
+ *
+ * 隐藏用 `content-visibility: hidden` 而不是 `display: none`,理由只有一条且可验证:
+ * **`display:none` 会销毁盒子,滚动位置当场归零**;`content-visibility: hidden` 跳过
+ * 后代的渲染却**保留渲染状态**,所以「切走再切回,滚回原处」成立 —— 门里有一条
+ * 断言逐帧钉着它(gate-perf 场景②的滚动位置检查)。代价写在门的「脚印」那两行里。
+ *
+ * 边界只画到**这一条架子这一组**:撕成浮窗 / 收回 Dock / 关掉都会让 tab 离开
+ * `shelf.tabs`,这一层随之卸载。舞台与浮窗各自只有一份内容,一行都不改。
+ * ──────────────────────────────────────────────────────────────────────
  */
 export function EdgeShelf({ side }: Props) {
   const t = useT()
@@ -248,6 +290,7 @@ export function EdgeShelf({ side }: Props) {
         .join(' ')}
       style={thicknessStyle(side, shelf.collapsed ? 'var(--shelf-rail)' : `${thickness}px`)}
       aria-label={name}
+      data-shelf={side}
     >
       {shelf.collapsed ? (
         <button
@@ -306,7 +349,11 @@ export function EdgeShelf({ side }: Props) {
               <X className={s.collapseIcon} strokeWidth={1.75} aria-hidden="true" />
             </button>
           </div>
-          <div className={s.body}>{renderContent(active)}</div>
+          <div className={s.body} data-shelf-body={side} data-panel={active ?? ''}>
+            {tabs.map((tab) => (
+              <ShelfTabLayer key={tab.id} id={tab.id} on={tab.id === active} />
+            ))}
+          </div>
         </>
       )}
     </aside>

@@ -64,6 +64,37 @@ describe('Dock 预览泡', () => {
     expect(document.querySelector('[data-preview="sessions"]')).toBeNull()
   })
 
+  /**
+   * 泡里那一份是**惰性只读**的:它渲染(所以「预览与真的打开之后一致」成立),
+   * 但不许占用全局输入。08-30 之前不是这样 —— 悬停会话总览时,泡里那一份 ExposeView
+   * 也在 window 上挂了一份键盘监听,于是方向键 / Esc 同时驱动两份同一个全局 store。
+   * 「泡不吃指针」拦不住这个:pointer-events 管不到键盘。
+   *
+   * 判据取 `defaultPrevented` 而不是 store 的某个字段:那条监听器进 ARROWS 分支时
+   * **无条件** preventDefault,所以这一位与「有没有一份 ExposeView 在听」严格同步,
+   * 不必先把会话数据摆好。对照组(真的摆出来那一份)同时钉住「别把该吃的也一起关掉」。
+   */
+  function pressArrowDown(): boolean {
+    const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+    act(() => {
+      window.dispatchEvent(event)
+    })
+    return event.defaultPrevented
+  }
+
+  it('泡里那一份不挂全局键盘监听(悬停看一眼 ≠ 把键盘也接过去)', () => {
+    render(<AppShell />)
+    // 对照组:真的摆出来的那一份**该**吃方向键。
+    place('sessions', { kind: 'stage' })
+    expect(pressArrowDown()).toBe(true)
+
+    // 收回坞里,只剩悬停那一眼:同一块内容照样渲染,方向键却不再被它吃掉。
+    act(() => useStageStore.getState().closeToDock('sessions'))
+    hoverTile('会话总览')
+    expect(document.querySelector('[data-preview="sessions"]')).toBeTruthy()
+    expect(pressArrowDown()).toBe(false)
+  })
+
   it('一次一个主角:泡出现时名字标签隐掉', () => {
     render(<AppShell />)
     hoverTile('文件')

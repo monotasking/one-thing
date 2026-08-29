@@ -160,3 +160,34 @@ describe('Esc 的让位契约', () => {
     expect(placementOfSessions()).toEqual({ kind: 'stage' })
   })
 })
+
+/**
+ * 「我这一份算不算数」—— 同一块内容可能同时挂着好几份(架子上 keep-alive 的一组 tab、
+ * Dock 悬停预览泡),但**只有一份**该占用全局键盘。判据由宿主给(content/visibility.ts),
+ * 不由内容自己猜。预览泡那一份在 dock-preview.test.tsx 里钉;这里钉架子上的后台那一份。
+ */
+describe('哪一份实例算数', () => {
+  const arrowDown = () => {
+    const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
+    act(() => {
+      window.dispatchEvent(event)
+    })
+    return event.defaultPrevented
+  }
+
+  it('架子上被切到后台的那一份:还挂着(keep-alive),但不吃方向键', () => {
+    render(<AppShell />)
+    act(() => useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'edge', side: 'right' }))
+    expect(arrowDown()).toBe(true)
+
+    // 同一条架子上再钉一块,它成了活动 tab —— 总览那一层退到后台。
+    act(() => useStageStore.getState().openAs('files', { kind: 'edge', side: 'right' }))
+    expect(useStageStore.getState().shelves.right.activeId).toBe('files')
+    expect(document.querySelector(`[data-panel-layer="${SESSIONS_ITEM_ID}"]`)).toBeTruthy()
+    expect(arrowDown()).toBe(false)
+
+    // 切回来:同一份实例,键盘也一起回来。
+    act(() => useStageStore.getState().activateShelfTab('right', SESSIONS_ITEM_ID))
+    expect(arrowDown()).toBe(true)
+  })
+})

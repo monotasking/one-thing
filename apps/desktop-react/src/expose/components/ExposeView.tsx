@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { SESSIONS_ITEM_ID } from '../../stage/items'
 import { useStageStore } from '../../stage/store'
 import { formOf } from '../../stage/transitions'
+import { usePanelVisibility } from '../../content/visibility'
 import { useExposeStore } from '../store'
 import type { FocusDir } from '../types'
 import { Overview } from './Overview'
@@ -29,6 +30,11 @@ function isTypingTarget(target: EventTarget | null): boolean {
  *
  * 内部仍是三层视图 + 一台状态机:总览 / 组列表 / Quick Look。
  *
+ * ── 谁来听键盘 ────────────────────────────────────────────────────────────
+ * 只有**算数的那一份**听:摆出来了(placed)且宿主认它(interactive)。
+ * 不算数的两种实例照样渲染 —— Dock 悬停预览泡、架子上被切到后台但仍挂着的
+ * keep-alive 层 —— 它们只是不许占用 window 上的键盘。
+ *
  * ── Esc 的让位契约 ────────────────────────────────────────────────────────
  * 内层先消费:quicklook / list 上的 Esc 退一层并 preventDefault();
  * 已经在总览这一层时**不拦**,宿主(StageOverlay 只在 !defaultPrevented 时关面板)
@@ -50,14 +56,28 @@ export function ExposeView() {
    * 那一帧里再开一次就没有重新挂载,挂载时机会漏掉这一次开场。
    * 只问真假不问落点,所以舞台 ⇄ 浮窗 ⇄ 架子之间搬家不算重开,视图不会被搬没。
    * 顺带:Dock 预览泡里的这一份 placed 恒为假 —— 悬停看一眼不该动状态机。
+   *
+   * 但 placed **一个人不够**:它是「这块内容摆出来了吗」这件全局事实,答不出
+   * 「我这一份实例算不算数」。08-30 之前就漏在这里:预览泡那一份不 open(),
+   * 却照样在 window 上挂了一份键盘监听。架子 keep-alive 之后后台那一份同理。
+   * 所以下面还要问一次 usePanelVisibility()。
    */
   const placed = useStageStore((st) => formOf(st, SESSIONS_ITEM_ID) !== 'dock')
+  /**
+   * 「我这一份算不算数」—— 宿主说了算(见 content/visibility.ts)。
+   * 两种不算数的实例:Dock 悬停预览泡里那一份,和架子上被切到后台、
+   * 仍然挂着的那一份(keep-alive)。它们都渲染,但都不许占用全局键盘。
+   */
+  const { interactive } = usePanelVisibility()
+  /** 摆出来了 **且** 这一份算数 —— 归位与键盘都只认这一个布尔量。 */
+  const live = placed && interactive
 
   useEffect(() => {
-    if (placed) open()
-  }, [placed, open])
+    if (live) open()
+  }, [live, open])
 
   useEffect(() => {
+    if (!live) return
     const onKey = (e: KeyboardEvent) => {
       const st = useExposeStore.getState()
 
@@ -114,11 +134,11 @@ export function ExposeView() {
 
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [])
+  }, [live])
 
   return (
     <div className={s.view}>
-      {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview placed={placed} />}
+      {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview placed={live} />}
       {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
     </div>
   )

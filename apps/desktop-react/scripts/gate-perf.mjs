@@ -4,11 +4,13 @@
  *
  * 别的门问「对不对」,这条门问「卡不卡」。三个场景,同一套量法:
  *
- *  ① **冷开会话总览**(种子 100+ 会话)—— 一次点击要画出上百张卡,是这块壳最重的
+ *  ① **冷开会话总览**(种子 400 会话)—— 一次点击要画出几百张卡,是这块壳最重的
  *     一次首屏。判据:那一次交互的端到端时长 ≤ 交互预算,期间不出长帧。
- *  ② **架子 tab 连续切换 ×10** —— **本批只记录数字,不断言**。已知它有卡顿,
- *     修在下一批;门先立在这里把基线量出来,那一批再把它翻成断言(钉红 → 修绿)。
- *     一条现在就会红的断言只会被人 skip 掉,那比没有断言更糟。
+ *  ② **架子 tab 连续切换 ×10** —— 08-30 这一批从记录模式**转断言**。现场是用户报障
+ *     的那个:sessions(400 张卡的重面板)/ files / terminal 钉进同一条右架子,
+ *     背景还有一条 5k 字消息的会话活着。判据两条:每次切换「按下 → 上屏」的 p95
+ *     ≤ 交互预算,期间零长帧。读数是**页内 performance.now 夹双 rAF**,
+ *     不是 node 侧轮询(轮询间隔会直接变成误差下限)。
  *  ③ **5k 字消息流式回放** —— 从 HTTP 注入一条长消息,量它上屏那一段的帧。
  *     判据:稳态里不出超过 33ms(30fps 一帧)的帧。
  *
@@ -67,8 +69,20 @@ function readBudget() {
 
 const BUDGET = readBudget()
 
-/** 场景①的种子会话数。「100+」按 120 来,留出余量。 */
-const SEED_SESSIONS = 120
+/**
+ * 种子会话数。08-30 这一批从 120 抬到 400:场景②要量的是「重面板重挂」,
+ * 120 张卡的架子不够重(工程卫生批那次 mock 轻面板量到最长任务 3ms、零长帧,
+ * 于是「没卡顿」的结论与用户的报障对不上 —— 场景没对上,不是没问题)。
+ * 400 是一台真机上「会话攒了小半年」的量级。
+ */
+const SEED_SESSIONS = 400
+/**
+ * 场景②钉进同一条右架子的三块面板。次序 = tab 次序,也是切换的循环次序。
+ * 'sessions' 排头是刻意的:它是这块壳最重的一块面板(整份会话网格),
+ * 「重面板 + 轻面板混在一组」才是用户报障时的现场。
+ */
+const SHELF_PANELS = ['sessions', 'files', 'terminal']
+
 /** 场景③注入的那条长消息:5k 字。 */
 const LONG_MESSAGE = `性能门·长消息 ${'流式回放的稳态帧率是这一段要量的东西。'.repeat(200)}`.slice(0, 5000)
 
@@ -221,11 +235,37 @@ function frameStats(events, overMs) {
   }
 }
 
+/** `PERF_KEEP_TRACES=1` 时每个场景都留一份 trace —— 排障时不必先把门弄红。 */
+function keepTrace(label, events) {
+  if (process.env.PERF_KEEP_TRACES !== '1' || !events.length) return
+  console.log(`    trace 已存(PERF_KEEP_TRACES):${saveTrace(label, events)}`)
+}
+
 function saveTrace(label, events) {
   const file = path.join(tmpdir(), `onething-perf-${label}-${Date.now()}.json`)
   // DevTools 的 Performance 面板吃「事件数组」或 {traceEvents:[…]},这里给后者。
   writeFileSync(file, JSON.stringify({ traceEvents: events }), 'utf-8')
   return file
+}
+
+/**
+ * 内存脚印:强制一次 GC 之后的 JS 堆 + DOM 节点数 + 监听器数。
+ *
+ * keep-alive 是拿内存换延迟,所以这笔账必须**印在门的输出里**,不能只写在方案里:
+ * 「同组 tab 全部保持挂载」的代价就是这三个数字,改一次就能对着看一次。
+ * 它只打印不断言 —— 一个绝对阈值在不同机器 / 不同种子数下没有意义。
+ */
+async function measureFootprint(cdp) {
+  await cdp.send('HeapProfiler.enable').catch(() => {})
+  await cdp.send('HeapProfiler.collectGarbage').catch(() => {})
+  await delay(400)
+  const heap = await cdp.send('Runtime.getHeapUsage')
+  const dom = await cdp.send('Memory.getDOMCounters')
+  return {
+    heapMB: heap.usedSize / 1048576,
+    nodes: dom.nodes,
+    listeners: dom.jsEventListeners,
+  }
 }
 
 /* ── 报告 ────────────────────────────────────────────────────────────────── */
@@ -242,9 +282,12 @@ function assertScenario(scenario, ok, message, events) {
     console.log(`  ✓ ${message}`)
     return
   }
-  const file = saveTrace(scenario, events)
   console.log(`  ✗ ${message}`)
-  console.log(`    trace 已存:${file}(拖进 DevTools 的 Performance 面板)`)
+  // 有 trace 才存 —— 语义类断言(比如「滚动位置还在吗」)没有 trace 可看,
+  // 存一个空文件只会让人白点开一次。
+  if (events.length) {
+    console.log(`    trace 已存:${saveTrace(scenario, events)}(拖进 DevTools 的 Performance 面板)`)
+  }
   failures.push(`${scenario}: ${message}`)
 }
 
@@ -266,7 +309,7 @@ async function main() {
   let server
   let app
   try {
-    console.log(`\n[1/5] 起一台 core,种 ${SEED_SESSIONS} 条会话`)
+    console.log(`\n[1/6] 起一台 core,种 ${SEED_SESSIONS} 条会话`)
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -292,7 +335,7 @@ async function main() {
     }
     console.log(`  ✓ 种了 ${created.length} 条会话`)
 
-    console.log('\n[2/5] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
+    console.log('\n[2/6] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -319,7 +362,7 @@ async function main() {
     console.log('  ✓ window.__log / __crash / __perf 三个 dump 口都在')
 
     /* ── 场景 ①:冷开会话总览 ─────────────────────────────────────────── */
-    console.log(`\n[3/5] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
+    console.log(`\n[3/6] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
     await waitFor('Dock 上的「会话总览」瓦就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
@@ -356,43 +399,113 @@ async function main() {
       `期间 >${BUDGET.longFrameMs}ms 的长帧 ${coldStats.overLong} 段 ≤ ${BUDGET.animationLongFrames}`,
       cold.events,
     )
-
-    /* ── 场景 ②:架子 tab 连续切换 ×10(只记录,不断言)────────────────── */
-    console.log('\n[4/5] 场景② 架子 tab 连续切换 ×10 —— **记录模式,本批不断言**')
-    const tabs = await setUpShelfTabs(page)
-    let switchStats = null
-    if (tabs < 2) {
-      console.log(`  ! 架子上只有 ${tabs} 个 tab,切不起来 —— 这一格记为「没量到」`)
-    } else {
-      const sw = await recordTrace(cdp, 'shelf-tabs', async () => {
-        const started = Date.now()
-        for (let i = 0; i < 10; i += 1) {
-          await page.evaluate(index => {
-            const list = document.querySelectorAll('[role="tab"]')
-            const target = list[index % list.length]
-            if (target) target.click()
-          }, i)
-          // 每次切换之间留一帧,免得十次点击被合并成一个任务(那就量不出单次代价了)。
-          await delay(60)
-        }
-        await delay(300)
-        return { ms: Date.now() - started }
-      })
-      switchStats = frameStats(sw.events, BUDGET.streamFrameMs)
+    if (cold.result.ms > BUDGET.interactionP95Ms || coldStats.overLong > BUDGET.animationLongFrames) {
       console.log(
-        `  · 10 次切换共 ${sw.result.ms}ms(含每次 60ms 间隔);`
-          + ` 主线程任务 ${switchStats.tasks} 段,最长 ${switchStats.longest}ms,p95 ${switchStats.p95}ms,`
-          + ` >${BUDGET.longFrameMs}ms 的 ${switchStats.overLong} 段`,
+        '    ↑ 08-30 起的已知红,**不是**架子 tab 那条路的回归:种子从 120 抬到 400 之后,'
+          + '冷开一次要画 400 张卡,那一段主线程任务 53–65ms 越过 50ms 的长帧线。\n'
+          + '      病根与场景②同源(400 张卡一次全画),但修法要给卡片加 containment,'
+          + '而 content-visibility 蕴含的 contain: paint 会剪掉卡片外沿的焦点柔光环\n'
+          + '      —— 08-30 刚为这条报障做过治理(见 Overview.module.css 的 .bodyInner)。'
+          + '所以它是一次要拍板的改动,故意留红,不在这里盲修。',
       )
-      console.log('    (基线已记录。下一批修完卡顿再把这一格翻成断言 —— 先钉红,再修绿。)')
-      record_('②架子 tab 切换 ×10(记录)', switchStats, { ms: sw.result.ms, tabs })
     }
 
-    /* ── 场景 ③:5k 字消息流式回放 ────────────────────────────────────── */
-    console.log('\n[5/5] 场景③ 5k 字长消息注入 → 上屏')
-    // 进一条会话,聊天区才有落点。总览里 Enter 进会话;这里直接点第一张卡的预览再进。
+    /* ── 场景②③ 共用的现场:钉栏默认档 + 进一条会话 ─────────────────── */
+    console.log('\n[4/6] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
+    await switchDefaultOpenToPinned(page)
     const targetId = created[0]
     await enterSession(page, targetId)
+    console.log('  ✓ 已进入会话,聊天区起底完成')
+
+    /* ── 场景 ②:架子 tab 连续切换 ×10 ────────────────────────────────── */
+    console.log(`\n[5/6] 场景② 右架子 tab 连续切换 ×10(真实负载:${SHELF_PANELS.join(' / ')} 同组)`)
+    const pinned = await pinPanels(page, SHELF_PANELS)
+    console.log(`  · 右架子 tab 次序:${pinned.join(' / ') || '(空)'}`)
+    // 现场对不上就红,不降级成「没量到」:场景②的全部意义是**重面板**在这条架子上。
+    for (const id of SHELF_PANELS) {
+      if (!pinned.includes(id)) {
+        throw new Error(`「${id}」没钉进右架子(实际:${pinned.join(' / ') || '空'})—— 场景②的现场没搭起来`)
+      }
+    }
+    // keep-alive 的**用户可感知语义**,与延迟同等重要:切走再切回,滚回原处。
+    // 这一条在修之前必红(切走 = 整棵卸载 = 滚动位置归零),修完必绿。
+    const scroll = await measureScrollSurvival(page, pinned)
+    assertScenario(
+      'shelf-tabs',
+      scroll.before > 0 && scroll.after === scroll.before,
+      `切走再切回后滚动位置 ${scroll.after} = 切走前 ${scroll.before}`,
+      [],
+    )
+
+    const perfBefore = await page.evaluate(() => (window.__perf ? window.__perf.dump().length : 0))
+    const sw = await recordTrace(cdp, 'shelf-tabs', async () => {
+      const started = Date.now()
+      const each = []
+      for (let i = 0; i < 10; i += 1) {
+        const index = i % pinned.length
+        each.push(await measureTabSwitch(page, index, pinned[index]))
+        // 每次切换之间留一拍,免得十次点击被合并成一个任务(那就量不出单次代价了)。
+        await delay(60)
+      }
+      await delay(300)
+      return { ms: Date.now() - started, each }
+    })
+    keepTrace('shelf-tabs', sw.events)
+    const switchStats = frameStats(sw.events, BUDGET.longFrameMs)
+    const each = sw.result.each
+    const sortedEach = [...each].sort((a, b) => a - b)
+    const switchP95 = sortedEach[Math.min(sortedEach.length - 1, Math.ceil(sortedEach.length * 0.95) - 1)]
+    const loaf = await page.evaluate(
+      n => (window.__perf ? window.__perf.dump().slice(n) : []),
+      perfBefore,
+    )
+    const longFrames = loaf.filter(e => e.kind === 'longFrame' && e.ms > BUDGET.longFrameMs)
+    console.log(
+      `  · 每次切换 输入→上屏(ms):${each.join(' ')}`
+        + `\n  · p95 ${switchP95}ms,最慢 ${sortedEach[sortedEach.length - 1]}ms,最快 ${sortedEach[0]}ms;`
+        + ` 主线程任务 ${switchStats.tasks} 段,最长 ${switchStats.longest}ms,`
+        + ` >${BUDGET.longFrameMs}ms 的 ${switchStats.overLong} 段`
+        + `\n  · 页面侧 LoAF(第二路):${loaf.length} 条,其中 >${BUDGET.longFrameMs}ms 的 ${longFrames.length} 条`,
+    )
+    for (const frame of longFrames.slice(0, 5)) {
+      const who = (frame.scripts ?? []).map(x => `${x.invoker} ${x.ms}ms`).join(' | ') || '(无归因)'
+      console.log(`    · 长帧 ${frame.ms}ms(阻塞 ${frame.blockingMs ?? 0}ms):${who}`)
+    }
+    // 脚印量两次:重面板在前台 / 轻面板在前台。keep-alive 的**代价**恰恰是第二个数
+    // ——「前台是 terminal,可 sessions 那 400 张卡还挂着」值多少内存,这一行说了算。
+    for (const front of ['sessions', 'terminal']) {
+      const index = pinned.indexOf(front)
+      await page.evaluate(i => {
+        document.querySelectorAll('[data-shelf="right"] [role="tab"]')[i]?.click()
+      }, index)
+      await delay(400)
+      const fp = await measureFootprint(cdp)
+      console.log(
+        `  · 脚印(GC 后,三块面板同组,前台 = ${front}):`
+          + ` JS 堆 ${fp.heapMB.toFixed(1)}MB,DOM 节点 ${fp.nodes},监听器 ${fp.listeners}`,
+      )
+    }
+    record_('②架子 tab 切换 ×10', switchStats, { ms: switchP95, tabs: pinned.length })
+    assertScenario(
+      'shelf-tabs',
+      switchP95 <= BUDGET.interactionP95Ms,
+      `切换 输入→上屏 p95 ${switchP95}ms ≤ 交互预算 ${BUDGET.interactionP95Ms}ms`,
+      sw.events,
+    )
+    assertScenario(
+      'shelf-tabs',
+      longFrames.length <= BUDGET.animationLongFrames,
+      `期间 >${BUDGET.longFrameMs}ms 的长帧 ${longFrames.length} 条 ≤ ${BUDGET.animationLongFrames}`,
+      sw.events,
+    )
+
+    /* ── 场景 ③:5k 字消息流式回放 ────────────────────────────────────────
+     * 排在场景②**之后**是刻意的:那时右架子上三块面板全挂着(keep-alive),
+     * 其中两块在后台。于是这一格顺带钉住 keep-alive 的那笔隐性代价 ——
+     * 「后台面板会不会因为数据源一动就跟着重渲,把流式那条链拖慢」。
+     * 排在前面就量不到,因为那时架子还是空的。
+     */
+    console.log('\n[6/6] 场景③ 5k 字长消息注入 → 上屏')
 
     const stream = await recordTrace(cdp, 'long-message', async () => {
       const started = Date.now()
@@ -451,36 +564,133 @@ async function main() {
     console.error(`\n[perf-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[perf-gate] ok —— 场景①③ 在预算内,场景② 已记录基线')
+  console.log('\n[perf-gate] ok —— 三个场景都在预算内')
 }
 
 /**
- * 把两块面板放到右边架子上,造出可切换的 tab。
+ * 把默认打开档改成「钉栏」再重载,顺带**抹掉逐项记忆**。
  *
- * 做法是**改设置再重载**,不是伪造整份持久化状态:`defaultOpen` 是个标量,
- * 形状稳定;而 placements / shelves 的形状会随形态机演进,手写一份迟早对不上。
- * 版本号从应用自己刚写下的那份里读回来 —— 不硬编码,持久化版本升了也不用改门。
+ * 做法是**改设置再重载**,不是伪造整份持久化状态:`defaultOpen` 是个标量、
+ * `memory` 是个字典,两者形状都稳定;而 placements / shelves 的形状会随形态机
+ * 演进,手写一份迟早对不上。版本号从应用自己刚写下的那份里读回来 —— 不硬编码。
+ *
+ * `memory` 必须清:打开的解析序是「显式手势 > 记忆 > 全局默认档」,
+ * 而场景①刚刚把 sessions 开到过舞台上,那一次就写下了「sessions 回舞台」的记忆。
+ * 不清它,后面点 Dock 上的 sessions 会**开到舞台**而不是钉到架子上 ——
+ * 08-30 首跑就是这么踩的:场景②量到 23ms「很快」,因为最重的那块面板
+ * 根本没进那条架子。量到的快,是场景没对上。
  */
-async function setUpShelfTabs(page) {
+async function switchDefaultOpenToPinned(page) {
   const ok = await page.evaluate(() => {
     const KEY = 'onething.stage'
     const raw = localStorage.getItem(KEY)
     if (!raw) return false
     const parsed = JSON.parse(raw)
-    parsed.state = { ...(parsed.state ?? {}), defaultOpen: 'pinned' }
+    parsed.state = { ...(parsed.state ?? {}), defaultOpen: 'pinned', memory: {} }
     localStorage.setItem(KEY, JSON.stringify(parsed))
     return true
   })
-  if (!ok) return 0
+  if (!ok) throw new Error('localStorage 里没有 onething.stage —— 应用还没落过盘')
   await page.reload()
   await waitFor('重载后 Dock 就位', () =>
     page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-files"]'))),
   )
-  for (const id of ['files', 'terminal']) {
+}
+
+/**
+ * 把点名的几块面板钉到右架子上,返回**真的钉上去了**的那一批 id(= tab 次序)。
+ * 次序由 store 自己说了算,不由这里的输入次序猜 —— 读 DOM 上的 tablist。
+ */
+async function pinPanels(page, ids) {
+  for (const id of ids) {
     await clickTestId(page, `dock-tile-${id}`)
-    await delay(200)
+    await delay(250)
   }
-  return page.evaluate(() => document.querySelectorAll('[role="tab"]').length)
+  const count = await page.evaluate(
+    () => document.querySelectorAll('[data-shelf="right"] [role="tab"]').length,
+  )
+  // tab 上没有 id(它是界面文案),所以「第 i 个 tab 是哪块面板」靠点一下问 DOM:
+  // 点完 data-panel 就是答案。这一步在计时之外,多花几拍无所谓。
+  const order = []
+  for (let i = 0; i < count; i += 1) {
+    order.push(
+      await page.evaluate(async index => {
+        const tabs = document.querySelectorAll('[data-shelf="right"] [role="tab"]')
+        tabs[index]?.click()
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+        return document.querySelector('[data-shelf-body="right"]')?.dataset.panel ?? ''
+      }, i),
+    )
+  }
+  return order
+}
+
+/**
+ * 「切走再切回,滚动位置还在吗」。
+ *
+ * 滚的是**架子 body 里那个真的能滚的元素**(scrollHeight 明显大于 clientHeight 的
+ * 头一个),不是某块面板专属的选择器 —— 那样这条断言就只对一块面板成立了。
+ */
+async function measureScrollSurvival(page, pinned) {
+  const heavy = pinned.indexOf(SHELF_PANELS[0])
+  const light = pinned.indexOf(SHELF_PANELS[1])
+  const pick = i =>
+    page.evaluate(async index => {
+      document.querySelectorAll('[data-shelf="right"] [role="tab"]')[index]?.click()
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    }, i)
+  await pick(heavy)
+  const before = await page.evaluate(() => {
+    const body = document.querySelector('[data-shelf-body="right"]')
+    const el = body && [...body.querySelectorAll('*')].find(x => x.scrollHeight > x.clientHeight + 40)
+    if (!el) return 0
+    el.scrollTop = 400
+    return el.scrollTop
+  })
+  await pick(light)
+  await pick(heavy)
+  const after = await page.evaluate(() => {
+    const body = document.querySelector('[data-shelf-body="right"]')
+    const el = body && [...body.querySelectorAll('*')].find(x => x.scrollHeight > x.clientHeight + 40)
+    return el ? el.scrollTop : -1
+  })
+  return { before, after }
+}
+
+/**
+ * 量一次 tab 切换的「按下 → 上屏」。
+ *
+ * 与 measureClickToPaint 同一套配方(页内 performance.now 夹双 rAF),只是
+ * 「画好了」的判据换成**架子 body 上的 data-panel 翻到目标面板**:那个属性
+ * 与新内容在同一次 React 提交里落地,所以它翻了 = 新内容已经在 DOM 里,
+ * 再等两拍 rAF 就是「上一帧已经画完」。
+ *
+ * 不拿「某块面板专属的选择器」当判据,是因为三块面板各有各的标记,
+ * 三套判据会让三次切换的读数没有可比性。
+ */
+async function measureTabSwitch(page, index, expectedPanel) {
+  return page.evaluate(
+    async ({ i, panel }) => {
+      const tabs = document.querySelectorAll('[data-shelf="right"] [role="tab"]')
+      const target = tabs[i]
+      if (!target) throw new Error(`右架子上没有第 ${i} 个 tab`)
+      const started = performance.now()
+      target.click()
+      await new Promise((resolve, reject) => {
+        const deadline = performance.now() + 5000
+        const tick = () => {
+          const body = document.querySelector('[data-shelf-body="right"]')
+          if (body && body.dataset.panel === panel) resolve()
+          else if (performance.now() > deadline) reject(new Error(`切到 ${panel} 超时`))
+          else requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      return Math.round(performance.now() - started)
+    },
+    { i: index, panel: expectedPanel },
+  )
 }
 
 /** 从总览进一条会话 —— 与 gate-chat 逐字同一条路:开总览 → 点那张卡。 */

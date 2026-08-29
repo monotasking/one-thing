@@ -68,3 +68,43 @@ describe('四边架子', () => {
     expect(screen.getByRole('tablist', { name: NAME.left })).toBeTruthy()
   })
 })
+
+/**
+ * keep-alive(08-30):同一条架子上的一组 tab **全部保持挂载**,切 tab 只换哪一层显形。
+ * 这里钉的是它的三条边界 —— 别的都在门里量(gate-perf 场景②:延迟、长帧、滚动位置)。
+ */
+describe('同组 tab 是 keep-alive 的', () => {
+  const layer = (id: string) => document.querySelector(`[data-panel-layer="${id}"]`)
+
+  it('切走的那一块不卸载:两层都在,非活动那层 inert', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'right')
+    openOnEdge('terminal', 'right')
+    expect(useStageStore.getState().shelves.right.activeId).toBe('terminal')
+    expect(layer('files')).toBeTruthy()
+    expect(layer('terminal')).toBeTruthy()
+    expect(layer('files')!.hasAttribute('inert')).toBe(true)
+    expect(layer('terminal')!.hasAttribute('inert')).toBe(false)
+  })
+
+  it('切回来是**同一个 DOM 节点** —— 这就是「内部状态与滚动位置不丢」的机械含义', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'right')
+    const before = layer('files')
+    openOnEdge('terminal', 'right')
+    act(() => useStageStore.getState().activateShelfTab('right', 'files'))
+    expect(layer('files')).toBe(before)
+    expect(layer('files')!.hasAttribute('inert')).toBe(false)
+  })
+
+  it('边界只画到这一组:离开 shelf.tabs 的那一块当场卸载', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'right')
+    openOnEdge('terminal', 'right')
+    act(() => useStageStore.getState().closeToDock('terminal'))
+    expect(layer('terminal')).toBeNull()
+    expect(layer('files')).toBeTruthy()
+    act(() => useStageStore.getState().edgeToFloat('files'))
+    expect(layer('files')).toBeNull()
+  })
+})
