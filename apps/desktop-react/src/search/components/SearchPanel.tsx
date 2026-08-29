@@ -1,0 +1,165 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
+import { useStageStore } from '../../stage/store'
+import { useExposeStore } from '../../expose/store'
+import { Highlight } from '../../expose/components/Highlight'
+import { Input } from '../../ui/Input'
+import { Segmented } from '../../ui/Segmented'
+import type { SegmentedOption } from '../../ui/Segmented'
+import { useToast } from '../../ui/Toast'
+import { Search } from '../../components/icons'
+import { useT } from '../../i18n'
+import type { MessageKey, TFn } from '../../i18n'
+import { SCOPES, moveRow, nextScope, originText, recentRows, searchRows, targetText } from '../transitions'
+import type { SearchBadge, SearchRow, SearchScope } from '../types'
+import s from './SearchPanel.module.css'
+
+/**
+ * 检索面板 = 一块普通的 Dock 内容(id 'search'),所以它能上舞台 / 变浮窗 / 钉到边,
+ * 三种形态里长得一模一样 —— 这正是 renderContent 那张表存在的理由。
+ *
+ * 终稿的形状:**搜索行 + 一张平铺列表**,没有二次分组、没有分栏、没有分节标题。
+ * 一行永远是三件东西:行首小徽 / 命中原文一行 / 行尾灰色出处。
+ * 空词时那张列表换成「最近打开」,行的解剖一格没变 —— 所以下面只有一套行渲染。
+ *
+ * 它自己不写一行检索逻辑:命中、排序、轮转、走行全在 search/transitions 的纯函数里,
+ * 组件只有「谁被选中」和「输入框里是什么」两个本地状态。
+ */
+
+const SCOPE_LABELS: Record<SearchScope, MessageKey> = {
+  all: 'search.scopeAll',
+  sessions: 'search.scopeSessions',
+  files: 'search.scopeFiles',
+}
+
+/** 徽上的字:前两种是界面文案(走字典),文件那种是从扩展名推出来的数据。 */
+function badgeText(badge: SearchBadge, t: TFn): string {
+  if (badge.kind === 'file') return badge.ext
+  return t(badge.kind === 'session' ? 'search.badgeSession' : 'search.badgeMessage')
+}
+
+export function SearchPanel() {
+  const t = useT()
+  const [query, setQuery] = useState('')
+  const [scope, setScope] = useState<SearchScope>('all')
+  const [cursor, setCursor] = useState(0)
+  const enterSession = useExposeStore((st) => st.enterSession)
+  const closeToDock = useStageStore((st) => st.closeToDock)
+  const toast = useToast()
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const searching = query.trim().length > 0
+  const rows = useMemo(
+    () => (searching ? searchRows(query, scope) : recentRows(scope)),
+    [query, scope, searching],
+  )
+
+  // 换词 / 换范围 = 换了一张列表,选中回到第一行。
+  useEffect(() => {
+    setCursor(0)
+  }, [query, scope])
+
+  // 选中行滚进视野。block:'nearest' = 只在它真的出界时才滚,列表不会为了走一行整屏跳。
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-row="${cursor}"]`)
+    el?.scrollIntoView?.({ block: 'nearest' })
+  }, [cursor, rows])
+
+  const options: Array<SegmentedOption<SearchScope>> = SCOPES.map((value) => ({
+    value,
+    label: t(SCOPE_LABELS[value]),
+  }))
+
+  const activate = (row: SearchRow) => {
+    switch (row.target.kind) {
+      case 'session':
+        enterSession(row.target.sessionId)
+        break
+      case 'file':
+        /*
+         * 这是接真源的缝。壳里还没有「打开一个文件」这件能力(没有编辑器面、
+         * 没有主进程),所以这里只把落点如实报出来。接上真实打开器时,
+         * 换掉的就是这一行 —— 行模型、跳转目标、收回 Dock 的手感都不动。
+         */
+        toast(t('search.openedFile', { file: targetText(row.target) }))
+        break
+    }
+    // 选中就是这块面板的活干完了,收回 Dock —— 与 Quick Look 进会话同一个手感。
+    closeToDock('search')
+  }
+
+  /*
+   * 键盘住在面板自己身上,**不是 keymap 里的命令**:它只在这块面有焦点时才成立,
+   * 而命令表管的是「面板关着时也要能触发」的那一类。Esc 这里一个字不写 ——
+   * 让位契约由宿主(舞台 / 浮窗 / 架子)执行,内容层不许把它吃掉。
+   */
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Tab') {
+      // 拦下默认行为:这块面里 Tab 是「换搜索范围」,不是「把焦点交出去」。
+      e.preventDefault()
+      setScope((sc) => nextScope(sc, e.shiftKey ? -1 : 1))
+      return
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      setCursor((i) => moveRow(i, e.key === 'ArrowDown' ? 1 : -1, rows.length))
+      return
+    }
+    if (e.key === 'Enter') {
+      const row = rows[cursor]
+      if (!row) return
+      e.preventDefault()
+      activate(row)
+    }
+  }
+
+  return (
+    <div className={s.panel} onKeyDown={onKeyDown}>
+      <div className={s.head}>
+        <Input
+          className={s.input}
+          value={query}
+          onValueChange={setQuery}
+          size="lg"
+          autoFocus
+          prefix={<Search className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
+          placeholder={t('search.placeholder')}
+          aria-label={t('search.label')}
+        />
+        <Segmented
+          options={options}
+          value={scope}
+          onChange={setScope}
+          label={t('search.scopeLabel')}
+        />
+      </div>
+
+      <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
+        {rows.length === 0 ? (
+          <p className={s.none}>{t('search.noResults')}</p>
+        ) : (
+          rows.map((row, i) => (
+            <button
+              key={row.id}
+              type="button"
+              role="option"
+              aria-selected={i === cursor}
+              data-row={i}
+              className={i === cursor ? `${s.row} ${s.rowOn}` : s.row}
+              onClick={() => {
+                setCursor(i)
+                activate(row)
+              }}
+            >
+              <span className={s.chip}>{badgeText(row.badge, t)}</span>
+              <span className={row.code ? `${s.text} ${s.code}` : s.text}>
+                <Highlight text={row.text} query={searching ? query : ''} />
+              </span>
+              <span className={s.origin}>{originText(row.origin)}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}

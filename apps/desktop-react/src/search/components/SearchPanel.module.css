@@ -1,0 +1,115 @@
+/* 面板的两段式:头是常驻的搜索行(输入框 + 范围分段器),身是可滚的平铺列表。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。 */
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+}
+
+.icon {
+  width: var(--input-icon);
+  height: var(--input-icon);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-2);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 无结果:居中一行灰字,别的什么都不画。 */
+.none {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-3);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 一行三件:徽 / 命中原文 / 出处。
+ * 左缘那条选中线在常态就占好位(透明),所以选中时**行不位移** ——
+ * 与动效板「hover / 选中是反馈,不是位移」同一条判例。 */
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: var(--search-mark) solid transparent;
+  border-radius: var(--r-1);
+  text-align: left;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+.rowOn {
+  background: var(--st-sel);
+  border-left-color: var(--accent);
+}
+
+/* 空心小徽:1px 边框 + 圆角 + 灰字 + 等宽小字号。src/ui/Badge 的三个 tone 都是实心丸
+ * (徽标 / 未读数),没有空心形态 —— 硬塞第四个 tone 会污染那三条配方,
+ * 所以这一颗是本面板的局部样式,不往 src/ui 新增组件。 */
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--search-chip-w);
+  height: var(--search-chip-h);
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  line-height: 1;
+  color: var(--text-3);
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  color: var(--text-2);
+}
+
+.origin {
+  flex: none;
+  max-width: var(--search-origin-w);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

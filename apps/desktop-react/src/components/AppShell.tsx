@@ -9,6 +9,7 @@ import { StageOverlay } from './StageOverlay'
 import { EdgeShelf } from './EdgeShelf'
 import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
+import { ToastHost } from '../ui/Toast'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
 import { DOCK_HIDE_DELAY_MS, SCROLL_SETTLE_MS } from './motion'
@@ -152,6 +153,9 @@ export function AppShell() {
       <SnapHint />
 
       <StageOverlay />
+
+      {/* Toast 的落点。挂在壳的根上一次,useToast 才有地方渲染(它自己 portal 到 body)。 */}
+      <ToastHost />
     </div>
   )
 }

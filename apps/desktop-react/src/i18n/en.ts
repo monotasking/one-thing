@@ -157,9 +157,21 @@ export const en: Record<MessageKey, string> = {
   'list.bucketThisWeek': 'This week',
   'list.bucketEarlier': 'Earlier',
 
-  /* ── search results ───────────────────────────────────────────────── */
+  /* ── search results (SearchResults: the overview filter bar's three-layer hits) ─ */
   'search.youPrefix': 'You: ',
-  'search.empty': 'Type to search sessions, sections and messages',
+
+  /* ── search panel (search/: one search row + one flat hit list) ───── */
+  'search.placeholder': 'Search files, sections, messages, sessions…',
+  'search.label': 'Search',
+  'search.scopeLabel': 'Search scope',
+  'search.scopeAll': 'All',
+  'search.scopeSessions': 'Sessions',
+  'search.scopeFiles': 'Files',
+  'search.resultsLabel': 'Results',
+  'search.noResults': 'No results',
+  'search.badgeSession': 'Session',
+  'search.badgeMessage': 'Message',
+  'search.openedFile': 'Opened {file}',
 
   /* ── quick look ───────────────────────────────────────────────────── */
   'quicklook.enter': 'Open ↵',

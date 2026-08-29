@@ -161,9 +161,21 @@ export const zh = {
   'list.bucketThisWeek': '本周',
   'list.bucketEarlier': '更早',
 
-  /* ── 搜索结果 ─────────────────────────────────────────────────────── */
+  /* ── 搜索结果(SearchResults:总览顶部那条过滤条的三层结果) ────────── */
   'search.youPrefix': '你:',
-  'search.empty': '输入关键词,搜会话、章节与消息',
+
+  /* ── 检索面板(search/:搜索行 + 一张平铺列表) ────────────────────── */
+  'search.placeholder': '搜文件、章节、消息、会话…',
+  'search.label': '搜索',
+  'search.scopeLabel': '搜索范围',
+  'search.scopeAll': '所有',
+  'search.scopeSessions': '会话',
+  'search.scopeFiles': '文件',
+  'search.resultsLabel': '结果',
+  'search.noResults': '无结果',
+  'search.badgeSession': '会话',
+  'search.badgeMessage': '消息',
+  'search.openedFile': '已打开 {file}',
 
   /* ── Quick Look ───────────────────────────────────────────────────── */
   'quicklook.enter': '进入 ↵',

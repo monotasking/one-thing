@@ -4,7 +4,7 @@ import { DiffMock } from './DiffMock'
 import { BrowserMock } from './BrowserMock'
 import { TerminalMock } from './TerminalMock'
 import { SettingsMock } from './SettingsMock'
-import { SearchPanel } from '../expose/components/SearchPanel'
+import { SearchPanel } from '../search/components/SearchPanel'
 import { ExposeView } from '../expose/components/ExposeView'
 import { SESSIONS_ITEM_ID } from '../stage/items'
 
