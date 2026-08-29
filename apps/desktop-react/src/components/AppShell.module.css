@@ -19,13 +19,6 @@
     'shelfTop    shelfTop shelfTop'
     'shelfLeft   center   shelfRight'
     'shelfBottom shelfBottom shelfBottom';
-  transition: transform var(--dur-enter) var(--ease-out), opacity var(--dur-enter) var(--ease-out);
-}
-
-/* L2:总览入场时聊天层缩暗。只改视觉,不改布局 —— transform 不占位。 */
-.mainDimmed {
-  transform: scale(var(--dim-scale));
-  opacity: var(--dim-opacity);
 }
 
 .center {

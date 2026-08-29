@@ -9,11 +9,11 @@ import { SESSIONS } from '../data'
 
 /**
  * ⌘P 的语义(08-29 拍板):它开的是 Dock 上那块「检索」瓦,与点图标是同一件事,
- * 不再是"盖一层会话总览"。所以这里钉三条:开、聚焦、再按一次收回。
+ * 不再是"叫起会话总览那块面"。所以这里钉三条:开、聚焦、再按一次收回。
  */
 beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh', defaultOpen: 'stage' })
-  useExposeStore.setState({ view: { mode: 'closed' }, query: '' })
+  useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
 })
 
 const cmdP = () => fireEvent.keyDown(window, { key: 'p', metaKey: true })
@@ -27,12 +27,12 @@ describe('⌘P = 开关检索面板', () => {
     expect(document.activeElement).toBe(input)
   })
 
-  it('再按一下:收回 Dock,总览一直没被叫起来', async () => {
+  it('再按一下:收回 Dock,总览那块面一直没被叫起来', async () => {
     render(<AppShell />)
     cmdP()
     cmdP()
     expect('search' in useStageStore.getState().placements).toBe(false)
-    expect(useExposeStore.getState().view.mode).toBe('closed')
+    expect('sessions' in useStageStore.getState().placements).toBe(false)
     // 形态当场就变了,DOM 还要多活一帧走出场动画(StageOverlay 的 held),所以这条要等。
     await waitFor(() => expect(screen.queryByLabelText('搜索会话')).toBeNull())
   })

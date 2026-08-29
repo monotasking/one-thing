@@ -48,7 +48,7 @@ import {
   withinDockHoldZone,
   withoutStagePlacements,
 } from './transitions'
-import { STAGE_ITEMS, findItem } from './items'
+import { SESSIONS_ITEM_ID, STAGE_ITEMS, findItem } from './items'
 import type { OpenBehavior, Placement, ShelfSide, StageState, Viewport } from './types'
 
 const base: StageState = initialStageState
@@ -797,17 +797,21 @@ describe('formOf / placementOf / clamp', () => {
 })
 
 describe('items 表', () => {
-  it('会话总览是接管型(它只有一种打开法,所以不进 Placement)', () => {
-    expect(findItem('sessions')?.takeover).toBe(true)
+  it('会话总览是普通瓦:上舞台 / 收回 Dock 与别的瓦逐字同一条路', () => {
+    const st = openAs(base, SESSIONS_ITEM_ID, STAGE)
+    expect(formOf(st, SESSIONS_ITEM_ID)).toBe('stage')
+    expect(formOf(closeToDock(st, SESSIONS_ITEM_ID), SESSIONS_ITEM_ID)).toBe('dock')
   })
 
-  it('检索是普通瓦,不接管', () => {
-    expect(findItem('search')?.takeover).toBeUndefined()
+  it('检索也是普通瓦:两块瓦在同一张表里,没有第二种打开法', () => {
+    expect(findItem('search')).toBeDefined()
+    expect(findItem(SESSIONS_ITEM_ID)).toBeDefined()
+    // 落点解析也一视同仁:同一份设置,两块瓦解析出同一个 Placement。
+    expect(resolveOpen(SESSIONS_ITEM_ID, {}, 'float')).toEqual(resolveOpen('search', {}, 'float'))
   })
 
-  it('除了会话总览,其余都不是接管型', () => {
-    const takeovers = STAGE_ITEMS.filter((i) => i.takeover).map((i) => i.id)
-    expect(takeovers).toEqual(['sessions'])
+  it('接管型已退役:一块瓦都不许再带 takeover 字段', () => {
+    expect(STAGE_ITEMS.filter((i) => 'takeover' in i)).toEqual([])
   })
 })
 

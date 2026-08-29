@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { STAGE_ITEMS } from '../stage/items'
+import { SESSIONS_ITEM_ID, STAGE_ITEMS } from '../stage/items'
 import {
   KEYMAP_COMMANDS,
   KEYMAP_PERSIST_VERSION,
@@ -19,6 +19,7 @@ import {
   recordKey,
   resetCombo,
   sameCombo,
+  toggleCommandId,
   unbindCombo,
 } from './transitions'
 import type { Combo, ComboEvent, KeymapState } from './types'
@@ -37,20 +38,20 @@ function press(key: string, mods: Partial<Omit<ComboEvent, 'key'>> = {}): ComboE
 const CMD_P: Combo = { meta: true, key: 'p' }
 
 describe('命令表', () => {
-  it('每个非 takeover 的瓦恰有一条 toggle,takeover 的一条都没有', () => {
+  it('每块瓦恰有一条 toggle,一块不漏(会话总览去接管化之后也在其中)', () => {
     const toggles = KEYMAP_COMMANDS.filter((c) => c.id.startsWith('toggle:')).map((c) => c.id)
-    const expected = STAGE_ITEMS.filter((i) => !i.takeover).map((i) => `toggle:${i.id}`)
-    expect(toggles).toEqual(expected)
-    for (const item of STAGE_ITEMS.filter((i) => i.takeover)) {
-      expect(toggles).not.toContain(`toggle:${item.id}`)
-    }
+    expect(toggles).toEqual(STAGE_ITEMS.map((i) => toggleCommandId(i.id)))
+    expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
   it('出厂只绑三条:检索 ⌘P、总览 ⌘E、目录 ⌘⇧O,别的一律未绑定', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombo !== null).map((c) => c.id)
-    expect(bound).toEqual(['toggle:search', 'expose.toggle', 'toc.toggle'])
+    expect(bound).toEqual(['toggle:search', toggleCommandId(SESSIONS_ITEM_ID), 'toc.toggle'])
     expect(findCommand('toggle:search')?.defaultCombo).toEqual({ meta: true, key: 'p' })
-    expect(findCommand('expose.toggle')?.defaultCombo).toEqual({ meta: true, key: 'e' })
+    expect(findCommand(toggleCommandId(SESSIONS_ITEM_ID))?.defaultCombo).toEqual({
+      meta: true,
+      key: 'e',
+    })
     expect(findCommand('shelf.right.toggle')?.defaultCombo).toBeNull()
     expect(findCommand('toc.toggle')?.defaultCombo).toEqual({ meta: true, shift: true, key: 'o' })
   })
@@ -125,7 +126,9 @@ describe('注册表读写', () => {
 
   it('lookupCommand:按键落在哪条命令上,没人认领就是 null', () => {
     expect(lookupCommand(initialKeymapState, press('p', { metaKey: true }))).toBe('toggle:search')
-    expect(lookupCommand(initialKeymapState, press('e', { metaKey: true }))).toBe('expose.toggle')
+    expect(lookupCommand(initialKeymapState, press('e', { metaKey: true }))).toBe(
+      toggleCommandId(SESSIONS_ITEM_ID),
+    )
     expect(lookupCommand(initialKeymapState, press('p'))).toBeNull()
     const rebound: KeymapState = { overrides: { 'toggle:search': { meta: true, key: 'k' } } }
     expect(lookupCommand(rebound, press('p', { metaKey: true }))).toBeNull()
@@ -165,9 +168,26 @@ describe('录制', () => {
 })
 
 describe('persist', () => {
-  it('version 1 是第一版档案,原样放行', () => {
+  it('当前版本的档案原样放行,没有旧 id 的老档案也原样放行', () => {
     const archived = { overrides: { 'toggle:files': { meta: true, key: 'f' } } }
     expect(migrateKeymapPersisted(archived, KEYMAP_PERSIST_VERSION)).toEqual(archived)
-    expect(migrateKeymapPersisted(archived, 0)).toEqual(archived)
+    expect(migrateKeymapPersisted(archived, 1)).toEqual(archived)
+  })
+
+  it('v2:老档案里 expose.toggle 上的覆盖改挂到会话总览那条 toggle 上', () => {
+    const archived = { overrides: { 'expose.toggle': { meta: true, key: 'j' } } }
+    expect(migrateKeymapPersisted(archived, 1)).toEqual({
+      overrides: { [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'j' } },
+    })
+  })
+
+  it('v2:用户显式解绑的那条 null 一样跟着迁移(不迁 = 替他把 ⌘E 装回去)', () => {
+    const archived = { overrides: { 'expose.toggle': null, 'toggle:files': { meta: true, key: 'f' } } }
+    expect(migrateKeymapPersisted(archived, 1)).toEqual({
+      overrides: {
+        'toggle:files': { meta: true, key: 'f' },
+        [toggleCommandId(SESSIONS_ITEM_ID)]: null,
+      },
+    })
   })
 })

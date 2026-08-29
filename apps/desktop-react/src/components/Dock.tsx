@@ -1,6 +1,5 @@
 import { Fragment, useState } from 'react'
 import { useStageStore } from '../stage/store'
-import { useExposeStore } from '../expose/store'
 import { GLOBAL_ITEMS, SESSION_ITEMS } from '../stage/items'
 import { DockTile } from './DockTile'
 import { useMagnify } from './useMagnify'
@@ -78,7 +77,6 @@ export function Dock({ dimmed }: Props) {
   const dockSize = useStageStore((st) => st.dockSize)
   const click = useStageStore((st) => st.clickDockIcon)
   const setOpenOverride = useStageStore((st) => st.setOpenOverride)
-  const toggleExpose = useExposeStore((st) => st.toggle)
 
   const [menu, setMenu] = useState<{ item: StageItemSpec; title: string; x: number; y: number } | null>(
     null,
@@ -127,19 +125,15 @@ export function Dock({ dimmed }: Props) {
               title={t(tile.item.titleKey)}
               icon={tile.item.icon}
               badge={tile.item.badge}
-              // 接管型不进 Placement,所以它没有「正在开着」这回事,运行点也就不适用。
-              running={!tile.item.takeover && tile.item.id in placements}
+              running={tile.item.id in placements}
               factor={factors[i] ?? REST_FACTOR}
               tileRef={setTileRef(i)}
               labelSide={LABEL_SIDE[dockEdge]}
               // 只有还收在坞里的才预览:已经看得见的东西不必再给一眼。
-              // 接管型也不预览 —— 它没有 Placement,「换一整屏」缩成 320×220 也不是那回事。
               previewId={
-                !tile.item.takeover && formIn(placements, tile.item.id) === 'dock'
-                  ? tile.item.id
-                  : undefined
+                formIn(placements, tile.item.id) === 'dock' ? tile.item.id : undefined
               }
-              onClick={() => (tile.item.takeover ? toggleExpose() : click(tile.item.id))}
+              onClick={() => click(tile.item.id)}
               onContextMenu={(e) => {
                 e.preventDefault()
                 setMenu({
@@ -164,25 +158,21 @@ export function Dock({ dimmed }: Props) {
 
       {menu && (
         <Menu x={menu.x} y={menu.y} onClose={closeMenu} label={menu.title}>
-          {/* 接管型只有一种打开法,所以它连这一组都没有 —— 菜单里只剩那扇门。 */}
-          {!menu.item.takeover && (
-            <>
-              <MenuSection>{t('dock.openWith')}</MenuSection>
-              {OPEN_CHOICES.map((c) => (
-                <MenuItem
-                  key={c.value}
-                  checked={(overrides[menu.item.id] ?? 'default') === c.value}
-                  onClick={() => {
-                    setOpenOverride(menu.item.id, c.value)
-                    closeMenu()
-                  }}
-                >
-                  {t(c.labelKey)}
-                </MenuItem>
-              ))}
-              <MenuSeparator />
-            </>
-          )}
+          {/* 每块瓦都有打开方式可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}
+          <MenuSection>{t('dock.openWith')}</MenuSection>
+          {OPEN_CHOICES.map((c) => (
+            <MenuItem
+              key={c.value}
+              checked={(overrides[menu.item.id] ?? 'default') === c.value}
+              onClick={() => {
+                setOpenOverride(menu.item.id, c.value)
+                closeMenu()
+              }}
+            >
+              {t(c.labelKey)}
+            </MenuItem>
+          ))}
+          <MenuSeparator />
 
           <MenuItem
             onClick={() => {

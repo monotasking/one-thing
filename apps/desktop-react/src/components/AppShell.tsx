@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
-import { useExposeStore } from '../expose/store'
 import { useKeymapDispatch } from '../keymap/dispatch'
-import { ExposeOverlay } from '../expose/components/ExposeOverlay'
 import { TopBar } from './TopBar'
 import { ChatMock } from './ChatMock'
 import { ComposerMock } from './ComposerMock'
@@ -37,8 +35,6 @@ export function AppShell() {
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockAlign = useStageStore((st) => st.dockAlign)
-  // L2 接线:总览开着时主区缩暗,总览层自己盖在上面。
-  const exposeOpen = useExposeStore((st) => st.view.mode !== 'closed')
 
   /**
    * 全仓唯一的快捷键入口。以前这里手写着一条 ⌘P 监听,现在那条绑定是注册表里的
@@ -130,7 +126,7 @@ export function AppShell() {
       {/* 三明治网格:上架子一行 / [左架子 | 主区 | 右架子] / 下架子一行。
         * 架子是布局列/行,所以它挤压主区而不是盖住它(既有拍板)。
         * 空架子自己 return null,那条 auto 轨道就塌成 0 —— 「不渲染、不占布局」是同一件事。 */}
-      <main className={exposeOpen ? `${s.main} ${s.mainDimmed}` : s.main}>
+      <main className={s.main}>
         {SHELF_SIDES.map((side) => (
           <EdgeShelf key={side} side={side} />
         ))}
@@ -156,7 +152,6 @@ export function AppShell() {
       <SnapHint />
 
       <StageOverlay />
-      <ExposeOverlay />
     </div>
   )
 }

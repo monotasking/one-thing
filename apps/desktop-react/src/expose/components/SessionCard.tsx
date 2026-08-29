@@ -11,7 +11,7 @@ interface Props {
   current: boolean
   focused: boolean
   onEnter: () => void
-  /** Quick Look 的**鼠标**入口(键盘入口是 Space,在 ExposeOverlay 里) */
+  /** Quick Look 的**鼠标**入口(键盘入口是 Space,在 ExposeView 里) */
   onQuickLook: () => void
 }
 

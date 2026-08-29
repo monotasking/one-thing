@@ -36,11 +36,6 @@ export interface StageItemSpec {
   /** lucide 图标名 */
   icon: string
   badge?: StageBadge
-  /**
-   * 接管型:点它是「换一整屏」(会话总览),不是「开一个面」。
-   * 这种 item 只有一种打开法,所以它不进 Placement —— 也就没有打开方式可选。
-   */
-  takeover?: boolean
 }
 
 /** 浮窗矩形。按 item 记忆,所以收回 Dock 再开还在老位置。 */

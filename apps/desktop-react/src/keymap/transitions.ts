@@ -1,4 +1,4 @@
-import { STAGE_ITEMS } from '../stage/items'
+import { SESSIONS_ITEM_ID, STAGE_ITEMS } from '../stage/items'
 import type {
   Combo,
   ComboEvent,
@@ -10,39 +10,45 @@ import type {
 } from './types'
 
 /** persist 档案版本。改这个数就必须在 migrateKeymapPersisted 里加一段,两者同生共死。 */
-export const KEYMAP_PERSIST_VERSION = 1
+export const KEYMAP_PERSIST_VERSION = 2
+
+/** toggle 族的 id 前缀。派发器按它分流,迁移按它铸新 id —— 全仓只此一处字面量。 */
+export const TOGGLE_COMMAND_PREFIX = 'toggle:'
+
+export function toggleCommandId(itemId: string): CommandId {
+  return `${TOGGLE_COMMAND_PREFIX}${itemId}`
+}
+
+/**
+ * 退役的命令 id。它只作为**老档案里的一个键**存在(v2 迁移读它、改挂它),
+ * 不再是这套注册表认识的命令 —— 会话总览去接管化之后,它的开关就是它自己那条 toggle。
+ */
+const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
 
 /**
  * 出厂绑定表。只列**有**默认键的那几条,别的一律 null ——
  * 「大多数命令出厂不绑键」是有意的:键位是稀缺资源,预占等于替用户做主。
  *
- * ⌘E 给会话总览:Exposé 的正名(⌘P 在 08-29 那次拍板里归了检索面板,
- * 总览此前借住的那个 ⌘P 键帽同时删掉,这里是它拿回自己的键)。
+ * ⌘E 给会话总览那块瓦(⌘P 在 08-29 那次拍板里归了检索面板)。
  */
 const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toggle:search': { meta: true, key: 'p' },
-  'expose.toggle': { meta: true, key: 'e' },
+  [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'e' },
   'toc.toggle': { meta: true, shift: true, key: 'o' },
 }
 
 /**
  * 命令表 —— **封闭**。加一个命令就是在这里多一行:
- * 每个非 takeover 的 Dock 瓦自动有一条 toggle(所以瓦表长出新瓦时这里不用改),
+ * 每块 Dock 瓦自动有一条 toggle(所以瓦表长出新瓦时这里不用改),
  * 加上两条不属于任何一块瓦的开关。
  *
- * takeover 的瓦(会话总览)不进 toggle 族 —— 它没有 Placement,
- * 「呼出 / 收回」对它没意义;它的开关就是 expose.toggle 本身。
+ * 会话总览也在瓦那一族里:它有 Placement,「呼出 / 收回」对它和别的瓦是同一句话。
  */
 export const KEYMAP_COMMANDS: KeymapCommand[] = [
-  ...STAGE_ITEMS.filter((item) => !item.takeover).map<KeymapCommand>((item) => {
-    const id: CommandId = `toggle:${item.id}`
+  ...STAGE_ITEMS.map<KeymapCommand>((item) => {
+    const id = toggleCommandId(item.id)
     return { id, labelKey: item.titleKey, defaultCombo: DEFAULT_COMBOS[id] ?? null }
   }),
-  {
-    id: 'expose.toggle',
-    labelKey: 'item.sessions',
-    defaultCombo: DEFAULT_COMBOS['expose.toggle'] ?? null,
-  },
   { id: 'shelf.right.toggle', labelKey: 'shelf.labelRight', defaultCombo: null },
   // TOC 面板不是 StageItem,但它的开关同样是命令类快捷键(08-29 全称拍板:都可设置)
   { id: 'toc.toggle', labelKey: 'toc.title', defaultCombo: DEFAULT_COMBOS['toc.toggle'] ?? null },
@@ -228,9 +234,24 @@ export function platformOf(ua: string): KeymapPlatform {
 }
 
 /**
- * persist 迁移。version 1 是第一版档案,没有更老的形状要往上补,
- * 所以这里是「放行」而不是「空实现」—— 它存在是为了下一版有地方落笔。
+ * persist 迁移。
+ *
+ * v2:会话总览去接管化,它的开关从独立的 'expose.toggle' 变成自己那条 toggle。
+ * 老档案里挂在旧 id 上的覆盖整条改挂过去 —— 包括用户显式解绑的那条 null:
+ * 「解绑」也是用户的意思,不迁移就等于替他把 ⌘E 又装了回去。
+ * 新 id 上已经有值(理论上不可能,那条命令 v2 才出生)则老值让路,不覆盖用户当下的设置。
  */
-export function migrateKeymapPersisted(persisted: unknown, _version: number): unknown {
-  return persisted
+export function migrateKeymapPersisted(persisted: unknown, version: number): unknown {
+  if (version >= KEYMAP_PERSIST_VERSION) return persisted
+  if (!persisted || typeof persisted !== 'object') return persisted
+  const out = persisted as Record<string, unknown>
+  if (version < 2) {
+    const overrides = out.overrides
+    if (overrides && typeof overrides === 'object' && RETIRED_EXPOSE_TOGGLE_ID in overrides) {
+      const { [RETIRED_EXPOSE_TOGGLE_ID]: legacy, ...rest } = overrides as Record<string, unknown>
+      const id = toggleCommandId(SESSIONS_ITEM_ID)
+      return { ...out, overrides: id in rest ? rest : { ...rest, [id]: legacy } }
+    }
+  }
+  return out
 }

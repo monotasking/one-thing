@@ -66,8 +66,12 @@ export interface GroupMock {
   defaultCollapsed: boolean
 }
 
+/**
+ * 三层视图,没有第四层 —— 「关着」不再是内容的一种态:
+ * 这块面在不在场由 Placement 说了算(08-29 去接管化拍板),
+ * 所以状态机只管「在场时看到的是哪一层」。
+ */
 export type ExposeView =
-  | { mode: 'closed' }
   | { mode: 'overview' }
   /**
    * drill 的目标是**组**,不是项目 —— 协作组和独立组都没有 projectId,

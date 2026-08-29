@@ -12,7 +12,7 @@ import type { MessageKey } from '../i18n'
  *     - 浮窗的拖拽与缩放手柄。
  *     理由是同一条:它们在**每一层**都必须是同一个手感,一旦可配置,
  *     「Esc 就是退一层」这条全局承诺就没了 —— 那不是自由度,是不一致。
- *     所以这几个键住在各自的层里(ExposeOverlay / StageOverlay / FloatWindow),
+ *     所以这几个键住在各自的层里(ExposeView / StageOverlay / FloatWindow),
  *     不经过派发器,也不出现在设置页。
  * ──────────────────────────────────────────────────────────────────────────
  */
@@ -37,13 +37,13 @@ export interface Combo {
 
 /**
  * 命令 id。三族:
- *  - `toggle:<itemId>` —— 每个非 takeover 的 Dock 瓦一条,语义 = togglePlacement
- *    (在 Dock 里就按它的打开方式开,在别处就收回 Dock);
- *  - `expose.toggle`   —— 会话总览开关;
- *  - `shelf.right.toggle` —— 右钉栏收 / 展。
+ *  - `toggle:<itemId>` —— 每块 Dock 瓦一条(会话总览去接管化之后也在其中),
+ *    语义 = togglePlacement(在 Dock 里就按它的打开方式开,在别处就收回 Dock);
+ *  - `shelf.right.toggle` —— 右钉栏收 / 展;
+ *  - `toc.toggle` —— 目录面板收 / 展。
  * 加命令 = 在 KEYMAP_COMMANDS 里加一行,别处零改动。
  */
-export type CommandId = `toggle:${string}` | 'expose.toggle' | 'shelf.right.toggle' | 'toc.toggle'
+export type CommandId = `toggle:${string}` | 'shelf.right.toggle' | 'toc.toggle'
 
 export interface KeymapCommand {
   id: CommandId

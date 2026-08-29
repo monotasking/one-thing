@@ -99,7 +99,6 @@ export const en: Record<MessageKey, string> = {
   'browser.pagePlaceholder': 'Page placeholder',
 
   /* ── session exposé ───────────────────────────────────────────────── */
-  'expose.title': 'Session overview',
   'expose.searchPlaceholder': 'Search sessions, sections, messages',
   'expose.searchLabel': 'Search sessions',
   'expose.newProject': 'Project',

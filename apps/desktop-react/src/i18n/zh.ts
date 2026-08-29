@@ -103,7 +103,6 @@ export const zh = {
   'browser.pagePlaceholder': '页面占位',
 
   /* ── 会话总览 Exposé ──────────────────────────────────────────────── */
-  'expose.title': '会话总览',
   'expose.searchPlaceholder': '搜索会话、章节、消息',
   'expose.searchLabel': '搜索会话',
   'expose.newProject': 'Project',

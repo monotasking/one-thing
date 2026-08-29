@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   CARD_COLS,
   backToOverview,
-  close,
   closeQuickLook,
   enterList,
   enterSession,
@@ -18,7 +17,6 @@ import {
   setQuery,
   splitHighlight,
   timeBucket,
-  toggle,
   toggleGroupCollapsed,
   visibleCardIds,
 } from './transitions'
@@ -34,8 +32,8 @@ import type { ExposeState } from './types'
 const base: ExposeState = initialExposeState
 const overview = open(base)
 
-describe('open / close / toggle', () => {
-  it('从关着的态打开 → overview,焦点落在当前会话', () => {
+describe('open(开场归位)', () => {
+  it('开场落在 overview,焦点落在当前会话', () => {
     expect(overview.view).toEqual({ mode: 'overview' })
     expect(overview.focusId).toBe(CURRENT_SESSION_ID)
   })
@@ -47,16 +45,18 @@ describe('open / close / toggle', () => {
     expect(next.focusId).not.toBe(CURRENT_SESSION_ID)
   })
 
-  it('已经开着时 open 是恒等变换', () => {
-    expect(open(overview)).toBe(overview)
+  it('开场是**无条件**归位:停在 quicklook、带着搜索词,再开一次都回到总览', () => {
+    const deep = setQuery(openQuickLook(overview, 'os-expose'), 'provider')
+    const reopened = open(deep)
+    expect(reopened.view).toEqual({ mode: 'overview' })
+    expect(reopened.query).toBe('')
   })
 
-  it('toggle 开→关、关→开;关闭时清掉搜索词', () => {
-    const searching = setQuery(overview, 'provider')
-    const closed = toggle(searching)
-    expect(closed.view).toEqual({ mode: 'closed' })
-    expect(closed.query).toBe('')
-    expect(toggle(closed).view).toEqual({ mode: 'overview' })
+  it('三层视图就是全部:没有第四层「关着」—— 面在不在场由 Placement 说了算', () => {
+    const modes = [overview, enterList(overview, 'onething'), openQuickLook(overview, 'os-expose')]
+    expect(modes.map((st) => st.view.mode)).toEqual(['overview', 'list', 'quicklook'])
+    // 状态机自己关不掉自己:总览上的 Esc 是恒等变换,那一下留给宿主。
+    expect(escape(overview)).toBe(overview)
   })
 
   it('是纯函数:不改原对象', () => {
@@ -68,11 +68,11 @@ describe('open / close / toggle', () => {
 })
 
 describe('Esc 逐层', () => {
-  it('quicklook → overview → closed', () => {
+  it('quicklook → overview;到了总览这一层就退不动了(让位给宿主关面板)', () => {
     const ql = openQuickLook(overview, 'os-expose')
     const back = escape(ql)
     expect(back.view).toEqual({ mode: 'overview' })
-    expect(escape(back).view).toEqual({ mode: 'closed' })
+    expect(escape(back)).toBe(back)
   })
 
   it('quicklook 退回总览时焦点留在刚看的那张卡上', () => {
@@ -85,7 +85,7 @@ describe('Esc 逐层', () => {
     expect(escape(list).view).toEqual({ mode: 'overview' })
   })
 
-  it('closed 上再 Esc 是恒等变换', () => {
+  it('初始态(总览)上 Esc 是恒等变换', () => {
     expect(escape(base)).toBe(base)
   })
 
@@ -218,7 +218,7 @@ describe('toggleGroupCollapsed', () => {
 
   it('折叠状态是唯一跨会话记住的东西,和 view 无关', () => {
     const next = toggleGroupCollapsed(base, 'memory-wiki')
-    expect(next.view).toEqual({ mode: 'closed' })
+    expect(next.view).toEqual({ mode: 'overview' })
     expect(next.collapsedGroups).not.toContain('memory-wiki')
   })
 })
@@ -257,17 +257,17 @@ describe('搜索', () => {
 })
 
 describe('enterSession / timeBucket / 数据自洽', () => {
-  it('进入 = 换当前会话 + 关总览', () => {
+  it('进入 = 换当前会话 + 内容回到起点(收回 Dock 是 store 壳的事,不在纯函数里)', () => {
     const next = enterSession(setQuery(overview, 'x'), 'tr-menubar')
     expect(next.currentSessionId).toBe('tr-menubar')
-    expect(next.view).toEqual({ mode: 'closed' })
+    expect(next.view).toEqual({ mode: 'overview' })
     expect(next.query).toBe('')
   })
 
-  it('close 不动折叠状态与当前会话', () => {
+  it('再开场不动折叠状态与当前会话', () => {
     const st = enterSession(overview, 'lo-notes')
-    expect(close(st).currentSessionId).toBe('lo-notes')
-    expect(close(st).collapsedGroups).toEqual(base.collapsedGroups)
+    expect(open(st).currentSessionId).toBe('lo-notes')
+    expect(open(st).collapsedGroups).toEqual(base.collapsedGroups)
   })
 
   it('timeBucket 认得钟点 / 昨天 / 周几 = 本周,其余更早(回的是标识,不是文案)', () => {
@@ -309,9 +309,9 @@ describe('焦点环点亮时机(focusVisible)', () => {
     expect(edge.focusVisible).toBe(true)
   })
 
-  it('关掉再开,环回到熄灭(残留环就是 08-28 用户看见的"莫名阴影")', () => {
+  it('再开一次环回到熄灭(残留环就是 08-28 用户看见的"莫名阴影")', () => {
     const lit = moveFocus(open(base), 'right')
-    const reopened = open(close(lit))
+    const reopened = open(lit)
     expect(reopened.focusVisible).toBe(false)
   })
 })

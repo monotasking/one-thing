@@ -38,11 +38,16 @@ export function StageOverlay() {
     return () => clearTimeout(t)
   }, [item, held])
 
-  // Esc 关。舞台一次只有一个,所以「仅最上层」是结构保证:没有第二个监听者。
+  /**
+   * Esc 关舞台 —— 但只在**内层没消费**这一下时。
+   * 面里的内容可能自己有层次(会话总览的 quicklook / list),那几层先退;
+   * 它们退不动了就不 preventDefault,这一下才轮到关面板。
+   * 判据是 e.defaultPrevented 而不是「内容是谁」:舞台不认识住在里面的东西。
+   */
   useEffect(() => {
     if (!stageId) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeStage()
+      if (e.key === 'Escape' && !e.defaultPrevented) closeStage()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

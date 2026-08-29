@@ -1,12 +1,9 @@
 import { useEffect } from 'react'
-import { useExposeStore } from '../expose/store'
 import { useTocStore } from '../toc/store'
 import { useStageStore } from '../stage/store'
 import { useKeymapStore } from './store'
-import { hasModifier, lookupCommand } from './transitions'
+import { TOGGLE_COMMAND_PREFIX, hasModifier, lookupCommand } from './transitions'
 import type { CommandId } from './types'
-
-const TOGGLE_PREFIX = 'toggle:'
 
 /** 焦点在输入面里:无修饰的单键属于输入框,不属于快捷键。 */
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -27,17 +24,12 @@ export function useKeymapDispatch(): void {
   const overrides = useKeymapStore((st) => st.overrides)
   const toggleItem = useStageStore((st) => st.toggleItem)
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
-  const toggleExpose = useExposeStore((st) => st.toggle)
   const toggleToc = useTocStore((st) => st.togglePanel)
 
   useEffect(() => {
     const run = (id: CommandId) => {
-      if (id.startsWith(TOGGLE_PREFIX)) {
-        toggleItem(id.slice(TOGGLE_PREFIX.length))
-        return
-      }
-      if (id === 'expose.toggle') {
-        toggleExpose()
+      if (id.startsWith(TOGGLE_COMMAND_PREFIX)) {
+        toggleItem(id.slice(TOGGLE_COMMAND_PREFIX.length))
         return
       }
       if (id === 'shelf.right.toggle') {
@@ -58,5 +50,5 @@ export function useKeymapDispatch(): void {
 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [overrides, toggleItem, toggleShelfCollapsed, toggleExpose, toggleToc])
+  }, [overrides, toggleItem, toggleShelfCollapsed, toggleToc])
 }

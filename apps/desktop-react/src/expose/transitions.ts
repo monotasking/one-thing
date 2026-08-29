@@ -12,7 +12,7 @@ import type {
 export const CARD_COLS = 3
 
 export const initialExposeState: ExposeState = {
-  view: { mode: 'closed' },
+  view: { mode: 'overview' },
   focusId: null,
   focusVisible: false,
   collapsedGroups: DEFAULT_COLLAPSED_GROUP_IDS,
@@ -38,31 +38,28 @@ function clampIndex(i: number, len: number): number {
   return Math.min(Math.max(i, 0), Math.max(len - 1, 0))
 }
 
-/* ── 开关 ──────────────────────────────────────────────────────────────── */
+/* ── 开场 ──────────────────────────────────────────────────────────────── */
 
 /**
- * 打开总览:焦点**锚点**落在当前会话上(方向键第一下有起点),但环不点亮 ——
- * 焦点环只属于键盘会话,打开总览本身不算(否则看起来像一张卡莫名带影)。
+ * 开场归位:这块面一在场,内容就从总览起步,搜索词清空,焦点**锚点**落在当前会话上
+ * (方向键第一下有起点),但环不点亮 —— 焦点环只属于键盘会话,打开这块面本身不算。
+ *
+ * 它是**无条件**的:上次退出时停在 quicklook / list 不该在下次打开时还原,
+ * 「打开总览」的意思就是重新看一眼全部。至于这块面在不在场,那是 Placement 的事,
+ * 状态机不问也答不出 —— 所以这里没有与之配对的 close()。
  */
 export function open(state: ExposeState, groups: GroupMock[] = GROUPS): ExposeState {
-  if (state.view.mode !== 'closed') return state
   const seq = visibleCardIds(state, groups)
   const focusId = seq.includes(state.currentSessionId) ? state.currentSessionId : (seq[0] ?? null)
   return { ...state, view: { mode: 'overview' }, focusId, focusVisible: false, query: '' }
 }
 
-export function close(state: ExposeState): ExposeState {
-  if (state.view.mode === 'closed') return state
-  return { ...state, view: { mode: 'closed' }, query: '' }
-}
-
-export function toggle(state: ExposeState, groups: GroupMock[] = GROUPS): ExposeState {
-  return state.view.mode === 'closed' ? open(state, groups) : close(state)
-}
-
 /**
- * Esc 逐层:quicklook → overview → closed;list 也退回 overview。
- * 层级写在这一个函数里,组件不许自己排序。
+ * Esc 逐层:quicklook → overview、list → overview。层级写在这一个函数里,组件不许自己排序。
+ *
+ * 到了总览这一层就**没有下一层**了:这一下不归内容管,由宿主(舞台 / 浮窗 / 架子)
+ * 去关这块面 —— 所以这里是恒等变换,而不是「自己把自己关掉」。
+ * 内容消费不了,宿主才轮得到,这条让位契约的另一半写在 ExposeView 与 StageOverlay 里。
  */
 export function escape(state: ExposeState): ExposeState {
   switch (state.view.mode) {
@@ -70,8 +67,6 @@ export function escape(state: ExposeState): ExposeState {
     case 'list':
       return backToOverview(state)
     case 'overview':
-      return close(state)
-    case 'closed':
       return state
   }
 }
@@ -161,9 +156,13 @@ export function setQuery(state: ExposeState, query: string): ExposeState {
   return { ...state, query }
 }
 
-/** 「进入」= 换当前会话 + 关总览。L2 到此为止,不真的切聊天内容。 */
+/**
+ * 「进入」= 换当前会话 + 内容回到起点(退出 quicklook / list、清掉搜索词)。
+ * L2 到此为止,不真的切聊天内容。
+ * 「顺手把这块面收回 Dock」是 Placement 的事,纯函数不认识落点 —— 那一步在 store 壳里。
+ */
 export function enterSession(state: ExposeState, sessionId: string): ExposeState {
-  return { ...state, currentSessionId: sessionId, view: { mode: 'closed' }, query: '' }
+  return { ...state, currentSessionId: sessionId, view: { mode: 'overview' }, query: '' }
 }
 
 /* ── 派生:搜索与时间分桶 ──────────────────────────────────────────────── */

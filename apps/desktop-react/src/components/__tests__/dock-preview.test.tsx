@@ -8,7 +8,8 @@ import type { Placement } from '../../stage/types'
 
 /**
  * 预览泡出现的**条件**,不是它长什么样:泡是「还没打开的东西给你的一眼」,
- * 所以已经看得见的项不该再出泡,接管型(换一整屏)也不出。
+ * 所以已经看得见的项不该再出泡。判据只有一条「它还收在坞里吗」——
+ * 去接管化之后会话总览也按这一条判,没有第二种瓦。
  * 延迟是 token 的镜像,所以这里用假时钟走完 PREVIEW_DELAY_MS 而不是真等 600ms。
  */
 beforeEach(() => {
@@ -54,8 +55,11 @@ describe('Dock 预览泡', () => {
     expect(document.querySelector('[data-preview="diff"]')).toBeNull()
   })
 
-  it('接管型(会话总览)不出泡 —— 它没有 Placement,也不是「一块面」', () => {
+  it('会话总览照常出泡:它是普通瓦,判据仍是「还收在坞里吗」', () => {
     render(<AppShell />)
+    hoverTile('会话总览')
+    expect(document.querySelector('[data-preview="sessions"]')).toBeTruthy()
+    place('sessions', { kind: 'stage' })
     hoverTile('会话总览')
     expect(document.querySelector('[data-preview="sessions"]')).toBeNull()
   })
