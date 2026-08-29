@@ -1,0 +1,776 @@
+/* ── Composer 形态学 ─────────────────────────────────────────────────────────
+ * 一块面板 = 状态条 + 一个抽屉槽 + 本体行(write ⇄ ask)。没有任何浮层菜单 ——
+ * 选择器、命令表、模型表、执行流水全部住在**同一个抽屉**里,后来者顶替先来者。
+ * 两层不占布局的浮物挂在面板外:拍立得附件摞(上方)与读数明细卡(右上)。
+ *
+ * 这个 module 被 composer/components/ 整个文件族共用:它们画的是同一块面板的不同器官,
+ * 拆成几个 .module.css 反而会让「同一条边线」在两处各写一遍。
+ * 所有色值 / 圆角 / 时长一律 var() —— 见 styles/global.css 顶部的两条铁律。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.wrap {
+  flex: none;
+  width: 100%;
+  max-width: var(--chat-col);
+  margin: 0 auto;
+  padding: 0 var(--sp-4) var(--sp-4);
+}
+
+/* 浮物(附件摞 / 读数卡)的参考系。附件摞按这一层的内缘对齐,所以它与
+ * composer 的左右边缘天然齐平 —— 不需要再写一个「22px」的魔数。 */
+.anchor {
+  position: relative;
+}
+
+.panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+/* 拖着文件进来:整块面板换成虚线 accent 边 —— 落点是整块面板,不是某个小角。 */
+.dragging {
+  border-color: var(--accent);
+  border-style: dashed;
+  background: var(--surface-drop);
+}
+
+/* ── 状态条:执行中常驻,点击开合状态抽屉 ─────────────────────────────────── */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--composer-pad-x);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.statusbar:hover {
+  background: var(--st-hover);
+}
+
+.spinner {
+  flex: none;
+  width: var(--composer-spinner);
+  height: var(--composer-spinner);
+  border: var(--spinner-w) solid var(--line-1);
+  border-top-color: var(--accent);
+  border-radius: var(--r-full);
+  animation: spin var(--dur-spin) linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.doneDot {
+  flex: none;
+  width: var(--composer-done-dot);
+  height: var(--composer-done-dot);
+  border-radius: var(--r-full);
+  background: var(--ok);
+}
+
+.statusText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chev {
+  flex: none;
+  width: var(--att-icon);
+  height: var(--att-icon);
+  color: var(--text-3);
+  transition: transform var(--dur) var(--ease);
+}
+
+.chevOpen {
+  transform: rotate(180deg);
+}
+
+/* ── 抽屉:单一槽,grid-rows 0fr↔1fr ────────────────────────────────────────
+ * 用 grid 行而不是 max-height:内容多高就展开多高,不需要猜一个上限。 */
+.drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--dur-drawer) var(--ease-out);
+}
+
+.drawerOpen {
+  grid-template-rows: 1fr;
+}
+
+.drawerInner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.drawerBody {
+  padding: var(--sp-1);
+  border-bottom: 1px solid transparent;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.drawerOpen .drawerBody {
+  border-bottom-color: var(--line-1);
+  opacity: 1;
+}
+
+/* ── 抽屉内容:列表(files / commands / model 共用一种行) ─────────────────── */
+.pickHead {
+  padding: var(--sp-2) var(--sp-3) 2px;
+  font-size: var(--fs-hint);
+  font-weight: 700;
+  letter-spacing: var(--ls-section);
+  color: var(--text-3);
+}
+
+.provHead {
+  padding: var(--sp-2) var(--sp-3) 2px;
+  font-size: var(--fs-nano);
+  font-weight: 700;
+  letter-spacing: var(--ls-section);
+  color: var(--text-3);
+}
+
+.pickRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-1);
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pickRow:hover {
+  background: var(--st-hover);
+}
+
+.pickSel {
+  background: var(--st-sel);
+  color: var(--accent-deep);
+}
+
+.pickSel:hover {
+  background: var(--st-sel-hover);
+}
+
+.pickMono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+}
+
+.pickHint {
+  margin-left: auto;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.pickEmpty {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-label);
+  color: var(--text-3);
+}
+
+/* 模型抽屉的搜索行 */
+.modelSearch {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-1) var(--sp-2) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-1);
+  background: var(--surface-0);
+}
+
+.modelSearchInput {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-code);
+}
+
+.searchIcon {
+  flex: none;
+  width: var(--att-icon);
+  height: var(--att-icon);
+  color: var(--text-3);
+}
+
+/* ── 抽屉内容:执行状态 ──────────────────────────────────────────────────── */
+.statusBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--composer-pad-x);
+}
+
+.statusPrompt {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+  font-size: var(--fs-meta);
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.statusName {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.step {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  animation: settle var(--dur-enter) var(--ease-out);
+}
+
+.stepDoing {
+  color: var(--text-1);
+}
+
+.stepLabel {
+  min-width: var(--sp-6);
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+
+@keyframes settle {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 本体行:write 形态 ⇄ ask 形态(交叉淡变) ────────────────────────────── */
+.bodyRow {
+  position: relative;
+}
+
+.mode {
+  transition: opacity var(--dur-mode) var(--ease);
+}
+
+/* 退场的那一形态绝对定位叠上去:两态同占一格,面板高度按在场的那个走。 */
+.modeOff {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.writeRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-2);
+  padding: var(--composer-pad-y) var(--composer-pad-x);
+}
+
+.input {
+  flex: 1;
+  min-height: var(--composer-input-min);
+  max-height: var(--composer-input-max);
+  overflow-y: auto;
+  outline: none;
+  font-size: var(--fs-body);
+  line-height: 1.7;
+  color: var(--text-1);
+  caret-color: var(--accent);
+  word-break: break-word;
+}
+
+/* 占位符走 data 属性:文案归 i18n,CSS 里不落一个字。 */
+.input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-4);
+}
+
+/* 行内 chip:@ 引用的文件。contentEditable=false,所以退格是整枚删。 */
+.chip {
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  background: var(--st-sel);
+  color: var(--accent-deep);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+}
+
+.cmdTok {
+  color: var(--accent-deep);
+  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+}
+
+.toolBtn {
+  display: flex;
+  align-self: center;
+  padding: var(--sp-1);
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease);
+}
+
+.toolBtn:hover {
+  color: var(--text-1);
+}
+
+.attachIcon {
+  width: var(--composer-attach-icon);
+  height: var(--composer-attach-icon);
+}
+
+.sendIcon {
+  width: var(--composer-send-icon);
+  height: var(--composer-send-icon);
+}
+
+/* 模型 pill 上那枚小箭头比状态条的窄一档:它挂在一枚 pill 上,不该比字还重。 */
+.pillChev {
+  flex: none;
+  width: var(--model-chevron);
+  height: var(--model-chevron);
+}
+
+.hiddenFile {
+  display: none;
+}
+
+.modelPill {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  font-size: var(--fs-pill);
+  color: var(--text-2);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.modelPill:hover {
+  border-color: var(--line-accent);
+}
+
+.ctxRing {
+  display: flex;
+  align-self: center;
+  cursor: default;
+}
+
+.sendBtn {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--btn-sm);
+  height: var(--btn-sm);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ── 读数明细卡:悬停 context 圆环即出 ───────────────────────────────────── */
+.meterCard {
+  position: absolute;
+  right: var(--sp-3);
+  bottom: calc(100% + var(--sp-2));
+  z-index: var(--z-sticky);
+  display: none;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: var(--meter-w);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+  font-size: var(--fs-pill);
+}
+
+.meterOn {
+  display: flex;
+}
+
+.meterRow {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-5);
+}
+
+.meterKey {
+  color: var(--text-3);
+}
+
+.meterVal {
+  font-family: var(--font-mono);
+  color: var(--text-1);
+}
+
+.meterOk {
+  color: var(--ok);
+}
+
+/* ── 拍立得附件:悬浮摞,absolute 不占布局,composer 几何零变化 ────────────── */
+.attFloat {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + var(--att-lift));
+  left: 0;
+  height: var(--att-h);
+  pointer-events: none;
+}
+
+.attStack {
+  position: relative;
+  height: var(--att-h);
+  max-width: 100%;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+/* 展开:视口宽封顶,内层排撑出总宽 → 横滚(滚轮纵转横在 JS 里)。 */
+.attStackOpen {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.attStackOpen::-webkit-scrollbar {
+  display: none;
+}
+
+.attRow {
+  position: relative;
+  height: 100%;
+}
+
+.attCard {
+  position: absolute;
+  bottom: var(--att-bottom);
+  transition:
+    left var(--dur-att-move) var(--ease-out),
+    transform var(--dur-att-move) var(--ease-out);
+}
+
+.attHidden {
+  display: none;
+}
+
+.attPhoto {
+  width: var(--att-photo-w);
+  height: var(--att-photo-h);
+  padding: var(--att-photo-pad) var(--att-photo-pad) 0;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+}
+
+.attPhotoImg {
+  display: block;
+  width: var(--att-photo-inner);
+  height: var(--att-photo-inner);
+  border-radius: var(--att-photo-r);
+  background-color: var(--surface-0);
+  background-position: center;
+  background-size: cover;
+}
+
+.attDoc {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: var(--att-doc-w);
+  height: var(--att-doc-h);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+}
+
+.attDocIcon {
+  flex: none;
+  width: var(--att-icon);
+  height: var(--att-icon);
+  color: var(--text-3);
+}
+
+.attDocName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-hint);
+  color: var(--text-2);
+}
+
+.attDocExt {
+  padding: 2px var(--sp-1);
+  border-radius: var(--r-1);
+  background: var(--surface-0);
+  font-family: var(--font-mono);
+  font-size: var(--fs-ext);
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.attX {
+  position: absolute;
+  top: var(--att-x-offset);
+  right: var(--att-x-offset);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--att-x);
+  height: var(--att-x);
+  border: 2px solid var(--surface-2);
+  border-radius: var(--r-full);
+  background: var(--text-1);
+  color: var(--surface-2);
+  font-size: var(--fs-nano);
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.attCard:hover .attX {
+  opacity: 1;
+}
+
+.attCount {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: var(--z-sticky);
+  padding: 2px var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-tiny);
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+/* 展开了就不再需要计数:卡都摊开在那儿了 */
+.attCountHidden {
+  opacity: 0;
+}
+
+/* ── ask 形态:该你回答时,回答就是输入框本身 ─────────────────────────────── */
+.askForm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-accent);
+}
+
+.askTop {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.askArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--ask-arrow);
+  height: var(--ask-arrow);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: 1;
+}
+
+.askArrow:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}
+
+.askStep {
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+}
+
+.askQ {
+  font-size: var(--fs-card);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.askMulti {
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-tiny);
+  color: var(--text-3);
+  vertical-align: 2px;
+}
+
+.askReject {
+  margin-left: auto;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease);
+}
+
+.askReject:hover {
+  color: var(--danger);
+}
+
+/* 几何钉死:高度按「选项最多的题 + 恒在的其他行」预留,翻题时面板一动不动。 */
+.askBars {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ask-row-gap);
+}
+
+.askBar {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  text-align: left;
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.askBar:hover {
+  border-color: var(--line-accent);
+}
+
+.askBarOn {
+  border-color: var(--accent);
+  background: var(--surface-2-sel);
+}
+
+.askMark {
+  flex: none;
+  align-self: center;
+  width: var(--ask-mark);
+  height: var(--ask-mark);
+  border: var(--check-border) solid var(--line-1);
+  border-radius: var(--r-full);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+/* 多选是方记号,单选是圆点 —— 形状就是「能不能多选」的说明书。 */
+.askMarkSquare {
+  border-radius: var(--r-1);
+}
+
+.askMarkOn {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.askLabel {
+  font-size: var(--fs-code);
+  font-weight: 550;
+  color: var(--text-1);
+}
+
+.askDesc {
+  margin-left: auto;
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+
+.askOther {
+  cursor: text;
+}
+
+.askOther .askLabel {
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+/* 「其他」不新开输入框:就在这一行里直接写,回车即答。 */
+.askFree {
+  flex: 1;
+  min-width: 0;
+  outline: none;
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+  caret-color: var(--accent);
+}
+
+.askFree:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-4);
+}
+
+.askFoot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.askEsc {
+  font-family: var(--font-mono);
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+
+.askSubmit {
+  margin-left: auto;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--fs-meta);
+}
+
+.askSubmit:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}

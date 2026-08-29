@@ -272,4 +272,61 @@
   --spinner-md: 16px;
   --spinner-w: 1.5px;
   --dur-spin: 700ms;
+
+  /* ── Composer 形态学(08-29 定稿)────────────────────────────────────────
+   * 一块面板三器官:本体行(write ⇄ ask)/ 一个抽屉槽 / 状态条,
+   * 外加两层不占布局的浮物:拍立得附件摞、读数明细卡。
+   * 附件那一组数在 composer/transitions.ts 里有**一份 JS 镜像**(累计坐标 CSS 排不了,
+   * var() JS 又读不到),改这里必须同改那里 —— 同 motion.ts 对时长的做法。
+   * ────────────────────────────────────────────────────────────────────── */
+  --composer-pad-x: 14px;
+  --composer-pad-y: 12px;
+  --composer-input-min: 24px;
+  --composer-input-max: 120px; /* 输入框长到这么高就自己滚,面板不再往上长 */
+  --composer-spinner: 12px;
+  --composer-done-dot: 8px;
+  --model-chevron: 10px;
+  --composer-attach-icon: 15px;
+  --composer-send-icon: 12px;
+  --ctx-ring: 18px;
+  --ctx-ring-w: 2.6px;
+  --meter-w: 210px;
+
+  /* 抽屉 0fr↔1fr 的展开、本体两形态的交叉淡变、附件卡就位 */
+  --dur-drawer: 220ms;
+  --dur-mode: 160ms;
+  --dur-att-move: 200ms;
+  /* 摞的收拢宽限(JS 镜像:components/motion.ts 的 ATT_GRACE_MS) */
+  --dur-att-grace: 200ms;
+
+  /* 拍立得附件:图片方卡(相纸)/ 文件长卡(小票) */
+  --att-h: 104px;
+  --att-lift: 10px; /* 摞离 composer 顶缘多远 */
+  --att-bottom: 4px;
+  --att-photo-w: 76px;
+  --att-photo-h: 90px;
+  --att-photo-inner: 66px;
+  --att-photo-pad: 5px;
+  --att-photo-r: 2px; /* 相纸里那张「照片」的圆角:比卡自己更硬,才像贴上去的 */
+  --att-doc-w: 132px;
+  --att-doc-h: 44px;
+  --att-gap: 10px;
+  --att-inset: 6px;
+  --att-offset: 7px;
+  --att-rotate: 3deg;
+  --att-icon: 13px;
+  --att-x: 18px;
+  --att-x-offset: -7px;
+
+  /* ask 形态:横条行高与翻题钮 —— 问卷区按最多选项那题预留高度,翻题时面板不跳 */
+  --ask-row-h: 36px;
+  --ask-row-gap: 5px;
+  --ask-arrow: 22px;
+  --ask-mark: 12px;
+
+  /* Composer 用到、既有字号梯里没有的四档 */
+  --fs-pill: 11.5px;
+  --fs-code: 12.5px;
+  --fs-tiny: 9.5px;
+  --fs-ext: 7.5px;
 }

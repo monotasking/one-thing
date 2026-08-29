@@ -17,9 +17,48 @@ export const zh = {
   /* ── 顶栏 ─────────────────────────────────────────────────────────── */
   'topbar.newSession': '新会话',
 
-  /* ── 输入框 ───────────────────────────────────────────────────────── */
-  'composer.placeholder': '说点什么…',
+  /* ── 输入框(Composer 形态学:本体行 / 抽屉槽 / 状态条 / ask 形态 / 附件) ── */
+  'composer.placeholder': '说点什么…( @ 文件 · / 命令 )',
   'composer.send': '发送',
+  'composer.attach': '添加附件',
+  'composer.attachments': '附件',
+  'composer.removeAttachment': '移除附件',
+  'composer.model': '选择模型:{name}',
+  'composer.modelSearch': '搜模型或 Provider…',
+  'composer.headFiles': '引用文件',
+  'composer.headCommands': '命令',
+  'composer.hintFile': '⏎ 引用',
+  'composer.hintCommand': '⏎ 选用',
+  'composer.noMatch': '无匹配',
+  'composer.context': '上下文用量',
+
+  /* ── 读数明细(数来自遥测,句子在这里) ───────────────────────────── */
+  'meter.context': '上下文',
+  'meter.contextValue': '{used} / {max} · {pct}%',
+  'meter.tokens': 'Tokens',
+  'meter.tokensValue': '↑{sent} ↓{received}',
+  'meter.cost': '花费',
+  'meter.costValue': '${cost}',
+  'meter.cache': '缓存命中',
+  'meter.cacheValue': '{pct}% · 省 ${saved}',
+
+  /* ── 状态条 / 执行抽屉 ────────────────────────────────────────────── */
+  'status.toggle': '执行状态',
+  'status.running': '正在执行 {name} · {step}',
+  'status.done': '执行完成 · {name} · {count} 步',
+
+  /* ── ask 形态(本体变形成的问卷) ─────────────────────────────────── */
+  'ask.multi': '多选',
+  'ask.reject': '拒绝回答',
+  'ask.rejected': '(拒绝了这组问题)',
+  'ask.other': '其他',
+  'ask.otherPlaceholder': '就在这行写,回车即答',
+  'ask.hint': '‹ › 换题 · 再点取消 · esc 拒绝整单',
+  'ask.submit': '提交 {done}/{total}',
+  'ask.step': '{index}/{total}',
+  'ask.prev': '上一题',
+  'ask.next': '下一题',
+  'ask.joiner': '、',
 
   /* ── Dock 与右键菜单 ──────────────────────────────────────────────── */
   'dock.add': '添加',

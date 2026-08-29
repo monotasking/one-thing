@@ -23,6 +23,8 @@ import {
   Info,
   CircleCheck,
   CircleAlert,
+  Paperclip,
+  ArrowUp,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -55,6 +57,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   Info,
   CircleCheck,
   CircleAlert,
+  Paperclip,
+  ArrowUp,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -80,5 +84,7 @@ export {
   Info,
   CircleCheck,
   CircleAlert,
+  Paperclip,
+  ArrowUp,
 }
 export type { LucideIcon }

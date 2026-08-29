@@ -3,7 +3,7 @@ import { useStageStore } from '../stage/store'
 import { useKeymapDispatch } from '../keymap/dispatch'
 import { TopBar } from './TopBar'
 import { ChatMock } from './ChatMock'
-import { ComposerMock } from './ComposerMock'
+import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
 import { EdgeShelf } from './EdgeShelf'
@@ -136,7 +136,7 @@ export function AppShell() {
             <ChatMock scrollRef={chatRef} onScroll={onScroll} flashIndex={flashIndex} />
             <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
           </div>
-          <ComposerMock />
+          <Composer />
         </div>
       </main>
 

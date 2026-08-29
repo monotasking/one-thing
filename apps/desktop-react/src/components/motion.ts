@@ -14,3 +14,6 @@ export const SCROLL_SETTLE_MS = 400 // --dur-scroll-settle
 export const TOC_HOVER_MS = 150 // --dur-toc-hover:悬停多久才把目录长出来
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
 export const TOAST_LIFE_MS = 4000 // --dur-toast-life:一条 toast 自动消失前活多久
+// --dur-att-grace:附件摞离开后的收拢宽限。卡缝与删卡瞬间的出界不该塌摞(同 Dock 留驻区判例),
+// 再进即取消。这是「宽限」不是「动画」,所以它在 JS 里有落点、在 CSS 里只是个记账。
+export const ATT_GRACE_MS = 200

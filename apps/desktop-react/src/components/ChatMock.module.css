@@ -55,6 +55,29 @@
   font-size: var(--fs-chat);
 }
 
+/* composer 交出来的那几条:与历史用户气泡同形,只多两件小事 ——
+ * 附件计数(一枚回形针 + 数,不落字)与「拒绝了这组问题」的弱化。 */
+.sentAtt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.sentAttIcon {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+}
+
+.declined {
+  color: var(--text-3);
+  background: var(--st-hover);
+  font-size: var(--fs-meta);
+}
+
 .body {
   font-size: var(--fs-chat);
   line-height: 1.7;

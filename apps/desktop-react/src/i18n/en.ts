@@ -16,8 +16,47 @@ export const en: Record<MessageKey, string> = {
   'topbar.newSession': 'New session',
 
   /* ── composer ─────────────────────────────────────────────────────── */
-  'composer.placeholder': 'Say something…',
+  'composer.placeholder': 'Say something… ( @ files · / commands )',
   'composer.send': 'Send',
+  'composer.attach': 'Add attachment',
+  'composer.attachments': 'Attachments',
+  'composer.removeAttachment': 'Remove attachment',
+  'composer.model': 'Pick a model: {name}',
+  'composer.modelSearch': 'Search models or providers…',
+  'composer.headFiles': 'Reference a file',
+  'composer.headCommands': 'Commands',
+  'composer.hintFile': '⏎ reference',
+  'composer.hintCommand': '⏎ use',
+  'composer.noMatch': 'No match',
+  'composer.context': 'Context usage',
+
+  /* ── readouts ─────────────────────────────────────────────────────── */
+  'meter.context': 'Context',
+  'meter.contextValue': '{used} / {max} · {pct}%',
+  'meter.tokens': 'Tokens',
+  'meter.tokensValue': '↑{sent} ↓{received}',
+  'meter.cost': 'Spend',
+  'meter.costValue': '${cost}',
+  'meter.cache': 'Cache hits',
+  'meter.cacheValue': '{pct}% · saved ${saved}',
+
+  /* ── status bar / run drawer ──────────────────────────────────────── */
+  'status.toggle': 'Run status',
+  'status.running': 'Running {name} · {step}',
+  'status.done': 'Done · {name} · {count} steps',
+
+  /* ── ask form ─────────────────────────────────────────────────────── */
+  'ask.multi': 'multi',
+  'ask.reject': 'Decline',
+  'ask.rejected': '(declined these questions)',
+  'ask.other': 'Other',
+  'ask.otherPlaceholder': 'Type right here, enter to answer',
+  'ask.hint': '‹ › switch · click again to clear · esc declines all',
+  'ask.submit': 'Submit {done}/{total}',
+  'ask.step': '{index}/{total}',
+  'ask.prev': 'Previous question',
+  'ask.next': 'Next question',
+  'ask.joiner': ', ',
 
   /* ── dock & context menu ──────────────────────────────────────────── */
   'dock.add': 'Add',

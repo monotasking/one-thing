@@ -43,6 +43,14 @@
   --accent-soft: rgba(124, 111, 160, 0.12);
   --on-accent: #ffffff;
 
+  /* Composer 派生:带 accent 味的线(模型 pill / 选项条的 hover 边)、
+   * ask 形态的底(本体变形时整行换一层极淡的紫纸)、拖拽落区的底。
+   * 设计稿上分别是 #CFC9DE / #F7F5FA / rgba(124,111,160,.03) —— 这里用 color-mix
+   * 从 accent 推,换主题时它们跟着走,不会留三个写死的紫。 */
+  --line-accent: color-mix(in srgb, var(--accent) 30%, var(--line-1));
+  --surface-accent: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
+  --surface-drop: color-mix(in srgb, var(--accent) 4%, var(--surface-2));
+
   /* L2 派生:焦点柔环、头像底色、未读丸前景 */
   --accent-ring: rgba(124, 111, 160, 0.18);
   --tint-accent: rgba(124, 111, 160, 0.12);

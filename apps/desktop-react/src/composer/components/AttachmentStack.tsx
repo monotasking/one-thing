@@ -1,0 +1,137 @@
+import { useEffect, useRef } from 'react'
+import { useT } from '../../i18n'
+import { resolveIcon } from '../../components/icons'
+import { ATT_GRACE_MS } from '../../components/motion'
+import { useComposerStore } from '../store'
+import { fileExt, layoutAttachments } from '../transitions'
+import s from './Composer.module.css'
+
+const FileIcon = resolveIcon('FolderTree')
+
+/**
+ * 拍立得附件摞。三条设计裁定照搬:
+ *
+ * 1. **absolute 不占布局** —— 挂在 composer 上方,composer 的几何零变化;
+ * 2. **展开是状态,不是 hover 的副作用** —— 删一张卡其余就位,摞不塌
+ *    (展开态删卡若跟着 hover 走,鼠标下的卡一没就整摞收回,手会追不上);
+ * 3. **收拢带 200ms 宽限** —— 卡缝与删卡瞬间的出界不塌摞,再进即取消
+ *    (同 Dock 留驻区判例)。
+ *
+ * 坐标全部由 transitions.layoutAttachments 算,这个文件只把数贴上去。
+ */
+export function AttachmentStack() {
+  const t = useT()
+  const attachments = useComposerStore((st) => st.attachments)
+  const open = useComposerStore((st) => st.attOpen)
+  const setOpen = useComposerStore((st) => st.setAttOpen)
+  const remove = useComposerStore((st) => st.removeAttachment)
+  const stackRef = useRef<HTMLDivElement>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 滚轮纵转横:超长一排不该逼人按住 shift。preventDefault 要非被动监听,
+  // React 的 onWheel 是被动的,所以这里手挂。
+  useEffect(() => {
+    const el = stackRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (!open) return
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        el.scrollLeft += e.deltaY
+        e.preventDefault()
+      }
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [open])
+
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current)
+    },
+    [],
+  )
+
+  if (attachments.length === 0) return null
+
+  const layout = layoutAttachments(attachments, open)
+  const byId = new Map(attachments.map((a) => [a.id, a]))
+
+  const enter = () => {
+    if (timer.current) {
+      clearTimeout(timer.current)
+      timer.current = null
+    }
+    if (!open) setOpen(true)
+  }
+  const leave = () => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      timer.current = null
+      setOpen(false)
+    }, ATT_GRACE_MS)
+  }
+
+  return (
+    <div className={s.attFloat}>
+      <div
+        ref={stackRef}
+        className={open ? `${s.attStack} ${s.attStackOpen}` : s.attStack}
+        style={{ width: layout.stackWidth === null ? '100%' : `${layout.stackWidth}px` }}
+        aria-label={t('composer.attachments')}
+        onMouseEnter={enter}
+        onMouseLeave={leave}
+      >
+        <div className={s.attRow} style={{ width: `${layout.rowWidth}px` }}>
+          {layout.cards.map((card) => {
+            const a = byId.get(card.id)
+            if (!a) return null
+            const cls = [s.attCard, a.url ? s.attPhoto : s.attDoc, card.hidden ? s.attHidden : '']
+              .filter(Boolean)
+              .join(' ')
+            return (
+              <span
+                key={card.id}
+                className={cls}
+                style={{
+                  left: `${card.left}px`,
+                  transform: `rotate(${card.rotate}deg)`,
+                  zIndex: card.zIndex,
+                }}
+              >
+                {a.url ? (
+                  <span
+                    className={s.attPhotoImg}
+                    style={{ backgroundImage: `url(${a.url})` }}
+                    role="img"
+                    aria-label={a.name}
+                  />
+                ) : (
+                  <>
+                    <FileIcon className={s.attDocIcon} strokeWidth={1.7} aria-hidden="true" />
+                    <span className={s.attDocName}>{a.name}</span>
+                    <span className={s.attDocExt}>{fileExt(a.name)}</span>
+                  </>
+                )}
+                <button
+                  type="button"
+                  className={s.attX}
+                  aria-label={t('composer.removeAttachment')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    remove(card.id)
+                  }}
+                >
+                  ✕
+                </button>
+              </span>
+            )
+          })}
+          {/* 展开了就不再需要计数:卡都摊开在那儿了 */}
+          <span className={open ? `${s.attCount} ${s.attCountHidden}` : s.attCount}>
+            {attachments.length}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
