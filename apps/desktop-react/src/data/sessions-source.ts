@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
+import type { SessionLifecycleEvent } from '@renderer/platform/session-lifecycle'
 import {
   buildGroups,
   buildProjects,
@@ -51,12 +52,26 @@ import { sessionsPort } from './sessions-port'
  *  d. `stream:complete` 额外作废**章节**缓存 —— 章节是一轮跑完之后才推导出来的。
  *  e. 其余事件(工具 / 权限 / 步骤 / 用量 / 账本…)对列表没有影响,一律忽略。
  *
- * **删除是一个诚实的缺口**:没有任何 per-session 事件说「我没了」,所以一条被
- * 别处删掉的会话会在列表里留到下一次整表重拉。补法是开全局事件订阅面,那要动
- * 共享层,不在本批。
- *
  * 重拉一律经 `scheduleRefresh()` 合并:**≤1 次 / 秒**。一次流里几十条事件不该
  * 变成几十次 listMeta。
+ *
+ * ── 删除:第二条订阅(H 批,那个缺口补上了) ─────────────────────────────
+ * 共享层读侧补齐 E 批给出了 `platform/session-lifecycle` 的 `onSessionLifecycle`
+ * —— 同一条 `session:event` 推送面上的一层折叠,把「建 / 删」从流里认出来。
+ * 于是删除不再等下一次整表重拉:收到 `deleted` 就**当场**把那批 id
+ * (自己 + 级联删掉的子会话,事件自带完整名单)从列表里摘掉,并作废它们的
+ * 章节 / 消息 / 锚点三份缓存。
+ *
+ * 两件事划清:
+ *  - `created` 这一半**本批不接**,新建仍走判据 a —— 那条路已经在工作,
+ *    再加一条会有两个产地说同一件事。
+ *  - 删除事件本身在 `onEvent` 里被**提前挡掉**:它在删除**之前**发射,级联删掉的
+ *    子会话又常常不在列表里,落到判据 a 就成了「不认识 = 有人新建了」,
+ *    一次删除换来一次毫无意义的整表重拉。
+ *
+ * 形态机那一侧(Quick Look 正开着被删的那条 / 当前会话被删)不在这里判:
+ * 数据源只管数据,摘完之后经 `onSessionsRemoved` 把 id 交出去,
+ * expose/store.ts 那层壳再调纯函数 `sessionsRemoved` 夹持形态。
  */
 
 /** 重拉的最小间隔。一次流里事件密集,合并窗口就是「最多一秒一次」。 */
@@ -113,9 +128,36 @@ function project(sessions: SessionSummary[]): Pick<SessionsSourceState, 'session
 
 /** 模块级的订阅句柄与节流闸 —— 它们是「这一个进程的事实」,不是可渲染状态。 */
 let unsubscribe: (() => void) | undefined
+let unsubscribeLifecycle: (() => void) | undefined
 let started = false
 let lastRefreshAt = 0
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * 「有会话被摘掉了」的通知面。
+ *
+ * 数据源不认识形态机(反向依赖:expose/store.ts 已经在 import 这个文件),所以
+ * 这里只把摘掉的 id 交出去,由那层壳自己决定形态怎么夹持 —— 与 `currentGroups()`
+ * 是同一条接缝的两个方向。
+ */
+export type SessionsRemovedListener = (removedIds: readonly string[]) => void
+
+const removedListeners = new Set<SessionsRemovedListener>()
+
+/** 订阅「有会话被摘掉了」。返回退订函数。 */
+export function onSessionsRemoved(listener: SessionsRemovedListener): () => void {
+  removedListeners.add(listener)
+  return () => removedListeners.delete(listener)
+}
+
+/** 从一张按会话缓存里摘掉一批键;一个都没命中就**原样返回**(不制造新对象)。 */
+function dropKeys<T>(table: Record<string, T>, gone: Set<string>): Record<string, T> {
+  const hit = Object.keys(table).filter((id) => gone.has(id))
+  if (hit.length === 0) return table
+  const next = { ...table }
+  for (const id of hit) delete next[id]
+  return next
+}
 
 export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
   async function loadList(): Promise<void> {
@@ -147,6 +189,11 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     const { sessionId } = envelope
     const type = envelope.event?.type
     if (!sessionId || typeof type !== 'string') return
+
+    // 删除走另一条订阅(onLifecycle,它还带着级联名单)。这里必须**先挡**:
+    // 事件在删除之前发射、级联子会话又常常不在列表里,落到判据 a 就成了
+    // 「不认识 = 有人新建了」,一次删除换来一次毫无意义的整表重拉。
+    if (type === SESSION_EVENT_TYPES.SESSION_REMOVED) return
 
     const state = get()
     const known = state.sessions.some((s) => s.id === sessionId)
@@ -188,6 +235,41 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     // 判据 e:其余一律忽略。
   }
 
+  /**
+   * 会话被删:当场摘除 + 作废三份缓存 + 通知形态机。
+   *
+   * 摘的是**事件自带的整份级联名单**而不只是信封上那一条:删一间房会连着删掉
+   * 它的子会话,每条各来一次事件,但每一条都带着完整名单 —— 按名单摘是幂等的,
+   * 所以级联的第二、三条事件到达时是恒等变换,不会各摘一次各重投影一次。
+   *
+   * 缓存**无条件**作废:一条会话可以不在列表里(级联子会话)却在缓存里躺着。
+   * 正在飞的那两个按需请求不管 —— 它们落地时写进的是一条没人再问的键,
+   * 而半路抽掉 loading 闸只会换来一次重复请求。
+   */
+  function onLifecycle(event: SessionLifecycleEvent): void {
+    // `created` 不接:新建仍由判据 a 认出,两个产地说同一件事就会打架(见文件头)。
+    if (event.type !== 'deleted') return
+    const gone = new Set(event.cascadedSessionIds.filter((id) => typeof id === 'string' && id))
+    if (gone.size === 0) return
+
+    const state = get()
+    const sessions = state.sessions.filter((s) => !gone.has(s.id))
+    const chapters = dropKeys(state.chapters, gone)
+    const messages = dropKeys(state.messages, gone)
+    const markers = dropKeys(state.markers, gone)
+    const untouched =
+      sessions.length === state.sessions.length &&
+      chapters === state.chapters &&
+      messages === state.messages &&
+      markers === state.markers
+    if (!untouched) set({ chapters, messages, markers, ...project(sessions) })
+
+    // 通知在 set 之后:形态机拿到的那份分组事实必须是**摘除之后**的,
+    // 否则「焦点退到新序列首」会退到一张马上就要消失的卡上。
+    // 哪怕这一条对我们是恒等变换也照发 —— 屏幕上可能正开着它的 Quick Look。
+    for (const listener of removedListeners) listener([...gone])
+  }
+
   return {
     status: 'idle',
     sessions: [],
@@ -207,6 +289,7 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       await port.ready()
       // 先订上再拉:拉的那一刻起的事件不能漏(与 D0 连通面同一条理由)。
       unsubscribe = port.onSessionEvent(onEvent)
+      unsubscribeLifecycle = port.onSessionLifecycle(onLifecycle)
       lastRefreshAt = Date.now()
       await loadList()
     },
@@ -276,6 +359,8 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     reset: () => {
       unsubscribe?.()
       unsubscribe = undefined
+      unsubscribeLifecycle?.()
+      unsubscribeLifecycle = undefined
       started = false
       lastRefreshAt = 0
       if (refreshTimer) clearTimeout(refreshTimer)

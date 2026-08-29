@@ -18,6 +18,7 @@ import {
   quickLookNeighbors,
   relativeTime,
   sessionMatchesQuery,
+  sessionsRemoved,
   setQuery,
   splitHighlight,
   timeBucket,
@@ -31,6 +32,7 @@ import {
   ONETHING_DIR,
   SESSIONS,
 } from '../data/__fixtures__/sessions'
+import { buildGroups, buildProjects } from './projection'
 import type { ExposeState } from './types'
 
 /** 当前会话在这些用例里就是列表里的第一条 —— 开场焦点该落在它身上。 */
@@ -415,5 +417,99 @@ describe('焦点环点亮时机(focusVisible)', () => {
   it('再开一次环回到熄灭(残留环就是 08-28 用户看见的"莫名阴影")', () => {
     const lit = moveFocus(open(base, GROUPS), 'right', GROUPS)
     expect(open(lit, GROUPS).focusVisible).toBe(false)
+  })
+})
+
+
+/**
+ * H 批:摘要(`digest`,产地 `SessionMeta.lastMessagePreview`)进搜索判据。
+ * 理由是 F 批那条口径的直接推论 —— 搜的格与卡上画的格必须是同一批,
+ * 否则会出现「卡上明明标着那个词却搜不出来」。
+ */
+describe('搜索判据含摘要行', () => {
+  const provider = SESSIONS.find((s) => s.id === 'os-provider')!
+
+  it('只出现在摘要里的词也算命中', () => {
+    // '判定函数' 只在 lastMessagePreview 里,标题与 previewText 都没有它。
+    expect(provider.title.includes('判定函数')).toBe(false)
+    expect(provider.preview.includes('判定函数')).toBe(false)
+    expect(sessionMatchesQuery(provider, '判定函数')).toBe(true)
+    expect(filterGroups(GROUPS, '判定函数').flatMap((g) => g.sessions.map((s) => s.id))).toEqual([
+      'os-provider',
+    ])
+  })
+
+  it('摘要缺席(存量老会话)不影响判定,更不会当成空串命中一切', () => {
+    const old = SESSIONS.find((s) => s.id === 'lo-notes')!
+    expect(old.digest).toBeNull()
+    expect(sessionMatchesQuery(old, '判定函数')).toBe(false)
+    expect(sessionMatchesQuery(old, '随手记')).toBe(true)
+  })
+})
+
+/**
+ * H 批:有会话被删掉了。这个纯函数只做**夹持** —— 被删的那条留下的指针要收回来,
+ * 还站得住的指针一格不动(见函数自己的注释里那四条)。
+ */
+describe('sessionsRemoved —— 会话没了之后的形态夹持', () => {
+  /** 摘除之后的分组事实。函数拿到的一律是这一份(数据源先改列表再叫它)。 */
+  const without = (ids: string[]) => {
+    const left = SESSIONS.filter((s) => !ids.includes(s.id))
+    return buildGroups(buildProjects(left), left)
+  }
+
+  it('删的是别人时是恒等变换 —— 返回同一个 state 引用,这块面不重渲染', () => {
+    const st = openQuickLook(overview, 'os-expose')
+    expect(sessionsRemoved(st, ['lo-notes'], without(['lo-notes']))).toBe(st)
+    expect(sessionsRemoved(st, [], GROUPS)).toBe(st)
+  })
+
+  it('Quick Look 正开着被删的那条 → 退回总览(否则状态机停在一个画不出来的档)', () => {
+    const st = openQuickLook(overview, 'os-expose')
+    const next = sessionsRemoved(st, ['os-expose'], without(['os-expose']))
+    expect(next.view).toEqual({ mode: 'overview' })
+  })
+
+  it('当前会话被删 → 回空态,而不是自动挑一条顶上', () => {
+    const st = enterSession(overview, 'os-compact')
+    const next = sessionsRemoved(st, ['os-compact'], without(['os-compact']))
+    expect(next.currentSessionId).toBe('')
+    // 「挑一条顶上」是替用户做决定 —— 序列首那条一个字都没被写进去。
+    expect(next.currentSessionId).not.toBe('os-provider')
+  })
+
+  it('焦点落在已经不在的卡上 → 退到新序列首(与折叠 / 改搜索词同一句话)', () => {
+    const st = { ...overview, focusId: 'os-expose' }
+    const groups = without(['os-expose'])
+    const next = sessionsRemoved(st, ['os-expose'], groups)
+    expect(next.focusId).toBe(visibleCardIds(next, groups)[0])
+    expect(next.focusId).not.toBe('os-expose')
+  })
+
+  it('一条不剩时焦点诚实地回到 null,而不是指着一张不存在的卡', () => {
+    const allIds = SESSIONS.map((s) => s.id)
+    const next = sessionsRemoved({ ...overview, focusId: 'os-provider' }, allIds, [])
+    expect(next.focusId).toBeNull()
+  })
+
+  it('组列表停在一个空掉之后消失了的组 → 退回总览', () => {
+    // 独立会话组只有 lo-notes 一条,删掉它这个组就从分组事实里消失。
+    const st = enterList(overview, 'loose')
+    const groups = without(['lo-notes'])
+    expect(groups.some((g) => g.id === 'loose')).toBe(false)
+    expect(sessionsRemoved(st, ['lo-notes'], groups).view).toEqual({ mode: 'overview' })
+  })
+
+  it('组还在(只是少了一条)就不退层 —— 还站得住的指针一格不动', () => {
+    const st = enterList(overview, ONETHING_DIR)
+    const next = sessionsRemoved(st, ['os-expose'], without(['os-expose']))
+    expect(next.view).toEqual({ mode: 'list', groupId: ONETHING_DIR })
+  })
+
+  it('级联删除:名单里的每一条都算数(删一间房连着删掉它的子会话)', () => {
+    const st = { ...enterSession(overview, 'rm-release'), view: { mode: 'quicklook' as const, sessionId: 'dm-ying' } }
+    const next = sessionsRemoved(st, ['rm-release', 'dm-ying'], without(['rm-release', 'dm-ying']))
+    expect(next.currentSessionId).toBe('')
+    expect(next.view).toEqual({ mode: 'overview' })
   })
 })

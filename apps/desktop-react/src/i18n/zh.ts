@@ -209,6 +209,9 @@ export const zh = {
   /* 模型 / agent 徽的悬停说明:徽面上是**数据**(模型名、agent id),说明才是文案。 */
   'quicklook.modelTitle': '模型 · {model}',
   'quicklook.agentTitle': 'Agent · {agent}',
+  /* 消息数(产地 SessionMeta.messageCount)。0 是真值,所以「0 条消息」照常说得出口。 */
+  'quicklook.messageCount': '{count} 条消息',
+  'quicklook.messageCountOne': '{count} 条消息',
   'quicklook.loading': '正在读消息…',
   'quicklook.empty': '这条会话还没有消息',
   'quicklook.roleUser': '你',

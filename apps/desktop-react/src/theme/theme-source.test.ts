@@ -26,12 +26,23 @@ function fakePort(options: {
   cssVariables?: Record<string, string> | undefined
   applyError?: string
   ready?: () => Promise<unknown>
-}): { port: ThemePort; calls: PortCalls; emitSystemTheme: (t: 'light' | 'dark') => void } {
+}): {
+  port: ThemePort
+  calls: PortCalls
+  emitSystemTheme: (t: 'light' | 'dark') => void
+  emitSettings: (s: AppSettings) => void
+  getSettingsCalls: () => number
+} {
   const calls: PortCalls = { applied: [] }
   let listener: ((t: 'light' | 'dark') => void) | undefined
+  let settingsListener: ((s: AppSettings) => void) | undefined
+  let getSettingsCalls = 0
   const port: ThemePort = {
     ready: options.ready ?? (async () => undefined),
-    getSettings: async () => ({ success: true, settings: options.settings ?? settings('system') }),
+    getSettings: async () => {
+      getSettingsCalls += 1
+      return { success: true, settings: options.settings ?? settings('system') }
+    },
     getSystemTheme: async () => ({ success: true, theme: options.systemTheme ?? 'dark' }),
     applyTheme: async (themeId, mode) => {
       calls.applied.push({ themeId, mode })
@@ -44,8 +55,20 @@ function fakePort(options: {
         listener = undefined
       }
     },
+    onSettingsChanged: (callback) => {
+      settingsListener = callback
+      return () => {
+        settingsListener = undefined
+      }
+    },
   }
-  return { port, calls, emitSystemTheme: (t) => listener?.(t) }
+  return {
+    port,
+    calls,
+    emitSystemTheme: (t) => listener?.(t),
+    emitSettings: (s) => settingsListener?.(s),
+    getSettingsCalls: () => getSettingsCalls,
+  }
 }
 
 afterEach(() => {
@@ -219,5 +242,115 @@ describe('refreshThemeFromSettings —— 设置变更没有推送面时的手�
 
     expect(calls.applied).toHaveLength(2)
     expect(themeProbe().themeId).toBe('nord')
+  })
+})
+
+
+/**
+ * H 批:设置变更从「听不见」变成一条真订阅(共享层读侧补齐 E 批把 web 的空桩
+ * 换成了骑 `GET /api/events` 的具名 SSE 事件)。
+ *
+ * 三态各一条:没变 / 变明暗 / 变主题 id。判据仍然是同一个纯函数 `decideTheme`,
+ * 这里钉的是「什么时候该重贴、什么时候不该」。
+ */
+describe('设置变更 → 自动重判(H 批)', () => {
+  it('变了主题 id 就重贴', async () => {
+    const { port, calls, emitSettings } = fakePort({
+      settings: settings('dark', { darkThemeId: 'dracula' }),
+    })
+    configureThemePort(port)
+    await startThemeSource()
+    expect(calls.applied).toEqual([{ themeId: 'dracula', mode: 'dark' }])
+
+    emitSettings(settings('dark', { darkThemeId: 'nord' }))
+
+    await vi.waitFor(() => expect(calls.applied).toHaveLength(2))
+    expect(calls.applied[1]).toEqual({ themeId: 'nord', mode: 'dark' })
+    expect(themeProbe().themeId).toBe('nord')
+  })
+
+  it('变了明暗就重贴,而且换的是那一档自己的主题 id', async () => {
+    const { port, calls, emitSettings } = fakePort({
+      settings: settings('dark', { darkThemeId: 'dracula', lightThemeId: 'catppuccin' }),
+    })
+    configureThemePort(port)
+    await startThemeSource()
+
+    emitSettings(settings('light', { darkThemeId: 'dracula', lightThemeId: 'catppuccin' }))
+
+    await vi.waitFor(() => expect(calls.applied).toHaveLength(2))
+    expect(calls.applied[1]).toEqual({ themeId: 'catppuccin', mode: 'light' })
+    expect(document.documentElement.style.colorScheme).toBe('light')
+  })
+
+  it('判据没变就**不**重贴 —— 改一个与主题无关的开关也会推一份整设置过来', async () => {
+    const { port, calls, emitSettings } = fakePort({
+      settings: settings('dark', { darkThemeId: 'dracula' }),
+    })
+    configureThemePort(port)
+    await startThemeSource()
+    expect(calls.applied).toHaveLength(1)
+
+    emitSettings(settings('dark', { darkThemeId: 'dracula' }))
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(calls.applied).toHaveLength(1)
+  })
+
+  it('theme=system 时设置里那两个 id 换了照样跟着换(明暗仍由系统色说了算)', async () => {
+    const { port, calls, emitSettings } = fakePort({
+      settings: settings('system', { darkThemeId: 'dracula' }),
+      systemTheme: 'dark',
+    })
+    configureThemePort(port)
+    await startThemeSource()
+
+    emitSettings(settings('system', { darkThemeId: 'nord' }))
+
+    await vi.waitFor(() => expect(calls.applied).toHaveLength(2))
+    expect(calls.applied[1]).toEqual({ themeId: 'nord', mode: 'dark' })
+  })
+
+  it('载荷直接喂判据 —— 不再回问一趟 getSettings', async () => {
+    const { port, emitSettings, getSettingsCalls } = fakePort({
+      settings: settings('dark', { darkThemeId: 'dracula' }),
+    })
+    configureThemePort(port)
+    await startThemeSource()
+    expect(getSettingsCalls()).toBe(1) // 开场那一次
+
+    emitSettings(settings('light', { lightThemeId: 'catppuccin' }))
+    await vi.waitFor(() => expect(themeProbe().themeId).toBe('catppuccin'))
+
+    expect(getSettingsCalls()).toBe(1)
+  })
+
+  it('设置推来之后系统色再变,用的是新偏好而不是开场那份', async () => {
+    const { port, calls, emitSettings, emitSystemTheme } = fakePort({
+      settings: settings('system', { darkThemeId: 'dracula', lightThemeId: 'flexoki' }),
+      systemTheme: 'dark',
+    })
+    configureThemePort(port)
+    await startThemeSource()
+
+    emitSettings(settings('system', { darkThemeId: 'dracula', lightThemeId: 'catppuccin' }))
+    await Promise.resolve()
+    emitSystemTheme('light')
+
+    await vi.waitFor(() => expect(themeProbe().themeId).toBe('catppuccin'))
+    expect(calls.applied.at(-1)).toEqual({ themeId: 'catppuccin', mode: 'light' })
+  })
+
+  it('reset 会把这条订阅也退掉', async () => {
+    const { port, calls, emitSettings } = fakePort({ settings: settings('dark') })
+    configureThemePort(port)
+    await startThemeSource()
+    resetThemeSourceForTest()
+
+    emitSettings(settings('light', { lightThemeId: 'catppuccin' }))
+    await Promise.resolve()
+
+    expect(calls.applied).toHaveLength(1)
   })
 })

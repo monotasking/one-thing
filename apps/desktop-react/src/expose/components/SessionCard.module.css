@@ -158,9 +158,10 @@
 }
 
 /*
- * 摘要行的格位(共享层批的接缝,见 SessionCard.tsx 里同名注释)。
- * `lastMessagePreview` 落地后这条会话摘要画在这里:单行、截断、比正文再淡一档。
- * 现在没有产地,所以没有节点,也就不占高。
+ * 摘要行(H 批接上,见 SessionCard.tsx 里同名注释)。
+ * 产地 `SessionMeta.lastMessagePreview`:单行、截断、比预览再淡一档 ——
+ * 它是「最近说到哪儿」的一瞥,不该和标题 / 预览抢注意力。
+ * 缺席时组件不画节点,所以这条规则也就不占高。
  */
 .digest {
   margin: 0;

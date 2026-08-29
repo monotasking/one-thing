@@ -7,7 +7,9 @@ import {
   normalizeWorkingDirectory,
   projectNameOf,
   sessionAgentIdOf,
+  sessionDigestOf,
   sessionKindOf,
+  sessionMessageCountOf,
   sessionModelOf,
   toPreviewMessage,
   toSessionChapter,
@@ -172,5 +174,54 @@ describe('模型 / agent 两格的产地', () => {
     expect(summary.agentId).toBe('reviewer')
     expect(SESSIONS.find((s) => s.id === 'os-compact')!.agentId).toBeNull()
     expect(SESSIONS.find((s) => s.id === 'lo-notes')!.model).toBeNull()
+  })
+})
+
+/**
+ * H 批新增的两格,判据仍然是那一句「没有产地就不画」—— 但两格对「缺席」的定义
+ * 不一样,这批用例钉的正是这个差别:
+ *  - 摘要:空串与缺席都是缺席(一行空文字在屏幕上与不画没有区别,却占一行高);
+ *  - 条数:**只有缺席才是缺席**,0 是真值(一条真的空会话就该说自己是 0 条)。
+ */
+const bare = { id: 'a', name: 'a', createdAt: 0, updatedAt: 0 } satisfies SessionMeta
+
+describe('摘要 / 消息数两格的产地', () => {
+  it('lastMessagePreview 原样搬(只去首尾空白),空串与缺席都读作 null', () => {
+    expect(sessionDigestOf({ ...bare, lastMessagePreview: '  最近说到这儿  ' })).toBe('最近说到这儿')
+    expect(sessionDigestOf({ ...bare, lastMessagePreview: '   ' })).toBeNull()
+    expect(sessionDigestOf(bare)).toBeNull()
+  })
+
+  it('messageCount:0 是真值,只有缺席才读作 null', () => {
+    expect(sessionMessageCountOf({ ...bare, messageCount: 0 })).toBe(0)
+    expect(sessionMessageCountOf({ ...bare, messageCount: 42 })).toBe(42)
+    expect(sessionMessageCountOf(bare)).toBeNull()
+  })
+
+  it('画不出来的数(负数 / NaN)当没算过 —— 不把它当成 0 画出去', () => {
+    expect(sessionMessageCountOf({ ...bare, messageCount: -1 })).toBeNull()
+    expect(sessionMessageCountOf({ ...bare, messageCount: Number.NaN })).toBeNull()
+    expect(sessionMessageCountOf({ ...bare, messageCount: 3.7 })).toBe(3)
+  })
+
+  it('两格都进 SessionSummary;存量老会话(两格都没有)诚实地是两个 null', () => {
+    const summary = SESSIONS.find((s) => s.id === 'os-provider')!
+    expect(summary.digest).toBe('那就把三处读取点合成同一个判定函数')
+    expect(summary.messageCount).toBe(42)
+    // 摘要与条数各自独立:这一条只有条数,没有摘要。
+    expect(SESSIONS.find((s) => s.id === 'os-compact')!.digest).toBeNull()
+    expect(SESSIONS.find((s) => s.id === 'os-compact')!.messageCount).toBe(1)
+    // 两格都缺席的老会话。
+    const old = SESSIONS.find((s) => s.id === 'lo-notes')!
+    expect(old.digest).toBeNull()
+    expect(old.messageCount).toBeNull()
+  })
+
+  it('摘要与 preview 是并列的两格,不是同一件事的两个名字', () => {
+    const meta = SESSION_META.find((m) => m.id === 'os-provider')!
+    const summary = toSessionSummary(meta)
+    expect(summary.preview).toBe(meta.previewText)
+    expect(summary.digest).toBe(meta.lastMessagePreview)
+    expect(summary.preview).not.toBe(summary.digest)
   })
 })

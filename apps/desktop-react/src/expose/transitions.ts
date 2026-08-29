@@ -215,6 +215,53 @@ export function enterSession(state: ExposeState, sessionId: string): ExposeState
   return { ...state, currentSessionId: sessionId, view: { mode: 'overview' }, query: '' }
 }
 
+/* ── 会话没了 ──────────────────────────────────────────────────────────── */
+
+/**
+ * 有会话被删掉了(H 批)。入参 `groups` 是**摘除之后**的那份分组事实 ——
+ * 数据源先改列表再叫这个函数,所以这里看到的序列已经不含被删的卡。
+ *
+ * 它只做**夹持**,不做导航:被删的那条会话在屏幕上留下的每一个指针都得收回来,
+ * 但一个还站得住的指针一格都不动。四条,各有各的理由:
+ *
+ *  1. Quick Look 正开着被删的那条 → 退回总览。不退的话状态机停在 quicklook 档
+ *     而面板画不出任何东西(`findSession` 已经找不到它),键盘语义与屏幕对不上。
+ *  2. 组列表停在一个已经空掉、于是从分组事实里消失的组 → 退回总览。
+ *     留在那儿看到的是一张空表 + 一条拿 groupId 当组名的面包屑。
+ *  3. 当前会话被删 → 回**空态**(空串),而不是自动挑一条顶上:
+ *     替用户选下一条会话是替他做决定,而 TopBar 的「新会话」文案与空聊天区
+ *     本来就是这块壳对「还没有当前会话」的既有说法。
+ *  4. 焦点落在一张已经不在的卡上 → 退到新序列首。与折叠 / 改搜索词逐字同一句话。
+ *
+ * 一条都没碰到时返回**同一个 state 引用** —— 别人删会话不该让这块面重渲染。
+ */
+export function sessionsRemoved(
+  state: ExposeState,
+  removedIds: readonly string[],
+  groups: SessionGroup[],
+): ExposeState {
+  if (removedIds.length === 0) return state
+  const gone = new Set(removedIds)
+  let next = state
+
+  const view = next.view
+  if (view.mode === 'quicklook' && gone.has(view.sessionId)) {
+    next = { ...next, view: { mode: 'overview' } }
+  } else if (view.mode === 'list' && !groups.some((g) => g.id === view.groupId)) {
+    next = { ...next, view: { mode: 'overview' } }
+  }
+
+  if (next.currentSessionId && gone.has(next.currentSessionId)) {
+    next = { ...next, currentSessionId: '' }
+  }
+
+  if (next.focusId && gone.has(next.focusId)) {
+    next = { ...next, focusId: visibleCardIds(next, groups)[0] ?? null }
+  }
+
+  return next
+}
+
 /* ── 派生:搜索与时间 ──────────────────────────────────────────────────── */
 
 function has(text: string, needle: string): boolean {
@@ -222,18 +269,26 @@ function has(text: string, needle: string): boolean {
 }
 
 /**
- * 一条会话命不命中。看的正是卡面上写着的那两格:标题与预览
+ * 一条会话命不命中。看的正是卡面上写着的那三格:标题、预览、摘要
  * —— 「命中的东西必须在卡上看得见」是 F 批的口径,所以搜的格与画的格是同一批。
+ * H 批把摘要(`digest`,产地 `SessionMeta.lastMessagePreview`)接上卡面的同一刻
+ * 就把它加进判据:少加一格就会出现「卡上明明标着那个词却搜不出来」。
+ * 摘要缺席(老会话)时它是 null,那一格既不画也不参与判定。
  *
  * ── 诚实缺口:消息正文搜不到 ─────────────────────────────────────────────
  * 后端**没有**跨会话的内容检索面(`sessions.*` 二十六条里没有一条是「在所有会话里
  * 搜正文」,`search` 域是网页搜索不是会话搜索),前端唯一的替代是把每条会话的每一页
  * 消息都拉下来在内存里扫 —— 那是把缺口伪装成功能。留待后批(需要后端先有一个真检索面)。
+ * 摘要只是「最后一条消息的一行」,不是正文检索,这条缺口一格没变。
  */
 export function sessionMatchesQuery(session: SessionSummary, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
-  return has(session.title, q) || has(session.preview, q)
+  return (
+    has(session.title, q) ||
+    has(session.preview, q) ||
+    (session.digest !== null && has(session.digest, q))
+  )
 }
 
 /**

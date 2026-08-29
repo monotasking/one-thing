@@ -38,6 +38,10 @@ export const SESSION_META: SessionMeta[] = [
     // 模型徽 / agent 徽的样本:只有这一条两格都有,好钉「有产地才画」。
     lastModel: 'claude-opus-5',
     agentId: 'reviewer',
+    // H 批的两格。摘要故意与 previewText 用词不同 —— 它们是「从哪儿开的」与
+    // 「最近说到哪儿」两件事,测试要能只凭摘要里的词把这一条搜出来。
+    lastMessagePreview: '那就把三处读取点合成同一个判定函数',
+    messageCount: 42,
   }),
   meta({
     id: 'os-compact',
@@ -48,6 +52,8 @@ export const SESSION_META: SessionMeta[] = [
     lastModel: 'deepseek-chat',
     // 默认 agent 在投影里读作「没有绑定」—— 这一条钉的就是它**不**出徽。
     agentId: 'default',
+    // 单数档的样本(「1 条消息」)。摘要仍然缺席:两格各自独立,不是一对。
+    messageCount: 1,
   }),
   meta({
     id: 'os-expose',

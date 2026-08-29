@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
+import type { SessionLifecycleEvent } from '@renderer/platform/session-lifecycle'
 import { configureSessionsPort } from './sessions-port'
 import type { SessionsPort } from './sessions-port'
+import { useExposeStore } from '../expose/store'
+import { initialExposeState } from '../expose/transitions'
 import { REFRESH_THROTTLE_MS, useSessionsSource } from './sessions-source'
 import { NOW, ONETHING_DIR, SESSION_META } from './__fixtures__/sessions'
 
@@ -16,6 +19,7 @@ let getSegments: ReturnType<typeof vi.fn>
 let getMessagesPage: ReturnType<typeof vi.fn>
 let getUserMarkers: ReturnType<typeof vi.fn>
 let emit: ((envelope: SessionEventEnvelope) => void) | undefined
+let emitLifecycle: ((event: SessionLifecycleEvent) => void) | undefined
 let unsubscribed = 0
 
 function envelope(sessionId: string, type: string, extra: Record<string, unknown> = {}): SessionEventEnvelope {
@@ -34,6 +38,7 @@ beforeEach(() => {
   getMessagesPage = vi.fn(async () => ({ success: true, messages: [] }))
   getUserMarkers = vi.fn(async () => ({ success: true, markers: [] }))
   emit = undefined
+  emitLifecycle = undefined
   unsubscribed = 0
   const port: SessionsPort = {
     ready: async () => undefined,
@@ -48,9 +53,16 @@ beforeEach(() => {
         emit = undefined
       }
     },
+    onSessionLifecycle: (callback) => {
+      emitLifecycle = callback
+      return () => {
+        emitLifecycle = undefined
+      }
+    },
   }
   configureSessionsPort(port)
   useSessionsSource.getState().reset()
+  useExposeStore.setState({ ...initialExposeState })
 })
 
 afterEach(() => {
@@ -183,5 +195,119 @@ describe('按需取数', () => {
     await useSessionsSource.getState().ensureChapters('os-provider')
     expect(useSessionsSource.getState().chapters['os-provider']).toEqual([])
     expect(useSessionsSource.getState().status).toBe('ready')
+  })
+})
+
+
+/**
+ * H 批:删除不再等下一次整表重拉。判据全在这一批用例里 ——
+ * 摘除是**按事件自带的级联名单**、缓存无条件作废、屏幕上的指针由形态机夹持。
+ */
+describe('会话删除(onSessionLifecycle)', () => {
+  const deleted = (ids: string[]): SessionLifecycleEvent => ({
+    type: 'deleted',
+    sessionId: ids[0],
+    cascadedSessionIds: ids,
+  })
+
+  it('收到 removed 就当场摘除,不等重拉、不发一条请求', async () => {
+    await start()
+    emitLifecycle!(deleted(['os-expose']))
+    const state = useSessionsSource.getState()
+    expect(state.sessions.map((s) => s.id)).not.toContain('os-expose')
+    expect(state.sessions).toHaveLength(SESSION_META.length - 1)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('分组跟着重投影:空掉的组整个消失', async () => {
+    await start()
+    // 独立会话组只有 lo-notes 一条。
+    expect(useSessionsSource.getState().groups.map((g) => g.id)).toContain('loose')
+    emitLifecycle!(deleted(['lo-notes']))
+    expect(useSessionsSource.getState().groups.map((g) => g.id)).not.toContain('loose')
+  })
+
+  it('级联名单里的每一条都摘 —— 不是只摘信封上那一条', async () => {
+    await start()
+    emitLifecycle!(deleted(['rm-release', 'dm-ying']))
+    const ids = useSessionsSource.getState().sessions.map((s) => s.id)
+    expect(ids).not.toContain('rm-release')
+    expect(ids).not.toContain('dm-ying')
+  })
+
+  it('三份按需缓存一并作废(级联子会话可能不在列表里,却在缓存里躺着)', async () => {
+    await start()
+    const source = useSessionsSource.getState()
+    await source.ensureChapters('os-expose')
+    await source.ensureMessages('os-expose')
+    await source.ensureMarkers('os-expose')
+    expect('os-expose' in useSessionsSource.getState().chapters).toBe(true)
+
+    emitLifecycle!(deleted(['os-expose']))
+
+    const after = useSessionsSource.getState()
+    expect('os-expose' in after.chapters).toBe(false)
+    expect('os-expose' in after.messages).toBe(false)
+    expect('os-expose' in after.markers).toBe(false)
+    // 别人的缓存一格没动。
+    await useSessionsSource.getState().ensureChapters('os-provider')
+    emitLifecycle!(deleted(['lo-notes']))
+    expect('os-provider' in useSessionsSource.getState().chapters).toBe(true)
+  })
+
+  it('created 那一半本批不接:新建仍走判据 a,不从这条订阅里再说一遍', async () => {
+    await start()
+    emitLifecycle!({ type: 'created', sessionId: 'brand-new' })
+    await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+    expect(useSessionsSource.getState().sessions).toHaveLength(SESSION_META.length)
+  })
+
+  it('删除事件本身不落判据 a —— 一次删除不该换来一次整表重拉', async () => {
+    await start()
+    // 级联删掉的子会话常常不在列表里,信封落到「不认识」正好是判据 a 的形状。
+    emit!(envelope('never-seen', SESSION_EVENT_TYPES.SESSION_REMOVED))
+    await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('reset 会把这条订阅也退掉', async () => {
+    await start()
+    expect(emitLifecycle).toBeDefined()
+    useSessionsSource.getState().reset()
+    expect(emitLifecycle).toBeUndefined()
+  })
+})
+
+/**
+ * 数据源摘完之后把 id 交给形态机(expose/store.ts 里那条 onSessionsRemoved 订阅)。
+ * 这批用例钉的是**那条接缝真的接上了** —— 判据本身在 transitions.test.ts。
+ */
+describe('删除 → 形态夹持(接缝)', () => {
+  it('Quick Look 正开着被删的那条 → 退回总览', async () => {
+    await start()
+    useExposeStore.getState().openQuickLook('os-expose')
+    expect(useExposeStore.getState().view).toEqual({ mode: 'quicklook', sessionId: 'os-expose' })
+
+    emitLifecycle!({ type: 'deleted', sessionId: 'os-expose', cascadedSessionIds: ['os-expose'] })
+
+    expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
+  })
+
+  it('当前会话被删 → 回空态(不自动挑一条顶上)', async () => {
+    await start()
+    useExposeStore.getState().enterSession('os-compact')
+    expect(useExposeStore.getState().currentSessionId).toBe('os-compact')
+
+    emitLifecycle!({ type: 'deleted', sessionId: 'os-compact', cascadedSessionIds: ['os-compact'] })
+
+    expect(useExposeStore.getState().currentSessionId).toBe('')
+  })
+
+  it('删的是别的会话时当前会话一格不动', async () => {
+    await start()
+    useExposeStore.getState().enterSession('os-compact')
+    emitLifecycle!({ type: 'deleted', sessionId: 'lo-notes', cascadedSessionIds: ['lo-notes'] })
+    expect(useExposeStore.getState().currentSessionId).toBe('os-compact')
   })
 })

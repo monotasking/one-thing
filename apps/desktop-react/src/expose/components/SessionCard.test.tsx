@@ -94,8 +94,7 @@ describe('会话卡:每一格都有产地', () => {
 
 /**
  * F 批新增的两格:模型徽(有产地才画)与搜索高亮(命中词在卡上看得见)。
- * 摘要行仍是一个**空的格位** —— `lastMessagePreview` 落地前不画节点,
- * 所以卡不会先空着一行等它(见 SessionCard.tsx 里那段接缝注释)。
+ * H 批把摘要行接上(见下面那个 describe)。
  */
 describe('会话卡:模型徽', () => {
   it('lastModel 有值就出一枚空心 chip', () => {
@@ -135,5 +134,44 @@ describe('会话卡:搜索高亮', () => {
   it('空词一个 <mark> 都不出(不搜时卡面逐字与从前相同)', () => {
     setup()
     expect(document.querySelectorAll('mark').length).toBe(0)
+  })
+})
+
+/**
+ * H 批:摘要行(产地 `SessionMeta.lastMessagePreview`)。
+ *
+ * 两条要钉住,合起来才是「无产地的格不占高」:
+ *  1. 有产地时画成一行 `.digest`;
+ *  2. 缺席时**一个节点都不画** —— 不是画一个空的 <p> 等它。
+ */
+describe('会话卡:摘要行', () => {
+  it('lastMessagePreview 有值就画一行,写的是它自己而不是 preview', () => {
+    setup()
+    const digest = screen.getByTestId(`card-digest-${session.id}`)
+    expect(digest.textContent).toBe(session.digest)
+    expect(digest.textContent).not.toBe(session.preview)
+  })
+
+  it('缺席(存量老会话)时连节点都没有,所以卡不会先空着一行等它', () => {
+    const old = SESSIONS.find((x) => x.digest === null)!
+    render(
+      <SessionCard session={old} query="" current={false} focused={false} onEnter={vi.fn()} onQuickLook={vi.fn()} />,
+    )
+    expect(screen.queryByTestId(`card-digest-${old.id}`)).toBeNull()
+  })
+
+  it('摘要也高亮 —— 搜的格与卡上画的格是同一批', () => {
+    render(
+      <SessionCard session={session} query="判定函数" current={false} focused={false} onEnter={vi.fn()} onQuickLook={vi.fn()} />,
+    )
+    expect([...document.querySelectorAll('mark')].some((m) => m.textContent === '判定函数')).toBe(true)
+  })
+
+  it('高亮之后标题仍是卡里的第一个 span(gate-data.mjs 按它读标题)', () => {
+    render(
+      <SessionCard session={session} query="判定函数" current={false} focused={false} onEnter={vi.fn()} onQuickLook={vi.fn()} />,
+    )
+    const card = document.querySelector(`[data-session-id="${session.id}"]`)
+    expect(card?.querySelector('span')?.textContent).toBe(session.title)
   })
 })

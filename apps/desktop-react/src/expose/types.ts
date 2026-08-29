@@ -44,6 +44,21 @@ export interface SessionSummary {
    * 旧 mock 里这个字段叫 summary,那个名字会让人以为后端算过一段总结;没有。
    */
   preview: string
+  /**
+   * SessionMeta.lastMessagePreview —— **最后一条 user/assistant 消息的预览**
+   * (共享层读侧补齐 E 批新增的一格,H 批接上)。它与 `preview` 是并列的两格
+   * 而不是替换:一个说「从哪句话开的」,一个说「最近说到哪儿」。
+   *
+   * 缺席读作 null:写侧从那一批上线之后才维护,存量老会话本来就没有这一格
+   * (后端**刻意不做启动期全量回填**)。null = 卡面不画这一行,也就不占高 ——
+   * 「无产地的格不占位」在布局上的样子。
+   */
+  digest: string | null
+  /**
+   * SessionMeta.messageCount。缺席读作 null(老会话 / 后端还没算过);
+   * **0 是真值不是缺席** —— 一条真的空会话就该说自己是 0 条。
+   */
+  messageCount: number | null
   /** SessionMeta.updatedAt(毫秒时间戳)。显示成什么样是渲染层的事。 */
   updatedAt: number
   /**

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { currentGroups, useSessionsSource } from '../data/sessions-source'
+import { currentGroups, onSessionsRemoved, useSessionsSource } from '../data/sessions-source'
 import { SESSIONS_ITEM_ID } from '../stage/items'
 import { useStageStore } from '../stage/store'
 import * as T from './transitions'
@@ -84,3 +84,17 @@ export const useExposeStore = create<ExposeStore>()(
     },
   ),
 )
+
+/**
+ * 「有会话被删掉了」→ 形态夹持(H 批)。
+ *
+ * 这是同一条接缝的第二个方向:`currentGroups()` 是壳**问**数据源要事实,
+ * 这一条是数据源**告诉**壳事实没了。判据仍然全在纯函数
+ * (`T.sessionsRemoved`:Quick Look 退层 / 空掉的组退层 / 当前会话回空态 /
+ * 焦点退到序列首),壳只负责把那份**摘除之后**的分组事实递进去。
+ *
+ * 订阅在模块求值时装一次,不退订 —— 它和 store 本身同寿命,而 store 是单例。
+ */
+onSessionsRemoved((removedIds) => {
+  useExposeStore.setState((s) => T.sessionsRemoved(s, removedIds, currentGroups()))
+})

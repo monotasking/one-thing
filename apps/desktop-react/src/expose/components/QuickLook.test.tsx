@@ -80,6 +80,33 @@ describe('Quick Look 头部的 meta', () => {
     expect(meta.textContent).not.toContain('default')
   })
 
+  /*
+   * H 批接上的第四格:消息数(产地 `SessionMeta.messageCount`)。
+   * 缺席(老会话)不画,**0 照常画** —— 0 是真值不是缺席。
+   */
+  it('messageCount 有值就画成一句话,复数档', () => {
+    render(<QuickLook sessionId="os-provider" />)
+    expect(screen.getByTestId('quicklook-message-count').textContent).toBe('42 条消息')
+  })
+
+  it('单数档走 quicklook.messageCountOne', () => {
+    render(<QuickLook sessionId="os-compact" />)
+    expect(screen.getByTestId('quicklook-message-count').textContent).toBe('1 条消息')
+  })
+
+  it('缺席(存量老会话)不画这一格', () => {
+    render(<QuickLook sessionId="lo-notes" />)
+    expect(SESSIONS.find((x) => x.id === 'lo-notes')!.messageCount).toBeNull()
+    expect(screen.queryByTestId('quicklook-message-count')).toBeNull()
+  })
+
+  it('0 照常画 —— 一条真的空会话就该说自己是 0 条', () => {
+    const empty = { ...SESSIONS[0], id: 'empty-one', messageCount: 0 }
+    seedSessionsSource({ sessions: [...SESSIONS, empty] })
+    render(<QuickLook sessionId="empty-one" />)
+    expect(screen.getByTestId('quicklook-message-count').textContent).toBe('0 条消息')
+  })
+
   it('没跑过任何一轮的会话没有模型徽,但时间那一格照样在', () => {
     render(<QuickLook sessionId="lo-notes" />)
     const meta = screen.getByTestId('quicklook-meta')

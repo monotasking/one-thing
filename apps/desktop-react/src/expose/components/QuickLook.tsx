@@ -4,7 +4,7 @@ import { SKELETON_DELAY_MS } from '../../components/motion'
 import { useDelayedFlag } from '../../components/useDelayedFlag'
 import { Button } from '../../ui/Button'
 import { Kbd } from '../../ui/Kbd'
-import { useT } from '../../i18n'
+import { plural, useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { findSession } from '../projection'
@@ -102,12 +102,14 @@ export function QuickLook({ sessionId }: Props) {
             </div>
 
             {/*
-             * meta 行:模型 / agent / 时间。三格都有产地(SessionMeta 的
-             * lastModel / agentId / updatedAt),缺席的格不画。
+             * meta 行:模型 / agent / 消息数 / 时间。四格都有产地(SessionMeta 的
+             * lastModel / agentId / messageCount / updatedAt),缺席的格不画。
              *
-             * ── 共享层批的接缝 ────────────────────────────────────────────
-             * 消息数(`SessionMeta.messageCount`)与摘要格要等共享层那一批落地
-             * 之后才接:它们在这一行的末尾,和时间并排。本批不做。
+             * 消息数(H 批接上 E 批的 `messageCount`)排在时间之前:时间是这一行的
+             * 落款,读到它就该到头了,所以新来的格长在它左边。它不是徽而是一句话,
+             * 所以走 `.count`(纯文字)而不是 `.chip`(空心描边)。
+             * `null` 才是缺席 —— **0 会照常画**,一条真的空会话就该说自己是 0 条
+             * (判据在 projection.sessionMessageCountOf,组件不再判一次)。
              */}
             <div className={s.metaLine} data-testid="quicklook-meta">
               {session.model && (
@@ -121,6 +123,18 @@ export function QuickLook({ sessionId }: Props) {
                   title={t('quicklook.agentTitle', { agent: session.agentId })}
                 >
                   {session.agentId}
+                </span>
+              )}
+              {session.messageCount !== null && (
+                <span className={s.count} data-testid="quicklook-message-count">
+                  {t(
+                    plural(
+                      session.messageCount,
+                      'quicklook.messageCountOne',
+                      'quicklook.messageCount',
+                    ),
+                    { count: session.messageCount },
+                  )}
                 </span>
               )}
               <span className={s.time}>{timeOf(session.updatedAt)}</span>

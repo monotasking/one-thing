@@ -63,7 +63,7 @@
   min-width: 0;
 }
 
-/* meta 行:模型 / agent / 时间。缺席的格不画,所以这一行可能只有时间。 */
+/* meta 行:模型 / agent / 消息数 / 时间。缺席的格不画,所以这一行可能只有时间。 */
 .metaLine {
   display: flex;
   align-items: center;
@@ -84,6 +84,18 @@
   color: var(--text-4);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 消息数:它是**一句话**(「42 条消息」)而不是一枚徽,所以不套 chip 的描边 ——
+ * 一行里已经有两颗空心 chip 了,第三颗会把 meta 行读成一串标签。
+ * 字号 / 颜色与时间同档:它们是同一层信息(这条会话的两个刻度)。
+ */
+.count {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--text-4);
   white-space: nowrap;
 }
 

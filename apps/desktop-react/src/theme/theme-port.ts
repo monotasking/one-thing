@@ -8,9 +8,9 @@ import type { ApplyThemeResponse } from '@shared/ipc/themes'
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用
  * `configureThemePort` 换成假的。
  *
- * 形状是**平台调用面的子集**,不是新契约:四个方法逐条对应
+ * 形状是**平台调用面的子集**,不是新契约:五个方法逐条对应
  * `settingsApi.getSettings / getSystemTheme`、`themesApi.apply` 与
- * `platformApi.onSystemThemeChanged`,一个字段都没有多。
+ * `platformApi.onSystemThemeChanged / onSettingsChanged`,一个字段都没有多。
  */
 export interface ThemePort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
@@ -20,6 +20,13 @@ export interface ThemePort {
   applyTheme(themeId: string, mode: 'dark' | 'light'): Promise<ApplyThemeResponse>
   /** 系统明暗变化的推送面。返回退订函数。 */
   onSystemThemeChanged(callback: (theme: 'light' | 'dark') => void): () => void
+  /**
+   * 设置变更的推送面(共享层读侧补齐 E 批开的)。返回退订函数。
+   *
+   * 载荷是**脱敏过的整份设置** —— 与 `getSettings` 在同一道 Bearer 闸后交出去的
+   * 逐字同形,所以拿到它就够重判,不必再回问一趟。
+   */
+  onSettingsChanged(callback: (settings: AppSettings) => void): () => void
 }
 
 let port: ThemePort | undefined
@@ -40,10 +47,13 @@ export function configureThemePort(next: ThemePort | undefined): void {
  *
  *  - `onSystemThemeChanged` —— web 实现就是一条 `prefers-color-scheme` 的
  *    matchMedia 监听,**在新壳里真的工作**。系统换明暗即时重 apply。
- *  - `onSettingsChanged` —— web 实现是一条 `() => () => {}` 的空桩(那是 Electron
- *    独有的推送)。**所以「有人在旧壳里改了主题」这件事,新壳今天听不见**;
- *    补法是给 HTTP 面开一条设置变更推送,那要动共享层,不在本批。留了
- *    `refreshThemeFromSettings()` 作为手动重判口,将来新壳自己的设置页直接调它。
+ *  - `onSettingsChanged` —— D2 勘察时它还是一条 `() => () => {}` 的空桩,于是
+ *    「有人在旧壳里改了主题」这件事新壳听不见。**共享层读侧补齐 E 批把它补成了
+ *    真订阅**:server 把设置变更作为一条具名 SSE 事件下发(骑既有的
+ *    `GET /api/events`,不新开路由、不新开通道),载荷是脱敏过的整份设置。
+ *    H 批把它接上 —— theme-source 订这条流、重判 `decideTheme`、变了才重贴。
+ *    `refreshThemeFromSettings()` 留任:它现在是**手动**重判口(新壳自己的设置页
+ *    改完设置后可以直接调,不必等一趟推送回来)。
  */
 async function realPort(): Promise<ThemePort> {
   const [{ platformApi }, { themesApi }, { settingsApi }, { whenConnected }] = await Promise.all([
@@ -58,6 +68,7 @@ async function realPort(): Promise<ThemePort> {
     getSystemTheme: () => settingsApi.getSystemTheme(),
     applyTheme: (themeId, mode) => themesApi.apply({ themeId, mode }),
     onSystemThemeChanged: (callback) => platformApi.onSystemThemeChanged(callback),
+    onSettingsChanged: (callback) => platformApi.onSettingsChanged(callback),
   }
 }
 

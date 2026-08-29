@@ -76,6 +76,27 @@ export function sessionAgentIdOf(meta: SessionMeta): string | null {
   return agentId
 }
 
+/**
+ * 会话摘要 = 最后一条消息的预览。空串与缺席一样读作 null:后端只从共享层读侧
+ * 补齐那一批之后才写这一格,存量老会话没有它 —— 缺席时卡面**不画节点**,
+ * 而不是画一行空的(见 SessionSummary.digest 的注释)。
+ */
+export function sessionDigestOf(meta: SessionMeta): string | null {
+  const digest = (meta.lastMessagePreview ?? '').trim()
+  return digest || null
+}
+
+/**
+ * 消息条数。**0 与缺席在这里是两件事**:0 是「这条会话真的一条消息都没有」,
+ * 缺席是「后端没算过这一格」——所以只有后者读作 null。
+ * 非有限数 / 负数一律当没算过:它们不是一个能画在屏幕上的条数。
+ */
+export function sessionMessageCountOf(meta: SessionMeta): number | null {
+  const count = meta.messageCount
+  if (typeof count !== 'number' || !Number.isFinite(count) || count < 0) return null
+  return Math.floor(count)
+}
+
 /** 一条 SessionMeta → 一条列表事实。缺席的格一律给出诚实的空值,不编。 */
 export function toSessionSummary(meta: SessionMeta): SessionSummary {
   return {
@@ -84,6 +105,8 @@ export function toSessionSummary(meta: SessionMeta): SessionSummary {
     kind: sessionKindOf(meta),
     projectId: normalizeWorkingDirectory(meta.workingDirectory),
     preview: meta.previewText ?? '',
+    digest: sessionDigestOf(meta),
+    messageCount: sessionMessageCountOf(meta),
     updatedAt: meta.updatedAt,
     model: sessionModelOf(meta),
     agentId: sessionAgentIdOf(meta),

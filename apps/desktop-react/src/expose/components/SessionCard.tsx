@@ -86,15 +86,21 @@ export function SessionCard({ session, query, current, focused, onEnter, onQuick
         </p>
 
         {/*
-         * ── 摘要行的格位(共享层批的接缝) ──────────────────────────────────
-         * 这里空着一行的位置:等 `sessions.listMeta` 的 `lastMessagePreview`
-         * 落地之后,把它投影成 SessionSummary 上的一格,在这一处画成
-         * 一行 `.digest`(单行截断、`--text-4`)。
+         * ── 摘要行(H 批接上 E 批的 `lastMessagePreview`) ─────────────────
+         * 产地 `SessionMeta.lastMessagePreview` —— **最后一条消息**的一行预览,
+         * 与上面那行 `preview`(**第一条**用户消息)是并列的两格:
+         * 一句说「从哪儿开的」,一句说「最近说到哪儿」。
          *
-         * 现在**什么都不画**而不是画一个空节点:无产地的格不占高,是这块壳
-         * 「不画没有产地的东西」那条规矩在布局上的样子 —— 摘要来了卡才长高一行,
-         * 而不是每张卡先空着一行等它。
+         * 缺席(投影给 null:老会话在写侧那一批上线前没有这一格)时**一个节点
+         * 都不画** —— 无产地的格不占高,所以摘要来了卡才长高一行,而不是每张卡
+         * 先空着一行等它。它也在搜索判据里(sessionMatchesQuery),
+         * 「卡上看得见的才搜得到」两头对齐。
          */}
+        {session.digest && (
+          <p className={s.digest} data-testid={`card-digest-${session.id}`}>
+            <Highlight text={session.digest} query={query} />
+          </p>
+        )}
 
         <div className={s.meta}>
           {/*

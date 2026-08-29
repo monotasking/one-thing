@@ -47,6 +47,7 @@ configureSessionsPort({
   getMessagesPage: async () => ({ success: true, messages: [] }),
   getUserMarkers: async () => ({ success: true, markers: [] }),
   onSessionEvent: () => () => undefined,
+  onSessionLifecycle: () => () => undefined,
 })
 
 /**

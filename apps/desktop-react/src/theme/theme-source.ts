@@ -69,6 +69,23 @@ let preference: Pick<AppSettings, 'theme'> & { general?: AppSettings['general'] 
 }
 
 /**
+ * 上一次读到的系统明暗。设置变更时判据要它,而设置那条推送里没有它 ——
+ * 回问一趟 `getSystemTheme` 只是为了拿一个刚刚才推过来的值,不如记住。
+ * 初值与 `pull()` 的兜底同为 'dark'(那是问不到系统色时的读法)。
+ */
+let systemTheme: 'light' | 'dark' = 'dark'
+
+/**
+ * 上一次**贴成功**的判定。推送面用它做「变了才重贴」的判据:
+ * 一次 apply 是一趟 RPC + 一次整表重写,而设置页上改一个与主题无关的开关
+ * 也会推一份整设置过来 —— 没变就不该动屏幕。
+ *
+ * 只在成功之后记,所以上一次失败的判定会被重试;而 `pull()`(开场 / 手动重判)
+ * **不看它**:那两个口的语义就是「无条件重来一次」。
+ */
+let lastDecision: ThemeDecision | undefined
+
+/**
  * 「当前是哪套主题 + 哪个明暗」的判据 —— **与旧 Vue 壳逐字同源**:
  *  - 明暗:`settings.theme` 为 `'system'` 时取系统色(`settingsApi.getSystemTheme`,
  *    web 上就是看的人那台机器的 `prefers-color-scheme`),否则就是它自己
@@ -141,7 +158,7 @@ async function pull(): Promise<ThemeProbe> {
       general: settingsResponse.settings.general,
     }
   }
-  const systemTheme = systemResponse.success && systemResponse.theme ? systemResponse.theme : 'dark'
+  systemTheme = systemResponse.success && systemResponse.theme ? systemResponse.theme : 'dark'
   return applyDecision(decideTheme(preference, systemTheme))
 }
 
@@ -158,28 +175,62 @@ async function applyDecision(decision: ThemeDecision): Promise<ThemeProbe> {
   probe.themeId = decision.themeId
   probe.mode = decision.mode
   probe.error = undefined
+  lastDecision = decision
   return probe
+}
+
+/**
+ * 推送面专用:判据变了才重贴。
+ *
+ * 两条推送(系统明暗 / 设置变更)都走这里 —— 它们的共同点是「有人递来一个新事实,
+ * 但新事实未必换得出一套新主题」:改一个与主题无关的设置开关、系统色推来一个
+ * 和现在一样的值,都不该换来一趟 apply RPC 与一次整表重写。
+ * 开场(`pull`)与手动重判(`refreshThemeFromSettings`)**不走这里**:
+ * 那两个口的语义就是无条件重来一次。
+ */
+function applyIfChanged(decision: ThemeDecision): Promise<ThemeProbe> {
+  if (
+    lastDecision &&
+    lastDecision.themeId === decision.themeId &&
+    lastDecision.mode === decision.mode
+  ) {
+    return Promise.resolve(probe)
+  }
+  return applyDecision(decision)
 }
 
 let started: Promise<ThemeProbe> | undefined
 let unsubscribe: (() => void) | undefined
+let unsubscribeSettings: (() => void) | undefined
 
 /**
- * 启动主题源:等传输面就绪 → 拉一次 → 订系统明暗变化。幂等。
+ * 启动主题源:等传输面就绪 → 拉一次 → 订**两条**推送。幂等。
  *
- * 订阅的是 `platformApi.onSystemThemeChanged`(web 实现 = `prefers-color-scheme`
- * 监听,在新壳里真的工作)。**设置变更没有推送面**(web 上 `onSettingsChanged`
- * 是空桩)—— 缺口写在 theme-port.ts 的文件头,手动重判口是
- * `refreshThemeFromSettings()`。
+ * 两条推送各管一半判据,合起来正好是 `decideTheme` 的两个入参:
+ *  - `onSystemThemeChanged` —— 系统明暗(web 实现 = `prefers-color-scheme`
+ *    监听,在新壳里真的工作);
+ *  - `onSettingsChanged` —— 设置偏好(共享层读侧补齐 E 批把 web 的空桩换成了
+ *    真订阅,H 批接上)。载荷就是脱敏过的整份设置,直接喂判据 ——
+ *    **不再回问一趟 `getSettings`**:回问拿到的还是这一份,却多一趟 RPC,
+ *    而且两份之间还能插进第三次变更。
+ *
+ * 两条都经 `applyIfChanged`:判据没变就不重贴(见那个函数的注释)。
  */
 export function startThemeSource(): Promise<ThemeProbe> {
   started ??= (async () => {
     const port = await themePort()
     await port.ready()
     unsubscribe?.()
-    unsubscribe = port.onSystemThemeChanged((systemTheme) => {
+    unsubscribe = port.onSystemThemeChanged((next) => {
+      systemTheme = next
       // 只有跟随系统时才需要重判;但重判本身是纯函数,无条件跑更省一个分支。
-      void applyDecision(decideTheme(preference, systemTheme))
+      void applyIfChanged(decideTheme(preference, systemTheme))
+    })
+    unsubscribeSettings?.()
+    unsubscribeSettings = port.onSettingsChanged((settings) => {
+      if (!settings) return
+      preference = { theme: settings.theme, general: settings.general }
+      void applyIfChanged(decideTheme(preference, systemTheme))
     })
     return pull()
   })().catch((error) => {
@@ -189,7 +240,12 @@ export function startThemeSource(): Promise<ThemeProbe> {
   return started
 }
 
-/** 重新读一次设置并重贴 —— 给「有人改了主题」这件事留的手动口(见 theme-port 文件头)。 */
+/**
+ * 重新读一次设置并**无条件**重贴。
+ *
+ * 设置变更从 H 批起有推送面(见上),所以这不再是「听不见时的补救」而是一个
+ * 手动口:新壳自己的设置页改完可以直接调它,不必等一趟推送绕回来。
+ */
 export function refreshThemeFromSettings(): Promise<ThemeProbe> {
   return pull().catch((error) => {
     probe.error = error instanceof Error ? error.message : String(error)
@@ -205,8 +261,12 @@ export function themeProbe(): ThemeProbe {
 export function resetThemeSourceForTest(): void {
   unsubscribe?.()
   unsubscribe = undefined
+  unsubscribeSettings?.()
+  unsubscribeSettings = undefined
   started = undefined
   preference = { theme: 'system' }
+  systemTheme = 'dark'
+  lastDecision = undefined
   probe.applied = false
   probe.count = 0
   probe.themeId = undefined

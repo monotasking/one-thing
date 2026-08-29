@@ -205,6 +205,8 @@ export const en: Record<MessageKey, string> = {
   'quicklook.next': 'Next session',
   'quicklook.modelTitle': 'Model · {model}',
   'quicklook.agentTitle': 'Agent · {agent}',
+  'quicklook.messageCount': '{count} messages',
+  'quicklook.messageCountOne': '{count} message',
   'quicklook.loading': 'Loading messages…',
   'quicklook.empty': 'No messages in this session yet',
   'quicklook.roleUser': 'You',
