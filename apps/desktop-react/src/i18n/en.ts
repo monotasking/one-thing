@@ -169,8 +169,10 @@ export const en: Record<MessageKey, string> = {
   'search.scopeFiles': 'Files',
   'search.resultsLabel': 'Results',
   'search.noResults': 'No results',
-  'search.badgeSession': 'Session',
-  'search.badgeMessage': 'Message',
+  /* Badge text rides the same fixed-width mono chip as file-type codes (TS/MD),
+   * so English uses code-style caps that fit the chip; zh uses 会话/消息. */
+  'search.badgeSession': 'CHAT',
+  'search.badgeMessage': 'MSG',
   'search.openedFile': 'Opened {file}',
 
   /* ── quick look ───────────────────────────────────────────────────── */
