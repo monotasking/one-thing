@@ -11,6 +11,9 @@
  * ────────────────────────────────────────────────────────────────────────── */
 @import './tokens.css';
 @import './palette.css';
+/* 主题桥必须排在 palette 之后:它靠 `:root[data-theme-bridge]` 的特异性接管
+ * palette 的静态色值。没打标记(没连上 core)时这块规则不匹配,palette 原样生效。 */
+@import './theme-bridge.css';
 
 *,
 *::before,

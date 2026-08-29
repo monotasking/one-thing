@@ -195,6 +195,52 @@ Exposé 总览、检索面板会话侧、Quick Look、钢琴键 TOC。
 **渲染出的会话集合(id + 标题)与 HTTP `listMeta` 逐条相等**(集合相等,多画一条
 假卡同样是红)→ 开 Quick Look 断言那条真消息的正文出现在 DOM 里。
 
+### 5.10 D2 落地记录(主题管道,2026-08-29)
+
+P1 的主题那一半已落地,`apps/desktop-react` 的颜色从此**全部来自 `themes` RPC 域**
+(共享主题层一行未改,旧壳零影响)。§0「token 策略三段结构」三段各就各位:
+
+| 段 | 落点 | 内容 |
+| --- | --- | --- |
+| ① 命名归新壳 | `src/styles/palette.css`(未改) | 六族 token,组件只认它们 |
+| ② 色值从主题管道来 | `src/theme/theme-source.ts` + `theme-port.ts` | 判据 → `themes.apply` → 整表(654 键)贴 `:root` |
+| ② 键名翻译 | `src/styles/theme-bridge.css`(85 行) | 29 个新壳键 ← `--ui-*`,**全仓唯一出现 `--ui-*` 的文件** |
+| ③ 结构值归新壳 | `src/styles/tokens.css`(未改) | `--r-* / --sp-* / --fs-* / --sh-* / --z-*`,与主题无关 |
+
+**当前主题的判据**与旧 Vue 壳同源:明暗 = `settings.theme`,为 `'system'` 时取
+`settings.getSystemTheme`(web 上就是看的人那台机器的 `prefers-color-scheme`);
+主题 id = 按明暗取 `general.darkThemeId` / `general.lightThemeId`,空则兜底 `flexoki`。
+
+**三条裁量**
+
+- **整表落在一个 `<style>` 的 `:root{}` 里,不是 `documentElement.style`**。主题表
+  里有 `--accent` / `--danger` 两个键与 palette.css 撞名(主题层早有这两个通用
+  别名);行内样式优先级高于任何样式表,那两个键就会绕过桥直接落地,而
+  `--danger` 在主题里是原始红、桥要的是过了对比度护栏的 `--ui-status-danger-fg`。
+  改用样式表后 `:root[data-theme-bridge]` 比 `:root` 高一档,**桥永远赢** ——
+  「态强度只在桥里合成」这条治理才真的成立。
+- **面四层梯按角色对位,不按明度对位**。flexoki 亮档里越浮的纸越暗
+  (app `#E6E4D9` → sidebar `#DAD8CE` → panel `#D8D6CC` → floating `#C2C0B8`),
+  与静态 palette 的「越浮越白」方向相反。梯子本身单调,四档不挤;方向是主题的
+  语义,跟着它走才叫「色值从主题管道来」。
+- **`--tint-ok` / `--tint-danger` 用主题现成的 `--ui-status-*-bg`(15%)**,不再自己
+  兑 12%。差三个百分点,换来「状态色的淡底由主题一处定义」。
+
+**明暗切换**:订 `platformApi.onSystemThemeChanged`(web 实现 = `prefers-color-scheme`
+监听,在新壳里真的工作),换台重判重贴。**缺口**:`onSettingsChanged` 在 web 传输面
+上是空桩(那是 Electron 独有的推送),所以「有人在旧壳里改了主题」这件事新壳今天
+听不见;补法是给 HTTP 面开一条设置变更推送,要动共享层,不在本批。留了
+`refreshThemeFromSettings()` 作为手动重判口,将来新壳自己的设置页直接调它。
+
+**没连上 core = 不打 `data-theme-bridge` 标记**,palette.css 静态值原样生效
+(浏览器直开零变化)。与 D1「不回退 mock」是同一条纪律的两面。
+
+**门**:`npm run gate:theme`(`scripts/gate-theme.mjs`)。dark / light 各一轮:脚本
+写设置 → 直接问 core 要变量表(事实)→ 拉起应用 → 断言应用判出的 `{themeId, mode}`
+与脚本一致、贴上的键数一致、**抽样 12 个横跨六族的 `--ui-*` 键在
+`getComputedStyle(:root)` 上与表逐字相等**、桥的标记在场、`--surface-2` 不再是
+palette 静态值且等于 `--ui-surface-panel-bg`、`color-scheme` 跟着明暗走。
+
 ## 6. 首版能力缺口(诚实清单)
 
 新应用走 HTTP transport,以下能力首版**没有**,与 `PlatformCapabilities` 能力位及各域 http 分叉的既有裁定一致:

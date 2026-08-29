@@ -1,0 +1,84 @@
+/* ── 主题桥 ───────────────────────────────────────────────────────────────────
+ * palette.css 说过「之后由 theme-bridge 换掉『值的来源』,变量名保持不变」——
+ * 这里就是那一步。左边一律是**新壳自己的名字**,右边一律是主题管道下发的
+ * `--ui-*`(`themes` RPC 域 `apply` 返回的表,由 theme/theme-source.ts 贴上 :root)。
+ *
+ * 三条规矩:
+ *  1. **全仓只有这一个文件出现 `--ui-*`**。组件、tokens.css、palette.css 里
+ *     一个都不许有 —— 新壳的命名自成一族,主题只提供值。
+ *  2. **激活靠标记**:`data-theme-bridge` 由 theme-source 在变量表真的贴上去之后
+ *     才打。没连上 core / 浏览器直开 = 标记不在 = 这整块规则不匹配 =
+ *     palette.css 的静态值原样生效。
+ *  3. **特异性让桥永远赢**:主题表落在一个 `<style>` 的 `:root{}` 里(不是行内
+ *     样式),而这里是 `:root[data-theme-bridge]`,高一档。主题表里恰好也有
+ *     `--accent` / `--danger` 两个同名键,靠这一档差被桥盖住 —— 理由写在
+ *     theme-source.ts 的文件头。
+ *
+ * **不在这里出现的键**(palette.css 里已经是 color-mix 派生的,基础 token 一换
+ * 它们自动跟着走,重定义反而是抄第二遍):
+ *   --surface-2-hover / --surface-2-sel / --surface-2-sel-hover
+ *   --scrollbar-thumb / --scrollbar-thumb-hover
+ *   --line-accent / --surface-accent / --surface-drop
+ * 结构族(--r-* / --sp-* / --fs-* / --sh-* / --z-*,在 tokens.css)也不在这里:
+ * 它们是**形**不是**色**,来源是规范画布,与主题无关(§0 第 ③ 段)。
+ * ────────────────────────────────────────────────────────────────────────── */
+:root[data-theme-bridge] {
+  /* ── 面四层梯 ──────────────────────────────────────────────────────────────
+   * 按**角色**对位,不按明度对位。flexoki 亮档里越浮的纸越暗(app #E6E4D9 →
+   * sidebar #DAD8CE → panel #D8D6CC → floating #C2C0B8),与静态 palette 的
+   * 「越浮越白」方向相反 —— 那是主题自己的语义,跟着它走才叫「色值从主题管道来」。
+   * 梯子本身是单调的,四档不会挤在一起。 */
+  --surface-0: var(--ui-surface-app-bg); /* 应用底纸 */
+  --surface-1: var(--ui-surface-sidebar-bg); /* 侧栏 / 次级面 */
+  --surface-2: var(--ui-surface-panel-bg); /* 内容面(不投影) */
+  --surface-3: var(--ui-surface-floating-bg); /* 浮层(投影) */
+
+  /* ── 墨四档 ────────────────────────────────────────────────────────────── */
+  --text-1: var(--ui-text-primary-fg);
+  --text-2: var(--ui-text-secondary-fg);
+  --text-3: var(--ui-text-muted-fg);
+  --text-4: var(--ui-text-faint-fg); /* 最淡的一档;placeholder/disabled 另有其键,新壳不用 */
+
+  /* ── 线两档 ────────────────────────────────────────────────────────────── */
+  --line-1: var(--ui-border-subtle-border); /* 淡线:分隔、行间 */
+  --line-2: var(--ui-border-default-border); /* 深线:控件边、卡边 */
+
+  /* ── accent 与状态色 ──────────────────────────────────────────────────────
+   * --accent-deep 在静态 palette 里是「按下去更重」的那一档;主题给的是
+   * action-primary 的 hover 档(亮档里它比底色**更浅**)。这里按**角色**对位:
+   * 主题决定「主操作的第二档长什么样」,新壳不替它决定明暗方向。 */
+  --accent: var(--ui-action-primary-bg);
+  --accent-deep: var(--ui-action-primary-hover-bg);
+  --on-accent: var(--ui-action-primary-fg);
+  --ok: var(--ui-status-success-fg);
+  --danger: var(--ui-status-danger-fg); /* 过了对比度护栏的那一版,不是原始红 */
+  --on-danger: var(--ui-action-danger-fg);
+
+  /* ── 态强度:唯一的合成点 ─────────────────────────────────────────────────
+   * 主题表里**前景色没有 -rgb 变体**(`-rgb` 只有 accent / bg / status 等 12 键),
+   * 所以薄膜用 color-mix 现合成;选中态用现成的 --accent-rgb。
+   * 强度数字(6% / 10% / 10% / 16%)来自规范画布,住在这一个文件里 ——
+   * 等价于旧系统「档位住在主题层」的治理。 */
+  --st-hover: color-mix(in srgb, var(--ui-text-primary-fg) 6%, transparent);
+  --st-active: color-mix(in srgb, var(--ui-text-primary-fg) 10%, transparent);
+  --st-sel: rgba(var(--accent-rgb), 0.1);
+  --st-sel-hover: rgba(var(--accent-rgb), 0.16);
+
+  /* ── 字面 rgba 的那一族:主题化版本 ───────────────────────────────────────
+   * 静态 palette 里它们是写死的 rgba(前景墨 / 白纸的某个透明度)。这里按同一
+   * 语义、同一透明度从主题色现推,换主题跟着走。 */
+  --scrim: color-mix(in srgb, var(--ui-text-primary-fg) 40%, transparent);
+  --glass: color-mix(in srgb, var(--ui-surface-floating-bg) 55%, transparent); /* Dock 毛玻璃 */
+  --dock-sep: color-mix(in srgb, var(--ui-text-primary-fg) 14%, transparent);
+  --accent-soft: rgba(var(--accent-rgb), 0.12);
+  --accent-ring: rgba(var(--accent-rgb), 0.18); /* focus 柔光环 */
+  --tint-accent: rgba(var(--accent-rgb), 0.12);
+  /* 状态淡底:主题自带现成的一档(status-*-bg,15%),用它而不是自己再兑一次 12%
+   * —— 差三个百分点,换来的是「状态色的淡底由主题一处定义」。 */
+  --tint-ok: var(--ui-status-success-bg);
+  --tint-danger: var(--ui-status-danger-bg);
+
+  /* ── tooltip 反色块 ───────────────────────────────────────────────────── */
+  --tooltip-bg: var(--ui-surface-tooltip-bg);
+  --tooltip-text: var(--ui-surface-tooltip-fg);
+}
