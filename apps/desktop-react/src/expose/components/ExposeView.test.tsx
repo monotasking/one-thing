@@ -1,3 +1,4 @@
+import { StrictMode } from 'react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { AppShell } from '../../components/AppShell'
@@ -88,11 +89,31 @@ describe('Esc 的让位契约', () => {
     expect(placementOfSessions()).toEqual({ kind: 'stage' })
   })
 
-  it('内层消费不了才轮到宿主:总览上的 Esc 关掉这块面', () => {
+  it('内层消费不了才轮到宿主:总览上的 Esc 关掉这块面', async () => {
     render(<AppShell />)
     cmdE()
     esc()
+    // 宿主的判定在派发结束后的微任务里(注册序免疫修复),等一拍再看。
+    await act(async () => { await Promise.resolve() })
     expect(SESSIONS_ITEM_ID in useStageStore.getState().placements).toBe(false)
+  })
+
+  it('注册序免疫:StrictMode 双挂载把内容层监听器排到宿主之后,Esc 仍只退一层', async () => {
+    /*
+     * 真机抓到的回归(2026-08-30):React StrictMode 开发期双挂载让 ExposeView
+     * 的 window 监听器卸了再挂,最终落在 StageOverlay 之后;宿主若**同步**看
+     * defaultPrevented,轮到它时内层还没标记,QuickLook 开着按 Esc 整块面板被关。
+     * 修复=宿主把判定推迟到派发结束后的微任务。本用例用 StrictMode 渲染真实
+     * 复现那个注册序(撤掉微任务修复它就红),断言 Esc 只收 QuickLook、面板还在。
+     */
+    render(<StrictMode><AppShell /></StrictMode>)
+    cmdE()
+    const focusId = useExposeStore.getState().focusId
+    act(() => useExposeStore.getState().openQuickLook(focusId))
+    esc()
+    await act(async () => { await Promise.resolve() })
+    expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
+    expect(placementOfSessions()).toEqual({ kind: 'stage' })
   })
 
   it('搜索词是 Esc 的第 0 层:先清词,面板与视图都不动', () => {

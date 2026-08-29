@@ -47,7 +47,19 @@ export function StageOverlay() {
   useEffect(() => {
     if (!stageId) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !e.defaultPrevented) closeStage()
+      if (e.key !== 'Escape') return
+      /*
+       * 判定推迟到**整轮派发结束后**(微任务),不在自己这一格同步看
+       * `defaultPrevented`:同目标同相位的监听器按注册序执行,而内容层的
+       * 监听器可能注册在宿主之后 —— 真机抓到的现场是 React StrictMode 的
+       * 开发期双挂载把 ExposeView 的监听器重排到了本组件后面,于是宿主先
+       * 拿到 Esc、看见「还没人消费」就把面板关了,QuickLook 的那层让位被跳过。
+       * `defaultPrevented` 在派发结束后是稳定的,微任务里读它,契约语义
+       * 一字不变(「内层没消费这一下才轮到关面板」),对注册序彻底免疫。
+       */
+      queueMicrotask(() => {
+        if (!e.defaultPrevented) closeStage()
+      })
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
