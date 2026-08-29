@@ -81,6 +81,25 @@
   background: var(--st-hover);
 }
 
+/* 细梁把手:11px 素条太隐形("收起后弄不出来"的报障根因),
+ * 常驻一枚展开方向的双箭头示意"这是控件",hover 转正色。 */
+.railIcon {
+  width: 12px;
+  height: 12px;
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease);
+}
+
+.rail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rail:hover .railIcon {
+  color: var(--text-1);
+}
+
 /* 把手是不可见热区:贴在**内缘**(朝主区那一侧),自己不画一个像素。 */
 .handle {
   position: absolute;

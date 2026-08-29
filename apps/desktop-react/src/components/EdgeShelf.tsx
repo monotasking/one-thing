@@ -46,6 +46,14 @@ const COLLAPSE_ICON: Record<ShelfSide, LucideIcon> = {
   bottom: ChevronsDown,
 }
 
+/* 细梁上的展开把手:方向 = 收起的反向(往主区里长) */
+const EXPAND_ICON: Record<ShelfSide, LucideIcon> = {
+  left: ChevronsRight,
+  right: ChevronsLeft,
+  top: ChevronsDown,
+  bottom: ChevronsUp,
+}
+
 /** 竖边的厚度写进 width,横边写进 height —— CSS 侧「换个轴读」的唯一一处。 */
 function thicknessStyle(side: ShelfSide, px: string): { width?: string; height?: string } {
   return side === 'left' || side === 'right' ? { width: px } : { height: px }
@@ -247,7 +255,12 @@ export function EdgeShelf({ side }: Props) {
           className={s.rail}
           onClick={toggleCollapsed}
           aria-label={t('shelf.expand', { name })}
-        />
+        >
+          {(() => {
+            const ExpandIcon = EXPAND_ICON[side]
+            return <ExpandIcon className={s.railIcon} strokeWidth={1.75} aria-hidden="true" />
+          })()}
+        </button>
       ) : (
         <>
           <div
