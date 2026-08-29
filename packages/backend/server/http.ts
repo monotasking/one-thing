@@ -101,10 +101,11 @@ export function createOnethingServerRequestHandler(
     response.on('finish', logRequest)
     response.on('close', logRequest)
 
+    const corsOrigin = resolveCorsOrigin(readHeader(request, 'origin'), options.corsOrigin)
     if (request.method !== 'OPTIONS') {
       const authError = checkRequestAuthorization(request, url, options)
       if (authError) {
-        sendJson(response, 401, { success: false, error: authError }, options.corsOrigin)
+        sendJson(response, 401, { success: false, error: authError }, corsOrigin)
         return
       }
     }
@@ -114,14 +115,14 @@ export function createOnethingServerRequestHandler(
       response,
       url,
       runtime: options.runtime,
-      corsOrigin: options.corsOrigin,
+      corsOrigin,
       requestContext,
       rpcContext: createServerRpcDispatchContext(options.workspaceRoot, requestContext),
     }).catch(error => {
       sendJson(response, 500, {
         success: false,
         error: error instanceof Error ? error.message : String(error),
-      }, options.corsOrigin)
+      }, corsOrigin)
     })
   }
 }
@@ -732,10 +733,41 @@ function writeSse(response: ServerResponse, eventName: string, payload: unknown,
   response.write(`data: ${JSON.stringify(payload)}\n\n`)
 }
 
+/**
+ * 每请求解析一次「回给浏览器的 CORS 源」。
+ *
+ * 这张面是「一个 core,任何 UI」的门面:web 前端(5174)、React 壳的 vite
+ * dev(5175)、打包壳的 `file://`(Origin 为 `null`)都会跨源打过来,而真正的
+ * 安全闸是 Bearer token(`checkRequestAuthorization`,loopback 启动也铸 token)——
+ * CORS 在这里只挡「浏览器网页顺手骑车」,不该再按端口一个个点名(2026-08-29,
+ * 新壳 5175 被写死的 5174 拒掉,预检 204 之后真请求全军覆没的现场)。
+ *
+ * 规则:显式配置的源永远认;此外**回环源**(127.0.0.1 / localhost / [::1] 任意
+ * 端口)与 `null`(file:// 页面)按请求回显 —— 它们没有 token 依旧过不了 401。
+ * 非回环的陌生源照旧只认配置值,浏览器该拦还拦。
+ */
+function resolveCorsOrigin(requestOrigin: string | undefined, configured?: string): string | undefined {
+  if (!requestOrigin) return configured
+  if (requestOrigin === configured) return configured
+  if (requestOrigin === 'null') return requestOrigin
+  try {
+    const { protocol, hostname } = new URL(requestOrigin)
+    if ((protocol === 'http:' || protocol === 'https:')
+      && (hostname === '127.0.0.1' || hostname === 'localhost' || hostname === '[::1]' || hostname === '::1')) {
+      return requestOrigin
+    }
+  } catch {
+    // 不是合法 URL 的 Origin:按没匹配处理,落回配置值。
+  }
+  return configured
+}
+
 function corsHeaders(origin?: string): Record<string, string> {
   if (!origin) return {}
   return {
     'access-control-allow-origin': origin,
+    // 源是按请求回显的,任何缓存层都不许拿一个源的回答喂另一个源。
+    vary: 'origin',
     'access-control-allow-methods': 'GET,POST,DELETE,OPTIONS',
     'access-control-allow-headers': 'authorization,content-type,x-onething-user-id,x-onething-workspace-id',
   }

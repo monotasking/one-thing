@@ -63,11 +63,14 @@
 #   lines:web.ts 758→770(+12):`requestJson` 与 `createEventSourceSubscription` 各改走
 #     `platform/transport-config.ts` 的单槽端口(缺席=原样相对路径、原样 headers,
 #     apps/web 零变化、决不双份注入),其余是解释这条纪律的注释。
+#   lines:http.ts 743→775(+32,2026-08-29):CORS 源按请求解析 —— 回环源/null 回显、
+#   陌生源仍钉配置值(resolveCorsOrigin + vary),React 壳 5175 被写死 5174 拒掉的修复;
+#   零新通道,涨的是解析函数与纪律注释。
 #   lines:http.ts 726→743(+17):`checkRequestAuthorization` 多收一个 `url` 形参,
 #     **仅** `GET /api/events` 认 `?token=`(EventSource 带不了 header,别无他路),
 #     走同一个 `tokenMatches` 常时比较;名单只有这一条,请求日志只记 pathname。
 channels:IPC_CHANNELS 42
 lines:apps/electron/src/preload/bridge.ts 674
-lines:packages/backend/server/http.ts 743
+lines:packages/backend/server/http.ts 775
 lines:packages/renderer/platform/web.ts 770
 lines:packages/shared/ipc/channels.ts 234

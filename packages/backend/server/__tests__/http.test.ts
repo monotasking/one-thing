@@ -1084,6 +1084,48 @@ describe('createOnethingHttpServer', () => {
     expect(response.headers.get('access-control-allow-headers')).toContain('x-onething-workspace-id')
   })
 
+  /**
+   * 回环源按请求回显(2026-08-29,React 壳接入)。这张面是「一个 core,任何 UI」
+   * 的门面:web 前端 5174、React 壳 vite dev 5175、打包壳 file://(Origin `null`)
+   * 都跨源打过来,真正的闸是 Bearer —— CORS 不按端口点名。三条要钉的:
+   * 回环的陌生端口回显、`null` 回显、非回环的陌生源仍只认配置值。
+   */
+  it('reflects loopback and null origins while pinning foreign origins to the configured one', async () => {
+    const server = await listen(createOnethingHttpServer({
+      corsOrigin: 'http://127.0.0.1:5174',
+      runtime: createOnethingRuntimeFacade({
+        sessions: {
+          list: vi.fn(async () => []),
+          create: vi.fn(async () => ({ id: 'session-1' })),
+        },
+        events: { subscribe: vi.fn(() => () => {}) },
+      }),
+    }))
+
+    const preflight = (origin: string) => fetch(`${baseUrl(server)}/api/rpc`, {
+      method: 'OPTIONS',
+      headers: { origin, 'access-control-request-headers': 'authorization,content-type' },
+    })
+
+    const loopback = await preflight('http://localhost:5175')
+    expect(loopback.status).toBe(204)
+    expect(loopback.headers.get('access-control-allow-origin')).toBe('http://localhost:5175')
+    expect(loopback.headers.get('vary')).toBe('origin')
+
+    const fileNull = await preflight('null')
+    expect(fileNull.headers.get('access-control-allow-origin')).toBe('null')
+
+    const foreign = await preflight('https://evil.example.com')
+    expect(foreign.headers.get('access-control-allow-origin')).toBe('http://127.0.0.1:5174')
+
+    // 真请求(非预检)同一把尺:回环源的 401 回包也带回显的 ACAO,
+    // 浏览器才能把「差的是 token」如实交给页面,而不是折成一次 CORS 失败。
+    const real = await fetch(`${baseUrl(server)}/api/capabilities`, {
+      headers: { origin: 'http://localhost:5175' },
+    })
+    expect(real.headers.get('access-control-allow-origin')).toBe('http://localhost:5175')
+  })
+
   // P4c 第七批:「主题 REST 走 facade」这条用例整只删掉 —— 三条路由、
   // `/api/themes/<id>[/apply]` 正则块与 `themes` adapter 一起没了。
   // 五条方法改由 `packages/backend/rpc/__tests__/themes-domain.test.ts` 钉。
