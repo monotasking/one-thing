@@ -63,6 +63,8 @@ export const zh = {
   'shelf.labelTop': '顶栏',
   'shelf.labelBottom': '底栏',
   'shelf.collapse': '收起{name}',
+  'shelf.popOut': '弹出 {name} 为浮窗',
+  'shelf.closeAll': '关闭整栏 {name}',
   'shelf.expand': '展开{name}',
   'shelf.resize': '调整{name}厚度',
 

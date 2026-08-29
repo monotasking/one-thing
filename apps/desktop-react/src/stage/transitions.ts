@@ -387,6 +387,11 @@ export function edgeToFloat(
 
 /* ── 架子 ──────────────────────────────────────────────────────────────────── */
 
+/** 整栏关闭:这条边上的 tab 全部收回 Dock(逐个走 closeToDock,复用它的全部清理)。 */
+export function closeShelf(state: StageState, side: ShelfSide): StageState {
+  return state.shelves[side].tabs.reduce((st, id) => closeToDock(st, id), state)
+}
+
 /** 激活一条边上的某个 tab。不在这条边上、或已经是活动的,都是恒等变换。 */
 export function activateShelfTab(state: StageState, side: ShelfSide, id: string): StageState {
   const shelf = state.shelves[side]

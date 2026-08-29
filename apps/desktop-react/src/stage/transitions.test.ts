@@ -28,6 +28,7 @@ import {
   moveFloat,
   openAs,
   placementForOpen,
+  closeShelf,
   placementOf,
   resizeFloat,
   resizeFrom,
@@ -806,5 +807,24 @@ describe('items 表', () => {
   it('除了会话总览,其余都不是接管型', () => {
     const takeovers = STAGE_ITEMS.filter((i) => i.takeover).map((i) => i.id)
     expect(takeovers).toEqual(['sessions'])
+  })
+})
+
+describe('closeShelf(整栏关闭)', () => {
+  it('这条边上的 tab 全部收回 Dock,别的边不动', () => {
+    let st = initialStageState
+    st = clickDockIcon(st, 'diff', { kind: 'edge', side: 'right' })
+    st = clickDockIcon(st, 'terminal', { kind: 'edge', side: 'right' })
+    st = clickDockIcon(st, 'files', { kind: 'edge', side: 'left' })
+    st = closeShelf(st, 'right')
+    expect(st.shelves.right.tabs).toEqual([])
+    expect(st.shelves.right.activeId).toBeNull()
+    expect(placementOf(st, 'diff').kind).toBe('dock')
+    expect(placementOf(st, 'terminal').kind).toBe('dock')
+    expect(st.shelves.left.tabs).toEqual(['files'])
+  })
+
+  it('空栏是恒等变换', () => {
+    expect(closeShelf(initialStageState, 'top')).toBe(initialStageState)
   })
 })

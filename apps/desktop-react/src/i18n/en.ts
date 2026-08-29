@@ -60,6 +60,8 @@ export const en: Record<MessageKey, string> = {
   'shelf.labelTop': 'Top shelf',
   'shelf.labelBottom': 'Bottom shelf',
   'shelf.collapse': 'Collapse {name}',
+  'shelf.popOut': 'Pop {name} out as a window',
+  'shelf.closeAll': 'Close all in {name}',
   'shelf.expand': 'Expand {name}',
   'shelf.resize': 'Resize {name}',
 

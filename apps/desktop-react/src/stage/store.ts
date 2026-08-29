@@ -39,6 +39,7 @@ interface StageStore extends StageState, StageSettings {
   resizeFloat: (id: string, rect: FloatRect) => void
   activateShelfTab: (side: ShelfSide, id: string) => void
   toggleShelfCollapsed: (side: ShelfSide) => void
+  closeShelf: (side: ShelfSide) => void
   setShelfThickness: (side: ShelfSide, thickness: number) => void
   setDockDisplay: (d: DockDisplay) => void
   setDockEdge: (e: DockEdge) => void
@@ -95,6 +96,7 @@ export const useStageStore = create<StageStore>()(
       resizeFloat: (id, rect) => set((s) => T.resizeFloat(s, id, rect, viewport())),
       activateShelfTab: (side, id) => set((s) => T.activateShelfTab(s, side, id)),
       toggleShelfCollapsed: (side) => set((s) => T.toggleShelfCollapsed(s, side)),
+      closeShelf: (side) => set((s) => T.closeShelf(s, side)),
       setShelfThickness: (side, thickness) =>
         set((s) =>
           T.setShelfThickness(s, side, thickness, T.shelfViewportExtent(side, viewport())),

@@ -17,7 +17,7 @@ import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
 import { Tabs } from '../ui/Tabs'
 import type { TabSpec } from '../ui/Tabs'
-import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp } from './icons'
+import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, PictureInPicture2, X } from './icons'
 import type { LucideIcon } from './icons'
 import { FLASH_MS } from './motion'
 import type { FloatRect, Point, ShelfSide, Viewport } from '../stage/types'
@@ -91,6 +91,7 @@ export function EdgeShelf({ side }: Props) {
   const flashSide = useStageStore((st) => st.flashSide)
   const setShelfThickness = useStageStore((st) => st.setShelfThickness)
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
+  const closeShelf = useStageStore((st) => st.closeShelf)
   const closeToDock = useStageStore((st) => st.closeToDock)
   const activateShelfTab = useStageStore((st) => st.activateShelfTab)
   const edgeToFloat = useStageStore((st) => st.edgeToFloat)
@@ -270,10 +271,26 @@ export function EdgeShelf({ side }: Props) {
             <button
               type="button"
               className={s.collapse}
+              onClick={() => active && edgeToFloat(active)}
+              aria-label={t('shelf.popOut', { name })}
+            >
+              <PictureInPicture2 className={s.collapseIcon} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={s.collapse}
               onClick={toggleCollapsed}
               aria-label={t('shelf.collapse', { name })}
             >
               <CollapseIcon className={s.collapseIcon} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className={s.collapse}
+              onClick={() => closeShelf(side)}
+              aria-label={t('shelf.closeAll', { name })}
+            >
+              <X className={s.collapseIcon} strokeWidth={1.75} aria-hidden="true" />
             </button>
           </div>
           <div className={s.body}>{renderContent(active)}</div>
