@@ -13,8 +13,8 @@ import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
-import { SCROLL_SETTLE_MS } from './motion'
-import { SHELF_SIDES, withinDockEdgeBand } from '../stage/transitions'
+import { DOCK_HIDE_DELAY_MS, SCROLL_SETTLE_MS } from './motion'
+import { SHELF_SIDES, withinDockEdgeBand, withinDockHoldZone } from '../stage/transitions'
 import { DOCK_AXIS } from '../stage/types'
 import type { DockAlign, DockEdge } from '../stage/types'
 import s from './AppShell.module.css'
@@ -78,18 +78,40 @@ export function AppShell() {
       setPeeking(false)
       return
     }
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
+    const cancelHide = () => {
+      if (hideTimer) {
+        clearTimeout(hideTimer)
+        hideTimer = null
+      }
+    }
     const onMove = (e: PointerEvent) => {
       const pointer = { x: e.clientX, y: e.clientY }
       const viewport = { w: window.innerWidth, h: window.innerHeight }
-      if (withinDockEdgeBand(pointer, viewport, dockEdge)) {
+      // 留驻 = 在边带里,或在「Dock 矩形补到视口边 + 余量」的留驻区里 ——
+      // 边带与本体之间原有 4px 死缝,真鼠标连续移动必经,曾致"一闪而逝"。
+      const rect = dockRef.current?.getBoundingClientRect()
+      const hold =
+        withinDockEdgeBand(pointer, viewport, dockEdge) ||
+        (rect ? withinDockHoldZone(pointer, viewport, dockEdge, rect) : false)
+      if (hold) {
+        cancelHide()
         setPeeking(true)
         return
       }
-      if (dockRef.current?.contains(e.target as Node)) return
-      setPeeking(false)
+      // 收回宽限:离开留驻区后缓一拍再收,路过抖动不塌;再进入即取消。
+      if (!hideTimer) {
+        hideTimer = setTimeout(() => {
+          hideTimer = null
+          setPeeking(false)
+        }, DOCK_HIDE_DELAY_MS)
+      }
     }
     window.addEventListener('pointermove', onMove)
-    return () => window.removeEventListener('pointermove', onMove)
+    return () => {
+      cancelHide()
+      window.removeEventListener('pointermove', onMove)
+    }
   }, [autohide, dockEdge])
 
   const dockClass = [

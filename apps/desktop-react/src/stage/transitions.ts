@@ -542,6 +542,30 @@ export function withinDockEdgeBand(
   return DOCK_EDGE_DISTANCE[edge](pointer, viewport) <= band
 }
 
+/**
+ * 自动隐藏的**留驻区**:Dock 已滑出后,指针在这个区域内就不收回。
+ * 区域 = Dock 矩形向所属边**补到视口边**(边带与本体之间原有 4px 死缝,
+ * 真鼠标连续移动必经,08-29 用户报"一闪而逝"的根因),再四周放 pad 余量。
+ */
+export interface Rect { left: number; right: number; top: number; bottom: number }
+
+export function withinDockHoldZone(
+  pointer: Point,
+  viewport: Viewport,
+  edge: DockEdge,
+  rect: Rect,
+  pad = 8,
+): boolean {
+  let { left, right, top, bottom } = rect
+  if (edge === 'right') right = viewport.w
+  if (edge === 'left') left = 0
+  if (edge === 'top') top = 0
+  if (edge === 'bottom') bottom = viewport.h
+  return (
+    pointer.x >= left - pad && pointer.x <= right + pad && pointer.y >= top - pad && pointer.y <= bottom + pad
+  )
+}
+
 /* ── persist ───────────────────────────────────────────────────────────────── */
 
 /**

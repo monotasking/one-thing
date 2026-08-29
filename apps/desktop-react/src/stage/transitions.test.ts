@@ -45,6 +45,7 @@ import {
   togglePlacement,
   toggleShelfCollapsed,
   withinDockEdgeBand,
+  withinDockHoldZone,
   withoutStagePlacements,
 } from './transitions'
 import { STAGE_ITEMS, findItem } from './items'
@@ -826,5 +827,24 @@ describe('closeShelf(整栏关闭)', () => {
 
   it('空栏是恒等变换', () => {
     expect(closeShelf(initialStageState, 'top')).toBe(initialStageState)
+  })
+})
+
+describe('withinDockHoldZone(自动隐藏留驻区)', () => {
+  const vp = { w: 1000, h: 800 }
+  const rect = { left: 930, right: 992, top: 300, bottom: 500 } // 右边 Dock,内缩 8
+
+  it('边带与本体之间的死缝也算留驻(一闪而逝的根因)', () => {
+    expect(withinDockHoldZone({ x: 995, y: 400 }, vp, 'right', rect)).toBe(true)
+  })
+
+  it('矩形四周 pad 内算留驻,远处不算', () => {
+    expect(withinDockHoldZone({ x: 925, y: 400 }, vp, 'right', rect)).toBe(true)
+    expect(withinDockHoldZone({ x: 900, y: 400 }, vp, 'right', rect)).toBe(false)
+    expect(withinDockHoldZone({ x: 960, y: 290 }, vp, 'right', rect)).toBe(false)
+  })
+
+  it('补边只朝所属边:right 的区不含左半屏', () => {
+    expect(withinDockHoldZone({ x: 100, y: 400 }, vp, 'right', rect)).toBe(false)
   })
 })
