@@ -56,8 +56,18 @@
 #   (ipc 走桌面 executeSearch;http 走 server/search-providers.ts 单槽端口,装的是从前 POST /api/search/query
 #   背后的同一个闭包,facade 上 search.query 与那条 REST 一起删,executeAction 留 —— 它是窗口活的 server 对应物)。
 #   收紧:channels 62→42、bridge 718→674、http 730→726、web 785→758、channels.ts 256→234,四壳 2489→2392。
+# 2026-08-29 React 壳 D0(§5.6 甲案):**两项显式上调,不是新通道**。
+#   传输面的通道数一条没动(channels 42 / channels.ts 234 / bridge 674 全部不变),
+#   涨的是**基址与 token 的注入能力**——新的 React Electron 壳从 file:// 或自己的
+#   vite dev server 加载,没有 apps/web 那层 dev 代理,`/api/...` 同源相对路径对它不成立。
+#   lines:web.ts 758→770(+12):`requestJson` 与 `createEventSourceSubscription` 各改走
+#     `platform/transport-config.ts` 的单槽端口(缺席=原样相对路径、原样 headers,
+#     apps/web 零变化、决不双份注入),其余是解释这条纪律的注释。
+#   lines:http.ts 726→743(+17):`checkRequestAuthorization` 多收一个 `url` 形参,
+#     **仅** `GET /api/events` 认 `?token=`(EventSource 带不了 header,别无他路),
+#     走同一个 `tokenMatches` 常时比较;名单只有这一条,请求日志只记 pathname。
 channels:IPC_CHANNELS 42
 lines:apps/electron/src/preload/bridge.ts 674
-lines:packages/backend/server/http.ts 726
-lines:packages/renderer/platform/web.ts 758
+lines:packages/backend/server/http.ts 743
+lines:packages/renderer/platform/web.ts 770
 lines:packages/shared/ipc/channels.ts 234

@@ -6,8 +6,12 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
+    // D0 起 `@renderer/platform` 的源码进了本程序的类型图。`noUnusedLocals` /
+    // `noUnusedParameters` 是**程序级**开关,没法只对自己这半边开 —— 开着就会把
+    // 仓里其它包的历史未用声明当成本应用的错误报出来。仓根三份 tsconfig 本来
+    // 就是关的,这里对齐它们(卫生靠 eslint,不靠这两颗)。
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -16,7 +20,18 @@
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "useDefineForClassFields": true,
-    "types": ["vite/client", "vitest/globals"]
+    "types": ["vite/client", "vitest/globals", "node"],
+    // alias 与 vite.config.ts 逐条对齐(apps/web 同款做法:指源码目录)。
+    // `@onething/*` 没有 paths —— 它们是真 workspace 包,走 exports 解析。
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["../../packages/shared/*"],
+      "@renderer/*": ["../../packages/renderer/*"],
+      "@/*": ["../../packages/renderer/*"]
+    }
   },
-  "include": ["src", "vite.config.ts"]
+  // `packages/shared/types` 是**环境声明**目录(culori / *.md?raw 的 shim)。
+  // 仓根 tsconfig 靠 `packages/shared/**/*` 顺带收进来;这里 include 只有自己那两棵树,
+  // 所以要显式带上,否则跨包源码里的 `import 'culori'` 报 TS7016。
+  "include": ["src", "electron", "vite.config.ts", "../../packages/shared/types"]
 }

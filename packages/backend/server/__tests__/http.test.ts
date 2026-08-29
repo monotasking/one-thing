@@ -1768,6 +1768,73 @@ describe('createOnethingHttpServer', () => {
   })
 
   /**
+   * React 壳 D0(§5.6 甲案):`EventSource` 带不了自定义 header,所以 `GET /api/events`
+   * ——**且只有它**——也认 `?token=`,走同一个常时比较。三条要钉的:对的放行、
+   * 错的 401、别的路由带上这条 query 一律不放行(POST 都能带 header,不需要这个口子)。
+   */
+  describe('GET /api/events accepts a query token (EventSource cannot send headers)', () => {
+    it('authorizes the SSE stream with a matching ?token=', async () => {
+      const serverRuntime = await createTestServerRuntime()
+      runtimes.push(serverRuntime)
+      const server = await listen(createOnethingHttpServer({
+        authToken: TEST_SERVER_AUTH_TOKEN,
+        runtime: serverRuntime.runtime,
+      }))
+
+      const controller = new AbortController()
+      try {
+        const response = await fetch(
+          `${baseUrl(server)}/api/events?token=${encodeURIComponent(TEST_SERVER_AUTH_TOKEN)}`,
+          { signal: controller.signal },
+        )
+        expect(response.status).toBe(200)
+        expect(response.headers.get('content-type')).toContain('text/event-stream')
+      } finally {
+        controller.abort()
+      }
+    })
+
+    it('rejects a wrong or missing query token', async () => {
+      const serverRuntime = await createTestServerRuntime()
+      runtimes.push(serverRuntime)
+      const server = await listen(createOnethingHttpServer({
+        authToken: TEST_SERVER_AUTH_TOKEN,
+        runtime: serverRuntime.runtime,
+      }))
+
+      const wrong = await fetch(`${baseUrl(server)}/api/events?token=nope`)
+      expect(wrong.status).toBe(401)
+
+      const missing = await fetch(`${baseUrl(server)}/api/events`)
+      expect(missing.status).toBe(401)
+    })
+
+    it('does not honor a query token on any other route', async () => {
+      const serverRuntime = await createTestServerRuntime()
+      runtimes.push(serverRuntime)
+      const server = await listen(createOnethingHttpServer({
+        authToken: TEST_SERVER_AUTH_TOKEN,
+        runtime: serverRuntime.runtime,
+      }))
+
+      const capabilities = await fetch(
+        `${baseUrl(server)}/api/capabilities?token=${encodeURIComponent(TEST_SERVER_AUTH_TOKEN)}`,
+      )
+      expect(capabilities.status).toBe(401)
+
+      const rpc = await fetch(
+        `${baseUrl(server)}/api/rpc?token=${encodeURIComponent(TEST_SERVER_AUTH_TOKEN)}`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ domain: 'chat', method: 'getActiveStreams', params: {} }),
+        },
+      )
+      expect(rpc.status).toBe(401)
+    })
+  })
+
+  /**
    * `POST /api/streams/abort` —— P4c 第五批为 `apps/mobile` 保留的那条 REST
    * (拍板 #32)。要钉的是「它不是第二份实现」:请求折成 chat 域的信封,交给
    * **同一个** RPC 处理者,再把 `data` 拆回旧 body 的形状。mobile 换成

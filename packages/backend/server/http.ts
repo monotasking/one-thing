@@ -102,7 +102,7 @@ export function createOnethingServerRequestHandler(
     response.on('close', logRequest)
 
     if (request.method !== 'OPTIONS') {
-      const authError = checkRequestAuthorization(request, options)
+      const authError = checkRequestAuthorization(request, url, options)
       if (authError) {
         sendJson(response, 401, { success: false, error: authError }, options.corsOrigin)
         return
@@ -652,12 +652,29 @@ function getRuntimeRequestContext(
   }
 }
 
+/**
+ * `GET /api/events` 是**唯一**接受 `?token=` 的路由。
+ *
+ * 理由是 `EventSource` 这个 Web API 带不了自定义 header —— 浏览器/Electron 渲染层
+ * 想订这条 SSE,除了 query 没有第二条路(React 壳方案 §5.6 甲案)。名单只有这一条,
+ * 其它路由带上 query token 一律照旧当没带(POST 都能带 header,不需要这个口子)。
+ *
+ * token 不落日志:`logRequest` 记的是 `url.pathname`,query 从不进 `fields`。
+ */
+function acceptsQueryToken(method: string | undefined, pathname: string): boolean {
+  return (method || 'GET') === 'GET' && pathname === '/api/events'
+}
+
 function checkRequestAuthorization(
   request: IncomingMessage,
+  url: URL,
   options: OnethingHttpServerOptions,
 ): string | undefined {
   if (options.authToken) {
     const bearer = readBearerToken(request)
+      ?? (acceptsQueryToken(request.method, url.pathname)
+        ? url.searchParams.get('token') || undefined
+        : undefined)
     if (!bearer || !tokenMatches(bearer, options.authToken)) {
       return 'Unauthorized: this server requires a Bearer token (ONETHING_SERVER_TOKEN).'
     }

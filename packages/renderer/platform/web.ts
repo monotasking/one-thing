@@ -13,6 +13,11 @@ import { todoPlanRouter } from "@shared/ipc/todo-plan.js";
 import { usageRouter } from "@shared/ipc/usage.js";
 import { createRouterClient, type RpcInvoke } from "./router-client";
 import { dispatchWebShell, registerWebShellDomains } from "./shell-web";
+import {
+	applyAuthHeaders,
+	resolveApiUrl,
+	resolveEventSourceUrl,
+} from "./transport-config";
 import type {
 	PlatformApi,
 	PlatformCapabilities,
@@ -102,12 +107,15 @@ function subscribeImagePreviewUpdate(
 }
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-	const response = await fetch(path, {
+	// 基址与 Bearer 走 `transport-config` 的单槽端口:没配置时 `resolveApiUrl` 原样
+	// 返回相对路径、`applyAuthHeaders` 原样返回入参 —— apps/web 依旧靠 dev 代理
+	// 注入,这里一个字节不动(决不双份注入)。
+	const response = await fetch(resolveApiUrl(path), {
 		...init,
-		headers: {
+		headers: applyAuthHeaders({
 			...(init?.body ? { "content-type": "application/json" } : {}),
 			...init?.headers,
-		},
+		}),
 	});
 
 	if (!response.ok) {
@@ -205,11 +213,15 @@ function createEventSourceSubscription<T>(
 ): Unsubscribe {
 	if (typeof EventSource === "undefined") return () => {};
 
+	// 去重键仍是**应用内路径**(不是解析后的 URL):一次配置对整个进程生效,
+	// 两者一一对应,拿路径当键既保住原语义,也让键不带 token。
 	let entry = sharedEventSources.get(path);
 	if (!entry) {
 		entry = {
 			refCount: 0,
-			source: new EventSource(path),
+			// EventSource 带不了 header,token 只能进 query(服务端只对
+			// `GET /api/events` 认这条 query)。未配置时 URL 原样是相对路径。
+			source: new EventSource(resolveEventSourceUrl(path)),
 		};
 		sharedEventSources.set(path, entry);
 	}
