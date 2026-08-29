@@ -22,6 +22,12 @@ export function ContextRing({ onEnter, onLeave }: { onEnter: () => void; onLeave
   return (
     <span
       className={s.ctxRing}
+      /* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex --
+       * 刻意的。这个圆环是「悬停出读数明细」的那个把手,role="img" 说的是它**画的是什么**
+       * (一圈用量),tabIndex=0 给的是**键盘用户同样的那一眼**(onFocus/onBlur 与
+       * onMouseEnter/onMouseLeave 一一对应)。规则说非交互元素不该可 tab —— 一般对,
+       * 但那正好会把键盘用户唯一的入口拆掉。不改成 role="button":它不执行任何动作,
+       * 报成按钮是对读屏软件说谎。 */
       tabIndex={0}
       role="img"
       aria-label={t('composer.context')}

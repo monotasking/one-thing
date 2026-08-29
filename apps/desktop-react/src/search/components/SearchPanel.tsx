@@ -147,6 +147,10 @@ export function SearchPanel() {
   }
 
   return (
+    /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
+     * 这里挂 onKeyDown 是**事件委托**,不是把一个 div 变成控件:真正拿焦点的是里面那个
+     * 输入框(autoFocus),↑↓/⏎ 从它冒泡上来,由面板统一按当前 cursor 处理。
+     * 规则防的是「给死元素装交互却不给焦点」—— 焦点在,只是在子节点上。 */
     <div className={s.panel} onKeyDown={onKeyDown}>
       <div className={s.head}>
         <Input
@@ -154,6 +158,10 @@ export function SearchPanel() {
           value={query}
           onValueChange={setQuery}
           size="lg"
+          /* eslint-disable-next-line jsx-a11y/no-autofocus --
+           * 命令面板的**唯一**用法就是「⌘P 敲出来就打字」。这里不自动聚焦等于
+           * 让每个用户开完面板再按一次 Tab —— 规则防的是「页面一进来就抢焦点」,
+           * 而这块面板是用户刚刚显式召唤出来的瞬态浮层,焦点本来就该在它身上。 */
           autoFocus
           prefix={<Search className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
           placeholder={t('search.placeholder')}

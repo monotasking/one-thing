@@ -85,6 +85,11 @@ export function QuickLook({ sessionId }: Props) {
   if (!session) return null
 
   return (
+/* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
+     * 遮罩点击关闭是**鼠标的顺手路**,不是唯一出口:Esc 已经能关(键盘监听见本文件 /
+     * ExposeView 的 escape 分支),关闭按钮也在。规则看不见那条键盘路径,所以它在这里
+     * 是误报。刻意不给它 role="button":遮罩不是按钮,报成按钮会让读屏软件念出一个
+     * 不存在的控件。 */
     <div
       className={s.scrim}
       onMouseDown={(e) => {

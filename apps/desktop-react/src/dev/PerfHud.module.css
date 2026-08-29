@@ -1,0 +1,92 @@
+/* dev HUD。它不是产品界面,但也不许自己变成卡顿源:
+ * 定长列表、不滚动、pointer-events 只给关闭按钮。 */
+.hud {
+  position: fixed;
+  right: var(--sp-3);
+  bottom: var(--sp-3);
+  z-index: var(--z-toast);
+  width: 320px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  /* 浮层本体不吃点击 —— 它盖在界面上,不该挡住底下的东西。 */
+  pointer-events: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.title {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.ok {
+  color: var(--text-3);
+}
+
+.over {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.close {
+  margin-left: auto;
+  padding: 0 var(--sp-1);
+  border: 0;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-body);
+  line-height: 1;
+  cursor: default;
+  /* 唯一一个要能被点到的东西。 */
+  pointer-events: auto;
+}
+
+.close:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.empty {
+  margin: var(--sp-2) 0 0;
+  color: var(--text-3);
+}
+
+.list {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attr {
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  /* 归因可能很长。截一行,别把 HUD 撑高。 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

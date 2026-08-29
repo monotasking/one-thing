@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { useKeymapDispatch } from '../keymap/dispatch'
 import { TopBar } from './TopBar'
+import { ErrorBoundary } from './ErrorBoundary'
 import { ChatStream } from '../content/ChatStream'
 import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
@@ -134,10 +135,16 @@ export function AppShell() {
         <div className={s.center}>
           {/* 键列钉在聊天区(不含输入框)的右缘,所以定位参考系是这一层 */}
           <div className={s.chatArea}>
-            <ChatStream scrollRef={chatRef} onScroll={onScroll} flashMessageId={flashMessageId} />
+            {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
+              * 合成一界的话这两件事会互相拖死,那正是分区边界要避免的。 */}
+            <ErrorBoundary where="chat">
+              <ChatStream scrollRef={chatRef} onScroll={onScroll} flashMessageId={flashMessageId} />
+            </ErrorBoundary>
             <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
           </div>
-          <Composer />
+          <ErrorBoundary where="composer">
+            <Composer />
+          </ErrorBoundary>
         </div>
       </main>
 

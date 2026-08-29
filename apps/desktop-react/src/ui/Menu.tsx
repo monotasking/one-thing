@@ -58,6 +58,9 @@ export function Menu({ x, y, onClose, children, label }: MenuProps) {
       className={s.menu}
       style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
       role="menu"
+      /* ARIA 菜单模式:容器**可编程聚焦**(-1),项自己进 tab 序(MenuItem 是真 <button>)。
+       * 不给 -1 的话容器根本拿不到焦点,读屏软件进不去这棵菜单树。 */
+      tabIndex={-1}
       aria-label={label}
       onContextMenu={(e) => e.preventDefault()}
     >

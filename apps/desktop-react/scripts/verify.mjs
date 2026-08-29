@@ -1,0 +1,107 @@
+#!/usr/bin/env node
+/**
+ * `npm run verify` —— 这个应用的**总口**。一处红即非零退出,后面的步骤不再跑。
+ *
+ * 顺序不是随手排的,是**从便宜到贵**:
+ *   typecheck → lint → test        几秒级,不需要构建产物,先把低级错拦掉;
+ *   build(app:build = vite build + electron:build)  产出四道门要用的东西;
+ *   offline-fonts                  构建产物的离线性检查(见下);
+ *   gate:connect → data → theme → chat   真机门,每条都要拉起 Electron + core,最贵。
+ *
+ * ── offline-fonts 这一步在验什么 ─────────────────────────────────────────
+ * 字体本地化(工程卫生批 ④)的验收标准是「构建产物离线可用」。光看 index.html
+ * 没有 <link> 是不够的 —— CSS 里一条 @import、某个组件里一句 new FontFace(url)
+ * 都会把外网请求带回来。所以这里 grep 的是**整棵 dist/**:只要出现
+ * fonts.googleapis / fonts.gstatic 就红。这是「产物里不许有外部字体请求」的机器化。
+ * ──────────────────────────────────────────────────────────────────────
+ *
+ * ── 为什么 gate:perf 不在这里 ────────────────────────────────────────────
+ * 性能门(scripts/gate-perf.mjs)这一批**只对场景 ①③ 断言,场景 ② 是记录模式**
+ * (架子 tab 切换已知有卡顿,留给下一批修)。一条会随机器负载抖动、且自己承认
+ * 有一格没断言的门,不该卡住每次提交。它单独跑:`npm run gate:perf`。
+ * 下一批把场景 ② 转成断言之后,再谈要不要并进来。
+ * ──────────────────────────────────────────────────────────────────────
+ */
+import { spawnSync } from 'node:child_process'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const repoRoot = path.resolve(appRoot, '../..')
+const distDir = path.join(appRoot, 'dist')
+
+/** 外部字体主机。产物里出现任何一个都算「还在问网要字体」。 */
+const FORBIDDEN_FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com']
+
+function run(label, command, args) {
+  process.stdout.write(`\n── ${label} ──\n`)
+  const result = spawnSync(command, args, { cwd: appRoot, stdio: 'inherit', shell: false })
+  if (result.status !== 0) {
+    process.stdout.write(`\n[verify] FAILED at: ${label}\n`)
+    process.exit(result.status ?? 1)
+  }
+}
+
+function walk(dir) {
+  const out = []
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name)
+    if (statSync(full).isDirectory()) out.push(...walk(full))
+    else out.push(full)
+  }
+  return out
+}
+
+/** 文本类产物才扫 —— woff2 是二进制,拿它当 utf-8 读只会读出噪音。 */
+const TEXT_EXT = new Set(['.html', '.js', '.mjs', '.cjs', '.css', '.json', '.map'])
+
+function checkOfflineFonts() {
+  process.stdout.write('\n── offline-fonts(产物里不许有外部字体请求)──\n')
+  if (!existsSync(distDir)) {
+    process.stdout.write('[verify] FAILED: 没有 dist/ —— build 那一步应该产出它\n')
+    process.exit(1)
+  }
+  const hits = []
+  for (const file of walk(distDir)) {
+    if (!TEXT_EXT.has(path.extname(file))) continue
+    const text = readFileSync(file, 'utf-8')
+    for (const host of FORBIDDEN_FONT_HOSTS) {
+      if (text.includes(host)) hits.push(`${path.relative(appRoot, file)} → ${host}`)
+    }
+  }
+  if (hits.length) {
+    process.stdout.write(`[verify] FAILED: 产物里还有外部字体请求\n  ${hits.join('\n  ')}\n`)
+    process.exit(1)
+  }
+  // 反向也要断言:woff2 真的进了产物。只查「没有远程」的话,把 fonts.css 整个删掉
+  // 同样能过 —— 那是「离线可用」的反面。
+  const woff2 = walk(distDir).filter((f) => f.endsWith('.woff2'))
+  if (woff2.length === 0) {
+    process.stdout.write('[verify] FAILED: 产物里一个 woff2 都没有 —— 字体没被打进去\n')
+    process.exit(1)
+  }
+  const mb = woff2.reduce((sum, f) => sum + statSync(f).size, 0) / 1048576
+  process.stdout.write(`  ✓ 零外部字体请求;本地 woff2 ${woff2.length} 个,共 ${mb.toFixed(2)} MB\n`)
+}
+
+const serverEntry = path.join(repoRoot, 'dist/server/main.js')
+if (!existsSync(serverEntry)) {
+  process.stdout.write(
+    `[verify] 找不到 ${path.relative(repoRoot, serverEntry)}\n`
+      + '  四道真机门都要一台 core。先在仓根跑 `bun run server:build`。\n',
+  )
+  process.exit(1)
+}
+
+run('typecheck', 'npm', ['run', '--silent', 'typecheck'])
+run('lint', 'npm', ['run', '--silent', 'lint'])
+run('test', 'npm', ['run', '--silent', 'test'])
+run('build', 'npm', ['run', '--silent', 'app:build'])
+checkOfflineFonts()
+run('gate:connect', 'npm', ['run', '--silent', 'gate:connect'])
+run('gate:data', 'npm', ['run', '--silent', 'gate:data'])
+run('gate:theme', 'npm', ['run', '--silent', 'gate:theme'])
+run('gate:chat', 'npm', ['run', '--silent', 'gate:chat'])
+
+process.stdout.write('\n[verify] ok —— typecheck / lint / test / build / offline-fonts / 四道门 全绿\n')

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { FilesMock } from './FilesMock'
 import { DiffMock } from './DiffMock'
 import { BrowserMock } from './BrowserMock'
@@ -26,8 +27,21 @@ const RENDERERS: Record<string, () => ReactNode> = {
   [SESSIONS_ITEM_ID]: ExposeView,
 }
 
+/**
+ * 内容的**唯一出口**,所以错误边界包在这一层而不是每块面板自己包 ——
+ * 一块面板炸了只塌它自己(舞台上的、钉栏里的、浮窗里的都一样),
+ * 外壳和别的面板照常活着。
+ *
+ * 边界的 `where` 就是这块内容的 id:错误卡上显示的、崩溃日志里记的,
+ * 与查表用的是同一个字符串,不另起一套人话名字。
+ */
 export function renderContent(id: string | null): ReactNode {
   if (!id) return null
   const R = RENDERERS[id]
-  return R ? <R /> : null
+  if (!R) return null
+  return (
+    <ErrorBoundary where={id}>
+      <R />
+    </ErrorBoundary>
+  )
 }

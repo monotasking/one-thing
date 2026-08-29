@@ -259,4 +259,20 @@ export const zh = {
   'shortcut.space': 'Space',
   'shortcut.esc': 'Esc',
   'shortcut.enter': '↵',
+
+  /* ── 分区错误边界(工程卫生批①)──────────────────────────────────── */
+  'error.title': '这块崩了',
+  'error.hint': '其余部分还在正常跑。点重试重新挂载这一块;还是不行就把下面的技术细节发给我们。',
+  'error.retry': '重试',
+  'error.detail': '技术细节',
+
+  /* ── 性能 HUD(dev 工具,localStorage `onething.perfHud` 开)────────── */
+  'perf.title': '性能',
+  'perf.empty': '暂无长帧',
+  'perf.longFrame': '长帧 {ms}ms',
+  'perf.slowEvent': '{name} 延迟 {ms}ms',
+  'perf.budgetOk': '在预算内',
+  'perf.budgetOver': '超预算',
+  'perf.close': '关闭性能 HUD',
+
 } as const

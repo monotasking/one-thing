@@ -252,4 +252,20 @@ export const en: Record<MessageKey, string> = {
   'shortcut.space': 'Space',
   'shortcut.esc': 'Esc',
   'shortcut.enter': '↵',
+
+  /* ── error boundary ───────────────────────────────────────────────── */
+  'error.title': 'This part crashed',
+  'error.hint': 'Everything else is still running. Hit retry to remount just this part; if it keeps failing, send us the technical detail below.',
+  'error.retry': 'Retry',
+  'error.detail': 'Technical detail',
+
+  /* ── perf HUD (dev tool, toggled by localStorage `onething.perfHud`) ─ */
+  'perf.title': 'Perf',
+  'perf.empty': 'No long frames',
+  'perf.longFrame': 'Long frame {ms}ms',
+  'perf.slowEvent': '{name} took {ms}ms',
+  'perf.budgetOk': 'Within budget',
+  'perf.budgetOver': 'Over budget',
+  'perf.close': 'Close perf HUD',
+
 }

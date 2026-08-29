@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>onething</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
+    <!--
+      字体不在这里 link。三套字体的 woff2 都在 src/assets/fonts/,由 main.tsx
+      import 的 fonts.css 声明 —— 于是构建产物离线可用,一个字节都不问网。
+      `npm run verify` 的 offline-fonts 那一步 grep 整棵 dist/,外部字体主机出现一次就红;
+      这段注释因此刻意不写出那两个主机名,否则它自己就会把门弄红。
+    -->
   </head>
   <body>
     <div id="root"></div>

@@ -131,6 +131,10 @@ export function ComposerInput({
       contentEditable
       suppressContentEditableWarning
       role="textbox"
+      /* contentEditable 本来就进 tab 序,但那是**浏览器行为**;role="textbox" 是
+       * 给辅助技术的**声明**。两者要对上,声明了可编辑就得显式声明可聚焦,
+       * 否则读屏软件按 ARIA 的说法去找焦点会落空(jsx-a11y 揪出的就是这条)。 */
+      tabIndex={0}
       aria-multiline="true"
       aria-label={placeholder}
       data-testid="composer-input"

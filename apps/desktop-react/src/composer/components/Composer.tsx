@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
@@ -60,8 +60,18 @@ export function Composer() {
   const [meterOpen, setMeterOpen] = useState(false)
 
   const picking = drawerKind === 'files' || drawerKind === 'commands'
-  const files = drawerKind === 'files' ? matchFiles(MOCK_FILES, pickQuery) : []
-  const commands = drawerKind === 'commands' ? matchCommands(MOCK_COMMANDS, pickQuery) : []
+  /* 这两条**必须** useMemo:它们进了下面 applyPick 的依赖数组,而数组字面量
+   * 每帧都是新身份 —— 不 memo 的话 applyPick 每帧重建,它的 useCallback 等于没写,
+   * 吃它的子组件也就每帧重渲染一次。exhaustive-deps 揪出来的就是这条(真 bug 类:
+   * 白写的 memo 化)。改的是身份稳定性,不是取值本身 —— 行为一字未变。 */
+  const files = useMemo(
+    () => (drawerKind === 'files' ? matchFiles(MOCK_FILES, pickQuery) : []),
+    [drawerKind, pickQuery],
+  )
+  const commands = useMemo(
+    () => (drawerKind === 'commands' ? matchCommands(MOCK_COMMANDS, pickQuery) : []),
+    [drawerKind, pickQuery],
+  )
   const pickLen = drawerKind === 'files' ? files.length : commands.length
   const index = clampPickIndex(pickIndex, pickLen)
 
