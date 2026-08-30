@@ -67,3 +67,10 @@ tmp.md
 
 # design-sync 构建产物（node .design-sync/build-tokens.mjs 重建）
 ds-bundle/
+
+# design-sync (React 壳组件库同步,apps/desktop-react/.design-sync/ 是 config home)
+apps/desktop-react/.ds-sync/
+apps/desktop-react/ds-bundle/
+apps/desktop-react/.design-sync/.cache/
+apps/desktop-react/.design-sync/learnings/
+apps/desktop-react/.design-sync/node_modules

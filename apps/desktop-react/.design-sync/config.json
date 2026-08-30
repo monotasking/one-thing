@@ -1,0 +1,24 @@
+{
+  "pkg": "@onething/desktop-react",
+  "projectId": "76d62ee9-58dc-4a7d-857e-d249cb6959b5",
+  "globalName": "OnethingUI",
+  "shape": "package",
+  "srcDir": "src/ui",
+  "tsconfig": "tsconfig.json",
+  "tokensPkg": "@onething/desktop-react",
+  "tokensGlob": "src/styles/*.css",
+  "extraFonts": ["src/assets/fonts/fonts.css"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "Menu": { "cardMode": "single", "viewport": "320x280" },
+    "ToastHost": { "cardMode": "single", "viewport": "420x320" },
+    "Dialog": { "cardMode": "single", "viewport": "560x400" },
+    "ConfirmHost": { "cardMode": "single", "viewport": "560x360" },
+    "MenuItem": { "cardMode": "single", "primaryStory": "ItemStates", "viewport": "320x280" },
+    "MenuSection": { "cardMode": "single", "primaryStory": "GroupHeaders", "viewport": "320x280" },
+    "MenuSeparator": { "cardMode": "single", "primaryStory": "DividedGroups", "viewport": "320x280" },
+    "Select": { "cardMode": "column" },
+    "Tabs": { "cardMode": "column" },
+    "Input": { "cardMode": "column" }
+  }
+}
