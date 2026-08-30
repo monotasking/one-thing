@@ -108,16 +108,23 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
     expect(resolveOpen(base, 'files', 'float', VP)).toEqual(M_FLOAT)
   })
 
-  it('有记忆 → 记忆赢,全局默认档一句话说不上', () => {
-    const pinned = withMemory('files', { kind: 'edge', side: 'left', index: 2 })
-    expect(resolveOpen(pinned, 'files', 'float', VP)).toEqual({
-      kind: 'edge',
-      side: 'left',
-      index: 2,
+  it('记忆只补参数,不改形态:与档同形态的记忆生效(浮窗身量 / 钉边位置)', () => {
+    const rect = { x: 1, y: 2, w: 300, h: 400 }
+    expect(resolveOpen(withMemory('files', { kind: 'float', rect }), 'files', 'float', VP)).toEqual({
+      kind: 'float',
+      rect,
     })
+    expect(
+      resolveOpen(withMemory('files', { kind: 'edge', side: 'left', index: 2 }), 'files', 'pinned', VP),
+    ).toEqual({ kind: 'edge', side: 'left', index: 2 })
   })
 
-  it('存量的 stage 记忆被钳掉,落回默认档 —— 点开永不再出 popup(08-30 拍板)', () => {
+  it('异形态的记忆不参与打开 —— 曾钉过 bottom 的瓦,浮窗档下点开仍是浮窗(08-30 用户报障)', () => {
+    const pinned = withMemory('files', { kind: 'edge', side: 'bottom', index: 0 })
+    expect(resolveOpen(pinned, 'files', 'float', VP)).toEqual(M_FLOAT)
+  })
+
+  it('存量的 stage 记忆同样不参与 —— 点开永不再出 popup(08-30 拍板)', () => {
     const st = withMemory('files', { kind: 'stage' })
     expect(resolveOpen(st, 'files', 'float', VP)).toEqual(M_FLOAT)
     expect(resolveOpen(st, 'files', 'pinned', VP)).toEqual({ kind: 'edge', side: 'right', index: 0 })
@@ -1052,7 +1059,7 @@ describe('位置记忆:按记忆恢复(index 钳制与同边合流)', () => {
     expect(back.floats.browser.x).toBeLessThanOrEqual(tiny.w - FLOAT_KEEP)
   })
 
-  it('点 Dock 图标走的就是这条路:无记忆 → 默认档;有记忆 → 记忆', () => {
+  it('点 Dock 图标走的就是这条路:形态永远由档定,异形态记忆不掺和', () => {
     const remembered: StageState = {
       ...base,
       memory: { files: { kind: 'edge', side: 'left', index: 0 } },
@@ -1060,13 +1067,21 @@ describe('位置记忆:按记忆恢复(index 钳制与同边合流)', () => {
     expect(
       formOf(clickDockIcon(base, 'files', resolveOpen(base, 'files', 'float', VP), VP), 'files'),
     ).toBe('float')
+    // 曾钉过左边,但档是浮窗 —— 点开仍是浮窗(记忆只在 pinned 档下补它的位置)。
     const next = clickDockIcon(
       remembered,
       'files',
       resolveOpen(remembered, 'files', 'float', VP),
       VP,
     )
-    expect(placementOf(next, 'files')).toEqual({ kind: 'edge', side: 'left' })
+    expect(formOf(next, 'files')).toBe('float')
+    const pinnedNext = clickDockIcon(
+      remembered,
+      'files',
+      resolveOpen(remembered, 'files', 'pinned', VP),
+      VP,
+    )
+    expect(placementOf(pinnedNext, 'files')).toEqual({ kind: 'edge', side: 'left' })
   })
 })
 

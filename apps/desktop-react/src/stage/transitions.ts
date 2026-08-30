@@ -212,10 +212,18 @@ export function resolveOpen(
   defaultOpen: ResolvedOpen,
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): PlacementMemory {
+  /*
+   * 08-30 拍板二段:**记忆只补参数,不改形态**。
+   *
+   * 一段(同日早些时候)只把舞台钳出了打开档,edge 记忆仍在还原 —— 于是用户把一块
+   * 曾钉过 bottom 的瓦舞台化再关掉,下次点开又被记忆拽回钉边:「点开是什么形」依旧
+   * 不可预期,这正是统一令要消灭的东西。所以规则收干净:点开的**形态**永远由默认档
+   * 一个人说了算;记忆只在与档同形态时补那些好用的参数(浮窗的身量、钉边的位置),
+   * 异形态的记忆不参与打开(它还活着 —— Dock 右键菜单的记忆勾选、撕拽复原仍读它)。
+   */
+  const placement = placementForOpen(defaultOpen)
   const remembered = state.memory[id]
-  // 舞台已退出打开档(见 types.ts 的 ResolvedOpen 注释):存量记忆里的 stage 条目
-  // 在这里钳掉,落回默认档 —— 写入侧(closeToDock 记形态)不清洗,单点治理。
-  if (remembered && remembered.kind !== 'stage') return remembered
+  if (remembered && remembered.kind === placement.kind) return remembered
   return defaultOpenMemory(state, defaultOpen, viewport)
 }
 
