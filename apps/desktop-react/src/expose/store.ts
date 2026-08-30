@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { currentGroups, onSessionsRemoved, useSessionsSource } from '../data/sessions-source'
 import { SESSIONS_ITEM_ID } from '../stage/items'
 import { useStageStore } from '../stage/store'
+import { formOf } from '../stage/transitions'
 import * as T from './transitions'
 import type { ExposeState, FocusDir } from './types'
 
@@ -75,9 +76,19 @@ export const useExposeStore = create<ExposeStore>()(
         // 进了会话,目录(钢琴键)与首页消息就都成了「此刻要看的东西」。
         void useSessionsSource.getState().ensureChapters(sessionId)
         void useSessionsSource.getState().ensureMessages(sessionId)
-        // 「进入」的语义就是离开总览:这块面的活干完了,收回 Dock。
-        // 已经在 Dock 里(比如从检索面板进的会话)时它是恒等变换,所以不必先判一次。
-        useStageStore.getState().closeToDock(SESSIONS_ITEM_ID)
+        /*
+         * 「进入」之后这块面收不收,看它的**形态**(08-30 用户拍板):
+         *  - 舞台 / 浮窗是**瞬态形**——点开、选完、即走,「进入」的语义就是活干完了,
+         *    收回 Dock(已在 Dock 时是恒等变换,不必先判)。
+         *  - 钉在边上(edge)是**常驻形**——用户把它固定成了工作面,选一条会话是
+         *    这块面的日常动作,不是谢幕;收掉它等于把用户刚安置好的家具搬走。
+         * 同一个动作按落点分岔,分岔判据只有这一处 —— 纯函数(transitions.enterSession)
+         * 仍然不认识 Placement,这层壳才是那个唯一的接缝。
+         */
+        const stage = useStageStore.getState()
+        if (formOf(stage, SESSIONS_ITEM_ID) !== 'edge') {
+          stage.closeToDock(SESSIONS_ITEM_ID)
+        }
       },
     }),
     {
