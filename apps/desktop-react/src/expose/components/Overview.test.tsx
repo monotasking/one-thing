@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { useStageStore } from '../../stage/store'
 import { Overview } from './Overview'
@@ -310,9 +310,196 @@ describe('组头:计数禁令 + 幽灵入口 + 只截断不换行', () => {
     const head = block('.groupHead')
     expect(head).toContain('position: sticky')
     expect(head).toContain('top: 0')
-    // 没有底就会看见卡从字底下穿过去。三种形态的 body 都是 --surface-1。
-    expect(head).toContain('background: var(--surface-1)')
     expect(block('.scroll')).toContain('scroll-padding-top: var(--list-row-h)')
+  })
+})
+
+/**
+ * ── 08-30 方向 A「隐形组头」(用户比稿选定的样例)──────────────────────────
+ * 两个病一处治:
+ *  ① 组头写死 `background: var(--surface-1)`,连上 core 主题桥之后与容器实际底
+ *     不配 —— 平时就是屏幕上一条色带。治法:**默认全透明,粘住了才显影**。
+ *  ② `.groupToggle` 拉满整行,hover 铺一块拉满整行的大 pill,与右端 ›/+ 两颗小方
+ *     hover 并列出现像三块补丁。治法:hover **降为文字语言**,一块底都不画。
+ *
+ * 底色 / 悬停这一族在 jsdom 里量不出来(它不排版、也不做层叠),所以与上面那两组
+ * 同一个办法:钉**规则本身**。真机三截图(未粘 / 粘附 / 悬停)写在本批汇报里。
+ */
+describe('隐形组头:默认无底,粘附才显影,hover 只动文字', () => {
+  const css = readFileSync(
+    resolve(process.cwd(), 'src/expose/components/Overview.module.css'),
+    'utf8',
+  )
+  const block = (selector: string) => {
+    const at = css.indexOf(selector + ' {')
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf('}', at))
+  }
+
+  it('组头默认没有底 —— 写死的 --surface-1 色带没了', () => {
+    const head = block('.groupHead')
+    expect(head).toContain('background: transparent')
+    expect(head).not.toContain('var(--surface-1)')
+  })
+
+  it('粘附态才显影:--glass 底 + 模糊(带 -webkit- 一份)+ 下缘一条 --line-1', () => {
+    const stuck = block(".groupHead[data-stuck]")
+    expect(stuck).toContain('background: var(--glass)')
+    expect(stuck).toContain('backdrop-filter: blur(var(--blur-glass))')
+    expect(stuck).toContain('-webkit-backdrop-filter: blur(var(--blur-glass))')
+    expect(stuck).toContain('box-shadow: 0 1px 0 var(--line-1)')
+    // 模糊半径是 token,不是组件文件里的字面 px(全局铁律一)。
+    expect(stuck).not.toMatch(/blur\(\s*\d/)
+  })
+
+  it('下缘线不许用 border:粘附态多一条 border 会当场吃掉 1px 内容高,组名要抖', () => {
+    const stuck = block(".groupHead[data-stuck]")
+    expect(stuck).not.toContain('border')
+    // 基态先摆一条透明同形投影,显影才是补间而不是硬跳。
+    expect(block('.groupHead')).toContain('box-shadow: 0 1px 0 transparent')
+    expect(block('.groupHead')).toContain('transition')
+  })
+
+  it('模糊半径这个 token 真的在 tokens.css 里命名过', () => {
+    const tokens = readFileSync(resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8')
+    expect(tokens).toMatch(/--blur-glass:\s*\d+px/)
+  })
+
+  it('hover 不再画底:--st-hover 与它的圆角一起没了', () => {
+    expect(css).not.toContain('var(--st-hover)')
+    const toggle = block('.groupToggle')
+    expect(toggle).not.toContain('background')
+    expect(toggle).not.toContain('border-radius')
+  })
+
+  it('hover 是文字语言:组名常态 --text-2,hover 与 caret 一起升到 --text-1', () => {
+    // 静态观感变化:组名常态从 text-1 降到 text-2(用户选定样例里的样子)。
+    expect(block('.groupName')).toContain('color: var(--text-2)')
+    expect(block('.groupToggle:hover .groupName')).toContain('color: var(--text-1)')
+    expect(block('.caret')).toContain('color: var(--text-3)')
+    expect(block('.groupToggle:hover .caret')).toContain('color: var(--text-1)')
+  })
+
+  it('哨兵一格布局都不占 —— 绝对定位,不进 .group 那道 gap', () => {
+    const rule = block('.sentinel')
+    expect(rule).toContain('position: absolute')
+    expect(rule).toContain('height: 1px')
+    expect(block('.group')).toContain('position: relative')
+  })
+})
+
+/**
+ * 哨兵 × IntersectionObserver 的接线。jsdom 没有 IO,所以这里自己摆一份假的:
+ * 记下 root / options,并把回调交出来手动触发 —— 验的是**接线**(观察了谁、
+ * 判出来落在哪),不是浏览器的相交算法。
+ */
+describe('粘附侦测:哨兵 + IntersectionObserver 的接线', () => {
+  type Cb = (entries: { target: Element; isIntersecting: boolean }[]) => void
+  let calls: { cb: Cb; root: Element | null; threshold: unknown; targets: Element[] }[] = []
+
+  const installIO = () => {
+    calls = []
+    class FakeIO {
+      private rec: (typeof calls)[number]
+      constructor(cb: Cb, options?: { root?: Element | null; threshold?: unknown }) {
+        this.rec = { cb, root: options?.root ?? null, threshold: options?.threshold, targets: [] }
+        calls.push(this.rec)
+      }
+      observe(el: Element) {
+        this.rec.targets.push(el)
+      }
+      unobserve() {}
+      disconnect() {
+        this.rec.targets = []
+      }
+    }
+    ;(globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = FakeIO
+    return () => {
+      delete (globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver
+    }
+  }
+
+  let restore: () => void
+  beforeEach(() => {
+    restore = installIO()
+  })
+  afterEach(() => restore())
+
+  /** 最后一台被造出来的 observer —— effect 重跑会 disconnect 旧的、造一台新的。 */
+  const latest = () => calls[calls.length - 1]
+
+  it('每组一枚哨兵,且每一枚都是它那组的第一个孩子(组头是它的下一个兄弟)', () => {
+    render(<Overview />)
+    const sentinels = [...document.querySelectorAll('[data-sentinel]')]
+    expect(sentinels.length).toBe(GROUPS.length)
+    for (const group of GROUPS) {
+      const sentinel = document.querySelector(`[data-sentinel="${group.id}"]`)
+      expect(sentinel).toBeTruthy()
+      expect(sentinel?.parentElement?.firstElementChild).toBe(sentinel)
+      expect(sentinel?.nextElementSibling).toBe(screen.getByTestId(`group-head-${group.id}`))
+    }
+    // 读屏读不到它。
+    for (const s of sentinels) expect(s.getAttribute('aria-hidden')).toBe('true')
+  })
+
+  it('root 是滚动容器、threshold 是 1,并且每一枚哨兵都被观察上了', () => {
+    render(<Overview />)
+    const io = latest()
+    expect(io.threshold).toBe(1)
+    // root 必须是**滚动容器**(哨兵 → 组 → .inner → .scroll),不是文档视口:
+    // 总览可以待在架子 / 浮窗里,那时页面根本没滚,滚的是这个盒子。
+    const scroll = document.querySelector('[data-sentinel]')?.parentElement?.parentElement
+      ?.parentElement
+    expect(io.root).toBe(scroll)
+    expect(scroll?.nextElementSibling).toBe(null)
+    expect(io.targets.length).toBe(GROUPS.length)
+  })
+
+  it('哨兵滚出去 → 组头挂上 data-stuck;滚回来 → 摘掉', () => {
+    render(<Overview />)
+    const io = latest()
+    const head = screen.getByTestId(`group-head-${FIRST_GROUP}`)
+    const sentinel = document.querySelector(`[data-sentinel="${FIRST_GROUP}"]`)!
+    expect(head.hasAttribute('data-stuck')).toBe(false)
+
+    io.cb([{ target: sentinel, isIntersecting: false }])
+    expect(head.hasAttribute('data-stuck')).toBe(true)
+
+    io.cb([{ target: sentinel, isIntersecting: true }])
+    expect(head.hasAttribute('data-stuck')).toBe(false)
+  })
+
+  it('只影响自己那一组的头 —— 一枚哨兵翻,别的组头不动', () => {
+    render(<Overview />)
+    const io = latest()
+    io.cb([{ target: document.querySelector(`[data-sentinel="${FIRST_GROUP}"]`)!, isIntersecting: false }])
+    expect(screen.getByTestId(`group-head-${FIRST_GROUP}`).hasAttribute('data-stuck')).toBe(true)
+    expect(screen.getByTestId('group-head-collab').hasAttribute('data-stuck')).toBe(false)
+  })
+
+  it('组列表变了(搜索过滤)就重观察:新的哨兵一一对应,没有谁被落下', () => {
+    render(<Overview />)
+    const before = calls.length
+    fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value: 'Exposé' } })
+    // 组少了 → effect 重跑 → 造了新的一台
+    expect(calls.length).toBeGreaterThan(before)
+    const io = latest()
+    const sentinels = [...document.querySelectorAll('[data-sentinel]')]
+    expect(io.targets).toEqual(sentinels)
+    // 新一批里每一枚仍然紧挨着自己的组头。
+    for (const s of sentinels) {
+      expect(s.nextElementSibling?.getAttribute('data-testid')).toBe(
+        `group-head-${s.getAttribute('data-sentinel')}`,
+      )
+    }
+  })
+
+  it('卸载时断开观察,不留悬着的 observer', () => {
+    const view = render(<Overview />)
+    const io = latest()
+    expect(io.targets.length).toBeGreaterThan(0)
+    view.unmount()
+    expect(io.targets.length).toBe(0)
   })
 })
 

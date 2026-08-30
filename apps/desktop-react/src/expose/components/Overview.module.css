@@ -93,9 +93,28 @@
 }
 
 .group {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+}
+
+/*
+ * 「组头粘住了没有」的探针。CSS 里没有 :stuck,所以拿一枚 1px 的哨兵摆在组的最顶,
+ * 它滚出滚动容器 = 组头正粘着(见 Overview.tsx 的 useStuckHeads)。
+ *
+ * 它必须**一格布局都不占**:.group 是带 gap 的 flex 列,多一个流内孩子就多一道
+ * var(--sp-3) 的缝,整屏往下推一截。绝对定位的孩子不进 flex 流,也就不算 gap ——
+ * 这是它必须 absolute 而不是「height: 1px + 负 margin」的原因(后者仍在流里,
+ * 抵得掉自己的高,抵不掉那道 gap)。
+ */
+.sentinel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
 }
 
 /*
@@ -111,9 +130,24 @@
  * 滚 12px 就被削掉 12px)。于是「往下滚一点点,组头就被上缘切掉一条」——
  * 用户读作「粘性组头被裁切」,实际是「它压根没粘,滚上去就没了」。
  *
- * 治法就是把它做成真的粘:粘在滚动容器顶,带一层与三种形态同一个的底
- * (架子 / 浮窗 / 舞台的 body 都是 --surface-1,所以这块底不会在任何一种形态里
- * 露怯),卡从它底下滚过去。配套那半条在 .scroll 的 scroll-padding-top 上。
+ * 治法就是把它做成真的粘:粘在滚动容器顶,卡从它底下滚过去。
+ * 配套那半条在 .scroll 的 scroll-padding-top 上。
+ *
+ * ── 08-30 方向 A「隐形组头」:底不是常态,是粘附态 ─────────────────────────
+ * 上一版给这一行写死了 `background: var(--surface-1)`,理由是「三形态的 body 都是
+ * surface-1」。那句话在连上 core 主题桥之后**不再成立** —— 容器的底由主题现推,
+ * 写死的 surface-1 与它差一点点,于是组头在屏幕上平时就是一条色带(用户报障)。
+ *
+ * 现在的口径:**组头默认全透明**(与容器无缝一色,是哪种底就跟哪种底),
+ * 只有真的粘住了才显影 —— --glass 半透底 + 一层模糊 + 下缘一条 --line-1。
+ * 那一刻它才需要遮挡:卡正从它底下糊过去,不遮就会看见字穿过字。
+ * 「粘住了没有」由 JS 侧一枚 1px 哨兵 + IntersectionObserver 判(见 Overview.tsx),
+ * 判出来落在 data-stuck 上 —— CSS 里没有「我现在粘着」这个选择器。
+ *
+ * 下缘那条线用 box-shadow 而不是 border-bottom(仓里更常见的写法):
+ * border 只在粘附态出现的话,内容盒高度会当场少 1px,组名跟着抖一下;
+ * box-shadow 不参与布局,几何逐像素不变。基态先摆一条透明的同形投影,
+ * 于是显影 / 隐没是一次颜色补间,而不是从 none 硬跳出来。
  * ──────────────────────────────────────────────────────────────────────
  */
 .groupHead {
@@ -125,11 +159,34 @@
   position: sticky;
   top: 0;
   z-index: var(--z-sticky);
-  background: var(--surface-1);
+  background: transparent;
+  box-shadow: 0 1px 0 transparent;
+  transition:
+    background var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.groupHead[data-stuck] {
+  background: var(--glass);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  box-shadow: 0 1px 0 var(--line-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .groupHead {
+    transition: none;
+  }
 }
 
 /* 开关占满组头剩余宽度 = 命中区尽可能大;负 margin 抵掉内边距,组名位置不动。
- * 律一:这一行里「吸剩余空间」的角色只有它一个,右端两个入口一律 flex: none。 */
+ * 律一:这一行里「吸剩余空间」的角色只有它一个,右端两个入口一律 flex: none。
+ *
+ * 08-30 方向 A 的第二半:**这里不再画底**。原来它 hover 时铺一块 --st-hover 的
+ * 大 pill —— 因为 flex: 1 1 auto 拉满整行,那块底就是拉满整行的一条,与右端 ›/+
+ * 两颗小方 hover 并排出现时像三块不相干的补丁。hover 降为文字语言:
+ * 组名与 caret 抬亮一档(见 .groupName / .caret),底一块都不画。
+ * 命中区不变 —— 仍是整行,只是它不再自我宣告。 */
 .groupToggle {
   flex: 1 1 auto;
   min-width: 0;
@@ -139,13 +196,7 @@
   gap: var(--sp-1);
   padding: 0 var(--sp-2);
   margin-left: calc(-1 * var(--sp-2));
-  border-radius: var(--r-2);
   text-align: left;
-  transition: background var(--dur) var(--ease);
-}
-
-.groupToggle:hover {
-  background: var(--st-hover);
 }
 
 .caret {
@@ -153,6 +204,11 @@
   height: var(--fs-meta);
   color: var(--text-3);
   align-self: center;
+  transition: color var(--dur) var(--ease);
+}
+
+.groupToggle:hover .caret {
+  color: var(--text-1);
 }
 
 /*
@@ -168,15 +224,26 @@
  * 单行省略号。副名 `.groupPath` 是 `flex: 1 1 auto`:剩余空间归它,挤起来它也
  * 先让 —— 一行里「吸空间」的角色只有一个,主名永远比副名晚一步缩。
  */
+/*
+ * 常态是 --text-2,不是 --text-1 —— 08-30 用户在比稿里选定的样子。
+ * 组头是「分隔」,不是「主角」:一整屏卡片里,每隔几行冒出来一个满黑加粗的名字,
+ * 读起来像每一组都在抢话。降一档之后组头退成结构线,卡片标题才是这屏的主角。
+ * hover 时它与 caret 一起升到 --text-1 —— 这就是这一行**全部**的悬停语言。
+ */
 .groupName {
   flex: 0 1 auto;
   min-width: 0;
   font-size: var(--group-name-fs-fluid);
   font-weight: 700;
-  color: var(--text-1);
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--dur) var(--ease);
+}
+
+.groupToggle:hover .groupName {
+  color: var(--text-1);
 }
 
 .groupPath {

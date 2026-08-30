@@ -74,6 +74,47 @@ function useGridColumns(
   }, [hostRef, report, groupCount])
 }
 
+/**
+ * ── 08-30 方向 A「隐形组头」的 JS 那一半 ─────────────────────────────────────
+ * 组头默认全透明(与容器无缝一色),**粘住了才显影**成一层毛玻璃 + 下缘细线。
+ * 麻烦在于 CSS 至今没有 `:stuck` —— `position: sticky` 生效与否,样式表问不出来。
+ *
+ * 通行的补法就是这枚 1px 哨兵:把它摆在每个组的最顶(组头原本待的位置),
+ * 用 IntersectionObserver 以滚动容器为 root 看着它。哨兵还在视口里 = 组顶还没到
+ * 容器上缘 = 组头是普通流内元素;哨兵滚出去了 = 组头正粘在上缘挡着卡。
+ * threshold 1 而不是 0:要的是「完整露着」这一刻翻,不是「露出一丝」。
+ *
+ * 判出来的结果**不进 React state**,直接落在组头的 data-stuck 上。理由与本文件
+ * 上面那几条同源:滚动中每一次粘 / 脱粘都 setState 的话,439 张卡跟着重渲一遍,
+ * 而这件事从头到尾只是一个属性。React 不拥有这个属性,也就不会在重渲时把它抹掉;
+ * 组列表变了(过滤 / 增删 / 重分组)effect 重跑,IO 重新观察时会为每个目标补发一次
+ * 初始回调,状态自己对回来。
+ *
+ * jsdom 没有 IntersectionObserver —— 这里的 typeof 判据不是防御性编程,是那条门:
+ * 量不到就一格不动(与本文件 useGridColumns 的 ResizeObserver 同一口径),
+ * 单测里组头保持出厂的「不粘」态,不会被环境噪声改写。要验的用例自己摆一份假的。
+ */
+function useStuckHeads(scrollRef: RefObject<HTMLElement | null>, groupKey: string) {
+  useEffect(() => {
+    const root = scrollRef.current
+    if (!root || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          // 哨兵是组的第一个孩子(绝对定位,不占位),组头就是它的下一个兄弟。
+          const head = entry.target.nextElementSibling as HTMLElement | null
+          if (!head) continue
+          if (entry.isIntersecting) head.removeAttribute('data-stuck')
+          else head.setAttribute('data-stuck', '')
+        }
+      },
+      { root, threshold: 1 },
+    )
+    for (const sentinel of root.querySelectorAll('[data-sentinel]')) observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [scrollRef, groupKey])
+}
+
 export function Overview() {
   const t = useT()
   /**
@@ -96,11 +137,15 @@ export function Overview() {
   const error = useSessionsSource((st) => st.error)
   const inputRef = useRef<HTMLInputElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const searching = query.trim().length > 0
 
   const groups = useMemo(() => filterGroups(allGroups, query), [allGroups, query])
 
   useGridColumns(innerRef, setColumns, groups.length)
+  /* 依赖是**组的身份表**而不是 groups.length:过滤把「三组」换成另外「三组」时
+   * 长度没变、哨兵却全换了一批,只盯长度的话新哨兵一个都没被观察。 */
+  useStuckHeads(scrollRef, groups.map((g) => g.id).join('|'))
 
   const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     /*
@@ -151,7 +196,13 @@ export function Overview() {
          */
         return (
           <section key={group.id} className={s.group}>
-            <header className={s.groupHead}>
+            {/*
+             * 「组头粘住了没有」的哨兵。每组一枚,永远是组的第一个孩子 ——
+             * useStuckHeads 靠 nextElementSibling 从它找到组头,这条相邻关系是契约。
+             * aria-hidden + 绝对定位:读屏读不到它,布局也一格不占。
+             */}
+            <div className={s.sentinel} data-sentinel={group.id} aria-hidden="true" />
+            <header className={s.groupHead} data-testid={`group-head-${group.id}`}>
               <button
                 type="button"
                 className={s.groupToggle}
@@ -280,7 +331,7 @@ export function Overview() {
         </Button>
       </header>
 
-      <div className={s.scroll}>
+      <div className={s.scroll} ref={scrollRef}>
         <div className={s.inner} ref={innerRef}>{renderGroups()}</div>
       </div>
     </div>
