@@ -32,6 +32,7 @@ import {
   moveFloat,
   openAs,
   openFromMemory,
+  clampDefaultOpen,
   placementForOpen,
   closeShelf,
   placementOf,
@@ -145,6 +146,19 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
   it("'pinned' 这个历史值的语义就是 edge:right,翻译只此一处", () => {
     expect(placementForOpen('pinned')).toEqual({ kind: 'edge', side: 'right' })
     expect(placementForOpen('float')).toEqual(FLOAT)
+  })
+
+  it('运行时残值一律钳成浮窗 —— 迁移会被在飞实例的写盘绕过(08-30 报障:弹出后再开又钉回右边)', () => {
+    // v5 上线时开着的窗口把旧值 'stage' 配着新版本号写回 localStorage,migrate 不再跑。
+    // 修前:残值走 else 分支被当成 pinned → 点开钉回右边;修后:除 'pinned' 外一律浮窗。
+    expect(placementForOpen('stage' as never)).toEqual(FLOAT)
+    expect(clampDefaultOpen('stage')).toBe('float')
+    expect(clampDefaultOpen(undefined)).toBe('float')
+    expect(clampDefaultOpen('pinned')).toBe('pinned')
+    expect(clampDefaultOpen('float')).toBe('float')
+    // 完整场景:曾钉过右边(有 edge 记忆),档是残值 → 点开仍是浮窗,不还原钉边。
+    const pinnedOnce = withMemory('files', { kind: 'edge', side: 'right', index: 0 })
+    expect(resolveOpen(pinnedOnce, 'files', 'stage' as never, VP)).toEqual(M_FLOAT)
   })
 
   it('默认档补成记忆时,缺的那两件事按「就当它没来过」补', () => {

@@ -175,12 +175,20 @@ export function openFromMemory(
 /* ── 打开方式 → 落点 ───────────────────────────────────────────────────────── */
 
 /**
- * 全局默认档翻成形态机认识的 Placement。全仓唯一一处翻译:
- * 'pinned' 这个历史值的语义就是「钉到右边那条架子」,别处不许再判一次。
+ * 档值的运行时钳制。类型上 ResolvedOpen 已无 'stage',但**迁移会被在飞实例的写盘
+ * 绕过**:v5 上线时开着的窗口,内存里还是旧值,任何一次状态写盘都会把旧值连同
+ * 新版本号一起写回 —— 之后 migrate 看版本号≥5 就不再跑,残值永久落户
+ * (08-30 用户报障「弹出后再开又钉回右边」的真因)。所以除了迁移段,
+ * 读取处与 persist merge 各钳一次,共用这一个函数:只认 'pinned',
+ * 其余一律浮窗(与打开统一拍板同一句话)。
  */
+export function clampDefaultOpen(value: unknown): ResolvedOpen {
+  return value === 'pinned' ? 'pinned' : 'float'
+}
+
 export function placementForOpen(open: ResolvedOpen): Exclude<MemorablePlacement, { kind: 'stage' }> {
-  if (open === 'float') return { kind: 'float' }
-  return { kind: 'edge', side: 'right' }
+  if (clampDefaultOpen(open) === 'pinned') return { kind: 'edge', side: 'right' }
+  return { kind: 'float' }
 }
 
 /**

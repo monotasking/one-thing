@@ -105,6 +105,13 @@ export const useStageStore = create<StageStore>()(
       version: T.STAGE_PERSIST_VERSION,
       storage: createJSONStorage(() => localStorage),
       migrate: T.migrateStagePersisted,
+      // 迁移可被在飞实例的写盘绕过(旧值配新版本号落盘,migrate 不再跑)——
+      // 合并处对档值再钳一次,与 placementForOpen 的读取钳共用同一个函数。
+      merge: (persisted, current) => {
+        const merged = { ...current, ...(persisted as Partial<StageStore>) }
+        merged.defaultOpen = T.clampDefaultOpen(merged.defaultOpen)
+        return merged
+      },
       // 持久化设置 + 工作台(架子与浮窗是用户摆好的,理应留着);舞台那条在存盘前摘掉。
       partialize: (s) => ({
         dockDisplay: s.dockDisplay,
