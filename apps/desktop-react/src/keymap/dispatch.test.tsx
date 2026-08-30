@@ -20,7 +20,8 @@ describe('快捷键派发', () => {
   it('⌘P 经注册表开检索面板,再按一下收回 Dock', () => {
     render(<AppShell />)
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
-    expect(useStageStore.getState().placements.search).toEqual({ kind: 'stage' })
+    // 打开统一是浮窗(08-30 拍板:档定形态)
+    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
 
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     expect(useStageStore.getState().placements.search).toBeUndefined()
@@ -34,7 +35,7 @@ describe('快捷键派发', () => {
     expect(useStageStore.getState().placements.search).toBeUndefined()
 
     act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
-    expect(useStageStore.getState().placements.search).toEqual({ kind: 'stage' })
+    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
   })
 })
 
