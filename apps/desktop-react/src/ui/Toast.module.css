@@ -4,6 +4,13 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* 底缘那条剩余时间线:从满到空,线性走完。**线性是刻意的** ——
+ * 它是个读数(还剩多久),不是一次形变,缓动会让它说谎。 */
+@keyframes toastLife {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
 .stack {
   position: fixed;
   top: var(--sp-4);
@@ -11,11 +18,13 @@
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: var(--sp-2);
   pointer-events: none;
 }
 
 .toast {
+  position: relative;
   width: var(--toast-w);
   display: flex;
   align-items: flex-start;
@@ -27,6 +36,8 @@
   box-shadow: var(--sh-2);
   font-size: var(--fs-label);
   color: var(--text-1);
+  /* 剩余时间线贴着下缘走,圆角要能剪住它 */
+  overflow: hidden;
   /* 堆里其余的不吃事件,但每一条自己要能被 hover 暂停 */
   pointer-events: auto;
   animation: toastIn var(--dur-enter) var(--ease-out);
@@ -39,7 +50,7 @@
   margin-top: var(--sp-1);
 }
 
-/* 状态色只上左侧图标,不换底 —— 三个变体的差别只有这一行。 */
+/* 状态色只上左侧图标,不换底 —— 四个变体的差别只有这一行。 */
 .info .icon {
   color: var(--text-3);
 }
@@ -48,12 +59,93 @@
   color: var(--ok);
 }
 
-.danger .icon {
+.warn .icon {
+  color: var(--warn);
+}
+
+.error .icon {
   color: var(--danger);
 }
 
 .message {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
   line-height: 1.5;
+}
+
+.title {
+  min-width: 0;
+}
+
+/* 正文是补充,不是第二个标题:降一档墨、降一档字号,最多两行。 */
+.body {
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ✕ 只出现在不自动消失的那一档 —— 会自己走的东西不必给关闭钮。 */
+.close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--input-icon);
+  height: var(--input-icon);
+  margin-top: var(--sp-1);
+  border-radius: var(--r-1);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.close:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.closeIcon {
+  width: var(--menu-check);
+  height: var(--menu-check);
+}
+
+.life {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--toast-line-h);
+  transform-origin: left center;
+  background: var(--line-2);
+  animation-name: toastLife;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  /* 时长与暂停由行内 style 给:它们是**这一条**的事实,不是一档样式。 */
+}
+
+/* 折叠小丸:不是第四条 toast,所以它不长成 toast 的样子 —— 一枚扁丸,一行小字。
+ * 它站在堆的最上方(= 最早那一侧),因为它代表的正是被挤走的那些更早的条目。 */
+.more {
+  align-self: flex-end;
+  pointer-events: auto;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  border: 1px solid var(--line-1);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  animation: toastIn var(--dur-enter) var(--ease-out);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.more:hover {
+  background: var(--surface-2-hover);
+  color: var(--text-1);
 }

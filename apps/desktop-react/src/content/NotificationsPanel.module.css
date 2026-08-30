@@ -1,0 +1,205 @@
+/* 三段式:头是常驻的标题行,身是可滚的分组列表,脚是一行通往完整日志的门。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。 */
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2);
+}
+
+/* 空态:居中一行灰字,别的什么都不画(与检索面板同一条判例)。 */
+.none {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-3);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.group {
+  margin-bottom: var(--sp-3);
+}
+
+/* 组头:小字、灰、字距撑开。分量由 CSS 给,层级由 <h3> 给 —— 两件事不混。
+ * text-transform 是给英文的(today / yesterday / earlier),中文不受影响。 */
+.groupHead {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: var(--ls-section);
+  text-transform: lowercase;
+  color: var(--text-3);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 一行四件:色点 / 标题 + 正文 / 产地 / 时间。后两列定宽右对齐,
+ * 所有行的产地与时间从同一条竖线起笔 —— 列表才扫得动。 */
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-1);
+  text-align: left;
+  transition: background var(--dur) var(--ease);
+}
+
+.row:hover {
+  background: var(--st-hover);
+}
+
+.dot {
+  flex: none;
+  align-self: center;
+  width: var(--notify-dot);
+  height: var(--notify-dot);
+  border-radius: var(--r-full);
+}
+
+.dotSuccess {
+  background: var(--ok);
+}
+
+.dotInfo {
+  background: var(--text-3);
+}
+
+.dotWarn {
+  background: var(--warn);
+}
+
+.dotError {
+  background: var(--danger);
+}
+
+/* silent 从来没弹过,但它进了存档 —— 最淡的一档,看得见就够了。 */
+.dotSilent {
+  background: var(--line-2);
+}
+
+.rowTitle {
+  flex: none;
+  max-width: 100%;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 未读只加粗,不换底、不加点缀:一屏里同时有十条未读时,底色会变成噪音。 */
+.unread {
+  font-weight: 600;
+}
+
+/* 「又响了 N 次」。它是个次数不是待办数,所以它长在行里、贴着标题,
+ * 不是行尾一枚计数徽(那正是被禁的那种画法)。 */
+.repeat {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.rowBody {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source {
+  flex: none;
+  width: var(--notify-source-w);
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time {
+  flex: none;
+  width: var(--notify-time-w);
+  text-align: right;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/*
+ * 详情衬块。**没有左竖线** —— 画线风已被否决,而且这里也不需要它:
+ * 一块比行更暗一档的圆角纸,自己就说清了「这段属于上面那行」。
+ * 原样文本 = pre-wrap:栈里的缩进是信息,不许被规范化掉;长过一屏就自己滚。
+ */
+.detail {
+  margin: 0 var(--sp-3) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  max-height: var(--notify-detail-max-h);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  line-height: 1.6;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.foot {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--line-1);
+}
+
+/* 禁用态小灰字。它现在**确实点不动**,所以画成点不动的样子 ——
+ * 画成能点的再吞掉点击,那才是骗人。 */
+.footLink {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.footLink:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}

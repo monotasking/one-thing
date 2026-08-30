@@ -16,7 +16,17 @@ export const SCROLL_SETTLE_MS = 400 // --dur-scroll-settle
 export const SKELETON_DELAY_MS = 150
 export const TOC_HOVER_MS = 150 // --dur-toc-hover:悬停多久才把目录长出来
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
-export const TOAST_LIFE_MS = 4000 // --dur-toast-life:一条 toast 自动消失前活多久
+/**
+ * 一条 toast 自动消失前活多久 —— 按级别分档(--dur-toast-success / -info / -warn)。
+ * error 不在表里:它**不自动消失**,要点 ✕ 才走(见 services/notify.ts 的命运表);
+ * silent 也不在表里:它根本不弹。两种缺席都是有意的 —— 表只列「会自己走的那几档」,
+ * 谁不会自己走由命运表说,不在这里用一个 0 或 Infinity 冒充。
+ */
+export const TOAST_LIFE_MS: Record<'success' | 'info' | 'warn', number> = {
+  success: 3000,
+  info: 4000,
+  warn: 8000,
+}
 // --dur-att-grace:附件摞离开后的收拢宽限。卡缝与删卡瞬间的出界不该塌摞(同 Dock 留驻区判例),
 // 再进即取消。这是「宽限」不是「动画」,所以它在 JS 里有落点、在 CSS 里只是个记账。
 export const ATT_GRACE_MS = 200

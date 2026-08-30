@@ -20,6 +20,8 @@
  */
 import { PERF_BUDGET } from '../perf-budget'
 import { record } from './log'
+import { notify } from './notify'
+import { t } from '../i18n'
 
 export type PerfKind = 'longFrame' | 'interaction'
 
@@ -61,9 +63,25 @@ function push(entry: PerfEntry): void {
   // 超预算的同时进日志环:排障的人只 dump 一次就能看到「崩之前卡过没有」。
   const limit = entry.kind === 'longFrame' ? PERF_BUDGET.longFrameMs : PERF_BUDGET.interactionP95Ms
   if (entry.ms > limit) {
-    record('warn', `perf.${entry.kind}`, `${Math.round(entry.ms)}ms`, [
-      { name: entry.name, blockingMs: entry.blockingMs, scripts: entry.scripts },
-    ])
+    const ms = Math.round(entry.ms)
+    const detail = { name: entry.name, blockingMs: entry.blockingMs, scripts: entry.scripts }
+    record('warn', `perf.${entry.kind}`, `${ms}ms`, [detail])
+    /*
+     * 超预算走 **silent**:它进通知中心存档,但一个字都不弹。
+     *
+     * 这是命运表里 silent 那一档存在的全部理由 —— 卡了一帧是「排障要看的事」,
+     * 不是「用户该被打断的事」;真弹起来,一次卡顿会连着弹十几条,那本身就是新的卡顿源。
+     * dev HUD(dev/PerfHud)一个字不动:它是仪表,读的是同一份环,与通知无关。
+     */
+    notify({
+      level: 'silent',
+      source: `perf.${entry.kind}`,
+      title:
+        entry.kind === 'longFrame'
+          ? t('perf.longFrame', { ms })
+          : t('perf.slowEvent', { name: entry.name, ms }),
+      detail: JSON.stringify(detail, null, 2),
+    })
   }
 }
 

@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import { useStageStore } from '../stage/store'
-import { GLOBAL_ITEMS, SESSION_ITEMS } from '../stage/items'
+import { GLOBAL_ITEMS, NOTIFICATIONS_ITEM_ID, SESSION_ITEMS } from '../stage/items'
+import { useUnreadCount } from '../services/notify-store'
 import { DockTile } from './DockTile'
 import { useMagnify } from './useMagnify'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
@@ -74,6 +75,8 @@ export function Dock({ dimmed }: Props) {
   const dockSize = useStageStore((st) => st.dockSize)
   const click = useStageStore((st) => st.clickDockIcon)
   const openAs = useStageStore((st) => st.openAs)
+  // 未读是**当下的事实**,所以在这里对上静态的 items 表(items.ts 里那条注释同一件事)。
+  const unread = useUnreadCount()
 
   const [menu, setMenu] = useState<{ item: StageItemSpec; title: string; x: number; y: number } | null>(
     null,
@@ -123,6 +126,7 @@ export function Dock({ dimmed }: Props) {
               testId={`dock-tile-${tile.item.id}`}
               icon={tile.item.icon}
               badge={tile.item.badge}
+              dot={tile.item.id === NOTIFICATIONS_ITEM_ID && unread > 0}
               running={tile.item.id in placements}
               factor={factors[i] ?? REST_FACTOR}
               tileRef={setTileRef(i)}

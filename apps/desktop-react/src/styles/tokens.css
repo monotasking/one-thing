@@ -135,6 +135,11 @@
   --badge-offset: -5px;
   --dot-size: 4px;
   --dot-offset: -8px;
+  /* 未读点(08-30 通知系统批):贴瓦的右上角,与徽同一个角但**不是徽** ——
+   * 「有没有」用点,「有几个」才用数,tab / 列表禁计数徽这条判例同样约束 Dock 瓦。
+   * 比运行点(4px)大一档:运行点是常驻的状态位,未读点是要人回头看的召唤。 */
+  --unread-dot: 7px;
+  --unread-dot-offset: -1px;
   --tooltip-lift: 30px;
 
   /* Dock 降淡(滚动中) */
@@ -269,11 +274,19 @@
   /* 对话框(Elevation 板:宽 400 / 480 / 600 三档,本批只落最小档) */
   --dialog-w: 400px;
 
-  /* Toast。板上是底部居中 2.6s;本批按拍板改右上角堆叠 4s,
-   * 入场位移沿用板上的 8px(全系统唯一允许位移的入场)。 */
+  /* Toast。板上是底部居中 2.6s;本批按拍板改右上角堆叠,
+   * 入场位移沿用板上的 8px(全系统唯一允许位移的入场)。
+   *
+   * 08-30 通知系统批:寿命不再是一个数,而是**一张命运表** —— 级别决定活多久
+   * (success 3s / info 4s / warn 8s / error 不自动消失)。JS 侧镜像见
+   * components/motion.ts 的 TOAST_LIFE_MS,判定表在 services/notify.ts。
+   * --toast-line-h 是底缘那条剩余时间细线的厚度。 */
   --toast-w: 320px;
   --toast-lift: 8px;
-  --dur-toast-life: 4000ms;
+  --toast-line-h: 2px;
+  --dur-toast-success: 3000ms;
+  --dur-toast-info: 4000ms;
+  --dur-toast-warn: 8000ms;
 
   /* Spinner(Feedback 板:控件级 loading = 700ms linear;板上给的尺寸是按钮里的 13)
    * md 档板上未定,取 --badge-size 同档的 16,好与徽、勾选族对齐。 */
@@ -343,6 +356,15 @@
   --search-chip-h: 16px;
   --search-mark: 2px;
   --search-origin-w: 220px;
+
+  /* ── 通知中心(content/NotificationsPanel)几何 ──────────────────────────
+   * 一行四件:级别小点 / 标题 + 正文 / 产地 / 时间。产地与时间是**定宽右列**,
+   * 所有行的这两列从同一条竖线起笔 —— 与检索面板的行首徽同一条理由(扫得动)。
+   * ────────────────────────────────────────────────────────────────────── */
+  --notify-dot: 6px;
+  --notify-source-w: 120px;
+  --notify-time-w: 52px;
+  --notify-detail-max-h: 240px;
 
   /* Composer 用到、既有字号梯里没有的四档 */
   --fs-pill: 11.5px;

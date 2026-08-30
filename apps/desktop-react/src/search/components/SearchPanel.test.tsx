@@ -6,6 +6,7 @@ import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../../expose/store'
 import { initialStageState } from '../../stage/transitions'
 import { useToastHub } from '../../ui/Toast'
+import { useNotifyStore } from '../../services/notify-store'
 import { CHAPTERS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
 import { RECENT_LIMIT } from '../transitions'
 
@@ -18,7 +19,8 @@ beforeEach(() => {
   // 会话侧吃真数据源(D1);文件侧仍是 ../data.ts 那张 mock 表(诚实缺口)。
   seedSessionsSource({ chapters: CHAPTERS })
   useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
-  useToastHub.setState({ toasts: [] })
+  useToastHub.setState({ toasts: [], folded: 0 })
+  useNotifyStore.setState({ items: [] })
 })
 
 const input = () => screen.getByLabelText('搜索')
@@ -112,13 +114,21 @@ describe('命中列表:走行与跳转', () => {
     expect('search' in useStageStore.getState().placements).toBe(false)
   })
 
+  /*
+   * 08-30 通知系统批:这一句话从散装 toast 改走 services/notify 的单入口。
+   * 断言因此同时看两处 —— 屏幕上照样弹一条(级别 info,与从前默认那档同义),
+   * 而且它现在**进了通知中心存档**:过后想不起刚才报的是哪个文件时还翻得到。
+   */
   it('文件行:壳里还没有真打开能力,所以报出落点并同样收回 Dock', () => {
     useStageStore.setState({ placements: { search: { kind: 'stage' } } })
     render(<SearchPanel />)
     type('catalogCache')
     press('Enter')
-    expect(useToastHub.getState().toasts.map((x) => x.message)).toEqual([
+    expect(useToastHub.getState().toasts.map((x) => x.title)).toEqual([
       '已打开 model-registry.ts:96',
+    ])
+    expect(useNotifyStore.getState().items.map((x) => [x.level, x.source, x.title])).toEqual([
+      ['info', 'search.open', '已打开 model-registry.ts:96'],
     ])
     expect('search' in useStageStore.getState().placements).toBe(false)
   })

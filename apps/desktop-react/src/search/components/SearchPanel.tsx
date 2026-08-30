@@ -8,7 +8,7 @@ import { useSessionTime } from '../../expose/components/session-time'
 import { Input } from '../../ui/Input'
 import { Segmented } from '../../ui/Segmented'
 import type { SegmentedOption } from '../../ui/Segmented'
-import { useToast } from '../../ui/Toast'
+import { notify } from '../../services/notify'
 import { Search } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
@@ -55,7 +55,6 @@ export function SearchPanel() {
   const chapters = useSessionsSource((st) => st.chapters)
   const ensureChapters = useSessionsSource((st) => st.ensureChapters)
   const timeOf = useSessionTime()
-  const toast = useToast()
   const listRef = useRef<HTMLDivElement>(null)
 
   const searching = query.trim().length > 0
@@ -113,8 +112,16 @@ export function SearchPanel() {
          * 这是接真源的缝。壳里还没有「打开一个文件」这件能力(没有编辑器面、
          * 没有主进程),所以这里只把落点如实报出来。接上真实打开器时,
          * 换掉的就是这一行 —— 行模型、跳转目标、收回 Dock 的手感都不动。
+         *
+         * 走 notify 而不是从前那个散装 toast:级别 info(它既不是成功也不是错,
+         * 只是「这就是我能做到的」),于是它同样进通知中心存档 ——
+         * 用户过一会儿想不起刚才那行报的是哪个文件时,还翻得到。
          */
-        toast(t('search.openedFile', { file: targetText(row.target) }))
+        notify({
+          level: 'info',
+          source: 'search.open',
+          title: t('search.openedFile', { file: targetText(row.target) }),
+        })
         break
     }
     // 选中就是这块面板的活干完了,收回 Dock —— 与 Quick Look 进会话同一个手感。

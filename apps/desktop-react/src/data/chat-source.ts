@@ -17,6 +17,8 @@ import {
   type Tail,
 } from './chat-fold'
 import { chatPort } from './chat-port'
+import { notify } from '../services/notify'
+import { t } from '../i18n'
 
 /**
  * 聊天区的**真数据源**(D3,路线 A)。全应用一个,聊天面只从这里取。
@@ -312,6 +314,19 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
           : entry,
       ),
     }))
+    /*
+     * 兜底的一声。**气泡里那条就地重试条一格不动** —— 修这件事的手在那儿,
+     * 通知不抢它的活。它管的是另一种情形:发失败的那一刻用户已经滚到别处、
+     * 或者干脆切走了会话,那条重试条此刻不在他眼前。
+     * error 档不自动消失,所以回来时它还在。
+     */
+    notify({
+      level: 'error',
+      source: 'chat.send',
+      title: t('notify.sendFailed'),
+      body: error,
+      detail: error,
+    })
   }
 
   return {

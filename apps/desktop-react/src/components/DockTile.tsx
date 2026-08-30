@@ -36,6 +36,15 @@ interface Props {
   testId?: string
   icon?: string
   badge?: StageBadge
+  /**
+   * 未读点:右上角一颗 accent 小圆点,**只说「有」不说「几个」**。
+   *
+   * 它与 `badge` 是两档并存的语法,不是同一件事的两种画法:徽是「有几个」
+   * (数 / ✓ / 短字),点是「有没有」。通知未读刻意用点 —— 计数徽在 tab 与列表上
+   * 是禁令(它把「回来看看」变成「还欠你 37 件事」),Dock 瓦上同一条判据成立。
+   * 两者同时给的话都画得出来(徽在角上、点在徽外侧),但今天没有这种瓦。
+   */
+  dot?: boolean
   running?: boolean
   plus?: boolean
   /** 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。 */
@@ -56,6 +65,7 @@ export function DockTile({
   testId,
   icon,
   badge,
+  dot,
   running,
   plus,
   factor,
@@ -125,6 +135,9 @@ export function DockTile({
             {badgeText}
           </Badge>
         )}
+        {/* 未读点。位置与徽同一个角(右上),所以它不吃 DOT_CLASS 那张按边翻向的表 ——
+            那张表管的是**运行点**,它贴的是朝外那一侧。 */}
+        {dot && <span className={s.unread} data-testid="dock-unread" aria-hidden="true" />}
         {running && <span className={`${s.dot} ${s[DOT_CLASS[labelSide]]}`} aria-hidden="true" />}
       </button>
     </div>

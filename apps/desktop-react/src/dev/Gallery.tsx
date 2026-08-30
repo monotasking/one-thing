@@ -14,7 +14,8 @@ import { Select } from '../ui/Select'
 import { Spinner } from '../ui/Spinner'
 import { Switch } from '../ui/Switch'
 import { Tabs } from '../ui/Tabs'
-import { ToastHost, useToast } from '../ui/Toast'
+import { pushToast, ToastHost } from '../ui/Toast'
+import { TOAST_LIFE_MS } from '../components/motion'
 import { Tooltip } from '../ui/Tooltip'
 import s from './Gallery.module.css'
 
@@ -76,7 +77,6 @@ export function Gallery() {
   const [dialog, setDialog] = useState(false)
   const [answer, setAnswer] = useState<string>('—')
   const confirm = useConfirm()
-  const toast = useToast()
 
   return (
     <div className={s.page}>
@@ -166,11 +166,14 @@ export function Gallery() {
         <Note>last answer: {answer}</Note>
       </Section>
 
+      {/* 规格页直接戳 hub —— 产品代码走 services/notify(一条入口),
+          但这一页要演示的正是这个组件本身,不该经过通知中心。 */}
       <Section name="Toast">
-        <Button onClick={() => toast('Saved to this session')}>info</Button>
-        <Button onClick={() => toast('Reconnected, 3 updates caught up', 'success')}>success</Button>
-        <Button onClick={() => toast('Could not reach the model host', 'danger')}>danger</Button>
-        <Note>hover a toast to pause its timer</Note>
+        <Button onClick={() => pushToast({ level: 'info', title: 'Saved to this session', lifeMs: TOAST_LIFE_MS.info })}>info</Button>
+        <Button onClick={() => pushToast({ level: 'success', title: 'Reconnected', body: '3 updates caught up', lifeMs: TOAST_LIFE_MS.success })}>success</Button>
+        <Button onClick={() => pushToast({ level: 'warn', title: 'Running on a stale catalog', lifeMs: TOAST_LIFE_MS.warn })}>warn</Button>
+        <Button onClick={() => pushToast({ level: 'error', title: 'Could not reach the model host', lifeMs: null })}>error</Button>
+        <Note>hover to pause the timer · error stays until you close it · 4th one folds the stack</Note>
       </Section>
 
       <Section name="Spinner">
@@ -224,7 +227,10 @@ export function Gallery() {
       </Dialog>
 
       <ConfirmHost />
-      <ToastHost />
+      <ToastHost
+        closeLabel="Close"
+        moreText={(count) => `+${count} earlier`}
+      />
     </div>
   )
 }

@@ -88,6 +88,7 @@ export const zh = {
   'item.browser': '浏览器',
   'item.sessions': '会话总览',
   'item.search': '检索',
+  'item.notifications': '通知',
   'item.settings': '设置',
 
   /* ── 舞台 / 钉栏 ──────────────────────────────────────────────────── */
@@ -289,5 +290,30 @@ export const zh = {
   'perf.budgetOk': '在预算内',
   'perf.budgetOver': '超预算',
   'perf.close': '关闭性能 HUD',
+
+  /* ── 通知系统(08-30 批)────────────────────────────────────────────────
+   * 面板标题不另起一个键:它就是 'item.notifications' 那两个字,
+   * 同一句话不该有第二个键(与 SHELF_SIDE_CHOICES 复用 Dock 那四个边键同一条)。
+   * 组头三个键与 'time.yesterday' 刻意分开:那一个是时间戳里的「昨天」,
+   * 这三个是列表的**组标**(英文小写、灰、字距撑开),两种体例不共用一个键。 */
+  'notify.filterAll': '全部',
+  'notify.filterWarn': '警告',
+  'notify.filterError': '错误',
+  'notify.filterLabel': '按级别过滤',
+  'notify.markAllRead': '全部已读',
+  'notify.clear': '清空',
+  'notify.today': '今天',
+  'notify.yesterday': '昨天',
+  'notify.earlier': '更早',
+  'notify.empty': '还没有通知',
+  'notify.repeat': '×{count}',
+  'notify.openLog': '打开完整日志(app.jsonl)',
+  'notify.more': '+{count} 更早 · 打开通知中心',
+
+  /* 各产地报出来的那句话。它们是**界面文案**(换语言要跟着变),
+   * 所以在字典里;而错误本身的文字是数据,原样进 body / detail。 */
+  'notify.crash': '{where} 出错了',
+  'notify.disconnected': '没连上 core',
+  'notify.sendFailed': '消息没发出去',
 
 } as const

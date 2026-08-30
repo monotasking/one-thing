@@ -14,6 +14,8 @@
 import { platformApi } from '@renderer/platform'
 import { sessionsApi } from '@renderer/platform/sessions-client'
 import { configureWebTransport } from '@renderer/platform/transport-config'
+import { notify } from '../services/notify'
+import { t } from '../i18n'
 
 export type HostConnectionResult =
   | { ok: true; baseUrl: string; token?: string }
@@ -70,12 +72,37 @@ async function connect(): Promise<D0Probe> {
   return probe
 }
 
-/** 幂等:多次调用共用同一次连通,返回同一个探针对象。 */
+/**
+ * 幂等:多次调用共用同一次连通,返回同一个探针对象。
+ *
+ * 连不通要**说出来**:在这之前它只落在 `window.__d0.error` 上(那是门的观测口,
+ * 用户看不见),会话总览里那句「没连上 core」也只有开着总览的人才撞得见。
+ * 报一条 warn —— 弹 8s、不拦路、进通知中心存档,过后还翻得到那句错误原文。
+ *
+ * ── 留账:重连成功这一半没有产地 ──────────────────────────────────────────
+ * 本批只做「一次性连通失败」这一处。SSE 断线重连住在 packages/renderer 的传输面里
+ * (apps/desktop-react 之外,本批改动范围限本应用),那一侧今天既不上报断线也不上报
+ * 重连成功 —— 新壳这边没有一个**干净的挂点**能观察到它,硬造一个轮询探针就是为了
+ * 报一句话再引进一个负载。所以 success '重连成功' 那一档暂缺,补它的前提是传输面
+ * 先长出连接状态事件。
+ */
 export function whenConnected(): Promise<D0Probe> {
-  pending ??= connect().catch(error => {
-    probe.error = error instanceof Error ? error.message : String(error)
-    return probe
-  })
+  pending ??= connect()
+    .catch(error => {
+      probe.error = error instanceof Error ? error.message : String(error)
+      return probe
+    })
+    .then(result => {
+      if (result.error) {
+        notify({
+          level: 'warn',
+          source: 'platform.connection',
+          title: t('notify.disconnected'),
+          body: result.error,
+        })
+      }
+      return result
+    })
   return pending
 }
 

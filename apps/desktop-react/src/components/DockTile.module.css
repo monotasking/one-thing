@@ -50,6 +50,19 @@
   right: var(--badge-offset);
 }
 
+/* 未读点。与徽同一个角(右上),不跟着停靠边翻向 —— 它是「这块瓦里有东西等你看」,
+ * 不是运行状态。一圈与瓦同色的描边把它从图标上抠出来,免得贴着线条时糊成一团。 */
+.unread {
+  position: absolute;
+  top: var(--unread-dot-offset);
+  right: var(--unread-dot-offset);
+  width: var(--unread-dot);
+  height: var(--unread-dot);
+  border-radius: var(--r-full);
+  background: var(--accent);
+  box-shadow: 0 0 0 var(--dock-sep-w) var(--surface-2);
+}
+
 /* 运行点贴瓦的**朝外侧**(Dock 条靠屏幕边那一侧)= 标签的对面;四向各一类。 */
 .dot {
   position: absolute;

@@ -14,6 +14,8 @@ import { ToastHost } from '../ui/Toast'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
 import { DOCK_HIDE_DELAY_MS, SCROLL_SETTLE_MS } from './motion'
+import { useT } from '../i18n'
+import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
 import { SHELF_SIDES, withinDockEdgeBand, withinDockHoldZone } from '../stage/transitions'
 import { DOCK_AXIS } from '../stage/types'
 import type { DockAlign, DockEdge } from '../stage/types'
@@ -34,9 +36,11 @@ const ALIGN_CLASS: Record<'x' | 'y', Record<DockAlign, string>> = {
 }
 
 export function AppShell() {
+  const t = useT()
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockAlign = useStageStore((st) => st.dockAlign)
+  const clickDockIcon = useStageStore((st) => st.clickDockIcon)
 
   /**
    * 全仓唯一的快捷键入口。以前这里手写着一条 ⌘P 监听,现在那条绑定是注册表里的
@@ -161,8 +165,17 @@ export function AppShell() {
 
       <StageOverlay />
 
-      {/* Toast 的落点。挂在壳的根上一次,useToast 才有地方渲染(它自己 portal 到 body)。 */}
-      <ToastHost />
+      {/*
+        Toast 的落点。挂在壳的根上一次,notify 才有地方渲染(它自己 portal 到 body)。
+        文案与「点小丸去哪」由这一层给 —— ui/ 组件不认识 i18n,也不认识通知中心是哪块瓦。
+        小丸走的就是**点 Dock 图标**那条路(clickDockIcon = 按它自己的打开方式开),
+        不是另开一个特权浮层:通知中心是一块普通的瓦,进出口只该有一条。
+      */}
+      <ToastHost
+        closeLabel={t('common.close')}
+        moreText={(count) => t('notify.more', { count })}
+        onMore={() => clickDockIcon(NOTIFICATIONS_ITEM_ID)}
+      />
     </div>
   )
 }

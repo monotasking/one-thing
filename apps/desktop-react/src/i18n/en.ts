@@ -86,6 +86,7 @@ export const en: Record<MessageKey, string> = {
   'item.browser': 'Browser',
   'item.sessions': 'Sessions',
   'item.search': 'Search',
+  'item.notifications': 'Notifications',
   'item.settings': 'Settings',
 
   /* ── stage / pinned ───────────────────────────────────────────────── */
@@ -279,5 +280,24 @@ export const en: Record<MessageKey, string> = {
   'perf.budgetOk': 'Within budget',
   'perf.budgetOver': 'Over budget',
   'perf.close': 'Close perf HUD',
+
+  /* ── notifications (08-30 batch) ─────────────────────────────────── */
+  'notify.filterAll': 'All',
+  'notify.filterWarn': 'Warnings',
+  'notify.filterError': 'Errors',
+  'notify.filterLabel': 'Filter by level',
+  'notify.markAllRead': 'Mark all read',
+  'notify.clear': 'Clear',
+  'notify.today': 'today',
+  'notify.yesterday': 'yesterday',
+  'notify.earlier': 'earlier',
+  'notify.empty': 'Nothing here yet',
+  'notify.repeat': '×{count}',
+  'notify.openLog': 'Open the full log (app.jsonl)',
+  'notify.more': '+{count} earlier · open notifications',
+
+  'notify.crash': 'Something broke in {where}',
+  'notify.disconnected': 'Not connected to core',
+  'notify.sendFailed': 'Message did not go out',
 
 }

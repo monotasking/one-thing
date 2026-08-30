@@ -81,6 +81,38 @@ describe('D0 connection', () => {
     expect(list).not.toHaveBeenCalled()
   })
 
+  /*
+   * 08-30 通知系统批:连不通不再只落在 window.__d0.error 那个门的观测口上
+   * (用户看不见它)。报一条 warn —— 弹 8s、不拦路、进通知中心存档。
+   * 重连成功那一半没有产地,理由记在 connection.ts 的 whenConnected 文件头。
+   */
+  it('reports the failure through notify(warn) so the user actually sees it', async () => {
+    ;(window as unknown as { onethingHost: unknown }).onethingHost = {
+      getConnection: async () => ({ ok: false, error: '先跑 bun run server:build' }),
+    }
+
+    const { whenConnected } = await import('./connection')
+    // resetModules 之后要拿**同一份**通知中心实例,所以这里也动态取。
+    const { useNotifyStore } = await import('../services/notify-store')
+    useNotifyStore.setState({ items: [] })
+
+    await whenConnected()
+
+    expect(
+      useNotifyStore.getState().items.map((x) => [x.level, x.source, x.body]),
+    ).toEqual([['warn', 'platform.connection', '先跑 bun run server:build']])
+  })
+
+  it('says nothing when the connection is fine — no news is good news', async () => {
+    list.mockResolvedValue({ success: true, sessions: [] })
+    const { whenConnected } = await import('./connection')
+    const { useNotifyStore } = await import('../services/notify-store')
+    useNotifyStore.setState({ items: [] })
+
+    await whenConnected()
+    expect(useNotifyStore.getState().items).toEqual([])
+  })
+
   it('is idempotent — repeated calls share one connection attempt', async () => {
     list.mockResolvedValue({ success: true, sessions: [] })
     const { whenConnected } = await import('./connection')

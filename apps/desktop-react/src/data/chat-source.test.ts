@@ -3,6 +3,7 @@ import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@renderer/platform/types'
 import { configureChatPort, type ChatPort } from './chat-port'
+import { useNotifyStore } from '../services/notify-store'
 import { REFOLD_THROTTLE_MS, useChatSource } from './chat-source'
 
 /**
@@ -367,6 +368,29 @@ describe('发送:pending 立刻上屏,账本认领之后丢掉', () => {
     await settle()
     expect(h.sent).toEqual(['会失败的一条', '会失败的一条'])
     expect(state().overlay[0]).toMatchObject({ status: 'sending' })
+  })
+
+  /*
+   * 08-30 通知系统批:发失败**同时**报一条 error 通知 —— 兜底,不抢气泡里那条
+   * 就地重试条的活(那条一格没动,上面那个用例仍然在断言它)。
+   * 它管的是另一种情形:失败的那一刻用户已经滚到别处或切走了会话。
+   */
+  it('发不出去还兜底报一条 error 通知(气泡里的重试条一格不动)', async () => {
+    useNotifyStore.setState({ items: [] })
+    const h = harness([created(1)])
+    h.sendResult = async () => ({ success: false, error: '引擎没接住' })
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    state().send('会失败的一条')
+    await settle()
+
+    expect(
+      useNotifyStore.getState().items.map((x) => [x.level, x.source, x.body]),
+    ).toEqual([['error', 'chat.send', '引擎没接住']])
+    // 那一格仍然是 failed —— 通知是**加**了一处,不是把重试条换掉了
+    expect(state().overlay[0]).toMatchObject({ status: 'failed', error: '引擎没接住' })
   })
 
   it('本地提示进 overlay 车道,账本上永远没有它', async () => {
