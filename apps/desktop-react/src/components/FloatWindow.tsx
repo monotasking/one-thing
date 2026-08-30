@@ -213,30 +213,62 @@ export function FloatLayer() {
   const order = useStageStore((st) => st.floatOrder)
   const [leaving, setLeaving] = useState<string[]>([])
   const prev = useRef<string[]>(order)
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>())
 
-  useEffect(() => {
-    const gone = prev.current.filter((id) => !order.includes(id))
+  /*
+   * 「刚离场的」在**渲染期同步**导出,不等 effect(08-30 用户报障的真因):
+   * 用 effect 检测晚一个提交 —— order 丢掉 id 的那一帧真窗已经卸载,离场副本
+   * 下一帧才挂上,肉眼就是「消失 → 再闪现 → 再消失」,而且旧写法的副本用的是
+   * `leaving-${id}` 这个**新 key** = Exposé 那样的重面板整棵重挂一遍。
+   * 渲染期 setState(同组件)会让 React 在提交前重跑本次渲染 —— 这正是官方的
+   * 「从 props 派生 state」形状,窗因此一帧都不缺席。
+   */
+  if (prev.current !== order) {
+    const newlyGone = prev.current.filter((id) => !order.includes(id) && !leaving.includes(id))
     prev.current = order
-    if (gone.length === 0) return
-    setLeaving((l) => [...l, ...gone])
-    const timer = setTimeout(
-      () => setLeaving((l) => l.filter((id) => !gone.includes(id))),
-      EXIT_MS,
-    )
-    return () => clearTimeout(timer)
-  }, [order])
+    if (newlyGone.length > 0) setLeaving((l) => [...l, ...newlyGone])
+  }
 
+  // 每个离场 id 各自计时;又被打开的当场从离场名单摘掉(它回到 order 那一半去画)。
+  useEffect(() => {
+    for (const id of leaving) {
+      if (order.includes(id)) {
+        const timer = timers.current.get(id)
+        if (timer) clearTimeout(timer)
+        timers.current.delete(id)
+        setLeaving((l) => l.filter((x) => x !== id))
+        continue
+      }
+      if (timers.current.has(id)) continue
+      timers.current.set(
+        id,
+        setTimeout(() => {
+          timers.current.delete(id)
+          setLeaving((l) => l.filter((x) => x !== id))
+        }, EXIT_MS),
+      )
+    }
+  }, [leaving, order])
+  useEffect(() => () => timers.current.forEach((t) => clearTimeout(t)), [])
+
+  /*
+   * 离场窗与在场窗必须并进**同一个数组**再渲染:JSX 里两个并排的 `{array}` 是两个
+   * 子槽,key 只在各自槽内认人 —— id 跨槽挪动照样卸载重挂(本测试修前抓的第二个
+   * 坑)。一个数组一个 key 命名空间,id 从「在场」挪去「离场」只是位置变了,
+   * 实例与 DOM 原封不动,出场动画播在活实例上。两半永远不含同一个 id
+   * (filter 保证),不会撞 key。
+   */
+  const shown = [
+    ...order.map((id, i) => ({ id, at: i, leaving: false })),
+    ...leaving
+      .filter((id) => !order.includes(id))
+      .map((id, i) => ({ id, at: order.length + i, leaving: true })),
+  ]
   return (
     <>
-      {order.map((id, i) => (
-        <FloatWindow key={id} id={id} order={i} />
+      {shown.map((w) => (
+        <FloatWindow key={w.id} id={w.id} order={w.at} leaving={w.leaving} />
       ))}
-      {/* 又被打开的就不算「正在离场」了 —— 同一个 id 不许同时画两遍。 */}
-      {leaving
-        .filter((id) => !order.includes(id))
-        .map((id) => (
-          <FloatWindow key={`leaving-${id}`} id={id} order={0} leaving />
-        ))}
     </>
   )
 }
