@@ -1,9 +1,7 @@
 import { useEffect } from 'react'
-import { SESSIONS_ITEM_ID } from '../../stage/items'
-import { useStageStore } from '../../stage/store'
-import { formOf } from '../../stage/transitions'
-import { usePanelVisibility } from '../../content/visibility'
+import { useShallow } from 'zustand/react/shallow'
 import { useExposeStore } from '../store'
+import { useExposeLive } from './use-live'
 import type { FocusDir } from '../types'
 import { Overview } from './Overview'
 import { ListView } from './ListView'
@@ -48,29 +46,37 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * 监听器回调返回后**就跑,于是宿主的判定落在本监听器**之前**。详见 StageOverlay。
  */
 export function ExposeView() {
-  const view = useExposeStore((st) => st.view)
+  /**
+   * view 要按**内容**比,不按引用比(useShallow):transitions 是纯函数,open()
+   * 每次都造一个新的 `{ mode: 'overview' }` —— 切回这个 tab 时 live 升起必调 open(),
+   * 引用比较会让这里每次都重渲染,连带把没 memo 的 Overview(439 张卡)整棵重造。
+   * 内容没变就不重渲染,这一层不动,卡树自然一格不动(08-30 真机画像的第三记)。
+   */
+  const view = useExposeStore(useShallow((st) => st.view))
+  return (
+    <div className={s.view}>
+      <ExposeBindings />
+      {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview />}
+      {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
+    </div>
+  )
+}
+
+/**
+ * 全局输入的占用,收在一个渲染 null 的叶子里 —— 这不是整理癖,是切 tab 的性能
+ * 契约(08-30 真机画像):`live` 依赖宿主的可见性声明,切 tab 必翻它;谁在渲染
+ * 输出里消费它,谁的子树就跟着翻转重渲。以前它长在 ExposeView 顶上,一次翻转
+ * 就把 Overview 那 439 张卡整棵重造(dev ~300ms)。装进叶子后,翻转只重渲染
+ * 这个 null 组件,卡树纹丝不动。
+ *
+ * `live` 的两半(placed × interactive)各是什么、为什么缺一不可,见 use-live.ts。
+ * 归位(open)与键盘都只认这一个布尔量:live 升起那一刻归位 —— 而不是挂载那一刻
+ * (出场动画会让内容在收回后多活一帧,那一帧里再开一次没有重新挂载;
+ * 舞台 ⇄ 浮窗 ⇄ 架子搬家也不算重开,视图不会被搬没)。
+ */
+function ExposeBindings() {
   const open = useExposeStore((st) => st.open)
-  /**
-   * 「这块面被摆出来了吗」—— 归位的时机就是这个布尔量翻成真的那一刻,
-   * 而不是本组件挂载的那一刻:出场动画会让内容在收回之后再多活一帧(宿主的 held),
-   * 那一帧里再开一次就没有重新挂载,挂载时机会漏掉这一次开场。
-   * 只问真假不问落点,所以舞台 ⇄ 浮窗 ⇄ 架子之间搬家不算重开,视图不会被搬没。
-   * 顺带:Dock 预览泡里的这一份 placed 恒为假 —— 悬停看一眼不该动状态机。
-   *
-   * 但 placed **一个人不够**:它是「这块内容摆出来了吗」这件全局事实,答不出
-   * 「我这一份实例算不算数」。08-30 之前就漏在这里:预览泡那一份不 open(),
-   * 却照样在 window 上挂了一份键盘监听。架子 keep-alive 之后后台那一份同理。
-   * 所以下面还要问一次 usePanelVisibility()。
-   */
-  const placed = useStageStore((st) => formOf(st, SESSIONS_ITEM_ID) !== 'dock')
-  /**
-   * 「我这一份算不算数」—— 宿主说了算(见 content/visibility.ts)。
-   * 两种不算数的实例:Dock 悬停预览泡里那一份,和架子上被切到后台、
-   * 仍然挂着的那一份(keep-alive)。它们都渲染,但都不许占用全局键盘。
-   */
-  const { interactive } = usePanelVisibility()
-  /** 摆出来了 **且** 这一份算数 —— 归位与键盘都只认这一个布尔量。 */
-  const live = placed && interactive
+  const live = useExposeLive()
 
   useEffect(() => {
     if (live) open()
@@ -136,10 +142,5 @@ export function ExposeView() {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [live])
 
-  return (
-    <div className={s.view}>
-      {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview placed={live} />}
-      {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
-    </div>
-  )
+  return null
 }

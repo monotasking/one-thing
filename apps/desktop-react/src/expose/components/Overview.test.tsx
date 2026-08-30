@@ -20,10 +20,19 @@ import { initialExposeState } from '../transitions'
 const FIRST_GROUP = GROUPS[0].id
 
 beforeEach(() => {
-  useStageStore.setState({ locale: 'zh' })
+  useStageStore.setState({ locale: 'zh', placements: {} })
   seedSessionsSource()
   useExposeStore.setState({ ...initialExposeState, view: { mode: 'overview' } })
 })
+
+/**
+ * 「摆出来」不再是 Overview 的 prop,而是 stage store 里的事实(AutoFocusSearch
+ * 叶子自己去问,见 use-live.ts)—— 测试的排布跟着改成真往 store 里摆一份。
+ */
+const placeSessions = () =>
+  useStageStore.setState((s) => ({
+    placements: { ...s.placements, sessions: { kind: 'edge', side: 'right' } },
+  }))
 
 const ids = () =>
   screen
@@ -188,7 +197,8 @@ describe('总览的键盘交接', () => {
   const search = () => screen.getByLabelText('搜索会话') as HTMLInputElement
 
   it('摆出来的那一刻焦点落进搜索条(不再留在 Dock 那块瓦上)', () => {
-    render(<Overview placed />)
+    placeSessions()
+    render(<Overview />)
     expect(document.activeElement).toBe(search())
   })
 
@@ -198,7 +208,8 @@ describe('总览的键盘交接', () => {
   })
 
   it('搜索条里按 ↓:焦点交给网格,搜索词原样留着', () => {
-    render(<Overview placed />)
+    placeSessions()
+    render(<Overview />)
     fireEvent.change(search(), { target: { value: 'Exposé' } })
     fireEvent.keyDown(search(), { key: 'ArrowDown' })
     expect(useExposeStore.getState().query).toBe('Exposé')
@@ -210,14 +221,16 @@ describe('总览的键盘交接', () => {
   it('↑ 同理:交接那一下只点亮锚点,不顺手再走一步', () => {
     // 开场归位会把锚点放在当前会话上;这里直接摆一个,验的就是「它不动」。
     useExposeStore.setState({ focusId: 'os-toolkit', focusVisible: false })
-    render(<Overview placed />)
+    placeSessions()
+    render(<Overview />)
     fireEvent.keyDown(search(), { key: 'ArrowUp' })
     expect(useExposeStore.getState().focusVisible).toBe(true)
     expect(useExposeStore.getState().focusId).toBe('os-toolkit')
   })
 
   it('←→ 不接:焦点留在输入框里给光标用,状态机一格不动', () => {
-    render(<Overview placed />)
+    placeSessions()
+    render(<Overview />)
     const before = useExposeStore.getState()
     for (const key of ['ArrowLeft', 'ArrowRight']) {
       const e = fireEvent.keyDown(search(), { key })

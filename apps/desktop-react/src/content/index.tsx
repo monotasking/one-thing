@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from './visibility'
@@ -46,15 +47,34 @@ export function renderContent(
   visibility: PanelVisibility = DEFAULT_PANEL_VISIBILITY,
 ): ReactNode {
   if (!id) return null
-  const R = RENDERERS[id]
-  if (!R) return null
+  if (!RENDERERS[id]) return null
+  return <PanelInstance id={id} visible={visibility.visible} interactive={visibility.interactive} />
+}
+
+/**
+ * 一份内容实例 = 「稳定的内容树」×「宿主随时在改的可见性声明」,两者在这里分家。
+ *
+ * 分家不是风格,是这套 keep-alive 的性能前提(08-30 真机 CDP 画像钉的):宿主
+ * (架子层 / 浮窗 / 舞台)每重渲染一次都会重新调 renderContent。若在那里现造
+ * Provider/边界/面板的元素,元素引用每次都是新的,React 就把面板子树整棵重渲 ——
+ * 会话总览那 439 张卡重造一遍 JSX,dev 下 ~300ms,正是「切 tab 卡」的主项。
+ * 这里把内容树 useMemo 在 [id] 上:宿主再怎么重渲染、可见性再怎么翻,
+ * 子树元素引用不变,React 直接短路;翻转只到达真正消费 usePanelVisibility 的叶子。
+ *
+ * 可见性以两个布尔量进 props(不收对象):宿主侧无需为引用稳定操心,
+ * 对象在这里按值重组。
+ */
+function PanelInstance({ id, visible, interactive }: { id: string; visible: boolean; interactive: boolean }) {
+  const visibility = useMemo<PanelVisibility>(() => ({ visible, interactive }), [visible, interactive])
   // 可见性挂在**边界外面**:错误卡也是这一份实例的一部分,后台那一份的错误卡
   // 同样不该抢键盘。边界在里面,所以「重试」重挂的仍然只有面板自己。
-  return (
-    <PanelVisibilityContext.Provider value={visibility}>
+  const tree = useMemo(() => {
+    const R = RENDERERS[id]
+    return (
       <ErrorBoundary where={id}>
         <R />
       </ErrorBoundary>
-    </PanelVisibilityContext.Provider>
-  )
+    )
+  }, [id])
+  return <PanelVisibilityContext.Provider value={visibility}>{tree}</PanelVisibilityContext.Provider>
 }

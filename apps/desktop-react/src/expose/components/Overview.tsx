@@ -4,6 +4,7 @@ import { Button } from '../../ui/Button'
 import { plural, useT } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
+import { useExposeLive } from './use-live'
 import { columnsFromTemplate, filterGroups, isCollapsed } from '../transitions'
 import { Highlight } from './Highlight'
 import { SessionCard } from './SessionCard'
@@ -22,13 +23,25 @@ import s from './Overview.module.css'
  * 退役的是 `SearchResults`(三层缩进的命中列表)—— 它是「搜索换一种呈现」那条路
  * 的全部实现,连同它的 CSS 与 `SearchHit` 形状一起删了。
  */
-interface Props {
-  /**
-   * 这块面被摆出来了吗(ExposeView 算好递进来的同一份事实)。
-   * 只有真的摆出来才抢焦点 —— Dock 悬停预览泡里也渲染一份 Overview,
-   * 那一份 placed 恒为假:看一眼不该把光标从别处夺走。
-   */
-  placed?: boolean
+/**
+ * 摆出来的那一刻,键盘归这块面 —— 焦点落进搜索条。
+ * 在此之前它归 Dock 上那块瓦(点开面板的那个按钮),于是「刚开完面板按一下空格」
+ * 会再次触发那颗按钮、把面板关掉:那是 08-30 用户报的键盘死区的另一半。
+ *
+ * 判据是 live(placed × interactive,见 use-live.ts)升起,而不是挂载:
+ * 舞台 ⇄ 浮窗 ⇄ 架子搬家时它不变,不会重复抢焦点;Dock 预览泡与架子后台
+ * keep-alive 层 interactive 恒为假 —— 看一眼不该把光标从别处夺走。
+ *
+ * 装在渲染 null 的叶子里而不是长在 Overview 身上,是因为 live 随切 tab 翻转:
+ * 谁的渲染输出消费它,谁就跟着整棵重渲 —— Overview 消费它的话,439 张卡每次
+ * 切换全量重造(08-30 真机画像里的 ~300ms 主项)。叶子翻转,卡树不动。
+ */
+function AutoFocusSearch({ inputRef }: { inputRef: RefObject<HTMLInputElement | null> }) {
+  const live = useExposeLive()
+  useEffect(() => {
+    if (live) inputRef.current?.focus()
+  }, [live, inputRef])
+  return null
 }
 
 /**
@@ -61,30 +74,33 @@ function useGridColumns(
   }, [hostRef, report, groupCount])
 }
 
-export function Overview({ placed = false }: Props) {
+export function Overview() {
   const t = useT()
-  const state = useExposeStore()
+  /**
+   * 只订阅画面真正消费的五个字段,**不整仓订阅**(08-30 真机画像的第二记):
+   * `useExposeStore()` 不带 selector 时,store 每 notify 一次这里就整棵重渲一次 ——
+   * 而切回这个 tab 时 open() 归位必然 notify(它总是造新 state 对象),即使
+   * 归位后每个值都没变,439 张卡也要全量重造(dev ~260ms)。按字段选,
+   * Object.is 相等就地短路:值没变的归位一格不重画;真变了(比如清了搜索词)
+   * 才付一次该付的重渲染。动作一律走 `useExposeStore.getState()`(引用稳定,
+   * 事件处理器里取用,与 ExposeView 的键盘处理同一口径)。
+   */
+  const query = useExposeStore((st) => st.query)
+  const collapsedGroups = useExposeStore((st) => st.collapsedGroups)
+  const currentSessionId = useExposeStore((st) => st.currentSessionId)
+  const focusId = useExposeStore((st) => st.focusId)
+  const focusVisible = useExposeStore((st) => st.focusVisible)
+  const setColumns = useExposeStore((st) => st.setColumns)
   const allGroups = useSessionsSource((st) => st.groups)
   const status = useSessionsSource((st) => st.status)
   const error = useSessionsSource((st) => st.error)
   const inputRef = useRef<HTMLInputElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
-  const query = state.query
   const searching = query.trim().length > 0
 
   const groups = useMemo(() => filterGroups(allGroups, query), [allGroups, query])
 
-  useGridColumns(innerRef, state.setColumns, groups.length)
-
-  /*
-   * 摆出来的那一刻,键盘归这块面 —— 焦点落进搜索条。
-   * 在此之前它归 Dock 上那块瓦(点开面板的那个按钮),于是「刚开完面板按一下空格」
-   * 会再次触发那颗按钮、把面板关掉:那是 08-30 用户报的键盘死区的另一半。
-   * 依赖是 placed 这个布尔量而不是挂载:舞台 ⇄ 浮窗 ⇄ 架子搬家时它不变,不会重复抢焦点。
-   */
-  useEffect(() => {
-    if (placed) inputRef.current?.focus()
-  }, [placed])
+  useGridColumns(innerRef, setColumns, groups.length)
 
   const onSearchKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     /*
@@ -97,17 +113,18 @@ export function Overview({ placed = false }: Props) {
      */
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
-      state.focusGrid()
+      useExposeStore.getState().focusGrid()
       inputRef.current?.blur()
       return
     }
     if (e.key !== 'Enter') return
     // 回车 = 进入**屏幕上第一张卡**。它就是过滤后的阅读次序的头一个,
     // 不再有第二套「命中排序」—— 看到什么,回车就进什么。
-    const first = groups.find((g) => !isCollapsed(state, g.id))?.sessions[0]
+    const st = useExposeStore.getState()
+    const first = groups.find((g) => !isCollapsed(st, g.id))?.sessions[0]
     if (first) {
       e.preventDefault()
-      state.enterSession(first.id)
+      st.enterSession(first.id)
     }
   }
 
@@ -119,7 +136,8 @@ export function Overview({ placed = false }: Props) {
   function renderGroups() {
     if (groups.length > 0) {
       return groups.map((group) => {
-        const collapsed = isCollapsed(state, group.id)
+        // 同一份事实:isCollapsed 的判据就是 collapsedGroups,这里读的是订阅到的那份切片。
+        const collapsed = collapsedGroups.includes(group.id)
         // 组名 / 副名两种来源:合成组给 key(界面文案),项目组给数据。
         const name = group.nameKey ? t(group.nameKey) : group.name
         const path = group.pathKey ? t(group.pathKey) : group.path
@@ -139,7 +157,7 @@ export function Overview({ placed = false }: Props) {
                 className={s.groupToggle}
                 data-testid={`group-toggle-${group.id}`}
                 aria-expanded={!collapsed}
-                onClick={() => state.toggleGroupCollapsed(group.id)}
+                onClick={() => useExposeStore.getState().toggleGroupCollapsed(group.id)}
               >
                 <Caret className={s.caret} strokeWidth={1.75} aria-hidden="true" />
                 {/* 组名也高亮:项目名命中时整组保留,不高亮就看不出这一组为什么还在。 */}
@@ -151,7 +169,7 @@ export function Overview({ placed = false }: Props) {
               <button
                 type="button"
                 className={s.count}
-                onClick={() => state.enterList(group.id)}
+                onClick={() => useExposeStore.getState().enterList(group.id)}
               >
                 {t(
                   plural(group.sessions.length, 'expose.sessionCountOne', 'expose.sessionCount'),
@@ -182,10 +200,10 @@ export function Overview({ placed = false }: Props) {
                       key={session.id}
                       session={session}
                       query={query}
-                      current={session.id === state.currentSessionId}
-                      focused={state.focusVisible && session.id === state.focusId}
-                      onEnter={() => state.enterSession(session.id)}
-                      onQuickLook={() => state.openQuickLook(session.id)}
+                      current={session.id === currentSessionId}
+                      focused={focusVisible && session.id === focusId}
+                      onEnter={() => useExposeStore.getState().enterSession(session.id)}
+                      onQuickLook={() => useExposeStore.getState().openQuickLook(session.id)}
                     />
                   ))}
                 </div>
@@ -231,14 +249,15 @@ export function Overview({ placed = false }: Props) {
 
   return (
     <div className={s.overview}>
+      <AutoFocusSearch inputRef={inputRef} />
       <header className={s.top}>
         <div className={s.searchWrap}>
           <Search className={s.searchIcon} strokeWidth={1.75} aria-hidden="true" />
           <input
             ref={inputRef}
             className={s.search}
-            value={state.query}
-            onChange={(e) => state.setQuery(e.target.value)}
+            value={query}
+            onChange={(e) => useExposeStore.getState().setQuery(e.target.value)}
             onKeyDown={onSearchKey}
             placeholder={t('expose.searchPlaceholder')}
             aria-label={t('expose.searchLabel')}

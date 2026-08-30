@@ -47,6 +47,15 @@
   font-weight: 500;
 }
 
+/* 命中区铺满整个 .tab(定位祖先):hover 高亮画在 .tab 上,点击若只吃 .main 自己的
+ * 盒子,左右 pad-x(10px×2)+ gap(6px)就是「亮着却点不中」的死区 —— 短 tab 上
+ * 占到三成宽。overlay 不占布局,选中与撕拽按下都从整块 tab 起步。 */
+.main::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
 .icon {
   width: var(--tab-icon);
   height: var(--tab-icon);
@@ -59,8 +68,11 @@
   white-space: nowrap;
 }
 
-/* × 的位子一直占着,只有 opacity 在变 —— hover 不引起重排 */
+/* × 的位子一直占着,只有 opacity 在变 —— hover 不引起重排。
+ * position: relative 让它作为 DOM 后序元素压过 .main::before 的整块 overlay,
+ * 保住自己的命中盒 —— 不然 × 会被 overlay 盖住点不到。 */
 .close {
+  position: relative;
   flex: none;
   width: var(--tab-close);
   height: var(--tab-close);
