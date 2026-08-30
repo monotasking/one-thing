@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronRight } from '../../components/icons'
-import { plural, useT } from '../../i18n'
+import { useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { findGroup, sessionsOfGroup } from '../projection'
@@ -49,18 +49,17 @@ export function ListView({ groupId }: Props) {
   ])
 
   return (
-    <div className={s.list}>
+    // data-testid 是给真机门的**稳定选择器**:CSS Modules 的类名在构建后是
+    // `_<local>_<hash>`,哈希每次构建都可能变,门不能拿它当锚点(见 EdgeShelf 的
+    // data-shelf / data-panel 同一读法)。
+    <div className={s.list} data-testid="expose-list">
       <header className={s.top}>
         <button type="button" className={s.crumb} onClick={backToOverview}>
           {t('list.backToOverview')}
         </button>
         <ChevronRight className={s.crumbIcon} strokeWidth={1.75} aria-hidden="true" />
-        <span className={s.here}>
-          {t(plural(all.length, 'list.hereOne', 'list.here'), {
-            group: groupName,
-            count: all.length,
-          })}
-        </span>
+        {/* 只有组名,不带条数 —— 08-30「计数禁令」(tab / 列表 / 组头不挂个数)在这一处的补执行。 */}
+        <span className={s.here}>{t('list.here', { group: groupName })}</span>
         <input
           className={s.filter}
           value={filter}

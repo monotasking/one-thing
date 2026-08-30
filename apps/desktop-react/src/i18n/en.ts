@@ -164,8 +164,9 @@ export const en: Record<MessageKey, string> = {
 
   /* ── list view ────────────────────────────────────────────────────── */
   'list.backToOverview': '‹ Overview',
-  'list.here': '{group} · {count} sessions',
-  'list.hereOne': '{group} · {count} session',
+  // 计数禁令之后只剩组名;hereOne 成了与 here 同文的孤儿键(理由见 zh.ts 同处)。
+  'list.here': '{group}',
+  'list.hereOne': '{group}',
   'list.filter': 'Filter within this group',
   'list.bucketThisWeek': 'This week',
   'list.bucketEarlier': 'Earlier',

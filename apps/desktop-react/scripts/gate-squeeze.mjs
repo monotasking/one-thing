@@ -10,6 +10,12 @@
  * 每一档在**真机真排版**下扫一遍架子里画着东西的盒子,两两求交。任何一对相交
  * (容差 1px)= 红,并打印元素对与档位。五档全绿才算过。
  *
+ * **两个场景,同一把尺**(08-30 补):总览是一屏,进组之后的会话列表(ListView)
+ * 是另一屏 —— 它有自己的顶行(面包屑 + 组名 + 过滤框),那一行的挤压行为与
+ * 总览的组头毫无关系。只扫总览的话,ListView 顶行的病对这条门是隐形的
+ * (08-30 用户报的「钉边窄档里过滤框被长组名推出去裁掉」正是这么漏网的)。
+ * 所以第二个场景 = 点进一个长名组,再把同样的五档、同样的重叠尺跑一遍。
+ *
  * ── 为什么不是「可见兄弟元素两两求交」 ───────────────────────────────────
  * 立项时写的是兄弟两两。真机复现之后改了口径,理由是**兄弟检测抓不到报障那一例**:
  * 组头行里溢出的是 `.groupName`,它是 `.groupToggle` 的孩子;被它压住的 `.count`
@@ -65,6 +71,13 @@ const SEED_GROUPS = [
   { dir: 'short', names: ['短组甲', '短组乙'] },
   { dir: null, names: ['独立甲', '独立乙'] },
 ]
+
+/**
+ * 场景②进哪一组。取**没有任何断行机会**的那个 32 位十六进制目录名:它在 flex 行里
+ * 拿的是 max-content 宽度,一个字符都没法折 —— 长名把同行别的件挤走的最坏一例。
+ * 用户报障那一屏(钉边 ~300px、组名长)就是这一形。
+ */
+const LIST_SCENARIO_GROUP = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
 
 /**
  * 联网宿主(standalone server)把每条工作目录夹进 `<workspaceRoot>/<uid>/<wid>`,
@@ -156,6 +169,37 @@ async function clickTestId(page, testId) {
     return true
   }, testId)
   if (!clicked) throw new Error(`点不到:[data-testid="${testId}"] 不在 DOM 里`)
+}
+
+/**
+ * 点开一个**长名组**,进它的会话列表(ListView)。
+ *
+ * 组 id = 归一之后的工作目录(见 expose/projection.ts),而联网宿主会把种子里那个
+ * 相对目录夹进 `<workspaceRoot>/<uid>/<wid>/` —— 所以 id 是一条完整路径,写不出
+ * 字面 testid。这里按**组头的文字**去找(种子目录名就是组名,见 projectNameOf),
+ * 找到之后点它右端那枚常驻的「›」入口。
+ *
+ * 入口是 `flex: none` 的常驻项、只动 opacity(律三),所以不 hover 也点得到 ——
+ * 和 clickTestId 一样走 `el.click()`,理由同样是「这条门要证的是排版,不是命中测试」。
+ */
+async function enterGroupNamed(page, fragment) {
+  const result = await page.evaluate((frag) => {
+    const heads = [...document.querySelectorAll('[data-testid^="group-head-"]')]
+    const head = heads.find((el) => (el.textContent ?? '').includes(frag))
+    if (!head) {
+      return { ok: false, seen: heads.map((el) => (el.textContent ?? '').trim().slice(0, 48)) }
+    }
+    const enter = head.querySelector('[data-testid^="group-enter-"]')
+    if (!enter) return { ok: false, seen: ['组头在,但里面没有 group-enter-*'] }
+    enter.click()
+    return { ok: true }
+  }, fragment)
+  if (!result.ok) {
+    throw new Error(`进不去组「${fragment}」—— 现有组头:\n  ${result.seen.join('\n  ')}`)
+  }
+  await waitFor('ListView 就位', () =>
+    page.evaluate(() => Boolean(document.querySelector('[data-testid="expose-list"]'))),
+  )
 }
 
 /**
@@ -472,6 +516,86 @@ async function sweep(page) {
   return { hits: [...seen.values()], boxes: [...boxes], steps: stops }
 }
 
+/**
+ * ListView 顶行的**在场检查** —— 律一/律四在「行溢出」这一形上的判据。
+ *
+ * ── 为什么这一条不能靠上面那把重叠尺 ────────────────────────────────────
+ * 08-30 报障是「长组名把过滤框推出容器右缘,过滤框被裁掉」。flex 行里的项**永不
+ * 互相重叠**:挤不下的时候它们是一个接一个地溢出到容器外面去,然后被祖先的
+ * overflow 裁掉。于是 scanOverlaps 在修前修后都是零相交 —— 真机实测过,那一档的
+ * 盒子清单里干脆没有 input(它整个被裁没了,连相交的资格都没有)。
+ * 一把只会说「有没有压着」的尺,对「有没有被挤没」这一形是结构性失明的。
+ *
+ * 所以这个场景带自己的判据:**结构行里的每一件都必须完整落在容器可视区内**。
+ * 这正是律四那句「变窄的次序永远是先截断 → 再有序降元素」的机器化 —— 被挤出
+ * 边界不在「有序降元素」的名单里,没有谁声明过过滤框可以消失。
+ * ──────────────────────────────────────────────────────────────────────
+ */
+async function checkListTopRow(page) {
+  return page.evaluate(() => {
+    const shelf = document.querySelector('[data-shelf="right"]')
+    const list = document.querySelector('[data-testid="expose-list"]')
+    if (!shelf || !list) return { error: 'ListView 或右架子不在 DOM 里' }
+    const header = list.querySelector('header')
+    if (!header) return { error: 'ListView 顶行(header)不在 DOM 里' }
+    const clip = shelf.getBoundingClientRect()
+    const problems = []
+    const seen = []
+    for (const el of header.children) {
+      const r = el.getBoundingClientRect()
+      if (r.width <= 0 || r.height <= 0) continue
+      const cls = (typeof el.className === 'string' ? el.className : el.getAttribute('class')) ?? ''
+      const desc = `${el.tagName.toLowerCase()}${cls ? `.${String(cls).trim().split(/\s+/).join('.')}` : ''}`
+      const outRight = r.right - clip.right
+      const outLeft = clip.left - r.left
+      seen.push(`${desc} w=${r.width.toFixed(0)} 右缘余量=${(-outRight).toFixed(0)}`)
+      // 1px 容差与重叠尺同一口径(亚像素排版)。
+      if (outRight > 1) problems.push(`${desc} 右缘冲出容器 ${outRight.toFixed(1)}px(宽 ${r.width.toFixed(0)})`)
+      if (outLeft > 1) problems.push(`${desc} 左缘冲出容器 ${outLeft.toFixed(1)}px(宽 ${r.width.toFixed(0)})`)
+    }
+    return { problems, seen }
+  })
+}
+
+/**
+ * 一个场景 = 五档厚度,逐档滚一遍扫重叠。
+ * 场景名只进日志与失败行 —— 尺一把,场景两个,判据一个字都不许分岔。
+ * `extra` 是场景自带的附加判据(见 checkListTopRow 顶部为什么需要它)。
+ */
+async function sweepThicknesses(page, scenario, failures, extra) {
+  for (const target of THICKNESSES) {
+    const width = await dragThicknessTo(page, target)
+    if (extra) {
+      const { error, problems, seen } = await extra(page)
+      if (error) throw new Error(error)
+      if (process.env.SQUEEZE_DUMP) console.log(`    [row ${target}px] ${seen.join(' | ')}`)
+      if (problems.length) {
+        console.log(`  ✗ ${scenario} ${target}px —— 结构行被挤出容器:`)
+        for (const problem of problems) console.log(`      ${problem}`)
+        failures.push(`${scenario} ${target}px:${problems.length} 件被挤出容器`)
+      }
+    }
+    const { hits, boxes, steps } = await sweep(page)
+    if (process.env.SQUEEZE_DUMP) {
+      console.log(`    [dump ${scenario} ${target}px]\n      ${boxes.join('\n      ')}`)
+    }
+    if (hits.length === 0) {
+      console.log(
+        `  ✓ ${scenario} ${target}px(实测 ${width.toFixed(0)})—— 滚 ${steps} 屏,${boxes.length} 个盒子,零相交`,
+      )
+    } else {
+      console.log(
+        `  ✗ ${scenario} ${target}px(实测 ${width.toFixed(0)})—— 滚 ${steps} 屏,${hits.length} 对相交:`,
+      )
+      for (const hit of hits.slice(0, 12)) {
+        console.log(`      ${hit.overlap}\n        A ${hit.a}\n        B ${hit.b}`)
+      }
+      if (hits.length > 12) console.log(`      …还有 ${hits.length - 12} 对`)
+      failures.push(`${scenario} ${target}px:${hits.length} 对相交`)
+    }
+  }
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(
@@ -495,7 +619,7 @@ async function main() {
   let app
   const failures = []
   try {
-    console.log('\n[1/5] 起一台 core,种下四种组名形状')
+    console.log('\n[1/6] 起一台 core,种下四种组名形状')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -547,7 +671,7 @@ async function main() {
     }
     console.log(`  ✓ 种了 ${seeded} 条会话 / ${SEED_GROUPS.length} 组`)
 
-    console.log('\n[2/5] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
+    console.log('\n[2/6] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -573,7 +697,7 @@ async function main() {
     )
     console.log('  ✓ 钉上了,卡也画出来了')
 
-    console.log('\n[3/5] 律三的预留检查(粘性覆盖的代价)')
+    console.log('\n[3/6] 律三的预留检查(粘性覆盖的代价)')
     const reservation = await checkStickyReservation(page)
     if (reservation.error) throw new Error(reservation.error)
     if (reservation.problems.length) {
@@ -583,28 +707,16 @@ async function main() {
       console.log(`  ✓ ${reservation.checked} 个粘性元素,滚动坐标系里都留够了位置`)
     }
 
-    console.log('\n[4/5] 五档厚度,逐档滚一遍扫重叠')
-    for (const target of THICKNESSES) {
-      const width = await dragThicknessTo(page, target)
-      const { hits, boxes, steps } = await sweep(page)
-      if (process.env.SQUEEZE_DUMP) console.log(`    [dump ${target}px]\n      ${boxes.join('\n      ')}`)
-      if (hits.length === 0) {
-        console.log(
-          `  ✓ ${target}px(实测 ${width.toFixed(0)})—— 滚 ${steps} 屏,${boxes.length} 个盒子,零相交`,
-        )
-      } else {
-        console.log(
-          `  ✗ ${target}px(实测 ${width.toFixed(0)})—— 滚 ${steps} 屏,${hits.length} 对相交:`,
-        )
-        for (const hit of hits.slice(0, 12)) {
-          console.log(`      ${hit.overlap}\n        A ${hit.a}\n        B ${hit.b}`)
-        }
-        if (hits.length > 12) console.log(`      …还有 ${hits.length - 12} 对`)
-        failures.push(`${target}px:${hits.length} 对相交`)
-      }
-    }
+    console.log('\n[4/6] 场景①总览:五档厚度,逐档滚一遍扫重叠')
+    await sweepThicknesses(page, '总览', failures)
 
-    console.log('\n[5/5] 收工')
+    console.log(`\n[5/6] 场景②进组后 ListView(长名组「${LIST_SCENARIO_GROUP}」):同样五档`)
+    // 在宽档(五档的最后一档 560)上点进去,窄档只负责被量 —— 这条门量的是排版,
+    // 不是「窄到 240 还点不点得中」。
+    await enterGroupNamed(page, LIST_SCENARIO_GROUP)
+    await sweepThicknesses(page, 'ListView', failures, checkListTopRow)
+
+    console.log('\n[6/6] 收工')
     await app.close()
     app = undefined
   } finally {
@@ -620,7 +732,7 @@ async function main() {
     console.error(`\n[squeeze-gate] FAILED(${failures.length} 档):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[squeeze-gate] ok —— 五档全绿,零重叠')
+  console.log('\n[squeeze-gate] ok —— 两场景 × 五档全绿,零重叠')
 }
 
 main().catch((error) => {

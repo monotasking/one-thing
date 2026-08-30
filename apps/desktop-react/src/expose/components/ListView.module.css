@@ -38,16 +38,51 @@
   color: var(--text-4);
 }
 
+/*
+ * 组名 —— 结构行里的主文本件,所以按律一配**两把锁**:min-width: 0 解「能不能缩」,
+ * 省略号解「缩了之后怎么收场」;律二再加一句「结构行的文本永不换行」。
+ *
+ * 从前这里是 `flex: none`:flex 项一旦不肯收缩就拿 max-content 宽度,于是一个长
+ * 目录名(uuid / 32 位十六进制)把同行右端的过滤框整条顶出容器 —— 08-30 用户报障
+ * 那一屏(会话总览钉在右边、拖到 ~300px)正是这一形。真机读数:组名 317px、
+ * 过滤框右缘冲出容器 332px,屏幕上过滤框被裁得一点不剩。
+ *
+ * grow 仍然是 0:这一行唯一吸空间的角色是 .filter 的 margin-left: auto(律二,
+ * 一行只许一个吸空间者),组名不去抢。
+ */
 .here {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--fs-label);
   font-weight: 650;
   color: var(--text-1);
 }
 
+/*
+ * 过滤框 —— 允许收缩,不允许被挤没。
+ *
+ * `flex: 0 1 var(--pin-min)` 取代从前的 `width: var(--pin-min)`:基准还是那个 320,
+ * 所以**宽档逐像素不变**,但收缩这一把锁开了。不留 `width` 的理由是「一个数只该有
+ * 一个产地」—— flex-basis 同时是「宽档多宽」和「按什么比例让」,width 再写一遍只会
+ * 让两处打架。
+ *
+ * 挤压次序是**排出来的**,不是硬编码的(与律一里 .groupName / .groupPath 同一读法):
+ * 收缩量按基准宽度分配,而常见组名的 max-content 远小于 320 —— 于是空间不够时
+ * 过滤框先让,让到下限之后赤字才落到组名上,组名这时才开始截断。
+ *
+ * 下限复用 --btn-sm,也就是**这条规则自己的 height**:药丸收到极限就是一颗与自己
+ * 等高的圆,这是它还称得上一个控件的最小身量。为什么不敢更大:架子下限 240px 档
+ * 的真机读数是 页边距 2×32 + 面包屑 81 + 分隔符 12 + 三处 --sp-2 共 24,整行只剩
+ * 58px 给「组名 + 过滤框」两件分 —— 任何 ≥96 的下限(比如把 --key-slot-w 借过来)
+ * 都会在 240 档重新把这一行顶出容器,那正是本次要修的病。
+ */
 .filter {
+  flex: 0 1 var(--pin-min);
   margin-left: auto;
-  width: var(--pin-min);
+  min-width: var(--btn-sm);
   height: var(--btn-sm);
   padding: 0 var(--sp-3);
   border-radius: var(--r-full);

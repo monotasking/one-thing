@@ -171,8 +171,11 @@ export const zh = {
 
   /* ── 列表视图 ─────────────────────────────────────────────────────── */
   'list.backToOverview': '‹ 总览',
-  'list.here': '{group} · {count} 会话',
-  'list.hereOne': '{group} · {count} 会话',
+  // 面包屑后面只写组名。08-30「计数禁令」(tab / 列表 / 组头不挂个数)之后这里不再带条数,
+  // 于是单复数两支同文、`list.hereOne` 成了孤儿键 —— 与 `expose.sessionCountOne` 同一批同一形,
+  // 照仓里的读法留在原地等 i18n 批清理,不单独删。
+  'list.here': '{group}',
+  'list.hereOne': '{group}',
   'list.filter': '在本组内过滤',
   'list.bucketThisWeek': '本周',
   'list.bucketEarlier': '更早',
