@@ -3,6 +3,12 @@
  * 一切几何、时长、层级都在这里命名一次,组件只许 var()。
  * 唯一豁免:content/ 下的 mock 内容可用 diff 红绿等语义演示色(集中在
  * content/mocks.module.css 顶部并注明)。
+ *
+ * 纪律区:**变窄时怎么排**是另一部法,四律写在
+ * `docs/design/react-shell-squeeze-rules-2026-08.md`(一行一个弯腰件 / 结构行
+ * 只截断不换行 / 覆盖必须有布局预留 / 声明的最小宽度下零重叠),执法在
+ * `npm run squeeze-gate`(静态)与 `npm run gate:squeeze`(真机五档)。
+ * 本文件末尾的「抗挤压」一节是那部法用到的全部几何。
  * ────────────────────────────────────────────────────────────────────────── */
 :root {
   /* 字体栈 */
@@ -190,6 +196,61 @@
   --ql-header-h: 44px;
   --ql-footer-h: 32px;
   --ql-col: 560px;
+
+  /* ── 抗挤压 / 窄形 N2 ──────────────────────────────────────────────────
+   * 法条见 docs/design/react-shell-squeeze-rules-2026-08.md。这一节只放几何。
+   *
+   * 一个阈值 420px:容器窄到这里,会话卡进「压缩形 N2」(标题 / 预览各一行、
+   * 内边距收紧、脚行只剩模型徽 + 相对时间),组头把路径副名降掉。
+   * **不做更窄的第二档** —— 两个阈值就是两份要维护的真相。
+   *
+   * 切档必须是**布局连续**的,所以量分两类:
+   *  · 连续量(内边距 / 间距 / 组名字号)用下面这一族 `*-fluid`:它们在
+   *    容器 420px 处**恰好等于宽档的值**,再往窄处才线性收,于是阈值那一点
+   *    没有台阶,>420 的宽档逐像素与从前相同(这一条是硬约束:宽档不许动)。
+   *    `--squeeze-ramp` = 「比 420 窄了多少」,≥420 时为负,clamp 取上界。
+   *    收到 300px 左右各自触底,再窄就平着走。
+   *  · 离散量(预览 2 行 → 1 行、路径显 → 隐、模型徽收窄)没法插值,只能在
+   *    阈值处翻,所以各配一次 `--dur` 的软化,并用下面三个错峰延时岔开几十毫秒,
+   *    免得三件事在同一帧一起跳。
+   *
+   * 注意:`@container` 的条件里不能写 var(),所以 420 这个数在查询那一侧仍是
+   * 字面量;`--squeeze-narrow` 是同一事实的名字,改的时候两处一起改。
+   * ────────────────────────────────────────────────────────────────────── */
+  --squeeze-narrow: 420px;
+  --squeeze-ramp: calc(var(--squeeze-narrow) - 100cqi);
+  --squeeze-stagger-1: 0ms;
+  --squeeze-stagger-2: 40ms;
+  --squeeze-stagger-3: 80ms;
+  --expose-gap-fluid: clamp(
+    var(--sp-2),
+    calc(var(--expose-gap) - var(--squeeze-ramp) * 0.05),
+    var(--expose-gap)
+  );
+  --card-pad-block-fluid: clamp(
+    var(--sp-2),
+    calc(var(--sp-3) - var(--squeeze-ramp) * 0.033),
+    var(--sp-3)
+  );
+  --card-pad-inline-fluid: clamp(
+    var(--sp-3),
+    calc(var(--sp-4) - var(--squeeze-ramp) * 0.033),
+    var(--sp-4)
+  );
+  --card-row-gap-fluid: clamp(
+    var(--sp-1),
+    calc(var(--sp-2) - var(--squeeze-ramp) * 0.033),
+    var(--sp-2)
+  );
+  --group-name-fs-fluid: clamp(
+    var(--fs-label),
+    calc(var(--fs-body) - var(--squeeze-ramp) * 0.0083),
+    var(--fs-body)
+  );
+  /* 压缩形的卡:一行标题 + 一行预览 + 一行脚,74 是这三行加收紧后的内边距。 */
+  --card-min-h-narrow: 74px;
+  /* 模型徽在窄档的硬顶。它是 mono 长串,不设顶就会把相对时间挤出卡外。 */
+  --model-max-w-narrow: 92px;
 
   /* ── L3 钢琴键会话目录(TOC)几何 ────────────────────────────────────────
    * 这一节就是「几何栈」本身:键列与展开面板**共用**这几个数,

@@ -65,6 +65,13 @@
   height: var(--fs-meta);
 }
 
+/*
+ * `scroll-padding-top` = 粘性组头的**滚动边界**。键盘走到视口外的卡时
+ * SessionCard 会 scrollIntoView 到「最近的位置」,而「最近」认的是滚动容器的
+ * padding 边 —— 不告诉它「上面那一行被组头占着」,它就会把卡停在组头**底下**:
+ * 焦点环在,卡看不见。取值 = 组头行高(--list-row-h),与 .groupHead 粘附的
+ * 高度是同一个事实。
+ */
 .scroll {
   flex: 1;
   min-height: 0;
@@ -72,6 +79,7 @@
   overscroll-behavior: contain;
   /* 滚动条进出不挤动居中内容:两侧各留恒定槽位(08-29 用户报折叠组时 UI 左右晃) */
   scrollbar-gutter: stable both-edges;
+  scroll-padding-top: var(--list-row-h);
 }
 
 .inner {
@@ -95,17 +103,35 @@
  * (曾经折叠态是另一个组件 .collapsedRow,几何和它不一样 —— 于是切一次之后
  *  指针底下的元素就换了,原地再点点不动。那是这个文件里唯一的历史坑。)
  */
+/*
+ * ── 08-30 用户报「首个组头被面板上缘裁切」的根因与治法 ─────────────────────
+ * 根因**不是**粘性算错了 —— 是这一行**根本不粘**:改之前全仓一条
+ * `position: sticky` 都没有,组头就是普通流内元素,而 `.inner` 的 padding-top
+ * 是 0,首个组头贴死滚动容器的裁剪边(真机量到 scrollTop=0 时 headTop=0,
+ * 滚 12px 就被削掉 12px)。于是「往下滚一点点,组头就被上缘切掉一条」——
+ * 用户读作「粘性组头被裁切」,实际是「它压根没粘,滚上去就没了」。
+ *
+ * 治法就是把它做成真的粘:粘在滚动容器顶,带一层与三种形态同一个的底
+ * (架子 / 浮窗 / 舞台的 body 都是 --surface-1,所以这块底不会在任何一种形态里
+ * 露怯),卡从它底下滚过去。配套那半条在 .scroll 的 scroll-padding-top 上。
+ * ──────────────────────────────────────────────────────────────────────
+ */
 .groupHead {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   min-width: 0;
   height: var(--list-row-h);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--surface-1);
 }
 
-/* 开关占满组头剩余宽度 = 命中区尽可能大;负 margin 抵掉内边距,组名位置不动。 */
+/* 开关占满组头剩余宽度 = 命中区尽可能大;负 margin 抵掉内边距,组名位置不动。
+ * 律一:这一行里「吸剩余空间」的角色只有它一个,右端两个入口一律 flex: none。 */
 .groupToggle {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   height: 100%;
   display: inline-flex;
@@ -129,14 +155,32 @@
   align-self: center;
 }
 
+/*
+ * ── 08-30 用户报「长组名折行后压住右端计数徽」的根因与治法(律一 / 律二)──────
+ * 根因:这条规则从前**只写了字体**。组名是 flex 项,`min-width` 默认 auto =
+ * 不许缩到 min-content 以下,`white-space` 默认 normal = 可以换行。于是长组名
+ * 有连字符时折行(uuid `3f2a…-…` 折两行,把下一张卡的标题压住 53×18px),
+ * 没有连字符时整条溢出(32 位十六进制把右端的「2 sessions」压住 69×16.5px)——
+ * 两种形状真机都量到了(见 gate-squeeze 修前读数)。
+ *
+ * 治法就是律一那一句:结构行里的文本件必须**同时**有 min-width: 0 和一条截断
+ * 策略。这里给的是 `flex: 0 1 auto`(可缩,但不去抢剩余空间)+ min-width: 0 +
+ * 单行省略号。副名 `.groupPath` 是 `flex: 1 1 auto`:剩余空间归它,挤起来它也
+ * 先让 —— 一行里「吸空间」的角色只有一个,主名永远比副名晚一步缩。
+ */
 .groupName {
-  font-size: var(--fs-body);
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--group-name-fs-fluid);
   font-weight: 700;
   color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .groupPath {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   margin-left: var(--sp-2);
   font-family: var(--font-mono);
@@ -145,20 +189,43 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 窄档要把它降掉(律四:先截断,再有序降元素)。降的过程走一次 120ms 软化,
+     所以这里先把可过渡的两个量写好,阈值那一侧只改终值。 */
+  opacity: 1;
+  max-width: 100%;
+  transition:
+    opacity var(--dur) var(--ease),
+    max-width var(--dur) var(--ease);
 }
 
-.count {
+/*
+ * 进组入口:组头右端的幽灵「›」。**常驻占位、只动 opacity** ——
+ * 与卡片右上角那只 QuickLook 眼睛逐字同一条配方(无位移原则:它出现时
+ * 一像素都不该挪动别人)。它顶替的是那颗写着「N sessions」的按钮:
+ * 数字按 08-30 的计数禁令删掉了,入口留下。
+ */
+.enter {
   flex: none;
-  padding: 0 var(--sp-2);
-  border-radius: var(--r-1);
-  font-size: var(--fs-micro);
   color: var(--text-3);
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-hover-fade) var(--ease);
 }
 
-.count:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
+.groupHead:hover .enter,
+.enter:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.enterIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+/* 律一的「其余件 flex: none」：组头右端两个入口都是定宽,永不弯腰。 */
+.plus {
+  flex: none;
 }
 
 .plusIcon {
@@ -186,7 +253,9 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(var(--card-min-w), 100%), 1fr));
-  gap: var(--expose-gap);
+  /* 连续量:420px 处恰好 = --expose-gap(宽档一像素不动),再窄才收到 8px。
+     不给它挂 transition —— 它每一帧都在变,挂了就是每一帧都在补间。 */
+  gap: var(--expose-gap-fluid);
 }
 
 /* 折叠过渡:高度用 grid-template-rows 1fr→0fr 连续收合(--dur-enter --ease-out),
@@ -298,5 +367,31 @@
   .inner {
     padding-inline: var(--sp-4);
     padding-bottom: var(--sp-4);
+  }
+}
+
+/*
+ * ── 窄形 N2(容器 ≤ 420px)──────────────────────────────────────────────
+ * 这一档与上面那档 560 回答的**不是同一个问题**,所以两条都留着:
+ *  · 560 那一档答的是「顶栏放不下了」(搜索条 + 绝对定位的 +Project 会重叠),
+ *    是 08-30 已经落库的一条修复;
+ *  · 420 这一档答的是「卡片该换形了」—— N2 压缩卡。用户拍板**只此一个阈值**,
+ *    不做更窄的第二档。
+ * 两条各管各的,不合并成一个数;真要合,合的是「顶栏那条能不能也退到 420」,
+ * 那是另一次拍板(合了之后 420–560 之间顶栏会重新重叠)。
+ *
+ * 这一档里只写**离散量**:能插值的都在 `*-fluid` 里连续走完了。
+ * 每个离散量各配一次 --dur 软化 + 一个错峰延时,免得三件事同一帧一起跳。
+ */
+@container expose (max-width: 420px) {
+  /* 路径副名降元素(律四:先截断,再有序降元素)。用 opacity + max-width 而不是
+     display: none —— 后者没法过渡,切档会是一次硬跳。 */
+  .groupPath {
+    opacity: 0;
+    max-width: 0;
+    margin-left: 0;
+    transition:
+      opacity var(--dur) var(--ease) var(--squeeze-stagger-1),
+      max-width var(--dur) var(--ease) var(--squeeze-stagger-1);
   }
 }

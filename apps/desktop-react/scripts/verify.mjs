@@ -104,6 +104,9 @@ if (!existsSync(serverEntry)) {
 
 run('typecheck', 'npm', ['run', '--silent', 'typecheck'])
 run('lint', 'npm', ['run', '--silent', 'lint'])
+// squeeze-gate 是纯静态棘轮(扫 CSS 文本,不起进程、不要构建产物),
+// 与 lint 同一个价位,所以排在这里而不是和真机门作伴。
+run('squeeze-gate', 'npm', ['run', '--silent', 'squeeze-gate'])
 run('test', 'npm', ['run', '--silent', 'test'])
 run('build', 'npm', ['run', '--silent', 'app:build'])
 checkOfflineFonts()
@@ -111,5 +114,14 @@ run('gate:connect', 'npm', ['run', '--silent', 'gate:connect'])
 run('gate:data', 'npm', ['run', '--silent', 'gate:data'])
 run('gate:theme', 'npm', ['run', '--silent', 'gate:theme'])
 run('gate:chat', 'npm', ['run', '--silent', 'gate:chat'])
+/*
+ * gate:squeeze 进 verify,gate:perf 仍然不进(理由见文件顶部那一节)。
+ * 两者的差别就在**读数会不会随机器状况抖**:squeeze 门断言的是「有没有两个盒子
+ * 压在一起」—— 排版是确定的,同一份 CSS 同一个视口跑一百遍是同一个答案,
+ * 没有余量一说;perf 门断言的是毫秒,余量只剩两三成。
+ */
+run('gate:squeeze', 'npm', ['run', '--silent', 'gate:squeeze'])
 
-process.stdout.write('\n[verify] ok —— typecheck / lint / test / build / offline-fonts / 四道门 全绿\n')
+process.stdout.write(
+  '\n[verify] ok —— typecheck / lint / squeeze-gate / test / build / offline-fonts / 五道真机门 全绿\n',
+)

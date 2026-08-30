@@ -19,6 +19,9 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "gate:perf": "node scripts/gate-perf.mjs",
+    "gate:squeeze": "node scripts/gate-squeeze.mjs",
+    "squeeze-check": "node scripts/squeeze-check.mjs",
+    "squeeze-gate": "node scripts/squeeze-gate.mjs",
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {

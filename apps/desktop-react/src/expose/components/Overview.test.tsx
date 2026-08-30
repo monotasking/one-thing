@@ -244,6 +244,79 @@ describe('总览的键盘交接', () => {
 })
 
 /**
+ * ── 08-30 窄形 N2 + 抗挤压纪律批(用户实机视频报障)────────────────────────
+ * 三件事在这一组里钉住:计数徽真的没了、入口还在、组名只截断不换行。
+ *
+ * 「组名只截断不换行」在 jsdom 里量不出几何(它不排版),所以这里钉的是
+ * **规则本身**(读源码,与下面那一组「卡网格的两条几何规则」同一个办法);
+ * 真的有没有压住东西,由 `npm run gate:squeeze` 在真机五档上判。
+ */
+describe('组头:计数禁令 + 幽灵入口 + 只截断不换行', () => {
+  const css = readFileSync(
+    resolve(process.cwd(), 'src/expose/components/Overview.module.css'),
+    'utf8',
+  )
+  const block = (selector: string) => {
+    const at = css.indexOf(selector + ' {')
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf('}', at))
+  }
+
+  it('组头上不出现个数 —— 「N 会话」那颗按钮整个没了', () => {
+    render(<Overview />)
+    // 文案层:fixtures 里每组的条数都 ≥ 1,任何一句「N 会话」都不该在 DOM 里。
+    expect(screen.queryByText(/\d+\s*会话/)).toBeNull()
+    expect(screen.queryByText(/\d+\s*sessions?/)).toBeNull()
+  })
+
+  it('进组入口还在:点组头右端的「›」= 原来点计数徽,进的是同一组', () => {
+    render(<Overview />)
+    fireEvent.click(screen.getByTestId(`group-enter-${FIRST_GROUP}`))
+    expect(useExposeStore.getState().view).toEqual({ mode: 'list', groupId: FIRST_GROUP })
+  })
+
+  it('入口是幽灵的:常驻在 DOM 里(不是 hover 才插进来 —— 那会挤动整行)', () => {
+    render(<Overview />)
+    for (const group of GROUPS) {
+      expect(screen.getByTestId(`group-enter-${group.id}`)).toBeTruthy()
+    }
+    expect(block('.enter')).toContain('opacity: 0')
+  })
+
+  it('入口的 aria-label 是组名(本批禁改 i18n,字典里没有「进入某组」这句话)', () => {
+    render(<Overview />)
+    const first = GROUPS[0]
+    const label = first.nameKey ? undefined : first.name
+    expect(screen.getByTestId(`group-enter-${first.id}`).getAttribute('aria-label')).toBe(
+      label ?? first.id,
+    )
+  })
+
+  it('律一 / 律二:组名可缩 + 单行截断,右端入口一律 flex: none', () => {
+    const name = block('.groupName')
+    // 少任何一句,长组名就会折行(有连字符)或整条溢出(没连字符)去压别人。
+    expect(name).toContain('min-width: 0')
+    expect(name).toContain('white-space: nowrap')
+    expect(name).toContain('text-overflow: ellipsis')
+    expect(name).toContain('overflow: hidden')
+    // 主名不抢剩余空间,副名抢 —— 于是挤起来副名先让。
+    expect(name).toContain('flex: 0 1 auto')
+    expect(block('.groupPath')).toContain('flex: 1 1 auto')
+    expect(block('.enter')).toContain('flex: none')
+    expect(block('.plus')).toContain('flex: none')
+  })
+
+  it('组头是粘性的,并且滚动容器给它留了 scroll-padding(否则键盘会把卡停在它底下)', () => {
+    const head = block('.groupHead')
+    expect(head).toContain('position: sticky')
+    expect(head).toContain('top: 0')
+    // 没有底就会看见卡从字底下穿过去。三种形态的 body 都是 --surface-1。
+    expect(head).toContain('background: var(--surface-1)')
+    expect(block('.scroll')).toContain('scroll-padding-top: var(--list-row-h)')
+  })
+})
+
+/**
  * ── 08-30 靠边卡焦点环被截 + 三列硬挤(用户实机截图)────────────────────────
  * 两件事同一处收口:卡网格那个盒子。几何断言在 jsdom 里做不了(不排版),
  * 所以这里钉的是**规则本身**——真机量法与读数写在本批汇报里。

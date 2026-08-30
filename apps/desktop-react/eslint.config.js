@@ -23,8 +23,22 @@ import jsxA11y from 'eslint-plugin-jsx-a11y'
 
 export default tseslint.config(
   {
-    // 产物与依赖不进 lint。dist-electron 是 esbuild 打出来的 .cjs。
-    ignores: ['dist/**', 'dist-electron/**', 'node_modules/**', 'src/assets/**'],
+    /*
+     * 产物与依赖不进 lint。dist-electron 是 esbuild 打出来的 .cjs。
+     *
+     * `.ds-sync/` 与 `ds-bundle/` 是设计系统同步工具的产物 —— 仓根 .gitignore
+     * 第 72/73 行已经把它们当产物忽略掉了,但 flat config 不读 .gitignore,
+     * 于是 `eslint .` 会去 lint 一份打包出来的 react.js 并报 2000+ 条
+     * 「window is not defined」。这两条只是把 lint 的忽略表与 .gitignore 对齐。
+     */
+    ignores: [
+      'dist/**',
+      'dist-electron/**',
+      'node_modules/**',
+      'src/assets/**',
+      '.ds-sync/**',
+      'ds-bundle/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

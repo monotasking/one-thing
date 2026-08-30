@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { SessionCard } from './SessionCard'
@@ -173,5 +175,72 @@ describe('会话卡:摘要行', () => {
     )
     const card = document.querySelector(`[data-session-id="${session.id}"]`)
     expect(card?.querySelector('span')?.textContent).toBe(session.title)
+  })
+})
+
+/**
+ * ── 08-30 窄形 N2(用户拍板:≤420px 进压缩卡)────────────────────────────
+ * jsdom 不排版、也不算容器查询,所以这里钉的是**规则本身**(读源码,与
+ * Overview.test.tsx 里那两组同一个办法)。真的排出来长什么样、有没有压住别人,
+ * 由 `npm run gate:squeeze` 在真机五档上判。
+ *
+ * 这一组要守住的其实是三句话:
+ *  ① 窄档是**压缩**,不是另一张卡 —— 同一套 DOM,只改 CSS;
+ *  ② 连续量在 420px 处等于宽档的老值,所以宽档逐像素不变、切档没有台阶;
+ *  ③ 离散量各配一次软化,并且错峰。
+ */
+describe('会话卡:窄形 N2 的规则', () => {
+  const css = readFileSync(
+    resolve(process.cwd(), 'src/expose/components/SessionCard.module.css'),
+    'utf8',
+  )
+  const narrowBlock = (selector: string) => {
+    const band = css.indexOf('@container expose (max-width: 420px)')
+    expect(band).toBeGreaterThan(-1)
+    const at = css.indexOf(selector + ' {', band)
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf('}', at))
+  }
+  const wideBlock = (selector: string) => {
+    const at = css.indexOf(selector + ' {')
+    expect(at).toBeGreaterThan(-1)
+    return css.slice(at, css.indexOf('}', at))
+  }
+
+  it('只有一个阈值 —— 420,不做更窄的第二档', () => {
+    const bands = [...css.matchAll(/@container expose \(max-width: (\d+)px\)/g)].map((m) => m[1])
+    expect(bands).toEqual(['420'])
+  })
+
+  it('窄档:预览钳到一行、卡矮下去、模型徽设硬顶', () => {
+    expect(narrowBlock('.summary')).toContain('line-clamp: 1')
+    expect(narrowBlock('.card')).toContain('min-height: var(--card-min-h-narrow)')
+    expect(narrowBlock('.model')).toContain('max-width: var(--model-max-w-narrow)')
+  })
+
+  it('宽档仍是两行预览 —— 窄形只是压缩,没换一张卡', () => {
+    expect(wideBlock('.summary')).toContain('line-clamp: 2')
+  })
+
+  it('连续量走 clamp token,不是在阈值处硬跳(内边距 / 行距)', () => {
+    const card = wideBlock('.card')
+    expect(card).toContain('var(--card-pad-block-fluid)')
+    expect(card).toContain('var(--card-pad-inline-fluid)')
+    expect(card).toContain('var(--card-row-gap-fluid)')
+    // 连续量**不许**挂 transition:它每一帧都在变,挂了就是每一帧都在补间。
+    expect(card).not.toMatch(/transition:[^;]*padding/)
+  })
+
+  it('离散量各配一次软化,并且错峰(三件事不许同一帧一起跳)', () => {
+    expect(wideBlock('.card')).toContain('min-height var(--dur) var(--ease) var(--squeeze-stagger-2)')
+    expect(wideBlock('.summary')).toContain('max-height var(--dur) var(--ease) var(--squeeze-stagger-2)')
+    expect(wideBlock('.model')).toContain('max-width var(--dur) var(--ease) var(--squeeze-stagger-3)')
+  })
+
+  it('律一:脚行里弯腰的是模型徽,时间永不弯腰', () => {
+    const model = wideBlock('.model')
+    expect(model).toContain('min-width: 0')
+    expect(model).toContain('text-overflow: ellipsis')
+    expect(wideBlock('.time')).toContain('flex: none')
   })
 })

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search } from '../../components/icons'
 import { Button } from '../../ui/Button'
-import { plural, useT } from '../../i18n'
+import { useT } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
 import { useExposeLive } from './use-live'
@@ -166,16 +166,27 @@ export function Overview() {
                 </span>
                 <span className={s.groupPath}>{path}</span>
               </button>
-              <button
-                type="button"
-                className={s.count}
+              {/*
+               * 进组入口。**数字没了** —— 08-30 用户拍板的计数禁令:tab / 列表 / 分组头
+               * 一律不带个数。原来这里是一颗写着「N sessions」的按钮,既是入口也是徽记;
+               * 拿掉数字之后入口还得在,于是换成组头右端的幽灵「›」:常驻占位(不动布局)、
+               * hover / 键盘聚焦才显形,与卡片右上角那只 QuickLook 眼睛是同一条判例。
+               *
+               * aria-label 用**组名本身**:本批禁改 i18n(另一批在同仓施工),
+               * 字典里没有一句「进入某组」够用的话。留账:i18n 批应补
+               * `expose.enterGroup`,补上之后把这里换成 t('expose.enterGroup', { name })。
+               */}
+              <Button
+                variant="ghost"
+                pill
+                iconOnly
+                className={s.enter}
+                data-testid={`group-enter-${group.id}`}
+                aria-label={name ?? group.id}
                 onClick={() => useExposeStore.getState().enterList(group.id)}
               >
-                {t(
-                  plural(group.sessions.length, 'expose.sessionCountOne', 'expose.sessionCount'),
-                  { count: group.sessions.length },
-                )}
-              </button>
+                <ChevronRight className={s.enterIcon} strokeWidth={1.75} aria-hidden="true" />
+              </Button>
               <Button
                 variant="ghost"
                 pill

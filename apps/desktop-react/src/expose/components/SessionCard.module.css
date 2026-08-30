@@ -12,17 +12,28 @@
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  /*
+   * 内边距 / 行距 / 最小高是**连续量**:容器 420px 处它们恰好等于宽档的老值,
+   * 再窄才线性收(见 tokens.css 的抗挤压一节)。所以拖架子厚度穿过 420 的那一帧
+   * 没有台阶,>420 的宽档逐像素与从前相同。
+   */
+  gap: var(--card-row-gap-fluid);
   min-height: var(--card-min-h);
-  padding: var(--sp-3) var(--sp-4);
+  padding: var(--card-pad-block-fluid) var(--card-pad-inline-fluid);
   text-align: left;
   border: 1px solid var(--line-1);
   border-radius: var(--r-card);
   background: var(--surface-2);
   /* 无位移原则:hover 只上薄膜和边色,不动位置。
    * 08-29 拍:统一交互态词汇 —— hover = 前景 6% 薄膜(同 Button/Menu),
-   * 旧的 sh-2 投影超档(影三档里 sh-2 属浮层),已废。 */
-  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+   * 旧的 sh-2 投影超档(影三档里 sh-2 属浮层),已废。
+   * min-height 挂在这里是给**切档**用的:压缩形把它降到 --card-min-h-narrow,
+   * 那是一次离散翻转,配一次 --dur 软化(与预览钳行同一个错峰延时,两件事
+   * 说的是同一句话:卡在这一刻矮下去)。 */
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    min-height var(--dur) var(--ease) var(--squeeze-stagger-2);
 }
 
 .card:hover {
@@ -116,9 +127,19 @@
   color: var(--text-3);
 }
 
+/*
+ * 预览:宽档两行、窄档一行。
+ * `line-clamp` 是离散的(没有 1.4 行这种东西),所以切档那一下靠 max-height 补间:
+ * 高度从两行连续收到一行,line-clamp 在同一刻翻 —— 翻的那一行本来就已经被
+ * max-height 盖住了,所以看到的是一次收合,不是一次闪。
+ * max-height 用 em 表达,跟着 line-height 走,改字号不用改这里。
+ */
 .summary {
   margin: 0;
+  /* 纵向的弯腰件:column flex 里 `flex: 1` 拉的是高,所以配套的解锁是
+     min-height: 0(min-width 的纵向孪生)。squeeze-check 认这一条。 */
   flex: 1;
+  min-height: 0;
   font-size: var(--fs-meta);
   line-height: 1.65;
   color: var(--text-3);
@@ -127,6 +148,8 @@
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
+  max-height: 3.3em;
+  transition: max-height var(--dur) var(--ease) var(--squeeze-stagger-2);
 }
 
 
@@ -144,6 +167,9 @@
  * min-width: 0 + ellipsis —— 模型名比卡宽是常态,截断的是它,不是时间。
  */
 .model {
+  /* 律一:脚行里弯腰的是它,不是时间 —— 所以 min-width: 0 + 单行省略号
+     全在它身上,`.time` 是 flex: none。 */
+  flex: 0 1 auto;
   min-width: 0;
   padding: 0 var(--sp-2);
   border: 1px solid var(--line-1);
@@ -155,6 +181,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
+  transition: max-width var(--dur) var(--ease) var(--squeeze-stagger-3);
 }
 
 /*
@@ -181,4 +209,27 @@
   font-family: var(--font-mono);
   font-size: var(--fs-nano);
   color: var(--text-4);
+}
+
+/*
+ * ── 窄形 N2(容器 ≤ 420px)──────────────────────────────────────────────
+ * 压缩卡:标题一行(它本来就是)、预览钳到一行、卡矮下去、模型徽设硬顶。
+ * 连续量都在上面的 `*-fluid` 里走完了,这里只剩三件翻不了插值的离散事。
+ * 阈值与理由见 tokens.css 的抗挤压一节;`@container` 条件里不能写 var(),
+ * 所以 420 在这儿是字面量。
+ */
+@container expose (max-width: 420px) {
+  .card {
+    min-height: var(--card-min-h-narrow);
+  }
+
+  .summary {
+    -webkit-line-clamp: 1;
+    line-clamp: 1;
+    max-height: 1.65em;
+  }
+
+  .model {
+    max-width: var(--model-max-w-narrow);
+  }
 }
