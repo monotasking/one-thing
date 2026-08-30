@@ -8,7 +8,19 @@ import { initialStageState } from '../../stage/transitions'
 import { useToastHub } from '../../ui/Toast'
 import { useNotifyStore } from '../../services/notify-store'
 import { CHAPTERS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
+import { useFilesSource } from '../../data/files-source'
 import { RECENT_LIMIT } from '../transitions'
+
+/**
+ * 文件侧的素材 = `files.list` 交回来的那份 entries(D5 接真数据之后)。
+ * 用例里直接种进数据源:这一批验的是**面板怎么用这批命中**,
+ * 取数本身在 data/files-source.test.ts 里验。
+ */
+const FILE_QUERY = 'provider'
+const FILE_HITS = [
+  { path: '/repo/packages/onething-runtime/src/providers/model-registry.ts', type: 'file' as const },
+  { path: '/repo/docs/design/provider-oop-2026-08.md', type: 'file' as const },
+]
 
 /**
  * 面板的键盘住在面板自己身上,所以这里全部走真组件、真按键 ——
@@ -16,8 +28,14 @@ import { RECENT_LIMIT } from '../transitions'
  */
 beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
-  // 会话侧吃真数据源(D1);文件侧仍是 ../data.ts 那张 mock 表(诚实缺口)。
+  // 两侧都吃真数据源:会话侧 D1,文件侧 D5(../data.ts 那张 mock 表已随批退役)。
   seedSessionsSource({ chapters: CHAPTERS })
+  useFilesSource.setState({
+    searchStatus: 'ready',
+    searchHits: FILE_HITS,
+    searchQuery: FILE_QUERY,
+    searchError: undefined,
+  })
   useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
   useToastHub.setState({ toasts: [], folded: 0 })
   useNotifyStore.setState({ items: [] })
@@ -75,7 +93,7 @@ describe('搜索行:scope 分段器', () => {
 
   it('换范围会换掉这张列表:文件档一行会话都没有', () => {
     render(<SearchPanel />)
-    type('provider')
+    type(FILE_QUERY)
     press('Tab')
     press('Tab')
     // 徽上只剩文件类型,「会话」「消息」两种徽一颗不剩。
@@ -122,23 +140,29 @@ describe('命中列表:走行与跳转', () => {
   it('文件行:壳里还没有真打开能力,所以报出落点并同样收回 Dock', () => {
     useStageStore.setState({ placements: { search: { kind: 'stage' } } })
     render(<SearchPanel />)
-    type('catalogCache')
+    type(FILE_QUERY)
+    press('Tab')
+    press('Tab')
     press('Enter')
+    /*
+     * D5:落点是**整条路径**,不再是「文件名:行号」—— 真实产地
+     * (`files.list` 按名字找文件)给不出行号,补一个 `:1` 就是假装它说过。
+     */
     expect(useToastHub.getState().toasts.map((x) => x.title)).toEqual([
-      '已打开 model-registry.ts:96',
+      `已打开 ${FILE_HITS[0].path}`,
     ])
     expect(useNotifyStore.getState().items.map((x) => [x.level, x.source, x.title])).toEqual([
-      ['info', 'search.open', '已打开 model-registry.ts:96'],
+      ['info', 'search.open', `已打开 ${FILE_HITS[0].path}`],
     ])
     expect('search' in useStageStore.getState().placements).toBe(false)
   })
 })
 
 describe('两种空', () => {
-  it('词为空 = 最近打开(不是「没找到」),清掉词就回到它', () => {
+  it('词为空 = 最近(不是「没找到」),清掉词就回到它', () => {
     render(<SearchPanel />)
     expect(options().length).toBe(RECENT_LIMIT)
-    type('provider')
+    type(FILE_QUERY)
     expect(options().length).not.toBe(RECENT_LIMIT)
     type('')
     expect(options().length).toBe(RECENT_LIMIT)
@@ -150,5 +174,38 @@ describe('两种空', () => {
     type('zzzzzz')
     expect(screen.getByText('无结果')).toBeTruthy()
     expect(screen.queryAllByRole('option').length).toBe(0)
+  })
+
+  /*
+   * D5 新增的三条,全部钉「文件侧换真」之后的诚实口径。
+   */
+  it('去抖窗口里不闪上一个词的结果 —— 手上那批命中对不上此刻的词就当作还没有', () => {
+    render(<SearchPanel />)
+    // 数据源里躺着 FILE_QUERY 的结果,而此刻的词是别的:一行文件都不该出。
+    type('zzzzzz')
+    expect(screen.queryAllByRole('option').length).toBe(0)
+  })
+
+  it('空词 + 只看文件 = 「要先输入关键词」,不是「无结果」', () => {
+    render(<SearchPanel />)
+    press('Tab')
+    press('Tab')
+    expect(screen.getByText('文件要先输入关键词')).toBeTruthy()
+    expect(screen.queryByText('无结果')).toBeNull()
+  })
+
+  it('文件检索失败与「没搜到」是两件事 —— 会话侧照常有结果时也要看得见', () => {
+    useFilesSource.setState({
+      searchStatus: 'error',
+      searchHits: [],
+      searchQuery: FILE_QUERY,
+      searchError: 'File search must stay inside the workspace sandbox root.',
+    })
+    render(<SearchPanel />)
+    type(FILE_QUERY)
+    expect(screen.getByText('文件没搜成')).toBeTruthy()
+    expect(
+      screen.getByText('File search must stay inside the workspace sandbox root.'),
+    ).toBeTruthy()
   })
 })

@@ -113,3 +113,29 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* 文件检索失败的那一行(D5)。它不是空态 —— 空态在列表里,这一行在列表**上面**,
+ * 因为会话侧可能照常有结果,而文件侧那一半确实塌了,两件事得同时看得见。
+ * 一行两件:一句人话(不弯腰)+ 后端原话(唯一的弯腰件,缩了有省略号)。 */
+.failed {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+.failedDetail {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

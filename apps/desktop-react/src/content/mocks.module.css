@@ -19,42 +19,6 @@
   overscroll-behavior: contain;
 }
 
-/* ── 文件树 ───────────────────────────────────────────────────────────── */
-.tree {
-  padding: var(--sp-2);
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  height: var(--row-h);
-  padding: 0 var(--sp-2);
-  border-radius: var(--r-1);
-  font-size: var(--fs-label);
-  color: var(--text-1);
-  transition: background var(--dur) var(--ease);
-}
-
-.row:hover {
-  background: var(--st-hover);
-}
-
-.rowIcon {
-  width: var(--fs-body);
-  height: var(--fs-body);
-  color: var(--text-3);
-  flex: none;
-}
-
-.indent1 {
-  padding-left: var(--sp-5);
-}
-
-.indent2 {
-  padding-left: var(--sp-7);
-}
-
 /* ── diff ─────────────────────────────────────────────────────────────── */
 .diffHead {
   position: sticky;

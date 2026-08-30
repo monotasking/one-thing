@@ -1,0 +1,255 @@
+/* 文件树面板。三段式(头 / 根条 / 身)+ 一层可盖上来的预览。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。
+ *
+ * 抗挤压(docs/design/react-shell-squeeze-rules-2026-08.md)在这块面上的落点:
+ *  · 每一行**恰有一个**弯腰件(名字),它同时有 min-width:0 与省略号;
+ *  · 行尾那枚 reveal **常驻在布局里**(律三:覆盖内容必须有布局预留),
+ *    只有透明度随悬停 / 聚焦变 —— 出现时不挤走名字;
+ *  · 缩进走无单位的 --depth × 一格宽,不落字面 px。
+ */
+.panel {
+  /* 树的一格缩进 —— 与图标同宽,子项的图标正好落在父项名字的起笔下。 */
+  --tree-indent: var(--sp-4);
+
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* 唯一吸剩余空间的角色,所以标题与按钮都不必弯腰。 */
+.spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.headIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+}
+
+/* ── 根条:当前根如实说 ────────────────────────────────────────────── */
+.rootBar {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.rootPath {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rootNote {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+/* ── 身:树 ───────────────────────────────────────────────────────── */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2);
+}
+
+.rowWrap {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding-left: calc(var(--depth, 0) * var(--tree-indent));
+  border-radius: var(--r-1);
+  transition: background var(--dur) var(--ease);
+}
+
+.rowWrap:hover {
+  background: var(--st-hover);
+}
+
+.row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--row-h);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-1);
+  text-align: left;
+  background: none;
+}
+
+.row:focus-visible,
+.revealBtn:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+/* 箭头位:目录画箭头,文件留空位 —— 同一层的名字才从同一条竖线起笔。 */
+.caret {
+  flex: none;
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.rowIcon {
+  flex: none;
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-3);
+}
+
+/* 一行里唯一的弯腰件:能缩(min-width:0)且缩了有收场(省略号)。 */
+.rowName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 常驻在布局里,只有透明度在变 —— 出现时不挤走名字(律三)。 */
+.revealBtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--row-h);
+  height: var(--row-h);
+  border-radius: var(--r-1);
+  background: none;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.rowWrap:hover .revealBtn,
+.revealBtn:focus-visible {
+  opacity: 1;
+}
+
+.revealBtn:hover {
+  background: var(--st-active);
+}
+
+.revealIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+  color: var(--text-2);
+}
+
+/* ── 注行:空 / 还在读 / 读不到,三态各说各的 ─────────────────────── */
+.note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-2) var(--sp-2)
+    calc(var(--sp-2) + var(--depth, 0) * var(--tree-indent));
+}
+
+.noteText {
+  flex: none;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 后端原话:mono、更淡一档,能缩、缩了有收场。 */
+.noteDetail {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 预览:盖住身,不切两栏(窄到 260px 时切两栏必然重叠) ────────── */
+.preview {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+
+.previewHead {
+  flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+}
+
+.previewName {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 唯一吸空间的角色,而且 **basis 取 0** —— 这一格是量出来的:
+ * 用 `1 1 auto` 时它的基准是整条绝对路径(上千像素),按 flex 的比例收缩规则
+ * 文件名也得跟着让掉一截,真机上 `engine.ts` 当场被截成 `engin…`,而右边的路径
+ * 还宽宽松松。basis 0 的意思是「先把名字放下,剩下的都归我」:名字只在容器真的
+ * 窄到放不下时才开始让,而那正是我们要的先后次序。
+ */
+.previewPath {
+  flex: 1 1 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.previewBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+}

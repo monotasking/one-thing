@@ -56,6 +56,10 @@ configureSessionsPort({
   getSegments: async () => ({ success: true, segments: [] }),
   getMessagesPage: async () => ({ success: true, messages: [] }),
   getUserMarkers: async () => ({ success: true, markers: [] }),
+  // 建会话默认**不成功**:没有哪个用例该因为默认端口而凭空多出一条会话。
+  // 要验建会话的用例自己 configureSessionsPort 换一个会给出 session 的。
+  create: async () => ({ success: false, error: 'fake port' }),
+  updateWorkingDirectory: async () => ({ success: true }),
   onSessionEvent: () => () => undefined,
   onSessionLifecycle: () => () => undefined,
 })
@@ -76,6 +80,7 @@ configureChatPort({
   onSessionEvent: () => () => undefined,
   onSessionStream: () => () => undefined,
   sendMessage: async () => ({ success: true }),
+  abort: async () => ({ success: true }),
 })
 
 /**
@@ -88,4 +93,23 @@ configureAgentsPort({
   ready: async () => undefined,
   list: async () => ({ success: true, agents: [] }),
   updateSessionAgent: async () => ({ success: true }),
+})
+
+/**
+ * 文件面的端口:同一条理由,同一手(D5)。检索面板与文件树面板都会去摸它,
+ * 不装的话它们会一起动态 import 真的 `@renderer/platform`。
+ *
+ * 默认这一份**什么都不回**,而且回的是「不成功」而不是「成功但是空」——
+ * 一个没接线的端口不该假装自己看见了一个空目录。要验取数的用例自己
+ * `configureFilesPort` 换一个。
+ */
+import { configureFilesPort } from '../data/files-port'
+
+configureFilesPort({
+  ready: async () => undefined,
+  listDirectory: async () => ({ success: false, error: 'no files port in tests' }),
+  stat: async () => ({ success: false, error: 'no files port in tests' }),
+  readContent: async () => ({ success: false, error: 'no files port in tests' }),
+  reveal: async () => ({ success: false, error: 'no files port in tests' }),
+  list: async () => ({ success: true, files: [], entries: [] }),
 })

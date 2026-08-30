@@ -11,14 +11,27 @@ import {
   targetText,
 } from './transitions'
 import type { SearchMaterial } from './transitions'
-import { FILES } from './data'
+import type { FileSearchEntry } from '@shared/ipc/files'
 import { CHAPTERS, SESSIONS } from '../data/__fixtures__/sessions'
 
 /**
- * 「provider」同时踩中四种命中:会话标题、会话预览、文件路径、文件里的一行 ——
+ * 「provider」同时踩中三种命中:会话标题、会话预览、文件路径 ——
  * 所以排序与混排都能用它一次钉死。
+ *
+ * 第四种(文件里的一行)在 D5 之后**不存在**:真实产地 `files.list` 是按名字
+ * 找文件,给不出行号与行文,那两格随 mock 一起退役(见 transitions.ts 文件头)。
  */
 const Q = 'provider'
+
+/**
+ * 文件侧素材 = `files.list` 交回来的那份 `entries`。这不是 mock 表的替身:
+ * 它是**一次带词查询的结果**,所以它里面的每一条都已经是命中 —— 纯函数不再滤第二遍。
+ */
+const FILES: FileSearchEntry[] = [
+  { path: '/repo/packages/onething-runtime/src/providers/model-capability.ts', type: 'file' },
+  { path: '/repo/packages/onething-runtime/src/providers/model-registry.ts', type: 'file' },
+  { path: '/repo/docs/design/provider-oop-2026-08.md', type: 'file' },
+]
 
 /**
  * 会话侧的时间在这一层已经是**拼好的那句话**(相对时间要查字典,纯函数不产
@@ -39,7 +52,33 @@ describe('searchRows(平铺 + 排序)', () => {
   })
 
   it('无结果就是空数组,不造占位行', () => {
-    expect(searchRows('zzzzzz', 'all', material)).toEqual([])
+    expect(searchRows('zzzzzz', 'all', { ...material, files: [] })).toEqual([])
+  })
+
+  it('文件侧**不再滤第二遍** —— 后端已经按词滤过,壳再滤一遍就是两个产地各说一次', () => {
+    // 词与素材刻意对不上(去抖窗口内会真的出现这一刻):素材照样原样转述。
+    const rows = searchRows('zzzzzz', 'files', material)
+    expect(rows.map((r) => r.origin)).toEqual(FILES.map((f) => ({ kind: 'path', path: f.path })))
+  })
+
+  it('文件侧只有 title 级的行 —— body 级(代码行)在真实产地上不存在', () => {
+    const rows = searchRows(Q, 'files', material)
+    expect(rows.length).toBe(FILES.length)
+    expect(rows.every((r) => r.tier === 'title')).toBe(true)
+    expect(rows.every((r) => r.code === false)).toBe(true)
+  })
+
+  it('文件落点不带行号 —— 不补一个 :1 去凑格式', () => {
+    const row = searchRows(Q, 'files', material)[0]
+    expect(row.target).toEqual({ kind: 'file', path: FILES[0].path })
+    expect(targetText(row.target)).toBe(FILES[0].path)
+  })
+
+  it('接入目录那类命中用后端给的 label 当主文(没有才退回文件名)', () => {
+    const labelled: FileSearchEntry[] = [
+      { path: '/somewhere/notes', type: 'directory', source: 'note', label: '笔记' },
+    ]
+    expect(searchRows(Q, 'files', { ...material, files: labelled })[0].text).toBe('笔记')
   })
 
   it('标题 / 文件名 / 章节标题命中整段排在正文与代码行命中之前', () => {
@@ -63,16 +102,11 @@ describe('searchRows(平铺 + 排序)', () => {
     expect(originText(row.origin)).toBe(`start-electron · ${TIME}`)
   })
 
-  it('文件里的一行是代码行:等宽、出处是「文件名:行号」、目标带行号', () => {
-    const row = searchRows('catalogCache', 'files', material)[0]
-    expect(row.code).toBe(true)
+  it('文件命中的徽是扩展名、主文是文件名、出处是整条路径', () => {
+    const row = searchRows(Q, 'files', material)[1]
     expect(row.badge).toEqual({ kind: 'file', ext: 'TS' })
-    expect(originText(row.origin)).toBe('model-registry.ts:96')
-    expect(row.target).toEqual({
-      kind: 'file',
-      path: 'packages/onething-runtime/src/providers/model-registry.ts',
-      line: 96,
-    })
+    expect(row.text).toBe('model-registry.ts')
+    expect(originText(row.origin)).toBe(FILES[1].path)
   })
 })
 
@@ -96,24 +130,27 @@ describe('scope 过滤', () => {
   })
 })
 
-describe('recentRows(空态的「最近打开」)', () => {
-  it('会话与文件混排,长度封顶', () => {
+describe('recentRows(空态的「最近」)', () => {
+  it('只有会话,长度封顶', () => {
     const rows = recentRows('all', material)
     expect(rows.length).toBe(RECENT_LIMIT)
-    expect(rows.map((r) => r.domain).slice(0, 4)).toEqual(['session', 'file', 'session', 'file'])
+    expect(rows.every((r) => r.domain === 'session')).toBe(true)
   })
 
-  it('行的解剖与命中行一样:徽 + 名称 + 出处(时间 / 路径)', () => {
-    const [session, file] = recentRows('all', material)
+  it('行的解剖与命中行一样:徽 + 名称 + 出处(时间)', () => {
+    const [session] = recentRows('all', material)
     expect(session.text).toBe(SESSIONS[0].title)
     expect(originText(session.origin)).toBe(TIME)
-    expect(file.text).toBe('model-capability.ts')
-    expect(originText(file.origin)).toBe(FILES[0].path)
   })
 
-  it('scope 一样管空态', () => {
-    expect(recentRows('files', material).every((r) => r.domain === 'file')).toBe(true)
-    expect(recentRows('sessions', material).every((r) => r.domain === 'session')).toBe(true)
+  /*
+   * D5 的诚实缺口:「最近打开的文件」在后端没有产地。空词去 files.list 拿回来的
+   * 是工作目录里随便前 N 个文件,把它叫「最近」就是编 —— 所以这一侧恒空,
+   * **哪怕素材里有东西**(下面第二条断言正是钉这一点)。
+   */
+  it('文件侧恒空 —— 素材里有东西也不出行', () => {
+    expect(recentRows('files', material)).toEqual([])
+    expect(recentRows('all', material).some((r) => r.domain === 'file')).toBe(false)
   })
 })
 
@@ -160,8 +197,9 @@ describe('路径与出处的拼法', () => {
     expect(originText({ kind: 'path', path: 'a/b.ts' })).toBe('a/b.ts')
   })
 
-  it('toast 报的落点与 fileLine 出处同一个拼法', () => {
+  it('带行号的落点与 fileLine 出处同一个拼法;不带行号就是整条路径', () => {
     expect(targetText({ kind: 'file', path: 'a/b/c.ts', line: 12 })).toBe('c.ts:12')
+    expect(targetText({ kind: 'file', path: 'a/b/c.ts' })).toBe('a/b/c.ts')
   })
 })
 

@@ -1,5 +1,6 @@
 import {
   FolderTree,
+  FolderOpen,
   GitCompare,
   Terminal,
   FileText,
@@ -34,6 +35,7 @@ import {
   Copy,
   TriangleAlert,
   Bell,
+  Square,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -43,6 +45,7 @@ import type { LucideIcon } from 'lucide-react'
  */
 const REGISTRY: Record<string, LucideIcon> = {
   FolderTree,
+  FolderOpen,
   GitCompare,
   Terminal,
   FileText,
@@ -77,6 +80,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   Copy,
   TriangleAlert,
   Bell,
+  Square,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -110,5 +114,6 @@ export {
   Copy,
   TriangleAlert,
   Bell,
+  Square,
 }
 export type { LucideIcon }

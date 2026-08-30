@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from './visibility'
 import type { PanelVisibility } from './visibility'
-import { FilesMock } from './FilesMock'
+import { FilesPanel } from './FilesPanel'
 import { DiffMock } from './DiffMock'
 import { BrowserMock } from './BrowserMock'
 import { TerminalMock } from './TerminalMock'
@@ -22,7 +22,7 @@ import { NOTIFICATIONS_ITEM_ID, SESSIONS_ITEM_ID } from '../stage/items'
  * `src/content/` 只是因为它们都是「内容」,不是因为它们同一种东西。
  */
 const RENDERERS: Record<string, () => ReactNode> = {
-  files: FilesMock,
+  files: FilesPanel,
   diff: DiffMock,
   browser: BrowserMock,
   terminal: TerminalMock,

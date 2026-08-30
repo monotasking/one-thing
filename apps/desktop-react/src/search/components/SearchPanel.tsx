@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useStageStore } from '../../stage/store'
 import { useSessionsSource } from '../../data/sessions-source'
+import { useFilesSource, useSessionCwd } from '../../data/files-source'
 import { useExposeStore } from '../../expose/store'
 import { Highlight } from '../../expose/components/Highlight'
 import { useSessionTime } from '../../expose/components/session-time'
@@ -32,6 +33,13 @@ import s from './SearchPanel.module.css'
 /** 一次搜索最多为多少条命中会话补拉章节(取数上限,不是结果上限)。 */
 const CHAPTER_PREFETCH_LIMIT = 8
 
+/**
+ * 文件检索的合并窗口(D5)。会话侧是本地滤(整张 listMeta 在手,零延迟),
+ * 文件侧是**一次真查询**(后端 ripgrep 列目录再滤),所以每敲一个字母就发一次
+ * 请求是不合适的。窗口按「打完一个词的停顿」取,不按「最快能有多快」取。
+ */
+const FILE_SEARCH_DEBOUNCE_MS = 220
+
 const SCOPE_LABELS: Record<SearchScope, MessageKey> = {
   all: 'search.scopeAll',
   sessions: 'search.scopeSessions',
@@ -54,13 +62,29 @@ export function SearchPanel() {
   const sessions = useSessionsSource((st) => st.sessions)
   const chapters = useSessionsSource((st) => st.chapters)
   const ensureChapters = useSessionsSource((st) => st.ensureChapters)
+  const cwd = useSessionCwd()
+  const fileHits = useFilesSource((st) => st.searchHits)
+  const fileQuery = useFilesSource((st) => st.searchQuery)
+  const fileStatus = useFilesSource((st) => st.searchStatus)
+  const fileError = useFilesSource((st) => st.searchError)
+  const searchFiles = useFilesSource((st) => st.searchFiles)
   const timeOf = useSessionTime()
   const listRef = useRef<HTMLDivElement>(null)
 
   const searching = query.trim().length > 0
+  /*
+   * 手上这批文件命中说的**是不是此刻这个词**。去抖窗口那 220ms 里词已经变了而
+   * 结果还没回来 —— 不问这一句,屏幕上就会闪一下上一个词的结果。对不上就当作
+   * 「还没有」(空),而不是拿旧的顶一会儿。
+   */
+  const fileAnswerIsCurrent = fileQuery === query.trim()
+  const files = useMemo(
+    () => (fileAnswerIsCurrent ? fileHits : []),
+    [fileAnswerIsCurrent, fileHits],
+  )
   const material: SearchMaterial = useMemo(
-    () => ({ sessions, chapters, timeOf: (session) => timeOf(session.updatedAt) }),
-    [sessions, chapters, timeOf],
+    () => ({ sessions, chapters, files, timeOf: (session) => timeOf(session.updatedAt) }),
+    [sessions, chapters, files, timeOf],
   )
   const rows = useMemo(
     () => (searching ? searchRows(query, scope, material) : recentRows(scope, material)),
@@ -85,6 +109,17 @@ export function SearchPanel() {
       void ensureChapters(session.id)
     }
   }, [searching, query, scope, sessions, ensureChapters])
+
+  /*
+   * 文件侧是一次**真查询**,所以它有自己的取数副作用(会话侧没有:整张表在手)。
+   * 合并窗口挡的是「每敲一个字母发一次请求」;`scope === 'sessions'` 时连发都不发 ——
+   * 用户已经说了这一轮不看文件。
+   */
+  useEffect(() => {
+    if (scope === 'sessions') return
+    const timer = setTimeout(() => void searchFiles(query, cwd), FILE_SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [query, scope, cwd, searchFiles])
 
   // 换词 / 换范围 = 换了一张列表,选中回到第一行。
   useEffect(() => {
@@ -158,7 +193,7 @@ export function SearchPanel() {
      * 这里挂 onKeyDown 是**事件委托**,不是把一个 div 变成控件:真正拿焦点的是里面那个
      * 输入框(autoFocus),↑↓/⏎ 从它冒泡上来,由面板统一按当前 cursor 处理。
      * 规则防的是「给死元素装交互却不给焦点」—— 焦点在,只是在子节点上。 */
-    <div className={s.panel} onKeyDown={onKeyDown}>
+    <div className={s.panel} data-testid="search-panel" onKeyDown={onKeyDown}>
       <div className={s.head}>
         <Input
           className={s.input}
@@ -182,9 +217,25 @@ export function SearchPanel() {
         />
       </div>
 
+      {/*
+        * 文件检索失败不许静默:它与「没搜到」是两件事,合成一句「无结果」等于
+        * 把一次失败说成一次空结果。这一行在**有命中时也画**(会话侧照常有结果,
+        * 但文件侧那一半确实塌了),后端原话原样跟在后面。
+        */}
+      {scope !== 'sessions' && fileStatus === 'error' && fileAnswerIsCurrent && (
+        <p className={s.failed}>
+          {t('search.filesFailed')}
+          <span className={s.failedDetail}>{fileError}</span>
+        </p>
+      )}
+
       <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
         {rows.length === 0 ? (
-          <p className={s.none}>{t('search.noResults')}</p>
+          <p className={s.none}>
+            {/* 空词 + 只看文件 = 不是「无结果」,是「还没给词」——「最近打开的文件」
+              * 在后端没有产地,见 search/transitions.ts 文件头第 2 条。 */}
+            {scope === 'files' && !searching ? t('search.filesNeedQuery') : t('search.noResults')}
+          </p>
         ) : (
           rows.map((row, i) => (
             <button

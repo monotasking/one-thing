@@ -22,11 +22,15 @@ export type SearchBadge =
 
 /**
  * 跳转目标。同样是可辨识联合而不是裸字符串:
- * 「会话 id」和「文件路径 + 行号」是两种不同的东西,拼成一个字符串就得再解析一次。
+ * 「会话 id」和「文件路径」是两种不同的东西,拼成一个字符串就得再解析一次。
+ *
+ * `line` 是**可选**的(D5):真实产地 `files.list` 是按名字找文件,它给不出行号。
+ * 缺席 = 落点就是这个文件本身。将来接上内容检索(rg --json)时那一格才有值,
+ * 届时这里一个字不用改 —— 这正是把它写成可选而不是删掉的理由。
  */
 export type SearchTarget =
   | { kind: 'session'; sessionId: string }
-  | { kind: 'file'; path: string; line: number }
+  | { kind: 'file'; path: string; line?: number }
 
 /**
  * 行尾那行灰色小字的**素材**,不是成品字符串 —— 拼法(`:`、` · `)由
@@ -64,16 +68,9 @@ export interface SearchRow {
   tier: SearchTier
 }
 
-/* ── 文件侧素材 ────────────────────────────────────────────────────────── */
-
-export interface FileLineMock {
-  line: number
-  text: string
-}
-
-export interface FileMock {
-  path: string
-  /** 空态「最近打开」的次序由表序决定,时间只是给人看的 */
-  time: string
-  lines: FileLineMock[]
-}
+/* ── 文件侧素材 ──────────────────────────────────────────────────────────
+ * D5 之后这里**一个类型都没有**:文件侧的素材就是 `@shared/ipc/files` 的
+ * `FileSearchEntry`(后端契约),壳不再在它旁边立第二份形状。
+ * 旧的 `FileMock` / `FileLineMock`(假路径 + 假代码行)随 mock 一起退役,
+ * 理由写在 ./data.ts 顶部。
+ * ────────────────────────────────────────────────────────────────────── */
