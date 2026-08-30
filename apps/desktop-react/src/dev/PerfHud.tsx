@@ -11,21 +11,17 @@ export const PERF_HUD_KEY = 'onething.perfHud'
 const VISIBLE = 8
 
 /**
- * 开关判定。**dev 缺省开,生产缺省关**(08-30 拍板「探针要会响」):切 tab 卡顿
- * 那一单里,探针环里躺着一排 200ms+ 的长帧,却因为 HUD 默认关、没人 dump,
- * 一直等到用户来报手感 —— 只记不响的探针等于没装。dev 是长帧的放大镜
- * (StrictMode 双渲染 + 开发运行时),也是它该最先响的地方;生产窗口仍然
- * 只在显式 '1' 时出现,它终究是排障工具,不是产品的一块界面。
+ * 开关判定。**缺省一律关**(08-30 二次拍板):曾短暂改成 dev 缺省开——那时
+ * 「探针要会响」还没有别的出口;通知系统上线后,性能超预算走 notify(silent)
+ * 进通知中心存档,探针有家了,HUD 回归它的本分 —— 显式打开的排障仪表,
+ * 不再自动出面打扰。'1' 强制开('0' 作为显式关的历史值仍认)。
  *
  * localStorage 在隐私窗 / 禁站点数据时读会**抛**,不是返回 null ——
  * 所以这里 try/catch,读不到就当没开(HUD 缺席永远比白屏好)。
  */
 export function perfHudEnabled(): boolean {
   try {
-    const flag = localStorage.getItem(PERF_HUD_KEY)
-    if (flag === '1') return true
-    if (flag === '0') return false
-    return Boolean(import.meta.env.DEV)
+    return localStorage.getItem(PERF_HUD_KEY) === '1'
   } catch {
     return false
   }
