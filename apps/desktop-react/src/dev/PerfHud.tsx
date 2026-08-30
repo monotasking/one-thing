@@ -4,19 +4,28 @@ import { overBudget } from '../perf-budget'
 import { useT } from '../i18n'
 import s from './PerfHud.module.css'
 
-/** localStorage 开关键。默认关 —— 它是排障工具,不是产品的一块界面。 */
+/** localStorage 开关键:'1' 强制开、'0' 强制关、没表态走缺省档(dev 开 / 生产关)。 */
 export const PERF_HUD_KEY = 'onething.perfHud'
 
 /** 浮层里最多列几条。再多就得滚,而 HUD 滚起来自己就成了长帧的来源。 */
 const VISIBLE = 8
 
 /**
- * 开关判定。localStorage 在隐私窗 / 禁站点数据时读会**抛**,不是返回 null ——
+ * 开关判定。**dev 缺省开,生产缺省关**(08-30 拍板「探针要会响」):切 tab 卡顿
+ * 那一单里,探针环里躺着一排 200ms+ 的长帧,却因为 HUD 默认关、没人 dump,
+ * 一直等到用户来报手感 —— 只记不响的探针等于没装。dev 是长帧的放大镜
+ * (StrictMode 双渲染 + 开发运行时),也是它该最先响的地方;生产窗口仍然
+ * 只在显式 '1' 时出现,它终究是排障工具,不是产品的一块界面。
+ *
+ * localStorage 在隐私窗 / 禁站点数据时读会**抛**,不是返回 null ——
  * 所以这里 try/catch,读不到就当没开(HUD 缺席永远比白屏好)。
  */
 export function perfHudEnabled(): boolean {
   try {
-    return localStorage.getItem(PERF_HUD_KEY) === '1'
+    const flag = localStorage.getItem(PERF_HUD_KEY)
+    if (flag === '1') return true
+    if (flag === '0') return false
+    return Boolean(import.meta.env.DEV)
   } catch {
     return false
   }

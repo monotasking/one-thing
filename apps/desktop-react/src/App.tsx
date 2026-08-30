@@ -7,7 +7,7 @@ import { PerfHud, perfHudEnabled } from './dev/PerfHud'
  * 所以判据就一个查询参数,没有 router,也不进 Dock。
  *
  * 性能 HUD 同理是 dev 工具,但它是**叠加**而不是取代:开着的时候两种页面上都在。
- * 开关读一次 localStorage(默认关),不订阅 —— 改了开关要刷新页面,
+ * 开关读一次 localStorage(缺省档:dev 开 / 生产关,'0' 显式关),不订阅 —— 改了开关要刷新页面,
  * 这是刻意的:HUD 自己不该为了响应一个排障开关而每次渲染都去读盘。
  */
 export default function App() {

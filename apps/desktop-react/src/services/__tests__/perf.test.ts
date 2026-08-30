@@ -17,6 +17,12 @@ describe('预算表', () => {
   it('event 的订阅阈值低于交互预算 —— 否则刚好超预算的那些交互根本不会被观察到', () => {
     expect(PERF_BUDGET.eventDurationThresholdMs).toBeLessThan(PERF_BUDGET.interactionP95Ms)
   })
+
+  it('冷开预算不低于高频交互预算 —— 分档的意义就是一次性重交互允许比往复动作慢', () => {
+    // 08-30 收紧:高频档按健康读数锚定(61ms + 余量),冷开档留在 RAIL 100。
+    // 两档若倒挂,说明表被改乱了 —— 「切一下 tab」不可能比「冷画四百张卡」更宽裕。
+    expect(PERF_BUDGET.coldOpenMs).toBeGreaterThanOrEqual(PERF_BUDGET.interactionP95Ms)
+  })
 })
 
 describe('LoAF 归因摘要', () => {

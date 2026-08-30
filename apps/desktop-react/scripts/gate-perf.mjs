@@ -5,7 +5,8 @@
  * 别的门问「对不对」,这条门问「卡不卡」。三个场景,同一套量法:
  *
  *  ① **冷开会话总览**(种子 400 会话)—— 一次点击要画出几百张卡,是这块壳最重的
- *     一次首屏。判据:那一次交互的端到端时长 ≤ 交互预算,期间不出长帧。
+ *     一次首屏。判据:那一次交互的端到端时长 ≤ 冷开预算(coldOpenMs,一次性重交互
+ *     与高频切换分档,来历见 src/perf-budget.ts),期间不出长帧。
  *  ② **架子 tab 连续切换 ×10** —— 08-30 这一批从记录模式**转断言**。现场是用户报障
  *     的那个:sessions(400 张卡的重面板)/ files / terminal 钉进同一条右架子,
  *     背景还有一条 5k 字消息的会话活着。判据两条:每次切换「按下 → 上屏」的 p95
@@ -60,6 +61,7 @@ function readBudget() {
   }
   return {
     interactionP95Ms: pick('interactionP95Ms'),
+    coldOpenMs: pick('coldOpenMs'),
     longFrameMs: pick('longFrameMs'),
     streamFrameMs: pick('streamFrameMs'),
     streamOverBudgetFrames: pick('streamOverBudgetFrames'),
@@ -389,8 +391,8 @@ async function main() {
     record_('①冷开会话总览', coldStats, { ms: cold.result.ms, cards: cold.result.cards })
     assertScenario(
       'cold-sessions',
-      cold.result.ms <= BUDGET.interactionP95Ms,
-      `点击→上屏 ${cold.result.ms}ms ≤ 交互预算 ${BUDGET.interactionP95Ms}ms`,
+      cold.result.ms <= BUDGET.coldOpenMs,
+      `点击→上屏 ${cold.result.ms}ms ≤ 冷开预算 ${BUDGET.coldOpenMs}ms`,
       cold.events,
     )
     assertScenario(
@@ -399,7 +401,7 @@ async function main() {
       `期间 >${BUDGET.longFrameMs}ms 的长帧 ${coldStats.overLong} 段 ≤ ${BUDGET.animationLongFrames}`,
       cold.events,
     )
-    if (cold.result.ms > BUDGET.interactionP95Ms || coldStats.overLong > BUDGET.animationLongFrames) {
+    if (cold.result.ms > BUDGET.coldOpenMs || coldStats.overLong > BUDGET.animationLongFrames) {
       console.log(
         '    ↑ 08-30 起的已知红,**不是**架子 tab 那条路的回归:种子从 120 抬到 400 之后,'
           + '冷开一次要画 400 张卡,那一段主线程任务 53–65ms 越过 50ms 的长帧线。\n'
