@@ -1,0 +1,27 @@
+/*
+ * 段的样式。今天只有思考段一种 —— 这几条是从 ChatStream.module.css
+ * **逐字搬过来的**:P0 换的是结构,不是视觉。
+ */
+
+/* ── 思考块:顶部推理的落点(message.reasoning,不是 part) ────────────── */
+
+.thought {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-left: 2px solid var(--line-1);
+  color: var(--text-3);
+}
+
+.thoughtLabel {
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+.thoughtBody {
+  font-size: var(--fs-meta);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -199,6 +199,19 @@ export const zh = {
   'chat.tool.cancelled': '已取消',
   'chat.tool.inputStreaming': '参数生成中',
 
+  /* ── 内容块的壳(檐上的动作、限高折叠、降级说明) ─────────────────────
+   * 块的 `reason`(unknown-kind:… / tool-default)是**标识**不是文案,
+   * 与错误边界的 `where` 同一条判据:换语言它不该跟着变,所以它不在这儿。 */
+  'block.actions': '更多动作',
+  'block.action.copySource': '复制源码',
+  'block.action.copyMarkdown': '复制 Markdown',
+  'block.action.copyCsv': '复制 CSV',
+  'block.action.viewSource': '查看源码',
+  'block.action.hideSource': '收起源码',
+  'block.expand': '展开',
+  'block.collapse': '收起',
+  'block.renderFailed': '这块没画出来',
+
   /* ── Quick Look ───────────────────────────────────────────────────── */
   'quicklook.enter': '进入 ↵',
   'quicklook.dismiss': '收回',

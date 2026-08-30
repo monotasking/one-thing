@@ -1,0 +1,162 @@
+/*
+ * 块壳的样式 —— 公共六件事里「看得见」的那几件(檐 / 动作 / 横滚 / 折叠 / 骨架 /
+ * 降级)。块本体的样式各归各的 kind 目录,这里一律不碰。
+ *
+ * 颜色零字面值:一切 var()(与全仓同一条铁律)。
+ */
+
+.block {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+/* ── 檐:左 id/meta(小写 mono 灰)· 中 title · 右动作组 ─────────────────── */
+
+.eave {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+}
+
+.ident {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.id,
+.meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  text-transform: lowercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.id {
+  color: var(--text-3);
+}
+
+.meta {
+  color: var(--text-4);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 没有 title 时,动作组自己把左端顶开 —— 檐永远是「左身份 · 右动作」。 */
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: auto;
+}
+
+/* 静默 text-4,悬到才亮:檐上的东西不跟内容抢注意力。 */
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+  transition: color var(--dur) var(--ease);
+}
+
+.action:hover {
+  color: var(--text-1);
+}
+
+.action:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.actionIcon {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+}
+
+/* ── 本体容器:块内横滚 + 限高折叠 ────────────────────────────────────── */
+
+.body {
+  padding: var(--sp-3);
+  /*
+   * 横滚归块自己,别把长行推给整条聊天流。overscroll-behavior 不是装饰:
+   * 少了它,横向滚到头会把这一下传给外面的滚动容器。
+   */
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  max-height: var(--block-clamp-h);
+  /* 超出部分渐隐 —— 用遮罩而不是叠一层渐变 div:后者会盖住底下的字并吃掉点击。 */
+  mask-image: linear-gradient(to bottom, var(--surface-2) calc(100% - var(--sp-6)), transparent);
+}
+
+.bodyExpanded {
+  max-height: none;
+  mask-image: none;
+}
+
+.expand {
+  align-self: flex-start;
+  padding: var(--sp-1) var(--sp-3) var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease);
+}
+
+.expand:hover {
+  color: var(--text-1);
+}
+
+.expand:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+/* ── 懒加载骨架:静默占位,不转菊花 ───────────────────────────────────── */
+
+.skeleton {
+  height: var(--sp-8);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+}
+
+/* ── 降级:一行说明 + 源码 ────────────────────────────────────────────── */
+
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.failureLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--danger);
+}
+
+.failureReason {
+  font-family: var(--font-mono);
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}

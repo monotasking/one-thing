@@ -1,0 +1,15 @@
+/*
+ * 源码视图 —— mono、可换行、不做任何美化。
+ * 它是「什么都失败之后还看得见的那一份」,所以它自己不带任何会失败的东西
+ * (无高亮、无懒加载、无度量)。
+ */
+
+.source {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  color: var(--text-2);
+  /* 长行由外面那层横滚容器管(壳的 body);这里只保留换行与断词。 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -63,81 +63,12 @@
   overflow-wrap: anywhere;
 }
 
-.body {
-  font-size: var(--fs-chat);
-  line-height: 1.7;
-  color: var(--text-1);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* ── 思考块:顶部推理的落点(message.reasoning,不是 part) ────────────── */
-
-.thought {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4);
-  border-left: 2px solid var(--line-1);
-  color: var(--text-3);
-}
-
-.thoughtLabel {
-  font-size: var(--fs-micro);
-  color: var(--text-4);
-}
-
-.thoughtBody {
-  font-size: var(--fs-meta);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-/* ── 工具摘要卡:一行 = 工具名 + 状态 ─────────────────────────────────── */
-
-.toolCard {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--line-1);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-  box-shadow: var(--sh-1);
-}
-
-.toolIcon {
-  width: var(--fs-body);
-  height: var(--fs-body);
-  color: var(--text-2);
-  flex: none;
-}
-
-.toolName {
-  font-family: var(--font-mono);
-  font-size: var(--fs-meta);
-  color: var(--text-1);
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.toolStatus {
-  font-size: var(--fs-meta);
-  color: var(--text-3);
-  flex: none;
-}
-
-.toolCard[data-tool-status='completed'] .toolStatus {
-  color: var(--ok);
-}
-
-.toolCard[data-tool-status='failed'] .toolStatus,
-.toolCard[data-tool-status='cancelled'] .toolStatus {
-  color: var(--danger);
-}
+/*
+ * 正文 / 思考块 / 工具卡的样式**不在这个文件里**了(P0 内容块批):
+ * 段落归 blocks/kinds/paragraph/,思考段归 SegmentView.module.css,
+ * 工具卡归 tools/ToolRow.module.css —— 逐字搬过去,一个值都没改。
+ * 这里只留「消息怎么排」用得着的那些。
+ */
 
 /* ── 流中态:一枚呼吸的光标 ───────────────────────────────────────────── */
 

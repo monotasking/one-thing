@@ -88,6 +88,8 @@
   --pin-min: 320px; /* Quick Look 列宽用(expose/ListView);架子的下界见 --shelf-min */
   --topbar-h: 44px;
   --chat-col: 720px; /* 08-29 用户嫌 640 窄,加一档 */
+  /* 内容块的限高:超过这个高度的 object 块渐隐 + 给一个展开钮(BlockShell) */
+  --block-clamp-h: 320px;
   --pin-default: 400px;
   --pin-header-h: 38px;
   --stage-header-h: 40px;

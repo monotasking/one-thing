@@ -196,6 +196,17 @@ export const en: Record<MessageKey, string> = {
   'chat.tool.cancelled': 'cancelled',
   'chat.tool.inputStreaming': 'streaming args',
 
+  /* ── content block shell (eave actions, clamp, failure line) ────────── */
+  'block.actions': 'More actions',
+  'block.action.copySource': 'Copy source',
+  'block.action.copyMarkdown': 'Copy Markdown',
+  'block.action.copyCsv': 'Copy CSV',
+  'block.action.viewSource': 'View source',
+  'block.action.hideSource': 'Hide source',
+  'block.expand': 'Expand',
+  'block.collapse': 'Collapse',
+  'block.renderFailed': "This block couldn't render",
+
   /* ── quick look ───────────────────────────────────────────────────── */
   'quicklook.enter': 'Open ↵',
   'quicklook.dismiss': 'Dismiss',

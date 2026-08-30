@@ -1,12 +1,14 @@
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useMemo, type RefObject } from 'react'
 import { useChatSource } from '../data/chat-source'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useExposeStore } from '../expose/store'
-import { useT, type MessageKey, type TFn } from '../i18n'
+import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
+import { assembleMessage, segmentKey } from './assemble'
+import type { SegmentModel } from './model/segments'
+import { SegmentView } from './SegmentView'
 import s from './ChatStream.module.css'
 
-const ToolIcon = resolveIcon('FolderTree')
 const ClipIcon = resolveIcon('Paperclip')
 const RetryIcon = resolveIcon('RotateCcw')
 
@@ -30,10 +32,13 @@ interface Props {
  * D1 时键的下标(真锚点列)与页面上的锚点(mock 轮次)并不同源,那条尾巴在
  * 这一批收掉了 —— 两边现在说的是**同一个 id**。
  *
- * ── 富渲染不在这一批 ──────────────────────────────────────────────────
- * 正文按**纯文本**画(`white-space: pre-wrap` 保留换行),工具调用折成一行摘要
- * (工具名 + 状态)。markdown / 代码高亮 / diff 视图 / 图片是后批(streamdown +
- * shiki)。这不是"暂时凑合",是这一批只负责把数据链路换成真的。
+ * ── 内容怎么画,不在这个文件里 ────────────────────────────────────────
+ * assistant / system 那一支不再自己拼 JSX:一条消息经**装配管线**
+ * (`assemble/`)算成一串段,这里只把段依次摆下去。ChatStream 因此不认识
+ * 段落、代码块、工具卡里的任何一个 —— 加一种块 / 换一种工具展示,这个文件不动。
+ *
+ * 今天画出来的东西与从前逐字相同(纯文本正文 + 思考块 + 一行工具摘要):
+ * P0 交付的是结构,markdown / 高亮 / diff / 工具三件套是后批(§9)。
  */
 export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
   const t = useT()
@@ -84,28 +89,8 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
   )
 }
 
-/**
- * 工具状态:**后端枚举 → 字典键**的一张明表。
- *
- * 不用 `` `chat.tool.${status}` as MessageKey `` 拼键 —— 那个断言会骗过类型检查,
- * 后端哪天加一档新状态就在运行时炸(`format` 拿到 undefined)。列成表之后,
- * 认不出来的状态**原样显示那个英文枚举**:那是事实,而编一句中文是猜。
- */
-const TOOL_STATUS_KEYS: Record<string, MessageKey> = {
-  pending: 'chat.tool.pending',
-  queued: 'chat.tool.queued',
-  received: 'chat.tool.received',
-  executing: 'chat.tool.executing',
-  completed: 'chat.tool.completed',
-  failed: 'chat.tool.failed',
-  cancelled: 'chat.tool.cancelled',
-  'input-streaming': 'chat.tool.inputStreaming',
-}
-
-function toolStatusLabel(t: TFn, status: string): string {
-  const key = TOOL_STATUS_KEYS[status]
-  return key ? t(key) : status
-}
+/** 不装配的那两种角色共用同一个空数组 —— 每次新造一个会让下游的浅比全部落空。 */
+const EMPTY_SEGMENTS: SegmentModel[] = []
 
 interface RowProps {
   t: TFn
@@ -116,8 +101,18 @@ interface RowProps {
 
 function MessageRow({ t, message, streaming, flash }: RowProps) {
   const role = message.role
-  const toolCalls = message.toolCalls ?? []
   const className = [s.row, flash && s.flash].filter(Boolean).join(' ')
+
+  // 只有模型说的话要装配。用户消息是一个气泡、错误消息是一张卡,它们没有段 ——
+  // 给它们也跑一遍管线不只是白跑,还会往 memo 里塞一份永远没人读的段序列。
+  //
+  // 装配是纯函数 + 按消息引用 memo,所以这一句在非活跃消息上是一次 WeakMap 命中。
+  const prose = role === 'assistant' || role === 'system'
+  const segments = prose ? assembleMessage(message) : EMPTY_SEGMENTS
+  const ctx = useMemo(
+    () => ({ messageId: message.id, streaming }),
+    [message.id, streaming],
+  )
 
   return (
     <article className={className} data-message-id={message.id} data-role={role}>
@@ -131,23 +126,16 @@ function MessageRow({ t, message, streaming, flash }: RowProps) {
         </div>
       )}
 
-      {(role === 'assistant' || role === 'system') && (
+      {prose && (
         <>
-          {/* 顶部推理落在 `message.reasoning`(不是 part)—— 折叠器与活尾巴同一个落点。 */}
-          {message.reasoning && (
-            <div className={s.thought}>
-              <span className={s.thoughtLabel}>{t('chat.thought')}</span>
-              <p className={s.thoughtBody}>{message.reasoning}</p>
-            </div>
-          )}
-          {message.content && <p className={s.body}>{message.content}</p>}
-          {toolCalls.map((call) => (
-            <div key={call.id} className={s.toolCard} data-tool-status={call.status}>
-              <ToolIcon className={s.toolIcon} strokeWidth={1.75} aria-hidden="true" />
-              <span className={s.toolName}>{call.toolName || call.toolId}</span>
-              <span className={s.toolStatus}>{toolStatusLabel(t, call.status)}</span>
-            </div>
-          ))}
+          {segments.map((segment, index) => {
+            const key = segmentKey(message.id, index, segment)
+            return <SegmentView key={key} segment={segment} segmentKey={key} ctx={ctx} />
+          })}
+          {/*
+            光标是**数据源的事实**(activeMessageId),不是这条消息自己的事实,
+            而装配管线只拿得到消息 —— 所以它留在这一层画,没有进段序列。
+          */}
           {streaming && (
             <span className={s.cursor} data-testid="chat-streaming" aria-label={t('chat.streaming')} />
           )}

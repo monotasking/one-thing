@@ -1,0 +1,47 @@
+/*
+ * 工具摘要卡:一行 = 工具名 + 状态。
+ * 这几条是从 ChatStream.module.css **逐字搬过来的** —— P0 换的是结构,不是视觉。
+ */
+
+.toolCard {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+}
+
+.toolIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-2);
+  flex: none;
+}
+
+.toolName {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolStatus {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  flex: none;
+}
+
+.toolCard[data-tool-status='completed'] .toolStatus {
+  color: var(--ok);
+}
+
+.toolCard[data-tool-status='failed'] .toolStatus,
+.toolCard[data-tool-status='cancelled'] .toolStatus {
+  color: var(--danger);
+}
