@@ -3,15 +3,8 @@
  * 系统里只有一种浮层入场,不给放大单造一条。颜色零字面值。
  */
 
-@keyframes blockZoomScrimIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes blockZoomCanvasIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
-}
+/* 关键帧 blockZoomScrimIn / blockZoomCanvasIn 住在 styles/motion.css
+ * (全仓唯一的 @keyframes 产地)。 */
 
 .scrim {
   position: fixed;
@@ -22,7 +15,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--sp-6);
-  animation: blockZoomScrimIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-block-zoom-scrim-in) var(--dur-enter) var(--ease-out);
 }
 
 .canvas {
@@ -40,7 +33,7 @@
   border-radius: var(--r-3);
   background: var(--surface-2);
   box-shadow: var(--sh-3);
-  animation: blockZoomCanvasIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-block-zoom-canvas-in) var(--dur-enter) var(--ease-out);
 }
 
 /* 画布拿焦点只是让 Esc 落进来,不该画环 —— 环是给可操作元素的(同 Dialog)。 */

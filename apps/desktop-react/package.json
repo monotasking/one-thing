@@ -16,12 +16,16 @@
     "gate:data": "node scripts/gate-data.mjs",
     "gate:theme": "node scripts/gate-theme.mjs",
     "gate:chat": "node scripts/gate-chat.mjs",
+    "gate:files": "node scripts/gate-files.mjs",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "gate:perf": "node scripts/gate-perf.mjs",
     "gate:squeeze": "node scripts/gate-squeeze.mjs",
+    "gate:motion": "node scripts/gate-motion.mjs",
     "squeeze-check": "node scripts/squeeze-check.mjs",
     "squeeze-gate": "node scripts/squeeze-gate.mjs",
+    "motion-check": "node scripts/motion-check.mjs",
+    "motion-gate": "node scripts/motion-gate.mjs",
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {

@@ -8,8 +8,14 @@
   top: 50%;
   /* 锚在聊天列右缘:50% - 列半宽 - 键宽 - 间距(列居中,故右缘 = 中线 + 列半宽)。
    * 窗格窄到算式小于兜底值时,max() 退回贴窗格边 —— 键永远不压进文本列。
-   * 08-29 用户报"键太靠右":旧写法钉窗格边,宽窗下离它管的文本 300px 远。 */
-  right: max(var(--toc-right), calc(50% - var(--chat-col) / 2 - var(--toc-key-w-on) - var(--toc-col-gap)));
+   * 08-29 用户报"键太靠右":旧写法钉窗格边,宽窗下离它管的文本 300px 远。
+   *
+   * 列半宽读的是 **--pr-col**(阅读轴的列宽档),不是从前那个写死的 --chat-col:
+   * 「聊天列有多宽」现在是读者可调的一件事,而键列锚的就是那条右缘 —— 两处读同
+   * 一个数,读者换列宽档时键跟着走。满幅档下 --pr-col 是 100%,算式变负,
+   * max() 自然退回 --toc-right(贴窗格边),那正是满幅时键该在的位置。
+   * 这也是那一档取 100% 而不是 none 的理由(见 tokens.css 阅读轴一节)。 */
+  right: max(var(--toc-right), calc(50% - var(--pr-col) / 2 - var(--toc-key-w-on) - var(--toc-col-gap)));
   transform: translateY(-50%);
   z-index: var(--z-sticky);
   /*

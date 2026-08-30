@@ -8,7 +8,7 @@ import { renderContent } from '../content'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
 import { resolveIcon, Maximize2, Pin, X } from './icons'
-import { EXIT_MS } from './motion'
+import { exitMs } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
 import type { FloatRect, ShelfSide } from '../stage/types'
 import type { ResizeDir } from '../stage/transitions'
@@ -223,10 +223,15 @@ export function FloatLayer() {
    * 渲染期 setState(同组件)会让 React 在提交前重跑本次渲染 —— 这正是官方的
    * 「从 props 派生 state」形状,窗因此一帧都不缺席。
    */
+  /*
+   * 动效档「无」时**根本不进离场名单**:没有出场动画要播,也就没有理由让一扇
+   * 已经关掉的窗在 DOM 里再活 120ms。关掉 = 这次提交里就没有它。
+   * (排一个 0ms 的定时器也能到,但那要多等一个宏任务 —— 与 StageOverlay 同一条。)
+   */
   if (prev.current !== order) {
     const newlyGone = prev.current.filter((id) => !order.includes(id) && !leaving.includes(id))
     prev.current = order
-    if (newlyGone.length > 0) setLeaving((l) => [...l, ...newlyGone])
+    if (newlyGone.length > 0 && exitMs() > 0) setLeaving((l) => [...l, ...newlyGone])
   }
 
   // 每个离场 id 各自计时;又被打开的当场从离场名单摘掉(它回到 order 那一半去画)。
@@ -245,7 +250,8 @@ export function FloatLayer() {
         setTimeout(() => {
           timers.current.delete(id)
           setLeaving((l) => l.filter((x) => x !== id))
-        }, EXIT_MS),
+          // 现问一次动效档:「无」档下 exitMs() = 0,关窗即卸载,不留空壳。
+        }, exitMs()),
       )
     }
   }, [leaving, order])

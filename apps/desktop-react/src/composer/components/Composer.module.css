@@ -66,14 +66,12 @@
   border: var(--spinner-w) solid var(--line-1);
   border-top-color: var(--accent);
   border-radius: var(--r-full);
-  animation: spin var(--dur-spin) linear infinite;
+  animation: var(--kf-spin) var(--dur-spin) linear infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
+/* 关键帧 spin 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。
+ * 从前这里另写了一份 `rotate(360deg)`,与 ui/Spinner 那份 `rotate(1turn)` 是同一个
+ * 角度的两种写法 —— 集中时合成了一份。 */
 
 .doneDot {
   flex: none;
@@ -250,7 +248,7 @@
   gap: var(--sp-2);
   font-size: var(--fs-meta);
   color: var(--text-2);
-  animation: settle var(--dur-enter) var(--ease-out);
+  animation: var(--kf-settle) var(--dur-enter) var(--ease-out);
 }
 
 .stepDoing {
@@ -261,15 +259,6 @@
   min-width: var(--sp-6);
   font-size: var(--fs-hint);
   color: var(--text-3);
-}
-
-@keyframes settle {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 /* ── 本体行:write 形态 ⇄ ask 形态(交叉淡变) ────────────────────────────── */

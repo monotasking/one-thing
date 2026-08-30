@@ -1,7 +1,4 @@
-@keyframes tipIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* 关键帧 tipIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 /*
  * 反色墨底、r-1、无箭头。位移只在「相对锚点摆位」里出现(translate 是它的坐标,
@@ -19,7 +16,7 @@
   line-height: 1.5;
   pointer-events: none;
   transform: translate(-50%, calc(-100% - var(--sp-2)));
-  animation: tipIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-tip-in) var(--dur-enter) var(--ease-out);
 }
 
 /* 顶不下时翻到下方:同一枚间距,只换方向。 */

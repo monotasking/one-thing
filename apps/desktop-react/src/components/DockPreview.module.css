@@ -1,7 +1,4 @@
-@keyframes previewIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* 关键帧 previewIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 /* 浮层配方与浮窗 / 舞台同一份的降一档:r-3 / surface-2 / sh-2 / 1px line-1。
  * 身量固定 —— 预览的意义是「一眼」,不是「一块可以变大的面」。 */
@@ -18,7 +15,7 @@
   box-shadow: var(--sh-2);
   pointer-events: none;
   z-index: var(--z-tooltip);
-  animation: previewIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-preview-in) var(--dur-enter) var(--ease-out);
 }
 
 .head {

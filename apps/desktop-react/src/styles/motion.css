@@ -1,0 +1,355 @@
+/* ── 动效产地(08-31 阅读体验四件套 · 交付二)────────────────────────────────
+ *
+ * 这个文件是全仓**唯一**放 `@keyframes` 的地方,也是**唯一**放动效档位表的地方。
+ * 组件文件只许一种写法:
+ *   `animation: var(--kf-float-in) var(--dur-enter) var(--ease-out);`
+ * —— 名字一个 token、时长一个 token,两样都不许写字面量。三条规矩由
+ * `npm run motion-gate` 静态执法,真机那一半是 `npm run gate:motion`。
+ *
+ * ── 为什么 keyframes 要集中 ────────────────────────────────────────────────
+ * 从前 23 段 keyframes 散在 16 个 module.css 里,其中 11 段逐字相同(都是
+ * opacity 0→1)、4 段近乎相同(淡入 + scale .98)、`spin` 还被两个文件各写了一遍
+ * (一个 `rotate(360deg)`、一个 `rotate(1turn)`,同一件事两种写法)。散着的代价不是
+ * 字节数,是**没人说得清这台上到底有几种出场**:想统一「浮层怎么出来」得先把 16 个
+ * 文件读一遍。集中之后,这个文件本身就是那份清单。
+ *
+ * 搬迁是**逐字**的:一段 keyframes 的内容一个字符都没改(唯一合并的是那两份 spin,
+ * 留了 `rotate(1turn)` 那份 —— 360deg 与 1turn 是同一个角度)。11 段重复的淡入
+ * 没有合并成一个名字:合并要动 11 个文件里的引用,那是另一件事(留账,见汇报)。
+ *
+ * ── 名字为什么也得是 token(一个真机验出来的坑)────────────────────────────
+ * 这里是普通全局样式表(经 global.css @import,不带 .module 后缀),所以 keyframes
+ * 的名字原样保留。但**引用那一侧不是**:CSS Modules 会把 `.module.css` 里
+ * `animation:` 值里的名字**无条件**改写成 hash —— 不管那个名字是不是在本文件里
+ * 声明过。搬迁后第一次构建就抓到了:产物里关键帧叫 `floatIn`,而引用它的规则写着
+ * `_floatIn_156y4_1`,**全仓动画一次性全哑**(静态门与单测都看不出来 —— 它们不跑
+ * postcss-modules)。
+ *
+ * 试过的两条路:`animation: :global(floatIn) …` 直接 postcss 解析报错(值里不支持
+ * `:global()`,只有选择器里支持);把 keyframes 塞回各自的 module 又正是要治的病。
+ *
+ * 成立的写法是下面这张**名字表**:名字进 custom property,组件写
+ * `animation: var(--kf-float-in) var(--dur-enter) var(--ease-out)`。`var()` 对
+ * CSS Modules 是不透明的,改写不了。于是「动效的名字」和「动效的时长」一样,
+ * 都是 token —— 组件里两样都不许写字面量,这条也就成了 motion-gate 的第三条规矩。
+ *
+ * ── 动效档 data-motion-tier ────────────────────────────────────────────────
+ * 三档,只换 --dur 族的 root 值,**一条规则、一个组件都不必知道有档位这回事**:
+ *
+ *   standard(默认)  就是 tokens.css 里的原值
+ *   calm            装饰减半(enter / exit / hover-fade / flash / scroll-settle),
+ *                   --dur 与 --dur-release 保持 —— 前者是「跟手」的基本节拍,
+ *                   后者是手离开后的回位,这两件再快就不是「克制」是「生硬」了
+ *   none            装饰全 0
+ *
+ * ── --dur 族分三类,档位只动第一类 ────────────────────────────────────────
+ * ① **装饰时长** = 一次形变 / 淡入淡出花多久。这类是「动效」,档位说了算。
+ *    --dur --dur-enter --dur-exit --dur-release --dur-flash --dur-hover-fade
+ *    --dur-scroll-settle --dur-toc-flash --dur-cursor-blink --dur-drawer
+ *    --dur-mode --dur-att-move --dur-tool-pulse
+ * ② **延迟** = 等多久才开始一件事。它不是动画,关掉它只会让悬停变得神经质。
+ *    --dur-tooltip-delay --dur-preview-delay --dur-toc-hover --dur-att-grace
+ * ③ **寿命 / 进度读数** = 一件事本身要花多久。归 0 等于删掉这件事的信号。
+ *    --dur-spin(不转的 spinner 不是「安静」,是「坏了」)
+ *    --dur-toast-success / -info / -warn(toast 该活多久与动效无关)
+ * 分类的判据是**这个数说的是什么**,不是它长什么样。②③ 两类在任何档位都不动,
+ * 这也是真机门 `gate-motion.mjs` 那两条豁免的来处。
+ *
+ * ── 主题机制的**位**(只预留,不实现)───────────────────────────────────────
+ * `data-motion-theme` 是留着的第二个属性位:档位说「多快」,主题说「怎么动」
+ * (曲线、位移量、用哪一段 keyframes)。它的形状已经定了 —— **配方 = 表**:
+ * 一个动效主题就是这个文件里多一个 `:root[data-motion-theme='<名>']` 块,里面
+ * 重写 --ease 族与 --*-lift 族,keyframes 一段都不必新写。今天全仓只有一套配方
+ * (缺省态),所以这里**没有**那个块 —— 立一个只有一行的空块是在假装有第二套。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* ── 名字表 ────────────────────────────────────────────────────────────────
+ * 每段 keyframes 一个 token。组件只引 token,不引名 —— 理由见上面那一节。
+ * 加一段 keyframes = 在下面加一段 + 在这里加一行,两处都在这个文件里。
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* 淡入族 */
+  --kf-preview-in: previewIn;
+  --kf-label-in: labelIn;
+  --kf-float-in: floatIn;
+  --kf-film-in: filmIn;
+  --kf-scrim-in: scrimIn;
+  --kf-block-zoom-scrim-in: blockZoomScrimIn;
+  --kf-ql-in: qlIn;
+  --kf-dialog-scrim-in: dialogScrimIn;
+  --kf-menu-in: menuIn;
+  --kf-tip-in: tipIn;
+  --kf-settle: settle;
+
+  /* 淡入 + 微放大族 */
+  --kf-panel-in: panelIn;
+  --kf-block-zoom-canvas-in: blockZoomCanvasIn;
+  --kf-ql-panel-in: qlPanelIn;
+  --kf-dialog-panel-in: dialogPanelIn;
+
+  /* 位移入场(唯一一处) */
+  --kf-toast-in: toastIn;
+
+  /* 读数与状态 */
+  --kf-toast-life: toastLife;
+  --kf-spin: spin;
+  --kf-tool-pulse: toolPulse;
+
+  /* 一次性提示 */
+  --kf-shelf-flash: shelfFlash;
+  --kf-turn-flash: turnFlash;
+  --kf-chat-cursor: chatCursor;
+}
+
+/* ── 淡入:全系统最常见的一次出场 ─────────────────────────────────────── */
+
+@keyframes previewIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes labelIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes floatIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes filmIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scrimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes blockZoomScrimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes qlIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialogScrimIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tipIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes settle {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 淡入 + 一点点放大:「一块面」的出场(scrim 之上的那一层)────────── */
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes blockZoomCanvasIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes qlPanelIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dialogPanelIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ── 位移入场:全系统唯一一处(Toast,规范画布原话)────────────────────── */
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(var(--toast-lift));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── 读数与状态:不是装饰,所以它们的时长属于第 ③ 类 ────────────────────── */
+
+/* toast 底缘那条剩余时间线:从满到空,线性走完。**线性是刻意的** ——
+ * 它是个读数(还剩多久),不是一次形变,缓动会让它说谎。
+ * 时长由 JS 按级别的命运表以行内样式给(services/notify.ts),不吃 --dur 族。 */
+@keyframes toastLife {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+/* 工具行「运行中」那枚呼吸图标(V2 三态)。 */
+@keyframes toolPulse {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ── 一次性的提示:闪一下就过去 ────────────────────────────────────────── */
+
+@keyframes shelfFlash {
+  0%,
+  100% {
+    border-color: var(--line-1);
+  }
+  50% {
+    border-color: var(--accent);
+  }
+}
+
+/* 跳到某一轮之后,落点消息的柔光环从 accent 淡回透明。 */
+@keyframes turnFlash {
+  from {
+    outline-color: var(--accent);
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
+/* 流中态那枚呼吸的光标。 */
+@keyframes chatCursor {
+  from {
+    opacity: 0.15;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+
+/* ── 档位表 ────────────────────────────────────────────────────────────────
+ * standard 不写块 —— 它就是 tokens.css 的原值。写一个把每个数抄一遍的
+ * `[data-motion-tier='standard']` 块只会制造第二份真相。
+ * JS 侧只镜像了 --dur-exit 的三档(components/motion.ts 的 EXIT_MS_BY_TIER,
+ * 它是唯一一个有 JS 计时器跟着走的),相等由单测钉死。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+:root[data-motion-tier='calm'] {
+  --dur-enter: 70ms;
+  --dur-exit: 60ms;
+  --dur-hover-fade: 150ms;
+  --dur-flash: 120ms;
+  --dur-scroll-settle: 200ms;
+}
+
+:root[data-motion-tier='none'] {
+  --dur: 0ms;
+  --dur-enter: 0ms;
+  --dur-exit: 0ms;
+  --dur-release: 0ms;
+  --dur-flash: 0ms;
+  --dur-hover-fade: 0ms;
+  --dur-scroll-settle: 0ms;
+  --dur-toc-flash: 0ms;
+  --dur-cursor-blink: 0ms;
+  --dur-drawer: 0ms;
+  --dur-mode: 0ms;
+  --dur-att-move: 0ms;
+  --dur-tool-pulse: 0ms;
+}

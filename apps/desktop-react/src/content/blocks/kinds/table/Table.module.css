@@ -8,7 +8,9 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--fs-body);
+  /* 与代码块同一条:比正文小一号(阅读轴 --pr-fs − 1)。表是密排的,
+   * 同号字会让它比周围的正文显得更重。 */
+  font-size: calc(var(--pr-fs) - 1px);
   color: var(--text-1);
 }
 

@@ -62,7 +62,8 @@ export function ResearchSegment({
   // 把一个正在长的数摆成结论是骗人;等它收场再说。
   if (episode.running) {
     return (
-      <div ref={ref} className={s.episode} data-research-id={id} data-research-live>
+      // data-prose:节奏表的钩子 —— 检索段按物件档留白(content/ChatStream.module.css)。
+      <div ref={ref} className={s.episode} data-research-id={id} data-research-live data-prose="object">
         <ResearchLive t={t} episode={episode} />
       </div>
     )
@@ -76,6 +77,7 @@ export function ResearchSegment({
       className={s.episode}
       data-research-id={id}
       data-open={open || undefined}
+      data-prose="object"
     >
       <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
         <CaretIcon className={s.caret} strokeWidth={2} aria-hidden="true" />

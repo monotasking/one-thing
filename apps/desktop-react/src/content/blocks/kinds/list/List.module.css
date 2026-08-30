@@ -3,10 +3,11 @@
  * 自己画圆点会丢掉「标记和首行基线对齐」这件浏览器早就做对了的事。
  */
 
+/* 字号 / 行高跟着阅读轴(--pr-fs / --pr-lh)—— 与段落同一条,列表本来就是正文。 */
 .list {
   padding-inline-start: var(--indent-2);
-  font-size: var(--fs-chat);
-  line-height: 1.7;
+  font-size: var(--pr-fs);
+  line-height: var(--pr-lh);
   color: var(--text-1);
 }
 
@@ -22,6 +23,14 @@ ol.list {
   /* 项内的软换行照实保留(项里可能有硬换行,翻译表把它翻成 `\n`)。 */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/*
+ * 项与项之间(--pr-li)—— 比段距近得多:一张列表是**一件**东西,项之间拉开到
+ * 段距就散成了几段。最后一项不留下缘,列表整体的下缘归节奏表管。
+ */
+.item + .item {
+  margin-block-start: var(--pr-li);
 }
 
 .item::marker {

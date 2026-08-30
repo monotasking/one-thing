@@ -14,6 +14,9 @@
 /* 主题桥必须排在 palette 之后:它靠 `:root[data-theme-bridge]` 的特异性接管
  * palette 的静态色值。没打标记(没连上 core)时这块规则不匹配,palette 原样生效。 */
 @import './theme-bridge.css';
+/* 动效产地:全仓唯一的 @keyframes 集合 + 动效档位表。必须排在 tokens 之后 ——
+ * 档位块重写的正是 tokens.css 里的 --dur 族。执法见 `npm run motion-gate`。 */
+@import './motion.css';
 
 *,
 *::before,

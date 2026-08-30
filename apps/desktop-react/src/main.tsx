@@ -9,6 +9,7 @@ import { whenConnected } from './platform/connection'
 import { useSessionsSource } from './data/sessions-source'
 import { useAgentsSource } from './data/agents-source'
 import { startThemeSource } from './theme/theme-source'
+import { startReadingAxes } from './reading/apply'
 import { installCrashHandlers } from './services/crash'
 import { startPerfProbe } from './services/perf'
 import { getLogger } from './services/log'
@@ -19,6 +20,11 @@ const log = getLogger('boot')
 // 两个都是幂等的,也都不依赖 core —— 连不上 core 的那条路径同样带着它们。
 installCrashHandlers()
 startPerfProbe()
+
+// 阅读轴(字号 / 密度 / 列宽 / 动效)也在一切之前贴上:它读的是 localStorage,
+// **不经过 core**,所以不必等连通 —— 连不上时读者调过的字号照样成立。
+// 放在 createRoot 之前是为了首帧就是最终版式:先画一屏 14px 再跳成 16px 是可见的。
+startReadingAxes()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')

@@ -20,5 +20,15 @@ export function List({ model }: { model: ListModel }) {
       <InlineRun nodes={item} />
     </li>
   ))
-  return model.ordered ? <ol className={s.list}>{items}</ol> : <ul className={s.list}>{items}</ul>
+  // data-prose:节奏表的钩子(见 content/ChatStream.module.css)。列表是「一段字」,
+  // 与段落同档;项与项之间那一档更近的间距(--pr-li)在 List.module.css 里。
+  return model.ordered ? (
+    <ol className={s.list} data-prose="text">
+      {items}
+    </ol>
+  ) : (
+    <ul className={s.list} data-prose="text">
+      {items}
+    </ul>
+  )
 }

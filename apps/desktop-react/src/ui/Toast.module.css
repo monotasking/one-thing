@@ -1,15 +1,5 @@
-/* 全系统唯一允许位移的入场(板上原话)。淡入 + 8px 上移,走浮层入场那条曲线。 */
-@keyframes toastIn {
-  from { opacity: 0; transform: translateY(var(--toast-lift)); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* 底缘那条剩余时间线:从满到空,线性走完。**线性是刻意的** ——
- * 它是个读数(还剩多久),不是一次形变,缓动会让它说谎。 */
-@keyframes toastLife {
-  from { transform: scaleX(1); }
-  to { transform: scaleX(0); }
-}
+/* 关键帧 toastIn(全系统唯一允许位移的入场)与 toastLife(底缘那条剩余时间线)
+ * 都住在 styles/motion.css —— 全仓唯一的 @keyframes 产地。 */
 
 .stack {
   position: fixed;
@@ -40,7 +30,7 @@
   overflow: hidden;
   /* 堆里其余的不吃事件,但每一条自己要能被 hover 暂停 */
   pointer-events: auto;
-  animation: toastIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-toast-in) var(--dur-enter) var(--ease-out);
 }
 
 .icon {
@@ -123,7 +113,7 @@
   height: var(--toast-line-h);
   transform-origin: left center;
   background: var(--line-2);
-  animation-name: toastLife;
+  animation-name: var(--kf-toast-life);
   animation-timing-function: linear;
   animation-fill-mode: forwards;
   /* 时长与暂停由行内 style 给:它们是**这一条**的事实,不是一档样式。 */
@@ -141,7 +131,7 @@
   box-shadow: var(--sh-1);
   font-size: var(--fs-meta);
   color: var(--text-2);
-  animation: toastIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-toast-in) var(--dur-enter) var(--ease-out);
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 

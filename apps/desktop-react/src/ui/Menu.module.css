@@ -1,7 +1,4 @@
-@keyframes menuIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* 关键帧 menuIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 .menu {
   position: fixed;
@@ -13,7 +10,7 @@
   border: 1px solid var(--line-1);
   box-shadow: var(--sh-2);
   /* 入场只淡入:菜单已经在光标处了,再从别处飞过来就是骗人 */
-  animation: menuIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-menu-in) var(--dur-enter) var(--ease-out);
 }
 
 .section {

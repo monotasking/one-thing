@@ -78,6 +78,10 @@ function ToolRowBody({
       className={variant === 'card' ? s.toolCard : s.toolStep}
       data-tool-status={row.status}
       data-tool-tone={tone}
+      // 节奏表的钩子(content/ChatStream.module.css):工具卡是**一件东西**,
+      // 上下留白按物件档 --pr-obj,不按段距。组里的行不是消息框的直接子项,
+      // 这个属性对它们只是无害的多余标记。
+      data-prose="object"
     >
       {expandable ? (
         <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>

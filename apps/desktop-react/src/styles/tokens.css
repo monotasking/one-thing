@@ -62,6 +62,10 @@
   --dur-scroll-settle: 400ms;
   /* 悬停淡入(会话卡上的幽灵入口):比 --dur 慢,是为了「不抢眼」而不是「慢」 */
   --dur-hover-fade: 300ms;
+  /* 流中态那枚呼吸光标的一次明暗。从前它借用 --dur-toc-hover(同为 150ms)——
+   * 那是个**悬停延迟**,不是动画时长,借来用会让动效档分类无从下手(延迟档位不动、
+   * 动画归 0)。值一个数没变,只是从此有了自己的名字。 */
+  --dur-cursor-blink: 150ms;
   /* L3 钢琴键 TOC:悬停多久长出面板 / 落点消息高亮多久(JS 侧镜像见 components/motion.ts) */
   --dur-toc-hover: 150ms;
   --dur-toc-flash: 1200ms;
@@ -438,4 +442,115 @@
   --fs-code: 12.5px;
   --fs-tiny: 9.5px;
   --fs-ext: 7.5px;
+}
+
+/* ── 纪律区:阅读轴 --pr-*(08-31 阅读体验四件套)──────────────────────────
+ * 上面那一大片是**外壳**的几何:一个数写死一次,谁都不许改。这一节是另一部法 ——
+ * 它是**读者可调的四根轴**,所以它的值不是常量,是「当下这一档」:
+ *
+ *   字号  data-reading-fs      13 / 14(默认) / 15 / 16   → --pr-fs
+ *   密度  data-reading-density compact / comfortable(默认) / relaxed
+ *   列宽  data-reading-col     standard(默认) / wide / full → --pr-col
+ *   动效  data-motion-tier     见 styles/motion.css(不在本节,它换的是 --dur 族)
+ *
+ * 三条读法:
+ *
+ * ① **两轴正交**:字号说「字有多大」,密度说「留白的节奏」。所以密度档一律用
+ *    `em` —— 节奏跟着字号等比缩放,换字号不必再配一套密度值,四×三=十二种组合
+ *    只需要 4+3 个声明。
+ * ② **数的来源**:舒适档 = 规范画布 PROSE 板逐项 em 换算(标准字号 14px 下与板上
+ *    的 px 逐项吻合:0.7em×14 = 9.8 ≈ 板上的 10,1.43em×14 = 20 等)。紧凑 / 宽松
+ *    是它上下各一档。唯一一处与板不同:列表项间距 3px → 4px(.28em),比稿时定的。
+ * ③ **谁来消费**:只有**聊天正文那一列**(content/ChatStream.module.css 的节奏表
+ *    与 blocks/kinds/* 的字号)。外壳、面板、Composer、设置页一概不吃 —— 它们是
+ *    「界面」不是「读物」,读者调的是读物。
+ *
+ * 属性挂在 documentElement 上,由 src/reading/ 那个 store 在 boot 时写一次、
+ * 设置面改一次写一次。CSS 这边因此不需要知道有没有人在调 —— 缺省态就是默认档。
+ * ────────────────────────────────────────────────────────────────────────── */
+:root {
+  /* 字号轴:默认「标准 14」 */
+  --pr-fs: 14px;
+
+  /* 密度轴:默认「舒适」。九个量一起构成一档,不许只改其中一个。 */
+  --pr-lh: 1.6; /* 正文行高 */
+  --pr-gap: 0.7em; /* 段与段(以及一切没有更具体说法的相邻两件) */
+  --pr-h2-top: 1.43em; /* 二级标题上缘 —— 标题属于它下面那段,所以上远下近 */
+  --pr-h2-btm: 0.55em;
+  --pr-h3-top: 1.15em;
+  --pr-h3-btm: 0.43em;
+  --pr-li: 0.28em; /* 列表项之间 */
+  --pr-obj: 0.85em; /* 物件块(代码 / 表 / 图 / diff / 工具卡)上下:比文字节奏多一档 */
+  --pr-hr: 0.85em; /* 分隔线上下。今天 markdown 翻译表还不产 thematicBreak 块,
+                    * 所以这一格**暂时没有消费者** —— 值先定在这里,块到位那天不必再拍一次。 */
+
+  /* 列宽轴:默认「标准」。满幅是 100% 而不是 none —— 见下面 full 那一档的注。 */
+  --pr-col: 46rem;
+}
+
+:root[data-reading-fs='13'] {
+  --pr-fs: 13px;
+}
+:root[data-reading-fs='14'] {
+  --pr-fs: 14px;
+}
+:root[data-reading-fs='15'] {
+  --pr-fs: 15px;
+}
+:root[data-reading-fs='16'] {
+  --pr-fs: 16px;
+}
+
+:root[data-reading-density='compact'] {
+  --pr-lh: 1.5;
+  --pr-gap: 0.45em;
+  --pr-h2-top: 1em;
+  --pr-h2-btm: 0.4em;
+  --pr-h3-top: 0.75em;
+  --pr-h3-btm: 0.3em;
+  --pr-li: 0.15em;
+  --pr-obj: 0.7em;
+  --pr-hr: 0.6em;
+}
+
+:root[data-reading-density='comfortable'] {
+  --pr-lh: 1.6;
+  --pr-gap: 0.7em;
+  --pr-h2-top: 1.43em;
+  --pr-h2-btm: 0.55em;
+  --pr-h3-top: 1.15em;
+  --pr-h3-btm: 0.43em;
+  --pr-li: 0.28em;
+  --pr-obj: 0.85em;
+  --pr-hr: 0.85em;
+}
+
+:root[data-reading-density='relaxed'] {
+  --pr-lh: 1.7;
+  --pr-gap: 1em;
+  --pr-h2-top: 1.85em;
+  --pr-h2-btm: 0.7em;
+  --pr-h3-top: 1.43em;
+  --pr-h3-btm: 0.55em;
+  --pr-li: 0.43em;
+  --pr-obj: 1.15em;
+  --pr-hr: 1.15em;
+}
+
+:root[data-reading-col='standard'] {
+  --pr-col: 46rem;
+}
+:root[data-reading-col='wide'] {
+  --pr-col: 56rem;
+}
+/*
+ * 满幅 = 100%,**不是 `none`**。两个理由:
+ *  · `max-width: 100%` 与 `none` 在这里同义(列的外面就是带页边距的滚动容器),
+ *    但 100% 是一个**长度**,而 none 是一个关键字;
+ *  · 这个 token 还有第二个消费者 —— 钢琴键目录靠 `calc(50% - var(--pr-col)/2 …)`
+ *    贴住聊天列的右缘。关键字进 calc() 会让整条声明「计算期无效」,目录当场飞走;
+ *    100% 进 calc() 得到 0,max() 于是落到兜底的 --toc-right —— 正是满幅时该有的位置。
+ */
+:root[data-reading-col='full'] {
+  --pr-col: 100%;
 }

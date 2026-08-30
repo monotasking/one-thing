@@ -1,6 +1,4 @@
-@keyframes spin {
-  to { transform: rotate(1turn); }
-}
+/* 关键帧 spin 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 /*
  * 一枚缺口环:整圈 --line-2,顶边透明 —— 转起来那道缺口就是进度感。
@@ -12,7 +10,7 @@
   border: var(--spinner-w) solid var(--line-2);
   border-top-color: transparent;
   border-radius: var(--r-full);
-  animation: spin var(--dur-spin) linear infinite;
+  animation: var(--kf-spin) var(--dur-spin) linear infinite;
 }
 
 .sm {

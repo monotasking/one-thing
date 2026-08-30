@@ -1,12 +1,4 @@
-@keyframes scrimIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes panelIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
-}
+/* 关键帧 scrimIn / panelIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 /* scrim 恒铺满:Dock 已是浮层,不再有「保留带」可让 ——
  * 它靠 --z-dock(650)压在 scrim(--z-overlay 500)之上,所以舞台开着时 Dock 仍可点,
@@ -19,7 +11,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: scrimIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-scrim-in) var(--dur-enter) var(--ease-out);
 }
 
 .panel {
@@ -33,16 +25,16 @@
   border-radius: var(--r-3);
   background: var(--surface-2);
   box-shadow: var(--sh-3);
-  animation: panelIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-panel-in) var(--dur-enter) var(--ease-out);
 }
 
 /* 出场:反向播放同一条曲线,时长走 --dur-exit。 */
 .scrimLeaving {
-  animation: scrimIn var(--dur-exit) var(--ease) reverse;
+  animation: var(--kf-scrim-in) var(--dur-exit) var(--ease) reverse;
 }
 
 .leaving {
-  animation: panelIn var(--dur-exit) var(--ease) reverse;
+  animation: var(--kf-panel-in) var(--dur-exit) var(--ease) reverse;
 }
 
 .header {

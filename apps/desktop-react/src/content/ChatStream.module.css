@@ -12,9 +12,16 @@
   scrollbar-gutter: stable both-edges;
 }
 
+/*
+ * 聊天正文列。宽度由**阅读轴**说了算(--pr-col,三档:46rem / 56rem / 满幅),
+ * 不再是写死的 --chat-col —— 那个 token 还在,Composer 仍在用它(留账:两者在
+ * 「宽 / 满幅」两档下会不齐,是否让 Composer 跟着走要拍板)。
+ * 消息与消息之间的 --sp-6 不属于阅读轴:那是「一次发言与下一次发言」的距离,
+ * 不是纸面上的行文节奏。
+ */
 .column {
   width: 100%;
-  max-width: var(--chat-col);
+  max-width: var(--pr-col);
   margin: 0 auto;
   padding: var(--sp-6) var(--sp-4) var(--sp-5);
   display: flex;
@@ -26,28 +33,103 @@
  * 一条消息 = TOC 的一枚键的落点(data-message-id 挂在这一层)。
  * outline 常驻透明:高亮时只换颜色,**不进出布局** —— outline 本来就不占位,
  * 这样 1.2s 的淡出不会让下面的内容动一下。
+ *
+ * **这里没有 gap**(08-31 换轨)。理由见下面那张节奏表。
  */
 .row {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
   scroll-margin-top: var(--sp-4);
   border-radius: var(--r-2);
   outline: var(--focus-ring-w) solid transparent;
   outline-offset: var(--sp-2);
 }
 
-.flash {
-  animation: turnFlash var(--dur-toc-flash) var(--ease-out) forwards;
+/* ── 节奏表:段与段之间隔多远 ───────────────────────────────────────────────
+ *
+ * 从前这里是一句 `gap: var(--sp-4)` —— **一律 16px**,不管两边是什么。于是标题与
+ * 它领的那段离得和两段正文一样远,代码块与正文也一样远;整条消息读起来是一串
+ * 等距的条,没有轻重。换轨换的就是这件事:间距由**相邻的两件东西各自是什么**决定。
+ *
+ * ── 这张表在算什么 ────────────────────────────────────────────────────────
+ * 排版书上的写法是给每件东西一个上缘和一个下缘,相邻时**取大的那个**(margin
+ * collapsing)。`.row` 是 flex 容器,flex 里外边距**不合并**,写上下缘会变成两个
+ * 数相加。所以这里改用等价的写法:只写「后一件的上缘」,值直接就是那个 max。
+ *
+ *   隔多远(前, 后) = max(前的下缘, 后的上缘)
+ *
+ *   下缘:正文 / 列表 / 引用 = --pr-gap · h2 = --pr-h2-btm · h3 = --pr-h3-btm
+ *         物件(代码 / 表 / 图 / diff / 工具卡 / 检索段) = --pr-obj
+ *   上缘:正文 / 列表 / 引用 = 0 · h1 h2 = --pr-h2-top · h3 = --pr-h3-top
+ *         物件 = --pr-obj
+ *
+ * 把 max 摊平成规则,只需要两组:先按**前一件**写(它的下缘),再按**后一件**写
+ * (它的上缘)。两组特异性相同(都是 0-2-0),所以**后写的赢** —— 而按上面那张
+ * 表,凡是后一件有说法的场合,它的值必然就是那个 max(标题的上缘比任何下缘都大;
+ * 物件的上缘 --pr-obj 也比一切文字下缘大)。顺序即语义,**不许对调这两组**。
+ *
+ * ── 谁是「物件」由 data-prose='object' 说 ─────────────────────────────────
+ * 挂这个属性的是:块壳的 object 形(代码 / 表 / 图 / diff / 兜底)、工具卡、
+ * 工具组、检索段、消息尾来源条、错误卡。它们的共同点是「一件东西」而不是
+ * 「纸上的一段字」—— 判据与 BlockShell 的 presentation 是同一条。
+ * 没挂任何 data-prose 的(思考段、光标)吃默认档 --pr-gap:它们是字。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/*
+ * ⓪ 先把浏览器自带的那份节奏清零。
+ *
+ * `<p>` / `<h2>` / `<ul>` / `<blockquote>` 在 UA 样式表里各自带着 `margin-block: 1em`
+ * 之类的默认值,而本仓的 global.css 只重置了 box-sizing 与 body,没有全局清边距。
+ * 不清零的话,这张表算出来的间距会被**悄悄加上**一截 UA 边距 —— 08-31 真机实测:
+ * 段落到代码块本该是 .85em(11.9px),量出来是 25.9px,多出来的 14px 正是 `<p>` 的
+ * `margin-block-end: 1em`。表说了不算,那这张表就没有意义。
+ *
+ * 清零写在**这里**而不是各块自己的 module 里:`.paragraph { margin-block: 0 }` 与
+ * 下面那些规则同特异性(0-1-0),谁赢取决于两个 CSS Module 的打包先后 —— 那是
+ * 构建顺序,不是设计。同一个文件里就没有这个问题:⓪ 在前,①②③ 在后,后写的赢。
+ *
+ * 引用块**里面**的 UA 边距不在此列(它们不是 .row 的直接子项):引用的过渡形
+ * 这一批一个字不动,等 P5 拍板。
+ */
+.row > * {
+  margin-block: 0;
 }
 
-@keyframes turnFlash {
-  from {
-    outline-color: var(--accent);
-  }
-  to {
-    outline-color: transparent;
-  }
+/* ① 默认:前一件的下缘 = 一次呼吸 */
+.row > * + * {
+  margin-block-start: var(--pr-gap);
+}
+
+/* ② 前一件说了算 —— 标题下缘比段距近(标题属于它下面那段),物件下缘比段距远 */
+.row > [data-prose='h1'] + *,
+.row > [data-prose='h2'] + * {
+  margin-block-start: var(--pr-h2-btm);
+}
+
+.row > [data-prose='h3'] + * {
+  margin-block-start: var(--pr-h3-btm);
+}
+
+.row > [data-prose='object'] + * {
+  margin-block-start: var(--pr-obj);
+}
+
+/* ③ 后一件说了算(必须排在 ② 之后,见上面「顺序即语义」) */
+.row > * + [data-prose='h1'],
+.row > * + [data-prose='h2'] {
+  margin-block-start: var(--pr-h2-top);
+}
+
+.row > * + [data-prose='h3'] {
+  margin-block-start: var(--pr-h3-top);
+}
+
+.row > * + [data-prose='object'] {
+  margin-block-start: var(--pr-obj);
+}
+
+.flash {
+  animation: var(--kf-turn-flash) var(--dur-toc-flash) var(--ease-out) forwards;
 }
 
 .user {
@@ -57,7 +139,10 @@
   border-radius: var(--r-2);
   background: var(--st-sel);
   color: var(--text-1);
-  font-size: var(--fs-chat);
+  /* 用户那句话也是「读物」,所以它跟着阅读轴走 —— 不跟的话同一条会话里会出现
+   * 15px 的提问和 14px 的回答,两种字号在一列里对读者是纯噪音。 */
+  font-size: var(--pr-fs);
+  line-height: var(--pr-lh);
   /* 正文按纯文本画,换行照实保留(富渲染是后批)。 */
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -75,26 +160,31 @@
 .cursor {
   align-self: flex-start;
   width: 0.5em;
-  height: var(--fs-chat);
+  height: var(--pr-fs);
   border-radius: 1px;
   background: var(--text-2);
-  animation: chatCursor var(--dur-toc-hover) var(--ease-out) infinite alternate;
+  /* 关键帧 chatCursor 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。
+   * 时长从借用的 --dur-toc-hover 换成它自己的名字 --dur-cursor-blink(同为 150ms,
+   * 一个数没变)—— 那个是**悬停延迟**,借来当动画时长会让动效档的分类无从下手。 */
+  animation: var(--kf-chat-cursor) var(--dur-cursor-blink) var(--ease-out) infinite alternate;
 }
 
-@keyframes chatCursor {
-  from {
-    opacity: 0.15;
-  }
-  to {
-    opacity: 0.9;
-  }
-}
-
+/*
+ * 不动的那两种情形,给的是同一份降级:一枚半透明的静止方块。
+ * 系统偏好(prefers-reduced-motion)与用户显式选的「动效:无」是两个来源、
+ * 一个结论,所以规则写两条、内容一模一样 —— CSS 没法把媒体查询和属性选择器
+ * 并进同一个条件里。
+ */
 @media (prefers-reduced-motion: reduce) {
   .cursor {
     animation: none;
     opacity: 0.6;
   }
+}
+
+:root[data-motion-tier='none'] .cursor {
+  animation: none;
+  opacity: 0.6;
 }
 
 /* ── 错误消息卡 ───────────────────────────────────────────────────────── */

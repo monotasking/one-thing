@@ -20,8 +20,10 @@ type QuoteModel = Extract<BlockModel, { kind: 'quote' }>
  * 已经有答案了 —— 嵌套不是特例,是注册表复用的自然结果(铁律 1)。
  */
 export function Quote({ model, ctx }: { model: QuoteModel; ctx: BlockCtx }) {
+  // `data-prose` 只让它**参与节奏**(与段落同档,见 content/ChatStream.module.css
+  // 的节奏表)。视觉过渡形一个字不动 —— 定稿形仍等 P5 拍板。
   return (
-    <blockquote className={s.quote}>
+    <blockquote className={s.quote} data-prose="text">
       {model.blocks.map((block, index) => (
         <BlockView key={index} block={block} ctx={ctx} />
       ))}

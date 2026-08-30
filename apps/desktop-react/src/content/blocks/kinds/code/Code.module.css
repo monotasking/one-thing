@@ -7,7 +7,9 @@
   margin: 0;
   /* 不在这里 overflow:auto —— 横滚是壳的事,两层滚动条会互相吃滚动。 */
   font-family: var(--font-mono);
-  font-size: var(--fs-code);
+  /* 比正文小一号(阅读轴:--pr-fs − 1)。等宽字在同一号数上看着比比例字大,
+   * 减一档之后两者的视觉重量才齐 —— 这是比稿定的相对关系,不是一个绝对 px。 */
+  font-size: calc(var(--pr-fs) - 1px);
   line-height: 1.6;
   color: var(--text-1);
   /* 代码里的空白是内容:一个都不许折叠,也不许自动断行(断行会改变缩进的含义)。 */

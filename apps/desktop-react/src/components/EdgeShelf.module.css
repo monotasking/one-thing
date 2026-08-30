@@ -1,7 +1,4 @@
-@keyframes shelfFlash {
-  0%, 100% { border-color: var(--line-1); }
-  50% { border-color: var(--accent); }
-}
+/* 关键帧 shelfFlash 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 /* 厚度是布局的:收/展必然推动主区,所以它走**一次性过渡**,
  * 里面的内容当场换掉不再叠第二段动画(实现三约束·布局必动只动一次)。
@@ -66,7 +63,7 @@
 
 /* flashSide 指到自己时闪两下:告诉用户「你要的东西已经在这儿了」。 */
 .flashing {
-  animation: shelfFlash calc(var(--dur-flash) / 2) var(--ease) 2;
+  animation: var(--kf-shelf-flash) calc(var(--dur-flash) / 2) var(--ease) 2;
 }
 
 /* 细梁本身就是展开按钮:铺满收起后的那一条,可点,hover 一层薄膜。 */

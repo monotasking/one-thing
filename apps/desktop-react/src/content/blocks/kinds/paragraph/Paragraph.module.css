@@ -6,9 +6,11 @@
  * 它们在标题、列表项、单元格里也要长成一样,所以不归段落管。
  */
 
+/* 字号与行高由**阅读轴**说了算(--pr-fs / --pr-lh,见 styles/tokens.css 的阅读轴
+ * 一节)。从前是写死的 --fs-chat / 1.7 —— 那正好是新档位里的「大 × 宽松」。 */
 .paragraph {
-  font-size: var(--fs-chat);
-  line-height: 1.7;
+  font-size: var(--pr-fs);
+  line-height: var(--pr-lh);
   color: var(--text-1);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

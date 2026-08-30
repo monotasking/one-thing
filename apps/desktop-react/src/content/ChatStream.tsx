@@ -119,8 +119,10 @@ function MessageRow({ t, message, streaming, flash }: RowProps) {
     <article className={className} data-message-id={message.id} data-role={role}>
       {role === 'user' && <div className={s.user}>{message.content}</div>}
 
+      {/* data-prose:节奏表的钩子 —— 错误卡是一件东西,按物件档留白(节奏表在
+          ChatStream.module.css)。 */}
       {role === 'error' && (
-        <div className={s.errorCard} role="alert">
+        <div className={s.errorCard} role="alert" data-prose="object">
           <span className={s.errorTitle}>{t('chat.errorCard')}</span>
           {/* 后端说的那句话原样显示 —— 不改写、不总结。 */}
           <span className={s.errorBody}>{message.errorDetails || message.content}</span>

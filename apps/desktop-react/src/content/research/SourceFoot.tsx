@@ -35,7 +35,9 @@ export function MessageSourceFoot({
   if (foots.length === 0) return null
 
   return (
-    <div className={s.foot} data-testid="research-foot">
+    // data-prose:节奏表的钩子 —— 尾来源条是消息尾注,按物件档与正文拉开
+    // (content/ChatStream.module.css)。
+    <div className={s.foot} data-testid="research-foot" data-prose="object">
       {foots.map((foot) => (
         <button
           type="button"

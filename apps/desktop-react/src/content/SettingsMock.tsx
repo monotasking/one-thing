@@ -5,6 +5,9 @@ import type { SegmentedOption } from '../ui/Segmented'
 import { useT } from '../i18n'
 import type { Locale, MessageKey } from '../i18n'
 import type { DockAlign, DockDisplay, DockEdge, DockSize, ResolvedOpen } from '../stage/types'
+import { useReadingStore, effectiveMotionTier } from '../reading/store'
+import { useSystemReducedMotion } from '../reading/useSystemReducedMotion'
+import type { MotionTier, ReadingColumn, ReadingDensity, ReadingFontSize } from '../reading/types'
 import { KeymapSettings } from './KeymapSettings'
 import s from './mocks.module.css'
 
@@ -50,6 +53,36 @@ const OPEN_OPTIONS: Array<{ value: ResolvedOpen; labelKey: MessageKey }> = [
   { value: 'pinned', labelKey: 'dock.openPinned' },
 ]
 
+/* ── 外观·阅读的四根轴 ────────────────────────────────────────────────────
+ * 档值即写进 DOM 的属性值(src/reading/types.ts 是那张表的另一半),这里只配文案。
+ * 四枚分段器都是**即点即生效**:没有「保存」按钮,因为没有一次改动是需要确认的
+ * —— 改错了再点回来就是,而版式的对错只有看着才知道。
+ * ────────────────────────────────────────────────────────────────────────── */
+const READING_FS_OPTIONS: Array<{ value: ReadingFontSize; labelKey: MessageKey }> = [
+  { value: '13', labelKey: 'settings.readingFsSm' },
+  { value: '14', labelKey: 'settings.readingFsMd' },
+  { value: '15', labelKey: 'settings.readingFsLg' },
+  { value: '16', labelKey: 'settings.readingFsXl' },
+]
+
+const READING_DENSITY_OPTIONS: Array<{ value: ReadingDensity; labelKey: MessageKey }> = [
+  { value: 'compact', labelKey: 'settings.readingDensityCompact' },
+  { value: 'comfortable', labelKey: 'settings.readingDensityComfortable' },
+  { value: 'relaxed', labelKey: 'settings.readingDensityRelaxed' },
+]
+
+const READING_COL_OPTIONS: Array<{ value: ReadingColumn; labelKey: MessageKey }> = [
+  { value: 'standard', labelKey: 'settings.readingColStandard' },
+  { value: 'wide', labelKey: 'settings.readingColWide' },
+  { value: 'full', labelKey: 'settings.readingColFull' },
+]
+
+const MOTION_OPTIONS: Array<{ value: MotionTier; labelKey: MessageKey }> = [
+  { value: 'standard', labelKey: 'settings.motionStandard' },
+  { value: 'calm', labelKey: 'settings.motionCalm' },
+  { value: 'none', labelKey: 'settings.motionNone' },
+]
+
 const LOCALE_OPTIONS: Array<{ value: Locale; labelKey: MessageKey }> = [
   { value: 'system', labelKey: 'settings.localeSystem' },
   { value: 'zh', labelKey: 'settings.localeZh' },
@@ -85,6 +118,18 @@ export function SettingsMock() {
   const locale = useStageStore((st) => st.locale)
   const setLocale = useStageStore((st) => st.setLocale)
 
+  const readingFs = useReadingStore((st) => st.fontSize)
+  const setReadingFs = useReadingStore((st) => st.setFontSize)
+  const readingDensity = useReadingStore((st) => st.density)
+  const setReadingDensity = useReadingStore((st) => st.setDensity)
+  const readingCol = useReadingStore((st) => st.column)
+  const setReadingCol = useReadingStore((st) => st.setColumn)
+  const setMotion = useReadingStore((st) => st.setMotion)
+  // 动效那一枚高亮的是**生效档**,不是存着的那个:系统开着「减弱动态效果」而用户
+  // 还没表过态时,面上就该显示「无」—— 显示「标准」而屏幕上不动是在骗人。
+  const systemReduced = useSystemReducedMotion()
+  const motion = useReadingStore((st) => effectiveMotionTier(st, systemReduced))
+
   const opts = <T extends string>(
     table: Array<{ value: T; labelKey: MessageKey }>,
   ): Array<SegmentedOption<T>> => table.map((o) => ({ value: o.value, label: t(o.labelKey) }))
@@ -106,6 +151,60 @@ export function SettingsMock() {
           <div className={s.field}>
             <div className={s.fieldLabel}>{t('settings.workdir')}</div>
             <div className={s.stub} />
+          </div>
+        </Section>
+
+        {/*
+          外观·阅读 —— 四根**正交**的轴,读者自己调读物长什么样。
+          分区判据照旧是「用户想改的是哪件事」:这四件都是「这段字读起来怎么样」,
+          所以它们归一区;它们**只管聊天正文列**,不动外壳与面板(那是「界面」不是
+          「读物」,判据写在 styles/tokens.css 的阅读轴一节)。
+        */}
+        <Section titleKey="settings.sectionReading">
+          <div className={s.field}>
+            <div className={s.fieldLabel}>{t('settings.readingFs')}</div>
+            <Segmented
+              options={opts(READING_FS_OPTIONS)}
+              value={readingFs}
+              onChange={setReadingFs}
+              label={t('settings.readingFs')}
+            />
+          </div>
+
+          <div className={s.field}>
+            <div>
+              <div className={s.fieldLabel}>{t('settings.readingDensity')}</div>
+              <div className={s.fieldHint}>{t('settings.readingDensityHint')}</div>
+            </div>
+            <Segmented
+              options={opts(READING_DENSITY_OPTIONS)}
+              value={readingDensity}
+              onChange={setReadingDensity}
+              label={t('settings.readingDensity')}
+            />
+          </div>
+
+          <div className={s.field}>
+            <div className={s.fieldLabel}>{t('settings.readingCol')}</div>
+            <Segmented
+              options={opts(READING_COL_OPTIONS)}
+              value={readingCol}
+              onChange={setReadingCol}
+              label={t('settings.readingCol')}
+            />
+          </div>
+
+          <div className={s.field}>
+            <div>
+              <div className={s.fieldLabel}>{t('settings.motion')}</div>
+              <div className={s.fieldHint}>{t('settings.motionHint')}</div>
+            </div>
+            <Segmented
+              options={opts(MOTION_OPTIONS)}
+              value={motion}
+              onChange={setMotion}
+              label={t('settings.motion')}
+            />
           </div>
         </Section>
 

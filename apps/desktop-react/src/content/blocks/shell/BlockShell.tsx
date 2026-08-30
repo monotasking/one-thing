@@ -79,8 +79,15 @@ export function BlockShell({
     return labelKey && isBlockActionRunnable(action) ? [{ action, labelKey }] : []
   })
 
+  /*
+   * `data-prose="object"` 是**节奏表的钩子**(表在 content/ChatStream.module.css):
+   * 物件块上下留白比文字节奏多一档(--pr-obj)。它挂在**壳**上而不是各块自己身上,
+   * 正是壳这条分界的意义 —— 「object 该留多少白」是公共的第七件事,块作者
+   * 没有做错的机会。flow 那一支不挂:壳在那条路上一个 DOM 节点都不加,
+   * 节奏钩子由块自己的根元素报(见 Paragraph / Heading / List / Quote)。
+   */
   return (
-    <section className={s.block} data-block-kind={model.kind}>
+    <section className={s.block} data-block-kind={model.kind} data-prose="object">
       {/* 檐:有 chrome 声明或有动作就画 —— 动作要有家(空 caption 的表格也留着檐)。 */}
       {(chrome || actions.length > 0) && (
         <header className={s.eave}>

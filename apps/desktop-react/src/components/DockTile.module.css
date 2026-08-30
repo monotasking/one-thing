@@ -78,7 +78,7 @@
 .dotRight { right: var(--dot-offset); top: 50%; margin-top: calc(var(--dot-size) / -2); }
 
 .label {
-  animation: labelIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-label-in) var(--dur-enter) var(--ease-out);
   position: absolute;
   padding: var(--sp-1) var(--sp-2);
   border-radius: var(--r-1);
@@ -117,10 +117,7 @@
   transform: translateY(-50%);
 }
 
-@keyframes labelIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
+/* 关键帧 labelIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 @media (prefers-reduced-motion: reduce) {
   .tile { transition: background var(--dur) var(--ease); }

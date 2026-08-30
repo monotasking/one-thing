@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render } from '@testing-library/react'
 import { FloatLayer } from '../FloatWindow'
 import { useStageStore } from '../../stage/store'
@@ -84,5 +84,46 @@ describe('FloatLayer 出场:同一实例连续在场,不闪', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+/**
+ * ── 动效档「无」:关掉就是当场没有 ────────────────────────────────────────
+ *
+ * 上面那三条钉的是「有出场动画时不许闪」。这一条钉的是反面:用户把动效调到
+ * 「无」之后,那 120ms 的空壳**一帧都不该留** —— 选「无」的人要的正是
+ * 「点了关闭,它就不在了」。
+ *
+ * 判据里没有假时钟,这是刻意的:排一个 0ms 的定时器也能让节点最终消失,但那要
+ * 多等一个宏任务;这条门要的是**同一次提交里就没有它**,所以它压根不进离场名单
+ * (实现见 FloatWindow.tsx 的渲染期派生,以及 components/motion.ts 的 exitMs)。
+ * 修前必红:旧写法无条件把它挂进 leaving 并排一个 120ms 的定时器。
+ */
+describe('动效档「无」:关浮窗立即卸载,不留 120ms 的空壳', () => {
+  beforeEach(() => {
+    useStageStore.setState({ ...initialStageState, locale: 'zh' })
+  })
+
+  afterEach(() => {
+    document.documentElement.removeAttribute('data-motion-tier')
+  })
+
+  it('关掉的那一次提交里,节点就已经不在了(没有假时钟,没有等待)', () => {
+    document.documentElement.setAttribute('data-motion-tier', 'none')
+    const { container } = render(<FloatLayer />)
+    act(() => useStageStore.getState().openAs('files', { kind: 'float' }))
+    expect(container.querySelector('section')).toBeTruthy()
+
+    act(() => useStageStore.getState().closeToDock('files'))
+    expect(container.querySelector('section')).toBeNull()
+  })
+
+  it('standard 档下照旧留着播出场 —— 这条是上面那条的对照组', () => {
+    document.documentElement.setAttribute('data-motion-tier', 'standard')
+    const { container } = render(<FloatLayer />)
+    act(() => useStageStore.getState().openAs('files', { kind: 'float' }))
+    act(() => useStageStore.getState().closeToDock('files'))
+    expect(container.querySelector('section')).toBeTruthy()
+    expect(container.querySelector('section')!.className).toContain('leaving')
   })
 })

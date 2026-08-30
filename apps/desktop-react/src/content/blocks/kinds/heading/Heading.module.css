@@ -1,6 +1,15 @@
 /*
- * 标题三级 —— 字号阶梯用现成的 token,不新造尺寸。
- * 上边距比下边距大:标题属于它**下面**那段内容,不是上一段的尾巴。
+ * 标题三级 —— 字号**跟着阅读轴走**,不是三个写死的档(08-31 换轨)。
+ *
+ * 比稿定的阶梯是相对的:h2 = 正文 + 2、h3 = 正文同号加重。这条相对关系比绝对
+ * px 值更该被保住 —— 换字号档时标题与正文的**对比度**不该跟着变。h1 沿用同一条
+ * 逻辑再上一档(+4);它在聊天里极少出现(翻译表把更深的钳到 3,而一条回复通常
+ * 从 h2 起笔)。
+ *
+ * 上下外边距不在这个文件里:标题与邻居的距离归**节奏表**管(消息框那一层的
+ * 邻接 margin,见 content/ChatStream.module.css)—— 一件东西的间距由它和邻居
+ * **一起**决定,写在自己身上就说不清楚。从前这里那句 `margin-block-start:
+ * var(--sp-2)` 因此撤掉了。
  */
 
 .h1,
@@ -8,21 +17,20 @@
 .h3 {
   color: var(--text-1);
   line-height: 1.4;
-  margin-block-start: var(--sp-2);
   overflow-wrap: anywhere;
 }
 
 .h1 {
-  font-size: var(--fs-headline);
+  font-size: calc(var(--pr-fs) + 4px);
   font-weight: 650;
 }
 
 .h2 {
-  font-size: var(--fs-title);
+  font-size: calc(var(--pr-fs) + 2px);
   font-weight: 620;
 }
 
 .h3 {
-  font-size: var(--fs-chat);
+  font-size: var(--pr-fs);
   font-weight: 600;
 }

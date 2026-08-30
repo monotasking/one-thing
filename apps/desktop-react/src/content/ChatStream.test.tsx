@@ -59,6 +59,7 @@ function port(ledger: Ledger[]): ChatPort {
     onSessionEvent: () => () => undefined,
     onSessionStream: () => () => undefined,
     sendMessage: async () => sendResult(),
+    abort: async () => ({ success: true }),
   }
 }
 

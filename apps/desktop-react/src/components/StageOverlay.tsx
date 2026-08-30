@@ -6,7 +6,7 @@ import { renderContent } from '../content'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
 import { resolveIcon, PictureInPicture2, Pin, X } from './icons'
-import { EXIT_MS } from './motion'
+import { exitMs } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
 import type { StageItemSpec } from '../stage/types'
 import s from './StageOverlay.module.css'
@@ -34,7 +34,15 @@ export function StageOverlay() {
       return
     }
     if (!held) return
-    const t = setTimeout(() => setHeld(null), EXIT_MS)
+    // 每次都现问一次档(不缓存 —— 用户可能刚在设置面改过)。
+    const ms = exitMs()
+    // 「无」档:**不排定时器**,当场放掉。挂一个 0ms 的定时器也能到,但那要多等
+    // 一个宏任务 —— 用户选「无」要的是「关掉就是没有」,不是「关掉再过一拍」。
+    if (ms === 0) {
+      setHeld(null)
+      return
+    }
+    const t = setTimeout(() => setHeld(null), ms)
     return () => clearTimeout(t)
   }, [item, held])
 

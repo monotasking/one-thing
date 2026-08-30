@@ -30,7 +30,8 @@ export function ToolGroup({ group, ctx }: { group: ToolGroupModel; ctx: BlockCtx
   const toggle = useCallback(() => setOpen((value) => !value), [])
 
   return (
-    <div className={s.group} data-tool-group data-open={open || undefined}>
+    // data-prose:节奏表的钩子 —— 工具组按物件档留白(content/ChatStream.module.css)。
+    <div className={s.group} data-tool-group data-open={open || undefined} data-prose="object">
       <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
         <CaretIcon className={s.caret} strokeWidth={2} aria-hidden="true" />
         <span className={s.count}>

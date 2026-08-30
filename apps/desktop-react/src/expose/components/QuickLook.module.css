@@ -1,12 +1,4 @@
-@keyframes qlIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes qlPanelIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
-}
+/* 关键帧 qlIn / qlPanelIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 .scrim {
   position: absolute;
@@ -16,7 +8,7 @@
   align-items: center;
   justify-content: center;
   background: var(--scrim);
-  animation: qlIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-ql-in) var(--dur-enter) var(--ease-out);
 }
 
 .panel {
@@ -28,7 +20,7 @@
   border-radius: var(--r-card);
   background: var(--surface-2);
   box-shadow: var(--sh-3);
-  animation: qlPanelIn var(--dur-enter) var(--ease-out);
+  animation: var(--kf-ql-panel-in) var(--dur-enter) var(--ease-out);
 }
 
 /*
@@ -173,7 +165,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  animation: qlIn var(--dur) var(--ease);
+  animation: var(--kf-ql-in) var(--dur) var(--ease);
 }
 
 .column {
