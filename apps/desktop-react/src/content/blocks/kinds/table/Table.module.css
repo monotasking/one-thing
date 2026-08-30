@@ -1,0 +1,121 @@
+/*
+ * 表格 —— 六轮定稿的 T0 基准。颜色零字面值。
+ *
+ * 边框只画横线(行与行之间),不画竖线:竖线把一张表切成一格一格,读起来像账本;
+ * 只留横线时眼睛沿行走,列的边界由对齐和留白交代。这与全域的「引线禁令」同一个来处。
+ */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-body);
+  color: var(--text-1);
+}
+
+.th,
+.td {
+  padding: var(--sp-2) var(--sp-3);
+  text-align: start;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line-1);
+  /* 单元格不自动换行:表宽由内容说了算,溢出交给壳的块内横滚。 */
+  white-space: nowrap;
+  transition: background var(--dur-hover-fade) var(--ease);
+}
+
+.th {
+  font-weight: 600;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.headInner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* 数字列:右对齐 + mono,位数才对得齐。 */
+.numeric {
+  text-align: end;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 数字列的表头也跟着靠右 —— 表头与它下面的数不对齐会比不对齐更难读。 */
+.th.numeric .headInner {
+  flex-direction: row-reverse;
+}
+
+/* 无斑马。行 hover 是读表真正需要的那条横向引导。 */
+.row:hover .td {
+  background: var(--st-hover);
+}
+
+/* ── 列头的 ⧉ 复制列:静默,列被感应到才亮 ──────────────────────────── */
+
+.colCopy {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  color: var(--text-4);
+  opacity: 0;
+  transition: opacity var(--dur-hover-fade) var(--ease), color var(--dur) var(--ease);
+}
+
+.colCopy:hover {
+  color: var(--text-1);
+}
+
+.colCopy:focus-visible {
+  opacity: 1;
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.colCopyIcon {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+}
+
+/*
+ * ── 列感应:整列淡亮 ──────────────────────────────────────────────────
+ *
+ * 悬停的列号写在容器的 `data-hover-col` 上,淡亮由 nth-child 完成 —— 移动鼠标时
+ * **一个 React 节点都不重画**(给每个单元格算 className 的做法会在长表上直接卡)。
+ *
+ * 代价:nth-child 的下标是写死的,所以要为每一列各写一条规则。上限取 12 列 ——
+ * 聊天里的表极少超过它,超出的列不淡亮(降级只是少一层感应,表本身照常可读)。
+ * 这一段是**机械重复**,改的时候连着 12 条一起改,别只改一条。
+ */
+
+.table[data-hover-col='0'] :is(.th, .td):nth-child(1),
+.table[data-hover-col='1'] :is(.th, .td):nth-child(2),
+.table[data-hover-col='2'] :is(.th, .td):nth-child(3),
+.table[data-hover-col='3'] :is(.th, .td):nth-child(4),
+.table[data-hover-col='4'] :is(.th, .td):nth-child(5),
+.table[data-hover-col='5'] :is(.th, .td):nth-child(6),
+.table[data-hover-col='6'] :is(.th, .td):nth-child(7),
+.table[data-hover-col='7'] :is(.th, .td):nth-child(8),
+.table[data-hover-col='8'] :is(.th, .td):nth-child(9),
+.table[data-hover-col='9'] :is(.th, .td):nth-child(10),
+.table[data-hover-col='10'] :is(.th, .td):nth-child(11),
+.table[data-hover-col='11'] :is(.th, .td):nth-child(12) {
+  background: var(--st-hover);
+}
+
+.table[data-hover-col='0'] .th:nth-child(1) .colCopy,
+.table[data-hover-col='1'] .th:nth-child(2) .colCopy,
+.table[data-hover-col='2'] .th:nth-child(3) .colCopy,
+.table[data-hover-col='3'] .th:nth-child(4) .colCopy,
+.table[data-hover-col='4'] .th:nth-child(5) .colCopy,
+.table[data-hover-col='5'] .th:nth-child(6) .colCopy,
+.table[data-hover-col='6'] .th:nth-child(7) .colCopy,
+.table[data-hover-col='7'] .th:nth-child(8) .colCopy,
+.table[data-hover-col='8'] .th:nth-child(9) .colCopy,
+.table[data-hover-col='9'] .th:nth-child(10) .colCopy,
+.table[data-hover-col='10'] .th:nth-child(11) .colCopy,
+.table[data-hover-col='11'] .th:nth-child(12) .colCopy {
+  opacity: 1;
+}

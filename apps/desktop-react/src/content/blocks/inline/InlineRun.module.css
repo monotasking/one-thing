@@ -1,0 +1,27 @@
+/*
+ * 行内三件的样式 —— 从 paragraph 目录提上来,凡是装行内树的块共用一份。
+ * 颜色零字面值。
+ */
+
+.code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+}
+
+/*
+ * 链接:看得出是链接,但本批不是 `<a>`(点击要经宿主开外链,壳里还没有那个面)。
+ * 所以它不给 cursor: pointer —— 不许诺一个此刻做不到的动作。
+ */
+.link {
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.citation {
+  font-size: var(--fs-micro);
+  color: var(--accent-deep);
+}

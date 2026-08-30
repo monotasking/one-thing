@@ -1,0 +1,25 @@
+/*
+ * 代码块本体。横滚与限高折叠归壳(BlockShell.module.css 的 .body),这里不重复。
+ * 颜色零字面值:容器一律 var();字里的颜色由 shiki 以行内 style 给,那是数据。
+ */
+
+.pre {
+  margin: 0;
+  /* 不在这里 overflow:auto —— 横滚是壳的事,两层滚动条会互相吃滚动。 */
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  color: var(--text-1);
+  /* 代码里的空白是内容:一个都不许折叠,也不许自动断行(断行会改变缩进的含义)。 */
+  white-space: pre;
+  tab-size: 2;
+}
+
+.code {
+  font: inherit;
+}
+
+/* 一行一个 span —— 将来加行号 / 行高亮时有落点,今天只是把行分出来。 */
+.line {
+  display: inline;
+}

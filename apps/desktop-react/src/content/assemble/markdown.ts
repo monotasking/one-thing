@@ -1,4 +1,4 @@
-import type { BlockModel } from '../model/blocks'
+import { markdownStream, parseFrame, type MarkdownFrame } from '../markdown/incremental'
 
 /**
  * 管线第 ④ 步:**markdown 产地**(§2)。
@@ -6,16 +6,21 @@ import type { BlockModel } from '../model/blocks'
  * 一段文本进来,块序列出去。**只解析,不渲染** —— 这一步产出的是纯数据,谁来画
  * 由块注册表说了算。
  *
- * ── P0 是纯文本,而且这是裁量,不是偷懒 ────────────────────────────────
- * P0 的纪律是可感知行为零变化:今天屏幕上正文按纯文本画(`white-space: pre-wrap`
- * 保留换行),这一步就必须产出**一个** paragraph 块、里面**一个** text 行内节点,
- * 换行原样留在字符串里。真解析器(micromark/mdast)是 P1 的事,连同它的翻译表
- * (`markdown/to-blocks.ts`)、围栏路由与增量解析一起进来。
+ * 这个文件本身不认识 markdown:真解析器住 `src/content/markdown/`(mdast 翻译表、
+ * 围栏路由、增量与节流),这里只做**一件事的选择** —— 这段文本是活的还是死的。
+ * 两条路的分岔在这里,是因为它是**装配的事实**(哪条消息在流),不是解析器的事实。
  *
- * 到那时这个函数不是被删,是被**降级为兜底**:解析器认不出来的整段,照样落回
- * 一个 paragraph —— 所以它今天的形状就是它将来的形状。
+ * ── 活的走流式缓存,死的走全量 ────────────────────────────────────────
+ * 活跃消息每帧换一次引用,重解析走 `MarkdownStream`(稳定前缀沿用 + 16ms 节拍)。
+ * 一旦它不流了,当场把那份帧缓存丢掉 —— 历史消息由装配管线按消息引用 memo,
+ * 再留一份就是两套失效逻辑,而两套失效逻辑迟早会分叉。
  */
-export function plainTextToBlocks(text: string): BlockModel[] {
-  if (!text) return []
-  return [{ kind: 'paragraph', inline: [{ type: 'text', text }] }]
+export function markdownToFrame(messageId: string, text: string, live: boolean): MarkdownFrame {
+  if (!live) {
+    markdownStream.forget(messageId)
+    return parseFrame(text)
+  }
+  return markdownStream.parse(messageId, text, true)
 }
+
+export type { MarkdownFrame }

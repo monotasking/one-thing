@@ -19,6 +19,14 @@
  * (`session:stream` 的 delta → 逐字上屏)因此不在这条门里,它属于真机手验。
  * 门里说不出的话,门里就不说。
  *
+ * ── 留账:P1(markdown 基块)的门断言加不进来 ──────────────────────────
+ * 想加的那条是「一条 markdown 消息上屏后含 code / table 块」。加不了,原因不是
+ * 懒得写:**markdown 只解析 assistant 正文**(用户消息是气泡,不过解析器),而这台
+ * core 没有 provider,永远长不出一条 assistant 消息;账本侧也没有「写一条 assistant
+ * 消息」的 RPC 写面(sessionEvents 是只读的)。要补这条断言,得先有一个像主仓
+ * `sessions:shadow-battery` 那样的**种子假 provider**,那是另一件事。
+ * 在那之前,markdown 上屏由单测钉(翻译表 / 增量 / 六块冒烟),真机看一眼。
+ *
  * 跑法:`node scripts/gate-chat.mjs`
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
  * 可重复:每次一个全新的临时 store,跑完删干净。

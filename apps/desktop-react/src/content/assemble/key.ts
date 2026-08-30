@@ -15,10 +15,15 @@ import type { SegmentModel } from '../model/segments'
  * 而且往模型里塞一个只有 React 读的字段,深比、序列化、快照测试都会被它污染。
  * 所以 key 是**纯函数派生**——给同一份输入永远算出同一个字符串。
  *
- * ── P0 按序号,P1 换源偏移 ────────────────────────────────────────────
- * P0 的段序列是「推理 → 正文 → 工具卡」,顺序只在末尾增长(工具卡一张张追加),
- * 序号因此天然稳定。P1 真解析器进来之后,正文中段插入一个块会让后面所有序号平移,
- * 那时改成源偏移派生 —— **只改这一个文件**,上下游一行不动。
+ * ── 段按序号,块按源偏移 ──────────────────────────────────────────────
+ * 段序列是「推理 → 正文 → 工具卡」,顺序只在末尾增长(工具卡一张张追加),序号因此
+ * 天然稳定。**块不是**:P1 真解析器进来之后,一段正文中间长出一个新块会让它后面所有
+ * 块的下标平移一格 —— 按下标发 key 的话,那一帧后面每一块都是「换了 key 的新东西」,
+ * React 全部重挂:代码块重染、滚动位置归零、表格重排。
+ *
+ * 所以块 key 改由**源偏移**派生:一个块的身份 = 它从源文本的哪个字符开始。追加不改
+ * 前面任何一块的起点,于是流式重解析出来的 key 逐字相等,React 只打补丁。
+ * (这一条有单测钉着:同一段文本按帧喂进去,每一帧的 key 集合逐字相等。)
  */
 
 /**
@@ -29,7 +34,21 @@ export function segmentKey(messageId: string, index: number, segment: SegmentMod
   return `${messageId}:${index}:${segment.kind}`
 }
 
-/** 块 key。挂在所属段的 key 下 —— 段换了,块自然全换,不必再判一次。 */
-export function blockKey(segmentKeyValue: string, index: number, block: BlockModel): string {
-  return `${segmentKeyValue}/${index}:${block.kind}`
+/**
+ * 块 key。挂在所属段的 key 下 —— 段换了,块自然全换,不必再判一次。
+ *
+ * `offset` 是源偏移(rich-text 段随块一起带出来的解析事实)。拿不到时退回下标:
+ * 工具产地的块序列不来自一段源文本,没有偏移可言,而它也不会在流式期间中段插入。
+ *
+ * 带上 `kind`:同一个起点上的块**换了型**(未闭合围栏闭合那一刻由 code 换成 table),
+ * 那本来就该是两个组件,让 React 重挂是对的 —— 复用会把上一种块的状态(展开态、
+ * 横滚位置)带进新组件。这正是「原位换装」里的「换装」。
+ */
+export function blockKey(
+  segmentKeyValue: string,
+  index: number,
+  block: BlockModel,
+  offset?: number,
+): string {
+  return `${segmentKeyValue}/${offset ?? index}:${block.kind}`
 }

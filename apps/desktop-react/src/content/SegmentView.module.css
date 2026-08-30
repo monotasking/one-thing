@@ -1,27 +1,60 @@
 /*
- * 段的样式。今天只有思考段一种 —— 这几条是从 ChatStream.module.css
- * **逐字搬过来的**:P0 换的是结构,不是视觉。
+ * 段的样式。今天只有思考段一种。
+ *
+ * ── 左竖线禁令 ────────────────────────────────────────────────────────
+ * P0 从 ChatStream 搬过来的那份带 `border-left: 2px` 引线,P1 按定稿**拆掉**:
+ * 引线在全仓被禁(六轮比稿的横切规范),思考段也不例外。它的边界靠字本身说
+ * (斜体 + 灰 + 一行),不靠画一条线。
  */
 
-/* ── 思考块:顶部推理的落点(message.reasoning,不是 part) ────────────── */
+/* ── 思考段:同一段字的两个读法(收起 = 钳一行 / 展开 = 原位续读) ───────── */
 
 .thought {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4);
-  border-left: 2px solid var(--line-1);
+  display: block;
+  width: 100%;
+  padding: var(--sp-1) 0;
+  text-align: start;
+  color: var(--text-4);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+
+.thought:hover {
   color: var(--text-3);
 }
 
-.thoughtLabel {
-  font-size: var(--fs-micro);
-  color: var(--text-4);
+.thought:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+  border-radius: var(--r-1);
 }
 
 .thoughtBody {
   font-size: var(--fs-meta);
+  font-style: italic;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /*
+   * 收起 = 原文钳一行。用 line-clamp 而不是截字符串:钳在**排版**上做,换字号、
+   * 换窗宽都自动对;截字符串是在渲染前替浏览器猜一遍宽度,永远猜不准。
+   * 一行的省略号由 line-clamp 自己给。
+   */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+  /* 收起态不可选中:它此刻是一行索引,不是一段可读的正文。 */
+  user-select: none;
+}
+
+.thoughtOpen {
+  color: var(--text-3);
+  cursor: text;
+}
+
+.thoughtOpen .thoughtBody {
+  display: block;
+  overflow: visible;
+  user-select: text;
 }

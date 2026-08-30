@@ -48,10 +48,11 @@ describe('块注册表', () => {
   })
 })
 
-describe('生产那张表(barrel 注册的两个块)', () => {
-  it('P0 注册了段落与兜底', () => {
-    expect(isBlockRegistered('paragraph')).toBe(true)
-    expect(isBlockRegistered('source-fallback')).toBe(true)
+describe('生产那张表(barrel 注册了哪些块)', () => {
+  it('P1 的六个:段落 / 标题 / 列表 / 引用 / 代码 / 表格,加上兜底', () => {
+    for (const kind of ['paragraph', 'heading', 'list', 'quote', 'code', 'table', 'source-fallback']) {
+      expect(isBlockRegistered(kind)).toBe(true)
+    }
   })
 
   it('段落是 flow(不进物件框),兜底是 object(有檐、有动作)', () => {
@@ -63,7 +64,8 @@ describe('生产那张表(barrel 注册的两个块)', () => {
     })
   })
 
-  it('还没注册的 kind 经生产那张表也兜到兜底', () => {
-    expect(resolveBlock('table').kind).toBe('source-fallback')
+  it('还没注册的 kind 经生产那张表也兜到兜底(figure / diff 是 P3 的事)', () => {
+    expect(resolveBlock('figure').kind).toBe('source-fallback')
+    expect(resolveBlock('diff').kind).toBe('source-fallback')
   })
 })

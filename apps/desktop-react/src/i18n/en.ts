@@ -201,6 +201,7 @@ export const en: Record<MessageKey, string> = {
   'block.action.copySource': 'Copy source',
   'block.action.copyMarkdown': 'Copy Markdown',
   'block.action.copyCsv': 'Copy CSV',
+  'block.action.copyColumn': 'Copy this column',
   'block.action.viewSource': 'View source',
   'block.action.hideSource': 'Hide source',
   'block.expand': 'Expand',

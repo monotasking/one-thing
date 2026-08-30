@@ -28,6 +28,7 @@ import {
   ArrowUp,
   RotateCcw,
   Ellipsis,
+  Copy,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -65,6 +66,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   ArrowUp,
   RotateCcw,
   Ellipsis,
+  Copy,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -95,5 +97,6 @@ export {
   ArrowUp,
   RotateCcw,
   Ellipsis,
+  Copy,
 }
 export type { LucideIcon }

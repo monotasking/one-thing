@@ -1,0 +1,28 @@
+/*
+ * 标题三级 —— 字号阶梯用现成的 token,不新造尺寸。
+ * 上边距比下边距大:标题属于它**下面**那段内容,不是上一段的尾巴。
+ */
+
+.h1,
+.h2,
+.h3 {
+  color: var(--text-1);
+  line-height: 1.4;
+  margin-block-start: var(--sp-2);
+  overflow-wrap: anywhere;
+}
+
+.h1 {
+  font-size: var(--fs-headline);
+  font-weight: 650;
+}
+
+.h2 {
+  font-size: var(--fs-title);
+  font-weight: 620;
+}
+
+.h3 {
+  font-size: var(--fs-chat);
+  font-weight: 600;
+}

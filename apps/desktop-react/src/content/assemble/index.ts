@@ -2,7 +2,7 @@ import type { ProjectedMessage } from '../../data/chat-fold'
 import type { SegmentModel } from '../model/segments'
 import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
-import { plainTextToBlocks } from './markdown'
+import { markdownToFrame } from './markdown'
 import { presentToolRow } from './present'
 
 /**
@@ -46,8 +46,14 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
         segments.push({ kind: 'thinking', text: node.text, live: message.isStreaming === true })
         break
       case 'text': {
-        const blocks = plainTextToBlocks(node.text)
-        if (blocks.length > 0) segments.push({ kind: 'rich-text', blocks })
+        // 活跃与否要传下去:流式那条路(稳定前缀 / 未闭合原子块 / 节拍)全靠它。
+        // 缓存的身份带上段序号 —— 一条消息将来会有不止一段正文(锚点真算法进来之后)。
+        const { blocks, offsets } = markdownToFrame(
+          `${message.id}#${segments.length}`,
+          node.text,
+          message.isStreaming === true,
+        )
+        if (blocks.length > 0) segments.push({ kind: 'rich-text', blocks, offsets })
         break
       }
       case 'image':

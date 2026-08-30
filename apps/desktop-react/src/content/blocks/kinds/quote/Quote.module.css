@@ -1,0 +1,15 @@
+/*
+ * 引用 —— **过渡形**:普通段落 + 一层缩进,零装饰。
+ *
+ * 明确的禁令:这里不许出现 `border-inline-start` / `border-left`。左竖线在全仓禁用,
+ * 引用块是它最经典的用法,所以这一条在这个文件里最容易被人「顺手」加回来。
+ * 定稿形等 P5 拍板(§9)。
+ */
+
+.quote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-inline-start: var(--indent-1);
+  color: var(--text-2);
+}

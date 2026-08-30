@@ -14,6 +14,14 @@ export type InlineNode =
   | { type: 'text'; text: string }
   | { type: 'code'; text: string }
   | { type: 'emphasis'; strong: boolean; children: InlineNode[] }
+  /**
+   * GFM 删除线(`~~字~~`)。
+   *
+   * 为什么它不塞进 `emphasis` 的一个布尔位:强调说的是「这几个字更重要」,删除线说的是
+   * 「这几个字**不算数了**」—— 两件事的语义相反,合成一个节点会让「加粗的删除线」
+   * (GFM 允许嵌套)没处放,也会让复制/朗读这类消费者分不出该怎么对待它。
+   */
+  | { type: 'strike'; children: InlineNode[] }
   | { type: 'link'; href: string; children: InlineNode[] }
   /** 检索来源角标:`sourceId` 指向 research 段那份来源清单里的一条。 */
   | { type: 'citation'; sourceId: string; index: number }
@@ -28,6 +36,7 @@ export function inlineText(nodes: readonly InlineNode[]): string {
         out += node.text
         break
       case 'emphasis':
+      case 'strike':
       case 'link':
         out += inlineText(node.children)
         break

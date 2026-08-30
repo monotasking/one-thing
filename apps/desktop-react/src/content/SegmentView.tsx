@@ -1,11 +1,10 @@
 import { memo } from 'react'
-import { useT } from '../i18n'
 import { blockKey } from './assemble'
 import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'
 import type { SegmentModel } from './model/segments'
+import { ThinkingSegment } from './ThinkingSegment'
 import { ToolRow } from './tools/ToolRow'
-import s from './SegmentView.module.css'
 
 /**
  * 段渲染 —— **段 → React** 的那一层,一个穷尽 switch。
@@ -34,22 +33,21 @@ export const SegmentView = memo(function SegmentView({
   segmentKey: string
   ctx: BlockCtx
 }) {
-  const t = useT()
-
   switch (segment.kind) {
     case 'thinking':
-      return (
-        <div className={s.thought}>
-          <span className={s.thoughtLabel}>{t('chat.thought')}</span>
-          <p className={s.thoughtBody}>{segment.text}</p>
-        </div>
-      )
+      return <ThinkingSegment text={segment.text} live={segment.live} />
 
     case 'rich-text':
       return (
         <>
           {segment.blocks.map((block, index) => (
-            <BlockView key={blockKey(key, index, block)} block={block} ctx={ctx} />
+            <BlockView
+              // key 由**源偏移**派生(§6):流式重解析时同一块的起点不变,React 打补丁
+              // 而不是重挂 —— 中段插进来一个新块不会让它后面每一块都重建。
+              key={blockKey(key, index, block, segment.offsets[index])}
+              block={block}
+              ctx={ctx}
+            />
           ))}
         </>
       )

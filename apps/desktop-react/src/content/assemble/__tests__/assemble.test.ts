@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectedMessage } from '../../../data/chat-fold'
 import type { BlockModel } from '../../model/blocks'
 import { assembleMessage, blockKey, segmentKey } from '..'
-import { plainTextToBlocks } from '../markdown'
 import { defaultToolPresenter } from '../../tools/presenter'
 
 /**
@@ -42,15 +41,20 @@ describe('段序列:一条消息算成哪几段', () => {
     expect(segments).toEqual([
       {
         kind: 'rich-text',
+        // 段落内的**软换行**照实留在 text 节点里(markdown 的段落不因单个换行结束),
+        // 所以 P0 那条「pre-wrap 保留换行」的行为在真解析器下逐字成立。
         blocks: [{ kind: 'paragraph', inline: [{ type: 'text', text: '第一行\n第二行' }] }],
+        offsets: [0],
       },
     ])
   })
 
-  it('换行留在字符串里 —— P0 不解析 markdown,pre-wrap 那条行为原样成立', () => {
+  it('空行是段落边界 —— P1 起正文过 markdown,一段变两段', () => {
+    // P0 时这里是「一个段落块」:那是纯文本时代的事实。P1 的可感知变化就在这一格。
     const [segment] = assembleMessage(message({ content: 'a\n\nb' }))
     expect(segment).toMatchObject({ kind: 'rich-text' })
-    expect(plainTextToBlocks('a\n\nb')).toHaveLength(1)
+    expect(segment.kind === 'rich-text' && segment.blocks).toHaveLength(2)
+    expect(segment.kind === 'rich-text' && segment.offsets).toEqual([0, 3])
   })
 
   it('空正文不产段(而不是产一个空段落)', () => {
@@ -136,7 +140,7 @@ describe('key 稳定性', () => {
   })
 
   it('块 key 挂在段 key 下面派生 —— 段换了,块自然全换', () => {
-    const key = segmentKey('a1', 0, { kind: 'rich-text', blocks: [] })
+    const key = segmentKey('a1', 0, { kind: 'rich-text', blocks: [], offsets: [] })
     const block: BlockModel = { kind: 'paragraph', inline: [] }
     expect(blockKey(key, 0, block)).toBe(`${key}/0:paragraph`)
     expect(blockKey('other', 0, block)).not.toBe(blockKey(key, 0, block))

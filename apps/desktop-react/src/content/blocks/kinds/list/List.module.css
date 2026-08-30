@@ -1,0 +1,29 @@
+/*
+ * 列表 —— 缩进用现成的 token(--indent-1),标记用原生 list-style。
+ * 自己画圆点会丢掉「标记和首行基线对齐」这件浏览器早就做对了的事。
+ */
+
+.list {
+  padding-inline-start: var(--indent-2);
+  font-size: var(--fs-chat);
+  line-height: 1.7;
+  color: var(--text-1);
+}
+
+ul.list {
+  list-style: disc outside;
+}
+
+ol.list {
+  list-style: decimal outside;
+}
+
+.item {
+  /* 项内的软换行照实保留(项里可能有硬换行,翻译表把它翻成 `\n`)。 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.item::marker {
+  color: var(--text-4);
+}

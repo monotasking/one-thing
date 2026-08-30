@@ -206,6 +206,8 @@ export const zh = {
   'block.action.copySource': '复制源码',
   'block.action.copyMarkdown': '复制 Markdown',
   'block.action.copyCsv': '复制 CSV',
+  /* 列头上的 ⧉ —— 块内热区,不进檐上的动作组,但共用同一个执行器。 */
+  'block.action.copyColumn': '复制这一列',
   'block.action.viewSource': '查看源码',
   'block.action.hideSource': '收起源码',
   'block.expand': '展开',

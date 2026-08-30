@@ -62,7 +62,17 @@ export interface ResearchSource {
 export type SegmentModel =
   /** 思考。`live` 的产地是折叠器给的 `isStreaming`;P0 没有渲染器读它。 */
   | { kind: 'thinking'; text: string; live: boolean }
-  | { kind: 'rich-text'; blocks: BlockModel[] }
+  /**
+   * markdown 解析的产物。
+   *
+   * `offsets[i]` = `blocks[i]` 在**源文本里的起始偏移** —— 它是解析的一个事实
+   * (mdast 的 `position.start.offset`),不是渲染的字段:流式重解析时,同一个块
+   * 的源偏移逐帧不变,而它的**下标会变**(前面插进来一个块,后面全体平移)。
+   * key 由偏移派生(assemble/key.ts),React 因此不会在流式期间把代码块整棵重挂。
+   *
+   * 与「key 不进模型」不冲突:进模型的是**偏移**(哪来的),不是 key(怎么画)。
+   */
+  | { kind: 'rich-text'; blocks: BlockModel[]; offsets: readonly number[] }
   | { kind: 'tool'; row: ToolRowModel }
   | { kind: 'tool-group'; group: ToolGroupModel }
   | { kind: 'research'; episode: ResearchEpisodeModel }

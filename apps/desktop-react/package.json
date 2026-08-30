@@ -23,8 +23,12 @@
   },
   "dependencies": {
     "lucide-react": "latest",
+    "mdast-util-from-markdown": "^2.0.3",
+    "mdast-util-gfm": "^3.1.0",
+    "micromark-extension-gfm": "^3.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "shiki": "^4.4.3",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
