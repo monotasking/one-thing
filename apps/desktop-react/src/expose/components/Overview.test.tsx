@@ -342,27 +342,19 @@ describe('隐形组头:默认无底,粘附才显影,hover 只动文字', () => {
     expect(head).not.toContain('var(--surface-1)')
   })
 
-  it('粘附态才显影:--glass 底 + 模糊(带 -webkit- 一份)+ 下缘一条 --line-1', () => {
-    const stuck = block(".groupHead[data-stuck]")
-    expect(stuck).toContain('background: var(--glass)')
-    expect(stuck).toContain('backdrop-filter: blur(var(--blur-glass))')
-    expect(stuck).toContain('-webkit-backdrop-filter: blur(var(--blur-glass))')
-    expect(stuck).toContain('box-shadow: 0 1px 0 var(--line-1)')
-    // 模糊半径是 token,不是组件文件里的字面 px(全局铁律一)。
-    expect(stuck).not.toMatch(/blur\(\s*\d/)
+  it('粘附态也不画底(08-30 当晚二裁):全文件没有任何 data-stuck 视觉规则', () => {
+    // 用户真机复核把玻璃底也否了:组头任何状态都不是一条带。
+    // data-stuck 属性本身保留(JS 侧机制未拆),但样式层没有人消费它。
+    expect(css).not.toContain('[data-stuck]')
+    expect(css).not.toContain('var(--glass)')
+    expect(css).not.toContain('backdrop-filter')
   })
 
-  it('下缘线不许用 border:粘附态多一条 border 会当场吃掉 1px 内容高,组名要抖', () => {
-    const stuck = block(".groupHead[data-stuck]")
-    expect(stuck).not.toContain('border')
-    // 基态先摆一条透明同形投影,显影才是补间而不是硬跳。
-    expect(block('.groupHead')).toContain('box-shadow: 0 1px 0 transparent')
-    expect(block('.groupHead')).toContain('transition')
-  })
-
-  it('模糊半径这个 token 真的在 tokens.css 里命名过', () => {
-    const tokens = readFileSync(resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8')
-    expect(tokens).toMatch(/--blur-glass:\s*\d+px/)
+  it('组头没有下缘线也没有补间残留:box-shadow/transition 随底一起退役', () => {
+    const head = block('.groupHead')
+    expect(head).not.toContain('box-shadow')
+    expect(head).not.toContain('transition')
+    expect(head).not.toContain('border')
   })
 
   it('hover 不再画底:--st-hover 与它的圆角一起没了', () => {

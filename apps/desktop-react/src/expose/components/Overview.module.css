@@ -138,16 +138,15 @@
  * surface-1」。那句话在连上 core 主题桥之后**不再成立** —— 容器的底由主题现推,
  * 写死的 surface-1 与它差一点点,于是组头在屏幕上平时就是一条色带(用户报障)。
  *
- * 现在的口径:**组头默认全透明**(与容器无缝一色,是哪种底就跟哪种底),
- * 只有真的粘住了才显影 —— --glass 半透底 + 一层模糊 + 下缘一条 --line-1。
- * 那一刻它才需要遮挡:卡正从它底下糊过去,不遮就会看见字穿过字。
- * 「粘住了没有」由 JS 侧一枚 1px 哨兵 + IntersectionObserver 判(见 Overview.tsx),
- * 判出来落在 data-stuck 上 —— CSS 里没有「我现在粘着」这个选择器。
- *
- * 下缘那条线用 box-shadow 而不是 border-bottom(仓里更常见的写法):
- * border 只在粘附态出现的话,内容盒高度会当场少 1px,组名跟着抖一下;
- * box-shadow 不参与布局,几何逐像素不变。基态先摆一条透明的同形投影,
- * 于是显影 / 隐没是一次颜色补间,而不是从 none 硬跳出来。
+ * ── 08-30(当晚二裁)粘附态也不画底:用户看过真机后把玻璃底也否了 ─────────
+ * 方向 A 落地版给粘附态配过 --glass + blur + 下缘线;用户真机复核裁定
+ * **任何状态都不要背景**——粘附态与未粘同样全透明,组头是一行字,不是一条带。
+ * 代价明知并接受:卡从头底下滚过时,组名与卡内容会短暂同框(字浮在卡上),
+ * 这换来的是列表里永远不出现「一条颜色不同的横带」。
+ * 若将来要补易读性,候补是滚动容器顶端渐隐遮罩,不是把底色请回来。
+ * data-stuck 的哨兵 + IntersectionObserver 机制保留(见 Overview.tsx):
+ * 属性还在如实翻转,只是此刻没有任何视觉规则消费它 —— 拆机制是行为批的事,
+ * 别在样式批里顺手动 JS。
  * ──────────────────────────────────────────────────────────────────────
  */
 .groupHead {
@@ -160,23 +159,6 @@
   top: 0;
   z-index: var(--z-sticky);
   background: transparent;
-  box-shadow: 0 1px 0 transparent;
-  transition:
-    background var(--dur) var(--ease),
-    box-shadow var(--dur) var(--ease);
-}
-
-.groupHead[data-stuck] {
-  background: var(--glass);
-  backdrop-filter: blur(var(--blur-glass));
-  -webkit-backdrop-filter: blur(var(--blur-glass));
-  box-shadow: 0 1px 0 var(--line-1);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .groupHead {
-    transition: none;
-  }
 }
 
 /* 开关占满组头剩余宽度 = 命中区尽可能大;负 margin 抵掉内边距,组名位置不动。
