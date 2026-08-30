@@ -44,9 +44,15 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂只绑三条:检索 ⌘P、总览 ⌘E、目录 ⌘⇧O,别的一律未绑定', () => {
+  it('出厂只绑四条:检索 ⌘P、总览 ⌘E、目录 ⌘⇧O、agent 切换器 ⌘J,别的一律未绑定', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombo !== null).map((c) => c.id)
-    expect(bound).toEqual(['toggle:search', toggleCommandId(SESSIONS_ITEM_ID), 'toc.toggle'])
+    expect(bound).toEqual([
+      'toggle:search',
+      toggleCommandId(SESSIONS_ITEM_ID),
+      'toc.toggle',
+      'agent.menu',
+    ])
+    expect(findCommand('agent.menu')?.defaultCombo).toEqual({ meta: true, key: 'j' })
     expect(findCommand('toggle:search')?.defaultCombo).toEqual({ meta: true, key: 'p' })
     expect(findCommand(toggleCommandId(SESSIONS_ITEM_ID))?.defaultCombo).toEqual({
       meta: true,

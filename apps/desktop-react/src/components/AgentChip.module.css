@@ -1,0 +1,174 @@
+/* ── 顶栏 agent 切换器 ────────────────────────────────────────────────────
+ * 几何与色一律 var()。这个文件自己命名的只有两组东西,都落在**用它的那个元素**上,
+ * 消费处照样只写 var()(与 content/mocks.module.css 同一条判例):
+ *
+ *  1. 三个尺寸常量(徽头像 22 / 名册行头像 26 / 名册面宽 236)—— 只服务这一枚
+ *     组件,没有第二个消费者,所以不去污染全局 token 表;
+ *  2. 六对**头像渐变**。冷 → 暖绕一圈,彼此在明度上拉开,22px 也认得出是两个人。
+ *     名册给了 `color` 的那些走 .avatarCustom(--agent-color 由数据递进来),
+ *     那一条就完全不碰这六对 —— **agent 自定义色的编辑面是后续,本批只消费**。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* ── 徽 ─────────────────────────────────────────────────────────────────── */
+
+.chip {
+  --agent-name-max: 236px;
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--btn-sm);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  /* 安静:平时没有底、没有边,只有一张脸和一个名字。悬停才浮出底与箭头。 */
+  color: var(--text-1);
+  transition: background var(--dur) var(--ease);
+}
+
+.chip:hover {
+  background: var(--st-hover);
+}
+
+.chip:hover .chevron {
+  opacity: 1;
+}
+
+.name {
+  font-size: var(--fs-label);
+  font-weight: 600;
+  max-width: var(--agent-name-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+/* ── 头像 ───────────────────────────────────────────────────────────────── */
+
+.avatar {
+  --agent-avatar-chip: 22px;
+  --agent-avatar-row: 26px;
+  --agent-g0-a: #a5b4d4;
+  --agent-g0-b: #7c88b8;
+  --agent-g1-a: #b9a7cf;
+  --agent-g1-b: #8d78b4;
+  --agent-g2-a: #a8c9b6;
+  --agent-g2-b: #74a189;
+  --agent-g3-a: #d9c096;
+  --agent-g3-b: #b99a67;
+  --agent-g4-a: #d7a9a5;
+  --agent-g4-b: #b47d78;
+  --agent-g5-a: #9dc3cc;
+  --agent-g5-b: #6d9aa6;
+
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  color: var(--on-accent);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.avatarChip {
+  width: var(--agent-avatar-chip);
+  height: var(--agent-avatar-chip);
+  font-size: var(--fs-micro);
+}
+
+.avatarRow {
+  width: var(--agent-avatar-row);
+  height: var(--agent-avatar-row);
+  font-size: var(--fs-meta);
+}
+
+.grad0 { background-image: linear-gradient(135deg, var(--agent-g0-a), var(--agent-g0-b)); }
+.grad1 { background-image: linear-gradient(135deg, var(--agent-g1-a), var(--agent-g1-b)); }
+.grad2 { background-image: linear-gradient(135deg, var(--agent-g2-a), var(--agent-g2-b)); }
+.grad3 { background-image: linear-gradient(135deg, var(--agent-g3-a), var(--agent-g3-b)); }
+.grad4 { background-image: linear-gradient(135deg, var(--agent-g4-a), var(--agent-g4-b)); }
+.grad5 { background-image: linear-gradient(135deg, var(--agent-g5-a), var(--agent-g5-b)); }
+
+/* 名册自带 color 的那些。--agent-color 由组件按数据递进来(是数据不是字面色值),
+ * 配色公式在这里 —— 同色系推一对,和上面六对是同一种脸,不是第二套语言。
+ * 它与 .gradN **互斥**(组件二选一),所以这里不需要靠特异性去压谁。 */
+.avatarCustom {
+  background-image: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--agent-color) 72%, white),
+    var(--agent-color)
+  );
+}
+
+/* ── 名册行 ─────────────────────────────────────────────────────────────── */
+
+.menu {
+  --agent-menu-w: 236px;
+
+  min-width: var(--agent-menu-w);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--menu-item-gap);
+  min-width: 0;
+  padding: var(--sp-1) 0;
+}
+
+.rowText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rowName {
+  font-size: var(--fs-menu);
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowDesc {
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 两条非名册的行 ─────────────────────────────────────────────────────── */
+
+/* 「名册不可用」:一句灰字,不是一个可点的项 —— 它没有 role,也拿不到焦点。 */
+.unavailable {
+  padding: var(--sp-2) var(--menu-item-pad-x);
+  font-size: var(--fs-hint);
+  color: var(--text-3);
+}
+
+/* 「管理 Agents…」:本批渲染但不可点(管理页还没有),所以画成失效态。 */
+.manage {
+  width: 100%;
+  height: var(--menu-item-h);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--menu-item-pad-x);
+  border-radius: var(--r-1);
+  font-size: var(--fs-menu);
+  color: var(--text-3);
+  text-align: left;
+}
+
+.manage:disabled {
+  cursor: default;
+  opacity: var(--btn-disabled-o);
+}

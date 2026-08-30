@@ -26,9 +26,12 @@
   color: var(--text-3);
 }
 
+/* 高度是 **min-**height 而不是 height:一行文字的项与从前逐像素相同,
+ * 而放得下两行的项(名册行:头像 + 名 + 一句描述)不会被裁掉下半截。
+ * 菜单族的项高仍然只有这一个数,变的只是「至少这么高」而不是「就这么高」。 */
 .item {
   width: 100%;
-  height: var(--menu-item-h);
+  min-height: var(--menu-item-h);
   display: flex;
   align-items: center;
   gap: var(--menu-item-gap);

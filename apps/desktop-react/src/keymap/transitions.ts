@@ -29,12 +29,14 @@ const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
  * 出厂绑定表。只列**有**默认键的那几条,别的一律 null ——
  * 「大多数命令出厂不绑键」是有意的:键位是稀缺资源,预占等于替用户做主。
  *
- * ⌘E 给会话总览那块瓦(⌘P 在 08-29 那次拍板里归了检索面板)。
+ * ⌘E 给会话总览那块瓦(⌘P 在 08-29 那次拍板里归了检索面板),
+ * ⌘J 给顶栏那枚 agent 切换器(08-30 拍板)。
  */
 const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toggle:search': { meta: true, key: 'p' },
   [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'e' },
   'toc.toggle': { meta: true, shift: true, key: 'o' },
+  'agent.menu': { meta: true, key: 'j' },
 }
 
 /**
@@ -52,6 +54,8 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
   { id: 'shelf.right.toggle', labelKey: 'shelf.labelRight', defaultCombo: null },
   // TOC 面板不是 StageItem,但它的开关同样是命令类快捷键(08-29 全称拍板:都可设置)
   { id: 'toc.toggle', labelKey: 'toc.title', defaultCombo: DEFAULT_COMBOS['toc.toggle'] ?? null },
+  // 顶栏 agent 切换器:同样不是瓦,同样是「呼出一块面」的命令(08-30)。
+  { id: 'agent.menu', labelKey: 'agent.menuLabel', defaultCombo: DEFAULT_COMBOS['agent.menu'] ?? null },
 ]
 
 export const initialKeymapState: KeymapState = { overrides: {} }

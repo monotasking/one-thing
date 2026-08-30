@@ -36,14 +36,21 @@ export interface Combo {
 }
 
 /**
- * 命令 id。三族:
+ * 命令 id。四族:
  *  - `toggle:<itemId>` —— 每块 Dock 瓦一条(会话总览去接管化之后也在其中),
  *    语义 = togglePlacement(在 Dock 里就按它的打开方式开,在别处就收回 Dock);
  *  - `shelf.right.toggle` —— 右钉栏收 / 展;
- *  - `toc.toggle` —— 目录面板收 / 展。
+ *  - `toc.toggle` —— 目录面板收 / 展;
+ *  - `agent.menu` —— 顶栏 agent 切换器的菜单开 / 关。**只是开菜单**,
+ *    不做「按一下换下一个人」的轮换 —— 换人是有后果的写操作(改这条会话
+ *    从下一条消息起归谁),不该被一个盲按的快捷键直接触发。轮换语义留账。
  * 加命令 = 在 KEYMAP_COMMANDS 里加一行,别处零改动。
  */
-export type CommandId = `toggle:${string}` | 'shelf.right.toggle' | 'toc.toggle'
+export type CommandId =
+  | `toggle:${string}`
+  | 'shelf.right.toggle'
+  | 'toc.toggle'
+  | 'agent.menu'
 
 export interface KeymapCommand {
   id: CommandId

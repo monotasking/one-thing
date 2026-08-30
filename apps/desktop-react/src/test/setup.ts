@@ -77,3 +77,15 @@ configureChatPort({
   onSessionStream: () => () => undefined,
   sendMessage: async () => ({ success: true }),
 })
+
+/**
+ * agent 名册的端口:同一条理由,同一手。顶栏在每一个渲染了外壳的用例里都在,
+ * 不装的话它们会一起去摸真的 `@renderer/platform`。
+ */
+import { configureAgentsPort } from '../data/agents-port'
+
+configureAgentsPort({
+  ready: async () => undefined,
+  list: async () => ({ success: true, agents: [] }),
+  updateSessionAgent: async () => ({ success: true }),
+})

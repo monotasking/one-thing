@@ -37,26 +37,6 @@
   color: var(--text-3);
 }
 
-.chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  height: var(--btn-sm);
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-full);
-  border: 1px solid var(--line-1);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: var(--fs-meta);
-  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
-}
-
-.chip:hover {
-  background: var(--st-hover);
-  border-color: var(--line-2);
-}
-
-.chipIcon {
-  width: var(--fs-meta);
-  height: var(--fs-meta);
-}
+/* 原来这里还有一枚 .chip / .chipIcon —— 顶栏的模型章。08-30 退役(模型选择在
+ * composer 上,顶栏那枚是同一件事说两遍),它的位子换成了 AgentChip,
+ * 后者自带样式(components/AgentChip.module.css)。 */

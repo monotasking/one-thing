@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { AppShell } from '../components/AppShell'
+import { useAgentMenu } from '../components/agent-menu'
 import { useStageStore } from '../stage/store'
 import { initialStageState } from '../stage/transitions'
 import { useKeymapStore } from './store'
@@ -14,6 +15,7 @@ import { initialKeymapState } from './transitions'
 beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   useKeymapStore.setState({ ...initialKeymapState })
+  useAgentMenu.setState({ open: false })
 })
 
 describe('快捷键派发', () => {
@@ -25,6 +27,16 @@ describe('快捷键派发', () => {
 
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     expect(useStageStore.getState().placements.search).toBeUndefined()
+  })
+
+  it('⌘J 开顶栏 agent 切换器的菜单,再按一下关 —— 只开菜单,不替人换人', () => {
+    render(<AppShell />)
+    act(() => void fireEvent.keyDown(document.body, { key: 'j', metaKey: true }))
+    expect(useAgentMenu.getState().open).toBe(true)
+    expect(screen.getByRole('menu')).toBeTruthy()
+
+    act(() => void fireEvent.keyDown(document.body, { key: 'j', metaKey: true }))
+    expect(useAgentMenu.getState().open).toBe(false)
   })
 
   it('改绑之后老组合失效、新组合生效(派发器一行没改)', () => {

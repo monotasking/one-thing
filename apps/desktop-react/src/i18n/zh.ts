@@ -17,6 +17,15 @@ export const zh = {
   /* ── 顶栏 ─────────────────────────────────────────────────────────── */
   'topbar.newSession': '新会话',
 
+  /* ── 顶栏 agent 切换器 ────────────────────────────────────────────── */
+  // 「默认助手」是名册里查不到 id=default 那条记录时的兜底名 ——
+  // 名册给了名字就用名册那份,这一句只在它缺席时出面。
+  'agent.default': '默认助手',
+  'agent.menuLabel': 'Agent 切换器',
+  'agent.rosterUnavailable': '名册不可用',
+  'agent.manage': '管理 Agents…',
+  'agent.switchFailed': '切换 Agent 失败',
+
   /* ── 输入框(Composer 形态学:本体行 / 抽屉槽 / 状态条 / ask 形态 / 附件) ── */
   'composer.placeholder': '说点什么…( @ 文件 · / 命令 )',
   'composer.send': '发送',

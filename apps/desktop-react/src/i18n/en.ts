@@ -15,6 +15,13 @@ export const en: Record<MessageKey, string> = {
   /* ── top bar ──────────────────────────────────────────────────────── */
   'topbar.newSession': 'New session',
 
+  /* ── top bar agent switcher ───────────────────────────────────────── */
+  'agent.default': 'Default assistant',
+  'agent.menuLabel': 'Agent switcher',
+  'agent.rosterUnavailable': 'Agent roster unavailable',
+  'agent.manage': 'Manage agents…',
+  'agent.switchFailed': 'Could not switch agent',
+
   /* ── composer ─────────────────────────────────────────────────────── */
   'composer.placeholder': 'Say something… ( @ files · / commands )',
   'composer.send': 'Send',

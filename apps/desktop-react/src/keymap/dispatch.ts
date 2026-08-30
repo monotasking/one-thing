@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useTocStore } from '../toc/store'
 import { useStageStore } from '../stage/store'
+import { useAgentMenu } from '../components/agent-menu'
 import { useKeymapStore } from './store'
 import { TOGGLE_COMMAND_PREFIX, hasModifier, lookupCommand } from './transitions'
 import type { CommandId } from './types'
@@ -25,6 +26,7 @@ export function useKeymapDispatch(): void {
   const toggleItem = useStageStore((st) => st.toggleItem)
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
   const toggleToc = useTocStore((st) => st.togglePanel)
+  const toggleAgentMenu = useAgentMenu((st) => st.toggle)
 
   useEffect(() => {
     const run = (id: CommandId) => {
@@ -36,7 +38,12 @@ export function useKeymapDispatch(): void {
         toggleShelfCollapsed('right')
         return
       }
-      if (id === 'toc.toggle') toggleToc()
+      if (id === 'toc.toggle') {
+        toggleToc()
+        return
+      }
+      // 只开菜单,不替用户选人 —— 理由写在 keymap/types.ts 的命令族那一段。
+      if (id === 'agent.menu') toggleAgentMenu()
     }
 
     const onKey = (e: KeyboardEvent) => {
@@ -50,5 +57,5 @@ export function useKeymapDispatch(): void {
 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [overrides, toggleItem, toggleShelfCollapsed, toggleToc])
+  }, [overrides, toggleItem, toggleShelfCollapsed, toggleToc, toggleAgentMenu])
 }
