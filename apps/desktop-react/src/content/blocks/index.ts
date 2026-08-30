@@ -9,9 +9,10 @@
  * 为什么是 barrel 而不是各自在用到的地方 import:注册是**副作用**,副作用散在
  * 各处就没人说得清「这台上到底注册了哪些块」。一个文件,一眼看全。
  *
- * 这台上没有的:`figure`(P3 的二级表 + mermaid)、`diff`(P3,两个产地同批接)。
- * 它们的**模型**已经在词汇表里,解析器也确实会产出 figure —— 查不到渲染器时
- * `resolveBlock` 兜到 source-fallback,屏幕上是那段图源码。这就是「渐进」的样子。
+ * P3 补齐了最后两件:`figure`(它自带**第二张表** —— 图种注册表,mermaid 是今天
+ * 唯一的一行)与 `diff`(两个产地同批接:markdown 的 ```diff 围栏和 edit/write
+ * 工具的 detail,同一个块、同一个组件)。这台上于是没有「模型有、渲染器没有」的
+ * 块了;source-fallback 从此只接**真的**未知(版本错位、将来的新语法)。
  */
 import './kinds/paragraph'
 import './kinds/heading'
@@ -19,4 +20,6 @@ import './kinds/list'
 import './kinds/quote'
 import './kinds/code'
 import './kinds/table'
+import './kinds/figure'
+import './kinds/diff'
 import './kinds/source-fallback'

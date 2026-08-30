@@ -90,9 +90,44 @@ describe('edit / write', () => {
     expect(rowOf(call({ ...base, result: 'ok' })).outcome).toBeUndefined()
   })
 
-  it('detail:有 diff 时落 code(lang:"diff")—— 留账,P3 换成 diff 一等块', () => {
-    const detail = detailOf(call({ ...base, changes: { filePath: '/repo/a.ts', diff: '@@ -1 +1 @@' } }))
-    expect(detail).toEqual([{ kind: 'code', lang: 'diff', source: '@@ -1 +1 @@', file: '/repo/a.ts', closed: true }])
+  it('detail:有 diff 时落 diff 一等块(P2 留账在 P3 结清)', () => {
+    const detail = detailOf(
+      call({ ...base, changes: { filePath: '/repo/a.ts', diff: '@@ -1,2 +1,2 @@\n-old\n+new\n ctx' } }),
+    )
+    expect(detail).toEqual([
+      {
+        kind: 'diff',
+        file: '/repo/a.ts',
+        source: '@@ -1,2 +1,2 @@\n-old\n+new\n ctx',
+        hunks: [
+          {
+            header: '@@ -1,2 +1,2 @@',
+            oldStart: 1,
+            newStart: 1,
+            lines: [
+              { kind: 'del', text: 'old' },
+              { kind: 'add', text: 'new' },
+              { kind: 'ctx', text: 'ctx' },
+            ],
+          },
+        ],
+        stat: { add: 1, del: 1 },
+      },
+    ])
+  })
+
+  it('±统计优先取引擎给的 changes,不用解析器数出来的那份(行与檐必须同一个数)', () => {
+    const [block] = detailOf(
+      call({ ...base, changes: { filePath: '/repo/a.ts', additions: 12, deletions: 3, diff: '+a\n-b' } }),
+    )
+    expect(block).toMatchObject({ kind: 'diff', stat: { add: 12, del: 3 } })
+  })
+
+  it('引擎给了看不出结构的方言时退回 code(lang:"diff")—— 降级,不报错', () => {
+    const detail = detailOf(call({ ...base, changes: { filePath: '/repo/a.ts', diff: 'not really a diff' } }))
+    expect(detail).toEqual([
+      { kind: 'code', lang: 'diff', source: 'not really a diff', file: '/repo/a.ts', closed: true },
+    ])
   })
 
   it('write 走同一个 presenter,没有 diff 时按扩展名画文件内容', () => {

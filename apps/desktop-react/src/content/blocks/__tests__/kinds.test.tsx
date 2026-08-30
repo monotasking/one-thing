@@ -112,10 +112,13 @@ describe('P1 六块上屏', () => {
     expect(cells[1].className).toContain('numeric')
   })
 
-  it('没注册的 kind(figure)兜到源码可见 —— 图源码一个字不少', () => {
-    const { container } = draw({ kind: 'figure', figKind: 'mermaid', source: 'graph TD' })
+  it('图种认不出时兜到源码可见 —— 图源码一个字不少', () => {
+    // P3 起 `figure` 在表上了,所以这一条问的是**二级表**的未知格:图块认得,
+    // 图种不认得。刻意不用 mermaid —— 那会在这条冒烟里真去拉几 MB 的库,
+    // 而这里要验的是降级,不是懒加载。
+    const { container } = draw({ kind: 'figure', figKind: 'plantuml', source: '@startuml' })
     expect(container.querySelector('[data-block-kind="figure"]')).toBeTruthy()
-    expect(container.textContent).toContain('graph TD')
+    expect(container.textContent).toContain('@startuml')
   })
 })
 

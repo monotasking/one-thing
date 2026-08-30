@@ -119,7 +119,7 @@ describe('表外节点一律 source-fallback —— 原文永远可见', () => {
 })
 
 describe('围栏路由:语言即路由', () => {
-  it('图种围栏闭合后进 figure(P1 没有 figure 渲染器 → 注册表兜到源码可见)', () => {
+  it('图种围栏闭合后进 figure(P3 起注册表里有渲染器,figKind 仍是原样的语言名)', () => {
     expect(one('```mermaid\ngraph TD\n```')).toEqual({
       kind: 'figure',
       figKind: 'mermaid',
@@ -132,11 +132,25 @@ describe('围栏路由:语言即路由', () => {
     expect(routeFence('mermaid', 'graph TD', true)).toMatchObject({ kind: 'figure' })
   })
 
-  it('```diff 本批仍走 code(lang:diff)—— diff 块要与工具产地同批接,P3', () => {
+  it('```diff 闭合后进 diff 一等块(P2 留账在 P3 结清:与工具产地同一个块)', () => {
     expect(one('```diff\n+a\n-b\n```')).toEqual({
+      kind: 'diff',
+      source: '+a\n-b',
+      // 没有 @@ 头的碎片:一个隐式 hunk,起始行号缺席(编不出来就不编)。
+      hunks: [{ lines: [{ kind: 'add', text: 'a' }, { kind: 'del', text: 'b' }] }],
+      stat: { add: 1, del: 1 },
+    })
+  })
+
+  it('```diff 没闭合时按 code 显示(半段 diff 的行号无从起算)', () => {
+    expect(routeFence('diff', '+a', false)).toMatchObject({ kind: 'code', lang: 'diff', closed: false })
+  })
+
+  it('标了 diff 却不像 diff 的那段文字退回 code —— 降级,不报错', () => {
+    expect(one('```diff\njust some prose\n```')).toEqual({
       kind: 'code',
       lang: 'diff',
-      source: '+a\n-b',
+      source: 'just some prose',
       closed: true,
     })
   })

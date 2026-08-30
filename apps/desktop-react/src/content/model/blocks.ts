@@ -24,6 +24,15 @@ export interface DiffHunk {
   /** 原文起始行(1 基);拿不到结构时缺席。 */
   oldStart?: number
   newStart?: number
+  /**
+   * `@@ …… @@` 那一行的**原文**(P3 补)。
+   *
+   * 不由 oldStart/newStart 现合成:真实的 hunk 头后面常挂一段所属函数名
+   * (`@@ -1,7 +1,9 @@ function foo()`),合成出来的那一行会把它吞掉。存原文是
+   * 「解析不动的东西原样透传」这条纪律在结构化字段上的同一个答案。
+   * 碎片 diff(没有 @@ 的那种)这一格缺席,渲染时就没有头行。
+   */
+  header?: string
   lines: DiffLine[]
 }
 
@@ -41,7 +50,15 @@ export type BlockModel =
   | { kind: 'code'; lang: string | null; source: string; file?: string; closed: boolean }
   | { kind: 'table'; caption?: string; head: InlineNode[][]; rows: InlineNode[][][] }
   | { kind: 'figure'; figKind: string; source: string; title?: string }
-  | { kind: 'diff'; file?: string; hunks: DiffHunk[]; stat: { add: number; del: number } }
+  /**
+   * `source` 是那段**统一 diff 原文**(P3 补)。
+   *
+   * 结构(hunks / stat)是从它解析出来的**投影**,不是替代品:「查看源码」与降级
+   * 都要拿到作者/引擎真正给的那几行(`blockSourceText` 认的就是这一格),而 hunks
+   * 里被归成 ctx 的那些「解析不动的行」也因此有一份逐字对照。同 `code` 一样,
+   * 一个块自己带着它的源码,失败语义才落得下来。
+   */
+  | { kind: 'diff'; file?: string; source: string; hunks: DiffHunk[]; stat: { add: number; del: number } }
   /**
    * 一切失败的归宿。`reason` 是**机器口径的一个词**(`render-error` /
    * `unknown-kind:foo` / `tool-default`),不是界面文案 —— 它和错误边界的 `where`

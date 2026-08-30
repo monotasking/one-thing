@@ -1,0 +1,68 @@
+/*
+ * 放大浮层。层级、遮罩、入场三处与 ui/Dialog.module.css 逐字同款 ——
+ * 系统里只有一种浮层入场,不给放大单造一条。颜色零字面值。
+ */
+
+@keyframes blockZoomScrimIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes blockZoomCanvasIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: var(--scrim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+  animation: blockZoomScrimIn var(--dur-enter) var(--ease-out);
+}
+
+.canvas {
+  position: relative;
+  z-index: var(--z-modal);
+  /*
+   * 尽量大 —— 放大要的是画布,不是一张卡片。图比屏幕大时在这一层里滚,
+   * overscroll-behavior 挡住滚到头之后把滚动传给身后的聊天流。
+   */
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-5);
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+  animation: blockZoomCanvasIn var(--dur-enter) var(--ease-out);
+}
+
+/* 画布拿焦点只是让 Esc 落进来,不该画环 —— 环是给可操作元素的(同 Dialog)。 */
+.canvas:focus {
+  outline: none;
+}
+
+/* SVG 按自己的尺寸铺开;装不下就靠上面那层滚,不缩放(缩糊了就白放大了)。 */
+.figure {
+  /* 给 `width="100%"` 的 SVG 一个确定的参照宽度(同 Figure.module.css 那条理由)。 */
+  width: min(80vw, 1400px);
+  max-width: 100%;
+}
+
+/*
+ * `!important` 在这里是**目的本身**,不是没辙:mermaid 往 SVG 上写了一条行内
+ * `max-width:<自然宽>px`,不掀掉它,「放大」就只是把同样大的一张图挪进浮层 ——
+ * 那等于没放大。行内样式只有 !important 掀得动。SVG 是矢量,放大不糊。
+ */
+.figure > svg {
+  display: block;
+  width: 100%;
+  max-width: none !important;
+  height: auto;
+}

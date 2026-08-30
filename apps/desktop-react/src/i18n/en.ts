@@ -228,9 +228,13 @@ export const en: Record<MessageKey, string> = {
   'block.action.copyColumn': 'Copy this column',
   'block.action.viewSource': 'View source',
   'block.action.hideSource': 'Hide source',
+  'block.action.zoom': 'Zoom',
+  'block.action.downloadPng': 'Download PNG',
   'block.expand': 'Expand',
   'block.collapse': 'Collapse',
   'block.renderFailed': "This block couldn't render",
+  'block.zoom.label': 'Zoomed view',
+  'block.figure.renderFailed': "This diagram couldn't render",
 
   /* ── quick look ───────────────────────────────────────────────────── */
   'quicklook.enter': 'Open ↵',

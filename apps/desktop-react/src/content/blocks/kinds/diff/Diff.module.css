@@ -1,0 +1,83 @@
+/*
+ * diff 块本体。横滚与限高折叠归壳(BlockShell.module.css 的 .body),这里不重复。
+ * 颜色零字面值:全部 var()。**没有一条左竖线** —— 见 Diff.tsx 头注那段理由。
+ */
+
+.diff {
+  /*
+   * 行要能铺满**内容**的宽度,不是容器的宽度:壳的 .body 是 overflow-x:auto,
+   * 横滚之后如果行只有容器那么宽,右半边的行底色就断在原来的容器右边缘上,
+   * 读起来像「这一行改到一半」。max-content 把每一行撑到最长那行的宽度。
+   */
+  min-width: max-content;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  line-height: 1.55;
+}
+
+/* ── hunk 头:`@@ …… @@` 原文一行 ─────────────────────────────────────── */
+
+.hunkHead {
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--surface-1);
+  color: var(--text-4);
+  font-size: var(--fs-micro);
+  white-space: pre;
+}
+
+/* ── 行 ─────────────────────────────────────────────────────────────── */
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.add {
+  background: var(--tint-ok);
+}
+
+.del {
+  background: var(--tint-danger);
+}
+
+.ctx {
+  background: transparent;
+}
+
+/* 行号单列:新文件的行号。淡、窄、不可选中。 */
+.num {
+  flex: none;
+  width: 3.5ch;
+  text-align: right;
+  color: var(--text-4);
+  font-size: var(--fs-nano);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* +/− 符号:满饱和状态色 —— 底色只有 12%,符号是那一行的判据。 */
+.sign {
+  flex: none;
+  width: 1ch;
+  user-select: none;
+  -webkit-user-select: none;
+  color: var(--text-4);
+}
+
+.add .sign {
+  color: var(--ok);
+}
+
+.del .sign {
+  color: var(--danger);
+}
+
+/* 正文:不折行(折行会改变缩进的含义),长行由壳的横滚接住。 */
+.text {
+  flex: 1;
+  padding-right: var(--sp-3);
+  white-space: pre;
+  color: var(--text-1);
+  tab-size: 2;
+}

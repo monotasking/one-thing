@@ -4,9 +4,10 @@ import { useT, type MessageKey, type TFn } from '../../../i18n'
 import { Menu, MenuItem } from '../../../ui/Menu'
 import { resolveIcon } from '../../../components/icons'
 import type { BlockModel } from '../../model/blocks'
-import type { BlockAction, BlockCtx, BlockDef } from '../registry'
+import type { BlockAction, BlockChrome, BlockCtx, BlockDef } from '../registry'
 import { BlockErrorBoundary } from './BlockErrorBoundary'
 import { SourceView } from './SourceView'
+import { ZoomOverlay } from './ZoomOverlay'
 import { blockActionLabelKey, isBlockActionRunnable, runBlockAction } from './actions'
 import { readBlockLoader } from './loader'
 import { blockSourceText } from './source'
@@ -49,6 +50,9 @@ export function BlockShell({
   const t = useT()
   const [sourceOpen, setSourceOpen] = useState(false)
   const toggleSource = useCallback(() => setSourceOpen((open) => !open), [])
+  // 放大浮层是**壳的状态**,和「查看源码」同一格:块声明动作,壳决定屏幕上发生什么。
+  const [zoomSvg, setZoomSvg] = useState<string | null>(null)
+  const closeZoom = useCallback(() => setZoomSvg(null), [])
 
   const body = sourceOpen ? (
     <SourceView source={blockSourceText(model)} />
@@ -84,14 +88,41 @@ export function BlockShell({
             {chrome?.id && <span className={s.id}>{chrome.id}</span>}
             {chrome?.meta && <span className={s.meta}>{chrome.meta}</span>}
           </span>
+          {chrome?.stat && <DiffStat stat={chrome.stat} />}
           {chrome?.title && <span className={s.title}>{chrome.title}</span>}
           {actions.length > 0 && (
-            <BlockActions t={t} actions={actions} onToggleSource={toggleSource} />
+            <BlockActions
+              t={t}
+              actions={actions}
+              front={def.frontActions ?? 2}
+              onToggleSource={toggleSource}
+              onZoom={setZoomSvg}
+            />
           )}
         </header>
       )}
       <ClampedBody t={t}>{guarded}</ClampedBody>
+      {zoomSvg !== null && <ZoomOverlay svg={zoomSvg} onClose={closeZoom} />}
     </section>
+  )
+}
+
+/**
+ * 增删读数 —— 两枚色字,不是徽章。
+ *
+ * 徽章是「一件东西」(有底、有边、有内边距),而「+12 −3」是一个**读数**:它和
+ * 左边的文件路径同一号字、同一条基线,只有颜色不同。定稿里这条差别是刻意的 ——
+ * 檐上已经有一件东西(卡片本身),再往上摞小方块会让檐变成工具条。
+ *
+ * 零永远照说(`+0 −0` 是真值,不是空)。删号用真减号 `−` 而不是 hyphen:
+ * 与工具行的 `chat.tool.diffStat` 是同一个字形,两处读数不该长得不一样。
+ */
+function DiffStat({ stat }: { stat: NonNullable<BlockChrome['stat']> }) {
+  return (
+    <span className={s.stat}>
+      <span className={s.statAdd}>+{stat.add}</span>
+      <span className={s.statDel}>−{stat.del}</span>
+    </span>
   )
 }
 
@@ -133,18 +164,23 @@ function BlockFailure({ t, model, error }: { t: TFn; model: BlockModel; error: E
 function BlockActions({
   t,
   actions,
+  front: budget,
   onToggleSource,
+  onZoom,
 }: {
   t: TFn
   actions: LabelledAction[]
+  /** 露出预算(块可以把它压到 1 —— 图卡定稿只留「放大」)。 */
+  front: 1 | 2
   onToggleSource: () => void
+  onZoom: (svg: string) => void
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
-  const front = actions.slice(0, 2)
-  const rest = actions.slice(2)
+  const front = actions.slice(0, budget)
+  const rest = actions.slice(budget)
 
   const run = (action: BlockAction) => {
-    void runBlockAction(action, { toggleSource: onToggleSource })
+    void runBlockAction(action, { toggleSource: onToggleSource, openZoom: onZoom })
   }
 
   return (
@@ -201,24 +237,41 @@ function BlockActions({
  * `scrollHeight > clientHeight`,在布局阶段做(useLayoutEffect),所以用户看不到
  * 「先出现展开钮再消失」的一帧。jsdom 里没有排版、两个值都是 0,于是单测里
  * 永远不折叠 —— 这正确:测试要验的是块画出来了什么,不是浏览器怎么排版。
+ *
+ * ── 内容会**后来才长高**,所以量一次不够(P3 真机抓到) ──────────────────
+ * 图要等 mermaid 渲完、代码要等 shiki 拉到,这两下都发生在块自己的 state 里,
+ * 外面这一层的 `children` 引用一动不动 —— 于是只在挂载时量的话,一张 414px 高的图
+ * 会被 320px 的钳子静静切掉底下四分之一,而展开钮**永远不出现**(真机读数:
+ * scrollHeight 414 / clientHeight 320 / 无展开钮)。
+ *
+ * 修法是给内容一个**跟着它长的盒子**(下面那层 div)并用 ResizeObserver 盯着它。
+ * 盯外面那层没用:它被 max-height 钳着,高度从头到尾就是那个数,永远不触发。
+ * 内层是块级、宽度自动,与「内容直接当 body 的子节点」在排版上等价(长行照旧
+ * 溢出到外层去横滚),所以它是纯观测用的一层,不改任何块的样子。
  */
 function ClampedBody({ t, children }: { t: TFn; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
+  const inner = useRef<HTMLDivElement>(null)
   const [overflows, setOverflows] = useState(false)
   const [expanded, setExpanded] = useState(false)
 
-  // 重量的时机只有两个:内容换了(children 换引用)、展开态换了。
-  // 量出同一个值时 setState 会自己短路,所以「每次内容更新都量一次」不会成环。
   useLayoutEffect(() => {
     const el = ref.current
-    if (!el || expanded) return
-    setOverflows(el.scrollHeight > el.clientHeight + 1)
+    const box = inner.current
+    if (!el || !box || expanded) return
+    // 量出同一个值时 setState 会自己短路,所以「每次内容变动都量一次」不会成环。
+    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(box)
+    return () => observer.disconnect()
   }, [expanded, children])
 
   return (
     <>
       <div ref={ref} className={expanded ? `${s.body} ${s.bodyExpanded}` : s.body}>
-        {children}
+        <div ref={inner}>{children}</div>
       </div>
       {overflows && (
         <button type="button" className={s.expand} onClick={() => setExpanded((v) => !v)}>

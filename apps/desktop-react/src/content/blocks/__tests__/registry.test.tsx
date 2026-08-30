@@ -49,8 +49,18 @@ describe('块注册表', () => {
 })
 
 describe('生产那张表(barrel 注册了哪些块)', () => {
-  it('P1 的六个:段落 / 标题 / 列表 / 引用 / 代码 / 表格,加上兜底', () => {
-    for (const kind of ['paragraph', 'heading', 'list', 'quote', 'code', 'table', 'source-fallback']) {
+  it('八个块 + 兜底:P1 六个,P3 补上 figure 与 diff', () => {
+    for (const kind of [
+      'paragraph',
+      'heading',
+      'list',
+      'quote',
+      'code',
+      'table',
+      'figure',
+      'diff',
+      'source-fallback',
+    ]) {
       expect(isBlockRegistered(kind)).toBe(true)
     }
   })
@@ -64,8 +74,10 @@ describe('生产那张表(barrel 注册了哪些块)', () => {
     })
   })
 
-  it('还没注册的 kind 经生产那张表也兜到兜底(figure / diff 是 P3 的事)', () => {
-    expect(resolveBlock('figure').kind).toBe('source-fallback')
-    expect(resolveBlock('diff').kind).toBe('source-fallback')
+  it('真的未知 kind 经生产那张表兜到兜底(P3 之后 figure / diff 都在表上了)', () => {
+    expect(resolveBlock('figure').kind).toBe('figure')
+    expect(resolveBlock('diff').kind).toBe('diff')
+    // 剩下的兜底位留给版本错位、将来的新语法这类**真的**未知。
+    expect(resolveBlock('katex-from-the-future').kind).toBe('source-fallback')
   })
 })

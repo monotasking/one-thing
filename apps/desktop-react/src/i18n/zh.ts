@@ -238,9 +238,16 @@ export const zh = {
   'block.action.copyColumn': '复制这一列',
   'block.action.viewSource': '查看源码',
   'block.action.hideSource': '收起源码',
+  /* 图的两格(P3):放大常显在檐上,下载 PNG 收在 ⋯ 里。 */
+  'block.action.zoom': '放大',
+  'block.action.downloadPng': '下载 PNG',
   'block.expand': '展开',
   'block.collapse': '收起',
   'block.renderFailed': '这块没画出来',
+  /* 放大浮层没有可见标题,这句是它的无障碍名。 */
+  'block.zoom.label': '放大预览',
+  /* 图渲染失败:一行灰说明 + 渲染器的原话(原话不进字典,它是事实不是文案)。 */
+  'block.figure.renderFailed': '这张图没画出来',
 
   /* ── Quick Look ───────────────────────────────────────────────────── */
   'quicklook.enter': '进入 ↵',

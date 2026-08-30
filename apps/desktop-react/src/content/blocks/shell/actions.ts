@@ -1,5 +1,6 @@
 import type { MessageKey } from '../../../i18n'
 import type { BlockAction } from '../registry'
+import { exportSvgAsPng } from './export-png'
 
 /**
  * 动作执行器 —— **住壳,不住块**(§4.2)。
@@ -11,14 +12,17 @@ import type { BlockAction } from '../registry'
  * ── 词表是封闭的,露出是有条件的 ──────────────────────────────────────
  * 四个动词(copy / download / view-source / zoom)是六轮 UI 定稿拍下来的封闭词表,
  * 加一格是拍板件。但**声明了不等于露得出来**:一个动作要同时有标签和执行器才上屏。
- * P0 只有 copy 与 view-source 两样齐了,download / zoom 的类型在词表里、执行器等
- * P3(PNG 导出 / QuickLook)—— 那之前它们即使被声明也不会出现在檐上,
+ * P3 把 download.png(SVG→PNG,见 export-png.ts)与 zoom(放大浮层)两个执行器
+ * 补齐了 —— 于是**任何**能交出一段 SVG 的图种自动获得这两样,自己不写一行。
+ * `download.csv` / `download.svg` 仍然没有执行器:声明了也会被筛掉,
  * 而不是画一个点了没反应的钮。
  */
 
-/** 壳自己提供的能力(view-source 改的是壳的状态,不是块的数据)。 */
+/** 壳自己提供的能力(改的是壳的状态,不是块的数据)。 */
 export interface BlockActionRuntime {
   toggleSource(): void
+  /** 开放大浮层。SVG 是**点下去那一刻**取到的那份,不是声明时的。 */
+  openZoom(svg: string): void
 }
 
 /**
@@ -36,15 +40,32 @@ export function blockActionLabelKey(action: BlockAction, sourceOpen: boolean): M
       return undefined
     case 'view-source':
       return sourceOpen ? 'block.action.hideSource' : 'block.action.viewSource'
-    default:
-      // download / zoom:词表里有,执行器还没到(P3)。
-      return undefined
+    case 'download':
+      // csv / svg:词表里有,执行器还没到。
+      return action.what === 'png' ? 'block.action.downloadPng' : undefined
+    case 'zoom':
+      return 'block.action.zoom'
   }
 }
 
-/** 有执行器吗。没有就不露出 —— 点了没反应比没这个钮更糟。 */
+/**
+ * 有执行器吗。没有就不露出 —— 点了没反应比没这个钮更糟。
+ *
+ * download / zoom 的判据落在**取件口在不在**(`svg`)而不是「P3 到了没有」:
+ * 一个没有 SVG 可取的图种(将来的位图图种、或者只声明了词却没接上的块)不该
+ * 在檐上多出两个死钮。取件口在、但点下去那一刻还没渲染完 —— 那一格是空的,
+ * 执行器什么都不做:动作在,内容还没到,这是诚实的中间态,不是坏钮。
+ */
 export function isBlockActionRunnable(action: BlockAction): boolean {
-  return action.verb === 'copy' || action.verb === 'view-source'
+  switch (action.verb) {
+    case 'copy':
+    case 'view-source':
+      return true
+    case 'download':
+      return action.what === 'png' && action.svg !== undefined
+    case 'zoom':
+      return action.svg !== undefined
+  }
 }
 
 /**
@@ -68,7 +89,15 @@ export async function runBlockAction(
     case 'view-source':
       runtime.toggleSource()
       return
-    default:
+    case 'download': {
+      const svg = action.svg?.()
+      if (svg) await exportSvgAsPng(svg, action.filename)
       return
+    }
+    case 'zoom': {
+      const svg = action.svg?.()
+      if (svg) runtime.openZoom(svg)
+      return
+    }
   }
 }

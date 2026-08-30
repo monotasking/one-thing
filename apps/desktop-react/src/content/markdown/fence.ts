@@ -1,4 +1,5 @@
 import type { BlockModel } from '../model/blocks'
+import { parseUnifiedDiff } from '../blocks/kinds/diff/parse'
 
 /**
  * **围栏语言即路由**(§3.2)。
@@ -28,16 +29,25 @@ export function isFigureLang(lang: string | null): boolean {
 /**
  * 一个围栏 → 一个块。
  *
- * `closed` 是流式契约的输入(§6):
- *  - 图种围栏**只有闭合了才变 figure**。半截的图源码画不出图,按 code 逐行长出来,
- *    闭合那一刻原位换装(atomic)—— 这就是设计里那句「未闭合按 code 显示」。
- *  - ```diff 本批仍按 `code(lang:'diff')` 走。diff 是一等块(有 hunk 结构与 ±统计),
- *    但它的另一个产地(edit/write 工具结果)要到 P3 才进来,两个产地必须同批接同一个
- *    块——否则 markdown 的 diff 和工具的 diff 会长成两种东西。**P3 换 diff 块。**
+ * `closed` 是流式契约的输入(§6):图种围栏与 ```diff **只有闭合了才换装**。半截的
+ * 图源码画不出图、半段 diff 的 hunk 头还没到(行号无从起算),两者都按 code 逐行
+ * 长出来,闭合那一刻原位换装(atomic)—— 这就是设计里那句「未闭合按 code 显示」。
+ *
+ * ── ```diff:P2 留账在这一批结清 ────────────────────────────────────────
+ * P2 时这里仍产 `code(lang:'diff')`,留账写着「必须与工具产地同批接同一个块」。
+ * P3 两边同时换了:这里、以及 `tools/presenters/edit.ts` 的 detail。于是同一段 diff
+ * 在正文里和在工具抽屉里是**同一个组件**,不是两种长相。
+ *
+ * 解析不动(那段文字根本不像 diff)时退回 `code(lang:'diff')` —— 作者标了 diff 但
+ * 写的是别的东西,这不是错误,只是这台看不出结构。同一条失败语义:降级,不报错。
  */
 export function routeFence(lang: string | null, source: string, closed: boolean): BlockModel {
   if (closed && isFigureLang(lang) && lang !== null) {
     return { kind: 'figure', figKind: lang, source }
+  }
+  if (closed && lang === 'diff') {
+    const parsed = parseUnifiedDiff(source)
+    if (parsed) return { kind: 'diff', ...parsed }
   }
   return { kind: 'code', lang, source, closed }
 }

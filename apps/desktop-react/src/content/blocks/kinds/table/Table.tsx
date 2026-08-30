@@ -63,7 +63,9 @@ export function Table({ model }: { model: TableModel }) {
                     // 块内热区,走的仍是**壳的那一个执行器** —— 复制在全系统是同一件事。
                     void runBlockAction(
                       { verb: 'copy', what: 'column', text: columnToText(model, col) },
-                      { toggleSource: () => undefined },
+                      // 壳的那两件能力(源码开关 / 放大浮层)在块内热区这条路上都用不上,
+                      // 但接口是一份 —— 给两个空实现,而不是给执行器开一条「可以缺席」的口子。
+                      { toggleSource: () => undefined, openZoom: () => undefined },
                     )
                   }}
                 >

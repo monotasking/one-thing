@@ -32,21 +32,41 @@ export interface BlockCtx {
 /** 动作词表 —— **封闭**(§4.2)。加一格是拍板件,不是随手件。 */
 export type BlockActionVerb = 'copy' | 'download' | 'view-source' | 'zoom'
 
+/**
+ * 「到时候去取」的取件口(P3)。
+ *
+ * `download.png` / `zoom` 要的是**画完之后**的那份 SVG,而 `def.actions` 是在渲染
+ * 之前就被壳调用的 —— 声明的时刻还没有字节。所以这两格给的不是内容,是一个读
+ * 渲染缓存的取件口:点下去那一刻现取。取不到(还在渲染 / 渲染失败)就什么都不做,
+ * 不开一个空浮层、不落一个空文件。
+ *
+ * 它是**壳与块之间**的一个函数,不是模型里的一个函数 —— `BlockModel` 仍然是纯数据。
+ */
+export type SvgSource = () => string | undefined
+
 export type BlockAction =
   /** 进剪贴板。`text` 是**已经序列化好的那份**——序列化归块,写剪贴板归壳。 */
   | { verb: 'copy'; what: 'markdown' | 'csv' | 'source' | 'column'; text: string }
-  /** 落文件。P0 没有执行器,声明了也不会露出(见 shell/actions.ts)。 */
-  | { verb: 'download'; what: 'csv' | 'png' | 'svg'; filename: string }
+  /** 落文件。`svg` 缺席 = 这一格还没有执行器,壳会把它筛掉(见 shell/actions.ts)。 */
+  | { verb: 'download'; what: 'csv' | 'png' | 'svg'; filename: string; svg?: SvgSource }
   /** 原地看源码。执行器是壳自己的状态,不需要块提供任何东西。 */
   | { verb: 'view-source' }
-  /** QuickLook 同族浮层。P0 没有执行器。 */
-  | { verb: 'zoom' }
+  /** 放大到浮层。同 download:内容是点下去那一刻现取的。 */
+  | { verb: 'zoom'; svg?: SvgSource }
 
-/** 檐上的三格:左端身份(id/meta,小写 mono 灰)· 中段标题。 */
+/**
+ * 檐上的几格:左端身份(id/meta,小写 mono 灰)· 中段标题 · 增删读数。
+ *
+ * `stat` 是 P3 为 diff 檐加的一格,**是数据不是节点**:它长什么样(符号、颜色、
+ * 顺序、字号)由壳一次说了算,块只报「加了几行删了几行」。写成 `ReactNode` 型的
+ * 标题当然也能画出来,但那等于给每个块开了一道往檐上塞任意 UI 的口子 ——
+ * 壳的整条分界(铁律 3)靠的就是块**没有**这个机会。
+ */
 export interface BlockChrome {
   id?: string
   meta?: string
   title?: string
+  stat?: { add: number; del: number }
 }
 
 export interface BlockDef<M extends BlockModel = BlockModel> {
@@ -63,6 +83,14 @@ export interface BlockDef<M extends BlockModel = BlockModel> {
   chrome?: (model: M) => BlockChrome
   /** 动作声明。壳画前 1–2 个 + ⋯ 菜单。 */
   actions?: (model: M, ctx: BlockCtx) => BlockAction[]
+  /**
+   * 檐上**露出**几个动作(默认 2,其余进 ⋯ 菜单)。
+   *
+   * §4.2 那句「前 1–2 个」里的 1 就是这一格:图卡定稿只在檐上留一个「放大」,
+   * 「下载 PNG / 查看源码」都收进 ⋯。这是**露出预算**,不是一个新动作词 ——
+   * 词表照旧封闭,顺序照旧由块的声明决定。
+   */
+  frontActions?: 1 | 2
   /** 流式契约:append = 可半成品渲染(code);atomic = 闭合才画(table/figure)。 */
   streaming: 'append' | 'atomic'
   /** 重渲染器懒加载(shiki / mermaid / katex)。失败走降级,不炸整块。 */

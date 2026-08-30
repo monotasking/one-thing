@@ -1,0 +1,62 @@
+/*
+ * 图块本体 —— 定稿的**净卡**:白面、居中、sp-5 内边距,别的什么都没有。
+ * 横滚与限高折叠归壳(BlockShell.module.css 的 .body)。颜色零字面值。
+ */
+
+.canvas {
+  display: flex;
+  justify-content: center;
+  /*
+   * 定稿要「白面居中 padding sp-5」。白面**不用再上一层底色**:卡片本身就是
+   * surface-2(白),再铺一层同色的面只是多一个节点;真铺 surface-0 反而更暗,
+   * 读起来像图被压在一块灰板上。
+   *
+   * 内边距是**补差**:壳的 .body 已经给了四边 sp-3(12px),这里补到 sp-5(24px)。
+   * 直接写 sp-5 会叠成 36px —— 定稿量的是「图到卡片边」的距离,不是「图到 body 边」。
+   */
+  padding: calc(var(--sp-5) - var(--sp-3));
+}
+
+/*
+ * 装 SVG 的那一层吃满一行,图在里面居中。
+ *
+ * mermaid 交出来的 SVG 是 `width="100%"` + 一条行内 `max-width:<自然宽>px`。给这一层
+ * 一个确定的可用宽度(`flex:1 + min-width:0`),那条 100% 才有东西可参照;真正的
+ * 落地宽度仍由 mermaid 那条行内上限说了算 —— **卡片里的图是原尺寸**(真机量到
+ * 266×366,与它自己的 viewBox 逐像素相同),不为了填满一行被拉大。放大浮层是另一回事:
+ * 那里会把上限掀掉(见 shell/ZoomOverlay.module.css)。
+ */
+.figure {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 自然宽由 mermaid 的行内 max-width 定,这里只负责居中与不变形。 */
+.figure > svg {
+  display: block;
+  margin: 0 auto;
+  height: auto;
+}
+
+/* ── 渲染失败:一行灰说明 + 源码 ─────────────────────────────────────── */
+
+.failed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* text-3 而不是 danger:一张图没画出来是内容的小意外,不是系统故障。 */
+.failureLine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.failureReason {
+  font-family: var(--font-mono);
+  color: var(--text-4);
+  overflow-wrap: anywhere;
+}

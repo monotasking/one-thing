@@ -50,6 +50,28 @@
   color: var(--text-4);
 }
 
+/*
+ * 增删读数:两枚色字,不是徽章 —— 没有底、没有边、没有内边距,只有颜色。
+ * 与身份那两格同号字同基线(见 BlockShell.tsx 的 DiffStat 注)。
+ */
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+}
+
+.statAdd {
+  color: var(--ok);
+}
+
+.statDel {
+  color: var(--danger);
+}
+
 .title {
   flex: 1;
   min-width: 0;
