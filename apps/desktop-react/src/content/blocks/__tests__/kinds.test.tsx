@@ -88,7 +88,24 @@ describe('P1 六块上屏', () => {
     expect(screen.getByText('复制 CSV')).toBeTruthy()
   })
 
-  it('悬到单元格,整列的列号写在容器上(淡亮由 CSS 认这个属性)', () => {
+  /*
+   * 列感应**只归表头**(08-30 报障:身体格也感应 → 行 hover 与整列淡亮叠成十字准星)。
+   * 三条一起看才说得清这件事:身体格不感应 / 表头感应 / 从表头滑进表体后列光要灭。
+   */
+  it('悬到列头,整列的列号写在容器上(淡亮由 CSS 认这个属性)', () => {
+    const { container } = draw({
+      kind: 'table',
+      head: [text('a'), text('b')],
+      rows: [[text('1'), text('2')]],
+    })
+    const table = container.querySelector('table')!
+    fireEvent.mouseEnter(container.querySelectorAll('thead th')[1])
+    expect(table.getAttribute('data-hover-col')).toBe('1')
+    fireEvent.mouseLeave(table)
+    expect(table.getAttribute('data-hover-col')).toBeNull()
+  })
+
+  it('身体格不感应列:悬到 td,容器上一个列号都不写', () => {
     const { container } = draw({
       kind: 'table',
       head: [text('a'), text('b')],
@@ -96,8 +113,27 @@ describe('P1 六块上屏', () => {
     })
     const table = container.querySelector('table')!
     fireEvent.mouseEnter(container.querySelectorAll('tbody td')[1])
-    expect(table.getAttribute('data-hover-col')).toBe('1')
-    fireEvent.mouseLeave(table)
+    expect(table.getAttribute('data-hover-col')).toBeNull()
+  })
+
+  it('从列头滑进表体,列光当场灭(整张表还没被离开,只有 thead 那一层管得着)', () => {
+    const { container } = draw({
+      kind: 'table',
+      head: [text('a'), text('b')],
+      rows: [[text('1'), text('2')]],
+    })
+    const table = container.querySelector('table')!
+    fireEvent.mouseEnter(container.querySelectorAll('thead th')[0])
+    expect(table.getAttribute('data-hover-col')).toBe('0')
+    /*
+     * 必须带 relatedTarget:React 的 enter/leave 是从 mouseout 那一对里合成的,
+     * 落点仍在表内时 **table 的 onMouseLeave 不会响**(它不是被离开的那一层),
+     * 响的只有 thead。不带 relatedTarget 的话相当于「鼠标离开了整个文档」,
+     * 连 table 那层都会响,这条就白测了。
+     */
+    fireEvent.mouseOut(container.querySelector('thead')!, {
+      relatedTarget: container.querySelector('tbody td')!,
+    })
     expect(table.getAttribute('data-hover-col')).toBeNull()
   })
 

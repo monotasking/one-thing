@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { BlockShell } from '../shell/BlockShell'
@@ -52,6 +54,36 @@ const codeModel: BlockModel = {
   source: 'const answer = 42',
   closed: true,
 }
+
+/*
+ * 折叠态**不许成为纵向滚动容器**(08-30 用户报「滚轮进块就滚不动页面」)。
+ *
+ * 这一条只能在 CSS 文本上断言:jsdom 不排版、CSS Modules 在测试里也只剩类名映射,
+ * 「滚轮到底传不传出去」在这层根本量不到(真机那半边由 CDP mouseWheel 收)。
+ * 所以判据落在源文件的两个字面事实上,把病历钉死成机器守得住的东西。
+ */
+describe('块体的滚动契约', () => {
+  // vitest 的 cwd 就是这个应用的根(import.meta.url 在 vite 变换后不是 file: 协议)。
+  const css = readFileSync(
+    resolve(process.cwd(), 'src/content/blocks/shell/BlockShell.module.css'),
+    'utf8',
+  )
+  // 注释里出现的 overscroll-behavior 不算数,只看真正的声明行。
+  const declarations = css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => line.trim())
+
+  it('overscroll 只锁横轴:没有裸的双轴简写', () => {
+    expect(declarations.filter((line) => /^overscroll-behavior\s*:/.test(line))).toEqual([])
+    expect(declarations).toContain('overscroll-behavior-x: contain;')
+  })
+
+  it('纵向显式 hidden:横滚的 auto 不许把另一轴带成 auto', () => {
+    expect(declarations).toContain('overflow-x: auto;')
+    expect(declarations).toContain('overflow-y: hidden;')
+  })
+})
 
 describe('单块错误边界:降级成源码,不是一张错误卡', () => {
   beforeEach(() => {

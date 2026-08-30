@@ -121,11 +121,22 @@
 .body {
   padding: var(--sp-3);
   /*
-   * 横滚归块自己,别把长行推给整条聊天流。overscroll-behavior 不是装饰:
+   * 横滚归块自己,别把长行推给整条聊天流。overscroll-behavior-x 不是装饰:
    * 少了它,横向滚到头会把这一下传给外面的滚动容器。
+   *
+   * ── 两条只许写单轴的病历(08-30 用户报「滚轮进块就滚不动页面」)───────────
+   * ① 写成 `overscroll-behavior: contain` 是**双轴简写**:注释的意图明明只有横向,
+   *    却把纵向也锁死了 —— 滚轮悬在块上时既滚不动块(折叠态本来就不该内滚)、
+   *    到边界也不外传,用户必须把鼠标挪开才能滚页面。
+   * ② `overflow-y` 必须显式 hidden:CSS 规范规定一轴是 auto/scroll 时,另一轴的
+   *    `visible` 会被**强制计算成 auto**。于是 `overflow-x:auto` + `max-height`
+   *    让被钳住的块**意外变成了纵向滚动容器** —— 而折叠的设计是「裁断 + 遮罩 +
+   *    展开钮」,从来不含内滚。显式 hidden 之后折叠态纵向根本不是滚动容器,
+   *    滚轮走原生手势链路直接滚页面;展开态 max-height:none 没有纵向溢出,不受影响。
    */
   overflow-x: auto;
-  overscroll-behavior: contain;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   max-height: var(--block-clamp-h);
   /* 超出部分渐隐 —— 用遮罩而不是叠一层渐变 div:后者会盖住底下的字并吃掉点击。 */
   mask-image: linear-gradient(to bottom, var(--surface-2) calc(100% - var(--sp-6)), transparent);

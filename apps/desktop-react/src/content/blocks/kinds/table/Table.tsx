@@ -19,7 +19,9 @@ const CopyIcon = resolveIcon('Copy')
  *  · **无斑马**。隔行底色是给「一屏几十行、只需扫过去」的报表准备的;聊天里的表通常
  *    三五行,斑马纹在这个尺度上只是噪声。
  *  · **行 hover**:横向读一行时给一条淡底,这是读表真正需要的引导。
- *  · **列感应**:悬到任意单元格,**整列**淡亮;列头同时露出 ⧉ 复制列。
+ *  · **列感应只归表头**:悬到**列头**,整列淡亮 + 该列头露出 ⧉ 复制列。身体格不感应
+ *    (08-30 用户报障:td 上也挂了 onMouseEnter,读一行时行 hover 与整列淡亮叠成
+ *    十字准星,一片糊)。表头是「这一列是什么」的把手,列操作就长在它上面。
  *  · **数字列右对齐 + mono**:判据是列里装的是什么(numericColumns),不是作者写没写
  *    冒号 —— 理由在 serialize.ts。
  *
@@ -41,7 +43,12 @@ export function Table({ model }: { model: TableModel }) {
       data-hover-col={hoverCol ?? undefined}
       onMouseLeave={() => setHoverCol(null)}
     >
-      <thead>
+      {/*
+       * onMouseLeave 挂在 thead 上,不是只靠 table 那一层:从列头往下滑进表体时,
+       * 整张表并没有被离开,少了这一下列光会滞留在原地(容器级 onMouseLeave 只管
+       * 「离开整张表」这一件事)。
+       */}
+      <thead onMouseLeave={() => setHoverCol(null)}>
         <tr>
           {model.head.map((cell, col) => (
             <th
@@ -80,11 +87,7 @@ export function Table({ model }: { model: TableModel }) {
         {model.rows.map((row, index) => (
           <tr key={index} className={s.row}>
             {row.map((cell, col) => (
-              <td
-                key={col}
-                className={numeric[col] ? `${s.td} ${s.numeric}` : s.td}
-                onMouseEnter={() => setHoverCol(col)}
-              >
+              <td key={col} className={numeric[col] ? `${s.td} ${s.numeric}` : s.td}>
                 <InlineRun nodes={cell} />
               </td>
             ))}

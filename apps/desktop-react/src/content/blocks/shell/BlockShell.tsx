@@ -230,8 +230,10 @@ function BlockActions({
 /**
  * 块内横滚 + 限高折叠。
  *
- * 横滚是 CSS 的事(`overflow-x:auto` + `overscroll-behavior:contain` —— 后者不是
- * 装饰:少了它,块滚到头会把滚动传给整条聊天流,手感上是「一划就飞走」)。
+ * 横滚是 CSS 的事(`overflow-x:auto` + `overscroll-behavior-x:contain` —— 后者不是
+ * 装饰:少了它,块横向滚到头会把滚动传给整条聊天流,手感上是「一划就飞走」)。
+ * **只锁横轴**:纵向另有 `overflow-y:hidden`,折叠态压根不是滚动容器,滚轮照常
+ * 滚页面(写成双轴简写会把滚轮吞在块上,病历在 BlockShell.module.css 的 .body)。
  *
  * 限高折叠要量:超了才画渐隐和展开钮,没超一个像素都不该动。量的是
  * `scrollHeight > clientHeight`,在布局阶段做(useLayoutEffect),所以用户看不到
