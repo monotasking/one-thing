@@ -22,6 +22,11 @@
  * `@main` handler 逐字同义;`transport:'http'` 夹进 `context.sandboxRoot`,
  * 越界回结构化失败,**文案逐字沿用旧 server 路由的原话**。
  *
+ * 2026-08-30 用户拍板加了一条豁免:**本机可信宿主的 HTTP 面与 IPC 同权**
+ * (`resolveFilesSandbox` 与 `server/local-trust.ts`)。下面那张夹紧表因此读作
+ * 「http 且未声明本机可信」这一支;声明了可信的那一支走的是 `ipc` 那一列,一格
+ * 不多一格不少。独立部署(非回环)的 server 不声明,表原样生效。
+ *
  * 逐条对照旧 `server/runtime.ts` 的 `files` adapter,一条不多一条不少:
  *
  * | 方法            | http 夹哪些路径              | 越界文案(逐字沿用)                                              |
@@ -101,6 +106,7 @@ import {
   stopWorkspaceWatch,
 } from '../../wiring/files/workspace-watch.js'
 import { walkWorkspaceFiles } from '../../wiring/files/workspace-walk.js'
+import { isFilesHostLocallyTrusted } from '../../server/local-trust.js'
 import {
   resolveInsideSandbox,
   resolveRpcSandbox,
@@ -117,6 +123,32 @@ import type { ConsoleLikePort } from '@onething/runtime/logging'
 const log = getLogger('rpc.files')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
 const consoleLog: ConsoleLikePort & OnethingDirectoryIpcLogger & OnethingFilesIpcLogger = consolePort(log)
+
+/**
+ * 本域的沙箱判据 —— 通用判据 + 一条**本机宿主豁免**(2026-08-30 用户拍板)。
+ *
+ * 通用的 `resolveRpcSandbox` 只问 transport:`'http'` 就夹。那条判据默认「联网
+ * 宿主 = 别人的机器」,把本机自己那只 HTTP 面(桌面内嵌面 / 回环上的
+ * `server:start`)也一起夹进了 `<workspaceRoot>/<uid>/<wid>` 那棵空子树 ——
+ * 文件树 / 检索 / reveal 对仓内任何真实路径全被拒。
+ *
+ * 拍板:**本机可信宿主的 HTTP 面与 IPC 同权**(桌面 parity 既有裁定的延伸)。
+ * 可信与否由装配处声明(`server/local-trust.ts`),请求信封一个字都没变 ——
+ * 「身份由宿主 mint」的原则不动。豁免时走的就是桌面那条路,`resolveInsideSandbox`
+ * 的未夹紧分支照样 `resolve()`,**没有引入任何新的放宽**。
+ *
+ * 独立部署(非回环绑定)的 server 一律不声明,`resolveRpcSandbox` 的三条不变量
+ * 原样生效 —— 含「http 却没有 sandboxRoot = 接线 bug,直接抛」的 fail-closed。
+ *
+ * 只有 files 域改了判据。`project-dirs` / `markdown` 等域仍然直问
+ * `resolveRpcSandbox`,那是另外的拍板。
+ */
+function resolveFilesSandbox(context: RpcDispatchContext): RpcSandbox {
+  if (context.transport === 'http' && isFilesHostLocallyTrusted()) {
+    return { confined: false }
+  }
+  return resolveRpcSandbox(context)
+}
 
 /** 夹不住时的答案 —— 文案由调用点逐条给(旧 server 路由每条各有原话)。 */
 function pathError(error: string): { success: false; error: string } {
@@ -144,7 +176,7 @@ function homeOf(sandbox: RpcSandbox): string {
 
 export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
   async list(request, context = DESKTOP_RPC_CONTEXT) {
-    const sandbox = resolveRpcSandbox(context)
+    const sandbox = resolveFilesSandbox(context)
     const homeDir = homeOf(sandbox)
 
     // 桌面:cwd 原样递下去(缺席由投影自己兜底);http:缺席 = 沙箱根,给了就夹。
@@ -190,7 +222,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
   },
 
   async rollback(request, context = DESKTOP_RPC_CONTEXT) {
-    const sandbox = resolveRpcSandbox(context)
+    const sandbox = resolveFilesSandbox(context)
 
     let auditPath = request?.auditPath
     let filePath = request?.filePath
@@ -228,7 +260,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
   },
 
   async listDirs(request, context = DESKTOP_RPC_CONTEXT) {
-    const sandbox = resolveRpcSandbox(context)
+    const sandbox = resolveFilesSandbox(context)
     const homeDir = homeOf(sandbox)
 
     let basePath = request?.basePath
@@ -315,7 +347,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
   },
 
   async stat(request, context = DESKTOP_RPC_CONTEXT) {
-    const sandbox = resolveRpcSandbox(context)
+    const sandbox = resolveFilesSandbox(context)
     const path = clampWith(sandbox, request?.path)
     if (path === null) {
       return pathError('Path must stay inside the workspace sandbox root.')
@@ -351,7 +383,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
   },
 
   async rename(request, context = DESKTOP_RPC_CONTEXT) {
-    const sandbox = resolveRpcSandbox(context)
+    const sandbox = resolveFilesSandbox(context)
     const oldPath = clampWith(sandbox, request?.oldPath)
     const newPath = clampWith(sandbox, request?.newPath)
     if (oldPath === null || newPath === null) {
@@ -391,7 +423,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
   },
 
   async watchStart(request, context = DESKTOP_RPC_CONTEXT) {
-    const sandbox = resolveRpcSandbox(context)
+    const sandbox = resolveFilesSandbox(context)
     // 桌面:投影桩,与迁移前逐字一致(全仓没有 FILE_WATCH_EVENT 的发送方)。
     if (!sandbox.confined) return startOnethingFileWatchForIpc({ root: request?.root })
     const root = resolveInsideSandbox(sandbox, request?.root ?? '')
@@ -402,7 +434,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
   },
 
   async watchStop(request, context = DESKTOP_RPC_CONTEXT) {
-    const sandbox = resolveRpcSandbox(context)
+    const sandbox = resolveFilesSandbox(context)
     if (!sandbox.confined) return stopOnethingFileWatchForIpc({ root: request?.root })
     const root = resolveInsideSandbox(sandbox, request?.root ?? '')
     if (!root) {
@@ -421,7 +453,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
  * null、答案会变成沙箱文案 —— 那是桌面上一次没人要的行为变化。
  */
 function clamp(context: RpcDispatchContext, path: string | undefined): string | null {
-  return clampWith(resolveRpcSandbox(context), path)
+  return clampWith(resolveFilesSandbox(context), path)
 }
 
 function clampWith(sandbox: RpcSandbox, path: string | undefined): string | null {

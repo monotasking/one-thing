@@ -19,6 +19,7 @@ import {
   type OnethingServerRuntime,
 } from './runtime.js'
 import { removeHttpDiscovery, writeHttpDiscovery } from './discovery.js'
+import { configureFilesLocalTrust } from './local-trust.js'
 
 export interface EmbeddedOnethingHttpServerOptions {
   /**
@@ -91,6 +92,15 @@ export async function startEmbeddedOnethingHttpServer(
     workspaceRoot: runtime.workspaceRoot,
   })
 
+  // files 域的本机宿主豁免(2026-08-30 拍板):这只面**无条件可信** —— 它跑在桌面
+  // 主进程里、只服务本机同一个用户,token 写在 0600 的发现文件里。声明之后
+  // `POST /api/rpc` 的 files 域与桌面 IPC 同权;`ONETHING_SERVER_FILES_SANDBOX=1`
+  // 仍然压得住它(端口每次现读)。
+  const restoreFilesTrust = configureFilesLocalTrust({
+    origin: 'desktop-embedded',
+    host,
+  })
+
   try {
     const port = await new Promise<number>((resolve, reject) => {
       const onError = (error: NodeJS.ErrnoException): void => {
@@ -133,6 +143,7 @@ export async function startEmbeddedOnethingHttpServer(
       server,
       async close() {
         if (current === embedded) current = null
+        restoreFilesTrust()
         removeHttpDiscovery()
         await new Promise<void>(resolve => server.close(() => resolve()))
         // 这只 runtime 不拥有 backend(ownsBackend: false),shutdown 只收自己的
@@ -143,7 +154,9 @@ export async function startEmbeddedOnethingHttpServer(
     current = embedded
     return embedded
   } catch (error) {
-    // 监听失败就把刚建起来的 runtime 收回去,别留一只挂着订阅的僵尸。
+    // 监听失败就把刚建起来的 runtime 收回去,别留一只挂着订阅的僵尸 ——
+    // 连同那条还没派上用场的本机可信声明。
+    restoreFilesTrust()
     await runtime.shutdown().catch(() => {})
     throw error
   }

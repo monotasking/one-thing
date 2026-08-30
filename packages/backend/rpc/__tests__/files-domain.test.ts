@@ -19,6 +19,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { filesRouter } from '@shared/ipc/files.js'
+import {
+  configureFilesLocalTrust,
+  resetFilesLocalTrustForTests,
+} from '../../server/local-trust.js'
 
 const ripgrep = vi.hoisted(() => ({ listFiles: vi.fn() }))
 const shell = vi.hoisted(() => ({ revealPath: vi.fn() }))
@@ -79,11 +83,18 @@ describe('files RPC domain', () => {
     connected.getConnectedDirectoriesForSession.mockReset().mockReturnValue([])
 
     sandboxRoot = await mkdtemp(join(tmpdir(), 'onething-files-domain-'))
+
+    // 本机宿主豁免是**进程级单槽**:每条用例从"未声明 + 无强制开关"起跑,
+    // 否则一条用例的声明会漏进下一条。
+    resetFilesLocalTrustForTests()
+    delete process.env.ONETHING_SERVER_FILES_SANDBOX
   })
 
   afterEach(() => {
     dispose?.()
     dispose = undefined
+    resetFilesLocalTrustForTests()
+    delete process.env.ONETHING_SERVER_FILES_SANDBOX
     vi.restoreAllMocks()
   })
 
@@ -141,6 +152,86 @@ describe('files RPC domain', () => {
     expect(response.ok).toBe(false)
     if (response.ok) throw new Error('expected a rejection')
     expect(response.error.message).toContain('sandboxRoot')
+  })
+
+  // ── 本机宿主豁免:三态 ──────────────────────────────────────────
+  //
+  // 2026-08-30 用户拍板的安全语义变更。同一条 http 请求、同一条仓外真实路径,
+  // 三种装配现状要给三种答案:
+  //  1. **未声明**(独立部署 / 非回环 / 单元测试默认)= 现状,照夹;
+  //  2. **声明可信**(桌面内嵌面 / 回环 server)= 与桌面 IPC 同权,放行;
+  //  3. **强制收紧**(`ONETHING_SERVER_FILES_SANDBOX=1`)= 即便声明了也照夹。
+  //
+  // 用的是 `readContent` 与 `listDirectory` 两口,因为它们的夹紧文案不同 ——
+  // 三态各自比对的是**这一口自己的**那句原话,而不是一句通用错误。
+
+  describe('local host trust exemption', () => {
+    let outside: string
+
+    beforeEach(async () => {
+      // 沙箱根之外的一棵真目录 —— React 壳要的正是这种"仓内真实路径"。
+      outside = await mkdtemp(join(tmpdir(), 'onething-files-untrusted-'))
+      await writeFile(join(outside, 'real.txt'), 'from the real disk', 'utf-8')
+    })
+
+    it('clamps http when no host declared local trust (unchanged behaviour)', async () => {
+      expect(unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot))))
+        .toEqual({ success: false, error: 'File path must stay inside the workspace sandbox root.' })
+      expect(unwrap(await call('listDirectory', { path: outside }, http(sandboxRoot))))
+        .toEqual({ success: false, error: 'Directory path must stay inside the workspace sandbox root.' })
+    })
+
+    it('gives http the same rights as desktop IPC once the host declares local trust', async () => {
+      configureFilesLocalTrust({ origin: 'loopback-server', host: '127.0.0.1' })
+
+      const read = unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot)))
+      expect(read).toMatchObject({ success: true, content: 'from the real disk' })
+
+      const listed = unwrap(await call('listDirectory', { path: outside }, http(sandboxRoot)))
+      expect(listed).toMatchObject({ success: true })
+      expect(listed.entries).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: 'real.txt' })]),
+      )
+
+      // 逐字同权:桌面上空串由投影自己答,豁免之后 http 也是这一句 ——
+      // 不是沙箱文案。
+      expect(unwrap(await call('readContent', { path: '' }, http(sandboxRoot))))
+        .toEqual({ success: false, error: 'File path is required' })
+    })
+
+    it('lets ONETHING_SERVER_FILES_SANDBOX=1 override a declared trust', async () => {
+      configureFilesLocalTrust({ origin: 'desktop-embedded', host: '127.0.0.1' })
+      process.env.ONETHING_SERVER_FILES_SANDBOX = '1'
+
+      expect(unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot))))
+        .toEqual({ success: false, error: 'File path must stay inside the workspace sandbox root.' })
+      expect(unwrap(await call('listDirectory', { path: outside }, http(sandboxRoot))))
+        .toEqual({ success: false, error: 'Directory path must stay inside the workspace sandbox root.' })
+
+      // 强制收紧不是"把声明抹掉":开关一撤,声明照旧生效(端口每次现读)。
+      delete process.env.ONETHING_SERVER_FILES_SANDBOX
+      expect(unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot))))
+        .toMatchObject({ success: true, content: 'from the real disk' })
+    })
+
+    it('restores the previous declaration instead of clearing the slot', async () => {
+      const restoreOuter = configureFilesLocalTrust({ origin: 'desktop-embedded' })
+      const restoreInner = configureFilesLocalTrust({ origin: 'loopback-server' })
+      // 内层让位(桌面内嵌面与 server:start 在同一进程里先后起落),外层还在。
+      restoreInner()
+      expect(unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot))))
+        .toMatchObject({ success: true })
+      restoreOuter()
+      expect(unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot))))
+        .toEqual({ success: false, error: 'File path must stay inside the workspace sandbox root.' })
+    })
+
+    it('still fails closed on a networked context with no sandbox root and no trust', async () => {
+      const response = await call('stat', { path: '/tmp' }, { transport: 'http' })
+      expect(response.ok).toBe(false)
+      if (response.ok) throw new Error('expected a rejection')
+      expect(response.error.message).toContain('sandboxRoot')
+    })
   })
 
   // ── 桌面:不夹 ──────────────────────────────────────────────────

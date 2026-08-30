@@ -14,6 +14,7 @@ import {
   removeHttpDiscovery,
   writeHttpDiscovery,
 } from '@onething/backend/server/discovery.js'
+import { configureFilesLocalTrust } from '@onething/backend/server/local-trust.js'
 import { configureLogging } from '@onething/backend/wiring/logging/index.js'
 import { warnOnForeignCoreForEventsRead } from '@onething/backend/session/read-mode.js'
 import { randomBytes } from 'node:crypto'
@@ -128,6 +129,12 @@ warnOnForeignCoreForEventsRead(
 )
 log.info('runtime created', { ms: Date.now() - runtimeCreateStart })
 log.info('logging to file', { path: logging.logPath })
+// files 域的本机宿主豁免(2026-08-30 拍板,`@onething/backend/server/local-trust.ts`):
+// **只有回环绑定才声明可信**。回环 = 服务的是本机同一个用户的同一个 store,那时
+// `POST /api/rpc` 的 files 面与桌面 IPC 同权;绑到别的地址上就是"别人也够得着"的
+// 独立部署,护栏原样不动。`ONETHING_SERVER_FILES_SANDBOX=1` 压得住这条声明。
+// 端口自己会按现状打一行日志(可信 / 强制收紧 / 保持夹紧)。
+configureFilesLocalTrust(isLoopback ? { origin: 'loopback-server', host } : null)
 const server = createOnethingHttpServer({
   runtime: serverRuntime.runtime,
   corsOrigin,
