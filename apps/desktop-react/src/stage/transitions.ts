@@ -221,18 +221,25 @@ export function resolveOpen(
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): PlacementMemory {
   /*
-   * 08-30 拍板二段:**记忆只补参数,不改形态**。
+   * ── 记忆语义的定案(08-30 晚,用户逐字给出流程后第三版,前两版是误解)──────
    *
-   * 一段(同日早些时候)只把舞台钳出了打开档,edge 记忆仍在还原 —— 于是用户把一块
-   * 曾钉过 bottom 的瓦舞台化再关掉,下次点开又被记忆拽回钉边:「点开是什么形」依旧
-   * 不可预期,这正是统一令要消灭的东西。所以规则收干净:点开的**形态**永远由默认档
-   * 一个人说了算;记忆只在与档同形态时补那些好用的参数(浮窗的身量、钉边的位置),
-   * 异形态的记忆不参与打开(它还活着 —— Dock 右键菜单的记忆勾选、撕拽复原仍读它)。
+   * **记忆 = 最后一次显式落点;打开 = 还原记忆;无记忆才用默认档(浮窗)。**
+   *
+   * 用户的流程逐字:初始打开 → 浮窗;把它钉到右边 → 记忆=右;关掉再点开 →
+   * 出现在右;在右边把它**弹出来** → 这个手势本身把记忆改写成浮窗(openAs
+   * 落定即写,写侧从来是对的);关掉再开 → 浮窗。
+   *
+   * 前两版为什么错:一版只钳舞台、二版「档定形态记忆只补参数」—— 都是把
+   * 「打开统一浮窗」误读成了「打开永远浮窗」。用户要统一的是**无记忆时的默认形**
+   * (popup/浮窗二选一的那次拍板),不是要抹掉「我亲手钉过它」这件事实。
+   * 于是二版把 pin→关→开 变成了浮窗,用户第三次报障后才说清。教训:行为模型
+   * 没对齐前,补丁越勤越糟 —— 先复述流程再动手。
+   *
+   * 舞台记忆同样还原(它也是显式落点:浮窗放大钮/双击写下的);v5 迁移清过一次
+   * 存量 stage 记忆属于当时二版语义的一次性动作,不再重复。档的残值钳制
+   * (clampDefaultOpen)只作用于**默认档**,与记忆无关。
    */
-  const placement = placementForOpen(defaultOpen)
-  const remembered = state.memory[id]
-  if (remembered && remembered.kind === placement.kind) return remembered
-  return defaultOpenMemory(state, defaultOpen, viewport)
+  return state.memory[id] ?? defaultOpenMemory(state, defaultOpen, viewport)
 }
 
 /* ── 浮窗几何(纯算术,与 state 无关,所以能单独测) ────────────────────────── */

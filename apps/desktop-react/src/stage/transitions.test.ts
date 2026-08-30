@@ -109,26 +109,35 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
     expect(resolveOpen(base, 'files', 'float', VP)).toEqual(M_FLOAT)
   })
 
-  it('记忆只补参数,不改形态:与档同形态的记忆生效(浮窗身量 / 钉边位置)', () => {
+  it('记忆赢:打开还原最后一次显式落点,档只在无记忆时说话(08-30 晚定案)', () => {
     const rect = { x: 1, y: 2, w: 300, h: 400 }
     expect(resolveOpen(withMemory('files', { kind: 'float', rect }), 'files', 'float', VP)).toEqual({
       kind: 'float',
       rect,
     })
+    // 异形态照样还原 —— 「我亲手钉过它」是事实,档抹不掉它。
     expect(
-      resolveOpen(withMemory('files', { kind: 'edge', side: 'left', index: 2 }), 'files', 'pinned', VP),
+      resolveOpen(withMemory('files', { kind: 'edge', side: 'left', index: 2 }), 'files', 'float', VP),
     ).toEqual({ kind: 'edge', side: 'left', index: 2 })
+    expect(resolveOpen(withMemory('files', { kind: 'stage' }), 'files', 'float', VP)).toEqual({
+      kind: 'stage',
+    })
   })
 
-  it('异形态的记忆不参与打开 —— 曾钉过 bottom 的瓦,浮窗档下点开仍是浮窗(08-30 用户报障)', () => {
-    const pinned = withMemory('files', { kind: 'edge', side: 'bottom', index: 0 })
-    expect(resolveOpen(pinned, 'files', 'float', VP)).toEqual(M_FLOAT)
-  })
-
-  it('存量的 stage 记忆同样不参与 —— 点开永不再出 popup(08-30 拍板)', () => {
-    const st = withMemory('files', { kind: 'stage' })
-    expect(resolveOpen(st, 'files', 'float', VP)).toEqual(M_FLOAT)
-    expect(resolveOpen(st, 'files', 'pinned', VP)).toEqual({ kind: 'edge', side: 'right', index: 0 })
+  it('用户流程逐字(08-30 晚定案):初开浮窗 → 钉右 → 关 → 开在右 → 弹出 → 关 → 开成浮窗', () => {
+    // 初始无记忆:默认档 = 浮窗。
+    expect(resolveOpen(base, 'sessions', 'float', VP)).toEqual(M_FLOAT)
+    // 手势一:钉到右边(显式落点,openAs 落定即写记忆)。
+    let st = openAs(base, 'sessions', { kind: 'edge', side: 'right' }, VP)
+    st = closeToDock(st, 'sessions')
+    expect(resolveOpen(st, 'sessions', 'float', VP)).toEqual({ kind: 'edge', side: 'right', index: 0 })
+    // 按记忆开回右边,再弹出成浮窗(手势二改写记忆),关掉。
+    st = openFromMemory(st, 'sessions', resolveOpen(st, 'sessions', 'float', VP), VP)
+    st = edgeToFloat(st, 'sessions', VP)
+    st = closeToDock(st, 'sessions')
+    // 再开:浮窗(带弹出时落定的矩形)。
+    const resolved = resolveOpen(st, 'sessions', 'float', VP)
+    expect(resolved.kind).toBe('float')
   })
 
   it('记忆只作用于自己那一个 id —— 别的瓦照旧跟默认档', () => {
@@ -156,9 +165,14 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
     expect(clampDefaultOpen(undefined)).toBe('float')
     expect(clampDefaultOpen('pinned')).toBe('pinned')
     expect(clampDefaultOpen('float')).toBe('float')
-    // 完整场景:曾钉过右边(有 edge 记忆),档是残值 → 点开仍是浮窗,不还原钉边。
+    // 残值只影响**无记忆**的档兜底;有记忆时记忆照常还原(定案语义)。
     const pinnedOnce = withMemory('files', { kind: 'edge', side: 'right', index: 0 })
-    expect(resolveOpen(pinnedOnce, 'files', 'stage' as never, VP)).toEqual(M_FLOAT)
+    expect(resolveOpen(pinnedOnce, 'files', 'stage' as never, VP)).toEqual({
+      kind: 'edge',
+      side: 'right',
+      index: 0,
+    })
+    expect(resolveOpen(base, 'files', 'stage' as never, VP)).toEqual(M_FLOAT)
   })
 
   it('默认档补成记忆时,缺的那两件事按「就当它没来过」补', () => {
@@ -169,12 +183,10 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
     expect(defaultOpenMemory(base, 'float', VP)).toEqual(M_FLOAT)
   })
 
-  it('检索面板是普通的一块瓦:参与 resolveOpen 全套(stage 记忆同样被钳)', () => {
+  it('检索面板是普通的一块瓦:参与 resolveOpen 全套(记忆照常还原)', () => {
     expect(resolveOpen(base, 'search', 'float', VP)).toEqual(M_FLOAT)
     expect(resolveOpen(withMemory('search', { kind: 'stage' }), 'search', 'pinned', VP)).toEqual({
-      kind: 'edge',
-      side: 'right',
-      index: 0,
+      kind: 'stage',
     })
   })
 })
@@ -1073,7 +1085,7 @@ describe('位置记忆:按记忆恢复(index 钳制与同边合流)', () => {
     expect(back.floats.browser.x).toBeLessThanOrEqual(tiny.w - FLOAT_KEEP)
   })
 
-  it('点 Dock 图标走的就是这条路:形态永远由档定,异形态记忆不掺和', () => {
+  it('点 Dock 图标走的就是这条路:无记忆 → 档(浮窗);有记忆 → 还原记忆', () => {
     const remembered: StageState = {
       ...base,
       memory: { files: { kind: 'edge', side: 'left', index: 0 } },
@@ -1081,21 +1093,13 @@ describe('位置记忆:按记忆恢复(index 钳制与同边合流)', () => {
     expect(
       formOf(clickDockIcon(base, 'files', resolveOpen(base, 'files', 'float', VP), VP), 'files'),
     ).toBe('float')
-    // 曾钉过左边,但档是浮窗 —— 点开仍是浮窗(记忆只在 pinned 档下补它的位置)。
     const next = clickDockIcon(
       remembered,
       'files',
       resolveOpen(remembered, 'files', 'float', VP),
       VP,
     )
-    expect(formOf(next, 'files')).toBe('float')
-    const pinnedNext = clickDockIcon(
-      remembered,
-      'files',
-      resolveOpen(remembered, 'files', 'pinned', VP),
-      VP,
-    )
-    expect(placementOf(pinnedNext, 'files')).toEqual({ kind: 'edge', side: 'left' })
+    expect(placementOf(next, 'files')).toEqual({ kind: 'edge', side: 'left' })
   })
 })
 
