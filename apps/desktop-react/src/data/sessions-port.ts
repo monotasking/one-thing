@@ -1,8 +1,10 @@
 import type {
+  CreateSessionResponse,
   GetSessionMessagesPageResponse,
   GetSessionUserMarkersResponse,
   GetSessionsListResponse,
 } from '@shared/ipc/chat'
+import type { SessionMutationResponse, SessionsCreateRequest } from '@shared/ipc/sessions'
 import type { GetSessionSegmentsResponse } from '@shared/ipc/toc'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionLifecycleEvent } from '@renderer/platform/session-lifecycle'
@@ -14,15 +16,39 @@ import type { SessionLifecycleEvent } from '@renderer/platform/session-lifecycle
  * 失效)都是纯逻辑,不该为了测它去起一台 core。真实现是下面那一个,
  * 测试用 `configureSessionsPort` 换成假的。
  *
- * 形状是**平台调用面的子集**,不是新契约:六个方法逐条对应
- * `sessionsApi.listMeta / getSegments / getMessagesPage / getUserMarkers`、
- * `platformApi.onSessionEvent` 与 `platform/session-lifecycle` 的
- * `onSessionLifecycle`,一个字段都没有多。
+ * 形状是**平台调用面的子集**,不是新契约:八个方法逐条对应
+ * `sessionsApi.listMeta / getSegments / getMessagesPage / getUserMarkers /
+ * create / updateWorkingDirectory`、`platformApi.onSessionEvent` 与
+ * `platform/session-lifecycle` 的 `onSessionLifecycle`,一个字段都没有多。
  */
 export interface SessionsPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
   ready(): Promise<unknown>
   listMeta(): Promise<GetSessionsListResponse>
+  /**
+   * 建一条会话(D1 开工批)。
+   *
+   * **不带 name** 是刻意的:缺席时后端自己落 `'New Chat'`
+   * (`runtime/src/sessions/ipc-operations.ts` 的 `options.name || … || 'New Chat'`),
+   * 而会话标题是**存进账本的数据**不是界面文案 —— 由渲染层按当下语言现造一个,
+   * 换一次语言之后老会话的名字就成了说谎的那一格。默认名归后端,只有一个产地。
+   *
+   * 同理**不带 workspaceId**:新壳没有 space 概念(Vue 壳的 `currentSpaceId()`
+   * 在这里没有对应物),缺席 = default,不假装有一个当前空间。
+   */
+  create(request: SessionsCreateRequest): Promise<CreateSessionResponse>
+  /**
+   * 改工作目录 —— 「新会话落在哪个项目下」唯一的表达方式。
+   *
+   * `SessionsCreateRequest` **没有 workingDirectory 这一格**(去看契约),而项目分组
+   * 的判据恰恰是它(`expose/projection.ts` 的 `normalizeWorkingDirectory`)。所以
+   * 「在某个项目下新建」在线上就是两步:先建,再落目录 —— 与 Vue 壳
+   * (`stores/sessions.ts` 的草稿落地路径)是同一条路,不是这一层发明的。
+   */
+  updateWorkingDirectory(
+    sessionId: string,
+    workingDirectory: string | null,
+  ): Promise<SessionMutationResponse>
   getSegments(sessionId: string): Promise<GetSessionSegmentsResponse>
   getMessagesPage(sessionId: string, limit: number): Promise<GetSessionMessagesPageResponse>
   getUserMarkers(sessionId: string): Promise<GetSessionUserMarkersResponse>
@@ -71,6 +97,9 @@ async function realPort(): Promise<SessionsPort> {
     getMessagesPage: (sessionId, limit) =>
       sessionsApi.getMessagesPage({ sessionId, limit, anchor: 'tail' }),
     getUserMarkers: (sessionId) => sessionsApi.getUserMarkers({ sessionId }),
+    create: (request) => sessionsApi.create(request),
+    updateWorkingDirectory: (sessionId, workingDirectory) =>
+      sessionsApi.updateWorkingDirectory({ sessionId, workingDirectory }),
     onSessionEvent: (callback) => platformApi.onSessionEvent(callback),
     onSessionLifecycle: (callback) => onSessionLifecycle(callback),
   }

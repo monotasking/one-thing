@@ -238,12 +238,27 @@ export function Overview() {
               >
                 <ChevronRight className={s.enterIcon} strokeWidth={1.75} aria-hidden="true" />
               </Button>
+              {/*
+               * 在这一组下新建会话。D1 开工批之前它是个空壳(有按钮、没有 onClick)。
+               *
+               * 「这一组」→「哪个项目」的映射就是 `group.projectId`
+               * (expose/projection.ts 里唯一那份分组判据):项目组给出目录,
+               * 协作组与独立会话组是 null。
+               *
+               * **留账(协作组)**:协作组的 + 建出来的是一条普通会话,它会落进
+               * 「独立会话」组而不是协作组 —— 建房要 `kind:'room'` 加一份成员名册
+               * (`@shared/ipc/chat.ts` 的 `CreateSessionOptions.room`),那是一次
+               * 独立的入口设计,不在本批。要么后续给协作组换一个建房入口,
+               * 要么把它的 + 收掉;**在拍板之前不擅自隐藏**(见 08-18 判例)。
+               */}
               <Button
                 variant="ghost"
                 pill
                 iconOnly
                 className={s.plus}
+                data-testid={`group-plus-${group.id}`}
                 aria-label={t('expose.newSessionIn', { name: name ?? group.id })}
+                onClick={() => void useExposeStore.getState().newSession(group.projectId)}
               >
                 <Plus className={s.plusIcon} strokeWidth={1.75} aria-hidden="true" />
               </Button>

@@ -26,9 +26,17 @@ export const zh = {
   'agent.manage': '管理 Agents…',
   'agent.switchFailed': '切换 Agent 失败',
 
+  /* ── 会话(新建那条命令的命令名;标题本身由后端落默认值,不进字典)──── */
+  'session.new': '新建会话',
+
   /* ── 输入框(Composer 形态学:本体行 / 抽屉槽 / 状态条 / ask 形态 / 附件) ── */
   'composer.placeholder': '说点什么…( @ 文件 · / 命令 )',
   'composer.send': '发送',
+  /* 忙态下发送键换的那句 aria-label。它说的是**动作**(停下这一轮),
+   * 不是状态(「正在生成」)—— 读屏读到的必须是按下去会发生什么。 */
+  'composer.stop': '停止生成',
+  /* Esc 两段式停止的预备话(08-31 拍板对齐 Vue 口径):有草稿时占位符不可见,预备即静默。 */
+  'composer.escStopHint': '再按一次 Esc 停止生成',
   'composer.attach': '添加附件',
   'composer.attachments': '附件',
   'composer.removeAttachment': '移除附件',
@@ -134,6 +142,30 @@ export const zh = {
   'settings.sectionDock': 'Dock',
   'settings.sectionKeymap': '快捷键',
 
+  /* ── 外观·阅读(08-31)。四根正交的轴,只管聊天正文列。 ───────────────── */
+  'settings.sectionReading': '外观 · 阅读',
+  'settings.readingFs': '字号',
+  /* 档名说的是「相对大小」不是像素数:用户挑的是「这样读着舒不舒服」,
+   * 不是「13 还是 14」。像素数留在 tokens.css 里。 */
+  'settings.readingFsSm': '小',
+  'settings.readingFsMd': '标准',
+  'settings.readingFsLg': '大',
+  'settings.readingFsXl': '特大',
+  'settings.readingDensity': '密度',
+  'settings.readingDensityHint': '段落、标题、卡片之间留多少白;跟着字号等比缩放',
+  'settings.readingDensityCompact': '紧凑',
+  'settings.readingDensityComfortable': '舒适',
+  'settings.readingDensityRelaxed': '宽松',
+  'settings.readingCol': '列宽',
+  'settings.readingColStandard': '标准',
+  'settings.readingColWide': '宽',
+  'settings.readingColFull': '满幅',
+  'settings.motion': '动效',
+  'settings.motionHint': '没选过时跟随系统的「减弱动态效果」;选了就以你选的为准',
+  'settings.motionStandard': '标准',
+  'settings.motionCalm': '克制',
+  'settings.motionNone': '无',
+
   /* ── 快捷键设置区 ─────────────────────────────────────────────────── */
   'keymap.hint': '点一行的键位再按下组合;Esc 取消,Backspace 解绑',
   'keymap.recording': '按下组合…',
@@ -192,6 +224,11 @@ export const zh = {
   'search.badgeSession': '会话',
   'search.badgeMessage': '消息',
   'search.openedFile': '已打开 {file}',
+  /* D5 文件侧接真数据之后新增的两句。两句说的都是**产地的实情**,不是暂时的空:
+   * 「最近打开的文件」后端没有产地,所以空词时文件侧本来就没有东西可给;
+   * 检索失败与「没搜到」是两件事,合成一句就等于把失败说成空结果。 */
+  'search.filesNeedQuery': '文件要先输入关键词',
+  'search.filesFailed': '文件没搜成',
 
   /* ── 聊天区(D3:正文/工具名/错误原文都是**数据**,不在这儿) ────────── */
   'chat.noSession': '还没有选中会话',
@@ -374,5 +411,40 @@ export const zh = {
   'notify.crash': '{where} 出错了',
   'notify.disconnected': '没连上 core',
   'notify.sendFailed': '消息没发出去',
+  'notify.createSessionFailed': '新建会话失败',
+  'notify.abortFailed': '停止没有发出去',
+  'notify.abortStuck': '停止发出去了,这一轮还没收尾',
+  'notify.abortStuckHint': '命令已经被 core 收下;收尾要等引擎那边结束这一轮。',
+
+  /* ── 文件面板(D5:content/FilesPanel.tsx)────────────────────────────────
+   * 面板标题不另起一个键:它就是 'item.files' 那两个字(与通知中心复用
+   * 'item.notifications' 同一条)。
+   * **路径、目录名、文件名、后端的英文原话一个字都不在字典里** —— 它们是数据,
+   * 换一门语言不该变(判据见 i18n/index.ts 顶部)。这里只有「这台此刻处在哪种
+   * 状态」的那几句人话。 */
+  'files.treeLabel': '文件树',
+  'files.refresh': '重新读取',
+  'files.rootLoading': '正在确定根目录…',
+  'files.rootFailed': '没能确定根目录',
+  /* 会话没带工作目录时退到主目录。这句话必须说出来:用户看到的不是他以为的那棵树。 */
+  'files.rootFallback': '这条会话没有工作目录,显示的是主目录',
+  'files.reveal': '在文件管理器中显示',
+  'files.revealFailed': '没能在文件管理器中定位',
+  /* 目录的四态。空 / 没权限 / 不在了 / 别的失败,各说各的 —— 不合并成一句
+   * 「读不到」:能不能改、要不要改,取决于是哪一种。 */
+  'files.dirLoading': '正在读取…',
+  'files.dirEmpty': '这个目录是空的',
+  'files.dirDenied': '没有权限读这个目录',
+  'files.dirMissing': '这个目录不在了',
+  'files.dirFailed': '读不到这个目录',
+  /* 预览的五态。同上,一种都不回退到别的那一种。 */
+  'files.previewLoading': '正在读取文件…',
+  'files.previewEmpty': '这个文件是空的',
+  'files.previewBinary': '这是二进制文件,没法按文本预览',
+  'files.previewTruncated': '文件有 {size},只预览了前 {shown}',
+  'files.previewDenied': '没有权限读这个文件',
+  'files.previewMissing': '这个文件不在了',
+  'files.previewFailed': '读不到这个文件',
+  'files.previewClose': '关闭预览',
 
 } as const

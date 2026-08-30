@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { AppShell } from '../components/AppShell'
 import { useAgentMenu } from '../components/agent-menu'
+import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
 import { initialStageState } from '../stage/transitions'
 import { useKeymapStore } from './store'
@@ -27,6 +28,21 @@ describe('快捷键派发', () => {
 
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     expect(useStageStore.getState().placements.search).toBeUndefined()
+  })
+
+  it('⌘N 经注册表落到「新建会话」上 —— 派发器不判落在哪个项目,那是 action 的事', () => {
+    render(<AppShell />)
+    const calls: (string | null)[] = []
+    const before = useExposeStore.getState().newSession
+    useExposeStore.setState({
+      newSession: async (projectId) => void calls.push(projectId),
+    })
+    try {
+      act(() => void fireEvent.keyDown(document.body, { key: 'n', metaKey: true }))
+      expect(calls).toEqual([null])
+    } finally {
+      useExposeStore.setState({ newSession: before })
+    }
   })
 
   it('⌘J 开顶栏 agent 切换器的菜单,再按一下关 —— 只开菜单,不替人换人', () => {

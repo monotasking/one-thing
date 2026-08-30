@@ -44,6 +44,10 @@ export interface Combo {
  *  - `agent.menu` —— 顶栏 agent 切换器的菜单开 / 关。**只是开菜单**,
  *    不做「按一下换下一个人」的轮换 —— 换人是有后果的写操作(改这条会话
  *    从下一条消息起归谁),不该被一个盲按的快捷键直接触发。轮换语义留账。
+ *  - `session.new` —— 新建会话。它是这一族里**唯一有后果的写操作**,
+ *    与 agent.menu 那条「不替用户拍板」的纪律并不冲突:新建一条空会话没有
+ *    可丢的东西(不动当前会话、不动输入框里那句话),而「按一下就多一条空会话」
+ *    正是这个动作的全部语义 —— 它不需要先摆一个菜单让人再选一次。
  * 加命令 = 在 KEYMAP_COMMANDS 里加一行,别处零改动。
  */
 export type CommandId =
@@ -51,6 +55,7 @@ export type CommandId =
   | 'shelf.right.toggle'
   | 'toc.toggle'
   | 'agent.menu'
+  | 'session.new'
 
 export interface KeymapCommand {
   id: CommandId

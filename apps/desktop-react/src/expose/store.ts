@@ -1,6 +1,16 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
-import { currentGroups, onSessionsRemoved, useSessionsSource } from '../data/sessions-source'
+import {
+  currentGroups,
+  currentSessions,
+  onSessionsRemoved,
+  useSessionsSource,
+} from '../data/sessions-source'
+import { useAgentsSource } from '../data/agents-source'
+import { focusComposer } from '../composer/focus'
+import { findSession } from './projection'
+import { notify } from '../services/notify'
+import { t } from '../i18n'
 import { SESSIONS_ITEM_ID } from '../stage/items'
 import { useStageStore } from '../stage/store'
 import { formOf } from '../stage/transitions'
@@ -25,6 +35,14 @@ interface ExposeStore extends ExposeState {
   toggleGroupCollapsed: (groupId: string) => void
   setQuery: (query: string) => void
   enterSession: (sessionId: string) => void
+  /**
+   * 建一条会话并进去。`projectId` = 落在哪个项目下(null = 不属于任何项目)。
+   *
+   * 这是**唯一**的建会话入口:组头的 `+`、⌘N 都走它,不许谁再开第二条路。
+   */
+  newSession: (projectId: string | null) => Promise<void>
+  /** ⌘N 那一条:落在**当前会话所属的项目**下;没有当前会话就不属于任何项目。 */
+  newSessionInCurrentProject: () => Promise<void>
 }
 
 /**
@@ -40,9 +58,18 @@ interface ExposeStore extends ExposeState {
  *  - openQuickLook / enterSession:顺手让数据源去拉那条会话的首页消息与章节
  *    (「按需」的需求正是在这两个动作发生的)。
  */
+/**
+ * 「此刻有一次新建正在飞」。模块级而不是 store 字段:它不是可渲染状态,
+ * 而且**没有任何一处画它** —— 建会话是一次往返,不该为它长出一个转圈的按钮。
+ *
+ * 它挡的是按住 ⌘N 不放:键盘自动重复一秒能发十几次,那会真的建出十几条会话。
+ * 一次一条,飞着的时候后来的那几下当没按 —— 而不是排队(排队等于延迟发作)。
+ */
+let creating = false
+
 export const useExposeStore = create<ExposeStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...T.initialExposeState,
 
       open: () => set((s) => T.open(s, currentGroups())),
@@ -89,6 +116,53 @@ export const useExposeStore = create<ExposeStore>()(
         if (formOf(stage, SESSIONS_ITEM_ID) !== 'edge') {
           stage.closeToDock(SESSIONS_ITEM_ID)
         }
+      },
+
+      /**
+       * 建会话的**唯一**编排点。它落在这层壳里的理由与 enterSession 逐字相同:
+       * 这件事要同时碰数据源(建 + 重拉)、agent 名册(兑现 pendingAgentId)、
+       * 形态机(进会话)和输入框(交出键盘)—— 四个谁也不该认识谁,
+       * 而这层壳本来就是那个唯一的接缝。
+       *
+       * 次序不是随手排的:
+       *  1. 建 + 重拉(数据源里等完)—— 列表里有了它,后面两步才有事实可依;
+       *  2. 兑现 pendingAgentId —— **不 await**:它是「顺手落一笔」,
+       *     没道理让用户多等一次往返才看见新会话;写失败它自己 notify(warn),
+       *     那时会话已经在屏幕上了,一句提示比一次卡顿诚实;
+       *  3. 进会话 + 把光标交给输入框 —— 新建的下一秒就是打字。
+       *
+       * 失败:notify(error)(error 档**不自动消失**,人回头还能看见),
+       * 形态一格不动 —— 尤其**不碰输入框**:那句还没发出去的话还在人手里。
+       */
+      newSession: async (projectId) => {
+        if (creating) return
+        creating = true
+        let outcome
+        try {
+          outcome = await useSessionsSource.getState().create(projectId)
+        } finally {
+          creating = false
+        }
+        if (!outcome.ok) {
+          notify({
+            level: 'error',
+            source: 'session.create',
+            title: t('notify.createSessionFailed'),
+            body: outcome.error,
+            detail: outcome.error,
+          })
+          return
+        }
+        void useAgentsSource.getState().applyPendingAgent(outcome.sessionId)
+        get().enterSession(outcome.sessionId)
+        focusComposer()
+      },
+
+      newSessionInCurrentProject: async () => {
+        // 「当前项目」= 当前会话的那个。没有当前会话(刚启动 / 上一条被删)就是
+        // null —— 不去猜一个「最近用过的项目」,那是编。
+        const current = findSession(currentSessions(), get().currentSessionId)
+        await get().newSession(current?.projectId ?? null)
       },
     }),
     {

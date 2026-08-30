@@ -1,4 +1,10 @@
-import { pushChatNotice, sendChatMessage } from '../data/chat-source'
+import {
+  abortChatRun,
+  pushChatNotice,
+  selectEngineBusy,
+  sendChatMessage,
+  useChatSource,
+} from '../data/chat-source'
 
 /**
  * 输入框与聊天之间的**接缝**(D3)。
@@ -22,11 +28,20 @@ export interface ComposerSink {
    * 消息),所以它走 overlay 车道,而不是发送。
    */
   notice(kind: 'ask-rejected'): void
+  /**
+   * 停下正在跑的那一轮(D1 开工批)。发送键在忙态下就是这颗按钮。
+   *
+   * 它进 sink 而不是让 composer 直接去调数据源,是同一条方向纪律:输入面板
+   * 只知道有个地方能收下**一个动作**,不知道那边有个折叠器。没在跑时是恒等 ——
+   * 判「在不在跑」的是下面那只 hook,不是这个组件。
+   */
+  abort(): void
 }
 
 const realSink: ComposerSink = {
   send: (text, attachments) => sendChatMessage(text, attachments),
   notice: (kind) => pushChatNotice(kind),
+  abort: () => abortChatRun(),
 }
 
 let sink: ComposerSink | undefined
@@ -38,4 +53,20 @@ export function configureComposerSink(next: ComposerSink | undefined): void {
 
 export function composerSink(): ComposerSink {
   return sink ?? realSink
+}
+
+/**
+ * 「引擎此刻在不在跑」的**订阅式**读法 —— 发送键据此变成停止键。
+ *
+ * 它不进 `ComposerSink`,因为 sink 是一张**动作表**(交出去一句话、停一轮),
+ * 而这是一次**订阅**:形状对不上,硬塞进去就得往接口里放一个 hook,
+ * 那会把「换一只假 sink」变成「换一套 hook 调用顺序」。
+ *
+ * 判据本身仍然只有一个产地(`data/chat-source.ts` 的 `selectEngineBusy`);
+ * 这里只是把它接到 React 的订阅上。测试里要造忙态就直接
+ * `useChatSource.setState({ activeMessageId: … })` —— 那正是真实现里唯一的开关,
+ * 不需要为它再发明一个假的。
+ */
+export function useComposerBusy(): boolean {
+  return useChatSource(selectEngineBusy)
 }

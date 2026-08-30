@@ -18,6 +18,8 @@ let listMeta: ReturnType<typeof vi.fn>
 let getSegments: ReturnType<typeof vi.fn>
 let getMessagesPage: ReturnType<typeof vi.fn>
 let getUserMarkers: ReturnType<typeof vi.fn>
+let create: ReturnType<typeof vi.fn>
+let updateWorkingDirectory: ReturnType<typeof vi.fn>
 let emit: ((envelope: SessionEventEnvelope) => void) | undefined
 let emitLifecycle: ((event: SessionLifecycleEvent) => void) | undefined
 let unsubscribed = 0
@@ -37,6 +39,8 @@ beforeEach(() => {
   getSegments = vi.fn(async () => ({ success: true, segments: [] }))
   getMessagesPage = vi.fn(async () => ({ success: true, messages: [] }))
   getUserMarkers = vi.fn(async () => ({ success: true, markers: [] }))
+  create = vi.fn(async () => ({ success: true, session: { id: 'new-1' } }))
+  updateWorkingDirectory = vi.fn(async () => ({ success: true }))
   emit = undefined
   emitLifecycle = undefined
   unsubscribed = 0
@@ -46,6 +50,8 @@ beforeEach(() => {
     getSegments: (id) => getSegments(id),
     getMessagesPage: (id, limit) => getMessagesPage(id, limit),
     getUserMarkers: (id) => getUserMarkers(id),
+    create: (request) => create(request),
+    updateWorkingDirectory: (id, dir) => updateWorkingDirectory(id, dir),
     onSessionEvent: (callback) => {
       emit = callback
       return () => {

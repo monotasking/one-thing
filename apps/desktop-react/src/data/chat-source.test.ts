@@ -4,7 +4,7 @@ import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@renderer/platform/types'
 import { configureChatPort, type ChatPort } from './chat-port'
 import { useNotifyStore } from '../services/notify-store'
-import { REFOLD_THROTTLE_MS, useChatSource } from './chat-source'
+import { ABORT_SETTLE_MS, REFOLD_THROTTLE_MS, selectEngineBusy, useChatSource } from './chat-source'
 
 /**
  * 聊天数据源的判据 —— 全是纯逻辑,所以这里一台 core 都不起:端口换成假的,
@@ -68,7 +68,10 @@ interface Harness {
   listRawCalls: number
   ledger: Ledger[]
   sent: string[]
+  /** 端口收到的每一次 abort 的 sessionId —— 「打空的 abort 一次都不许发」靠它钉。 */
+  aborted: string[]
   sendResult: () => Promise<{ success: boolean; error?: string }>
+  abortResult: () => Promise<{ success: boolean; error?: string }>
   emitEvent(envelope: SessionEventEnvelope): void
   emitLedger(record: Ledger): void
   emitStream(payload: SessionStreamPayload): void
@@ -81,7 +84,9 @@ function harness(initial: Ledger[]): Harness {
     listRawCalls: 0,
     ledger: [...initial],
     sent: [],
+    aborted: [],
     sendResult: async () => ({ success: true }),
+    abortResult: async () => ({ success: true }),
     port: {
       ready: async () => undefined,
       listRaw: async () => {
@@ -100,6 +105,10 @@ function harness(initial: Ledger[]): Harness {
       sendMessage: async (_sessionId, content) => {
         h.sent.push(content)
         return h.sendResult()
+      },
+      abort: async (sessionId) => {
+        h.aborted.push(sessionId)
+        return h.abortResult()
       },
     },
     emitEvent: (envelope) => eventSubs.forEach((fn) => fn(envelope)),
@@ -418,5 +427,99 @@ describe('发送:pending 立刻上屏,账本认领之后丢掉', () => {
     await state().open('s2')
     await settle()
     expect(state().overlay).toEqual([])
+  })
+})
+
+describe('停止:忙判据只有一个产地,发出去之后壳不动屏幕', () => {
+  /** 起底 + 开一轮 run —— 「引擎在跑」在账本上就是 run/start 立了牌。 */
+  async function busySession() {
+    const h = harness([created(1), userMessage(2, 'm1', '跑一个')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+    h.emitLedger(runStart(3, 'r1', 'a1'))
+    await settle()
+    return h
+  }
+
+  it('run/start 立牌即忙,run/end 撤牌即闲', async () => {
+    const h = await busySession()
+    expect(selectEngineBusy(state())).toBe(true)
+
+    h.emitLedger(runEnd(4, 'r1'))
+    await settle()
+    expect(selectEngineBusy(state())).toBe(false)
+  })
+
+  it('没在跑时按停止 = 恒等:一发打空的 abort 都不许上账本', async () => {
+    const h = harness([created(1)])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    state().abort()
+    await settle()
+    expect(h.aborted).toEqual([])
+  })
+
+  it('在跑时按停止 → 命令带着这条会话的 id 发出去', async () => {
+    const h = await busySession()
+    state().abort()
+    await settle()
+
+    expect(h.aborted).toEqual([SESSION])
+  })
+
+  it('壳不做乐观收尾:命令发出去之后那棵树与那格 activeMessageId 一动不动', async () => {
+    const h = await busySession()
+    const before = ids()
+    state().abort()
+    await settle()
+
+    expect(ids()).toEqual(before)
+    expect(selectEngineBusy(state())).toBe(true)
+    // 收尾归账本:run/end 一到,忙态才落下。
+    h.emitLedger(runEnd(4, 'r1'))
+    await settle()
+    expect(selectEngineBusy(state())).toBe(false)
+  })
+
+  it('命令发不出去 = error 档(它不自动飘走,人回头还看得见)', async () => {
+    const h = await busySession()
+    h.abortResult = async () => ({ success: false, error: '引擎没接住' })
+    useNotifyStore.getState().clear()
+
+    state().abort()
+    await settle()
+
+    const record = useNotifyStore.getState().items.find((r) => r.source === 'chat.abort')
+    expect(record?.level).toBe('error')
+    expect(record?.body).toBe('引擎没接住')
+  })
+
+  it('过了宽限还没收尾 → 只说一句 warn,**不重发**', async () => {
+    const h = await busySession()
+    useNotifyStore.getState().clear()
+    state().abort()
+    await settle()
+    expect(useNotifyStore.getState().items).toHaveLength(0)
+
+    await new Promise((resolve) => setTimeout(resolve, ABORT_SETTLE_MS + 20))
+
+    const record = useNotifyStore.getState().items.find((r) => r.source === 'chat.abort')
+    expect(record?.level).toBe('warn')
+    expect(h.aborted).toEqual([SESSION])
+  })
+
+  it('宽限内收尾了就一声不吭', async () => {
+    const h = await busySession()
+    useNotifyStore.getState().clear()
+    state().abort()
+    await settle()
+    h.emitLedger(runEnd(4, 'r1'))
+    await settle()
+
+    await new Promise((resolve) => setTimeout(resolve, ABORT_SETTLE_MS + 20))
+    expect(useNotifyStore.getState().items).toEqual([])
   })
 })

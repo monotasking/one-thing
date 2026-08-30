@@ -82,6 +82,14 @@ export const PREVIEW_PAGE_SIZE = 20
 
 export type SessionsSourceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
+/**
+ * 建会话的结果。**成败是两种形状**而不是一个可空 id:失败时那句人话必须有地方
+ * 放,让调用方原样说给用户听(后端说的错不许被换成一句「操作失败」)。
+ */
+export type CreateSessionOutcome =
+  | { ok: true; sessionId: string }
+  | { ok: false; error: string }
+
 export interface SessionsSourceState {
   status: SessionsSourceStatus
   /** 失败时那句人话;成功后清空。 */
@@ -103,6 +111,22 @@ export interface SessionsSourceState {
   start: () => Promise<void>
   /** 立刻整表重拉(不经节流)—— 只给「明知列表脏了」的地方用。 */
   refresh: () => Promise<void>
+  /**
+   * 建一条会话,落在 `projectId` 这个项目下(null = 不属于任何项目)。
+   *
+   * 三件事,次序即语义:
+   *  1. `sessions.create` —— 名字不给,后端落它自己的默认名(见 sessions-port);
+   *  2. `sessions.updateWorkingDirectory` —— 只在 projectId 非空时打这一发。
+   *     它**失败不回滚**:会话已经真的建出来了,把它删掉换来的是「我按了新建,
+   *     什么都没有发生」;落错组比凭空消失轻,所以这一步只把错说出去
+   *     (返回成功 + 让列表重拉),分组按后端的事实走;
+   *  3. `loadList()` —— **同步等它**,不走节流。调用方紧接着就要 `enterSession`,
+   *     而那条路要拿新会话去夹持焦点序列;列表还没有它的话,焦点会退到别处。
+   *
+   * 这一层不认识形态机,也不弹通知 —— 它只把结果交出去(与 `onSessionsRemoved`
+   * 同一条接缝纪律)。
+   */
+  create: (projectId: string | null) => Promise<CreateSessionOutcome>
   ensureChapters: (sessionId: string) => Promise<void>
   ensureMessages: (sessionId: string) => Promise<void>
   ensureMarkers: (sessionId: string) => Promise<void>
@@ -297,6 +321,33 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     refresh: async () => {
       lastRefreshAt = Date.now()
       await loadList()
+    },
+
+    create: async (projectId) => {
+      const port = await sessionsPort()
+      let created
+      try {
+        created = await port.create({})
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) }
+      }
+      if (!created?.success || !created.session?.id) {
+        return { ok: false, error: created?.error || 'sessions.create 未成功' }
+      }
+      const sessionId = created.session.id
+
+      if (projectId) {
+        // 落目录失败不回滚(理由见接口上的注释):会话已经在了,只是没归到那个项目。
+        try {
+          await port.updateWorkingDirectory(sessionId, projectId)
+        } catch {
+          // 吞掉异常本身,分组按后端事实走 —— 下面那次重拉会说出真相。
+        }
+      }
+
+      lastRefreshAt = Date.now()
+      await loadList()
+      return { ok: true, sessionId }
     },
 
     ensureChapters: async (sessionId) => {

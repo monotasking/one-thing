@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useTocStore } from '../toc/store'
 import { useStageStore } from '../stage/store'
 import { useAgentMenu } from '../components/agent-menu'
+import { useExposeStore } from '../expose/store'
 import { useKeymapStore } from './store'
 import { TOGGLE_COMMAND_PREFIX, hasModifier, lookupCommand } from './transitions'
 import type { CommandId } from './types'
@@ -43,7 +44,19 @@ export function useKeymapDispatch(): void {
         return
       }
       // 只开菜单,不替用户选人 —— 理由写在 keymap/types.ts 的命令族那一段。
-      if (id === 'agent.menu') toggleAgentMenu()
+      if (id === 'agent.menu') {
+        toggleAgentMenu()
+        return
+      }
+      /*
+       * 新建会话。**取动作而不是订阅** —— 它是个 async action,订阅它只会让
+       * 这条 effect 白重挂一次;`getState()` 的引用是稳的(与 Overview 里
+       * 事件处理器一律走 getState 同一口径)。
+       * 落在哪个项目下由那条 action 自己判(当前会话的项目),派发器不判。
+       */
+      if (id === 'session.new') {
+        void useExposeStore.getState().newSessionInCurrentProject()
+      }
     }
 
     const onKey = (e: KeyboardEvent) => {

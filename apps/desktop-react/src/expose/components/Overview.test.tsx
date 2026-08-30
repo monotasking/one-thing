@@ -533,3 +533,44 @@ describe('卡网格的两条几何规则(源码级钉死)', () => {
     expect(rule).not.toContain('auto-fit')
   })
 })
+
+/**
+ * 组头右端那颗 +(D1 开工批之前它是个只有 aria-label 的空壳)。
+ *
+ * 这里只钉**接线**:点它 = 调唯一那条建会话入口,并把「这一组是哪个项目」
+ * 递对。建会话本身发几发请求、失败怎么说,在 data/session-create.test.ts。
+ */
+describe('组头的 +:在这一组下新建会话', () => {
+  /** 换掉 store 上那条 action,断言收到的 projectId —— 不发一次真请求。 */
+  function spyNewSession(): { calls: (string | null)[]; restore: () => void } {
+    const calls: (string | null)[] = []
+    const before = useExposeStore.getState().newSession
+    useExposeStore.setState({ newSession: async (projectId) => void calls.push(projectId) })
+    return { calls, restore: () => useExposeStore.setState({ newSession: before }) }
+  }
+
+  it('项目组:把那个组的工作目录递过去', () => {
+    render(<Overview />)
+    const spy = spyNewSession()
+    try {
+      fireEvent.click(screen.getByTestId(`group-plus-${FIRST_GROUP}`))
+      expect(spy.calls).toEqual([GROUPS[0].projectId])
+      expect(GROUPS[0].projectId).toBeTruthy()
+    } finally {
+      spy.restore()
+    }
+  })
+
+  it('合成组(协作 / 独立会话)没有项目,递 null —— 不替它编一个目录', () => {
+    render(<Overview />)
+    const synthetic = GROUPS.find((g) => g.projectId === null)
+    expect(synthetic).toBeTruthy()
+    const spy = spyNewSession()
+    try {
+      fireEvent.click(screen.getByTestId(`group-plus-${synthetic!.id}`))
+      expect(spy.calls).toEqual([null])
+    } finally {
+      spy.restore()
+    }
+  })
+})

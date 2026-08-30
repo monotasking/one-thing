@@ -58,9 +58,10 @@ export interface AgentsSourceState {
   /**
    * 「还没进会话时选的那个人」= 下一条新会话的默认 agent。
    *
-   * 它今天**只活在内存里**,没有落点:新壳自己不建会话(全仓零 `sessions.create`
-   * 调用点),而后端的 `SessionsCreateRequest` 也没有 agentId 这一格 ——
-   * 建会话那条路长出来的时候,它该在这里被读走。**留账,不假装已生效**。
+   * **D1 开工批把这条留账结清了**:建会话那条路长出来了(expose/store 的
+   * `newSession`),它建完就调 `applyPendingAgent(sessionId)` 把这一格读走、
+   * 落盘、清空。`SessionsCreateRequest` 至今没有 agentId 这一格,所以落盘走的是
+   * 建完之后的 `sessions.updateAgent` —— 与「切人」是同一条写面,不是第二条。
    */
   pendingAgentId: string | null
   /**
@@ -82,6 +83,15 @@ export interface AgentsSourceState {
    *  - 没有会话:只记 `pendingAgentId`(见上面那条留账)。
    */
   switchAgent: (sessionId: string | null, agentId: string) => Promise<void>
+  /**
+   * 把 `pendingAgentId` 兑现到刚建出来的那条会话上,然后**无论成败都清空**。
+   *
+   * 清空是无条件的,理由是这一格的语义:它说的是「**下一条**新会话归谁」——
+   * 下一条已经建出来了,这句话就用掉了。写失败时留着它,下下条会话会莫名其妙
+   * 地也归那个人,那是一块说谎的牌(与 switchAgent 的乐观牌同一条纪律)。
+   * 写失败 notify(warn) —— 会话建成了,只是没归到那个人,不是一次失败的新建。
+   */
+  applyPendingAgent: (sessionId: string) => Promise<void>
   /** 测试用:回到未启动的干净态。 */
   reset: () => void
 }
@@ -231,6 +241,29 @@ export const useAgentsSource = create<AgentsSourceState>()((set, get) => {
         const next = { ...prev.optimistic }
         delete next[sessionId]
         return { optimistic: next }
+      })
+    },
+
+    applyPendingAgent: async (sessionId) => {
+      const agentId = get().pendingAgentId
+      if (!sessionId || !agentId) return
+      set({ pendingAgentId: null })
+
+      let failure: string | undefined
+      try {
+        const port = await agentsPort()
+        const response = await port.updateSessionAgent(sessionId, agentId)
+        if (!response.success) failure = response.error || t('agent.switchFailed')
+      } catch (error) {
+        failure = error instanceof Error ? error.message : String(error)
+      }
+      if (!failure) return
+      notify({
+        level: 'warn',
+        source: 'agent.switch',
+        title: t('agent.switchFailed'),
+        body: failure,
+        detail: failure,
       })
     },
 

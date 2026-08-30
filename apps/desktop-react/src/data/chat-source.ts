@@ -49,6 +49,12 @@ import { t } from '../i18n'
 /** 缺号之后整份重折的最小间隔 —— 窗口内的多次缺号塌成一次。 */
 export const REFOLD_THROTTLE_MS = 3000
 
+/**
+ * 按了停止之后,等这一轮收尾的宽限。超时只说一句话(warn),**不重发、不清尾巴**
+ * —— 收尾归账本(`run/end` 会到),壳这边做乐观清理就是画一个和事实不符的屏幕。
+ */
+export const ABORT_SETTLE_MS = 3000
+
 export type ChatSourceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export interface ChatSourceState {
@@ -68,6 +74,8 @@ export interface ChatSourceState {
   open: (sessionId: string) => Promise<void>
   /** 发一条纯文本消息。返回 false = 空话,压根没离开输入框。 */
   send: (text: string, attachments?: number) => boolean
+  /** 中止正在跑的那一轮。没有在跑的轮次时是**恒等**(不发命令、不报错)。 */
+  abort: () => void
   /** 重试一条失败的 pending。 */
   retry: (entryId: string) => void
   /** 丢弃一条 overlay(失败后不想再试 / 关掉提示)。 */
@@ -92,8 +100,29 @@ interface LiveFold {
   refoldScheduled: boolean
 }
 
+/**
+ * **「引擎此刻在不在跑」的唯一产地。**
+ *
+ * 判据就是折叠产物上的 `activeRun`(`core/session/projection/reducer.ts`:
+ * `run/start` 立牌、`run/end` 撤牌),经 `materializeChatMessages` 落成
+ * `activeMessageId`。为什么是它而不是「活尾巴还在 / 最近一条 stream 没收尾」:
+ *
+ *  - 活尾巴是**渲染优化**的产物(每条 delta 立刻上屏),打包行一到它就被丢掉
+ *    重攒 —— 它有没有,与「这一轮跑没跑完」中间隔着一层节拍;
+ *  - `activeRun` 是账本上真真切切的一件事:开张与收摊各有一条事件,
+ *    断线重连、整份重折之后它自己就对回来了,不需要第二套簿记。
+ *
+ * 写成选择器而不是 store 里的一格 `busy`,是因为它是**派生量**:多存一格
+ * 就是多一个要维护的真相,而两个真相迟早对不上。
+ */
+export function selectEngineBusy(state: ChatSourceState): boolean {
+  return state.activeMessageId !== undefined
+}
+
 let fold: LiveFold | undefined
 let tail: Tail | undefined
+/** 「按了停止,还在等收尾」的那只表。模块级 —— 它不是可渲染状态。 */
+let abortWatch: ReturnType<typeof setTimeout> | undefined
 let unsubEvent: (() => void) | undefined
 let unsubStream: (() => void) | undefined
 let openSeq = 0
@@ -336,6 +365,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     overlay: [],
 
     open: async (sessionId) => {
+      // 换会话 = 上一条会话那只「等收尾」的表过期了(它会自己判,但留着没意义)。
+      if (abortWatch) clearTimeout(abortWatch)
+      abortWatch = undefined
       if (!sessionId) {
         // 没有当前会话 = 没什么可折的。退订并归零,别把上一条会话的树留在屏幕上。
         unsubEvent?.()
@@ -384,6 +416,61 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       return true
     },
 
+    /**
+     * 停止这一轮。
+     *
+     * 三条纪律:
+     *  1. **没在跑就什么都不做** —— 发一条打空的 abort 只会在账本上留一条噪音;
+     *  2. 命令被 core 收下之后**壳不动屏幕**:收尾由账本负责(`run/end` 会到,
+     *     onEvent 里那条 STREAM_* 分支顺手把活尾巴丢掉)。乐观清尾巴 = 画一个
+     *     和事实不符的屏幕,而这条链路的全部信用就建立在「屏幕 = 折叠产物」上;
+     *  3. 超过宽限还没收尾就说一句(warn),**只说不做** —— 重发一次 abort
+     *     解决不了「引擎卡住了」,只会再堆一条命令。
+     *
+     * 命令本身发不出去(网断 / core 拒收)是 error 档:人按了停止而它没停,
+     * 这件事必须让人知道,而且不该自动飘走。
+     */
+    abort: () => {
+      const sessionId = get().sessionId
+      if (!sessionId) return
+      if (!selectEngineBusy(get())) return
+      const target = get().activeMessageId
+
+      void (async () => {
+        let failure: string | undefined
+        try {
+          const port = await chatPort()
+          const result = await port.abort(sessionId)
+          if (!result?.success) failure = result?.error || 'session-command.emit 未成功'
+        } catch (error) {
+          failure = error instanceof Error ? error.message : String(error)
+        }
+        if (failure) {
+          notify({
+            level: 'error',
+            source: 'chat.abort',
+            title: t('notify.abortFailed'),
+            body: failure,
+            detail: failure,
+          })
+          return
+        }
+        if (abortWatch) clearTimeout(abortWatch)
+        abortWatch = setTimeout(() => {
+          abortWatch = undefined
+          const now = get()
+          // 换了会话、或者这一轮已经收了(哪怕换成了下一轮)= 这只表过期了。
+          if (now.sessionId !== sessionId || now.activeMessageId !== target) return
+          notify({
+            level: 'warn',
+            source: 'chat.abort',
+            title: t('notify.abortStuck'),
+            body: t('notify.abortStuckHint'),
+          })
+        }, ABORT_SETTLE_MS)
+      })()
+    },
+
     retry: (entryId) => {
       const entry = get().overlay.find((item) => item.id === entryId)
       if (!entry || entry.kind !== 'pending') return
@@ -417,6 +504,8 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       unsubStream = undefined
       fold = undefined
       tail = undefined
+      if (abortWatch) clearTimeout(abortWatch)
+      abortWatch = undefined
       openSeq += 1
       pushScheduled = false
       entrySeq = 0
@@ -442,4 +531,9 @@ export function sendChatMessage(text: string, attachments = 0): boolean {
 
 export function pushChatNotice(kind: 'ask-rejected'): void {
   useChatSource.getState().notice(kind)
+}
+
+/** 同上,给输入面板那条接缝(composer/sink.ts)用的非组件写法。 */
+export function abortChatRun(): void {
+  useChatSource.getState().abort()
 }

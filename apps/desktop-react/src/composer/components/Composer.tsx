@@ -3,6 +3,9 @@ import type { DragEvent } from 'react'
 import { useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
 import { ASK_DEMO_SPEC, MOCK_COMMANDS, MOCK_FILES } from '../data'
+import { ESC_STOP_WINDOW_MS } from '../../components/motion'
+import { registerComposerFocus } from '../focus'
+import { composerSink, useComposerBusy } from '../sink'
 import { revokeAllAttachments, useComposerStore } from '../store'
 import { clampPickIndex, matchCommands, matchFiles } from '../transitions'
 import type { TokenHit } from '../types'
@@ -19,6 +22,8 @@ import s from './Composer.module.css'
 
 const PaperclipIcon = resolveIcon('Paperclip')
 const SendIcon = resolveIcon('ArrowUp')
+/** 忙态下发送键换的那张脸:方形停止。实心 —— 停止是一个「按下去就结束」的动作。 */
+const StopIcon = resolveIcon('Square')
 
 /**
  * 一块面板,三个器官(08-29 定稿的「Composer 形态学」):
@@ -52,9 +57,38 @@ export function Composer() {
   const moveAsk = useComposerStore((st) => st.moveAsk)
   const rejectAsk = useComposerStore((st) => st.rejectAsk)
   const send = useComposerStore((st) => st.send)
+  /* 引擎在不在跑 —— 唯一产地在 data/chat-source.ts,这里只是接上订阅。 */
+  const busy = useComposerBusy()
 
   const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<ComposerInputHandle | null>(null)
+
+  /* Esc 停止的两段式预备态(拍板与窗口见下方 Esc 注释)。armed 期间占位符换话。 */
+  const [escStopArmed, setEscStopArmed] = useState(false)
+  const escStopTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const disarmEscStop = useCallback(() => {
+    if (escStopTimer.current) clearTimeout(escStopTimer.current)
+    escStopTimer.current = null
+    setEscStopArmed(false)
+  }, [])
+  const armEscStop = useCallback(() => {
+    if (escStopTimer.current) clearTimeout(escStopTimer.current)
+    setEscStopArmed(true)
+    escStopTimer.current = setTimeout(() => {
+      escStopTimer.current = null
+      setEscStopArmed(false)
+    }, ESC_STOP_WINDOW_MS)
+  }, [])
+  // 引擎收尾就拆预备(那一轮已经停了,残留的「再按一次」是在说谎);卸载清计时器。
+  useEffect(() => {
+    if (!busy) disarmEscStop()
+  }, [busy, disarmEscStop])
+  useEffect(
+    () => () => {
+      if (escStopTimer.current) clearTimeout(escStopTimer.current)
+    },
+    [],
+  )
   const fileRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [meterOpen, setMeterOpen] = useState(false)
@@ -135,8 +169,23 @@ export function Composer() {
   }, [drawerKind, closeDrawer])
 
   /* ── 全局键:Esc 与 ask 的翻题 ──────────────────────────────────────────
-   * Esc 分两层:ask 形态在场时整单拒绝,否则收抽屉。两种都 preventDefault ——
-   * 外层(舞台 / 浮窗)按既有约定只在 !defaultPrevented 时才轮到它。
+   * Esc 分三层,次序即「退掉最近打开的那一层」:
+   *   ① ask 形态在场 → 整单拒绝;
+   *   ② 抽屉开着     → 收抽屉;
+   *   ③ 焦点在这块面板里且引擎在跑 → **停止**(与发送键的忙态同义,D1 开工批)。
+   * 三种都 preventDefault —— 外层(舞台 / 浮窗)按既有约定只在
+   * !defaultPrevented 时才轮到它,所以「Esc 逐层退出」那条全局承诺没有被抢。
+   *
+   * ③ 排在最后而不是最前:ask 与抽屉是**看得见的一层**,先退看得见的那层是
+   * Esc 在这套壳里一以贯之的语义;没有任何一层浮着时,Esc 才落到「停下这一轮」。
+   * 「焦点在这块面板里」是必要条件 —— 不加的话,在总览 / 检索面板里按 Esc
+   * 退层时会顺手把后台那一轮停掉,那是一次看不见的破坏。
+   *
+   * **08-31 拍板:与 Vue 壳同口径,连按两次才停**。第一下只「预备」——占位符
+   * 换成「再按一次停止」那句(有草稿时占位符本来不可见,预备就是静默的,
+   * 与 Vue 同样的取舍);ESC_STOP_WINDOW_MS(2000ms)内第二下才交 abort。
+   * 窗口过期、引擎收尾、面板卸载都拆除预备态。
+   *
    * ← → 只在焦点不在任何输入面里时才翻题:写字的人按方向键是在移动光标。 */
   useEffect(() => {
     const typing = () => {
@@ -161,6 +210,18 @@ export function Composer() {
         if (useComposerStore.getState().drawerKind) {
           e.preventDefault()
           closeDrawer()
+          return
+        }
+        // 没有任何一层浮着:焦点在这块面板里、且引擎在跑 → 两段式停止。
+        const inPanel = panelRef.current?.contains(document.activeElement) ?? false
+        if (busy && inPanel) {
+          e.preventDefault()
+          if (escStopArmed) {
+            disarmEscStop()
+            composerSink().abort()
+          } else {
+            armEscStop()
+          }
         }
         return
       }
@@ -176,10 +237,17 @@ export function Composer() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [mode, closeDrawer, rejectAsk, moveAsk])
+  }, [mode, busy, escStopArmed, armEscStop, disarmEscStop, closeDrawer, rejectAsk, moveAsk])
 
   // 整块面板下场时把还挂着的缩略图 URL 销掉(造它的是 store,所以销也调 store 那口)。
   useEffect(() => revokeAllAttachments, [])
+
+  /* 别处(建完一条新会话)要把光标交过来时,叫的就是登记在这里的这一口。
+   * 登记的是一个每次都现读 ref 的闭包,所以它不随重渲染失效。 */
+  useEffect(() => {
+    registerComposerFocus(() => inputRef.current?.focus())
+    return () => registerComposerFocus(undefined)
+  }, [])
 
   /* ── 拖拽落区 = 整块面板 ──────────────────────────────────────────────── */
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -238,7 +306,7 @@ export function Composer() {
               <div className={s.writeRow}>
                 <ComposerInput
                   apiRef={inputRef}
-                  placeholder={t('composer.placeholder')}
+                  placeholder={t(escStopArmed ? 'composer.escStopHint' : 'composer.placeholder')}
                   picking={picking}
                   onToken={onToken}
                   onMove={(delta) => movePick(delta, pickLen)}
@@ -283,14 +351,34 @@ export function Composer() {
                   onLeave={() => setMeterOpen(false)}
                 />
 
+                {/*
+                 * 一颗按钮两副面孔:闲时发送(↑),忙时停止(■)。
+                 *
+                 * **不是两颗按钮**,理由是手感:发送键的位置是肌肉记忆里的一个点,
+                 * 在旁边再长一颗停止键会让那个点在两种状态下指向不同的东西。
+                 * `data-testid` 因此**恒定**(门按位置找它,不按状态找),
+                 * 状态挂在 `data-mode` 上 —— 那才是「它此刻是哪副面孔」的产地。
+                 */}
                 <button
                   type="button"
                   className={s.sendBtn}
-                  aria-label={t('composer.send')}
+                  aria-label={busy ? t('composer.stop') : t('composer.send')}
                   data-testid="composer-send"
-                  onClick={() => doSend(inputRef.current?.text() ?? '')}
+                  data-mode={busy ? 'stop' : 'send'}
+                  onClick={() =>
+                    busy ? composerSink().abort() : doSend(inputRef.current?.text() ?? '')
+                  }
                 >
-                  <SendIcon className={s.sendIcon} strokeWidth={2.4} aria-hidden="true" />
+                  {busy ? (
+                    <StopIcon
+                      className={s.sendIcon}
+                      strokeWidth={2.4}
+                      fill="currentColor"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <SendIcon className={s.sendIcon} strokeWidth={2.4} aria-hidden="true" />
+                  )}
                 </button>
               </div>
             </div>

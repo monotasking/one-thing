@@ -22,9 +22,13 @@ export const en: Record<MessageKey, string> = {
   'agent.manage': 'Manage agents…',
   'agent.switchFailed': 'Could not switch agent',
 
+  'session.new': 'New session',
+
   /* ── composer ─────────────────────────────────────────────────────── */
   'composer.placeholder': 'Say something… ( @ files · / commands )',
   'composer.send': 'Send',
+  'composer.stop': 'Stop generating',
+  'composer.escStopHint': 'Press Esc again to stop',
   'composer.attach': 'Add attachment',
   'composer.attachments': 'Attachments',
   'composer.removeAttachment': 'Remove attachment',
@@ -129,6 +133,28 @@ export const en: Record<MessageKey, string> = {
   'settings.sectionDock': 'Dock',
   'settings.sectionKeymap': 'Shortcuts',
 
+  /* ── appearance · reading (08-31) ─────────────────────────────────── */
+  'settings.sectionReading': 'Appearance · Reading',
+  'settings.readingFs': 'Text size',
+  'settings.readingFsSm': 'Small',
+  'settings.readingFsMd': 'Default',
+  'settings.readingFsLg': 'Large',
+  'settings.readingFsXl': 'Extra large',
+  'settings.readingDensity': 'Density',
+  'settings.readingDensityHint': 'How much air between paragraphs, headings and cards; scales with text size',
+  'settings.readingDensityCompact': 'Compact',
+  'settings.readingDensityComfortable': 'Comfortable',
+  'settings.readingDensityRelaxed': 'Relaxed',
+  'settings.readingCol': 'Column width',
+  'settings.readingColStandard': 'Standard',
+  'settings.readingColWide': 'Wide',
+  'settings.readingColFull': 'Full width',
+  'settings.motion': 'Motion',
+  'settings.motionHint': 'Follows the system “reduce motion” setting until you pick one yourself',
+  'settings.motionStandard': 'Standard',
+  'settings.motionCalm': 'Calm',
+  'settings.motionNone': 'None',
+
   /* ── shortcut settings ────────────────────────────────────────────── */
   'keymap.hint': 'Click a binding, then press the combo; Esc cancels, Backspace unbinds',
   'keymap.recording': 'Press a combo…',
@@ -185,6 +211,11 @@ export const en: Record<MessageKey, string> = {
   'search.badgeSession': 'CHAT',
   'search.badgeMessage': 'MSG',
   'search.openedFile': 'Opened {file}',
+  /* D5: the file side now speaks to a real producer. Both lines state a fact
+   * about that producer, not a temporary gap — there is no "recently opened
+   * files" record, and a failed search is not an empty one. */
+  'search.filesNeedQuery': 'Type a keyword to search files',
+  'search.filesFailed': 'File search failed',
 
   /* ── chat stream (D3: body text / tool names / error text are DATA) ─── */
   'chat.noSession': 'No session selected yet',
@@ -346,5 +377,34 @@ export const en: Record<MessageKey, string> = {
   'notify.crash': 'Something broke in {where}',
   'notify.disconnected': 'Not connected to core',
   'notify.sendFailed': 'Message did not go out',
+  'notify.createSessionFailed': 'Could not create the session',
+  'notify.abortFailed': 'Stop did not go out',
+  'notify.abortStuck': 'Stop went out, the run has not settled',
+  'notify.abortStuckHint': 'Core accepted the command; settling waits on the engine finishing this run.',
+
+  /* ── files panel (D5: content/FilesPanel.tsx) ─────────────────────────
+   * The panel title reuses 'item.files'. Paths, directory/file names and the
+   * backend's own English error strings are DATA and never enter this dict —
+   * only the sentences describing which state this machine is in. */
+  'files.treeLabel': 'File tree',
+  'files.refresh': 'Reload',
+  'files.rootLoading': 'Resolving the root directory…',
+  'files.rootFailed': 'Could not resolve a root directory',
+  'files.rootFallback': 'This session has no working directory — showing your home directory',
+  'files.reveal': 'Reveal in file manager',
+  'files.revealFailed': 'Could not reveal that path',
+  'files.dirLoading': 'Reading…',
+  'files.dirEmpty': 'This directory is empty',
+  'files.dirDenied': 'No permission to read this directory',
+  'files.dirMissing': 'This directory is gone',
+  'files.dirFailed': 'Could not read this directory',
+  'files.previewLoading': 'Reading the file…',
+  'files.previewEmpty': 'This file is empty',
+  'files.previewBinary': 'Binary file — cannot be previewed as text',
+  'files.previewTruncated': 'The file is {size}; only the first {shown} is shown',
+  'files.previewDenied': 'No permission to read this file',
+  'files.previewMissing': 'This file is gone',
+  'files.previewFailed': 'Could not read this file',
+  'files.previewClose': 'Close preview',
 
 }

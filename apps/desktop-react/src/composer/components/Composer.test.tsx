@@ -5,6 +5,7 @@ import { useComposerStore, resetComposerStore } from '../store'
 import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
 import { useStageStore } from '../../stage/store'
+import { useChatSource } from '../../data/chat-source'
 
 /**
  * D3 起 composer 不再自己攒一条假队列 —— 它把话**交给 sink**(见 composer/sink.ts)。
@@ -12,6 +13,9 @@ import { useStageStore } from '../../stage/store'
  * 换的只是收件人从一个数组变成了一个接口。
  */
 const handed: ({ kind: 'text'; text: string; attachments: number } | { kind: 'notice'; notice: string })[] = []
+
+/** 交给 sink 的「停一轮」有几次。忙态是**真 store 的那一格**,不另造一个假的。 */
+let aborts = 0
 
 /**
  * 组件层只钉「谁在场、谁让位、键盘归谁」—— 判断本身在 transitions.test.ts。
@@ -21,13 +25,16 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   resetComposerStore()
   handed.length = 0
+  aborts = 0
   configureComposerSink({
     send: (text, attachments) => {
       handed.push({ kind: 'text', text, attachments })
       return true
     },
     notice: (notice) => void handed.push({ kind: 'notice', notice }),
+    abort: () => void (aborts += 1),
   })
+  useChatSource.setState({ activeMessageId: undefined })
 })
 
 afterEach(() => {
@@ -273,5 +280,91 @@ describe('发送', () => {
     })
     expect(state().attachments).toHaveLength(0)
     expect(box.textContent).toBe('')
+  })
+})
+
+/**
+ * 忙态那半边(D1 开工批)。忙不忙的判据只有一个产地(data/chat-source.ts 的
+ * `selectEngineBusy`),所以这里就地掀那一格 —— 不为测试另造一个假的忙态开关。
+ */
+describe('发送键的两副面孔:闲时发送,忙时停止', () => {
+  const busy = () => act(() => useChatSource.setState({ activeMessageId: 'a1' }))
+  const sendBtn = () => screen.getByTestId('composer-send')
+
+  it('闲时:aria-label 是发送,data-mode 说的也是 send', () => {
+    render(<Composer />)
+    expect(sendBtn().getAttribute('data-mode')).toBe('send')
+    expect(sendBtn().getAttribute('aria-label')).toBe('发送')
+  })
+
+  it('忙时同一颗按钮换脸:label 变「停止生成」,点它是交出一次 abort 而不是发消息', () => {
+    render(<Composer />)
+    const box = screen.getByRole('textbox', { name: /说点什么/ })
+    type(box, '这句话不该在这时候被发出去')
+    busy()
+
+    expect(sendBtn().getAttribute('data-mode')).toBe('stop')
+    expect(sendBtn().getAttribute('aria-label')).toBe('停止生成')
+
+    fireEvent.click(sendBtn())
+    expect(aborts).toBe(1)
+    expect(handed).toHaveLength(0)
+    // 那句话还在框里 —— 停止不是发送,更不是丢弃。
+    expect(box.textContent).toBe('这句话不该在这时候被发出去')
+  })
+
+  it('Esc 停止是两段式(08-31 拍板对齐 Vue):第一下只预备并换占位话,窗口内第二下才停', () => {
+    render(<Composer />)
+    const box = screen.getByRole('textbox', { name: /说点什么/ })
+    box.focus()
+    busy()
+
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+    expect(aborts).toBe(0)
+    // 预备期占位符换话 —— 用户能看见「再按一次」的唯一通道(有草稿时静默,与 Vue 同取舍)。
+    expect(box.getAttribute('data-placeholder')).toBe('再按一次 Esc 停止生成')
+
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+    expect(aborts).toBe(1)
+    expect(box.getAttribute('data-placeholder')).toBe('说点什么…( @ 文件 · / 命令 )')
+  })
+
+  it('预备窗口过期后再按 Esc 只是重新预备;引擎收尾也拆预备', () => {
+    vi.useFakeTimers()
+    try {
+      render(<Composer />)
+      const box = screen.getByRole('textbox', { name: /说点什么/ })
+      box.focus()
+      busy()
+
+      act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+      act(() => void vi.advanceTimersByTime(2100))
+      act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+      expect(aborts).toBe(0)
+      act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+      expect(aborts).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('抽屉开着时 Esc 先收抽屉 —— 看得见的那层先退,这一下不会顺手停掉一轮', () => {
+    render(<Composer />)
+    fireEvent.click(modelPill())
+    expect(state().drawerKind).toBe('model')
+    busy()
+
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+    expect(state().drawerKind).toBeNull()
+    expect(aborts).toBe(0)
+  })
+
+  it('焦点不在这块面板里时 Esc 不停 —— 别处按 Esc 退层不该顺手掐掉后台那一轮', () => {
+    render(<Composer />)
+    document.body.focus()
+    busy()
+
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+    expect(aborts).toBe(0)
   })
 })

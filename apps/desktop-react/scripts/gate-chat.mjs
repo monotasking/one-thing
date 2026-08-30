@@ -13,6 +13,29 @@
  *  ③ **折叠 ≡ 读面**:React 折叠树的消息 id 序列与 HTTP `sessions.getMessagesPage`
  *     返回的逐条相等(同一份账本,两条路,同一个答案)。
  *
+ * D1 开工批又加了两条(建会话 / 中止):
+ *
+ *  ④ **建会话**:在总览的组头上真点那颗 +,断言 core 那边**真的多了一条会话**
+ *     (`sessions.listMeta` 多一条 + 那条会话自己的账本里有 `session/created`),
+ *     并且屏幕跟着进了它。这一条是完整的真机往返,没有任何降级。
+ *  ⑤ **中止**:见下面那段「这一条是降级的」。
+ *
+ * ── ⑤ 为什么是降级的,降在哪 ─────────────────────────────────────────────
+ * 「按停止」这个动作要**引擎正在跑**才成立,而这台 core 没有配置任何 provider:
+ * 一次 send 之后 run 开张即报错收摊,那个窗口短到没法稳定地在里面点一下按钮。
+ * 拿一个偶尔才命中的断言当门,比没有断言更坏 —— 它会被人加 `|| true`。
+ *
+ * 所以这条门在两个**确定**的点上钉:
+ *  a. **命令信封被 core 收下**:脚本按壳发出去的那一模一样的形状
+ *     (`{ type: 'command:abort' }`,与 `data/chat-port.ts` 逐字相同)打一发
+ *     `session-command.emit`,断言回执 success —— 证的是「壳发的这条命令,
+ *     core 认」,那正是接线对不对的全部内容;
+ *  b. **停止那副面孔在产物里活着**:断言发送键带着 `data-mode`,闲时是 `send`。
+ *     忙时翻成 `stop` 由单测钉(Composer.test.tsx 直接掀 activeMessageId 那一格)。
+ * 门里说不出的话,门里就不说:**「真流里按停止,那一轮真的停了」属真机手验**。
+ * 要把它变成门,得先有一个像主仓 `sessions:shadow-battery` 那样的种子假 provider,
+ * 那是另一件事(与文件头那条 markdown 留账同一个前提)。
+ *
  * ── 门只验数据面 ──────────────────────────────────────────────────────
  * 这台 core 上**没有配置任何 provider**,所以发消息之后引擎会开一次 run 然后报错 ——
  * 用户消息照样落账(那正是 ① 要断言的),但**流式生成不会发生**。活尾巴那条链路
@@ -175,7 +198,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/5] 起一台 core,建一条空会话')
+    console.log('\n[1/7] 起一台 core,建一条空会话')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -197,7 +220,7 @@ async function main() {
     if (!sessionId) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(made)}`)
     assert(Boolean(sessionId), `建了一条空会话:${sessionId}`)
 
-    console.log('\n[2/5] 拉起应用,进这条会话')
+    console.log('\n[2/7] 拉起应用,进这条会话')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
@@ -224,7 +247,7 @@ async function main() {
     )
     assert(true, '进入了那条会话,聊天区起底完成')
 
-    console.log('\n[3/5] ① 在 React 输入框里真发一条 —— 它必须同时出现在屏幕和账本上')
+    console.log('\n[3/7] ① 在 React 输入框里真发一条 —— 它必须同时出现在屏幕和账本上')
     await typeIntoComposer(page, TYPED_TEXT)
     await clickTestId(page, 'composer-send')
 
@@ -251,7 +274,7 @@ async function main() {
       '屏幕上那条的 id 就是账本上那条的 id(不是渲染层自己编的号)',
     )
 
-    console.log('\n[4/5] ② 脚本侧 HTTP 注入第二条 —— 不刷新,看它自己长出来')
+    console.log('\n[4/7] ② 脚本侧 HTTP 注入第二条 —— 不刷新,看它自己长出来')
     const before = (await readScreenTree(page)).length
     await rpc(record, 'session-command', 'emit', {
       sessionId,
@@ -266,7 +289,7 @@ async function main() {
     assert(afterInject.length > before, `屏幕上多出了消息(${before} → ${afterInject.length})`)
     assert(true, '活折通了:推送 → 增量折 → 上屏,一次刷新都没有')
 
-    console.log('\n[5/5] ③ 折叠树 ≡ 读面:同一份账本,两条路,同一个答案')
+    console.log('\n[5/7] ③ 折叠树 ≡ 读面:同一份账本,两条路,同一个答案')
     // 引擎那边可能还在收尾(没有 provider,run 会报错落账)—— 等两侧稳下来再比。
     const compared = await waitFor('屏幕的 id 序列与 getMessagesPage 逐条相等', async () => {
       const page1 = await rpc(record, 'sessions', 'getMessagesPage', {
@@ -283,10 +306,64 @@ async function main() {
       `两侧都是 ${compared.expected.length} 条:${JSON.stringify(compared.expected)}`,
     )
 
+    console.log('\n[6/7] ④ 在总览组头上点那颗 + —— core 那边必须真的多一条会话')
+    // 门里建的那条会话没有 workingDirectory,所以它落在「独立会话」组
+    // (expose/projection.ts 的 LOOSE_GROUP_ID)。组头那颗 + 的落点就在它上面。
+    await clickTestId(page, 'dock-tile-sessions')
+    await waitFor('总览里那个组的组头就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="group-plus-loose"]'))),
+    )
+    const idsBefore = new Set(
+      ((await rpc(record, 'sessions', 'listMeta')).sessions ?? []).map(s => s.id),
+    )
+    await clickTestId(page, 'group-plus-loose')
+
+    const createdId = await waitFor('core 的会话列表里多出一条', async () => {
+      const list = await rpc(record, 'sessions', 'listMeta')
+      const fresh = (list.sessions ?? []).filter(s => !idsBefore.has(s.id))
+      return fresh.length === 1 ? fresh[0].id : undefined
+    })
+    assert(Boolean(createdId), `真的建出来一条:${createdId}(建之前 ${idsBefore.size} 条)`)
+
+    const rawNew = await rpc(record, 'sessionEvents', 'listRaw', { sessionId: createdId })
+    assert(
+      (rawNew.events ?? []).some(event => event.type === 'session/created'),
+      '它自己的账本里有 session/created —— 建会话走到了账本,不是渲染层记了一笔',
+    )
+    /*
+     * 「屏幕跟着进了新会话」的可观察证据:聊天区的消息树**空了**。
+     * 这是一个真断言而不是恒真式 —— 上一条会话此刻有 ≥2 条消息(③ 刚数过),
+     * 所以「树是空的」只可能是因为当前会话换成了刚建出来的那条。
+     */
+    const treeAfterCreate = await waitFor('新会话的聊天区是空的(它刚建出来)', async () => {
+      const tree = await readScreenTree(page)
+      return tree.length === 0 ? { tree } : undefined
+    })
+    assert(
+      treeAfterCreate.tree.length === 0 && compared.expected.length >= 2,
+      `进的是新那条:聊天区 0 条(上一条会话有 ${compared.expected.length} 条)`,
+    )
+
+    console.log('\n[7/7] ⑤ 中止 —— 这一条是**降级**的(理由见文件头)')
+    const abortAck = await rpc(record, 'session-command', 'emit', {
+      sessionId,
+      // 与 src/data/chat-port.ts 的 abort() 逐字相同的信封:一个字段都不多。
+      command: { type: 'command:abort' },
+    })
+    assert(
+      abortAck?.success === true,
+      '壳发出去的那条 command:abort 信封被 core 收下(接线成立)',
+    )
+    const sendMode = await page.evaluate(() =>
+      document.querySelector('[data-testid="composer-send"]')?.getAttribute('data-mode'),
+    )
+    assert(sendMode === 'send', `发送键带着 data-mode,闲时是 send(读到:${sendMode})`)
+
     await app.close()
     app = undefined
-    console.log('\n[d3-gate] ok —— 写面进了账本、活折通了、折叠树与读面逐条相等')
-    console.log('[d3-gate] 门里没验的:流式生成(要真 provider),属真机手验。')
+    console.log('\n[d3-gate] ok —— 写面进了账本、活折通了、折叠树与读面逐条相等、建会话真的落了账')
+    console.log('[d3-gate] 门里没验的:流式生成、以及「真流里按停止那一轮真的停了」')
+    console.log('[d3-gate]   —— 两者都要真 provider,属真机手验(⑤ 因此是降级的)。')
   } finally {
     if (app) await app.close().catch(() => {})
     if (server && pidAlive(server.pid)) server.kill('SIGTERM')

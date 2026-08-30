@@ -31,12 +31,15 @@ const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
  *
  * ⌘E 给会话总览那块瓦(⌘P 在 08-29 那次拍板里归了检索面板),
  * ⌘J 给顶栏那枚 agent 切换器(08-30 拍板)。
+ * ⌘N 给新建会话 —— 这一条是**跨应用惯例**(新建文档 / 新建标签页),
+ * 预占它不算替用户做主,不给它才是。
  */
 const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toggle:search': { meta: true, key: 'p' },
   [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'e' },
   'toc.toggle': { meta: true, shift: true, key: 'o' },
   'agent.menu': { meta: true, key: 'j' },
+  'session.new': { meta: true, key: 'n' },
 }
 
 /**
@@ -56,6 +59,8 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
   { id: 'toc.toggle', labelKey: 'toc.title', defaultCombo: DEFAULT_COMBOS['toc.toggle'] ?? null },
   // 顶栏 agent 切换器:同样不是瓦,同样是「呼出一块面」的命令(08-30)。
   { id: 'agent.menu', labelKey: 'agent.menuLabel', defaultCombo: DEFAULT_COMBOS['agent.menu'] ?? null },
+  // 新建会话(D1 开工批)。它不开面,它**做一件事** —— 这一族里的第一条。
+  { id: 'session.new', labelKey: 'session.new', defaultCombo: DEFAULT_COMBOS['session.new'] ?? null },
 ]
 
 export const initialKeymapState: KeymapState = { overrides: {} }

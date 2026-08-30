@@ -37,6 +37,14 @@ export interface ChatPort {
   onSessionStream(callback: (payload: SessionStreamPayload) => void): () => void
   /** 发一条纯文本用户消息。@提及 / 附件不在 D3 —— 端口上也就没有那两个参数。 */
   sendMessage(sessionId: string, content: string): Promise<SessionCommandEmitResult>
+  /**
+   * 中止这条会话正在跑的那一轮(`command:abort`)。
+   *
+   * 与 `sendMessage` 骑**同一条**命令总线,一个字段都不多给 —— 尤其没有
+   * `reason`:契约上它是可选的自由文本,而壳这边没有第二种中止理由
+   * (人按了停止,就是这一种)。填一句现造的话进账本,那是造事实。
+   */
+  abort(sessionId: string): Promise<SessionCommandEmitResult>
 }
 
 let port: ChatPort | undefined
@@ -71,6 +79,11 @@ async function realPort(): Promise<ChatPort> {
       sessionCommands.emit({
         sessionId,
         command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, content },
+      }),
+    abort: (sessionId) =>
+      sessionCommands.emit({
+        sessionId,
+        command: { type: SESSION_COMMAND_TYPES.ABORT },
       }),
   }
 }
