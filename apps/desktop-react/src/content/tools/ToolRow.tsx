@@ -1,32 +1,163 @@
+import { useCallback, useState } from 'react'
 import { useT, type MessageKey, type TFn } from '../../i18n'
 import { resolveIcon } from '../../components/icons'
-import type { ToolRowModel } from '../model/segments'
+import { Spinner } from '../../ui/Spinner'
+import type { BlockCtx } from '../blocks/registry'
+import type { ToolOutcomeModel, ToolRowModel, ToolStepModel } from '../model/segments'
+import { ToolDrawer } from './ToolDrawer'
 import s from './ToolRow.module.css'
 
 /**
- * 工具卡行(A1)。
+ * 工具行(A1 卡行 + V2 图标即状态 + C1 行内抽屉)。
  *
- * P0 的画法是从 ChatStream **逐字搬过来的**:图标 + mono 工具名 + 状态文案,
- * 一行。V2 的图标即状态(成功常灰 / 失败红 / 运行中紫呼吸)与右端成果词是 P2 ——
- * 模型上那两格(`summary` / `outcome`)已经留好,但今天没有 presenter 产得出来,
- * 所以这里也不画:P0 的纪律是可感知行为零变化。
+ * ── V2:状态长在**图标**上,不是长成一个词 ────────────────────────────
+ * 六轮定稿把「✓ 完成」这类**打卡词**判了出局:一条做完的调用不需要一句话来宣布
+ * 它做完了 —— 它做完了是常态,值得占一格字的是**它做出了什么**(读了多少行、
+ * 改了几加几减、退出码几)。所以:
  *
- * 组件读的是 `ToolRowModel`,不是 `ProjectedToolCall` —— 中间隔着 presenter 表。
- * 这一层隔断买到的是:换一个工具的展示方式,只写一个 presenter 文件,
- * 这个组件一行不动。
+ *   成功 = 图标常灰(text-2),右端是成果词;
+ *   失败 = 图标 danger,右端是**后端说的那句原话**;
+ *   运行中 = 图标 accent + 呼吸,右端 spinner + 那一档状态。
+ *
+ * 三态之外还有第四种:**认不出的状态**。后端哪天加一档新枚举,这里既不猜它是
+ * 哪一态(灰、不呼吸),也不吞掉它(右端原样摆那个英文枚举)。
+ *
+ * ── 一个组件两种形态,不是两个组件 ────────────────────────────────────
+ * A1 卡行(单发,有边有底)与 B2 清单行(组内,一行素的)画的是**同一件事**:
+ * 图标态 + 名 + 摘要 + 右端。差别只在外面那层壳,所以它是一个 `variant`,不是
+ * 复制一份 JSX —— 复制之后「右端该显示什么」这条规则就有两个产地了。
  */
-export function ToolRow({ row }: { row: ToolRowModel }) {
+
+/** A1:单发的那张卡。 */
+export function ToolRow({ step, ctx }: { step: ToolStepModel; ctx: BlockCtx }) {
+  return <ToolRowBody step={step} ctx={ctx} variant="card" />
+}
+
+/** B2 清单里的一行(无卡壳)。 */
+export function ToolStepRow({ step, ctx }: { step: ToolStepModel; ctx: BlockCtx }) {
+  return <ToolRowBody step={step} ctx={ctx} variant="step" />
+}
+
+function ToolRowBody({
+  step,
+  ctx,
+  variant,
+}: {
+  step: ToolStepModel
+  ctx: BlockCtx
+  variant: 'card' | 'step'
+}) {
   const t = useT()
-  const Icon = resolveIcon(row.icon)
+  const [open, setOpen] = useState(false)
+  const toggle = useCallback(() => setOpen((value) => !value), [])
+
+  const { row, call } = step
+  const tone = toolTone(row.status)
+  // 抽屉状态住组件本地,**不进模型**:「这一行现在是开着的」是这台屏幕此刻的事,
+  // 不是这次调用的事实。进了模型,同一条消息在两个窗口里就得共享展开态。
+  //
+  // 只有收场了的调用能展开:运行中的行**详情还在长**,拉开它会看到一份随时被
+  // 替换的半成品,而 presenter 的 detail 是按「结局」写的(§5.1)。等它收场再看。
+  const expandable = EXPANDABLE_STATUSES.has(row.status)
 
   return (
-    <div className={s.toolCard} data-tool-status={row.status}>
-      <Icon className={s.toolIcon} strokeWidth={1.75} aria-hidden="true" />
-      <span className={s.toolName}>{row.name}</span>
-      <span className={s.toolStatus}>{toolStatusLabel(t, row.status)}</span>
+    <div
+      className={variant === 'card' ? s.toolCard : s.toolStep}
+      data-tool-status={row.status}
+      data-tool-tone={tone}
+    >
+      {expandable ? (
+        <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
+          <ToolRowFace t={t} row={row} tone={tone} />
+        </button>
+      ) : (
+        // 不能展开时**不画按钮**:一个按得动却什么也不发生的钮是「假按钮」,
+        // 它比没有钮更费人 —— 焦点会停在它上面,读屏会念它可点。
+        <div className={s.head}>
+          <ToolRowFace t={t} row={row} tone={tone} />
+        </div>
+      )}
+      {open && <ToolDrawer call={call} ctx={ctx} />}
     </div>
   )
 }
+
+/** 一行的四格:图标 · 名 · 摘要 · 右端。两种形态共用。 */
+function ToolRowFace({ t, row, tone }: { t: TFn; row: ToolRowModel; tone: ToolTone }) {
+  const Icon = resolveIcon(row.icon)
+  return (
+    <>
+      <Icon className={s.toolIcon} strokeWidth={1.75} aria-hidden="true" />
+      <span className={s.toolName} title={row.title}>
+        {row.name}
+      </span>
+      {row.summary && <span className={s.toolSummary}>{row.summary}</span>}
+      <span className={s.toolRight}>
+        {tone === 'busy' && <Spinner size="sm" className={s.toolSpinner} />}
+        <ToolRightText t={t} row={row} tone={tone} />
+      </span>
+    </>
+  )
+}
+
+/**
+ * 右端那一格的文案。
+ *
+ * 成功那一支**允许什么都不显示**:没有成果词、也没算出耗时时,右端就是空的。
+ * 这正是「无打卡词」的意思 —— 宁可空着,不拿一句「已完成」去填。
+ */
+function ToolRightText({ t, row, tone }: { t: TFn; row: ToolRowModel; tone: ToolTone }) {
+  if (tone === 'ok') {
+    return (
+      <>
+        {row.outcome && <span className={s.toolOutcome}>{outcomeText(t, row.outcome)}</span>}
+        {row.durationMs !== undefined && (
+          <span className={s.toolDuration}>{formatDuration(t, row.durationMs)}</span>
+        )}
+      </>
+    )
+  }
+  // 失败 / 运行中 / 认不出:成果词缺席时退到那一档状态的说法(认不出就是英文枚举)。
+  const text = row.outcome ? outcomeText(t, row.outcome) : toolStatusLabel(t, row.status)
+  return <span className={s.toolOutcome}>{text}</span>
+}
+
+/** 模型说的是「哪一句 + 变量」;翻译发生在这里,所以切语言当场生效。 */
+export function outcomeText(t: TFn, outcome: ToolOutcomeModel): string {
+  return 'text' in outcome ? outcome.text : t(outcome.key, outcome.vars)
+}
+
+/** 耗时:秒以上按秒说,秒以下按毫秒说 —— 「1234ms」没人读得快。 */
+export function formatDuration(t: TFn, ms: number): string {
+  if (ms >= 1000) return t('chat.tool.durationS', { n: (ms / 1000).toFixed(1) })
+  return t('chat.tool.durationMs', { n: Math.round(ms) })
+}
+
+export type ToolTone = 'ok' | 'bad' | 'busy' | 'unknown'
+
+/**
+ * **后端八态 → 图标三态**的那张表(§5.2)。
+ *
+ * 与状态字典表分开的理由和那张表本身一样:两张表回答两个问题(画什么色 / 说哪句话),
+ * 今天答案一一对应不代表将来也是。认不出的枚举落 `unknown` —— 不猜是哪一态。
+ */
+const TOOL_TONES: Record<string, ToolTone> = {
+  pending: 'busy',
+  queued: 'busy',
+  received: 'busy',
+  executing: 'busy',
+  'input-streaming': 'busy',
+  completed: 'ok',
+  failed: 'bad',
+  cancelled: 'bad',
+}
+
+export function toolTone(status: string): ToolTone {
+  return TOOL_TONES[status] ?? 'unknown'
+}
+
+/** 能拉开抽屉的两档:结局已经定下来了,detail 才算得出一份完整的东西。 */
+const EXPANDABLE_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 
 /**
  * 工具状态:**后端枚举 → 字典键**的一张明表。

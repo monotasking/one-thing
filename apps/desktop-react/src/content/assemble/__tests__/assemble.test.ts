@@ -72,33 +72,48 @@ describe('段序列:一条消息算成哪几段', () => {
     expect(segment).toMatchObject({ kind: 'thinking', live: true })
   })
 
-  it('工具调用一个一张卡,排在正文之后(P0 不归组、不按锚点归位)', () => {
+  it('单发工具 = 一张卡(P2 起卡里带着那次调用,抽屉要惰性算详情)', () => {
+    // P0 时这条断言的是「两次调用 = 两张卡,都排在正文后面」。P2 起两件事都变了:
+    // 归组把相邻的两次折成一组(可感知变化,B2 定稿),所以这里只留单发那一格。
+    const segments = assembleMessage(
+      message({ content: '读一下', toolCalls: [toolCall()] as never }),
+    )
+    expect(segments.map((s) => s.kind)).toEqual(['rich-text', 'tool'])
+    expect(segments[1]).toMatchObject({
+      kind: 'tool',
+      step: {
+        row: { callId: 'c1', icon: 'FileText', name: 'a.txt', status: 'completed' },
+        call: { id: 'c1' },
+      },
+    })
+  })
+
+  it('相邻两次调用折成一组(B2)—— 归组是 P2 的可感知变化', () => {
     const segments = assembleMessage(
       message({
         content: '读一下',
         toolCalls: [toolCall(), toolCall({ id: 'c2', status: 'failed' })] as never,
       }),
     )
-    expect(segments.map((s) => s.kind)).toEqual(['rich-text', 'tool', 'tool'])
-    expect(segments[1]).toEqual({
-      kind: 'tool',
-      row: { callId: 'c1', icon: 'FolderTree', name: 'read', status: 'completed' },
+    expect(segments.map((s) => s.kind)).toEqual(['rich-text', 'tool-group'])
+    expect(segments[1]).toMatchObject({
+      group: { total: 2, failed: 1, names: ['read'] },
     })
-    expect(segments[2]).toMatchObject({ row: { callId: 'c2', status: 'failed' } })
   })
 
   it('拿不到 toolName 就用 toolId —— 那是事实,编一个名字是猜', () => {
+    // 工具名认不出来时 read 的 presenter 也认不出它,于是走兜底:名字是 toolId。
     const segments = assembleMessage(
-      message({ toolCalls: [toolCall({ toolName: '' })] as never }),
+      message({ toolCalls: [toolCall({ toolName: '', toolId: 'mystery' })] as never }),
     )
-    expect(segments[0]).toMatchObject({ row: { name: 'read' } })
+    expect(segments[0]).toMatchObject({ step: { row: { name: 'mystery' } } })
   })
 
   it('认不出的状态原样带过去(渲染层再决定显示英文枚举)', () => {
     const segments = assembleMessage(
       message({ toolCalls: [toolCall({ status: 'teleported' })] as never }),
     )
-    expect(segments[0]).toMatchObject({ row: { status: 'teleported' } })
+    expect(segments[0]).toMatchObject({ step: { row: { status: 'teleported' } } })
   })
 })
 

@@ -200,6 +200,24 @@ export const zh = {
   'chat.tool.cancelled': '已取消',
   'chat.tool.inputStreaming': '参数生成中',
 
+  /* ── 工具三件套(P2:A1 卡行 / B2 计数句 / C1 抽屉)────────────────────
+   * 成果词是**事实的复述**,不是打卡词:「N 行」「+a −d」「退出 0」都在说这次
+   * 调用做出了什么。上面那八档状态从此只在「还没有成果词可说」时才露面。 */
+  'chat.tool.lines': '{n} 行',
+  'chat.tool.diffStat': '+{add} −{del}',
+  'chat.tool.exitOk': '退出 0',
+  'chat.tool.exitCode': '退出 {code}',
+  'chat.tool.results': '{n} 条结果',
+  'chat.tool.durationMs': '{n}ms',
+  'chat.tool.durationS': '{n}s',
+  'chat.tool.arguments': '参数',
+  'chat.tool.result': '结果',
+  'chat.tool.noResult': '这次调用没有留下结果',
+  'chat.toolGroup.count': '执行了 {n} 步',
+  'chat.toolGroup.moreKinds': '等 {n} 种',
+  'chat.toolGroup.failed': '{n} 失败',
+  'chat.toolGroup.times': '×{n}',
+
   /* ── 内容块的壳(檐上的动作、限高折叠、降级说明) ─────────────────────
    * 块的 `reason`(unknown-kind:… / tool-default)是**标识**不是文案,
    * 与错误边界的 `where` 同一条判据:换语言它不该跟着变,所以它不在这儿。 */

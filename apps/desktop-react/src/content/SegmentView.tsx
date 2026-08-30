@@ -4,6 +4,7 @@ import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'
 import type { SegmentModel } from './model/segments'
 import { ThinkingSegment } from './ThinkingSegment'
+import { ToolGroup } from './tools/ToolGroup'
 import { ToolRow } from './tools/ToolRow'
 
 /**
@@ -53,18 +54,11 @@ export const SegmentView = memo(function SegmentView({
       )
 
     case 'tool':
-      return <ToolRow row={segment.row} />
+      return <ToolRow step={segment.step} ctx={ctx} />
 
     case 'tool-group':
-      // B2 的收起/展开清单是 P2。在那之前**照旧一行一张卡** —— 归组步今天也不产
-      // 这种段,所以这一格走不到;真走到了也是把已知的事实原样摆出来,不是空白。
-      return (
-        <>
-          {segment.group.rows.map((row) => (
-            <ToolRow key={row.callId} row={row} />
-          ))}
-        </>
-      )
+      return <ToolGroup group={segment.group} ctx={ctx} />
+
 
     case 'image':
     case 'research':

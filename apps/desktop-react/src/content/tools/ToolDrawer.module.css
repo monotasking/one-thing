@@ -1,0 +1,67 @@
+/*
+ * C1 行内抽屉。
+ *
+ * 从属关系靠**衬面**(surface-1)与顶边一条分隔说,不画左竖线(禁令)。
+ */
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border-top: 1px solid var(--line-1);
+  background: var(--surface-1);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* 小节名:节标体量(小字 + 字距),不是标题 —— 它是索引,不该抢内容。 */
+.label {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--ls-section);
+  text-transform: uppercase;
+  color: var(--text-4);
+}
+
+.args {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.argRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.argName {
+  flex: none;
+  min-width: 5rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/*
+ * 值:换行照实保留、长串在词内断开。**不横滚** —— 抽屉里的参数是要读的,
+ * 横滚会把它变成要拖的。块内横滚是块壳的事(结果那一节的代码块自己有)。
+ */
+.argValue {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  font-size: var(--fs-meta);
+  color: var(--text-4);
+}

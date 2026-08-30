@@ -1,6 +1,6 @@
-import type { ProjectedMessage } from '../../data/chat-fold'
 import type { BlockModel } from '../model/blocks'
-import type { ToolRowModel } from '../model/segments'
+import type { ProjectedToolCall, ToolRowModel } from '../model/segments'
+import { baseToolRow } from './row'
 
 /**
  * 「不同工具的结果怎么展示」的那张表(§5.1)。
@@ -22,7 +22,12 @@ import type { ToolRowModel } from '../model/segments'
  * (同一个 bash,拿到结构化输出和拿到裸文本是两种展示),Map 表达不了。
  */
 
-export type ProjectedToolCall = NonNullable<ProjectedMessage['toolCalls']>[number]
+/**
+ * 调用的词汇住在 `model/segments.ts`(段模型自己要带它 —— C1 抽屉惰性算详情)。
+ * 这里再导出一次,是因为 presenter 的作者读的是这个文件:让他为了一个类型跑去
+ * 另一棵树里找,是把「一个概念一个归属」写成了「一个概念一次寻宝」。
+ */
+export type { ProjectedToolCall }
 
 export interface ToolPresenter {
   /** 认领判据。按 toolName / result 形状说话,不看 UI。 */
@@ -59,21 +64,16 @@ export function resolveToolPresenter(call: ProjectedToolCall): ToolPresenter {
 /**
  * 兜底 presenter。
  *
- * `row` 的字段就是**今天工具卡真的画的那些**:工具名(拿不到 name 就用 id ——
- * 那是事实,编一个名字是猜)+ 后端那一档状态原样。参数摘要与成果词是 V2 的事,
- * 这里不产 —— 产了就得有人画,而 P0 的纪律是可感知行为零变化。
+ * `row` 只说得出**任何调用都成立的那几格**(工具名 + 状态 + 耗时 + 失败原因,见
+ * `baseToolRow`):参数摘要与成果词要懂这个工具才编得出来,而兜底按定义不懂。
+ * 不懂就不说 —— 这比猜一句好看的话诚实。
  *
  * `detail` 落 `source-fallback`:参数与结果的 JSON 原样。`reason` 是机器口径的词,
  * 不是文案。
  */
 export const defaultToolPresenter: ToolPresenter = {
   match: () => true,
-  row: (call) => ({
-    callId: call.id,
-    icon: 'FolderTree',
-    name: call.toolName || call.toolId,
-    status: call.status,
-  }),
+  row: (call) => baseToolRow(call),
   detail: (call) => [
     {
       kind: 'source-fallback',

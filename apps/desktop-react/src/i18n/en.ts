@@ -197,6 +197,22 @@ export const en: Record<MessageKey, string> = {
   'chat.tool.cancelled': 'cancelled',
   'chat.tool.inputStreaming': 'streaming args',
 
+  /* ── tool trio (P2: A1 row / B2 count line / C1 drawer) ─────────────── */
+  'chat.tool.lines': '{n} lines',
+  'chat.tool.diffStat': '+{add} −{del}',
+  'chat.tool.exitOk': 'exit 0',
+  'chat.tool.exitCode': 'exit {code}',
+  'chat.tool.results': '{n} results',
+  'chat.tool.durationMs': '{n}ms',
+  'chat.tool.durationS': '{n}s',
+  'chat.tool.arguments': 'Arguments',
+  'chat.tool.result': 'Result',
+  'chat.tool.noResult': 'This call left no result',
+  'chat.toolGroup.count': 'Ran {n} steps',
+  'chat.toolGroup.moreKinds': 'and {n} kinds',
+  'chat.toolGroup.failed': '{n} failed',
+  'chat.toolGroup.times': '×{n}',
+
   /* ── content block shell (eave actions, clamp, failure line) ────────── */
   'block.actions': 'More actions',
   'block.action.copySource': 'Copy source',

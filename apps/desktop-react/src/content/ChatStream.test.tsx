@@ -159,7 +159,12 @@ describe('消息树:画的就是折叠器的输出', () => {
     ])
     const card = container.querySelector('[data-tool-status]')
     expect(card?.getAttribute('data-tool-status')).toBe('completed')
-    expect(card?.textContent).toBe('read已完成')
+    // V2 定稿(P2):**成功没有打卡词**。「已完成」那一格从此长在图标上(常灰,
+    // 见 data-tool-tone),右端只放成果词或耗时。这条素材里参数是空的、结果里没有
+    // lineCount,所以成果词无从说起 —— 右端剩下的就是账本上那个耗时(调用与结果
+    // 同一毫秒,所以是 0ms)。空着也不许拿一句「已完成」去填。
+    expect(card?.getAttribute('data-tool-tone')).toBe('ok')
+    expect(card?.textContent).toBe('read0ms')
   })
 
   it('run 还开着 = 流中态指示在场;收了就没有', async () => {

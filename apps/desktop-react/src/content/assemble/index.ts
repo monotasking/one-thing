@@ -3,7 +3,7 @@ import type { SegmentModel } from '../model/segments'
 import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
 import { markdownToFrame } from './markdown'
-import { presentToolRow } from './present'
+import { presentToolGroup, presentToolStep } from './present'
 
 /**
  * 装配管线 —— **一条消息 → 一串段**(§2)。
@@ -41,8 +41,8 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
   for (const node of groupNodes(anchorMessage(message))) {
     switch (node.node) {
       case 'reasoning':
-        // 顶部推理 = 思考段。行内推理(placement:'inline')在 P0 的锚点直通里
-        // 不会出现 —— 它要等锚点真算法把 parts 织进来。
+        // 顶部推理与行内推理都是思考段 —— 它们的差别是**落点**(placement),
+        // 而落点已经由锚点步兑现成了序列上的位置。到这一层就没有第二个问题了。
         segments.push({ kind: 'thinking', text: node.text, live: message.isStreaming === true })
         break
       case 'text': {
@@ -60,16 +60,10 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
         segments.push({ kind: 'image', blob: node.blob })
         break
       case 'tool':
-        segments.push({ kind: 'tool', row: presentToolRow(node.call) })
+        segments.push({ kind: 'tool', step: presentToolStep(node.call) })
         break
       case 'tool-group':
-        segments.push({
-          kind: 'tool-group',
-          group: {
-            rows: node.calls.map(presentToolRow),
-            failed: node.calls.filter((call) => call.status === 'failed').length,
-          },
-        })
+        segments.push({ kind: 'tool-group', group: presentToolGroup(node.calls) })
         break
       case 'research':
         // 检索段的模型由 P4 的归组步产出;归组步今天不产 research 节点,
