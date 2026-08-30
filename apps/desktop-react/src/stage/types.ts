@@ -127,8 +127,15 @@ export interface StageState {
  * 它只有这一个职责了 —— 每瓦的「打开方式」配置已并入位置记忆(G 批),
  * 所以这里不再有 'default'(「不表态」)那一档:全局档自己就是最后一层,没有下家可推。
  * 'pinned' 的语义 = edge:right;值不改名是为了旧档案兼容,翻译收在 placementForOpen 一处。
+ *
+ * ── 'stage' 退出打开档(08-30 用户拍板)────────────────────────────────
+ * 「点开」的形态统一成悬浮窗:popup(舞台)与浮窗两种打开结果并成一种,用户
+ * 不再需要在两套心智间切换。舞台**形态本身没有退役** —— 它降级为浮窗的
+ * 「放大」目标(FloatWindow 标题栏双击 / 放大钮、Dock 右键点名),只是任何
+ * 「点一下打开」的路径都不再产出它。存量档案里的 'stage' 值在 persist 迁移
+ * 与 resolveOpen 读取处各钳一次,写入侧不清洗。
  */
-export type ResolvedOpen = 'stage' | 'float' | 'pinned'
+export type ResolvedOpen = 'float' | 'pinned'
 
 /**
  * 设置层:不参与形态推导,只参与「点一下该去哪」的解析。

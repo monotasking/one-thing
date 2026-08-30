@@ -51,7 +51,7 @@ export const DOCK_EDGE_BAND = 8
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 4
+export const STAGE_PERSIST_VERSION = 5
 
 const DOCK: Placement = { kind: 'dock' }
 
@@ -74,7 +74,7 @@ export const initialStageState: StageState = {
 }
 
 export const initialStageSettings: StageSettings = {
-  defaultOpen: 'stage',
+  defaultOpen: 'float',
   locale: 'system',
   dockEdge: 'bottom',
   dockAlign: 'center',
@@ -178,8 +178,7 @@ export function openFromMemory(
  * 全局默认档翻成形态机认识的 Placement。全仓唯一一处翻译:
  * 'pinned' 这个历史值的语义就是「钉到右边那条架子」,别处不许再判一次。
  */
-export function placementForOpen(open: ResolvedOpen): MemorablePlacement {
-  if (open === 'stage') return { kind: 'stage' }
+export function placementForOpen(open: ResolvedOpen): Exclude<MemorablePlacement, { kind: 'stage' }> {
   if (open === 'float') return { kind: 'float' }
   return { kind: 'edge', side: 'right' }
 }
@@ -194,7 +193,6 @@ export function defaultOpenMemory(
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): PlacementMemory {
   const placement = placementForOpen(open)
-  if (placement.kind === 'stage') return { kind: 'stage' }
   if (placement.kind === 'float') return { kind: 'float', rect: defaultFloatRect(viewport) }
   return {
     kind: 'edge',
@@ -214,7 +212,11 @@ export function resolveOpen(
   defaultOpen: ResolvedOpen,
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): PlacementMemory {
-  return state.memory[id] ?? defaultOpenMemory(state, defaultOpen, viewport)
+  const remembered = state.memory[id]
+  // 舞台已退出打开档(见 types.ts 的 ResolvedOpen 注释):存量记忆里的 stage 条目
+  // 在这里钳掉,落回默认档 —— 写入侧(closeToDock 记形态)不清洗,单点治理。
+  if (remembered && remembered.kind !== 'stage') return remembered
+  return defaultOpenMemory(state, defaultOpen, viewport)
 }
 
 /* ── 浮窗几何(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
@@ -767,6 +769,21 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
       }
     }
     out = { ...rest, memory }
+  }
+  if (version < 5) {
+    // 舞台退出打开档(08-30):存量 defaultOpen 的 'stage' 迁到 'float';
+    // 记忆里的 stage 条目直接删 —— 缺记忆 = 跟默认档走,resolveOpen 会补浮窗默认身量
+    // (迁移期拿不到视口,不在这里编一个矩形)。活 placements 不动:开着的舞台照常恢复,
+    // 它仍是合法形态,只是点开的路不再通向它。
+    if (out.defaultOpen === 'stage') out = { ...out, defaultOpen: 'float' }
+    const memory = out.memory
+    if (memory && typeof memory === 'object') {
+      const next: Record<string, unknown> = {}
+      for (const [id, value] of Object.entries(memory as Record<string, unknown>)) {
+        if (!(value && typeof value === 'object' && (value as { kind?: unknown }).kind === 'stage')) next[id] = value
+      }
+      out = { ...out, memory: next }
+    }
   }
   return out
 }

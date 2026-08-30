@@ -99,8 +99,7 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
     memory: { ...base.memory, [id]: m },
   })
 
-  it('没有记忆 → 落到全局默认档', () => {
-    expect(resolveOpen(base, 'files', 'stage', VP)).toEqual({ kind: 'stage' })
+  it('没有记忆 → 落到全局默认档(舞台已不在档里)', () => {
     expect(resolveOpen(base, 'files', 'pinned', VP)).toEqual({
       kind: 'edge',
       side: 'right',
@@ -110,20 +109,23 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
   })
 
   it('有记忆 → 记忆赢,全局默认档一句话说不上', () => {
-    const st = withMemory('files', { kind: 'stage' })
-    expect(resolveOpen(st, 'files', 'pinned', VP)).toEqual({ kind: 'stage' })
-
     const pinned = withMemory('files', { kind: 'edge', side: 'left', index: 2 })
-    expect(resolveOpen(pinned, 'files', 'stage', VP)).toEqual({
+    expect(resolveOpen(pinned, 'files', 'float', VP)).toEqual({
       kind: 'edge',
       side: 'left',
       index: 2,
     })
   })
 
+  it('存量的 stage 记忆被钳掉,落回默认档 —— 点开永不再出 popup(08-30 拍板)', () => {
+    const st = withMemory('files', { kind: 'stage' })
+    expect(resolveOpen(st, 'files', 'float', VP)).toEqual(M_FLOAT)
+    expect(resolveOpen(st, 'files', 'pinned', VP)).toEqual({ kind: 'edge', side: 'right', index: 0 })
+  })
+
   it('记忆只作用于自己那一个 id —— 别的瓦照旧跟默认档', () => {
     const st = withMemory('files', { kind: 'float', rect: { x: 1, y: 2, w: 300, h: 400 } })
-    expect(resolveOpen(st, 'diff', 'stage', VP)).toEqual({ kind: 'stage' })
+    expect(resolveOpen(st, 'diff', 'float', VP)).toEqual(M_FLOAT)
   })
 
   it('第三层「显式手势」不经过这个函数:手势自己说得出落点,直接调 openAs', () => {
@@ -135,7 +137,6 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
 
   it("'pinned' 这个历史值的语义就是 edge:right,翻译只此一处", () => {
     expect(placementForOpen('pinned')).toEqual({ kind: 'edge', side: 'right' })
-    expect(placementForOpen('stage')).toEqual(STAGE)
     expect(placementForOpen('float')).toEqual(FLOAT)
   })
 
@@ -147,10 +148,12 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
     expect(defaultOpenMemory(base, 'float', VP)).toEqual(M_FLOAT)
   })
 
-  it('检索面板是普通的一块瓦:参与 resolveOpen 全套', () => {
-    expect(resolveOpen(base, 'search', 'stage', VP)).toEqual({ kind: 'stage' })
+  it('检索面板是普通的一块瓦:参与 resolveOpen 全套(stage 记忆同样被钳)', () => {
+    expect(resolveOpen(base, 'search', 'float', VP)).toEqual(M_FLOAT)
     expect(resolveOpen(withMemory('search', { kind: 'stage' }), 'search', 'pinned', VP)).toEqual({
-      kind: 'stage',
+      kind: 'edge',
+      side: 'right',
+      index: 0,
     })
   })
 })
@@ -1055,12 +1058,12 @@ describe('位置记忆:按记忆恢复(index 钳制与同边合流)', () => {
       memory: { files: { kind: 'edge', side: 'left', index: 0 } },
     }
     expect(
-      formOf(clickDockIcon(base, 'files', resolveOpen(base, 'files', 'stage', VP), VP), 'files'),
-    ).toBe('stage')
+      formOf(clickDockIcon(base, 'files', resolveOpen(base, 'files', 'float', VP), VP), 'files'),
+    ).toBe('float')
     const next = clickDockIcon(
       remembered,
       'files',
-      resolveOpen(remembered, 'files', 'stage', VP),
+      resolveOpen(remembered, 'files', 'float', VP),
       VP,
     )
     expect(placementOf(next, 'files')).toEqual({ kind: 'edge', side: 'left' })
@@ -1100,13 +1103,15 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
     return { left: { ...one }, right: { ...one }, top: { ...one }, bottom: { ...one } }
   }
 
-  it('三种配置各一条:用户配过的一条不丢', () => {
+  it('三种配置各一条:float / pinned 不丢;stage 在随后的 v5 段被清(舞台退出打开档)', () => {
     const out = migrateStagePersisted(
       v3({ browser: 'stage', diff: 'float', terminal: 'pinned' }),
       3,
     ) as Record<string, unknown>
     const memory = out.memory as Record<string, PlacementMemory>
-    expect(memory.browser).toEqual({ kind: 'stage' })
+    // v4 段先把 'stage' 翻成记忆,v5 段再把它清掉 —— 净效果:这块瓦回到「没表过态」,
+    // 点开跟默认档走(= 浮窗)。float / pinned 记忆原样存活。
+    expect('browser' in memory).toBe(false)
     // 'float' 带上老档里存过的那个矩形,不是一个新的默认窗。
     expect(memory.diff).toEqual({ kind: 'float', rect: { x: 10, y: 20, w: 400, h: 300 } })
     // 'pinned' 带上它当时在右架子里的次序(terminal 排第 2)。
@@ -1152,12 +1157,19 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
     expect(out.locale).toBe('en')
   })
 
-  it('v0 的老档一路连过四段也到得了 v4', () => {
+  it('v0 的老档一路连到 v5:结构都在,stage 记忆被终段清掉', () => {
     const out = migrateStagePersisted(
       { pinnedId: 'diff', pinnedWidth: 500, openOverrides: { files: 'stage' } },
       0,
     ) as Record<string, unknown>
-    expect((out.memory as Record<string, PlacementMemory>).files).toEqual({ kind: 'stage' })
+    expect('files' in (out.memory as Record<string, PlacementMemory>)).toBe(false)
     expect((out.shelves as Record<string, { tabs: string[] }>).right.tabs).toEqual(['diff'])
+  })
+
+  it('v4 → v5:defaultOpen 的 stage 迁到 float,float 值原样', () => {
+    const out = migrateStagePersisted({ defaultOpen: 'stage', memory: {} }, 4) as Record<string, unknown>
+    expect(out.defaultOpen).toBe('float')
+    const kept = migrateStagePersisted({ defaultOpen: 'pinned', memory: {} }, 4) as Record<string, unknown>
+    expect(kept.defaultOpen).toBe('pinned')
   })
 })

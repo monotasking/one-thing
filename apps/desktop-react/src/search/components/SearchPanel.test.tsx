@@ -14,7 +14,7 @@ import { RECENT_LIMIT } from '../transitions'
  * 不去戳 keymap 注册表(那是「面板关着时也要能触发」的那一类,与这里无关)。
  */
 beforeEach(() => {
-  useStageStore.setState({ ...initialStageState, locale: 'zh', defaultOpen: 'stage' })
+  useStageStore.setState({ ...initialStageState, locale: 'zh' })
   // 会话侧吃真数据源(D1);文件侧仍是 ../data.ts 那张 mock 表(诚实缺口)。
   seedSessionsSource({ chapters: CHAPTERS })
   useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
@@ -35,7 +35,8 @@ describe('⌘P = 开关检索面板', () => {
   it('按一下:检索面板按打开方式开出来,输入框当场拿到焦点', () => {
     render(<AppShell />)
     cmdP()
-    expect(useStageStore.getState().placements.search).toEqual({ kind: 'stage' })
+    // 打开统一是浮窗(08-30 拍板)
+    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
     expect(document.activeElement).toBe(input())
   })
 

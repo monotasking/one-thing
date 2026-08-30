@@ -44,8 +44,8 @@ const SIZE_OPTIONS: Array<{ value: DockSize; labelKey: MessageKey }> = [
   { value: 'lg', labelKey: 'dock.sizeLg' },
 ]
 
+// 舞台不在此列(08-30 拍板:点开统一浮窗,舞台只是浮窗的放大目标 —— 见 stage/types.ts)。
 const OPEN_OPTIONS: Array<{ value: ResolvedOpen; labelKey: MessageKey }> = [
-  { value: 'stage', labelKey: 'dock.openStage' },
   { value: 'float', labelKey: 'dock.openFloat' },
   { value: 'pinned', labelKey: 'dock.openPinned' },
 ]

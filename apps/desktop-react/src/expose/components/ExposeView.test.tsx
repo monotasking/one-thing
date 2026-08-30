@@ -20,7 +20,8 @@ import { initialExposeState, visibleCardIds } from '../transitions'
  * 内层(quicklook / list)先消费,消费不了才轮到宿主关这块面。
  */
 beforeEach(() => {
-  useStageStore.setState({ ...initialStageState, locale: 'zh', defaultOpen: 'stage' })
+  // 打开档默认即浮窗(08-30 拍板:点开统一浮窗;舞台=浮窗的放大目标)
+  useStageStore.setState({ ...initialStageState, locale: 'zh' })
   // 数据先在场,再挂壳 —— 会话侧从此吃真数据源(D1),没有 mock 兜底。
   seedSessionsSource()
   useExposeStore.setState({ ...initialExposeState, currentSessionId: SESSIONS[0].id })
@@ -35,10 +36,10 @@ const cmdE = () => act(() => void fireEvent.keyDown(document.body, { key: 'e', m
 const other = SESSIONS.find((s) => s.id === visibleCardIds(initialExposeState, GROUPS)[1])!
 
 describe('会话总览是一块普通的面', () => {
-  it('⌘E 按打开方式把它开出来,内容住在面里', () => {
+  it('⌘E 按打开方式把它开出来 —— 打开统一是浮窗(08-30 拍板),内容住在面里', () => {
     render(<AppShell />)
     cmdE()
-    expect(placementOfSessions()).toEqual({ kind: 'stage' })
+    expect(placementOfSessions()).toEqual({ kind: 'float' })
     expect(screen.getByLabelText('搜索会话')).toBeTruthy()
   })
 
@@ -49,7 +50,7 @@ describe('会话总览是一块普通的面', () => {
       useExposeStore.getState().currentSessionId,
     )!
     fireEvent.click(screen.getByText(current.title))
-    expect(placementOfSessions()).toEqual({ kind: 'stage' })
+    expect(placementOfSessions()).toEqual({ kind: 'float' })
   })
 
   it('开场归位:上次停在 Quick Look,再开还是从总览起步', () => {
@@ -71,9 +72,13 @@ describe('会话总览是一块普通的面', () => {
 })
 
 describe('Esc 的让位契约', () => {
+  // 舞台不再是打开落点,但仍是浮窗的放大目标 —— 宿主(StageOverlay)的 Esc 契约照钉,
+  // 入口从「按打开方式」改成显式放大(openAs stage)。
+  const openOnStage = () => act(() => useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'stage' }))
+
   it('内层先消费:Quick Look 上的 Esc 退回总览,面板一动不动', () => {
     render(<AppShell />)
-    cmdE()
+    openOnStage()
     act(() => useExposeStore.getState().openQuickLook(other.id))
     esc()
     expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
@@ -82,7 +87,7 @@ describe('Esc 的让位契约', () => {
 
   it('组列表同理:先退回总览,不是直接关面板', () => {
     render(<AppShell />)
-    cmdE()
+    openOnStage()
     act(() => useExposeStore.getState().enterList(GROUPS[0].id))
     esc()
     expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
@@ -91,7 +96,7 @@ describe('Esc 的让位契约', () => {
 
   it('内层消费不了才轮到宿主:总览上的 Esc 关掉这块面(宿主同步判定,不欠一拍)', () => {
     render(<AppShell />)
-    cmdE()
+    openOnStage()
     esc()
     expect(SESSIONS_ITEM_ID in useStageStore.getState().placements).toBe(false)
   })
@@ -122,7 +127,7 @@ describe('Esc 的让位契约', () => {
     window.addEventListener('keydown', probe)
     try {
       render(<AppShell />)
-      cmdE()
+      openOnStage()
       const focusId = useExposeStore.getState().focusId!
       act(() => useExposeStore.getState().openQuickLook(focusId))
       esc()
@@ -136,7 +141,7 @@ describe('Esc 的让位契约', () => {
 
   it('注册序免疫:StrictMode 双挂载把内容层监听器排到最后,Esc 仍只退一层', () => {
     render(<StrictMode><AppShell /></StrictMode>)
-    cmdE()
+    openOnStage()
     const focusId = useExposeStore.getState().focusId!
     act(() => useExposeStore.getState().openQuickLook(focusId))
     esc()
@@ -151,13 +156,13 @@ describe('Esc 的让位契约', () => {
     expect(placementOfSessions()).toEqual({ kind: 'float' })
   })
 
-  it('搜索词是 Esc 的第 0 层:先清词,面板与视图都不动', () => {
+  it('搜索词是 Esc 的第 0 层:先清词,面板与视图都不动(浮窗常态下)', () => {
     render(<AppShell />)
     cmdE()
     fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value: 'provider' } })
     esc()
     expect(useExposeStore.getState().query).toBe('')
-    expect(placementOfSessions()).toEqual({ kind: 'stage' })
+    expect(placementOfSessions()).toEqual({ kind: 'float' })
   })
 })
 
