@@ -227,6 +227,24 @@ export const zh = {
   'chat.toolGroup.failed': '{n} 失败',
   'chat.toolGroup.times': '×{n}',
 
+  /* ── 检索段(§5.3 四件套) ─────────────────────────────────────────────
+   * 查询词、标题、域名、摘录一律是**外部事实**,不进字典 —— 换一门语言它们
+   * 不该跟着变。这里只有句子的骨架。 */
+  'chat.research.label': '检索',
+  'chat.research.sources': '{n} 个来源',
+  'chat.research.queries': '{n} 组查询',
+  'chat.research.queryHead': '搜索 {query}',
+  'chat.research.direct': '直接打开',
+  'chat.research.noSources': '这一组没有搜到来源',
+  'chat.research.openFailed': '未读到正文',
+  'chat.research.searching': '正在搜索 {query}',
+  'chat.research.reading': '正在阅读 {domain} — {title}',
+  'chat.research.readingPlain': '正在阅读 {domain}',
+  /* 说不清此刻在忙哪一件时的那句话 —— 不编一个查询词把句子撑起来。 */
+  'chat.research.working': '正在检索',
+  'chat.research.progress': '已搜索 {q} 组关键词 · 打开 {p} 个页面',
+  'chat.research.footLabel': '跳到这段检索的来源',
+
   /* ── 内容块的壳(檐上的动作、限高折叠、降级说明) ─────────────────────
    * 块的 `reason`(unknown-kind:… / tool-default)是**标识**不是文案,
    * 与错误边界的 `where` 同一条判据:换语言它不该跟着变,所以它不在这儿。 */

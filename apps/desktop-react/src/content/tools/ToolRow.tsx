@@ -1,11 +1,24 @@
 import { useCallback, useState } from 'react'
-import { useT, type MessageKey, type TFn } from '../../i18n'
+import { useT, type TFn } from '../../i18n'
 import { resolveIcon } from '../../components/icons'
 import { Spinner } from '../../ui/Spinner'
 import type { BlockCtx } from '../blocks/registry'
 import type { ToolOutcomeModel, ToolRowModel, ToolStepModel } from '../model/segments'
 import { ToolDrawer } from './ToolDrawer'
+import {
+  EXPANDABLE_STATUSES,
+  formatDuration,
+  toolStatusLabel,
+  toolTone,
+  type ToolTone,
+} from './status'
 import s from './ToolRow.module.css'
+
+/**
+ * 状态三表住 `./status.ts`(纯模块,不吃 React)—— 检索段的纯模型层要读同一张
+ * busy 表。这里原样再导出,所以既有的 `from './ToolRow'` 一个都不用改。
+ */
+export { formatDuration, toolStatusLabel, toolTone, type ToolTone } from './status'
 
 /**
  * 工具行(A1 卡行 + V2 图标即状态 + C1 行内抽屉)。
@@ -125,59 +138,4 @@ function ToolRightText({ t, row, tone }: { t: TFn; row: ToolRowModel; tone: Tool
 /** 模型说的是「哪一句 + 变量」;翻译发生在这里,所以切语言当场生效。 */
 export function outcomeText(t: TFn, outcome: ToolOutcomeModel): string {
   return 'text' in outcome ? outcome.text : t(outcome.key, outcome.vars)
-}
-
-/** 耗时:秒以上按秒说,秒以下按毫秒说 —— 「1234ms」没人读得快。 */
-export function formatDuration(t: TFn, ms: number): string {
-  if (ms >= 1000) return t('chat.tool.durationS', { n: (ms / 1000).toFixed(1) })
-  return t('chat.tool.durationMs', { n: Math.round(ms) })
-}
-
-export type ToolTone = 'ok' | 'bad' | 'busy' | 'unknown'
-
-/**
- * **后端八态 → 图标三态**的那张表(§5.2)。
- *
- * 与状态字典表分开的理由和那张表本身一样:两张表回答两个问题(画什么色 / 说哪句话),
- * 今天答案一一对应不代表将来也是。认不出的枚举落 `unknown` —— 不猜是哪一态。
- */
-const TOOL_TONES: Record<string, ToolTone> = {
-  pending: 'busy',
-  queued: 'busy',
-  received: 'busy',
-  executing: 'busy',
-  'input-streaming': 'busy',
-  completed: 'ok',
-  failed: 'bad',
-  cancelled: 'bad',
-}
-
-export function toolTone(status: string): ToolTone {
-  return TOOL_TONES[status] ?? 'unknown'
-}
-
-/** 能拉开抽屉的两档:结局已经定下来了,detail 才算得出一份完整的东西。 */
-const EXPANDABLE_STATUSES = new Set(['completed', 'failed', 'cancelled'])
-
-/**
- * 工具状态:**后端枚举 → 字典键**的一张明表。
- *
- * 不用 `` `chat.tool.${status}` as MessageKey `` 拼键 —— 那个断言会骗过类型检查,
- * 后端哪天加一档新状态就在运行时炸(`format` 拿到 undefined)。列成表之后,
- * 认不出来的状态**原样显示那个英文枚举**:那是事实,而编一句中文是猜。
- */
-const TOOL_STATUS_KEYS: Record<string, MessageKey> = {
-  pending: 'chat.tool.pending',
-  queued: 'chat.tool.queued',
-  received: 'chat.tool.received',
-  executing: 'chat.tool.executing',
-  completed: 'chat.tool.completed',
-  failed: 'chat.tool.failed',
-  cancelled: 'chat.tool.cancelled',
-  'input-streaming': 'chat.tool.inputStreaming',
-}
-
-export function toolStatusLabel(t: TFn, status: string): string {
-  const key = TOOL_STATUS_KEYS[status]
-  return key ? t(key) : status
 }

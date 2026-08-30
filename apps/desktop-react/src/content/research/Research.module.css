@@ -1,0 +1,343 @@
+/*
+ * 检索段四件套(§5.3)。
+ *
+ * 三条横切规范照旧:**不画竖线**(从属关系靠衬面 + 位置说)、色一律 var()、
+ * 时长一律 var(--dur)。组头那条上下线是唯一的线,而它是**分隔**不是引线 ——
+ * 一条查询词把清单切成几段,与「这几行从属于上面那一行」是两回事。
+ */
+
+.episode {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* ── 流中态行 ──────────────────────────────────────────────────────────── */
+
+.live {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-2);
+  background: var(--surface-1);
+}
+
+.liveHead {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.liveSpinner {
+  flex: none;
+}
+
+.liveText {
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 副行:比正行再淡一档、再小一号 —— 它是进度,不是正在发生的那件事。 */
+.liveSub {
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+/* ── 收起行 ────────────────────────────────────────────────────────────── */
+
+/*
+ * 与 B2 收起态同一身衣服:正文流里的一句灰字,没有卡壳。一段检索的注脚不该长得
+ * 比正文还重。
+ */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  margin-inline-start: calc(var(--sp-2) * -1);
+  border-radius: var(--r-1);
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.head:hover {
+  background: var(--st-hover);
+}
+
+.head:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.caret {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  flex: none;
+  color: var(--text-4);
+  transition: transform var(--dur) var(--ease);
+}
+
+.episode[data-open] .caret {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    transition: none;
+  }
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sep {
+  margin: 0 var(--sp-2);
+  color: var(--text-4);
+}
+
+.right {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-inline-start: auto;
+  flex: none;
+}
+
+.meta {
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+.duration {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+.failed {
+  font-size: var(--fs-micro);
+  color: var(--danger);
+}
+
+/* ── 展开清单 ──────────────────────────────────────────────────────────── */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-2);
+  border-radius: var(--r-2);
+  background: var(--surface-1);
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/*
+ * 组头「搜索 <query>」:比清单再深一层的衬面 + 上下两条线。
+ *
+ * 上下线在这里是**分隔**:它把一长条来源切成「这几条是搜 A 来的、那几条是搜 B
+ * 来的」。左竖线那种**引线**仍然是禁的(全仓横切规范),两者不是同一件东西。
+ */
+.queryHead {
+  padding: var(--sp-1) var(--sp-2);
+  border-block: 1px solid var(--line-1);
+  background: var(--surface-2);
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupEmpty {
+  padding: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.source {
+  display: flex;
+  flex-direction: column;
+}
+
+.sourceFace {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-2);
+  border-radius: var(--r-1);
+  text-align: start;
+  transition: background var(--dur) var(--ease);
+}
+
+button.sourceFace {
+  cursor: pointer;
+}
+
+button.sourceFace:hover {
+  background: var(--st-hover);
+}
+
+button.sourceFace:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: -2px;
+}
+
+.sourceTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 域名 mono:它是一个**标识**(读的人拿它认「这是谁说的」),不是一句话。 */
+.sourceDomain {
+  flex: none;
+  max-width: 40%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourceFailed {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--danger);
+}
+
+/* ── favicon 与堆叠 ────────────────────────────────────────────────────── */
+
+/*
+ * 一枚脸 = 一个定位框。字母圆片是**底**,真图标是盖在上面的一层
+ * (绝对定位,所以它没来 / 来晚了 / 来的是张假图,行高一格都不动)。
+ */
+.favicon {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.faviconImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-1);
+  object-fit: contain;
+}
+
+.faviconSm {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  font-size: var(--fs-nano);
+}
+
+.faviconMd {
+  width: var(--fs-title);
+  height: var(--fs-title);
+  font-size: var(--fs-micro);
+}
+
+/* 代位圆片:图标没来或来不了时看到的那一张脸 —— 是正式形态,不是将就。 */
+.faviconFallback {
+  border-radius: var(--r-full);
+  color: var(--on-accent);
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* 真图标盖上来之后:底不再是一张脸(favicon 压在彩色圆上会脏),换成方角托底。 */
+.faviconLoaded {
+  border-radius: var(--r-1);
+  background: var(--surface-2);
+}
+
+.face0 { background-image: linear-gradient(135deg, var(--face-g0-a), var(--face-g0-b)); }
+.face1 { background-image: linear-gradient(135deg, var(--face-g1-a), var(--face-g1-b)); }
+.face2 { background-image: linear-gradient(135deg, var(--face-g2-a), var(--face-g2-b)); }
+.face3 { background-image: linear-gradient(135deg, var(--face-g3-a), var(--face-g3-b)); }
+.face4 { background-image: linear-gradient(135deg, var(--face-g4-a), var(--face-g4-b)); }
+.face5 { background-image: linear-gradient(135deg, var(--face-g5-a), var(--face-g5-b)); }
+
+/* 堆叠:后一枚压着前一枚半身,靠背景色描一圈边把两张脸分开(不画描边色)。 */
+.stack {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+}
+
+.stackItem {
+  display: inline-flex;
+  border-radius: var(--r-full);
+  box-shadow: 0 0 0 2px var(--surface-2);
+}
+
+.stackItem + .stackItem {
+  margin-inline-start: calc(var(--sp-2) * -1);
+}
+
+/* ── 消息尾来源条 ──────────────────────────────────────────────────────── */
+
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.footPill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface-1);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.footPill:hover {
+  background: var(--st-hover);
+}
+
+.footPill:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}

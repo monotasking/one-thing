@@ -114,17 +114,81 @@ export interface ToolGroupModel {
   durationMs?: number
 }
 
-/** 检索段(P4 的四件套读它)。 */
-export interface ResearchEpisodeModel {
-  queries: string[]
-  sources: ResearchSource[]
-}
-
+/**
+ * 一条来源(检索段清单里的一行、预览卡里的一张脸)。
+ *
+ * **一份事实两处呈现**:清单行与(将来的)引用预览卡读的是同一个对象,不是各取
+ * 各的一份 —— 两份就会分叉。
+ */
 export interface ResearchSource {
+  /** 段内稳定身份:`<引入它的那次调用 id>#<序>`。同一个 URL 在一段里只有一条。 */
   id: string
   url: string
   title?: string
+  /** 域名(去 `www.`);解析不了就是原样那串字符 —— 不编一个。 */
   domain: string
+  /** 摘录:搜索结果的 snippet 或打开页面的 excerpt,已剥 HTML。取不到就缺席。 */
+  excerpt?: string
+  /** 引入它的那次调用 —— 来源行点开的抽屉认这一格。 */
+  callId: string
+  /** 被 `web_open` 真打开过。 */
+  opened: boolean
+  /** 打开它的那次调用(有就用它开抽屉:比「搜到过它」更贴近人想看的东西)。 */
+  openCallId?: string
+  /**
+   * 打开的结局。**没打开过就缺席** —— 不拿「搜索成功」冒充「页面打开成功」:
+   * 搜到一条链接和读到那一页是两件事,后者常常失败(反爬、无正文)。
+   */
+  openStatus?: 'ok' | 'failed'
+}
+
+/**
+ * 按查询词分的一组。
+ *
+ * 未署名组(`query` 缺席)是**开在最前的 `web_open`**:模型直接给了一个 URL,
+ * 没有先搜。给它编一个查询词是造事实,所以它自成一组、用「直接打开」当组头。
+ */
+export interface ResearchQueryGroup {
+  /** 组的稳定身份(渲染 key)。 */
+  id: string
+  /** 查询词。未署名组缺席。 */
+  query?: string
+  /** 产生这一组的那次 `web_search`(未署名组没有)。 */
+  callId?: string
+  sources: ResearchSource[]
+}
+
+/** 流中态那一行现在在忙什么 —— 由**最后一次还没收场的调用**说了算。 */
+export interface ResearchActivity {
+  kind: 'search' | 'open'
+  query?: string
+  domain?: string
+  title?: string
+}
+
+/** 检索段(§5.3 四件套读它)。 */
+export interface ResearchEpisodeModel {
+  /** 按查询词分组的清单(展开态画它)。 */
+  groups: ResearchQueryGroup[]
+  /**
+   * 全部来源,按首次出现序、按 URL 去重 —— `groups` 里的**同一批对象引用**。
+   * 收起行的「N 个来源」数的就是它,所以它与清单上看得见的行数逐条相等。
+   */
+  sources: ResearchSource[]
+  /** 署了名的查询词(收起行的「M 组查询」数的是它的长度)。 */
+  queries: string[]
+  /** 段里每一次调用的行 + 事实:来源行的抽屉按 callId 到这里取。 */
+  steps: ToolStepModel[]
+  /** 真打开过几个页面(流中态副行的 M)。 */
+  openedCount: number
+  /** 失败了几次调用。 */
+  failed: number
+  /** 总耗时(ms);一次都算不出就缺席。 */
+  durationMs?: number
+  /** 还有调用没收场 —— 画流中态行而不是收起行。 */
+  running: boolean
+  /** 只在 `running` 时有。 */
+  active?: ResearchActivity
 }
 
 export type SegmentModel =

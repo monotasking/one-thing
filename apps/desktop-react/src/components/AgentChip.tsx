@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { DEFAULT_AGENT_ID } from '@shared/ipc/agents'
 import { ChevronDown } from './icons'
+import { gradientIndexOf } from './gradient'
 import { Menu, MenuItem, MenuSeparator } from '../ui/Menu'
 import { useAgentMenu } from './agent-menu'
 import {
@@ -41,26 +42,17 @@ import s from './AgentChip.module.css'
  * agent 自定义色的**编辑面**是后续,这一批只消费名册已有的那一格。
  */
 
-/** 渐变对的条数。与 AgentChip.module.css 的 .grad0…5 一一对应,改一处必须改两处。 */
-const GRADIENT_COUNT = 6
-
 /** 名字/emoji 都没有时,头像里那个字取谁 —— 只取第一个字素,不做任何缩写规则。 */
 function initialOf(name: string): string {
   return [...name][0] ?? ''
 }
 
 /**
- * id → 第几对渐变。FNV-1a 的一小截:要的只是「同一个 id 永远同一张脸」,
- * 不是散列质量。**不用 name** —— 改个名字不该换一张脸。
+ * id → 第几对渐变。哈希与六对色值住 `components/gradient.ts` + `styles/palette.css`
+ * —— 检索来源的代位圆片(P4)要挑**同一批脸**,一份哈希两个消费者。
+ * 原样再导出,既有调用与测试一个字不用改。
  */
-export function gradientIndexOf(id: string): number {
-  let hash = 0x811c9dc5
-  for (let i = 0; i < id.length; i += 1) {
-    hash ^= id.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193) >>> 0
-  }
-  return hash % GRADIENT_COUNT
-}
+export { gradientIndexOf } from './gradient'
 
 interface AvatarProps {
   agent: AgentOption | undefined

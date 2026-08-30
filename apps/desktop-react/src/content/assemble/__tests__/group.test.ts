@@ -63,6 +63,53 @@ describe('归组判据:相邻成组,别的节点打断', () => {
   })
 })
 
+describe('检索段:web 族连着来的折成 research(P4)', () => {
+  const web = (id: string, name: 'web_search' | 'web_open' = 'web_search'): AnchoredNode =>
+    ({ node: 'tool', call: call(id, name) }) as AnchoredNode
+
+  it('单发也成段 —— 一次搜索照样带回一份来源清单', () => {
+    const out = groupNodes([web('w1')])
+    expect(out).toEqual([{ node: 'research', calls: [expect.objectContaining({ id: 'w1' })] }])
+  })
+
+  it('族内混序算一段:search → open → open → search 是一次检索,不是四件事', () => {
+    const out = groupNodes([
+      web('w1', 'web_search'),
+      web('w2', 'web_open'),
+      web('w3', 'web_open'),
+      web('w4', 'web_search'),
+    ])
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({ node: 'research' })
+    expect((out[0] as { calls: { id: string }[] }).calls.map((c) => c.id)).toEqual([
+      'w1',
+      'w2',
+      'w3',
+      'w4',
+    ])
+  })
+
+  it('非 web 工具打断 —— 中间读了个文件,那是两段检索夹着一次读', () => {
+    const out = groupNodes([web('w1'), tool('c1', 'read'), web('w2')])
+    expect(out.map((node) => node.node)).toEqual(['research', 'tool', 'research'])
+  })
+
+  it('正文打断照旧(与普通组同一条判据:中间有别的节点)', () => {
+    const out = groupNodes([web('w1'), web('w2'), text('说一句'), web('w3')])
+    expect(out.map((node) => node.node)).toEqual(['research', 'text', 'research'])
+  })
+
+  it('两族相邻不混段:read、read、search 是一个 tool-group + 一段检索', () => {
+    const out = groupNodes([tool('c1', 'read'), tool('c2', 'read'), web('w1')])
+    expect(out.map((node) => node.node)).toEqual(['tool-group', 'research'])
+  })
+
+  it('检索之后剩一次普通调用 = 单卡,不是一步的组', () => {
+    const out = groupNodes([web('w1'), tool('c1', 'read')])
+    expect(out.map((node) => node.node)).toEqual(['research', 'tool'])
+  })
+})
+
 describe('组内同名连续聚合:数据层折,渲染层只画', () => {
   it('同名连着三次 = 一格,count 3、children 逐条', () => {
     const group = presentToolGroup([call('c1'), call('c2'), call('c3')])

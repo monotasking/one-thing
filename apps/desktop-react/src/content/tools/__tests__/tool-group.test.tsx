@@ -77,13 +77,15 @@ describe('收起 = 一句计数句', () => {
       call('c1', 'read'),
       call('c2', 'edit'),
       call('c3', 'bash'),
-      call('c4', 'web_search'),
+      // P4 起 web 族不再进 tool-group(归组步把它折进检索段),所以这里换成
+      // 一个仍然会落进普通组的工具 —— 夹具得是真会出现的那种组合。
+      call('c4', 'write'),
       call('c5', 'grep'),
     ])
     const head = container.querySelector('button')!
     expect(head.textContent).toContain('read / edit / bash')
     expect(head.textContent).toContain('等 5 种')
-    expect(head.textContent).not.toContain('web_search')
+    expect(head.textContent).not.toContain('grep')
   })
 
   it('有失败就在右端亮一句红', async () => {

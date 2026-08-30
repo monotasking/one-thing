@@ -3,6 +3,7 @@ import { blockKey } from './assemble'
 import { BlockView } from './blocks/BlockView'
 import type { BlockCtx } from './blocks/registry'
 import type { SegmentModel } from './model/segments'
+import { ResearchSegment } from './research/ResearchSegment'
 import { ThinkingSegment } from './ThinkingSegment'
 import { ToolGroup } from './tools/ToolGroup'
 import { ToolRow } from './tools/ToolRow'
@@ -59,11 +60,13 @@ export const SegmentView = memo(function SegmentView({
     case 'tool-group':
       return <ToolGroup group={segment.group} ctx={ctx} />
 
+    case 'research':
+      // 段 key 兼作检索段的身份:消息尾来源条按同一个字符串点名(research/reveal.ts),
+      // 两处都走 `segmentKey`,不各拼一遍。
+      return <ResearchSegment episode={segment.episode} id={key} ctx={ctx} />
 
     case 'image':
-    case 'research':
-      // 图片段与检索段的渲染器分别是后批的事(§9 的 P3 / P4)。装配管线今天不产
-      // 这两种段,所以这里不画等于「零变化」;等它们有产地时,渲染器和产地同批进来。
+      // 图片段的渲染器是 P3 的事。装配管线今天不产它,所以这里不画等于「零变化」。
       return null
 
     case 'stream-cursor':

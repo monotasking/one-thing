@@ -220,6 +220,21 @@ export const en: Record<MessageKey, string> = {
   'chat.toolGroup.failed': '{n} failed',
   'chat.toolGroup.times': '×{n}',
 
+  /* ── research segment (§5.3) ─────────────────────────────────────────── */
+  'chat.research.label': 'Research',
+  'chat.research.sources': '{n} sources',
+  'chat.research.queries': '{n} queries',
+  'chat.research.queryHead': 'Searched {query}',
+  'chat.research.direct': 'Opened directly',
+  'chat.research.noSources': 'No sources for this query',
+  'chat.research.openFailed': 'no readable content',
+  'chat.research.searching': 'Searching {query}',
+  'chat.research.reading': 'Reading {domain} — {title}',
+  'chat.research.readingPlain': 'Reading {domain}',
+  'chat.research.working': 'Researching',
+  'chat.research.progress': 'Searched {q} queries · opened {p} pages',
+  'chat.research.footLabel': 'Jump to the sources for this research',
+
   /* ── content block shell (eave actions, clamp, failure line) ────────── */
   'block.actions': 'More actions',
   'block.action.copySource': 'Copy source',

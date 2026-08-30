@@ -6,6 +6,7 @@ import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
 import { assembleMessage, segmentKey } from './assemble'
 import type { SegmentModel } from './model/segments'
+import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import s from './ChatStream.module.css'
 
@@ -132,6 +133,12 @@ function MessageRow({ t, message, streaming, flash }: RowProps) {
             const key = segmentKey(message.id, index, segment)
             return <SegmentView key={key} segment={segment} segmentKey={key} ctx={ctx} />
           })}
+          {/*
+            消息尾来源条(§5.3 四件套之四):这条回复的依据在哪。它是**消息**的
+            尾注,不是某个段的一部分 —— 所以由这一层摆,而不是 SegmentView。
+            这个文件对检索一无所知:没有检索段时组件自己返回 null。
+          */}
+          <MessageSourceFoot segments={segments} messageId={message.id} />
           {/*
             光标是**数据源的事实**(activeMessageId),不是这条消息自己的事实,
             而装配管线只拿得到消息 —— 所以它留在这一层画,没有进段序列。

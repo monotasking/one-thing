@@ -5,6 +5,7 @@ import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
 import { markdownToFrame } from './markdown'
 import { presentToolGroup, presentToolStep } from './present'
+import { presentResearchEpisode } from '../research/episode'
 
 /**
  * 装配管线 —— **一条消息 → 一串段**(§2)。
@@ -69,8 +70,7 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
         segments.push({ kind: 'tool-group', group: presentToolGroup(node.calls) })
         break
       case 'research':
-        // 检索段的模型由 P4 的归组步产出;归组步今天不产 research 节点,
-        // 所以这一格走不到 —— 留着是为了 switch 穷尽,不是为了兜底。
+        segments.push({ kind: 'research', episode: presentResearchEpisode(node.calls) })
         break
     }
   }

@@ -56,6 +56,25 @@
   --accent-soft: rgba(124, 111, 160, 0.12);
   --on-accent: #ffffff;
 
+  /* ── 代位圆片的六对渐变(「脸」) ───────────────────────────────────────
+   * 冷 → 暖绕一圈,彼此在明度上拉开,22px 也认得出是两个东西。
+   * 两个消费者:agent 头像(名册没给 color 时)、检索来源的 favicon 代位圆片
+   * (站点图标取不到时)—— 同一种脸,所以色值只有这一份。挑第几对由
+   * components/gradient.ts 的哈希算(改条数要同时改那边的 GRADIENT_COUNT)。
+   * 前景一律 --on-accent。 */
+  --face-g0-a: #a5b4d4;
+  --face-g0-b: #7c88b8;
+  --face-g1-a: #b9a7cf;
+  --face-g1-b: #8d78b4;
+  --face-g2-a: #a8c9b6;
+  --face-g2-b: #74a189;
+  --face-g3-a: #d9c096;
+  --face-g3-b: #b99a67;
+  --face-g4-a: #d7a9a5;
+  --face-g4-b: #b47d78;
+  --face-g5-a: #9dc3cc;
+  --face-g5-b: #6d9aa6;
+
   /* Composer 派生:带 accent 味的线(模型 pill / 选项条的 hover 边)、
    * ask 形态的底(本体变形时整行换一层极淡的紫纸)、拖拽落区的底。
    * 设计稿上分别是 #CFC9DE / #F7F5FA / rgba(124,111,160,.03) —— 这里用 color-mix

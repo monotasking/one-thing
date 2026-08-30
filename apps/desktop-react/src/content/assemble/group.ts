@@ -1,5 +1,6 @@
 import type { AnchoredNode } from './anchor'
 import type { ProjectedToolCall } from '../model/segments'
+import { isWebCall } from '../tools/web-family'
 
 /**
  * 管线第 ② 步:**归组**(§2 ②)。
@@ -13,10 +14,19 @@ import type { ProjectedToolCall } from '../model/segments'
  * 相邻。正文一插进来(锚点归位之后这是常态:模型说一句、做几件事、再说一句),
  * 那就是两组,因为人读到的确实是两段。
  *
- * ── 检索段(research)本批不做 ────────────────────────────────────────
- * `web_search` / `web_open` 族的识别是 P4(§9),本批**当普通组处理** —— 它们照样
- * 归进 tool-group,只是没有四件套那身衣服。`GroupedNode` 里 `research` 那一格留着
- * 是为了 P4 接进来时上下游的类型不用动,今天这里不产。
+ * ── 检索段(research)——— P4 起这一步认它 ─────────────────────────────
+ * web 族(`tools/web-family.ts` 的明表)连着来的一串折成 **research 段**,交给
+ * 四件套渲染(§5.3);别的工具照旧折成 tool-group。判据仍然只看序列:
+ *
+ *  · **族内混序算一段**:`search → open → open → search` 是一次检索,不是四件事。
+ *    人读到的是「它上网找了一圈」,中间先搜后开还是先开后搜不构成分界。
+ *  · **非 web 工具打断**:中间插一次 `read`,那是两段检索夹着一次读文件 ——
+ *    把它们并成一段等于说那次读文件也是检索的一部分。text / 思考同理(与 P2 一致)。
+ *  · **单发也成段**:一次 `web_search` 就是一段检索。这一条与 tool-group 的
+ *    「单发不成组」**故意相反**,因为两者的收起行说的不是同一句话:tool-group 收起
+ *    说的是「执行了 N 步」(计数句,一步时不如直接摆出那件事),检索段收起说的是
+ *    「检索 · N 个来源」(**来源清单**,一次搜索照样能带回六条来源)。检索段的价值
+ *    是那份清单,与调用次数无关。
  *
  * 组内的同名聚合(「read ×3」)**不在这一步**:那是呈现的事(③ present),它要先
  * 有 presenter 算出来的行。这一步只回答「哪几次调用是一组」。
@@ -27,21 +37,29 @@ export type GroupedNode =
   | { node: 'tool-group'; calls: ProjectedToolCall[] }
   | { node: 'research'; calls: ProjectedToolCall[] }
 
+/** 一串连续调用的族属。族一换就断段 —— 两个族不混进同一个段。 */
+type RunKind = 'web' | 'other'
+
 export function groupNodes(nodes: readonly AnchoredNode[]): GroupedNode[] {
   const out: GroupedNode[] = []
   let run: ProjectedToolCall[] = []
+  let kind: RunKind = 'other'
 
   const flush = () => {
     if (run.length === 0) return
+    if (kind === 'web') out.push({ node: 'research', calls: run })
     // 一次调用不成组:一个人做了一件事,说「执行了 1 步」比直接把那件事摆出来
-    // 更远 —— 计数句是给「多到看不过来」用的。
-    if (run.length === 1) out.push({ node: 'tool', call: run[0] })
+    // 更远 —— 计数句是给「多到看不过来」用的。(检索段不适用,见文件头。)
+    else if (run.length === 1) out.push({ node: 'tool', call: run[0] })
     else out.push({ node: 'tool-group', calls: run })
     run = []
   }
 
   for (const node of nodes) {
     if (node.node === 'tool') {
+      const next: RunKind = isWebCall(node.call) ? 'web' : 'other'
+      if (run.length > 0 && next !== kind) flush()
+      kind = next
       run.push(node.call)
       continue
     }
