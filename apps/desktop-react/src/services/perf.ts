@@ -435,7 +435,7 @@ const round1 = (n: number) => Math.round(n * 10) / 10
 export function perfReport(entries: readonly PerfEntry[] = ring): PerfReportRow[] {
   const buckets = new Map<string, { kind: PerfKind; name: string; values: number[] }>()
   for (const entry of entries) {
-    const key = `${entry.kind} ${entry.name}`
+    const key = `${entry.kind}\u0000${entry.name}`
     let bucket = buckets.get(key)
     if (!bucket) {
       bucket = { kind: entry.kind, name: entry.name, values: [] }

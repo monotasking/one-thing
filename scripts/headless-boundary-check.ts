@@ -2335,6 +2335,12 @@ const CORE_TOOL_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
 
 interface WalkFilesOptions {
   includeTests?: boolean
+  /** 覆盖默认扩展名集合。08-31 前这个字段被静默忽略(调用方传了但没人读),
+   *  控制字符规则注释里说的 .vue/.css/.md 从没真被扫过 —— 修表即修意图。 */
+  extensions?: RegExp
+  /** 额外跳过的目录名(构建产物等)。gitignore 掉的产物不进 git,
+   *  「diff 不可审」的立法理由对它们不成立,扫了只会报假案。 */
+  excludeDirs?: readonly string[]
 }
 
 function walkFiles(dir: string, output: string[] = [], options: WalkFilesOptions = {}): string[] {
@@ -2342,11 +2348,12 @@ function walkFiles(dir: string, output: string[] = [], options: WalkFilesOptions
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if ((!options.includeTests && entry.name === '__tests__')
       || entry.name === 'node_modules'
-      || entry.name === '.git') continue
+      || entry.name === '.git'
+      || options.excludeDirs?.includes(entry.name)) continue
     const fullPath = path.join(dir, entry.name)
     if (entry.isDirectory()) {
       walkFiles(fullPath, output, options)
-    } else if (/\.(ts|tsx|js|mjs|cjs|json)$/.test(entry.name)) {
+    } else if ((options.extensions ?? /\.(ts|tsx|js|mjs|cjs|json)$/).test(entry.name)) {
       output.push(fullPath)
     }
   }
@@ -8079,7 +8086,12 @@ function checkNoRawControlCharacters(): void {
   const roots = ['packages', 'apps', 'scripts']
   // 扩展名比默认集合宽:.vue 的 SFC、.css、.md 里的裸控制字符同样让 git 判
   // 二进制、同样不可审。任何进 git 的文本文件都适用同一条规则。
-  const walkOptions = { includeTests: true, extensions: /\.(ts|tsx|js|mjs|cjs|json|vue|css|md)$/ }
+  const walkOptions: WalkFilesOptions = {
+    includeTests: true,
+    extensions: /\.(ts|tsx|js|mjs|cjs|json|vue|css|md)$/,
+    // 构建产物不进 git,不在本规则的立法射程内(minified 产物里出现控制字节也轮不到人审)。
+    excludeDirs: ['dist', 'dist-electron', 'dist-web', 'out', 'release', 'ds-bundle', '.ds-sync', 'coverage'],
+  }
   for (const dirName of roots) {
     for (const filePath of walkFiles(path.join(root, dirName), [], walkOptions)) {
       const buffer = fs.readFileSync(filePath)
