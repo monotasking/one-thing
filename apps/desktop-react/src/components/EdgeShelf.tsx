@@ -13,6 +13,7 @@ import {
 } from '../stage/transitions'
 import { setSnapSide } from './snap-hint'
 import { renderContent } from '../content'
+import { perfMark } from '../services/perf'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
 import { Tabs } from '../ui/Tabs'
@@ -169,7 +170,20 @@ export function EdgeShelf({ side }: Props) {
   }, [flashPinned, flashSide, side])
 
   const toggleCollapsed = useCallback(() => toggleShelfCollapsed(side), [toggleShelfCollapsed, side])
-  const activate = useCallback((id: string) => activateShelfTab(side, id), [activateShelfTab, side])
+  /**
+   * 切 tab。埋的是 `perfMark` 而不是 `perfSpan`,理由是**开销不在这一刻发生**:
+   * 这里只派发一次 store 更新,真正的代价(React 重渲 + 布局 + 提交)落在随后那一帧里。
+   * perfSpan 在这儿只会量到一个 0.1ms 的假读数;一个时间点标记才有用 ——
+   * dump 里「这条长帧发生在 shelf.activate 之后」,以及 gate-perf 的 trace 里
+   * (它录着 blink.user_timing)时间轴上直接看到这一竖线。
+   */
+  const activate = useCallback(
+    (id: string) => {
+      perfMark(`shelf.activate:${side}`)
+      activateShelfTab(side, id)
+    },
+    [activateShelfTab, side],
+  )
 
   /**
    * 厚度把手。跟手定律:过程中零过渡、逐帧写**本地** state,松手才落 store,

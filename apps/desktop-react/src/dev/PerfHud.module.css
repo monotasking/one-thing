@@ -37,8 +37,31 @@
   font-weight: 600;
 }
 
-.close {
+/* 「聚合」小钮:把整个环按名字聚成 p50/p95/max 打进控制台。 */
+.report {
   margin-left: auto;
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--fs-nano);
+  line-height: 1.6;
+  cursor: default;
+  pointer-events: auto;
+}
+
+.report:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.report:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.close {
   padding: 0 var(--sp-1);
   border: 0;
   border-radius: var(--r-1);
@@ -81,6 +104,34 @@
   gap: 2px;
 }
 
+/* 整行是一颗按钮(点开 = 看完整现场)。它长得不像按钮,因为它就是那一行本身。 */
+.rowBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  width: 100%;
+  padding: 2px var(--sp-1);
+  margin: 0 calc(-1 * var(--sp-1));
+  border: 0;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  pointer-events: auto;
+}
+
+.rowBtn:hover {
+  background: var(--st-hover);
+}
+
+.rowBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .attr {
   font-family: var(--font-mono);
   font-size: var(--fs-nano);
@@ -89,4 +140,49 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 展开区。滚它是**显式手势**,所以这里允许滚 —— 折叠态仍然定长不滚。 */
+.detail {
+  margin-top: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+}
+
+.phase {
+  margin: 0 0 var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+}
+
+.scripts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.script {
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+}
+
+.scriptHead {
+  color: var(--text-2);
+}
+
+/* 源位置要**全**:它就是这一批要补上的那件东西,截断了等于没有。 */
+.scriptAt {
+  word-break: break-all;
 }

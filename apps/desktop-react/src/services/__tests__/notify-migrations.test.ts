@@ -120,7 +120,12 @@ describe('性能超预算 → notify(silent)', () => {
     const [record] = freshCenter.getState().items
     expect(record.level).toBe('silent')
     expect(record.source).toBe('perf.longFrame')
-    // detail 带的就是归因摘要本身 —— 排障要的正是「谁卡的」
-    expect(record.detail).toContain('scripts')
+    /*
+     * detail 就是**完整现场文本**(08-30 可观测性批把它从一句 JSON 升级成现场):
+     * 首行是帧时长 + 阶段拆分,其后逐段脚本归因。这一帧是假喂的、没有 scripts,
+     * 所以它必须明说「浏览器没给归因」而不是留一片空白 —— 空白会被读成「没查到」。
+     */
+    expect(record.detail).toContain(`frame ${PERF_BUDGET.longFrameMs + 40}ms`)
+    expect(record.detail).toContain('没给脚本归因')
   })
 })

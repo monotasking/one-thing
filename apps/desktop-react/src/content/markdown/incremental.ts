@@ -1,3 +1,4 @@
+import { perfSpan } from '../../services/perf'
 import type { BlockModel } from '../model/blocks'
 import { parseMarkdown } from './parse'
 import { stableCut } from './stable-cut'
@@ -61,7 +62,11 @@ export class MarkdownStream {
       if (spliced) return toFrame(spliced, text, live)
     }
 
-    const parsed = appended ? this.reparseTail(prev, text) : parseMarkdown(text)
+    // 打点埋在**真解析**那一格,不埋整个 parse:上面两条早退(同一份文本 / 贴尾巴)
+    // 本来就是为了不解析而存在的,把它们也算进来会让读数被一堆 0 稀释。
+    const parsed = perfSpan('markdown.reparse', () =>
+      appended ? this.reparseTail(prev, text) : parseMarkdown(text),
+    )
     this.entries.set(id, { text, parsed, at: this.now() })
     return toFrame(parsed, text, live)
   }

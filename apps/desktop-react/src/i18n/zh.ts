@@ -302,12 +302,16 @@ export const zh = {
 
   /* ── 性能 HUD(dev 工具,localStorage `onething.perfHud` 开)────────── */
   'perf.title': '性能',
-  'perf.empty': '暂无长帧',
+  'perf.empty': '暂无读数',
   'perf.longFrame': '长帧 {ms}ms',
   'perf.slowEvent': '{name} 延迟 {ms}ms',
+  'perf.span': '{name} {ms}ms',
   'perf.budgetOk': '在预算内',
   'perf.budgetOver': '超预算',
   'perf.close': '关闭性能 HUD',
+  'perf.report': '聚合',
+  'perf.reportHint': '按名字聚成 p50/p95/max,打进控制台',
+  'perf.rowDetail': '展开这条的完整现场',
 
   /* ── 通知系统(08-30 批)────────────────────────────────────────────────
    * 面板标题不另起一个键:它就是 'item.notifications' 那两个字,

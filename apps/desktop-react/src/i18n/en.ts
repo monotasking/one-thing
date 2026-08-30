@@ -290,12 +290,16 @@ export const en: Record<MessageKey, string> = {
 
   /* ── perf HUD (dev tool, toggled by localStorage `onething.perfHud`) ─ */
   'perf.title': 'Perf',
-  'perf.empty': 'No long frames',
+  'perf.empty': 'No perf entries',
   'perf.longFrame': 'Long frame {ms}ms',
   'perf.slowEvent': '{name} took {ms}ms',
+  'perf.span': '{name} {ms}ms',
   'perf.budgetOk': 'Within budget',
   'perf.budgetOver': 'Over budget',
   'perf.close': 'Close perf HUD',
+  'perf.report': 'Report',
+  'perf.reportHint': 'Aggregate by name into p50/p95/max, print to console',
+  'perf.rowDetail': 'Expand full attribution for this entry',
 
   /* ── notifications (08-30 batch) ─────────────────────────────────── */
   'notify.filterAll': 'All',

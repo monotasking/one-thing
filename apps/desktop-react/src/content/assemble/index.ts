@@ -1,3 +1,4 @@
+import { perfSpan } from '../../services/perf'
 import type { ProjectedMessage } from '../../data/chat-fold'
 import type { SegmentModel } from '../model/segments'
 import { anchorMessage } from './anchor'
@@ -30,7 +31,9 @@ const CACHE = new WeakMap<ProjectedMessage, SegmentModel[]>()
 export function assembleMessage(message: ProjectedMessage): SegmentModel[] {
   const cached = CACHE.get(message)
   if (cached) return cached
-  const segments = runPipeline(message)
+  // 打点埋在 **memo miss 那一路**:命中缓存的那条路是一次 WeakMap 查表,量它没有意义,
+  // 而且活跃消息每帧都走这里 —— 「装配到底花了多少」正是要问的那个数。
+  const segments = perfSpan('assemble', () => runPipeline(message))
   CACHE.set(message, segments)
   return segments
 }
