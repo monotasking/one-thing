@@ -276,6 +276,27 @@ async function refreshModelsOnFirstStartup(): Promise<void> {
   await refreshAllProviders()
 }
 
+/**
+ * 无系统标题栏(09-01 用户拍板:「我们不要 macOS 自己的刘海,我们自己设计刘海,
+ * 让我们的内容直接占满屏幕」)。
+ *
+ * `hiddenInset` 而不是 `hidden`:红绿灯**留在窗上**,只是往里挪了一档 —— 绿灯是
+ * macOS 唯一的原生全屏入口,`hidden` 连它一起收掉,用户就再没有「真全屏」这条路。
+ * `trafficLightPosition` 把那三颗灯摆到我们那条 28px 顶带的正中:
+ * y = (28 − 灯高 14) / 2 = 7,x = 16 是让位宽 80 的起点。**这两个数与
+ * `--titlebar-h` / `--titlebar-traffic-w` 是同一件事的两半**(算式写在 tokens.css
+ * 的「自绘顶带」节),改一处必须改另一处,否则灯会压在带外面。
+ *
+ * 只在 macOS 上摘。Windows / Linux 上 `hiddenInset` 会退化成 `hidden` = 连
+ * 最小化/关闭都没有的无边框窗 —— 那不是「自绘刘海」,那是把窗关不掉。
+ * 那两个平台照旧用系统边框,壳里那条顶带在它们上面就是一条没人拖的空带
+ * (无害;真要在那边自绘,得连窗控件一起画,属另一批)。
+ */
+const FRAMELESS_ON_MAC =
+  process.platform === 'darwin'
+    ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 7 } }
+    : {}
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -284,6 +305,7 @@ function createWindow(): BrowserWindow {
     minHeight: 600,
     show: false,
     backgroundColor: '#111111',
+    ...FRAMELESS_ON_MAC,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

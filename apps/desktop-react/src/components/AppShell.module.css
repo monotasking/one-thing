@@ -38,8 +38,10 @@
     'shelfBottom shelfBottom shelfBottom';
 }
 
-/* position: relative 有**两个**消费者,缺一不可:盖(CoverLayer,absolute inset:0
- * 铺满这一栏 —— 「只接管内容栏」这句话的字面实现),以及它自己的最小尺寸约束。 */
+/* position: relative:09-01 盖搬走(改盖满整扇窗 → fixed 挂壳根)之后,这一句的
+ * 消费者只剩 Composer 子树里那几块「浮在输入框上方」的绝对定位件(用量表 .meterCard、
+ * 附件条 .attFloat 都写 `bottom: calc(100% + …)`,靠一个定位祖先才有 100% 可算)。
+ * 所以它**不是**跟着盖一起该删的那一句 —— 删了那两块会掉到窗口坐标系上去。 */
 .center {
   position: relative;
   grid-area: center;

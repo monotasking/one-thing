@@ -2,19 +2,25 @@
  * 盖的进出与舞台是同一种动作(一块面接管一片地方),没有理由多一段关键帧。
  * 全仓唯一的 @keyframes 产地仍然是那个文件,这里只引名字表里的 token。 */
 
-/* 盖只接管**内容栏**(AppShell 的 .center),所以它是 absolute 不是 fixed:
- * 参考系是那一栏自己,四条边上的架子照样露在外面 —— 这正是它与舞台的差别。 */
+/* 盖满**整扇窗**(09-01 用户推翻了 08-31 的「只接管内容栏」)。
+ * 所以它是 fixed 不是 absolute:参考系是视口本身,顶带 / 顶栏 / 四条边上的架子
+ * 一并盖住 —— 挂载点也跟着从 .center 搬到了壳的根上(两者是同一件事的两半,
+ * 只改一半会得到「fixed 但被祖先的 transform 困住」这类最难查的一格)。 */
 .cover {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: var(--z-cover);
   background: var(--scrim);
   display: flex;
-  padding: var(--sp-3);
+  /* 上边让出一整条顶带,左右下仍是 --sp-3。**底铺满整扇窗没变**(background 从
+   * y=0 起),让的只是里面那块面 —— 理由是原生的:红绿灯画在网页之上,不受
+   * z-index 管;不让的话它们正好压在面头的图标与标题上(09-01 真机截图实证)。
+   * 顺带,盖开着时那三颗灯落在半透明的底上而不是面的檐上,读得清。 */
+  padding: var(--titlebar-h) var(--sp-3) var(--sp-3);
   animation: var(--kf-scrim-in) var(--dur-enter) var(--ease-out);
 }
 
-/* 「盖满」:面吃掉整条内容栏,只留 --sp-3 一圈底 —— 那一圈就是「点底关闭」
+/* 「盖满」:面吃掉整扇窗,只留 --sp-3 一圈底 —— 那一圈就是「点底关闭」
  * 摸得到的地方(判据见组件注释)。定尺画布是舞台的做法,不是盖的。 */
 .panel {
   flex: 1;
