@@ -1,6 +1,5 @@
 import type { BlockContent, Code, List, ListItem, RootContent, Table } from 'mdast'
 import type { BlockModel } from '../model/blocks'
-import type { InlineNode } from '../model/inline'
 import { routeFence } from './fence'
 import { toInline } from './to-inline'
 
@@ -98,28 +97,30 @@ const CLOSING_FENCE = /\n\s{0,3}(`{3,}|~{3,})[ \t]*$/
 /**
  * 列表。
  *
- * ── 嵌套先拍平一层,这是裁量 ──────────────────────────────────────────
- * 块词汇里的列表是 `items: InlineNode[][]` —— 一项就是一行行内树,**装不下子树**。
- * 真正的嵌套要么让 items 变成 `BlockModel[][]`(词汇变动 = 拍板件),要么在渲染层
- * 递归(那就把结构塞进了组件,违背「模型是数据」)。P1 选第三条路:**子列表的项
- * 提升成同一张列表的后续项**,内容一个字不丢,层级关系丢了。
+ * ── 一项是一串块(08-31 真机报障后改的)──────────────────────────────
+ * 从前一项是**一行行内树**,于是项里的非段落内容(围栏、表、引用)只能取源码原文
+ * 当一行字塞进去 —— 用户看见的就是 ``` ```lua ``` 原样摊在列表项里。现在项内逐子块
+ * 走 `translate`:围栏还是 code 块,表还是 table 块,引用还是 quote 块。谁来画由
+ * **同一张注册表**说了算(铁律 1:嵌套 = 注册表复用),和引用块走的是同一条路。
  *
- * 这一条会被看见(二级项在屏幕上与一级项同缩进),所以它是记在案的过渡形,
- * 不是「反正没人写嵌套列表」。要真嵌套 = `model/blocks.ts` 的 list 变体升级 +
- * 这个函数改递归 + 列表渲染器改递归,三处一批,属拍板件。
+ * 连带的一处诚实变化:一项里连续两段字从前被 `\n` 接成一棵行内树(看起来是一项里
+ * 的软换行),现在是**两个 paragraph 块** —— 源文本里它们本来就是两段。
  *
- * 一项里的非段落内容(围栏、引用)同理:取它的**源码原文**当一行文字,不静默吞。
+ * ── 嵌套仍然拍平一层,这条裁定不动 ──────────────────────────────────
+ * 词汇现在装得下子树了,但「子列表的项提升成同一张列表的后续项」是既有拍板:
+ * 内容一个字不丢,层级关系丢了(二级项在屏幕上与一级项同缩进)。要翻它是另一批的事,
+ * 不是这一批顺手改的东西。
  */
 function translateList(node: List, source: string): BlockModel {
-  const items: InlineNode[][] = []
+  const items: BlockModel[][] = []
   for (const child of node.children) {
     collectListItem(child, source, items)
   }
   return { kind: 'list', ordered: node.ordered === true, items }
 }
 
-function collectListItem(item: ListItem, source: string, out: InlineNode[][]): void {
-  const own: InlineNode[] = []
+function collectListItem(item: ListItem, source: string, out: BlockModel[][]): void {
+  const own: BlockModel[] = []
   const nested: List[] = []
 
   for (const child of item.children) {
@@ -127,9 +128,9 @@ function collectListItem(item: ListItem, source: string, out: InlineNode[][]): v
       nested.push(child)
       continue
     }
-    if (own.length > 0) own.push({ type: 'text', text: '\n' })
-    if (child.type === 'paragraph') own.push(...toInline(child.children, source))
-    else own.push({ type: 'text', text: rawBlockText(child, source) })
+    // 项内一律走翻译表本身 —— 包括「表里没有的落 source-fallback」这条总纪律。
+    // 项里没有第二套规则,也就没有第二处会跟主表分叉的地方。
+    own.push(translate(child, source))
   }
 
   out.push(own)

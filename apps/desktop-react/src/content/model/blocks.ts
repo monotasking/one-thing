@@ -44,7 +44,18 @@ export interface DiffLine {
 export type BlockModel =
   | { kind: 'paragraph'; inline: InlineNode[] }
   | { kind: 'heading'; level: 1 | 2 | 3; inline: InlineNode[] }
-  | { kind: 'list'; ordered: boolean; items: InlineNode[][] }
+  /**
+   * 一项是**一串块**,不是一行行内树(08-31 真机报障后升级)。
+   *
+   * 从前是 `InlineNode[][]` —— 一项装不下子块,于是项里的围栏 / 表 / 引用只能取源码
+   * 原文当字面文字塞进去,屏幕上就是 ``` ```lua ``` 四个字符明晃晃地摊着。
+   * 升成 `BlockModel[][]` 之后,项内是什么由**同一张注册表**画(铁律 1:嵌套 =
+   * 注册表复用),和引用块的 `blocks: BlockModel[]` 是同一个答案。
+   *
+   * **嵌套列表仍然拍平一层**(子列表的项提升成同层后续项)—— 那是既有拍板,
+   * 与这一格无关:词汇现在装得下子树了,但那条裁定要不要翻是另一件事。
+   */
+  | { kind: 'list'; ordered: boolean; items: BlockModel[][] }
   | { kind: 'quote'; blocks: BlockModel[] }
   /** `closed:false` = 流式中还没闭合的围栏(§6 的流式契约靠它成立)。 */
   | { kind: 'code'; lang: string | null; source: string; file?: string; closed: boolean }

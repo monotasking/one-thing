@@ -55,11 +55,14 @@ describe('翻译表:mdast → BlockModel', () => {
     })
   })
 
-  it('列表:有序 / 无序各自认得', () => {
+  it('列表:有序 / 无序各自认得,一项是一串块', () => {
     expect(one('- a\n- b')).toEqual({
       kind: 'list',
       ordered: false,
-      items: [[{ type: 'text', text: 'a' }], [{ type: 'text', text: 'b' }]],
+      items: [
+        [{ kind: 'paragraph', inline: [{ type: 'text', text: 'a' }] }],
+        [{ kind: 'paragraph', inline: [{ type: 'text', text: 'b' }] }],
+      ],
     })
     expect(one('1. a\n2. b')).toMatchObject({ kind: 'list', ordered: true })
   })
@@ -68,12 +71,11 @@ describe('翻译表:mdast → BlockModel', () => {
     const list = one('- a\n  - a1\n- b')
     expect(list).toMatchObject({ kind: 'list', ordered: false })
     expect(list.kind === 'list' && list.items.map((item) => item[0])).toEqual([
-      { type: 'text', text: 'a' },
-      { type: 'text', text: 'a1' },
-      { type: 'text', text: 'b' },
+      { kind: 'paragraph', inline: [{ type: 'text', text: 'a' }] },
+      { kind: 'paragraph', inline: [{ type: 'text', text: 'a1' }] },
+      { kind: 'paragraph', inline: [{ type: 'text', text: 'b' }] },
     ])
   })
-
   it('GFM 表:第一行是表头,其余是数据行', () => {
     expect(one('| a | b |\n|---|---|\n| 1 | 2 |')).toEqual({
       kind: 'table',
@@ -101,6 +103,54 @@ describe('翻译表:mdast → BlockModel', () => {
 
   it('缩进代码块天然是闭合的(它没有围栏,由下一行不缩进结束)', () => {
     expect(one('    const a = 1\n')).toMatchObject({ kind: 'code', closed: true, lang: null })
+  })
+})
+
+/**
+ * 项内嵌块(08-31 真机报障:``` ```lua ``` 原样可见)。
+ *
+ * 病根是项内只装行内,非段落子块只好取源码原文当字面文字。这一组钉的是那条修法:
+ * 项内逐子块走**同一张翻译表**,和引用块是同一个答案。
+ */
+describe('列表项里嵌块 —— 注册表复用,不再拍平成字面文本', () => {
+  const itemsOf = (text: string): BlockModel[][] => {
+    const list = one(text)
+    if (list.kind !== 'list') throw new Error(`不是列表:${list.kind}`)
+    return list.items
+  }
+
+  it('项含围栏 → [paragraph, code(lang=lua)],不再是一段 ``` 字面文本', () => {
+    const [item] = itemsOf('- 看这段:\n\n  ```lua\n  print(1)\n  ```\n')
+    expect(item).toEqual([
+      { kind: 'paragraph', inline: [{ type: 'text', text: '看这段:' }] },
+      { kind: 'code', lang: 'lua', source: 'print(1)', closed: true },
+    ])
+  })
+
+  it('项含表 / 引用 / 分隔线,各按本来的块画', () => {
+    expect(itemsOf('- 表:\n\n  | a |\n  |---|\n  | 1 |\n')[0]).toMatchObject([
+      { kind: 'paragraph' },
+      { kind: 'table' },
+    ])
+    expect(itemsOf('- 引:\n\n  > 一句\n')[0]).toMatchObject([
+      { kind: 'paragraph' },
+      { kind: 'quote', blocks: [{ kind: 'paragraph' }] },
+    ])
+    expect(itemsOf('- 线:\n\n  ---\n')[0]).toMatchObject([{ kind: 'paragraph' }, { kind: 'divider' }])
+  })
+
+  it('一项里连续两段 = 两个 paragraph 块(从前被 `\\n` 接成一棵行内树)', () => {
+    expect(itemsOf('- 上一段\n\n  下一段\n')[0]).toEqual([
+      { kind: 'paragraph', inline: [{ type: 'text', text: '上一段' }] },
+      { kind: 'paragraph', inline: [{ type: 'text', text: '下一段' }] },
+    ])
+  })
+
+  it('项内没闭合的围栏照旧是 closed:false —— 流式契约不需要为项内特判', () => {
+    expect(itemsOf('- 看这段:\n\n  ```lua\n  print(1)\n')[0]).toMatchObject([
+      { kind: 'paragraph' },
+      { kind: 'code', lang: 'lua', closed: false },
+    ])
   })
 })
 

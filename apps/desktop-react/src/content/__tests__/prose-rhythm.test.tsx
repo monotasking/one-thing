@@ -138,6 +138,21 @@ const SIMPLE: Ledger[] = [
   toolResult(6, 'r1', 'c1'),
 ]
 
+/**
+ * 项内嵌块形(08-31 真机报障后补的夹具):一张列表,其中一项里装着一段围栏。
+ *
+ * 这一形补进来是因为上面两形都没有它,而它正是报障那一形:从前项内只装行内,
+ * 围栏被拍平成字面文本(``` ```lua ``` 原样可见)。它在这条门里要钉的是**节奏那一半**
+ * —— 修完之后列表仍然是消息框的**一个**直接子项(围栏没有被抬到行一级去,
+ * 于是它不吃 `--pr-obj` 那一档物件留白,而是待在项里吃 `--pr-li`)。
+ */
+const NESTED_IN_LIST: Ledger[] = [
+  created(1),
+  userMessage(2, 'm1', '项里放段码'),
+  runStart(3, 'r1', 'a1'),
+  chunks(4, 'r1', 'a1', 0, 'text', ['开头一段。\n\n- 看这段:\n\n  ```lua\n  print(1)\n  ```\n\n- 下一项\n']),
+]
+
 async function mountLedger(ledger: Ledger[]) {
   configureChatPort(port(ledger))
   useExposeStore.setState({ currentSessionId: SESSION })
@@ -211,6 +226,20 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       // 见上一条的「基线动过一次」:这条素材同样停在 run 里,所以读数行在场。
       'div[data-testid=chat-readout]',
     ])
+  })
+
+  it('项内嵌块形:列表仍是**一个**直接子项,围栏待在项里没被抬到行一级', async () => {
+    const { container } = await mountLedger(NESTED_IN_LIST)
+    const row = container.querySelector('[data-message-id="a1"]')!
+    expect(Array.from(row.children).map(identify)).toEqual([
+      'p',
+      'ul',
+      'span[data-testid=chat-streaming]',
+      'div[data-testid=chat-readout]',
+    ])
+    const nested = row.querySelector('li [data-block-kind="code"]')
+    expect(nested, '围栏应当画成代码块的壳,且就长在 <li> 里').toBeTruthy()
+    expect(row.textContent).not.toContain('```')
   })
 
   it('工具卡 / 工具组都是消息框的**直接**子项 —— 没有被套进任何包裹层', async () => {
