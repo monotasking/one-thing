@@ -21,6 +21,18 @@
   --r-3: 14px;
   --r-full: 999px;
 
+  /* ── 描边宽度 ──────────────────────────────────────────────────────────
+   * 线有多粗只有三档:发丝(结构分隔)/ 描边(控件边框)/ 标记(状态条与指示器)。
+   * 焦点环是**角色**不是档位,所以它是自己的名字,值引第四档。
+   * 老名字(--dock-sep-w / --check-border / --spinner-w / --tab-indicator /
+   * --toast-line-h / --search-mark / --focus-ring-w)就地降为别名,逐像素不变。
+   * --ctx-ring-w(2.6px)**不入梯**:那是读数环自己的画法比例(环径 18 配 2.6),
+   * 不是「界面上的线有多粗」。 */
+  --bw-1: 1px;      /* 结构分隔:分隔线、面与面之间 */
+  --bw-2: 1.5px;    /* 控件描边:勾选框、单选环、spinner */
+  --bw-3: 2px;      /* 状态标记:选中指示器、进度线、行首标记 */
+  --bw-ring: 3px;   /* 焦点柔光环(全系统唯一) */
+
   /* 间距梯 4/8/12/16/24/32/40/48 */
   --sp-1: 4px;
   --sp-2: 8px;
@@ -47,6 +59,19 @@
 
   /* 节标的字距。小字全大写体量的标题靠它撑开,不靠加粗 —— 只此一处。 */
   --ls-section: 0.06em;
+
+  /* ── 图标尺寸 ──────────────────────────────────────────────────────────
+   * 四档,2px 一级。图标是**跟着文字**的:xs 配 meta/micro 行,sm 配 body 行,
+   * md 配 title 行,lg 只给 Dock 瓦这类「图形本身就是内容」的位置。
+   * 组件不再各起一个 --*-icon —— 例外只有两类:Composer 内的数属于那块面板的
+   * 形态学(--model-chevron 10 / --composer-spinner 12 等),--check-icon 11 是
+   * 勾在 16px 框里的内嵌比例(11/16),都不是独立图标。
+   * --att-icon 13 / --composer-attach-icon 15 两个碎值待拍板(−1px 才能入梯),
+   * 本批不动。 */
+  --icon-xs: 12px;
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 18px;
 
   /* 手势:全局唯一 var(--dur) var(--ease);浮层入场例外 --dur-enter --ease-out */
   --dur: 120ms;
@@ -160,9 +185,9 @@
   --dock-gap: 9px;
   --dock-blur: 20px;
   --tile-size: var(--tile-size-md);
-  --tile-icon: 18px;
+  --tile-icon: var(--icon-lg);
   --dock-sep-h: 36px;
-  --dock-sep-w: 1px;
+  --dock-sep-w: var(--bw-1);
   --badge-size: 16px;
   --badge-offset: -5px;
   --dot-size: 4px;
@@ -208,7 +233,7 @@
    * 窄一档(约 550px 起)自然落到 2 列、再窄落到 1 列。
    */
   --card-min-w: 260px;
-  --focus-ring-w: 3px;
+  --focus-ring-w: var(--bw-ring);
   --avatar-size: 20px;
   --avatar-overlap: -6px;
   --unread-size: 18px;
@@ -306,7 +331,7 @@
   --menu-item-h: 30px;
   --menu-item-pad-x: 8px;
   --menu-item-gap: 8px;
-  --menu-check: 12px;
+  --menu-check: var(--icon-xs);
   --menu-section-h: 22px;
   --menu-section-ls: 0.06em;
   --menu-sep-my: 4px;
@@ -316,9 +341,9 @@
   --tab-h: 36px;
   --tab-pad-x: 10px;
   --tab-gap: 6px;
-  --tab-icon: 12px;
-  --tab-close: 12px;
-  --tab-indicator: 2px;
+  --tab-icon: var(--icon-xs);
+  --tab-close: var(--icon-xs);
+  --tab-indicator: var(--bw-3);
   --tab-max-w: 160px;
 
   /* 分段器族 */
@@ -343,11 +368,11 @@
   --input-lg: 38px;
   --input-pad-x: 12px;
   --input-gap: 8px;
-  --input-icon: 14px;
+  --input-icon: var(--icon-sm);
 
   /* 勾选族(Controls 板:Checkbox 16 / Radio 16 / Switch 20×36) */
   --check-size: 16px;
-  --check-border: 1.5px;
+  --check-border: var(--bw-2);
   --check-icon: 11px;
   --radio-ring: 5px; /* 板上「Radio 用环不用点」= 选中态就是一圈 5px 的 accent 边 */
   --switch-w: 36px;
@@ -370,7 +395,7 @@
    * --toast-line-h 是底缘那条剩余时间细线的厚度。 */
   --toast-w: 320px;
   --toast-lift: 8px;
-  --toast-line-h: 2px;
+  --toast-line-h: var(--bw-3);
   --dur-toast-success: 3000ms;
   --dur-toast-info: 4000ms;
   --dur-toast-warn: 8000ms;
@@ -379,7 +404,7 @@
    * md 档板上未定,取 --badge-size 同档的 16,好与徽、勾选族对齐。 */
   --spinner-sm: 13px;
   --spinner-md: 16px;
-  --spinner-w: 1.5px;
+  --spinner-w: var(--bw-2);
   --dur-spin: 700ms;
 
   /* 工具行「运行中」那枚呼吸图标(V2 三态)。比 --dur-toc-hover(150ms,光标的
@@ -401,8 +426,9 @@
   --composer-done-dot: 8px;
   --model-chevron: 10px;
   --composer-attach-icon: 15px;
-  --composer-send-icon: 12px;
+  --composer-send-icon: var(--icon-xs);
   --ctx-ring: 18px;
+  /* 不入 --bw-* 梯:环径 18 配 2.6 是这枚读数环自己的画法比例 */
   --ctx-ring-w: 2.6px;
   --meter-w: 210px;
 
@@ -446,7 +472,7 @@
    * ────────────────────────────────────────────────────────────────────── */
   --search-chip-w: 34px;
   --search-chip-h: 16px;
-  --search-mark: 2px;
+  --search-mark: var(--bw-3);
   --search-origin-w: 220px;
 
   /* ── 通知中心(content/NotificationsPanel)几何 ──────────────────────────

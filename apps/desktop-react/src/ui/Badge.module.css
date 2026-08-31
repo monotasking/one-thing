@@ -24,7 +24,7 @@
   font-size: var(--fs-micro);
   font-weight: 600;
   background: var(--ok);
-  color: var(--on-accent);
+  color: var(--on-ok);
 }
 
 .unread {
