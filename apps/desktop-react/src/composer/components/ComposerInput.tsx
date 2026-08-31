@@ -154,6 +154,10 @@ export function ComposerInput({
      */
     if (isComposingKey(e)) return
     if (picking) {
+      /* ui-consume-allow: kbd-select-handwritten — 这里只**转发**方向键,
+       * 一格状态都不持有:走法与选中位在 Composer 那一头的 useListSelection 上
+       * (`onMove` 直通它的 `move`)。这块输入面是 contenteditable,键必须在它
+       * 身上接;把原语搬进来反而会让候选列表的状态长在输入框里。 */
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         onMove(1)

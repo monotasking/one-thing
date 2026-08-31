@@ -87,10 +87,25 @@
   cursor: pointer;
 }
 
-/* 高亮态**只有一档**:键盘的当前行与鼠标悬停是同一件事(悬停会把 cursor 移过来),
- * 所以这里没有单独的 :hover —— 两套高亮同时亮才是最难读的那种列表。 */
+/*
+ * 高亮**两档**(09-01 用户裁定,推翻从前那句「只有一档」):
+ *   `.rowOn`  = 键盘位,accent 底(--st-sel)。↵ 落的就是它。
+ *   `:hover`  = 鼠标位,淡底(--st-hover)。**纯视觉**,一个 JS 状态都不占。
+ * 两档可以同屏,叠在同一行时用 --st-sel-hover。从前那一档是靠
+ * `onMouseEnter → setCursor` 合并出来的 —— 鼠标经过就把键盘位拽走,
+ * 而 scrollIntoView 会在鼠标一动没动的情况下补一发 mouseenter(二次污染)。
+ * 三条配方与 composer 抽屉(.pickRow / .pickSel)逐字同源。
+ */
+.row:hover {
+  background: var(--st-hover);
+}
+
 .rowOn {
   background: var(--st-sel);
+}
+
+.rowOn:hover {
+  background: var(--st-sel-hover);
 }
 
 .rowNew {

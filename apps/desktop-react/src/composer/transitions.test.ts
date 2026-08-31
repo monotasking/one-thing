@@ -58,13 +58,8 @@ describe('@ 与 / 的触发位', () => {
     ).toEqual(['/review'])
   })
 
-  it('选中行的上下走在两端钳住,空表钉在 0', () => {
-    expect(T.movePickIndex(0, -1, 3)).toBe(0)
-    expect(T.movePickIndex(2, 1, 3)).toBe(2)
-    expect(T.movePickIndex(1, 1, 3)).toBe(2)
-    expect(T.movePickIndex(2, 1, 0)).toBe(0)
-    expect(T.clampPickIndex(5, 3)).toBe(2)
-  })
+  /* 「选中行上下走 / 夹进范围」的判据 09-01 搬去了 ui/a11y/list-selection,
+   * 断言跟着搬进 src/ui/__tests__/list-selection.test.tsx —— 判据在哪,守卫在哪。 */
 })
 
 const SPEC: AskSpec = {

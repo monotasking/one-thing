@@ -60,16 +60,12 @@ export function matchCommands<T extends CommandSpec>(cmds: readonly T[], query: 
   return cmds.filter((c) => c.name.slice(1).startsWith(query))
 }
 
-/** 列表里上下走。空表时钉在 0 —— 让调用方少写一个分支。 */
-export function movePickIndex(index: number, delta: number, len: number): number {
-  if (len <= 0) return 0
-  return Math.max(0, Math.min(index + delta, len - 1))
-}
-
-export function clampPickIndex(index: number, len: number): number {
-  if (len <= 0) return 0
-  return Math.max(0, Math.min(index, len - 1))
-}
+/*
+ * 「列表里上下走」与「夹进范围」这两条判据 09-01 收进了 `ui/a11y/list-selection`
+ * (`stepListIndex` / `clampListIndex`),连同它们旁边那件真正要紧的纪律:
+ * **hover 不许改选中位**。抽屉、工作区快切、模型抽屉从前各写一份走法,
+ * 于是也各写一份 hover 处理 —— 收敛掉走法,才收得掉那条病。
+ */
 
 /* ── ask 问卷 ────────────────────────────────────────────────────────────── */
 

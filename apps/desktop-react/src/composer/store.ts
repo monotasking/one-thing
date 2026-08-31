@@ -54,7 +54,11 @@ function revoke(atts: readonly Attachment[]): void {
 interface ComposerStore extends ComposerState {
   /* 抽屉(单一槽) */
   showPick: (kind: 'files' | 'commands', query: string) => void
-  movePick: (delta: number, len: number) => void
+  /**
+   * 选中位只有这一个 setter。「往下走一格」那件事已经不在 store 里 ——
+   * 它是 `ui/a11y/list-selection` 的 `move`,与工作区快切、模型抽屉同一份判据
+   * (09-01 收敛:三处各写一份走法,是 hover 污染选中位那条病的同一个病根)。
+   */
   setPickIndex: (i: number) => void
   toggleModelDrawer: () => void
   setModelQuery: (q: string) => void
@@ -88,7 +92,6 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
   ...initialState,
 
   showPick: (kind, query) => set({ drawerKind: kind, pickQuery: query, pickIndex: 0 }),
-  movePick: (delta, len) => set((s) => ({ pickIndex: T.movePickIndex(s.pickIndex, delta, len) })),
   setPickIndex: (i) => set({ pickIndex: i }),
 
   // 模型抽屉是**瞬态**的:每次开都从空搜索开始,不记上次搜了什么。

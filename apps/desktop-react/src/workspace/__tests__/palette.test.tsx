@@ -113,6 +113,47 @@ describe('键盘', () => {
   })
 })
 
+/**
+ * hover ≠ active(09-01 用户裁定)。从前每一行挂着 `onMouseEnter={() => setCursor(i)}`,
+ * 于是「鼠标停在列表上按 ↑↓」和「滚动之后补来的那发合成 mouseenter」两条路
+ * 都能把键盘位拽走。反证:把那句 onMouseEnter 加回去,下面两条立刻红。
+ */
+describe('hover 不许影响 select', () => {
+  it('鼠标经过第三行,键盘位一格不动 —— ↵ 落的还是键盘那一条', () => {
+    render(<WorkspacePalette />)
+    const input = screen.getByTestId('workspace-palette-input')
+    act(() => void fireEvent.keyDown(input, { key: 'ArrowDown' }))
+    act(() => void fireEvent.mouseEnter(screen.getByTestId('workspace-palette-row-ws-personal')))
+    // 高亮仍在第 2 行(Lenovo),不是鼠标底下的第 3 行(个人)。
+    expect(screen.getAllByRole('option')[1].getAttribute('aria-selected')).toBe('true')
+    act(() => void fireEvent.keyDown(input, { key: 'Enter' }))
+    expect(useWorkspaceStore.getState().currentId).toBe('ws-lenovo')
+  })
+
+  it('点击是显式意图 —— 它可以改键盘位,并当场切过去', () => {
+    render(<WorkspacePalette />)
+    act(() => void fireEvent.click(screen.getByTestId('workspace-palette-row-ws-personal')))
+    expect(useWorkspaceStore.getState().currentId).toBe('ws-personal')
+  })
+
+  /* 限高(.list max-height: 44vh)必然带出来的另一半:键盘位走出视野要滚回来。 */
+  it('↑↓ 换行时把那一行滚进视野(block: nearest)', () => {
+    const original = Element.prototype.scrollIntoView
+    const scrollIntoView = vi.fn()
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      render(<WorkspacePalette />)
+      scrollIntoView.mockClear()
+      act(() =>
+        void fireEvent.keyDown(screen.getByTestId('workspace-palette-input'), { key: 'ArrowDown' }),
+      )
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+})
+
 describe('新建', () => {
   it('落在「新建」那一行上按 ↵ = 用当下这个词建一个', async () => {
     const create = vi.fn(async () => ({

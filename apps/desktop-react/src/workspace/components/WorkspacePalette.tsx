@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom'
 import { Search } from '../../components/icons'
 import { Kbd } from '../../ui/Kbd'
 import { useFocusTrap } from '../../ui/a11y/focus-trap'
+import { useListSelection } from '../../ui/a11y/list-selection'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { useT } from '../../i18n'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
 import { effectiveCombo, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
@@ -50,7 +52,6 @@ export function WorkspacePalette() {
   const panel = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
-  const [cursor, setCursor] = useState(0)
 
   // 圈禁 Tab + 关闭时把焦点还给开它的那个元素。开启时的落点由下面那条 effect
   // 接管到输入框上 —— 容器落点(focus-trap 的默认档)对一个「直接打字」的面是错的。
@@ -58,10 +59,27 @@ export function WorkspacePalette() {
 
   const hits = useMemo(() => filterWorkspaces(views, query), [views, query])
 
+  /** 「新建『<词>』工作区…」那一行在不在。它只在有词、且没有逐字同名的命中时出现。 */
+  const offerCreate = query.trim().length > 0 && !views.some((v) => v.name === query.trim())
+  const rowCount = hits.length + (offerCreate ? 1 : 0)
+
+  /*
+   * 键盘位。走法、夹范围、把当前行滚进视野全在 `ui/a11y/list-selection` 里,
+   * 与 composer 的两个抽屉同一份判据。loop=true:命令面板到底了绕回头一条。
+   *
+   * 09-01 修:从前每一行挂着 `onMouseEnter={() => setCursor(i)}`,鼠标经过就把
+   * 键盘位拽走 —— 用户裁定 hover 只是 hover。现在改它的只剩键盘与**点击**,
+   * hover 由下面那两条 CSS(`.row:hover` / `.rowOn:hover`)画。
+   */
+  const { active: cursor, select: selectRow, handleKey, rowRef } = useListSelection({
+    count: rowCount,
+    loop: true,
+  })
+
   // 每次开、每次改词都把高亮拉回第一条:命中变了还停在第三行,↵ 就会切错人。
   useEffect(() => {
-    setCursor(0)
-  }, [query, open])
+    selectRow(0)
+  }, [query, open, selectRow])
 
   useEffect(() => {
     if (!open) {
@@ -100,19 +118,13 @@ export function WorkspacePalette() {
     setOpen(false)
   }
 
-  /** 「新建『<词>』工作区…」那一行在不在。它只在有词、且没有逐字同名的命中时出现。 */
-  const offerCreate =
-    query.trim().length > 0 && !views.some((v) => v.name === query.trim())
-  const rowCount = hits.length + (offerCreate ? 1 : 0)
-
   /* 走行与落定留在面板上:它们是**输入框里的语法**,焦点恒在输入框(见上面那段
-   * 键盘表),所以不该变成三条全局监听去和别的层抢键。Esc 是那条唯一的例外。 */
+   * 键盘表),所以不该变成三条全局监听去和别的层抢键。Esc 是那条唯一的例外。
+   * ↑↓/Home/End 的走法交给原语(`handleKey` 认了就自己改完位并回 true);
+   * ↵ 永远落在**键盘位**上 —— 不是鼠标底下那一行。 */
   const onKeyDown = (e: ReactKeyboardEvent) => {
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (handleKey(e.key)) {
       e.preventDefault()
-      if (rowCount === 0) return
-      const step = e.key === 'ArrowDown' ? 1 : -1
-      setCursor((c) => (c + step + rowCount) % rowCount)
       return
     }
     if (e.key === 'Enter') {
@@ -172,16 +184,19 @@ export function WorkspacePalette() {
                 ? null
                 : effectiveCombo({ overrides }, workspaceSlotCommandId(view.slot))
             return (
-              <button
+              <ButtonBase
                 key={view.id}
-                type="button"
                 role="option"
+                ref={rowRef(i)}
                 aria-selected={i === cursor}
                 tabIndex={-1}
                 className={i === cursor ? `${s.row} ${s.rowOn}` : s.row}
                 data-testid={`workspace-palette-row-${view.id}`}
-                onMouseEnter={() => setCursor(i)}
-                onClick={() => commit(view)}
+                /* 点击 = 显式意图,可以改键盘位;鼠标**经过**不行(hover 走 CSS)。 */
+                onClick={() => {
+                  selectRow(i)
+                  commit(view)
+                }}
               >
                 <span className={`${s.dot} ${sw[view.swatch]}`} aria-hidden="true" />
                 <span className={s.name}>{view.name}</span>
@@ -194,25 +209,27 @@ export function WorkspacePalette() {
                     ))}
                   </span>
                 )}
-              </button>
+              </ButtonBase>
             )
           })}
 
           {offerCreate && (
-            <button
-              type="button"
+            <ButtonBase
               role="option"
+              ref={rowRef(hits.length)}
               aria-selected={cursor === hits.length}
               tabIndex={-1}
               className={
                 cursor === hits.length ? `${s.row} ${s.rowNew} ${s.rowOn}` : `${s.row} ${s.rowNew}`
               }
               data-testid="workspace-palette-create"
-              onMouseEnter={() => setCursor(hits.length)}
-              onClick={create}
+              onClick={() => {
+                selectRow(hits.length)
+                create()
+              }}
             >
               {t('workspace.createNamed', { name: query.trim() })}
-            </button>
+            </ButtonBase>
           )}
 
           {rowCount === 0 && <p className={s.empty}>{t('workspace.paletteNoHit')}</p>}

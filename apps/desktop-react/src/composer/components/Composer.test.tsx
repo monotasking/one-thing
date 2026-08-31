@@ -622,6 +622,50 @@ describe('抽屉列表封顶之后:选中项要滚进视野', () => {
 })
 
 /**
+ * hover ≠ active(09-01 用户裁定)。从前抽屉每一行挂着
+ * `onMouseEnter={() => onHover(i)}`,把键盘位直接交给鼠标 —— 两个后果:
+ *  ① 鼠标停在候选上时按 ↑↓,↵ 落在鼠标那一行;
+ *  ② 上面那段滚入视野把列表滚一段,**鼠标一动没动**却换了脚下的行,
+ *     浏览器补一发 mouseenter,键盘位当场被拽走(二次污染)。
+ * 现在改键盘位的只剩键盘与点击,hover 由 CSS 画。
+ * 反证:把那句 onMouseEnter 加回 DrawerPickList,下面两条立刻红。
+ */
+describe('抽屉候选:hover 不许影响 select', () => {
+  it('鼠标经过第二条,选中位一格不动', async () => {
+    vi.useFakeTimers()
+    render(<Composer />)
+    const box = inputBox()
+    type(box, '看看 @')
+    await settleMentions()
+
+    expect(state().pickIndex).toBe(0)
+    const rows = screen.getAllByRole('button').filter((el) => /pickRow/.test(el.className))
+    expect(rows.length).toBeGreaterThan(1)
+    act(() => void fireEvent.mouseEnter(rows[1]))
+    expect(state().pickIndex).toBe(0)
+    // 屏幕上带选中皮肤的仍然是第一条。
+    expect(rows[0].className).toMatch(/pickSel/)
+    expect(rows[1].className).not.toMatch(/pickSel/)
+  })
+
+  it('滚入视野之后补来的那发合成 mouseenter,同样拽不走选中位', async () => {
+    vi.useFakeTimers()
+    render(<Composer />)
+    const box = inputBox()
+    type(box, '看看 @')
+    await settleMentions()
+
+    fireEvent.keyDown(box, { key: 'ArrowDown' })
+    expect(state().pickIndex).toBe(1)
+    // 真机上这一发是浏览器在指针静止时补的(列表被 scrollIntoView 滚了一段),
+    // jsdom 不排版不会自己补,所以按真机次序手动重演。
+    const rows = screen.getAllByRole('button').filter((el) => /pickRow/.test(el.className))
+    act(() => void fireEvent.mouseEnter(rows[0]))
+    expect(state().pickIndex).toBe(1)
+  })
+})
+
+/**
  * 忙态那半边(D1 开工批)。忙不忙的判据只有一个产地(data/chat-source.ts 的
  * `selectEngineBusy`),所以这里就地掀那一格 —— 不为测试另造一个假的忙态开关。
  */

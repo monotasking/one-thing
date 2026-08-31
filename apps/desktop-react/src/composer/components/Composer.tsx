@@ -26,7 +26,8 @@ import { ESC_STOP_WINDOW_MS } from '../../components/motion'
 import { registerComposerFocus } from '../focus'
 import { composerSink, useComposerBusy } from '../sink'
 import { revokeAllAttachments, useComposerStore } from '../store'
-import { clampPickIndex, matchCommands, matchFiles } from '../transitions'
+import { matchCommands, matchFiles } from '../transitions'
+import { useListSelection } from '../../ui/a11y/list-selection'
 import type { TokenHit } from '../types'
 import { AskForm } from './AskForm'
 import { AttachmentStack } from './AttachmentStack'
@@ -65,7 +66,6 @@ export function Composer() {
   const askSpec = useComposerStore((st) => st.askSpec)
   const status = useComposerStore((st) => st.status)
   const showPick = useComposerStore((st) => st.showPick)
-  const movePick = useComposerStore((st) => st.movePick)
   const setPickIndex = useComposerStore((st) => st.setPickIndex)
   const closeDrawer = useComposerStore((st) => st.closeDrawer)
   const toggleModelDrawer = useComposerStore((st) => st.toggleModelDrawer)
@@ -191,7 +191,19 @@ export function Composer() {
     [drawerKind, allCommands, pickQuery],
   )
   const pickLen = drawerKind === 'files' ? files.length : commands.length
-  const index = clampPickIndex(pickIndex, pickLen)
+  /*
+   * 候选列表的**键盘位**。受控档:这一位住在 store 里(输入框那边的 ↑↓ 也要改它),
+   * 原语只负责判走法、夹范围、把选中行滚进视野。
+   * 鼠标经过**不**改它 —— hover 由 CSS 画,法条见 ui/a11y/list-selection 文件头。
+   * loop=false:候选到端点就停(与从前的 movePickIndex 逐字同一个走法)。
+   */
+  const pick = useListSelection({
+    count: pickLen,
+    active: pickIndex,
+    onActiveChange: setPickIndex,
+    loop: false,
+  })
+  const index = pick.active
 
   /* ── 输入框吐出来的 token:有就开对应抽屉,没有就把选择器收掉 ─────────────
    * 「收掉」只收 files / commands 两位住户 —— 模型与执行状态不是输入驱动的,
@@ -521,7 +533,7 @@ export function Composer() {
                     files={files}
                     commands={commands}
                     index={index}
-                    onHover={setPickIndex}
+                    rowRef={pick.rowRef}
                     onPick={applyPick}
                   />
                 )}
@@ -539,7 +551,7 @@ export function Composer() {
                   placeholder={t(escStopArmed ? 'composer.escStopHint' : 'composer.placeholder')}
                   picking={picking}
                   onToken={onToken}
-                  onMove={(delta) => movePick(delta, pickLen)}
+                  onMove={(delta) => pick.move(delta)}
                   onPick={() => applyPick(index)}
                   onEscape={closeDrawer}
                   onSend={doSend}
