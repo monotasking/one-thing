@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ProviderInfo } from '@shared/ipc/providers'
-import type { AppSettings } from '@shared/ipc/settings'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { configureModelsPort } from './models-port'
+import { configureSpacesPort } from './spaces-port'
+import { useWorkspaceStore } from '../workspace/store'
 import type { ModelsPort } from './models-port'
 import {
   buildProviderGroups,
@@ -39,22 +40,25 @@ function provider(id: string, name = id): ProviderInfo {
   }
 }
 
-/** 只造这批判据要用的那几格;其余走 `as` —— 整份 AppSettings 与本测试无关。 */
+/**
+ * 只造这批判据要用的那几格;其余走 `as`。
+ * 造的是**当前空间那一份** provider 设置(`workspaces/<id>/providers.json`)——
+ * 09-01 起数据源读的就是它,不再是整份 AppSettings。
+ */
 function settingsWith(
   providers: Record<string, { enabled?: boolean; selectedModels?: string[]; model?: string }>,
   defaultProvider = '',
-): AppSettings {
+): SpaceProviderSettings {
   return {
-    ai: {
-      provider: defaultProvider,
-      providers: Object.fromEntries(
-        Object.entries(providers).map(([id, config]) => [
-          id,
-          { model: config.model ?? '', selectedModels: config.selectedModels ?? [], enabled: config.enabled },
-        ]),
-      ),
-    },
-  } as unknown as AppSettings
+    provider: defaultProvider,
+    providers: Object.fromEntries(
+      Object.entries(providers).map(([id, config]) => [
+        id,
+        { model: config.model ?? '', selectedModels: config.selectedModels ?? [], enabled: config.enabled },
+      ]),
+    ),
+    customProviders: [],
+  } as unknown as SpaceProviderSettings
 }
 
 interface FakeCalls {
@@ -91,11 +95,11 @@ function installPort(over: Partial<ModelsPort> = {}): void {
         ],
       }
     },
-    readSettings: async () => {
+    readProviderSettings: async () => {
       calls.settings += 1
       return {
         success: true,
-        settings: settingsWith({
+        ai: settingsWith({
           xai: { selectedModels: ['grok-4'] },
           deepseek: { selectedModels: ['deepseek-chat'] },
         }),
@@ -132,12 +136,10 @@ describe('设置的窄投影', () => {
 
   it('自定义 provider:名册与「那一个默认模型」都要认 —— 否则抽屉是空的', () => {
     const settings = {
-      ai: {
-        provider: '',
-        providers: {},
-        customProviders: [{ id: 'my-llm', name: '自建', model: 'qwen-max', selectedModels: [] }],
-      },
-    } as unknown as AppSettings
+      provider: '',
+      providers: {},
+      customProviders: [{ id: 'my-llm', name: '自建', model: 'qwen-max', selectedModels: [] }],
+    } as unknown as SpaceProviderSettings
     expect(customProviderOptionsOf(settings)).toEqual([{ id: 'my-llm', name: '自建' }])
     const prefs = toProviderPrefs(settings)
     expect(prefs.configs['my-llm'].selectedModels).toEqual(['qwen-max'])
@@ -328,7 +330,7 @@ describe('取数:设置热,名册与目录都冷', () => {
   })
 
   it('设置拿不到 = 空投影(抽屉一家都不列),不是「列全部」', async () => {
-    installPort({ readSettings: async () => ({ success: false, error: '答不上话' }) })
+    installPort({ readProviderSettings: async () => ({ success: false, error: '答不上话' }) })
     await useModelsSource.getState().start()
     expect(useModelsSource.getState().prefs).toEqual({ defaultProvider: '', configs: {} })
   })
@@ -370,5 +372,72 @@ describe('选中一个模型:三态', () => {
   it('没有预选时兑现是恒等,不发请求', async () => {
     await useModelsSource.getState().applyPendingModel('new-1')
     expect(calls.updates).toEqual([])
+  })
+})
+
+/* ── 工作区(09-01「真切换」批)──────────────────────────────────────────── */
+
+describe('模型表跟着当前工作区走', () => {
+  /** 两个空间各一份 provider 设置 —— 可见的家与可列的型都不一样。 */
+  const BY_SPACE: Record<string, SpaceProviderSettings> = {
+    default: settingsWith({ xai: { selectedModels: ['grok-4'] } }, 'xai'),
+    'ws-work': settingsWith({ deepseek: { selectedModels: ['deepseek-chat'] } }, 'deepseek'),
+  }
+
+  async function seedSpaces(): Promise<void> {
+    configureSpacesPort({
+      ready: async () => undefined,
+      list: async () => ({
+        success: true,
+        spaces: [
+          { id: 'default', name: '默认', createdAt: 0 },
+          { id: 'ws-work', name: '工作', createdAt: 100 },
+        ],
+      }),
+      create: async () => ({ success: false, error: 'not stubbed' }),
+      update: async () => ({ success: true }),
+      remove: async () => ({ success: true, removed: true }),
+    })
+    await useWorkspaceStore.getState().load()
+  }
+
+  beforeEach(() => {
+    useWorkspaceStore.getState().reset()
+    installPort({
+      readProviderSettings: async (spaceId: string) => {
+        calls.settings += 1
+        return { success: true, ai: BY_SPACE[spaceId] ?? BY_SPACE.default }
+      },
+    })
+  })
+
+  afterEach(() => {
+    useWorkspaceStore.getState().reset()
+  })
+
+  it('读的是当前空间那一份 —— 两个空间的默认模型不是同一个', async () => {
+    await seedSpaces()
+    useWorkspaceStore.getState().switchTo('ws-work')
+    await useModelsSource.getState().start()
+    expect(useModelsSource.getState().prefs.defaultProvider).toBe('deepseek')
+    expect(useModelsSource.getState().prefs.configs.deepseek.selectedModels).toEqual([
+      'deepseek-chat',
+    ])
+    // 别的空间勾的那一型在这里根本不存在 —— 这就是「两套完整独立的设置」。
+    expect(useModelsSource.getState().prefs.configs.xai).toBeUndefined()
+  })
+
+  it('切过去当场换一份;**名册不重拉**(它是机器级的事实)', async () => {
+    await seedSpaces()
+    await useModelsSource.getState().start()
+    await useModelsSource.getState().ensureProviders()
+    expect(useModelsSource.getState().prefs.defaultProvider).toBe('xai')
+    expect(calls.providers).toBe(1)
+
+    useWorkspaceStore.getState().switchTo('ws-work')
+    await vi.waitFor(() =>
+      expect(useModelsSource.getState().prefs.defaultProvider).toBe('deepseek'),
+    )
+    expect(calls.providers).toBe(1)
   })
 })

@@ -16,7 +16,9 @@ import { NOW, ONETHING_DIR, SESSION_META } from './__fixtures__/sessions'
  * 假的,断言的是「打了哪几发、按什么次序、失败之后屏幕上剩下什么」。
  *
  * 钉住的五件事:
- *  1. 建 = `sessions.create`,**不带 name / workspaceId**(默认名归后端);
+ *  1. 建 = `sessions.create`,**不带 name**(默认名归后端)、**带 workspaceId**
+ *     (09-01「真切换」批:后端不认识「当前空间」,漏了这一格新会话就静默落进
+ *     default,而用户明明站在别的工作区里);
  *  2. 落项目 = 建完再打一发 `updateWorkingDirectory`,而且只在有项目时打;
  *  3. 建完**同步重拉**列表 —— 进会话那一步要拿新会话去夹持焦点序列;
  *  4. `pendingAgentId` 被兑现并清空(agents-source 那条留账的结清);
@@ -102,7 +104,8 @@ describe('sessions-source.create:两发请求,次序即语义', () => {
     const outcome = await useSessionsSource.getState().create(null)
 
     expect(outcome).toEqual({ ok: true, sessionId: NEW_ID })
-    expect(create).toHaveBeenCalledWith({})
+    // 名字不带(后端落默认名),归属带上(当前工作区)—— 两件事一条断言。
+    expect(create).toHaveBeenCalledWith({ workspaceId: 'default' })
     expect(updateWorkingDirectory).not.toHaveBeenCalled()
   })
 
