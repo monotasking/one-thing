@@ -31,7 +31,7 @@ import * as modelRegistry from "../providers/model-registry.js";
 import { resolvePromptReferences } from "@onething/runtime/prompts/resolver.wiring";
 import { buildHistoryMessages } from "./stream/message-helpers.js";
 import { buildResumeHistoryAfterToolConfirmation } from "./stream/resume-history.js";
-import { executeMessageStream, openAssistantRun } from "./stream/stream-executor.js";
+import { executeMessageStream, failAssistantRun, openAssistantRun } from "./stream/stream-executor.js";
 import { executeAgentLoopStreamGeneration } from "./stream/agent-loop-executor.js";
 import { billTitleUsage } from "../usage/bill-side-line.js";
 import {
@@ -160,6 +160,7 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 		buildHistoryMessages,
 		buildResumeHistoryAfterToolConfirmation,
 		openAssistantRun,
+		failAssistantRun,
 		executeMessageStream:
 			executeMessageStream as unknown as MainStreamEngineRuntime["streams"]["executeMessageStream"],
 		executeAgentLoopStreamGeneration,

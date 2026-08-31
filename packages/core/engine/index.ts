@@ -163,6 +163,7 @@ export type {
 
 export {
 	CoreStreamEngine,
+	isCoreProviderResolutionFailure,
 	normalizeCoreStreamError,
 	resolveStreamPermissionMode,
 } from "./core-stream-engine.js";
@@ -172,6 +173,7 @@ export type {
 	CoreContextCompactResultLike,
 	CoreEventBusEmitterLike,
 	CoreProviderConfigWithKeyLike,
+	CoreProviderResolutionFailure,
 	CoreStreamEngineOptions,
 	CoreStreamEngineRuntime,
 	CoreStreamErrorInfo,

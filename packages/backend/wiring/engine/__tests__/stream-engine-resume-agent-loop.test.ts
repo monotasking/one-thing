@@ -89,6 +89,8 @@ vi.mock('../stream/stream-executor.js', () => ({
   executeMessageStream: vi.fn(),
   // F4-c c4-d(§16.27):占位入库的同一同步段里开账,由引擎创建点调。
   openAssistantRun: vi.fn(),
+  // 2026-08-31:开完就收(provider 解不出来那条路),同样由引擎创建点调。
+  failAssistantRun: vi.fn(),
 }))
 
 vi.mock('../stream/agent-loop-executor.js', () => ({

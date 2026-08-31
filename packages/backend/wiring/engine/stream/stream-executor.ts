@@ -11,6 +11,7 @@ import type { Principal } from '@onething/core/permission'
 import type { SessionRunKind } from '@onething/core/session'
 import {
   beginSessionRun,
+  currentSessionRunId,
   endSessionRun,
   ensureSessionRun,
   type BeginSessionRunInput,
@@ -271,6 +272,31 @@ export function openAssistantRun(options: Record<string, unknown>): void {
     buildAssistantRunInput({ ...input, createdAssistantMessage: true }),
     { claimed: false },
   )
+}
+
+/**
+ * **开完就收**(2026-08-31):这次执行在进流之前就判定失败,把 `openAssistantRun`
+ * 预开的那条 run 收成 `error`。
+ *
+ * 收尾纪律(`runs.ts` 文件头):`endRun` 在**每一条**出口上调。这条路上没有
+ * `executeMessageStream`,也就没有那个 finally —— 不在这里收,账本上就留一条
+ * 没有 `run/end` 的 `run/start`,投影里那条消息永远"在生成中"。
+ *
+ * `endSessionRun` 幂等且自带归属判据,所以这一口对着"当前 run"调就够了:
+ * 引擎刚刚同步预开的就是它。
+ */
+export async function failAssistantRun(options: Record<string, unknown>): Promise<void> {
+  const input = options as unknown as {
+    sessionId?: string
+    assistantMessageId?: string
+    error?: unknown
+  }
+  if (!input.sessionId) return
+  // §15.12(c):等那一次 fsync —— 收一次执行时"已落盘"必须是真的。
+  await endSessionRun(input.sessionId, currentSessionRunId(input.sessionId), {
+    outcome: 'error',
+    error: input.error,
+  })
 }
 
 /**

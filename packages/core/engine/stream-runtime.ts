@@ -142,6 +142,23 @@ export interface StreamEngineStreamsAdapter<THistoryMessage = unknown, TStreamRe
    * 就没有),缺席 = 宿主自己在别处开张,行为与 c4-d 之前逐字相同。
    */
   openAssistantRun?(options: Record<string, unknown>): void
+  /**
+   * **开完就收**:这次执行在产生任何请求之前就判定失败(今天唯一的产地是
+   * provider 解析不出来 —— 凭证池里没有这个 provider 的条目 / 解密失败被当空表 /
+   * provider 不受支持)。宿主写一条 `run/end outcome:'error'` 把 `openAssistantRun`
+   * 预开的那条 run 收掉。
+   *
+   * 为什么必须有这一口:`openAssistantRun` 预开的 run 是 `claimed:false`,收尾人
+   * 是 `executeMessageStream` 的 finally。这条路上根本不进流,没有人收 —— 一条
+   * 没有 `run/end` 的 `run/start` 在投影里就是"永远在生成中"的那条消息
+   * (`runs.ts` 文件头的收尾纪律)。
+   *
+   * `options.error` 是一个 `Error`,`name` / `message` 就是账本上那条结构化原因。
+   *
+   * **可缺席**:缺席 = 宿主没有账本(测试的 mock store 就没有),行为与本修之前
+   * 逐字相同 —— 引擎照旧只发 `stream:error`。
+   */
+  failAssistantRun?(options: Record<string, unknown>): Promise<void> | void
   executeMessageStream(options: Record<string, unknown>): Promise<void>
   executeAgentLoopStreamGeneration(
     context: unknown,
