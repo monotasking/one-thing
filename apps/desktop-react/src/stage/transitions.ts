@@ -59,17 +59,45 @@ export const SHELF_SIDES: ShelfSide[] = ['left', 'right', 'top', 'bottom']
 export const SNAP_BAND = 24
 export const TEAR_OFF_DISTANCE = 24
 
-/** Dock 自动隐藏的感应带厚度。它是**指针到那条边的距离**,不再是一个盖在别人身上的元素。 */
-export const DOCK_EDGE_BAND = 8
+/**
+ * ── 自动隐藏的两个语义,两个数(09-01 拍板)────────────────────────────────
+ *
+ * **唤醒要克制,留驻要宽容** —— 这是两句话,所以是两个常量、两个判据,
+ * 由 `shouldShowDock` 按「此刻出来了没有」分岔,谁都不许再把它们并成一个。
+ *
+ * 病历:09-01 用户报「dock 自动出现范围太大了,我想输入都没法输入了」。
+ * 真因不是哪个数调大了,而是宿主把两个语义写成了**一句** ——
+ * `withinDockEdgeBand(…) || withinDockHoldZone(…)`,而 `settledDockRect` 是
+ * 按**身量**算停稳位的(translate 不改尺寸),藏着的时候照样算得出来。
+ * 于是「已经出来了才该讲的宽容」在还没出来时就生效了,留驻区整块变成了唤醒区。
+ *
+ * 真机读数(1280×828,底边、md、居中):停稳 top 754 / bottom 816,
+ * 唤醒热区因此高 12(inset) + 62(身量) + 24(pad) = **98px**、宽 707px,
+ * 而 composer 输入区是 y 775…799 —— **整条输入区 100% 落在唤醒区里**,
+ * 指针放到输入框上 Dock 就弹出来,正是用户报的那件事。
+ */
 
 /**
- * 自动隐藏留驻区在 Dock 本体四周放的余量(与 --dock-hold-pad 同一事实)。
+ * **唤醒**:指针离那条边多近才把藏着的 Dock 叫出来。贴边窄带,与 --dock-wake-band 同一事实。
+ *
+ * 它必须窄到碰不到任何可交互的东西:同一次真机量到,最低的那件(composer 输入区 /
+ * 发送键)下缘离视口底 29px,8 留出 21px 余地。底边挂了架子时那一截还会更薄,
+ * 所以这个数只该往小调,不该往大调 —— 想让 Dock 更好叫出来,调的是别处。
+ */
+export const DOCK_WAKE_BAND = 8
+
+/**
+ * **留驻**:Dock 已经出来之后,在本体四周放多少余量仍算「手还在这儿」
+ * (与 --dock-hold-pad 同一事实)。
  *
  * 08-31 由 8 放宽到 24。8 是「刚好不碰到就算走了」,而真手不是这么动的:
  * 唤醒 Dock 的手势本身就是「往那条边压一下,再抬起来去点某一块瓦」,抬的
  * 那一下路径必然从本体外缘擦过。真机量出的修前判据是**离 Dock 上缘 8px
- * 就开始计收回**(见本批报告),这就是用户报的「唤醒后轻微上移秒消失」的一半。
+ * 就开始计收回**,这就是用户报的「唤醒后轻微上移秒消失」的一半。
  * 另一半是拿飞行中的矩形去判——那一半由 settledDockRect 修。
+ *
+ * 09-01 这个数**一个字没动**:它伺候的是留驻语义,而报障出在唤醒语义 ——
+ * 把它调小会同时修翻 08-31 刚修好的那 12 组手势。
  */
 export const DOCK_HOLD_PAD = 24
 
@@ -788,11 +816,11 @@ const DOCK_EDGE_DISTANCE: Record<DockEdge, (p: Point, v: Viewport) => number> = 
   bottom: (p, v) => v.h - p.y,
 }
 
-export function withinDockEdgeBand(
+export function withinDockWakeBand(
   pointer: Point,
   viewport: Viewport,
   edge: DockEdge,
-  band: number = DOCK_EDGE_BAND,
+  band: number = DOCK_WAKE_BAND,
 ): boolean {
   return DOCK_EDGE_DISTANCE[edge](pointer, viewport) <= band
 }
@@ -860,6 +888,35 @@ export function withinDockHoldZone(
   return (
     pointer.x >= left - pad && pointer.x <= right + pad && pointer.y >= top - pad && pointer.y <= bottom + pad
   )
+}
+
+/**
+ * **Dock 此刻该不该在屏上** —— 唯一回答这句话的地方(09-01)。
+ *
+ * 两个语义在这里分岔,而分岔就是那一行 `if (!shown) return false`:
+ *  - 还没出来(`shown === false`)→ **唤醒**:只认贴边窄带。留驻区一个字都不问 ——
+ *    它讲的是「手已经在 Dock 上了,别为一点抖动就跑」,而手还没把它叫出来时,
+ *    这句话没有主语。
+ *  - 已经出来(`shown === true`)→ **留驻**:窄带 ∪ 停稳位留驻区(含本体到视口边
+ *    那条 4px 死缝,08-29「一闪而逝」的根因)。
+ *
+ * 收在纯函数里而不是宿主的 useEffect 里,是因为这两个语义**上一次就是在宿主里
+ * 被并成一句的**(`band || holdZone` 一行伺候两件事),而那一行看上去完全无辜。
+ * 判据进了这里,合并就得先删掉一行有名字、有病历、有反证用例的代码。
+ *
+ * `rect` = Dock 的**停稳位**(settledDockRect 算出来的),藏着时不必量也不该量。
+ */
+export function shouldShowDock(args: {
+  shown: boolean
+  pointer: Point
+  viewport: Viewport
+  edge: DockEdge
+  rect?: Rect
+}): boolean {
+  const { shown, pointer, viewport, edge, rect } = args
+  if (withinDockWakeBand(pointer, viewport, edge)) return true
+  if (!shown) return false
+  return rect ? withinDockHoldZone(pointer, viewport, edge, rect) : false
 }
 
 /* ── Dock 上露不露面(「所有应用」那块管理瓦的判据) ────────────────────────── */

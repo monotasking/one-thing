@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   FLOAT_DEFAULT_H,
@@ -50,7 +52,7 @@ import {
   thicknessFromPointer,
   togglePlacement,
   toggleShelfCollapsed,
-  withinDockEdgeBand,
+  withinDockWakeBand,
   withinDockHoldZone,
   withoutTransientPlacements,
   coverIdOf,
@@ -60,7 +62,9 @@ import {
   isItemHidden,
   setItemHidden,
   settledDockRect,
+  shouldShowDock,
   DOCK_HOLD_PAD,
+  DOCK_WAKE_BAND,
 } from './transitions'
 import { SESSIONS_ITEM_ID, STAGE_ITEMS, findItem } from './items'
 import type { Placement, PlacementMemory, ShelfSide, StageState, Viewport } from './types'
@@ -840,20 +844,20 @@ describe('tab 从架子上撕下来的阈值', () => {
   })
 })
 
-describe('Dock 自动隐藏的边缘带(去元素化后就是一次距离判定)', () => {
+describe('Dock 自动隐藏的唤醒窄带(去元素化后就是一次距离判定)', () => {
   const VIEWPORT = { w: 1000, h: 800 }
 
   it('四条边各问各的那一维', () => {
-    expect(withinDockEdgeBand({ x: 500, y: 795 }, VIEWPORT, 'bottom')).toBe(true)
-    expect(withinDockEdgeBand({ x: 500, y: 3 }, VIEWPORT, 'top')).toBe(true)
-    expect(withinDockEdgeBand({ x: 3, y: 400 }, VIEWPORT, 'left')).toBe(true)
-    expect(withinDockEdgeBand({ x: 997, y: 400 }, VIEWPORT, 'right')).toBe(true)
+    expect(withinDockWakeBand({ x: 500, y: 795 }, VIEWPORT, 'bottom')).toBe(true)
+    expect(withinDockWakeBand({ x: 500, y: 3 }, VIEWPORT, 'top')).toBe(true)
+    expect(withinDockWakeBand({ x: 3, y: 400 }, VIEWPORT, 'left')).toBe(true)
+    expect(withinDockWakeBand({ x: 997, y: 400 }, VIEWPORT, 'right')).toBe(true)
   })
 
   it('8 进、9 出;停在别的边不算进这条边的带', () => {
-    expect(withinDockEdgeBand({ x: 500, y: 792 }, VIEWPORT, 'bottom')).toBe(true)
-    expect(withinDockEdgeBand({ x: 500, y: 791 }, VIEWPORT, 'bottom')).toBe(false)
-    expect(withinDockEdgeBand({ x: 500, y: 3 }, VIEWPORT, 'bottom')).toBe(false)
+    expect(withinDockWakeBand({ x: 500, y: 792 }, VIEWPORT, 'bottom')).toBe(true)
+    expect(withinDockWakeBand({ x: 500, y: 791 }, VIEWPORT, 'bottom')).toBe(false)
+    expect(withinDockWakeBand({ x: 500, y: 3 }, VIEWPORT, 'bottom')).toBe(false)
   })
 })
 
@@ -1412,5 +1416,108 @@ describe('自动隐藏的留驻区:判停稳位而不是飞行中的矩形', () 
     expect(settled.left).toBe(500)
     expect(settled.right).toBe(940)
     expect(withinDockHoldZone({ x: 720, y: 862 }, vp, 'bottom', settled)).toBe(true)
+  })
+})
+
+/**
+ * 09-01 报障:「现在的 dock 自动出现范围太大了,我想输入都没法输入了」。
+ *
+ * 这一组用**真机量到的那一屏**当被试(隔离 store,视口 1280×828,底边 / md / 居中):
+ *   停稳位  left 310.5  right 969.5  top 754  bottom 816   (身量 62,inset 12)
+ *   输入区  left 303    right 801.8  top 775  bottom 799
+ *   发送键  left 949    right 977    top 771  bottom 799
+ * 修前热区高 12+62+24 = 98px、宽 707px,整条输入区 100% 落在里面。
+ *
+ * **反证纪律**:把 shouldShowDock 里那行 `if (!shown) return false` 删掉,
+ * 「藏着时」那三条立刻红(已真跑过);把 DOCK_HOLD_PAD 调小去「顺手治」唤醒,
+ * 「出来之后」那四条立刻红 —— 两个方向都钉住了,谁也别想再把两个语义并回一句。
+ */
+describe('唤醒与留驻是两个语义(09-01 报障:输入区被唤醒区盖住)', () => {
+  const vp: Viewport = { w: 1280, h: 828 }
+  const SETTLED = { left: 310.5, right: 969.5, top: 754, bottom: 816 }
+  const at = (shown: boolean, x: number, y: number) =>
+    shouldShowDock({ shown, pointer: { x, y }, viewport: vp, edge: 'bottom', rect: SETTLED })
+
+  it('藏着时:composer 输入区 / 发送键上的每一点都不唤醒(报障那几点)', () => {
+    expect(at(false, 552, 787)).toBe(false) // 输入区中心
+    expect(at(false, 311, 787)).toBe(false) // 输入区左端
+    expect(at(false, 794, 787)).toBe(false) // 输入区右端
+    expect(at(false, 552, 797)).toBe(false) // 输入区底缘内 2px
+    expect(at(false, 963, 785)).toBe(false) // 发送键中心
+  })
+
+  it('藏着时:唤醒区就是贴边那条窄带,一像素不多', () => {
+    expect(at(false, 640, vp.h - 2)).toBe(true)
+    expect(at(false, 640, vp.h - DOCK_WAKE_BAND)).toBe(true)
+    expect(at(false, 640, vp.h - DOCK_WAKE_BAND - 1)).toBe(false)
+    // 修前这一点是 true(它在停稳位 + pad 里),正是「范围太大」的字面样子。
+    expect(withinDockHoldZone({ x: 640, y: 787 }, vp, 'bottom', SETTLED)).toBe(true)
+  })
+
+  it('出来之后:08-31 那 12 组手势一条不回退(留驻仍是 24 宽容)', () => {
+    for (const dy of [0, 4, 8, 12, 16, 20, DOCK_HOLD_PAD]) {
+      expect(at(true, 640, SETTLED.top - dy)).toBe(true)
+    }
+    expect(at(true, 640, SETTLED.top - DOCK_HOLD_PAD - 1)).toBe(false)
+    expect(at(true, SETTLED.left - 10, 785)).toBe(true)
+    expect(at(true, SETTLED.left - 30, 785)).toBe(false)
+  })
+
+  it('出来之后:本体到视口边那条死缝仍算留驻(08-29「一闪而逝」不回退)', () => {
+    expect(at(true, 640, vp.h - 1)).toBe(true)
+  })
+
+  it('拿不到停稳位时,出来了也只剩窄带 —— 不编一个矩形出来', () => {
+    const noRect = (y: number) =>
+      shouldShowDock({ shown: true, pointer: { x: 640, y }, viewport: vp, edge: 'bottom' })
+    expect(noRect(vp.h - 2)).toBe(true)
+    expect(noRect(787)).toBe(false)
+  })
+
+  it('四条边各按自己那一维分岔', () => {
+    const edges = [
+      { edge: 'top' as const, wake: { x: 640, y: 2 }, inside: { x: 640, y: 60 } },
+      { edge: 'left' as const, wake: { x: 2, y: 400 }, inside: { x: 60, y: 400 } },
+      { edge: 'right' as const, wake: { x: vp.w - 2, y: 400 }, inside: { x: vp.w - 60, y: 400 } },
+    ]
+    for (const { edge, wake, inside } of edges) {
+      const rect = { left: 0, right: vp.w, top: 0, bottom: vp.h }
+      expect(shouldShowDock({ shown: false, pointer: wake, viewport: vp, edge })).toBe(true)
+      expect(shouldShowDock({ shown: false, pointer: inside, viewport: vp, edge })).toBe(false)
+      // 同一点,出来之后被留驻区接住(这里的矩形铺满视口,只为证明分岔真的分了)。
+      expect(shouldShowDock({ shown: true, pointer: inside, viewport: vp, edge, rect })).toBe(true)
+    }
+  })
+})
+
+/**
+ * 两个语义的**两侧单产地对账**:JS 常量与 tokens.css 那两行必须逐字相同。
+ * 读样式表源文本前先剥注释 —— 病历文本里写着这两个数,不剥就会自己把自己判绿
+ * (仓规:「读样式表源文本的门先剥注释」)。
+ */
+describe('--dock-wake-band / --dock-hold-pad 与 JS 常量同源', () => {
+  /* 从**应用根**拼路径(vitest 的 cwd 就是 apps/desktop-react)——
+   * jsdom 环境里 `import.meta.url` 是个 http URL,readFileSync 吃不下
+   * (同一条判例见 composer/components/composer-css.test.ts)。 */
+  const css = readFileSync(resolve('src/styles/tokens.css'), 'utf-8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  )
+  const read = (name: string) => {
+    const hit = new RegExp(`${name}:\\s*([0-9.]+)px`).exec(css)
+    if (!hit) throw new Error(`tokens.css 里没有 ${name}`)
+    return Number(hit[1])
+  }
+
+  it('唤醒窄带两侧同一个数', () => {
+    expect(read('--dock-wake-band')).toBe(DOCK_WAKE_BAND)
+  })
+
+  it('留驻宽容两侧同一个数', () => {
+    expect(read('--dock-hold-pad')).toBe(DOCK_HOLD_PAD)
+  })
+
+  it('唤醒必须比留驻克制 —— 反过来就是报障那一天', () => {
+    expect(DOCK_WAKE_BAND).toBeLessThan(DOCK_HOLD_PAD)
   })
 })

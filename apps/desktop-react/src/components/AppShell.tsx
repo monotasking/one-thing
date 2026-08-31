@@ -20,12 +20,7 @@ import { useChatToc } from '../toc/useChatToc'
 import { DOCK_HIDE_DELAY_MS, SCROLL_SETTLE_MS } from './motion'
 import { useT } from '../i18n'
 import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
-import {
-  SHELF_SIDES,
-  settledDockRect,
-  withinDockEdgeBand,
-  withinDockHoldZone,
-} from '../stage/transitions'
+import { SHELF_SIDES, settledDockRect, shouldShowDock } from '../stage/transitions'
 import { DOCK_AXIS } from '../stage/types'
 import type { DockAlign, DockEdge, DockSize } from '../stage/types'
 import s from './AppShell.module.css'
@@ -100,15 +95,21 @@ export function AppShell() {
   const autohide = dockDisplay === 'autohide'
   const hidden = autohide && !peeking
   const dockRef = useRef<HTMLDivElement>(null)
+  /*
+   * 「此刻出来了没有」的**逐帧读数**。pointermove 每帧都跑,而 peeking 是 state ——
+   * 把它读进依赖数组就等于每次显隐都重挂一次监听(顺带把收回宽限的计时器一起丢掉)。
+   * 所以状态照旧由 setPeeking 驱动渲染,判据这一侧读这个镜像。
+   */
+  const peekingRef = useRef(false)
 
   /**
    * 自动隐藏的感应带 = 一次距离判定,**不是一个元素**(W2 清 Dock v2 留账:
    * 那条 8px 的 top 热区曾整条盖在 TopBar 上,把标题栏按钮吃掉)。
-   * 判据在 transitions.withinDockEdgeBand 里,四条边共用同一句话。
-   * 退出条件是「既不在带里、也不在 Dock 本体上」—— 后者让指针能从带里走进 Dock。
+   * 判据在 transitions.shouldShowDock 里,四条边、两个语义共用同一句话。
    */
   useEffect(() => {
     if (!autohide) {
+      peekingRef.current = false
       setPeeking(false)
       return
     }
@@ -131,17 +132,21 @@ export function AppShell() {
       const pointer = { x: e.clientX, y: e.clientY }
       const viewport = { w: window.innerWidth, h: window.innerHeight }
       /*
-       * 留驻 = 在边带里,或在「Dock **停稳位**补到视口边 + 余量」的留驻区里。
+       * 唤醒与留驻是**两个语义**,分岔在 transitions.shouldShowDock 里
+       * (09-01 修「dock 自动出现范围太大,输入都没法输入」——修前这里写的是
+       *  `band || holdZone` 一行伺候两件事,于是留驻的宽容在还没唤醒时就生效,
+       *  整条 composer 输入区落进唤醒区)。
        *
-       * 判的是**停稳位**不是量到的那个矩形(08-31 修「唤醒后轻微上移秒消失」):
+       * 藏着的时候连量都不量:留驻区讲的是「手已经在 Dock 上了」,那时候没有主语。
+       * 顺带省下每帧一次 getBoundingClientRect —— pointermove 是每帧都跑的那条路。
+       *
+       * 量到手时判的是**停稳位**不是量到的那个矩形(08-31 修「唤醒后轻微上移秒消失」):
        * 滑入动画走 transform,140ms 里矩形一直在动,而手往上够那块瓦只要几十
        * 毫秒 —— 拿飞行中的位置去问「离开没有」,答案必然是「离开了」。
        * 真机时间线与换算见 transitions.settledDockRect 的注释。
-       *
-       * 边带那一半照旧:它管的是「还没唤醒时怎么唤醒」,与动画无关。
-       * (边带与本体之间原有 4px 死缝,真鼠标连续移动必经,曾致"一闪而逝"。)
        */
-      const box = dockRef.current?.getBoundingClientRect()
+      const shown = peekingRef.current
+      const box = shown ? dockRef.current?.getBoundingClientRect() : undefined
       /*
        * `DOMRect` → 一个**朴素对象**。它的 left/right/top/bottom 都是原型上的
        * 取值器,不是自有属性:任何一处 `{ ...domRect }` 都会得到一个空对象。
@@ -155,11 +160,9 @@ export function AppShell() {
             Number.isFinite(inset) ? inset : 0,
           )
         : undefined
-      const hold =
-        withinDockEdgeBand(pointer, viewport, dockEdge) ||
-        (rect ? withinDockHoldZone(pointer, viewport, dockEdge, rect) : false)
-      if (hold) {
+      if (shouldShowDock({ shown, pointer, viewport, edge: dockEdge, rect })) {
         cancelHide()
+        peekingRef.current = true
         setPeeking(true)
         return
       }
@@ -167,6 +170,7 @@ export function AppShell() {
       if (!hideTimer) {
         hideTimer = setTimeout(() => {
           hideTimer = null
+          peekingRef.current = false
           setPeeking(false)
         }, DOCK_HIDE_DELAY_MS)
       }
