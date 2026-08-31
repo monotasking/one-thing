@@ -79,3 +79,8 @@
   (repoRoot/ds-bundle,08-15 产物)——两条同步共存,涉 bundle 的命令一律用绝对路径。
 - claude design 报「tokens 0 / 无 styles.css」一次:远端文件实际俱在,疑其自检吃了
   半途态;哨兵重武装后应自愈,若复发则考虑把 token 文件摊平进 styles.css(降级但立效)。
+
+### 2026-08-31 · 规范上行 + 组件缓发
+- conventions.md 新增「状态与交互规范」八条(设计稿必须画全状态/异步进行中形/就地更新等)——README 已随本次上行,claude design 出稿代理从此读得到。
+- **锚点未更新(有意)**:本次只传 bundle/styling/aux;新增件 AsyncButton(K1 在飞半成品)与 Popover/Kbd 的组件卡**缓发**,待 K1 落库后跑一次完整 resync(会重新列为 added/changed,补预览与评格再上)。remote-sync.json 保持旧值即此意,勿手动对齐。
+- 自链接再次被 npm install 清掉(a11y 批 devDeps),已重建——这坑第二次踩,重申:凡本目录跑过 npm install,resync 前必查链接。
