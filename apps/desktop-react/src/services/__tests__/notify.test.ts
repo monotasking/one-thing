@@ -195,3 +195,20 @@ describe('环形上限', () => {
     boom.mockRestore()
   })
 })
+
+describe('serializeNotifications:整份存档 → 可粘贴纯文本', () => {
+  it('首行带级别/时间/合并次数/source/标题,body 与多行 detail 逐行缩进', async () => {
+    const { serializeNotifications } = await import('../notify-store')
+    const text = serializeNotifications([
+      {
+        id: '1', time: new Date(2026, 7, 31, 14, 21, 7).getTime(), level: 'error',
+        title: '出错了', body: '一行补充', source: 'chat.copy', detail: '第一行\n第二行',
+        read: false, count: 3,
+      },
+      { id: '2', time: new Date(2026, 7, 31, 9, 0, 0).getTime(), level: 'info', title: '一条', source: 'x', read: true, count: 1 },
+    ])
+    expect(text).toBe(
+      '[error] 2026-08-31 14:21:07 \u00d73 \u00b7 chat.copy \u2014 出错了\n  一行补充\n  第一行\n  第二行\n\n[info] 2026-08-31 09:00:00 \u00b7 x \u2014 一条',
+    )
+  })
+})

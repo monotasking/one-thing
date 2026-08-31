@@ -7,12 +7,21 @@ import type { SessionsPort } from './sessions-port'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
 import { REFRESH_THROTTLE_MS, useSessionsSource } from './sessions-source'
-import { NOW, ONETHING_DIR, SESSION_META } from './__fixtures__/sessions'
+import { isListedSession, toSessionSummary } from '../expose/projection'
+import { AGENT_SESSION_META, NOW, ONETHING_DIR, SESSION_META } from './__fixtures__/sessions'
 
 /**
  * 数据源的判据全是纯逻辑(节流 / 增量 vs 重拉 / 缓存失效),所以这里换掉端口就够,
  * 一台 core 都不用起 —— 这正是 sessions-port.ts 存在的理由。
  */
+
+/**
+ * 夹具里**会被陈列**的那一批(08-31 投影过滤:kind 'agent' / 'room' 不进列表)。
+ * 派生而不是写死数字:判据的单产地在 projection.isListedSession,这里跟着它走,
+ * 哪天名单改了这些用例是跟着变而不是集体假红。
+ */
+const LISTED_IDS = SESSION_META.map(toSessionSummary).filter(isListedSession).map((s) => s.id)
+const LISTED = LISTED_IDS.length
 
 let listMeta: ReturnType<typeof vi.fn>
 let getSegments: ReturnType<typeof vi.fn>
@@ -86,8 +95,12 @@ describe('start', () => {
     await start()
     const state = useSessionsSource.getState()
     expect(state.status).toBe('ready')
-    expect(state.sessions.map((s) => s.id)).toEqual(SESSION_META.map((m) => m.id))
+    // 群房 rm-release 被投影滤掉,其余八条原样在列表里(次序仍是夹具次序)。
+    expect(state.sessions.map((s) => s.id)).toEqual(LISTED_IDS)
+    expect(state.sessions.map((s) => s.id)).not.toContain('rm-release')
+    // 协作组**没有整个消失**:私聊 dm-ying 仍陈列,它一条就把这个组撑住了。
     expect(state.groups.map((g) => g.id)).toEqual([ONETHING_DIR, '/Users/dev/code/transreader', 'collab', 'loose'])
+    expect(state.groups.find((g) => g.id === 'collab')!.sessions.map((s) => s.id)).toEqual(['dm-ying'])
     expect(listMeta).toHaveBeenCalledTimes(1)
   })
 
@@ -162,6 +175,24 @@ describe('SSE 判据', () => {
     expect('os-compact' in useSessionsSource.getState().chapters).toBe(false)
   })
 
+  it('a 的例外:被投影滤掉的会话在发事件 —— 认识但不陈列,一次都不重拉', async () => {
+    // 执行会话(kind 'agent')不进列表,却照样在跑、照样推事件。若判据 a 只问
+    // 「在不在 sessions 里」,它每推一条就换来一次整表重拉(拉回来还是被滤掉,
+    // 下一条再拍一次)—— 忙起来就是每秒一发。
+    listMeta.mockResolvedValue({ success: true, sessions: [...SESSION_META, AGENT_SESSION_META] })
+    await start()
+    expect(useSessionsSource.getState().sessions.map((s) => s.id)).not.toContain(AGENT_SESSION_META.id)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+
+    for (let i = 0; i < 5; i += 1) {
+      emit?.(envelope(AGENT_SESSION_META.id, SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED))
+    }
+    await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+    // 也没有被当成增量偷偷塞进列表。
+    expect(useSessionsSource.getState().sessions).toHaveLength(LISTED)
+  })
+
   it('e:与列表无关的事件一律忽略', async () => {
     await start()
     const before = useSessionsSource.getState().sessions
@@ -221,7 +252,7 @@ describe('会话删除(onSessionLifecycle)', () => {
     emitLifecycle!(deleted(['os-expose']))
     const state = useSessionsSource.getState()
     expect(state.sessions.map((s) => s.id)).not.toContain('os-expose')
-    expect(state.sessions).toHaveLength(SESSION_META.length - 1)
+    expect(state.sessions).toHaveLength(LISTED - 1)
     expect(listMeta).toHaveBeenCalledTimes(1)
   })
 
@@ -266,7 +297,7 @@ describe('会话删除(onSessionLifecycle)', () => {
     emitLifecycle!({ type: 'created', sessionId: 'brand-new' })
     await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
     expect(listMeta).toHaveBeenCalledTimes(1)
-    expect(useSessionsSource.getState().sessions).toHaveLength(SESSION_META.length)
+    expect(useSessionsSource.getState().sessions).toHaveLength(LISTED)
   })
 
   it('删除事件本身不落判据 a —— 一次删除不该换来一次整表重拉', async () => {

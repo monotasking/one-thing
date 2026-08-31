@@ -80,6 +80,30 @@ function nextId(time: number): string {
   return `${time}-${seq}`
 }
 
+/**
+ * 整份存档 → 一段可粘贴的纯文本(08-31 用户要的「一键复制发给 agent 排障」)。
+ *
+ * 形制照排障的读法定:一条一段,首行 `[级别] 本地时间 ×合并次数 · source — 标题`,
+ * body 缩进一行,detail(栈/原话,可多行)逐行缩进 —— 目的读者是**另一个 agent**,
+ * 所以全量、带来源、带时间,一个字段不省。次序照存档原序(新在前)。
+ */
+export function serializeNotifications(items: readonly NotifyRecord[]): string {
+  const stamp = (ms: number): string => {
+    const d = new Date(ms)
+    const p = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  }
+  return items
+    .map((item) => {
+      const head = `[${item.level}] ${stamp(item.time)}${item.count > 1 ? ` ×${item.count}` : ''} · ${item.source} — ${item.title}`
+      const lines = [head]
+      if (item.body) lines.push(`  ${item.body}`)
+      if (item.detail) lines.push(...item.detail.split('\n').map((line) => `  ${line}`))
+      return lines.join('\n')
+    })
+    .join('\n\n')
+}
+
 /** 未读数。派生量,不存字段 —— 存了就有第二个真相要维护。 */
 export function unreadOf(items: readonly NotifyRecord[]): number {
   let n = 0

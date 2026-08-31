@@ -106,6 +106,20 @@ export function sessionMessageCountOf(meta: SessionMeta): number | null {
   return Math.floor(count)
 }
 
+/**
+ * 列表**不陈列**的两档(08-31 用户拍板:「只保留私聊和普通的聊天」)——
+ * `agent` 是协作房间派生的执行会话(agent-exec-*,机器开的工作台,不是人开的
+ * 对话),`room` 是群房本体。两档都只是**投影过滤**:数据原样在 store 里,
+ * 检索/账本/引擎一概不受影响,想翻案删掉这张表就回来了。
+ * `dm`(私聊)与 `chat` 照常;`work` 未被点名,保留待问(记档)。
+ */
+const HIDDEN_SESSION_KINDS: SessionKind[] = ['agent', 'room']
+
+/** 这条会话该不该出现在列表投影里。单产地 —— 列表、分组、方向键序列同吃。 */
+export function isListedSession(session: SessionSummary): boolean {
+  return !HIDDEN_SESSION_KINDS.includes(session.kind)
+}
+
 /** 一条 SessionMeta → 一条列表事实。缺席的格一律给出诚实的空值,不编。 */
 export function toSessionSummary(meta: SessionMeta): SessionSummary {
   return {

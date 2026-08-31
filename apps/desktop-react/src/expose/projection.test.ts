@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_AGENT_ID } from '@shared/ipc/agents'
 import type { SessionMeta } from '@shared/ipc/chat'
-import {
+import { isListedSession,
   buildGroups,
   buildProjects,
   normalizeWorkingDirectory,
@@ -223,5 +223,17 @@ describe('摘要 / 消息数两格的产地', () => {
     expect(summary.preview).toBe(meta.previewText)
     expect(summary.digest).toBe(meta.lastMessagePreview)
     expect(summary.preview).not.toBe(summary.digest)
+  })
+})
+
+describe('列表投影过滤(08-31 拍板:只留私聊与普通聊天)', () => {
+  const meta = (id: string, kind?: string, dm?: boolean) =>
+    ({ id, name: id, updatedAt: 1, ...(kind ? { kind } : {}), ...(dm !== undefined ? { room: { dm } } : {}) }) as never
+
+  it('执行会话(agent)与群房(room)不陈列;dm 与 chat 照常', () => {
+    expect(isListedSession(toSessionSummary(meta('a', 'agent')))).toBe(false)
+    expect(isListedSession(toSessionSummary(meta('r', 'room', false)))).toBe(false)
+    expect(isListedSession(toSessionSummary(meta('d', 'room', true)))).toBe(true)
+    expect(isListedSession(toSessionSummary(meta('c')))).toBe(true)
   })
 })

@@ -34,6 +34,18 @@ export const zh = {
   /* ── 会话(新建那条命令的命令名;标题本身由后端落默认值,不进字典)──── */
   'session.new': '新建会话',
 
+  /* ── 斜杠命令(命令名 / 说明 / 用法都来自 core 的注册表,是**数据**不进字典;
+   *    这里只有壳自己要说的那几句)────────────────────────────────────── */
+  'command.done': '{name} 完成',
+  'command.failed': '{name} 没能执行',
+  /* 用法那句原样来自注册表的 `usage`,这里只包一句「用法:」。 */
+  'command.usage': '用法:{usage}',
+  'command.needsSession': '这条命令需要先有一条会话',
+  'command.cdDone': '工作目录已改为 {path}',
+  /* 压缩是**发出去就完** —— 结果以一张卡落在会话里,壳没有第二块地方画进度。 */
+  'command.compactStarted': '已请求压缩上下文',
+  'command.compactFailed': '压缩没有发出去',
+
   /* ── 输入框(Composer 形态学:本体行 / 抽屉槽 / 状态条 / ask 形态 / 附件) ── */
   'composer.placeholder': '说点什么…( @ 文件 · / 命令 )',
   'composer.send': '发送',
@@ -124,6 +136,7 @@ export const zh = {
   'item.notifications': '通知',
   'item.settings': '设置',
   'item.providers': '模型服务',
+  'item.workspace': '工作区',
 
   /* ── 舞台 / 钉栏 ──────────────────────────────────────────────────── */
   'stage.pinToEdge': '钉到边',
@@ -246,6 +259,14 @@ export const zh = {
    * 检索失败与「没搜到」是两件事,合成一句就等于把失败说成空结果。 */
   'search.filesNeedQuery': '文件要先输入关键词',
   'search.filesFailed': '文件没搜成',
+  /* 列表最后一条 item。计数是**读数**不是徽:它说的是「此刻看到了多少」,
+   * 而总数只有在文件侧取尽的那一刻才真的知道(后端不下发总数,判据见
+   * search/transitions.ts 的「分页」一节)—— 不知道就只说「加载更多」,不猜一个数。 */
+  'search.loadMore': '加载更多',
+  'search.loadMoreCount': '加载更多 · 已显示 {shown} / 共 {total}',
+  'search.loading': '加载中…',
+  'search.loadFailed': '没加载成,点一下重试',
+  'search.allShown': '共 {total} 条 · 已全部显示',
 
   /* ── 聊天区(D3:正文/工具名/错误原文都是**数据**,不在这儿) ────────── */
   'chat.noSession': '还没有选中会话',
@@ -420,6 +441,7 @@ export const zh = {
   'notify.filterWarn': '警告',
   'notify.filterError': '错误',
   'notify.filterLabel': '按级别过滤',
+  'notify.copyAll': '复制全部',
   'notify.markAllRead': '全部已读',
   'notify.clear': '清空',
   'notify.today': '今天',
@@ -477,6 +499,22 @@ export const zh = {
   'files.previewMissing': '这个文件不在了',
   'files.previewFailed': '读不到这个文件',
   'files.previewClose': '关闭预览',
+  /* 面包屑(08-31 IDE 紧凑树:面板内那个与 tab 重名的「文件」大标题退役,
+   * 头上换成路径本身)。**路径的每一段都是数据**,字典里只有这一句无障碍名。 */
+  'files.breadcrumb': '当前路径',
+  /* 详情面(双击一行)。大小与时间只活在这里,不进树。 */
+  'files.detailTypeLabel': '类型',
+  'files.detailSizeLabel': '大小',
+  'files.detailModifiedLabel': '修改时间',
+  'files.detailPathLabel': '完整路径',
+  'files.typeFile': '文件',
+  'files.typeDirectory': '目录',
+  'files.copyPath': '复制路径',
+  'files.openPreview': '预览打开',
+  'files.detailLoading': '正在读取信息…',
+  'files.detailDenied': '没有权限读这一项的信息',
+  'files.detailMissing': '这一项不在了',
+  'files.detailFailed': '读不到这一项的信息',
 
   /* ── 模型服务(providers/:左栏家名册 + 右面模式分坑)─────────────────────
    * 面板标题不另起键:它就是 'item.providers' 那四个字(与文件面复用
@@ -494,7 +532,6 @@ export const zh = {
   'providers.groupLocal': '本地',
   'providers.groupCustom': '自定义',
   'providers.addCustom': '＋ 自定义服务商',
-  'providers.addCustomNext': '新建自定义服务商在下一批',
   'providers.railEmpty': '没有匹配的服务商',
   'providers.loading': '正在读取模型服务…',
   'providers.loadFailed': '读不到模型服务名册',
@@ -537,20 +574,117 @@ export const zh = {
   'providers.keySave': '保存',
   'providers.keySaved': '已保存',
   'providers.keySaveFailed': '密钥没保存上',
-  'providers.keyMultiNext': '多把密钥、顺序与轮换策略在下一批',
   'providers.baseUrl': '高级 · Base URL',
   'providers.baseUrlDefault': '(默认)',
+
+  /* 凭证池:多把密钥 / 顺序 / 轮换策略 / 冷却
+   * 「顺序即优先级」不是一句提示,是这张表的**读法** —— 第 1 条就是最先用的那条。
+   * 策略名与语义句逐字照生产(SpaceCredentialPool.vue:367-377):这几个字用户
+   * 已经认识了,这块壳没有资格另起一套。 */
+  'providers.keyCount': '密钥 · {count} 条',
+  'providers.keyOrderHint': '顺序即优先级。密钥原文永不回读,只看得到尾号。',
+  'providers.keyAdd': '＋ 添加密钥',
+  'providers.keyAddNew': '新密钥',
+  'providers.keyAddNote': '备注名(可空)',
+  'providers.keyReplace': '换密钥',
+  'providers.keyReplaceFor': '给第 {ordinal} 条换一把密钥',
+  'providers.keyReplaceHint': '换 key **不换条目** —— 用量账按条目归因,换条目就断了账。',
+  'providers.keyDelete': '删除',
+  'providers.keyDeleteConfirm': '真删?',
+  'providers.keyDeleteFor': '删除第 {ordinal} 条',
+  'providers.keyLastKept': '最后一条不能删 —— 删完这一家就没有可用的凭证了。',
+  'providers.keyMoveUp': '上移',
+  'providers.keyMoveDown': '下移',
+  'providers.keyMoveUpFor': '把第 {ordinal} 条上移',
+  'providers.keyMoveDownFor': '把第 {ordinal} 条下移',
+  'providers.keySourceUser': '手填',
+  'providers.keyOAuthEntry': '订阅账号',
+  'providers.poolFailed': '凭证没写上',
+  'providers.rotation': '轮换策略',
+  'providers.rotationSingle': '只用第一条',
+  'providers.rotationFailover': '按序接力',
+  'providers.rotationRoundRobin': '轮流使用',
+  'providers.rotationSingleHint': '始终用最上面那条,不自动换 —— 它冷却时这个 provider 就停用。',
+  'providers.rotationFailoverHint': '从上往下取第一条可用的;配额耗尽或被限流会自动换下一条。顺序即优先级。',
+  'providers.rotationRoundRobinHint': '每次请求轮换到下一条,把用量摊开;冷却中的条目自动跳过。',
+  'providers.rotationUnknown': '{policy}(不可用)',
+  'providers.rotationUnavailable': '这条策略此刻不可用,正在用内置的「按序接力」。你的选择保留着,插件回来它自动生效。',
+  'providers.coolSoon': '即将恢复',
+  'providers.coolMinutes': '剩 {count} 分钟',
+  'providers.coolHours': '剩 {count} 小时',
+  'providers.coolDays': '剩 {count} 天',
+  'providers.cooling': '冷却中',
 
   /* 订阅坑 */
   'providers.subIntro': '用你已有的订阅跑模型,不产生额外 API 费用。这一坑的模型不按 token 计价。密码只在浏览器里输入,应用不经手。',
   'providers.subAccount': '账号',
   'providers.subSignIn': '登录',
-  'providers.subSignInNext': '登录入口在下一批',
   'providers.subCatalogLocked': '登录后才有模型目录 —— 没登录时这一坑有哪些模型,应用并不知道。',
+  /* 登录流三形。**画哪一形由后端这一次的答案定**(判据在 auth.ts 文件头)。 */
+  'providers.subDeviceCode': '在网页里输入这串码',
+  'providers.subDeviceUrl': '验证网址',
+  'providers.subWaiting': '等待确认…确认后本页自动接续,不用手动回来。',
+  'providers.subPasteHint': '浏览器里完成授权;若没有自动跳回,把授权码粘回来。',
+  'providers.subCodeLabel': '授权码',
+  'providers.subCodeSubmit': '提交',
+  'providers.subBrowserWaiting': '已在浏览器里打开授权页,完成后这边自动接续。',
+  'providers.subCancel': '取消登录',
+  'providers.subFailed': '登录失败',
+  'providers.subTimedOut': '等太久了 —— 这一次登录已经作废,重新来一次。',
+  'providers.subReauth': '重新授权',
+  'providers.subSignOut': '退出登录',
+  'providers.subSignOutFor': '退出 {account}',
+  'providers.signOutFailed': '退不出去',
+  'providers.subTokenValid': '令牌有效',
+  'providers.subTokenExpired': '令牌已过期,需要重新授权',
+  'providers.subExpires': '有效期至 {time}',
+  'providers.subPlan': '套餐 {plan}',
+  'providers.subAccounts': '这一坑支持多账号 · 现有 {count} 个',
+  'providers.subAddAccount': '＋ 添加账号',
 
-  /* 本地坑 / 自定义坑 */
+  /* 订阅用量。**拿不到的读数如实缺席,不显示 0%** —— 0% 是「一点没用」,
+   * 而缺席是「不知道」,这两件事在屏幕上长得像、在事实上差得远。 */
+  'providers.usage': '订阅用量',
+  'providers.usageCache': '60s 缓存',
+  'providers.usageRefresh': '刷新',
+  'providers.usageLoading': '正在问用量…',
+  'providers.usageFailed': '用量拿不到',
+  'providers.usagePlan': '套餐',
+  'providers.usageCredits': 'Credits',
+  'providers.usageUnlimited': 'Unlimited',
+  'providers.usageNoCredits': '无额度',
+  'providers.usageHasCredits': '可用',
+  'providers.usageUnavailable': '服务商未给数',
+  'providers.usagePrimary': 'Primary',
+  'providers.usageSecondary': 'Secondary',
+  'providers.usageWindow': '{name} · {window} 窗口',
+  'providers.usageReset': '{time} 重置',
+  'providers.usageMore': '其他限额({count})',
+
+  /* 本地坑 */
   'providers.localIntro': '本机进程,零凭证。探测、连接与启动配置在下一批。',
-  'providers.customIntro': '自定义端点。编辑、删除与新建在下一批。',
+
+  /* 自定义家 */
+  'providers.customIntro': '自定义端点。改这一家的名称、地址与默认模型走下面那颗「编辑」。',
+  'providers.customEdit': '编辑这一家',
+  'providers.customAdd': '添加自定义服务商',
+  'providers.customAddIntro': 'OpenAI 兼容或 Anthropic 兼容端点:本地 Ollama / vLLM / 第三方聚合。',
+  'providers.customName': '名称 · 必填',
+  'providers.customDesc': '描述',
+  'providers.customCompat': '兼容形 · 必填',
+  'providers.customCompatOpenai': 'OpenAI 兼容',
+  'providers.customCompatAnthropic': 'Anthropic 兼容',
+  'providers.customBaseUrl': 'Base URL · 必填',
+  'providers.customBaseUrlHint': '端点地址,不带 /chat/completions',
+  'providers.customKey': 'API 密钥 · 可空',
+  'providers.customModel': '默认模型',
+  'providers.customModelHint': '端点常常不报目录,也不报能力。拉不到就手填 ID,能力项留空 —— 不猜、不预填。',
+  'providers.customSubmit': '添加',
+  'providers.customSave': '保存',
+  'providers.customDelete': '删除这一家',
+  'providers.customDeleteConfirm': '真删 —— 连同它的模型勾选一起没',
+  'providers.customNameRequired': '名称必填',
+  'providers.customBaseUrlRequired': 'Base URL 必填',
 
   /* 模型目录 */
   'providers.catalog': '模型目录',
@@ -563,7 +697,21 @@ export const zh = {
   'providers.catalogFailed': '目录拉不到',
   'providers.catalogEmpty': '这一坑还没有模型',
   'providers.catalogNoHit': '没有匹配的模型',
-  'providers.addModelNext': '手填模型 ID 在下一批',
+  /* 手填模型 ID:目录没有的型也能用。「手填」= 在 selectedModels 里、目录里没有,
+   * 与 Vue 壳 model-list-entry.ts:18 的 isCustom 同一个判据。 */
+  'providers.addModel': '＋ 手填 ID',
+  'providers.addModelPlaceholder': '模型 ID,例如 qwen3-max',
+  'providers.addModelLabel': '手填模型 ID',
+  'providers.addModelSubmit': '添加',
+  'providers.addModelDuplicate': '{model} 已经在这一坑的列表里了',
+  'providers.manualModel': '手填',
+  'providers.removeModel': '删除 {model}',
+  /* 厂牌折叠(OpenRouter 300+ 型):已选置顶 + 按 id 前缀分组 + 检索截断。 */
+  'providers.groupPicked': '已选 · {count}(始终置顶)',
+  'providers.groupOther': '其他',
+  'providers.groupCount': '{count} 型',
+  'providers.groupVendors': '{count} 个厂牌',
+  'providers.catalogTruncated': '还有 {count} 型没画出来 —— 把检索词收窄一点。',
   'providers.colModel': '模型',
   'providers.colCaps': '能力',
   'providers.colCtx': '上下文',
@@ -573,7 +721,7 @@ export const zh = {
   /* 「不知道」的那一格画这个,不画 0、不画「免费」。 */
   'providers.unknownValue': '—',
   'providers.current': '当前模型',
-  'providers.setCurrentNext': '设为当前在下一批',
+  'providers.setCurrent': '设为当前',
   'providers.pickModel': '勾选 {model}',
   'providers.capVision': '视',
   'providers.capTools': '工',
@@ -582,5 +730,62 @@ export const zh = {
   'providers.capAudioIn': '音',
   'providers.capLegend': '能力缩写:视 图像输入 · 工 工具调用 · 推 推理 · 出 图像输出 · 音 音频输入。',
   'providers.saveFailed': '设置没保存上',
+
+  /* ── 工作区切换器(08-31 v1) ─────────────────────────────────────────────
+   * 面板标题不另起一个键:它就是 'item.workspace' 那三个字(与文件面复用
+   * 'item.files' 同一条判例)。
+   *
+   * **工作区的名字不在这里** —— 那是用户自己起的名,是数据不是文案
+   * (判据见本文件顶部:换一门语言它该不该跟着变?)。唯一的例外是
+   * 'workspace.defaultName':它只在**读不到列表**时顶一下那条兜底记录,
+   * 连得上的时候名字是后端给的真数据,根本不经过这一句。
+   * ────────────────────────────────────────────────────────────────────── */
+  'workspace.defaultName': '默认',
+  'workspace.current': '当前',
+  'workspace.overviewEntry': '工作区总览…',
+  'workspace.create': '新建工作区',
+  'workspace.createNamed': '新建「{name}」工作区…',
+  'workspace.createLabel': '新工作区的名字',
+  'workspace.createFailed': '工作区没建成',
+  'workspace.rename': '改名',
+  'workspace.renameLabel': '工作区名字',
+  'workspace.renameFailed': '名字没改上',
+  'workspace.recolor': '换色',
+  'workspace.recolorLabel': '挑一个色',
+  'workspace.recolorFailed': '颜色没换上',
+  'workspace.remove': '删除…',
+  'workspace.removeTitle': '删除「{name}」?',
+  'workspace.removeConsequence': '这个工作区自己那份设置与凭证会一起删掉。里面还有会话的话删不掉 —— 先把会话清空。',
+  'workspace.removeNext': '继续',
+  'workspace.removeConfirmTitle': '真的删掉「{name}」?',
+  'workspace.removeFinal': '删除',
+  'workspace.removeDefault': '默认工作区删不掉',
+  'workspace.removeNotEmpty': '这个工作区里还有会话',
+  'workspace.removeMissing': '这个工作区已经不在了',
+  'workspace.removeFailed': '没删掉',
+  'workspace.loadFailed': '工作区列表读不到',
+  'workspace.factDefault': '默认工作区',
+  'workspace.factCreated': '自建工作区',
+  /* 这一批最要紧的一句实话:切换改了什么、没改什么。留账见 workspace/apply.ts。 */
+  'workspace.scopeNote': '切换只改这台窗口记着的当前工作区;凭证与接入目录随空间走要等后端接上。',
+  'workspace.paletteLabel': '切换工作区',
+  'workspace.paletteSearch': '找一个工作区…',
+  'workspace.paletteHint': '切换工作区',
+  'workspace.paletteNoHit': '没有匹配的工作区',
+  'workspace.footMove': '↑↓ 选择',
+  'workspace.footSwitch': '↵ 切换',
+  'workspace.footClose': 'esc 关闭',
+  /* 序号直达三条在设置页里的名字。KeymapCommand.labelKey 不带插值,所以三条各一句。 */
+  'workspace.slot1': '切到第 1 个工作区',
+  'workspace.slot2': '切到第 2 个工作区',
+  'workspace.slot3': '切到第 3 个工作区',
+  /* 六格色的名字。它们是**控件的无障碍名**(读屏软件念的那句),所以进字典;
+   * 色值本身在 styles/palette.css,这里一个 # 都没有。 */
+  'workspace.color.violet': '紫',
+  'workspace.color.blue': '蓝',
+  'workspace.color.green': '绿',
+  'workspace.color.amber': '琥珀',
+  'workspace.color.rose': '玫瑰',
+  'workspace.color.teal': '青',
 
 } as const

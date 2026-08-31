@@ -108,6 +108,21 @@ export const SESSION_META: SessionMeta[] = [
   }),
 ]
 
+/**
+ * 一条**执行会话**(协作房间派生的 agent-exec-*)。它刻意**不进** `SESSION_META`:
+ * 那张表是「屏幕上的九条」,而这一条的用途正好相反 —— 它是投影过滤掉、却仍然在
+ * 发事件的那一类,只被 sessions-source 的「认识但不陈列」用例点名。
+ * 放进 SESSION_META 会把所有靠 SESSIONS / GROUPS 吃这张表的组件测试一起搅动。
+ */
+export const AGENT_SESSION_META: SessionMeta = meta({
+  id: 'agent-exec-1',
+  name: '发版房 · reviewer',
+  kind: 'agent',
+  updatedAt: NOW - 30 * MINUTE,
+  workingDirectory: ONETHING_DIR,
+  previewText: '按房里的分工先跑一遍',
+})
+
 export const SESSIONS: SessionSummary[] = SESSION_META.map(toSessionSummary)
 export const PROJECTS = buildProjects(SESSIONS)
 export const GROUPS = buildGroups(PROJECTS, SESSIONS)

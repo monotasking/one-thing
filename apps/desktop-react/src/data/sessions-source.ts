@@ -9,6 +9,7 @@ import {
   toSessionChapter,
   toSessionMarker,
   toSessionSummary,
+  isListedSession,
 } from '../expose/projection'
 import type {
   ProjectSummary,
@@ -162,6 +163,14 @@ function project(sessions: SessionSummary[]): Pick<SessionsSourceState, 'session
 }
 
 /** 模块级的订阅句柄与节流闸 —— 它们是「这一个进程的事实」,不是可渲染状态。 */
+/**
+ * 「认识但不陈列」的名单(08-31 投影过滤的配套):被 isListedSession 滤掉的
+ * 执行会话/群房照样在发事件,若只拿「在不在列表里」当判据 a,它们每条事件都会
+ * 触发一次整表重拍(拉回来还是被滤掉,下一条事件再拍)。所以 loadList 顺手把
+ * 滤掉的 id 记在这里,onEvent 判「不认识」时把这份也算上。
+ */
+let hiddenIds = new Set<string>()
+
 let unsubscribe: (() => void) | undefined
 let unsubscribeLifecycle: (() => void) | undefined
 let started = false
@@ -203,7 +212,13 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
         set({ status: 'error', error: response.error || 'sessions.listMeta 未成功' })
         return
       }
-      set({ status: 'ready', error: undefined, ...project((response.sessions ?? []).map(toSessionSummary)) })
+      // 投影过滤(08-31 拍板):执行会话(kind 'agent')与群房('room')不进列表 ——
+      // 判据单产地在 projection.isListedSession,数据本体不动。滤掉的 id 记进
+      // hiddenIds,免得它们的事件把判据 a 当成「有人新建」(见那张名单的注释)。
+      const all = (response.sessions ?? []).map(toSessionSummary)
+      const listed = all.filter(isListedSession)
+      hiddenIds = new Set(all.filter((s) => !isListedSession(s)).map((s) => s.id))
+      set({ status: 'ready', error: undefined, ...project(listed) })
     } catch (error) {
       set({ status: 'error', error: error instanceof Error ? error.message : String(error) })
     }
@@ -231,7 +246,9 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     if (type === SESSION_EVENT_TYPES.SESSION_REMOVED) return
 
     const state = get()
-    const known = state.sessions.some((s) => s.id === sessionId)
+    const known = state.sessions.some((s) => s.id === sessionId) || hiddenIds.has(sessionId)
+    // 「认识但不陈列」的那批(hiddenIds)不算新建:它们的事件对列表没有话说。
+    if (hiddenIds.has(sessionId)) return
     // 判据 a:不认识这条会话 = 有人新建了一条,只能整表重拉。
     if (!known) {
       scheduleRefresh()
@@ -423,6 +440,7 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     },
 
     reset: () => {
+      hiddenIds = new Set()
       unsubscribe?.()
       unsubscribe = undefined
       unsubscribeLifecycle?.()

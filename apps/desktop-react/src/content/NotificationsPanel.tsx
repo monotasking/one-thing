@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { Segmented } from '../ui/Segmented'
 import type { SegmentedOption } from '../ui/Segmented'
-import { useNotifyStore } from '../services/notify-store'
+import { serializeNotifications, useNotifyStore } from '../services/notify-store'
 import type { NotifyLevel, NotifyRecord } from '../services/notify-store'
 import { useSessionTime } from '../expose/components/session-time'
 import { usePanelVisibility } from './visibility'
+import { COPY_FEEDBACK_MS } from '../components/motion'
+import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
 import s from './NotificationsPanel.module.css'
@@ -98,6 +100,26 @@ export function NotificationsPanel() {
   const [filter, setFilter] = useState<NotifyFilter>('all')
   const [openId, setOpenId] = useState<string | null>(null)
   const timeOf = useSessionTime()
+  /**
+   * 「复制全部」的就地反馈(08-31 拍板:复制不走通知——尤其这里,通知中心为一次
+   * 复制再生产一条通知是自指噪音)。复制的是**整份存档**(不随筛选):用途是打包
+   * 发给 agent 排障,全量才有用。
+   */
+  const [copied, setCopied] = useState<boolean | null>(null)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const copyAll = () => {
+    const text = serializeNotifications(items)
+    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+    const write = clipboard?.writeText
+      ? clipboard.writeText(text).then(() => true, () => false)
+      : Promise.resolve(false)
+    void write.then((ok) => {
+      announce(t(ok ? 'common.copied' : 'common.copyFailed'))
+      setCopied(ok)
+      clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => setCopied(null), COPY_FEEDBACK_MS)
+    })
+  }
 
   /*
    * 面板到场 = 这些都看见了,未读清零。
@@ -133,6 +155,9 @@ export function NotificationsPanel() {
           label={t('notify.filterLabel')}
         />
         <span className={s.spacer} />
+        <Button onClick={copyAll} disabled={items.length === 0}>
+          {copied === null ? t('notify.copyAll') : t(copied ? 'common.copied' : 'common.copyFailed')}
+        </Button>
         <Button onClick={markAllRead} disabled={items.length === 0}>
           {t('notify.markAllRead')}
         </Button>
