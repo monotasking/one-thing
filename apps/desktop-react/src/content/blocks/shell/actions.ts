@@ -72,19 +72,23 @@ export function isBlockActionRunnable(action: BlockAction): boolean {
  * 执行。
  *
  * 剪贴板在 Electron 渲染进程里是 `navigator.clipboard`,但它**不保证存在**
- * (非安全上下文、jsdom)—— 拿不到就什么都不做,不抛:一个复制没成功不该把
- * 这块内容炸掉。真要给失败反馈是 Toast 的事,那要等有反馈面再谈。
+ * (非安全上下文、jsdom)—— 拿不到就如实返回 false,不抛:一个复制没成功不该把
+ * 这块内容炸掉。
+ *
+ * ── 返回值只有 copy 一档有话说(08-31 拍板:复制反馈不走通知)────────────
+ * `copy` 返回成没成,**反馈长在被按的那颗钮上**(文字/图标就地换 `COPY_FEEDBACK_MS`
+ * 一拍),不弹 Toast —— 复制是高频小动作,每按一下飞出一条通知是噪音;其余动词
+ * 自带可见结果(源码开合、浮层、下载),返回 undefined。
  */
 export async function runBlockAction(
   action: BlockAction,
   runtime: BlockActionRuntime,
-): Promise<void> {
+): Promise<boolean | undefined> {
   switch (action.verb) {
     case 'copy': {
       const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
-      if (!clipboard?.writeText) return
-      await clipboard.writeText(action.text).catch(() => undefined)
-      return
+      if (!clipboard?.writeText) return false
+      return clipboard.writeText(action.text).then(() => true, () => false)
     }
     case 'view-source':
       runtime.toggleSource()

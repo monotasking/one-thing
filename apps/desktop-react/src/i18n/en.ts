@@ -393,6 +393,8 @@ export const en: Record<MessageKey, string> = {
   'notify.abortFailed': 'Stop did not go out',
   'notify.abortStuck': 'Stop went out, the run has not settled',
   'notify.abortStuckHint': 'Core accepted the command; settling waits on the engine finishing this run.',
+  'common.copied': 'Copied',
+  'common.copyFailed': 'Copy failed',
   'notify.copied': 'Copied this reply',
   'notify.copyFailed': 'Could not copy',
   'notify.retryFailed': 'Retry did not go out',

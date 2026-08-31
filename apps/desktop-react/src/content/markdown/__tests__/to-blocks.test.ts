@@ -104,9 +104,14 @@ describe('翻译表:mdast → BlockModel', () => {
   })
 })
 
+describe('分隔线 → divider 块(08-31 真机报障后进表:一条横线不是一段源码)', () => {
+  it.each([['---'], ['***'], ['___']])('%s', (source) => {
+    expect(one(source)).toEqual({ kind: 'divider' })
+  })
+})
+
 describe('表外节点一律 source-fallback —— 原文永远可见', () => {
   it.each([
-    ['分隔线', '---'],
     ['HTML 块', '<div>x</div>'],
     ['脚注定义', '[^1]: 一条脚注'],
   ])('%s', (_name, source) => {

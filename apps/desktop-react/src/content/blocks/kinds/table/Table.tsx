@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useT } from '../../../../i18n'
+import { COPY_FEEDBACK_MS } from '../../../../components/motion'
+import { announce } from '../../../../ui/a11y/live-region'
 import { resolveIcon } from '../../../../components/icons'
 import type { BlockModel } from '../../../model/blocks'
 import { InlineRun } from '../../inline/InlineRun'
@@ -10,6 +12,7 @@ import s from './Table.module.css'
 type TableModel = Extract<BlockModel, { kind: 'table' }>
 
 const CopyIcon = resolveIcon('Copy')
+const CheckIcon = resolveIcon('Check')
 
 /**
  * 表格本体 —— 六轮定稿的 **T0 基准**。
@@ -35,6 +38,9 @@ const CopyIcon = resolveIcon('Copy')
 export function Table({ model }: { model: TableModel }) {
   const t = useT()
   const [hoverCol, setHoverCol] = useState<number | null>(null)
+  /** 刚复制过的列(⧉ 换 ✓ 一拍,COPY_FEEDBACK_MS 后还原)。 */
+  const [copiedCol, setCopiedCol] = useState<number | null>(null)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const numeric = useMemo(() => numericColumns(model), [model])
 
   return (
@@ -64,19 +70,31 @@ export function Table({ model }: { model: TableModel }) {
                 <button
                   type="button"
                   className={s.colCopy}
-                  aria-label={t('block.action.copyColumn')}
+                  aria-label={t(copiedCol === col ? 'common.copied' : 'block.action.copyColumn')}
                   title={t('block.action.copyColumn')}
                   onClick={() => {
                     // 块内热区,走的仍是**壳的那一个执行器** —— 复制在全系统是同一件事。
+                    // 反馈也走同一条拍板(08-31):就地换形(⧉ → ✓)一拍 + 播报,不弹通知。
                     void runBlockAction(
                       { verb: 'copy', what: 'column', text: columnToText(model, col) },
                       // 壳的那两件能力(源码开关 / 放大浮层)在块内热区这条路上都用不上,
                       // 但接口是一份 —— 给两个空实现,而不是给执行器开一条「可以缺席」的口子。
                       { toggleSource: () => undefined, openZoom: () => undefined },
-                    )
+                    ).then((ok) => {
+                      if (ok === undefined) return
+                      announce(t(ok ? 'common.copied' : 'common.copyFailed'))
+                      if (!ok) return
+                      setCopiedCol(col)
+                      clearTimeout(copiedTimer.current)
+                      copiedTimer.current = setTimeout(() => setCopiedCol(null), COPY_FEEDBACK_MS)
+                    })
                   }}
                 >
-                  <CopyIcon className={s.colCopyIcon} strokeWidth={1.75} aria-hidden="true" />
+                  {copiedCol === col ? (
+                    <CheckIcon className={s.colCopyIcon} strokeWidth={1.75} aria-hidden="true" />
+                  ) : (
+                    <CopyIcon className={s.colCopyIcon} strokeWidth={1.75} aria-hidden="true" />
+                  )}
                 </button>
               </span>
             </th>

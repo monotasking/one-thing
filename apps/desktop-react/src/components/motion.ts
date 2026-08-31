@@ -27,6 +27,13 @@ export const TOC_HOVER_MS = 150 // --dur-toc-hover:悬停多久才把目录长�
  * 这是手势窗口不是动画时长,动效档(none)不清零它。
  */
 export const ESC_STOP_WINDOW_MS = 2000
+
+/**
+ * 复制这类「按了没有别的可见结果」的动作,按钮就地换字/换形说「已复制」的
+ * 停留时长(08-31 拍板:复制反馈不走通知 —— 反馈长在被按的那颗钮上)。
+ * 这是读认窗口不是动画时长,动效档(none)不清零它。
+ */
+export const COPY_FEEDBACK_MS = 1500
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
 /**
  * 一条 toast 自动消失前活多久 —— 按级别分档(--dur-toast-success / -info / -warn)。

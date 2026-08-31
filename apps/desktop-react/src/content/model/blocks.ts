@@ -60,6 +60,12 @@ export type BlockModel =
    */
   | { kind: 'diff'; file?: string; source: string; hunks: DiffHunk[]; stat: { add: number; del: number } }
   /**
+   * `---` 分隔线(mdast `thematicBreak`,08-31 真机报障后补画法 —— 此前它落
+   * source-fallback,一条横线被画成带「复制源码」的代码块)。零参数:它没有内容,
+   * 只有存在;节奏量 `--pr-hr` 在 tokens.css 里早就备好,今天起有了消费者。
+   */
+  | { kind: 'divider' }
+  /**
    * 一切失败的归宿。`reason` 是**机器口径的一个词**(`render-error` /
    * `unknown-kind:foo` / `tool-default`),不是界面文案 —— 它和错误边界的 `where`
    * 同一条判据:换一门语言它不该跟着变,所以它不进字典,原样以 mono 灰显示。

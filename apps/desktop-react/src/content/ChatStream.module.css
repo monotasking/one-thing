@@ -122,6 +122,12 @@
   margin-block-start: var(--pr-obj);
 }
 
+/* 分隔线(--- → divider 块)两侧各留 --pr-hr:它标记「一段话说完了」,
+ * 比段距多一档。前缘这条在 ②(前一件说了算),后缘那条在 ③。 */
+.row > [data-prose='hr'] + * {
+  margin-block-start: var(--pr-hr);
+}
+
 /* ③ 后一件说了算(必须排在 ② 之后,见上面「顺序即语义」) */
 .row > * + [data-prose='h1'],
 .row > * + [data-prose='h2'] {
@@ -134,6 +140,10 @@
 
 .row > * + [data-prose='object'] {
   margin-block-start: var(--pr-obj);
+}
+
+.row > * + [data-prose='hr'] {
+  margin-block-start: var(--pr-hr);
 }
 
 /*

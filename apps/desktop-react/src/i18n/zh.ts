@@ -439,6 +439,9 @@ export const zh = {
   'notify.abortFailed': '停止没有发出去',
   'notify.abortStuck': '停止发出去了,这一轮还没收尾',
   'notify.abortStuckHint': '命令已经被 core 收下;收尾要等引擎那边结束这一轮。',
+  // 08-31 起复制反馈就地长在按钮上,notify.copied / copyFailed 两键成孤儿(照仓惯例保留)。
+  'common.copied': '已复制',
+  'common.copyFailed': '没能复制',
   'notify.copied': '已复制这条回复',
   'notify.copyFailed': '没能复制',
   'notify.retryFailed': '重试没有发出去',

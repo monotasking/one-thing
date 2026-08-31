@@ -8,6 +8,8 @@ import type { BlockAction, BlockChrome, BlockCtx, BlockDef } from '../registry'
 import { BlockErrorBoundary } from './BlockErrorBoundary'
 import { SourceView } from './SourceView'
 import { ZoomOverlay } from './ZoomOverlay'
+import { COPY_FEEDBACK_MS } from '../../../components/motion'
+import { announce } from '../../../ui/a11y/live-region'
 import { blockActionLabelKey, isBlockActionRunnable, runBlockAction } from './actions'
 import { readBlockLoader } from './loader'
 import { blockSourceText } from './source'
@@ -183,25 +185,46 @@ function BlockActions({
   onZoom: (svg: string) => void
 }) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  /**
+   * 复制的就地反馈(08-31 拍板:不走通知)—— 按下的那颗钮换字说「已复制 /
+   * 没能复制」,`COPY_FEEDBACK_MS` 后换回。键 = 钮的稳定 key;一次只记最近一颗
+   * (连按两颗不同的复制钮,前一颗的读认让位给后一颗,无损)。
+   */
+  const [copied, setCopied] = useState<{ key: string; ok: boolean } | null>(null)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const front = actions.slice(0, budget)
   const rest = actions.slice(budget)
 
-  const run = (action: BlockAction) => {
-    void runBlockAction(action, { toggleSource: onToggleSource, openZoom: onZoom })
+  const run = (action: BlockAction, key?: string) => {
+    void runBlockAction(action, { toggleSource: onToggleSource, openZoom: onZoom }).then((ok) => {
+      if (ok === undefined) return
+      // 读屏两路都播报(菜单里的复制钮点完菜单就没了,视觉反馈无处可长,
+      // 播报是它唯一的回音);视觉就地换字只给还留在屏上的那颗钮。
+      announce(t(ok ? 'common.copied' : 'common.copyFailed'))
+      if (!key) return
+      setCopied({ key, ok })
+      clearTimeout(copiedTimer.current)
+      copiedTimer.current = setTimeout(() => setCopied(null), COPY_FEEDBACK_MS)
+    })
   }
 
   return (
     <span className={s.actions}>
-      {front.map((entry, index) => (
-        <button
-          key={`${entry.action.verb}:${index}`}
-          type="button"
-          className={s.action}
-          onClick={() => run(entry.action)}
-        >
-          {t(entry.labelKey)}
-        </button>
-      ))}
+      {front.map((entry, index) => {
+        const key = `${entry.action.verb}:${index}`
+        const fed = copied?.key === key
+        return (
+          <button
+            key={key}
+            type="button"
+            className={s.action}
+            data-copied={fed ? '' : undefined}
+            onClick={() => run(entry.action, key)}
+          >
+            {fed ? t(copied.ok ? 'common.copied' : 'common.copyFailed') : t(entry.labelKey)}
+          </button>
+        )
+      })}
       {rest.length > 0 && (
         <button
           type="button"

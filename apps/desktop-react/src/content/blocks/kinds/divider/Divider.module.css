@@ -1,0 +1,10 @@
+/*
+ * `---` 分隔线。发丝一条(--bw-1 × --line-1,与面与面之间的结构分隔同档),
+ * 不着色不加粗 —— 它是「话题换了口气」的排版记号,不是一件要被看的东西。
+ * 上下留白**不在这里**:节奏归邻接表管(content/ChatStream.module.css 的
+ * [data-prose='hr'] 两条,量是 --pr-hr),块自己 margin 清零是全表前提。
+ */
+.divider {
+  border: none;
+  border-block-start: var(--bw-1) solid var(--line-1);
+}

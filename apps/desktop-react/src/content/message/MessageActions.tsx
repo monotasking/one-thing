@@ -1,7 +1,9 @@
+import { useRef, useState } from 'react'
 import { Copy, RotateCcw } from '../../components/icons'
+import { COPY_FEEDBACK_MS } from '../../components/motion'
 import { useChatSource } from '../../data/chat-source'
-import { useT, t as translate } from '../../i18n'
-import { notify } from '../../services/notify'
+import { useT } from '../../i18n'
+import { announce } from '../../ui/a11y/live-region'
 import s from './MessageChrome.module.css'
 
 /**
@@ -32,34 +34,25 @@ import s from './MessageChrome.module.css'
  * 屏幕上那份富渲染是它的**投影**,反过来从 DOM 里抠字才是造事实。
  *
  * 剪贴板在渲染进程里是 `navigator.clipboard`,但它**不保证存在**(非安全上下文、
- * jsdom)。拿不到 / 写失败都如实说一句 —— 与块级动作那条路(悄悄放弃)不同,
- * 是因为这颗钮是人主动按的:按了没反应而屏幕一言不发,是最坏的一种。
+ * jsdom)。拿不到 / 写失败如实返回 false,反馈由按钮就地说(08-31 拍板:复制
+ * 不走通知)—— 与块级动作那条路从此同一个形:成败都有回音,回音长在钮上。
  */
 export async function copyMessageText(text: string): Promise<boolean> {
   const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
-  const fail = (detail: string) => {
-    notify({
-      level: 'error',
-      source: 'chat.copy',
-      title: translate('notify.copyFailed'),
-      detail,
-    })
-    return false
-  }
-  if (!clipboard?.writeText) return fail('navigator.clipboard 不可用')
-  try {
-    await clipboard.writeText(text)
-  } catch (error) {
-    return fail(error instanceof Error ? error.message : String(error))
-  }
-  // 轻确认:复制成功没有别的可见结果,不说一句话人就不知道成没成。
-  notify({ level: 'success', source: 'chat.copy', title: translate('notify.copied') })
-  return true
+  if (!clipboard?.writeText) return false
+  return clipboard.writeText(text).then(() => true, () => false)
 }
 
 export function MessageActions({ messageId, text }: { messageId: string; text: string }) {
   const t = useT()
   const regenerate = useChatSource((st) => st.regenerate)
+  /**
+   * 复制的就地反馈(08-31 拍板:复制不走通知 —— 高频小动作,每按一下飞一条
+   * toast 是噪音)。按下的这颗钮换字说「已复制 / 没能复制」一拍,同时进播报口
+   * (读屏的回音);COPY_FEEDBACK_MS 后换回。
+   */
+  const [copied, setCopied] = useState<boolean | null>(null)
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   return (
     <div
@@ -72,10 +65,17 @@ export function MessageActions({ messageId, text }: { messageId: string; text: s
         type="button"
         className={s.ghost}
         data-testid="chat-action-copy"
-        onClick={() => void copyMessageText(text)}
+        onClick={() => {
+          void copyMessageText(text).then((ok) => {
+            announce(t(ok ? 'common.copied' : 'common.copyFailed'))
+            setCopied(ok)
+            clearTimeout(copiedTimer.current)
+            copiedTimer.current = setTimeout(() => setCopied(null), COPY_FEEDBACK_MS)
+          })
+        }}
       >
         <Copy className={s.ghostIcon} strokeWidth={1.9} aria-hidden="true" />
-        {t('chat.copy')}
+        {copied === null ? t('chat.copy') : t(copied ? 'common.copied' : 'common.copyFailed')}
       </button>
       {/*
         重试 = core 的 `command:retry-message`(端口那一口照 abort 惯例:同一条

@@ -65,6 +65,11 @@ function translate(node: RootContent, source: string): BlockModel {
     case 'blockquote':
       return { kind: 'quote', blocks: mdastToBlocks(node.children, source).map((entry) => entry.block) }
 
+    case 'thematicBreak':
+      // `---` / `***`:一条横线不是一段源码(08-31 真机报障:它曾落 fallback,
+      // 被画成带「复制源码」檐的代码块)。零参数块,画法在 kinds/divider。
+      return { kind: 'divider' }
+
     default:
       return fallback(node, source, `md:${node.type}`)
   }
