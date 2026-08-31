@@ -11,6 +11,8 @@ import { EdgeShelf } from './EdgeShelf'
 import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
 import { ToastHost } from '../ui/Toast'
+import { ConfirmHost } from '../ui/Dialog'
+import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
 import { DOCK_HIDE_DELAY_MS, SCROLL_SETTLE_MS } from './motion'
@@ -174,6 +176,18 @@ export function AppShell() {
       <SnapHint />
 
       <StageOverlay />
+
+      {/* 工作区命令面板(⌘⇧O)。挂在壳的根上一次 —— 它自己 portal 到 body,
+        * 开关住在 workspace/components/palette-hub(与 agent 菜单同一手:
+        * 两个产地共一个布尔)。 */}
+      <WorkspacePalette />
+
+      {/*
+        useConfirm 的落点。挂一次,`ui/Dialog` 的那个单槽 hub 才有地方渲染 ——
+        今天的用户是工作区删除的两段确认。它与 ToastHost 同层同理由:
+        「问一句 yes/no」不该由每块业务面各摆一个自己的对话框。
+      */}
+      <ConfirmHost />
 
       {/*
         Toast 的落点。挂在壳的根上一次,notify 才有地方渲染(它自己 portal 到 body)。

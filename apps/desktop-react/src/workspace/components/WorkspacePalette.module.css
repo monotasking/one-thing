@@ -1,0 +1,157 @@
+/* 工作区命令面板(⌘⇧O)。三段:输入行 / 命中列 / 脚注。
+ *
+ * 遮罩与入场的配方逐字对齐 ui/Dialog.module.css(那是本仓浮层三件套的产地):
+ * 墨 40% 无模糊、入场 scale .98→1、层级 --z-overlay / --z-modal。差别只有落点:
+ * 它不居中,落在视线上三分之一(--ws-palette-top)—— 过路件不该占正中。 */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: var(--scrim);
+  display: grid;
+  place-items: start center;
+  padding-top: var(--ws-palette-top);
+  animation: var(--kf-dialog-scrim-in) var(--dur-enter) var(--ease-out);
+}
+
+.panel {
+  z-index: var(--z-modal);
+  width: var(--ws-palette-w);
+  max-width: calc(100vw - var(--sp-6));
+  background: var(--surface-2);
+  border-radius: var(--r-3);
+  box-shadow: var(--sh-3);
+  overflow: hidden;
+  animation: var(--kf-dialog-panel-in) var(--dur-enter) var(--ease-out);
+}
+
+/* ── 输入行 ─────────────────────────────────────────────────────────── */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line-1);
+}
+
+.headIcon {
+  flex: none;
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-3);
+}
+
+/* 面板自己画输入,不用 ui/Input:那件是**表单字段**(有边、有底、有焦点环),
+ * 而这里整块面就是那个字段 —— 再套一层边框会画出「盒中盒」。 */
+.input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+}
+
+.input::placeholder {
+  color: var(--text-3);
+}
+
+.headHint {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+/* ── 命中列 ─────────────────────────────────────────────────────────── */
+.list {
+  padding: var(--sp-1);
+  max-height: 44vh;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: none;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* 高亮态**只有一档**:键盘的当前行与鼠标悬停是同一件事(悬停会把 cursor 移过来),
+ * 所以这里没有单独的 :hover —— 两套高亮同时亮才是最难读的那种列表。 */
+.rowOn {
+  background: var(--st-sel);
+}
+
+.rowNew {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.dot {
+  flex: none;
+  width: var(--ws-dot);
+  height: var(--ws-dot);
+  border-radius: var(--r-full);
+  background: var(--ws-face);
+}
+
+/* 这一行唯一的弯腰件。 */
+.name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.current {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.keys {
+  flex: none;
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.empty {
+  margin: 0;
+  padding: var(--sp-3);
+  font-size: var(--fs-label);
+  color: var(--text-3);
+}
+
+/* ── 脚注 ───────────────────────────────────────────────────────────── */
+.foot {
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--line-1);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+}
+
+/* 面板拿焦点只是为了让键盘落进来,不该画环(同 ui/Dialog.module.css)。 */
+.panel:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scrim,
+  .panel {
+    animation: none;
+  }
+}

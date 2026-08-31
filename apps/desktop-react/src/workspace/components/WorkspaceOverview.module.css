@@ -1,0 +1,236 @@
+/* 工作区总览。两段式(头 / 一排卡),三种形态(舞台 / 浮窗 / 架子)共用这一份,
+ * 所以这里不写任何与形态有关的尺寸。
+ *
+ * 抗挤压(docs/design/react-shell-squeeze-rules-2026-08.md)在这块面上的落点:
+ *  · 卡排走 flex-wrap:架子里窄到 260px 时它们换行,不是横着挤扁;
+ *  · 每张卡里**恰有一个**弯腰件(名字),它有 min-width:0 与省略号;
+ *  · 动作行常驻在布局里(律三),不靠悬停才出现 —— 出现时不该把事实行挤走。 */
+.panel {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+  overflow-y: auto;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.headError {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+/* 那句注脚。它不是装饰:切换今天改了什么、没改什么,全靠这一句说清。 */
+.note {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  align-items: flex-start;
+}
+
+/* ── 一张卡 ─────────────────────────────────────────────────────────── */
+.card {
+  width: var(--ws-card-w);
+  min-height: var(--ws-card-min-h);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+  transition: box-shadow var(--dur) var(--ease);
+}
+
+.card:hover {
+  box-shadow: var(--sh-2);
+}
+
+/* 当前那张:accent 边 + 同一枚焦点柔环。它是「我在哪」的第二处指示,
+ * 所以用的是与瓦面同一族的语汇(色),不是一个额外的徽。 */
+.cardCurrent {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.cardNew {
+  border-style: dashed;
+  border-color: var(--line-2);
+  box-shadow: none;
+}
+
+/* 色带 = 这个工作区的色标。它与瓦面、菜单色点、面板色丸同一格颜色。 */
+.band {
+  flex: none;
+  height: var(--ws-band);
+  background: var(--ws-face);
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* 名字既是标题也是主动作(点=切过去)。当前那张 disabled —— 一个按下去
+ * 什么都不变的按钮不该看起来还能按。 */
+.name {
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.name:disabled {
+  cursor: default;
+}
+
+.facts {
+  margin: 0;
+  display: flex;
+  gap: var(--sp-2);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+}
+
+.factCurrent {
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
+/* ── 改名 / 新建的那一格 ─────────────────────────────────────────────── */
+.field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.fieldIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+/* ── 换色盘 ─────────────────────────────────────────────────────────── */
+.swatches {
+  display: flex;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-2);
+}
+
+.swatch {
+  width: var(--ws-swatch);
+  height: var(--ws-swatch);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-full);
+  background: var(--ws-face);
+  color: var(--on-ws);
+  cursor: pointer;
+}
+
+.swatchMark {
+  width: 70%;
+  height: 70%;
+}
+
+/* ── 动作行 ─────────────────────────────────────────────────────────── */
+.ops {
+  flex: none;
+  display: flex;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4) var(--sp-3);
+}
+
+/* 文字键:accent 色的裸文字。它不是按钮族的第三个变体 —— 卡上放三颗描边按钮
+ * 会让卡变成一个工具条,而这三件是「顺手改一下」,不是主动作。 */
+.op {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.op:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.opDanger {
+  color: var(--danger);
+}
+
+/* ── 新建卡 ─────────────────────────────────────────────────────────── */
+.newCard {
+  width: var(--ws-card-w);
+  min-height: var(--ws-card-min-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--r-card);
+  background: none;
+  color: var(--text-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.newCard:hover {
+  background: var(--st-hover);
+}
+
+.newIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .newCard {
+    transition: none;
+  }
+}

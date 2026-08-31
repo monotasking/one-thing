@@ -4,7 +4,15 @@ import { useStageStore } from '../stage/store'
 import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
 import { useKeymapStore } from './store'
-import { TOGGLE_COMMAND_PREFIX, hasModifier, lookupCommand } from './transitions'
+import { useWorkspacePalette } from '../workspace/components/palette-hub'
+import { useWorkspaceStore } from '../workspace/store'
+import { projectWorkspaces, workspaceAtSlot } from '../workspace/projection'
+import {
+  TOGGLE_COMMAND_PREFIX,
+  WORKSPACE_SLOT_COMMAND_PREFIX,
+  hasModifier,
+  lookupCommand,
+} from './transitions'
 import type { CommandId } from './types'
 
 /** 焦点在输入面里:无修饰的单键属于输入框,不属于快捷键。 */
@@ -28,11 +36,25 @@ export function useKeymapDispatch(): void {
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
   const toggleToc = useTocStore((st) => st.togglePanel)
   const toggleAgentMenu = useAgentMenu((st) => st.toggle)
+  const toggleWorkspacePalette = useWorkspacePalette((st) => st.toggle)
 
   useEffect(() => {
     const run = (id: CommandId) => {
       if (id.startsWith(TOGGLE_COMMAND_PREFIX)) {
         toggleItem(id.slice(TOGGLE_COMMAND_PREFIX.length))
+        return
+      }
+      /*
+       * 工作区序号直达。**取动作而不是订阅**(同 session.new 那条的口径):
+       * 序号 → 哪个工作区由投影当场算,派发器不缓存一份表 —— 缓存了就会在
+       * 建 / 删之后指错人。第 n 个不存在时什么都不做:一个按不响的键好过
+       * 一个偷偷切到别处的键。
+       */
+      if (id.startsWith(WORKSPACE_SLOT_COMMAND_PREFIX)) {
+        const slot = Number(id.slice(WORKSPACE_SLOT_COMMAND_PREFIX.length))
+        const { spaces, currentId, switchTo } = useWorkspaceStore.getState()
+        const target = workspaceAtSlot(projectWorkspaces(spaces, currentId), slot)
+        if (target) switchTo(target.id)
         return
       }
       if (id === 'shelf.right.toggle') {
@@ -46,6 +68,11 @@ export function useKeymapDispatch(): void {
       // 只开菜单,不替用户选人 —— 理由写在 keymap/types.ts 的命令族那一段。
       if (id === 'agent.menu') {
         toggleAgentMenu()
+        return
+      }
+      // 同上:只开面板,切到哪个工作区是面板里那一下 ↵。
+      if (id === 'workspace.palette') {
+        toggleWorkspacePalette()
         return
       }
       /*
@@ -70,5 +97,5 @@ export function useKeymapDispatch(): void {
 
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [overrides, toggleItem, toggleShelfCollapsed, toggleToc, toggleAgentMenu])
+  }, [overrides, toggleItem, toggleShelfCollapsed, toggleToc, toggleAgentMenu, toggleWorkspacePalette])
 }

@@ -44,11 +44,22 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂只绑五条:检索 ⌘P、总览 ⌘E、目录 ⌘⇧O、agent 切换器 ⌘J、新建会话 ⌘N,别的一律未绑定', () => {
+  it('出厂只绑这九条,别的一律未绑定;次序即注册表次序(它是撞键的裁决,见下)', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombo !== null).map((c) => c.id)
+    /*
+     * 检索 ⌘P、总览 ⌘E、工作区面板 ⌘⇧O、工作区序号 ⌘1/2/3、目录 ⌘⇧O、
+     * agent 切换器 ⌘J、新建会话 ⌘N。
+     * 工作区那四条排在 toc.toggle 之前**不是排版**:⌘⇧O 被两条命令同时占着,
+     * 而 lookupCommand 取第一个命中 —— 详见 keymap/workspace-commands.test.ts
+     * 里那一节「⌘⇧O 撞键(待用户裁定)」。
+     */
     expect(bound).toEqual([
       'toggle:search',
       toggleCommandId(SESSIONS_ITEM_ID),
+      'workspace.palette',
+      'workspace.slot:1',
+      'workspace.slot:2',
+      'workspace.slot:3',
       'toc.toggle',
       'agent.menu',
       'session.new',

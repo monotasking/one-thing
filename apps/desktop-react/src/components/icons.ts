@@ -50,7 +50,6 @@ import {
   Square,
   Boxes,
   Layers,
-  Trash2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -110,7 +109,6 @@ const REGISTRY: Record<string, LucideIcon> = {
   Square,
   Boxes,
   Layers,
-  Trash2,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -146,6 +144,5 @@ export {
   Bell,
   Square,
   Layers,
-  Trash2,
 }
 export type { LucideIcon }

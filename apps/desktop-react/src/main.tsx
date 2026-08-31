@@ -9,8 +9,10 @@ import { whenConnected } from './platform/connection'
 import { useSessionsSource } from './data/sessions-source'
 import { useAgentsSource } from './data/agents-source'
 import { useModelsSource } from './data/models-source'
+import { useWorkspaceStore } from './workspace/store'
 import { startThemeSource } from './theme/theme-source'
 import { startReadingAxes } from './reading/apply'
+import { startWorkspaceApply } from './workspace/apply'
 import { installCrashHandlers } from './services/crash'
 import { startPerfProbe } from './services/perf'
 import { getLogger } from './services/log'
@@ -26,6 +28,11 @@ startPerfProbe()
 // **不经过 core**,所以不必等连通 —— 连不上时读者调过的字号照样成立。
 // 放在 createRoot 之前是为了首帧就是最终版式:先画一屏 14px 再跳成 16px 是可见的。
 startReadingAxes()
+
+// 当前工作区同理:id 与色标读的是 localStorage,不经过 core。贴在 createRoot 之前,
+// 首帧的瓦面就是最终的那一格色 —— 先画一格默认紫再跳成用户的蓝同样是可见的。
+// 列表本身要等连通(Dock 挂上时 load 一次),那时这条订阅会把真名字的字标补上。
+startWorkspaceApply()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')
@@ -46,6 +53,11 @@ void whenConnected().finally(() => {
   // D2:颜色从主题管道来。同样是异步的 —— 变量表到之前,palette.css 的静态值
   // 先顶着(浏览器直开 / 没连上 core 时它就是最终值,见 theme-source 文件头)。
   void startThemeSource()
+  // 工作区列表同理:连通之后拉一次。拉不到不挡任何事 —— 瓦面退成兜底图标,
+  // 总览上一句「读不到」加后端原话(与 agent 名册那条同一口径)。
+  // **当前是哪个工作区**不在这一步:它读的是 localStorage,上面 startWorkspaceApply()
+  // 早就贴好了 —— 后端没有「当前空间」这个概念(契约见 data/spaces-port.ts)。
+  void useWorkspaceStore.getState().load()
   log.info('mounting shell')
   createRoot(root).render(
     <StrictMode>

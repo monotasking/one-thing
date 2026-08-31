@@ -22,6 +22,18 @@ export const NOTIFICATIONS_ITEM_ID = 'notifications'
 export const PROVIDERS_ITEM_ID = 'providers'
 
 /**
+ * 工作区(space)切换器这块瓦的 id。与上面三个同一条理由不许各写各的字面量:
+ * 它被内容表、Dock(瓦面画当前工作区的色与字标、右键装快切表)、
+ * 以及快捷键注册表(⌘⇧O 开命令面板那一族)三处引用。
+ *
+ * 它是一块**普通的瓦**(08-31 追补裁定:切换器 = 一块普通 Dock 瓦,零新原语):
+ * 有内容(工作区总览)、有落点、有打开方式,和别的瓦逐字走同一条路。
+ * 唯一的差别是**瓦面**:它画当前工作区的色底与首字母,而不是一枚固定图标 ——
+ * 因为这块瓦同时就是「我在哪」的常驻指示(见 components/DockTile 的 face)。
+ */
+export const WORKSPACE_ITEM_ID = 'workspace'
+
+/**
  * L1 是静态 mock 表。之后接真实数据时,只有这张表换来源,
  * 形态机 / 组件一行不改 —— 这是把 items 单独放一个文件的全部理由。
  */
@@ -42,6 +54,9 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   // 而设置页的版式是「分区不分页的单列表单」(见 content/SettingsMock.tsx 顶部)。
   // 把一块两栏的面塞进那张单列表单,等于让两种版式在同一页里打架。
   { id: PROVIDERS_ITEM_ID, titleKey: 'item.providers', scope: 'global', icon: 'Boxes' },
+  // 工作区切换器。icon 是**兜底**而不是常态:瓦面正常画的是当前工作区的色与字标,
+  // 只有列表还没读到(或者读不到)时才退回这枚图标 —— 那时候确实没有「我在哪」可画。
+  { id: WORKSPACE_ITEM_ID, titleKey: 'item.workspace', scope: 'global', icon: 'Layers' },
   { id: 'settings', titleKey: 'item.settings', scope: 'global', icon: 'Settings' },
 ]
 

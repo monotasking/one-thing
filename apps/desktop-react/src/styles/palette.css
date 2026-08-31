@@ -109,4 +109,24 @@
   --on-ok: #ffffff;
   --on-warn: #ffffff;
   --on-info: #ffffff;
+
+  /* ── 工作区色标的六格 ────────────────────────────────────────────────────
+   * 工作区(space)的颜色不是一个自由色值,是这六格里的一格 —— 用户在总览卡上
+   * 挑的是一个**名字**('violet' / 'blue' / …,取值表在 workspace/types.ts),
+   * 值只在这里出现一次。所以 JS 那一侧一个色值都不知道。
+   *
+   * 与语义色(ok / danger / warn / info)刻意不共用:那四档说的是「事情怎么样了」,
+   * 这六格说的是「这是哪一个地方」—— 同一个绿在两种语法里念不同的音,
+   * 借用会让「绿色的工作区」听起来像「一切正常」。
+   *
+   * 前三格与规范样例(workspace-switcher-final.html 的 --ws-a/b/c)逐字相同;
+   * 后三格接着 face 族的冷→暖绕圈补齐,彼此在明度上拉开,22px 也认得出。
+   * 前景一律 --on-ws。 */
+  --ws-violet: #7c6fa0;
+  --ws-blue: #5b7fa6;
+  --ws-green: #6f8f4e;
+  --ws-amber: #b58a3d;
+  --ws-rose: #b47d78;
+  --ws-teal: #6d9aa6;
+  --on-ws: #ffffff;
 }

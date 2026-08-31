@@ -43,6 +43,36 @@
   height: 41%;
 }
 
+/* 字标瓦面(工作区切换器):实色底 + 一个字。底色由 `--ws-face` 给,
+ * 那个变量由外面递进来的类设(workspace/swatch.module.css)—— 这里不认识任何颜色名。
+ * 去掉描边与常态投影:实色块自己就有形,再描一圈会显脏。 */
+.faced {
+  background: var(--ws-face);
+  border-color: transparent;
+  color: var(--on-ws);
+}
+
+.faced:hover {
+  /* 悬停不换底色(换了就成了另一个工作区的色)—— 只抬一档投影说「可以点」。 */
+  background: var(--ws-face);
+  box-shadow: var(--sh-2);
+}
+
+.faced:active {
+  background: var(--ws-face);
+}
+
+.faceLetter {
+  /* 与 .icon 的 41% 同一个比例。图标能写百分比是因为它量的是父**盒子**,
+   * 字号的百分比量的是父**字号** —— 所以这里从瓦的尺寸算,并吃那格放大系数。 */
+  font-size: calc(var(--tile-size) * var(--tile-factor, 1) * 0.41);
+  font-weight: 700;
+  line-height: 1;
+  /* 字标是**身份**不是正文:数字与拉丁字母要等宽对齐,汉字回落到界面字体。 */
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
 /* 徽本身归 ui/Badge;这里只说「贴在瓷砖右上角」。 */
 .badgeAt {
   position: absolute;

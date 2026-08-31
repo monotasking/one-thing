@@ -1,7 +1,17 @@
 import { Fragment, useState } from 'react'
 import { useStageStore } from '../stage/store'
-import { GLOBAL_ITEMS, NOTIFICATIONS_ITEM_ID, SESSION_ITEMS } from '../stage/items'
+import {
+  GLOBAL_ITEMS,
+  NOTIFICATIONS_ITEM_ID,
+  SESSION_ITEMS,
+  WORKSPACE_ITEM_ID,
+} from '../stage/items'
 import { useUnreadCount } from '../services/notify-store'
+import { WorkspaceMenuRows } from '../workspace/components/WorkspaceMenuRows'
+import { useWorkspacePalette } from '../workspace/components/palette-hub'
+import { currentWorkspace } from '../workspace/projection'
+import { useWorkspaceViews } from '../workspace/store'
+import sw from '../workspace/swatch.module.css'
 import { DockTile } from './DockTile'
 import { useMagnify } from './useMagnify'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
@@ -77,6 +87,13 @@ export function Dock({ dimmed }: Props) {
   const openAs = useStageStore((st) => st.openAs)
   // 未读是**当下的事实**,所以在这里对上静态的 items 表(items.ts 里那条注释同一件事)。
   const unread = useUnreadCount()
+  /*
+   * 当前工作区同理是**当下的事实**,不在 items 表里:表是静态声明。
+   * 列表**不在这里拉** —— 它与会话 / agent / 模型三份数据源一样在 main.tsx 里
+   * 连通之后起一次(Dock 是投影,不是取数的地方)。这里只读结论。
+   */
+  const workspace = currentWorkspace(useWorkspaceViews())
+  const openWorkspacePalette = useWorkspacePalette((st) => st.setOpen)
 
   const [menu, setMenu] = useState<{ item: StageItemSpec; title: string; x: number; y: number } | null>(
     null,
@@ -127,6 +144,15 @@ export function Dock({ dimmed }: Props) {
               icon={tile.item.icon}
               badge={tile.item.badge}
               dot={tile.item.id === NOTIFICATIONS_ITEM_ID && unread > 0}
+              /* 工作区那块瓦画的是**当前工作区的色与字标**,不是一枚固定图标 ——
+               * 它同时就是「我在哪」的常驻指示。列表还没读到(或者读不到)时
+               * workspace 是 undefined,瓦退回 items 表里那枚兜底图标:
+               * 那时候确实没有「我在哪」可画,不该拿默认色冒充。 */
+              face={
+                tile.item.id === WORKSPACE_ITEM_ID && workspace
+                  ? { letter: workspace.initial, className: sw[workspace.swatch] }
+                  : undefined
+              }
               running={tile.item.id in placements}
               factor={factors[i] ?? REST_FACTOR}
               tileRef={setTileRef(i)}
@@ -160,23 +186,42 @@ export function Dock({ dimmed }: Props) {
 
       {menu && (
         <Menu x={menu.x} y={menu.y} onClose={closeMenu} label={menu.title}>
-          {/* 每块瓦都有落点可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}
-          <MenuSection>{t('dock.openWith')}</MenuSection>
-          {OPEN_PLACEMENT_CHOICES.map((c, i) => (
-            <Fragment key={c.key}>
-              {i === PIN_FROM && <MenuSection>{t('stage.pinToEdge')}</MenuSection>}
-              <MenuItem
-                checked={memoryIsAt(memory[menu.item.id], c.placement)}
-                onClick={() => {
-                  // 既执行也写记忆:openAs 落定的那一刻自己就记下了,这里不必再记一次。
-                  openAs(menu.item.id, c.placement)
-                  closeMenu()
-                }}
-              >
-                {t(c.labelKey)}
-              </MenuItem>
-            </Fragment>
-          ))}
+          {/*
+            工作区那块瓦的右键 = **快切表**(08-31 追补裁定)。它借的是这条既有的
+            右键菜单机制,不是另一个浮层 —— 「零新原语」说的就是这件事。
+            这块瓦因此**不显示那排落点单选**:一条菜单短到一眼能读完是它的目的
+            (与文件头那段同一条判据),而落点仍然改得了 —— 浮窗头 / 舞台头上
+            那个「钉到边」菜单是同一件事的另一处入口。
+          */}
+          {menu.item.id === WORKSPACE_ITEM_ID ? (
+            <WorkspaceMenuRows
+              onOpenOverview={() => click(WORKSPACE_ITEM_ID)}
+              /* 新建的落点是命令面板:名字在那里输,↵ 落定。
+               * 不给菜单再挂一个只为收一个名字的对话框 —— 那就是新原语了。 */
+              onCreate={() => openWorkspacePalette(true)}
+              onDone={closeMenu}
+            />
+          ) : (
+            <>
+              {/* 每块瓦都有落点可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}
+              <MenuSection>{t('dock.openWith')}</MenuSection>
+              {OPEN_PLACEMENT_CHOICES.map((c, i) => (
+                <Fragment key={c.key}>
+                  {i === PIN_FROM && <MenuSection>{t('stage.pinToEdge')}</MenuSection>}
+                  <MenuItem
+                    checked={memoryIsAt(memory[menu.item.id], c.placement)}
+                    onClick={() => {
+                      // 既执行也写记忆:openAs 落定的那一刻自己就记下了,这里不必再记一次。
+                      openAs(menu.item.id, c.placement)
+                      closeMenu()
+                    }}
+                  >
+                    {t(c.labelKey)}
+                  </MenuItem>
+                </Fragment>
+              ))}
+            </>
+          )}
           <MenuSeparator />
 
           <MenuItem

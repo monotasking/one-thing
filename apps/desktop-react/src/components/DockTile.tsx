@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MouseEvent } from 'react'
+import type { CSSProperties, MouseEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
 import { DockPreview } from './DockPreview'
@@ -47,6 +47,18 @@ interface Props {
   dot?: boolean
   running?: boolean
   plus?: boolean
+  /**
+   * 字标瓦面:用一个**字**取代图标,底色由外面递进来的类名给
+   * (那个类只做一件事:把 `--ws-face` 指到某一格色上,见 workspace/swatch.module.css)。
+   *
+   * 它不是「另一种瓦」,是同一块瓦的另一张脸:放大 / 降淡 / 名字标签 / 预览泡 /
+   * 运行点 / 右键菜单,一件都不变。今天唯一的用户是工作区切换器那一块 ——
+   * 瓦面同时就是「我在哪」的常驻指示,所以它必须画当前工作区的色与字,
+   * 而不是一枚所有工作区共用的图标。
+   *
+   * 给了 face 就不画 icon:一块瓦上只该有一个主角。
+   */
+  face?: { letter: string; className: string }
   /** 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。 */
   factor: number
   tileRef: (el: HTMLElement | null) => void
@@ -68,6 +80,7 @@ export function DockTile({
   dot,
   running,
   plus,
+  face,
   factor,
   tileRef,
   labelSide = 'top',
@@ -120,15 +133,37 @@ export function DockTile({
       <button
         type="button"
         ref={tileRef as (el: HTMLButtonElement | null) => void}
-        className={plus ? `${s.tile} ${s.plus}` : s.tile}
-        style={{ width: `calc(var(--tile-size) * ${factor})`, height: `calc(var(--tile-size) * ${factor})` }}
+        className={
+          plus
+            ? `${s.tile} ${s.plus}`
+            : face
+              ? `${s.tile} ${s.faced} ${face.className}`
+              : s.tile
+        }
+        /* 放大系数也进一格自定义属性:图标靠 width/height 的百分比跟着长大,
+         * 字标只能靠 font-size,而 font-size 的百分比量的是**父字号**不是父盒子 ——
+         * 少了这一格,瓦放大时那个字会原地不动。 */
+        style={
+          {
+            width: `calc(var(--tile-size) * ${factor})`,
+            height: `calc(var(--tile-size) * ${factor})`,
+            '--tile-factor': factor,
+          } as CSSProperties
+        }
         onClick={onClick}
         onContextMenu={onContextMenu}
         aria-label={title}
         data-testid={testId}
         title=""
       >
-        <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
+        {/* 一块瓦上只该有一个主角:有字标就不画图标。 */}
+        {face ? (
+          <span className={s.faceLetter} aria-hidden="true">
+            {face.letter}
+          </span>
+        ) : (
+          <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
+        )}
         {/* 徽的配方在 ui/Badge,贴在哪由这里说了算 —— 所以定位是本地类。 */}
         {badge && (
           <Badge tone={badge.tone} className={s.badgeAt}>

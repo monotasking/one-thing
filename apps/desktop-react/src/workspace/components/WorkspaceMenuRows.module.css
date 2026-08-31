@@ -1,0 +1,33 @@
+/* Dock 右键菜单里那张快切表的一行。菜单项的配方(高、字号、圆角、勾位)全在
+ * ui/Menu.module.css —— 这里只说「这一行内部怎么排」:色点 / 名字 / 键帽。 */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+}
+
+/* 色标丸。8px 的实色圆点,色由 --ws-face 给(见 workspace/swatch.module.css)。 */
+.dot {
+  flex: none;
+  width: var(--ws-dot);
+  height: var(--ws-dot);
+  border-radius: var(--r-full);
+  background: var(--ws-face);
+}
+
+/* 这一行唯一的弯腰件(抗挤压律:每行恰有一个)。 */
+.name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.keys {
+  flex: none;
+  display: flex;
+  gap: var(--sp-1);
+}

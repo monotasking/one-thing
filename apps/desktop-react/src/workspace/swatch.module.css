@@ -1,0 +1,32 @@
+/* 色标名 → `--ws-face`。**这是「名字变成颜色」的唯一一步**。
+ *
+ * 六格的色值住在 styles/palette.css(那里是全仓的色值产地);这里只把选中的那一格
+ * 提升成一个局部变量,消费方(Dock 瓦面 / 菜单行的色点 / 命令面板的丸 /
+ * 总览卡的色带)一律 `background: var(--ws-face)` —— 于是没有任何一个组件
+ * 需要认识 'violet' 与 #7c6fa0 之间的关系。
+ *
+ * 这份模块被四处 import:同一张表只该有一份,类名由 CSS Modules 各自哈希,
+ * 按名字取(`sw[view.swatch]`)是它唯一的用法。 */
+.violet {
+  --ws-face: var(--ws-violet);
+}
+
+.blue {
+  --ws-face: var(--ws-blue);
+}
+
+.green {
+  --ws-face: var(--ws-green);
+}
+
+.amber {
+  --ws-face: var(--ws-amber);
+}
+
+.rose {
+  --ws-face: var(--ws-rose);
+}
+
+.teal {
+  --ws-face: var(--ws-teal);
+}

@@ -1,4 +1,6 @@
 import { SESSIONS_ITEM_ID, STAGE_ITEMS } from '../stage/items'
+import { WORKSPACE_SLOT_COUNT } from '../workspace/types'
+import type { MessageKey } from '../i18n'
 import type {
   Combo,
   ComboEvent,
@@ -19,6 +21,25 @@ export function toggleCommandId(itemId: string): CommandId {
   return `${TOGGLE_COMMAND_PREFIX}${itemId}`
 }
 
+/** 工作区序号直达那一族的 id 前缀。派发器按它分流 —— 全仓唯一一处字面量。 */
+export const WORKSPACE_SLOT_COMMAND_PREFIX = 'workspace.slot:'
+
+/**
+ * 序号直达那三条在设置页里的名字。命令名是**界面文案**,所以只持有 key
+ * (同 StageItemSpec.titleKey 的判例);三条各一句而不是一句带 {n},
+ * 是因为 KeymapCommand.labelKey 这一格不带插值 —— 加插值要动整张注册表。
+ * 长度必须等于 WORKSPACE_SLOT_COUNT,由 __tests__/keymap-workspace.test.ts 钉住。
+ */
+const WORKSPACE_SLOT_LABEL_KEYS: MessageKey[] = [
+  'workspace.slot1',
+  'workspace.slot2',
+  'workspace.slot3',
+]
+
+export function workspaceSlotCommandId(slot: number): CommandId {
+  return `${WORKSPACE_SLOT_COMMAND_PREFIX}${slot}`
+}
+
 /**
  * 退役的命令 id。它只作为**老档案里的一个键**存在(v2 迁移读它、改挂它),
  * 不再是这套注册表认识的命令 —— 会话总览去接管化之后,它的开关就是它自己那条 toggle。
@@ -33,6 +54,19 @@ const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
  * ⌘J 给顶栏那枚 agent 切换器(08-30 拍板)。
  * ⌘N 给新建会话 —— 这一条是**跨应用惯例**(新建文档 / 新建标签页),
  * 预占它不算替用户做主,不给它才是。
+ * ⌘⇧O 给工作区命令面板、⌘1/2/3 给前三个工作区的直达(08-31 切换器 v1 拍板)。
+ *
+ * ── ⚠ 已知撞键:⌘⇧O 同时是 `toc.toggle` 的出厂键 ─────────────────────────
+ * 这不是疏忽,是一次**没人拍过板**的撞车:目录面板的 ⌘⇧O 在先(08-29),
+ * 工作区命令面板的 ⌘⇧O 是 08-31 那次拍板点名的键。出厂表这一层没有冲突检查
+ * (`bindCombo` 只拦用户改绑),而 `lookupCommand` 是**按 KEYMAP_COMMANDS 的次序
+ * 取第一个命中** —— 所以次序就是裁决。
+ *
+ * 本批按拍板让工作区面板排在前面,代价是 `toc.toggle` 的出厂键**当下按不响**
+ * (改绑任一条即解开,设置页两行会并排显示同一个键面,一眼看得见)。
+ * 这一格等用户裁定:① 目录改一个键 ② 工作区面板改一个键 ③ 就这样。
+ * 在裁定之前,`__tests__/keymap-collision.test.ts` 把「谁赢」钉死,免得它无声地漂。
+ * ──────────────────────────────────────────────────────────────────────────
  */
 const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toggle:search': { meta: true, key: 'p' },
@@ -40,7 +74,24 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toc.toggle': { meta: true, shift: true, key: 'o' },
   'agent.menu': { meta: true, key: 'j' },
   'session.new': { meta: true, key: 'n' },
+  'workspace.palette': { meta: true, shift: true, key: 'o' },
+  [workspaceSlotCommandId(1)]: { meta: true, key: '1' },
+  [workspaceSlotCommandId(2)]: { meta: true, key: '2' },
+  [workspaceSlotCommandId(3)]: { meta: true, key: '3' },
 }
+
+/**
+ * 工作区序号直达的命令行。**三条是键位预算,不是能力上限** ——
+ * 第四个工作区照样能切(菜单 / 面板 / 总览三处都在),只是没有直达键。
+ * 数目由 WORKSPACE_SLOT_COUNT 说了算,这里不写死一个 3。
+ */
+const WORKSPACE_SLOT_COMMANDS: KeymapCommand[] = Array.from(
+  { length: WORKSPACE_SLOT_COUNT },
+  (_, i): KeymapCommand => {
+    const id = workspaceSlotCommandId(i + 1)
+    return { id, labelKey: WORKSPACE_SLOT_LABEL_KEYS[i], defaultCombo: DEFAULT_COMBOS[id] ?? null }
+  },
+)
 
 /**
  * 命令表 —— **封闭**。加一个命令就是在这里多一行:
@@ -55,6 +106,17 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
     return { id, labelKey: item.titleKey, defaultCombo: DEFAULT_COMBOS[id] ?? null }
   }),
   { id: 'shelf.right.toggle', labelKey: 'shelf.labelRight', defaultCombo: null },
+  /*
+   * 工作区那一族排在 toc.toggle **之前**:两者出厂键都是 ⌘⇧O,而 lookupCommand
+   * 取的是第一个命中,所以这个次序就是那次撞车的裁决(理由与留账见 DEFAULT_COMBOS
+   * 上面那段)。这不是审美排序,挪动它会改变一个键的去向。
+   */
+  {
+    id: 'workspace.palette',
+    labelKey: 'workspace.paletteLabel',
+    defaultCombo: DEFAULT_COMBOS['workspace.palette'] ?? null,
+  },
+  ...WORKSPACE_SLOT_COMMANDS,
   // TOC 面板不是 StageItem,但它的开关同样是命令类快捷键(08-29 全称拍板:都可设置)
   { id: 'toc.toggle', labelKey: 'toc.title', defaultCombo: DEFAULT_COMBOS['toc.toggle'] ?? null },
   // 顶栏 agent 切换器:同样不是瓦,同样是「呼出一块面」的命令(08-30)。

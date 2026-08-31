@@ -48,6 +48,12 @@ export interface Combo {
  *    与 agent.menu 那条「不替用户拍板」的纪律并不冲突:新建一条空会话没有
  *    可丢的东西(不动当前会话、不动输入框里那句话),而「按一下就多一条空会话」
  *    正是这个动作的全部语义 —— 它不需要先摆一个菜单让人再选一次。
+ *  - `workspace.palette` —— 呼出工作区命令面板(过滤 + ↵ 切换)。同 agent.menu:
+ *    它**只开一块面**,不替用户切;真正切到哪个是面里那一下 ↵。
+ *  - `workspace.slot:<n>` —— 直达第 n 个工作区(⌘1/2/3)。这一族与 session.new 同类,
+ *    是**有后果的写操作**:它当场改「这台壳当前在哪个工作区」。放它进出厂表的理由与
+ *    ⌘N 相同 —— 序号直达是跨应用惯例(标签页 / 空间 / 桌面),而这一下的后果是可逆的
+ *    (再按一次 ⌘1 就回去了),没有可丢的东西。
  * 加命令 = 在 KEYMAP_COMMANDS 里加一行,别处零改动。
  */
 export type CommandId =
@@ -56,6 +62,8 @@ export type CommandId =
   | 'toc.toggle'
   | 'agent.menu'
   | 'session.new'
+  | 'workspace.palette'
+  | `workspace.slot:${number}`
 
 export interface KeymapCommand {
   id: CommandId
