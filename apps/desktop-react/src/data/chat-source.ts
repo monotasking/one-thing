@@ -11,7 +11,10 @@ import {
   appendTail,
   feedTail,
   reconcileOverlay,
+  reconcileTailAfterRefold,
+  trimTailByChunks,
   userMessageIds,
+  type FoldLens,
   type OverlayEntry,
   type ProjectedMessage,
   type Tail,
@@ -102,7 +105,7 @@ interface LiveFold {
   state: ReturnType<typeof createSessionProjectionState>
   /** 已折进去的最后一条 seq。0 = 还没起底。 */
   lastSeq: number
-  /** 起底 / 重折还没完成时,新到的行一律丢掉(重折读的整份账本里本来就有它们)。 */
+  /** 起底 / 重折还没完成时,新到的行进 `pendingLedger` 攒着,完成后排空回放。 */
   pending: boolean
   lastRefoldAt: number
   refoldScheduled: boolean
@@ -129,6 +132,18 @@ export function selectEngineBusy(state: ChatSourceState): boolean {
 
 let fold: LiveFold | undefined
 let tail: Tail | undefined
+/**
+ * 重折在飞时到达的活事件 —— **攒着,不是丢掉**。
+ *
+ * 从前这里是丢("重折读的整份账本里本来就有它们"),但那句话对**重折发出之后
+ * 才写下的行**不成立:listRaw 的快照定格在服务端应答那一刻,在飞窗口里写下的
+ * 事件既不在快照里、又被丢掉,重折一完成就是缺号 → 再排一次重折(3s 节流)——
+ * 中间这一整段活事件全部不折,正是真机上"打包行没清尾巴、重折折出重影"的引信。
+ * 攒下来,重折完成后按 seq 排空回放(旧行照旧被幂等丢弃),缺号就不再凭空出现。
+ */
+let pendingLedger: Array<Record<string, unknown>> = []
+/** 攒的上限 —— 一次重折的在飞窗口里攒过这个数属病态,清掉靠下一次重折兜底。 */
+const PENDING_LEDGER_CAP = 1024
 /** 「按了停止,还在等收尾」的那只表。模块级 —— 它不是可渲染状态。 */
 let abortWatch: ReturnType<typeof setTimeout> | undefined
 let unsubEvent: (() => void) | undefined
@@ -219,6 +234,12 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     })
   }
 
+  /** 一条消息在某份折叠状态上的两把尺(正文 / 顶部推理长度)—— 重折调解用。 */
+  function lensOf(state: ReturnType<typeof createSessionProjectionState>, messageId: string): FoldLens {
+    const found = materializeChatMessages(state).messages.find((message) => message.id === messageId)
+    return { content: found?.content?.length ?? 0, reasoning: found?.reasoning?.length ?? 0 }
+  }
+
   /** 起底 / 重折:整份账本折一遍。`token` 是换会话的防串号闸。 */
   async function refold(sessionId: string, token: number): Promise<void> {
     const mine = fold
@@ -230,6 +251,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       const { events } = await port.listRaw(sessionId)
       // 换会话之后回来的那一份属于上一条会话 —— 整份丢掉,不写进新会话的折。
       if (token !== openSeq || fold !== mine) return
+      // 调解尾巴的「旧折长」尺 —— 必须在换状态之前量(pending 期间旧折冻结,
+      // 旧折长 + 尾长 = 目前收到的总长,这条不变量是调解的地基)。
+      const tailBefore = tail ? lensOf(mine.state, tail.messageId) : undefined
       let state = createSessionProjectionState()
       let lastSeq = 0
       for (const event of events ?? []) {
@@ -240,6 +264,17 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       mine.state = state
       mine.lastSeq = lastSeq
       mine.pending = false
+      // 新折叠可能已经装下了尾巴前面那一截(打包行进了快照而尾巴没被裁过)——
+      // 按长度差把那截从尾巴上交出去,不然就是重影(见 reconcileTailAfterRefold 的注)。
+      if (tail && tailBefore) {
+        tail = reconcileTailAfterRefold(tail, tailBefore, lensOf(state, tail.messageId))
+      }
+      // 排空重折在飞时攒下的活事件:旧行被幂等丢弃,接得上的当场折进去,
+      // 真缺号(SSE 真丢了行)照旧触发下一次重折。
+      const drained = pendingLedger
+      pendingLedger = []
+      drained.sort((a, b) => ((a.seq as number) ?? 0) - ((b.seq as number) ?? 0))
+      for (const record of drained) feedLedger(record)
       // 起底完成 = 屏幕那棵树此刻才有底,马上推一次(不推的话打开会话是空白)。
       compose()
     } catch (error) {
@@ -269,7 +304,12 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     if (!mine) return
     const seq = (record as { seq?: unknown })?.seq
     if (typeof seq !== 'number' || !Number.isFinite(seq)) return
-    if (mine.pending) return
+    if (mine.pending) {
+      // 重折在飞:攒着(见 pendingLedger 的注),重折完成后按 seq 排空回放。
+      pendingLedger.push(record as Record<string, unknown>)
+      if (pendingLedger.length > PENDING_LEDGER_CAP) pendingLedger.length = 0
+      return
+    }
     if (seq <= mine.lastSeq) return
     if (seq !== mine.lastSeq + 1) {
       scheduleRefold(get().sessionId, mine)
@@ -277,10 +317,14 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     }
     mine.state = reduceSessionProjection(mine.state, record as never)
     mine.lastSeq = seq
-    // 打包行一到,活尾巴整段丢掉 —— 它装的那几条 delta 已经在折里,两份逐字节
-    // 相同(`decode∘encode ≡ id`)。丢了重攒的代价是一帧内可能少几个字,而不丢
-    // 的代价是**重影**(同一段文字出现两遍)。宁可少一帧,不要重影。
-    if ((record as { type?: string })?.type === 'assistant/chunks') tail = undefined
+    // 打包行一到,它装的那一截离开尾巴,由折叠那份接管(两份逐字节相同,
+    // `decode∘encode ≡ id`,换装在屏幕上不可见)。按打包行自己的长度裁,
+    // 不整段丢 —— 尾巴里可能已经攒着打包窗之后的 delta,整段丢就是回缩。
+    const packed = record as { type?: string; data?: { messageId?: string; kind?: string; text?: string[] } }
+    if (packed?.type === 'assistant/chunks') {
+      const chars = (packed.data?.text ?? []).reduce((sum, piece) => sum + piece.length, 0)
+      tail = trimTailByChunks(tail, packed.data?.messageId, packed.data?.kind, chars)
+    }
     schedulePush()
   }
 
@@ -384,6 +428,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         unsubStream = undefined
         fold = undefined
         tail = undefined
+        pendingLedger = []
         openSeq += 1
         set({ sessionId: '', status: 'idle', error: undefined, messages: [], activeMessageId: undefined })
         return
@@ -392,6 +437,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       const token = (openSeq += 1)
       fold = newFold()
       tail = undefined
+      pendingLedger = []
       // 换会话 = overlay 清空:那几条 pending 属于上一条会话的屏幕。
       set({ sessionId, status: 'loading', error: undefined, messages: [], activeMessageId: undefined, overlay: [] })
 
@@ -545,6 +591,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       unsubStream = undefined
       fold = undefined
       tail = undefined
+      pendingLedger = []
       if (abortWatch) clearTimeout(abortWatch)
       abortWatch = undefined
       openSeq += 1

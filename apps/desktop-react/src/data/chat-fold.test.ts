@@ -3,6 +3,8 @@ import {
   appendTail,
   feedTail,
   reconcileOverlay,
+  reconcileTailAfterRefold,
+  trimTailByChunks,
   userMessageIds,
   type OverlayEntry,
   type PendingSend,
@@ -96,10 +98,85 @@ describe('接尾巴:只延长最后那一段,不回头找', () => {
     expect(out[0].contentParts ?? []).toEqual([])
   })
 
+  it('账本还没有 parts 时先按 content 搭一格,尾巴延长它(打包行回缩病)', () => {
+    // 真机的形:流式中 materialize 不产 contentParts(到 request/end 才有),
+    // 打包行把尾巴收走后,折叠的正文只活在 content 里。修前这里会产出
+    // [{text:'影,不存 d'}] —— parts 非空,anchor 不再按 content 兜底,
+    // 被打包的那一大段正文从屏幕上消失。
+    const tail = feedTail(undefined, 'a1', 'text', '影,不存 d')
+    const out = appendTail([message({ id: 'a1', content: '打包行收走的那一大段正文,一切皆投' })], tail)
+    expect(out[0].contentParts).toEqual([
+      { type: 'text', content: '打包行收走的那一大段正文,一切皆投影,不存 d' },
+    ])
+    expect(out[0].content).toBe('打包行收走的那一大段正文,一切皆投影,不存 d')
+  })
+
   it('尾巴认不出主人(那条消息还没折出来)就整段不接', () => {
     const tail = feedTail(undefined, 'ghost', 'text', '孤儿')
     const messages = [message({ id: 'a1', content: '原样' })]
     expect(appendTail(messages, tail)).toEqual(messages)
+  })
+})
+
+describe('打包行只带走它自己那一截(整段丢就是回缩)', () => {
+  it('尾巴比打包行长:裁掉前缀,留下打包窗之后的 delta', () => {
+    const tail = feedTail(feedTail(undefined, 'a1', 'text', '前一截'), 'a1', 'text', '后一截')
+    const trimmed = trimTailByChunks(tail, 'a1', 'text', '前一截'.length)
+    expect(trimmed?.segments).toEqual([{ kind: 'text', text: '后一截' }])
+  })
+
+  it('打包行覆盖了尾巴的全部:等价于从前的整段丢掉', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '全部内容')
+    expect(trimTailByChunks(tail, 'a1', 'text', 99)).toBeUndefined()
+  })
+
+  it('别的消息的打包行不碰这条尾巴', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '内容')
+    expect(trimTailByChunks(tail, 'b2', 'text', 99)).toBe(tail)
+  })
+
+  it('reasoning 打包行先裁顶部推理,再裁行内推理截,不碰正文截', () => {
+    let tail = feedTail(undefined, 'a1', 'reasoning', '顶部想', 'top')
+    tail = feedTail(tail, 'a1', 'text', '正文')
+    tail = feedTail(tail, 'a1', 'reasoning', '行内想', 'inline')
+    const trimmed = trimTailByChunks(tail, 'a1', 'reasoning', '顶部想行'.length)
+    expect(trimmed?.reasoningTop).toBe('')
+    expect(trimmed?.segments).toEqual([
+      { kind: 'text', text: '正文' },
+      { kind: 'reasoning', text: '内想' },
+    ])
+  })
+})
+
+describe('重折调解:新折叠盖过的前缀离开尾巴(真机重影那只病)', () => {
+  it('长度差就是要交出去的前缀 —— 引用素材下不裁会把后一份接成懒续行', () => {
+    // 真机的形:重折前折叠正文冻结在 0(打包行没折过),尾巴从头攒到现在;
+    // 重折把第一条打包行折了进来(新折长 = 打包那截),尾巴须交出等长前缀。
+    const tail = feedTail(undefined, 'a1', 'text', '> 引用行\n后续正文')
+    const out = reconcileTailAfterRefold(tail, { content: 0, reasoning: 0 }, { content: '> 引用行\n'.length, reasoning: 0 })
+    expect(out?.segments).toEqual([{ kind: 'text', text: '后续正文' }])
+  })
+
+  it('新折叠没有长(重折没折进新东西):尾巴一个字不动', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '正文')
+    expect(reconcileTailAfterRefold(tail, { content: 7, reasoning: 0 }, { content: 7, reasoning: 0 })).toBe(tail)
+  })
+
+  it('新折叠盖过了尾巴的全部:尾巴退场', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '短尾')
+    expect(reconcileTailAfterRefold(tail, { content: 0, reasoning: 0 }, { content: 99, reasoning: 0 })).toBeUndefined()
+  })
+
+  it('正文与顶部推理各按各的尺裁', () => {
+    let tail = feedTail(undefined, 'a1', 'reasoning', '想了又想', 'top')
+    tail = feedTail(tail, 'a1', 'text', '正文两截')
+    const out = reconcileTailAfterRefold(
+      tail,
+      { content: 0, reasoning: 0 },
+      { content: '正文'.length, reasoning: '想了'.length },
+    )
+    expect(out?.reasoningTop).toBe('又想')
+    expect(out?.segments).toEqual([{ kind: 'text', text: '两截' }])
   })
 })
 

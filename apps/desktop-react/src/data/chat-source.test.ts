@@ -273,8 +273,10 @@ describe('缺号:不补拼,整会话重折(节流合并)', () => {
     await settle()
 
     expect(h.listRawCalls).toBe(2)
-    // 重折读的是**此刻整份账本**,所以缺的那条自己补上了,而 5 没落盘就没有。
-    expect(ids()).toEqual(['m1', 'm2', 'm3'])
+    // 重折读的是**此刻整份账本**,缺的那条自己补上了;重折在飞时到达的 seq 5
+    // **攒着不丢**(广播的事件必然已落盘,快照只是比它旧),排空回放后也在 ——
+    // 从前这里丢掉它,重折一完成又缺号,3s 一轮永远追不上活流。
+    expect(ids()).toEqual(['m1', 'm2', 'm3', 'm4'])
   })
 })
 
@@ -292,7 +294,7 @@ describe('活尾巴:平滑上屏,打包行一到就换装', () => {
     expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('好的')
   })
 
-  it('打包行一到,尾巴整段丢掉 —— 不重影', async () => {
+  it('打包行一到,它那一截离开尾巴 —— 不重影', async () => {
     const h = harness([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
     configureChatPort(h.port)
     await state().open(SESSION)
@@ -305,6 +307,22 @@ describe('活尾巴:平滑上屏,打包行一到就换装', () => {
 
     // 账本那份接管;两者逐字节相同(decode∘encode ≡ id),所以屏幕上还是「好的」。
     expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('好的')
+  })
+
+  it('尾巴里已经攒着打包窗之后的 delta:打包行只带走自己那截,不整段丢 —— 不回缩', async () => {
+    const h = harness([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '好的', messageId: 'a1' } as never })
+    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: ',继续', messageId: 'a1' } as never })
+    await settle()
+    // 打包行只装了「好的」—— 从前这里整段丢尾巴,「,继续」要等下一条打包行才回来。
+    h.emitLedger(chunks(4, 'r1', 'a1', ['好的']))
+    await settle()
+
+    expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('好的,继续')
   })
 
   it('收尾事件把尾巴丢掉(这一轮完了,尾巴不再有主)', async () => {

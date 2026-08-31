@@ -93,6 +93,94 @@ export function feedTail(
   return tail
 }
 
+/**
+ * 从尾巴**前端**裁掉 `chars` 个某一种的字符(打包行 / 重折已经覆盖的那一截)。
+ *
+ * text 走 segments 里的 text 截;reasoning 先裁 reasoningTop(顶部推理开在最前),
+ * 再裁 segments 里的 reasoning 截。裁空的截整格移除;全裁光了就没有尾巴。
+ * `chars` 超出实有长度时裁到空为止 —— 上限就是从前"整段丢掉"的旧行为。
+ */
+function trimTailFront(tail: Tail, kind: 'text' | 'reasoning', chars: number): Tail | undefined {
+  let left = chars
+  let reasoningTop = tail.reasoningTop
+  if (kind === 'reasoning' && left > 0 && reasoningTop) {
+    const cut = Math.min(left, reasoningTop.length)
+    reasoningTop = reasoningTop.slice(cut)
+    left -= cut
+  }
+  const segments: TailSegment[] = []
+  for (const segment of tail.segments) {
+    if (left > 0 && segment.kind === kind) {
+      const cut = Math.min(left, segment.text.length)
+      left -= cut
+      if (cut < segment.text.length) segments.push({ kind: segment.kind, text: segment.text.slice(cut) })
+    } else {
+      segments.push(segment)
+    }
+  }
+  if (segments.length === 0 && !reasoningTop) return undefined
+  return { messageId: tail.messageId, segments, reasoningTop }
+}
+
+/**
+ * 打包行(`assistant/chunks`)到了:它装的那一截**离开尾巴**,由账本那份接管。
+ *
+ * 从前这里是「尾巴整段丢掉」—— 那句话隐含的前提是「打包行覆盖了尾巴的全部」,
+ * 在活路上(打包行紧跟着它的最后一条 delta 到达)它几乎总成立。但重折排空攒下的
+ * 打包行、或尾巴里已经攒进了打包窗之后的 delta 时,整段丢就把没被打包的那几截
+ * 一起丢了 —— 屏幕回缩,等下一条打包行才长回来。所以规则收敛成一条:
+ * **一条打包行只带走它自己那么长的一截**(它的 delta 与尾巴前端逐字节相同,
+ * `decode∘encode ≡ id`),两者等长时与旧行为逐字相同。
+ *
+ * 别的消息的打包行不碰这条尾巴(尾巴只有一条,认 `messageId`)。
+ */
+export function trimTailByChunks(
+  tail: Tail | undefined,
+  messageId: string | undefined,
+  kind: string | undefined,
+  chars: number,
+): Tail | undefined {
+  if (!tail) return undefined
+  if (!messageId || tail.messageId !== messageId) return tail
+  if (kind !== 'text' && kind !== 'reasoning') return tail
+  if (chars <= 0) return tail
+  return trimTailFront(tail, kind, chars)
+}
+
+/** 一条消息在某份折叠产物上的正文 / 顶部推理长度 —— 重折调解的两把尺。 */
+export interface FoldLens {
+  content: number
+  reasoning: number
+}
+
+/**
+ * 整份重折完成:把尾巴里**已被新账本覆盖**的前缀裁掉。
+ *
+ * 重折不经过打包行那条裁剪(它直接换掉整个折叠状态),而尾巴可能从上一条打包行
+ * 之后一直攒到现在 —— 新折叠已经装下了其中前面那一截。不裁就是**重影**:同一段
+ * 文字折叠里一份、尾巴里一份;素材里带引用块时更坏 —— 折叠正文以 `> …\n` 收尾、
+ * 尾巴又从头再来一遍时,两份接起来会让后一份整段变成引用的懒续行,块结构都错了
+ * (真机探针抓到的那个多出来的 blockquote)。
+ *
+ * 尺是**长度差**,不做字符串匹配:流是只追加的,尾巴与折叠覆盖的是同一条流的
+ * 两截前后相接的区间 —— 旧折长 + 尾长 = 目前收到的总长,新折长盖过旧折长的部分
+ * 就是尾巴该交出去的前缀。夹在 [0, 尾长] 里:新折反而更短(不该发生)就什么都
+ * 不裁,新折盖过总长就裁光。
+ */
+export function reconcileTailAfterRefold(
+  tail: Tail | undefined,
+  before: FoldLens,
+  after: FoldLens,
+): Tail | undefined {
+  if (!tail) return undefined
+  let next: Tail | undefined = tail
+  const contentCovered = after.content - before.content
+  if (next && contentCovered > 0) next = trimTailFront(next, 'text', contentCovered)
+  const reasoningCovered = after.reasoning - before.reasoning
+  if (next && reasoningCovered > 0) next = trimTailFront(next, 'reasoning', reasoningCovered)
+  return next
+}
+
 type AnyPart = { type?: string; content?: string }
 
 /**
@@ -118,6 +206,16 @@ export function appendTail(
 
   const message = list[index]
   const parts = [...((message.contentParts ?? []) as AnyPart[])]
+
+  // 账本正文还没物化成 parts(流式中 parts 到 request/end 才出现)时,先按
+  // `message.content` 现搭一格 —— 与 anchor 步的兜底同款判据。少了这一格就是
+  // 真机上那条「打包行一到正文回缩」的病:尾巴挂上去之后 parts 非空,anchor
+  // 不再按 content 兜底,而打包行(2s / 64 条闸)把尾巴收走的那一刻,被打包的
+  // 那段正文只活在 content 里 —— 屏幕上就只剩重攒的新尾巴,整段正文消失,
+  // 直到 run 收尾 parts 物化才跳回来。
+  if (parts.length === 0 && message.content) {
+    parts.push({ type: 'text', content: message.content })
+  }
 
   // 只有**第一截**可以延长账本那一段(它就是那一段还没打包的尾巴);其后每一截
   // 都是流上新的一段,各自起一格 —— 用一个局部标记表达,不留任何模块级状态。
