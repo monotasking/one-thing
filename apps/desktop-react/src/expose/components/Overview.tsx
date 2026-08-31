@@ -346,7 +346,13 @@ export function Overview() {
         </Button>
       </header>
 
-      <div className={s.scroll} ref={scrollRef}>
+      {/*
+       * data-testid 是给真机门的**稳定选择器**(同 ListView 那一枚):CSS Modules
+       * 的类名构建后是哈希,门不能按它找人。挂在滚动容器上而不是某张卡上,
+       * 是因为工作区门要问的是「换世界有没有把这棵树掀了」—— 卡会换、组会换,
+       * 而这个容器**必须**是同一个节点(四律第 4 条:禁整树重挂)。
+       */}
+      <div className={s.scroll} ref={scrollRef} data-testid="expose-overview-scroll">
         <div className={s.inner} ref={innerRef}>{renderGroups()}</div>
       </div>
     </div>

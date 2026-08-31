@@ -868,8 +868,9 @@ export const zh = {
   'workspace.loadFailed': '工作区列表读不到',
   'workspace.factDefault': '默认工作区',
   'workspace.factCreated': '自建工作区',
-  /* 这一批最要紧的一句实话:切换改了什么、没改什么。留账见 workspace/apply.ts。 */
-  'workspace.scopeNote': '切换只改这台窗口记着的当前工作区;凭证与接入目录随空间走要等后端接上。',
+  /* 切换换的是什么。09-01「真切换」批之后这句话从留账变成了说明,机制见
+     workspace/store.ts 文件头(A 屏幕、B 引擎,接缝是建会话时写下的归属)。 */
+  'workspace.scopeNote': '每个工作区各有一套会话、模型服务与凭证。切换只影响这台窗口,别的窗口照旧停在它自己那个。',
   'workspace.paletteLabel': '切换工作区',
   'workspace.paletteSearch': '找一个工作区…',
   'workspace.paletteHint': '切换工作区',

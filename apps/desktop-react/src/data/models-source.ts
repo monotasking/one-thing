@@ -1,13 +1,13 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
 import { isProviderEnabledIn } from '@renderer/stores/helpers/provider-model'
-import type { OpenRouterModel, ProviderInfo } from '@shared/ipc/providers'
-import type { AppSettings } from '@shared/ipc/settings'
+import type { OpenRouterModel, ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { modelsPort } from './models-port'
 import { useSessionsSource } from './sessions-source'
 import { findSession } from '../expose/projection'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
+import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
 
 /**
  * 模型目录与当前模型的**真数据源**(D2)。全应用一个:模型抽屉从这里取目录,
@@ -21,7 +21,7 @@ import { t } from '../i18n'
  * 没有「初始化 store」这一步。`resolveModelSelection` 每次从三层事实里现算:
  *   刚选完还没被 listMeta 追认的那块牌(optimistic)
  *   → 会话事实(SessionSummary.provider / .model = SessionMeta.lastProvider / lastModel)
- *   → 全局默认(settings.ai.provider + providers[那家].model)
+ *   → 当前空间的默认(该空间 providers.json 的 provider + providers[那家].model)
  * 存一份副本就会有第三种事实,而它一定会与前两种漂开(换会话、后端改了、
  * 上行失败)。**同一条判据只算一次**,与 `resolveAgentId` 同款。
  *
@@ -77,12 +77,12 @@ export interface ModelSelection {
 }
 
 /**
- * 设置里与模型选择有关的**窄投影**。整份 `AppSettings` 不进 store:
- * 这里要的只有三格,存整份等于把一堆与屏幕无关的事实(密钥、代理、主题)
+ * 设置里与模型选择有关的**窄投影**。整份 provider 设置不进 store:
+ * 这里要的只有三格,存整份等于把一堆与屏幕无关的事实(密钥、端点、档位)
  * 拖进一个会被订阅的地方。
  */
 export interface ProviderPrefs {
-  /** `settings.ai.provider` —— 全局默认那一家。空串 = 还没选过。 */
+  /** 这个空间的默认那一家(`SpaceProviderSettings.provider`)。空串 = 还没选过。 */
   defaultProvider: string
   /** providerId → 这一家的三格。 */
   configs: Record<string, { enabled?: boolean; selectedModels: string[]; model: string }>
@@ -117,15 +117,15 @@ export function toCatalogModels(models: readonly OpenRouterModel[]): CatalogMode
 }
 
 /**
- * 整份设置 → 三格窄投影。`ai` 缺席(还没连上 / 后端答不上话)= 空投影。
+ * **当前空间那份 provider 设置** → 三格窄投影。缺席(还没连上 / 后端答不上话 /
+ * 这个空间还没配过)= 空投影 —— 三种情况在屏幕上是同一件事:一家都列不出来。
  *
  * **自定义 provider 的默认模型也算一条可列的模型**:它没有 models.dev 目录,
  * 用户在设置里填的那个 `model` 就是它全部的模型表(Vue 壳
  * `buildProviderModelOptions` 的同一手)。不折进来的话,一台只配了自定义
  * provider 的机器打开抽屉会是空的 —— 而它明明能发消息。
  */
-export function toProviderPrefs(settings: AppSettings | undefined): ProviderPrefs {
-  const ai = settings?.ai
+export function toProviderPrefs(ai: SpaceProviderSettings | undefined): ProviderPrefs {
   const configs: ProviderPrefs['configs'] = {}
   for (const [id, config] of Object.entries(ai?.providers ?? {})) {
     configs[id] = {
@@ -151,8 +151,8 @@ export function toProviderPrefs(settings: AppSettings | undefined): ProviderPref
  * 自定义 provider 也要出现在名册上 —— `providers.list` 只回内置的那些
  * (Vue 壳 `updateAvailableProviders` 把两边并起来,这里同判据)。
  */
-export function customProviderOptionsOf(settings: AppSettings | undefined): ProviderOption[] {
-  return (settings?.ai?.customProviders ?? []).map((custom) => ({
+export function customProviderOptionsOf(ai: SpaceProviderSettings | undefined): ProviderOption[] {
+  return (ai?.customProviders ?? []).map((custom) => ({
     id: custom.id,
     name: (custom.name ?? '').trim() || custom.id,
   }))
@@ -210,7 +210,7 @@ export function buildProviderGroups(
 }
 
 /**
- * 全局默认选择 = 引擎在用户没选过时会用的那一个(`settings.ai.provider` +
+ * 默认选择 = 引擎在用户没选过时会用的那一个(**当前空间**那份设置的 `provider` +
  * 那一家的 `model`)。两格缺一 = 没有默认,不编。
  */
 export function defaultSelectionOf(prefs: ProviderPrefs): ModelSelection | null {
@@ -327,6 +327,8 @@ const EMPTY_PREFS: ProviderPrefs = { defaultProvider: '', configs: {} }
 
 /** 模块级的启动闸 —— 「这一个进程启动过没有」不是可渲染状态。 */
 let started = false
+/** 换空间那条订阅的句柄 —— 这一个进程的事实,不是可渲染状态。 */
+let unsubscribeSpace: (() => void) | undefined
 
 export const useModelsSource = create<ModelsSourceState>()((set, get) => {
   /** 每家目录一条在飞的承诺,防同一帧里两个消费者各拉一次。 */
@@ -336,23 +338,33 @@ export const useModelsSource = create<ModelsSourceState>()((set, get) => {
   let providersLoaded = false
   let providersInflight: Promise<void> | undefined
 
-  /** 设置。**不碰网**,所以它是启动期唯一的一发。 */
+  /**
+   * **当前空间那一份 provider 设置**。不碰网,所以它是启动期唯一的一发。
+   *
+   * 换工作区也走这一发(见 `start` 里那条订阅)—— 换空间就是换一份「哪一家可见、
+   * 这一家列哪些型、默认是哪一家」,而**名册与模型目录一个都不重拉**:
+   * 它们是机器级的事实,不跟空间走。
+   */
   async function loadSettings(): Promise<void> {
     set({ status: 'loading' })
     const port = await modelsPort()
+    const spaceId = currentSpaceId()
     try {
-      const settings = await port.readSettings()
+      const settings = await port.readProviderSettings(spaceId)
+      // 拉的过程中又切了空间:这一份已经不是当前空间的,丢掉 —— 那次切换自己
+      // 会带来一发新的 loadSettings。
+      if (currentSpaceId() !== spaceId) return
       set({
         status: 'ready',
         error: undefined,
         // 设置没拿到不是致命的:空投影会让抽屉一家都不列,那正是
         // 「不知道谁可见」诚实的样子(不是列全部)。
-        prefs: settings.success ? toProviderPrefs(settings.settings) : EMPTY_PREFS,
+        prefs: settings.success ? toProviderPrefs(settings.ai) : EMPTY_PREFS,
       })
       // 自定义 provider 只住在设置里,`providers.list` 不认识它们 —— 所以它们
       // 跟着设置一起到,不必等名册那一发。
       if (settings.success) {
-        const custom = customProviderOptionsOf(settings.settings)
+        const custom = customProviderOptionsOf(settings.ai)
         set((st) => ({
           providers: [...st.providers, ...custom.filter((c) => !st.providers.some((p) => p.id === c.id))],
         }))
@@ -411,6 +423,12 @@ export const useModelsSource = create<ModelsSourceState>()((set, get) => {
     start: async () => {
       if (started) return
       started = true
+      // 换工作区 = 换一份 provider 设置。订在首发之前,理由与 sessions-source
+      // 那条逐字相同:工作区列表是异步读的,首次读到时当前空间可能解析成别的。
+      unsubscribeSpace?.()
+      unsubscribeSpace = subscribeCurrentSpace(() => {
+        void loadSettings()
+      })
       const port = await modelsPort()
       await port.ready()
       await loadSettings()
@@ -528,6 +546,8 @@ export const useModelsSource = create<ModelsSourceState>()((set, get) => {
 
     reset: () => {
       started = false
+      unsubscribeSpace?.()
+      unsubscribeSpace = undefined
       providersLoaded = false
       providersInflight = undefined
       inflight.clear()

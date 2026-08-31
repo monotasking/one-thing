@@ -130,6 +130,13 @@ run('gate:files', 'npm', ['run', '--silent', 'gate:files'])
  * 答案,没有余量一说,不看机器状况。
  */
 run('gate:search', 'npm', ['run', '--silent', 'gate:search'])
+/*
+ * gate:workspace 同一条理由进得来:它断言的是**盘上那几个文件与屏幕上那几行字
+ * 对不对得上**(会话按空间过滤 / 新会话的归属 / 两套 provider 设置与凭证互不串 /
+ * 换世界时列表容器是同一个 DOM 节点),全是确定的答案,不看机器状况、没有余量。
+ * 它是「切换是假的」那条报障的机器化 —— 拆掉哪一格都当场红。
+ */
+run('gate:workspace', 'npm', ['run', '--silent', 'gate:workspace'])
 // 流式正文单调门:假慢流跨过 2s 打包闸,rAF 逐帧断言正文 textContent 不回缩
 // (真机病「打包行一到正文整段消失」的机器化,见 gate-stream-monotone.mjs 文件头)。
 run('gate:monotone', 'npm', ['run', '--silent', 'gate:monotone'])

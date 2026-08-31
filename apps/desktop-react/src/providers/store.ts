@@ -4,6 +4,7 @@ import type {
   ProviderConfig,
   ProviderInfo,
   ProviderUsageResponse,
+  SpaceProviderSettings,
 } from '@shared/ipc/providers'
 import type { OAuthStatusResponse } from '@shared/ipc/oauth'
 import type { AppSettings } from '@shared/ipc/settings'
@@ -28,6 +29,8 @@ import {
 } from './auth'
 import type { AuthFlowState } from './auth'
 import { dialPatchOf, providerDialsOf } from './dials'
+import { composeSpaceSettings, splitSpaceProviderSettings } from './space-settings'
+import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
 import type { CredentialFacts, ProviderFamilyView } from './types'
 
 /** 新建自定义家的表单。字段名与 `CustomProviderConfig` 对齐,不另起一套。 */
@@ -45,9 +48,9 @@ export interface CustomProviderForm {
  * 后台 tab、Dock 预览泡),但它们说的必须是同一件事。
  *
  * ── 取数时机:全都是懒的 ──────────────────────────────────────────────────
- * 这块面不在开机路径上,`start()` 只在面板第一次挂上时调。三发并行:
- * 名册(会碰网,后端顺手拉 models.dev)、设置(本地文件一次读)、凭证摘要
- * (本地文件一次读)。
+ * 这块面不在开机路径上,`start()` 只在面板第一次挂上时调。四发并行:
+ * 名册(会碰网,后端顺手拉 models.dev)、全局设置、**当前空间的 provider 设置**、
+ * **当前空间的凭证摘要**(后三发都是本地文件一次读)。
  *
  * ── 模型目录不在这个 store 里(K1 样板迁移,08-31)──────────────────────
  * 它是 `providers/catalog-query.ts` 的一族 kernel query。从前这里有四张表
@@ -59,19 +62,33 @@ export interface CustomProviderForm {
  *
  * ── 写:先读整份 → 合并一格 → 整份写回 ────────────────────────────────────
  * 判据与理由写在 `data/provider-settings-port.ts` 顶部。这里只多一条纪律:
- * **底本是 store 里那一份 `settings`**,不是每次写前再读一次 —— 再读一次会把
- * 「另一扇窗刚改的东西」和「我这次要改的东西」混成一次写,而谁覆盖了谁看不出来。
- * 写成功后用后端回的那一份(`saveSettings` 的 `settings`)换掉底本,底本永远
- * 是后端认下的最后一份。
+ * **底本是 store 里那两份(`settings` / `spaceAi`)**,不是每次写前再读一次 ——
+ * 再读一次会把「另一扇窗刚改的东西」和「我这次要改的东西」混成一次写,
+ * 而谁覆盖了谁看不出来。写成功后用后端回的那一份(`setProviderSettings` 的 `ai`)
+ * 换掉底本,底本永远是后端认下的最后一份。
  *
- * ── 空间 ────────────────────────────────────────────────────────────────
- * 这块壳没有「当前空间」这个事实,所以凭证读写打在 `default` 上 —— 它正是
- * `settings.getSettings()` 读的那一份(后端 `getSettings()` = `getSpaceSettings('default')`)。
- * per-space 的模型服务设置归批二。
+ * ── 空间:这块面**整只**跟着当前工作区走(09-01「真切换」批)────────────────
+ * 凭证摘要、凭证池写口、provider 设置(开关 / 勾选 / 默认模型 / 自定义家 / 档位)、
+ * 订阅用量 —— 六条口一律打在 `currentSpaceId()` 上,`default` 不再是硬编码的那一个,
+ * 只是「用户此刻恰好站在它上面」时的取值。
+ *
+ * 换空间是**唯一的刷新点**(`subscribeCurrentSpace`,与 Vue 壳
+ * `stores/spaceProviders.ts:229` 的那条 watch 同一个角色):重拉凭证与该空间的
+ * provider 设置。**名册与模型目录不重拉** —— 它们是机器级的事实(有哪些 provider、
+ * models.dev 那份目录),不跟空间走;重拉它们只会白碰一次网,还会让面板闪一下。
+ *
+ * 为什么必须跟着走,而不是「先都打在 default 上,以后再说」:引擎起流时读的是
+ * **会话归属那个空间**的设置与凭证(`resolveSessionProviderCredential(sessionId, …)`
+ * 与 `getSessionSettings(sessionId).ai`)。设置页写偏一格,用户看到的是「配好了」,
+ * 引擎看到的是「这个空间什么都没有」—— 那是一颗静默的雷,不是一档降级。
+ *
+ * ── `settings` 这一格的含义变了(形状没变) ───────────────────────────────
+ * 它现在是**当前空间的生效设置** = 全局那一份(目录缓存 + 非 ai 段)合上
+ * `workspaces/<当前空间>/providers.json`(`providers/space-settings.ts` 的
+ * `composeSpaceSettings`)。形状与 `settings.getSettings()` 交下来的逐字相同 ——
+ * 后者本来就是「default 空间的生效设置」,所以下游一行都不用改。
+ * 写回走 `spaces.setProviderSettings`,底本是 `spaceAi`(空间那一份的原样)。
  */
-
-/** 与后端 `DEFAULT_SPACE_ID` 同一个值。这块壳今天只认它,理由见文件头。 */
-export const DEFAULT_SPACE_ID = 'default'
 
 export type SourceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -83,8 +100,22 @@ export interface ProviderSettingsState {
   error?: string
   /** 名册原样。家的表是从它算的,不存第二份。 */
   providers: ProviderInfo[]
-  /** 整份设置 —— 它同时是写回的底本。 */
+  /**
+   * **当前空间的生效设置** = 全局那一份合上这个空间的 `providers.json`。
+   * 形状与 `settings.getSettings()` 交下来的逐字相同,见文件头。
+   */
   settings: AppSettings | undefined
+  /**
+   * 这个空间盘上那一份 provider 设置的**原样** —— 写回的底本。
+   *
+   * 与 `settings` 是两格而不是一格:合过的那份里 `temperature` 永远有值
+   * (合的时候拿全局顶上了),拿它去写等于替用户在这个空间按下一次
+   * 「就用这个温度」。哪一格是「这个空间真的表达过的」,只有这一份说得清。
+   *
+   * `undefined` = **后端答不上话**(web 降级 / 这条路由不存在),不是「空的空间」——
+   * 后者是一份 `{ provider:'', providers:{}, customProviders:[] }`。
+   */
+  spaceAi: SpaceProviderSettings | undefined
   /** providerId → 凭证摘要。`credentialsKnown` 为 false 时这张表不算数。 */
   credentials: Record<string, SpaceProviderCredentialSummary>
   /** 凭证那一口读到了没有。读不到 = 全域「状态未知」,不说「未配置」。 */
@@ -194,6 +225,8 @@ interface CachedUsage {
 
 /** 模块级启动闸 —— 「这一个进程启动过没有」不是可渲染状态。 */
 let started = false
+/** 换空间那条订阅的句柄。同理:它是这一个进程的事实,不是屏幕上的一格。 */
+let unsubscribeSpace: (() => void) | undefined
 
 export const useProviderSettings = create<ProviderSettingsState>()((set, get) => {
   /**
@@ -202,21 +235,43 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
    */
   const usageCache = new Map<string, CachedUsage>()
 
-  async function load(): Promise<void> {
+  /**
+   * @param options.skipRoster 换空间那一发传 true —— 见下面那一段。
+   */
+  async function load(options?: { skipRoster?: boolean }): Promise<void> {
     set({ status: 'loading' })
     const port = await providerSettingsPort()
-    // 三发并行且**各自失败各自认**:名册拉不到不该把设置也拖没。
-    const [providers, settings, credentials] = await Promise.all([
-      port.listProviders().catch(() => undefined),
+    // 并行且**各自失败各自认**:名册拉不到不该把设置也拖没。
+    // 后两发认的是**同一个空间**(在这一刻取一次,别让四发各取各的 —— 中途换空间
+    // 会拿到半新半旧的一屏)。
+    const spaceId = currentSpaceId()
+    const [providers, settings, spaceSettings, credentials] = await Promise.all([
+      // **名册换空间时不重拉**:它是机器级的事实(这台机器认识哪些 provider),
+      // 而且这一发**会碰网**(后端顺手拉 models.dev 的整份目录)。换一次空间白碰
+      // 一次网不说,左栏还会跟着空一下再长回来 —— 而它从头到尾就没变过。
+      options?.skipRoster ? undefined : port.listProviders().catch(() => undefined),
       port.readSettings().catch(() => undefined),
-      port.readCredentials(DEFAULT_SPACE_ID).catch(() => undefined),
+      port.readProviderSettings(spaceId).catch(() => undefined),
+      port.readCredentials(spaceId).catch(() => undefined),
     ])
+    // 拉的过程中用户又切了空间:这一屏已经不是「当前空间的」,丢掉 —— 那一次切换
+    // 自己会带来一发新的 load(与 Vue 壳 `spaceProviders.refresh` 的同一道闸)。
+    if (currentSpaceId() !== spaceId) return
 
-    const roster = providers?.success ? (providers.providers ?? []) : undefined
+    // 没重拉名册时,手上那一份仍然作数(`undefined` 才是「读不到」,空数组是
+    // 「读到了,一家都没有」—— 两者在 status 上不是一回事)。
+    const roster =
+      (providers?.success ? (providers.providers ?? []) : undefined) ??
+      (options?.skipRoster ? get().providers : undefined)
     const loaded = settings?.success ? settings.settings : undefined
+    // 后端答不上话(web 降级 / 这条路由不存在)与「这个空间是空的」是两件事:
+    // 前者 `spaceAi` 留 undefined(合出来就是一份空的 provider 表,与从前
+    // 读不到设置时的样子一致),后者是一份真的空设置。两者都不去看别的空间。
+    const spaceAi = spaceSettings?.success ? spaceSettings.ai : undefined
     set({
       providers: roster ?? [],
-      settings: loaded,
+      spaceAi,
+      settings: composeSpaceSettings(loaded, spaceAi),
       credentials: credentials?.success ? (credentials.credentials?.providers ?? {}) : {},
       credentialsKnown: credentials?.success === true,
       // 名册与设置都没有 = 这块面什么都说不出来,那就如实说「读不到」。
@@ -250,20 +305,31 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
    * `customProviders`),而这后半段对谁都一样 —— 两处各抄一遍就是两处会漂开。
    */
   async function commitSettings(base: AppSettings, next: AppSettings): Promise<void> {
+    const baseSpaceAi = get().spaceAi
     set({ settings: next, saving: true })
     let failure: string | undefined
     try {
       const port = await providerSettingsPort()
-      const response = await port.saveSettings(next)
+      // 写的是**这个空间那一份**,不是整份应用设置 —— 理由(以及 default 为什么
+      // 不是特例)写在 `data/provider-settings-port.ts` 的 ③′。
+      const response = await port.writeProviderSettings({
+        id: currentSpaceId(),
+        ai: splitSpaceProviderSettings(next, baseSpaceAi),
+      })
       if (!response.success) failure = response.error || t('providers.saveFailed')
-      else if (response.settings) set({ settings: response.settings })
+      else if (response.ai) {
+        // 底本永远是后端认下的最后一份 —— 连 `settings` 那一格也照它重合一次,
+        // 免得屏幕上留着一份「我以为写成了什么」而盘上是另一份。
+        set({ spaceAi: response.ai, settings: composeSpaceSettings(next, response.ai) })
+      }
     } catch (error) {
       failure = error instanceof Error ? error.message : String(error)
     }
     set({ saving: false })
     if (!failure) return
-    // 回滚回底本。后端没认下的事,屏幕上就不该留着。
-    set({ settings: base })
+    // 回滚回底本 —— **两格一起回**:只回 `settings` 会让下一次写拿着已经变了的
+    // `spaceAi` 去拆,那次写就带着一格没人认下过的事实。
+    set({ settings: base, spaceAi: baseSpaceAi })
     notify({
       level: 'warn',
       source: 'providers.save',
@@ -438,7 +504,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     set((st) => ({ authFlow: { ...st.authFlow, [providerId]: IDLE_AUTH_FLOW } }))
     await get().checkAuth(providerId)
     const port = await providerSettingsPort()
-    const credentials = await port.readCredentials(DEFAULT_SPACE_ID).catch(() => undefined)
+    const credentials = await port.readCredentials(currentSpaceId()).catch(() => undefined)
     if (credentials?.success) {
       set({
         credentials: credentials.credentials?.providers ?? {},
@@ -451,6 +517,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     status: 'idle',
     providers: [],
     settings: undefined,
+    spaceAi: undefined,
     credentials: {},
     credentialsKnown: false,
     selectedFamilyId: null,
@@ -470,6 +537,19 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     start: async () => {
       if (started) return
       started = true
+      // 换空间是这块面**唯一**的刷新点(见文件头)。订在 `load()` 之前:
+      // 工作区列表是异步读的,首次读到时当前空间可能从「persist 槽里那个」
+      // 解析成别的(记着的那个被别的窗口删了),那一下也得重拉。
+      unsubscribeSpace?.()
+      unsubscribeSpace = subscribeCurrentSpace(() => {
+        // 先把上一个空间的东西清干净再拉 —— 凭证摘要与 provider 设置是**这个空间
+        // 的私产**,让它们在新空间的首屏上多留一帧,就是在屏幕上串一次空间的账。
+        // (与列表面「旧内容留到新世界首屏」相反,那里旧内容是同一本账的另一投影,
+        //  这里旧内容是**别人的密钥尾号**。)
+        set({ spaceAi: undefined, settings: undefined, credentials: {}, credentialsKnown: false })
+        usageCache.clear()
+        void load({ skipRoster: true })
+      })
       const port = await providerSettingsPort()
       await port.ready()
       await load()
@@ -519,7 +599,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       try {
         const port = await providerSettingsPort()
         const response = await port.setCredential({
-          id: DEFAULT_SPACE_ID,
+          id: currentSpaceId(),
           providerId,
           apiKey: key,
         })
@@ -600,7 +680,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         providerId,
         (port) =>
           port.setCredential({
-            id: DEFAULT_SPACE_ID,
+            id: currentSpaceId(),
             providerId,
             apiKey: key,
             ...(label.trim() ? { label: label.trim() } : {}),
@@ -615,7 +695,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       await writePool(
         providerId,
         // **带 entryId** —— 这一条就是「换 key 不换条目」的全部实现。
-        (port) => port.setCredential({ id: DEFAULT_SPACE_ID, providerId, entryId, apiKey: key }),
+        (port) => port.setCredential({ id: currentSpaceId(), providerId, entryId, apiKey: key }),
         t('providers.keySaveFailed'),
       )
     },
@@ -628,7 +708,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         providerId,
         (port) =>
           port.setCredentialPool({
-            id: DEFAULT_SPACE_ID,
+            id: currentSpaceId(),
             providerId,
             entryIds: ids.filter((id) => id !== entryId),
           }),
@@ -643,7 +723,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       if (next.every((id, index) => id === ids[index])) return
       await writePool(
         providerId,
-        (port) => port.setCredentialPool({ id: DEFAULT_SPACE_ID, providerId, entryIds: next }),
+        (port) => port.setCredentialPool({ id: currentSpaceId(), providerId, entryIds: next }),
         t('providers.poolFailed'),
       )
     },
@@ -655,7 +735,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       await writePool(
         providerId,
         (port) =>
-          port.setCredentialPool({ id: DEFAULT_SPACE_ID, providerId, entryIds: ids, policy }),
+          port.setCredentialPool({ id: currentSpaceId(), providerId, entryIds: ids, policy }),
         t('providers.poolFailed'),
       )
     },
@@ -778,7 +858,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       set((st) => ({ authFlow: { ...st.authFlow, [providerId]: IDLE_AUTH_FLOW } }))
       await get().checkAuth(providerId)
       const port = await providerSettingsPort()
-      const credentials = await port.readCredentials(DEFAULT_SPACE_ID).catch(() => undefined)
+      const credentials = await port.readCredentials(currentSpaceId()).catch(() => undefined)
       if (credentials?.success) {
         set({ credentials: credentials.credentials?.providers ?? {}, credentialsKnown: true })
       }
@@ -799,7 +879,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       set((st) => ({ usageStatus: { ...st.usageStatus, [providerId]: 'loading' } }))
       try {
         const port = await providerSettingsPort()
-        const response = await port.getProviderUsage(providerId, DEFAULT_SPACE_ID)
+        const response = await port.getProviderUsage(providerId, currentSpaceId())
         if (response.unsupported) {
           // 「这家没有用量」是**后端说的**。存 null,组件据它整块不画。
           set((st) => ({
@@ -914,6 +994,8 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
 
     reset: () => {
       started = false
+      unsubscribeSpace?.()
+      unsubscribeSpace = undefined
       authEpoch.clear()
       usageCache.clear()
       // 目录不在这个 store 里了(K1 样板迁移),但 reset 仍然管它 ——
@@ -924,6 +1006,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         error: undefined,
         providers: [],
         settings: undefined,
+        spaceAi: undefined,
         credentials: {},
         credentialsKnown: false,
         selectedFamilyId: null,

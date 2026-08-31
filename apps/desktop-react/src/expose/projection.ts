@@ -1,4 +1,5 @@
 import { DEFAULT_AGENT_ID } from '@shared/ipc/agents'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 import type { SessionMeta } from '@shared/ipc/chat'
 import type { SessionSegment } from '@shared/ipc/toc'
 import type { UserMessageMarker } from '@shared/ipc/chat'
@@ -120,6 +121,19 @@ export function isListedSession(session: SessionSummary): boolean {
   return !HIDDEN_SESSION_KINDS.includes(session.kind)
 }
 
+/**
+ * 这条会话属不属于某个工作区。**判据单产地** —— 列表过滤、检索、Quick Look、
+ * 「切过去之后焦点该落在谁身上」全吃这一条,与 Vue 壳
+ * `stores/spaces.ts` 的 `sessionBelongsToSpace` 逐字同义。
+ *
+ * 两边都缺省成 `'default'`:老会话的 `workspaceId` 是空的(后端零迁移),
+ * 而 `spaceId` 传空串的调用方指的也是默认空间 —— 少一边缺省,老库切到默认
+ * 工作区就会一条会话都不剩。
+ */
+export function sessionBelongsToSpace(session: SessionSummary, spaceId: string): boolean {
+  return (session.workspaceId || DEFAULT_SPACE_ID) === (spaceId || DEFAULT_SPACE_ID)
+}
+
 /** 一条 SessionMeta → 一条列表事实。缺席的格一律给出诚实的空值,不编。 */
 export function toSessionSummary(meta: SessionMeta): SessionSummary {
   return {
@@ -134,6 +148,7 @@ export function toSessionSummary(meta: SessionMeta): SessionSummary {
     model: sessionModelOf(meta),
     provider: sessionProviderOf(meta),
     agentId: sessionAgentIdOf(meta),
+    workspaceId: meta.workspaceId || DEFAULT_SPACE_ID,
   }
 }
 

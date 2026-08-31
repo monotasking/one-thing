@@ -770,7 +770,7 @@ export const en: Record<MessageKey, string> = {
   'workspace.factDefault': 'Default workspace',
   'workspace.factCreated': 'Created workspace',
   'workspace.scopeNote':
-    'Switching only changes which workspace this window remembers; credentials and connected directories follow the space once the backend wires it up.',
+    'Each workspace keeps its own sessions, model services and credentials. Switching affects this window only — other windows stay on the workspace they are already in.',
   'workspace.paletteLabel': 'Switch workspace',
   'workspace.paletteSearch': 'Find a workspace…',
   'workspace.paletteHint': 'Switch workspace',

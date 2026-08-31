@@ -34,14 +34,26 @@ import {
  * (`onething:current-space`),两把钥匙各记各的当前空间 —— 那正是「window 级」
  * 这四个字的字面结果,不是走漏。
  *
- * ── 留账:切换今天改变了什么,没改变什么 ─────────────────────────────────
- * 改变的:这台壳记住的当前工作区(瓦面的色与字标、三处快切表的 ✓、
- * `documentElement` 上的 `data-workspace`)。
- * **没有**改变的:引擎那一侧 —— 凭证池、接入目录、provider 设置、会话归属
- * 并不随之切换。那需要每一条取数都带上 `workspaceId`,而壳今天的六个端口
- * (sessions / chat / files / models / provider-settings / meter)一条都没有这一格。
- * 这属**后端批**的方案项,不是本批漏做;界面上如实注脚
- * (`workspace.scopeNote`),代码里不假装。
+ * ── 切换换的是什么(09-01「真切换」批)───────────────────────────────────
+ * 08-31 那版这里写着「切换只改这台壳记住的当前工作区,引擎那一侧不随之切换」。
+ * 那条留账已经结清 —— 切换现在是**换世界**,而世界由两条机制换:
+ *
+ *  A. **壳这一侧订这个 store**(`workspace/current.ts` 的 `subscribeCurrentSpace`,
+ *     窄读面 + 去重,三个消费者:`data/sessions-source`(列表按空间投影)、
+ *     `data/models-source`(可见的家与可列的型)、`providers/store`(凭证池与
+ *     provider 设置))。**这个 store 自己不认识那三个消费者** —— 它只把
+ *     「当前是哪一个」摆在那儿,谁要谁订。反过来(store 里挨个去叫)会让
+ *     切换器认识全应用的数据源,那是这一层最不该背的知识。
+ *
+ *  B. **引擎那一侧靠会话归属**,不靠「当前空间」——后端从来没有后者这个概念
+ *     (见上一段)。新会话在 `sessions.create` 时带上 `workspaceId`,此后凭证
+ *     (`resolveSessionProviderCredential(sessionId, …)`)、接入目录
+ *     (`getConnectedDirectoriesForSession(sessionId)`)、provider 设置
+ *     (`getSessionSettings(sessionId).ai`)、沙箱根、用量归因全由那一格派生。
+ *     所以**壳只需要在建会话那一刻说对一次**,不必给每条取数都加参数。
+ *
+ * 换句话说:A 管「屏幕上看得见的是哪个世界」,B 管「引擎认哪个世界」,
+ * 而两者的接缝只有一格 —— 建会话时写下的 `workspaceId`。
  */
 
 /** persist 槽。与 stage / keymap 各自一把钥匙同理:切到哪个工作区是用户的位置,不搭别人的车。 */

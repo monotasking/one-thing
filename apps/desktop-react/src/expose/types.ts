@@ -80,6 +80,20 @@ export interface SessionSummary {
    * 「默认 agent」不是一条值得占一格徽的信息,满屏一个 default 等于没说。
    */
   agentId: string | null
+  /**
+   * SessionMeta.workspaceId —— 这条会话归属哪个工作区。
+   *
+   * **缺席读作 `'default'`,不是 null**,与后端「旧会话零迁移,读取端自己缺省」
+   * 逐字同一条(契约 `@shared/ipc/chat.ts` 的 `SessionMeta.workspaceId`)。
+   * 别的格缺席时给 null 是因为「没有这个事实」;这一格不一样 —— 会话总归属于
+   * 某个空间,没写就是默认那个。
+   *
+   * 缺省**只在一个地方发生**:`projection.sessionBelongsToSpace`。全仓读这一格的
+   * 只有它一个,所以这里保持可选(线上形状本来就是可选的)而不是逼
+   * `toSessionSummary` 之外的每一份手搭夹具都补一格 —— 判据的单产地是那个函数,
+   * 不是这个类型。
+   */
+  workspaceId?: string
 }
 
 /**

@@ -20,10 +20,13 @@ import type {
   SpacesClearCredentialRequest,
   SpacesClearCredentialResponse,
   SpacesGetCredentialsResponse,
+  SpacesGetProviderSettingsResponse,
   SpacesSetCredentialPoolRequest,
   SpacesSetCredentialPoolResponse,
   SpacesSetCredentialRequest,
   SpacesSetCredentialResponse,
+  SpacesSetProviderSettingsRequest,
+  SpacesSetProviderSettingsResponse,
 } from '@shared/ipc/spaces'
 
 /**
@@ -46,24 +49,37 @@ import type {
  * 平台调用面被两个数据源各用了一次**,不是两份契约。
  *
  * ── 写口勘察结论(2026-08-31,file:line 在报告里)──────────────────────────
- * ① **启用开关 / 模型勾选** → `settings.saveSettings(整份 AppSettings)`。
- *    看着像「整份写回太粗」,但它恰恰是唯一正确的那一口:后端
- *    `packages/backend/stores/settings.ts:116-131` 的 `prepareSave` 会把
- *    `ai.providers` 拆出来写进 `workspaces/default/providers.json`,再把剩下的
- *    落 `settings.json` —— 与 `getSettings()`(:96,读的正是 default 空间的生效
- *    settings)严丝合缝。所以读什么形状就写什么形状,**先读整份 → 合并一格 →
- *    整份写回**;漏传一格 = 清空那一格,这条纪律与 Vue 壳的 `patchProviders`
- *    (`packages/renderer/stores/spaceProviders.ts:181-194`)逐字相同。
  * ② **API 密钥** → `spaces.setCredential`,**不是** saveSettings。
- *    同一个 `prepareSave` 走的 `splitEffectiveAISettings` 会把 `apiKey` /
+ *    后端 `prepareSave` 走的 `splitEffectiveAISettings` 会把 `apiKey` /
  *    `oauthToken` / `authType` 三个键剥掉(`SPACE_PROVIDER_STRIPPED_FIELDS`,
  *    `packages/onething-runtime/src/spaces/provider-settings.ts:74-81`),而全局那一半
  *    (`AISettings`)只剩 `temperature` 与 `modelCatalog`。**把密钥塞进
  *    saveSettings 会被静默丢掉** —— 那是「看起来存上了、其实没有」,比报错更坏。
- * ③ **空间**:这块壳今天没有「当前空间」这个事实,所以两条写口都打在
- *    `DEFAULT_SPACE_ID`('default')上。它不是兜底,是这台壳读的那一份:
- *    `getSettings()` 自己就是 `getSpaceSettings(DEFAULT_SPACE_ID)`。
- *    per-space 的模型服务设置归批二(它要先有空间视图)。
+ *
+ * ── ③′ 空间:两条写口都打在**当前工作区**上(09-01「真切换」批)──────────
+ * 08-31 那版写着「这块壳今天没有『当前空间』这个事实,所以两条写口都打在
+ * `DEFAULT_SPACE_ID` 上」。壳有了当前工作区之后,那句话就从「诚实的降级」变成了
+ * **一颗静默的雷**,而且是双向的:
+ *
+ *  - 写偏了:用户站在工作区 B 里填的 key 与勾的模型,落进了 `default` 的文件;
+ *  - 读不着:引擎起流时读的是**会话归属那个空间**的设置
+ *    (`backend/wiring/engine/stream/provider-helpers.ts:110` 的
+ *     `getSessionSettings(sessionId).ai` = `getSpaceSettings(会话的 workspaceId)`,
+ *     凭证同理走 `resolveSessionProviderCredential(sessionId, providerId)`)。
+ *    于是 B 里配得再全,B 的会话照样起不了流 —— 而设置页显示一切正常。
+ *
+ * 所以 **①(启用开关 / 模型勾选 / 默认模型)从 `settings.saveSettings` 改走
+ * `spaces.setProviderSettings({ id: 当前空间, ai })`**,与 Vue 壳
+ * (`stores/spaceProviders.ts:160-227` 的 `writeProviderSettings` / `patchProviders`)
+ * 逐字同一条路 —— 不是本批发明的新语义,是把新壳漏掉的那一条接回来。
+ *
+ * **default 不是特例**(与凭证 C1 同一条):`settings.getSettings()` 本身就是
+ * `getSpaceSettings('default')`,而 `prepareSave` 的注释白纸黑字写着「`ai.providers`
+ * 不在 = 调用方自己已经把 per-space 那一半写进 providers.json 了」—— 所以对
+ * default 空间,新旧两条写口落的是**同一个文件**。一条路走到底,不分岔。
+ *
+ * 留在 `settings` 那一口上的只剩两件**本来就是全局**的事实:`ai.modelCatalog`
+ * (models.dev 目录快照)与 ai 段之外的所有设置。
  */
 export interface ProviderSettingsPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
@@ -75,10 +91,27 @@ export interface ProviderSettingsPort {
    * 不传就吃后端缓存,开一次面不该把 models.dev 问一遍。
    */
   listModels(providerId: string, forceRefresh?: boolean): Promise<ModelsListResponse>
-  /** 整份应用设置。它同时是**写回的底本** —— 不留着它就没法「合并一格」。 */
+  /**
+   * 整份应用设置。**provider 那一半不再从这里读**(见 ③′)—— 留着它是因为这块面
+   * 还要 `ai.modelCatalog`(models.dev 目录快照,全空间共享)与非 ai 的那些段,
+   * 而且它仍然是**非 provider 那一半**写回的底本。
+   */
   readSettings(): Promise<GetSettingsResponse>
   /** 整份写回。见上面 ①。 */
   saveSettings(settings: AppSettings): Promise<SaveSettingsResponse>
+  /**
+   * 这个空间那份 provider 设置(`workspaces/<id>/providers.json`)。**无回落** ——
+   * 读不到就是这个空间还没配过,不是「去看全局那一份」。见 ③′。
+   */
+  readProviderSettings(spaceId: string): Promise<SpacesGetProviderSettingsResponse>
+  /**
+   * 整层写回这个空间的 provider 设置。**传什么就是什么**(缺字段 = 清空),
+   * 所以调用方一律「先读整份 → 合并一格 → 整份写回」,与 Vue 壳
+   * `stores/spaceProviders.ts` 的 `patchProviders` 是同一条纪律。
+   */
+  writeProviderSettings(
+    request: SpacesSetProviderSettingsRequest,
+  ): Promise<SpacesSetProviderSettingsResponse>
   /** 凭证**摘要**:有没有 key、尾号、有没有 OAuth、哪个账号。原文永远不出后端。 */
   readCredentials(spaceId: string): Promise<SpacesGetCredentialsResponse>
   /** 写一条凭证。见上面 ②。 */
@@ -156,6 +189,8 @@ async function realPort(): Promise<ProviderSettingsPort> {
       modelsApi.getModelsWithCapabilities(providerId, forceRefresh ? { forceRefresh } : undefined),
     readSettings: () => settingsApi.getSettings(),
     saveSettings: (settings) => settingsApi.saveSettings(settings),
+    readProviderSettings: (spaceId) => spacesApi.getProviderSettings({ id: spaceId }),
+    writeProviderSettings: (request) => spacesApi.setProviderSettings(request),
     readCredentials: (spaceId) => spacesApi.getCredentials({ id: spaceId }),
     setCredential: (request) => spacesApi.setCredential(request),
     setCredentialPool: (request) => spacesApi.setCredentialPool(request),

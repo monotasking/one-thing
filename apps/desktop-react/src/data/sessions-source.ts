@@ -10,7 +10,9 @@ import {
   toSessionMarker,
   toSessionSummary,
   isListedSession,
+  sessionBelongsToSpace,
 } from '../expose/projection'
+import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
 import type {
   ProjectSummary,
   SessionChapter,
@@ -73,6 +75,24 @@ import { sessionsPort } from './sessions-port'
  * 形态机那一侧(Quick Look 正开着被删的那条 / 当前会话被删)不在这里判:
  * 数据源只管数据,摘完之后经 `onSessionsRemoved` 把 id 交出去,
  * expose/store.ts 那层壳再调纯函数 `sessionsRemoved` 夹持形态。
+ *
+ * ── 工作区:一本全库账,一份屏幕投影(09-01「真切换」批)───────────────────
+ * `listMeta` **不带空间参数**(契约上没有这一格),它交下来的是这台机器上的
+ * 全部会话。所以这里存两样东西,分工严格:
+ *
+ *  - **全库账**(模块级 `ledger`):listMeta 那一份的原样,未经任何投影过滤。
+ *    SSE 的增量(改名 / 抬时间 / 摘除)全都打在它身上。
+ *  - **屏幕那一份**(store 里的 `sessions` / `projects` / `groups`):
+ *    全库账 ∩ 可陈列的形态 ∩ **当前工作区**(`visibleOf`)。
+ *
+ * 分这两层是为了让**切换工作区不发一次请求**:换世界只是拿同一本账重投影一次,
+ * 同步完成 —— 于是没有「清空 → 骨架 → 重灌」的那一档,四律第 2 条(重拉期间旧
+ * 内容留在屏上)在这里被满足得更彻底:根本没有重拉。账本本身由 SSE 保持新鲜,
+ * 别的空间的会话在账上照样跟着动,切回去时次序就是对的。
+ *
+ * 08-31 那张 `hiddenIds` 名单随之退役:它当初存在是因为「被滤掉的会话不在
+ * `state.sessions` 里,于是它们的事件会被判据 a 当成新建」。全库账里什么都有,
+ * 「认不认识」直接问账本即可 —— 一个名单少一个会跟真相走散的副本。
  */
 
 /** 重拉的最小间隔。一次流里事件密集,合并窗口就是「最多一秒一次」。 */
@@ -176,17 +196,33 @@ function project(sessions: SessionSummary[]): Pick<SessionsSourceState, 'session
   return { sessions, projects, groups: buildGroups(projects, sessions) }
 }
 
-/** 模块级的订阅句柄与节流闸 —— 它们是「这一个进程的事实」,不是可渲染状态。 */
 /**
- * 「认识但不陈列」的名单(08-31 投影过滤的配套):被 isListedSession 滤掉的
- * 执行会话/群房照样在发事件,若只拿「在不在列表里」当判据 a,它们每条事件都会
- * 触发一次整表重拍(拉回来还是被滤掉,下一条事件再拍)。所以 loadList 顺手把
- * 滤掉的 id 记在这里,onEvent 判「不认识」时把这份也算上。
+ * **全库账** —— `listMeta` 交下来那一份的原样(未经形态过滤、未经空间过滤)。
+ * 见文件头「一本全库账,一份屏幕投影」。它是这一个进程的事实,不是可渲染状态,
+ * 所以住在模块级而不是 store 里:进 store 就会有第二份可被订阅的会话表,
+ * 而「屏幕上那一份是哪一份」立刻就有两个答案。
  */
-let hiddenIds = new Set<string>()
+let ledger: SessionSummary[] = []
 
+/**
+ * 屏幕上那一份的**唯一**判据:可陈列的形态 ∩ 当前工作区。
+ * 两条过滤都是投影,数据本体一条不动 —— 检索、账本、引擎一概不受影响。
+ */
+function visibleOf(all: readonly SessionSummary[]): SessionSummary[] {
+  const spaceId = currentSpaceId()
+  return all.filter((s) => isListedSession(s) && sessionBelongsToSpace(s, spaceId))
+}
+
+/** 换一本全库账,顺手算出屏幕那一份。**换账只经这一口**。 */
+function publish(all: SessionSummary[]): Pick<SessionsSourceState, 'sessions' | 'projects' | 'groups'> {
+  ledger = all
+  return project(visibleOf(all))
+}
+
+/** 模块级的订阅句柄与节流闸 —— 它们是「这一个进程的事实」,不是可渲染状态。 */
 let unsubscribe: (() => void) | undefined
 let unsubscribeLifecycle: (() => void) | undefined
+let unsubscribeSpace: (() => void) | undefined
 let started = false
 let lastRefreshAt = 0
 let refreshTimer: ReturnType<typeof setTimeout> | undefined
@@ -226,13 +262,8 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
         set({ status: 'error', error: response.error || 'sessions.listMeta 未成功' })
         return
       }
-      // 投影过滤(08-31 拍板):执行会话(kind 'agent')与群房('room')不进列表 ——
-      // 判据单产地在 projection.isListedSession,数据本体不动。滤掉的 id 记进
-      // hiddenIds,免得它们的事件把判据 a 当成「有人新建」(见那张名单的注释)。
-      const all = (response.sessions ?? []).map(toSessionSummary)
-      const listed = all.filter(isListedSession)
-      hiddenIds = new Set(all.filter((s) => !isListedSession(s)).map((s) => s.id))
-      set({ status: 'ready', error: undefined, ...project(listed) })
+      // 全库账原样收下;两道投影过滤(形态 08-31 / 工作区 09-01)在 publish 里。
+      set({ status: 'ready', error: undefined, ...publish((response.sessions ?? []).map(toSessionSummary)) })
     } catch (error) {
       set({ status: 'error', error: error instanceof Error ? error.message : String(error) })
     }
@@ -260,25 +291,40 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     if (type === SESSION_EVENT_TYPES.SESSION_REMOVED) return
 
     const state = get()
-    const known = state.sessions.some((s) => s.id === sessionId) || hiddenIds.has(sessionId)
-    // 「认识但不陈列」的那批(hiddenIds)不算新建:它们的事件对列表没有话说。
-    if (hiddenIds.has(sessionId)) return
-    // 判据 a:不认识这条会话 = 有人新建了一条,只能整表重拉。
+    // 判据 a:**全库账**里没有这条 = 有人新建了一条,只能整表重拉。
+    // 问账本而不是问屏幕那一份:被形态过滤掉的执行会话、以及别的工作区里的会话
+    // 都在账上,它们的事件不该被当成新建(08-31 那张 hiddenIds 名单就是干这个的,
+    // 全库账上线之后它没有存在的理由了)。
+    const known = ledger.some((s) => s.id === sessionId)
     if (!known) {
       scheduleRefresh()
       return
     }
+    // 增量照旧打在账上;**屏幕看不见的那条不重投影** —— 别的工作区里跑着的流
+    // 每来一条 delta 都重排一次当前工作区的列表,是白烧一次 CPU。
+    // 账上那一格照样更新:切回去时次序就是对的。
+    const onScreen = state.sessions.some((s) => s.id === sessionId)
 
     // 判据 b:改名自带新名字,一格增量就够。
     if (type === SESSION_EVENT_TYPES.SESSION_RENAMED) {
       const name = (envelope.event as { name?: string }).name
       if (typeof name !== 'string') return
-      set(project(state.sessions.map((s) => (s.id === sessionId ? { ...s, title: name } : s))))
+      const next = ledger.map((s) => (s.id === sessionId ? { ...s, title: name } : s))
+      if (!onScreen) {
+        ledger = next
+        return
+      }
+      set(publish(next))
       return
     }
 
     // 判据 c / d:消息动了 → 抬时间 + 作废这条会话的按需缓存。
     if (MESSAGE_EVENTS.includes(type)) {
+      const next = ledger.map((s) =>
+        s.id === sessionId ? { ...s, updatedAt: Math.max(s.updatedAt, envelope.timestamp) } : s,
+      )
+      // 缓存作废**无条件**:三份按会话缓存与「这条会话此刻在不在屏上」无关,
+      // 少作废一次就会在切回那个工作区时拿一份陈的正文出来画。
       const messages = { ...state.messages }
       delete messages[sessionId]
       const markers = { ...state.markers }
@@ -289,14 +335,13 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
         delete chapters[sessionId]
         patch.chapters = chapters
       }
-      set({
-        ...patch,
-        ...project(
-          state.sessions.map((s) =>
-            s.id === sessionId ? { ...s, updatedAt: Math.max(s.updatedAt, envelope.timestamp) } : s,
-          ),
-        ),
-      })
+      // 重投影只给屏上那批 —— 别的工作区里的流不该每条 delta 重排一次本区列表。
+      if (!onScreen) {
+        ledger = next
+        set(patch)
+        return
+      }
+      set({ ...patch, ...publish(next) })
     }
     // 判据 e:其余一律忽略。
   }
@@ -319,21 +364,47 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     if (gone.size === 0) return
 
     const state = get()
-    const sessions = state.sessions.filter((s) => !gone.has(s.id))
+    // 摘的是**全库账**:级联子会话常常既不在屏上、也不在当前工作区里,
+    // 只摘屏幕那一份会让它们留在账上,下一条事件又把判据 a 骗成「有人新建」。
+    const nextLedger = ledger.filter((s) => !gone.has(s.id))
     const chapters = dropKeys(state.chapters, gone)
     const messages = dropKeys(state.messages, gone)
     const markers = dropKeys(state.markers, gone)
     const untouched =
-      sessions.length === state.sessions.length &&
+      nextLedger.length === ledger.length &&
       chapters === state.chapters &&
       messages === state.messages &&
       markers === state.markers
-    if (!untouched) set({ chapters, messages, markers, ...project(sessions) })
+    if (!untouched) set({ chapters, messages, markers, ...publish(nextLedger) })
 
     // 通知在 set 之后:形态机拿到的那份分组事实必须是**摘除之后**的,
     // 否则「焦点退到新序列首」会退到一张马上就要消失的卡上。
     // 哪怕这一条对我们是恒等变换也照发 —— 屏幕上可能正开着它的 Quick Look。
     for (const listener of removedListeners) listener([...gone])
+  }
+
+  /**
+   * 换了工作区 —— **同一本账重投影一次,一发请求都不打**。
+   *
+   * 三件事,次序即语义:
+   *  1. 先记下换之前屏上有哪些 id(离场名单要拿它算);
+   *  2. `publish(ledger)` 用新的当前工作区重算屏幕那一份 —— 同步完成,
+   *     所以从旧世界到新世界首屏之间**没有一帧空屏**,骨架一次都不画
+   *     (四律第 2 条在这里是「根本没有重拉」而不是「重拉期间留旧的」);
+   *  3. 把离场的 id 交给 `onSessionsRemoved` 那条既有接缝 —— 形态机据此夹持焦点、
+   *     关掉正开着的 Quick Look、清掉 `currentSessionId`。「离场」与「被删」对
+   *     形态机是同一件事(那张卡不在序列里了),所以复用那一条而不是新开一条:
+   *     多一条通知面就多一个会跟它走散的焦点夹持规则。
+   *
+   * **账本一个字不动**:别的工作区的会话仍然在账上、仍然收 SSE 增量。切回去时
+   * 次序是对的,而且照样不必重拉。
+   */
+  function onSpaceChanged(): void {
+    const before = new Set(get().sessions.map((s) => s.id))
+    set(publish(ledger))
+    const left = [...before].filter((id) => !get().sessions.some((s) => s.id === id))
+    if (left.length === 0) return
+    for (const listener of removedListeners) listener(left)
   }
 
   return {
@@ -356,6 +427,9 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       // 先订上再拉:拉的那一刻起的事件不能漏(与 D0 连通面同一条理由)。
       unsubscribe = port.onSessionEvent(onEvent)
       unsubscribeLifecycle = port.onSessionLifecycle(onLifecycle)
+      // 换工作区也一样先订上:工作区列表是异步读的,首次读到时 currentSpaceId()
+      // 可能从「persist 槽里那个」解析成别的(那个空间被删了),这一下也要重投影。
+      unsubscribeSpace = subscribeCurrentSpace(onSpaceChanged)
       lastRefreshAt = Date.now()
       await loadList()
     },
@@ -369,7 +443,10 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       const port = await sessionsPort()
       let created
       try {
-        created = await port.create({})
+        // **归属当场落定**:后端不认识「当前空间」(那是 window 级状态),
+        // 所以每次建都得显式带上 —— 漏了这一格,新会话会静默落进 default,
+        // 而用户明明站在别的工作区里(Vue 壳 `stores/sessions.ts:699` 同一手)。
+        created = await port.create({ workspaceId: currentSpaceId() })
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) }
       }
@@ -470,11 +547,13 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     },
 
     reset: () => {
-      hiddenIds = new Set()
+      ledger = []
       unsubscribe?.()
       unsubscribe = undefined
       unsubscribeLifecycle?.()
       unsubscribeLifecycle = undefined
+      unsubscribeSpace?.()
+      unsubscribeSpace = undefined
       started = false
       lastRefreshAt = 0
       if (refreshTimer) clearTimeout(refreshTimer)
