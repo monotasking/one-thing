@@ -85,6 +85,24 @@ configureChatPort({
 })
 
 /**
+ * 斜杠命令里插件那一半的端口:同一条理由,同一手(D4 波二)。
+ *
+ * 默认这一份**读得到但是空**(这台机器一个插件命令都没有,那是真实存在的
+ * 状态),执行口一律 `success:false` —— 没有哪个用例该因为默认端口而真的
+ * 跑了一条插件命令。要验的用例自己 `configureCommandsPort` 换一个。
+ *
+ * 内置那七条不经端口:它们是 `@onething/core/slash-commands` 的编译期常量。
+ */
+import { configureCommandsPort } from '../data/commands-port'
+
+configureCommandsPort({
+  ready: async () => undefined,
+  listPluginCommands: async () => ({ success: true, commands: [] }),
+  executePluginCommand: async () => ({ success: false, error: 'no commands port in tests' }),
+  compactContext: async () => ({ success: false, error: 'no commands port in tests' }),
+})
+
+/**
  * agent 名册的端口:同一条理由,同一手。顶栏在每一个渲染了外壳的用例里都在,
  * 不装的话它们会一起去摸真的 `@renderer/platform`。
  */
@@ -151,6 +169,25 @@ configureProviderSettingsPort({
   saveSettings: async () => ({ success: false, error: 'no provider settings port in tests' }),
   readCredentials: async () => ({ success: false, error: 'no provider settings port in tests' }),
   setCredential: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  setCredentialPool: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  clearCredential: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  // 登录态默认答「没登上」而不是抛:未登录是一个**真答案**,而这块面在
+  // 未登录时要画的正是登录入口。抛出去会让每个用例都得先按住一个错误。
+  oauthStatus: async () => ({ success: true, isLoggedIn: false }),
+  oauthStart: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  oauthDevicePoll: async () => ({
+    success: false,
+    completed: false,
+    error: 'no provider settings port in tests',
+  }),
+  oauthCallback: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  oauthLogout: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  // 用量默认 `unsupported` —— 那正是绝大多数 provider 在真机上的答案。
+  getProviderUsage: async (providerId: string) => ({
+    success: true,
+    providerId,
+    unsupported: true,
+  }),
 })
 
 /**
@@ -166,6 +203,25 @@ configureMeterPort({
     throw new Error('no meter port in tests')
   },
   getTokenUsage: async () => ({ success: false, error: 'no meter port in tests' }),
+})
+
+/**
+ * 工作区(space)的端口:同一条理由,同一手。Dock 在每一个渲染了外壳的用例里都在,
+ * 而它开工就读一次工作区列表 —— 不装的话它们会一起去摸真的 `@renderer/platform`。
+ *
+ * 默认这一份**读得到、只有默认那一个**:那是一台刚装好、还没建过空间的机器的
+ * 真实样子(不是「读不到」—— 读不到会让瓦面退成兜底图标,把每个用例都拖进
+ * 降级路径)。三条写口一律 `success:false`:没有哪个用例该因为默认端口而
+ * 真的在这台机器上建出 / 改掉 / 删掉一个工作区。
+ */
+import { configureSpacesPort } from '../data/spaces-port'
+
+configureSpacesPort({
+  ready: async () => undefined,
+  list: async () => ({ success: true, spaces: [{ id: 'default', name: 'Default', createdAt: 0 }] }),
+  create: async () => ({ success: false, error: 'no spaces port in tests' }),
+  update: async () => ({ success: false, error: 'no spaces port in tests' }),
+  remove: async () => ({ success: false, error: 'no spaces port in tests' }),
 })
 
 /**

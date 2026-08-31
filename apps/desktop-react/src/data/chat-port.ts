@@ -5,6 +5,7 @@ import type {
 import type { SessionCommandEmitResult } from '@shared/ipc/session-command'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@renderer/platform/types'
+import { expandFileTokens } from '@shared/prompt-references'
 
 /**
  * 聊天数据源与 `@renderer/platform` 之间的那一层**端口**(D3,路线 A)。
@@ -35,8 +36,26 @@ export interface ChatPort {
   onSessionEvent(callback: (envelope: SessionEventEnvelope) => void): () => void
   /** 流分片推送(活尾巴的唯一进料口)。 */
   onSessionStream(callback: (payload: SessionStreamPayload) => void): () => void
-  /** 发一条纯文本用户消息。@提及 / 附件不在 D3 —— 端口上也就没有那两个参数。 */
+  /**
+   * 发一条纯文本用户消息。附件不在这一批 —— 端口上也就没有那个参数。
+   *
+   * ── 出站唯一的那道展开(D3 波二)──────────────────────────────────────
+   * `@` 引用在草稿里是 `{{file:<绝对路径>}}`(chip 是呈现,token 才是位置),
+   * **交出去之前**由 `expandFileTokens` 就地换回 `@<绝对路径>`。落点定在这一条
+   * 而不是输入面板,理由是「单一出口」:壳里所有会变成一条用户消息的路
+   * (发送键 / 回车 / ask 交卷 / 将来的草稿纸)最后都汇到这一口,
+   * 在上游各展开一次必然漏掉其中一条。
+   *
+   * `retryMessage` 不涉:那条消息早已落账,重跑的是账本上的原文。
+   */
   sendMessage(sessionId: string, content: string): Promise<SessionCommandEmitResult>
+  /*
+   * `/compact` **不在这条端口上**(D4 波二)。它骑的确实是同一条命令总线
+   * (`command:compact-context`),但它不是「聊天这块屏幕的一个动作」——
+   * 它是斜杠命令表里的一条,与 `/cd` `/new` 一起住在 `data/commands-port.ts`。
+   * 判据是**谁按下它**,不是它最后落到哪条总线上:按发送键的那一下归这里,
+   * 从命令表里派出去的那一下归那里。
+   */
   /**
    * 中止这条会话正在跑的那一轮(`command:abort`)。
    *
@@ -87,7 +106,8 @@ async function realPort(): Promise<ChatPort> {
     sendMessage: (sessionId, content) =>
       sessionCommands.emit({
         sessionId,
-        command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, content },
+        // 出站唯一的那道展开:`{{file:…}}` → `@<路径>`(见接口上的注)。
+        command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, content: expandFileTokens(content) },
       }),
     abort: (sessionId) =>
       sessionCommands.emit({

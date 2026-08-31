@@ -16,10 +16,42 @@ import s from './Composer.module.css'
 
 export interface ComposerInputHandle {
   focus: () => void
-  /** 把光标处的 @xx / /xx 换成一枚 chip(files)或命令徽(commands) */
-  insert: (kind: 'files' | 'commands', label: string) => void
+  /**
+   * 把光标处的 @xx / /xx 换成一枚 chip(files)或命令徽(commands)。
+   *
+   * `token` 是**这枚 chip 在草稿里真正代表的那截文本**(`@` 引用是
+   * `{{file:<绝对路径>}}`)。给了就挂在 `data-token` 上,`text()` 交出去时
+   * 用它顶替屏幕上那几个字;不给 = 屏幕上写什么、交出去就是什么。
+   */
+  insert: (kind: 'files' | 'commands', label: string, token?: string) => void
   text: () => string
   clear: () => void
+}
+
+/**
+ * 把这块可编辑区读成**草稿文本**。
+ *
+ * 与 `textContent` 的唯一差别是那一句 `data-token`:一枚文件 chip 屏幕上写的是
+ * `@src/a.ts`(人心里的名字),而草稿里它代表的是 `{{file:/abs/src/a.ts}}` ——
+ * 「chip 是呈现,token 才是位置」正是 `@shared/prompt-references` 里
+ * `FILE_REF_PATTERN` 那段注释说的事(Vue 壳把 token 直接放在纯文本草稿里,
+ * 由编辑器画成 chip;这块 contenteditable 反过来,chip 是真节点、token 挂在它身上。
+ * 两边**交出去的那句话逐字相同**,那才是要紧的)。
+ *
+ * 其余一切照旧:`<br>` 与 contenteditable 自己包出来的 `<div>` 都不产生换行,
+ * 与从前 `textContent` 的行为逐字一致(那是既有口径,这一批不动)。
+ */
+function readDraft(root: Node): string {
+  let out = ''
+  for (const node of Array.from(root.childNodes)) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.textContent ?? ''
+      continue
+    }
+    const token = node instanceof HTMLElement ? node.dataset.token : undefined
+    out += token ?? readDraft(node)
+  }
+  return out
 }
 
 interface Props {
@@ -80,11 +112,11 @@ export function ComposerInput({
 
   useImperativeHandle(apiRef, () => ({
     focus: () => ref.current?.focus(),
-    text: () => ref.current?.textContent ?? '',
+    text: () => (ref.current ? readDraft(ref.current) : ''),
     clear: () => {
       if (ref.current) ref.current.innerHTML = ''
     },
-    insert: (kind, label) => {
+    insert: (kind, label, token) => {
       const el = ref.current
       if (!el) return
       const cur = caretToken(el)
@@ -96,6 +128,7 @@ export function ComposerInput({
       const chip = document.createElement('span')
       chip.className = kind === 'files' ? s.chip : s.cmdTok
       chip.textContent = kind === 'files' ? `@${label}` : label
+      if (token) chip.dataset.token = token
       chip.contentEditable = 'false'
       const after = document.createTextNode(` ${rest}`)
       cur.node.textContent = before

@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { createFileToken } from '@shared/prompt-references'
+import type { FilesListRequest } from '@shared/ipc/files'
 import { Composer } from './Composer'
 import { useComposerStore, resetComposerStore } from '../store'
 import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
 import { useStageStore } from '../../stage/store'
 import { useChatSource } from '../../data/chat-source'
+import { useCommandsSource } from '../../data/commands-source'
+import {
+  FILE_MENTION_DEBOUNCE_MS,
+  useFileMentionsSource,
+} from '../../data/file-mentions-source'
+import { configureFilesPort } from '../../data/files-port'
 import { useModelsSource } from '../../data/models-source'
 
 /**
@@ -27,6 +35,11 @@ let hasSession = true
 let starts = 0
 /** 那一发怎么答。默认当场给一条新会话;要验「在飞」的用例自己换成一只挂着的 promise。 */
 let answerStart: () => Promise<string | undefined> = async () => 'created-1'
+
+/** `@` 候选那条口收到过哪几发请求(去抖验的就是这个数)。 */
+const fileAsks: FilesListRequest[] = []
+/** 假的工作区:两个文件,顺序即后端给的顺序(这一层一个字都不重排)。 */
+const REPO_FILES = ['/repo/src/model-capability.ts', '/repo/src/codex.ts']
 
 /**
  * 组件层只钉「谁在场、谁让位、键盘归谁」—— 判断本身在 transitions.test.ts。
@@ -58,6 +71,31 @@ beforeEach(() => {
     },
   })
   useChatSource.setState({ activeMessageId: undefined })
+
+  /*
+   * `@` 候选走真数据源(D3 波二),所以这里换的是**端口**而不是候选表:
+   * 「词怎么传、cwd 怎么定、一行怎么念」归 data/file-mentions-source.test.ts,
+   * 这一层只验编排 —— 什么时候发、发几次、选中之后草稿里留下什么。
+   */
+  fileAsks.length = 0
+  useFileMentionsSource.getState().reset()
+  configureFilesPort({
+    ready: async () => undefined,
+    listDirectory: async () => ({ success: false, error: 'not used here' }),
+    stat: async () => ({ success: false, error: 'not used here' }),
+    readContent: async () => ({ success: false, error: 'not used here' }),
+    reveal: async () => ({ success: false, error: 'not used here' }),
+    list: async (request) => {
+      fileAsks.push(request)
+      return {
+        success: true,
+        files: REPO_FILES,
+        entries: REPO_FILES.map((path) => ({ path, type: 'file' as const })),
+      }
+    },
+  })
+  // 命令表:内置那七条是编译期常量(不经端口),插件那一半用 setup 里的空表。
+  useCommandsSource.getState().reset()
   /*
    * 模型目录:直接摆一份 store 状态,不去动端口 —— 这一层要验的是「谁在场」,
    * 取数(两道闸、懒加载、上行三态)归 data/models-source.test.ts。
@@ -78,6 +116,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   configureComposerSink(undefined)
+  configureFilesPort(undefined)
+  useFileMentionsSource.getState().reset()
+  useCommandsSource.getState().reset()
   // 包在 act 里:vitest 的 afterEach 后进先出,这一钩比 RTL 的卸载先跑,
   // 那时组件还挂着 —— 一次 store 归零就是一次 act 之外的重渲染。
   act(() => {
@@ -87,6 +128,16 @@ afterEach(() => {
 
 const state = () => useComposerStore.getState()
 const modelPill = () => screen.getByRole('button', { name: /选择模型/ })
+const inputBox = () => screen.getByRole('textbox', { name: /说点什么|再按一次/ })
+
+/** 把去抖窗口走完,并让那一次往返落地。 */
+async function settleMentions() {
+  await act(async () => {
+    vi.advanceTimersByTime(FILE_MENTION_DEBOUNCE_MS)
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
 
 /** 在 contenteditable 里「打」一段话:落文本 + 把光标放到末尾 + 发 input。 */
 function type(el: HTMLElement, text: string) {
@@ -104,16 +155,19 @@ function type(el: HTMLElement, text: string) {
 }
 
 describe('抽屉:一个槽,后来者顶替先来者', () => {
-  it('打出 @ 就开文件抽屉;模型抽屉正开着时被它直接顶掉', () => {
+  it('打出 @ 就开文件抽屉;模型抽屉正开着时被它直接顶掉', async () => {
+    vi.useFakeTimers()
     render(<Composer />)
     fireEvent.click(modelPill())
     expect(screen.getByLabelText('搜模型或 Provider…')).toBeTruthy()
 
-    type(screen.getByRole('textbox', { name: /说点什么/ }), '看看 @model')
+    type(inputBox(), '看看 @model')
     expect(state().drawerKind).toBe('files')
     expect(screen.queryByLabelText('搜模型或 Provider…')).toBeNull()
     expect(screen.getByText('引用文件')).toBeTruthy()
-    expect(screen.getByText('model-capability.ts')).toBeTruthy()
+
+    await settleMentions()
+    expect(screen.getByText('/repo/src/model-capability.ts')).toBeTruthy()
   })
 
   it('Esc 收抽屉(并 preventDefault:外层只在 !defaultPrevented 时才轮到它)', () => {
@@ -151,10 +205,142 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
 
   it('命令抽屉里的 /ask-demo 是 dev 扳机:选中即把本体变成问卷', () => {
     render(<Composer />)
-    type(screen.getByRole('textbox', { name: /说点什么/ }), '/ask')
+    type(inputBox(), '/ask')
     fireEvent.mouseDown(screen.getByText('/ask-demo'))
     expect(state().mode).toBe('ask')
     expect(state().drawerKind).toBeNull()
+  })
+})
+
+/**
+ * `@` 引用(D3 波二)。候选来自真产地(`files.list`),而 chip 与草稿是**两样东西**:
+ * 屏幕上那几个字是给人看的,草稿里那一截 `{{file:…}}` 才是这枚 chip 的位置。
+ * 「展开成 `@<路径>`」发生在更下游(chat-port,见 data/chat-port.test.ts)。
+ */
+describe('@ 引用:候选是真的,插进去的是 token', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  it('去抖 120ms:窗口里连打几下只发一次,发的就是最后那个词', async () => {
+    render(<Composer />)
+    const box = inputBox()
+
+    type(box, '看看 @m')
+    type(box, '看看 @mo')
+    type(box, '看看 @mod')
+    expect(fileAsks, '去抖窗口里一发都不该发出去').toHaveLength(0)
+
+    await settleMentions()
+    expect(fileAsks).toHaveLength(1)
+    // 没有当前会话 = 没有工作目录:`cwd` 与 `sessionId` 两格都**不带**,
+    // 不在渲染层拼一个根去顶(判据见 data/file-mentions-source.ts 文件头)。
+    expect(fileAsks[0]).toEqual({ query: 'mod', limit: 50 })
+  })
+
+  it('抽屉一收就把候选散掉 —— 它是「此刻在匹配什么」,不是缓存', async () => {
+    render(<Composer />)
+    type(inputBox(), '看看 @mod')
+    await settleMentions()
+    expect(useFileMentionsSource.getState().mentions).toHaveLength(2)
+
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
+    expect(state().drawerKind).toBeNull()
+    expect(useFileMentionsSource.getState().mentions).toEqual([])
+  })
+
+  it('已到手的那批里再收一次 —— 多打两个字,列表当场收窄,不等下一次往返', async () => {
+    render(<Composer />)
+    const box = inputBox()
+    // 刚敲下 `@`:空词也发,该出全表。
+    type(box, '看看 @')
+    await settleMentions()
+    expect(screen.getByText('/repo/src/model-capability.ts')).toBeTruthy()
+    expect(screen.getByText('/repo/src/codex.ts')).toBeTruthy()
+
+    // 这一下还在下一个去抖窗口里(一发都还没走),但屏幕已经该只剩一条了。
+    type(box, '看看 @codex')
+    expect(screen.queryByText('/repo/src/model-capability.ts')).toBeNull()
+    expect(screen.getByText('/repo/src/codex.ts')).toBeTruthy()
+  })
+
+  it('选中一条:chip 上写路径,交出去的那句话里是 {{file:…}}', async () => {
+    render(<Composer />)
+    const box = inputBox()
+    type(box, '看看 @model')
+    await settleMentions()
+
+    fireEvent.mouseDown(screen.getByText('/repo/src/model-capability.ts'))
+    expect(state().drawerKind).toBeNull()
+    // 屏幕上是一枚写着 `@路径` 的 chip(呈现)。
+    expect(box.textContent).toContain('@/repo/src/model-capability.ts')
+
+    fireEvent.click(screen.getByTestId('composer-send'))
+    // 交出去的是**草稿**:chip 那一格换成它代表的 token(位置)。
+    expect(handed.at(-1)).toEqual({
+      kind: 'text',
+      attachments: 0,
+      text: `看看 ${createFileToken('/repo/src/model-capability.ts')}`,
+    })
+  })
+})
+
+/**
+ * `/` 命令(D4 波二)。这一层钉的是**路由**:选中做什么、按下发送之后谁接手。
+ * 「一条命令具体怎么执行」在 data/commands-source.test.ts。
+ */
+describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => {
+  const send = () => screen.getByTestId('composer-send')
+
+  it('抽屉里列的是 core 注册表那七条,不是壳编的', () => {
+    render(<Composer />)
+    type(inputBox(), '/c')
+    expect(screen.getByText('/cd')).toBeTruthy()
+    expect(screen.getByText('/compact')).toBeTruthy()
+    // 波一那三条样例(/review /plan /test)整仓没有产地,已经删掉。
+    expect(screen.queryByText('/review')).toBeNull()
+  })
+
+  it('选中 /cd:只把命令徽插进框里(参数是选完之后才打的),不执行', () => {
+    render(<Composer />)
+    const box = inputBox()
+    type(box, '/cd')
+    // 输入框里此刻也写着 `/cd`,所以要的是抽屉里那一行(按钮),不是随便一处文字。
+    const row = screen.getAllByText('/cd').find((el) => el.closest('button'))
+    fireEvent.mouseDown(row as HTMLElement)
+    expect(box.textContent?.trim()).toBe('/cd')
+    expect(handed).toHaveLength(0)
+  })
+
+  it('/new + 回车:走建会话的唯一编排点,一条消息都不发', async () => {
+    render(<Composer />)
+    const box = inputBox()
+    type(box, '/new')
+
+    await act(async () => void fireEvent.click(send()))
+
+    expect(starts).toBe(1)
+    expect(handed).toHaveLength(0)
+    expect(box.textContent).toBe('')
+  })
+
+  it('/goal 那一类壳不执行:原样当一条消息发出去,不报错也不吞掉', async () => {
+    render(<Composer />)
+    const box = inputBox()
+    type(box, '/goal 把徽标那处改了')
+
+    await act(async () => void fireEvent.click(send()))
+
+    expect(starts).toBe(0)
+    expect(handed).toEqual([{ kind: 'text', text: '/goal 把徽标那处改了', attachments: 0 }])
+  })
+
+  it('句中的斜杠不是命令 —— 「看看 /new 那条」照常是一句话', () => {
+    render(<Composer />)
+    type(inputBox(), '看看 /new 那条')
+    fireEvent.click(send())
+    expect(starts).toBe(0)
+    expect(handed).toEqual([{ kind: 'text', text: '看看 /new 那条', attachments: 0 }])
   })
 })
 
@@ -363,11 +549,14 @@ describe('发送', () => {
    * 这次组字。抽屉开着时它们本来归抽屉 —— 抢走的话中文用户就得在「选字」和
    * 「用这个应用」之间二选一。
    */
-  it('组字期间上下键归输入法,不去翻抽屉的选中项', () => {
+  it('组字期间上下键归输入法,不去翻抽屉的选中项', async () => {
+    vi.useFakeTimers()
     render(<Composer />)
     const box = screen.getByRole('textbox', { name: /说点什么/ })
-    type(box, '看看 @m')
+    type(box, '看看 @')
     expect(state().drawerKind).toBe('files')
+    // 候选是真取来的(D3 波二):没有候选就没有可翻的行,这一条也就验不出东西。
+    await settleMentions()
     const before = state().pickIndex
 
     fireEvent.keyDown(box, { key: 'ArrowDown', isComposing: true })

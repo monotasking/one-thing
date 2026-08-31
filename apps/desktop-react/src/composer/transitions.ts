@@ -31,12 +31,32 @@ export function parseToken(upto: string, full: string): TokenHit | null {
   return null
 }
 
-/** 文件是**包含**匹配(路径中段也该命中);命令是**前缀**匹配(命令名从头念)。 */
-export function matchFiles(files: readonly string[], query: string): string[] {
-  return files.filter((f) => f.includes(query))
+/**
+ * 文件是**包含**匹配(路径中段也该命中)。
+ *
+ * D3 波二起 `@` 候选由后端筛(`files.list` 收 `query`),但这一条不但没退役,
+ * 反而更要紧了:候选到手之后还得在**已到手的那批**里再收一次 —— 去抖窗口里
+ * 人又多打了两个字,列表该立刻收窄,而不是等下一次往返。两处收窄用的是
+ * 同一句判据,这个函数就是那句判据**唯一**的写法。
+ *
+ * 收字符串表(测试与老调用点)也收带 `label` 的候选对象(真候选带着路径,
+ * 筛完还得认得出选中的是哪一条)。**不写成两个函数** —— 那就有两处包含匹配了。
+ */
+export function matchFiles<T extends string | { label: string }>(
+  files: readonly T[],
+  query: string,
+): T[] {
+  return files.filter((f) => (typeof f === 'string' ? f : f.label).includes(query))
 }
 
-export function matchCommands(cmds: readonly CommandSpec[], query: string): CommandSpec[] {
+/**
+ * 命令是**前缀**匹配(命令名从头念)。
+ *
+ * 泛型是为了**不丢子类型**:表里流过来的是 `CommandEntry`(带 id / kind /
+ * insertText),筛完还得是它 —— 写死成 `CommandSpec[]` 的话调用现场就得
+ * 再断言一次回去,而那正是「判断层偷偷改了形状」的入口。
+ */
+export function matchCommands<T extends CommandSpec>(cmds: readonly T[], query: string): T[] {
   return cmds.filter((c) => c.name.slice(1).startsWith(query))
 }
 

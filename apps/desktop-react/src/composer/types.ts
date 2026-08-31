@@ -48,13 +48,17 @@ export interface Attachment {
   url?: string
 }
 
-/** 一条斜杠命令。dev 命令带 dev 标,真接引擎时按这个标筛掉。 */
+/**
+ * 抽屉里一行命令**画出来所需要的全部**,一格不多。
+ *
+ * D4 波二起「按下去之后怎么办」那几格(id / kind / usage / insertText / allowArgs)
+ * 住在 `data/commands-source.ts` 的 `CommandEntry` 上 —— 它 extends 这一条。
+ * 分家的判据同 `ProviderGroup` 搬去 models-source:**形状归产地**,
+ * 而画一行的那两个字段归这里(抽屉与匹配函数只认得它们)。
+ */
 export interface CommandSpec {
   name: string
   desc: string
-  dev?: boolean
-  /** 选中后要做的事;不给 = 只把命令徽插进输入框 */
-  action?: 'ask-demo'
 }
 
 /*

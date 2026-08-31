@@ -1,11 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { useT } from '../../i18n'
+import { createFileToken } from '@shared/prompt-references'
+import { t as translate, useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
-import { ASK_DEMO_SPEC, MOCK_COMMANDS, MOCK_FILES } from '../data'
+import { ASK_DEMO_SPEC, DEV_COMMANDS } from '../data'
+import {
+  BUILTIN_COMMANDS,
+  executeCommand,
+  findCommand,
+  mergeCommands,
+  parseDraftCommand,
+  useCommandsSource,
+} from '../../data/commands-source'
+import type { CommandEntry } from '../../data/commands-source'
+import {
+  FILE_MENTION_DEBOUNCE_MS,
+  useFileMentionsSource,
+} from '../../data/file-mentions-source'
+import { useSessionCwd } from '../../data/files-source'
 import { useMeterSource } from '../../data/meter-source'
 import { useCurrentModelSelection, useModelsSource } from '../../data/models-source'
 import { useExposeStore } from '../../expose/store'
+import { notify } from '../../services/notify'
 import { ESC_STOP_WINDOW_MS } from '../../components/motion'
 import { registerComposerFocus } from '../focus'
 import { composerSink, useComposerBusy } from '../sink'
@@ -122,17 +138,57 @@ export function Composer() {
   const [meterOpen, setMeterOpen] = useState(false)
 
   const picking = drawerKind === 'files' || drawerKind === 'commands'
-  /* 这两条**必须** useMemo:它们进了下面 applyPick 的依赖数组,而数组字面量
+
+  /*
+   * ── D3 波二:`@` 候选的三条接线 ──────────────────────────────────────
+   * 根与会话侧的判据一个都不在这里重写:cwd 走 files 面立下的**唯一**写法
+   * (`useSessionCwd`),候选走 `files.list`(数据源),去抖归这一层 ——
+   * 「人打字的节奏」是编排的事,不是数据源的事(与 SearchPanel 逐条同款)。
+   */
+  const cwd = useSessionCwd()
+  const mentions = useFileMentionsSource((st) => st.mentions)
+  const searchMentions = useFileMentionsSource((st) => st.search)
+  const clearMentions = useFileMentionsSource((st) => st.clear)
+
+  useEffect(() => {
+    if (drawerKind !== 'files') {
+      clearMentions()
+      return
+    }
+    const timer = setTimeout(
+      () => void searchMentions(pickQuery, cwd, sessionId),
+      FILE_MENTION_DEBOUNCE_MS,
+    )
+    return () => clearTimeout(timer)
+  }, [drawerKind, pickQuery, cwd, sessionId, searchMentions, clearMentions])
+
+  /* ── D4 波二:命令表 ─────────────────────────────────────────────────
+   * 内置那七条是编译期常量,插件那一半懒拉一次 —— 抽屉第一次开的时候才发。 */
+  const pluginCommands = useCommandsSource((st) => st.pluginCommands)
+  const ensurePluginCommands = useCommandsSource((st) => st.ensurePluginCommands)
+  useEffect(() => {
+    if (drawerKind === 'commands') void ensurePluginCommands()
+  }, [drawerKind, ensurePluginCommands])
+
+  const allCommands = useMemo(
+    () => mergeCommands(BUILTIN_COMMANDS, pluginCommands, DEV_COMMANDS),
+    [pluginCommands],
+  )
+
+  /* 这几条**必须** useMemo:它们进了下面 applyPick 的依赖数组,而数组字面量
    * 每帧都是新身份 —— 不 memo 的话 applyPick 每帧重建,它的 useCallback 等于没写,
    * 吃它的子组件也就每帧重渲染一次。exhaustive-deps 揪出来的就是这条(真 bug 类:
    * 白写的 memo 化)。改的是身份稳定性,不是取值本身 —— 行为一字未变。 */
-  const files = useMemo(
-    () => (drawerKind === 'files' ? matchFiles(MOCK_FILES, pickQuery) : []),
-    [drawerKind, pickQuery],
+  const fileHits = useMemo(
+    () => (drawerKind === 'files' ? matchFiles(mentions, pickQuery) : []),
+    [drawerKind, mentions, pickQuery],
   )
+  /* 抽屉那一行画的是 label(cwd 之下的相对路径);选中时要的是 path。
+   * 两者同源同序,所以下标就是它们之间的对应关系。 */
+  const files = useMemo(() => fileHits.map((hit) => hit.label), [fileHits])
   const commands = useMemo(
-    () => (drawerKind === 'commands' ? matchCommands(MOCK_COMMANDS, pickQuery) : []),
-    [drawerKind, pickQuery],
+    () => (drawerKind === 'commands' ? matchCommands(allCommands, pickQuery) : []),
+    [drawerKind, allCommands, pickQuery],
   )
   const pickLen = drawerKind === 'files' ? files.length : commands.length
   const index = clampPickIndex(pickIndex, pickLen)
@@ -152,19 +208,28 @@ export function Composer() {
     [showPick, closeDrawer],
   )
 
+  /*
+   * 选中一条。**两种住户都只做一件事:插进输入框** —— 命令的执行不在这一刻,
+   * 在按下发送的那一刻(理由写在 data/commands-source.ts 文件头:
+   * 参数是选完之后才打的,抽屉在人打第一个参数字符之前就已经收了)。
+   *
+   * 唯一的例外是 `/ask-demo` 那条 dev 扳机:它没有参数,也不是一句要发出去的话。
+   */
   const applyPick = useCallback(
     (i: number) => {
       if (drawerKind === 'files') {
-        const file = files[i]
-        if (file) inputRef.current?.insert('files', file)
+        const hit = fileHits[i]
+        // chip 上写的是相对路径(人心里的名字),草稿里代表的是绝对路径的
+        // `{{file:…}}`(交出去那一刻由 chat-port 展开回 `@<路径>`)。
+        if (hit) inputRef.current?.insert('files', hit.label, createFileToken(hit.path))
         closeDrawer()
         return
       }
       if (drawerKind !== 'commands') return
       const cmd = commands[i]
       if (!cmd) return
-      // dev-only:这一批没有引擎,`/ask-demo` 是 ask 形态唯一的扳机。
-      // 真接上 ask_user 事件后删掉这条分支与 data.ts 里那一行,形态本身不动。
+      // dev-only:ask 形态今天没有真产地,`/ask-demo` 是它唯一的扳机。
+      // 真接上 ask_user 事件后删掉这条分支与 data.ts 里那一条,形态本身不动。
       if (cmd.action === 'ask-demo') {
         inputRef.current?.clear()
         openAsk(ASK_DEMO_SPEC)
@@ -173,7 +238,7 @@ export function Composer() {
       inputRef.current?.insert('commands', cmd.name)
       closeDrawer()
     },
-    [drawerKind, files, commands, closeDrawer, openAsk],
+    [drawerKind, fileHits, commands, closeDrawer, openAsk],
   )
 
   /*
@@ -186,7 +251,79 @@ export function Composer() {
    */
   const starting = useRef(false)
 
-  const doSend = useCallback(
+  /**
+   * 「此刻正在跑一条命令」。同 `starting` 是 ref 而不是 state:它不画任何东西,
+   * 挡的是那一段往返窗口里的第二下发送(中文输入法一次回车发两下是真发生过的事)。
+   */
+  const running = useRef(false)
+
+  /**
+   * 这句话是不是一条命令;是的话就地执行,并说清楚**要不要再当消息发一遍**。
+   *
+   * 返回 true = 这一下已经被消费掉了(执行了 / 报了用法错),调用方到此为止;
+   * 返回 false = 壳不执行这一条(表里没有它,或者它属于「只插文本」那一类),
+   * 那句话原样走发送那条直路。
+   */
+  const runCommand = useCallback(
+    async (text: string): Promise<boolean> => {
+      const parsed = parseDraftCommand(text)
+      if (!parsed) return false
+
+      let entry: CommandEntry | undefined = findCommand(allCommands, parsed.token)
+      if (!entry) {
+        // 表里没有 —— 可能只是插件那一半还没拉过(抽屉从没开过)。补拉一次再查,
+        // 与 Vue 壳 `InputBox.sendMessage` 的 `refreshPluginCommands` 同一手。
+        await ensurePluginCommands()
+        entry = findCommand(
+          mergeCommands(BUILTIN_COMMANDS, useCommandsSource.getState().pluginCommands, DEV_COMMANDS),
+          parsed.token,
+        )
+      }
+      if (!entry) return false
+
+      if (entry.action === 'ask-demo') {
+        inputRef.current?.clear()
+        openAsk(ASK_DEMO_SPEC)
+        return true
+      }
+
+      const outcome = await executeCommand(entry, parsed.args, {
+        sessionId,
+        startSession: () => composerSink().startSession(),
+      })
+
+      if (outcome.kind === 'sendAsText') return false
+
+      if (outcome.kind === 'failed') {
+        // **话留在框里** —— 用法写错了,人要改的正是框里那一句。
+        // 空 error = 编排点自己已经说过了(`/new` 建不成那条路),不加第二条提示。
+        if (outcome.error) {
+          notify({
+            level: 'warn',
+            source: 'composer.command',
+            title: translate('command.failed', { name: entry.name }),
+            body: outcome.error,
+            detail: outcome.error,
+          })
+        }
+        return true
+      }
+
+      inputRef.current?.clear()
+      closeDrawer()
+      notify({
+        level: 'success',
+        source: 'composer.command',
+        title: outcome.message || translate('command.done', { name: entry.name }),
+        body: entry.name,
+      })
+      return true
+    },
+    [allCommands, ensurePluginCommands, sessionId, openAsk, closeDrawer],
+  )
+
+  /** 把这句话当**一条消息**交出去(命令那条岔口在 `doSend` 里,先分完才到这)。 */
+  const sendPlain = useCallback(
     (text: string) => {
       if (send(text)) {
         inputRef.current?.clear()
@@ -218,6 +355,35 @@ export function Composer() {
       })()
     },
     [send],
+  )
+
+  const doSend = useCallback(
+    (text: string) => {
+      /*
+       * 命令先于消息。判据是 `parseDraftCommand`:**整段话**就是 `/词` 或
+       * `/词 <参数>` 才算,所以「看看 /new 那条」照常是一句话。
+       *
+       * 只有以斜杠开头的那一句会走这条异步路 —— 普通消息的发送路径**一步都没多**
+       * (它上面挂着一串按同步语义写的断言,也确实没有理由为它多等一帧)。
+       */
+      if (parseDraftCommand(text)) {
+        if (running.current) return
+        running.current = true
+        void (async () => {
+          try {
+            if (await runCommand(text)) return
+            // 壳不执行这一条:原样当一句话发出去(`/goal …` 就走这里)。
+            sendPlain(text)
+          } finally {
+            running.current = false
+            inputRef.current?.focus()
+          }
+        })()
+        return
+      }
+      sendPlain(text)
+    },
+    [runCommand, sendPlain],
   )
 
   /* ── 点 composer 外面:瞬态抽屉(模型)一律关,选没选都关 ────────────────

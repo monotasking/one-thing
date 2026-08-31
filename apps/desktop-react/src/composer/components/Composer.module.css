@@ -309,12 +309,30 @@
   color: var(--text-1);
   caret-color: var(--accent);
   word-break: break-word;
+  /*
+   * 08-31 真机报障:**空框时鼠标停在占位符上是箭头,不是 I 形**。
+   *
+   * 根因是占位符的形态,不是这一行少写了什么风格:占位符是 `::before` 的
+   * 生成内容,而生成内容在 contentEditable 宿主里**不可选中**;`cursor: auto`
+   * 的定义正是「可选文本上才给 text」,于是它落回 default = 箭头。框里有字时
+   * 那些字是可选的,所以只有空框才复现 —— 这也正是报障说的「占位符区域」。
+   *
+   * 所以要显式说一次:这整块是**能落光标的地方**。它比 `auto` 更真 ——
+   * 点这里确实会聚焦,箭头是在说谎。
+   */
+  cursor: text;
 }
 
 /* 占位符走 data 属性:文案归 i18n,CSS 里不落一个字。 */
 .input:empty::before {
   content: attr(data-placeholder);
   color: var(--text-4);
+  /*
+   * 占位符是**画出来的一句提示**,不是一个能被点中的东西:命中测试一律穿过去,
+   * 落在可编辑宿主自己身上,点哪儿光标就落哪儿。少这一句时点击会被这块生成
+   * 内容接住,浏览器再去猜光标位置(与上面那颗箭头同一个病根的另一半)。
+   */
+  pointer-events: none;
 }
 
 /* 行内 chip:@ 引用的文件。contentEditable=false,所以退格是整枚删。 */
@@ -749,11 +767,14 @@
   font-size: var(--fs-meta);
   color: var(--text-1);
   caret-color: var(--accent);
+  /* 与 `.input` 同一个病根、同一句修法(见那里的长注):这一块也是能落光标的地方。 */
+  cursor: text;
 }
 
 .askFree:empty::before {
   content: attr(data-placeholder);
   color: var(--text-4);
+  pointer-events: none;
 }
 
 .askFoot {
