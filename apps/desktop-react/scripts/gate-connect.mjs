@@ -1,21 +1,25 @@
 #!/usr/bin/env node
 /**
- * React 壳 D0 的验收门 —— **脚本级,拒人肉 QA**(方案 §4 P0 那一行门)。
+ * React 壳的连接门 —— **脚本级,拒人肉 QA**(方案 §4 P0 那一行门)。
  *
  * 两条路径各验一次,全绿才算过:
  *
- *  路径一(没有 core 在跑):临时 store → 拉起应用 → 断言
- *    ① 应用**自己** spawn 了 core(发现文件出现,owner=server,pid ≠ 我们起的任何进程)
+ *  路径一(没有 core 在跑,A1 换心之后):临时 store → 拉起应用 → 断言
+ *    ① 应用**自己就是** core:发现文件 owner=`shell`,而且 pid **就是壳主进程自己的**
+ *       —— 这一条是 A1 的分水岭。D0 那版这里断言的是「spawn 了一个子进程」;
+ *       现在断言的是「没有第二个进程」。pid 从 playwright 的 `app.evaluate`
+ *       (跑在主进程里)现问,不靠猜。
  *    ② `window.__d0.rpcOk === true`(一次真 `POST /api/rpc` 往返)
  *    ③ 脚本侧拿发现文件里的 token 造一个事件(`sessions.create`)→
  *       `window.__d0.sseEvents > 0`(SSE 真的到了渲染层)
- *    ④ 应用退出后那个子进程被收尸
+ *    ④ 应用退出后:那个 pid 没了、发现文件被删、**没有**任何遗留 core 进程
  *
  *  路径二(core 已在跑):脚本先自己起 `dist/server/main.js` 写出发现文件 → 拉起应用 →
- *    断言应用**没有**再 spawn 第二个 core(发现文件里的 pid 还是脚本那个),rpc/SSE 同样通过,
- *    应用退出后那台 server **还活着**(不属于它的不杀)。
+ *    断言应用**没有**再装配第二只 core(发现文件里的 pid 还是脚本那个),rpc/SSE 同样通过,
+ *    应用退出后那台 server **还活着**(不属于它的不杀)。这条是 D0 的原样保留:
+ *    换心不许改变「有人在当家就让位」这条行为。
  *
- * 跑法:`node scripts/gate-connect.mjs`(仓根先 `bun run server:build`)。
+ * 跑法:`node scripts/gate-connect.mjs`(仓根先 `bun run server:build` —— 路径二要它)。
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -128,19 +132,27 @@ async function probeOf(page) {
 }
 
 async function runPathOne() {
-  console.log('\n[路径一] 没有 core 在跑 —— 应用自己拉起、退出时收尸')
-  const store = await mkdtemp(path.join(tmpdir(), 'd0-gate-solo-'))
+  console.log('\n[路径一] 没有 core 在跑 —— 壳内嵌自当 core,退出时自己收干净')
+  const store = await mkdtemp(path.join(tmpdir(), 'a1-gate-embed-'))
   let app
   try {
     const launched = await launchApp(store)
     app = launched.app
     const page = launched.page
 
-    const record = await waitFor('应用自己 spawn 的 core 写出发现文件', () => {
+    // 壳主进程自己的 pid。`app.evaluate` 跑在主进程里,所以这是**现问**来的,
+    // 不是从发现文件反推的 —— 断言 ① 要的正是这两个数相等。
+    const shellPid = await app.evaluate(() => process.pid)
+
+    const record = await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = readDiscovery(store)
-      return found && found.owner === 'server' ? found : undefined
+      return found && found.owner === 'shell' ? found : undefined
     })
-    assert(record.owner === 'server', `应用自己拉起了 core(owner=server, pid=${record.pid})`)
+    assert(record.owner === 'shell', `发现文件 owner === 'shell'(壳在当家)`)
+    assert(
+      record.pid === shellPid,
+      `发现文件 pid ${record.pid} === 壳主进程 pid ${shellPid} —— core 就在壳进程里,没有第二个进程`,
+    )
     assert(await portConnects(record.host, record.port), `core 端口 ${record.port} 可连`)
 
     const probe = await waitFor('渲染层完成一次 RPC 往返', async () => {
@@ -151,7 +163,7 @@ async function runPathOne() {
     assert(probe.rpcOk === true, `window.__d0.rpcOk === true(baseUrl=${probe.baseUrl})`)
 
     // 脚本侧造一个事件:建一个会话 → 引擎发 session:event → SSE → 渲染层。
-    const created = await rpc(record, 'sessions', 'create', { name: 'd0-gate' })
+    const created = await rpc(record, 'sessions', 'create', { name: 'a1-gate' })
     assert(created.ok !== false, `sessions.create 经 POST /api/rpc 成功 ${JSON.stringify(created).slice(0, 300)}`)
 
     const withEvents = await waitFor('SSE 事件到达渲染层', async () => {
@@ -160,11 +172,13 @@ async function runPathOne() {
     })
     assert(withEvents.sseEvents > 0, `window.__d0.sseEvents === ${withEvents.sseEvents} > 0`)
 
-    const corePid = record.pid
     await app.close()
     app = undefined
-    await waitFor('应用自己拉起的 core 子进程被收尸', () => !pidAlive(corePid), 10_000)
-    assert(!pidAlive(corePid), `退出时 SIGTERM 收尸(pid ${corePid} 已不在)`)
+    await waitFor('壳主进程退出', () => !pidAlive(shellPid), 15_000)
+    assert(!pidAlive(shellPid), `退出后壳主进程(pid ${shellPid})已不在 —— 没有遗留 core 进程`)
+    // 发现文件是「这个 store 由我在服务」的宣告。留着它下一次启动就得靠探活才敢无视。
+    assert(readDiscovery(store) === undefined, '退出后发现文件被删')
+    assert(!(await portConnects(record.host, record.port)), `core 端口 ${record.port} 已不通`)
   } finally {
     if (app) await app.close().catch(() => {})
     await rm(store, { recursive: true, force: true })
@@ -173,7 +187,7 @@ async function runPathOne() {
 
 async function runPathTwo() {
   console.log('\n[路径二] core 已在跑 —— 应用连它,不起第二个,也不杀不属于它的')
-  const store = await mkdtemp(path.join(tmpdir(), 'd0-gate-shared-'))
+  const store = await mkdtemp(path.join(tmpdir(), 'a1-gate-shared-'))
   let server
   let app
   try {
@@ -207,7 +221,7 @@ async function runPathTwo() {
     assert(after.pid === server.pid, '发现文件里还是脚本那个 pid —— 应用没有 spawn 第二个 core')
     assert(after.port === record.port, `连的是同一个端口 ${record.port}`)
 
-    const created = await rpc(record, 'sessions', 'create', { name: 'd0-gate-shared' })
+    const created = await rpc(record, 'sessions', 'create', { name: 'a1-gate-shared' })
     assert(created.ok !== false, `sessions.create 经 POST /api/rpc 成功 ${JSON.stringify(created).slice(0, 300)}`)
 
     const withEvents = await waitFor('SSE 事件到达渲染层', async () => {
@@ -230,24 +244,24 @@ async function runPathTwo() {
 
 async function main() {
   if (!existsSync(serverEntry)) {
-    console.error(`[d0-gate] 找不到 ${path.relative(repoRoot, serverEntry)} —— 先在仓根跑 \`bun run server:build\``)
+    console.error(`[gate:connect] 找不到 ${path.relative(repoRoot, serverEntry)} —— 先在仓根跑 \`bun run server:build\``)
     process.exit(1)
   }
   if (!existsSync(mainEntry)) {
-    console.error(`[d0-gate] 找不到 ${path.relative(appRoot, mainEntry)} —— 先跑 \`npm run app:build\``)
+    console.error(`[gate:connect] 找不到 ${path.relative(appRoot, mainEntry)} —— 先跑 \`npm run app:build\``)
     process.exit(1)
   }
   if (!existsSync(path.join(appRoot, 'dist/index.html'))) {
-    console.error('[d0-gate] 找不到 dist/index.html —— 先跑 `npm run app:build`')
+    console.error('[gate:connect] 找不到 dist/index.html —— 先跑 `npm run app:build`')
     process.exit(1)
   }
 
   await runPathOne()
   await runPathTwo()
-  console.log('\n[d0-gate] ok —— 两条路径全绿')
+  console.log('\n[gate:connect] ok —— 两条路径全绿')
 }
 
 main().catch(error => {
-  console.error('\n[d0-gate] FAILED:', error?.stack || error)
+  console.error('\n[gate:connect] FAILED:', error?.stack || error)
   process.exit(1)
 })

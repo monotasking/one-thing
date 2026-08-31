@@ -2,8 +2,14 @@
 /**
  * `npm run app:dev` —— 起 vite dev server(5175),再把 Electron 壳指过去。
  *
- * 两件事各一个进程,谁先死另一个跟着走。渲染层的 HMR 归 vite,main 侧改了就重跑
- * (薄壳两个文件,不值得为它接 watch)。
+ * 两件事各一个进程,谁先死另一个跟着走。渲染层的 HMR 归 vite,main 侧改了就重跑。
+ *
+ * ── A1 之后多了一条要记住的 ────────────────────────────────────────────
+ * main 侧现在**把整棵 core/runtime/backend inline 进 bundle**(壳自己装配 backend)。
+ * 于是 `packages/{core,onething-runtime,backend}` 里的任何改动,在这条泳道上都要
+ * **重跑一次 `npm run app:dev`**(或单跑 `npm run electron:build`)才会生效 ——
+ * 那些包不在 vite 的依赖图里,HMR 管不到它们。改了 core 却看不到变化,先想这一条。
+ * ──────────────────────────────────────────────────────────────────────
  */
 import { spawn } from 'node:child_process'
 import { createServer } from 'vite'

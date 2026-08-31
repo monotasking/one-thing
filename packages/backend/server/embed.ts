@@ -18,7 +18,11 @@ import {
   createOnethingServerRuntimeOverBackend,
   type OnethingServerRuntime,
 } from './runtime.js'
-import { removeHttpDiscovery, writeHttpDiscovery } from './discovery.js'
+import {
+  removeHttpDiscovery,
+  writeHttpDiscovery,
+  type HttpDiscoveryOwner,
+} from './discovery.js'
 import { configureFilesLocalTrust } from './local-trust.js'
 
 export interface EmbeddedOnethingHttpServerOptions {
@@ -33,6 +37,13 @@ export interface EmbeddedOnethingHttpServerOptions {
   authToken?: string
   /** 允许的浏览器来源(单值)。默认 web dev 泳道那个口,泳道脚本用 env 覆盖。 */
   corsOrigin?: string
+  /**
+   * 写进发现文件的 owner。默认 `'desktop'` —— 老 Vue 桌面一个字都不必改。
+   * React 壳(A1,2026-08-31)传 `'shell'`:同样是「带界面的宿主在自己进程里当家」,
+   * 但读发现文件的人能分清是哪个壳。`server:start` 的让位判据(`owner !== 'server'`)
+   * 对两者行为逐字相同,所以这只是可读性,不是新语义。
+   */
+  owner?: HttpDiscoveryOwner
   logger?: Pick<Console, 'log' | 'warn' | 'error'>
 }
 
@@ -129,7 +140,7 @@ export async function startEmbeddedOnethingHttpServer(
       token,
       pid: process.pid,
       startedAt: Date.now(),
-      owner: 'desktop',
+      owner: options.owner ?? 'desktop',
     })
     const url = `http://${host}:${port}`
     logger.log(`[core-http] embedded HTTP/SSE surface listening on ${url}`)

@@ -21,7 +21,22 @@ import { getOnethingRunDir, type OnethingStorePathOptions } from '@onething/runt
 
 export const HTTP_DISCOVERY_FILENAME = 'http.json'
 
-export type HttpDiscoveryOwner = 'desktop' | 'server'
+/**
+ * 谁在服务这个 store。
+ *
+ * `shell` 是 React 壳自己内嵌的那只 core(A1,2026-08-31)。它与 `desktop` 是**同一
+ * 类**东西 —— 一个带界面的宿主在自己的进程里装配 backend 并把 HTTP/SSE 面挂出来 ——
+ * 只是宿主换了个人。之所以要一个自己的名字而不是复用 `desktop`:`server:start` 的
+ * 让位判据是 `owner !== 'server'`,两个名字在那条判据下行为逐字相同(都让位),
+ * 而运维读发现文件时能一眼看出是哪个壳在当家。
+ */
+export type HttpDiscoveryOwner = 'desktop' | 'server' | 'shell'
+
+const HTTP_DISCOVERY_OWNERS: readonly HttpDiscoveryOwner[] = ['desktop', 'server', 'shell']
+
+function isHttpDiscoveryOwner(value: unknown): value is HttpDiscoveryOwner {
+  return HTTP_DISCOVERY_OWNERS.includes(value as HttpDiscoveryOwner)
+}
 
 export interface HttpDiscoveryRecord {
   /** 实际监听到的端口(动态分配时是 listen 之后才知道的那个数)。 */
@@ -50,7 +65,7 @@ function isHttpDiscoveryRecord(value: unknown): value is HttpDiscoveryRecord {
     && record.host.length > 0
     && typeof record.pid === 'number'
     && Number.isFinite(record.pid)
-    && (record.owner === 'desktop' || record.owner === 'server')
+    && isHttpDiscoveryOwner(record.owner)
   )
 }
 

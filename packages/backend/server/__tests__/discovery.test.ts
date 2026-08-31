@@ -64,6 +64,18 @@ describe('http discovery file', () => {
     expect(readHttpDiscovery()?.owner).toBe('server')
   })
 
+  /**
+   * A1(2026-08-31)给 owner 加了第三个值 `shell`(React 壳内嵌的那只 core)。
+   * 两条一起断言:新值认得,而白名单**没有因此变宽** —— 下面那条
+   * `someone-else` 仍旧被当没有。
+   */
+  it('round-trips the shell owner', () => {
+    writeHttpDiscovery({
+      port: 1, host: '127.0.0.1', pid: process.pid, startedAt: 0, owner: 'shell',
+    })
+    expect(readHttpDiscovery()?.owner).toBe('shell')
+  })
+
   it('never throws on a missing, corrupt or misshaped file', () => {
     expect(readHttpDiscovery()).toBeUndefined()
     mkdirSync(path.join(storePath, 'run'), { recursive: true })

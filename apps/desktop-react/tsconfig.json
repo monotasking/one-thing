@@ -33,5 +33,7 @@
   // `packages/shared/types` 是**环境声明**目录(culori / *.md?raw 的 shim)。
   // 仓根 tsconfig 靠 `packages/shared/**/*` 顺带收进来;这里 include 只有自己那两棵树,
   // 所以要显式带上,否则跨包源码里的 `import 'culori'` 报 TS7016。
-  "include": ["src", "electron", "vite.config.ts", "../../packages/shared/types"]
+  // `scripts` 里只有一个 .ts(冒烟探针 scripts/smoke/core-boot-probe.ts;其余是 .mjs,
+  // 没开 allowJs 就不会被收进来)。它是 main 进程侧的代码,理应和 electron/ 一起过类型。
+  "include": ["src", "electron", "scripts", "vite.config.ts", "../../packages/shared/types"]
 }

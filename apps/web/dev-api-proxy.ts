@@ -30,8 +30,12 @@ interface DiscoveryRecord {
   host: string
   token?: string
   pid: number
-  owner: 'desktop' | 'server'
+  /** `shell` = React 壳内嵌的那只 core(A1,2026-08-31);见 backend/server/discovery.ts。 */
+  owner: 'desktop' | 'server' | 'shell'
 }
+
+/** 白名单归一。认不出的 owner 一律记 `server` —— 代理只按地址转发,owner 是给人看的。 */
+const KNOWN_OWNERS: readonly DiscoveryRecord['owner'][] = ['desktop', 'server', 'shell']
 
 function laneStorePath(): string {
   return process.env.ONETHING_STORE_PATH || path.join(os.homedir(), '.onething')
@@ -56,7 +60,9 @@ function readDiscovery(): DiscoveryRecord | undefined {
       host: parsed.host,
       token: typeof parsed.token === 'string' ? parsed.token : undefined,
       pid: parsed.pid,
-      owner: parsed.owner === 'desktop' ? 'desktop' : 'server',
+      owner: KNOWN_OWNERS.includes(parsed.owner as DiscoveryRecord['owner'])
+        ? (parsed.owner as DiscoveryRecord['owner'])
+        : 'server',
     }
   } catch {
     return undefined

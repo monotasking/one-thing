@@ -111,11 +111,22 @@ run('motion-gate', 'npm', ['run', '--silent', 'motion-gate'])
 run('test', 'npm', ['run', '--silent', 'test'])
 run('build', 'npm', ['run', '--silent', 'app:build'])
 checkOfflineFonts()
+/*
+ * 构建链冒烟(A1-a):壳的 main 侧现在 inline 着整棵 core/runtime/backend,而那棵树
+ * 里有四处东西 esbuild 默认处理不了(`?raw` / `import.meta.url` / 三个原生模块 /
+ * `@shared`)。任何一处配漏都是**模块求值期**炸,而 typecheck 与单测都看不见它 ——
+ * 只有真跑一遍产物看得见。排在真机门**之前**:它 3 秒、不开窗,坏了要一眼看出是
+ * 构建链坏了,而不是在一条要拉起 Electron 窗口的门里去猜。
+ */
+run('smoke:core', 'npm', ['run', '--silent', 'smoke:core'])
 run('gate:connect', 'npm', ['run', '--silent', 'gate:connect'])
 run('gate:data', 'npm', ['run', '--silent', 'gate:data'])
 run('gate:theme', 'npm', ['run', '--silent', 'gate:theme'])
 run('gate:chat', 'npm', ['run', '--silent', 'gate:chat'])
 run('gate:files', 'npm', ['run', '--silent', 'gate:files'])
+// 流式正文单调门:假慢流跨过 2s 打包闸,rAF 逐帧断言正文 textContent 不回缩
+// (真机病「打包行一到正文整段消失」的机器化,见 gate-stream-monotone.mjs 文件头)。
+run('gate:monotone', 'npm', ['run', '--silent', 'gate:monotone'])
 /*
  * gate:squeeze 进 verify,gate:perf 仍然不进(理由见文件顶部那一节)。
  * 两者的差别就在**读数会不会随机器状况抖**:squeeze 门断言的是「有没有两个盒子
@@ -129,6 +140,11 @@ run('gate:squeeze', 'npm', ['run', '--silent', 'gate:squeeze'])
  * 同一份 CSS 同一个档跑一百遍是同一个答案,没有余量一说。
  */
 run('gate:motion', 'npm', ['run', '--silent', 'gate:motion'])
+/*
+ * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
+ * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
+ * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
+ */
 
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint / squeeze-gate / motion-gate / test / build / offline-fonts / 真机门全绿\n',
