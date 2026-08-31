@@ -63,6 +63,7 @@ import {
   setItemHidden,
   settledDockRect,
   shouldShowDock,
+  withinDockReentryWindow,
   dockAimTriangle,
   movesTowardPreview,
   withinDockAimTriangle,
@@ -1566,6 +1567,92 @@ describe('预览泡:留驻区认泡、瞄准区认三角(09-01)', () => {
       expect(at({ x: 538, y: BUBBLE.top - DOCK_HOLD_PAD + 1 }, BUBBLE)).toBe(true)
       expect(at({ x: 538, y: BUBBLE.top - DOCK_HOLD_PAD - 1 }, BUBBLE)).toBe(false)
       expect(at({ x: BUBBLE.left - DOCK_HOLD_PAD - 1, y: 626 }, BUBBLE)).toBe(false)
+    })
+
+    /**
+     * 09-01 第三桩报障:「Dock 与预览泡之间的间隔里,鼠标停着会来回闪」。
+     *
+     * 真机把嫌疑逐条钉死了(1280×860,条 786…848):
+     *  · 指针**死停**在缝里 3s:翻转 **0** 次;±1px 抖动 3s:翻转 **0** 次
+     *    —— 所以不是自激振荡,页面也没有补发合成 pointermove(记录器实测非真实移动 0 发)。
+     *  · 边界上抖动:翻 **1** 次之后**闩死**,再也不翻 —— 结构上就翻不回来。
+     *  · 真因是**死区**:逐像素量到 —— 抬到 y=641 收起 → 原路回到 y=647 仍不出来
+     *    → 一路回到条身正中 y=817(条就在指针底下)仍不出来 → 一直走到 y=852
+     *    (离屏底 8px)才回来。**死区高 211px**。
+     *    用户的「来回闪」就是:往上一点它没了,走回来叫不回来,只好一路怼到屏底,它又蹦出来。
+     *
+     * 修法是给迟滞加**时间**这一维,而不是把窄带拓宽(拓宽就回到 08-31 那桩报障)。
+     */
+    describe('回身窗口:收起之后那一小会儿,走回条身就该回来', () => {
+      const back = (reentry: boolean, y: number) =>
+        shouldShowDock({ shown: false, reentry, pointer: { x: 640, y }, viewport: vp, edge: 'bottom', rect: STRIP })
+
+      it('报障复现:没有回身窗口时,站在条身正中都叫不回来', () => {
+        expect(back(false, 817)).toBe(false) // 条身正中(786…848)
+        expect(back(false, 762)).toBe(false) // 原留驻区上界
+        expect(back(false, 647)).toBe(false) // 真机量到的那一点
+        // 唯一叫得回来的地方就是那条 8px 窄带 —— 死区因此高达 211px。
+        expect(back(false, vp.h - DOCK_WAKE_BAND)).toBe(true)
+      })
+
+      it('回身窗口里:走回留驻区就回来(死区消失)', () => {
+        expect(back(true, 817)).toBe(true)
+        expect(back(true, 762)).toBe(true)
+      })
+
+      it('回身认的仍是**留驻区**,不是整块屏:高处照样叫不回来', () => {
+        expect(back(true, 647)).toBe(false)
+        expect(back(true, 400)).toBe(false)
+      })
+
+      it('窗口过了就退回窄带 —— 08-31「自动出现范围太大」那条不回退', () => {
+        // 隔了半天才去打字的手:reentry 已经是 false,composer 那几点照旧叫不醒它。
+        expect(back(false, 819)).toBe(false)
+      })
+
+      /**
+       * 武装条件(09-01 用户拍板走「③ 只在收起那一刻泡开着才武装」)。
+       *
+       * 理由:回身窗口认的地皮就是 Dock 的地皮,而自动隐藏档下 **Dock 与 composer
+       * 是同一块地**(真机量到重叠 98.4%)。不加这一问,「刚收起 1.2 秒内把手挪进
+       * 输入框」会把条弹出来 —— 用户已经**两次**为「Dock 扑输入区」发火。
+       * 报障场景本来就带着泡,所以这一问既盖住要修的那件事,又把 composer 摘干净。
+       */
+      describe('武装条件:收起那一刻泡开着', () => {
+        const win = (over: Partial<Parameters<typeof withinDockReentryWindow>[0]> = {}) =>
+          withinDockReentryWindow({
+            shown: false,
+            hiddenWithPreview: true,
+            hiddenAt: 1_000,
+            now: 1_200,
+            windowMs: 1_200,
+            ...over,
+          })
+
+        it('泡开着 + 还在窗口里 = 武装', () => {
+          expect(win()).toBe(true)
+        })
+
+        it('**收起时没开过泡就不武装** —— composer 那一格由此清零', () => {
+          expect(win({ hiddenWithPreview: false })).toBe(false)
+        })
+
+        it('窗口过了就不算数', () => {
+          expect(win({ now: 1_000 + 1_200 })).toBe(false)
+          expect(win({ now: 1_000 + 1_199 })).toBe(true)
+        })
+
+        it('条还开着的时候没有「回身」可言;从没收起过(hiddenAt=0)同理', () => {
+          expect(win({ shown: true })).toBe(false)
+          expect(win({ hiddenAt: 0 })).toBe(false)
+        })
+      })
+
+      it('没给条身矩形时,回身窗口也不许凭空出来', () => {
+        expect(
+          shouldShowDock({ shown: false, reentry: true, pointer: { x: 640, y: 817 }, viewport: vp, edge: 'bottom' }),
+        ).toBe(false)
+      })
     })
 
     it('藏着的时候泡不算数 —— 唤醒仍然只认贴边窄带(前一桩不许回退)', () => {

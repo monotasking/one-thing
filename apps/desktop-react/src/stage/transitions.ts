@@ -908,15 +908,34 @@ export function withinDockHoldZone(
  */
 export function shouldShowDock(args: {
   shown: boolean
+  /**
+   * **刚刚才自己收起去**(09-01 修「缝里来回闪」)。
+   *
+   * 收起与出来共用一条边界是不行的,但把出来的边界一路收窄到 8px 窄带、
+   * 而收起的边界是整块留驻区,中间那一大片就成了**死区**:掉出去之后
+   * 站在 Dock 自己的地皮上都叫不回来。真机逐像素量到(1280×860,条 786…848):
+   *   抬到 y=641(留驻区外)→ 收起
+   *   原路回到 y=647 → **仍然不出来**
+   *   一路回到条身正中 y=817(条就在指针底下)→ **仍然不出来**
+   *   一直走到 y=852(离屏底 8px)才回来 —— **死区高 211px**。
+   * 用户看到的「来回闪」就是这一段:往上一点它没了,走回来叫不回来,
+   * 只好一路怼到屏幕最底下,它又蹦出来。
+   *
+   * 所以迟滞要有**时间**这一维:刚被自动收起的那一小会儿,「回身」认的是
+   * 留驻区(它本来就是刚才那一下的地皮);过了这一阵才退回窄带。
+   * 这一格为真时,`rect` 必须由宿主照常量给 —— 停稳位由**身量**算,
+   * 藏着的时候照样算得出来(见 settledDockRect)。
+   */
+  reentry?: boolean
   pointer: Point
   viewport: Viewport
   edge: DockEdge
   rect?: Rect
   previewRect?: Rect
 }): boolean {
-  const { shown, pointer, viewport, edge, rect, previewRect } = args
+  const { shown, reentry, pointer, viewport, edge, rect, previewRect } = args
   if (withinDockWakeBand(pointer, viewport, edge)) return true
-  if (!shown) return false
+  if (!shown && !reentry) return false
   /*
    * **泡开着的时候,泡也是 Dock 的一部分**(09-01 修「移向 preview 途中整条 Dock 消失」)。
    *
@@ -936,6 +955,36 @@ export function shouldShowDock(args: {
    */
   if (previewRect && withinRect(pointer, previewRect, DOCK_HOLD_PAD)) return true
   return rect ? withinDockHoldZone(pointer, viewport, edge, rect) : false
+}
+
+/**
+ * 回身窗口此刻算不算数 —— 三个条件缺一不可。
+ *
+ * ③ 之所以还要问「**收起那一刻泡开着吗**」(09-01 用户拍板):回身窗口认的地皮
+ * 就是 Dock 的地皮,而自动隐藏档下 **Dock 与 composer 是同一块地**(真机量到
+ * 条身与输入区重叠 98.4%)。不加这一问的话,「刚收起 1.2 秒内把手挪进输入框」
+ * 会把条弹出来 —— 用户已经**两次**为「Dock 扑输入区」发火,那一格必须清零。
+ *
+ * 而报障场景本来就带着泡(「Dock 与预览泡之间的间隔」),所以拿「泡开着」当
+ * 武装条件既盖住了要修的那件事,又把 composer 那格摘干净。
+ *
+ * 代价记在账上:**纯条身上溢**(没开过泡、径直往上越过留驻区)之后仍是窄带语义,
+ * 那一截残余死区留着 —— 它要求用户先专门去悬停一块瓦才够得着,真实出现率低。
+ */
+export function withinDockReentryWindow(args: {
+  shown: boolean
+  /** 收起那一刻预览泡开着吗。false = 这一次收起不武装回身窗口。 */
+  hiddenWithPreview: boolean
+  /** 上一次自动收起的时刻(0 = 没有过)。 */
+  hiddenAt: number
+  now: number
+  windowMs: number
+}): boolean {
+  const { shown, hiddenWithPreview, hiddenAt, now, windowMs } = args
+  if (shown) return false
+  if (!hiddenWithPreview) return false
+  if (hiddenAt <= 0) return false
+  return now - hiddenAt < windowMs
 }
 
 /** 点落在矩形(四周放 pad)里。留驻判据的第三块地皮 —— 泡 —— 用的就是它。 */

@@ -5,6 +5,7 @@ import {
   ATT_GRACE_MS,
   DOCK_AIM_WINDOW_MS,
   DOCK_HIDE_DELAY_MS,
+  DOCK_REENTRY_MS,
   DUR_MS,
   EXIT_MS,
   EXIT_MS_BY_TIER,
@@ -69,6 +70,7 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-preview-grace', PREVIEW_GRACE_MS],
     ['--dur-dock-aim-window', DOCK_AIM_WINDOW_MS],
     ['--dur-dock-hide-delay', DOCK_HIDE_DELAY_MS],
+    ['--dur-dock-reentry', DOCK_REENTRY_MS],
   ])('%s', (name, js) => {
     expect(tokenMs(tokensCss, name), `tokens.css 里找不到 ${name}`).toBe(js)
   })

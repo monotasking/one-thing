@@ -18,10 +18,15 @@ import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
-import { DOCK_HIDE_DELAY_MS, SCROLL_SETTLE_MS } from './motion'
+import { DOCK_HIDE_DELAY_MS, DOCK_REENTRY_MS, SCROLL_SETTLE_MS } from './motion'
 import { useT } from '../i18n'
 import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
-import { SHELF_SIDES, settledDockRect, shouldShowDock } from '../stage/transitions'
+import {
+  SHELF_SIDES,
+  settledDockRect,
+  shouldShowDock,
+  withinDockReentryWindow,
+} from '../stage/transitions'
 import { DOCK_AXIS } from '../stage/types'
 import type { DockAlign, DockEdge, DockSize } from '../stage/types'
 import s from './AppShell.module.css'
@@ -115,6 +120,25 @@ export function AppShell() {
       return
     }
     let hideTimer: ReturnType<typeof setTimeout> | null = null
+    /**
+     * **上一次自己收起去的时刻**(0 = 不在回身窗口里)。
+     *
+     * 迟滞的时间那一维:出来认 8px 窄带、收起认整块留驻区,两条边界之间那 211px
+     * 真机量出来是**死区** —— 掉出去之后站在条身正中都叫不回来。判据在
+     * transitions.shouldShowDock 的 `reentry` 一格,这里只负责记这个时刻。
+     */
+    let hiddenAt = 0
+    /**
+     * **收起那一刻预览泡开着吗** —— 回身窗口的武装条件(09-01 用户拍板走这条)。
+     *
+     * 回身窗口认的地皮就是 Dock 的地皮,而自动隐藏档下 Dock 与 composer 是**同一块地**
+     * (真机量到条身与输入区重叠 98.4%)。不加这一问,「刚收起 1.2 秒内把手挪进输入框」
+     * 就会把条弹出来 —— 用户已经**两次**为「Dock 扑输入区」发火,那一格必须清零。
+     * 而报障场景本来就带着泡(「Dock 与预览泡之间的间隔」),所以这一问既盖住了
+     * 要修的那件事,又把 composer 摘干净。判据本体在 transitions.withinDockReentryWindow。
+     */
+    let sawPreview = false
+    let hiddenWithPreview = false
     const cancelHide = () => {
       if (hideTimer) {
         clearTimeout(hideTimer)
@@ -147,7 +171,19 @@ export function AppShell() {
        * 真机时间线与换算见 transitions.settledDockRect 的注释。
        */
       const shown = peekingRef.current
-      const box = shown ? dockRef.current?.getBoundingClientRect() : undefined
+      /*
+       * 回身窗口:刚被自动收起的这一小会儿,「出来」认的是留驻区而不是 8px 窄带。
+       * 停稳位由**身量**算,藏着照样算得出来(settledDockRect),所以这一格为真时
+       * 也要照常量一次条身 —— 这正是 08-31 那条判例留下的便宜。
+       */
+      const reentry = withinDockReentryWindow({
+        shown,
+        hiddenWithPreview,
+        hiddenAt,
+        now: Date.now(),
+        windowMs: DOCK_REENTRY_MS,
+      })
+      const box = shown || reentry ? dockRef.current?.getBoundingClientRect() : undefined
       /*
        * `DOMRect` → 一个**朴素对象**。它的 left/right/top/bottom 都是原型上的
        * 取值器,不是自有属性:任何一处 `{ ...domRect }` 都会得到一个空对象。
@@ -170,6 +206,8 @@ export function AppShell() {
        * 只在条已经出来时问一次 DOM:藏着的时候没有泡可言(pointermove 是每帧都跑的那条路)。
        */
       const bubble = shown ? dockRef.current?.querySelector('[data-preview]') : undefined
+      // 这一次露面期间见过泡没有 —— 收起那一刻拿它当回身窗口的武装条件。
+      if (bubble) sawPreview = true
       const bubbleBox = bubble?.getBoundingClientRect()
       const previewRect = bubbleBox
         ? {
@@ -179,8 +217,13 @@ export function AppShell() {
             bottom: bubbleBox.bottom,
           }
         : undefined
-      if (shouldShowDock({ shown, pointer, viewport, edge: dockEdge, rect, previewRect })) {
+      if (shouldShowDock({ shown, reentry, pointer, viewport, edge: dockEdge, rect, previewRect })) {
         cancelHide()
+        // 出来了就把回身窗口清零:下一次收起再重新计时,免得一次收起管两回。
+        hiddenAt = 0
+        hiddenWithPreview = false
+        // 藏着 → 出来 = 新的一次露面,「这次见过泡没有」从头记。
+        if (!shown) sawPreview = false
         peekingRef.current = true
         setPeeking(true)
         return
@@ -189,6 +232,14 @@ export function AppShell() {
       if (!hideTimer) {
         hideTimer = setTimeout(() => {
           hideTimer = null
+          hiddenAt = Date.now()
+          /*
+           * 泡在**收起之前**就已经被自己的收拢宽限收走了(正是它把留驻区缩小、
+           * 才排下这一次收起),所以这里问的是「这一次露面期间见过泡没有」,
+           * 不是「此刻还有没有泡」——后者永远是没有。
+           */
+          hiddenWithPreview = sawPreview
+          sawPreview = false
           peekingRef.current = false
           setPeeking(false)
         }, DOCK_HIDE_DELAY_MS)
