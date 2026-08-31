@@ -39,7 +39,14 @@ import { useSessionsSource } from './sessions-source'
 /** 预览最多读多少字节。超过这个数就只读前一段,并如实说「截断了」。 */
 export const PREVIEW_MAX_BYTES = 256 * 1024
 
-/** 一次文件检索最多要多少条。 */
+/**
+ * 一次文件检索最多要多少条 —— **缺省值**,不是硬上限。
+ *
+ * 检索面板每翻一页都会带一个更大的 `limit` 重查(后端只有 limit、没有游标,
+ * 判据写在 search/transitions.ts 的「分页」一节),所以这个数只在调用方
+ * 什么都不说时生效。后端那边不设上限(`files/file-search.ts` 只有 `?? 50`
+ * 这一个缺省),要多少给多少 —— 于是这里也不夹。
+ */
 export const FILE_SEARCH_LIMIT = 40
 
 /* ── 纯判据 ────────────────────────────────────────────────────────────── */
@@ -152,6 +159,57 @@ export function formatBytes(bytes: number): string {
   return `${shown} ${units[unit]}`
 }
 
+/**
+ * 毫秒时间戳 → 一句绝对时间。**不用相对时间**(「昨天」/「9月2日」):
+ * 会话卡上问的是「多久以前的事」,文件详情上问的是「到底是哪一刻」——
+ * 后者要年月日时分,少一格就得再点一次别的地方去查。
+ *
+ * 走 `toLocaleString` 而不是自己拼:年月日的次序、12/24 小时制这些是**语言环境的
+ * 事实**,不是文案(与 formatBytes 的单位符号同一条口径 —— 它们不进字典)。
+ * 非法时间戳回 null,由调用方画成缺席格,**不拿 1970-01-01 顶**。
+ */
+export function formatMtime(mtimeMs: number | undefined, lang: 'zh' | 'en'): string | null {
+  if (mtimeMs === undefined || !Number.isFinite(mtimeMs) || mtimeMs <= 0) return null
+  const date = new Date(mtimeMs)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/* ── 面包屑 ────────────────────────────────────────────────────────────── */
+
+export interface Crumb {
+  /** 这一段的名字(路径末段)。 */
+  name: string
+  /** 这一段**自己**的绝对路径 —— 点它就回跳到这里。 */
+  path: string
+}
+
+/**
+ * 绝对路径 → 逐段可点的面包屑。**这是投影,不是状态**。
+ *
+ * `/a/b/c` → [a:/a, b:/a/b, c:/a/b/c]。根目录 `/` 与空根都回空表 ——
+ * 那时屏幕上只剩下一条领头的斜杠,没有可点的段,这是事实不是缺陷。
+ * 尾段(当前所在)由渲染层画成不可点的文字:它已经在这儿了,点它没有去处。
+ */
+export function breadcrumbsOf(root: string | null): Crumb[] {
+  if (!root) return []
+  const trimmed = root.endsWith('/') && root.length > 1 ? root.slice(0, -1) : root
+  const crumbs: Crumb[] = []
+  let at = ''
+  for (const part of trimmed.split('/')) {
+    if (!part) continue
+    at = `${at}/${part}`
+    crumbs.push({ name: part, path: at })
+  }
+  return crumbs
+}
+
 /* ── 树的形状 ──────────────────────────────────────────────────────────── */
 
 export type DirStatus = 'loading' | 'ready' | 'error'
@@ -259,6 +317,30 @@ export interface PreviewState {
   error?: string
 }
 
+/* ── 详情 ──────────────────────────────────────────────────────────────── */
+
+export type DetailStatus = 'loading' | 'ready' | 'error'
+
+/**
+ * 双击一行问出来的那几格。**大小与时间只活在这里**,不进树 ——
+ * 树是拿来扫的(一行三件:箭头 / 图标 / 名),扫的时候没人在读字节数;
+ * 真要那个数的那一刻,是**问一件具体的东西**,那是详情干的活。
+ *
+ * 缺格如实缺席:后端的 `files.stat` 不保证给 `size` / `mtimeMs`(目录尤其),
+ * 缺了就画一道 `—`,**不拿 0 B 和 1970-01-01 顶**。
+ */
+export interface FileDetailState {
+  path: string
+  name: string
+  type: 'file' | 'directory'
+  status: DetailStatus
+  size?: number
+  mtimeMs?: number
+  failure?: FileFailure
+  /** 后端原话。 */
+  error?: string
+}
+
 /* ── store ────────────────────────────────────────────────────────────── */
 
 export type RootStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -268,11 +350,19 @@ export interface FilesSourceState {
   /** 已经解析成绝对路径的根;null = 还没定下来。 */
   root: string | null
   rootStatus: RootStatus
-  rootOrigin: 'session' | 'home'
+  /**
+   * 根是**从哪来的**。三档,各说各的话:
+   *  · session —— 活跃会话的工作目录(正常态,面板不多说一句);
+   *  · home    —— 会话没带工作目录,退到了 `~`(底注如实说出来);
+   *  · manual  —— 用户自己点面包屑走上去的(既不是会话的,也不是主目录,
+   *               所以那句「显示的是主目录」不能再说 —— 它会变成假话)。
+   */
+  rootOrigin: 'session' | 'home' | 'manual'
   rootError?: string
   dirs: Record<string, DirState>
   expanded: Record<string, true>
   preview: PreviewState | null
+  detail: FileDetailState | null
   searchStatus: SearchStatus
   searchHits: FileSearchEntry[]
   /**
@@ -282,20 +372,51 @@ export interface FilesSourceState {
    * 空串 = 手上没有任何一次查询的结果。
    */
   searchQuery: string
+  /**
+   * **产生 `searchHits` 的那一次要了多少条**(0 = 手上没有任何一次查询的结果)。
+   *
+   * 它存在只为一件事:回答「取尽了没有」。后端这一条没有游标、也不下发命中总数
+   * (`files.list` 的回执只有 `files` / `entries`),所以唯一能判的判据是
+   * **回来的条数 < 要的条数**。少了这个数,消费方就只能猜。
+   */
+  searchLimit: number
   searchError?: string
 
   /** 换根。入参是**会话的工作目录**(null = 没有,退 `~`)。幂等。 */
   setRoot(cwd: string | null): Promise<void>
+  /**
+   * 面包屑回跳:把根挪到一条**已经解析好的绝对路径**上(祖先段)。
+   *
+   * 与 setRoot 分成两口而不是加一个 flag:setRoot 收的是「会话的工作目录」这件
+   * **事实**(可能是 null,要 stat 展 `~`),这一口收的是「用户此刻想看哪儿」这个
+   * **意图**(一定是绝对路径,不必再问后端)。合成一口就得在里面分岔判断入参
+   * 到底是哪一种,那正是两件事被塞进一个名字的味道。
+   *
+   * 它同时把 setRoot 的幂等基准挪到这条新路径上 —— 于是会话真换目录时
+   * (cwd 变了)照样能把用户拉回会话的根,而手动漫游不会被一次重渲染打回去。
+   */
+  navigateRoot(path: string): Promise<void>
   /** 展开 / 收起一个目录;展开时按需拉它的内容(拉过就不再拉)。 */
   toggleDir(path: string): Promise<void>
   /** 重新读取:清缓存,重拉根与所有仍然展开的目录。 */
   refresh(): Promise<void>
   openPreview(path: string): Promise<void>
   closePreview(): void
+  /**
+   * 打开一行的详情(双击那条路)。名字与类型是**树上已经知道的事实**,原样带进来;
+   * 大小与时间要现问 —— 那正是 stat 在这个端口上的第二个用处。
+   */
+  openDetail(entry: { path: string; name: string; type: 'file' | 'directory' }): Promise<void>
+  closeDetail(): void
   /** 在文件管理器里定位。失败**弹出来**,不静默。 */
   reveal(path: string): Promise<void>
-  /** 按名字搜文件。空词 = 清空(见 search/data.ts 顶部的诚实缺口)。 */
-  searchFiles(query: string, cwd: string | null): Promise<void>
+  /**
+   * 按名字搜文件。空词 = 清空(见 search/data.ts 顶部的诚实缺口)。
+   *
+   * `limit` 是**这一次要多少条**:分页靠它递增(后端只有 limit 没有游标 ——
+   * 代价是每翻一页都从头重查一遍,判据与留账写在 search/transitions.ts)。
+   */
+  searchFiles(query: string, cwd: string | null, limit?: number): Promise<void>
   /** 只给测试用:模块级 store 要能在用例之间归零。 */
   reset(): void
 }
@@ -309,9 +430,11 @@ const EMPTY: Pick<
   | 'dirs'
   | 'expanded'
   | 'preview'
+  | 'detail'
   | 'searchStatus'
   | 'searchHits'
   | 'searchQuery'
+  | 'searchLimit'
   | 'searchError'
 > = {
   root: null,
@@ -321,9 +444,11 @@ const EMPTY: Pick<
   dirs: {},
   expanded: {},
   preview: null,
+  detail: null,
   searchStatus: 'idle',
   searchHits: [],
   searchQuery: '',
+  searchLimit: 0,
   searchError: undefined,
 }
 
@@ -335,6 +460,8 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
   let rootToken = 0
   let previewToken = 0
   let searchToken = 0
+  /** 详情自己一条竞速:双击第二行时,第一行的 stat 回来了也不许改屏。 */
+  let detailToken = 0
   /** 上一次 setRoot 收到的入参 —— 幂等的判据(注意 null 是合法值,不能用 ?? 兜)。 */
   let lastCwd: string | null | undefined
 
@@ -372,6 +499,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
         searchStatus: get().searchStatus,
         searchHits: get().searchHits,
         searchQuery: get().searchQuery,
+        searchLimit: get().searchLimit,
         searchError: get().searchError,
       })
 
@@ -390,6 +518,27 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       if (rootToken !== token) return
       set({ root, rootStatus: 'ready' })
       await loadDir(root)
+    },
+
+    navigateRoot: async (path) => {
+      if (!path || get().root === path) return
+      const token = ++rootToken
+      // 幂等基准跟着走(理由写在接口那一条的注里)。
+      lastCwd = path
+      set({
+        ...EMPTY,
+        root: path,
+        rootStatus: 'ready',
+        rootOrigin: 'manual',
+        // 与 setRoot 逐字同一条:检索是跨根的一件事,换根不抹掉刚搜出来的结果。
+        searchStatus: get().searchStatus,
+        searchHits: get().searchHits,
+        searchQuery: get().searchQuery,
+        searchLimit: get().searchLimit,
+        searchError: get().searchError,
+      })
+      if (rootToken !== token) return
+      await loadDir(path)
     },
 
     toggleDir: async (path) => {
@@ -450,6 +599,42 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       set({ preview: null })
     },
 
+    openDetail: async (entry) => {
+      const token = ++detailToken
+      set({ detail: { ...entry, status: 'loading' } })
+      const port = await filesPort()
+      const response = await port.stat(entry.path)
+      if (detailToken !== token) return
+      if (!response.success) {
+        set({
+          detail: {
+            ...entry,
+            status: 'error',
+            failure: classifyFileFailure(response.error),
+            error: response.error,
+          },
+        })
+        return
+      }
+      set({
+        detail: {
+          ...entry,
+          // stat 回的是**真正 stat 到的**那条绝对路径(`~` 已展开),以它为准。
+          path: response.path ?? entry.path,
+          // 后端认出来的类型压过树上那一格 —— 符号链接指向哪儿,只有 stat 知道。
+          type: response.type ?? entry.type,
+          status: 'ready',
+          size: response.size,
+          mtimeMs: response.mtimeMs,
+        },
+      })
+    },
+
+    closeDetail: () => {
+      detailToken += 1
+      set({ detail: null })
+    },
+
     reveal: async (path) => {
       const port = await filesPort()
       const response = await port.reveal(path)
@@ -468,11 +653,17 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       })
     },
 
-    searchFiles: async (query, cwd) => {
+    searchFiles: async (query, cwd, limit = FILE_SEARCH_LIMIT) => {
       const q = query.trim()
       const token = ++searchToken
       if (!q) {
-        set({ searchStatus: 'idle', searchHits: [], searchQuery: '', searchError: undefined })
+        set({
+          searchStatus: 'idle',
+          searchHits: [],
+          searchQuery: '',
+          searchLimit: 0,
+          searchError: undefined,
+        })
         return
       }
       set({ searchStatus: 'loading' })
@@ -480,11 +671,17 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       const response = await port.list({
         ...(cwd ? { cwd } : {}),
         query: q,
-        limit: FILE_SEARCH_LIMIT,
+        limit,
       })
       if (searchToken !== token) return
       if (!response.success) {
-        set({ searchStatus: 'error', searchHits: [], searchQuery: q, searchError: response.error })
+        set({
+          searchStatus: 'error',
+          searchHits: [],
+          searchQuery: q,
+          searchLimit: limit,
+          searchError: response.error,
+        })
         return
       }
       /*
@@ -493,13 +690,20 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
        */
       const entries: FileSearchEntry[] =
         response.entries ?? response.files.map((path) => ({ path, type: 'file' as const }))
-      set({ searchStatus: 'ready', searchHits: entries, searchQuery: q, searchError: undefined })
+      set({
+        searchStatus: 'ready',
+        searchHits: entries,
+        searchQuery: q,
+        searchLimit: limit,
+        searchError: undefined,
+      })
     },
 
     reset: () => {
       rootToken += 1
       previewToken += 1
       searchToken += 1
+      detailToken += 1
       lastCwd = undefined
       set({ ...EMPTY })
     },

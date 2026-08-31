@@ -6,14 +6,23 @@
  *
  *  ① 脚本在磁盘上真的建一棵目录树,再用发现文件里的 token 建一条会话并把它的
  *     `workingDirectory` 指到那棵树的根 —— 全程绕开应用,数据是「别人写的」;
- *  ② 拉起应用 → 进那条会话 → 打开 Dock 上那块「文件」→ 断言**根条上显示的路径**
+ *  ② 拉起应用 → 进那条会话 → 打开 Dock 上那块「文件」→ 断言**头上那条路径**
  *     就是那条会话的工作目录(根目录判据的端到端证明);
  *  ③ 展开两层,断言每一层画出来的名字与 `fs.readdir` 逐条相等(集合相等,
  *     不是「包含」—— 多画一行同样是红);
  *  ④ 点一个源码文件 → 断言预览里出现的是**磁盘上那个文件的原文**;
  *  ⑤ 打开检索面板搜一个真文件名 → 断言命中行里有它的路径;
- *  ⑥ 点行尾的 reveal → 断言**做得到就成功、做不到就弹一条 error**
+ *  ⑥ 双击一行开详情 → 点里面的 reveal → 断言**做得到就成功、做不到就弹一条 error**
  *     (独立 server 没有宿主外壳,结构化降级 —— 这一格验的是「失败看得见」)。
+ *
+ * ── 08-31「IDE 紧凑树」改版后这条门改了什么 ────────────────────────────────
+ * **真事实一条没改**(根 / 树 / 预览 / 检索 / reveal 的诚实性),只有取件口跟着
+ * 屏幕的新形状动了三处:
+ *  · 根:`[data-testid="files-root"]` 还在原地,只是它里面从一行字变成了一排
+ *    面包屑按钮 —— 分隔斜杠是真的文本节点,所以整条 textContent 仍然逐字等于根路径;
+ *  · 行:一行现在**自己就是那颗按钮**(从前是 `div > button`),所以
+ *    `[data-file-path="…"] button` 改成 `[data-file-path="…"]`;
+ *  · reveal:行尾那枚常驻小钮退役,它的活儿挪进了双击出来的详情面。
  *
  * ── 为什么要自带一个 workspace root(这条门最要紧的一行 env) ─────────────
  * 壳走的是 `POST /api/rpc`,于是 files 域按 `transport:'http'` 把每条路径夹进
@@ -236,13 +245,13 @@ async function main() {
     )
     await clickSelector(page, '[data-testid="dock-tile-files"]')
 
-    const shownRoot = await waitFor('文件面板画出根条', async () => {
+    const shownRoot = await waitFor('文件面板画出面包屑路径', async () => {
       const text = await page.evaluate(
         () => document.querySelector('[data-testid="files-root"]')?.textContent ?? null,
       )
       return text && text.startsWith('/') ? text : undefined
     })
-    assert(shownRoot === cwd, `根条上显示的就是那条会话的工作目录:${shownRoot}`)
+    assert(shownRoot === cwd, `面包屑拼出来的就是那条会话的工作目录:${shownRoot}`)
 
     console.log('\n[4/6] 展开两层,逐条对磁盘')
     const shown0 = await waitFor('第一层画出来', async () => {
@@ -254,7 +263,7 @@ async function main() {
       `第一层与磁盘逐条相等:${sorted(shown0).join(', ')}`,
     )
 
-    await clickSelector(page, `[data-file-path="${path.join(cwd, 'packages')}"] button`)
+    await clickSelector(page, `[data-file-path="${path.join(cwd, 'packages')}"]`)
     const shown1 = await waitFor('第二层画出来', async () => {
       const names = await namesAtDepth(page, 1)
       return names.length > 0 ? names : undefined
@@ -264,7 +273,7 @@ async function main() {
       `第二层与磁盘逐条相等:${sorted(shown1).join(', ')}`,
     )
 
-    await clickSelector(page, `[data-file-path="${path.join(cwd, 'packages', 'core')}"] button`)
+    await clickSelector(page, `[data-file-path="${path.join(cwd, 'packages', 'core')}"]`)
     const shown2 = await waitFor('第三层画出来', async () => {
       const names = await namesAtDepth(page, 2)
       return names.length > 0 ? names : undefined
@@ -273,7 +282,7 @@ async function main() {
     await page.screenshot({ path: path.join(shotDir, 'tree.png') })
 
     console.log('\n[5/6] 点一个源码文件,断言预览里是磁盘上那份原文')
-    await clickSelector(page, `[data-file-path="${path.join(cwd, 'packages', 'core', 'engine.ts')}"] button`)
+    await clickSelector(page, `[data-file-path="${path.join(cwd, 'packages', 'core', 'engine.ts')}"]`)
     const previewText = await waitFor('预览画出来', async () => {
       const text = await page.evaluate(
         () => document.querySelector('[data-testid="files-preview"]')?.textContent ?? null,
@@ -286,12 +295,33 @@ async function main() {
     }
     await page.screenshot({ path: path.join(shotDir, 'preview.png') })
 
-    console.log('\n[6/6] reveal 的诚实性 + 检索面文件侧')
+    console.log('\n[6/6] 双击出详情 → reveal 的诚实性 + 检索面文件侧')
     await clickSelector(page, '[data-testid="files-preview"] button[aria-label]')
-    await clickSelector(
-      page,
-      `[data-file-path="${path.join(cwd, 'README.md')}"] button[aria-label]:last-of-type`,
+    /*
+     * 详情走双击。`element.click()` 派发的是单击,所以这里直接派发一个真的
+     * dblclick 事件(与 clickSelector 同一条理由:绕开可操作性判定,事件仍是真的)。
+     */
+    await page.evaluate(selector => {
+      const el = document.querySelector(selector)
+      if (!el) throw new Error(`双击不到:${selector}`)
+      el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }))
+    }, `[data-file-path="${path.join(cwd, 'README.md')}"]`)
+    const detailPath = await waitFor('详情面画出来', () =>
+      page.evaluate(
+        () => document.querySelector('[data-testid="files-detail"]')?.getAttribute('data-file-path') ?? null,
+      ),
     )
+    assert(
+      detailPath === path.join(cwd, 'README.md'),
+      `详情面问的是刚双击的那一行:${detailPath}`,
+    )
+    // reveal 现在长在详情面的动作组里(行尾那枚常驻小钮已随改版退役)。
+    await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('[role="dialog"] button'))
+      const target = buttons.find(b => /文件管理器|file manager/i.test(b.textContent ?? ''))
+      if (!target) throw new Error('详情面上没有「在文件管理器中显示」这颗钮')
+      target.click()
+    })
     await delay(800)
     // 观测口就是屏幕:失败会画一条 error toast(不自动消失那一档)。
     const revealErrorShown = await page.evaluate(() => {
@@ -300,6 +330,11 @@ async function main() {
     })
     console.log(
       `  · reveal 结果:${revealErrorShown ? '结构化降级并弹出通知(这台 core 是独立 server,没有宿主外壳)' : '成功,没有报错'}`,
+    )
+    // 详情是模态的:走完就关掉(Esc = 那条逃生口),后面几步才不隔着一层遮罩。
+    await page.keyboard.press('Escape')
+    await waitFor('详情面关掉了', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="files-detail"]')),
     )
 
     await clickSelector(page, '[data-testid="dock-tile-search"]')

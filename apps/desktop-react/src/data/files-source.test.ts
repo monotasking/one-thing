@@ -5,9 +5,11 @@ import type { FilesPort } from './files-port'
 import {
   PREVIEW_MAX_BYTES,
   baseNameOf,
+  breadcrumbsOf,
   classifyFileFailure,
   flattenTree,
   formatBytes,
+  formatMtime,
   langOfPath,
   sessionCwdOf,
   useFilesSource,
@@ -315,5 +317,126 @@ describe('小工具', () => {
   it('沙箱越界归 denied —— 对用户来说它就是「这台不让我读那儿」', () => {
     expect(classifyFileFailure('Path must stay inside the workspace sandbox root.')).toBe('denied')
     expect(classifyFileFailure(undefined)).toBe('failed')
+  })
+
+  it('修改时间是**绝对**时间,缺席就是缺席(不拿 1970 顶)', () => {
+    const shown = formatMtime(Date.UTC(2026, 7, 31, 4, 5), 'zh')
+    expect(shown).toContain('2026')
+    expect(formatMtime(undefined, 'zh')).toBeNull()
+    expect(formatMtime(0, 'zh')).toBeNull()
+    expect(formatMtime(Number.NaN, 'zh')).toBeNull()
+    // 换语言换的是年月日的次序与 12/24 小时制,不是「有没有这一格」。
+    expect(formatMtime(Date.UTC(2026, 7, 31, 4, 5), 'en')).toContain('2026')
+  })
+})
+
+describe('面包屑(投影,不是状态)', () => {
+  it('逐段带上它自己的绝对路径 —— 点哪一段就回跳到哪儿', () => {
+    expect(breadcrumbsOf('/a/b/c')).toEqual([
+      { name: 'a', path: '/a' },
+      { name: 'b', path: '/a/b' },
+      { name: 'c', path: '/a/b/c' },
+    ])
+  })
+
+  it('末尾斜杠不多产一段;根 `/` 与空根都没有可点的段', () => {
+    expect(breadcrumbsOf('/a/b/')).toEqual([
+      { name: 'a', path: '/a' },
+      { name: 'b', path: '/a/b' },
+    ])
+    expect(breadcrumbsOf('/')).toEqual([])
+    expect(breadcrumbsOf(null)).toEqual([])
+  })
+
+  it('拼回去逐字等于原路径 —— 屏幕上那条 textContent 因此不会说谎', () => {
+    const root = '/Users/me/code/start-electron'
+    expect(breadcrumbsOf(root).map((c) => `/${c.name}`).join('')).toBe(root)
+  })
+})
+
+describe('回跳:navigateRoot', () => {
+  it('把根挪到祖先段,拉那一层,并把来源翻成 manual', async () => {
+    const port = fakePort()
+    await useFilesSource.getState().setRoot(`${ROOT}/packages/core`)
+    expect(useFilesSource.getState().rootOrigin).toBe('session')
+
+    await useFilesSource.getState().navigateRoot(ROOT)
+    expect(useFilesSource.getState().root).toBe(ROOT)
+    // 既不是会话的目录也不是主目录 —— 那句「显示的是主目录」不能再说。
+    expect(useFilesSource.getState().rootOrigin).toBe('manual')
+    expect(port.listDirectory).toHaveBeenCalledWith(ROOT)
+  })
+
+  it('已经在那儿了就什么都不做(空路径同理)', async () => {
+    const port = fakePort()
+    await useFilesSource.getState().setRoot(ROOT)
+    const before = (port.listDirectory as ReturnType<typeof vi.fn>).mock.calls.length
+    await useFilesSource.getState().navigateRoot(ROOT)
+    await useFilesSource.getState().navigateRoot('')
+    expect((port.listDirectory as ReturnType<typeof vi.fn>).mock.calls.length).toBe(before)
+  })
+
+  it('回跳之后会话真换了目录,照样能把用户拉回会话的根', async () => {
+    fakePort()
+    await useFilesSource.getState().setRoot(`${ROOT}/packages`)
+    await useFilesSource.getState().navigateRoot(ROOT)
+    await useFilesSource.getState().setRoot(`${ROOT}/docs`)
+    expect(useFilesSource.getState().root).toBe(`${ROOT}/docs`)
+    expect(useFilesSource.getState().rootOrigin).toBe('session')
+  })
+})
+
+describe('详情:大小与时间只在这里问', () => {
+  it('stat 一次,四格照抄;后端认出来的类型压过树上那一格', async () => {
+    const port = fakePort({
+      stat: vi.fn(async () => ({
+        success: true,
+        type: 'file' as const,
+        path: `${ROOT}/a.ts`,
+        size: 4096,
+        mtimeMs: 1_700_000_000_000,
+      })),
+    })
+    await useFilesSource
+      .getState()
+      .openDetail({ path: `${ROOT}/a.ts`, name: 'a.ts', type: 'directory' })
+    expect(port.stat).toHaveBeenCalledWith(`${ROOT}/a.ts`)
+    expect(useFilesSource.getState().detail).toEqual({
+      path: `${ROOT}/a.ts`,
+      name: 'a.ts',
+      type: 'file',
+      status: 'ready',
+      size: 4096,
+      mtimeMs: 1_700_000_000_000,
+    })
+  })
+
+  it('后端没给大小 / 时间就是缺席,**不补 0**', async () => {
+    fakePort({
+      stat: vi.fn(async () => ({ success: true, type: 'directory' as const, path: ROOT })),
+    })
+    await useFilesSource.getState().openDetail({ path: ROOT, name: 'repo', type: 'directory' })
+    const detail = useFilesSource.getState().detail
+    expect(detail?.size).toBeUndefined()
+    expect(detail?.mtimeMs).toBeUndefined()
+  })
+
+  it('读不到就归类 + 留原话(与树、预览共用同一条归类)', async () => {
+    fakePort({
+      stat: vi.fn(async () => ({ success: false, error: 'EACCES: permission denied, stat' })),
+    })
+    await useFilesSource.getState().openDetail({ path: ROOT, name: 'repo', type: 'directory' })
+    expect(useFilesSource.getState().detail).toMatchObject({
+      status: 'error',
+      failure: 'denied',
+      error: 'EACCES: permission denied, stat',
+    })
+  })
+
+  it('关掉就没了', async () => {
+    fakePort()
+    await useFilesSource.getState().openDetail({ path: ROOT, name: 'repo', type: 'directory' })
+    useFilesSource.getState().closeDetail()
+    expect(useFilesSource.getState().detail).toBeNull()
   })
 })

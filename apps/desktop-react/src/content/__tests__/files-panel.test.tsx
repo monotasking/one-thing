@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { FilesDirectoryEntry } from '@shared/ipc/files'
 import { renderContent } from '../index'
 import { configureFilesPort } from '../../data/files-port'
@@ -41,7 +41,16 @@ function installPort(overrides: Partial<FilesPort> = {}): FilesPort {
         ? { success: true, entries: TREE[path] }
         : { success: false, error: 'Failed to list directory' },
     ),
-    stat: vi.fn(async () => ({ success: true, type: 'directory' as const, path: '/home/me' })),
+    /*
+     * 真后端的 stat 回的是**实际 stat 到的那条绝对路径**(`~` 已展开),别的原样奉还。
+     * 假端口跟着这条口径 —— 从前一律回 '/home/me' 会让详情面上的路径凭空变成主目录,
+     * 那不是「假数据」,那是假事实。
+     */
+    stat: vi.fn(async (path: string) => ({
+      success: true,
+      type: 'directory' as const,
+      path: path === '~' ? '/home/me' : path,
+    })),
     readContent: vi.fn(async () => ({
       success: true,
       content: 'export const engine = 1\n',
@@ -63,6 +72,11 @@ beforeEach(() => {
   useNotifyStore.setState({ items: [] })
 })
 
+/** 头上那条路径此刻说的是什么(面包屑的 textContent 逐字等于根路径)。 */
+function shownRoot(): string {
+  return screen.getByTestId('files-root').textContent ?? ''
+}
+
 /** 内容表那一格换人了没有 —— 这条在 FilesMock 还挂着时必红。 */
 describe('内容表:files 这一格是真面板', () => {
   it('renderContent(\'files\') 画的是真树,不是写死的三行', async () => {
@@ -71,9 +85,16 @@ describe('内容表:files 这一格是真面板', () => {
     await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
     // FilesMock 那三行里唯一不可能来自本用例假端口的字面量:它在场就说明旧面板还在。
     expect(screen.queryByText('model-capability.ts')).toBeNull()
-    // 真面板才有的两件:面板标题与根条。
-    expect(screen.getByText('文件')).toBeTruthy()
-    expect(screen.getByText(ROOT)).toBeTruthy()
+    // 真面板才有的那件:头上那条真路径。
+    expect(shownRoot()).toBe(ROOT)
+  })
+
+  /* 08-31「IDE 紧凑树」:面板内那个与 tab 重名的大标题退役。 */
+  it('面板里不再有第二个「文件」大标题(tab 已经叫这个名字)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
+    expect(screen.queryByRole('heading', { name: '文件' })).toBeNull()
   })
 })
 
@@ -81,12 +102,12 @@ describe('根:跟着活跃会话走', () => {
   it('根 = 活跃会话的工作目录,并且如实显示在面板头上', async () => {
     const port = installPort()
     render(<>{renderContent('files')}</>)
-    await waitFor(() => expect(screen.getByText(ROOT)).toBeTruthy())
+    await waitFor(() => expect(shownRoot()).toBe(ROOT))
     expect(port.listDirectory).toHaveBeenCalledWith(ROOT)
     expect(port.stat).not.toHaveBeenCalled()
   })
 
-  it('会话没有工作目录时退主目录,并**说出来**', async () => {
+  it('会话没有工作目录时退主目录,并**说出来**(那句话现在长在底注上)', async () => {
     useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
     installPort({
       listDirectory: vi.fn(async () => ({ success: true, entries: [] })),
@@ -95,7 +116,113 @@ describe('根:跟着活跃会话走', () => {
     await waitFor(() =>
       expect(screen.getByText('这条会话没有工作目录,显示的是主目录')).toBeTruthy(),
     )
-    expect(screen.getByText('/home/me')).toBeTruthy()
+    expect(shownRoot()).toBe('/home/me')
+  })
+})
+
+describe('面包屑:各段可点回跳', () => {
+  it('路径逐段画出来,尾段是当前所在(不是钮)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(shownRoot()).toBe(ROOT))
+    const parts = ROOT.split('/').filter(Boolean)
+    const last = parts[parts.length - 1]
+    // 尾段在屏幕上,但它不是按钮 —— 点它没有去处。
+    expect(screen.queryByRole('button', { name: last })).toBeNull()
+    // 祖先段各是一颗钮。
+    for (const part of parts.slice(0, -1)) {
+      expect(screen.getByRole('button', { name: part })).toBeTruthy()
+    }
+  })
+
+  it('点一个祖先段 = 根挪过去,并拉那一层的内容', async () => {
+    const parts = ROOT.split('/').filter(Boolean)
+    const parent = `/${parts.slice(0, -1).join('/')}`
+    const port = installPort({
+      listDirectory: vi.fn(async (path: string) =>
+        path === parent
+          ? { success: true, entries: [entry('sibling', 'directory', parent)] }
+          : TREE[path]
+            ? { success: true, entries: TREE[path] }
+            : { success: false, error: 'Failed to list directory' },
+      ),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: parts[parts.length - 2] }))
+    await waitFor(() => expect(shownRoot()).toBe(parent))
+    expect(port.listDirectory).toHaveBeenCalledWith(parent)
+    await waitFor(() => expect(screen.getByText('sibling')).toBeTruthy())
+    // 走上去之后那句「显示的是主目录」不该冒出来 —— 这里既不是会话的根也不是主目录。
+    expect(screen.queryByText('这条会话没有工作目录,显示的是主目录')).toBeNull()
+  })
+})
+
+describe('行:真图标 + 零 meta', () => {
+  it('目录是 Folder(展开换 FolderOpen),文件按扩展名各画各的', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
+
+    const dir = document.querySelector(`[data-file-path="${ROOT}/packages"]`)
+    const md = document.querySelector(`[data-file-path="${ROOT}/README.md"]`)
+    expect(dir?.getAttribute('data-file-icon')).toBe('Folder')
+    expect(dir?.getAttribute('data-file-tone')).toBe('dir')
+    expect(md?.getAttribute('data-file-icon')).toBe('FileText')
+    expect(md?.getAttribute('data-file-tone')).toBe('doc')
+
+    fireEvent.click(screen.getByText('packages'))
+    await waitFor(() =>
+      expect(
+        document
+          .querySelector(`[data-file-path="${ROOT}/packages"]`)
+          ?.getAttribute('data-file-icon'),
+      ).toBe('FolderOpen'),
+    )
+    // 展开出来的 .ts 拿的是 js 族的色,与 README.md 那一枚不是同一种。
+    fireEvent.click(screen.getByText('core'))
+    await waitFor(() => expect(screen.getByText('engine.ts')).toBeTruthy())
+    const ts = document.querySelector(`[data-file-path="${ROOT}/packages/core/engine.ts"]`)
+    expect(ts?.getAttribute('data-file-icon')).toBe('FileCode')
+    expect(ts?.getAttribute('data-file-tone')).toBe('js')
+  })
+
+  it('隐藏文件整行标出来(淡显靠这一格,不靠正则散在组件里)', async () => {
+    installPort({
+      listDirectory: vi.fn(async () => ({
+        success: true,
+        entries: [entry('.gitignore', 'file'), entry('README.md', 'file')],
+      })),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('.gitignore')).toBeTruthy())
+    expect(
+      document.querySelector(`[data-file-path="${ROOT}/.gitignore"]`)?.getAttribute('data-file-hidden'),
+    ).toBe('true')
+    expect(
+      document.querySelector(`[data-file-path="${ROOT}/README.md"]`)?.getAttribute('data-file-hidden'),
+    ).toBeNull()
+  })
+
+  it('行上没有大小 / 时间 —— 那两个数只活在详情面上', async () => {
+    installPort({
+      listDirectory: vi.fn(async () => ({
+        success: true,
+        entries: [{ name: 'README.md', path: `${ROOT}/README.md`, type: 'file' as const, size: 4096, mtimeMs: 1_700_000_000_000 }],
+      })),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    const row = document.querySelector(`[data-file-path="${ROOT}/README.md"]`)
+    expect(row?.textContent).toBe('README.md')
+  })
+
+  it('行尾那枚常驻 reveal 钮已随本批退役(它的活儿挪进了详情面)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    expect(screen.queryAllByLabelText('在文件管理器中显示')).toEqual([])
   })
 })
 
@@ -203,19 +330,86 @@ describe('预览', () => {
   })
 })
 
-describe('reveal', () => {
-  it('每一行都带一枚「在文件管理器中显示」,点它把整条路径交下去', async () => {
+describe('详情:双击任一行', () => {
+  /** 双击一行(先一次 click 走单击那条路,再一次带 detail:2 的 click,最后 dblClick)。 */
+  async function openDetail(name: string) {
+    const row = screen.getByText(name)
+    fireEvent.click(row, { detail: 1 })
+    fireEvent.click(row, { detail: 2 })
+    fireEvent.doubleClick(row)
+    await waitFor(() => expect(screen.getByTestId('files-detail')).toBeTruthy())
+  }
+
+  it('双击文件:四格都在(类型 / 大小 / 修改时间 / 完整路径),数走 stat 那一口', async () => {
+    const port = installPort({
+      stat: vi.fn(async () => ({
+        success: true,
+        type: 'file' as const,
+        path: `${ROOT}/README.md`,
+        size: 4096,
+        mtimeMs: Date.UTC(2026, 7, 31, 4, 5),
+      })),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    await openDetail('README.md')
+
+    expect(port.stat).toHaveBeenCalledWith(`${ROOT}/README.md`)
+    expect(screen.getByText('类型')).toBeTruthy()
+    expect(screen.getByText('文件')).toBeTruthy()
+    await waitFor(() =>
+      expect(screen.getByTestId('files-detail-size').textContent).toBe('4.0 KB'),
+    )
+    // 时间是绝对时间(带年),不是「昨天」那种相对说法。
+    expect(screen.getByTestId('files-detail-mtime').textContent).toMatch(/2026/)
+    expect(screen.getByText('完整路径')).toBeTruthy()
+    /*
+     * 在详情面**里面**找那条路径:双击文件时第一下已经把预览打开了(单击语义
+     * 本批一个字没改),预览头上也写着同一条路径 —— 屏幕上有两份是**预期**,
+     * 不是重复渲染。
+     */
+    expect(within(screen.getByTestId('files-detail')).getByText(`${ROOT}/README.md`)).toBeTruthy()
+  })
+
+  it('双击目录:一样出详情,类型说「目录」,而且没有「预览打开」那颗钮', async () => {
+    installPort({
+      stat: vi.fn(async () => ({
+        success: true,
+        type: 'directory' as const,
+        path: `${ROOT}/packages`,
+      })),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
+    await openDetail('packages')
+
+    expect(screen.getByText('目录')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '预览打开' })).toBeNull()
+    // 后端没给大小 / 时间就画缺席格,**不拿 0 B 和 1970 顶**。
+    expect(screen.getByTestId('files-detail-size').textContent).toBe('—')
+    expect(screen.getByTestId('files-detail-mtime').textContent).toBe('—')
+  })
+
+  it('双击一个目录只翻一次展开 —— 两次 click 里的第二次被 e.detail 挡掉', async () => {
+    const port = installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
+    await openDetail('packages')
+    // 展开了(而不是展开又收起),所以那一层被拉了回来。
+    expect(port.listDirectory).toHaveBeenCalledWith(`${ROOT}/packages`)
+  })
+
+  it('「在文件管理器中显示」把整条路径交下去;做不到弹一条 error', async () => {
     const port = installPort()
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
-    const buttons = screen.getAllByLabelText('在文件管理器中显示')
-    expect(buttons.length).toBe(2)
-    fireEvent.click(buttons[1])
+    await openDetail('README.md')
+    fireEvent.click(screen.getByRole('button', { name: '在文件管理器中显示' }))
     await waitFor(() => expect(port.reveal).toHaveBeenCalledWith(`${ROOT}/README.md`))
     expect(useNotifyStore.getState().items).toEqual([])
   })
 
-  it('做不到就弹一条 error —— 点了没反应是最坏的那一种', async () => {
+  it('reveal 做不到就弹一条 error —— 点了没反应是最坏的那一种', async () => {
     installPort({
       reveal: vi.fn(async () => ({
         success: false,
@@ -224,11 +418,54 @@ describe('reveal', () => {
     })
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
-    fireEvent.click(screen.getAllByLabelText('在文件管理器中显示')[1])
+    await openDetail('README.md')
+    fireEvent.click(screen.getByRole('button', { name: '在文件管理器中显示' }))
     await waitFor(() =>
       expect(useNotifyStore.getState().items.map((x) => [x.level, x.title])).toEqual([
         ['error', '没能在文件管理器中定位'],
       ]),
     )
+  })
+
+  it('复制路径:就地反馈(⧉ 换 ✓),**不产生一条通知**', async () => {
+    const writeText = vi.fn(async () => undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    })
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    await openDetail('README.md')
+
+    const copy = screen.getByRole('button', { name: '复制路径' })
+    expect(copy.querySelector('svg')?.getAttribute('class')).toBeTruthy()
+    fireEvent.click(copy)
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${ROOT}/README.md`))
+    // 反馈落在被按的那颗钮上,而不是通知中心里。
+    await waitFor(() =>
+      expect(document.body.textContent).toContain('已复制'),
+    )
+    expect(useNotifyStore.getState().items).toEqual([])
+  })
+
+  it('stat 失败:说读不到,并留下后端原话(不借预览那句「这个文件」)', async () => {
+    installPort({
+      stat: vi.fn(async () => ({ success: false, error: 'EACCES: permission denied, stat' })),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
+    await openDetail('packages')
+    await waitFor(() => expect(screen.getByText('没有权限读这一项的信息')).toBeTruthy())
+    expect(screen.getByText('EACCES: permission denied, stat')).toBeTruthy()
+  })
+
+  it('Esc 关掉详情(逃生口)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    await openDetail('README.md')
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('files-detail')).toBeNull())
   })
 })

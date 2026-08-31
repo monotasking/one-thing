@@ -1,9 +1,21 @@
 import {
   FolderTree,
+  Folder,
   FolderOpen,
   GitCompare,
   Terminal,
   FileText,
+  File,
+  FileCode,
+  FileBraces,
+  FileSpreadsheet,
+  FileImage,
+  FileArchive,
+  FileMusic,
+  FilePlay,
+  FileTerminal,
+  FileCog,
+  FileLock,
   Pencil,
   Wrench,
   Globe,
@@ -37,6 +49,8 @@ import {
   Bell,
   Square,
   Boxes,
+  Layers,
+  Trash2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -46,10 +60,22 @@ import type { LucideIcon } from 'lucide-react'
  */
 const REGISTRY: Record<string, LucideIcon> = {
   FolderTree,
+  Folder,
   FolderOpen,
   GitCompare,
   Terminal,
   FileText,
+  File,
+  FileCode,
+  FileBraces,
+  FileSpreadsheet,
+  FileImage,
+  FileArchive,
+  FileMusic,
+  FilePlay,
+  FileTerminal,
+  FileCog,
+  FileLock,
   Pencil,
   Wrench,
   Globe,
@@ -83,6 +109,8 @@ const REGISTRY: Record<string, LucideIcon> = {
   Bell,
   Square,
   Boxes,
+  Layers,
+  Trash2,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -117,5 +145,7 @@ export {
   TriangleAlert,
   Bell,
   Square,
+  Layers,
+  Trash2,
 }
 export type { LucideIcon }
