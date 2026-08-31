@@ -629,6 +629,111 @@ async function checkListTopRow(page) {
 }
 
 /**
+ * 崩溃现场那条长 URL —— toast 挤压检查的被试。
+ *
+ * 形状是真机报障那一条逐字照抄:带 `?t=` 时间戳的模块 URL。它的要害是
+ * **没有空格**,默认的 `overflow-wrap: normal` 在里面找不到几个断点。
+ */
+const CRASH_URL = 'http://localhost:5199/src/components/DockTile.tsx?t=1756612345678&import&v=0f3a9c2e'
+
+/**
+ * 挤压纪律的 **toast 版**(09-01 报障:崩溃弹框「右半边没了」)。
+ *
+ * ── 为什么是独立的一步,而不是让上面那把重叠尺去扫 ─────────────────────────
+ * 三条理由,每条都能单独把它挡在那把尺之外:
+ *   · toast 画在 `document.body` 上的 portal 里,根本不在右架子那棵树下;
+ *   · 它的病是**墨溢出自己的盒子**,不是两个盒子相交 —— 盒子从头到尾是声明的
+ *     320px,`getBoundingClientRect` 一个像素都没变(修前实测 320/320),
+ *     一把只会说「有没有压着」的尺对这一形结构性失明;
+ *   · 它被 `.toast { overflow: hidden }` 齐着边框剪掉,剪掉的那一截连盒子都没有。
+ *
+ * 所以判据换成**墨**:`rect.left + el.scrollWidth` 才是这段文字真正画到哪儿。
+ * 两条断言,对应报障当天被怀疑过的两种病根(先量后修,量出来是第二种):
+ *   ① 盒子没被撑宽:toast 盒宽 ≤ 宿主可用宽(视口减两侧固定偏移),且整只落在视口内;
+ *   ② 墨没顶穿 padding:每一件内容的墨右缘 ≤ 容器 padding 内缘 —— 换句话说
+ *      「墨到边框的距离 ≥ padding token」,这正是「任何内容不得触边」的机器化。
+ *
+ * 反证:把 `ui/Toast.module.css` 里 `.message` 那条 `overflow-wrap: anywhere`
+ * 注释掉再跑 → ② 当场红(修前实测:墨画到 1290,容器 padding 内缘 1251,
+ * 顶穿 39px;盒宽 320 = 声明值,① 修前修后都绿 —— 这正是它必须两条都在的理由)。
+ * ──────────────────────────────────────────────────────────────────────
+ *
+ * 触发走的是**生产那条路**:朝 window 派发一个真的 ErrorEvent,由
+ * `services/crash.ts` 的 window.onerror 监听接住 → notify → toast。
+ * 不去戳 toast hub —— 那样量的就不是崩溃弹框,是一个被摆拍的组件。
+ */
+async function checkToastSqueeze(page) {
+  await page.evaluate((url) => {
+    window.dispatchEvent(
+      new ErrorEvent('error', {
+        message: 'TypeError: Cannot read properties of undefined (reading tile)',
+        filename: url,
+        lineno: 42,
+        colno: 17,
+        error: new TypeError('Cannot read properties of undefined (reading tile)'),
+      }),
+    )
+  }, CRASH_URL)
+  await waitFor('崩溃 toast 出场', () =>
+    page.evaluate(() => Boolean(document.querySelector('[data-testid="toast-row"]'))),
+  )
+  return page.evaluate(() => {
+    const rows = [...document.querySelectorAll('[data-testid="toast-row"]')]
+    if (rows.length === 0) return { error: 'toast 不在 DOM 里' }
+    const problems = []
+    const seen = []
+    for (const row of rows) {
+      const stack = row.parentElement
+      const cs = getComputedStyle(row)
+      const rb = row.getBoundingClientRect()
+      const padR = Number.parseFloat(cs.paddingRight)
+      const padL = Number.parseFloat(cs.paddingLeft)
+      const bwR = Number.parseFloat(cs.borderRightWidth)
+      const bwL = Number.parseFloat(cs.borderLeftWidth)
+      const innerRight = rb.right - bwR - padR
+      const innerLeft = rb.left + bwL + padL
+
+      // ① 盒子本身:没被撑宽,整只在视口里。
+      const offset = Number.parseFloat(getComputedStyle(stack).right)
+      const available = window.innerWidth - (Number.isFinite(offset) ? offset * 2 : 0)
+      seen.push(`盒宽 ${rb.width.toFixed(0)} / 可用 ${available.toFixed(0)}`)
+      if (rb.width > available + 1) {
+        problems.push(`toast 盒宽 ${rb.width.toFixed(1)} > 宿主可用宽 ${available.toFixed(1)}`)
+      }
+      if (rb.right > window.innerWidth + 1 || rb.left < -1) {
+        problems.push(`toast 盒子出视口:left=${rb.left.toFixed(1)} right=${rb.right.toFixed(1)} 视口宽 ${window.innerWidth}`)
+      }
+
+      // ② 墨:每一件内容都不许顶穿 padding 内缘。
+      const PAINTS = new Set(['SVG', 'IMG', 'CANVAS'])
+      const walk = (el) => {
+        const hasText = [...el.childNodes].some((n) => n.nodeType === 3 && n.nodeValue?.trim())
+        if (hasText || PAINTS.has(el.tagName)) {
+          const r = el.getBoundingClientRect()
+          if (r.width <= 0 || r.height <= 0) return
+          const inkRight = r.left + el.scrollWidth
+          const name = `${el.tagName.toLowerCase()}.${String(el.className || '').trim().split(/\s+/).join('.')}`
+          seen.push(`${name} 墨→padding内缘 ${(innerRight - inkRight).toFixed(1)}`)
+          if (inkRight > innerRight + 1) {
+            problems.push(
+              `${name}:墨画到 ${inkRight.toFixed(1)},容器 padding 内缘在 ${innerRight.toFixed(1)}`
+              + ` —— 顶穿 ${(inkRight - innerRight).toFixed(1)}px(padding token ${padR}px 视觉上不存在)`,
+            )
+          }
+          if (r.left < innerLeft - 1) {
+            problems.push(`${name}:左缘 ${r.left.toFixed(1)} 越过容器 padding 内缘 ${innerLeft.toFixed(1)}`)
+          }
+          return
+        }
+        for (const child of el.children) walk(child)
+      }
+      for (const child of row.children) walk(child)
+    }
+    return { problems, seen, rows: rows.length }
+  })
+}
+
+/**
  * 一个场景 = 五档厚度,逐档滚一遍扫重叠。
  * 场景名只进日志与失败行 —— 尺一把,场景两个,判据一个字都不许分岔。
  * `extra` 是场景自带的附加判据(见 checkListTopRow 顶部为什么需要它)。
@@ -697,7 +802,7 @@ async function main() {
   let app
   const failures = []
   try {
-    console.log('\n[1/6] 起一台 core,种下四种组名形状')
+    console.log('\n[1/7] 起一台 core,种下四种组名形状')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -752,7 +857,7 @@ async function main() {
     }
     console.log(`  ✓ 种了 ${seeded} 条会话 / ${SEED_GROUPS.length} 组`)
 
-    console.log('\n[2/6] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
+    console.log('\n[2/7] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -778,7 +883,7 @@ async function main() {
     )
     console.log('  ✓ 钉上了,卡也画出来了')
 
-    console.log('\n[3/6] 律三的预留检查(粘性覆盖的代价)')
+    console.log('\n[3/7] 律三的预留检查(粘性覆盖的代价)')
     const reservation = await checkStickyReservation(page)
     if (reservation.error) throw new Error(reservation.error)
     if (reservation.problems.length) {
@@ -793,7 +898,7 @@ async function main() {
      * 与上一步分开报,是因为它们是**两个坐标系**里的同一件事(滚动 / 屏幕),
      * 红起来该修的地方也不同 —— 一条门该指得出该谁修。
      */
-    console.log('\n[3.5/6] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
+    console.log('\n[3.5/7] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
     const dockReserve = await checkDockReservation(page)
     if (dockReserve.error) throw new Error(dockReserve.error)
     if (dockReserve.skipped) {
@@ -805,16 +910,27 @@ async function main() {
       console.log(`  ✓ composer 四件全可达(${dockReserve.readings.join(' · ')})`)
     }
 
-    console.log('\n[4/6] 场景①总览:五档厚度,逐档滚一遍扫重叠')
+    console.log('\n[4/7] 场景①总览:五档厚度,逐档滚一遍扫重叠')
     await sweepThicknesses(page, '总览', failures)
 
-    console.log(`\n[5/6] 场景②进组后 ListView(长名组「${LIST_SCENARIO_GROUP}」):同样五档`)
+    console.log(`\n[5/7] 场景②进组后 ListView(长名组「${LIST_SCENARIO_GROUP}」):同样五档`)
     // 在宽档(五档的最后一档 560)上点进去,窄档只负责被量 —— 这条门量的是排版,
     // 不是「窄到 240 还点不点得中」。
     await enterGroupNamed(page, LIST_SCENARIO_GROUP)
     await sweepThicknesses(page, 'ListView', failures, checkListTopRow)
 
-    console.log('\n[6/6] 收工')
+    console.log('\n[6/7] 挤压纪律的 toast 版(崩溃弹框里那条无断点长 URL)')
+    const toast = await checkToastSqueeze(page)
+    if (toast.error) throw new Error(toast.error)
+    if (process.env.SQUEEZE_DUMP) console.log(`    [toast] ${toast.seen.join(' | ')}`)
+    if (toast.problems.length) {
+      for (const problem of toast.problems) console.log(`  ✗ ${problem}`)
+      failures.push(`toast 挤压:${toast.problems.length} 条`)
+    } else {
+      console.log(`  ✓ ${toast.rows} 条 toast:盒子没被撑宽,墨一件都没顶穿 padding`)
+    }
+
+    console.log('\n[7/7] 收工')
     await app.close()
     app = undefined
   } finally {

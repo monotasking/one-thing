@@ -23,8 +23,13 @@ import s from './Toast.module.css'
  * 屏幕上只留一枚小丸说「还有 N 条更早的,去中心看」。代价记档:一条 error(本不
  * 自动消失)也可能被三条更新的挤走 —— 它没丢,只是从屏幕挪进了中心。
  *
- * 文案全部由调用方给(标题、正文、✕ 的 aria-label、小丸上那句话)——
- * 组件里不落字面,和不落字面色值同级。
+ * 文案全部由调用方给(标题、正文、合并计数那句短注、「查看详情」那道门的字与去处、
+ * ✕ 的 aria-label、小丸上那句话)—— 组件里不落字面,和不落字面色值同级。
+ *
+ * ── 一条 toast 上只有一件事可读到底(09-01 崩溃弹框整改)──────────────────
+ * 栈、完整模块 URL、原样报文这一族**不铺在这里**:它们是给排障的人看的,
+ * 铺开只会把一句人话变成一屏机器话。带 `action` 的那条在屏幕上只留一道门,
+ * 门后是通知中心里那条可展开的记录(去哪儿由 services/notify.ts 给)。
  *
  * ── 播报(A11y 线 · A2)─────────────────────────────────────────────────
  * 一条 toast 出场时,把**它自己渲染出来的那句话**送进全应用唯一的播报口
@@ -51,6 +56,17 @@ export interface ToastSpec {
   level: ToastLevel
   title: ReactNode
   body?: ReactNode
+  /**
+   * 跟在标题后面的一句短注,由调用方给(组件不造文案)。
+   * 今天唯一的用处:同一条又响了一次时的合并计数「×3」—— 见 services/notify.ts。
+   */
+  note?: ReactNode
+  /**
+   * 一个可选的去处。**它不是第二个关闭钮**:关闭是 ✕ 的事,这里是「这条说不完的话
+   * 在别处有全文」。文案与去哪儿都由调用方给 —— 组件既不认识 i18n,也不认识
+   * 通知中心是哪块瓦。
+   */
+  action?: { label: ReactNode; onClick: () => void }
   /** null = **不自动消失**(error 档),要点 ✕ 才走。 */
   lifeMs: number | null
 }
@@ -63,6 +79,13 @@ interface ToastHub {
   /** 被挤出可见区、折进小丸的条数。可见区清空时归零 —— 丸没有可依附的东西了。 */
   folded: number
   push: (spec: Omit<ToastSpec, 'id'>) => number
+  /**
+   * 改一条**还在屏上**的 toast。不在屏上(已到期 / 已被折走)就什么都不做 ——
+   * 「屏幕上那条」和「存档里那条」是两件东西,后者由通知中心自己管。
+   * 存在的理由:同一个错又响了一次时,该做的是把已经在那儿的那条改成「×2」,
+   * 而不是再弹一条(那正是错误风暴刷屏的样子)。
+   */
+  update: (id: number, patch: Partial<Omit<ToastSpec, 'id'>>) => void
   dismiss: (id: number) => void
   /** 悬停暂停:把已经烧掉的那一段从剩余里扣掉,离开时接着烧(不是重新计时)。 */
   pause: (id: number) => void
@@ -117,6 +140,13 @@ export const useToastHub = create<ToastHub>()((set) => ({
     arm(id)
     return id
   },
+
+  update: (id, patch) =>
+    set((st) =>
+      st.toasts.some((x) => x.id === id)
+        ? { toasts: st.toasts.map((x) => (x.id === id ? { ...x, ...patch } : x)) }
+        : st,
+    ),
 
   dismiss: (id) => {
     forget(id)
@@ -181,8 +211,16 @@ function ToastRow({ spec, closeLabel }: { spec: ToastSpec; closeLabel?: string }
     >
       <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
       <span className={s.message}>
-        <span className={s.title}>{spec.title}</span>
+        <span className={s.title}>
+          {spec.title}
+          {spec.note ? <span className={s.note}>{spec.note}</span> : null}
+        </span>
         {spec.body ? <span className={s.body}>{spec.body}</span> : null}
+        {spec.action ? (
+          <button type="button" className={s.action} onClick={spec.action.onClick}>
+            {spec.action.label}
+          </button>
+        ) : null}
       </span>
       {spec.lifeMs === null ? (
         <button type="button" className={s.close} aria-label={closeLabel} onClick={() => dismiss(spec.id)}>

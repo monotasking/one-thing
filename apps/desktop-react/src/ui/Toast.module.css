@@ -57,6 +57,24 @@
   color: var(--danger);
 }
 
+/*
+ * ── 断行策略:一条 toast 里什么话都可能出现(09-01 报障)────────────────────
+ * 崩溃现场的模块 URL(`http://localhost:5199/src/components/DockTile.tsx?t=…`)、
+ * 会话 id、无空格的长串 —— 这一族**没有任何断行机会**。默认的 `overflow-wrap:
+ * normal` 只在空格 / 连字符处断,于是那一整段会一路画穿右侧 padding,被 `.toast`
+ * 的 `overflow: hidden` 齐着边框剪掉:屏幕上读起来就是「这条 toast 的右半边没了、
+ * padding 根本不存在」(真机量出的读数:盒子仍是声明的 320px,是**墨**溢出了
+ * 250px 宽的内容盒到 311px,不是盒子被撑宽 —— 两种病根修法不同,先量后修)。
+ *
+ * 选 `anywhere` 而不是 `break-word`:两者的**换行行为**一样,差别在**内在尺寸**——
+ * anywhere 会让 min-content 宽度算成一个字符,break-word 不会。这条 toast 今天靠
+ * 固定 `--toast-w` 撑着所以看不出差别,但一旦哪天它改成自适应宽,break-word 会让
+ * 长串把盒子顶宽(= 挤压纪律里「声明最小宽度下零重叠」的另一种破法)。选那个
+ * 无论盒子怎么定宽都成立的。
+ *
+ * 挂在 `.message` 上一处:`overflow-wrap` 是**继承属性**,标题与正文各自不必再写
+ * 一遍(写了就是同一条纪律有两个产地)。
+ * ────────────────────────────────────────────────────────────────────────── */
 .message {
   flex: 1;
   min-width: 0;
@@ -64,10 +82,36 @@
   flex-direction: column;
   gap: var(--sp-1);
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .title {
   min-width: 0;
+}
+
+/* 合并计数那句短注(「×3」)。它跟在标题后面**同一行文流里**走,所以长标题折行时
+ * 它自然跟到最后一行 —— 不另起一行,也不占一个角:它是标题的一部分,不是第二件事。
+ * 降一档墨、降一档字号,和正文一个口径。 */
+.note {
+  margin-left: var(--sp-1);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 「查看详情」那道门:一个纯文字动作,不画底不画框 —— 这条 toast 上唯一的按钮
+ * 仍然是右上角那枚 ✕(关闭),它不许长得像第二个关闭钮。左对齐跟在正文下面,
+ * 因为它读起来是「这段话的下一步」。 */
+.action {
+  align-self: flex-start;
+  padding: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  text-decoration: underline;
+  transition: color var(--dur) var(--ease);
+}
+
+.action:hover {
+  color: var(--text-1);
 }
 
 /* 正文是补充,不是第二个标题:降一档墨、降一档字号,最多两行。 */

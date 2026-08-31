@@ -42,7 +42,9 @@ describe('崩溃 → notify(error)', () => {
   it('body 是错误原文,detail 是栈 —— 面板点开那块衬块要能看到现场', () => {
     recordCrash('boundary', 'chat', new Error('面板炸了'))
     const [record] = items()
-    expect(record.title).toBe('chat 出错了')
+    // 09-01 改人话之后标题是「界面出错了 · <短名>」。这里不再抄字面 —— 抄字面等于
+    // 每改一次文案就要来改一次测试;要证的是**现场名在标题里**,那才是判据。
+    expect(record.title).toContain('chat')
     expect(record.body).toBe('Error: 面板炸了')
     expect(record.detail?.split('\n').length).toBeGreaterThan(1)
     // 栈的首行本来就是那句话,所以详情里它**只出现一次**(真机上见过抄两遍的样子)

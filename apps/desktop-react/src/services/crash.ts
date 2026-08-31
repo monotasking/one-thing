@@ -44,8 +44,35 @@ export function describeThrown(value: unknown): { message: string; stack?: strin
 }
 
 /**
- * 记一次崩溃。`where` 是人话的现场名(面板 id / 'chat' / 'composer'),
- * 错误卡上显示的就是它 —— 「哪错了」那一要素靠这个字段兑现。
+ * 现场名的**短名**:给人看的那一版。
+ *
+ * `where` 有两种来路,而只有一种是人话:
+ *  · 边界与手写调用点给的是现场 id('chat' / 'files' / 'composer')—— 本来就是人话;
+ *  · `window.onerror` 给的是 `event.filename`,那是一条**完整模块 URL**
+ *    (`http://localhost:5199/src/components/DockTile.tsx?t=1756612345678`)。
+ *
+ * 把后者原样摆到弹框标题上,是把给机器看的东西当人话用(09-01 报障):它长到
+ * 顶穿容器,而它多出来的那些字节(协议、端口、HMR 时间戳)一个都不帮人回答
+ * 「哪儿坏了」。取末段、去 query,`DockTile.tsx` 才是那句话里有用的部分。
+ *
+ * **去掉 `?t=` 还顺手治好了风暴合并**:去重的键是 source + title,而 HMR 每次
+ * 重载都换一个时间戳 —— 短名之前,同一个错连炸五次是五个互不相同的标题,
+ * 五条记录五个框;短名之后它们是同一条,合并成一条带计数(见 services/notify.ts)。
+ *
+ * 完整那条不丢,它进详情(见下面 recordCrash 的 detail)。
+ */
+export function shortWhere(where: string): string {
+  const withoutQuery = where.split(/[?#]/)[0]
+  const last = withoutQuery.split('/').filter(Boolean).pop()
+  return last || where
+}
+
+/**
+ * 记一次崩溃。`where` 是现场(面板 id / 'chat' / 'composer' / 出错模块的 URL),
+ * 错误卡上显示的是它的**短名** —— 「哪错了」那一要素靠这个字段兑现。
+ *
+ * 日志环收的仍然是**原样的** where(排障要的是那条完整 URL,连 HMR 时间戳都要),
+ * 屏幕上收的是短名 —— 同一件事的两面,各给各的读者。
  */
 export function recordCrash(source: CrashSource, where: string, thrown: unknown, extra?: unknown): void {
   const { message, stack } = describeThrown(thrown)
@@ -54,16 +81,21 @@ export function recordCrash(source: CrashSource, where: string, thrown: unknown,
     { where, stack: head },
     ...(extra === undefined ? [] : [extra]),
   ])
+  const short = shortWhere(where)
   // 日志环是给排障的人看的,用户看不到它。崩溃是**用户该知道**的那一类,
   // 所以同一件事还要往通知走一趟 —— 两条路各记各的那一面(notify 不写日志环)。
   notify({
     level: 'error',
     source: `${CRASH_NS_PREFIX}.${source}`,
-    title: t('notify.crash', { where }),
+    title: t('notify.crash', { where: short }),
+    // 正文是**那句错**(「TypeError: 读不到 undefined 的 tile」)—— 它一行就说清了
+    // 「什么坏了」,是这条通知里最该被人看见的一句,所以它留在面上。
+    // 收进详情的是给机器看的那两样:完整 URL 与栈。
     body: message,
     // 栈的第一行**就是**那句 message,所以有栈时详情就是栈,不再把 message 抄在它上面
     // (真机上看到过一次「Error: delta / Error: delta / at …」的重复,就是这么来的)。
-    detail: head || message,
+    // 短名把 where 削掉了一截,削掉的那一截在这里补回来:详情是**全量**的那一份。
+    detail: [short === where ? null : where, head || message].filter(Boolean).join('\n'),
     dedupeMs: CRASH_DEDUPE_MS,
   })
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MAX_VISIBLE_TOASTS, ToastHost, useToastHub } from '../Toast'
@@ -95,6 +97,58 @@ describe('Toast:入队与自动消失', () => {
     push('x')
     expect(container.querySelector('[data-testid="toast-row"]')).toBe(null)
     expect(document.body.contains(screen.getByTestId('toast-row'))).toBe(true)
+  })
+})
+
+/**
+ * 挤压纪律的 toast 版(09-01 报障:崩溃弹框「右半边没了」)。
+ *
+ * **几何量在真机门里量**(`scripts/gate-squeeze.mjs` 第 6 步:墨右缘不许顶穿
+ * padding 内缘,盒宽不许超过宿主可用宽)—— jsdom 不排版,在这里量宽度是自欺。
+ * 这里只守它守不到的那一半:**那条断行纪律有且只有一个产地,而四个变体共用它**。
+ *
+ * 两条断言各挡一种回退:
+ *  · 静态那条挡「谁把 overflow-wrap 挪进某个变体块」(比如只给 .error 修好);
+ *  · 组件那条挡「谁给某一档换了另一个内容容器」—— 四档必须都落在同一个 .message 上。
+ * 读样式表前先剥注释(病历文本里就写着这几个词,不剥的话断言会自己红)。
+ */
+describe('Toast:长串断行是一条纪律,四变体共用', () => {
+  const css = readFileSync(path.resolve(__dirname, '../Toast.module.css'), 'utf-8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  )
+
+  it('overflow-wrap 只有一个产地,且写在四档共用的 .message 上', () => {
+    const hits = css.match(/overflow-wrap\s*:/g) ?? []
+    expect(hits.length).toBe(1)
+    const blocks = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    const owner = blocks.find((b) => /overflow-wrap\s*:/.test(b[2]))
+    expect(owner?.[1].trim()).toBe('.message')
+    expect(owner?.[2]).toMatch(/overflow-wrap\s*:\s*anywhere/)
+  })
+
+  it('四个变体都把内容画在同一个 .message 里 —— 没有哪一档走别的容器', () => {
+    render(<ToastHost closeLabel="关闭" />)
+    const levels: ToastLevel[] = ['info', 'success', 'warn', 'error']
+    const seen = new Set<string>()
+    for (const level of levels) {
+      useToastHub.setState({ toasts: [], folded: 0 })
+      act(() =>
+        void useToastHub.getState().push({
+          level,
+          // 报障那一形:一整段没有空格的模块 URL。
+          title: 'Something broke in http://localhost:5199/src/components/DockTile.tsx?t=1756612345678',
+          body: 'TypeError: Cannot read properties of undefined',
+          lifeMs: level === 'error' ? null : TOAST_LIFE_MS[level],
+        }),
+      )
+      const row = screen.getByTestId('toast-row')
+      const message = row.querySelector('[class*="message"]')
+      expect(message).toBeTruthy()
+      seen.add(message!.className)
+    }
+    // 四档收下来只该有一个类名:那正是「一条纪律一个产地」的字面落实。
+    expect(seen.size).toBe(1)
   })
 })
 

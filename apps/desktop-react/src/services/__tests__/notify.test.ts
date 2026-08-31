@@ -212,3 +212,61 @@ describe('serializeNotifications:整份存档 → 可粘贴纯文本', () => {
     )
   })
 })
+
+/**
+ * 详情那道门与风暴计数(09-01 崩溃弹框整改)。
+ *
+ * 两件事的判据都在这一层,而不在产地:**弹框上铺不铺开那一段** 是通知的事,
+ * 崩溃捕获只负责把 detail 交出来。
+ */
+describe('详情那道门与合并计数', () => {
+  it('有 detail 才画「查看详情」—— 没详情的那条不画一道点过去无话可说的门', () => {
+    notify({ level: 'error', title: '有栈', source: 's', detail: 'at foo\nat bar' })
+    notify({ level: 'error', title: '没栈', source: 's' })
+    const [withDetail, without] = toasts()
+    expect(withDetail.action).toBeTruthy()
+    expect(without.action).toBeUndefined()
+  })
+
+  it('同一条又响了:屏上那条改成「×N」,不再弹第二个框', () => {
+    notify({ level: 'error', title: 'boom', source: 'crash.boundary', dedupeMs: 60_000 })
+    expect(toasts()[0].note).toBeUndefined()
+
+    notify({ level: 'error', title: 'boom', source: 'crash.boundary', dedupeMs: 60_000 })
+    notify({ level: 'error', title: 'boom', source: 'crash.boundary', dedupeMs: 60_000 })
+    expect(toasts().length).toBe(1)
+    expect(toasts()[0].note).toBe('×3')
+    expect(items()[0].count).toBe(3)
+  })
+
+  it('屏上那条已经走了,合并就只进存档 —— 不为一次合并复活一个框', () => {
+    notify({ level: 'error', title: 'boom', source: 'crash.boundary', dedupeMs: 60_000 })
+    useToastHub.getState().dismiss(toasts()[0].id)
+    notify({ level: 'error', title: 'boom', source: 'crash.boundary', dedupeMs: 60_000 })
+    expect(toasts()).toEqual([])
+    expect(items()[0].count).toBe(2)
+  })
+})
+
+/**
+ * 未读数与命运表同口径(09-01 审计 A2)。
+ *
+ * 铃铛上那颗点和 toast 是同一件事的两种强度:一档说了「不打扰」,就不许从
+ * 另一个口打扰回来。判例:全新 store 零操作开机,几条 perf 读数(silent)
+ * 进环即把铃铛点亮。
+ */
+describe('未读数不数 silent', () => {
+  it('silent 进存档但不进未读 —— 「不打扰,但记下」两半都要兑现', () => {
+    notify({ level: 'silent', title: 'keypress took 80ms', source: 'perf.interaction' })
+    notify({ level: 'silent', title: 'Long frame 218ms', source: 'perf.longFrame' })
+    expect(items().length).toBe(2)
+    expect(unreadOf(items())).toBe(0)
+  })
+
+  it('会打扰的那四档照数不误 —— 不数 silent 不是「不数」', () => {
+    notify({ level: 'error', title: '坏了', source: 's' })
+    notify({ level: 'silent', title: '长帧', source: 'perf.longFrame' })
+    notify({ level: 'info', title: '说一声', source: 's' })
+    expect(unreadOf(items())).toBe(2)
+  })
+})

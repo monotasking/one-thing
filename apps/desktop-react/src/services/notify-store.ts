@@ -104,10 +104,20 @@ export function serializeNotifications(items: readonly NotifyRecord[]): string {
     .join('\n\n')
 }
 
-/** 未读数。派生量,不存字段 —— 存了就有第二个真相要维护。 */
+/**
+ * 未读数。派生量,不存字段 —— 存了就有第二个真相要维护。
+ *
+ * **silent 不计数**(09-01 审计 A2):命运表里那一档的定义是「不打扰,但记下」,
+ * 而 Dock 铃铛上那颗未读点**就是打扰** —— 它和 toast 是同一件事的两种强度,
+ * 不是两件事。修前:一台全新的 store 什么都没干,几条 perf 读数(全是 silent)
+ * 进环就把铃铛点亮了,用户点开只看到「keypress took 80ms」——「一个字都不弹」
+ * 这句话在铃铛这一格被违了。
+ *
+ * 它们照旧在存档里、照旧能被筛出来看:**不数**不等于**不记**。
+ */
 export function unreadOf(items: readonly NotifyRecord[]): number {
   let n = 0
-  for (const item of items) if (!item.read) n += 1
+  for (const item of items) if (!item.read && item.level !== 'silent') n += 1
   return n
 }
 

@@ -41,10 +41,29 @@ describe('Dock 上的未读点', () => {
     expect(dot()).toBe(null)
   })
 
-  it('silent 一个字都不弹,但它照样把点点亮 —— 存档里的东西就是未读的东西', () => {
+  /*
+   * 09-01 审计 A2 **推翻**了这一格从前的裁定(「存档里的东西就是未读的东西」)。
+   * 那条裁定把「记下」和「打扰」当成了一件事,于是命运表里说好「一个字都不弹」的
+   * silent,从铃铛这个口把话说了出来:一台全新的 store 什么都没干,几条 perf 读数
+   * 进环就把点点亮,用户点开只看到「keypress took 80ms」。
+   *
+   * 现在的口径:点和 toast 是同一件事的两种强度 —— 一档说了不打扰,两个口都不打扰。
+   * 记录照旧在存档里(下面第二条断言就是这句话的检验点)。
+   */
+  it('silent 一个字都不弹,那颗点也不亮 —— 但它照样进存档', () => {
     render(<AppShell />)
     act(() => void notify({ level: 'silent', title: '长帧 120ms', source: 'perf.longFrame' }))
     expect(useToastHub.getState().toasts).toEqual([])
+    expect(dot()).toBe(null)
+    expect(useNotifyStore.getState().items.length).toBe(1)
+  })
+
+  it('silent 与会打扰的那几档同屏时,点为后者而亮(不数 silent ≠ 不亮)', () => {
+    render(<AppShell />)
+    act(() => {
+      notify({ level: 'silent', title: '长帧 120ms', source: 'perf.longFrame' })
+      notify({ level: 'warn', title: '没连上 core', source: 'platform.connection' })
+    })
     expect(dot()).toBeTruthy()
   })
 
