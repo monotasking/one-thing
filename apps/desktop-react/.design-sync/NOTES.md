@@ -69,3 +69,13 @@
   list_projects 核对。
 - 渲染检查唯一常驻警告 = `[TOKENS_MISSING] --ui-*` 19 枚(见上,合法);出现**别的**警告
   就是新东西,要看。
+
+### 2026-08-31 · 重同步事故记档
+
+- **漏传 tokens/motion.css**(用户抓到:远端 styles.css 悬空 import):根因=上传清单手抄
+  上一次的记忆而非现场枚举。**规矩:每次 write_files 前必须 `ls ds-bundle/tokens` 等
+  现场重列**,tokensGlob 是通配,src/styles 加文件它就多收——记忆必然过期。
+- 同一天第二坑:会话 cwd 会被重置,`ls ds-bundle` 在仓根会看到 **Vue 侧旧 bundle**
+  (repoRoot/ds-bundle,08-15 产物)——两条同步共存,涉 bundle 的命令一律用绝对路径。
+- claude design 报「tokens 0 / 无 styles.css」一次:远端文件实际俱在,疑其自检吃了
+  半途态;哨兵重武装后应自愈,若复发则考虑把 token 文件摊平进 styles.css(降级但立效)。
