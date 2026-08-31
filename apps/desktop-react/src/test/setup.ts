@@ -129,6 +129,7 @@ configureFilesPort({
   listDirectory: async () => ({ success: false, error: 'no files port in tests' }),
   stat: async () => ({ success: false, error: 'no files port in tests' }),
   readContent: async () => ({ success: false, error: 'no files port in tests' }),
+  saveContent: async () => ({ success: true }),
   reveal: async () => ({ success: false, error: 'no files port in tests' }),
   list: async () => ({ success: true, files: [], entries: [] }),
 })

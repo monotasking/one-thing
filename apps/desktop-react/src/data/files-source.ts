@@ -36,9 +36,6 @@ import { useSessionsSource } from './sessions-source'
  * 没有 watch —— 理由写在 files-port.ts 的留账里。
  */
 
-/** 预览最多读多少字节。超过这个数就只读前一段,并如实说「截断了」。 */
-export const PREVIEW_MAX_BYTES = 256 * 1024
-
 /**
  * 一次文件检索最多要多少条 —— **缺省值**,不是硬上限。
  *
@@ -372,23 +369,17 @@ export function rowWindow(
   }
 }
 
-/* ── 预览 ──────────────────────────────────────────────────────────────── */
-
-export type PreviewStatus = 'loading' | 'ready' | 'binary' | 'error'
-
-export interface PreviewState {
-  path: string
-  status: PreviewStatus
-  /** status === 'ready' 才有意义。 */
-  content?: string
-  /** 文件**真实**字节数(不是读回来那一段的长度)。 */
-  size?: number
-  /** 真实字节数 > PREVIEW_MAX_BYTES —— 屏幕上看到的只是开头一段。 */
-  truncated: boolean
-  failure?: FileFailure
-  /** 后端原话。 */
-  error?: string
-}
+/*
+ * ── 「预览」整条退役了(查看器 F1)────────────────────────────────────────
+ * 从前这里有一份 `PreviewState` 四态(loading / ready / binary / error)与
+ * `openPreview` / `closePreview` 两口。它们搬去了 `data/viewer-source.ts`,
+ * 并且**换了语义**:预览说的是「瞄一眼」(一层盖在树上的只读代码块),
+ * 查看器说的是「看」(一份文件按它自己的样子完整铺开)。
+ *
+ * 搬走而不是留一个转发口,是因为这两个 store 分的是**事实**不是文件:树是目录
+ * 的事实,查看是一个文件的事实。留一份在这里就等于说「文件内容也是目录面的
+ * 一部分」,那正是 §0 铁律 3 要拆掉的那种耦合。
+ */
 
 /* ── 详情 ──────────────────────────────────────────────────────────────── */
 
@@ -434,7 +425,6 @@ export interface FilesSourceState {
   rootError?: string
   dirs: Record<string, DirState>
   expanded: Record<string, true>
-  preview: PreviewState | null
   detail: FileDetailState | null
   searchStatus: SearchStatus
   searchHits: FileSearchEntry[]
@@ -483,8 +473,6 @@ export interface FilesSourceState {
   retryDir(path: string): Promise<void>
   /** 重新读取:清缓存,重拉根与所有仍然展开的目录。 */
   refresh(): Promise<void>
-  openPreview(path: string): Promise<void>
-  closePreview(): void
   /**
    * 打开一行的详情(双击那条路)。名字与类型是**树上已经知道的事实**,原样带进来;
    * 大小与时间要现问 —— 那正是 stat 在这个端口上的第二个用处。
@@ -512,7 +500,6 @@ const EMPTY: Pick<
   | 'rootError'
   | 'dirs'
   | 'expanded'
-  | 'preview'
   | 'detail'
   | 'searchStatus'
   | 'searchHits'
@@ -526,7 +513,6 @@ const EMPTY: Pick<
   rootError: undefined,
   dirs: {},
   expanded: {},
-  preview: null,
   detail: null,
   searchStatus: 'idle',
   searchHits: [],
@@ -537,11 +523,10 @@ const EMPTY: Pick<
 
 export const useFilesSource = create<FilesSourceState>()((set, get) => {
   /*
-   * 三个令牌各管一条竞速。合成一个会互相作废:换根期间点开一个预览,
-   * 预览不该因为根换完了而被判过期。
+   * 三个令牌各管一条竞速。合成一个会互相作废:换根期间开一次检索,
+   * 检索不该因为根换完了而被判过期。
    */
   let rootToken = 0
-  let previewToken = 0
   let searchToken = 0
   /** 详情自己一条竞速:双击第二行时,第一行的 stat 回来了也不许改屏。 */
   let detailToken = 0
@@ -655,41 +640,6 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       await Promise.all(Object.keys(expanded).map((path) => loadDir(path, true)))
     },
 
-    openPreview: async (path) => {
-      const token = ++previewToken
-      set({ preview: { path, status: 'loading', truncated: false } })
-      const port = await filesPort()
-      const response = await port.readContent(path, PREVIEW_MAX_BYTES)
-      if (previewToken !== token) return
-      if (!response.success) {
-        set({
-          preview: {
-            path,
-            status: 'error',
-            truncated: false,
-            failure: classifyFileFailure(response.error),
-            error: response.error,
-          },
-        })
-        return
-      }
-      const size = response.size ?? 0
-      set({
-        preview: {
-          path,
-          status: response.isBinary ? 'binary' : 'ready',
-          content: response.content ?? '',
-          size,
-          truncated: size > PREVIEW_MAX_BYTES,
-        },
-      })
-    },
-
-    closePreview: () => {
-      previewToken += 1
-      set({ preview: null })
-    },
-
     openDetail: async (entry) => {
       const token = ++detailToken
       set({ detail: { ...entry, status: 'loading' } })
@@ -792,7 +742,6 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
 
     reset: () => {
       rootToken += 1
-      previewToken += 1
       searchToken += 1
       detailToken += 1
       lastCwd = undefined

@@ -7,7 +7,6 @@ import { configureFilesPort } from './files-port'
 import type { FilesPort } from './files-port'
 import {
   FILES_ROW_H,
-  PREVIEW_MAX_BYTES,
   baseNameOf,
   breadcrumbsOf,
   classifyFileFailure,
@@ -54,6 +53,7 @@ function fakePort(overrides: Partial<FilesPort> = {}) {
     })),
     stat: vi.fn(async () => ({ success: true, type: 'directory' as const, path: '/home/me' })),
     readContent: vi.fn(async () => ({ success: true, content: 'hello', size: 5 })),
+    saveContent: async () => ({ success: true }),
     reveal: vi.fn(async () => ({ success: true })),
     list: vi.fn(async () => ({ success: true, files: [], entries: [] })),
     ...overrides,
@@ -255,47 +255,10 @@ describe('窗口化:只画看得见的那一段', () => {
   })
 })
 
-describe('预览的四态', () => {
-  it('读到了 = 内容 + 没被截断', async () => {
-    fakePort()
-    await useFilesSource.getState().openPreview('/repo/a.ts')
-    expect(useFilesSource.getState().preview).toMatchObject({
-      status: 'ready',
-      content: 'hello',
-      truncated: false,
-    })
-  })
-
-  it('二进制自成一态 —— 不画一屏乱码,也不说「读不到」', async () => {
-    fakePort({
-      readContent: vi.fn(async () => ({ success: true, content: '', isBinary: true, size: 9 })),
-    })
-    await useFilesSource.getState().openPreview('/repo/x.png')
-    expect(useFilesSource.getState().preview?.status).toBe('binary')
-  })
-
-  it('截断的判据是**真实字节数**与上限比,不是读回来那段的长度', async () => {
-    fakePort({
-      readContent: vi.fn(async () => ({
-        success: true,
-        content: 'x',
-        size: PREVIEW_MAX_BYTES + 1,
-      })),
-    })
-    await useFilesSource.getState().openPreview('/repo/big.log')
-    expect(useFilesSource.getState().preview?.truncated).toBe(true)
-  })
-
-  it('读不到就归类 + 留原话', async () => {
-    fakePort({ readContent: vi.fn(async () => ({ success: false, error: 'File not found' })) })
-    await useFilesSource.getState().openPreview('/repo/gone.ts')
-    expect(useFilesSource.getState().preview).toMatchObject({
-      status: 'error',
-      failure: 'missing',
-      error: 'File not found',
-    })
-  })
-})
+/*
+ * 「预览的四态」那一组搬去了 `viewer-source.test.ts`(查看器 F1)——
+ * 连同 openPreview / PreviewState 一起。这个 store 从此只说目录的事实。
+ */
 
 describe('reveal:失败必须看得见', () => {
   it('成功就什么都不说', async () => {

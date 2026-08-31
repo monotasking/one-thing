@@ -331,6 +331,7 @@ describe('分页:底部那条 item', () => {
       listDirectory: async () => ({ success: false, error: 'not used' }),
       stat: async () => ({ success: false, error: 'not used' }),
       readContent: async () => ({ success: false, error: 'not used' }),
+      saveContent: async () => ({ success: true }),
       reveal: async () => ({ success: false, error: 'not used' }),
       list: async () => {
         calls += 1
@@ -358,6 +359,7 @@ describe('分页:底部那条 item', () => {
         listDirectory: async () => ({ success: false, error: 'no files port in tests' }),
         stat: async () => ({ success: false, error: 'no files port in tests' }),
         readContent: async () => ({ success: false, error: 'no files port in tests' }),
+        saveContent: async () => ({ success: false, error: 'no files port in tests' }),
         reveal: async () => ({ success: false, error: 'no files port in tests' }),
         list: async () => ({ success: true, files: [], entries: [] }),
       })

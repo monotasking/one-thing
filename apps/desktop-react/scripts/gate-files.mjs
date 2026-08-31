@@ -24,8 +24,10 @@
  *  · 行:一行的 `data-file-path` 挂在**那颗按钮**上(行尾多了打开点与 ⋯,
  *    所以按钮外面又裹回了一层 div),选择器 `[data-file-path="…"]` 不变;
  *  · 详情:载体从 ui/Dialog 换成 ui/Popover(附属浮层,不遮树、不 modal)。
- *    它仍然是 `role="dialog"` + `data-testid="files-detail"`,所以这一步一个字不改 ——
- *    换的是**语义**(不打断),不是取件口;
+ *    **08-31 真机走查修的一处错位**:`data-testid="files-detail"` 从前挂在浮层
+ *    *里面*那层 div 上,而 `role="dialog"` 在浮层根上 —— 于是按 testid 取到的元素
+ *    role 是空的,这一句从前是假的。现在 testId 落在浮层根上,两件事在同一个元素,
+ *    所以这条门**按 role 真验**(下面第 6 步),而那条路径改按后代取。
  *  · reveal:行尾那枚常驻小钮退役,它的活儿在详情浮层与行菜单里各有一个入口。
  *
  * ── 为什么要自带一个 workspace root(这条门最要紧的一行 env) ─────────────
@@ -286,22 +288,48 @@ async function main() {
     assert(shown2.join(',') === 'engine.ts', `第三层:${shown2.join(', ')}`)
     await page.screenshot({ path: path.join(shotDir, 'tree.png') })
 
-    console.log('\n[5/6] 点一个源码文件,断言预览里是磁盘上那份原文')
-    await clickSelector(page, `[data-file-path="${path.join(cwd, 'packages', 'core', 'engine.ts')}"]`)
-    const previewText = await waitFor('预览画出来', async () => {
+    console.log('\n[5/6] 点一个源码文件,断言查看器里是磁盘上那份原文')
+    /*
+     * ── 取件口跟着形状换了,**真事实一个字没改**(查看器 F1)────────────────
+     * 从前这一步问的是那层盖住树的「预览」(`files-preview`),现在问的是**面板内
+     * 分栏右列**那块查看器(`file-viewer` / `viewer-body`)。要证的仍然是同一句话:
+     * **屏幕上这几行字与磁盘上那份文件逐行相同**。
+     *
+     * 顺手多验一条查看器才有的真事实:**树没有被盖掉** —— 分栏是并排不是覆盖,
+     * 所以打开一个文件之后,树上那些行仍然在 DOM 里(这是「树常驻」铁律的真机面)。
+     */
+    const enginePath = path.join(cwd, 'packages', 'core', 'engine.ts')
+    await clickSelector(page, `[data-file-path="${enginePath}"]`)
+    const viewerText = await waitFor('查看器画出来', async () => {
       const text = await page.evaluate(
-        () => document.querySelector('[data-testid="files-preview"]')?.textContent ?? null,
+        () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? null,
       )
       return text && text.includes('export const') ? text : undefined
     })
-    console.log('  · 预览读数:', JSON.stringify(previewText).slice(0, 300))
+    console.log('  · 查看器读数:', JSON.stringify(viewerText).slice(0, 300))
     for (const line of FILE_TEXT.trim().split('\n')) {
-      assert(previewText.includes(line), `预览里逐行对上:${line}`)
+      assert(viewerText.includes(line), `查看器里逐行对上:${line}`)
     }
-    await page.screenshot({ path: path.join(shotDir, 'preview.png') })
+    const viewerPath = await page.evaluate(
+      () => document.querySelector('[data-testid="viewer-name"]')?.getAttribute('data-viewer-path') ?? null,
+    )
+    assert(viewerPath === enginePath, `查看器头上说的就是刚点的那条路径:${viewerPath}`)
+    assert(
+      await page.evaluate(() => Boolean(document.querySelector('[data-testid="files-tree"] [data-file-path]'))),
+      '树没有被盖掉 —— 分栏是并排,不是覆盖(树常驻铁律的真机面)',
+    )
+    await page.screenshot({ path: path.join(shotDir, 'viewer.png') })
 
     console.log('\n[6/6] 双击出详情 → reveal 的诚实性 + 检索面文件侧')
-    await clickSelector(page, '[data-testid="files-preview"] button[aria-label]')
+    /*
+     * 收起查看区。**按 testid 取,不按「第一颗带 aria-label 的钮」** ——
+     * 头上带 aria-label 的钮不止一颗(编辑铅笔也有),按顺序取会静默点错一颗:
+     * 门照样绿,而它以为自己关掉了查看器。取件口要指名道姓。
+     */
+    await clickSelector(page, '[data-testid="viewer-close"]')
+    await waitFor('查看区收起来了', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
+    )
     /*
      * 详情走双击。`element.click()` 派发的是单击,所以这里直接派发一个真的
      * dblclick 事件(与 clickSelector 同一条理由:绕开可操作性判定,事件仍是真的)。
@@ -313,9 +341,23 @@ async function main() {
     }, `[data-file-path="${path.join(cwd, 'README.md')}"]`)
     const detailPath = await waitFor('详情面画出来', () =>
       page.evaluate(
-        () => document.querySelector('[data-testid="files-detail"]')?.getAttribute('data-file-path') ?? null,
+        () =>
+          document
+            .querySelector('[data-testid="files-detail"] [data-file-path]')
+            ?.getAttribute('data-file-path') ?? null,
       ),
     )
+    /*
+     * 附属浮层的**语义**:role=dialog(读屏认得出这是一块浮层)但**没有**
+     * aria-modal(它不打断 —— 背后那棵树照旧看得见)。两条一起断言:
+     * 少了 role 是「读屏不知道这是什么」,多了 aria-modal 是「谎称打断」。
+     */
+    const detailRole = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="files-detail"]')
+      return el ? { role: el.getAttribute('role'), modal: el.getAttribute('aria-modal') } : null
+    })
+    assert(detailRole?.role === 'dialog', `详情浮层报的是 role=dialog(实测:${detailRole?.role})`)
+    assert(detailRole?.modal === null, '它**没有** aria-modal —— 附属浮层不打断')
     assert(
       detailPath === path.join(cwd, 'README.md'),
       `详情面问的是刚双击的那一行:${detailPath}`,

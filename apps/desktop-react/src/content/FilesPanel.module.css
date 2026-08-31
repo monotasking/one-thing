@@ -1,5 +1,6 @@
-/* 文件树面板(08-31 claude design 定稿)。四段式(头 / 告知条 / 身 / 底提示)+
- * 三层浮起来的东西:预览(盖住身)、行菜单(ui/Menu)、详情(ui/Popover)。
+/* 文件树面板(08-31 claude design 定稿 + 查看器 F1)。四段式(头 / 告知条 /
+ * **身:两列** / 底提示)+ 两层浮起来的东西:行菜单(ui/Menu)、详情(ui/Popover)。
+ * 「身」从一栏变两栏是 F1 的唯一结构改动:树列常驻,查看区 0fr⇄1fr。
  * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。
  *
  * 抗挤压(docs/design/react-shell-squeeze-rules-2026-08.md)在这块面上的落点:
@@ -200,10 +201,33 @@
   color: var(--danger);
 }
 
-/* ── 身:树 ───────────────────────────────────────────────────────────── */
-.body {
+/* ── 身:两列(树 | 查看区)────────────────────────────────────────────── */
+/*
+ * 查看器 F1 的「面板内分栏」。**树永远是第一列**,查看区在它旁边从 0fr 长到
+ * 一份 —— 那正是「树常驻」这条铁律在样式上的落点:没有任何一种状态会让树
+ * 换位置、换父节点或者被盖住。
+ *
+ * 两列都走 `minmax(0, …)`:窄面板下先让两列一起缩,而不是横向长出一条滚轨
+ * (律二:结构面只截断不撑破)。份额在 tokens.css 的 --files-tree-fr / -viewer-fr。
+ */
+.split {
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0fr);
+  transition: grid-template-columns var(--dur) var(--ease);
+}
+
+.split[data-viewer='open'] {
+  grid-template-columns: minmax(0, var(--files-tree-fr)) minmax(0, var(--files-viewer-fr));
+}
+
+/* 树列。它是 `.split` 的**第一个网格项** —— 高度由网格拉满,所以这里只需要
+ * 两条 min-*:0(不写的话网格项的 auto 最小尺寸会让长文件名把整列撑破)。 */
+.body {
+  min-height: 0;
+  min-width: 0;
   overflow: auto;
   overscroll-behavior: contain;
   padding: var(--sp-1) var(--sp-2);
@@ -283,28 +307,8 @@
   justify-content: center;
 }
 
-/*
- * 语言字标。底色与字色由行内变量给(值在 tokens.css 的数据节 —— 官方色是数据,
- * 不过主题)。mono + 700 + 紧字距:两三个大写字母要在 20×15 里读得出来。
- */
-.badge {
-  min-width: var(--files-glyph-slot);
-  width: auto;
-  padding: 0 var(--files-badge-pad-x);
-  border-radius: var(--files-badge-r);
-  font-family: var(--font-mono);
-  font-size: var(--fs-ext);
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-/* 图标那一形。色由行内变量给,兜底三档墨(变量没兑上时它仍然看得见)。 */
-.rowIcon {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  color: var(--ft-plain);
-}
+/* 两形自己的画法(字标 / 图标)搬去了 `content/FileGlyph.module.css` —— 查看器
+ * 檐上那枚类型徽是它的第二个消费方,一个值都没改,只是换了产地。 */
 
 /* 一行里唯一的弯腰件:能缩(min-width:0)且缩了有收场(省略号)。 */
 .rowName {
@@ -540,17 +544,13 @@
   min-width: 0;
 }
 
-/* 头上那枚标识比行里的大一档:这里它是「这是什么」的主体,不是一行的前缀。 */
+/* 头上那枚标识比行里的大一档:这里它是「这是什么」的主体,不是一行的前缀。
+ * 大那一档由 FileGlyphMark 的 size="lg" 说了算(从前是这里一句后代选择器)。 */
 .detailGlyph {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: var(--icon-lg);
-}
-
-.detailGlyph .rowIcon {
-  width: var(--icon-lg);
   height: var(--icon-lg);
 }
 
@@ -659,56 +659,15 @@
   height: var(--icon-xs);
 }
 
-/* ── 预览:盖住身,不切两栏(窄到 260px 时切两栏必然重叠) ────────── */
-.preview {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface-2);
-}
-
-.previewHead {
-  flex: none;
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border-bottom: var(--bw-1) solid var(--line-1);
-}
-
-.previewName {
-  flex: 0 1 auto;
-  min-width: 0;
-  font-size: var(--fs-label);
-  font-weight: 600;
-  color: var(--text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /*
- * 唯一吸空间的角色,而且 **basis 取 0** —— 这一格是量出来的:
- * 用 `1 1 auto` 时它的基准是整条绝对路径(上千像素),按 flex 的比例收缩规则
- * 文件名也得跟着让掉一截,真机上 `engine.ts` 当场被截成 `engin…`。
- * basis 0 的意思是「先把名字放下,剩下的都归我」。
+ * ── 「预览」那一层的样式整块退役了(查看器 F1)────────────────────────────
+ * 它是 `position:absolute; inset:0` 的一层覆盖物(`.preview` / `.previewHead` /
+ * `.previewName` / `.previewPath` / `.previewBody`)。取代它的是上面那条 `.split`
+ * 两列 + `content/viewer/FileViewer.module.css`。
+ *
+ * 那条 `.previewPath { flex: 1 1 0 }` 的病历值得留一句:用 `1 1 auto` 时它的收缩
+ * 基准是整条绝对路径(上千像素),按 flex 的比例规则文件名也得跟着让掉一截,
+ * 真机上 `engine.ts` 当场被截成 `engin…`。查看器的檐里没有这一格(路径不上檐,
+ * 它在「复制路径」那颗钮背后),所以这条坑不会原样重演 —— 但同一条判据
+ * (**吸空间的那一格 basis 取 0**)在檐里对 `.name` 仍然成立。
  */
-.previewPath {
-  flex: 1 1 0;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  color: var(--text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.previewBody {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: var(--sp-3);
-}

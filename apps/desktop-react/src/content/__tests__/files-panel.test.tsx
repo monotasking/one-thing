@@ -5,6 +5,7 @@ import { renderContent } from '../index'
 import { configureFilesPort } from '../../data/files-port'
 import type { FilesPort } from '../../data/files-port'
 import { FILES_ROW_H, useFilesSource } from '../../data/files-source'
+import { useViewerSource } from '../../data/viewer-source'
 import { useFileOpenMode } from '../../data/file-open-mode'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../../expose/store'
@@ -58,6 +59,7 @@ function installPort(overrides: Partial<FilesPort> = {}): FilesPort {
       content: 'export const engine = 1\n',
       size: 24,
     })),
+    saveContent: vi.fn(async () => ({ success: true })),
     reveal: vi.fn(async () => ({ success: true })),
     list: vi.fn(async () => ({ success: true, files: [], entries: [] })),
     ...overrides,
@@ -71,6 +73,7 @@ beforeEach(() => {
   seedSessionsSource()
   useExposeStore.setState({ currentSessionId: SESSION_WITH_DIR })
   useFilesSource.getState().reset()
+  useViewerSource.getState().reset()
   useNotifyStore.setState({ items: [] })
   useFileOpenMode.setState({ mode: 'panel' })
 })
@@ -294,9 +297,11 @@ describe('打开 ≠ 选中', () => {
 })
 
 /**
- * 树不卸载铁律:tree state ⟂ viewer state。开一个文件、展开一层、卷动一屏 ——
- * 这三件事都**不许**让还在场的那些行重新挂载(重挂 = 丢焦点、丢动画、丢一切
- * 挂在 DOM 上的东西)。判据是**元素同一性**:同一个 path 前后是同一个节点。
+ * 树不卸载铁律:tree state ⟂ viewer state。开一个文件、**换一个文件**、关掉查看器、
+ * 展开一层、卷动一屏 —— 这些都**不许**让还在场的那些行重新挂载(重挂 = 丢焦点、
+ * 丢动画、丢一切挂在 DOM 上的东西)。判据是**元素同一性**:同一个 path 前后是
+ * 同一个节点。F1 把它从「开 / 关」两下扩到「开 / 换 / 关」三连 —— 分栏是新形状,
+ * 而这条铁律正是那个形状要保住的东西。
  */
 describe('树不卸载:零重挂', () => {
   it('开一个文件不重挂树(打开态是 viewer state,key 不跟着它变)', async () => {
@@ -306,12 +311,53 @@ describe('树不卸载:零重挂', () => {
     const before = row(`${ROOT}/packages`)
 
     fireEvent.click(screen.getByText('README.md'))
-    await waitFor(() => expect(screen.getByText('markdown')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
     expect(row(`${ROOT}/packages`)).toBe(before)
 
-    fireEvent.click(screen.getByLabelText('关闭预览'))
-    await waitFor(() => expect(screen.queryByText('markdown')).toBeNull())
+    fireEvent.click(screen.getByLabelText('关闭查看器'))
+    await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
     expect(row(`${ROOT}/packages`)).toBe(before)
+  })
+
+  it('开 → 换 → 关三连,树上那些行**一个都没有重挂**(分栏的硬约束)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    // 先展一层,好让「还在场的行」不止根那一层。
+    fireEvent.click(screen.getByText('packages'))
+    await waitFor(() => expect(screen.getByText('core')).toBeTruthy())
+    const kept = [row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]
+
+    // ① 开
+    fireEvent.click(screen.getByText('README.md'))
+    await waitFor(() =>
+      expect(screen.getByTestId('viewer-name').getAttribute('data-viewer-path')).toBe(
+        `${ROOT}/README.md`,
+      ),
+    )
+    expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
+      kept,
+    )
+
+    // ② 换(就地换内容,不是重开一块面)
+    fireEvent.click(screen.getByText('core'))
+    await waitFor(() => expect(screen.getByText('engine.ts')).toBeTruthy())
+    fireEvent.click(screen.getByText('engine.ts'))
+    await waitFor(() =>
+      expect(screen.getByTestId('viewer-name').getAttribute('data-viewer-path')).toBe(
+        `${ROOT}/packages/core/engine.ts`,
+      ),
+    )
+    expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
+      kept,
+    )
+
+    // ③ 关
+    fireEvent.click(screen.getByLabelText('关闭查看器'))
+    await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
+    expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
+      kept,
+    )
   })
 
   it('展开一层改的是扁平化行数组,**不是**重建一棵组件树', async () => {
@@ -648,7 +694,13 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openDetail('README.md')
-    fireEvent.click(screen.getByRole('button', { name: '在文件管理器中显示' }))
+    /*
+     * **在详情面**里面找那颗钮:双击的第一下已经把查看器打开了(单击语义一个字
+     * 没改),而查看器头上也有一颗同名的 —— 屏幕上有两颗是**预期**,不是重复。
+     */
+    fireEvent.click(
+      within(screen.getByTestId('files-detail')).getByRole('button', { name: '在文件管理器中显示' }),
+    )
     await waitFor(() => expect(port.reveal).toHaveBeenCalledWith(`${ROOT}/README.md`))
     expect(useNotifyStore.getState().items).toEqual([])
   })
@@ -663,7 +715,9 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openDetail('README.md')
-    fireEvent.click(screen.getByRole('button', { name: '在文件管理器中显示' }))
+    fireEvent.click(
+      within(screen.getByTestId('files-detail')).getByRole('button', { name: '在文件管理器中显示' }),
+    )
     await waitFor(() =>
       expect(useNotifyStore.getState().items.map((x) => [x.level, x.title])).toEqual([
         ['error', '没能在文件管理器中定位'],
@@ -752,47 +806,98 @@ describe('窗口化:大目录只画看得见的那一段', () => {
   })
 })
 
-describe('预览', () => {
-  it('点文件出只读预览:正文走的是聊天区那条代码块渲染路径', async () => {
+/**
+ * 面板内分栏(F1 唯一的打开位)。这一组只验**面板这一侧**的事:分栏开合、
+ * 打开点、Esc、以及查看器确实拿到了那条路径。查看器**里面**画什么由
+ * `file-viewer.test.tsx` 验 —— 那是另一块内容的事。
+ */
+describe('面板内分栏:单击文件 = 在此打开', () => {
+  it('单击一个文件 = 右列长出来,树还在(不是盖住)', async () => {
     const port = installPort()
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    expect(document.querySelector('[data-viewer="open"]')).toBeNull()
+
     fireEvent.click(screen.getByText('README.md'))
-    await waitFor(() => expect(screen.getByText('export const engine = 1')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
     expect(port.readContent).toHaveBeenCalledWith(`${ROOT}/README.md`, expect.any(Number))
-    // 代码块的檐:左端是语言(md → markdown),右端是复制 —— 都是壳白给的。
-    expect(screen.getByText('markdown')).toBeTruthy()
+    expect(document.querySelector('[data-viewer="open"]')).toBeTruthy()
+    // 树没有被盖掉:那两行还在,点得到、读屏也够得着。
+    expect(row(`${ROOT}/packages`)).toBeTruthy()
+    expect(screen.getByTestId('files-tree')).toBeTruthy()
   })
 
-  it('二进制不画乱码,明说读不成文本', async () => {
-    installPort({
-      readContent: vi.fn(async () => ({ success: true, content: '', isBinary: true, size: 900 })),
-    })
+  it('再单击别的文件 = **就地换内容**(不是开第二块)', async () => {
+    installPort()
     render(<>{renderContent('files')}</>)
-    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
     fireEvent.click(screen.getByText('README.md'))
-    await waitFor(() => expect(screen.getByText('这是二进制文件,没法按文本预览')).toBeTruthy())
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('packages'))
+    await waitFor(() => expect(screen.getByText('core')).toBeTruthy())
+    fireEvent.click(screen.getByText('core'))
+    await waitFor(() => expect(screen.getByText('engine.ts')).toBeTruthy())
+    fireEvent.click(screen.getByText('engine.ts'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('viewer-name').getAttribute('data-viewer-path')).toBe(
+        `${ROOT}/packages/core/engine.ts`,
+      ),
+    )
+    expect(screen.getAllByTestId('file-viewer')).toHaveLength(1)
+    // 打开点跟着走:一次只有一个文件开着。
+    expect(row(`${ROOT}/packages/core/engine.ts`).getAttribute('data-file-open')).toBe('true')
+    expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBeNull()
   })
 
-  it('读不到就说读不到,并留下后端原话', async () => {
-    installPort({
-      readContent: vi.fn(async () => ({ success: false, error: 'Permission denied' })),
-    })
-    render(<>{renderContent('files')}</>)
-    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
-    fireEvent.click(screen.getByText('README.md'))
-    await waitFor(() => expect(screen.getByText('没有权限读这个文件')).toBeTruthy())
-    expect(screen.getByText('Permission denied')).toBeTruthy()
-  })
-
-  it('关掉预览回到树,那颗打开点也跟着灭', async () => {
+  it('Esc 收起查看区回全树', async () => {
     installPort()
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     fireEvent.click(screen.getByText('README.md'))
-    await waitFor(() => expect(screen.getByText('markdown')).toBeTruthy())
-    fireEvent.click(screen.getByLabelText('关闭预览'))
-    await waitFor(() => expect(screen.queryByText('markdown')).toBeNull())
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
+
+    fireEvent.keyDown(screen.getByTestId('files-panel'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
+    expect(document.querySelector('[data-viewer="open"]')).toBeNull()
+    // 关掉之后那颗打开点也跟着灭。
     expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBeNull()
+  })
+
+  it('查看区没开时 Esc **不接** —— 让它原样往上冒(外壳还有自己的 Esc 分层)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    let bubbled = false
+    const panel = screen.getByTestId('files-panel')
+    panel.parentElement?.addEventListener('keydown', () => {
+      bubbled = true
+    })
+    fireEvent.keyDown(panel, { key: 'Escape' })
+    expect(bubbled).toBe(true)
+  })
+
+  it('详情面上那颗钮说「打开查看」,按下去开的是查看器', async () => {
+    // 那颗钮只在**文件**上出现(目录没有内容可看),所以这里让 stat 说实话。
+    installPort({
+      stat: vi.fn(async () => ({
+        success: true,
+        type: 'file' as const,
+        path: `${ROOT}/README.md`,
+      })),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    const target = screen.getByText('README.md')
+    fireEvent.click(target, { detail: 1 })
+    fireEvent.doubleClick(target)
+    await waitFor(() => expect(screen.getByTestId('files-detail')).toBeTruthy())
+    // 双击的第一下已经把查看器打开了(单击语义一个字没改),所以这里先关掉再走那颗钮。
+    fireEvent.click(screen.getByLabelText('关闭查看器'))
+    await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
+
+    fireEvent.click(within(screen.getByTestId('files-detail')).getByRole('button', { name: '打开查看' }))
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
   })
 })

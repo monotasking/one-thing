@@ -11,7 +11,6 @@ import {
   Info,
   RotateCcw,
   TriangleAlert,
-  X,
   resolveIcon,
 } from '../components/icons'
 import { COPY_FEEDBACK_MS } from '../components/motion'
@@ -29,43 +28,49 @@ import { useStageStore } from '../stage/store'
 import { useExposeStore } from '../expose/store'
 import { useSessionsSource } from '../data/sessions-source'
 import {
-  baseNameOf,
   breadcrumbsOf,
   flattenTree,
   formatBytes,
   formatMtime,
-  langOfPath,
   rowWindow,
   useFilesSource,
   useSessionCwd,
-  PREVIEW_MAX_BYTES,
 } from '../data/files-source'
-import type {
-  Crumb,
-  FileDetailState,
-  FileFailure,
-  PreviewState,
-  RootStatus,
-  TreeRow,
-} from '../data/files-source'
+import type { Crumb, FileDetailState, FileFailure, RootStatus, TreeRow } from '../data/files-source'
 import {
   FILE_OPEN_MODES,
   FILE_OPEN_MODE_LABELS,
   isWiredFileOpenMode,
   useFileOpenMode,
 } from '../data/file-open-mode'
-import { brandVars, glyphOf, isHiddenName, toneVar } from '../data/file-icons'
-import type { FileGlyph } from '../data/file-icons'
-import { BlockView } from './blocks/BlockView'
+import { glyphOf, isHiddenName } from '../data/file-icons'
+import { useViewerSource } from '../data/viewer-source'
+import { copyText } from '../services/clipboard'
+import { FileGlyphMark } from './FileGlyph'
+import { FileViewer } from './viewer/FileViewer'
 import s from './FilesPanel.module.css'
 
 /**
  * 文件树 = 一块**普通的 Dock 内容**(id 'files'),所以它能上舞台 / 变浮窗 / 钉到边,
  * 三种形态里长得一模一样 —— 这正是 renderContent 那张表存在的理由。
  *
- * ── 形状(08-31 claude design 定稿)────────────────────────────────────────
- * 头(面包屑 + 全部收起 + 重新读取)/ 告知条(只在没绑工作目录时)/ 身(懒展开的
- * 窗口化树)/ 底(一句用法提示)+ 三层浮起来的东西(预览 / 行菜单 / 详情浮层)。
+ * ── 形状(08-31 claude design 定稿 + 查看器 F1 的面板内分栏)────────────────
+ * 头(面包屑 + 全部收起 + 重新读取)/ 告知条(只在没绑工作目录时)/ **身:两列**
+ * (常驻的窗口化树 | 0fr⇄1fr 长出来的查看区)/ 底(一句用法提示)+ 两层浮起来的
+ * 东西(行菜单 / 详情浮层)。
+ *
+ * ── 分栏:树是**常驻**的,不是被替换的(F1 §0 铁律 3)────────────────────────
+ * 从前那层「预览」是 `position:absolute; inset:0` —— 它**盖住**整棵树:回来时
+ * 滚动位置还在,但那一屏里你什么都干不了(点不到第二个文件,只能先关掉)。
+ * F1 换成两列:单击一个文件 = 右列长出来,再单击别的文件 = **就地换内容**,
+ * 树的展开态 / 滚动位 / 选中行一动不动。Esc 收起右列回全树。
+ *
+ * 结构上兑现这条铁律的只有一件事:那棵树的 DOM 位置**恒定** —— 它永远是
+ * `.split` 的第一个孩子,查看区在它旁边出现或消失。所以「开一个文件 / 换一个
+ * 文件 / 关掉查看器」三下都不会让 React 重挂树上任何一行(有三条断言钉着)。
+ *
+ * 「打开方式」那七档里,**「面板内」指的就是这条分栏** —— 它是 F1 唯一接上的
+ * 一档(判据仍在 data/file-open-mode.ts 的 WIRED_FILE_OPEN_MODES,这里不重复)。
  *
  * 定稿相对上一版(989dd3b6)的六处改判,每一处各自的理由:
  *
@@ -124,12 +129,6 @@ const NOTE_LABELS: Record<'empty' | FileFailure, MessageKey> = {
   failed: 'files.dirFailed',
 }
 
-const PREVIEW_FAILURE_LABELS: Record<FileFailure, MessageKey> = {
-  denied: 'files.previewDenied',
-  missing: 'files.previewMissing',
-  failed: 'files.previewFailed',
-}
-
 /**
  * 详情面的三档失败**自己一套话**,不借预览那一套:预览说的是「这个文件」,
  * 而详情可能问的是一个目录 —— 借过来会当场说错话。
@@ -164,7 +163,6 @@ export function FilesPanel() {
   const rootError = useFilesSource((st) => st.rootError)
   const dirs = useFilesSource((st) => st.dirs)
   const expanded = useFilesSource((st) => st.expanded)
-  const preview = useFilesSource((st) => st.preview)
   const detail = useFilesSource((st) => st.detail)
   const setRoot = useFilesSource((st) => st.setRoot)
   const navigateRoot = useFilesSource((st) => st.navigateRoot)
@@ -172,11 +170,26 @@ export function FilesPanel() {
   const collapseAll = useFilesSource((st) => st.collapseAll)
   const retryDir = useFilesSource((st) => st.retryDir)
   const refresh = useFilesSource((st) => st.refresh)
-  const openPreview = useFilesSource((st) => st.openPreview)
-  const closePreview = useFilesSource((st) => st.closePreview)
   const openDetail = useFilesSource((st) => st.openDetail)
   const closeDetail = useFilesSource((st) => st.closeDetail)
   const reveal = useFilesSource((st) => st.reveal)
+
+  /*
+   * 查看器住**另一个 store**(data/viewer-source)。面板从它这里只取两件事:
+   * 「此刻开着的是哪个文件」(树上那颗打开点要知道)与那两口开 / 关。
+   * 文件内容一个字节都不经过这里 —— 那正是两个 store 分家的意思。
+   */
+  const viewerFile = useViewerSource((st) => st.file)
+  const viewerPending = useViewerSource((st) => st.pending)
+  const openFile = useViewerSource((st) => st.openFile)
+  const closeViewer = useViewerSource((st) => st.close)
+  /*
+   * 「这个文件正开着」的判据:**正在读的那条压过已经画出来的那条**。
+   * 点下去的一瞬间打开点就跟着走(手感),而内容要等读回来 —— 两者不同步是
+   * 事实,不是缺陷:檐上那格读数正是为了说出这件事。
+   */
+  const openPath = viewerPending ?? viewerFile?.path ?? null
+  const viewerOpen = openPath !== null
 
   /**
    * 选中 = **视图状态**,所以它住在这里而不是 store 里:换一块面它就该归零,
@@ -189,6 +202,33 @@ export function FilesPanel() {
   const [detailAt, setDetailAt] = useState<Anchor | null>(null)
   /** 「重新读取」按了几次 —— 那枚图标每按一次多转一圈(单调递增,见下面的注)。 */
   const [spins, setSpins] = useState(0)
+
+  /**
+   * Esc = 收起查看区回全树。
+   *
+   * 它挂在**面板根元素上、用 addEventListener** 而不是 JSX 的 onKeyDown:一个
+   * `<div>` 不是控件,给它挂键盘监听会被 jsx-a11y 抓(那条规则防的是「把 div
+   * 当按钮使」)。这里要的是「这块面里发生的一下 Esc」——容器级手势,不是这个
+   * 元素自己的交互。
+   *
+   * 两条护栏:① 行菜单 / 详情浮层开着时**不接** —— 它们各自的 Esc 是关自己;
+   * ② 查看器没开就不接,让这一下原样往上冒(外壳还有它自己的 Esc 分层)。
+   * 真的收了才 stopPropagation:**消费掉的键才有资格挡住别人**。
+   */
+  const panelRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = panelRef.current
+    if (!el) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (menu || detail) return
+      if (!viewerOpen) return
+      event.stopPropagation()
+      closeViewer()
+    }
+    el.addEventListener('keydown', onKey)
+    return () => el.removeEventListener('keydown', onKey)
+  }, [menu, detail, viewerOpen, closeViewer])
 
   // 根跟着活跃会话走。判据不在这里 —— useSessionCwd 是它唯一的产地,
   // 这里只负责把结果交给数据源(setRoot 自己幂等)。
@@ -235,7 +275,7 @@ export function FilesPanel() {
   const noWorkdir = rootStatus === 'ready' && rootOrigin === 'home'
 
   return (
-    <div className={s.panel} data-testid="files-panel">
+    <div className={s.panel} data-testid="files-panel" ref={panelRef}>
       <div className={s.head}>
         {/*
          * `data-testid="files-root"` 留在原地不动。**但取件口从 textContent 换成了
@@ -286,6 +326,13 @@ export function FilesPanel() {
 
       {noWorkdir && <NoWorkdirNotice sessionId={sessionId} t={t} />}
 
+      {/*
+       * 身 = 两列。树**永远是第一个孩子**,查看区在它旁边出现或消失 ——
+       * 这一条就是「树常驻」铁律在 DOM 上的全部实现:树的位置不随查看器的开合
+       * 变动,于是 React 没有任何理由重挂它(零重挂的三条断言钉的正是这件事)。
+       * 列宽由 CSS 按 data-viewer 翻(0fr ⇄ 1fr),不在 JS 里算像素。
+       */}
+      <div className={s.split} data-viewer={viewerOpen ? 'open' : 'closed'}>
       <div
         className={s.body}
         ref={bodyRef}
@@ -342,11 +389,11 @@ export function FilesPanel() {
               row={row}
               t={t}
               selected={selected === row.path}
-              opened={preview?.path === row.path}
+              opened={openPath === row.path}
               onActivate={() => {
                 setSelected(row.path)
                 if (row.type === 'directory') void toggleDir(row.path)
-                else void openPreview(row.path)
+                else void openFile(row.path)
               }}
               onDetail={(at) => openDetailFor(row, at)}
               onMenu={(at) => openMenuFor(row, at)}
@@ -354,6 +401,9 @@ export function FilesPanel() {
           ),
         )}
         {win.padBottom > 0 && <div style={{ height: win.padBottom }} aria-hidden="true" />}
+      </div>
+
+        {viewerOpen && <FileViewer onReveal={(path) => void reveal(path)} />}
       </div>
 
       {footNote && <p className={s.foot}>{footNote}</p>}
@@ -364,8 +414,6 @@ export function FilesPanel() {
         <span className={s.hintText}>{t('files.hint')}</span>
       </p>
 
-      {preview && <PreviewLayer preview={preview} t={t} onClose={closePreview} />}
-
       {menu && (
         <RowMenu
           row={menu.row}
@@ -374,7 +422,7 @@ export function FilesPanel() {
           onClose={() => setMenu(null)}
           onActivate={() => {
             if (menu.row.type === 'directory') void toggleDir(menu.row.path)
-            else void openPreview(menu.row.path)
+            else void openFile(menu.row.path)
           }}
           onDetail={() => openDetailFor(menu.row, menu.at)}
           onReveal={() => void reveal(menu.row.path)}
@@ -392,10 +440,10 @@ export function FilesPanel() {
             closeDetail()
           }}
           onReveal={() => void reveal(detail.path)}
-          onPreview={() => {
+          onOpen={() => {
             setDetailAt(null)
             closeDetail()
-            void openPreview(detail.path)
+            void openFile(detail.path)
           }}
         />
       )}
@@ -576,35 +624,11 @@ function RootCrumbs({
   )
 }
 
-/**
- * 类型标识。**一处判别联合,两种画法**:字标那一形自带底色与字色(官方色,
- * 由 tokens.css 的数据节给值),图标那一形吃类型色。
- * 两形共用同一个 20px 槽位 —— 名字列因此永远从同一条竖线起笔。
+/*
+ * 类型标识那两形的画法搬去了 `content/FileGlyph.tsx`(F1)。搬家的理由只有一条:
+ * 查看器檐上那枚类型徽是它的第二个消费方,而两处各画一遍必然分叉。
+ * 判据(哪个文件画哪一枚)一个字没动,仍在 data/file-icons.ts。
  */
-function GlyphMark({ glyph, className }: { glyph: FileGlyph; className: string }) {
-  if (glyph.kind === 'brand') {
-    const { bg, fg } = brandVars(glyph.brand)
-    return (
-      <span
-        className={`${className} ${s.badge}`}
-        style={{ background: bg, color: fg } as CSSProperties}
-        aria-hidden="true"
-      >
-        {glyph.label}
-      </span>
-    )
-  }
-  const Icon = resolveIcon(glyph.icon)
-  return (
-    <span className={className} aria-hidden="true">
-      <Icon
-        className={s.rowIcon}
-        style={{ color: toneVar(glyph.tone) } as CSSProperties}
-        strokeWidth={1.75}
-      />
-    </span>
-  )
-}
 
 /**
  * 一行 = 一颗按钮(箭头 / 标识 / 名字)+ 两件挂在行尾的东西。
@@ -694,7 +718,7 @@ function TreeEntryRow({
           // 文件没有箭头,但**位子留着** —— 不留,同一层的文件名就会比目录名靠左一截。
           <span className={s.caret} aria-hidden="true" />
         )}
-        <GlyphMark glyph={glyph} className={s.glyph} />
+        <FileGlyphMark glyph={glyph} className={s.glyph} />
         <span className={s.rowName}>{row.name}</span>
       </button>
       {/* 「这个文件正开着」。它与选中态是两件事,所以是两处画法(圆点 vs 底色)。 */}
@@ -846,13 +870,9 @@ function RowMenu({
  * 免得「复制成功了没有」在两处各判一次。**不产生通知**(08-31 拍板:复制走就地反馈)。
  */
 async function copyToClipboard(text: string, t: TFn): Promise<boolean> {
-  const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
-  const ok = clipboard?.writeText
-    ? await clipboard.writeText(text).then(
-        () => true,
-        () => false,
-      )
-    : false
+  // 写那一下归 services/clipboard(查看器檐上那颗复制钮走的是同一口);
+  // 说给读屏听那一句归这里 —— 「怎么反馈」是各处现场自己的事。
+  const ok = await copyText(text)
   announce(t(ok ? 'common.copied' : 'common.copyFailed'))
   return ok
 }
@@ -878,7 +898,7 @@ function FileDetailPopover({
   t,
   onClose,
   onReveal,
-  onPreview,
+  onOpen,
 }: {
   detail: FileDetailState
   at: Anchor
@@ -886,7 +906,8 @@ function FileDetailPopover({
   t: TFn
   onClose: () => void
   onReveal: () => void
-  onPreview: () => void
+  /** 详情面上那颗「打开查看」—— 它是查看器的第三个入口(另两个:单击、行菜单)。 */
+  onOpen: () => void
 }) {
   const glyph = glyphOf(detail.name, detail.type)
   const [copied, setCopied] = useState(false)
@@ -906,10 +927,19 @@ function FileDetailPopover({
   const mtimeText = (ready && formatMtime(detail.mtimeMs, lang)) || ABSENT
 
   return (
-    <Popover x={at.x} y={at.y} onClose={onClose} label={detail.name}>
-      <div className={s.detail} data-testid="files-detail" data-file-path={detail.path}>
+    /*
+     * `testId` 落在**浮层根**上(08-31 真机走查的出入):从前它挂在里面那层 div,
+     * 于是 `[data-testid="files-detail"]` 取到的那个元素 `role` 是空的 ——
+     * role="dialog" 一直在,只是在它的父节点(Popover 的根)上。门的文件头写着
+     * 「它仍然是 role=dialog + data-testid=files-detail」,那句话在这个错位下是假的。
+     * 把取件口挪到根上,两件事从此在同一个元素上,门可以真的按 role 验。
+     * `data-file-path` 留在里面那层(它是这块**内容**的事实,不是浮层的属性),
+     * 门改按后代取:`[data-testid="files-detail"] [data-file-path]`。
+     */
+    <Popover x={at.x} y={at.y} onClose={onClose} label={detail.name} testId="files-detail">
+      <div className={s.detail} data-file-path={detail.path}>
         <div className={s.detailHead}>
-          <GlyphMark glyph={glyph} className={s.detailGlyph} />
+          <FileGlyphMark glyph={glyph} className={s.detailGlyph} size="lg" />
           <span className={s.detailName}>{detail.name}</span>
         </div>
 
@@ -970,9 +1000,9 @@ function FileDetailPopover({
           </Button>
           <Button onClick={onClose}>{t('common.close')}</Button>
           {detail.type === 'file' && (
-            <Button variant="primary" onClick={onPreview}>
+            <Button variant="primary" onClick={onOpen}>
               <Eye className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
-              {t('files.openPreview')}
+              {t('files.menuOpen')}
             </Button>
           )}
         </div>
@@ -981,85 +1011,12 @@ function FileDetailPopover({
   )
 }
 
-/**
- * 预览层。四种状态各画各的,**没有一种回退到别的那一种**:
- * 还在读 = 转圈;二进制 = 明说读不成文本;读不到 = 三档失败各一句话 + 后端原话;
- * 读到了 = 代码块(空文件另说一句 —— 一块空白不该被当成「渲染坏了」)。
+/*
+ * ── 「预览层」整块退役了(查看器 F1)────────────────────────────────────────
+ * 它从前是一层 `position:absolute; inset:0` 的覆盖物,四态各画各的,正文走一个
+ * 代码块。取代它的是 `content/viewer/` 那块内容 + 面板里那条分栏:
+ *   · 盖住 → 并排(树常驻,再点一个文件就地换内容);
+ *   · 一种画法(代码块)→ 四形(code / markdown / image / 诚实态);
+ *   · 四态 → 六格(五形 + 读失败),仍然是「一种都不回退到别的那一种」。
+ * 那四句预览文案也随之从字典里删掉了 —— 查看器有自己的一套(viewer.*)。
  */
-function PreviewLayer({
-  preview,
-  t,
-  onClose,
-}: {
-  preview: PreviewState
-  t: TFn
-  onClose: () => void
-}) {
-  return (
-    <div className={s.preview} data-testid="files-preview">
-      <div className={s.previewHead}>
-        <span className={s.previewName}>{baseNameOf(preview.path)}</span>
-        <span className={s.previewPath}>{preview.path}</span>
-        <Button iconOnly aria-label={t('files.previewClose')} onClick={onClose}>
-          <X className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-        </Button>
-      </div>
-      <div className={s.previewBody}>
-        {preview.status === 'loading' && (
-          <p className={s.detailNote}>
-            <Spinner label={t('files.previewLoading')} />
-            <span className={s.noteDetail}>{t('files.previewLoading')}</span>
-          </p>
-        )}
-        {preview.status === 'binary' && (
-          <p className={s.detailNote}>
-            <span className={s.noteFail}>{t('files.previewBinary')}</span>
-            {preview.size !== undefined && (
-              <span className={s.noteDetail}>{formatBytes(preview.size)}</span>
-            )}
-          </p>
-        )}
-        {preview.status === 'error' && (
-          <p className={s.detailNote}>
-            <span className={s.noteFail}>
-              {t(PREVIEW_FAILURE_LABELS[preview.failure ?? 'failed'])}
-            </span>
-            {preview.error && <span className={s.noteDetail}>{preview.error}</span>}
-          </p>
-        )}
-        {preview.status === 'ready' && (
-          <>
-            {preview.truncated && (
-              <p className={s.detailNote}>
-                <span className={s.noteDetail}>
-                  {t('files.previewTruncated', {
-                    size: formatBytes(preview.size ?? 0),
-                    shown: formatBytes(PREVIEW_MAX_BYTES),
-                  })}
-                </span>
-              </p>
-            )}
-            {preview.content ? (
-              <BlockView
-                block={{
-                  kind: 'code',
-                  lang: langOfPath(preview.path),
-                  source: preview.content,
-                  file: baseNameOf(preview.path),
-                  closed: true,
-                }}
-                // 这块内容不属于任何一条消息。`messageId` 是错误现场的名字,
-                // 所以给它一个说得清产地的名字,而不是一个空串。
-                ctx={{ messageId: `files:${preview.path}`, streaming: false }}
-              />
-            ) : (
-              <p className={s.detailNote}>
-                <span className={s.noteDetail}>{t('files.previewEmpty')}</span>
-              </p>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  )
-}

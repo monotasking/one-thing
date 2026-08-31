@@ -1,0 +1,662 @@
+/*
+ * 文件查看器(F1)。**三层 + 一条**:头 40 / 工具条(有才画)/ 身 / 脚 26。
+ *
+ * ── 一条纪律先说在前面:这块面上没有 --text-4 ──────────────────────────────
+ * 檐上那组动作、状态栏、行号、诚实态的说明 —— 定稿的语气都是「静默一档」,
+ * 而本仓最静的那一档 `--text-4` 压在 --surface-2 上只有 **2.07:1**
+ * (数写在 palette.css 的 --text-3 那段病历里):它是 placeholder / 禁用 / 水印
+ * 那一格,**不是给人读的字**。所以这里一律用 --text-3(4.60:1,过 AA),
+ * 悬停再抬到 --text-1。这与模型服务面当初「就地改用 --text-2」是同一条判例:
+ * **对比度不是口味,是对错**。(真机 axe 读数与留账见本批汇报。)
+ *
+ * ── 落点只换外框 ──────────────────────────────────────────────────────────
+ * `.frame-*` 是**唯一**与落点有关的一族(位置 / 圆角 / 影)。头体脚三层与
+ * 里面的一切都不看落点 —— 那正是「切落点只换外框、状态原地留存」这条定稿约束
+ * 在样式上的落点。F1 只有 `panel` 一格真被用到,其余六格的位子写在这里,
+ * F2 点亮时补几何、不动内容。**投影只有浮窗那一格有**(定稿:四边钉与主区域
+ * 零投影、只一条 1px 线)。
+ *
+ * 抗挤压(docs/design/react-shell-squeeze-rules-2026-08.md)的落点:
+ *  · 头这一行**恰有一个**弯腰件(路径钮),名字是次要弯腰件但有自己的上限;
+ *    读数与动作组都是 flex:none —— 名字再长也不会把「关闭」挤出屏幕;
+ *  · 脚这一行的弯腰件是中段那句读数,两侧的开关一律 flex:none;
+ *  · 代码本体不弯腰:它自己横滚(折行开关是用户的选择,不是排版的补救)。
+ */
+
+.viewer {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-2);
+}
+
+/* ── 外框:七落点(F1 只用 panel;其余是位子)───────────────────────────── */
+.frame-panel,
+.frame-stage,
+.frame-edge-top,
+.frame-edge-bottom,
+.frame-edge-left,
+.frame-edge-right {
+  border-left: var(--bw-1) solid var(--line-1);
+}
+
+/* 浮窗是**唯一**允许投影的落点(定稿)。 */
+.frame-float {
+  border-radius: var(--r-3);
+  box-shadow: var(--sh-3);
+}
+
+/* ── 头:40,只放身份与去向 ───────────────────────────────────────────── */
+.chrome {
+  flex: none;
+  height: var(--viewer-chrome-h);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.chromeGlyph {
+  flex: none;
+  width: var(--files-glyph-slot);
+  height: var(--files-badge-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 名字:先站住,窄下来才让。 */
+.name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 路径 = 一颗钮(点即复制)。**basis 取 0** —— 用 `1 1 auto` 时它的收缩基准是
+ * 整条绝对路径(上千像素),按 flex 的比例规则文件名也得跟着让掉一截:
+ * 真机上 `engine.ts` 当场被截成 `engin…`(病历原样承自旧预览头)。
+ */
+.pathBtn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+  background: none;
+  border-radius: var(--r-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.pathBtn:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.pathBtn:focus-visible,
+.action:focus-visible,
+.statusLink:focus-visible,
+.noteAction:focus-visible,
+.jumpRow:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.pathBtnDone {
+  color: var(--accent-deep);
+}
+
+.pathIcon {
+  flex: none;
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+}
+
+.pathText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「未保存」丸:warn 晕底 + 一颗点。它是**状态**,所以色只上点与字,不上底色实色。 */
+.dirty {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.dirtyDot {
+  width: var(--files-open-dot);
+  height: var(--files-open-dot);
+  border-radius: var(--r-full);
+  background: var(--warn);
+}
+
+/*
+ * 「正在读取…」的读数。切文件时旧内容还在屏幕上(四律①),所以这一格是唯一
+ * 说得出「手上有一次读在飞」的地方 —— 它不弯腰(一句定长的话)。
+ */
+.inflight {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.inflightText {
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* 动作组常驻头右端(与块壳的檐同一条形:静默一档,悬到才亮 —— 但这里那一档是
+ * --text-3 而不是块壳的 --text-4,理由见文件头那条纪律)。 */
+.actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: auto;
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  background: none;
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  white-space: nowrap;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.action:hover {
+  color: var(--text-1);
+}
+
+/* 铅笔按下去那一档:accent 晕底(定稿),不是换整枚钮的形。 */
+.actionOn {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-deep);
+}
+
+.actionIcon {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+}
+
+/* ── 工具条:这一型自己的那一格 ───────────────────────────────────────── */
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+/* ── 身 ─────────────────────────────────────────────────────────────── */
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+}
+
+/* 一句注(还在读 / 空文件)。 */
+.note {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0 0 var(--sp-2);
+}
+
+.noteDetail {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.noteAction {
+  flex: none;
+  padding: 0 var(--sp-1);
+  background: none;
+  border-radius: var(--r-1);
+  font-size: var(--fs-nano);
+  font-weight: 600;
+  color: var(--accent-deep);
+}
+
+/* ── code 型 ────────────────────────────────────────────────────────── */
+/*
+ * 字体与字号跟着聊天代码块走(mono、比正文小一档)—— 同一段代码在两处长得一样。
+ * 横滚在**这一层**:查看器整块面就是这个文件,没有第二层滚动容器与它抢滚轮。
+ */
+.pre {
+  counter-reset: viewer-line;
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: calc(var(--pr-fs) - 1px);
+  line-height: 1.6;
+  color: var(--text-1);
+  /* 代码里的空白是内容:一个都不许折叠。 */
+  white-space: pre;
+  tab-size: 2;
+}
+
+.code {
+  font: inherit;
+}
+
+/*
+ * 一行 = 一个块级盒。块级是四件事的前提:行号(counter)、当前行底色、行跳渲
+ * (content-visibility 对行内盒不生效)、以及跨行选择复制时浏览器会在块与块
+ * 之间补上换行 —— 所以行尾**不再画 `\n`**(画了会让每一行占两行高)。
+ */
+.line {
+  display: block;
+  position: relative;
+  padding-left: var(--viewer-gutter);
+  /* 空行也占一格行高:没有这一句,文件里的空行会塌成零高,行号跟着错位。 */
+  min-height: 1lh;
+  counter-increment: viewer-line;
+  /* 左缘那条 2px 竖条平时是透明的:当前行只换色,**不进出布局**
+   * (进出会让整份文件在跳转的那一刻横移两像素)。 */
+  border-left: var(--bw-3) solid transparent;
+}
+
+.line:hover {
+  background: var(--st-hover);
+}
+
+/* 当前行:淡 accent 底 + 左缘 2px accent 竖条(定稿画法)。 */
+.line[data-current='true'] {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border-left-color: var(--accent);
+}
+
+/*
+ * 行号。**生成内容不进选区** —— 框选一段代码复制出来只有代码,没有一列数字。
+ * (`user-select:none` 是双保险:generated content 本来就选不中。)
+ */
+.line::before {
+  content: counter(viewer-line);
+  position: absolute;
+  left: 0;
+  width: calc(var(--viewer-gutter) - var(--sp-3));
+  text-align: right;
+  color: var(--text-3);
+  user-select: none;
+}
+
+/*
+ * 行跳渲:视口外的行不排版、不上色。`contain-intrinsic-block-size` 只钳纵向 ——
+ * 横向要让真实内容决定,否则长行的横滚宽度会被一个猜出来的数字定死。
+ */
+.lineSkip {
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 1lh;
+}
+
+/* 折行档:长行就地断,不再要求横滚。`anywhere` 而不是 break-word —— 一条没有
+ * 空格的长 URL / base64 串也得断得动。 */
+.preWrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 编辑区 ───────────────────────────────────────────────────────────── */
+/*
+ * 等宽、无高亮、无补全。字号与行高与只读态**逐字相同** —— 进出编辑时那份文本
+ * 不该跳一下(它是同一份内容的两种可写性,不是两块东西)。
+ */
+.editor {
+  display: block;
+  width: 100%;
+  min-height: 100%;
+  border: none;
+  background: none;
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: calc(var(--pr-fs) - 1px);
+  line-height: 1.6;
+  color: var(--text-1);
+  tab-size: 2;
+  white-space: pre;
+}
+
+.editor:focus-visible {
+  outline: none;
+}
+
+/* ── markdown 型 ────────────────────────────────────────────────────── */
+/*
+ * 节奏表**不在这里** —— 容器同时吃 ChatStream.module.css 的 `.row`,那张邻接表
+ * 长在那个类上(理由写在 kinds/markdown.tsx)。这里只补一件它没有的:列宽。
+ * 值取阅读轴的 --pr-col,于是三档列宽在查看器里免费生效。
+ */
+.prose {
+  max-width: var(--pr-col);
+  min-width: 0;
+}
+
+/* ── image 型 ───────────────────────────────────────────────────────── */
+/*
+ * 棋盘底是**信息不是装饰**:带透明通道的图放在纯色底上,分不清「这块是白的」
+ * 还是「这块是透的」。格子用两档面色画,零字面色值。
+ */
+.imageArea {
+  min-width: 0;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--surface-1);
+  background-image: conic-gradient(
+    var(--st-hover) 25%,
+    transparent 0 50%,
+    var(--st-hover) 0 75%,
+    transparent 0
+  );
+  background-size: var(--viewer-checker) var(--viewer-checker);
+  border-radius: var(--r-1);
+}
+
+.image {
+  display: block;
+  /* 1:1 档:原大。缩放走 CSS zoom(它进布局,所以放大之后卷得到边角 ——
+   * transform 不进布局,放大出去的部分会被裁掉且滚不到)。 */
+  max-width: none;
+}
+
+.imageFit {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* ── media 型(示例档)────────────────────────────────────────────────── */
+.mediaArea {
+  min-width: 0;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  background: var(--surface-1);
+  border-radius: var(--r-1);
+  padding: var(--sp-3);
+}
+
+.media {
+  max-width: 100%;
+}
+
+.mediaNote {
+  margin: 0;
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+}
+
+/* ── 诚实态(binary / oversize / 读失败 / 图取不到)─────────────────────── */
+.honest {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-6) var(--sp-3);
+  text-align: center;
+}
+
+.honestGlyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--icon-lg);
+}
+
+.honestTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.honestNote {
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+/* ── ⌘L 跳转条 ────────────────────────────────────────────────────────── */
+/*
+ * 它贴在身的顶上(sticky),**不是浮层**:跳转是「在这份内容里找地方」,
+ * 盖一层遮罩会把要找的东西挡住。列表有最大高度 —— 浮层/抽屉列表必有高度约束。
+ */
+.jump {
+  position: sticky;
+  top: calc(var(--sp-3) * -1);
+  z-index: var(--z-sticky);
+  margin: calc(var(--sp-3) * -1) calc(var(--sp-3) * -1) var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-2);
+  border-bottom: var(--bw-1) solid var(--line-1);
+  box-shadow: var(--sh-1);
+}
+
+.jumpInput {
+  width: 100%;
+}
+
+.jumpList {
+  list-style: none;
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  max-height: var(--viewer-jump-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.jumpHint,
+.jumpRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-1) 0;
+  background: none;
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  text-align: left;
+}
+
+.jumpRow:hover {
+  color: var(--text-1);
+}
+
+.jumpSigil {
+  flex: none;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+}
+
+.jumpLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jumpSoon {
+  flex: none;
+  color: var(--text-3);
+}
+
+/* ── 脚:26 的状态栏 ───────────────────────────────────────────────────── */
+.status {
+  flex: none;
+  height: var(--viewer-status-h);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border-top: var(--bw-1) solid var(--line-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+}
+
+/* Vim 模式标:状态色**只上文字**(不换底、不换整条带子)。 */
+.vimMode {
+  flex: none;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  font-weight: 700;
+  letter-spacing: var(--ls-section);
+}
+
+.vimNormal {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-deep);
+}
+
+.vimInsert {
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok);
+}
+
+.statusFact {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* 这一行里唯一的弯腰件。 */
+.statusMid {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  overflow: hidden;
+}
+
+.statusNote {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusWarn {
+  min-width: 0;
+  color: var(--danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statusLink {
+  flex: none;
+  padding: 0 var(--sp-1);
+  background: none;
+  border-radius: var(--r-1);
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text-3);
+  white-space: nowrap;
+  transition: color var(--dur) var(--ease);
+}
+
+.statusLink:hover:not(:disabled) {
+  color: var(--text-1);
+}
+
+.statusLink:disabled {
+  opacity: 0.45;
+}
+
+.statusLinkOn {
+  color: var(--accent-deep);
+}
+
+/* ── 关闭确认 ─────────────────────────────────────────────────────────── */
+.confirmText {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * 「不保存」那颗:danger **描边**,不是实底 —— 一屏只该有一个实底(那是
+ * 「保存并关闭」)。ui/Button 今天没有 danger 变体,所以这里按它的 className
+ * 透传口就地染色,而不是去改那件公共组件(别批在动它)。
+ */
+.dangerBtn {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+}
+
+.dangerBtn:hover {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+/* ── 「打开方式」菜单里那几行 ─────────────────────────────────────────── */
+.menuLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+}
+
+.menuMain {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuTrail {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+}

@@ -4,21 +4,22 @@ import type {
   FilesListRequest,
   FilesListResponse,
   FilesReadContentResponse,
+  FilesSaveContentResponse,
   FilesStatResponse,
 } from '@shared/ipc/files'
 
 /**
  * 文件面取数与 `@renderer/platform` 之间的那一层**端口** —— 与
  * `data/sessions-port.ts` / `theme/theme-port.ts` 同一形状、同一理由:
- * files-source 的全部判据(根怎么定、懒展开、每目录一次、预览三态)都是纯逻辑,
+ * files-source 的全部判据(根怎么定、懒展开、每目录一次、失败怎么归类)都是纯逻辑,
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用 `configureFilesPort`
  * 换成假的。
  *
- * 形状是**平台调用面的子集**,不是新契约:六个方法逐条对应
- * `@shared/ipc/files.ts` 那个 router 十四条里的六条,一个字段都没有多。
- * 那八条(saveContent / create / createDirectory / rename / delete / rollback /
- * watchStart / watchStop)本批一条都不开:文件面这一批**只读**,
- * 而 watch 的实情写在下面。
+ * 形状是**平台调用面的子集**,不是新契约:七个方法逐条对应
+ * `@shared/ipc/files.ts` 那个 router 十四条里的七条,一个字段都没有多。
+ * 剩下那七条(create / createDirectory / rename / delete / rollback /
+ * watchStart / watchStop)一条都没开。`saveContent` 是查看器 F1 补上的**唯一
+ * 一条写口**(轻编辑),理由与代价写在它自己的注里;watch 的实情写在下面。
  *
  * ── 签名口径:位置参数进来,信封出去 ─────────────────────────────────────
  * router 一律收对象(`filesApi.readContent({ path, maxSize })`)。端口这一层
@@ -51,6 +52,19 @@ export interface FilesPort {
    * 不是读回来的那一段的长度 —— 「有没有被截断」只能靠这两个数字比出来。
    */
   readContent(path: string, maxSize: number): Promise<FilesReadContentResponse>
+  /**
+   * 写回一个文件(查看器 F1 的轻编辑)。**这是这个端口上唯一一条写口。**
+   *
+   * `expectedMtimeMs` 是乐观锁:传了它,后端在写之前会核一次盘上的时间戳,
+   * 对不上就回 `conflict:true` 而不是覆盖 —— 「我打开之后别人改过」必须说出来,
+   * 不能静默把别人的改动抹掉。审计与回滚是后端那条既有通道自带的
+   * (`files.saveContent` → 审计目录 → `files.rollback`),壳这边一件都不重造。
+   */
+  saveContent(
+    path: string,
+    content: string,
+    expectedMtimeMs?: number,
+  ): Promise<FilesSaveContentResponse>
   /** 在文件管理器里定位。只有 Electron 桌面做得到,别处结构化降级。 */
   reveal(path: string): Promise<FilesActionResponse>
   /** 按名字找文件(**不是按内容**,见 search/data.ts 顶部)。 */
@@ -79,6 +93,8 @@ async function realPort(): Promise<FilesPort> {
     listDirectory: (path) => filesApi.listDirectory({ path }),
     stat: (path) => filesApi.stat({ path }),
     readContent: (path, maxSize) => filesApi.readContent({ path, maxSize }),
+    saveContent: (path, content, expectedMtimeMs) =>
+      filesApi.saveContent({ path, content, ...(expectedMtimeMs ? { expectedMtimeMs } : {}) }),
     reveal: (path) => filesApi.reveal({ path }),
     list: (request) => filesApi.list(request),
   }

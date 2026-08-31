@@ -84,6 +84,7 @@ beforeEach(() => {
     listDirectory: async () => ({ success: false, error: 'not used here' }),
     stat: async () => ({ success: false, error: 'not used here' }),
     readContent: async () => ({ success: false, error: 'not used here' }),
+    saveContent: async () => ({ success: true }),
     reveal: async () => ({ success: false, error: 'not used here' }),
     list: async (request) => {
       fileAsks.push(request)
