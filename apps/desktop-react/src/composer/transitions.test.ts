@@ -1,7 +1,32 @@
 import { describe, expect, it } from 'vitest'
 import * as T from './transitions'
-import { MOCK_PROVIDERS } from './data'
+import type { ProviderGroup } from '../data/models-source'
 import type { AskSpec, Attachment } from './types'
+
+/**
+ * 分组过滤的样本。D2 波一之前它是 `composer/data.ts` 的 MOCK_PROVIDERS ——
+ * 那份假目录随接真一起退役了,而 `filterProviders` 仍然是一条要逐条钉的规则,
+ * 所以样本就地造一份:纯函数的测试不该依赖任何数据源。
+ */
+const GROUPS: ProviderGroup[] = [
+  {
+    id: 'anthropic',
+    provider: 'Anthropic',
+    models: [
+      { model: 'claude-opus-5', contextLength: 200_000 },
+      { model: 'claude-sonnet-5', contextLength: 200_000 },
+      { model: 'claude-haiku-4.5', contextLength: null },
+    ],
+  },
+  {
+    id: 'xai',
+    provider: 'xAI',
+    models: [
+      { model: 'grok-4', contextLength: 500_000 },
+      { model: 'grok-4-fast', contextLength: 500_000 },
+    ],
+  },
+]
 
 /**
  * Composer 的判断层。这里钉的是**规则**,不是像素:
@@ -155,20 +180,24 @@ describe('拍立得附件的摞', () => {
 
 describe('模型抽屉的过滤', () => {
   it('按模型名筛', () => {
-    const groups = T.filterProviders(MOCK_PROVIDERS, 'grok')
+    const groups = T.filterProviders(GROUPS, 'grok')
     expect(groups.map((g) => g.provider)).toEqual(['xAI'])
     expect(groups[0].models).toHaveLength(2)
   })
 
   it('按 Provider 名筛 —— 整组一起出来', () => {
-    const groups = T.filterProviders(MOCK_PROVIDERS, 'anthropic')
+    const groups = T.filterProviders(GROUPS, 'anthropic')
     expect(groups).toHaveLength(1)
     expect(groups[0].models).toHaveLength(3)
   })
 
   it('空关键词回全表;一条都不中时不留空组头', () => {
-    expect(T.filterProviders(MOCK_PROVIDERS, '  ')).toHaveLength(MOCK_PROVIDERS.length)
-    expect(T.filterProviders(MOCK_PROVIDERS, 'zzz')).toEqual([])
+    expect(T.filterProviders(GROUPS, '  ')).toHaveLength(GROUPS.length)
+    expect(T.filterProviders(GROUPS, 'zzz')).toEqual([])
+  })
+
+  it('筛完组 id 还在 —— 上行要它,逐格重建会把它悄悄丢掉', () => {
+    expect(T.filterProviders(GROUPS, 'grok')[0].id).toBe('xai')
   })
 })
 
@@ -181,8 +210,29 @@ describe('读数的格式', () => {
 
   it('百分比取整;圆环的 dash 第二个数给整圈周长,保证只画一段', () => {
     expect(T.percent(124_000, 200_000)).toBe(62)
-    expect(T.percent(1, 0)).toBe(0)
     expect(T.ringDash(62, 7)).toBe('27.3 44.0')
+  })
+
+  it('分母不成立 = null(不是 0):「不知道窗口」与「才用了 0%」不是一件事', () => {
+    expect(T.percent(1, 0)).toBeNull()
+    expect(T.percent(1, Number.NaN)).toBeNull()
+    // 超窗那一下夹在 100 —— 环画不出一圈半。
+    expect(T.percent(300_000, 200_000)).toBe(100)
+  })
+
+  it('缺席态的环是一串点,不是一圈空实线', () => {
+    const [on, off] = T.ringUnknownDash(7).split(' ')
+    expect(on).toBe(off)
+    expect(Number(on)).toBeCloseTo((2 * Math.PI * 7) / 16, 1)
+  })
+
+  it('金额:不足一块留四位 —— 两位会把 $0.0031 写成「免费」', () => {
+    expect(T.formatUsd(0)).toBe('0.00')
+    expect(T.formatUsd(0.0031)).toBe('0.0031')
+    expect(T.formatUsd(1.234_5)).toBe('1.23')
+    // 末尾的零不带信息:$0.8700 与 $0.10 里那几位是噪音,砍掉但保底两位。
+    expect(T.formatUsd(0.87)).toBe('0.87')
+    expect(T.formatUsd(0.1)).toBe('0.10')
   })
 
   it('状态条上那句话按字数截断', () => {

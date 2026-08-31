@@ -444,6 +444,12 @@
   color: var(--ok);
 }
 
+/* 缺席态:这一行说的是「不知道」。灰置到与键同色 —— 它不是一个读数,
+   是一句交代,不该和真数字抢眼(D2 波一:编不出来的数一个都不画)。 */
+.meterDim {
+  color: var(--text-3);
+}
+
 /* ── 拍立得附件:悬浮摞,absolute 不占布局,composer 几何零变化 ────────────── */
 .attFloat {
   position: absolute;

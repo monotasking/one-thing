@@ -6,6 +6,7 @@ import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
 import { useStageStore } from '../../stage/store'
 import { useChatSource } from '../../data/chat-source'
+import { useModelsSource } from '../../data/models-source'
 
 /**
  * D3 起 composer 不再自己攒一条假队列 —— 它把话**交给 sink**(见 composer/sink.ts)。
@@ -57,11 +58,31 @@ beforeEach(() => {
     },
   })
   useChatSource.setState({ activeMessageId: undefined })
+  /*
+   * 模型目录:直接摆一份 store 状态,不去动端口 —— 这一层要验的是「谁在场」,
+   * 取数(两道闸、懒加载、上行三态)归 data/models-source.test.ts。
+   * 没有当前会话,所以这里选中的模型落进 `pending`(草稿态那一格)。
+   */
+  useModelsSource.getState().reset()
+  useModelsSource.setState({
+    status: 'ready',
+    providers: [{ id: 'xai', name: 'xAI' }],
+    prefs: { defaultProvider: '', configs: { xai: { selectedModels: ['grok-4'], model: '' } } },
+    catalog: { xai: [{ id: 'grok-4', contextLength: 500_000 }] },
+    // 目录**已经拉好**:抽屉一开就不会再去拉一次(懒加载那条路归
+    // data/models-source.test.ts 验)。这里要的是一份静止的现场。
+    catalogStatus: { xai: 'ready' },
+  })
 })
 
 afterEach(() => {
   vi.useRealTimers()
   configureComposerSink(undefined)
+  // 包在 act 里:vitest 的 afterEach 后进先出,这一钩比 RTL 的卸载先跑,
+  // 那时组件还挂着 —— 一次 store 归零就是一次 act 之外的重渲染。
+  act(() => {
+    useModelsSource.getState().reset()
+  })
 })
 
 const state = () => useComposerStore.getState()
@@ -116,9 +137,16 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
     render(<Composer />)
     fireEvent.click(modelPill())
     fireEvent.mouseDown(screen.getByText('grok-4'))
-    expect(state().model).toBe('grok-4')
     expect(state().drawerKind).toBeNull()
+    // 没有当前会话:这次选择是「下一条新会话用谁」,记在 pending 上,不发请求。
+    expect(useModelsSource.getState().pending).toEqual({ provider: 'xai', model: 'grok-4' })
     expect(modelPill().textContent).toContain('grok-4')
+  })
+
+  it('一个模型都还没有:药丸写「选择模型」,不拿目录第一条去顶', () => {
+    useModelsSource.setState({ providers: [], prefs: { defaultProvider: '', configs: {} } })
+    render(<Composer />)
+    expect(modelPill().textContent).toContain('选择模型')
   })
 
   it('命令抽屉里的 /ask-demo 是 dev 扳机:选中即把本体变成问卷', () => {

@@ -57,15 +57,12 @@ export interface CommandSpec {
   action?: 'ask-demo'
 }
 
-export interface ModelSpec {
-  model: string
-  desc: string
-}
-
-export interface ProviderGroup {
-  provider: string
-  models: ModelSpec[]
-}
+/*
+ * 模型抽屉的两个形状(`ModelOption` / `ProviderGroup`)在 D2 波一搬去了
+ * `data/models-source.ts`:它们描述的是**目录的投影**,产地在那边,形状就该在
+ * 那边定义一次(与 `AgentOption` 住在 agents-source 同一条判例)。这里留一条
+ * 路标,免得下一个人照着旧文件头去找。
+ */
 
 /** 执行流水里的一步。 */
 export interface StatusStep {
@@ -109,7 +106,13 @@ export interface ComposerState {
   pickIndex: number
   /** 模型抽屉的搜索词 */
   modelQuery: string
-  model: string
+  /*
+   * D2 波一:`model` 这一格**不在这里了**。输入面板的 store 是「此刻的形态」
+   * (文件头第一段:重启该干净),而「这条会话跑的是哪个模型」是**会话上的
+   * 一格绑定** —— 它的产地是账本(`SessionMeta.lastProvider/lastModel`),
+   * 存一份副本在这里就会与它漂开。现在由 `data/models-source.ts` 的
+   * `resolveModelSelection` 现算,谁要谁读。
+   */
   mode: ComposerMode
   askSpec: AskSpec | null
   askAnswers: AskAnswer[]

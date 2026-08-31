@@ -114,3 +114,53 @@ configureFilesPort({
   reveal: async () => ({ success: false, error: 'no files port in tests' }),
   list: async () => ({ success: true, files: [], entries: [] }),
 })
+
+/**
+ * 模型目录的端口:同一条理由,同一手(D2)。composer 在每一个渲染了外壳的
+ * 用例里都在,不装的话它们会一起去摸真的 `@renderer/platform`。
+ *
+ * 默认这一份**成功但是空**:一个连上了、然而这台机器一个 provider 都没配的
+ * core 是真实存在的状态(空表 ≠ 出错),抽屉据此画「无匹配」。要验目录的用例
+ * 自己 `configureModelsPort` 换一个。
+ */
+import { configureModelsPort } from '../data/models-port'
+
+configureModelsPort({
+  ready: async () => undefined,
+  listProviders: async () => ({ success: true, providers: [] }),
+  listModels: async () => ({ success: true, models: [] }),
+  readSettings: async () => ({ success: false, error: 'no models port in tests' }),
+  // 切模型默认**不成功**:没有哪个用例该因为默认端口而悄悄改了一条会话的绑定。
+  updateSessionModel: async () => ({ success: false, error: 'no models port in tests' }),
+})
+
+/**
+ * 读数的端口:同一条理由,同一手。默认两口都**答不上话**(一个抛、一个
+ * `success:false`),于是读数是缺席态 —— 那正是「没接线」诚实的样子,
+ * 不是一张写着 0 的卡。
+ */
+import { configureMeterPort } from '../data/meter-port'
+
+configureMeterPort({
+  ready: async () => undefined,
+  getSessionUsage: async () => {
+    throw new Error('no meter port in tests')
+  },
+  getTokenUsage: async () => ({ success: false, error: 'no meter port in tests' }),
+})
+
+/**
+ * 文字查询不看**播报口**(A11y 线 · A2)。
+ *
+ * `ui/a11y/live-region.ts` 在 body 末尾挂一块常驻的 visually-hidden 区,一条
+ * toast 出场时会把它屏幕上那句话原样送进去(那正是「同源」的做法)。于是
+ * `getByText('存好了')` 会同时命中屏幕上那一份和播报口里那一份,报「找到两个」。
+ *
+ * 判据不是「太吵了就静音」,而是**播报口不是屏幕**:它是说给听的人的那一路,
+ * 屏幕断言不该看见它。所以把它加进 Testing Library 的默认忽略表(默认表本来
+ * 就是 `script, style` —— 同一类「在文档里但不是界面」的东西)。
+ * 要验播报本身的用例走 `liveRegionText()`,不经这一层。
+ */
+import { configure } from '@testing-library/react'
+
+configure({ defaultIgnore: 'script, style, [data-live-region], [data-live-region] *' })

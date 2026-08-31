@@ -41,6 +41,7 @@ function session(over: Partial<SessionSummary> & { id: string }): SessionSummary
     messageCount: null,
     updatedAt: NOW,
     model: null,
+    provider: null,
     agentId: null,
     ...over,
   }

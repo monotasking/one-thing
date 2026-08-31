@@ -8,6 +8,7 @@ import App from './App'
 import { whenConnected } from './platform/connection'
 import { useSessionsSource } from './data/sessions-source'
 import { useAgentsSource } from './data/agents-source'
+import { useModelsSource } from './data/models-source'
 import { startThemeSource } from './theme/theme-source'
 import { startReadingAxes } from './reading/apply'
 import { installCrashHandlers } from './services/crash'
@@ -39,6 +40,9 @@ void whenConnected().finally(() => {
   // agent 名册同理:连通后拉一次(失败自己重试一次就停)。拉不到不挡任何事 ——
   // 顶栏那枚徽退成「默认助手」,菜单里一行灰字说名册不可用。
   void useAgentsSource.getState().start()
+  // 模型侧同理:名册(providers)与设置各拉一次。**模型目录不在这里** ——
+  // 它是每家一次 RPC 的东西,抽屉打开时才拉(见 data/models-source.ts 文件头)。
+  void useModelsSource.getState().start()
   // D2:颜色从主题管道来。同样是异步的 —— 变量表到之前,palette.css 的静态值
   // 先顶着(浏览器直开 / 没连上 core 时它就是最终值,见 theme-source 文件头)。
   void startThemeSource()

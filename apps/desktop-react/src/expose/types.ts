@@ -68,6 +68,14 @@ export interface SessionSummary {
    */
   model: string | null
   /**
+   * SessionMeta.lastProvider —— 上一轮那个模型是**哪一家**的。与 `model` 是一对
+   * (D2 接真模型选择时补的):药丸上写的是模型名,而「切到这个模型」的上行
+   * (`sessions.updateModel`)与「这个模型的窗口多大」(provider 目录)都得先
+   * 知道是哪一家。缺席 = 只知道模型名不知道出处 —— 那时窗口读作**不知道**,
+   * 不去所有家的目录里猜一个同名的。
+   */
+  provider: string | null
+  /**
    * SessionMeta.agentId。`DEFAULT_AGENT_ID`('default')与缺席在这里都读作 null:
    * 「默认 agent」不是一条值得占一格徽的信息,满屏一个 default 等于没说。
    */

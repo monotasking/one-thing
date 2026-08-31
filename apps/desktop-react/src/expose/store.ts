@@ -7,6 +7,7 @@ import {
   useSessionsSource,
 } from '../data/sessions-source'
 import { useAgentsSource } from '../data/agents-source'
+import { useModelsSource } from '../data/models-source'
 import { useChatSource } from '../data/chat-source'
 import { focusComposer } from '../composer/focus'
 import { findSession } from './projection'
@@ -162,6 +163,16 @@ export const useExposeStore = create<ExposeStore>()(
           return undefined
         }
         void useAgentsSource.getState().applyPendingAgent(outcome.sessionId)
+        /*
+         * 同一步的第二笔:草稿态选过的模型也在这里兑现(D2 波一)。
+         *
+         * 接缝选在这里而不是 `composer/sink.startSession` 的返回处,理由是这个
+         * 函数头上那句话:**建会话的唯一编排点**。「新会话要带上哪些预选」是
+         * 建会话这件事的一部分,agent 与模型是同一类账;摊到 sink 里就成了
+         * 两处各兑现一格,而 ⌘N 那条路(不经过 composer)会漏掉模型那一格。
+         * 同样**不 await**:顺手落一笔,失败自己 notify(warn)。
+         */
+        void useModelsSource.getState().applyPendingModel(outcome.sessionId)
         get().enterSession(outcome.sessionId)
         focusComposer()
         /*

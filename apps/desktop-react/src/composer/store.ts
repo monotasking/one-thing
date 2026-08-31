@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { DEFAULT_MODEL } from './data'
+import { useModelsSource } from '../data/models-source'
 import { composerSink } from './sink'
 import * as T from './transitions'
 import type {
@@ -26,7 +26,6 @@ const initialState: ComposerState = {
   pickQuery: '',
   pickIndex: 0,
   modelQuery: '',
-  model: DEFAULT_MODEL,
   mode: 'write',
   askSpec: null,
   askAnswers: [],
@@ -59,7 +58,7 @@ interface ComposerStore extends ComposerState {
   setPickIndex: (i: number) => void
   toggleModelDrawer: () => void
   setModelQuery: (q: string) => void
-  chooseModel: (model: string) => void
+  chooseModel: (sessionId: string | null, provider: string, model: string) => void
   toggleStatusDrawer: () => void
   closeDrawer: () => void
 
@@ -100,7 +99,24 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
         : { drawerKind: 'model' as DrawerKind, modelQuery: '' },
     ),
   setModelQuery: (q) => set({ modelQuery: q }),
-  chooseModel: (model) => set({ model, drawerKind: null }),
+
+  /**
+   * 选中一个模型 —— **一个手势,两件事**,所以是一口而不是让组件调两下:
+   *  1. 抽屉收起(这块面板自己的形态,归这里);
+   *  2. 把选择交给 `models-source`(会话上的一格绑定,归那里):有会话就
+   *     `sessions.updateModel` 上行,没有会话就记成「下一条新会话用谁」。
+   *
+   * 这里**不 await**:抽屉该在手指抬起的那一帧就收起来,而不是等一次往返。
+   * 上行失败由数据源自己撤牌 + notify(warn) —— 那时药丸会变回原来那个模型,
+   * 屏幕上不留一块后端没认下的牌(与 agent 徽逐条同构)。
+   *
+   * `sessionId` 由组件递进来(与 `AgentChip` 同一手):输入面板不认识总览 store,
+   * 「当前是哪条会话」是调用现场的事实,不是这块面板的状态。
+   */
+  chooseModel: (sessionId, provider, model) => {
+    set({ drawerKind: null })
+    void useModelsSource.getState().selectModel(sessionId, provider, model)
+  },
 
   toggleStatusDrawer: () =>
     set((s) => ({ drawerKind: s.drawerKind === 'status' ? null : ('status' as DrawerKind) })),

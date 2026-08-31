@@ -3,6 +3,9 @@ import type { DragEvent } from 'react'
 import { useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
 import { ASK_DEMO_SPEC, MOCK_COMMANDS, MOCK_FILES } from '../data'
+import { useMeterSource } from '../../data/meter-source'
+import { useCurrentModelSelection, useModelsSource } from '../../data/models-source'
+import { useExposeStore } from '../../expose/store'
 import { ESC_STOP_WINDOW_MS } from '../../components/motion'
 import { registerComposerFocus } from '../focus'
 import { composerSink, useComposerBusy } from '../sink'
@@ -42,7 +45,6 @@ export function Composer() {
   const drawerKind = useComposerStore((st) => st.drawerKind)
   const pickQuery = useComposerStore((st) => st.pickQuery)
   const pickIndex = useComposerStore((st) => st.pickIndex)
-  const model = useComposerStore((st) => st.model)
   const mode = useComposerStore((st) => st.mode)
   const askSpec = useComposerStore((st) => st.askSpec)
   const status = useComposerStore((st) => st.status)
@@ -59,6 +61,32 @@ export function Composer() {
   const send = useComposerStore((st) => st.send)
   /* 引擎在不在跑 —— 唯一产地在 data/chat-source.ts,这里只是接上订阅。 */
   const busy = useComposerBusy()
+
+  /*
+   * ── D2 波一:药丸与读数的三条接线 ────────────────────────────────────
+   * 三件事都发生在这一层而不是各自的组件里,理由同 applyPick / doSend:
+   * 这个文件做**编排**(谁在场、谁要什么事实),组件只画。
+   */
+  const sessionId = useExposeStore((st) => st.currentSessionId)
+  // 药丸上写谁:三层事实里推出来的那一个(见 resolveModelSelection)。
+  const selection = useCurrentModelSelection(sessionId)
+  const ensureCatalog = useModelsSource((st) => st.ensureCatalog)
+  const openMeter = useMeterSource((st) => st.open)
+  const refreshMeter = useMeterSource((st) => st.refresh)
+
+  // 读数跟着会话走:换一条就重订 + 重拉(没有会话时是缺席态,不发请求)。
+  useEffect(() => {
+    void openMeter(sessionId || null)
+  }, [sessionId, openMeter])
+
+  /*
+   * 环要画出百分比就得知道**这个模型的窗口多大**,而窗口在 provider 目录里。
+   * 所以当前这一家的目录是要拉的 —— 但只拉这一家(抽屉打开时才拉其余的)。
+   * 已经拉过的直接返回,所以这个 effect 反复跑不产生往返。
+   */
+  useEffect(() => {
+    if (selection?.provider) void ensureCatalog(selection.provider)
+  }, [selection?.provider, ensureCatalog])
 
   const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<ComposerInputHandle | null>(null)
@@ -371,19 +399,32 @@ export function Composer() {
                   <PaperclipIcon className={s.attachIcon} strokeWidth={1.8} aria-hidden="true" />
                 </button>
 
+                {/*
+                  * 三层事实都答不上来时药丸写的是「选择模型」——**不拿目录里
+                  * 第一家第一型去顶**(SessionSummary.model 早就定下的口径)。
+                  */}
                 <button
                   type="button"
                   className={s.modelPill}
-                  aria-label={t('composer.model', { name: model })}
+                  aria-label={
+                    selection
+                      ? t('composer.model', { name: selection.model })
+                      : t('composer.modelUnset')
+                  }
                   aria-expanded={drawerKind === 'model'}
                   onClick={toggleModelDrawer}
                 >
-                  {model}
+                  {selection ? selection.model : t('composer.modelUnset')}
                   <ChevronDown className={s.pillChev} strokeWidth={2} aria-hidden="true" />
                 </button>
 
+                {/* 开卡的那一眼要是最新的:悬停 / 聚焦时顺手再拉一次读数
+                    (Vue 壳 InputBox 的同一判例)。没有会话时 refresh 是恒等。 */}
                 <ContextRing
-                  onEnter={() => setMeterOpen(true)}
+                  onEnter={() => {
+                    setMeterOpen(true)
+                    void refreshMeter()
+                  }}
                   onLeave={() => setMeterOpen(false)}
                 />
 

@@ -1,4 +1,4 @@
-import type { AskSpec, CommandSpec, ProviderGroup } from './types'
+import type { AskSpec, CommandSpec } from './types'
 
 /**
  * Composer 的模拟数据。**这是「模拟出来的用户数据」,不是界面文案** ——
@@ -30,47 +30,18 @@ export const MOCK_COMMANDS: CommandSpec[] = [
   { name: '/ask-demo', desc: 'dev · 模拟一组 AI 反问', dev: true, action: 'ask-demo' },
 ]
 
-/** 接 model-registry 时换源。 */
-export const MOCK_PROVIDERS: ProviderGroup[] = [
-  {
-    provider: 'Anthropic',
-    models: [
-      { model: 'claude-opus-5', desc: '最强推理' },
-      { model: 'claude-sonnet-5', desc: '均衡' },
-      { model: 'claude-haiku-4.5', desc: '轻快' },
-    ],
-  },
-  {
-    provider: 'xAI',
-    models: [
-      { model: 'grok-4', desc: '量大管饱' },
-      { model: 'grok-4-fast', desc: '低延迟' },
-    ],
-  },
-  {
-    provider: 'DeepSeek',
-    models: [
-      { model: 'deepseek-chat', desc: '便宜' },
-      { model: 'deepseek-reasoner', desc: '长思考' },
-    ],
-  },
-]
-
-export const DEFAULT_MODEL = 'claude-opus-5'
-
-/**
- * 读数明细的四行。**接遥测账本时换源** —— 组件只认这个形状,不认数字从哪来。
- * 存的是数不是句子:句子由 i18n 模板拼(不同语言的量词位置不一样)。
+/*
+ * D2 波一(2026-08-31)退役了三块常量,各自搬去了真产地:
+ *  - `MOCK_PROVIDERS` → `data/models-source.ts`(providers.list + models.getWithCapabilities,
+ *    两道闸筛可见的家);顺带 `ProviderGroup` / `ModelSpec` 两个形状也搬了过去 ——
+ *    形状归产地,不归这块假数据文件;
+ *  - `DEFAULT_MODEL` → 没有替代品,**它本来就是一句谎**:壳不该替引擎钦定一个
+ *    默认模型。当前模型现在从三层事实里推(`resolveModelSelection`),
+ *    三层都答不上来就诚实地写「选择模型」;
+ *  - `MOCK_METER` → `data/meter-source.ts`(usage.getSession + sessions.getTokenUsage)。
+ *    那七格里的 `cacheSavedUsd`(省了多少钱)**整仓没有产地**,所以它没有搬家,
+ *    是被删掉的 —— 连同 i18n 里 `meter.cacheValue` 的那半句。
  */
-export const MOCK_METER = {
-  contextUsed: 124_000,
-  contextMax: 200_000,
-  tokensIn: 48_200,
-  tokensOut: 12_600,
-  costUsd: 0.87,
-  cacheHitPct: 91,
-  cacheSavedUsd: 2.1,
-} as const
 
 /** dev-only:`/ask-demo` 用的三题。接 ask_user 事件后,spec 由事件带来。 */
 export const ASK_DEMO_SPEC: AskSpec = {

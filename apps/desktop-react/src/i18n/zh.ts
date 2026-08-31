@@ -25,6 +25,8 @@ export const zh = {
   'agent.rosterUnavailable': '名册不可用',
   'agent.manage': '管理 Agents…',
   'agent.switchFailed': '切换 Agent 失败',
+  /* 模型切换失败(上行没被后端认下)—— 药丸会变回原来那个,所以这句话要说出来。 */
+  'model.switchFailed': '切换模型失败',
 
   /* ── 会话(新建那条命令的命令名;标题本身由后端落默认值,不进字典)──── */
   'session.new': '新建会话',
@@ -41,6 +43,8 @@ export const zh = {
   'composer.attachments': '附件',
   'composer.removeAttachment': '移除附件',
   'composer.model': '选择模型:{name}',
+  /* 三层事实都答不上来时药丸上那句话 —— 不拿一个默认模型名去顶。 */
+  'composer.modelUnset': '选择模型',
   'composer.modelSearch': '搜模型或 Provider…',
   'composer.headFiles': '引用文件',
   'composer.headCommands': '命令',
@@ -48,16 +52,25 @@ export const zh = {
   'composer.hintCommand': '⏎ 选用',
   'composer.noMatch': '无匹配',
   'composer.context': '上下文用量',
+  /* 窗口大小拿不到时读屏软件听见的那句 —— 不能说成 0%。 */
+  'composer.contextUnknown': '上下文用量未知',
 
-  /* ── 读数明细(数来自遥测,句子在这里) ───────────────────────────── */
+  /* ── 读数明细(数来自账本,句子在这里) ───────────────────────────── */
   'meter.context': '上下文',
   'meter.contextValue': '{used} / {max} · {pct}%',
+  /* 用量有、模型窗口不知道:只说用量,并如实交代占比算不出来。 */
+  'meter.contextNoWindow': '{used} · 窗口未知',
+  /* 整份读数缺席(还没有会话 / 账本没答上话)。 */
+  'meter.empty': '还没有读数',
   'meter.tokens': 'Tokens',
   'meter.tokensValue': '↑{sent} ↓{received}',
   'meter.cost': '花费',
   'meter.costValue': '${cost}',
+  /* 厂商自己报的价 —— 与上面那行并存,报了才出现。 */
+  'meter.costProvider': '厂商报价',
   'meter.cache': '缓存命中',
-  'meter.cacheValue': '{pct}% · 省 ${saved}',
+  /* 「省 $x」在整仓没有产地,D2 波一连同那半句一起删了 —— 不编省钱数字。 */
+  'meter.cacheValue': '{pct}%',
 
   /* ── 状态条 / 执行抽屉 ────────────────────────────────────────────── */
   'status.toggle': '执行状态',

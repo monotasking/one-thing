@@ -6,9 +6,9 @@ import type {
   AttStackLayout,
   Attachment,
   CommandSpec,
-  ProviderGroup,
   TokenHit,
 } from './types'
+import type { ProviderGroup } from '../data/models-source'
 
 /**
  * Composer 的纯函数层。规矩同 stage/transitions.ts:
@@ -219,7 +219,9 @@ export function filterProviders(groups: readonly ProviderGroup[], query: string)
   const kw = query.trim().toLowerCase()
   return groups
     .map((g) => ({
-      provider: g.provider,
+      // `...g` 而不是逐格重建:组上的 `id`(provider id,上行要它)不能在筛一遍
+      // 之后丢掉 —— 逐格重建是这类「新加的字段静默消失」的头号产地。
+      ...g,
       models: g.models.filter(
         (m) =>
           !kw || m.model.toLowerCase().includes(kw) || g.provider.toLowerCase().includes(kw),
@@ -239,6 +241,19 @@ export function ringDash(pct: number, radius: number): string {
   return `${on.toFixed(1)} ${c.toFixed(1)}`
 }
 
+/**
+ * 缺席态的环:不知道窗口多大时,把**底圈**画成一串点(八段等分),
+ * 而不是画一圈实线 + 0% 的弧。判据在 `percent` 那条注释里 ——
+ * 「空环」不能同时表示 0% 与「不知道」。
+ *
+ * 段数是这枚 18px 环自己的画法比例,与 `ringDash` 的整圈周长同一份几何事实;
+ * 它是**算出来的 dash**,不是一条写在组件里的字面量。
+ */
+export function ringUnknownDash(radius: number): string {
+  const segment = (2 * Math.PI * radius) / 16
+  return `${segment.toFixed(1)} ${segment.toFixed(1)}`
+}
+
 /** 48200 → '48.2k';200000 → '200k'(整数不留 .0)。 */
 export function formatCount(n: number): string {
   if (Math.abs(n) < 1000) return String(n)
@@ -247,10 +262,34 @@ export function formatCount(n: number): string {
   return `${s.endsWith('.0') ? s.slice(0, -2) : s}k`
 }
 
-/** 百分比取整 —— 读数是给人看的一眼,不是账。 */
-export function percent(used: number, total: number): number {
-  if (total <= 0) return 0
-  return Math.round((used / total) * 100)
+/**
+ * 金额。**不足一块钱留四位小数**(Vue 壳 `formatSessionCostUSD` 的同一条):
+ * 两位小数会把 $0.0031 写成 $0.00 —— 那读起来是「免费」,而它不是。
+ * 单位符号($)在模板里,这里只出数。
+ */
+export function formatUsd(value: number): string {
+  if (!Number.isFinite(value) || value === 0) return '0.00'
+  if (value >= 1) return value.toFixed(2)
+  // 四位起步,但**末尾的零不留**(至少两位):$0.8700 里那两个零一个信息都不带,
+  // 而 $0.0031 里的每一位都带。
+  const raw = value.toFixed(4).replace(/0+$/, '')
+  const decimals = raw.split('.')[1] ?? ''
+  return decimals.length < 2 ? value.toFixed(2) : raw
+}
+
+/**
+ * 百分比取整 —— 读数是给人看的一眼,不是账。
+ *
+ * **分母不成立时返回 null,不是 0**(D2 波一改)。这两件事在屏幕上长得一样
+ * (一圈空环),意思却相反:0% 是「这个模型窗口很大,才用了一点点」,
+ * null 是「不知道这个模型的窗口多大」。环据此画成缺席态(见 `ringUnknownDash`),
+ * 卡上那一行据此换一句话。用 0 顶替 null 是这张卡上最容易犯的谎。
+ *
+ * 上界夹在 100:超窗那一下(压缩前)不该画出一圈半。
+ */
+export function percent(used: number, total: number): number | null {
+  if (!Number.isFinite(total) || total <= 0) return null
+  return Math.min(100, Math.round((used / total) * 100))
 }
 
 /** 状态条上那句话按字数截断(超出加省略号)。 */

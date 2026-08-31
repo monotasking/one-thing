@@ -67,6 +67,15 @@ export function sessionModelOf(meta: SessionMeta): string | null {
 }
 
 /**
+ * 上一轮那个模型是哪一家的。与 `sessionModelOf` 同一手:空串读作 null ——
+ * 「有这一格但它是空的」在下游(上行 / 查窗口)与缺席是同一件事。
+ */
+export function sessionProviderOf(meta: SessionMeta): string | null {
+  const provider = (meta.lastProvider ?? '').trim()
+  return provider || null
+}
+
+/**
  * 绑定的 agent。`DEFAULT_AGENT_ID` 在这里被读成 null:默认 agent 是**没有选择**
  * 而不是一个选择,给它出一枚徽等于每条会话都挂一句废话。
  */
@@ -109,6 +118,7 @@ export function toSessionSummary(meta: SessionMeta): SessionSummary {
     messageCount: sessionMessageCountOf(meta),
     updatedAt: meta.updatedAt,
     model: sessionModelOf(meta),
+    provider: sessionProviderOf(meta),
     agentId: sessionAgentIdOf(meta),
   }
 }

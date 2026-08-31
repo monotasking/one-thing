@@ -21,6 +21,7 @@ export const en: Record<MessageKey, string> = {
   'agent.rosterUnavailable': 'Agent roster unavailable',
   'agent.manage': 'Manage agents…',
   'agent.switchFailed': 'Could not switch agent',
+  'model.switchFailed': 'Could not switch model',
 
   'session.new': 'New session',
 
@@ -33,6 +34,7 @@ export const en: Record<MessageKey, string> = {
   'composer.attachments': 'Attachments',
   'composer.removeAttachment': 'Remove attachment',
   'composer.model': 'Pick a model: {name}',
+  'composer.modelUnset': 'Pick a model',
   'composer.modelSearch': 'Search models or providers…',
   'composer.headFiles': 'Reference a file',
   'composer.headCommands': 'Commands',
@@ -40,16 +42,20 @@ export const en: Record<MessageKey, string> = {
   'composer.hintCommand': '⏎ use',
   'composer.noMatch': 'No match',
   'composer.context': 'Context usage',
+  'composer.contextUnknown': 'Context usage unknown',
 
   /* ── readouts ─────────────────────────────────────────────────────── */
   'meter.context': 'Context',
   'meter.contextValue': '{used} / {max} · {pct}%',
+  'meter.contextNoWindow': '{used} · window unknown',
+  'meter.empty': 'No readings yet',
   'meter.tokens': 'Tokens',
   'meter.tokensValue': '↑{sent} ↓{received}',
   'meter.cost': 'Spend',
   'meter.costValue': '${cost}',
+  'meter.costProvider': 'Provider quoted',
   'meter.cache': 'Cache hits',
-  'meter.cacheValue': '{pct}% · saved ${saved}',
+  'meter.cacheValue': '{pct}%',
 
   /* ── status bar / run drawer ──────────────────────────────────────── */
   'status.toggle': 'Run status',
