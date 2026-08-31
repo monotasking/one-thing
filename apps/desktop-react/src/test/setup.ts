@@ -148,7 +148,7 @@ configureModelsPort({
   ready: async () => undefined,
   listProviders: async () => ({ success: true, providers: [] }),
   listModels: async () => ({ success: true, models: [] }),
-  readSettings: async () => ({ success: false, error: 'no models port in tests' }),
+  readProviderSettings: async () => ({ success: false, error: 'no models port in tests' }),
   // 切模型默认**不成功**:没有哪个用例该因为默认端口而悄悄改了一条会话的绑定。
   updateSessionModel: async () => ({ success: false, error: 'no models port in tests' }),
 })
@@ -168,6 +168,14 @@ configureProviderSettingsPort({
   listModels: async () => ({ success: true, models: [] }),
   readSettings: async () => ({ success: false, error: 'no provider settings port in tests' }),
   saveSettings: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  readProviderSettings: async () => ({
+    success: false,
+    error: 'no provider settings port in tests',
+  }),
+  writeProviderSettings: async () => ({
+    success: false,
+    error: 'no provider settings port in tests',
+  }),
   readCredentials: async () => ({ success: false, error: 'no provider settings port in tests' }),
   setCredential: async () => ({ success: false, error: 'no provider settings port in tests' }),
   setCredentialPool: async () => ({ success: false, error: 'no provider settings port in tests' }),

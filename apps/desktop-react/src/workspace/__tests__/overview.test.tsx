@@ -83,9 +83,9 @@ describe('卡的状态', () => {
     expect(useWorkspaceStore.getState().currentId).toBe('ws-lenovo')
   })
 
-  it('那句注脚在场 —— 切换改了什么、没改什么,全靠它说清', async () => {
+  it('那句注脚在场 —— 切换换的是什么,全靠它说清', async () => {
     await renderOverview()
-    expect(screen.getByText(/切换只改这台窗口记着的当前工作区/)).toBeTruthy()
+    expect(screen.getByText(/每个工作区各有一套会话、模型服务与凭证/)).toBeTruthy()
   })
 })
 

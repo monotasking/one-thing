@@ -19,6 +19,12 @@ export function fakeProviderPort(overrides: Partial<ProviderSettingsPort> = {}):
     listModels: vi.fn(async () => ({ success: true, models: [] })),
     readSettings: vi.fn(async () => ({ success: false, error: 'not stubbed' })),
     saveSettings: vi.fn(async (next) => ({ success: true, settings: next })),
+    // 「这个空间还是空的」是真机上最常见的答案 —— 与凭证池默认答空池同一手。
+    readProviderSettings: vi.fn(async () => ({
+      success: true,
+      ai: { provider: '', providers: {}, customProviders: [] },
+    })),
+    writeProviderSettings: vi.fn(async (request) => ({ success: true, ai: request.ai })),
     readCredentials: vi.fn(async () => ({ success: true, credentials: { providers: {} } })),
     setCredential: vi.fn(async () => ({ success: true, credentials: { providers: {} } })),
     setCredentialPool: vi.fn(async () => ({ success: true, credentials: { providers: {} } })),

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { AppSettings } from '@shared/ipc/settings'
-import type { OpenRouterModel, ProviderInfo } from '@shared/ipc/providers'
+import type { OpenRouterModel, ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { renderContent } from '../../../content'
 import { configureProviderSettingsPort } from '../../../data/provider-settings-port'
 import type { ProviderSettingsPort } from '../../../data/provider-settings-port'
@@ -69,16 +69,18 @@ const CATALOGS: Record<string, OpenRouterModel[]> = {
   acp: [],
 }
 
+/** 全局设置只剩全空间共享的两格 —— provider 那一半在空间的 providers.json 里。 */
 function settings(): AppSettings {
+  return { ai: { temperature: 0.7, modelCatalog: {} } } as unknown as AppSettings
+}
+
+/** 当前空间那一份 provider 设置。 */
+function spaceSettings(): SpaceProviderSettings {
   return {
-    ai: {
-      temperature: 0.7,
-      modelCatalog: {},
-      provider: 'claude',
-      providers: { claude: { model: 'claude-sonnet-4', selectedModels: ['claude-sonnet-4'] } },
-      customProviders: [],
-    },
-  } as unknown as AppSettings
+    provider: 'claude',
+    providers: { claude: { model: 'claude-sonnet-4', selectedModels: ['claude-sonnet-4'] } },
+    customProviders: [],
+  } as unknown as SpaceProviderSettings
 }
 
 /** 默认这台机器:claude 有一把 key,订阅那一坑没登录。 */
@@ -132,6 +134,8 @@ function installPort(overrides: Partial<ProviderSettingsPort> = {}) {
     })),
     readSettings: vi.fn(async () => ({ success: true, settings: settings() })),
     saveSettings: vi.fn(async (next: AppSettings) => ({ success: true, settings: next })),
+    readProviderSettings: vi.fn(async () => ({ success: true, ai: spaceSettings() })),
+    writeProviderSettings: vi.fn(async (request) => ({ success: true, ai: request.ai })),
     readCredentials: vi.fn(async () => credentials(false)),
     setCredential: vi.fn(async () => ({ success: true, credentials: { providers: {} } })),
     ...overrides,
@@ -235,8 +239,8 @@ describe('写与缺席态', () => {
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('checkbox', { name: '勾选 claude-sonnet-4' }))
-    await waitFor(() => expect(port.saveSettings).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(port.saveSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual(
+    await waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual(
       [],
     )
   })
@@ -247,8 +251,8 @@ describe('写与缺席态', () => {
     await screen.findByTestId('model-row-claude-sonnet-4')
 
     fireEvent.click(screen.getByRole('switch', { name: '启用 Claude' }))
-    await waitFor(() => expect(port.saveSettings).toHaveBeenCalledTimes(1))
-    const sent = vi.mocked(port.saveSettings).mock.calls[0][0]
+    await waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.claude.enabled).toBe(false)
     expect(sent.ai.providers['claude-code'].enabled).toBe(false)
   })
@@ -267,7 +271,7 @@ describe('写与缺席态', () => {
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(port.setCredential).toHaveBeenCalledTimes(1))
     // 密钥**绝不**经 saveSettings —— 那条路会把它静默剥掉。
-    expect(port.saveSettings).not.toHaveBeenCalled()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
     // 不带 entryId = 追加一条(带了才是「换 key 不换条目」)。
     expect(vi.mocked(port.setCredential).mock.calls[0][0].entryId).toBeUndefined()
   })

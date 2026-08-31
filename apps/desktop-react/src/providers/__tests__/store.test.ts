@@ -1,19 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSettings } from '@shared/ipc/settings'
-import type { ProviderInfo } from '@shared/ipc/providers'
+import type { ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { configureProviderSettingsPort } from '../../data/provider-settings-port'
 import type { ProviderSettingsPort } from '../../data/provider-settings-port'
 import { useNotifyStore } from '../../services/notify-store'
-import { DEFAULT_SPACE_ID, useProviderSettings } from '../store'
+import { useProviderSettings } from '../store'
+import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { buildFamilies, findFamily } from '../families'
 import { fakeProviderPort } from './fake-port'
 
 /**
  * 写口三条。这一组守的是**写打在哪条口上**,以及失败之后屏幕不许留说谎的牌:
- *  ① 启用开关 → saveSettings,一次写完一家的所有 provider id;
- *  ② 模型勾选 → saveSettings,只动 selectedModels 那一格,别的格原样;
- *  ③ API 密钥 → spaces.setCredential,**绝不**经 saveSettings
- *     (那条路会把 apiKey 静默剥掉 —— 看起来存上了、其实没有)。
+ *  ① 启用开关 → spaces.setProviderSettings(**当前空间**那一份),一次写完一家的所有 provider id;
+ *  ② 模型勾选 → 同一口,只动 selectedModels 那一格,别的格原样;
+ *  ③ API 密钥 → spaces.setCredential,**两条设置写口都不许经过**
+ *     (saveSettings 会把 apiKey 静默剥掉 —— 看起来存上了、其实没有)。
  */
 
 function info(id: string, extra: Partial<ProviderInfo> = {}): ProviderInfo {
@@ -40,18 +41,24 @@ const ROSTER: ProviderInfo[] = [
   }),
 ]
 
+/**
+ * 全局设置里**只剩全空间共享的那两格**(温度缺省 + models.dev 目录快照)——
+ * provider 那一半住在空间的 providers.json 里,由 `spaceSettings()` 交出来。
+ * 这不是夹具的口味,是盘上真实的分家(契约 `@shared/ipc/providers.ts:257-268`)。
+ */
 function settings(): AppSettings {
+  return { ai: { temperature: 0.7, modelCatalog: {} } } as unknown as AppSettings
+}
+
+/** 当前空间那一份 provider 设置 —— 屏幕上那些开关与勾选的真产地。 */
+function spaceSettings(): SpaceProviderSettings {
   return {
-    ai: {
-      temperature: 0.7,
-      modelCatalog: {},
-      provider: 'claude',
-      providers: {
-        claude: { model: 'claude-opus-5', selectedModels: ['claude-opus-5'], apiKey: '••••' },
-      },
-      customProviders: [],
+    provider: 'claude',
+    providers: {
+      claude: { model: 'claude-opus-5', selectedModels: ['claude-opus-5'], apiKey: '••••' },
     },
-  } as unknown as AppSettings
+    customProviders: [],
+  } as unknown as SpaceProviderSettings
 }
 
 function installPort(overrides: Partial<ProviderSettingsPort> = {}) {
@@ -60,6 +67,8 @@ function installPort(overrides: Partial<ProviderSettingsPort> = {}) {
     listModels: vi.fn(async () => ({ success: true, models: [] })),
     readSettings: vi.fn(async () => ({ success: true, settings: settings() })),
     saveSettings: vi.fn(async (next: AppSettings) => ({ success: true, settings: next })),
+    readProviderSettings: vi.fn(async () => ({ success: true, ai: spaceSettings() })),
+    writeProviderSettings: vi.fn(async (request) => ({ success: true, ai: request.ai })),
     readCredentials: vi.fn(async () => ({
       success: true,
       credentials: { providers: { claude: { policy: 'single', entries: [] } } },
@@ -129,8 +138,8 @@ describe('setFamilyEnabled —— 写口 ①', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().setFamilyEnabled(CLAUDE, false)
 
-    expect(port.saveSettings).toHaveBeenCalledTimes(1)
-    const sent = vi.mocked(port.saveSettings).mock.calls[0][0]
+    expect(port.writeProviderSettings).toHaveBeenCalledTimes(1)
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.claude.enabled).toBe(false)
     expect(sent.ai.providers['claude-code'].enabled).toBe(false)
     // 别的格原样带回去 —— 漏传一格 = 清空那一格。
@@ -139,11 +148,11 @@ describe('setFamilyEnabled —— 写口 ①', () => {
   })
 
   it('写失败:回滚到底本 + 一条通知,屏幕上不留说谎的牌', async () => {
-    const port = installPort({ saveSettings: vi.fn(async () => ({ success: false, error: '写不进去' })) })
+    const port = installPort({ writeProviderSettings: vi.fn(async () => ({ success: false, error: '写不进去' })) })
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().setFamilyEnabled(CLAUDE, false)
 
-    expect(port.saveSettings).toHaveBeenCalledTimes(1)
+    expect(port.writeProviderSettings).toHaveBeenCalledTimes(1)
     expect(useProviderSettings.getState().settings?.ai.providers.claude.enabled).toBeUndefined()
     expect(useProviderSettings.getState().saving).toBe(false)
     expect(useNotifyStore.getState().items[0]).toMatchObject({ source: 'providers.save' })
@@ -156,7 +165,7 @@ describe('toggleModel —— 写口 ②', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().toggleModel('claude', 'claude-sonnet-5', true)
 
-    const sent = vi.mocked(port.saveSettings).mock.calls[0][0]
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5', 'claude-sonnet-5'])
     expect(sent.ai.providers.claude.model).toBe('claude-opus-5')
   })
@@ -165,7 +174,7 @@ describe('toggleModel —— 写口 ②', () => {
     const port = installPort()
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().toggleModel('claude', 'claude-opus-5', false)
-    expect(vi.mocked(port.saveSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual(
+    expect(vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual(
       [],
     )
   })
@@ -174,14 +183,14 @@ describe('toggleModel —— 写口 ②', () => {
     const port = installPort()
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().toggleModel('claude', 'claude-opus-5', true)
-    expect(port.saveSettings).not.toHaveBeenCalled()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
   })
 
   it('这一家在设置里还没有记录时,新建的那条带齐必填格', async () => {
     const port = installPort()
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().toggleModel('claude-code', 'claude-sonnet-5', true)
-    expect(vi.mocked(port.saveSettings).mock.calls[0][0].ai.providers['claude-code']).toEqual({
+    expect(vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers['claude-code']).toEqual({
       model: '',
       selectedModels: ['claude-sonnet-5'],
     })
@@ -195,6 +204,7 @@ describe('saveApiKey —— 写口 ③', () => {
     await useProviderSettings.getState().saveApiKey('claude', '  sk-real-key  ')
 
     expect(port.saveSettings).not.toHaveBeenCalled()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
     expect(port.setCredential).toHaveBeenCalledWith({
       id: DEFAULT_SPACE_ID,
       providerId: 'claude',
@@ -232,7 +242,7 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().setCurrentModel('claude', 'claude-sonnet-4')
 
-    const sent = vi.mocked(port.saveSettings).mock.calls[0][0]
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.claude.model).toBe('claude-sonnet-4')
     expect(sent.ai.providers.claude.selectedModels).toContain('claude-sonnet-4')
     // 原来勾着的一个都没丢。
@@ -243,15 +253,15 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     const port = installPort()
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().setCurrentModel('claude', 'claude-opus-5')
-    expect(port.saveSettings).not.toHaveBeenCalled()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
   })
 
   it('手填一个目录没有的 id:进 selectedModels', async () => {
     const port = installPort()
     await useProviderSettings.getState().start()
     expect(useProviderSettings.getState().addManualModel('claude', ' qwen3-max ')).toBeUndefined()
-    await vi.waitFor(() => expect(port.saveSettings).toHaveBeenCalledTimes(1))
-    expect(vi.mocked(port.saveSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual([
+    await vi.waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual([
       'claude-opus-5',
       'qwen3-max',
     ])
@@ -262,7 +272,7 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     await useProviderSettings.getState().start()
     const problem = useProviderSettings.getState().addManualModel('claude', 'claude-opus-5')
     expect(problem).toBeTruthy()
-    expect(port.saveSettings).not.toHaveBeenCalled()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
   })
 
   it('删手填模型:**最后一条不删**(与生产 toggleSpaceModelSelection 同一守则)', async () => {
@@ -270,27 +280,23 @@ describe('setCurrentModel / addManualModel / removeManualModel', () => {
     await useProviderSettings.getState().start()
     // 池里只有 claude-opus-5 一条,删它 = 把这一家清空。
     await useProviderSettings.getState().removeManualModel('claude', 'claude-opus-5')
-    expect(port.saveSettings).not.toHaveBeenCalled()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
   })
 
   it('删掉的正好是当前模型时,当前顺位落到剩下的第一个', async () => {
     const port = installPort({
-      readSettings: vi.fn(async () => ({
+      readProviderSettings: vi.fn(async () => ({
         success: true,
-        settings: {
-          ai: {
-            temperature: 0.7,
-            modelCatalog: {},
-            provider: 'claude',
-            providers: { claude: { model: 'ghost', selectedModels: ['ghost', 'claude-opus-5'] } },
-            customProviders: [],
-          },
-        } as unknown as AppSettings,
+        ai: {
+          provider: 'claude',
+          providers: { claude: { model: 'ghost', selectedModels: ['ghost', 'claude-opus-5'] } },
+          customProviders: [],
+        } as unknown as SpaceProviderSettings,
       })),
     })
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().removeManualModel('claude', 'ghost')
-    const sent = vi.mocked(port.saveSettings).mock.calls[0][0]
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.claude.selectedModels).toEqual(['claude-opus-5'])
     // 留一个指向已删 id 的 model = 让聊天那边挑到一个不存在的模型。
     expect(sent.ai.providers.claude.model).toBe('claude-opus-5')
@@ -573,7 +579,7 @@ describe('自定义家', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().saveCustomProvider(FORM)
 
-    const sent = vi.mocked(port.saveSettings).mock.calls[0][0]
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     const created = sent.ai.customProviders![0]
     expect(created).toMatchObject({ name: '我的 vLLM', apiType: 'openai', model: 'qwen3-32b-awq' })
     // 只写 customProviders 的话,这一家在聊天的模型选择器里是隐形的。
@@ -588,10 +594,10 @@ describe('自定义家', () => {
     const port = installPort()
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().saveCustomProvider(FORM)
-    const id = vi.mocked(port.saveSettings).mock.calls[0][0].ai.customProviders![0].id
+    const id = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id
 
     await useProviderSettings.getState().deleteCustomProvider(id)
-    const sent = vi.mocked(port.saveSettings).mock.calls[1][0]
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[1][0]
     expect(sent.ai.customProviders).toHaveLength(0)
     expect(sent.ai.providers[id]).toBeUndefined()
   })
@@ -603,10 +609,10 @@ describe('setDials', () => {
     await useProviderSettings.getState().start()
 
     await useProviderSettings.getState().setDials('claude', 'coding-plan', 'cn')
-    expect(port.saveSettings).not.toHaveBeenCalled()
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
 
     await useProviderSettings.getState().setDials('kimi', 'coding-plan', 'cn')
-    const sent = vi.mocked(port.saveSettings).mock.calls[0][0]
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
     expect(sent.ai.providers.kimi).toMatchObject({
       kimiApiMode: 'coding-plan',
       baseUrl: 'https://api.kimi.com/coding/v1',
