@@ -133,6 +133,16 @@ export function AppShell() {
         * 架子是布局列/行,所以它挤压主区而不是盖住它(既有拍板)。
         * 空架子自己 return null,那条 auto 轨道就塌成 0 —— 「不渲染、不占布局」是同一件事。 */}
       <main className={s.main}>
+        {/*
+          外壳的一级标题:只念不看(A11y 线 · A2)。
+          这台上没有一句「大标题」可看 —— 顶栏是控件条,聊天区是内容。但读屏软件的
+          「按标题浏览」是从 h1 起步的,一张没有 h1 的页,那一手从第一步就落空。
+          所以补一个视觉隐藏的 h1,而不是把某个控件强行升格成标题。
+          放在 <main> **里面**:axe 的 region 那条要的是「页面内容都落在地标里」,
+          挂在 <main> 外面的话它自己就是那块无主内容。它是 position:absolute,
+          不是网格项,三明治那三条轨道一格都不动。
+        */}
+        <h1 className="visually-hidden">{t('a11y.appTitle')}</h1>
         {SHELF_SIDES.map((side) => (
           <EdgeShelf key={side} side={side} />
         ))}

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { ChevronDown } from '../components/icons'
 import { Menu, MenuItem } from './Menu'
 import s from './Select.module.css'
@@ -16,6 +16,17 @@ import s from './Select.module.css'
  *
  * 定位、Esc 关、点外关、clamp 进视口全在 Menu 里,这里一行都不重写。
  * 不做搜索、不做多选 —— 那是另一件组件,不是这件的开关。
+ *
+ * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ *   触发器上 Enter / Space / ↓   展开(↓ 是 APG combobox 模式那一下)
+ *   面板里 ↑ / ↓                在选项间移动(循环),整组一个 Tab 位
+ *   面板里 Home / End           到首项 / 末项
+ *   面板里 Enter / Space        选中并收起 → 焦点还给触发器
+ *   Esc                        收起 → 焦点还给触发器
+ * 语义按 APG 的 listbox 模式:触发器 role=combobox + aria-expanded +
+ * aria-controls,面板 role=listbox,项 role=option + aria-selected。
+ * 面板本体复用 ui/Menu 的 'listbox' 档 —— 一个浮层只该有一套行为。
+ * ──────────────────────────────────────────────────────────────────────
  */
 export interface SelectOption {
   value: string
@@ -43,6 +54,7 @@ export function Select({
   className,
 }: SelectProps) {
   const ref = useRef<HTMLButtonElement>(null)
+  const listId = useId()
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null)
 
   const current = options.find((o) => o.value === value)
@@ -50,15 +62,19 @@ export function Select({
     .filter(Boolean)
     .join(' ')
 
+  const open = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (!r) return
+    // 贴着触发器下缘展开;越界由 Menu 自己 clamp,这里不重复判一次视口。
+    setAnchor({ x: r.left, y: r.bottom })
+  }
+
   const toggle = () => {
     if (anchor) {
       setAnchor(null)
       return
     }
-    const r = ref.current?.getBoundingClientRect()
-    if (!r) return
-    // 贴着触发器下缘展开;越界由 Menu 自己 clamp,这里不重复判一次视口。
-    setAnchor({ x: r.left, y: r.bottom })
+    open()
   }
 
   return (
@@ -68,21 +84,39 @@ export function Select({
         type="button"
         className={cls}
         disabled={disabled}
+        role="combobox"
         aria-haspopup="listbox"
         aria-expanded={anchor !== null}
+        aria-controls={anchor ? listId : undefined}
         aria-label={label}
         // Menu 的「点外关」听的是 window 上的 pointerdown。触发器就在菜单外面,
         // 不拦住这一下,再点一次触发器会先关再开,看起来就是「点了没反应」。
         onPointerDown={(e) => e.stopPropagation()}
         onClick={toggle}
+        // APG combobox:↓ 展开。Enter / Space 走原生 click,不用在这里再写一遍。
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && !anchor) {
+            e.preventDefault()
+            open()
+          }
+        }}
       >
         <span className={s.value}>{current?.label}</span>
         <ChevronDown className={s.chevron} strokeWidth={1.75} aria-hidden="true" />
       </button>
 
       {anchor && (
-        <Menu x={anchor.x} y={anchor.y} onClose={() => setAnchor(null)} label={label}>
-          <div className={s.list}>
+        <Menu
+          x={anchor.x}
+          y={anchor.y}
+          onClose={() => setAnchor(null)}
+          label={label}
+          role="listbox"
+          id={listId}
+        >
+          {/* 这一层只是「超高就自己滚」的容器,不是 listbox 的一个成员 ——
+              不摘掉隐式角色,读屏软件会把它当成一个不明的子项念出来。 */}
+          <div className={s.list} role="presentation">
             {options.map((o) => (
               <MenuItem
                 key={o.value}

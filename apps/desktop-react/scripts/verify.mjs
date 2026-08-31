@@ -141,11 +141,19 @@ run('gate:squeeze', 'npm', ['run', '--silent', 'gate:squeeze'])
  */
 run('gate:motion', 'npm', ['run', '--silent', 'gate:motion'])
 /*
+ * gate:a11y 与上面两条同一个理由进得来:它断言的是**无障碍树与焦点落点**——
+ * 同一份代码同一个视口跑一百遍是同一个答案,没有余量、不看机器状况
+ * (axe 是静态分析一棵已经排好的树;键盘走查是逐下按键读 document.activeElement,
+ * 两样都不是毫秒读数)。它比另外两条贵一点:要拉两屏(外壳 + ?gallery)。
+ */
+run('gate:a11y', 'npm', ['run', '--silent', 'gate:a11y'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
  */
 
 process.stdout.write(
-  '\n[verify] ok —— typecheck / lint / squeeze-gate / motion-gate / test / build / offline-fonts / 真机门全绿\n',
+  '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
+    + ' / offline-fonts / 真机门(connect·data·theme·chat·files·monotone·squeeze·motion·a11y)全绿\n',
 )

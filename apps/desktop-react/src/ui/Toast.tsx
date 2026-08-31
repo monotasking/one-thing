@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { create } from 'zustand'
 import { CircleAlert, CircleCheck, Info, TriangleAlert, X } from '../components/icons'
+import { announce } from './a11y/live-region'
 import s from './Toast.module.css'
 
 /**
@@ -24,6 +25,22 @@ import s from './Toast.module.css'
  *
  * 文案全部由调用方给(标题、正文、✕ 的 aria-label、小丸上那句话)——
  * 组件里不落字面,和不落字面色值同级。
+ *
+ * ── 播报(A11y 线 · A2)─────────────────────────────────────────────────
+ * 一条 toast 出场时,把**它自己渲染出来的那句话**送进全应用唯一的播报口
+ * (ui/a11y/live-region)。级别决定礼貌档:error → assertive(打断当前朗读,
+ * 因为它本来就不自动消失、是要人处理的),其余三档 → polite。
+ *
+ * 播报的文本取的是 `row.textContent` 而不是把 title/body 再拼一遍 ——
+ * **屏幕上写什么就念什么**,一个字都不会岔开。这就是 live region 纪律里
+ * 「状态播报与视觉 toast 同源」的字面落实。
+ *
+ * 行本身因此**不再挂 role="status"**:那等于把这条行也变成一块 live region,
+ * 一条 toast 会被念两遍。播报口只该有一个。
+ *
+ * 键盘表:✕ 是普通按钮(Tab 可达、Enter/Space 触发、aria-label 由调用方给)。
+ * toast 本体不抢焦点 —— 它是通知,不是任务。
+ * ──────────────────────────────────────────────────────────────────────
  */
 
 /** toast 认得的四档。'silent' 不在其中:那一档根本不弹,连 hub 都进不来。 */
@@ -137,12 +154,22 @@ function ToastRow({ spec, closeLabel }: { spec: ToastSpec; closeLabel?: string }
   // 悬停同时冻住两样东西:hub 里的秒表,和底缘那条线的动画。
   // 一份状态驱动两处,读数和实际剩余就不会各说各话。
   const [held, setHeld] = useState(false)
+  const row = useRef<HTMLDivElement>(null)
+
+  // 出场即播报一次。读的是这一行**已经渲染出来**的文字(见文件头「同源」那一节)。
+  useEffect(() => {
+    const text = row.current?.textContent?.trim()
+    if (text) announce(text, { level: spec.level === 'error' ? 'assertive' : 'polite' })
+  }, [spec.id, spec.level])
 
   const Icon = ICONS[spec.level]
   return (
     <div
+      ref={row}
+      // 行不再带 role="status"(见文件头「播报」那一节)。它从前**兼任**测试的抓手,
+      // 所以抓手明写成 testid —— 一个用来定位的名字不该由一条 ARIA 语义兼职。
+      data-testid="toast-row"
       className={`${s.toast} ${s[spec.level]}`}
-      role="status"
       onMouseEnter={() => {
         setHeld(true)
         pause(spec.id)

@@ -13,8 +13,12 @@
   display: none;
 }
 
+/* `.tab` 现在**自己就是那个 tab**(role="tab" 提到了这一层,见 Tabs.tsx 里的理由),
+ * 所以命中区、光标、焦点环都归它。cursor 从前是全局 `button { cursor: pointer }`
+ * 白送的 —— 这一层不再是按钮了,得自己写一句,不然手感当场退化成一段文字。 */
 .tab {
   position: relative;
+  cursor: pointer;
   flex: none;
   max-width: var(--tab-max-w);
   display: flex;
@@ -47,15 +51,6 @@
   font-weight: 500;
 }
 
-/* 命中区铺满整个 .tab(定位祖先):hover 高亮画在 .tab 上,点击若只吃 .main 自己的
- * 盒子,左右 pad-x(10px×2)+ gap(6px)就是「亮着却点不中」的死区 —— 短 tab 上
- * 占到三成宽。overlay 不占布局,选中与撕拽按下都从整块 tab 起步。 */
-.main::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-}
-
 .icon {
   width: var(--tab-icon);
   height: var(--tab-icon);
@@ -69,11 +64,14 @@
 }
 
 /* × 的位子一直占着,只有 opacity 在变 —— hover 不引起重排。
- * position: relative 让它作为 DOM 后序元素压过 .main::before 的整块 overlay,
- * 保住自己的命中盒 —— 不然 × 会被 overlay 盖住点不到。 */
+ * 从前这里还有一句 `position: relative`,是为了压过 `.main::before` 那块整片 overlay
+ * (不然 × 点不到)。overlay 随 role="tab" 上提一起退役了 —— 整块 .tab 现在自己就是
+ * 命中区,没有东西再盖在 × 上面,那一句也就没有了消费者。 */
 .close {
-  position: relative;
   flex: none;
+  /* 它不再是 <button> 了(理由见 Tabs.tsx),所以全局 `button { cursor: pointer }`
+   * 那一句也就不落到它头上 —— 自己写。 */
+  cursor: pointer;
   width: var(--tab-close);
   height: var(--tab-close);
   display: inline-flex;
@@ -85,8 +83,10 @@
   transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
+/* 键盘走到这条 tab 上时也把 × 露出来:它自己不再能拿焦点(从前那条
+ * `.close:focus-visible` 因此没有了消费者),露不露只能跟着**宿主 tab** 的焦点走。 */
 .tab:hover .close,
-.close:focus-visible {
+.tab:focus-visible .close {
   opacity: 1;
 }
 

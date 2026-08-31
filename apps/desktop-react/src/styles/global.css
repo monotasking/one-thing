@@ -58,6 +58,55 @@ button {
 
 /* 无位移原则:hover/active 一律不位移。唯二例外 = Dock 磁性放大、(未来的)弹跳提醒。 */
 
+/* ── 焦点柔光环:全系统的**兜底**画法(A11y 线 · A2)────────────────────────
+ * 立法见 docs/design/react-shell-a11y-2026-08.md 第二律「焦点可见」与焦点样式纪律:
+ * **只替换,永不裸删** —— 任何一处 `outline: none` 都必须在同一处配上替代品。
+ * 这一条就是全系统的那个「替代品」:凡是没自己画环的元素,键盘落焦时统一得到
+ * 一圈 token 柔光环,而不是浏览器那圈黄/蓝默认框(用户 08-31 报的「黄圈」正是它 ——
+ * 黄圈出现的地方 = 那个元素谁都没给它画环)。
+ *
+ * `:focus-visible` 而不是 `:focus`:鼠标点一下按钮不该亮环(那是「我知道我点了谁」,
+ * 不是「我不知道焦点在哪」)。文本输入类是这条规矩的唯一例外,它在 Input.module.css
+ * 里用 `:focus-within` 自己画,压过这一条。
+ *
+ * ── 为什么画 outline 而不是 box-shadow(与立项稿的一处偏离,理由记档)──────
+ * 立项稿写的是「box-shadow 形 + outline: none」。真按那个写会踩两个坑,都不是洁癖:
+ *  ① **层叠输不了**:这条全局规则的特异性是 (0,1,0),而组件自己的单类规则
+ *     (`.segOn { box-shadow: var(--sh-1) }`、`.tile`、`.stackItem` …)同样是 (0,1,0)
+ *     且**排在后面**(global.css 在 main.tsx 里第一个进,CSS Modules 随组件后到)。
+ *     同分后来者胜 —— 分段器选中段、Dock 瓦这些自带投影的元素,环会被它们自己的
+ *     投影直接顶掉,一格都画不出来。
+ *  ② **抬高特异性会赔掉真投影**:把选择器写成 `:root :focus-visible` 能赢层叠,
+ *     但 box-shadow 是单属性,赢了就等于**盖掉**元素自己的投影 —— 选中的分段
+ *     一拿到焦点就从「抬起」塌回平面。那是可见的视觉回归。
+ * outline 没有这两个问题:全仓除了焦点上下文没人写 outline,不抢任何人的属性;
+ * 而且这**正是仓里既有 19 个文件已经在用的配方**(Checkbox / Radio / Switch / Tabs /
+ * BlockShell / Research / ToolRow …都是 `outline: var(--focus-ring-w) solid var(--accent-ring)`),
+ * 走 outline 是让全局兜底与存量同一句话,而不是引入第二种环。
+ * 真机门 gate:a11y 两种载体都认(outline 或 box-shadow),但都必须是 --accent-ring 的色。
+ * ──────────────────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+/*
+ * 视觉隐藏、对读屏可见。给 live region(ui/a11y/live-region.ts)与「只念不看」的
+ * 说明文字用。不用 `display: none` / `visibility: hidden`:那两个连读屏软件一起隐藏,
+ * 那是**藏起来**,不是「只说给听的人」。
+ */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /*
  * 滚动条(08-29 拍):全局一种形态 —— 轨道透明(纸面自透,不画白色轨道带),
  * 拇指 4px 墨色圆条(10px 命中区,3px 透明边 + content-box 裁出视觉细条),hover 加深。

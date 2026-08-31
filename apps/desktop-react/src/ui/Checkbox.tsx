@@ -12,6 +12,15 @@ import s from './Checkbox.module.css'
  * 真的用 input[type=checkbox](视觉隐藏,不是 display:none),
  * 键盘、label 关联、表单语义全部白拿;indeterminate 只能由 DOM 属性表达,
  * 所以那一句副作用是必须的,不是绕路。
+ *
+ * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ *   Tab               进出(原生 input)
+ *   Space             勾 / 取消勾
+ *   焦点环             `.box:has(.native:focus-visible)` —— 环画在**看得见的方框**上,
+ *                     因为真 input 是视觉隐藏的(A2 核对:已在,不动)
+ * 一件都不自造。三态(未勾 / 已勾 / 半勾)全由原生 checked + DOM indeterminate 表达,
+ * 读屏软件念的是「已选中 / 未选中 / 混合」,不是我们编的词。
+ * ──────────────────────────────────────────────────────────────────────
  */
 interface CheckboxProps {
   checked: boolean

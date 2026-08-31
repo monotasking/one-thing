@@ -11,6 +11,15 @@ import s from './Switch.module.css'
  *
  * 用 <button role="switch"> 而不是 input[type=checkbox]:开关不是勾选框,
  * 屏幕阅读器该念「开/关」而不是「已选中」。aria-label 由调用方传。
+ *
+ * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ *   Tab               进出(原生 <button>)
+ *   Enter / Space     翻转
+ *   焦点环             `.track:focus-visible`(A2 核对:已在,不动)
+ * 语义:role=switch + aria-checked —— 状态由 ARIA 说,不靠那颗钮的位置。
+ * 无障碍名必须由调用方给(`label`):一枚没有名字的开关,读屏软件只能念「开关,开」,
+ * 而「什么的开关」才是用户要的那半句。
+ * ──────────────────────────────────────────────────────────────────────
  */
 interface SwitchProps {
   checked: boolean

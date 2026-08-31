@@ -79,7 +79,12 @@ export function Gallery() {
   const confirm = useConfirm()
 
   return (
-    <div className={s.page}>
+    /*
+     * 规格页整页装进 <main>:axe 的 landmark-one-main / region 两条查的是
+     * 「页面内容有没有落在地标里」—— 一张没有地标的页,读屏软件的「跳到主内容」
+     * 那一手就落空了。外壳那边本来就有 <main>(AppShell),这里补齐。
+     */
+    <main className={s.page}>
       <h1 className={s.head}>src/ui</h1>
 
       <Section name="Button">
@@ -93,14 +98,16 @@ export function Gallery() {
         <Button variant="primary" size="md"><Spinner /> loading</Button>
       </Section>
 
+      {/* 每个输入框都得有名字 —— Input 自己**故意**不给默认 aria-label(名字是业务),
+          所以规格页也要像真调用方一样给。少一个,axe 的 label 那条当场红。 */}
       <Section name="Input">
-        <Input size="sm" value={text} onValueChange={setText} />
-        <Input size="md" value={text} onValueChange={setText} />
-        <Input size="lg" value={text} onValueChange={setText} />
-        <Input value="" onValueChange={() => {}} placeholder="Placeholder" />
-        <Input value={text} onValueChange={setText} prefix={<Search />} />
-        <Input value={text} onValueChange={setText} invalid />
-        <Input value={text} onValueChange={setText} disabled />
+        <Input size="sm" value={text} onValueChange={setText} aria-label="Input sm" />
+        <Input size="md" value={text} onValueChange={setText} aria-label="Input md" />
+        <Input size="lg" value={text} onValueChange={setText} aria-label="Input lg" />
+        <Input value="" onValueChange={() => {}} placeholder="Placeholder" aria-label="Input placeholder" />
+        <Input value={text} onValueChange={setText} prefix={<Search />} aria-label="Input with prefix" />
+        <Input value={text} onValueChange={setText} invalid aria-label="Input invalid" />
+        <Input value={text} onValueChange={setText} disabled aria-label="Input disabled" />
       </Section>
 
       <Section name="Switch">
@@ -231,6 +238,6 @@ export function Gallery() {
         closeLabel="Close"
         moreText={(count) => `+${count} earlier`}
       />
-    </div>
+    </main>
   )
 }

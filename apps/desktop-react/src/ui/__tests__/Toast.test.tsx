@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MAX_VISIBLE_TOASTS, ToastHost, useToastHub } from '../Toast'
 import type { ToastLevel } from '../Toast'
 import { TOAST_LIFE_MS } from '../../components/motion'
+import { liveRegionText, resetLiveRegions } from '../a11y/live-region'
 
 /**
  * Toast 的合同:入队即出现、**按级别活满各自的时长**、hover 期间暂停计时、
@@ -50,7 +51,7 @@ describe('Toast:入队与自动消失', () => {
     act(() => void vi.advanceTimersByTime(TOAST_LIFE_MS.info / 2))
     push('two')
 
-    const rows = screen.getAllByRole('status')
+    const rows = screen.getAllByTestId('toast-row')
     expect(rows.map((r) => r.textContent)).toEqual(['one', 'two'])
 
     act(() => void vi.advanceTimersByTime(TOAST_LIFE_MS.info / 2))
@@ -63,23 +64,23 @@ describe('Toast:入队与自动消失', () => {
     push('hold')
 
     act(() => void vi.advanceTimersByTime(TOAST_LIFE_MS.info / 2))
-    fireEvent.mouseOver(screen.getByRole('status'))
+    fireEvent.mouseOver(screen.getByTestId('toast-row'))
 
     // 悬停期间时钟照走,但它不该被计进寿命
     act(() => void vi.advanceTimersByTime(TOAST_LIFE_MS.info * 2))
     expect(screen.queryByText('hold')).toBeTruthy()
 
-    fireEvent.mouseOut(screen.getByRole('status'))
+    fireEvent.mouseOut(screen.getByTestId('toast-row'))
     act(() => void vi.advanceTimersByTime(TOAST_LIFE_MS.info / 2))
     expect(screen.queryByText('hold')).toBe(null)
   })
 
-  it('四个变体只换左侧图标,底色是同一个(角色都是 status)', () => {
+  it('四个变体只换左侧图标,底色是同一个(基础类名同一个)', () => {
     render(<ToastHost />)
     push('a', 'info')
     push('b', 'success')
     push('c', 'warn')
-    const rows = screen.getAllByRole('status')
+    const rows = screen.getAllByTestId('toast-row')
     expect(rows.length).toBe(3)
     // 变体类名各不相同,但基础类名是同一个
     const base = rows.map((r) => r.className.split(' ')[0])
@@ -92,8 +93,8 @@ describe('Toast:入队与自动消失', () => {
     expect(container.firstChild).toBe(null)
 
     push('x')
-    expect(container.querySelector('[role="status"]')).toBe(null)
-    expect(document.body.contains(screen.getByRole('status'))).toBe(true)
+    expect(container.querySelector('[data-testid="toast-row"]')).toBe(null)
+    expect(document.body.contains(screen.getByTestId('toast-row'))).toBe(true)
   })
 })
 
@@ -145,7 +146,7 @@ describe('Toast:命运按级别分档', () => {
     expect(line.style.animationDuration).toBe(`${TOAST_LIFE_MS.warn}ms`)
     expect(line.style.animationPlayState).toBe('running')
 
-    fireEvent.mouseOver(screen.getByRole('status'))
+    fireEvent.mouseOver(screen.getByTestId('toast-row'))
     expect(screen.getByTestId('toast-life').style.animationPlayState).toBe('paused')
   })
 })
@@ -156,11 +157,11 @@ describe('Toast:同屏最多三条', () => {
     push('a')
     push('b')
     push('c')
-    expect(screen.getAllByRole('status').length).toBe(MAX_VISIBLE_TOASTS)
+    expect(screen.getAllByTestId('toast-row').length).toBe(MAX_VISIBLE_TOASTS)
     expect(screen.queryByText('+1 更早')).toBe(null)
 
     push('d')
-    expect(screen.getAllByRole('status').map((r) => r.textContent)).toEqual(['b', 'c', 'd'])
+    expect(screen.getAllByTestId('toast-row').map((r) => r.textContent)).toEqual(['b', 'c', 'd'])
     expect(screen.getByText('+1 更早')).toBeTruthy()
 
     push('e')
@@ -175,7 +176,7 @@ describe('Toast:同屏最多三条', () => {
     push('d')
     act(() => void vi.advanceTimersByTime(TOAST_LIFE_MS.info * 3))
     // 三条到点走光 → 丸没有可依附的东西了,一起收
-    expect(screen.queryByRole('status')).toBe(null)
+    expect(screen.queryByTestId('toast-row')).toBe(null)
     expect(useToastHub.getState().folded).toBe(0)
   })
 
@@ -198,6 +199,47 @@ describe('Toast:同屏最多三条', () => {
     push('c')
     push('d')
     expect(useToastHub.getState().folded).toBe(1)
-    expect(screen.getAllByRole('status').length).toBe(MAX_VISIBLE_TOASTS)
+    expect(screen.getAllByTestId('toast-row').length).toBe(MAX_VISIBLE_TOASTS)
+  })
+})
+
+/**
+ * 播报(A11y 线 · A2)。两条判据,合起来就是 live region 纪律那一句
+ * 「状态播报与视觉 toast 同源」:
+ *  · **念的就是屏幕上那句** —— 断言拿的是渲染出来的 textContent,不是另拼一份;
+ *  · **只念一遍** —— 行上不许再有第二块 live region(role=status/alert),
+ *    否则一条 toast 会被读屏软件念两次。
+ */
+describe('Toast:播报', () => {
+  afterEach(() => {
+    resetLiveRegions()
+  })
+
+  it('出场即进 polite 格,文本与屏幕上那句逐字相同', () => {
+    render(<ToastHost />)
+    push('存好了')
+    // announce 是「清空 → 下一个宏任务写入」,所以这里推一格假时钟。
+    act(() => void vi.advanceTimersByTime(0))
+    expect(liveRegionText('polite')).toBe('存好了')
+    expect(liveRegionText('polite')).toBe(screen.getByTestId('toast-row').textContent)
+  })
+
+  it('error 走 assertive 格 —— 它本来就不自动消失,是要人处理的', () => {
+    render(<ToastHost />)
+    push('存不进去', 'error')
+    act(() => void vi.advanceTimersByTime(0))
+    expect(liveRegionText('assertive')).toBe('存不进去')
+    expect(liveRegionText('polite')).toBe('')
+  })
+
+  it('行自己不是 live region —— 播报口只有一个,不许念两遍', () => {
+    render(<ToastHost />)
+    push('a')
+    push('b', 'error')
+    const rows = screen.getAllByTestId('toast-row')
+    for (const row of rows) {
+      expect(row.getAttribute('role')).toBe(null)
+      expect(row.getAttribute('aria-live')).toBe(null)
+    }
   })
 })

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { create } from 'zustand'
 import { useT } from '../i18n'
+import { useFocusTrap } from './a11y/focus-trap'
 import { Button } from './Button'
 import s from './Dialog.module.css'
 
@@ -15,8 +16,15 @@ import s from './Dialog.module.css'
  * 遮罩点击判 mousedown 且 target === currentTarget(按下和松开都在遮罩上才算点遮罩,
  * 从面板里拖出去松手不该关窗)、入场用同一组关键帧、层级 --z-overlay / --z-modal。
  *
- * 焦点:打开时移进面板本身(tabIndex=-1)。这是简版,不做完整 focus trap ——
- * 做一半的 trap 比没有更坏,真需要时整件换,不在这里长一点点。
+ * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ *   Tab / Shift+Tab   在面板内循环,**出不去**(ui/a11y/focus-trap)
+ *   Esc               关闭 → 焦点还给开它的那个元素
+ *   Enter / Space     落在哪个按钮上就触发哪个(原生 <button>,不自造)
+ * 打开时焦点落在面板本身(tabIndex=-1)—— APG 对话框模式允许的落点,
+ * 也是这件组件从前的行为,本批不改;换的只是「出不去、回得来」这两条。
+ * 语义:role="dialog" + aria-modal + aria-labelledby 指向可见标题
+ * (没有可见标题时退回 aria-label,由调用方经 i18n 给)。
+ * ──────────────────────────────────────────────────────────────────────
  */
 interface DialogProps {
   open: boolean
@@ -33,10 +41,14 @@ interface DialogProps {
 
 export function Dialog({ open, onClose, title, children, footer, label }: DialogProps) {
   const panel = useRef<HTMLDivElement>(null)
+  const titleId = useId()
+
+  // 圈禁 + 还锚点。开启时把焦点移进面板这一步也归它 —— 从前那行 panel.focus()
+  // 就是它的 initialFocus: 'container' 默认档,行为逐字不变。
+  useFocusTrap(panel, open)
 
   useEffect(() => {
     if (!open) return
-    panel.current?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
@@ -64,10 +76,17 @@ export function Dialog({ open, onClose, title, children, footer, label }: Dialog
         className={s.panel}
         role="dialog"
         aria-modal="true"
-        aria-label={label}
+        /* 有可见标题就指过去(读屏软件念的是屏幕上那句,不是另一份说法);
+         * 没有才退回调用方给的 aria-label。两者只该有一个生效。 */
+        aria-labelledby={title ? titleId : undefined}
+        aria-label={title ? undefined : label}
         tabIndex={-1}
       >
-        {title && <h2 className={s.title}>{title}</h2>}
+        {title && (
+          <h2 className={s.title} id={titleId}>
+            {title}
+          </h2>
+        )}
         {children && <div className={s.body}>{children}</div>}
         {footer && <div className={s.footer}>{footer}</div>}
       </div>

@@ -13,6 +13,15 @@ import s from './Button.module.css'
  *
  * 它不认识业务:文案由调用方经 i18n 传进来,图标由调用方当 children 传进来
  * (图标尺寸也归调用方 —— 同一个按钮在不同面上图标可以不一样大)。
+ *
+ * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ *   Tab               进出(原生 <button>,天生在 Tab 序里)
+ *   Enter / Space     触发
+ *   焦点环             不在这里画 —— 走 styles/global.css 的全局 :focus-visible
+ * 一件都不自造:这一整格全是原生按钮白送的。**iconOnly 的按钮没有文字**,
+ * 所以调用方必须给 `aria-label`(它经 ButtonHTMLAttributes 透传);
+ * 缺了会被 lint 的 jsx-a11y 与真机门 gate:a11y 的 axe 一起抓。
+ * ──────────────────────────────────────────────────────────────────────
  */
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'ghost'

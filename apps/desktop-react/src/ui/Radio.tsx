@@ -11,8 +11,16 @@ import s from './Radio.module.css'
  * 分工:RadioGroup 管一组的事(name / value / onChange / 无障碍名),
  * Radio 只表达一颗的形态与它自己的 value。
  *
- * 键盘不自造:用原生 input[type=radio] + 同名 name,方向键在组内切换是浏览器
- * 白送的行为,不写 roving tabindex —— 自造的那套永远比原生少几个边角。
+ * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ *   Tab               整组只占**一个** Tab 位(原生 radio 的行为,不是我们做的)
+ *   ↑ ↓ ← →           组内切换,**并且同时选中**(原生 radio 就是自动激活档)
+ *   Space             选中当前颗
+ *   焦点环             `.dot:has(.native:focus-visible)`(A2 核对:已在,不动)
+ * **键盘不自造**:同名 name 的一组原生 radio,上面这几行全是浏览器白送的 ——
+ * 自造的 roving 那套永远比原生少几个边角(输入法组合键、表单重置、右到左布局)。
+ * 这也是 Segmented 与它的分工线:Segmented 是「看起来像分段器的一组按钮」,
+ * 要自己写 roving;这件是真 radio,一行都不用写。
+ * ──────────────────────────────────────────────────────────────────────
  */
 interface RadioGroupCtx {
   name: string

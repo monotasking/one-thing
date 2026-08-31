@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ConfirmHost, Dialog, useConfirm, useConfirmHub } from '../Dialog'
@@ -119,5 +120,58 @@ describe('useConfirm:promise 化的一问一答', () => {
     await vi.waitFor(() => expect(first).toHaveBeenCalledWith(false))
     expect(screen.getByRole('dialog').textContent).toContain('B')
     expect(second).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * A11y 线 · A2:焦点圈禁与无障碍名。
+ *
+ * 圈禁本身的机制归 ui/a11y/__tests__/focus-trap.test.tsx;这里验的是**接线**——
+ * Dialog 真的接上了它(开时焦点进面板、关时还给锚点),以及标题真的被指为名字。
+ */
+describe('Dialog:焦点与名字', () => {
+  it('打开时焦点进面板,关闭时还给开它的那个元素', () => {
+    function Harness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <>
+          <button type="button" data-testid="opener" onClick={() => setOpen(true)}>
+            open
+          </button>
+          <Dialog open={open} onClose={() => setOpen(false)} label="d">
+            body
+          </Dialog>
+        </>
+      )
+    }
+    render(<Harness />)
+    const opener = screen.getByTestId('opener')
+    opener.focus()
+    fireEvent.click(opener)
+    expect(document.activeElement).toBe(screen.getByRole('dialog'))
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(document.activeElement).toBe(opener)
+  })
+
+  it('有可见标题就 aria-labelledby 指过去,没有才用 aria-label —— 两者只有一个', () => {
+    const { unmount } = render(
+      <Dialog open onClose={() => {}} title="删掉它?" label="兜底名">
+        body
+      </Dialog>,
+    )
+    const withTitle = screen.getByRole('dialog')
+    expect(withTitle.getAttribute('aria-label')).toBe(null)
+    expect(document.getElementById(withTitle.getAttribute('aria-labelledby') ?? '')?.textContent).toBe('删掉它?')
+    unmount()
+
+    render(
+      <Dialog open onClose={() => {}} label="兜底名">
+        body
+      </Dialog>,
+    )
+    const noTitle = screen.getByRole('dialog')
+    expect(noTitle.getAttribute('aria-labelledby')).toBe(null)
+    expect(noTitle.getAttribute('aria-label')).toBe('兜底名')
   })
 })

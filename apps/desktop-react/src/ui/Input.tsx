@@ -17,6 +17,16 @@ import s from './Input.module.css'
  *
  * 它不认识业务:没有 label、没有错误文案、没有 aria-label 默认值,
  * 全部由调用方传进来(文案归 i18n,组件里不落字面)。
+ *
+ * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ *   Tab               进出(原生 <input>)
+ *   其余              全归原生:选词、行内移动、撤销 —— 一个都不许自造
+ *   焦点环             **这件自己画**(见上面那段「例外」):环画在外壳 `.field` 上,
+ *                     所以里面那个 `<input>` 的 `outline: none` 不是裸删,
+ *                     它的替代品就在同一个文件、同一个焦点态里(:focus-within)
+ * 无障碍名:`aria-label` / `aria-labelledby` 经 InputHTMLAttributes 透传,
+ * 由调用方给;`invalid` 会落成 `aria-invalid`,读屏软件据此说「这里填错了」。
+ * ──────────────────────────────────────────────────────────────────────
  */
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'prefix'> {
   value: string
