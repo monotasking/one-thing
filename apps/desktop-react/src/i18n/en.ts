@@ -90,6 +90,7 @@ export const en: Record<MessageKey, string> = {
   'dock.openWith': 'Open as',
   'dock.openStage': 'Popup',
   'dock.openFloat': 'Float',
+  'dock.openCover': 'Cover',
   'dock.openPinned': 'Pin to the right',
   'dock.edge': 'Dock edge',
   'dock.edgeBottom': 'Bottom',
@@ -117,12 +118,22 @@ export const en: Record<MessageKey, string> = {
   'item.settings': 'Settings',
   'item.providers': 'Model services',
   'item.workspace': 'Workspaces',
+  'item.apps': 'All apps',
+
+  /* ── all apps(Dock 露面管理)──────────────────────────────────────── */
+  'apps.subtitle': 'Everything that can open in this shell. Turn a row off and its Dock tile goes away — open it from here any time.',
+  'apps.inDock': 'Show in Dock',
+  'apps.showRow': 'Show {name} in the Dock',
+  'apps.alwaysInDock': 'Always in the Dock',
+  'apps.open': 'Open {name}',
+  'apps.hiddenCount': '{count} hidden',
 
   /* ── stage / pinned ───────────────────────────────────────────────── */
   'stage.pinToEdge': 'Pin to edge',
   'stage.toFloat': 'Float',
   'float.toStage': 'To stage',
   'float.toDock': 'Back to Dock',
+  'cover.close': 'Close',
   'shelf.labelLeft': 'Left shelf',
   'shelf.labelRight': 'Right shelf',
   'shelf.labelTop': 'Top shelf',
@@ -243,6 +254,9 @@ export const en: Record<MessageKey, string> = {
   'search.loading': 'Loading…',
   'search.loadFailed': 'Could not load — click to retry',
   'search.allShown': '{total} results · all shown',
+  /* Readout while the file side is still in flight: "showing", not "all" — the
+   * latter is a claim about the total that nobody may make yet (see moreState). */
+  'search.shownCount': 'Showing {shown}',
 
   /* ── chat stream (D3: body text / tool names / error text are DATA) ─── */
   'chat.noSession': 'No session selected yet',
@@ -436,14 +450,6 @@ export const en: Record<MessageKey, string> = {
   'files.dirDenied': 'No permission to read this directory',
   'files.dirMissing': 'This directory is gone',
   'files.dirFailed': 'Could not read this directory',
-  'files.previewLoading': 'Reading the file…',
-  'files.previewEmpty': 'This file is empty',
-  'files.previewBinary': 'Binary file — cannot be previewed as text',
-  'files.previewTruncated': 'The file is {size}; only the first {shown} is shown',
-  'files.previewDenied': 'No permission to read this file',
-  'files.previewMissing': 'This file is gone',
-  'files.previewFailed': 'Could not read this file',
-  'files.previewClose': 'Close preview',
   'files.breadcrumb': 'Current path',
   'files.detailTypeLabel': 'Type',
   'files.detailSizeLabel': 'Size',
@@ -452,7 +458,6 @@ export const en: Record<MessageKey, string> = {
   'files.typeFile': 'File',
   'files.typeDirectory': 'Directory',
   'files.copyPath': 'Copy path',
-  'files.openPreview': 'Open preview',
   'files.collapseAll': 'Collapse all',
   'files.hint': 'Click to open · ⋯ at the row end or right-click for the menu',
   'files.rowMenu': 'More actions',
@@ -479,6 +484,28 @@ export const en: Record<MessageKey, string> = {
   'files.detailDenied': 'No permission to read details for this item',
   'files.detailMissing': 'This item is gone',
   'files.detailFailed': 'Could not read details for this item',
+
+  /* ── file viewer (content/viewer, F1) ────────────────────────────────
+   * The old "preview" strings retired with it: preview meant a glance, the
+   * viewer means reading — a file laid out the way it actually is (code with
+   * line numbers, markdown as prose, images zoomable). Names, paths and the
+   * backend's own error strings stay out of the dict: they are data. */
+  'viewer.label': 'File viewer',
+  'viewer.close': 'Close viewer',
+  'viewer.reading': 'Reading…',
+  'viewer.empty': 'This file is empty',
+  'viewer.binary': 'Binary file — cannot be shown as text',
+  'viewer.oversize': 'This file is over {limit}; it was not opened as text',
+  'viewer.denied': 'No permission to read this file',
+  'viewer.missing': 'This file is gone',
+  'viewer.failed': 'Could not read this file',
+  'viewer.imageFailed': 'This host cannot fetch the bytes of that image',
+  'viewer.truncated': 'The file is {size}; the first {shown} is loaded',
+  'viewer.loadMore': 'Load more',
+  'viewer.wrap': 'Wrap',
+  'viewer.zoomLabel': 'Zoom',
+  'viewer.zoomFit': 'Fit',
+  'viewer.zoomActual': '1:1',
 
   /* ── model services (providers/) ──────────────────────────────────────
    * The panel title reuses 'item.providers'. Provider names, model ids,
@@ -641,6 +668,7 @@ export const en: Record<MessageKey, string> = {
   'providers.catalogFailed': 'Could not pull the catalog',
   'providers.catalogEmpty': 'No models in this mode yet',
   'providers.catalogNoHit': 'No model matches',
+  'providers.catalogToTop': 'Back to top',
   'providers.addModel': '＋ Add id',
   'providers.addModelPlaceholder': 'Model id, e.g. qwen3-max',
   'providers.addModelLabel': 'Add a model id by hand',
@@ -654,7 +682,7 @@ export const en: Record<MessageKey, string> = {
   'providers.groupVendors': '{count} vendors',
   'providers.catalogTruncated': '{count} more not drawn — narrow the search.',
   'providers.colModel': 'Model',
-  'providers.colCaps': 'Caps',
+  'providers.colCaps': 'Capabilities',
   'providers.colCtx': 'Context',
   'providers.colOut': 'Max out',
   'providers.colPrice': 'Price in/out',
@@ -663,12 +691,11 @@ export const en: Record<MessageKey, string> = {
   'providers.current': 'Current model',
   'providers.setCurrent': 'Set current',
   'providers.pickModel': 'Pick {model}',
-  'providers.capVision': 'V',
-  'providers.capTools': 'T',
-  'providers.capReasoning': 'R',
-  'providers.capImageOut': 'I',
-  'providers.capAudioIn': 'A',
-  'providers.capLegend': 'Caps: V image input · T tool calling · R reasoning · I image output · A audio input.',
+  'providers.capVision': 'Image input',
+  'providers.capTools': 'Tool calling',
+  'providers.capReasoning': 'Reasoning',
+  'providers.capImageOut': 'Image output',
+  'providers.capAudioIn': 'Audio input',
   'providers.saveFailed': 'Settings were not saved',
 
   /* ── Workspace switcher (v1, 08-31) ────────────────────────────────────

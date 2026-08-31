@@ -333,6 +333,9 @@ export type SearchFileSide =
 /**
  * 列表底部那条 item 的处境。它是**一条 item**,不是一颗悬浮按钮 ——
  * 所以「没有它」也是一种正经状态('none'),而不是把它画成禁用态占着位置。
+ *
+ * 'none' 现在只属于**没在搜**(空词的最近列表)和**一条都没有**这两格:
+ * 搜索态下只要有行,底下就一定有一行东西可读(见 `moreState` 的判据表)。
  */
 export type SearchMore =
   | { kind: 'none' }
@@ -340,8 +343,15 @@ export type SearchMore =
   | { kind: 'more'; shown: number; total: number | null }
   | { kind: 'loading' }
   | { kind: 'error' }
-  /** 取尽了,而且用户真的翻过页 —— 这时才有资格说「共 N 条 · 已全部显示」。 */
+  /** 取尽了:「共 N 条 · 已全部显示」。非交互读数,第一页就取尽也算数。 */
   | { kind: 'end'; total: number }
+  /**
+   * 文件侧还没落定,而会话侧那份数已经定了:先如实报**此刻已经在屏幕上的条数**。
+   * 非交互读数 —— 它既不许诺「还有更多」(文件侧没说过话),也不说「全都在这了」
+   * (那要等文件侧取尽)。用「已显示」而不是「共」正是这个区别:
+   * 「共」是一句关于总数的断言,这一刻还没人有资格下。
+   */
+  | { kind: 'count'; shown: number }
 
 export interface SearchMoreInput {
   /** 此刻有没有词(空词 = 最近列表,不分页)。 */
@@ -353,6 +363,36 @@ export interface SearchMoreInput {
   files: SearchFileSide
 }
 
+/**
+ * ## 底部那一行是**常驻读数**,不是「翻过页才出现的东西」(08-31 拍板)
+ *
+ * 从前这里有一条「第一页装得下就什么都不画」的判据:理由是那条 item 长得像按钮,
+ * 一按不动的按钮比一句话更让人犹豫。**这条理由被推翻了** —— 它把「有几条」这件
+ * 用户随时想知道的事,变成了「翻过页的人才配知道」:第一页装得下(绝大多数搜索
+ * 都是)时屏幕上一个数都没有,「共 N 条」只在翻页之后才现身。
+ *
+ * 新裁定:**搜索态下只要有行,底下就一直有一行东西可读**。它是按钮还是读数由
+ * 处境决定,而不是由「有没有翻过页」决定:
+ *
+ * | searching / total | page | files      | 结果      | 屏幕上                       |
+ * | ---               | ---  | ---        | ---       | ---                          |
+ * | 空词 / 0 条       | 任意 | 任意       | `none`    | 什么都不画                    |
+ * | 搜索态            | >1   | failed     | `error`   | 「没加载成,点一下重试」(可按) |
+ * | 搜索态            | >1   | pending    | `loading` | 「加载中…」                    |
+ * | 窗口装不下(shown<total) | 任意 | exhausted | `more`(带 total) | 「加载更多 · 已显示 a / 共 b」 |
+ * | 窗口装不下        | 任意 | 其余       | `more`(total=null) | 「加载更多」            |
+ * | 全装下            | 任意 | exhausted  | `end`     | 「共 N 条 · 已全部显示」(读数) |
+ * | 全装下            | 1    | pending    | `count`   | 「已显示 N 条」(读数)         |
+ * | 全装下            | 任意 | more/failed | `more`(total=null) | 「加载更多」            |
+ *
+ * 两处**没有**跟着改的地方,理由都还成立:
+ *  - 文件侧 pending 的第一页**仍然不许诺**「加载更多」:那一句是在说「后面还有」,
+ *    而这一刻没人说过有;每敲一个字母闪一下它就是噪音。改的只是那一格从「什么都
+ *    不画」变成「照实报此刻的条数」—— 报数不是许诺,而且这个数是**会话侧已经定了
+ *    的那一份**(文件侧此刻恒空,不猜它)。
+ *  - failed 的语义一格没动:第一页塌了那次,「没搜成」归列表上面那行,而这条 item
+ *    是「再试一次」的落点(所以它是可按的 `more`,不是读数)。
+ */
 export function moreState({ searching, page, total, files }: SearchMoreInput): SearchMore {
   if (!searching || total === 0) return { kind: 'none' }
   /*
@@ -367,9 +407,13 @@ export function moreState({ searching, page, total, files }: SearchMoreInput): S
   const shown = Math.min(total, pageWindow(page))
   if (shown < total) return { kind: 'more', shown, total: files === 'exhausted' ? total : null }
   // 窗口已经装下此刻的全部行 —— 还有没有更多,只有文件侧那一边知道。
-  if (files === 'exhausted') return page > 1 ? { kind: 'end', total } : { kind: 'none' }
-  // 还没落定就先不许诺:第一页每敲一个字母都闪一下「加载更多」是噪音。
-  if (files === 'pending') return page > 1 ? { kind: 'loading' } : { kind: 'none' }
+  // 取尽 = 后面没有了,这就是最终那个数,**第一页就取尽也算数**。
+  if (files === 'exhausted') return { kind: 'end', total }
+  /*
+   * 还没落定:不许诺「还有更多」,但照实报此刻的条数(page > 1 的 pending 已经
+   * 在上面被 'loading' 截走了,所以走到这里的一定是第一页)。
+   */
+  if (files === 'pending') return { kind: 'count', shown }
   /*
    * 剩下两种('more' = 给满了,'failed' = 第一页那次塌了)都是**不知道后面还有没有**,
    * 于是照旧给一条能按的 item,总数写 null。第一页塌了那次尤其要给 ——

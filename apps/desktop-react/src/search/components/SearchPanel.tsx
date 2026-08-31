@@ -376,6 +376,10 @@ export function SearchPanel() {
           *
           * 取尽那一刻它换成一条**读数**(不是按钮、不进轮转序列)—— 一条按不动的
           * 按钮比一句话更让人犹豫。
+          *
+          * 08-31 拍板:搜索态下这一行**常驻**。读数与按钮之间怎么切由 moreState
+          * 那张判据表定,这里只负责画:能按的那三种走上面的 button,`end`/`count`
+          * 两种读数走下面的 p —— 所以「共 N 条」不再是翻过页的人才看得到。
           */}
         {moreIsItem && (
           <button
@@ -400,6 +404,9 @@ export function SearchPanel() {
         )}
         {more.kind === 'end' && (
           <p className={s.end}>{t('search.allShown', { total: more.total })}</p>
+        )}
+        {more.kind === 'count' && (
+          <p className={s.end}>{t('search.shownCount', { shown: more.shown })}</p>
         )}
       </div>
     </div>

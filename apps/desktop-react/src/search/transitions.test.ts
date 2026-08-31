@@ -236,13 +236,16 @@ describe('会话侧的素材(D1)', () => {
 })
 
 /**
- * 底部那条 item 的判据表。后端只有 limit 没有游标,于是「还有没有更多」这件事
+ * 底部那一行的判据表。后端只有 limit 没有游标,于是「还有没有更多」这件事
  * 全部压在 `files`(文件侧四态)上 —— 这一组就是那张表逐格的读法。
+ *
+ * 08-31 拍板:这一行在**搜索态下常驻**。从前「第一页装得下就什么都不画」把
+ * 「有几条」变成了翻过页的人才配知道的事,现在它要么是按钮要么是读数,但一直在。
  */
-describe('moreState:底部那条 item 说什么', () => {
+describe('moreState:底部那一行说什么', () => {
   const base = { searching: true, page: 1, total: SEARCH_FIRST_PAGE + 5, files: 'exhausted' as const }
 
-  it('空词(最近列表)与空列表都没有这条 item', () => {
+  it("'none' 只剩两格:没在搜(最近列表)、一条都没有", () => {
     expect(moreState({ ...base, searching: false }).kind).toBe('none')
     expect(moreState({ ...base, total: 0 }).kind).toBe('none')
   })
@@ -263,8 +266,12 @@ describe('moreState:底部那条 item 说什么', () => {
     })
   })
 
-  it('第一页没落定就不许诺 —— 每敲一个字母闪一下「加载更多」是噪音', () => {
-    expect(moreState({ ...base, total: 3, files: 'pending' }).kind).toBe('none')
+  /*
+   * 「不许诺」说的是**不写「加载更多」**(那是一句「后面还有」的断言),
+   * 不是「什么都不说」:此刻这几条是会话侧已经定了的数,照实报出来。
+   */
+  it('第一页没落定就不许诺,但条数照实报 —— 报数不是许诺', () => {
+    expect(moreState({ ...base, total: 3, files: 'pending' })).toEqual({ kind: 'count', shown: 3 })
   })
 
   it('第一页文件侧塌了:那句「没搜成」归列表上面那行,这条 item 是重试的入口', () => {
@@ -281,7 +288,32 @@ describe('moreState:底部那条 item 说什么', () => {
     expect(moreState({ ...base, page: 2, files: 'failed' }).kind).toBe('error')
   })
 
-  it('翻过页 + 全都装下 + 文件侧取尽 = 这一刻才有资格说「已全部显示」', () => {
+  it('全都装下 + 文件侧取尽 = 「共 N 条 · 已全部显示」', () => {
     expect(moreState({ ...base, page: 2 })).toEqual({ kind: 'end', total: SEARCH_FIRST_PAGE + 5 })
+  })
+
+  /*
+   * 08-31 拍板的那一格:从前这里返回 'none'(理由是「一条按不动的按钮让人犹豫」),
+   * 结果第一页就装得下的那些搜索 —— 也就是绝大多数 —— 屏幕上一个数都没有,
+   * 「共 N 条」成了翻过页的人才看得到的东西。它是**读数**不是按钮,所以第一页就该在。
+   */
+  it('第一页就取尽也照样说「共 N 条」—— 读数不必等翻页', () => {
+    expect(moreState({ ...base, total: 3 })).toEqual({ kind: 'end', total: 3 })
+    // 只看会话那一档(文件侧恒定「取尽」)同样落在这一格。
+    expect(moreState({ ...base, total: SEARCH_FIRST_PAGE })).toEqual({
+      kind: 'end',
+      total: SEARCH_FIRST_PAGE,
+    })
+  })
+
+  it('搜索态下只要有行,底下就一定有一行东西 —— 四态逐格都不是 none', () => {
+    for (const files of ['exhausted', 'more', 'pending', 'failed'] as const) {
+      for (const page of [1, 2]) {
+        for (const total of [1, SEARCH_FIRST_PAGE, SEARCH_FIRST_PAGE + 5]) {
+          expect(moreState({ searching: true, page, total, files }).kind, `${files}/${page}/${total}`)
+            .not.toBe('none')
+        }
+      }
+    }
   })
 })

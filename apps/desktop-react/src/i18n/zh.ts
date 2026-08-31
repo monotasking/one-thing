@@ -110,6 +110,7 @@ export const zh = {
   'dock.openWith': '打开方式',
   'dock.openStage': '弹窗',
   'dock.openFloat': '浮窗',
+  'dock.openCover': '盖满',
   'dock.openPinned': '钉在右侧',
   'dock.edge': '停靠边',
   'dock.edgeBottom': '下边',
@@ -137,12 +138,22 @@ export const zh = {
   'item.settings': '设置',
   'item.providers': '模型服务',
   'item.workspace': '工作区',
+  'item.apps': '所有应用',
+
+  /* ── 所有应用(Dock 露面管理)─────────────────────────────────────── */
+  'apps.subtitle': '这台壳里能打开的全部。关掉一行,它的 Dock 瓦就不见了 —— 随时能从这里打开它。',
+  'apps.inDock': '显示在 Dock',
+  'apps.showRow': '在 Dock 上显示{name}',
+  'apps.alwaysInDock': '常驻 Dock',
+  'apps.open': '打开{name}',
+  'apps.hiddenCount': '已隐藏 {count} 块',
 
   /* ── 舞台 / 钉栏 ──────────────────────────────────────────────────── */
   'stage.pinToEdge': '钉到边',
   'stage.toFloat': '变浮窗',
   'float.toStage': '上舞台',
   'float.toDock': '收回 Dock',
+  'cover.close': '关闭',
   /* ── 四边架子(W2:钉栏泛化成四条边,名字按边给) ─────────────────── */
   'shelf.labelLeft': '左侧栏',
   'shelf.labelRight': '右侧栏',
@@ -267,6 +278,9 @@ export const zh = {
   'search.loading': '加载中…',
   'search.loadFailed': '没加载成,点一下重试',
   'search.allShown': '共 {total} 条 · 已全部显示',
+  /* 文件侧还没落定时的读数:「已显示」而不是「共」—— 后者是一句关于总数的断言,
+   * 这一刻还没人有资格下(判据表见 search/transitions.ts 的 moreState)。 */
+  'search.shownCount': '已显示 {shown} 条',
 
   /* ── 聊天区(D3:正文/工具名/错误原文都是**数据**,不在这儿) ────────── */
   'chat.noSession': '还没有选中会话',
@@ -490,15 +504,6 @@ export const zh = {
   'files.dirDenied': '没有权限读这个目录',
   'files.dirMissing': '这个目录不在了',
   'files.dirFailed': '读不到这个目录',
-  /* 预览的五态。同上,一种都不回退到别的那一种。 */
-  'files.previewLoading': '正在读取文件…',
-  'files.previewEmpty': '这个文件是空的',
-  'files.previewBinary': '这是二进制文件,没法按文本预览',
-  'files.previewTruncated': '文件有 {size},只预览了前 {shown}',
-  'files.previewDenied': '没有权限读这个文件',
-  'files.previewMissing': '这个文件不在了',
-  'files.previewFailed': '读不到这个文件',
-  'files.previewClose': '关闭预览',
   /* 面包屑(08-31 IDE 紧凑树:面板内那个与 tab 重名的「文件」大标题退役,
    * 头上换成路径本身)。**路径的每一段都是数据**,字典里只有这一句无障碍名。 */
   'files.breadcrumb': '当前路径',
@@ -510,7 +515,6 @@ export const zh = {
   'files.typeFile': '文件',
   'files.typeDirectory': '目录',
   'files.copyPath': '复制路径',
-  'files.openPreview': '预览打开',
   'files.collapseAll': '全部收起',
   'files.hint': '单击打开 · 行尾 ⋯ 或右键出菜单',
   'files.rowMenu': '更多操作',
@@ -537,6 +541,30 @@ export const zh = {
   'files.detailDenied': '没有权限读这一项的信息',
   'files.detailMissing': '这一项不在了',
   'files.detailFailed': '读不到这一项的信息',
+
+  /* ── 文件查看器(content/viewer,F1)──────────────────────────────────────
+   * 从前那一层「预览」的字典整条退役了 —— 它说的是「瞄一眼」,而这里是**看**:
+   * 一份文件按它自己的样子完整地铺开(代码带行号、markdown 按正文排版、图能缩放)。
+   * 文件名、路径、后端原话照旧一个字都不在字典里:它们是数据。 */
+  'viewer.label': '文件查看器',
+  'viewer.close': '关闭查看器',
+  'viewer.reading': '正在读取…',
+  'viewer.empty': '这个文件是空的',
+  /* 五种「看不成」各说各的,一种都不回退到别的那一种。 */
+  'viewer.binary': '这是二进制文件,没法按文本查看',
+  'viewer.oversize': '这个文件超过 {limit},没有按文本打开',
+  'viewer.denied': '没有权限读这个文件',
+  'viewer.missing': '这个文件不在了',
+  'viewer.failed': '读不到这个文件',
+  'viewer.imageFailed': '这台取不到这张图的字节',
+  /* 只载了开头一段(判据:真实字节数 > 已经要到的量)。 */
+  'viewer.truncated': '文件有 {size},已经载入前 {shown}',
+  'viewer.loadMore': '继续加载',
+  /* 各形自己那一格动作。「源码 ⇄ 渲染」复用块壳的 view-source 语汇,不另起词。 */
+  'viewer.wrap': '折行',
+  'viewer.zoomLabel': '缩放',
+  'viewer.zoomFit': '适应',
+  'viewer.zoomActual': '1:1',
 
   /* ── 模型服务(providers/:左栏家名册 + 右面模式分坑)─────────────────────
    * 面板标题不另起键:它就是 'item.providers' 那四个字(与文件面复用
@@ -719,6 +747,8 @@ export const zh = {
   'providers.catalogFailed': '目录拉不到',
   'providers.catalogEmpty': '这一坑还没有模型',
   'providers.catalogNoHit': '没有匹配的模型',
+  /* 长目录滚过一屏之后出现的回顶钮(08-31:1000 型的后果)。 */
+  'providers.catalogToTop': '回到顶部',
   /* 手填模型 ID:目录没有的型也能用。「手填」= 在 selectedModels 里、目录里没有,
    * 与 Vue 壳 model-list-entry.ts:18 的 isCustom 同一个判据。 */
   'providers.addModel': '＋ 手填 ID',
@@ -745,12 +775,14 @@ export const zh = {
   'providers.current': '当前模型',
   'providers.setCurrent': '设为当前',
   'providers.pickModel': '勾选 {model}',
-  'providers.capVision': '视',
-  'providers.capTools': '工',
-  'providers.capReasoning': '推',
-  'providers.capImageOut': '出',
-  'providers.capAudioIn': '音',
-  'providers.capLegend': '能力缩写:视 图像输入 · 工 工具调用 · 推 推理 · 出 图像输出 · 音 音频输入。',
+  /* 能力:**全名**。从前这五格是「视 工 推 出 音」五个单字缩写,08-31 报障
+   * 「谁都读不懂」—— 屏幕上改画图标,这五句成了图标的名字(悬停提示 +
+   * aria-label 同一句,两路同源)。缩写连同它的图例句一起退役。 */
+  'providers.capVision': '图像输入',
+  'providers.capTools': '工具调用',
+  'providers.capReasoning': '推理',
+  'providers.capImageOut': '图像输出',
+  'providers.capAudioIn': '音频输入',
   'providers.saveFailed': '设置没保存上',
 
   /* ── 工作区切换器(08-31 v1) ─────────────────────────────────────────────
