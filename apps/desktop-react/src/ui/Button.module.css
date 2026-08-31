@@ -11,8 +11,11 @@
   border-radius: var(--r-1);
   font-size: var(--fs-meta);
   font-weight: var(--btn-weight);
+  /* opacity 也在表里:`:disabled` 换的就是它,而「按下去之后钮变灰」正是
+   * 异步动作最先出现的那一格反馈(AsyncButton)。不给它过渡,那一下是硬切 ——
+   * 极快回来的请求会闪一记灰。三个属性同吃 --dur,动效档一起听。 */
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
+    border-color var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
 
 .md {
