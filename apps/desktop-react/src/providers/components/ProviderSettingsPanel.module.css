@@ -1,0 +1,65 @@
+/* ── 一条与外壳其余面板不同的取值,记在这里 ──────────────────────────────────
+ * 这块面的次级小字用 --text-2,而不是外壳别处惯用的 --text-3。
+ * 理由不是审美,是**机器判据**:gate:a11y 的第三屏对这块面跑 axe,而真机主题下
+ * --text-3(#8f8e86)压在 --surface-2(#3f3e3c)上只有 3.24:1,低于 WCAG AA 的 4.5。
+ * A11y 线当时把「对比度无机器判据」记成了留账,这块面是第一块被真判过的 ——
+ * 判过了就不能装作没看见。
+ * 外壳其余面板同样的取值仍然是老样子:那是一次全局的 token 裁定,不该由一块新面
+ * 顺手替所有人拍(勘察读数记在批一的汇报里)。
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* 两栏:左 rail 定宽,右详情吃剩下的。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸 ——
+ * 它只声明「我横着分两栏」,多宽由摆它的人说。 */
+.panel {
+  height: 100%;
+  display: flex;
+  min-width: 0;
+  background: var(--surface-0);
+}
+
+/* 整面的非常态:还在读 / 读不到。都居中一段灰字 + 一颗重试钮
+ * (与检索面板、通知中心的空态同一条判例)。 */
+.state {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.detailState {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/* 登录后才有目录 —— 这块占的是模型目录的位子,所以它得撑满那块地方,
+ * 不然换一坑时下半屏会塌一次。 */
+.locked {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  line-height: 1.6;
+}

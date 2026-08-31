@@ -484,6 +484,27 @@
   --notify-time-w: 52px;
   --notify-detail-max-h: 240px;
 
+  /* ── 模型服务设置面(providers/)几何 ────────────────────────────────────
+   * 两栏:左 rail 定宽 268px(设计稿),右详情吃剩下的。
+   * 模型行是**七列定宽表**:勾选 / 模型 / 能力 / 上下文 / 最大输出 / 单价 / 当前。
+   * 除「模型」那一列是 1fr,其余全定宽 —— 所有行的同一格从同一条竖线起笔,
+   * 一屏几十行才扫得动(与检索面板的行首徽、通知中心的右两列同一条理由)。
+   * ────────────────────────────────────────────────────────────────────── */
+  --pv-rail-w: 268px;
+  --pv-rail-icon: 22px;
+  --pv-head-icon: 36px;
+  --pv-dot: 6px;
+  --pv-search-w: 200px;
+  --pv-key-w: 320px;
+  --pv-col-check: 28px;
+  --pv-col-caps: 120px;
+  --pv-col-ctx: 88px;
+  --pv-col-out: 88px;
+  --pv-col-price: 116px;
+  --pv-col-current: 92px;
+  /* 能力五格之间的字距。缩写挨太紧会读成一个词。 */
+  --pv-caps-ls: 0.08em;
+
   /* Composer 用到、既有字号梯里没有的四档 */
   --fs-pill: 11.5px;
   --fs-code: 12.5px;

@@ -1,0 +1,189 @@
+/* 左栏:头(标题 + 读数 + 搜索)/ 身(三组可滚)/ 脚(新建钮)。
+ * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。 */
+.rail {
+  flex: none;
+  width: var(--pv-rail-w);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-1);
+  border-right: var(--bw-1) solid var(--line-1);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.headLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+
+.title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-title);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.count {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-2) 0;
+}
+
+.group {
+  margin-bottom: var(--sp-3);
+}
+
+.groupHead {
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-section);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 一行三件:方图标 / 名 + 副行 / 状态点。名与副行都截断不换行 ——
+ * 一行一家,行高恒定,列表才扫得动。 */
+.row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  color: inherit;
+}
+
+.row:hover {
+  background: var(--st-sel-hover);
+}
+
+.rowSelected,
+.rowSelected:hover {
+  background: var(--st-sel);
+}
+
+.icon {
+  flex: none;
+  width: var(--pv-rail-icon);
+  height: var(--pv-rail-icon);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+/* 自定义家的图标是虚线边 —— 「这是你自己建的」在扫列表时一眼看得出。 */
+.iconCustom {
+  border-style: dashed;
+}
+
+.text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 状态色**只上点**,不上文字、不上底 —— 一颗 6px 的点是这一档信息该占的分量。
+ * 唯一的例外是「坏」:副行跟着变色,因为出错那句话本身要被看见。 */
+.detailBad {
+  color: var(--danger);
+}
+
+.dot {
+  flex: none;
+  width: var(--pv-dot);
+  height: var(--pv-dot);
+  border-radius: var(--r-full);
+}
+
+.dotOk {
+  background: var(--ok);
+}
+
+.dotBad {
+  background: var(--danger);
+}
+
+.dotWarn {
+  background: var(--warn);
+}
+
+.dotIdle {
+  background: var(--text-4);
+}
+
+.dotOff {
+  background: var(--line-2);
+}
+
+.none {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-3);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border-top: var(--bw-1) solid var(--line-1);
+}
+
+/* 缺席态的注脚:钮禁用着,旁边一句话说明它什么时候会活过来。
+ * 不做假流程 —— 一个点了没反应的钮比一个明说「还没做」的钮更坏。 */
+.footNote {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.5;
+}

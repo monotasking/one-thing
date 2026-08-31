@@ -36,6 +36,7 @@ import {
   TriangleAlert,
   Bell,
   Square,
+  Boxes,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -81,6 +82,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   TriangleAlert,
   Bell,
   Square,
+  Boxes,
 }
 
 export function resolveIcon(name: string): LucideIcon {

@@ -11,7 +11,8 @@ import { SettingsMock } from './SettingsMock'
 import { SearchPanel } from '../search/components/SearchPanel'
 import { NotificationsPanel } from './NotificationsPanel'
 import { ExposeView } from '../expose/components/ExposeView'
-import { NOTIFICATIONS_ITEM_ID, SESSIONS_ITEM_ID } from '../stage/items'
+import { ProviderSettingsPanel } from '../providers/components/ProviderSettingsPanel'
+import { NOTIFICATIONS_ITEM_ID, PROVIDERS_ITEM_ID, SESSIONS_ITEM_ID } from '../stage/items'
 
 /**
  * 内容按 id 查表 —— 舞台和钉栏共用同一张表,
@@ -30,6 +31,7 @@ const RENDERERS: Record<string, () => ReactNode> = {
   search: SearchPanel,
   [NOTIFICATIONS_ITEM_ID]: NotificationsPanel,
   [SESSIONS_ITEM_ID]: ExposeView,
+  [PROVIDERS_ITEM_ID]: ProviderSettingsPanel,
 }
 
 /**

@@ -12,8 +12,10 @@
  * 两段:
  *
  *  ① **axe 全页扫描**(@axe-core/playwright,wcag2a / wcag2aa / best-practice)。
- *     两屏各扫一遍:产品外壳,和 `?gallery` 那张组件规格页(15 件 ui 组件一次全在场,
- *     这是唯一能把每一件都摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
+ *     三屏各扫一遍:产品外壳、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
+ *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块),
+ *     和 `?gallery` 那张组件规格页(15 件 ui 组件一次全在场,这是唯一能把每一件都
+ *     摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
  *
  *  ② **键盘走查**(手写断言,axe 查不到的那一半)。axe 是静态分析一棵树,它看不见
  *     「按 Tab 会走到哪」「Esc 之后焦点回没回来」。五条:
@@ -121,6 +123,17 @@ async function waitFor(label, predicate, timeoutMs = 20_000) {
   throw new Error(`超时(${timeoutMs}ms)等待:${label}\n最后一次读数:${JSON.stringify(last)}`)
 }
 
+/** 与 gate-files.mjs 同一条理由:用 element.click() 绕开可操作性判定,派发的仍是真事件。 */
+async function clickSelector(page, selector) {
+  const clicked = await page.evaluate((css) => {
+    const el = document.querySelector(css)
+    if (!el) return false
+    el.click()
+    return true
+  }, selector)
+  if (!clicked) throw new Error(`点不到:${selector} 不在 DOM 里`)
+}
+
 const failures = []
 
 function assert(condition, message) {
@@ -135,7 +148,7 @@ function assert(condition, message) {
 
 /* ── ① axe ─────────────────────────────────────────────────────────────── */
 
-async function scanAxe(page, screen) {
+async function scanAxe(page, screen, include) {
   /*
    * `setLegacyMode(true)` 是**必须的**,不是保守选项:默认模式下 AxeBuilder 会
    * `browserContext.newPage()` 开一张空白页去处理跨 frame 的扫描,而 Electron 的
@@ -143,7 +156,14 @@ async function scanAxe(page, screen) {
    * Not supported`。legacy 模式只在当前页里注入并跑,正是这台需要的
    * (这个壳是单 frame,没有 iframe 要跨)。
    */
-  const result = await new AxeBuilder({ page }).setLegacyMode(true).withTags(AXE_TAGS).analyze()
+  /*
+   * `include` = 只扫这一块子树。给「开出来的一块面」用:整页扫会把外壳那一份
+   * 又扫一遍(外壳自己那一屏已经扫过了),于是同一条问题在两屏各报一次,而修它的
+   * 那一批与开这块面的这一批常常不是同一批 —— 一条门该指得出该谁修。
+   * 不给 include 就是整页扫,外壳与规格页两屏走的仍是原来那条路。
+   */
+  const builder = new AxeBuilder({ page }).setLegacyMode(true).withTags(AXE_TAGS)
+  const result = await (include ? builder.include(include) : builder).analyze()
   const violations = result.violations.filter((v) => !AXE_EXEMPT.includes(v.id))
   const skipped = result.violations.length - violations.length
   if (violations.length === 0) {
@@ -406,7 +426,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/5] 起一台 core')
+    console.log('\n[1/6] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -423,7 +443,7 @@ async function main() {
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
     console.log('  ✓ core 起来了')
 
-    console.log('\n[2/5] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/6] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -439,11 +459,30 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/5] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/6] 产品外壳:axe 全页扫描 + Tab 序走查')
     await scanAxe(page, '外壳')
     await checkComposerTabOrder(page)
 
-    console.log('\n[4/5] 组件规格页(?gallery):15 件 ui 组件一次全在场')
+    /*
+     * 模型服务面(批一)。它进这道门的理由与规格页一样:**外壳那一屏看不见它** ——
+     * 面板收在 Dock 里,axe 扫的是已经排好的那棵树,没画出来的东西它一条都查不到。
+     * 一块带表格、勾选框、分段器与两处禁用钮的面,恰恰是最容易漏名字的那种。
+     *
+     * **覆盖到哪儿为止**:这道门跑在一个全新的临时 store 上,那台机器一把密钥都没有,
+     * 所以扫到的是左栏名册 / 家头(启用开关)/ 模式分段器 / 密钥卡 / 目录的空态;
+     * 模型行那几个勾选框**不在场**(目录是空的)。它们的名字由单测守
+     * (`providers/components/__tests__`,按 `勾选 {model}` 取的)。
+     * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
+     * (2026-08-31 真跑过一轮)。
+     */
+    console.log('\n[4/6] 模型服务面:开一块面再扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-providers"]')
+    await waitFor('模型服务面就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
+    )
+    await scanAxe(page, '模型服务面', '[data-testid="providers-panel"]')
+
+    console.log('\n[5/6] 组件规格页(?gallery):15 件 ui 组件一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -458,7 +497,7 @@ async function main() {
     )
     await scanAxe(page, '规格页')
 
-    console.log('\n[5/5] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[6/6] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 
@@ -476,7 +515,7 @@ async function main() {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 两屏 axe 零违例;键盘走查全绿')
+  console.log('\n[a11y-gate] ok —— 三屏 axe 零违例;键盘走查全绿')
 }
 
 main().catch((error) => {

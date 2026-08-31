@@ -135,6 +135,25 @@ configureModelsPort({
 })
 
 /**
+ * 模型服务设置面的端口:同一条理由,同一手。
+ *
+ * 默认这一份**读得到但是空**(名册空、设置空、凭证空),两条写口一律
+ * `success:false` —— 没有哪个用例该因为默认端口而悄悄改了这台机器的设置或者
+ * 存进一把密钥。要验取数或写回的用例自己 `configureProviderSettingsPort` 换一个。
+ */
+import { configureProviderSettingsPort } from '../data/provider-settings-port'
+
+configureProviderSettingsPort({
+  ready: async () => undefined,
+  listProviders: async () => ({ success: true, providers: [] }),
+  listModels: async () => ({ success: true, models: [] }),
+  readSettings: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  saveSettings: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  readCredentials: async () => ({ success: false, error: 'no provider settings port in tests' }),
+  setCredential: async () => ({ success: false, error: 'no provider settings port in tests' }),
+})
+
+/**
  * 读数的端口:同一条理由,同一手。默认两口都**答不上话**(一个抛、一个
  * `success:false`),于是读数是缺席态 —— 那正是「没接线」诚实的样子,
  * 不是一张写着 0 的卡。

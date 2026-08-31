@@ -1,0 +1,158 @@
+/* 模型目录:头(标题 + 读数 + 检索 + 刷新)/ 列头 / 行 / 脚注。
+ * 七列定宽表 —— 列宽全在 tokens.css 的模型服务一节,这里只排它们。 */
+.catalog {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.hint {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search {
+  flex: none;
+  width: var(--pv-search-w);
+}
+
+/* 列头与行共用同一张网格 —— 两处各写一遍宽度就是两处会漂开。 */
+.grid {
+  display: grid;
+  grid-template-columns:
+    var(--pv-col-check) 1fr var(--pv-col-caps) var(--pv-col-ctx)
+    var(--pv-col-out) var(--pv-col-price) var(--pv-col-current);
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+}
+
+.columns {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.row {
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.name {
+  font-size: var(--fs-body);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 没勾选的行,名字退一档灰 —— 「在不在聊天里出现」是这张表的主信息。 */
+.nameOff {
+  color: var(--text-2);
+}
+
+.id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.caps {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  letter-spacing: var(--pv-caps-ls);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.num {
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.price {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.current {
+  display: flex;
+  justify-content: flex-end;
+  font-size: var(--fs-micro);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.note {
+  flex: none;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.state {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}

@@ -123,6 +123,7 @@ export const zh = {
   'item.search': '检索',
   'item.notifications': '通知',
   'item.settings': '设置',
+  'item.providers': '模型服务',
 
   /* ── 舞台 / 钉栏 ──────────────────────────────────────────────────── */
   'stage.pinToEdge': '钉到边',
@@ -476,5 +477,110 @@ export const zh = {
   'files.previewMissing': '这个文件不在了',
   'files.previewFailed': '读不到这个文件',
   'files.previewClose': '关闭预览',
+
+  /* ── 模型服务(providers/:左栏家名册 + 右面模式分坑)─────────────────────
+   * 面板标题不另起键:它就是 'item.providers' 那四个字(与文件面复用
+   * 'item.files' 同一条)。
+   * **provider 名、模型 id、账号邮箱、后端原话一个字都不在字典里** —— 它们是
+   * 数据,换一门语言不该变(判据见 i18n/index.ts 顶部)。这里只有「这一家此刻
+   * 处在哪种状态」的那几句人话,以及缺席态里那句「这件事在下一批」。
+   *
+   * `providers.factRaw` 是**透传格**:副行里要嵌一段真数据(账号、尾号)时用它,
+   * 这样副行那串事实仍然是同构的一串 Fact,组件不必为「有一段不用翻译」分叉。 */
+  'providers.railTitle': '模型服务',
+  'providers.railCount': '{count} 家已接入',
+  'providers.searchPlaceholder': '搜索服务商',
+  'providers.groupCloud': '云服务',
+  'providers.groupLocal': '本地',
+  'providers.groupCustom': '自定义',
+  'providers.addCustom': '＋ 自定义服务商',
+  'providers.addCustomNext': '新建自定义服务商在下一批',
+  'providers.railEmpty': '没有匹配的服务商',
+  'providers.loading': '正在读取模型服务…',
+  'providers.loadFailed': '读不到模型服务名册',
+  'providers.retry': '重新读取',
+  'providers.pickOne': '在左边选一家',
+
+  /* 副行 / 分段器上的事实句。每一句都对应一条真读数,没有一句是凑数的。 */
+  'providers.factRaw': '{text}',
+  'providers.factConfigured': '已配置',
+  'providers.factUnconfigured': '未配置',
+  'providers.factSignedIn': '已登录',
+  'providers.factSignedOut': '未登录',
+  /* 「不知道」与「没有」是两件事:凭证那一口读不到时说这句,不说「未配置」。 */
+  'providers.factUnknown': '状态未知',
+  'providers.factKeys': '{count} 把',
+  'providers.factCooling': '冷却中',
+  'providers.factSelected': '已选 {count} 型',
+  'providers.factDisabled': '已停用',
+  'providers.factLocal': '本地',
+  'providers.factCustom': '自定义',
+
+  /* 模式名。同一家的两坑各带一份凭证与一份模型目录,不混用。 */
+  'providers.modeApi': 'API 密钥',
+  'providers.modeSub': '订阅',
+  'providers.modeLocalCli': '本地 CLI',
+  'providers.modeAcp': 'ACP',
+  'providers.modeCustom': '自定义端点',
+  'providers.modeLabel': '接入模式',
+
+  /* 家的头部 */
+  'providers.enable': '启用',
+  'providers.enableFamily': '启用 {name}',
+
+  /* API 坑 */
+  'providers.keySection': 'API 密钥',
+  'providers.keyNeverRead': '密钥原文永不回读,只看得到尾号。',
+  'providers.keyStored': '已存 {tail},输入新的可替换',
+  'providers.keyEmpty': '粘贴 API 密钥',
+  'providers.keyLabel': '{name} 的 API 密钥',
+  'providers.keySave': '保存',
+  'providers.keySaved': '已保存',
+  'providers.keySaveFailed': '密钥没保存上',
+  'providers.keyMultiNext': '多把密钥、顺序与轮换策略在下一批',
+  'providers.baseUrl': '高级 · Base URL',
+  'providers.baseUrlDefault': '(默认)',
+
+  /* 订阅坑 */
+  'providers.subIntro': '用你已有的订阅跑模型,不产生额外 API 费用。这一坑的模型不按 token 计价。密码只在浏览器里输入,应用不经手。',
+  'providers.subAccount': '账号',
+  'providers.subSignIn': '登录',
+  'providers.subSignInNext': '登录入口在下一批',
+  'providers.subCatalogLocked': '登录后才有模型目录 —— 没登录时这一坑有哪些模型,应用并不知道。',
+
+  /* 本地坑 / 自定义坑 */
+  'providers.localIntro': '本机进程,零凭证。探测、连接与启动配置在下一批。',
+  'providers.customIntro': '自定义端点。编辑、删除与新建在下一批。',
+
+  /* 模型目录 */
+  'providers.catalog': '模型目录',
+  'providers.catalogHint': '勾选后出现在聊天的模型选择器里',
+  'providers.catalogFetched': '上次拉取 {time}',
+  'providers.catalogNeverFetched': '还没拉过',
+  'providers.catalogRefresh': '刷新目录',
+  'providers.catalogSearch': '检索模型',
+  'providers.catalogLoading': '正在拉目录…',
+  'providers.catalogFailed': '目录拉不到',
+  'providers.catalogEmpty': '这一坑还没有模型',
+  'providers.catalogNoHit': '没有匹配的模型',
+  'providers.addModelNext': '手填模型 ID 在下一批',
+  'providers.colModel': '模型',
+  'providers.colCaps': '能力',
+  'providers.colCtx': '上下文',
+  'providers.colOut': '最大输出',
+  'providers.colPrice': '单价 入/出',
+  'providers.priceIncluded': '订阅内',
+  /* 「不知道」的那一格画这个,不画 0、不画「免费」。 */
+  'providers.unknownValue': '—',
+  'providers.current': '当前模型',
+  'providers.setCurrentNext': '设为当前在下一批',
+  'providers.pickModel': '勾选 {model}',
+  'providers.capVision': '视',
+  'providers.capTools': '工',
+  'providers.capReasoning': '推',
+  'providers.capImageOut': '出',
+  'providers.capAudioIn': '音',
+  'providers.capLegend': '能力缩写:视 图像输入 · 工 工具调用 · 推 推理 · 出 图像输出 · 音 音频输入。',
+  'providers.saveFailed': '设置没保存上',
 
 } as const

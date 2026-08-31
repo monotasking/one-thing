@@ -1,0 +1,188 @@
+/* 右面 = 头(图标 / 名 / 副语 / 启用开关)+ 模式分段器 + 模式内容区。
+ * 内容区自己滚,头与分段器常驻 —— 换一坑时页面不跳。 */
+.detail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface-0);
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.icon {
+  flex: none;
+  width: var(--pv-head-icon);
+  height: var(--pv-head-icon);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+.iconCustom {
+  border-style: dashed;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.name {
+  margin: 0;
+  font-size: var(--fs-headline);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.desc {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.enable {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.enableLabel {
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.modes {
+  flex: none;
+  padding: var(--sp-3) var(--sp-5) 0;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3) var(--sp-5) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* 一块卡 = 一件事(凭证 / 登录 / 本地进程)。卡与卡之间只有间距,没有分隔线 ——
+ * 两条线画同一件事(分组)是重复。 */
+.card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.cardNote {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.cardBody {
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.keyRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.keyField {
+  flex: 1;
+  min-width: 0;
+  max-width: var(--pv-key-w);
+}
+
+.keySaved {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.accountRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+.accountDot {
+  flex: none;
+  width: var(--pv-dot);
+  height: var(--pv-dot);
+  border-radius: var(--r-full);
+  background: var(--ok);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+/* 缺席态一行:一枚禁用的钮 + 一句「这件事在下一批」。 */
+.absent {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.absentNote {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+/* 面板整体的两种非常态:还在读 / 读不到 / 没选中。都居中一段灰字。 */
+.state {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5);
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
