@@ -58,8 +58,16 @@
   flex: none;
 }
 
+/* 律一:头里唯一吸剩余空间的件,所以 min-width: 0 + 截断策略两句都要有 ——
+ * 少了它,长标题会撑着不缩、把右端的关闭钮挤出去。舞台头的同名块是开工前
+ * 就在 squeeze 基线里的存量(src/components/StageOverlay.module.css .title),
+ * 这里是新写的块,不继承那份豁免。 */
 .title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: var(--fs-label);
   font-weight: 500;
   color: var(--text-1);
