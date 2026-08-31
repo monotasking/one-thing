@@ -278,6 +278,106 @@ export function searchRows(
   ]
 }
 
+/* ── 分页 ──────────────────────────────────────────────────────────────────
+ *
+ * ## 为什么是「递增 limit 重查」而不是真游标
+ *
+ * 两个产地都没有游标,也都不下发命中总数:
+ *  - 文件侧 `files.list`(`@shared/ipc/files.ts` 的 `FilesListRequest`)只有
+ *    `limit` 一格;后端 `listOnethingFileSearchEntries` 数到 limit 就 break,
+ *    回执里没有 total。
+ *  - 后端那个 `search` 域(`@shared/ipc/search.ts` 的 `SearchRequest`)同样
+ *    只有 `limit`,而且这块面板根本没用它。
+ * 于是分页只能是**要更多**:第 n 页带一个更大的 limit 从头重查一遍。
+ * **代价如实记在这里**:每翻一页都是一次全量重拉再截断,不是增量取。
+ * 后端补游标(以及下发 total)属另拍,不在本批。
+ *
+ * ## 「取尽」的唯一判据
+ *
+ * 没有 total,就只能用**回来的条数 < 要的条数**。等号成立时后端只是说
+ * 「我给满了」,不是说「没有了」—— 所以那一刻不许写「已全部显示」。
+ *
+ * ## 会话侧不分页
+ *
+ * 会话侧的素材(整张 listMeta)本来就全量在手,`searchRows` 造出来的会话行
+ * 一条不少。所以分页在会话侧纯粹是**窗口**:翻页只是把窗口拉大,不发请求。
+ * 空词那张「最近」列表也不分页 —— 它的长度(RECENT_LIMIT)是刻意的取舍,
+ * 不是被截断的命中。
+ */
+
+/** 首屏默认给多少条。 */
+export const SEARCH_FIRST_PAGE = 20
+
+/** 每按一次「加载更多」再放出多少条(同时也是文件侧 limit 的增量)。 */
+export const SEARCH_PAGE_SIZE = 20
+
+/** 第 n 页(从 1 数)的窗口大小 = 首屏 + 之后每页的增量。 */
+export function pageWindow(page: number): number {
+  return SEARCH_FIRST_PAGE + Math.max(page - 1, 0) * SEARCH_PAGE_SIZE
+}
+
+/**
+ * 文件侧那一半此刻的处境。**四态,不是三个布尔** —— 「还在路上」与「给满了」
+ * 与「取尽了」是三件不同的事,合成布尔就得在读的地方再拼一次。
+ */
+export type SearchFileSide =
+  /** 取尽了(或这一档根本不看文件):后面没有了。 */
+  | 'exhausted'
+  /** 给满了(回来的条数 == 要的条数):后面**可能**还有,但没人说过有。 */
+  | 'more'
+  /** 还在路上 / 还没发。 */
+  | 'pending'
+  /** 这一次塌了。 */
+  | 'failed'
+
+/**
+ * 列表底部那条 item 的处境。它是**一条 item**,不是一颗悬浮按钮 ——
+ * 所以「没有它」也是一种正经状态('none'),而不是把它画成禁用态占着位置。
+ */
+export type SearchMore =
+  | { kind: 'none' }
+  /** 还能再要。`total` 只有在文件侧取尽时才知道 —— 不知道就是 null,不猜。 */
+  | { kind: 'more'; shown: number; total: number | null }
+  | { kind: 'loading' }
+  | { kind: 'error' }
+  /** 取尽了,而且用户真的翻过页 —— 这时才有资格说「共 N 条 · 已全部显示」。 */
+  | { kind: 'end'; total: number }
+
+export interface SearchMoreInput {
+  /** 此刻有没有词(空词 = 最近列表,不分页)。 */
+  searching: boolean
+  /** 第几页,从 1 数。 */
+  page: number
+  /** 此刻**造得出来**的全部行数(受当前 limit 约束的那一份)。 */
+  total: number
+  files: SearchFileSide
+}
+
+export function moreState({ searching, page, total, files }: SearchMoreInput): SearchMore {
+  if (!searching || total === 0) return { kind: 'none' }
+  /*
+   * 加载中 / 失败这两种只在**翻过页之后**才由这条 item 来说。
+   * 第一页那次失败归列表上面那行(`search.filesFailed`)—— 一次失败说两遍
+   * 是噪音;而「重试」这个动作在翻页之后才落在这条 item 身上。
+   */
+  if (page > 1) {
+    if (files === 'failed') return { kind: 'error' }
+    if (files === 'pending') return { kind: 'loading' }
+  }
+  const shown = Math.min(total, pageWindow(page))
+  if (shown < total) return { kind: 'more', shown, total: files === 'exhausted' ? total : null }
+  // 窗口已经装下此刻的全部行 —— 还有没有更多,只有文件侧那一边知道。
+  if (files === 'exhausted') return page > 1 ? { kind: 'end', total } : { kind: 'none' }
+  // 还没落定就先不许诺:第一页每敲一个字母都闪一下「加载更多」是噪音。
+  if (files === 'pending') return page > 1 ? { kind: 'loading' } : { kind: 'none' }
+  /*
+   * 剩下两种('more' = 给满了,'failed' = 第一页那次塌了)都是**不知道后面还有没有**,
+   * 于是照旧给一条能按的 item,总数写 null。第一页塌了那次尤其要给 ——
+   * 上面那行只是把失败说出来,而「再试一次」这个动作得有地方按。
+   */
+  return { kind: 'more', shown, total: null }
+}
+
 /** 空态列表的长度。再多就不是「最近」了。 */
 export const RECENT_LIMIT = 8
 

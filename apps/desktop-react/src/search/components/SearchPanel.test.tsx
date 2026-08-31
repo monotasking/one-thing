@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { AppShell } from '../../components/AppShell'
 import { SearchPanel } from './SearchPanel'
@@ -7,9 +7,14 @@ import { useExposeStore } from '../../expose/store'
 import { initialStageState } from '../../stage/transitions'
 import { useToastHub } from '../../ui/Toast'
 import { useNotifyStore } from '../../services/notify-store'
-import { CHAPTERS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
+import { CHAPTERS, NOW, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
+import { toSessionSummary } from '../../expose/projection'
+import type { SessionSummary } from '../../expose/types'
+import { configureFilesPort } from '../../data/files-port'
+import type { FilesPort } from '../../data/files-port'
 import { useFilesSource } from '../../data/files-source'
-import { RECENT_LIMIT } from '../transitions'
+import { translate } from '../../i18n'
+import { RECENT_LIMIT, SEARCH_FIRST_PAGE, SEARCH_PAGE_SIZE } from '../transitions'
 
 /**
  * 文件侧的素材 = `files.list` 交回来的那份 entries(D5 接真数据之后)。
@@ -34,6 +39,8 @@ beforeEach(() => {
     searchStatus: 'ready',
     searchHits: FILE_HITS,
     searchQuery: FILE_QUERY,
+    // 两条命中 < 要了这么多条 = 文件侧**取尽了**(判据见 transitions 的「分页」一节)。
+    searchLimit: SEARCH_FIRST_PAGE,
     searchError: undefined,
   })
   useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
@@ -207,5 +214,167 @@ describe('两种空', () => {
     expect(
       screen.getByText('File search must stay inside the workspace sandbox root.'),
     ).toBeTruthy()
+  })
+})
+
+/**
+ * 分页:列表**底部那条 item**,不是一颗悬浮按钮。
+ *
+ * 后端只有 limit 没有游标(`@shared/ipc/files.ts` 的 `FilesListRequest`),
+ * 所以「加载更多」= 带一个更大的 limit 从头重查;取尽判据只能是
+ * **回来的条数 < 要的条数**。这一组用例钉的正是这条判据在屏幕上的四种样子。
+ *
+ * 断言一律跟着常量走(SEARCH_FIRST_PAGE / SEARCH_PAGE_SIZE),不写死数字 ——
+ * 改档位不该顺带改一堆用例。
+ */
+describe('分页:底部那条 item', () => {
+  /** 一次给出 n 条**标题里都带那个词**的会话:会话侧整表在手,分页在那一侧是纯窗口。 */
+  const manySessions = (n: number): SessionSummary[] =>
+    Array.from({ length: n }, (_, i) =>
+      toSessionSummary({
+        id: `pg-${i}`,
+        name: `alpha beta ${i}`,
+        createdAt: NOW - i * 1000,
+        updatedAt: NOW - i * 1000,
+      }),
+    )
+
+  /** 比首屏多几条,第二页正好装得下 —— 于是「取尽」在第二页发生。 */
+  const TOTAL = SEARCH_FIRST_PAGE + 6
+
+  const rows = () => options().filter((el) => el.getAttribute('data-row') !== 'more')
+  const moreItem = () => screen.queryByTestId('search-more')
+  const zh = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) =>
+    translate('zh', key, vars)
+
+  beforeEach(() => {
+    const sessions = manySessions(TOTAL)
+    /*
+     * 章节缓存全部预置成空表:面板会为命中的前几条会话按需补拉章节,那是另一件
+     * 事(D1 的按需取数),在这一组里只会制造与分页无关的异步噪音。
+     * `sessionId in chapters` 就是数据源自己的「已经有了」判据。
+     */
+    seedSessionsSource({
+      sessions,
+      chapters: Object.fromEntries(sessions.map((session) => [session.id, []])),
+    })
+    // 这一组只看会话侧,所以文件侧一条都不给(而且明确说它取尽了)。
+    useFilesSource.setState({
+      searchStatus: 'ready',
+      searchHits: [],
+      searchQuery: 'alpha',
+      searchLimit: SEARCH_FIRST_PAGE,
+      searchError: undefined,
+    })
+  })
+
+  it('首屏给 SEARCH_FIRST_PAGE 条,点一下底部那条 item 就追加下一页', () => {
+    render(<SearchPanel />)
+    type('alpha')
+    press('Tab') // 只看会话:文件侧不参与,总数当场就是知道的
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE)
+    expect(moreItem()?.textContent).toBe(
+      zh('search.loadMoreCount', { shown: SEARCH_FIRST_PAGE, total: TOTAL }),
+    )
+
+    fireEvent.click(moreItem() as HTMLElement)
+    // 第二页的窗口是 首屏 + 每页,够装下全部 —— 于是这一次追加把剩下的都放了出来。
+    expect(SEARCH_FIRST_PAGE + SEARCH_PAGE_SIZE).toBeGreaterThanOrEqual(TOTAL)
+    expect(rows().length).toBe(TOTAL)
+  })
+
+  it('取尽那一刻:「加载更多」换成读数,而且不再是能按的 item', () => {
+    render(<SearchPanel />)
+    type('alpha')
+    press('Tab')
+    fireEvent.click(moreItem() as HTMLElement)
+
+    expect(moreItem()).toBeNull()
+    expect(screen.getByText(zh('search.allShown', { total: TOTAL }))).toBeTruthy()
+    // 读数不是选项:它进不了 ↑↓ 的轮转序列。
+    expect(options().length).toBe(TOTAL)
+  })
+
+  it('换检索词 = 换了一张列表:分页回到第一页', () => {
+    render(<SearchPanel />)
+    type('alpha')
+    press('Tab')
+    fireEvent.click(moreItem() as HTMLElement)
+    expect(rows().length).toBe(TOTAL)
+
+    // 同一批会话,另一个同样全中的词 —— 变的只有「词」这一件事。
+    type('beta')
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE)
+    expect(moreItem()?.textContent).toBe(
+      zh('search.loadMoreCount', { shown: SEARCH_FIRST_PAGE, total: TOTAL }),
+    )
+  })
+
+  it('⏎ 走到末位就是这条 item:回车 = 点它', () => {
+    render(<SearchPanel />)
+    type('alpha')
+    press('Tab')
+    for (let i = 0; i < SEARCH_FIRST_PAGE; i++) press('ArrowDown')
+    expect(moreItem()?.getAttribute('aria-selected')).toBe('true')
+
+    const before = useExposeStore.getState().currentSessionId
+    press('Enter')
+    expect(rows().length).toBe(TOTAL)
+    // 会话一条都没进(回车按的是「加载更多」,不是某一行)。
+    expect(useExposeStore.getState().currentSessionId).toBe(before)
+  })
+
+  describe('加载失败', () => {
+    let calls = 0
+    const failingPort: FilesPort = {
+      ready: async () => undefined,
+      listDirectory: async () => ({ success: false, error: 'not used' }),
+      stat: async () => ({ success: false, error: 'not used' }),
+      readContent: async () => ({ success: false, error: 'not used' }),
+      reveal: async () => ({ success: false, error: 'not used' }),
+      list: async () => {
+        calls += 1
+        return { success: false, files: [], error: 'boom' }
+      },
+    }
+
+    beforeEach(() => {
+      calls = 0
+      configureFilesPort(failingPort)
+      // 文件侧要参与,所以这一组不按 Tab —— scope 停在「所有」。
+      useFilesSource.setState({
+        searchStatus: 'ready',
+        searchHits: [],
+        searchQuery: 'alpha',
+        searchLimit: SEARCH_FIRST_PAGE,
+        searchError: undefined,
+      })
+    })
+
+    afterEach(() => {
+      // 还原成 test/setup.ts 里那一份「什么都不回」的默认假端口。
+      configureFilesPort({
+        ready: async () => undefined,
+        listDirectory: async () => ({ success: false, error: 'no files port in tests' }),
+        stat: async () => ({ success: false, error: 'no files port in tests' }),
+        readContent: async () => ({ success: false, error: 'no files port in tests' }),
+        reveal: async () => ({ success: false, error: 'no files port in tests' }),
+        list: async () => ({ success: true, files: [], entries: [] }),
+      })
+    })
+
+    it('这条 item 自己说「没加载成」,再点一次就重试', async () => {
+      render(<SearchPanel />)
+      type('alpha')
+      fireEvent.click(moreItem() as HTMLElement)
+
+      await waitFor(() =>
+        expect(moreItem()?.textContent).toBe(zh('search.loadFailed')),
+      )
+      const before = calls
+
+      fireEvent.click(moreItem() as HTMLElement)
+      await waitFor(() => expect(calls).toBe(before + 1))
+    })
   })
 })

@@ -13,8 +13,18 @@ import { notify } from '../../services/notify'
 import { Search } from '../../components/icons'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
-import { SCOPES, moveRow, nextScope, originText, recentRows, searchRows, targetText } from '../transitions'
-import type { SearchMaterial } from '../transitions'
+import {
+  SCOPES,
+  moreState,
+  moveRow,
+  nextScope,
+  originText,
+  pageWindow,
+  recentRows,
+  searchRows,
+  targetText,
+} from '../transitions'
+import type { SearchFileSide, SearchMaterial } from '../transitions'
 import type { SearchBadge, SearchRow, SearchScope } from '../types'
 import s from './SearchPanel.module.css'
 
@@ -57,6 +67,10 @@ export function SearchPanel() {
   const [query, setQuery] = useState('')
   const [scope, setScope] = useState<SearchScope>('all')
   const [cursor, setCursor] = useState(0)
+  /** 第几页,从 1 数。换词 / 换范围就回到第一页(那是另一张列表了)。 */
+  const [page, setPage] = useState(1)
+  /** 选中的是不是底部那条 item。**它不是 cursor 的一个值** —— 见 onKeyDown。 */
+  const [onMore, setOnMore] = useState(false)
   const enterSession = useExposeStore((st) => st.enterSession)
   const closeToDock = useStageStore((st) => st.closeToDock)
   const sessions = useSessionsSource((st) => st.sessions)
@@ -67,9 +81,28 @@ export function SearchPanel() {
   const fileQuery = useFilesSource((st) => st.searchQuery)
   const fileStatus = useFilesSource((st) => st.searchStatus)
   const fileError = useFilesSource((st) => st.searchError)
+  const fileLimit = useFilesSource((st) => st.searchLimit)
   const searchFiles = useFilesSource((st) => st.searchFiles)
   const timeOf = useSessionTime()
   const listRef = useRef<HTMLDivElement>(null)
+
+  /*
+   * 换词 / 换范围 = 换了一张列表:选中回第一行、页码回第一页。
+   *
+   * 这一手写在**渲染里**而不是 useEffect 里,理由很具体:分页把 `page` 收进了
+   * 取数副作用的依赖表,而在副作用里重置会先多跑一轮渲染 —— 那一轮带着「新词 +
+   * 旧页码」,主语已经换了页码还没回来,于是那条「主语没变就当场发」的判据会把
+   * 它当成一次翻页,合并窗口就白设了。渲染中重置(React 官方那条「状态派生自
+   * 上一次输入」的写法)让副作用只看得见重置之后的那一份。
+   */
+  const listKey = `${scope}:${query}`
+  const [lastKey, setLastKey] = useState(listKey)
+  if (lastKey !== listKey) {
+    setLastKey(listKey)
+    setCursor(0)
+    setOnMore(false)
+    setPage(1)
+  }
 
   const searching = query.trim().length > 0
   /*
@@ -90,6 +123,24 @@ export function SearchPanel() {
     () => (searching ? searchRows(query, scope, material) : recentRows(scope, material)),
     [query, scope, searching, material],
   )
+
+  /**
+   * 文件侧此刻的处境。取尽判据是**回来的条数 < 要的条数** —— 后端这一条既没有
+   * 游标也不下发总数,这是唯一能判的一句(理由写在 transitions 的「分页」一节)。
+   * `scope === 'sessions'` 时这一档根本不看文件,所以它恒定「取尽」。
+   */
+  const fileSide: SearchFileSide = useMemo(() => {
+    if (scope === 'sessions') return 'exhausted'
+    if (!fileAnswerIsCurrent || fileStatus === 'idle' || fileStatus === 'loading') return 'pending'
+    if (fileStatus === 'error') return 'failed'
+    return fileHits.length < fileLimit ? 'exhausted' : 'more'
+  }, [scope, fileAnswerIsCurrent, fileStatus, fileHits.length, fileLimit])
+
+  const more = moreState({ searching, page, total: rows.length, files: fileSide })
+  /** 屏幕上这一页。会话侧本来就全量在手,所以翻页在那一侧纯粹是把窗口拉大。 */
+  const visible = useMemo(() => rows.slice(0, pageWindow(page)), [rows, page])
+  /** 底部那条 item 能不能按(加载中也留在轮转序列里,免得焦点在加载途中蒸发)。 */
+  const moreIsItem = more.kind === 'more' || more.kind === 'loading' || more.kind === 'error'
 
   /*
    * 章节是**按需**拉的:标题 / 预览命中的那几条先把章节补回来,下一轮渲染里
@@ -114,23 +165,46 @@ export function SearchPanel() {
    * 文件侧是一次**真查询**,所以它有自己的取数副作用(会话侧没有:整张表在手)。
    * 合并窗口挡的是「每敲一个字母发一次请求」;`scope === 'sessions'` 时连发都不发 ——
    * 用户已经说了这一轮不看文件。
+   *
+   * 分页是**递增 limit 重查**:第 n 页带一个更大的 limit 从头再要一次(后端只有
+   * limit 没有游标 —— 代价与留账写在 transitions 的「分页」一节),所以 `page`
+   * 也在依赖表里:翻一页就是重发一次。
+   *
+   * 合并窗口只挡**打字的余波**:主语(词 + 根)没变 —— 也就是这一次是翻页或者
+   * 「重试」—— 就当场发。让一次确定的点击等 220ms 是把它当成了打字。
    */
+  const askedSubject = useRef<string | null>(null)
   useEffect(() => {
     if (scope === 'sessions') return
-    const timer = setTimeout(() => void searchFiles(query, cwd), FILE_SEARCH_DEBOUNCE_MS)
+    const subject = JSON.stringify([query.trim(), cwd])
+    const sameSubject = askedSubject.current === subject
+    askedSubject.current = subject
+    const run = () => void searchFiles(query, cwd, pageWindow(page))
+    /*
+     * 主语没变、而且已经翻过页 —— 那这一次只能是「加载更多」或者「重试」,
+     * 两者都是一次**确定的点击**,当场发。第一页永远走合并窗口:换词换范围都
+     * 落在第一页,那才是打字的余波要挡的地方。
+     */
+    if (sameSubject && page > 1) {
+      run()
+      return
+    }
+    const timer = setTimeout(run, FILE_SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [query, scope, cwd, searchFiles])
+  }, [query, scope, cwd, page, searchFiles])
 
-  // 换词 / 换范围 = 换了一张列表,选中回到第一行。
+  // 底部那条 item 没了(取尽 / 列表空了)就不能再让选中停在它上面。
   useEffect(() => {
-    setCursor(0)
-  }, [query, scope])
+    if (!moreIsItem) setOnMore(false)
+  }, [moreIsItem])
 
   // 选中行滚进视野。block:'nearest' = 只在它真的出界时才滚,列表不会为了走一行整屏跳。
   useEffect(() => {
-    const el = listRef.current?.querySelector<HTMLElement>(`[data-row="${cursor}"]`)
+    const el = listRef.current?.querySelector<HTMLElement>(
+      onMore ? '[data-row="more"]' : `[data-row="${cursor}"]`,
+    )
     el?.scrollIntoView?.({ block: 'nearest' })
-  }, [cursor, rows])
+  }, [cursor, onMore, visible])
 
   const options: Array<SegmentedOption<SearchScope>> = SCOPES.map((value) => ({
     value,
@@ -163,6 +237,20 @@ export function SearchPanel() {
     closeToDock('search')
   }
 
+  /**
+   * 按底部那条 item。两件事共用它,因为它们在用户眼里是同一个动作(「再来一次」):
+   *  - 'more' = 再要一页(页码 +1,取数副作用据此带更大的 limit 重发);
+   *  - 'error' = 同一页重试(主语没变,所以当场发,不等合并窗口)。
+   * 'loading' / 'end' 按下去什么都不做 —— 它们不是动作,是读数。
+   */
+  const activateMore = () => {
+    if (more.kind === 'more') {
+      setPage((p) => p + 1)
+      return
+    }
+    if (more.kind === 'error') void searchFiles(query, cwd, pageWindow(page))
+  }
+
   /*
    * 键盘住在面板自己身上,**不是 keymap 里的命令**:它只在这块面有焦点时才成立,
    * 而命令表管的是「面板关着时也要能触发」的那一类。Esc 这里一个字不写 ——
@@ -177,11 +265,31 @@ export function SearchPanel() {
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
-      setCursor((i) => moveRow(i, e.key === 'ArrowDown' ? 1 : -1, rows.length))
+      const down = e.key === 'ArrowDown'
+      /*
+       * 底部那条 item 是轮转序列的**末位**,但它不是 cursor 的一个值:
+       * 按一次「加载更多」列表就长了,末位的下标随之变 —— 用下标记住它,
+       * 加载完选中就落到了一条真结果上,再按一次回车会把人送走。
+       * 一个布尔说的是「我停在末位」,列表怎么长它都还在末位。
+       */
+      if (onMore) {
+        if (!down) setOnMore(false)
+        return
+      }
+      if (down && moreIsItem && cursor >= visible.length - 1) {
+        setOnMore(true)
+        return
+      }
+      setCursor((i) => moveRow(i, down ? 1 : -1, visible.length))
       return
     }
     if (e.key === 'Enter') {
-      const row = rows[cursor]
+      if (onMore) {
+        e.preventDefault()
+        activateMore()
+        return
+      }
+      const row = visible[cursor]
       if (!row) return
       e.preventDefault()
       activate(row)
@@ -237,15 +345,16 @@ export function SearchPanel() {
             {scope === 'files' && !searching ? t('search.filesNeedQuery') : t('search.noResults')}
           </p>
         ) : (
-          rows.map((row, i) => (
+          visible.map((row, i) => (
             <button
               key={row.id}
               type="button"
               role="option"
-              aria-selected={i === cursor}
+              aria-selected={!onMore && i === cursor}
               data-row={i}
-              className={i === cursor ? `${s.row} ${s.rowOn}` : s.row}
+              className={!onMore && i === cursor ? `${s.row} ${s.rowOn}` : s.row}
               onClick={() => {
+                setOnMore(false)
                 setCursor(i)
                 activate(row)
               }}
@@ -257,6 +366,40 @@ export function SearchPanel() {
               <span className={s.origin}>{originText(row.origin)}</span>
             </button>
           ))
+        )}
+
+        {/*
+          * 「加载更多」是**列表最后一条 item**,不是一颗悬浮在角上的按钮:
+          * 它跟着列表滚、跟着列表排、跟着 ↑↓ 走(末位),形制照这张表既有的行语汇
+          * (同一个 .row 骨架,只是没有徽、没有出处),所以它读起来是这张列表的
+          * 一部分而不是一件外挂控件。
+          *
+          * 取尽那一刻它换成一条**读数**(不是按钮、不进轮转序列)—— 一条按不动的
+          * 按钮比一句话更让人犹豫。
+          */}
+        {moreIsItem && (
+          <button
+            type="button"
+            role="option"
+            aria-selected={onMore}
+            data-row="more"
+            data-testid="search-more"
+            className={onMore ? `${s.more} ${s.rowOn}` : s.more}
+            onClick={() => {
+              setOnMore(true)
+              activateMore()
+            }}
+          >
+            {more.kind === 'loading' && t('search.loading')}
+            {more.kind === 'error' && t('search.loadFailed')}
+            {more.kind === 'more' &&
+              (more.total === null
+                ? t('search.loadMore')
+                : t('search.loadMoreCount', { shown: more.shown, total: more.total }))}
+          </button>
+        )}
+        {more.kind === 'end' && (
+          <p className={s.end}>{t('search.allShown', { total: more.total })}</p>
         )}
       </div>
     </div>

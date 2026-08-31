@@ -69,6 +69,38 @@
   border-left-color: var(--accent);
 }
 
+/* 列表最后一条 item(「加载更多」/「加载中…」/「没加载成」)。
+ * 它是**行**不是按钮:同一套骨架(整宽 / 同一份 padding / 左缘那条选中线常态占位),
+ * 只是没有徽也没有出处,于是文字缩进到与上面各行的正文同一列 ——
+ * 徽宽 + 两侧那一格 gap,靠 calc 对齐而不是塞一个空的占位元素。 */
+.more,
+.end {
+  flex: none;
+  display: block;
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  padding-left: calc(var(--sp-3) + var(--search-chip-w) + var(--sp-3));
+  border-left: var(--search-mark) solid transparent;
+  border-radius: var(--r-1);
+  text-align: left;
+  font-size: var(--fs-meta);
+}
+
+.more {
+  color: var(--text-2);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.more:hover {
+  background: var(--st-hover);
+}
+
+/* 取尽之后那条读数:说完就完了,没有可按的东西,所以它不亮、不响应 hover。 */
+.end {
+  margin: 0;
+  color: var(--text-3);
+}
+
 /* 空心小徽:1px 边框 + 圆角 + 灰字 + 等宽小字号。src/ui/Badge 的三个 tone 都是实心丸
  * (徽标 / 未读数),没有空心形态 —— 硬塞第四个 tone 会污染那三条配方,
  * 所以这一颗是本面板的局部样式,不往 src/ui 新增组件。 */

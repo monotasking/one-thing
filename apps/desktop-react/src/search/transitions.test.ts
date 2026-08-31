@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   RECENT_LIMIT,
+  SEARCH_FIRST_PAGE,
   fileExt,
   fileName,
+  moreState,
   moveRow,
   nextScope,
   originText,
@@ -230,5 +232,56 @@ describe('会话侧的素材(D1)', () => {
   it('消息正文搜不到 —— D1 的诚实缺口(后端没有跨会话内容检索面)', () => {
     // 「记一下今天的三件事」是 previewText,搜得到;真正的第二条、第三条消息搜不到。
     expect(searchRows('记一下今天', 'sessions', material).length).toBe(1)
+  })
+})
+
+/**
+ * 底部那条 item 的判据表。后端只有 limit 没有游标,于是「还有没有更多」这件事
+ * 全部压在 `files`(文件侧四态)上 —— 这一组就是那张表逐格的读法。
+ */
+describe('moreState:底部那条 item 说什么', () => {
+  const base = { searching: true, page: 1, total: SEARCH_FIRST_PAGE + 5, files: 'exhausted' as const }
+
+  it('空词(最近列表)与空列表都没有这条 item', () => {
+    expect(moreState({ ...base, searching: false }).kind).toBe('none')
+    expect(moreState({ ...base, total: 0 }).kind).toBe('none')
+  })
+
+  it('文件侧取尽 = 总数是知道的,于是计数照实写', () => {
+    expect(moreState(base)).toEqual({
+      kind: 'more',
+      shown: SEARCH_FIRST_PAGE,
+      total: SEARCH_FIRST_PAGE + 5,
+    })
+  })
+
+  it('文件侧「给满了」不等于「还有」—— 总数不知道就是 null,不猜一个数', () => {
+    expect(moreState({ ...base, files: 'more' })).toEqual({
+      kind: 'more',
+      shown: SEARCH_FIRST_PAGE,
+      total: null,
+    })
+  })
+
+  it('第一页没落定就不许诺 —— 每敲一个字母闪一下「加载更多」是噪音', () => {
+    expect(moreState({ ...base, total: 3, files: 'pending' }).kind).toBe('none')
+  })
+
+  it('第一页文件侧塌了:那句「没搜成」归列表上面那行,这条 item 是重试的入口', () => {
+    // 塌了 = 这一半从没答过话,所以「还有没有更多」是不知道 —— 于是 total 为 null。
+    expect(moreState({ ...base, total: 3, files: 'failed' })).toEqual({
+      kind: 'more',
+      shown: 3,
+      total: null,
+    })
+  })
+
+  it('翻过页之后,加载中与失败由这条 item 自己说', () => {
+    expect(moreState({ ...base, page: 2, files: 'pending' }).kind).toBe('loading')
+    expect(moreState({ ...base, page: 2, files: 'failed' }).kind).toBe('error')
+  })
+
+  it('翻过页 + 全都装下 + 文件侧取尽 = 这一刻才有资格说「已全部显示」', () => {
+    expect(moreState({ ...base, page: 2 })).toEqual({ kind: 'end', total: SEARCH_FIRST_PAGE + 5 })
   })
 })
