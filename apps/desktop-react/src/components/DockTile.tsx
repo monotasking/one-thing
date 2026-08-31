@@ -4,7 +4,7 @@ import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
 import { DockPreview } from './DockPreview'
 import type { StageBadge } from '../stage/types'
-import { PREVIEW_DELAY_MS, PREVIEW_GRACE_MS, TOOLTIP_DELAY_MS } from './motion'
+import { TOOLTIP_DELAY_MS } from './motion'
 import s from './DockTile.module.css'
 
 /** 名字标签浮在瓦的哪一侧。由 Dock 按停靠边算好递进来 —— 瓦不认识「边」。 */
@@ -66,10 +66,20 @@ interface Props {
   tileRef: (el: HTMLElement | null) => void
   labelSide?: LabelSide
   /**
-   * 给了就出预览泡,不给就不出。**该不该出是 Dock 的判断**(它知道形态),
-   * 瓦只知道「悬停够久了」——「已经看得见的东西不必再预览」这条规则不该抄两份。
+   * 给了就**可能**出预览泡,不给就永远不出。**该不该出是 Dock 的判断**(它知道形态),
+   * 「已经看得见的东西不必再预览」这条规则不该抄两份。
    */
   previewId?: string
+  /**
+   * 此刻这块瓦的泡开着没有 —— 09-01 起这一格是**受控**的:
+   * 「一次只有一个泡」是**条**的性质,不是瓦的性质,所以主角是谁由 Dock 那只
+   * hover-intent 说了算(病历见 ui/hover-intent.ts 文件头:所有权散在各瓦里时,
+   * 两块瓦可以同时以为泡是自己的,而没有人能说「他正冲着我来,你们都别动」)。
+   */
+  previewOpen?: boolean
+  /** 指针进 / 出这块瓦(泡是瓦的后代,所以停在泡上仍算「在瓦里」)。 */
+  onHoverEnter?: () => void
+  onHoverLeave?: () => void
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
 }
@@ -87,20 +97,18 @@ export function DockTile({
   tileRef,
   labelSide = 'top',
   previewId,
+  previewOpen = false,
+  onHoverEnter,
+  onHoverLeave,
   onClick,
   onContextMenu,
 }: Props) {
   const [labelVisible, setLabelVisible] = useState(false)
-  const [previewVisible, setPreviewVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current)
-      if (previewTimer.current) clearTimeout(previewTimer.current)
-      if (graceTimer.current) clearTimeout(graceTimer.current)
     },
     [],
   )
@@ -109,43 +117,25 @@ export function DockTile({
    * 两级悬停:300ms 出名字,600ms 出预览。第二级到了就把第一级收掉 ——
    * 一次一个主角:泡里已经写着标题,标签留着就是同一句话说两遍。
    *
-   * ── 收拢有宽限(08-31 修「移向泡的路上泡就没了」)────────────────────
-   * 泡浮在瓦上方 --preview-lift(12px)处,那 12px 既不属于瓦也不属于泡。
-   * 修前 mouseleave 一触发就当场收,真机实测**指针离开瓦 3px 泡就没了** ——
-   * 人根本够不到它,「悬停出泡」这件事等于只能看不能用。
-   *
-   * 现在离开只是**排一个 PREVIEW_GRACE_MS 的收拢**,再进瓦或进泡即取消。
-   * 泡是 .wrap 的后代,所以「进泡」本身就会重新触发这里的 enter ——
+   * **这里只剩第一级**。第二级(泡)09-01 上收到 Dock 那只 hover-intent:
+   * 「一次只有一个泡」「走向泡的路上谁都别插队」都是**跨瓦**的话,一块瓦
+   * 说不出口(病历与真机读数见 ui/hover-intent.ts 文件头)。瓦仍然是那个
+   * 报「指针进了 / 出了」的人 —— 泡是 .wrap 的后代,所以停在泡上照样算在瓦里,
    * 不必给泡另挂一套监听(挂了就是两处各记一半的 hover 状态)。
-   * 前提是泡得吃指针:它的 pointer-events 由 none 改成了 auto(见 DockPreview)。
+   * 前提是泡得吃指针:它的 pointer-events 是 auto(见 DockPreview)。
+   *
+   * 标签没有缝的烦恼(它贴着瓦),所以照旧移开即散。
    */
-  const cancelGrace = () => {
-    if (graceTimer.current) {
-      clearTimeout(graceTimer.current)
-      graceTimer.current = null
-    }
-  }
-
   const enter = () => {
-    cancelGrace()
-    // 泡已经在场时不重排那两级延迟:从缝里回到泡上不该让它「重新长一遍」。
-    if (previewVisible) return
+    onHoverEnter?.()
+    // 泡已经在场时不重排标签:从缝里回到泡上不该让它「重新长一遍」。
+    if (previewOpen) return
     timer.current = setTimeout(() => setLabelVisible(true), TOOLTIP_DELAY_MS)
-    if (previewId) {
-      previewTimer.current = setTimeout(() => setPreviewVisible(true), PREVIEW_DELAY_MS)
-    }
   }
   const leave = () => {
     if (timer.current) clearTimeout(timer.current)
-    if (previewTimer.current) clearTimeout(previewTimer.current)
-    // 标签没有这条烦恼(它贴着瓦,中间没有缝),所以照旧移开即散。
     setLabelVisible(false)
-    if (!previewVisible) return
-    cancelGrace()
-    graceTimer.current = setTimeout(() => {
-      graceTimer.current = null
-      setPreviewVisible(false)
-    }, PREVIEW_GRACE_MS)
+    onHoverLeave?.()
   }
 
   const Icon = plus ? Plus : resolveIcon(icon ?? '')
@@ -153,10 +143,10 @@ export function DockTile({
 
   return (
     <div className={s.wrap} onMouseEnter={enter} onMouseLeave={leave}>
-      {labelVisible && !previewVisible && (
+      {labelVisible && !previewOpen && (
         <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>
       )}
-      {previewVisible && previewId && (
+      {previewOpen && previewId && (
         /* 点泡 = 点这块瓦。泡里那一眼说的就是「打开之后长这样」,
          * 所以点它的意思只可能是「那就打开吧」—— 不该再让用户把手移回瓦上。 */
         <DockPreview id={previewId} title={title} side={labelSide} onOpen={onClick} />

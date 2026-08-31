@@ -189,7 +189,7 @@ export function coverIdOf(state: StageState): string | null {
  * Esc 该退掉哪一块面 —— **唯一**回答这句话的地方(08-31 修「Esc 关不掉浮窗」)。
  *
  * 退层次序 = 视觉上压在最上面的那一块先退,与 z 序逐条对应:
- *   ① 盖(--z-cover,接管内容栏)
+ *   ① 盖(--z-cover,盖满整扇窗;09-01 用户推翻「只接管内容栏」)
  *   ② 舞台(--z-overlay,scrim 铺满视口)
  *   ③ 最上面那扇浮窗(floatOrder 末位最上)
  *
@@ -912,11 +912,121 @@ export function shouldShowDock(args: {
   viewport: Viewport
   edge: DockEdge
   rect?: Rect
+  previewRect?: Rect
 }): boolean {
-  const { shown, pointer, viewport, edge, rect } = args
+  const { shown, pointer, viewport, edge, rect, previewRect } = args
   if (withinDockWakeBand(pointer, viewport, edge)) return true
   if (!shown) return false
+  /*
+   * **泡开着的时候,泡也是 Dock 的一部分**(09-01 修「移向 preview 途中整条 Dock 消失」)。
+   *
+   * 真机读数:条停稳 top 754,留驻区上界 754−24 = 730;泡 y 515.6…735.6(高 220)——
+   * 只有最下面 **5.6px(2.5%)** 落在留驻区里。指针一进泡就被判「人已离开」,
+   * 300ms 后整条 Dock 平移出屏,而泡是条的后代,于是**跟着一起消失在手底下**
+   * (探针:泡中心停留 3s,dockShown 六次采样全 false)。
+   *
+   * 修法不是把 --dock-hold-pad 调大到 220(那会把留驻区变成半块屏),而是把泡
+   * 当成一块**同样属于 Dock 的地皮**:泡矩形四周同样放 pad,于是泡与条之间那
+   * --preview-lift(12px)的缝也一并被 24 的 pad 盖住,不必再单列一块几何。
+   *
+   * 瞄准三角区(withinDockAimTriangle)**不必**再并进来:它的三个顶点分别是
+   * 瓦上的离开点(在条身留驻区内)与泡朝内那条边的两个角(在泡的 pad 区内),
+   * 三角形是凸的,凸包内的点必然落在这两块的并集里 —— 单测里有一条按网格
+   * 逐点采样的断言钉着这件事。
+   */
+  if (previewRect && withinRect(pointer, previewRect, DOCK_HOLD_PAD)) return true
   return rect ? withinDockHoldZone(pointer, viewport, edge, rect) : false
+}
+
+/** 点落在矩形(四周放 pad)里。留驻判据的第三块地皮 —— 泡 —— 用的就是它。 */
+export function withinRect(pointer: Point, rect: Rect, pad = 0): boolean {
+  return (
+    pointer.x >= rect.left - pad &&
+    pointer.x <= rect.right + pad &&
+    pointer.y >= rect.top - pad &&
+    pointer.y <= rect.bottom + pad
+  )
+}
+
+/* ── 预览泡的瞄准三角区(menu-aim / macOS 子菜单同款)────────────────────────
+ *
+ * 病历(09-01 用户录屏 + 真机探针):泡浮在瓦上方 12px、宽 320,而瓦只有 44 宽 ——
+ * 想够到泡的另一头就必须**贴着条横穿两三块旁瓦**。修前每块瓦各管各的悬停:
+ *   慢·平路径 12 步(140ms/步)从 browser 走向泡的左下角,真机逐步读数是
+ *   ①…④ 泡=browser → ⑤ **泡=null**(旧瓦的 320ms 收拢宽限到期,泡凭空消失)
+ *   → ⑥…⑫ 泡=terminal,左缘从 388 横跳到 320。
+ * 也就是说用户瞄着 A 的泡走过去,半路先看它消失,再看它变成 B 的、并且挪了位置。
+ *
+ * 稳定三角区的判据:以**离开点**为顶点、泡朝内那条边的**两个角**为底,围出的
+ * 三角形就是「他正冲着泡去」的那片地。指针在这片地里时,途经任何旁瓦都不重定
+ * 目标、也不排收拢;出了这片地(或者不再朝泡推进超过一个窗口)就恢复常态。
+ *
+ * 为什么顶点在离开点而不是瓦中心:三角形在顶点处宽度为 0,所以**沿条横向巡瓦**
+ * (没有朝泡的位移分量)一步就出界 —— 边界①「横向切换必须保持即时」由几何本身
+ * 保证,不靠再写一条 if。武装时另外要求这一步真的朝泡推进,是第二道保险。
+ */
+
+/** 泡朝内那条边的两个角 —— 四条边只在这一张表里被写成坐标。 */
+const PREVIEW_NEAR_CORNERS: Record<DockEdge, (b: Rect) => [Point, Point]> = {
+  bottom: (b) => [
+    { x: b.left, y: b.bottom },
+    { x: b.right, y: b.bottom },
+  ],
+  top: (b) => [
+    { x: b.left, y: b.top },
+    { x: b.right, y: b.top },
+  ],
+  left: (b) => [
+    { x: b.left, y: b.top },
+    { x: b.left, y: b.bottom },
+  ],
+  right: (b) => [
+    { x: b.right, y: b.top },
+    { x: b.right, y: b.bottom },
+  ],
+}
+
+/** 一步位移里「朝泡去」的那个分量。>0 = 在推进。 */
+const TOWARD_PREVIEW: Record<DockEdge, (from: Point, to: Point) => number> = {
+  bottom: (f, t) => f.y - t.y,
+  top: (f, t) => t.y - f.y,
+  left: (f, t) => t.x - f.x,
+  right: (f, t) => f.x - t.x,
+}
+
+export type Triangle = readonly [Point, Point, Point]
+
+export function dockAimTriangle(apex: Point, bubble: Rect, edge: DockEdge): Triangle {
+  const [a, b] = PREVIEW_NEAR_CORNERS[edge](bubble)
+  return [apex, a, b]
+}
+
+function cross(o: Point, a: Point, b: Point): number {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+}
+
+/** 点在三角形内(含边)。三条叉积同号即在内 —— 退化成一条线时处处「同号」,那正好是宽度 0。 */
+export function withinTriangle(p: Point, [a, b, c]: Triangle): boolean {
+  const d1 = cross(a, b, p)
+  const d2 = cross(b, c, p)
+  const d3 = cross(c, a, p)
+  const neg = d1 < 0 || d2 < 0 || d3 < 0
+  const pos = d1 > 0 || d2 > 0 || d3 > 0
+  return !(neg && pos)
+}
+
+export function withinDockAimTriangle(
+  pointer: Point,
+  apex: Point,
+  bubble: Rect,
+  edge: DockEdge,
+): boolean {
+  return withinTriangle(pointer, dockAimTriangle(apex, bubble, edge))
+}
+
+/** 这一步是不是朝泡推进。武装三角区、以及「还在瞄」的续期,问的都是这一句。 */
+export function movesTowardPreview(from: Point, to: Point, edge: DockEdge): boolean {
+  return TOWARD_PREVIEW[edge](from, to) > 0
 }
 
 /* ── Dock 上露不露面(「所有应用」那块管理瓦的判据) ────────────────────────── */

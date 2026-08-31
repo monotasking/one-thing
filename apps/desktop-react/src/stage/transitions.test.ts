@@ -63,6 +63,9 @@ import {
   setItemHidden,
   settledDockRect,
   shouldShowDock,
+  dockAimTriangle,
+  movesTowardPreview,
+  withinDockAimTriangle,
   DOCK_HOLD_PAD,
   DOCK_WAKE_BAND,
 } from './transitions'
@@ -1519,5 +1522,118 @@ describe('--dock-wake-band / --dock-hold-pad 与 JS 常量同源', () => {
 
   it('唤醒必须比留驻克制 —— 反过来就是报障那一天', () => {
     expect(DOCK_WAKE_BAND).toBeLessThan(DOCK_HOLD_PAD)
+  })
+})
+
+/**
+ * 09-01 第二桩报障(录屏 + 真机探针):**走向预览泡的路上,泡换了人、整条 Dock 也没了**。
+ *
+ * 这一组的被试全部是真机量到的那一屏(隔离 store,1280×828,底边 / md / 居中):
+ *   条(停稳)  left 284   right 996   top 754   bottom 816
+ *   browser 瓦 left 517   right 561   top 763   bottom 807
+ *   泡        left 377.8 right 697.8 top 515.6 bottom 735.6   (320×220,lift 12)
+ *   旁瓦中心  terminal (465, 785) · search (592, 785)
+ *
+ * 修前读数(慢·平 12 步、140ms/步,browser → 泡左下角):
+ *   ①…④ 泡=browser → ⑤ 泡=null(320ms 宽限到期,空窗)→ ⑥…⑫ 泡=terminal,左缘 388→320。
+ *   同一条路上 dockShown 在第 9…10 步翻 false;泡中心停留 3s,六次采样全 false。
+ */
+describe('预览泡:留驻区认泡、瞄准区认三角(09-01)', () => {
+  const vp: Viewport = { w: 1280, h: 828 }
+  const STRIP = { left: 284, right: 996, top: 754, bottom: 816 }
+  const BUBBLE = { left: 377.8, right: 697.8, top: 515.6, bottom: 735.6 }
+  /** 指针从 browser 瓦朝上离开的那一点(瓦上缘),= 三角形的顶点。 */
+  const APEX = { x: 538, y: 763 }
+
+  describe('留驻:泡也是 Dock 的地皮', () => {
+    const at = (pointer: { x: number; y: number }, previewRect?: typeof BUBBLE) =>
+      shouldShowDock({ shown: true, pointer, viewport: vp, edge: 'bottom', rect: STRIP, previewRect })
+
+    it('报障复现:泡中心在留驻区外 —— 不认泡就是「整条 Dock 在手底下消失」', () => {
+      // 泡 220 高,只有最下面 5.6px 落在旧留驻区里(754−24 = 730)。
+      expect(BUBBLE.bottom - (STRIP.top - DOCK_HOLD_PAD)).toBeCloseTo(5.6, 1)
+      expect(at({ x: 538, y: 626 })).toBe(false)
+    })
+
+    it('修后:泡中心 / 泡四角 / 泡与条之间那条 12px 缝,全在留驻区里', () => {
+      expect(at({ x: 538, y: 626 }, BUBBLE)).toBe(true)
+      expect(at({ x: 380, y: 519 }, BUBBLE)).toBe(true)
+      expect(at({ x: 695, y: 733 }, BUBBLE)).toBe(true)
+      expect(at({ x: 538, y: 745 }, BUBBLE)).toBe(true) // 缝里(泡下缘 735.6 与瓦上缘 763 之间)
+    })
+
+    it('泡的余量是**余量**不是新的家:出了 pad 就该开始计收回', () => {
+      expect(at({ x: 538, y: BUBBLE.top - DOCK_HOLD_PAD + 1 }, BUBBLE)).toBe(true)
+      expect(at({ x: 538, y: BUBBLE.top - DOCK_HOLD_PAD - 1 }, BUBBLE)).toBe(false)
+      expect(at({ x: BUBBLE.left - DOCK_HOLD_PAD - 1, y: 626 }, BUBBLE)).toBe(false)
+    })
+
+    it('藏着的时候泡不算数 —— 唤醒仍然只认贴边窄带(前一桩不许回退)', () => {
+      expect(
+        shouldShowDock({ shown: false, pointer: { x: 538, y: 626 }, viewport: vp, edge: 'bottom', rect: STRIP, previewRect: BUBBLE }),
+      ).toBe(false)
+    })
+  })
+
+  describe('瞄准三角区', () => {
+    const inTri = (x: number, y: number) =>
+      withinDockAimTriangle({ x, y }, APEX, BUBBLE, 'bottom')
+
+    it('三个顶点 = 离开点 + 泡朝内那条边的两个角', () => {
+      expect(dockAimTriangle(APEX, BUBBLE, 'bottom')).toEqual([
+        APEX,
+        { x: BUBBLE.left, y: BUBBLE.bottom },
+        { x: BUBBLE.right, y: BUBBLE.bottom },
+      ])
+    })
+
+    it('斜穿旁瓦去够泡的左半边:全程在三角区里(报障那条路)', () => {
+      // 修前这几点上泡先 null 再变 terminal;三角区认下它们,就没人插得进队。
+      expect(inTri(500, 755)).toBe(true)
+      expect(inTri(474, 750)).toBe(true)
+      expect(inTri(435, 742)).toBe(true)
+      expect(inTri(400, 737)).toBe(true)
+    })
+
+    it('边界①:沿条横向巡瓦一步就出界 —— 顶点处三角形宽度为 0', () => {
+      expect(inTri(465, 785)).toBe(false) // 左邻 terminal 的中心
+      expect(inTri(592, 785)).toBe(false) // 右邻 search 的中心
+      expect(inTri(465, APEX.y)).toBe(false) // 与顶点同高的横移
+    })
+
+    it('掉头往回走(离开泡的方向)也不在三角区里', () => {
+      expect(inTri(538, 800)).toBe(false)
+    })
+
+    it('「朝泡去」的判据按四条边各问各的那一维', () => {
+      expect(movesTowardPreview({ x: 538, y: 777 }, { x: 538, y: 765 }, 'bottom')).toBe(true)
+      expect(movesTowardPreview({ x: 538, y: 765 }, { x: 538, y: 777 }, 'bottom')).toBe(false)
+      // 纯横移零分量 —— 这就是边界①在武装那一侧的第二道保险。
+      expect(movesTowardPreview({ x: 538, y: 777 }, { x: 480, y: 777 }, 'bottom')).toBe(false)
+      expect(movesTowardPreview({ x: 538, y: 20 }, { x: 538, y: 40 }, 'top')).toBe(true)
+      expect(movesTowardPreview({ x: 20, y: 400 }, { x: 60, y: 400 }, 'left')).toBe(true)
+      expect(movesTowardPreview({ x: 1260, y: 400 }, { x: 1200, y: 400 }, 'right')).toBe(true)
+    })
+
+    /**
+     * 为什么留驻区**不必**再单列一块「三角区」几何:三角形的三个顶点分别落在
+     * 条身留驻区(离开点)与泡的 pad 区(泡的两个角)里,而三角形是凸的 ——
+     * 凸包内的点必然落在这两块的并集里。这条按 2px 网格逐点采样钉死它,
+     * 于是 AppShell 不必知道有瞄准区这回事(少一条跨层的线)。
+     */
+    it('三角区整块被「条身 ∪ 泡」的并集盖住(2px 网格逐点采样)', () => {
+      let sampled = 0
+      for (let x = 370; x <= 706; x += 2) {
+        for (let y = 726; y <= 772; y += 2) {
+          if (!withinDockAimTriangle({ x, y }, APEX, BUBBLE, 'bottom')) continue
+          sampled += 1
+          expect(
+            shouldShowDock({ shown: true, pointer: { x, y }, viewport: vp, edge: 'bottom', rect: STRIP, previewRect: BUBBLE }),
+            `三角区里的 (${x}, ${y}) 落在留驻区外`,
+          ).toBe(true)
+        }
+      }
+      expect(sampled).toBeGreaterThan(500) // 真的采到东西了,不是空跑一遍
+    })
   })
 })

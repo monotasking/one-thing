@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { useKeymapDispatch } from '../keymap/dispatch'
+import { TitleBar } from './TitleBar'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ChatStream } from '../content/ChatStream'
@@ -160,7 +161,25 @@ export function AppShell() {
             Number.isFinite(inset) ? inset : 0,
           )
         : undefined
-      if (shouldShowDock({ shown, pointer, viewport, edge: dockEdge, rect })) {
+      /*
+       * 泡开着的时候,泡也是 Dock 的地皮(09-01 修「移向 preview 途中整条 Dock 消失」)。
+       * 泡不在条的盒子里(它 absolute 浮在条外),所以 settledDockRect 一辈子看不见它 ——
+       * 真机读数:泡 220px 高,只有最下面 5.6px 落在留驻区里,指针一进泡就被判「人走了」,
+       * 300ms 后整条 Dock 平移出屏,而泡是条的后代,于是跟着一起消失在手底下。
+       *
+       * 只在条已经出来时问一次 DOM:藏着的时候没有泡可言(pointermove 是每帧都跑的那条路)。
+       */
+      const bubble = shown ? dockRef.current?.querySelector('[data-preview]') : undefined
+      const bubbleBox = bubble?.getBoundingClientRect()
+      const previewRect = bubbleBox
+        ? {
+            left: bubbleBox.left,
+            right: bubbleBox.right,
+            top: bubbleBox.top,
+            bottom: bubbleBox.bottom,
+          }
+        : undefined
+      if (shouldShowDock({ shown, pointer, viewport, edge: dockEdge, rect, previewRect })) {
         cancelHide()
         peekingRef.current = true
         setPeeking(true)
@@ -207,6 +226,9 @@ export function AppShell() {
 
   return (
     <div className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
+      {/* 自绘顶带:系统标题栏没了之后,窗口唯一的拖拽把手(09-01 拍板)。
+        * 它必须是壳里的第一件 —— 「内容从 y=0 起都是我们的」这句话的字面次序。 */}
+      <TitleBar />
       <TopBar />
 
       {/* 三明治网格:上架子一行 / [左架子 | 主区 | 右架子] / 下架子一行。
@@ -239,13 +261,19 @@ export function AppShell() {
           <ErrorBoundary where="composer">
             <Composer />
           </ErrorBoundary>
-          {/* 盖:第三种形态,只接管这一栏 —— 所以它挂在 .center **里面**
-            * (那也是它的定位参考系),四条边上的架子照样露在外面。
-            * 舞台那一层挂在壳的根上,因为它要盖住整个视口:两种形态的挂载点
-            * 差别,就是它们语义差别的字面样子。 */}
-          <CoverLayer />
         </div>
       </main>
+
+      {/* 盖:第三种形态。09-01 用户推翻了「只接管内容栏」——盖要**盖满整扇窗**
+        * (含顶带 / 顶栏 / 四条边上的架子),所以它从 .center 里搬到壳的根上,
+        * 定位也从 absolute 换成 fixed(参考系换成视口)。
+        *
+        * 它与舞台的差别因此**不再是盖住多少**,而是那两件一直就在的事:
+        * 盖是一块铺满的面(舞台是定尺画布 + scrim),而且它压不过浮窗
+        * (--z-cover 100 < --z-float 200)。层级一格没动:Dock 仍在 650,
+        * 所以盖开着时 Dock 照样唤得出、切得走 —— 那正是「盖=独占形态」该有的
+        * 出口(独占的是内容,不是整台机器)。 */}
+      <CoverLayer />
 
       {/* 两种显示模式共用这一个浮层容器:always 从不加 .hidden,autohide 平时藏着。 */}
       <div ref={dockRef} className={dockClass}>

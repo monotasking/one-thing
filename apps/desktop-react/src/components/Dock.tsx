@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import {
   GLOBAL_ITEMS,
@@ -15,12 +15,42 @@ import sw from '../workspace/swatch.module.css'
 import { DockTile } from './DockTile'
 import { useMagnify } from './useMagnify'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
+import { useHoverIntent } from '../ui/hover-intent'
+import type { HoverAimProbe, HoverPoint } from '../ui/hover-intent'
 import { useT } from '../i18n'
-import { formIn, isItemHidden, memoryIsAt } from '../stage/transitions'
+import {
+  formIn,
+  isItemHidden,
+  memoryIsAt,
+  movesTowardPreview,
+  withinDockAimTriangle,
+} from '../stage/transitions'
+import type { Rect } from '../stage/transitions'
 import { DOCK_AXIS, OPEN_PLACEMENT_CHOICES } from '../stage/types'
 import type { DockEdge, DockSize, StageItemSpec } from '../stage/types'
+import { DOCK_AIM_WINDOW_MS, PREVIEW_DELAY_MS, PREVIEW_GRACE_MS } from './motion'
 import type { LabelSide } from './DockTile'
 import s from './Dock.module.css'
+
+/** 瞄准区自己的账:离开点(三角形顶点)+ 那一刻泡的矩形。hover-intent 从不拆开看它。 */
+interface DockAim {
+  apex: HoverPoint
+  bubble: Rect
+}
+
+/**
+ * 泡的活矩形。
+ *
+ * 按属性**存在**查再核对 id,不把 id 拼进选择器:条上至多一个泡(那正是这一批
+ * 立的规矩),而拼选择器就得转义,`CSS.escape` 在测试用的 jsdom 里是 undefined。
+ * DOMRect 的四条边是原型取值器,所以逐条抄成朴素数(判例见 settledDockRect)。
+ */
+function bubbleRectOf(strip: HTMLElement | null, id: string): Rect | null {
+  const el = strip?.querySelector('[data-preview]')
+  if (!el || el.getAttribute('data-preview') !== id) return null
+  const b = el.getBoundingClientRect()
+  return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }
+}
 
 const REST_FACTOR = 1
 
@@ -125,6 +155,40 @@ export function Dock({ dimmed }: Props) {
     axis,
   )
 
+  /*
+   * ── 一次只有一个泡,且「他正冲着泡来」时谁都别插队(09-01)──────────────
+   *
+   * 主角归属上收到条这一层:泡的唯一性与「途经旁瓦不重定目标」都是**跨瓦**的话,
+   * 一块瓦说不出口(修前每块瓦各管各的,真机读数是半路先空窗、再换人并横跳 68px;
+   * 病历在 ui/hover-intent.ts 文件头)。
+   *
+   * **什么时候**由 ui/hover-intent 那只基础件说(延迟出 / 宽限收 / 瞄准区),
+   * **在哪里**由这里注入的探针说 —— 几何是形态机的词汇(四条边各有各的朝内方向),
+   * 组件库不该认识它。
+   */
+  const aim = useMemo<HoverAimProbe<DockAim>>(
+    () => ({
+      arm: (from, to, openId) => {
+        // 边界①:没有朝泡的位移分量就不武装 —— 沿条横向巡瓦必须保持即时切换。
+        if (!movesTowardPreview(from, to, dockEdge)) return null
+        const bubble = bubbleRectOf(stripRef.current, openId)
+        return bubble ? { apex: to, bubble } : null
+      },
+      track: (a, from, to) => ({
+        inside: withinDockAimTriangle(to, a.apex, a.bubble, dockEdge),
+        progressed: movesTowardPreview(from, to, dockEdge),
+      }),
+    }),
+    [dockEdge, stripRef],
+  )
+  const { openId: previewOpenId, controller: preview } = useHoverIntent<DockAim>({
+    delayMs: PREVIEW_DELAY_MS,
+    graceMs: PREVIEW_GRACE_MS,
+    aimWindowMs: DOCK_AIM_WINDOW_MS,
+    aim,
+    onChange: () => {},
+  })
+
   return (
     <div
       ref={stripRef}
@@ -141,8 +205,16 @@ export function Dock({ dimmed }: Props) {
       ]
         .filter(Boolean)
         .join(' ')}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
+      /* 一条 move 两个消费者:磁性放大读它算系数,瞄准区读它判「还在冲着泡来吗」。
+       * 泡是瓦的后代 = 条的后代,所以指针停在泡上时这条 move 照样收得到。 */
+      onMouseMove={(e) => {
+        onMouseMove(e)
+        preview.move({ x: e.clientX, y: e.clientY })
+      }}
+      onMouseLeave={() => {
+        onMouseLeave()
+        preview.cancel()
+      }}
     >
       {tiles.map((tile, i) => {
         const node =
@@ -154,6 +226,10 @@ export function Dock({ dimmed }: Props) {
               factor={factors[i] ?? REST_FACTOR}
               tileRef={setTileRef(i)}
               labelSide={LABEL_SIDE[dockEdge]}
+              /* 加号没有面可预览,但它照样是别人的「离开」—— 所以它也报进出,
+               * 只是报的时候说明自己开不出泡。 */
+              onHoverEnter={() => preview.enter('__plus', false)}
+              onHoverLeave={() => preview.leave('__plus')}
             />
           ) : (
             <DockTile
@@ -187,6 +263,11 @@ export function Dock({ dimmed }: Props) {
               previewId={
                 formIn(placements, tile.item.id) === 'dock' ? tile.item.id : undefined
               }
+              previewOpen={previewOpenId === tile.item.id}
+              onHoverEnter={() =>
+                preview.enter(tile.item.id, formIn(placements, tile.item.id) === 'dock')
+              }
+              onHoverLeave={() => preview.leave(tile.item.id)}
               onClick={() => click(tile.item.id)}
               onContextMenu={(e) => {
                 e.preventDefault()

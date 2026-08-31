@@ -23,6 +23,16 @@ export const PREVIEW_DELAY_MS = 600 // --dur-preview-delay:悬停多久才把 Do
  * 与 ATT_GRACE_MS 同为「宽限」不是「动画」:动效档 none 一格都不碰它。
  */
 export const PREVIEW_GRACE_MS = 320
+/**
+ * --dur-dock-aim-window:预览泡**瞄准区**的停顿窗口(09-01 修「走向泡的路上泡换人/消失」)。
+ *
+ * 它量的不是飞行总时长而是**停顿**:每一步只要还朝泡推进就续期,所以慢慢瞄
+ * 不会被切断(真机上一条慢而平的真手路径要走一秒多,写成总时长必然中途到期);
+ * 停在瞄准区里不动超过这么久,才认为「他不瞄了」并恢复常态。
+ * 400 是主流 menu-aim 实现的那一档,也在用户拍板的 300–500 带内。
+ * 与 PREVIEW_GRACE_MS 同为**手势窗口**不是动画:动效档 none 一格都不碰它。
+ */
+export const DOCK_AIM_WINDOW_MS = 400
 export const SCROLL_SETTLE_MS = 400 // --dur-scroll-settle
 // --dur-skeleton-delay:载入骨架的出场延迟。比这更快回来的请求根本不该闪一下骨架
 // (规范:150ms 内到手就当作「立刻」)。
@@ -42,6 +52,7 @@ export const ESC_STOP_WINDOW_MS = 2000
  * 这是读认窗口不是动画时长,动效档(none)不清零它。
  */
 export const COPY_FEEDBACK_MS = 1500
+
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
 /**
  * 一条 toast 自动消失前活多久 —— 按级别分档(--dur-toast-success / -info / -warn)。
