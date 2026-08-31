@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FilesDirectoryEntry } from '@shared/ipc/files'
 import { configureFilesPort } from './files-port'
 import type { FilesPort } from './files-port'
 import {
+  FILES_ROW_H,
   PREVIEW_MAX_BYTES,
   baseNameOf,
   breadcrumbsOf,
@@ -11,6 +15,7 @@ import {
   formatBytes,
   formatMtime,
   langOfPath,
+  rowWindow,
   sessionCwdOf,
   useFilesSource,
 } from './files-source'
@@ -24,6 +29,12 @@ import { SESSIONS } from './__fixtures__/sessions'
  */
 
 const ROOT = '/repo'
+
+/** 跨文件执法:行高的 JS 侧与 CSS 侧是同一个数(同 motion-tokens.test 的判例)。 */
+const tokensCss = readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '../styles/tokens.css'),
+  'utf-8',
+)
 
 function dir(entries: FilesDirectoryEntry[]): DirState {
   return { status: 'ready', entries }
@@ -154,9 +165,14 @@ describe('懒展开与每目录一次', () => {
 })
 
 describe('摊平(投影,不是状态)', () => {
-  it('根还没拉到 = 一行「正在读取」,而不是一张空树', () => {
+  /*
+   * 定稿改判:「正在读取」那四个字换成两条骨架短横。**两行而不是一行**是硬约束 ——
+   * 窗口化渲染按「行序 × 行高」反推位置,一个两倍高的特例会把整条卷轴算歪。
+   */
+  it('根还没拉到 = 两条骨架短横(各占一行),而不是一张空树', () => {
     expect(flattenTree(ROOT, {}, {})).toEqual([
-      { kind: 'note', id: `${ROOT}:loading`, depth: 0, note: 'loading' },
+      { kind: 'skeleton', id: `${ROOT}:skel:1`, depth: 0, bar: 1 },
+      { kind: 'skeleton', id: `${ROOT}:skel:2`, depth: 0, bar: 2 },
     ])
   })
 
@@ -170,10 +186,10 @@ describe('摊平(投影,不是状态)', () => {
       [`${ROOT}/src`]: dir([entry('b.ts', 'file', `${ROOT}/src`)]),
     }
     const closed = flattenTree(ROOT, dirs, {})
-    expect(closed.map((r) => (r.kind === 'entry' ? r.name : r.note))).toEqual(['src', 'a.ts'])
+    expect(closed.map((r) => (r.kind === 'entry' ? r.name : r.kind))).toEqual(['src', 'a.ts'])
 
     const open = flattenTree(ROOT, dirs, { [`${ROOT}/src`]: true })
-    expect(open.map((r) => (r.kind === 'entry' ? `${r.depth}:${r.name}` : r.note))).toEqual([
+    expect(open.map((r) => (r.kind === 'entry' ? `${r.depth}:${r.name}` : r.kind))).toEqual([
       '0:src',
       '1:b.ts',
       '0:a.ts',
@@ -183,11 +199,59 @@ describe('摊平(投影,不是状态)', () => {
   it('三种诚实交代各是一行:空 / 没权限 / 读不到', () => {
     const note = (state: DirState) => {
       const rows = flattenTree(ROOT, { [ROOT]: state }, {})
-      return rows[0].kind === 'note' ? rows[0].note : rows[0].name
+      return rows[0].kind === 'note' ? rows[0].note : rows[0].kind
     }
     expect(note(dir([]))).toBe('empty')
     expect(note({ status: 'error', entries: [], error: 'Permission denied' })).toBe('denied')
     expect(note({ status: 'error', entries: [], error: 'boom' })).toBe('failed')
+  })
+
+  it('失败那一行带着它说的是**哪个目录** —— 「重试」拿它去重拉', () => {
+    const rows = flattenTree(ROOT, { [ROOT]: { status: 'error', entries: [], error: 'boom' } }, {})
+    expect(rows[0].kind === 'note' && rows[0].dir).toBe(ROOT)
+  })
+})
+
+/**
+ * 窗口化的算术。它是纯函数,所以这里一行 React 都不渲染 —— 钉的是
+ * 「卷到这儿的时候该画哪一段、前后各垫多高」这件事本身。
+ */
+describe('窗口化:只画看得见的那一段', () => {
+  it('行高与 tokens.css 的 --files-row-h 是同一个数(一处改了另一处必须跟)', () => {
+    expect(tokensCss).toContain(`--files-row-h: ${FILES_ROW_H}px`)
+  })
+
+  it('一屏 10 行的视口:卷在顶上时画的是「窗口 + 下缓冲」,不是全表', () => {
+    const win = rowWindow(1000, 0, 10 * FILES_ROW_H)
+    expect(win.start).toBe(0)
+    // 可视 10 行 +1(半行)+ 8 行缓冲
+    expect(win.end).toBe(19)
+    expect(win.padTop).toBe(0)
+    expect(win.padBottom).toBe((1000 - 19) * FILES_ROW_H)
+  })
+
+  it('卷到中间:上下各留 8 行缓冲,撑子把卷轴长度补回原样', () => {
+    const win = rowWindow(1000, 100 * FILES_ROW_H, 10 * FILES_ROW_H)
+    expect(win.start).toBe(92)
+    expect(win.end).toBe(119)
+    // 撑子 + 画出来的行 = 全表高度,所以卷轴与「全画出来」逐像素相同。
+    expect(win.padTop + (win.end - win.start) * FILES_ROW_H + win.padBottom).toBe(
+      1000 * FILES_ROW_H,
+    )
+  })
+
+  it('卷到底:窗口夹在表尾,padBottom 归零', () => {
+    const win = rowWindow(50, 40 * FILES_ROW_H, 10 * FILES_ROW_H)
+    expect(win.end).toBe(50)
+    expect(win.padBottom).toBe(0)
+  })
+
+  it('还没量到视口(第一帧 / 面被收着)= 整表窗口,宁可多画也不画一片空白', () => {
+    expect(rowWindow(300, 0, 0)).toEqual({ start: 0, end: 300, padTop: 0, padBottom: 0 })
+  })
+
+  it('空表就是空窗口', () => {
+    expect(rowWindow(0, 0, 400)).toEqual({ start: 0, end: 0, padTop: 0, padBottom: 0 })
   })
 })
 

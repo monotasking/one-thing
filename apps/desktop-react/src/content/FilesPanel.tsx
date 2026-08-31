@@ -1,14 +1,33 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
-import { ChevronDown, ChevronRight, Copy, Check, Eye, RotateCcw, X, resolveIcon } from '../components/icons'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsUp,
+  Copy,
+  Check,
+  Ellipsis,
+  Eye,
+  Info,
+  RotateCcw,
+  TriangleAlert,
+  X,
+  resolveIcon,
+} from '../components/icons'
 import { COPY_FEEDBACK_MS } from '../components/motion'
 import { Button } from '../ui/Button'
-import { Dialog } from '../ui/Dialog'
+import { Input } from '../ui/Input'
+import { Kbd } from '../ui/Kbd'
+import { Menu, MenuItem, MenuSeparator, MenuSection } from '../ui/Menu'
+import { Popover } from '../ui/Popover'
 import { Spinner } from '../ui/Spinner'
 import { announce } from '../ui/a11y/live-region'
+import { formatCombo, platformOf } from '../keymap/transitions'
 import { useT, resolveLang } from '../i18n'
 import type { Lang, MessageKey, TFn } from '../i18n'
 import { useStageStore } from '../stage/store'
+import { useExposeStore } from '../expose/store'
+import { useSessionsSource } from '../data/sessions-source'
 import {
   baseNameOf,
   breadcrumbsOf,
@@ -16,77 +35,89 @@ import {
   formatBytes,
   formatMtime,
   langOfPath,
+  rowWindow,
   useFilesSource,
   useSessionCwd,
   PREVIEW_MAX_BYTES,
 } from '../data/files-source'
 import type {
+  Crumb,
   FileDetailState,
   FileFailure,
   PreviewState,
   RootStatus,
   TreeRow,
 } from '../data/files-source'
-import { iconSpecOf, isHiddenName, toneVar } from '../data/file-icons'
+import {
+  FILE_OPEN_MODES,
+  FILE_OPEN_MODE_LABELS,
+  isWiredFileOpenMode,
+  useFileOpenMode,
+} from '../data/file-open-mode'
+import { brandVars, glyphOf, isHiddenName, toneVar } from '../data/file-icons'
+import type { FileGlyph } from '../data/file-icons'
 import { BlockView } from './blocks/BlockView'
 import s from './FilesPanel.module.css'
 
 /**
  * 文件树 = 一块**普通的 Dock 内容**(id 'files'),所以它能上舞台 / 变浮窗 / 钉到边,
  * 三种形态里长得一模一样 —— 这正是 renderContent 那张表存在的理由。
- * D5 之前这块面是 `FilesMock` 的三行写死假树,现在它说的是真事实。
  *
- * ── 形状(08-31 拍板「IDE 紧凑树」)─────────────────────────────────────
- * 头(**面包屑路径** + 重新读取)/ 身(懒展开的树)/ 底(一句小注,平时没有)。
+ * ── 形状(08-31 claude design 定稿)────────────────────────────────────────
+ * 头(面包屑 + 全部收起 + 重新读取)/ 告知条(只在没绑工作目录时)/ 身(懒展开的
+ * 窗口化树)/ 底(一句用法提示)+ 三层浮起来的东西(预览 / 行菜单 / 详情浮层)。
  *
- * 三处与改版前不同,三条各自的理由:
+ * 定稿相对上一版(989dd3b6)的六处改判,每一处各自的理由:
  *
- * ① **面板内那个「文件」大标题退役**。tab 上已经写着「文件」,面板里再写一遍是
- *    同一句话说两遍;那条最值钱的横向带宽应该给**此刻在哪儿**。所以头上换成
- *    路径本身,而且逐段可点 —— 路径从「一行只能读的字」变成「一排能回跳的门」。
- *    尾段是当前所在,画成不可点的文字:它已经在这儿了,点它没有去处。
+ * ① **类型标识拆成二形**。语言画**品牌色字标**(TS / PY / LUA / SH / MD /『{ }』),
+ *    说不出语言的画 lucide 图标 —— 判据与两张表都在 `data/file-icons.ts`,
+ *    这里只把交出来的名字兑成组件与变量。理由:lucide 没有语言 logo,一屏里
+ *    全是同一张「带尖括号的纸」,扫的时候读不出是哪一门。
  *
- * ② **行上零 meta**。一行永远只有三件东西:展开箭头(目录才有)/ 图标 / 名字。
- *    大小与时间**一律不进树** —— 树是拿来**扫**的,扫的时候没人在读字节数;
- *    每行多两列会把唯一的弯腰件(名字)挤成省略号,而名字正是扫的时候唯一要看的。
- *    真要那两个数的那一刻,是「问一件具体的东西」,那是详情干的活(见 ③)。
- *    行高比通用的 --row-h 再紧一档(26 vs 28):一屏多两行比一行宽两像素值钱。
+ * ② **「打开」与「选中」分离**。选中 = 底色(此刻手指头点在哪一行),打开 = 行尾
+ *    一颗 accent 圆点(这个文件的内容正开着)。它们是两件事:你可以选中 A 而开着 B。
  *
- * ③ **双击 = 详情**。单击的语义一个字不改(目录展开 / 文件预览),详情走双击这条
- *    从来空着的路。载体选 ui/Dialog 而不是面板内就地卡,理由写在 FileDetailDialog 上。
- *    键盘上的等价物是 ⌘/Ctrl + Enter(macOS 访达的「显示简介」是 ⌘I,这里让位给
- *    壳的快捷键表)—— 双击是鼠标的路,不是唯一的路。
+ * ③ **行尾 ⋯ / 右键出菜单**。菜单里那一组「打开方式」今天只有「面板内」真生效,
+ *    其余六档**记住选择 + 一句注脚**(诚实降级,判据在 data/file-open-mode.ts)。
  *
- * ④ **行尾那枚常驻的 reveal 钮跟着 ② 一起退役**:它占掉一整个 --row-h 见方的
- *    布局预留,而它要做的事已经在详情面上有了一颗带文字的钮(比一枚只有悬停才
- *    显形的图标说得清)。这是本批**唯一一处可感知的能力位移**,不是删除:
- *    路径没少,只是从「每行悬停」挪到了「双击进详情」。
+ * ④ **详情从 Dialog 改成附属浮层**(ui/Popover)。理由是语义:详情是「瞄一眼」,
+ *    不是「答一道题」——Dialog 压一层遮罩,把树整个盖住,而回来时滚动位置已经变了。
+ *    浮层不遮树、点别处即散、Esc 关;焦点照 Menu 的手圈禁,但**不谎称 modal**。
+ *    双击那条路一个字没改(它仍然开详情),菜单里的「详情 ⌘I」是它的第二个入口。
  *
- * ── 图标是真的 ────────────────────────────────────────────────────────
- * 目录 = Folder(展开态 FolderOpen);文件按**扩展名映射表**取图标与类型色,
- * 表在 data/file-icons.ts(纯模块,不 import React 也不 import lucide),
- * 色值在 styles/tokens.css 的「文件类型色板」一节。组件这一层既不认识扩展名,
- * 也不认识色值 —— 它只把两个字符串兑成组件与 `var(--ft-*)`。
- * 隐藏文件(`.` 开头)整行降透明:不换色,换色会读成「另一种东西」。
+ * ⑤ **窗口化渲染**。只画可视窗 + 上下各 8 行,前后各垫一块空撑子 —— 卷轴长度与
+ *    「全画出来」逐像素相同。行高恒定 27 是它的前提,所以骨架 / 空 / 失败三种注行
+ *    与条目行**同高**(那不是审美对齐,那是算式的前提)。算术在 `rowWindow`,纯函数。
  *
- * 点一个文件 = 打开只读预览。预览**盖住身**而不是切一半:这块面在架子里可以窄到
- * 260px,横着切两栏是律四(每个组件在自己声明的最小宽度下零重叠)当场违规。
- * 预览的正文走的是聊天区那条**同一条**代码块渲染路径(`BlockView` +
- * `kind:'code'`),所以高亮、块内横滚、限高折叠、复制源码四件全是白拿的 ——
- * 这块面自己一行都没写。
+ * ⑥ **三种「还没有内容」各说各的**:懒展开画两条骨架短横(不是「正在读取…」四个字
+ *    ——那四个字在一屏树里读起来像一行文件名)、空目录画一行斜体、读失败画一句
+ *    danger 小字 + 一颗「重试」(只重拉出错那一层,不是整棵树重来)。
  *
- * ── 三态诚实 ──────────────────────────────────────────────────────────
- * 空目录 / 读不到 / 没权限,各说各的话(注行),后端原话原样跟在后面 ——
- * 归类在 data/files-source.ts 的 classifyFileFailure 里定一次,三处(树、预览、
- * 详情)共用。没有一处失败是静默的。
+ * ── 键盘:⌘I 的裁定(记档)──────────────────────────────────────────────────
+ * 定稿要 ⌘I 唤详情。查了 `keymap/transitions.ts` 的出厂表:**没有任何命令占着
+ * `i`**(⌘P/⌘E/⌘J/⌘N/⌘⇧O/⌘1-3 是全部),所以不存在冲突,无需按次序裁决。
+ *
+ * 但它**没有进 KEYMAP_COMMANDS**,这是有意的:那张表里的每一条都是**全局命令**
+ * (开一块面 / 建一条会话),而「看这一项的详情」需要一个**目标** —— 焦点不在某一行
+ * 上时它无事可做。这与 `keymap/types.ts` 顶上那条「结构导航键不经过派发器」是同一
+ * 条纪律,所以 ⌘I 长在行自己的 keydown 上。副作用是好的:`lookupCommand` 认不出
+ * ⌘I → 全局派发器不 preventDefault → 这一下原样落到行上。
+ * 留账:哪天用户把某条命令改绑到 ⌘I,`bindCombo` 看不见这条行内键,会静默把它盖住
+ * (焦点在行上时两者都想响)。要根治得让行内键也进注册表,那是另一批的事。
+ * ──────────────────────────────────────────────────────────────────────────
  */
 
-/** 「在文件管理器里定位」的钮(详情面底部动作组)。 */
+/** 「在文件管理器里定位」的钮(详情浮层底部动作组)。 */
 const RevealIcon = resolveIcon('FolderOpen')
 
-/** 注行的三档失败 + 两档非失败,各一句人话。 */
-const NOTE_LABELS: Record<'loading' | 'empty' | FileFailure, MessageKey> = {
-  loading: 'files.dirLoading',
+/** 面包屑最多平铺几段;再多就把**中段**折成一个 `…`(首段与末两段永远在)。 */
+const CRUMB_MAX = 4
+
+/** 详情浮层离锚点行的那一点空隙。 */
+const POPOVER_GAP = 4
+
+/** 注行的两档失败 + 一档非失败,各一句人话。 */
+const NOTE_LABELS: Record<'empty' | FileFailure, MessageKey> = {
   empty: 'files.dirEmpty',
   denied: 'files.dirDenied',
   missing: 'files.dirMissing',
@@ -116,10 +147,17 @@ const DETAIL_FAILURE_LABELS: Record<FileFailure, MessageKey> = {
  */
 const ABSENT = '—'
 
+/** 一处浮层的落点(视口坐标)。菜单与详情浮层共用这一个形状。 */
+interface Anchor {
+  x: number
+  y: number
+}
+
 export function FilesPanel() {
   const t = useT()
   const lang = resolveLang(useStageStore((st) => st.locale))
   const cwd = useSessionCwd()
+  const sessionId = useExposeStore((st) => st.currentSessionId)
   const root = useFilesSource((st) => st.root)
   const rootStatus = useFilesSource((st) => st.rootStatus)
   const rootOrigin = useFilesSource((st) => st.rootOrigin)
@@ -131,6 +169,8 @@ export function FilesPanel() {
   const setRoot = useFilesSource((st) => st.setRoot)
   const navigateRoot = useFilesSource((st) => st.navigateRoot)
   const toggleDir = useFilesSource((st) => st.toggleDir)
+  const collapseAll = useFilesSource((st) => st.collapseAll)
+  const retryDir = useFilesSource((st) => st.retryDir)
   const refresh = useFilesSource((st) => st.refresh)
   const openPreview = useFilesSource((st) => st.openPreview)
   const closePreview = useFilesSource((st) => st.closePreview)
@@ -138,73 +178,222 @@ export function FilesPanel() {
   const closeDetail = useFilesSource((st) => st.closeDetail)
   const reveal = useFilesSource((st) => st.reveal)
 
+  /**
+   * 选中 = **视图状态**,所以它住在这里而不是 store 里:换一块面它就该归零,
+   * 而 store 里那份「树展开到哪儿」是要活过面板开合的(树不卸载铁律)。
+   */
+  const [selected, setSelected] = useState<string | null>(null)
+  /** 行菜单:开在哪一行、开在哪个点。 */
+  const [menu, setMenu] = useState<{ row: EntryRow; at: Anchor } | null>(null)
+  /** 详情浮层贴在哪儿(它跟着开它的那一行走,不是屏幕中央)。 */
+  const [detailAt, setDetailAt] = useState<Anchor | null>(null)
+  /** 「重新读取」按了几次 —— 那枚图标每按一次多转一圈(单调递增,见下面的注)。 */
+  const [spins, setSpins] = useState(0)
+
   // 根跟着活跃会话走。判据不在这里 —— useSessionCwd 是它唯一的产地,
   // 这里只负责把结果交给数据源(setRoot 自己幂等)。
   useEffect(() => {
     void setRoot(cwd)
   }, [cwd, setRoot])
 
-  const rows = flattenTree(root, dirs, expanded)
-  const footNote = footNoteOf(rootStatus, rootOrigin, rootError, t)
+  const rows = useMemo(() => flattenTree(root, dirs, expanded), [root, dirs, expanded])
+
+  /* ── 窗口化:量视口 + 跟卷轴 ─────────────────────────────────────────── */
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportH, setViewportH] = useState(0)
+
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const measure = () => setViewportH(el.clientHeight)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const win = rowWindow(rows.length, scrollTop, viewportH)
+  const shown = rows.slice(win.start, win.end)
+
+  const openMenuFor = useCallback((row: EntryRow, at: Anchor) => {
+    setSelected(row.path)
+    setMenu({ row, at })
+  }, [])
+
+  const openDetailFor = useCallback(
+    (row: { path: string; name: string; type: 'file' | 'directory' }, at: Anchor) => {
+      setSelected(row.path)
+      setDetailAt(at)
+      void openDetail({ path: row.path, name: row.name, type: row.type })
+    },
+    [openDetail],
+  )
+
+  const footNote = footNoteOf(rootStatus, rootError, t)
+  const noWorkdir = rootStatus === 'ready' && rootOrigin === 'home'
 
   return (
     <div className={s.panel} data-testid="files-panel">
       <div className={s.head}>
         {/*
-         * `data-testid="files-root"` 留在原地不动:门(scripts/gate-files.mjs)问的是
-         * 「这块面此刻说自己在哪儿」,那是**事实**,不该因为它从一行字变成一排钮
-         * 就换个名字。分隔斜杠是真的文本节点,所以整条 textContent 仍然逐字等于根路径。
+         * `data-testid="files-root"` 留在原地不动。**但取件口从 textContent 换成了
+         * `data-root`**:面包屑的中段现在会折成 `…`(深路径下平铺一排会把整条头
+         * 挤成一条滚轨),折过之后 textContent 就不再逐字等于那条路径了。
+         * 屏幕上说的是「我在哪儿」(可折),`data-root` 说的是「那条路径本身」
+         * (永不折)—— 门与单测问后者,那才是它们真正要问的事实。
          */}
-        <nav className={s.crumbs} aria-label={t('files.breadcrumb')} data-testid="files-root">
+        <nav
+          className={s.crumbs}
+          aria-label={t('files.breadcrumb')}
+          data-testid="files-root"
+          data-root={root ?? ''}
+        >
           <RootCrumbs root={root} status={rootStatus} t={t} onJump={(at) => void navigateRoot(at)} />
         </nav>
         <Button
           iconOnly
+          aria-label={t('files.collapseAll')}
+          disabled={Object.keys(expanded).length === 0}
+          onClick={collapseAll}
+        >
+          <ChevronsUp className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
+        </Button>
+        <Button
+          iconOnly
           aria-label={t('files.refresh')}
           disabled={rootStatus !== 'ready'}
-          onClick={() => void refresh()}
+          onClick={() => {
+            setSpins((n) => n + 1)
+            void refresh()
+          }}
         >
-          <RotateCcw className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
+          {/*
+           * 「重新读取」按下去转一圈。**是一次过渡,不是一段循环动画**:它说的是
+           * 「你刚才那一下到了」,不是「我在忙」(忙由树上那两条骨架说)。所以角度
+           * 单调递增(每按一次 +360),靠 .headIcon 上那条 transform 过渡走完 ——
+           * 一个 @keyframes 都不用加(全仓关键帧只在 styles/motion.css 里长)。
+           */}
+          <RotateCcw
+            className={s.headIcon}
+            style={{ transform: `rotate(${spins * -360}deg)` }}
+            strokeWidth={1.75}
+            aria-hidden="true"
+          />
         </Button>
       </div>
 
-      <div className={s.body} aria-label={t('files.treeLabel')} data-testid="files-tree">
-        {rows.map((row) =>
-          row.kind === 'note' ? (
-            <p key={row.id} className={s.note} style={depthVar(row.depth)}>
-              <span className={s.noteText}>{t(NOTE_LABELS[row.note])}</span>
+      {noWorkdir && <NoWorkdirNotice sessionId={sessionId} t={t} />}
+
+      <div
+        className={s.body}
+        ref={bodyRef}
+        aria-label={t('files.treeLabel')}
+        data-testid="files-tree"
+        onScroll={(e) => {
+          setScrollTop(e.currentTarget.scrollTop)
+          /*
+           * 顺手把视口高度也读一遍。ResizeObserver 是**主要**产地,这里是补丁:
+           * 面板刚从收起态展开、或宿主换了形态的那一帧,观察者还没来得及回调,
+           * 而用户已经在卷了 —— 那一帧按旧高度算窗口会短一截。
+           * 代价是一次 clientHeight 读(我们本来就在读 scrollTop,同一次布局),
+           * 而且值没变时 setState 会被 React 直接短路,不引起重渲染。
+           */
+          setViewportH(e.currentTarget.clientHeight)
+        }}
+      >
+        {/* 窗口前后的两块空撑子:它们不是内容,只是让卷轴与「全画出来」一样长。 */}
+        {win.padTop > 0 && <div style={{ height: win.padTop }} aria-hidden="true" />}
+        {shown.map((row) =>
+          row.kind === 'skeleton' ? (
+            <div
+              key={row.id}
+              className={s.skelRow}
+              style={depthVar(row.depth)}
+              /* 两条短横合起来才是一句话「这一层还在读」,所以只让第一条报出来。 */
+              role={row.bar === 1 ? 'status' : undefined}
+              aria-label={row.bar === 1 ? t('files.dirLoading') : undefined}
+            >
+              <span
+                className={row.bar === 1 ? `${s.skelBar} ${s.skelBar1}` : `${s.skelBar} ${s.skelBar2}`}
+                aria-hidden="true"
+              />
+            </div>
+          ) : row.kind === 'note' ? (
+            <div key={row.id} className={s.note} style={depthVar(row.depth)}>
+              <span className={row.note === 'empty' ? s.noteEmpty : s.noteFail}>
+                {t(NOTE_LABELS[row.note])}
+              </span>
               {row.error && <span className={s.noteDetail}>{row.error}</span>}
-            </p>
+              {row.note !== 'empty' && (
+                <button
+                  type="button"
+                  className={s.noteRetry}
+                  onClick={() => void retryDir(row.dir)}
+                >
+                  {t('files.retry')}
+                </button>
+              )}
+            </div>
           ) : (
             <TreeEntryRow
               key={row.path}
               row={row}
-              onActivate={() =>
-                row.type === 'directory' ? void toggleDir(row.path) : void openPreview(row.path)
-              }
-              onDetail={() =>
-                void openDetail({ path: row.path, name: row.name, type: row.type })
-              }
+              t={t}
+              selected={selected === row.path}
+              opened={preview?.path === row.path}
+              onActivate={() => {
+                setSelected(row.path)
+                if (row.type === 'directory') void toggleDir(row.path)
+                else void openPreview(row.path)
+              }}
+              onDetail={(at) => openDetailFor(row, at)}
+              onMenu={(at) => openMenuFor(row, at)}
             />
           ),
         )}
+        {win.padBottom > 0 && <div style={{ height: win.padBottom }} aria-hidden="true" />}
       </div>
 
-      {/*
-       * 「这不是你以为的那棵树」这句话从头上的根条挪到了底注:它是**一句交代**,
-       * 不是一件要一直盯着的事,而头上那条带宽已经给了路径本身。
-       */}
       {footNote && <p className={s.foot}>{footNote}</p>}
 
+      {/* 底部提示条:一句用法,不是一条状态 —— 所以它永远在,而且不抢眼。 */}
+      <p className={s.hint}>
+        <Info className={s.hintIcon} strokeWidth={1.75} aria-hidden="true" />
+        <span className={s.hintText}>{t('files.hint')}</span>
+      </p>
+
       {preview && <PreviewLayer preview={preview} t={t} onClose={closePreview} />}
-      {detail && (
-        <FileDetailDialog
+
+      {menu && (
+        <RowMenu
+          row={menu.row}
+          at={menu.at}
+          t={t}
+          onClose={() => setMenu(null)}
+          onActivate={() => {
+            if (menu.row.type === 'directory') void toggleDir(menu.row.path)
+            else void openPreview(menu.row.path)
+          }}
+          onDetail={() => openDetailFor(menu.row, menu.at)}
+          onReveal={() => void reveal(menu.row.path)}
+        />
+      )}
+
+      {detail && detailAt && (
+        <FileDetailPopover
           detail={detail}
+          at={detailAt}
           lang={lang}
           t={t}
-          onClose={closeDetail}
+          onClose={() => {
+            setDetailAt(null)
+            closeDetail()
+          }}
           onReveal={() => void reveal(detail.path)}
           onPreview={() => {
+            setDetailAt(null)
             closeDetail()
             void openPreview(detail.path)
           }}
@@ -214,35 +403,119 @@ export function FilesPanel() {
   )
 }
 
+type EntryRow = Extract<TreeRow, { kind: 'entry' }>
+
 /** 缩进不写字面 px:深度以无单位数进 CSS 变量,一格多宽由样式表说了算。 */
 function depthVar(depth: number): CSSProperties {
   return { '--depth': depth } as CSSProperties
 }
 
-/** 一行两个变量:缩进深度 + 这一行图标的类型色(色值本身仍然只在 tokens.css 里)。 */
-function rowVars(depth: number, tone: string): CSSProperties {
-  return { '--depth': depth, '--ft': tone } as CSSProperties
+/**
+ * 底注。**「显示的是主目录」那一句已经搬去告知条了**(定稿:它带着一个可做的
+ * 动作,一句躺在底部的灰字承不住)。这里只剩下真·失败那一档。
+ */
+function footNoteOf(status: RootStatus, error: string | undefined, t: TFn): string | null {
+  if (status === 'error') return error ?? t('files.rootFailed')
+  return null
 }
 
 /**
- * 底注。三档里只有两档有话说 —— 正常态(会话的工作目录)与手动漫游态
- * (用户自己点面包屑走上去的)都不说话:前者是本来就该看到的,后者是用户自己
- * 刚做的事。**手动态尤其不能再说「显示的是主目录」**,那会变成一句假话。
+ * 无工作目录告知条。**一条带子,不是一块面**:它说一句事实,并给出唯一那个
+ * 能改变这件事实的动作。
+ *
+ * 「绑定…」为什么是**一行输入**而不是一个系统目录选择器:这层壳里没有 dialog 桥
+ * (`shell:invoke` 的 `dialog` 域住在 Electron 宿主里,而这块面在 web 面上也要能用)。
+ * 与其画一颗点了什么都不发生的「浏览…」,不如老老实实收一条绝对路径 ——
+ * 后端 `updateWorkingDirectory` 本来收的也正是一条路径。记档:有了 dialog 桥之后
+ * 这里应当补一颗「浏览…」,而不是把这条输入行删掉(键盘用户仍然要它)。
  */
-function footNoteOf(
-  status: RootStatus,
-  origin: 'session' | 'home' | 'manual',
-  error: string | undefined,
-  t: TFn,
-): string | null {
-  if (status === 'error') return error ?? t('files.rootFailed')
-  if (status === 'ready' && origin === 'home') return t('files.rootFallback')
-  return null
+function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn }) {
+  const setWorkingDirectory = useSessionsSource((st) => st.setWorkingDirectory)
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    const dir = value.trim()
+    if (!dir || busy) return
+    setBusy(true)
+    const outcome = await setWorkingDirectory(sessionId, dir)
+    setBusy(false)
+    if (outcome.ok) {
+      setEditing(false)
+      setValue('')
+      setError(null)
+      return
+    }
+    // 失败**留在原地说**:输入行不收,用户刚打的那条路径还在,改一个字就能重试。
+    setError(outcome.error)
+  }
+
+  if (!editing) {
+    return (
+      <div className={s.notice} data-testid="files-no-workdir">
+        <TriangleAlert className={s.noticeIcon} strokeWidth={1.75} aria-hidden="true" />
+        <span className={s.noticeText}>{t('files.rootFallback')}</span>
+        {/* 没有当前会话就没有可绑的对象 —— 那时只说事实,不画一颗按不响的钮。 */}
+        {sessionId && (
+          <button type="button" className={s.noticeAction} onClick={() => setEditing(true)}>
+            {t('files.bind')}
+          </button>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className={s.bindRow} data-testid="files-bind-row" ref={focusFieldOnMount}>
+      <Input
+        size="sm"
+        className={s.bindInput}
+        value={value}
+        onValueChange={setValue}
+        invalid={Boolean(error)}
+        aria-label={t('files.bindPlaceholder')}
+        placeholder={t('files.bindPlaceholder')}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void submit()
+          if (e.key === 'Escape') setEditing(false)
+        }}
+      />
+      <Button variant="primary" disabled={!value.trim() || busy} onClick={() => void submit()}>
+        {t('common.confirm')}
+      </Button>
+      <Button onClick={() => setEditing(false)}>{t('common.cancel')}</Button>
+      {error && (
+        <span className={s.bindError}>
+          {t('files.bindFailed')}
+          <span className={s.noteDetail}>{error}</span>
+        </span>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 输入行一出现就把光标放进去。
+ *
+ * **不用 `autoFocus`**:那个属性是「页面一加载就抢焦点」,jsx-a11y 拦它拦得对 ——
+ * 但这里的语义完全不同:用户刚**亲手点了**「绑定…」,焦点跟着那一下走是他要的结果
+ * (与 Menu 开启时把焦点移进容器同一条口径)。所以走一颗回调 ref:元素挂上来的
+ * 那一刻放焦点,元素卸载时(ref 收到 null)什么都不做。
+ */
+function focusFieldOnMount(node: HTMLDivElement | null): void {
+  node?.querySelector('input')?.focus()
 }
 
 /**
  * 头上那一排路径。**这是投影**(breadcrumbsOf 是纯函数,判据不在这里)。
  * 三档各说各的,**不拿一个假路径去顶**还没定下来的根。
+ *
+ * 段数超过 CRUMB_MAX 时把**中段**折成一个 `…`:首段(通常是 `/Users`)与末两段
+ * (「我在哪儿」与「从哪儿来的」)是这条路径上唯一还在被读的三格,中间那几层
+ * 在窄面板里只会把整条头挤成一条横向滚轨。折的是**显示**不是事实 ——
+ * 那条完整路径仍然原样挂在 `data-root` 上。
  */
 function RootCrumbs({
   root,
@@ -264,14 +537,28 @@ function RootCrumbs({
   const crumbs = breadcrumbsOf(root)
   // 根就是 `/`:一段可点的都没有,屏幕上只剩那条领头的斜杠。这是事实不是缺陷。
   if (crumbs.length === 0) return <span className={s.crumbSep}>/</span>
+  const shown: (Crumb | 'ellipsis')[] =
+    crumbs.length > CRUMB_MAX
+      ? [crumbs[0], 'ellipsis', ...crumbs.slice(-2)]
+      : crumbs
   return (
     <>
-      {crumbs.map((crumb, index) => {
-        const last = index === crumbs.length - 1
+      {shown.map((crumb, index) => {
+        if (crumb === 'ellipsis') {
+          return (
+            <Fragment key="ellipsis">
+              <span className={s.crumbSep}>/</span>
+              {/* 折起来的那几段。它不可点 —— 点它没有一个确定的去处。 */}
+              <span className={s.crumbFold} aria-hidden="true">
+                …
+              </span>
+            </Fragment>
+          )
+        }
+        const last = index === shown.length - 1
         return (
           <Fragment key={crumb.path}>
-            {/* 分隔斜杠是**真的文本**(不是 CSS ::before):整条 textContent 因此
-                逐字等于那条路径,门与读屏两边看到的是同一句话。 */}
+            {/* 分隔斜杠是**真的文本**(不是 CSS ::before):读屏与门看到的是同一句话。 */}
             <span className={s.crumbSep}>/</span>
             {last ? (
               <span className={s.crumbCurrent} aria-current="location">
@@ -290,87 +577,303 @@ function RootCrumbs({
 }
 
 /**
- * 一行 = **一颗按钮**,里面三件东西。
- *
- * 改版前它是「按钮 + 行尾 reveal 按钮」两兄弟裹在一个 div 里;reveal 退役之后
- * 那层 div 就只剩一个用处(挂 data-*),而那些属性挂在按钮自己身上一样稳 ——
- * 少一层 DOM,26px 的行才排得动一屏几十行。
- *
- * 单击 / 双击共存的那一处细节:`e.detail` 是原生的点击计数,双击时第二下的
- * `detail === 2`,直接返回 —— 于是「双击一个目录」只翻一次展开,而不是翻两次
- * (翻两次看着像没反应,那是最难查的一类怪事)。
+ * 类型标识。**一处判别联合,两种画法**:字标那一形自带底色与字色(官方色,
+ * 由 tokens.css 的数据节给值),图标那一形吃类型色。
+ * 两形共用同一个 20px 槽位 —— 名字列因此永远从同一条竖线起笔。
  */
-function TreeEntryRow({
-  row,
-  onActivate,
-  onDetail,
-}: {
-  row: Extract<TreeRow, { kind: 'entry' }>
-  onActivate: () => void
-  onDetail: () => void
-}) {
-  const Caret = row.expanded ? ChevronDown : ChevronRight
-  const spec = iconSpecOf(row.name, row.type, row.expanded)
-  const Icon = resolveIcon(spec.icon)
-  const hidden = isHiddenName(row.name)
+function GlyphMark({ glyph, className }: { glyph: FileGlyph; className: string }) {
+  if (glyph.kind === 'brand') {
+    const { bg, fg } = brandVars(glyph.brand)
+    return (
+      <span
+        className={`${className} ${s.badge}`}
+        style={{ background: bg, color: fg } as CSSProperties}
+        aria-hidden="true"
+      >
+        {glyph.label}
+      </span>
+    )
+  }
+  const Icon = resolveIcon(glyph.icon)
   return (
-    <button
-      type="button"
-      className={hidden ? `${s.row} ${s.rowHidden}` : s.row}
-      style={rowVars(row.depth, toneVar(spec.tone))}
-      aria-expanded={row.type === 'directory' ? row.expanded : undefined}
-      /* 门用的稳定选择器(与 EdgeShelf 的 data-shelf / data-panel 同一条判例):
-       * 文案会跟着语言变,路径不会。图标与色也各留一格 —— 「这一行画的是哪一枚」
-       * 是可断言的事实,而 SVG 里的 path 数据不是。 */
-      data-file-path={row.path}
-      data-file-type={row.type}
-      data-file-depth={row.depth}
-      data-file-icon={spec.icon}
-      data-file-tone={spec.tone}
-      data-file-hidden={hidden ? 'true' : undefined}
-      onClick={(e) => {
-        if (e.detail > 1) return
-        onActivate()
-      }}
-      onDoubleClick={onDetail}
-      onKeyDown={(e) => {
-        // 双击的键盘等价物。⌘/Ctrl + Enter,不占用裸 Enter(那是「打开」)。
-        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-          e.preventDefault()
-          onDetail()
-        }
-      }}
-    >
-      {row.type === 'directory' ? (
-        <Caret className={s.caret} strokeWidth={1.75} aria-hidden="true" />
-      ) : (
-        // 文件没有箭头,但**位子留着** —— 不留,同一层的文件名就会比目录名靠左一截。
-        <span className={s.caret} aria-hidden="true" />
-      )}
-      <Icon className={s.rowIcon} strokeWidth={1.75} aria-hidden="true" />
-      <span className={s.rowName}>{row.name}</span>
-    </button>
+    <span className={className} aria-hidden="true">
+      <Icon
+        className={s.rowIcon}
+        style={{ color: toneVar(glyph.tone) } as CSSProperties}
+        strokeWidth={1.75}
+      />
+    </span>
   )
 }
 
 /**
- * 详情面。**载体是 ui/Dialog,不是面板内的就地卡** —— 三条理由,一条比一条硬:
+ * 一行 = 一颗按钮(箭头 / 标识 / 名字)+ 两件挂在行尾的东西。
  *
- * ① **它是一次问话,不是一个可以待着的地方**。预览是「待着的地方」(读一整个
- *    文件),所以预览盖住身;详情是「瞄一眼 + 按一下」就走,浮层的进出成本
- *    正好配这种时长。就地卡会把树顶开,回来时滚动位置已经变了。
- * ② **窄形**。这块面在边架子里可以窄到 260px。就地卡要和树抢同一份横向带宽,
- *    「完整路径」那一行当场没地方站(律四:每个组件在自己声明的最小宽度下零重叠);
- *    浮层不吃面板的宽度。
- * ③ **白拿三件**:焦点圈禁(Tab 出不去)、Esc 关、关掉之后焦点回到刚才那一行。
- *    这三件就地卡得自己写一遍,而 A2 那一批已经在 Dialog 里写过一次了。
+ * 为什么行尾那两件是按钮的**兄弟**而不是它的孩子:`<button>` 里不许再套
+ * `<button>`(HTML 明令,而且读屏软件会把内层那颗念丢)。所以外面裹一层 div
+ * 管悬停底色与右键,`data-file-*` 那一族仍然挂在**按钮本身**上 —— 门与单测
+ * `querySelector('[data-file-path=…]').click()` 走的还是同一条路,一个字不用改。
  *
- * 「复制路径」这颗钮长在**路径那一行上**而不是底部动作组里:反馈要落在被复制的
- * 那件东西旁边(⧉ 换 ✓ 一拍,COPY_FEEDBACK_MS 后还原,08-31 拍板复制不走通知)。
- * 底部动作组因此是三颗:在文件管理器中显示 / (文件才有)预览打开 / 关闭。
+ * 单击 / 双击共存的那一处细节:`e.detail` 是原生的点击计数,双击时第二下的
+ * `detail === 2`,直接返回 —— 于是「双击一个目录」只翻一次展开,而不是翻两次。
  */
-function FileDetailDialog({
+function TreeEntryRow({
+  row,
+  t,
+  selected,
+  opened,
+  onActivate,
+  onDetail,
+  onMenu,
+}: {
+  row: EntryRow
+  t: TFn
+  selected: boolean
+  opened: boolean
+  onActivate: () => void
+  onDetail: (at: Anchor) => void
+  onMenu: (at: Anchor) => void
+}) {
+  const Caret = row.expanded ? ChevronDown : ChevronRight
+  const glyph = glyphOf(row.name, row.type, row.expanded)
+  const hidden = isHiddenName(row.name)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  /** 浮层贴着这一行的左下角长出来(不是屏幕中央 —— 它是这一行的附属)。 */
+  const anchorOfRow = (): Anchor => {
+    const rect = wrapRef.current?.getBoundingClientRect()
+    return { x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + POPOVER_GAP }
+  }
+
+  const cls = [s.rowWrap, selected && s.rowSel, hidden && s.rowHidden].filter(Boolean).join(' ')
+
+  return (
+    <div
+      ref={wrapRef}
+      className={cls}
+      style={depthVar(row.depth)}
+      onContextMenu={(e: ReactMouseEvent) => {
+        e.preventDefault()
+        onMenu({ x: e.clientX, y: e.clientY })
+      }}
+    >
+      <button
+        type="button"
+        className={s.row}
+        aria-expanded={row.type === 'directory' ? row.expanded : undefined}
+        /* 门用的稳定选择器(与 EdgeShelf 的 data-shelf / data-panel 同一条判例):
+         * 文案会跟着语言变,路径不会。标识也留两格 —— 「这一行画的是哪一枚」
+         * 是可断言的事实,而 SVG 里的 path 数据不是。 */
+        data-file-path={row.path}
+        data-file-type={row.type}
+        data-file-depth={row.depth}
+        data-file-form={glyph.kind}
+        data-file-icon={glyph.kind === 'icon' ? glyph.icon : undefined}
+        data-file-tone={glyph.kind === 'icon' ? glyph.tone : undefined}
+        data-file-brand={glyph.kind === 'brand' ? glyph.brand : undefined}
+        data-file-hidden={hidden ? 'true' : undefined}
+        data-file-open={opened ? 'true' : undefined}
+        data-file-selected={selected ? 'true' : undefined}
+        onClick={(e) => {
+          if (e.detail > 1) return
+          onActivate()
+        }}
+        onDoubleClick={() => onDetail(anchorOfRow())}
+        onKeyDown={(e) => {
+          // ⌘I / Ctrl+I = 详情(裁定与留账写在文件头)。⌘↵ 是它从上一版继承下来
+          // 的第二个键面,留着不动:删一个已经好使的键位是可感知的能力损失。
+          if ((e.key === 'i' || e.key === 'I' || e.key === 'Enter') && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            onDetail(anchorOfRow())
+          }
+        }}
+      >
+        {row.type === 'directory' ? (
+          <Caret className={s.caret} strokeWidth={1.75} aria-hidden="true" />
+        ) : (
+          // 文件没有箭头,但**位子留着** —— 不留,同一层的文件名就会比目录名靠左一截。
+          <span className={s.caret} aria-hidden="true" />
+        )}
+        <GlyphMark glyph={glyph} className={s.glyph} />
+        <span className={s.rowName}>{row.name}</span>
+      </button>
+      {/* 「这个文件正开着」。它与选中态是两件事,所以是两处画法(圆点 vs 底色)。 */}
+      {opened && <span className={s.openDot} data-testid="files-open-dot" aria-hidden="true" />}
+      <button
+        type="button"
+        className={s.more}
+        aria-label={t('files.rowMenu')}
+        data-file-more={row.path}
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect()
+          onMenu({ x: rect.left, y: rect.bottom + POPOVER_GAP })
+        }}
+      >
+        <Ellipsis className={s.moreIcon} strokeWidth={1.75} aria-hidden="true" />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * 行菜单(行尾 ⋯ 与右键出的是**同一个**菜单 —— 两个手势,一张表)。
+ *
+ * 「打开方式」那一组是本批唯一一处诚实降级:七档全在、勾在当下那一档、选了就记住,
+ * 而底下一句注脚明说只有「面板内」已经接上。判据(哪些接上了)在
+ * `data/file-open-mode.ts` 的 WIRED_FILE_OPEN_MODES,不散在这里的条件里。
+ *
+ * 「复制路径」按下之后**菜单不关**:反馈要落在被按的那一条上,关掉就没地方落了。
+ */
+function RowMenu({
+  row,
+  at,
+  t,
+  onClose,
+  onActivate,
+  onDetail,
+  onReveal,
+}: {
+  row: EntryRow
+  at: Anchor
+  t: TFn
+  onClose: () => void
+  onActivate: () => void
+  onDetail: () => void
+  onReveal: () => void
+}) {
+  const mode = useFileOpenMode((st) => st.mode)
+  const setMode = useFileOpenMode((st) => st.setMode)
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
+
+  const platform = platformOf(typeof navigator === 'undefined' ? '' : navigator.userAgent)
+  const detailKeys = formatCombo({ meta: true, key: 'i' }, platform)
+
+  const copyPath = () => {
+    void copyToClipboard(row.path, t).then((ok) => {
+      setCopied(ok)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_MS)
+    })
+  }
+
+  const openLabel =
+    row.type === 'directory'
+      ? t(row.expanded ? 'files.menuCollapse' : 'files.menuExpand')
+      : t('files.menuOpen')
+
+  return (
+    <Menu
+      x={at.x}
+      y={at.y}
+      onClose={onClose}
+      label={t('files.rowMenu')}
+      minWidth="var(--files-menu-w)"
+    >
+      <MenuSection>{row.name}</MenuSection>
+      <MenuItem
+        onClick={() => {
+          onActivate()
+          onClose()
+        }}
+      >
+        <span className={s.menuLine}>
+          <span className={s.menuMain}>{openLabel}</span>
+          {/* 右缘那一格说的是**当下的打开方式**(文件才有意义 —— 目录没有查看器)。 */}
+          {row.type === 'file' && (
+            <span className={s.menuTrail}>{t(FILE_OPEN_MODE_LABELS[mode])}</span>
+          )}
+        </span>
+      </MenuItem>
+
+      <MenuSeparator />
+      <MenuSection>{t('files.openWith')}</MenuSection>
+      {FILE_OPEN_MODES.map((option) => (
+        <MenuItem key={option} checked={option === mode} onClick={() => setMode(option)}>
+          <span className={s.menuLine}>
+            <span className={s.menuMain}>{t(FILE_OPEN_MODE_LABELS[option])}</span>
+            {!isWiredFileOpenMode(option) && (
+              <span className={s.menuTrail}>{t('files.openModeSoon')}</span>
+            )}
+          </span>
+        </MenuItem>
+      ))}
+      {/* 注脚:一句实话,不是一项。用 div 而不是 MenuSection —— 它要能折行。 */}
+      <div className={s.menuNote} role="presentation">
+        {t('files.openModeNote')}
+      </div>
+
+      <MenuSeparator />
+      <MenuItem
+        onClick={() => {
+          onClose()
+          onDetail()
+        }}
+      >
+        <span className={s.menuLine}>
+          <span className={s.menuMain}>{t('files.detailAction')}</span>
+          <span className={s.menuKeys}>
+            {detailKeys.map((cap) => (
+              <Kbd key={cap}>{cap}</Kbd>
+            ))}
+          </span>
+        </span>
+      </MenuItem>
+      <MenuItem onClick={copyPath}>
+        <span className={s.menuLine}>
+          <span className={copied ? `${s.menuMain} ${s.menuDone}` : s.menuMain}>
+            {t(copied ? 'files.copiedPath' : 'files.copyPath')}
+          </span>
+        </span>
+      </MenuItem>
+      <MenuItem
+        onClick={() => {
+          onClose()
+          onReveal()
+        }}
+      >
+        <span className={s.menuLine}>
+          <span className={s.menuMain}>{t('files.reveal')}</span>
+        </span>
+      </MenuItem>
+    </Menu>
+  )
+}
+
+/**
+ * 复制一条路径。写剪贴板 + 报给读屏 —— 两处调用方(行菜单、详情浮层)共用这一口,
+ * 免得「复制成功了没有」在两处各判一次。**不产生通知**(08-31 拍板:复制走就地反馈)。
+ */
+async function copyToClipboard(text: string, t: TFn): Promise<boolean> {
+  const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
+  const ok = clipboard?.writeText
+    ? await clipboard.writeText(text).then(
+        () => true,
+        () => false,
+      )
+    : false
+  announce(t(ok ? 'common.copied' : 'common.copyFailed'))
+  return ok
+}
+
+/**
+ * 详情 —— **附属浮层**(定稿改判,上一版是 ui/Dialog)。
+ *
+ * 三条它比 Dialog 强的地方,正是当初选 Dialog 的三条理由的反面:
+ * ① 树不被遮:回来时滚动位置、展开形状、选中行一个都没变;
+ * ② 它不吃面板的宽度(浮层挂在 body 上),所以「完整路径」那一行照样站得下 ——
+ *    这一条 Dialog 也做得到,不是改判的理由,记在这里免得被当成理由;
+ * ③ 它不打断:`role="dialog"` 但没有 `aria-modal`,读屏软件仍然看得见那棵树。
+ * 换来的代价是**没有遮罩**,所以「点别处即散」这件事必须真的成立 —— 那是
+ * ui/Popover 的事(pointerdown 落在浮层外就关),不是这里的。
+ *
+ * 「复制」这颗钮长在**路径那一行上**而不是底部动作组里:反馈要落在被复制的
+ * 那件东西旁边(⧉ 换 ✓ 一拍,COPY_FEEDBACK_MS 后还原)。
+ */
+function FileDetailPopover({
   detail,
+  at,
   lang,
   t,
   onClose,
@@ -378,31 +881,23 @@ function FileDetailDialog({
   onPreview,
 }: {
   detail: FileDetailState
+  at: Anchor
   lang: Lang
   t: TFn
   onClose: () => void
   onReveal: () => void
   onPreview: () => void
 }) {
-  const spec = iconSpecOf(detail.name, detail.type)
-  const Icon = resolveIcon(spec.icon)
-  const [copied, setCopied] = useState<boolean | null>(null)
+  const glyph = glyphOf(detail.name, detail.type)
+  const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(copiedTimer.current), [])
 
   const copyPath = () => {
-    const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard
-    const write = clipboard?.writeText
-      ? clipboard.writeText(detail.path).then(
-          () => true,
-          () => false,
-        )
-      : Promise.resolve(false)
-    void write.then((ok) => {
-      announce(t(ok ? 'common.copied' : 'common.copyFailed'))
+    void copyToClipboard(detail.path, t).then((ok) => {
       setCopied(ok)
       clearTimeout(copiedTimer.current)
-      copiedTimer.current = setTimeout(() => setCopied(null), COPY_FEEDBACK_MS)
+      copiedTimer.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_MS)
     })
   }
 
@@ -411,52 +906,38 @@ function FileDetailDialog({
   const mtimeText = (ready && formatMtime(detail.mtimeMs, lang)) || ABSENT
 
   return (
-    <Dialog
-      open
-      onClose={onClose}
-      /* 可见的大名字长在正文里(它带着那枚大图标一起构成「这是什么」),
-       * 所以这里不给 title,改用 label —— 读屏念到的仍然是同一个名字。 */
-      label={detail.name}
-      footer={
-        <>
-          <Button onClick={onReveal}>
-            <RevealIcon className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
-            {t('files.reveal')}
-          </Button>
-          {detail.type === 'file' && (
-            <Button onClick={onPreview}>
-              <Eye className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
-              {t('files.openPreview')}
-            </Button>
-          )}
-          <Button variant="primary" onClick={onClose}>
-            {t('common.close')}
-          </Button>
-        </>
-      }
-    >
+    <Popover x={at.x} y={at.y} onClose={onClose} label={detail.name}>
       <div className={s.detail} data-testid="files-detail" data-file-path={detail.path}>
         <div className={s.detailHead}>
-          <Icon
-            className={s.detailIcon}
-            style={{ color: toneVar(spec.tone) } as CSSProperties}
-            strokeWidth={1.5}
-            aria-hidden="true"
-          />
+          <GlyphMark glyph={glyph} className={s.detailGlyph} />
           <span className={s.detailName}>{detail.name}</span>
         </div>
 
+        <div className={s.detailPathRow}>
+          <span className={s.detailPath}>{detail.path}</span>
+          <button
+            type="button"
+            className={copied ? `${s.detailCopy} ${s.detailCopyDone}` : s.detailCopy}
+            onClick={copyPath}
+          >
+            {copied ? (
+              <Check className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
+            ) : (
+              <Copy className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
+            )}
+            {t(copied ? 'common.copied' : 'files.copyPath')}
+          </button>
+        </div>
+
         {detail.status === 'loading' && (
-          <p className={s.note}>
+          <p className={s.detailNote}>
             <Spinner label={t('files.detailLoading')} />
-            <span className={s.noteText}>{t('files.detailLoading')}</span>
+            <span className={s.noteDetail}>{t('files.detailLoading')}</span>
           </p>
         )}
         {detail.status === 'error' && (
-          <p className={s.note}>
-            <span className={s.noteText}>
-              {t(DETAIL_FAILURE_LABELS[detail.failure ?? 'failed'])}
-            </span>
+          <p className={s.detailNote}>
+            <span className={s.noteFail}>{t(DETAIL_FAILURE_LABELS[detail.failure ?? 'failed'])}</span>
             {detail.error && <span className={s.noteDetail}>{detail.error}</span>}
           </p>
         )}
@@ -480,22 +961,23 @@ function FileDetailDialog({
               {mtimeText}
             </dd>
           </div>
-          <div className={s.detailRow}>
-            <dt className={s.detailLabel}>{t('files.detailPathLabel')}</dt>
-            <dd className={s.detailValue}>
-              <span className={s.detailPath}>{detail.path}</span>
-              <Button iconOnly aria-label={t('files.copyPath')} onClick={copyPath}>
-                {copied === true ? (
-                  <Check className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
-                ) : (
-                  <Copy className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
-                )}
-              </Button>
-            </dd>
-          </div>
         </dl>
+
+        <div className={s.detailFoot}>
+          <Button onClick={onReveal}>
+            <RevealIcon className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
+            {t('files.reveal')}
+          </Button>
+          <Button onClick={onClose}>{t('common.close')}</Button>
+          {detail.type === 'file' && (
+            <Button variant="primary" onClick={onPreview}>
+              <Eye className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
+              {t('files.openPreview')}
+            </Button>
+          )}
+        </div>
       </div>
-    </Dialog>
+    </Popover>
   )
 }
 
@@ -524,22 +1006,22 @@ function PreviewLayer({
       </div>
       <div className={s.previewBody}>
         {preview.status === 'loading' && (
-          <p className={s.note}>
+          <p className={s.detailNote}>
             <Spinner label={t('files.previewLoading')} />
-            <span className={s.noteText}>{t('files.previewLoading')}</span>
+            <span className={s.noteDetail}>{t('files.previewLoading')}</span>
           </p>
         )}
         {preview.status === 'binary' && (
-          <p className={s.note}>
-            <span className={s.noteText}>{t('files.previewBinary')}</span>
+          <p className={s.detailNote}>
+            <span className={s.noteFail}>{t('files.previewBinary')}</span>
             {preview.size !== undefined && (
               <span className={s.noteDetail}>{formatBytes(preview.size)}</span>
             )}
           </p>
         )}
         {preview.status === 'error' && (
-          <p className={s.note}>
-            <span className={s.noteText}>
+          <p className={s.detailNote}>
+            <span className={s.noteFail}>
               {t(PREVIEW_FAILURE_LABELS[preview.failure ?? 'failed'])}
             </span>
             {preview.error && <span className={s.noteDetail}>{preview.error}</span>}
@@ -548,8 +1030,8 @@ function PreviewLayer({
         {preview.status === 'ready' && (
           <>
             {preview.truncated && (
-              <p className={s.note}>
-                <span className={s.noteText}>
+              <p className={s.detailNote}>
+                <span className={s.noteDetail}>
                   {t('files.previewTruncated', {
                     size: formatBytes(preview.size ?? 0),
                     shown: formatBytes(PREVIEW_MAX_BYTES),
@@ -571,8 +1053,8 @@ function PreviewLayer({
                 ctx={{ messageId: `files:${preview.path}`, streaming: false }}
               />
             ) : (
-              <p className={s.note}>
-                <span className={s.noteText}>{t('files.previewEmpty')}</span>
+              <p className={s.detailNote}>
+                <span className={s.noteDetail}>{t('files.previewEmpty')}</span>
               </p>
             )}
           </>

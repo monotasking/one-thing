@@ -3,23 +3,25 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
-  DIRECTORY_ICON,
-  DIRECTORY_OPEN_ICON,
+  DIRECTORY_GLYPH,
+  DIRECTORY_OPEN_GLYPH,
+  FILE_BRANDS,
   FILE_TONES,
-  UNKNOWN_FILE_ICON,
+  UNKNOWN_FILE_GLYPH,
+  brandVars,
   extensionOf,
-  fileIconOf,
-  iconSpecOf,
+  fileGlyphOf,
+  glyphOf,
   isHiddenName,
   toneVar,
 } from './file-icons'
-import type { FileTone } from './file-icons'
+import type { FileBrand, FileTone } from './file-icons'
 
 /**
- * 图标映射表是**纯表**,所以这只测试一行 React 都不渲染:它钉的是
- * 「哪个名字画哪枚图标、上哪种色」这件事本身。
+ * 图标 / 字标映射表是**纯表**,所以这只测试一行 React 都不渲染:它钉的是
+ * 「哪个名字画哪一形、哪一枚、上哪种色」这件事本身。
  *
- * 最后一组用例是**跨文件的执法**:tone 的名字在 TS 里,值在 tokens.css 里,
+ * 最后两组用例是**跨文件的执法**:形与色的**名字**在 TS 里,值在 tokens.css 里,
  * 没有任何东西拦着人只改一边。与 motion-tokens.test 解析 --dur 族同一条判例 ——
  * 它读 tokens.css 的文本,逐条比对。
  */
@@ -27,107 +29,116 @@ import type { FileTone } from './file-icons'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const tokensCss = readFileSync(path.join(here, '../styles/tokens.css'), 'utf-8')
 
-describe('目录', () => {
-  it('合着是 Folder,展开换 FolderOpen —— 两态是两枚图标,不是同一枚转个角度', () => {
-    expect(iconSpecOf('packages', 'directory')).toEqual(DIRECTORY_ICON)
-    expect(iconSpecOf('packages', 'directory', true)).toEqual(DIRECTORY_OPEN_ICON)
-    expect(DIRECTORY_ICON.icon).toBe('Folder')
-    expect(DIRECTORY_OPEN_ICON.icon).toBe('FolderOpen')
-    expect(DIRECTORY_ICON.tone).toBe('dir')
+describe('二形:brand 字标 | lucide 图标', () => {
+  it('说得出语言的画字标,说不出的画图标 —— 两形是判别联合,不是带空字段的一形', () => {
+    expect(fileGlyphOf('app.ts')).toEqual({ kind: 'brand', brand: 'ts', label: 'TS' })
+    expect(fileGlyphOf('main.py')).toEqual({ kind: 'brand', brand: 'py', label: 'PY' })
+    expect(fileGlyphOf('init.lua')).toEqual({ kind: 'brand', brand: 'lua', label: 'LUA' })
+    expect(fileGlyphOf('build.sh')).toEqual({ kind: 'brand', brand: 'sh', label: 'SH' })
+    expect(fileGlyphOf('README.md')).toEqual({ kind: 'brand', brand: 'md', label: 'MD' })
+    // JSON 印的是花括号,不是四个字母 —— 那是它在定稿上的画法。
+    expect(fileGlyphOf('tsconfig.json')).toEqual({ kind: 'brand', brand: 'json', label: '{ }' })
+    expect(fileGlyphOf('a.wasm')).toEqual({ kind: 'brand', brand: 'bin', label: 'BIN' })
+
+    expect(fileGlyphOf('logo.png')).toEqual({ kind: 'icon', icon: 'Image', tone: 'media' })
+    expect(fileGlyphOf('dist.tar.gz')).toEqual({ kind: 'icon', icon: 'FileArchive', tone: 'archive' })
+    expect(fileGlyphOf('.editorconfig')).toEqual({ kind: 'icon', icon: 'Settings', tone: 'config' })
   })
 
-  it('目录不看扩展名 —— 一个叫 `assets.js` 的目录仍然是目录', () => {
-    expect(iconSpecOf('assets.js', 'directory')).toEqual(DIRECTORY_ICON)
+  it('字标的字由表定一次 —— 同一个 brand 两处取出来逐字相同', () => {
+    const a = fileGlyphOf('a.ts')
+    const b = fileGlyphOf('b.tsx')
+    expect(a).toEqual(b)
   })
 })
 
-describe('语言族:同族同色,异族异色', () => {
-  const jsFamily = ['a.ts', 'a.tsx', 'a.mts', 'a.cts', 'a.js', 'a.jsx', 'a.mjs', 'a.cjs']
-
-  it('ts / js 一族一色,图标都是 FileCode', () => {
-    for (const name of jsFamily) {
-      expect(fileIconOf(name), name).toEqual({ icon: 'FileCode', tone: 'js' })
-    }
+describe('目录', () => {
+  it('合着是 Folder,展开换 FolderOpen —— 两态是两枚图标,不是同一枚转个角度', () => {
+    expect(glyphOf('packages', 'directory')).toEqual(DIRECTORY_GLYPH)
+    expect(glyphOf('packages', 'directory', true)).toEqual(DIRECTORY_OPEN_GLYPH)
+    expect(DIRECTORY_GLYPH).toEqual({ kind: 'icon', icon: 'Folder', tone: 'dir' })
+    expect(DIRECTORY_OPEN_GLYPH.icon).toBe('FolderOpen')
   })
 
-  it('各族各一色', () => {
-    expect(fileIconOf('main.py')).toEqual({ icon: 'FileCode', tone: 'py' })
-    expect(fileIconOf('app.rb')).toEqual({ icon: 'FileCode', tone: 'rb' })
-    expect(fileIconOf('lib.rs')).toEqual({ icon: 'FileCode', tone: 'rust' })
-    expect(fileIconOf('main.go')).toEqual({ icon: 'FileCode', tone: 'go' })
-    expect(fileIconOf('Main.java')).toEqual({ icon: 'FileCode', tone: 'jvm' })
-    expect(fileIconOf('init.lua')).toEqual({ icon: 'FileCode', tone: 'lua' })
-    expect(fileIconOf('App.vue')).toEqual({ icon: 'FileCode', tone: 'web' })
+  it('目录不看扩展名 —— 一个叫 `assets.ts` 的目录仍然是目录,不画 TS 字标', () => {
+    expect(glyphOf('assets.ts', 'directory')).toEqual(DIRECTORY_GLYPH)
+  })
+})
+
+describe('图标族:同族同形,异族异色', () => {
+  it('官方色表上没有的那些语言仍然认得出「这是源码」,只是不冒充字标', () => {
+    expect(fileGlyphOf('a.js')).toEqual({ kind: 'icon', icon: 'FileCode', tone: 'js' })
+    expect(fileGlyphOf('lib.rs')).toEqual({ kind: 'icon', icon: 'FileCode', tone: 'rust' })
+    expect(fileGlyphOf('main.go')).toEqual({ kind: 'icon', icon: 'FileCode', tone: 'go' })
+    expect(fileGlyphOf('Main.java')).toEqual({ kind: 'icon', icon: 'FileCode', tone: 'jvm' })
+    expect(fileGlyphOf('App.vue')).toEqual({ kind: 'icon', icon: 'FileCode', tone: 'web' })
+    expect(fileGlyphOf('main.cpp')).toEqual({ kind: 'icon', icon: 'FileCode', tone: 'code' })
   })
 
-  it('这六族的色两两不同 —— 「一族一色」如果撞了就不成立了', () => {
-    const tones = ['a.ts', 'a.py', 'a.rb', 'a.rs', 'a.go', 'a.java', 'a.lua', 'a.vue'].map(
-      (n) => fileIconOf(n).tone,
-    )
+  it('这几族的色两两不同 —— 「一族一色」如果撞了就不成立了', () => {
+    const tones = ['a.js', 'a.rb', 'a.rs', 'a.go', 'a.java', 'a.vue'].map((n) => {
+      const glyph = fileGlyphOf(n)
+      return glyph.kind === 'icon' ? glyph.tone : glyph.brand
+    })
     expect(new Set(tones).size).toBe(tones.length)
   })
 
-  it('有语言但色板上没给单独一格的,仍然认得出「这是源码」', () => {
-    expect(fileIconOf('main.cpp')).toEqual({ icon: 'FileCode', tone: 'code' })
-    expect(fileIconOf('q.sql')).toEqual({ icon: 'FileCode', tone: 'code' })
-  })
-})
-
-describe('非语言族:图标是第一判据', () => {
-  it('读物 / 数据 / 表格 / 图 / 声 / 影 / 压缩 / 脚本,各一枚图标', () => {
-    expect(fileIconOf('README.md')).toEqual({ icon: 'FileText', tone: 'doc' })
-    expect(fileIconOf('notes.txt')).toEqual({ icon: 'FileText', tone: 'doc' })
-    expect(fileIconOf('tsconfig.json')).toEqual({ icon: 'FileBraces', tone: 'data' })
-    expect(fileIconOf('ci.yaml')).toEqual({ icon: 'FileBraces', tone: 'data' })
-    expect(fileIconOf('Cargo.toml')).toEqual({ icon: 'FileBraces', tone: 'data' })
-    expect(fileIconOf('rows.csv')).toEqual({ icon: 'FileSpreadsheet', tone: 'data' })
-    expect(fileIconOf('logo.png')).toEqual({ icon: 'FileImage', tone: 'media' })
-    expect(fileIconOf('logo.svg')).toEqual({ icon: 'FileImage', tone: 'media' })
-    expect(fileIconOf('bell.mp3')).toEqual({ icon: 'FileMusic', tone: 'media' })
-    expect(fileIconOf('clip.mp4')).toEqual({ icon: 'FilePlay', tone: 'media' })
-    expect(fileIconOf('dist.tar.gz')).toEqual({ icon: 'FileArchive', tone: 'archive' })
-    expect(fileIconOf('build.sh')).toEqual({ icon: 'FileTerminal', tone: 'shell' })
-    expect(fileIconOf('run.zsh')).toEqual({ icon: 'FileTerminal', tone: 'shell' })
+  it('非语言族各一枚图标:读物 / 数据 / 表格 / 图 / 声 / 影 / 压缩 / 非 POSIX 脚本', () => {
+    expect(fileGlyphOf('notes.txt')).toEqual({ kind: 'icon', icon: 'FileText', tone: 'doc' })
+    expect(fileGlyphOf('ci.yaml')).toEqual({ kind: 'icon', icon: 'FileBraces', tone: 'data' })
+    expect(fileGlyphOf('Cargo.toml')).toEqual({ kind: 'icon', icon: 'FileBraces', tone: 'data' })
+    expect(fileGlyphOf('rows.csv')).toEqual({ kind: 'icon', icon: 'FileSpreadsheet', tone: 'data' })
+    expect(fileGlyphOf('logo.svg')).toEqual({ kind: 'icon', icon: 'Image', tone: 'media' })
+    expect(fileGlyphOf('bell.mp3')).toEqual({ kind: 'icon', icon: 'FileMusic', tone: 'media' })
+    expect(fileGlyphOf('clip.mp4')).toEqual({ kind: 'icon', icon: 'FilePlay', tone: 'media' })
+    expect(fileGlyphOf('run.bat')).toEqual({ kind: 'icon', icon: 'FileTerminal', tone: 'shell' })
   })
 })
 
 describe('整名优先于扩展名', () => {
-  it('锁文件是锁,不是「某种叫 lock 的语言」;package-lock.json 不是普通 json', () => {
-    expect(fileIconOf('package-lock.json')).toEqual({ icon: 'FileLock', tone: 'config' })
-    expect(fileIconOf('bun.lock')).toEqual({ icon: 'FileLock', tone: 'config' })
-    expect(fileIconOf('Cargo.lock')).toEqual({ icon: 'FileLock', tone: 'config' })
+  it('锁文件是锁,不是「某种叫 lock 的语言」;package-lock.json 不画 JSON 字标', () => {
+    expect(fileGlyphOf('package-lock.json')).toEqual({
+      kind: 'icon',
+      icon: 'FileLock',
+      tone: 'config',
+    })
+    expect(fileGlyphOf('bun.lock')).toEqual({ kind: 'icon', icon: 'FileLock', tone: 'config' })
+    expect(fileGlyphOf('Cargo.lock')).toEqual({ kind: 'icon', icon: 'FileLock', tone: 'config' })
   })
 
   it('没有扩展名也认得出来的那几个', () => {
-    expect(fileIconOf('Dockerfile')).toEqual({ icon: 'FileCog', tone: 'config' })
-    expect(fileIconOf('Makefile')).toEqual({ icon: 'FileCog', tone: 'config' })
-    expect(fileIconOf('LICENSE')).toEqual({ icon: 'FileText', tone: 'doc' })
+    expect(fileGlyphOf('Dockerfile')).toEqual({ kind: 'icon', icon: 'Settings', tone: 'config' })
+    expect(fileGlyphOf('Makefile')).toEqual({ kind: 'icon', icon: 'Settings', tone: 'config' })
+    expect(fileGlyphOf('LICENSE')).toEqual({ kind: 'icon', icon: 'FileText', tone: 'doc' })
   })
 
   it('大小写不影响判据', () => {
-    expect(fileIconOf('DOCKERFILE')).toEqual(fileIconOf('dockerfile'))
-    expect(fileIconOf('Main.PY')).toEqual(fileIconOf('main.py'))
+    expect(fileGlyphOf('DOCKERFILE')).toEqual(fileGlyphOf('dockerfile'))
+    expect(fileGlyphOf('Main.PY')).toEqual(fileGlyphOf('main.py'))
   })
 })
 
 describe('认不出来的那一格', () => {
-  it('没有扩展名 / 扩展名不在表里 = File + plain,**不是错误**', () => {
-    expect(fileIconOf('CHANGELOG')).toEqual(UNKNOWN_FILE_ICON)
-    expect(fileIconOf('data.qqq')).toEqual(UNKNOWN_FILE_ICON)
-    expect(UNKNOWN_FILE_ICON).toEqual({ icon: 'File', tone: 'plain' })
+  it('没有扩展名 / 扩展名不在表里 = `···` 字标,**不是错误**', () => {
+    expect(fileGlyphOf('CHANGELOG')).toEqual(UNKNOWN_FILE_GLYPH)
+    expect(fileGlyphOf('data.qqq')).toEqual(UNKNOWN_FILE_GLYPH)
+    expect(UNKNOWN_FILE_GLYPH).toEqual({ kind: 'brand', brand: 'unknown', label: '···' })
   })
 
   it('点开头的隐藏文件没有扩展名 —— `.gitignore` 的 ext 是空串,靠整名表认', () => {
     expect(extensionOf('.gitignore')).toBe('')
-    expect(fileIconOf('.gitignore')).toEqual({ icon: 'FileCog', tone: 'config' })
-    // 表里没有的隐藏文件退回 plain,而不是被当成某种扩展名。
+    expect(fileGlyphOf('.gitignore')).toEqual({ kind: 'icon', icon: 'Settings', tone: 'config' })
     expect(extensionOf('.zshrc')).toBe('')
-    expect(fileIconOf('.zshrc')).toEqual(UNKNOWN_FILE_ICON)
+    expect(fileGlyphOf('.zshrc')).toEqual(UNKNOWN_FILE_GLYPH)
   })
 
   it('隐藏文件仍然可以有扩展名(`.eslintrc.json`),那时按扩展名走', () => {
     expect(extensionOf('.eslintrc.json')).toBe('json')
-    expect(fileIconOf('.eslintrc.json')).toEqual({ icon: 'FileBraces', tone: 'data' })
+    expect(fileGlyphOf('.eslintrc.json')).toEqual({
+      kind: 'brand',
+      brand: 'json',
+      label: '{ }',
+    })
   })
 })
 
@@ -150,18 +161,17 @@ describe('图标只有名字,组件在 REGISTRY 里', () => {
   it('表里给出的每一个图标名都在册,没有一个落到兜底上', async () => {
     const { resolveIcon } = await import('../components/icons')
     const fallback = resolveIcon('__definitely-not-an-icon__')
-    const names = new Set(
-      [
-        DIRECTORY_ICON.icon,
-        DIRECTORY_OPEN_ICON.icon,
-        UNKNOWN_FILE_ICON.icon,
-        ...[
-          'a.ts', 'a.py', 'a.rb', 'a.rs', 'a.go', 'a.java', 'a.lua', 'a.vue', 'a.cpp',
-          'a.md', 'a.json', 'a.csv', 'a.png', 'a.mp3', 'a.mp4', 'a.zip', 'a.sh',
-          'Dockerfile', 'bun.lock',
-        ].map((n) => fileIconOf(n).icon),
-      ],
-    )
+    const probes = [
+      'a.js', 'a.rb', 'a.rs', 'a.go', 'a.java', 'a.vue', 'a.cpp',
+      'a.txt', 'a.yaml', 'a.csv', 'a.png', 'a.mp3', 'a.mp4', 'a.zip', 'a.bat',
+      'Dockerfile', 'bun.lock', 'LICENSE',
+    ]
+    const names = new Set<string>([DIRECTORY_GLYPH.icon, DIRECTORY_OPEN_GLYPH.icon])
+    for (const probe of probes) {
+      const glyph = fileGlyphOf(probe)
+      expect(glyph.kind, `${probe} 该走图标那一形`).toBe('icon')
+      if (glyph.kind === 'icon') names.add(glyph.icon)
+    }
     for (const name of names) {
       expect(resolveIcon(name), `${name} 不在 components/icons.ts 的 REGISTRY 里`).not.toBe(
         fallback,
@@ -191,6 +201,33 @@ describe('色只有名字,值在 tokens.css', () => {
     for (const [, tone, value] of declared) {
       expect(FILE_TONES).toContain(tone as FileTone)
       expect(value.trim(), `--ft-${tone} 落了字面色值:${value}`).toMatch(/^var\(--[a-z0-9-]+\)$/)
+    }
+  })
+})
+
+describe('品牌色是数据:值在 tokens.css 的数据节,JS 里一个都没有', () => {
+  it('brandVars 交出来的是两条 var() 引用(底色 / 字色成对)', () => {
+    for (const name of FILE_BRANDS) {
+      const vars = brandVars(name)
+      expect(vars).toEqual({ bg: `var(--fb-${name}-bg)`, fg: `var(--fb-${name}-fg)` })
+      expect(`${vars.bg}${vars.fg}`).not.toMatch(/#|rgb|hsl/)
+    }
+  })
+
+  it('每一格 brand 在数据节里**成对**声明 —— 只改一半会让深底配深字', () => {
+    for (const name of FILE_BRANDS) {
+      expect(tokensCss, `tokens.css 里找不到 --fb-${name}-bg`).toContain(`--fb-${name}-bg:`)
+      expect(tokensCss, `tokens.css 里找不到 --fb-${name}-fg`).toContain(`--fb-${name}-fg:`)
+    }
+  })
+
+  it('数据节里的每一条都是**字面色值**(这是它与 --ft-* 的分水岭),而且不多不少', () => {
+    const declared = [...tokensCss.matchAll(/--fb-([a-z]+)-(bg|fg):\s*([^;]+);/g)]
+    expect(declared.length).toBe(FILE_BRANDS.length * 2)
+    for (const [, name, , value] of declared) {
+      expect(FILE_BRANDS).toContain(name as FileBrand)
+      // 官方色不过 theme-bridge:它是数据,所以这里就该是一个 hex,不是 var()。
+      expect(value.trim(), `--fb-${name} 不是字面色值:${value}`).toMatch(/^#[0-9a-f]{3,8}$/i)
     }
   })
 })

@@ -15,14 +15,18 @@
  *  ⑥ 双击一行开详情 → 点里面的 reveal → 断言**做得到就成功、做不到就弹一条 error**
  *     (独立 server 没有宿主外壳,结构化降级 —— 这一格验的是「失败看得见」)。
  *
- * ── 08-31「IDE 紧凑树」改版后这条门改了什么 ────────────────────────────────
+ * ── 改版后这条门改了什么(08-31「IDE 紧凑树」+ 同日 claude design 定稿)───────
  * **真事实一条没改**(根 / 树 / 预览 / 检索 / reveal 的诚实性),只有取件口跟着
- * 屏幕的新形状动了三处:
- *  · 根:`[data-testid="files-root"]` 还在原地,只是它里面从一行字变成了一排
- *    面包屑按钮 —— 分隔斜杠是真的文本节点,所以整条 textContent 仍然逐字等于根路径;
- *  · 行:一行现在**自己就是那颗按钮**(从前是 `div > button`),所以
- *    `[data-file-path="…"] button` 改成 `[data-file-path="…"]`;
- *  · reveal:行尾那枚常驻小钮退役,它的活儿挪进了双击出来的详情面。
+ * 屏幕的新形状动了四处:
+ *  · 根:`[data-testid="files-root"]` 还在原地,但**读的是 `data-root` 而不是
+ *    textContent** —— 定稿把深路径的中段折成了 `…`,屏幕上那串字不再逐字等于路径。
+ *    屏幕说「我在哪儿」(可折),属性说「那条路径本身」(永不折),门问后者;
+ *  · 行:一行的 `data-file-path` 挂在**那颗按钮**上(行尾多了打开点与 ⋯,
+ *    所以按钮外面又裹回了一层 div),选择器 `[data-file-path="…"]` 不变;
+ *  · 详情:载体从 ui/Dialog 换成 ui/Popover(附属浮层,不遮树、不 modal)。
+ *    它仍然是 `role="dialog"` + `data-testid="files-detail"`,所以这一步一个字不改 ——
+ *    换的是**语义**(不打断),不是取件口;
+ *  · reveal:行尾那枚常驻小钮退役,它的活儿在详情浮层与行菜单里各有一个入口。
  *
  * ── 为什么要自带一个 workspace root(这条门最要紧的一行 env) ─────────────
  * 壳走的是 `POST /api/rpc`,于是 files 域按 `transport:'http'` 把每条路径夹进
@@ -246,12 +250,13 @@ async function main() {
     await clickSelector(page, '[data-testid="dock-tile-files"]')
 
     const shownRoot = await waitFor('文件面板画出面包屑路径', async () => {
+      // 取 data-root 而不是 textContent:面包屑的中段会折成 `…`(理由见文件头)。
       const text = await page.evaluate(
-        () => document.querySelector('[data-testid="files-root"]')?.textContent ?? null,
+        () => document.querySelector('[data-testid="files-root"]')?.getAttribute('data-root') ?? null,
       )
       return text && text.startsWith('/') ? text : undefined
     })
-    assert(shownRoot === cwd, `面包屑拼出来的就是那条会话的工作目录:${shownRoot}`)
+    assert(shownRoot === cwd, `面包屑说的就是那条会话的工作目录:${shownRoot}`)
 
     console.log('\n[4/6] 展开两层,逐条对磁盘')
     const shown0 = await waitFor('第一层画出来', async () => {
@@ -317,6 +322,7 @@ async function main() {
     )
     // reveal 现在长在详情面的动作组里(行尾那枚常驻小钮已随改版退役)。
     await page.evaluate(() => {
+      // 详情浮层是 role="dialog"(但没有 aria-modal —— 它是附属不是打断)。
       const buttons = Array.from(document.querySelectorAll('[role="dialog"] button'))
       const target = buttons.find(b => /文件管理器|file manager/i.test(b.textContent ?? ''))
       if (!target) throw new Error('详情面上没有「在文件管理器中显示」这颗钮')
@@ -331,7 +337,8 @@ async function main() {
     console.log(
       `  · reveal 结果:${revealErrorShown ? '结构化降级并弹出通知(这台 core 是独立 server,没有宿主外壳)' : '成功,没有报错'}`,
     )
-    // 详情是模态的:走完就关掉(Esc = 那条逃生口),后面几步才不隔着一层遮罩。
+    // 详情浮层不遮树(它不是模态),但走完仍然关掉 —— Esc 是它的逃生口,
+    // 顺带证一句「它真的关得掉」。
     await page.keyboard.press('Escape')
     await waitFor('详情面关掉了', () =>
       page.evaluate(() => !document.querySelector('[data-testid="files-detail"]')),

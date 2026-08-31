@@ -240,12 +240,24 @@ export type TreeRow =
       expanded: boolean
     }
   | {
+      /**
+       * 懒展开时那两条骨架短横。**它是两行不是一行**:每一行仍然恰好一格行高,
+       * 而窗口化渲染按「行序 × 行高」反推位置 —— 一个两倍高的特例会把整条卷轴算歪。
+       */
+      kind: 'skeleton'
+      id: string
+      depth: number
+      bar: 1 | 2
+    }
+  | {
       kind: 'note'
       /** 稳定 key:注挂在哪个目录下面。 */
       id: string
+      /** 这条注说的是哪个目录 —— 失败态那颗「重试」钮要拿它去重拉。 */
+      dir: string
       depth: number
-      note: 'loading' | 'empty' | FileFailure
-      /** 后端原话(note 是 loading / empty 时缺席)。 */
+      note: 'empty' | FileFailure
+      /** 后端原话(note 是 empty 时缺席)。 */
       error?: string
     }
 
@@ -265,13 +277,15 @@ export function flattenTree(
   const walk = (dir: string, depth: number): void => {
     const state = dirs[dir]
     if (!state || state.status === 'loading') {
-      rows.push({ kind: 'note', id: `${dir}:loading`, depth, note: 'loading' })
+      rows.push({ kind: 'skeleton', id: `${dir}:skel:1`, depth, bar: 1 })
+      rows.push({ kind: 'skeleton', id: `${dir}:skel:2`, depth, bar: 2 })
       return
     }
     if (state.status === 'error') {
       rows.push({
         kind: 'note',
         id: `${dir}:error`,
+        dir,
         depth,
         note: classifyFileFailure(state.error),
         error: state.error,
@@ -279,7 +293,7 @@ export function flattenTree(
       return
     }
     if (state.entries.length === 0) {
-      rows.push({ kind: 'note', id: `${dir}:empty`, depth, note: 'empty' })
+      rows.push({ kind: 'note', id: `${dir}:empty`, dir, depth, note: 'empty' })
       return
     }
     for (const entry of state.entries) {
@@ -297,6 +311,65 @@ export function flattenTree(
   }
   walk(root, 0)
   return rows
+}
+
+/* ── 窗口化渲染(超大目录)────────────────────────────────────────────────── */
+
+/**
+ * 一行有多高。**它与 `styles/tokens.css` 的 `--files-row-h` 是同一个事实的两半**
+ * ——`files-source.test.ts` 读那个文件的文本逐字比对(同 motion-tokens.test 解析
+ * `--dur` 族的判例)。改一处不改另一处,卷轴会算歪而屏幕上看不出为什么。
+ */
+export const FILES_ROW_H = 27
+
+/**
+ * 可视窗上下各多画几行。缓冲的用处只有一个:**快卷时不出现空白带** ——
+ * 浏览器把 scroll 事件交给我们的那一刻,画面已经动过了。
+ * 8 行 ≈ 216px,比一次滚轮的跨度大,而代价只是多 16 个 DOM 节点。
+ */
+export const FILES_ROW_BUFFER = 8
+
+export interface RowWindow {
+  /** 要渲染的区间 `[start, end)`。 */
+  start: number
+  end: number
+  /** 区间前 / 后用两块空撑子占位,卷轴长度因此与「全画出来」逐像素相同。 */
+  padTop: number
+  padBottom: number
+}
+
+/**
+ * 摊平后的行数组 × 卷到哪儿 × 视口多高 → **这一帧该画哪一段**。
+ *
+ * 纯算术,不碰 DOM、不认识 React —— 所以它能被逐条钉死(边界、负数、视口比内容
+ * 还高、卷过了头)。行高恒定是它成立的前提,那条前提写在 tokens.css 的
+ * 「文件面几何」一节,并由骨架 / 空 / 失败三种注行**同高**来兑现。
+ *
+ * `viewportH` 为 0(还没量到 / 面被收起来了)时给一个整表窗口:第一帧宁可多画
+ * 一点,也不要画一片空白然后等 ResizeObserver —— 那一帧的空白是看得见的。
+ */
+export function rowWindow(
+  total: number,
+  scrollTop: number,
+  viewportH: number,
+  rowH: number = FILES_ROW_H,
+  buffer: number = FILES_ROW_BUFFER,
+): RowWindow {
+  if (total <= 0) return { start: 0, end: 0, padTop: 0, padBottom: 0 }
+  if (viewportH <= 0 || rowH <= 0) {
+    return { start: 0, end: total, padTop: 0, padBottom: 0 }
+  }
+  const top = Math.max(0, scrollTop)
+  const first = Math.floor(top / rowH)
+  const visible = Math.ceil(viewportH / rowH) + 1
+  const start = Math.max(0, first - buffer)
+  const end = Math.min(total, first + visible + buffer)
+  return {
+    start,
+    end: Math.max(start, end),
+    padTop: start * rowH,
+    padBottom: Math.max(0, (total - Math.max(start, end)) * rowH),
+  }
 }
 
 /* ── 预览 ──────────────────────────────────────────────────────────────── */
@@ -398,6 +471,16 @@ export interface FilesSourceState {
   navigateRoot(path: string): Promise<void>
   /** 展开 / 收起一个目录;展开时按需拉它的内容(拉过就不再拉)。 */
   toggleDir(path: string): Promise<void>
+  /**
+   * 一层不留地收起来。**只动展开态,不碰缓存** —— 收起是「我不想看它们了」,
+   * 不是「刚才读到的都作废」;再展开时不该又问一遍后端。
+   */
+  collapseAll(): void
+  /**
+   * 重拉**一个**目录(读失败那一行上的「重试」)。与 refresh 的差别是范围:
+   * 那一条是整棵树重来,这一条只重来出错的那一层 —— 别的层没坏,不该跟着重读。
+   */
+  retryDir(path: string): Promise<void>
   /** 重新读取:清缓存,重拉根与所有仍然展开的目录。 */
   refresh(): Promise<void>
   openPreview(path: string): Promise<void>
@@ -553,6 +636,14 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       }
       set((st) => ({ expanded: { ...st.expanded, [path]: true } }))
       await loadDir(path)
+    },
+
+    collapseAll: () => {
+      set({ expanded: {} })
+    },
+
+    retryDir: async (path) => {
+      await loadDir(path, true)
     },
 
     refresh: async () => {

@@ -1,15 +1,20 @@
-/* 文件树面板(08-31「IDE 紧凑树」改版)。三段式(头 / 身 / 底注)+ 两层浮起来的东西:
- * 预览(盖住身)与详情(ui/Dialog,不吃这块面的宽度)。
+/* 文件树面板(08-31 claude design 定稿)。四段式(头 / 告知条 / 身 / 底提示)+
+ * 三层浮起来的东西:预览(盖住身)、行菜单(ui/Menu)、详情(ui/Popover)。
  * 三种形态(舞台 / 浮窗 / 架子)共用这一份,所以这里不写任何与形态有关的尺寸。
  *
  * 抗挤压(docs/design/react-shell-squeeze-rules-2026-08.md)在这块面上的落点:
  *  · 每一行**恰有一个**弯腰件(名字),它同时有 min-width:0 与省略号;
- *  · 头上的面包屑整条能横滚,而不是让某一段换行 —— 律二:结构行只截断不换行;
+ *  · 头上的面包屑整条能横滚,而且深路径先把中段折成 `…` —— 律二:结构行只截断不换行;
  *  · 缩进走无单位的 --depth × 一格宽,不落字面 px;
- *  · 行上再没有第二件常驻覆盖物(行尾那枚 reveal 已随本批退役,理由在 tsx 文件头)。
+ *  · 行尾两件覆盖物(打开点 / ⋯)**有布局预留**(律三):槽位常驻,只换可见性,
+ *    所以它们显形时名字不会被顶得跳一下。
+ *
+ * ⚠ **行高恒定 27 是一条硬约束**:身是窗口化渲染的,按「行序 × 行高」反推位置。
+ * 所以骨架行、空目录行、失败行与条目行**同高**——`.skelRow` / `.note` 与
+ * `.rowWrap` 都吃 var(--files-row-h),谁都不许改成 auto。
  */
 .panel {
-  /* 树的一格缩进 —— 与图标同宽,子项的图标正好落在父项名字的起笔下。 */
+  /* 树的一格缩进。 */
   --tree-indent: var(--files-indent);
 
   position: relative;
@@ -19,21 +24,21 @@
   background: var(--surface-2);
 }
 
-/* ── 头:面包屑 + 重新读取 ────────────────────────────────────────────── */
+/* ── 头:面包屑 + 全部收起 + 重新读取 ─────────────────────────────────── */
 .head {
   flex: none;
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-1);
   padding: var(--sp-2) var(--sp-3);
   border-bottom: var(--bw-1) solid var(--line-1);
 }
 
 /*
- * 唯一吸剩余空间的角色(从前那枚 .spacer 的活儿现在归它),所以刷新钮不必弯腰。
- * 窄下来时**整条横滚**而不是某一段换行:面包屑是一条结构行,断成两行会把
- * 「我在哪儿」读成两句话。滚条不画(scrollbar-width:none):它有自己的手势,
- * 而这条只有一行高的带子上一条滚轨会比内容还显眼。
+ * 唯一吸剩余空间的角色,所以两颗钮不必弯腰。窄下来时**整条横滚**而不是某一段
+ * 换行:面包屑是一条结构行,断成两行会把「我在哪儿」读成两句话。滚条不画
+ * (scrollbar-width:none):它有自己的手势,而这条只有一行高的带子上一条滚轨
+ * 会比内容还显眼。
  */
 .crumbs {
   flex: 1;
@@ -45,7 +50,7 @@
   scrollbar-width: none;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: var(--fs-meta);
+  font-size: var(--files-meta-fs);
 }
 
 .crumbs::-webkit-scrollbar {
@@ -76,9 +81,20 @@
 }
 
 .crumb:focus-visible,
-.row:focus-visible {
+.row:focus-visible,
+.more:focus-visible,
+.noteRetry:focus-visible,
+.noticeAction:focus-visible,
+.detailCopy:focus-visible {
   outline: var(--focus-ring-w) solid var(--accent-ring);
   outline-offset: 0;
+}
+
+/* 折起来的中段。不可点(点它没有一个确定的去处),所以画成最淡的一档。 */
+.crumbFold {
+  flex: none;
+  padding: 0 var(--sp-1);
+  color: var(--text-4);
 }
 
 /* 尾段 = 当前所在。不是钮(点它没有去处),所以画成最重的那一档字。 */
@@ -86,7 +102,7 @@
   flex: none;
   padding: 0 var(--sp-1);
   color: var(--text-1);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -104,6 +120,84 @@
 .headIcon {
   width: var(--icon-sm);
   height: var(--icon-sm);
+  /* 「重新读取」按下去转一圈用的那条过渡(角度由 tsx 单调递增地给,不是关键帧)。
+   * 收在 --dur-release(跟手形变的回位档):它是一次**回应**,不该比手慢。 */
+  transition: transform var(--dur-release) var(--ease);
+}
+
+/* ── 告知条:没绑工作目录 ─────────────────────────────────────────────── */
+/*
+ * warn 的**晕底**而不是实色:它是一句提醒,不是一次报错 —— 实色会在一屏安静的
+ * 树上炸出一条横杠。8% 是「看得见但不喊」的那一档。
+ */
+.notice {
+  flex: none;
+  height: var(--files-notice-h);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-3);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.noticeIcon {
+  flex: none;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  color: var(--warn);
+}
+
+/* 这一行里唯一的弯腰件。 */
+.noticeText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.noticeAction {
+  flex: none;
+  background: none;
+  padding: 0;
+  font-size: var(--fs-nano);
+  font-weight: 600;
+  color: var(--accent-deep);
+  border-radius: var(--r-1);
+}
+
+.noticeAction:hover {
+  text-decoration: underline;
+}
+
+/* 输入行:它比告知条高一档(装得下一个输入框),所以它不吃 --files-notice-h。 */
+.bindRow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.bindInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.bindError {
+  flex: 1 0 100%;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-nano);
+  color: var(--danger);
 }
 
 /* ── 身:树 ───────────────────────────────────────────────────────────── */
@@ -116,32 +210,36 @@
 }
 
 /*
- * 一行 = 一颗按钮,里面三件东西(箭头 / 图标 / 名)。26px:比通用的 --row-h(28)
- * 再紧一档,理由写在 tokens.css 的「文件面几何」一节。
+ * 一行的外壳:悬停底色、选中底色、右键热区都挂它。里面是一颗按钮(箭头 / 标识 /
+ * 名)加两件行尾的东西 —— 按钮里不能再套按钮,所以行尾那两件是它的兄弟。
  */
-.row {
-  width: 100%;
-  min-width: 0;
+.rowWrap {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--sp-1);
   height: var(--files-row-h);
-  padding-left: calc(var(--sp-1) + var(--depth, 0) * var(--tree-indent));
   padding-right: var(--sp-1);
   border-radius: var(--r-1);
-  text-align: left;
-  background: none;
   transition: background var(--dur) var(--ease);
 }
 
-.row:hover {
+.rowWrap:hover {
   background: var(--st-hover);
+}
+
+/* 选中 = 底色 + 名字加重转 accent。**与「打开」是两件事**(那件是行尾的圆点)。 */
+.rowSel {
+  background: var(--st-sel);
+}
+
+.rowSel .rowName {
+  font-weight: 600;
+  color: var(--accent-deep);
 }
 
 /*
  * 隐藏文件(`.` 开头)整行降透明。**不换色** —— 换色会把它读成「另一种东西」,
- * 降透明才读成「同一种东西,只是平时不看它」(这也是图标的类型色仍然生效的原因:
- * 一个 .eslintrc.json 仍然该是数据色,只是整行淡一档)。
+ * 降透明才读成「同一种东西,只是平时不看它」(这也是标识的类型色仍然生效的原因)。
  */
 .rowHidden {
   opacity: var(--files-hidden-opacity);
@@ -151,23 +249,61 @@
   opacity: 1;
 }
 
-/* 箭头位:目录画箭头,文件留空位 —— 同一层的名字才从同一条竖线起笔。 */
+.row {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 100%;
+  padding-left: calc(var(--sp-1) + var(--depth, 0) * var(--tree-indent));
+  border-radius: var(--r-1);
+  text-align: left;
+  background: none;
+}
+
+/* 箭头槽:目录画箭头,文件留空位 —— 同一层的名字才从同一条竖线起笔。 */
 .caret {
   flex: none;
-  width: var(--icon-xs);
-  height: var(--icon-xs);
+  width: var(--files-caret-slot);
+  height: var(--files-caret-slot);
   color: var(--text-3);
 }
 
 /*
- * 图标的颜色来自行上那个 --ft(由 data/file-icons.ts 给名字、tokens.css 给值)。
- * 兜底是三档墨:变量没兑上时它仍然是一枚看得见的图标,而不是一片透明。
+ * 标识槽。**两形共用同一格**(字标 / lucide 图标),所以名字列的起笔与这一行
+ * 到底画的是哪一形无关。
  */
-.rowIcon {
+.glyph {
   flex: none;
+  width: var(--files-glyph-slot);
+  height: var(--files-badge-h);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/*
+ * 语言字标。底色与字色由行内变量给(值在 tokens.css 的数据节 —— 官方色是数据,
+ * 不过主题)。mono + 700 + 紧字距:两三个大写字母要在 20×15 里读得出来。
+ */
+.badge {
+  min-width: var(--files-glyph-slot);
+  width: auto;
+  padding: 0 var(--files-badge-pad-x);
+  border-radius: var(--files-badge-r);
+  font-family: var(--font-mono);
+  font-size: var(--fs-ext);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* 图标那一形。色由行内变量给,兜底三档墨(变量没兑上时它仍然看得见)。 */
+.rowIcon {
   width: var(--icon-sm);
   height: var(--icon-sm);
-  color: var(--ft, var(--text-3));
+  color: var(--ft-plain);
 }
 
 /* 一行里唯一的弯腰件:能缩(min-width:0)且缩了有收场(省略号)。 */
@@ -181,21 +317,98 @@
   text-overflow: ellipsis;
 }
 
-/* ── 注行:空 / 还在读 / 读不到,三态各说各的 ─────────────────────── */
-.note {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-  min-width: 0;
-  margin: 0;
-  padding: var(--sp-1) var(--sp-2) var(--sp-1)
-    calc(var(--sp-2) + var(--depth, 0) * var(--tree-indent));
+/* 「这个文件正开着」。5px 一颗 accent 圆点 —— 它不占一整个图标位,因为它说的是
+ * 一件比图标轻得多的事。 */
+.openDot {
+  flex: none;
+  width: var(--files-open-dot);
+  height: var(--files-open-dot);
+  margin-left: var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--accent);
 }
 
-.noteText {
+/*
+ * 行尾 ⋯。**槽位常驻**(律三:覆盖必须有布局预留),平时透明:显形时名字不会
+ * 被顶得跳一格。焦点可见时也显形 —— 键盘用户得看得见它在哪儿。
+ */
+.more {
   flex: none;
-  font-size: var(--fs-meta);
+  width: var(--icon-md);
+  height: var(--icon-md);
+  margin-left: var(--sp-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-1);
+  background: none;
   color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.rowWrap:hover .more,
+.more:focus-visible {
+  opacity: 1;
+}
+
+.more:hover {
+  background: var(--st-active);
+  color: var(--text-1);
+}
+
+.moreIcon {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+}
+
+/* ── 三种「还没有内容」──────────────────────────────────────────────── */
+/* 骨架:两条不等长的短横。它们**各占一整行**,理由写在文件头那条硬约束里。 */
+.skelRow {
+  display: flex;
+  align-items: center;
+  height: var(--files-row-h);
+  padding-left: calc(var(--sp-2) + var(--depth, 0) * var(--tree-indent));
+  padding-right: var(--sp-2);
+}
+
+.skelBar {
+  height: var(--files-skel-h);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+}
+
+.skelBar1 {
+  width: var(--files-skel-w1);
+}
+
+.skelBar2 {
+  width: var(--files-skel-w2);
+}
+
+/* 空 / 失败:一行,与条目行同高。 */
+.note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  height: var(--files-row-h);
+  padding-left: calc(var(--sp-2) + var(--depth, 0) * var(--tree-indent));
+  padding-right: var(--sp-2);
+}
+
+/* 空目录:斜体灰,一行 —— 无插画无按钮。斜体是为了让它一眼不像一个文件名。 */
+.noteEmpty {
+  flex: none;
+  font-size: var(--fs-nano);
+  font-style: italic;
+  color: var(--text-3);
+}
+
+.noteFail {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--danger);
 }
 
 /* 后端原话:mono、更淡一档,能缩、缩了有收场。 */
@@ -203,54 +416,202 @@
   flex: 1;
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: var(--fs-micro);
+  font-size: var(--fs-nano);
   color: var(--text-4);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ── 底注:一句交代,平时不在 ─────────────────────────────────────── */
+/* 读失败不静默留白:那一层就地给一颗「重试」(只重拉这一层)。 */
+.noteRetry {
+  flex: none;
+  padding: 0 var(--sp-1);
+  background: none;
+  border-radius: var(--r-1);
+  font-size: var(--fs-nano);
+  font-weight: 600;
+  color: var(--accent-deep);
+}
+
+.noteRetry:hover {
+  background: var(--st-hover);
+}
+
+/* ── 底:失败底注(平时不在)+ 一句用法提示(永远在) ───────────────── */
 .foot {
   flex: none;
   margin: 0;
   min-width: 0;
   padding: var(--sp-1) var(--sp-3);
   border-top: var(--bw-1) solid var(--line-1);
-  font-size: var(--fs-micro);
-  color: var(--text-3);
+  font-size: var(--fs-nano);
+  color: var(--danger);
   overflow-wrap: anywhere;
 }
 
-/* ── 详情:长在 ui/Dialog 的正文里(理由写在 tsx 的 FileDetailDialog 上) ── */
+.hint {
+  flex: none;
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-top: var(--bw-1) solid var(--line-1);
+}
+
+.hintIcon {
+  flex: none;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  color: var(--text-4);
+}
+
+.hintText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--files-meta-fs);
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 行菜单里那几行的排版 ─────────────────────────────────────────────── */
+.menuLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+}
+
+.menuMain {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 右缘那一格:当前打开方式 / 「还没接上」的注。它比正文淡一档,不抢读。 */
+.menuTrail {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--text-4);
+}
+
+.menuKeys {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* 「已复制路径」那一拍:字转 accent,不换布局(所以按下去那一行不会跳)。 */
+.menuDone {
+  color: var(--accent-deep);
+}
+
+/* 注脚:一句实话,允许折行(所以它不是 MenuSection —— 那个是定高的)。 */
+.menuNote {
+  padding: var(--sp-1) var(--menu-item-pad-x) var(--sp-2);
+  font-size: var(--fs-nano);
+  line-height: 1.4;
+  color: var(--text-4);
+}
+
+/* ── 详情:长在 ui/Popover 里(理由写在 tsx 的 FileDetailPopover 上) ─── */
 .detail {
+  width: var(--files-detail-pop-w);
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
   min-width: 0;
+  padding: var(--sp-3);
 }
 
 .detailHead {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   min-width: 0;
 }
 
-/* 唯一一处「图标当主体」的用法,所以它有自己的一格身量。色由行内变量给。 */
-.detailIcon {
+/* 头上那枚标识比行里的大一档:这里它是「这是什么」的主体,不是一行的前缀。 */
+.detailGlyph {
   flex: none;
-  width: var(--files-detail-icon);
-  height: var(--files-detail-icon);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--icon-lg);
+}
+
+.detailGlyph .rowIcon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 
 .detailName {
   flex: 1;
   min-width: 0;
-  font-size: var(--fs-title);
+  font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-1);
   overflow-wrap: anywhere;
+}
+
+/*
+ * 路径行。**允许在任意处折行**(overflow-wrap:anywhere)而不是截断:
+ * 这一格的全部用处就是「把整条路径看全 / 拷走」,截成 `…/core/engine.ts` 等于
+ * 这一行白画了。它不是结构行,所以律二不适用。
+ */
+.detailPathRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.detailPath {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.detailCopy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1);
+  background: none;
+  border-radius: var(--r-1);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.detailCopy:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.detailCopyDone {
+  color: var(--accent-deep);
+}
+
+.detailNote {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: 0;
 }
 
 .detailList {
@@ -261,8 +622,7 @@
   min-width: 0;
 }
 
-/* 一行两列:定宽的标签列 + 吃剩下的值列。所有行的值从同一条竖线起笔,
- * 四行才扫得动(与检索面的行首徽、通知中心的右两列同一条理由)。 */
+/* 一行两列:定宽的标签列 + 吃剩下的值列。所有行的值从同一条竖线起笔。 */
 .detailRow {
   display: flex;
   align-items: baseline;
@@ -280,26 +640,18 @@
 .detailValue {
   flex: 1;
   min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
   margin: 0;
   font-size: var(--fs-label);
   color: var(--text-1);
+  overflow-wrap: anywhere;
 }
 
-/*
- * 完整路径。**允许在任意处折行**(overflow-wrap:anywhere)而不是截断:
- * 这一格的全部用处就是「把整条路径看全 / 拷走」,截成 `…/core/engine.ts` 等于
- * 这一行白画了。它不是结构行,所以律二不适用。
- */
-.detailPath {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-  overflow-wrap: anywhere;
+.detailFoot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
 }
 
 .detailBtnIcon {
@@ -339,9 +691,8 @@
 /*
  * 唯一吸空间的角色,而且 **basis 取 0** —— 这一格是量出来的:
  * 用 `1 1 auto` 时它的基准是整条绝对路径(上千像素),按 flex 的比例收缩规则
- * 文件名也得跟着让掉一截,真机上 `engine.ts` 当场被截成 `engin…`,而右边的路径
- * 还宽宽松松。basis 0 的意思是「先把名字放下,剩下的都归我」:名字只在容器真的
- * 窄到放不下时才开始让,而那正是我们要的先后次序。
+ * 文件名也得跟着让掉一截,真机上 `engine.ts` 当场被截成 `engin…`。
+ * basis 0 的意思是「先把名字放下,剩下的都归我」。
  */
 .previewPath {
   flex: 1 1 0;

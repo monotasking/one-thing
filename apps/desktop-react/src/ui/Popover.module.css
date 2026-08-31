@@ -1,0 +1,23 @@
+/* 关键帧 menuIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。
+ * 附属浮层与菜单的入场是**同一件事**(贴着锚点淡进来,不位移),所以复用同一枚
+ * 关键帧 —— 再造一枚一模一样的只会让 motion-gate 的名册多一行没有差别的名字。 */
+
+.pop {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  border: var(--bw-1) solid var(--line-1);
+  box-shadow: var(--sh-2);
+  /* 它不遮任何东西,但自己得能滚:内容比视口还高时(超长路径 + 四行元信息),
+   * 浮层内部滚,而不是把视口顶出一条横向滚轴。 */
+  max-height: calc(100vh - var(--sp-4));
+  overflow: auto;
+  overscroll-behavior: contain;
+  animation: var(--kf-menu-in) var(--dur-enter) var(--ease-out);
+}
+
+.pop:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}

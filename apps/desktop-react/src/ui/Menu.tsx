@@ -47,9 +47,15 @@ interface MenuProps {
   role?: MenuRole
   /** 给 aria-controls 指过来用(Select 的触发器要指着它)。 */
   id?: string
+  /**
+   * 缺省宽度是菜单族的 `--menu-w`(176)。个别菜单装的东西天然更宽 —— 文件面
+   * 那张要放得下「打开方式」七行 + 一句折行的注脚 —— 由消费方**递一格 token**
+   * (不是一个字面 px)把下界抬上去。它只改 min-width:内容更宽时照样撑开。
+   */
+  minWidth?: string
 }
 
-export function Menu({ x, y, onClose, children, label, role = 'menu', id }: MenuProps) {
+export function Menu({ x, y, onClose, children, label, role = 'menu', id, minWidth }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState({ left: x, top: y })
 
@@ -88,7 +94,7 @@ export function Menu({ x, y, onClose, children, label, role = 'menu', id }: Menu
         ref={ref}
         id={id}
         className={s.menu}
-        style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+        style={{ left: `${pos.left}px`, top: `${pos.top}px`, ...(minWidth ? { minWidth } : {}) }}
         role={role}
         /* ARIA 菜单模式:容器**可编程聚焦**(-1),项走 roving tabindex。
          * 不给 -1 的话容器根本拿不到焦点,读屏软件进不去这棵菜单树。 */

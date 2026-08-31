@@ -139,6 +139,20 @@ export interface SessionsSourceState {
    * 同一条接缝纪律)。
    */
   create: (projectId: string | null) => Promise<CreateSessionOutcome>
+  /**
+   * 给一条**已经存在**的会话换工作目录(文件面「绑定…」那一条走它)。
+   *
+   * 与 `create` 里那一步是同一发 RPC,但语义不同,所以是两口:那一步是
+   * 「新建的这条落在哪个项目下」(失败不回滚,因为会话已经建出来了),
+   * 这一口是「把这条会话挪到这个目录」—— 失败就是失败,原话交给调用方去说。
+   *
+   * 成功后**同步重拉列表**:工作目录是分组的判据(`expose/projection.ts`),
+   * 不重拉的话左栏还挂在老项目下,而文件树的根已经换了 —— 两处说两句话。
+   */
+  setWorkingDirectory: (
+    sessionId: string,
+    workingDirectory: string,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
   ensureChapters: (sessionId: string) => Promise<void>
   ensureMessages: (sessionId: string) => Promise<void>
   ensureMarkers: (sessionId: string) => Promise<void>
@@ -380,6 +394,22 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       lastRefreshAt = Date.now()
       await loadList()
       return workdirError ? { ok: true, sessionId, workdirError } : { ok: true, sessionId }
+    },
+
+    setWorkingDirectory: async (sessionId, workingDirectory) => {
+      if (!sessionId) return { ok: false, error: 'sessionId 为空' }
+      const port = await sessionsPort()
+      try {
+        const updated = await port.updateWorkingDirectory(sessionId, workingDirectory)
+        if (!updated?.success) {
+          return { ok: false, error: updated?.error || 'sessions.updateWorkingDirectory 未成功' }
+        }
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) }
+      }
+      lastRefreshAt = Date.now()
+      await loadList()
+      return { ok: true }
     },
 
     ensureChapters: async (sessionId) => {
