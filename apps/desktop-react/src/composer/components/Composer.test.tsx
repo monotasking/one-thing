@@ -18,6 +18,16 @@ const handed: ({ kind: 'text'; text: string; attachments: number } | { kind: 'no
 let aborts = 0
 
 /**
+ * 假 sink 眼里「有没有当前会话」—— 首开草稿态就是这一格为 false:
+ * 真实现里 `send` 正是在没有当前会话时返回 false(chat-source 的那句 `if (!sessionId)`)。
+ */
+let hasSession = true
+/** 「惰性建会话」被叫了几次。首开那条路的全部信用都在这个数上:恰好一次。 */
+let starts = 0
+/** 那一发怎么答。默认当场给一条新会话;要验「在飞」的用例自己换成一只挂着的 promise。 */
+let answerStart: () => Promise<string | undefined> = async () => 'created-1'
+
+/**
  * 组件层只钉「谁在场、谁让位、键盘归谁」—— 判断本身在 transitions.test.ts。
  * 抽屉纪律(一个槽、后来者顶替、Esc 收)与 ask 形态的进出是这一层的主戏。
  */
@@ -26,13 +36,25 @@ beforeEach(() => {
   resetComposerStore()
   handed.length = 0
   aborts = 0
+  hasSession = true
+  starts = 0
+  answerStart = async () => 'created-1'
   configureComposerSink({
     send: (text, attachments) => {
+      // 没有当前会话就交不出去 —— 与真实现同判据(见 sink.ts 上的 send 注释)。
+      if (!hasSession) return false
       handed.push({ kind: 'text', text, attachments })
       return true
     },
     notice: (notice) => void handed.push({ kind: 'notice', notice }),
     abort: () => void (aborts += 1),
+    startSession: async () => {
+      starts += 1
+      const id = await answerStart()
+      // 建成了 = 从这一刻起有当前会话,后面那次 send 才交得出去。
+      if (id) hasSession = true
+      return id
+    },
   })
   useChatSource.setState({ activeMessageId: undefined })
 })
@@ -411,5 +433,88 @@ describe('发送键的两副面孔:闲时发送,忙时停止', () => {
 
     act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
     expect(aborts).toBe(0)
+  })
+})
+
+/*
+ * 首开草稿态(08-31 用户拍板)。
+ *
+ * 刚打开 app 时没有活动会话 —— 当前会话**故意**不跨启动持久化(它是真会话 id,
+ * 记到下次启动换来的是一个指向空气的标题),于是标题栏画的是「新会话」这张空脸。
+ * 在这张脸上打一句话按发送,从前被静默吞掉(sink 说没交出去,而这一层就此收工:
+ * 没提示、没动作);现在那一下的意思被认成它本来的意思 ——「开始一段对话」。
+ *
+ * 这一层钉的是**路由**:什么时候该去建、建完发什么、建不成剩下什么。
+ * 「怎么建」在 data/session-create.test.ts(唯一编排点那一侧),这里一台 core 都不起。
+ */
+describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话发进去', () => {
+  const sendBtn = () => screen.getByLabelText('发送')
+  const box = () => screen.getByRole('textbox', { name: /说点什么/ })
+
+  it('恰好建一条会话,原话发进去,输入框清空', async () => {
+    hasSession = false
+    render(<Composer />)
+    type(box(), '先建一条会话再说')
+
+    await act(async () => void fireEvent.click(sendBtn()))
+
+    expect(starts).toBe(1)
+    expect(handed).toEqual([{ kind: 'text', text: '先建一条会话再说', attachments: 0 }])
+    expect(box().textContent).toBe('')
+  })
+
+  it('空话不建会话 —— 「开始一段对话」的前提是真有一句话要说', async () => {
+    hasSession = false
+    render(<Composer />)
+
+    await act(async () => void fireEvent.click(sendBtn()))
+
+    expect(starts).toBe(0)
+    expect(handed).toHaveLength(0)
+  })
+
+  it('建会话在飞时第二下当没按:不建第二条、不双发,话还在框里', async () => {
+    hasSession = false
+    let release: (id: string | undefined) => void = () => undefined
+    answerStart = () =>
+      new Promise((resolve) => {
+        release = resolve
+      })
+    render(<Composer />)
+    type(box(), 'hi')
+
+    fireEvent.click(sendBtn())
+    // 第二下落在那段往返窗口里(中文输入法一次回车发两下是真发生过的事)。
+    fireEvent.click(sendBtn())
+    expect(starts).toBe(1)
+    expect(box().textContent, '被忽略的那一下无损:话没被清掉').toBe('hi')
+
+    await act(async () => {
+      release('created-1')
+      await Promise.resolve()
+    })
+
+    expect(starts).toBe(1)
+    expect(handed).toEqual([{ kind: 'text', text: 'hi', attachments: 0 }])
+    expect(box().textContent).toBe('')
+
+    // 闸拆干净了:下一句照常走「已有会话」那条直路,不再建第二条。
+    type(box(), '第二句')
+    await act(async () => void fireEvent.click(sendBtn()))
+    expect(starts).toBe(1)
+    expect(handed).toHaveLength(2)
+  })
+
+  it('建不成:话留在框里,这一层不再加第二条提示(编排点已经说过了)', async () => {
+    hasSession = false
+    answerStart = async () => undefined
+    render(<Composer />)
+    type(box(), '这句话不能丢')
+
+    await act(async () => void fireEvent.click(sendBtn()))
+
+    expect(starts).toBe(1)
+    expect(handed).toHaveLength(0)
+    expect(box().textContent).toBe('这句话不能丢')
   })
 })

@@ -148,10 +148,46 @@ export function Composer() {
     [drawerKind, files, commands, closeDrawer, openAsk],
   )
 
+  /*
+   * 「此刻正为这句话建一条会话」。ref 而不是 state:它不画任何东西 ——
+   * 建会话是一次往返,不该为它长出一个转圈的发送键。
+   *
+   * 它挡的是**建会话在飞的那段窗口里的第二下发送**(中文输入法一次回车发两下是
+   * 真发生过的事)。编排点自己那道闸只防「同时建两条」,防不了「建完之后两下各
+   * 补发一次」—— 所以闸必须在这一层:在飞时后来的那几下当没按,话还在框里,无损。
+   */
+  const starting = useRef(false)
+
   const doSend = useCallback(
     (text: string) => {
-      if (send(text)) inputRef.current?.clear()
-      inputRef.current?.focus()
+      if (send(text)) {
+        inputRef.current?.clear()
+        inputRef.current?.focus()
+        return
+      }
+      /*
+       * send 说没交出去,两种可能:空话,或者**还没有当前会话**。
+       * 空话到此为止(它本来就不该离开输入框);有话则是首开草稿态那一下 ——
+       * 「发送」在这里的意思是「开始一段对话」:先惰性建一条,再把这句话发进去。
+       * 判空在这里自己做一次,是因为 send 的 false 不区分原因,而这两条路的
+       * 归宿完全不同(一条什么都不做,一条要建会话)。
+       */
+      if (!text.trim() || starting.current) {
+        inputRef.current?.focus()
+        return
+      }
+      starting.current = true
+      void (async () => {
+        try {
+          const sessionId = await composerSink().startSession()
+          // 没建成:编排点已经 notify(error) 过了,这里**不再加一条 toast**,
+          // 也**不清输入框** —— 那句话还在人手里,人可以直接再按一次。
+          if (sessionId && send(text)) inputRef.current?.clear()
+        } finally {
+          starting.current = false
+          inputRef.current?.focus()
+        }
+      })()
     },
     [send],
   )

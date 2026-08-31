@@ -184,6 +184,7 @@ describe('④⑤⑥ 三颗钮真的接在那三条线上', () => {
       abort: () => {
         aborted += 1
       },
+      startSession: async () => undefined,
     })
     await mount(streamingLedger())
     fireEvent.click(screen.getByTestId('chat-stop'))

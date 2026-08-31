@@ -4,6 +4,7 @@ import { configureSessionsPort, type SessionsPort } from './sessions-port'
 import { configureAgentsPort, type AgentsPort } from './agents-port'
 import { useAgentsSource } from './agents-source'
 import { useSessionsSource } from './sessions-source'
+import { useChatSource } from './chat-source'
 import { registerComposerFocus } from '../composer/focus'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
@@ -66,6 +67,8 @@ beforeEach(() => {
   registerComposerFocus(() => void (focused += 1))
   useSessionsSource.getState().reset()
   useAgentsSource.getState().reset()
+  // 建会话的编排点末尾会把聊天面开在新会话上(见下方那条用例),所以它也要归零。
+  useChatSource.getState().reset()
   useNotifyStore.getState().clear()
   useExposeStore.setState({ ...initialExposeState })
 })
@@ -74,6 +77,7 @@ afterEach(() => {
   registerComposerFocus(undefined)
   useSessionsSource.getState().reset()
   useAgentsSource.getState().reset()
+  useChatSource.getState().reset()
   // 不还原成 undefined:那会让后面的用例掉回真 platform(见 test/setup.ts)。
   configureSessionsPort(sessionsPortStub())
   configureAgentsPort(agentsPortStub())
@@ -220,5 +224,35 @@ describe('expose.newSession:唯一的建会话入口', () => {
     await useExposeStore.getState().newSessionInCurrentProject()
 
     expect(updateWorkingDirectory).not.toHaveBeenCalled()
+  })
+
+  /*
+   * 首开草稿态那条路(08-31 用户拍板)要的两件事,都在这里钉住。
+   *
+   * 平时没人在编排点里显式开聊天面 —— ChatStream 有个 effect 盯着「当前会话」,
+   * 换一条它就 open 一次。但那个 effect 要等 React 提交完那一帧才跑,而
+   * 「建完就把这句话发出去」等不了:发送读的是 chat-source 里的当前会话。
+   * 所以编排点自己开一次,并且**回来的那一刻**它已经开好了。
+   */
+  it('回来的那一刻:聊天面已经开在这条新会话上,id 也交到了调用方手里', async () => {
+    landOnServer()
+
+    const sessionId = await useExposeStore.getState().newSession(null)
+
+    expect(sessionId).toBe(NEW_ID)
+    expect(useChatSource.getState().sessionId).toBe(NEW_ID)
+  })
+
+  it('失败 / 被单飞闸挡下时交出 undefined —— 调用方据此什么都不做', async () => {
+    create.mockResolvedValueOnce({ success: false, error: '磁盘满了' })
+    expect(await useExposeStore.getState().newSession(null)).toBeUndefined()
+
+    landOnServer()
+    const [first, second] = await Promise.all([
+      useExposeStore.getState().newSession(null),
+      useExposeStore.getState().newSession(null),
+    ])
+    expect(first).toBe(NEW_ID)
+    expect(second).toBeUndefined()
   })
 })

@@ -5,6 +5,7 @@ import {
   sendChatMessage,
   useChatSource,
 } from '../data/chat-source'
+import { useExposeStore } from '../expose/store'
 
 /**
  * 输入框与聊天之间的**接缝**(D3)。
@@ -36,12 +37,28 @@ export interface ComposerSink {
    * 判「在不在跑」的是下面那只 hook,不是这个组件。
    */
   abort(): void
+  /**
+   * 惰性开一条会话(D1 尾批「首开草稿态」)。
+   *
+   * 刚打开 app 时没有活动会话(当前会话**故意**不跨启动持久化),标题栏画的是
+   * 「新会话」这张空脸。人在这张脸上打一句话按下发送 —— 那一下的意思是
+   * 「开始一段对话」,不是「什么都别发生」。于是这里多一口:**先开一条,再发**。
+   *
+   * 返回新会话 id;`undefined` = 没开成(编排点自己 notify 过了,这里不重复报)。
+   *
+   * 它进 sink 而不是让 composer 直接去调形态机,是这个文件从头到尾那条方向纪律:
+   * 输入面板只知道有个地方**能收下一个动作**,不知道那边有 store、有形态、有项目。
+   * 真实现落在 `expose/store.newSession` —— 建会话的**唯一**编排点,这里不复刻它。
+   */
+  startSession(): Promise<string | undefined>
 }
 
 const realSink: ComposerSink = {
   send: (text, attachments) => sendChatMessage(text, attachments),
   notice: (kind) => pushChatNotice(kind),
   abort: () => abortChatRun(),
+  // 惰性建会话时没有「当前会话」,所以当前项目必然是 null —— 与 ⌘N 首开同义。
+  startSession: () => useExposeStore.getState().newSessionInCurrentProject(),
 }
 
 let sink: ComposerSink | undefined

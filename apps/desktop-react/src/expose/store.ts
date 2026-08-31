@@ -7,6 +7,7 @@ import {
   useSessionsSource,
 } from '../data/sessions-source'
 import { useAgentsSource } from '../data/agents-source'
+import { useChatSource } from '../data/chat-source'
 import { focusComposer } from '../composer/focus'
 import { findSession } from './projection'
 import { notify } from '../services/notify'
@@ -38,11 +39,17 @@ interface ExposeStore extends ExposeState {
   /**
    * 建一条会话并进去。`projectId` = 落在哪个项目下(null = 不属于任何项目)。
    *
-   * 这是**唯一**的建会话入口:组头的 `+`、⌘N 都走它,不许谁再开第二条路。
+   * 这是**唯一**的建会话入口:组头的 `+`、⌘N、首开草稿态发送都走它,
+   * 不许谁再开第二条路。
+   *
+   * 返回新会话 id;`undefined` = 没建成(后端拒了)**或**这一下被单飞闸挡住了。
+   * 「没建成」与「当没按」在调用方那里是同一件事:接下来什么都别做。
+   * 从前它返回 void,现在多这一格是因为惰性建会话那条路要拿着这个 id
+   * 接着把那句话发出去 —— 让调用方回头去 store 里捞「当前会话」是在猜。
    */
-  newSession: (projectId: string | null) => Promise<void>
+  newSession: (projectId: string | null) => Promise<string | undefined>
   /** ⌘N 那一条:落在**当前会话所属的项目**下;没有当前会话就不属于任何项目。 */
-  newSessionInCurrentProject: () => Promise<void>
+  newSessionInCurrentProject: () => Promise<string | undefined>
 }
 
 /**
@@ -129,13 +136,14 @@ export const useExposeStore = create<ExposeStore>()(
        *  2. 兑现 pendingAgentId —— **不 await**:它是「顺手落一笔」,
        *     没道理让用户多等一次往返才看见新会话;写失败它自己 notify(warn),
        *     那时会话已经在屏幕上了,一句提示比一次卡顿诚实;
-       *  3. 进会话 + 把光标交给输入框 —— 新建的下一秒就是打字。
+       *  3. 进会话 + 把光标交给输入框 —— 新建的下一秒就是打字;
+       *  4. **等聊天面真的开在这条会话上**(见下方那段理由),再把 id 交出去。
        *
        * 失败:notify(error)(error 档**不自动消失**,人回头还能看见),
        * 形态一格不动 —— 尤其**不碰输入框**:那句还没发出去的话还在人手里。
        */
       newSession: async (projectId) => {
-        if (creating) return
+        if (creating) return undefined
         creating = true
         let outcome
         try {
@@ -151,18 +159,31 @@ export const useExposeStore = create<ExposeStore>()(
             body: outcome.error,
             detail: outcome.error,
           })
-          return
+          return undefined
         }
         void useAgentsSource.getState().applyPendingAgent(outcome.sessionId)
         get().enterSession(outcome.sessionId)
         focusComposer()
+        /*
+         * 平时没人在这里显式开聊天面 —— ChatStream 有个 effect 盯着「当前会话」,
+         * 换一条它就 open 一次。但 effect 要等 React 提交完那一帧才跑,而
+         * **紧接着就要发第一句话**的那条路(首开草稿态)等不了:发送读的是
+         * chat-source 里的当前会话,那一格正是 open 设的。
+         *
+         * 所以这层壳自己开一次。两条理由让它是 await 而不是 void:
+         *  - open 先订阅再起底,等它回来才保证这一轮的事件一条不漏;
+         *  - open 对同一条会话是**幂等**的(已经开着就当场返回),
+         *    所以后来那次 effect 里的 open 是恒等变换,不是第二次起底。
+         */
+        await useChatSource.getState().open(outcome.sessionId)
+        return outcome.sessionId
       },
 
       newSessionInCurrentProject: async () => {
         // 「当前项目」= 当前会话的那个。没有当前会话(刚启动 / 上一条被删)就是
         // null —— 不去猜一个「最近用过的项目」,那是编。
         const current = findSession(currentSessions(), get().currentSessionId)
-        await get().newSession(current?.projectId ?? null)
+        return get().newSession(current?.projectId ?? null)
       },
     }),
     {
