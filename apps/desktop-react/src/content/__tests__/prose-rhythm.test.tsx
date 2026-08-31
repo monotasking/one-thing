@@ -263,4 +263,58 @@ describe('节奏表契约', () => {
   it('聊天列的宽度由阅读轴说了算(--pr-col),不再是写死的 --chat-col', () => {
     expect(code).toMatch(/\.column\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
   })
+
+  /*
+   * 08-31 真机回访 · 报障一。④ 是**同类相接**那一组:判据是两侧同时报同一个身份,
+   * 而不是某一件东西自己的缘 —— 所以它压过 ②③,也因此必须排在它们之后
+   * (0-3-0 本来就赢,排在后面是让人一眼看出它是例外)。
+   */
+  it('④ 同类相接:两段思考之间吃 --pr-think,且排在 ②③ 之后', () => {
+    expect(code).toMatch(
+      /\.row > \[data-prose='thought'\] \+ \[data-prose='thought'\]\s*\{[^}]*margin-block-start:\s*var\(--pr-think\)/,
+    )
+    const objectNextSide = code.indexOf(".row > * + [data-prose='object']")
+    const sameKind = code.indexOf(".row > [data-prose='thought'] + [data-prose='thought']")
+    expect(objectNextSide).toBeGreaterThan(-1)
+    expect(sameKind).toBeGreaterThan(objectNextSide)
+  })
+})
+
+/*
+ * 08-31 真机回访:两条列宽的**同源**门。
+ *
+ * 用户报的是「宽 / 满幅档下输入框与正文不齐」,根因是两条列各读一个 token
+ * (正文 --pr-col、Composer --chat-col=720px)。对不齐是必然,不是意外。
+ * 这条门读的是 CSS 文本 —— 真的齐不齐由真机门量,这里只钉「它们读的是同一个 token,
+ * 而且左右内缩同为 --sp-4」这条前提:前提一破,真机上必然又歪。
+ */
+describe('正文列与 Composer 列同源', () => {
+  const chat = readFileSync(path.resolve(__dirname, '../ChatStream.module.css'), 'utf-8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  )
+  const composer = readFileSync(
+    path.resolve(__dirname, '../../composer/components/Composer.module.css'),
+    'utf-8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
+
+  it('Composer 的 .wrap 与聊天列读同一个 --pr-col', () => {
+    expect(composer).toMatch(/\.wrap\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
+    expect(chat).toMatch(/\.column\s*\{[^}]*max-width:\s*var\(--pr-col\)/)
+  })
+
+  it('两条列的左右内缩同为 --sp-4', () => {
+    expect(composer).toMatch(/\.wrap\s*\{[^}]*padding:\s*0 var\(--sp-4\)/)
+    expect(chat).toMatch(/\.column\s*\{[^}]*padding:\s*var\(--sp-6\) var\(--sp-4\)/)
+  })
+
+  it('--chat-col 已经退役 —— 全仓零消费者', () => {
+    const tokens = readFileSync(path.resolve(__dirname, '../../styles/tokens.css'), 'utf-8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+    expect(tokens).not.toMatch(/--chat-col\s*:/)
+    expect(composer).not.toContain('--chat-col')
+    expect(chat).not.toContain('--chat-col')
+  })
 })

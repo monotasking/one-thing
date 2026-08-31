@@ -281,6 +281,51 @@ describe('发送', () => {
     expect(state().attachments).toHaveLength(0)
     expect(box.textContent).toBe('')
   })
+
+  /*
+   * 08-31 用户真机报障:中文输入法下打 `hi` 按一下回车,消息发了**两次**。
+   *
+   * 拼音输入法候选框开着时按回车,浏览器先发一个「确认候选」的 keydown
+   * (`isComposing === true` / 老实现 `keyCode === 229`),IME 结束组字之后**再**发
+   * 一个真回车。两下都被当成发送,于是同一句话出去两遍 —— 而第一遍还发在候选上屏
+   * 之前,内容也不对。
+   *
+   * 两条用例分别钉两种问法:标准的 `isComposing` 与老 WebKit 的 229。缺哪一条都会
+   * 漏掉一类宿主,而漏掉的后果就是这条报障。
+   */
+  it.each([
+    ['标准问法 isComposing', { isComposing: true }],
+    ['老实现 keyCode 229', { keyCode: 229 }],
+  ])('组字确认的那一下回车不发送(%s),随后的真回车发且只发一条', (_label, composing) => {
+    render(<Composer />)
+    const box = screen.getByRole('textbox', { name: /说点什么/ })
+    type(box, 'hi')
+
+    fireEvent.keyDown(box, { key: 'Enter', ...composing })
+    expect(handed, '组字期间的回车属于输入法,不该交出去').toHaveLength(0)
+
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(handed).toEqual([{ kind: 'text', text: 'hi', attachments: 0 }])
+  })
+
+  /*
+   * 组字期间**一个键都不抢**,不只是回车:上下键在候选框里是翻页,Escape 是取消
+   * 这次组字。抽屉开着时它们本来归抽屉 —— 抢走的话中文用户就得在「选字」和
+   * 「用这个应用」之间二选一。
+   */
+  it('组字期间上下键归输入法,不去翻抽屉的选中项', () => {
+    render(<Composer />)
+    const box = screen.getByRole('textbox', { name: /说点什么/ })
+    type(box, '看看 @m')
+    expect(state().drawerKind).toBe('files')
+    const before = state().pickIndex
+
+    fireEvent.keyDown(box, { key: 'ArrowDown', isComposing: true })
+    expect(state().pickIndex).toBe(before)
+
+    fireEvent.keyDown(box, { key: 'ArrowDown' })
+    expect(state().pickIndex).not.toBe(before)
+  })
 })
 
 /**

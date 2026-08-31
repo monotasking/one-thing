@@ -34,6 +34,25 @@ interface Props {
   onSend: (text: string) => void
 }
 
+/**
+ * 这一下按键是不是**输入法正在组字**发出来的。
+ *
+ * 08-31 用户真机报障:中文输入法下打 `hi`、按一下回车,消息发了**两次**。
+ * 拼音输入法在候选框开着时按回车,浏览器会先发一个 `keydown`(那是给 IME 的
+ * 「确认候选」),IME 结束组字之后**再**发一个真正的回车 keydown。从前这里两下
+ * 都当成「发送」,于是同一句话被发两遍 —— 而第一遍还发在候选上屏之前,内容也不对。
+ *
+ * **两种问法都问**,因为它们的可用性不一样:
+ *  · `nativeEvent.isComposing` 是现行标准(Chromium / Electron 上就是这一条),
+ *    但它是 `KeyboardEvent` 上的字段,jsdom 造的合成事件里默认是 `undefined`;
+ *  · `keyCode === 229` 是老 WebKit / 部分平台 IME 的老约定,今天仍有实现只给这个。
+ * 缺哪一条都会漏掉一类宿主,而漏掉的后果正是这条报障。
+ */
+function isComposingKey(e: KeyboardEvent<HTMLDivElement>): boolean {
+  const native = e.nativeEvent as unknown as { isComposing?: boolean; keyCode?: number }
+  return native?.isComposing === true || native?.keyCode === 229
+}
+
 /** 光标之前那一截文本 + 它落在哪个文本节点上。不在文本节点里就没有 token 可言。 */
 function caretToken(
   el: HTMLElement,
@@ -94,6 +113,13 @@ export function ComposerInput({
   }))
 
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    /*
+     * 组字期间这块输入面**整个归输入法**,一个键都不抢 —— 不只是回车:
+     * 上下键在候选框里是翻页,Escape 是取消这次组字。抢走任何一个,中文用户就得
+     * 在「选字」和「用这个应用」之间二选一。所以这一句写在最前面,不是塞进
+     * 回车那个分支里。
+     */
+    if (isComposingKey(e)) return
     if (picking) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()

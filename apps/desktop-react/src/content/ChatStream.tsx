@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { useChatSource } from '../data/chat-source'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useExposeStore } from '../expose/store'
@@ -56,8 +56,18 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
     void open(sessionId)
   }, [sessionId, open])
 
+  /*
+   * 进场落底盯的是**数据源自己报的会话**,不是外面那个 currentSessionId。
+   * 两者差一拍:换会话时 `open()` 在 effect 里跑,所以「外面已经换了、树还是上一条
+   * 会话的」这一帧真实存在 —— 拿外面那个当判据会在这一帧落到旧树上,然后把新树
+   * 误判成「账本长出了新东西」而当场收手(结果就是换会话不落底)。
+   * 数据源那一格与 `messages` 是**同一次 set** 写的,天然同步。
+   */
+  const foldedSessionId = useChatSource((st) => st.sessionId)
+  const onScrollWithLanding = useEnterAtBottom(scrollRef, foldedSessionId, messages, onScroll)
+
   return (
-    <div ref={scrollRef} className={s.scroll} onScroll={onScroll} data-testid="chat-stream">
+    <div ref={scrollRef} className={s.scroll} onScroll={onScrollWithLanding} data-testid="chat-stream">
       <div className={s.column}>
         {/* 三种空态各说各话,一种都不回退到假数据(与 D1 同一条纪律)。 */}
         {!sessionId && <p className={s.empty}>{t('chat.noSession')}</p>}
@@ -88,6 +98,99 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
       </div>
     </div>
   )
+}
+
+/**
+ * 「已经在底了」的容差:一像素级的小数误差(缩放、亚像素行高)不该被当成
+ * 「用户往上翻了」。
+ */
+const AT_BOTTOM_EPS = 2
+
+/**
+ * **进会话就落在最新那条**(08-31 真机回访 · 报障二)。
+ *
+ * 从前一条都没有:整个应用里没有任何一处写过 scrollTop,于是打开 / 切换会话永远
+ * 停在第一条消息(真机读数 scrollTop=0,离底 2686px)。人打开一条会话是要接着往下
+ * 说,不是从头读一遍。
+ *
+ * ── 三条纪律 ──────────────────────────────────────────────────────────────
+ * ① **首帧就在底,不许先画顶部再跳**。所以用 `useLayoutEffect` 而不是 `useEffect`:
+ *    前者在浏览器绘制**之前**跑完,人看到的第一帧就已经在底部;后者会先绘一帧顶部,
+ *    再跳 —— 那一下闪动比停在顶部更难看。也因此是 `scrollTop = …` 直接赋值,
+ *    不是 `scrollTo({behavior:'smooth'})`:定位不是动效(与动效档无关,「无」档下
+ *    它照样得工作)。
+ * ② **落底要熬过内容自己长高**。起底那一刻消息树已经全在 DOM 里了,但代码高亮
+ *    (shiki)与图(mermaid)是异步渲染的,落完之后那些块会把页面撑高几百像素,
+ *    只落一次就会停在半路。所以本批盯着容器的高度变化,长高一次就重新落一次。
+ * ③ **盯到什么时候为止**:两个出口,谁先到算谁 ——
+ *      · 用户往上翻(滚动事件读到「不在底」)→ 本次进场结束,交还给人;
+ *      · **消息树换了引用**(账本长出新东西 / 活尾巴推进)→ 也结束。
+ *    第二个出口是**故意**的:再盯下去就成了「流式跟底」,而跟底是另一件事
+ *    (要判「人是不是正在往回看」、要与 TOC 的跳转互不打架),本批不做,记在
+ *    汇报的留账里。异步高亮不换消息引用,所以 ② 与这条不冲突。
+ */
+function useEnterAtBottom(
+  scrollRef: RefObject<HTMLDivElement | null> | undefined,
+  sessionId: string,
+  messages: readonly ProjectedMessage[],
+  onScroll: (() => void) | undefined,
+): () => void {
+  /** 本次进场还在盯底吗。两个出口(见上面 ③)任一到达就翻成 false。 */
+  const landingRef = useRef(false)
+  /** 落底那一刻的消息树引用 —— 它一换就是「账本长出了新东西」。 */
+  const landedOnRef = useRef<readonly ProjectedMessage[] | undefined>(undefined)
+
+  // 换会话 = 一次新的进场。写在 layout 阶段,好让同一次提交里下面那个 effect 看到它。
+  useLayoutEffect(() => {
+    landingRef.current = true
+    landedOnRef.current = undefined
+  }, [sessionId])
+
+  useLayoutEffect(() => {
+    if (!landingRef.current) return
+    const el = scrollRef?.current
+    if (!el) return
+    // 还没起底(空树)时不落:此刻 scrollHeight 就是视口高,落了等于什么都没做,
+    // 而 `landedOnRef` 会被钉在那个空数组上,真内容一到就被判成「账本长出新东西」。
+    if (messages.length === 0) return
+    if (landedOnRef.current && landedOnRef.current !== messages) {
+      // 出口二:账本推进了。进场到此为止。
+      landingRef.current = false
+      return
+    }
+    landedOnRef.current = messages
+    el.scrollTop = el.scrollHeight
+  })
+
+  // 纪律 ② 的落点:内容自己长高(异步高亮 / 图)不经过 React 的提交,所以盯 DOM。
+  useLayoutEffect(() => {
+    const el = scrollRef?.current
+    if (!el || typeof ResizeObserver !== 'function') return
+    const observer = new ResizeObserver(() => {
+      if (!landingRef.current) return
+      if (!landedOnRef.current) return
+      el.scrollTop = el.scrollHeight
+    })
+    // 盯**内容那一层**:容器自己的高度是外壳给的,不随内容变。
+    const column = el.firstElementChild
+    if (column) observer.observe(column)
+    return () => observer.disconnect()
+  }, [scrollRef, sessionId])
+
+  /**
+   * 滚动事件是出口一的判据。**我们自己落底也会发滚动事件**,所以不能一见滚动就
+   * 收手 —— 判据写成「停的位置不在底」:自己落的那几下正正好在底(误差 < 2px),
+   * 人往上翻才会离底。这样就不必维护一个「这一下是我自己滚的」标志位,
+   * 而标志位正是这类代码最容易漏掉一条路径的地方。
+   */
+  return useCallback(() => {
+    const el = scrollRef?.current
+    if (el && landingRef.current) {
+      const gap = el.scrollHeight - el.clientHeight - el.scrollTop
+      if (gap > AT_BOTTOM_EPS) landingRef.current = false
+    }
+    onScroll?.()
+  }, [scrollRef, onScroll])
 }
 
 /** 不装配的那两种角色共用同一个空数组 —— 每次新造一个会让下游的浅比全部落空。 */

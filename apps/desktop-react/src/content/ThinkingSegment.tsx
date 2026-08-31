@@ -50,6 +50,13 @@ export function ThinkingSegment({ text, live }: { text: string; live: boolean })
       tabIndex={0}
       aria-expanded={expanded}
       aria-label={t('chat.thought')}
+      /*
+       * 节奏表的钩子(表在 content/ChatStream.module.css)。思考段从前不报身份,
+       * 吃默认档「它是字」—— 对「思考 → 正文」那一侧是对的,对「思考 → 思考」
+       * 那一侧不对:同一股思考流被流切成的两截,按段距排等于宣布中间发生过别的事。
+       * 报了身份,表才说得出「同类相接要紧」这句话(那里的 ④)。
+       */
+      data-prose="thought"
       data-testid="chat-thought"
       onClick={toggle}
       onKeyDown={onKeyDown}

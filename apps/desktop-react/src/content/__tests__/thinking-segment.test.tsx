@@ -64,4 +64,14 @@ describe('思考段:同一段字的两个读法', () => {
     fireEvent.keyDown(thought(), { key: 'Enter' })
     expect(thought().getAttribute('aria-expanded')).toBe('true')
   })
+
+  /*
+   * 08-31 真机回访 · 报障一。思考段从前不报节奏身份,于是「思考挨着思考」这句话
+   * 表里说不出来,只能吃默认段距。报了身份之后 ChatStream 那张表的 ④ 才有落点。
+   * 这里钉的是**身份在场**;间距是不是真的变紧由真机门量(jsdom 不排版)。
+   */
+  it('报得出自己的节奏身份 —— data-prose="thought"', () => {
+    render(<ThinkingSegment text="想了一些事" live={false} />)
+    expect(thought().getAttribute('data-prose')).toBe('thought')
+  })
 })

@@ -209,3 +209,95 @@ describe('overlay 车道', () => {
     expect(screen.getByText('(拒绝了这组问题)')).toBeTruthy()
   })
 })
+
+/**
+ * 08-31 真机回访 · 报障二:**进会话就落在最新那条**。
+ *
+ * 从前一条都没有:整个应用里没有任何一处写过 scrollTop,真机读数 scrollTop=0、
+ * 离底 2686px —— 打开一条会话永远停在第一句话。
+ *
+ * jsdom 不排版,所以这里把两个几何读数(scrollHeight / clientHeight)按在原型上,
+ * 只留 `scrollTop` 走真实赋值 —— 量的是**这段逻辑写了什么**,真机上是不是真的贴底
+ * 由 gate 那边量(它有真的排版)。
+ */
+describe('进场落底', () => {
+  const HEIGHT = 1000
+  const VIEWPORT = 300
+  let restore: (() => void)[] = []
+
+  beforeEach(() => {
+    for (const [name, value] of [
+      ['scrollHeight', HEIGHT],
+      ['clientHeight', VIEWPORT],
+    ] as const) {
+      const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value })
+      restore.push(() => {
+        if (original) Object.defineProperty(HTMLElement.prototype, name, original)
+      })
+    }
+  })
+
+  afterEach(() => {
+    for (const undo of restore) undo()
+    restore = []
+  })
+
+  /** 带一个真 ref 挂 ChatStream —— 落底要靠它拿到滚动容器。 */
+  async function mountWithRef(ledger: Ledger[]) {
+    const ref = { current: null as HTMLDivElement | null }
+    configureChatPort(port(ledger))
+    useExposeStore.setState({ currentSessionId: SESSION })
+    await act(async () => {
+      render(<ChatStream scrollRef={ref} />)
+    })
+    await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
+    return ref
+  }
+
+  const LEDGER = [
+    created(1),
+    userMessage(2, 'm1', '你好'),
+    runStart(3, 'r1', 'a1'),
+    chunks(4, 'r1', 'a1', ['好的']),
+  ]
+
+  it('起底之后落在底部 —— 不是停在第一条', async () => {
+    const ref = await mountWithRef(LEDGER)
+    expect(ref.current!.scrollTop).toBe(HEIGHT)
+  })
+
+  it('人往上翻了就交还给他 —— 之后的重渲染不再把他拽回底部', async () => {
+    const ref = await mountWithRef(LEDGER)
+    const el = ref.current!
+    // 「往上翻」= 滚动事件读到的位置不在底(判据就是这一条,不靠标志位)。
+    el.scrollTop = 0
+    await act(async () => {
+      fireEvent.scroll(el)
+    })
+    // 再推一次屏(任何重渲染都行)—— 位置必须原样留着。
+    await act(async () => {
+      useChatSource.setState({ activeMessageId: undefined })
+    })
+    expect(el.scrollTop).toBe(0)
+  })
+
+  it('账本长出新东西就结束进场 —— 跟底是另一件事,本批不做', async () => {
+    const ref = await mountWithRef(LEDGER)
+    const el = ref.current!
+    el.scrollTop = 0
+    // 换一份消息树引用 = 账本推进了。此后哪怕人没滚过,也不再自动落底。
+    await act(async () => {
+      useChatSource.setState({ messages: [...useChatSource.getState().messages] })
+    })
+    await act(async () => {
+      useChatSource.setState({ activeMessageId: undefined })
+    })
+    expect(el.scrollTop).toBe(0)
+  })
+
+  it('空会话不落底(此刻没有底可言,落了会把进场判成已完成)', async () => {
+    const ref = await mountWithRef([created(1)])
+    expect(ref.current!.scrollTop).toBe(0)
+  })
+})

@@ -55,6 +55,9 @@ type StepLike = NonNullable<ProjectedMessage['steps']>[number]
 
 export function anchorMessage(message: ProjectedMessage): AnchoredNode[] {
   const nodes: AnchoredNode[] = []
+  // 按 id 找调用 —— `data-steps` 锚点认领时的第二条路,见 `callOfStep`。
+  const callById = new Map<string, ProjectedToolCall>()
+  for (const call of message.toolCalls ?? []) callById.set(call.id, call)
 
   // 顶部推理落在 `message.reasoning`(不是 part)—— 折叠器与活尾巴同一个落点。
   // 它按定义排在所有 part 之前:那是引擎开这一段时就定下的事实(placement:'top')。
@@ -96,7 +99,7 @@ export function anchorMessage(message: ProjectedMessage): AnchoredNode[] {
         }
         break
       case 'data-steps':
-        for (const step of stepsForTurn(message, part.turnIndex)) pushCall(step.toolCall)
+        for (const step of stepsForTurn(message, part.turnIndex)) pushCall(callOfStep(step, callById))
         break
       case 'tool-call':
         for (const call of part.toolCalls ?? []) pushCall(call)
@@ -135,4 +138,33 @@ function anchoredParts(message: ProjectedMessage): AnchorPart[] {
 function stepsForTurn(message: ProjectedMessage, turnIndex: number | undefined): StepLike[] {
   const turn = turnIndex ?? 0
   return (message.steps ?? []).filter((step) => (step.turnIndex ?? 0) === turn)
+}
+
+/**
+ * 一条 step 指的是哪一次调用 —— **两条路,`toolCallId` 是那条一定在的**。
+ *
+ * 08-31 真机回访的报障三就死在这里:从前只读 `step.toolCall`,而账本上**大多数**
+ * 消息的 step 根本没有那一格。产地是 `message/imported` —— 老会话(messages.jsonl
+ * 时代)迁进事件账本时,写进去的是**脱水过**的消息形:`dehydrateProjectedMessages`
+ * 按定义摘掉 `step.toolCall`(那是 `toolCalls[]` 里那个对象的重复引用,存两份就会
+ * 分叉),只留 `toolCallId`。投影对这类消息是**原样搬运**(`materializeMessageNode`
+ * 只做浅展开),所以脱水形一路交到这里。
+ *
+ * 后果不是「少画一张卡」而是**位置全错**:`data-steps` 锚点一格都认领不到,于是
+ * 每一次调用都落到 `anchorMessage` 末尾那句兜底里,整条消息的工具卡堆成一摞挂在
+ * 正文之后 —— 正是用户报的那个样子。生产 store 只读扫描 250 条会话:带工具活儿的
+ * assistant 消息 1166 条,其中 1002 条是这种 imported 形,835 条的 step 缺
+ * `toolCall`,**739 条(63%)的段序列因此是错的**。
+ *
+ * 修法只碰这一句:`toolCall` 有就用它(现役消息走这条,零变化),没有就拿
+ * `toolCallId` 去 `message.toolCalls` 里认 —— 那份表是同一条消息自己带的,不是
+ * 从别处猜来的,两格本来就一一对应。查不到就返回 undefined,那次调用照旧由末尾
+ * 的兜底摆出来(**屏幕上少一张卡就是说谎**,这条纪律不变)。
+ */
+function callOfStep(
+  step: StepLike,
+  callById: ReadonlyMap<string, ProjectedToolCall>,
+): ProjectedToolCall | undefined {
+  if (step.toolCall) return step.toolCall as ProjectedToolCall
+  return step.toolCallId ? callById.get(step.toolCallId) : undefined
 }

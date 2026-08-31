@@ -140,3 +140,59 @@ describe('锚点归位:工具段插在它发生的那处正文之间', () => {
     ])
   })
 })
+
+/**
+ * 08-31 真机回访 · 报障三:**脱水形的 step**。
+ *
+ * 老会话(messages.jsonl 时代)迁进事件账本走的是 `message/imported`,写进去的是
+ * `dehydrateProjectedMessages` 脱过水的消息形 —— `step.toolCall` 那一格按定义被摘掉
+ * (它是 `toolCalls[]` 里那个对象的重复引用),只留 `toolCallId`;投影对这类消息是
+ * 原样搬运。从前这里只读 `step.toolCall`,于是锚点一格都认领不到,整条消息的工具卡
+ * 全被末尾兜底堆成一摞。生产 store 只读扫描 250 条会话:带工具活儿的 assistant 消息
+ * 1166 条,其中 739 条(63%)的段序列因此是错的。
+ */
+describe('脱水形的 step:只有 toolCallId,没有 toolCall', () => {
+  /** 与 `step()` 同形,少 `toolCall` 那一格 —— 迁移进来的老消息就长这样。 */
+  function dehydratedStep(callId: string, turnIndex: number) {
+    const { toolCall: _dropped, ...rest } = step(callId, turnIndex)
+    return rest
+  }
+
+  function importedMessage(): ProjectedMessage {
+    return message({
+      content: '先看看这个再看看那个',
+      contentParts: [
+        { type: 'text', content: '先看看', turnIndex: 0 },
+        { type: 'text', content: '这个', turnIndex: 0 },
+        { type: 'text', content: '再看看那个', turnIndex: 1 },
+      ],
+      steps: [dehydratedStep('c1', 0), dehydratedStep('c2', 1)],
+      toolCalls: [call('c1'), call('c2')],
+    } as Partial<ProjectedMessage>)
+  }
+
+  it('按 toolCallId 认领 —— 位置与带 toolCall 的那一份逐项相同', () => {
+    const nodes = anchorMessage(importedMessage())
+    expect(nodes.map((node) => node.node)).toEqual(['text', 'tool', 'text', 'tool'])
+    expect(nodes[1]).toMatchObject({ node: 'tool', call: { id: 'c1' } })
+    expect(nodes[3]).toMatchObject({ node: 'tool', call: { id: 'c2' } })
+    // 与现役消息(step 自带 toolCall)那一份对照:同一条消息,同一个答案。
+    expect(nodes.map((node) => node.node)).toEqual(
+      anchorMessage(twoTurnMessage()).map((node) => node.node),
+    )
+  })
+
+  it('反证:认不出来的那个照旧挂尾 —— 不是「认不到就不画」', () => {
+    // c2 的 step 在,但 toolCalls 表里没有它 → 锚点那一步查不到,末尾兜底也查不到,
+    // 于是屏幕上只有 c1。这一条钉的是**认领失败不吞卡**:凡是 toolCalls 里有的,
+    // 一张都不少。
+    const nodes = anchorMessage(
+      message({
+        contentParts: [{ type: 'text', content: '嗯', turnIndex: 0 }],
+        steps: [dehydratedStep('c1', 0), dehydratedStep('c2', 0)],
+        toolCalls: [call('c1')],
+      } as Partial<ProjectedMessage>),
+    )
+    expect(nodes.flatMap((node) => (node.node === 'tool' ? [node.call.id] : []))).toEqual(['c1'])
+  })
+})
