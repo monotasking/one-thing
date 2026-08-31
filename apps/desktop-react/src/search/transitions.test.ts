@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
-  RECENT_LIMIT,
   SEARCH_FIRST_PAGE,
+  browseRows,
   fileExt,
   fileName,
   moreState,
   moveRow,
   nextScope,
   originText,
-  recentRows,
+  pageWindow,
   searchRows,
   targetText,
 } from './transitions'
@@ -132,27 +132,45 @@ describe('scope 过滤', () => {
   })
 })
 
-describe('recentRows(空态的「最近」)', () => {
-  it('只有会话,长度封顶', () => {
-    const rows = recentRows('all', material)
-    expect(rows.length).toBe(RECENT_LIMIT)
+/**
+ * 空词 = **浏览态**(09-01 用户裁定推翻了从前那张硬截 8 条的「最近」)。
+ * 用户原话:「我要能够在这里面看到所有的条数,所有的记录,要能够翻页」。
+ */
+describe('browseRows(空词的浏览列表)', () => {
+  it('全部会话,一条不截 —— 截断只发生在渲染层的分页窗口里', () => {
+    const rows = browseRows('all', material)
+    expect(rows.length).toBe(SESSIONS.length)
     expect(rows.every((r) => r.domain === 'session')).toBe(true)
   })
 
+  /*
+   * 这一条钉的是「数据层不许自己先截一刀」:它一截,底下那句「共 N 条」报的就是
+   * 一个自己刚截过的数 —— 用户看到的「所有的条数」会是假的。
+   */
+  it('会话再多也全给 —— 超量(500 条)一条不少', () => {
+    const many = Array.from({ length: 500 }, (_, i) => ({ ...SESSIONS[0], id: `bulk-${i}` }))
+    expect(browseRows('all', { ...material, sessions: many }).length).toBe(500)
+  })
+
+  it('次序照现状:与入参那张表逐条同序,一次都不重排', () => {
+    expect(browseRows('all', material).map((r) => r.text)).toEqual(SESSIONS.map((s) => s.title))
+  })
+
   it('行的解剖与命中行一样:徽 + 名称 + 出处(时间)', () => {
-    const [session] = recentRows('all', material)
+    const [session] = browseRows('all', material)
     expect(session.text).toBe(SESSIONS[0].title)
     expect(originText(session.origin)).toBe(TIME)
   })
 
   /*
-   * D5 的诚实缺口:「最近打开的文件」在后端没有产地。空词去 files.list 拿回来的
-   * 是工作目录里随便前 N 个文件,把它叫「最近」就是编 —— 所以这一侧恒空,
-   * **哪怕素材里有东西**(下面第二条断言正是钉这一点)。
+   * D5 的诚实缺口(09-01 复核后**保留**):「最近打开的文件」在后端没有产地。
+   * 会话侧能从「最近 8 条」放开到「全部」,是因为它的产地(整张 listMeta)本来就是
+   * 全量的;文件侧没有这样一个产地 —— 空词去 files.list 拿回来的是工作目录里随便
+   * 前 N 个文件。所以这一侧恒空,**哪怕素材里有东西**(第二条断言正是钉这一点)。
    */
-  it('文件侧恒空 —— 素材里有东西也不出行', () => {
-    expect(recentRows('files', material)).toEqual([])
-    expect(recentRows('all', material).some((r) => r.domain === 'file')).toBe(false)
+  it('文件侧恒空 —— 素材里有东西也不出行(没有产地,不伪造)', () => {
+    expect(browseRows('files', material)).toEqual([])
+    expect(browseRows('all', material).some((r) => r.domain === 'file')).toBe(false)
   })
 })
 
@@ -245,9 +263,15 @@ describe('会话侧的素材(D1)', () => {
 describe('moreState:底部那一行说什么', () => {
   const base = { searching: true, page: 1, total: SEARCH_FIRST_PAGE + 5, files: 'exhausted' as const }
 
-  it("'none' 只剩两格:没在搜(最近列表)、一条都没有", () => {
-    expect(moreState({ ...base, searching: false }).kind).toBe('none')
+  /*
+   * 09-01 再收一格:空词从前落 'none'(于是那张列表既没总数也不能翻页),
+   * 现在它是浏览态 —— 'none' 只剩「一条都没有」这唯一一格。
+   */
+  it("'none' 只剩一格:一条都没有", () => {
     expect(moreState({ ...base, total: 0 }).kind).toBe('none')
+    expect(moreState({ ...base, total: 0, searching: false }).kind).toBe('none')
+    // 空词 + 有行 = 浏览态,底下照样有一行东西。
+    expect(moreState({ ...base, searching: false }).kind).not.toBe('none')
   })
 
   it('文件侧取尽 = 总数是知道的,于是计数照实写', () => {
@@ -306,14 +330,52 @@ describe('moreState:底部那一行说什么', () => {
     })
   })
 
-  it('搜索态下只要有行,底下就一定有一行东西 —— 四态逐格都不是 none', () => {
-    for (const files of ['exhausted', 'more', 'pending', 'failed'] as const) {
-      for (const page of [1, 2]) {
-        for (const total of [1, SEARCH_FIRST_PAGE, SEARCH_FIRST_PAGE + 5]) {
-          expect(moreState({ searching: true, page, total, files }).kind, `${files}/${page}/${total}`)
-            .not.toBe('none')
-        }
-      }
+  /*
+   * 全遍历。从前是 4 文件态 × 2 页 × 3 条数 = 24 格(只有搜索态);
+   * 09-01 空词进表,乘上 searching 两值 = **48 格**。
+   */
+  const FILES_SIDES = ['exhausted', 'more', 'pending', 'failed'] as const
+  const PAGES = [1, 2]
+  const TOTALS = [1, SEARCH_FIRST_PAGE, SEARCH_FIRST_PAGE + 5]
+  const GRID = [true, false].flatMap((searching) =>
+    FILES_SIDES.flatMap((files) =>
+      PAGES.flatMap((page) => TOTALS.map((total) => ({ searching, page, total, files }))),
+    ),
+  )
+
+  it('48 格全遍历:只要有行,底下就一定有一行东西 —— 没有一格是 none', () => {
+    expect(GRID.length).toBe(48)
+    for (const input of GRID) {
+      expect(moreState(input).kind, JSON.stringify(input)).not.toBe('none')
     }
+  })
+
+  /*
+   * 浏览态的那 24 格:行全部来自会话侧(整表在手),所以「还有没有更多」这件事
+   * **不去问文件侧** —— 四种文件态给出同一个答案,而且永远不会是加载中 / 失败
+   * (浏览态一次请求都不发,拿这两句去吓人就是编)。
+   */
+  it('浏览态的 24 格与文件侧无关,而且只可能是 more / end 两种', () => {
+    for (const input of GRID.filter((x) => !x.searching)) {
+      const got = moreState(input)
+      expect(['more', 'end'], JSON.stringify(input)).toContain(got.kind)
+      expect(moreState({ ...input, files: 'exhausted' }), JSON.stringify(input)).toEqual(got)
+    }
+  })
+
+  it('浏览态:装不下就是「加载更多 · 已显示 a / 共 b」,总数当场就知道(不是 null)', () => {
+    expect(moreState({ searching: false, page: 1, total: 500, files: 'pending' })).toEqual({
+      kind: 'more',
+      shown: SEARCH_FIRST_PAGE,
+      total: 500,
+    })
+  })
+
+  it('浏览态:翻到装得下的那一页就换成读数「共 N 条 · 已全部显示」', () => {
+    const total = pageWindow(2)
+    expect(moreState({ searching: false, page: 2, total, files: 'failed' })).toEqual({
+      kind: 'end',
+      total,
+    })
   })
 })

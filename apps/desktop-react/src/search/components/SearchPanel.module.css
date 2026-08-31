@@ -26,17 +26,31 @@
   height: var(--input-icon);
 }
 
+/* 列表是**一张三列的网**,列定在这一层(09-01):徽 / 命中原文 / 出处。
+ *
+ * 为什么列不能定在行上:徽的字是**数据**(扩展名、无扩展名的整个文件名),
+ * 长短不一。每行各量各的,原文列就会参差 —— 而这张表的读法正是「顺着同一条竖线
+ * 往下扫」。定在容器上、行用 subgrid 认领,徽列的宽度就是**全表最宽那颗徽**,
+ * 短徽照旧 hug 自己的内容,原文列仍然从同一条竖线起笔。
+ *
+ * 行自己那份 padding / border-left 不用挪:subgrid 会把子项在这条轴上的
+ * 边框内补收进最外侧的轨道,而每一行的这份内缩逐字相同 —— 所以各行对得齐,
+ * 底部那条 item(同一份 padding + border)也对得齐。 */
 .body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: var(--sp-2);
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, auto);
+  /* 行按内容高,不许被拉满 —— 默认的 normal 会把几行撑成一屏。 */
+  align-content: start;
+  column-gap: var(--sp-3);
 }
 
 /* 无结果:居中一行灰字,别的什么都不画。 */
 .none {
+  grid-column: 1 / -1;
   margin: 0;
   padding: var(--sp-5) var(--sp-3);
   text-align: center;
@@ -48,10 +62,10 @@
  * 左缘那条选中线在常态就占好位(透明),所以选中时**行不位移** ——
  * 与动效板「hover / 选中是反馈,不是位移」同一条判例。 */
 .row {
-  display: flex;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   align-items: baseline;
-  gap: var(--sp-3);
-  width: 100%;
   min-width: 0;
   padding: var(--sp-2) var(--sp-3);
   border-left: var(--search-mark) solid transparent;
@@ -69,21 +83,29 @@
   border-left-color: var(--accent);
 }
 
-/* 列表最后一条 item(「加载更多」/「加载中…」/「没加载成」)。
+/* 列表最后一条 item(「加载更多」/「加载中…」/「没加载成」/「共 N 条」)。
  * 它是**行**不是按钮:同一套骨架(整宽 / 同一份 padding / 左缘那条选中线常态占位),
- * 只是没有徽也没有出处,于是文字缩进到与上面各行的正文同一列 ——
- * 徽宽 + 两侧那一格 gap,靠 calc 对齐而不是塞一个空的占位元素。 */
+ * 只是没有徽也没有出处,于是文字缩进到与上面各行的正文同一列。
+ *
+ * 09-01:对齐的手法换了 —— 从前是 `padding-left: calc(… + --search-chip-w + …)`,
+ * 那个 calc 的前提是「徽列定宽」。徽列改成内容自适应之后它算不出来了,于是这一行
+ * 也认领同一份 subgrid,里面那句话直接落在**第二列**。这不是「塞一个空占位元素」
+ * (原注释拒绝的那种):占位的是轨道本身,DOM 里一个空盒子都没多。 */
 .more,
 .end {
-  flex: none;
-  display: block;
-  width: 100%;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
   padding: var(--sp-2) var(--sp-3);
-  padding-left: calc(var(--sp-3) + var(--search-chip-w) + var(--sp-3));
   border-left: var(--search-mark) solid transparent;
   border-radius: var(--r-1);
   text-align: left;
   font-size: var(--fs-meta);
+}
+
+/* 那句话本身:从第二列起笔,一直铺到行尾。 */
+.moreText {
+  grid-column: 2 / -1;
 }
 
 .more {
@@ -103,13 +125,24 @@
 
 /* 空心小徽:1px 边框 + 圆角 + 灰字 + 等宽小字号。src/ui/Badge 的三个 tone 都是实心丸
  * (徽标 / 未读数),没有空心形态 —— 硬塞第四个 tone 会污染那三条配方,
- * 所以这一颗是本面板的局部样式,不往 src/ui 新增组件。 */
+ * 所以这一颗是本面板的局部样式,不往 src/ui 新增组件。
+ *
+ * ── 09-01 报障:NOTEBOOK 撑破边框 ────────────────────────────────────────
+ * 病根是 `width: var(--search-chip-w)`(34px,按 CHAT / MSG / MD 这类四字符徽定的)。
+ * 徽上的字**是数据不是文案**:第三种徽的字来自路径(扩展名,没有扩展名就是整个
+ * 文件名大写),`notebook` → NOTEBOOK 八个字符,一个可枚举的词表根本不存在。
+ * 所以修法是结构性的三件:
+ *  · 胶囊 hug 内容(min-width 保住短徽今天的形,padding 走 token,**不写死宽**);
+ *  · 列宽交给容器那张网的 max-content 轨道 —— 全列按最宽的那颗对齐;
+ *  · 极端长名仍然要有底 —— max-width 封顶,超出由里面那层弯腰(省略号)。
+ *    当前见过的词表(CHAT/MSG/MD/TS/NOTEBOOK…)都在封顶之内,不该看到省略号。 */
 .chip {
-  flex: none;
+  justify-self: start;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--search-chip-w);
+  min-width: var(--search-chip-min);
+  max-width: var(--search-chip-max);
   height: var(--search-chip-h);
   padding: 0 var(--sp-1);
   border: 1px solid var(--line-2);
@@ -120,8 +153,16 @@
   color: var(--text-3);
 }
 
+/* 弯腰的那一层。text-overflow 只在块容器上生效,而胶囊为了居中是 inline-flex ——
+ * 省略号挂在它自己身上永远不会出现,所以字要有自己的一层。 */
+.chipText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .text {
-  flex: 1;
   min-width: 0;
   font-size: var(--fs-label);
   color: var(--text-1);
@@ -137,8 +178,9 @@
 }
 
 .origin {
-  flex: none;
+  min-width: 0;
   max-width: var(--search-origin-w);
+  justify-self: end;
   font-size: var(--fs-micro);
   color: var(--text-3);
   overflow: hidden;

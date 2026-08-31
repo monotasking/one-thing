@@ -14,7 +14,7 @@ import { configureFilesPort } from '../../data/files-port'
 import type { FilesPort } from '../../data/files-port'
 import { useFilesSource } from '../../data/files-source'
 import { translate } from '../../i18n'
-import { RECENT_LIMIT, SEARCH_FIRST_PAGE, SEARCH_PAGE_SIZE } from '../transitions'
+import { SEARCH_FIRST_PAGE, SEARCH_PAGE_SIZE } from '../transitions'
 
 /**
  * 文件侧的素材 = `files.list` 交回来的那份 entries(D5 接真数据之后)。
@@ -166,13 +166,18 @@ describe('命中列表:走行与跳转', () => {
 })
 
 describe('两种空', () => {
-  it('词为空 = 最近(不是「没找到」),清掉词就回到它', () => {
+  /*
+   * 09-01:空词是**浏览态**(列全部会话),不是「没找到」。SESSIONS 这批夹具比
+   * 首屏窗口短,所以屏幕上的行数 = 会话总数;超量与翻页在下面「浏览态分页」那一组里验。
+   */
+  it('词为空 = 浏览全部会话(不是「没找到」),清掉词就回到它', () => {
     render(<SearchPanel />)
-    expect(options().length).toBe(RECENT_LIMIT)
+    const browsed = options().length
+    expect(browsed).toBe(SESSIONS.length)
     type(FILE_QUERY)
-    expect(options().length).not.toBe(RECENT_LIMIT)
+    expect(options().length).not.toBe(browsed)
     type('')
-    expect(options().length).toBe(RECENT_LIMIT)
+    expect(options().length).toBe(browsed)
     expect(screen.queryByText('无结果')).toBeNull()
   })
 
@@ -227,17 +232,18 @@ describe('两种空', () => {
  * 断言一律跟着常量走(SEARCH_FIRST_PAGE / SEARCH_PAGE_SIZE),不写死数字 ——
  * 改档位不该顺带改一堆用例。
  */
+/** 一次给出 n 条**标题里都带那个词**的会话:会话侧整表在手,分页在那一侧是纯窗口。 */
+const manySessions = (n: number): SessionSummary[] =>
+  Array.from({ length: n }, (_, i) =>
+    toSessionSummary({
+      id: `pg-${i}`,
+      name: `alpha beta ${i}`,
+      createdAt: NOW - i * 1000,
+      updatedAt: NOW - i * 1000,
+    }),
+  )
+
 describe('分页:底部那条 item', () => {
-  /** 一次给出 n 条**标题里都带那个词**的会话:会话侧整表在手,分页在那一侧是纯窗口。 */
-  const manySessions = (n: number): SessionSummary[] =>
-    Array.from({ length: n }, (_, i) =>
-      toSessionSummary({
-        id: `pg-${i}`,
-        name: `alpha beta ${i}`,
-        createdAt: NOW - i * 1000,
-        updatedAt: NOW - i * 1000,
-      }),
-    )
 
   /** 比首屏多几条,第二页正好装得下 —— 于是「取尽」在第二页发生。 */
   const TOTAL = SEARCH_FIRST_PAGE + 6
@@ -378,5 +384,172 @@ describe('分页:底部那条 item', () => {
       fireEvent.click(moreItem() as HTMLElement)
       await waitFor(() => expect(calls).toBe(before + 1))
     })
+  })
+})
+
+/**
+ * 空词 = **浏览态**(09-01 用户裁定)。用户原话:「我要能够在这里面看到所有的条数,
+ * 所有的记录,要能够翻页」。从前这里恒定 8 条、没有读数、没有下一页。
+ *
+ * 这一组与上面那组共用**同一套机件**(pageWindow / moreState / 底部那条 item),
+ * 所以它验的不是「另一条分页路」,而是「那条路在空词下也真的通」。
+ */
+describe('浏览态(空词):看得到全部、看得到总数、翻得了页', () => {
+  const rows = () => screen.getAllByRole('option').filter((el) => el.getAttribute('data-row') !== 'more')
+  const moreItem = () => screen.queryByTestId('search-more')
+  const zh = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) =>
+    translate('zh', key, vars)
+
+  /** 超量:500 条会话。这是四轴第 4 条(状态完备性)里的「数据 100×」那一格。 */
+  const BULK = 500
+
+  it('会话比首屏多:首屏只画一页,底下如实说「已显示 20 / 共 500」', () => {
+    seedSessionsSource({ sessions: manySessions(BULK) })
+    render(<SearchPanel />)
+    // 削量:500 条不会一次性铺进 DOM。
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE)
+    expect(moreItem()?.textContent).toBe(
+      zh('search.loadMoreCount', { shown: SEARCH_FIRST_PAGE, total: BULK }),
+    )
+  })
+
+  it('翻页:点一下就多一页,读数跟着走(不发任何请求 —— 会话侧整表在手)', () => {
+    seedSessionsSource({ sessions: manySessions(BULK) })
+    render(<SearchPanel />)
+    fireEvent.click(moreItem() as HTMLElement)
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE + SEARCH_PAGE_SIZE)
+    expect(moreItem()?.textContent).toBe(
+      zh('search.loadMoreCount', {
+        shown: SEARCH_FIRST_PAGE + SEARCH_PAGE_SIZE,
+        total: BULK,
+      }),
+    )
+  })
+
+  it('取尽那一刻换成读数「共 N 条 · 已全部显示」,而且它不进 ↑↓ 轮转', () => {
+    const total = SEARCH_FIRST_PAGE + 3
+    seedSessionsSource({ sessions: manySessions(total) })
+    render(<SearchPanel />)
+    fireEvent.click(moreItem() as HTMLElement)
+    expect(rows().length).toBe(total)
+    expect(moreItem()).toBeNull()
+    expect(screen.getByText(zh('search.allShown', { total }))).toBeTruthy()
+    expect(screen.getAllByRole('option').length).toBe(total)
+  })
+
+  it('会话装得下一页时:第一屏就有读数(不必翻页才配知道有几条)', () => {
+    render(<SearchPanel />) // 夹具那 9 条,一页装得下
+    expect(moreItem()).toBeNull()
+    expect(screen.getByText(zh('search.allShown', { total: SESSIONS.length }))).toBeTruthy()
+  })
+
+  /*
+   * 回顶:翻到第三页之后开始打字,列表换了主语 —— 页码回第一页、选中回第一行。
+   * (这条与搜索态那条「换词回第一页」是同一条纪律的另一半:浏览 → 搜索也算换列表。)
+   */
+  it('翻过页之后开始搜:回到第一页,选中回第一行', () => {
+    seedSessionsSource({ sessions: manySessions(BULK) })
+    render(<SearchPanel />)
+    fireEvent.click(moreItem() as HTMLElement)
+    fireEvent.click(moreItem() as HTMLElement)
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE + 2 * SEARCH_PAGE_SIZE)
+
+    type('alpha')
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE)
+    expect(screen.getAllByRole('option')[0].getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('清掉词回浏览态,也回到第一页', () => {
+    seedSessionsSource({ sessions: manySessions(BULK) })
+    render(<SearchPanel />)
+    fireEvent.click(moreItem() as HTMLElement)
+    type('alpha')
+    type('')
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE)
+    expect(moreItem()?.textContent).toBe(
+      zh('search.loadMoreCount', { shown: SEARCH_FIRST_PAGE, total: BULK }),
+    )
+  })
+
+  /*
+   * ── 三档各自成立 ────────────────────────────────────────────────────────
+   * 「所有」与「会话」两档在浏览态下是**同一张表**(浏览态的行只可能来自会话侧),
+   * 所以它们逐条相同不是巧合,是定义 —— 这一条钉的是「换档不会把会话档变成半张表」。
+   * 文件档是第三种:它没有产地,所以它如实说出来。三种都不许静默。
+   */
+  it('「所有」与「会话」两档在浏览态下逐条相同,都是全量', () => {
+    seedSessionsSource({ sessions: manySessions(BULK) })
+    render(<SearchPanel />)
+    const all = rows().map((el) => el.textContent)
+    expect(all.length).toBe(SEARCH_FIRST_PAGE)
+    const allTail = moreItem()?.textContent
+
+    press('Tab') // 所有 → 会话
+    expect(rows().map((el) => el.textContent)).toEqual(all)
+    expect(moreItem()?.textContent).toBe(allTail)
+    expect(allTail).toBe(zh('search.loadMoreCount', { shown: SEARCH_FIRST_PAGE, total: BULK }))
+  })
+
+  it('「会话」档自己也翻得了页', () => {
+    seedSessionsSource({ sessions: manySessions(BULK) })
+    render(<SearchPanel />)
+    press('Tab')
+    fireEvent.click(moreItem() as HTMLElement)
+    expect(rows().length).toBe(SEARCH_FIRST_PAGE + SEARCH_PAGE_SIZE)
+  })
+
+  /*
+   * 文件档的空词**照旧**没有产地(D5 的诚实缺口,09-01 复核保留):
+   * 会话侧能从 8 条放开到全部是因为它有全量产地,文件侧没有。
+   */
+  it('文件档的空词仍然说「要先输入关键词」—— 没有产地就不伪造一张表', () => {
+    render(<SearchPanel />)
+    press('Tab')
+    press('Tab')
+    expect(screen.getByText('文件要先输入关键词')).toBeTruthy()
+    expect(screen.queryByTestId('search-more')).toBeNull()
+  })
+})
+
+/**
+ * 行首那颗徽:**词表是数据,不是一张能枚举完的表**(09-01 报障 NOTEBOOK 撑破边框)。
+ *
+ * 两种来自字典(会话 / 消息),第三种来自路径 —— 扩展名大写,没有扩展名就是整个
+ * 文件名大写(`fileExt`)。所以这一组不去枚举「现有词表」当断言,它验的是:
+ * 无论那颗徽上是几个字,**屏幕上都完整画出来**(没有被一个写死的宽度切掉)。
+ * 真正的几何(内容宽 ≤ 胶囊内容盒宽)要真机才量得到,在 scripts/gate-search.mjs 里。
+ */
+describe('行首徽:长词不许被切', () => {
+  /** 见过的与想得到的:四字符档、八字符的 NOTEBOOK、以及一个离谱的长名。 */
+  const BADGE_CASES = [
+    { path: '/repo/a/readme.md', word: 'MD' },
+    { path: '/repo/a/index.ts', word: 'TS' },
+    { path: '/repo/a/data.json', word: 'JSON' },
+    { path: '/home/me/data/note/notebook', word: 'NOTEBOOK' },
+    { path: '/repo/Makefile', word: 'MAKEFILE' },
+    { path: '/repo/a/x.stylesheet', word: 'STYLESHEET' },
+  ]
+
+  it('每一种徽都完整画出来(含八字符的 NOTEBOOK)', () => {
+    useFilesSource.setState({
+      searchStatus: 'ready',
+      searchHits: BADGE_CASES.map((c) => ({ path: c.path, type: 'file' as const })),
+      searchQuery: 'a',
+      searchLimit: SEARCH_FIRST_PAGE,
+      searchError: undefined,
+    })
+    render(<SearchPanel />)
+    type('a')
+    press('Tab')
+    press('Tab')
+    for (const { word } of BADGE_CASES) {
+      expect(screen.getByText(word), `徽「${word}」不在屏幕上`).toBeTruthy()
+    }
+  })
+
+  it('字典侧那两种同样是完整的词(zh:会话 / 消息)', () => {
+    render(<SearchPanel />)
+    // 浏览态全是会话行,徽上就是「会话」两个字。
+    expect(screen.getAllByText('会话').length).toBeGreaterThan(0)
   })
 })

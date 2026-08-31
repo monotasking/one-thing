@@ -124,6 +124,12 @@ run('gate:data', 'npm', ['run', '--silent', 'gate:data'])
 run('gate:theme', 'npm', ['run', '--silent', 'gate:theme'])
 run('gate:chat', 'npm', ['run', '--silent', 'gate:chat'])
 run('gate:files', 'npm', ['run', '--silent', 'gate:files'])
+/*
+ * gate:search 与 gate:files 同一个价位、同一条理由进得来:它断言的是**排版与条数**
+ * (空词浏览态的行数 / 读数字面 / 徽的几何),同一份代码同一个视口跑一百遍是同一个
+ * 答案,没有余量一说,不看机器状况。
+ */
+run('gate:search', 'npm', ['run', '--silent', 'gate:search'])
 // 流式正文单调门:假慢流跨过 2s 打包闸,rAF 逐帧断言正文 textContent 不回缩
 // (真机病「打包行一到正文整段消失」的机器化,见 gate-stream-monotone.mjs 文件头)。
 run('gate:monotone', 'npm', ['run', '--silent', 'gate:monotone'])
@@ -155,5 +161,5 @@ run('gate:a11y', 'npm', ['run', '--silent', 'gate:a11y'])
 
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
-    + ' / offline-fonts / 真机门(connect·data·theme·chat·files·monotone·squeeze·motion·a11y)全绿\n',
+    + ' / offline-fonts / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y)全绿\n',
 )

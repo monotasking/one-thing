@@ -38,8 +38,14 @@ import type { SearchOrigin, SearchRow, SearchScope, SearchTarget } from './types
  *     后端的 `search` 域是**网页搜索**不是文件搜索。缺口还在,只是小了一圈:
  *     现在缺的是「行」,不是「文件」。
  *  2. **空词时没有文件行**。「最近打开的文件」在后端没有产地;空词去 list 拿回来的
- *     是工作目录里随便前 N 个文件,把它叫「最近」就是编。所以 `recentRows` 的
+ *     是工作目录里随便前 N 个文件,把它叫「最近」就是编。所以 `browseRows` 的
  *     文件侧恒空,面板据此说一句「文件要先输入关键词」。
+ *
+ *     **09-01 复核**(用户报障「空词只列 8 条」时一并核过):这条判例说的是
+ *     「不许伪造一张最近打开的文件表」,**不是**「文件档不许浏览」。真要浏览,
+ *     缺的是一个「列出这个根下全部文件」的产地 —— `files.list` 只在带 query 时
+ *     才有意义(空 query 直接被数据源短路成 idle,见 data/files-source.ts)。
+ *     缺口还在,如实说,不补假的。
  */
 export { splitHighlight }
 
@@ -297,12 +303,18 @@ export function searchRows(
  * 没有 total,就只能用**回来的条数 < 要的条数**。等号成立时后端只是说
  * 「我给满了」,不是说「没有了」—— 所以那一刻不许写「已全部显示」。
  *
- * ## 会话侧不分页
+ * ## 会话侧不发请求,但**照样分页**
  *
- * 会话侧的素材(整张 listMeta)本来就全量在手,`searchRows` 造出来的会话行
- * 一条不少。所以分页在会话侧纯粹是**窗口**:翻页只是把窗口拉大,不发请求。
- * 空词那张「最近」列表也不分页 —— 它的长度(RECENT_LIMIT)是刻意的取舍,
- * 不是被截断的命中。
+ * 会话侧的素材(整张 listMeta)本来就全量在手,`searchRows` / `browseRows` 造出来的
+ * 会话行一条不少。所以分页在会话侧纯粹是**窗口**:翻页只是把窗口拉大,不发请求。
+ * 「不发请求」不等于「不分页」—— 500 条会话一次性铺满 DOM 是另一种病。
+ *
+ * ## 空词 = 浏览态,同一套机件(09-01 用户裁定)
+ *
+ * 从前空词那张列表叫「最近」,硬截 8 条、没有读数、没有翻页 —— 用户的原话是
+ * 「我要能够在这里面看到所有的条数,所有的记录,要能够翻页」。所以空词现在是
+ * **浏览全部会话**:同一个 `pageWindow`、同一条底部 item、同一张 `moreState` 判据表。
+ * 没有第二套分页机件,也没有第二个「一页多少条」的常量。
  */
 
 /** 首屏默认给多少条。 */
@@ -334,8 +346,8 @@ export type SearchFileSide =
  * 列表底部那条 item 的处境。它是**一条 item**,不是一颗悬浮按钮 ——
  * 所以「没有它」也是一种正经状态('none'),而不是把它画成禁用态占着位置。
  *
- * 'none' 现在只属于**没在搜**(空词的最近列表)和**一条都没有**这两格:
- * 搜索态下只要有行,底下就一定有一行东西可读(见 `moreState` 的判据表)。
+ * 'none' 现在**只剩「一条都没有」这一格**(09-01 裁定):空词不再是「没在搜」,
+ * 它是浏览态,一样有读数一样能翻页 —— 只要屏幕上有行,底下就一定有一行东西可读。
  */
 export type SearchMore =
   | { kind: 'none' }
@@ -354,7 +366,13 @@ export type SearchMore =
   | { kind: 'count'; shown: number }
 
 export interface SearchMoreInput {
-  /** 此刻有没有词(空词 = 最近列表,不分页)。 */
+  /**
+   * 此刻有没有词。
+   *
+   * 它**不再决定「有没有底部这一行」**(那是 09-01 之前的读法),只决定
+   * 「还有没有更多」这件事去问谁:搜索态问文件侧那四态,浏览态谁都不用问 ——
+   * 行全部来自会话侧,而会话侧整张表在手,后面有没有当场就知道。
+   */
   searching: boolean
   /** 第几页,从 1 数。 */
   page: number
@@ -371,19 +389,28 @@ export interface SearchMoreInput {
  * 用户随时想知道的事,变成了「翻过页的人才配知道」:第一页装得下(绝大多数搜索
  * 都是)时屏幕上一个数都没有,「共 N 条」只在翻页之后才现身。
  *
- * 新裁定:**搜索态下只要有行,底下就一直有一行东西可读**。它是按钮还是读数由
- * 处境决定,而不是由「有没有翻过页」决定:
+ * 新裁定:**只要有行,底下就一直有一行东西可读**。它是按钮还是读数由处境决定,
+ * 而不是由「有没有翻过页」决定。
  *
- * | searching / total | page | files      | 结果      | 屏幕上                       |
- * | ---               | ---  | ---        | ---       | ---                          |
- * | 空词 / 0 条       | 任意 | 任意       | `none`    | 什么都不画                    |
- * | 搜索态            | >1   | failed     | `error`   | 「没加载成,点一下重试」(可按) |
- * | 搜索态            | >1   | pending    | `loading` | 「加载中…」                    |
- * | 窗口装不下(shown<total) | 任意 | exhausted | `more`(带 total) | 「加载更多 · 已显示 a / 共 b」 |
- * | 窗口装不下        | 任意 | 其余       | `more`(total=null) | 「加载更多」            |
- * | 全装下            | 任意 | exhausted  | `end`     | 「共 N 条 · 已全部显示」(读数) |
- * | 全装下            | 1    | pending    | `count`   | 「已显示 N 条」(读数)         |
- * | 全装下            | 任意 | more/failed | `more`(total=null) | 「加载更多」            |
+ * ## 09-01 第二次收窄:空词是浏览态,不是「没在搜」
+ *
+ * 从前 `searching: false` 直接落 'none' —— 于是空词那张列表既没有总数也没法翻页
+ * (用户报障:「只列 8 条、没有读数、不能翻页」)。裁定:**空词与搜索态走同一族**。
+ * 判据表因此只多一句翻译,不多一条支路:浏览态的行全部来自会话侧,而会话侧
+ * 整张表在手 —— 所以它在这张表里就是**恒定的 `exhausted`**(后面确实没有了)。
+ * 于是 count / end / 加载更多逐格复用,没有第二套。
+ *
+ * | 行数  | searching | page | files      | 结果      | 屏幕上                       |
+ * | ---   | ---       | ---  | ---        | ---       | ---                          |
+ * | 0 条  | 任意      | 任意 | 任意       | `none`    | 什么都不画                    |
+ * | >0    | 空词      | 任意 | (不问)    | 同 exhausted 那两格 | 「加载更多 · 已显示 a / 共 b」或「共 N 条 · 已全部显示」 |
+ * | >0    | 搜索态    | >1   | failed     | `error`   | 「没加载成,点一下重试」(可按) |
+ * | >0    | 搜索态    | >1   | pending    | `loading` | 「加载中…」                    |
+ * | 窗口装不下(shown<total) | 任意 | 任意 | exhausted | `more`(带 total) | 「加载更多 · 已显示 a / 共 b」 |
+ * | 窗口装不下        | 搜索态 | 任意 | 其余       | `more`(total=null) | 「加载更多」            |
+ * | 全装下            | 任意   | 任意 | exhausted  | `end`     | 「共 N 条 · 已全部显示」(读数) |
+ * | 全装下            | 搜索态 | 1    | pending    | `count`   | 「已显示 N 条」(读数)         |
+ * | 全装下            | 搜索态 | 任意 | more/failed | `more`(total=null) | 「加载更多」            |
  *
  * 两处**没有**跟着改的地方,理由都还成立:
  *  - 文件侧 pending 的第一页**仍然不许诺**「加载更多」:那一句是在说「后面还有」,
@@ -394,26 +421,33 @@ export interface SearchMoreInput {
  *    是「再试一次」的落点(所以它是可按的 `more`,不是读数)。
  */
 export function moreState({ searching, page, total, files }: SearchMoreInput): SearchMore {
-  if (!searching || total === 0) return { kind: 'none' }
+  if (total === 0) return { kind: 'none' }
+  /*
+   * 浏览态(空词)的行全部来自会话侧,而会话侧整张 listMeta 在手 ——
+   * 「后面还有没有」这件事当场就知道,而且答案永远是「没有了」。所以这里不是
+   * 一条支路,是**一次翻译**:把浏览态翻成文件侧那四态里的 'exhausted',
+   * 下面每一格照旧,count / end / 加载更多一格都不用重写。
+   */
+  const side = searching ? files : 'exhausted'
   /*
    * 加载中 / 失败这两种只在**翻过页之后**才由这条 item 来说。
    * 第一页那次失败归列表上面那行(`search.filesFailed`)—— 一次失败说两遍
    * 是噪音;而「重试」这个动作在翻页之后才落在这条 item 身上。
    */
   if (page > 1) {
-    if (files === 'failed') return { kind: 'error' }
-    if (files === 'pending') return { kind: 'loading' }
+    if (side === 'failed') return { kind: 'error' }
+    if (side === 'pending') return { kind: 'loading' }
   }
   const shown = Math.min(total, pageWindow(page))
-  if (shown < total) return { kind: 'more', shown, total: files === 'exhausted' ? total : null }
+  if (shown < total) return { kind: 'more', shown, total: side === 'exhausted' ? total : null }
   // 窗口已经装下此刻的全部行 —— 还有没有更多,只有文件侧那一边知道。
   // 取尽 = 后面没有了,这就是最终那个数,**第一页就取尽也算数**。
-  if (files === 'exhausted') return { kind: 'end', total }
+  if (side === 'exhausted') return { kind: 'end', total }
   /*
    * 还没落定:不许诺「还有更多」,但照实报此刻的条数(page > 1 的 pending 已经
    * 在上面被 'loading' 截走了,所以走到这里的一定是第一页)。
    */
-  if (files === 'pending') return { kind: 'count', shown }
+  if (side === 'pending') return { kind: 'count', shown }
   /*
    * 剩下两种('more' = 给满了,'failed' = 第一页那次塌了)都是**不知道后面还有没有**,
    * 于是照旧给一条能按的 item,总数写 null。第一页塌了那次尤其要给 ——
@@ -422,29 +456,36 @@ export function moreState({ searching, page, total, files }: SearchMoreInput): S
   return { kind: 'more', shown, total: null }
 }
 
-/** 空态列表的长度。再多就不是「最近」了。 */
-export const RECENT_LIMIT = 8
-
 /**
- * 词为空时的那张列表:**只有最近会话**,没有任何标题行。
+ * 词为空时的那张列表:**全部会话**,没有任何标题行。
  * 每一行的解剖与命中行完全一样(徽 + 名称 + 出处),所以视图只有一套行渲染。
+ *
+ * ── 09-01:这里**不再截断**(用户裁定) ──────────────────────────────────
+ * 从前它叫 `recentRows`,尾巴上挂一句 `.slice(0, RECENT_LIMIT)`,屏幕上恒定 8 条,
+ * 没有总数、没有下一页。用户的原话:「我要能够在这里面看到所有的条数,所有的记录,
+ * 要能够翻页」。所以名字与行为一起改:它是**浏览**,不是「最近」。
+ *
+ * 截断这件事从此只发生在**一个地方** —— 渲染层的 `rows.slice(0, pageWindow(page))`,
+ * 与搜索态逐字同一行代码。数据层交出去的永远是完整的那一份,否则「共 N 条」就是假的
+ * (报一个自己刚截过的数)。
+ *
+ * **次序照现状**:入参 `sessions` 是数据源交下来的那一份(`sessions.listMeta` 的
+ * 次序),这里一次都不重排 —— 与从前那 8 条的取法逐字相同,只是不再切掉后面的。
  *
  * 文件侧在这里是空的,而且**不是暂时**空:见文件头第 2 条 ——
  * 「最近打开的文件」在后端没有产地。所以这里连 `files` 都不读。
  */
-export function recentRows(scope: SearchScope, material: SearchMaterial): SearchRow[] {
+export function browseRows(scope: SearchScope, material: SearchMaterial): SearchRow[] {
   const { sessions, timeOf } = material
   if (scope === 'files') return []
-  return sessions
-    .map<SearchRow>((session) => ({
-      id: `${session.id}:recent`,
-      domain: 'session',
-      badge: { kind: 'session' },
-      text: session.title,
-      code: false,
-      origin: { kind: 'time', time: timeOf(session) },
-      target: { kind: 'session', sessionId: session.id },
-      tier: 'title',
-    }))
-    .slice(0, RECENT_LIMIT)
+  return sessions.map<SearchRow>((session) => ({
+    id: `${session.id}:browse`,
+    domain: 'session',
+    badge: { kind: 'session' },
+    text: session.title,
+    code: false,
+    origin: { kind: 'time', time: timeOf(session) },
+    target: { kind: 'session', sessionId: session.id },
+    tier: 'title',
+  }))
 }

@@ -15,12 +15,12 @@ import { plural, useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import {
   SCOPES,
+  browseRows,
   moreState,
   moveRow,
   nextScope,
   originText,
   pageWindow,
-  recentRows,
   searchRows,
   targetText,
 } from '../transitions'
@@ -34,7 +34,8 @@ import s from './SearchPanel.module.css'
  *
  * 终稿的形状:**搜索行 + 一张平铺列表**,没有二次分组、没有分栏、没有分节标题。
  * 一行永远是三件东西:行首小徽 / 命中原文一行 / 行尾灰色出处。
- * 空词时那张列表换成「最近打开」,行的解剖一格没变 —— 所以下面只有一套行渲染。
+ * 空词时那张列表换成**浏览全部会话**,行的解剖一格没变 —— 所以下面只有一套行渲染,
+ * 也只有一套分页机件(09-01 裁定:空词是浏览态,一样有总数读数、一样能翻页)。
  *
  * 它自己不写一行检索逻辑:命中、排序、轮转、走行全在 search/transitions 的纯函数里,
  * 组件只有「谁被选中」和「输入框里是什么」两个本地状态。
@@ -120,7 +121,7 @@ export function SearchPanel() {
     [sessions, chapters, files, timeOf],
   )
   const rows = useMemo(
-    () => (searching ? searchRows(query, scope, material) : recentRows(scope, material)),
+    () => (searching ? searchRows(query, scope, material) : browseRows(scope, material)),
     [query, scope, searching, material],
   )
 
@@ -340,8 +341,10 @@ export function SearchPanel() {
       <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
         {rows.length === 0 ? (
           <p className={s.none}>
-            {/* 空词 + 只看文件 = 不是「无结果」,是「还没给词」——「最近打开的文件」
-              * 在后端没有产地,见 search/transitions.ts 文件头第 2 条。 */}
+            {/* 空词 + 只看文件 = 不是「无结果」,是「还没给词」:文件侧在浏览态**没有
+              * 产地**(`files.list` 只在带词时才有意义),见 search/transitions.ts
+              * 文件头第 2 条。这句话如实说出那个缺口,不去伪造一张「最近打开」。
+              * 会话侧的浏览态不落在这一支:它有产地(整张 listMeta),所以走列表。 */}
             {scope === 'files' && !searching ? t('search.filesNeedQuery') : t('search.noResults')}
           </p>
         ) : (
@@ -359,7 +362,17 @@ export function SearchPanel() {
                 activate(row)
               }}
             >
-              <span className={s.chip}>{badgeText(row.badge, t)}</span>
+              {/*
+                * 徽是**两层**:外层那颗胶囊 hug 内容(宽度由内容定,不写死),
+                * 内层负责弯腰 —— text-overflow 只在块容器上生效,而胶囊为了居中
+                * 是 inline-flex,直接挂在它身上的省略号永远不会出现。
+                * 09-01 报障:徽列按四字符(CHAT/MSG/MD)写死 34px,八字符的
+                * NOTEBOOK 直接撑破边框 —— 词表是**数据**(扩展名 / 无扩展名的整个
+                * 文件名都会进来),不是一张可以枚举完的表,所以修法只能是结构性的。
+                */}
+              <span className={s.chip}>
+                <span className={s.chipText}>{badgeText(row.badge, t)}</span>
+              </span>
               <span className={row.code ? `${s.text} ${s.code}` : s.text}>
                 <Highlight text={row.text} query={searching ? query : ''} />
               </span>
@@ -380,6 +393,14 @@ export function SearchPanel() {
           * 08-31 拍板:搜索态下这一行**常驻**。读数与按钮之间怎么切由 moreState
           * 那张判据表定,这里只负责画:能按的那三种走上面的 button,`end`/`count`
           * 两种读数走下面的 p —— 所以「共 N 条」不再是翻过页的人才看得到。
+          *
+          * 09-01 拍板:**空词那张浏览列表也走这一行**(用户:「我要能够在这里面看到
+          * 所有的条数,所有的记录,要能够翻页」)。这里一个字都不用改 —— 判据表把
+          * 浏览态翻成了 'exhausted',于是它自动落在 more(带 total)/ end 两格上。
+          *
+          * 里面那句话裹了一层 span:底部这一行也是 subgrid,文字要落在**第二列**
+          * (与上面各行的正文同一条竖线起笔)。从前靠 padding-left 的 calc 对齐,
+          * 而徽列换成内容自适应之后那个 calc 已经算不出来了。
           */}
         {moreIsItem && (
           <button
@@ -394,23 +415,31 @@ export function SearchPanel() {
               activateMore()
             }}
           >
-            {more.kind === 'loading' && t('search.loading')}
-            {more.kind === 'error' && t('search.loadFailed')}
-            {more.kind === 'more' &&
-              (more.total === null
-                ? t('search.loadMore')
-                : t('search.loadMoreCount', { shown: more.shown, total: more.total }))}
+            <span className={s.moreText}>
+              {more.kind === 'loading' && t('search.loading')}
+              {more.kind === 'error' && t('search.loadFailed')}
+              {more.kind === 'more' &&
+                (more.total === null
+                  ? t('search.loadMore')
+                  : t('search.loadMoreCount', { shown: more.shown, total: more.total }))}
+            </span>
           </button>
         )}
         {more.kind === 'end' && (
           <p className={s.end}>
             {/* 英文里 result / results 是两句话(08-31 走查在屏幕上量到「1 results」)。
                 选键走 i18n 的 `plural`,与 QuickLook 的消息数逐字同一手。 */}
-            {t(plural(more.total, 'search.allShownOne', 'search.allShown'), { total: more.total })}
+            <span className={s.moreText}>
+              {t(plural(more.total, 'search.allShownOne', 'search.allShown'), {
+                total: more.total,
+              })}
+            </span>
           </p>
         )}
         {more.kind === 'count' && (
-          <p className={s.end}>{t('search.shownCount', { shown: more.shown })}</p>
+          <p className={s.end}>
+            <span className={s.moreText}>{t('search.shownCount', { shown: more.shown })}</span>
+          </p>
         )}
       </div>
     </div>
