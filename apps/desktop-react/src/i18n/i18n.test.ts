@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useStageStore } from '../stage/store'
 import { zh } from './zh'
 import { en } from './en'
-import { format, resolveLang, t, translate } from './index'
+import { format, plural, resolveLang, t, translate } from './index'
 import type { MessageKey } from './index'
 
 beforeEach(() => {
@@ -27,6 +27,41 @@ describe('字典完整性', () => {
     const holes = (s: string) => (s.match(/\{(\w+)\}/g) ?? []).sort()
     for (const key of Object.keys(zh) as MessageKey[]) {
       expect(holes(en[key]), key).toEqual(holes(zh[key]))
+    }
+  })
+})
+
+describe('单复数', () => {
+  /** 每一对「一个 / 多个」键 —— 加一对计数文案就在这里加一行。 */
+  const PAIRS: ReadonlyArray<readonly [MessageKey, MessageKey, string]> = [
+    ['quicklook.messageCountOne', 'quicklook.messageCount', 'count'],
+    ['search.allShownOne', 'search.allShown', 'total'],
+  ]
+
+  it('1 走单数键,0 与 2 走复数键', () => {
+    for (const [one, many] of PAIRS) {
+      expect(plural(1, one, many)).toBe(one)
+      expect(plural(2, one, many)).toBe(many)
+      expect(plural(0, one, many)).toBe(many)
+    }
+  })
+
+  /*
+   * 08-31 走查在英文界面上量到「1 results · all shown」。所以这条门读的是
+   * **最终那句英文**,不是「有没有调 plural」—— 后者调了照样可能把两个键写反。
+   */
+  it('英文单数句里不许出现复数名词(1 results 就是这么上屏的)', () => {
+    for (const [one, , hole] of PAIRS) {
+      const line = translate('en', one, { [hole]: 1 })
+      expect(line, one).toMatch(/^1 /)
+      // 「1 …s」= 复数名词跟在 1 后面。撇号所有格(1 user's)不在此列。
+      expect(line, one).not.toMatch(/^1 \w+s\b/)
+    }
+  })
+
+  it('中文两句逐字相同 —— 中文不分单复数,分键只是给英文腾位置', () => {
+    for (const [one, many] of PAIRS) {
+      expect(zh[one], one).toBe(zh[many])
     }
   })
 })

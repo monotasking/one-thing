@@ -11,7 +11,7 @@ import { Segmented } from '../../ui/Segmented'
 import type { SegmentedOption } from '../../ui/Segmented'
 import { notify } from '../../services/notify'
 import { Search } from '../../components/icons'
-import { useT } from '../../i18n'
+import { plural, useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import {
   SCOPES,
@@ -403,7 +403,11 @@ export function SearchPanel() {
           </button>
         )}
         {more.kind === 'end' && (
-          <p className={s.end}>{t('search.allShown', { total: more.total })}</p>
+          <p className={s.end}>
+            {/* 英文里 result / results 是两句话(08-31 走查在屏幕上量到「1 results」)。
+                选键走 i18n 的 `plural`,与 QuickLook 的消息数逐字同一手。 */}
+            {t(plural(more.total, 'search.allShownOne', 'search.allShown'), { total: more.total })}
+          </p>
         )}
         {more.kind === 'count' && (
           <p className={s.end}>{t('search.shownCount', { shown: more.shown })}</p>

@@ -3,8 +3,17 @@
  * 不着色不加粗 —— 它是「话题换了口气」的排版记号,不是一件要被看的东西。
  * 上下留白**不在这里**:节奏归邻接表管(content/ChatStream.module.css 的
  * [data-prose='hr'] 两条,量是 --pr-hr),块自己 margin 清零是全表前提。
+ *
+ * ── `margin-inline: 0` 不是洁癖,是这条线画不画得出来的开关(08-31 真机报障)──
+ * `<hr>` 的 UA 样式带 `margin-inline: auto`。承载块的 `.row` 是 **flex 列**,而 flex
+ * 里交叉轴上的 auto 边距会**吃掉全部剩余空间并关掉 stretch** —— 于是这条 hr 被算成
+ * 宽 0、左右各 300px 边距:高度 1px 在、上下的 --pr-hr 也在(所以间距看着像多留了
+ * 一档),唯独线本身一个像素都不落。真机量出来就是「`---` 位置只剩一段空白」。
+ * 邻接表那条 `.row > * { margin-block: 0 }` 只清块向边距,清不到这一格,所以它归
+ * 块自己清 —— 与「块自己 margin 清零是全表前提」是同一条纪律的另一半。
  */
 .divider {
   border: none;
   border-block-start: var(--bw-1) solid var(--line-1);
+  margin-inline: 0;
 }

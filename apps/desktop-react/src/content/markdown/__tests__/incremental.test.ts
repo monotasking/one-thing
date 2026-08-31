@@ -130,6 +130,8 @@ describe('增量 = 全量:切点错一次,屏幕就会说谎', () => {
     '<div>\n\n</div>\n\n正文',
     '[^1]: 脚注\n\n    还是脚注\n\n正文',
     '1. a\n\n2. b\n\n正文',
+    // 08-31 真机报障那一段的骨架:段落 → `---` → 标题 → 有序列表。
+    '一段话\n\n---\n\n## 标题\n\n1. 第一步',
   ]
 
   it.each(SAMPLES)('按帧喂完整段,每一帧都与全量解析同结果:%j', (sample) => {
@@ -138,6 +140,42 @@ describe('增量 = 全量:切点错一次,屏幕就会说谎', () => {
       const text = sample.slice(0, i)
       expect(s.parse('m', text, false)).toEqual(parseFrame(text))
     }
+  })
+
+  /*
+   * 上面那条一次喂一个字符 —— 它**永远**踩不到下面这个坑,所以不能只有它。
+   *
+   * 病历(08-31 真机:`---` 一条横线整个不见了):切点从前是
+   * `Math.min(stableCut(text), prev.text.length)`。`stableCut` 返回的必是行首,
+   * 但 `prev.text.length` 是上一帧收到多少字符 —— 由网络分片决定,不是行首。
+   * 一次喂一个字符时,新出现的安全切点必然 ≤ prev.text.length,min 取到的就是
+   * 那个行首,坑被喂法本身盖住了;真机一帧来好几个字符,min 就会夹在**行中间**,
+   * 于是 `---` 被劈成上一帧留下的 `-`(当时被解析成列表起手式)和这一帧的 `--`
+   * (解析成一段字),分隔线整条蒸发。
+   *
+   * 所以这条门按**多字符帧**喂,而且把 2..8 每一种块长都走一遍 —— 坑的触发条件
+   * 是「帧边界正好落在某个块的起手行中间」,块长不同,落点就不同。
+   */
+  it.each(SAMPLES)('多字符一帧(2..8 字/帧)同样与全量解析同结果:%j', (sample) => {
+    for (let chunk = 2; chunk <= 8; chunk += 1) {
+      const s = stream()
+      for (let i = chunk; i < sample.length + chunk; i += chunk) {
+        const text = sample.slice(0, Math.min(i, sample.length))
+        expect(s.parse('m', text, false)).toEqual(parseFrame(text))
+      }
+    }
+  })
+
+  it('帧边界劈开 `---` 时,分隔线仍然是分隔线(不是空列表 + 一段 `--`)', () => {
+    const md = '一段话\n\n---\n\n## 标题'
+    const s = stream()
+    // 这一帧的结尾正好停在 `---` 的第一个字符之后 —— 病历里的那一刀。
+    s.parse('m', '一段话\n\n-', true)
+    expect(s.parse('m', md, true).blocks.map((block) => block.kind)).toEqual([
+      'paragraph',
+      'divider',
+      'heading',
+    ])
   })
 
   it('切点只落在「空行 + 顶格 + 开的是不可续的新块」上', () => {

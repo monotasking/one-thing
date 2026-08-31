@@ -96,18 +96,40 @@ export function toPluginCommand(info: PluginCommandInfo): CommandEntry {
   }
 }
 
-/** 内置在前,插件在后;**同名以内置为准**(插件顶不掉 `/new`)。 */
+/**
+ * dev 命令这一刻看不看得见。**判据只有这一句**,别处不许再问一次 `import.meta.env`。
+ *
+ * 它是 `mergeCommands` 的默认值而不是里面写死的一句,是为了让门能把两种形都跑一遍
+ * ——单测自己就跑在 dev 形里(vitest 的 `import.meta.env.DEV` 恒真),写死了就永远
+ * 只测得到一半。
+ */
+export const DEV_COMMANDS_VISIBLE: boolean = import.meta.env.DEV === true
+
+/**
+ * 内置在前,插件在后;**同名以内置为准**(插件顶不掉 `/new`)。
+ *
+ * ── dev 命令不进用户的命令表(08-31 真机走查)──────────────────────────
+ * 走查在真机上敲 `/`,抽屉里第一条就是 `/ask-demo` —— 一条只为「ask 形态还没有
+ * 真产地」而存在的扳机(composer/data.ts 的 `DEV_COMMANDS`),用户看见它只会当成
+ * 一个坏掉的功能。
+ *
+ * 筛的判据是**这条命令自报的 `kind`**,不是「它从第几个参数传进来的」:
+ * 一条 `kind: 'dev'` 混进 builtin 或插件表里同样该被挡掉,而参数位置管不到那种情况。
+ * 这也正是 `CommandKind` 那一格的用处 —— 它此前只用来画徽,现在它是一条判据。
+ */
 export function mergeCommands(
   builtin: readonly CommandEntry[],
   plugin: readonly CommandEntry[],
   dev: readonly CommandEntry[] = [],
+  devVisible: boolean = DEV_COMMANDS_VISIBLE,
 ): CommandEntry[] {
   const taken = new Set(builtin.map((entry) => commandTokenOf(entry)))
-  return [
+  const merged = [
     ...builtin,
     ...plugin.filter((entry) => !taken.has(commandTokenOf(entry))),
     ...dev,
   ]
+  return devVisible ? merged : merged.filter((entry) => entry.kind !== 'dev')
 }
 
 /** 一条命令在输入框里被打出来的那个词(名字去掉前导斜杠,小写)。 */

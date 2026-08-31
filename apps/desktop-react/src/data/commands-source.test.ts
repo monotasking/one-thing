@@ -157,6 +157,35 @@ describe('表与 core 的注册表对账', () => {
     expect(merged.at(-1)?.id).toBe('ask-demo')
   })
 
+  /*
+   * 08-31 真机走查:敲 `/`,抽屉里出现 `/ask-demo` —— 一条只为「ask 形态还没有真
+   * 产地」而存在的 dev 扳机。用户看见它只会当成一个坏掉的功能。
+   * 单测自己跑在 dev 形里(vitest 的 `import.meta.env.DEV` 恒真),所以生产形
+   * 必须显式传进来测,否则这条门只测得到一半。
+   */
+  it('生产形的命令表里一条 dev 命令都没有', async () => {
+    await useCommandsSource.getState().ensurePluginCommands()
+    const plugin = useCommandsSource.getState().pluginCommands
+    const prod = mergeCommands(BUILTIN_COMMANDS, plugin, DEV_COMMANDS, false)
+
+    expect(prod.some((entry) => entry.kind === 'dev')).toBe(false)
+    expect(findCommand(prod, 'ask-demo')).toBeUndefined()
+    // 挡掉的**只有** dev 那些:内置与插件一条不少。
+    expect(prod).toEqual(
+      mergeCommands(BUILTIN_COMMANDS, plugin, DEV_COMMANDS, true).filter(
+        (entry) => entry.kind !== 'dev',
+      ),
+    )
+  })
+
+  it('判据是命令自报的 kind,不是它从第几个参数传进来的', () => {
+    const smuggled: CommandEntry[] = [{ ...DEV_COMMANDS[0], id: 'smuggled', name: '/smuggled' }]
+    // 一条 dev 命令混进插件表里,照样挡掉。
+    expect(mergeCommands(BUILTIN_COMMANDS, smuggled, [], false)).toEqual(
+      mergeCommands(BUILTIN_COMMANDS, [], [], false),
+    )
+  })
+
   it('插件读面失败:静默降级成只剩内置,不抛也不弹', async () => {
     configureCommandsPort({
       ready: async () => undefined,

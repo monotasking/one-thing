@@ -66,8 +66,12 @@ export function t(key: MessageKey, vars?: MessageVars): string {
 
 /**
  * 单复数:英文里「1 session / 3 sessions」是两句话,中文里是同一句。
- * 全仓只有两处计数文案,不值得引进 Intl.PluralRules —— 两个键,按数选一个。
- * 真要长出第三处、第四处再谈把它换成规则表。
+ * 计数文案屈指可数(今天两处:QuickLook 的消息数、SearchPanel 的检索总数),
+ * 不值得引进 Intl.PluralRules —— 两个键,按数选一个。
+ * 真要长到五处、十处再谈把它换成规则表。
+ *
+ * **凡是英文里带可数名词的计数文案都该走这里**:08-31 走查在屏幕上量到过
+ * 「1 results · all shown」—— 少的不是规则表,是有人忘了用这个函数。
  */
 export function plural(count: number, one: MessageKey, many: MessageKey): MessageKey {
   return count === 1 ? one : many

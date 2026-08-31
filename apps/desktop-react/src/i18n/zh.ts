@@ -277,6 +277,10 @@ export const zh = {
   'search.loadMoreCount': '加载更多 · 已显示 {shown} / 共 {total}',
   'search.loading': '加载中…',
   'search.loadFailed': '没加载成,点一下重试',
+  /* 两个键由 `plural()` 选,形状同 quicklook.messageCount*。中文不分单复数,
+   * 所以这两句**逐字相同** —— 它们不是给中文用的,是给英文那份腾出位置:
+   * 08-31 走查在英文界面上量到的是「1 results · all shown」。 */
+  'search.allShownOne': '共 {total} 条 · 已全部显示',
   'search.allShown': '共 {total} 条 · 已全部显示',
   /* 文件侧还没落定时的读数:「已显示」而不是「共」—— 后者是一句关于总数的断言,
    * 这一刻还没人有资格下(判据表见 search/transitions.ts 的 moreState)。 */
@@ -559,12 +563,41 @@ export const zh = {
   'viewer.imageFailed': '这台取不到这张图的字节',
   /* 只载了开头一段(判据:真实字节数 > 已经要到的量)。 */
   'viewer.truncated': '文件有 {size},已经载入前 {shown}',
+  'viewer.loadedPercent': '已载入 {percent}% · 共 {size}',
   'viewer.loadMore': '继续加载',
-  /* 各形自己那一格动作。「源码 ⇄ 渲染」复用块壳的 view-source 语汇,不另起词。 */
+  /* 各形自己那一格动作(工具条与状态栏)。 */
   'viewer.wrap': '折行',
+  'viewer.mdView': '渲染方式',
+  'viewer.mdRendered': '渲染',
+  'viewer.mdSource': '源码',
   'viewer.zoomLabel': '缩放',
   'viewer.zoomFit': '适应',
   'viewer.zoomActual': '1:1',
+  'viewer.mediaSample': '播放条是示例档:原生播放器,没有自绘的控制条',
+  /* ⌘L 跳转条 —— 跳转的唯一入口。四档里今天只有行号真接上。 */
+  'viewer.jumpLabel': '跳转到',
+  'viewer.jumpPlaceholder': '行号,或 # 符号 · / 检索 · @ 改动',
+  'viewer.jumpLine': '行号',
+  'viewer.jumpSymbol': '符号',
+  'viewer.jumpSearch': '检索命中',
+  'viewer.jumpDiff': '改动处',
+  'viewer.lineReadout': '行 {line}:1  ⌘L',
+  /* 键位档。档只是一张表,换档即时生效。 */
+  'viewer.keymapDefault': '默认键位',
+  'viewer.keymapVim': 'Vim',
+  /* 轻编辑:铅笔 → 等宽可写文本 → ⌘S。 */
+  'viewer.edit': '编辑',
+  'viewer.editing': '正在编辑 {name}',
+  'viewer.unsaved': '未保存',
+  'viewer.save': '保存 ⌘S',
+  'viewer.saving': '正在保存…',
+  'viewer.saved': '已保存',
+  'viewer.saveFailed': '没能保存',
+  'viewer.conflict': '这个文件在你打开之后被改过 —— 没有覆盖',
+  'viewer.confirmTitle': '还有没保存的改动',
+  'viewer.confirmBody': '{name} 有改动还没保存。关掉就没了。',
+  'viewer.discard': '不保存',
+  'viewer.saveAndClose': '保存并关闭',
 
   /* ── 模型服务(providers/:左栏家名册 + 右面模式分坑)─────────────────────
    * 面板标题不另起键:它就是 'item.providers' 那四个字(与文件面复用

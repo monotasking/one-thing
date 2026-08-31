@@ -158,6 +158,33 @@ describe('分隔线 → divider 块(08-31 真机报障后进表:一条横线不�
   it.each([['---'], ['***'], ['___']])('%s', (source) => {
     expect(one(source)).toEqual({ kind: 'divider' })
   })
+
+  it('空行隔开的 `---` 是分隔线', () => {
+    expect(blocks('一段话\n\n---\n\n另一段话\n').map((block) => block.kind)).toEqual([
+      'paragraph',
+      'divider',
+      'paragraph',
+    ])
+  })
+
+  /*
+   * 紧贴上一段的 `---` **不是**分隔线,是 setext 二级标题的下划线 —— CommonMark
+   * 如此规定,不是本仓的选择,也不是 bug。08-31 走查怀疑过这一条是「横线不出来」的
+   * 真因,逐形取证后排除:真因是流式切点(见 incremental.test.ts 的病历)与 `<hr>`
+   * 在 flex 列里被 UA 的 `margin-inline: auto` 压成零宽(见 divider.test.tsx)。
+   * 这一形钉在这里,是为了下次再有人怀疑它时,答案已经写好了。
+   */
+  it('紧贴上一段的 `---` 是 setext 标题下划线,不是分隔线(markdown 语义,非 bug)', () => {
+    expect(blocks('一段话\n---\n另一段话\n').map((block) =>
+      block.kind === 'heading' ? `heading${block.level}` : block.kind,
+    )).toEqual(['heading2', 'paragraph'])
+    // `***` 没有 setext 语义,所以同一个位置它仍是分隔线 —— 两者的差别在语法,不在这里。
+    expect(blocks('一段话\n***\n另一段话\n').map((block) => block.kind)).toEqual([
+      'paragraph',
+      'divider',
+      'paragraph',
+    ])
+  })
 })
 
 describe('表外节点一律 source-fallback —— 原文永远可见', () => {

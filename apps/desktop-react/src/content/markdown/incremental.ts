@@ -31,6 +31,14 @@ export interface MarkdownFrame {
 interface Entry {
   text: string
   parsed: ParsedBlock[]
+  /**
+   * 这一份解析**自己**的安全切点(`stableCut(text)`)。
+   *
+   * 记下来而不是下一帧现算,是因为下一帧要的恰恰是「在**旧文本**上成立的切点」——
+   * 见 `reparseTail` 的病历。安全切点的性质是「前 N 个字符的解析不会被后面追加的
+   * 字符改掉」,而旧文本是新文本的前缀,所以旧文本上的安全切点对新文本一样安全。
+   */
+  cut: number
   /** 上一次**真的解析**的时刻,节流窗按它算。 */
   at: number
 }
@@ -67,7 +75,7 @@ export class MarkdownStream {
     const parsed = perfSpan('markdown.reparse', () =>
       appended ? this.reparseTail(prev, text) : parseMarkdown(text),
     )
-    this.entries.set(id, { text, parsed, at: this.now() })
+    this.entries.set(id, { text, parsed, cut: stableCut(text), at: this.now() })
     return toFrame(parsed, text, live)
   }
 
@@ -77,8 +85,32 @@ export class MarkdownStream {
   }
 
   private reparseTail(prev: Entry, text: string): ParsedBlock[] {
-    // 切点在**新文本**上算,再夹回旧文本长度:前缀两边逐字相同,才谈得上沿用。
-    const cut = Math.min(stableCut(text), prev.text.length)
+    /*
+     * 切点用**上一份解析自己的**安全切点,不在新文本上现算再夹长度。
+     *
+     * ── 病历:`---` 被夹成 `-` + `--`,分隔线整条消失(08-31 真机报障)──────
+     * 从前这里是 `Math.min(stableCut(text), prev.text.length)`。`stableCut` 返回的
+     * 一定是**行首**,但 `prev.text.length` 是「上一帧收到的字符数」—— 它落在哪儿
+     * 由网络分片说了算,压根不是行首。两者一取 min,夹出来的切点就可能停在一行**中间**,
+     * 而这整个函数的前提是「前缀里最后一块的结尾之后到切点之间只可能是空行」。
+     *
+     * 真机上它是这样炸的(素材 `一段话\n\n---\n\n## 标题`,8 字一帧):
+     *   帧 A 收到 `一段话\n\n-`      → 解析成 [段落, 列表](孤零零一个 `-` 是列表起手式)
+     *   帧 B 收到 `…\n\n---\n\n## 分` → stableCut=`##` 行首(20),夹到 16 = 那个 `-` 之后
+     *                                  → 沿用了帧 A 那个**列表**,尾巴从 `--` 起解析
+     *                                  → [段落, 列表, 段落("--"), 标题],divider 没了
+     * 屏幕上于是只剩一段空白:空列表画不出东西,`--` 是两个字符宽的一小段。全量解析
+     * 同一段文本给的是 [段落, divider, 标题] —— 流式与最终结果不一致,正是 §6 顶在
+     * 最前面那条不对称(宁可多解析一次)要挡住的事。这条不只坑 `---`:任何块的**起手行**
+     * 被帧边界切开都会中招(`## 标题` 切成 `#` + `# 标题` 同理)。
+     *
+     * 修法不是把 min 改精确,是**别再算第二个切点**:`prev.cut` 是上一份解析在
+     * 它自己的文本上算出的安全切点,天然 ≤ `prev.text.length` 且一定在行首;
+     * 而「安全」的定义就是「后面再追加字符也不会改前面的解析」,旧文本是新文本的
+     * 前缀,所以它对新文本一样安全。切点因此比从前晚一帧前进 —— 这是对的方向:
+     * 早一帧前进换来的是可能切错,而切错的代价是屏幕说谎。
+     */
+    const cut = prev.cut
     if (cut <= 0) return parseMarkdown(text)
 
     const head = prev.parsed.filter((entry) => entry.end <= cut)
