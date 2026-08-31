@@ -13,6 +13,9 @@ export const zh = {
   'common.closeTab': '关闭 {label}',
   'common.confirm': '确定',
   'common.cancel': '取消',
+  /** 外壳的一级标题。只念不看(.visually-hidden)—— 一张没有 h1 的页,
+   * 读屏软件的「按标题跳」那一手从第一步就落空。 */
+  'a11y.appTitle': 'onething 工作台',
 
   /* ── 顶栏 ─────────────────────────────────────────────────────────── */
   'topbar.newSession': '新会话',
@@ -432,6 +435,7 @@ export const zh = {
   'notify.disconnected': '没连上 core',
   'notify.sendFailed': '消息没发出去',
   'notify.createSessionFailed': '新建会话失败',
+  'notify.bindWorkdirFailed': '会话已建,但没归进项目目录',
   'notify.abortFailed': '停止没有发出去',
   'notify.abortStuck': '停止发出去了,这一轮还没收尾',
   'notify.abortStuckHint': '命令已经被 core 收下;收尾要等引擎那边结束这一轮。',

@@ -94,6 +94,7 @@ import { readSessionSegments } from '../../wiring/toc/index.js'
 import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
 import { workdirGateway } from '../../wiring/variables/gateways.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
+import { isHostLocallyTrusted } from '../../server/local-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { UpdateOnethingSessionWorkingDirectoryOptions } from '@onething/runtime/sessions/working-directory'
 import type { UpdateOnethingSessionAgentOptions } from '@onething/runtime/sessions/session-updates'
@@ -341,9 +342,17 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     // 套判定 —— `rpc/sandbox.ts`,fail-closed),越界回被删掉的 server 路由那句
     // **逐字相同**的话;`ipc` 是用户自己的机器,照旧只 `fs.stat` 判是不是目录。
     // 清空(null / '')两边都直接放行:它不是一条路径。
+    //
+    // 08-31 追补:**本机可信宿主的 HTTP 面与 IPC 同权**(files 域方案 1 的第二个
+    // 消费者,`server/local-trust.ts` 的 `isHostLocallyTrusted`)。React 壳走 http
+    // 面,从项目建会话的第二步(落目录)曾被这道夹持逐次拒掉 —— 真机账单:会话
+    // 71886081 落成空目录,claude-code-agent 因此拒启。声明过可信(桌面/壳内嵌面、
+    // 回环 server)走 `ipc` 那一列;独立部署与 `ONETHING_SERVER_FILES_SANDBOX=1`
+    // 强制收紧时,夹持逐字原样。
     let workingDirectory = request.workingDirectory
     if (
       context.transport === 'http'
+      && !isHostLocallyTrusted()
       && typeof workingDirectory === 'string'
       && workingDirectory !== ''
     ) {

@@ -11,6 +11,7 @@ export const en: Record<MessageKey, string> = {
   'common.closeTab': 'Close {label}',
   'common.confirm': 'Confirm',
   'common.cancel': 'Cancel',
+  'a11y.appTitle': 'onething workspace',
 
   /* ── top bar ──────────────────────────────────────────────────────── */
   'topbar.newSession': 'New session',
@@ -388,6 +389,7 @@ export const en: Record<MessageKey, string> = {
   'notify.disconnected': 'Not connected to core',
   'notify.sendFailed': 'Message did not go out',
   'notify.createSessionFailed': 'Could not create the session',
+  'notify.bindWorkdirFailed': 'Session created, but binding the project directory failed',
   'notify.abortFailed': 'Stop did not go out',
   'notify.abortStuck': 'Stop went out, the run has not settled',
   'notify.abortStuckHint': 'Core accepted the command; settling waits on the engine finishing this run.',

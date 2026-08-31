@@ -97,6 +97,19 @@ export function isFilesHostLocallyTrusted(): boolean {
   return declaration !== null
 }
 
+/**
+ * 同一件事实的**通名**(08-31 第二个消费者落地时补):「本机 HTTP 面可信」是
+ * **面级**声明,不是 files 域私产 —— 第二个消费者是 sessions 域的
+ * `updateWorkingDirectory`(React 壳走 http 面,从项目建会话的第二步落目录被
+ * 沙箱拒掉,真机账单:会话 71886081,`Working directory must stay inside …` 被
+ * 渲染层静默吞)。判据、反悔口(`ONETHING_SERVER_FILES_SANDBOX`)与声明口都
+ * 不变;`isFilesHostLocallyTrusted` 保留为 files 域的旧名。其余四个同病域
+ * (project-dirs / markdown / permission-grants / tools / evals)仍属另拍。
+ */
+export function isHostLocallyTrusted(): boolean {
+  return isFilesHostLocallyTrusted()
+}
+
 /** 测试用:把槽清回未声明。 */
 export function resetFilesLocalTrustForTests(): void {
   declaration = null

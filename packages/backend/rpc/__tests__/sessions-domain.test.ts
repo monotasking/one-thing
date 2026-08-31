@@ -416,6 +416,51 @@ describe('sessions RPC domain', () => {
     }
   })
 
+  it('a locally trusted http face does not clamp the working directory (files 方案 1 的第二个消费者)', async () => {
+    // 08-31 真机账单:React 壳(内嵌面,已声明可信)从项目建会话的第二步落目录
+    // 被沙箱逐次拒掉,渲染层又吞了 success:false —— 会话落成空目录,外部 agent
+    // 拒启。声明可信后 http 走 ipc 那一列;强制收紧环境变量仍压得住(反证)。
+    const { dispatchRpc } = await loadDomain()
+    const { configureFilesLocalTrust } = await import('../../server/local-trust.js')
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-sessions-trust-'))
+    const restore = configureFilesLocalTrust({ origin: 'desktop-embedded', host: '127.0.0.1' })
+    try {
+      await expect(dispatchRpc(
+        {
+          domain: 'sessions',
+          method: 'updateWorkingDirectory',
+          payload: { sessionId: SESSION_ID, workingDirectory: outside },
+        },
+        HTTP_CONTEXT,
+      )).resolves.toEqual({ ok: true, data: { success: true } })
+      expect(variables.workdirGateway.write).toHaveBeenCalledWith(SESSION_ID, outside)
+
+      // 反证:ONETHING_SERVER_FILES_SANDBOX=1 压过声明,夹持原样。
+      process.env.ONETHING_SERVER_FILES_SANDBOX = '1'
+      try {
+        await expect(dispatchRpc(
+          {
+            domain: 'sessions',
+            method: 'updateWorkingDirectory',
+            payload: { sessionId: SESSION_ID, workingDirectory: outside },
+          },
+          HTTP_CONTEXT,
+        )).resolves.toEqual({
+          ok: true,
+          data: {
+            success: false,
+            error: 'Working directory must stay inside the workspace sandbox root.',
+          },
+        })
+      } finally {
+        delete process.env.ONETHING_SERVER_FILES_SANDBOX
+      }
+    } finally {
+      restore()
+      fs.rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
   it('http delete aborts the live stream and tears the session channels down; ipc does not', async () => {
     const { dispatchRpc } = await loadDomain()
     store.deleteSession.mockReturnValue({ deletedIds: [SESSION_ID, 'child-1'], deletedCount: 2 })

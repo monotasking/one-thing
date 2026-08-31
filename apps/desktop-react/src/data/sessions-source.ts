@@ -87,7 +87,18 @@ export type SessionsSourceStatus = 'idle' | 'loading' | 'ready' | 'error'
  * 放,让调用方原样说给用户听(后端说的错不许被换成一句「操作失败」)。
  */
 export type CreateSessionOutcome =
-  | { ok: true; sessionId: string }
+  | {
+      ok: true
+      sessionId: string
+      /**
+       * 第二步(落目录)失败时后端的原话。会话本身建成了(ok 仍是 true),
+       * 但它没有归进那个项目 —— 调用方要把这句说给用户听,不许无声。
+       * 08-31 真机账单:壳走 http 面,沙箱夹持把落目录逐次拒掉,而这里以前
+       * 只 catch 异常、不看 `success:false`,错误无声蒸发,会话落成空目录,
+       * claude-code-agent 因「未绑定工作目录」拒启。
+       */
+      workdirError?: string
+    }
   | { ok: false; error: string }
 
 export interface SessionsSourceState {
@@ -336,18 +347,22 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       }
       const sessionId = created.session.id
 
+      let workdirError: string | undefined
       if (projectId) {
         // 落目录失败不回滚(理由见接口上的注释):会话已经在了,只是没归到那个项目。
+        // 但失败**必须说出去**:从前这里吞异常、也不看应答的 `success:false`,
+        // 沙箱拒绝(http 面)就这样无声蒸发过一回(见 CreateSessionOutcome 注)。
         try {
-          await port.updateWorkingDirectory(sessionId, projectId)
-        } catch {
-          // 吞掉异常本身,分组按后端事实走 —— 下面那次重拉会说出真相。
+          const updated = await port.updateWorkingDirectory(sessionId, projectId)
+          if (!updated?.success) workdirError = updated?.error || 'sessions.updateWorkingDirectory 未成功'
+        } catch (error) {
+          workdirError = error instanceof Error ? error.message : String(error)
         }
       }
 
       lastRefreshAt = Date.now()
       await loadList()
-      return { ok: true, sessionId }
+      return workdirError ? { ok: true, sessionId, workdirError } : { ok: true, sessionId }
     },
 
     ensureChapters: async (sessionId) => {

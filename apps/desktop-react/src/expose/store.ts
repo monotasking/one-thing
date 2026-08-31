@@ -162,6 +162,17 @@ export const useExposeStore = create<ExposeStore>()(
           })
           return undefined
         }
+        if (outcome.workdirError) {
+          // 会话建成但没归进项目(第二步落目录被后端拒了)。warn 不拦路:
+          // 人还能聊,只是外部 agent 这类要目录的活会拒启 —— 后端原话给全。
+          notify({
+            level: 'warn',
+            source: 'session.create',
+            title: t('notify.bindWorkdirFailed'),
+            body: outcome.workdirError,
+            detail: outcome.workdirError,
+          })
+        }
         void useAgentsSource.getState().applyPendingAgent(outcome.sessionId)
         /*
          * 同一步的第二笔:草稿态选过的模型也在这里兑现(D2 波一)。

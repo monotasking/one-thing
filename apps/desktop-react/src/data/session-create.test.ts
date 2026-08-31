@@ -123,12 +123,27 @@ describe('sessions-source.create:两发请求,次序即语义', () => {
     expect(group?.sessions.some((s) => s.id === NEW_ID)).toBe(true)
   })
 
-  it('落目录失败不回滚:会话照样成立,只是没归到那个项目', async () => {
+  it('落目录失败不回滚:会话照样成立,但那句错要随结果交出去(不许无声)', async () => {
     landOnServer()
     updateWorkingDirectory.mockRejectedValueOnce(new Error('nope'))
     const outcome = await useSessionsSource.getState().create(ONETHING_DIR)
 
-    expect(outcome).toEqual({ ok: true, sessionId: NEW_ID })
+    expect(outcome).toEqual({ ok: true, sessionId: NEW_ID, workdirError: 'nope' })
+  })
+
+  it('落目录被后端拒(success:false)同样要说出去 —— 08-31 沙箱拒绝曾在这里无声蒸发', async () => {
+    landOnServer()
+    updateWorkingDirectory.mockResolvedValueOnce({
+      success: false,
+      error: 'Working directory must stay inside the workspace sandbox root.',
+    })
+    const outcome = await useSessionsSource.getState().create(ONETHING_DIR)
+
+    expect(outcome).toEqual({
+      ok: true,
+      sessionId: NEW_ID,
+      workdirError: 'Working directory must stay inside the workspace sandbox root.',
+    })
   })
 
   it('后端说不行 → 把它那句话原样交出去,一次都不重拉', async () => {
