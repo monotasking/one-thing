@@ -48,3 +48,38 @@ describe('可编辑区的光标形状(08-31 报障的产地)', () => {
     expect(block(selector)).toMatch(/pointer-events:\s*none/)
   })
 })
+
+/**
+ * 抽屉候选列表的**封顶**(08-31 真机报障:`@` 命中一多,抽屉一直往上长)。
+ *
+ * 与上面那一族同一条理由守在产地上:CSS Modules 那份样式表没进过 jsdom,
+ * `getComputedStyle(...).maxHeight` 在这台机器上恒等于空 —— 它答的是
+ * 「jsdom 没有这条规则」。而这条报障的产地就是这三行 CSS,删掉任何一行都复发。
+ *
+ * 「选中项滚进视野」是**行为**,不在这里:Composer.test.tsx 里真按一下 ↑↓ 去验。
+ * 两件事必须都在 —— 只封顶不滚,比不封顶更糟。
+ */
+describe('抽屉候选列表:封顶 + 自己滚 + 不把滚动传给身后', () => {
+  const scroll = () => block('.pickScroll')
+
+  it('列表区有上限,而且上限走 token(不是拍在样式表里的一个像素数)', () => {
+    expect(scroll()).toMatch(/max-height:\s*var\(--composer-drawer-max\)/)
+  })
+
+  it('超出照常滚:纵向 auto', () => {
+    expect(scroll()).toMatch(/overflow-y:\s*auto/)
+  })
+
+  /* 仓判例(Select / Tabs / 目录 / 文件面):浮在正文上的一层,滚到头之后
+   * 不把剩下的滚动量传给身后的聊天流。 */
+  it('滚到头不把滚动链传给身后的聊天流', () => {
+    expect(scroll()).toMatch(/overscroll-behavior:\s*contain/)
+  })
+
+  /* 抽屉本身的开合语义**一字未动**:封顶的是列表区,不是抽屉。
+   * 这一条守的就是「有人图省事把上限加到 .drawer 上」那种改法。 */
+  it('抽屉自己仍然是 grid 0fr↔1fr,没有被顺手改成 max-height', () => {
+    expect(block('.drawer')).toMatch(/grid-template-rows:\s*0fr/)
+    expect(block('.drawer')).not.toMatch(/max-height/)
+  })
+})

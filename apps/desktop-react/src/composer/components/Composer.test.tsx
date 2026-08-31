@@ -568,6 +568,59 @@ describe('发送', () => {
 })
 
 /**
+ * 抽屉封顶(08-31 报障:候选一多,抽屉一直往上长,把聊天顶出屏外)。
+ *
+ * 限高本身是 CSS,守在 composer-css.test.ts(那份样式表从来没进过 jsdom,
+ * `getComputedStyle` 在这台机器上答不出真话 —— 同一条判例)。
+ * 这里守的是**限高必然带出来的那另一半**:选中项走出视野时要滚回来。
+ * 只做限高不做滚入视野,比不限高更糟 —— 键盘还在动,屏幕上什么都不变。
+ */
+describe('抽屉列表封顶之后:选中项要滚进视野', () => {
+  it('↑↓ 换选中项时,对那一行调 scrollIntoView({ block: "nearest" })', async () => {
+    const original = Element.prototype.scrollIntoView
+    /**
+     * 自己收两件事:`this`(被滚的那个元素)与那一发的参数。
+     * 不读 `mock.calls`:`vi.fn` 推出来的参数元组跟着实现签名走,拿它取下标
+     * 在 tsc 眼里是越界(空元组没有第 0 位)—— 收在自己的数组里既准又不用绕。
+     */
+    const targets: HTMLElement[] = []
+    const opts: (ScrollIntoViewOptions | boolean | undefined)[] = []
+    const scrollIntoView = vi.fn(function (
+      this: HTMLElement,
+      arg?: ScrollIntoViewOptions | boolean,
+    ) {
+      targets.push(this)
+      opts.push(arg)
+    })
+    Element.prototype.scrollIntoView = scrollIntoView
+    try {
+      vi.useFakeTimers()
+      render(<Composer />)
+      const box = inputBox()
+      type(box, '看看 @')
+      await settleMentions()
+
+      // 两个候选(REPO_FILES),下标 0 → 1。
+      scrollIntoView.mockClear()
+      targets.length = 0
+      opts.length = 0
+      fireEvent.keyDown(box, { key: 'ArrowDown' })
+      expect(state().pickIndex).toBe(1)
+
+      expect(scrollIntoView).toHaveBeenCalled()
+      // 'nearest':已经在视野里的选中项一动不动,只有真走出去了才滚最短那一段。
+      expect(opts.at(-1)).toMatchObject({ block: 'nearest' })
+
+      // 滚的是**当下选中的那一行**,不是随便一行 —— 用 .pickSel 那件皮肤认它。
+      const target = targets.at(-1)
+      expect(target?.className ?? '').toMatch(/pickSel/)
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+})
+
+/**
  * 忙态那半边(D1 开工批)。忙不忙的判据只有一个产地(data/chat-source.ts 的
  * `selectEngineBusy`),所以这里就地掀那一格 —— 不为测试另造一个假的忙态开关。
  */

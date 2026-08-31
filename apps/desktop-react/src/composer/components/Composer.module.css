@@ -144,6 +144,27 @@
 }
 
 /* ── 抽屉内容:列表(files / commands / model 共用一种行) ─────────────────── */
+
+/*
+ * 候选列表的滚动区。**封顶的是列表,不是抽屉** —— 抽屉那条 `grid-template-rows:
+ * 0fr↔1fr` 的判据(「内容多高就展开多高,不需要猜一个上限」)说的是开合,
+ * 它不该顺带承诺「多长都给你长」。08-31 真机报障:一个多命中的 `@` 查询能把
+ * composer 一路顶到聊天流外面去,那不是展开,那是失控。
+ *
+ * `overscroll-behavior: contain` 是仓里既有判例(Select / Tabs / 目录 / 文件面):
+ * 列表滚到头之后不把剩下的滚动量传给身后的聊天流 —— 抽屉是浮在正文上的一层,
+ * 在它上面滚轮不该把正文也带走。
+ *
+ * 键盘选中项的「滚进视野」不在这里,在 DrawerPickList.tsx:那是**行为**,
+ * 要知道当下选中的是第几条,CSS 说不出这句话。两件事必须都在 ——
+ * 只封顶不滚,比不封顶更糟(键盘还在动,屏幕上什么都不变)。
+ */
+.pickScroll {
+  max-height: var(--composer-drawer-max);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .pickHead {
   padding: var(--sp-2) var(--sp-3) 2px;
   font-size: var(--fs-hint);

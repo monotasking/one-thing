@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../../ui/Button'
 import { Checkbox } from '../../ui/Checkbox'
 import { Input } from '../../ui/Input'
-import { Spinner } from '../../ui/Spinner'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import {
@@ -129,9 +128,23 @@ export function ModelCatalog({
             aria-label={t('providers.catalogSearch')}
           />
         </div>
-        {/* spinner 只许出现在按钮与状态栏里 —— 这一颗长在「刷新目录」上。 */}
+        {/*
+          ── 进行中反馈:**钮自己变文字 + 禁用**(08-31 报障:点了没动静)────────
+          从前这里画的是一颗光转的 `Spinner`,`label` 只进无障碍名 —— 眼睛看见的
+          是一个图标换了另一个图标,没有一个字说「在拉了」。改成与复制反馈
+          (BlockShell / MessageActions:钮上的字换成「已复制」)同一手:
+          **动作的反馈长在发起它的那颗钮上,而且是人读得懂的一句话**。
+          失败不弹 toast:错误就地画在表头下面那一行(`status === 'error'`),
+          离出事的地方最近。
+
+          留账:`loading` 是这一颗钮**自己**的状态(目录取数的 catalogStatus),
+          所以它是准的。真正待办的是写路径那一族(勾选 / 启用 / 设为当前)——
+          它们今天共用一颗全局 `saving`,一次勾选把整表都禁掉,那是**架构问题**,
+          归数据层 pending 原语(方案另出),不在这一批逐处手修。
+          这颗钮的写法是**临时手写**,原语落地后由 pending 绑定取代。
+        */}
         <Button size="sm" onClick={onRefresh} disabled={loading}>
-          {loading ? <Spinner label={t('providers.catalogLoading')} /> : t('providers.catalogRefresh')}
+          {loading ? t('providers.catalogLoading') : t('providers.catalogRefresh')}
         </Button>
         <Button
           size="sm"
@@ -178,7 +191,8 @@ export function ModelCatalog({
         <span>{t('providers.colModel')}</span>
         <span>{t('providers.colCaps')}</span>
         <span>{t('providers.colCtx')}</span>
-        <span>{t('providers.colOut')}</span>
+        {/* 窄容器里这一格与行上的最大输出一起退场 —— 类名是它俩的共同开关。 */}
+        <span className={s.colOut}>{t('providers.colOut')}</span>
         {/* 窄容器里这一格与行上的价格一起退场 —— 类名是它俩的共同开关。 */}
         <span className={s.colPrice}>{t('providers.colPrice')}</span>
         <span />
@@ -347,7 +361,7 @@ function Row({
               .join(' ')}
       </span>
       <span className={s.num}>{formatTokens(row.contextLength) ?? t('providers.unknownValue')}</span>
-      <span className={s.num}>{formatTokens(row.maxOutput) ?? t('providers.unknownValue')}</span>
+      <span className={s.out}>{formatTokens(row.maxOutput) ?? t('providers.unknownValue')}</span>
       <span className={s.price}>
         {included
           ? t('providers.priceIncluded')

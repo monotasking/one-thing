@@ -26,7 +26,22 @@ export const SHELF_DEFAULT_THICKNESS = 400
 export const FLOAT_MIN_W = 280
 export const FLOAT_MIN_H = 200
 export const FLOAT_KEEP = 40
-export const FLOAT_DEFAULT_W = 720
+/*
+ * 新窗默认宽度 08-31 由 720 加宽一档到 880。
+ *
+ * 这是一次**全体瓦**的默认值改动(不是给某一块面开的特例:一块瓦不该知道
+ * 自己该多宽,那是形态机的事),记在这里而不是散在别处。
+ *
+ * 起因是模型服务那块面的真机报障:它是两栏面(左名册 --pv-rail-w 268 定宽 +
+ * 右详情),而右详情里那张七列模型表最窄一档也要 508px 才排得下。
+ *   720 − 268(名册) − 48(详情列左右各 --sp-5) = 404  → 排不下,列头压到邻列上
+ *   880 − 268 − 48                              = 564  → 最窄一档(五列)排得下
+ * 换句话说 720 这个默认值对**任何**两栏面都偏窄,只是模型服务是第一块把它
+ * 撞出来的。表格那一侧的阈值账另修(见 ModelCatalog.module.css),两边都改了
+ * 才算修完:只加宽窗是把病往后推,只改阈值则默认一开还是挤的。
+ * 高度没动 —— 报障说的是「挤」,而详情列这一批已经改成页级滚动,高度不是瓶颈。
+ */
+export const FLOAT_DEFAULT_W = 880
 export const FLOAT_DEFAULT_H = 520
 
 /**

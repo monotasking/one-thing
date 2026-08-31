@@ -4,15 +4,32 @@
  * 这块面同时是一个**尺寸容器**(`container-type: inline-size`,名字 `catalog`):
  * 窄下来时让价格列先走,判据写在下面那条 @container 里。容器必须是它自己而不是
  * 外面的详情栏 —— 详情栏还装着模式卡,拿它当基准量出来的不是这张表的宽度。 */
+/*
+ * ── 08-31:这张表**不再自己滚**(用户报障「一屏只见一个半模型」)───────────
+ * 从前这块是 `flex: 1; min-height: 0` + `.rows { overflow-y: auto }`,于是
+ * 详情列有**两个**滚动容器:外面 `.body` 一个,里面这张表一个。两个套在一起的
+ * 结果不是「各滚各的」,是**里面那个被外面挤扁**:表拿到的是详情列剩下的那点高度,
+ * 于是无论屏幕多高,模型永远只见一个半 —— 而外面那一层其实还有大片空间没用。
+ *
+ * 改法是把滚动收敛到**一层**:详情列(ProviderDetail 的 `.body`)是唯一的
+ * 滚动容器,这张表按自然高度往下铺,凭证卡 / 用量卡 / 目录同页堆叠、一起滚。
+ * 目录长不是靠一个 250px 的小窗压住的 —— 削量的手段本来就有两件:
+ * 厂牌折叠(收起的组**不渲染行**)与检索。小窗只是把「太长」藏起来,
+ * 并不让它变短,代价却是一屏看不见几行。
+ *
+ * `overflow: clip` 而不是 `hidden`:两者都按圆角裁掉溢出,但 `hidden`
+ * **会造出一个滚动容器**,那样组头的 `position: sticky` 就会粘在这张表自己的
+ * 盒子上(= 永远不动),而不是粘在真正在滚的 `.body` 上。`clip` 不造滚动容器,
+ * 粘性照旧解析到 `.body`。这是一条容易踩的坑,所以写在这里而不是省略。
+ */
 .catalog {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   display: flex;
   flex-direction: column;
   border: var(--bw-1) solid var(--line-1);
   border-radius: var(--r-2);
   background: var(--surface-2);
-  overflow: hidden;
+  overflow: clip;
   container-type: inline-size;
   container-name: catalog;
 }
@@ -76,6 +93,9 @@
 
 /*
  * 列头与行共用同一张网格 —— 两处各写一遍宽度就是两处会漂开。
+ * **这条规则(`.grid`)是七列表轨道的唯一产地**:`.columns` 与 `.row` 都只是
+ * 往它上面加皮肤(边框 / 字号),一条 `grid-template-columns` 都不许自己写。
+ * 下面那两条 @container 同样只改这一处,所以列头与行**不可能**排到两套轨上。
  *
  * ── 挤压纪律(react-shell-squeeze-rules 律一)────────────────────────────
  * **一行恰有一个弯腰件,而它不是模型名。** 修之前这一行写的是
@@ -87,16 +107,26 @@
  *
  * 修法是把「谁先让」排出来,而不是靠像素调:
  *  · 名字轨 `minmax(var(--pv-col-name-min), 1fr)` —— **有下限,不许弯到看不清**;
- *  · 能力轨 `minmax(0, var(--pv-col-caps))` —— 它是**唯一允许被压扁的那一格**
- *    (五个单字缩写,少露一两个仍能读,而且每行的能力都写在 title 上没有丢);
+ *  · 能力轨 `minmax(var(--pv-col-caps-min), var(--pv-col-caps))` ——
+ *    它是**唯一允许被压扁的那一格**(五个单字缩写,少露一两个仍能读),
+ *    但它**也有下限**:见下面那条报障。
  *  · 其余轨定宽不让。
- * 真正窄到连这样都排不下时,由下面那条 @container 让价格列整列退场 ——
- * 那是一次**离散**的取舍,比让每一列都缩成半个字诚实。
+ *
+ * ── 08-31 报障:「Caps 压在 Context 上,而行里的字标整列不见」──────────────
+ * 病灶是能力轨从前写的是 `minmax(0, …)` —— 那个 0 是**真的 0**。两件事一起发生:
+ *  · 阈值定错(旧值 640,而七列排下来最少要 728),所以 640–728 这一整段里
+ *    表还是七列、却排不下,唯一能让的能力轨被一路榨到 0;
+ *  · 0 宽轨上,行里的 `.caps` 有 `overflow: hidden` → 内容整列消失;
+ *    而列头那个 `<span>` **没有任何裁切** → 直接画到了邻轨的「Context」上。
+ * 同一个 0 宽轨,两种表现,看起来像两个 bug,其实是一个。
+ * 两条都修:轨给下限(token 里算了三档的账),列头也一律裁切(见 `.columns > *`)——
+ * **弯的方式是内容裁切,不是轨道归零**,这一条现在写死在两处而不是靠自觉。
  */
 .grid {
   display: grid;
   grid-template-columns:
-    var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr) minmax(0, var(--pv-col-caps))
+    var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
+    minmax(var(--pv-col-caps-min), var(--pv-col-caps))
     var(--pv-col-ctx) var(--pv-col-out) var(--pv-col-price) var(--pv-col-current);
   align-items: center;
   gap: var(--sp-2);
@@ -110,11 +140,25 @@
   border-bottom: var(--bw-1) solid var(--line-1);
 }
 
+/*
+ * 列头的每一格都裁切。行上的格子早就各自裁了(`.caps` / `.price` / `.name` …),
+ * 列头从前一格都没裁 —— 于是轨一窄,**只有列头会画到邻居身上**。
+ * 一条规则管七格,而不是给每个列头补一个类:列头本来就该是同一种东西。
+ */
+.columns > * {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 行区。**不滚、不抢高** —— 滚动收敛在详情列那一层,理由写在 `.catalog` 头上。
+ * 只留一条 `flex: none`:它在一个 flex 列里,不写就会参与伸缩,
+ * 而「按内容有多高就多高」正是这一批要的。
+ */
 .rows {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  flex: none;
 }
 
 .row {
@@ -190,7 +234,10 @@
   text-overflow: ellipsis;
 }
 
-.num {
+/* 两个容量数(上下文 / 最大输出)长得一样。`.out` 只是**给最窄那一档一个把手**,
+ * 好让它连同它的列头一起退场 —— 与 `.price` / `.colPrice` 那一对逐字同款。 */
+.num,
+.out {
   font-size: var(--fs-meta);
   color: var(--text-2);
   white-space: nowrap;
@@ -287,9 +334,10 @@
   line-height: 1.6;
 }
 
+/* 非常态一句话。**不再撑满** —— 目录改成自然高度之后,「撑满」撑的是
+ * 详情列的滚动内容,那只会凭空多出一屏空白。 */
 .state {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -301,24 +349,45 @@
 }
 
 /*
- * 窄容器:**价格列整列让位**。
+ * 窄容器:**整列让位,一次一列**。
  *
- * 为什么是价格而不是别的:上下文与最大输出是「这个模型能不能干这件事」,
- * 勾选与当前是「它在不在用」—— 都是选模型当下要看的。单价是**结算时**才要的数,
- * 而且它在模型卡与用量页里还有第二处产地。让它先走,损失最小。
+ * 让位次序是按「选模型这一刻用不用得上」排的,不是按宽度排的:
+ *  · 先走**单价** —— 它是**结算时**才要的数,而且在模型卡与用量页里还有
+ *    第二处产地。上下文 / 最大输出是「这个模型能不能干这件事」,勾选与当前是
+ *    「它在不在用」,都是当下就要看的。
+ *  · 再走**最大输出** —— 两个容量数里它是次要的那个:上下文决定「喂不喂得进去」,
+ *    最大输出只决定「一次能吐多长」,而后者绝大多数模型是同一档。
+ * 每一步都是**离散**的取舍,比让每一列都缩成半个字诚实。
  *
- * 阈值那个数在查询里只能写字面量(`@container` 条件里不能写 var()),
- * `--pv-catalog-narrow` 是同一事实的名字,改的时候两处一起改。
+ * 两个阈值在查询里只能写字面量(`@container` 条件里不能写 var()),
+ * `--pv-catalog-narrow` / `--pv-catalog-tight` 是同一事实的名字,
+ * **改的时候两处一起改**,而且要照 tokens.css 里那三行把入场宽重算一遍 ——
+ * 08-31 那条重叠报障的一半原因就是旧阈值(640)定在了七列入场宽(728)之下。
  */
-@container catalog (max-width: 640px) {
+@container catalog (max-width: 728px) {
   .grid {
     grid-template-columns:
-      var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr) minmax(0, var(--pv-col-caps))
+      var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
+      minmax(var(--pv-col-caps-min), var(--pv-col-caps))
       var(--pv-col-ctx) var(--pv-col-out) var(--pv-col-current);
   }
 
   .price,
   .colPrice {
+    display: none;
+  }
+}
+
+@container catalog (max-width: 604px) {
+  .grid {
+    grid-template-columns:
+      var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr)
+      minmax(var(--pv-col-caps-min), var(--pv-col-caps))
+      var(--pv-col-ctx) var(--pv-col-current);
+  }
+
+  .out,
+  .colOut {
     display: none;
   }
 }

@@ -46,11 +46,12 @@
   color: var(--text-2);
 }
 
-/* 登录后才有目录 —— 这块占的是模型目录的位子,所以它得撑满那块地方,
- * 不然换一坑时下半屏会塌一次。 */
+/* 登录后才有目录 —— 这块占的是模型目录的位子。
+ * 08-31:**不再撑满**。详情列改成页级滚动之后(理由写在 ModelCatalog.module.css
+ * 的 `.catalog` 头上),目录本身是自然高度的,这块占位再「撑满」就会凭空多出
+ * 一屏空白;它跟着一起按自然高度画,与那张表同一条纪律。 */
 .locked {
-  flex: 1;
-  min-height: 0;
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: center;
