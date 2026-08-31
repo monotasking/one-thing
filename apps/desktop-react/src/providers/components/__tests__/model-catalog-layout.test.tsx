@@ -191,7 +191,9 @@ describe('列头与行同源:格子数一样多', () => {
       <ModelCatalog
         providerId="openrouter"
         rows={[row('a')]}
-        status="ready"
+        phase="ready"
+          dataRev={1}
+        refresh={undefined}
         kind="api"
         query=""
         saving={false}

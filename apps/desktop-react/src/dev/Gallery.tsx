@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Search } from '../components/icons'
+import { AsyncButton } from '../ui/AsyncButton'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Checkbox } from '../ui/Checkbox'
@@ -15,6 +16,7 @@ import { Spinner } from '../ui/Spinner'
 import { Switch } from '../ui/Switch'
 import { Tabs } from '../ui/Tabs'
 import { pushToast, ToastHost } from '../ui/Toast'
+import { createMutation } from '../data/kernel'
 import { TOAST_LIFE_MS } from '../components/motion'
 import { Tooltip } from '../ui/Tooltip'
 import s from './Gallery.module.css'
@@ -58,6 +60,20 @@ const TABS = [
   { id: 'diff', label: 'Diff', icon: 'GitCompare' },
   { id: 'terminal', label: 'Terminal', icon: 'Terminal' },
 ]
+
+/**
+ * AsyncButton 那一格的样本。规格页不接真后端 —— 它要展示的是**三态怎么走**,
+ * 所以这里给一个慢到看得清的假写口(1.2 秒),和一个必然失败的。
+ * 两颗都吃同一件 mutation,忙态是读来的:这正是这件组件存在的理由。
+ */
+const SLOW_MS = 1200
+const demoSave = createMutation<string, void>('gallery.save', {
+  key: (id) => id,
+  run: (id) =>
+    new Promise((resolve, reject) => {
+      setTimeout(() => (id === 'fail' ? reject(new Error('The host said no')) : resolve()), SLOW_MS)
+    }),
+})
 
 const DENSITY = [
   { value: 'cozy' as const, label: 'Cozy' },
@@ -181,6 +197,33 @@ export function Gallery() {
         <Button onClick={() => pushToast({ level: 'warn', title: 'Running on a stale catalog', lifeMs: TOAST_LIFE_MS.warn })}>warn</Button>
         <Button onClick={() => pushToast({ level: 'error', title: 'Could not reach the model host', lifeMs: null })}>error</Button>
         <Note>hover to pause the timer · error stays until you close it · 4th one folds the stack</Note>
+      </Section>
+
+      {/* 第 17 件:忙态是**读来的**,不是调用方 useState 记的一份。
+          点下去 → 立刻 disabled + aria-busy;150ms 之后才换字(极快的请求
+          不该闪一记「在办了」再闪回来)。 */}
+      <Section name="AsyncButton">
+        <AsyncButton
+          action={demoSave}
+          pendingKey="ok"
+          pendingLabel="Saving…"
+          variant="primary"
+          onClick={() => void demoSave.run('ok')}
+        >
+          save
+        </AsyncButton>
+        <AsyncButton
+          action={demoSave}
+          pendingKey="fail"
+          pendingLabel="Saving…"
+          onClick={() => void demoSave.run('fail')}
+        >
+          save (fails)
+        </AsyncButton>
+        <AsyncButton action={demoSave} pendingKey="never" pendingLabel="Saving…" disabled>
+          disabled
+        </AsyncButton>
+        <Note>忙态逐格:点一颗,另一颗照常可点</Note>
       </Section>
 
       <Section name="Spinner">

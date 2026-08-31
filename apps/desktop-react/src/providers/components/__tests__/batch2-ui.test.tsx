@@ -42,7 +42,9 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
     <ModelCatalog
       providerId="openrouter"
       rows={[row('a')]}
-      status="ready"
+      phase="ready"
+      dataRev={1}
+      refresh={undefined}
       kind="api"
       query=""
       saving={false}

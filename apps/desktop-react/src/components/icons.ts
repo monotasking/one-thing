@@ -1,4 +1,7 @@
 import {
+  Brain,
+  ImagePlus,
+  Mic,
   FolderTree,
   Folder,
   FolderOpen,
@@ -51,6 +54,7 @@ import {
   Square,
   Boxes,
   Layers,
+  MessagesSquare,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -59,6 +63,9 @@ import type { LucideIcon } from 'lucide-react'
  * 这样 items 表将来可以来自 JSON / 后端而不牵动渲染层。
  */
 const REGISTRY: Record<string, LucideIcon> = {
+  Brain,
+  ImagePlus,
+  Mic,
   FolderTree,
   Folder,
   FolderOpen,
@@ -111,6 +118,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   Square,
   Boxes,
   Layers,
+  MessagesSquare,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -118,6 +126,11 @@ export function resolveIcon(name: string): LucideIcon {
 }
 
 export {
+  Brain,
+  Image,
+  ImagePlus,
+  Mic,
+  Wrench,
   Plus,
   X,
   Pin,

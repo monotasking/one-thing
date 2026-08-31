@@ -1,7 +1,6 @@
 import { create } from 'zustand'
 import type {
   CustomProviderConfig,
-  OpenRouterModel,
   ProviderConfig,
   ProviderInfo,
   ProviderUsageResponse,
@@ -10,6 +9,7 @@ import type { OAuthStatusResponse } from '@shared/ipc/oauth'
 import type { AppSettings } from '@shared/ipc/settings'
 import type { SpaceCredentialsSummary, SpaceProviderCredentialSummary } from '@shared/ipc/spaces'
 import { providerSettingsPort } from '../data/provider-settings-port'
+import { catalogQuery } from './catalog-query'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { buildFamilies, providerIdsOf, resolveMode } from './families'
@@ -47,7 +47,15 @@ export interface CustomProviderForm {
  * ── 取数时机:全都是懒的 ──────────────────────────────────────────────────
  * 这块面不在开机路径上,`start()` 只在面板第一次挂上时调。三发并行:
  * 名册(会碰网,后端顺手拉 models.dev)、设置(本地文件一次读)、凭证摘要
- * (本地文件一次读)。模型目录再懒一层:选中哪一坑才拉哪一坑。
+ * (本地文件一次读)。
+ *
+ * ── 模型目录不在这个 store 里(K1 样板迁移,08-31)──────────────────────
+ * 它是 `providers/catalog-query.ts` 的一族 kernel query。从前这里有四张表
+ * (`catalog` / `catalogStatus` / `catalogError` / `catalogFetchedAt`)+ 一个
+ * `inflight: Map` + 一个 `ensureCatalog` —— 那是一台手写的异步状态机,而
+ * 「首载 / 重拉不分家」正是用户报的那几处「闪」的病根(§8)。四张表整体退役,
+ * **没有留转发的壳**:留一个 `ensureCatalog` 转发就是留第二份真相。
+ * 组件侧改读 `useQuery(catalogQuery.get(pid))`,`reset()` 仍然连它一起清。
  *
  * ── 写:先读整份 → 合并一格 → 整份写回 ────────────────────────────────────
  * 判据与理由写在 `data/provider-settings-port.ts` 顶部。这里只多一条纪律:
@@ -66,7 +74,6 @@ export interface CustomProviderForm {
 export const DEFAULT_SPACE_ID = 'default'
 
 export type SourceStatus = 'idle' | 'loading' | 'ready' | 'error'
-export type CatalogStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 /** 密钥那一格的三态。'saving' 期间输入框禁用,钮上转一颗 spinner。 */
 export type KeySaveStatus = 'idle' | 'saving' | 'saved'
@@ -91,13 +98,6 @@ export interface ProviderSettingsState {
   query: string
   /** providerId → 目录检索词。每一坑各记各的。 */
   modelQuery: Record<string, string>
-
-  catalog: Record<string, OpenRouterModel[]>
-  catalogStatus: Record<string, CatalogStatus>
-  /** providerId → 目录拉不到时后端那句原话。 */
-  catalogError: Record<string, string>
-  /** providerId → 上次拉取时刻(ms)。0 / 缺席 = 这一坑还没拉过。 */
-  catalogFetchedAt: Record<string, number>
 
   /** providerId → 密钥那一格的状态。 */
   keyStatus: Record<string, KeySaveStatus>
@@ -125,7 +125,6 @@ export interface ProviderSettingsState {
   selectMode: (familyId: string, providerId: string) => void
   setQuery: (query: string) => void
   setModelQuery: (providerId: string, query: string) => void
-  ensureCatalog: (providerId: string, forceRefresh?: boolean) => Promise<void>
   /** 启用/停用一家。**家族一开全开**:一次把这一家的所有 provider id 写完。 */
   setFamilyEnabled: (family: ProviderFamilyView, enabled: boolean) => Promise<void>
   /** 勾选/取消一个模型(写 `selectedModels`)。 */
@@ -197,9 +196,6 @@ interface CachedUsage {
 let started = false
 
 export const useProviderSettings = create<ProviderSettingsState>()((set, get) => {
-  /** 每坑一条在飞的承诺,防同一帧里两个消费者各拉一次。 */
-  const inflight = new Map<string, Promise<void>>()
-
   /**
    * providerId → 上一次用量答案。**不放进可渲染状态**:它是「这一口多久之内
    * 不必再问」这件事,不是屏幕上的任何一格(屏幕读的是 `usage`)。
@@ -227,35 +223,6 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       status: roster || loaded ? 'ready' : 'error',
       error: roster || loaded ? undefined : (providers?.error ?? settings?.error ?? undefined),
     })
-  }
-
-  async function loadCatalog(providerId: string, forceRefresh: boolean): Promise<void> {
-    set((st) => ({ catalogStatus: { ...st.catalogStatus, [providerId]: 'loading' } }))
-    const port = await providerSettingsPort()
-    try {
-      const response = await port.listModels(providerId, forceRefresh)
-      if (!response.success) {
-        set((st) => ({
-          catalogStatus: { ...st.catalogStatus, [providerId]: 'error' },
-          catalogError: { ...st.catalogError, [providerId]: response.error ?? '' },
-        }))
-        return
-      }
-      set((st) => ({
-        catalog: { ...st.catalog, [providerId]: response.models ?? [] },
-        catalogStatus: { ...st.catalogStatus, [providerId]: 'ready' },
-        catalogError: { ...st.catalogError, [providerId]: '' },
-        catalogFetchedAt: { ...st.catalogFetchedAt, [providerId]: Date.now() },
-      }))
-    } catch (error) {
-      set((st) => ({
-        catalogStatus: { ...st.catalogStatus, [providerId]: 'error' },
-        catalogError: {
-          ...st.catalogError,
-          [providerId]: error instanceof Error ? error.message : String(error),
-        },
-      }))
-    }
   }
 
   /**
@@ -490,10 +457,6 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     pickedMode: {},
     query: '',
     modelQuery: {},
-    catalog: {},
-    catalogStatus: {},
-    catalogError: {},
-    catalogFetchedAt: {},
     keyStatus: {},
     saving: false,
     poolBusy: {},
@@ -528,16 +491,6 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
 
     setModelQuery: (providerId, query) =>
       set((st) => ({ modelQuery: { ...st.modelQuery, [providerId]: query } })),
-
-    ensureCatalog: async (providerId, forceRefresh = false) => {
-      if (!providerId) return
-      const existing = inflight.get(providerId)
-      if (existing) return existing
-      if (!forceRefresh && get().catalogStatus[providerId] === 'ready') return
-      const run = loadCatalog(providerId, forceRefresh).finally(() => inflight.delete(providerId))
-      inflight.set(providerId, run)
-      return run
-    },
 
     setFamilyEnabled: async (family, enabled) => {
       const patch: Record<string, Partial<ProviderConfig>> = {}
@@ -961,9 +914,11 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
 
     reset: () => {
       started = false
-      inflight.clear()
       authEpoch.clear()
       usageCache.clear()
+      // 目录不在这个 store 里了(K1 样板迁移),但 reset 仍然管它 ——
+      // 「这块面回到出厂」是一件事,不该因为搬了家就漏掉半边。
+      catalogQuery.reset()
       set({
         status: 'idle',
         error: undefined,
@@ -975,10 +930,6 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         pickedMode: {},
         query: '',
         modelQuery: {},
-        catalog: {},
-        catalogStatus: {},
-        catalogError: {},
-        catalogFetchedAt: {},
         keyStatus: {},
         saving: false,
         poolBusy: {},

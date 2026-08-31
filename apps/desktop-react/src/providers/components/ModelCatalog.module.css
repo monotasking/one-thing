@@ -225,13 +225,31 @@
   white-space: nowrap;
 }
 
+/*
+ * 能力这一格从「V T R」三个字母改成三枚图标(08-31 报障:缩写谁都读不懂)。
+ * 排布还是一行、还是会被挤,所以裁切与不换行照旧;只是内容从文字变成了
+ * inline-flex 的图标条 —— 弯腰的方式仍然是**裁掉最后一枚**,不是把图标缩小。
+ */
 .caps {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
   font-size: var(--fs-micro);
   color: var(--text-2);
-  letter-spacing: var(--pv-caps-ls);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+/* 一枚能力图标。灰墨为主 —— 「有这项能力」是事实不是状态,不上状态色。 */
+.cap {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-3);
+}
+
+.capNone {
+  letter-spacing: var(--pv-caps-ls);
 }
 
 /* 两个容量数(上下文 / 最大输出)长得一样。`.out` 只是**给最窄那一档一个把手**,
@@ -326,12 +344,61 @@
   color: var(--text-2);
 }
 
-.note {
-  flex: none;
+/*
+ * ── 一次落位的淡入(K1 状态戏份)────────────────────────────────────────
+ * 两处各播各的:`.hint` 在「上次拉取」的时刻前进时淡一下(每次成功都有),
+ * `.rows` 只在**内容真的变了**时淡一下(dataRev 前进)。刷新回来一个字节没变
+ * 就让整表闪一下,那是无中生有的动静。
+ *
+ * 名字与时长都是 token(styles/motion.css 的名字表 + --dur 族),所以动效档
+ * 调到「无」时它是 0ms —— 组件那边的 `animationend` 立刻回来,一行分支都不必写。
+ */
+.settled {
+  animation: var(--kf-settle) var(--dur-enter) var(--ease-out);
+}
+
+/*
+ * 「头还在视野里吗」的哨兵。零高度、零外观 —— 它只是给 IntersectionObserver
+ * 一个可观察的点。不用 `.head` 自己当哨兵是因为观察它会把「头的高度变化」
+ * 也算进来,而我们只想知道「滚过去了没有」。
+ */
+.topMark {
+  height: 0;
+}
+
+/*
+ * 回顶。粘在**详情列**的底缘(`.catalog` 是 clip 不是 hidden,所以粘性解析
+ * 到外面那一层),滚过目录头才渲染。整行不吃指针 —— 只有钮吃,免得这一条
+ * 透明带把它下面的行挡住。
+ */
+.toTop {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
   padding: var(--sp-2) var(--sp-3);
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-  line-height: 1.6;
+  pointer-events: none;
+  animation: var(--kf-settle) var(--dur-enter) var(--ease-out);
+}
+
+.toTop > * {
+  pointer-events: auto;
+  background: var(--surface-2);
+}
+
+/* 错误那一行。**危险色只上图标与字** —— 不铺底、不描边(规范画布状态色纪律)。
+ * 它与旧行并存,所以排在列头与行之间,而不是把表换掉。 */
+.error {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+  font-size: var(--fs-meta);
+  color: var(--danger);
 }
 
 /* 非常态一句话。**不再撑满** —— 目录改成自然高度之后,「撑满」撑的是

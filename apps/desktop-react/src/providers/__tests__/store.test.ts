@@ -223,30 +223,6 @@ describe('saveApiKey —— 写口 ③', () => {
   })
 })
 
-describe('ensureCatalog', () => {
-  it('拉过就不再拉;forceRefresh 才是「刷新目录」那颗钮', async () => {
-    const port = installPort()
-    await useProviderSettings.getState().start()
-    await useProviderSettings.getState().ensureCatalog('claude')
-    await useProviderSettings.getState().ensureCatalog('claude')
-    expect(port.listModels).toHaveBeenCalledTimes(1)
-    expect(port.listModels).toHaveBeenLastCalledWith('claude', false)
-
-    await useProviderSettings.getState().ensureCatalog('claude', true)
-    expect(port.listModels).toHaveBeenCalledTimes(2)
-    expect(port.listModels).toHaveBeenLastCalledWith('claude', true)
-    expect(useProviderSettings.getState().catalogFetchedAt.claude).toBeGreaterThan(0)
-  })
-
-  it('目录拉不到:记后端那句原话,**不**弹通知(人正在看这块面)', async () => {
-    installPort({ listModels: vi.fn(async () => ({ success: false, error: '402 Insufficient Balance' })) })
-    await useProviderSettings.getState().start()
-    await useProviderSettings.getState().ensureCatalog('claude')
-    expect(useProviderSettings.getState().catalogStatus.claude).toBe('error')
-    expect(useProviderSettings.getState().catalogError.claude).toBe('402 Insufficient Balance')
-    expect(useNotifyStore.getState().items).toHaveLength(0)
-  })
-})
 
 /* ── 批二:模型级 ────────────────────────────────────────────────────────── */
 

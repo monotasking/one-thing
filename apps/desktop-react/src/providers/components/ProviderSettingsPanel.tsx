@@ -19,6 +19,8 @@ import { ProviderRail } from './ProviderRail'
 import { ProviderDetail } from './ProviderDetail'
 import { ModeCard } from './ModeCard'
 import { ModelCatalog } from './ModelCatalog'
+import { catalogQuery } from '../catalog-query'
+import { useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
 import { isProviderEnabledIn } from '@renderer/stores/helpers/provider-model'
 import s from './ProviderSettingsPanel.module.css'
@@ -54,10 +56,6 @@ export function ProviderSettingsPanel() {
   const pickedMode = useProviderSettings((st) => st.pickedMode)
   const query = useProviderSettings((st) => st.query)
   const modelQuery = useProviderSettings((st) => st.modelQuery)
-  const catalog = useProviderSettings((st) => st.catalog)
-  const catalogStatus = useProviderSettings((st) => st.catalogStatus)
-  const catalogError = useProviderSettings((st) => st.catalogError)
-  const catalogFetchedAt = useProviderSettings((st) => st.catalogFetchedAt)
   const saving = useProviderSettings((st) => st.saving)
   const poolBusy = useProviderSettings((st) => st.poolBusy)
   const poolError = useProviderSettings((st) => st.poolError)
@@ -74,7 +72,6 @@ export function ProviderSettingsPanel() {
   const selectMode = useProviderSettings((st) => st.selectMode)
   const setQuery = useProviderSettings((st) => st.setQuery)
   const setModelQuery = useProviderSettings((st) => st.setModelQuery)
-  const ensureCatalog = useProviderSettings((st) => st.ensureCatalog)
   const setFamilyEnabled = useProviderSettings((st) => st.setFamilyEnabled)
   const toggleModel = useProviderSettings((st) => st.toggleModel)
   const setCurrentModel = useProviderSettings((st) => st.setCurrentModel)
@@ -147,8 +144,8 @@ export function ProviderSettingsPanel() {
 
   useEffect(() => {
     if (!activeProviderId || !catalogAvailable) return
-    void ensureCatalog(activeProviderId)
-  }, [activeProviderId, catalogAvailable, ensureCatalog])
+    void catalogQuery.get(activeProviderId).ensure()
+  }, [activeProviderId, catalogAvailable])
 
   // 订阅坑一露面就问一次登录态。**「登没登」是后端说了算**,凭证摘要里那一格
   // 只说得出「池子里有没有一条 oauth」,说不出令牌过没过期。
@@ -164,16 +161,24 @@ export function ProviderSettingsPanel() {
     void loadUsage(activeProviderId)
   }, [activeProviderId, subscription, signedIn, loadUsage])
 
+  /*
+   * 目录不再来自 store 的四张表(K1 样板迁移):它是一族 kernel query,
+   * 一坑一格。`catalogQuery.get('')` 在还没选中任何一坑时也建得出来 ——
+   * 那一格永远不会被 ensure,所以不会发出一次空请求;这么写只是为了让
+   * hook 无条件地调(hooks 不许有条件)。
+   */
+  const catalog = useQuery(catalogQuery.get(activeProviderId))
+
   const catalogRows = useMemo(
     () =>
       activeProviderId
         ? buildCatalogRows(
-            catalog[activeProviderId] ?? [],
+            catalog.data ?? [],
             configs[activeProviderId],
             modelQuery[activeProviderId] ?? '',
           )
         : [],
-    [activeProviderId, catalog, configs, modelQuery],
+    [activeProviderId, catalog.data, configs, modelQuery],
   )
 
   const tabs = useMemo(() => (family ? modeTabsOf(family, credsOf) : []), [family, credsOf])
@@ -284,14 +289,16 @@ export function ProviderSettingsPanel() {
             <ModelCatalog
               providerId={mode.providerId}
               rows={catalogRows}
-              status={catalogStatus[mode.providerId] ?? 'idle'}
-              error={catalogError[mode.providerId] || undefined}
-              fetchedAt={catalogFetchedAt[mode.providerId]}
+              phase={catalog.phase}
+              error={catalog.error}
+              fetchedAt={catalog.updatedAt || undefined}
+              dataRev={catalog.dataRev}
+              refresh={catalogQuery.get(mode.providerId)}
               kind={mode.kind}
               query={modelQuery[mode.providerId] ?? ''}
               saving={saving}
               onQuery={(value) => setModelQuery(mode.providerId, value)}
-              onRefresh={() => void ensureCatalog(mode.providerId, true)}
+              onRefresh={() => void catalogQuery.get(mode.providerId).refetch()}
               onToggle={(modelId, selected) => void toggleModel(mode.providerId, modelId, selected)}
               onSetCurrent={(modelId) => void setCurrentModel(mode.providerId, modelId)}
               onAddManual={(modelId) => addManualModel(mode.providerId, modelId)}
