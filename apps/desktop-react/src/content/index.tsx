@@ -13,7 +13,9 @@ import { NotificationsPanel } from './NotificationsPanel'
 import { ExposeView } from '../expose/components/ExposeView'
 import { ProviderSettingsPanel } from '../providers/components/ProviderSettingsPanel'
 import { WorkspaceOverview } from '../workspace/components/WorkspaceOverview'
+import { AppsPanel } from './AppsPanel'
 import {
+  APPS_ITEM_ID,
   NOTIFICATIONS_ITEM_ID,
   PROVIDERS_ITEM_ID,
   SESSIONS_ITEM_ID,
@@ -41,6 +43,9 @@ const RENDERERS: Record<string, () => ReactNode> = {
   // 工作区总览 = 切换器那块瓦的内容。它挂在这张表里而不是自成一个浮层,
   // 正是「切换器 = 一块普通 Dock 瓦,零新原语」这条裁定的字面落地。
   [WORKSPACE_ITEM_ID]: WorkspaceOverview,
+  // 「所有应用」也在这张表里,理由与上面那条逐字相同:它是一块普通的瓦,
+  // 不是 Dock 自己长出来的一个管理浮层。所以它能被钉、能上舞台、能盖满内容栏。
+  [APPS_ITEM_ID]: AppsPanel,
 }
 
 /**

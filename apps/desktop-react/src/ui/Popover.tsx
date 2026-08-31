@@ -57,15 +57,19 @@ export function Popover({ x, y, onClose, label, children, testId }: PopoverProps
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      // 退得动就把这一下吃掉,否则同一下 Esc 会顺手把浮层底下那块面也收掉。
+      // 契约与判例见 components/useEscapeChain(Menu / Dialog 同款)。
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      onClose()
     }
     const onDown = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
-    window.addEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
     window.addEventListener('pointerdown', onDown)
     return () => {
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('pointerdown', onDown)
     }
   }, [onClose])

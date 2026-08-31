@@ -6,6 +6,23 @@
   background: var(--surface-0);
 }
 
+/* ── Dock 的布局预留 ───────────────────────────────────────────────────────────
+ * 「覆盖必须有布局预留」(挤压四律第三条)在 Dock 上的落地。**常显 + 钉边**时
+ * 外壳给那条边让出一截,内容不再长到 Dock 底下去 —— 修的是 08-31 P0:
+ * 底边常显档下 composer 的四件控件 100 个采样点只有 5 个按得到。
+ *
+ * 让位的是**整个外壳**而不只是主区:Dock 钉上边时盖住的是顶栏,钉左右时盖住的是
+ * 架子,各让各的那一条。自动隐藏档一格都不让 —— 它平时不在屏上,让了就是白让。
+ * 大小档只换 `--dock-tile` 一个数,式子在 tokens.css 里写一次。
+ * ────────────────────────────────────────────────────────────────────────── */
+.reserveSm { --dock-tile: var(--tile-size-sm); }
+.reserveLg { --dock-tile: var(--tile-size-lg); }
+
+.reserveBottom { padding-block-end: var(--dock-reserve-h); }
+.reserveTop { padding-block-start: var(--dock-reserve-h); }
+.reserveLeft { padding-inline-start: var(--dock-reserve-v); }
+.reserveRight { padding-inline-end: var(--dock-reserve-v); }
+
 /* 三明治网格。四条架子各占一格(格名由 EdgeShelf 自己声明 grid-area),
  * 中间那一格是主区。auto 轨道在没人占时塌成 0,所以「空架子不渲染」= 不占一丝布局;
  * 架子的厚度写在它自己的内联 width/height 上,轨道跟着它长。 */
@@ -21,7 +38,10 @@
     'shelfBottom shelfBottom shelfBottom';
 }
 
+/* position: relative 有**两个**消费者,缺一不可:盖(CoverLayer,absolute inset:0
+ * 铺满这一栏 —— 「只接管内容栏」这句话的字面实现),以及它自己的最小尺寸约束。 */
 .center {
+  position: relative;
   grid-area: center;
   min-width: 0;
   min-height: 0;

@@ -15,8 +15,13 @@ import { DEFAULT_SPACE_ID } from '../types'
 /**
  * 瓦与右键快切表(08-31 追补裁定「切换器 = 一块普通 Dock 瓦,零新原语」)。
  *
- * 钉三件:瓦面画的是**当前工作区**的字标(而不是一枚固定图标)、
- * 右键出的是快切表(不是那排落点单选)、以及点一行真的切了。
+ * 钉三件:瓦面铺的是**当前工作区**的色底、右键出的是快切表(不是那排落点单选)、
+ * 以及点一行真的切了。
+ *
+ * 08-31 用户否决了原来那张「色底 + 首字母」的脸(字当图标与这套风格不符),
+ * 所以这一节从「瓦面写着哪个字」改成「瓦面铺着哪一格色」——
+ * 判据换了载体,**说的仍是同一句话**:这块瓦同时就是「我在哪」的常驻指示。
+ * 首字母退回右键快切表(下面那一节仍在核对它),那里它是列表里的区分记号。
  */
 
 const DEFAULT: SpaceRecord = { id: DEFAULT_SPACE_ID, name: '默认', createdAt: 0, color: 'violet' }
@@ -50,12 +55,25 @@ function tile() {
 }
 
 describe('工作区瓦', () => {
-  it('瓦面画当前工作区的字标 —— 它同时就是「我在哪」的常驻指示', async () => {
+  /*
+   * 类名由 CSS Modules 哈希过,所以断言的是「**换了工作区就换一格色**」这件事
+   * (前后两个类名不同、且都带得出色标名),而不是某个哈希后的字面量 ——
+   * 后者会在下次改构建配置时无声地变成一条永远真的断言。
+   */
+  it('瓦面铺当前工作区的色底 —— 它同时就是「我在哪」的常驻指示', async () => {
     await renderDock()
-    expect(tile().textContent).toContain('默')
+    const before = tile().className
+    expect(before).toMatch(/violet/)
 
     act(() => useWorkspaceStore.getState().switchTo('ws-lenovo'))
-    expect(tile().textContent).toContain('L')
+    const after = tile().className
+    expect(after).toMatch(/blue/)
+    expect(after).not.toBe(before)
+  })
+
+  it('瓦面上没有那个字了(08-31 否决字标脸;首字母只留在快切表与总览卡上)', async () => {
+    await renderDock()
+    expect(tile().textContent).not.toContain('默')
   })
 
   it('列表读不到时退回兜底表,瓦面照样说得出话', async () => {

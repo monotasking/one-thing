@@ -43,9 +43,11 @@
   height: 41%;
 }
 
-/* 字标瓦面(工作区切换器):实色底 + 一个字。底色由 `--ws-face` 给,
+/* 实色瓦面(工作区切换器):实色底 + **这块瓦自己的图标**。底色由 `--ws-face` 给,
  * 那个变量由外面递进来的类设(workspace/swatch.module.css)—— 这里不认识任何颜色名。
- * 去掉描边与常态投影:实色块自己就有形,再描一圈会显脏。 */
+ * 去掉描边与常态投影:实色块自己就有形,再描一圈会显脏。
+ * 08-31 用户否决了原来那张「字标脸」(拿字当图标与这套风格不符);底色留着,
+ * 因为「我在哪」这条常驻指示靠的一直是色,不是那个字。 */
 .faced {
   background: var(--ws-face);
   border-color: transparent;
@@ -62,16 +64,8 @@
   background: var(--ws-face);
 }
 
-.faceLetter {
-  /* 与 .icon 的 41% 同一个比例。图标能写百分比是因为它量的是父**盒子**,
-   * 字号的百分比量的是父**字号** —— 所以这里从瓦的尺寸算,并吃那格放大系数。 */
-  font-size: calc(var(--tile-size) * var(--tile-factor, 1) * 0.41);
-  font-weight: 700;
-  line-height: 1;
-  /* 字标是**身份**不是正文:数字与拉丁字母要等宽对齐,汉字回落到界面字体。 */
-  font-variant-numeric: tabular-nums;
-  user-select: none;
-}
+/* 实色底上的图标吃反色。`--on-ws` 由 .faced 那条 `color` 给,
+ * 图标用的是 currentColor,所以这里不必再写一次颜色。 */
 
 /* 徽本身归 ui/Badge;这里只说「贴在瓷砖右上角」。 */
 .badgeAt {

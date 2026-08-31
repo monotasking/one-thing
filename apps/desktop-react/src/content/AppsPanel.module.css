@@ -1,0 +1,105 @@
+/* 一列账页行。与设置页那张「分区不分页的单列表单」同族:
+ * 一行一件事,左边是它是什么,右边是关于它的那一个决定。 */
+.panel {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--sp-5);
+  background: var(--surface-2);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin-block-end: var(--sp-4);
+}
+
+/* ── 这一面的次级文字为什么都用 --text-1 ────────────────────────────────────
+ * 主题桥开深底时,`--text-2` 压在 `--surface-2` 上只有 **4.04:1**、`--text-3`
+ * 只有 **2.43:1**(gate:a11y 实测),两档都低于 WCAG AA 的 4.5 —— 而这一面的
+ * 次级文字全是 11–12px 的小字,拿不到大字那条 3:1 的宽限。
+ *
+ * 所以层级改由**字号**承担,不由色的深浅承担:行名 --fs-label > 说明 --fs-meta >
+ * 注记 --fs-micro,墨色一律 --text-1。少一层灰不影响读,读不清才影响读。
+ *
+ * 留账:这不是这一面独有的问题 —— 深底下 --text-2 / --text-3 压 --surface-2
+ * 本身就不过 AA,是**桥那一侧的色债**。这一面只是第一块被真机门扫到的
+ * (它是第一块把小字次级文本直接铺在 --surface-2 上、又进了扫描屏的面)。
+ * 该不该整体调那两档 --ui 墨色,归主题批拍。
+ * ────────────────────────────────────────────────────────────────────── */
+.subtitle {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-1);
+  font-size: var(--fs-meta);
+  line-height: var(--lh-body);
+}
+
+.count {
+  flex: none;
+  color: var(--text-1);
+  font-size: var(--fs-micro);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 行间只有一条发线,没有卡片外壳 —— 账页的读法是「一眼扫下来」,
+ * 每行再包一个盒子会把扫读变成逐块辨认。 */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--row-h);
+  padding-block: var(--sp-2);
+  border-block-end: 1px solid var(--line-1);
+}
+
+.row:last-child {
+  border-block-end: none;
+}
+
+/* 名字本身就是打开这块面的门,所以它是一颗真按钮 —— 撑满剩余宽度,
+ * 让整行左半边都可点(费茨定律:一个 200px 宽的目标比一个 60px 的好点)。 */
+.open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-2);
+  margin-inline-start: calc(var(--sp-2) * -1);
+  border-radius: var(--r-2);
+  color: var(--text-1);
+  text-align: start;
+  transition: background var(--dur) var(--ease);
+}
+
+.open:hover {
+  background: var(--st-hover);
+}
+
+.icon {
+  flex: none;
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-2);
+}
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-label);
+}
+
+/* 「常驻 Dock」:说明那颗开关为什么按不动。它是一句话不是一枚徽 ——
+ * 徽说「有几个」,这里要说的是「为什么」。墨色理由见上面那段对比度账。 */
+.note {
+  flex: none;
+  color: var(--text-1);
+  font-size: var(--fs-micro);
+}

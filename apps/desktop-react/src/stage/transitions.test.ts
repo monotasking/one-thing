@@ -52,15 +52,25 @@ import {
   toggleShelfCollapsed,
   withinDockEdgeBand,
   withinDockHoldZone,
-  withoutStagePlacements,
+  withoutTransientPlacements,
+  coverIdOf,
+  closeCover,
+  escapeTargetOf,
+  escapeTopmost,
+  isItemHidden,
+  setItemHidden,
+  settledDockRect,
+  DOCK_HOLD_PAD,
 } from './transitions'
 import { SESSIONS_ITEM_ID, STAGE_ITEMS, findItem } from './items'
 import type { Placement, PlacementMemory, ShelfSide, StageState, Viewport } from './types'
+import type { Rect } from './transitions'
 
 const base: StageState = initialStageState
 
 const STAGE: Placement = { kind: 'stage' }
 const FLOAT: Placement = { kind: 'float' }
+const COVER: Placement = { kind: 'cover' }
 const RIGHT: Placement = { kind: 'edge', side: 'right' }
 const DOCK: Placement = { kind: 'dock' }
 
@@ -702,13 +712,15 @@ describe('migrateStagePersisted', () => {
   })
 })
 
-describe('withoutStagePlacements(存盘前摘舞台)', () => {
-  it('架子与浮窗留着,舞台那条不存', () => {
+describe('withoutTransientPlacements(存盘前摘瞬态形)', () => {
+  it('架子与浮窗留着,舞台与盖那两条不存', () => {
     let st = openAs(base, 'diff', RIGHT)
     st = openAs(st, 'browser', FLOAT, VP)
     st = openAs(st, 'files', STAGE)
-    const saved = withoutStagePlacements(st.placements)
+    st = openAs(st, 'terminal', COVER)
+    const saved = withoutTransientPlacements(st.placements)
     expect('files' in saved).toBe(false)
+    expect('terminal' in saved).toBe(false)
     expect(saved.diff).toEqual(RIGHT)
     expect(saved.browser).toEqual(FLOAT)
   })
@@ -924,10 +936,15 @@ describe('withinDockHoldZone(自动隐藏留驻区)', () => {
     expect(withinDockHoldZone({ x: 995, y: 400 }, vp, 'right', rect)).toBe(true)
   })
 
+  /*
+   * 余量 08-31 由 8 放宽到 24(DOCK_HOLD_PAD)。用例跟着改的是**数**不是意图:
+   * 「本体四周一段余量内算留驻,出了那一段就不算」这句话一个字没变,
+   * 所以断言点全部按 DOCK_HOLD_PAD 现算 —— 下次再调这个数,用例不必再改一遍。
+   */
   it('矩形四周 pad 内算留驻,远处不算', () => {
-    expect(withinDockHoldZone({ x: 925, y: 400 }, vp, 'right', rect)).toBe(true)
-    expect(withinDockHoldZone({ x: 900, y: 400 }, vp, 'right', rect)).toBe(false)
-    expect(withinDockHoldZone({ x: 960, y: 290 }, vp, 'right', rect)).toBe(false)
+    expect(withinDockHoldZone({ x: rect.left - DOCK_HOLD_PAD + 1, y: 400 }, vp, 'right', rect)).toBe(true)
+    expect(withinDockHoldZone({ x: rect.left - DOCK_HOLD_PAD - 1, y: 400 }, vp, 'right', rect)).toBe(false)
+    expect(withinDockHoldZone({ x: 960, y: rect.top - DOCK_HOLD_PAD - 1 }, vp, 'right', rect)).toBe(false)
   })
 
   it('补边只朝所属边:right 的区不含左半屏', () => {
@@ -1204,5 +1221,196 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
     expect(out.defaultOpen).toBe('float')
     const kept = migrateStagePersisted({ defaultOpen: 'pinned', memory: {} }, 4) as Record<string, unknown>
     expect(kept.defaultOpen).toBe('pinned')
+  })
+})
+
+/* ══ 08-31 Dock/形态批:盖 · Esc 退层链 · 露面管理 · 自动隐藏留驻区 ══════════ */
+
+describe('盖(cover):第三种形态', () => {
+  it('至多一个 —— 新的盖上来,旧的落回 Dock', () => {
+    let st = openAs(base, 'files', COVER)
+    st = openAs(st, 'diff', COVER)
+    expect(coverIdOf(st)).toBe('diff')
+    expect(formOf(st, 'files')).toBe('dock')
+  })
+
+  it('与舞台各占各的:它们是两种独占形态,不互相挤掉', () => {
+    let st = openAs(base, 'files', STAGE)
+    st = openAs(st, 'diff', COVER)
+    expect(stageIdOf(st)).toBe('files')
+    expect(coverIdOf(st)).toBe('diff')
+  })
+
+  it('落定即记忆,关掉再开还回盖上(记忆没有第二个参数要补)', () => {
+    let st = openAs(base, 'files', COVER)
+    expect(st.memory.files).toEqual({ kind: 'cover' })
+    st = closeToDock(st, 'files')
+    st = openFromMemory(st, 'files', st.memory.files!, VP)
+    expect(formOf(st, 'files')).toBe('cover')
+  })
+
+  it('closeCover 收掉那一块;没有盖时是恒等变换', () => {
+    const st = openAs(base, 'files', COVER)
+    expect(formOf(closeCover(st), 'files')).toBe('dock')
+    expect(closeCover(base)).toBe(base)
+  })
+
+  it('点 Dock 图标 = 再点一次收回去(与舞台同一个手感)', () => {
+    const st = openAs(base, 'files', COVER)
+    const after = clickDockIcon(st, 'files', { kind: 'cover' }, VP)
+    expect(formOf(after, 'files')).toBe('dock')
+  })
+})
+
+describe('item 天生落点:解析序的第三层', () => {
+  it('没记忆时听 item 的天生落点,而不是全局默认档', () => {
+    expect(resolveOpen(base, 'apps', 'float', VP, { kind: 'cover' })).toEqual({ kind: 'cover' })
+  })
+
+  it('有记忆时记忆压过天生落点 —— 「我亲手放过」永远赢', () => {
+    const st = openAs(base, 'apps', RIGHT)
+    const closed = closeToDock(st, 'apps')
+    expect(resolveOpen(closed, 'apps', 'float', VP, { kind: 'cover' }).kind).toBe('edge')
+  })
+
+  it('没有天生落点就落回全局默认档(与加这一层之前逐字相同)', () => {
+    expect(resolveOpen(base, 'files', 'pinned', VP)).toEqual(defaultOpenMemory(base, 'pinned', VP))
+  })
+
+  it('「所有应用」在 items 表上确实声明了 cover 与「藏不掉」', () => {
+    const apps = findItem('apps')
+    expect(apps?.defaultPlacement).toEqual({ kind: 'cover' })
+    expect(apps?.alwaysInDock).toBe(true)
+  })
+})
+
+describe('Esc 退层链(08-31 修「浮窗按 Esc 没反应」)', () => {
+  it('什么都没开时没有目标 —— 宿主据此不拦这一下', () => {
+    expect(escapeTargetOf(base)).toBeNull()
+    expect(escapeTopmost(base)).toBe(base)
+  })
+
+  it('**浮窗退得掉**:这正是修前掉进空里的那一下', () => {
+    const st = openAs(base, 'sessions', FLOAT, VP)
+    expect(escapeTargetOf(st)).toBe('sessions')
+    expect(formOf(escapeTopmost(st), 'sessions')).toBe('dock')
+  })
+
+  it('多扇浮窗时退最上面那一扇(floatOrder 末位最上)', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = openAs(st, 'diff', FLOAT, VP)
+    expect(escapeTargetOf(st)).toBe('diff')
+  })
+
+  it('次序 = z 序:盖 > 舞台 > 最上面那扇浮窗', () => {
+    let st = openAs(base, 'files', FLOAT, VP)
+    st = openAs(st, 'diff', STAGE)
+    expect(escapeTargetOf(st)).toBe('diff')
+    st = openAs(st, 'terminal', COVER)
+    expect(escapeTargetOf(st)).toBe('terminal')
+  })
+
+  it('架子**不在链里** —— 钉在边上是常驻家具,Esc 不该拆家具', () => {
+    const st = openAs(base, 'files', RIGHT)
+    expect(escapeTargetOf(st)).toBeNull()
+    expect(escapeTopmost(st)).toBe(st)
+  })
+
+  it('退一层就是一层:盖退掉之后下一下才轮到舞台', () => {
+    let st = openAs(base, 'files', STAGE)
+    st = openAs(st, 'diff', COVER)
+    st = escapeTopmost(st)
+    expect(formOf(st, 'diff')).toBe('dock')
+    expect(stageIdOf(st)).toBe('files')
+    st = escapeTopmost(st)
+    expect(stageIdOf(st)).toBeNull()
+  })
+})
+
+describe('Dock 露面管理(「所有应用」那块瓦的判据)', () => {
+  it('藏 / 不藏就是一张 id 表', () => {
+    const hidden = setItemHidden([], 'diff', true)
+    expect(hidden).toEqual(['diff'])
+    expect(isItemHidden(hidden, 'diff')).toBe(true)
+    expect(isItemHidden(hidden, 'files')).toBe(false)
+    expect(setItemHidden(hidden, 'diff', false)).toEqual([])
+  })
+
+  it('重复藏同一块不会写进去两条', () => {
+    expect(setItemHidden(['diff'], 'diff', true)).toEqual(['diff'])
+  })
+
+  it('alwaysInDock 的瓦藏不掉 —— 挡在判据里,不只是把开关画灰', () => {
+    expect(setItemHidden([], 'apps', true, true)).toEqual([])
+  })
+
+  it('藏起来的瓦仍然有落点与记忆 —— 藏的是入口,不是这块面', () => {
+    let st = openAs(base, 'diff', RIGHT)
+    st = closeToDock(st, 'diff')
+    // 「藏」根本不经过形态机:同一份 state,同一条记忆。
+    expect(st.memory.diff?.kind).toBe('edge')
+    expect(formOf(openFromMemory(st, 'diff', st.memory.diff!, VP), 'diff')).toBe('edge')
+  })
+})
+
+describe('自动隐藏的留驻区:判停稳位而不是飞行中的矩形', () => {
+  const vp: Viewport = { w: 1440, h: 900 }
+  const INSET = 12 // --sp-3
+  /** 真机量到的身量:底边 Dock,高 62,停稳时 top=826 / bottom=888。 */
+  const H = 62
+
+  it('停稳位由**身量**算出来 —— translate 不改变尺寸,所以不必等动画停', () => {
+    // 滑入到一半:量到的矩形还在 863.8,而它最终会停在 826。
+    const flying = { left: 500, right: 940, top: 863.8, bottom: 863.8 + H }
+    const settled = settledDockRect(flying, vp, 'bottom', INSET)
+    expect(settled.bottom).toBe(vp.h - INSET)
+    expect(settled.top).toBe(vp.h - INSET - H)
+    // 沿边那一轴照抄:那一截 translate 是常量,从不动画。
+    expect(settled.left).toBe(500)
+    expect(settled.right).toBe(940)
+  })
+
+  it('修前的那一下:滑入第 40ms 抬到 y=850,拿飞行矩形判是「走了」', () => {
+    const flying = { left: 500, right: 940, top: 863.8, bottom: 863.8 + H }
+    expect(withinDockHoldZone({ x: 720, y: 850 }, vp, 'bottom', flying, 8)).toBe(false)
+  })
+
+  it('修后同一下留在区里 —— 手比动画快,判的该是它要去的地方', () => {
+    const flying = { left: 500, right: 940, top: 863.8, bottom: 863.8 + H }
+    const settled = settledDockRect(flying, vp, 'bottom', INSET)
+    expect(withinDockHoldZone({ x: 720, y: 850 }, vp, 'bottom', settled)).toBe(true)
+  })
+
+  it('余量放宽到 24:擦着上缘往上抬那一段仍算留驻', () => {
+    const settled = { left: 500, right: 940, top: 826, bottom: 888 }
+    expect(withinDockHoldZone({ x: 720, y: 826 - 20 }, vp, 'bottom', settled)).toBe(true)
+    // 但它是**余量**不是新的家:出了这一段就该老老实实开始计收回。
+    expect(withinDockHoldZone({ x: 720, y: 826 - DOCK_HOLD_PAD - 1 }, vp, 'bottom', settled)).toBe(false)
+  })
+
+  it('四条边各按自己那一轴算停稳位', () => {
+    const flying = { left: 100, right: 162, top: 300, bottom: 700 }
+    expect(settledDockRect(flying, vp, 'left', INSET).left).toBe(INSET)
+    expect(settledDockRect(flying, vp, 'right', INSET).right).toBe(vp.w - INSET)
+    expect(settledDockRect(flying, vp, 'top', INSET).top).toBe(INSET)
+  })
+
+  /*
+   * 病历(08-31,修完 (d) 第一次跑探针就红):宿主递进来的是 `getBoundingClientRect()`
+   * 的返回值,而 DOMRect 的四条边全是**原型上的取值器**——写 `{ ...rect, top, bottom }`
+   * 得到的沿边两轴是 undefined,留驻区当场恒假(Dock 停在 826,指针停在窗体正中的
+   * 862 也被判成「走了」)。
+   *
+   * 这条用例造一个同样把边挂在原型上的对象来钉它:朴素对象字面量测不出这个坑,
+   * 而这正是真机上唯一会出现的那种输入。反证:把 settledDockRect 改回 `{ ...rect }`,
+   * 这一条立刻红。
+   */
+  it('输入是原型取值器形的矩形(DOMRect 就是这种)时,沿边两轴照抄得到真数', () => {
+    const proto = { get left() { return 500 }, get right() { return 940 }, get top() { return 863.8 }, get bottom() { return 925.8 } }
+    const domRectLike: Rect = Object.create(proto) as Rect
+    const settled = settledDockRect(domRectLike, vp, 'bottom', INSET)
+    expect(settled.left).toBe(500)
+    expect(settled.right).toBe(940)
+    expect(withinDockHoldZone({ x: 720, y: 862 }, vp, 'bottom', settled)).toBe(true)
   })
 })

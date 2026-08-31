@@ -15,7 +15,7 @@ import sw from '../swatch.module.css'
 import s from './WorkspacePalette.module.css'
 
 /**
- * 工作区命令面板(⌘⇧O)。**过滤 + ↵ 切换 + ⌘序号直达**,三件事,没有第四件。
+ * 工作区命令面板(⌘⇧W)。**过滤 + ↵ 切换 + ⌘序号直达**,三件事,没有第四件。
  *
  * 它与 Dock 右键那张快切表读的是**同一份分子**(useWorkspaceViews → WorkspaceView),
  * 所以「哪个是当前」「⌘2 是谁」两处逐字同源;粗细不同只是画法不同。

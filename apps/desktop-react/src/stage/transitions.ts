@@ -62,6 +62,17 @@ export const TEAR_OFF_DISTANCE = 24
 /** Dock 自动隐藏的感应带厚度。它是**指针到那条边的距离**,不再是一个盖在别人身上的元素。 */
 export const DOCK_EDGE_BAND = 8
 
+/**
+ * 自动隐藏留驻区在 Dock 本体四周放的余量(与 --dock-hold-pad 同一事实)。
+ *
+ * 08-31 由 8 放宽到 24。8 是「刚好不碰到就算走了」,而真手不是这么动的:
+ * 唤醒 Dock 的手势本身就是「往那条边压一下,再抬起来去点某一块瓦」,抬的
+ * 那一下路径必然从本体外缘擦过。真机量出的修前判据是**离 Dock 上缘 8px
+ * 就开始计收回**(见本批报告),这就是用户报的「唤醒后轻微上移秒消失」的一半。
+ * 另一半是拿飞行中的矩形去判——那一半由 settledDockRect 修。
+ */
+export const DOCK_HOLD_PAD = 24
+
 /** 浮窗标题栏高度,与 --float-header-h 同一事实(从架子上撕下来时要按它对准指针)。 */
 export const FLOAT_HEADER_H = 40
 
@@ -94,7 +105,18 @@ export const initialStageSettings: StageSettings = {
   dockEdge: 'bottom',
   dockAlign: 'center',
   dockSize: 'md',
+  hiddenItems: [],
 }
+
+/**
+ * **至多一个**的那几种形态。舞台盖住整个视口、盖接管整条内容栏 —— 两块叠在
+ * 同一处,下面那块永远见不到光,所以它们各自只许有一个。
+ *
+ * 写成一张表而不是两段 if:再多一种独占形态时,这里加一个字面量就够了,
+ * openAs 里那段不变式一个字都不用改(08-31 加 'cover' 时正是这么加的)。
+ * 浮窗与架子不在表里 —— 它们生来就是可以有好几个的。
+ */
+const EXCLUSIVE_FORMS: StageForm[] = ['stage', 'cover']
 
 /* ── 派生 ──────────────────────────────────────────────────────────────────── */
 
@@ -119,12 +141,46 @@ export function formIn(placements: Record<string, Placement>, id: string): Stage
   return (placements[id] ?? DOCK).kind
 }
 
-/** 舞台至多一个,所以「谁在舞台上」是个查询而不是一个字段。 */
-export function stageIdOf(state: StageState): string | null {
+/** 独占形态至多一个,所以「谁在舞台上 / 谁盖着内容栏」是查询而不是字段。 */
+function idInForm(state: StageState, form: StageForm): string | null {
   for (const [id, p] of Object.entries(state.placements)) {
-    if (p.kind === 'stage') return id
+    if (p.kind === form) return id
   }
   return null
+}
+
+export function stageIdOf(state: StageState): string | null {
+  return idInForm(state, 'stage')
+}
+
+export function coverIdOf(state: StageState): string | null {
+  return idInForm(state, 'cover')
+}
+
+/**
+ * Esc 该退掉哪一块面 —— **唯一**回答这句话的地方(08-31 修「Esc 关不掉浮窗」)。
+ *
+ * 退层次序 = 视觉上压在最上面的那一块先退,与 z 序逐条对应:
+ *   ① 盖(--z-cover,接管内容栏)
+ *   ② 舞台(--z-overlay,scrim 铺满视口)
+ *   ③ 最上面那扇浮窗(floatOrder 末位最上)
+ *
+ * **架子不在链里,这是有意的**:钉在边上是**常驻形**——用户把它当家具摆好了,
+ * 一下 Esc 就把家具搬走不是「退一层」而是「拆一件」。同一条判据在
+ * expose/transitions.enterSession 里已经立过一次(瞬态形收、常驻形留),
+ * 两处说的是同一句话。想收架子有它自己的口:⌘\ / 栏头那颗收起钮。
+ *
+ * 返回 null = 这一下 Esc 没有面可退,交给别人(或者什么都不做)。
+ *
+ * ── 为什么这条链修的是「浮窗按 Esc 没反应」──────────────────────────────
+ * 08-31 真机复现:Dock 点开会话总览(默认档就是浮窗)→ 按 Esc → placements
+ * 一个字节都不变,窗还在。真因不是判据写错,而是**根本没有人听**:那时全仓
+ * 只有 StageOverlay 挂了一条 Esc,而它只在有舞台时才挂载。浮窗与盖各自也去挂
+ * 一条的话,三处就会各写一遍「谁该先退」——所以链收在这一个纯函数里,
+ * 宿主只剩一条 window 监听(components/useEscapeChain)。
+ */
+export function escapeTargetOf(state: StageState): string | null {
+  return coverIdOf(state) ?? stageIdOf(state) ?? (state.floatOrder[state.floatOrder.length - 1] ?? null)
 }
 
 export function clamp(value: number, min: number, max: number): number {
@@ -146,6 +202,8 @@ export function memoryOf(
   const p = placementOf(state, id)
   if (p.kind === 'dock') return null
   if (p.kind === 'stage') return { kind: 'stage' }
+  // 盖没有第二个参数(它的几何由内容栏说了算),所以折出来的记忆就是它自己。
+  if (p.kind === 'cover') return { kind: 'cover' }
   if (p.kind === 'float') {
     return { kind: 'float', rect: state.floats[id] ?? defaultFloatRect(viewport) }
   }
@@ -182,6 +240,7 @@ export function openFromMemory(
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): StageState {
   if (m.kind === 'stage') return openAs(state, id, { kind: 'stage' }, viewport)
+  if (m.kind === 'cover') return openAs(state, id, { kind: 'cover' }, viewport)
   if (m.kind === 'edge') return openAs(state, id, { kind: 'edge', side: m.side }, viewport, m.index)
   const seeded = { ...state, floats: { ...state.floats, [id]: clampFloatRect(m.rect, viewport) } }
   return openAs(seeded, id, { kind: 'float' }, viewport)
@@ -207,33 +266,48 @@ export function placementForOpen(open: ResolvedOpen): Exclude<MemorablePlacement
 }
 
 /**
- * 全局默认档补成一条完整记忆 —— 缺的那两件事按「就当它没来过」补:
- * 浮窗取新窗默认矩形,钉边排到那条边的末尾。
+ * 把一个「说得出去哪儿」的落点补成一条完整记忆 —— 缺的那件事按「就当它没来过」补:
+ * 浮窗取新窗默认矩形,钉边排到那条边的末尾,舞台与盖本来就没有第二个参数。
+ *
+ * 两个调用方共用它(全局默认档 / item 天生落点),所以「补什么」只写一次。
  */
+export function completeMemory(
+  state: StageState,
+  placement: MemorablePlacement,
+  viewport: Viewport = FALLBACK_VIEWPORT,
+): PlacementMemory {
+  if (placement.kind === 'float') return { kind: 'float', rect: defaultFloatRect(viewport) }
+  if (placement.kind === 'edge') {
+    return { kind: 'edge', side: placement.side, index: state.shelves[placement.side].tabs.length }
+  }
+  return placement
+}
+
+/** 全局默认档补成一条完整记忆。 */
 export function defaultOpenMemory(
   state: StageState,
   open: ResolvedOpen,
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): PlacementMemory {
-  const placement = placementForOpen(open)
-  if (placement.kind === 'float') return { kind: 'float', rect: defaultFloatRect(viewport) }
-  return {
-    kind: 'edge',
-    side: placement.side,
-    index: state.shelves[placement.side].tabs.length,
-  }
+  return completeMemory(state, placementForOpen(open), viewport)
 }
 
 /**
- * 打开的解析序是三层:**显式手势 > 记忆 > 全局默认档**。
+ * 打开的解析序是四层:**显式手势 > 记忆 > item 天生落点 > 全局默认档**。
  * 头一层不经过这个函数 —— 手势自己就说得出落点(它直接调 openAs),根本不必问;
- * 这里回答的是剩下那句「没人点名时,它该回哪儿」,所以只剩后两层。
+ * 这里回答的是剩下那句「没人点名时,它该回哪儿」,所以只剩后三层。
+ *
+ * 第三层(`itemDefault`,08-31 随「盖」一起加)插在记忆**之下**、全局档**之上**:
+ * 「这块面适合怎么开」是它自己的性质(所有应用是一张铺满的清单,天生该盖),
+ * 而「我想怎么开」永远由用户说了算 —— 所以用户亲手放过一次之后,记忆压过它。
+ * 参数由调用方(store)从 items 表上取,纯函数不认识那张表。
  */
 export function resolveOpen(
   state: StageState,
   id: string,
   defaultOpen: ResolvedOpen,
   viewport: Viewport = FALLBACK_VIEWPORT,
+  itemDefault?: MemorablePlacement,
 ): PlacementMemory {
   /*
    * ── 记忆语义的定案(08-30 晚,用户逐字给出流程后第三版,前两版是误解)──────
@@ -254,7 +328,9 @@ export function resolveOpen(
    * 存量 stage 记忆属于当时二版语义的一次性动作,不再重复。档的残值钳制
    * (clampDefaultOpen)只作用于**默认档**,与记忆无关。
    */
-  return state.memory[id] ?? defaultOpenMemory(state, defaultOpen, viewport)
+  if (state.memory[id]) return state.memory[id]
+  if (itemDefault) return completeMemory(state, itemDefault, viewport)
+  return defaultOpenMemory(state, defaultOpen, viewport)
 }
 
 /* ── 浮窗几何(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
@@ -350,9 +426,10 @@ export function openAs(
   let next = detach(state, id)
 
   const placements = { ...next.placements }
-  if (placement.kind === 'stage') {
+  // 独占形态(舞台 / 盖):新的上来,同形态的旧的落回 dock。表在 EXCLUSIVE_FORMS。
+  if (EXCLUSIVE_FORMS.includes(placement.kind)) {
     for (const [other, p] of Object.entries(placements)) {
-      if (p.kind === 'stage' && other !== id) delete placements[other]
+      if (p.kind === placement.kind && other !== id) delete placements[other]
     }
   }
   if (placement.kind === 'dock') delete placements[id]
@@ -401,7 +478,7 @@ export function closeToDock(state: StageState, id: string): StageState {
 
 /**
  * 点 Dock 图标。先问「它现在在哪」,再决定这一下是什么意思:
- *  - 在舞台 → 关舞台(再点一次收回去)
+ *  - 在舞台 / 盖着内容栏 → 关掉(再点一次收回去)
  *  - 在架子上 → 不新开。判据是「它现在看得见吗」:
  *      看不见(不是活动 tab,或整栏收着)→ 激活 + 展开 + 闪一下,告诉用户"它在那儿";
  *      看得见(是活动 tab 且栏展开着)  → 再点一次是"收回去",与舞台那条同一个手感。
@@ -416,7 +493,7 @@ export function clickDockIcon(
 ): StageState {
   const current = placementOf(state, id)
 
-  if (current.kind === 'stage') return closeToDock(state, id)
+  if (EXCLUSIVE_FORMS.includes(current.kind)) return closeToDock(state, id)
 
   if (current.kind === 'edge') {
     const shelf = state.shelves[current.side]
@@ -456,6 +533,23 @@ export function closeStage(state: StageState): StageState {
   const id = stageIdOf(state)
   if (id === null) return state
   return openAs(state, id, DOCK)
+}
+
+/** 关掉盖。没有盖时是恒等变换。 */
+export function closeCover(state: StageState): StageState {
+  const id = coverIdOf(state)
+  if (id === null) return state
+  return openAs(state, id, DOCK)
+}
+
+/**
+ * Esc 退一层:按 escapeTargetOf 的次序收掉最上面那一块面。
+ * 没有面可退时是恒等变换 —— 宿主据此判断「这一下 Esc 我没接住」。
+ */
+export function escapeTopmost(state: StageState): StageState {
+  const id = escapeTargetOf(state)
+  if (id === null) return state
+  return closeToDock(state, id)
 }
 
 /** 舞台 → 浮窗。没有舞台时是恒等变换。 */
@@ -710,12 +804,53 @@ export function withinDockEdgeBand(
  */
 export interface Rect { left: number; right: number; top: number; bottom: number }
 
+/**
+ * Dock **停稳时**占的那块矩形。
+ *
+ * 滑入 / 滑出走的是 `transform: translate`,而 translate **不改变尺寸** ——
+ * 所以停稳位可以由「量到的身量 + 它贴的那条边 + 边距」当场算出来,不必等动画停。
+ * 沿边那一轴照抄量到的值:那一截 translate(--dock-align-*)是常量,从不动画。
+ *
+ * 这是 08-31 报障「Dock 唤醒后轻微上移就秒消失」的**主因**修法。真机时间线
+ * (probe 实测,底边、视口 900):收着 top=912 → 40ms top=863.8 → 80ms
+ * top=837.7 → 120ms top=826.6 → 停稳 826。整个滑入 ~140ms(--dur-enter),
+ * 而手往上够那块瓦只要几十毫秒。修前拿飞行中的矩形判「离开没有」,于是
+ * 唤醒后第 40ms 抬到 y=850 就被判成走了 —— 可它明明是往 Dock 停稳的位置去的。
+ * 判据换成停稳位之后,这条路径整段都在留驻区里。
+ *
+ * `inset` = Dock 离那条边的距离(--sp-3),由宿主量一次递进来 —— 纯函数不读 CSS。
+ */
+export function settledDockRect(
+  rect: Rect,
+  viewport: Viewport,
+  edge: DockEdge,
+  inset: number,
+): Rect {
+  const { left, right, top, bottom } = rect
+  const w = right - left
+  const h = bottom - top
+  /*
+   * 四条边各自**整条列出来**,不写 `{ ...rect, top, bottom }`。
+   * 这不是风格洁癖,是一次真机事故:宿主递进来的常常是一个 `DOMRect`,而 DOMRect
+   * 的 left/right/top/bottom 全是**原型上的取值器**,不是自有属性 —— 展开它得到的
+   * 是一个空对象,于是「沿边那一轴照抄」照抄出四个 undefined,留驻区当场恒假
+   * (08-31 修完 (d) 一跑探针:Dock 停在 826,指针停在窗体正中的 862 也被判成走了)。
+   * 上面那一行解构是安全的(解构会读取值器);往下只用解出来的数。
+   */
+  if (edge === 'bottom') {
+    return { left, right, bottom: viewport.h - inset, top: viewport.h - inset - h }
+  }
+  if (edge === 'top') return { left, right, top: inset, bottom: inset + h }
+  if (edge === 'left') return { top, bottom, left: inset, right: inset + w }
+  return { top, bottom, right: viewport.w - inset, left: viewport.w - inset - w }
+}
+
 export function withinDockHoldZone(
   pointer: Point,
   viewport: Viewport,
   edge: DockEdge,
   rect: Rect,
-  pad = 8,
+  pad = DOCK_HOLD_PAD,
 ): boolean {
   let { left, right, top, bottom } = rect
   if (edge === 'right') right = viewport.w
@@ -727,18 +862,50 @@ export function withinDockHoldZone(
   )
 }
 
+/* ── Dock 上露不露面(「所有应用」那块管理瓦的判据) ────────────────────────── */
+
+/**
+ * 藏起来的瓦**不是被删掉的瓦**:它照样有落点、有记忆、能被 ⌘P 与「所有应用」
+ * 打开,只是 Dock 上不给它留一格。所以这条判据只出现在 Dock 的投影里,
+ * 形态机的其余部分一个字都不知道有这回事。
+ */
+export function isItemHidden(hiddenItems: readonly string[], id: string): boolean {
+  return hiddenItems.includes(id)
+}
+
+/**
+ * 翻转一块瓦的 Dock 露面。返回**新的 hiddenItems**(纯函数,不碰 state)。
+ *
+ * `alwaysInDock` 的瓦藏不掉 —— 判据由调用方从 items 表上取并递进来(纯函数
+ * 不认识那张表)。挡在这里而不是只在 UI 上禁用那颗开关:UI 是可以绕过去的
+ * (右键、快捷键、将来的命令面板),而「留一个回家的门」这条不该有例外。
+ */
+export function setItemHidden(
+  hiddenItems: readonly string[],
+  id: string,
+  hidden: boolean,
+  alwaysInDock = false,
+): string[] {
+  if (hidden && alwaysInDock) return [...hiddenItems]
+  const without = hiddenItems.filter((x) => x !== id)
+  return hidden ? [...without, id] : without
+}
+
 /* ── persist ───────────────────────────────────────────────────────────────── */
 
 /**
- * 存盘前把舞台那条摘掉:架子和浮窗是用户摆好的工作台,理应留着;
- * 舞台是「当下正在看的那一眼」,重开该从收拢态开始(与 W1 之前同一条判例)。
+ * 存盘前把**瞬态形**(舞台 / 盖)那几条摘掉:架子和浮窗是用户摆好的工作台,
+ * 理应留着;舞台与盖是「当下正在看的那一眼」,重开该从收拢态开始
+ * (与 W1 之前同一条判例)。摘的判据与 EXCLUSIVE_FORMS 是同一张表 ——
+ * 「至多一个」与「不存盘」在这套形态里恰好说的是同一批形态:两者都源于
+ * 「它接管了一整片地方,所以它是一眼而不是一件家具」。
  */
-export function withoutStagePlacements(
+export function withoutTransientPlacements(
   placements: Record<string, Placement>,
 ): Record<string, Placement> {
   const out: Record<string, Placement> = {}
   for (const [id, p] of Object.entries(placements)) {
-    if (p.kind !== 'stage') out[id] = p
+    if (!EXCLUSIVE_FORMS.includes(p.kind)) out[id] = p
   }
   return out
 }

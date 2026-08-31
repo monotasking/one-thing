@@ -75,15 +75,36 @@ export function Menu({ x, y, onClose, children, label, role = 'menu', id, minWid
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      /*
+       * 关掉自己之后**认领这一下**(08-31 补):不认领的话同一下 Esc 会继续
+       * 往外传,把菜单底下那块面一起收掉 —— 用户想退的只有一层。
+       * 认领的说法就是 preventDefault:外壳那条退层链(components/useEscapeChain)
+       * 读的正是 defaultPrevented。这是「内层先退,退得动就把这一下吃掉」
+       * 那条契约的内层半边。
+       */
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      onClose()
     }
     const onDown = (e: PointerEvent) => {
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
-    window.addEventListener('keydown', onKey)
+    /*
+     * ── Esc 走**捕获**相位,不是冒泡(08-31)──────────────────────────────
+     * 光 preventDefault 不够。外壳那条退层链(components/useEscapeChain)也听
+     * window,而它在**应用启动时**就挂上了,菜单是后来才开的 —— 同相位下注册序
+     * 说了算,于是外壳先跑、先把菜单底下那块面收了,菜单这一手根本轮不上。
+     * 08-31 报障「文件面板里开详情浮层,一下 Esc 两层一起关」正是这一条。
+     *
+     * 捕获相位的监听器永远跑在同一个 window 上的冒泡监听器之前,与谁先注册无关 ——
+     * 于是「内层先退」成了结构保证。这条判例第一次立是在 StageOverlay 与
+     * ExposeView 之间(那次还试过 queueMicrotask,同样失效),这里是第三次用它。
+     * 点外关那条照旧冒泡:它与退层链没有次序纠纷。
+     */
+    window.addEventListener('keydown', onKey, true)
     window.addEventListener('pointerdown', onDown)
     return () => {
-      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keydown', onKey, true)
       window.removeEventListener('pointerdown', onDown)
     }
   }, [onClose])

@@ -7,6 +7,8 @@ import { ChatStream } from '../content/ChatStream'
 import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
+import { CoverLayer } from './CoverLayer'
+import { useEscapeChain } from './useEscapeChain'
 import { EdgeShelf } from './EdgeShelf'
 import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
@@ -18,9 +20,14 @@ import { useChatToc } from '../toc/useChatToc'
 import { DOCK_HIDE_DELAY_MS, SCROLL_SETTLE_MS } from './motion'
 import { useT } from '../i18n'
 import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
-import { SHELF_SIDES, withinDockEdgeBand, withinDockHoldZone } from '../stage/transitions'
+import {
+  SHELF_SIDES,
+  settledDockRect,
+  withinDockEdgeBand,
+  withinDockHoldZone,
+} from '../stage/transitions'
 import { DOCK_AXIS } from '../stage/types'
-import type { DockAlign, DockEdge } from '../stage/types'
+import type { DockAlign, DockEdge, DockSize } from '../stage/types'
 import s from './AppShell.module.css'
 
 /** 贴边类:边 → 那条边的物理坐标。 */
@@ -37,11 +44,27 @@ const ALIGN_CLASS: Record<'x' | 'y', Record<DockAlign, string>> = {
   y: { start: s.alignYStart, center: s.alignYCenter, end: s.alignYEnd },
 }
 
+/** 预留哪一条边。与 EDGE_CLASS 是两张表:那张说 Dock 贴哪儿,这张说外壳让哪儿。 */
+const RESERVE_CLASS: Record<DockEdge, string> = {
+  bottom: s.reserveBottom,
+  top: s.reserveTop,
+  left: s.reserveLeft,
+  right: s.reserveRight,
+}
+
+/** 预留量随大小档走;md 是 token 的缺省值,所以只有两档要覆写。 */
+const RESERVE_SIZE_CLASS: Partial<Record<DockSize, string>> = {
+  sm: s.reserveSm,
+  lg: s.reserveLg,
+}
+
 export function AppShell() {
   const t = useT()
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockAlign = useStageStore((st) => st.dockAlign)
+  // 预留那一截随大小档走,所以外壳也得订阅它(Dock 条自己另有一份)。
+  const dockSize = useStageStore((st) => st.dockSize)
   const clickDockIcon = useStageStore((st) => st.clickDockIcon)
 
   /**
@@ -50,6 +73,13 @@ export function AppShell() {
    * 常驻监听住在这一层的理由没变:它得能在面板关着时把它叫起来,而面板此刻并不挂载。
    */
   useKeymapDispatch()
+
+  /**
+   * 全仓唯一的「Esc 退一层」宿主。与快捷键派发器分开挂,是因为它们是两件事:
+   * 派发器认注册表(用户改得了键),退层链认形态(Esc 是形态语法的一部分,
+   * 不参与改键 —— keymap/types.ts 顶部那段立的就是这条)。
+   */
+  useEscapeChain()
 
   // 聊天滚动容器只有一个 ref,两个消费者:Dock 降淡 与 TOC 当前键。
   const chatRef = useRef<HTMLDivElement>(null)
@@ -89,12 +119,42 @@ export function AppShell() {
         hideTimer = null
       }
     }
+    /*
+     * Dock 离那条边多远(--sp-3)。量一次而不是每帧问一次:它是个设计常数,
+     * 不会在指针移动期间变 —— 而 pointermove 是每帧都跑的那条路。
+     * 纯函数不读 CSS,所以由这里量了递进去。
+     */
+    const inset = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--sp-3'),
+    )
     const onMove = (e: PointerEvent) => {
       const pointer = { x: e.clientX, y: e.clientY }
       const viewport = { w: window.innerWidth, h: window.innerHeight }
-      // 留驻 = 在边带里,或在「Dock 矩形补到视口边 + 余量」的留驻区里 ——
-      // 边带与本体之间原有 4px 死缝,真鼠标连续移动必经,曾致"一闪而逝"。
-      const rect = dockRef.current?.getBoundingClientRect()
+      /*
+       * 留驻 = 在边带里,或在「Dock **停稳位**补到视口边 + 余量」的留驻区里。
+       *
+       * 判的是**停稳位**不是量到的那个矩形(08-31 修「唤醒后轻微上移秒消失」):
+       * 滑入动画走 transform,140ms 里矩形一直在动,而手往上够那块瓦只要几十
+       * 毫秒 —— 拿飞行中的位置去问「离开没有」,答案必然是「离开了」。
+       * 真机时间线与换算见 transitions.settledDockRect 的注释。
+       *
+       * 边带那一半照旧:它管的是「还没唤醒时怎么唤醒」,与动画无关。
+       * (边带与本体之间原有 4px 死缝,真鼠标连续移动必经,曾致"一闪而逝"。)
+       */
+      const box = dockRef.current?.getBoundingClientRect()
+      /*
+       * `DOMRect` → 一个**朴素对象**。它的 left/right/top/bottom 都是原型上的
+       * 取值器,不是自有属性:任何一处 `{ ...domRect }` 都会得到一个空对象。
+       * 转换收在这一处,纯函数那一侧从此只见得到朴素数(判例见 settledDockRect)。
+       */
+      const rect = box
+        ? settledDockRect(
+            { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
+            viewport,
+            dockEdge,
+            Number.isFinite(inset) ? inset : 0,
+          )
+        : undefined
       const hold =
         withinDockEdgeBand(pointer, viewport, dockEdge) ||
         (rect ? withinDockHoldZone(pointer, viewport, dockEdge, rect) : false)
@@ -127,8 +187,22 @@ export function AppShell() {
     .filter(Boolean)
     .join(' ')
 
+  /*
+   * 「覆盖必须有布局预留」在 Dock 上的落地(08-31 P0)。**只有常显档才让** ——
+   * 自动隐藏时 Dock 平时不在屏上,让了就是白让一整条边。
+   * 让多少由 CSS 那两个式子说(tokens.css 的 --dock-reserve-*),这里只说「让哪条边、
+   * 按哪一档」:哪一截该多宽是设计常数,不是组件该算的数。
+   */
+  const shellClass = [
+    s.shell,
+    autohide ? null : RESERVE_CLASS[dockEdge],
+    autohide ? null : RESERVE_SIZE_CLASS[dockSize],
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className={s.shell}>
+    <div className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
       <TopBar />
 
       {/* 三明治网格:上架子一行 / [左架子 | 主区 | 右架子] / 下架子一行。
@@ -161,6 +235,11 @@ export function AppShell() {
           <ErrorBoundary where="composer">
             <Composer />
           </ErrorBoundary>
+          {/* 盖:第三种形态,只接管这一栏 —— 所以它挂在 .center **里面**
+            * (那也是它的定位参考系),四条边上的架子照样露在外面。
+            * 舞台那一层挂在壳的根上,因为它要盖住整个视口:两种形态的挂载点
+            * 差别,就是它们语义差别的字面样子。 */}
+          <CoverLayer />
         </div>
       </main>
 
@@ -177,7 +256,7 @@ export function AppShell() {
 
       <StageOverlay />
 
-      {/* 工作区命令面板(⌘⇧O)。挂在壳的根上一次 —— 它自己 portal 到 body,
+      {/* 工作区命令面板(⌘⇧W)。挂在壳的根上一次 —— 它自己 portal 到 body,
         * 开关住在 workspace/components/palette-hub(与 agent 菜单同一手:
         * 两个产地共一个布尔)。 */}
       <WorkspacePalette />

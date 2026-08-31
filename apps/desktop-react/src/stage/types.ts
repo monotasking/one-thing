@@ -14,7 +14,20 @@ export type Placement =
   | { kind: 'dock' }
   | { kind: 'stage' }
   | { kind: 'float' }
+  | { kind: 'cover' }
   | { kind: 'edge'; side: ShelfSide }
+
+/**
+ * 「盖」是第三种**瞬态形**(08-31 拍板):盖满内容面板,不盖架子、不盖 Dock。
+ *
+ * 它与舞台的分工是一句话:**舞台盖住整个视口(scrim 铺满、居中一块画布),
+ * 盖只接管中间那一栏**——用户摆在边上的架子还看得见,「我在哪」不会因为
+ * 开一块面而消失。所以它适合「看一眼就走」的整屏内容(所有应用、总览一类),
+ * 而不适合需要与旁边对照着看的东西。
+ *
+ * 与舞台同为**至多一个**:两块盖叠在同一栏上,下面那块永远见不到光。
+ * 不变式与舞台那条走同一段代码(transitions.openAs 的 EXCLUSIVE_FORMS)。
+ */
 
 /** 形态的名字 = Placement 的 kind。组件想分支时读它,别自己拼条件。 */
 export type StageForm = Placement['kind']
@@ -40,6 +53,7 @@ export type MemorablePlacement = Exclude<Placement, { kind: 'dock' }>
 export type PlacementMemory =
   | { kind: 'stage' }
   | { kind: 'float'; rect: FloatRect }
+  | { kind: 'cover' }
   | { kind: 'edge'; side: ShelfSide; index: number }
 
 export type BadgeTone = 'danger' | 'ok'
@@ -59,6 +73,24 @@ export interface StageItemSpec {
   /** lucide 图标名 */
   icon: string
   badge?: StageBadge
+  /**
+   * 这块瓦**天生**该落在哪儿。缺席 = 没有天生落点,听全局默认档的。
+   *
+   * 它插在解析序的**第三层**(记忆 > 天生 > 全局默认档),所以它既不是配置
+   * 也不是记忆:用户亲手放过一次,记忆就永远压过它 —— 「这块面适合怎么开」
+   * 是它自己的性质,而「我想怎么开」永远是用户说了算。
+   *
+   * 今天唯一的用户是「所有应用」(cover):一张铺满的应用清单塞进 880×520 的
+   * 浮窗里就得滚动,而它恰恰是那种「看一眼、点一下、就走」的整屏内容。
+   */
+  defaultPlacement?: MemorablePlacement
+  /**
+   * 这块瓦允不允许从 Dock 上藏起来。缺席 = 允许。
+   *
+   * 只有「所有应用」是 false —— 它是**恢复入口**:把恢复入口自己藏掉,
+   * 用户就再也找不到把别的瓦放回来的门了(留一个回家的门)。
+   */
+  alwaysInDock?: boolean
 }
 
 /** 浮窗矩形。按 item 记忆,所以收回 Dock 再开还在老位置。 */
@@ -152,6 +184,16 @@ export interface StageSettings {
   dockAlign: DockAlign
   /** 瓦的大小档。 */
   dockSize: DockSize
+  /**
+   * **不在 Dock 上露面**的那些瓦(存 id)。存「藏起来的」而不是「露面的」,
+   * 是为了让新加的瓦默认露面 —— 反过来存一张白名单,以后每加一块瓦都得记得
+   * 往每个人的档案里补一行,漏了就是「新功能上线了但没人看得见」。
+   *
+   * 它是**配置**不是记忆:与「这块瓦上次放在哪」无关,藏起来的瓦照样能被
+   * ⌘P / 「所有应用」打开,打开之后照样按它的记忆落点。藏的是**入口**,
+   * 不是这块面本身。
+   */
+  hiddenItems: string[]
 }
 
 export type DockDisplay = 'always' | 'autohide'
@@ -203,6 +245,7 @@ export const OPEN_PLACEMENT_CHOICES: Array<{
 }> = [
   { key: 'stage', placement: { kind: 'stage' }, labelKey: 'dock.openStage' },
   { key: 'float', placement: { kind: 'float' }, labelKey: 'dock.openFloat' },
+  { key: 'cover', placement: { kind: 'cover' }, labelKey: 'dock.openCover' },
   ...SHELF_SIDE_CHOICES.map((c) => ({
     key: `edge:${c.value}`,
     placement: { kind: 'edge' as const, side: c.value },

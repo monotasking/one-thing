@@ -12,7 +12,7 @@ import {
 import { DEFAULT_SPACE_ID, WORKSPACE_SLOT_COUNT, WORKSPACE_SWATCHES } from '../types'
 
 /**
- * 投影是三个入口(Dock 右键快切表 / ⌘⇧O 命令面板 / 工作区总览)唯一的分子产地,
+ * 投影是三个入口(Dock 右键快切表 / ⌘⇧W 命令面板 / 工作区总览)唯一的分子产地,
  * 所以「哪个是当前」「⌘2 是谁」这两句话只在这里被判一次 —— 这一份用例钉的就是它。
  */
 

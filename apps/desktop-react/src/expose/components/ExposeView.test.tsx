@@ -149,11 +149,38 @@ describe('Esc 的让位契约', () => {
     expect(placementOfSessions()).toEqual({ kind: 'stage' })
   })
 
-  it('浮窗形态上没有宿主关闭器:总览上的 Esc 什么都不关', () => {
+  /*
+   * 08-31 **这条断言原来钉的是一个 bug**,不是一条规矩。
+   *
+   * 它当时写的是「浮窗形态上没有宿主关闭器:总览上的 Esc 什么都不关」——
+   * 那句话如实描述了当时的实现(全仓只有 StageOverlay 挂 Esc,而它只在有舞台时
+   * 才挂载),于是用户 08-31 报障「进了某种打开态但 Esc 按不动」。真机复现确认:
+   * 浮窗按 Esc,placements 一个字节都不变。
+   *
+   * 教训记在这里:**一条如实描述当下行为的断言,不等于一条该守的规矩**。
+   * 写「什么都不发生」这类断言时要多问一句「这是设计,还是我们还没做?」——
+   * 前者该钉,后者钉下去就是把缺口焊死。
+   *
+   * 现在宿主是 components/useEscapeChain(链在 stage/transitions.escapeTargetOf),
+   * 三种瞬态形都退得掉;下面这条改成钉**内层优先**:总览还有层可退时先退它,
+   * 退到头了下一下才轮到收浮窗。
+   */
+  it('浮窗上的总览:Esc 先退总览自己的层,退到头了下一下才收浮窗', () => {
     render(<AppShell />)
     act(() => useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'float' }))
+    const focusId = useExposeStore.getState().focusId!
+    act(() => useExposeStore.getState().openQuickLook(focusId))
+
     esc()
+    // 内层消费了这一下:QuickLook 退回总览,浮窗一动不动。
+    expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
     expect(placementOfSessions()).toEqual({ kind: 'float' })
+
+    esc()
+    // 内层没得退了,这一下才轮到宿主 —— 浮窗收回 Dock(修前它永远收不掉)。
+    // 收回 Dock = **从 placements 里消失**(dock 是缺席态,不是一条 {kind:'dock'}),
+    // 所以这里问的是 undefined 而不是某个值。
+    expect(placementOfSessions()).toBeUndefined()
   })
 
   it('搜索词是 Esc 的第 0 层:先清词,面板与视图都不动(浮窗常态下)', () => {

@@ -50,10 +50,14 @@ export function Dialog({ open, onClose, title, children, footer, label }: Dialog
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      // 退得动就把这一下吃掉,否则同一下 Esc 会顺手把对话框底下那块面也收掉。
+      // 契约与判例见 components/useEscapeChain(Menu / Popover 同款)。
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      onClose()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   }, [open, onClose])
 
   if (!open) return null

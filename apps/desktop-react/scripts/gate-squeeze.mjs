@@ -80,13 +80,25 @@ const SEED_GROUPS = [
 const LIST_SCENARIO_GROUP = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
 
 /**
- * 联网宿主(standalone server)把每条工作目录夹进 `<workspaceRoot>/<uid>/<wid>`,
- * 而且要求目录**真的存在**。所以这条门自带一个临时 workspaceRoot(靠
- * `ONETHING_SERVER_WORKSPACE_ROOT` 指过去),把上面那几个组目录先 mkdir 出来,
- * 再用相对路径去写 —— 绝对路径会被沙箱当场拒掉(首跑就是这么把 12 条会话
- * 全塞进「独立会话」一组的:updateWorkingDirectory 静默失败,组名形状一个没测到)。
+ * ── 工作目录怎么种(08-31 改:相对路径那一套已经过期)──────────────────────
+ *
+ * 从前这条门靠一个临时 workspaceRoot(`ONETHING_SERVER_WORKSPACE_ROOT`)+
+ * **相对路径**来种:联网宿主把每条工作目录夹进 `<workspaceRoot>/<uid>/<wid>`,
+ * 绝对路径会被沙箱当场拒掉。
+ *
+ * `d1fa07c0`(files 域 local-trust)之后不成立了:`sessions.updateWorkingDirectory`
+ * 的 http 分支在**本机可信面**上改走 ipc 那条路 —— 沙箱不再夹持,于是路径被
+ * 逐字当真,而这条门绑的正是回环口(本机可信)。结果是相对名 `3f2a9c7e-…`
+ * 被当成相对 cwd 的真路径去解析,后端答 `Directory does not exist`,种子步整步挂掉。
+ *
+ * 所以现在照 gate-files 的起法:**mkdtemp 一个真临时根,组目录是它下面真实存在
+ * 的子目录,递绝对路径**,退出时整根删掉。
+ *
+ * 组名形状(这条门的全部测试意图)一个字都没变:屏幕上的组名 = 路径**末段**
+ * (expose/projection.projectNameOf),所以换成绝对路径之后,那四种名字形状
+ * ——32 位无断点十六进制 / uuid / 长英文串 / 短名 —— 逐字照旧。
  */
-const SERVER_OWNER_SEGMENTS = ['local-user', 'default']
+const PROJECT_DIR_NAMES = SEED_GROUPS.flatMap((g) => (g.dir ? [g.dir] : []))
 
 /**
  * 允许的覆盖。每条 = 一对选择器片段(按 CSS 类名 / data 属性的子串匹配),
@@ -174,9 +186,9 @@ async function clickTestId(page, testId) {
 /**
  * 点开一个**长名组**,进它的会话列表(ListView)。
  *
- * 组 id = 归一之后的工作目录(见 expose/projection.ts),而联网宿主会把种子里那个
- * 相对目录夹进 `<workspaceRoot>/<uid>/<wid>/` —— 所以 id 是一条完整路径,写不出
- * 字面 testid。这里按**组头的文字**去找(种子目录名就是组名,见 projectNameOf),
+ * 组 id = 归一之后的工作目录(见 expose/projection.ts),而种子递的是一条临时根下的
+ * **绝对路径** —— 所以 id 里带着一截每次都不同的 mkdtemp 名,写不出字面 testid。
+ * 这里按**组头的文字**去找(组名 = 路径末段 = 种子目录名,见 projectNameOf),
  * 找到之后点它右端那枚常驻的「›」入口。
  *
  * 入口是 `flex: none` 的常驻项、只动 opacity(律三),所以不 hover 也点得到 ——
@@ -481,6 +493,65 @@ async function checkStickyReservation(page) {
 }
 
 /**
+ * 律三的**第二处预留检查**:Dock 常显钉边时,主输入按不按得到(08-31 P0)。
+ *
+ * 前一条查的是「滚动坐标系里留没留」,这一条查的是「屏幕坐标系里留没留」——
+ * 同一条律,两种覆盖形态。判据不是求盒子相交而是 **elementFromPoint**:
+ * 「这一点按下去事件落在谁身上」才是用户真正遭遇的那件事,而两个盒子相交
+ * 完全可能是无害的(Dock 是圆角条,四角那一块谁都碰不到)。
+ *
+ * 病历:修前底边常显档下 composer 四件控件盒在 843–871,而 Dock 占 826–888——
+ * 100 个采样点只有 5 个按得到(附件 / 模型 / 输入区三件是 0/25)。修法是外壳按
+ * `--dock-reserve-*` 让出那一条边(components/AppShell.module.css 的 .reserve*)。
+ * 反证:把那几条 padding 注释掉 → 这一步当场红回 5/100。
+ *
+ * 自动隐藏档不查:那时 Dock 平时不在屏上,「盖住」这件事根本不发生。
+ */
+async function checkDockReservation(page) {
+  return page.evaluate(() => {
+    const strip = document.querySelector('[data-dock="strip"]')
+    if (!strip) return { error: 'Dock 条不在 DOM 里' }
+    const holder = strip.parentElement
+    if (holder && /hidden/i.test(holder.className)) return { skipped: '自动隐藏档,不查' }
+
+    const buttons = [...document.querySelectorAll('button')]
+    const byLabel = (re) => buttons.find((b) => re.test(b.getAttribute('aria-label') ?? ''))
+    const targets = [
+      ['输入区', document.querySelector('[contenteditable]') ?? document.querySelector('textarea')],
+      ['附件钮', byLabel(/添加附件|Add attachment/)],
+      ['模型钮', byLabel(/选择模型|Pick a model/)],
+      ['发送键', byLabel(/^发送$|^Send$|停止生成|Stop generating/)],
+    ]
+
+    const problems = []
+    const readings = []
+    for (const [label, el] of targets) {
+      if (!el) {
+        problems.push(`${label}:不在场(选择器对不上就等于这条断言在陪跑)`)
+        continue
+      }
+      const r = el.getBoundingClientRect()
+      if (r.width === 0 || r.height === 0) {
+        problems.push(`${label}:盒子是 0×0`)
+        continue
+      }
+      // 控件盒里均匀取 5×5 个点,逐点问「这一下落在谁身上」。
+      let blocked = 0
+      const total = 25
+      for (let i = 1; i <= 5; i += 1) {
+        for (let j = 1; j <= 5; j += 1) {
+          const hit = document.elementFromPoint(r.left + (r.width * i) / 6, r.top + (r.height * j) / 6)
+          if (hit?.closest('[data-dock="strip"]')) blocked += 1
+        }
+      }
+      readings.push(`${label} ${total - blocked}/${total}`)
+      if (blocked > 0) problems.push(`${label}:${blocked}/${total} 个采样点被 Dock 挡住`)
+    }
+    return { problems, readings }
+  })
+}
+
+/**
  * 一档厚度 = **滚一遍**,每屏扫一次,取并集。
  *
  * 只扫首屏是不够的:报障那一组(uuid 组头)在 240px 档要滚两屏才露面,
@@ -610,10 +681,17 @@ async function main() {
 
   const store = await mkdtemp(path.join(tmpdir(), 'squeeze-gate-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'squeeze-gate-userdata-'))
-  const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'squeeze-gate-ws-'))
-  const ownerRoot = path.join(workspaceRoot, ...SERVER_OWNER_SEGMENTS)
-  for (const group of SEED_GROUPS) {
-    if (group.dir) await mkdir(path.join(ownerRoot, group.dir), { recursive: true })
+  /*
+   * 组目录的真根。**真建出来**,并且递绝对路径 —— 理由见 PROJECT_DIR_NAMES
+   * 上面那段(local-trust 之后沙箱不再夹持,路径被逐字当真)。
+   */
+  const projectsRoot = await mkdtemp(path.join(tmpdir(), 'squeeze-gate-projects-'))
+  /** 组名(= 路径末段)→ 它的绝对路径。种子步只问这张表,不再自己拼路径。 */
+  const projectDirs = new Map()
+  for (const name of PROJECT_DIR_NAMES) {
+    const full = path.join(projectsRoot, name)
+    await mkdir(full, { recursive: true })
+    projectDirs.set(name, full)
   }
   let server
   let app
@@ -625,7 +703,8 @@ async function main() {
       env: {
         ...process.env,
         ONETHING_STORE_PATH: store,
-        ONETHING_SERVER_WORKSPACE_ROOT: workspaceRoot,
+        // `ONETHING_SERVER_WORKSPACE_ROOT` 已退役:local-trust 之后工作目录不再被
+        // 夹进 workspaceRoot,种子递的是真实绝对路径(见 PROJECT_DIR_NAMES 那段)。
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
@@ -647,14 +726,16 @@ async function main() {
         const id = result?.session?.id
         if (!id) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(result)}`)
         if (group.dir) {
+          const full = projectDirs.get(group.dir)
           const wrote = await rpc(rec, 'sessions', 'updateWorkingDirectory', {
             sessionId: id,
-            workingDirectory: group.dir,
+            workingDirectory: full,
           })
           // 这条 RPC 的失败是**返回值里的 success:false**,不是 HTTP 错误 ——
-          // 不检查它,种子就会静默退化成「全都没有工作目录」。
+          // 不检查它,种子就会静默退化成「全都没有工作目录」(这条检查本身
+          // 正是 08-31 抓到 local-trust 那次行为变化的那只手,别拆)。
           if (wrote?.success !== true) {
-            throw new Error(`工作目录没写进去(${group.dir}):${JSON.stringify(wrote)}`)
+            throw new Error(`工作目录没写进去(${full}):${JSON.stringify(wrote)}`)
           }
         }
         await rpc(rec, 'sessions', 'addSystemMessage', {
@@ -707,6 +788,23 @@ async function main() {
       console.log(`  ✓ ${reservation.checked} 个粘性元素,滚动坐标系里都留够了位置`)
     }
 
+    /*
+     * 同一条律的第二处预留:Dock 常显钉边时,主输入按不按得到。
+     * 与上一步分开报,是因为它们是**两个坐标系**里的同一件事(滚动 / 屏幕),
+     * 红起来该修的地方也不同 —— 一条门该指得出该谁修。
+     */
+    console.log('\n[3.5/6] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
+    const dockReserve = await checkDockReservation(page)
+    if (dockReserve.error) throw new Error(dockReserve.error)
+    if (dockReserve.skipped) {
+      console.log(`  · ${dockReserve.skipped}`)
+    } else if (dockReserve.problems.length) {
+      for (const problem of dockReserve.problems) console.log(`  ✗ ${problem}`)
+      failures.push(`Dock 覆盖没有布局预留:${dockReserve.problems.length} 条`)
+    } else {
+      console.log(`  ✓ composer 四件全可达(${dockReserve.readings.join(' · ')})`)
+    }
+
     console.log('\n[4/6] 场景①总览:五档厚度,逐档滚一遍扫重叠')
     await sweepThicknesses(page, '总览', failures)
 
@@ -725,7 +823,7 @@ async function main() {
     await delay(600)
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })
-    await rm(workspaceRoot, { recursive: true, force: true })
+    await rm(projectsRoot, { recursive: true, force: true })
   }
 
   if (failures.length) {

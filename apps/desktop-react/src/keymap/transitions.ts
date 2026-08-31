@@ -54,18 +54,20 @@ const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
  * ⌘J 给顶栏那枚 agent 切换器(08-30 拍板)。
  * ⌘N 给新建会话 —— 这一条是**跨应用惯例**(新建文档 / 新建标签页),
  * 预占它不算替用户做主,不给它才是。
- * ⌘⇧O 给工作区命令面板、⌘1/2/3 给前三个工作区的直达(08-31 切换器 v1 拍板)。
+ * ⌘⇧W 给工作区命令面板、⌘1/2/3 给前三个工作区的直达(08-31 切换器 v1 拍板)。
  *
- * ── ⚠ 已知撞键:⌘⇧O 同时是 `toc.toggle` 的出厂键 ─────────────────────────
- * 这不是疏忽,是一次**没人拍过板**的撞车:目录面板的 ⌘⇧O 在先(08-29),
- * 工作区命令面板的 ⌘⇧O 是 08-31 那次拍板点名的键。出厂表这一层没有冲突检查
- * (`bindCombo` 只拦用户改绑),而 `lookupCommand` 是**按 KEYMAP_COMMANDS 的次序
- * 取第一个命中** —— 所以次序就是裁决。
+ * ── ⌘⇧O 撞键已解(08-31 用户裁定)─────────────────────────────────────────
+ * 那次撞车是这样来的:目录面板的 ⌘⇧O 在先(08-29),工作区命令面板的 ⌘⇧O 是
+ * 08-31 拍板点名的键。出厂表这一层**没有冲突检查**(`bindCombo` 只拦用户改绑),
+ * 而 `lookupCommand` 按 KEYMAP_COMMANDS 的次序取第一个命中 —— 于是次序成了裁决,
+ * `toc.toggle` 的出厂键当下按不响。
  *
- * 本批按拍板让工作区面板排在前面,代价是 `toc.toggle` 的出厂键**当下按不响**
- * (改绑任一条即解开,设置页两行会并排显示同一个键面,一眼看得见)。
- * 这一格等用户裁定:① 目录改一个键 ② 工作区面板改一个键 ③ 就这样。
- * 在裁定之前,`__tests__/keymap-collision.test.ts` 把「谁赢」钉死,免得它无声地漂。
+ * 裁定走的是「工作区面板改一个键」那条:**⌘⇧W**(W = workspace,好记;
+ * 与 ⌘W 关窗那条跨应用惯例不同键,不受影响),⌘⇧O 原样还给目录。
+ * 于是次序不再决定任何一个键的去向 —— 下面命令表里那段排序注释也跟着改了。
+ *
+ * 工作区**总览**没有、也不再要独立快捷键:单击那块瓦即达,快切面板里还有一条
+ * 「打开总览」的入口。两个入口够了,第三个只是在花键位预算。
  * ──────────────────────────────────────────────────────────────────────────
  */
 const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
@@ -74,7 +76,7 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toc.toggle': { meta: true, shift: true, key: 'o' },
   'agent.menu': { meta: true, key: 'j' },
   'session.new': { meta: true, key: 'n' },
-  'workspace.palette': { meta: true, shift: true, key: 'o' },
+  'workspace.palette': { meta: true, shift: true, key: 'w' },
   [workspaceSlotCommandId(1)]: { meta: true, key: '1' },
   [workspaceSlotCommandId(2)]: { meta: true, key: '2' },
   [workspaceSlotCommandId(3)]: { meta: true, key: '3' },
@@ -107,9 +109,11 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
   }),
   { id: 'shelf.right.toggle', labelKey: 'shelf.labelRight', defaultCombo: null },
   /*
-   * 工作区那一族排在 toc.toggle **之前**:两者出厂键都是 ⌘⇧O,而 lookupCommand
-   * 取的是第一个命中,所以这个次序就是那次撞车的裁决(理由与留账见 DEFAULT_COMBOS
-   * 上面那段)。这不是审美排序,挪动它会改变一个键的去向。
+   * 工作区那一族排在 toc.toggle 之前,现在**只是排版**了 —— 从前不是:
+   * 两者出厂键都是 ⌘⇧O 时,这个次序就是那次撞车的裁决。08-31 工作区面板改到
+   * ⌘⇧W 之后出厂表里再没有两条命令共用一个组合,次序不决定任何一个键的去向。
+   * 「不再撞键」由 workspace-commands.test.ts 钉着(它守的是全表两两不同,
+   * 而不是某一对谁赢 —— 后者会在下次加键时无声地失效)。
    */
   {
     id: 'workspace.palette',

@@ -16,7 +16,7 @@ import { DockTile } from './DockTile'
 import { useMagnify } from './useMagnify'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { useT } from '../i18n'
-import { formIn, memoryIsAt } from '../stage/transitions'
+import { formIn, isItemHidden, memoryIsAt } from '../stage/transitions'
 import { DOCK_AXIS, OPEN_PLACEMENT_CHOICES } from '../stage/types'
 import type { DockEdge, DockSize, StageItemSpec } from '../stage/types'
 import type { LabelSide } from './DockTile'
@@ -29,12 +29,27 @@ type Tile =
   | { kind: 'item'; item: StageItemSpec }
   | { kind: 'plus' }
 
-const TILES: Tile[] = [
-  ...SESSION_ITEMS.map((item) => ({ kind: 'item' as const, item })),
-  ...GLOBAL_ITEMS.map((item) => ({ kind: 'item' as const, item })),
-  { kind: 'plus' },
-]
-const SEP_AFTER = SESSION_ITEMS.length - 1
+/**
+ * 条上此刻摆哪几块。**每次渲染现算**而不是一张模块级常量表(08-31 加「藏起来的瓦」
+ * 之后):藏起来的瓦不占格,而磁性放大是按格子的线性次序索引的 —— 表里留着一个
+ * 不画的格,放大就会算错人。分隔线的落点同理必须跟着当下的会话组长走。
+ *
+ * 「藏」只发生在这一层:它是 Dock 的投影规则,形态机不知道有这回事(藏起来的瓦
+ * 照样有落点、有记忆、⌘P 打得开)。
+ */
+function tilesFor(hiddenItems: readonly string[]): { tiles: Tile[]; sepAfter: number } {
+  const shown = (items: StageItemSpec[]) => items.filter((i) => !isItemHidden(hiddenItems, i.id))
+  const session = shown(SESSION_ITEMS)
+  return {
+    tiles: [
+      ...session.map((item) => ({ kind: 'item' as const, item })),
+      ...shown(GLOBAL_ITEMS).map((item) => ({ kind: 'item' as const, item })),
+      { kind: 'plus' },
+    ],
+    // 会话组空了就没有分隔线可画(-1 永远不等于任何一格的下标)。
+    sepAfter: session.length - 1,
+  }
+}
 
 /** 「钉到边」那一组从第几行开始 —— 由表自己说,不写死一个数。 */
 const PIN_FROM = OPEN_PLACEMENT_CHOICES.findIndex((c) => c.pin)
@@ -83,6 +98,9 @@ export function Dock({ dimmed }: Props) {
   const memory = useStageStore((st) => st.memory)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockSize = useStageStore((st) => st.dockSize)
+  // 藏起来的瓦不在条上露面。它是**配置**(见 StageSettings.hiddenItems),
+  // 与「这块瓦此刻在哪」无关 —— 所以它与 placements 是两条独立的订阅。
+  const hiddenItems = useStageStore((st) => st.hiddenItems)
   const click = useStageStore((st) => st.clickDockIcon)
   const openAs = useStageStore((st) => st.openAs)
   // 未读是**当下的事实**,所以在这里对上静态的 items 表(items.ts 里那条注释同一件事)。
@@ -101,8 +119,9 @@ export function Dock({ dimmed }: Props) {
   const closeMenu = () => setMenu(null)
 
   const axis = DOCK_AXIS[dockEdge]
+  const { tiles, sepAfter } = tilesFor(hiddenItems)
   const { stripRef, setTileRef, factors, tracking, onMouseMove, onMouseLeave } = useMagnify(
-    TILES.length,
+    tiles.length,
     axis,
   )
 
@@ -125,7 +144,7 @@ export function Dock({ dimmed }: Props) {
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
     >
-      {TILES.map((tile, i) => {
+      {tiles.map((tile, i) => {
         const node =
           tile.kind === 'plus' ? (
             <DockTile
@@ -144,13 +163,20 @@ export function Dock({ dimmed }: Props) {
               icon={tile.item.icon}
               badge={tile.item.badge}
               dot={tile.item.id === NOTIFICATIONS_ITEM_ID && unread > 0}
-              /* 工作区那块瓦画的是**当前工作区的色与字标**,不是一枚固定图标 ——
-               * 它同时就是「我在哪」的常驻指示。列表还没读到(或者读不到)时
-               * workspace 是 undefined,瓦退回 items 表里那枚兜底图标:
-               * 那时候确实没有「我在哪」可画,不该拿默认色冒充。 */
+              /* 工作区那块瓦画的是**当前工作区的色底 + 这块瓦自己的图标**。
+               * 色承载「我在哪」(它同时就是那条常驻指示),形承载「这是什么」——
+               * 两件事各归各的,一个都不少。
+               *
+               * 08-31 用户否决了原来的「色底 + 首字母」:拿字当图标与这套风格不符
+               * (整条 Dock 上只有它一块是字,扫一眼就跳出来,而它并不比别人重要)。
+               * 首字母没有退役,只是退回它本来该在的地方 —— 右键快切表与总览卡上
+               * 的小色点,那两处它是**列表里的区分记号**而不是一块瓦的脸。
+               *
+               * 列表还没读到(或者读不到)时 workspace 是 undefined,瓦退回没有色底
+               * 的普通图标:那时候确实没有「我在哪」可画,不该拿默认色冒充。 */
               face={
                 tile.item.id === WORKSPACE_ITEM_ID && workspace
-                  ? { letter: workspace.initial, className: sw[workspace.swatch] }
+                  ? { className: sw[workspace.swatch] }
                   : undefined
               }
               running={tile.item.id in placements}
@@ -173,7 +199,7 @@ export function Dock({ dimmed }: Props) {
               }}
             />
           )
-        if (i === SEP_AFTER) {
+        if (i === sepAfter) {
           return (
             <Fragment key={`group-${i}`}>
               {node}

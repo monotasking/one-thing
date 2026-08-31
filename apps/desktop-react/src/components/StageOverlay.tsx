@@ -46,37 +46,20 @@ export function StageOverlay() {
     return () => clearTimeout(t)
   }, [item, held])
 
-  /**
-   * Esc 关舞台 —— 但只在**内层没消费**这一下时。
-   * 面里的内容可能自己有层次(会话总览的 quicklook / list),那几层先退;
-   * 它们退不动了就不 preventDefault,这一下才轮到关面板。
-   * 判据是 e.defaultPrevented 而不是「内容是谁」:舞台不认识住在里面的东西。
+  /*
+   * ── Esc 不在这里了(08-31 搬走)──────────────────────────────────────
+   * 从前这一层自己挂一条 Esc 关舞台。搬走的理由是**它挡不住的那些形态**:
+   * 这个组件只在有舞台时挂载,于是浮窗 / 盖按 Esc 全都掉进空里(用户 08-31
+   * 报的「Esc 关不掉」正是这一条,真机复现:浮窗按 Esc,placements 一个字节
+   * 不变)。给浮窗也挂一条的话,「谁该先退」就会在三处各写一遍。
    *
-   * 「谁先」不靠注册序,靠**传播相位**:宿主听冒泡(这里,默认相位),内容层听捕获
-   * (ExposeView)。window 上的捕获监听器永远跑在同一个 window 上的冒泡监听器之前,
-   * 与两者谁先注册无关 —— 于是同步读 defaultPrevented 就是稳的。
-   *
-   * 曾经的两版错法,都留在这儿当判例:
-   *  ① 同相位 + 同步读:注册序说了算,而 React StrictMode 的开发期双挂载会把
-   *     ExposeView 的监听器卸了再挂,最终排到本组件之后 —— QuickLook 开着按 Esc
-   *     整块面板被关。
-   *  ② 同相位 + queueMicrotask 推迟判定:以为微任务落在「整轮派发结束后」。不是。
-   *     微任务检查点在**每个监听器回调返回后**就跑(真事件由原生派发,回调之间
-   *     JS 栈是空的),所以它落在下一个监听器**之前** —— 08-30 真机实录:宿主的
-   *     微任务先跑并 closeStage(),ExposeView 才拿到这一下。
-   *     jsdom 里测不出来:fireEvent 是从 JS 里派发的,整轮派发都在一层 JS 栈上,
-   *     微任务只好等到最后 —— 于是那版修复的单测是绿的,真机是红的。
+   * 现在链是 stage/transitions.escapeTargetOf 那个纯函数(盖 → 舞台 → 最上面
+   * 那扇浮窗;架子是常驻家具,不在链里),宿主只剩一条 window 监听:
+   * components/useEscapeChain。那里也保管着这一段的全部判例 ——
+   * 「内层先退」靠的是**传播相位**(内容听捕获、宿主听冒泡)而不是注册序,
+   * 以及两版错法(同相位+同步读会被 StrictMode 双挂载翻盘;queueMicrotask
+   * 推迟判定会落在下一个监听器**之前**)的病历。
    */
-  useEffect(() => {
-    if (!stageId) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      if (e.defaultPrevented) return
-      closeStage()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [stageId, closeStage])
 
   const shown = item ?? held
   if (!shown) return null

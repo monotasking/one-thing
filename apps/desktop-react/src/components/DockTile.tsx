@@ -4,7 +4,7 @@ import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
 import { DockPreview } from './DockPreview'
 import type { StageBadge } from '../stage/types'
-import { PREVIEW_DELAY_MS, TOOLTIP_DELAY_MS } from './motion'
+import { PREVIEW_DELAY_MS, PREVIEW_GRACE_MS, TOOLTIP_DELAY_MS } from './motion'
 import s from './DockTile.module.css'
 
 /** 名字标签浮在瓦的哪一侧。由 Dock 按停靠边算好递进来 —— 瓦不认识「边」。 */
@@ -48,17 +48,19 @@ interface Props {
   running?: boolean
   plus?: boolean
   /**
-   * 字标瓦面:用一个**字**取代图标,底色由外面递进来的类名给
+   * 实色瓦面:给这块瓦铺一层底色,底色由外面递进来的类名给
    * (那个类只做一件事:把 `--ws-face` 指到某一格色上,见 workspace/swatch.module.css)。
    *
-   * 它不是「另一种瓦」,是同一块瓦的另一张脸:放大 / 降淡 / 名字标签 / 预览泡 /
-   * 运行点 / 右键菜单,一件都不变。今天唯一的用户是工作区切换器那一块 ——
-   * 瓦面同时就是「我在哪」的常驻指示,所以它必须画当前工作区的色与字,
-   * 而不是一枚所有工作区共用的图标。
+   * 它不是「另一种瓦」,是同一块瓦的另一张脸:图标照画,放大 / 降淡 / 名字标签 /
+   * 预览泡 / 运行点 / 右键菜单,一件都不变。今天唯一的用户是工作区切换器那一块——
+   * **色**承载「我在哪」(瓦面同时就是那条常驻指示),**形**仍由图标承载。
    *
-   * 给了 face 就不画 icon:一块瓦上只该有一个主角。
+   * 08-31 之前这一格还带一个 `letter`,用一个字取代图标;用户否决了(拿字当图标
+   * 与这套风格不符:整条 Dock 上只有它一块是字,扫一眼就跳出来,而它并不比
+   * 别人重要)。首字母退回右键快切表与总览卡上的小色点 —— 在那两处它是
+   * **列表里的区分记号**,不是一块瓦的脸。
    */
-  face?: { letter: string; className: string }
+  face?: { className: string }
   /** 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。 */
   factor: number
   tileRef: (el: HTMLElement | null) => void
@@ -92,11 +94,13 @@ export function DockTile({
   const [previewVisible, setPreviewVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const graceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(
     () => () => {
       if (timer.current) clearTimeout(timer.current)
       if (previewTimer.current) clearTimeout(previewTimer.current)
+      if (graceTimer.current) clearTimeout(graceTimer.current)
     },
     [],
   )
@@ -104,9 +108,28 @@ export function DockTile({
   /**
    * 两级悬停:300ms 出名字,600ms 出预览。第二级到了就把第一级收掉 ——
    * 一次一个主角:泡里已经写着标题,标签留着就是同一句话说两遍。
-   * 移开即散(退场谦逊律:不给退场动画,直接消失)。
+   *
+   * ── 收拢有宽限(08-31 修「移向泡的路上泡就没了」)────────────────────
+   * 泡浮在瓦上方 --preview-lift(12px)处,那 12px 既不属于瓦也不属于泡。
+   * 修前 mouseleave 一触发就当场收,真机实测**指针离开瓦 3px 泡就没了** ——
+   * 人根本够不到它,「悬停出泡」这件事等于只能看不能用。
+   *
+   * 现在离开只是**排一个 PREVIEW_GRACE_MS 的收拢**,再进瓦或进泡即取消。
+   * 泡是 .wrap 的后代,所以「进泡」本身就会重新触发这里的 enter ——
+   * 不必给泡另挂一套监听(挂了就是两处各记一半的 hover 状态)。
+   * 前提是泡得吃指针:它的 pointer-events 由 none 改成了 auto(见 DockPreview)。
    */
+  const cancelGrace = () => {
+    if (graceTimer.current) {
+      clearTimeout(graceTimer.current)
+      graceTimer.current = null
+    }
+  }
+
   const enter = () => {
+    cancelGrace()
+    // 泡已经在场时不重排那两级延迟:从缝里回到泡上不该让它「重新长一遍」。
+    if (previewVisible) return
     timer.current = setTimeout(() => setLabelVisible(true), TOOLTIP_DELAY_MS)
     if (previewId) {
       previewTimer.current = setTimeout(() => setPreviewVisible(true), PREVIEW_DELAY_MS)
@@ -115,8 +138,14 @@ export function DockTile({
   const leave = () => {
     if (timer.current) clearTimeout(timer.current)
     if (previewTimer.current) clearTimeout(previewTimer.current)
+    // 标签没有这条烦恼(它贴着瓦,中间没有缝),所以照旧移开即散。
     setLabelVisible(false)
-    setPreviewVisible(false)
+    if (!previewVisible) return
+    cancelGrace()
+    graceTimer.current = setTimeout(() => {
+      graceTimer.current = null
+      setPreviewVisible(false)
+    }, PREVIEW_GRACE_MS)
   }
 
   const Icon = plus ? Plus : resolveIcon(icon ?? '')
@@ -128,7 +157,9 @@ export function DockTile({
         <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>
       )}
       {previewVisible && previewId && (
-        <DockPreview id={previewId} title={title} side={labelSide} />
+        /* 点泡 = 点这块瓦。泡里那一眼说的就是「打开之后长这样」,
+         * 所以点它的意思只可能是「那就打开吧」—— 不该再让用户把手移回瓦上。 */
+        <DockPreview id={previewId} title={title} side={labelSide} onOpen={onClick} />
       )}
       <button
         type="button"
@@ -140,9 +171,10 @@ export function DockTile({
               ? `${s.tile} ${s.faced} ${face.className}`
               : s.tile
         }
-        /* 放大系数也进一格自定义属性:图标靠 width/height 的百分比跟着长大,
-         * 字标只能靠 font-size,而 font-size 的百分比量的是**父字号**不是父盒子 ——
-         * 少了这一格,瓦放大时那个字会原地不动。 */
+        /* 放大系数也进一格自定义属性。图标本身靠 width/height 的百分比就跟着长大,
+         * 这一格留给那些**只能按父字号缩放**的东西(font-size 的百分比量的是父字号
+         * 而不是父盒子)。字标瓦面退役后今天没有消费者,留着是因为下一个字形瓦面
+         * 一定会再要它 —— 删了就得连同这段病历一起重新踩一遍。 */
         style={
           {
             width: `calc(var(--tile-size) * ${factor})`,
@@ -156,14 +188,8 @@ export function DockTile({
         data-testid={testId}
         title=""
       >
-        {/* 一块瓦上只该有一个主角:有字标就不画图标。 */}
-        {face ? (
-          <span className={s.faceLetter} aria-hidden="true">
-            {face.letter}
-          </span>
-        ) : (
-          <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-        )}
+        {/* 有没有色底,画的都是同一枚图标 —— 色底只是这块瓦的另一张脸,不是另一种瓦。 */}
+        <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
         {/* 徽的配方在 ui/Badge,贴在哪由这里说了算 —— 所以定位是本地类。 */}
         {badge && (
           <Badge tone={badge.tone} className={s.badgeAt}>

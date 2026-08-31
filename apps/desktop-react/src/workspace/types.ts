@@ -38,7 +38,7 @@ export const WORKSPACE_SLOT_COUNT = 3
 
 /**
  * 屏幕上的一个工作区。**这是投影,不是状态** —— 由 `SpaceRecord[]` × 当前 id
- * 算出来,三个入口(Dock 瓦的右键快切表、⌘⇧O 命令面板、工作区总览)读的是
+ * 算出来,三个入口(Dock 瓦的右键快切表、⌘⇧W 命令面板、工作区总览)读的是
  * 同一份分子,所以「三处逐字同源」是结构保证,不靠自觉。
  */
 export interface WorkspaceView {

@@ -3,7 +3,7 @@ import { act, fireEvent, render, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
 import { useStageStore } from '../../stage/store'
 import { initialStageState } from '../../stage/transitions'
-import { PREVIEW_DELAY_MS } from '../motion'
+import { PREVIEW_DELAY_MS, PREVIEW_GRACE_MS } from '../motion'
 import type { Placement } from '../../stage/types'
 
 /**
@@ -104,5 +104,63 @@ describe('Dock 预览泡', () => {
       (el) => el.textContent === '文件' && !el.closest('[data-preview]'),
     )
     expect(outside).toHaveLength(0)
+  })
+
+  /* ── 08-31:移向泡的那条路 ─────────────────────────────────────────────
+   * 报障原话「预览泡移入即消失」。真机量出的修前行为:泡浮在瓦上方
+   * --preview-lift(12px)处,而**指针离开瓦 3px 泡就没了** —— 那 12px 缝
+   * 既不属于瓦也不属于泡,人根本够不到它。两条修法各钉一条:
+   *  ① 离开只是排一个宽限,再进即取消(下面三条);
+   *  ② 泡吃指针且点得动(最后两条)—— 修前它整块 pointer-events:none,
+   *     那等于「这块泡永远碰不到」。
+   * ────────────────────────────────────────────────────────────────── */
+  function wrapOf(name: string): HTMLElement {
+    const strip = document.querySelector('[data-dock="strip"]') as HTMLElement
+    return within(strip).getByLabelText(name).parentElement as HTMLElement
+  }
+
+  it('离开瓦不当场收 —— 宽限没走完之前泡还在(那正是走过去要花的时间)', () => {
+    render(<AppShell />)
+    hoverTile('文件')
+    fireEvent.mouseLeave(wrapOf('文件'))
+    act(() => void vi.advanceTimersByTime(PREVIEW_GRACE_MS - 1))
+    expect(document.querySelector('[data-preview="files"]')).toBeTruthy()
+  })
+
+  it('宽限走完还没回来才收', () => {
+    render(<AppShell />)
+    hoverTile('文件')
+    fireEvent.mouseLeave(wrapOf('文件'))
+    act(() => void vi.advanceTimersByTime(PREVIEW_GRACE_MS))
+    expect(document.querySelector('[data-preview="files"]')).toBeNull()
+  })
+
+  it('半路回到泡上就取消收拢,而且**不重新长一遍**(600ms 不再数一次)', () => {
+    render(<AppShell />)
+    hoverTile('文件')
+    fireEvent.mouseLeave(wrapOf('文件'))
+    act(() => void vi.advanceTimersByTime(PREVIEW_GRACE_MS - 10))
+    // 泡是 .wrap 的后代,所以「进泡」本身就是这一层的 mouseEnter。
+    fireEvent.mouseEnter(wrapOf('文件'))
+    act(() => void vi.advanceTimersByTime(PREVIEW_GRACE_MS * 2))
+    expect(document.querySelector('[data-preview="files"]')).toBeTruthy()
+  })
+
+  it('泡点得动:点它 = 点那块瓦(按它自己的打开方式开)', () => {
+    render(<AppShell />)
+    hoverTile('文件')
+    const bubble = document.querySelector('[data-preview="files"]') as HTMLElement
+    act(() => void fireEvent.click(bubble))
+    expect(useStageStore.getState().placements.files).toBeTruthy()
+  })
+
+  it('泡仍然 aria-hidden,而且不可聚焦 —— 键盘那条路走的是瓦上那颗真按钮', () => {
+    render(<AppShell />)
+    hoverTile('文件')
+    const bubble = document.querySelector('[data-preview="files"]') as HTMLElement
+    expect(bubble.getAttribute('aria-hidden')).toBe('true')
+    // aria-hidden 里出现可聚焦元素才是真的 a11y 违例(axe: aria-hidden-focus)。
+    expect(bubble.hasAttribute('tabindex')).toBe(false)
+    expect(bubble.getAttribute('role')).toBeNull()
   })
 })

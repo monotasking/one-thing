@@ -13,8 +13,16 @@ export const EXIT_MS = 120 // --dur-exit
 export const RELEASE_MS = 160 // --dur-release
 export const FLASH_MS = 240 // --dur-flash
 export const TOOLTIP_DELAY_MS = 300 // --dur-tooltip-delay
-export const DOCK_HIDE_DELAY_MS = 300 // 自动隐藏的收回宽限:离开留驻区后缓这么久才收,路过抖动不塌
+// --dur-dock-hide-delay:自动隐藏的收回宽限,离开留驻区后缓这么久才收,路过抖动不塌
+export const DOCK_HIDE_DELAY_MS = 300
 export const PREVIEW_DELAY_MS = 600 // --dur-preview-delay:悬停多久才把 Dock 预览泡长出来
+/**
+ * --dur-preview-grace:预览泡的收拢宽限。指针离开瓦(或泡)之后缓这么久才收,
+ * 再进即取消 —— 瓦与泡之间隔着 --preview-lift 那 12px 缝,那一段路谁都不属于,
+ * 修前一进缝泡就没了(08-31 真机实测:离瓦 3px 即消失)。
+ * 与 ATT_GRACE_MS 同为「宽限」不是「动画」:动效档 none 一格都不碰它。
+ */
+export const PREVIEW_GRACE_MS = 320
 export const SCROLL_SETTLE_MS = 400 // --dur-scroll-settle
 // --dur-skeleton-delay:载入骨架的出场延迟。比这更快回来的请求根本不该闪一下骨架
 // (规范:150ms 内到手就当作「立刻」)。

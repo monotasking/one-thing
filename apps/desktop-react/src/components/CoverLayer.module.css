@@ -1,0 +1,92 @@
+/* 关键帧复用 styles/motion.css 里既有的 scrimIn / panelIn ——
+ * 盖的进出与舞台是同一种动作(一块面接管一片地方),没有理由多一段关键帧。
+ * 全仓唯一的 @keyframes 产地仍然是那个文件,这里只引名字表里的 token。 */
+
+/* 盖只接管**内容栏**(AppShell 的 .center),所以它是 absolute 不是 fixed:
+ * 参考系是那一栏自己,四条边上的架子照样露在外面 —— 这正是它与舞台的差别。 */
+.cover {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-cover);
+  background: var(--scrim);
+  display: flex;
+  padding: var(--sp-3);
+  animation: var(--kf-scrim-in) var(--dur-enter) var(--ease-out);
+}
+
+/* 「盖满」:面吃掉整条内容栏,只留 --sp-3 一圈底 —— 那一圈就是「点底关闭」
+ * 摸得到的地方(判据见组件注释)。定尺画布是舞台的做法,不是盖的。 */
+.panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--r-3);
+  background: var(--surface-2);
+  box-shadow: var(--sh-3);
+  animation: var(--kf-panel-in) var(--dur-enter) var(--ease-out);
+}
+
+/* 出场:反向播放同一条曲线,时长走 --dur-exit(与舞台逐字相同)。 */
+.leaving {
+  animation: var(--kf-scrim-in) var(--dur-exit) var(--ease) reverse;
+}
+
+.leaving .panel {
+  animation: var(--kf-panel-in) var(--dur-exit) var(--ease) reverse;
+}
+
+/* 头是舞台头的**同一份配方降一档**:盖只有一个动作(关),所以没有那排落点钮 ——
+ * 落点仍然改得了,走 Dock 右键那条既有的口。 */
+.header {
+  height: var(--stage-header-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+}
+
+.headIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-2);
+  flex: none;
+}
+
+.title {
+  flex: 1;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+.icon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+.close {
+  width: var(--btn-sm);
+  height: var(--btn-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-2);
+  color: var(--text-2);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+.close:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+}

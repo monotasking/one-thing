@@ -12,10 +12,11 @@
  * 两段:
  *
  *  ① **axe 全页扫描**(@axe-core/playwright,wcag2a / wcag2aa / best-practice)。
- *     三屏各扫一遍:产品外壳、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
- *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块),
- *     和 `?gallery` 那张组件规格页(15 件 ui 组件一次全在场,这是唯一能把每一件都
- *     摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
+ *     四屏各扫一遍:产品外壳、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
+ *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
+ *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
+ *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(15 件 ui 组件一次
+ *     全在场,这是唯一能把每一件都摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
  *
  *  ② **键盘走查**(手写断言,axe 查不到的那一半)。axe 是静态分析一棵树,它看不见
  *     「按 Tab 会走到哪」「Esc 之后焦点回没回来」。五条:
@@ -123,6 +124,33 @@ async function waitFor(label, predicate, timeoutMs = 20_000) {
   throw new Error(`超时(${timeoutMs}ms)等待:${label}\n最后一次读数:${JSON.stringify(last)}`)
 }
 
+/**
+ * 等这一屏上的动画**播完**再量。
+ *
+ * axe 的对比度那条规则读的是**此刻**的计算样式,而入场动画(--dur-enter 那一族
+ * 是 opacity + transform)中途的那一帧,前景与背景都还在半透明地混着 —— 于是
+ * 同一屏两次跑会得出两个数(08-31 实测:4.04/2.43 与 3.99/2.39,差的正是那一帧)。
+ * 一条会抖的门比没有门更糟:它教人重跑而不是教人修。
+ *
+ * 判据取 `document.getAnimations()`(CSS 动画与过渡都在里面),等它们各自的
+ * `finished` —— 比「睡 400ms」准:睡多久都是猜,而这是问动画本人。
+ * 无限循环的动画(spinner)永远不 finished,所以只等有终点的那些;
+ * 最后再给一帧,让最后一次样式重算落地。
+ */
+async function settleAnimations(page) {
+  await page.evaluate(async () => {
+    const ending = document
+      .getAnimations()
+      .filter((a) => {
+        const d = a.effect?.getComputedTiming?.()
+        return d ? d.iterations !== Infinity : true
+      })
+      .map((a) => a.finished.catch(() => undefined))
+    await Promise.all(ending)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+  })
+}
+
 /** 与 gate-files.mjs 同一条理由:用 element.click() 绕开可操作性判定,派发的仍是真事件。 */
 async function clickSelector(page, selector) {
   const clicked = await page.evaluate((css) => {
@@ -194,14 +222,27 @@ async function scanAxe(page, screen, include) {
  * (自定义属性保留作者写法,`.18` 没有前导 0),而 `outlineColor` 是浏览器序列化过的
  * `rgba(67, 133, 190, 0.18)` —— 逐字比会把每一站都判成裸的。首跑就是这么假红的。
  *
- * ── 一族豁免:文本输入 ─────────────────────────────────────────────────
- * 光标(caret)本身就是文本输入的焦点指示,这是 WCAG 2.4.7 认的形。所以
- * `contenteditable` 与 `<input>/<textarea>` 落焦而**周身四层都没有环**时,记进
- * 「文本输入」一栏而不是判红。判据是元素的种类,不是它的类名 —— 不写选择器白名单,
- * 那种表会变成往里塞东西的地方。
- * 留账:composer 的三处输入(.input / .askFree / .modelSearchInput)正落在这一栏里,
- * 它们的 `outline: none` 至今没有配任何替代品;ui/Input 那一族则是有环的
- * (环画在外壳 .field 上)。两者要不要统一,归 composer 那一批拍。
+ * ── 曾经的一族豁免:文本输入(08-31 视觉守恒批**退役**)───────────────────
+ * 光标(caret)本身也算焦点指示,WCAG 2.4.7 认这个形 —— 所以从前这道门把
+ * 「`contenteditable` / `<input>` / `<textarea>` 落焦却周身没有环」记进「文本输入」
+ * 一栏而不是判红,并把 composer 的三处输入(.input / .askFree / .modelSearchInput)
+ * 留在那一栏里等 composer 批拍板。
+ *
+ * 板拍了,口径统一到 ui/Input 那一副:**文本输入类的环画在看得见的外框上**
+ * (`.panel:has(.input:focus)` / `.askBar:has(.askFree:focus)` /
+ * `.modelSearch:has(.modelSearchInput:focus)`),输入本体的 `outline: none` 从此
+ * 各自配着替代品。于是 `caret` 那一栏应当**空着** —— 下面把它从「记一笔」升成
+ * 一条断言。反证:把 Composer.module.css 里 `.panel:has(.input:focus)` 注释掉,
+ * composer 的输入区当场落回这一栏,门必红。
+ *
+ * 判据仍然是元素的种类而不是它的类名 —— 不写选择器白名单,那种表会变成往里塞
+ * 东西的地方;caret 这一栏也照旧算出来,只是从「统计口径」变成了「必须为零」。
+ *
+ * ── 往上找几层 ────────────────────────────────────────────────────────
+ * 从 4 层放宽到 6:composer 那块看得见的外框(`.panel`)离输入本体隔着
+ * writeRow → mode → bodyRow 三层,加上 `.panel` 自己正好第 4 跳 —— 旧的
+ * `hop < 4` 在第 4 跳之前就停了,环明明画着却查不到。上限是「找得到最远的那个
+ * 真外框」,不是一个审美数字。
  * ──────────────────────────────────────────────────────────────────────
  */
 function ringProbeSource() {
@@ -223,7 +264,7 @@ function ringProbeSource() {
     // 环也可能画在祖先上(Input 那一族:input 自己 outline:none,环在 .field 外壳上)。
     let carrier = null
     let node = el
-    for (let hop = 0; node && hop < 4; hop += 1) {
+    for (let hop = 0; node && hop < 6; hop += 1) {
       const st = getComputedStyle(node)
       if (st.outlineStyle !== 'none' && chan(st.outlineColor) === want) {
         carrier = 'outline'
@@ -288,11 +329,18 @@ async function checkComposerTabOrder(page) {
         ? `;裸着的:${bare.slice(0, 8).map((s) => `${s.tag}${s.testid ? `[${s.testid}]` : ''} outline=${s.outline} vs ring=「${s.ring}」`).join(' · ')}`
         : ''),
   )
+  // 文本输入也得画环(08-31 起)。从前这一栏是「靠光标指示焦点」的统计口径,
+  // 现在口径统一到 ui/Input:环画在看得见的外框上,所以这一栏必须空着。
+  assert(
+    caret.length === 0,
+    '文本输入也画着外框环(不再靠光标豁免)'
+      + (caret.length
+        ? `;只有光标的:${caret.map((s) => `${s.tag}${s.role ? `[${s.role}]` : ''}${s.testid ? `[${s.testid}]` : ''}`).join(' · ')}`
+        : ''),
+  )
   const carriers = new Set(ringed.map((s) => s.carrier))
   console.log(
-    `      ${ringed.length} 站画着环(载体:${[...carriers].join(' / ') || '—'})`
-      + `;${caret.length} 站是文本输入,靠光标指示焦点`
-      + (caret.length ? `(${caret.map((s) => s.testid ?? s.tag).join(' · ')})` : ''),
+    `      ${ringed.length} 站画着环(载体:${[...carriers].join(' / ') || '—'})`,
   )
 }
 
@@ -426,7 +474,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/6] 起一台 core')
+    console.log('\n[1/7] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -443,7 +491,7 @@ async function main() {
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
     console.log('  ✓ core 起来了')
 
-    console.log('\n[2/6] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/7] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -459,7 +507,7 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/6] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/7] 产品外壳:axe 全页扫描 + Tab 序走查')
     await scanAxe(page, '外壳')
     await checkComposerTabOrder(page)
 
@@ -475,14 +523,38 @@ async function main() {
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[4/6] 模型服务面:开一块面再扫一次')
+    console.log('\n[4/7] 模型服务面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-providers"]')
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
     )
     await scanAxe(page, '模型服务面', '[data-testid="providers-panel"]')
 
-    console.log('\n[5/6] 组件规格页(?gallery):15 件 ui 组件一次全在场')
+    /*
+     * 「所有应用」面(08-31 Dock/形态批)。进这道门的理由与模型服务面逐字相同 ——
+     * **外壳那一屏看不见它**,而它是一整列 `role="switch"` 加一整列打开钮:
+     * 每一枚开关都得说得出「什么的开关」(Switch 的 `label`),每一颗打开钮都得
+     * 说得出「打开什么」;漏一个,读屏软件就只能念「开关,开」。
+     *
+     * 它同时是这道门里唯一一屏 **cover 形态**的面:盖挂在内容栏里而不是壳根上,
+     * 所以「盖开着的时候这一屏的无障碍树长什么样」只有在这里才扫得到。
+     * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
+     * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
+     */
+    console.log('\n[5/7] 所有应用面(cover 形态):开一块面再扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-apps"]')
+    await waitFor('所有应用面就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
+    )
+    await settleAnimations(page)
+    await scanAxe(page, '所有应用面', '[data-testid="apps-panel"]')
+    // 扫完把它关掉(Esc 走的正是本批新立的退层链),免得盖着的那一层挡住下一屏。
+    await page.keyboard.press('Escape')
+    await waitFor('所有应用面已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="apps-panel"]')),
+    )
+
+    console.log('\n[6/7] 组件规格页(?gallery):15 件 ui 组件一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -497,7 +569,7 @@ async function main() {
     )
     await scanAxe(page, '规格页')
 
-    console.log('\n[6/6] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[7/7] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 
@@ -515,7 +587,7 @@ async function main() {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 三屏 axe 零违例;键盘走查全绿')
+  console.log('\n[a11y-gate] ok —— 四屏 axe 零违例;键盘走查全绿')
 }
 
 main().catch((error) => {

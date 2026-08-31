@@ -16,7 +16,7 @@ import {
 } from './types'
 
 /**
- * 工作区切换器的**唯一**状态源(v1)。全应用一份:Dock 瓦、⌘⇧O 命令面板、
+ * 工作区切换器的**唯一**状态源(v1)。全应用一份:Dock 瓦、⌘⇧W 命令面板、
  * 工作区总览三处都从这里取,不许谁再开第二份 —— 与 data/files-source.ts、
  * data/sessions-source.ts 逐字同一条纪律。
  *
