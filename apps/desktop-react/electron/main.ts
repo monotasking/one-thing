@@ -44,6 +44,26 @@ import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { configureLogging, getLogger } from '@onething/backend/wiring/logging/index.js'
 import { applyShellNetworkProxySettings, configureShellHostPorts } from './host-ports.js'
 
+/**
+ * ── 同店同钥:app 名字就是 safeStorage 的钥匙名 ─────────────────────────────
+ * macOS 上 safeStorage 的 Keychain 条目叫「<app 名> Safe Storage」。凭证文件
+ * (`workspaces/<id>/credentials.json`)是旧桌面以「onething Safe Storage」加密的;
+ * 壳的包名 `@onething/desktop-react` 生不出有效条目,Chromium 退到
+ * 「Electron Safe Storage」—— 另一把钥匙,解出来永远是垃圾 → 被当空表 →
+ * 引擎静默不开 run(08-31 真机:user/message 后无 run/start,正是这一格)。
+ * 文件头说的「子进程是另一个 app 身份」对壳本体同样成立:装配进壳里只补了
+ * 「谁来解」,名字不同则「用哪把钥匙」仍是错的。必须在 ready 之前设,
+ * safeStorage 的 OSCrypt 服务名在浏览器进程初始化时定死。
+ *
+ * 名字还决定默认 `userData`(appData/<名>)—— 那一半**不能**跟着改:改了就与
+ * 旧桌面共用同一个 Chromium profile 目录,两个进程并开会互踩(LevelDB 锁、
+ * GPU 缓存)。所以先记下按旧名算出的 userData,改名后原样设回去:
+ * 钥匙跟名字走,数据目录留原地,壳此前的 localStorage(阅读档、布局偏好)也不搬家。
+ */
+const shellUserData = app.getPath('userData')
+app.setName('onething')
+app.setPath('userData', shellUserData)
+
 type HttpDiscoveryRecord = {
   port: number
   host: string

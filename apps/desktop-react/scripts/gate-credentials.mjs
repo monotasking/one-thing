@@ -25,7 +25,10 @@
  * 那次**不可逆**的迁移。所以只从生产 store **只读**拷出凭证相关的那几份文件到一次性
  * 目录,别的一概不带。Keychain 的 ACL 认的是 app 身份不是文件路径,拷贝件照样解得开。
  *
- * ── 三条断言(实验组 = 壳)──────────────────────────────────────────────
+ * ── 四条断言(实验组 = 壳)──────────────────────────────────────────────
+ *   ⓪ `app.getName() === 'onething'` —— safeStorage 的钥匙名跟着 app 名走,
+ *      壳必须与桌面同名才拿的是同一把钥匙(08-31 真机漏网:名字错着 ② 也能绿,
+ *      因为温 store 里的密文是壳自己写的 —— 自己加密的当然自己解得开)。
  *   ① `providers.list` 非空 —— provider 目录读得出来。
  *      (注:对照组这一条也是绿的 —— provider 注册表由 `configureAppProviderRegistry`
  *       装配,每个宿主都跑。目录与凭证是两件事,分野在 ②。)
@@ -245,6 +248,14 @@ async function runShellLane(source, oauthCandidates) {
       env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     await app.firstWindow()
+
+    // ⓪ 同店同钥(08-31 真机漏网后补):safeStorage 的 Keychain 条目按 app 名字分
+    // (「<名> Safe Storage」)。桌面叫 onething,壳若不同名就是另一把钥匙 ——
+    // 此前 ② 的解密断言只证了「自己加密的自己解得开」(温 store 里迁移是壳自己跑
+    // 的),跨身份那半从未被证过,于是名字错着也全绿。名字是钥匙的**因**,先钉它。
+    const appName = await app.evaluate(({ app: electronApp }) => electronApp.getName())
+    assert(appName === 'onething', `⓪ 壳与桌面同名同钥(app.getName() === 'onething',实际 ${appName})`)
+
     const record = await waitFor('壳内嵌的 core 写出发现文件', () => {
       const found = discoveryOf(store)
       return found && found.owner === 'shell' ? found : undefined
