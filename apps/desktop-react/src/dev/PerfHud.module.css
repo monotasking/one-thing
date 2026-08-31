@@ -57,7 +57,7 @@
 }
 
 .report:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring-w) solid var(--accent-ring);
   outline-offset: 1px;
 }
 
@@ -80,7 +80,7 @@
 }
 
 .close:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring-w) solid var(--accent-ring);
   outline-offset: 1px;
 }
 
@@ -128,7 +128,7 @@
 }
 
 .rowBtn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--focus-ring-w) solid var(--accent-ring);
   outline-offset: 1px;
 }
 
