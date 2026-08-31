@@ -49,7 +49,14 @@ const SAMPLE_KEYS = [
   '--ui-surface-floating-bg',
   '--ui-text-primary-fg',
   '--ui-text-secondary-fg',
-  '--ui-text-muted-fg',
+  /*
+   * 从前这里是 `--ui-text-muted-fg`。2026-08-31 视觉守恒批把 --text-3 从「直取
+   * muted」改成「从 --ui-text-primary-fg 按 70% 现兑」(理由与 36 组主题标定写在
+   * theme-bridge.css),那个键从此**没有消费者** —— 留在抽样表里就违反了上面那句
+   * 「每一个都是真的被消费的那一头」。换成同族里仍然直取的 faint(--text-4 吃它),
+   * 墨族的抽样密度一点没降。
+   */
+  '--ui-text-faint-fg',
   '--ui-border-subtle-border',
   '--ui-border-default-border',
   '--ui-action-primary-bg',

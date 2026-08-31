@@ -95,8 +95,11 @@
   background: var(--ok);
 }
 
+/* info 有自己的色了(--info,palette.css 的第四档语义色)。从前这里借 --text-3 ——
+ * 那是「最淡的字」,不是「一条提示」:四档命运里只有它画的不是语义色,于是
+ * 一条 info 在名册里看起来像一条褪了色的记录,而不是一档独立的命运。 */
 .dotInfo {
-  background: var(--text-3);
+  background: var(--info);
 }
 
 .dotWarn {

@@ -9,13 +9,17 @@
   line-height: 1;
 }
 
+/* 前景是 --on-danger 而不是 --on-accent:同一块 --danger 实底,底下的 .unread 早就
+ * 写着 --on-danger,这里却借着 accent 那一档 —— 今天两者都是 #ffffff 所以看不出来,
+ * 但主题桥把它们接到 --ui-action-primary-fg / --ui-action-danger-fg 两个键上,
+ * 换个主题就会出现「同一颗红丸,数字和圆点不是一个白」。 */
 .danger {
   min-width: var(--badge-size);
   height: var(--badge-size);
   font-size: var(--fs-micro);
   font-weight: 600;
   background: var(--danger);
-  color: var(--on-accent);
+  color: var(--on-danger);
 }
 
 .ok {
