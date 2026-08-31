@@ -1,25 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronDown, Copy, X, resolveIcon } from '../../components/icons'
-import { COPY_FEEDBACK_MS } from '../../components/motion'
-import { Button } from '../../ui/Button'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { X } from '../../components/icons'
 import { Dialog } from '../../ui/Dialog'
-import { Menu, MenuItem, MenuSection } from '../../ui/Menu'
+import { IconButton } from '../../ui/IconButton'
 import { Spinner } from '../../ui/Spinner'
+import { Tooltip } from '../../ui/Tooltip'
+import { Button } from '../../ui/Button'
+/*
+ * 状态栏那一排是**结构性交互元素**(视觉本该定制:mono、极小、无底、贴着读数站),
+ * 所以它们消费的是 `ui/ButtonBase`(只清 UA、一个像素都不画),不是 `ui/Button`
+ * ——套一颗 ghost 按钮进 26 高的状态栏,那一行就不再是读数带了。
+ */
+import { ButtonBase } from '../../ui/ButtonBase'
 import { announce } from '../../ui/a11y/live-region'
-import { copyText } from '../../services/clipboard'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { baseNameOf, formatBytes } from '../../data/files-source'
+import { baseNameOf, formatBytes, useFilesSource } from '../../data/files-source'
 import { glyphOf } from '../../data/file-icons'
-import {
-  FILE_OPEN_MODES,
-  FILE_OPEN_MODE_LABELS,
-  isWiredFileOpenMode,
-  useFileOpenMode,
-} from '../../data/file-open-mode'
+import { closeViewerEverywhere } from './open-target'
 import { isDirty, isEditableFile, useViewerSource } from '../../data/viewer-source'
 import type { ViewerFile, ViewerView } from '../../data/viewer-source'
 import { FileGlyphMark } from '../FileGlyph'
+import { FileActionsMenu } from '../FileActionsMenu'
+import { DETAIL_POPOVER_GAP, FileDetailPopover } from '../FileDetailPopover'
 import { commandFor, keymapById, listKeymaps, resolveViewer } from './registry'
 import type { ViewerBodyProps } from './registry'
 import { JumpBar } from './JumpBar'
@@ -27,11 +29,9 @@ import { JumpBar } from './JumpBar'
 // 哪些键位档」。放在这里而不是应用入口 —— 谁要查表,谁负责保证表是装好的
 // (与 blocks/BlockView 的同款判例)。
 import './kinds'
-import './navigators'
+import { SEARCH_SIGIL } from './navigators'
 import './keymaps'
 import s from './FileViewer.module.css'
-
-const PencilIcon = resolveIcon('Pencil')
 
 /**
  * **文件查看器 = 壳**(08-31 claude design 定稿)。
@@ -68,7 +68,6 @@ const PencilIcon = resolveIcon('Pencil')
 export function FileViewer({
   onReveal,
   placement = 'panel',
-  allowEdit = true,
 }: {
   onReveal?: (path: string) => void
   /**
@@ -76,19 +75,19 @@ export function FileViewer({
    * F1 只有 panel 一格真接上,其余的骨架在这里,内容与状态一个字都不看它。
    */
   placement?: string
-  /**
-   * 铅笔露不露出来。定稿:「铅笔是可开关的一枚:纯只读配置下整枚不渲染,
-   * 其余形态不变」—— 关掉它不影响别的任何一格。
-   */
-  allowEdit?: boolean
 }) {
   const t = useT()
   const file = useViewerSource((st) => st.file)
   const pending = useViewerSource((st) => st.pending)
   const view = useViewerSource((st) => st.view)
   const edit = useViewerSource((st) => st.edit)
-  const close = useViewerSource((st) => st.close)
+  /*
+   * 关掉 = 内容清掉 **+ 那块瓦收回 Dock**(F2)。少了第二步,摆在舞台 / 浮窗 /
+   * 钉栏上的那一份会剩一个空壳子。编排在 open-target 那一处,不在这里判。
+   */
+  const close = closeViewerEverywhere
   const loadMore = useViewerSource((st) => st.loadMore)
+  const setScrollTop = useViewerSource((st) => st.setScrollTop)
   const setView = useViewerSource((st) => st.setView)
   const setEditing = useViewerSource((st) => st.setEditing)
   const setDraft = useViewerSource((st) => st.setDraft)
@@ -96,8 +95,24 @@ export function FileViewer({
 
   const rootRef = useRef<HTMLElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const [jumpOpen, setJumpOpen] = useState(false)
+  /**
+   * 跳转条:**null = 没开**,字符串 = 开着而且这是它开条时那串字。
+   * 一个格而不是「布尔 + 初值」两个格 —— 两个格必然出现「开着但初值是上一次的」
+   * 那种半状态(⌘L 之后再 ⌘F,条里会留着上次的前缀)。
+   */
+  const [jumpQuery, setJumpQuery] = useState<string | null>(null)
   const [confirmClose, setConfirmClose] = useState(false)
+  /**
+   * 身上右键弹出来的动作菜单开在哪个点(null = 没开)。
+   * **表本身不在这里** —— 它是 `content/FileActionsMenu`,与树行那张是同一件
+   * (09-01 裁定:动作单产地)。这里只决定「在哪儿弹」。
+   */
+  const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
+  /** 详情浮层贴在哪儿。与菜单同一条口径:内容是共用件,锚点是宿主自己的事。 */
+  const [detailAt, setDetailAt] = useState<{ x: number; y: number } | null>(null)
+  const detail = useFilesSource((st) => st.detail)
+  const openDetail = useFilesSource((st) => st.openDetail)
+  const closeDetail = useFilesSource((st) => st.closeDetail)
 
   const path = file?.path ?? pending ?? ''
   const name = file?.name ?? (pending ? baseNameOf(pending) : '')
@@ -124,6 +139,23 @@ export function FileViewer({
     // 浏览器会为滚动目标先把那一行排出来。
     el?.scrollIntoView({ block: 'center' })
   }, [view.currentLine, file?.path])
+
+  /*
+   * ── 换落点不丢滚动位(F2 兑现 F1 那条留账)────────────────────────────
+   * 换一档打开方式 = 换宿主 = 这棵组件树真的重挂。挂上来的第一帧就把 store 里
+   * 那个数贴回去,用户看到的是「同一份内容还停在原地」,而不是弹回顶上。
+   *
+   * `useLayoutEffect` 而不是 `useEffect`:后者在**画完之后**才跑,屏幕上会先闪
+   * 一帧顶部。高亮是懒加载的,所以极长的文件在首帧可能还没排到那么高 ——
+   * 那时贴不满是事实(浏览器把 scrollTop 钳到当下的可滚范围),
+   * 记在这里:要做到逐像素还原得等一台影子布局,不值当。
+   */
+  useLayoutEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    // 读 `getState()` 而不是订阅:订阅了就等于每一帧滚动都重渲这块面。
+    el.scrollTop = useViewerSource.getState().scrollTop
+  }, [placement, file?.path])
 
   /* ── 关闭:有未保存的改动就先问 ─────────────────────────────────────── */
   const requestClose = useCallback(() => {
@@ -165,14 +197,21 @@ export function FileViewer({
         case 'jump':
           if (lineCount === undefined) return
           event.preventDefault()
-          setJumpOpen(true)
+          setJumpQuery('')
+          return
+        case 'find':
+          // ⌘F = 同一条跳转条,前缀先打上。这一型不按行寻址(图 / 播放条 /
+          // 诚实态)时**不接**这一下 —— 让它原样冒上去,别处也许还用得着。
+          if (lineCount === undefined) return
+          event.preventDefault()
+          setJumpQuery(SEARCH_SIGIL)
           return
         case 'toggleWrap':
           event.preventDefault()
           setView({ wrap: !view.wrap })
           return
         case 'toggleEdit':
-          if (!allowEdit || !handler?.editable) return
+          if (!handler?.editable) return
           event.preventDefault()
           setEditing(!edit.editing)
           return
@@ -188,7 +227,6 @@ export function FileViewer({
     view.wrap,
     edit.editing,
     lineCount,
-    allowEdit,
     handler?.editable,
     runSave,
     setView,
@@ -201,6 +239,24 @@ export function FileViewer({
       ref={rootRef}
       className={`${s.viewer} ${s[`frame-${placement}`] ?? ''}`}
       data-testid="file-viewer"
+      /*
+       * **面域局部键的落点**(09-01 三层立法,表在 keymap/scopes.ts)。
+       * ⌘S / ⌘L / ⌘F 只在焦点落在这块面里时才响 —— 监听挂在这个根上,
+       * 于是它天然先于 window 上那个全局派发器收到按键;接住了就 preventDefault,
+       * 全局那边开头一句 `if (e.defaultPrevented) return` 让开。
+       *
+       * `tabIndex={-1}` 是那条路的前提:一个 `<section>` 默认不可落焦,点在
+       * 代码上焦点会留在 body,按键根本到不了这个根。-1 = **只接程序焦点**,
+       * 不进 Tab 序(它不是控件,不该在 Tab 上占一站)。
+       */
+      data-key-scope="viewer"
+      tabIndex={-1}
+      onPointerDown={(e) => {
+        // 点在里面的真控件上时不抢焦点(那颗钮自己会拿);点在正文上才把焦点
+        // 收到面域根上 —— 那正是「我在看这块面」的意思。
+        if ((e.target as HTMLElement).closest('button, input, textarea, a')) return
+        rootRef.current?.focus({ preventScroll: true })
+      }}
       data-placement={placement}
       data-viewer-kind={handler?.id}
       aria-label={t('viewer.label')}
@@ -212,52 +268,58 @@ export function FileViewer({
        * 不是 `<footer>`(那会变成 contentinfo)。语义靠 aria-label 与角色说,
        * 不靠一个会顺手宣布地标的标签名。
        */}
+      {/*
+       * ── 檐上只剩身份(09-01 用户裁定)────────────────────────────────
+       * 修前这条 40 高的檐上挤着七件:类型徽 · 名 · 路径复制钮 · 未保存丸 ·
+       * 读取中 · 铅笔 · Finder · 打开方式下拉 · 关闭。真机上文件名被挤成
+       * `kimi-sli…`,而其中四件在树行右键菜单里**又有一份**。
+       *
+       * 裁定:**头只放身份与关闭,动作全归右键菜单**(CLAUDE.md 禁令区)。
+       * 于是这里只剩三件 —— 类型徽 + 名(截断,Tooltip 说全名)+ 未保存丸,
+       * 加行尾一颗关闭。「正在读取…」搬去脚上那条状态栏(脚是读数的地方)。
+       *
+       * 撤掉的四件各自的新家:
+       *   复制路径 / 在 Finder 显示 / 编辑 / 打开方式 → 身上右键那张
+       *   `FileActionsMenu`(与树行同一张表,同一份定义)。
+       */}
       <div className={s.chrome}>
-        <FileGlyphMark glyph={glyph} className={s.chromeGlyph} />
-        <span className={s.name} data-testid="viewer-name" data-viewer-path={path}>
-          {name}
-        </span>
-        <CopyPathAction path={path} t={t} />
+        {/*
+         * ── 没有文件就**不画身份**(09-01 gate:a11y 的 `_chromeGlyph` 2.68 红)──
+         * F2 之前查看器只可能在「有文件」的情况下出现,所以这两格无条件画。
+         * F2 把它变成一块普通的瓦之后,「一个文件都没打开」成了真会到达的一帧,
+         * 而那时 `glyphOf(name || '?', 'file')` 会造一枚**不存在的文件**的徽
+         * (认不出 → `···` 那一格)。它有两重错:
+         *  ① 它在说谎 —— 屏幕上并没有一个叫 `?` 的文件;
+         *  ② 那一格的底/字是 --fb-unknown 那对灰,对比度 2.68 < 4.5(axe 当场红)。
+         * 修法是**别画**:没有身份的时候檐上就只剩关闭。对比度那一格另修
+         * (tokens 里 --fb-unknown-fg / --fb-bin-fg 压深到 AA),两件事各修各的。
+         */}
+        {path && <FileGlyphMark glyph={glyph} className={s.chromeGlyph} />}
+        {/*
+         * 名字截断,Tooltip 说全名(禁令区:标题截断须配 Tooltip 全名)。
+         * 提示里给的是**整条路径**而不只是文件名 —— 两个同名文件在两个目录里
+         * 是这一格最常见的歧义,而路径钮已经不在檐上了。
+         */}
+        {path && (
+          <Tooltip content={path}>
+            <span className={s.name} data-testid="viewer-name" data-viewer-path={path}>
+              {name}
+            </span>
+          </Tooltip>
+        )}
         {dirty && (
           <span className={s.dirty} data-testid="viewer-dirty">
             <span className={s.dirtyDot} aria-hidden="true" />
             {t('viewer.unsaved')}
           </span>
         )}
-        {pending && (
-          <span className={s.inflight} data-testid="viewer-inflight">
-            <Spinner label={t('viewer.reading')} />
-            <span className={s.inflightText}>{t('viewer.reading')}</span>
-          </span>
-        )}
         <span className={s.actions}>
-          {allowEdit && handler?.editable && (
-            <button
-              type="button"
-              className={edit.editing ? `${s.action} ${s.actionOn}` : s.action}
-              aria-pressed={edit.editing}
-              aria-label={t('viewer.edit')}
-              data-testid="viewer-edit-toggle"
-              onClick={() => setEditing(!edit.editing)}
-            >
-              <PencilIcon className={s.actionIcon} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          )}
-          {onReveal && path && (
-            <button type="button" className={s.action} onClick={() => onReveal(path)}>
-              {t('files.reveal')}
-            </button>
-          )}
-          <OpenModeAction t={t} />
-          <button
-            type="button"
-            className={s.action}
-            aria-label={t('viewer.close')}
-            data-testid="viewer-close"
+          <IconButton
+            icon={X}
+            label={t('viewer.close')}
+            testId="viewer-close"
             onClick={requestClose}
-          >
-            <X className={s.actionIcon} strokeWidth={1.75} aria-hidden="true" />
-          </button>
+          />
         </span>
       </div>
 
@@ -268,16 +330,37 @@ export function FileViewer({
         </div>
       )}
 
-      <div className={s.body} ref={bodyRef} data-testid="viewer-body">
-        {jumpOpen && lineCount !== undefined && file && (
+      <div
+        className={s.body}
+        ref={bodyRef}
+        data-testid="viewer-body"
+        /* 抄进 store 好让换落点之后贴得回去。没有组件订阅 `scrollTop`,
+         * 所以这一口每帧调都不引起重渲(理由写在 viewer-source 文件头 ④)。 */
+        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        /*
+         * 身上右键 = 这个文件的动作菜单(09-01 裁定:动作单产地)。
+         * 与树行右键弹的是**同一件组件**,所以两处的项与次序不可能分叉。
+         *
+         * **落在编辑框里的那一下不接**:那时右键该是文本域自己的那一套
+         * (粘贴 / 撤销 / 拼写)。判据是「点在哪儿」而不是「在不在编辑态」——
+         * 后者会把编辑态下点在别处的右键也一起吞掉,而那时用户找不到出口。
+         */
+        onContextMenu={(e) => {
+          if (!file) return
+          if ((e.target as HTMLElement).closest('textarea')) return
+          e.preventDefault()
+          setMenuAt({ x: e.clientX, y: e.clientY })
+        }}
+      >
+        {jumpQuery !== null && lineCount !== undefined && file && (
           <JumpBar
             file={file}
             lineCount={lineCount}
-            onClose={() => setJumpOpen(false)}
-            onJump={(line) => {
-              setView({ currentLine: line })
-              setJumpOpen(false)
-            }}
+            initialQuery={jumpQuery}
+            onClose={() => setJumpQuery(null)}
+            /* 落点只做一件事:改当前行。**关不关条由那一档说了算**(检索要连着走,
+             * 行号跳完就收)—— 判据在 navigator.cycle 上,不在这里。 */
+            onJump={(line) => setView({ currentLine: line })}
           />
         )}
         {file && bodyProps && handler ? (
@@ -296,14 +379,23 @@ export function FileViewer({
              */
             <handler.Body key={file.path} {...bodyProps} />
           )
-        ) : (
+        ) : pending ? (
           /*
-           * ② 骨架**只首载**:走到这里必然是「手上什么都没有」的第一帧。
-           * 之后再切文件,上面那一支永远成立(旧内容还在),这里不会再出现。
+           * ② 骨架**只首载**:走到这里必然是「手上什么都没有、而且正在读」的
+           * 第一帧。之后再切文件,上面那一支永远成立(旧内容还在),不会再来。
            */
           <p className={s.note} data-testid="viewer-first-load">
             <Spinner label={t('viewer.reading')} />
             <span className={s.noteDetail}>{t('viewer.reading')}</span>
+          </p>
+        ) : (
+          /*
+           * **空态**(F2 才有得着):查看器成了一块普通的瓦,于是它可以在
+           * 「一个文件都没打开」的情况下被点开(Dock 上点那块瓦)。这一格说的是
+           * 实话 —— 不转圈(没有东西在读),也不假装是个错误。
+           */
+          <p className={s.note} data-testid="viewer-empty">
+            <span className={s.noteDetail}>{t('viewer.noFile')}</span>
           </p>
         )}
       </div>
@@ -320,8 +412,11 @@ export function FileViewer({
         saveError={edit.error}
         conflict={edit.conflict}
         editing={edit.editing}
+        reading={pending !== null}
         onSave={() => void runSave()}
-        onJump={() => setJumpOpen(true)}
+        onEditDone={() => setEditing(false)}
+        onJump={() => setJumpQuery('')}
+        onFind={() => setJumpQuery(SEARCH_SIGIL)}
         onKeymap={(id) => setView({ keymap: id })}
         onLoadMore={() => void loadMore()}
       />
@@ -360,93 +455,35 @@ export function FileViewer({
       >
         <p className={s.confirmText}>{t('viewer.confirmBody', { name })}</p>
       </Dialog>
+
+      {/*
+       * 身上右键那张动作菜单 —— 与树行**同一件**(动作单产地)。
+       * 目录那一支在这里不可能出现:查看器手上永远是一个文件。
+       */}
+      {menuAt && file && (
+        <FileActionsMenu
+          target={{ path: file.path, name: file.name, type: 'file' }}
+          x={menuAt.x}
+          y={menuAt.y}
+          onClose={() => setMenuAt(null)}
+          onDetail={() => {
+            setDetailAt({ x: menuAt.x, y: menuAt.y + DETAIL_POPOVER_GAP })
+            void openDetail({ path: file.path, name: file.name, type: 'file' })
+          }}
+        />
+      )}
+      {detail && detailAt && (
+        <FileDetailPopover
+          detail={detail}
+          x={detailAt.x}
+          y={detailAt.y}
+          onClose={() => {
+            setDetailAt(null)
+            closeDetail()
+          }}
+        />
+      )}
     </section>
-  )
-}
-
-/* ── 头上那几格 ────────────────────────────────────────────────────────── */
-
-/**
- * 路径 = **一颗钮**:点它就复制,就地变「已复制」(定稿)。它不是一行可读的字,
- * 所以它可以被截断 —— 要看全整条路径的场合是双击详情面,那里的路径行允许折行。
- * 反馈不弹通知(08-31 拍板:复制走就地反馈)。
- */
-function CopyPathAction({ path, t }: { path: string; t: TFn }) {
-  const [copied, setCopied] = useState(false)
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => clearTimeout(timer.current), [])
-  if (!path) return null
-
-  return (
-    <button
-      type="button"
-      className={copied ? `${s.pathBtn} ${s.pathBtnDone}` : s.pathBtn}
-      data-testid="viewer-copy-path"
-      onClick={() => {
-        void copyText(path).then((ok) => {
-          announce(t(ok ? 'common.copied' : 'common.copyFailed'))
-          setCopied(ok)
-          clearTimeout(timer.current)
-          timer.current = setTimeout(() => setCopied(false), COPY_FEEDBACK_MS)
-        })
-      }}
-    >
-      {copied ? (
-        <Check className={s.pathIcon} strokeWidth={1.75} aria-hidden="true" />
-      ) : (
-        <Copy className={s.pathIcon} strokeWidth={1.75} aria-hidden="true" />
-      )}
-      <span className={s.pathText}>{copied ? t('common.copied') : path}</span>
-    </button>
-  )
-}
-
-/**
- * 「打开方式」—— 与树行菜单里那一组**同一张表、同一份记忆**
- * (`data/file-open-mode.ts`)。今天只有「面板内」真兑现,其余六档记住选择 +
- * 一句「还没接上」:那是既有的诚实降级,这里一个字都不改口径。
- */
-function OpenModeAction({ t }: { t: TFn }) {
-  const mode = useFileOpenMode((st) => st.mode)
-  const setMode = useFileOpenMode((st) => st.setMode)
-  const [at, setAt] = useState<{ x: number; y: number } | null>(null)
-
-  return (
-    <>
-      <button
-        type="button"
-        className={s.action}
-        data-testid="viewer-open-mode"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          setAt({ x: rect.left, y: rect.bottom })
-        }}
-      >
-        {t(FILE_OPEN_MODE_LABELS[mode])}
-        <ChevronDown className={s.actionIcon} strokeWidth={1.75} aria-hidden="true" />
-      </button>
-      {at && (
-        <Menu
-          x={at.x}
-          y={at.y}
-          onClose={() => setAt(null)}
-          label={t('files.openWith')}
-          minWidth="var(--files-menu-w)"
-        >
-          <MenuSection>{t('files.openWith')}</MenuSection>
-          {FILE_OPEN_MODES.map((option) => (
-            <MenuItem key={option} checked={option === mode} onClick={() => setMode(option)}>
-              <span className={s.menuLine}>
-                <span className={s.menuMain}>{t(FILE_OPEN_MODE_LABELS[option])}</span>
-                {!isWiredFileOpenMode(option) && (
-                  <span className={s.menuTrail}>{t('files.openModeSoon')}</span>
-                )}
-              </span>
-            </MenuItem>
-          ))}
-        </Menu>
-      )}
-    </>
   )
 }
 
@@ -497,8 +534,11 @@ function StatusBar({
   saveError,
   conflict,
   editing,
+  reading,
   onSave,
+  onEditDone,
   onJump,
+  onFind,
   onKeymap,
   onLoadMore,
 }: {
@@ -513,8 +553,12 @@ function StatusBar({
   saveError: string | undefined
   conflict: boolean
   editing: boolean
+  /** 手上有没有在飞的读。**从檐上搬下来的**(09-01 裁定:头只放身份,脚放读数)。 */
+  reading: boolean
   onSave: () => void
+  onEditDone: () => void
   onJump: () => void
+  onFind: () => void
   onKeymap: (id: string) => void
   onLoadMore: () => void
 }) {
@@ -537,14 +581,24 @@ function StatusBar({
 
       {/* 中段:载入进度 / 存盘读数。它是这一行里唯一的弯腰件。 */}
       <span className={s.statusMid}>
-        {truncated ? (
+        {/*
+         * 「正在读取…」从檐上搬到了这里(裁定:头只放身份与关闭)。它排在最前 ——
+         * 「还在读」压过「载入了百分之几」,后者说的是上一份已经到手的内容。
+         * Spinner 出现在状态栏是允许的两处之一(禁令区:钮内或状态栏)。
+         */}
+        {reading ? (
+          <span className={s.statusNote} data-testid="viewer-inflight">
+            <Spinner label={t('viewer.reading')} />
+            {t('viewer.reading')}
+          </span>
+        ) : truncated ? (
           <>
             <span className={s.statusNote}>
               {t('viewer.loadedPercent', { percent: `${percent}`, size: formatBytes(truncated.size) })}
             </span>
-            <button type="button" className={s.statusLink} onClick={onLoadMore}>
+            <ButtonBase className={s.statusLink} onClick={onLoadMore}>
               {t('viewer.loadMore')}
-            </button>
+            </ButtonBase>
           </>
         ) : conflict ? (
           <span className={s.statusWarn}>{t('viewer.conflict')}</span>
@@ -559,46 +613,64 @@ function StatusBar({
 
       {editing && (
         /* ③ 异步钮的 pending 态:存盘在飞时禁用并换字,不给第二次机会。 */
-        <button
-          type="button"
+        <ButtonBase
           className={s.statusLink}
           disabled={saving}
           data-testid="viewer-save"
           onClick={onSave}
         >
           {t(saving ? 'viewer.saving' : 'viewer.save')}
-        </button>
+        </ButtonBase>
+      )}
+      {editing && (
+        /*
+         * 「完成编辑」。铅笔退役之后,**编辑框自己那一屏上得有一个出口** ——
+         * 右键在编辑框里让给了文本域(粘贴 / 撤销),菜单那条路要先把指针挪出
+         * 编辑区才走得通,那不该是唯一的出口。它与旁边那颗「保存」同族:
+         * 状态栏上本来就有动作链接,这里不是新开一类。
+         */
+        <ButtonBase className={s.statusLink} data-testid="viewer-edit-done" onClick={onEditDone}>
+          {t('viewer.editDone')}
+        </ButtonBase>
       )}
 
       {/* Vim 开关。档只是一张表,换档即时生效且不重挂查看器。 */}
       {keymaps.length > 1 && (
-        <button
-          type="button"
+        <ButtonBase
           className={vim ? `${s.statusLink} ${s.statusLinkOn}` : s.statusLink}
           aria-pressed={vim}
           data-testid="viewer-vim-toggle"
           onClick={() => onKeymap(vim ? 'default' : 'vim')}
         >
           {t('viewer.keymapVim')}
-        </button>
+        </ButtonBase>
       )}
 
       {statusItems.map((item) => (
-        <button
+        <ButtonBase
           key={item.id}
-          type="button"
           className={item.on ? `${s.statusLink} ${s.statusLinkOn}` : s.statusLink}
           aria-pressed={item.on}
           onClick={item.onToggle}
         >
           {t(item.labelKey)}
-        </button>
+        </ButtonBase>
       ))}
 
+      {/*
+       * 检索(⌘F)。它是**键盘那条路的鼠标口** —— 组件消费义务的同款道理:
+       * 一件只有快捷键能做到的事,对不知道那个键的人等于不存在。
+       * 与「行 n:1 ⌘L」同一族(两者开的是同一条跳转条,只差一个前缀)。
+       */}
       {lineCount !== undefined && (
-        <button type="button" className={s.statusLink} data-testid="viewer-jump" onClick={onJump}>
+        <ButtonBase className={s.statusLink} data-testid="viewer-find" onClick={onFind}>
+          {t('viewer.findReadout')}
+        </ButtonBase>
+      )}
+      {lineCount !== undefined && (
+        <ButtonBase className={s.statusLink} data-testid="viewer-jump" onClick={onJump}>
           {t('viewer.lineReadout', { line: `${view.currentLine || 1}` })}
-        </button>
+        </ButtonBase>
       )}
     </div>
   )

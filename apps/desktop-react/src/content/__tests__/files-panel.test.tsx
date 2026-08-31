@@ -524,7 +524,7 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
 
-    fireEvent.click(document.querySelector(`[data-file-more="${ROOT}/README.md"]`)!)
+    fireEvent.click(screen.getByTestId(`files-more:${ROOT}/README.md`))
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual(byContext)
   })
@@ -551,16 +551,37 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('float'))
   })
 
-  it('只有「面板内」真接上了 —— 其余六档各带一句「还没接上」+ 一句注脚', async () => {
+  /*
+   * ── F2:七档全接上了 ────────────────────────────────────────────────
+   * F1 的诚实降级(六档「记住但不假装」+ 一句注脚)到此结清:查看器成了一块
+   * 普通的瓦,那六档就是壳里已经有的 `openAs(id, placement)`。这一条把新事实
+   * 钉死 —— 一句「还没接上」都不该再有。
+   */
+  it('七档全真接上了:一句「还没接上」都没有,注脚也跟着退役', async () => {
     installPort()
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
 
-    expect(screen.getAllByText('还没接上')).toHaveLength(6)
+    expect(screen.queryAllByText('还没接上')).toHaveLength(0)
     expect(
-      screen.getByText('目前只有「面板内」真能打开;其余几档先把你的选择记下来。'),
-    ).toBeTruthy()
+      screen.queryByText('目前只有「面板内」真能打开;其余几档先把你的选择记下来。'),
+    ).toBeNull()
+  })
+
+  it('选一档非面板落点 = 那块瓦当场被摆过去(选档即生效)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    // 先打开一个文件,再换档 —— 「调整后没有生效」报的正是这一步。
+    fireEvent.click(row(`${ROOT}/README.md`))
+    await waitFor(() => expect(useViewerSource.getState().pending ?? useViewerSource.getState().file).toBeTruthy())
+    await openMenu(`${ROOT}/README.md`)
+    fireEvent.click(screen.getByText('主区域'))
+    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
+    expect(useStageStore.getState().placements['viewer']).toEqual({ kind: 'stage' })
+    // 面板内那条分栏跟着收起来 —— 一份内容只该有一个落点(两处同时画就是重影)。
+    await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
   })
 
   it('目录那一行菜单说「展开 / 收起」,文件说「打开查看」', async () => {
@@ -604,14 +625,39 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
 })
 
 describe('详情:附属浮层(不是打断式对话框)', () => {
-  /** 双击一行(先一次 click 走单击那条路,再一次带 detail:2 的 click,最后 dblClick)。 */
+  /**
+   * 开一行的详情。
+   *
+   * ── 09-01 裁定:**双击那条路整条删了** ──────────────────────────────
+   * 报障原话是「双击间隔多久了还能出现」;查下去发现两件事:这台壳对间隔
+   * 一个判据都没有(挂的是 `onDoubleClick`,Blink 只看平台递来的 clickCount),
+   * 而 macOS 触控板的**双指点按到达时就是双击形态**,与右键语义正面打架 ——
+   * 用户想开右键菜单,得到的是详情浮层。
+   *
+   * 裁定不是「收紧窗口」而是**整条删掉**:打开 = 单击 / ↵,动作 = 右键菜单,
+   * 详情的入口是 ⌘I 与菜单里那一行。所以这个助手走的正是菜单那条路。
+   */
   async function openDetail(name: string) {
     const target = screen.getByText(name)
-    fireEvent.click(target, { detail: 1 })
-    fireEvent.click(target, { detail: 2 })
-    fireEvent.doubleClick(target)
+    const path = target.closest('[data-file-path]')?.getAttribute('data-file-path') ?? ''
+    fireEvent.contextMenu(target)
+    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
+    fireEvent.click(screen.getByText('详情'))
     await waitFor(() => expect(screen.getByTestId('files-detail')).toBeTruthy())
+    return path
   }
+
+  it('双击**不再**开详情(09-01 裁定:触控板双指点按与右键打架)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    const target = screen.getByText('README.md')
+    fireEvent.click(target)
+    fireEvent.doubleClick(target)
+    // 给它一次真正的机会:等一轮微任务,详情仍然不该出现。
+    await Promise.resolve()
+    expect(screen.queryByTestId('files-detail')).toBeNull()
+  })
 
   it('它是 role=dialog 但**没有 aria-modal**,而且不压遮罩 —— 树还在', async () => {
     installPort()
@@ -662,7 +708,7 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     expect(within(screen.getByTestId('files-detail')).getByText(`${ROOT}/README.md`)).toBeTruthy()
   })
 
-  it('双击目录:一样出详情,类型说「目录」,而且没有「预览打开」那颗钮', async () => {
+  it('目录:一样出详情,类型说「目录」,而且没有「预览打开」那颗钮', async () => {
     installPort({
       stat: vi.fn(async () => ({
         success: true,
@@ -681,12 +727,19 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     expect(screen.getByTestId('files-detail-mtime').textContent).toBe('—')
   })
 
-  it('双击一个目录只翻一次展开 —— 两次 click 里的第二次被 e.detail 挡掉', async () => {
+  /*
+   * 从前这里验的是「双击目录只翻一次展开」(靠 `e.detail > 1` 挡掉第二下)。
+   * 双击整条删掉之后那个问题不存在了 —— 一次单击就是一次展开,没有第二下。
+   * 换成验菜单那条路:菜单里的「展开」与单击是同一个动作。
+   */
+  it('菜单里的「展开」与单击是同一个动作', async () => {
     const port = installPort()
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
-    await openDetail('packages')
-    expect(port.listDirectory).toHaveBeenCalledWith(`${ROOT}/packages`)
+    fireEvent.contextMenu(screen.getByText('packages'))
+    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
+    fireEvent.click(screen.getByText('展开'))
+    await waitFor(() => expect(port.listDirectory).toHaveBeenCalledWith(`${ROOT}/packages`))
   })
 
   it('「在文件管理器中显示」把整条路径交下去;做不到弹一条 error', async () => {
@@ -889,13 +942,13 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
     })
     render(<>{renderContent('files')}</>)
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
-    const target = screen.getByText('README.md')
-    fireEvent.click(target, { detail: 1 })
-    fireEvent.doubleClick(target)
+    // 详情从右键菜单出(双击那条路 09-01 整条删了)。菜单不打开查看器,
+    // 所以这里屏幕上此刻**没有**查看器 —— 那颗钮按下去才是第一次开。
+    fireEvent.contextMenu(screen.getByText('README.md'))
+    await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
+    fireEvent.click(screen.getByText('详情'))
     await waitFor(() => expect(screen.getByTestId('files-detail')).toBeTruthy())
-    // 双击的第一下已经把查看器打开了(单击语义一个字没改),所以这里先关掉再走那颗钮。
-    fireEvent.click(screen.getByLabelText('关闭查看器'))
-    await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
+    expect(screen.queryByTestId('file-viewer')).toBeNull()
 
     fireEvent.click(within(screen.getByTestId('files-detail')).getByRole('button', { name: '打开查看' }))
     await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())

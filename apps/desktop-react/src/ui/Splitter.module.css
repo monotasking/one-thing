@@ -1,0 +1,63 @@
+/*
+ * 分隔杆。几何全部来自 tokens.css,这里一个字面值都没有。
+ *
+ * 它是一条**很窄的线 + 一块比线宽的抓手**:线是视觉(1px 的分栏线),
+ * 抓手是手感(太窄的抓手要瞄准,那是最典型的一种「难用但说不上哪儿不对」)。
+ * 两者靠 ::before 分开画,而不是把线画粗。
+ */
+.bar {
+  position: relative;
+  flex: none;
+  align-self: stretch;
+  padding: 0;
+  border: none;
+  background: transparent;
+  touch-action: none;
+}
+
+.vertical {
+  width: var(--splitter-hit);
+  cursor: col-resize;
+}
+
+.horizontal {
+  height: var(--splitter-hit);
+  cursor: row-resize;
+}
+
+/* 那条线。它**永远在**(分栏本来就该有一道界),悬停时才变accent。 */
+.bar::before {
+  content: '';
+  position: absolute;
+  background: var(--line-1);
+  transition: background var(--dur) var(--ease);
+}
+
+.vertical::before {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: var(--bw-1);
+  transform: translateX(-50%);
+}
+
+.horizontal::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: var(--bw-1);
+  transform: translateY(-50%);
+}
+
+.bar:hover::before,
+.dragging::before {
+  background: var(--accent);
+}
+
+/*
+ * 焦点环画在**抓手**上(全局 :focus-visible 那条给的是 outline)。这里只把
+ * 它往里收一点 —— 一条 6px 宽的抓手,环画在外面会盖住两边的内容。
+ */
+.bar:focus-visible {
+  outline-offset: calc(-1 * var(--focus-ring-w));
+}

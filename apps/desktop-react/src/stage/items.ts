@@ -46,6 +46,23 @@ export const WORKSPACE_ITEM_ID = 'workspace'
 export const APPS_ITEM_ID = 'apps'
 
 /**
+ * 文件查看器这块瓦的 id(F2)。与上面几个同一条理由不许各写各的字面量:
+ * 它被内容表、「打开方式」那张档→落点的翻译、以及查看器自己的开关三处引用。
+ *
+ * ── 它为什么必须是一块**普通的瓦** ────────────────────────────────────────
+ * 09-01 报障「open 位置,调整后也没有生效」:七档打开方式里只有「面板内」真接上。
+ * 要让「主区域 / 浮窗 / 四条边」真生效,只有两条路 ——
+ *  · 给查看器再造一套自己的浮窗 / 钉栏 / 舞台(那是把形态机抄第二遍);
+ *  · 或者让它变成一块**有内容、有落点、有打开方式**的普通瓦,于是那六档
+ *    就是壳里已经有的那一句 `openAs(id, placement)`。
+ * 选后者,一行新的形态机代码都没有。代价说清楚:Dock 上因此多一块瓦、
+ * 「所有应用」里多一行 —— 那正是「它是一块普通的瓦」的字面后果,不是副作用。
+ *
+ * 它是 `session` 域的:一份文件是从会话的工作目录里点开的,换会话就该跟着换。
+ */
+export const VIEWER_ITEM_ID = 'viewer'
+
+/**
  * L1 是静态 mock 表。之后接真实数据时,只有这张表换来源,
  * 形态机 / 组件一行不改 —— 这是把 items 单独放一个文件的全部理由。
  */
@@ -82,6 +99,11 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * services/notify-store,Dock 渲染时才把两者对上)。改动数与终端状态将来照抄
    * 那条路,而不是先在表里塞一个假的等着someone替换。
    */
+  /*
+   * 查看器 FileText:面里就是**一份打开着的文件**。与 files 的 FolderTree 分得开
+   * (一棵树 vs 一张纸),与 diff 的 GitCompare 也分得开(一份 vs 两版对照)。
+   */
+  { id: VIEWER_ITEM_ID, titleKey: 'item.viewer', scope: 'session', icon: 'FileText' },
   { id: 'diff', titleKey: 'item.diff', scope: 'session', icon: 'GitCompare' },
   { id: 'terminal', titleKey: 'item.terminal', scope: 'session', icon: 'Terminal' },
   { id: 'browser', titleKey: 'item.browser', scope: 'global', icon: 'Globe' },

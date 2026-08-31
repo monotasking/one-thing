@@ -1,25 +1,25 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { MessageKey } from '../i18n'
+import type { Placement } from '../stage/types'
 
 /**
  * 「用什么打开一个文件」—— 一条**偏好**,不是一个状态。
  *
  * 它跟着外壳既有的形态词汇走(`stage/types.ts` 的 Placement:dock / stage /
- * float / edge×4),再加上文件面自己那一档 `panel`(就地盖住树的只读预览,
- * 也就是今天真跑着的那条路)。刻意**不发明第二套名字**:「钉到右边」这件事
- * 在壳里已经有名字了,这里再造一个近义词,以后接查看器时两套词就得对表。
+ * float / edge×4),再加上文件面自己那一档 `panel`(文件面板里那条分栏)。
+ * 刻意**不发明第二套名字**:「钉到右边」这件事在壳里已经有名字了,这里再造一个
+ * 近义词,两套词就得永远对表。
  *
- * ── 诚实降级(本批唯一一处可感知的「还没接上」)────────────────────────────
- * 今天只有 `panel` 真生效 —— 别的六档都需要**查看器本体**(F1:一块能被放到
- * 舞台 / 钉栏 / 浮窗里的文件查看内容),而那块内容本批不做。
+ * ── F2:七档全接上了(09-01 报障「open 位置,调整后也没有生效」)────────────
+ * F1 那批只有 `panel` 真生效,别的六档「记住但不假装」。那条诚实降级到此结清:
+ * 查看器在 F2 变成了一块**普通的瓦**(`stage/items.ts` 的 VIEWER_ITEM_ID),
+ * 于是「摆到主区域 / 浮窗 / 四条边」这六件事全都是壳里已经有的那一句
+ * `openAs(id, placement)` —— 一行新的形态机代码都没有。
  *
- * 所以这里的做法是「记住,但不假装」:选了就存下来(下次开菜单勾在那儿),
- * 而菜单底下有一句注脚明说「只有面板内已经接上」。三种做法里选它的理由:
- *  · 把六档**藏起来** —— 用户不知道这套能力存在,接上那天也没人会去找;
- *  · 把六档**做成灰的** —— 那等于说「以后也不给你」,而它们只是还没到;
- *  · 记忆 + 注脚 —— 说出实情,并且把用户此刻的意愿存下来。
- * 这一条属**诚实降级**,不是缺陷,记在这里免得下一个人把它当 bug 修掉。
+ * 于是这张表现在只剩一个职责:**档 → 落点**的翻译,而且是唯一一份。
+ * `panel` 是其中唯一没有 Placement 的一档(它不是「摆到某处」,而是「不摆出去,
+ * 就住在文件面板那条分栏里」)—— 所以它翻出来是 null,不是拿 dock 顶。
  */
 export type FileOpenMode =
   | 'panel'
@@ -43,12 +43,41 @@ export const FILE_OPEN_MODES: readonly FileOpenMode[] = [
 
 /**
  * **今天真能兑现的那些**。菜单据此决定给哪些项画注脚 —— 判据在这里定一次,
- * 不散在渲染层的条件里;接上一档就往这张表里加一格,菜单一个字都不用改。
+ * 不散在渲染层的条件里。
+ *
+ * F2 起它等于全表:七档全接上了。这一格**不删**,理由是它是一条纪律的落点 ——
+ * 将来再加一档(比如「在系统默认应用里打开」),没接上的那段日子里菜单仍然
+ * 说得出实话,而不是又去渲染层里现写一个条件。
  */
-export const WIRED_FILE_OPEN_MODES: readonly FileOpenMode[] = ['panel']
+export const WIRED_FILE_OPEN_MODES: readonly FileOpenMode[] = FILE_OPEN_MODES
 
 export function isWiredFileOpenMode(mode: FileOpenMode): boolean {
   return WIRED_FILE_OPEN_MODES.includes(mode)
+}
+
+/**
+ * 档 → 壳里的落点。**唯一一份翻译**(树行菜单与查看器檐上那颗钮共用它)。
+ *
+ * `panel` 回 null:它不是「摆到某处」,是「不摆出去」—— 拿 `{kind:'dock'}` 顶
+ * 会读成「收进坞里」,而那是关掉,不是「在文件面板里就地看」。
+ */
+export function placementOfFileOpenMode(mode: FileOpenMode): Placement | null {
+  switch (mode) {
+    case 'panel':
+      return null
+    case 'stage':
+      return { kind: 'stage' }
+    case 'float':
+      return { kind: 'float' }
+    case 'edge-top':
+      return { kind: 'edge', side: 'top' }
+    case 'edge-bottom':
+      return { kind: 'edge', side: 'bottom' }
+    case 'edge-left':
+      return { kind: 'edge', side: 'left' }
+    case 'edge-right':
+      return { kind: 'edge', side: 'right' }
+  }
 }
 
 /** 每一档的名字是**界面文案**,所以这里只持有 key(同 StageItemSpec.titleKey 的判例)。 */

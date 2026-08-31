@@ -23,6 +23,8 @@ import type { HighlighterCore, ThemedToken } from 'shiki/types'
  * 不是错误,是这台不认识它。
  */
 
+import { LANGUAGES } from '../../../../data/languages'
+
 type Highlighter = HighlighterCore
 
 let highlighter: Highlighter | undefined
@@ -52,24 +54,19 @@ async function createHighlighter(): Promise<Highlighter> {
   return createHighlighterCore({
     engine: createJavaScriptRegexEngine(),
     themes: [import('shiki/themes/vitesse-light.mjs')],
-    langs: [
-      import('shiki/langs/typescript.mjs'),
-      import('shiki/langs/javascript.mjs'),
-      import('shiki/langs/tsx.mjs'),
-      import('shiki/langs/jsx.mjs'),
-      import('shiki/langs/json.mjs'),
-      import('shiki/langs/python.mjs'),
-      import('shiki/langs/bash.mjs'),
-      import('shiki/langs/css.mjs'),
-      import('shiki/langs/html.mjs'),
-      import('shiki/langs/markdown.mjs'),
-      import('shiki/langs/sql.mjs'),
-      import('shiki/langs/yaml.mjs'),
-      import('shiki/langs/go.mjs'),
-      import('shiki/langs/rust.mjs'),
-      import('shiki/langs/java.mjs'),
-      import('shiki/langs/diff.mjs'),
-    ],
+    /*
+     * 语言表**不在这里** —— 它是 `data/languages.ts` 那一张(09-01 合表:
+     * 「扩展名 → 语言 id」与「语言 id → grammar」从前分在两个文件里,漏加一处
+     * 不报错、只表现为「怎么没上色」)。这里只把那张表的 grammar 那一列取出来。
+     * 加一门语言 = 那张表加一行,这个文件一个字都不用改。
+     *
+     * 留账(如实说):shiki 的 `createHighlighterCore({ langs })` 收的是一组
+     * promise,所以这十六份 grammar 是在**建高亮器那一刻一次性全拉**的,
+     * 不是「用到哪门拉哪门」。改按需要走 `loadLanguage()`,那会让第一次遇到
+     * 一门新语言时多一次异步往返(先素文本、随后上色)—— 可感知的行为变化,
+     * 属拍板件。表已经按那条路铺好(`grammar` 是 thunk,不是求值过的 promise)。
+     */
+    langs: LANGUAGES.map((lang) => lang.grammar()),
   })
 }
 

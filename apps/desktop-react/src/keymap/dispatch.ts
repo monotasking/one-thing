@@ -87,6 +87,18 @@ export function useKeymapDispatch(): void {
     }
 
     const onKey = (e: KeyboardEvent) => {
+      /*
+       * **局部先接,没接住才轮到全局**(09-01 三层立法,见 keymap/scopes.ts)。
+       *
+       * 面域局部键(查看器的 ⌘S/⌘L/⌘F、文件行的 ⌘I)挂在各自那块面的**根元素**上,
+       * 于是它们先于这个 window 监听收到同一下按键;接住的那一下会 `preventDefault()`。
+       * 这一句是裁决的全部实现 —— 修前没有它,「用户把某条命令改绑到 ⌘I」会让
+       * 文件行的详情键和那条全局命令**同时响**(F1 那条留账说的正是这件事)。
+       *
+       * 它只认 `defaultPrevented`,不认「是谁接的」:任何一层真正消费掉了这一下,
+       * 全局就该让开。反过来,没消费的一律放行 —— 查看器里按 ⌘P 照样开检索。
+       */
+      if (e.defaultPrevented) return
       // 输入框里带修饰键的组合照常派发(⌘P 在写字时也该好使),无修饰的单键让给输入。
       if (isTypingTarget(e.target) && !hasModifier(e)) return
       const id = lookupCommand({ overrides }, e)

@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Search } from '../components/icons'
+import { Copy, Search, X, resolveIcon } from '../components/icons'
 import { AsyncButton } from '../ui/AsyncButton'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { IconButton } from '../ui/IconButton'
+import { Splitter } from '../ui/Splitter'
 import { Checkbox } from '../ui/Checkbox'
 import { ConfirmHost, Dialog, useConfirm } from '../ui/Dialog'
 import { Input } from '../ui/Input'
@@ -36,6 +38,8 @@ import s from './Gallery.module.css'
  * 这页只做一件事:把每件组件的每档尺寸、每个状态摊平了并排放,便于肉眼比对。
  * 它不演示业务组合 —— 那是外壳的事。
  */
+const PencilIcon = resolveIcon('Pencil')
+
 function Section({ name, children }: { name: string; children: ReactNode }) {
   return (
     <section className={s.section}>
@@ -82,6 +86,8 @@ const DENSITY = [
 
 export function Gallery() {
   const [text, setText] = useState('claude-fable-5')
+  const splitRef = useRef<HTMLDivElement>(null)
+  const [split, setSplit] = useState(45)
   const [on, setOn] = useState(true)
   const [checked, setChecked] = useState(true)
   const [half, setHalf] = useState(false)
@@ -116,6 +122,37 @@ export function Gallery() {
 
       {/* 每个输入框都得有名字 —— Input 自己**故意**不给默认 aria-label(名字是业务),
           所以规格页也要像真调用方一样给。少一个,axe 的 label 那条当场红。 */}
+      {/*
+       * 图标钮(第 18 件,09-01 立)。规格页把**每一档尺寸、每一个状态**摊平并排,
+       * 正是这件立件的理由 —— 从前各面各画一套,谁也说不出「标准的 hover 是什么」。
+       */}
+      <Section name="IconButton">
+        <IconButton icon={X} label="Close" size="xs" />
+        <IconButton icon={X} label="Close" size="sm" />
+        <IconButton icon={X} label="Close" size="md" />
+        <IconButton icon={PencilIcon} label="Edit" pressed />
+        <IconButton icon={X} label="Delete" tone="danger" />
+        <IconButton icon={Copy} label="Copy" disabled />
+        <Note>rest / hover / active / pressed / disabled;提示走 Tooltip,禁 native title</Note>
+      </Section>
+
+      {/* 分隔杆(第 19 件,09-01 立)。APG window splitter:←/→ 调、Home/End 到头、↵ 回默认。 */}
+      <Section name="Splitter">
+        <div className={s.wide} ref={splitRef} style={{ display: 'flex', height: 72 }}>
+          <div style={{ width: `${split}%`, background: 'var(--surface-1)' }} id="gallery-split-a" />
+          <Splitter
+            containerRef={splitRef}
+            value={split}
+            defaultValue={45}
+            label="Resize the left pane"
+            controls="gallery-split-a"
+            onCommit={setSplit}
+          />
+          <div style={{ flex: 1, background: 'var(--surface-2)' }} />
+        </div>
+        <Note>拖 / ←→ / Home / End / ↵ 回默认;拖拽期间零 React 重渲</Note>
+      </Section>
+
       <Section name="Input">
         <Input size="sm" value={text} onValueChange={setText} aria-label="Input sm" />
         <Input size="md" value={text} onValueChange={setText} aria-label="Input md" />

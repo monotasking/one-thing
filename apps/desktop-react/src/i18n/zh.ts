@@ -129,6 +129,7 @@ export const zh = {
 
   /* ── Dock 上那几块瓷砖的名字(是界面标签,不是内容) ───────────────── */
   'item.files': '文件',
+  'item.viewer': '查看器',
   'item.diff': '改动',
   'item.terminal': '终端',
   'item.browser': '浏览器',
@@ -216,6 +217,9 @@ export const zh = {
   'keymap.resetOf': '恢复「{name}」的默认组合',
   'keymap.recordOf': '为「{name}」设置快捷键',
   'keymap.structuralNote': 'Esc 逐层退出、总览的方向键与回车、浮窗拖拽是形态语法的一部分,不参与改键',
+  'keymap.scopedNote': '面域局部键(查看器 ⌘S/⌘L/⌘F、文件行 ⌘I)只在焦点落在那块面里时生效,局部先接、没接住才轮到全局',
+  'keymap.scopedConflict': '「{scope}」里被「{action}」占着',
+  'keys.scopeFilesRow': '文件树的一行',
 
   /* ── Dock 预览泡 ─────────────────────────────────────────────────── */
   'dock.previewOf': '{name} 预览',
@@ -469,10 +473,15 @@ export const zh = {
   'notify.repeat': '×{count}',
   'notify.openLog': '打开完整日志(app.jsonl)',
   'notify.more': '+{count} 更早 · 打开通知中心',
+  /* 弹框上通往通知中心那条可展开记录的门(09-01:栈与完整 URL 不铺在弹框上)。 */
+  'notify.viewDetails': '查看详情',
 
   /* 各产地报出来的那句话。它们是**界面文案**(换语言要跟着变),
    * 所以在字典里;而错误本身的文字是数据,原样进 body / detail。 */
-  'notify.crash': '{where} 出错了',
+  /* 09-01 改人话:从前这里直接摆 `event.filename`(一条带 ?t= 的完整模块 URL),
+   * 用户读到的是一句机器话。现在 {where} 收的是短名(见 services/crash.ts 的
+   * shortWhere),完整那条在详情里。 */
+  'notify.crash': '界面出错了 · {where}',
   'notify.disconnected': '没连上 core',
   'notify.sendFailed': '消息没发出去',
   'notify.createSessionFailed': '新建会话失败',
@@ -522,6 +531,7 @@ export const zh = {
   'files.collapseAll': '全部收起',
   'files.hint': '单击打开 · 行尾 ⋯ 或右键出菜单',
   'files.rowMenu': '更多操作',
+  'files.splitLabel': '树与查看区的分隔杆(← → 调宽度,↵ 回默认)',
   'files.menuOpen': '打开查看',
   'files.menuExpand': '展开',
   'files.menuCollapse': '收起',
@@ -534,7 +544,6 @@ export const zh = {
   'files.openIn.edgeRight': '右侧钉',
   'files.openIn.float': '浮窗',
   'files.openModeSoon': '还没接上',
-  'files.openModeNote': '目前只有「面板内」真能打开;其余几档先把你的选择记下来。',
   'files.detailAction': '详情',
   'files.copiedPath': '已复制路径',
   'files.retry': '重试',
@@ -573,9 +582,14 @@ export const zh = {
   'viewer.zoomLabel': '缩放',
   'viewer.zoomFit': '适应',
   'viewer.zoomActual': '1:1',
-  'viewer.mediaSample': '播放条是示例档:原生播放器,没有自绘的控制条',
+  'viewer.mediaFailed': '这台取不到这个文件的字节,放不了',
+  'viewer.noFile': '还没有打开的文件 —— 去文件树里点一个',
   /* ⌘L 跳转条 —— 跳转的唯一入口。四档里今天只有行号真接上。 */
   'viewer.jumpLabel': '跳转到',
+  'viewer.findLabel': '在这份文件里检索',
+  'viewer.findReadout': '检索 ⌘F',
+  'viewer.jumpHitCount': '第 {index} 个 · 共 {total} 个',
+  'viewer.jumpNoHit': '没有命中',
   'viewer.jumpPlaceholder': '行号,或 # 符号 · / 检索 · @ 改动',
   'viewer.jumpLine': '行号',
   'viewer.jumpSymbol': '符号',
@@ -587,6 +601,7 @@ export const zh = {
   'viewer.keymapVim': 'Vim',
   /* 轻编辑:铅笔 → 等宽可写文本 → ⌘S。 */
   'viewer.edit': '编辑',
+  'viewer.editDone': '完成编辑',
   'viewer.editing': '正在编辑 {name}',
   'viewer.unsaved': '未保存',
   'viewer.save': '保存 ⌘S',

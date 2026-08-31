@@ -1,0 +1,92 @@
+/*
+ * 图标钮的**唯一交互态配方**(09-01 立件)。业务面从此不许自绘图标钮 ——
+ * 屡犯的「hover 不合规范」病根就是各面各写一套(有的只换字色不换底、有的
+ * 连 :active 都没有、有的 :focus-visible 被局部规则盖掉)。
+ *
+ * 几何全部来自 tokens.css,这里一个字面值都没有。
+ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: var(--r-1);
+  background: transparent;
+  color: var(--text-3);
+  /* 四态各换一格,三个属性同吃 --dur:换档时一起听(动效档纪律)。 */
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+
+/* ── 三档尺寸 ─────────────────────────────────────────────────────────── */
+.xs {
+  width: var(--icon-btn-xs);
+  height: var(--icon-btn-xs);
+}
+
+.sm {
+  width: var(--icon-btn-sm);
+  height: var(--icon-btn-sm);
+}
+
+.md {
+  width: var(--icon-btn-md);
+  height: var(--icon-btn-md);
+}
+
+/* ── 状态表(rest / hover / active / pressed / disabled;focus 走全局环)── */
+.btn:hover:not(:disabled) {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+/*
+ * :active 是**按住的那一刻**。它比 hover 深一档 —— 缺了这一格,按下去和悬停
+ * 长得一样,手指头就收不到「这一下按到了」的回执(报障里那句「hover 有遵循
+ * 规范吗」问的正是这一族缺格)。
+ */
+.btn:active:not(:disabled) {
+  background: var(--st-active);
+  color: var(--text-1);
+}
+
+/*
+ * `pressed`(aria-pressed=true)是**开着**,不是按住:accent 晕底 + accent 字色,
+ * 与查看器铅笔那一档逐字同一副配方(它从前是自绘的,现在归这里)。
+ */
+.on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-deep);
+}
+
+.on:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent-deep);
+}
+
+.btn:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
+}
+
+/* 危险动作只换**字色**,不换底 —— 「状态色只上图标 / 点,永不换底」(四轴之一)。 */
+.danger:not(:disabled) {
+  color: var(--danger);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--st-hover);
+  color: var(--danger);
+}
+
+.icon {
+  width: var(--icon-btn-glyph);
+  height: var(--icon-btn-glyph);
+}
+
+.xs .icon {
+  width: var(--icon-btn-glyph-xs);
+  height: var(--icon-btn-glyph-xs);
+}

@@ -156,6 +156,15 @@ export interface ViewerNavigator {
    * 接上那天没人会去找)。
    */
   list?(query: string, ctx: ViewerNavigatorContext): ViewerJumpCandidate[]
+  /**
+   * 这一档的候选是**一串要走一遍的命中**,还是一个落点。
+   *
+   * true(检索档)= 落一次点之后**跳转条不关**,↵ 再按一下走到下一个、绕回第一个;
+   * 缺席(行号档)= 落点即达,跳完就收 —— 「跳到第 42 行」没有「下一个 42 行」。
+   * 判据放在提供者身上而不是壳里的一个 `id === 'search'`,理由与 `lineCount`
+   * 那一条逐字相同:壳一旦认识具体的档,这张表就白分了。
+   */
+  cycle?: boolean
 }
 
 const navigators: ViewerNavigator[] = []
@@ -192,7 +201,13 @@ export function navigatorFor(query: string): ViewerNavigator | undefined {
  * ——「键位只把手势映射到已注册能力,**不新增能力**」是定稿的原话:一个键位档
  * 不该能做出一件用鼠标做不到的事。
  */
-export type ViewerCommand = 'save' | 'jump' | 'toggleWrap' | 'toggleEdit' | 'close'
+export type ViewerCommand = 'save' | 'jump' | 'find' | 'toggleWrap' | 'toggleEdit' | 'close'
+
+/**
+ * `find`(⌘F)与 `jump`(⌘L)不是两条路,是**同一条路的两个入口**:
+ * 两者都开那一条跳转条,差别只在 ⌘F 把 `/` 那个前缀先替用户打上 ——
+ * 于是「检索」在这台上没有第二套 UI、第二套键、第二处高亮。
+ */
 
 export interface ViewerKeymap {
   id: string

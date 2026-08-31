@@ -1,4 +1,6 @@
 import { registerNavigator } from './registry'
+import type { ViewerJumpCandidate } from './registry'
+import type { ViewerFile } from '../../data/viewer-source'
 
 /**
  * **⌘L 跳转条的提供者表**(定稿:跳转只有这一个入口)。
@@ -44,8 +46,78 @@ registerNavigator({
   },
 })
 
+/**
+ * **检索档(`/`)—— F2 从留表位接真**。⌘F 就是「开这条跳转条,并把 `/` 先打上」。
+ *
+ * ── 它为什么能只写十几行 ────────────────────────────────────────────────
+ * 因为「检索」在这条路上**不是一个功能**,是一个提供者:命中列表、落点、滚进视野、
+ * 当前行高亮、↵ 循环全都是跳转条那套公共骨架的既有能力。这里只回答一句
+ * 「这串字对应哪几行」——那正是 registerNavigator 存在的全部理由。
+ *
+ * 三条判据写死在这里,不留配置:
+ *  · **大小写不敏感**:一份源码里搜 `usestate` 该找得到 `useState`,这是检索框的
+ *    通行手感;要区分大小写是另一档(将来给个 `/`+修饰,或者一个开关),不是默认;
+ *  · **一行一条命中**:同一行里出现两次只算一条 —— 落点的粒度是行(当前行高亮
+ *    画在行上),给同一行发两条候选,↵ 走过去屏幕一动不动,那是假的「下一个」;
+ *  · **上限 `SEARCH_HIT_CAP`**:在一份两万行的文件里搜一个 `e`,候选表本身会变成
+ *    卡顿源。截断了就在 hint 里说出来(`…`),不静默少给。
+ *
+ * 只对**有正文**的那几型成立(code / markdown / svg 源码)。图、播放条、二进制
+ * 手上根本没有字符串 —— 那时回空表,跳转条画的是「没有命中」,不是一句谎。
+ */
+const SEARCH_HIT_CAP = 200
+
+/**
+ * 检索档的前缀。**⌘F 要把它替用户打上,所以它有第二个消费方** ——
+ * 一个符号两处写死必然分叉(改成 `?` 的那天 ⌘F 会开出一个行号档)。
+ */
+export const SEARCH_SIGIL = '/'
+
+registerNavigator({
+  id: 'search',
+  sigil: SEARCH_SIGIL,
+  labelKey: 'viewer.jumpSearch',
+  cycle: true,
+  list: (query, ctx) => {
+    const needle = query.slice(1).toLowerCase()
+    if (!needle) return []
+    const source = searchableSourceOf(ctx.file)
+    if (source === null) return []
+    const lines = source.split('\n')
+    const hits: ViewerJumpCandidate[] = []
+    for (let row = 0; row < lines.length; row += 1) {
+      const at = lines[row].toLowerCase().indexOf(needle)
+      if (at < 0) continue
+      hits.push({
+        id: `hit:${row + 1}`,
+        // 屏幕上这一行的**原样片段**(不是加工过的摘要):命中在哪儿要看得出来。
+        label: lines[row].trim().slice(0, 80) || ' ',
+        line: row + 1,
+        hint: `${row + 1}`,
+      })
+      if (hits.length >= SEARCH_HIT_CAP) break
+    }
+    return hits
+  },
+})
+
+/**
+ * 这一份文件手上有没有一段能搜的字符串。**判别联合当场分岔**,不写
+ * `'content' in file` 那种结构探测 —— svg 的源码挂在另一个字段上,探测会漏掉它。
+ */
+export function searchableSourceOf(file: ViewerFile): string | null {
+  switch (file.kind) {
+    case 'code':
+    case 'markdown':
+      return file.content
+    case 'image':
+      return file.svgSource ?? null
+    default:
+      return null
+  }
+}
+
 /* ── 留表位:有名字、有前缀、画得出来,但还没接上 ───────────────────────── */
 
 registerNavigator({ id: 'symbol', sigil: '#', labelKey: 'viewer.jumpSymbol' })
-registerNavigator({ id: 'search', sigil: '/', labelKey: 'viewer.jumpSearch' })
 registerNavigator({ id: 'diff', sigil: '@', labelKey: 'viewer.jumpDiff' })

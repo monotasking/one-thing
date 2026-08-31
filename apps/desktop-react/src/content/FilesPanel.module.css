@@ -208,19 +208,40 @@
  * 换位置、换父节点或者被盖住。
  *
  * 两列都走 `minmax(0, …)`:窄面板下先让两列一起缩,而不是横向长出一条滚轨
- * (律二:结构面只截断不撑破)。份额在 tokens.css 的 --files-tree-fr / -viewer-fr。
+ * (律二:结构面只截断不撑破)。份额是用户拖出来的,记在 data/split-prefs。
  */
 .split {
   flex: 1;
   min-height: 0;
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 0fr);
+  /*
+   * 三列:树 | 分隔杆 | 查看区。收起时中间与右边都是 0 —— 杆本身也不占位
+   * (它此刻根本不在 DOM 里:一条调不动东西的 separator 不该进 Tab 序)。
+   */
+  grid-template-columns: minmax(0, 1fr) 0 minmax(0, 0fr);
   transition: grid-template-columns var(--dur) var(--ease);
 }
 
+/*
+ * 展开时列宽由**比例变量**算(09-01:分栏可拖)。`--files-split` 是一个
+ * **无单位数**(45 = 45%),由 FilesPanel 按记忆写在行内,拖拽期间由 ui/Splitter
+ * 直接改它 —— 于是「拖着看到的」和「存下来的」是同一个数,中间没有第二种算法。
+ */
 .split[data-viewer='open'] {
-  grid-template-columns: minmax(0, var(--files-tree-fr)) minmax(0, var(--files-viewer-fr));
+  grid-template-columns:
+    minmax(0, calc(var(--files-split, 45) * 1%))
+    var(--splitter-hit)
+    minmax(0, 1fr);
+}
+
+/*
+ * 拖拽期间**关掉过渡**。不关的话列宽会追着指针走(每一帧都被过渡拖慢一拍),
+ * 手感是「杆跑在前面、面板在后面追」—— 跟手定律的反面。
+ * 属性由 ui/Splitter 在 pointerdown 时挂上、松手时摘掉。
+ */
+.split[data-splitting='true'] {
+  transition: none;
 }
 
 /* 树列。它是 `.split` 的**第一个网格项** —— 高度由网格拉满,所以这里只需要
@@ -337,34 +358,23 @@
  * 被顶得跳一格。焦点可见时也显形 —— 键盘用户得看得见它在哪儿。
  */
 .more {
-  flex: none;
-  width: var(--icon-md);
-  height: var(--icon-md);
+  /*
+   * 行尾的 ⋯ 是一颗 **ui/IconButton**(09-01 立法:图标钮必须消费库件)——
+   * 尺寸 / 悬停 / 按下 / 焦点四态全归那件,这里**只剩位置与露不露面**。
+   * 从前这里写着 width/height/background/color/:hover 一整套自绘配方,
+   * 那正是「hover 不合规范」屡犯的病根。
+   */
   margin-left: var(--sp-1);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r-1);
-  background: none;
-  color: var(--text-3);
   opacity: 0;
-  transition: opacity var(--dur) var(--ease), background var(--dur) var(--ease);
+  transition: opacity var(--dur) var(--ease);
 }
 
+/* 平时不露面,悬停这一行或键盘走到它身上才出现(键盘用户也够得着)。 */
 .rowWrap:hover .more,
 .more:focus-visible {
   opacity: 1;
 }
 
-.more:hover {
-  background: var(--st-active);
-  color: var(--text-1);
-}
-
-.moreIcon {
-  width: var(--icon-xs);
-  height: var(--icon-xs);
-}
 
 /* ── 三种「还没有内容」──────────────────────────────────────────────── */
 /* 骨架:两条不等长的短横。它们**各占一整行**,理由写在文件头那条硬约束里。 */

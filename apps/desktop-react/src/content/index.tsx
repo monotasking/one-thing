@@ -14,11 +14,13 @@ import { ExposeView } from '../expose/components/ExposeView'
 import { ProviderSettingsPanel } from '../providers/components/ProviderSettingsPanel'
 import { WorkspaceOverview } from '../workspace/components/WorkspaceOverview'
 import { AppsPanel } from './AppsPanel'
+import { ViewerPanel } from './viewer/ViewerPanel'
 import {
   APPS_ITEM_ID,
   NOTIFICATIONS_ITEM_ID,
   PROVIDERS_ITEM_ID,
   SESSIONS_ITEM_ID,
+  VIEWER_ITEM_ID,
   WORKSPACE_ITEM_ID,
 } from '../stage/items'
 
@@ -46,6 +48,10 @@ const RENDERERS: Record<string, () => ReactNode> = {
   // 「所有应用」也在这张表里,理由与上面那条逐字相同:它是一块普通的瓦,
   // 不是 Dock 自己长出来的一个管理浮层。所以它能被钉、能上舞台、能盖满内容栏。
   [APPS_ITEM_ID]: AppsPanel,
+  // 文件查看器(F2)。它进这张表,「打开方式」那七档里的六档就全接上了 ——
+  // 主区域 / 浮窗 / 四条边都是壳里已经有的 `openAs(id, placement)`,
+  // 查看器本体一个字没改(理由写在 stage/items.ts 的 VIEWER_ITEM_ID 上)。
+  [VIEWER_ITEM_ID]: ViewerPanel,
 }
 
 /**

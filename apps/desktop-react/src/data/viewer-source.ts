@@ -1,16 +1,15 @@
 import { create } from 'zustand'
 import { baseNameOf, classifyFileFailure } from './files-source'
-import type { FileFailure } from './files-source'
 import { filesPort } from './files-port'
-import {
-  VIEWER_CHUNK_BYTES,
-  VIEWER_OVERSIZE_BYTES,
-  fileUrlOf,
-  isMediaPath,
-  isSvgPath,
-  resolveViewerKind,
-  viewerLangOf,
-} from './viewer-kinds'
+import { VIEWER_CHUNK_BYTES, isSvgPath, resolveViewerSpec, specOf, specOfPath } from './viewer-kinds'
+import type { ViewerFile } from './viewer-kinds'
+
+/**
+ * 型的**形状**与**判据**都住 `data/viewer-kinds.ts`(09-01 搬家,理由写在那里:
+ * 「加一型只动三处」)。这里只做四件与型无关的事:读、竞速、看的姿势、没存的改动。
+ * 于是这个文件里**一个具体的型名都不出现** —— 加一型不必碰它。
+ */
+export type { ViewerFile } from './viewer-kinds'
 
 /**
  * **文件查看器的数据源**(F1)。全应用一个,与 `data/files-source.ts` **分家**。
@@ -32,8 +31,15 @@ import {
  * 草稿都不许丢。落点一换,外框那棵组件树必然重建;状态若长在组件里,它就跟着没了。
  * 放进 store,落点就真的只是外框 —— F1 只接「面板内」一格,但骨架已经按七格建好,
  * F2 点亮别的落点时内核零改动。
- * (留账:**滚动位**今天还在 DOM 上,它跨落点的留存要等 F2 那个真会换宿主的场合
- *  才有产地 —— 现在存一个没人读的数字是假实现。)
+ *
+ * ── ④ 滚动位:F2 兑现了 F1 那条留账 ──────────────────────────────────────
+ * F1 说「滚动位今天还在 DOM 上,它跨落点的留存要等 F2 那个真会换宿主的场合才有
+ * 产地」。F2 就是那个场合:换落点会真的重挂那棵组件树,不存就真的丢。
+ *
+ * 它**故意不在 `view` 里**,而是自己一格顶层字段:`view` 是被整块订阅的
+ * (`useViewerSource(st => st.view)`),把一个每帧都在变的数塞进去,等于让滚动
+ * 重渲整块查看器。单独一格,而且没有任何组件订阅它 —— 写它不引起重渲,
+ * 换落点后由新的那份在 `useLayoutEffect` 里 `getState()` 取一次贴回去。
  *
  * ── 竞速 ────────────────────────────────────────────────────────────────
  * 一个令牌管一条:连点三个文件,前两次的回执到达时令牌已经过期,直接丢弃 ——
@@ -41,83 +47,6 @@ import {
  */
 
 /* ── ① 文件的事实 ──────────────────────────────────────────────────────── */
-
-/**
- * 查看器手上这一份文件。**判别联合,不是一个带一堆空字段的结构**:消费方
- * `switch (file.kind)`,不会有「binary 却去读 content」这种半空对象
- * (同 file-icons 的 FileGlyph 判例)。
- *
- * `error` 是**第七种**,与六种查看形平级:读不到也是一种如实的呈现,
- * 不是别的型的一个失败标志位。
- */
-export type ViewerFile =
-  | {
-      kind: 'code'
-      path: string
-      name: string
-      /** 高亮语言;null = 这台不认识它,画素文本(不是错误)。 */
-      lang: string | null
-      content: string
-      /** 文件真实字节数。 */
-      size: number
-      /** 这一次问后端要了多少字节 —— 「继续加载」的下一段从它算起。 */
-      loaded: number
-      /** 真实字节数 > 已要到的量 —— 屏幕上只是开头一段。 */
-      truncated: boolean
-      /** 盘上的时间戳。写回时当乐观锁用(缺席 = 后端没给,那就不加锁)。 */
-      mtimeMs?: number
-    }
-  | {
-      kind: 'markdown'
-      path: string
-      name: string
-      content: string
-      size: number
-      loaded: number
-      truncated: boolean
-      mtimeMs?: number
-    }
-  | {
-      kind: 'image'
-      path: string
-      name: string
-      /** `<img>` 的 src(file:// —— 唯一产地是 fileUrlOf)。 */
-      src: string
-      /** svg 才有:它的那份源码,好让「源码 ⇄ 渲染」切得动。 */
-      svgSource?: string
-    }
-  | {
-      /** 播放条(**示例档**):视频与音频同一型,它们要的是同一件东西。 */
-      kind: 'media'
-      path: string
-      name: string
-      src: string
-      /** 画 `<video>` 还是 `<audio>` —— 判据在这里定一次。 */
-      audio: boolean
-    }
-  | {
-      kind: 'binary'
-      path: string
-      name: string
-      /** 后端给了就给,没给就缺席 —— **不拿 0 B 顶**。 */
-      size?: number
-    }
-  | {
-      kind: 'oversize'
-      path: string
-      name: string
-      size: number
-      /** 闸值,好让界面说得出「超过多少」。 */
-      limit: number
-    }
-  | {
-      kind: 'error'
-      path: string
-      name: string
-      failure: FileFailure
-      /** 后端原话。归类归类,原话原样。 */
-      error?: string
-    }
 
 /** 能被写回去的那两种(编辑只对文本成立)。 */
 export type EditableViewerFile = Extract<ViewerFile, { kind: 'code' | 'markdown' }>
@@ -179,6 +108,11 @@ export interface ViewerSourceState {
   pending: string | null
   view: ViewerView
   edit: ViewerEdit
+  /**
+   * 身那块滚到哪儿了(像素)。**跨落点留存**的那一格 —— 理由与「为什么不在 view
+   * 里」写在文件头 ④。换文件归零(那是上一个文件滚到哪儿)。
+   */
+  scrollTop: number
 
   /**
    * 打开一个文件。已经开着同一个、而且没有在飞的读 = 什么都不做
@@ -194,6 +128,11 @@ export interface ViewerSourceState {
 
   /** 改一格看的姿势。 */
   setView(patch: Partial<ViewerView>): void
+  /**
+   * 记一下滚到哪儿了。**没有组件订阅 `scrollTop`**,所以这一口每帧调都不重渲 ——
+   * 它只是把 DOM 上那个数抄进 store,好让换落点之后的新宿主贴得回去。
+   */
+  setScrollTop(top: number): void
   /** 进 / 出编辑。进去时把手上这份内容抄成草稿;出来时丢掉草稿。 */
   setEditing(on: boolean): void
   /** 编辑区打字。 */
@@ -245,56 +184,31 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
     const port = await filesPort()
     const response = await port.readContent(path, want)
     if (!response.success) {
-      return {
-        kind: 'error',
+      return specOf('error').build({
         path,
         name,
+        content: '',
+        size: 0,
+        want,
         failure: classifyFileFailure(response.error),
         error: response.error,
-      }
+      })
     }
     const content = response.content ?? ''
     const size = response.size ?? content.length
-    const kind = resolveViewerKind({
+    /*
+     * **定型与造型都归分型表**:这里一个 `case 'markdown'` 都没有,所以加一种型
+     * 不必回来改这个 switch(从前有一个七支的 switch,那正是「加一型要动九处」
+     * 里最容易漏的一处)。
+     */
+    return resolveViewerSpec({ path, size, isBinary: response.isBinary, content }).build({
       path,
-      size,
-      isBinary: response.isBinary,
+      name,
       content,
+      size,
+      want,
+      mtimeMs: response.mtimeMs,
     })
-    switch (kind) {
-      case 'image':
-        // 走到这里的只有 svg(位图在上游岔开了):它同时是图和一段源码。
-        return { kind: 'image', path, name, src: fileUrlOf(path), svgSource: content }
-      case 'media':
-        return { kind: 'media', path, name, src: fileUrlOf(path), audio: isAudioPath(path) }
-      case 'oversize':
-        return { kind: 'oversize', path, name, size, limit: VIEWER_OVERSIZE_BYTES }
-      case 'binary':
-        return { kind: 'binary', path, name, size: response.size }
-      case 'markdown':
-        return {
-          kind: 'markdown',
-          path,
-          name,
-          content,
-          size,
-          loaded: want,
-          truncated: size > want,
-          mtimeMs: response.mtimeMs,
-        }
-      case 'code':
-        return {
-          kind: 'code',
-          path,
-          name,
-          lang: viewerLangOf(path),
-          content,
-          size,
-          loaded: want,
-          truncated: size > want,
-          mtimeMs: response.mtimeMs,
-        }
-    }
   }
 
   /** 一次打开 / 重读 / 续读共用的那条路:立令牌 → 读 → 令牌还在才换屏。 */
@@ -309,6 +223,8 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
       view: keepView ? st.view : viewForNextFile(st.view),
       // 续读(keepView)不碰编辑态:那是同一个文件的同一次编辑。
       edit: keepView ? st.edit : { ...EMPTY_EDIT },
+      // 续读也不碰滚动位 —— 「继续加载」之后屏幕该停在原地,不是弹回顶上。
+      scrollTop: keepView ? st.scrollTop : 0,
     }))
   }
 
@@ -317,6 +233,7 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
     pending: null,
     view: { ...EMPTY_VIEW },
     edit: { ...EMPTY_EDIT },
+    scrollTop: 0,
 
     openFile: async (path) => {
       if (!path) return
@@ -337,6 +254,7 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
           pending: null,
           view: viewForNextFile(st.view),
           edit: { ...EMPTY_EDIT },
+          scrollTop: 0,
         }))
         return
       }
@@ -370,10 +288,13 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
         // 折行与键位档跟着人走,关一次窗不该把它们忘了。
         view: viewForNextFile(st.view),
         edit: { ...EMPTY_EDIT },
+        scrollTop: 0,
       }))
     },
 
     setView: (patch) => set((st) => ({ view: { ...st.view, ...patch } })),
+
+    setScrollTop: (top) => set({ scrollTop: top }),
 
     setEditing: (on) =>
       set((st) => ({
@@ -426,31 +347,22 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
 
     reset: () => {
       token += 1
-      set({ file: null, pending: null, view: { ...EMPTY_VIEW }, edit: { ...EMPTY_EDIT } })
+      set({ file: null, pending: null, view: { ...EMPTY_VIEW }, edit: { ...EMPTY_EDIT }, scrollTop: 0 })
     },
   }
 })
 
 /**
- * 「一个字节都不读」的那两种:位图与播放条。svg 不在其中 —— 它要读源码。
+ * 「一个字节都不读」的那些:分型表里带 `direct` 标的行(今天是图与播放条)。
  * 回 null = 这条路径得走真读那一条。
+ *
+ * **判据不在这里** —— 它就是表上那一格 `direct`。svg 是个例外中的例外:它带
+ * `direct` 标(位图那一行),但它同时要一份源码,所以它走真读那条路;
+ * 那条岔口也在表上(`svgSource` 只在 content 非空时才有),不在这里。
  */
 function directFileOf(path: string): ViewerFile | null {
-  const name = baseNameOf(path)
-  if (isMediaPath(path)) {
-    return { kind: 'media', path, name, src: fileUrlOf(path), audio: isAudioPath(path) }
-  }
-  if (resolveViewerKind({ path }) === 'image' && !isSvgPath(path)) {
-    return { kind: 'image', path, name, src: fileUrlOf(path) }
-  }
-  return null
-}
-
-/** 播放条那一型里,画 `<audio>` 的那一半。 */
-const AUDIO_EXTS = new Set(['mp3', 'wav', 'flac', 'ogg', 'm4a', 'aac'])
-
-function isAudioPath(path: string): boolean {
-  const name = baseNameOf(path)
-  const at = name.lastIndexOf('.')
-  return at > 0 && AUDIO_EXTS.has(name.slice(at + 1).toLowerCase())
+  const spec = specOfPath(path)
+  if (!spec.direct) return null
+  if (spec.kind === 'image' && isSvgPath(path)) return null
+  return spec.build({ path, name: baseNameOf(path), content: '', size: 0, want: 0 })
 }

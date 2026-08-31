@@ -32,13 +32,23 @@
 }
 
 /* ── 外框:七落点(F1 只用 panel;其余是位子)───────────────────────────── */
+/*
+ * 左界只画在**左边真有东西**的那两档:面板内(左边是树)与右钉栏(左边是内容栏)。
+ * F1 时七档全画着这条线 —— 那时只有 panel 一档真被用到,看不出错;F2 把六档
+ * 点亮之后就露馅了:主区域 / 浮窗 / 上下钉栏的左边什么都没有,那条线是凭空一道界。
+ */
 .frame-panel,
-.frame-stage,
-.frame-edge-top,
-.frame-edge-bottom,
-.frame-edge-left,
 .frame-edge-right {
   border-left: var(--bw-1) solid var(--line-1);
+}
+
+/* 主区域 / 盖 / 上下左钉栏:宿主自己有边框与圆角,查看器不再补第二道界。 */
+.frame-stage,
+.frame-cover,
+.frame-edge-top,
+.frame-edge-bottom,
+.frame-edge-left {
+  border: none;
 }
 
 /* 浮窗是**唯一**允许投影的落点(定稿)。 */
@@ -421,10 +431,14 @@
   max-width: 100%;
 }
 
-.mediaNote {
-  margin: 0;
-  font-size: var(--fs-nano);
-  color: var(--text-3);
+/*
+ * 音频是**一条紧凑播放条**,不是一块铺满的面(F2 media 转正):一条 40 高的
+ * 原生控制条被拉到整块面那么宽,读起来像个残缺的视频框。给它一个上限宽度,
+ * 居中站着 —— 「紧凑」由布局兑现,不靠重画一条 DOM 播放条(理由见 kinds/media)。
+ */
+.mediaAudio {
+  width: 100%;
+  max-width: var(--viewer-audio-w);
 }
 
 /* ── 诚实态(binary / oversize / 读失败 / 图取不到)─────────────────────── */
@@ -506,8 +520,49 @@
   text-align: left;
 }
 
+/*
+ * ── hover 与 active 是**两种**东西,不许长得一样 ──────────────────────────
+ * 「当前这一条」(active)是键盘 / ↵ 循环走到的那一条,它是**状态**;悬停只是
+ * 指针路过,它是**反馈**。画成同一副样子会让人以为鼠标扫过就改了选中项
+ * (那正是「双状态列表」这条并行纪律要防的)。
+ * 所以:hover 只提亮字色,active 另给一层 accent 底 + accent 字 + 左缘一条标记。
+ * **hover 不写 active 的底**,active 也不因为指针离开而变 —— 两者互不污染。
+ * 顺带:这张列表**不挂 mouseenter 改 active** —— 指针不改键盘的位。
+ */
 .jumpRow:hover {
   color: var(--text-1);
+}
+
+.jumpRowOn {
+  position: relative;
+  padding-left: var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--st-sel);
+  color: var(--accent-deep);
+}
+
+.jumpRowOn::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--sp-1);
+  bottom: var(--sp-1);
+  width: var(--bw-3);
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.jumpRowOn:hover {
+  background: var(--st-sel-hover);
+  color: var(--accent-deep);
+}
+
+/* 「第 n 个 · 共 m 个」/「没有命中」。它是**读数**,所以贴着输入行右侧站。 */
+.jumpCount {
+  display: block;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-nano);
+  color: var(--text-3);
 }
 
 .jumpSigil {

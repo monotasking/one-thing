@@ -474,7 +474,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/7] 起一台 core')
+    console.log('\n[1/8] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -491,7 +491,7 @@ async function main() {
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
     console.log('  ✓ core 起来了')
 
-    console.log('\n[2/7] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/8] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -507,7 +507,7 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/7] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/8] 产品外壳:axe 全页扫描 + Tab 序走查')
     await scanAxe(page, '外壳')
     await checkComposerTabOrder(page)
 
@@ -523,7 +523,7 @@ async function main() {
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[4/7] 模型服务面:开一块面再扫一次')
+    console.log('\n[4/8] 模型服务面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-providers"]')
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
@@ -536,12 +536,14 @@ async function main() {
      * 每一枚开关都得说得出「什么的开关」(Switch 的 `label`),每一颗打开钮都得
      * 说得出「打开什么」;漏一个,读屏软件就只能念「开关,开」。
      *
-     * 它同时是这道门里唯一一屏 **cover 形态**的面:盖挂在内容栏里而不是壳根上,
-     * 所以「盖开着的时候这一屏的无障碍树长什么样」只有在这里才扫得到。
+     * 它同时是这道门里唯一一屏 **cover 形态**的面:盖挂在壳的根上、fixed 铺满
+     * 整扇窗(09-01 用户推翻「只接管内容栏」之后如此),所以「盖开着的时候这一屏
+     * 的无障碍树长什么样」只有在这里才扫得到。盖满整扇窗之后这一屏更值钱了 ——
+     * 顶带 / 顶栏 / 四条边上的架子此刻全在盖底下,axe 扫的是整棵活树。
      * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
      * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
      */
-    console.log('\n[5/7] 所有应用面(cover 形态):开一块面再扫一次')
+    console.log('\n[5/8] 所有应用面(cover 形态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-apps"]')
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
@@ -554,7 +556,31 @@ async function main() {
       page.evaluate(() => !document.querySelector('[data-testid="apps-panel"]')),
     )
 
-    console.log('\n[6/7] 组件规格页(?gallery):15 件 ui 组件一次全在场')
+    /*
+     * 文件查看器(09-01 F2 补扫描屏;F1 留账的那处「一行插入」)。
+     *
+     * 它进这道门的理由与前两屏逐字相同:**外壳那一屏看不见它**。而它恰恰是这批
+     * 新件最密的一块 —— 檐上那颗 IconButton(第 18 件:aria-label + Tooltip)、
+     * 脚上那一排状态链接、以及「一个文件都没打开」那一格空态。
+     *
+     * 这道门跑在一个全新的临时 store 上,没有会话也就没有工作目录,所以这里扫的是
+     * **空态那一屏**(有檐、有脚、有那句实话)。「打开一份真文件之后长什么样」
+     * 由 gate:files 那道门验(它自己建了一棵真目录树)—— 两道门各扫各的那一半,
+     * 不在这里再造一次目录树。
+     */
+    console.log('\n[6/8] 文件查看器(空态):开一块面再扫一次')
+    await clickSelector(page, '[data-testid="dock-tile-viewer"]')
+    await waitFor('查看器就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
+    )
+    await settleAnimations(page)
+    await scanAxe(page, '文件查看器', '[data-testid="file-viewer"]')
+    await clickSelector(page, '[data-testid="viewer-close"]')
+    await waitFor('查看器收回', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
+    )
+
+    console.log('\n[7/8] 组件规格页(?gallery):17 件 ui 组件一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -569,7 +595,7 @@ async function main() {
     )
     await scanAxe(page, '规格页')
 
-    console.log('\n[7/7] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[8/8] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 
@@ -587,7 +613,7 @@ async function main() {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 四屏 axe 零违例;键盘走查全绿')
+  console.log('\n[a11y-gate] ok —— 五屏 axe 零违例;键盘走查全绿')
 }
 
 main().catch((error) => {

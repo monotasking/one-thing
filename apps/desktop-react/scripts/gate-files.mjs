@@ -183,7 +183,7 @@ async function main() {
   let app
   try {
     await mkdir(shotDir, { recursive: true })
-    console.log('\n[1/6] 在磁盘上建一棵真目录树')
+    console.log('\n[1/7] 在磁盘上建一棵真目录树')
     await mkdir(path.join(cwd, 'packages', 'core'), { recursive: true })
     await mkdir(path.join(cwd, 'docs'), { recursive: true })
     await writeFile(path.join(cwd, 'README.md'), '# d5 gate\n')
@@ -193,7 +193,7 @@ async function main() {
     const level1 = await realNames(path.join(cwd, 'packages'))
     assert(level0.length === 3, `第一层磁盘上有 ${level0.length} 项:${level0.join(', ')}`)
 
-    console.log('\n[2/6] 起一台 core(沙箱根 = 那棵树的根),建一条会话并把工作目录指过去')
+    console.log('\n[2/7] 起一台 core(沙箱根 = 那棵树的根),建一条会话并把工作目录指过去')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -225,7 +225,7 @@ async function main() {
       `core 侧确认这条会话的 workingDirectory = ${meta?.workingDirectory}`,
     )
 
-    console.log('\n[3/6] 拉起应用,进那条会话,打开文件面板')
+    console.log('\n[3/7] 拉起应用,进那条会话,打开文件面板')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
@@ -260,7 +260,7 @@ async function main() {
     })
     assert(shownRoot === cwd, `面包屑说的就是那条会话的工作目录:${shownRoot}`)
 
-    console.log('\n[4/6] 展开两层,逐条对磁盘')
+    console.log('\n[4/7] 展开两层,逐条对磁盘')
     const shown0 = await waitFor('第一层画出来', async () => {
       const names = await namesAtDepth(page, 0)
       return names.length > 0 ? names : undefined
@@ -288,7 +288,7 @@ async function main() {
     assert(shown2.join(',') === 'engine.ts', `第三层:${shown2.join(', ')}`)
     await page.screenshot({ path: path.join(shotDir, 'tree.png') })
 
-    console.log('\n[5/6] 点一个源码文件,断言查看器里是磁盘上那份原文')
+    console.log('\n[5/7] 点一个源码文件,断言查看器里是磁盘上那份原文')
     /*
      * ── 取件口跟着形状换了,**真事实一个字没改**(查看器 F1)────────────────
      * 从前这一步问的是那层盖住树的「预览」(`files-preview`),现在问的是**面板内
@@ -320,25 +320,127 @@ async function main() {
     )
     await page.screenshot({ path: path.join(shotDir, 'viewer.png') })
 
-    console.log('\n[6/6] 双击出详情 → reveal 的诚实性 + 检索面文件侧')
     /*
-     * 收起查看区。**按 testid 取,不按「第一颗带 aria-label 的钮」** ——
-     * 头上带 aria-label 的钮不止一颗(编辑铅笔也有),按顺序取会静默点错一颗:
-     * 门照样绿,而它以为自己关掉了查看器。取件口要指名道姓。
-     */
-    await clickSelector(page, '[data-testid="viewer-close"]')
-    await waitFor('查看区收起来了', () =>
-      page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
-    )
+      * ── F2 真机取证(09-01)──────────────────────────────────────────────
+      * 三件报障各验一条,验的都是**修前做不到、修后做得到**的那件事:
+      *  ① 分栏可拖:杆在场、按 APG 报 valuenow、← 一下比例真的变小(修前无杆);
+      *  ② 落点真接上:选「主区域」之后那块瓦真的落在舞台上,而且面板内那条
+      *     分栏收起(修前只记档不搬 —— 报障原话「open 位置,调整后也没有生效」);
+      *  ③ 换落点状态留存:换过去之后**还是同一份文件、同一份内容**。
+      */
+     console.log('\n[6/7] 分栏可拖 + 落点真接上 + 换落点状态留存(F2)')
+     const splitter = await page.evaluate(() => {
+       const el = document.querySelector('[data-testid="files-splitter"]')
+       if (!el) return null
+       return {
+         role: el.getAttribute('role'),
+         orientation: el.getAttribute('aria-orientation'),
+         now: Number(el.getAttribute('aria-valuenow')),
+         min: Number(el.getAttribute('aria-valuemin')),
+         max: Number(el.getAttribute('aria-valuemax')),
+         tabIndex: el.tabIndex,
+         controls: el.getAttribute('aria-controls'),
+       }
+     })
+     assert(splitter?.role === 'separator', `分隔杆在场且报 role=separator(实测:${splitter?.role})`)
+     assert(splitter?.orientation === 'vertical', '竖杆报 aria-orientation=vertical')
+     assert(splitter?.tabIndex === 0, '它可聚焦(APG:可调的 separator 进 Tab 序)')
+     assert(
+       Number.isFinite(splitter?.now) && splitter.now > splitter.min && splitter.now < splitter.max,
+       `它报得出当下的比例:${splitter?.now}(区间 ${splitter?.min}–${splitter?.max})`,
+     )
+     assert(splitter?.controls === 'files-tree-column', '它说得出自己在调哪一块')
+     // 键盘调宽度:← 一下,比例真的变小(修前根本没有这条路)。
+     await page.evaluate(() => {
+       const el = document.querySelector('[data-testid="files-splitter"]')
+       el.focus()
+     })
+     await page.keyboard.press('ArrowLeft')
+     const narrowed = await page.evaluate(() =>
+       Number(document.querySelector('[data-testid="files-splitter"]').getAttribute('aria-valuenow')),
+     )
+     assert(narrowed < splitter.now, `← 一下宽度真的变了:${splitter.now} → ${narrowed}`)
+     await page.screenshot({ path: path.join(shotDir, 'splitter.png') })
+
+     // ② 落点:右键 → 「主区域」。修前这一步只记档,查看器纹丝不动。
+     const beforeText = await page.evaluate(
+       () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
+     )
+     await page.evaluate(selector => {
+       const el = document.querySelector(selector)
+       el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+     }, `[data-file-path="${enginePath}"]`)
+     await waitFor('行菜单出来了', () =>
+       page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
+     )
+     await page.evaluate(() => {
+       const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+       const target = items.find(el => /主区域|Main stage/.test(el.textContent ?? ''))
+       if (!target) throw new Error('菜单里没有「主区域」这一档')
+       target.click()
+     })
+     await waitFor('查看器搬到了舞台上', () =>
+       page.evaluate(() => {
+         const viewer = document.querySelector('[data-testid="file-viewer"]')
+         return Boolean(viewer && viewer.getAttribute('data-placement') === 'stage')
+       }),
+     )
+     assert(true, '选「主区域」之后查看器真的落在舞台上(修前:只记档,一动不动)')
+     assert(
+       await page.evaluate(() => !document.querySelector('[data-testid="files-tree"] + [data-testid="file-viewer"]')),
+       '面板内那条分栏收起来了 —— 一份内容只有一个落点(不重影)',
+     )
+     // ③ 状态留存:换了宿主之后仍然是同一份文件、同一份内容。
+     const afterPath = await page.evaluate(
+       () => document.querySelector('[data-testid="viewer-name"]')?.getAttribute('data-viewer-path') ?? null,
+     )
+     const afterText = await page.evaluate(
+       () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
+     )
+     assert(afterPath === enginePath, `换落点之后还是同一份文件:${afterPath}`)
+     assert(afterText === beforeText, '换落点之后内容逐字相同(状态住 store,换的只是外框)')
+     await page.screenshot({ path: path.join(shotDir, 'viewer-stage.png') })
+     // 收拾干净:把它放回面板内,后面那一步要用树。
+     await page.evaluate(() => {
+       const viewer = document.querySelector('[data-testid="viewer-close"]')
+       if (viewer) viewer.click()
+     })
+     await waitFor('查看器收回', () =>
+       page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
+     )
+
+     console.log('\n[7/7] 详情(⌘I / 右键)→ reveal 的诚实性 + 检索面文件侧')
     /*
-     * 详情走双击。`element.click()` 派发的是单击,所以这里直接派发一个真的
-     * dblclick 事件(与 clickSelector 同一条理由:绕开可操作性判定,事件仍是真的)。
+     * ── 详情的入口 09-01 换了(双击那条路整条删了)────────────────────────
+     * 报障:触控板双指点按到达时就是双击形态,与右键语义打架。裁定是
+     * 「打开=单击/↵,动作=右键菜单,详情不设双击入口」。所以这里走**右键菜单**
+     * 那条路 —— 门要走用户真正走的那条。
+     *
+     * 顺手把「双击不再开详情」也钉一条:派一个真的 dblclick,详情不该出现。
      */
     await page.evaluate(selector => {
       const el = document.querySelector(selector)
       if (!el) throw new Error(`双击不到:${selector}`)
       el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }))
     }, `[data-file-path="${path.join(cwd, 'README.md')}"]`)
+    await delay(400)
+    assert(
+      await page.evaluate(() => !document.querySelector('[data-testid="files-detail"]')),
+      '双击**不再**开详情(09-01 裁定:触控板双指点按与右键打架)',
+    )
+    await page.evaluate(selector => {
+      const el = document.querySelector(selector)
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+    }, `[data-file-path="${path.join(cwd, 'README.md')}"]`)
+    await waitFor('行菜单出来了', () =>
+      page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
+    )
+    await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      const target = items.find(el => /详情|Details/.test(el.textContent ?? ''))
+      if (!target) throw new Error('菜单里没有「详情」这一行')
+      target.click()
+    })
     const detailPath = await waitFor('详情面画出来', () =>
       page.evaluate(
         () =>

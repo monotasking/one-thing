@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { create } from 'zustand'
+import { languageIdOfExtension } from './languages'
 import type { FileSearchEntry, FilesDirectoryEntry } from '@shared/ipc/files'
 import { useExposeStore } from '../expose/store'
 import type { SessionSummary } from '../expose/types'
@@ -99,44 +100,16 @@ export function baseNameOf(path: string): string {
 }
 
 /**
- * 扩展名 → 高亮语言。表里没有的一律 null = **素文本**,那不是错误,
- * 是这台不认识它(与 blocks/kinds/code/highlight.ts 顶部同一条口径:
- * 高亮器的语言表本来就是固定的一小撮,认不出就退素文本)。
+ * 扩展名 → 高亮语言。**表在 `data/languages.ts`,这里只是一条委托** ——
+ * 09-01 把「扩展名 → 语言 id」与「语言 id → grammar」并成了一张表(理由写在
+ * 那个文件头:两处会静默分叉,而分叉的表现是「怎么没上色」)。
+ * 表里没有的一律 null = 素文本,那不是错误,是这台不认识它。
  */
-const LANG_BY_EXT: Record<string, string> = {
-  ts: 'typescript',
-  mts: 'typescript',
-  cts: 'typescript',
-  tsx: 'tsx',
-  js: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  jsx: 'jsx',
-  json: 'json',
-  py: 'python',
-  sh: 'bash',
-  bash: 'bash',
-  zsh: 'bash',
-  css: 'css',
-  html: 'html',
-  htm: 'html',
-  md: 'markdown',
-  markdown: 'markdown',
-  sql: 'sql',
-  yml: 'yaml',
-  yaml: 'yaml',
-  go: 'go',
-  rs: 'rust',
-  java: 'java',
-  diff: 'diff',
-  patch: 'diff',
-}
-
 export function langOfPath(path: string): string | null {
   const name = baseNameOf(path)
   const at = name.lastIndexOf('.')
   if (at <= 0) return null
-  return LANG_BY_EXT[name.slice(at + 1).toLowerCase()] ?? null
+  return languageIdOfExtension(name.slice(at + 1))
 }
 
 /**
