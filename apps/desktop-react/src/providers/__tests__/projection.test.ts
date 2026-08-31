@@ -11,13 +11,21 @@ import {
   filterRailRows,
   formatPrice,
   formatTokens,
+  cooldownFact,
+  groupCatalog,
   isModeConfigured,
   modeStateFact,
+  poolViewOf,
   priceOf,
   railFactsOf,
   railToneOf,
+  reorderPool,
+  rotationHintFact,
+  rotationLabelFact,
+  vendorPrefixOf,
 } from '../projection'
 import type { CredentialFacts } from '../types'
+import { OTHER_GROUP } from '../types'
 
 /**
  * 名册投影。这一组守的是这块面**最容易说谎的那一格**:
@@ -228,7 +236,18 @@ function model(id: string, over: Partial<OpenRouterModel> = {}): OpenRouterModel
       output_modalities: ['text'],
       tokenizer: 'x',
     },
-    pricing: { prompt: '0.000003', completion: '0.000015', request: '0', image: '0' },
+    /*
+     * **每百万 token 的美元数**,不是每 token。
+     *
+     * 这个夹具从前写的是 `'0.000003'`(每 token),而**生产里没有任何一条路
+     * 能产出那种数** —— 全仓只有一个序列化口会造目录行
+     * (`onething-runtime/src/providers/model-registry.ts:719`),它的入参在
+     * :881-886 白纸黑字写着是 per-1M。假夹具配上 projection 里那个 `* 1e6`,
+     * 两个错刚好互相抵消,于是这条用例一直是绿的,而真机上 gpt-5.6 画成了
+     * $5000000。**夹具照抄真机上的值**,这条用例才守得住单位。
+     * (真机 `~/.onething/settings.json` 的目录缓存:claude-sonnet-4-5 = 3/15。)
+     */
+    pricing: { prompt: '3', completion: '15', request: '0', image: '0' },
     top_provider: { context_length: 200_000, max_completion_tokens: 32_768, is_moderated: false },
     supported_parameters: ['temperature'],
     ...over,
@@ -253,8 +272,18 @@ describe('capsOf / priceOf / format', () => {
     expect(capsOf(model('m'))).toEqual([])
   })
 
-  it('单价换算成每百万 token;两格缺一即 null', () => {
+  it('单价原样透出(目录给的已经是每百万);两格缺一即 null', () => {
     expect(priceOf(model('m'))).toEqual({ input: 3, output: 15 })
+    // 真机上把 gpt-5.6 画成 $5000000 的那一行:5/30 就该是 5/30。
+    expect(
+      priceOf(model('m', { pricing: { prompt: '5', completion: '30', request: '0', image: '0' } })),
+    ).toEqual({ input: 5, output: 30 })
+    // deepseek-chat 真机值,分位不许被抹掉。
+    expect(
+      priceOf(
+        model('m', { pricing: { prompt: '0.14', completion: '0.28', request: '0', image: '0' } }),
+      ),
+    ).toEqual({ input: 0.14, output: 0.28 })
     expect(priceOf(model('m', { pricing: { prompt: '0', completion: '0', request: '0', image: '0' } }))).toBeNull()
     expect(
       priceOf(model('m', { pricing: { prompt: 'x', completion: '1', request: '0', image: '0' } })),
@@ -267,6 +296,12 @@ describe('capsOf / priceOf / format', () => {
     expect(formatTokens(null)).toBeNull()
     expect(formatPrice(3)).toBe('$3')
     expect(formatPrice(0.55)).toBe('$0.55')
+    // 拖尾的零砍掉($0.30 里那个零没有意义),有意义的分留住。
+    expect(formatPrice(0.3)).toBe('$0.3')
+    expect(formatPrice(2.19)).toBe('$2.19')
+    expect(formatPrice(150)).toBe('$150')
+    // 两位截到 0 而原值不是 0 时退到三位 —— 「$0」是在说它免费。
+    expect(formatPrice(0.002)).toBe('$0.002')
   })
 })
 
@@ -289,5 +324,227 @@ describe('buildCatalogRows', () => {
   it('检索按 id 与显示名', () => {
     expect(buildCatalogRows(models, config(), 'a').map((r) => r.id)).toEqual(['a'])
     expect(buildCatalogRows(models, config(), 'zzz')).toHaveLength(0)
+  })
+})
+
+/* ── 批二:厂牌折叠 ──────────────────────────────────────────────────────── */
+
+describe('groupCatalog', () => {
+  /** 造 n 行,id 形如 `<vendor>/m<i>`;`selected` 里那些算已选。 */
+  function rows(spec: Array<[vendor: string, count: number]>, selected: string[] = []) {
+    const out = []
+    for (const [vendor, count] of spec) {
+      for (let i = 0; i < count; i += 1) {
+        const id = vendor ? `${vendor}/m${i}` : `m${vendor}${i}`
+        out.push({
+          id,
+          name: id,
+          selected: selected.includes(id),
+          current: false,
+          contextLength: null,
+          maxOutput: null,
+          caps: [],
+          price: null,
+          manual: false,
+        })
+      }
+    }
+    return out
+  }
+
+  it('行数不够就不分组 —— 十几行折起来只是多两次点击', () => {
+    const grouped = groupCatalog(rows([['anthropic', 5]]), false)
+    expect(grouped.grouped).toBe(false)
+    expect(grouped.groups[0].rows).toHaveLength(5)
+  })
+
+  it('过了门槛按 vendor/ 前缀分组,大组在前', () => {
+    const grouped = groupCatalog(
+      rows([
+        ['anthropic', 18],
+        ['openai', 42],
+        ['google', 31],
+      ]),
+      false,
+    )
+    expect(grouped.grouped).toBe(true)
+    expect(grouped.groups.map((g) => g.prefix)).toEqual(['openai/', 'google/', 'anthropic/'])
+  })
+
+  /** 45 个只有两三型的厂牌各占一行组头,那不是折叠,是把噪音换了个形状。 */
+  it('零星厂牌并进「其他」,并数得出有几个厂牌', () => {
+    const grouped = groupCatalog(
+      rows([
+        ['openai', 42],
+        ['tiny-a', 3],
+        ['tiny-b', 2],
+        ['tiny-c', 4],
+        ['tiny-d', 9],
+      ]),
+      false,
+    )
+    const other = grouped.groups.find((g) => g.prefix === OTHER_GROUP)!
+    expect(other.rows).toHaveLength(18)
+    expect(other.vendors).toBe(4)
+  })
+
+  it('已选置顶,且不属于任何组', () => {
+    const grouped = groupCatalog(
+      rows([['openai', 70]], ['openai/m3', 'openai/m9']),
+      false,
+    )
+    expect(grouped.picked.map((r) => r.id)).toEqual(['openai/m3', 'openai/m9'])
+    expect(grouped.groups.flatMap((g) => g.rows).map((r) => r.id)).not.toContain('openai/m3')
+  })
+
+  it('检索时截 50 行并如实报剩余;已选那一半不截', () => {
+    const grouped = groupCatalog(rows([['openai', 200]], ['openai/m0', 'openai/m1']), true)
+    expect(grouped.groups.flatMap((g) => g.rows)).toHaveLength(50)
+    // 198 条未选里画了 50,剩 148。
+    expect(grouped.truncated).toBe(148)
+    expect(grouped.picked).toHaveLength(2)
+  })
+
+  it('不检索时一行不截 —— 截断是检索态的取舍,不是常态', () => {
+    expect(groupCatalog(rows([['openai', 200]]), false).truncated).toBe(0)
+  })
+
+  it('顺序是算出来的:同一份目录两次折叠排布一样', () => {
+    const input = rows([
+      ['openai', 12],
+      ['google', 12],
+      ['anthropic', 40],
+    ])
+    const a = groupCatalog(input, false).groups.map((g) => g.prefix)
+    const b = groupCatalog(input, false).groups.map((g) => g.prefix)
+    expect(a).toEqual(b)
+    // 一样大的两组按前缀字典序,不看它们在目录里的先后。
+    expect(a).toEqual(['anthropic/', 'google/', 'openai/'])
+  })
+})
+
+describe('vendorPrefixOf', () => {
+  it('取到第一个斜杠为止;没有斜杠 = 没有厂牌', () => {
+    expect(vendorPrefixOf('anthropic/claude-sonnet-4')).toBe('anthropic/')
+    expect(vendorPrefixOf('deepseek-chat')).toBeNull()
+    // 开头就是斜杠不算厂牌 —— 那是个空前缀。
+    expect(vendorPrefixOf('/weird')).toBeNull()
+  })
+})
+
+/* ── 批二:凭证池 ────────────────────────────────────────────────────────── */
+
+describe('poolViewOf', () => {
+  function summary(entries: unknown[], policy = 'single', policyUnavailable?: boolean) {
+    return { entries, policy, policyUnavailable } as unknown as SpaceProviderCredentialSummary
+  }
+
+  const NOW = 1_000_000
+
+  it('序号 1 起,顺序即优先级', () => {
+    const view = poolViewOf(
+      summary([
+        { id: 'a', label: '个人', authType: 'apiKey', hasApiKey: true, apiKeyPreview: '…8c1d', source: 'user' },
+        { id: 'b', label: '公司', authType: 'apiKey', hasApiKey: true, apiKeyPreview: '…44f0', source: 'user' },
+      ]),
+      NOW,
+    )
+    expect(view.rows.map((r) => [r.ordinal, r.id])).toEqual([
+      [1, 'a'],
+      [2, 'b'],
+    ])
+  })
+
+  it('最后一条不可删 —— 后端本来就拒空列表', () => {
+    expect(poolViewOf(summary([{ id: 'a', authType: 'apiKey', source: 'user' }]), NOW).canDelete).toBe(
+      false,
+    )
+    expect(
+      poolViewOf(
+        summary([
+          { id: 'a', authType: 'apiKey', source: 'user' },
+          { id: 'b', authType: 'apiKey', source: 'user' },
+        ]),
+        NOW,
+      ).canDelete,
+    ).toBe(true)
+  })
+
+  it('冷却按时刻现判,过去的时刻不算冷却', () => {
+    const view = poolViewOf(
+      summary([
+        { id: 'a', authType: 'apiKey', source: 'user', cooldownUntil: NOW + 60_000 },
+        { id: 'b', authType: 'apiKey', source: 'user', cooldownUntil: NOW - 1 },
+      ]),
+      NOW,
+    )
+    expect(view.rows.map((r) => r.cooling)).toEqual([true, false])
+  })
+
+  it('策略缺席落 single;插件策略不可用时字段本身不改写', () => {
+    expect(poolViewOf(summary([], ''), NOW).policy).toBe('single')
+    const plugged = poolViewOf(summary([], 'plugin:x:round', true), NOW)
+    expect(plugged.policy).toBe('plugin:x:round')
+    expect(plugged.policyUnavailable).toBe(true)
+  })
+
+  it('摘要整个缺席 = 空池,不炸', () => {
+    const view = poolViewOf(undefined, NOW)
+    expect(view.rows).toEqual([])
+    expect(view.canDelete).toBe(false)
+  })
+})
+
+describe('cooldownFact', () => {
+  const NOW = 1_000_000
+
+  it('三档:分钟 / 小时 / 天', () => {
+    expect(cooldownFact(NOW + 4 * 60_000, NOW)).toEqual({
+      key: 'providers.coolMinutes',
+      vars: { count: 4 },
+    })
+    expect(cooldownFact(NOW + 3 * 3_600_000, NOW)).toEqual({
+      key: 'providers.coolHours',
+      vars: { count: 3 },
+    })
+    expect(cooldownFact(NOW + 2 * 86_400_000, NOW)).toEqual({
+      key: 'providers.coolDays',
+      vars: { count: 2 },
+    })
+  })
+
+  it('已经到点 = 即将恢复;没有冷却时刻 = 没有这句话', () => {
+    expect(cooldownFact(NOW - 1, NOW)).toEqual({ key: 'providers.coolSoon' })
+    expect(cooldownFact(undefined, NOW)).toBeNull()
+  })
+})
+
+describe('reorderPool', () => {
+  it('上移下移就是一次交换', () => {
+    expect(reorderPool(['a', 'b', 'c'], 'b', -1)).toEqual(['b', 'a', 'c'])
+    expect(reorderPool(['a', 'b', 'c'], 'b', 1)).toEqual(['a', 'c', 'b'])
+  })
+
+  it('越界原样返回 —— 调用方据「没变」决定不发请求', () => {
+    expect(reorderPool(['a', 'b'], 'a', -1)).toEqual(['a', 'b'])
+    expect(reorderPool(['a', 'b'], 'b', 1)).toEqual(['a', 'b'])
+    expect(reorderPool(['a', 'b'], '不在池里', 1)).toEqual(['a', 'b'])
+  })
+})
+
+describe('轮换策略的句子', () => {
+  it('三档各有名字与一句语义说明', () => {
+    expect(rotationLabelFact('single')).toEqual({ key: 'providers.rotationSingle' })
+    expect(rotationHintFact('priority-failover')).toEqual({
+      key: 'providers.rotationFailoverHint',
+    })
+  })
+
+  it('插件策略:名字带原值透出,但**没有**语义句可说 —— 不编一句', () => {
+    expect(rotationLabelFact('plugin:x:round')).toEqual({
+      key: 'providers.rotationUnknown',
+      vars: { policy: 'plugin:x:round' },
+    })
+    expect(rotationHintFact('plugin:x:round')).toBeNull()
   })
 })

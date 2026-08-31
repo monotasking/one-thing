@@ -1,0 +1,58 @@
+/* 新建 / 改一家自定义 provider。表单一列到底 —— 六格里有三格必填,
+ * 两列排布会让「哪几个是必填」这件事更难扫。 */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.intro {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+}
+
+.hint {
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/* 提交时才出现的那一条。danger 只上字。 */
+.problem {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--danger);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+}
+
+/* 删除留在最左、确认与取消在最右 —— 破坏性动作与确认动作**不相邻**,
+ * 免得手滑。中间这一格就是那段刻意的距离。
+ *
+ * `min-width: 0` 不是摆设:这一格是**空的**,窄下来时它该第一个被压没
+ * (律一——会伸的件必须解开收缩下界)。没有这一句,一条空白会在窄脚栏里
+ * 把「取消 / 保存」两颗钮顶出去。 */
+.spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}

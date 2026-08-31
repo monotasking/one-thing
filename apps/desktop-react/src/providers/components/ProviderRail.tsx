@@ -41,6 +41,7 @@ export function ProviderRail({
   query,
   onQuery,
   onSelect,
+  onAddCustom,
 }: {
   rows: readonly RailRow[]
   /** 「N 家已接入」的 N —— 已接入 ≠ 名册长度,判据在 projection 里。 */
@@ -49,6 +50,7 @@ export function ProviderRail({
   query: string
   onQuery: (value: string) => void
   onSelect: (familyId: string) => void
+  onAddCustom: () => void
 }) {
   const t = useT()
 
@@ -108,14 +110,9 @@ export function ProviderRail({
       </div>
 
       <div className={s.foot}>
-        {/*
-          批一的缺席态:钮画出来但是禁用的,旁边一句话说清它什么时候会活过来。
-          不做一个点了弹「敬请期待」的假流程 —— 那比一个明说「还没做」的钮更坏。
-        */}
-        <Button size="sm" disabled>
+        <Button size="sm" onClick={onAddCustom}>
           {t('providers.addCustom')}
         </Button>
-        <span className={s.footNote}>{t('providers.addCustomNext')}</span>
       </div>
     </nav>
   )

@@ -1,7 +1,27 @@
-import type { GetProvidersResponse, ModelsListResponse } from '@shared/ipc/providers'
+import type {
+  GetProvidersResponse,
+  ModelsListResponse,
+  ProviderUsageResponse,
+} from '@shared/ipc/providers'
+import type {
+  OAuthCallbackRequest,
+  OAuthCallbackResponse,
+  OAuthDevicePollRequest,
+  OAuthDevicePollResponse,
+  OAuthLogoutRequest,
+  OAuthLogoutResponse,
+  OAuthStartRequest,
+  OAuthStartResponse,
+  OAuthStatusRequest,
+  OAuthStatusResponse,
+} from '@shared/ipc/oauth'
 import type { AppSettings, GetSettingsResponse, SaveSettingsResponse } from '@shared/ipc/settings'
 import type {
+  SpacesClearCredentialRequest,
+  SpacesClearCredentialResponse,
   SpacesGetCredentialsResponse,
+  SpacesSetCredentialPoolRequest,
+  SpacesSetCredentialPoolResponse,
   SpacesSetCredentialRequest,
   SpacesSetCredentialResponse,
 } from '@shared/ipc/spaces'
@@ -63,6 +83,42 @@ export interface ProviderSettingsPort {
   readCredentials(spaceId: string): Promise<SpacesGetCredentialsResponse>
   /** 写一条凭证。见上面 ②。 */
   setCredential(request: SpacesSetCredentialRequest): Promise<SpacesSetCredentialResponse>
+
+  /* ── 批二新增的三族口 ──────────────────────────────────────────────────
+   * 都是**平台调用面的子集**,和上面六条同一条纪律:一个字段都没有多。
+   *
+   * ④ **凭证池**(多钥 / 顺序 / 策略)→ `spaces.setCredentialPool`。
+   *    它的 `entryIds` 是**期望的最终顺序**,而且**不在列表里的条目会被删掉** ——
+   *    所以调序、删除、换策略是同一口的三种用法,不是三口。
+   *    (契约 `packages/shared/ipc/spaces.ts:280-285`,语义注释在 :274-279。)
+   *    「换一把 key 不换条目」走的是 `setCredential` 带 `entryId` 那一支
+   *    (:241-249:带 entryId = 改这一条;不带 = 追加一条)—— 用量账按条目归因,
+   *    换 key 新建条目就等于把这一条的历史账断了。
+   *
+   * ⑤ **OAuth 登录**→ `oauth` 域(`packages/shared/ipc/oauth.ts:144-160`)。
+   *    **没有 cancel 这一口** —— 取消是渲染层自己停掉轮询,后端那边没有可撤的东西
+   *    (Vue 壳的 `useProviderAuth.ts` 也是这么做的,它连这口都没找)。
+   *
+   * ⑥ **订阅用量**→ `providers.usage`。今天只有 codex 真有数,其余家后端直接回
+   *    `unsupported: true`(`onething-runtime/src/providers/provider-usage.ts:69-73`)——
+   *    所以「这家没有用量卡」是**后端说的**,不是这块面猜的。
+   *
+   * 有一件事这里**没有**:测连通。全仓没有这口(testConnection / validateApiKey
+   * 一个都不存在),所以这块面不画那颗钮 —— 画一颗点了只能假装的钮,比不画更坏。
+   */
+  setCredentialPool(
+    request: SpacesSetCredentialPoolRequest,
+  ): Promise<SpacesSetCredentialPoolResponse>
+  clearCredential(request: SpacesClearCredentialRequest): Promise<SpacesClearCredentialResponse>
+
+  oauthStatus(request: OAuthStatusRequest): Promise<OAuthStatusResponse>
+  oauthStart(request: OAuthStartRequest): Promise<OAuthStartResponse>
+  oauthDevicePoll(request: OAuthDevicePollRequest): Promise<OAuthDevicePollResponse>
+  oauthCallback(request: OAuthCallbackRequest): Promise<OAuthCallbackResponse>
+  oauthLogout(request: OAuthLogoutRequest): Promise<OAuthLogoutResponse>
+
+  /** 订阅用量。`spaceId` 缺席 = 默认空间。 */
+  getProviderUsage(providerId: string, spaceId?: string): Promise<ProviderUsageResponse>
 }
 
 let port: ProviderSettingsPort | undefined
@@ -78,14 +134,21 @@ export function configureProviderSettingsPort(next: ProviderSettingsPort | undef
  * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<ProviderSettingsPort> {
-  const [{ providersApi }, { modelsApi }, { settingsApi }, { spacesApi }, { whenConnected }] =
-    await Promise.all([
-      import('@renderer/platform/providers-client'),
-      import('@renderer/platform/models-client'),
-      import('@renderer/platform/settings-client'),
-      import('@renderer/platform/spaces-client'),
-      import('../platform/connection'),
-    ])
+  const [
+    { providersApi },
+    { modelsApi },
+    { settingsApi },
+    { spacesApi },
+    { oauthApi },
+    { whenConnected },
+  ] = await Promise.all([
+    import('@renderer/platform/providers-client'),
+    import('@renderer/platform/models-client'),
+    import('@renderer/platform/settings-client'),
+    import('@renderer/platform/spaces-client'),
+    import('@renderer/platform/oauth-client'),
+    import('../platform/connection'),
+  ])
   return {
     ready: () => whenConnected(),
     listProviders: () => providersApi.getProviders(),
@@ -95,6 +158,14 @@ async function realPort(): Promise<ProviderSettingsPort> {
     saveSettings: (settings) => settingsApi.saveSettings(settings),
     readCredentials: (spaceId) => spacesApi.getCredentials({ id: spaceId }),
     setCredential: (request) => spacesApi.setCredential(request),
+    setCredentialPool: (request) => spacesApi.setCredentialPool(request),
+    clearCredential: (request) => spacesApi.clearCredential(request),
+    oauthStatus: (request) => oauthApi.status(request),
+    oauthStart: (request) => oauthApi.start(request),
+    oauthDevicePoll: (request) => oauthApi.devicePoll(request),
+    oauthCallback: (request) => oauthApi.callback(request),
+    oauthLogout: (request) => oauthApi.logout(request),
+    getProviderUsage: (providerId, spaceId) => providersApi.getProviderUsage(providerId, spaceId),
   }
 }
 

@@ -4,11 +4,13 @@ import type {
   SpaceCredentialEntrySummary,
   SpaceProviderCredentialSummary,
 } from '@shared/ipc/spaces'
-import { UNKNOWN_CREDENTIALS } from './types'
+import { OTHER_GROUP, UNKNOWN_CREDENTIALS } from './types'
 import type {
+  CatalogGroup,
   CatalogRow,
   CredentialFacts,
   Fact,
+  GroupedCatalog,
   ModeTab,
   ModelCap,
   ProviderFamilyView,
@@ -69,6 +71,127 @@ export function isModeConfigured(mode: ProviderMode, creds: CredentialFacts): bo
   if (mode.kind === 'localCli' || mode.kind === 'acp' || mode.kind === 'custom') return true
   if (!creds.known) return false
   return mode.kind === 'subscription' ? creds.hasOAuth : creds.hasApiKey
+}
+
+/* ── 凭证池(多钥 / 顺序 / 策略)──────────────────────────────────────────── */
+
+/**
+ * 三档内置轮换策略。取值与语义句**逐字**照生产
+ * (`packages/renderer/components/settings/provider/SpaceCredentialPool.vue:367-377`)——
+ * 「按序接力」这些名字是用户已经认识的字,这块壳没有资格另起一套。
+ *
+ * `policy` 在契约上是 `string` 而不是联合类型,因为插件可以注册策略
+ * (`plugin:<id>:<name>`)。不认识的取值按 `single` 解析,但**字段本身不改写** ——
+ * 插件回来它自动生效,替用户把选择抹掉才是真的错。
+ */
+export const ROTATION_POLICIES = ['single', 'priority-failover', 'round-robin'] as const
+export type RotationPolicy = (typeof ROTATION_POLICIES)[number]
+
+const POLICY_LABEL: Record<RotationPolicy, Fact['key']> = {
+  single: 'providers.rotationSingle',
+  'priority-failover': 'providers.rotationFailover',
+  'round-robin': 'providers.rotationRoundRobin',
+}
+
+const POLICY_HINT: Record<RotationPolicy, Fact['key']> = {
+  single: 'providers.rotationSingleHint',
+  'priority-failover': 'providers.rotationFailoverHint',
+  'round-robin': 'providers.rotationRoundRobinHint',
+}
+
+export function rotationLabelFact(policy: string): Fact {
+  return isRotationPolicy(policy)
+    ? { key: POLICY_LABEL[policy] }
+    : { key: 'providers.rotationUnknown', vars: { policy } }
+}
+
+/** 选择器下面那句语义说明。不认识的策略没有话可说 —— 不编一句。 */
+export function rotationHintFact(policy: string): Fact | null {
+  return isRotationPolicy(policy) ? { key: POLICY_HINT[policy] } : null
+}
+
+export function isRotationPolicy(policy: string): policy is RotationPolicy {
+  return (ROTATION_POLICIES as readonly string[]).includes(policy)
+}
+
+/** 池子里的一行。序号 = 优先级,所以它是**算出来的**,不是存的。 */
+export interface PoolRow {
+  id: string
+  /** 1 起。这就是优先级 —— 「第 1 条」和「最先用的那条」是同一件事。 */
+  ordinal: number
+  label: string
+  authType: 'apiKey' | 'oauth'
+  preview?: string
+  oauthAccount?: string
+  /** 产地。后端今天只写 `'user'`,别的取值原样透出去,不替它编一个名字。 */
+  source: string
+  cooldownUntil?: number
+  cooling: boolean
+}
+
+export interface PoolView {
+  rows: PoolRow[]
+  policy: string
+  /** 策略是插件给的、而此刻那个插件不在。字段不改,画灰 + 一句说明。 */
+  policyUnavailable: boolean
+  /**
+   * 删得动吗。**最后一条不可删** —— 后端本来就会拒(空列表不收),
+   * 与其让人点一下再收到一句拒绝,不如把钮禁掉并说清理由。
+   */
+  canDelete: boolean
+}
+
+export function poolViewOf(
+  summary: SpaceProviderCredentialSummary | undefined,
+  now: number = Date.now(),
+): PoolView {
+  const entries = summary?.entries ?? []
+  return {
+    rows: entries.map((entry, index) => ({
+      id: entry.id,
+      ordinal: index + 1,
+      label: entry.label ?? '',
+      authType: entry.authType,
+      preview: entry.apiKeyPreview,
+      oauthAccount: entry.oauthAccount,
+      source: entry.source,
+      cooldownUntil: entry.cooldownUntil,
+      cooling: isCooling(entry, now),
+    })),
+    policy: summary?.policy || 'single',
+    policyUnavailable: summary?.policyUnavailable === true,
+    canDelete: entries.length > 1,
+  }
+}
+
+/**
+ * 冷却还剩多久。**分钟 / 小时 / 天三档**,与生产
+ * (`SpaceCredentialPool.vue:570-577` 的 `describeRemaining`)逐字同一套判据 ——
+ * 「剩 4 分钟」比「剩 251 秒」有用,而秒级读数还会让这一格每秒重画一次。
+ */
+export function cooldownFact(untilMs: number | undefined, now: number = Date.now()): Fact | null {
+  if (typeof untilMs !== 'number') return null
+  const remain = untilMs - now
+  if (remain <= 0) return { key: 'providers.coolSoon' }
+  const minutes = Math.ceil(remain / 60_000)
+  if (minutes < 60) return { key: 'providers.coolMinutes', vars: { count: minutes } }
+  const hours = Math.ceil(remain / 3_600_000)
+  if (hours < 24) return { key: 'providers.coolHours', vars: { count: hours } }
+  return { key: 'providers.coolDays', vars: { count: Math.ceil(remain / 86_400_000) } }
+}
+
+/**
+ * 调序后的 id 序列。`setCredentialPool` 吃的是**期望的最终顺序**,
+ * 所以「上移一格」在这一层就是一次交换,不是一条指令。
+ * 越界(第一条上移 / 最后一条下移)原样返回 —— 调用方据「没变」决定不发请求。
+ */
+export function reorderPool(ids: readonly string[], id: string, delta: -1 | 1): string[] {
+  const from = ids.indexOf(id)
+  const to = from + delta
+  if (from < 0 || to < 0 || to >= ids.length) return ids.slice()
+  const next = ids.slice()
+  ;[next[from], next[to]] = [next[to], next[from]]
+  return next
 }
 
 /* ── 事实句 ────────────────────────────────────────────────────────────── */
@@ -253,15 +376,29 @@ export function maxOutputOf(model: OpenRouterModel): number | null {
 }
 
 /**
- * 单价。目录给的是**每 token** 的美元字符串,屏幕上写的是每百万 token ——
- * 换算在这一处做一次。两格缺一即 null:半个价格不如不写。
+ * 单价。**目录给的已经是每百万 token 的美元数**,屏幕上写的也是每百万 ——
+ * 所以这里一次换算都不做。两格缺一即 null:半个价格不如不写。
+ *
+ * ── 这里曾经乘过 1e6,真机上把 gpt-5.6 画成了 $5000000 ──────────────────────
+ * 病根是把 `OpenRouterModel` 这个**名字**当成了产地。它只是个遗留信封:全仓
+ * 只有一个序列化口会产出目录行 ——
+ * `packages/onething-runtime/src/providers/model-registry.ts:719`
+ * (`onethingCapabilityEntryToOpenRouterModel`,:737-739 把数 `String()` 一下),
+ * 而它的入参 `OnethingModelCapabilityEntry.pricing` 在 :881-886 白纸黑字写着是
+ * **USD per 1M token**。没有任何代码去拉 `openrouter.ai/api/v1/models` ——
+ * 连叫 `openrouter` 的那一家,目录也是从 models.dev 来的(models.dev 的
+ * `cost.input/output` 本身就是每百万)。其余产地(Copilot / ACP / Codex /
+ * 自定义模型)一律硬写 `"0"`,由下面 `<= 0` 那一条挡掉。
+ *
+ * 所以判据**不是**按源分辨、更不是拿阈值猜:这一层只有一个产地,单位是它的合同。
+ * 旁证:`onething-runtime/src/usage/pricing.ts:36-40` 算完账才 `/ 1_000_000`。
  */
 export function priceOf(model: OpenRouterModel): { input: number; output: number } | null {
   const input = Number(model.pricing?.prompt)
   const output = Number(model.pricing?.completion)
   if (!Number.isFinite(input) || !Number.isFinite(output)) return null
   if (input <= 0 && output <= 0) return null
-  return { input: input * 1_000_000, output: output * 1_000_000 }
+  return { input, output }
 }
 
 /** 200000 → 「200K」;1_200_000 → 「1.2M」。null 由调用方决定画什么。 */
@@ -275,10 +412,21 @@ export function formatTokens(value: number | null): string | null {
   return String(value)
 }
 
-/** $3 → 「$3」;$0.55 → 「$0.55」。整数不拖两位小数。 */
+/**
+ * 3 → 「$3」;2.19 → 「$2.19」;0.3 → 「$0.3」;0.861 → 「$0.86」。
+ *
+ * 两位小数 + **去掉拖尾的零**:目录里的价既有 `3` 也有 `2.19` 也有 `0.3`,
+ * 固定位数会把 `$0.3` 写成 `$0.30`(多一个没意义的零)或把 `$2.19` 截成 `$2.2`
+ * (少一个有意义的分)。
+ *
+ * 两位截到 0 而原值不是 0 时退到三位 —— 「$0」是**说这东西免费**,
+ * 而它其实是 $0.002。宁可多一位,不可说错。
+ */
 export function formatPrice(value: number): string {
-  if (Number.isInteger(value)) return `$${value}`
-  return `$${value < 1 ? value.toFixed(2) : value.toFixed(1)}`
+  const two = Number(value.toFixed(2))
+  const text = two === 0 && value > 0 ? value.toFixed(3) : value.toFixed(2)
+  // 去零只砍小数部分,`$150` 的那两个零一根都不许动。
+  return `$${text.replace(/\.?0+$/, '')}`
 }
 
 /**
@@ -303,6 +451,7 @@ export function buildCatalogRows(
     maxOutput: maxOutputOf(model),
     caps: capsOf(model),
     price: priceOf(model),
+    manual: false,
   }))
 
   const known = new Set(rows.map((r) => r.id))
@@ -317,6 +466,8 @@ export function buildCatalogRows(
       maxOutput: null,
       caps: [],
       price: null,
+      // 「勾了但目录不认识」= 手填。这不是另一份存储,是同一个事实的名字。
+      manual: true,
     }))
 
   const all = [...orphans, ...rows]
@@ -325,6 +476,81 @@ export function buildCatalogRows(
   return all.filter(
     (row) => row.id.toLowerCase().includes(needle) || row.name.toLowerCase().includes(needle),
   )
+}
+
+/* ── 厂牌折叠(OpenRouter 300+ 行)─────────────────────────────────────── */
+
+/**
+ * 到多少行才值得折叠。**低于这个数就平铺** —— 十几行的目录折起来只是多了两次点击。
+ * 60 这个数的来历:一屏大约放得下 20 行,三屏还翻不完的时候,折叠才开始省事。
+ */
+export const GROUP_MIN_ROWS = 60
+
+/**
+ * 一个厂牌要有多少型才配单独一组。低于这个数的全并进「其他」——
+ * 45 个只有两三型的厂牌各占一行组头,那不是折叠,是把噪音换了个形状。
+ */
+export const GROUP_MIN_VENDOR_ROWS = 10
+
+/** 检索命中最多画多少行。截了必须如实报,不能默默少画。 */
+export const SEARCH_ROW_CAP = 50
+
+/** `anthropic/claude-sonnet-4` → `anthropic/`;没有斜杠 = 没有厂牌。 */
+export function vendorPrefixOf(id: string): string | null {
+  const slash = id.indexOf('/')
+  return slash > 0 ? id.slice(0, slash + 1) : null
+}
+
+/**
+ * 目录 → 折叠后的目录。三条判据,一条都不藏在组件里:
+ *
+ *  ① **已选置顶**:勾过的行永远在最上面、永远展开。它们是「这一坑此刻在用什么」,
+ *     折进某个厂牌组里就等于把当下最重要的事实藏进了一次点击后面。
+ *  ② **按 `vendor/` 前缀分组**,行数不够(< `GROUP_MIN_ROWS`)就不分。
+ *  ③ **检索时截 `SEARCH_ROW_CAP` 行**并如实报剩余 —— 一次画三百行是卡顿的产地,
+ *     而「只画前 50」不说出来就是说谎。
+ *
+ * 注意 `rows` 已经是**过滤后**的(`buildCatalogRows` 吃过 query),所以这里的
+ * `searching` 只用来决定「要不要截」与「组要不要自动展开」,不再筛一遍。
+ */
+export function groupCatalog(rows: readonly CatalogRow[], searching: boolean): GroupedCatalog {
+  const picked = rows.filter((row) => row.selected)
+  const rest = rows.filter((row) => !row.selected)
+
+  // 检索时只截未选的那一半:已选是「我在用的」,再多也得画全。
+  const capped = searching ? rest.slice(0, SEARCH_ROW_CAP) : rest
+  const truncated = rest.length - capped.length
+
+  if (rows.length < GROUP_MIN_ROWS) {
+    return { picked, groups: [{ prefix: OTHER_GROUP, rows: capped, vendors: 0 }], grouped: false, truncated }
+  }
+
+  const buckets = new Map<string, CatalogRow[]>()
+  for (const row of capped) {
+    const prefix = vendorPrefixOf(row.id) ?? OTHER_GROUP
+    const bucket = buckets.get(prefix)
+    if (bucket) bucket.push(row)
+    else buckets.set(prefix, [row])
+  }
+
+  const groups: CatalogGroup[] = []
+  const other: CatalogRow[] = []
+  let otherVendors = 0
+  for (const [prefix, bucket] of buckets) {
+    if (prefix !== OTHER_GROUP && bucket.length >= GROUP_MIN_VENDOR_ROWS) {
+      groups.push({ prefix, rows: bucket, vendors: 1 })
+      continue
+    }
+    other.push(...bucket)
+    if (prefix !== OTHER_GROUP) otherVendors += 1
+  }
+
+  // 大组在前,同样大小按前缀字典序 —— 顺序必须是**算出来的**,
+  // 不然同一份目录两次打开的排布会不一样。
+  groups.sort((a, b) => b.rows.length - a.rows.length || a.prefix.localeCompare(b.prefix))
+  if (other.length > 0) groups.push({ prefix: OTHER_GROUP, rows: other, vendors: otherVendors })
+
+  return { picked, groups, grouped: true, truncated }
 }
 
 /**

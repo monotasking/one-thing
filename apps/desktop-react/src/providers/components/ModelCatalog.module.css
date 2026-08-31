@@ -1,5 +1,9 @@
-/* 模型目录:头(标题 + 读数 + 检索 + 刷新)/ 列头 / 行 / 脚注。
- * 七列定宽表 —— 列宽全在 tokens.css 的模型服务一节,这里只排它们。 */
+/* 模型目录:头(标题 + 读数 + 检索 + 刷新 + 手填)/ 列头 / 组头 / 行 / 脚注。
+ * 七列表 —— 列宽全在 tokens.css 的模型服务一节,这里只排它们。
+ *
+ * 这块面同时是一个**尺寸容器**(`container-type: inline-size`,名字 `catalog`):
+ * 窄下来时让价格列先走,判据写在下面那条 @container 里。容器必须是它自己而不是
+ * 外面的详情栏 —— 详情栏还装着模式卡,拿它当基准量出来的不是这张表的宽度。 */
 .catalog {
   flex: 1;
   min-height: 0;
@@ -9,6 +13,8 @@
   border-radius: var(--r-2);
   background: var(--surface-2);
   overflow: hidden;
+  container-type: inline-size;
+  container-name: catalog;
 }
 
 .head {
@@ -47,12 +53,51 @@
   width: var(--pv-search-w);
 }
 
-/* 列头与行共用同一张网格 —— 两处各写一遍宽度就是两处会漂开。 */
+/* 手填 ID 那一行。展开时才在,收起时连盒子都不留。 */
+.addRow {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+.addField {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: var(--pv-key-w);
+}
+
+.addError {
+  font-size: var(--fs-micro);
+  color: var(--danger);
+}
+
+/*
+ * 列头与行共用同一张网格 —— 两处各写一遍宽度就是两处会漂开。
+ *
+ * ── 挤压纪律(react-shell-squeeze-rules 律一)────────────────────────────
+ * **一行恰有一个弯腰件,而它不是模型名。** 修之前这一行写的是
+ *   `var(--pv-col-check) 1fr var(--pv-col-caps) …`
+ * 六条定宽轨加起来 532px,名字那一轨是 `1fr`(= `minmax(auto, 1fr)`),而
+ * `.cell` 上的 `min-width: 0` 把它的 auto 最小值一路压到 0 —— 于是容器一窄,
+ * **先被榨干的恰恰是最重要的那一列**:真机上「GPT-5.6」被截成「GPT…」,
+ * 而右边的「$5 / $30」一个像素没让。
+ *
+ * 修法是把「谁先让」排出来,而不是靠像素调:
+ *  · 名字轨 `minmax(var(--pv-col-name-min), 1fr)` —— **有下限,不许弯到看不清**;
+ *  · 能力轨 `minmax(0, var(--pv-col-caps))` —— 它是**唯一允许被压扁的那一格**
+ *    (五个单字缩写,少露一两个仍能读,而且每行的能力都写在 title 上没有丢);
+ *  · 其余轨定宽不让。
+ * 真正窄到连这样都排不下时,由下面那条 @container 让价格列整列退场 ——
+ * 那是一次**离散**的取舍,比让每一列都缩成半个字诚实。
+ */
 .grid {
   display: grid;
   grid-template-columns:
-    var(--pv-col-check) 1fr var(--pv-col-caps) var(--pv-col-ctx)
-    var(--pv-col-out) var(--pv-col-price) var(--pv-col-current);
+    var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr) minmax(0, var(--pv-col-caps))
+    var(--pv-col-ctx) var(--pv-col-out) var(--pv-col-price) var(--pv-col-current);
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
@@ -76,6 +121,17 @@
   border-bottom: var(--bw-1) solid var(--line-1);
 }
 
+/*
+ * 长组(> 40 行)展开时,行上挂 `content-visibility: auto`:视口外的行不排版。
+ * `contain-intrinsic-size: auto <高>` 里的 `auto` 是关键 —— 它让浏览器**记住**
+ * 这一行真正量到的高度,于是滚动条不会在滚过一遍之后跳动。没有 `auto` 就是
+ * 每一行都按估计值占位,长列表滚起来会一路抖。
+ */
+.rowSkip {
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--pv-row-h);
+}
+
 .cell {
   min-width: 0;
   display: flex;
@@ -95,13 +151,34 @@
   color: var(--text-2);
 }
 
+/* id 与「手填」标之间:标不弯腰,id 弯。 */
+.idLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
 .id {
+  flex: 0 1 auto;
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-nano);
   color: var(--text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 「手填」标。它是**产地**不是状态,所以不上状态色,只用一圈线区分开。 */
+.manual {
+  flex: none;
+  padding: 0 var(--sp-1);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-1);
+  font-size: var(--fs-ext);
+  color: var(--text-2);
+  white-space: nowrap;
 }
 
 .caps {
@@ -128,12 +205,78 @@
   text-overflow: ellipsis;
 }
 
-.current {
+.actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.current {
   font-size: var(--fs-micro);
   color: var(--accent);
   white-space: nowrap;
+}
+
+/* 组头(已选置顶那条 / 每个厂牌那条)。粘在滚动容器顶上,
+ * 一屏几十行时才知道自己在哪一组里。 */
+.groupHead,
+.groupToggle {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  border-bottom: var(--bw-1) solid var(--line-1);
+  background: var(--surface-2);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  text-align: left;
+}
+
+.groupToggle {
+  border-width: 0 0 var(--bw-1) 0;
+  cursor: pointer;
+}
+
+.groupToggle:disabled {
+  cursor: default;
+}
+
+.groupCaret {
+  flex: none;
+  width: var(--pv-caret-w);
+}
+
+/* 组名是 `anthropic/` 这样的前缀:它不抢空间,读数抢 —— 与组头那条判例同一手。 */
+.groupName {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.groupNote {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 截断那句。它是**如实交代**,所以留在列表里而不是藏进脚注。 */
+.truncated {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
 }
 
 .note {
@@ -155,4 +298,27 @@
   text-align: center;
   font-size: var(--fs-meta);
   color: var(--text-2);
+}
+
+/*
+ * 窄容器:**价格列整列让位**。
+ *
+ * 为什么是价格而不是别的:上下文与最大输出是「这个模型能不能干这件事」,
+ * 勾选与当前是「它在不在用」—— 都是选模型当下要看的。单价是**结算时**才要的数,
+ * 而且它在模型卡与用量页里还有第二处产地。让它先走,损失最小。
+ *
+ * 阈值那个数在查询里只能写字面量(`@container` 条件里不能写 var()),
+ * `--pv-catalog-narrow` 是同一事实的名字,改的时候两处一起改。
+ */
+@container catalog (max-width: 640px) {
+  .grid {
+    grid-template-columns:
+      var(--pv-col-check) minmax(var(--pv-col-name-min), 1fr) minmax(0, var(--pv-col-caps))
+      var(--pv-col-ctx) var(--pv-col-out) var(--pv-col-current);
+  }
+
+  .price,
+  .colPrice {
+    display: none;
+  }
 }

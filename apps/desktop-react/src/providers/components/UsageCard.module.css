@@ -1,0 +1,138 @@
+/* 订阅用量。这块信息将来要复用到输入框区域(交接稿 §6),所以它的几何
+ * 只依赖自己的 token,不依赖「我在设置面里」这件事。 */
+.card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+/* 「60s 缓存」是**读数的产地说明**,不是按钮的副标题:它告诉人这数可能是一分钟前的。 */
+.cache {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.facts {
+  display: flex;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.factLabel {
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+}
+
+.factValue {
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+}
+
+/* 一根用量条:名 / 轨 / 百分比 / 重置时刻。名与右侧读数定宽,
+ * 轨吃剩下的 —— 几根条的左右两端才对得齐。 */
+.meterRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.meterLabel {
+  flex: none;
+  width: var(--pv-usage-label-w);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meterTrack {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--pv-meter-h);
+  border-radius: var(--r-full);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.meterFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+.meterValue {
+  flex: none;
+  width: var(--pv-usage-pct-w);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-1);
+  text-align: right;
+}
+
+/* 拿不到百分比:占住轨那一格说「未给数」,**不画一根 0 宽的条**。 */
+.meterUnknown {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.meterReset {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.more {
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+.summary {
+  cursor: pointer;
+  color: var(--text-2);
+}
+
+.extra {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-top: var(--sp-2);
+}

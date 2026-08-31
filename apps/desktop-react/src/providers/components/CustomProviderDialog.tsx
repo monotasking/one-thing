@@ -1,0 +1,197 @@
+import { useEffect, useState } from 'react'
+import { Button } from '../../ui/Button'
+import { Dialog } from '../../ui/Dialog'
+import { Input } from '../../ui/Input'
+import { Segmented } from '../../ui/Segmented'
+import { useT } from '../../i18n'
+import type { CustomProviderForm } from '../store'
+import s from './CustomProviderDialog.module.css'
+
+/**
+ * 新建 / 改一家自定义 provider。字段与生产那张表逐格对齐
+ * (`CustomProviderDialog.vue:167-175`)—— 名称✱ / 描述 / 兼容形✱ / Base URL✱ /
+ * 密钥(可空)/ 默认模型。
+ *
+ * ── 两处判断,都不是样式问题 ──────────────────────────────────────────────
+ * ① **必填在提交时才拦**,不在打字时报红:一个刚打开、三格全空的表单立刻爆三条
+ *    红字,是在骂用户还没开始填。
+ * ② **删除是两段就地确认**,和凭证行同一手 —— 但这一颗的确认字要说清代价
+ *    (「连同它的模型勾选一起没」),因为删一家比删一把钥匙毁得多。
+ */
+
+const EMPTY_FORM: CustomProviderForm = {
+  name: '',
+  description: '',
+  apiType: 'openai',
+  baseUrl: '',
+  apiKey: '',
+  model: '',
+}
+
+export function CustomProviderDialog({
+  open,
+  initial,
+  editingId,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  open: boolean
+  /** 改一家时的底本。缺席 = 新建。 */
+  initial?: CustomProviderForm
+  editingId?: string
+  onClose: () => void
+  onSave: (form: CustomProviderForm) => void
+  onDelete: () => void
+}) {
+  const t = useT()
+  const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
+  const [problem, setProblem] = useState<string | undefined>(undefined)
+  const [confirming, setConfirming] = useState(false)
+
+  // 每次开都从底本重置。上一次填了一半就关掉的东西不该跟到下一次 ——
+  // 尤其不该把上一家的 Base URL 带进新一家。
+  useEffect(() => {
+    if (!open) return
+    setForm(initial ?? EMPTY_FORM)
+    setProblem(undefined)
+    setConfirming(false)
+  }, [open, initial])
+
+  function patch(delta: Partial<CustomProviderForm>) {
+    setForm((prev) => ({ ...prev, ...delta }))
+    setProblem(undefined)
+  }
+
+  function submit() {
+    if (!form.name.trim()) {
+      setProblem(t('providers.customNameRequired'))
+      return
+    }
+    if (!form.baseUrl.trim()) {
+      setProblem(t('providers.customBaseUrlRequired'))
+      return
+    }
+    onSave(form)
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={editingId ? t('providers.customEdit') : t('providers.customAdd')}
+      label={editingId ? t('providers.customEdit') : t('providers.customAdd')}
+      footer={
+        <div className={s.footer}>
+          {editingId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                if (!confirming) {
+                  setConfirming(true)
+                  return
+                }
+                setConfirming(false)
+                onDelete()
+              }}
+              onBlur={() => setConfirming(false)}
+            >
+              {confirming ? t('providers.customDeleteConfirm') : t('providers.customDelete')}
+            </Button>
+          )}
+          <span className={s.spacer} />
+          <Button size="sm" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button size="sm" variant="primary" onClick={submit}>
+            {editingId ? t('providers.customSave') : t('providers.customSubmit')}
+          </Button>
+        </div>
+      }
+    >
+      <div className={s.form}>
+        <p className={s.intro}>{t('providers.customAddIntro')}</p>
+
+        <Field label={t('providers.customName')}>
+          <Input
+            size="sm"
+            value={form.name}
+            onValueChange={(name) => patch({ name })}
+            aria-label={t('providers.customName')}
+          />
+        </Field>
+
+        <Field label={t('providers.customDesc')}>
+          <Input
+            size="sm"
+            value={form.description}
+            onValueChange={(description) => patch({ description })}
+            aria-label={t('providers.customDesc')}
+          />
+        </Field>
+
+        <Field label={t('providers.customCompat')}>
+          <Segmented
+            value={form.apiType}
+            onChange={(apiType) => patch({ apiType })}
+            label={t('providers.customCompat')}
+            options={[
+              { value: 'openai' as const, label: t('providers.customCompatOpenai') },
+              { value: 'anthropic' as const, label: t('providers.customCompatAnthropic') },
+            ]}
+          />
+        </Field>
+
+        <Field label={t('providers.customBaseUrl')} hint={t('providers.customBaseUrlHint')}>
+          <Input
+            size="sm"
+            value={form.baseUrl}
+            onValueChange={(baseUrl) => patch({ baseUrl })}
+            placeholder="http://localhost:11434/v1"
+            aria-label={t('providers.customBaseUrl')}
+          />
+        </Field>
+
+        <Field label={t('providers.customKey')}>
+          <Input
+            size="sm"
+            type="password"
+            value={form.apiKey}
+            onValueChange={(apiKey) => patch({ apiKey })}
+            aria-label={t('providers.customKey')}
+          />
+        </Field>
+
+        <Field label={t('providers.customModel')} hint={t('providers.customModelHint')}>
+          <Input
+            size="sm"
+            value={form.model}
+            onValueChange={(model) => patch({ model })}
+            aria-label={t('providers.customModel')}
+          />
+        </Field>
+
+        {problem && <p className={s.problem}>{problem}</p>}
+      </div>
+    </Dialog>
+  )
+}
+
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
+  return (
+    <label className={s.field}>
+      <span className={s.label}>{label}</span>
+      {children}
+      {hint && <span className={s.hint}>{hint}</span>}
+    </label>
+  )
+}

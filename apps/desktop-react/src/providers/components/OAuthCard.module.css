@@ -1,0 +1,96 @@
+/* 订阅登录卡。三屏共用这一张卡面 —— 换屏不该换盒子,不然每次状态变化
+ * 下半屏都要塌一次。 */
+.card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.note {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.meta {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+}
+
+/* 服务商原话。danger 只上**字** —— 状态色不铺面。 */
+.error {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--danger);
+  line-height: 1.6;
+  /* 后端原话可能很长,而它是唯一能说清出了什么事的东西:这里允许换行。 */
+  overflow-wrap: anywhere;
+}
+
+/*
+ * 设备码是这一屏**唯一要照着打的东西**,所以它是最大的那个字:等宽、拉开字距、
+ * 可选中(用户多半要复制它)。字距不是装饰 —— 一串没有分隔的大写字母挤在一起,
+ * 抄错一位的概率高得多。
+ */
+.deviceCode {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-display);
+  font-weight: 600;
+  letter-spacing: var(--pv-code-ls);
+  color: var(--text-1);
+  user-select: text;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  user-select: text;
+}
+
+.codeField {
+  flex: 1 1 var(--pv-key-w);
+  min-width: 0;
+  max-width: var(--pv-key-w);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.accountName {
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dot {
+  flex: none;
+  width: var(--pv-dot);
+  height: var(--pv-dot);
+  border-radius: var(--r-full);
+  background: var(--ok);
+}
+
+/* 登着但过期了:点变黄。这一格是「要你动手」而不是「坏了」。 */
+.dotWarn {
+  background: var(--warn);
+}

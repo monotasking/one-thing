@@ -1,0 +1,53 @@
+/* 模式卡的公共卡面 + 计费档位那一张。 */
+.card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+
+.note {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  user-select: text;
+}
+
+/* 一行档位:标签定宽,选择器吃剩下的 —— 两行档位的选择器才从同一条竖线起笔。 */
+.dialRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.dialLabel {
+  flex: none;
+  width: var(--pv-dial-label-w);
+  font-size: var(--fs-meta);
+  color: var(--text-2);
+}
+
+/*
+ * 风险说明。**选错这一格是真扣钱**,所以它不是一句普通的灰字说明:
+ * 用 warn 的字色 + 一条左缘,把它和「功能介绍」区分开。
+ * 仍然只上字与线、不上底 —— 状态色不铺面那条纪律对它也成立。
+ */
+.risk {
+  margin: 0;
+  padding-left: var(--sp-2);
+  border-left: var(--bw-2) solid var(--warn);
+  font-size: var(--fs-micro);
+  color: var(--text-1);
+  line-height: 1.6;
+}

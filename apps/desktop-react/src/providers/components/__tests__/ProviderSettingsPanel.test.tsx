@@ -6,6 +6,7 @@ import { renderContent } from '../../../content'
 import { configureProviderSettingsPort } from '../../../data/provider-settings-port'
 import type { ProviderSettingsPort } from '../../../data/provider-settings-port'
 import { useProviderSettings } from '../../store'
+import { fakeProviderPort } from '../../__tests__/fake-port'
 import { useNotifyStore } from '../../../services/notify-store'
 import { useStageStore } from '../../../stage/store'
 import { PROVIDERS_ITEM_ID } from '../../../stage/items'
@@ -61,7 +62,9 @@ function model(id: string, name: string): OpenRouterModel {
 }
 
 const CATALOGS: Record<string, OpenRouterModel[]> = {
-  claude: [model('claude-sonnet-4', 'Claude Sonnet 4')],
+  // 两型:一型是设置里的「当前模型」,另一型不是 —— 「设为当前」那颗钮只长在
+  // 非当前的行上,所以目录里必须有一行不是当前的,否则那颗钮无从断言。
+  claude: [model('claude-sonnet-4', 'Claude Sonnet 4'), model('claude-haiku-4-5', 'Claude Haiku 4.5')],
   'claude-code': [model('claude-opus-5', 'Claude Opus 5')],
   acp: [],
 }
@@ -121,8 +124,7 @@ function credentials(signedIn: boolean) {
 }
 
 function installPort(overrides: Partial<ProviderSettingsPort> = {}) {
-  const port: ProviderSettingsPort = {
-    ready: async () => undefined,
+  const port: ProviderSettingsPort = fakeProviderPort({
     listProviders: vi.fn(async () => ({ success: true, providers: ROSTER })),
     listModels: vi.fn(async (providerId: string) => ({
       success: true,
@@ -133,7 +135,7 @@ function installPort(overrides: Partial<ProviderSettingsPort> = {}) {
     readCredentials: vi.fn(async () => credentials(false)),
     setCredential: vi.fn(async () => ({ success: true, credentials: { providers: {} } })),
     ...overrides,
-  }
+  })
   configureProviderSettingsPort(port)
   return port
 }
@@ -251,33 +253,47 @@ describe('写与缺席态', () => {
     expect(sent.ai.providers['claude-code'].enabled).toBe(false)
   })
 
-  it('密钥:占位符说尾号,输入框初值永远是空的,保存走凭证域', async () => {
+  it('密钥:添加走凭证域,原文绝不经 saveSettings', async () => {
     const port = installPort()
     render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
-    const field = (await screen.findByLabelText('Claude 的 API 密钥')) as HTMLInputElement
+    await screen.findByTestId('model-row-claude-sonnet-4')
+
+    fireEvent.click(screen.getByRole('button', { name: '＋ 添加密钥' }))
+    const field = (await screen.findByLabelText('新密钥')) as HTMLInputElement
+    // 输入框初值永远是空的 —— 已存的原文永不回读。
     expect(field.value).toBe('')
-    expect(field.placeholder).toBe('已存 …8c1d,输入新的可替换')
 
     fireEvent.change(field, { target: { value: 'sk-new' } })
     fireEvent.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(port.setCredential).toHaveBeenCalledTimes(1))
     // 密钥**绝不**经 saveSettings —— 那条路会把它静默剥掉。
     expect(port.saveSettings).not.toHaveBeenCalled()
+    // 不带 entryId = 追加一条(带了才是「换 key 不换条目」)。
+    expect(vi.mocked(port.setCredential).mock.calls[0][0].entryId).toBeUndefined()
   })
 
-  it('五处缺席态画的是禁用钮 + 一句「在下一批」,一个假流程都没有', async () => {
+  it('批一那五处缺席态全部兑现,一句「在下一批」都不剩', async () => {
     installPort()
     render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
     await screen.findByTestId('model-row-claude-sonnet-4')
 
+    // ① 新建自定义家:钮活了。
     const addCustom = screen.getByRole('button', { name: '＋ 自定义服务商' }) as HTMLButtonElement
-    expect(addCustom.disabled).toBe(true)
-    expect(screen.getByText('新建自定义服务商在下一批')).toBeTruthy()
-    expect(screen.getByText('多把密钥、顺序与轮换策略在下一批')).toBeTruthy()
+    expect(addCustom.disabled).toBe(false)
+    // ② 多钥与轮换:池子长出来了。
+    expect(screen.getByRole('button', { name: '＋ 添加密钥' })).toBeTruthy()
+    expect(screen.getByLabelText('轮换策略')).toBeTruthy()
+    // ③ 设为当前 / ④ 手填 ID:两颗真钮。
+    expect(screen.getByTestId('set-current-claude-haiku-4-5')).toBeTruthy()
+    // 当前的那一行画的是读数不是钮 —— 「设为当前」点了不会变的钮是噪音。
+    expect(screen.queryByTestId('set-current-claude-sonnet-4')).toBeNull()
+    expect(screen.getByRole('button', { name: '＋ 手填 ID' })).toBeTruthy()
 
+    // ⑤ 订阅登录:钮不再是禁用的。
     fireEvent.click(screen.getByRole('radio', { name: '订阅 · 未登录' }))
     const signIn = (await screen.findByRole('button', { name: '登录' })) as HTMLButtonElement
-    expect(signIn.disabled).toBe(true)
-    expect(screen.getByText('登录入口在下一批')).toBeTruthy()
+    expect(signIn.disabled).toBe(false)
+
+    expect(screen.queryByText(/在下一批/)).toBeNull()
   })
 })
