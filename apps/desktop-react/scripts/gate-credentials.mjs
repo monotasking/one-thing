@@ -20,6 +20,15 @@
  * 所以这不只是「新壳看不见 provider」,是「让没有身份的进程当 core 会把用户的
  * 凭证降级成明文」。A1 把装配放回拿着 Electron app 身份的那个进程里。
  *
+ * ── 2026-08-31 补修:雷本身被拆了,门的读数因此变了 ────────────────────
+ * 上面那段描述的是**修复之前**的对照组行为,留着当病历。此后
+ * `migrateProviderConfigToDefaultSpace` 在**没有加密能力时拒绝执行**(判据是
+ * 「这个进程此刻有没有加密器」,不是宿主种类),于是对照组不再写明文,而是
+ * 留在**未迁移态**;已经被写成 `'none'` 的老池子由有能力的宿主启动时一次性
+ * 升级成密文。分野照旧在 ②(对照组的钥匙不在新位置),但对照组的读数从
+ * `encryption=none` 变成了「未迁移:无凭证池文件」,并多了一条硬断言:
+ * **对照组的 `encryption` 绝不许是 `'none'`** —— 那就是这颗雷复发。
+ *
  * ── 为什么是拷贝而不是生产 store ────────────────────────────────────────
  * 「验证不改状态」(判例 feedback_no_mutation_in_verification):这道门会触发上面
  * 那次**不可逆**的迁移。所以只从生产 store **只读**拷出凭证相关的那几份文件到一次性
@@ -34,7 +43,8 @@
  *       装配,每个宿主都跑。目录与凭证是两件事,分野在 ②。)
  *   ② default 空间的凭证池 `encryption === 'safeStorage'`,而且**解得开**:
  *      在壳自己的主进程里解一次,里面带着源 store 那个 provider 的 oauth 凭证。
- *      对照组同一份源料写出来的是 `encryption: 'none'` —— 这一行就是分野。
+ *      对照组同一份源料**没有这份文件**(它没有加密能力,迁移拒绝执行)——
+ *      这一行就是分野;08-31 之前它写的是 `encryption: 'none'`(明文)。
  *   ③ `GET /api/capabilities` 的 `collabRooms === true` —— `collab: true` 这颗
  *      必落件落到了装配上。
  *
@@ -195,7 +205,18 @@ function describePool(pool) {
   return `encryption=${pool.encryption} providers=${providers}`
 }
 
-/** 对照组:纯 node 子进程当 core。它拿不到 app 身份,迁移只能写明文。 */
+/**
+ * 对照组:纯 node 子进程当 core。它拿不到 app 身份,`configureAuthHost` 那个口
+ * 注入不了。
+ *
+ * **读数在 2026-08-31 变了**:那天以前它会照自己手上的能力把凭证写成
+ * `encryption: 'none'`(明文钥匙落盘);修复之后迁移在**无加密能力时拒绝执行**,
+ * 于是它留在**未迁移态** —— 没有凭证池文件,钥匙还在旧位置。
+ *
+ * 所以对照组现在证的是两件事,而不是一件:
+ *  · 它**仍然**当不了 core(凭证不在新位置,分野照旧在 ②);
+ *  · 它**不再**把用户的钥匙降级成明文(下面那条断言就是这颗雷的守卫)。
+ */
 async function runSpawnServerLane(source) {
   console.log('\n[对照组 spawn-server] 纯 node 子进程当 core(D0 那条路)')
   const store = await materializeStore(source)
@@ -220,7 +241,15 @@ async function runSpawnServerLane(source) {
     const pool = credentialPoolOf(store)
     console.log(`  · providers.list = ${providerCount} 条`)
     console.log(`  · 凭证池 ${describePool(pool)}`)
-    return { providerCount, poolEncryption: pool?.encryption ?? '(无)' }
+    // 2026-08-31 的明文雷守卫。**这一条是断言不是读数**:没有加密能力的进程
+    // 绝不该把凭证写成明文。`undefined` = 它拒绝了迁移(源 store 未迁过);
+    // `safeStorage` = 源 store 早就迁好了,它一个字没动。两者都合法,
+    // `'none'` 是唯一的红。
+    assert(
+      pool?.encryption !== 'none',
+      `对照组不把凭证降级成明文(实际 encryption=${pool?.encryption ?? '(未迁移:无凭证池文件)'})`,
+    )
+    return { providerCount, poolEncryption: pool?.encryption ?? '(未迁移)' }
   } finally {
     if (server) {
       server.kill('SIGTERM')
@@ -272,7 +301,7 @@ async function runShellLane(source, oauthCandidates) {
 
     assert(
       pool.encryption === 'safeStorage',
-      `② 凭证池按 safeStorage 加密落盘(对照组同一份源料写的是 'none' = 明文)`,
+      `② 凭证池按 safeStorage 加密落盘(对照组同一份源料**迁不了**,08-31 之前它写的是 'none' = 明文)`,
     )
 
     // 解密在壳的主进程里做 —— 见函数头。

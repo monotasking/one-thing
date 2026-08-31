@@ -20,7 +20,10 @@ import { configureSandboxHost, configureAppToolSandbox } from './wiring/tools/co
 import { configureAppBackgroundJobs } from '@onething/runtime/tools/background-jobs-bound'
 import { configureAppProviderRegistry } from './wiring/providers/index.js'
 import { configureAppSpaceCredentialsCrypto } from './wiring/providers/space-credentials.js'
-import { migrateProviderConfigToDefaultSpace } from './wiring/providers/space-config-migration.js'
+import {
+  migrateProviderConfigToDefaultSpace,
+  upgradeSpaceCredentialsEncryptionAtRest,
+} from './wiring/providers/space-config-migration.js'
 import { configureAppPluginCredentialStrategyHost } from './wiring/providers/credential-strategy.js'
 import { configureAppScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import { configureAppRipgrep } from './utils/ripgrep.js'
@@ -159,6 +162,15 @@ export async function createOnethingBackend(
     await migrateProviderConfigToDefaultSpace()
   } catch (error) {
     log.error('provider config migration failed, will retry next boot', {}, error)
+  }
+  // 盘上遗留的**明文**凭证池升级成密文(2026-08-31)。排在迁移之后:这一次真的
+  // 迁了的话写出去的本来就是密文,这一步看一眼就过。它救的是雷已经炸过的机器
+  // ——「没有加密能力的进程抢先当了 core」留下的 `encryption: 'none'`,以及
+  // B3~B7 时期的无信封老明文。没有加密能力的宿主整个跳过(不会反向降级)。
+  try {
+    upgradeSpaceCredentialsEncryptionAtRest()
+  } catch (error) {
+    log.error('credentials re-encryption failed, will retry next boot', {}, error)
   }
   // Agents are read on every turn (and once per room member); warm the cache
   // here so nothing downstream pays a synchronous read + normalize.

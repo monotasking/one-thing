@@ -64,6 +64,23 @@ import { spawn, spawnSync } from 'node:child_process'
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SERVER_ENTRY = path.join(REPO, 'dist/server/main.js')
 
+/**
+ * 假 provider 的钥匙 —— **走环境变量,不写进 settings.json**(2026-08-31 用户拍板「甲」)。
+ *
+ * 电池起的 core 是纯 node 子进程,没有 safeStorage。一次性迁移
+ * (`migrateProviderConfigToDefaultSpace`)在**没有加密能力时拒绝执行** —— 迁了就是
+ * 把 API key 明文写上盘。于是从前「apiKey 塞进 `settings.ai.providers.*`,等迁移
+ * 把它搬进凭证池」那条种法在这里必然解析成「未配置」:C1 之后运行期只认凭证池,
+ * 唯一的兜底就是下面这两格环境变量(`providers/env.ts` 的名录)。
+ *
+ * 这一格**同时也是 headless 部署的正道**:不需要迁移,一个字节都不写盘。
+ * `baseUrl` / `model` / `enabled` 照旧从 settings 走 —— env 兜底只顶替钥匙那一格。
+ */
+const FAKE_PROVIDER_KEYS = {
+  DEEPSEEK_API_KEY: 'sk-battery',
+  OPENROUTER_API_KEY: 'sk-battery-openrouter',
+}
+
 // ============================================================ 参数
 
 function parseArgs(argv) {
@@ -1387,8 +1404,8 @@ function prepareStore(store, mockPort) {
       provider: 'deepseek',
       temperature: 0.6,
       providers: {
+        // 钥匙不在这里 —— 见 `FAKE_PROVIDER_KEYS`(拍板「甲」:headless 走环境变量)。
         deepseek: {
-          apiKey: 'sk-battery',
           baseUrl: `http://127.0.0.1:${mockPort}/v1`,
           model: 'deepseek-chat',
           selectedModels: ['deepseek-chat'],
@@ -1402,7 +1419,6 @@ function prepareStore(store, mockPort) {
         // 就是一份 OpenAI chat 方言 —— 同一个假 provider 接得住,`provider-cost-usage`
         // 那一格靠 `d.model('openrouter', …)` 钉过去。
         openrouter: {
-          apiKey: 'sk-battery-openrouter',
           baseUrl: `http://127.0.0.1:${mockPort}/v1`,
           model: 'battery-cost-model',
           selectedModels: ['battery-cost-model'],
@@ -1737,6 +1753,7 @@ async function runTranscriptLane({
 async function bootProbeServer({ store, port, token, extraEnv, out }) {
   const env = {
     ...process.env,
+    ...FAKE_PROVIDER_KEYS,
     ONETHING_STORE_PATH: store,
     ONETHING_SERVER_PORT: String(port),
     ONETHING_SERVER_TOKEN: token,
@@ -1905,6 +1922,7 @@ async function main() {
   const startServer = async extraEnv => {
     const env = {
       ...process.env,
+      ...FAKE_PROVIDER_KEYS,
       ONETHING_STORE_PATH: store,
       ONETHING_SERVER_PORT: String(serverPort),
       ONETHING_SERVER_TOKEN: token,

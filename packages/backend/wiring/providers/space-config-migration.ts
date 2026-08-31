@@ -31,6 +31,8 @@ import type { AppSettings, OAuthToken, ProviderConfig } from '@shared/ipc.js'
 import { OnethingTokenStore } from '@onething/runtime/auth'
 import {
   readSpaceCredentials,
+  readSpaceCredentialsAtRest,
+  spaceCredentialsEncryptionAtRest,
   writeSpaceCredentials,
   createSpaceCredentialEntryId,
   DEFAULT_SPACE_CREDENTIAL_POLICY,
@@ -123,6 +125,11 @@ export interface ProviderConfigMigrationReport {
   modelCatalog: number
   /** 这次跑的是不是**只有**第二段(C1 版本已经迁过的机器)。 */
   secondStageOnly: boolean
+  /**
+   * 这次**故意没迁**的理由(2026-08-31)。`'no-credential-encryption'` = 本进程
+   * 没有加密能力,迁了就是把钥匙明文写上盘 —— 留在未迁移态等有能力的宿主。
+   */
+  deferredReason?: 'no-credential-encryption'
 }
 
 function backupsDir(): string {
@@ -403,6 +410,51 @@ async function migrateOAuthTokens(
   return { file: { providers }, providers: migrated, ...(backup ? { backup } : {}) }
 }
 
+/** 空间名录 + default —— 迁移与升级都按同一份清单走。 */
+function allSpaceIdsForCredentials(): Set<string> {
+  const spaceIds = new Set<string>([DEFAULT_SPACE_ID])
+  try {
+    for (const space of getSpacesStore().list()) spaceIds.add(space.id)
+  } catch (err) {
+    // 空间名录读不动不该把整件事拖住:default 那一份是必须的,别的下次再说。
+    log.warn('could not list spaces for credential pools', {}, err)
+  }
+  return spaceIds
+}
+
+/**
+ * **把盘上遗留的明文凭证池升级成密文**(2026-08-31)。
+ *
+ * 上面那道拒绝闸只挡住"以后不再写出明文";它救不了**已经**被写成
+ * `encryption: 'none'` 的池子 —— 那正是这颗雷已经炸过的那些机器(以及 B3~B7
+ * 时期的无信封老明文)。惰性升级("下一次写入自动升级")在这里不够用:一个
+ * 只读凭证的用户可以一年不触发那次写入,钥匙就明文躺一年。
+ *
+ * 判据只有一条:**这个进程有加密能力,而盘上那份不是密文**。读侧本来就认三种
+ * 形态,所以"读出来再原样写回去"就是一次完整的升级 —— 写侧永远按当前能力产出。
+ *
+ * 一次性:升完就是 `safeStorage`,下次启动这个函数一格都不动。没有能力的宿主
+ * 直接返回,绝不"顺手"把密文降级回明文。
+ */
+export function upgradeSpaceCredentialsEncryptionAtRest(): string[] {
+  if (spaceCredentialsEncryptionAtRest() !== 'safeStorage') return []
+
+  const upgraded: string[] = []
+  for (const spaceId of allSpaceIdsForCredentials()) {
+    if (readSpaceCredentialsAtRest(spaceId) !== 'none') continue
+    try {
+      // 读得出来(明文那条路读侧一直认),原样写回去 —— 写侧此刻是 safeStorage。
+      writeSpaceCredentials(spaceId, readSpaceCredentials(spaceId))
+      upgraded.push(spaceId)
+      log.info('credentials pool re-encrypted at rest', { spaceId })
+    } catch (err) {
+      // 一个空间升不了不该拖住别的(也不该拖垮装配):下次启动重试。
+      log.warn('credentials pool re-encryption failed', { spaceId }, err)
+    }
+  }
+  return upgraded
+}
+
 /**
  * 装配序列里的那一步。**在 `initializeSettings()` 之后、任何读 provider 配置的
  * 子系统之前**跑 —— 引擎、工具、插件都会问「这个 provider 配了没有」,而迁移之前
@@ -437,6 +489,65 @@ export async function migrateProviderConfigToDefaultSpace(
   }
   if (typeof storage?.spaceProviderSettingsMigratedAt === 'number') return empty
 
+  /**
+   * **没有加密能力就不迁**(2026-08-31 真机定位的明文雷)。
+   *
+   * 这次迁移把 API key 与 OAuth 令牌搬进 `workspaces/<space>/credentials.json`,
+   * 而写侧是「按此刻的能力产出」(`serializeSpaceCredentialsDocument` 的惰性升级)。
+   * safeStorage 绑 **app 身份**:一个纯 node 进程(抢先首启的独立 server)注入不了
+   * `tokenCryptoAdapter`,于是同一份源料被写成 `encryption: 'none'` —— 钥匙明文
+   * 躺在盘上。更坏的是**此后有能力的宿主也不会重迁**:标记已经写下了。
+   *
+   * 「谁先启动谁跑迁移」这条本身没错,错的是**没有能力的人也去跑**。所以判据
+   * 不是宿主种类(装配层不该认识 Electron),是**这个进程此刻有没有加密器**。
+   *
+   * 拒绝 = 留在未迁移态,一个字节都不写(备份也不做):运行期回落读旧位置的
+   * 行为原样保留,功能不破,只是这台机器要等一个有能力的宿主来完成迁移。
+   *
+   * 拒绝的是**整次**迁移而不只是第一段:第二段会把 `settings.ai.providers`
+   * 整个删掉,而钥匙就在那里面 —— 只跑第二段等于把钥匙扔了。
+   *
+   * ## 代价与正确配法(2026-08-31 用户拍板「甲」)
+   *
+   * 拒绝迁移 = 这台机器上**这个 store 的钥匙进不了池子**,而不是「运行期回落读
+   * 旧位置」——C1 之后 `resolveSpaceProviderCredential` 只认凭证池,唯一的兜底
+   * 是**环境变量**那一格,没有任何一条路回落读 `settings.ai.providers[*].apiKey`
+   * (`provider-credentials.ts` §7「无回落」)。
+   *
+   * 所以对一台**从没有过加密能力宿主**的机器,拍板结果是**认下这个代价**:
+   *
+   *   · headless 部署(独立 `server:start` / CLI daemon)**用环境变量配凭证**
+   *     —— `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / … (`providers/env.ts` 的名录,
+   *     另有通用的 `<PROVIDER_ID>_API_KEY`)。这条路**不需要迁移也不写盘**,
+   *     是 headless 唯一正道;
+   *   · 想用 `settings.ai` 里那份存量凭证,就先让桌面跑一次(它有 safeStorage),
+   *     迁移在那一刻完成并**加密**落盘,此后 headless 读得到密文与否是另一件事。
+   *
+   * 明确不做(同一次拍板):**不补运行期回落**(会把 C1 删掉的两套形状请回来),
+   * **不开明文开关**。真机 A/B 佐证见 `sessions:shadow-battery` —— 电池与
+   * `gate:monotone` 因此改成用环境变量种假 key(它们从前靠 `settings.ai` 种,
+   * 正是这条闸挡下的那种写法)。
+   */
+  if (spaceCredentialsEncryptionAtRest() !== 'safeStorage') {
+    // 日志是**给部署者看的**:它必须说清「这是有意为之」和「那我该怎么配」,
+    // 否则读到它的人只会以为迁移坏了,然后去把这条闸拆掉。
+    log.warn(
+      'provider config migration deferred on purpose: this host cannot encrypt credentials at rest',
+      {
+        reason: 'no-credential-encryption',
+        why: 'migrating here would write API keys and OAuth tokens to disk in plaintext',
+        howToConfigure:
+          'headless hosts should supply credentials via environment variables '
+          + '(DEEPSEEK_API_KEY / OPENAI_API_KEY / … , or <PROVIDER_ID>_API_KEY) — that path '
+          + 'needs no migration and writes nothing to disk',
+        howToMigrate:
+          'to move the existing settings.ai credentials into the space pool, start the '
+          + 'desktop app once on this store: it has safeStorage and completes the migration encrypted',
+      },
+    )
+    return { ...empty, deferredReason: 'no-credential-encryption' }
+  }
+
   const secondStageOnly = typeof storage?.providerConfigMigratedAt === 'number'
   const settingsBackup = copyFileToBackup(getOnethingSettingsPath(), 'settings', now)
 
@@ -466,13 +577,7 @@ export async function migrateProviderConfigToDefaultSpace(
   // **每个**空间,不只 default:C2 之前非 default 空间除了 overlay 那三格以外
   // 全部回落全局,搬完之后「用户在每个空间看见的」必须和搬之前一样。这是最后
   // 一次跨空间取值 —— 之后 §7 的「无回落」生效。
-  const spaceIds = new Set<string>([DEFAULT_SPACE_ID])
-  try {
-    for (const space of getSpacesStore().list()) spaceIds.add(space.id)
-  } catch (err) {
-    // 空间名录读不动不该把迁移拖住:default 那一份是必须的,别的下次再说。
-    log.warn('provider-settings migration could not list spaces', {}, err)
-  }
+  const spaceIds = allSpaceIdsForCredentials()
   const providerSettings: string[] = []
   for (const spaceId of spaceIds) {
     // 已经有 providers.json = 已经在新形状里。搬运只补不覆盖(重跑安全)。

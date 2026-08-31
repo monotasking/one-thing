@@ -43,8 +43,11 @@ vi.mock('@onething/runtime/spaces/store', () => ({
 }))
 
 import {
+  configureSpaceCredentialsCrypto,
   readSpaceCredentials,
+  readSpaceCredentialsAtRest,
   resetSpaceCredentialsCacheForTests,
+  spaceCredentialsFilePath,
 } from '@onething/runtime/spaces/credentials'
 import {
   readSpaceOverlay,
@@ -61,7 +64,20 @@ import {
   migrateProviderConfigToDefaultSpace,
   stripMigratedOverlayFields,
   stripMigratedProviderFields,
+  upgradeSpaceCredentialsEncryptionAtRest,
 } from '../space-config-migration.js'
+
+/**
+ * 一台**有加密能力**的宿主(桌面注入的是 `safeStorage`)。
+ *
+ * base64 当"加密"够用:这几条测试要的判据是「写侧走了加密器那条路、读侧解得
+ * 回来」,不是密码学强度。真正的加密器由宿主注入,产品层只认这三个方法。
+ */
+const fakeCrypto = {
+  isEncryptionAvailable: () => true,
+  encryptString: (text: string) => Buffer.from(text, 'utf-8'),
+  decryptString: (buffer: Buffer) => buffer.toString('utf-8'),
+}
 
 let tmpDir: string
 let previousStorePath: string | undefined
@@ -128,6 +144,10 @@ beforeEach(() => {
   mocks.settings = legacySettings()
   mocks.spaces = [{ id: 'default', name: '默认空间', createdAt: 1 }]
   setRootDirForTests(path.join(tmpDir, 'workspaces'))
+  // 2026-08-31:迁移**只在有加密能力时**才跑(不然钥匙会明文落盘)。这几条
+  // 老断言测的是"迁移做了什么",所以默认给它一台有能力的宿主;没能力那条路
+  // 由本文件末尾那组专测。
+  configureSpaceCredentialsCrypto(() => fakeCrypto)
   resetSpaceCredentialsCacheForTests()
   resetSpaceOverlayCacheForTests()
   resetSpaceProviderSettingsCacheForTests()
@@ -141,6 +161,7 @@ beforeEach(() => {
 afterEach(() => {
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
+  configureSpaceCredentialsCrypto(undefined)
   setRootDirForTests(null)
   resetSpaceCredentialsCacheForTests()
   resetSpaceOverlayCacheForTests()
@@ -404,6 +425,83 @@ describe('备份 / 标记 / 清字段', () => {
     expect(ai.providers.deepseek.apiKey).toBe('sk-d')
     expect((mocks.settings as Record<string, unknown>).storage).toBeUndefined()
     expect(mocks.saved).toEqual([])
+  })
+})
+
+/**
+ * **明文雷**(2026-08-31 真机定位)。
+ *
+ * 迁移是「谁先启动谁跑」,而写侧按**自己手上的加密能力**产出:一个纯 node 进程
+ * (抢先首启的独立 server)注入不了 `tokenCryptoAdapter`,同一份源料就被写成
+ * `encryption: 'none'` —— API key 与 OAuth 令牌明文躺在盘上。而且标记一旦写下,
+ * 此后有能力的宿主也不会重迁。取证读数见 `apps/desktop-react/scripts/gate-credentials.mjs`。
+ */
+describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
+  it('无加密适配器 → 一个字节都不写,标记不落,旧位置的钥匙原样在(功能不破)', async () => {
+    configureSpaceCredentialsCrypto(undefined)
+
+    const report = await migrateProviderConfigToDefaultSpace()
+    expect(report.migrated).toBe(false)
+    expect(report.deferredReason).toBe('no-credential-encryption')
+
+    // 未迁移态 = 三样都还在原地:没有凭证池文件、没有备份、没有标记。
+    expect(fs.existsSync(spaceCredentialsFilePath('default'))).toBe(false)
+    expect(fs.existsSync(path.join(tmpDir, 'backups'))).toBe(false)
+    expect((mocks.settings as Record<string, unknown>).storage).toBeUndefined()
+    expect(mocks.saved).toEqual([])
+    // 运行期回落读的就是这里 —— 钥匙一个没丢。
+    const ai = mocks.settings.ai as Record<string, Record<string, Record<string, unknown>>>
+    expect(ai.providers.deepseek.apiKey).toBe('sk-d')
+  })
+
+  it('有加密适配器 → 首启完成迁移,池子落盘就是密文', async () => {
+    const report = await migrateProviderConfigToDefaultSpace()
+    expect(report.migrated).toBe(true)
+    expect(report.deferredReason).toBeUndefined()
+
+    expect(readSpaceCredentialsAtRest('default')).toBe('safeStorage')
+    // 盘上那份**不含明文钥匙**:整包都在信封里。
+    const onDisk = fs.readFileSync(spaceCredentialsFilePath('default'), 'utf-8')
+    expect(onDisk).not.toContain('sk-d')
+    // 而读侧解得回来。
+    expect(readSpaceCredentials('default').providers.deepseek.entries[0].apiKey).toBe('sk-d')
+  })
+
+  it("盘上遗留的 'none' 明文池 → 有能力的宿主启动时一次性升级成密文", async () => {
+    // 造一台"雷已经炸过"的机器:没能力的宿主先迁了一次,写出明文池。
+    configureSpaceCredentialsCrypto(undefined)
+    fs.mkdirSync(path.dirname(spaceCredentialsFilePath('default')), { recursive: true })
+    fs.writeFileSync(
+      spaceCredentialsFilePath('default'),
+      JSON.stringify({
+        version: 2,
+        encryption: 'none',
+        providers: {
+          deepseek: {
+            entries: [
+              { id: 'e1', label: 'D', authType: 'apiKey', apiKey: 'sk-plain', source: 'user' },
+            ],
+            policy: 'single',
+          },
+        },
+      }, null, 2),
+      'utf-8',
+    )
+    resetSpaceCredentialsCacheForTests()
+    expect(readSpaceCredentialsAtRest('default')).toBe('none')
+    // 没能力的宿主**不会**顺手降级别人的密文,也升不了级。
+    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+
+    // 有能力的宿主接手。
+    configureSpaceCredentialsCrypto(() => fakeCrypto)
+    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual(['default'])
+    expect(readSpaceCredentialsAtRest('default')).toBe('safeStorage')
+    expect(fs.readFileSync(spaceCredentialsFilePath('default'), 'utf-8')).not.toContain('sk-plain')
+    // 钥匙没丢。
+    expect(readSpaceCredentials('default').providers.deepseek.entries[0].apiKey).toBe('sk-plain')
+
+    // 一次性:再跑一遍一格都不动。
+    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
   })
 })
 

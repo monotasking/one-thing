@@ -326,13 +326,19 @@ async function main() {
     console.log('[1/4] 起假慢流 provider 与真 core')
     mock = await startMockProvider(mockPort)
     // 照 shadow-battery 的种法:settings.json 把 deepseek 指到本地假 provider。
+    //
+    // **钥匙走环境变量,不写进 settings.json**(2026-08-31 用户拍板「甲」):
+    // 这个 core 是纯 node 子进程,没有 safeStorage,而一次性迁移在**没有加密能力
+    // 时拒绝执行**(不然 API key 会明文落盘)。于是靠 `settings.ai` 种钥匙的老写法
+    // 在这里必然解析成「未配置」。headless 的正道是环境变量那一格
+    // (`providers/env.ts` 的 `DEEPSEEK_API_KEY`)—— 它不需要迁移,也一个字节都不写盘。
+    // baseUrl / model / enabled 仍然从 settings 走:env 兜底只顶替钥匙那一格。
     writeFileSync(path.join(store, 'settings.json'), JSON.stringify({
       ai: {
         provider: 'deepseek',
         temperature: 0.6,
         providers: {
           deepseek: {
-            apiKey: 'sk-mono-gate',
             baseUrl: `http://127.0.0.1:${mockPort}/v1`,
             model: 'deepseek-chat',
             selectedModels: ['deepseek-chat'],
@@ -350,7 +356,12 @@ async function main() {
 
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        // 见上:headless 的钥匙走这一格。
+        DEEPSEEK_API_KEY: 'sk-mono-gate',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []

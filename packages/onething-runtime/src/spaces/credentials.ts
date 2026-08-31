@@ -282,9 +282,39 @@ function activeCredentialsCrypto(): OnethingTokenCryptoAdapter | undefined {
   }
 }
 
-/** 这份文件此刻是不是真的加密着 —— UI/日志要能如实回答,不靠猜。 */
+/**
+ * **这个进程写出去的会是什么形态** —— UI/日志要能如实回答,不靠猜。
+ *
+ * 注意它问的是**能力**不是盘上现状:`'safeStorage'` = 此刻有可用的加密器。
+ * 盘上那份现在长什么样,问 `readSpaceCredentialsAtRest(spaceId)`。
+ */
 export function spaceCredentialsEncryptionAtRest(): SpaceCredentialsEncryption {
   return activeCredentialsCrypto() ? 'safeStorage' : 'none'
+}
+
+/** 盘上**现在**这一份是什么形态。'absent' = 没有文件 / 读不动。 */
+export type SpaceCredentialsAtRest = SpaceCredentialsEncryption | 'absent'
+
+/**
+ * 盘上那份此刻的形态 —— **不解密、不判废**,只看信封。
+ *
+ * 两个消费者:一次性迁移的「有没有明文池要救」判据,与真机取证门的读数。
+ * 无信封的老明文(B3~B7)与 `encryption:'none'` 的诚实明文归同一格 `'none'`:
+ * 对「盘上躺着明文钥匙」这件事,它们是同一件事。
+ */
+export function readSpaceCredentialsAtRest(
+  spaceId: string | undefined | null,
+): SpaceCredentialsAtRest {
+  const filePath = spaceCredentialsFilePath(spaceId)
+  try {
+    if (!fs.existsSync(filePath)) return 'absent'
+    const raw: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+    if (!isRecord(raw)) return 'absent'
+    return raw.encryption === 'safeStorage' ? 'safeStorage' : 'none'
+  } catch (err) {
+    log.warn('credentials at-rest probe failed', { filePath }, err)
+    return 'absent'
+  }
 }
 
 function decodeCredentialsPayload(
