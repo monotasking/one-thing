@@ -70,8 +70,11 @@ interface Harness {
   sent: string[]
   /** 端口收到的每一次 abort 的 sessionId —— 「打空的 abort 一次都不许发」靠它钉。 */
   aborted: string[]
+  /** 端口收到的每一次重跑的 messageId。 */
+  retried: string[]
   sendResult: () => Promise<{ success: boolean; error?: string }>
   abortResult: () => Promise<{ success: boolean; error?: string }>
+  retryResult: () => Promise<{ success: boolean; error?: string }>
   emitEvent(envelope: SessionEventEnvelope): void
   emitLedger(record: Ledger): void
   emitStream(payload: SessionStreamPayload): void
@@ -85,8 +88,10 @@ function harness(initial: Ledger[]): Harness {
     ledger: [...initial],
     sent: [],
     aborted: [],
+    retried: [],
     sendResult: async () => ({ success: true }),
     abortResult: async () => ({ success: true }),
+    retryResult: async () => ({ success: true }),
     port: {
       ready: async () => undefined,
       listRaw: async () => {
@@ -109,6 +114,10 @@ function harness(initial: Ledger[]): Harness {
       abort: async (sessionId) => {
         h.aborted.push(sessionId)
         return h.abortResult()
+      },
+      retryMessage: async (_sessionId, messageId) => {
+        h.retried.push(messageId)
+        return h.retryResult()
       },
     },
     emitEvent: (envelope) => eventSubs.forEach((fn) => fn(envelope)),

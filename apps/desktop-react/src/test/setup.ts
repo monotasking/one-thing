@@ -81,6 +81,7 @@ configureChatPort({
   onSessionStream: () => () => undefined,
   sendMessage: async () => ({ success: true }),
   abort: async () => ({ success: true }),
+  retryMessage: async () => ({ success: true }),
 })
 
 /**

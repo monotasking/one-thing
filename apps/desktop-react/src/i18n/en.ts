@@ -227,6 +227,10 @@ export const en: Record<MessageKey, string> = {
   'chat.streaming': 'Generating',
   'chat.retry': 'Retry',
   'chat.discard': 'Discard',
+  'chat.streamReadout': 'Generating · {s}s',
+  'chat.stop': 'Stop',
+  'chat.copy': 'Copy',
+  'chat.messageActions': 'Actions for this reply',
   'chat.tool.pending': 'pending',
   'chat.tool.queued': 'queued',
   'chat.tool.received': 'received',
@@ -381,6 +385,9 @@ export const en: Record<MessageKey, string> = {
   'notify.abortFailed': 'Stop did not go out',
   'notify.abortStuck': 'Stop went out, the run has not settled',
   'notify.abortStuckHint': 'Core accepted the command; settling waits on the engine finishing this run.',
+  'notify.copied': 'Copied this reply',
+  'notify.copyFailed': 'Could not copy',
+  'notify.retryFailed': 'Retry did not go out',
 
   /* ── files panel (D5: content/FilesPanel.tsx) ─────────────────────────
    * The panel title reuses 'item.files'. Paths, directory/file names and the

@@ -6,6 +6,8 @@ import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
 import { assembleMessage, segmentKey } from './assemble'
 import type { SegmentModel } from './model/segments'
+import { MessageActions } from './message/MessageActions'
+import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import s from './ChatStream.module.css'
@@ -250,6 +252,19 @@ function MessageRow({ t, message, streaming, flash }: RowProps) {
           */}
           {streaming && (
             <span className={s.cursor} data-testid="chat-streaming" aria-label={t('chat.streaming')} />
+          )}
+          {/*
+            消息外缘的那一行(台一「安静编辑器」定稿):**同一个位置,永远只有一个在**。
+             · 流式中 = 读数行(还活着 / 跑了多久 / 停止)。起点取这条消息的
+               `timestamp`,那是账本上 `run/start` 自己带的时刻(见 StreamReadout 的注);
+             · 完成后 = 幽灵动作行(复制 / 重试),**悬停或焦点进来才浮现**。
+            动作行常驻在 DOM 里(只动 opacity)—— 条件渲染会让它浮现时把下文推下去。
+            只有 assistant 有动作:system(压缩卡)不是"一条回答",没有重跑一说;
+            user 的动作是编辑重发,那是另一件事(留账)。
+          */}
+          {streaming && <StreamReadout startedAt={message.timestamp} />}
+          {!streaming && role === 'assistant' && (
+            <MessageActions messageId={message.id} text={message.content ?? ''} />
           )}
         </>
       )}

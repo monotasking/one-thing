@@ -1,15 +1,60 @@
 /*
- * 引用 —— **过渡形**:普通段落 + 一层缩进,零装饰。
+ * 引用 —— **定稿 C「大引号纯排版」**(08-31 用户比稿拍板,样例:
+ * scratchpad/quote-bake-off.html 台 C)。配方一共四件,全在这个文件里:
+ *   ① 首部一枚装饰引号(U+201C,line-2 色,粗体,顶着首行);
+ *   ② 正文色温降一档(text-2);
+ *   ③ 一段缩进,由**配方自己的 padding** 承担;
+ *   ④ 零盒零线 —— 不涂底、不描边。
+ * 嵌套 = 同一副配方小一号(引号 20、缩进 22)。
  *
- * 明确的禁令:这里不许出现 `border-inline-start` / `border-left`。左竖线在全仓禁用,
- * 引用块是它最经典的用法,所以这一条在这个文件里最容易被人「顺手」加回来。
- * 定稿形等 P5 拍板(§9)。
+ * 明确的禁令(这一条比定稿还硬):这里不许出现 `border-inline-start` /
+ * `border-left`。左竖线在全仓禁用,而引用块正是它最经典的用法 —— 六轮比稿把
+ * 「加一条左竖线」这个所有人的第一反应否掉的原因就在这里,别顺手加回来。
+ * 落选的 A(左缘墨线)/ B(衬纸内衬)留档在比稿页上。
  */
 
 .quote {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  padding-inline-start: var(--indent-1);
+  /*
+   * UA 样式表给 <blockquote> 的 `margin-inline: 40px` 在这里清掉(四件套留账
+   * 结清):从此**缩进只有一个产地** —— 下面那句 padding。留着 UA 那一份的话,
+   * 屏幕上的缩进是 40 + 26 而配方里写着 26,表说了不算。
+   * `margin-block` 不在这里碰:顶层引用的上下缘归 ChatStream 的节奏表
+   * (`.row > *` 已经清零),在这儿再写一遍就是两条同特异性规则抢一个值,
+   * 谁赢取决于 CSS Module 的打包先后 —— 那是构建顺序,不是设计。
+   * 嵌套引用不是 `.row` 的直接子项,所以它的 margin-block 由下面那条单独清。
+   */
+  margin-inline: 0;
+  padding-inline-start: var(--quote-pad);
   color: var(--text-2);
+}
+
+/*
+ * 引号是**装饰**,不是内容:所以它是伪元素(读屏软件读不到它,读到的是
+ * <blockquote> 这个语义本身),而且绝对定位 —— 它不参与那个 flex 列,
+ * 于是引用里第一段的起笔位置与后面每一段严丝合缝对齐。
+ */
+.quote::before {
+  content: '\201C';
+  position: absolute;
+  inset-inline-start: 0;
+  top: var(--quote-lift);
+  font-size: var(--quote-mark);
+  line-height: 1;
+  font-weight: 700;
+  color: var(--line-2);
+}
+
+/* 嵌套:同一副配方小一号。引号不再上提(它顶的是引用内部的首行,不是消息的首行)。 */
+.quote .quote {
+  margin-block: 0;
+  padding-inline-start: var(--quote-pad-nested);
+}
+
+.quote .quote::before {
+  top: 0;
+  font-size: var(--quote-mark-nested);
 }

@@ -240,6 +240,13 @@ export const zh = {
   'chat.streaming': '正在生成',
   'chat.retry': '重试',
   'chat.discard': '不发了',
+  /* 流式读数行(台一定稿):一句话说完「还活着 + 跑了多久」。
+   * tokens 那一格**不在这句话里** —— 壳今天没有活的 token 产地,详见汇报的留账。 */
+  'chat.streamReadout': '正在生成 · {s}s',
+  'chat.stop': '停止',
+  'chat.copy': '复制',
+  /* 幽灵动作行整条的名字(读屏软件读它,眼睛看到的是两个字钮)。 */
+  'chat.messageActions': '这条回复的动作',
   'chat.tool.pending': '待执行',
   'chat.tool.queued': '排队中',
   'chat.tool.received': '已收齐',
@@ -415,6 +422,9 @@ export const zh = {
   'notify.abortFailed': '停止没有发出去',
   'notify.abortStuck': '停止发出去了,这一轮还没收尾',
   'notify.abortStuckHint': '命令已经被 core 收下;收尾要等引擎那边结束这一轮。',
+  'notify.copied': '已复制这条回复',
+  'notify.copyFailed': '没能复制',
+  'notify.retryFailed': '重试没有发出去',
 
   /* ── 文件面板(D5:content/FilesPanel.tsx)────────────────────────────────
    * 面板标题不另起一个键:它就是 'item.files' 那两个字(与通知中心复用

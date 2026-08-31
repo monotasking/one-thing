@@ -78,6 +78,14 @@ export interface ChatSourceState {
   abort: () => void
   /** 重试一条失败的 pending。 */
   retry: (entryId: string) => void
+  /**
+   * 重跑一条**已经落账的助手消息**(消息动作行的「重试」)。
+   *
+   * 与上面那个 `retry` 是两件事,名字因此不同:`retry` 修的是「这句话没交出去」
+   * (overlay 车道,还没进账本),这一条说的是「这条回答我不满意,再跑一次」
+   * —— 消息在账本上好好的,重跑由引擎负责。
+   */
+  regenerate: (messageId: string) => void
   /** 丢弃一条 overlay(失败后不想再试 / 关掉提示)。 */
   dismiss: (entryId: string) => void
   /** 挂一条本地提示(说的正是"这件事没有进账本")。 */
@@ -485,6 +493,39 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         ),
       }))
       void dispatch(entryId, sessionId, entry.text)
+    },
+
+    /**
+     * 重跑一条助手消息。
+     *
+     * 三条纪律,与 `abort` 逐条同源:
+     *  1. **壳不动屏幕** —— 命令交出去就完了。重跑会在账本上开一条新 run,
+     *     屏幕跟着折叠产物走;这里乐观地把旧正文抹掉就是画一个与事实不符的屏幕;
+     *  2. 信封**一个字段都不多给**(见 chat-port 的注);
+     *  3. 发不出去(网断 / core 拒收)是 error 档:人按了重试而它没跑,
+     *     这件事必须让人知道,而且不该自动飘走。
+     */
+    regenerate: (messageId) => {
+      const sessionId = get().sessionId
+      if (!sessionId || !messageId) return
+      void (async () => {
+        let failure: string | undefined
+        try {
+          const port = await chatPort()
+          const result = await port.retryMessage(sessionId, messageId)
+          if (!result?.success) failure = result?.error || 'session-command.emit 未成功'
+        } catch (error) {
+          failure = error instanceof Error ? error.message : String(error)
+        }
+        if (!failure) return
+        notify({
+          level: 'error',
+          source: 'chat.retry',
+          title: t('notify.retryFailed'),
+          body: failure,
+          detail: failure,
+        })
+      })()
     },
 
     dismiss: (entryId) => {

@@ -62,8 +62,9 @@ describe('P1 六块上屏', () => {
     const { container } = draw({ kind: 'quote', blocks: [{ kind: 'paragraph', inline: text('引') }] })
     const quote = container.querySelector('blockquote')
     const style = quote ? getComputedStyle(quote) : undefined
-    // jsdom 不跑 CSS 模块的样式表,所以这里断言的是**没有 inline 边框**这一半;
-    // 真正的守卫在 Quote.module.css 的头注里(那句禁令写给下一个改这个文件的人)。
+    // jsdom 不跑 CSS 模块的样式表,所以这里断言的是**没有 inline 边框**这一半。
+    // 另一半(定稿 C 的四件:大引号在场 / 零盒零线 / UA 缩进已清 / 嵌套小一号)
+    // 在 kinds/quote/__tests__/quote.test.tsx —— 它读 CSS 文本,守的是配方本身。
     expect(style?.borderLeftWidth || '0px').toBe('0px')
   })
 

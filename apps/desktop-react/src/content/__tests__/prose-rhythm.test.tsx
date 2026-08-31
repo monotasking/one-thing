@@ -88,6 +88,7 @@ function port(ledger: Ledger[]): ChatPort {
     onSessionStream: () => () => undefined,
     sendMessage: async () => ({ success: true }),
     abort: async () => ({ success: true }),
+    retryMessage: async () => ({ success: true }),
   }
 }
 
@@ -178,6 +179,14 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
      *    一起挂在尾部,归成一个工具组。
      * 两条都是**换轨之前**就有的行为。这条门的职责是「换轨没动它们」,
      * 要改这两件事得另开一批(改了这里就得连着改基线,那正是它该被看见的时刻)。
+     *
+     * ── 基线动过一次(08-31 流式台一定稿)────────────────────────────────
+     * 末尾多出 `div[data-testid=chat-readout]`:光标之后那一行流式读数
+     * (正在生成 · {耗时}s + 停止)。这**正是**上一段说的「该被看见的时刻」——
+     * 它是一次有意的排布变化,不是回归:两条素材都停在 run 里(没有 run/end),
+     * 所以读数行在场;它与光标一样是消息的外缘件,同样是消息框的直接子项、
+     * 同样吃节奏表的默认档(什么都不报)。收摊之后它退场、幽灵动作行接位,
+     * 那一半由 message/__tests__/message-chrome.test.tsx 钉。
      */
     expect(children).toEqual([
       'div[data-testid=chat-thought]',
@@ -188,6 +197,7 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       'p',
       'div[data-tool-group=true]',
       'span[data-testid=chat-streaming]',
+      'div[data-testid=chat-readout]',
     ])
   })
 
@@ -198,6 +208,8 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       'p',
       'div[data-tool-status=completed]',
       'span[data-testid=chat-streaming]',
+      // 见上一条的「基线动过一次」:这条素材同样停在 run 里,所以读数行在场。
+      'div[data-testid=chat-readout]',
     ])
   })
 

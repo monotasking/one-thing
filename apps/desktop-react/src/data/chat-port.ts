@@ -45,6 +45,15 @@ export interface ChatPort {
    * (人按了停止,就是这一种)。填一句现造的话进账本,那是造事实。
    */
   abort(sessionId: string): Promise<SessionCommandEmitResult>
+  /**
+   * 重跑一条助手消息(`command:retry-message`)—— 消息动作行的「重试」。
+   *
+   * 与 `abort` 逐条同惯例:同一条命令总线,**一个字段都不多给**。契约上还有
+   * `providerId` / `model` 两格覆盖(Vue 壳从"发送时的 provider 覆盖"里取),
+   * 壳这边没有那个概念,填一个现造的值就是替引擎拍板 —— 缺席时引擎按会话
+   * 自己的解析链走,那正是"照原样再跑一次"该有的语义。
+   */
+  retryMessage(sessionId: string, messageId: string): Promise<SessionCommandEmitResult>
 }
 
 let port: ChatPort | undefined
@@ -84,6 +93,11 @@ async function realPort(): Promise<ChatPort> {
       sessionCommands.emit({
         sessionId,
         command: { type: SESSION_COMMAND_TYPES.ABORT },
+      }),
+    retryMessage: (sessionId, messageId) =>
+      sessionCommands.emit({
+        sessionId,
+        command: { type: SESSION_COMMAND_TYPES.RETRY_MESSAGE, messageId },
       }),
   }
 }

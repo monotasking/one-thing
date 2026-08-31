@@ -1,0 +1,86 @@
+/*
+ * 一条助手消息的**外缘**:流式中那一行读数,完成后那一行幽灵动作。
+ * 两者共一个文件是因为它们共一个位置 —— 消息正文下面那一行,**永远只有一个在**
+ * (台一定稿:流式中没有动作行,完成后没有读数行)。分两个文件写会让「同一个位置」
+ * 这件事变成两处各自的巧合。
+ *
+ * 视觉来源:scratchpad/streaming-bake-off.html 台一「安静编辑器」(08-31 拍板)。
+ */
+
+/* ── 流式读数行 ───────────────────────────────────────────────────────────
+ * 「还活着 + 跑了多久 + 怎么停」一行说完。字号最小档、色最弱档 —— 它是读数,
+ * 不是内容,不该和正文抢眼睛。
+ *
+ * `tabular-nums`:小数位每 100ms 跳一次,不等宽的话整行会跟着抖 ——
+ * 抖动是这一行唯一可能变得烦人的方式。
+ * ────────────────────────────────────────────────────────────────────── */
+.readout {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 幽灵动作行 ───────────────────────────────────────────────────────────
+ * 三条纪律,一条都不许换成"更方便"的写法:
+ *  ① **占位常驻,只动 opacity**。用 `display:none` / 条件渲染的话,浮现那一刻
+ *     下文会被推下去 —— 无位移原则(全系统唯一允许位移的入场是 Toast)。
+ *  ② **判据是整条消息**,不是动作行自己:`[data-message-id]:hover` 而不是
+ *     `.actions:hover`。鼠标落在正文任何地方都算"我在看这条",这正是"幽灵"
+ *     该有的手感;挂在自己身上会变成"先猜它在哪儿再移上去"。
+ *     选择器写成属性而不是类,是因为那个类(`.row`)住在另一个 CSS Module 里,
+ *     跨模块的类名在编译后彼此不可见 —— 而 `data-message-id` 是两边共有的**事实**
+ *     (它是 TOC 与聊天区之间那条唯一接缝,见 ChatStream.tsx 的锚点约定)。
+ *  ③ **键盘也算"在看"**:`:focus-within` 与 hover 同权。不给这一条的话,
+ *     Tab 走到复制键上时它是隐形的 —— 一个看不见的焦点比没有焦点更糟。
+ * 浮现走 --dur-hover-fade(装饰档,动效"无"下就是当场出现)。
+ * ────────────────────────────────────────────────────────────────────── */
+.actions {
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--dur-hover-fade) var(--ease);
+}
+
+[data-message-id]:hover .actions,
+.actions:focus-within {
+  opacity: 1;
+}
+
+/*
+ * 字钮:零底零框,只有一枚小图标和两个字。悬停才给一层最轻的底 —— 那是
+ * "可以点"的回执,不是装饰。
+ */
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--r-1);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+
+/* 读数行里那颗「停止」比动作行的字钮再小一档 —— 它是读数的一部分。 */
+.readout .ghost {
+  font-size: var(--fs-micro);
+  padding: 0 var(--sp-1);
+}
+
+.ghost:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.ghost:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 2px;
+}
+
+.ghostIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
