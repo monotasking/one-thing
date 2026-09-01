@@ -71,7 +71,12 @@ const CATALOGS: Record<string, OpenRouterModel[]> = {
 
 /** 全局设置只剩全空间共享的两格 —— provider 那一半在空间的 providers.json 里。 */
 function settings(): AppSettings {
-  return { ai: { temperature: 0.7, modelCatalog: {} } } as unknown as AppSettings
+  // 带**迁移标记**:这些用例演的是今天绝大多数机器(跑过 C2 搬迁),
+  // provider 那一半的真相在空间文件里。未迁移那条路由专门的用例点名测。
+  return {
+    ai: { temperature: 0.7, modelCatalog: {} },
+    storage: { spaceProviderSettingsMigratedAt: 1 },
+  } as unknown as AppSettings
 }
 
 /** 当前空间那一份 provider 设置。 */

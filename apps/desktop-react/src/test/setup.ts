@@ -149,6 +149,12 @@ configureModelsPort({
   listProviders: async () => ({ success: true, providers: [] }),
   listModels: async () => ({ success: true, models: [] }),
   readProviderSettings: async () => ({ success: false, error: 'no models port in tests' }),
+  // 缺省**答「迁移过」**:那是今天绝大多数机器的样子,也让用例默认走
+  // 「以空间那份为准、无回落」那条严格路(未迁移那条由专门的用例点名测)。
+  readSettings: async () => ({
+    success: true,
+    settings: { storage: { spaceProviderSettingsMigratedAt: 1 } } as never,
+  }),
   // 切模型默认**不成功**:没有哪个用例该因为默认端口而悄悄改了一条会话的绑定。
   updateSessionModel: async () => ({ success: false, error: 'no models port in tests' }),
 })

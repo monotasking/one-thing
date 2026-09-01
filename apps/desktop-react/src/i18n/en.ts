@@ -749,6 +749,7 @@ export const en: Record<MessageKey, string> = {
   'workspace.createNamed': 'New workspace “{name}”…',
   'workspace.createLabel': 'Name of the new workspace',
   'workspace.createFailed': 'The workspace was not created',
+  'workspace.createdAnnounce': 'Created “{name}” and switched to it',
   'workspace.rename': 'Rename',
   'workspace.renameLabel': 'Workspace name',
   'workspace.renameFailed': 'The name was not changed',

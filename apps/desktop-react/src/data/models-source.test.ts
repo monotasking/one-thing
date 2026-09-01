@@ -95,6 +95,10 @@ function installPort(over: Partial<ModelsPort> = {}): void {
         ],
       }
     },
+    readSettings: async () => ({
+      success: true,
+      settings: { storage: { spaceProviderSettingsMigratedAt: 1 } } as never,
+    }),
     readProviderSettings: async () => {
       calls.settings += 1
       return {

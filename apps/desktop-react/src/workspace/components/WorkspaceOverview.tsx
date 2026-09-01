@@ -5,6 +5,9 @@ import { Input } from '../../ui/Input'
 import { useConfirm } from '../../ui/Dialog'
 import { useT } from '../../i18n'
 import { useWorkspaceStore, useWorkspaceViews } from '../store'
+import { useStageStore } from '../../stage/store'
+import { WORKSPACE_ITEM_ID } from '../../stage/items'
+import { announce } from '../../ui/a11y/live-region'
 import { WORKSPACE_SWATCHES } from '../types'
 import type { WorkspaceSwatch, WorkspaceView } from '../types'
 import sw from '../swatch.module.css'
@@ -73,11 +76,40 @@ export function WorkspaceOverview() {
     await recolor(id, swatch)
   }
 
+  /**
+   * 建一个并去那儿。**建完必须留在这块面上** —— 09-01 报障 ②(截图
+   * `I-ws-after-create.png`):建完总览当场关掉、屏幕回到「No session selected yet」,
+   * 用户看不到自己刚建的那张卡。
+   *
+   * 病根不是「建」写错了,是**「建」与「切」绑成一步,而切换会换整套家具**
+   * (T-W1):一块面开着没有本身就是家具,新空间没开过总览,于是它当场关掉。
+   * 那条隔离是对的,不改;要改的是这个动作对用户的承诺 —— 它说的是「去那儿看看」,
+   * 就得让人看得见。
+   *
+   * 修法:切换之前记下这块面此刻的**落点**,建完在新空间里按同一个落点开回来。
+   * 不是「禁止切换关面」那种一刀切(那会把 T-W1 的隔离撬开),而是这一个动作
+   * 自己把它带过去 —— 谁承诺的谁兑现。
+   *
+   * 顺带两件小的:新卡滚进视野 + 播报一句。**不抢焦点** —— 当前那张卡的
+   * 切换钮是 `disabled`(点了什么都不会变的钮不该存在),焦点没有合法落点,
+   * 硬造一个反而会把键盘用户丢在一个说不清的地方;高亮由 `data-current` 与
+   * `.cardCurrent` 画,那已经是「刚建的是哪一张」的答案。
+   */
   const commitCreate = async () => {
     const name = newName
     setCreating(false)
     setNewName('')
-    await createWorkspace(name)
+    const placement = useStageStore.getState().placements[WORKSPACE_ITEM_ID]
+    const id = await createWorkspace(name)
+    if (!id) return
+    if (placement) useStageStore.getState().openAs(WORKSPACE_ITEM_ID, placement)
+    // 等这一帧把新卡画出来再去找它。
+    requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-testid="workspace-card-${id}"]`)
+        ?.scrollIntoView({ block: 'nearest' })
+      announce(t('workspace.createdAnnounce', { name }))
+    })
   }
 
   /**

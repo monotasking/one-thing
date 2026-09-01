@@ -849,6 +849,8 @@ export const zh = {
   'workspace.createNamed': '新建「{name}」工作区…',
   'workspace.createLabel': '新工作区的名字',
   'workspace.createFailed': '工作区没建成',
+  /* 建完播报一句:总览留在原地、新卡就位,读屏用户也该知道发生了什么(09-01 报障 ②)。 */
+  'workspace.createdAnnounce': '已建好「{name}」并切了过去',
   'workspace.rename': '改名',
   'workspace.renameLabel': '工作区名字',
   'workspace.renameFailed': '名字没改上',

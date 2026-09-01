@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SpaceRecord } from '@shared/ipc/spaces'
 import { renderContent } from '../../content'
@@ -9,6 +9,7 @@ import { initialStageState } from '../../stage/transitions'
 import { WORKSPACE_ITEM_ID } from '../../stage/items'
 import { ConfirmHost } from '../../ui/Dialog'
 import { useWorkspaceStore } from '../store'
+import { startPerSpaceLayout, stopPerSpaceLayout } from '../layout-scope'
 import { DEFAULT_SPACE_ID } from '../types'
 
 /**
@@ -166,5 +167,85 @@ describe('读不到列表', () => {
     installPort({ list: async () => ({ success: false, error: 'core unreachable' }) })
     await renderOverview()
     expect(screen.getByText('core unreachable')).toBeTruthy()
+  })
+})
+
+/* ── 建完必须看得见(09-01 报障 ②)────────────────────────────────────────── */
+
+describe('建一个工作区', () => {
+  /**
+   * 报障(截图 `I-ws-after-create.png`):建完总览当场关掉、屏幕回到
+   * 「No session selected yet」,用户看不到自己刚建的那张卡。
+   *
+   * 病根不是「建」写错了,是**「建」与「切」绑成一步,而切换会换整套家具**
+   * (T-W1:一块面开着没有本身就是家具,新空间没开过总览)。那条隔离是对的,
+   * 所以修的是这个动作自己的承诺 —— 它说「去那儿看看」,就得让人看得见。
+   */
+  const FRESH: SpaceRecord = { id: 'ws-fresh', name: '新的', createdAt: 300, color: 'teal' }
+
+  /*
+   * **必须真的把家具接线接上**:关掉总览的不是「建」,是切换带来的家具换装
+   * (`startPerSpaceLayout`)。不接的话这一组用例里根本没有东西会关面 ——
+   * 断言「面还开着」就恒真,拆掉修法也照样绿。反证第一次跑就是绿的,
+   * 正是因为漏了这一步。
+   */
+  beforeEach(() => {
+    startPerSpaceLayout()
+  })
+  afterEach(() => {
+    stopPerSpaceLayout()
+  })
+
+  function installCreatingPort(): SpacesPort {
+    let created = false
+    return installPort({
+      list: vi.fn(async () => ({
+        success: true,
+        spaces: created ? [DEFAULT, LENOVO, PERSONAL, FRESH] : [DEFAULT, LENOVO, PERSONAL],
+      })),
+      create: vi.fn(async () => {
+        created = true
+        return { success: true, space: FRESH }
+      }),
+    })
+  }
+
+  async function createOne(): Promise<void> {
+    fireEvent.click(screen.getByTestId('workspace-create'))
+    fireEvent.change(screen.getByTestId('workspace-name-input'), { target: { value: '新的' } })
+    await act(async () => {
+      fireEvent.keyDown(screen.getByTestId('workspace-name-input'), { key: 'Enter' })
+    })
+  }
+
+  it('建完**总览还开着**,新卡在屏上而且标着「当前」', async () => {
+    installCreatingPort()
+    await renderOverview()
+    // 总览此刻开在某个落点上 —— 这正是「建完要带过去」的那一格。
+    act(() => useStageStore.getState().openAs(WORKSPACE_ITEM_ID, { kind: 'stage' }))
+    await createOne()
+
+    await waitFor(() => expect(screen.getByTestId('workspace-card-ws-fresh')).toBeTruthy())
+    expect(screen.getByTestId('workspace-card-ws-fresh').dataset.current).toBe('true')
+    // 面还开着 —— 报障那一刻它是关的。
+    expect(useStageStore.getState().placements[WORKSPACE_ITEM_ID]).toBeTruthy()
+  })
+
+  it('当前工作区确实切过去了 —— 「建完留在总览」不是靠不切换换来的', async () => {
+    installCreatingPort()
+    await renderOverview()
+    act(() => useStageStore.getState().openAs(WORKSPACE_ITEM_ID, { kind: 'stage' }))
+    await createOne()
+    expect(useWorkspaceStore.getState().currentId).toBe('ws-fresh')
+  })
+
+  it('建**没成**时不动这块面的落点 —— 没有承诺就没有兑现', async () => {
+    installPort({ create: vi.fn(async () => ({ success: false, error: '建不了' })) })
+    await renderOverview()
+    act(() => useStageStore.getState().openAs(WORKSPACE_ITEM_ID, { kind: 'stage' }))
+    const before = useStageStore.getState().placements[WORKSPACE_ITEM_ID]
+    await createOne()
+    expect(useStageStore.getState().placements[WORKSPACE_ITEM_ID]).toEqual(before)
+    expect(useWorkspaceStore.getState().currentId).toBe(DEFAULT_SPACE_ID)
   })
 })

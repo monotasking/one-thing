@@ -5,7 +5,7 @@
  * 用户裁定:「workspace 的切换现在是假的,真正实现 workspace 的切换」。
  * 这条门证的就是那句话的反面 —— 切换之后**世界真的换了**,而且换得干净。
  *
- * ── 它证什么(八条,每一条都是「假切换」时代会红的) ──────────────────────
+ * ── 它证什么(十条) ──────────────────────────────────────────────────────
  *  ① **会话列表按空间过滤**:两个空间各有自己的会话,切过去只看得见本空间那些,
  *     另一个空间的一条都不在 DOM 里。
  *  ② **新会话归属正确**:在空间 B 里从界面上建一条,回到 core 侧读 `listMeta`,
@@ -23,6 +23,11 @@
  *     再按一次就展开(收/展是可逆的开关,不是「关掉整栏」)。
  *  ⑧ **家具按空间隔离**(T-W1):切过去是**出厂布局**、旧空间那套原样留在账上、
  *     切回来逐格相同。用户原话:「架子、文件树整套都是新的一套,之前的留在那个空间」。
+ *  ⑨ **空间自己配的 provider 不被全局盖掉**(09-01 报障 ① 的另一半):
+ *     未迁移态的回落必须**两个条件同时成立**,少判一条就会把这个空间配好的
+ *     设置换成全局那份。
+ *  ⑩ **建完看得见**(09-01 报障 ②):建一个工作区之后总览还开着、新卡在屏上
+ *     并标着「当前」——「建」与「切」绑成一步,但切换不该把人正看着的那块面收走。
  *
  * ── 为什么这一半必须真机 ─────────────────────────────────────────────────
  * 单元测试换掉的是端口,证的是「壳往哪条口上打」;这里证的是**盘上那几个文件
@@ -271,6 +276,17 @@ async function main() {
 
   const store = await mkdtemp(path.join(tmpdir(), 'workspace-gate-store-'))
   const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'workspace-gate-ws-'))
+  /*
+   * ── 独立的 `--user-data-dir`(09-01 修,与 gate:files / gate:a11y 同一条)──
+   * 这道门从前**没给**,于是它跑在用户真实的 Electron 档案上。后果两条,都真发生过:
+   *  ① **不可重复**:家具账(`onething.stage` 的 byWorkspace)住在 localStorage,
+   *     而 localStorage 跟 user-data-dir 走、**不跟临时 store 走**。上一次跑留下的
+   *     `space-…` 那几格会原样躺到下一次 —— 真机上抓到过一次账里攒了四个空间
+   *     (三个是历史遗留),第 4 步「切回默认」当场读成空列表,而病根不在被测代码里。
+   *  ② **改用户状态**:那正是「验证不改用户状态」那条纪律要拦的事。
+   * 临时 store 只隔了后端那一半,前端那一半要靠这一行。
+   */
+  const userDataDir = await mkdtemp(path.join(tmpdir(), 'workspace-gate-udd-'))
   const sandbox = path.join(workspaceRoot, OWNER_UID, OWNER_WID)
   /** 两个空间各一个工作目录 —— 文件面的根跟着**会话**走,而会话跟着空间走。 */
   const dirs = {
@@ -282,13 +298,13 @@ async function main() {
   try {
     await mkdir(shotDir, { recursive: true })
 
-    console.log('\n[1/9] 在磁盘上种出两个空间各自的工作目录')
+    console.log('\n[1/11] 在磁盘上种出两个空间各自的工作目录')
     for (const [key, dir] of Object.entries(dirs)) {
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, `${key}-only.txt`), 'gate\n')
     }
 
-    console.log('\n[2/9] 起一台 core,建第二个空间 + 两边各自的会话 / 设置 / 凭证')
+    console.log('\n[2/11] 起一台 core,建第二个空间 + 两边各自的会话 / 设置 / 凭证')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -356,10 +372,10 @@ async function main() {
     }
     if (credentialsSeeded) assert(true, '两个空间各种了一把假 key(尾号不同)')
 
-    console.log('\n[3/9] 拉起应用(默认空间),会话列表只该有默认空间那两条')
+    console.log('\n[3/11] 拉起应用(默认空间),会话列表只该有默认空间那两条')
     app = await electron.launch({
       executablePath: electronBinary,
-      args: [mainEntry],
+      args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     const page = await app.firstWindow()
@@ -383,7 +399,7 @@ async function main() {
       '① 另一个空间的会话**一条都不在 DOM 里**(不是藏起来,是根本没画)',
     )
 
-    console.log('\n[4/9] 切到第二个空间:面板开合也是家具;两边都开着时零重挂 + 一帧就位')
+    console.log('\n[4/11] 切到第二个空间:面板开合也是家具;两边都开着时零重挂 + 一帧就位')
     /*
      * 切换走 **⌘2**(全局档的工作区序号直达),页面内 DOM 派发 —— 不动真光标、
      * 不抢前台焦点,与本门其余的 `element.click()` 同一条纪律。
@@ -476,7 +492,7 @@ async function main() {
     await delay(120)
     await page.screenshot({ path: path.join(shotDir, 'workspace-switched.png') })
 
-    console.log('\n[5/9] 进这个空间的会话,文件面的根跟着换')
+    console.log('\n[5/11] 进这个空间的会话,文件面的根跟着换')
     /*
      * 文件根**不是**按空间取的,它按**活跃会话的工作目录**取
      * (`files-source.useSessionCwd`)—— 而会话跟着空间走,所以根是被带过来的。
@@ -504,7 +520,7 @@ async function main() {
       '⑥ 而且不是默认空间那个目录 —— 根真的被带过来了,不是没动',
     )
 
-    console.log('\n[6/9] 在第二个空间里从界面上建一条会话,回 core 侧核归属')
+    console.log('\n[6/11] 在第二个空间里从界面上建一条会话,回 core 侧核归属')
     const before = new Set((await rpc(record, 'sessions', 'listMeta', {})).sessions.map(s => s.id))
     // 上一步开了文件面,会话面让位给了它 —— 先把会话面开回来,那颗「+」才在 DOM 里。
     await openPanel(page, 'sessions', '[data-testid^="group-plus-"]')
@@ -519,7 +535,7 @@ async function main() {
       `② 新会话落在第二个空间上(workspaceId=${fresh.workspaceId})—— 这一格是壳与引擎唯一的接缝`,
     )
 
-    console.log('\n[7/9] 模型服务面:provider 设置与凭证池跟着空间走')
+    console.log('\n[7/11] 模型服务面:provider 设置与凭证池跟着空间走')
     const spaceAiNow = await rpc(record, 'spaces', 'getProviderSettings', { id: workId })
     assert(
       spaceAiNow?.ai?.provider === 'zhipu',
@@ -557,7 +573,7 @@ async function main() {
     }
 
 
-    console.log('\n[8/9] 四条架子的快捷键:⌘⌥←/→/↓/↑ 各开各收')
+    console.log('\n[8/11] 四条架子的快捷键:⌘⌥←/→/↓/↑ 各开各收')
     /*
      * 读数口是**盘上那份 stage 档案**(`onething.stage` 的 byWorkspace),不是
      * 页面里的探针变量:它同时证「键真的接上了」与「状态真的落进了当前空间那一格」。
@@ -595,7 +611,7 @@ async function main() {
       '⑦ 同一个键再按一次就展开 —— 语义是收/展,可逆',
     )
 
-    console.log('\n[9/9] 家具按空间隔离:切过去是出厂,切回来原样')
+    console.log('\n[9/11] 家具按空间隔离:切过去是出厂,切回来原样')
     const furnishedInDefault = collapsedOf(await readStagePersist(page), DEFAULT_SPACE_ID)
     console.log('  · 默认空间此刻的四条架子:', JSON.stringify(furnishedInDefault))
     assert(
@@ -626,6 +642,82 @@ async function main() {
     )
     await page.screenshot({ path: path.join(shotDir, 'workspace-furniture.png') })
 
+    console.log('\n[10/11] 空间自己配的 provider 不被全局盖掉(报障 ① 的另一半)')
+    /*
+     * 报障 ① 的病根是 e389473b 漏掉的**未迁移态**:一台还没跑过 C2 搬迁的机器盘上
+     * 没有 `workspaces/<id>/providers.json`,而
+     *   settings.getSettings().ai        → 原样给出旧形状(配好的那些 provider)
+     *   spaces.getProviderSettings(空间) → **空**(只读文件,不认迁移标记)
+     * 屏幕改读后者之后,药丸写「Pick a model」、抽屉一家都列不出来。
+     * 修法是**两个条件同时成立才回落**(空间那份不存在 ∧ 没迁移过)。
+     *
+     * 这道门的 store 恰好是**另一半**:种子走 `spaces.setProviderSettings`,
+     * 于是「有 per-space 文件、但没有迁移标记」—— 修法的第一版只判标记,在这里
+     * 会把空间自己配的 zhipu 换成全局的 deepseek。所以这一步守的正是那个洞:
+     * **屏幕上读到的默认模型必须是这个空间自己那一个**。
+     * 「未迁移 ∧ 空 → 回落」那一半由单测与真机探针守(报告里有修前/修后读数)。
+     */
+    // 上一步收尾停在默认空间(它配的是 deepseek-chat),先切到第二个空间去问。
+    await pressCombo(page, '2', { meta: true })
+    await delay(200)
+    const drawerSeen = await waitFor('模型药丸读出这个空间的默认', async () => {
+      const text = await page.evaluate(() => {
+        const b = [...document.querySelectorAll('button')].find(x =>
+          (x.getAttribute('aria-label') || '').startsWith('Pick a model'),
+        )
+        return (b?.textContent || '').trim()
+      })
+      return text || undefined
+    })
+    console.log('  · 模型药丸:', drawerSeen)
+    assert(
+      drawerSeen.includes('glm-5'),
+      `⑨ 药丸写的是**这个空间**配的模型 glm-5(读到「${drawerSeen}」)—— 没被全局那份盖掉`,
+    )
+    assert(
+      !drawerSeen.includes('deepseek'),
+      '⑨ 而且不是默认空间配的 deepseek-chat —— 回落没有撬开空间隔离',
+    )
+
+    console.log('\n[11/11] 建一个工作区:建完看得见(报障 ②)')
+    /*
+     * 报障(截图 I-ws-after-create.png):建完总览当场关掉、屏幕回到空壳,
+     * 用户看不到自己刚建的那张卡。病根是「建」与「切」绑成一步,而切换换整套家具
+     * (T-W1:一块面开着没有本身就是家具)。隔离不改,改的是这个动作自己的承诺。
+     */
+    await openPanel(page, 'workspace', '[data-testid="workspace-create"]')
+    await clickSelector(page, '[data-testid="workspace-create"]')
+    await waitFor('新建输入框就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="workspace-name-input"]'))),
+    )
+    const NEW_NAME = '门建的第三个空间'
+    await page.evaluate(name => {
+      const input = document.querySelector('[data-testid="workspace-name-input"]')
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, name)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    }, NEW_NAME)
+
+    const madeCard = await waitFor('新卡就位', async () =>
+      page.evaluate(() => {
+        const card = [...document.querySelectorAll('[data-testid^="workspace-card-"]')].find(
+          el => (el.textContent || '').includes('门建的第三个空间'),
+        )
+        return card
+          ? {
+              onScreen: true,
+              current: card.getAttribute('data-current') === 'true',
+              overviewOpen: Boolean(document.querySelector('[data-testid="workspace-overview"]')),
+            }
+          : undefined
+      }),
+    )
+    console.log('  · 建完屏上:', JSON.stringify(madeCard))
+    assert(madeCard.overviewOpen, '⑩ 建完**总览还开着** —— 用户看得到自己刚建的东西')
+    assert(madeCard.current, '⑩ 新卡标着「当前」:确实切过去了,不是靠不切换换来的')
+    await page.screenshot({ path: path.join(shotDir, 'workspace-after-create.png') })
+
     await app.close()
     app = undefined
     console.log(
@@ -640,6 +732,7 @@ async function main() {
     if (server && pidAlive(server.pid)) server.kill('SIGKILL')
     await rm(store, { recursive: true, force: true })
     await rm(workspaceRoot, { recursive: true, force: true })
+    await rm(userDataDir, { recursive: true, force: true })
   }
 }
 

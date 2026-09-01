@@ -1,5 +1,6 @@
 import type { GetProvidersResponse, ModelsListResponse } from '@shared/ipc/providers'
 import type { SpacesGetProviderSettingsResponse } from '@shared/ipc/spaces'
+import type { GetSettingsResponse } from '@shared/ipc/settings'
 import type { SessionMutationResponse } from '@shared/ipc/sessions'
 
 /**
@@ -57,6 +58,13 @@ export interface ModelsPort {
    */
   readProviderSettings(spaceId: string): Promise<SpacesGetProviderSettingsResponse>
   /**
+   * 整份应用设置。**只读一格**:`storage.spaceProviderSettingsMigratedAt` ——
+   * 「这台机器跑过 C2 搬迁没有」。09-01 报障 ① 之后它回到这条端口上:
+   * 未迁移的机器盘上根本没有 per-space 文件,那时全局那份就是所有空间的真相
+   * (判据与病历在 `providers/space-settings.ts` 的 `resolveSpaceProviderSettings`)。
+   */
+  readSettings(): Promise<GetSettingsResponse>
+  /**
    * 把一条会话绑到某个模型上。**从下一轮起生效,历史照留** ——
    * 与 Vue 壳 `sessionsStore.updateSessionModel` 同一条写面。
    */
@@ -80,19 +88,27 @@ export function configureModelsPort(next: ModelsPort | undefined): void {
  * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<ModelsPort> {
-  const [{ providersApi }, { modelsApi }, { spacesApi }, { sessionsApi }, { whenConnected }] =
-    await Promise.all([
-      import('@renderer/platform/providers-client'),
-      import('@renderer/platform/models-client'),
-      import('@renderer/platform/spaces-client'),
-      import('@renderer/platform/sessions-client'),
-      import('../platform/connection'),
-    ])
+  const [
+    { providersApi },
+    { modelsApi },
+    { spacesApi },
+    { settingsApi },
+    { sessionsApi },
+    { whenConnected },
+  ] = await Promise.all([
+    import('@renderer/platform/providers-client'),
+    import('@renderer/platform/models-client'),
+    import('@renderer/platform/spaces-client'),
+    import('@renderer/platform/settings-client'),
+    import('@renderer/platform/sessions-client'),
+    import('../platform/connection'),
+  ])
   return {
     ready: () => whenConnected(),
     listProviders: () => providersApi.getProviders(),
     listModels: (providerId) => modelsApi.getModelsWithCapabilities(providerId),
     readProviderSettings: (spaceId) => spacesApi.getProviderSettings({ id: spaceId }),
+    readSettings: () => settingsApi.getSettings(),
     updateSessionModel: (sessionId, provider, model) =>
       sessionsApi.updateModel({ sessionId, provider, model }),
   }

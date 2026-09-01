@@ -8,7 +8,12 @@ import { configureSpacesPort } from '../../data/spaces-port'
 import { useWorkspaceStore } from '../../workspace/store'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { useProviderSettings } from '../store'
-import { composeSpaceSettings, splitSpaceProviderSettings } from '../space-settings'
+import {
+  composeSpaceSettings,
+  resolveSpaceProviderSettings,
+  splitSpaceProviderSettings,
+} from '../space-settings'
+import { resolveModelSelection } from '../../data/models-source'
 import { fakeProviderPort } from './fake-port'
 
 /**
@@ -36,9 +41,16 @@ const ROSTER: ProviderInfo[] = [
   },
 ]
 
-/** 全局那一半:只剩全空间共享的两格。 */
+/**
+ * 全局那一半:只剩全空间共享的两格,外加**迁移标记** —— 这一组演的是「已经
+ * 迁移过的机器」,provider 那一半的真相在各空间自己的文件里(未迁移那条路
+ * 由 `space-settings` 的用例点名测)。
+ */
 function globalSettings(): AppSettings {
-  return { ai: { temperature: 0.7, modelCatalog: {} } } as unknown as AppSettings
+  return {
+    ai: { temperature: 0.7, modelCatalog: {} },
+    storage: { spaceProviderSettingsMigratedAt: 1 },
+  } as unknown as AppSettings
 }
 
 /** 两个空间各一套 provider 设置 —— 这正是「两套完整独立的设置」那句话的样子。 */
@@ -246,5 +258,126 @@ describe('composeSpaceSettings / splitSpaceProviderSettings', () => {
     const merged = composeSpaceSettings(globalSettings(), expressed)!
     expect(merged.ai.temperature).toBe(0.2)
     expect(splitSpaceProviderSettings(merged, expressed).temperature).toBe(0.2)
+  })
+})
+
+/* ── 未迁移态的回落(09-01 报障 ①)────────────────────────────────────────── */
+
+describe('resolveSpaceProviderSettings —— 未迁移的机器', () => {
+  const GLOBAL_WITH_PROVIDERS = {
+    ai: {
+      temperature: 0.6,
+      modelCatalog: {},
+      provider: 'deepseek',
+      providers: { deepseek: { model: 'demo-model', selectedModels: ['demo-model'] } },
+      customProviders: [],
+    },
+  } as unknown as AppSettings
+
+  /**
+   * 真机读数(探针 `probe-unmigrated`,同一个未迁移 store 上问两口):
+   *   settings.getSettings().ai.provider          = "deepseek"(15 家)
+   *   spaces.getProviderSettings('default').provider = ""(0 家)
+   * 屏幕从前读后者,于是药丸写「Pick a model」、抽屉一家都列不出来 ——
+   * 而这台机器明明配好了。
+   */
+  it('没有迁移标记 = 盘上还没有 per-space 文件 → 全局那份就是此刻的真相', () => {
+    const out = resolveSpaceProviderSettings(
+      { provider: '', providers: {}, customProviders: [] } as unknown as SpaceProviderSettings,
+      GLOBAL_WITH_PROVIDERS,
+    )
+    expect(out?.provider).toBe('deepseek')
+    expect(Object.keys(out?.providers ?? {})).toEqual(['deepseek'])
+  })
+
+  it('**温度不带过来** —— 带了会在第一次写回时把全局温度钉死在这个空间上', () => {
+    const out = resolveSpaceProviderSettings(
+      { provider: '', providers: {}, customProviders: [] } as unknown as SpaceProviderSettings,
+      GLOBAL_WITH_PROVIDERS,
+    )
+    expect(out?.temperature).toBeUndefined()
+  })
+
+  it('迁移标记在 = **无回落**:空间是空的就是空的,不去看全局', () => {
+    const migrated = {
+      ...GLOBAL_WITH_PROVIDERS,
+      storage: { spaceProviderSettingsMigratedAt: 1 },
+    } as unknown as AppSettings
+    const empty = { provider: '', providers: {}, customProviders: [] } as unknown as SpaceProviderSettings
+    const out = resolveSpaceProviderSettings(empty, migrated)
+    expect(out).toBe(empty)
+  })
+
+  it('迁移标记在时,别的空间一格都不会被全局灌回来(严格隔离没被这条修法撬开)', () => {
+    const migrated = {
+      ...GLOBAL_WITH_PROVIDERS,
+      storage: { spaceProviderSettingsMigratedAt: 1 },
+    } as unknown as AppSettings
+    const spaceB = {
+      provider: 'zhipu',
+      providers: { zhipu: { model: 'glm-5', selectedModels: ['glm-5'] } },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+    expect(resolveSpaceProviderSettings(spaceB, migrated)).toBe(spaceB)
+  })
+})
+
+describe('模型药丸的回落链(报障 ① 的另一半:它本来就是对的)', () => {
+  /*
+   * 真机探针 `probe-chip` 四格读数,两种环境各两档会话:
+   *   A 空环境:绑过模型 →「glm-5」 / 没绑过 →「Pick a model」
+   *   B 有目录:绑过模型 →「glm-5」 / 没绑过 →「deepseek-chat」
+   * 也就是说**回落链本身没坏**:绑过模型的会话,无论有没有目录都写得出模型名。
+   * 报障里那两种表现的差别不在代码里,在**盘上有没有那份 provider 设置** ——
+   * 而那正是上面那条未迁移回落修掉的东西。这一组把结论钉住,免得下次又去改链子。
+   */
+  it('会话绑过模型 → 写模型名;目录有没有都一样', () => {
+    const session = { provider: 'zhipu', model: 'glm-5' }
+    expect(resolveModelSelection({}, 's1', session, null, { defaultProvider: '', configs: {} })).toEqual({
+      provider: 'zhipu',
+      model: 'glm-5',
+    })
+  })
+
+  it('会话没绑过 → 落到这个空间的默认;空间也没有 = null(药丸写「选择模型」,不编)', () => {
+    const none = { provider: null, model: null }
+    expect(resolveModelSelection({}, 's1', none, null, { defaultProvider: '', configs: {} })).toBeNull()
+    expect(
+      resolveModelSelection({}, 's1', none, null, {
+        defaultProvider: 'deepseek',
+        configs: { deepseek: { selectedModels: [], model: 'demo-model' } },
+      }),
+    ).toEqual({ provider: 'deepseek', model: 'demo-model' })
+  })
+})
+
+describe('两个条件同时成立才回落(gate 第 10 步抓到的那个洞)', () => {
+  const GLOBAL_UNMIGRATED = {
+    ai: {
+      temperature: 0.6,
+      modelCatalog: {},
+      provider: 'deepseek',
+      providers: { deepseek: { model: 'demo-model', selectedModels: ['demo-model'] } },
+      customProviders: [],
+    },
+  } as unknown as AppSettings
+
+  it('没迁移过、但这个空间**已经有东西** → 以空间那份为准,不被全局盖掉', () => {
+    /*
+     * 这正是门里那种 store:种子走 `spaces.setProviderSettings` 写出了 per-space
+     * 文件,却没有迁移标记(那个标记只有后端那次整体搬迁才会盖)。
+     * 修法第一版只看标记,于是把 zhipu 换成了全局的 deepseek —— 第 10 步当场红。
+     */
+    const spaceB = {
+      provider: 'zhipu',
+      providers: { zhipu: { model: 'glm-5', selectedModels: ['glm-5'] } },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+    expect(resolveSpaceProviderSettings(spaceB, GLOBAL_UNMIGRATED)).toBe(spaceB)
+  })
+
+  it('没迁移过、空间也是空的 → 才回落到全局(报障 ① 那台机器)', () => {
+    const empty = { provider: '', providers: {}, customProviders: [] } as unknown as SpaceProviderSettings
+    expect(resolveSpaceProviderSettings(empty, GLOBAL_UNMIGRATED)?.provider).toBe('deepseek')
   })
 })

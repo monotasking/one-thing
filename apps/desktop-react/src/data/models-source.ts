@@ -8,6 +8,7 @@ import { findSession } from '../expose/projection'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
+import { resolveSpaceProviderSettings } from '../providers/space-settings'
 
 /**
  * 模型目录与当前模型的**真数据源**(D2)。全应用一个:模型抽屉从这里取目录,
@@ -350,21 +351,34 @@ export const useModelsSource = create<ModelsSourceState>()((set, get) => {
     const port = await modelsPort()
     const spaceId = currentSpaceId()
     try {
-      const settings = await port.readProviderSettings(spaceId)
+      /*
+       * 两发:空间那份 + 全局那份。**全局那份不是回落用的**,它是拿来回答
+       * 「这台机器迁移过没有」的(`storage.spaceProviderSettingsMigratedAt`)——
+       * 判据与取舍全在 `resolveSpaceProviderSettings` 一处,09-01 报障 ① 的病历
+       * 也写在那儿。各自失败各自认:全局那发拿不到就当没迁移过的证据不足,
+       * 照旧以空间那份为准。
+       */
+      const [settings, global] = await Promise.all([
+        port.readProviderSettings(spaceId),
+        port.readSettings().catch(() => undefined),
+      ])
       // 拉的过程中又切了空间:这一份已经不是当前空间的,丢掉 —— 那次切换自己
       // 会带来一发新的 loadSettings。
       if (currentSpaceId() !== spaceId) return
+      const ai = settings.success
+        ? resolveSpaceProviderSettings(settings.ai, global?.success ? global.settings : undefined)
+        : undefined
       set({
         status: 'ready',
         error: undefined,
         // 设置没拿到不是致命的:空投影会让抽屉一家都不列,那正是
         // 「不知道谁可见」诚实的样子(不是列全部)。
-        prefs: settings.success ? toProviderPrefs(settings.ai) : EMPTY_PREFS,
+        prefs: ai ? toProviderPrefs(ai) : EMPTY_PREFS,
       })
       // 自定义 provider 只住在设置里,`providers.list` 不认识它们 —— 所以它们
       // 跟着设置一起到,不必等名册那一发。
-      if (settings.success) {
-        const custom = customProviderOptionsOf(settings.ai)
+      if (ai) {
+        const custom = customProviderOptionsOf(ai)
         set((st) => ({
           providers: [...st.providers, ...custom.filter((c) => !st.providers.some((p) => p.id === c.id))],
         }))

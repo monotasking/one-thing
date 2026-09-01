@@ -47,7 +47,12 @@ const ROSTER: ProviderInfo[] = [
  * 这不是夹具的口味,是盘上真实的分家(契约 `@shared/ipc/providers.ts:257-268`)。
  */
 function settings(): AppSettings {
-  return { ai: { temperature: 0.7, modelCatalog: {} } } as unknown as AppSettings
+  // 带**迁移标记**:这些用例演的是今天绝大多数机器(跑过 C2 搬迁),
+  // provider 那一半的真相在空间文件里。未迁移那条路由专门的用例点名测。
+  return {
+    ai: { temperature: 0.7, modelCatalog: {} },
+    storage: { spaceProviderSettingsMigratedAt: 1 },
+  } as unknown as AppSettings
 }
 
 /** 当前空间那一份 provider 设置 —— 屏幕上那些开关与勾选的真产地。 */

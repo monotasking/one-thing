@@ -29,7 +29,11 @@ import {
 } from './auth'
 import type { AuthFlowState } from './auth'
 import { dialPatchOf, providerDialsOf } from './dials'
-import { composeSpaceSettings, splitSpaceProviderSettings } from './space-settings'
+import {
+  composeSpaceSettings,
+  resolveSpaceProviderSettings,
+  splitSpaceProviderSettings,
+} from './space-settings'
 import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
 import type { CredentialFacts, ProviderFamilyView } from './types'
 
@@ -267,7 +271,11 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     // 后端答不上话(web 降级 / 这条路由不存在)与「这个空间是空的」是两件事:
     // 前者 `spaceAi` 留 undefined(合出来就是一份空的 provider 表,与从前
     // 读不到设置时的样子一致),后者是一份真的空设置。两者都不去看别的空间。
-    const spaceAi = spaceSettings?.success ? spaceSettings.ai : undefined
+    // 未迁移的机器盘上还没有 per-space 文件,那时全局那份就是所有空间的真相 ——
+    // 判据与病历(09-01 报障 ①)在 `space-settings.resolveSpaceProviderSettings`。
+    const spaceAi = spaceSettings?.success
+      ? resolveSpaceProviderSettings(spaceSettings.ai, loaded)
+      : undefined
     set({
       providers: roster ?? [],
       spaceAi,
