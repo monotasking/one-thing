@@ -15,11 +15,29 @@ import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { SESSIONS_ITEM_ID } from '../stage/items'
 import { useStageStore } from '../stage/store'
+import {
+  foldFlatIntoDefaultSpace,
+  spreadSpace,
+  stashSpace,
+  type PerSpaceSpec,
+  type PerSpaceState,
+} from '../workspace/per-space'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 import { formOf } from '../stage/transitions'
 import * as T from './transitions'
 import type { ExposeState, FocusDir } from './types'
 
-interface ExposeStore extends ExposeState {
+/** 跟着工作区走的那一格:组 id 就是这个空间的项目目录(T-W1)。 */
+interface ExposeFurniture {
+  collapsedGroups: string[]
+}
+
+export const EXPOSE_PER_SPACE: PerSpaceSpec<ExposeStore, ExposeFurniture> = {
+  pick: (s) => ({ collapsedGroups: s.collapsedGroups }),
+  factory: () => ({ collapsedGroups: [] }),
+}
+
+interface ExposeStore extends ExposeState, PerSpaceState<ExposeFurniture> {
   /** 开场归位。这块面一挂载就叫一次 —— 「在场即开场」只有挂载这一个时刻。 */
   open: () => void
   escape: () => void
@@ -79,6 +97,7 @@ export const useExposeStore = create<ExposeStore>()(
   persist(
     (set, get) => ({
       ...T.initialExposeState,
+      byWorkspace: {},
 
       open: () => set((s) => T.open(s, currentGroups())),
       escape: () => set(T.escape),
@@ -210,11 +229,34 @@ export const useExposeStore = create<ExposeStore>()(
     }),
     {
       name: 'onething.expose',
+      /*
+       * v1 = 折叠态按工作区各持一份(T-W1)。**从前这张表没有版本号**,
+       * zustand 把「没有版本」读作 0,所以这一段照常跑得到存量档案。
+       *
+       * 它为什么算家具:组 id 就是**项目目录**,而项目是从这个空间的会话推出来的
+       * (`expose/projection.buildProjects`)。别的空间的组 id 在这里连出现的机会
+       * 都没有 —— 一张跨空间共享的折叠表,存的是一半永远用不上的键。
+       */
+      version: 1,
       storage: createJSONStorage(() => localStorage),
+      migrate: (persisted, version) => {
+        if (version >= 1 || !persisted || typeof persisted !== 'object') return persisted
+        return foldFlatIntoDefaultSpace<ExposeFurniture>(
+          persisted as Record<string, unknown>,
+          ['collapsedGroups'],
+          DEFAULT_SPACE_ID,
+        )
+      },
+      // 同步摊开当前空间那一格 —— 第一帧就是对的(理由同 stage 的 merge)。
+      merge: (persisted, current) => {
+        const byWorkspace = ((persisted as Partial<ExposeStore> | undefined)?.byWorkspace
+          ?? {}) as Record<string, ExposeFurniture>
+        return { ...current, byWorkspace, ...spreadSpace(byWorkspace, EXPOSE_PER_SPACE) }
+      },
       // 只持久化折叠状态:视图层每次开场都归位,不该被上次的停留点污染。
       // 当前会话也不持久化 —— 它现在是**真会话 id**,把一个可能已被删掉的 id
       // 记到下次启动,换来的是一个指向空气的标题。
-      partialize: (s) => ({ collapsedGroups: s.collapsedGroups }),
+      partialize: (s) => ({ byWorkspace: stashSpace(s, s.byWorkspace, EXPOSE_PER_SPACE) }),
     },
   ),
 )

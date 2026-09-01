@@ -12,6 +12,7 @@ import {
   WORKSPACE_SLOT_COMMAND_PREFIX,
   hasModifier,
   lookupCommand,
+  shelfSideOfCommand,
 } from './transitions'
 import type { CommandId } from './types'
 
@@ -57,8 +58,14 @@ export function useKeymapDispatch(): void {
         if (target) switchTo(target.id)
         return
       }
-      if (id === 'shelf.right.toggle') {
-        toggleShelfCollapsed('right')
+      /*
+       * 四条架子各一条(09-01)。**反解落在 transitions 那一处** ——
+       * 派发器不认识 `shelf.<side>.toggle` 的拼法,那个字符串只有一个产地;
+       * 认不出的 id 一律放行给后面的分支,不去猜是哪一侧。
+       */
+      const shelfSide = shelfSideOfCommand(id)
+      if (shelfSide) {
+        toggleShelfCollapsed(shelfSide)
         return
       }
       if (id === 'toc.toggle') {

@@ -7,6 +7,7 @@ import type { SessionSummary } from '../expose/types'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { filesPort } from './files-port'
+import { swapSpace, type PerSpaceSpec } from '../workspace/per-space'
 import { useSessionsSource } from './sessions-source'
 
 /**
@@ -417,6 +418,18 @@ export interface FilesSourceState {
    */
   searchLimit: number
   searchError?: string
+  /**
+   * 展开态的**家具账**(T-W1):workspaceId → 那个空间展开着哪几支。
+   *
+   * 只记 `expanded` 一格,不记 `dirs` —— 后者是**目录内容的缓存**(可能很大,
+   * 而且随时可能过期),留着每个空间一份既费内存又会在切回去时画一屏陈的树。
+   * 展开态是「用户翻开过哪几支」,那才是他切回来想看见的东西;内容重拉一次即可。
+   *
+   * 这本账**不落盘**:文件树的展开态本来就不进 localStorage(见文件头
+   * 「我此刻正看着树的哪一段,不是偏好」),T-W1 不改这一条 —— 它只让这条
+   * 「一次会话之内」的记忆按空间分开,而不是让它活过一次刷新。
+   */
+  byWorkspace: Record<string, { expanded: Record<string, true> }>
 
   /** 换根。入参是**会话的工作目录**(null = 没有,退 `~`)。幂等。 */
   setRoot(cwd: string | null): Promise<void>
@@ -494,6 +507,20 @@ const EMPTY: Pick<
   searchError: undefined,
 }
 
+/**
+ * 文件树那一份家具。只有展开态 —— 理由写在 `FilesSourceState.byWorkspace` 上。
+ */
+/**
+ * 把三条竞速令牌与 `setRoot` 的幂等闸一起归零。**store 创建时赋值**,
+ * 两个调用点(`reset()` 与换空间那条订阅)共用同一句话 —— 两套拆卸迟早漏一格。
+ */
+let resetFilesRootGate: () => void = () => {}
+
+const FILES_PER_SPACE: PerSpaceSpec<FilesSourceState, { expanded: Record<string, true> }> = {
+  pick: (st) => ({ expanded: st.expanded }),
+  factory: () => ({ expanded: {} }),
+}
+
 export const useFilesSource = create<FilesSourceState>()((set, get) => {
   /*
    * 三个令牌各管一条竞速。合成一个会互相作废:换根期间开一次检索,
@@ -505,6 +532,14 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
   let detailToken = 0
   /** 上一次 setRoot 收到的入参 —— 幂等的判据(注意 null 是合法值,不能用 ?? 兜)。 */
   let lastCwd: string | null | undefined
+  // 换空间那条订阅要清它(理由写在文件末尾那段);闭包变量在模块外够不着,
+  // 所以留这一口。**只此一个写法** —— 换空间与 reset 走的是同一句话。
+  resetFilesRootGate = () => {
+    rootToken += 1
+    searchToken += 1
+    detailToken += 1
+    lastCwd = undefined
+  }
 
   /** 拉一个目录进缓存。已经在拉 / 已经拉好的直接返回。 */
   async function loadDir(path: string, force = false): Promise<void> {
@@ -527,6 +562,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
 
   return {
     ...EMPTY,
+    byWorkspace: {},
 
     setRoot: async (cwd) => {
       if (lastCwd === cwd && get().rootStatus !== 'idle') return
@@ -714,11 +750,30 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
     },
 
     reset: () => {
-      rootToken += 1
-      searchToken += 1
-      detailToken += 1
-      lastCwd = undefined
-      set({ ...EMPTY })
+      resetFilesRootGate()
+      set({ ...EMPTY, byWorkspace: {} })
     },
   }
 })
+
+/**
+ * 换工作区 = 文件树整棵换掉(T-W1)。**订阅不在这里** —— 它在
+ * `workspace/layout-scope.ts`(理由:模块作用域里够别的模块会撞上这台壳既有的
+ * import 环,那个文件头有病历)。这里只出这一口纯换装。
+ *
+ * 它比别的四个面多一件事:除了换展开态,还要把**根与所有缓存**清掉 ——
+ * 那些路径属于上一个空间的根:
+ *  · `root` / `rootStatus` / `rootOrigin` —— 根由新空间的活跃会话重新推出来
+ *    (`useSessionCwd` → FilesPanel 的 setRoot),这里先归零免得旧根多留一帧;
+ *  · `dirs` —— 上一个空间那些绝对路径的目录内容,在新空间里一条都用不上;
+ *  · `detail` / `search*` —— 同理,它们说的都是上一个空间的文件。
+ * 而 `lastCwd` 那格幂等闸也要清:不清的话新空间恰好是同一个 cwd 时,
+ * `setRoot` 会当场早退,树就再也不重建了。
+ *
+ * **一次 `set` 完成**,所以中间没有「新账配旧树」的那一帧。
+ */
+export function swapFilesForSpace(next: string, previous: string): void {
+  const swapped = swapSpace(useFilesSource.getState(), FILES_PER_SPACE, next, previous)
+  resetFilesRootGate()
+  useFilesSource.setState({ ...EMPTY, ...swapped })
+}

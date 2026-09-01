@@ -1,5 +1,13 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import {
+  foldFlatIntoDefaultSpace,
+  spreadSpace,
+  stashSpace,
+  type PerSpaceSpec,
+  type PerSpaceState,
+} from '../workspace/per-space'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 
 /**
  * **分栏比例的记忆**(09-01 报障:「file open 之后,没办法调整宽度」)。
@@ -34,9 +42,21 @@ export const DEFAULT_SPLIT_RATIOS: Record<string, number> = {
 export const SPLIT_MIN = 15
 export const SPLIT_MAX = 85
 
-interface SplitPrefsStore {
+/** 跟着工作区走的那一格。分栏比是**用户在这个空间里摆好的**,所以是家具。 */
+interface SplitFurniture {
   ratios: Record<string, number>
+}
+
+interface SplitPrefsStore extends SplitFurniture, PerSpaceState<SplitFurniture> {
   setRatio: (id: string, ratio: number) => void
+}
+
+export const SPLIT_PER_SPACE: PerSpaceSpec<SplitPrefsStore, SplitFurniture> = {
+  pick: (st) => ({ ratios: st.ratios }),
+  // 出厂 = 一格都没存过。**不是** DEFAULT_SPLIT_RATIOS —— 那张表是「没存过时读什么」
+  // (`splitRatioOf` 的回落),不是「存过一份出厂值」。两者混起来会让「重置」与
+  // 「从没拖过」在盘上长成两个样子。
+  factory: () => ({ ratios: {} }),
 }
 
 function clampRatio(value: unknown, fallback: number): number {
@@ -48,6 +68,7 @@ export const useSplitPrefs = create<SplitPrefsStore>()(
   persist(
     (set) => ({
       ratios: {},
+      byWorkspace: {},
       setRatio: (id, ratio) =>
         set((st) => ({
           ratios: { ...st.ratios, [id]: clampRatio(ratio, DEFAULT_SPLIT_RATIOS[id] ?? 50) },
@@ -55,7 +76,16 @@ export const useSplitPrefs = create<SplitPrefsStore>()(
     }),
     {
       name: 'onething.split',
-      version: 1,
+      // v2:分栏比按工作区各持一份(T-W1)。存量那一份原样折进默认空间。
+      version: 2,
+      migrate: (persisted, version) => {
+        if (version >= 2 || !persisted || typeof persisted !== 'object') return persisted
+        return foldFlatIntoDefaultSpace<SplitFurniture>(
+          persisted as Record<string, unknown>,
+          ['ratios'],
+          DEFAULT_SPACE_ID,
+        )
+      },
       storage: createJSONStorage(() => localStorage),
       /*
        * 存盘可能来自旧版本、也可能被人手改过:每一格都钳一次,认不出的整条丢掉。
@@ -63,16 +93,25 @@ export const useSplitPrefs = create<SplitPrefsStore>()(
        * `-3` 会让分栏当场塌成一条缝,而那种坏法查起来像是布局 bug。
        */
       merge: (persisted, current) => {
-        const saved = (persisted as Partial<SplitPrefsStore> | undefined)?.ratios
-        const ratios: Record<string, number> = {}
-        if (saved && typeof saved === 'object') {
-          for (const [id, value] of Object.entries(saved)) {
-            ratios[id] = clampRatio(value, DEFAULT_SPLIT_RATIOS[id] ?? 50)
+        const byWorkspace = ((persisted as Partial<SplitPrefsStore> | undefined)?.byWorkspace
+          ?? {}) as Record<string, SplitFurniture>
+        // 钳制对**账上每一格**都做一遍,不只是当前那一格:切过去才发现盘上是
+        // `-3`,那时屏幕已经塌了一帧 —— 钳在读回来的这一刻,只有这一处。
+        const clamped: Record<string, SplitFurniture> = {}
+        for (const [spaceId, furniture] of Object.entries(byWorkspace)) {
+          const saved = furniture?.ratios
+          const ratios: Record<string, number> = {}
+          if (saved && typeof saved === 'object') {
+            for (const [id, value] of Object.entries(saved)) {
+              ratios[id] = clampRatio(value, DEFAULT_SPLIT_RATIOS[id] ?? 50)
+            }
           }
+          clamped[spaceId] = { ratios }
         }
-        return { ...current, ratios }
+        // 同步摊开当前空间那一格 —— 第一帧就是对的(理由同 stage 的 merge)。
+        return { ...current, byWorkspace: clamped, ...spreadSpace(clamped, SPLIT_PER_SPACE) }
       },
-      partialize: (st) => ({ ratios: st.ratios }),
+      partialize: (st) => ({ byWorkspace: stashSpace(st, st.byWorkspace, SPLIT_PER_SPACE) }),
     },
   ),
 )

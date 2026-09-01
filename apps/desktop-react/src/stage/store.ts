@@ -3,6 +3,12 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { STAGE_ITEMS, findItem } from './items'
 import * as T from './transitions'
 import type { Locale } from '../i18n'
+import {
+  spreadSpace,
+  stashSpace,
+  type PerSpaceSpec,
+  type PerSpaceState,
+} from '../workspace/per-space'
 import type {
   DockAlign,
   DockDisplay,
@@ -18,7 +24,7 @@ import type {
   Viewport,
 } from './types'
 
-interface StageStore extends StageState, StageSettings {
+interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFurniture> {
   items: StageItemSpec[]
   dockDisplay: DockDisplay
 
@@ -58,6 +64,19 @@ interface StageStore extends StageState, StageSettings {
 }
 
 /**
+ * 家具账的规格 —— 摘什么、出厂是什么,两句话都在 transitions 里(纯函数),
+ * 这里只把它们扎成一束递给原语。**全仓唯一一处** stage 的 per-space 规格。
+ *
+ * 形参写 `StageStore` 而不是 `StageState`,纯为让推断落在 store 这一边;
+ * `pickStageFurniture` 自己只吃 `StageState`(它不该认识 store),而「吃父类型的
+ * 函数可以当吃子类型的函数用」——所以它原样装得进这一格。
+ */
+export const STAGE_PER_SPACE: PerSpaceSpec<StageStore, T.StageFurniture> = {
+  pick: T.pickStageFurniture,
+  factory: T.factoryStageFurniture,
+}
+
+/**
  * 视口是宿主的事实,不是形态机的 —— transitions 一行都不许读 window,
  * 所以「当下多大」在这里量一次递进去。
  */
@@ -86,6 +105,7 @@ export const useStageStore = create<StageStore>()(
     (set, get) => ({
       ...T.initialStageState,
       ...T.initialStageSettings,
+      byWorkspace: {},
       items: STAGE_ITEMS,
       dockDisplay: 'always',
 
@@ -147,28 +167,47 @@ export const useStageStore = create<StageStore>()(
       merge: (persisted, current) => {
         const merged = { ...current, ...(persisted as Partial<StageStore>) }
         merged.defaultOpen = T.clampDefaultOpen(merged.defaultOpen)
+        /*
+         * 开机就摊开**当前空间**那一格家具(T-W1)。
+         *
+         * 放在 `merge` 里而不是 `onRehydrateStorage`:merge 是**同步**的、发生在
+         * store 建出来那一刻,所以第一帧画的就是那个空间的布局 —— 不会先画一屏
+         * 出厂布局再跳成用户的(与 `workspace/apply.ts` 把色标贴在 createRoot
+         * 之前是同一条理由)。
+         *
+         * 这一刻 `currentSpaceId()` 读的是 persist 槽里那个 id(工作区列表还没拉),
+         * 而那正是要的:上次停在哪个空间,开机就该是哪个空间的家具。列表拉回来
+         * 若发现那个空间已被别的窗口删掉,`bindPerSpace` 那条订阅会当场换装。
+         */
+        merged.byWorkspace = (merged.byWorkspace ?? {}) as StageStore['byWorkspace']
+        Object.assign(merged, spreadSpace(merged.byWorkspace, STAGE_PER_SPACE))
         // 旧档案里没有这一格(它是本批新加的),缺席就该是空表而不是 undefined ——
         // 一个 undefined 会让 Dock 的投影在第一帧上抛。不写迁移段的理由也在这里:
         // 「缺席读作空」本身就是这一格的语义,不需要翻译。
         merged.hiddenItems = Array.isArray(merged.hiddenItems) ? merged.hiddenItems : []
         return merged
       },
-      // 持久化设置 + 工作台(架子与浮窗是用户摆好的,理应留着);舞台那条在存盘前摘掉。
+      /*
+       * 落盘分两半(T-W1):
+       *  · **偏好**逐格摊在顶层,跨工作区共享(Dock 的位置与身量、藏了哪些瓦、
+       *    打开档、界面语言);
+       *  · **家具**(架子/浮窗/记忆/落点)一律进 `byWorkspace` 那本账,每个空间
+       *    一格。活状态那几个字段**不落盘** —— 它们只是当前空间那一格的展开,
+       *    两处都落就有两份真相。
+       * 「什么算家具」由 `T.pickStageFurniture` 一处说了算(舞台那条照旧在它里面摘掉:
+       *  它是「此刻开着」,不是「用户摆好的」)。
+       */
       partialize: (s) => ({
         dockDisplay: s.dockDisplay,
         dockEdge: s.dockEdge,
         dockAlign: s.dockAlign,
         dockSize: s.dockSize,
         hiddenItems: s.hiddenItems,
-        placements: T.withoutTransientPlacements(s.placements),
-        floats: s.floats,
-        floatOrder: s.floatOrder,
-        shelves: s.shelves,
-        // 记忆比工作台活得久:舞台那条存盘要摘,它的记忆却要留 —— 下次点开还去舞台。
-        memory: s.memory,
         defaultOpen: s.defaultOpen,
         locale: s.locale,
+        byWorkspace: stashSpace(s, s.byWorkspace, STAGE_PER_SPACE),
       }),
     },
   ),
 )
+

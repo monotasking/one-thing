@@ -13,6 +13,8 @@ import type {
   StageState,
   Viewport,
 } from './types'
+import { foldFlatIntoDefaultSpace } from '../workspace/per-space'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 
 /**
  * 架子厚度的两条界。下界是绝对值(--shelf-min 同一事实),上界是比例 ——
@@ -105,7 +107,7 @@ export const DOCK_HOLD_PAD = 24
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 5
+export const STAGE_PERSIST_VERSION = 6
 
 const DOCK: Placement = { kind: 'dock' }
 
@@ -125,6 +127,62 @@ export const initialStageState: StageState = {
   memory: {},
   flashPinned: 0,
   flashSide: null,
+}
+
+/**
+ * **跟着工作区走的那五格**(T-W1)。这张表是「什么算家具」在 stage 这一侧的
+ * 单产地 —— 存盘(`partialize`)、换装(`bindPerSpace`)、迁移(v6)三处都读它,
+ * 少写一处就会出现「存的时候多摘一格、换的时候少摊一格」那类只在切回去时才
+ * 露面的 bug。
+ *
+ * 不在表里的(dockEdge/dockAlign/dockSize/dockDisplay/hiddenItems/defaultOpen/
+ * locale)是**这台机器的偏好**,跨空间共享:换个工作区不该把 Dock 挪到另一条边、
+ * 更不该换界面语言。判据写在 `workspace/per-space.ts` 文件头。
+ *
+ * `flashPinned` / `flashSide` 也不在表里:它们是**一次动画的瞬时值**,本来就不
+ * 落盘,换装时跟着新空间从零开始正是对的。
+ */
+export const STAGE_FURNITURE_KEYS = [
+  'placements',
+  'floats',
+  'floatOrder',
+  'shelves',
+  'memory',
+] as const
+
+/** stage 那一份家具的形。 */
+export interface StageFurniture {
+  placements: StageState['placements']
+  floats: StageState['floats']
+  floatOrder: StageState['floatOrder']
+  shelves: StageState['shelves']
+  memory: StageState['memory']
+}
+
+/** 出厂布局 —— 首次进入某个空间摊开的就是它。 */
+export function factoryStageFurniture(): StageFurniture {
+  return {
+    placements: {},
+    floats: {},
+    floatOrder: [],
+    shelves: emptyShelves(),
+    memory: {},
+  }
+}
+
+/**
+ * 从活状态里摘出家具。**存盘那一条纪律在这里也成立**:舞台那条 placement
+ * 存盘前要摘掉(它是「此刻开着」,不是「用户摆好的」),所以换装收账时同样摘 ——
+ * 否则切走再切回来会凭空恢复一块舞台,而它本来就不该活过一次刷新。
+ */
+export function pickStageFurniture(state: StageState): StageFurniture {
+  return {
+    placements: withoutTransientPlacements(state.placements),
+    floats: state.floats,
+    floatOrder: state.floatOrder,
+    shelves: state.shelves,
+    memory: state.memory,
+  }
 }
 
 export const initialStageSettings: StageSettings = {
@@ -1205,6 +1263,18 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
       }
       out = { ...out, memory: next }
     }
+  }
+  if (version < 6) {
+    /*
+     * T-W1:家具按工作区各持一份。存量档案是「只有一个空间」时代的扁平形,
+     * **原样折进默认空间那一格** —— 零丢失:用户摆了半年的架子与浮窗仍在,
+     * 只是从此它们属于默认工作区(别的空间那时还不存在,自然是出厂布局)。
+     *
+     * 摘的是 STAGE_FURNITURE_KEYS 那五格,**不是全部** —— Dock 贴哪条边、
+     * 界面语言、藏了哪些瓦是这台机器的偏好,换个空间不该跟着变(判据写在
+     * `workspace/per-space.ts` 文件头)。它们留在扁平层,一个字不动。
+     */
+    out = foldFlatIntoDefaultSpace(out, STAGE_FURNITURE_KEYS, DEFAULT_SPACE_ID) as Record<string, unknown>
   }
   return out
 }

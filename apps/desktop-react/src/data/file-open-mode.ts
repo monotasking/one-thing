@@ -2,6 +2,14 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { MessageKey } from '../i18n'
 import type { Placement } from '../stage/types'
+import {
+  foldFlatIntoDefaultSpace,
+  spreadSpace,
+  stashSpace,
+  type PerSpaceSpec,
+  type PerSpaceState,
+} from '../workspace/per-space'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 
 /**
  * 「用什么打开一个文件」—— 一条**偏好**,不是一个状态。
@@ -91,31 +99,62 @@ export const FILE_OPEN_MODE_LABELS: Record<FileOpenMode, MessageKey> = {
   float: 'files.openIn.float',
 }
 
-interface FileOpenModeStore {
+interface FileOpenModeStore extends PerSpaceState<OpenModeFurniture> {
   mode: FileOpenMode
   setMode: (mode: FileOpenMode) => void
+}
+
+/** 跟着工作区走的那一格:「在哪儿打开文件」是这个空间里的摆法(T-W1)。 */
+interface OpenModeFurniture {
+  mode: FileOpenMode
+}
+
+export const OPEN_MODE_PER_SPACE: PerSpaceSpec<FileOpenModeStore, OpenModeFurniture> = {
+  pick: (s) => ({ mode: s.mode }),
+  factory: () => ({ mode: 'panel' }),
+}
+
+/** 认不出的档一律落回 panel(唯一一定兑现得了的一档)。账上每一格都过它。 */
+function clampMode(value: unknown): FileOpenMode {
+  return typeof value === 'string' && (FILE_OPEN_MODES as readonly string[]).includes(value)
+    ? (value as FileOpenMode)
+    : 'panel'
 }
 
 export const useFileOpenMode = create<FileOpenModeStore>()(
   persist(
     (set) => ({
       mode: 'panel',
+      byWorkspace: {},
       setMode: (mode) => set({ mode }),
     }),
     {
       name: 'onething.files.openMode',
-      version: 1,
+      // v2:打开方式按工作区各持一份(T-W1)。存量那一份原样折进默认空间。
+      version: 2,
       storage: createJSONStorage(() => localStorage),
-      // 存盘可能来自旧版本、也可能被人手改过:认不出的档一律落回 panel
-      // (那是唯一一定兑现得了的一档)。同 reading/store 的 merge 钳制。
-      merge: (persisted, current) => {
-        const saved = (persisted as Partial<FileOpenModeStore> | undefined)?.mode
-        return {
-          ...current,
-          mode: saved && FILE_OPEN_MODES.includes(saved) ? saved : 'panel',
-        }
+      migrate: (persisted, version) => {
+        if (version >= 2 || !persisted || typeof persisted !== 'object') return persisted
+        return foldFlatIntoDefaultSpace<OpenModeFurniture>(
+          persisted as Record<string, unknown>,
+          ['mode'],
+          DEFAULT_SPACE_ID,
+        )
       },
-      partialize: (s) => ({ mode: s.mode }),
+      // 存盘可能来自旧版本、也可能被人手改过:账上**每一格**都钳一次
+      // (只钳当前那一格的话,切过去才塌,而那一帧已经画出去了)。
+      merge: (persisted, current) => {
+        const saved = ((persisted as Partial<FileOpenModeStore> | undefined)?.byWorkspace
+          ?? {}) as Record<string, OpenModeFurniture>
+        const byWorkspace: Record<string, OpenModeFurniture> = {}
+        for (const [spaceId, furniture] of Object.entries(saved)) {
+          byWorkspace[spaceId] = { mode: clampMode(furniture?.mode) }
+        }
+        // 同步摊开当前空间那一格 —— 第一帧就是对的(理由同 stage 的 merge)。
+        return { ...current, byWorkspace, ...spreadSpace(byWorkspace, OPEN_MODE_PER_SPACE) }
+      },
+      partialize: (s) => ({ byWorkspace: stashSpace(s, s.byWorkspace, OPEN_MODE_PER_SPACE) }),
     },
   ),
 )
+

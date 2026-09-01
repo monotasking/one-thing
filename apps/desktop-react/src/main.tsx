@@ -13,6 +13,7 @@ import { useWorkspaceStore } from './workspace/store'
 import { startThemeSource } from './theme/theme-source'
 import { startReadingAxes } from './reading/apply'
 import { startWorkspaceApply } from './workspace/apply'
+import { startPerSpaceLayout } from './workspace/layout-scope'
 import { installCrashHandlers } from './services/crash'
 import { startPerfProbe } from './services/perf'
 import { getLogger } from './services/log'
@@ -33,6 +34,15 @@ startReadingAxes()
 // 首帧的瓦面就是最终的那一格色 —— 先画一格默认紫再跳成用户的蓝同样是可见的。
 // 列表本身要等连通(Dock 挂上时 load 一次),那时这条订阅会把真名字的字标补上。
 startWorkspaceApply()
+
+// 家具跟着工作区走(T-W1)。同样在 createRoot 之前,同样一个字节的网都不碰 ——
+// 五个面的家具账全在 localStorage 里,它们的**首帧**已经由各自 persist 的 merge
+// 摊开了(那是同步的);这一步接的是**此后的切换**。
+//
+// 为什么是在这里显式接、而不是各 store 自己在模块作用域里接:那样会撞上这台壳
+// 既有的 import 环(stage/store → stage/items → stage/types → i18n → stage/store),
+// 真机上表现为启动即 TDZ 崩溃。病历与判据写在 workspace/layout-scope.ts 文件头。
+startPerSpaceLayout()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')

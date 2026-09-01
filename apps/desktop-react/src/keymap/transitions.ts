@@ -1,4 +1,5 @@
 import { SESSIONS_ITEM_ID, STAGE_ITEMS } from '../stage/items'
+import type { ShelfSide } from '../stage/types'
 import { WORKSPACE_SLOT_COUNT } from '../workspace/types'
 import type { MessageKey } from '../i18n'
 import type {
@@ -70,6 +71,46 @@ const RETIRED_EXPOSE_TOGGLE_ID = 'expose.toggle'
  * 「打开总览」的入口。两个入口够了,第三个只是在花键位预算。
  * ──────────────────────────────────────────────────────────────────────────
  */
+/**
+ * 四条架子的**收 / 展**命令(09-01 用户放权:「四条架子的快捷键」)。
+ *
+ * ── 键位:⌘⌥ + 那个方向的箭头 ────────────────────────────────────────────
+ * **方向即语义**,不用记 —— 左架子是 ⌘⌥←,底架子是 ⌘⌥↓。施工前跑过全表冲突
+ * 检查(9 条出厂全局键 + 5 条面域局部键,`shelf-commands.test.ts` 把这条检查
+ * 钉成了断言):四个组合**一条都不撞**,而且这台壳出厂表里此前一个带 ⌥ 的键
+ * 都没有,所以这一族是干净地长出来的,没有挤掉谁。
+ *
+ * 行内结构键(裸方向键的焦点语义)也不受影响:那一层根本不看修饰键,
+ * 而这四条必须同时按住 ⌘ 与 ⌥。
+ *
+ * ── 为什么是折叠而不是关整栏 ─────────────────────────────────────────────
+ * 语义写在 `types.ts` 的命令族注释里:关整栏会把架子上的瓦全收回 Dock,
+ * 那是**有后果**的;折叠是可逆的,按同一个键就回来。
+ */
+const SHELF_TOGGLE_LABELS: Array<{ side: ShelfSide; labelKey: MessageKey; combo: Combo }> = [
+  { side: 'left', labelKey: 'shelf.labelLeft', combo: { meta: true, alt: true, key: 'arrowleft' } },
+  { side: 'right', labelKey: 'shelf.labelRight', combo: { meta: true, alt: true, key: 'arrowright' } },
+  { side: 'bottom', labelKey: 'shelf.labelBottom', combo: { meta: true, alt: true, key: 'arrowdown' } },
+  { side: 'top', labelKey: 'shelf.labelTop', combo: { meta: true, alt: true, key: 'arrowup' } },
+]
+
+/** 架子命令 id。**全仓唯一一处**这个字符串的拼法(派发器按它反解出哪一侧)。 */
+export function shelfToggleCommandId(side: ShelfSide): CommandId {
+  return `shelf.${side}.toggle`
+}
+
+/** 架子命令 id → 哪一侧。认不出就是 null —— 派发器据此放行,不去猜。 */
+export function shelfSideOfCommand(id: CommandId): ShelfSide | null {
+  const found = SHELF_TOGGLE_LABELS.find((row) => shelfToggleCommandId(row.side) === id)
+  return found?.side ?? null
+}
+
+const SHELF_TOGGLE_COMMANDS: KeymapCommand[] = SHELF_TOGGLE_LABELS.map((row) => ({
+  id: shelfToggleCommandId(row.side),
+  labelKey: row.labelKey,
+  defaultCombo: row.combo,
+}))
+
 const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toggle:search': { meta: true, key: 'p' },
   [toggleCommandId(SESSIONS_ITEM_ID)]: { meta: true, key: 'e' },
@@ -107,7 +148,7 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
     const id = toggleCommandId(item.id)
     return { id, labelKey: item.titleKey, defaultCombo: DEFAULT_COMBOS[id] ?? null }
   }),
-  { id: 'shelf.right.toggle', labelKey: 'shelf.labelRight', defaultCombo: null },
+  ...SHELF_TOGGLE_COMMANDS,
   /*
    * 工作区那一族排在 toc.toggle 之前,现在**只是排版**了 —— 从前不是:
    * 两者出厂键都是 ⌘⇧O 时,这个次序就是那次撞车的裁决。08-31 工作区面板改到

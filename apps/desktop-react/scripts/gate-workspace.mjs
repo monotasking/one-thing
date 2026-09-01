@@ -5,7 +5,7 @@
  * 用户裁定:「workspace 的切换现在是假的,真正实现 workspace 的切换」。
  * 这条门证的就是那句话的反面 —— 切换之后**世界真的换了**,而且换得干净。
  *
- * ── 它证什么(六条,每一条都是「假切换」时代会红的) ──────────────────────
+ * ── 它证什么(八条,每一条都是「假切换」时代会红的) ──────────────────────
  *  ① **会话列表按空间过滤**:两个空间各有自己的会话,切过去只看得见本空间那些,
  *     另一个空间的一条都不在 DOM 里。
  *  ② **新会话归属正确**:在空间 B 里从界面上建一条,回到 core 侧读 `listMeta`,
@@ -19,6 +19,10 @@
  *     而且切换之后的首帧就有内容(没有骨架、没有空屏那一档)。
  *  ⑥ **文件面的根跟着换**:它按活跃会话的工作目录取,而会话跟着空间走 ——
  *     这一条证的是那条传导链真的通(壳这边一个字的空间参数都没加)。
+ *  ⑦ **四条架子的快捷键**(09-01 用户放权):⌘⌥←/→/↓/↑ 各管各的一侧,
+ *     再按一次就展开(收/展是可逆的开关,不是「关掉整栏」)。
+ *  ⑧ **家具按空间隔离**(T-W1):切过去是**出厂布局**、旧空间那套原样留在账上、
+ *     切回来逐格相同。用户原话:「架子、文件树整套都是新的一套,之前的留在那个空间」。
  *
  * ── 为什么这一半必须真机 ─────────────────────────────────────────────────
  * 单元测试换掉的是端口,证的是「壳往哪条口上打」;这里证的是**盘上那几个文件
@@ -205,6 +209,54 @@ function readCards(page) {
   })
 }
 
+
+/** 往目标窗口里派发一次组合键。**页面内 DOM 派发**,不动真光标、不抢前台焦点。 */
+async function pressCombo(page, key, mods = {}) {
+  await page.evaluate(
+    ([k, m]) => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', {
+          key: k,
+          metaKey: m.meta === true,
+          altKey: m.alt === true,
+          shiftKey: m.shift === true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      )
+    },
+    [key, mods],
+  )
+  await delay(60)
+}
+
+/**
+ * stage 的持久化档案。**家具账就落在这里**(`byWorkspace`),所以这一口同时是
+ * 「快捷键真的改了状态没有」与「家具真的按空间分开没有」两件事的读数口 ——
+ * 它读的是盘上那份真东西,不是页面里某个探针变量。
+ */
+function readStagePersist(page) {
+  return page.evaluate(() => {
+    try {
+      return JSON.parse(localStorage.getItem('onething.stage') || '{}')
+    } catch {
+      return {}
+    }
+  })
+}
+
+/** 某个空间那一格里,四条架子各自收起了没有。 */
+function collapsedOf(persisted, spaceId) {
+  const shelves = persisted?.state?.byWorkspace?.[spaceId]?.shelves
+  if (!shelves) return null
+  return {
+    left: shelves.left?.collapsed === true,
+    right: shelves.right?.collapsed === true,
+    top: shelves.top?.collapsed === true,
+    bottom: shelves.bottom?.collapsed === true,
+  }
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(
@@ -230,13 +282,13 @@ async function main() {
   try {
     await mkdir(shotDir, { recursive: true })
 
-    console.log('\n[1/7] 在磁盘上种出两个空间各自的工作目录')
+    console.log('\n[1/9] 在磁盘上种出两个空间各自的工作目录')
     for (const [key, dir] of Object.entries(dirs)) {
       await mkdir(dir, { recursive: true })
       await writeFile(path.join(dir, `${key}-only.txt`), 'gate\n')
     }
 
-    console.log('\n[2/7] 起一台 core,建第二个空间 + 两边各自的会话 / 设置 / 凭证')
+    console.log('\n[2/9] 起一台 core,建第二个空间 + 两边各自的会话 / 设置 / 凭证')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -304,7 +356,7 @@ async function main() {
     }
     if (credentialsSeeded) assert(true, '两个空间各种了一把假 key(尾号不同)')
 
-    console.log('\n[3/7] 拉起应用(默认空间),会话列表只该有默认空间那两条')
+    console.log('\n[3/9] 拉起应用(默认空间),会话列表只该有默认空间那两条')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
@@ -331,20 +383,61 @@ async function main() {
       '① 另一个空间的会话**一条都不在 DOM 里**(不是藏起来,是根本没画)',
     )
 
-    console.log('\n[4/7] 切到第二个空间:零重挂 + 首帧就有内容 + 列表整套换掉')
+    console.log('\n[4/9] 切到第二个空间:面板开合也是家具;两边都开着时零重挂 + 一帧就位')
     /*
-     * 切换走 **⌘2**(全局档的工作区序号直达),而不是去总览上点那张卡。
-     * 理由是这一步要量的正是「零重挂」:开一次总览面就把会话面收了、切完再开
-     * 回来 —— 那样量到的是**面板开合**的重挂,与切换毫无关系(第一版就是这么
-     * 写的,红在这一格上,而它红得没有意义)。⌘2 让会话面从头到尾挂在那儿,
-     * 于是节点同一性问的才是「换世界有没有把这棵树掀了」。
+     * 切换走 **⌘2**(全局档的工作区序号直达),页面内 DOM 派发 —— 不动真光标、
+     * 不抢前台焦点,与本门其余的 `element.click()` 同一条纪律。
      *
-     * 键盘事件也是**页面内 DOM 派发**(`window.dispatchEvent`),不动真光标、
-     * 不抢前台焦点 —— 与本门其余的 `element.click()` 同一条纪律。
+     * ── T-W1 之后这一步的语义变了(第一版在这里红过,而它红得对)──────────
+     * 从前这里假设「会话面从头到尾挂在那儿」,于是拿它的滚动容器去量零重挂。
+     * 家具按空间隔离之后**那个假设不成立了**:一块面开着没有(placements)
+     * 本身就是家具,默认空间开着会话面,第二个空间**没开过**,所以切过去它
+     * 就该关掉 —— 屏幕上一张卡都没有正是对的。真机第一次跑出来的读数就是
+     * `cards:0 / overview:false`,那不是回归,是这一批要的行为。
+     *
+     * 所以这一步改成两段:
+     *  ① 切过去 → 面板**关掉**(⑧ 家具:面板开合不跨空间);
+     *  ② 在新空间里把它开出来 → 此后两个空间都开着,**这时**再来回切一次
+     *     量「一帧就位」与「同一个 DOM 节点」—— 那才是四律要问的话
+     *     (换世界有没有把一棵**本该留着**的树掀了),而不是问一块本就该关的面。
      */
-    // 抓的是**滚动容器**而不是某张卡的父节点:卡会换、组会换(两个空间的会话
-    // 落在不同的项目下,分组本来就该重画),而这个容器必须是同一个节点。
-    // 第一版抓 `card-*.parentElement`(= 组的 section)红过一次 —— 那是量错了东西。
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '2', metaKey: true, bubbles: true, cancelable: true }),
+      )
+    })
+    await delay(120)
+    const afterSwitch = await readCards(page)
+    assert(!afterSwitch.skeleton, '⑤ 切换那一刻屏幕上没有骨架(禁全屏骨架闪)')
+    assert(
+      afterSwitch.count === 0,
+      '⑧ **面板开合也是家具**:默认空间开着的会话面没有跟到第二个空间来',
+    )
+
+    // 在第二个空间把会话面开出来,顺带看它只装着这个空间的会话。
+    await openPanel(page, 'sessions', '[data-testid^="card-"]')
+    const inWork = await waitFor('第二个空间的卡画出来', async () => {
+      const seen = await readCards(page)
+      return seen.count > 0 ? seen : undefined
+    })
+    console.log('  · 第二个空间屏上:', JSON.stringify(inWork.titles))
+    assert(
+      inWork.titles.some(t => t.includes('工作空间 · 会话丙')),
+      '① 第二个空间那一条在屏上',
+    )
+    assert(
+      !inWork.titles.some(t => t.includes('默认空间')),
+      '① 默认空间那两条不在屏上 —— 列表整套换掉了',
+    )
+
+    /*
+     * 两个空间现在都开着会话面。来回切一次,量四律要的那两件:
+     *  · **一帧就位** —— 切换是纯投影(账本重投影 + 家具摊开),不发一次请求;
+     *  · **零重挂** —— 那块面在两个空间都开着,所以它的滚动容器必须是同一个节点。
+     * 抓的是滚动容器而不是某张卡的父节点:卡会换、组会换(两个空间的会话落在
+     * 不同项目下,分组本来就该重画)。第一版抓 `card-*.parentElement`(= 组的
+     * section)红过一次 —— 那是量错了东西。
+     */
     const beforeSwitch = await page.evaluate(() => {
       const list = document.querySelector('[data-testid="expose-overview-scroll"]')
       window.__wsGate = { node: list ?? null }
@@ -352,37 +445,38 @@ async function main() {
     })
     await page.evaluate(() => {
       window.dispatchEvent(
-        new KeyboardEvent('keydown', { key: '2', metaKey: true, bubbles: true, cancelable: true }),
+        new KeyboardEvent('keydown', { key: '1', metaKey: true, bubbles: true, cancelable: true }),
       )
     })
-
-    // **同步就位**:切换是纯投影,新世界的首屏不经过任何一次请求。React 只欠
-    // 一次渲染,所以这里给一帧的余量,而不是一次 waitFor —— 若要等网络往返,
-    // 一帧是等不出来的,这一条会当场红。
+    // 一帧的余量,不是一次 waitFor —— 若要等网络往返,一帧是等不出来的,这一条会当场红。
     await delay(120)
-    const rightAfter = await readCards(page)
-    console.log('  · 切换后一帧就读到:', JSON.stringify(rightAfter.titles))
-    assert(!rightAfter.skeleton, '⑤ 切换那一刻屏幕上没有骨架(禁全屏骨架闪)')
+    const backInDefault = await readCards(page)
+    console.log('  · 切回默认空间一帧就读到:', JSON.stringify(backInDefault.titles))
+    assert(!backInDefault.skeleton, '⑤ 切回来那一刻也没有骨架')
     assert(
-      rightAfter.count > 0 && rightAfter.titles.some(t => t.includes('工作空间 · 会话丙')),
+      backInDefault.count === 2 && backInDefault.titles.every(t => t.includes('默认空间')),
       '⑤ 切换后**一帧之内**新世界就在屏上(没有空屏那一档 = 切换不发请求)',
-    )
-    assert(
-      !rightAfter.titles.some(t => t.includes('默认空间')),
-      '① 默认空间那两条不在屏上 —— 列表整套换掉了',
     )
     const sameNode = await page.evaluate(() => {
       const now = document.querySelector('[data-testid="expose-overview-scroll"]')
       return { known: Boolean(now), same: window.__wsGate?.node === now }
     })
     if (beforeSwitch.known && sameNode.known) {
-      assert(sameNode.same, '⑤ 切换前后列表容器是**同一个 DOM 节点**(零重挂)')
+      assert(sameNode.same, '⑤ 两边都开着时,切换前后列表容器是**同一个 DOM 节点**(零重挂)')
     } else {
       skip('⑤ 零重挂:没抓到列表容器(选择器与这一版界面对不上)')
     }
+
+    // 回到第二个空间,后面几步都在它里面做。
+    await page.evaluate(() => {
+      window.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '2', metaKey: true, bubbles: true, cancelable: true }),
+      )
+    })
+    await delay(120)
     await page.screenshot({ path: path.join(shotDir, 'workspace-switched.png') })
 
-    console.log('\n[5/7] 进这个空间的会话,文件面的根跟着换')
+    console.log('\n[5/9] 进这个空间的会话,文件面的根跟着换')
     /*
      * 文件根**不是**按空间取的,它按**活跃会话的工作目录**取
      * (`files-source.useSessionCwd`)—— 而会话跟着空间走,所以根是被带过来的。
@@ -410,12 +504,11 @@ async function main() {
       '⑥ 而且不是默认空间那个目录 —— 根真的被带过来了,不是没动',
     )
 
-    console.log('\n[6/7] 在第二个空间里从界面上建一条会话,回 core 侧核归属')
+    console.log('\n[6/9] 在第二个空间里从界面上建一条会话,回 core 侧核归属')
     const before = new Set((await rpc(record, 'sessions', 'listMeta', {})).sessions.map(s => s.id))
-    await clickSelector(page, '[data-testid^="group-plus-"]').catch(async () => {
-      // 没有分组的「+」时退回总览上那颗新建(两条入口最终都进 sessions-source.create)。
-      await clickSelector(page, '[data-testid="expose-new-session"]')
-    })
+    // 上一步开了文件面,会话面让位给了它 —— 先把会话面开回来,那颗「+」才在 DOM 里。
+    await openPanel(page, 'sessions', '[data-testid^="group-plus-"]')
+    await clickSelector(page, '[data-testid^="group-plus-"]')
     const fresh = await waitFor('core 侧看到那条新会话', async () => {
       const listed = await rpc(record, 'sessions', 'listMeta', {})
       return listed.sessions.find(s => !before.has(s.id))
@@ -426,7 +519,7 @@ async function main() {
       `② 新会话落在第二个空间上(workspaceId=${fresh.workspaceId})—— 这一格是壳与引擎唯一的接缝`,
     )
 
-    console.log('\n[7/7] 模型服务面:provider 设置与凭证池跟着空间走')
+    console.log('\n[7/9] 模型服务面:provider 设置与凭证池跟着空间走')
     const spaceAiNow = await rpc(record, 'spaces', 'getProviderSettings', { id: workId })
     assert(
       spaceAiNow?.ai?.provider === 'zhipu',
@@ -463,10 +556,80 @@ async function main() {
       skip('④ 凭证:这台机器上纯 node core 种不了凭证(它拒绝写明文),这一条不假装绿')
     }
 
+
+    console.log('\n[8/9] 四条架子的快捷键:⌘⌥←/→/↓/↑ 各开各收')
+    /*
+     * 读数口是**盘上那份 stage 档案**(`onething.stage` 的 byWorkspace),不是
+     * 页面里的探针变量:它同时证「键真的接上了」与「状态真的落进了当前空间那一格」。
+     * 键盘事件是页面内 DOM 派发(`window.dispatchEvent`),与本门其余的
+     * `element.click()` 同一条纪律 —— 不动真光标、不抢前台焦点。
+     *
+     * 逐条按、逐条读:四个键必须**各管各的那一侧**。一次全按完再读的话,
+     * 「四个键都绑到了同一侧」这种错会完全看不出来。
+     */
+    await clickSelector(page, `[data-testid="workspace-switch-${DEFAULT_SPACE_ID}"]`).catch(async () => {
+      await openPanel(page, 'workspace', '[data-testid^="workspace-switch-"]')
+      await clickSelector(page, `[data-testid="workspace-switch-${DEFAULT_SPACE_ID}"]`)
+    })
+    await delay(120)
+
+    const SHELF_KEYS = [
+      { side: 'left', key: 'ArrowLeft' },
+      { side: 'right', key: 'ArrowRight' },
+      { side: 'bottom', key: 'ArrowDown' },
+      { side: 'top', key: 'ArrowUp' },
+    ]
+    for (const { side, key } of SHELF_KEYS) {
+      await pressCombo(page, key, { meta: true, alt: true })
+      const seen = collapsedOf(await readStagePersist(page), DEFAULT_SPACE_ID)
+      if (!seen) throw new Error(`按完 ${key} 之后盘上还没有默认空间那一格家具`)
+      assert(seen[side] === true, `⑦ ⌘⌥${key.replace('Arrow', '')} 收起了 ${side} 架子`)
+      const others = SHELF_KEYS.filter(k => k.side !== side).map(k => k.side)
+      const leaked = others.filter(o => seen[o] === true && SHELF_KEYS.findIndex(k => k.side === o) > SHELF_KEYS.findIndex(k => k.side === side))
+      assert(leaked.length === 0, `⑦ 它只动了 ${side} 这一侧(还没按到的 ${others.join('/')} 没被顺带收掉)`)
+    }
+    // 再按一次 = 展开(它是**开关**,不是「关掉整栏」)。
+    await pressCombo(page, 'ArrowRight', { meta: true, alt: true })
+    assert(
+      collapsedOf(await readStagePersist(page), DEFAULT_SPACE_ID)?.right === false,
+      '⑦ 同一个键再按一次就展开 —— 语义是收/展,可逆',
+    )
+
+    console.log('\n[9/9] 家具按空间隔离:切过去是出厂,切回来原样')
+    const furnishedInDefault = collapsedOf(await readStagePersist(page), DEFAULT_SPACE_ID)
+    console.log('  · 默认空间此刻的四条架子:', JSON.stringify(furnishedInDefault))
+    assert(
+      furnishedInDefault.left && furnishedInDefault.bottom && furnishedInDefault.top && !furnishedInDefault.right,
+      '⑧ 默认空间里摆好了一套可辨认的家具(左/下/上收起,右展开)',
+    )
+
+    await pressCombo(page, '2', { meta: true })
+    const inWorkSpace = collapsedOf(await readStagePersist(page), workId)
+    console.log('  · 第二个空间此刻的四条架子:', JSON.stringify(inWorkSpace))
+    assert(
+      inWorkSpace === null
+        || (!inWorkSpace.left && !inWorkSpace.right && !inWorkSpace.top && !inWorkSpace.bottom),
+      '⑧ **首进这个空间 = 出厂布局**(四条架子都是展开的),不是把默认空间那套端过来',
+    )
+    // 旧空间那一格**原样留在账上** —— 这是「之前的留在那个空间」那句话的字面读数。
+    assert(
+      JSON.stringify(collapsedOf(await readStagePersist(page), DEFAULT_SPACE_ID)) ===
+        JSON.stringify(furnishedInDefault),
+      '⑧ 默认空间那一套原样留在账上,没被新空间的覆盖',
+    )
+
+    await pressCombo(page, '1', { meta: true })
+    assert(
+      JSON.stringify(collapsedOf(await readStagePersist(page), DEFAULT_SPACE_ID)) ===
+        JSON.stringify(furnishedInDefault),
+      '⑧ 切回来 = 当初那一套,逐格相同',
+    )
+    await page.screenshot({ path: path.join(shotDir, 'workspace-furniture.png') })
+
     await app.close()
     app = undefined
     console.log(
-      `\n[workspace-gate] ok —— 切换真的换世界(列表 / 归属 / provider 设置 / 凭证 / 零重挂)`
+      `\n[workspace-gate] ok —— 切换真的换世界(列表 / 归属 / provider 设置 / 凭证 / 零重挂 / 家具 / 四条架子键)`
         + `(截图:${path.relative(appRoot, shotDir)}/)`,
     )
   } finally {

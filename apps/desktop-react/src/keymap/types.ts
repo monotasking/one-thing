@@ -1,4 +1,5 @@
 import type { MessageKey } from '../i18n'
+import type { ShelfSide } from '../stage/types'
 
 /**
  * 快捷键注册表的形状。和 stage/ expose/ 一样:这里只有数据,没有 React、没有 DOM。
@@ -47,7 +48,11 @@ export interface Combo {
  * 命令 id。四族:
  *  - `toggle:<itemId>` —— 每块 Dock 瓦一条(会话总览去接管化之后也在其中),
  *    语义 = togglePlacement(在 Dock 里就按它的打开方式开,在别处就收回 Dock);
- *  - `shelf.right.toggle` —— 右钉栏收 / 展;
+ *  - `shelf.<side>.toggle` —— 四条架子各一条,收 / 展那一侧(09-01 用户放权键位:
+ *    出厂 ⌘⌥← / → / ↓ / ↑)。语义是**折叠/展开**,不是关掉整栏 —— 关整栏会把
+ *    架子上的瓦全收回 Dock,那是有后果的写操作,不该被一个盲按的键直接触发
+ *    (与 agent.menu 那条纪律同源);收起来的架子按同一个键就回来了。
+ *    从前这里只有 `shelf.right.toggle` 一条,而且出厂没绑键。
  *  - `toc.toggle` —— 目录面板收 / 展;
  *  - `agent.menu` —— 顶栏 agent 切换器的菜单开 / 关。**只是开菜单**,
  *    不做「按一下换下一个人」的轮换 —— 换人是有后果的写操作(改这条会话
@@ -66,7 +71,7 @@ export interface Combo {
  */
 export type CommandId =
   | `toggle:${string}`
-  | 'shelf.right.toggle'
+  | `shelf.${ShelfSide}.toggle`
   | 'toc.toggle'
   | 'agent.menu'
   | 'session.new'
