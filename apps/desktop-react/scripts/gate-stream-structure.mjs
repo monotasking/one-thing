@@ -154,7 +154,7 @@ const THINK_SCRIPT = [
  */
 const TOOL_TURNS = {
   1: async ({ say, callTool, finish }) => {
-    await say('reasoning', '先想一下要做什么。这一段推理要长一点,跨过两秒那道打包闸:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥,天地玄黄宇宙洪荒日月盈昃辰宿列张。想完之后我要连着查两次时间,一次上海一次协调世界时。')
+    await say('reasoning', '先想一下要做什么 TKT3。这一段推理要长一点,跨过两秒那道打包闸:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥,天地玄黄宇宙洪荒日月盈昃辰宿列张。想完之后我要连着查两次时间,一次上海一次协调世界时。')
     await say('content', '我先查一下时间,连着查两次。\n')
     await callTool(0, 'call_a', 'time', '{"action":"now","timezone":"Asia/Shanghai","format":"iso8601"}')
     await callTool(1, 'call_b', 'time', '{"action":"now","timezone":"UTC","format":"iso8601"}')
@@ -165,7 +165,7 @@ const TOOL_TURNS = {
     // TKT1 埋在这里:它走的正是新开的那条「账本 parts 画不到、由 content 补出来」
     // 的车道 —— 补出来的那一截若与尾巴里那一截重叠,记号会在一帧里出现两次(H)。
     await say('content', '\n拿到了 TKT1。下面这段正文夹在两次工具之间,要看它落在哪一边。\n')
-    await say('reasoning', '工具结果回来之后的一段行内推理。它前面是工具、后面还是工具,正是「工具与正文、推理夹杂」那一格。再补些字跨过打包闸:云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜。')
+    await say('reasoning', '工具结果回来之后的一段行内推理 TKT2。它前面是工具、后面还是工具,正是「工具与正文、推理夹杂」那一格。再补些字跨过打包闸:云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜。')
     await callTool(0, 'call_c', 'time', '{"action":"now","timezone":"America/New_York","format":"iso8601"}')
     finish('tool_calls')
   },
@@ -186,7 +186,8 @@ const TOKENS = {
     'TKA1', 'TKB2', 'TKC3', 'TKD4', 'TKE5', 'TKF6',
     'TKG7', 'TKH8', 'TKI9', 'TKJ10', 'TKK11', 'TKL12', 'TKM13', 'TKN14',
   ],
-  tool: ['TKT1'],
+  // TKT2 / TKT3 埋在两段推理里(R3 浸泡首单取证:推理内容此刻穿的是哪件衣服)。
+  tool: ['TKT1', 'TKT2', 'TKT3'],
   mixed: ['TKX1'],
   pack: ['TKP1', 'TKP2'],
   table: ['TKW1', 'TKW2', 'TKI1'],
@@ -583,6 +584,8 @@ function installSampler(page, tokens, geometry = false) {
           k: isTool
             ? 'tool'
             : (node.getAttribute('data-testid') === 'chat-thought' ? 'think' : node.getAttribute('data-prose')),
+          // 思考块此刻是展开还是收起 —— R3 浸泡首单量的就是这一格(读数,不进断言)。
+          ex: node.getAttribute('aria-expanded') ?? undefined,
           d: node.getAttribute('data-block-kind')
             ?? (node.hasAttribute('data-tool-group') ? 'tool-group' : undefined)
             ?? toolStatus
@@ -814,6 +817,42 @@ function findVerticalJitter(frames, slack = 1) {
     }
   }
   return out
+}
+
+/**
+ * **一个记号此刻穿的是哪件衣服**(R3 浸泡首单的取证判据)。
+ *
+ * `hostTrail` 读的是块的真身(`d`:p / table / code),回答「它被画成哪一种块」;
+ * 这里读的是**件的档**(`k`:think / text / tool),回答「它住在思考件里还是正文件里」。
+ * 用户报的那一形——推理以斜体正文摊在消息里——两种可能的分水岭正是这一格:
+ * 住在 `think` 里 = 穿着思考块的衣服(斜体灰是它的定稿形),住在 `text` 里 = 呈现回归。
+ */
+function markCoats(frames, tokenIndex) {
+  const counts = new Map()
+  for (const frame of frames) {
+    const host = frame.s.find(item => (item.mk ?? []).includes(tokenIndex))
+    if (!host) continue
+    counts.set(host.k, (counts.get(host.k) ?? 0) + 1)
+  }
+  return counts
+}
+
+/**
+ * **并存窗口**:一帧里既有工具件、又有思考件。
+ *
+ * 用户报的现场就是这个窗口(「think 还在,但是下面有一个工具调用」)。这里把它
+ * 变成一个可以数的东西:窗口有多少帧、窗口里思考块是展开还是收起。
+ */
+function coexistWindow(frames) {
+  const rows = frames.filter(f => f.s.some(b => b.k === 'tool') && f.s.some(b => b.k === 'think'))
+  const expanded = new Map()
+  for (const frame of rows) {
+    for (const item of frame.s) {
+      if (item.k !== 'think') continue
+      expanded.set(item.ex ?? '(无)', (expanded.get(item.ex ?? '(无)') ?? 0) + 1)
+    }
+  }
+  return { frames: rows.length, expanded }
 }
 
 /** A:思考块的条数只增不减。 */
@@ -1370,6 +1409,56 @@ async function runCell({ record, page, kind, piece, index }) {
     frames[frames.length - 1].s.filter(b => b.k === 'text').length >= 3,
     '完稿时三轮正文都在屏幕上',
   )
+
+  /*
+   * ── T:**推理与工具并存的那一窗**(R3 浸泡首单,用户真机截图)────────────
+   *
+   * 用户原话:「不知道为什么,think 还在,但是下面有一个工具调用」,附图里推理内容
+   * 以斜体灰字摊在消息里。要分的是两件事:
+   *  · 推理**穿的是哪件衣服** —— 思考件(斜体灰是它的定稿形,六轮比稿 S2:没有秒数、
+   *    没有圆点、没有左竖线,也没有檐)还是正文件(那才是呈现回归);
+   *  · 并存**合不合法** —— 行内推理紧接着一次工具调用,是 agent 一轮里的常态。
+   * 这条只钉第一件;第二件是读数,交给拍板。
+   */
+  /*
+   * A / B 两条**在工具素材上也跑一遍**(R3 浸泡首单第 3 问:工具行出现时,上方那段
+   * 推理的块结构有没有异动)。它们本来只长在 think 素材上,而那条素材**没有工具**——
+   * 「工具边界」正是要问的那个现场,所以搬一份过来。判据函数是同两个,不另写。
+   */
+  const thinkVanished = findThinkVanished(frames)
+  if (thinkVanished.length > 0) {
+    const shown = thinkVanished.slice(0, 5).map(v => `t=${v.t}ms ${v.before}→${v.after}`).join(' · ')
+    throw new Error(`断言失败:A(工具素材)思考块消失了 ${thinkVanished.length} 次(${shown})`)
+  }
+  assert(true, `A 工具边界上思考块只增不减(${frames.length} 帧零消失)`)
+  const thinkMoved = findThinkMoved(frames)
+  if (thinkMoved.length > 0) {
+    const shown = thinkMoved.slice(0, 5).map(m => `t=${m.t}ms「${m.head}」${m.was}→${m.now}`).join(' · ')
+    throw new Error(`断言失败:B(工具素材)思考块搬家 ${thinkMoved.length} 次(${shown})`)
+  }
+  assert(true, 'B 工具边界上思考块不搬家(位置序号一帧都没变过)')
+
+  const coats2 = markCoats(frames, 1)
+  const coats3 = markCoats(frames, 2)
+  const win = coexistWindow(frames)
+  console.log(`  【T】行内推理 TKT2 住过:${[...coats2].map(([k, n]) => `${k}×${n}`).join(' / ') || '(没上过屏)'}`)
+  console.log(`  【T】顶部推理 TKT3 住过:${[...coats3].map(([k, n]) => `${k}×${n}`).join(' / ') || '(没上过屏)'}`)
+  console.log(
+    `  【T】并存窗口(工具件与思考件同帧)${win.frames} 帧;窗口里思考块 aria-expanded:`
+    + `${[...win.expanded].map(([k, n]) => `${k}×${n}`).join(' / ') || '(无)'}`,
+  )
+  assert(win.frames > 0, `T 采到了「推理在场 + 工具已开」的并存窗口(${win.frames} 帧)`)
+  for (const [label, coats] of [['行内推理 TKT2', coats2], ['顶部推理 TKT3', coats3]]) {
+    const wrong = [...coats.keys()].filter(k => k !== 'think')
+    if (wrong.length > 0) {
+      throw new Error(
+        `断言失败:T ${label} 有 ${wrong.map(k => `${k}×${coats.get(k)}`).join('/')} 帧没穿思考件的衣服` +
+        '\n  —— 呈现回归的形:推理被当成正文画(那才是「斜体正文摊在消息里」的病;' +
+        '斜体灰字本身是思考块的定稿形,不是病)',
+      )
+    }
+    assert(coats.get('think') > 0, `T ${label} 全程住在思考件里(${coats.get('think')} 帧)`)
+  }
 
   if (stat.vanishText.length > 0) {
     const shown = stat.vanishText.slice(0, 5).map(v => `t=${v.t}ms 「${v.h}」(${v.n} 字)`).join(' · ')

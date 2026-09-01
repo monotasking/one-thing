@@ -196,3 +196,37 @@ describe('兜底 presenter 的详情:参数与结果 JSON 原样', () => {
     expect(detail[0]).toMatchObject({ kind: 'source-fallback' })
   })
 })
+
+/**
+ * **现状记录:思考段的 `live` 取的是「这条消息还在跑」,不是「这一段推理还在长」**
+ * (R3 浸泡首单,09-01 用户真机截图:「think 还在,但是下面有一个工具调用」)。
+ *
+ * `ThinkingSegment` 的行为是「流式中自动展开、收尾自动折」,而它的开关就是这一格。
+ * 于是一条 88.7s、带多轮工具的消息里,**第一段早已写完的推理照样整轮摊着** ——
+ * 用户看到的正是这个。
+ *
+ * 呈现本身没问题(真机取证:两段推理全程住在思考件里,新路与 `--r2=off` 旧路
+ * 逐格相同;斜体灰字是六轮比稿 S2 的定稿形,它本来就没有檐)。**该不该在这一刻
+ * 折回一行是可感知的行为裁定**,与挂着的「思考块 settle 自动折叠」是同一族,
+ * 按「行为裁定须先问」留给拍板。
+ *
+ * 这条用例把今天的答案钉住:改法一落地它就会红 —— 那正是要的,拍板得是显式的。
+ */
+describe('思考段的 live 粒度(现状记录,等拍板)', () => {
+  it('后面已经接了正文与工具的那段推理,live 仍是真', () => {
+    const segments = assembleMessage(
+      message({
+        isStreaming: true,
+        reasoning: '第一段推理,早就写完了。',
+        content: '正文。',
+        toolCalls: [toolCall()],
+      } as Partial<ProjectedMessage>),
+    )
+    const thinking = segments.filter((s) => s.kind === 'thinking')
+    expect(thinking).toHaveLength(1)
+    expect(thinking[0].kind === 'thinking' && thinking[0].live).toBe(true)
+    // 它后面确实还有别的段 —— 也就是说「这一段推理」按事实早就结束了。
+    expect(segments.findIndex((s) => s.kind === 'thinking')).toBe(0)
+    expect(segments.length).toBeGreaterThan(1)
+  })
+})
