@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import type { BlockModel, BlockKind } from '../model/blocks'
 import { SOURCE_FALLBACK_KIND } from '../model/blocks'
+import { missingStreamAnswer, type BlockEarlyForm, type BlockStreamContract } from './stream/contract'
 
 /**
  * 块注册表 —— **kind → 怎么画**(§3.1)。
@@ -91,8 +92,14 @@ export interface BlockDef<M extends BlockModel = BlockModel> {
    * 词表照旧封闭,顺序照旧由块的声明决定。
    */
   frontActions?: 1 | 2
-  /** 流式契约:append = 可半成品渲染(code);atomic = 闭合才画(table/figure)。 */
-  streaming: 'append' | 'atomic'
+  /**
+   * **流式五问**(R4a)。从前这一格是一个字 `streaming: 'append' | 'atomic'` ——
+   * 它只答了五问里的第一问,而另外四问的答案散在增量解析器、key 派生、兜底路
+   * 三个地方各写一遍。现在它们回到型自己身上,机制层零型特例。
+   *
+   * 少答一问 = 注册当场抛(见 `BlockRegistry.register`)。
+   */
+  stream: BlockStreamContract
   /** 重渲染器懒加载(shiki / mermaid / katex)。失败走降级,不炸整块。 */
   loader?: () => Promise<unknown>
 }
@@ -116,6 +123,17 @@ export class BlockRegistry {
   register<M extends BlockModel>(def: BlockDef<M>): void {
     if (this.defs.has(def.kind)) {
       throw new Error(`块 kind 重复注册:${def.kind}(同一个 kind 只能有一个渲染器)`)
+    }
+    /*
+     * **缺一问,注册即抛**(R4a)。
+     *
+     * 类型系统已经拦得住漏写的静态调用方,这一道是给**运行时注册**的(将来的插件块、
+     * 测试里手搓的 def):沉默地少一问,机制层就得替它猜,而「替它猜」正是六轮事故的
+     * 那条路。抛,不 warn —— warn 会被滚过去。
+     */
+    const missing = missingStreamAnswer(def.stream)
+    if (missing) {
+      throw new Error(`块 ${def.kind} 的流式契约少答了:${missing}(五问缺一不许注册)`)
     }
     this.defs.set(def.kind, def as unknown as BlockDef)
   }
@@ -151,6 +169,21 @@ export class BlockRegistry {
 
   has(kind: string): boolean {
     return this.defs.has(kind)
+  }
+
+  /**
+   * 声明了「早成形」的那几型 —— 增量解析器按它逐个试补(R4a)。
+   *
+   * 返回的是 `(kind, 补齐函数)` 对,**顺序 = 注册顺序**。今天只有表一型,所以顺序
+   * 不是问题;将来多于一型时它是一条需要拍板的政策(谁先认领),那时这一行会长出
+   * 一个显式的优先级字段 —— 在此之前不假装已经有了。
+   */
+  earlyForms(): readonly { kind: string; earlyForm: BlockEarlyForm }[] {
+    const out: { kind: string; earlyForm: BlockEarlyForm }[] = []
+    for (const def of this.defs.values()) {
+      if (def.stream.earlyForm) out.push({ kind: def.kind, earlyForm: def.stream.earlyForm })
+    }
+    return out
   }
 }
 
@@ -207,3 +240,10 @@ export function resolveBlock(kind: BlockKind | string): BlockDef {
 export function isBlockRegistered(kind: string): boolean {
   return registry.has(kind)
 }
+
+/** 生产那张表上声明了早成形的几型(增量解析器的唯一政策来源)。 */
+export function blockEarlyForms(): readonly { kind: string; earlyForm: BlockEarlyForm }[] {
+  return registry.earlyForms()
+}
+
+export type { BlockStreamContract } from './stream/contract'

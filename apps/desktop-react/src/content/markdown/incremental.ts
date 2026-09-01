@@ -1,8 +1,11 @@
 import { perfSpan } from '../../services/perf'
+// 注册 barrel:早成形政策(`stream.earlyForm`)住在各型自己的注册契约里,查表发生在
+// 这里,所以这里负责保证表是装好的(与 BlockView 同款)。
+import '../blocks'
+import { blockEarlyForms } from '../blocks/registry'
 import type { BlockModel } from '../model/blocks'
 import { parseMarkdown } from './parse'
 import { stableCut } from './stable-cut'
-import { completeTableTail } from './table-tail'
 import type { ParsedBlock } from './to-blocks'
 
 /**
@@ -11,8 +14,9 @@ import type { ParsedBlock } from './to-blocks'
  * 活跃消息每来一帧就换一次引用,装配管线跟着重跑一次 ④。这个类接住那件事,做三件:
  *
  *  ① **稳定前缀沿用**:切点之前的块整块复用,只重解析活动尾(切点判据见 stable-cut.ts)。
- *  ② **正在出生的表提前认**:活尾巴末两行像「表头 + 半截分隔行」时,把分隔行补齐
- *     再解析一次,真是表才认(`upgradeTableTail` / table-tail.ts)。
+ *  ② **正在出生的那一型提前认**:活尾巴那一块的源码递给注册表里声明了 `earlyForm`
+ *     的几型,补一刀重解析,**真是那一型才认**(`applyEarlyForm`)。R4a 之前这一条
+ *     写死认识表(`upgradeTableTail`),现在政策住在型自己的注册契约里。
  *     09-01 撤掉了它的前身「未闭合的原子块按 code 显示」——病历在 `toFrame` 的注里。
  *  ③ **每帧至多解析一次**:16ms 节拍(与 SessionStreamCoalescer 同一个批)。窗口里
  *     又来一帧时不重解析,把新来的字符**贴到最后一块的尾巴上** —— 这不是近似:
@@ -26,8 +30,13 @@ import type { ParsedBlock } from './to-blocks'
 
 export interface MarkdownFrame {
   blocks: BlockModel[]
-  /** 与 blocks 一一对应的源偏移 —— key 的产地。 */
+  /** 与 blocks 一一对应的源偏移 —— 旧路 key 的产地。 */
   offsets: number[]
+  /**
+   * 与 blocks 一一对应的**块流身份号**(R4a)。旧路(`onething.blockStream=off`)
+   * 缺席 —— 那条路上身份仍由渲染侧按源偏移现算。
+   */
+  ids?: readonly string[]
 }
 
 interface Entry {
@@ -66,10 +75,21 @@ export class MarkdownStream {
    * @param live  这条消息此刻是不是还在生成 —— 决定「贴着结尾的原子块要不要按 code 画」。
    */
   parse(id: string, text: string, live: boolean): MarkdownFrame {
+    return toFrame(this.parseBlocks(id, text, live).parsed, text, live)
+  }
+
+  /**
+   * 与 `parse` 同一条路,但把**解析事实**原样交出去:块序列 + 这一份文本上的安全切点。
+   *
+   * 块流生产者(block-stream.ts)要的正是这两样 —— `end` 判「这一块贴不贴着活尾巴」,
+   * `cut` 判「这一块能不能提交(从此不再变)」。`parse` 是它的投影(丢掉 `end`/`cut`),
+   * 两条路**同一个函数体**,不会分叉。
+   */
+  parseBlocks(id: string, text: string, live: boolean): { parsed: readonly ParsedBlock[]; cut: number } {
     const prev = this.entries.get(id)
 
     // 同一份文本再问一次:上一帧的答案逐字有效(React 重渲染很常见,别重解析)。
-    if (prev && prev.text === text) return toFrame(prev.parsed, text, live)
+    if (prev && prev.text === text) return { parsed: prev.parsed, cut: prev.cut }
 
     /*
      * **停摆太久 = 不追帧,直接全量**(R2 审查条 8)。
@@ -91,7 +111,8 @@ export class MarkdownStream {
       const spliced = spliceTail(prev.parsed, prev.text, text)
       // 贴上了就用贴的:**不写回缓存** —— 下一帧仍以上次真解析的那份为基准,
       // 于是「一直有帧来」不会让真解析被无限推迟(窗口一过必解析)。
-      if (spliced) return toFrame(spliced, text, live)
+      // 切点照旧用上一份自己的(它对更长的前缀一样安全,理由见 `reparseTail`)。
+      if (spliced) return { parsed: spliced, cut: prev.cut }
     }
 
     // 打点埋在**真解析**那一格,不埋整个 parse:上面两条早退(同一份文本 / 贴尾巴)
@@ -100,15 +121,21 @@ export class MarkdownStream {
       const base = appended ? this.reparseTail(prev, text) : parseMarkdown(text)
       // 还在长的那条路上才补分隔行:落定的文本是什么就是什么,补一刀就是两条路分叉
       // (`gate:stream-structure` 的「流式末帧 == 冷加载」盯的正是这件事)。
-      return live ? upgradeTableTail(base, text) : base
+      return live ? applyEarlyForm(base, text) : base
     })
-    this.entries.set(id, { text, parsed, cut: stableCut(text), at: this.now() })
-    return toFrame(parsed, text, live)
+    const cut = stableCut(text)
+    this.entries.set(id, { text, parsed, cut, at: this.now() })
+    return { parsed, cut }
   }
 
   /** 这条消息不流了(或被换掉了):把它的帧缓存丢掉。 */
   forget(id: string): void {
     this.entries.delete(id)
+  }
+
+  /** 整份丢掉 —— 唯一的一口拆卸(HMR 退役复用它,不写第二套)。 */
+  reset(): void {
+    this.entries.clear()
   }
 
   private reparseTail(prev: Entry, text: string): ParsedBlock[] {
@@ -222,37 +249,51 @@ function toFrame(parsed: readonly ParsedBlock[], _text: string, _live: boolean):
 }
 
 /**
- * **正在出生的那张表,提前一步认出来**(09-01,与上面那条撤销同一份病历)。
+ * **正在出生的那一型,提前一步认出来 —— 由型自己认领**(R4a 把政策从这里收走)。
  *
- * 表的身份证是**完整的分隔行**:没到齐之前,表头那一行按 GFM 的定义就是段落 ——
- * 屏幕上于是挂着一段"竖线和横杠拼出来的散文",列越多挂得越久(真机 13 列 3.5s+)。
- * 这里在解析之后补一刀:最后一块要是段落、而且它的末两行长得像「表头 + 半截分隔行」,
- * 就把分隔行按表头的列数补齐再解析一次,**解析出来真是表才认**(见 table-tail.ts)。
+ * ── 从前 ──────────────────────────────────────────────────────────────
+ * 这个函数从前叫 `upgradeTableTail`,它认识**表**:认识分隔行长什么样、认识 GFM 的
+ * 列数规矩、认识「补出来的字不许上屏」。也就是说增量层认识一种块 —— 而六轮事故的
+ * 元凶正是这种「政策渗进机制」:机制每认识一型就多长一根倒刺。
  *
- * 三条纪律:
- *  · 只碰**最后一块**,而且必须是贴着活尾巴的段落 —— 围栏里的表(最后一块是 code)
- *    与已经落定的段落都不在射程内;
- *  · 补出来的字**一个都不上屏**:块的 `end` 夹回真实文本长度,补的那几格只是给解析器
- *    看的脚手架;
- *  · 认不出表就整段作废,一个字不改 —— 最坏情况是白算一次(一小段文本的解析)。
+ * ── 现在 ──────────────────────────────────────────────────────────────
+ * 它只剩三步,一步都不认识表:
+ *  ① 问注册表:哪几型声明了 `stream.earlyForm`(表是今天唯一的一行);
+ *  ② 把活尾巴那一块的源文本递过去,拿回「补齐后的源文本」;
+ *  ③ 重解析一次 —— **末块真的是声明者那一型才认**,否则整段作废、一个字不改。
+ *
+ * 三条纪律原样保留(它们是机制的纪律,不是表的):
+ *  · 只碰**最后一块**,而且必须贴着活尾巴 —— 围栏里的表(末块是 code)与已经落定
+ *    的段落都不在射程内;
+ *  · 补出来的字**一个都不上屏**:末块的 `end` 夹回真实文本长度,补的那几格只是给
+ *    解析器看的脚手架;
+ *  · 认不出就整段作废 —— 最坏情况是白算一次(一小段文本的解析)。
+ *
+ * 判据里那句「必须是 paragraph」也一并退役:它当初是「表从段落里长出来」这条**表的**
+ * 事实的化身。现在的判据是型无关的 —— 末块贴着活尾巴、而且补齐后解析出来换了型。
  */
-function upgradeTableTail(parsed: ParsedBlock[], text: string): ParsedBlock[] {
+function applyEarlyForm(parsed: ParsedBlock[], text: string): ParsedBlock[] {
   const last = parsed[parsed.length - 1]
-  if (!last || last.block.kind !== 'paragraph' || last.end < text.length) return parsed
+  if (!last || last.end < text.length) return parsed
   const source = text.slice(last.offset)
-  const completed = completeTableTail(source)
-  if (completed === undefined) return parsed
-  const sub = parseMarkdown(completed)
-  if (sub.length === 0 || sub[sub.length - 1].block.kind !== 'table') return parsed
-  return [
-    ...parsed.slice(0, -1),
-    ...sub.map((entry, index) => ({
-      block: entry.block,
-      offset: entry.offset + last.offset,
-      // 补齐用的那几格在文本之外 —— 末块的结尾夹回真实长度,别让它伸到屏幕外面去。
-      end: index === sub.length - 1 ? text.length : entry.end + last.offset,
-    })),
-  ]
+
+  for (const { kind, earlyForm } of blockEarlyForms()) {
+    // 已经是这一型了就没什么可提前的 —— 提前成形说的是「还没被认出来」。
+    if (last.block.kind === kind) continue
+    const completed = earlyForm(source)
+    if (completed === undefined) continue
+    const sub = parseMarkdown(completed)
+    if (sub.length === 0 || sub[sub.length - 1].block.kind !== kind) continue
+    return [
+      ...parsed.slice(0, -1),
+      ...sub.map((entry, index) => ({
+        block: entry.block,
+        offset: entry.offset + last.offset,
+        end: index === sub.length - 1 ? text.length : entry.end + last.offset,
+      })),
+    ]
+  }
+  return parsed
 }
 
 /**

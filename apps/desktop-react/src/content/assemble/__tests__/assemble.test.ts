@@ -45,6 +45,8 @@ describe('段序列:一条消息算成哪几段', () => {
         // 所以 P0 那条「pre-wrap 保留换行」的行为在真解析器下逐字成立。
         blocks: [{ kind: 'paragraph', inline: [{ type: 'text', text: '第一行\n第二行' }] }],
         offsets: [0],
+        // R4a:块流的身份号随段一起出厂(产地派生 `${源偏移}:${kind}`)。
+        ids: ['0:paragraph'],
       },
     ])
   })

@@ -53,6 +53,11 @@ export function blockKey(
   index: number,
   block: BlockModel,
   offset?: number,
+  id?: string,
 ): string {
+  // R4a:块流给了号就用号 —— 身份从「渲染侧现算」变成「流上带着」,这一行是那次
+  // 反转在渲染侧的全部落点。号本身就是产地派生的(`${偏移}:${kind}`),所以两条路
+  // 拼出来的字符串逐字相同,开关一翻不会让整条消息重挂。
+  if (id !== undefined) return `${segmentKeyValue}/${id}`
   return `${segmentKeyValue}/${offset ?? index}:${block.kind}`
 }

@@ -1222,10 +1222,21 @@ async function runCase(kind) {
      * 都在旧路上跑而门自己浑然不觉(真的发生了:D 条突然红,查了两轮才发现
      * 那几次根本没走新路)。所以这里不是「要关才写」,是**每次都写**。
      */
+    /*
+     * `--blockstream=off` 把壳切回 R4a 之前那条:每帧一份新的块列表,身份由渲染侧
+     * 按源偏移现算。同一条学费,同一条写法 —— **每次都显式写一遍并打印**。
+     */
     const r2 = process.argv.includes('--r2=off') ? 'off' : 'on'
-    await page.evaluate(value => window.localStorage.setItem('onething.streamR2', value), r2)
+    const blockStream = process.argv.includes('--blockstream=off') ? 'off' : 'on'
+    await page.evaluate(
+      value => {
+        window.localStorage.setItem('onething.streamR2', value.r2)
+        window.localStorage.setItem('onething.blockStream', value.blockStream)
+      },
+      { r2, blockStream },
+    )
     await page.reload()
-    console.log(`  [档位] onething.streamR2 = ${r2}`)
+    console.log(`  [档位] onething.streamR2 = ${r2} / onething.blockStream = ${blockStream}`)
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined

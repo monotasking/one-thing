@@ -52,12 +52,12 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
       case 'text': {
         // 活跃与否要传下去:流式那条路(稳定前缀 / 未闭合原子块 / 节拍)全靠它。
         // 缓存的身份带上段序号 —— 一条消息将来会有不止一段正文(锚点真算法进来之后)。
-        const { blocks, offsets } = markdownToFrame(
+        const { blocks, offsets, ids } = markdownToFrame(
           `${message.id}#${segments.length}`,
           node.text,
           message.isStreaming === true,
         )
-        if (blocks.length > 0) segments.push({ kind: 'rich-text', blocks, offsets })
+        if (blocks.length > 0) segments.push({ kind: 'rich-text', blocks, offsets, ids })
         break
       }
       case 'image':

@@ -45,7 +45,7 @@ export const SegmentView = memo(function SegmentView({
             <BlockView
               // key 由**源偏移**派生(§6):流式重解析时同一块的起点不变,React 打补丁
               // 而不是重挂 —— 中段插进来一个新块不会让它后面每一块都重建。
-              key={blockKey(key, index, block, segment.offsets[index])}
+              key={blockKey(key, index, block, segment.offsets[index], segment.ids?.[index])}
               block={block}
               ctx={ctx}
             />

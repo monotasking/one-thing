@@ -32,14 +32,14 @@ registerFigureKind(mermaidFigureKind, import.meta.hot)
  * 缓存 —— 于是「屏幕上这张图」和「放大/导出的那张图」逐字节是同一份,
  * 不会出现放大后重渲染出一个略有不同的版本。
  *
- * `streaming: 'atomic'` —— 半截的图源码画不出图。流式期间它由围栏路由按
+ * `midway: 'hold'` / `settled: 'swap'` —— 半截的图源码画不出图。流式期间它由围栏路由按
  * `code(closed:false)` 逐行长出来,闭合那一刻原位换装(§6)。
  * 没有块壳的 `loader`:拉 mermaid 归图种表自己管,理由见 Figure.tsx 头注。
  */
 registerBlock({
   kind: 'figure',
   presentation: 'object',
-  streaming: 'atomic',
+  stream: { midway: 'hold', settled: 'swap', failure: 'source', identity: 'origin', geometry: 'flow' },
   Component: Figure,
   chrome: (model) => ({ id: figureTypeWord(model) }),
   frontActions: 1,

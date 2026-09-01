@@ -12,14 +12,14 @@ import { Code } from './Code'
  * 动作只有一个:复制源码。下载 / 放大在词表里但还没有执行器(P3),声明了也不会
  * 露出 —— 壳会把它们筛掉,而不是画一个点了没反应的钮。
  *
- * `streaming: 'append'` —— 未闭合围栏(`closed:false`)逐行长出来是它的常态。
+ * `midway: 'grow'` —— 未闭合围栏(`closed:false`)逐行长出来是它的常态。
  * 没有 `loader`:代码块在库到之前有一个完全正确的样子(素文本),不该被骨架盖住
  * (理由写在 highlight.ts)。
  */
 registerBlock({
   kind: 'code',
   presentation: 'object',
-  streaming: 'append',
+  stream: { midway: 'grow', settled: 'same', failure: 'source', identity: 'origin', geometry: 'flow' },
   Component: Code,
   chrome: (model) => ({ id: model.lang ?? undefined, meta: model.file }),
   actions: (model) => [{ verb: 'copy', what: 'source', text: model.source }],

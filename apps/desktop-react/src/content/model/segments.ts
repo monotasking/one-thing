@@ -204,7 +204,12 @@ export type SegmentModel =
    *
    * 与「key 不进模型」不冲突:进模型的是**偏移**(哪来的),不是 key(怎么画)。
    */
-  | { kind: 'rich-text'; blocks: BlockModel[]; offsets: readonly number[] }
+  /**
+   * `ids` 是 R4a 的**块流身份号**(与 blocks 一一对应)。旧路缺席 —— 那时身份由
+   * 渲染侧按 `offsets` 现算。两列并存不是重复:偏移是**解析事实**(工具产地的块
+   * 序列没有它),身份号是**流的事实**,将来资产型的号会由内容地址派生而不是偏移。
+   */
+  | { kind: 'rich-text'; blocks: BlockModel[]; offsets: readonly number[]; ids?: readonly string[] }
   /**
    * 挨着做的那几件事(B2)。**一次调用也是一组** —— 组里一行画成从前那张单发卡
    * (`ToolGroup` 的 `total === 1`)。

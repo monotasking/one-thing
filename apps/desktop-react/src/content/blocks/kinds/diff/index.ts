@@ -13,14 +13,14 @@ import { Diff } from './Diff'
  * 不是把 hunks 再序列化回去 —— 那会变成第二份真相)。「查看源码」不单列:
  * 这块屏幕上画的**就是**那段源码的结构化样子,再给一个源码开关是自己跟自己重复。
  *
- * `streaming: 'atomic'` —— 半段 diff 的 hunk 头还没到,行号无从起算。流式期间它由
+ * `midway: 'hold'` / `settled: 'swap'` —— 半段 diff 的 hunk 头还没到,行号无从起算。流式期间它由
  * 增量层按 `code(closed:false)` 逐行长出来,闭合那一刻原位换装(§6),
  * 与表格同一条路。
  */
 registerBlock({
   kind: 'diff',
   presentation: 'object',
-  streaming: 'atomic',
+  stream: { midway: 'hold', settled: 'swap', failure: 'source', identity: 'origin', geometry: 'flow' },
   Component: Diff,
   chrome: (model) => ({ id: 'diff', meta: model.file, stat: model.stat }),
   actions: (model) => [{ verb: 'copy', what: 'source', text: model.source }],
