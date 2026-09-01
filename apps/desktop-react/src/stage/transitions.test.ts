@@ -70,6 +70,8 @@ import {
   DOCK_HOLD_PAD,
   DOCK_WAKE_BAND,
 } from './transitions'
+import { emptyShelves } from './transitions'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 import { SESSIONS_ITEM_ID, STAGE_ITEMS, findItem } from './items'
 import type { Placement, PlacementMemory, ShelfSide, StageState, Viewport } from './types'
 import type { Rect } from './transitions'
@@ -620,14 +622,30 @@ describe('浮窗', () => {
   })
 })
 
+
+/**
+ * v6 之后**家具住在账里**(`byWorkspace.default`),迁移的产物也是那个形。
+ *
+ * 这些用例问的仍然是同一件事(v0→v5 那串翻译对不对),所以它们一个断言都没改口径,
+ * 只是从这一口取件 —— 「家具搬了家」与「家具翻译对不对」是两件事,混在一起改会让
+ * 这批用例失去它们原本盯着的那条链。
+ *
+ * 顺带:取不到那一格就原样回 `out`,好让「压根没有家具的老档」那几条仍然读得下去
+ * (v6 段对没摘到家具的档案是恒等变换 —— 见 foldFlatIntoDefaultSpace)。
+ */
+function furniture(out: Record<string, unknown>): Record<string, unknown> {
+  const ledger = out.byWorkspace as Record<string, Record<string, unknown>> | undefined
+  return ledger?.default ?? out
+}
+
 describe('migrateStagePersisted', () => {
   it('v0 的单值 pinnedId → 一路翻成 v3 的右架子 + placements', () => {
     const out = migrateStagePersisted({ pinnedId: 'diff', pinnedWidth: 500 }, 0) as Record<string, unknown>
-    const shelves = out.shelves as Record<string, { tabs: string[]; thickness: number; activeId: string | null }>
+    const shelves = furniture(out).shelves as Record<string, { tabs: string[]; thickness: number; activeId: string | null }>
     expect(shelves.right.tabs).toEqual(['diff'])
     expect(shelves.right.activeId).toBe('diff')
     expect(shelves.right.thickness).toBe(500)
-    expect(out.placements).toEqual({ diff: { kind: 'edge', side: 'right' } })
+    expect(furniture(out).placements).toEqual({ diff: { kind: 'edge', side: 'right' } })
     expect('pinnedId' in out).toBe(false)
     expect('pinned' in out).toBe(false)
     expect('pinnedWidth' in out).toBe(false)
@@ -635,7 +653,7 @@ describe('migrateStagePersisted', () => {
 
   it('v0 但没有 pinnedId(或是 null)→ 空架子,别的字段原样留着', () => {
     const out = migrateStagePersisted({ pinnedId: null, dockDisplay: 'autohide' }, 0) as Record<string, unknown>
-    const shelves = out.shelves as Record<string, { tabs: string[]; activeId: string | null }>
+    const shelves = furniture(out).shelves as Record<string, { tabs: string[]; activeId: string | null }>
     expect(shelves.right.tabs).toEqual([])
     expect(shelves.right.activeId).toBeNull()
     expect(out.dockDisplay).toBe('autohide')
@@ -650,7 +668,7 @@ describe('migrateStagePersisted', () => {
     expect(out.dockEdge).toBe(initialStageSettings.dockEdge)
     expect(out.dockAlign).toBe(initialStageSettings.dockAlign)
     expect(out.dockSize).toBe(initialStageSettings.dockSize)
-    const shelves = out.shelves as Record<string, { tabs: string[]; collapsed: boolean }>
+    const shelves = furniture(out).shelves as Record<string, { tabs: string[]; collapsed: boolean }>
     expect(shelves.right.tabs).toEqual(['files'])
     expect(shelves.right.collapsed).toBe(false)
   })
@@ -676,7 +694,7 @@ describe('migrateStagePersisted', () => {
       },
       2,
     ) as Record<string, unknown>
-    const shelves = out.shelves as Record<
+    const shelves = furniture(out).shelves as Record<
       string,
       { tabs: string[]; activeId: string | null; thickness: number; collapsed: boolean }
     >
@@ -687,12 +705,12 @@ describe('migrateStagePersisted', () => {
       collapsed: true,
     })
     expect(shelves.left.tabs).toEqual([])
-    expect(out.placements).toEqual({
+    expect(furniture(out).placements).toEqual({
       files: { kind: 'edge', side: 'right' },
       diff: { kind: 'edge', side: 'right' },
     })
-    expect(out.floats).toEqual({})
-    expect(out.floatOrder).toEqual([])
+    expect(furniture(out).floats).toEqual({})
+    expect(furniture(out).floatOrder).toEqual([])
     expect(out.dockEdge).toBe('left')
     expect('pinnedCollapsed' in out).toBe(false)
   })
@@ -702,13 +720,13 @@ describe('migrateStagePersisted', () => {
       string,
       unknown
     >
-    const shelves = out.shelves as Record<string, { activeId: string | null }>
+    const shelves = furniture(out).shelves as Record<string, { activeId: string | null }>
     expect(shelves.right.activeId).toBe('files')
   })
 
   it('v2 没有钉栏字段 → 四条空架子 + 默认厚度', () => {
     const out = migrateStagePersisted({ locale: 'zh' }, 2) as Record<string, unknown>
-    const shelves = out.shelves as Record<string, { tabs: string[]; thickness: number }>
+    const shelves = furniture(out).shelves as Record<string, { tabs: string[]; thickness: number }>
     expect(shelves.right.tabs).toEqual([])
     expect(shelves.right.thickness).toBe(SHELF_DEFAULT_THICKNESS)
     expect(out.locale).toBe('zh')
@@ -1166,7 +1184,7 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
       v3({ browser: 'stage', diff: 'float', terminal: 'pinned' }),
       3,
     ) as Record<string, unknown>
-    const memory = out.memory as Record<string, PlacementMemory>
+    const memory = furniture(out).memory as Record<string, PlacementMemory>
     // v4 段先把 'stage' 翻成记忆,v5 段再把它清掉 —— 净效果:这块瓦回到「没表过态」,
     // 点开跟默认档走(= 浮窗)。float / pinned 记忆原样存活。
     expect('browser' in memory).toBe(false)
@@ -1181,26 +1199,26 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
       string,
       unknown
     >
-    expect(out.memory).toEqual({})
+    expect(furniture(out).memory).toEqual({})
   })
 
   it("配了 'float' 但老档没存过矩形 → 给新窗的默认身量", () => {
     const out = migrateStagePersisted(v3({ browser: 'float' }), 3) as Record<string, unknown>
-    const memory = out.memory as Record<string, PlacementMemory>
+    const memory = furniture(out).memory as Record<string, PlacementMemory>
     expect(memory.browser).toEqual({ kind: 'float', rect: defaultFloatRect(FALLBACK_VIEWPORT) })
   })
 
   it("配了 'pinned' 但当时不在右架子上 → 排到末尾", () => {
     const out = migrateStagePersisted(v3({ browser: 'pinned' }), 3) as Record<string, unknown>
-    const memory = out.memory as Record<string, PlacementMemory>
+    const memory = furniture(out).memory as Record<string, PlacementMemory>
     expect(memory.browser).toEqual({ kind: 'edge', side: 'right', index: 2 })
   })
 
   it('openOverrides 这个键本身退役,活 placements / floats / shelves 照旧恢复', () => {
     const out = migrateStagePersisted(v3({ browser: 'stage' }), 3) as Record<string, unknown>
     expect('openOverrides' in out).toBe(false)
-    expect(out.floats).toEqual({ diff: { x: 10, y: 20, w: 400, h: 300 } })
-    expect((out.shelves as Record<string, { tabs: string[] }>).right.tabs).toEqual([
+    expect(furniture(out).floats).toEqual({ diff: { x: 10, y: 20, w: 400, h: 300 } })
+    expect((furniture(out).shelves as Record<string, { tabs: string[] }>).right.tabs).toEqual([
       'files',
       'terminal',
     ])
@@ -1211,7 +1229,7 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
       string,
       unknown
     >
-    expect(out.memory).toEqual({})
+    expect(furniture(out).memory).toEqual({})
     expect(out.locale).toBe('en')
   })
 
@@ -1220,8 +1238,8 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
       { pinnedId: 'diff', pinnedWidth: 500, openOverrides: { files: 'stage' } },
       0,
     ) as Record<string, unknown>
-    expect('files' in (out.memory as Record<string, PlacementMemory>)).toBe(false)
-    expect((out.shelves as Record<string, { tabs: string[] }>).right.tabs).toEqual(['diff'])
+    expect('files' in (furniture(out).memory as Record<string, PlacementMemory>)).toBe(false)
+    expect((furniture(out).shelves as Record<string, { tabs: string[] }>).right.tabs).toEqual(['diff'])
   })
 
   it('v4 → v5:defaultOpen 的 stage 迁到 float,float 值原样', () => {
@@ -1722,5 +1740,64 @@ describe('预览泡:留驻区认泡、瞄准区认三角(09-01)', () => {
       }
       expect(sampled).toBeGreaterThan(500) // 真的采到东西了,不是空跑一遍
     })
+  })
+})
+
+describe('migrateStagePersisted v5 → v6(家具按工作区各持一份)', () => {
+  /*
+   * 这一组是**反证跑出来的**:第一版只有上面那些「翻译对不对」的用例,
+   * 而它们经 `furniture()` 取件,取不到账时会退回读扁平层 —— 于是把 v6 那一段
+   * 整段删掉,全部 183 条照样绿。守卫必须自己盯着「家具搬进账了没有」,
+   * 不能靠一个宽容的取件口。
+   */
+  it('五格家具**折进默认空间那一格**,顶层不再留着它们', () => {
+    const out = migrateStagePersisted(
+      {
+        placements: { files: { kind: 'edge', side: 'right' } },
+        floats: { diff: { x: 1, y: 2, w: 3, h: 4 } },
+        floatOrder: ['diff'],
+        shelves: emptyShelves(),
+        memory: { files: { kind: 'stage' } },
+        dockEdge: 'left',
+        locale: 'en',
+      },
+      5,
+    ) as Record<string, unknown>
+
+    const ledger = out.byWorkspace as Record<string, Record<string, unknown>>
+    expect(Object.keys(ledger)).toEqual([DEFAULT_SPACE_ID])
+    expect(ledger[DEFAULT_SPACE_ID].placements).toEqual({ files: { kind: 'edge', side: 'right' } })
+    expect(ledger[DEFAULT_SPACE_ID].floatOrder).toEqual(['diff'])
+    // 五格都搬走了,顶层一格不留 —— 留着就是两份真相。
+    for (const key of ['placements', 'floats', 'floatOrder', 'shelves', 'memory']) {
+      expect(key in out).toBe(false)
+    }
+  })
+
+  it('**偏好留在顶层**:Dock 那几格与语言不跟着空间走', () => {
+    const out = migrateStagePersisted(
+      { placements: {}, dockEdge: 'left', dockSize: 'lg', locale: 'en', hiddenItems: ['music'] },
+      5,
+    ) as Record<string, unknown>
+    expect(out.dockEdge).toBe('left')
+    expect(out.dockSize).toBe('lg')
+    expect(out.locale).toBe('en')
+    expect(out.hiddenItems).toEqual(['music'])
+  })
+
+  it('已经有账的档案原样放行 —— 迁移幂等(存量实例的写盘会带着新版本号落旧值)', () => {
+    const already = { byWorkspace: { 'ws-a': { placements: {} } }, dockEdge: 'top' }
+    expect(migrateStagePersisted(already, 5)).toBe(already)
+  })
+
+  it('v0 的老档一路连到 v6:翻译的产物落在账里,零丢失', () => {
+    const out = migrateStagePersisted({ pinnedId: 'diff', pinnedWidth: 420 }, 0) as Record<
+      string,
+      unknown
+    >
+    const ledger = out.byWorkspace as Record<string, Record<string, unknown>>
+    const shelves = ledger[DEFAULT_SPACE_ID].shelves as Record<string, { tabs: string[]; thickness: number }>
+    expect(shelves.right.tabs).toEqual(['diff'])
+    expect(shelves.right.thickness).toBe(420)
   })
 })

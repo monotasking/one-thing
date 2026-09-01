@@ -44,18 +44,23 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂只绑这九条,别的一律未绑定;次序即注册表次序(它是撞键的裁决,见下)', () => {
+  it('出厂绑这十三条,别的一律未绑定;次序即注册表次序(它是撞键的裁决,见下)', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombo !== null).map((c) => c.id)
     /*
-     * 检索 ⌘P、总览 ⌘E、工作区面板 ⌘⇧O、工作区序号 ⌘1/2/3、目录 ⌘⇧O、
-     * agent 切换器 ⌘J、新建会话 ⌘N。
-     * 工作区那四条排在 toc.toggle 之前**不是排版**:⌘⇧O 被两条命令同时占着,
-     * 而 lookupCommand 取第一个命中 —— 详见 keymap/workspace-commands.test.ts
-     * 里那一节「⌘⇧O 撞键(待用户裁定)」。
+     * 检索 ⌘P、总览 ⌘E、四条架子 ⌘⌥←/→/↓/↑(09-01 用户放权后新绑)、
+     * 工作区面板 ⌘⇧W、工作区序号 ⌘1/2/3、目录 ⌘⇧O、agent 切换器 ⌘J、新建会话 ⌘N。
+     *
+     * 架子那四条排在瓦之后、工作区之前 **只是排版** —— 出厂表里没有两条命令
+     * 共用一个组合(下面那条「全表两两不同」的断言钉着这件事),所以次序不决定
+     * 任何一个键的去向。
      */
     expect(bound).toEqual([
       'toggle:search',
       toggleCommandId(SESSIONS_ITEM_ID),
+      'shelf.left.toggle',
+      'shelf.right.toggle',
+      'shelf.bottom.toggle',
+      'shelf.top.toggle',
       'workspace.palette',
       'workspace.slot:1',
       'workspace.slot:2',
@@ -71,7 +76,6 @@ describe('命令表', () => {
       meta: true,
       key: 'e',
     })
-    expect(findCommand('shelf.right.toggle')?.defaultCombo).toBeNull()
     expect(findCommand('toc.toggle')?.defaultCombo).toEqual({ meta: true, shift: true, key: 'o' })
   })
 })
