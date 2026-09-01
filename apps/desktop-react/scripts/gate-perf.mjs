@@ -581,6 +581,26 @@ async function main() {
  * 不清它,后面点 Dock 上的 sessions 会**开到舞台**而不是钉到架子上 ——
  * 08-30 首跑就是这么踩的:场景②量到 23ms「很快」,因为最重的那块面板
  * 根本没进那条架子。量到的快,是场景没对上。
+ *
+ * ── 09-01:两格住在两处了,而且**要清的不止记忆**(T-W1 之后)────────────
+ * 从前这两格都在 `state` 顶层,一句 `{...state, defaultOpen, memory:{}}` 就够。
+ * T-W1 把**家具**挪进了 `state.byWorkspace[<空间 id>]`,而 `defaultOpen` 留在顶层
+ * —— 分界是「这是不是用户在这个空间里摆好的东西」(判据见
+ * `src/workspace/per-space.ts` 文件头):
+ *
+ *     defaultOpen  → **偏好**,跨空间共享,仍在 `state.defaultOpen`;
+ *     memory / placements / shelves / floats → **家具**,每空间一份,在账里。
+ *
+ * 旧写法把 `memory` 写进了一个**没人读**的槽,于是重载后 sessions 照旧按记忆
+ * 开到舞台。而真机上把记忆清对之后**还是红**(读数:`placements:["sessions"]`)
+ * —— 第二个原因浮出来:场景①刚把 sessions 开在舞台上,它**已经开着**了,
+ * 那时点 Dock 上那颗瓦是「切换/聚焦」而不是「按默认档重新打开」,所以它永远
+ * 挪不到架子上。两个原因叠在一起,才是报障里那行「实际:files / terminal」。
+ *
+ * 所以这里要的不是「清一格记忆」,而是**一张空工作台**:整格家具删掉。
+ * 删格而不是写一份空的 —— `shelves` 有自己的形状(四条边),手写一份迟早与
+ * 形态机对不上;而账上没有这一格时,应用自己会摊开它的出厂布局
+ * (`spreadSpace` → `factory()`)。**让应用产出形状,门只负责把格拿掉。**
  */
 async function switchDefaultOpenToPinned(page) {
   const ok = await page.evaluate(() => {
@@ -588,7 +608,8 @@ async function switchDefaultOpenToPinned(page) {
     const raw = localStorage.getItem(KEY)
     if (!raw) return false
     const parsed = JSON.parse(raw)
-    parsed.state = { ...(parsed.state ?? {}), defaultOpen: 'pinned', memory: {} }
+    // 偏好留在顶层;家具整本账清空 = 每个空间都回出厂布局(空工作台)。
+    parsed.state = { ...(parsed.state ?? {}), defaultOpen: 'pinned', byWorkspace: {} }
     localStorage.setItem(KEY, JSON.stringify(parsed))
     return true
   })
