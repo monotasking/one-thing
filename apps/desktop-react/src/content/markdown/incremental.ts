@@ -39,6 +39,12 @@ interface Entry {
    * 字符改掉」,而旧文本是新文本的前缀,所以旧文本上的安全切点对新文本一样安全。
    */
   cut: number
+  /**
+   * **已经以真身上过屏的原子块**的源偏移(见 `toFrame` 的「单向闸」一节)。
+   *
+   * 挂在 entry 上而不是模块级:它是「这一条消息这一段」的事实,换消息就该归零。
+   */
+  formed: Set<number>
   /** 上一次**真的解析**的时刻,节流窗按它算。 */
   at: number
 }
@@ -57,9 +63,11 @@ export class MarkdownStream {
    */
   parse(id: string, text: string, live: boolean): MarkdownFrame {
     const prev = this.entries.get(id)
+    // 单向闸的记事本按 id 走:同一条消息同一段,从头到尾是同一份(见 `toFrame`)。
+    const formed = prev?.formed ?? new Set<number>()
 
     // 同一份文本再问一次:上一帧的答案逐字有效(React 重渲染很常见,别重解析)。
-    if (prev && prev.text === text) return toFrame(prev.parsed, text, live)
+    if (prev && prev.text === text) return toFrame(prev.parsed, text, live, formed)
 
     const appended = prev !== undefined && text.startsWith(prev.text)
 
@@ -67,7 +75,7 @@ export class MarkdownStream {
       const spliced = spliceTail(prev.parsed, prev.text, text)
       // 贴上了就用贴的:**不写回缓存** —— 下一帧仍以上次真解析的那份为基准,
       // 于是「一直有帧来」不会让真解析被无限推迟(窗口一过必解析)。
-      if (spliced) return toFrame(spliced, text, live)
+      if (spliced) return toFrame(spliced, text, live, formed)
     }
 
     // 打点埋在**真解析**那一格,不埋整个 parse:上面两条早退(同一份文本 / 贴尾巴)
@@ -75,8 +83,8 @@ export class MarkdownStream {
     const parsed = perfSpan('markdown.reparse', () =>
       appended ? this.reparseTail(prev, text) : parseMarkdown(text),
     )
-    this.entries.set(id, { text, parsed, cut: stableCut(text), at: this.now() })
-    return toFrame(parsed, text, live)
+    this.entries.set(id, { text, parsed, cut: stableCut(text), formed, at: this.now() })
+    return toFrame(parsed, text, live, formed)
   }
 
   /** 这条消息不流了(或被换掉了):把它的帧缓存丢掉。 */
@@ -173,20 +181,47 @@ function growBlock(block: BlockModel, delta: string): BlockModel | undefined {
  * 这里只管 `table`。`figure` 不需要:围栏路由(fence.ts)本来就只在围栏**闭合**时
  * 才产出 figure,没闭合的那段图源码从头到尾就是一个 `code(closed:false)` ——
  * 一个判据在一处成立就够了,不必在这儿再判一遍(判两遍迟早会分叉)。
+ *
+ * ── 单向闸:成过形的块不再降级(09-01 用户录屏报障「table 出现再消失」)─────
+ * 上面那句「闭合那一刻换装」写的是**一次**换装,但 `!text.endsWith('\n')` 这个判据
+ * 会**来回翻**:表格每长一行,行末没换行时降级成 code、换行到了升回 table、下一行
+ * 的头几个字符又降级……真机探针读数(逐帧记块型与长度):8.1–8.3s 之间同一张表
+ * `code(94) → table(57) → code(106) → code(118) → table(69)` 翻了两次,每次伴随
+ * 一次内容回缩(254→217、278→229),屏幕上就是「表格出现、消失、再出现」。
+ *
+ * 所以给它加一道**单向闸**:一个块只要以真身上过一次屏,它的源偏移就记进 `formed`,
+ * 此后再也不降级。降级于是只发生在「这一块这辈子还没成形过」的那一小段时间里 ——
+ * 正是那句设计原话想说的事,而不是一路翻面。
+ *
+ * `formed` 认**源偏移**:块在流式期间只会在末尾长,偏移是它的身份(与 key 同源),
+ * 所以「同一块」这件事不需要第二套判据。非活消息(`parseFrame`)压根不降级,
+ * 因此不传这本记事本也成立。
  */
-function toFrame(parsed: readonly ParsedBlock[], text: string, live: boolean): MarkdownFrame {
+function toFrame(
+  parsed: readonly ParsedBlock[],
+  text: string,
+  live: boolean,
+  formed?: Set<number>,
+): MarkdownFrame {
   const blocks: BlockModel[] = []
   const offsets: number[] = []
   const tailOpen = live && !text.endsWith('\n')
 
   for (let i = 0; i < parsed.length; i += 1) {
     const entry = parsed[i]
-    const atTail = tailOpen && i === parsed.length - 1 && entry.end >= text.length
-    blocks.push(atTail ? asOpenCode(entry.block, text.slice(entry.offset, entry.end)) : entry.block)
+    const atTail =
+      tailOpen && i === parsed.length - 1 && entry.end >= text.length && !formed?.has(entry.offset)
+    const block = atTail ? asOpenCode(entry.block, text.slice(entry.offset, entry.end)) : entry.block
+    // 以真身上屏了就记一笔 —— 只记会被降级的那一类,别把整篇文章的偏移都攒进来。
+    if (formed && !atTail && DOWNGRADABLE.has(entry.block.kind)) formed.add(entry.offset)
+    blocks.push(block)
     offsets.push(entry.offset)
   }
   return { blocks, offsets }
 }
+
+/** 会被 `asOpenCode` 降级的块型 —— 与它的实现是同一条判据,加一种就两处一起加。 */
+const DOWNGRADABLE = new Set<BlockModel['kind']>(['table'])
 
 function asOpenCode(block: BlockModel, source: string): BlockModel {
   if (block.kind !== 'table') return block

@@ -141,6 +141,16 @@ run('gate:workspace', 'npm', ['run', '--silent', 'gate:workspace'])
 // (真机病「打包行一到正文整段消失」的机器化,见 gate-stream-monotone.mjs 文件头)。
 run('gate:monotone', 'npm', ['run', '--silent', 'gate:monotone'])
 /*
+ * 流式**块结构**门:同一条假慢流,素材换成推理↔正文交替 + 一张逐行长出来的表,
+ * 逐帧断言「思考块只增不减 / 不搬家 / 表格成形后不降级」。
+ *
+ * 它与上面那条单调门是两件事,两条都要跑:单调门量的是正文**总长**,而 09-01
+ * 那条报障(「think、table 出现再消失再出现」)恰恰在它盖不到的地方 —— 一整块
+ * 思考消失时后面的正文还在长,总长曲线可以是单调的。判据同样是确定的:同一份
+ * 素材同一条流跑一百遍是同一个答案,不看机器状况。
+ */
+run('gate:stream-structure', 'npm', ['run', '--silent', 'gate:stream-structure'])
+/*
  * gate:squeeze 进 verify,gate:perf 仍然不进(理由见文件顶部那一节)。
  * 两者的差别就在**读数会不会随机器状况抖**:squeeze 门断言的是「有没有两个盒子
  * 压在一起」—— 排版是确定的,同一份 CSS 同一个视口跑一百遍是同一个答案,

@@ -93,92 +93,111 @@ export function feedTail(
   return tail
 }
 
-/**
- * 从尾巴**前端**裁掉 `chars` 个某一种的字符(打包行 / 重折已经覆盖的那一截)。
+/*
+ * 尾巴的三条**车道**(名字见 `FoldLens` 的三格):`text` → 账本的 `message.content`;
+ * `reasoningTop` → `message.reasoning`(只装 `placement:'top'` 那一段);
+ * `reasoningInline` → `contentParts` 里的 reasoning 格。
  *
- * text 走 segments 里的 text 截;reasoning 先裁 reasoningTop(顶部推理开在最前),
- * 再裁 segments 里的 reasoning 截。裁空的截整格移除;全裁光了就没有尾巴。
- * `chars` 超出实有长度时裁到空为止 —— 上限就是从前"整段丢掉"的旧行为。
+ * 从前只有 text / reasoning 两档,于是顶部推理与行内推理共用一把尺、共用一次裁剪
+ * (先裁 top 再裁 inline)。两者物化时刻不同,合成一格就必然裁错人。
  */
-function trimTailFront(tail: Tail, kind: 'text' | 'reasoning', chars: number): Tail | undefined {
-  let left = chars
-  let reasoningTop = tail.reasoningTop
-  if (kind === 'reasoning' && left > 0 && reasoningTop) {
-    const cut = Math.min(left, reasoningTop.length)
-    reasoningTop = reasoningTop.slice(cut)
-    left -= cut
-  }
-  const segments: TailSegment[] = []
-  for (const segment of tail.segments) {
-    if (left > 0 && segment.kind === kind) {
-      const cut = Math.min(left, segment.text.length)
-      left -= cut
-      if (cut < segment.text.length) segments.push({ kind: segment.kind, text: segment.text.slice(cut) })
-    } else {
-      segments.push(segment)
-    }
-  }
-  if (segments.length === 0 && !reasoningTop) return undefined
-  return { messageId: tail.messageId, segments, reasoningTop }
-}
 
 /**
- * 打包行(`assistant/chunks`)到了:它装的那一截**离开尾巴**,由账本那份接管。
+ * 一条消息在某份折叠产物上**此刻画得出来**的三个量 —— 交接的三把尺。
  *
- * 从前这里是「尾巴整段丢掉」—— 那句话隐含的前提是「打包行覆盖了尾巴的全部」,
- * 在活路上(打包行紧跟着它的最后一条 delta 到达)它几乎总成立。但重折排空攒下的
- * 打包行、或尾巴里已经攒进了打包窗之后的 delta 时,整段丢就把没被打包的那几截
- * 一起丢了 —— 屏幕回缩,等下一条打包行才长回来。所以规则收敛成一条:
- * **一条打包行只带走它自己那么长的一截**(它的 delta 与尾巴前端逐字节相同,
- * `decode∘encode ≡ id`),两者等长时与旧行为逐字相同。
+ * 「画得出来」是这把尺的全部要害,也是 09-01 那条报障的病根所在:
  *
- * 别的消息的打包行不碰这条尾巴(尾巴只有一条,认 `messageId`)。
+ *  - `content` = `message.content`。`appendTail` 有「parts 空就按 content 现搭一格」
+ *    的兜底,所以正文**一进账本就画得出来**;
+ *  - `reasoningTop` = `message.reasoning`。思考块的产地,同样一进账本就画得出来;
+ *  - `reasoningInline` = `contentParts` 里 reasoning 格的长度和。**它要等 parts
+ *    物化**(流式期间 `materializeChatMessages` 只给 content 与 top 推理,行内推理
+ *    在账本投影里一个字都没有)。
+ *
+ * 三个量分开量,是因为它们物化的时刻不同 —— 把它们并成一格,就会拿「正文进账本了」
+ * 当成「行内推理也进账本了」,于是把还没有第二个产地的思考段从尾巴上裁走。
  */
-export function trimTailByChunks(
-  tail: Tail | undefined,
-  messageId: string | undefined,
-  kind: string | undefined,
-  chars: number,
-): Tail | undefined {
-  if (!tail) return undefined
-  if (!messageId || tail.messageId !== messageId) return tail
-  if (kind !== 'text' && kind !== 'reasoning') return tail
-  if (chars <= 0) return tail
-  return trimTailFront(tail, kind, chars)
-}
-
-/** 一条消息在某份折叠产物上的正文 / 顶部推理长度 —— 重折调解的两把尺。 */
 export interface FoldLens {
   content: number
-  reasoning: number
+  reasoningTop: number
+  reasoningInline: number
 }
 
 /**
- * 整份重折完成:把尾巴里**已被新账本覆盖**的前缀裁掉。
+ * **尾巴交接的唯一一条规则**:账本这一刻多画得出来多少,尾巴就交出多少。
  *
- * 重折不经过打包行那条裁剪(它直接换掉整个折叠状态),而尾巴可能从上一条打包行
- * 之后一直攒到现在 —— 新折叠已经装下了其中前面那一截。不裁就是**重影**:同一段
- * 文字折叠里一份、尾巴里一份;素材里带引用块时更坏 —— 折叠正文以 `> …\n` 收尾、
- * 尾巴又从头再来一遍时,两份接起来会让后一份整段变成引用的懒续行,块结构都错了
- * (真机探针抓到的那个多出来的 blockquote)。
+ * 活路(打包行到达)与重折(整份换状态)共用它 —— 从前是两条:活路按**打包行
+ * 自己的字符数**裁,重折按**长度差**裁。两条尺量的不是同一件事,而错的是活路那条。
  *
- * 尺是**长度差**,不做字符串匹配:流是只追加的,尾巴与折叠覆盖的是同一条流的
- * 两截前后相接的区间 —— 旧折长 + 尾长 = 目前收到的总长,新折长盖过旧折长的部分
- * 就是尾巴该交出去的前缀。夹在 [0, 尾长] 里:新折反而更短(不该发生)就什么都
- * 不裁,新折盖过总长就裁光。
+ * ── 病历:行内推理整块消失 2166ms(09-01 用户录屏报障)────────────────────
+ * 打包行 `assistant/chunks` 只是「这一截进账本了」,**不等于「这一截画得出来」**。
+ * 流式期间账本投影里根本没有行内推理(它要等 `contentParts` 物化),而旧的
+ * `trimTailByChunks` 一见打包行就按它的字符数把那截从尾巴前端裁掉 —— 于是这一段
+ * 思考在**尾巴里没有了、账本里画不出来**,屏幕上整块消失,直到下一次 parts 物化
+ * 才跳回来。真机探针读数:t=7441ms 结构从 `[think,text,think]` 变成 `[think,text]`,
+ * 消失同帧后面的正文还在继续长;t=9607ms 才回来。表现给用户就是「思考出现、消失、
+ * 再出现」,而且第三段思考消失那一帧,它后面的新正文被串接进了上一段正文里。
+ *
+ * 换成长度差之后,判据回到一句话:**尾巴是「账本还画不出来的那一截」**。
+ * 打包行进来但 parts 还没物化 → 三把尺一动不动 → 一个字都不裁 → 块留在屏上;
+ * parts 物化那一刻 → `reasoningInline` 一次涨够 → 尾巴一次交清 → 不重影也不留空。
+ *
+ * 尺是**长度差**,不做字符串匹配:流是只追加的,尾巴与账本覆盖的是同一条流前后
+ * 相接的两截 —— 账本量 + 尾长 = 目前收到的总长。新账本反而更短(`message/patched`
+ * 剥字段这类)就什么都不裁;盖过总长就裁光。三条车道各裁各的,互不越界。
  */
-export function reconcileTailAfterRefold(
-  tail: Tail | undefined,
-  before: FoldLens,
-  after: FoldLens,
-): Tail | undefined {
-  if (!tail) return undefined
-  let next: Tail | undefined = tail
-  const contentCovered = after.content - before.content
-  if (next && contentCovered > 0) next = trimTailFront(next, 'text', contentCovered)
-  const reasoningCovered = after.reasoning - before.reasoning
-  if (next && reasoningCovered > 0) next = trimTailFront(next, 'reasoning', reasoningCovered)
-  return next
+export interface HandOver {
+  tail: Tail | undefined
+  /** 这一次**真交出去**了多少(各车道)。调用方拿它推进「账本画到哪儿了」。 */
+  taken: FoldLens
+}
+
+export function handOverToLedger(tail: Tail | undefined, before: FoldLens, after: FoldLens): HandOver {
+  const credit = {
+    text: Math.max(0, after.content - before.content),
+    reasoningTop: Math.max(0, after.reasoningTop - before.reasoningTop),
+    reasoningInline: Math.max(0, after.reasoningInline - before.reasoningInline),
+  }
+  const taken: FoldLens = { content: 0, reasoningTop: 0, reasoningInline: 0 }
+  if (!tail) return { tail: undefined, taken }
+
+  /*
+   * **从前往后走,一遇到交不干净的就停** —— 这一条不是保守,是顺序的唯一保障。
+   *
+   * 账本在流式期间只有一格扁平的 `message.content`(全部正文折在一起),它表达不了
+   * 「正文、思考、正文」这种交替。所以一旦尾巴前面还压着一截账本画不出来的东西
+   * (典型:行内推理),它**后面**的正文就不能交出去 —— 交了就会被账本那一格拉到
+   * 前面去,屏幕上思考段整块搬家、还和下一段思考并成一块。修第一版时真机探针就
+   * 抓到过这一形:t=4.8s 结构变成 `think|text|表|text|think(205)`,两段思考并了。
+   */
+  let reasoningTop = tail.reasoningTop
+  let stopped = false
+  if (reasoningTop) {
+    const cut = Math.min(credit.reasoningTop, reasoningTop.length)
+    taken.reasoningTop = cut
+    reasoningTop = reasoningTop.slice(cut)
+    if (reasoningTop) stopped = true
+  }
+
+  const segments: TailSegment[] = []
+  for (const segment of tail.segments) {
+    if (stopped) {
+      segments.push(segment)
+      continue
+    }
+    const isText = segment.kind === 'text'
+    const left = isText ? credit.text - taken.content : credit.reasoningInline - taken.reasoningInline
+    const cut = Math.min(Math.max(0, left), segment.text.length)
+    if (isText) taken.content += cut
+    else taken.reasoningInline += cut
+    if (cut < segment.text.length) {
+      stopped = true
+      segments.push({ kind: segment.kind, text: segment.text.slice(cut) })
+    }
+  }
+
+  if (segments.length === 0 && !reasoningTop) return { tail: undefined, taken }
+  return { tail: { messageId: tail.messageId, segments, reasoningTop }, taken }
 }
 
 type AnyPart = { type?: string; content?: string }
@@ -197,6 +216,17 @@ type AnyPart = { type?: string; content?: string }
 export function appendTail(
   messages: readonly ProjectedMessage[],
   tail: Tail | undefined,
+  /**
+   * 账本的 `message.content` 里,**已经交接给账本**的那一截有多长。
+   *
+   * 兜底那一格只许画到这儿为止:交接是从前往后停的(见 `handOverToLedger`),
+   * 尾巴前面压着账本画不出来的东西时,它后面的正文**还在尾巴里**——那一截同时
+   * 也在账本的 `content` 里(打包行早把它送进去了)。整格画出来就是画两遍,而且
+   * 画在了错的位置(账本那一格是扁平的,排在所有尾巴段之前)。
+   *
+   * 缺席 = 不设限(整格画完):重折/测试里的直接调用照旧,与从前逐字相同。
+   */
+  contentCoverage?: number,
 ): ProjectedMessage[] {
   const list = [...messages]
   if (!tail) return list
@@ -214,7 +244,11 @@ export function appendTail(
   // 那段正文只活在 content 里 —— 屏幕上就只剩重攒的新尾巴,整段正文消失,
   // 直到 run 收尾 parts 物化才跳回来。
   if (parts.length === 0 && message.content) {
-    parts.push({ type: 'text', content: message.content })
+    const covered =
+      contentCoverage === undefined
+        ? message.content
+        : message.content.slice(0, Math.max(0, contentCoverage))
+    if (covered) parts.push({ type: 'text', content: covered })
   }
 
   // 只有**第一截**可以延长账本那一段(它就是那一段还没打包的尾巴);其后每一截

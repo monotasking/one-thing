@@ -3,8 +3,8 @@ import {
   appendTail,
   feedTail,
   reconcileOverlay,
-  reconcileTailAfterRefold,
-  trimTailByChunks,
+  handOverToLedger,
+  type FoldLens,
   userMessageIds,
   type OverlayEntry,
   type PendingSend,
@@ -118,65 +118,152 @@ describe('接尾巴:只延长最后那一段,不回头找', () => {
   })
 })
 
-describe('打包行只带走它自己那一截(整段丢就是回缩)', () => {
-  it('尾巴比打包行长:裁掉前缀,留下打包窗之后的 delta', () => {
+/**
+ * 交接:**账本这一刻多画得出来多少,尾巴就交出多少**。
+ *
+ * 这一组翻掉了旧的「打包行按自己的字符数带走一截」(旧 `trimTailByChunks` 与它的
+ * 四条用例)。09-01 用户录屏报障、真机探针复现:打包行只说明「这一截进账本了」,
+ * **不说明「画得出来」** —— 行内推理在流式期间在账本投影里一个字都没有(它要等
+ * `contentParts` 物化),按字符数裁就把它裁进了两边都没有的空档,屏幕上整块消失
+ * 2166ms。判据因此换成长度差,活路与重折共用同一条。
+ */
+const NOTHING: FoldLens = { content: 0, reasoningTop: 0, reasoningInline: 0 }
+
+describe('交接:账本画得出来多少,尾巴就交出多少', () => {
+  it('账本长了一截:尾巴交出等长前缀,后面攒的 delta 留着', () => {
     const tail = feedTail(feedTail(undefined, 'a1', 'text', '前一截'), 'a1', 'text', '后一截')
-    const trimmed = trimTailByChunks(tail, 'a1', 'text', '前一截'.length)
-    expect(trimmed?.segments).toEqual([{ kind: 'text', text: '后一截' }])
+    const out = handOverToLedger(tail, NOTHING, { ...NOTHING, content: '前一截'.length })
+    expect(out.tail?.segments).toEqual([{ kind: 'text', text: '后一截' }])
   })
 
-  it('打包行覆盖了尾巴的全部:等价于从前的整段丢掉', () => {
+  it('账本盖过了尾巴的全部:尾巴退场', () => {
     const tail = feedTail(undefined, 'a1', 'text', '全部内容')
-    expect(trimTailByChunks(tail, 'a1', 'text', 99)).toBeUndefined()
+    expect(handOverToLedger(tail, NOTHING, { ...NOTHING, content: 99 }).tail).toBeUndefined()
   })
 
-  it('别的消息的打包行不碰这条尾巴', () => {
-    const tail = feedTail(undefined, 'a1', 'text', '内容')
-    expect(trimTailByChunks(tail, 'b2', 'text', 99)).toBe(tail)
+  it('账本没长(打包行进来了但 parts 还没物化):尾巴一个字不动', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '正文')
+    const lens = { ...NOTHING, content: 7 }
+    expect(handOverToLedger(tail, lens, lens).tail).toEqual(tail)
   })
 
-  it('reasoning 打包行先裁顶部推理,再裁行内推理截,不碰正文截', () => {
+  it('账本反而更短(message/patched 剥字段这类):什么都不裁', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '正文')
+    expect(handOverToLedger(tail, { ...NOTHING, content: 9 }, NOTHING).tail).toEqual(tail)
+  })
+
+  /*
+   * 这一条是 09-01 那条报障的**正靶**:打包行把行内推理送进了账本,但账本此刻
+   * 画不出它(`contentParts` 还没物化,`reasoningInline` 还是 0)。尾巴必须留着
+   * 它 —— 交出去就是屏幕上两边都没有。
+   */
+  it('行内推理:parts 没物化就一个字不交(病历:思考块消失 2 秒)', () => {
+    let tail = feedTail(undefined, 'a1', 'text', '这段正文')
+    tail = feedTail(tail, 'a1', 'reasoning', '一段思考', 'inline')
+    // 正文那截进了账本(content 涨了两个字),行内推理没有产地(reasoningInline 不动)。
+    const out = handOverToLedger(tail, NOTHING, { ...NOTHING, content: '这段'.length })
+    expect(out.tail?.segments).toEqual([
+      { kind: 'text', text: '正文' },
+      // ← 修前这一格会被按打包行的字符数裁掉,而账本此刻画不出它:屏幕上整块消失。
+      { kind: 'reasoning', text: '一段思考' },
+    ])
+  })
+
+  it('parts 物化那一刻:行内推理一次交清,不重影', () => {
+    let tail = feedTail(undefined, 'a1', 'text', '这段正文')
+    tail = feedTail(tail, 'a1', 'reasoning', '一段思考', 'inline')
+    const out = handOverToLedger(tail, NOTHING, {
+      content: '这段正文'.length,
+      reasoningTop: 0,
+      reasoningInline: '一段思考'.length,
+    })
+    expect(out.tail).toBeUndefined()
+  })
+
+  it('三条车道互不越界:顶部推理的尺裁不动行内推理那一截', () => {
     let tail = feedTail(undefined, 'a1', 'reasoning', '顶部想', 'top')
     tail = feedTail(tail, 'a1', 'text', '正文')
     tail = feedTail(tail, 'a1', 'reasoning', '行内想', 'inline')
-    const trimmed = trimTailByChunks(tail, 'a1', 'reasoning', '顶部想行'.length)
-    expect(trimmed?.reasoningTop).toBe('')
-    expect(trimmed?.segments).toEqual([
+    // 顶部推理的尺给得再大,也只吃掉 reasoningTop —— 从前两者共用一格,溢出会串仓。
+    const out = handOverToLedger(tail, NOTHING, { ...NOTHING, reasoningTop: 99 })
+    expect(out.tail?.reasoningTop).toBe('')
+    expect(out.tail?.segments).toEqual([
       { kind: 'text', text: '正文' },
-      { kind: 'reasoning', text: '内想' },
+      { kind: 'reasoning', text: '行内想' },
     ])
+  })
+
+  it('顶部推理交清了,后面的正文才轮得到(引用素材下不裁会接成懒续行)', () => {
+    let tail = feedTail(undefined, 'a1', 'reasoning', '想了又想', 'top')
+    tail = feedTail(tail, 'a1', 'text', '> 引用行\n后续正文')
+    const out = handOverToLedger(tail, NOTHING, {
+      content: '> 引用行\n'.length,
+      reasoningTop: '想了又想'.length,
+      reasoningInline: 0,
+    })
+    expect(out.tail?.reasoningTop).toBe('')
+    expect(out.tail?.segments).toEqual([{ kind: 'text', text: '后续正文' }])
+    expect(out.taken).toEqual({ content: '> 引用行\n'.length, reasoningTop: 4, reasoningInline: 0 })
+  })
+
+  /*
+   * **顺序闸**:交接从前往后走,一遇到交不干净的就停 —— 它后面的一律不交。
+   *
+   * 理由不是保守。账本在流式期间只有一格扁平的 `message.content`(全部正文折在
+   * 一起),表达不了「正文、思考、正文」的交替:前面那截思考还交不出去,后面的
+   * 正文却交了,那截正文就会被账本那一格拉到最前面,思考段整块搬家。修第一版时
+   * 真机探针抓到的正是这一形(t=4.8s:`think|text|表|text|think(205)`,两段思考并了)。
+   */
+  it('前面那截交不干净,后面的一律不交(顺序闸)', () => {
+    let tail = feedTail(undefined, 'a1', 'reasoning', '想了又想', 'top')
+    tail = feedTail(tail, 'a1', 'text', '后面的正文')
+    // 顶部推理只交得出一半,正文那格的额度再多也不许动。
+    const out = handOverToLedger(tail, NOTHING, {
+      content: 99,
+      reasoningTop: '想了'.length,
+      reasoningInline: 0,
+    })
+    expect(out.tail?.reasoningTop).toBe('又想')
+    expect(out.tail?.segments).toEqual([{ kind: 'text', text: '后面的正文' }])
+    expect(out.taken.content).toBe(0)
+  })
+
+  it('行内推理挡在前面时,它后面的正文也留在尾巴里(顺序闸)', () => {
+    let tail = feedTail(undefined, 'a1', 'reasoning', '一段思考', 'inline')
+    tail = feedTail(tail, 'a1', 'text', '思考之后的正文')
+    const out = handOverToLedger(tail, NOTHING, { ...NOTHING, content: 99 })
+    expect(out.tail?.segments).toEqual([
+      { kind: 'reasoning', text: '一段思考' },
+      { kind: 'text', text: '思考之后的正文' },
+    ])
+    expect(out.taken.content).toBe(0)
   })
 })
 
-describe('重折调解:新折叠盖过的前缀离开尾巴(真机重影那只病)', () => {
-  it('长度差就是要交出去的前缀 —— 引用素材下不裁会把后一份接成懒续行', () => {
-    // 真机的形:重折前折叠正文冻结在 0(打包行没折过),尾巴从头攒到现在;
-    // 重折把第一条打包行折了进来(新折长 = 打包那截),尾巴须交出等长前缀。
-    const tail = feedTail(undefined, 'a1', 'text', '> 引用行\n后续正文')
-    const out = reconcileTailAfterRefold(tail, { content: 0, reasoning: 0 }, { content: '> 引用行\n'.length, reasoning: 0 })
-    expect(out?.segments).toEqual([{ kind: 'text', text: '后续正文' }])
+describe('接尾巴:账本那一格只画到交接线为止', () => {
+  it('给了 coverage 就只画那么长 —— 剩下的那截还在尾巴里,画整格就是画两遍', () => {
+    // 真机的形:正文 A 交接了,思考挡在中间,正文 B 虽然进了账本的 content
+    // 却还留在尾巴里。整格画出来 = B 出现两次,而且排在思考**前面**。
+    let tail = feedTail(undefined, 'a1', 'reasoning', '思考', 'inline')
+    tail = feedTail(tail, 'a1', 'text', '正文B')
+    const out = appendTail([message({ id: 'a1', content: '正文A正文B' })], tail, '正文A'.length)
+    expect(out[0].contentParts).toEqual([
+      { type: 'text', content: '正文A' },
+      { type: 'reasoning', content: '思考' },
+      { type: 'text', content: '正文B' },
+    ])
   })
 
-  it('新折叠没有长(重折没折进新东西):尾巴一个字不动', () => {
-    const tail = feedTail(undefined, 'a1', 'text', '正文')
-    expect(reconcileTailAfterRefold(tail, { content: 7, reasoning: 0 }, { content: 7, reasoning: 0 })).toBe(tail)
+  it('coverage 缺席 = 不设限(整格画完),与从前逐字相同', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '尾')
+    const out = appendTail([message({ id: 'a1', content: '账本正文' })], tail)
+    expect(out[0].contentParts).toEqual([{ type: 'text', content: '账本正文尾' }])
   })
 
-  it('新折叠盖过了尾巴的全部:尾巴退场', () => {
-    const tail = feedTail(undefined, 'a1', 'text', '短尾')
-    expect(reconcileTailAfterRefold(tail, { content: 0, reasoning: 0 }, { content: 99, reasoning: 0 })).toBeUndefined()
-  })
-
-  it('正文与顶部推理各按各的尺裁', () => {
-    let tail = feedTail(undefined, 'a1', 'reasoning', '想了又想', 'top')
-    tail = feedTail(tail, 'a1', 'text', '正文两截')
-    const out = reconcileTailAfterRefold(
-      tail,
-      { content: 0, reasoning: 0 },
-      { content: '正文'.length, reasoning: '想了'.length },
-    )
-    expect(out?.reasoningTop).toBe('又想')
-    expect(out?.segments).toEqual([{ kind: 'text', text: '两截' }])
+  it('coverage 为 0:账本那一格一个字都不画,屏幕上只有尾巴', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '全在尾巴里')
+    const out = appendTail([message({ id: 'a1', content: '全在尾巴里' })], tail, 0)
+    expect(out[0].contentParts).toEqual([{ type: 'text', content: '全在尾巴里' }])
   })
 })
 

@@ -76,6 +76,39 @@ describe('未闭合的原子块按 code 显示,闭合原位换装', () => {
     })
   })
 
+  /*
+   * 单向闸(09-01 用户录屏报障「table 出现再消失」)。
+   *
+   * 降级判据是 `!text.endsWith('\n')`,而表格是**逐行**长出来的:行末没换行时降级
+   * 成 code、换行到了升回 table、下一行的头几个字符又降级…… 真机探针逐帧读块型,
+   * 修前一条流里「表格成形后又降级回 code」占 17 帧,每次伴随一次内容回缩
+   * (254→217、278→229);修后 0 帧。
+   *
+   * 这条门喂的是**真机那种节拍**:一次几个字符,行末与行中都踩到。
+   */
+  it('表格一旦成形就不再降级回 code(单向闸)', () => {
+    const source = '| 项 | 状态 |\n|---|---|\n| 甲 | 真 |\n| 乙 | 假 |\n| 丙 | 真 |\n'
+    const s = stream()
+    let formedAt = -1
+    const downgradesAfterFormed: number[] = []
+    for (let i = 3; i <= source.length; i += 3) {
+      const text = source.slice(0, i)
+      const block = s.parse('m', text, true).blocks.at(-1)
+      if (block?.kind === 'table' && formedAt < 0) formedAt = i
+      // 成形之后再出现 `code`,就是屏幕上那次「表格消失、变回代码块」。
+      if (formedAt >= 0 && block?.kind === 'code') downgradesAfterFormed.push(i)
+    }
+    expect(formedAt).toBeGreaterThan(0)
+    expect(downgradesAfterFormed).toEqual([])
+  })
+
+  it('还没成形过的表照旧按 code 逐行长 —— 单向闸不是把降级删了', () => {
+    const s = stream()
+    // 表头那一行还没等到分隔行,mdast 给的是段落;分隔行到了但没换行 = 还没成形过。
+    const block = s.parse('m', '| 项 | 状态 |\n|---|---', true).blocks.at(-1)
+    expect(block).toMatchObject({ kind: 'code', closed: false })
+  })
+
   it('不流了就不再按 code 兜 —— 判据是「还在长」,不是「最后一块是表」', () => {
     const s = stream()
     expect(s.parse('m', '| a |\n|---|\n| 1 |', false).blocks[0]).toMatchObject({ kind: 'table' })

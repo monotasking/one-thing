@@ -19,6 +19,7 @@
     "gate:files": "node scripts/gate-files.mjs",
     "gate:search": "node scripts/gate-search.mjs",
     "gate:monotone": "node scripts/gate-stream-monotone.mjs",
+    "gate:stream-structure": "node scripts/gate-stream-structure.mjs",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",
     "gate:perf": "node scripts/gate-perf.mjs",

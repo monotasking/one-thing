@@ -11,8 +11,7 @@ import {
   appendTail,
   feedTail,
   reconcileOverlay,
-  reconcileTailAfterRefold,
-  trimTailByChunks,
+  handOverToLedger,
   userMessageIds,
   type FoldLens,
   type OverlayEntry,
@@ -133,6 +132,14 @@ export function selectEngineBusy(state: ChatSourceState): boolean {
 let fold: LiveFold | undefined
 let tail: Tail | undefined
 /**
+ * 上一次交接完成时,账本对**尾巴那条消息**画得出来多少(判据见 chat-fold 的 `FoldLens`)。
+ *
+ * 与 `tail` 同生共死:`tail` 一退场就清空,一换消息就重新起算。它是尾巴与账本之间
+ * 那条交接线的**唯一记账**;少了它就得每次现量两遍(多一处会分叉的产地),
+ * 拿旧基准去裁新尾巴则是「一裁就整段」。
+ */
+let tailLens: { messageId: string; lens: FoldLens; contentCoverage: number } | undefined
+/**
  * 重折在飞时到达的活事件 —— **攒着,不是丢掉**。
  *
  * 从前这里是丢("重折读的整份账本里本来就有它们"),但那句话对**重折发出之后
@@ -214,7 +221,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     set({
       status: 'ready',
       error: undefined,
-      messages: appendTail(base, tail),
+      messages: appendTail(base, tail, tailLens?.messageId === tail?.messageId ? tailLens?.contentCoverage : undefined),
       activeMessageId: projected.activeRun?.messageId,
       overlay,
     })
@@ -234,10 +241,64 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     })
   }
 
-  /** 一条消息在某份折叠状态上的两把尺(正文 / 顶部推理长度)—— 重折调解用。 */
+  /**
+   * 一条消息在某份折叠状态上**此刻画得出来**的三把尺(判据见 `FoldLens` 的注)。
+   *
+   * `reasoningInline` 必须数 `contentParts` 而不是 `reasoning` —— 后者只装顶部那一段。
+   * 数错这一格就是 09-01 那条「思考块消失 2 秒」的报障。
+   */
   function lensOf(state: ReturnType<typeof createSessionProjectionState>, messageId: string): FoldLens {
     const found = materializeChatMessages(state).messages.find((message) => message.id === messageId)
-    return { content: found?.content?.length ?? 0, reasoning: found?.reasoning?.length ?? 0 }
+    const parts = (found?.contentParts ?? []) as ReadonlyArray<{ type?: string; content?: string }>
+    let reasoningInline = 0
+    for (const part of parts) {
+      if (part.type === 'reasoning') reasoningInline += part.content?.length ?? 0
+    }
+    return {
+      content: found?.content?.length ?? 0,
+      reasoningTop: found?.reasoning?.length ?? 0,
+      reasoningInline,
+    }
+  }
+
+  /**
+   * **尾巴与账本的交接点 —— 全文件唯一一处**(活路与重折都走它)。
+   *
+   * `tailLens` 是「上一次交接完成时,账本对这条消息画得出来多少」。折进新东西之后
+   * 再量一次,多出来的那一截就是尾巴该交出去的。`tailLens` 与 `tail` 同生共死
+   * (两者要么都在、要么都不在):尾巴一换消息 / 一退场,基准必须跟着重新起算,
+   * 否则下一轮会拿上一轮的账本量去裁新尾巴,一裁就是整段。
+   */
+  function handOverTail(state: ReturnType<typeof createSessionProjectionState>): void {
+    if (!tail || tailLens?.messageId !== tail.messageId) return
+    const now = lensOf(state, tail.messageId)
+    const { tail: next, taken } = handOverToLedger(tail, tailLens.lens, now)
+    tail = next
+    tailLens = next
+      ? {
+          messageId: next.messageId,
+          lens: now,
+          // 账本那一格正文画到哪儿:只推进**真交出去**的那一截。交接从前往后停,
+          // 所以它可能落在 `now.content` 之后 —— 那正是「还在尾巴里」的部分。
+          contentCoverage: tailLens.contentCoverage + taken.content,
+        }
+      : undefined
+  }
+
+  /**
+   * 尾巴刚从无到有、或刚换了消息:把交接基准钉在账本此刻的量上。
+   * 认 `messageId` 而不是「有没有值」—— 换了消息还用上一条的基准,第一次交接就会
+   * 拿别人的账本量去裁这条尾巴。
+   */
+  function rebaseTailLens(state: ReturnType<typeof createSessionProjectionState>): void {
+    if (!tail) {
+      tailLens = undefined
+      return
+    }
+    if (tailLens?.messageId === tail.messageId) return
+    const lens = lensOf(state, tail.messageId)
+    // 起算点:尾巴出生那一刻账本已经画出来的正文长度 —— 它前面的字与这条尾巴无关。
+    tailLens = { messageId: tail.messageId, lens, contentCoverage: lens.content }
   }
 
   /** 起底 / 重折:整份账本折一遍。`token` 是换会话的防串号闸。 */
@@ -251,9 +312,8 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       const { events } = await port.listRaw(sessionId)
       // 换会话之后回来的那一份属于上一条会话 —— 整份丢掉,不写进新会话的折。
       if (token !== openSeq || fold !== mine) return
-      // 调解尾巴的「旧折长」尺 —— 必须在换状态之前量(pending 期间旧折冻结,
-      // 旧折长 + 尾长 = 目前收到的总长,这条不变量是调解的地基)。
-      const tailBefore = tail ? lensOf(mine.state, tail.messageId) : undefined
+      // 交接基准不在这里现量:`tailLens` 一直跟着每次交接走,pending 期间旧折冻结,
+      // 它就是「重折前账本画得出来多少」。现量一次反而多一处会与它分叉的产地。
       let state = createSessionProjectionState()
       let lastSeq = 0
       for (const event of events ?? []) {
@@ -265,10 +325,8 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       mine.lastSeq = lastSeq
       mine.pending = false
       // 新折叠可能已经装下了尾巴前面那一截(打包行进了快照而尾巴没被裁过)——
-      // 按长度差把那截从尾巴上交出去,不然就是重影(见 reconcileTailAfterRefold 的注)。
-      if (tail && tailBefore) {
-        tail = reconcileTailAfterRefold(tail, tailBefore, lensOf(state, tail.messageId))
-      }
+      // 交给那条唯一的交接规则,不然就是重影(见 handOverToLedger 的注)。
+      handOverTail(state)
       // 排空重折在飞时攒下的活事件:旧行被幂等丢弃,接得上的当场折进去,
       // 真缺号(SSE 真丢了行)照旧触发下一次重折。
       const drained = pendingLedger
@@ -317,14 +375,10 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     }
     mine.state = reduceSessionProjection(mine.state, record as never)
     mine.lastSeq = seq
-    // 打包行一到,它装的那一截离开尾巴,由折叠那份接管(两份逐字节相同,
-    // `decode∘encode ≡ id`,换装在屏幕上不可见)。按打包行自己的长度裁,
-    // 不整段丢 —— 尾巴里可能已经攒着打包窗之后的 delta,整段丢就是回缩。
-    const packed = record as { type?: string; data?: { messageId?: string; kind?: string; text?: string[] } }
-    if (packed?.type === 'assistant/chunks') {
-      const chars = (packed.data?.text ?? []).reduce((sum, piece) => sum + piece.length, 0)
-      tail = trimTailByChunks(tail, packed.data?.messageId, packed.data?.kind, chars)
-    }
+    // 折进新东西之后,尾巴把「账本这一刻新画得出来的那一截」交出去 —— 判据不看
+    // 这是不是一条打包行(见 handOverToLedger 的病历:打包行只说明「进账本了」,
+    // 不说明「画得出来」;行内推理要等 parts 物化才有第二个产地)。
+    handOverTail(mine.state)
     schedulePush()
   }
 
@@ -342,6 +396,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       event?.type === SESSION_EVENT_TYPES.STREAM_ABORTED
     ) {
       tail = undefined
+      tailLens = undefined
       schedulePush()
     }
   }
@@ -372,6 +427,8 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     } else {
       return
     }
+    // 尾巴刚从无到有 / 刚换消息:交接基准钉在账本此刻的量上(见 rebaseTailLens)。
+    if (fold) rebaseTailLens(fold.state)
     schedulePush()
   }
 
@@ -428,6 +485,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         unsubStream = undefined
         fold = undefined
         tail = undefined
+        tailLens = undefined
         pendingLedger = []
         openSeq += 1
         set({ sessionId: '', status: 'idle', error: undefined, messages: [], activeMessageId: undefined })
@@ -437,6 +495,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       const token = (openSeq += 1)
       fold = newFold()
       tail = undefined
+      tailLens = undefined
       pendingLedger = []
       // 换会话 = overlay 清空:那几条 pending 属于上一条会话的屏幕。
       set({ sessionId, status: 'loading', error: undefined, messages: [], activeMessageId: undefined, overlay: [] })
@@ -591,6 +650,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       unsubStream = undefined
       fold = undefined
       tail = undefined
+      tailLens = undefined
       pendingLedger = []
       if (abortWatch) clearTimeout(abortWatch)
       abortWatch = undefined
@@ -611,6 +671,29 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     },
   }
 })
+
+/**
+ * **HMR 退役**(09-01,性能调查坐实:同一帧里出现两个不同 `?t=` 版本的 chat-source
+ * 各自的 rAF 回调 —— 热更之后旧模块的订阅与推屏环没死,两台折叠器同时活着各自推屏)。
+ *
+ * 这个文件有一堆**模块级副作用**:`unsubEvent` / `unsubStream` 两条推送订阅、
+ * 按帧合并的 rAF 环、`abortWatch` 那只表,外加 `fold` / `tail` / `tailLens` 一整套
+ * 活折状态。它们的寿命是「这个模块实例」,而热更换的正是模块实例 —— 不退役,旧实例
+ * 的订阅照收事件、照推屏,而它的折叠状态永远停在换模块那一刻,与新实例交替上屏。
+ *
+ * `reset()` 本来就是「回到未启动的干净态」那一口,退役直接用它 —— 别写第二套拆卸
+ * 逻辑(两套拆卸迟早漏一格)。它自身幂等,重复调用无害。
+ *
+ * 生产构建里 `import.meta.hot` 是 undefined,整段被 tree-shake 掉。
+ *
+ * **留账**:这只治本文件自己。同族病(块注册表 `registerBlock` 热更重复注册)归
+ * 另一批;纪律「模块级副作用必须配 HMR dispose」已立进本目录的 CLAUDE.md。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    useChatSource.getState().reset()
+  })
+}
 
 /** 非组件上下文的写法(composer store 的接缝就是这一口)。 */
 export function sendChatMessage(text: string, attachments = 0): boolean {
