@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { Eye } from '../../components/icons'
 import { Button } from '../../ui/Button'
+import { ButtonBase } from '../../ui/ButtonBase'
+import { Tooltip } from '../../ui/Tooltip'
 import { useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
 import type { SessionKind, SessionSummary } from '../types'
@@ -61,9 +63,10 @@ export function SessionCard({ session, query, current, focused, onEnter, onQuick
 
   return (
     <div className={s.wrap}>
-      <button
+      {/* 整张卡是一颗按钮 = 裸钮三类判第③类(结构性交互件)→ `ui/ButtonBase`
+        * 只清 UA;卡面那一整套(描边 / 圆角 / 抗挤压内边距 / 当前 / 焦点)不动。 */}
+      <ButtonBase
         ref={ref}
-        type="button"
         className={cls}
         data-testid={`card-${session.id}`}
         data-session-id={session.id}
@@ -74,10 +77,12 @@ export function SessionCard({ session, query, current, focused, onEnter, onQuick
           <span className={s.title}>
             <Highlight text={session.title} query={query} />
           </span>
+          {/* kind 徽只写一个字,全名靠提示补:native `title=` 换 `ui/Tooltip`
+            * (禁令的字面执法),文案仍是同一个 KIND_TITLE 键。 */}
           {kind && (
-            <span className={s.kind} title={t(KIND_TITLE[kind])}>
-              {t(KIND_BADGE[kind])}
-            </span>
+            <Tooltip content={t(KIND_TITLE[kind])}>
+              <span className={s.kind}>{t(KIND_BADGE[kind])}</span>
+            </Tooltip>
           )}
         </div>
 
@@ -108,14 +113,16 @@ export function SessionCard({ session, query, current, focused, onEnter, onQuick
            * 空心小 chip、单行截断 —— 模型名可以很长(`claude-opus-5[1m]`),
            * 它不该把时间挤出卡外。没跑过的会话没有这一格(projection 给的是 null)。
            */}
+          {/* 模型徽单行截断,全名靠提示补。它是**数据**(模型名),不进字典 ——
+            * 提示内容与徽面是同一个字符串,与从前那个 native `title=` 逐字相同。 */}
           {session.model && (
-            <span className={s.model} title={session.model}>
-              {session.model}
-            </span>
+            <Tooltip content={session.model}>
+              <span className={s.model}>{session.model}</span>
+            </Tooltip>
           )}
           <span className={s.time}>{timeOf(session.updatedAt)}</span>
         </div>
-      </button>
+      </ButtonBase>
 
       {/*
        * 幽灵入口:**占位常驻**(永远在 DOM 里、永远占同一块地方),只动 opacity。

@@ -138,27 +138,8 @@
   flex: none;
 }
 
-.close {
-  flex: none;
-  width: var(--btn-sm);
-  height: var(--btn-sm);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r-2);
-  color: var(--text-2);
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-
-.close:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
-}
-
-.closeIcon {
-  width: var(--fs-label);
-  height: var(--fs-label);
-}
+/* 檐上那颗 ✕ 的皮肤(`.close` / `.close:hover` / `.closeIcon`)整份退役 ——
+ * 配方归 `ui/IconButton` 的 md 档,这块面不再是自绘图标钮的一个产地。 */
 
 .body {
   flex: 1;

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ErrorBoundary } from '../ErrorBoundary'
+import { Button } from '../../ui/Button'
 import { __resetLogForTests } from '../../services/log'
 import { dumpCrashes } from '../../services/crash'
 import { useStageStore } from '../../stage/store'
@@ -49,10 +50,11 @@ function Gated() {
 function Stateful() {
   const [n, setN] = useState(0)
   if (gate.fail) throw new Error('攒完状态才炸')
+  /* 夹具也照 `ui:consume` 的规矩来:测试里手写一颗裸钮,下一个人就照抄。 */
   return (
-    <button type="button" data-testid="bump" onClick={() => setN(n + 1)}>
+    <Button data-testid="bump" onClick={() => setN(n + 1)}>
       {`n=${n}`}
-    </button>
+    </Button>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, Plus, X } from '../../components/icons'
 import { Button } from '../../ui/Button'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { Input } from '../../ui/Input'
 import { useConfirm } from '../../ui/Dialog'
 import { useT } from '../../i18n'
@@ -165,15 +166,16 @@ export function WorkspaceOverview() {
               ) : (
                 /* 整张卡的主动作 = 切过去。当前那张不再是按钮:点它无事发生,
                  * 那种「按下去什么都没变」的按钮是最招人烦的一类。 */
-                <button
-                  type="button"
+                <ButtonBase
+                  /* 卡上的名字**就是**主动作(点它 = 切过去):它是这张卡的标题
+                   * 而不是一颗钮,视觉本该定制 —— 裸钮三类判第③类,`ui/ButtonBase`。 */
                   className={s.name}
                   disabled={view.isCurrent}
                   data-testid={`workspace-switch-${view.id}`}
                   onClick={() => switchTo(view.id)}
                 >
                   {view.name}
-                </button>
+                </ButtonBase>
               )}
 
               <p className={s.facts}>
@@ -185,9 +187,10 @@ export function WorkspaceOverview() {
             {coloring === view.id && (
               <div className={s.swatches} role="group" aria-label={t('workspace.recolorLabel')}>
                 {WORKSPACE_SWATCHES.map((swatch) => (
-                  <button
+                  /* 色片是结构件(一枚色标,底色**就是**它的内容)→ `ui/ButtonBase`。
+                   * 刻意不迁 `ui/IconButton`:那件明说底色不许从外面换。 */
+                  <ButtonBase
                     key={swatch}
-                    type="button"
                     className={`${s.swatch} ${sw[swatch]}`}
                     aria-label={t(`workspace.color.${swatch}`)}
                     aria-pressed={swatch === view.swatch}
@@ -197,23 +200,25 @@ export function WorkspaceOverview() {
                     {swatch === view.swatch && (
                       <Check className={s.swatchMark} strokeWidth={2.5} aria-hidden="true" />
                     )}
-                  </button>
+                  </ButtonBase>
                 ))}
               </div>
             )}
 
+            {/* 三枚文字键全部消费 `ui/Button`(ghost);`.op` 皮肤留着当**落点**
+              * ——「一排文字键」是这张卡的定稿形制(accent 字色、fs-micro、
+              * 不占 28px 定高),所以本地把 height / padding / border / 字号收回,
+              * 只让库件管交互态与 disabled。 */}
             <div className={s.ops}>
-              <button
-                type="button"
+              <Button
                 className={s.op}
                 disabled={busy}
                 data-testid={`workspace-rename-${view.id}`}
                 onClick={() => startRename(view)}
               >
                 {t('workspace.rename')}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 className={s.op}
                 disabled={busy}
                 data-testid={`workspace-recolor-${view.id}`}
@@ -223,18 +228,17 @@ export function WorkspaceOverview() {
                 }}
               >
                 {t('workspace.recolor')}
-              </button>
+              </Button>
               {/* 当前卡与默认空间都不给这一档 —— 理由见文件头的三条硬规矩。 */}
               {!view.isCurrent && !view.isDefault && (
-                <button
-                  type="button"
+                <Button
                   className={`${s.op} ${s.opDanger}`}
                   disabled={busy}
                   data-testid={`workspace-remove-${view.id}`}
                   onClick={() => void askRemove(view)}
                 >
                   {t('workspace.remove')}
-                </button>
+                </Button>
               )}
             </div>
           </div>
@@ -256,8 +260,9 @@ export function WorkspaceOverview() {
             </div>
           </div>
         ) : (
-          <button
-            type="button"
+          /* 虚线新建卡是**一张卡**(与旁边那几张同宽同高),不是一颗钮 ——
+           * 裸钮三类判第③类 → `ui/ButtonBase`,那身虚线皮肤一个像素不动。 */
+          <ButtonBase
             className={s.newCard}
             disabled={busy}
             data-testid="workspace-create"
@@ -265,7 +270,7 @@ export function WorkspaceOverview() {
           >
             <Plus className={s.newIcon} strokeWidth={1.75} aria-hidden="true" />
             {t('workspace.create')}
-          </button>
+          </ButtonBase>
         )}
       </div>
     </div>

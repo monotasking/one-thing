@@ -53,26 +53,16 @@
   color: var(--text-1);
 }
 
-.action {
+/*
+ * 檐上三颗钮的配方已经整份迁进 `ui/IconButton`(md 档 = 28×28,与从前的
+ * --btn-sm 逐像素相同),所以这里从前那 20 行 `.action` / `.action:hover` /
+ * `.icon` 一起删了 —— 它们就是「各面自绘图标钮」那条病的一个产地。
+ * 剩下的只有一格**落点**:钉边钮要能被量出矩形(菜单贴它的下缘开),
+ * 而库件不透传 ref,所以外面包一层贴身的 span。
+ */
+.actionSlot {
   flex: none;
-  width: var(--btn-sm);
-  height: var(--btn-sm);
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r-2);
-  color: var(--text-2);
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-
-.action:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
-}
-
-.icon {
-  width: var(--fs-label);
-  height: var(--fs-label);
 }
 
 .body {

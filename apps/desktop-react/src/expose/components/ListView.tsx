@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ChevronRight } from '../../components/icons'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
@@ -54,9 +55,10 @@ export function ListView({ groupId }: Props) {
     // data-shelf / data-panel 同一读法)。
     <div className={s.list} data-testid="expose-list">
       <header className={s.top}>
-        <button type="button" className={s.crumb} onClick={backToOverview}>
+        {/* 面包屑是结构件(它读起来是一条路径的一段,不是一颗钮)→ `ui/ButtonBase`。 */}
+        <ButtonBase className={s.crumb} onClick={backToOverview}>
           {t('list.backToOverview')}
-        </button>
+        </ButtonBase>
         <ChevronRight className={s.crumbIcon} strokeWidth={1.75} aria-hidden="true" />
         {/* 只有组名,不带条数 —— 08-30「计数禁令」(tab / 列表 / 组头不挂个数)在这一处的补执行。 */}
         <span className={s.here}>{t('list.here', { group: groupName })}</span>
@@ -76,15 +78,15 @@ export function ListView({ groupId }: Props) {
               <section key={bucket} className={s.section}>
                 <h3 className={s.sectionHead}>{t(BUCKET_KEY[bucket])}</h3>
                 {items.map((item) => (
-                  <button
+                  /* 一行会话 = 结构件(裸钮三类判第③类)→ `ui/ButtonBase`。 */
+                  <ButtonBase
                     key={item.id}
-                    type="button"
                     className={s.row}
                     onClick={() => enterSession(item.id)}
                   >
                     <span className={s.rowTitle}>{item.title}</span>
                     <span className={s.rowTime}>{timeOf(item.updatedAt)}</span>
-                  </button>
+                  </ButtonBase>
                 ))}
               </section>
             ),

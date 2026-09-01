@@ -148,24 +148,27 @@
   user-select: none;
 }
 
+/*
+ * 檐上三颗钮的**落点几何**。配方(rest / hover / active / focus)全部来自
+ * `ui/IconButton` —— 这里从前那份 `.collapse:hover` 已经删掉,它与库件那条
+ * 逐字相同,留着就是第二个产地(09-01「图标钮必须消费 ui 库件」)。
+ *
+ * 留下的三件都是「它站在哪」而不是「它长什么样」:
+ *  · 36×36 = 与 tab 条同高(库件的三档说的是檐上 / 行内 / 与 Button 同高,
+ *    说不出「与 tab 同高」);
+ *  · 下轨与 tab 一条线;
+ *  · 直角 —— 它嵌在 tab 条里,圆角悬停底会在这条直线上啃出一个缺口。
+ */
 .collapse {
-  flex: none;
   width: var(--tab-h);
   height: var(--tab-h);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 0;
   border-bottom: 1px solid var(--line-1);
-  color: var(--text-3);
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
-.collapse:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
-}
-
-.collapseIcon {
+/* 图标与旁边 tab 的关闭 ✕ 同一档(--tab-icon),不是库件默认那 14px:
+ * 同一行里两种字号的图标一眼就看得出来。 */
+.collapse svg {
   width: var(--tab-icon);
   height: var(--tab-icon);
 }

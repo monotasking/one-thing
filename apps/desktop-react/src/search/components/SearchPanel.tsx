@@ -6,6 +6,7 @@ import { useFilesSource, useSessionCwd } from '../../data/files-source'
 import { useExposeStore } from '../../expose/store'
 import { Highlight } from '../../expose/components/Highlight'
 import { useSessionTime } from '../../expose/components/session-time'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { Input } from '../../ui/Input'
 import { Segmented } from '../../ui/Segmented'
 import type { SegmentedOption } from '../../ui/Segmented'
@@ -349,9 +350,9 @@ export function SearchPanel() {
           </p>
         ) : (
           visible.map((row, i) => (
-            <button
+            /* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */
+            <ButtonBase
               key={row.id}
-              type="button"
               role="option"
               aria-selected={!onMore && i === cursor}
               data-row={i}
@@ -377,7 +378,7 @@ export function SearchPanel() {
                 <Highlight text={row.text} query={searching ? query : ''} />
               </span>
               <span className={s.origin}>{originText(row.origin)}</span>
-            </button>
+            </ButtonBase>
           ))
         )}
 
@@ -403,8 +404,8 @@ export function SearchPanel() {
           * 而徽列换成内容自适应之后那个 calc 已经算不出来了。
           */}
         {moreIsItem && (
-          <button
-            type="button"
+          /* 「加载更多」是列表的**最后一条 item**(同一套行语汇)→ `ui/ButtonBase`。 */
+          <ButtonBase
             role="option"
             aria-selected={onMore}
             data-row="more"
@@ -423,7 +424,7 @@ export function SearchPanel() {
                   ? t('search.loadMore')
                   : t('search.loadMoreCount', { shown: more.shown, total: more.total }))}
             </span>
-          </button>
+          </ButtonBase>
         )}
         {more.kind === 'end' && (
           <p className={s.end}>

@@ -1,4 +1,5 @@
 import { ChevronDown } from './icons'
+import { ButtonBase } from '../ui/ButtonBase'
 import { AgentChip } from './AgentChip'
 import { useSessionsSource } from '../data/sessions-source'
 import { findSession } from '../expose/projection'
@@ -58,10 +59,13 @@ export function TopBar() {
         * 右边去,以及把这一段从拖拽把手里摘出来(拖到灯上应当是按灯,不是拖窗)。
         * 全屏时灯没了,这一块也跟着归 0(宽度过渡吃 --dur,动效档 none 直切)。 */}
       <div className={s.traffic} data-testid="topbar-traffic" aria-hidden="true" />
-      <button type="button" className={s.titleBtn} onClick={() => click(SESSIONS_ITEM_ID)}>
+      {/* 会话名这一格是**结构件**(顶带上的身份 + 下拉记号),视觉本该定制 ——
+        * 所以走裸钮三类判的第③类 `ui/ButtonBase`(只清 UA、一个像素都不画),
+        * 不是 `ui/Button`:套一颗 ghost 钮上来会在拖拽带上画出一圈边框。 */}
+      <ButtonBase className={s.titleBtn} onClick={() => click(SESSIONS_ITEM_ID)}>
         <span className={s.title}>{title}</span>
         <ChevronDown className={s.titleIcon} strokeWidth={1.75} aria-hidden="true" />
-      </button>
+      </ButtonBase>
       <div className={s.trailing}>
         <AgentChip />
       </div>

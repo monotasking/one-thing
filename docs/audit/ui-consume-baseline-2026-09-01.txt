@@ -27,34 +27,32 @@
 #   总览网格(它是二维网格导航,与候选列表不同形,迁法要单独设计)。
 # kbd-select-hover           0 条 —— 本批清零,这正是立门的起因。
 #
-bare-button-icon src/components/__tests__/error-boundary.test.tsx:53 图标钮,该 ui/IconButton
-bare-button-structural src/components/AgentChip.tsx:171 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/components/AgentChip.tsx:225 结构件裸钮,欠 ui/ButtonBase
-bare-button-icon src/components/CoverLayer.tsx:87 图标钮,该 ui/IconButton
-bare-button-structural src/components/DockTile.tsx:154 结构件裸钮,欠 ui/ButtonBase
-tooltip-native-title src/components/DockTile.tsx:154 native title= on <button>
-bare-button-icon src/components/EdgeShelf.tsx:310 图标钮,该 ui/IconButton
-bare-button-icon src/components/EdgeShelf.tsx:341 图标钮,该 ui/IconButton
-bare-button-icon src/components/EdgeShelf.tsx:349 图标钮,该 ui/IconButton
-bare-button-icon src/components/EdgeShelf.tsx:357 图标钮,该 ui/IconButton
-bare-button-icon src/components/FloatWindow.tsx:145 图标钮,该 ui/IconButton
-bare-button-icon src/components/FloatWindow.tsx:157 图标钮,该 ui/IconButton
-bare-button-icon src/components/FloatWindow.tsx:166 图标钮,该 ui/IconButton
-bare-button-text src/components/StageOverlay.tsx:90 文字动作钮,该 ui/Button
-bare-button-icon src/components/StageOverlay.tsx:101 图标钮,该 ui/IconButton
-bare-button-icon src/components/StageOverlay.tsx:109 图标钮,该 ui/IconButton
-bare-button-icon src/components/TopBar.tsx:32 图标钮,该 ui/IconButton
-bare-button-structural src/composer/components/AskForm.tsx:68 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/composer/components/AskForm.tsx:80 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/composer/components/AskForm.tsx:93 文字动作钮,该 ui/Button
-bare-button-icon src/composer/components/AskForm.tsx:108 图标钮,该 ui/IconButton
-bare-button-text src/composer/components/AskForm.tsx:157 文字动作钮,该 ui/Button
-bare-button-icon src/composer/components/AttachmentStack.tsx:115 图标钮,该 ui/IconButton
-icon-button-hover src/composer/components/Composer.module.css:418 业务面自绘图标钮 hover
-bare-button-icon src/composer/components/Composer.tsx:571 图标钮,该 ui/IconButton
-bare-button-structural src/composer/components/Composer.tsx:584 结构件裸钮,欠 ui/ButtonBase
+# ── 09-01 批 3(裸钮与 native title 清账 · 避让区外全量),删 51 条 ────────────
+#   四类在**避让区外**清零:bare-button-text 8→0、bare-button-icon 24→**1**、
+#   bare-button-structural 13→0、tooltip-native-title 6→0、icon-button-hover 1→0。
+#   (避让区 = 别批在飞的 src/content/** 与 src/ui/**;src/providers/** 已收编完。)
+#
+#   三类判逐处落地:文字动作钮 → ui/Button;图标钮 → ui/IconButton;
+#   瓦 / 卡 / 行 / 琴键 / 选项 / 通栏条这类**结构性交互件** → ui/ButtonBase
+#   (只清 UA,本地皮肤一个像素不动)。四块面的自绘图标钮皮肤整份退役
+#   (StageOverlay / CoverLayer / FloatWindow / QuickLook 的 `.close` · `.action`,
+#   composer 的 `.toolBtn:hover` —— 后者是 icon-button-hover 唯一那条命中)。
+#   native title= 的六处换 ui/Tooltip(QuickLook 三 / SessionCard 二);
+#   DockTile 那个 `title=""` 直接删 —— 空串从来不显示任何提示,而瓦自己已经有
+#   一枚 300ms 的名字标签。
+#
+#   ── 本批**当场停**的一条(库件缺口,故意留在表上)──────────────────────
+#   bare-button-icon src/composer/components/Composer.tsx —— 发送 / 停止键。
+#     它该迁 ui/IconButton,但那件只收 `testId` 一格自定义属性,
+#     `data-mode={busy ? 'stop' : 'send'}` 递不进去,而 scripts/gate-chat.mjs
+#     与 Composer.test.tsx 都逐字读它。缺口 = **IconButton 不透传
+#     ButtonHTMLAttributes**(它也不把事件交给 onClick)。补上之后一并迁。
+#
+#   照旧留着的:两条 kbd-select-handwritten(总览网格 / 检索面板)属批 4;
+#   16 条 content/** 与 providers/** 的陈账不归本批动 —— 它们是别批已经修掉、
+#   等各自合树时自己删的行。
+#
 bare-button-icon src/composer/components/Composer.tsx:617 图标钮,该 ui/IconButton
-bare-button-icon src/composer/components/StatusBar.tsx:29 图标钮,该 ui/IconButton
 bare-button-icon src/content/AppsPanel.tsx:66 图标钮,该 ui/IconButton
 tooltip-native-title src/content/blocks/inline/InlineRun.tsx:52 native title= on <span>
 bare-button-icon src/content/blocks/kinds/table/Table.tsx:70 图标钮,该 ui/IconButton
@@ -94,34 +92,10 @@ bare-button-text src/content/viewer/FileViewer.tsx:655 文字动作钮,该 ui/Bu
 bare-button-text src/content/viewer/FileViewer.tsx:660 文字动作钮,该 ui/Button
 kbd-select-handwritten src/content/viewer/JumpBar.tsx:122 手写 ↑↓ 走行,未消费 a11y 原语
 bare-button-structural src/content/viewer/JumpBar.tsx:161 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/dev/PerfHud.tsx:110 文字动作钮,该 ui/Button
-bare-button-icon src/dev/PerfHud.tsx:122 图标钮,该 ui/IconButton
-bare-button-structural src/dev/PerfHud.tsx:142 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/expose/components/ListView.tsx:57 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/expose/components/ListView.tsx:79 结构件裸钮,欠 ui/ButtonBase
 kbd-select-handwritten src/expose/components/Overview.tsx:159 手写 ↑↓ 走行,未消费 a11y 原语
-bare-button-icon src/expose/components/Overview.tsx:206 图标钮,该 ui/IconButton
-tooltip-native-title src/expose/components/QuickLook.tsx:104 native title= on <span>
-tooltip-native-title src/expose/components/QuickLook.tsx:121 native title= on <span>
-tooltip-native-title src/expose/components/QuickLook.tsx:126 native title= on <span>
-bare-button-icon src/expose/components/QuickLook.tsx:182 图标钮,该 ui/IconButton
-bare-button-icon src/expose/components/SessionCard.tsx:64 图标钮,该 ui/IconButton
-tooltip-native-title src/expose/components/SessionCard.tsx:78 native title= on <span>
-tooltip-native-title src/expose/components/SessionCard.tsx:112 native title= on <span>
 bare-button-icon src/providers/components/ModelCatalog.tsx:393 图标钮,该 ui/IconButton
 bare-button-structural src/providers/components/ProviderRail.tsx:84 结构件裸钮,欠 ui/ButtonBase
 kbd-select-handwritten src/search/components/SearchPanel.tsx:267 手写 ↑↓ 走行,未消费 a11y 原语
-bare-button-structural src/search/components/SearchPanel.tsx:352 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/search/components/SearchPanel.tsx:406 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/services/__tests__/perf.test.ts:161 文字动作钮,该 ui/Button
-bare-button-icon src/services/__tests__/perf.test.ts:166 图标钮,该 ui/IconButton
-bare-button-icon src/toc/PianoKeys.tsx:72 图标钮,该 ui/IconButton
-bare-button-icon src/workspace/components/WorkspaceOverview.tsx:136 图标钮,该 ui/IconButton
-bare-button-structural src/workspace/components/WorkspaceOverview.tsx:156 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/workspace/components/WorkspaceOverview.tsx:174 文字动作钮,该 ui/Button
-bare-button-text src/workspace/components/WorkspaceOverview.tsx:183 文字动作钮,该 ui/Button
-bare-button-text src/workspace/components/WorkspaceOverview.tsx:197 文字动作钮,该 ui/Button
-bare-button-structural src/workspace/components/WorkspaceOverview.tsx:227 结构件裸钮,欠 ui/ButtonBase
 
 # ── 09-01 批 0 新立的三条规则,存量入账(棘轮:新增即红)────────────────
 # async-busy-boolean         4 条 [debt]:source 自己记一颗

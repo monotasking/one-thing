@@ -6,6 +6,8 @@ import { HostTitle, useHostTitleText } from './HostTitle'
 import { renderContent } from '../content'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
+import { Button } from '../ui/Button'
+import { IconButton } from '../ui/IconButton'
 import { resolveIcon, PictureInPicture2, Pin, X } from './icons'
 import { exitMs } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
@@ -94,9 +96,9 @@ export function StageOverlay() {
         <header className={s.header}>
           <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
           <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
-          <button
-            type="button"
-            className={s.action}
+          {/* 「钉到边▸」是**带字的动作钮** → `ui/Button`(ghost 档);它透传
+            * ButtonHTMLAttributes,所以量矩形那一手(菜单贴它下缘开)一字未动。 */}
+          <Button
             onClick={(e) => {
               const r = e.currentTarget.getBoundingClientRect()
               setMenu({ x: r.left, y: r.bottom })
@@ -104,18 +106,15 @@ export function StageOverlay() {
           >
             <Pin className={s.icon} strokeWidth={1.75} aria-hidden="true" />
             {t('stage.pinToEdge')}
-          </button>
-          <button
-            type="button"
-            className={s.close}
+          </Button>
+          {/* 另外两颗是纯图标钮 → `ui/IconButton` 的 md 档(28×28,与旧 .close 同尺寸)。 */}
+          <IconButton
+            icon={PictureInPicture2}
+            size="md"
             onClick={stageToFloat}
-            aria-label={t('stage.toFloat')}
-          >
-            <PictureInPicture2 className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-          <button type="button" className={s.close} onClick={closeStage} aria-label={t('common.close')}>
-            <X className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-          </button>
+            label={t('stage.toFloat')}
+          />
+          <IconButton icon={X} size="md" onClick={closeStage} label={t('common.close')} />
         </header>
         <div className={s.body}>{renderContent(shown.id)}</div>
       </section>

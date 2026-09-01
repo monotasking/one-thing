@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import { ButtonBase } from '../ui/ButtonBase'
 import { useT } from '../i18n'
 
 import { keysOfChapter } from './transitions'
@@ -69,9 +70,11 @@ export function PianoKeys({
                 .filter(Boolean)
                 .join(' ')
               return (
-                <button
+                /* 琴键是裸钮三类判第③类点名的那一形(瓦 / 卡 / 行 / **琴键** / 选项):
+                 * 视觉本该定制,所以只接 `ui/ButtonBase` 清 UA。hoverIndex 与
+                 * currentIndex 是两个独立状态(见文件头),这次迁移一个字都没动。 */
+                <ButtonBase
                   key={key.index}
-                  type="button"
                   className={cls}
                   data-testid={`toc-key-${key.index}`}
                   data-current={key.index === currentIndex ? 'true' : undefined}
@@ -82,7 +85,7 @@ export function PianoKeys({
                 >
                   <span className={s.label}>{labels[key.index]}</span>
                   <span className={s.key} aria-hidden="true" />
-                </button>
+                </ButtonBase>
               )
             })}
           </Fragment>

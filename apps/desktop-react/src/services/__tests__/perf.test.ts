@@ -161,6 +161,16 @@ describe('describeTarget', () => {
     return host.firstElementChild
   }
 
+  /*
+   * 下面两例里的 `<button …>` 是**喂给 `innerHTML` 的一段字符串**,不是 JSX ——
+   * `describeTarget` 收的是一个真 DOM 节点,它要的正是「一颗光秃秃的 button
+   * 长什么样」。这里没有任何组件可以消费:换成 `ui/Button` 既渲染不出这段
+   * HTML,也就测不到那条「testid 优先、其次 aria-label」的判据。
+   * 门是逐字扫标签的,认不出字符串与 JSX 的区别,所以逐处摘掉并写明理由。
+   *
+   * ui-consume-allow: bare-button-text — HTML 字符串夹具,喂 innerHTML 的被测输入,不是 JSX
+   * ui-consume-allow: bare-button-icon — 同上,`<button aria-label>×</button>` 是被测的 DOM 形状本身
+   */
   it('testid 优先 —— 门与测试就是拿它定位的,复现代价最低', () => {
     expect(describeTarget(el('<button data-testid="dock-tile-sessions" aria-label="会话">x</button>')))
       .toBe('button[data-testid="dock-tile-sessions"]')

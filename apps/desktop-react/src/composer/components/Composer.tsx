@@ -28,6 +28,8 @@ import { composerSink, useComposerBusy } from '../sink'
 import { revokeAllAttachments, useComposerStore } from '../store'
 import { matchCommands, matchFiles } from '../transitions'
 import { useListSelection } from '../../ui/a11y/list-selection'
+import { ButtonBase } from '../../ui/ButtonBase'
+import { IconButton } from '../../ui/IconButton'
 import type { TokenHit } from '../types'
 import { AskForm } from './AskForm'
 import { AttachmentStack } from './AttachmentStack'
@@ -568,21 +570,24 @@ export function Composer() {
                     e.target.value = ''
                   }}
                 />
-                <button
-                  type="button"
+                {/* 回形针消费 `ui/IconButton`(sm 档 22×22,图标 14px —— 与从前
+                  * 「--sp-1 内边距 + --composer-attach-icon」逐像素相同)。
+                  * 本地那条 `.toolBtn:hover`(只换字色、不换底)是 `icon-button-hover`
+                  * 门唯一那条命中,随这次迁移一起删 —— 配方从此只有库件一个产地。 */}
+                <IconButton
+                  icon={PaperclipIcon}
                   className={s.toolBtn}
-                  aria-label={t('composer.attach')}
+                  label={t('composer.attach')}
                   onClick={() => fileRef.current?.click()}
-                >
-                  <PaperclipIcon className={s.attachIcon} strokeWidth={1.8} aria-hidden="true" />
-                </button>
+                />
 
                 {/*
                   * 三层事实都答不上来时药丸写的是「选择模型」——**不拿目录里
                   * 第一家第一型去顶**(SessionSummary.model 早就定下的口径)。
                   */}
-                <button
-                  type="button"
+                {/* 药丸是结构件(裸钮三类判第③类):描边丸形是这块面自己的语汇,
+                  * 所以只接 `ui/ButtonBase` 清 UA,`.modelPill` 皮肤一个像素不动。 */}
+                <ButtonBase
                   className={s.modelPill}
                   aria-label={
                     selection
@@ -594,7 +599,7 @@ export function Composer() {
                 >
                   {selection ? selection.model : t('composer.modelUnset')}
                   <ChevronDown className={s.pillChev} strokeWidth={2} aria-hidden="true" />
-                </button>
+                </ButtonBase>
 
                 {/* 开卡的那一眼要是最新的:悬停 / 聚焦时顺手再拉一次读数
                     (Vue 壳 InputBox 的同一判例)。没有会话时 refresh 是恒等。 */}
@@ -613,6 +618,12 @@ export function Composer() {
                  * 在旁边再长一颗停止键会让那个点在两种状态下指向不同的东西。
                  * `data-testid` 因此**恒定**(门按位置找它,不按状态找),
                  * 状态挂在 `data-mode` 上 —— 那才是「它此刻是哪副面孔」的产地。
+                 *
+                 * ── 09-01 批 3(裸钮清账)在这里**当场停**了 ─────────────────
+                 * 它该迁 `ui/IconButton`,但迁不动:那件只收 `testId` 一格自定义
+                 * 属性,`data-mode` 递不进去 —— 而 `scripts/gate-chat.mjs` 与
+                 * `Composer.test.tsx` 都逐字读它。库件缺口(IconButton 不透传
+                 * ButtonHTMLAttributes)已上报,补上之后这一处一并迁。
                  */}
                 <button
                   type="button"

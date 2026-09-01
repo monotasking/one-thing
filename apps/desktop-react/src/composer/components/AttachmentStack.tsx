@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useT } from '../../i18n'
-import { resolveIcon } from '../../components/icons'
+import { IconButton } from '../../ui/IconButton'
+import { resolveIcon, X } from '../../components/icons'
 import { ATT_GRACE_MS } from '../../components/motion'
 import { useComposerStore } from '../store'
 import { fileExt, layoutAttachments } from '../transitions'
@@ -112,17 +113,25 @@ export function AttachmentStack() {
                     <span className={s.attDocExt}>{fileExt(a.name)}</span>
                   </>
                 )}
-                <button
-                  type="button"
+                {/*
+                  * 卡角那颗删除钮消费 `ui/IconButton`(xs 档 18px = 旧 --att-x 逐像素),
+                  * 字形从字面的 `✕` 换成 lucide 的 X —— 全壳图标钮只有一个字形产地。
+                  * `tip` 关掉:卡本来就只有这一颗钮,悬停再飘一句「移除附件」会盖住
+                  * 旁边的卡(与 FilesPanel 行尾 ⋯ 同一条判例)。
+                  *
+                  * 从前那句 `e.stopPropagation()` 随迁移去掉:整条祖先链
+                  * (.attCard / .attRow / .attStack / .attFloat / composer 各层)
+                  * **没有任何 click 监听**,它拦不到任何东西;而库件把 onClick 收成
+                  * 无参回调(它不透传 ButtonHTMLAttributes,见交卷报告的库件缺口)。
+                  */}
+                <IconButton
+                  icon={X}
+                  size="xs"
+                  tip={false}
                   className={s.attX}
-                  aria-label={t('composer.removeAttachment')}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    remove(card.id)
-                  }}
-                >
-                  ✕
-                </button>
+                  label={t('composer.removeAttachment')}
+                  onClick={() => remove(card.id)}
+                />
               </span>
             )
           })}

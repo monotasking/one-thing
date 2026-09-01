@@ -18,6 +18,8 @@ import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
 import { Tabs } from '../ui/Tabs'
 import type { TabSpec } from '../ui/Tabs'
+import { ButtonBase } from '../ui/ButtonBase'
+import { IconButton } from '../ui/IconButton'
 import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, PictureInPicture2, X } from './icons'
 import type { LucideIcon } from './icons'
 import { FLASH_MS } from './motion'
@@ -307,8 +309,10 @@ export function EdgeShelf({ side }: Props) {
       data-shelf={side}
     >
       {shelf.collapsed ? (
-        <button
-          type="button"
+        /* 细梁不是一颗图标钮:它是**整条边那么长**的一块结构件(展开把手),
+         * 所以走裸钮三类判的第③类 —— `ui/ButtonBase` 只清 UA,那条 100%×100%
+         * 的皮肤(含 hover 时 railIcon 转正色)原样留在本地。 */
+        <ButtonBase
           className={s.rail}
           onClick={toggleCollapsed}
           aria-label={t('shelf.expand', { name })}
@@ -317,7 +321,7 @@ export function EdgeShelf({ side }: Props) {
             const ExpandIcon = EXPAND_ICON[side]
             return <ExpandIcon className={s.railIcon} strokeWidth={1.75} aria-hidden="true" />
           })()}
-        </button>
+        </ButtonBase>
       ) : (
         <>
           <div
@@ -338,30 +342,27 @@ export function EdgeShelf({ side }: Props) {
                 label={name}
               />
             </div>
-            <button
-              type="button"
+            {/* 檐上三颗图标钮全部消费 `ui/IconButton`(09-01 立法)。本地只剩
+              * **落点几何**:tab 条那一行的 36×36 与下轨(`.collapse`)——
+              * 库件的三档尺寸说的是「檐上/行内/与 Button 同高」,说不出「与 tab 同高」。 */}
+            <IconButton
+              icon={PictureInPicture2}
               className={s.collapse}
               onClick={() => active && edgeToFloat(active)}
-              aria-label={t('shelf.popOut', { name })}
-            >
-              <PictureInPicture2 className={s.collapseIcon} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
+              label={t('shelf.popOut', { name })}
+            />
+            <IconButton
+              icon={CollapseIcon}
               className={s.collapse}
               onClick={toggleCollapsed}
-              aria-label={t('shelf.collapse', { name })}
-            >
-              <CollapseIcon className={s.collapseIcon} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
+              label={t('shelf.collapse', { name })}
+            />
+            <IconButton
+              icon={X}
               className={s.collapse}
               onClick={() => closeShelf(side)}
-              aria-label={t('shelf.closeAll', { name })}
-            >
-              <X className={s.collapseIcon} strokeWidth={1.75} aria-hidden="true" />
-            </button>
+              label={t('shelf.closeAll', { name })}
+            />
           </div>
           <div className={s.body} data-shelf-body={side} data-panel={active ?? ''}>
             {tabs.map((tab) => (

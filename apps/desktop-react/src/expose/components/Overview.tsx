@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
 import { ChevronDown, ChevronRight, Plus, Search } from '../../components/icons'
 import { Button } from '../../ui/Button'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { useT } from '../../i18n'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
@@ -203,8 +204,9 @@ export function Overview() {
              */}
             <div className={s.sentinel} data-sentinel={group.id} aria-hidden="true" />
             <header className={s.groupHead} data-testid={`group-head-${group.id}`}>
-              <button
-                type="button"
+              {/* 组头开关是**通栏的一行**(caret + 组名 + 路径),视觉本该定制 ——
+                * 裸钮三类判第③类,消费 `ui/ButtonBase` 只清 UA,皮肤一个像素不动。 */}
+              <ButtonBase
                 className={s.groupToggle}
                 data-testid={`group-toggle-${group.id}`}
                 aria-expanded={!collapsed}
@@ -216,7 +218,7 @@ export function Overview() {
                   <Highlight text={name ?? group.id} query={query} />
                 </span>
                 <span className={s.groupPath}>{path}</span>
-              </button>
+              </ButtonBase>
               {/*
                * 进组入口。**数字没了** —— 08-30 用户拍板的计数禁令:tab / 列表 / 分组头
                * 一律不带个数。原来这里是一颗写着「N sessions」的按钮,既是入口也是徽记;

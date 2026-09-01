@@ -180,7 +180,15 @@
 
 /* 文字键:accent 色的裸文字。它不是按钮族的第三个变体 —— 卡上放三颗描边按钮
  * 会让卡变成一个工具条,而这三件是「顺手改一下」,不是主动作。 */
+/*
+ * 三枚文字键迁 `ui/Button`(ghost)之后,本地留的是**落点几何**:它们是这张卡
+ * 定稿的「一排文字键」(accent 字色、fs-micro、贴着卡底站),不是一排 28px 的
+ * ghost 钮 —— 所以把定高 / 内边距 / 边框 / 字号收回来。交互态(hover 底、
+ * disabled 半透明、焦点环)全归库件,`.op:disabled` 那份自绘的半透明已经删掉
+ * (库件的 --btn-disabled-o 就是同一个 0.45)。
+ */
 .op {
+  height: auto;
   padding: 0;
   border: none;
   background: none;
@@ -188,12 +196,6 @@
   font-family: var(--font-ui);
   font-size: var(--fs-micro);
   font-weight: 600;
-  cursor: pointer;
-}
-
-.op:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 .opDanger {

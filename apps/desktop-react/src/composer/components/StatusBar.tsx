@@ -1,4 +1,5 @@
 import { useT } from '../../i18n'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { ChevronDown } from '../../components/icons'
 import { truncate } from '../transitions'
 import type { StatusState } from '../types'
@@ -26,8 +27,9 @@ export function StatusBar({ status, open, onToggle }: {
     : t('status.done', { name: status.name, count: status.steps.length })
 
   return (
-    <button
-      type="button"
+    /* 整条状态条是一颗**结构性交互件**(通栏的一行,视觉本该定制)——
+     * 裸钮三类判第③类,消费 `ui/ButtonBase` 只清 UA,`.statusbar` 皮肤不动。 */
+    <ButtonBase
       className={s.statusbar}
       aria-label={t('status.toggle')}
       aria-expanded={open}
@@ -40,6 +42,6 @@ export function StatusBar({ status, open, onToggle }: {
         strokeWidth={2}
         aria-hidden="true"
       />
-    </button>
+    </ButtonBase>
   )
 }

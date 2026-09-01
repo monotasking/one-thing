@@ -5,6 +5,7 @@ import { findItem } from '../stage/items'
 import { HostTitle, useHostTitleText } from './HostTitle'
 import { renderContent } from '../content'
 import { useT } from '../i18n'
+import { IconButton } from '../ui/IconButton'
 import { resolveIcon, X } from './icons'
 import { exitMs } from './motion'
 import type { StageItemSpec } from '../stage/types'
@@ -87,14 +88,9 @@ export function CoverLayer() {
         <header className={s.header}>
           <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
           <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
-          <button
-            type="button"
-            className={s.close}
-            onClick={closeCover}
-            aria-label={t('cover.close')}
-          >
-            <X className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-          </button>
+          {/* 檐上那颗 ✕ 消费 `ui/IconButton`(md 档 = 28×28,与旧 `.close` 同尺寸);
+            * 本地皮肤整份退役,hover / active / 焦点环从此随件走。 */}
+          <IconButton icon={X} size="md" onClick={closeCover} label={t('cover.close')} />
         </header>
         <div className={s.body}>{renderContent(shown.id)}</div>
       </section>

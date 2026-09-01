@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react'
 import { dumpPerf, perfReport, subscribePerf, type PerfEntry } from '../services/perf'
 import { overBudget } from '../perf-budget'
+import { Button } from '../ui/Button'
+import { ButtonBase } from '../ui/ButtonBase'
+import { IconButton } from '../ui/IconButton'
+import { X } from '../components/icons'
 import { useT } from '../i18n'
 import type { TFn } from '../i18n'
 import s from './PerfHud.module.css'
@@ -107,8 +111,9 @@ export function PerfHud() {
           {bad ? t('perf.budgetOver') : t('perf.budgetOk')}
           {worst > 0 ? ` · ${worst}ms` : ''}
         </span>
-        <button
-          type="button"
+        {/* 「聚合」是文字动作钮 → `ui/Button`(ghost);本地 `.report` 只补落点
+          * 几何(HUD 通体 fs-nano,库件那 28px 高会把这条檐撑开一倍)。 */}
+        <Button
           className={s.report}
           data-testid="perf-hud-report"
           aria-label={t('perf.reportHint')}
@@ -118,15 +123,16 @@ export function PerfHud() {
           }}
         >
           {t('perf.report')}
-        </button>
-        <button
-          type="button"
+        </Button>
+        {/* 关掉 HUD 是图标钮 → `ui/IconButton`(xs 档);字形从字面的 `×`
+          * 换成 lucide 的 X —— 全壳图标钮只有一个字形产地。 */}
+        <IconButton
+          icon={X}
+          size="xs"
           className={s.close}
-          aria-label={t('perf.close')}
+          label={t('perf.close')}
           onClick={() => setOpen(false)}
-        >
-          ×
-        </button>
+        />
       </header>
       {entries.length === 0 ? (
         <p className={s.empty}>{t('perf.empty')}</p>
@@ -139,8 +145,8 @@ export function PerfHud() {
             const phases = phaseLine(e)
             return (
               <li key={key} className={s.row}>
-                <button
-                  type="button"
+                {/* 整行是一颗按钮,长得就是那一行本身 → 结构件,`ui/ButtonBase`。 */}
+                <ButtonBase
                   className={s.rowBtn}
                   aria-expanded={on}
                   aria-label={t('perf.rowDetail')}
@@ -151,7 +157,7 @@ export function PerfHud() {
                   </span>
                   {/* 折叠态的一行小字。没有归因(跨域 / 浏览器没给)就不画。 */}
                   {summary ? <span className={s.attr}>{summary}</span> : null}
-                </button>
+                </ButtonBase>
                 {on ? (
                   <div className={s.detail}>
                     {phases ? <p className={s.phase}>{phases}</p> : null}

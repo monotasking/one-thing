@@ -8,6 +8,7 @@ import { setSnapSide } from './snap-hint'
 import { renderContent } from '../content'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
+import { IconButton } from '../ui/IconButton'
 import { resolveIcon, Maximize2, Pin, X } from './icons'
 import { exitMs } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
@@ -55,6 +56,14 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   const [live, setLive] = useState<FloatRect | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const liveRef = useRef<FloatRect | null>(null)
+  /*
+   * 钉边菜单贴着**那颗钮**的下缘开。从前坐标取自 `e.currentTarget` ——
+   * `ui/IconButton` 只把 `onClick` 收成一个无参回调(它不透传 ButtonHTMLAttributes),
+   * 拿不到事件,所以改成量**包着它的那一格**:span 是 inline-flex 且 flex:none,
+   * 逐像素等于钮自己的矩形(与 FilesPanel 行尾 ⋯ 的 wrapRef 同一手)。
+   * 刻意不改成「在 onPointerDown 里记一次」:那条路键盘按 ↵ 走不到,菜单会开在 0,0。
+   */
+  const pinRef = useRef<HTMLSpanElement>(null)
 
   const rect = live ?? stored
   const item = findItem(id)
@@ -150,36 +159,35 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
         <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
         <HostTitle id={id} fallback={t(item.titleKey)} className={s.title} />
 
-        <button
-          type="button"
-          className={s.action}
-          aria-label={t('stage.pinToEdge')}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect()
-            setMenu({ x: r.left, y: r.bottom })
-          }}
-        >
-          <Pin className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={s.action}
-          aria-label={t('float.toStage')}
+        {/* 檐上三颗全部消费 `ui/IconButton`;本地那份 `.action` 皮肤已删 ——
+          * 28×28 正是库件的 md 档,hover / active / 焦点环从此随件走。
+          * `onPointerDown` 那一下仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */}
+        <span ref={pinRef} className={s.actionSlot}>
+          <IconButton
+            icon={Pin}
+            size="md"
+            label={t('stage.pinToEdge')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              const r = pinRef.current?.getBoundingClientRect()
+              if (r) setMenu({ x: r.left, y: r.bottom })
+            }}
+          />
+        </span>
+        <IconButton
+          icon={Maximize2}
+          size="md"
+          label={t('float.toStage')}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => openAs(id, { kind: 'stage' })}
-        >
-          <Maximize2 className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={s.action}
-          aria-label={t('float.toDock')}
+        />
+        <IconButton
+          icon={X}
+          size="md"
+          label={t('float.toDock')}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => closeToDock(id)}
-        >
-          <X className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-        </button>
+        />
       </header>
 
       <div className={s.body}>{renderContent(id)}</div>

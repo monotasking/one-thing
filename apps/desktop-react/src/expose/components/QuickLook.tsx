@@ -3,6 +3,8 @@ import { ChevronLeft, ChevronRight, X } from '../../components/icons'
 import { SKELETON_DELAY_MS } from '../../components/motion'
 import { useDelayedFlag } from '../../components/useDelayedFlag'
 import { Button } from '../../ui/Button'
+import { IconButton } from '../../ui/IconButton'
+import { Tooltip } from '../../ui/Tooltip'
 import { Kbd } from '../../ui/Kbd'
 import { plural, useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
@@ -101,9 +103,16 @@ export function QuickLook({ sessionId }: Props) {
           <div className={s.headText}>
             <div className={s.titleLine}>
               <span className={s.title}>{session.title}</span>
-              <span className={s.kind} title={t(KIND_TITLE[session.kind])}>
-                {t(KIND_BADGE[session.kind])}
-              </span>
+              {/*
+               * kind 徽只写一个字(「房」「派」),全名靠提示补 —— 从前那是 native
+               * `title=`(全仓禁令),现在走 `ui/Tooltip`,文案仍是同一个 KIND_TITLE 键。
+               * 锚点是一枚 `<span>`:它不进 Tab 序,所以键盘那条路到不了。这不是回退 ——
+               * native `title=` 同样只对鼠标出现,而 Tooltip 的文件头把「聚焦锚点也出提示」
+               * 说给的是**控件**;把徽改成可聚焦元素等于往 Tab 序里塞一个不能操作的东西。
+               */}
+              <Tooltip content={t(KIND_TITLE[session.kind])}>
+                <span className={s.kind}>{t(KIND_BADGE[session.kind])}</span>
+              </Tooltip>
             </div>
 
             {/*
@@ -117,18 +126,16 @@ export function QuickLook({ sessionId }: Props) {
              * (判据在 projection.sessionMessageCountOf,组件不再判一次)。
              */}
             <div className={s.metaLine} data-testid="quicklook-meta">
+              {/* 两枚 chip 都会被 22ch 截断,全名靠提示补;同上,native title= 换 ui/Tooltip。 */}
               {session.model && (
-                <span className={s.chip} title={t('quicklook.modelTitle', { model: session.model })}>
-                  {session.model}
-                </span>
+                <Tooltip content={t('quicklook.modelTitle', { model: session.model })}>
+                  <span className={s.chip}>{session.model}</span>
+                </Tooltip>
               )}
               {session.agentId && (
-                <span
-                  className={s.chip}
-                  title={t('quicklook.agentTitle', { agent: session.agentId })}
-                >
-                  {session.agentId}
-                </span>
+                <Tooltip content={t('quicklook.agentTitle', { agent: session.agentId })}>
+                  <span className={s.chip}>{session.agentId}</span>
+                </Tooltip>
               )}
               {session.messageCount !== null && (
                 <span className={s.count} data-testid="quicklook-message-count">
@@ -179,14 +186,9 @@ export function QuickLook({ sessionId }: Props) {
           >
             {t('quicklook.enter')}
           </Button>
-          <button
-            type="button"
-            className={s.close}
-            onClick={closeQuickLook}
-            aria-label={t('quicklook.dismiss')}
-          >
-            <X className={s.closeIcon} strokeWidth={1.75} aria-hidden="true" />
-          </button>
+          {/* 檐上那颗 ✕ 消费 `ui/IconButton`(md 档 28×28 = 旧 `.close` 同尺寸);
+            * 本地那份皮肤整份退役,hover / active / 焦点环从此随件走。 */}
+          <IconButton icon={X} size="md" onClick={closeQuickLook} label={t('quicklook.dismiss')} />
         </header>
 
         {/* key 换了就重放一次淡入 —— 左右换会话时的 120ms 淡切靠这一行。 */}

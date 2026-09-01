@@ -37,51 +37,29 @@
   font-weight: 600;
 }
 
-/* 「聚合」小钮:把整个环按名字聚成 p50/p95/max 打进控制台。 */
+/*
+ * 檐上两颗钮的配方 09-01 批 3 全部迁库件(`ui/Button` ghost / `ui/IconButton` xs),
+ * 连同它们各自的 `:hover` 与那两份**自绘的焦点环**一起删 —— 焦点环全仓只有
+ * `styles/global.css` 的 `:focus-visible` 一个产地(四轴第一条),HUD 从前
+ * 各写一份正是「各面自绘」的样子。
+ *
+ * 这里只剩两格落点:
+ *  · 位置(顶到行尾)与**行高**:HUD 通体 fs-nano,库件那 28px 定高会把这条檐
+ *    撑成两倍高,所以 height 交回给内容(auto);
+ *  · `pointer-events: auto` —— `.hud` 本体不吃点击(它盖在界面上),
+ *    能被点到的只有这两颗钮。
+ */
 .report {
   margin-left: auto;
+  height: auto;
   padding: 0 var(--sp-1);
-  border: 1px solid var(--line-1);
-  border-radius: var(--r-1);
-  background: transparent;
-  color: var(--text-3);
   font-size: var(--fs-nano);
   line-height: 1.6;
-  cursor: default;
   pointer-events: auto;
-}
-
-.report:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
-}
-
-.report:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 1px;
 }
 
 .close {
-  padding: 0 var(--sp-1);
-  border: 0;
-  border-radius: var(--r-1);
-  background: transparent;
-  color: var(--text-3);
-  font-size: var(--fs-body);
-  line-height: 1;
-  cursor: default;
-  /* 唯一一个要能被点到的东西。 */
   pointer-events: auto;
-}
-
-.close:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
-}
-
-.close:focus-visible {
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 1px;
 }
 
 .empty {

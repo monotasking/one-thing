@@ -1,6 +1,8 @@
 import { useRef } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useT } from '../../i18n'
+import { Button } from '../../ui/Button'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { useComposerStore } from '../store'
 import {
   askAllAnswered,
@@ -65,34 +67,39 @@ export function AskForm({ spec }: { spec: AskSpec }) {
   return (
     <div className={s.askForm}>
       <div className={s.askTop}>
-        <button
-          type="button"
+        {/* ‹ › 是**画在字面上**的一对翻页记号(圆形描边、字号 fs-label),
+          * 不是 lucide 图标钮 —— 视觉本该定制,所以走裸钮三类判第③类
+          * `ui/ButtonBase`(只清 UA),`.askArrow` 那份皮肤一个像素不动。 */}
+        <ButtonBase
           className={s.askArrow}
           aria-label={t('ask.prev')}
           disabled={idx === 0}
           onClick={() => move(-1)}
         >
           ‹
-        </button>
+        </ButtonBase>
         <span className={s.askStep}>
           {t('ask.step', { index: idx + 1, total: spec.questions.length })}
         </span>
-        <button
-          type="button"
+        <ButtonBase
           className={s.askArrow}
           aria-label={t('ask.next')}
           disabled={idx === spec.questions.length - 1}
           onClick={() => move(1)}
         >
           ›
-        </button>
+        </ButtonBase>
         <span className={s.askQ}>
           {question.q}
           {question.multi && <span className={s.askMulti}>{t('ask.multi')}</span>}
         </span>
-        <button type="button" className={s.askReject} onClick={reject}>
+        {/* 「拒绝」是文字动作钮 → `ui/Button` 的 ghost 档。本地只留一格落点
+          * (`margin-left: auto`,把它顶到行尾);rest / hover / disabled / 焦点环
+          * 全部随件走 —— 从前那句「hover 转 danger 字色」随皮肤一起退役,
+          * 库件没有 danger 档(留账见交卷报告的库件缺口清单)。 */}
+        <Button className={s.askReject} onClick={reject}>
           {t('ask.reject')}
-        </button>
+        </Button>
       </div>
 
       <div
@@ -105,9 +112,9 @@ export function AskForm({ spec }: { spec: AskSpec }) {
             .filter(Boolean)
             .join(' ')
           return (
-            <button
+            /* 选项横条 = 裸钮三类判第③类(结构性交互件)→ `ui/ButtonBase`。 */
+            <ButtonBase
               key={o.l}
-              type="button"
               className={on ? `${s.askBar} ${s.askBarOn}` : s.askBar}
               aria-pressed={on}
               onClick={() => answer(i)}
@@ -115,7 +122,7 @@ export function AskForm({ spec }: { spec: AskSpec }) {
               <span className={mark} aria-hidden="true" />
               <span className={s.askLabel}>{o.l}</span>
               <span className={s.askDesc}>{o.d}</span>
-            </button>
+            </ButtonBase>
           )
         })}
 
@@ -154,14 +161,17 @@ export function AskForm({ spec }: { spec: AskSpec }) {
 
       <div className={s.askFoot}>
         <span className={s.askEsc}>{t('ask.hint')}</span>
-        <button
-          type="button"
+        {/* 提交是这张表上唯一的主动作 → `ui/Button` 的 primary + pill
+          * (从前那份 accent 实底 + r-full 的手写皮肤逐字就是这两档)。 */}
+        <Button
+          variant="primary"
+          pill
           className={s.askSubmit}
           disabled={!all}
           onClick={onSubmit}
         >
           {t('ask.submit', { done, total: spec.questions.length })}
-        </button>
+        </Button>
       </div>
     </div>
   )

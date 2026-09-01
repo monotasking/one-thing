@@ -4,6 +4,7 @@ import { DEFAULT_AGENT_ID } from '@shared/ipc/agents'
 import { ChevronDown } from './icons'
 import { gradientIndexOf } from './gradient'
 import { Menu, MenuItem, MenuSeparator } from '../ui/Menu'
+import { ButtonBase } from '../ui/ButtonBase'
 import { useAgentMenu } from './agent-menu'
 import {
   findAgentOption,
@@ -168,9 +169,10 @@ export function AgentChip() {
 
   return (
     <>
-      <button
+      {/* 徽是结构件(裸钮三类判第③类):形是这块面自己的,所以只接
+        * `ui/ButtonBase` 清 UA,`.chip` 那份皮肤一个像素都不动。 */}
+      <ButtonBase
         ref={ref}
-        type="button"
         className={s.chip}
         aria-haspopup="menu"
         aria-expanded={open}
@@ -182,7 +184,7 @@ export function AgentChip() {
         <AgentAvatar agent={active} fallbackName={activeName} size="chip" />
         <span className={s.name}>{activeName}</span>
         <ChevronDown className={s.chevron} strokeWidth={1.75} aria-hidden="true" />
-      </button>
+      </ButtonBase>
 
       {anchor && (
         <Menu x={anchor.x} y={anchor.y} onClose={() => setOpen(false)} label={t('agent.menuLabel')}>
@@ -222,9 +224,10 @@ export function AgentChip() {
               管理页不在本批。渲染但**不可点** —— 画一个点了没反应的入口比不画更糟,
               所以它是 disabled 而不是一个 noop:手感上当场说清「这里还没通」。
             */}
-            <button type="button" className={s.manage} role="menuitem" disabled>
+            {/* 菜单项是结构件(role=menuitem)→ `ui/ButtonBase`。 */}
+            <ButtonBase className={s.manage} role="menuitem" disabled>
               {t('agent.manage')}
-            </button>
+            </ButtonBase>
           </div>
         </Menu>
       )}

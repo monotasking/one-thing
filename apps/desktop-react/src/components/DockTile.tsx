@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
+import { ButtonBase } from '../ui/ButtonBase'
 import { DockPreview } from './DockPreview'
 import type { StageBadge } from '../stage/types'
 import { TOOLTIP_DELAY_MS } from './motion'
@@ -159,8 +160,9 @@ export function DockTile({
          * 所以点它的意思只可能是「那就打开吧」—— 不该再让用户把手移回瓦上。 */
         <DockPreview id={previewId} title={title} side={labelSide} onOpen={openPreview} />
       )}
-      <button
-        type="button"
+      {/* 瓦是裸钮三类判的第③类(结构性交互件:视觉本该定制)—— 消费
+        * `ui/ButtonBase` 只清 UA,磁性放大 / 色底 / 徽 / 点那一整套皮肤原样留在本地。 */}
+      <ButtonBase
         ref={tileRef as (el: HTMLButtonElement | null) => void}
         className={
           plus
@@ -184,7 +186,6 @@ export function DockTile({
         onContextMenu={onContextMenu}
         aria-label={title}
         data-testid={testId}
-        title=""
       >
         {/* 有没有色底,画的都是同一枚图标 —— 色底只是这块瓦的另一张脸,不是另一种瓦。 */}
         <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
@@ -198,7 +199,7 @@ export function DockTile({
             那张表管的是**运行点**,它贴的是朝外那一侧。 */}
         {dot && <span className={s.unread} data-testid="dock-unread" aria-hidden="true" />}
         {running && <span className={`${s.dot} ${s[DOT_CLASS[labelSide]]}`} aria-hidden="true" />}
-      </button>
+      </ButtonBase>
     </div>
   )
 }

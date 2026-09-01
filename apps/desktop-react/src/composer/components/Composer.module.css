@@ -407,21 +407,14 @@
   font-size: var(--fs-label);
 }
 
+/*
+ * 回形针迁 `ui/IconButton` 之后本地只剩一格**落点**:这一行是 baseline 对齐的
+ * flex,钮要自己站到中线上。配方(rest text-3 / hover 换底又换字 / active /
+ * 焦点环)全归库件 —— 从前那条 `.toolBtn:hover` 是 `icon-button-hover` 门
+ * 唯一一条命中,它「只换字色不换底」正是那条法说的「各面自绘必然走形」。
+ */
 .toolBtn {
-  display: flex;
   align-self: center;
-  padding: var(--sp-1);
-  color: var(--text-3);
-  transition: color var(--dur) var(--ease);
-}
-
-.toolBtn:hover {
-  color: var(--text-1);
-}
-
-.attachIcon {
-  width: var(--composer-attach-icon);
-  height: var(--composer-attach-icon);
 }
 
 .sendIcon {
@@ -653,6 +646,19 @@
   opacity: 1;
 }
 
+/*
+ * 迁 `ui/IconButton` 之后要**把这颗钮的脸按回来**:库件的 hover 配方是
+ * `.btn:hover:not(:disabled)`(0,3,0),比上面那条 `.attX`(0,1,0) 高两级,
+ * 不接住的话指针一压上来,黑底白叉当场变成浅灰底深色叉 —— 而它压在照片上,
+ * 那一档对比度是它能被看见的全部理由。所以这里用**同样的 (0,3,0)** 接住,
+ * 靠产地次序(本文件在库件之后)赢:显形与否由卡的 hover 管(上面那条),
+ * 钮自己在两态里长得一样 —— 与迁移前逐像素相同。
+ */
+.attX:hover:not(:disabled) {
+  background: var(--text-1);
+  color: var(--surface-2);
+}
+
 .attCount {
   position: absolute;
   top: 0;
@@ -729,15 +735,11 @@
   vertical-align: 2px;
 }
 
+/* 「拒绝」迁 `ui/Button`(ghost)之后本地只剩一格落点:把它顶到行尾。
+ * 字号 / 颜色 / hover / disabled 全归库件 —— 从前那条 `:hover{color:danger}`
+ * 一并退役(Button 没有 danger 档,留账进交卷报告)。 */
 .askReject {
   margin-left: auto;
-  font-size: var(--fs-micro);
-  color: var(--text-3);
-  transition: color var(--dur) var(--ease);
-}
-
-.askReject:hover {
-  color: var(--danger);
 }
 
 /* 几何钉死:高度按「选项最多的题 + 恒在的其他行」预留,翻题时面板一动不动。 */
@@ -856,17 +858,8 @@
   color: var(--text-3);
 }
 
+/* 提交钮迁 `ui/Button`(primary + pill)之后本地只剩一格落点:顶到行尾。
+ * accent 实底 / r-full / disabled 半透明三件都是库件那两档的原话。 */
 .askSubmit {
   margin-left: auto;
-  padding: var(--sp-1) var(--sp-4);
-  border: 1px solid var(--accent);
-  border-radius: var(--r-full);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: var(--fs-meta);
-}
-
-.askSubmit:disabled {
-  opacity: var(--btn-disabled-o);
-  cursor: default;
 }

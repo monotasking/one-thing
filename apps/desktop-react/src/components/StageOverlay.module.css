@@ -62,42 +62,16 @@
   color: var(--text-1);
 }
 
-.action {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  height: var(--btn-sm);
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-2);
-  color: var(--text-2);
-  font-size: var(--fs-meta);
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-
-.action:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
-}
-
+/*
+ * 檐上三颗钮的皮肤整份退役(09-01 批 3 清账):「钉到边」走 `ui/Button` 的
+ * ghost 档,另两颗走 `ui/IconButton` 的 md 档 —— 从前的 `.action` / `.close`
+ * 是「各面自绘图标钮」那条病在这块面上的两个产地。
+ * 只剩这一格:Pin 那枚图标在按钮里的字号(它是 Button 的 children,
+ * 尺寸按库件文件头的分工归调用方)。
+ */
 .icon {
   width: var(--fs-label);
   height: var(--fs-label);
-}
-
-.close {
-  width: var(--btn-sm);
-  height: var(--btn-sm);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--r-2);
-  color: var(--text-2);
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
-}
-
-.close:hover {
-  background: var(--st-hover);
-  color: var(--text-1);
 }
 
 .body {
