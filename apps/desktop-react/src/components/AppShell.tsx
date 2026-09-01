@@ -45,14 +45,6 @@ const ALIGN_CLASS: Record<'x' | 'y', Record<DockAlign, string>> = {
   y: { start: s.alignYStart, center: s.alignYCenter, end: s.alignYEnd },
 }
 
-/** 预留哪一条边。与 EDGE_CLASS 是两张表:那张说 Dock 贴哪儿,这张说外壳让哪儿。 */
-const RESERVE_CLASS: Record<DockEdge, string> = {
-  bottom: s.reserveBottom,
-  top: s.reserveTop,
-  left: s.reserveLeft,
-  right: s.reserveRight,
-}
-
 /** 预留量随大小档走;md 是 token 的缺省值,所以只有两档要覆写。 */
 const RESERVE_SIZE_CLASS: Partial<Record<DockSize, string>> = {
   sm: s.reserveSm,
@@ -311,16 +303,14 @@ export function AppShell() {
     .join(' ')
 
   /*
-   * 「覆盖必须有布局预留」在 Dock 上的落地(08-31 P0)。**只有常显档才让** ——
-   * 自动隐藏时 Dock 平时不在屏上,让了就是白让一整条边。
-   * 让多少由 CSS 那两个式子说(tokens.css 的 --dock-reserve-*),这里只说「让哪条边、
-   * 按哪一档」:哪一截该多宽是设计常数,不是组件该算的数。
+   * 「覆盖必须有布局预留」在 Dock 上的落地(08-31 P0),09-01 改成**表面内衬形**。
+   *
+   * 宿主只说两件事:**让哪条边**(data-dock-reserve,自动隐藏档不挂 = 一格不让)
+   * 与**按哪一档**(只换 --dock-tile 一个数)。「哪些面要让、让多少」全在
+   * AppShell.module.css 那一段里写一次 —— 让位不再打在外壳身上(那会把面整体顶掉、
+   * 露出外壳自己的底色,正是用户报的那条异色带),而是打在吃到那条边的面自己身上。
    */
-  const shellClass = [
-    s.shell,
-    autohide ? null : RESERVE_CLASS[dockEdge],
-    autohide ? null : RESERVE_SIZE_CLASS[dockSize],
-  ]
+  const shellClass = [s.shell, autohide ? null : RESERVE_SIZE_CLASS[dockSize]]
     .filter(Boolean)
     .join(' ')
 

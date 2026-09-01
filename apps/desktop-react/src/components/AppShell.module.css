@@ -6,22 +6,56 @@
   background: var(--surface-0);
 }
 
-/* ── Dock 的布局预留 ───────────────────────────────────────────────────────────
+/* ── Dock 的布局预留:**表面画到窗底,让位走各面的内衬** ────────────────────
  * 「覆盖必须有布局预留」(挤压四律第三条)在 Dock 上的落地。**常显 + 钉边**时
- * 外壳给那条边让出一截,内容不再长到 Dock 底下去 —— 修的是 08-31 P0:
+ * 要给那条边让出一截,内容不许长到 Dock 底下去 —— 修的是 08-31 P0:
  * 底边常显档下 composer 的四件控件 100 个采样点只有 5 个按得到。
  *
- * 让位的是**整个外壳**而不只是主区:Dock 钉上边时盖住的是顶栏,钉左右时盖住的是
- * 架子,各让各的那一条。自动隐藏档一格都不让 —— 它平时不在屏上,让了就是白让。
+ * ── 09-01 改法(用户报障带截图:「Sessions 和 left sidebar 像被截断了一样」)──
+ * 修前让位是**窗口级 padding**(打在 .shell 上):左栏 / Sessions 面板被从底部
+ * 整体顶掉,面板下缘与窗底之间露出一条**异色带** —— 那条带是外壳自己的
+ * --surface-0 从面板底下漏出来的。
+ *
+ * 病根是「让位」被安在了**错误的盒子**上:padding 打在父级 = 把孩子整体推上去,
+ * 露出父级的底;打在**面自己**身上 = padding 属于这个面的背景盒,面照旧画到窗底,
+ * 只是内容往里缩。所以同一个数换个落点,断带与遮挡一起解决。
+ *
+ * 落点选**吃到那条边的那两类面**,不是每个滚动容器各抄一遍:
+ *   .center      —— 聊天区 + composer 那一列(composer 的让位由此改成「列内衬形」)
+ *   [data-shelf-body] —— 四条架子的内容宿主(Sessions 这类面板住在里面)
+ * 面板自己的滚动容器是这两者的 height:100% 后代,内衬一缩它们就跟着缩,
+ * 所以「哪个面要让」只在这里写一次,单产地仍是一处。
+ * scroll-padding 一并给:scrollIntoView 不该把行滚到 Dock 底下去。
+ *
+ * 自动隐藏档一格都不让(宿主不挂 data-dock-reserve)—— 它平时不在屏上,让了就是白让。
  * 大小档只换 `--dock-tile` 一个数,式子在 tokens.css 里写一次。
  * ────────────────────────────────────────────────────────────────────────── */
 .reserveSm { --dock-tile: var(--tile-size-sm); }
 .reserveLg { --dock-tile: var(--tile-size-lg); }
 
-.reserveBottom { padding-block-end: var(--dock-reserve-h); }
-.reserveTop { padding-block-start: var(--dock-reserve-h); }
-.reserveLeft { padding-inline-start: var(--dock-reserve-v); }
-.reserveRight { padding-inline-end: var(--dock-reserve-v); }
+.shell[data-dock-reserve='bottom'] .center,
+.shell[data-dock-reserve='bottom'] [data-shelf-body] {
+  padding-block-end: var(--dock-reserve-h);
+  scroll-padding-block-end: var(--dock-reserve-h);
+}
+
+.shell[data-dock-reserve='top'] .center,
+.shell[data-dock-reserve='top'] [data-shelf-body] {
+  padding-block-start: var(--dock-reserve-h);
+  scroll-padding-block-start: var(--dock-reserve-h);
+}
+
+.shell[data-dock-reserve='left'] .center,
+.shell[data-dock-reserve='left'] [data-shelf-body] {
+  padding-inline-start: var(--dock-reserve-v);
+  scroll-padding-inline-start: var(--dock-reserve-v);
+}
+
+.shell[data-dock-reserve='right'] .center,
+.shell[data-dock-reserve='right'] [data-shelf-body] {
+  padding-inline-end: var(--dock-reserve-v);
+  scroll-padding-inline-end: var(--dock-reserve-v);
+}
 
 /* 三明治网格。四条架子各占一格(格名由 EdgeShelf 自己声明 grid-area),
  * 中间那一格是主区。auto 轨道在没人占时塌成 0,所以「空架子不渲染」= 不占一丝布局;
