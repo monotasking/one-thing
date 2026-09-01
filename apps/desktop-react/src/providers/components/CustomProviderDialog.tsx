@@ -34,7 +34,6 @@ export function CustomProviderDialog({
   editingId,
   onClose,
   onSave,
-  onDelete,
 }: {
   open: boolean
   /** 改一家时的底本。缺席 = 新建。 */
@@ -42,12 +41,10 @@ export function CustomProviderDialog({
   editingId?: string
   onClose: () => void
   onSave: (form: CustomProviderForm) => void
-  onDelete: () => void
 }) {
   const t = useT()
   const [form, setForm] = useState<CustomProviderForm>(EMPTY_FORM)
   const [problem, setProblem] = useState<string | undefined>(undefined)
-  const [confirming, setConfirming] = useState(false)
 
   // 每次开都从底本重置。上一次填了一半就关掉的东西不该跟到下一次 ——
   // 尤其不该把上一家的 Base URL 带进新一家。
@@ -55,7 +52,6 @@ export function CustomProviderDialog({
     if (!open) return
     setForm(initial ?? EMPTY_FORM)
     setProblem(undefined)
-    setConfirming(false)
   }, [open, initial])
 
   function patch(delta: Partial<CustomProviderForm>) {
@@ -81,25 +77,17 @@ export function CustomProviderDialog({
       onClose={onClose}
       title={editingId ? t('providers.customEdit') : t('providers.customAdd')}
       label={editingId ? t('providers.customEdit') : t('providers.customAdd')}
+      /*
+       * ── 页脚**没有删除**(09-01「动作单产地 = 右键上下文菜单」)──────────
+       * 从前那颗 ghost 「删除这一家」就长在这儿,于是删一家要先点「编辑」开出
+       * 这个对话框、再去角落里找 —— 用户报障「custom provider 没有删除选项」
+       * 说的就是它:有,但没人找得到。
+       * 现在删除只在**行的右键菜单**里一处(`ProviderRowMenu`),两段就地确认
+       * 也搬进了库件(`ui/Menu` 的 `confirmLabel`)。**单产地的意思是只有一处**,
+       * 所以这里不留一个「顺手也能删」的第二入口。
+       */
       footer={
         <div className={s.footer}>
-          {editingId && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                if (!confirming) {
-                  setConfirming(true)
-                  return
-                }
-                setConfirming(false)
-                onDelete()
-              }}
-              onBlur={() => setConfirming(false)}
-            >
-              {confirming ? t('providers.customDeleteConfirm') : t('providers.customDelete')}
-            </Button>
-          )}
           <span className={s.spacer} />
           <Button size="sm" onClick={onClose}>
             {t('common.cancel')}

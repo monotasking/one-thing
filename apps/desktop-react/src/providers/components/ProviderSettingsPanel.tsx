@@ -16,6 +16,7 @@ import {
   poolViewOf,
 } from '../projection'
 import { ProviderRail } from './ProviderRail'
+import { ProviderRowMenu } from './ProviderRowMenu'
 import { ProviderDetail } from './ProviderDetail'
 import { ModeCard } from './ModeCard'
 import { ModelCatalog } from './ModelCatalog'
@@ -94,6 +95,12 @@ export function ProviderSettingsPanel() {
   const deleteCustomProvider = useProviderSettings((st) => st.deleteCustomProvider)
 
   /** 自定义家的编辑弹窗。`editingId: null` = 新建。 */
+  /**
+   * 右键菜单开在哪一行、哪个坐标。**只存坐标与 id** —— 那一行的事实(名字、
+   * 是不是自定义、启没启用)现算,不在这里存第二份:存了它就会在改名 / 开关
+   * 之后说旧话(与 `views` 那一族「投影只发生一次」同理)。
+   */
+  const [rowMenu, setRowMenu] = useState<{ familyId: string; x: number; y: number } | null>(null)
   const [customDialog, setCustomDialog] = useState<{ open: boolean; editingId?: string }>({
     open: false,
   })
@@ -126,6 +133,17 @@ export function ProviderSettingsPanel() {
   }, [selectedFamilyId, families, selectFamily])
 
   const family = findFamily(families, selectedFamilyId)
+
+  /**
+   * 右键菜单此刻说的是哪一家。**现算** —— 那一行被改名 / 被删掉之后,
+   * 这里自然就没有了(菜单跟着消失),不会留着一份说旧话的快照。
+   */
+  const rowMenuTarget = useMemo(() => {
+    if (!rowMenu) return null
+    const view = findFamily(families, rowMenu.familyId)
+    if (!view) return null
+    return { id: view.id, label: view.label, custom: view.custom === true, view }
+  }, [rowMenu, families])
   const mode = family
     ? resolveMode(family, pickedMode[family.id], (providerId) => {
         const candidate = family.modes.find((m) => m.providerId === providerId)
@@ -246,7 +264,24 @@ export function ProviderSettingsPanel() {
         onQuery={setQuery}
         onSelect={selectFamily}
         onAddCustom={() => setCustomDialog({ open: true })}
+        onRowMenu={(familyId, x, y) => setRowMenu({ familyId, x, y })}
       />
+      {rowMenuTarget && (
+        <ProviderRowMenu
+          familyId={rowMenuTarget.id}
+          label={rowMenuTarget.label}
+          custom={rowMenuTarget.custom}
+          enabled={isProviderEnabledIn(configs, rowMenuTarget.id)}
+          x={rowMenu?.x ?? 0}
+          y={rowMenu?.y ?? 0}
+          onClose={() => setRowMenu(null)}
+          onEdit={() => setCustomDialog({ open: true, editingId: rowMenuTarget.id })}
+          onDelete={() => void deleteCustomProvider(rowMenuTarget.id)}
+          onToggleEnabled={() =>
+            void setFamilyEnabled(rowMenuTarget.view, !isProviderEnabledIn(configs, rowMenuTarget.id))
+          }
+        />
+      )}
       {family && mode ? (
         <ProviderDetail
           family={family}
@@ -319,10 +354,6 @@ export function ProviderSettingsPanel() {
         onClose={() => setCustomDialog({ open: false })}
         onSave={(form) => {
           void saveCustomProvider(form, customDialog.editingId)
-          setCustomDialog({ open: false })
-        }}
-        onDelete={() => {
-          if (customDialog.editingId) void deleteCustomProvider(customDialog.editingId)
           setCustomDialog({ open: false })
         }}
       />

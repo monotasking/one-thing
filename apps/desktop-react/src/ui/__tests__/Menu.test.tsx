@@ -112,3 +112,58 @@ describe('Menu:键盘路', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 })
+
+/* ── danger + 两段就地确认(09-01,自定义 provider 删除的落点)──────────────── */
+
+describe('MenuItem 的危险动作', () => {
+  function DangerHarness({ onDelete }: { onDelete: () => void }) {
+    return (
+      <Menu x={0} y={0} onClose={() => {}} label="行动作">
+        <MenuItem danger confirmLabel="真删?" onClick={onDelete}>
+          删除…
+        </MenuItem>
+      </Menu>
+    )
+  }
+
+  it('第一下只换字,**不执行** —— 两段就地确认,不弹对话框', () => {
+    const onDelete = vi.fn()
+    render(<DangerHarness onDelete={onDelete} />)
+    const item = screen.getByRole('menuitem', { name: '删除…' })
+    fireEvent.click(item)
+    expect(onDelete).not.toHaveBeenCalled()
+    // 字换了,而且还是同一个菜单项(菜单没关、焦点没被拽走)。
+    expect(screen.getByRole('menuitem', { name: '真删?' })).toBe(item)
+  })
+
+  it('第二下才真做', () => {
+    const onDelete = vi.fn()
+    render(<DangerHarness onDelete={onDelete} />)
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除…' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: '真删?' }))
+    expect(onDelete).toHaveBeenCalledTimes(1)
+  })
+
+  it('走开(blur)就撤回第一段 —— 半截确认不该在那儿等下一次误触', () => {
+    const onDelete = vi.fn()
+    render(<DangerHarness onDelete={onDelete} />)
+    const item = screen.getByRole('menuitem', { name: '删除…' })
+    fireEvent.click(item)
+    fireEvent.blur(item)
+    expect(screen.getByRole('menuitem', { name: '删除…' })).toBeTruthy()
+    // 撤回之后再点一下仍然是「第一段」,不会直接删。
+    fireEvent.click(screen.getByRole('menuitem', { name: '删除…' }))
+    expect(onDelete).not.toHaveBeenCalled()
+  })
+
+  it('没给 confirmLabel 的项照旧一下就做 —— 两段是**选项**,不是所有项的负担', () => {
+    const onClick = vi.fn()
+    render(
+      <Menu x={0} y={0} onClose={() => {}} label="行动作">
+        <MenuItem onClick={onClick}>普通项</MenuItem>
+      </Menu>,
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: '普通项' }))
+    expect(onClick).toHaveBeenCalledTimes(1)
+  })
+})

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { Checkbox } from '../../ui/Checkbox'
 import { Input } from '../../ui/Input'
 import { Tooltip } from '../../ui/Tooltip'
@@ -420,8 +421,7 @@ export function ModelCatalog({
             return (
               <div key={group.prefix}>
                 {grouped.grouped && (
-                  <button
-                    type="button"
+                  <ButtonBase
                     className={s.groupToggle}
                     aria-expanded={open}
                     // 检索时组是被**判据**打开的,不是用户打开的 —— 那时这颗钮
@@ -442,7 +442,7 @@ export function ModelCatalog({
                     </span>
                     <span className={s.groupName}>{groupLabel(t, group)}</span>
                     <span className={s.groupNote}>{groupNote(t, group)}</span>
-                  </button>
+                  </ButtonBase>
                 )}
                 {/* 收起 = **不渲染行**。收起还渲染就等于没折叠。 */}
                 {open &&

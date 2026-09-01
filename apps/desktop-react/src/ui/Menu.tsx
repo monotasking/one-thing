@@ -155,17 +155,40 @@ export function MenuSection({ children }: { children: ReactNode }) {
 interface MenuItemProps {
   onClick: () => void
   checked?: boolean
+  /**
+   * 危险动作(删除一类)。**只换字色,不换底** —— 状态色永远不上底
+   * (CLAUDE.md 第 1 轴);一行红字在一列黑字里已经足够扎眼,而红底会让
+   * 这一项看起来像「已选中」。
+   */
+  danger?: boolean
+  /**
+   * 给了它就是**两段就地确认**:第一下把字换成这句话、**不触发** onClick,
+   * 第二下才真做。菜单不关(onClick 才是关它的那一下),所以两段都在原地发生。
+   *
+   * 为什么不弹 `confirm` 对话框:那会把焦点从菜单上拽走、再拽回来,而这一族
+   * 动作(删一行、删一家)的后果是**局部**的 —— 一个模态框对它太重了。
+   * 判例:自定义 provider 的删除从前就是这么两段的,只是那时藏在编辑对话框的
+   * 页脚里;09-01 把入口挪进右键菜单,这一段行为跟着搬进库件,不在业务面重写。
+   *
+   * 离开这一项(blur)就撤回第一段 —— 一个「点了一下就走开」的半截确认
+   * 不该在那儿等着下一次误触。
+   */
+  confirmLabel?: ReactNode
   children: ReactNode
 }
 
-export function MenuItem({ onClick, checked, children }: MenuItemProps) {
+export function MenuItem({ onClick, checked, danger, confirmLabel, children }: MenuItemProps) {
   const menuRole = useContext(RoleCtx)
   const radio = checked !== undefined
   const listbox = menuRole === 'listbox'
+  const [confirming, setConfirming] = useState(false)
+  const armed = confirmLabel !== undefined
   return (
     <button
       type="button"
-      className={checked ? `${s.item} ${s.itemOn}` : s.item}
+      className={[s.item, checked ? s.itemOn : '', danger ? s.itemDanger : '']
+        .filter(Boolean)
+        .join(' ')}
       role={listbox ? 'option' : radio ? 'menuitemradio' : 'menuitem'}
       aria-selected={listbox ? Boolean(checked) : undefined}
       aria-checked={!listbox && radio ? checked : undefined}
@@ -173,14 +196,23 @@ export function MenuItem({ onClick, checked, children }: MenuItemProps) {
       // 不给初值的话,菜单开出来那一瞬间每一项都还在 Tab 序里。
       data-roving-item
       tabIndex={-1}
-      onClick={onClick}
+      data-confirming={armed && confirming ? 'true' : undefined}
+      onClick={() => {
+        if (armed && !confirming) {
+          setConfirming(true)
+          return
+        }
+        setConfirming(false)
+        onClick()
+      }}
+      onBlur={() => setConfirming(false)}
     >
       {radio && (
         <span className={s.check} aria-hidden="true">
           {checked && <Check className={s.checkIcon} strokeWidth={2} />}
         </span>
       )}
-      <span className={s.itemLabel}>{children}</span>
+      <span className={s.itemLabel}>{armed && confirming ? confirmLabel : children}</span>
     </button>
   )
 }

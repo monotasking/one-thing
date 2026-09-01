@@ -606,6 +606,55 @@ describe('自定义家', () => {
     expect(sent.ai.customProviders).toHaveLength(0)
     expect(sent.ai.providers[id]).toBeUndefined()
   })
+
+  /*
+   * ── 级联那一格(09-01 勘察补的)────────────────────────────────────────
+   * 设置与凭证是**两个文件**。只删设置的话,那把 API key 会以孤儿的身份留在
+   * `credentials.json` 里 —— 界面上再也看不到它,而它还在。更要紧的是
+   * `isProviderSupported` 对任何 `custom-*` 一律放行,所以「这一家还在不在」
+   * 全靠 `providers[id]` 与凭证两处都真的没了。
+   */
+  it('删除:**连带清掉这一家的凭证**,而且打在当前空间上', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().saveCustomProvider(FORM)
+    const id = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id
+
+    await useProviderSettings.getState().deleteCustomProvider(id)
+    expect(port.clearCredential).toHaveBeenCalledWith({ id: DEFAULT_SPACE_ID, providerId: id })
+  })
+
+  it('删除:**次序是先设置后凭证** —— 反过来会删掉一把还在用的钥匙', async () => {
+    const order: string[] = []
+    const port = installPort({
+      writeProviderSettings: vi.fn(async (request) => {
+        order.push('settings')
+        return { success: true, ai: request.ai }
+      }),
+      clearCredential: vi.fn(async () => {
+        order.push('credentials')
+        return { success: true, credentials: { providers: {} } }
+      }),
+    })
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().saveCustomProvider(FORM)
+    order.length = 0
+    await useProviderSettings.getState().deleteCustomProvider(
+      vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id,
+    )
+    expect(order).toEqual(['settings', 'credentials'])
+  })
+
+  it('删除:设置写失败就**一个字都不动凭证** —— 那一家还在,它的钥匙不能碰', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().saveCustomProvider(FORM)
+    const id = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id
+    vi.mocked(port.writeProviderSettings).mockResolvedValueOnce({ success: false, error: '写不进去' })
+
+    await useProviderSettings.getState().deleteCustomProvider(id)
+    expect(port.clearCredential).not.toHaveBeenCalled()
+  })
 })
 
 describe('setDials', () => {

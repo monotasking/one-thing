@@ -451,7 +451,6 @@ describe('CustomProviderDialog', () => {
         open
         onClose={vi.fn()}
         onSave={vi.fn()}
-        onDelete={vi.fn()}
         {...over}
       />
     )
@@ -483,8 +482,14 @@ describe('CustomProviderDialog', () => {
     )
   })
 
-  it('改一家时才有删除钮,而且是两段确认', () => {
-    const onDelete = vi.fn()
+  /*
+   * 09-01「动作单产地 = 右键上下文菜单」之后,**对话框页脚不再有删除**:
+   * 它搬去了行的右键菜单(`ProviderRowMenu`),两段就地确认也搬进了库件
+   * (`ui/Menu` 的 `confirmLabel`)。所以这里守的从「有那颗钮」翻成
+   * 「**没有**那颗钮」—— 单产地的意思是只有一处,留一个「顺手也能删」的
+   * 第二入口就等于没搬。
+   */
+  it('页脚**没有**删除钮 —— 删除只在行右键菜单一处', () => {
     render(
       dialog({
         editingId: 'custom-1',
@@ -496,14 +501,10 @@ describe('CustomProviderDialog', () => {
           apiKey: '',
           model: '',
         },
-        onDelete,
       }),
     )
-    const del = screen.getByRole('button', { name: '删除这一家' })
-    fireEvent.click(del)
-    expect(onDelete).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: /真删/ }))
-    expect(onDelete).toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /删除这一家/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /真删/ })).toBeNull()
   })
 
   it('新建时没有删除钮 —— 还不存在的东西删不了', () => {

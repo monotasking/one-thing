@@ -1,5 +1,6 @@
 import { Button } from '../../ui/Button'
 import { Input } from '../../ui/Input'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import type { Fact, RailGroup, RailRow, StatusTone } from '../types'
@@ -42,6 +43,7 @@ export function ProviderRail({
   onQuery,
   onSelect,
   onAddCustom,
+  onRowMenu,
 }: {
   rows: readonly RailRow[]
   /** 「N 家已接入」的 N —— 已接入 ≠ 名册长度,判据在 projection 里。 */
@@ -51,11 +53,19 @@ export function ProviderRail({
   onQuery: (value: string) => void
   onSelect: (familyId: string) => void
   onAddCustom: () => void
+  /**
+   * 右键这一行 —— 行级动作的**唯一入口**(09-01「动作单产地」)。
+   * 这块组件**照旧不认识 store**:它只把「谁、在哪儿」交上去,菜单由面板来开。
+   */
+  onRowMenu: (familyId: string, x: number, y: number) => void
 }) {
   const t = useT()
 
   return (
-    <nav className={s.rail} aria-label={t('providers.railTitle')}>
+    // data-testid 是给真机门的**稳定选择器**(CSS Modules 的类名构建后是哈希)。
+    // 挂在名册容器上:删一家之后要问的是「这棵树有没有被整个掀了」——
+    // 行会少一条,而容器必须是同一个节点(四律第 4 条)。
+    <nav className={s.rail} aria-label={t('providers.railTitle')} data-testid="provider-rail">
       <div className={s.head}>
         <div className={s.headLine}>
           <h2 className={s.title}>{t('providers.railTitle')}</h2>
@@ -81,13 +91,19 @@ export function ProviderRail({
               <ul className={s.list}>
                 {inGroup.map((row) => (
                   <li key={row.familyId}>
-                    <button
-                      type="button"
+                    <ButtonBase
                       className={`${s.row} ${row.familyId === selectedId ? s.rowSelected : ''}`}
                       // 「这一行是当下选中的那一行」对读屏软件也要说得出来 ——
                       // 光靠底色是只给看得见的人的信息。
                       aria-current={row.familyId === selectedId ? 'true' : undefined}
                       onClick={() => onSelect(row.familyId)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        // 右键顺手把这一行选中:菜单说的是「这一行」,而右面得跟着它,
+                        // 否则「编辑」开出来的是另一家(文件树行菜单同一手)。
+                        onSelect(row.familyId)
+                        onRowMenu(row.familyId, e.clientX, e.clientY)
+                      }}
                       data-testid={`provider-row-${row.familyId}`}
                     >
                       <span className={`${s.icon} ${row.custom ? s.iconCustom : ''}`} aria-hidden="true">
@@ -100,7 +116,7 @@ export function ProviderRail({
                         </span>
                       </span>
                       <span className={`${s.dot} ${DOT_CLASS[row.tone]}`} aria-hidden="true" />
-                    </button>
+                    </ButtonBase>
                   </li>
                 ))}
               </ul>

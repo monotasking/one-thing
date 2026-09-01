@@ -779,8 +779,16 @@ export const zh = {
   'providers.customModelHint': '端点常常不报目录,也不报能力。拉不到就手填 ID,能力项留空 —— 不猜、不预填。',
   'providers.customSubmit': '添加',
   'providers.customSave': '保存',
-  'providers.customDelete': '删除这一家',
-  'providers.customDeleteConfirm': '真删 —— 连同它的模型勾选一起没',
+  'providers.customDelete': '删除这一家…',
+  /* 后果说全:模型勾选 + 这个空间里它那把钥匙。会话不动 —— 老会话还绑着它的话,
+     发消息时会诚实地失败(与「配错家的模型选得中、发消息才失败」同一条口径)。 */
+  'providers.customDeleteConfirm': '真删 —— 模型勾选与这个空间里它的密钥一起没',
+  'providers.customDeleteMenu': '删除这一家…',
+  'providers.rowMenu': '{name} 的动作',
+  'providers.rowEnable': '启用这一家',
+  'providers.rowDisable': '停用这一家',
+  'providers.customDeleteKeyLeft': '这一家删掉了,但它的密钥没清干净',
+  'providers.builtinNoDelete': '内置的这一家删不掉 —— 用上面的开关停用它',
   'providers.customNameRequired': '名称必填',
   'providers.customBaseUrlRequired': 'Base URL 必填',
 

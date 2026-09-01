@@ -990,6 +990,35 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         },
       } as AppSettings
       await commitSettings(base, next)
+      // 写没成就到此为止:那一家还在,它的钥匙当然不能动。
+      // (commitSettings 失败时会把底本回滚回 `base`,所以这一句就是「成没成」。)
+      if (get().settings === base) return
+
+      /*
+       * ── 连带把这一家的**凭证条目**清掉(09-01 勘察补的那一格)────────────
+       * 设置与凭证是**两个文件**(`workspaces/<空间>/providers.json` 与
+       * `credentials.json`),删前者不动后者 —— 于是从前删完一家自定义 provider,
+       * 它的 API key 会以孤儿的身份留在盘上:界面上再也看不到它,而它还在。
+       *
+       * 更要紧的是那不只是「不整洁」:`isProviderSupported` 对任何 `custom-*`
+       * 一律放行(`runtime/providers/registry.ts`),所以「这一家还在不在」全靠
+       * `providers[id]` 与凭证两处都真的没了。少清一处,一条还绑着它的老会话
+       * 就可能**照样发得出去** —— 用户以为删掉的东西还在花钱。
+       *
+       * ── 次序:先设置、后凭证 ─────────────────────────────────────────────
+       * 反过来更坏:凭证先清、设置写失败,就等于**删掉了一把还在用的钥匙**,
+       * 而渲染层手上从来没有密钥原文,补不回来。按这个次序,最坏的结果只是
+       * 一条孤儿凭证 —— 而 `writePool` 失败时本来就会弹一条说出来。
+       *
+       * 走 `writePool` 而不是自己再拼一次端口调用:忙态、失败原话、摘要回填
+       * 那一套它已经有了,复写一遍就是两处会漂(与「复用已有那一口拆卸」同理)。
+       */
+      await writePool(
+        providerId,
+        (port) => port.clearCredential({ id: currentSpaceId(), providerId }),
+        t('providers.customDeleteKeyLeft'),
+      )
+
       // 删掉的正好是选中的那一家:选择落空,右面回到「在左边选一家」。
       if (get().selectedFamilyId === providerId) set({ selectedFamilyId: null })
     },
