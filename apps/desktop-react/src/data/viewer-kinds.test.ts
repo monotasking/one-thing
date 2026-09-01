@@ -84,7 +84,7 @@ describe('定型(读完之后)', () => {
   it('二进制三条判据取并:黑名单 / 后端说的 / NUL 探测', () => {
     expect(resolveViewerKind({ path: '/a/x.exe', size: 1 })).toBe('binary')
     expect(resolveViewerKind({ path: '/a/x.txt', size: 1, isBinary: true })).toBe('binary')
-    expect(resolveViewerKind({ path: '/a/x.txt', size: 1, content: 'ELF\u0000' })).toBe(
+    expect(resolveViewerKind({ path: '/a/x.txt', size: 1, content: 'ELF\u0000\u0001' })).toBe(
       'binary',
     )
   })
