@@ -6,7 +6,7 @@ import { blockKey } from '../../assemble/key'
 /**
  * 流式契约的单测(§6)。四件事各有各的用例:
  *  ① 未闭合围栏三态(没闭合 / 闭合那一刻 / 闭合之后)
- *  ② 未闭合的 table / figure 按 code 显示,闭合原位换装
+ *  ② 正在长的表:成表就画表,表头+半截分隔行时补齐分隔行提前认
  *  ③ **key 逐字相等** —— 这是硬约束,不是整洁癖(见 assemble/key.ts 的头注)
  *  ④ 增量与全量**永远同结果**:切点判据错一次,屏幕上就会出现一份与最终结果不同的东西
  */
@@ -56,18 +56,28 @@ describe('未闭合围栏三态', () => {
   })
 })
 
-describe('未闭合的原子块按 code 显示,闭合原位换装', () => {
-  it('正在长的表按 code 逐行长,落定后换成 table —— 起点没变,所以是原位', () => {
+/**
+ * ── 表:**从它成为表的那一刻起,屏幕上就是表**(09-01 用户复测报障 + 录屏)────
+ *
+ * 从前这里是「未闭合的原子块按 code 显示」,退出条件 `text.endsWith('\n')`。
+ * 那条件是掷骰子:一帧的文本结不结束在换行上,由 provider 的分片与 coalescer 的
+ * 批次说了算。真机录屏逐帧(七列八行):2.3s 起整张表**全程是代码块**,一次都没
+ * 掷中,直到 run 收尾才换成表。所以整条降级撤了(连同它的单向闸),换成两条:
+ *  · 解析成表就画表;
+ *  · 表头 + 半截分隔行时**把分隔行补齐**再解析,提前一步认出它(table-tail.ts)。
+ */
+describe('正在长的表:画表,不画源码', () => {
+  it('分隔行一到齐就是表(不再按 code 逐行长)', () => {
     const s = stream()
     const growing = s.parse('m', '| a | b |\n|---|---|\n| 1 | 2', true)
-    expect(growing.blocks[0]).toMatchObject({ kind: 'code', closed: false })
+    expect(growing.blocks[0]).toMatchObject({ kind: 'table' })
 
     const settled = s.parse('m', '| a | b |\n|---|---|\n| 1 | 2 |\n', true)
     expect(settled.blocks[0]).toMatchObject({ kind: 'table' })
     expect(settled.offsets).toEqual(growing.offsets)
   })
 
-  it('图源码同理,但判据在围栏路由那一处:没闭合按 code,闭合后是 figure', () => {
+  it('图源码走的是另一条:围栏路由判,没闭合按 code,闭合后是 figure', () => {
     const s = stream()
     expect(s.parse('m', '```mermaid\ngraph TD', true).blocks[0]).toMatchObject({ kind: 'code' })
     expect(s.parse('m', '```mermaid\ngraph TD\n```', true).blocks[0]).toMatchObject({
@@ -77,41 +87,40 @@ describe('未闭合的原子块按 code 显示,闭合原位换装', () => {
   })
 
   /*
-   * 单向闸(09-01 用户录屏报障「table 出现再消失」)。
-   *
-   * 降级判据是 `!text.endsWith('\n')`,而表格是**逐行**长出来的:行末没换行时降级
-   * 成 code、换行到了升回 table、下一行的头几个字符又降级…… 真机探针逐帧读块型,
-   * 修前一条流里「表格成形后又降级回 code」占 17 帧,每次伴随一次内容回缩
-   * (254→217、278→229);修后 0 帧。
-   *
-   * 这条门喂的是**真机那种节拍**:一次几个字符,行末与行中都踩到。
+   * 逐帧喂真机那种节拍(一次几个字符,行末与行中都踩到):**一帧都不许是源码**。
+   * 修前这条会红在一大片 —— 降级判据每行翻一次面,而真机上它一次都没翻回来。
    */
-  it('表格一旦成形就不再降级回 code(单向闸)', () => {
+  it('整条流里一帧都没有把表画成源码', () => {
     const source = '| 项 | 状态 |\n|---|---|\n| 甲 | 真 |\n| 乙 | 假 |\n| 丙 | 真 |\n'
     const s = stream()
-    let formedAt = -1
-    const downgradesAfterFormed: number[] = []
+    const kinds: string[] = []
     for (let i = 3; i <= source.length; i += 3) {
-      const text = source.slice(0, i)
-      const block = s.parse('m', text, true).blocks.at(-1)
-      if (block?.kind === 'table' && formedAt < 0) formedAt = i
-      // 成形之后再出现 `code`,就是屏幕上那次「表格消失、变回代码块」。
-      if (formedAt >= 0 && block?.kind === 'code') downgradesAfterFormed.push(i)
+      const block = s.parse('m', source.slice(0, i), true).blocks.at(-1)
+      if (block) kinds.push(block.kind)
     }
-    expect(formedAt).toBeGreaterThan(0)
-    expect(downgradesAfterFormed).toEqual([])
+    expect(kinds).not.toContain('code')
+    expect(kinds.at(-1)).toBe('table')
   })
 
-  it('还没成形过的表照旧按 code 逐行长 —— 单向闸不是把降级删了', () => {
+  it('表头 + 半截分隔行:补齐分隔行,提前认出这张表(列数按表头)', () => {
     const s = stream()
-    // 表头那一行还没等到分隔行,mdast 给的是段落;分隔行到了但没换行 = 还没成形过。
-    const block = s.parse('m', '| 项 | 状态 |\n|---|---', true).blocks.at(-1)
-    expect(block).toMatchObject({ kind: 'code', closed: false })
+    const frame = s.parse('m', '| 书名 | 作者 | 分类 | 出版社 |\n|---', true)
+    const block = frame.blocks.at(-1)
+    expect(block).toMatchObject({ kind: 'table' })
+    // 列数**按表头**,不是按已经收到的那半截分隔行。
+    expect((block as { head: unknown[] }).head).toHaveLength(4)
   })
 
-  it('不流了就不再按 code 兜 —— 判据是「还在长」,不是「最后一块是表」', () => {
+  it('补出来的字一个都不上屏:块的起点仍是表头那一行', () => {
     const s = stream()
-    expect(s.parse('m', '| a |\n|---|\n| 1 |', false).blocks[0]).toMatchObject({ kind: 'table' })
+    const frame = s.parse('m', '正文一段。\n\n| a | b |\n|-', true)
+    expect(frame.blocks.map((b) => b.kind)).toEqual(['paragraph', 'table'])
+    expect(frame.offsets[1]).toBe('正文一段。\n\n'.length)
+  })
+
+  it('不流了就不补 —— 落定的文本是什么就是什么(流式与冷加载同一条路)', () => {
+    const s = stream()
+    expect(s.parse('m', '| a | b |\n|-', false).blocks.at(-1)).toMatchObject({ kind: 'paragraph' })
   })
 })
 
@@ -256,5 +265,44 @@ describe('解析节流:每帧至多一次', () => {
     s.parse('m', '一段', true)
     s.forget('m')
     expect(s.parse('m', '一段', false)).toEqual(parseFrame('一段'))
+  })
+})
+
+/**
+ * ── 表的**一路**:裸段落 → 表,一次,不回头(09-01 用户复测报障)────────────
+ *
+ * 这一条钉的是整条轨迹,不是某一帧的形。真机 2 字/帧喂十三列宽表时,第一版补齐
+ * 规则在「半格只有冒号」那两个字符上造出一格非法分隔符,轨迹是
+ * `p → table → p → table → …` 翻了十次 —— 屏幕上表格一闪一闪。
+ */
+describe('表的一路:裸段落 → 表,一次,不回头', () => {
+  const HEAD = '| 项目 | 负责人 | 阶段 | 开始 | 结束 | 工时 | 进度 | 风险 | 优先级 | 依赖 | 状态 | 备注 | 验收 |'
+  const SEP = '| :---: | :---: | :---: | :---: | :---: | :---: | ---: | :--- | :---: | :---: | :---: | :--- | :---: |'
+  const ROW = '| 排期一 | 甲乙 | 设计 | 09-01 | 09-11 | 10 | 10% | 低 | P1 | 无 | 进行中 | 说明 | 待验 |'
+  // 正文与表头之间**故意不空行** —— 模型的常见形,GFM 允许表打断段落。
+  const SOURCE = `下面是排期表。\n${HEAD}\n${SEP}\n${ROW}\n${ROW}\n`
+
+  /** 逐 N 字喂,记下最后一块的块型轨迹(相邻相同的合并)。 */
+  function trail(step: number): string[] {
+    const s = stream()
+    const out: string[] = []
+    for (let i = step; i <= SOURCE.length; i += step) {
+      const kind = s.parse('m', SOURCE.slice(0, i), true).blocks.at(-1)?.kind
+      if (kind && kind !== out.at(-1)) out.push(kind)
+    }
+    return out
+  }
+
+  it('2 字/帧:paragraph → table,就这两段', () => {
+    expect(trail(2)).toEqual(['paragraph', 'table'])
+  })
+
+  it('6 字/帧同一条轨迹(粒度不改变形)', () => {
+    expect(trail(6)).toEqual(['paragraph', 'table'])
+  })
+
+  it('一帧都没有 code —— 表不许以源码示人', () => {
+    expect(trail(2)).not.toContain('code')
+    expect(trail(6)).not.toContain('code')
   })
 })

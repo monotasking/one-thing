@@ -176,11 +176,44 @@ const TOKENS = {
     'TKG7', 'TKH8', 'TKI9', 'TKJ10', 'TKK11', 'TKL12', 'TKM13', 'TKN14',
   ],
   tool: ['TKT1'],
+  table: ['TKW1', 'TKW2', 'TKI1'],
 }
+
+/**
+ * 素材三:**表**(09-01 用户复测报障 + 录屏)。
+ *
+ * 四样都在一条流里,一次跑完:
+ *  · **13 列宽表 + 对齐冒号**(真机截图那一形:列越多,分隔行流得越久);
+ *  · **表前不空行**(正文紧跟表头 —— 模型的常见形,实测 GFM 允许表打断段落);
+ *  · **分隔行未闭尾**(流式期间每一帧都是这个状态,嫌疑 D 的现场);
+ *  · **缩进四格的表**(CommonMark 里它就是缩进代码块 —— 门钉住我们**不乱改**它)。
+ *
+ * `rowSafe` 是这条素材最要紧的一格:**分片永不落在换行上**。真机 provider 的分片
+ * 与 coalescer 的批次都是任意长度,一帧的文本结束在换行上纯属偶然 —— 录屏里那张
+ * 八行表一次都没赶上。旧判据(`text.endsWith('\n')` 才升回 table)正是靠这份偶然
+ * 活着的,慢分片的门每行都能赶上,于是从来没红过。把偶然去掉,门才照见真机。
+ */
+const TABLE_HEAD =
+  '| 项目 TKW1 | 负责人 | 阶段 | 开始 | 结束 | 工时 | 进度 | 风险 | 优先级 | 依赖 | 状态 | 备注 | 验收 |'
+const TABLE_SEP =
+  '| :---: | :---: | :---: | :---: | :---: | :---: | ---: | :--- | :---: | :---: | :---: | :--- | :---: |'
+const TABLE_ROW = (n, mark = '') =>
+  `| 排期${n}${mark} | 甲乙 | 设计 | 09-0${n} | 09-1${n} | ${n}0 | ${n}0% | 低 | P${n} | 无 | 进行中 | 说明${n} | 待验 |`
+
+const TABLE_SCRIPT = [
+  ['reasoning', '先想清楚这张表要几列。列多的表分隔行本身就长,分隔行没到齐之前它按 GFM 的定义还不是表 —— 那正是要量的那一段。再补些字跨过打包闸:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥。'],
+  // ★ 正文与表头之间**故意不空行**:模型的常见形,实测 GFM 照样成表。
+  ['content', `下面是排期表,一共十三列。\n${TABLE_HEAD}\n${TABLE_SEP}\n`],
+  ['content', `${TABLE_ROW(1)}\n${TABLE_ROW(2, ' TKW2')}\n${TABLE_ROW(3)}\n${TABLE_ROW(4)}\n${TABLE_ROW(5)}\n`],
+  ['content', '\n表下面这一段正文要一直在。下面再给一段**缩进四格**的表 —— 它在 CommonMark 里就是缩进代码块,我们不许自作主张把它改成表:\n\n'],
+  ['content', '    | 名称 TKI1 | 值 |\n    | --- | --- |\n    | 甲 | 一 |\n'],
+  ['content', '\n收尾一句 `行内代码`。\n'],
+]
 
 const CASES = {
   think: { tools: false, pieces: [6, 2] },
   tool: { tools: true, pieces: [6, 2] },
+  table: { tools: false, pieces: [6, 2], script: TABLE_SCRIPT, rowSafe: true },
 }
 
 const TRIGGER = 'STREAM_STRUCTURE_GATE'
@@ -189,8 +222,26 @@ const PIECE_DELAY_MS = 45
 /* ── 假慢流 provider ──────────────────────────────────────────────────── */
 
 /** 当前这一格的分片粒度 —— 同一个 mock 服务两格(省一次 electron 冷启)。 */
-const mockState = { piece: 6, tools: false }
-const pieces = text => text.match(new RegExp(`[\\s\\S]{1,${mockState.piece}}`, 'g')) ?? []
+const mockState = { piece: 6, tools: false, script: undefined, rowSafe: false }
+
+/**
+ * 切分片。`rowSafe` 时**一片都不许结束在换行上** —— 真机分片就是这样(结束在换行上
+ * 纯属偶然),而旧的表格降级判据恰恰靠那份偶然才会退出。
+ */
+function pieces(text) {
+  const size = mockState.piece
+  const out = []
+  let at = 0
+  while (at < text.length) {
+    let end = Math.min(text.length, at + size)
+    if (mockState.rowSafe) {
+      while (end < text.length && text[end - 1] === '\n') end += 1
+    }
+    out.push(text.slice(at, end))
+    at = end
+  }
+  return out
+}
 
 function startMockProvider(port) {
   const server = http.createServer((req, res) => {
@@ -249,7 +300,7 @@ function startMockProvider(port) {
         done()
         return
       }
-      for (const [kind, text] of THINK_SCRIPT) {
+      for (const [kind, text] of mockState.script ?? THINK_SCRIPT) {
         for (const piece of pieces(text)) {
           if (res.destroyed) return
           send(frame(kind === 'reasoning' ? { reasoning_content: piece } : { content: piece }))
@@ -385,6 +436,8 @@ function installSampler(page, tokens) {
           n: text.length,
           h: text.slice(0, 40).replace(/\s+/g, ' '),
           id: node.__structId,
+          // 这件东西身上带着哪几个记号 —— I 条问的是「记号此刻住在哪一种块里」。
+          mk: marks.flatMap((mark, index) => (text.includes(mark) ? [index] : [])),
         })
       }
       return out
@@ -516,6 +569,30 @@ function findDoubleDrawn(frames, tokens) {
     })
   }
   return out
+}
+
+/**
+ * 一个记号这一路住过哪些块型,各住了几帧。
+ *
+ * 「住在哪」= 屏幕上包着它的那件东西的真身(`d`):`p` 是裸段落(表还没成形)、
+ * `code` 是源码、`table` 是表。I 条读的就是这张账。
+ */
+function hostTrail(frames, tokenIndex) {
+  const counts = new Map()
+  const order = []
+  let firstAt
+  let lastKind
+  for (const frame of frames) {
+    const host = frame.s.find(item => (item.mk ?? []).includes(tokenIndex))
+    if (!host) continue
+    if (firstAt === undefined) firstAt = frame.t
+    counts.set(host.d, (counts.get(host.d) ?? 0) + 1)
+    if (host.d !== lastKind) {
+      order.push({ d: host.d, t: frame.t })
+      lastKind = host.d
+    }
+  }
+  return { counts, order, firstAt, last: lastKind }
 }
 
 /** A:思考块的条数只增不减。 */
@@ -667,7 +744,90 @@ async function runCell({ record, page, kind, piece, index }) {
         `断言失败:C 表格成形后又降级回 code,共 ${downgrades.length} 帧(首次 t=${downgrades[0].t}ms)`,
       )
     }
-    assert(true, 'C 表格成形后再没降级回 code(单向闸)')
+    /*
+     * C 的第二半(09-01 加严):从前只钉「成形之后不许再降级」,而真机上那张表
+     * **从头到尾就没成形过**,一路是源码 —— 「成形后」那个前提根本没兑现,断言
+     * 于是恒真。现在连「有没有当过源码」一起钉:表里的记号住在哪一种块里,一帧都
+     * 不许是 code(与素材三的 I 条同一条法)。
+     */
+    const inTable = hostTrail(frames, 0)
+    if ((inTable.counts.get('code') ?? 0) > 0) {
+      throw new Error(
+        `断言失败:C 那张表被当成源码画了 ${inTable.counts.get('code')} 帧` +
+        `(${inTable.order.map(step => `${step.d}@${step.t}ms`).join(' → ')})`,
+      )
+    }
+    assert(
+      true,
+      `C 表一帧都没被当成源码画过,收尾是 ${inTable.last}(住过 ${[...inTable.counts.keys()].join('/')})`,
+    )
+    return
+  }
+
+  if (kind === 'table') {
+    /*
+     * ── I:一张表,从头到尾不许以**源码**示人 ──────────────────────────
+     *
+     * 修前真机录屏(七列八行,10fps 抽帧):
+     *   Generating 1.6s  表头 + 半截分隔行,**裸段落**挂在屏幕上
+     *   Generating 2.3s  分隔行到齐 → 我们把它降级成**代码块**(Copy source 檐)
+     *   Generating 3.1s  还是代码块,已经五行数据
+     *   收尾              才换成表
+     * 那条降级的退出条件是 `text.endsWith('\n')` —— 一帧的文本结不结束在换行上是
+     * 偶然,真机上一次都没赶上。本条素材的分片**永不落在换行上**(rowSafe),
+     * 把那份偶然去掉,门才照见真机。
+     */
+    const wide = hostTrail(frames, 0)
+    const trail = wide.order.map(step => `${step.d}@${step.t}ms`).join(' → ')
+    console.log(`  宽表记号住过:${trail}`)
+    console.log(
+      `  裸段落 ${wide.counts.get('p') ?? 0} 帧 · 源码 ${wide.counts.get('code') ?? 0} 帧 · 表 ${wide.counts.get('table') ?? 0} 帧`,
+    )
+    if ((wide.counts.get('code') ?? 0) > 0) {
+      throw new Error(
+        `断言失败:I 那张表被当成源码画了 ${wide.counts.get('code')} 帧(${trail})` +
+        '\n  —— 用户录屏的形:整张表以代码块摆着,直到收尾才变成表',
+      )
+    }
+    assert(true, `I 宽表全程没被当成源码画过(${wide.counts.get('table') ?? 0} 帧是表)`)
+    assert(wide.last === 'table', '完稿时那张十三列宽表是表')
+
+    /*
+     * ── J:表在**分隔行流完之前**就成形 ────────────────────────────────
+     *
+     * 判据不是拍脑袋的阈值,是**素材自己算得出来的那个数**:分隔行 106 个字符,
+     * 按这一格的粒度流完要 `ceil(106/piece) × 45ms`。补齐规则的全部作用就是"不等
+     * 它流完" —— 所以「裸段落挂了多久」必须短于「分隔行流完要多久」。
+     *
+     * 真机对照(6 字/帧):补齐后裸 555ms、拆掉补齐 1243ms、分隔行 810ms —— 一条
+     * 判据同时把两边分开。列越多这条差距越大,而列多正是用户报障的那一形
+     * (13 列的截图裸了 3.5s+)。
+     */
+    const formedAt = wide.order.find(step => step.d === 'table')?.t
+    const nakedMs = formedAt !== undefined && wide.firstAt !== undefined ? formedAt - wide.firstAt : Infinity
+    const separatorMs = Math.ceil(TABLE_SEP.length / piece) * PIECE_DELAY_MS
+    if (!(nakedMs < separatorMs)) {
+      throw new Error(
+        `断言失败:J 表等到分隔行流完才成形 —— 裸段落 ${nakedMs}ms ≥ 分隔行流完所需 ${separatorMs}ms` +
+        '\n  —— 用户报障的形:表头 + 分隔行以裸文本挂在屏上 3.5s+(列越多挂越久)',
+      )
+    }
+    assert(
+      true,
+      `J 表在分隔行流完之前就成形(裸段落 ${nakedMs}ms < 分隔行流完 ${separatorMs}ms)`,
+    )
+
+    /*
+     * ── K:缩进四格的表**不许**被我们改成表 ────────────────────────────
+     * 它在 CommonMark 里就是缩进代码块。剥缩进等于把真正的缩进代码块一起改了 ——
+     * 那是可感知的行为裁定,不在本批。诊断里它是嫌疑 B,取证结论:**是解析器的
+     * 正解,不是病**。
+     */
+    const indented = hostTrail(frames, 2)
+    assert(
+      indented.last === 'code',
+      `K 缩进四格的表仍是代码块(CommonMark 正解,我们不乱改;住过 ${[...indented.counts.keys()].join('/')})`,
+    )
     return
   }
 
@@ -712,6 +872,8 @@ async function runCase(kind) {
   let app
   try {
     mockState.tools = spec.tools
+    mockState.script = spec.script
+    mockState.rowSafe = spec.rowSafe === true
     mock = await startMockProvider(mockPort)
     // 钥匙走环境变量(headless core 没有 safeStorage,理由见 gate-stream-monotone.mjs)。
     writeFileSync(path.join(store, 'settings.json'), JSON.stringify({

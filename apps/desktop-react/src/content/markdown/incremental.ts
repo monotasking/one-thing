@@ -2,6 +2,7 @@ import { perfSpan } from '../../services/perf'
 import type { BlockModel } from '../model/blocks'
 import { parseMarkdown } from './parse'
 import { stableCut } from './stable-cut'
+import { completeTableTail } from './table-tail'
 import type { ParsedBlock } from './to-blocks'
 
 /**
@@ -10,8 +11,9 @@ import type { ParsedBlock } from './to-blocks'
  * 活跃消息每来一帧就换一次引用,装配管线跟着重跑一次 ④。这个类接住那件事,做三件:
  *
  *  ① **稳定前缀沿用**:切点之前的块整块复用,只重解析活动尾(切点判据见 stable-cut.ts)。
- *  ② **未闭合的原子块按 code 显示**:贴着活尾巴的 table / figure 还没成形,先按代码
- *     逐行长出来,闭合那一刻原位换装。
+ *  ② **正在出生的表提前认**:活尾巴末两行像「表头 + 半截分隔行」时,把分隔行补齐
+ *     再解析一次,真是表才认(`upgradeTableTail` / table-tail.ts)。
+ *     09-01 撤掉了它的前身「未闭合的原子块按 code 显示」——病历在 `toFrame` 的注里。
  *  ③ **每帧至多解析一次**:16ms 节拍(与 SessionStreamCoalescer 同一个批)。窗口里
  *     又来一帧时不重解析,把新来的字符**贴到最后一块的尾巴上** —— 这不是近似:
  *     活尾巴纪律(D3)保证流式期间的变化只有「文本追加」,而纯文本追加落在段落或
@@ -39,12 +41,6 @@ interface Entry {
    * 字符改掉」,而旧文本是新文本的前缀,所以旧文本上的安全切点对新文本一样安全。
    */
   cut: number
-  /**
-   * **已经以真身上过屏的原子块**的源偏移(见 `toFrame` 的「单向闸」一节)。
-   *
-   * 挂在 entry 上而不是模块级:它是「这一条消息这一段」的事实,换消息就该归零。
-   */
-  formed: Set<number>
   /** 上一次**真的解析**的时刻,节流窗按它算。 */
   at: number
 }
@@ -63,11 +59,9 @@ export class MarkdownStream {
    */
   parse(id: string, text: string, live: boolean): MarkdownFrame {
     const prev = this.entries.get(id)
-    // 单向闸的记事本按 id 走:同一条消息同一段,从头到尾是同一份(见 `toFrame`)。
-    const formed = prev?.formed ?? new Set<number>()
 
     // 同一份文本再问一次:上一帧的答案逐字有效(React 重渲染很常见,别重解析)。
-    if (prev && prev.text === text) return toFrame(prev.parsed, text, live, formed)
+    if (prev && prev.text === text) return toFrame(prev.parsed, text, live)
 
     const appended = prev !== undefined && text.startsWith(prev.text)
 
@@ -75,16 +69,19 @@ export class MarkdownStream {
       const spliced = spliceTail(prev.parsed, prev.text, text)
       // 贴上了就用贴的:**不写回缓存** —— 下一帧仍以上次真解析的那份为基准,
       // 于是「一直有帧来」不会让真解析被无限推迟(窗口一过必解析)。
-      if (spliced) return toFrame(spliced, text, live, formed)
+      if (spliced) return toFrame(spliced, text, live)
     }
 
     // 打点埋在**真解析**那一格,不埋整个 parse:上面两条早退(同一份文本 / 贴尾巴)
     // 本来就是为了不解析而存在的,把它们也算进来会让读数被一堆 0 稀释。
-    const parsed = perfSpan('markdown.reparse', () =>
-      appended ? this.reparseTail(prev, text) : parseMarkdown(text),
-    )
-    this.entries.set(id, { text, parsed, cut: stableCut(text), formed, at: this.now() })
-    return toFrame(parsed, text, live, formed)
+    const parsed = perfSpan('markdown.reparse', () => {
+      const base = appended ? this.reparseTail(prev, text) : parseMarkdown(text)
+      // 还在长的那条路上才补分隔行:落定的文本是什么就是什么,补一刀就是两条路分叉
+      // (`gate:stream-structure` 的「流式末帧 == 冷加载」盯的正是这件事)。
+      return live ? upgradeTableTail(base, text) : base
+    })
+    this.entries.set(id, { text, parsed, cut: stableCut(text), at: this.now() })
+    return toFrame(parsed, text, live)
   }
 
   /** 这条消息不流了(或被换掉了):把它的帧缓存丢掉。 */
@@ -172,60 +169,68 @@ function growBlock(block: BlockModel, delta: string): BlockModel | undefined {
 }
 
 /**
- * 最后一步:**未闭合的原子块按 code 显示**。
+ * 最后一步:**块序列 → 帧**。
  *
- * 判据是「这一块贴着活尾巴,而文本还没换行落定」—— 一张正在长的表此刻画成半张表
- * 是噪声,按代码原样长出来才诚实。闭合(有了换行,或这条消息不流了)那一刻,它按
- * 自己真正的 kind 换装 —— key 由源偏移派生,所以换装是**原位**的,前后的块一个都不重挂。
+ * ── 从前这里有一条「未闭合的原子块按 code 显示」,09-01 撤掉 ──────────────
+ * 原话是「一张正在长的表此刻画成半张表是噪声,按代码原样长出来才诚实」,退出条件
+ * 是 `text.endsWith('\n')`(行末落定就换装),外加一道单向闸防它来回翻。
  *
- * 这里只管 `table`。`figure` 不需要:围栏路由(fence.ts)本来就只在围栏**闭合**时
- * 才产出 figure,没闭合的那段图源码从头到尾就是一个 `code(closed:false)` ——
- * 一个判据在一处成立就够了,不必在这儿再判一遍(判两遍迟早会分叉)。
+ * **退出条件是掷骰子**:一帧的文本结不结束在换行上,由 provider 的分片与 coalescer
+ * 的批次说了算,与"这张表长完了没有"无关。用户 09-01 的录屏逐帧:七列八行的一张表
+ * 从 2.3s 到收尾**全程是代码块**(Copy source 檐),一次都没掷中,直到 run 收尾
+ * `live` 变假才换成表。屏幕上就是「一大坨源码摆了三秒」—— 比它要防的「半张表」难看
+ * 得多,而且那半张表本来也不存在:GFM 只在**完整的分隔行**之后才判它是表,判成表的
+ * 那一刻列结构已经定了,后面只会一行行追加。
  *
- * ── 单向闸:成过形的块不再降级(09-01 用户录屏报障「table 出现再消失」)─────
- * 上面那句「闭合那一刻换装」写的是**一次**换装,但 `!text.endsWith('\n')` 这个判据
- * 会**来回翻**:表格每长一行,行末没换行时降级成 code、换行到了升回 table、下一行
- * 的头几个字符又降级……真机探针读数(逐帧记块型与长度):8.1–8.3s 之间同一张表
- * `code(94) → table(57) → code(106) → code(118) → table(69)` 翻了两次,每次伴随
- * 一次内容回缩(254→217、278→229),屏幕上就是「表格出现、消失、再出现」。
+ * 所以撤掉:**表一被解析成表,屏幕上就是表**,行随流长。单向闸(`formed`)是那条
+ * 降级的配套护栏,一并退役 —— 没有降级就没有来回翻。`gate:stream-structure` 的 C 条
+ * 从「成形后不再降级」加严成「一张表从头到尾不许以源码示人」(I 条)。
  *
- * 所以给它加一道**单向闸**:一个块只要以真身上过一次屏,它的源偏移就记进 `formed`,
- * 此后再也不降级。降级于是只发生在「这一块这辈子还没成形过」的那一小段时间里 ——
- * 正是那句设计原话想说的事,而不是一路翻面。
- *
- * `formed` 认**源偏移**:块在流式期间只会在末尾长,偏移是它的身份(与 key 同源),
- * 所以「同一块」这件事不需要第二套判据。非活消息(`parseFrame`)压根不降级,
- * 因此不传这本记事本也成立。
+ * `figure` 从来不走这条:围栏路由(fence.ts)只在围栏**闭合**时产出 figure,
+ * 没闭合的那段图源码本来就是 `code(closed:false)`。
  */
-function toFrame(
-  parsed: readonly ParsedBlock[],
-  text: string,
-  live: boolean,
-  formed?: Set<number>,
-): MarkdownFrame {
+function toFrame(parsed: readonly ParsedBlock[], _text: string, _live: boolean): MarkdownFrame {
   const blocks: BlockModel[] = []
   const offsets: number[] = []
-  const tailOpen = live && !text.endsWith('\n')
-
-  for (let i = 0; i < parsed.length; i += 1) {
-    const entry = parsed[i]
-    const atTail =
-      tailOpen && i === parsed.length - 1 && entry.end >= text.length && !formed?.has(entry.offset)
-    const block = atTail ? asOpenCode(entry.block, text.slice(entry.offset, entry.end)) : entry.block
-    // 以真身上屏了就记一笔 —— 只记会被降级的那一类,别把整篇文章的偏移都攒进来。
-    if (formed && !atTail && DOWNGRADABLE.has(entry.block.kind)) formed.add(entry.offset)
-    blocks.push(block)
+  for (const entry of parsed) {
+    blocks.push(entry.block)
     offsets.push(entry.offset)
   }
   return { blocks, offsets }
 }
 
-/** 会被 `asOpenCode` 降级的块型 —— 与它的实现是同一条判据,加一种就两处一起加。 */
-const DOWNGRADABLE = new Set<BlockModel['kind']>(['table'])
-
-function asOpenCode(block: BlockModel, source: string): BlockModel {
-  if (block.kind !== 'table') return block
-  return { kind: 'code', lang: null, source, closed: false }
+/**
+ * **正在出生的那张表,提前一步认出来**(09-01,与上面那条撤销同一份病历)。
+ *
+ * 表的身份证是**完整的分隔行**:没到齐之前,表头那一行按 GFM 的定义就是段落 ——
+ * 屏幕上于是挂着一段"竖线和横杠拼出来的散文",列越多挂得越久(真机 13 列 3.5s+)。
+ * 这里在解析之后补一刀:最后一块要是段落、而且它的末两行长得像「表头 + 半截分隔行」,
+ * 就把分隔行按表头的列数补齐再解析一次,**解析出来真是表才认**(见 table-tail.ts)。
+ *
+ * 三条纪律:
+ *  · 只碰**最后一块**,而且必须是贴着活尾巴的段落 —— 围栏里的表(最后一块是 code)
+ *    与已经落定的段落都不在射程内;
+ *  · 补出来的字**一个都不上屏**:块的 `end` 夹回真实文本长度,补的那几格只是给解析器
+ *    看的脚手架;
+ *  · 认不出表就整段作废,一个字不改 —— 最坏情况是白算一次(一小段文本的解析)。
+ */
+function upgradeTableTail(parsed: ParsedBlock[], text: string): ParsedBlock[] {
+  const last = parsed[parsed.length - 1]
+  if (!last || last.block.kind !== 'paragraph' || last.end < text.length) return parsed
+  const source = text.slice(last.offset)
+  const completed = completeTableTail(source)
+  if (completed === undefined) return parsed
+  const sub = parseMarkdown(completed)
+  if (sub.length === 0 || sub[sub.length - 1].block.kind !== 'table') return parsed
+  return [
+    ...parsed.slice(0, -1),
+    ...sub.map((entry, index) => ({
+      block: entry.block,
+      offset: entry.offset + last.offset,
+      // 补齐用的那几格在文本之外 —— 末块的结尾夹回真实长度,别让它伸到屏幕外面去。
+      end: index === sub.length - 1 ? text.length : entry.end + last.offset,
+    })),
+  ]
 }
 
 /**
