@@ -51,6 +51,19 @@ export interface ProjectionMaterializeOptions {
   resolveBlob?: ProjectionBlobResolver
   /** 每一次退化调一次(F6)。不传 = 照旧退化,只是没人看见。 */
   onIssue?: (issue: ProjectionIssue) => void
+  /**
+   * 给每一格 `contentPart` 带上它的 `partIndex`(R 线 R2,**默认不带**)。
+   *
+   * 为什么要:壳侧的水位表按 `(messageId, partIndex, gen)` 存活流的前缀,合并式是
+   * 「每 part 取 `max(账本可画长, 活水位)`」—— 两边得能认出**同一段**。而
+   * 「哪几段已经结算、画得出来」只有 `materializeContentParts` 那道 `requestSettled`
+   * 闸说得清:壳自己再判一遍就是第二个产地(六轮事故的元凶皆系于此)。
+   *
+   * 为什么默认不带:`canonical` 逐键比 `contentParts`,而引擎那侧的消息上没有这一格
+   * —— 无条件带上会让影子对账凭空多出一路失配。只有壳这条读路把它打开,
+   * 影子 / 模型历史 / 后端读路都走默认档,逐字节与从前相同。
+   */
+  includePartIndex?: boolean
 }
 
 /**

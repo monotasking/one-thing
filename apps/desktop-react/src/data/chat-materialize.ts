@@ -5,6 +5,7 @@ import {
   type SessionProjectionState,
 } from '@onething/core/session'
 import type { ProjectedMessage } from './chat-fold'
+import type { StreamWater, WaterPartView } from './stream-water'
 
 /**
  * **增量物化**(09-01 P0,用户真机日志:60 万 token 长会话流式期间 chat-source 的
@@ -86,12 +87,14 @@ export function materializeChatMessagesCached(
   state: SessionProjectionState,
   options: ProjectionMaterializeOptions,
   blobEpoch: number,
+  /** R2:活水位。不传 = 纯账本投影,与 R2 之前逐字相同。 */
+  water?: StreamWater,
 ): MaterializedChat {
   const next: ProjectedMessage[] = []
   for (const node of state.nodes) {
     // `hidden` 是列表成员判据,不进 `rev` —— 每次现问(见文件头)。
     if (node.hidden) continue
-    next.push(cachedNode(node, options, blobEpoch))
+    next.push(mergeWater(cachedNode(node, options, blobEpoch), water))
   }
   const previous = lists.get(state)
   const messages = previous && sameList(previous, next) ? previous : next
@@ -131,4 +134,161 @@ export function __countMemoMisses(
     if (!hit || hit.rev !== node.rev || hit.epoch !== blobEpoch) misses += 1
   }
   return misses
+}
+
+/* ── R2:水位合并 ───────────────────────────────────────────────────────── */
+
+/**
+ * **一条消息 = 账本投影 ∪ 活水位**(R 线 R2,`docs/stream-render-2026-09.md` L2)。
+ *
+ * 合并式只有一条:**每 part 取 `max(账本可画长, 活水位)`** —— 两者是同一个字符串的
+ * 两个前缀(前缀定律),取长的那个。于是:
+ *
+ *  · **同一截只画一次**:根本没有第二份内容存在,不必对账;
+ *  · **只长不缩**:两个前缀取 max,结构上不可能变短;
+ *  · **打包行到达零像素变化**(第六不变式):它只让账本那一侧变长,`max` 不变。
+ *
+ * ── 「账本可画长」不是「账本装了多长」(cc560612 的学费)────────────────
+ * 基准取的是 `contentParts` 里那一格的长度 —— 也就是**投影真画得出来的那一截**,
+ * 不是 `message.content`(它把还没结算的轮次也折进去了,画的时候根本不在场)。
+ * 那次事故(思考块消失 2166ms)的病根正是拿「装了」当「画得出」。
+ *
+ * ── 段号从哪来 ────────────────────────────────────────────────────────
+ * 账本那侧由 `includePartIndex` 现给(唯一产地是投影的 `requestSettled` 那道闸,
+ * 壳不判第二遍);水位那侧由 R1 的身份章带着。两边说的是同一个号。
+ *
+ * ── 顶部推理走另一格 ──────────────────────────────────────────────────
+ * `placement:'top'` 的推理段落在 `message.reasoning`(思考块的产地),不进 parts。
+ * 落点由**流自己说**(reasoning-delta 自带 placement),与从前逐字同判。
+ */
+function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMessage {
+  if (!water) return message
+  const live = water.parts(message.id)
+  if (live.length === 0) return message
+
+  const ledger = (message.contentParts ?? []) as Array<{
+    type?: string
+    content?: string
+    partIndex?: number
+    turnIndex?: number
+  }>
+  const byIndex = new Map<number, { type?: string; content?: string; partIndex?: number; turnIndex?: number }>()
+  for (const part of ledger) {
+    if (part.partIndex !== undefined) byIndex.set(part.partIndex, part)
+  }
+
+  const top: WaterPartView[] = []
+  const inline: WaterPartView[] = []
+  for (const part of live) {
+    if (part.kind === 'tool-input') continue // 参数流不进 contentParts(投影同款判据)
+    if (part.kind === 'reasoning' && part.placement === 'top') top.push(part)
+    else inline.push(part)
+  }
+
+  let parts = ledger
+  let changed = false
+  for (const part of inline) {
+    const seat = byIndex.get(part.partIndex)
+    const ledgerLength = seat?.content?.length ?? 0
+    if (ledgerLength >= part.length) continue // 账本已经追平:水位这一格无话可说
+    const cell = {
+      type: part.kind === 'reasoning' ? 'reasoning' : 'text',
+      content: trimToGraphemeBoundary(part.text()),
+      ...(seat?.turnIndex !== undefined ? { turnIndex: seat.turnIndex } : {}),
+      partIndex: part.partIndex,
+    }
+    if (!changed) { parts = [...ledger]; changed = true }
+    if (seat) parts[parts.indexOf(seat)] = cell
+    else insertByPartIndex(parts, cell)
+  }
+
+  // 顶部推理:`message.reasoning` 与水位取长的那个(同一个字符串的两个前缀)。
+  let reasoning = message.reasoning
+  for (const part of top) {
+    const text = trimToGraphemeBoundary(part.text())
+    if (text.length > (reasoning?.length ?? 0)) { reasoning = text; changed = true }
+  }
+
+  /*
+   * ── 参数还在流的那几次调用 ──────────────────────────────────────────
+   *
+   * 挂在 `toolCalls` 上而不是自己造一个锚点 part:锚点是账本的坐标系
+   * (`synthesizeCoreToolAnchors` 见了锚点就整条不动手),往 parts 里塞一个假锚点
+   * 会把**真**锚点的合成一起关掉。挂在 `toolCalls` 上,`anchorMessage` 末尾那句
+   * 「锚点没认领到的调用摆出来」自然把它排在最后 —— 而「刚刚开始的这一次」
+   * 本来就该在最后。账本已经有的 id 一律不画(少一张是说谎,多一张是重影)。
+   */
+  const ledgerCallIds = new Set((message.toolCalls ?? []).map(call => call.id))
+  const liveTools = water.tools(message.id).filter(tool => !ledgerCallIds.has(tool.id))
+  if (liveTools.length > 0) changed = true
+
+  if (!changed) return message
+  return {
+    ...message,
+    ...(liveTools.length > 0
+      ? {
+          toolCalls: [
+            ...(message.toolCalls ?? []),
+            ...liveTools.map(tool => ({
+              id: tool.id,
+              toolId: tool.toolName,
+              toolName: tool.toolName,
+              arguments: {},
+              // 后端自己那份占位调用写的正是这一档(`createCoreToolInputStartArtifacts`)。
+              status: 'input-streaming',
+              timestamp: tool.timestamp,
+              streamingArgs: tool.argsText(),
+            })),
+          ] as ProjectedMessage['toolCalls'],
+        }
+      : {}),
+    ...(reasoning !== message.reasoning ? { reasoning } : {}),
+    contentParts: parts,
+    // `content` 是正文那几格拼起来的 —— 单一产地,不另存一份。
+    content: parts.filter(part => part.type === 'text').map(part => part.content ?? '').join(''),
+  } as ProjectedMessage
+}
+
+/**
+ * 按段号插进去(账本还没结算出这一格时)。
+ *
+ * 没有段号的老格(`includePartIndex` 关着,或 image/provider-data 这类)一律当**更早**
+ * 处理 —— 它们是已经落定的东西,活水位那几格永远在它们之后。
+ */
+function insertByPartIndex(
+  parts: Array<{ partIndex?: number }>,
+  cell: { partIndex: number },
+): void {
+  const at = parts.findIndex(part => part.partIndex !== undefined && part.partIndex > cell.partIndex)
+  if (at < 0) parts.push(cell)
+  else parts.splice(at, 0, cell)
+}
+
+/**
+ * **渲染边界向字素边界收一格**(审查条 6)。
+ *
+ * 偏移按 UTF-16 码元数(与 `String.length`、与打包行的 `len` 同一把尺 —— 那一层不能
+ * 改,不然两边对不上)。但分片是按码元切的,一条 delta 完全可能停在一个**代理对的
+ * 中间**:半个 emoji 在屏幕上是一格 `�`,下一帧才补全 —— 一帧乱码,肉眼看得见。
+ *
+ * 所以收格只发生在**画**的这一刻,不动存的那一份:末尾是落单的高位代理(还等着
+ * 它的低位)、或是零宽连接符 / 变体选择符(它们后面必然还有字,单独结尾就是半个
+ * 字素),就先不画那一小截。下一片一到自然补上。
+ *
+ * 只看结尾那两三个码元,不做整段字素切分 —— 这条路每帧都走,`Intl.Segmenter`
+ * 扫全段是十万字级的浪费,而**只有结尾**可能半截。
+ */
+const ZERO_WIDTH_JOINER = 0x200d
+const VARIATION_SELECTOR_START = 0xfe00
+const VARIATION_SELECTOR_END = 0xfe0f
+
+export function trimToGraphemeBoundary(text: string): string {
+  const last = text.charCodeAt(text.length - 1)
+  if (Number.isNaN(last)) return text
+  // 落单的高位代理:它的低位还没到,单独画出来就是一格乱码。
+  if (last >= 0xd800 && last <= 0xdbff) return text.slice(0, -1)
+  // 连接符 / 变体选择符结尾:后面一定还有字,现在画就是半个字素。
+  if (last === ZERO_WIDTH_JOINER) return text.slice(0, -1)
+  if (last >= VARIATION_SELECTOR_START && last <= VARIATION_SELECTOR_END) return text.slice(0, -1)
+  return text
 }

@@ -1,6 +1,23 @@
 import type { materializeChatMessages } from '@onething/core/session/projection/chat-messages'
 
 /**
+ * ⚠️ **这个文件的一大半在退役途中**(R 线 R2,`docs/stream-render-2026-09.md`)。
+ *
+ * R2 把「活尾巴 + 交接对账」整套换成了**水位表 + 每 part 取 max**(`stream-water.ts`
+ * 与 `chat-materialize` 的 `mergeWater`):活流与账本从此是同一个字符串的两个前缀,
+ * 对账这件事不存在了。开关 `onething.streamR2` 默认走新路,旧路留到 R3 真机浸泡
+ * 结束 —— **一翻即回**,回滚不用改代码。
+ *
+ * R3 删这一批(以及它们在 `chat-source` 里的那几格状态与 `chat-source.test.ts`
+ * 里对应的用例):`Tail` / `TailSegment` / `TailToolCall` / `FoldLens` /
+ * `feedTail` / `startTailTool` / `feedTailToolArgs` / `handOverToLedger` /
+ * `appendTail` / `tailTextLength` / `tailHostIndex` / `liveToolCall`。
+ * **留下的**是与那套机器无关的两件:`ProjectedMessage` 类型别名与 overlay 车道
+ * (`reconcileOverlay` / `userMessageIds` / `PendingSend` / `LocalNotice`)——
+ * 它们说的是「还没进账本的出站消息」,与流式拼装无关。
+ *
+ * ── 以下是旧路的原始文件注,原样保留到删除那一天 ──────────────────────
+ *
  * 屏幕上那棵消息树的**纯函数半边**(D3,路线 A)。
  *
  * ## 三条来源,各管一段(与 Vue 壳 `stores/fold-tree.ts` 逐条同判例)

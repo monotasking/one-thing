@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MarkdownStream, parseFrame, PARSE_INTERVAL_MS } from '../incremental'
+import { MarkdownStream, parseFrame, PARSE_INTERVAL_MS, STALE_PARSE_MS } from '../incremental'
 import { stableCut } from '../stable-cut'
 import { blockKey } from '../../assemble/key'
 
@@ -304,5 +304,36 @@ describe('表的一路:裸段落 → 表,一次,不回头', () => {
   it('一帧都没有 code —— 表不许以源码示人', () => {
     expect(trail(2)).not.toContain('code')
     expect(trail(6)).not.toContain('code')
+  })
+})
+
+/**
+ * 审查条 8:**后台停摆之后不追帧**。
+ *
+ * 窗口最小化时 rAF 停摆而 delta 照灌,恢复那一刻若走增量,要拿一份很旧的解析去接
+ * 一大段积压文本 —— P0 那次 1153ms 长帧就是这么堆出来的。判据用「距上次真解析多久」
+ * 而不是 `visibilityState`:后者要挂 DOM 监听(模块级副作用),而前者一个数说得清。
+ */
+describe('停摆太久:不追帧,直接全量', () => {
+  const SOURCE = '第一段。\n\n```ts\nconst a = 1\n```\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n收尾一段。'
+
+  it('隔了 2 秒以上再来,结果与全量解析逐格相同', () => {
+    let now = 0
+    const s = new MarkdownStream(() => now)
+    now = 1000
+    s.parse('m', SOURCE.slice(0, 20), true)
+    now = 1000 + STALE_PARSE_MS + 1 // 这中间一帧都没画过
+    const after = s.parse('m', SOURCE, true)
+    const full = parseFrame(SOURCE)
+    expect(after.blocks.map((b) => b.kind)).toEqual(full.blocks.map((b) => b.kind))
+    expect(after.offsets).toEqual(full.offsets)
+  })
+
+  it('正常节拍(16ms 量级)照旧走增量,一个字没变', () => {
+    let now = 0
+    const s = new MarkdownStream(() => (now += 20))
+    s.parse('m', SOURCE.slice(0, 20), true)
+    const after = s.parse('m', SOURCE, true)
+    expect(after.blocks.map((b) => b.kind)).toEqual(parseFrame(SOURCE).blocks.map((b) => b.kind))
   })
 })

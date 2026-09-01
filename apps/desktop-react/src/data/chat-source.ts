@@ -4,6 +4,7 @@ import {
   reduceSessionProjection,
 } from '@onething/core/session/projection/reducer'
 import { materializeChatMessagesCached } from './chat-materialize'
+import { StreamWater } from './stream-water'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@renderer/platform/types'
@@ -52,6 +53,22 @@ import { t } from '../i18n'
  * ── 节拍 ──────────────────────────────────────────────────────────────
  * 组合与推屏**按帧合并**(rAF):一帧之内来多少条 delta / 账本行,只组合一次树。
  */
+
+/**
+ * **R2 开关**:水位合并(新路)还是拼装机器(旧路)。
+ *
+ * 默认开。旧路保留到 R3 真机浸泡结束 —— 开关一翻即回,回滚不需要改代码。
+ * 读一次存起来:它是「这一台跑哪条路」的档位,不是每帧要问的问题。
+ */
+export const STREAM_R2 = readStreamR2()
+
+function readStreamR2(): boolean {
+  try {
+    return globalThis.localStorage?.getItem('onething.streamR2') !== 'off'
+  } catch {
+    return true
+  }
+}
 
 /** 缺号之后整份重折的最小间隔 —— 窗口内的多次缺号塌成一次。 */
 export const REFOLD_THROTTLE_MS = 3000
@@ -175,6 +192,12 @@ let tailLens: { messageId: string; lens: FoldLens } | undefined
  */
 let tailReceived: { messageId: string; chars: number } | undefined
 
+/**
+ * **活水位**(R2,`data/stream-water.ts`)。与 `fold` 同生共死:一条打开着的会话
+ * 一份,换会话就是换一份 —— 它是个值,不是模块里的那一个(审查条 4)。
+ */
+let water: StreamWater | undefined
+
 let blobEpoch = 0
 /**
  * 重折在飞时到达的活事件 —— **攒着,不是丢掉**。
@@ -263,13 +286,20 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
   function compose(): void {
     if (!fold || fold.pending) return
     perfSpan('chat.compose', () => {
-      const projected = materializeChatMessagesCached(fold!.state, { resolveBlob }, blobEpoch)
+      const projected = materializeChatMessagesCached(
+        fold!.state,
+        // R2:段号只在这条读路上要(见 core 的 `includePartIndex`)——影子对账零感知。
+        STREAM_R2 ? { resolveBlob, includePartIndex: true } : { resolveBlob },
+        blobEpoch,
+        STREAM_R2 ? water : undefined,
+      )
       const base = projected.messages
       const overlay = reconcileOverlay(get().overlay, base)
       set({
         status: 'ready',
         error: undefined,
-        messages: appendTail(base, tail, tailCoverage()),
+        // R2 新路:合并已经在物化里做完了(每 part 一条 max),这一层不再拼装。
+        messages: STREAM_R2 ? base : appendTail(base, tail, tailCoverage()),
         activeMessageId: projected.activeRun?.messageId,
         overlay,
       })
@@ -391,6 +421,33 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     tailLens = { messageId: tail.messageId, lens: lensOf(state, tail.messageId) }
   }
 
+  /**
+   * 清格:拿账本此刻**画得出来**的每段长度去退役水位。
+   *
+   * 「画得出来」= `contentParts` 里那一格的长度(投影的 `requestSettled` 闸说了算),
+   * 不是 `message.content`(它把没结算的轮次也折进去了)—— 与合并式同一把尺,
+   * 两处用不同的尺就是下一轮事故。
+   */
+  function settleWater(state: ReturnType<typeof createSessionProjectionState>): void {
+    if (!water) return
+    const projected = materializeChatMessagesCached(
+      state,
+      { resolveBlob, includePartIndex: true },
+      blobEpoch,
+    )
+    for (const message of projected.messages) {
+      const drawable = new Map<number, number>()
+      for (const part of (message.contentParts ?? []) as Array<{ partIndex?: number; content?: string }>) {
+        if (part.partIndex !== undefined) drawable.set(part.partIndex, part.content?.length ?? 0)
+      }
+      // 顶部推理不在 parts 里,它的产地是 `message.reasoning` —— 那一格由消息级
+      // 长度追平(段号未知,所以按「这条消息的 top 段」整体判,见水位表的 settle)。
+      if (drawable.size > 0) water.settle(message.id, drawable)
+      const ledgerCallIds = new Set((message.toolCalls ?? []).map(call => call.id))
+      if (ledgerCallIds.size > 0) water.settleTools(message.id, ledgerCallIds)
+    }
+  }
+
   /** 起底 / 重折:整份账本折一遍。`token` 是换会话的防串号闸。 */
   async function refold(sessionId: string, token: number): Promise<void> {
     const mine = fold
@@ -465,6 +522,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     }
     mine.state = reduceSessionProjection(mine.state, record as never)
     mine.lastSeq = seq
+    // R2 第六不变式:**打包行到达那一帧只清格,不画画**。账本对这一段画得出来的
+    // 长度追平水位,那一格就退役 —— 清格不改 `max` 的结果,所以屏幕零像素变化。
+    if (STREAM_R2) settleWater(mine.state)
     // 折进新东西之后,尾巴把「账本这一刻新画得出来的那一截」交出去 —— 判据不看
     // 这是不是一条打包行(见 handOverToLedger 的病历:打包行只说明「进账本了」,
     // 不说明「画得出来」;行内推理要等 parts 物化才有第二个产地)。
@@ -498,6 +558,16 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
      */
     if (event?.type === SESSION_EVENT_TYPES.TOOL_INPUT_START) {
       if (!event.messageId || !event.toolCallId || !event.toolName) return
+      if (STREAM_R2) {
+        water?.openTool(
+          event.messageId,
+          event.toolCallId,
+          event.toolName,
+          event.toolCall?.timestamp ?? Date.now(),
+        )
+        schedulePush()
+        return
+      }
       tail = startTailTool(
         tail,
         event.messageId,
@@ -518,6 +588,11 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       tail = undefined
       tailLens = undefined
       tailReceived = undefined
+      // R2:这一轮收尾 = 账本是全的,水位只会说同样的话;顺带也是本期对「换代」的
+      // 保守答复(重跑 / 编辑重发一律清,不去猜 gen)。
+      const settledMessageId = (event as { messageId?: string }).messageId
+      if (settledMessageId) water?.clearMessage(settledMessageId)
+      else water?.clear()
       schedulePush()
     }
   }
@@ -542,12 +617,42 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       turnIndex?: number
       toolCallId?: string
       argsTextDelta?: string
+      stamp?: import('@shared/events/index.js').StreamDeltaStamp
     }
     const messageId = chunk?.messageId
     if (!messageId) return
     const hasContent = get().messages.some(
       (message) => message.id === messageId && Boolean(message.content),
     )
+    /*
+     * R2:**盖过章的 delta 进水位表**,一条路走到底。
+     *
+     * 没有章 = 这条 delta 没走过引擎的铸章机(重放 / 生图旁路)。那种正文本来就
+     * 只活在账本里,水位不认领它 —— 也不必:账本 ≤2s 就把它画出来。
+     */
+    if (STREAM_R2) {
+      if (!water) return
+      const stamp = chunk.stamp
+      if (!stamp) return
+      const text = chunk.type === 'text-delta'
+        ? chunk.text
+        : chunk.type === 'reasoning-delta'
+          ? chunk.reasoning
+          : chunk.type === 'tool-input-delta'
+            ? chunk.argsTextDelta
+            : undefined
+      if (!text) return
+      if (chunk.type === 'tool-input-delta') {
+        // 参数那一路按 toolCallId 落格(章上没有这一格 —— 名字与身份由
+        // `tool:input-start` 给,章只负责说偏移)。
+        if (chunk.toolCallId) water.feedToolArgs(messageId, chunk.toolCallId, stamp.charOffset, text)
+      } else {
+        water.feed(stamp, text, chunk.placement)
+      }
+      schedulePush()
+      return
+    }
+
     if (chunk.type === 'text-delta' && chunk.text) {
       // 先记账再喂 —— 「收到多少」是这条消息的流水,与尾巴此刻手里有多少无关。
       tailReceived =
@@ -627,6 +732,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         unsubEvent = undefined
         unsubStream = undefined
         fold = undefined
+        water = undefined
         tail = undefined
         tailLens = undefined
         tailReceived = undefined
@@ -638,6 +744,8 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       if (get().sessionId === sessionId && fold) return
       const token = (openSeq += 1)
       fold = newFold()
+      // 换会话 = 换一份水位(它是个值,不是模块里的那一个 —— 审查条 4)。
+      water = new StreamWater()
       tail = undefined
       tailLens = undefined
       tailReceived = undefined
@@ -794,6 +902,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       unsubEvent = undefined
       unsubStream = undefined
       fold = undefined
+      water = undefined
       tail = undefined
       tailLens = undefined
       tailReceived = undefined

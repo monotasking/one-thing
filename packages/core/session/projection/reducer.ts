@@ -1802,12 +1802,14 @@ export function materializeContentParts(
     // 也就没有 `turnIndex`。凭空补一个会让每一次生图都不等。
     const turnIndex = part.synthetic ? undefined : partTurnIndex(run, part)
     const text = partText(part, options, run.messageId)
+    // R2:段号只在**要的人**开口时才带(见 `includePartIndex` 的注)。
+    const stamp = options.includePartIndex ? { partIndex } : undefined
     if (part.kind === 'text' && text) {
-      parts.push({ type: 'text', content: text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
+      parts.push({ type: 'text', content: text, ...(turnIndex !== undefined ? { turnIndex } : {}), ...stamp })
     } else if (part.kind === 'reasoning' && text && !topReasoning.has(partIndex)) {
-      parts.push({ type: 'reasoning', content: text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
+      parts.push({ type: 'reasoning', content: text, ...(turnIndex !== undefined ? { turnIndex } : {}), ...stamp })
     } else if (part.kind === 'image' && part.blob) {
-      parts.push({ type: 'image', blob: part.blob, ...(turnIndex !== undefined ? { turnIndex } : {}) })
+      parts.push({ type: 'image', blob: part.blob, ...(turnIndex !== undefined ? { turnIndex } : {}), ...stamp })
     } else if (part.kind === 'provider-data') {
       // A1:引擎那一格是 `{type:'provider-data', providerData, turnIndex}`
       // (`applyAgentLoopProviderDataWithAdapters`)。载荷解不回来(超 64KB 走了

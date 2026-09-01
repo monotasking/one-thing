@@ -48,6 +48,14 @@ interface Entry {
 /** 与 SessionStreamCoalescer 同一个节拍:16ms 一批。 */
 export const PARSE_INTERVAL_MS = 16
 
+/**
+ * 「这中间没画过」的门槛(审查条 8)。
+ *
+ * 正常直播两次真解析之间是 16ms 量级;隔了 2 秒还没画过,只可能是窗口不可见 /
+ * 主线程被别的事占死。那一刻回来别追帧,当第一次解析。
+ */
+export const STALE_PARSE_MS = 2000
+
 export class MarkdownStream {
   private readonly entries = new Map<string, Entry>()
 
@@ -63,7 +71,21 @@ export class MarkdownStream {
     // 同一份文本再问一次:上一帧的答案逐字有效(React 重渲染很常见,别重解析)。
     if (prev && prev.text === text) return toFrame(prev.parsed, text, live)
 
-    const appended = prev !== undefined && text.startsWith(prev.text)
+    /*
+     * **停摆太久 = 不追帧,直接全量**(R2 审查条 8)。
+     *
+     * 窗口最小化 / 切到别的应用时 rAF 停摆,而 delta 照灌。恢复可见那一刻,增量那条路
+     * 要拿「上一份解析」去接一大段积压的文本 —— 切点越旧、要重解析的尾巴越长,
+     * 堆出来的就是 1153ms 级的长帧(P0 那次性能事故的形)。
+     *
+     * 判据不看 `document.visibilityState`:那要挂一个 DOM 监听(模块级副作用,还要配
+     * dispose),而**要防的事**用一个数就说得清 —— 距上一次真解析超过 `STALE_PARSE_MS`,
+     * 说明这中间根本没画过,那就当第一次解析(等价落定路)。
+     */
+    const appended =
+      prev !== undefined
+      && text.startsWith(prev.text)
+      && this.now() - prev.at <= STALE_PARSE_MS
 
     if (appended && this.now() - prev.at < PARSE_INTERVAL_MS) {
       const spliced = spliceTail(prev.parsed, prev.text, text)

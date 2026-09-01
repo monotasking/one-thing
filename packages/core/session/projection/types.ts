@@ -94,10 +94,14 @@ export interface ProjectedStep {
   usage?: ProjectedStepUsage
 }
 
+/**
+ * `partIndex` 只在 `ProjectionMaterializeOptions.includePartIndex` 打开时才有
+ * (R 线 R2,壳侧水位合并要认段;默认档一律缺席,影子对账因此零感知)。
+ */
 export type ProjectedContentPart =
-  | { type: 'text'; content: string; turnIndex?: number }
-  | { type: 'reasoning'; content: string; turnIndex?: number }
-  | { type: 'image'; blob: { hash: string; bytes: number; mime?: string }; turnIndex?: number }
+  | { type: 'text'; content: string; turnIndex?: number; partIndex?: number }
+  | { type: 'reasoning'; content: string; turnIndex?: number; partIndex?: number }
+  | { type: 'image'; blob: { hash: string; bytes: number; mime?: string }; turnIndex?: number; partIndex?: number }
   /**
    * A1:provider 让我们原样带回的那块不透明数据(Claude 的 thinking 签名 /
    * codex 的加密推理)。引擎那一格逐字是 `{type, providerData, turnIndex}`;

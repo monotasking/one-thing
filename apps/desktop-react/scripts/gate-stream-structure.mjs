@@ -188,6 +188,7 @@ const TOKENS = {
   ],
   tool: ['TKT1'],
   mixed: ['TKX1'],
+  pack: ['TKP1', 'TKP2'],
   table: ['TKW1', 'TKW2', 'TKI1'],
 }
 
@@ -268,12 +269,32 @@ const MIXED_TURNS = {
   },
 }
 
+/**
+ * 素材五:**静默窗**(R2 第六不变式:存储节拍不进显示路径)。
+ *
+ * 打包行是给磁盘定的节奏(2s / 64 条),凭什么被显示器听见?这条素材把它**单独关
+ * 起来量**:说一段话,然后**闭嘴 2.6 秒**(跨过那道 2s 闸),再说一段。静默那一段里
+ * 没有任何 delta,屏幕上**只可能**因为打包行而变 —— 所以「那几百帧逐帧一模一样」
+ * 就是「打包行到达零像素变化」的直证。
+ *
+ * 断言写成「同长不同形 = 0」而不是「静默窗里帧全同」:前者对整条流都成立(delta 在
+ * 长的时候总长在涨,只有打包行会造出**长度没变而画面变了**的那一帧),后者只盖静默
+ * 那一段。两条都要,一条证形一条证窗。
+ */
+const PACK_SCRIPT = [
+  ['reasoning', '先想一段,长到跨过打包闸:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥,天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏。'],
+  ['content', '第一段正文 TKP1,说完之后我要闭嘴两秒六,让打包行在没有任何 delta 的窗口里独自到达。'],
+  ['silence', 2600],
+  ['content', '\n\n第二段正文 TKP2,静默结束。'],
+]
+
 const CASES = {
   think: { tools: false, pieces: [6, 2] },
   tool: { tools: true, pieces: [6, 2] },
   table: { tools: false, pieces: [6, 2], script: TABLE_SCRIPT, rowSafe: true },
   // 真机节奏:7 字 / 7ms(自查探针实测的 provider 分片),分片随机落 —— 不 rowSafe。
   mixed: { tools: true, pieces: [7], delayMs: 7, turns: MIXED_TURNS },
+  pack: { tools: false, pieces: [6], script: PACK_SCRIPT },
 }
 
 const TRIGGER = 'STREAM_STRUCTURE_GATE'
@@ -362,6 +383,8 @@ function startMockProvider(port) {
         return
       }
       for (const [kind, text] of mockState.script ?? THINK_SCRIPT) {
+        // 静默:一条 delta 都不发,只等 —— 让打包行独自到达(素材五)。
+        if (kind === 'silence') { await delay(text); continue }
         for (const piece of pieces(text)) {
           if (res.destroyed) return
           send(frame(kind === 'reasoning' ? { reasoning_content: piece } : { content: piece }))
@@ -722,11 +745,54 @@ async function runCell({ record, page, kind, piece, index }) {
   )
 
   await installSampler(page, TOKENS[kind] ?? [])
+  // 帧读数用 `performance.now()`(页面时间轴),账本用 epoch —— 换算要这一个数。
+  const timeOrigin = await page.evaluate(() => performance.timeOrigin)
+  /*
+   * ── O:**流式追加不许打飞用户已选中的文字**(R2 审查条 9)────────────────
+   *
+   * 直播期每一帧都在改文本节点。选区是浏览器挂在**具体那个文本节点**上的,节点一
+   * 被换掉(而不是就地加长),选区当场没了 —— 用户正想复制一段话,字还在长,选区
+   * 却每秒被打飞几十次。
+   *
+   * 量法:等第一段正文上屏之后选中它,然后**照常流到底**,最后问选区还在不在。
+   * 只在正文素材上做(工具素材的第一件东西可能是工具行,选不到字)。
+   */
+  const watchSelection = kind === 'think' || kind === 'pack' || kind === 'table'
+  let selectionSeeded = false
   await rpc(record, 'session-command', 'emit', {
     sessionId,
     command: { type: 'command:send-message', content: `${TRIGGER} 请开始`, suppressTitleGeneration: true },
   })
   await waitFor('assistant 完稿', async () => {
+    // 第一段正文一上屏就把选区种下去,然后让它在整条流里活着。
+    if (watchSelection && !selectionSeeded) {
+      selectionSeeded = await page.evaluate(() => {
+        const rows = document.querySelectorAll('[data-message-id][data-role="assistant"]')
+        const art = rows[rows.length - 1]
+        const target = art?.querySelector('p')
+        if (!target || (target.textContent ?? '').length < 8) return false
+        const range = document.createRange()
+        range.selectNodeContents(target)
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+        window.__selSeed = selection?.toString() ?? ''
+        /*
+         * 逐帧盯着它:**直播期**任何一帧掉了都算打飞(审查条 9 说的就是「流式追加」)。
+         * 收尾那一刻是另一件事(整条消息换渲染:读数行退场、动作行进场),
+         * 单独记读数不进断言 —— 见 O 的报文。
+         */
+        window.__selAlive = { streaming: [], settled: -1 }
+        const tick = () => {
+          const len = window.getSelection()?.toString().length ?? 0
+          if (window.__struct?.done) window.__selAlive.settled = len
+          else window.__selAlive.streaming.push(len)
+          if (window.__selAlive.streaming.length < 4000) requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+        return (window.__selSeed?.length ?? 0) >= 8
+      })
+    }
     const state = await page.evaluate(() => ({
       readout: Boolean(document.querySelector('[data-testid="chat-readout"]')),
       seen: window.__struct?.seenReadout ?? false,
@@ -734,6 +800,42 @@ async function runCell({ record, page, kind, piece, index }) {
     }))
     return state.seen && !state.readout && state.n > 50 ? state : undefined
   }, 180_000)
+  if (watchSelection) {
+    const selection = await page.evaluate(() => ({
+      seed: window.__selSeed ?? '',
+      alive: window.__selAlive ?? { streaming: [], settled: -1 },
+    }))
+    assert(selection.seed.length >= 8, `O 选区种下去了(${selection.seed.length} 字)`)
+    const frames0 = selection.alive.streaming
+    const dropped = frames0.filter(len => len === 0).length
+    const ratio = frames0.length > 0 ? dropped / frames0.length : 0
+    /*
+     * ── O 是**棘轮**,不是零基线(读数与理由都写在这儿)──────────────────
+     *
+     * 09-01 R2 第一次量它:新路 6/434 帧(1.4%)、旧路 7/435 帧(1.6%)——
+     * 两条路读数一样,所以这是**既有病,不是 R2 引入的**(R2 只是第一次把它量出来)。
+     * 病灶在 markdown 那一层:某些帧里段落的行内结构被重建,文本节点被换掉,
+     * 选区跟着没。根治要动行内节点的身份(R4「行级提交流」那一批的活儿)。
+     *
+     * 所以门守的是**量级**:选区每帧都被打飞(≈100%)与偶尔掉一帧(≈1.5%)是两回事,
+     * 前者是灾难,后者是留账。阈值 3% 给了一倍余量;它一红,说明有人把「偶尔」
+     * 变回了「每帧」。留账:R4 之后这条应当收到 0。
+     */
+    const SELECTION_DROP_BUDGET = 0.03
+    if (ratio > SELECTION_DROP_BUDGET) {
+      throw new Error(
+        `断言失败:O 直播期 ${dropped}/${frames0.length} 帧(${(ratio * 100).toFixed(1)}%)选区被打飞,` +
+        `超过 ${(SELECTION_DROP_BUDGET * 100).toFixed(0)}% 棘轮(审查条 9;既有基线 1.4–1.6%)`,
+      )
+    }
+    assert(
+      true,
+      `O 直播期选区掉 ${dropped}/${frames0.length} 帧(${(ratio * 100).toFixed(1)}% ≤ 3% 棘轮;既有病,R2 第一次量到)`,
+    )
+    // 收尾那一刻是整条消息换渲染(读数行退场 / 动作行进场),不属「流式追加」——
+    // 只记读数不进断言,留账在回报里。
+    console.log(`  收尾之后选区:${selection.alive.settled} 字(留账,不进断言)`)
+  }
   await delay(400)
   const frames = await page.evaluate(() => { window.__struct.done = true; return window.__struct.frames })
   const liveShape = await readShape(page)
@@ -829,6 +931,85 @@ async function runCell({ record, page, kind, piece, index }) {
     assert(
       true,
       `C 表一帧都没被当成源码画过,收尾是 ${inTable.last}(住过 ${[...inTable.counts.keys()].join('/')})`,
+    )
+    return
+  }
+
+  if (kind === 'pack') {
+    /*
+     * ── N:**打包行到达那一帧,屏幕零像素变化**(R2 第六不变式)────────────
+     *
+     * 两条读数各证一半:
+     *  · **同长不同形 = 0**:相邻两帧总字数相同、画面却不同 —— 那只可能是重画
+     *    (delta 在长的时候总字数一定在涨)。整条流都成立。
+     *  · **静默窗逐帧同**:素材里那 2.6 秒一条 delta 都没有,而 2s 打包闸必然在
+     *    窗内响过一次。那几百帧一模一样,就是打包行没动过屏幕的直证。
+     */
+    const shapeOf = frame => frame.s.map(item => `${item.k}:${item.d}:${item.n}:${item.h}`).join('|')
+    const lengthOf = frame => frame.s.reduce((sum, item) => sum + item.n, 0)
+    const repaints = []
+    for (let i = 1; i < frames.length; i += 1) {
+      if (lengthOf(frames[i]) !== lengthOf(frames[i - 1])) continue
+      if (shapeOf(frames[i]) !== shapeOf(frames[i - 1])) {
+        repaints.push({ t: frames[i].t, was: shapeOf(frames[i - 1]).slice(0, 60), now: shapeOf(frames[i]).slice(0, 60) })
+      }
+    }
+    if (repaints.length > 0) {
+      throw new Error(
+        `断言失败:N 有 ${repaints.length} 帧「总字数没变、画面却变了」(${repaints.slice(0, 3).map(r => `t=${r.t}ms`).join(' · ')})` +
+        '\n  —— 第六不变式:存储节拍(2s 打包)不许进显示路径',
+      )
+    }
+    assert(true, `N 同长不同形 0 帧(${frames.length} 帧全程)`)
+
+    /*
+     * 静默窗 = 「第一段正文已经在屏、第二段还没来」那一段连续帧。
+     *
+     * 判据必须**咬住素材**(shape 里有 TKP1 而没有 TKP2),不能只找「最长的一段
+     * 总字数不变」—— 思考块在屏幕上是**定长预览**(61 字),整段推理流下来那一段
+     * 的可见字数一直不变,长度足足 2s,会把窗口找到那边去(第一版就栽在这儿:
+     * 量到 2025ms 的那个「静默」其实是推理期)。
+     */
+    let best = { from: 0, to: 0 }
+    let runStart = 0
+    const inWindowShape = frame => shapeOf(frame).includes('TKP1') && !shapeOf(frame).includes('TKP2')
+    for (let i = 1; i <= frames.length; i += 1) {
+      const broke = i === frames.length || lengthOf(frames[i]) !== lengthOf(frames[runStart])
+      if (!broke) continue
+      const span = frames[i - 1].t - frames[runStart].t
+      if (span > best.to - best.from && inWindowShape(frames[runStart])) {
+        best = { from: frames[runStart].t, to: frames[i - 1].t }
+      }
+      runStart = i
+    }
+    const quietMs = best.to - best.from
+    const inWindow = frames.filter(frame => frame.t >= best.from && frame.t <= best.to)
+    const shapes = new Set(inWindow.map(shapeOf))
+    if (shapes.size !== 1) {
+      throw new Error(`断言失败:N 静默窗里 ${inWindow.length} 帧出现了 ${shapes.size} 种画面 —— 打包行动了屏幕`)
+    }
+    /*
+     * 「窗里真的落过打包行吗」**问账本,不靠窗口有多长**。
+     *
+     * 第一版按「窗口 > 2s 打包闸」推断,而那是个会漂的量:思考块在屏幕上是定长
+     * 预览,推理期的可见字数也一直不变,窗口找错地方就得出 2025ms 的假读数。
+     * 现在直接把账本上那几行的时刻换算到页面时间轴上比一比 —— 落在窗里,
+     * 而窗里逐帧一模一样,「打包行到达零像素变化」就是**证**,不是推断。
+     */
+    const raw = await rpc(record, 'sessionEvents', 'listRaw', { sessionId })
+    const packed = (raw?.events ?? [])
+      .filter(event => event.type === 'assistant/chunks' && typeof event.time === 'number')
+      .map(event => event.time - timeOrigin)
+    const inside = packed.filter(at => at >= best.from && at <= best.to)
+    if (inside.length === 0) {
+      throw new Error(
+        `断言失败:N 静默窗(${best.from}–${best.to}ms,${quietMs}ms)里一条打包行都没落过 —— 这一格什么都没证到`
+        + `\n  账本上的打包行落在:${packed.map(at => Math.round(at)).join(' / ')}ms`,
+      )
+    }
+    assert(
+      true,
+      `N 静默窗 ${inWindow.length} 帧逐帧一模一样,窗内落了 ${inside.length} 条打包行(${quietMs}ms 窗)`,
     )
     return
   }
@@ -1028,6 +1209,23 @@ async function runCase(kind) {
       env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     const page = await app.firstWindow()
+    /*
+     * `--r2=off` 把壳切回**拼装机器**那条旧路(R3 之前一直留着的回滚口)。
+     * 档位在模块初始化时读一次,所以要先写 localStorage 再重载。
+     * 门自己永远跑新路(不传参);这个口是给**反证**与 R3 回滚演练用的。
+     */
+    /*
+     * **档位每次都显式写一遍,不许继承上一次**。
+     *
+     * 学费:`ONETHING_STORE_PATH` 换的是账本,**换不掉 Electron 的 userData** ——
+     * localStorage 活在那儿,跨门跑存活。跑过一次 `--r2=off` 之后,后面每一次
+     * 都在旧路上跑而门自己浑然不觉(真的发生了:D 条突然红,查了两轮才发现
+     * 那几次根本没走新路)。所以这里不是「要关才写」,是**每次都写**。
+     */
+    const r2 = process.argv.includes('--r2=off') ? 'off' : 'on'
+    await page.evaluate(value => window.localStorage.setItem('onething.streamR2', value), r2)
+    await page.reload()
+    console.log(`  [档位] onething.streamR2 = ${r2}`)
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined

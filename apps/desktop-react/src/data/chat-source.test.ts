@@ -40,6 +40,33 @@ const runStart = (seq: number, runId: string, assistantMessageId: string): Ledge
 })
 
 /** 打包行 —— 消费侧不自己 decode,归约器里的解码器负责展开(定律二)。 */
+/**
+ * R2:一条**盖过章**的裸 delta(R1 的身份章)。
+ *
+ * 新路只认盖过章的 delta —— 没章的那种是「没走过引擎铸章机」的旁路正文,
+ * 由账本负责(见 `chat-source` 的 onStream)。测试因此照真机的样子盖章。
+ */
+const stamped = (
+  messageId: string,
+  charOffset: number,
+  text: string,
+  over: { partIndex?: number; kind?: 'text' | 'reasoning'; placement?: 'top' | 'inline' } = {},
+) => ({
+  type: over.kind === 'reasoning' ? 'reasoning-delta' : 'text-delta',
+  ...(over.kind === 'reasoning' ? { reasoning: text } : { text }),
+  messageId,
+  ...(over.placement ? { placement: over.placement } : {}),
+  stamp: {
+    messageId,
+    runId: 'r1',
+    requestIndex: 0,
+    partIndex: over.partIndex ?? 0,
+    kind: over.kind ?? 'text',
+    charOffset,
+    gen: 0,
+  },
+})
+
 const chunks = (seq: number, runId: string, messageId: string, text: string[]): Ledger => ({
   seq,
   time: T0,
@@ -280,15 +307,21 @@ describe('缺号:不补拼,整会话重折(节流合并)', () => {
   })
 })
 
-describe('活尾巴:平滑上屏,打包行一到就换装', () => {
+/**
+ * R2:这一组的名字从「活尾巴」改成「活水位」—— 机器换了,**要证的事一个字没变**:
+ * 裸 delta 当场上屏、打包行到达不重影不回缩、收尾之后由账本接管。
+ * 新路的实现是「每 part 取 max(账本可画长, 活水位)」,所以这几条从结构上恒成立;
+ * 用例留着,是因为「结构上恒成立」这句话也得有人替屏幕验一次。
+ */
+describe('活水位:平滑上屏,打包行一到就清格', () => {
   it('裸 delta 当场追加到正文上(不等 2s 的打包行)', async () => {
     const h = harness([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
     configureChatPort(h.port)
     await state().open(SESSION)
     await settle()
 
-    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '好', messageId: 'a1' } as never })
-    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '的', messageId: 'a1' } as never })
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 0, '好') as never })
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 1, '的') as never })
     await settle()
 
     expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('好的')
@@ -300,7 +333,7 @@ describe('活尾巴:平滑上屏,打包行一到就换装', () => {
     await state().open(SESSION)
     await settle()
 
-    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '好的', messageId: 'a1' } as never })
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 0, '好的') as never })
     await settle()
     h.emitLedger(chunks(4, 'r1', 'a1', ['好的']))
     await settle()
@@ -315,8 +348,8 @@ describe('活尾巴:平滑上屏,打包行一到就换装', () => {
     await state().open(SESSION)
     await settle()
 
-    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '好的', messageId: 'a1' } as never })
-    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: ',继续', messageId: 'a1' } as never })
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 0, '好的') as never })
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 2, ',继续') as never })
     await settle()
     // 打包行只装了「好的」—— 从前这里整段丢尾巴,「,继续」要等下一条打包行才回来。
     h.emitLedger(chunks(4, 'r1', 'a1', ['好的']))
@@ -331,7 +364,7 @@ describe('活尾巴:平滑上屏,打包行一到就换装', () => {
     await state().open(SESSION)
     await settle()
 
-    h.emitStream({ sessionId: SESSION, chunk: { type: 'text-delta', text: '半句', messageId: 'a1' } as never })
+    h.emitStream({ sessionId: SESSION, chunk: stamped('a1', 0, '半句') as never })
     await settle()
     expect(state().messages.find((message) => message.id === 'a1')?.content).toBe('半句')
 

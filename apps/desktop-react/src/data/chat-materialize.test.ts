@@ -3,7 +3,7 @@ import {
   createSessionProjectionState,
   reduceSessionProjection,
 } from '@onething/core/session/projection/reducer'
-import { __countMemoMisses, materializeChatMessagesCached } from './chat-materialize'
+import { __countMemoMisses, materializeChatMessagesCached, trimToGraphemeBoundary } from './chat-materialize'
 
 /**
  * 增量物化的四条守卫(09-01 P0)。钉的是**引用契约**,不是值:下游(MessageRow
@@ -97,5 +97,32 @@ describe('materializeChatMessagesCached 的引用契约', () => {
     const full = materializeChatMessages(state, OPTS as never)
     expect(cached.messages).toEqual(full.messages)
     expect(cached.activeRun?.messageId).toBe(full.activeRun?.messageId)
+  })
+})
+
+/**
+ * 审查条 6:**渲染边界向字素边界收一格**。
+ *
+ * 偏移按 UTF-16 码元(与打包行同尺,那一层不能改),而分片按码元切 —— 一条 delta
+ * 停在代理对中间时,半个 emoji 在屏幕上是一格 `�`。收格只发生在画的这一刻。
+ */
+describe('字素边界:半个字不画', () => {
+  it('落单的高位代理不画(下一片一到自然补上)', () => {
+    const emoji = '😀' // U+1F600 = 一对代理
+    expect(trimToGraphemeBoundary(`好${emoji[0]}`)).toBe('好')
+    expect(trimToGraphemeBoundary(`好${emoji}`)).toBe(`好${emoji}`)
+  })
+
+  it('零宽连接符结尾不画(后面一定还有字)', () => {
+    expect(trimToGraphemeBoundary('👨‍')).toBe('👨')
+  })
+
+  it('变体选择符结尾不画', () => {
+    expect(trimToGraphemeBoundary('❤️')).toBe('❤')
+  })
+
+  it('正常文本一个字都不动(空串也不炸)', () => {
+    expect(trimToGraphemeBoundary('普通的一段话')).toBe('普通的一段话')
+    expect(trimToGraphemeBoundary('')).toBe('')
   })
 })
