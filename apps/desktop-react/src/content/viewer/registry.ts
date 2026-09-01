@@ -108,6 +108,17 @@ class ViewerHandlerRegistry {
   ids(): string[] {
     return this.handlers.map((h) => h.id)
   }
+
+  /**
+   * 摘掉一个处理器。**唯一的用户是 HMR 退役**(见下面 disposeViewerKind)——
+   * 产品运行期没有「卸载一种文件型」这回事,所以它不出现在 registerViewer 旁边
+   * 的公开 API 里,而是走那一口专门的拆卸函数。
+   */
+  unregister(id: string): void {
+    const at = this.handlers.findIndex((h) => h.id === id)
+    if (at >= 0) this.handlers.splice(at, 1)
+    if (this.fallbackId === id) this.fallbackId = undefined
+  }
 }
 
 const viewers = new ViewerHandlerRegistry()
@@ -122,6 +133,32 @@ export function resolveViewer(file: ViewerFile): ViewerHandler {
 
 export function registeredViewerIds(): string[] {
   return viewers.ids()
+}
+
+/**
+ * **HMR 退役的唯一一口**(09-01 立法:模块级副作用必须配 dispose)。
+ *
+ * 这三张表都是**模块级单例注册**,而且都「重复注册即抛」——热更时旧模块不退役,
+ * 新模块 import 进来当场抛「查看器型重复注册」,整块面白屏。生产构建里
+ * `import.meta.hot` 是 undefined,调用点整段被 tree-shake。
+ *
+ * 三张表共用这一口而不是各写各的:注册在一个文件里,拆卸也该在同一个文件里
+ * (「不许写第二套:两套拆卸迟早漏一格」)。
+ */
+export function disposeRegistrations(options: {
+  viewers?: readonly string[]
+  navigators?: readonly string[]
+  keymaps?: readonly string[]
+}): void {
+  for (const id of options.viewers ?? []) viewers.unregister(id)
+  for (const id of options.navigators ?? []) {
+    const at = navigators.findIndex((n) => n.id === id)
+    if (at >= 0) navigators.splice(at, 1)
+  }
+  for (const id of options.keymaps ?? []) {
+    const at = keymaps.findIndex((k) => k.id === id)
+    if (at >= 0) keymaps.splice(at, 1)
+  }
 }
 
 /* ── ② 跳转提供者(⌘L 是唯一入口)──────────────────────────────────────── */

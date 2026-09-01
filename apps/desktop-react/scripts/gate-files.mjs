@@ -166,6 +166,30 @@ async function realNames(dir) {
   return sorted(entries.map(e => e.name).filter(n => n !== 'node_modules' && n !== '.git'))
 }
 
+/**
+ * 从树行右键菜单里点一档「打开方式」。语言按机器走(全新 user-data-dir 上
+ * 多半是英文),所以按**正则**取而不是逐字对 —— 门要走用户真正走的那条路,
+ * 但不该被界面语言绊住。
+ */
+async function switchModeTo(page, filePath, pattern) {
+  await page.evaluate(selector => {
+    document
+      .querySelector(selector)
+      .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+  }, `[data-file-path="${filePath}"]`)
+  await waitFor('行菜单出来了', () =>
+    page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
+  )
+  await page.evaluate(source => {
+    const re = new RegExp(source)
+    const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+    const target = items.find(el => re.test(el.textContent ?? ''))
+    if (!target) throw new Error(`菜单里没有 ${source};现有:${items.map(e => e.textContent).join(' | ')}`)
+    target.click()
+  }, pattern.source)
+  await delay(400)
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(`[d5-gate] 找不到 ${path.relative(repoRoot, serverEntry)} —— 先在仓根跑 \`bun run server:build\``)
@@ -366,19 +390,7 @@ async function main() {
      const beforeText = await page.evaluate(
        () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
      )
-     await page.evaluate(selector => {
-       const el = document.querySelector(selector)
-       el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
-     }, `[data-file-path="${enginePath}"]`)
-     await waitFor('行菜单出来了', () =>
-       page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
-     )
-     await page.evaluate(() => {
-       const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
-       const target = items.find(el => /主区域|Main stage/.test(el.textContent ?? ''))
-       if (!target) throw new Error('菜单里没有「主区域」这一档')
-       target.click()
-     })
+     await switchModeTo(page, enginePath, /主区域|Main stage/)
      await waitFor('查看器搬到了舞台上', () =>
        page.evaluate(() => {
          const viewer = document.querySelector('[data-testid="file-viewer"]')
@@ -390,20 +402,51 @@ async function main() {
        await page.evaluate(() => !document.querySelector('[data-testid="files-tree"] + [data-testid="file-viewer"]')),
        '面板内那条分栏收起来了 —— 一份内容只有一个落点(不重影)',
      )
-     // ③ 状态留存:换了宿主之后仍然是同一份文件、同一份内容。
-     const afterPath = await page.evaluate(
-       () => document.querySelector('[data-testid="viewer-name"]')?.getAttribute('data-viewer-path') ?? null,
+     /*
+      * ③ 状态留存 + **合檐**(09-01 回炉:浮窗/舞台里双檐叠加、无滚动条)。
+      *
+      * 合檐之后查看器自己那条檐整条不画,所以身份改问**宿主檐**那一格
+      * (`[data-host-title]`,三个宿主共用 components/HostTitle)。
+      * 这三条断言就是那次回炉的永久化:①檐只剩一条;②宿主檐说得出文件名;
+      * ③体拿得到确定高度、长文真的滚得动(修前 clientHeight == scrollHeight)。
+      */
+     const merged = await page.evaluate(() => {
+       const viewer = document.querySelector('[data-testid="file-viewer"]')
+       const host = viewer?.closest('[role="dialog"]')
+       const body = viewer?.querySelector('[data-testid="viewer-body"]')
+       return {
+         ownChrome: Boolean(viewer?.querySelector('[data-viewer-chrome]')),
+         hostHeader: Boolean(host?.querySelector('header')),
+         hostTitle: host?.querySelector('[data-host-title]')?.textContent ?? null,
+         clientH: body?.clientHeight ?? 0,
+         scrollH: body?.scrollHeight ?? 0,
+         hostH: host ? Math.round(host.getBoundingClientRect().height) : 0,
+       }
+     })
+     assert(merged.hostHeader && !merged.ownChrome, '合檐:宿主檐在场,查看器自己那条整条不画(修前两条叠着)')
+     assert(merged.hostTitle === 'engine.ts', `宿主檐说得出文件名:${merged.hostTitle}`)
+     /*
+      * 「滚得动」的**根判据是高度有没有被宿主夹住**,不是「这一份内容够不够长」——
+      * 这道门那个夹具文件只有两行,再长的判据它也满足不了。修前查看器没有
+      * height,在宿主那个块级内容盒里高度被内容撑开(真机探针量到 52016px),
+      * 于是 clientHeight == scrollHeight、浏览器不给滚动条;修后它被夹在宿主
+      * 里面,**必然 ≤ 宿主自己那么高**。长文真的滚得动那一半由五落点探针量
+      * (2500 行 × 五种宿主全部 scrollable),读数写在提交说明里。
+      */
+     assert(
+       merged.clientH > 0 && merged.clientH <= merged.hostH,
+       `体的高度被宿主夹住(可视 ${merged.clientH} ≤ 宿主 ${merged.hostH};修前是内容撑的 52016)`,
      )
      const afterText = await page.evaluate(
        () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
      )
-     assert(afterPath === enginePath, `换落点之后还是同一份文件:${afterPath}`)
      assert(afterText === beforeText, '换落点之后内容逐字相同(状态住 store,换的只是外框)')
      await page.screenshot({ path: path.join(shotDir, 'viewer-stage.png') })
-     // 收拾干净:把它放回面板内,后面那一步要用树。
+     // 收拾干净:把它放回面板内(合檐之后关闭钮在宿主檐上,所以先搬回来再关)。
+     await switchModeTo(page, enginePath, /面板内|This panel/)
      await page.evaluate(() => {
-       const viewer = document.querySelector('[data-testid="viewer-close"]')
-       if (viewer) viewer.click()
+       const close = document.querySelector('[data-testid="viewer-close"]')
+       if (close) close.click()
      })
      await waitFor('查看器收回', () =>
        page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),

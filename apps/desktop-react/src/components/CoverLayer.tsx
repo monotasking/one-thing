@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { coverIdOf } from '../stage/transitions'
 import { findItem } from '../stage/items'
+import { HostTitle, useHostTitleText } from './HostTitle'
 import { renderContent } from '../content'
 import { useT } from '../i18n'
 import { resolveIcon, X } from './icons'
@@ -43,6 +44,8 @@ export function CoverLayer() {
   const closeCover = useStageStore((st) => st.closeCover)
 
   const item = findItem(coverId)
+  // 同 FloatWindow / StageOverlay:宿主檐替合檐后的内容说身份。取在早退之前(hook)。
+  const liveTitle = useHostTitleText(coverId, '')
   const [held, setHeld] = useState<StageItemSpec | null>(null)
 
   useEffect(() => {
@@ -66,7 +69,7 @@ export function CoverLayer() {
   if (!shown) return null
   const leaving = !item
   const Icon = resolveIcon(shown.icon)
-  const title = t(shown.titleKey)
+  const title = liveTitle || t(shown.titleKey)
 
   return (
     /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
@@ -83,7 +86,7 @@ export function CoverLayer() {
       <section className={s.panel} role="dialog" aria-label={title}>
         <header className={s.header}>
           <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-          <span className={s.title}>{title}</span>
+          <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
           <button
             type="button"
             className={s.close}

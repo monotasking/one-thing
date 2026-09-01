@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { stageIdOf } from '../stage/transitions'
 import { findItem } from '../stage/items'
+import { HostTitle, useHostTitleText } from './HostTitle'
 import { renderContent } from '../content'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
@@ -25,6 +26,12 @@ export function StageOverlay() {
   const stageToFloat = useStageStore((st) => st.stageToFloat)
 
   const item = findItem(stageId)
+  /*
+   * 合檐后的内容由宿主檐说身份(同 FloatWindow)。取在早退之前 —— 它是 hook。
+   * 退场那几帧走的是 `held`(此时 stageId 已经是 null),那时回落到静态名字:
+   * 一块正在飞出去的面写着「查看器」而不是文件名,是可接受的,而且看不见。
+   */
+  const liveTitle = useHostTitleText(stageId, '')
   const [held, setHeld] = useState<StageItemSpec | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
 
@@ -65,7 +72,7 @@ export function StageOverlay() {
   if (!shown) return null
   const leaving = !item
   const Icon = resolveIcon(shown.icon)
-  const title = t(shown.titleKey)
+  const title = liveTitle || t(shown.titleKey)
 
   return (
 /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
@@ -86,7 +93,7 @@ export function StageOverlay() {
       >
         <header className={s.header}>
           <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-          <span className={s.title}>{title}</span>
+          <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
           <button
             type="button"
             className={s.action}

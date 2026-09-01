@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useT } from '../../../i18n'
-import { registerViewer } from '../registry'
+import { registerViewer, disposeRegistrations } from '../registry'
 import type { ViewerBodyProps } from '../registry'
 import { HonestState } from '../HonestState'
 import s from '../FileViewer.module.css'
@@ -85,3 +85,12 @@ registerViewer({
   // (与 code 那一型的「语言 · 编码 · 换行符」同一条口径)。
   status: ({ file }) => (file.kind === 'media' ? (file.audio ? 'audio' : 'video') : undefined),
 })
+
+/*
+ * HMR 退役(09-01 立法:模块级副作用必须配 dispose)。这个文件在被 import 时
+ * 往注册表里塞东西,而那张表**重复注册即抛** —— 不退役,热更后新模块进来当场
+ * 白屏。复用 registry 那一口唯一的拆卸,不写第二套。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => disposeRegistrations({ viewers: ['media'] }))
+}

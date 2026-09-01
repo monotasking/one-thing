@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { FileViewer } from '../viewer/FileViewer'
 import {
@@ -241,6 +244,64 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
     fireEvent.click(screen.getByText('在文件管理器中显示'))
     await waitFor(() => expect(port.reveal).toHaveBeenCalledWith('/repo/a.ts'))
+  })
+})
+
+/* ── 落点生命周期:檐归属 / 滚动归属 ─────────────────────────────────────── */
+
+/**
+ * 09-01 回炉判例(用户报障:「浮窗形态下双檐叠加、内容展示不全、没有滚动条」)。
+ *
+ * 立法「状态先行」之后补的表,这一组是那张表里**檐归属**那一列的机器化:
+ *   panel / edge-*  → 查看器自己那条檐(架子那条是 Tabs,塞不进文件名)
+ *   float / stage / cover → **宿主自带 header,查看器整条檐不画**
+ * 「整条不画」而不是「把里面几件藏掉」:后者会剩一条 40px 空带子,而那正是
+ * 报障里「空间利用度很低」的那 40px。
+ */
+describe('落点:宿主自带檐时合一', () => {
+  const HOST_OWNS = ['float', 'stage', 'cover']
+  const SELF_OWNS = ['panel', 'edge-left', 'edge-right', 'edge-top', 'edge-bottom']
+
+  for (const placement of HOST_OWNS) {
+    it(`${placement}:查看器那条檐整条不画(宿主檐替它说身份)`, async () => {
+      installPort()
+      await open('/repo/a.ts')
+      render(<FileViewer placement={placement} />)
+      expect(screen.queryByTestId('viewer-name')).toBeNull()
+      expect(screen.queryByTestId('viewer-close')).toBeNull()
+      expect(document.querySelector('[data-viewer-chrome]')).toBeNull()
+      // 体与脚照画 —— 合的是檐,不是把查看器变成半个。
+      expect(screen.getByTestId('viewer-body')).toBeTruthy()
+      expect(screen.getByTestId('viewer-status')).toBeTruthy()
+    })
+  }
+
+  for (const placement of SELF_OWNS) {
+    it(`${placement}:查看器自己那条檐照画(宿主没有能说文件名的檐)`, async () => {
+      installPort()
+      await open('/repo/a.ts')
+      render(<FileViewer placement={placement} />)
+      expect(screen.getByTestId('viewer-name').textContent).toBe('a.ts')
+      expect(screen.getByTestId('viewer-close')).toBeTruthy()
+    })
+  }
+
+  /*
+   * 滚动归属:**永远是查看器 .body**,不随落点变。这一条守的是那个前提 ——
+   * `.body` 拿得到确定高度。判据按源文本:`.viewer` 那条 `height: 100%` 是
+   * 修好这条病的**唯一**一行(修前它没有 height,在宿主那个块级内容盒里高度
+   * 被内容撑成 52016px,于是 clientHeight == scrollHeight、浏览器不给滚动条)。
+   * 拆掉它 → 真机探针四种落点全部 scrollable: false(09-01 已真跑过一轮)。
+   */
+  it('滚动的前提写在样式里:.viewer 有确定高度,.body 自己 overflow:auto', () => {
+    const here = path.dirname(fileURLToPath(import.meta.url))
+    // 先剥注释:病历文本(那段讲修前 52016px 的注)会让断言自红。
+    const css = readFileSync(path.join(here, '../viewer/FileViewer.module.css'), 'utf-8').replace(
+      /\/\*[\s\S]*?\*\//g,
+      '',
+    )
+    expect(css).toMatch(/\.viewer\s*\{[^}]*height:\s*100%/)
+    expect(css).toMatch(/\.body\s*\{[^}]*overflow:\s*auto/)
   })
 })
 

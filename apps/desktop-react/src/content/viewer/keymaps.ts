@@ -1,4 +1,4 @@
-import { registerKeymap } from './registry'
+import { disposeRegistrations, registerKeymap } from './registry'
 
 /**
  * **键位档表**。一条纪律统领全表:键位**只把手势映射到已注册的能力**,
@@ -63,3 +63,12 @@ registerKeymap({
   commandLine: true,
   implemented: false,
 })
+
+/*
+ * HMR 退役(09-01 立法:模块级副作用必须配 dispose)。这个文件在被 import 时
+ * 往注册表里塞东西,而那张表**重复注册即抛** —— 不退役,热更后新模块进来当场
+ * 白屏。复用 registry 那一口唯一的拆卸,不写第二套。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => disposeRegistrations({ keymaps: ['default', 'vim'] }))
+}

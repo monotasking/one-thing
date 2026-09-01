@@ -575,7 +575,28 @@ async function main() {
     )
     await settleAnimations(page)
     await scanAxe(page, '文件查看器', '[data-testid="file-viewer"]')
-    await clickSelector(page, '[data-testid="viewer-close"]')
+    /*
+     * 收回它。**关闭钮在宿主檐上,不在查看器里**(09-01 合檐:浮窗 / 舞台 / 盖
+     * 三种宿主自带 header,查看器那条整条不画,身份与关闭都归宿主)——
+     * 所以这里点的是浮窗那颗关闭,不是 `viewer-close`。
+     * 顺手把合檐这件事在这道门里也钉一条:这一屏上**只有一条檐**。
+     */
+    const chromes = await page.evaluate(() => {
+      const viewer = document.querySelector('[data-testid="file-viewer"]')
+      const host = viewer?.closest('[role="dialog"]')
+      return {
+        own: Boolean(viewer?.querySelector('[data-viewer-chrome]')),
+        host: Boolean(host?.querySelector('header')),
+      }
+    })
+    assert(chromes.host && !chromes.own, '合檐:宿主檐在场,查看器自己那条不画(修前两条叠着)')
+    await page.evaluate(() => {
+      const host = document.querySelector('[data-testid="file-viewer"]')?.closest('[role="dialog"]')
+      const buttons = Array.from(host?.querySelectorAll('header button') ?? [])
+      const close = buttons[buttons.length - 1]
+      if (!close) throw new Error('宿主檐上没有关闭钮')
+      close.click()
+    })
     await waitFor('查看器收回', () =>
       page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
     )

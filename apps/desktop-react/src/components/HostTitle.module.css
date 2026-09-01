@@ -1,0 +1,17 @@
+/*
+ * 宿主檐上那颗未保存丸。与查看器自己那颗(FileViewer.module.css 的 .dirtyDot)
+ * 是**同一副画法**:--warn 实心小圆点(与那一处逐字同色同大小),不换底、不加字
+ * —— 状态色只上点(四轴第一条)。
+ * 两处各画一次是有意的:一处在合檐后的宿主檐里,一处在面板 / 架子那两档
+ * 查看器自己的檐里,它们分属两个组件的排版,共用一个类反而要跨模块拉线。
+ */
+.dot {
+  display: inline-block;
+  flex: none;
+  width: var(--files-open-dot);
+  height: var(--files-open-dot);
+  margin-left: var(--sp-1);
+  border-radius: var(--r-full);
+  background: var(--warn);
+  vertical-align: middle;
+}

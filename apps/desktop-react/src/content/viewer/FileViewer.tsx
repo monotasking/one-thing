@@ -50,6 +50,32 @@ import s from './FileViewer.module.css'
  * 唯一从宿主收的东西是 `onReveal`:「在文件管理器里定位」不是一份文件内容的
  * 事实,它是宿主那一侧的能力(桌面做得到,联网面结构化降级)。
  *
+ * ── 落点生命周期表(09-01「状态先行」立法后补,判例就是本条回炉)────────────
+ * **换一种宿主就是一次生命周期事件**,三件事必须逐格回答:
+ *
+ *   落点        檐(身份+关闭)      滚动谁管          尺寸从哪来
+ *   ────────────────────────────────────────────────────────────────────
+ *   panel      查看器自己那条       查看器 .body      grid 列宽 × 面板高
+ *   float      **浮窗檐**(合一)    查看器 .body      浮窗 rect
+ *   stage      **舞台檐**(合一)    查看器 .body      舞台 panel 尺寸
+ *   cover      **盖檐**(合一)      查看器 .body      内容栏尺寸
+ *   edge-*     查看器自己那条       查看器 .body      架子厚度 × 视口
+ *
+ * 檐:浮窗 / 舞台 / 盖三种宿主**自带一条 header**,查看器再画一条就是两条叠着
+ * (09-01 真机读数 `chromes: 2`,两条 40px 白占掉 520 高浮窗的 15%,而且文件
+ * 内容被挤没了)。架子不合檐 —— 它那条是 **Tabs 条**(多块内容共用),说的是
+ * 「这条边上有哪几块面」,塞不进一个文件名。合檐之后文件身份由
+ * `stage/live-title` 交给宿主檐说(ViewerPanel 发布,三个宿主共用 HostTitle 读)。
+ *
+ * 滚动:**永远是查看器 `.body` 自己管**(overflow:auto)。这条不随落点变,
+ * 但它有一个前提 —— `.body` 得拿得到**确定高度**。修前 `.viewer` 没有 height,
+ * 在宿主那个 block 容器里高度是内容撑的(真机 8409px),于是 `.body` 的
+ * clientHeight == scrollHeight,浏览器当然不给滚动条;内容被宿主的
+ * `overflow:hidden` 齐边剪掉。修法是 `.viewer { height: 100% }` 一行 ——
+ * 四种宿主的内容盒都有确定高度(浮窗/舞台/盖是定高 flex 列里的 flex 项,
+ * 架子那层是 `position:absolute; inset:0`),所以百分比解得出来。
+ * 面板那一档本来就对:grid 项默认 stretch,所以只有它一开始就能滚。
+ *
  * ── 三层 + 一条(§ 定稿的形)───────────────────────────────────────────────
  *   头 40:类型字标 · 名(截断)· 路径(点即复制)· 未保存丸 · 铅笔 · Finder ·
  *          打开方式 · 关闭。**大小与时间不在这里** —— 那是双击详情面的事。
@@ -65,6 +91,13 @@ import s from './FileViewer.module.css'
  *  ③ **所有异步钮有 pending 态**:存盘那颗在 `edit.saving` 时禁用并换字;
  *  ④ **跳转滚动不闪**:落点用 `scrollIntoView({block:'center'})`,不重挂 body。
  */
+/**
+ * **这些落点的宿主自带一条檐** —— 那时查看器整条檐不画,身份交给宿主檐说
+ * (见文件头那张落点生命周期表)。判据在这里定一次,不散在 JSX 的条件里:
+ * 加一种自带檐的宿主 = 这张表加一格。
+ */
+const HOST_OWNS_CHROME = new Set(['float', 'stage', 'cover'])
+
 export function FileViewer({
   onReveal,
   placement = 'panel',
@@ -114,6 +147,8 @@ export function FileViewer({
   const openDetail = useFilesSource((st) => st.openDetail)
   const closeDetail = useFilesSource((st) => st.closeDetail)
 
+  /** 这一档落点的宿主自带檐吗 —— 自带就合一(查看器整条檐不画)。 */
+  const chromeless = HOST_OWNS_CHROME.has(placement)
   const path = file?.path ?? pending ?? ''
   const name = file?.name ?? (pending ? baseNameOf(pending) : '')
   const glyph = useMemo(() => glyphOf(name || '?', 'file'), [name])
@@ -282,7 +317,12 @@ export function FileViewer({
        *   复制路径 / 在 Finder 显示 / 编辑 / 打开方式 → 身上右键那张
        *   `FileActionsMenu`(与树行同一张表,同一份定义)。
        */}
-      <div className={s.chrome}>
+      {/*
+       * 宿主自带檐时**整条不画**(09-01 合檐):不是把里面几件藏掉 —— 那样还剩
+       * 一条 40px 的空带子,而这正是报障里「空间利用度很低」的那 40px。
+       */}
+      {!chromeless && (
+      <div className={s.chrome} data-viewer-chrome="">
         {/*
          * ── 没有文件就**不画身份**(09-01 gate:a11y 的 `_chromeGlyph` 2.68 红)──
          * F2 之前查看器只可能在「有文件」的情况下出现,所以这两格无条件画。
@@ -322,6 +362,7 @@ export function FileViewer({
           />
         </span>
       </div>
+      )}
 
       {/* 工具条:这一型自己的那一格。没有就整条不画(不留一条空带子)。 */}
       {handler?.Toolbar && bodyProps && !edit.editing && (

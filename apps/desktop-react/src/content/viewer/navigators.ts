@@ -1,4 +1,4 @@
-import { registerNavigator } from './registry'
+import { disposeRegistrations, registerNavigator } from './registry'
 import type { ViewerJumpCandidate } from './registry'
 import type { ViewerFile } from '../../data/viewer-source'
 
@@ -121,3 +121,12 @@ export function searchableSourceOf(file: ViewerFile): string | null {
 
 registerNavigator({ id: 'symbol', sigil: '#', labelKey: 'viewer.jumpSymbol' })
 registerNavigator({ id: 'diff', sigil: '@', labelKey: 'viewer.jumpDiff' })
+
+/*
+ * HMR 退役(09-01 立法:模块级副作用必须配 dispose)。这个文件在被 import 时
+ * 往注册表里塞东西,而那张表**重复注册即抛** —— 不退役,热更后新模块进来当场
+ * 白屏。复用 registry 那一口唯一的拆卸,不写第二套。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => disposeRegistrations({ navigators: ['line', 'search', 'symbol', 'diff'] }))
+}

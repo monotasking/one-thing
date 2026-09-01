@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useStageStore } from '../stage/store'
 import { findItem } from '../stage/items'
+import { HostTitle, useHostTitleText } from './HostTitle'
 import { clampFloatRect, resizeFrom, snapSideAt } from '../stage/transitions'
 import { setSnapSide } from './snap-hint'
 import { renderContent } from '../content'
@@ -57,6 +58,13 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
 
   const rect = live ?? stored
   const item = findItem(id)
+  /*
+   * 檐上那句话:**有活标题就说活标题**(09-01 合檐)。查看器摆进浮窗时自己那条
+   * 檐整条不画,文件名与未保存丸改由这一条说 —— 判据与画法在 HostTitle 一处,
+   * 三个宿主(浮窗 / 舞台 / 盖)共用,免得那颗丸只在其中一处被记得。
+   * 取在**早退之前**:它是 hook,不许排在 `if (!item) return null` 后面。
+   */
+  const liveTitle = useHostTitleText(id, '')
 
   const begin = useCallback(
     (e: ReactPointerEvent<HTMLElement>, dir: ResizeDir | null) => {
@@ -113,7 +121,7 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   )
 
   if (!item || !rect) return null
-  const title = t(item.titleKey)
+  const title = liveTitle || t(item.titleKey)
   const Icon = resolveIcon(item.icon)
 
   return (
@@ -140,7 +148,7 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
         onDoubleClick={() => openAs(id, { kind: 'stage' })}
       >
         <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-        <span className={s.title}>{title}</span>
+        <HostTitle id={id} fallback={t(item.titleKey)} className={s.title} />
 
         <button
           type="button"
