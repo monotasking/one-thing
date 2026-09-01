@@ -147,6 +147,21 @@
   mask-image: none;
 }
 
+/*
+ * ── `geometry: 'reserve'` 的那一条:**滚动条槽常留**(R4b)────────────────
+ *
+ * 病历(117 列怪物表,真机逐帧量块顶与块高):数据行一行行到达时,表的总宽在某一
+ * 行上越过容器宽度,横向滚动条**当场出现**,块高凭空多出滚动条那几个像素,下面的
+ * 内容被踹一下;再一行更宽的到达又是一次。用户报的「数据首行上下抖」就是这个。
+ *
+ * `scrollbar-gutter: stable` 把那条槽**一直**留着 —— 出没不再改变块高。代价是不横滚
+ * 的窄表底下也留一条空槽,而那是**定高的、从第一帧就在的**空槽,不制造任何位移。
+ * 只给答 `reserve` 的型:段落 / 标题这些答 `flow` 的一格都不留。
+ */
+.block[data-geometry='reserve'] .body {
+  scrollbar-gutter: stable;
+}
+
 .expand {
   align-self: flex-start;
   padding: var(--sp-1) var(--sp-3) var(--sp-2);

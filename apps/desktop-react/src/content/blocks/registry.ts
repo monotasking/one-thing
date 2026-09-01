@@ -1,7 +1,7 @@
 import type { ComponentType } from 'react'
 import type { BlockModel, BlockKind } from '../model/blocks'
 import { SOURCE_FALLBACK_KIND } from '../model/blocks'
-import { missingStreamAnswer, type BlockEarlyForm, type BlockStreamContract } from './stream/contract'
+import { missingStreamAnswer, type BlockCommit, type BlockStreamContract } from './stream/contract'
 
 /**
  * 块注册表 —— **kind → 怎么画**(§3.1)。
@@ -172,16 +172,16 @@ export class BlockRegistry {
   }
 
   /**
-   * 声明了「早成形」的那几型 —— 增量解析器按它逐个试补(R4a)。
+   * 声明了「承诺」的那几型 —— 增量解析器按它逐个试补(R4a 立,R4b 更名)。
    *
-   * 返回的是 `(kind, 补齐函数)` 对,**顺序 = 注册顺序**。今天只有表一型,所以顺序
+   * 返回的是 `(kind, 承诺函数)` 对,**顺序 = 注册顺序**。今天只有表一型,所以顺序
    * 不是问题;将来多于一型时它是一条需要拍板的政策(谁先认领),那时这一行会长出
    * 一个显式的优先级字段 —— 在此之前不假装已经有了。
    */
-  earlyForms(): readonly { kind: string; earlyForm: BlockEarlyForm }[] {
-    const out: { kind: string; earlyForm: BlockEarlyForm }[] = []
+  commitPolicies(): readonly { kind: string; commit: BlockCommit }[] {
+    const out: { kind: string; commit: BlockCommit }[] = []
     for (const def of this.defs.values()) {
-      if (def.stream.earlyForm) out.push({ kind: def.kind, earlyForm: def.stream.earlyForm })
+      if (def.stream.commit) out.push({ kind: def.kind, commit: def.stream.commit })
     }
     return out
   }
@@ -241,9 +241,9 @@ export function isBlockRegistered(kind: string): boolean {
   return registry.has(kind)
 }
 
-/** 生产那张表上声明了早成形的几型(增量解析器的唯一政策来源)。 */
-export function blockEarlyForms(): readonly { kind: string; earlyForm: BlockEarlyForm }[] {
-  return registry.earlyForms()
+/** 生产那张表上声明了承诺政策的几型(增量解析器的唯一政策来源)。 */
+export function blockCommitPolicies(): readonly { kind: string; commit: BlockCommit }[] {
+  return registry.commitPolicies()
 }
 
 export type { BlockStreamContract } from './stream/contract'

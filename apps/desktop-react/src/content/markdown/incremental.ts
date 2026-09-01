@@ -1,8 +1,8 @@
 import { perfSpan } from '../../services/perf'
-// 注册 barrel:早成形政策(`stream.earlyForm`)住在各型自己的注册契约里,查表发生在
+// 注册 barrel:承诺政策(`stream.commit`)住在各型自己的注册契约里,查表发生在
 // 这里,所以这里负责保证表是装好的(与 BlockView 同款)。
 import '../blocks'
-import { blockEarlyForms } from '../blocks/registry'
+import { blockCommitPolicies } from '../blocks/registry'
 import type { BlockModel } from '../model/blocks'
 import { parseMarkdown } from './parse'
 import { stableCut } from './stable-cut'
@@ -14,8 +14,8 @@ import type { ParsedBlock } from './to-blocks'
  * 活跃消息每来一帧就换一次引用,装配管线跟着重跑一次 ④。这个类接住那件事,做三件:
  *
  *  ① **稳定前缀沿用**:切点之前的块整块复用,只重解析活动尾(切点判据见 stable-cut.ts)。
- *  ② **正在出生的那一型提前认**:活尾巴那一块的源码递给注册表里声明了 `earlyForm`
- *     的几型,补一刀重解析,**真是那一型才认**(`applyEarlyForm`)。R4a 之前这一条
+ *  ② **正在出生的那一型提前承诺**:活尾巴那一块的源码递给注册表里声明了 `commit`
+ *     的几型,补一刀重解析,**真长出那一型才认**(`applyCommit`)。R4a 之前这一条
  *     写死认识表(`upgradeTableTail`),现在政策住在型自己的注册契约里。
  *     09-01 撤掉了它的前身「未闭合的原子块按 code 显示」——病历在 `toFrame` 的注里。
  *  ③ **每帧至多解析一次**:16ms 节拍(与 SessionStreamCoalescer 同一个批)。窗口里
@@ -121,7 +121,7 @@ export class MarkdownStream {
       const base = appended ? this.reparseTail(prev, text) : parseMarkdown(text)
       // 还在长的那条路上才补分隔行:落定的文本是什么就是什么,补一刀就是两条路分叉
       // (`gate:stream-structure` 的「流式末帧 == 冷加载」盯的正是这件事)。
-      return live ? applyEarlyForm(base, text) : base
+      return live ? applyCommit(base, text) : base
     })
     const cut = stableCut(text)
     this.entries.set(id, { text, parsed, cut, at: this.now() })
@@ -258,7 +258,7 @@ function toFrame(parsed: readonly ParsedBlock[], _text: string, _live: boolean):
  *
  * ── 现在 ──────────────────────────────────────────────────────────────
  * 它只剩三步,一步都不认识表:
- *  ① 问注册表:哪几型声明了 `stream.earlyForm`(表是今天唯一的一行);
+ *  ① 问注册表:哪几型声明了 `stream.commit`(表是今天唯一的一行);
  *  ② 把活尾巴那一块的源文本递过去,拿回「补齐后的源文本」;
  *  ③ 重解析一次 —— **末块真的是声明者那一型才认**,否则整段作废、一个字不改。
  *
@@ -272,24 +272,57 @@ function toFrame(parsed: readonly ParsedBlock[], _text: string, _live: boolean):
  * 判据里那句「必须是 paragraph」也一并退役:它当初是「表从段落里长出来」这条**表的**
  * 事实的化身。现在的判据是型无关的 —— 末块贴着活尾巴、而且补齐后解析出来换了型。
  */
-function applyEarlyForm(parsed: ParsedBlock[], text: string): ParsedBlock[] {
+function applyCommit(parsed: ParsedBlock[], text: string): ParsedBlock[] {
   const last = parsed[parsed.length - 1]
-  if (!last || last.end < text.length) return parsed
+  /*
+   * 「末块贴着活尾巴吗」——判据是**它后面只剩空白**,不是 `end >= text.length`。
+   *
+   * ── 病历:换行单独成一帧时,正在长的那张表闪回一帧段落(R4b 真机门抓到)────
+   * mdast 给段落的 `end` **不含结尾那个换行**。于是文本正好停在 `…| 备注 |\n` 的
+   * 那一帧,`last.end === text.length - 1`,旧判据当场认定「末块没贴着尾巴」,承诺
+   * 不做 —— 上一帧还是表,这一帧退回段落,下一帧又是表。真机读数(mixed 素材,
+   * 7 字/帧):`table@2077ms → p@2127ms → table@2143ms`,门的 L 条(块整批消失)
+   * 逮住了它。
+   *
+   * R4a 时这条判据一直没被踩到:那时只有「表头 + 半截分隔行」一形会承诺,而那一形
+   * 的文本按定义不以换行结束。R4b 把承诺推到「分隔行还没开始写」,才第一次走到
+   * 换行边界上。
+   *
+   * 放宽成「后面只剩空白」是安全的:补完之后要重解析一次,**子解析里没长出那一型
+   * 就整段作废** —— 文本以 `\n\n` 结束时补出来的分隔行前面隔着空行,解析不成表,
+   * 那一刀自然被作废。
+   */
+  if (!last || text.slice(last.end).trim() !== '') return parsed
   const source = text.slice(last.offset)
 
-  for (const { kind, earlyForm } of blockEarlyForms()) {
-    // 已经是这一型了就没什么可提前的 —— 提前成形说的是「还没被认出来」。
+  for (const { kind, commit } of blockCommitPolicies()) {
+    // 已经是这一型了就没什么可承诺的 —— 承诺说的是「还没被认出来」。
     if (last.block.kind === kind) continue
-    const completed = earlyForm(source)
-    if (completed === undefined) continue
-    const sub = parseMarkdown(completed)
-    if (sub.length === 0 || sub[sub.length - 1].block.kind !== kind) continue
+    const result = commit(source)
+    if (result === undefined) continue
+    const sub = parseMarkdown(result.text)
+    /*
+     * 判据是「**子解析里出现了**声明者那一型」,不是「末块是它」。
+     *
+     * R4a 时两者等价(补的那一刀永远在最末尾,补完末块就是表)。R4b 的承诺会把分隔行
+     * 插在表头与后文之间,于是子解析常常是 `[表, 段落]` —— 末块是那段后文。
+     * 认领的是**那张表出现了没有**,不是它排在第几。
+     */
+    if (!sub.some((entry) => entry.block.kind === kind)) continue
+    /*
+     * 补出来的字**一个都不上屏**:把子解析的下标从「脚手架文本」映射回真实文本。
+     * 插入点之前 1:1;插入点之后整体左移补的那些字;落在补出来那一段**里面**的下标
+     * (只可能是块边界贴着脚手架)夹到插入点上。
+     */
+    const back = (x: number) =>
+      x <= result.insertAt ? x : Math.max(result.insertAt, x - result.insertLen)
     return [
       ...parsed.slice(0, -1),
       ...sub.map((entry, index) => ({
         block: entry.block,
-        offset: entry.offset + last.offset,
-        end: index === sub.length - 1 ? text.length : entry.end + last.offset,
+        offset: back(entry.offset) + last.offset,
+        // 末块的结尾夹回真实文本长度 —— 别让它伸到屏幕外面去。
+        end: index === sub.length - 1 ? text.length : back(entry.end) + last.offset,
       })),
     ]
   }

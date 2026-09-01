@@ -11,6 +11,15 @@ import s from './Table.module.css'
 
 type TableModel = Extract<BlockModel, { kind: 'table' }>
 
+/**
+ * 一屏摆得下的列数上限(R4b 的超量削列)。
+ *
+ * 取 24:真机报障那张是 117 列,而聊天里的表**极少**过 24(素材里最宽的一张 13 列,
+ * 削量对它是恒等)。这个数不是视觉量(不进 tokens.css),是一条**内容政策**——
+ * 它回答的是「摆不下的时候摆几列」,与色值 / 间距不是一类东西。
+ */
+export const TABLE_MAX_COLS = 24
+
 const CopyIcon = resolveIcon('Copy')
 const CheckIcon = resolveIcon('Check')
 
@@ -27,6 +36,14 @@ const CheckIcon = resolveIcon('Check')
  *    十字准星,一片糊)。表头是「这一列是什么」的把手,列操作就长在它上面。
  *  · **数字列右对齐 + mono**:判据是列里装的是什么(numericColumns),不是作者写没写
  *    冒号 —— 理由在 serialize.ts。
+ *  · **超量削列**(R4b,用户 117 列截图):列数过了 `TABLE_MAX_COLS` 就只画前 N 列,
+ *    末尾挂一格**文字读数**「还有 M 列」。与列表削量同一条超量纪律(计数禁令允许
+ *    文字读数,不允许计数徽)。
+ *
+ * ── 削的只是**画面**,不是数据 ────────────────────────────────────────
+ * 檐上那两个「复制 Markdown / 复制 CSV」取的是 `model` 本身(serialize.ts),
+ * 一列都不少。削量是「这一屏摆不下」的答案,不是「这张表只有这么多」——
+ * 把削量渗进序列化会让用户复制出一份**缺列的**表,而他根本不知道。
  *
  * ── 列感应怎么做到不重渲染 ────────────────────────────────────────────
  * 悬停的列号写在**容器的一个 data 属性**上(`data-hover-col`),整列淡亮由 CSS 的
@@ -42,6 +59,8 @@ export function Table({ model }: { model: TableModel }) {
   const [copiedCol, setCopiedCol] = useState<number | null>(null)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const numeric = useMemo(() => numericColumns(model), [model])
+  const hiddenCols = Math.max(0, model.head.length - TABLE_MAX_COLS)
+  const shown = hiddenCols > 0 ? TABLE_MAX_COLS : model.head.length
 
   return (
     <table
@@ -56,7 +75,7 @@ export function Table({ model }: { model: TableModel }) {
        */}
       <thead onMouseLeave={() => setHoverCol(null)}>
         <tr>
-          {model.head.map((cell, col) => (
+          {model.head.slice(0, shown).map((cell, col) => (
             <th
               key={col}
               className={numeric[col] ? `${s.th} ${s.numeric}` : s.th}
@@ -99,16 +118,22 @@ export function Table({ model }: { model: TableModel }) {
               </span>
             </th>
           ))}
+          {hiddenCols > 0 && (
+            <th className={`${s.th} ${s.overflowCell}`} scope="col" data-col-overflow={hiddenCols}>
+              {t('block.table.moreColumns', { n: hiddenCols })}
+            </th>
+          )}
         </tr>
       </thead>
       <tbody>
         {model.rows.map((row, index) => (
           <tr key={index} className={s.row}>
-            {row.map((cell, col) => (
+            {row.slice(0, shown).map((cell, col) => (
               <td key={col} className={numeric[col] ? `${s.td} ${s.numeric}` : s.td}>
                 <InlineRun nodes={cell} />
               </td>
             ))}
+            {hiddenCols > 0 && <td className={`${s.td} ${s.overflowCell}`} />}
           </tr>
         ))}
       </tbody>

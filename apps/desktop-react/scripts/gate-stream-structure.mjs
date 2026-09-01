@@ -190,6 +190,8 @@ const TOKENS = {
   mixed: ['TKX1'],
   pack: ['TKP1', 'TKP2'],
   table: ['TKW1', 'TKW2', 'TKI1'],
+  monster: ['TKM1', 'TKM2', 'TKM3'],
+  nested: ['TKN1', 'TKN2', 'TKN3'],
 }
 
 /**
@@ -288,6 +290,62 @@ const PACK_SCRIPT = [
   ['content', '\n\n第二段正文 TKP2,静默结束。'],
 ]
 
+/**
+ * 素材六:**怪物表**(R4b,09-01 用户两张截图为验收素材)。
+ *
+ * 两张表,各钉一条:
+ *
+ *  · **117 列**(截图一):列越多,分隔行流得越久 —— 13 列的分隔行 106 字符已经让
+ *    表头裸挂 556ms,117 列的分隔行 700 字符往上。这条素材把「裸文本数秒」推到极端,
+ *    同时量三件事:承诺(R)、竖向抖动(P)、削列(Q)。
+ *  · **分隔行写错**(截图二):表头三格、分隔行两格 —— GFM 判它**不是表**,
+ *    照既有拍板「模型写错照实画」它收尾必须是段落。承诺期它当过表(S 条量翻面次数,
+ *    钉「一次性,不来回」)。
+ *
+ * 节拍取 12 字 / 12ms:这张表 3500 字符往上,按素材三的 6 字 / 45ms 要跑近半分钟。
+ * `rowSafe` 照旧 —— 分片永不落在换行上(素材三那条学费:靠偶然活着的判据照不见真机)。
+ */
+const MONSTER_COLS = 117
+const monsterCells = (make) => `| ${Array.from({ length: MONSTER_COLS }, (_, i) => make(i)).join(' | ')} |`
+const MONSTER_HEAD = monsterCells(i => (i === 0 ? '字段 TKM1' : `列${i + 1}`))
+const MONSTER_SEP = monsterCells(() => '---')
+const MONSTER_ROW = n => monsterCells(i => (i === 0 ? `行${n}${n === 2 ? ' TKM2' : ''}` : `v${n}.${i + 1}`))
+/** 表头三格、分隔行两格 —— GFM 判它不是表。收尾照实画成段落。 */
+const MONSTER_BROKEN = ['| 名称 TKM3 | 值 | 备注 |', '| --- | --- |', '| 甲 | 一 | 二 |'].join('\n')
+
+/**
+ * 「裸挂」的预算。承诺在**行首 `|` 之后第二根竖线到达那一刻**做出,所以正常读数是
+ * 0–1 帧(12 字/帧 ≈ 12ms,加上 rAF 采样粒度 ≈ 16ms)。给到 200ms 是一倍余量;
+ * 修前(R4a 的 earlyForm 要等半截分隔行)这个数是**秒**级,一条判据把两边分开。
+ */
+const MONSTER_NAKED_BUDGET_MS = 200
+
+/** 抓图节拍(只在 `STRUCT_SHOTS` 诊断口下用)。 */
+const SHOT_INTERVAL_MS = 500
+
+const MONSTER_SCRIPT = [
+  ['reasoning', '先想清楚这张表有多宽。一百一十七列的分隔行本身就有七百多个字符,分隔行没到齐之前它按 GFM 的定义还不是表 —— 那正是用户截图里裸挂着的那一段。'],
+  ['content', `下面是那张一百一十七列的宽表。\n${MONSTER_HEAD}\n${MONSTER_SEP}\n`],
+  ['content', `${MONSTER_ROW(1)}\n${MONSTER_ROW(2)}\n${MONSTER_ROW(3)}\n`],
+  ['content', `\n下面这张的分隔行写错了(表头三格、分隔行两格),按拍板要照实画:\n\n${MONSTER_BROKEN}\n`],
+  ['content', '\n收尾一句 `行内代码`。\n'],
+]
+
+/**
+ * 素材七:**嵌套**(R4b,容器栈那一格的守夜人)。
+ *
+ * 引用里的清单、清单项里的围栏、引用套引用 —— 这三形是「嵌套靠容器栈」那条设计
+ * 落地之后**最容易走样**的地方。容器迁移本身这一批没做(理由见回报的裁定点),
+ * 但素材先进门:等到真迁的那一天,「流式末帧 == 冷加载」与零双画就是现成的守卫,
+ * 不必等出了事才补。
+ */
+const NESTED_SCRIPT = [
+  ['reasoning', '先想清楚嵌套要覆盖哪几形:引用里的清单、清单项里的围栏、引用套引用。再补些字跨过打包闸:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥。'],
+  ['content', '下面是三形嵌套。\n\n> 引用里装一张清单 TKN1:\n>\n> - 第一条\n> - 第二条\n>   - 第二条的子项\n\n'],
+  ['content', '- 清单项里装一段围栏 TKN2:\n\n  ```sh\n  npm run verify\n  ```\n\n- 清单项里装一张表:\n\n  | 名 | 值 |\n  | --- | --- |\n  | 甲 | 一 |\n\n'],
+  ['content', '> 引用套引用 TKN3:\n>\n> > 里面这一层小一号。\n\n收尾一句 `行内代码`。\n'],
+]
+
 const CASES = {
   think: { tools: false, pieces: [6, 2] },
   tool: { tools: true, pieces: [6, 2] },
@@ -295,6 +353,12 @@ const CASES = {
   // 真机节奏:7 字 / 7ms(自查探针实测的 provider 分片),分片随机落 —— 不 rowSafe。
   mixed: { tools: true, pieces: [7], delayMs: 7, turns: MIXED_TURNS },
   pack: { tools: false, pieces: [6], script: PACK_SCRIPT },
+  // `geometry: true` 让采样器多量两个数(块顶 / 块高)—— 只这一格开,别的格读数
+  // 与从前逐字可比(逐帧强制 layout 是有代价的,不能白白摊到所有素材上)。
+  monster: { tools: false, pieces: [12], delayMs: 12, script: MONSTER_SCRIPT, rowSafe: true, geometry: true },
+  // 节拍放慢到 25ms:这条素材短(450 字符上下),太快会让采样帧数贴着「>100 帧」
+  // 那条门槛,读数余量不够。
+  nested: { tools: false, pieces: [7], delayMs: 25, script: NESTED_SCRIPT, rowSafe: true },
 }
 
 const TRIGGER = 'STREAM_STRUCTURE_GATE'
@@ -467,8 +531,8 @@ async function clickTestId(page, testId) {
  * 可见文本(`full`)由这几件拼,**不取整条消息的 textContent**:消息尾那行
  * `Generating · N.Ns` 在跳秒,拿整条量出来的非前缀率 98% 是它(测量坑 1)。
  */
-function installSampler(page, tokens) {
-  return page.evaluate((marks) => {
+function installSampler(page, tokens, geometry = false) {
+  return page.evaluate(({ marks, geometry }) => {
     const baseline = document.querySelectorAll('[data-message-id][data-role="assistant"]').length
     window.__struct = { frames: [], done: false, baseline, seenReadout: false }
     /**
@@ -489,8 +553,21 @@ function installSampler(page, tokens) {
       return out
     }
     let nodeSeq = 0
+    /*
+     * ── P 条要的两个数:**块顶**与**块高**(R4b)────────────────────────
+     *
+     * 「数据首行上下抖」这类报障禁纸上诊断,所以先把它变成两条可以逐帧比的数:
+     *  · `bt` = 这件东西的顶边**相对这条消息**的偏移 —— 用消息自己的矩形做基准,
+     *    把整页滚动、读数行跳秒这些无关的位移全部约掉;
+     *  · `bh` = 它自己的高度。
+     *
+     * 两个数各钉一半:`bh` 抖 = 它自己在长短之间来回;`bt` 抖 = 它上面某件东西
+     * 在长短之间来回(把它踹上踹下)。只有 `monster` 那一格开这个口 —— 逐帧读
+     * 矩形会强制一次 layout,别的素材的既有读数不该为此变形。
+     */
     const shapeOf = el => {
       const out = []
+      const base = geometry ? el.getBoundingClientRect().top : 0
       for (const node of el.querySelectorAll('[data-prose],[data-tool-status],[data-tool-group]')) {
         if (node.parentElement?.closest('[data-prose]')) continue
         if (node.parentElement?.closest('[data-testid="chat-thought"]')) continue
@@ -522,6 +599,12 @@ function installSampler(page, tokens) {
           id: node.__structId,
           // 这件东西身上带着哪几个记号 —— I 条问的是「记号此刻住在哪一种块里」。
           mk: marks.flatMap((mark, index) => (text.includes(mark) ? [index] : [])),
+          ...(geometry
+            ? (() => {
+                const r = node.getBoundingClientRect()
+                return { bt: Math.round(r.top - base), bh: Math.round(r.height) }
+              })()
+            : {}),
         })
       }
       return out
@@ -535,12 +618,29 @@ function installSampler(page, tokens) {
           t: Math.round(performance.now()),
           s: shapeOf(art),
           m: countMarks(art.textContent ?? ''),
+          // 这一帧还在直播吗 —— 读数行在场就是在场。P 条只量直播期,理由与 O 条同一条:
+          // 收尾那一刻是**整条消息换渲染**(读数行退场 / 动作行进场),不属流式追加。
+          lv: Boolean(document.querySelector('[data-testid="chat-readout"]')),
         })
       }
       if (!window.__struct.done) requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
-  }, tokens)
+  }, { marks: tokens, geometry })
+}
+
+/** 屏幕上那条消息里每张表各画了几列(Q 条的读数:削列到底削没削)。 */
+function readTableCols(page) {
+  return page.evaluate(() => {
+    const rows = document.querySelectorAll('[data-message-id][data-role="assistant"]')
+    const art = rows[rows.length - 1]
+    if (!art) return []
+    return Array.from(art.querySelectorAll('table')).map(table => ({
+      th: table.querySelectorAll('thead th').length,
+      // 削掉的那一格自报家门(产品侧挂 data-col-overflow),没有就是没削。
+      more: table.querySelector('[data-col-overflow]')?.getAttribute('data-col-overflow') ?? null,
+    }))
+  })
 }
 
 /** 屏幕上那条消息此刻的块序(冷加载对照用,与采样器同一套判据)。 */
@@ -679,6 +779,43 @@ function hostTrail(frames, tokenIndex) {
   return { counts, order, firstAt, last: lastKind }
 }
 
+/**
+ * **P:零竖向抖动**(R4b)。
+ *
+ * 判据按**每一件东西自己的一条时间线**走(键是 DOM 节点身份 `id`,重挂就是新的一条线):
+ *  · `bh` 只增不减 —— 它自己不许在长短之间来回;
+ *  · `bt` 只增不减 —— 它上面的东西也不许把它踹上踹下。
+ *
+ * 为什么按 id 分线而不是按位次:一次**合法的换装**(承诺落空,表降回段落)会让高度
+ * 一次性变小,而那是拍板过的行为,不是抖动 —— 换装换号、换号换 DOM 节点,新的一条线
+ * 从头起算,这条法因此不必给那次降级开豁免口。
+ *
+ * `slack` 是一格容差:子像素与滚动条出没会让读数在 1px 上下晃,那不是抖动。
+ */
+function findVerticalJitter(frames, slack = 1) {
+  const seen = new Map()
+  const out = []
+  for (const frame of frames) {
+    // 收尾那一帧起不再量(读数行退场把整条消息的几何重排一次,与 O 条同一条豁免)。
+    if (frame.lv === false) break
+    for (const item of frame.s) {
+      if (item.bh === undefined) continue
+      const prev = seen.get(item.id)
+      if (prev) {
+        if (item.bh < prev.bh - slack) {
+          out.push({ t: frame.t, why: 'h', d: item.d, from: prev.bh, to: item.bh, h: item.h })
+        } else if (item.bt < prev.bt - slack) {
+          out.push({ t: frame.t, why: 't', d: item.d, from: prev.bt, to: item.bt, h: item.h })
+        }
+      }
+      // 与**相邻的上一次**比,不与跑动最大值比:一次性的塌陷该记 1 笔,不是记到收尾
+      // (修前基线上那一塌被记了 832 笔,数的是「塌完之后还剩几帧」,不是「抖了几次」)。
+      seen.set(item.id, { bh: item.bh, bt: item.bt })
+    }
+  }
+  return out
+}
+
 /** A:思考块的条数只增不减。 */
 function findThinkVanished(frames) {
   const out = []
@@ -744,7 +881,34 @@ async function runCell({ record, page, kind, piece, index }) {
     page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
   )
 
-  await installSampler(page, TOKENS[kind] ?? [])
+  await installSampler(page, TOKENS[kind] ?? [], CASES[kind]?.geometry === true)
+  /*
+   * 诊断口:`STRUCT_SHOTS=<dir>` 时直播期每 `SHOT_INTERVAL_MS` 抓一张图。
+   * 门自己不写文件(跑完即走);修前 / 修后的视觉对照要的就是这几张。
+   */
+  let shots
+  if (process.env.STRUCT_SHOTS) {
+    /*
+     * 留账:隔离 store 起来时 Dock 上那块 Files 面默认开着,**正好盖住聊天区** ——
+     * 所以这个诊断口今天抓出来的图看不见表。试过点 Dock 瓦收它(只出了个 Tooltip,
+     * 面没收),再往下就是替门造一份「关掉默认面」的起手状态,那是另一件事。
+     * R4b 的验收因此走**读数**不走图:R 条(裸挂多少毫秒)与 P 条(抖动几处)
+     * 本来就是那两张截图要说的话的机器版。
+     */
+    let n = 0
+    let stop = false
+    const dir = process.env.STRUCT_SHOTS
+    const loop = (async () => {
+      while (!stop) {
+        await page
+          .screenshot({ path: path.join(dir, `${kind}-${piece}-${String(n).padStart(2, '0')}.png`) })
+          .catch(() => {})
+        n += 1
+        await delay(SHOT_INTERVAL_MS)
+      }
+    })()
+    shots = async () => { stop = true; await loop }
+  }
   // 帧读数用 `performance.now()`(页面时间轴),账本用 epoch —— 换算要这一个数。
   const timeOrigin = await page.evaluate(() => performance.timeOrigin)
   /*
@@ -837,6 +1001,7 @@ async function runCell({ record, page, kind, piece, index }) {
     console.log(`  收尾之后选区:${selection.alive.settled} 字(留账,不进断言)`)
   }
   await delay(400)
+  if (shots) await shots()
   const frames = await page.evaluate(() => { window.__struct.done = true; return window.__struct.frames })
   const liveShape = await readShape(page)
 
@@ -1050,6 +1215,84 @@ async function runCell({ record, page, kind, piece, index }) {
       )
     }
     assert(true, `M 表成形之后再没退回裸文本(收尾是 ${trail.last})`)
+    return
+  }
+
+  if (kind === 'nested') {
+    /*
+     * 嵌套这一格没有自己的病可钉 —— 它守的是**通用的两条**(上面已经跑过):
+     * 「流式末帧 == 冷加载」与「零双画」。这里只补一条完稿形:三形嵌套都得在。
+     */
+    const last = frames[frames.length - 1].s
+    const kinds = last.map(b => b.d).join(' | ')
+    console.log(`  【嵌套】完稿形:${kinds}`)
+    assert(last.some(b => b.d === 'blockquote'), `完稿时引用块在屏幕上(${kinds})`)
+    assert(last.some(b => b.d === 'ul' || b.d === 'ol'), `完稿时清单在屏幕上(${kinds})`)
+    assert(
+      last.some(b => b.mk?.includes(1)),
+      '清单项里那段围栏的记号在屏幕上(TKN2)',
+    )
+    return
+  }
+
+  if (kind === 'monster') {
+    /*
+     * ── R:117 列的表**从第一个 `|` 起就是表**(R4b 的承诺政策)────────────
+     * 修前(R4a 的 earlyForm):要等到「表头 + 半截分隔行」才认,117 列的表头
+     * 700 字符往上,那一整段都是裸文本。修后承诺在行首 `|` 就做出。
+     */
+    const wide = hostTrail(frames, 0)
+    const trail = wide.order.map(step => `${step.d}@${step.t}ms`).join(' → ')
+    console.log(`  【R】117 列宽表记号住过:${trail}`)
+    console.log(
+      `  【R】裸段落 ${wide.counts.get('p') ?? 0} 帧 · 源码 ${wide.counts.get('code') ?? 0} 帧 · 表 ${wide.counts.get('table') ?? 0} 帧`,
+    )
+
+    /* ── S:分隔行写错的那张,收尾照实画成段落;流式期翻面**不许来回** ────── */
+    const broken = hostTrail(frames, 2)
+    console.log(`  【S】分隔行写错那张住过:${broken.order.map(s => `${s.d}@${s.t}ms`).join(' → ')}`)
+
+    /* ── P:零竖向抖动 ─────────────────────────────────────────────────── */
+    const liveFrames = frames.filter(f => f.lv !== false).length
+    const jitter = findVerticalJitter(frames)
+    // 收尾那一刻的重排只记读数不进断言(留账),与 O 条同款。
+    const settleJitter = findVerticalJitter(frames.map(f => ({ ...f, lv: true })))
+    console.log(`  【P】直播期竖向抖动 ${jitter.length} 处 / ${liveFrames} 帧(含收尾重排:${settleJitter.length} 处,留账不进断言)`)
+    for (const j of jitter.slice(0, 6)) {
+      console.log(`      t=${j.t}ms ${j.d} ${j.why === 'h' ? '高' : '顶'} ${j.from}→${j.to}px 「${j.h}」`)
+    }
+
+    /* ── Q:削列读数(收尾那一帧屏幕上真的画了几列)─────────────────────── */
+    console.log(`  【Q】收尾表列数:${JSON.stringify(await readTableCols(page))}`)
+
+    const nakedMs = wide.order[0]?.d === 'table'
+      ? 0
+      : (wide.order.find(s => s.d === 'table')?.t ?? Infinity) - (wide.firstAt ?? 0)
+    assert(
+      (wide.counts.get('code') ?? 0) === 0,
+      `R 117 列宽表全程没被当成源码画过(${wide.counts.get('table') ?? 0} 帧是表)`,
+    )
+    if (!(nakedMs <= MONSTER_NAKED_BUDGET_MS)) {
+      throw new Error(
+        `断言失败:R 117 列表头裸挂了 ${nakedMs}ms(> ${MONSTER_NAKED_BUDGET_MS}ms 预算)—— ${trail}` +
+        '\n  —— 用户截图的形:一百多列的表头以裸文本挂在屏上,分隔行流完才成表',
+      )
+    }
+    assert(true, `R 117 列表从行首 \`|\` 起就是表(裸段落 ${nakedMs}ms ≤ ${MONSTER_NAKED_BUDGET_MS}ms)`)
+    assert(wide.last === 'table', '完稿时那张 117 列宽表是表')
+
+    assert(broken.last === 'p', `S 分隔行写错那张收尾照实画成段落(住过 ${[...broken.counts.keys()].join('/')})`)
+    const flips = broken.order.length
+    assert(flips <= 2, `S 翻面 ${flips} 次(≤2:一次上、一次下,不许来回)`)
+
+    if (jitter.length > 0) {
+      throw new Error(
+        `断言失败:P 竖向抖动 ${jitter.length} 处(首处 t=${jitter[0].t}ms ${jitter[0].d} ` +
+        `${jitter[0].why === 'h' ? '高' : '顶'} ${jitter[0].from}→${jitter[0].to}px)` +
+        '\n  —— 用户报障的形:数据首行到达时整块上下抖',
+      )
+    }
+    assert(true, `P 零竖向抖动(${frames.length} 帧逐帧量块顶与块高,按 DOM 身份分线)`)
     return
   }
 

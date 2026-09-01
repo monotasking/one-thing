@@ -368,6 +368,8 @@ export const zh = {
   'block.action.downloadPng': '下载 PNG',
   'block.expand': '展开',
   'block.collapse': '收起',
+  /* 超宽表的削列尾格(R4b):文字读数,不是计数徽。 */
+  'block.table.moreColumns': '还有 {n} 列',
   'block.renderFailed': '这块没画出来',
   /* 放大浮层没有可见标题,这句是它的无障碍名。 */
   'block.zoom.label': '放大预览',

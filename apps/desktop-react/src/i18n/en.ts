@@ -331,6 +331,8 @@ export const en: Record<MessageKey, string> = {
   'block.action.downloadPng': 'Download PNG',
   'block.expand': 'Expand',
   'block.collapse': 'Collapse',
+  /* Column trimming on very wide tables (R4b): a text readout, never a count badge. */
+  'block.table.moreColumns': '{n} more columns',
   'block.renderFailed': "This block couldn't render",
   'block.zoom.label': 'Zoomed view',
   'block.figure.renderFailed': "This diagram couldn't render",

@@ -38,6 +38,18 @@
   gap: var(--sp-1);
 }
 
+/*
+ * ── 削列的那一格(R4b)────────────────────────────────────────────────
+ * 「还有 M 列」是**读数**,不是数据:所以它比正文淡一档、不参与列感应、不给复制钮。
+ * 数据行那一格是空的 —— 空着比填一串省略号诚实(那一列不是「有内容但显示不下」,
+ * 是「这一屏不摆它」)。
+ */
+.overflowCell {
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* 数字列:右对齐 + mono,位数才对得齐。 */
 .numeric {
   text-align: end;

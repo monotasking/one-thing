@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import '../../blocks'
-import { blockEarlyForms, registerBlock, resolveBlock, unregisterBlock } from '../../blocks/registry'
+import { blockCommitPolicies, registerBlock, resolveBlock, unregisterBlock } from '../../blocks/registry'
 import { MarkdownBlockStream, parseBlockFrame } from '../block-stream'
 import { MarkdownStream } from '../incremental'
 
@@ -57,6 +57,17 @@ const PROSE = [
   '',
   '> 一个反复踩的坑:命令是 COW 的。',
   '',
+  '> 引用里还能装一张清单:',
+  '>',
+  '> - 第一条',
+  '> - 第二条',
+  '',
+  '- 列表项里装一段围栏:',
+  '',
+  '  ```sh',
+  '  npm run verify',
+  '  ```',
+  '',
   '最后一段收尾,`行内代码` 与 **加粗**。',
 ].join('\n')
 
@@ -101,6 +112,43 @@ describe('块流:行界(结构只在行界变)', () => {
   })
 })
 
+describe('承诺:一旦做出就不许来回翻(真机门 L 条抓到的那次)', () => {
+  /*
+   * ── 病历:换行单独成一帧时,正在长的那张表闪回一帧段落 ────────────────────
+   * mdast 给段落的 `end` **不含结尾那个换行**,而承诺的守门判据当初写的是
+   * `last.end >= text.length`。于是文本正好停在 `…| 备注 |\n` 的那一帧,判据当场
+   * 认定「末块没贴着活尾巴」,承诺不做 —— 上一帧还是表,这一帧退回段落,下一帧又是表。
+   *
+   * 真机读数(gate:stream-structure 的 mixed 素材,7 字/帧,旧路那一趟):
+   * `table@2077ms → p@2127ms → table@2143ms`,L 条(块整批消失)逮住了它。
+   * 修法是把判据改成「末块后面只剩空白」。
+   *
+   * 这条用例逐字符喂真机那张八列表(**走生产路** `MarkdownStream.parse`,不是
+   * 把判据抄一遍),断言翻面 0 次 —— 把判据改回去,它立刻数出 1 次。
+   */
+  const MIXED_TABLE = [
+    '| 宿主 | 工具档 | 发送目标 | 会话技能 | MCP/ACP | 拥有后端 | 进程级端口 | 备注 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Electron 桌面 | full | webContents | 否 | 窗口后 | 是 | 自己拥有 | 同时挂内嵌 HTTP 面 |',
+    '| 无头服务端 | full | noop | 是 | 否 | 否 | host 档不抢 | 单用户,Bearer 鉴权 |',
+  ].join('\n')
+
+  it('逐字符喂八列表:表出现之后一帧都没退回过段落', () => {
+    const { old, tick } = stage()
+    const full = `\n拿到了。各宿主的配置对照(这张表故意很宽):\n\n${MIXED_TABLE}\n\n收尾一句。\n`
+    let wasTable = false
+    const flips: string[] = []
+    for (let i = 1; i <= full.length; i += 1) {
+      tick()
+      const isTable = old.parse('m', full.slice(0, i), true).blocks.some((b) => b.kind === 'table')
+      if (wasTable && !isTable) flips.push(JSON.stringify(full.slice(Math.max(0, i - 24), i)))
+      wasTable = isTable
+    }
+    expect(flips, `翻面处:${flips.slice(0, 3).join(' · ')}`).toEqual([])
+    expect(wasTable).toBe(true)
+  })
+})
+
 describe('块流:身份', () => {
   it('提交过的号跨帧恒定 —— 变化只发生在末块上', () => {
     const { stream, tick } = stage()
@@ -139,13 +187,15 @@ describe('块流:身份', () => {
   })
 
   it('号里带着型:同一个产地换了型就是另一个号(原位换装该重挂)', () => {
+    // 素材换成围栏 → 图:R4b 起表在行首竖线那一刻就承诺,`| 名字 | 值 |` 第一帧
+    // 就已经是表,拿它量不到「换型」这件事了。围栏闭合换装是今天仅存的另一格。
     const { stream, tick } = stage()
     tick()
-    const asParagraph = stream.frame('t', '| 名字 | 值 |', true)
+    const asCode = stream.frame('t', '```mermaid\ngraph TD;\n  A-->B;', true)
     tick()
-    const asTable = stream.frame('t', '| 名字 | 值 |\n|---|---|', true)
-    expect(asParagraph.ids.at(-1)).toBe('0:paragraph')
-    expect(asTable.ids.at(-1)).toBe('0:table')
+    const asFigure = stream.frame('t', '```mermaid\ngraph TD;\n  A-->B;\n```', true)
+    expect(asCode.ids.at(-1)).toBe('0:code')
+    expect(asFigure.ids.at(-1)).toBe('0:figure')
     // 换型走的是「撤回 + 开新的」,合法的复生记在遥测上,不是违法。
     expect(stream.telemetry('t').violations).toBe(0)
   })
@@ -225,19 +275,19 @@ describe('块流:新旧两条路逐帧等价', () => {
   })
 })
 
-describe('早成形:政策住在注册契约里,不在机制里', () => {
-  it('表声明了 earlyForm,而且它是这张表上唯一一行', () => {
-    expect(blockEarlyForms().map((e) => e.kind)).toEqual(['table'])
+describe('承诺:政策住在注册契约里,不在机制里', () => {
+  it('表声明了 commit,而且它是这张表上唯一一行', () => {
+    expect(blockCommitPolicies().map((e: { kind: string }) => e.kind)).toEqual(['table'])
   })
 
-  it('反证:把表的 earlyForm 摘掉,正在出生的那张表当场退回段落', () => {
+  it('反证:把表的 commit 摘掉,正在出生的那张表当场退回段落', () => {
     const def = resolveBlock('table')
     const { stream, tick } = stage()
     tick()
     expect(stream.frame('t', '| 名字 | 值 |\n|--', true).blocks.at(-1)?.kind).toBe('table')
 
     unregisterBlock('table', def)
-    registerBlock({ ...def, stream: { ...def.stream, earlyForm: undefined } })
+    registerBlock({ ...def, stream: { ...def.stream, commit: undefined } })
     try {
       const bare = stage()
       bare.tick()
@@ -246,6 +296,6 @@ describe('早成形:政策住在注册契约里,不在机制里', () => {
       unregisterBlock('table')
       registerBlock(def)
     }
-    expect(blockEarlyForms().map((e) => e.kind)).toEqual(['table'])
+    expect(blockCommitPolicies().map((e: { kind: string }) => e.kind)).toEqual(['table'])
   })
 })

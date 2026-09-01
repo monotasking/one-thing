@@ -89,7 +89,18 @@ export function BlockShell({
    * 节奏钩子由块自己的根元素报(见 Paragraph / Heading / List / Quote)。
    */
   return (
-    <section className={s.block} data-block-kind={model.kind} data-prose="object">
+    <section
+      className={s.block}
+      data-block-kind={model.kind}
+      data-prose="object"
+      /*
+       * **几何政策上到 DOM**(R4b)。`reserve` = 这一型在流式期间先立骨架、内容后到,
+       * 壳因此要给它「内容后到不许把下面踹一脚」的那几条(见 BlockShell.module.css
+       * 的 `[data-geometry='reserve']` 一段)。政策由型自报(五问的第五问),
+       * 壳只负责把它变成一个选择器 —— 壳里一处 kind 名都不多写。
+       */
+      data-geometry={def.stream.geometry}
+    >
       {/* 檐:有 chrome 声明或有动作就画 —— 动作要有家(空 caption 的表格也留着檐)。 */}
       {(chrome || actions.length > 0) && (
         <header className={s.eave}>
