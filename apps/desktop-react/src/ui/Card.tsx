@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 import s from './Card.module.css'
 
 /**
@@ -31,9 +31,22 @@ import s from './Card.module.css'
  *             归 `ui/ButtonBase`,不归这件:一件既是容器又是按钮,
  *             迟早要给它加 `onClick` 再加 `disabled` 再加 hover 配方。
  *   数据状态:pad 两档、bordered 两态、note 两个落点、超长标题截断不换行。
+ *
+ * ── 透传口子:落点自己的身份,不是样式旁路(09-01 批 2c)────────────────
+ * 剩下的 `HTMLAttributes` 原样摊到根 `<div>`(照 `ui/Button` 的既有先例)。
+ * 它开的是**落点自己的 `data-testid` / `role` / `aria-*`** —— 比如错误边界
+ * 那张卡要带 `role="alert"` 才播得出来,而「是不是警报」是落点的事实,
+ * 不是卡的事实,所以它不该变成这件的第 N 个 prop。
+ * **样式仍然只走 `className` 皮肤**:透传不是给人塞 `style={{…}}` 的口子,
+ * 那会把配方产地重新打散成每个消费面一份 —— 正是立这件要治的病。
+ *
+ * `title` 与 HTMLAttributes 自带的 `title` **撞名**,所以 Omit 掉后者:
+ * 原生 `title=` 是浏览器那个悬停小黄条,本仓明令禁止(提示一律 `ui/Tooltip`);
+ * 而这件的 `title` 是**卡的标题**,还是 ReactNode。两个词义不可能共存,
+ * 留下的是卡的那一个 —— 想要原生 title 的人本来就该被 `ui:consume` 拦下。
  * ──────────────────────────────────────────────────────────────────────
  */
-export interface CardProps {
+export interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   title?: ReactNode
   /** 弱色注。落点由 notePlacement 决定(并集里两种落点都真实存在)。 */
   note?: ReactNode
@@ -62,6 +75,7 @@ export function Card({
   bordered = true,
   className,
   children,
+  ...rest
 }: CardProps) {
   const cls = [
     s.card,
@@ -76,7 +90,9 @@ export function Card({
   const belowNote = notePlacement === 'below' && note != null
 
   return (
-    <div className={cls}>
+    // `className` 显式在前:皮肤是这件算出来的那一串,`rest` 里已经没有它
+    //(它被上面解构走了),所以透传不可能把皮肤覆盖掉。
+    <div className={cls} {...rest}>
       {/* 空槽不渲染 DOM —— 理由见文件头「生命状态」。 */}
       {title == null && !inlineNote ? null : (
         <div className={s.head}>

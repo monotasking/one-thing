@@ -140,7 +140,10 @@ describe('勾选不挪窝', () => {
      * m-1 当场掉回它的厂牌组,区里剩 2 行、读数也是 2,两个数一致地骗过去了。
      * 「行数 3 而读数 2」正是「位置冻住、状态照实」的唯一可观测形状。
      */
-    const head = screen.getByText(/已选 · 2/)
+    // 组头自批 2c 起是 `ui/GroupHead` 的静态形:读数那句话住在它的 label 槽里
+    //(一个 <span>),所以要先从那句话走回**组头那一行**再数它后面的兄弟。
+    // 数的东西一个没变 —— 变的只是这句话外面多了两层 span。
+    const head = screen.getByText(/已选 · 2/).closest('div') as HTMLElement
     const inRegion: Element[] = []
     for (let node = head.nextElementSibling; node; node = node.nextElementSibling) {
       const testid = node.getAttribute('data-testid') ?? ''

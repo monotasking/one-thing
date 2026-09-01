@@ -87,69 +87,20 @@
   gap: var(--sp-3);
 }
 
-/* 一块卡 = 一件事(凭证 / 登录 / 本地进程)。卡与卡之间只有间距,没有分隔线 ——
- * 两条线画同一件事(分组)是重复。
+/*
+ * ── 搬家留下的死码已清空(09-01 批 2b 清 4 条,批 2c 清完剩下的 7 条)──────
+ * 批二把「坑里画什么」整个搬去了 ModeCard / OAuthCard / UsageCard /
+ * CredentialPool(见本文件 .tsx 头「批二起,这块组件不认识坑里画什么」),
+ * 搬走时 CSS 留在了原地。批 2b 删掉了 `.card` / `.cardTitle` / `.cardNote` /
+ * `.cardBody`(它们被 `ui:consume` 记成 4 个「卡」的产地);批 2c 删掉最后 7 条 ——
+ * `.keyRow` / `.keyField` / `.accountRow` / `.mono` / `.absent` / `.absentNote` /
+ * `.state`(另有更早的 `.keySaved` / `.accountDot`)。
  *
- * ── `.card` / `.cardTitle` / `.cardNote` / `.cardBody` 已删(09-01 批 2b)──
- * 它们**没有消费者**:批二把「坑里画什么」整个搬去了 ModeCard / OAuthCard /
- * UsageCard / CredentialPool(见本文件 .tsx 头「批二起,这块组件不认识坑里画什么」),
- * 搬走时四条 CSS 留在了原地。所以这一格不是「迁进 ui/Card」,是**清尸**——
- * 它们从来没画过一个像素,`ui:consume` 却把它们记成 4 个「卡」的产地。 */
-
-.keyRow {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-
-.keyField {
-  flex: 1;
-  min-width: 0;
-  max-width: var(--pv-key-w);
-}
-
-/* `.keySaved` 与下面的 `.accountDot` 同样是批二搬家留下的死码,一并删。
- * (`.keySaved` 本来是 Badge 的候选,但它只是一句 --text-2 小字,既不是丸
- *  也没有消费者;`.accountDot` 是一颗写死 --ok 的点,同样零消费者。) */
-
-.accountRow {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-meta);
-  color: var(--text-2);
-}
-
-.mono {
-  font-family: var(--font-mono);
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-}
-
-/* 缺席态一行:一枚禁用的钮 + 一句「这件事在下一批」。 */
-.absent {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  flex-wrap: wrap;
-}
-
-.absentNote {
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-}
-
-/* 面板整体的两种非常态:还在读 / 读不到 / 没选中。都居中一段灰字。 */
-.state {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-  padding: var(--sp-5);
-  text-align: center;
-  font-size: var(--fs-meta);
-  color: var(--text-2);
-}
+ * 判据只有一条,逐条核过:**零消费者**。`ProviderDetail.tsx` 是本文件唯一的
+ * 导入方,它用到的类是 detail / head / icon / iconCustom / headText / name /
+ * desc / customEdit / enable / enableLabel / enableFamily / modes / modeLabel /
+ * body —— 上面那 7 个一个都不在里面。同名的 `.mono` / `.state` 活在
+ * ModeCard / OAuthCard / ModelCatalog / ProviderSettingsPanel 各自的
+ * module.css 里(CSS Modules 各哈希各的),删这里一个像素都动不着。
+ * 它们从来没画过一个像素,所以这不是迁移,是**清尸**。
+ */

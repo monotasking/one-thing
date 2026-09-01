@@ -284,56 +284,43 @@
   white-space: nowrap;
 }
 
-/* 组头(已选置顶那条 / 每个厂牌那条)。粘在滚动容器顶上,
- * 一屏几十行时才知道自己在哪一组里。 */
-.groupHead,
-.groupToggle {
+/*
+ * **GroupHead 皮肤**(09-01 批 2c 收编)—— 两条组头(已选置顶那条静态的 /
+ * 每个厂牌那条可折叠的)都由 `ui/GroupHead` 画。
+ *
+ * 「组头」这个词的产地已经在库件里:排布(flex / gap / 内边距 / 字号 / 左对齐)、
+ * caret 定宽、组名与读数谁先弯腰、禁用态,一格都不在这里。**这里只留这块面
+ * 自己的落点事实** —— 库件那份皮肤刻意不含底色、不含边线、不含 sticky
+ *(理由写在 ui/GroupHead.module.css 头上):
+ *  · 粘在**详情列**顶上(`.catalog` 是 clip 不是 hidden,粘性解析到 `.body`);
+ *  · 补一块 --surface-2,挡住从下面滚过去的行 —— 不然组头是透的;
+ *  · 一条下轨,因为这是张**表**,行与行之间本来就有轨。
+ * 两形共用同一份落点皮肤:同一条列表里两种组头交替出现,长得不同就是两套结构。
+ */
+.stickyHead {
   position: sticky;
   top: 0;
   z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  width: 100%;
-  padding: var(--sp-1) var(--sp-3);
   border-bottom: var(--bw-1) solid var(--line-1);
   background: var(--surface-2);
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-  text-align: left;
 }
 
-.groupToggle {
-  border-width: 0 0 var(--bw-1) 0;
-  cursor: pointer;
-}
-
-.groupToggle:disabled {
-  cursor: default;
-}
-
-.groupCaret {
-  flex: none;
-  width: var(--pv-caret-w);
-}
-
-/* 组名是 `anthropic/` 这样的前缀:它不抢空间,读数抢 —— 与组头那条判例同一手。 */
-.groupName {
-  flex: 0 1 auto;
-  min-width: 0;
+/*
+ * GroupHead 皮肤 · 厂牌组名:`anthropic/` 这样的前缀是 **id 不是句子**,走 mono。
+ * 落在**内容**那一层(消费方把文字包一层交给 label 槽),不去覆盖库件的 `.label`
+ * —— 与名册 ProviderRail 的 `.groupLabel` 同一手,像素零漂移。
+ */
+.vendorName {
   font-family: var(--font-mono);
-  color: var(--text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.groupNote {
-  flex: 1 1 auto;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/*
+ * GroupHead 皮肤 ·「已选 · 3」:它是这一区的**分隔字**,不是组名。
+ * 库件的 `.label` 自带 `color: var(--text-1)`(组名那一档),而这条一直是
+ * --text-2 的弱色 —— 同上,颜色由内容说了算。
+ */
+.pickedLabel {
+  color: var(--text-2);
 }
 
 /* 截断那句。它是**如实交代**,所以留在列表里而不是藏进脚注。 */

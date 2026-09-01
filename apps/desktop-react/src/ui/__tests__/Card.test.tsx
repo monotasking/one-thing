@@ -110,4 +110,50 @@ describe('Card:区块卡骨架', () => {
     const { container } = render(<Card title="Models">{rows}</Card>)
     expect(container.querySelectorAll('p').length).toBe(120)
   })
+
+  /**
+   * 透传口子(批 2c):落点自己的身份**真的到 DOM**。
+   * 这条不是形式主义 —— 错误边界那张卡靠 `role="alert"` 才播得出来,
+   * 而八处测试靠 `data-testid` 找到它。透传断了,两件事一起哑。
+   */
+  it('透传:落点自己的 data-testid / role / aria-* 原样落到根节点上', () => {
+    const { container } = render(
+      <Card
+        title="Usage"
+        role="alert"
+        data-testid="error-card-files"
+        aria-label="崩了"
+        id="boundary-files"
+      >
+        b
+      </Card>,
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.tagName).toBe('DIV')
+    expect(root.getAttribute('role')).toBe('alert')
+    expect(root.getAttribute('data-testid')).toBe('error-card-files')
+    expect(root.getAttribute('aria-label')).toBe('崩了')
+    expect(root.id).toBe('boundary-files')
+    // 真的能按 role 找到它(不是只挂了个属性字符串)。
+    expect(screen.getByRole('alert')).toBe(root)
+  })
+
+  /**
+   * 透传**不许变成样式旁路**:皮肤仍然是这件算出来的那一串。
+   * `className` 在解构时就被拿走了,所以它不可能出现在 rest 里被覆盖掉 ——
+   * 这条断言把那个事实钉住(哪天有人改成 `{...rest}` 在前、`className` 在后,
+   * 消费方一个 `className` 就能把 pad / bordered 全抹掉)。
+   */
+  it('透传:className 合并不被 rest 覆盖 —— 皮肤与落点各说各的', () => {
+    const { container } = render(
+      <Card pad="lg" className="mine" data-testid="skin">
+        b
+      </Card>,
+    )
+    const cls = (container.firstElementChild as HTMLElement).className
+    expect(cls).toMatch(/_card_/)
+    expect(cls).toMatch(/_padLg_/)
+    expect(cls).toMatch(/_bordered_/)
+    expect(cls).toMatch(/(^| )mine( |$)/)
+  })
 })

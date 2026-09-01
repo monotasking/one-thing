@@ -3,6 +3,7 @@ import { recordCrash } from '../services/crash'
 import { translate, resolveLang, type Lang } from '../i18n'
 import { useStageStore } from '../stage/store'
 import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
 import s from './ErrorBoundary.module.css'
 
 /**
@@ -75,7 +76,16 @@ export class ErrorBoundary extends Component<Props, State> {
     const t = (key: Parameters<typeof translate>[1]) => translate(lang, key)
 
     return (
-      <div className={s.card} role="alert" data-testid={`error-card-${this.props.where}`}>
+      // 外框走 `ui/Card` 的 pad='lg' 那一档(并集里唯一用 --sp-4 的就是这张卡)。
+      // `role="alert"` 与 `data-testid` 经透传口子原样落到根 div 上:
+      // 「这是一条警报」是**落点**的事实,不是卡的事实(理由见 ui/Card 头)。
+      // 剩下的落点皮肤(外边距 / 自己吃溢出 / 顶头对齐 / 可缩)在 `.card` 里。
+      <Card
+        pad="lg"
+        className={s.errorCard}
+        role="alert"
+        data-testid={`error-card-${this.props.where}`}
+      >
         <div className={s.head}>
           <span className={s.title}>{t('error.title')}</span>
           {/* `where` 是**标识**(面板 id),不是界面文案 —— 换语言它不该跟着变,
@@ -96,7 +106,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <summary className={s.summary}>{t('error.detail')}</summary>
           <pre className={s.stack}>{`${error.name}: ${error.message}\n${error.stack ?? ''}`}</pre>
         </details>
-      </div>
+      </Card>
     )
   }
 }

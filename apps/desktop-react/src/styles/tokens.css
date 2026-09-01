@@ -664,7 +664,9 @@
   --pv-rail-w: 268px;
   --pv-rail-icon: 22px;
   --pv-head-icon: 36px;
-  --pv-dot: 6px;
+  /* `--pv-dot` 已删(09-01 批 2c 清尸):名册的状态点批 2b 迁进了 `ui/StatusDot`
+   * (它自带 `--status-dot`,同为 6px),这条从此零消费者 —— 只剩
+   * ProviderRail.module.css 的一句历史注释还念着它的名字。 */
   --pv-search-w: 200px;
   --pv-key-w: 320px;
   --pv-col-check: 28px;
@@ -698,8 +700,9 @@
    * 180px ≈ 放得下「Claude 3.5 Sonnet」这一档长度的模型名。
    */
   --pv-col-name-min: 180px;
-  /* 组头那个 ▸/▾ 的固定占位。定宽,展开收起时组名不左右跳。 */
-  --pv-caret-w: 12px;
+  /* `--pv-caret-w` 已删(09-01 批 2c 清尸):组头那个 ▸/▾ 的定宽占位随组头一起
+   * 迁进了 `ui/GroupHead`,那边用自己的 `--group-caret-w`(同为 12px,迁移时
+   * 逐条核过 —— 这是「像素零漂移」里的一格)。删掉的是本批刚变成零消费者的那条。 */
   /*
    * 长组行跳过排版时的占位高度(`contain-intrinsic-size` 的估计值)。
    * 它只是**第一次**的估计:`auto` 关键字会让浏览器量到真高度后记住它。

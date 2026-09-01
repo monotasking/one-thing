@@ -78,6 +78,22 @@ describe('GroupHead:列表分组头', () => {
     expect(btn.textContent).toContain('anthropic/')
   })
 
+  /**
+   * 交互状态 · 规范修正(09-01 批 2c 拍定):**禁着不淡化,只换指针**。
+   * 唯一的消费方语义是「组被判据打开、钮禁点」——那是一种**模式**,不是
+   * 「这一组不可用」;淡下去会让人以为整组内容用不了,而它盖住的恰好是
+   * 检索命中最需要看清的那一行。jsdom 不算样式,所以这条钉的是配方本身。
+   */
+  it('交互状态:禁用只换指针,一点都不淡(去掉 opacity 是本批的规范修正)', () => {
+    const sheet = css('GroupHead.module.css')
+    const m = sheet.match(/\.head:disabled\s*\{([^}]*)\}/)
+    expect(m).toBeTruthy()
+    expect(m?.[1]).toMatch(/cursor:\s*default/)
+    expect(m?.[1]).not.toMatch(/opacity/)
+    // 整份样式表里都不该再有淡化 —— 换个选择器写回来同样算复活。
+    expect(sheet).not.toMatch(/opacity/)
+  })
+
   it('数据状态:caret 随开合换向,且不进无障碍树(aria-expanded 才是给读屏的那一句)', () => {
     const { container, rerender } = render(<GroupHead label="g" collapsed onToggle={() => {}} />)
     const caret = () => container.querySelector('[class*="caret"]') as HTMLElement
@@ -114,5 +130,59 @@ describe('GroupHead:列表分组头', () => {
     const long = 'anthropic/claude-fable-5-with-a-very-long-suffix'
     render(<GroupHead label="g" note={long} onToggle={() => {}} collapsed={false} />)
     expect(screen.getByText(long)).toBeTruthy()
+  })
+
+  /**
+   * 透传口子(批 2c):**两形都要透**。
+   * 模型目录那两条组头带着 `data-testid`,而既有测试正是靠它找到组头去点、
+   * 去读 disabled —— 透传断了,等价迁移的证词当场全哑。
+   */
+  it('透传:静态形的 data-testid / role / aria-* 落到那个 <div> 上', () => {
+    const { container } = render(
+      <GroupHead label="已选 · 3" data-testid="picked-head" role="presentation" id="ph" />,
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.tagName).toBe('DIV')
+    expect(root.getAttribute('data-testid')).toBe('picked-head')
+    expect(root.getAttribute('role')).toBe('presentation')
+    expect(root.id).toBe('ph')
+  })
+
+  it('透传:可折叠形的 data-testid 落到那颗钮上,且 aria-expanded 仍归 collapsed 管', () => {
+    render(
+      <GroupHead
+        label="anthropic/"
+        collapsed
+        disabled
+        onToggle={() => {}}
+        data-testid="model-group-anthropic/"
+        aria-label="anthropic 组"
+      />,
+    )
+    const btn = screen.getByTestId('model-group-anthropic/') as HTMLButtonElement
+    expect(btn.tagName).toBe('BUTTON')
+    expect(btn.disabled).toBe(true)
+    expect(btn.getAttribute('aria-label')).toBe('anthropic 组')
+    // 开合只有 collapsed 一个产地:透传排在它前面,盖不掉。
+    expect(btn.getAttribute('aria-expanded')).toBe('false')
+  })
+
+  /**
+   * 透传**不是样式旁路**:皮肤仍然是 `.head` + 消费方的 className 那一串。
+   * 哪天有人把 `{...rest}` 挪到 className 后面,消费方一个 className
+   * 就能把库件的排布整份抹掉 —— 这条守着那个次序。
+   */
+  it('透传:className 合并不被 rest 覆盖(两形同判)', () => {
+    const { container: div } = render(<GroupHead label="g" className="mine" data-testid="a" />)
+    const divCls = (div.firstElementChild as HTMLElement).className
+    expect(divCls).toMatch(/_head_/)
+    expect(divCls).toMatch(/(^| )mine( |$)/)
+
+    render(
+      <GroupHead label="g" className="mine" collapsed onToggle={() => {}} data-testid="b" />,
+    )
+    const btnCls = screen.getByTestId('b').className
+    expect(btnCls).toMatch(/_head_/)
+    expect(btnCls).toMatch(/(^| )mine( |$)/)
   })
 })

@@ -1,15 +1,17 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { useStageStore } from '../../../stage/store'
+import { ErrorBoundary } from '../../../components/ErrorBoundary'
 import cardCss from '../../../ui/Card.module.css'
 import fieldCss from '../../../ui/Field.module.css'
 import groupHeadCss from '../../../ui/GroupHead.module.css'
 import statusDotCss from '../../../ui/StatusDot.module.css'
 import { IDLE_AUTH_FLOW } from '../../auth'
 import type { PoolView } from '../../projection'
-import type { ProviderMode, RailRow, StatusTone } from '../../types'
+import type { CatalogRow, ProviderMode, RailRow, StatusTone } from '../../types'
 import { CredentialPool } from '../CredentialPool'
 import { CustomProviderDialog } from '../CustomProviderDialog'
+import { ModelCatalog } from '../ModelCatalog'
 import { ModeCard } from '../ModeCard'
 import { OAuthCard } from '../OAuthCard'
 import { ProviderRail } from '../ProviderRail'
@@ -155,6 +157,146 @@ describe('GroupHead 收编:名册的组头', () => {
     // 组头不挂计数徽,也不挂读数 —— 空槽不渲染(GroupHead 的生命状态契约)。
     expect(head?.querySelector(`.${groupHeadCss.note}`)).toBeNull()
     expect(head?.querySelector(`.${groupHeadCss.caret}`)).toBeNull()
+  })
+})
+
+/* ── 批 2c:模型目录的两条组头 ──────────────────────────────────────────── */
+
+function catalogRow(id: string, over: Partial<CatalogRow> = {}): CatalogRow {
+  return {
+    id,
+    name: id,
+    selected: false,
+    current: false,
+    contextLength: 200_000,
+    maxOutput: 32_768,
+    caps: [],
+    price: { input: 3, output: 15 },
+    manual: false,
+    ...over,
+  }
+}
+
+/** 70 行两个厂牌 —— 过了折叠门槛,两形组头才会同屏出现。 */
+const MANY: CatalogRow[] = [
+  ...Array.from({ length: 40 }, (_, i) => catalogRow(`anthropic/m${i}`)),
+  ...Array.from({ length: 30 }, (_, i) => catalogRow(`openai/m${i}`)),
+]
+
+function renderCatalog(rows: readonly CatalogRow[], query = '') {
+  return render(
+    <ModelCatalog
+      providerId="openrouter"
+      rows={rows}
+      phase="ready"
+      dataRev={1}
+      refresh={undefined}
+      kind="api"
+      query={query}
+      pendingModelIds={new Set<string>()}
+      write={undefined}
+      onQuery={vi.fn()}
+      onRefresh={vi.fn()}
+      onToggle={vi.fn()}
+      onSetCurrent={vi.fn()}
+      onAddManual={vi.fn()}
+      onRemoveManual={vi.fn()}
+    />,
+  )
+}
+
+describe('GroupHead 收编:模型目录的两条组头(批 2c)', () => {
+  it('两形同屏且都由库件画:「已选」是静态 div,厂牌那条是可折叠的钮', () => {
+    const { container } = renderCatalog([
+      ...MANY,
+      catalogRow('meta/picked', { selected: true }),
+    ])
+    const heads = [...container.querySelectorAll(`.${groupHeadCss.head}`)]
+    // 已选那条 + anthropic/ + openai/ + meta/(单行也自成一组)。
+    expect(heads.length).toBeGreaterThanOrEqual(3)
+    const statics = heads.filter((h) => h.tagName === 'DIV')
+    const toggles = heads.filter((h) => h.tagName === 'BUTTON')
+    expect(statics.length).toBe(1)
+    expect(statics[0].textContent).toContain('已选')
+    expect(toggles.length).toBe(heads.length - 1)
+  })
+
+  it('本地那份组头配方**一条都不剩** —— 没有第二个产地在画同一个词', () => {
+    const { container } = renderCatalog(MANY)
+    const strays = [...container.querySelectorAll('div,button,span')].filter(
+      (el) =>
+        [...el.classList].some((c) => /_group(Head|Toggle|Caret|Name|Note)_/.test(c)),
+    )
+    expect(strays).toEqual([])
+  })
+
+  it('caret 与 aria-expanded 归库件同源翻转(收起 ▸ / 展开 ▾)', () => {
+    const head = (root: HTMLElement) =>
+      root.querySelector('[data-testid="model-group-anthropic/"]') as HTMLElement
+
+    const { container: shut } = renderCatalog(MANY)
+    expect(head(shut).getAttribute('aria-expanded')).toBe('false')
+    expect(head(shut).querySelector(`.${groupHeadCss.caret}`)?.textContent).toBe('▸')
+
+    // 检索时组由判据打开:aria-expanded 翻真、caret 跟着翻,而钮同时被禁。
+    const { container: open } = renderCatalog(MANY, 'm1')
+    expect(head(open).getAttribute('aria-expanded')).toBe('true')
+    expect(head(open).querySelector(`.${groupHeadCss.caret}`)?.textContent).toBe('▾')
+    expect((head(open) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('组名与读数各就各位:名字在 label 槽(落点皮肤给 mono),读数在 note 槽', () => {
+    const { container } = renderCatalog(MANY)
+    const btn = container.querySelector(
+      '[data-testid="model-group-anthropic/"]',
+    ) as HTMLElement
+    const label = btn.querySelector(`.${groupHeadCss.label}`)
+    expect(label?.textContent).toBe('anthropic/')
+    // 落点事实包在内容那一层,不去覆盖库件的 .label(名册同一手)。
+    expect(label?.firstElementChild?.className).toMatch(/_vendorName_/)
+    expect(btn.querySelector(`.${groupHeadCss.note}`)?.textContent).toContain('40')
+  })
+})
+
+/* ── 批 2c:错误边界那张卡 ──────────────────────────────────────────────── */
+
+describe('Card 收编:分区错误边界的错误卡(批 2c)', () => {
+  // React 接住错之后仍会往 console.error 打一整篇,那是 React 的行为不是被测对象。
+  let quiet: ReturnType<typeof vi.spyOn>
+  beforeAll(() => {
+    quiet = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+  afterAll(() => quiet.mockRestore())
+
+  function Bomb(): never {
+    throw new Error('炸了')
+  }
+
+  it('错误卡的外框是 ui/Card 的 pad=lg 档,role 与 testid 经透传落在同一个根上', () => {
+    render(
+      <ErrorBoundary where="files">
+        <Bomb />
+      </ErrorBoundary>,
+    )
+    const card = screen.getByTestId('error-card-files')
+    expect(card.classList.contains(cardCss.card)).toBe(true)
+    expect(card.classList.contains(cardCss.padLg)).toBe(true)
+    expect(card.classList.contains(cardCss.padMd)).toBe(false)
+    expect(card.classList.contains(cardCss.bordered)).toBe(true)
+    // 透传的两件事都在**同一个**节点上 —— 没有为了挂 role 再包一层 div。
+    expect(card.getAttribute('role')).toBe('alert')
+    expect(screen.getByRole('alert')).toBe(card)
+  })
+
+  it('本地那份卡配方不剩一条:落点皮肤已改名,不再是第 7 个「卡」的产地', () => {
+    render(
+      <ErrorBoundary where="chat">
+        <Bomb />
+      </ErrorBoundary>,
+    )
+    const card = screen.getByTestId('error-card-chat')
+    expect([...card.classList].some((c) => /^_card_/.test(c) && c !== cardCss.card)).toBe(false)
+    expect([...card.classList].some((c) => /_errorCard_/.test(c))).toBe(true)
   })
 })
 

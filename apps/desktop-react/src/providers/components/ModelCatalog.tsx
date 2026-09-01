@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
-import { ButtonBase } from '../../ui/ButtonBase'
 import { Checkbox } from '../../ui/Checkbox'
+import { GroupHead } from '../../ui/GroupHead'
 import { Input } from '../../ui/Input'
 import { Tooltip } from '../../ui/Tooltip'
 import { useFrozenFlags } from '../../ui/list-placement'
@@ -417,11 +417,19 @@ export function ModelCatalog({
             不算「已选」了。区里有几行是排版的事,读数说的必须是事实。
           */}
           {grouped.grouped && grouped.picked.length > 0 && (
-            <div className={s.groupHead}>
-              {t('providers.groupPicked', {
-                count: grouped.picked.filter((row) => row.selected).length,
-              })}
-            </div>
+            // 静态形(不给 onToggle)—— 这一区永远展开,它没有开合可言。
+            // 「已选 · 3」包一层 `.pickedLabel`:GroupHead 的 label 自带 text-1
+            // (组名那一档),而这条是**分隔字**,颜色由内容说了算(名册同一手)。
+            <GroupHead
+              className={s.stickyHead}
+              label={
+                <span className={s.pickedLabel}>
+                  {t('providers.groupPicked', {
+                    count: grouped.picked.filter((row) => row.selected).length,
+                  })}
+                </span>
+              }
+            />
           )}
           {grouped.picked.map((row) => (
             <Row
@@ -443,13 +451,17 @@ export function ModelCatalog({
             return (
               <div key={group.prefix}>
                 {grouped.grouped && (
-                  <ButtonBase
-                    className={s.groupToggle}
-                    aria-expanded={open}
+                  // 可折叠形(给了 onToggle):caret / aria-expanded / 键盘全归库件,
+                  // 这里只交出「这一组开着没有」和「点了怎么办」。
+                  // 组名包一层 `.vendorName`:厂牌前缀是 **id 不是句子**,走 mono ——
+                  // 落在内容那一层而不是去覆盖库件的 .label(名册 ProviderRail 同一手)。
+                  <GroupHead
+                    className={s.stickyHead}
+                    collapsed={!open}
                     // 检索时组是被**判据**打开的,不是用户打开的 —— 那时这颗钮
                     // 点了不该把它关上,不然「命中的组自动展开」立刻自相矛盾。
                     disabled={searching}
-                    onClick={() =>
+                    onToggle={() =>
                       setExpanded((prev) => {
                         const next = new Set(prev)
                         if (next.has(group.prefix)) next.delete(group.prefix)
@@ -458,13 +470,9 @@ export function ModelCatalog({
                       })
                     }
                     data-testid={`model-group-${group.prefix.trim() || 'other'}`}
-                  >
-                    <span className={s.groupCaret} aria-hidden="true">
-                      {open ? '▾' : '▸'}
-                    </span>
-                    <span className={s.groupName}>{groupLabel(t, group)}</span>
-                    <span className={s.groupNote}>{groupNote(t, group)}</span>
-                  </ButtonBase>
+                    label={<span className={s.vendorName}>{groupLabel(t, group)}</span>}
+                    note={groupNote(t, group)}
+                  />
                 )}
                 {/* 收起 = **不渲染行**。收起还渲染就等于没折叠。 */}
                 {open &&
