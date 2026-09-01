@@ -772,6 +772,88 @@ async function sweepThicknesses(page, scenario, failures, extra) {
   }
 }
 
+
+/**
+ * 竖排 Dock 的预留检查(09-01 用户报障带截图:竖排 Dock 盖住右架子里查看器的正文)。
+ *
+ * 与 [3.5/7] 是同一条律三、同一把尺,只是换了一条边:那条量的是底边 Dock 压 composer,
+ * 这条量的是**左右边 Dock 压侧架子**。判据也是同一句——把该侧架子里「自己画内容」
+ * 的盒子逐个取右缘,问一次 elementFromPoint:命中 Dock 就是被盖。
+ *
+ * 病历:内衬第一版打在 [data-shelf-body] 上,padding 量到了(88)却没用——
+ * 面板那一层是 `position:absolute; inset:0`,而**绝对定位的 inset 量的是包含块的
+ * padding box**,整个把 padding 跨了过去:真机 17/19 个盒子越界、13 个采样落在 Dock 下。
+ * 内衬移到 [data-panel-layer] 之后归零。
+ */
+async function checkSideShelfReach(page, edge) {
+  await page.evaluate((e) => {
+    const raw = localStorage.getItem('onething.stage')
+    if (!raw) return
+    const p = JSON.parse(raw)
+    p.state = { ...(p.state ?? {}), dockDisplay: 'always', dockEdge: e }
+    localStorage.setItem('onething.stage', JSON.stringify(p))
+  }, edge)
+  await page.reload()
+  await waitFor('重载后 Dock 就位', () =>
+    page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
+  )
+  /* 前面几步已经把总览钉在右架子上了,重载会照原样恢复 —— 这时候再点一下 Dock 图标
+   * 是「收起来」,不是「打开」(clickDockIcon 的第二下语义)。所以先问再点。 */
+  const already = await page.evaluate(
+    () => document.querySelector('[data-shelf-body="right"]')?.dataset.panel === 'sessions',
+  )
+  if (!already) await clickTestId(page, 'dock-tile-sessions')
+  await waitFor('架子上出现会话总览', () =>
+    page.evaluate(() => document.querySelector('[data-shelf-body="right"]')?.dataset.panel === 'sessions'),
+  )
+  await waitFor('总览画出会话卡', () =>
+    page.evaluate(() => document.querySelectorAll('[data-session-id]').length > 0),
+  )
+  await delay(400)
+  return await page.evaluate(() => {
+    const body = document.querySelector('[data-shelf-body="right"]')
+    const strip = document.querySelector('[data-dock="strip"]')
+    if (!body || !strip) return { error: '侧架子或 Dock 条不在 DOM 里' }
+    const sb = strip.getBoundingClientRect()
+    const inDock = (el) => {
+      while (el) {
+        if (el.dataset && el.dataset.dock === 'strip') return true
+        el = el.parentElement
+      }
+      return false
+    }
+    const draws = (el) => {
+      if (['svg', 'img', 'canvas', 'input', 'textarea'].includes(el.tagName.toLowerCase())) return true
+      for (const n of el.childNodes) if (n.nodeType === 3 && n.textContent.trim()) return true
+      return false
+    }
+    const boxes = [...body.querySelectorAll('*')]
+      .filter(draws)
+      .map((el) => ({ el, b: el.getBoundingClientRect() }))
+      .filter((x) => x.b.width > 0 && x.b.height > 0)
+    let covered = 0
+    let sampled = 0
+    const examples = []
+    for (const { el, b } of boxes) {
+      const x = b.right - 2
+      const y = b.top + b.height / 2
+      if (x < 0 || x > innerWidth || y < 0 || y > innerHeight) continue
+      sampled += 1
+      if (inDock(document.elementFromPoint(x, y))) {
+        covered += 1
+        if (examples.length < 4) examples.push(`${el.tagName.toLowerCase()} @ ${Math.round(x)},${Math.round(y)}`)
+      }
+    }
+    return {
+      covered,
+      sampled,
+      examples,
+      rightMost: boxes.length ? Math.round(Math.max(...boxes.map((x) => x.b.right))) : null,
+      stripLeft: Math.round(sb.left),
+    }
+  })
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(
@@ -909,6 +991,22 @@ async function main() {
     } else {
       console.log(`  ✓ composer 四件全可达(${dockReserve.readings.join(' · ')})`)
     }
+
+    console.log('\n[3.6/7] 律三的预留检查(竖排 Dock:侧架子内容可达性)')
+    for (const edge of ['right', 'left']) {
+      const side = await checkSideShelfReach(page, edge)
+      if (side.error) throw new Error(side.error)
+      if (side.covered) {
+        console.log(`  ✗ Dock 钉${edge}:侧架子里 ${side.covered}/${side.sampled} 个内容采样落在 Dock 底下(最右内容盒 ${side.rightMost},条左缘 ${side.stripLeft})`)
+        for (const e of side.examples) console.log(`      ${e}`)
+        failures.push(`Dock 钉${edge}:侧架子内容被盖 ${side.covered} 处`)
+      } else {
+        console.log(`  ✓ Dock 钉${edge}:侧架子 ${side.sampled} 个内容采样零被盖(最右内容盒 ${side.rightMost} vs 条左缘 ${side.stripLeft})`)
+      }
+    }
+    /* 这一步换过 Dock 的边,**必须换回来**:后面两场景量的是架子厚度下的排版,
+     * 竖排 Dock 会把主区宽度整个改掉,不还原就是拿另一套布局去判它们(试过,红一档)。 */
+    await checkSideShelfReach(page, 'bottom')
 
     console.log('\n[4/7] 场景①总览:五档厚度,逐档滚一遍扫重叠')
     await sweepThicknesses(page, '总览', failures)

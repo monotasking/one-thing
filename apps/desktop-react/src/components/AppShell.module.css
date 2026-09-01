@@ -22,10 +22,21 @@
  *
  * 落点选**吃到那条边的那两类面**,不是每个滚动容器各抄一遍:
  *   .center      —— 聊天区 + composer 那一列(composer 的让位由此改成「列内衬形」)
- *   [data-shelf-body] —— 四条架子的内容宿主(Sessions 这类面板住在里面)
+ *   [data-panel-layer] —— 架子里**每块面自己那一层**(Sessions / 查看器都住在里面)
  * 面板自己的滚动容器是这两者的 height:100% 后代,内衬一缩它们就跟着缩,
  * 所以「哪个面要让」只在这里写一次,单产地仍是一处。
  * scroll-padding 一并给:scrollIntoView 不该把行滚到 Dock 底下去。
+ *
+ * ── 为什么落在 layer 而不是架子的内容宿主(09-01 第二刀,用户报障带截图:
+ *    竖排 Dock 盖住右架子里查看器的正文)────────────────────────────────
+ * 内衬第一版打在 [data-shelf-body] 上,真机量到 padding-inline-end 确实是 88,
+ * 可 17/19 个内容盒仍越界、最远探出 59px,13 个采样点直接落在 Dock 底下。
+ * 病根是宿主里的那一层:`.body{position:relative}` + `.layer{position:absolute;inset:0}`
+ * —— **绝对定位的 inset 量的是包含块的 padding box**,那一层横竖把 padding 整个跨了
+ * 过去,于是 padding 只剩「把背景画到边」这一个作用 —— 这也正是它当时治好了异色带
+ * 却没治住遮挡的原因:两件事,改了一件。
+ * 内衬移到层自己身上,两件才都成立:`.body` 的底色照旧画到窗边(不断带),
+ * 层里的内容往里缩(不被盖)。四条边同此一改。
  *
  * 自动隐藏档一格都不让(宿主不挂 data-dock-reserve)—— 它平时不在屏上,让了就是白让。
  * 大小档只换 `--dock-tile` 一个数,式子在 tokens.css 里写一次。
@@ -34,25 +45,25 @@
 .reserveLg { --dock-tile: var(--tile-size-lg); }
 
 .shell[data-dock-reserve='bottom'] .center,
-.shell[data-dock-reserve='bottom'] [data-shelf-body] {
+.shell[data-dock-reserve='bottom'] [data-panel-layer] {
   padding-block-end: var(--dock-reserve-h);
   scroll-padding-block-end: var(--dock-reserve-h);
 }
 
 .shell[data-dock-reserve='top'] .center,
-.shell[data-dock-reserve='top'] [data-shelf-body] {
+.shell[data-dock-reserve='top'] [data-panel-layer] {
   padding-block-start: var(--dock-reserve-h);
   scroll-padding-block-start: var(--dock-reserve-h);
 }
 
 .shell[data-dock-reserve='left'] .center,
-.shell[data-dock-reserve='left'] [data-shelf-body] {
+.shell[data-dock-reserve='left'] [data-panel-layer] {
   padding-inline-start: var(--dock-reserve-v);
   scroll-padding-inline-start: var(--dock-reserve-v);
 }
 
 .shell[data-dock-reserve='right'] .center,
-.shell[data-dock-reserve='right'] [data-shelf-body] {
+.shell[data-dock-reserve='right'] [data-panel-layer] {
   padding-inline-end: var(--dock-reserve-v);
   scroll-padding-inline-end: var(--dock-reserve-v);
 }
