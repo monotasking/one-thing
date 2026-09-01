@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { useKeymapDispatch } from '../keymap/dispatch'
-import { TitleBar } from './TitleBar'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ChatStream } from '../content/ChatStream'
@@ -27,6 +26,7 @@ import {
   shouldShowDock,
   withinDockReentryWindow,
 } from '../stage/transitions'
+import type { Rect } from '../stage/transitions'
 import { DOCK_AXIS } from '../stage/types'
 import type { DockAlign, DockEdge, DockSize } from '../stage/types'
 import s from './AppShell.module.css'
@@ -153,9 +153,72 @@ export function AppShell() {
     const inset = Number.parseFloat(
       getComputedStyle(document.documentElement).getPropertyValue('--sp-3'),
     )
+
+    /*
+     * ── 几何**缓存**:pointermove 里一次布局都不读(09-01 真机 longFrame 修)──
+     *
+     * 用户通知中心抓到 `DOMWindow.onpointermove 388ms (fn=onMove @ AppShell.tsx)`。
+     * 单发 pointermove 388ms 是灾难级 —— 这条路每秒跑几十上百发。
+     * 真因不在判据(判据是纯算术),而在**强制同步布局**:修前每发 move 都
+     * `getBoundingClientRect()` 一次(泡开着两次,真机计数器实测 perMove=1 / 2),
+     * 而这一下的代价 ∝ 整篇文档的布局复杂度 —— 用户那台是上百轮、**正在流式生成**
+     * 的抄本,布局天天是脏的,于是每一发 move 都把整篇重排一遍。
+     * (空 store 上量不出来:同一段代码在空抄本上 longtask 恒 0 —— 这也正是
+     *  「手感类报障必须在真形态下量」的又一条判例。)
+     *
+     * 所以几何改成**事件驱动的缓存**:只有视口变了、条显隐了、泡开合了才重算。
+     * 顺带治好第二件事:磁性放大让瓦长大 15px、泡跟着上下漂 ±8px,修前判据每帧
+     * 对着一条**正在动的边界**问「出界没有」;缓存之后边界不动了,
+     * 而那点漂移远在 --dock-hold-pad(24)的余量之内,一个像素都不会误判。
+     */
+    let geom: { rect?: Rect; previewRect?: Rect } | null = null
+    let viewport = { w: window.innerWidth, h: window.innerHeight }
+    const invalidate = () => {
+      geom = null
+    }
+    const onResize = () => {
+      viewport = { w: window.innerWidth, h: window.innerHeight }
+      invalidate()
+    }
+    /** 把 DOMRect 抄成朴素数(它的四条边是原型取值器,展开会得到空对象)。 */
+    const plain = (b: DOMRect): Rect => ({ left: b.left, right: b.right, top: b.top, bottom: b.bottom })
+    const measure = () => {
+      const host = dockRef.current
+      const box = host?.getBoundingClientRect()
+      const bubble = host?.querySelector('[data-preview]')?.getBoundingClientRect()
+      geom = {
+        rect: box
+          ? settledDockRect(plain(box), viewport, dockEdge, Number.isFinite(inset) ? inset : 0)
+          : undefined,
+        previewRect: bubble ? plain(bubble) : undefined,
+      }
+      return geom
+    }
+    window.addEventListener('resize', onResize)
+    /*
+     * 两台观察器,各盯一件事,**都不盯瓦的 style** —— 磁性放大每帧改一次
+     * 每块瓦的行内宽高,盯上了就等于每帧失效一次,缓存白做。
+     *   ① 容器自己的 class:显隐那一下(不含 subtree)
+     *   ② 子树的增删:泡的挂载 / 卸载
+     */
+    const hostEl = dockRef.current
+    const classWatch = new MutationObserver(invalidate)
+    const treeWatch = new MutationObserver(invalidate)
+    if (hostEl) {
+      classWatch.observe(hostEl, { attributes: true, attributeFilter: ['class'] })
+      treeWatch.observe(hostEl, { childList: true, subtree: true })
+    }
+
+    /** 状态只在**翻转沿**上写 —— 每发 move 都 setState 是第二笔白开销。 */
+    const setShown = (next: boolean) => {
+      if (peekingRef.current === next) return
+      peekingRef.current = next
+      setPeeking(next)
+      invalidate()
+    }
+
     const onMove = (e: PointerEvent) => {
       const pointer = { x: e.clientX, y: e.clientY }
-      const viewport = { w: window.innerWidth, h: window.innerHeight }
       /*
        * 唤醒与留驻是**两个语义**,分岔在 transitions.shouldShowDock 里
        * (09-01 修「dock 自动出现范围太大,输入都没法输入」——修前这里写的是
@@ -172,60 +235,44 @@ export function AppShell() {
        */
       const shown = peekingRef.current
       /*
-       * 回身窗口:刚被自动收起的这一小会儿,「出来」认的是留驻区而不是 8px 窄带。
-       * 停稳位由**身量**算,藏着照样算得出来(settledDockRect),所以这一格为真时
-       * 也要照常量一次条身 —— 这正是 08-31 那条判例留下的便宜。
+       * 回身窗口:刚被自动收起的这一小会儿,「出来」认的是留驻区而不是 8px 窄带,
+       * 且只在收起那一刻泡开着时才武装(见 transitions.withinDockReentryWindow)。
        */
       const reentry = withinDockReentryWindow({
         shown,
         hiddenWithPreview,
         hiddenAt,
+        /* 与 hiddenAt 必须同一把钟:e.timeStamp 是**相对时间原点**的读数,
+         * 与 Date.now() 的纪元毫秒混用会让 now − hiddenAt 恒为大负数 = 窗口恒真
+         * (真机抓到:「泡开着·窗口外 1500ms·走回条身」本该不出来,却出来了)。 */
         now: Date.now(),
         windowMs: DOCK_REENTRY_MS,
       })
-      const box = shown || reentry ? dockRef.current?.getBoundingClientRect() : undefined
       /*
-       * `DOMRect` → 一个**朴素对象**。它的 left/right/top/bottom 都是原型上的
-       * 取值器,不是自有属性:任何一处 `{ ...domRect }` 都会得到一个空对象。
-       * 转换收在这一处,纯函数那一侧从此只见得到朴素数(判例见 settledDockRect)。
+       * 藏着且不在回身窗口里 = 只认贴边窄带,连缓存都不必碰(纯算术,零 DOM)。
+       * 这一支也是「唤醒要克制」的那条线:08-31「自动出现范围太大」由它守着。
        */
-      const rect = box
-        ? settledDockRect(
-            { left: box.left, right: box.right, top: box.top, bottom: box.bottom },
-            viewport,
-            dockEdge,
-            Number.isFinite(inset) ? inset : 0,
-          )
-        : undefined
-      /*
-       * 泡开着的时候,泡也是 Dock 的地皮(09-01 修「移向 preview 途中整条 Dock 消失」)。
-       * 泡不在条的盒子里(它 absolute 浮在条外),所以 settledDockRect 一辈子看不见它 ——
-       * 真机读数:泡 220px 高,只有最下面 5.6px 落在留驻区里,指针一进泡就被判「人走了」,
-       * 300ms 后整条 Dock 平移出屏,而泡是条的后代,于是跟着一起消失在手底下。
-       *
-       * 只在条已经出来时问一次 DOM:藏着的时候没有泡可言(pointermove 是每帧都跑的那条路)。
-       */
-      const bubble = shown ? dockRef.current?.querySelector('[data-preview]') : undefined
+      const g = shown || reentry ? (geom ?? measure()) : null
       // 这一次露面期间见过泡没有 —— 收起那一刻拿它当回身窗口的武装条件。
-      if (bubble) sawPreview = true
-      const bubbleBox = bubble?.getBoundingClientRect()
-      const previewRect = bubbleBox
-        ? {
-            left: bubbleBox.left,
-            right: bubbleBox.right,
-            top: bubbleBox.top,
-            bottom: bubbleBox.bottom,
-          }
-        : undefined
-      if (shouldShowDock({ shown, reentry, pointer, viewport, edge: dockEdge, rect, previewRect })) {
+      if (shown && g?.previewRect) sawPreview = true
+      if (
+        shouldShowDock({
+          shown,
+          reentry,
+          pointer,
+          viewport,
+          edge: dockEdge,
+          rect: g?.rect,
+          previewRect: shown ? g?.previewRect : undefined,
+        })
+      ) {
         cancelHide()
         // 出来了就把回身窗口清零:下一次收起再重新计时,免得一次收起管两回。
         hiddenAt = 0
         hiddenWithPreview = false
         // 藏着 → 出来 = 新的一次露面,「这次见过泡没有」从头记。
         if (!shown) sawPreview = false
-        peekingRef.current = true
-        setPeeking(true)
+        setShown(true)
         return
       }
       // 收回宽限:离开留驻区后缓一拍再收,路过抖动不塌;再进入即取消。
@@ -240,14 +287,16 @@ export function AppShell() {
            */
           hiddenWithPreview = sawPreview
           sawPreview = false
-          peekingRef.current = false
-          setPeeking(false)
+          setShown(false)
         }, DOCK_HIDE_DELAY_MS)
       }
     }
     window.addEventListener('pointermove', onMove)
     return () => {
       cancelHide()
+      classWatch.disconnect()
+      treeWatch.disconnect()
+      window.removeEventListener('resize', onResize)
       window.removeEventListener('pointermove', onMove)
     }
   }, [autohide, dockEdge])
@@ -277,9 +326,10 @@ export function AppShell() {
 
   return (
     <div className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
-      {/* 自绘顶带:系统标题栏没了之后,窗口唯一的拖拽把手(09-01 拍板)。
-        * 它必须是壳里的第一件 —— 「内容从 y=0 起都是我们的」这句话的字面次序。 */}
-      <TitleBar />
+      {/* 顶栏**就是**这扇窗的顶带(09-01 用户看真机后的裁定:红绿灯与 header 同一行)。
+        * 系统标题栏已摘,所以壳里的第一件必须从 y=0 起 —— 顶栏自己承载拖拽区与
+        * 红绿灯让位,判例写在 TopBar.tsx 的文件头。上一版那条独立的 28px 空带
+        * (components/TitleBar.*)因此退役:它白占了一条。 */}
       <TopBar />
 
       {/* 三明治网格:上架子一行 / [左架子 | 主区 | 右架子] / 下架子一行。

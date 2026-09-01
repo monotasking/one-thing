@@ -28,7 +28,12 @@ import {
 import type { Rect } from '../stage/transitions'
 import { DOCK_AXIS, OPEN_PLACEMENT_CHOICES } from '../stage/types'
 import type { DockEdge, DockSize, StageItemSpec } from '../stage/types'
-import { DOCK_AIM_WINDOW_MS, PREVIEW_DELAY_MS, PREVIEW_GRACE_MS } from './motion'
+import {
+  DOCK_AIM_WINDOW_MS,
+  PREVIEW_DELAY_MS,
+  PREVIEW_GRACE_MS,
+  PREVIEW_SWITCH_MS,
+} from './motion'
 import type { LabelSide } from './DockTile'
 import s from './Dock.module.css'
 
@@ -183,6 +188,7 @@ export function Dock({ dimmed }: Props) {
   )
   const { openId: previewOpenId, controller: preview } = useHoverIntent<DockAim>({
     delayMs: PREVIEW_DELAY_MS,
+    switchMs: PREVIEW_SWITCH_MS,
     graceMs: PREVIEW_GRACE_MS,
     aimWindowMs: DOCK_AIM_WINDOW_MS,
     aim,

@@ -24,10 +24,11 @@ const probe: HoverAimProbe<FakeAim> = {
   track: (_aim, from, to) => ({ inside: to.x < 500, progressed: to.y < from.y }),
 }
 
-function harness(withAim = true) {
+function harness(withAim = true, switchMs?: number) {
   const seen: Array<string | null> = []
   const intent = createHoverIntent<FakeAim>({
     delayMs: DELAY,
+    switchMs,
     graceMs: GRACE,
     aimWindowMs: WINDOW,
     aim: withAim ? probe : undefined,
@@ -77,6 +78,61 @@ describe('① 延迟出 / ② 宽限收(既有手感,不许回退)', () => {
     intent.enter('a')
     vi.advanceTimersByTime(GRACE * 2)
     expect(open()).toBe('a')
+  })
+})
+
+describe('② 首开沉住气,换人跟手(09-01 报障:切到另一块瓦,原来的 preview 还在)', () => {
+  const SWITCH = 100
+
+  it('一个都没开着 = 首开延迟', () => {
+    const { intent, open } = harness(true, SWITCH)
+    intent.enter('a')
+    vi.advanceTimersByTime(SWITCH * 2)
+    expect(open()).toBe(null)
+    vi.advanceTimersByTime(DELAY - SWITCH * 2)
+    expect(open()).toBe('a')
+  })
+
+  it('已经开着 = 换人那一档,不必再等首开的 600', () => {
+    const { intent, seen } = harness(true, SWITCH)
+    intent.enter('a')
+    vi.advanceTimersByTime(DELAY)
+    expect(seen).toEqual(['a'])
+    // 横着走(没有朝目标的分量)→ 不武装瞄准区 → b 按换人档接手
+    step(intent, 300, 200)
+    step(intent, 320, 200)
+    intent.leave('a')
+    intent.enter('b')
+    vi.advanceTimersByTime(SWITCH - 1)
+    expect(seen).toEqual(['a'])
+    vi.advanceTimersByTime(1)
+    expect(seen).toEqual(['a', 'b'])
+  })
+
+  it('不给 switchMs 就是老行为(缺省 = 首开延迟)', () => {
+    const { intent, seen } = harness(true)
+    intent.enter('a')
+    vi.advanceTimersByTime(DELAY)
+    step(intent, 300, 200)
+    step(intent, 320, 200)
+    intent.leave('a')
+    intent.enter('b')
+    vi.advanceTimersByTime(DELAY - 1)
+    expect(seen).toEqual(['a'])
+    vi.advanceTimersByTime(1)
+    expect(seen).toEqual(['a', 'b'])
+  })
+
+  it('瞄准区武装时不受这一档影响 —— 朝泡走仍然一个人不换', () => {
+    const { intent, seen } = harness(true, SWITCH)
+    intent.enter('a')
+    vi.advanceTimersByTime(DELAY)
+    step(intent, 300, 200)
+    step(intent, 290, 180)
+    intent.leave('a')
+    intent.enter('b')
+    vi.advanceTimersByTime(SWITCH * 3)
+    expect(seen).toEqual(['a'])
   })
 })
 

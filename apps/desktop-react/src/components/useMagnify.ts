@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { RELEASE_MS } from './motion'
 
 /**
  * Dock 磁性放大 —— 全系统唯一的 hover 位移豁免(动效板·位移豁免清单 ②)。
@@ -46,6 +47,19 @@ export function useMagnify(count: number, axis: 'x' | 'y' = 'x') {
   const restCenters = useRef<number[] | null>(null)
   const [factors, setFactors] = useState<number[]>(() => Array.from({ length: count }, () => REST_FACTOR))
   const [tracking, setTracking] = useState(false)
+  /**
+   * 入场那一下**不跟手,先缓一段**(09-01 修「从上/下方进 Dock 突然变大不流畅」)。
+   *
+   * 跟手定律说的是「指针在条上时逐帧照算、零过渡」,而**入场那一帧**指针是从
+   * 1.0 直接落到目标档的:零过渡 = 一帧之内从 44px 蹦到 59px,看上去就是「啪」一下。
+   * 所以 tracking 推迟 --dur-release 再上岗:这一段里每次改档都吃 CSS 过渡,
+   * 从 1.0 平滑长到目标档;窗口一过转入跟手,后面的逐帧照算一个字没变。
+   * (不是把跟手改软 —— 跟手期仍然零过渡,改的只是**第一下**。)
+   */
+  const rampTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 逐帧合帧:pointermove 一帧能来好几发,系数一帧只算一次、只渲染一次。 */
+  const raf = useRef<number | null>(null)
+  const pending = useRef<number | null>(null)
 
   const setTileRef = useCallback(
     (index: number) => (el: HTMLElement | null) => {
@@ -56,7 +70,8 @@ export function useMagnify(count: number, axis: 'x' | 'y' = 'x') {
 
   const onMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!restCenters.current) {
+      const entering = !restCenters.current
+      if (entering) {
         // 入场冻结:此刻各 wrap 还在(或几乎在)静止位。量 wrap 而不量瓷砖,
         // 是因为 wrap 的盒子不直接受瓷砖尺寸动画中间态影响得那么剧烈。
         restCenters.current = tiles.current.slice(0, count).map((el) => {
@@ -64,18 +79,47 @@ export function useMagnify(count: number, axis: 'x' | 'y' = 'x') {
           if (!box) return Number.POSITIVE_INFINITY
           return axis === 'x' ? box.left + box.width / 2 : box.top + box.height / 2
         })
+        // 入场缓冲期:先让 CSS 过渡把第一下从 1.0 送到目标档,过后再转跟手。
+        if (rampTimer.current) clearTimeout(rampTimer.current)
+        rampTimer.current = setTimeout(() => {
+          rampTimer.current = null
+          setTracking(true)
+        }, RELEASE_MS)
       }
-      setFactors(magnifyAt(axis === 'x' ? e.clientX : e.clientY, restCenters.current))
-      setTracking(true)
+      pending.current = axis === 'x' ? e.clientX : e.clientY
+      if (raf.current !== null) return
+      raf.current = requestAnimationFrame(() => {
+        raf.current = null
+        const at = pending.current
+        if (at === null || !restCenters.current) return
+        setFactors(magnifyAt(at, restCenters.current))
+      })
     },
     [count, axis],
   )
 
   const onMouseLeave = useCallback(() => {
     restCenters.current = null
+    pending.current = null
+    if (raf.current !== null) {
+      cancelAnimationFrame(raf.current)
+      raf.current = null
+    }
+    if (rampTimer.current) {
+      clearTimeout(rampTimer.current)
+      rampTimer.current = null
+    }
     setFactors(Array.from({ length: count }, () => REST_FACTOR))
     setTracking(false)
   }, [count])
+
+  useEffect(
+    () => () => {
+      if (raf.current !== null) cancelAnimationFrame(raf.current)
+      if (rampTimer.current) clearTimeout(rampTimer.current)
+    },
+    [],
+  )
 
   return { stripRef, setTileRef, factors, tracking, onMouseMove, onMouseLeave }
 }

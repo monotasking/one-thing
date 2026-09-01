@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { renderContent } from '../content'
 import type { PanelVisibility } from '../content/visibility'
 import type { LabelSide } from './DockTile'
@@ -51,7 +52,14 @@ interface Props {
 
 /** 泡里那一份的身份,恒定 —— 提到组件外,免得每次渲染造一个新对象白白打断 memo。 */
 const PREVIEW_VISIBILITY: PanelVisibility = { visible: true, interactive: false }
-export function DockPreview({ id, title, side, onOpen }: Props) {
+/**
+ * **记忆化**(09-01 修真机 longFrame):泡里那一份是 `renderContent` 出来的**活视图**
+ * —— 一整块面。而磁性放大每帧都改一次每块瓦的行内宽高,Dock 因此每帧重渲染;
+ * 修前那会顺着 DockTile 一路把这块面也重渲一遍,**每发 pointermove 一次**。
+ * 四个 prop 全是稳定值(`onOpen` 由 DockTile 用 ref 转成常量,见那边注释),
+ * 所以放大期间这块面一次都不用重画。
+ */
+function DockPreviewImpl({ id, title, side, onOpen }: Props) {
   return (
     /*
      * 泡是**鼠标的顺手路**,不是一个控件:键盘打开这块面走的是瓦那颗真 <button>
@@ -76,3 +84,5 @@ export function DockPreview({ id, title, side, onOpen }: Props) {
     </div>
   )
 }
+
+export const DockPreview = memo(DockPreviewImpl)

@@ -47,7 +47,16 @@ export interface HoverAimProbe<A> {
 }
 
 export interface HoverIntentOptions<A> {
+  /** **首开**延迟:一个都没开着时,悬停多久才算「他要看这个」。 */
   delayMs: number
+  /**
+   * **换人**延迟:已经开着一个了,横向换到旁人身上多久接手。
+   *
+   * 与首开是两件事(09-01 用户体感裁定,菜单 / 预览的通行语义):第一次打开要
+   * 沉住气(擦过去的不算),**开着之后切换要跟手** —— 屏幕上已经有一块在讲话了,
+   * 再让人等 600ms 只会看见「旧的还赖着」。缺省 = 首开延迟(不给就是老行为)。
+   */
+  switchMs?: number
   graceMs: number
   /**
    * 瞄准区的**停顿**窗口,不是飞行总时长:每一步只要还在朝目标推进就续期,
@@ -110,10 +119,12 @@ export function createHoverIntent<A>(options: HoverIntentOptions<A>): HoverInten
   }
   const armOpen = (id: string) => {
     clearArm()
+    // 已经有主角在场 = **换人**,走跟手的那一档;一个都没开着才是首开延迟。
+    const wait = openId !== null ? (options.switchMs ?? options.delayMs) : options.delayMs
     armTimer = setTimeout(() => {
       armTimer = null
       open(id)
-    }, options.delayMs)
+    }, wait)
   }
   /**
    * 主角**留到有人接手**,指针不压着任何触发件时才排收拢。
@@ -207,6 +218,9 @@ export function useHoverIntent<A>(options: HoverIntentOptions<A>): {
     ref.current = createHoverIntent<A>({
       get delayMs() {
         return latest.current.delayMs
+      },
+      get switchMs() {
+        return latest.current.switchMs
       },
       get graceMs() {
         return latest.current.graceMs

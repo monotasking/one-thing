@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
@@ -105,6 +105,14 @@ export function DockTile({
 }: Props) {
   const [labelVisible, setLabelVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /*
+   * 把 onClick 收进 ref,再交给泡一个**恒定**的回调 —— 这样泡的四个 prop 全稳定,
+   * `memo(DockPreview)` 才真的拦得住(摆瓦的人给的是行内箭头函数,每次渲染换身份,
+   * 而磁性放大每帧都让这里重渲一次)。09-01 真机 longFrame 的第二半修的就是它。
+   */
+  const clickRef = useRef(onClick)
+  clickRef.current = onClick
+  const openPreview = useCallback(() => clickRef.current?.(), [])
 
   useEffect(
     () => () => {
@@ -149,7 +157,7 @@ export function DockTile({
       {previewOpen && previewId && (
         /* 点泡 = 点这块瓦。泡里那一眼说的就是「打开之后长这样」,
          * 所以点它的意思只可能是「那就打开吧」—— 不该再让用户把手移回瓦上。 */
-        <DockPreview id={previewId} title={title} side={labelSide} onOpen={onClick} />
+        <DockPreview id={previewId} title={title} side={labelSide} onOpen={openPreview} />
       )}
       <button
         type="button"

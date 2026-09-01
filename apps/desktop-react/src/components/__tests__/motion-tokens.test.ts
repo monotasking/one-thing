@@ -12,6 +12,7 @@ import {
   FLASH_MS,
   PREVIEW_DELAY_MS,
   PREVIEW_GRACE_MS,
+  PREVIEW_SWITCH_MS,
   RELEASE_MS,
   SCROLL_SETTLE_MS,
   TOAST_LIFE_MS,
@@ -68,6 +69,7 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
      * 也一直有 JS 常量,却一直不在这张表里 —— 09-01 加瞄准窗口时顺手补齐:
      * 一个数只有一个出处这条纪律,不该按「是不是动画」挑着执行。 */
     ['--dur-preview-grace', PREVIEW_GRACE_MS],
+    ['--dur-preview-switch', PREVIEW_SWITCH_MS],
     ['--dur-dock-aim-window', DOCK_AIM_WINDOW_MS],
     ['--dur-dock-hide-delay', DOCK_HIDE_DELAY_MS],
     ['--dur-dock-reentry', DOCK_REENTRY_MS],
