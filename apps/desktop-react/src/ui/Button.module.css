@@ -46,6 +46,25 @@
   border-color: var(--line-2);
 }
 
+/*
+ * danger:几何与 ghost 逐字相同(边框 / 高度 / 内边距一格不动),只把**字**换成
+ * 危险色;hover 才补一层浅底 —— 与 `IconButton.module.css` 的 `.danger` 同一副
+ * 配方。**永不实底红**:实底红是「这是主动作」的语汇,而危险动作恰恰不该被
+ * 做成一屏上最显眼的那颗(四轴第一条:状态色只上图标 / 文字,永不换底)。
+ * hover 的边线跟着走一格 danger —— ghost 那一格换的是 --line-2(「更实了一点」),
+ * 危险钮换的是同一件事,只是它的「更实」就是它自己的颜色。
+ */
+.danger {
+  border-color: var(--line-1);
+  color: var(--danger);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--st-hover);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* 图标按钮:正方、无内边距、不画边框(边框留 1px transparent 占位,尺寸不变)。 */
 .iconOnly {
   width: var(--btn-sm);

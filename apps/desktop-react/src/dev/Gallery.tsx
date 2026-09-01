@@ -132,8 +132,13 @@ export function Gallery() {
         <Button variant="primary">primary sm</Button>
         <Button variant="primary" size="md">primary md</Button>
         <Button pill variant="primary">pill</Button>
+        {/* danger 与 ghost 并排摆:两者几何逐字相同,差的只有字色 ——
+            并排才看得出「危险色只上字、hover 才浅底、永不实底红」。 */}
+        <Button variant="danger">danger sm</Button>
+        <Button variant="danger" size="md">danger md</Button>
         <Button iconOnly aria-label="Search"><Search size={14} /></Button>
         <Button disabled>disabled</Button>
+        <Button variant="danger" disabled>danger disabled</Button>
         <Button variant="primary" size="md"><Spinner /> loading</Button>
       </Section>
 

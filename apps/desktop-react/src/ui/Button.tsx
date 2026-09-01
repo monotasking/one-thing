@@ -2,9 +2,20 @@ import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import s from './Button.module.css'
 
 /**
- * 规范画布「按钮族」的唯一实现:两个变体 × 两档高度,别的都是这四格的组合。
- * primary = accent 实底(一屏只该有一个);ghost = 描边空底(其余全部)。
+ * 规范画布「按钮族」的唯一实现:三个变体 × 两档高度,别的都是这几格的组合。
+ * primary = accent 实底(一屏只该有一个);ghost = 描边空底(其余全部);
+ * danger = 描边空底 + **危险色只上字**(见下)。
  * sm 28 / md 32、r-1、字重 600、disabled 只降透明度到 0.45 不换色。
+ *
+ * ── `danger` 档为什么长这样(09-01 批 3.5 补口)──────────────────────────
+ * 配方与 `ui/IconButton` 的 `tone='danger'` **同语汇**:危险色只上字,
+ * hover 才补一层浅底,**永不实底红**(四轴第一条:状态色只上图标 / 文字)。
+ * 几何仍是 ghost 那一份(边框 / 高度 / 内边距逐字相同)—— 危险不改变一颗钮
+ * 占多大地方,只改变它说话的颜色。所以 `danger` 不是第二个 primary:
+ * 一屏可以有好几颗危险钮,而 primary 只该有一颗。
+ * 起因:批 3 把 AskForm 的「拒绝」迁进 `ui/Button` 时,本地那句
+ * `:hover { color: var(--danger) }` 因为库件没有这一档而退役(记成缺口 B),
+ * 这一档就是那笔账的落点。
  *
  * 三个开关,各只管一件事,不互相耦合:
  * - pill    只换圆角 → r-full(总览的「＋ Project」、Quick Look 的「进入 ↵」)
@@ -24,7 +35,7 @@ import s from './Button.module.css'
  * ──────────────────────────────────────────────────────────────────────
  */
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'ghost'
+  variant?: 'primary' | 'ghost' | 'danger'
   size?: 'sm' | 'md'
   /** 丸形:只影响圆角 */
   pill?: boolean

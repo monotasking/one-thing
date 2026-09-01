@@ -52,7 +52,22 @@
 #   16 条 content/** 与 providers/** 的陈账不归本批动 —— 它们是别批已经修掉、
 #   等各自合树时自己删的行。
 #
-bare-button-icon src/composer/components/Composer.tsx:617 图标钮,该 ui/IconButton
+# ── 09-01 批 3.5(库件补口 + 发送键收编),删 1 条 ─────────────────────────
+#   上面那条**当场停**结清:`src/composer/components/Composer.tsx` 的发送 / 停止键。
+#   缺口 A 补上了(ui/IconButton 现在摊 ButtonHTMLAttributes,onClick 收事件),
+#   但这一处**裁定不迁 IconButton**:发送键是 accent **实底圆**的签名件,而
+#   IconButton 是「檐上那种钮」(无边框、无实底、只换字色)——给它开一档实底主色
+#   等于给它长一整个实底家族,它立件的前提(配方单一)当场没了。
+#   落地按裸钮三类判第③类:**结构性交互件 → ui/ButtonBase**(只清 UA),
+#   `.sendBtn` 那份 accent 圆底皮肤原样留在 Composer.module.css 当签名件皮肤,
+#   `data-mode` / `aria-label` / 手势 props 经 ButtonBase 原样透传 ——
+#   scripts/gate-chat.mjs 与 Composer.test.tsx 逐字读的那几格一个字没动。
+#
+#   至此**避让区外四类全清零**:bare-button-text 0 / bare-button-icon 0 /
+#   bare-button-structural 0 / tooltip-native-title 0 / icon-button-hover 0。
+#   表上剩下的 bare-button-* 与 tooltip-native-title 全部落在 src/content/**
+#   与 src/providers/**(别批在飞,等各自合树时自己删)。
+#
 bare-button-icon src/content/AppsPanel.tsx:66 图标钮,该 ui/IconButton
 tooltip-native-title src/content/blocks/inline/InlineRun.tsx:52 native title= on <span>
 bare-button-icon src/content/blocks/kinds/table/Table.tsx:70 图标钮,该 ui/IconButton

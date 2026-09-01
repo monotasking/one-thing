@@ -457,6 +457,15 @@
   cursor: default;
 }
 
+/*
+ * **签名件皮肤**(09-01 批 3.5 收编)——底座是 `ui/ButtonBase`(只清 UA),
+ * 这一份 accent 实底圆的配方留在本地。编排拍定:**发送键不进 IconButton,
+ * IconButton 不长实底家族** —— 那件是「檐上那种钮」(无边框、无实底、
+ * 只换字色),给它开一档实底主色就等于给它长一整个实底家族,
+ * 它立件的前提(配方单一)当场没了。所以这一处走裸钮三类判第③类:
+ * 结构性交互件,视觉本该定制,但**不许裸着**。
+ * hover / active 刻意不画:这颗钮是 accent 实底,它的「在这儿」已经由底色说满了。
+ */
 .sendBtn {
   display: flex;
   flex: none;
@@ -735,9 +744,9 @@
   vertical-align: 2px;
 }
 
-/* 「拒绝」迁 `ui/Button`(ghost)之后本地只剩一格落点:把它顶到行尾。
+/* 「拒绝」迁 `ui/Button`(danger 档)之后本地只剩一格落点:把它顶到行尾。
  * 字号 / 颜色 / hover / disabled 全归库件 —— 从前那条 `:hover{color:danger}`
- * 一并退役(Button 没有 danger 档,留账进交卷报告)。 */
+ * 现在是库件 `.danger` 那一格(09-01 批 3.5 补口,危险语义回填)。 */
 .askReject {
   margin-left: auto;
 }

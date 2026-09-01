@@ -619,14 +619,19 @@ export function Composer() {
                  * `data-testid` 因此**恒定**(门按位置找它,不按状态找),
                  * 状态挂在 `data-mode` 上 —— 那才是「它此刻是哪副面孔」的产地。
                  *
-                 * ── 09-01 批 3(裸钮清账)在这里**当场停**了 ─────────────────
-                 * 它该迁 `ui/IconButton`,但迁不动:那件只收 `testId` 一格自定义
-                 * 属性,`data-mode` 递不进去 —— 而 `scripts/gate-chat.mjs` 与
-                 * `Composer.test.tsx` 都逐字读它。库件缺口(IconButton 不透传
-                 * ButtonHTMLAttributes)已上报,补上之后这一处一并迁。
+                 * ── 09-01 批 3.5 的裁定:**签名件走 `ui/ButtonBase`** ────────
+                 * 批 3 在这里当场停,报的缺口是「IconButton 不透传」。缺口这批补上了
+                 * (IconButton 现在摊 ButtonHTMLAttributes),但**这一处仍然不迁
+                 * IconButton** —— 编排拍定:发送键是 accent **实底圆**的签名件,
+                 * 而 `ui/IconButton` 是「檐上那种钮」,无边框、无实底、只换字色。
+                 * 把实底主色塞进 IconButton 等于给它长一整个实底家族,那件立件的
+                 * 前提(配方单一)当场没了。所以走裸钮三类判第③类:
+                 * **结构性交互件 → `ui/ButtonBase`**(只清 UA,一个像素都不画),
+                 * 皮肤 `.sendBtn` 原样留在本地当签名件皮肤。
+                 * `data-mode` / `aria-label` / `onClick` 经 ButtonBase 原样透传,
+                 * `type='button'` 是它的默认档,所以这里不必再写一遍。
                  */}
-                <button
-                  type="button"
+                <ButtonBase
                   className={s.sendBtn}
                   aria-label={busy ? t('composer.stop') : t('composer.send')}
                   data-testid="composer-send"
@@ -645,7 +650,7 @@ export function Composer() {
                   ) : (
                     <SendIcon className={s.sendIcon} strokeWidth={2.4} aria-hidden="true" />
                   )}
-                </button>
+                </ButtonBase>
               </div>
             </div>
 

@@ -14,6 +14,12 @@
    * 错误卡不一样:它是**别人腾出来的那块地方**里的唯一内容,腾多少占多少,
    * 挤起来要能缩。这一句把收缩还回来 —— 迁移前它就是默认的 `0 1 auto`。 */
   flex: 0 1 auto;
+  /* 挤压律一:**会收缩的件必须解开收缩下界**。上一句把 `flex-shrink` 还了回来,
+   * 而 column flex 里每一项的 `min-height` 默认是 `auto` —— 那等于「不许缩到
+   * 比内容矮」,收缩许可当场作废,崩了的那块反过来把容器撑破。截断策略这件
+   * 已经有了(下面的 `overflow: auto` + `overscroll-behavior: contain`),
+   * 缺的就是这一句。(批 2c 迁 ui/Card 时漏掉,squeeze-gate 逮住,3.5 归账。) */
+  min-height: 0;
   align-items: flex-start;
   margin: var(--sp-3);
   color: var(--text-1);

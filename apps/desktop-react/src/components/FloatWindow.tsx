@@ -57,11 +57,17 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const liveRef = useRef<FloatRect | null>(null)
   /*
-   * 钉边菜单贴着**那颗钮**的下缘开。从前坐标取自 `e.currentTarget` ——
-   * `ui/IconButton` 只把 `onClick` 收成一个无参回调(它不透传 ButtonHTMLAttributes),
-   * 拿不到事件,所以改成量**包着它的那一格**:span 是 inline-flex 且 flex:none,
-   * 逐像素等于钮自己的矩形(与 FilesPanel 行尾 ⋯ 的 wrapRef 同一手)。
-   * 刻意不改成「在 onPointerDown 里记一次」:那条路键盘按 ↵ 走不到,菜单会开在 0,0。
+   * 钉边菜单贴着**那颗钮**的下缘开。坐标量的是**包着它的那一格**:span 是
+   * inline-flex 且 flex:none,逐像素等于钮自己的矩形(与 FilesPanel 行尾 ⋯ 的
+   * wrapRef 同一手)。刻意不改成「在 onPointerDown 里记一次」:那条路键盘按 ↵
+   * 走不到,菜单会开在 0,0。
+   *
+   * 09-01 批 3.5 核对(`ui/IconButton` 这批开了 ButtonHTMLAttributes 透传):
+   * 这格绕法**保留不动**。透传摊的是普通 props,而 `ref` 不是普通 prop ——
+   * IconButton 不是 forwardRef,`ref={…}` 经 rest 到不了那颗 `<button>` 上,
+   * 所以「拿到钮自己的 DOM 节点」这件事仍然只有外包一格才做得到。
+   * (`onClick` 这批确实开始收事件了,`e.currentTarget` 是第二条可走的路;
+   * 不改是因为等价迁移期禁止顺手改邻批的行为 —— 记账不动手。)
    */
   const pinRef = useRef<HTMLSpanElement>(null)
 

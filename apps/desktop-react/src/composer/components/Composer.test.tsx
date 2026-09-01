@@ -391,6 +391,23 @@ describe('ask 形态:本体的另一副样子', () => {
     expect(handed.at(-1)).toEqual({ kind: 'notice', notice: 'ask-rejected' })
   })
 
+  /*
+   * 09-01 批 3.5:「拒绝」换 `ui/Button` 的 **danger** 档 —— 批 3 迁库件时
+   * 因为库件没有这一档而退役的危险语义,这一条就是它回来的证词。
+   * 测 class 而不是测颜色:颜色由 `Button.module.css` 的 `.danger` 保证,
+   * jsdom 不解析 CSS Modules 的真值 —— 「哪一档挂上了」是 JS 侧唯一测得到的那一面
+   *(真机 hover 转红的对照另见交卷报告)。
+   */
+  it('「拒绝」挂 ui/Button 的 danger 档(危险语义回填,不是 ghost)', () => {
+    render(<Composer />)
+    openDemo()
+    const reject = screen.getByRole('button', { name: '拒绝回答' })
+    expect(reject.className).toMatch(/danger/)
+    expect(reject.className).not.toMatch(/ghost/)
+    // 落点皮肤仍在(把它顶到行尾的那一格),没有被库件档位挤掉。
+    expect(reject.className).toMatch(/askReject/)
+  })
+
   it('单选再点即取消;没答全时提交按钮不亮', () => {
     render(<Composer />)
     openDemo()

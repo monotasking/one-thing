@@ -93,11 +93,11 @@ export function AskForm({ spec }: { spec: AskSpec }) {
           {question.q}
           {question.multi && <span className={s.askMulti}>{t('ask.multi')}</span>}
         </span>
-        {/* 「拒绝」是文字动作钮 → `ui/Button` 的 ghost 档。本地只留一格落点
-          * (`margin-left: auto`,把它顶到行尾);rest / hover / disabled / 焦点环
-          * 全部随件走 —— 从前那句「hover 转 danger 字色」随皮肤一起退役,
-          * 库件没有 danger 档(留账见交卷报告的库件缺口清单)。 */}
-        <Button className={s.askReject} onClick={reject}>
+        {/* 「拒绝」是文字动作钮 → `ui/Button` 的 **danger** 档(09-01 批 3.5:
+          * 批 3 迁进库件时因为库件没有这一档而退役的危险语义,回填在这里)。
+          * 本地只留一格落点(`margin-left: auto`,把它顶到行尾);
+          * rest / hover / disabled / 焦点环全部随件走。 */}
+        <Button variant="danger" className={s.askReject} onClick={reject}>
           {t('ask.reject')}
         </Button>
       </div>
