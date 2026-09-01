@@ -16,6 +16,7 @@ import type { IPCEmitter } from '@onething/runtime/engine/ipc-emitter.wiring'
 import { createCoreEventOnlyEmitter, type CoreEventOnlyStoreHooks } from '@onething/core/engine'
 import type { CoreEventOnlySessionEvent, CoreEventOnlyStreamChunk, CoreEventOnlyEventBusLike, CoreEventOnlyStreamChannelLike } from '@onething/core/engine'
 import { getEventBus, getStreamChannel } from './index.js'
+import { claimDeltaStamp } from './delta-stamp.js'
 import { writeSessionEvent } from '../session/event-writer.js'
 import { currentSessionRunId } from '../session/runs.js'
 import { getLogger } from '../wiring/logging/index.js'
@@ -131,6 +132,13 @@ export function createEventOnlyEmitter(ctx: StreamContext): IPCEmitter {
     },
     store: storePort,
     debugStream: shouldTraceStream,
+    /*
+     * R1:裸 delta 到台面上认领账本身份章(`events/delta-stamp.ts`)。
+     *
+     * 只认领、不铸造 —— 章的唯一产地是记录器那一处(审查条 2)。认领不到就不盖,
+     * 老消费者不读这一格,行为逐字不变。
+     */
+    resolveDeltaStamp: (kind, text, toolCallId) => claimDeltaStamp(sessionId, kind, text, toolCallId),
   };
   return createCoreEventOnlyEmitter<
     Step,

@@ -20,6 +20,7 @@ import type {
   ReasoningPlacement,
   SessionEventEnvelope,
   StreamChunk,
+  StreamDeltaStamp,
   UiAssistantChunksChunk,
 } from '@shared/events/index.js'
 
@@ -29,9 +30,9 @@ import { getLogger } from '../wiring/logging/index.js'
 const log = getLogger('engine.stream.coalescer')
 
 export type BufferedStreamChunk =
-  | { type: 'text-delta'; text: string; turnIndex?: number; voiceSpeakText?: string }
-  | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number; placement?: ReasoningPlacement }
-  | { type: 'tool-input-delta'; toolCallId: string; argsTextDelta: string }
+  | { type: 'text-delta'; text: string; turnIndex?: number; voiceSpeakText?: string; stamp?: StreamDeltaStamp }
+  | { type: 'reasoning-delta'; reasoning: string; turnIndex?: number; placement?: ReasoningPlacement; stamp?: StreamDeltaStamp }
+  | { type: 'tool-input-delta'; toolCallId: string; argsTextDelta: string; stamp?: StreamDeltaStamp }
   // U0:UI 事件流的小批(`docs/design/ui-event-stream-2026-08.md` §3)。它与上面
   // 三条**并排**躺在同一个 16ms 缓冲里 —— 一个缓冲一个顺序,两条流的相对次序
   // 因此天然稳定,而不是各排各的队再在管口撞车。
@@ -47,11 +48,46 @@ export function createStreamBuffer(): StreamBuffer {
   return { chunks: [], timer: null }
 }
 
+/**
+ * R1:**合批器只搬运,不编号**(`docs/stream-render-2026-09.md` 审查条 2)。
+ *
+ * 一批 delta 是连续的,所以整批只需要**批内第一条**那枚章:批长可推,后面每一条
+ * 的偏移 = 批首偏移 + 已并进去的字数。搬运的规矩因此多一条:**并批之前先问两枚章
+ * 接不接得上** —— 同一段(消息 / run / 请求 / partIndex / 世代)且偏移正好衔接。
+ *
+ * 接不上就另起一条,不是保守:两条不连续的 delta 并成一批,那枚批首章会替后半截
+ * 说一句假话(「我从第 N 个字起连续这么长」),而水位表正是按这句话落格的 ——
+ * 章说错比没有章危险得多。
+ *
+ * 两边都没有章(旧路 / 旁路发的正文)时按老规矩并,行为逐字不变。
+ */
+function stampsJoin(
+  last: StreamDeltaStamp | undefined,
+  lastLength: number,
+  next: StreamDeltaStamp | undefined,
+): boolean {
+  if (!last && !next) return true
+  if (!last || !next) return false
+  return (
+    last.messageId === next.messageId
+    && last.runId === next.runId
+    && last.requestIndex === next.requestIndex
+    && last.partIndex === next.partIndex
+    && last.kind === next.kind
+    && last.gen === next.gen
+    && last.charOffset + lastLength === next.charOffset
+  )
+}
+
 export function appendStreamBufferChunk(buffer: StreamBuffer, chunk: StreamChunk): boolean {
   const last = buffer.chunks[buffer.chunks.length - 1]
 
   if (chunk.type === 'text-delta') {
-    if (last?.type === 'text-delta' && last.turnIndex === chunk.turnIndex) {
+    if (
+      last?.type === 'text-delta'
+      && last.turnIndex === chunk.turnIndex
+      && stampsJoin(last.stamp, last.text.length, chunk.stamp)
+    ) {
       last.text += chunk.text
       if (chunk.voiceSpeakText !== undefined || last.voiceSpeakText !== undefined) {
         last.voiceSpeakText = `${last.voiceSpeakText ?? ''}${chunk.voiceSpeakText ?? ''}`
@@ -62,13 +98,20 @@ export function appendStreamBufferChunk(buffer: StreamBuffer, chunk: StreamChunk
         text: chunk.text,
         ...(chunk.turnIndex !== undefined ? { turnIndex: chunk.turnIndex } : {}),
         ...(chunk.voiceSpeakText !== undefined ? { voiceSpeakText: chunk.voiceSpeakText } : {}),
+        // 批首那枚章:批是连续的,后面每一条的偏移由批长推得出来。
+        ...(chunk.stamp ? { stamp: chunk.stamp } : {}),
       })
     }
     return true
   }
 
   if (chunk.type === 'reasoning-delta') {
-    if (last?.type === 'reasoning-delta' && last.turnIndex === chunk.turnIndex && last.placement === chunk.placement) {
+    if (
+      last?.type === 'reasoning-delta'
+      && last.turnIndex === chunk.turnIndex
+      && last.placement === chunk.placement
+      && stampsJoin(last.stamp, last.reasoning.length, chunk.stamp)
+    ) {
       last.reasoning += chunk.reasoning
     } else {
       buffer.chunks.push({
@@ -76,19 +119,25 @@ export function appendStreamBufferChunk(buffer: StreamBuffer, chunk: StreamChunk
         reasoning: chunk.reasoning,
         ...(chunk.turnIndex !== undefined ? { turnIndex: chunk.turnIndex } : {}),
         ...(chunk.placement ? { placement: chunk.placement } : {}),
+        ...(chunk.stamp ? { stamp: chunk.stamp } : {}),
       })
     }
     return true
   }
 
   if (chunk.type === 'tool-input-delta') {
-    if (last?.type === 'tool-input-delta' && last.toolCallId === chunk.toolCallId) {
+    if (
+      last?.type === 'tool-input-delta'
+      && last.toolCallId === chunk.toolCallId
+      && stampsJoin(last.stamp, last.argsTextDelta.length, chunk.stamp)
+    ) {
       last.argsTextDelta += chunk.argsTextDelta
     } else {
       buffer.chunks.push({
         type: 'tool-input-delta',
         toolCallId: chunk.toolCallId,
         argsTextDelta: chunk.argsTextDelta,
+        ...(chunk.stamp ? { stamp: chunk.stamp } : {}),
       })
     }
     return true

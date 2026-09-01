@@ -55,7 +55,7 @@ import {
   SESSION_CHUNK_BATCH_INTERVAL_MS,
   SESSION_CHUNK_BATCH_SIZE,
 } from '@onething/core/session/events/chunk-codec'
-import type { UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@onething/core/events'
+import type { StreamDeltaStamp, UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@onething/core/events'
 import { safeParseAgentToolArguments } from '@onething/core/agent-loop'
 // §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
 // `@onething/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
@@ -182,6 +182,19 @@ export interface SessionEventRecorderContext {
    * 不注入(默认 `ONETHING_UI_STREAM=legacy`)= 一条都不发,renderer 零感知。
    */
   emitUiEvent?: (event: UiAssistantDeltaChunk | UiAssistantPartEndChunk) => void
+  /**
+   * R1:**账本身份章**的交出口(`docs/stream-render-2026-09.md` 审查条 2)。
+   *
+   * 与 `emitUiEvent` 同一个位置、同一条 delta,区别只在收货的人:那一条走 UI 事件
+   * 流(默认档不发),这一条放上交接台给**裸 delta**认领(`events/delta-stamp.ts`)。
+   * 章的产地只有这一处 —— 裸 delta 那条出口不许自己编号。
+   */
+  offerDeltaStamp?: (slot: {
+    kind: 'text' | 'reasoning' | 'tool-input'
+    text: string
+    toolCallId?: string
+    stamp: StreamDeltaStamp
+  }) => void
   /**
    * U0(§10.15):`response-boundary` 的**同步**换锚点口。
    *
@@ -600,6 +613,29 @@ export function createSessionEventRecorder(
     onDelta: (partIndex, delta, _meta, at) => {
       const part = state.openParts.get(partIndex)
       if (!part) return
+      /*
+       * R1:**账本身份章**在这里铸(`docs/stream-render-2026-09.md` 审查条 2)。
+       *
+       * `charOffset` 取的正是下一行那份累计**在加上这条 delta 之前**的长度 ——
+       * 与 part-end 的 `len` 是同一个计数器同一把尺。裸 delta 那条出口不许自己
+       * 编号,只来这张台子认领(`events/delta-stamp.ts`)。
+       *
+       * `gen` 恒 0:换代律(审查条 1)的字段先占位,语义 R2 之后接。
+       */
+      ctx.offerDeltaStamp?.({
+        kind: part.kind === 'tool-input' ? 'tool-input' : part.kind === 'reasoning' ? 'reasoning' : 'text',
+        text: delta,
+        ...(part.toolCallId ? { toolCallId: part.toolCallId } : {}),
+        stamp: {
+          messageId: part.messageId,
+          runId: part.runId,
+          requestIndex: part.requestIndex,
+          partIndex,
+          kind: part.kind === 'tool-input' ? 'tool-input' : part.kind === 'reasoning' ? 'reasoning' : 'text',
+          charOffset: part.text.length,
+          gen: 0,
+        },
+      })
       // part-end 的 len/hash 从这份累计来。
       part.text += delta
       // F4-c c3-a(§16.23):**折叠当场前进**。

@@ -17,6 +17,7 @@ import {
 } from "@shared/ipc.js";
 import { getEventBus } from "../../../events/index.js";
 import { createEventOnlyEmitter } from "../../../events/event-only-emitter.js";
+import { offerDeltaStamp } from "../../../events/delta-stamp.js";
 import {
 	isUiEventStreamEnabled,
 	pushSessionUiStreamEvent,
@@ -966,6 +967,9 @@ export async function executeAgentLoopStreamGeneration(
 					state.recordingAssistantMessageId ?? state.ctx.assistantMessageId,
 				// U0(§10.15):身份在**事实这一侧**分配 —— boundary 一到就换锚点。
 				onResponseBoundary: () => rotateAssistantWriterIdentity(state),
+				// R1:账本身份章的交接台(`events/delta-stamp.ts`)。记录器铸章、
+				// 裸 delta 认领,中间没有第二个编号器 —— 审查条 2。
+				offerDeltaStamp: (slot) => offerDeltaStamp(ctx.sessionId, slot),
 				// U0:UI 事件流的旁路。**档位在装配时读一次**而不是每条 delta 读一次
 				// —— 口不接上时 `ctx.emitUiEvent?.(…)` 连那个事件对象都不构造
 				// (可选调用短路掉实参求值),legacy 档因此是真的零开销。

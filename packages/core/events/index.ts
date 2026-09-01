@@ -51,6 +51,7 @@ export type {
   ReasoningDeltaChunk,
   ReasoningPlacement,
   StreamChunk,
+  StreamDeltaStamp,
   TextDeltaChunk,
   ToolInputDeltaChunk,
   UiAssistantChunksChunk,

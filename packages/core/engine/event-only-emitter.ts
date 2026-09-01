@@ -1,5 +1,5 @@
 import { SESSION_EVENT_TYPES } from '../events/session-event-types.js'
-import type { EventBase, StreamChunkBase } from '../events/index.js'
+import type { EventBase, StreamChunkBase, StreamDeltaStamp } from '../events/index.js'
 import { toLogger, type CompatLogger } from '../logging/index.js'
 import type { JsonObject } from '../json.js'
 import type { CoreIPCEmitter, CoreReasoningPlacement } from './ipc-emitter.js'
@@ -11,17 +11,20 @@ export type CoreEventOnlyStreamChunk =
       text: string
       turnIndex?: number
       voiceSpeakText?: string
+      stamp?: StreamDeltaStamp
     }
   | {
       type: 'reasoning-delta'
       reasoning: string
       turnIndex?: number
       placement?: CoreReasoningPlacement
+      stamp?: StreamDeltaStamp
     }
   | {
       type: 'tool-input-delta'
       toolCallId: string
       argsTextDelta: string
+      stamp?: StreamDeltaStamp
     }
 
 type CoreEventOnlySessionEventBody<
@@ -128,6 +131,19 @@ export interface CreateCoreEventOnlyEmitterOptions<
   logger?: CoreEventOnlyLogger
   now?: () => number
   nowIso?: () => string
+  /**
+   * **这条 delta 的账本身份章**(R 线 R1)。
+   *
+   * 口在这里、产地不在这里:章由引擎侧给打包行编号的那台机器铸好之后交到台面上
+   * (`backend/events/delta-stamp.ts`),发射器只按 `(kind, 这条 delta 的原文)`
+   * 去取。**对不上就不盖** —— 没走过那台机器的正文(重放 / 生图这类旁路)拿不到
+   * 章,老行为逐字不变;宁可缺一枚章,不肯盖一枚错的。
+   */
+  resolveDeltaStamp?: (
+    kind: 'text' | 'reasoning' | 'tool-input',
+    text: string,
+    toolCallId?: string,
+  ) => StreamDeltaStamp | undefined
 }
 
 const debugLastPushAt = new Map<string, number>()
@@ -252,11 +268,13 @@ export function createCoreEventOnlyEmitter<
 
   return {
     sendTextChunk(text, turnIndex, voiceSpeakText) {
+      const stamp = options.resolveDeltaStamp?.('text', text)
       pushSafe({
         type: 'text-delta',
         text,
         ...(turnIndex !== undefined ? { turnIndex } : {}),
         ...(voiceSpeakText !== undefined ? { voiceSpeakText } : {}),
+        ...(stamp ? { stamp } : {}),
       }, () => {
         if (!log.isLevelEnabled('trace')) return
         const key = `${sessionId}:${assistantMessageId}:text`
@@ -273,11 +291,13 @@ export function createCoreEventOnlyEmitter<
     },
 
     sendReasoningChunk(reasoning, turnIndex, placement) {
+      const stamp = options.resolveDeltaStamp?.('reasoning', reasoning)
       pushSafe({
         type: 'reasoning-delta',
         reasoning,
         ...(turnIndex !== undefined ? { turnIndex } : {}),
         ...(placement ? { placement } : {}),
+        ...(stamp ? { stamp } : {}),
       }, () => {
         if (!log.isLevelEnabled('trace')) return
         const key = `${sessionId}:${assistantMessageId}:reasoning`
@@ -295,7 +315,13 @@ export function createCoreEventOnlyEmitter<
     },
 
     sendToolInputDelta(toolCallId, argsTextDelta) {
-      pushSafe({ type: 'tool-input-delta', toolCallId, argsTextDelta })
+      const stamp = options.resolveDeltaStamp?.('tool-input', argsTextDelta, toolCallId)
+      pushSafe({
+        type: 'tool-input-delta',
+        toolCallId,
+        argsTextDelta,
+        ...(stamp ? { stamp } : {}),
+      })
     },
 
     sendToolCall(toolCall) {
