@@ -38,7 +38,16 @@
  * 内衬移到层自己身上,两件才都成立:`.body` 的底色照旧画到窗边(不断带),
  * 层里的内容往里缩(不被盖)。四条边同此一改。
  *
- * 自动隐藏档一格都不让(宿主不挂 data-dock-reserve)—— 它平时不在屏上,让了就是白让。
+ * ── 状态先行:三种形态一张表(09-01 方案乙拍板后补)──────────────────────
+ *   档 / 边            | 形    | 落点                | 为什么
+ *   常显 · 左 / 右      | 平移  | .main 的左右 padding | Dock 独占那条边;架子厚度是
+ *                      |       |                      | 用户亲手拖的数,不该被压缩,
+ *                      |       |                      | 由中央区(本来就是「剩多少算
+ *                      |       |                      | 多少」那一格)买单
+ *   常显 · 上 / 下      | 内衬  | .center + 面板层     | 高度这一维没人有「亲手定的数」,
+ *                      |       |                      | 内衬形少一层盒子;用户对这一形
+ *                      |       |                      | 没意见(17bde332)
+ *   自动隐藏 · 四条边    | 零    | 宿主不挂属性          | 它平时不在屏上,让了就是白让
  * 大小档只换 `--dock-tile` 一个数,式子在 tokens.css 里写一次。
  * ────────────────────────────────────────────────────────────────────────── */
 .reserveSm { --dock-tile: var(--tile-size-sm); }
@@ -56,16 +65,29 @@
   scroll-padding-block-start: var(--dock-reserve-h);
 }
 
-.shell[data-dock-reserve='left'] .center,
-.shell[data-dock-reserve='left'] [data-panel-layer] {
+/*
+ * ── 左右两边走**平移形**(09-01 比稿后用户拍板方案乙)────────────────────
+ * 竖排 Dock **真正独占那条边**(macOS Dock 的语义):整个主区朝里让出 --dock-reserve-v,
+ * 同侧架子跟着整体平移 —— 面板**一个像素不缩**、内容也不再内衬,买单的是中央区总宽。
+ *
+ * 为什么左右与上下不同形:竖排 Dock 吃掉的是**宽度**,而架子的厚度是用户亲手拖出来的
+ * 一个数(它是家具的尺寸,不该因为开了 Dock 就变窄);中央区本来就是「剩下多少算多少」
+ * 的那一格,让它买单不改变任何人的既有尺寸。横排 Dock 吃的是高度,而高度那一维上
+ * 谁都没有「亲手定的数」,内衬形更省一层盒子,所以底边照旧(用户对那一形没意见)。
+ *
+ * 落点是 .main(三明治网格本身)而不是 .shell:让位若打在外层,四条架子与中央区
+ * 会被整体推走、露出外壳底色 —— 那正是 7823cff9 修掉的异色带。打在网格上,
+ * 网格外那一条恰好就是 Dock 独占的地皮,它自己会把那儿画满。
+ *
+ * 平移带过渡:常显开关一切换,整排面板平滑挪过去而不是瞬移;动效档 none 把 --dur
+ * 归 0,于是自动退化成直切(不需要在这里判档)。
+ */
+.shell[data-dock-reserve='left'] .main {
   padding-inline-start: var(--dock-reserve-v);
-  scroll-padding-inline-start: var(--dock-reserve-v);
 }
 
-.shell[data-dock-reserve='right'] .center,
-.shell[data-dock-reserve='right'] [data-panel-layer] {
+.shell[data-dock-reserve='right'] .main {
   padding-inline-end: var(--dock-reserve-v);
-  scroll-padding-inline-end: var(--dock-reserve-v);
 }
 
 /* 三明治网格。四条架子各占一格(格名由 EdgeShelf 自己声明 grid-area),
@@ -74,6 +96,8 @@
 .main {
   flex: 1;
   min-height: 0;
+  /* 竖排 Dock 的平移形吃这条过渡(见上面那段);其余时候这里不动,过渡也就不响。 */
+  transition: padding-inline-start var(--dur) var(--ease), padding-inline-end var(--dur) var(--ease);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-rows: auto minmax(0, 1fr) auto;
