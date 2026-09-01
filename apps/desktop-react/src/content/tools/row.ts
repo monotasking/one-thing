@@ -28,12 +28,31 @@ export function baseToolRow(
   }
 }
 
-/** 失败原因:后端原话的第一行,长了截断 —— 全文在抽屉里,行上只放一句。 */
+/**
+ * 失败原因:后端原话的第一行,长了截断 —— 全文在抽屉里,行上只放一句。
+ *
+ * ── 抬头那一行要带上下文(09-01 自查:「Invalid read parameters:」冒号收尾没下文)──
+ * 后端那几个内建工具的 `formatError` 都是**两段式**:第一行是抬头(以冒号收尾),
+ * 逐条理由在第二行往后(`Invalid read parameters:\n- path: Required\n\nUsage: …`)。
+ * 只取第一行,屏幕上就永远是一个冒号顶着一片空白 —— 一句半截话比不说更费人。
+ *
+ * 所以判据是**这一行说完了没有**:以冒号收尾 = 它是抬头,把第一条理由并上来(理由
+ * 前那个 `- ` 是列表记号,并进一句话里就该去掉);后面**真的没有下文**时,连那个
+ * 冒号一起去掉 —— 不留一个指向空处的标点。
+ *
+ * 中英两种冒号都认:后端的原话是英文的,而插件与 MCP 工具的报错常常是中文的。
+ */
 function failureOutcome(call: ProjectedToolCall): Pick<ToolRowModel, 'outcome'> | undefined {
   const reason = call.error ?? call.rejectionReason
   if (!reason) return undefined
-  const line = reason.split('\n').find((piece) => piece.trim()) ?? reason
-  return { outcome: { text: truncate(line.trim(), 72) } }
+  const lines = reason.split('\n').map((piece) => piece.trim()).filter(Boolean)
+  if (lines.length === 0) return undefined
+  let line = lines[0]
+  if (/[:：]$/.test(line)) {
+    const detail = lines[1]?.replace(/^[-*•]\s*/, '')
+    line = detail ? `${line} ${detail}` : line.replace(/[:：]$/, '')
+  }
+  return { outcome: { text: truncate(line, 72) } }
 }
 
 /** 一行放得下的长度。截断加省略号 —— 被截过这件事本身要看得出来。 */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectedToolCall } from '../../model/segments'
 import { resolveToolPresenter } from '../presenter'
+import { presentToolStep } from '../../assemble/present'
 // 表是模块级的:这一句把四个内建 presenter 注册上(与生产同一个 barrel)。
 import '../presenters'
 
@@ -227,5 +228,41 @@ describe('兜底:没人认领的工具零配置就有诚实的展示', () => {
   it('详情落 source-fallback:参数与结果 JSON 原样', () => {
     const detail = detailOf(call({ toolName: 'brand_new', toolId: 'brand_new', arguments: { a: 1 }, result: 'r' }))
     expect(detail[0]).toMatchObject({ kind: 'source-fallback', reason: 'tool-default' })
+  })
+})
+
+/**
+ * ── 报错那一行:抬头不许孤零零收在冒号上(09-01 自查走查)────────────────
+ *
+ * 后端几个内建工具的 `formatError` 是两段式:抬头一行(冒号收尾)+ 逐条理由。
+ * 行上只放一句话,从前取的是**第一行** —— 屏幕上于是永远是
+ * 「Invalid read parameters:」顶着一片空白(自查 shots/G-toolerr.png)。
+ */
+describe('失败行:一句话要说完', () => {
+  const failed = (error: string) =>
+    presentToolStep({
+      id: 'c9', toolId: 'read', toolName: 'read', arguments: {},
+      status: 'failed', timestamp: 0, error,
+    } as never).row.outcome
+
+  it('抬头 + 逐条理由 = 并成一句(去掉理由前的列表记号)', () => {
+    expect(failed('Invalid read parameters:\n- path: Required\n\nUsage: read({ path })')).toEqual({
+      text: 'Invalid read parameters: path: Required',
+    })
+  })
+
+  it('抬头之后**真的没有下文** = 连冒号一起去掉,不留指向空处的标点', () => {
+    expect(failed('Invalid read parameters:')).toEqual({ text: 'Invalid read parameters' })
+    expect(failed('Invalid read parameters:\n\n')).toEqual({ text: 'Invalid read parameters' })
+  })
+
+  it('中文冒号同判(插件与 MCP 工具的报错常是中文的)', () => {
+    expect(failed('参数不对:\n- path:必填')).toEqual({ text: '参数不对: path:必填' })
+  })
+
+  it('本来就是一句完整的话:一个字不动', () => {
+    expect(failed('ENOENT: no such file or directory')).toEqual({
+      text: 'ENOENT: no such file or directory',
+    })
   })
 })

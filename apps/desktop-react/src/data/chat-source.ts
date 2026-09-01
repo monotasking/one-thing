@@ -15,6 +15,7 @@ import {
   reconcileOverlay,
   handOverToLedger,
   startTailTool,
+  tailTextLength,
   userMessageIds,
   type FoldLens,
   type OverlayEntry,
@@ -160,6 +161,20 @@ let tailLens: { messageId: string; lens: FoldLens } | undefined
  * 那张 blob 表 —— 一条 blob 换回来之后成品会变,账本却一个字没动。所以另立这一格
  * 单调号,blob 落一条就 +1(唯一产地在 `resolveBlob` 的 finally 里)。
  */
+/**
+ * **这条消息一共收到了多少正文字符**(裸 delta 那条路的活计数)。
+ *
+ * 交接线(账本画到第几个字)从前是**累加** `taken.content` 攒出来的,而累加会漂:
+ * 一处多算、一处少算,后面全歪。09-01 自查抓到的正是这条 —— 十三列表的分隔行
+ * 一会儿多一格、一会儿少几个字,表头 8 列对不上分隔行的格数,GFM 当场判它不是表,
+ * 表退回裸文本 350ms+。
+ *
+ * 改成**现算**:`交接线 = 收到多少 − 尾巴手里还剩多少`。两个数都是活的、都不累加,
+ * 算出来的线因此不会漂;顺序闸把正文压在尾巴里时,「还剩多少」自己变大,线跟着后退,
+ * 账本那一格自然少画 —— 一条式子同时管住了重画与漏画。
+ */
+let tailReceived: { messageId: string; chars: number } | undefined
+
 let blobEpoch = 0
 /**
  * 重折在飞时到达的活事件 —— **攒着,不是丢掉**。
@@ -254,11 +269,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       set({
         status: 'ready',
         error: undefined,
-        messages: appendTail(
-          base,
-          tail,
-          tailLens?.messageId === tail?.messageId ? tailLens?.lens.content : undefined,
-        ),
+        messages: appendTail(base, tail, tailCoverage()),
         activeMessageId: projected.activeRun?.messageId,
         overlay,
       })
@@ -290,10 +301,26 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
    * 「有没有工具活儿」问的是 core 那一个函数(`coreRenderMessageHasToolWork`),
    * 与锚点合成器自己用的判据**逐字同一个**:两处各写一份就是两个会分叉的产地。
    */
-  function lensOf(state: ReturnType<typeof createSessionProjectionState>, messageId: string): FoldLens {
-    const found = materializeChatMessagesCached(state, { resolveBlob }, blobEpoch).messages.find(
+  /** 折叠产物上的那一条消息(尺与锚都从它上面量,别量两遍)。 */
+  /**
+   * 这条消息此刻账本里有多少正文 —— **新开一条流水的起点**。
+   *
+   * 第一条 delta 之前账本可能已经有字(重连、换会话回来、上一轮的正文),那些字
+   * 按定义是「收到过并且已经交出去了」。
+   */
+  function contentLengthOf(messageId: string): number {
+    if (!fold) return 0
+    return messageOf(fold.state, messageId)?.content?.length ?? 0
+  }
+
+  function messageOf(state: ReturnType<typeof createSessionProjectionState>, messageId: string) {
+    return materializeChatMessagesCached(state, { resolveBlob }, blobEpoch).messages.find(
       (message) => message.id === messageId,
     )
+  }
+
+  function lensOf(state: ReturnType<typeof createSessionProjectionState>, messageId: string): FoldLens {
+    const found = messageOf(state, messageId)
     const parts = (found?.contentParts ?? []) as ReadonlyArray<{ type?: string; content?: string }>
     let reasoningInline = 0
     for (const part of parts) {
@@ -317,9 +344,20 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
    * (两者要么都在、要么都不在):尾巴一换消息 / 一退场,基准必须跟着重新起算,
    * 否则下一轮会拿上一轮的账本量去裁新尾巴,一裁就是整段。
    */
+  /**
+   * **交接线 —— 账本的正文画到第几个字**。
+   *
+   * `收到多少 − 尾巴手里还剩多少`:两个活数现算,不累加。尾巴不在场时是 undefined
+   * (账本手里就是全部,不设限)。
+   */
+  function tailCoverage(): number | undefined {
+    if (!tail || tailReceived?.messageId !== tail.messageId) return undefined
+    return Math.max(0, tailReceived.chars - tailTextLength(tail))
+  }
+
   function handOverTail(state: ReturnType<typeof createSessionProjectionState>): void {
     if (!tail || tailLens?.messageId !== tail.messageId) return
-    const covered = tailLens.lens
+    const covered = { ...tailLens.lens, content: tailCoverage() ?? tailLens.lens.content }
     const { tail: next, taken } = handOverToLedger(tail, covered, lensOf(state, tail.messageId))
     tail = next
     // **只推进真交出去的那一截**。交接从前往后停(顺序闸),没交成的那一截下一帧
@@ -347,8 +385,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       return
     }
     if (tailLens?.messageId === tail.messageId) return
-    // 起算点:尾巴出生那一刻账本已经画出来的那些字 —— 它们与这条尾巴无关,
-    // 记成「已经交出去的」正合适(尾巴一个字都不必为它们负责)。
+    // 三条车道的起算点。正文那条**不由它说了算**(见 `tailCoverage`):正文的交接线
+    // 是「收到多少 − 还剩多少」现算的,这里存的那一格只当 `handOverToLedger` 的
+    // 兜底基线用。
     tailLens = { messageId: tail.messageId, lens: lensOf(state, tail.messageId) }
   }
 
@@ -478,6 +517,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     ) {
       tail = undefined
       tailLens = undefined
+      tailReceived = undefined
       schedulePush()
     }
   }
@@ -509,6 +549,11 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       (message) => message.id === messageId && Boolean(message.content),
     )
     if (chunk.type === 'text-delta' && chunk.text) {
+      // 先记账再喂 —— 「收到多少」是这条消息的流水,与尾巴此刻手里有多少无关。
+      tailReceived =
+        tailReceived?.messageId === messageId
+          ? { messageId, chars: tailReceived.chars + chunk.text.length }
+          : { messageId, chars: contentLengthOf(messageId) + chunk.text.length }
       tail = feedTail(tail, messageId, 'text', chunk.text, undefined, undefined, chunk.turnIndex)
     } else if (chunk.type === 'reasoning-delta' && chunk.reasoning) {
       tail = feedTail(
@@ -584,6 +629,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         fold = undefined
         tail = undefined
         tailLens = undefined
+        tailReceived = undefined
         pendingLedger = []
         openSeq += 1
         set({ sessionId: '', status: 'idle', error: undefined, messages: [], activeMessageId: undefined })
@@ -594,6 +640,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       fold = newFold()
       tail = undefined
       tailLens = undefined
+      tailReceived = undefined
       pendingLedger = []
       // 换会话 = overlay 清空:那几条 pending 属于上一条会话的屏幕。
       set({ sessionId, status: 'loading', error: undefined, messages: [], activeMessageId: undefined, overlay: [] })
@@ -749,6 +796,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       fold = undefined
       tail = undefined
       tailLens = undefined
+      tailReceived = undefined
       pendingLedger = []
       if (abortWatch) clearTimeout(abortWatch)
       abortWatch = undefined

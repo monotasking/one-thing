@@ -128,6 +128,19 @@ export function feedTail(
   return tail
 }
 
+/**
+ * 尾巴手里**还剩多少正文**(只数正文那条车道;推理不进 `message.content`)。
+ *
+ * 交接线由它和"这条消息一共收到多少正文"两个数现算:**交接线 = 收到多少 − 还剩多少**。
+ * 见 `chat-source` 的 `tailCoverage` —— 两个数都是活的,算出来的线因此不会漂。
+ */
+export function tailTextLength(tail: Tail | undefined): number {
+  if (!tail) return 0
+  let total = 0
+  for (const segment of tail.segments) if (segment.kind === 'text') total += segment.text.length
+  return total
+}
+
 /** 换了消息就换一条尾巴 —— 三条车道一起换,上一条的字一格都不许跟过来。 */
 function openTail(current: Tail | undefined, messageId: string): Tail {
   return current?.messageId === messageId
@@ -364,9 +377,20 @@ export function appendTail(
   contentCoverage?: number,
 ): ProjectedMessage[] {
   const list = [...messages]
-  if (!tail) return list
-  if (tail.segments.length === 0 && !tail.reasoningTop && tail.tools.length === 0) return list
-  const index = list.findIndex((message) => message.id === tail.messageId)
+  /*
+   * **补那一截的活儿不归尾巴管**(09-01 自查帧证:`t=3659` 一帧里块数 2→0、
+   * 正文 786→371,下一帧原样回来)。
+   *
+   * 病根是这一句从前写成 `if (!tail) return list`:尾巴刚把手里的字**交清**的那
+   * 一瞬(`handOverToLedger` 全部裁完就返回 undefined),整个函数直接掉头 ——
+   * 于是「账本 parts 还画不到的那一截」也没人画。那一截正是多轮消息里**还没结算
+   * 的这一轮**的全部正文,屏幕上当场少掉一大块,下一条 delta 把尾巴重新造出来
+   * 才回来。~17ms 肉眼难见,但它是数据层真丢了一次。
+   *
+   * 判据回到本来的样子:**账本的正文比 parts 长,那一截就要画**,与尾巴在不在无关。
+   * 尾巴只决定两件事:画到哪儿为止(交接线)、后面再接哪几段。
+   */
+  const index = tailHostIndex(list, tail)
   if (index < 0) return list
 
   const message = list[index]
@@ -392,7 +416,10 @@ export function appendTail(
     if (part.type === 'text') coveredByParts += part.content?.length ?? 0
   }
   const content = message.content ?? ''
-  const limit = contentCoverage === undefined ? content.length : Math.max(0, contentCoverage)
+  // 没有尾巴 = 账本手里就是全部,这一截整段都归它画(没有第二个人会再画一遍)。
+  const limit = tail === undefined || contentCoverage === undefined
+    ? content.length
+    : Math.max(0, contentCoverage)
   const pending = content.slice(coveredByParts, Math.max(coveredByParts, limit))
 
   /*
@@ -409,15 +436,24 @@ export function appendTail(
    * 它有自己的顺序闸,一帧交不出去是正常的;而"屏幕上不许出现两遍"是**显示的
    * 不变量**,任何一帧都必须成立。两件事分开,少了哪一个都不对。
    *
-   * `contentCoverage` 缺席(重折 / 测试直调)时按"尾巴整段都在账本之外"处理 ——
-   * 与从前逐字相同,剪 0 个字。
+   * `contentCoverage` 缺席(重折 / 测试直调 / 尾巴不在场)时按"尾巴整段都在账本
+   * 之外"处理 —— 与从前逐字相同,剪 0 个字。
+   *
+   * ── 这把尺靠不靠得住,全看那条交接线准不准(09-01 自查续)─────────────
+   * 交接线从前是**累加** `taken.content` 攒出来的,而累加会漂。漂在表格上的代价
+   * 不是"少几个字":分隔行多一格或少几个字,表头 8 列对不上分隔行的格数,GFM
+   * 当场判它不是表 —— 整张表退回裸文本 350ms+(自查 3 轮 2 复现)。
+   * 所以交接线改成**现算**:`收到多少 − 尾巴手里还剩多少`(见 chat-source 的
+   * `tailCoverage` 与本文件的 `tailTextLength`),两个活数,不累加、不会漂。
    */
   const ledgerDrawn = Math.max(coveredByParts, Math.min(content.length, limit))
-  const tailStart = contentCoverage === undefined ? ledgerDrawn : Math.max(0, contentCoverage)
+  const tailStart = tail === undefined || contentCoverage === undefined
+    ? ledgerDrawn
+    : Math.max(0, contentCoverage)
   let overlap = Math.max(0, ledgerDrawn - tailStart)
   // 这一截与尾巴**第一段**是同一轮:它就是那一轮里已经打包、但还没结算成 part 的
   // 前半截。尾巴一段都没有(只有顶部推理 / 只有活调用)时不猜,留空。
-  const pendingTurn = ledgerParts.length > 0 ? tail.segments[0]?.turnIndex : undefined
+  const pendingTurn = ledgerParts.length > 0 ? tail?.segments[0]?.turnIndex : undefined
   if (pending) {
     parts.push({
       type: 'text',
@@ -434,7 +470,7 @@ export function appendTail(
    * 自带轮次号(投影给的),两者对得上才是同一段话的前后半截。
    */
   const drawn: TailSegment[] = []
-  for (const segment of tail.segments) {
+  for (const segment of tail?.segments ?? []) {
     // 重叠只从**正文**那几段里剪:推理不进 `message.content`,账本画它的是另一条
     // 车道(`reasoningInline`),拿正文的账去剪推理是串仓。
     let text = segment.text
@@ -474,14 +510,18 @@ export function appendTail(
    * 账本已经有的 id 一律不画(交接那一步已经退役过一轮,这里是第二道闸:
    * 少一张卡是说谎,多一张是重影)。
    */
-  const liveCalls = tail.tools.filter(
+  const liveCalls = (tail?.tools ?? []).filter(
     (tool) => !(message.toolCalls ?? []).some((call) => call.id === tool.id),
   )
+
+  // 什么都没多画 = 一个字段都别动:下游按**引用**判「这一帧变没变」(chat-materialize
+  // 的 memo 与 assemble 的 WeakMap 都认它),换个长得一样的新对象等于全体重装配。
+  if (!pending && drawn.length === 0 && !tail?.reasoningTop && liveCalls.length === 0) return list
 
   list[index] = {
     ...message,
     content: `${content}${tailText}`,
-    ...(tail.reasoningTop
+    ...(tail?.reasoningTop
       ? { reasoning: `${message.reasoning ?? ''}${tail.reasoningTop}` }
       : {}),
     contentParts: parts,
@@ -500,6 +540,21 @@ export function appendTail(
  * core `createCoreToolInputStartArtifacts`)、`streamingArgs` 是收到的原文。
  * 与投影给"孤儿参数流"造的那份逐格同形 —— 屏幕上因此认不出这一份是壳造的。
  */
+/**
+ * 这一帧要补的是哪一条消息。
+ *
+ * 有尾巴就认尾巴的主人;**没有尾巴时认「还在流的那一条」** —— 只有它可能出现
+ * 「账本正文比 parts 长」(parts 要等 `request/end` 才结算)。认它而不是遍历全表,
+ * 是因为这一步每帧都跑:遍历会把 `chat-materialize` 那份按节点缓存的便宜重新赔掉。
+ */
+function tailHostIndex(list: readonly ProjectedMessage[], tail: Tail | undefined): number {
+  if (tail) return list.findIndex((message) => message.id === tail.messageId)
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if ((list[i] as { isStreaming?: boolean }).isStreaming) return i
+  }
+  return -1
+}
+
 type ProjectedCall = NonNullable<ProjectedMessage['toolCalls']>[number]
 
 function liveToolCall(tool: TailToolCall): ProjectedCall {

@@ -20,6 +20,8 @@
  *
  *   think × {6, 2} 字/帧   推理 ↔ 正文交替 + 一张逐行长出来的表(A/B/C)
  *   tool  × {6, 2} 字/帧   三轮工具:说话 → 连查两次 → 说话 → 再查一次 → 收尾(D/E/F/G)
+ *   table × {6, 2} 字/帧   13 列宽表 + 表前不空行 + 分隔行未闭尾 + 缩进表(I/J/K)
+ *   mixed × {7} 字 / **7ms**  真机节奏:两轮 + 工具 + 围栏 + 八列宽表(L/M)
  *
  * 粒度是第二根轴,因为分片越细、一个块「半成形」的帧数越多:真机上 SSE 分片不等长,
  * 2 字/帧是它的下界包络。
@@ -45,6 +47,15 @@
  *     判据是 DOM 节点身份:采样器给每个节点盖一次号,同一位次的工具容器换号即红。
  *  G. **参数流式期屏幕上有东西**(tool)。修前:说完一句话之后 309ms 零呈现
  *     (`tool:input-start` t=1693ms 就到了,而屏幕要等 `tool/call` t=1929ms)。
+ *  H. **零双画**(全素材)。同一截源文本任一时刻只许被画一次 —— 用户证词
+ *     「显示原始字符串,其实 table 已经画出来了」。
+ *  I/J/K. **表**(table):一帧都不许以源码示人 / 在分隔行流完之前就成形 /
+ *     缩进四格的表照旧是代码块(CommonMark 正解,我们不乱改)。
+ *  L. **块不许整批消失**(mixed)。自查帧证:`t=3659` 一帧里块数 2→0、
+ *     正文 786→371,下一帧原样回来 —— `appendTail` 从前"没尾巴就掉头",
+ *     于是账本 parts 还画不到的那一截也没人画。
+ *  M. **表成形之后不许退回裸文本**(mixed)。同一现场的后半段:交接线漂了几个字,
+ *     分隔行多一格 / 少几个字,表头列数对不上,GFM 判它不是表,裸文本 350ms+。
  *
  * 每一格另有一条 **流式末帧 == 冷加载**:刷新重进会话,块序逐格相同。
  *
@@ -176,6 +187,7 @@ const TOKENS = {
     'TKG7', 'TKH8', 'TKI9', 'TKJ10', 'TKK11', 'TKL12', 'TKM13', 'TKN14',
   ],
   tool: ['TKT1'],
+  mixed: ['TKX1'],
   table: ['TKW1', 'TKW2', 'TKI1'],
 }
 
@@ -210,19 +222,67 @@ const TABLE_SCRIPT = [
   ['content', '\n收尾一句 `行内代码`。\n'],
 ]
 
+/**
+ * 素材四:**真机节奏的混合体**(09-01 自查走查 `scratchpad/self-check-0901/` 帧证)。
+ *
+ * 前三条素材都是 45ms 一片的慢流,而真机 provider 是 **7 字 / 7ms**(约 1000 字/秒)。
+ * 自查用真机节奏跑出两条前三条素材照不见的形:
+ *
+ *  · `t=3659` 一帧里**块数 2→0、正文 786→371**,下一帧原样回来(~17ms);
+ *  · 那之后表**退回裸文本 433ms**(`| 宿主 | 工具档 |…` 明文在屏上),
+ *    直到分隔行整行到齐才重新成表。
+ *
+ * 两条都不在 markdown 那一层:同一段源文本按 7 字/帧喂进 `MarkdownStream`,裸段落
+ * 只有 56 个字符(表头那一行),表在分隔行流完之前就成形(单测 zz 记录)。所以这
+ * 条素材要照真机的样子把**数据层**也拉进来:两轮 + 工具 + 围栏代码块 + 八列宽表。
+ */
+const MIXED_CODE = [
+  '```ts',
+  'export async function createOnethingBackend(options: OnethingBackendOptions) {',
+  '  const stores = await createStores(options)',
+  '  const settings = await loadSettings(stores)',
+  '  const engine = new ProductStreamEngine(streamRuntime, ports)',
+  '  return { engine, eventBus, streamChannel, shutdown: () => engine.stop() }',
+  '}',
+  '```',
+].join('\n')
+const MIXED_TABLE = [
+  '| 宿主 TKX1 | 工具档 | 发送目标 | 会话技能 | MCP/ACP | 拥有后端 | 进程级端口 | 备注 |',
+  '| --- | --- | --- | --- | --- | --- | --- | --- |',
+  '| Electron 桌面 | full | webContents | 否 | 窗口后 | 是 | 自己拥有 | 同时挂内嵌 HTTP 面 |',
+  '| 无头服务端 | full | noop(SSE 观察总线) | 是 | 否 | 否 | host 档不抢 | 单用户,Bearer 鉴权 |',
+  '| CLI 守护进程 | headless | noop | 是 | 是 | 是 | 自己拥有 | NDJSON over unix socket |',
+].join('\n')
+
+const MIXED_TURNS = {
+  1: async ({ say, callTool, finish }) => {
+    await say('reasoning', '先看清楚要答什么。这一段推理要长到跨过打包闸:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥,天地玄黄宇宙洪荒日月盈昃辰宿列张。想完之后我要查一次时间,再把装配那一段抄出来。')
+    await say('content', '先说结论:**装配只有一条路**,顺序约束写在工厂函数里,别处一个字都不写。\n\n### 三层的边界\n\n产品层不许 import 装配层。这一条由静态门守着,不靠自觉。\n\n- 骨架层零依赖,零 Electron\n- 产品层电子自由\n- 装配层可以说跨进程的词汇\n\n> 一个反复踩的坑:命令是 COW 的。\n\n我先查一下时间。\n')
+    await callTool(0, 'call_m', 'time', '{"action":"now","timezone":"Asia/Shanghai"}')
+    finish('tool_calls')
+  },
+  2: async ({ say, finish }) => {
+    // ★ 第二轮:围栏代码块 + 八列宽表 —— 自查帧证里出事的正是这一段。
+    await say('content', `\n拿到了。装配的入口长这样:\n\n${MIXED_CODE}\n\n各宿主的配置对照(这张表故意很宽):\n\n${MIXED_TABLE}\n\n行内的 \`createOnethingBackend()\` 与链接 [设计文档](https://example.com/design) 都在这一段里。\n\n最后一段普通正文,用来量段距。\n`)
+    finish('stop')
+  },
+}
+
 const CASES = {
   think: { tools: false, pieces: [6, 2] },
   tool: { tools: true, pieces: [6, 2] },
   table: { tools: false, pieces: [6, 2], script: TABLE_SCRIPT, rowSafe: true },
+  // 真机节奏:7 字 / 7ms(自查探针实测的 provider 分片),分片随机落 —— 不 rowSafe。
+  mixed: { tools: true, pieces: [7], delayMs: 7, turns: MIXED_TURNS },
 }
 
 const TRIGGER = 'STREAM_STRUCTURE_GATE'
-const PIECE_DELAY_MS = 45
+const PIECE_DELAY_MS = 45 // 默认节奏;`delayMs` 的素材各自覆盖(mixed 用真机的 7ms)
 
 /* ── 假慢流 provider ──────────────────────────────────────────────────── */
 
 /** 当前这一格的分片粒度 —— 同一个 mock 服务两格(省一次 electron 冷启)。 */
-const mockState = { piece: 6, tools: false, script: undefined, rowSafe: false }
+const mockState = { piece: 6, tools: false, script: undefined, rowSafe: false, delay: 45, turns: undefined }
 
 /**
  * 切分片。`rowSafe` 时**一片都不许结束在换行上** —— 真机分片就是这样(结束在换行上
@@ -279,7 +339,7 @@ function startMockProvider(port) {
         for (const piece of pieces(text)) {
           if (res.destroyed) return
           send(frame(kind === 'reasoning' ? { reasoning_content: piece } : { content: piece }))
-          await delay(PIECE_DELAY_MS)
+          await delay(mockState.delay)
         }
       }
       if (mockState.tools) {
@@ -289,14 +349,15 @@ function startMockProvider(port) {
           : (payload.messages ?? []).filter(m => m.role === 'tool').length <= 2 ? 2 : 3
         const callTool = async (index, id, name, args) => {
           send(frame({ tool_calls: [{ index, id, type: 'function', function: { name, arguments: '' } }] }))
-          await delay(PIECE_DELAY_MS)
+          await delay(mockState.delay)
           for (const piece of pieces(args)) {
             if (res.destroyed) return
             send(frame({ tool_calls: [{ index, function: { arguments: piece } }] }))
-            await delay(PIECE_DELAY_MS)
+            await delay(mockState.delay)
           }
         }
-        await TOOL_TURNS[turn]({ say, callTool, finish: reason => send(frame({}, reason)) })
+        const turns = mockState.turns ?? TOOL_TURNS
+        await (turns[turn] ?? turns[Object.keys(turns).length])({ say, callTool, finish: reason => send(frame({}, reason)) })
         done()
         return
       }
@@ -304,7 +365,7 @@ function startMockProvider(port) {
         for (const piece of pieces(text)) {
           if (res.destroyed) return
           send(frame(kind === 'reasoning' ? { reasoning_content: piece } : { content: piece }))
-          await delay(PIECE_DELAY_MS)
+          await delay(mockState.delay)
         }
       }
       send(frame({}, 'stop'))
@@ -718,6 +779,14 @@ async function runCell({ record, page, kind, piece, index }) {
     `H 零双画(${marks.length} 个记号全程各只画一次;${seen}/${marks.length} 个真的上过屏)`,
   )
 
+  // 诊断口:`STRUCT_DUMP=<dir>` 时把逐帧读数落盘 —— 门自己不写文件(跑完即走),
+  // 但排一条真机病时,那几百帧的逐件读数就是全部证据。
+  if (process.env.STRUCT_DUMP) {
+    const dumpPath = path.join(process.env.STRUCT_DUMP, `frames-${kind}-${piece}.json`)
+    writeFileSync(dumpPath, JSON.stringify(frames))
+    console.log(`  逐帧读数 → ${dumpPath}`)
+  }
+
   const stat = analyse(frames)
   if (kind === 'think') {
     const finalThinks = frames[frames.length - 1].s.filter(b => b.k === 'think').length
@@ -761,6 +830,45 @@ async function runCell({ record, page, kind, piece, index }) {
       true,
       `C 表一帧都没被当成源码画过,收尾是 ${inTable.last}(住过 ${[...inTable.counts.keys()].join('/')})`,
     )
+    return
+  }
+
+  if (kind === 'mixed') {
+    /*
+     * ── L / M:真机节奏下的两条(09-01 自查帧证)────────────────────────
+     *  L **块不许整批消失**:自查 `t=3659` 一帧里块数 2→0、正文 786→371,
+     *    下一帧原样回来(~17ms 肉眼难见,但它是数据层真丢了一次)。
+     *  M **表成形之后不许退回裸文本**:那一帧之后表没了,`| 宿主 | 工具档 |…`
+     *    明文在屏上挂了 433ms 才重新成表。
+     */
+    const objectsOf = frame => frame.s.filter(item => item.k === 'object').length
+    const wipes = []
+    for (let i = 1; i < frames.length; i += 1) {
+      const was = objectsOf(frames[i - 1])
+      const now = objectsOf(frames[i])
+      if (now < was) wipes.push({ t: frames[i].t, was, now })
+    }
+    const trail = hostTrail(frames, 0)
+    console.log(`  表记号住过:${trail.order.map(s => `${s.d}@${s.t}ms`).join(' → ')}`)
+    console.log(`  块件数下降 ${wipes.length} 次${wipes.length ? `(${wipes.slice(0, 4).map(w => `t=${w.t} ${w.was}→${w.now}`).join(' · ')})` : ''}`)
+    if (wipes.length > 0) {
+      throw new Error(
+        `断言失败:L 块整批消失 ${wipes.length} 次(${wipes.slice(0, 4).map(w => `t=${w.t}ms ${w.was}→${w.now}`).join(' · ')})` +
+        '\n  —— 自查帧证的形:t=3659 块数 2→0、正文 786→371,下一帧原样回来',
+      )
+    }
+    assert(true, `L 块一次都没整批消失(${frames.length} 帧)`)
+
+    const backToNaked = trail.order.filter((step, index) =>
+      index > 0 && step.d !== 'table' && trail.order.slice(0, index).some(s => s.d === 'table'),
+    )
+    if (backToNaked.length > 0) {
+      throw new Error(
+        `断言失败:M 表成形之后又退回裸文本 ${backToNaked.length} 次` +
+        `(${trail.order.map(s => `${s.d}@${s.t}ms`).join(' → ')})`,
+      )
+    }
+    assert(true, `M 表成形之后再没退回裸文本(收尾是 ${trail.last})`)
     return
   }
 
@@ -874,6 +982,8 @@ async function runCase(kind) {
     mockState.tools = spec.tools
     mockState.script = spec.script
     mockState.rowSafe = spec.rowSafe === true
+    mockState.delay = spec.delayMs ?? PIECE_DELAY_MS
+    mockState.turns = spec.turns
     mock = await startMockProvider(mockPort)
     // 钥匙走环境变量(headless core 没有 safeStorage,理由见 gate-stream-monotone.mjs)。
     writeFileSync(path.join(store, 'settings.json'), JSON.stringify({

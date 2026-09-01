@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   appendTail,
+  tailTextLength,
   feedTail,
   feedTailToolArgs,
   reconcileOverlay,
@@ -493,6 +494,70 @@ describe('活调用:参数还在流的那一次,由尾巴顶着', () => {
     const ledgerCall = { id: 'call_a', toolId: 'time', toolName: 'time', arguments: {}, status: 'completed', timestamp: 1 }
     const out = appendTail([message({ id: 'a1', toolCalls: [ledgerCall] } as never)], tail)
     expect(out[0].toolCalls).toEqual([ledgerCall])
+  })
+})
+
+/**
+ * ── 交接线 = 收到多少 − 还剩多少(09-01 自查走查)──────────────────────
+ *
+ * 从前交接线是**累加** `taken.content` 攒出来的。累加会漂,而漂在表格上的代价不是
+ * 「少两个字」:分隔行多一格或少几个字,表头 8 列对不上分隔行,GFM 当场判它不是表
+ * —— 屏幕上整张表退回裸文本 350ms+(自查 3 轮 2 复现)。
+ */
+describe('尾巴手里还剩多少正文', () => {
+  it('只数正文那条车道 —— 推理不进 message.content', () => {
+    let tail = feedTail(undefined, 'a1', 'text', '正文一', undefined, undefined, 1)
+    tail = feedTail(tail, 'a1', 'reasoning', '想了想', 'inline', true, 1)
+    tail = feedTail(tail, 'a1', 'text', '正文二', undefined, undefined, 1)
+    expect(tailTextLength(tail)).toBe(6)
+  })
+
+  it('没有尾巴 = 0', () => {
+    expect(tailTextLength(undefined)).toBe(0)
+  })
+})
+
+/**
+ * ── 尾巴刚交清的那一瞬,账本那一截照样要画(09-01 自查帧证)────────────
+ *
+ * `t=3659` 一帧里块数 2→0、正文 786→371,下一帧原样回来。病根是 `appendTail`
+ * 开头那句 `if (!tail) return list`:尾巴一交清就整个掉头,于是「账本 parts 还
+ * 画不到的那一截」——多轮消息里**还没结算的这一轮**的全部正文 —— 也没人画。
+ */
+describe('没有尾巴时:账本 parts 画不到的那一截照样画', () => {
+  it('parts 只装了第一轮,第二轮那截照画(尾巴不在场)', () => {
+    const out = appendTail(
+      [
+        message({
+          id: 'a1',
+          isStreaming: true,
+          content: '第一轮正文第二轮已打包',
+          contentParts: [{ type: 'text', content: '第一轮正文', turnIndex: 1 }],
+        } as never),
+      ],
+      undefined,
+    )
+    expect(out[0].contentParts).toEqual([
+      { type: 'text', content: '第一轮正文', turnIndex: 1 },
+      { type: 'text', content: '第二轮已打包' },
+    ])
+  })
+
+  it('没有尾巴、也没有要补的那一截 = 消息对象**引用不变**(物化 memo 的契约)', () => {
+    const only = message({
+      id: 'a1',
+      isStreaming: true,
+      content: '都结算过了',
+      contentParts: [{ type: 'text', content: '都结算过了', turnIndex: 1 }],
+    } as never)
+    const out = appendTail([only], undefined)
+    expect(out[0]).toBe(only)
+  })
+
+  it('没有尾巴、也没有在流的消息 = 整份原样', () => {
+    const settled = message({ id: 'a1', content: '收工了' })
+    const out = appendTail([settled], undefined)
+    expect(out[0]).toBe(settled)
   })
 })
 
