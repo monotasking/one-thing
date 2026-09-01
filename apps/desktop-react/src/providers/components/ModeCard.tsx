@@ -1,3 +1,4 @@
+import { Card } from '../../ui/Card'
 import { Select } from '../../ui/Select'
 import { useT } from '../../i18n'
 import { providerDialsOf, regionRowApplies, storedDialsOf } from '../dials'
@@ -80,7 +81,7 @@ export function ModeCard(props: {
           pending={props.dialsPending}
           onDials={props.onDials}
         />
-        <section className={s.card}>
+        <Card>
           {/* Base URL 是技术参数,弱化处理 —— 一行小字,不是一个大输入框。 */}
           <p className={s.note}>
             {t('providers.baseUrl')}{' '}
@@ -88,7 +89,7 @@ export function ModeCard(props: {
             {props.config?.baseUrl ? '' : ` ${t('providers.baseUrlDefault')}`}
           </p>
           {mode.kind === 'custom' && <p className={s.note}>{t('providers.customIntro')}</p>}
-        </section>
+        </Card>
       </>
     )
   }
@@ -123,9 +124,9 @@ export function ModeCard(props: {
   }
 
   return (
-    <section className={s.card}>
+    <Card>
       <p className={s.note}>{t('providers.localIntro')}</p>
-    </section>
+    </Card>
   )
 }
 
@@ -154,7 +155,7 @@ function DialsCard({
   const regionApplies = regionRowApplies(spec, stored.apiMode)
 
   return (
-    <section className={s.card}>
+    <Card>
       <DialRow
         field={spec.apiMode}
         value={stored.apiMode}
@@ -171,7 +172,7 @@ function DialsCard({
       )}
       {/* 风险说明。说的是**选错的代价**,不是功能介绍。 */}
       {spec.note && <p className={s.risk}>{spec.note}</p>}
-    </section>
+    </Card>
   )
 }
 

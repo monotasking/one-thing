@@ -52,9 +52,17 @@
   margin-bottom: var(--sp-3);
 }
 
-.groupHead {
-  padding: var(--sp-1) var(--sp-3);
-  font-size: var(--fs-micro);
+/*
+ * **GroupHead 皮肤**(09-01 批 2b 收编)——「组头」这个词的产地已经是
+ * `ui/GroupHead`,这里只留这块面自己的落点事实:名册的组头是**全大写小字标**。
+ *
+ * 落在**组名那一层**而不是组头那一层,是因为 GroupHead 的 `.label` 自带
+ * `color: var(--text-1)`(它的产地事实:组名 text-1、读数 text-2)。名册的组头
+ * 一直是 --text-2 的分隔字(与 Overview 08-30 用户裁定「组头是分隔不是主角」
+ * 同一口径),所以颜色由**内容**说了算 —— 消费方把文字包一层交给 label,
+ * 既不去覆盖库件的规则,也不动它一个字。像素零漂移。
+ */
+.groupLabel {
   color: var(--text-2);
   text-transform: uppercase;
   letter-spacing: var(--ls-section);
@@ -136,32 +144,8 @@
   color: var(--danger);
 }
 
-.dot {
-  flex: none;
-  width: var(--pv-dot);
-  height: var(--pv-dot);
-  border-radius: var(--r-full);
-}
-
-.dotOk {
-  background: var(--ok);
-}
-
-.dotBad {
-  background: var(--danger);
-}
-
-.dotWarn {
-  background: var(--warn);
-}
-
-.dotIdle {
-  background: var(--text-4);
-}
-
-.dotOff {
-  background: var(--line-2);
-}
+/* 五档状态点已收进 `ui/StatusDot`(09-01 批 2b)—— 这里一格配方都不留:
+ * `--pv-dot` 与库件的 `--status-dot` 同为 6px,色 token 也逐档相同,零漂移。 */
 
 .none {
   margin: 0;

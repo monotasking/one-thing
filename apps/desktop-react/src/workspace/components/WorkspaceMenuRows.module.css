@@ -8,8 +8,19 @@
   width: 100%;
 }
 
-/* 色标丸。8px 的实色圆点,色由 --ws-face 给(见 workspace/swatch.module.css)。 */
-.dot {
+/*
+ * 色标丸。8px 的实色圆点,色由 --ws-face 给(见 workspace/swatch.module.css)。
+ *
+ * ── 为什么它**不迁** `ui/StatusDot`(09-01 批 2b 裁定)────────────────────
+ * StatusDot 是「一样东西现在处在什么状态」的出口:五档 tone 各接一枚**状态色
+ * token**,而且它明说了「接哪一枚色是那张表说了算,不许在消费面上覆盖」。
+ * 这一颗说的不是状态,是**身份**——它是这个工作区自己挑的颜色(--ws-face),
+ * 而且是 8px(--ws-dot)不是 6px(--status-dot)。把它塞进 StatusDot 只能靠
+ * 从外面覆盖底色,那恰好是那件组件立起来要挡住的事。
+ * 所以这里改的是**名字**:`dot` 这个词让给状态点,色标叫 `swatch`(它本来
+ * 就与 `sw[view.swatch]` 同名同物)。零像素变化。
+ */
+.swatch {
   flex: none;
   width: var(--ws-dot);
   height: var(--ws-dot);

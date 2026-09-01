@@ -225,11 +225,11 @@ export function QuickLook({ sessionId }: Props) {
           <Kbd>{t('shortcut.left')}</Kbd>
           <Kbd>{t('shortcut.right')}</Kbd>
           <span className={s.hint}>{t('quicklook.hintSwitch')}</span>
-          <span className={s.dot}>·</span>
+          <span className={s.sep}>·</span>
           <Kbd>{t('shortcut.space')}</Kbd>
           <Kbd>{t('shortcut.esc')}</Kbd>
           <span className={s.hint}>{t('quicklook.dismiss')}</span>
-          <span className={s.dot}>·</span>
+          <span className={s.sep}>·</span>
           <Kbd>{t('shortcut.enter')}</Kbd>
           <span className={s.hint}>{t('quicklook.hintEnter')}</span>
         </footer>

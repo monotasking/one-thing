@@ -52,7 +52,7 @@ export function WorkspaceMenuRows({ onOpenOverview, onCreate, onDone }: Props) {
             }}
           >
             <span className={s.row}>
-              <span className={`${s.dot} ${sw[view.swatch]}`} aria-hidden="true" />
+              <span className={`${s.swatch} ${sw[view.swatch]}`} aria-hidden="true" />
               <span className={s.name}>{view.name}</span>
               {combo && (
                 <span className={s.keys}>

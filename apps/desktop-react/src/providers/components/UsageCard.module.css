@@ -1,16 +1,12 @@
 /* 订阅用量。这块信息将来要复用到输入框区域(交接稿 §6),所以它的几何
- * 只依赖自己的 token,不依赖「我在设置面里」这件事。 */
-.card {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-}
-
+ * 只依赖自己的 token,不依赖「我在设置面里」这件事。
+ * 卡面本身收进了 `ui/Card`(09-01 批 2b),那九行与 Card 默认档逐字相同。
+ *
+ * ── 标题行为什么**没有**走 Card 的 title / note 槽 ───────────────────────
+ * Card 的檐形态封闭:一行标题 + 一格弱色注,两件。这里的标题行是**三件**
+ * (标题 / 缓存寿命读数 / 刷新钮)。塞进 Card 的檐会把刷新钮挤到下一行
+ * (它就成了 column flex 的下一个孩子)—— 那是真的换了排版。所以檐留在本地,
+ * Card 只当那只盒子:「檐是三件」是这块面的事实,不是 Card 该长的第三个槽。 */
 .head {
   display: flex;
   align-items: center;

@@ -1,4 +1,5 @@
 import { Button } from '../../ui/Button'
+import { Card } from '../../ui/Card'
 import { Spinner } from '../../ui/Spinner'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
@@ -39,7 +40,7 @@ export function UsageCard({
   const extras = main ? limits.filter((limit) => limit.id !== main.id) : limits
 
   return (
-    <section className={s.card}>
+    <Card>
       <div className={s.head}>
         <h3 className={s.title}>{t('providers.usage')}</h3>
         {/* 缓存寿命写在脸上:这一口是真去问服务商的,读数不是每次开面都新鲜。 */}
@@ -92,7 +93,7 @@ export function UsageCard({
           ))}
         </details>
       )}
-    </section>
+    </Card>
   )
 }
 

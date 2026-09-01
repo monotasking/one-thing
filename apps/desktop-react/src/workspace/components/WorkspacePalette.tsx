@@ -198,7 +198,7 @@ export function WorkspacePalette() {
                   commit(view)
                 }}
               >
-                <span className={`${s.dot} ${sw[view.swatch]}`} aria-hidden="true" />
+                <span className={`${s.swatch} ${sw[view.swatch]}`} aria-hidden="true" />
                 <span className={s.name}>{view.name}</span>
                 {/* 当前那一条也标出来 —— 面板里看不见「我在哪」的话,↵ 就是一次盲跳。 */}
                 {view.isCurrent && <span className={s.current}>{t('workspace.current')}</span>}

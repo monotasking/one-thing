@@ -1,9 +1,11 @@
 import { Button } from '../../ui/Button'
 import { Input } from '../../ui/Input'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { GroupHead } from '../../ui/GroupHead'
+import { StatusDot } from '../../ui/StatusDot'
 import { useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
-import type { Fact, RailGroup, RailRow, StatusTone } from '../types'
+import type { Fact, RailGroup, RailRow } from '../types'
 import s from './ProviderRail.module.css'
 
 /**
@@ -22,13 +24,12 @@ const GROUP_LABELS: Record<RailGroup, MessageKey> = {
 
 const GROUP_ORDER: RailGroup[] = ['cloud', 'local', 'custom']
 
-const DOT_CLASS: Record<StatusTone, string> = {
-  ok: s.dotOk,
-  bad: s.dotBad,
-  warn: s.dotWarn,
-  idle: s.dotIdle,
-  off: s.dotOff,
-}
+/*
+ * 状态点的那张 tone 表已经不在这里了(09-01 批 2b 收编):`RailRow.tone` 的五档
+ * (ok / bad / warn / idle / off)与 `ui/StatusDot` 的 tone 逐字同名同义,
+ * 所以这一面**没有映射表**——直接把事实递过去。一张只做恒等变换的表就是
+ * 一处会漂的产地。
+ */
 
 /** 一串事实 → 一行字。分隔符是排版记号,不是文案,所以它不进字典。 */
 export function renderFacts(t: TFn, facts: readonly Fact[]): string {
@@ -87,7 +88,9 @@ export function ProviderRail({
           if (inGroup.length === 0) return null
           return (
             <div key={group} className={s.group}>
-              <div className={s.groupHead}>{t(GROUP_LABELS[group])}</div>
+              {/* 组名包一层 `.groupLabel`:全大写与 --text-2 是这块面的落点事实,
+                  由内容自己带,不去覆盖 GroupHead 的规则(理由见 module.css)。 */}
+              <GroupHead label={<span className={s.groupLabel}>{t(GROUP_LABELS[group])}</span>} />
               <ul className={s.list}>
                 {inGroup.map((row) => (
                   <li key={row.familyId}>
@@ -115,7 +118,9 @@ export function ProviderRail({
                           {renderFacts(t, row.facts)}
                         </span>
                       </span>
-                      <span className={`${s.dot} ${DOT_CLASS[row.tone]}`} aria-hidden="true" />
+                      {/* 不给 label:同一行里名字与副行已经把状态说成了字
+                          (「已接入 · 3 把钥匙」),再给点一个名就是念两遍。 */}
+                      <StatusDot tone={row.tone} />
                     </ButtonBase>
                   </li>
                 ))}

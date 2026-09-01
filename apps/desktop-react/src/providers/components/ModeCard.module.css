@@ -1,14 +1,5 @@
-/* 模式卡的公共卡面 + 计费档位那一张。 */
-.card {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-}
+/* 模式卡的公共卡面已收进 `ui/Card`(09-01 批 2b):那九行与 Card 的默认档
+ * (pad='md' + bordered)逐字相同。这里只留这张卡**自己**的内部排布。 */
 
 .note {
   margin: 0;

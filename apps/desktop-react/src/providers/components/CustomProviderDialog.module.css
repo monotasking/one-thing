@@ -14,25 +14,13 @@
   line-height: 1.6;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  min-width: 0;
-}
-
-.label {
-  font-size: var(--fs-meta);
-  color: var(--text-1);
-}
-
-.hint {
-  font-size: var(--fs-nano);
-  color: var(--text-2);
-  line-height: 1.5;
-}
-
-/* 提交时才出现的那一条。danger 只上字。 */
+/* `.field` / `.label` / `.hint` 已收进 `ui/Field`(09-01 批 2b)——
+ * 那件的配方就是从这三条逐字抄过去的(见 ui/Field.module.css 头),所以零漂移。
+ *
+ * `.problem` **留在这里**:它不是某一格的错误,是**整张表单**提交时的那一条
+ * (「名称必填」在名称格外面报,因为判据在 submit 里,不在任何一格里)。
+ * ui/Field 的 error 是**这一格错了**,会连带把 aria-invalid 摁在那格控件上 ——
+ * 把一条表单级的话挂进任意一格,读屏软件会说错是哪儿错了。 */
 .problem {
   margin: 0;
   font-size: var(--fs-micro);

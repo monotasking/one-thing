@@ -113,7 +113,10 @@
   font-weight: 600;
 }
 
-.dot {
+/* 色标丸。**不是状态点**,不迁 ui/StatusDot —— 逐条理由写在
+ * WorkspaceMenuRows.module.css 的同一格上面(说的是身份不是状态、8px 不是 6px、
+ * 底色来自 --ws-face 而 StatusDot 不许从外面换色)。这里只把名字改对。 */
+.swatch {
   flex: none;
   width: var(--ws-dot);
   height: var(--ws-dot);

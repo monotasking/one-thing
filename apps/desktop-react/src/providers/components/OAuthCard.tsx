@@ -1,6 +1,8 @@
 import { Button } from '../../ui/Button'
+import { Card } from '../../ui/Card'
 import { Input } from '../../ui/Input'
 import { Spinner } from '../../ui/Spinner'
+import { StatusDot } from '../../ui/StatusDot'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
 import { formatMoment, standingOf } from '../auth'
@@ -44,7 +46,7 @@ export function OAuthCard({
 
   if (flow.kind) {
     return (
-      <section className={s.card}>
+      <Card>
         <FlowScreen t={t} flow={flow} onCode={onCode} onSubmitCode={onSubmitCode} />
         {/* 失败要显示**服务商原话**(交接稿 §4b)—— 不换成一句「登录失败」。 */}
         {flow.error && <p className={s.error}>{flow.error}</p>}
@@ -53,13 +55,13 @@ export function OAuthCard({
             {t('providers.subCancel')}
           </Button>
         </div>
-      </section>
+      </Card>
     )
   }
 
   if (standing === 'signedOut') {
     return (
-      <section className={s.card}>
+      <Card>
         <div className={s.row}>
           <Button size="sm" variant="primary" disabled={flow.busy} onClick={onSignIn}>
             {flow.busy ? <Spinner label={t('providers.subSignIn')} /> : t('providers.subSignIn')}
@@ -67,7 +69,7 @@ export function OAuthCard({
         </div>
         {flow.error && <p className={s.error}>{flow.error}</p>}
         <p className={s.note}>{t('providers.subIntro')}</p>
-      </section>
+      </Card>
     )
   }
 
@@ -76,9 +78,10 @@ export function OAuthCard({
   const plan = status?.account?.planType
 
   return (
-    <section className={s.card}>
+    <Card>
       <div className={s.account}>
-        <span className={`${s.dot} ${standing === 'expired' ? s.dotWarn : ''}`} aria-hidden="true" />
+        {/* 不给 label:紧挨着就是账号名与「令牌有效 / 已过期」那句话。 */}
+        <StatusDot tone={standing === 'expired' ? 'warn' : 'ok'} />
         {account && <span className={s.accountName}>{account}</span>}
         {plan && <span className={s.meta}>{t('providers.subPlan', { plan })}</span>}
       </div>
@@ -117,7 +120,7 @@ export function OAuthCard({
         </Button>
       </div>
       <p className={s.note}>{t('providers.subIntro')}</p>
-    </section>
+    </Card>
   )
 }
 

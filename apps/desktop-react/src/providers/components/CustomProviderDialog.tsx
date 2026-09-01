@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
+import type { ComponentProps } from 'react'
 import { Button } from '../../ui/Button'
 import { Dialog } from '../../ui/Dialog'
+import { Field, useFieldControlProps } from '../../ui/Field'
 import { Input } from '../../ui/Input'
 import { Segmented } from '../../ui/Segmented'
 import { useT } from '../../i18n'
@@ -102,7 +104,7 @@ export function CustomProviderDialog({
         <p className={s.intro}>{t('providers.customAddIntro')}</p>
 
         <Field label={t('providers.customName')}>
-          <Input
+          <FieldInput
             size="sm"
             value={form.name}
             onValueChange={(name) => patch({ name })}
@@ -111,7 +113,7 @@ export function CustomProviderDialog({
         </Field>
 
         <Field label={t('providers.customDesc')}>
-          <Input
+          <FieldInput
             size="sm"
             value={form.description}
             onValueChange={(description) => patch({ description })}
@@ -119,6 +121,13 @@ export function CustomProviderDialog({
           />
         </Field>
 
+        {/*
+          这一格的控件是 Segmented,而 Segmented **不收 id**(它的名由自己的
+          `label` prop 给成 aria-label)。所以 Field 的 `<label htmlFor>` 在这一格
+          指空 —— 与迁移前逐字等价:迁移前是一个 `<label>` 裹着一个**不可标注**的
+          radiogroup,同样只是视觉标签,点它一样不聚焦。要真接上得给 ui/Segmented
+          加 id 透传,那是 ui/ 的改动,不在本批面上 —— 留账。
+        */}
         <Field label={t('providers.customCompat')}>
           <Segmented
             value={form.apiType}
@@ -132,7 +141,7 @@ export function CustomProviderDialog({
         </Field>
 
         <Field label={t('providers.customBaseUrl')} hint={t('providers.customBaseUrlHint')}>
-          <Input
+          <FieldInput
             size="sm"
             value={form.baseUrl}
             onValueChange={(baseUrl) => patch({ baseUrl })}
@@ -142,7 +151,7 @@ export function CustomProviderDialog({
         </Field>
 
         <Field label={t('providers.customKey')}>
-          <Input
+          <FieldInput
             size="sm"
             type="password"
             value={form.apiKey}
@@ -152,7 +161,7 @@ export function CustomProviderDialog({
         </Field>
 
         <Field label={t('providers.customModel')} hint={t('providers.customModelHint')}>
-          <Input
+          <FieldInput
             size="sm"
             value={form.model}
             onValueChange={(model) => patch({ model })}
@@ -166,20 +175,16 @@ export function CustomProviderDialog({
   )
 }
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}) {
-  return (
-    <label className={s.field}>
-      <span className={s.label}>{label}</span>
-      {children}
-      {hint && <span className={s.hint}>{hint}</span>}
-    </label>
-  )
+/**
+ * 一格里的输入框。**存在的唯一理由是那一句 `useFieldControlProps()`** ——
+ * `ui/Field` 走的是 context + hook 而不是 cloneElement(理由写在 Field.tsx 头:
+ * 一格里常常不止一件、注入与自带的同名 props 谁赢由合并次序决定),
+ * 而 hook 只能在组件里调,所以这一层薄壳是**必须的**,不是顺手包的。
+ *
+ * 摊在自己的 props **前面**:这里的 `aria-label` 是这一格真正的名(与迁移前
+ * 逐字相同),不许被 Field 的 id / aria 关联覆盖掉。
+ */
+function FieldInput(props: ComponentProps<typeof Input>) {
+  const field = useFieldControlProps()
+  return <Input {...field} {...props} />
 }

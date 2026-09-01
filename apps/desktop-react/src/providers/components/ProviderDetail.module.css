@@ -88,37 +88,13 @@
 }
 
 /* 一块卡 = 一件事(凭证 / 登录 / 本地进程)。卡与卡之间只有间距,没有分隔线 ——
- * 两条线画同一件事(分组)是重复。 */
-.card {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-}
-
-.cardTitle {
-  margin: 0;
-  font-size: var(--fs-label);
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-.cardNote {
-  margin: 0;
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-  line-height: 1.6;
-}
-
-.cardBody {
-  font-size: var(--fs-meta);
-  color: var(--text-2);
-  line-height: 1.6;
-}
+ * 两条线画同一件事(分组)是重复。
+ *
+ * ── `.card` / `.cardTitle` / `.cardNote` / `.cardBody` 已删(09-01 批 2b)──
+ * 它们**没有消费者**:批二把「坑里画什么」整个搬去了 ModeCard / OAuthCard /
+ * UsageCard / CredentialPool(见本文件 .tsx 头「批二起,这块组件不认识坑里画什么」),
+ * 搬走时四条 CSS 留在了原地。所以这一格不是「迁进 ui/Card」,是**清尸**——
+ * 它们从来没画过一个像素,`ui:consume` 却把它们记成 4 个「卡」的产地。 */
 
 .keyRow {
   display: flex;
@@ -132,10 +108,9 @@
   max-width: var(--pv-key-w);
 }
 
-.keySaved {
-  font-size: var(--fs-micro);
-  color: var(--text-2);
-}
+/* `.keySaved` 与下面的 `.accountDot` 同样是批二搬家留下的死码,一并删。
+ * (`.keySaved` 本来是 Badge 的候选,但它只是一句 --text-2 小字,既不是丸
+ *  也没有消费者;`.accountDot` 是一颗写死 --ok 的点,同样零消费者。) */
 
 .accountRow {
   display: flex;
@@ -143,14 +118,6 @@
   gap: var(--sp-2);
   font-size: var(--fs-meta);
   color: var(--text-2);
-}
-
-.accountDot {
-  flex: none;
-  width: var(--pv-dot);
-  height: var(--pv-dot);
-  border-radius: var(--r-full);
-  background: var(--ok);
 }
 
 .mono {

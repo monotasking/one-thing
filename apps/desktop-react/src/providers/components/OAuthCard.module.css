@@ -1,15 +1,6 @@
 /* 订阅登录卡。三屏共用这一张卡面 —— 换屏不该换盒子,不然每次状态变化
- * 下半屏都要塌一次。 */
-.card {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  border: var(--bw-1) solid var(--line-1);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
-}
+ * 下半屏都要塌一次。卡面本身已收进 `ui/Card`(09-01 批 2b):
+ * 那九行配方与 Card 的默认档(pad='md' + bordered)逐字相同,这里一格不留。 */
 
 .row {
   display: flex;
@@ -82,15 +73,5 @@
   white-space: nowrap;
 }
 
-.dot {
-  flex: none;
-  width: var(--pv-dot);
-  height: var(--pv-dot);
-  border-radius: var(--r-full);
-  background: var(--ok);
-}
-
-/* 登着但过期了:点变黄。这一格是「要你动手」而不是「坏了」。 */
-.dotWarn {
-  background: var(--warn);
-}
+/* 状态点收进 `ui/StatusDot`(09-01 批 2b):登着 = tone 'ok',
+ * 登着但过期了 = tone 'warn'(「要你动手」而不是「坏了」)。 */

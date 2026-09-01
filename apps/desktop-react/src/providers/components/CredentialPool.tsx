@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../../ui/Button'
+import { Card } from '../../ui/Card'
 import { Input } from '../../ui/Input'
 import { Select } from '../../ui/Select'
 import { useT } from '../../i18n'
@@ -62,7 +63,7 @@ export function CredentialPool({
   }, [providerId])
 
   return (
-    <section className={s.pool}>
+    <Card>
       <div className={s.head}>
         <h3 className={s.title}>{t('providers.keyCount', { count: pool.rows.length })}</h3>
         <Button size="sm" disabled={busy} onClick={() => setAdding((open) => !open)} aria-expanded={adding}>
@@ -148,7 +149,7 @@ export function CredentialPool({
       {pool.policyUnavailable && <p className={s.warn}>{t('providers.rotationUnavailable')}</p>}
 
       {error && <p className={s.warn}>{error}</p>}
-    </section>
+    </Card>
   )
 }
 

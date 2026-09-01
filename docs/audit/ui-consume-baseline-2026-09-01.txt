@@ -135,11 +135,31 @@ bare-button-structural src/workspace/components/WorkspaceOverview.tsx:227 结构
 #   捕获相位 keydown)—— 该消费 ui/float 的 useFloatDismiss。四条各有另案:
 #   composer 的点外关、键位设置与跳转条的 Esc 捕获、舞台盖(ExposeView)。
 #   都在别批的避让区,本批只立门不搬。
-# shared-vocab-css          73 条 [debt]:.dot / .card / .groupHead / .field /
-#   .meter / .pill / .badge / .chip 八个**视觉词汇**在各面各画一遍
-#   (dot 8 个产地 / card 7 / groupHead 4 / meter 2 / chip 4 / field 3 /
+# shared-vocab-css          73 → **53** 条 [debt]:.dot / .card / .groupHead /
+#   .field / .meter / .pill / .badge / .chip 八个**视觉词汇**在各面各画一遍
+#   (立门时:dot 8 个产地 / card 7 / groupHead 4 / meter 2 / chip 4 / field 3 /
 #   badge 2 / pill 1)。同名不同形没有任何一道门看得见 —— 每一份自己都合规。
 #   批 2 立件收编时,这张表就是清单。
+#
+#   ── 09-01 批 2b 收编,删 20 条(每条的去向)────────────────────────────
+#   迁进库件(8 面):ProviderRail 的组头 → ui/GroupHead、五档状态点 → ui/StatusDot;
+#     OAuthCard 的卡面 → ui/Card、两颗点 → ui/StatusDot;ModeCard / UsageCard 的
+#     卡面 → ui/Card(UsageCard 的檐是三件,不进 Card 那两槽的封闭檐,留在本地);
+#     CustomProviderDialog 的表单行 → ui/Field。
+#   清死码(1 面):ProviderDetail 的 .card / .cardTitle / .cardNote / .cardBody
+#     四条**零消费者** —— 批二把坑里的内容搬走时留在了原地,从没画过一个像素。
+#   改错名(3 面):QuickLook 的 .dot 是一个中点分隔符(`·`)、WorkspaceMenuRows 与
+#     WorkspacePalette 的 .dot 是**工作区色标**(--ws-face 身份色、8px)。三处都不是
+#     状态点,迁 StatusDot 会把语义弄反(那件明说底色不许从外面换),所以改的是名字:
+#     `sep` / `swatch`。零像素变化,理由逐条写在各自 module.css 上。
+#
+#   ── 批 2b 当场停、留在表上的 3 条 ────────────────────────────────────
+#   ModelCatalog:290(两形组头共用一条规则)—— 可折叠那一形带 data-testid,
+#     测试逐字读 `getByTestId('model-group-…').disabled`,而 ui/GroupHead 不透传
+#     任意属性;两形必须同批迁(它们是同一份皮肤),所以整格停,等 ui/ 开口子。
+#   Overview:152 / 264 —— 形对不上:它的组头是「容器 + 开关 + 两个入口」三件,
+#     caret 是带色过渡的图标而不是 GroupHead 写死的 ▸/▾ 文字,GroupHead 也没有尾槽。
+#   (ErrorBoundary:3 的卡同理停在 role="alert" + data-testid 上,详见交卷报告。)
 shared-vocab-css src/components/AgentChip.module.css:16 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:30 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:34 视觉词汇多产地(chip),待批 2 立件收编
@@ -181,28 +201,10 @@ float-handwritten src/expose/components/ExposeView.tsx:141 手写 Esc 捕获相�
 shared-vocab-css src/expose/components/Overview.module.css:152 视觉词汇多产地(groupHead),待批 2 立件收编
 shared-vocab-css src/expose/components/Overview.module.css:264 视觉词汇多产地(groupHead),待批 2 立件收编
 shared-vocab-css src/expose/components/QuickLook.module.css:67 视觉词汇多产地(chip),待批 2 立件收编
-shared-vocab-css src/expose/components/QuickLook.module.css:257 视觉词汇多产地(dot),待批 2 立件收编
 shared-vocab-css src/expose/components/SessionCard.module.css:10 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/expose/components/SessionCard.module.css:39 视觉词汇多产地(card),待批 2 立件收编
 async-busy-boolean src/providers/auth.ts:53 手写忙布尔,该迁 data/kernel createMutation(律③逐格 pending)
-shared-vocab-css src/providers/components/CustomProviderDialog.module.css:17 视觉词汇多产地(field),待批 2 立件收编
-shared-vocab-css src/providers/components/ModeCard.module.css:2 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/providers/components/ModelCatalog.module.css:289 视觉词汇多产地(groupHead),待批 2 立件收编
-shared-vocab-css src/providers/components/OAuthCard.module.css:3 视觉词汇多产地(card),待批 2 立件收编
-shared-vocab-css src/providers/components/OAuthCard.module.css:85 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/OAuthCard.module.css:94 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderDetail.module.css:92 视觉词汇多产地(card),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderDetail.module.css:103 视觉词汇多产地(card),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderDetail.module.css:110 视觉词汇多产地(card),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderDetail.module.css:117 视觉词汇多产地(card),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderRail.module.css:55 视觉词汇多产地(groupHead),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderRail.module.css:139 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderRail.module.css:146 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderRail.module.css:150 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderRail.module.css:154 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderRail.module.css:158 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/ProviderRail.module.css:162 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:3 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/providers/components/UsageCard.module.css:67 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/providers/components/UsageCard.module.css:73 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/providers/components/UsageCard.module.css:83 视觉词汇多产地(meter),待批 2 立件收编
@@ -212,12 +214,10 @@ shared-vocab-css src/providers/components/UsageCard.module.css:109 视觉词汇�
 shared-vocab-css src/providers/components/UsageCard.module.css:116 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/search/components/SearchPanel.module.css:139 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/search/components/SearchPanel.module.css:158 视觉词汇多产地(chip),待批 2 立件收编
-shared-vocab-css src/workspace/components/WorkspaceMenuRows.module.css:12 视觉词汇多产地(dot),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:54 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:67 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:73 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:78 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:136 视觉词汇多产地(field),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:143 视觉词汇多产地(field),待批 2 立件收编
-shared-vocab-css src/workspace/components/WorkspacePalette.module.css:116 视觉词汇多产地(dot),待批 2 立件收编
 async-busy-boolean src/workspace/store.ts:95 手写忙布尔,该迁 data/kernel createMutation(律③逐格 pending)
