@@ -53,13 +53,13 @@ const READING_KEY = 'onething.reading'
  */
 const EXEMPT_ANIMATIONS = new Set(['spin', 'toastLife'])
 
-/** calm 档要减半的五个(与 src/styles/motion.css 的 calm 块同一张表)。 */
+/** calm 档要减半的四个(与 src/styles/motion.css 的 calm 块同一张表)。
+ * 曾是五个 —— 滚动降淡 09-01 整件退役,`--dur-scroll-settle` 随它一起除名。 */
 const CALM_HALVED = {
   '--dur-enter': [140, 70],
   '--dur-exit': [120, 60],
   '--dur-hover-fade': [300, 150],
   '--dur-flash': [240, 120],
-  '--dur-scroll-settle': [400, 200],
 }
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))

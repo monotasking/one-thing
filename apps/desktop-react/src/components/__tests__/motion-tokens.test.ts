@@ -14,7 +14,6 @@ import {
   PREVIEW_GRACE_MS,
   PREVIEW_SWITCH_MS,
   RELEASE_MS,
-  SCROLL_SETTLE_MS,
   TOAST_LIFE_MS,
   TOC_FLASH_MS,
   TOC_HOVER_MS,
@@ -61,7 +60,6 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-flash', FLASH_MS],
     ['--dur-tooltip-delay', TOOLTIP_DELAY_MS],
     ['--dur-preview-delay', PREVIEW_DELAY_MS],
-    ['--dur-scroll-settle', SCROLL_SETTLE_MS],
     ['--dur-toc-hover', TOC_HOVER_MS],
     ['--dur-toc-flash', TOC_FLASH_MS],
     ['--dur-att-grace', ATT_GRACE_MS],
@@ -125,7 +123,6 @@ describe('动效档:JS 镜像的那一列与 motion.css 的档位块相等', () 
       '--dur-exit',
       '--dur-hover-fade',
       '--dur-flash',
-      '--dur-scroll-settle',
     ]) {
       expect(tierMs('calm', name), name).toBe(tokenMs(tokensCss, name)! / 2)
     }
@@ -141,7 +138,6 @@ describe('动效档:JS 镜像的那一列与 motion.css 的档位块相等', () 
       '--dur-release',
       '--dur-flash',
       '--dur-hover-fade',
-      '--dur-scroll-settle',
       '--dur-toc-flash',
       '--dur-cursor-blink',
       '--dur-drawer',

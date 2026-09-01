@@ -17,7 +17,7 @@ import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
-import { DOCK_HIDE_DELAY_MS, DOCK_REENTRY_MS, SCROLL_SETTLE_MS } from './motion'
+import { DOCK_HIDE_DELAY_MS, DOCK_REENTRY_MS } from './motion'
 import { useT } from '../i18n'
 import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
 import {
@@ -78,14 +78,17 @@ export function AppShell() {
   const chatRef = useRef<HTMLDivElement>(null)
   const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(chatRef)
 
-  // 滚动降淡:只在这里存一次,Dock 拿到的是结论而不是滚动事件。
-  const [dimmed, setDimmed] = useState(false)
-  const settle = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /*
+   * 聊天滚动 → 目录当前键跟随。**这条监听如今只剩这一件事**。
+   *
+   * 09-01 用户裁定退役了「滚动降淡」(滚动时把 Dock 调到 --dock-dim,停下再复原):
+   * 「滚动的时候 Dock 会变透明,等一会又恢复——不要这个变化」。连根拔:状态、
+   * 收尾计时器、`--dock-dim` / `--dur-scroll-settle` 两个 token、Dock 的 dimmed
+   * 入口与 .dimmed 规则、动效档里那两行与它的两道门,一起清干净,不留半关的开关。
+   * 顺带白赚一笔:它原来**每一发 scroll 都要 clearTimeout + setTimeout 一对**
+   * (滚动事件一秒几十上百发),现在这条路上一个计时器都不排。
+   */
   const onScroll = useCallback(() => {
-    setDimmed(true)
-    if (settle.current) clearTimeout(settle.current)
-    settle.current = setTimeout(() => setDimmed(false), SCROLL_SETTLE_MS)
-    // 聊天滚动 → 当前键跟随。两件事共用同一个滚动事件,不各挂各的监听。
     syncFromScroll()
   }, [syncFromScroll])
 
@@ -368,7 +371,7 @@ export function AppShell() {
 
       {/* 两种显示模式共用这一个浮层容器:always 从不加 .hidden,autohide 平时藏着。 */}
       <div ref={dockRef} className={dockClass}>
-        <Dock dimmed={dimmed} />
+        <Dock />
       </div>
 
       {/* 浮窗层:在内容之上、在舞台 scrim 之下(--z-float 200 < --z-overlay 500)。 */}

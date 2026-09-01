@@ -57,7 +57,6 @@ export const DOCK_AIM_WINDOW_MS = 400
  * 这是**手势窗口**不是动画:动效档 none 一格都不碰它。
  */
 export const DOCK_REENTRY_MS = 1200
-export const SCROLL_SETTLE_MS = 400 // --dur-scroll-settle
 // --dur-skeleton-delay:载入骨架的出场延迟。比这更快回来的请求根本不该闪一下骨架
 // (规范:150ms 内到手就当作「立刻」)。
 export const SKELETON_DELAY_MS = 150

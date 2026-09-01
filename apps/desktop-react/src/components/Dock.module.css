@@ -14,7 +14,6 @@
   -webkit-backdrop-filter: blur(var(--dock-blur));
   border: 1px solid var(--line-1);
   box-shadow: var(--sh-2);
-  transition: opacity var(--dur) var(--ease);
 }
 
 /* 竖排(停左/右边):对称于横排钉死高度的那条规则 —— 条的**宽度**钉死
@@ -32,11 +31,6 @@
  * 上 / 左 → 内侧是交叉轴末端,瓦锚在起点。 */
 .anchorStart {
   align-items: flex-start;
-}
-
-/* 滚动降淡:只动透明度,不动空间 —— 空间一动就是位移。 */
-.dimmed {
-  opacity: var(--dock-dim);
 }
 
 .sep {

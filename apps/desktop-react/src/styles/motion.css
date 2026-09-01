@@ -37,7 +37,7 @@
  * 三档,只换 --dur 族的 root 值,**一条规则、一个组件都不必知道有档位这回事**:
  *
  *   standard(默认)  就是 tokens.css 里的原值
- *   calm            装饰减半(enter / exit / hover-fade / flash / scroll-settle),
+ *   calm            装饰减半(enter / exit / hover-fade / flash),
  *                   --dur 与 --dur-release 保持 —— 前者是「跟手」的基本节拍,
  *                   后者是手离开后的回位,这两件再快就不是「克制」是「生硬」了
  *   none            装饰全 0
@@ -45,7 +45,7 @@
  * ── --dur 族分三类,档位只动第一类 ────────────────────────────────────────
  * ① **装饰时长** = 一次形变 / 淡入淡出花多久。这类是「动效」,档位说了算。
  *    --dur --dur-enter --dur-exit --dur-release --dur-flash --dur-hover-fade
- *    --dur-scroll-settle --dur-toc-flash --dur-cursor-blink --dur-drawer
+ *    --dur-toc-flash --dur-cursor-blink --dur-drawer
  *    --dur-mode --dur-att-move --dur-tool-pulse
  * ② **延迟** = 等多久才开始一件事。它不是动画,关掉它只会让悬停变得神经质。
  *    --dur-tooltip-delay --dur-preview-delay --dur-toc-hover --dur-att-grace
@@ -335,7 +335,6 @@
   --dur-exit: 60ms;
   --dur-hover-fade: 150ms;
   --dur-flash: 120ms;
-  --dur-scroll-settle: 200ms;
 }
 
 :root[data-motion-tier='none'] {
@@ -345,7 +344,6 @@
   --dur-release: 0ms;
   --dur-flash: 0ms;
   --dur-hover-fade: 0ms;
-  --dur-scroll-settle: 0ms;
   --dur-toc-flash: 0ms;
   --dur-cursor-blink: 0ms;
   --dur-drawer: 0ms;

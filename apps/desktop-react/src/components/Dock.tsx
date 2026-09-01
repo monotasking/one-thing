@@ -111,10 +111,6 @@ const ANCHOR_START: Record<DockEdge, boolean> = {
   left: true,
 }
 
-interface Props {
-  dimmed?: boolean
-}
-
 /**
  * Dock 只是形态机的投影:它读 state 算出每块的「运行点」,点击时把 id 交回 transitions。
  * 它自己不知道什么是舞台、什么是浮窗、什么是架子 —— 连「点开该去哪」也不知道,那是 store 里
@@ -127,7 +123,7 @@ interface Props {
  * 整条 Dock 的边 / 沿边位置 / 大小是**配置**,配置形状的交互归设置页(08-29 拍板),
  * 所以那三组不在这里 —— 这条菜单短到一眼能读完是它的目的,不是偷懒。
  */
-export function Dock({ dimmed }: Props) {
+export function Dock() {
   const t = useT()
   const placements = useStageStore((st) => st.placements)
   const memory = useStageStore((st) => st.memory)
@@ -216,7 +212,6 @@ export function Dock({ dimmed }: Props) {
         SIZE_CLASS[dockSize],
         axis === 'y' && s.vertical,
         ANCHOR_START[dockEdge] && s.anchorStart,
-        dimmed && s.dimmed,
         tracking && s.tracking,
       ]
         .filter(Boolean)

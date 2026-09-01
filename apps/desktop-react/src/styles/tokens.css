@@ -84,7 +84,6 @@
   --dur-release: 160ms;
   --dur-flash: 240ms;
   --dur-tooltip-delay: 300ms;
-  --dur-scroll-settle: 400ms;
   /* 悬停淡入(会话卡上的幽灵入口):比 --dur 慢,是为了「不抢眼」而不是「慢」 */
   --dur-hover-fade: 300ms;
   /* 流中态那枚呼吸光标的一次明暗。从前它借用 --dur-toc-hover(同为 150ms)——
@@ -286,7 +285,6 @@
   --tooltip-lift: 30px;
 
   /* Dock 降淡(滚动中) */
-  --dock-dim: 0.4;
 
   /* ── W2 Dock 预览泡 ─────────────────────────────────────────────────────
    * 固定卡身量,内容是 renderContent 的活视图按 --preview-scale 缩下来的一眼。
