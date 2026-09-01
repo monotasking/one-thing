@@ -23,4 +23,4 @@ registerBlock({
   Component: Code,
   chrome: (model) => ({ id: model.lang ?? undefined, meta: model.file }),
   actions: (model) => [{ verb: 'copy', what: 'source', text: model.source }],
-})
+}, import.meta.hot)

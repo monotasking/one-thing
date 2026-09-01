@@ -11,4 +11,4 @@ registerBlock({
   presentation: 'flow',
   streaming: 'atomic',
   Component: Divider,
-})
+}, import.meta.hot)

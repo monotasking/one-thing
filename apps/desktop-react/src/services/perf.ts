@@ -458,6 +458,189 @@ export function perfReport(entries: readonly PerfEntry[] = ring): PerfReportRow[
     .sort((a, b) => b.max - a.max)
 }
 
+/* ── 入队与空闲落账(P3:观察器不许自伤)────────────────────────────────────
+ *
+ * 09-01 真机分诊抓到的事:**观察器回调自己就是 57–119ms 长帧的来源**。
+ * 量具污染了被量物 —— 而且是最坏的那一种污染,因为它恰好在页面已经卡住的时候
+ * 加倍地卡(一次长帧风暴里每条 LoAF 都要走一遍下面这些)。
+ *
+ * 回调里从前干了六件事,没有一件便宜:
+ *   ① `collectScripts` 全量 map + sort + 字符串拼 `at`;
+ *   ② `describeTarget` 读 DOM(getAttribute / textContent)并截断拼串;
+ *   ③ `formatPerfDetail` 拼出整段现场文本;
+ *   ④ `record()` 进日志环;
+ *   ⑤ `notify()` → zustand 写 → **React 同步重渲通知中心**;
+ *   ⑥ `listeners.forEach` → HUD setState → 又一次渲染。
+ * ③④⑤⑥ 都发生在**超预算**那条分支上 —— 也就是说,越卡的时候它干得越多。
+ *
+ * 修法:**回调里只入队**。一条 LoAF 进来只做三件 O(1) 的事:算一个下标、
+ * 写三个预分配数组的格子、(必要时)排一次空闲任务。归因解析、序列化、上报
+ * 全部挪到 `requestIdleCallback`(没有就退 `setTimeout 0`)。
+ *
+ * 队列是**预分配的环**:容量固定、不 push、不 splice、不造中间数组。满了丢最老的
+ * 并记 `dropped` —— 丢了要说,不能假装读数是全的。
+ *
+ * 存的是**原始 entry 的引用**,不是解析后的对象:引用是 O(1),解析才是钱。
+ * `event` 条目的 `target` 就挂在 entry 上,拿着引用等到空闲再读 ——
+ * 元素那时可能已经离开文档,但**离开文档的元素照样答得出 tagName / getAttribute**,
+ * 所以现场不丢(反过来,如果这里就地把 target 读成字符串,那才是把钱花在回调里)。
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/** 队列容量。比环(200)略大一点:一次长帧风暴里 buffered 补发能有几十条。 */
+const QUEUE_CAPACITY = 256
+
+const QK_LOAF = 0
+const QK_EVENT = 1
+
+const qEntry: (PerformanceEntry | undefined)[] = new Array(QUEUE_CAPACITY).fill(undefined)
+const qKind = new Uint8Array(QUEUE_CAPACITY)
+const qTs = new Float64Array(QUEUE_CAPACITY)
+let qHead = 0
+let qCount = 0
+let qDropped = 0
+let drainScheduled = false
+
+/**
+ * 观察器回调自身耗时的读数环(**用它自己量自己**)。
+ * 也是预分配的:量具的量具更不能分配内存。
+ */
+const OBSERVER_COST_CAPACITY = 512
+const observerCost = new Float64Array(OBSERVER_COST_CAPACITY)
+let observerCostIdx = 0
+let observerCostCount = 0
+
+function recordObserverCost(ms: number): void {
+  observerCost[observerCostIdx] = ms
+  observerCostIdx = (observerCostIdx + 1) % OBSERVER_COST_CAPACITY
+  if (observerCostCount < OBSERVER_COST_CAPACITY) observerCostCount += 1
+}
+
+export interface PerfObserverCost {
+  /** 采到几次回调。 */
+  count: number
+  p50: number
+  p95: number
+  p99: number
+  max: number
+  /** 队列满了丢掉几条 —— 丢了要说。 */
+  dropped: number
+  /** 此刻还压在队里没落账的条数。 */
+  pending: number
+}
+
+/**
+ * 观察器自伤的自证读数。**在这里才排序**(O(n log n) 一次),而不是在回调里。
+ */
+export function perfObserverCost(): PerfObserverCost {
+  const sorted = Array.from(observerCost.slice(0, observerCostCount)).sort((a, b) => a - b)
+  return {
+    count: observerCostCount,
+    p50: round1(percentile(sorted, 50)),
+    p95: round1(percentile(sorted, 95)),
+    p99: round1(percentile(sorted, 99)),
+    max: round1(sorted.length ? sorted[sorted.length - 1] : 0),
+    dropped: qDropped,
+    pending: qCount,
+  }
+}
+
+/** 只给测试用:清空自计时与队列。 */
+export function __resetPerfQueueForTests(): void {
+  qEntry.fill(undefined)
+  qHead = 0
+  qCount = 0
+  qDropped = 0
+  drainScheduled = false
+  observerCostIdx = 0
+  observerCostCount = 0
+}
+
+type IdleWindow = Window & {
+  requestIdleCallback?: (cb: (deadline?: { timeRemaining(): number }) => void, opts?: { timeout: number }) => number
+}
+
+/**
+ * 排一次空闲落账。**最多排一次** —— 一次风暴里 80 条 LoAF 不该排出 80 个任务。
+ *
+ * `timeout` 是有意给的:纯 idle 在持续繁忙的主线程上可能一直等不到,而这些读数
+ * 正是**繁忙时**才产生的。给上限 = 最迟这么久一定落账,不至于攒到队列溢出。
+ */
+const DRAIN_TIMEOUT_MS = 500
+
+function scheduleDrain(): void {
+  if (drainScheduled) return
+  drainScheduled = true
+  const idle = typeof window !== 'undefined' ? (window as IdleWindow).requestIdleCallback : undefined
+  if (typeof idle === 'function') idle(drainQueue, { timeout: DRAIN_TIMEOUT_MS })
+  // 没有 requestIdleCallback(Safari 老版本 / jsdom)就退 setTimeout 0 ——
+  // 它不是空闲,但至少让出了当前这一帧,回调本身仍然只入队。
+  else setTimeout(drainQueue, 0)
+}
+
+/** 一次空闲里最多落几条 —— 剩下的排下一次,别把空闲片自己变成一次长任务。 */
+const DRAIN_BATCH = 16
+
+function drainQueue(deadline?: { timeRemaining(): number }): void {
+  drainScheduled = false
+  let done = 0
+  while (qCount > 0 && done < DRAIN_BATCH) {
+    // 空闲片用完了就收手(没有 deadline 的降级路按满批算)。
+    if (deadline && done > 0 && deadline.timeRemaining() <= 1) break
+    const idx = qHead
+    qHead = (qHead + 1) % QUEUE_CAPACITY
+    qCount -= 1
+    const raw = qEntry[idx]
+    qEntry[idx] = undefined // 放掉引用:别让一条队列钉住一棵 DOM 子树
+    if (!raw) continue
+    settleQueued(qKind[idx], raw, qTs[idx])
+    done += 1
+  }
+  if (qCount > 0) scheduleDrain()
+}
+
+/** 空闲里才做的事:解析归因 → 组成 PerfEntry → 走 push(记环 / 上报)。 */
+function settleQueued(kind: number, raw: PerformanceEntry, ts: number): void {
+  if (kind === QK_LOAF) {
+    const loaf = raw as LoafEntry
+    push({
+      ts,
+      kind: 'longFrame',
+      ms: Math.round(raw.duration),
+      name: 'frame',
+      blockingMs: Math.round(loaf.blockingDuration ?? 0),
+      scripts: collectScripts(loaf.scripts),
+      ...loafPhases(loaf),
+    })
+    return
+  }
+  const event = raw as EventEntry
+  push({
+    ts,
+    kind: 'interaction',
+    ms: Math.round(raw.duration),
+    name: raw.name,
+    target: describeTarget(event.target),
+    interactionId: event.interactionId || undefined,
+    ...eventPhases(event),
+  })
+}
+
+/** 回调里唯一允许发生的事。三个 O(1) 的写,零分配、零字符串、零 DOM。 */
+function enqueue(kind: number, entry: PerformanceEntry): void {
+  const idx = (qHead + qCount) % QUEUE_CAPACITY
+  if (qCount === QUEUE_CAPACITY) {
+    // 满了丢最老的 —— 新读数比旧读数有用(正在卡的是现在)。
+    qHead = (qHead + 1) % QUEUE_CAPACITY
+    qDropped += 1
+  } else {
+    qCount += 1
+  }
+  qEntry[idx] = entry
+  qKind[idx] = kind
+  qTs[idx] = Date.now()
+  scheduleDrain()
+}
+
 /* ── 观察者 ──────────────────────────────────────────────────────────────── */
 
 /** 这个浏览器认不认某种 entryType。认不出就整条跳过,不抛。 */
@@ -467,10 +650,19 @@ function supports(type: string): boolean {
   return Array.isArray(types) ? types.includes(type) : false
 }
 
-function observe(type: string, init: PerformanceObserverInit, handle: (e: PerformanceEntry) => void): void {
+function observe(type: string, init: PerformanceObserverInit, kind: number): void {
   if (!supports(type)) return
   try {
-    const observer = new PerformanceObserver((list) => list.getEntries().forEach(handle))
+    const observer = new PerformanceObserver((list) => {
+      /*
+       * 自计时把**整个回调**框在里面(不是逐条),因为「观察器回调自身耗时」
+       * 问的就是这一段。`getEntries()` 也在框内 —— 它同样是回调的开销。
+       */
+      const t0 = nowMs()
+      const entries = list.getEntries()
+      for (let i = 0; i < entries.length; i += 1) enqueue(kind, entries[i])
+      recordObserverCost(nowMs() - t0)
+    })
     observer.observe(init)
     observers.push(observer)
   } catch {
@@ -489,18 +681,7 @@ export function startPerfProbe(): () => void {
   if (started) return stopPerfProbe
   started = true
 
-  observe('long-animation-frame', { type: 'long-animation-frame', buffered: true }, (entry) => {
-    const loaf = entry as LoafEntry
-    push({
-      ts: Date.now(),
-      kind: 'longFrame',
-      ms: Math.round(entry.duration),
-      name: 'frame',
-      blockingMs: Math.round(loaf.blockingDuration ?? 0),
-      scripts: collectScripts(loaf.scripts),
-      ...loafPhases(loaf),
-    })
-  })
+  observe('long-animation-frame', { type: 'long-animation-frame', buffered: true }, QK_LOAF)
 
   observe(
     'event',
@@ -509,18 +690,7 @@ export function startPerfProbe(): () => void {
       buffered: true,
       durationThreshold: PERF_BUDGET.eventDurationThresholdMs,
     } as PerformanceObserverInit,
-    (entry) => {
-      const event = entry as EventEntry
-      push({
-        ts: Date.now(),
-        kind: 'interaction',
-        ms: Math.round(entry.duration),
-        name: entry.name,
-        target: describeTarget(event.target),
-        interactionId: event.interactionId || undefined,
-        ...eventPhases(event),
-      })
-    },
+    QK_EVENT,
   )
 
   return stopPerfProbe
@@ -537,13 +707,41 @@ declare global {
     __perf?: {
       dump: () => PerfEntry[]
       report: () => PerfReportRow[]
+      /** 量具自己的账:观察器回调耗时分位 + 丢弃 / 待落账条数。 */
+      observerCost: () => PerfObserverCost
     }
   }
 }
 
 export function installPerfDumpHook(): void {
   if (typeof window === 'undefined') return
-  window.__perf = { dump: dumpPerf, report: perfReport }
+  window.__perf = { dump: dumpPerf, report: perfReport, observerCost: perfObserverCost }
 }
 
 installPerfDumpHook()
+
+/*
+ * ── 模块级副作用的 HMR 退役(CLAUDE.md 施工纪律)──────────────────────────
+ * 这个模块在模块作用域里起了两样活东西:两个 `PerformanceObserver`(经
+ * `startPerfProbe`,由 main.tsx 调)和一个排在空闲里的落账任务。热更之后旧模块
+ * 那两个观察器**不会自己停**:它们照旧回调,写的是旧模块那份队列与环,于是屏幕上
+ * 的 HUD 与 `window.__perf` 读的是新模块的空表,而真读数落在一个没人看的旧表里
+ * ——与 chat-source 双折叠器同一个病。
+ *
+ * 退役**复用既有的那一口**(`stopPerfProbe`),不写第二套拆卸;队列一并清掉,
+ * 免得旧队列钉着一批 entry 与 DOM 引用等一个永远不会来的空闲。
+ */
+if (import.meta.hot) {
+  /*
+   * 退役要**交班**,不能只是收摊。探针是 main.tsx 起的,而 main.tsx 在这次热更里
+   * 不会重跑 —— 旧模块一停,新模块就永远没人来启动它,读数从此静悄悄地没了。
+   * (这一格是自己给自己挖的:第一版只写了 stopPerfProbe。)
+   * 所以旧模块把「我当时在跑」记进 `hot.data`,新模块开机自己接上。
+   */
+  if (import.meta.hot.data?.wasRunning) startPerfProbe()
+  import.meta.hot.dispose((data: { wasRunning?: boolean }) => {
+    data.wasRunning = started
+    stopPerfProbe()
+    __resetPerfQueueForTests()
+  })
+}

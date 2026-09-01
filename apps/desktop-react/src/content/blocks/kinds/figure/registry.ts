@@ -60,6 +60,14 @@ export class FigureKindRegistry {
     this.defs.set(def.kind, def)
   }
 
+  /** 反注册。与主表同一条理由,见 blocks/registry.ts 的 `unregister`。 */
+  unregister(kind: string, def?: FigureKindDef): void {
+    const held = this.defs.get(kind)
+    if (!held) return
+    if (def && held !== def) return
+    this.defs.delete(kind)
+  }
+
   /** 查不到就是 undefined —— 未知图种不是错误,是「这台不认识它」。 */
   resolve(kind: string): FigureKindDef | undefined {
     return this.defs.get(kind)
@@ -70,10 +78,21 @@ export class FigureKindRegistry {
   }
 }
 
+/** 只用得到 `dispose` 一口(与 blocks/registry.ts 同一个形状)。 */
+export interface ImportMetaHot {
+  dispose(cb: () => void): void
+}
+
 const registry = new FigureKindRegistry()
 
-export function registerFigureKind(def: FigureKindDef): void {
+/**
+ * 注册一个图种。第二个形参是调用模块自己的 `import.meta.hot` —— 与主表
+ * `registerBlock` 逐字同一条纪律(CLAUDE.md「模块级副作用必须配 HMR dispose」):
+ * 这张二级表同样是模块级单例,热更时旧的不摘就会撞「图种重复注册」。
+ */
+export function registerFigureKind(def: FigureKindDef, hot?: ImportMetaHot): void {
   registry.register(def)
+  hot?.dispose(() => registry.unregister(def.kind, def))
 }
 
 export function resolveFigureKind(kind: string): FigureKindDef | undefined {

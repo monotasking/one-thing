@@ -25,4 +25,4 @@ registerBlock({
     { verb: 'copy', what: 'markdown', text: tableToMarkdown(model) },
     { verb: 'copy', what: 'csv', text: tableToCsv(model) },
   ],
-})
+}, import.meta.hot)

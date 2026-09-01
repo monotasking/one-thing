@@ -14,7 +14,7 @@ type FigureModel = Extract<BlockModel, { kind: 'figure' }>
  * `registerFigureKind(plantumlFigureKind)`,主表那一段一个字不改 —— 这就是
  * 二级表存在的全部理由。
  */
-registerFigureKind(mermaidFigureKind)
+registerFigureKind(mermaidFigureKind, import.meta.hot)
 
 /**
  * 注册:图是 **object**,檐按 F1 净卡定稿 —— 左端只有类型词,右端只有动作。
@@ -53,7 +53,7 @@ registerBlock({
     },
     { verb: 'view-source' },
   ],
-})
+}, import.meta.hot)
 
 /**
  * 檐上那个类型词:图种自己认得出就用它认的(mermaid 的 `flowchart` / `sequence`),

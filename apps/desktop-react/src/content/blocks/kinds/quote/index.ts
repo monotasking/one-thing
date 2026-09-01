@@ -10,4 +10,4 @@ registerBlock({
   presentation: 'flow',
   streaming: 'append',
   Component: Quote,
-})
+}, import.meta.hot)

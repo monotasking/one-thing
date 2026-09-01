@@ -118,6 +118,14 @@ describe('性能超预算 → notify(silent)', () => {
     stop()
     vi.unstubAllGlobals()
 
+    /*
+     * 观察器回调**只入队**(P3:量具不许自伤),归因与上报排在空闲里 ——
+     * 所以这里要让出一拍才看得到那条通知。jsdom 没有 requestIdleCallback,
+     * 落账走的是 setTimeout 0 那条降级路,让一拍就够。
+     * 这一句本身也是一条断言:上报不再发生在观察器回调里。
+     */
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
     expect(freshHub.getState().toasts).toEqual([])
     const [record] = freshCenter.getState().items
     expect(record.level).toBe('silent')

@@ -17,4 +17,4 @@ registerBlock({
   Component: SourceFallback,
   chrome: (model) => ({ id: model.reason }),
   actions: (model) => [{ verb: 'copy', what: 'source', text: model.source }],
-})
+}, import.meta.hot)

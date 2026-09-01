@@ -24,4 +24,4 @@ registerBlock({
   Component: Diff,
   chrome: (model) => ({ id: 'diff', meta: model.file, stat: model.stat }),
   actions: (model) => [{ verb: 'copy', what: 'source', text: model.source }],
-})
+}, import.meta.hot)

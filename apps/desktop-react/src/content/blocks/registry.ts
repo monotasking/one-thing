@@ -120,6 +120,22 @@ export class BlockRegistry {
     this.defs.set(def.kind, def as unknown as BlockDef)
   }
 
+  /**
+   * 反注册。**只为一件事存在:模块的 HMR 退役**(CLAUDE.md「模块级副作用必须配
+   * HMR dispose」)。热更时旧模块先把自己那一格摘掉,新模块再登记 —— 于是
+   * 「重复注册 = 抛错」这条法**原样保留**:它本来要抓的是「两个不同模块抢同一个
+   * kind」,而热更是同一个模块的另一版,不是那件事。
+   *
+   * 摘的时候比一次身份:表里那一格已经是别人的了就不动 —— dispose 的顺序不是
+   * 我们能左右的,盲摘会把新注册的那一格删掉。
+   */
+  unregister(kind: string, def?: BlockDef): void {
+    const held = this.defs.get(kind)
+    if (!held) return
+    if (def && held !== def) return
+    this.defs.delete(kind)
+  }
+
   /** 查不到就是 `source-fallback` —— 未知不是错误,是一种展示。 */
   resolve(kind: string): BlockDef {
     const hit = this.defs.get(kind)
@@ -140,8 +156,48 @@ export class BlockRegistry {
 
 const registry = new BlockRegistry()
 
-export function registerBlock<M extends BlockModel>(def: BlockDef<M>): void {
+/**
+ * 注册一个块。**第二个形参是调用模块自己的 `import.meta.hot`**,给了它就自动配好
+ * 热更退役 —— 每个 kind 的 `index.ts` 写成:
+ *
+ * ```ts
+ * registerBlock({ kind: 'list', … }, import.meta.hot)
+ * ```
+ *
+ * ── 为什么把 hot 递进来,而不是各自写一段 dispose ──────────────────────────
+ * `import.meta.hot` 是**每个模块自己的**,注册表拿不到调用方那一份,所以只能递。
+ * 但递进来之后,退役那一段就只写一遍(在这里),不是每个 kind 各抄两行 ——
+ * 而「加一个块 = 新建一个目录 + barrel 加一行」这条代价不变(hot 长在同一次
+ * 调用里,想漏得先把参数删掉,而静态门盯着这个参数,见
+ * `__tests__/hmr-dispose.test.ts`)。
+ *
+ * 不给 hot 也能注册(运行时插件、测试),那时就没有退役 —— 那些调用方的寿命
+ * 本来也不是「这个模块实例」。
+ *
+ * ── 为什么不是「重复注册改成替换」──────────────────────────────────────
+ * 09-01 那条 `unhandledrejection`(「块 kind 重复注册:list」)的病因是热更,
+ * 不是两处抢注册。把法从「抛错」放宽成「替换 + warn」等于为了治热更把**真正的
+ * 冲突**一起放过了(而那正是这张表当初立这条法要抓的东西)。退役是对症的那一刀:
+ * 热更时旧的先走,法一个字不动。
+ */
+export function registerBlock<M extends BlockModel>(def: BlockDef<M>, hot?: ImportMetaHot): void {
   registry.register(def)
+  // 生产构建里 hot 恒为 undefined,这一段连同 import.meta.hot 一起被摇掉。
+  hot?.dispose(() => registry.unregister(def.kind, def as unknown as BlockDef))
+}
+
+/** Vite 的 `import.meta.hot` 里这一批只用得到 `dispose` 一口。 */
+export interface ImportMetaHot {
+  dispose(cb: () => void): void
+}
+
+/**
+ * 摘掉一格。`registerBlock` 递了 hot 时它是自动的(热更退役),这一口留给
+ * **没有 hot 的那些调用方**:将来的运行时插件卸载,和要自己收尾的测试。
+ * 带上 `def` 就只摘「确实是我注册的那一格」——理由见 `BlockRegistry.unregister`。
+ */
+export function unregisterBlock(kind: string, def?: BlockDef): void {
+  registry.unregister(kind, def)
 }
 
 export function resolveBlock(kind: BlockKind | string): BlockDef {

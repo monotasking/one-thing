@@ -7,4 +7,4 @@ registerBlock({
   presentation: 'flow',
   streaming: 'append',
   Component: List,
-})
+}, import.meta.hot)

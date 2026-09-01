@@ -13,11 +13,15 @@ import {
   perfMark,
   perfReport,
   perfSpan,
+  perfObserverCost,
   startPerfProbe,
+  stopPerfProbe,
+  __resetPerfQueueForTests,
 } from '../perf'
 
 beforeEach(() => {
   __resetPerfForTests()
+  __resetPerfQueueForTests()
 })
 
 describe('预算表', () => {
@@ -381,5 +385,159 @@ describe('喂一条假 LoAF 走 push 那条路', () => {
 describe('探针的环境适配', () => {
   it('jsdom 没有 PerformanceObserver / 不支持这两种 entryType —— 整步跳过而不是抛', () => {
     expect(() => startPerfProbe()()).not.toThrow()
+  })
+})
+
+
+/* ══ P3:观察器不许自伤(09-01 性能分诊)════════════════════════════════════ */
+
+/**
+ * 装一台假的 `PerformanceObserver` + 假的 `requestIdleCallback`,于是可以:
+ *  ① 把一批 LoAF 塞进回调,看回调**当场**做了什么(应该只是入队);
+ *  ② 手动放行空闲,看归因/上报是不是那时候才发生。
+ *
+ * 不用真的 PerformanceObserver:jsdom 根本没有,而且真观察器的时机不可控 ——
+ * 要验的正是「谁在什么时候干活」,时机必须是断言的一部分。
+ */
+function installFakeObserver() {
+  const callbacks: ((list: { getEntries(): PerformanceEntry[] }) => void)[] = []
+  const idle: ((deadline?: { timeRemaining(): number }) => void)[] = []
+
+  class FakeObserver {
+    static supportedEntryTypes = ['long-animation-frame', 'event']
+    constructor(private cb: (list: { getEntries(): PerformanceEntry[] }) => void) {
+      callbacks.push(cb)
+    }
+    observe() {}
+    disconnect() {}
+  }
+  vi.stubGlobal('PerformanceObserver', FakeObserver)
+  vi.stubGlobal('requestIdleCallback', (cb: (d?: { timeRemaining(): number }) => void) => {
+    idle.push(cb)
+    return idle.length
+  })
+  ;(window as unknown as { requestIdleCallback: unknown }).requestIdleCallback =
+    globalThis.requestIdleCallback
+
+  return {
+    /** 喂一批 LoAF 给**第一个**观察器(long-animation-frame 那路)。 */
+    feedLoaf(entries: PerformanceEntry[]) {
+      callbacks[0]?.({ getEntries: () => entries })
+    },
+    /** 放行排着的空闲任务;不给 deadline = 当作时间管够。 */
+    runIdle(timeRemaining = 50) {
+      const queued = idle.splice(0, idle.length)
+      queued.forEach((cb) => cb({ timeRemaining: () => timeRemaining }))
+    },
+    idleCount: () => idle.length,
+  }
+}
+
+function loaf(ms: number, scripts = 1): PerformanceEntry {
+  return {
+    entryType: 'long-animation-frame',
+    name: 'long-animation-frame',
+    startTime: 0,
+    duration: ms,
+    blockingDuration: ms - 50,
+    renderStart: ms * 0.8,
+    styleAndLayoutStart: ms * 0.9,
+    scripts: Array.from({ length: scripts }, (_, i) => ({
+      name: 'script',
+      entryType: 'script',
+      startTime: 0,
+      duration: ms / scripts,
+      invoker: `handler-${i}`,
+      invokerType: 'event-listener',
+      sourceURL: 'http://localhost/src/whatever.ts',
+      sourceFunctionName: `fn${i}`,
+      sourceCharPosition: 100 + i,
+      toJSON: () => ({}),
+    })),
+    toJSON: () => ({}),
+  } as unknown as PerformanceEntry
+}
+
+describe('观察器回调只入队,归因与上报挪到空闲', () => {
+  it('回调当场**一条都不落账** —— 环还是空的,活儿全排进了空闲', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf([loaf(120), loaf(80)])
+
+    // 这就是这一批的全部主张:回调返回时,归因/序列化/通知一件都没发生。
+    expect(dumpPerf()).toHaveLength(0)
+    expect(perfObserverCost().pending).toBe(2)
+    expect(fake.idleCount()).toBe(1) // 两条读数只排一个任务,不是两个
+
+    fake.runIdle()
+    expect(dumpPerf()).toHaveLength(2)
+    expect(dumpPerf()[0].scripts?.[0].at).toContain('whatever.ts:100')
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('用它自己量自己:回调耗时 p99 有读数,且远低于一帧', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    for (let i = 0; i < 60; i += 1) fake.feedLoaf([loaf(60 + i)])
+    const cost = perfObserverCost()
+
+    expect(cost.count).toBe(60)
+    // 回调里只有「算下标 + 写三个数组格」,任何机器上都该在 1ms 以内。
+    expect(cost.p99).toBeLessThan(1)
+    expect(cost.max).toBeLessThan(1)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('一次空闲最多落一批,剩下的再排一次 —— 空闲片自己不许变成长任务', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf(Array.from({ length: 40 }, () => loaf(60)))
+
+    fake.runIdle()
+    expect(dumpPerf().length).toBeLessThanOrEqual(16)
+    expect(perfObserverCost().pending).toBeGreaterThan(0)
+    expect(fake.idleCount()).toBe(1) // 还有剩就再排一次
+
+    fake.runIdle()
+    fake.runIdle()
+    expect(perfObserverCost().pending).toBe(0)
+    expect(dumpPerf()).toHaveLength(40)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('空闲片用完就收手,不硬把这一批做完', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf(Array.from({ length: 16 }, () => loaf(60)))
+    fake.runIdle(0.5) // 剩余时间不够:落一条就该停
+    expect(dumpPerf()).toHaveLength(1)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('队列满了丢最老的**并说出来** —— 不假装读数是全的', () => {
+    const fake = installFakeObserver()
+    startPerfProbe()
+    fake.feedLoaf(Array.from({ length: 300 }, () => loaf(60)))
+    const cost = perfObserverCost()
+    expect(cost.dropped).toBe(300 - 256)
+    expect(cost.pending).toBe(256)
+
+    stopPerfProbe()
+    vi.unstubAllGlobals()
+  })
+
+  it('反证:若回调里就地落账(旧写法),环在回调返回时就已经满了', () => {
+    // 对照组 —— 直接走 push 那条路(旧实现的形状),证明上面那条
+    // 「回调返回时环是空的」不是因为环坏了。
+    __pushPerfForTests({ ts: 0, kind: 'longFrame', ms: 120, name: 'frame', scripts: [] })
+    expect(dumpPerf()).toHaveLength(1)
   })
 })
