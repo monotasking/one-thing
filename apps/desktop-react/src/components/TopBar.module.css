@@ -1,24 +1,61 @@
+/* 09-01:这条带**同时是窗口的顶带**(系统标题栏已摘,见 electron/main.ts)。
+ * 整条 drag = 这扇窗唯一拖得动的地方;左端让位、右端两件可点的各自 no-drag。
+ * 左内衬改由 `.traffic` 那块真元素承担 —— padding 不算进拖拽区,更不会把
+ * 红绿灯推开(灯是原生视图,画在网页之上)。 */
 .bar {
   height: var(--topbar-h);
   flex: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--sp-4);
+  padding: 0 var(--sp-4) 0 0;
   border-bottom: 1px solid var(--line-1);
   background: var(--surface-1);
+  -webkit-app-region: drag;
 }
 
-/* L2:会话名变成总览入口,加内衬底 + hover 态;字号字重和原来逐字相同。 */
+/* 红绿灯让位:定宽 = trafficLightPosition.x(16)+ 三颗灯 52 + 一档呼吸 12。
+ * `flex: none` 是必须的 —— 它一旦被压缩,标题就会盖到灯上去。
+ * 全屏时灯自动隐藏,这一格照旧留着:**布局不随全屏变形**是拍板要求
+ * (窄一点点的收益,换不来标题左右横跳)。 */
+.traffic {
+  width: var(--titlebar-traffic-w);
+  flex: none;
+  /*
+   * `align-self: stretch` 不是排版洁癖,是这块元素**能不能工作**的那一句。
+   * `.bar` 是 `align-items: center`,而这块元素没有内容 —— 不拉伸的话它是 80×**0**,
+   * 而 `no-drag` 摘掉的是一块**面积**:面积为 0 就等于什么都没摘,那 80px 照样是
+   * 拖拽把手。09-01 真机探针读到 `traffic {w:80, h:0}` 才发现,屏幕上一模一样、
+   * 单测也全绿(它量的是声明,不是排出来的盒)—— 典型的静态查不出来的一格。
+   */
+  align-self: stretch;
+  -webkit-app-region: no-drag;
+}
+
+/* L2:会话名变成总览入口,加内衬底 + hover 态;字号字重和原来逐字相同。
+ * 09-01:`margin-inline-end: auto` 顶替了 `.bar` 上退役的 `space-between`
+ * —— 这条带现在有三件(让位 / 标题 / 尾),space-between 会把标题推到中间去。
+ * 左侧那记 `-sp-2` 的负外边距也一并退役:左内衬现在由 `.traffic` 给。 */
 .titleBtn {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
   height: var(--row-h);
   padding: 0 var(--sp-2);
-  margin-left: calc(var(--sp-2) * -1);
+  margin-inline-end: auto;
   border-radius: var(--r-2);
   transition: background var(--dur) var(--ease);
+  -webkit-app-region: no-drag;
+}
+
+/* 尾格:AgentChip 的外套。它只做一件事 —— 替里面那件声明 no-drag。
+ * 判例:no-drag 必须落在 drag 元素同一分支的**子孙**上,所以这一层不能省成
+ * 「去 AgentChip.module.css 里加一句」之外的任何写法……其实两种都成立,
+ * 选套一层是因为**责任在这一侧**:是顶栏把它放进了拖拽区,不该让它自己知道。 */
+.trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
 }
 
 .titleBtn:hover {

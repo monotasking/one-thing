@@ -12,11 +12,12 @@
   z-index: var(--z-cover);
   background: var(--scrim);
   display: flex;
-  /* 上边让出一整条顶带,左右下仍是 --sp-3。**底铺满整扇窗没变**(background 从
+  /* 上边让出一整条顶栏,左右下仍是 --sp-3。**底铺满整扇窗没变**(background 从
    * y=0 起),让的只是里面那块面 —— 理由是原生的:红绿灯画在网页之上,不受
    * z-index 管;不让的话它们正好压在面头的图标与标题上(09-01 真机截图实证)。
-   * 顺带,盖开着时那三颗灯落在半透明的底上而不是面的檐上,读得清。 */
-  padding: var(--titlebar-h) var(--sp-3) var(--sp-3);
+   * 让 `--topbar-h` 而不是某个自己的数:灯在顶栏里居中,盖只要让开顶栏那一条,
+   * 三颗灯就整个落在半透明的底上(读得清),面的檐也不会被咬掉一角。 */
+  padding: var(--topbar-h) var(--sp-3) var(--sp-3);
   animation: var(--kf-scrim-in) var(--dur-enter) var(--ease-out);
 }
 
