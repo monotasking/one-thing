@@ -1,0 +1,70 @@
+/*
+ * 区块卡骨架。整份配方是从 providers 详情栏那五张卡的**并集**里抄来的 ——
+ * 抄到最后发现:OAuthCard / UsageCard / ProviderDetail 的 .card / ModeCard /
+ * CredentialPool 五处**逐字相同**。同一份九行 CSS 写了五遍,这就是立件的理由。
+ *
+ * 并集里唯一真出入的一格是**内边距**:上面五处一律 --sp-3,
+ * components/ErrorBoundary 的错误卡是 --sp-4(它是一整块面崩了之后的落点,
+ * 不是详情栏里的一格)。所以内边距做成 pad 的两档,而不是两件组件。
+ *
+ * `flex: none` 留在基类里:这些卡的落点全是「一列可滚的堆叠」,
+ * 不写它就会参与伸缩 —— 按内容有多高就多高,才是卡该有的样子。
+ */
+.card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+
+.padMd {
+  padding: var(--sp-3);
+}
+
+.padLg {
+  padding: var(--sp-4);
+}
+
+/* 边线是可关的一格:并集里今天全都有,但「卡」这个词本身不含边线 ——
+ * 一块靠底色分出来的区域面也是卡。默认开(并集的事实),关了不留任何残迹。 */
+.bordered {
+  border: var(--bw-1) solid var(--line-1);
+}
+
+/* 标题行。标题吸剩余空间并截断,右侧读数不弯腰 —— 与组头那一行同一手
+ * (挤压纪律律一:一行恰有一个弯腰件)。 */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.title {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 标题右侧那一格弱色注(UsageCard 的缓存时刻 / CredentialPool 的读数)。 */
+.note {
+  flex: none;
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+}
+
+/* 标题下方那一段弱色注(ProviderDetail 的 .cardNote)。它是一句**话**,
+ * 所以字号大一档、有行距、允许换行 —— 与上面那格「一个读数」不是一回事。 */
+.noteBelow {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  line-height: 1.6;
+}

@@ -1,0 +1,35 @@
+/*
+ * 表单行。配方抄自 CustomProviderDialog 的 .field / .label / .hint / .problem
+ * (那是并集里唯一一处形态完整的表单行),另一处 WorkspaceOverview 的 .field
+ * 是**横排**的改名格 —— 那不是这件的形,记在 Field.tsx 的出入表里。
+ */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+}
+
+/* 说明。它是一**句话**,所以有行距、允许换行 —— 表单行里的字不适用
+ * 「结构行只截断」那条(那条管的是一行一件的结构行,不是段落)。 */
+.hint {
+  font-size: var(--fs-nano);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+/*
+ * 错误行。**危险色只上字** —— 不铺底、不描边(状态色纪律)。
+ * 控件自己那一侧的错误表达是「边线转 danger」(ui/Input 的 invalid),
+ * 两处加起来恰好是一句完整的话:哪个控件错了 + 错在哪里。
+ */
+.error {
+  margin: 0;
+  font-size: var(--fs-micro);
+  color: var(--danger);
+}

@@ -1,0 +1,49 @@
+import s from './StatusDot.module.css'
+
+/**
+ * **一枚状态点**(09-01 批 2a 第 1 件,视觉词汇立件)。
+ *
+ * ── 它为什么是一件组件 ──────────────────────────────────────────────────
+ * 这枚点是本壳表达「一样东西现在处在什么状态」的**唯一**视觉出口:
+ * **状态色只上点,不换底、不上文字**(验收四轴第一条)。存量里同一个词
+ * (`.dot`)在 8 个 module.css 各画了一遍(`ui:consume` 的 `shared-vocab-css`
+ * 记着这笔账),于是「同一种东西在两块面里长得不一样」——6px 与 4px、
+ * 圆与方、有的还顺手给整行换了底色。收成一件之后,想让整块面变红的人
+ * 在这件上**找不到把手**:它只画一颗点。
+ *
+ * ── 无障碍:给不给 label 是两种用法,不是可选参数 ──────────────────────
+ * 点旁边**通常已经有文字**(名字 + 一行事实,ProviderRail 就是这样),
+ * 那时候点是纯装饰 —— 再给它一个 aria-label,读屏软件会把同一件事念两遍,
+ * 那是噪音。所以判据写死在这里:
+ *   · 旁边已有等价文字   → 不给 label → `aria-hidden`(默认档);
+ *   · 点是**唯一**的信息载体(一行里只有一颗点,没有任何文字说明状态)
+ *                        → 给 label → `role="img"` + `aria-label`。
+ * `role="img"` 而不是 `status`/`alert`:它是一张「当下什么样」的静态图,
+ * 不是一条会打断人的播报;真要播报状态变化,那是 `a11y/live-region` 的事。
+ *
+ * ── 三类状态(库件规格,收敛战役纪律)──────────────────────────────────
+ *   生命状态:无。它没有订阅、没有计时器、没有可变状态 —— 挂载即画,
+ *             卸载即无,所以也不需要 HMR dispose。
+ *   交互状态:无。**它不是控件**:不进 Tab 序、没有 hover/active/disabled。
+ *             一行的 hover 归那一行画,不归点画。
+ *   数据状态:五档 tone,各出一条独立配方(见 .module.css)。
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export type StatusDotTone = 'ok' | 'warn' | 'bad' | 'idle' | 'off'
+
+export interface StatusDotProps {
+  /** ok 正常 / warn 要注意 / bad 有错 / idle 还没配 / off 停用。 */
+  tone: StatusDotTone
+  /**
+   * 无障碍名。**只在这颗点是唯一信息载体时给** —— 旁边已经写着同一句话时
+   * 给它就是让读屏软件念两遍(判据见文件头)。文案归调用方,组件里不落字面。
+   */
+  label?: string
+  className?: string
+}
+
+export function StatusDot({ tone, label, className }: StatusDotProps) {
+  const cls = [s.dot, s[tone], className ?? ''].filter(Boolean).join(' ')
+  if (label === undefined) return <span className={cls} aria-hidden="true" />
+  return <span className={cls} role="img" aria-label={label} />
+}

@@ -1,0 +1,114 @@
+import { createContext, useContext, useId, useMemo } from 'react'
+import type { ReactNode } from 'react'
+import s from './Field.module.css'
+
+/**
+ * **表单行**(09-01 批 2a 第 4 件,视觉词汇立件)。
+ *
+ * 一行 = 标签 / 控件 / 说明 / 错误。四件事里有三件是**文字**,
+ * 唯一开放的那件(控件)走 children —— 与 Card 同一条判据(09-01 库自审立法):
+ * 项里装什么由消费方说了算的走复合 children,封闭集合才走数据表。
+ *
+ * ── 关联为什么走 context + hook,不走 cloneElement ──────────────────────
+ * `cloneElement` 那条路要求「children 恰好是一个元素、并且它把收到的
+ * id / aria-* 原样透传到真正的那个 <input> 上」。两个前提都不成立:
+ *  · 一格里常常是**两件**(输入框 + 一颗「测试连接」钮),单子假设当场破;
+ *  · 更坏的是**覆盖病**:注入的 props 与消费方自己写的同名 props 谁赢,
+ *    由 cloneElement 的合并次序决定 —— 这正是 Tooltip 刚修过的那一类
+ *    (09-01,`ui/Tooltip` 把 cloneElement 注入改掉的判例)。
+ * context + hook 把主动权交回消费方:它自己决定把这组 props 摊在哪一件上、
+ * 摊在自己的 props 之前还是之后。代价是**得记得调用**,所以这条写进
+ * `useFieldControlProps` 的注释里,规格页(dev/Gallery)也照这个用法演。
+ *
+ * ── 三类状态(库件规格)────────────────────────────────────────────────
+ *   生命状态:id 由 `useId` 一次性给,跨渲染稳定(重渲不换 id = label 的
+ *             htmlFor 不会指空);无订阅 / 无计时器 / 无模块级副作用 →
+ *             不需要 HMR dispose。`hint` / `error` 缺席时**那一格不渲染 DOM**
+ *             (不是渲染空壳:空壳会在 column flex 里多吃一个 gap,
+ *             一列表单行的行距就参差了)。
+ *   交互状态:这件自己**不是控件**,没有 rest/hover/focus/disabled ——
+ *             那些都归它装着的那件控件(ui/Input 等)。它管的是
+ *             error 在场 / 不在场时控件拿到的 aria 是不是跟着变。
+ *   数据状态:rest / 只有 hint / 只有 error / hint 与 error 并存
+ *             (并存时 aria-describedby 两个 id 都在,**错误排在前面** ——
+ *             读屏软件按顺序念,先说「错在哪」再说「该怎么填」)。
+ * ──────────────────────────────────────────────────────────────────────
+ */
+export interface FieldControlProps {
+  id?: string
+  'aria-describedby'?: string
+  'aria-invalid'?: true
+}
+
+/** 不在 Field 里时是一个空对象:摊上去等于什么都没发生,不抛、不警告。 */
+const EMPTY: FieldControlProps = {}
+
+const FieldContext = createContext<FieldControlProps>(EMPTY)
+
+/**
+ * 把这一格的 id / aria 关联摊到你自己的控件上:
+ *
+ * ```tsx
+ * function ApiKeyBox() {
+ *   const field = useFieldControlProps()
+ *   return <Input {...field} value={v} onValueChange={setV} />
+ * }
+ * ```
+ *
+ * **必须调用**:Field 的 `<label htmlFor>` 指的就是这里给的 id,不摊上去
+ * 那条 label 就指空了(点标签不聚焦、读屏软件读不出控件的名)。
+ * 在 Field 外调用是合法的 —— 拿到空对象,摊上去什么都不发生。
+ */
+export function useFieldControlProps(): FieldControlProps {
+  return useContext(FieldContext)
+}
+
+export interface FieldProps {
+  label: ReactNode
+  /** 弱色说明。 */
+  hint?: ReactNode
+  /** 错误。**危险色只上字不上底**;在场时控件同时拿到 aria-invalid。 */
+  error?: ReactNode
+  className?: string
+  children?: ReactNode
+}
+
+export function Field({ label, hint, error, className, children }: FieldProps) {
+  const base = useId()
+  const controlId = `${base}control`
+  const hintId = `${base}hint`
+  const errorId = `${base}error`
+
+  const hasHint = hint != null
+  const hasError = error != null
+
+  const control = useMemo<FieldControlProps>(() => {
+    // 错误排在 hint 前面:读屏软件按 describedby 的顺序念。
+    const described = [hasError ? errorId : null, hasHint ? hintId : null].filter(Boolean)
+    return {
+      id: controlId,
+      'aria-describedby': described.length ? described.join(' ') : undefined,
+      'aria-invalid': hasError ? true : undefined,
+    }
+  }, [controlId, errorId, hintId, hasError, hasHint])
+
+  return (
+    <div className={[s.field, className ?? ''].filter(Boolean).join(' ')}>
+      <label className={s.label} htmlFor={controlId}>
+        {label}
+      </label>
+      <FieldContext.Provider value={control}>{children}</FieldContext.Provider>
+      {/* 空槽不渲染 DOM —— 理由见文件头「生命状态」。 */}
+      {hasHint ? (
+        <span className={s.hint} id={hintId}>
+          {hint}
+        </span>
+      ) : null}
+      {hasError ? (
+        <p className={s.error} id={errorId}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  )
+}

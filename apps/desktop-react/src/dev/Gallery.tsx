@@ -4,6 +4,10 @@ import { Copy, Search, X, resolveIcon } from '../components/icons'
 import { AsyncButton } from '../ui/AsyncButton'
 import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
+import { Card } from '../ui/Card'
+import { Field, useFieldControlProps } from '../ui/Field'
+import { GroupHead } from '../ui/GroupHead'
+import { StatusDot } from '../ui/StatusDot'
 import { IconButton } from '../ui/IconButton'
 import { Splitter } from '../ui/Splitter'
 import { Checkbox } from '../ui/Checkbox'
@@ -84,6 +88,18 @@ const DENSITY = [
   { value: 'compact' as const, label: 'Compact' },
 ]
 
+/**
+ * Field 那一格的样本控件。它演的正是 Field 的关联契约:
+ * **消费方自己把 `useFieldControlProps()` 摊到控件上**(不是 Field 用
+ * cloneElement 硬塞 —— 理由写在 ui/Field.tsx 的文件头)。
+ * 摊在 value/onValueChange 之前:调用方永远保留最后一手覆盖权。
+ */
+function GalleryFieldInput() {
+  const field = useFieldControlProps()
+  const [value, setValue] = useState('')
+  return <Input {...field} value={value} onValueChange={setValue} placeholder="sk-…" />
+}
+
 export function Gallery() {
   const [text, setText] = useState('claude-fable-5')
   const splitRef = useRef<HTMLDivElement>(null)
@@ -96,6 +112,7 @@ export function Gallery() {
   const [tab, setTab] = useState<string | null>('files')
   const [density, setDensity] = useState<'cozy' | 'compact'>('cozy')
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
+  const [collapsed, setCollapsed] = useState(true)
   const [dialog, setDialog] = useState(false)
   const [answer, setAnswer] = useState<string>('—')
   const confirm = useConfirm()
@@ -296,6 +313,78 @@ export function Gallery() {
         <Badge tone="danger">3</Badge>
         <Badge tone="ok">✓</Badge>
         <Badge tone="unread">12</Badge>
+      </Section>
+
+      {/*
+       * ── 批 2a 立的四件「视觉词汇」(09-01)──────────────────────────────
+       * 它们不是新控件,是把存量里各画各的那几个词收成一件:状态点 8 产地、
+       * 卡 7 产地、组头 4 产地、表单行 2 产地(`ui:consume` 的 shared-vocab-css
+       * 记着这笔账)。规格页在这里把每一档摊平并排 —— 收编(批 2b)时,
+       * 这一屏就是「迁移前后该长得一模一样」的那张对照表。
+       */}
+      <Section name="StatusDot">
+        <StatusDot tone="ok" />
+        <StatusDot tone="warn" />
+        <StatusDot tone="bad" />
+        <StatusDot tone="idle" />
+        <StatusDot tone="off" />
+        <StatusDot tone="bad" label="Auth failed" />
+        <Note>ok / warn / bad / idle / off;旁边已有文字就不给 label(给了会被念两遍)</Note>
+      </Section>
+
+      <Section name="GroupHead">
+        <div className={s.wide}>
+          <GroupHead label="CLOUD" />
+          <GroupHead label="anthropic/" note="12 models" collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+          <GroupHead label="openai/" note="filtered open — cannot collapse while searching" collapsed={false} disabled onToggle={() => {}} />
+        </div>
+        <Note>静态 / 可折叠(▾▸ + aria-expanded)/ 禁用;note 是文字读数,不是计数徽</Note>
+      </Section>
+
+      <Section name="Card">
+        <div className={s.cell}>
+          <Card>Body only — no header row is rendered at all.</Card>
+        </div>
+        <div className={s.cell}>
+          <Card title="Usage" note="cached 3m ago">
+            Body sits under the title row.
+          </Card>
+        </div>
+        <div className={s.cell}>
+          <Card title="Mode" note="Subscription mode does not use an API key." notePlacement="below">
+            Body sits under the note.
+          </Card>
+        </div>
+        <div className={s.cell}>
+          <Card title="Crash" pad="lg" bordered={false} titleAs="h4">
+            pad lg, no border, h4.
+          </Card>
+        </div>
+        <Note>空槽不渲染 DOM;卡不是控件 —— 整张可点的那一形归 ButtonBase</Note>
+      </Section>
+
+      <Section name="Field">
+        <div className={s.cell}>
+          <Field label="API key">
+            <GalleryFieldInput />
+          </Field>
+        </div>
+        <div className={s.cell}>
+          <Field label="Base URL" hint="Ends with /v1">
+            <GalleryFieldInput />
+          </Field>
+        </div>
+        <div className={s.cell}>
+          <Field label="Base URL" error="Not a valid URL.">
+            <GalleryFieldInput />
+          </Field>
+        </div>
+        <div className={s.cell}>
+          <Field label="Base URL" hint="Ends with /v1" error="Not a valid URL.">
+            <GalleryFieldInput />
+          </Field>
+        </div>
+        <Note>控件经 useFieldControlProps() 拿 id / aria-describedby / aria-invalid</Note>
       </Section>
 
       <Section name="Kbd">

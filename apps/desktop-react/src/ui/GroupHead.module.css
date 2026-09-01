@@ -1,0 +1,63 @@
+/*
+ * 列表分组头。两形共用同一份皮肤 —— 静态组头与可折叠组头**长得一模一样**,
+ * 唯一的差别是可折叠那一形前面多一枚 caret、并且它是个 <button>。
+ * 这是有意的:同一份列表里两种组头交替出现(ModelCatalog 的「已选置顶」是静态、
+ * 厂牌组是可折叠),如果两形长得不同,那条列表读起来就是两套结构。
+ *
+ * 皮肤刻意**不含底色、不含边线、不含 sticky**:
+ *  · 底色与 sticky 归**滚动容器**说了算(ModelCatalog 的组头要粘在详情栏上并且
+ *    补一块 --surface-2 挡住底下滚过去的行;Overview 的组头透明不粘底),
+ *    那是落点的事实,不是组头的事实 —— 由消费方经 className 给;
+ *  · 边线同理:ModelCatalog 的组头有下边线(表格里的一条轨),ProviderRail 没有。
+ * 这条界线是 2b 收编能不能迁得动的关键,所以写在这里而不是等出了事再说。
+ */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  text-align: left;
+}
+
+/* caret 定宽:开合时组名不许左右跳(▾ 与 ▸ 的字宽本来就不同)。 */
+.caret {
+  flex: none;
+  width: var(--group-caret-w);
+}
+
+/*
+ * 挤压纪律(律一):一行恰有一个弯腰件,而它**不是组名**。
+ * 组名 `flex: 0 1 auto` —— 可缩但不去抢剩余空间;读数 `flex: 1 1 auto` ——
+ * 剩余空间归它,挤起来它先让。两者都 min-width: 0 + 单行省略号:
+ * **结构行只截断不换行**(长组名折行压住右边读数是 08-30 真机报过的病)。
+ */
+.label {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 右侧弱色读数。**它是文字不是徽** —— 计数禁令:组头不挂计数徽。 */
+.note {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * 禁用态。判例:ModelCatalog 检索时组是被**判据**打开的,不是用户打开的 ——
+ * 那一刻这颗钮点了不该把它关上,于是它禁着,但**仍然要看得见组名**。
+ * 所以这里降的是不透明度里最轻的一档,而不是把字换成灰:
+ * 禁用说的是「现在按不动」,不是「这行不重要」。
+ */
+.head:disabled {
+  opacity: var(--btn-disabled-o);
+}

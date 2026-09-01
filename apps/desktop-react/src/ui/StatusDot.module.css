@@ -1,0 +1,40 @@
+/*
+ * 一枚状态点。**整份配方只有几何 + 一格底色** —— 这正是它存在的理由:
+ * 状态色只上点,不上文字、不上底(四轴第一条)。所以这里没有 border、
+ * 没有 background 以外的任何着色出口,想让一整块面「变红」的人在这件上找不到把手。
+ */
+.dot {
+  flex: none;
+  display: inline-block;
+  width: var(--status-dot);
+  height: var(--status-dot);
+  border-radius: var(--r-full);
+}
+
+/*
+ * 五档各是一条独立规则,不是「基类 + 换色」:每一档指的是一个**事实**
+ * (ok 正常 / warn 要注意 / bad 有错 / idle 还没配 / off 停用),
+ * 它接哪一枚色 token 是这张表说了算,不许在消费面上覆盖。
+ *
+ * idle 与 off 刻意不用状态色族:「还没配」和「停用」都不是状态告警,
+ * 它们是**缺席**——所以一个用最淡的一档墨(--text-4),一个用结构线色(--line-2)。
+ */
+.ok {
+  background: var(--ok);
+}
+
+.warn {
+  background: var(--warn);
+}
+
+.bad {
+  background: var(--danger);
+}
+
+.idle {
+  background: var(--text-4);
+}
+
+.off {
+  background: var(--line-2);
+}
