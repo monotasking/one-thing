@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { useFocusTrap } from './a11y/focus-trap'
+import { useFloatDismiss, useFloatPosition } from './float'
 import s from './Popover.module.css'
 
 /**
@@ -41,38 +42,13 @@ interface PopoverProps {
 
 export function Popover({ x, y, onClose, label, children, testId }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
-  const [pos, setPos] = useState({ left: x, top: y })
 
   useFocusTrap(ref, true)
 
-  // 先按锚点画一帧,量到真实尺寸后在同一帧内 clamp 回视口内 —— 与 Menu 逐字同一条。
-  useLayoutEffect(() => {
-    const el = ref.current
-    if (!el) return
-    setPos({
-      left: Math.max(0, Math.min(x, window.innerWidth - el.offsetWidth)),
-      top: Math.max(0, Math.min(y, window.innerHeight - el.offsetHeight)),
-    })
-  }, [x, y])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // 退得动就把这一下吃掉,否则同一下 Esc 会顺手把浮层底下那块面也收掉。
-      // 契约与判例见 components/useEscapeChain(Menu / Dialog 同款)。
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      onClose()
-    }
-    const onDown = (e: PointerEvent) => {
-      if (!ref.current?.contains(e.target as Node)) onClose()
-    }
-    window.addEventListener('keydown', onKey, true)
-    window.addEventListener('pointerdown', onDown)
-    return () => {
-      window.removeEventListener('keydown', onKey, true)
-      window.removeEventListener('pointerdown', onDown)
-    }
-  }, [onClose])
+  // 定位(按锚点画一帧、量到身量后同帧 clamp)、Esc 关、点外关三件与 Menu 同源:
+  // 行为与判例见 ui/float。
+  const pos = useFloatPosition(ref, { kind: 'point', x, y })
+  useFloatDismiss(ref, onClose)
 
   return createPortal(
     <div

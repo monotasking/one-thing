@@ -274,3 +274,16 @@ export function ToastHost({ closeLabel, moreText, onMore }: ToastHostProps = {})
     document.body,
   )
 }
+
+/*
+ * 热更退役(09-01 立法)。这个模块在作用域里养着 `clocks`,而每一条秒表就是一个
+ * 活着的 setTimeout —— 换掉这个模块时它们不会跟着走,到点还会去戳**旧那一份** hub,
+ * 于是屏幕上的 toast 与计时各说各话。寿命 = 这个模块实例,所以要 dispose。
+ * 拆卸复用既有的那一口 `forget`(不写第二套);键先拷成数组再遍历,因为 forget 会
+ * 删表。幂等:表空了跑一遍什么都不做。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    for (const id of [...clocks.keys()]) forget(id)
+  })
+}

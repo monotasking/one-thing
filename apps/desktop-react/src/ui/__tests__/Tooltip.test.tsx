@@ -94,6 +94,66 @@ describe('Tooltip:延迟出现,离开即收', () => {
     expect(tip()).toBeTruthy()
   })
 
+  /*
+   * cloneElement 注入同名 prop 会**静默覆盖**孩子原本那一个 —— 这个模式的经典缺陷:
+   * 一颗自己就要听悬停的按钮包进 Tooltip 之后,它那一手再也不响,不报错、不警告。
+   * 09-01 改成组合(先孩子、后自己),这两条钉的就是它。
+   */
+  it('孩子自带的 onMouseEnter 照常响,提示也照常出 —— 注入是组合,不是覆盖', () => {
+    const theirs = vi.fn()
+    render(
+      <Tooltip content="hint">
+        <button type="button" onMouseEnter={theirs}>
+          anchor
+        </button>
+      </Tooltip>,
+    )
+    fireEvent.mouseOver(screen.getByText('anchor'))
+    expect(theirs).toHaveBeenCalledTimes(1)
+
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    expect(tip()?.textContent).toBe('hint')
+  })
+
+  it('孩子自带的 ref 照常拿到节点(锚点 ref 与它并存)', () => {
+    const theirs = vi.fn()
+    render(
+      <Tooltip content="hint">
+        <button type="button" ref={theirs}>
+          anchor
+        </button>
+      </Tooltip>,
+    )
+    // 拿到的就是屏幕上那颗钮 —— 而提示照旧能出(说明我们自己那一份 ref 也接到了)。
+    expect(theirs).toHaveBeenCalledWith(screen.getByText('anchor'))
+
+    fireEvent.mouseOver(screen.getByText('anchor'))
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    expect(tip()?.textContent).toBe('hint')
+  })
+
+  it('孩子自带的 onMouseLeave / onFocus / onBlur 同样不被吞', () => {
+    const leave = vi.fn()
+    const focus = vi.fn()
+    const blur = vi.fn()
+    render(
+      <Tooltip content="hint">
+        <button type="button" onMouseLeave={leave} onFocus={focus} onBlur={blur}>
+          anchor
+        </button>
+      </Tooltip>,
+    )
+    const anchor = screen.getByText('anchor')
+
+    fireEvent.mouseOut(anchor)
+    fireEvent.focus(anchor)
+    fireEvent.blur(anchor)
+
+    expect(leave).toHaveBeenCalledTimes(1)
+    expect(focus).toHaveBeenCalledTimes(1)
+    expect(blur).toHaveBeenCalledTimes(1)
+  })
+
   it('挂在 body 上,不留在锚点里(浮层一律 portal)', () => {
     const { container } = render(
       <Tooltip content="hint">

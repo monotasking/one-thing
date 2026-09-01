@@ -34,6 +34,8 @@
   - 唯一原语 `src/ui/a11y/list-selection`(`useListSelection`:受控/自持、走法、夹范围、`rowRef` 滚入视野;键表与 `a11y/roving` 同源)。焦点**真的落在项上**的那一族(菜单/tab 条/分段器)照旧用 `a11y/roving`——它的当前项就是 `document.activeElement`,压根没有第二个下标可被污染。
   - 执法:`npm run ui:consume` 的 `kbd-select-hover` / `kbd-select-handwritten` 两条;反证测试见 `src/ui/__tests__/list-selection.test.tsx`(mouseenter 后 active 不变、scrollIntoView 后 active 不跳),消费面各自还有一份(`palette.test.tsx` / `Composer.test.tsx`)。
 - **裸 `<button>` 三类判**(`ui:consume` 的 `bare-button-*`):①文字动作钮→`ui/Button`·`AsyncButton`;②图标钮→`ui/IconButton`;③结构性交互件(瓦/卡/行/琴键/选项,视觉本该定制)→**不违例但不许裸着**,消费 `ui/ButtonBase`(只清 UA、`:where()` 压零特异性,一个像素都不画,焦点环仍走全局)。
+- **库件 API 两种风格,判据是集合开不开放(09-01 库自审立法)**:选项是**封闭集合、行形态统一**的件走数据表驱动(`options`/`items` 数组 —— Select/Segmented/Tabs);项里装什么**由消费方决定、形态开放**的件走复合 children(Menu 族/RadioGroup)。新库件先答「项的内容谁说了算」再定 API 形状;两种混用(既收表又收 children)禁止。
+- **浮层行为单产地 = `ui/float`(09-01 库自审立法)**:Esc 捕获相位认领关闭、点外关、定位与跟随三件事只许经 `useFloatDismiss`/`useFloatPosition`,库件与业务面一律禁止手写(判例:Menu 与 Popover 曾各抄一份,Esc 认领那条判例修过三轮,产地越多越漂)。定位两档的裁定:**矩锚跟滚**(rect 档,贴着元素的浮层 —— Select 面板/Tooltip —— 滚动/resize 时跟随锚点重定位),**点锚不跟滚**(point 档,光标坐标开出的右键菜单滚动时维持原位,变更此裁定须再拍板);两档都在 resize 时重 clamp 进视口。
 
 ## 快捷键三层(09-01 立法,报障「快捷键要分清局部和全局」)
 
