@@ -43,6 +43,25 @@ export interface StreamDeltaStamp {
   charOffset: number
   /** 换代号。R1 恒 0。 */
   gen: number
+  /**
+   * 开这一段时引擎的**回合号**(`CoreAgentLoopExecutorState.turnIndex` 的镜像)。
+   *
+   * ── 为什么不能用上面那个 `requestIndex` 代替(09-02 真机回归的根因)────────
+   * 两个是**不同的计数器**:`requestIndex` 在 `turn-start` 上发号(一次请求一个),
+   * 而引擎的回合号还会在每一条 tool-calls finish 上 +1。工具锚点
+   * (`data-steps{turnIndex}`)排的是**回合号**,所以壳拿 `requestIndex` 排不出来。
+   *
+   * 少了这一格的后果不是「排得不够准」,是**排反**:壳把活水位那一段插进
+   * contentParts 时说不出它属于哪一回合,`partTurn` 按 `?? 0` 兜底,
+   * `insertDataStepsByTurn` 于是判定「所有锚点的回合都大于这一段」,把整批工具
+   * **挂到了它后面** —— 屏幕上就是「新推理在上、已经做完的工具在下」。
+   * 真机读数(无正文的多请求素材,6 字/帧):新推理 321/383 帧排在所有工具之前,
+   * 直到账本物化才跳回正确位置。
+   *
+   * 可选是**加性字段**的纪律(R1):没盖这一格的旧路 / 旁路照旧,壳拿不到就退回
+   * 从前的行为(账本的座位说了算)。
+   */
+  turnIndex?: number
 }
 
 export interface TextDeltaChunk extends StreamChunkBase {

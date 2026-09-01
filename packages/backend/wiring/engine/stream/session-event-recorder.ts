@@ -634,6 +634,9 @@ export function createSessionEventRecorder(
           kind: part.kind === 'tool-input' ? 'tool-input' : part.kind === 'reasoning' ? 'reasoning' : 'text',
           charOffset: part.text.length,
           gen: 0,
+          // 回合号与 `requestIndex` 是两个计数器(理由写在 `StreamDeltaStamp` 上)。
+          // 它就在手边 —— 下面那句 `foldLiveSessionLogicalDelta` 递的是同一个值。
+          turnIndex: part.turnIndex,
         },
       })
       // part-end 的 len/hash 从这份累计来。

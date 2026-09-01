@@ -4,6 +4,7 @@ import {
   reduceSessionProjection,
 } from '@onething/core/session/projection/reducer'
 import { __countMemoMisses, materializeChatMessagesCached, trimToGraphemeBoundary } from './chat-materialize'
+import { StreamWater } from './stream-water'
 
 /**
  * 增量物化的四条守卫(09-01 P0)。钉的是**引用契约**,不是值:下游(MessageRow
@@ -124,5 +125,35 @@ describe('字素边界:半个字不画', () => {
   it('正常文本一个字都不动(空串也不炸)', () => {
     expect(trimToGraphemeBoundary('普通的一段话')).toBe('普通的一段话')
     expect(trimToGraphemeBoundary('')).toBe('')
+  })
+})
+
+/**
+ * **活水位那一段的回合号**(09-02 R3 浸泡第二轮取证的修法)。
+ *
+ * 工具锚点(`data-steps{turnIndex}`)按回合号排。流式期那一段在账本里**还没有座位**,
+ * 从前于是把回合号整个丢掉 —— `partTurn` 按 `?? 0` 兜底,`insertDataStepsByTurn`
+ * 判定「所有工具锚点的回合都大于这一段」,把整批已经做完的工具挂到了它**后面**。
+ * 屏幕上就是用户报的那一形:思考块在流,而它下面立着刚做完的工具调用。真机读数
+ * (无正文的多请求素材,6 字/帧):新推理 321/383 帧排在所有工具之前。
+ *
+ * 修法是让水位那一段把章上的回合号带出来。这条用例钉的就是那一格 ——
+ * 把 `turnIndex` 从 `mergeWater` 的 cell 上拿掉,它当场红。
+ */
+describe('活水位插进 contentParts 的那一段带着回合号', () => {
+  it('账本没有座位时,回合号取章上那一格', () => {
+    const state = fold(baseLedger())
+    const water = new StreamWater()
+    water.feed(
+      { messageId: 'a2', runId: 'r2', requestIndex: 1, partIndex: 3, kind: 'reasoning', charOffset: 0, gen: 0, turnIndex: 2 },
+      '工具结果之后新到的推理',
+    )
+    const { messages } = materializeChatMessagesCached(state, OPTS, 0, water)
+    const target = messages.find((m) => m.id === 'a2')
+    const part = (target?.contentParts ?? []).find(
+      (p) => (p as { partIndex?: number }).partIndex === 3,
+    ) as { type?: string; turnIndex?: number } | undefined
+    expect(part?.type).toBe('reasoning')
+    expect(part?.turnIndex).toBe(2)
   })
 })

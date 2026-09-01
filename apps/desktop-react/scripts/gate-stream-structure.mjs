@@ -193,6 +193,9 @@ const TOKENS = {
   table: ['TKW1', 'TKW2', 'TKI1'],
   monster: ['TKM1', 'TKM2', 'TKM3'],
   nested: ['TKN1', 'TKN2', 'TKN3'],
+  reasontool: ['TKR1', 'TKR2'],
+  // 无正文变体:用户截图的真形(推理直接接工具,整条消息一个字正文都没有)。
+  reasonbare: ['TKR1', 'TKR2'],
 }
 
 /**
@@ -347,6 +350,94 @@ const NESTED_SCRIPT = [
   ['content', '> 引用套引用 TKN3:\n>\n> > 里面这一层小一号。\n\n收尾一句 `行内代码`。\n'],
 ]
 
+/**
+ * 素材八:**工具结果之后新到的推理**(R3 浸泡首单第二轮取证,用户反证词)。
+ *
+ * 用户对「甲」的反证:「思考确实还在继续 —— 我截图那一刻它在流,工具调用确实在它
+ * 下面」。上一轮的取证有一格没盖住:证了记号住在**思考件**里(T)、既有段不搬家
+ * (A/B),但**没有证过新推理开在哪个位置** —— 若第二段推理被并进上方那个既有思考
+ * 段(`message.reasoning` 是顶部推理字段,永远画在消息顶),上面每一条断言照样绿,
+ * 病却在。
+ *
+ * 所以这条素材是**真实多请求回合**(engine 的 requestIndex 真的往前走,不是一个请求
+ * 里连着说两段推理):
+ *
+ *   请求 1:推理(1) TKR1 → 正文 → 两次工具调用
+ *   请求 2:**推理(2) TKR2(几百字慢流)** → 又一次工具调用   ← 用户截图的那一刻
+ *   请求 3:收尾正文
+ *
+ * 并存窗口因此足够长(推理(2) 三百字往上,6 字/帧 ≈ 2.3 秒),而且它上面有一次工具、
+ * 下面还会长出一次 —— 与用户截图里「think 还在,下面有一个工具调用」逐格对上。
+ */
+const REASON_LONG = [
+  '第二段推理 TKR2。工具结果回来了,现在要想清楚下一步写什么。',
+  '这一段故意写得长:几百字慢流才撑得开并存窗口,而并存窗口正是用户截图的那一刻 ——',
+  '推理还在往下长,而工具调用行已经在它下面立着。',
+  '甲乙丙丁戊己庚辛壬癸,子丑寅卯辰巳午未申酉戌亥,天地玄黄宇宙洪荒,日月盈昃辰宿列张,',
+  '寒来暑往秋收冬藏,闰余成岁律吕调阳,云腾致雨露结为霜,金生丽水玉出昆冈,',
+  '剑号巨阙珠称夜光,果珍李柰菜重芥姜,海咸河淡鳞潜羽翔,龙师火帝鸟官人皇。',
+  '再补一段,确保这一请求的推理跨过打包闸,让账本至少物化一次,把「行内推理在流式期',
+  '画不出来、顶部字段是唯一出口」那条嫌疑真正暴露在采样窗里。',
+].join('')
+
+const REASON_TOOL_TURNS = {
+  1: async ({ say, callTool, finish }) => {
+    await say('reasoning', '第一段推理 TKR1。先想清楚要做什么,这一段要长到跨过打包闸:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥,天地玄黄宇宙洪荒日月盈昃辰宿列张。想完之后我要查一次时间。')
+    await say('content', '我先查两次时间。\n')
+    /*
+     * **两次**调用不是随口写的:mock 的轮次派发按「已经回来了几条 tool 消息」算
+     * (与真实 agent-loop 同口径,见 startMockProvider),0 条 → 第 1 轮、≤2 条 → 第 2 轮、
+     * 更多 → 第 3 轮。turn 1 只发一次调用的话,turn 2 发完自己那一次仍只有 2 条 tool
+     * 消息 —— **第 2 轮会被跑第二遍**,推理(2) 于是真的被说了两遍,H 条(零双画)当场
+     * 红在素材自己身上。第一版就踩了这个坑,记在这里。
+     */
+    await callTool(0, 'call_r1a', 'time', '{"action":"now","timezone":"Asia/Shanghai","format":"iso8601"}')
+    await callTool(1, 'call_r1b', 'time', '{"action":"now","timezone":"UTC","format":"iso8601"}')
+    finish('tool_calls')
+  },
+  2: async ({ say, callTool, finish }) => {
+    // ★ 用户现场:工具结果之后**新到**的推理,而且它下面还会再长出一次工具调用。
+    await say('reasoning', REASON_LONG)
+    await callTool(0, 'call_r2', 'time', '{"action":"now","timezone":"America/New_York","format":"iso8601"}')
+    finish('tool_calls')
+  },
+  3: async ({ say, finish }) => {
+    await say('content', '\n三次时间都拿到了,收尾一句 `行内代码`。\n')
+    finish('stop')
+  },
+}
+
+/**
+ * 素材九:**一个字正文都没有**的多请求回合(用户截图的真形)。
+ *
+ * 用户那条消息里看不到正文 —— 推理之后直接就是 `write` 工具(264 lines)。这一格
+ * 单独立出来,是因为**引擎判「顶部推理」的判据正是「这一轮还没有任何可见活动」**
+ * (`getAgentLoopReasoningPlacement`:`turnIndex === 1 && 正文为空 && 本轮无可见活动`
+ * → `top`,否则 `inline`)。素材八的第一轮里有一句正文,恰好把这条判据的边界让过去了;
+ * 这一格把正文全部拿掉,让第一轮的推理**真的**落在 `top`,再看第二轮的推理站在哪儿。
+ *
+ * 旧路(`--r2=off`)在这一格上还多一条兜底(`placement ?? (有正文 ? inline : top)`),
+ * 新路没有(缺席即 inline)—— 两条路的判据在这一格上第一次不一样,所以两条都要跑。
+ */
+const REASON_BARE_TURNS = {
+  1: async ({ say, callTool, finish }) => {
+    // ★ 一个字正文都不发 —— 直接推理 → 工具。
+    await say('reasoning', '第一段推理 TKR1。这条消息一个字正文都不会有,想完直接调工具:甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥,天地玄黄宇宙洪荒日月盈昃辰宿列张。')
+    await callTool(0, 'call_b1a', 'time', '{"action":"now","timezone":"Asia/Shanghai","format":"iso8601"}')
+    await callTool(1, 'call_b1b', 'time', '{"action":"now","timezone":"UTC","format":"iso8601"}')
+    finish('tool_calls')
+  },
+  2: async ({ say, callTool, finish }) => {
+    await say('reasoning', REASON_LONG)
+    await callTool(0, 'call_b2', 'time', '{"action":"now","timezone":"America/New_York","format":"iso8601"}')
+    finish('tool_calls')
+  },
+  3: async ({ say, finish }) => {
+    await say('content', '\n三次时间都拿到了。\n')
+    finish('stop')
+  },
+}
+
 const CASES = {
   think: { tools: false, pieces: [6, 2] },
   tool: { tools: true, pieces: [6, 2] },
@@ -360,6 +451,8 @@ const CASES = {
   // 节拍放慢到 25ms:这条素材短(450 字符上下),太快会让采样帧数贴着「>100 帧」
   // 那条门槛,读数余量不够。
   nested: { tools: false, pieces: [7], delayMs: 25, script: NESTED_SCRIPT, rowSafe: true },
+  reasontool: { tools: true, pieces: [6], turns: REASON_TOOL_TURNS },
+  reasonbare: { tools: true, pieces: [6], turns: REASON_BARE_TURNS },
 }
 
 const TRIGGER = 'STREAM_STRUCTURE_GATE'
@@ -855,6 +948,24 @@ function coexistWindow(frames) {
   return { frames: rows.length, expanded }
 }
 
+/**
+ * **一个记号此刻的文档序位置,以及它前面有几件工具**(R3 第二轮取证)。
+ *
+ * `markCoats` 只答「穿的哪件衣服」,答不了「站在哪儿」——而这一单要分的恰恰是站位:
+ * 新推理**开在工具行之后**(对),还是被并进消息顶那个既有思考段(错,那样它永远
+ * 排在所有工具之前)。判据因此是**它的宿主前面有没有工具件**。
+ */
+function markPlace(frames, tokenIndex) {
+  const rows = []
+  for (const frame of frames) {
+    const at = frame.s.findIndex(item => (item.mk ?? []).includes(tokenIndex))
+    if (at < 0) continue
+    const toolsBefore = frame.s.slice(0, at).filter(b => b.k === 'tool').length
+    rows.push({ t: frame.t, at, toolsBefore, id: frame.s[at].id, k: frame.s[at].k, n: frame.s[at].n })
+  }
+  return rows
+}
+
 /** A:思考块的条数只增不减。 */
 function findThinkVanished(frames) {
   const out = []
@@ -1254,6 +1365,61 @@ async function runCell({ record, page, kind, piece, index }) {
       )
     }
     assert(true, `M 表成形之后再没退回裸文本(收尾是 ${trail.last})`)
+    return
+  }
+
+  if (kind === 'reasontool' || kind === 'reasonbare') {
+    /*
+     * ── U:**工具结果之后新到的推理,必须开在工具行之后** ────────────────────
+     *
+     * 用户反证词的那一格。两条断言从两侧夹同一件事:
+     *  U1 站位:推理(2) 的宿主前面**必须**至少有一件工具(它是第二个请求的东西,
+     *     而第一个请求的工具调用早就落地了);
+     *  U2 旧段零增长:推理(2) 一上屏,推理(1) 那个 DOM 节点的文本长度**一个字都不许再涨**
+     *     —— 涨了就说明新推理被并进了旧段(顶部推理字段那条路)。
+     */
+    const one = markPlace(frames, 0)
+    const two = markPlace(frames, 1)
+    console.log(`  【U】推理(1) TKR1:${one.length} 帧,位次 ${[...new Set(one.map(r => r.at))].join('/')},前置工具 ${[...new Set(one.map(r => r.toolsBefore))].join('/')}`)
+    console.log(`  【U】推理(2) TKR2:${two.length} 帧,位次 ${[...new Set(two.map(r => r.at))].join('/')},前置工具 ${[...new Set(two.map(r => r.toolsBefore))].join('/')}`)
+    const win = coexistWindow(frames)
+    console.log(`  【U】并存窗口 ${win.frames} 帧;思考块 aria-expanded:${[...win.expanded].map(([k, n]) => `${k}×${n}`).join(' / ')}`)
+
+    assert(two.length > 0, `U 推理(2) 上过屏(${two.length} 帧)`)
+    assert(one.length > 0, `U 推理(1) 上过屏(${one.length} 帧)`)
+
+    const sameHost = two.filter(r => one.some(o => o.id === r.id && o.t === r.t))
+    if (sameHost.length > 0) {
+      throw new Error(
+        `断言失败:U 推理(2) 与推理(1) 住在**同一个**思考件里 ${sameHost.length} 帧` +
+        '\n  —— 病的形:工具结果之后新到的推理被并进了消息顶那个既有思考段' +
+        '(message.reasoning 是顶部推理字段,永远画在消息顶),于是屏幕上「think 还在,' +
+        '下面有一个工具调用」——而它本该开在工具行之后',
+      )
+    }
+    assert(true, 'U 推理(2) 与推理(1) 不是同一个思考件(新推理另开了一段)')
+
+    const noToolBefore = two.filter(r => r.toolsBefore === 0)
+    if (noToolBefore.length > 0) {
+      const f = noToolBefore[0]
+      throw new Error(
+        `断言失败:U1 推理(2) 有 ${noToolBefore.length} 帧排在所有工具**之前**` +
+        `(首帧 t=${f.t}ms 位次 ${f.at},前置工具 0)` +
+        '\n  —— 它是第二个请求的东西,第一个请求的工具调用早该在它上面',
+      )
+    }
+    assert(true, `U1 推理(2) 全程开在工具行之后(${two.length} 帧,前置工具 ≥1)`)
+
+    const firstTwo = two[0].t
+    const oneAfter = one.filter(r => r.t >= firstTwo)
+    const grew = oneAfter.length > 1 && oneAfter[oneAfter.length - 1].n > oneAfter[0].n
+    if (grew) {
+      throw new Error(
+        `断言失败:U2 推理(2) 上屏之后,推理(1) 那一段还在涨(${oneAfter[0].n} → ${oneAfter[oneAfter.length - 1].n} 字)` +
+        '\n  —— 新推理被追加进了旧段',
+      )
+    }
+    assert(true, `U2 推理(2) 上屏后推理(1) 零增长(${oneAfter.length} 帧,恒 ${oneAfter[0]?.n} 字)`)
     return
   }
 

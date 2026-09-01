@@ -191,10 +191,23 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
     const seat = byIndex.get(part.partIndex)
     const ledgerLength = seat?.content?.length ?? 0
     if (ledgerLength >= part.length) continue // 账本已经追平:水位这一格无话可说
+    /*
+     * **回合号:座位优先,座位缺席时用章上那一格**(09-02 真机回归的修法)。
+     *
+     * 账本已经有座位时以座位为准(账本是事实);而**流式期这一段还没有座位** ——
+     * 从前那一句于是把回合号整个丢掉,`partTurn` 按 `?? 0` 兜底,
+     * `insertDataStepsByTurn` 判定「所有工具锚点的回合都大于这一段」,把整批已经
+     * 做完的工具挂到了这段新推理**后面**。屏幕上就是用户报的那一形:思考块在流,
+     * 而它下面立着刚做完的工具调用。
+     *
+     * 一整条正文都没有的消息(推理 → 直接调工具)最容易踩到:账本那时连一个
+     * content part 都没有,没有任何一格能替它说出回合。
+     */
+    const turnIndex = seat?.turnIndex ?? part.turnIndex
     const cell = {
       type: part.kind === 'reasoning' ? 'reasoning' : 'text',
       content: trimToGraphemeBoundary(part.text()),
-      ...(seat?.turnIndex !== undefined ? { turnIndex: seat.turnIndex } : {}),
+      ...(turnIndex !== undefined ? { turnIndex } : {}),
       partIndex: part.partIndex,
     }
     if (!changed) { parts = [...ledger]; changed = true }

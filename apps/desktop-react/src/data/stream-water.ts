@@ -28,6 +28,11 @@ interface WaterPart {
   kind: StreamDeltaStamp['kind']
   /** 推理段的落点(流自己说的);另两种没有这一格。 */
   placement?: 'top' | 'inline'
+  /**
+   * 开这一段时引擎的回合号(章上带着)。工具锚点按它排 —— 少了它,活水位那一段
+   * 会被判成第 0 回合,整批工具挂到它后面(09-02 真机回归,理由在 `StreamDeltaStamp`)。
+   */
+  turnIndex?: number
   /** 分块攒着,不每帧拼(审查条 5)。 */
   chunks: string[]
   /** 已收到的字符数(= 下一条 delta 该来的偏移)。 */
@@ -83,6 +88,8 @@ export interface WaterPartView {
   partIndex: number
   kind: StreamDeltaStamp['kind']
   placement?: 'top' | 'inline'
+  /** 这一段属于哪一回合(章上带的),物化时要拿它给工具锚点排序。 */
+  turnIndex?: number
   length: number
   text(): string
 }
@@ -113,6 +120,7 @@ export class StreamWater {
       message.parts.set(key, {
         kind: stamp.kind,
         ...(placement ? { placement } : {}),
+        ...(stamp.turnIndex !== undefined ? { turnIndex: stamp.turnIndex } : {}),
         chunks: [text],
         length: text.length,
       })
@@ -143,6 +151,7 @@ export class StreamWater {
         partIndex: partIndexOf(key),
         kind: part.kind,
         ...(part.placement ? { placement: part.placement } : {}),
+        ...(part.turnIndex !== undefined ? { turnIndex: part.turnIndex } : {}),
         length: part.length,
         text: () => joinPart(part),
       })
