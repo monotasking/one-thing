@@ -157,6 +157,15 @@ export function Overview() {
      * 为了「网格是二维的」把它抢走,代价是搜索条里没法改词。所以口径定成:
      * 纵向交接、横向留给光标 —— 交接之后焦点在网格上,四个方向才一起归导航。
      */
+    /*
+     * ui-consume-allow: kbd-select-handwritten —— 这里**没有一份走行**可迁。
+     * 规则的判据是「文件里出现 'ArrowDown' 字面量却没 import a11y 原语」,
+     * 而这块面里那两个字面量的全部工作是 `focusGrid() + blur()`:把键盘交给网格,
+     * 一格下标都不动(用例逐字钉着 ——「交接那一下只点亮锚点,不顺手再走一步」)。
+     * 真正的走行在 ExposeView 上,那是**二维网格**(←→↑↓ 四向 + 按列宽换行),
+     * 与 useListSelection 管的一维候选列表不是同一种形,迁法要单独设计,
+     * 它自己也仍在别批的避让区里 —— 所以本批不硬迁,如实记一笔。
+     */
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
       useExposeStore.getState().focusGrid()

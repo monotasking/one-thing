@@ -6,6 +6,7 @@ import { useFilesSource, useSessionCwd } from '../../data/files-source'
 import { useExposeStore } from '../../expose/store'
 import { Highlight } from '../../expose/components/Highlight'
 import { useSessionTime } from '../../expose/components/session-time'
+import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Input } from '../../ui/Input'
 import { Segmented } from '../../ui/Segmented'
@@ -18,7 +19,6 @@ import {
   SCOPES,
   browseRows,
   moreState,
-  moveRow,
   nextScope,
   originText,
   pageWindow,
@@ -145,6 +145,30 @@ export function SearchPanel() {
   const moreIsItem = more.kind === 'more' || more.kind === 'loading' || more.kind === 'error'
 
   /*
+   * 走行归 `ui/a11y/list-selection`(09-01 批 4,从手写的 `moveRow` 迁进来)。
+   * 这块面正是那只原语管的那一族:**焦点恒在输入框**,列表只是屏幕上的候选,
+   * 所以它必须自己记一个下标 —— 也就必须防着 hover 去改那个下标。
+   *
+   * 受控档:`cursor` 还留在本地 state 里不动。它有两个原语管不着的读写方 ——
+   * 渲染中的「换词就归零」(见上面那段 listKey)与底部那条 item 的 `onMore`,
+   * 交出去反而要在两处各写一遍回写。
+   *
+   * 三个档位逐条对着**现状**填,不取原语的默认口味:
+   *  · `loop: false`   —— 到端点就停(既有 `moveRow` 就是一次夹,不回卷);
+   *  · `homeEnd: false` —— Home / End 留给输入框的行首行尾(既有 onKeyDown 也不接它);
+   *  · `scrollBlock: null` —— 滚入视野由下面那条本地 effect 统一管,理由写在那里。
+   * 轴向取默认的纵向:← → 既有实现同样不接(它们在编辑中的输入框里是移光标)。
+   */
+  const selection = useListSelection({
+    count: visible.length,
+    active: cursor,
+    onActiveChange: setCursor,
+    loop: false,
+    homeEnd: false,
+    scrollBlock: null,
+  })
+
+  /*
    * 章节是**按需**拉的:标题 / 预览命中的那几条先把章节补回来,下一轮渲染里
    * 它们的章节行就一起出现。上限是刻意的 —— 一个字母就为几十条会话各发一次
    * 请求,那不叫按需。会话侧另外两样(标题、预览)本来就在 listMeta 里,即时滤。
@@ -200,7 +224,14 @@ export function SearchPanel() {
     if (!moreIsItem) setOnMore(false)
   }, [moreIsItem])
 
-  // 选中行滚进视野。block:'nearest' = 只在它真的出界时才滚,列表不会为了走一行整屏跳。
+  /*
+   * 选中行滚进视野。block:'nearest' = 只在它真的出界时才滚,列表不会为了走一行整屏跳。
+   *
+   * 这一条**没有交给原语**(所以上面传了 `scrollBlock: null`):底部那条 item 不是
+   * 一个下标,进不了原语按下标认行的那张表,而「停在末位」与「从末位回到行上」
+   * 这两下同样要滚。一条 effect 同时覆盖 cursor 与 onMore 两个产地,
+   * 比「原语滚一半、本地再补一半」少一处会走形的接缝。
+   */
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(
       onMore ? '[data-row="more"]' : `[data-row="${cursor}"]`,
@@ -282,7 +313,8 @@ export function SearchPanel() {
         setOnMore(true)
         return
       }
-      setCursor((i) => moveRow(i, down ? 1 : -1, visible.length))
+      // 走行本身归原语(夹范围 / 不回卷的判据与 useRoving 同源,不再自己算一遍)。
+      selection.handleKey(e.key)
       return
     }
     if (e.key === 'Enter') {
@@ -359,7 +391,9 @@ export function SearchPanel() {
               className={!onMore && i === cursor ? `${s.row} ${s.rowOn}` : s.row}
               onClick={() => {
                 setOnMore(false)
-                setCursor(i)
+                // **显式点击**是原语允许改 active 的第二条产地(第一条是键盘)。
+                // 与它对着的禁令:行上一个 mouseenter / mouseover 都不许挂。
+                selection.select(i)
                 activate(row)
               }}
             >

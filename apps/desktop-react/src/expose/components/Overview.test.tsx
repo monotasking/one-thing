@@ -228,6 +228,27 @@ describe('总览的键盘交接', () => {
     expect(useExposeStore.getState().focusId).toBe('os-toolkit')
   })
 
+  /*
+   * hover ≠ active(09-01 用户裁定,批 4 补的守卫)。
+   * 这块面的「键盘位」是 store 里的 `focusId`,改它的只该有键盘与显式点击;
+   * 鼠标扫过一张卡一个字都不许写 —— 二次污染那条链(↑↓ → scrollIntoView →
+   * 指针没动却换了脚下的卡 → 浏览器补一发 mouseenter)在网格上一样成立,
+   * 而网格的行距更小,拽走一次更难被看成是自己按错了。
+   */
+  it('mouseenter 不改锚点:鼠标扫过别的卡,键盘位一格不动', () => {
+    useExposeStore.setState({ focusId: 'os-toolkit', focusVisible: true })
+    placeSessions()
+    render(<Overview />)
+    const cards = screen.getAllByTestId(/^card-[\w-]+$/)
+    // 防空转:一张卡都没扫到的话下面那句断言是白给的。
+    expect(cards.length).toBeGreaterThan(1)
+    for (const card of cards) {
+      fireEvent.mouseEnter(card)
+      fireEvent.mouseOver(card)
+    }
+    expect(useExposeStore.getState().focusId).toBe('os-toolkit')
+  })
+
   it('←→ 不接:焦点留在输入框里给光标用,状态机一格不动', () => {
     placeSessions()
     render(<Overview />)

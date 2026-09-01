@@ -29,6 +29,7 @@ import { revokeAllAttachments, useComposerStore } from '../store'
 import { matchCommands, matchFiles } from '../transitions'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { useFloatDismiss } from '../../ui/float'
 import { IconButton } from '../../ui/IconButton'
 import type { TokenHit } from '../types'
 import { AskForm } from './AskForm'
@@ -402,15 +403,20 @@ export function Composer() {
 
   /* ── 点 composer 外面:瞬态抽屉(模型)一律关,选没选都关 ────────────────
    * 只关模型:files / commands 由输入驱动,状态抽屉是人主动开的,都不该被一次
-   * 别处的点击收走。用捕获阶段,免得被内部的 stopPropagation 挡住。 */
-  useEffect(() => {
-    if (drawerKind !== 'model') return
-    const onDown = (e: PointerEvent) => {
-      if (!panelRef.current?.contains(e.target as Node)) closeDrawer()
-    }
-    window.addEventListener('pointerdown', onDown, true)
-    return () => window.removeEventListener('pointerdown', onDown, true)
-  }, [drawerKind, closeDrawer])
+   * 别处的点击收走。
+   *
+   * 09-01 批 4:这一段从手写迁进 `ui/float` 的 `useFloatDismiss` —— 它就是那件
+   * 原语说的「点外关」,判据(点没点在我这块面里)与 Menu / Popover 逐字相同。
+   * 两个档位都是为了**保住现状**,不是新行为:
+   *  · `outside: 'capture'` —— 照旧走捕获阶段,免得被别处的 stopPropagation 挡住
+   *    (Select / Tabs / FloatWindow / AgentChip 各有一句 onPointerDown 掐断,
+   *    React 合成事件那一下会连原生冒泡一起停);
+   *  · `escape: false` —— 这块面的 Esc 是自己那三层(ask / 抽屉 / 两段式停止,
+   *    见下一段),不许原语插一脚;不认 Esc 也就**不进浮层栈**,不会挡住别人那层。 */
+  useFloatDismiss(panelRef, closeDrawer, drawerKind === 'model', {
+    escape: false,
+    outside: 'capture',
+  })
 
   /* ── 全局键:Esc 与 ask 的翻题 ──────────────────────────────────────────
    * Esc 分三层,次序即「退掉最近打开的那一层」:

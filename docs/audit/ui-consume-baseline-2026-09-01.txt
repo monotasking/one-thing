@@ -25,6 +25,8 @@
 # kbd-select-handwritten     3 条:手写 ↑↓ 走行,该迁 ui/a11y/list-selection。
 #   三处全在避让区:检索面板(检索批)、查看器跳转条(查看器批)、
 #   总览网格(它是二维网格导航,与候选列表不同形,迁法要单独设计)。
+#   **09-01 批 4 清零**(见文件末「批 4」一节):检索面板迁 useListSelection、
+#   总览那条是规则误报写了豁免、跳转条由查看器批自己修掉了。
 # kbd-select-hover           0 条 —— 本批清零,这正是立门的起因。
 #
 # ── 09-01 批 3(裸钮与 native title 清账 · 避让区外全量),删 51 条 ────────────
@@ -68,6 +70,39 @@
 #   表上剩下的 bare-button-* 与 tooltip-native-title 全部落在 src/content/**
 #   与 src/providers/**(别批在飞,等各自合树时自己删)。
 #
+# ── 09-01 批 4(键盘走行迁原语 + 层叠浮层 Esc 单层退),删 4 条 ────────────────
+#   ① kbd-select-handwritten 清零(表上原本 2 条,跳转条那条已由查看器批修掉):
+#      · src/search/components/SearchPanel.tsx —— **真迁**。手写的 `moveRow` 换成
+#        `ui/a11y/list-selection` 的 `useListSelection`(受控档,`cursor` 仍是本地
+#        state:渲染中的「换词就归零」与底部「加载更多」那条伪行都要读写它)。
+#        三个档位逐条对着现状填,不取原语默认口味:loop:false(到端点就停)、
+#        homeEnd:false(Home/End 留给输入框的行首行尾)、scrollBlock:null
+#        (滚入视野仍由本地那一条 effect 管 —— 底部那条 item 不是一个下标,
+#        进不了原语按下标认行的那张表,拆成两半反而多一处接缝)。
+#        `search/transitions.ts` 的 `moveRow` 因此**零消费者**,只剩自己的单测
+#        吊着;它不在本批地界,留账给 search 批清尸。
+#      · src/expose/components/Overview.tsx —— **规则误报,写豁免**。规则按
+#        「文件里有 'ArrowDown' 字面量却没 import a11y 原语」认人,而这块面里那两个
+#        字面量的全部工作是 `focusGrid() + blur()`:把键盘交给网格,一格下标都不动
+#        (既有用例逐字钉着「交接那一下只点亮锚点,不顺手再走一步」)。真正的走行在
+#        ExposeView 上,那是**二维网格**(四向 + 按列宽换行),与 useListSelection
+#        管的一维候选列表不同形,迁法要单独设计,且仍在别批避让区。
+#      两面各补一条「mouseenter 后 active 不变」的守卫(palette.test 先例),
+#      各自跑过「加一句 mouseenter 写 active 就红」的反证。
+#   ② float-handwritten 4 → 2:
+#      · src/composer/components/Composer.tsx —— **真迁**。它就是原语说的点外关。
+#        两个新档位都是为保住现状:`outside:'capture'`(照旧捕获阶段 —— 屏幕别处的
+#        Select/Tabs/FloatWindow/AgentChip 各有一句 onPointerDown stopPropagation,
+#        冒泡档在那些地方点下去收不到)、`escape:false`(这块面的 Esc 是自己那三层,
+#        不认 Esc 也就不进浮层栈,不会挡住别人)。
+#      · src/content/KeymapSettings.tsx —— **不是浮层散场,写豁免**。那条捕获相位
+#        keydown 是**录制**:把录制态里的每一下按键都截住,好让 ⌘P 这种已绑组合
+#        录得进来;Esc 在那里是一条录制结果('cancel')而不是关闭。这一格没有浮层。
+#      剩下的 JumpBar 与 ExposeView 仍在 src/content/** / 舞台盖的避让区,原样留账。
+#   同批在 ui 库里立的新机制(不进本表,记在这里备查):`ui/float` 的**浮层栈** ——
+#   层叠时只有最上面那一层认领 Esc(判据:DOM 包含优先,平手看入栈序),
+#   `ui/Dialog` 的手写 Esc 段随之退役,改消费 useFloatDismiss 的 `outside:false` 档。
+#
 bare-button-icon src/content/AppsPanel.tsx:66 图标钮,该 ui/IconButton
 tooltip-native-title src/content/blocks/inline/InlineRun.tsx:52 native title= on <span>
 bare-button-icon src/content/blocks/kinds/table/Table.tsx:70 图标钮,该 ui/IconButton
@@ -107,10 +142,8 @@ bare-button-text src/content/viewer/FileViewer.tsx:655 文字动作钮,该 ui/Bu
 bare-button-text src/content/viewer/FileViewer.tsx:660 文字动作钮,该 ui/Button
 kbd-select-handwritten src/content/viewer/JumpBar.tsx:122 手写 ↑↓ 走行,未消费 a11y 原语
 bare-button-structural src/content/viewer/JumpBar.tsx:161 结构件裸钮,欠 ui/ButtonBase
-kbd-select-handwritten src/expose/components/Overview.tsx:159 手写 ↑↓ 走行,未消费 a11y 原语
 bare-button-icon src/providers/components/ModelCatalog.tsx:393 图标钮,该 ui/IconButton
 bare-button-structural src/providers/components/ProviderRail.tsx:84 结构件裸钮,欠 ui/ButtonBase
-kbd-select-handwritten src/search/components/SearchPanel.tsx:267 手写 ↑↓ 走行,未消费 a11y 原语
 
 # ── 09-01 批 0 新立的三条规则,存量入账(棘轮:新增即红)────────────────
 # async-busy-boolean         4 条 [debt]:source 自己记一颗
@@ -120,10 +153,12 @@ kbd-select-handwritten src/search/components/SearchPanel.tsx:267 手写 ↑↓ �
 #   (勾选闪烁的病根),所以基线只收其余四处。
 #   只扫 .ts 不扫 .tsx:组件 props 里的同名字段是 store 那一格的下游,
 #   上游迁掉下游自然跟着换,两头都扫就是同一笔账记两遍。
-# float-handwritten          4 条 [violation]:手写浮层散场(window pointerdown /
+# float-handwritten          4 → **2** 条 [violation]:手写浮层散场(window pointerdown /
 #   捕获相位 keydown)—— 该消费 ui/float 的 useFloatDismiss。四条各有另案:
 #   composer 的点外关、键位设置与跳转条的 Esc 捕获、舞台盖(ExposeView)。
-#   都在别批的避让区,本批只立门不搬。
+#   立门时都在别批的避让区,只立门不搬;**09-01 批 4 结清其中两条**
+#   (composer 迁原语、键位设置写豁免,见文件末「批 4」一节),
+#   剩下的跳转条与舞台盖仍属别批避让区,留账不留改。
 # shared-vocab-css          73 → 53 → **51** 条 [debt]:.dot / .card / .groupHead /
 #   .field / .meter / .pill / .badge / .chip 八个**视觉词汇**在各面各画一遍
 #   (立门时:dot 8 个产地 / card 7 / groupHead 4 / meter 2 / chip 4 / field 3 /
@@ -185,9 +220,7 @@ shared-vocab-css src/composer/components/Composer.module.css:507 视觉词汇多
 shared-vocab-css src/composer/components/Composer.module.css:511 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/composer/components/Composer.module.css:516 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/composer/components/Composer.module.css:522 视觉词汇多产地(meter),待批 2 立件收编
-float-handwritten src/composer/components/Composer.tsx:409 手写点外关(window pointerdown),该消费 ui/float useFloatDismiss
 shared-vocab-css src/content/FileGlyph.module.css:11 视觉词汇多产地(badge),待批 2 立件收编
-float-handwritten src/content/KeymapSettings.tsx:73 手写 Esc 捕获相位认领,该消费 ui/float useFloatDismiss
 shared-vocab-css src/content/mocks.module.css:135 视觉词汇多产地(field),待批 2 立件收编
 shared-vocab-css src/content/mocks.module.css:142 视觉词汇多产地(field),待批 2 立件收编
 shared-vocab-css src/content/mocks.module.css:147 视觉词汇多产地(field),待批 2 立件收编

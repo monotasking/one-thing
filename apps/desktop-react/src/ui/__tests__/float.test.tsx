@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useFloatDismiss, useFloatPosition } from '../float'
@@ -120,6 +120,194 @@ describe('useFloatDismiss:怎么散', () => {
 
     expect(onClose).not.toHaveBeenCalled()
     expect(ev.defaultPrevented).toBe(false)
+  })
+})
+
+/* ── 层叠:Esc 单层退 ─────────────────────────────────────────────────────
+ * 「外 Dialog 内 Menu」的形。两层都是 useFloatDismiss 的默认档(认 Esc),
+ * 用裸 hook 模拟就够 —— 要验的是**原语的栈**,不是任何一件组件的皮肤。
+ * 内层的挂载序在外层之后(它长在外层的 children 里),这正是真机里的次序。
+ * ──────────────────────────────────────────────────────────────────────── */
+
+function Layer({
+  onClose,
+  active = true,
+  testId,
+  children,
+}: {
+  onClose: () => void
+  active?: boolean
+  testId: string
+  children?: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  useFloatDismiss(ref, onClose, active)
+  return (
+    <div ref={ref} data-testid={testId}>
+      {children}
+    </div>
+  )
+}
+
+/**
+ * 「对话框开着,里面又开了一张菜单」的真机形:菜单是 portal 出去的,DOM 上与
+ * 对话框面板是**兄弟**,谁也不套着谁 —— 层序只能由入栈序说话。
+ * 内层由外层的一次交互开出来,所以它后开、后入栈。
+ */
+function SiblingStack({
+  closeOuter,
+  closeInner,
+  bumpable = false,
+}: {
+  closeOuter: () => void
+  closeInner: () => void
+  bumpable?: boolean
+}) {
+  const [innerOpen, setInnerOpen] = useState(false)
+  const [, bump] = useState(0)
+  return (
+    <>
+      {/* onClose 是就地闭包:每渲染一次都是新函数。进了依赖表就会出栈再入栈。 */}
+      <Layer onClose={() => closeOuter()} testId="outer">
+        <button type="button" onClick={() => setInnerOpen(true)}>
+          open inner
+        </button>
+        {bumpable && (
+          <button type="button" onClick={() => bump((n) => n + 1)}>
+            bump
+          </button>
+        )}
+      </Layer>
+      {innerOpen && (
+        <Layer
+          onClose={() => {
+            closeInner()
+            setInnerOpen(false)
+          }}
+          testId="inner"
+        />
+      )}
+    </>
+  )
+}
+
+describe('useFloatDismiss:层叠时只退一层', () => {
+  it('后开的那层先退:一下 Esc 只关内层;再一下才关外层', () => {
+    const closeOuter = vi.fn()
+    const closeInner = vi.fn()
+    render(<SiblingStack closeOuter={closeOuter} closeInner={closeInner} />)
+    fireEvent.click(screen.getByText('open inner'))
+
+    const first = escape()
+    act(() => void window.dispatchEvent(first))
+    expect(closeInner).toHaveBeenCalledTimes(1)
+    expect(closeOuter).not.toHaveBeenCalled()
+    // 认领仍然发生 —— 只是由最上面那一层认领,外壳退层链照旧让位。
+    expect(first.defaultPrevented).toBe(true)
+    expect(screen.queryByTestId('inner')).toBeNull()
+
+    const second = escape()
+    act(() => void window.dispatchEvent(second))
+    expect(closeOuter).toHaveBeenCalledTimes(1)
+    expect(closeInner).toHaveBeenCalledTimes(1)
+    expect(second.defaultPrevented).toBe(true)
+  })
+
+  it('套着的形:同一次提交里父子两层都在场,认领的是里面那层(effect 子先于父,入栈序在这一形上是反的)', () => {
+    const closeOuter = vi.fn()
+    const closeInner = vi.fn()
+    render(
+      <Layer onClose={closeOuter} testId="outer">
+        <Layer onClose={closeInner} testId="inner" />
+      </Layer>,
+    )
+
+    act(() => void window.dispatchEvent(escape()))
+    expect(closeInner).toHaveBeenCalledTimes(1)
+    expect(closeOuter).not.toHaveBeenCalled()
+  })
+
+  it('内层 escape:false(自己另有 Esc 语义)不进栈,也就不挡住外层', () => {
+    const closeOuter = vi.fn()
+    const closeInner = vi.fn()
+
+    function Stacked() {
+      const ref = useRef<HTMLDivElement>(null)
+      // 只要点外关、Esc 归自己 —— composer 就是这一档。
+      useFloatDismiss(ref, closeInner, true, { escape: false })
+      return (
+        <Layer onClose={closeOuter} testId="outer">
+          <div ref={ref} data-testid="inner" />
+        </Layer>
+      )
+    }
+    render(<Stacked />)
+
+    act(() => void window.dispatchEvent(escape()))
+    expect(closeInner).not.toHaveBeenCalled()
+    expect(closeOuter).toHaveBeenCalledTimes(1)
+  })
+
+  it('外层重渲染不会把自己顶上去(onClose 换了身份也不重排层序)', () => {
+    const closeOuter = vi.fn()
+    const closeInner = vi.fn()
+    render(<SiblingStack closeOuter={closeOuter} closeInner={closeInner} bumpable />)
+    fireEvent.click(screen.getByText('open inner'))
+
+    fireEvent.click(screen.getByText('bump'))
+    act(() => void window.dispatchEvent(escape()))
+
+    expect(closeInner).toHaveBeenCalledTimes(1)
+    expect(closeOuter).not.toHaveBeenCalled()
+  })
+
+  it('点外关那条不进栈:内层开着,点在两层外面时两层都收到(各判各的)', () => {
+    const closeOuter = vi.fn()
+    const closeInner = vi.fn()
+    render(
+      <Layer onClose={closeOuter} testId="outer">
+        <Layer onClose={closeInner} testId="inner" />
+      </Layer>,
+    )
+
+    fireEvent.pointerDown(document.body)
+    expect(closeOuter).toHaveBeenCalledTimes(1)
+    expect(closeInner).toHaveBeenCalledTimes(1)
+  })
+
+  it('outside:false 只要 Esc 不要点外关(Dialog 那一档)', () => {
+    const onClose = vi.fn()
+    function Only() {
+      const ref = useRef<HTMLDivElement>(null)
+      useFloatDismiss(ref, onClose, true, { outside: false })
+      return <div ref={ref} data-testid="float" />
+    }
+    render(<Only />)
+
+    fireEvent.pointerDown(document.body)
+    expect(onClose).not.toHaveBeenCalled()
+
+    act(() => void window.dispatchEvent(escape()))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("outside:'capture' 走捕获相位:半路 stopPropagation 也拦不住点外关", () => {
+    const onClose = vi.fn()
+    function WithBlocker() {
+      const ref = useRef<HTMLDivElement>(null)
+      useFloatDismiss(ref, onClose, true, { outside: 'capture' })
+      return (
+        <>
+          <div ref={ref} data-testid="float" />
+          {/* 屏幕别处那件把 pointerdown 掐断的东西(Select / Tabs / FloatWindow 各有一句)。 */}
+          <div data-testid="blocker" onPointerDown={(e) => e.stopPropagation()} />
+        </>
+      )
+    }
+    render(<WithBlocker />)
+
+    fireEvent.pointerDown(screen.getByTestId('blocker'))
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 })
 

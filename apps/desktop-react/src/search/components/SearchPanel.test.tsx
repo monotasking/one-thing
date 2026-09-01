@@ -121,6 +121,26 @@ describe('命中列表:走行与跳转', () => {
     expect(selected()).toBe(options()[0])
   })
 
+  /*
+   * hover ≠ active(09-01 用户裁定,批 4 迁 `ui/a11y/list-selection` 时补的守卫)。
+   * 走行原语那一侧已有一份同名反证(ui/__tests__/list-selection.test.tsx),
+   * 消费面这一份守的是「这块面自己没有再挂一条 mouseenter 把 active 拽走」——
+   * 病根从来不在原语里,在各面顺手写的那一句。↵ 之后必须还落在键盘位上。
+   */
+  it('mouseenter 不改选中位:鼠标停在别的行上,↵ 落的仍是键盘位那一行', () => {
+    useStageStore.setState({ placements: { search: { kind: 'stage' } } })
+    render(<SearchPanel />)
+    press('ArrowDown')
+    expect(selected()).toBe(options()[1])
+
+    fireEvent.mouseEnter(options()[0])
+    fireEvent.mouseOver(options()[0])
+    expect(selected()).toBe(options()[1])
+
+    press('Enter')
+    expect(useExposeStore.getState().currentSessionId).toBe(SESSIONS[1].id)
+  })
+
   it('⏎ 进会话:换当前会话并把这块面板收回 Dock', () => {
     useStageStore.setState({ placements: { search: { kind: 'stage' } } })
     render(<SearchPanel />)

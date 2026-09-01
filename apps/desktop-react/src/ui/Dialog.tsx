@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useId, useRef } from 'react'
+import { useCallback, useId, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { create } from 'zustand'
 import { useT } from '../i18n'
 import { useFocusTrap } from './a11y/focus-trap'
+import { useFloatDismiss } from './float'
 import { Button } from './Button'
 import s from './Dialog.module.css'
 
@@ -47,18 +48,20 @@ export function Dialog({ open, onClose, title, children, footer, label }: Dialog
   // 就是它的 initialFocus: 'container' 默认档,行为逐字不变。
   useFocusTrap(panel, open)
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      // 退得动就把这一下吃掉,否则同一下 Esc 会顺手把对话框底下那块面也收掉。
-      // 契约与判例见 components/useEscapeChain(Menu / Popover 同款)。
-      if (e.key !== 'Escape') return
-      e.preventDefault()
-      onClose()
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [open, onClose])
+  /*
+   * Esc 关(09-01 批 4:从手写迁进 `ui/float` 的 `useFloatDismiss`)。
+   * 退得动就把这一下吃掉,否则同一下 Esc 会顺手把对话框底下那块面也收掉 ——
+   * 契约与判例见 components/useEscapeChain(Menu / Popover 同款)。
+   *
+   * 从前这里自己在 window 捕获相位挂一条,与 Menu / Popover 逐字相同,
+   * 而**同相位之间按注册序**:对话框先开、菜单后开,一下 Esc 先被对话框接走,
+   * 两层齐关。现在由原语那只浮层栈判「谁是栈顶」,内层先退。
+   *
+   * `outside: false` —— 这件的「点外面」是遮罩自己的 mousedown
+   * (按下与松开都要落在遮罩上才算,从面板里拖出去松手不关),
+   * 不是一条 window 上的 pointerdown;开着那条会把这条规矩绕过去。
+   */
+  useFloatDismiss(panel, onClose, open, { outside: false })
 
   if (!open) return null
 

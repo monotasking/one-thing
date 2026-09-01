@@ -70,6 +70,15 @@ export function KeymapSettings() {
       setConflict(null)
     }
 
+    /*
+     * ui-consume-allow: float-handwritten —— 这不是浮层散场,是**录制**。
+     * 规则按「window 上的捕获相位 keydown」认人,而这条监听与 Esc 关一层毫无关系:
+     * 它把录制态里的**每一下**按键都截住(preventDefault + stopPropagation),
+     * 好让 ⌘P 这种已经绑出去的组合录得进来 —— 截不住就录不了任何已绑的键。
+     * Esc 在这里也不是「关闭浮层」而是一条**录制结果**(`recordKey` 判 'cancel'),
+     * 迁 useFloatDismiss 会把它变成一次散场:别的键当场全录不到。
+     * 这一格没有浮层,连一块要散的面都没有。
+     */
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
   }, [recording, bind, unbind])
