@@ -3,6 +3,12 @@
  * 左内衬改由 `.traffic` 那块真元素承担 —— padding 不算进拖拽区,更不会把
  * 红绿灯推开(灯是原生视图,画在网页之上)。 */
 .bar {
+  /*
+   * 带首那一截的**唯一产地**。它是「让位」而不是「内衬」,所以量在这里、由
+   * `.traffic` 那块真元素落地(padding 不算进拖拽区,也挡不住原生的红绿灯)。
+   * 两档:有灯 = 灯的宽度;没灯(全屏)= 一档普通边距,标题不至于贴死窗口左缘。
+   */
+  --topbar-lead: var(--titlebar-traffic-w);
   height: var(--topbar-h);
   flex: none;
   display: flex;
@@ -13,13 +19,23 @@
   -webkit-app-region: drag;
 }
 
+/* 全屏:三颗灯由系统收起,让位跟着收(09-01 自查走查:灯没了那 80px 还空着)。
+ * 收到 --sp-4 而不是 0 —— 0 会让标题贴死窗口左缘,那不是「还原成普通带」而是
+ * 另一种难看。这一档下那 16px 不可拖也无所谓:macOS 全屏窗本来就拖不动。 */
+.bar[data-fullscreen='true'] {
+  --topbar-lead: var(--sp-4);
+}
+
 /* 红绿灯让位:定宽 = trafficLightPosition.x(16)+ 三颗灯 52 + 一档呼吸 12。
  * `flex: none` 是必须的 —— 它一旦被压缩,标题就会盖到灯上去。
  * 全屏时灯自动隐藏,这一格照旧留着:**布局不随全屏变形**是拍板要求
  * (窄一点点的收益,换不来标题左右横跳)。 */
 .traffic {
-  width: var(--titlebar-traffic-w);
+  width: var(--topbar-lead);
   flex: none;
+  /* 进出全屏那一下滑过去,而不是标题当场横跳 80px。吃 --dur,所以动效档 none
+   * (--dur: 0ms)自动变直切 —— 这里不写第二个数,也不写字面时长。 */
+  transition: width var(--dur) var(--ease);
   /*
    * `align-self: stretch` 不是排版洁癖,是这块元素**能不能工作**的那一句。
    * `.bar` 是 `align-items: center`,而这块元素没有内容 —— 不拉伸的话它是 80×**0**,

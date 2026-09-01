@@ -6,6 +6,7 @@ import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
 import { SESSIONS_ITEM_ID } from '../stage/items'
 import { useT } from '../i18n'
+import { useHostFullScreen } from './useHostFullScreen'
 import s from './TopBar.module.css'
 
 /**
@@ -43,12 +44,19 @@ export function TopBar() {
   // 会话标题是**数据**(用户或后端给这条会话起的名),不翻译;
   // 只有「还没有当前会话」时的兜底名才是界面文案。
   const title = findSession(sessions, currentSessionId)?.title ?? t('topbar.newSession')
+  /*
+   * 让位是**跟着灯走**的,不是一个常量(09-01 自查走查抓到:全屏下三颗灯已经
+   * 由系统收起,左边那 80px 却还空着)。判据只能问宿主 —— 渲染层看不见 macOS
+   * 的原生全屏,理由与实测读数写在 useHostFullScreen 里。
+   */
+  const fullScreen = useHostFullScreen()
 
   return (
-    <header className={s.bar} data-testid="topbar">
+    <header className={s.bar} data-testid="topbar" data-fullscreen={fullScreen ? 'true' : undefined}>
       {/* 红绿灯让位区:一块什么都不画的定宽空元素。它不"画"那三颗灯(灯是原生的,
         * 由系统画在网页之上、不受 z-index 管),只负责两件事 —— 把标题推到灯的
-        * 右边去,以及把这一段从拖拽把手里摘出来(拖到灯上应当是按灯,不是拖窗)。 */}
+        * 右边去,以及把这一段从拖拽把手里摘出来(拖到灯上应当是按灯,不是拖窗)。
+        * 全屏时灯没了,这一块也跟着归 0(宽度过渡吃 --dur,动效档 none 直切)。 */}
       <div className={s.traffic} data-testid="topbar-traffic" aria-hidden="true" />
       <button type="button" className={s.titleBtn} onClick={() => click(SESSIONS_ITEM_ID)}>
         <span className={s.title}>{title}</span>

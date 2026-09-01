@@ -295,6 +295,12 @@ async function refreshModelsOnFirstStartup(): Promise<void> {
  * 那两个平台照旧用系统边框,壳里那条顶带在它们上面就是一条没人拖的空带
  * (无害;真要在那边自绘,得连窗控件一起画,属另一批)。
  */
+/**
+ * 全屏态推送的通道名。**主进程与 preload 共用这一处常量**(preload 从这里 import
+ * 不到 —— 它是另一个打包目标,所以那边写的是同一个字面量并注明指认关系)。
+ */
+const HOST_FULLSCREEN_CHANNEL = 'host:fullscreen'
+
 const FRAMELESS_ON_MAC =
   process.platform === 'darwin'
     ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 16 } }
@@ -316,6 +322,26 @@ function createWindow(): BrowserWindow {
     },
   })
   window.once('ready-to-show', () => window.show())
+
+  /*
+   * ── 全屏态要推给渲染层(09-01 自查走查:全屏下红绿灯没了,顶栏左边那 80px
+   *    让位空块还杵着)────────────────────────────────────────────────────
+   * 为什么非得从主进程推:**渲染层自己看不见 macOS 的原生全屏**。真机实测三个
+   * 候选信号在窗口态 / 全屏态下逐字相同 —— `matchMedia('(display-mode: fullscreen)')`
+   * 恒 false(它一直报 `browser`)、`document.fullscreenElement` 恒 null;唯一变的
+   * 是 `innerHeight` 860 → 1084,而那个数拿来当判据是错的(用户手动把窗口拉到
+   * 屏幕可用高度一样会命中)。所以这条状态只有窗口自己知道,必须由它说。
+   *
+   * `did-finish-load` 那一发是**首帧对齐**:窗口可能在页面加载完成之前就已经是
+   * 全屏(重新加载、dev 热更、从全屏态恢复),少了它渲染层会一直以为自己不在全屏。
+   */
+  const pushFullScreen = () => {
+    if (window.isDestroyed()) return
+    window.webContents.send(HOST_FULLSCREEN_CHANNEL, window.isFullScreen())
+  }
+  window.on('enter-full-screen', pushFullScreen)
+  window.on('leave-full-screen', pushFullScreen)
+  window.webContents.on('did-finish-load', pushFullScreen)
 
   const devServerUrl = process.env.ONETHING_REACT_DEV_SERVER_URL
   if (devServerUrl) void window.loadURL(devServerUrl)

@@ -28,9 +28,15 @@ const componentsDir = path.resolve(__dirname, '..')
 const cssCode = (name: string) =>
   readFileSync(path.join(componentsDir, name), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')
 
-/** 取一个类的声明块正文(极简切分:本仓 CSS Modules 无嵌套语法)。 */
+/**
+ * 取一个选择器的声明块正文(极简切分:本仓 CSS Modules 无嵌套语法)。
+ * 选择器整体转义 —— 属性选择器里的 `[` `]` 在正则里是字符类,只在前面补一个
+ * 反斜杠(旧写法)会把 `.bar[data-fullscreen='true']` 编成一个永远匹配不上的式子,
+ * 而 `block()` 匹配不上时返回空串,断言会以「这一句没写」的面目失败 —— 假红。
+ */
 function block(css: string, selector: string): string {
-  const match = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`).exec(css)
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = new RegExp(`${escaped}\\s*\\{([^}]*)\\}`).exec(css)
   return match ? match[1] : ''
 }
 
@@ -64,9 +70,11 @@ describe('顶栏兼顶带:拖拽区', () => {
   })
 
   it('让位宽吃 token,不写字面 px(四轴·token 纪律)', () => {
-    expect(block(cssCode('TopBar.module.css'), '.traffic')).toMatch(
-      /width:\s*var\(--titlebar-traffic-w\)/,
-    )
+    const css = cssCode('TopBar.module.css')
+    // 宽度读的是带首那个单产地变量,而它的两档都由 token 给。
+    expect(block(css, '.traffic')).toMatch(/width:\s*var\(--topbar-lead\)/)
+    expect(block(css, '.bar')).toMatch(/--topbar-lead:\s*var\(--titlebar-traffic-w\)/)
+    expect(block(css, ".bar[data-fullscreen='true']")).toMatch(/--topbar-lead:\s*var\(--sp-4\)/)
   })
 
   it('让位块 flex: none —— 被压缩就等于标题盖到灯上', () => {
@@ -77,6 +85,42 @@ describe('顶栏兼顶带:拖拽区', () => {
     // 真机读数 `traffic {w:80,h:0}` 才逼出来的一条:`.bar` 是 align-items:center,
     // 这块元素没有内容,不拉伸就是 80×0,那 80px 照样是拖拽把手。
     expect(block(cssCode('TopBar.module.css'), '.traffic')).toMatch(/align-self:\s*stretch/)
+  })
+})
+
+describe('让位跟着红绿灯走', () => {
+  it('宿主说不在全屏 → 不挂 data-fullscreen(让位是 80 那一档)', () => {
+    render(<TopBar />)
+    // jsdom 里没有 onethingHost,useHostFullScreen 诚实答 false —— 这正是
+    // 「浏览器里没有原生全屏,也就没有会消失的灯」那一格。
+    expect(screen.getByTestId('topbar').hasAttribute('data-fullscreen')).toBe(false)
+  })
+
+  it('宿主推来全屏 → 挂上 data-fullscreen(让位收到 --sp-4)', async () => {
+    const handlers: ((v: boolean) => void)[] = []
+    ;(window as unknown as { onethingHost?: unknown }).onethingHost = {
+      onFullScreenChange: (h: (v: boolean) => void) => {
+        handlers.push(h)
+        return () => { handlers.splice(handlers.indexOf(h), 1) }
+      },
+    }
+    try {
+      const { findByTestId } = render(<TopBar />)
+      expect(handlers).toHaveLength(1)
+      const { act } = await import('@testing-library/react')
+      act(() => handlers[0](true))
+      expect((await findByTestId('topbar')).getAttribute('data-fullscreen')).toBe('true')
+      act(() => handlers[0](false))
+      expect((await findByTestId('topbar')).hasAttribute('data-fullscreen')).toBe(false)
+    } finally {
+      delete (window as unknown as { onethingHost?: unknown }).onethingHost
+    }
+  })
+
+  it('宽度过渡吃 --dur(动效档 none 会把它变直切),不写字面时长', () => {
+    const traffic = block(cssCode('TopBar.module.css'), '.traffic')
+    expect(traffic).toMatch(/transition:\s*width\s+var\(--dur\)/)
+    expect(traffic).not.toMatch(/\d+m?s\b/)
   })
 })
 
