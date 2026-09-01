@@ -795,6 +795,15 @@
    * 所以横滚时代码的起笔线不会跟着行号位数跳。
    * 棋盘格 16:比常见的 8 大一档 —— 在一屏缩略图里 8 会糊成灰色噪点。 */
   --viewer-chrome-h: 40px;
+  /*
+   * 抗挤压:查看器名条上「型工具条并不并得进来」的阈值(09-01)。
+   * 算式 = glyph 20 + 名字最少 60 + Rendered|Source 154 + 关闭 22 + 三道 gap 24
+   * + 左右内边距 20 ≈ 300,留一档余量取 340。窄过它,工具条回到自己那一行。
+   * **这个数在 `@container` 条件里只能写字面量**(那里不认 var()),所以它在
+   * FileViewer.module.css 里是重复的一份 —— 同 SessionCard / ModelCatalog 的判例:
+   * token 是账,查询里那个数是它的镜像,改一处必须改两处。
+   */
+  --viewer-tool-inline-min: 340px;
   /* 音频播放条的上限宽(F2 media 转正:紧凑 = 一条,不是一块铺满的面)。 */
   --viewer-audio-w: 420px;
   --viewer-status-h: 26px;
