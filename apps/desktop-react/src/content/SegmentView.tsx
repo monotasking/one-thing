@@ -6,7 +6,6 @@ import type { SegmentModel } from './model/segments'
 import { ResearchSegment } from './research/ResearchSegment'
 import { ThinkingSegment } from './ThinkingSegment'
 import { ToolGroup } from './tools/ToolGroup'
-import { ToolRow } from './tools/ToolRow'
 
 /**
  * 段渲染 —— **段 → React** 的那一层,一个穷尽 switch。
@@ -53,9 +52,6 @@ export const SegmentView = memo(function SegmentView({
           ))}
         </>
       )
-
-    case 'tool':
-      return <ToolRow step={segment.step} ctx={ctx} />
 
     case 'tool-group':
       return <ToolGroup group={segment.group} ctx={ctx} />

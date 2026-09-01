@@ -7,11 +7,14 @@ import { materializeChatMessagesCached } from './chat-materialize'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@renderer/platform/types'
+import { coreRenderMessageHasToolWork } from '@onething/core/session/render-anchors'
 import {
   appendTail,
   feedTail,
+  feedTailToolArgs,
   reconcileOverlay,
   handOverToLedger,
+  startTailTool,
   userMessageIds,
   type FoldLens,
   type OverlayEntry,
@@ -133,13 +136,23 @@ export function selectEngineBusy(state: ChatSourceState): boolean {
 let fold: LiveFold | undefined
 let tail: Tail | undefined
 /**
- * 上一次交接完成时,账本对**尾巴那条消息**画得出来多少(判据见 chat-fold 的 `FoldLens`)。
+ * **尾巴已经交给账本多少**(三条车道各一格,判据见 chat-fold 的 `FoldLens`)。
  *
  * 与 `tail` 同生共死:`tail` 一退场就清空,一换消息就重新起算。它是尾巴与账本之间
  * 那条交接线的**唯一记账**;少了它就得每次现量两遍(多一处会分叉的产地),
  * 拿旧基准去裁新尾巴则是「一裁就整段」。
+ *
+ * ── 09-01:从「上一次量到多少」改成「已经交出去多少」 ──────────────────
+ * 从前这里存的是**上一次的测量值**,额度 = 这次量 − 上次量。那条算法有两个洞:
+ *  · 量法一变(锚点维让扁平车道停额)基准跟着变,下一次会把**早就交过**的那一截
+ *    再算一次额度 —— 真机上就是尾巴被多裁一截;
+ *  · 顺序闸挡下的额度**永远丢了**(基准已经推到新的测量值上),而那一截其实
+ *    只是"这一帧还交不出去"。
+ * 记「已经交出去多少」两个洞一起没有:额度 = 账本此刻画得出多少 − 已交出多少,
+ * 与测量口径怎么变、这一帧交没交成都无关。`contentCoverage` 因此也退役了 ——
+ * 它与 `lens.content` 从定义上就是同一个数,存两份迟早分叉。
  */
-let tailLens: { messageId: string; lens: FoldLens; contentCoverage: number } | undefined
+let tailLens: { messageId: string; lens: FoldLens } | undefined
 /**
  * blob 缓存的**世代号**(见 `chat-materialize` 的 memo 键)。
  *
@@ -241,7 +254,11 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       set({
         status: 'ready',
         error: undefined,
-        messages: appendTail(base, tail, tailLens?.messageId === tail?.messageId ? tailLens?.contentCoverage : undefined),
+        messages: appendTail(
+          base,
+          tail,
+          tailLens?.messageId === tail?.messageId ? tailLens?.lens.content : undefined,
+        ),
         activeMessageId: projected.activeRun?.messageId,
         overlay,
       })
@@ -263,10 +280,15 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
   }
 
   /**
-   * 一条消息在某份折叠状态上**此刻画得出来**的三把尺(判据见 `FoldLens` 的注)。
+   * 一条消息在某份折叠状态上**此刻画得出来**的那几把尺(判据见 `FoldLens` 的注)。
    *
    * `reasoningInline` 必须数 `contentParts` 而不是 `reasoning` —— 后者只装顶部那一段。
    * 数错这一格就是 09-01 那条「思考块消失 2 秒」的报障。
+   *
+   * `contentPlaceable` 是 09-01 P0 补的**锚点维**:判据一句话 —— **这条消息有工具
+   * 活儿、而 parts 还一格都没物化时,正文那条扁平车道摆不对新一轮的正文**。
+   * 「有没有工具活儿」问的是 core 那一个函数(`coreRenderMessageHasToolWork`),
+   * 与锚点合成器自己用的判据**逐字同一个**:两处各写一份就是两个会分叉的产地。
    */
   function lensOf(state: ReturnType<typeof createSessionProjectionState>, messageId: string): FoldLens {
     const found = materializeChatMessagesCached(state, { resolveBlob }, blobEpoch).messages.find(
@@ -277,10 +299,13 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     for (const part of parts) {
       if (part.type === 'reasoning') reasoningInline += part.content?.length ?? 0
     }
+    const hasToolWork = found ? coreRenderMessageHasToolWork(found) : false
     return {
       content: found?.content?.length ?? 0,
       reasoningTop: found?.reasoning?.length ?? 0,
       reasoningInline,
+      contentPlaceable: !(hasToolWork && parts.length === 0),
+      ledgerToolCallIds: new Set((found?.toolCalls ?? []).map((call) => call.id)),
     }
   }
 
@@ -294,16 +319,19 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
    */
   function handOverTail(state: ReturnType<typeof createSessionProjectionState>): void {
     if (!tail || tailLens?.messageId !== tail.messageId) return
-    const now = lensOf(state, tail.messageId)
-    const { tail: next, taken } = handOverToLedger(tail, tailLens.lens, now)
+    const covered = tailLens.lens
+    const { tail: next, taken } = handOverToLedger(tail, covered, lensOf(state, tail.messageId))
     tail = next
+    // **只推进真交出去的那一截**。交接从前往后停(顺序闸),没交成的那一截下一帧
+    // 还会重新算额度 —— 记「交出去多少」而不是「量到多少」正是为了这一条。
     tailLens = next
       ? {
           messageId: next.messageId,
-          lens: now,
-          // 账本那一格正文画到哪儿:只推进**真交出去**的那一截。交接从前往后停,
-          // 所以它可能落在 `now.content` 之后 —— 那正是「还在尾巴里」的部分。
-          contentCoverage: tailLens.contentCoverage + taken.content,
+          lens: {
+            content: covered.content + taken.content,
+            reasoningTop: covered.reasoningTop + taken.reasoningTop,
+            reasoningInline: covered.reasoningInline + taken.reasoningInline,
+          },
         }
       : undefined
   }
@@ -319,9 +347,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       return
     }
     if (tailLens?.messageId === tail.messageId) return
-    const lens = lensOf(state, tail.messageId)
-    // 起算点:尾巴出生那一刻账本已经画出来的正文长度 —— 它前面的字与这条尾巴无关。
-    tailLens = { messageId: tail.messageId, lens, contentCoverage: lens.content }
+    // 起算点:尾巴出生那一刻账本已经画出来的那些字 —— 它们与这条尾巴无关,
+    // 记成「已经交出去的」正合适(尾巴一个字都不必为它们负责)。
+    tailLens = { messageId: tail.messageId, lens: lensOf(state, tail.messageId) }
   }
 
   /** 起底 / 重折:整份账本折一遍。`token` 是换会话的防串号闸。 */
@@ -407,9 +435,39 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
 
   function onEvent(envelope: SessionEventEnvelope): void {
     if (envelope.sessionId !== get().sessionId) return
-    const event = envelope.event as { type?: string; record?: unknown }
+    const event = envelope.event as {
+      type?: string
+      record?: unknown
+      messageId?: string
+      toolCallId?: string
+      toolName?: string
+      toolCall?: { timestamp?: number }
+    }
     if (event?.type === SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT) {
       feedLedger(event.record)
+      return
+    }
+    /*
+     * 一次调用开始收参数 —— **活尾巴的第三条车道**(09-01 P1)。
+     *
+     * 为什么是这条事件而不是等账本:账本上这次调用要等参数收齐(`tool/call`)才
+     * 出生,而参数是逐片流的。真机读数:`tool:input-start` t=1693ms、`tool/call`
+     * t=1929ms、打包行 t=1988ms —— 屏幕上足足 **295ms 什么都没有**,而真实工具的
+     * 参数(写文件、改代码)长得多,这个空窗按比例放大到数秒。
+     *
+     * 它与正文那两条车道是同一件事:账本此刻画不出来的那一截,由尾巴顶着。
+     */
+    if (event?.type === SESSION_EVENT_TYPES.TOOL_INPUT_START) {
+      if (!event.messageId || !event.toolCallId || !event.toolName) return
+      tail = startTailTool(
+        tail,
+        event.messageId,
+        event.toolCallId,
+        event.toolName,
+        event.toolCall?.timestamp ?? Date.now(),
+      )
+      if (fold) rebaseTailLens(fold.state)
+      schedulePush()
       return
     }
     // 这一轮完了,尾巴不再有主 —— 丢掉并推最后一次(账本那份已经全了)。
@@ -425,9 +483,13 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
   }
 
   /**
-   * 流分片进活尾巴。**只认两种裸 delta** —— 它们是"每条立刻发"的那条出口;
+   * 流分片进活尾巴。**只认三种裸 delta** —— 它们是"每条立刻发"的那条出口;
    * UI 事件流那几条(`assistant/*`)与账本行同形同名,由折叠负责,尾巴不碰,
    * 碰了就是同一段文字被两条路各画一遍。
+   *
+   * `turnIndex` 与 `placement` 同款:引擎开这一段时就定下的事实,尾巴只是照抄。
+   * 少了它,第二轮的正文会被并进第一轮那一段,工具锚点从整段头上跨过去
+   * (真机 191ms 错位 + 992ms 消失,见 `FoldLens.contentPlaceable`)。
    */
   function onStream(payload: SessionStreamPayload): void {
     if (payload.sessionId !== get().sessionId) return
@@ -437,6 +499,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       reasoning?: string
       placement?: 'top' | 'inline'
       messageId?: string
+      turnIndex?: number
+      toolCallId?: string
+      argsTextDelta?: string
     }
     const messageId = chunk?.messageId
     if (!messageId) return
@@ -444,9 +509,19 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       (message) => message.id === messageId && Boolean(message.content),
     )
     if (chunk.type === 'text-delta' && chunk.text) {
-      tail = feedTail(tail, messageId, 'text', chunk.text)
+      tail = feedTail(tail, messageId, 'text', chunk.text, undefined, undefined, chunk.turnIndex)
     } else if (chunk.type === 'reasoning-delta' && chunk.reasoning) {
-      tail = feedTail(tail, messageId, 'reasoning', chunk.reasoning, chunk.placement, hasContent)
+      tail = feedTail(
+        tail,
+        messageId,
+        'reasoning',
+        chunk.reasoning,
+        chunk.placement,
+        hasContent,
+        chunk.turnIndex,
+      )
+    } else if (chunk.type === 'tool-input-delta' && chunk.toolCallId && chunk.argsTextDelta) {
+      tail = feedTailToolArgs(tail, messageId, chunk.toolCallId, chunk.argsTextDelta)
     } else {
       return
     }

@@ -4,7 +4,7 @@ import type { SegmentModel } from '../model/segments'
 import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
 import { markdownToFrame } from './markdown'
-import { presentToolGroup, presentToolStep } from './present'
+import { presentToolGroup } from './present'
 import { presentResearchEpisode } from '../research/episode'
 
 /**
@@ -62,9 +62,6 @@ function runPipeline(message: ProjectedMessage): SegmentModel[] {
       }
       case 'image':
         segments.push({ kind: 'image', blob: node.blob })
-        break
-      case 'tool':
-        segments.push({ kind: 'tool', step: presentToolStep(node.call) })
         break
       case 'tool-group':
         segments.push({ kind: 'tool-group', group: presentToolGroup(node.calls) })

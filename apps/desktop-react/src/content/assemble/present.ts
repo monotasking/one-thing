@@ -6,6 +6,7 @@ import type {
   ToolStepModel,
 } from '../model/segments'
 import { resolveToolPresenter } from '../tools/presenter'
+import { truncate } from '../tools/row'
 // 注册 barrel:import 它**就是**「这台上认识哪几个工具」。放在这里而不是应用入口,
 // 是因为查表发生在这里 —— 谁要查表,谁负责保证表是装好的(与 BlockView 同款)。
 import '../tools/presenters'
@@ -20,8 +21,24 @@ import '../tools/presenters'
  * 这条分界不是性能优化,是「模型是数据」那条铁律的直接后果。
  */
 export function presentToolRow(call: ProjectedToolCall): ToolRowModel {
-  return resolveToolPresenter(call).row(call)
+  const row = resolveToolPresenter(call).row(call)
+  /*
+   * **参数还在流的那一行,把收到的原文摆出来**(09-01 P1)。
+   *
+   * presenter 算不出摘要不是它的错:这一刻 `arguments` 还是 `{}`(参数没定稿,
+   * 解半截 JSON 就是猜),它照定义什么都说不出。而屏幕上这一行**正在等**,
+   * 「异步动作必有进行中反馈」那条律要的就是这一格 —— 半截的 JSON 就是半截的,
+   * 那是事实,编一句「正在准备」反而不如它。
+   *
+   * 只在 presenter 没话说时补,不覆盖它算出来的摘要。
+   */
+  if (row.summary || call.status !== 'input-streaming') return row
+  const args = (call as { streamingArgs?: string }).streamingArgs
+  return args ? { ...row, summary: truncate(args, STREAMING_ARGS_MAX) } : row
 }
+
+/** 一行放得下的参数原文长度 —— 与 `baseToolRow` 的失败原因同一档口径。 */
+const STREAMING_ARGS_MAX = 56
 
 /** 一格清单项要的两件东西:画出来的那一行 + 抽屉要用的那份事实。 */
 export function presentToolStep(call: ProjectedToolCall): ToolStepModel {

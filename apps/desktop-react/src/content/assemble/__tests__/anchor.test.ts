@@ -132,11 +132,13 @@ describe('锚点归位:工具段插在它发生的那处正文之间', () => {
   })
 
   it('装配之后:两轮消息算成 正文 · 工具 · 正文 · 工具 四段', () => {
+    // 工具那两段的段种是 `tool-group`(09-01 P2:一次调用也是一组,画出来仍是
+    // 从前那张单发卡)—— 这一条要钉的是**次序**:工具没有一律挂尾。
     expect(assembleMessage(twoTurnMessage()).map((segment) => segment.kind)).toEqual([
       'rich-text',
-      'tool',
+      'tool-group',
       'rich-text',
-      'tool',
+      'tool-group',
     ])
   })
 })
@@ -194,5 +196,48 @@ describe('脱水形的 step:只有 toolCallId,没有 toolCall', () => {
       } as Partial<ProjectedMessage>),
     )
     expect(nodes.flatMap((node) => (node.node === 'tool' ? [node.call.id] : []))).toEqual(['c1'])
+  })
+})
+
+/**
+ * ── 多轮工具:第二轮的正文落在工具**之后**(09-01 P0)────────────────────
+ *
+ * 真机报障的现场:第二轮流式期间,第一轮的 `contentParts` 还没物化(投影那道
+ * `requestSettled` 闸),整条消息只有一格扁平的 `message.content`。活尾巴把第二轮
+ * 的正文接上去之后,`synthesizeCoreToolAnchors` 找不到轮次分界,把第一轮的工具
+ * 锚点插到了**全部正文之后** —— 屏幕上第二轮的正文画在工具组上面(191ms),
+ * 而 parts 一物化它当场消失(992ms)。
+ *
+ * 修法是让尾巴那一格带上**流自己说的轮次号**(`text-delta.turnIndex`),锚点于是
+ * 有了分界。这一组从 `appendTail` 的产物走到段序列,钉的正是那条落点。
+ */
+describe('多轮工具:活尾巴那一段落在它那一轮的工具之后', () => {
+  /** 账本此刻:第一轮的正文进了 content(打包行到了),parts 一格都还没物化。 */
+  function midFlight(tailTurn?: number): ProjectedMessage {
+    return message({
+      content: '第一轮正文',
+      contentParts: [
+        { type: 'text', content: '第一轮正文' },
+        // 活尾巴接上来的第二轮正文。轮次号缺席 = 修前那一版。
+        { type: 'text', content: '第二轮正文', ...(tailTurn !== undefined ? { turnIndex: tailTurn } : {}) },
+      ],
+      steps: [step('c1', 1)],
+      toolCalls: [call('c1')],
+    } as Partial<ProjectedMessage>)
+  }
+
+  it('带轮次号:正文 · 工具 · 正文', () => {
+    expect(anchorMessage(midFlight(2)).map((node) => node.node)).toEqual(['text', 'tool', 'text'])
+    expect(assembleMessage(midFlight(2)).map((segment) => segment.kind)).toEqual([
+      'rich-text',
+      'tool-group',
+      'rich-text',
+    ])
+  })
+
+  it('反证 —— 尾巴那一格不带轮次号时,工具被挤到全部正文之后(修前那一形)', () => {
+    // 两段文本 part 中间没有分界,`insertDataStepsByTurn` 只能把锚点挂尾:
+    // 第二轮的正文于是画在工具组**上面**,正是真机 t=6647..6839 那 191ms。
+    expect(anchorMessage(midFlight()).map((node) => node.node)).toEqual(['text', 'tool'])
   })
 })

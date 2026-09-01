@@ -44,6 +44,39 @@ export type ProjectedMessage = ReturnType<typeof materializeChatMessages>['messa
 export interface TailSegment {
   kind: 'text' | 'reasoning'
   text: string
+  /**
+   * 这一截属于**第几轮**(`turnIndex`,流自己盖的号,1 起)。
+   *
+   * 与 `placement` 同一条理由:它不是尾巴的结构决策,是引擎开这一段时就定下的
+   * 事实(`text-delta` / `reasoning-delta` 自带这一格,真机读数见 §「多轮工具」)。
+   * 尾巴要它只为一件事 —— **落点**:账本的工具锚点是按 `turnIndex` 就位的
+   * (core `synthesizeCoreToolAnchors` → `insertDataStepsByTurn`),尾巴那一格不带
+   * 轮次号,锚点就会从它头上跨过去,把新一轮的正文摆到上一轮的工具**上面**。
+   *
+   * 缺席 = 流没说(老路径 / 测试直调),按第 0 轮处理,与从前逐字相同。
+   */
+  turnIndex?: number
+}
+
+/**
+ * 一次**参数还在逐片到达**的调用。
+ *
+ * 它与文本那两条车道是同一件事的三种形:**账本此刻画不出来的那一截**。
+ * 账本要等参数收齐(`tool/call`)才有这次调用,而参数是逐片流的 —— 真机读数:
+ * 说完一句话之后屏幕上 **309ms 什么都没有**,真实工具的参数长得多,这个空窗按
+ * 比例放大到数秒(用户看到的是"卡住了")。
+ *
+ * 名字与身份从 `tool:input-start` 事件来(引擎在开这一段时就说了 `toolName`),
+ * 参数正文从 `tool-input-delta` 裸 delta 来 —— 两者都是流上的事实,尾巴一个
+ * 结构决策都不做:它不判这次调用画在哪(那是锚点的事)、也不判它成没成功。
+ */
+export interface TailToolCall {
+  id: string
+  toolName: string
+  /** 建卡那一刻(照抄事件里占位调用的时刻,没有就是收到那一刻)。 */
+  timestamp: number
+  /** 已经到达的参数原文(半截的 JSON 就是半截的 —— 那是事实)。 */
+  argsText: string
 }
 
 export interface Tail {
@@ -52,6 +85,8 @@ export interface Tail {
   segments: TailSegment[]
   /** 顶部推理(渲染成思考块;它落在 `message.reasoning`,**不是** part)。 */
   reasoningTop: string
+  /** 参数还在流的调用,按到达序。账本一认领(`tool/call` 落账)就退役。 */
+  tools: TailToolCall[]
 }
 
 /**
@@ -72,12 +107,10 @@ export function feedTail(
   text: string,
   placement?: 'top' | 'inline',
   messageHasContent?: boolean,
+  turnIndex?: number,
 ): Tail | undefined {
   if (!messageId || !text) return current
-  const tail: Tail =
-    current?.messageId === messageId
-      ? { ...current, segments: [...current.segments] }
-      : { messageId, segments: [], reasoningTop: '' }
+  const tail = openTail(current, messageId)
 
   if (kind === 'reasoning') {
     const resolved = placement ?? (messageHasContent ? 'inline' : 'top')
@@ -85,12 +118,64 @@ export function feedTail(
   }
 
   const last = tail.segments[tail.segments.length - 1]
-  if (last?.kind === kind) {
-    tail.segments[tail.segments.length - 1] = { kind, text: last.text + text }
+  // **换了轮次也是新的一段** —— 与"换了种"同一条判据。上一轮的正文与这一轮的正文
+  // 中间隔着那一轮的工具锚点,并进一格就等于说它们之间什么都没发生过。
+  if (last?.kind === kind && last.turnIndex === turnIndex) {
+    tail.segments[tail.segments.length - 1] = { ...last, text: last.text + text }
   } else {
-    tail.segments.push({ kind, text })
+    tail.segments.push({ kind, text, ...(turnIndex !== undefined ? { turnIndex } : {}) })
   }
   return tail
+}
+
+/** 换了消息就换一条尾巴 —— 三条车道一起换,上一条的字一格都不许跟过来。 */
+function openTail(current: Tail | undefined, messageId: string): Tail {
+  return current?.messageId === messageId
+    ? { ...current, segments: [...current.segments], tools: [...current.tools] }
+    : { messageId, segments: [], reasoningTop: '', tools: [] }
+}
+
+/**
+ * 一次调用开始收参数(`tool:input-start`)。
+ *
+ * **只记身份与名字**,不判落点、不判状态:落点由锚点说(这次调用还没有锚点,
+ * 于是它落在 `anchorMessage` 末尾那句兜底里 —— 而"刚开始的这一次"本来就该在
+ * 最后),状态由账本说(尾巴这一份永远是 `input-streaming`,账本一认领就退役)。
+ *
+ * 幂等:同一个 id 再来一次不重复建卡(重连回放会把同一条事件送两遍)。
+ */
+export function startTailTool(
+  current: Tail | undefined,
+  messageId: string,
+  toolCallId: string,
+  toolName: string,
+  timestamp: number,
+): Tail | undefined {
+  if (!messageId || !toolCallId) return current
+  const tail = openTail(current, messageId)
+  if (tail.tools.some((tool) => tool.id === toolCallId)) return tail
+  tail.tools.push({ id: toolCallId, toolName, timestamp, argsText: '' })
+  return tail
+}
+
+/**
+ * 参数又到一片(`tool-input-delta`)。
+ *
+ * **没建过卡的 id 一律不认**:名字只有 `tool:input-start` 说得出,没有名字的一行
+ * 是编出来的。丢掉这一片的代价是参数区少几个字,而那次调用照旧由账本摆出来。
+ */
+export function feedTailToolArgs(
+  current: Tail | undefined,
+  messageId: string,
+  toolCallId: string,
+  argsTextDelta: string,
+): Tail | undefined {
+  if (!current || current.messageId !== messageId || !argsTextDelta) return current
+  const index = current.tools.findIndex((tool) => tool.id === toolCallId)
+  if (index < 0) return current
+  const tools = [...current.tools]
+  tools[index] = { ...tools[index], argsText: tools[index].argsText + argsTextDelta }
+  return { ...current, tools }
 }
 
 /*
@@ -121,6 +206,35 @@ export interface FoldLens {
   content: number
   reasoningTop: number
   reasoningInline: number
+  /**
+   * **锚点维**(09-01 P0,真机读数见下)。正文那条**扁平车道**此刻摆得对吗?
+   *
+   * 账本画正文有两条车道:① `contentParts` 里的 text 格 —— 它们带 `turnIndex`,
+   * 工具锚点按轮次插在它们中间,落点永远对;② `message.content` 那一整格扁平正文
+   * —— `appendTail` 在 parts 还没物化时按它现搭一格,**这一格是 turn 盲的**,
+   * 合成出来的锚点会一路跨到它后面去。
+   *
+   * 于是:消息一旦有工具活儿而 parts 还一格没物化,车道②就摆不对**新一轮**的正文
+   * —— 交给它就是画在工具组**上面**,而 parts 一物化(它只画 parts)那一截当场
+   * 从屏幕上消失。真机逐帧(工具素材 6 字/帧):
+   *
+   * ```
+   * t=6647 think | text(14) | text(5)  | tool-group   ← 第二轮正文长在工具组**上面**
+   * t=6839 think | text(14) | text(28) | tool-group   ← 错位可见 191ms
+   * t=6864 think | text(14) | tool-group | think(6)   ← parts 物化,整段 28 字消失
+   *   …… 992ms 屏幕上没有这段字 ……
+   * t=7856 think | text(14) | tool-group | text(28) | think(83) | tool
+   * ```
+   *
+   * 这一格 `false` 时正文那条尺**一个字都不给** —— 尾巴留着它,由尾巴带着轮次号
+   * 画在锚点之后。缺席 = `true`(没有工具活儿的消息永远是这样,与从前逐字相同)。
+   */
+  contentPlaceable?: boolean
+  /**
+   * 账本此刻画得出来的调用 id。活调用**按身份退役**,不按长度 —— 一次调用是不是
+   * "账本有了"是个是非题,没有"交出去一半"这回事。
+   */
+  ledgerToolCallIds?: ReadonlySet<string>
 }
 
 /**
@@ -152,11 +266,12 @@ export interface HandOver {
   taken: FoldLens
 }
 
-export function handOverToLedger(tail: Tail | undefined, before: FoldLens, after: FoldLens): HandOver {
+export function handOverToLedger(tail: Tail | undefined, covered: FoldLens, capacity: FoldLens): HandOver {
   const credit = {
-    text: Math.max(0, after.content - before.content),
-    reasoningTop: Math.max(0, after.reasoningTop - before.reasoningTop),
-    reasoningInline: Math.max(0, after.reasoningInline - before.reasoningInline),
+    // 锚点维:扁平车道摆不对这一轮的正文时,额度是 0(见 `FoldLens.contentPlaceable`)。
+    text: capacity.contentPlaceable === false ? 0 : Math.max(0, capacity.content - covered.content),
+    reasoningTop: Math.max(0, capacity.reasoningTop - covered.reasoningTop),
+    reasoningInline: Math.max(0, capacity.reasoningInline - covered.reasoningInline),
   }
   const taken: FoldLens = { content: 0, reasoningTop: 0, reasoningInline: 0 }
   if (!tail) return { tail: undefined, taken }
@@ -192,26 +307,39 @@ export function handOverToLedger(tail: Tail | undefined, before: FoldLens, after
     else taken.reasoningInline += cut
     if (cut < segment.text.length) {
       stopped = true
-      segments.push({ kind: segment.kind, text: segment.text.slice(cut) })
+      segments.push({ ...segment, text: segment.text.slice(cut) })
     }
   }
 
-  if (segments.length === 0 && !reasoningTop) return { tail: undefined, taken }
-  return { tail: { messageId: tail.messageId, segments, reasoningTop }, taken }
+  /*
+   * 活调用**按身份退役**:账本认领了这个 id(`tool/call` 落账 → `toolCalls[]` 里
+   * 有它),尾巴这一份当场丢掉。不按长度、也不排顺序闸 —— 它与文本那两条车道不
+   * 共用额度,一次调用要么账本有、要么没有。
+   */
+  const ledgerIds = capacity.ledgerToolCallIds
+  const tools = ledgerIds ? tail.tools.filter((tool) => !ledgerIds.has(tool.id)) : tail.tools
+
+  if (segments.length === 0 && !reasoningTop && tools.length === 0) return { tail: undefined, taken }
+  return { tail: { messageId: tail.messageId, segments, reasoningTop, tools }, taken }
 }
 
-type AnyPart = { type?: string; content?: string }
+type AnyPart = { type?: string; content?: string; turnIndex?: number }
 
 /**
  * 尾巴接到**最后那一段**上。
  *
- * 两条纪律(真机回归换来的,与 Vue 壳同源):
+ * 三条纪律(真机回归换来的,与 Vue 壳同源):
  *
  * 1. **只看最后一段,不回头找**。从前是"从尾往前找第一段同类的",于是一段新的
  *    行内推理会被追加进**上一个**推理块里(它前面隔着正文),屏幕上就成了
  *    "两个思考块 + 文字跑错块"。段的开合是账本的事,尾巴只延长**当前那一段**。
  * 2. **顶部推理不进 contentParts**。它的落点是 `message.reasoning`(思考块)。
  *    从前一律当行内挂进 parts,于是同一段思考既进思考块又以正文渲染。
+ * 3. **跨轮不合并、尾巴那几格带轮次号**(09-01 P0)。合并判据从"末段同种"改成
+ *    "末段同种**且同轮**":工具锚点是按 `turnIndex` 插进 parts 的,把第二轮的正文
+ *    并进第一轮那一段,锚点就会从整段头上跨过去 —— 屏幕上第二轮的正文画在第一轮的
+ *    工具组**上面**(真机 191ms),而 parts 一物化它当场消失 992ms。详见 `FoldLens`
+ *    的 `contentPlaceable`。
  */
 export function appendTail(
   messages: readonly ProjectedMessage[],
@@ -225,62 +353,165 @@ export function appendTail(
    * 画在了错的位置(账本那一格是扁平的,排在所有尾巴段之前)。
    *
    * 缺席 = 不设限(整格画完):重折/测试里的直接调用照旧,与从前逐字相同。
+   *
+   * **这条缺省是脚手架,不是生产路径**(09-01 记一笔):生产上尾巴与交接线同生共死
+   * (`chat-source` 的 `tail` / `tailLens`),所以有尾巴就一定有这个数。缺省那一支
+   * 假设的是「尾巴整段都在账本之外」—— 假设一旦不成立,账本画一遍、尾巴再画一遍,
+   * 屏幕上就是用户 09-01 报的那一形(表画出来了,原始字符串还在)。本批施工中途
+   * 恰好造过这个状态(交接线改名的那一瞬,`compose` 递进来的是 undefined),
+   * 用户的 dev 实例热更吃到了它 —— 记在这里,别再把这两格拆开传。
    */
   contentCoverage?: number,
 ): ProjectedMessage[] {
   const list = [...messages]
   if (!tail) return list
-  if (tail.segments.length === 0 && !tail.reasoningTop) return list
+  if (tail.segments.length === 0 && !tail.reasoningTop && tail.tools.length === 0) return list
   const index = list.findIndex((message) => message.id === tail.messageId)
   if (index < 0) return list
 
   const message = list[index]
-  const parts = [...((message.contentParts ?? []) as AnyPart[])]
+  const ledgerParts = (message.contentParts ?? []) as AnyPart[]
+  const parts = [...ledgerParts]
 
-  // 账本正文还没物化成 parts(流式中 parts 到 request/end 才出现)时,先按
-  // `message.content` 现搭一格 —— 与 anchor 步的兜底同款判据。少了这一格就是
-  // 真机上那条「打包行一到正文回缩」的病:尾巴挂上去之后 parts 非空,anchor
-  // 不再按 content 兜底,而打包行(2s / 64 条闸)把尾巴收走的那一刻,被打包的
-  // 那段正文只活在 content 里 —— 屏幕上就只剩重攒的新尾巴,整段正文消失,
-  // 直到 run 收尾 parts 物化才跳回来。
-  if (parts.length === 0 && message.content) {
-    const covered =
-      contentCoverage === undefined
-        ? message.content
-        : message.content.slice(0, Math.max(0, contentCoverage))
-    if (covered) parts.push({ type: 'text', content: covered })
+  /*
+   * ── ① 账本的正文里,parts 还画不到的那一截 ────────────────────────────
+   *
+   * `message.content` 是**全部**正文(投影的 `materializePartText` 不看这一轮收没
+   * 收齐),而 `contentParts` 只有**已结算那几轮**(`requestSettled` 那道闸)。
+   * 两者在多轮工具的中间态必然不等,差出来的就是这一截。
+   *
+   * parts 为空时它就是从前那句"按 content 现搭一格"的兜底,一字不差 —— 少了它
+   * 就是真机上那条「打包行一到正文回缩」的病(打包行把尾巴收走,那段正文只活在
+   * content 里,屏幕上只剩重攒的新尾巴)。
+   *
+   * parts 非空时它是**这一轮还没结算**的正文,所以带上尾巴那一轮的轮次号:不带
+   * 的话它算第 0 轮,上一轮的工具锚点会插到它**后面**去(见文件注纪律 3)。
+   */
+  let coveredByParts = 0
+  for (const part of ledgerParts) {
+    if (part.type === 'text') coveredByParts += part.content?.length ?? 0
+  }
+  const content = message.content ?? ''
+  const limit = contentCoverage === undefined ? content.length : Math.max(0, contentCoverage)
+  const pending = content.slice(coveredByParts, Math.max(coveredByParts, limit))
+
+  /*
+   * **账本已经画过的字,尾巴不许再画一遍**(09-01,用户真机证词:「markdown 的渲染
+   * 很奇怪,它会显示原始字符串,其实 table 已经画出来了」——同一截内容被画了两遍,
+   * 一份成了表、一份还是原始 markdown)。
+   *
+   * 两个数是这一层自己就知道的:账本这一帧画了 `ledgerDrawn` 个字的正文(parts 里
+   * 那些 + 上面补出来的那一截),而尾巴的正文从 `content` 的第 `tailStart` 个字起
+   * (交接线,`contentCoverage`)。账本画过了头 —— parts 一次物化就可能比交接线跑得
+   * 远 —— 中间这一段就是**两边都会画**的那一截,在这里剪掉。
+   *
+   * 为什么剪在画的这一层而不是交接那一层:交接决定的是**归属**(这一截该谁负责),
+   * 它有自己的顺序闸,一帧交不出去是正常的;而"屏幕上不许出现两遍"是**显示的
+   * 不变量**,任何一帧都必须成立。两件事分开,少了哪一个都不对。
+   *
+   * `contentCoverage` 缺席(重折 / 测试直调)时按"尾巴整段都在账本之外"处理 ——
+   * 与从前逐字相同,剪 0 个字。
+   */
+  const ledgerDrawn = Math.max(coveredByParts, Math.min(content.length, limit))
+  const tailStart = contentCoverage === undefined ? ledgerDrawn : Math.max(0, contentCoverage)
+  let overlap = Math.max(0, ledgerDrawn - tailStart)
+  // 这一截与尾巴**第一段**是同一轮:它就是那一轮里已经打包、但还没结算成 part 的
+  // 前半截。尾巴一段都没有(只有顶部推理 / 只有活调用)时不猜,留空。
+  const pendingTurn = ledgerParts.length > 0 ? tail.segments[0]?.turnIndex : undefined
+  if (pending) {
+    parts.push({
+      type: 'text',
+      content: pending,
+      ...(pendingTurn !== undefined ? { turnIndex: pendingTurn } : {}),
+    })
   }
 
-  // 只有**第一截**可以延长账本那一段(它就是那一段还没打包的尾巴);其后每一截
-  // 都是流上新的一段,各自起一格 —— 用一个局部标记表达,不留任何模块级状态。
-  let extendedLedgerPart = false
+  /*
+   * ── ② 尾巴那几段 ───────────────────────────────────────────────────
+   *
+   * 延长末格的判据是「同种 **且** 同轮」。同种是从前那一条(段的开合听账本的);
+   * 同轮是这一批补的锚点维 —— 尾巴的段自带轮次号(流说的),账本的 text part 也
+   * 自带轮次号(投影给的),两者对得上才是同一段话的前后半截。
+   */
+  const drawn: TailSegment[] = []
   for (const segment of tail.segments) {
-    if (!segment.text) continue
-    const last = parts[parts.length - 1]
-    if (!extendedLedgerPart && last?.type === segment.kind) {
-      parts[parts.length - 1] = { ...last, content: `${last.content ?? ''}${segment.text}` }
-    } else {
-      // 账本还没开出这一段(第一条打包行之前):在**末尾**挂一格显示用的尾巴。
-      // 它没有 turnIndex 之类的结构信息 —— 那些等账本说话。
-      parts.push({ type: segment.kind, content: segment.text })
+    // 重叠只从**正文**那几段里剪:推理不进 `message.content`,账本画它的是另一条
+    // 车道(`reasoningInline`),拿正文的账去剪推理是串仓。
+    let text = segment.text
+    if (segment.kind === 'text' && overlap > 0) {
+      const cut = Math.min(overlap, text.length)
+      overlap -= cut
+      text = text.slice(cut)
     }
-    extendedLedgerPart = true
+    if (!text) continue
+    drawn.push({ ...segment, text })
+    const last = parts[parts.length - 1]
+    if (last?.type === segment.kind && last.turnIndex === segment.turnIndex) {
+      parts[parts.length - 1] = { ...last, content: `${last.content ?? ''}${text}` }
+    } else {
+      parts.push({
+        type: segment.kind,
+        content: text,
+        ...(segment.turnIndex !== undefined ? { turnIndex: segment.turnIndex } : {}),
+      })
+    }
   }
 
-  const tailText = tail.segments
+  const tailText = drawn
     .filter((segment) => segment.kind === 'text')
     .map((segment) => segment.text)
     .join('')
 
+  /*
+   * ── ③ 参数还在流的那几次调用 ────────────────────────────────────────
+   *
+   * 挂在 `toolCalls` 上而不是自己造一个锚点 part:锚点是账本的坐标系
+   * (`synthesizeCoreToolAnchors` 见了 `tool-call`/`data-steps` 就整条不动手),
+   * 往 parts 里塞一个假锚点会把**真**锚点的合成一起关掉。挂在 `toolCalls` 上,
+   * `anchorMessage` 末尾那句"锚点没认领到的调用摆出来"自然把它排在最后 ——
+   * 而"刚刚开始的这一次"本来就该在最后。
+   *
+   * 账本已经有的 id 一律不画(交接那一步已经退役过一轮,这里是第二道闸:
+   * 少一张卡是说谎,多一张是重影)。
+   */
+  const liveCalls = tail.tools.filter(
+    (tool) => !(message.toolCalls ?? []).some((call) => call.id === tool.id),
+  )
+
   list[index] = {
     ...message,
-    content: `${message.content ?? ''}${tailText}`,
+    content: `${content}${tailText}`,
     ...(tail.reasoningTop
       ? { reasoning: `${message.reasoning ?? ''}${tail.reasoningTop}` }
       : {}),
     contentParts: parts,
+    ...(liveCalls.length > 0
+      ? { toolCalls: [...(message.toolCalls ?? []), ...liveCalls.map(liveToolCall)] }
+      : {}),
   } as ProjectedMessage
   return list
+}
+
+/**
+ * 一次还在收参数的调用**长成账本那份调用的样子**。
+ *
+ * 三格是编出来的、且必须是这三格:`arguments` 空(参数还没定稿,解半截 JSON 就是
+ * 猜)、`status` 是 `input-streaming`(后端自己那份占位调用写的正是这一档,见
+ * core `createCoreToolInputStartArtifacts`)、`streamingArgs` 是收到的原文。
+ * 与投影给"孤儿参数流"造的那份逐格同形 —— 屏幕上因此认不出这一份是壳造的。
+ */
+type ProjectedCall = NonNullable<ProjectedMessage['toolCalls']>[number]
+
+function liveToolCall(tool: TailToolCall): ProjectedCall {
+  return {
+    id: tool.id,
+    toolId: tool.toolName,
+    toolName: tool.toolName,
+    arguments: {},
+    status: 'input-streaming',
+    timestamp: tool.timestamp,
+    streamingArgs: tool.argsText,
+  } as ProjectedCall
 }
 
 /* ── overlay 车道 ─────────────────────────────────────────────────────── */

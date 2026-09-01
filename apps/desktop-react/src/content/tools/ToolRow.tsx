@@ -41,25 +41,52 @@ export { formatDuration, toolStatusLabel, toolTone, type ToolTone } from './stat
  * 复制一份 JSX —— 复制之后「右端该显示什么」这条规则就有两个产地了。
  */
 
-/** A1:单发的那张卡。 */
+/**
+ * 单发那张卡的**壳属性** —— 长相(类名 + 三个数据属性)只有这一个产地。
+ *
+ * 为什么把壳拆出来给别人用:一组只有一次调用时,**那张卡就是组自己那个元素**
+ * (`ToolGroup`)—— 中间不许再套一层 div(「段只渲染一个元素、不加包裹层」),
+ * 而组与卡必须是**同一个 DOM 节点**,第二次调用到达时 React 才是打补丁不是重挂
+ * (09-01 P2:真机 t=6614 单卡整行消失换成组卡)。
+ */
+export function toolCardShell(row: ToolRowModel) {
+  return {
+    className: s.toolCard,
+    'data-tool-status': row.status,
+    'data-tool-tone': toolTone(row.status),
+    // 节奏表的钩子(content/ChatStream.module.css):工具卡是**一件东西**,
+    // 上下留白按物件档 --pr-obj,不按段距。
+    'data-prose': 'object',
+  } as const
+}
+
+/** A1:单发的那张卡(壳 + 身)。 */
 export function ToolRow({ step, ctx }: { step: ToolStepModel; ctx: BlockCtx }) {
-  return <ToolRowBody step={step} ctx={ctx} variant="card" />
+  return (
+    <div {...toolCardShell(step.row)}>
+      <ToolCardBody step={step} ctx={ctx} />
+    </div>
+  )
 }
 
 /** B2 清单里的一行(无卡壳)。 */
 export function ToolStepRow({ step, ctx }: { step: ToolStepModel; ctx: BlockCtx }) {
-  return <ToolRowBody step={step} ctx={ctx} variant="step" />
+  const { row } = step
+  return (
+    <div
+      className={s.toolStep}
+      data-tool-status={row.status}
+      data-tool-tone={toolTone(row.status)}
+      // 组里的行不是消息框的直接子项,这个属性对它们只是无害的多余标记。
+      data-prose="object"
+    >
+      <ToolCardBody step={step} ctx={ctx} />
+    </div>
+  )
 }
 
-function ToolRowBody({
-  step,
-  ctx,
-  variant,
-}: {
-  step: ToolStepModel
-  ctx: BlockCtx
-  variant: 'card' | 'step'
-}) {
+/** 壳里那一身:一行脸 + 拉开的抽屉。壳由谁画不一定,身永远是这一份。 */
+export function ToolCardBody({ step, ctx }: { step: ToolStepModel; ctx: BlockCtx }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const toggle = useCallback(() => setOpen((value) => !value), [])
@@ -74,15 +101,7 @@ function ToolRowBody({
   const expandable = EXPANDABLE_STATUSES.has(row.status)
 
   return (
-    <div
-      className={variant === 'card' ? s.toolCard : s.toolStep}
-      data-tool-status={row.status}
-      data-tool-tone={tone}
-      // 节奏表的钩子(content/ChatStream.module.css):工具卡是**一件东西**,
-      // 上下留白按物件档 --pr-obj,不按段距。组里的行不是消息框的直接子项,
-      // 这个属性对它们只是无害的多余标记。
-      data-prose="object"
-    >
+    <>
       {expandable ? (
         <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
           <ToolRowFace t={t} row={row} tone={tone} />
@@ -95,7 +114,7 @@ function ToolRowBody({
         </div>
       )}
       {open && <ToolDrawer call={call} ctx={ctx} />}
-    </div>
+    </>
   )
 }
 

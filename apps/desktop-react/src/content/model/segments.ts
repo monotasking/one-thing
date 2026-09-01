@@ -205,8 +205,14 @@ export type SegmentModel =
    * 与「key 不进模型」不冲突:进模型的是**偏移**(哪来的),不是 key(怎么画)。
    */
   | { kind: 'rich-text'; blocks: BlockModel[]; offsets: readonly number[] }
-  /** 单发(A1 卡行)。带着 call —— C1 抽屉的详情要惰性算。 */
-  | { kind: 'tool'; step: ToolStepModel }
+  /**
+   * 挨着做的那几件事(B2)。**一次调用也是一组** —— 组里一行画成从前那张单发卡
+   * (`ToolGroup` 的 `total === 1`)。
+   *
+   * 从前这里还有一格 `{kind:'tool'}`,09-01 P2 撤掉:段种带进 key,第二次调用一
+   * 到达同一位置就换段种,React 把整段卸载重挂(真机 t=6614 那一帧整行替换)。
+   * 「画成卡还是画成计数句」是呈现的事,不该决定「这是不是同一件东西」。
+   */
   | { kind: 'tool-group'; group: ToolGroupModel }
   | { kind: 'research'; episode: ResearchEpisodeModel }
   | { kind: 'image'; blob: BlobRef }

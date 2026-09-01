@@ -32,8 +32,27 @@ import { isWebCall } from '../tools/web-family'
  * 有 presenter 算出来的行。这一步只回答「哪几次调用是一组」。
  */
 
+/**
+ * 归组的产物。**工具那一路只有 `tool-group` 一种出口**(09-01 P2)—— 一次调用也是
+ * 一组,组里一行画成一张卡(`ToolGroup` 的 `total === 1` 分支,与从前的单发卡逐
+ * 像素相同)。
+ *
+ * ── 为什么不留「单发是 tool、连发是 tool-group」两种出口 ────────────────
+ * 那条判据在**流式期间会反复改判**:第二个调用到达的那一刻,同一个位置从
+ * `tool` 变成 `tool-group` —— 段 key 带 kind(`segmentKey`),kind 一变 React 就把
+ * 整段卸载重挂。真机逐帧读数:
+ *
+ * ```
+ * t=6430  … | tool:failed          ← 单发,一张卡
+ * t=6614  … | object:tool-group    ← 第二发到达,整行消失换成一张组卡(DOM 真重挂)
+ * ```
+ *
+ * 违反的是「列表 key 稳定,禁整树重挂」。判据本身没错(**画成什么样**该由条数决定),
+ * 错在让它决定**这是不是同一件东西**。所以:归组只回答「哪几次调用挨着」,一挨着
+ * 就是一组;一组画成卡还是画成计数句,是 `ToolGroup` 的事。
+ */
 export type GroupedNode =
-  | AnchoredNode
+  | Exclude<AnchoredNode, { node: 'tool' }>
   | { node: 'tool-group'; calls: ProjectedToolCall[] }
   | { node: 'research'; calls: ProjectedToolCall[] }
 
@@ -48,9 +67,9 @@ export function groupNodes(nodes: readonly AnchoredNode[]): GroupedNode[] {
   const flush = () => {
     if (run.length === 0) return
     if (kind === 'web') out.push({ node: 'research', calls: run })
-    // 一次调用不成组:一个人做了一件事,说「执行了 1 步」比直接把那件事摆出来
-    // 更远 —— 计数句是给「多到看不过来」用的。(检索段不适用,见文件头。)
-    else if (run.length === 1) out.push({ node: 'tool', call: run[0] })
+    // 一次调用**也是一组**(09-01 P2)。「单发不说计数句、直接把那件事摆出来」
+    // 这条没变,它挪到了呈现那一层:`ToolGroup` 的 `total === 1` 画的就是从前
+    // 那张卡。留在这里的话,第二次调用一到达同一个位置就换了段种,React 整段重挂。
     else out.push({ node: 'tool-group', calls: run })
     run = []
   }

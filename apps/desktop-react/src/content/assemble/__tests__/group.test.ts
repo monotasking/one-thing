@@ -37,8 +37,18 @@ describe('归组判据:相邻成组,别的节点打断', () => {
     expect(out[0]).toMatchObject({ node: 'tool-group' })
   })
 
-  it('单发不成组 —— 「执行了 1 步」比直接摆出那件事更远', () => {
-    expect(groupNodes([tool('c1')])).toEqual([{ node: 'tool', call: expect.objectContaining({ id: 'c1' }) }])
+  /*
+   * 09-01 P2 改判:**一次调用也是一组**。
+   *
+   * 「单发不说计数句、直接把那件事摆出来」这条纪律一个字没变 —— 它挪去了呈现层
+   * (`ToolGroup` 的 `total === 1` 画的就是从前那张卡,逐像素相同)。留在归组这
+   * 一层的话,第二次调用到达的那一帧同一个位置换了段种,段 key 带 kind,React
+   * 把整段卸载重挂:真机 t=6614 单卡整行消失换成组卡(DOM 不是同一个节点)。
+   */
+  it('单发也是一组 —— 画成卡是呈现的事,不该决定「这是不是同一件东西」', () => {
+    expect(groupNodes([tool('c1')])).toEqual([
+      { node: 'tool-group', calls: [expect.objectContaining({ id: 'c1' })] },
+    ])
   })
 
   it('正文一插进来就是两组(人读到的确实是两段)', () => {
@@ -46,15 +56,15 @@ describe('归组判据:相邻成组,别的节点打断', () => {
     expect(out.map((node) => node.node)).toEqual(['tool-group', 'text', 'tool-group'])
   })
 
-  it('被打断之后各剩一次 = 两张单卡,不是两个一步的组', () => {
+  it('被打断之后各剩一次 = 两组各一次(画出来是两张单卡)', () => {
     const out = groupNodes([tool('c1'), text('说一句'), tool('c2')])
-    expect(out.map((node) => node.node)).toEqual(['tool', 'text', 'tool'])
+    expect(out.map((node) => node.node)).toEqual(['tool-group', 'text', 'tool-group'])
   })
 
   it('思考段同样是打断 —— 判据是「中间有别的节点」,不是「中间有正文」', () => {
     const reasoning: AnchoredNode = { node: 'reasoning', text: '想', placement: 'inline' }
     const out = groupNodes([tool('c1'), reasoning, tool('c2')])
-    expect(out.map((node) => node.node)).toEqual(['tool', 'reasoning', 'tool'])
+    expect(out.map((node) => node.node)).toEqual(['tool-group', 'reasoning', 'tool-group'])
   })
 
   it('非工具节点原样穿过去,顺序一个都不动', () => {
@@ -91,7 +101,7 @@ describe('检索段:web 族连着来的折成 research(P4)', () => {
 
   it('非 web 工具打断 —— 中间读了个文件,那是两段检索夹着一次读', () => {
     const out = groupNodes([web('w1'), tool('c1', 'read'), web('w2')])
-    expect(out.map((node) => node.node)).toEqual(['research', 'tool', 'research'])
+    expect(out.map((node) => node.node)).toEqual(['research', 'tool-group', 'research'])
   })
 
   it('正文打断照旧(与普通组同一条判据:中间有别的节点)', () => {
@@ -104,9 +114,9 @@ describe('检索段:web 族连着来的折成 research(P4)', () => {
     expect(out.map((node) => node.node)).toEqual(['tool-group', 'research'])
   })
 
-  it('检索之后剩一次普通调用 = 单卡,不是一步的组', () => {
+  it('检索之后剩一次普通调用 = 一组一次(画出来是单卡),不并进检索段', () => {
     const out = groupNodes([web('w1'), tool('c1', 'read')])
-    expect(out.map((node) => node.node)).toEqual(['research', 'tool'])
+    expect(out.map((node) => node.node)).toEqual(['research', 'tool-group'])
   })
 })
 

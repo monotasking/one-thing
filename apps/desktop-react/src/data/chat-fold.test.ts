@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   appendTail,
   feedTail,
+  feedTailToolArgs,
   reconcileOverlay,
   handOverToLedger,
+  startTailTool,
   type FoldLens,
   userMessageIds,
   type OverlayEntry,
@@ -264,6 +266,233 @@ describe('接尾巴:账本那一格只画到交接线为止', () => {
     const tail = feedTail(undefined, 'a1', 'text', '全在尾巴里')
     const out = appendTail([message({ id: 'a1', content: '全在尾巴里' })], tail, 0)
     expect(out[0].contentParts).toEqual([{ type: 'text', content: '全在尾巴里' }])
+  })
+})
+
+/**
+ * ── 锚点维(09-01 P0)────────────────────────────────────────────────────
+ *
+ * 真机报障:多轮工具的第二轮正文**先画在工具组上面 191ms,再整段消失 992ms**,
+ * 等锚点物化才跳到正确位置(帧证抄在 `FoldLens.contentPlaceable` 的注里)。
+ *
+ * 病根两半,这一组各钉一半:
+ *  · 尺错 —— 账本的 `message.content` 是**全部**正文(不看这一轮收没收齐),而
+ *    `contentParts` 只有已结算那几轮。parts 还没物化时把正文交给那条扁平车道,
+ *    parts 一物化(那时只画 parts)那一截当场没了;
+ *  · 落点错 —— 扁平车道那一格是 turn 盲的,合成出来的工具锚点会跨到它后面。
+ */
+describe('锚点维:parts 没物化前,新一轮的正文不许交给扁平车道', () => {
+  it('contentPlaceable 为 false:正文额度 0(推理那两条车道照旧)', () => {
+    let tail = feedTail(undefined, 'a1', 'text', '第二轮正文', undefined, undefined, 2)
+    tail = feedTail(tail, 'a1', 'reasoning', '第二轮想', 'inline', true, 2)
+    const out = handOverToLedger(tail, NOTHING, {
+      // 账本的 content 已经涨到装得下这一截了 —— 但它此刻摆不对。
+      content: 99,
+      reasoningTop: 0,
+      reasoningInline: 0,
+      contentPlaceable: false,
+    })
+    expect(out.taken.content).toBe(0)
+    expect(out.tail?.segments).toEqual([
+      { kind: 'text', text: '第二轮正文', turnIndex: 2 },
+      { kind: 'reasoning', text: '第二轮想', turnIndex: 2 },
+    ])
+  })
+
+  it('缺席 = 摆得对(没有工具活儿的消息永远是这样),与从前逐字相同', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '正文')
+    expect(handOverToLedger(tail, NOTHING, { ...NOTHING, content: 2 }).taken.content).toBe(2)
+  })
+
+  it('换了轮次就是新的一段 —— 两轮正文中间隔着那一轮的工具', () => {
+    let tail = feedTail(undefined, 'a1', 'text', '第一轮', undefined, undefined, 1)
+    tail = feedTail(tail, 'a1', 'text', '第二轮', undefined, undefined, 2)
+    expect(tail?.segments).toEqual([
+      { kind: 'text', text: '第一轮', turnIndex: 1 },
+      { kind: 'text', text: '第二轮', turnIndex: 2 },
+    ])
+  })
+})
+
+describe('接尾巴:账本 parts 画不到的那一截照样画,而且带轮次号', () => {
+  it('parts 只装了第一轮,第二轮那截从 content 里补出来(消失 992ms 的那一格)', () => {
+    // 真机的形:第一轮的 request 结算了(parts 有它),第二轮还在流 —— 它的正文
+    // 只活在 content 里。修前 parts 一非空就不画 content,那一截两边都没有。
+    const tail = feedTail(undefined, 'a1', 'text', '还在尾巴里', undefined, undefined, 2)
+    const out = appendTail(
+      [
+        message({
+          id: 'a1',
+          content: '第一轮正文第二轮已打包',
+          contentParts: [{ type: 'text', content: '第一轮正文', turnIndex: 1 }],
+        } as never),
+      ],
+      tail,
+      '第一轮正文第二轮已打包'.length,
+    )
+    expect(out[0].contentParts).toEqual([
+      { type: 'text', content: '第一轮正文', turnIndex: 1 },
+      // 补出来的那一截跟着尾巴那一轮 —— 不带轮次号的话它算第 0 轮,
+      // 第一轮的工具锚点会插到它**后面**去。它与尾巴那一段同轮同种,合成一格
+      // (它们本来就是同一段话的前后半截:前半截已打包,后半截还在路上)。
+      { type: 'text', content: '第二轮已打包还在尾巴里', turnIndex: 2 },
+    ])
+  })
+
+  /*
+   * 09-01 用户真机证词:「markdown 的渲染很奇怪,它会显示原始字符串,其实 table
+   * 已经画出来了」—— 同一截内容被画了两遍(一份成了表,一份还是原始 markdown)。
+   *
+   * 构造的正是那一形:一张表流到一半,账本的 parts **一次物化**把整张表都装了进去,
+   * 而交接线还停在半路 —— 尾巴手里还攥着最后一行。少了那道显示不变量,那一行会被
+   * 账本画一次、尾巴再画一次。
+   */
+  const TABLE = '| 项 | 值 |\n| --- | --- |\n| 甲 | 一 |\n| 乙 | 二 |'
+  const HALF = TABLE.length - '| 乙 | 二 |'.length
+
+  it('账本已经画过的字,尾巴不再画一遍(证词:表画出来了,原始字符串还在)', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '| 乙 | 二 |', undefined, undefined, 1)
+    const out = appendTail(
+      [
+        message({
+          id: 'a1',
+          content: TABLE,
+          // parts 一次物化:整张表都在账本里了。
+          contentParts: [{ type: 'text', content: TABLE, turnIndex: 1 }],
+        } as never),
+      ],
+      tail,
+      // …而交接线还停在最后一行之前。
+      HALF,
+    )
+    expect(out[0].contentParts).toEqual([{ type: 'text', content: TABLE, turnIndex: 1 }])
+    expect(out[0].content).toBe(TABLE)
+  })
+
+  it('只剪重叠的那几个字,后面新到的一截照画', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '| 乙 | 二 |\n| 丙 | 三 |', undefined, undefined, 1)
+    const out = appendTail(
+      [
+        message({
+          id: 'a1',
+          content: TABLE,
+          contentParts: [{ type: 'text', content: TABLE, turnIndex: 1 }],
+        } as never),
+      ],
+      tail,
+      HALF,
+    )
+    expect(out[0].contentParts).toEqual([
+      { type: 'text', content: `${TABLE}\n| 丙 | 三 |`, turnIndex: 1 },
+    ])
+  })
+
+  it('重叠只从正文那几段里剪 —— 推理走的是另一条车道,不许被正文的账剪掉', () => {
+    let tail = feedTail(undefined, 'a1', 'reasoning', '想了想', 'inline', true, 1)
+    tail = feedTail(tail, 'a1', 'text', '重复的一段', undefined, undefined, 1)
+    const out = appendTail(
+      [
+        message({
+          id: 'a1',
+          content: '账本正文重复的一段',
+          contentParts: [{ type: 'text', content: '账本正文重复的一段', turnIndex: 1 }],
+        } as never),
+      ],
+      tail,
+      '账本正文'.length,
+    )
+    expect(out[0].contentParts).toEqual([
+      { type: 'text', content: '账本正文重复的一段', turnIndex: 1 },
+      { type: 'reasoning', content: '想了想', turnIndex: 1 },
+    ])
+  })
+
+  it('跨轮不合并:上一轮那一格不许被这一轮的尾巴延长', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '第二轮', undefined, undefined, 2)
+    const out = appendTail(
+      [
+        message({
+          id: 'a1',
+          content: '第一轮',
+          contentParts: [{ type: 'text', content: '第一轮', turnIndex: 1 }],
+        } as never),
+      ],
+      tail,
+      '第一轮'.length,
+    )
+    expect(out[0].contentParts).toEqual([
+      { type: 'text', content: '第一轮', turnIndex: 1 },
+      { type: 'text', content: '第二轮', turnIndex: 2 },
+    ])
+  })
+
+  it('同轮同种照旧延长(轮次号两边都缺席也算同一轮)', () => {
+    const tail = feedTail(undefined, 'a1', 'text', '续', undefined, undefined, 1)
+    const out = appendTail(
+      [
+        message({
+          id: 'a1',
+          content: '已落账',
+          contentParts: [{ type: 'text', content: '已落账', turnIndex: 1 }],
+        } as never),
+      ],
+      tail,
+      '已落账'.length,
+    )
+    expect(out[0].contentParts).toEqual([{ type: 'text', content: '已落账续', turnIndex: 1 }])
+  })
+})
+
+/**
+ * ── 活调用车道(09-01 P1)──────────────────────────────────────────────
+ *
+ * 真机读数:`tool:input-start` t=1693ms,`tool/call` 落账 t=1929ms,打包行
+ * t=1988ms —— 参数逐片到达的那 295ms 屏幕上**什么都没有**。
+ */
+describe('活调用:参数还在流的那一次,由尾巴顶着', () => {
+  it('开卡 + 参数逐片进来,挂进 toolCalls 且状态是 input-streaming', () => {
+    let tail = startTailTool(undefined, 'a1', 'call_a', 'time', 111)
+    tail = feedTailToolArgs(tail, 'a1', 'call_a', '{"timezone":')
+    tail = feedTailToolArgs(tail, 'a1', 'call_a', '"Asia/Shanghai"}')
+    const out = appendTail([message({ id: 'a1', content: '我查一下' })], tail)
+    expect(out[0].toolCalls).toEqual([
+      {
+        id: 'call_a',
+        toolId: 'time',
+        toolName: 'time',
+        arguments: {},
+        status: 'input-streaming',
+        timestamp: 111,
+        streamingArgs: '{"timezone":"Asia/Shanghai"}',
+      },
+    ])
+  })
+
+  it('同一个 id 再开一次不重复建卡(重连回放会把同一条事件送两遍)', () => {
+    let tail = startTailTool(undefined, 'a1', 'call_a', 'time', 111)
+    tail = startTailTool(tail, 'a1', 'call_a', 'time', 222)
+    expect(tail?.tools).toHaveLength(1)
+  })
+
+  it('没建过卡的 id 一律不认 —— 名字只有 input-start 说得出', () => {
+    const tail = feedTailToolArgs(startTailTool(undefined, 'a1', 'call_a', 'time', 1), 'a1', 'ghost', '{}')
+    expect(tail?.tools.map((tool) => tool.argsText)).toEqual([''])
+  })
+
+  it('账本认领了这个 id,尾巴这一份当场退役(按身份,不按长度)', () => {
+    const tail = startTailTool(undefined, 'a1', 'call_a', 'time', 111)
+    const out = handOverToLedger(tail, NOTHING, {
+      ...NOTHING,
+      ledgerToolCallIds: new Set(['call_a']),
+    })
+    expect(out.tail).toBeUndefined()
+  })
+
+  it('账本已经有这次调用时一格都不多画(少一张是说谎,多一张是重影)', () => {
+    const tail = startTailTool(undefined, 'a1', 'call_a', 'time', 111)
+    const ledgerCall = { id: 'call_a', toolId: 'time', toolName: 'time', arguments: {}, status: 'completed', timestamp: 1 }
+    const out = appendTail([message({ id: 'a1', toolCalls: [ledgerCall] } as never)], tail)
+    expect(out[0].toolCalls).toEqual([ledgerCall])
   })
 })
 

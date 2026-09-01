@@ -72,18 +72,29 @@ describe('段序列:一条消息算成哪几段', () => {
     expect(segment).toMatchObject({ kind: 'thinking', live: true })
   })
 
-  it('单发工具 = 一张卡(P2 起卡里带着那次调用,抽屉要惰性算详情)', () => {
-    // P0 时这条断言的是「两次调用 = 两张卡,都排在正文后面」。P2 起两件事都变了:
-    // 归组把相邻的两次折成一组(可感知变化,B2 定稿),所以这里只留单发那一格。
+  it('单发工具 = 一组一次(画出来是一张卡,卡里带着那次调用,抽屉惰性算详情)', () => {
+    // P0 时这条断言的是「两次调用 = 两张卡,都排在正文后面」。P2 起归组把相邻的
+    // 两次折成一组(可感知变化,B2 定稿),所以这里只留单发那一格。
+    // 09-01 再改一次:**单发也是一组** —— 段种不再随条数改判(改判 = React 整段
+    // 重挂,真机 t=6614),「画成卡」挪去 `ToolGroup` 的 total===1 那一支。
     const segments = assembleMessage(
       message({ content: '读一下', toolCalls: [toolCall()] as never }),
     )
-    expect(segments.map((s) => s.kind)).toEqual(['rich-text', 'tool'])
+    expect(segments.map((s) => s.kind)).toEqual(['rich-text', 'tool-group'])
     expect(segments[1]).toMatchObject({
-      kind: 'tool',
-      step: {
-        row: { callId: 'c1', icon: 'FileText', name: 'a.txt', status: 'completed' },
-        call: { id: 'c1' },
+      kind: 'tool-group',
+      group: {
+        total: 1,
+        entries: [
+          {
+            children: [
+              {
+                row: { callId: 'c1', icon: 'FileText', name: 'a.txt', status: 'completed' },
+                call: { id: 'c1' },
+              },
+            ],
+          },
+        ],
       },
     })
   })
@@ -106,14 +117,18 @@ describe('段序列:一条消息算成哪几段', () => {
     const segments = assembleMessage(
       message({ toolCalls: [toolCall({ toolName: '', toolId: 'mystery' })] as never }),
     )
-    expect(segments[0]).toMatchObject({ step: { row: { name: 'mystery' } } })
+    expect(segments[0]).toMatchObject({
+      group: { entries: [{ children: [{ row: { name: 'mystery' } }] }] },
+    })
   })
 
   it('认不出的状态原样带过去(渲染层再决定显示英文枚举)', () => {
     const segments = assembleMessage(
       message({ toolCalls: [toolCall({ status: 'teleported' })] as never }),
     )
-    expect(segments[0]).toMatchObject({ step: { row: { status: 'teleported' } } })
+    expect(segments[0]).toMatchObject({
+      group: { entries: [{ children: [{ row: { status: 'teleported' } }] }] },
+    })
   })
 })
 

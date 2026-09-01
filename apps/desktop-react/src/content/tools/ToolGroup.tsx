@@ -3,7 +3,7 @@ import { useT, type TFn } from '../../i18n'
 import { resolveIcon } from '../../components/icons'
 import type { BlockCtx } from '../blocks/registry'
 import type { ToolGroupEntry, ToolGroupModel, ToolStepModel } from '../model/segments'
-import { ToolStepRow, formatDuration, toolTone } from './ToolRow'
+import { ToolCardBody, ToolStepRow, formatDuration, toolCardShell, toolTone } from './ToolRow'
 import s from './ToolGroup.module.css'
 
 const CaretIcon = resolveIcon('ChevronRight')
@@ -23,33 +23,66 @@ const CaretIcon = resolveIcon('ChevronRight')
  * 同名连发在**装配层**已经折成了一格(`presentToolGroup`),这里只画:`count > 1`
  * 就是一行「read ×3」,点开看逐条,**失败置顶** —— 展开一组多半是因为里面有一条
  * 出了事,让它排在第一行是把「为什么点开」直接答了。
+ *
+ * ── 一组只有一次调用时:画从前那张卡(09-01 P2)────────────────────────
+ * 「单发不说计数句」这条没变 —— 一个人做了一件事,说「执行了 1 步」比直接把那件
+ * 事摆出来更远。变的是它**在哪儿判**:从前由归组判(单发产 `tool` 段、连发产
+ * `tool-group` 段),于是第二次调用到达的那一帧段种一换,React 把整段卸载重挂
+ * (真机 t=6614:单卡整行消失换成组卡)。现在归组只说「这几次挨着」,**画成什么样
+ * 由条数在这里决定** —— 外面那个 `div` 逐帧是同一个 DOM 节点,只有里面换。
  */
 export function ToolGroup({ group, ctx }: { group: ToolGroupModel; ctx: BlockCtx }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const toggle = useCallback(() => setOpen((value) => !value), [])
+  // 判据是**调用数**不是格数:同名连发聚合之后 entries 只有一格,但那是「read ×3」,
+  // 该说计数句(与 `ToolGroupModel.total` 的注同一条)。
+  const single = group.total === 1 ? group.entries[0]?.children[0] : undefined
 
   return (
-    // data-prose:节奏表的钩子 —— 工具组按物件档留白(content/ChatStream.module.css)。
-    <div className={s.group} data-tool-group data-open={open || undefined} data-prose="object">
-      <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
-        <CaretIcon className={s.caret} strokeWidth={2} aria-hidden="true" />
-        <span className={s.count}>
-          {t('chat.toolGroup.count', { n: group.total })}
-          <span className={s.sep}>·</span>
-          {namesText(t, group.names)}
-        </span>
-        <span className={s.right}>
-          {group.failed > 0 && (
-            <span className={s.failed}>{t('chat.toolGroup.failed', { n: group.failed })}</span>
-          )}
-          {group.durationMs !== undefined && (
-            <span className={s.duration}>{formatDuration(t, group.durationMs)}</span>
-          )}
-        </span>
-      </button>
+    /*
+     * **一个元素,两种长相**。段只渲染一个元素、不加包裹层(SegmentView 的纪律),
+     * 所以单发那一支不是"组里套一张卡"—— 这个 `div` **自己**就是那张卡:壳属性
+     * 来自 `toolCardShell`(长相的唯一产地),里面是同一身 `ToolCardBody`,
+     * 与从前的单发卡逐属性相同。
+     *
+     * 第二次调用到达时,React 在同一位置见到的还是一个 `div`:类名与数据属性打补丁,
+     * **DOM 节点不换** —— 这正是 P2 要的那条「零重挂」。
+     *
+     * data-prose 两支都有:工具那件东西按物件档留白(content/ChatStream.module.css)。
+     */
+    <div
+      {...(single
+        ? toolCardShell(single.row)
+        : {
+            className: s.group,
+            'data-tool-group': true,
+            'data-open': open || undefined,
+            'data-prose': 'object' as const,
+          })}
+    >
+      {single ? (
+        <ToolCardBody step={single} ctx={ctx} />
+      ) : (
+        <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
+          <CaretIcon className={s.caret} strokeWidth={2} aria-hidden="true" />
+          <span className={s.count}>
+            {t('chat.toolGroup.count', { n: group.total })}
+            <span className={s.sep}>·</span>
+            {namesText(t, group.names)}
+          </span>
+          <span className={s.right}>
+            {group.failed > 0 && (
+              <span className={s.failed}>{t('chat.toolGroup.failed', { n: group.failed })}</span>
+            )}
+            {group.durationMs !== undefined && (
+              <span className={s.duration}>{formatDuration(t, group.durationMs)}</span>
+            )}
+          </span>
+        </button>
+      )}
 
-      {open && (
+      {!single && open && (
         <ul className={s.list}>
           {group.entries.map((entry, index) => (
             <li className={s.item} key={`${entry.tool}:${entry.row.callId}:${index}`}>
