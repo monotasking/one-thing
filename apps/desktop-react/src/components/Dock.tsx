@@ -50,8 +50,8 @@ interface DockAim {
  * 立的规矩),而拼选择器就得转义,`CSS.escape` 在测试用的 jsdom 里是 undefined。
  * DOMRect 的四条边是原型取值器,所以逐条抄成朴素数(判例见 settledDockRect)。
  */
-function bubbleRectOf(strip: HTMLElement | null, id: string): Rect | null {
-  const el = strip?.querySelector('[data-preview]')
+function bubbleRectOf(id: string): Rect | null {
+  const el = document.querySelector('[data-preview]')
   if (!el || el.getAttribute('data-preview') !== id) return null
   const b = el.getBoundingClientRect()
   return { left: b.left, right: b.right, top: b.top, bottom: b.bottom }
@@ -155,11 +155,6 @@ export function Dock({ dimmed }: Props) {
 
   const axis = DOCK_AXIS[dockEdge]
   const { tiles, sepAfter } = tilesFor(hiddenItems)
-  const { stripRef, setTileRef, factors, tracking, onMouseMove, onMouseLeave } = useMagnify(
-    tiles.length,
-    axis,
-  )
-
   /*
    * ── 一次只有一个泡,且「他正冲着泡来」时谁都别插队(09-01)──────────────
    *
@@ -176,7 +171,7 @@ export function Dock({ dimmed }: Props) {
       arm: (from, to, openId) => {
         // 边界①:没有朝泡的位移分量就不武装 —— 沿条横向巡瓦必须保持即时切换。
         if (!movesTowardPreview(from, to, dockEdge)) return null
-        const bubble = bubbleRectOf(stripRef.current, openId)
+        const bubble = bubbleRectOf(openId)
         return bubble ? { apex: to, bubble } : null
       },
       track: (a, from, to) => ({
@@ -184,7 +179,7 @@ export function Dock({ dimmed }: Props) {
         progressed: movesTowardPreview(from, to, dockEdge),
       }),
     }),
-    [dockEdge, stripRef],
+    [dockEdge],
   )
   const { openId: previewOpenId, controller: preview } = useHoverIntent<DockAim>({
     delayMs: PREVIEW_DELAY_MS,
@@ -194,6 +189,21 @@ export function Dock({ dimmed }: Props) {
     aim,
     onChange: () => {},
   })
+
+  /*
+   * 泡的主人瓦在条上的下标 —— 交给 useMagnify 钉成满档(09-01「移向 preview 时
+   * dock item 不要变小」)。这里只回答「是哪一块」,「钉多大 / 怎么回落」是放大那边的事。
+   * 藏起来的瓦不占格,所以下标必须现算(与 tilesFor 同一份次序)。
+   */
+  const pinnedIndex = previewOpenId
+    ? tiles.findIndex((t) => t.kind === 'item' && t.item.id === previewOpenId)
+    : -1
+  const { stripRef, setTileRef, factors, tracking, onMouseMove, onMouseLeave } = useMagnify(
+    tiles.length,
+    axis,
+    pinnedIndex >= 0 ? pinnedIndex : null,
+  )
+
 
   return (
     <div

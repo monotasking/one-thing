@@ -32,6 +32,9 @@ const RADIUS = 96 // px,影响半径
 /** 静止系数:1 = 原尺寸。 */
 export const REST_FACTOR = 1
 
+/** 满档系数 —— 指针正压在瓦心时的那一档,也是「泡的主人」被钉住的那一档。 */
+export const PEAK_FACTOR = 1 + MAX_GROW
+
 /** 纯函数,给定指针位置与各瓷砖静止中心(同一坐标系),算每块的尺寸系数。 */
 export function magnifyAt(pointerX: number, centers: number[]): number[] {
   return centers.map((c) => {
@@ -41,7 +44,18 @@ export function magnifyAt(pointerX: number, centers: number[]): number[] {
   })
 }
 
-export function useMagnify(count: number, axis: 'x' | 'y' = 'x') {
+/**
+ * @param pinnedIndex 泡的**主人瓦**在条上的下标(没有就给 null)。
+ *
+ * 09-01 报障:「从 dock item 移动到 preview 的时候,dock item 不要变小」。
+ * 修前指针一离开瓦、朝泡走,距离一拉开放大就按余弦回落,主人瓦当场缩回去 ——
+ * 而那块泡还开着、还挂在它头上,视觉上「泡没有主人了」。
+ *
+ * 裁定语义:**泡开着期间主人瓦钉在满档**,泡关掉或换主才按 --dur-release 平滑回落。
+ * 钉是在**读数那一层**做的(算出来的系数照旧,只是交出去之前把那一格换成满档),
+ * 所以磁性放大的几何算法一个字没动,别人该多大还多大。
+ */
+export function useMagnify(count: number, axis: 'x' | 'y' = 'x', pinnedIndex: number | null = null) {
   const stripRef = useRef<HTMLDivElement | null>(null)
   const tiles = useRef<Array<HTMLElement | null>>([])
   const restCenters = useRef<number[] | null>(null)
@@ -121,5 +135,29 @@ export function useMagnify(count: number, axis: 'x' | 'y' = 'x') {
     [],
   )
 
-  return { stripRef, setTileRef, factors, tracking, onMouseMove, onMouseLeave }
+  /*
+   * 钉主人瓦:换主 / 解钉那一下**重开一次入场缓冲** —— 跟手期过渡是 0ms,
+   * 不这么做的话旧主会从满档「啪」地掉回去、新主「啪」地弹上来,
+   * 正是入场那一件事的另一面(所以复用同一把闸,不另立机制)。
+   */
+  const lastPinned = useRef<number | null>(pinnedIndex)
+  useEffect(() => {
+    if (lastPinned.current === pinnedIndex) return
+    lastPinned.current = pinnedIndex
+    setTracking(false)
+    if (rampTimer.current) clearTimeout(rampTimer.current)
+    rampTimer.current = setTimeout(() => {
+      rampTimer.current = null
+      // 指针已经不在条上了就别把跟手打开 —— 那时该由 onMouseLeave 说了算。
+      if (restCenters.current) setTracking(true)
+    }, RELEASE_MS)
+  }, [pinnedIndex])
+
+  /** 交出去的那一份:算出来的系数,外加把主人瓦那一格钉成满档。 */
+  const shownFactors =
+    pinnedIndex === null || pinnedIndex < 0
+      ? factors
+      : factors.map((f, i) => (i === pinnedIndex ? PEAK_FACTOR : f))
+
+  return { stripRef, setTileRef, factors: shownFactors, tracking, onMouseMove, onMouseLeave }
 }
