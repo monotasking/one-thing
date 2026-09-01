@@ -28,7 +28,11 @@ import s from './ModeCard.module.css'
 export function ModeCard(props: {
   mode: ProviderMode
   config: ProviderConfig | undefined
-  saving: boolean
+  /**
+   * **计费档位**此刻在写吗(`dials:` 那一格)。档位是这张卡上唯一走设置写路的东西,
+   * 所以它只收这一格 —— 从前收的是整面共享的 `saving`,勾一个模型也会把档位禁灰。
+   */
+  dialsPending: boolean
 
   pool: PoolView
   poolBusy: boolean
@@ -73,7 +77,7 @@ export function ModeCard(props: {
         <DialsCard
           providerId={mode.providerId}
           config={props.config}
-          saving={props.saving}
+          pending={props.dialsPending}
           onDials={props.onDials}
         />
         <section className={s.card}>
@@ -135,12 +139,13 @@ export function ModeCard(props: {
 function DialsCard({
   providerId,
   config,
-  saving,
+  pending,
   onDials,
 }: {
   providerId: string
   config: ProviderConfig | undefined
-  saving: boolean
+  /** 这一坑的档位此刻在写吗。 */
+  pending: boolean
   onDials: (apiMode: string, region: string) => void
 }) {
   const spec = providerDialsOf(providerId)
@@ -153,14 +158,14 @@ function DialsCard({
       <DialRow
         field={spec.apiMode}
         value={stored.apiMode}
-        disabled={saving}
+        disabled={pending}
         onChange={(next) => onDials(next, stored.region)}
       />
       {spec.region && regionApplies && (
         <DialRow
           field={spec.region}
           value={stored.region}
-          disabled={saving}
+          disabled={pending}
           onChange={(next) => onDials(stored.apiMode, next)}
         />
       )}

@@ -49,6 +49,9 @@ function bigCatalog(vendors = 25, per = 40): CatalogRow[] {
 
 const IDLE_QUERY = createQuery<never>('t.idle', () => new Promise(() => undefined))
 
+/** 「一格都没在写」。常量而不是每次 `new Set()` —— 引用稳定,重渲判据才干净。 */
+const NO_PENDING: ReadonlySet<string> = new Set()
+
 function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
   return (
     <ModelCatalog
@@ -59,7 +62,8 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       refresh={IDLE_QUERY}
       kind="api"
       query=""
-      saving={false}
+      pendingModelIds={NO_PENDING}
+      write={undefined}
       onQuery={vi.fn()}
       onRefresh={vi.fn()}
       onToggle={vi.fn()}

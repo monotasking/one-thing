@@ -28,7 +28,8 @@ export function ProviderDetail({
   mode,
   tabs,
   enabled,
-  saving,
+  enabledPending,
+  customPending,
   onToggleEnabled,
   onSelectMode,
   onEditCustom,
@@ -38,7 +39,13 @@ export function ProviderDetail({
   mode: ProviderMode
   tabs: readonly ModeTab[]
   enabled: boolean
-  saving: boolean
+  /**
+   * **这一家的启用开关**此刻在写吗(`family:` 那一格)。
+   * 从前这里是整面共享的 `saving` —— 于是勾一个模型也会把这颗开关禁灰。
+   */
+  enabledPending: boolean
+  /** 这一家的**自定义定义**此刻在写吗(`custom:` 那一格)。「编辑」钮读它。 */
+  customPending: boolean
   onToggleEnabled: (next: boolean) => void
   onSelectMode: (providerId: string) => void
   /** 只有自定义家有「编辑」——别家的名字与地址不是用户定的。 */
@@ -67,7 +74,7 @@ export function ProviderDetail({
           {family.description && <p className={s.desc}>{family.description}</p>}
         </div>
         {family.custom && (
-          <Button size="sm" onClick={onEditCustom} disabled={saving}>
+          <Button size="sm" onClick={onEditCustom} disabled={customPending}>
             {t('providers.customEdit')}
           </Button>
         )}
@@ -76,7 +83,7 @@ export function ProviderDetail({
           <Switch
             checked={enabled}
             onChange={onToggleEnabled}
-            disabled={saving}
+            disabled={enabledPending}
             label={t('providers.enableFamily', { name: family.label })}
           />
         </div>

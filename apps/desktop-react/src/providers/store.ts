@@ -10,6 +10,7 @@ import type { OAuthStatusResponse } from '@shared/ipc/oauth'
 import type { AppSettings } from '@shared/ipc/settings'
 import type { SpaceCredentialsSummary, SpaceProviderCredentialSummary } from '@shared/ipc/spaces'
 import { providerSettingsPort } from '../data/provider-settings-port'
+import { createMutation } from '../data/kernel'
 import { catalogQuery } from './catalog-query'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
@@ -136,10 +137,11 @@ export interface ProviderSettingsState {
 
   /** providerId → 密钥那一格的状态。 */
   keyStatus: Record<string, KeySaveStatus>
-  /** 正在写设置(启用开关 / 勾选)。整面共享一颗 —— 写的是同一份设置。 */
-  saving: boolean
 
-  /** providerId → 凭证池正在写。池的写是逐坑的,不共享 `saving` 那一颗。 */
+  /**
+   * providerId → 凭证池正在写。池的写本来就是逐坑的。
+   * (设置那一路的忙态不在 store 里 —— 它在 `settingsMutation` 上,逐格。)
+   */
   poolBusy: Record<string, boolean>
   /** providerId → 池那一口失败时后端那句原话。 */
   poolError: Record<string, string>
@@ -232,6 +234,103 @@ let started = false
 /** 换空间那条订阅的句柄。同理:它是这一个进程的事实,不是屏幕上的一格。 */
 let unsubscribeSpace: (() => void) | undefined
 
+/* ── 设置写路:一发 mutation,逐格记账(09-01 批 1)──────────────────────────
+ *
+ * 从前这里是 store 上的一颗 `saving: boolean`。它是**整面共享**的一颗,于是
+ * 勾一个模型的那 200ms 里,整张目录的勾选框、每一行的「设为当前」、家头上的
+ * 启用开关、自定义家的「编辑」全部禁灰 —— 用户报的「勾选闪烁」就是这个
+ * (病型 B:全局忙布尔把整面禁灰,粒度病;叠 E:往返极快时闪一下又回来)。
+ *
+ * 交互稳定律③要的是**逐格** pending,而「哪一格」这件事只有发起方说得清。
+ * 所以写路整只交给 `data/kernel` 的 `createMutation`:它把一次写拆成四件
+ * 各有其位的事(乐观上屏 → 写 → 成了对账 / 砸了回滚 + 一条通知),并且按
+ * `key(input)` 分格记账 —— 同一格连点两下也不会被第一发的收尾提前解禁。
+ *
+ * 语义与从前那段 `commitSettings` **逐字等价**,三处照抄不动:
+ *  · 回滚是 `settings` 与 `spaceAi` **两格一起**回底本(只回一格,下一次写
+ *    就会拿着一格没人认下过的事实去拆 delta);
+ *  · 成功后用后端认下的那一份(`response.ai`)把两格重合一次 ——
+ *    **底本永远是后端认下的最后一份**;
+ *  · 失败原话原样进通知(`response.error`,没给才退到那句通用的)。
+ */
+
+/** 一次设置写要带的全部东西。 */
+export interface SettingsCommit {
+  /** 底本。失败时 `settings` / `spaceAi` 两格一起回到这里。 */
+  base: AppSettings
+  /** 乐观值:立刻上屏的那一份,也是拆给后端的那一份。 */
+  next: AppSettings
+  /**
+   * 这个空间盘上那一份的**原样**,在发起写之前就捕获。
+   * 拆 delta(`splitSpaceProviderSettings`)与回滚共用同一份 —— 写到一半
+   * 再去读一次,拿到的可能已经是另一发写完之后的了。
+   */
+  baseSpaceAi: SpaceProviderSettings | undefined
+  /** 这一发打在哪一格上。产地只有下面那张表。 */
+  key: string
+}
+
+/**
+ * 忙态格子的**唯一词表**。store 记账与组件读账共用它 —— 两头各拼一次字符串
+ * 就是两处会漂开(而漂开的表现是「某个控件永远不转」,没人会发现)。
+ */
+export const settingsKey = {
+  /** 一个模型一格:勾选 / 取消 / 设为当前 / 删手填,都打在被点的那一行上。 */
+  model: (providerId: string, modelId: string) => `model:${providerId}:${modelId}`,
+  /** 手填提交那颗钮 —— 它写的模型 id 此刻还不存在,挂不到任何一行上。 */
+  manual: (providerId: string) => `manual:${providerId}`,
+  /** 一家一格(家族一开全开,所以格子是家不是坑)。 */
+  family: (family: ProviderFamilyView) => `family:${family.id || providerIdsOf(family)[0] || ''}`,
+  /** 计费档位一坑一格。 */
+  dials: (providerId: string) => `dials:${providerId}`,
+  /** 自定义家的新建 / 保存 / 删除。 */
+  custom: (providerId: string) => `custom:${providerId}`,
+  /** 组件侧按前缀滤出「这一坑此刻在写的那些模型 id」。 */
+  modelPrefix: (providerId: string) => `model:${providerId}:`,
+} as const
+
+export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSettings | undefined>(
+  'providers.settings',
+  {
+    key: (input) => input.key,
+    optimistic: (input) => {
+      useProviderSettings.setState({ settings: input.next })
+      // 回滚**两格一起**回底本 —— 理由见上面那段。
+      return () => {
+        useProviderSettings.setState({ settings: input.base, spaceAi: input.baseSpaceAi })
+      }
+    },
+    run: async (input) => {
+      const port = await providerSettingsPort()
+      // 写的是**这个空间那一份**,不是整份应用设置 —— 理由(以及 default 为什么
+      // 不是特例)写在 `data/provider-settings-port.ts` 的 ③′。
+      const response = await port.writeProviderSettings({
+        id: currentSpaceId(),
+        ai: splitSpaceProviderSettings(input.next, input.baseSpaceAi),
+      })
+      // 「后端说没成」与「这一发抛了」在这条原语里是同一件事:都得回滚。
+      if (!response.success) throw new Error(response.error || t('providers.saveFailed'))
+      return response.ai
+    },
+    settle: (ai, input) => {
+      // 后端没回那一份就保持乐观值 —— 它已经被后端认下了,只是没把结果说回来。
+      if (!ai) return
+      // 底本永远是后端认下的最后一份 —— 连 `settings` 那一格也照它重合一次,
+      // 免得屏幕上留着一份「我以为写成了什么」而盘上是另一份。
+      useProviderSettings.setState({ spaceAi: ai, settings: composeSpaceSettings(input.next, ai) })
+    },
+    onError: (error) => {
+      notify({
+        level: 'warn',
+        source: 'providers.save',
+        title: t('providers.saveFailed'),
+        body: error.message,
+        detail: error.message,
+      })
+    },
+  },
+)
+
 export const useProviderSettings = create<ProviderSettingsState>()((set, get) => {
   /**
    * providerId → 上一次用量答案。**不放进可渲染状态**:它是「这一口多久之内
@@ -291,11 +390,13 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
   /**
    * 合并若干个 provider 的配置并整份写回。**唯一的设置写口**。
    *
-   * 乐观更新 + 失败回滚 + 一条通知:与 `models-source.selectModel` 同一条纪律 ——
-   * 绝不留说谎的牌。
+   * `key` 是这一发打在哪一格上(词表 `settingsKey`)—— 逐调用点定,因为
+   * 「被点的是哪一个控件」只有调用点知道:同样一次 `writeProviders`,
+   * 从模型行来的打在那一行上,从家头开关来的打在那一家上。
    */
   async function writeProviders(
     patch: Readonly<Record<string, Partial<ProviderConfig>>>,
+    key: string,
   ): Promise<void> {
     const base = get().settings
     if (!base) return
@@ -304,47 +405,18 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       nextProviders[providerId] = { ...EMPTY_CONFIG, ...nextProviders[providerId], ...delta }
     }
     const next = { ...base, ai: { ...base.ai, providers: nextProviders } } as AppSettings
-    await commitSettings(base, next)
+    await commitSettings(base, next, key)
   }
 
   /**
-   * 整份写回的**收尾那一半**:乐观更新 → 写 → 成了就换底本、砸了就回滚 + 一条通知。
-   * 单拆出来是因为写口不止「改几个 provider 配置」一种(自定义家还要动
-   * `customProviders`),而这后半段对谁都一样 —— 两处各抄一遍就是两处会漂开。
+   * 整份写回的**收尾那一半**,如今只剩「把底本摆好交给 `settingsMutation`」。
+   * 乐观 / 写 / 对账 / 回滚四件事在那条原语里(见文件中段那段说明)。
+   *
+   * `spaceAi` 在**这一刻**取一次,而不是在 `run` 里再读:写到一半再读会拿到
+   * 另一发写完之后的那一份,拆出来的 delta 就带着一格没人认下过的事实。
    */
-  async function commitSettings(base: AppSettings, next: AppSettings): Promise<void> {
-    const baseSpaceAi = get().spaceAi
-    set({ settings: next, saving: true })
-    let failure: string | undefined
-    try {
-      const port = await providerSettingsPort()
-      // 写的是**这个空间那一份**,不是整份应用设置 —— 理由(以及 default 为什么
-      // 不是特例)写在 `data/provider-settings-port.ts` 的 ③′。
-      const response = await port.writeProviderSettings({
-        id: currentSpaceId(),
-        ai: splitSpaceProviderSettings(next, baseSpaceAi),
-      })
-      if (!response.success) failure = response.error || t('providers.saveFailed')
-      else if (response.ai) {
-        // 底本永远是后端认下的最后一份 —— 连 `settings` 那一格也照它重合一次,
-        // 免得屏幕上留着一份「我以为写成了什么」而盘上是另一份。
-        set({ spaceAi: response.ai, settings: composeSpaceSettings(next, response.ai) })
-      }
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error)
-    }
-    set({ saving: false })
-    if (!failure) return
-    // 回滚回底本 —— **两格一起回**:只回 `settings` 会让下一次写拿着已经变了的
-    // `spaceAi` 去拆,那次写就带着一格没人认下过的事实。
-    set({ settings: base, spaceAi: baseSpaceAi })
-    notify({
-      level: 'warn',
-      source: 'providers.save',
-      title: t('providers.saveFailed'),
-      body: failure,
-      detail: failure,
-    })
+  async function commitSettings(base: AppSettings, next: AppSettings, key: string): Promise<void> {
+    await settingsMutation.run({ base, next, baseSpaceAi: get().spaceAi, key })
   }
 
   /**
@@ -533,7 +605,6 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     query: '',
     modelQuery: {},
     keyStatus: {},
-    saving: false,
     poolBusy: {},
     poolError: {},
     authStatus: {},
@@ -583,7 +654,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     setFamilyEnabled: async (family, enabled) => {
       const patch: Record<string, Partial<ProviderConfig>> = {}
       for (const providerId of providerIdsOf(family)) patch[providerId] = { enabled }
-      await writeProviders(patch)
+      await writeProviders(patch, settingsKey.family(family))
     },
 
     toggleModel: async (providerId, modelId, selected) => {
@@ -595,7 +666,10 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
           : [...current, modelId]
         : current.filter((id) => id !== modelId)
       if (next === current) return
-      await writeProviders({ [providerId]: { selectedModels: next } })
+      await writeProviders(
+        { [providerId]: { selectedModels: next } },
+        settingsKey.model(providerId, modelId),
+      )
     },
 
     saveApiKey: async (providerId, apiKey) => {
@@ -644,12 +718,15 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       if (get().settings?.ai?.providers?.[providerId]?.model === modelId) return
       // 设为当前**顺带勾上**:当前模型不在选择器里,聊天那边就选不着它。
       const selected = get().settings?.ai?.providers?.[providerId]?.selectedModels ?? []
-      await writeProviders({
-        [providerId]: {
-          model: modelId,
-          selectedModels: selected.includes(modelId) ? selected : [...selected, modelId],
+      await writeProviders(
+        {
+          [providerId]: {
+            model: modelId,
+            selectedModels: selected.includes(modelId) ? selected : [...selected, modelId],
+          },
         },
-      })
+        settingsKey.model(providerId, modelId),
+      )
     },
 
     addManualModel: (providerId, modelId) => {
@@ -658,7 +735,11 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       const selected = get().settings?.ai?.providers?.[providerId]?.selectedModels ?? []
       // 重复是**用户看得见的事实**,不是错误 —— 当场说清,不发请求。
       if (selected.includes(id)) return t('providers.addModelDuplicate', { model: id })
-      void writeProviders({ [providerId]: { selectedModels: [...selected, id] } })
+      // 手填这一发挂在**提交钮**那一格上:它写的 id 此刻还不在表里,挂不到行上。
+      void writeProviders(
+        { [providerId]: { selectedModels: [...selected, id] } },
+        settingsKey.manual(providerId),
+      )
       return undefined
     },
 
@@ -669,14 +750,17 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       if (selected.length <= 1) return
       const next = selected.filter((id) => id !== modelId)
       const config = get().settings?.ai?.providers?.[providerId]
-      await writeProviders({
-        [providerId]: {
-          selectedModels: next,
-          // 删掉的正好是当前模型时,当前顺位落到剩下的第一个 ——
-          // 留一个指向已删 id 的 `model` 就是让聊天那边挑到一个不存在的模型。
-          ...(config?.model === modelId ? { model: next[0] ?? '' } : {}),
+      await writeProviders(
+        {
+          [providerId]: {
+            selectedModels: next,
+            // 删掉的正好是当前模型时,当前顺位落到剩下的第一个 ——
+            // 留一个指向已删 id 的 `model` 就是让聊天那边挑到一个不存在的模型。
+            ...(config?.model === modelId ? { model: next[0] ?? '' } : {}),
+          },
         },
-      })
+        settingsKey.model(providerId, modelId),
+      )
     },
 
     /* ── 凭证池 ───────────────────────────────────────────────────────── */
@@ -970,7 +1054,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         ...base,
         ai: { ...base.ai, customProviders: nextList, providers: nextProviders },
       } as AppSettings
-      await commitSettings(base, next)
+      await commitSettings(base, next, settingsKey.custom(id))
       set({ selectedFamilyId: id })
     },
 
@@ -989,7 +1073,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
           providers: nextProviders,
         },
       } as AppSettings
-      await commitSettings(base, next)
+      await commitSettings(base, next, settingsKey.custom(providerId))
       // 写没成就到此为止:那一家还在,它的钥匙当然不能动。
       // (commitSettings 失败时会把底本回滚回 `base`,所以这一句就是「成没成」。)
       if (get().settings === base) return
@@ -1026,7 +1110,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     setDials: async (providerId, apiMode, region) => {
       const spec = providerDialsOf(providerId)
       if (!spec) return
-      await writeProviders({ [providerId]: dialPatchOf(spec, apiMode, region) })
+      await writeProviders({ [providerId]: dialPatchOf(spec, apiMode, region) }, settingsKey.dials(providerId))
     },
 
     reset: () => {
@@ -1035,9 +1119,12 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       unsubscribeSpace = undefined
       authEpoch.clear()
       usageCache.clear()
-      // 目录不在这个 store 里了(K1 样板迁移),但 reset 仍然管它 ——
-      // 「这块面回到出厂」是一件事,不该因为搬了家就漏掉半边。
+      // 目录不在这个 store 里了(K1 样板迁移),写路也不在了(批 1),
+      // 但 reset 仍然管它们 —— 「这块面回到出厂」是一件事,
+      // 不该因为搬了家就漏掉半边。这也是本模块**唯一的那一口拆卸**:
+      // 下面的 HMR dispose 复用它,不另写一套。
       catalogQuery.reset()
+      settingsMutation.reset()
       set({
         status: 'idle',
         error: undefined,
@@ -1051,7 +1138,6 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         query: '',
         modelQuery: {},
         keyStatus: {},
-        saving: false,
         poolBusy: {},
         poolError: {},
         authStatus: {},
@@ -1063,6 +1149,26 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
     },
   }
 })
+
+/**
+ * **HMR 退役**(09-01 批 1 立的纪律,起因是 chat-source 那一案:热更之后旧模块
+ * 的模块级副作用没死,两个实例同时活着)。
+ *
+ * 这个文件的模块级副作用有三样:启动闸 `started`、换空间那条订阅
+ * `unsubscribeSpace`、以及新加的 `settingsMutation`(它自带监听表与逐格计数)。
+ * 三样的寿命都是「这个模块实例」,而热更换的正是模块实例 —— 不退役,旧实例的
+ * 换空间订阅会继续往一个没人看的 store 里灌数据,旧 mutation 的监听表也会
+ * 攥着已卸载组件的回调。
+ *
+ * 退役**复用这个模块已有的那一口拆卸**(`reset()`,它已经把三样连同
+ * `catalogQuery` 一起收干净),不写第二套。它自身幂等;生产构建里
+ * `import.meta.hot` 是 undefined,整段被 tree-shake 掉。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    useProviderSettings.getState().reset()
+  })
+}
 
 /* ── 组件侧的同一条判据 ─────────────────────────────────────────────────── */
 

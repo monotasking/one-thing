@@ -272,6 +272,117 @@ function ruleBareButton(file, tags) {
     })
 }
 
+/* ────────────────────────────────────────────────────────────────────────
+ * 规则 ⑤  手写忙布尔 —— 该迁 data/kernel 的 createMutation
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 一个 source 自己记一格 `saving / busy / loading / pending / inflight` 布尔,
+ * 就是把「谁在写、写的是哪一格」这件事重新手写了一遍 —— 而那正是
+ * `data/kernel` 的 `createMutation` 存在的理由(交互稳定律③要的是**逐格**
+ * pending,不是整面一颗)。
+ *
+ * 判例(09-01,model service 勾选闪烁):`providers/store.ts` 的 `saving: boolean`
+ * 是整面共享的一颗,一次勾选把整张模型表连同「设为当前」钮一起禁灰 ——
+ * 病型 B(全局忙布尔把整面禁灰,粒度病)叠 E(过快往返的无意义闪)。
+ * 全仓存量 5 处:providers/store.ts、providers/auth.ts、data/viewer-source.ts、
+ * data/chat-source.ts、workspace/store.ts;其中 providers/store.ts 那处已在
+ * 09-01 批 1 迁到 `settingsMutation`,基线只收其余四处。
+ *
+ * **刻意只扫 `.ts`,不扫 `.tsx`**:组件 props 里的同名字段(`saving: boolean`)
+ * 是 store 那一格的下游 —— 上游迁掉了,下游自然跟着换成逐格的 key 集合。
+ * 两头都扫就是同一笔账记两遍,还会把「组件收一个 pending 布尔」这种完全
+ * 合规的写法(AsyncButton 内部就是这么收的)判成违例。
+ *
+ * data/kernel 自己不受这条管:它**就是**被消费的那一头(`MutationSnapshot.pending`)。
+ */
+const BUSY_FIELD = /^[ \t]*(saving|busy|loading|pending|inflight)\??:\s*boolean/gm
+
+const isKernel = (file) => /(^|[\\/])data[\\/]kernel[\\/]/.test(file)
+
+function ruleAsyncBusyBoolean(file, text) {
+  if (isTest(file) || isKernel(file) || !file.endsWith('.ts')) return []
+  const hits = []
+  let m
+  BUSY_FIELD.lastIndex = 0
+  while ((m = BUSY_FIELD.exec(text)) !== null) {
+    hits.push({
+      rule: 'async-busy-boolean',
+      file,
+      line: lineOf(text, m.index),
+      note: '手写忙布尔,该迁 data/kernel createMutation(律③逐格 pending)',
+    })
+  }
+  return hits
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 规则 ⑥  浮层散场行为的手写 —— 该消费 ui/float 的 useFloatDismiss
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 「点外面关掉」与「Esc 在捕获相位认领关闭」是浮层散场的两半,CLAUDE.md 禁令区
+ * 已经把它们判给了唯一产地 `ui/float`(`useFloatDismiss`)。这条规则是字面执法。
+ *
+ * 判例:Menu 与 Popover 曾各抄一份散场逻辑,而「Esc 该由谁认领」那条判例
+ * **修过三轮** —— 产地越多越漂,每修一轮都要去找齐所有抄本。
+ *
+ * 存量命中里有两类**本来就该留着**的,一并入基线不去动它们:
+ *  · 退层链本体(`components/useEscapeChain.ts` 一族)—— 它是机制那一头;
+ *  · 窗口系统件(舞台盖 / 键位设置捕获 / 跳转条)—— 各有另案,不属浮层散场。
+ */
+const FLOAT_POINTERDOWN = /window\.addEventListener\(\s*['"]pointerdown['"]/g
+const FLOAT_KEYDOWN_CAPTURE =
+  /window\.addEventListener\(\s*['"]keydown['"]\s*,[^()\n]*,\s*(?:true|\{[^}]*capture\s*:\s*true[^}]*\})\s*\)/g
+
+function ruleHandwrittenFloat(file, text) {
+  if (isTest(file)) return []
+  const hits = []
+  for (const [re, note] of [
+    [FLOAT_POINTERDOWN, '手写点外关(window pointerdown),该消费 ui/float useFloatDismiss'],
+    [FLOAT_KEYDOWN_CAPTURE, '手写 Esc 捕获相位认领,该消费 ui/float useFloatDismiss'],
+  ]) {
+    re.lastIndex = 0
+    let m
+    while ((m = re.exec(text)) !== null) {
+      hits.push({ rule: 'float-handwritten', file, line: lineOf(text, m.index), note })
+    }
+  }
+  return hits
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 规则 ⑦  视觉词汇的多产地 —— 同一个词在各面各画一遍
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * `.dot` / `.card` / `.groupHead` 这些**不是某个面的私有类名**,它们是这套壳的
+ * 视觉词汇:状态丸、卡、组头、字段、读数条、丸标、徽、片。同一个词在八个
+ * module.css 里各画一遍,结果就是同名不同形 —— 用户看见的是「同一种东西
+ * 在两块面里长得不一样」,而没有任何一道门能发现,因为每一份自己都合规。
+ *
+ * 判据是**行首选择器**,驼峰续段用大写界定(`.dotBottom` 算 dot 一族,
+ * `.dotted` 是另一个词不许误伤)。严格说这是命名近似而非语义判定 ——
+ * 它要抓的不是违例,是**产地数**:批 2 立件收编时,这张表就是清单。
+ * 存量 73 条 / 8 个词(dot 8 产地 / card 7 / meter 2 / groupHead 4 / …)全入基线。
+ */
+const SHARED_VOCAB = /^\.(dot|card|groupHead|field|meter|pill|badge|chip)([A-Z][\w-]*)?\s*[,{:]/
+
+function ruleSharedVocabCss(file, css) {
+  const hits = []
+  css.split('\n').forEach((line, i) => {
+    const m = line.match(SHARED_VOCAB)
+    if (!m) return
+    hits.push({
+      rule: 'shared-vocab-css',
+      file,
+      line: i + 1,
+      note: `视觉词汇多产地(${m[1]}),待批 2 立件收编`,
+    })
+  })
+  return hits
+}
+
 /** severity 表。加规则 = 加一行这里 + 一个 judge。 */
 export const RULE_SEVERITY = {
   'kbd-select-hover': 'violation',
@@ -282,6 +393,9 @@ export const RULE_SEVERITY = {
   'bare-button-text': 'violation',
   'bare-button-icon': 'violation',
   'bare-button-structural': 'debt',
+  'async-busy-boolean': 'debt',
+  'float-handwritten': 'violation',
+  'shared-vocab-css': 'debt',
 }
 
 export function findViolations() {
@@ -295,6 +409,7 @@ export function findViolations() {
     if (isCss) {
       found.push(...ruleIconButtonHover(rel, text))
       found.push(...ruleHandwrittenTooltip(rel, text, true))
+      found.push(...ruleSharedVocabCss(rel, text))
     } else {
       const tags = scanTags(text)
       found.push(...ruleHoverWritesActive(rel, text))
@@ -302,6 +417,8 @@ export function findViolations() {
       found.push(...ruleHandwrittenTooltip(rel, text, false))
       found.push(...ruleNativeTitle(rel, tags))
       found.push(...ruleBareButton(rel, tags))
+      found.push(...ruleAsyncBusyBoolean(rel, text))
+      found.push(...ruleHandwrittenFloat(rel, text))
     }
     // 豁免读的是**原文**:注释在上面已经被抹平了,而豁免恰恰写在注释里。
     const lines = raw.split('\n')

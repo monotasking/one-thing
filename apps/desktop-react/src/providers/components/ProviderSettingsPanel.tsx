@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Button } from '../../ui/Button'
 import { useT } from '../../i18n'
 import type { CustomProviderConfig, ProviderConfig } from '@shared/ipc/providers'
-import { useProviderSettings, authFlowOf } from '../store'
+import { useProviderSettings, authFlowOf, settingsKey, settingsMutation } from '../store'
 import type { CustomProviderForm } from '../store'
 import { buildFamilies, findFamily, resolveMode } from '../families'
 import {
@@ -21,7 +21,7 @@ import { ProviderDetail } from './ProviderDetail'
 import { ModeCard } from './ModeCard'
 import { ModelCatalog } from './ModelCatalog'
 import { catalogQuery } from '../catalog-query'
-import { useQuery } from '../../data/kernel'
+import { useAsyncPending, useMutation, useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
 import { isProviderEnabledIn } from '@renderer/stores/helpers/provider-model'
 import s from './ProviderSettingsPanel.module.css'
@@ -57,7 +57,6 @@ export function ProviderSettingsPanel() {
   const pickedMode = useProviderSettings((st) => st.pickedMode)
   const query = useProviderSettings((st) => st.query)
   const modelQuery = useProviderSettings((st) => st.modelQuery)
-  const saving = useProviderSettings((st) => st.saving)
   const poolBusy = useProviderSettings((st) => st.poolBusy)
   const poolError = useProviderSettings((st) => st.poolError)
   const authStatus = useProviderSettings((st) => st.authStatus)
@@ -159,6 +158,41 @@ export function ProviderSettingsPanel() {
   )
   const activeProviderId = mode?.providerId ?? ''
   const subscription = mode?.kind === 'subscription'
+
+  /*
+   * ── 忙态是**逐格**的,不是一颗 ────────────────────────────────────────────
+   * 设置写路整只是一发 mutation(`settingsMutation`),它按 `settingsKey` 那张
+   * 词表分格记账。这块面在这里做的只有一件事:把「此刻在飞的那些格」翻译成
+   * 各个控件要的读数 —— 谁也不必知道别人在不在写。
+   *
+   * 从前这里读的是 store 上一颗 `saving`,于是勾一个模型 = 整张目录 + 家头开关
+   * + 编辑钮 + 档位一起禁灰(09-01 报障「勾选闪烁」,病型 B)。
+   *
+   * `pendingModelIds` **必须在选择器外面** useMemo:zustand / useSyncExternalStore
+   * 都是拿引用比上一帧的快照,选择器里现算一个 `new Set` 每帧都是新引用,
+   * 表现为整面卡死(单测里是 "Maximum update depth exceeded")——
+   * 与本文件下面那段 `poolViewOf` 是同一条判例。
+   */
+  const writes = useMutation(settingsMutation)
+  const pendingModelIds = useMemo(() => {
+    const prefix = settingsKey.modelPrefix(activeProviderId)
+    const ids = new Set<string>()
+    for (const key of writes.pendingKeys) {
+      if (key.startsWith(prefix)) ids.add(key.slice(prefix.length))
+    }
+    return ids
+  }, [writes.pendingKeys, activeProviderId])
+
+  /*
+   * 家头开关 / 自定义定义 / 计费档位各读自己那一格。`family` 缺席时给一个
+   * **永远不会被占用的 key**,而不是不传 —— 不传 = 问整体 = 又变回一颗全局忙布尔。
+   */
+  const enabledPending = useAsyncPending(
+    settingsMutation,
+    family ? settingsKey.family(family) : 'family:',
+  )
+  const customPending = useAsyncPending(settingsMutation, settingsKey.custom(family?.id ?? ''))
+  const dialsPending = useAsyncPending(settingsMutation, settingsKey.dials(activeProviderId))
 
   useEffect(() => {
     if (!activeProviderId || !catalogAvailable) return
@@ -288,7 +322,8 @@ export function ProviderSettingsPanel() {
           mode={mode}
           tabs={tabs}
           enabled={isProviderEnabledIn(configs, family.id)}
-          saving={saving}
+          enabledPending={enabledPending}
+          customPending={customPending}
           onToggleEnabled={(next) => void setFamilyEnabled(family, next)}
           onSelectMode={(providerId) => selectMode(family.id, providerId)}
           onEditCustom={() => setCustomDialog({ open: true, editingId: family.id })}
@@ -296,7 +331,7 @@ export function ProviderSettingsPanel() {
           <ModeCard
             mode={mode}
             config={configs[mode.providerId]}
-            saving={saving}
+            dialsPending={dialsPending}
             pool={pool}
             poolBusy={poolBusy[mode.providerId] === true}
             poolError={poolError[mode.providerId] || undefined}
@@ -331,7 +366,8 @@ export function ProviderSettingsPanel() {
               refresh={catalogQuery.get(mode.providerId)}
               kind={mode.kind}
               query={modelQuery[mode.providerId] ?? ''}
-              saving={saving}
+              pendingModelIds={pendingModelIds}
+              write={settingsMutation}
               onQuery={(value) => setModelQuery(mode.providerId, value)}
               onRefresh={() => void catalogQuery.get(mode.providerId).refetch()}
               onToggle={(modelId, selected) => void toggleModel(mode.providerId, modelId, selected)}

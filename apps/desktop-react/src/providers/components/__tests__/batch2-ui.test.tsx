@@ -47,7 +47,8 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
       refresh={undefined}
       kind="api"
       query=""
-      saving={false}
+      pendingModelIds={new Set<string>()}
+      write={undefined}
       onQuery={vi.fn()}
       onRefresh={vi.fn()}
       onToggle={vi.fn()}
@@ -532,7 +533,7 @@ describe('ModeCard · 计费档位', () => {
       <ModeCard
         mode={mode(providerId)}
         config={config as never}
-        saving={false}
+        dialsPending={false}
         pool={pool({ rows: [], canDelete: false })}
         poolBusy={false}
         onAddKey={vi.fn()}
@@ -583,7 +584,7 @@ describe('ModeCard · 计费档位', () => {
       <ModeCard
         mode={mode('zhipu')}
         config={undefined}
-        saving={false}
+        dialsPending={false}
         pool={pool({ rows: [], canDelete: false })}
         poolBusy={false}
         onAddKey={vi.fn()}

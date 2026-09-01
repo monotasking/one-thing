@@ -19,6 +19,7 @@ import {
   groupCatalog,
   priceIsIncluded,
 } from '../projection'
+import { settingsKey } from '../store'
 import { MODEL_CAPS, OTHER_GROUP } from '../types'
 import type { CatalogGroup, CatalogRow, ModelCap, ProviderModeKind } from '../types'
 import s from './ModelCatalog.module.css'
@@ -116,7 +117,8 @@ export function ModelCatalog({
   refresh,
   kind,
   query,
-  saving,
+  pendingModelIds,
+  write,
   onQuery,
   onRefresh,
   onToggle,
@@ -138,7 +140,14 @@ export function ModelCatalog({
   refresh: AsyncSource | undefined
   kind: ProviderModeKind
   query: string
-  saving: boolean
+  /**
+   * **此刻在写的那些模型 id**(律③:逐格)。从前这里是一颗 `saving: boolean`,
+   * 于是勾一个模型会把整张表连同「设为当前」一起禁灰 —— 09-01 报障的
+   * 「勾选闪烁」就是它。现在只有正在写的那一行会禁,其余一行都不许动。
+   */
+  pendingModelIds: ReadonlySet<string>
+  /** 手填提交那颗钮绑的那件异步事(设置写路那一发 mutation)。 */
+  write: AsyncSource | undefined
   onQuery: (value: string) => void
   onRefresh: () => void
   onToggle: (modelId: string, selected: boolean) => void
@@ -346,9 +355,22 @@ export function ModelCatalog({
               aria-label={t('providers.addModelLabel')}
             />
           </div>
-          <Button size="sm" variant="primary" disabled={!draft.trim() || saving} onClick={submitManual}>
+          {/*
+            手填提交:这一发写的模型 id 此刻还不在表里,挂不到任何一行上,
+            所以它自己就是那一格(`manual:<providerId>`)。忙态是**读来的**
+            (AsyncButton 吃 mutation),不是这里再记一份。
+          */}
+          <AsyncButton
+            size="sm"
+            variant="primary"
+            action={write}
+            pendingKey={settingsKey.manual(providerId)}
+            pendingLabel={t('viewer.saving')}
+            disabled={!draft.trim()}
+            onClick={submitManual}
+          >
             {t('providers.addModelSubmit')}
-          </Button>
+          </AsyncButton>
           {addError && <span className={s.addError}>{addError}</span>}
         </div>
       )}
@@ -407,7 +429,7 @@ export function ModelCatalog({
               t={t}
               row={row}
               included={included}
-              saving={saving}
+              pending={pendingModelIds.has(row.id)}
               skip={false}
               onToggle={onToggle}
               onSetCurrent={onSetCurrent}
@@ -452,7 +474,7 @@ export function ModelCatalog({
                       t={t}
                       row={row}
                       included={included}
-                      saving={saving}
+                      pending={pendingModelIds.has(row.id)}
                       skip={skip}
                       onToggle={onToggle}
                       onSetCurrent={onSetCurrent}
@@ -530,7 +552,7 @@ function Row({
   t,
   row,
   included,
-  saving,
+  pending,
   skip,
   onToggle,
   onSetCurrent,
@@ -539,7 +561,12 @@ function Row({
   t: TFn
   row: CatalogRow
   included: boolean
-  saving: boolean
+  /**
+   * **这一行**此刻在写吗。只禁这一行 —— 别的行一个都不许动
+   * (零重挂断言在 `__tests__/model-catalog-state.test.tsx`:
+   *  A 行在飞时 B 行的勾选框既不禁用,也还是操作前那个 DOM 节点)。
+   */
+  pending: boolean
   /** 长组里的行跳过视口外排版。 */
   skip: boolean
   onToggle: (modelId: string, selected: boolean) => void
@@ -554,7 +581,7 @@ function Row({
       <Checkbox
         checked={row.selected}
         onChange={(next) => onToggle(row.id, next)}
-        disabled={saving}
+        disabled={pending}
         label={t('providers.pickModel', { model: row.id })}
       />
       <span className={s.cell}>
@@ -590,7 +617,7 @@ function Row({
           <Button
             size="sm"
             variant="ghost"
-            disabled={saving}
+            disabled={pending}
             onClick={() => onSetCurrent(row.id)}
             data-testid={`set-current-${row.id}`}
           >
@@ -602,7 +629,7 @@ function Row({
             size="sm"
             variant="ghost"
             iconOnly
-            disabled={saving}
+            disabled={pending}
             onClick={() => onRemoveManual(row.id)}
             aria-label={t('providers.removeModel', { model: row.id })}
           >

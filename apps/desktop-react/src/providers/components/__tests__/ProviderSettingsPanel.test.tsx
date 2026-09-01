@@ -306,3 +306,83 @@ describe('写与缺席态', () => {
     expect(screen.queryByText(/在下一批/)).toBeNull()
   })
 })
+
+/* ══ 忙态逐格(09-01 批 1 的两条反证)════════════════════════════════════════
+ *
+ * 病历:写路从前挂在 store 一颗 `saving: boolean` 上,于是勾一个模型的那 200ms
+ * 里整张表连同「设为当前」一起禁灰 —— 用户报的「勾选闪烁」(病型 B,粒度病)。
+ * 修法是把写路整只迁到 `data/kernel` 的 `settingsMutation`,按 `settingsKey`
+ * 分格记账。下面两条钉的正是这次迁移的两半:粒度对不对,语义有没有漂。
+ * ════════════════════════════════════════════════════════════════════════ */
+describe('忙态逐格', () => {
+  /** 一发**卡住的写**:`release()` 之前它永远不回来,于是「在飞」是可观测的。 */
+  function heldWrite() {
+    let release: (() => void) | undefined
+    const write = vi.fn(async (request: { ai: SpaceProviderSettings }) => {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      return { success: true as const, ai: request.ai }
+    })
+    return { write, release: () => release?.() }
+  }
+
+  it('勾选 A 在飞时,B 那一行既不禁用、也还是同一个 DOM 节点', async () => {
+    const held = heldWrite()
+    const port = installPort({ writeProviderSettings: held.write })
+    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    await screen.findByTestId('model-row-claude-sonnet-4')
+
+    const pick = (name: string) => screen.getByRole('checkbox', { name }) as HTMLInputElement
+    // 操作**之前**先扣住 B 那个节点 —— 零重挂断言比的是引用,不是长得像。
+    const before = pick('勾选 claude-haiku-4-5')
+
+    fireEvent.click(pick('勾选 claude-sonnet-4'))
+    await waitFor(() => expect(port.writeProviderSettings).toHaveBeenCalledTimes(1))
+
+    // 在写的那一行禁了 —— 律③:反馈长在发起它的那个控件上。
+    await waitFor(() => expect(pick('勾选 claude-sonnet-4').disabled).toBe(true))
+    // 别的行**一个都不许动**。把 disabled 改回一颗全局忙布尔,这两句当场红。
+    const after = pick('勾选 claude-haiku-4-5')
+    expect(after.disabled).toBe(false)
+    expect(after).toBe(before)
+    // 家头开关、手填钮同理:它们各在自己的格上,不在模型那一格上。
+    expect((screen.getByRole('switch', { name: '启用 Claude' }) as HTMLInputElement).disabled).toBe(
+      false,
+    )
+    expect((screen.getByRole('button', { name: '＋ 手填 ID' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    )
+
+    held.release()
+    await waitFor(() => expect(pick('勾选 claude-sonnet-4').disabled).toBe(false))
+  })
+
+  it('写失败:settings 与 spaceAi **两格一起**回底本,外加一条通知', async () => {
+    installPort({
+      writeProviderSettings: vi.fn(async () => ({ success: false, error: '写不进去' })),
+    })
+    render(<>{renderContent(PROVIDERS_ITEM_ID)}</>)
+    await screen.findByTestId('model-row-claude-sonnet-4')
+
+    // 底本 = 出手之前屏幕上那两格的**引用**。回滚回的必须是它们本身。
+    const baseSettings = useProviderSettings.getState().settings
+    const baseSpaceAi = useProviderSettings.getState().spaceAi
+    expect(baseSettings).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '勾选 claude-sonnet-4' }))
+
+    await waitFor(() => expect(useNotifyStore.getState().items).toHaveLength(1))
+    expect(useNotifyStore.getState().items[0]).toMatchObject({
+      source: 'providers.save',
+      // 后端那句原话原样带出来 —— 它是数据,不是文案。
+      body: '写不进去',
+    })
+    expect(useProviderSettings.getState().settings).toBe(baseSettings)
+    expect(useProviderSettings.getState().spaceAi).toBe(baseSpaceAi)
+    // 屏幕上不留说谎的牌:那一行还勾着。
+    expect((screen.getByRole('checkbox', { name: '勾选 claude-sonnet-4' }) as HTMLInputElement).checked).toBe(
+      true,
+    )
+  })
+})

@@ -4,7 +4,7 @@ import type { ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { configureProviderSettingsPort } from '../../data/provider-settings-port'
 import type { ProviderSettingsPort } from '../../data/provider-settings-port'
 import { useNotifyStore } from '../../services/notify-store'
-import { useProviderSettings } from '../store'
+import { settingsKey, settingsMutation, useProviderSettings } from '../store'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { buildFamilies, findFamily } from '../families'
 import { fakeProviderPort } from './fake-port'
@@ -159,7 +159,9 @@ describe('setFamilyEnabled —— 写口 ①', () => {
 
     expect(port.writeProviderSettings).toHaveBeenCalledTimes(1)
     expect(useProviderSettings.getState().settings?.ai.providers.claude.enabled).toBeUndefined()
-    expect(useProviderSettings.getState().saving).toBe(false)
+    // 忙态不在 store 上了(批 1):它逐格挂在 `settingsMutation` 上,写完必须收干净。
+    expect(settingsMutation.get().pending).toBe(false)
+    expect(settingsMutation.get().pendingKeys.size).toBe(0)
     expect(useNotifyStore.getState().items[0]).toMatchObject({ source: 'providers.save' })
   })
 })
@@ -182,6 +184,32 @@ describe('toggleModel —— 写口 ②', () => {
     expect(vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.providers.claude.selectedModels).toEqual(
       [],
     )
+  })
+
+  it('在飞的那一发打在**被点的那一行**上,不是打在整面上', async () => {
+    let release: (() => void) | undefined
+    installPort({
+      writeProviderSettings: vi.fn(async (request) => {
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+        return { success: true, ai: request.ai }
+      }),
+    })
+    await useProviderSettings.getState().start()
+    const flight = useProviderSettings.getState().toggleModel('claude', 'claude-sonnet-5', true)
+
+    // 记账的格子**只有**被点的那一行 —— 词表的产地只有 `settingsKey` 一处。
+    expect([...settingsMutation.get().pendingKeys]).toEqual([
+      settingsKey.model('claude', 'claude-sonnet-5'),
+    ])
+    expect(settingsMutation.isPending(settingsKey.model('claude', 'claude-opus-5'))).toBe(false)
+
+    // 端口是懒解析的(`await providerSettingsPort()`),所以那一发要等它真的进去。
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    release?.()
+    await flight
+    expect(settingsMutation.get().pendingKeys.size).toBe(0)
   })
 
   it('勾一条已经勾着的 = 一次请求都不发', async () => {
