@@ -45,6 +45,15 @@
   display: flex;
   flex-direction: column;
   background: var(--surface-2);
+  /*
+   * 它同时是一个**尺寸容器**(名字 `viewer`)——查看器在五种宿主里宽度差一个
+   * 数量级(架子里 125,盖里 1100+),而「型工具条并不并进名条」这件事该按
+   * **它自己有多宽**判,不是按窗口有多宽(同 ExposeView / ModelCatalog 的判例)。
+   * 副作用照实说:container-type 蕴含 `contain: layout`,所以里面的绝对定位件
+   * (跳转条那条 sticky)以它为包含块 —— 那正是我们要的。
+   */
+  container-type: inline-size;
+  container-name: viewer;
 }
 
 /* ── 外框:七落点(F1 只用 panel;其余是位子)───────────────────────────── */
@@ -195,6 +204,19 @@
   white-space: nowrap;
 }
 
+/*
+ * 型工具条并进名条那一格(09-01 自查走查:panel 宿主五条横带 → 两条檐)。
+ * `margin-left:auto` 在这里,`.actions` 那条就不再需要它 —— 两处都写等于让
+ * 「谁把右端顶开」有两个说法,窄下来时表现会分叉。工具条自己 flex:none:
+ * 该让的是名字(它是这条檐里唯一的弯腰件),不是这一格控件。
+ */
+.chromeTool {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+}
+
 /* 动作组常驻头右端(与块壳的檐同一条形:静默一档,悬到才亮 —— 但这里那一档是
  * --text-3 而不是块壳的 --text-4,理由见文件头那条纪律)。 */
 .actions {
@@ -202,7 +224,67 @@
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
+  /* 没有工具条时由它顶开右端;有工具条时顶开的是 .chromeTool,这里就跟着它走。 */
   margin-left: auto;
+}
+
+/* 工具条在场时,右端已经被它顶开了 —— 动作组紧跟其后,不再各顶各的。 */
+.chromeTool + .actions {
+  margin-left: 0;
+}
+
+/*
+ * ── 窄到一排放不下时,型工具条**回到自己那一行** ─────────────────────────
+ * 真机读数(09-01):架子档里查看区只有 125px 宽,而 Rendered|Source 那一格
+ * 就要 154 —— 名字已经让到 0,glyph 与关闭钮还是被顶出这条檐外。
+ * 「一排放得下」是有前提的,前提不成立时**换一排**,不是把件挤出去。
+ *
+ * 阈值 340 只能写字面量(`@container` 条件里不能写 var()),算式与理由记在
+ * tokens.css 的抗挤压一节:glyph 20 + 名字最少 60 + 工具条 154 + 关闭 22
+ * + 三道 gap 24 + 左右内边距 20 ≈ 300,留一档余量。
+ *
+ * 做法是 `order` + 整行 basis,**不是把工具条渲染两遍** —— 渲染两遍等于同一个
+ * 分段器在无障碍树里出现两次(两套 id、读屏念两遍)。
+ */
+@container viewer (max-width: 340px) {
+  .chrome {
+    height: auto;
+    min-height: var(--viewer-chrome-h);
+    flex-wrap: wrap;
+    row-gap: var(--sp-1);
+    padding-bottom: var(--sp-1);
+  }
+
+  /*
+   * 开了 wrap 之后**名字的 basis 必须换成 0**。flex 的规则是「先换行,再压缩」:
+   * basis:auto 时名字的假想尺寸是它整段文字(真机 79px),第一排一放不下就
+   * **整件换行**,于是 glyph / 名字 / 关闭钮各占一排,檐涨到 110 高把正文吃掉。
+   * basis:0 让它的假想尺寸是 0 —— 第一排永远放得下,该让的它自己让(截断),
+   * 只有下面那件声明了整行 basis 的工具条才真的换排。
+   */
+  .name {
+    flex: 1 1 0;
+    /* 律一:可伸缩的文本件必须同门写全下界与截断策略(基础块里那份不算 ——
+     * 挤压棘轮按块读,而这一条正是它替我们记住的)。截断在基础块里已经写着。 */
+    min-width: 0;
+  }
+
+  .chromeTool {
+    order: 1;
+    /*
+     * 整行 + 允许自己压缩:再窄的档(架子里查看区只有 125)连这一整行也放不下
+     * 那个分段器,那时该由**它自己让字**,而不是把它顶出这条檐去。
+     */
+    flex-basis: 100%;
+    min-width: 0;
+    overflow: hidden;
+    margin-left: 0;
+  }
+
+  /* 换排之后右端又得由动作组自己顶开(它此刻是第一排的末件)。 */
+  .chromeTool + .actions {
+    margin-left: auto;
+  }
 }
 
 .action {

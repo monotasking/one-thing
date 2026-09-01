@@ -624,6 +624,47 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
   })
 })
 
+/*
+ * ── 底部提示行的归属(09-01 自查走查:panel 一屏五条横带)──────────────────
+ * 它是一句**用法**(怎么打开一个文件、菜单在哪儿)。分栏开着的时候它还占着
+ * 25px,而那 25px 是从正文里扣的 —— 何况此刻这句话已经没用了:文件都开着了。
+ * 判据只有一条(分栏开没开),不记「用户见过没有」那种状态 —— 那会让同一块面
+ * 在两台机器上长得不一样。
+ */
+describe('底部提示行:分栏开着时让位给正文', () => {
+  it('没开查看器时它在(它是这块面唯一说得出「右键有菜单」的地方)', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    expect(document.querySelector('[data-panel-hint]')).toBeTruthy()
+  })
+
+  it('分栏一开就收起来,关掉查看器又回来', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    fireEvent.click(row(`${ROOT}/README.md`))
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
+    expect(document.querySelector('[data-panel-hint]')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('viewer-close'))
+    await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
+    expect(document.querySelector('[data-panel-hint]')).toBeTruthy()
+  })
+
+  it('查看器摆去别的落点时它照旧在 —— 那时这块面里没有分栏', async () => {
+    installPort()
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    act(() => useFileOpenMode.setState({ mode: 'float' }))
+    fireEvent.click(row(`${ROOT}/README.md`))
+    await waitFor(() =>
+      expect(useViewerSource.getState().pending ?? useViewerSource.getState().file).toBeTruthy(),
+    )
+    expect(document.querySelector('[data-panel-hint]')).toBeTruthy()
+  })
+})
+
 describe('详情:附属浮层(不是打断式对话框)', () => {
   /**
    * 开一行的详情。

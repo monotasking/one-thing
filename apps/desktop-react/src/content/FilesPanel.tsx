@@ -274,7 +274,7 @@ export function FilesPanel() {
 
   return (
     <div className={s.panel} data-testid="files-panel" ref={panelRef}>
-      <div className={s.head}>
+      <div className={s.head} data-panel-head="">
         {/*
          * `data-testid="files-root"` 留在原地不动。**但取件口从 textContent 换成了
          * `data-root`**:面包屑的中段现在会折成 `…`(深路径下平铺一排会把整条头
@@ -429,11 +429,21 @@ export function FilesPanel() {
 
       {footNote && <p className={s.foot}>{footNote}</p>}
 
-      {/* 底部提示条:一句用法,不是一条状态 —— 所以它永远在,而且不抢眼。 */}
-      <p className={s.hint}>
+      {/*
+       * 底部提示条:一句**用法**(怎么打开一个文件、菜单在哪儿)。
+       *
+       * 09-01 自查走查改判:它从前「永远在」。分栏开着的时候它还占着 25px,
+       * 而那 25px 是从正文里扣的 —— 而且这句话此刻已经没有用了:文件都开着了,
+       * 说明用户早就知道怎么开。所以**分栏开着时不画,收起来就回来**。
+       * 判据只有一条(splitOpen),不额外记「用户见过没有」那种状态 ——
+       * 那会让同一块面在两台机器上长得不一样。
+       */}
+      {!splitOpen && (
+      <p className={s.hint} data-panel-hint="">
         <Info className={s.hintIcon} strokeWidth={1.75} aria-hidden="true" />
         <span className={s.hintText}>{t('files.hint')}</span>
       </p>
+      )}
 
       {/*
        * 行的右键 / ⋯ 菜单 —— **动作单产地**(09-01 裁定):这张表与查看区右键

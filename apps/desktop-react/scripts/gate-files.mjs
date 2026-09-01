@@ -202,6 +202,18 @@ async function main() {
 
   const store = await mkdtemp(path.join(tmpdir(), 'd5-gate-store-'))
   const workspaceRoot = await mkdtemp(path.join(tmpdir(), 'd5-gate-ws-'))
+  /*
+   * ── 独立的 `--user-data-dir`(09-01 修:这道门从前跑在**用户真实的 Electron
+   * 档案**上)───────────────────────────────────────────────────────────────
+   * 后果有两条,都真发生过:
+   *  ① **不可重复**:上一次跑到一半失败,把 `onething.files.openMode: stage`
+   *     留在了那份 localStorage 里;下一次开跑,点开文件直接落在舞台上(合檐,
+   *     没有 `viewer-name`),门在第 5 步报「查看器头上说的路径:null」——
+   *     排查半天,病根不在被测代码里。
+   *  ② **改用户状态**:那正是「验证不改用户状态」那条纪律要拦的事。
+   * gate:a11y 一开始就是这么起的,这道门跟上。
+   */
+  const userDataDir = await mkdtemp(path.join(tmpdir(), 'd5-gate-userdata-'))
   const cwd = path.join(workspaceRoot, OWNER_UID, OWNER_WID)
   let server
   let app
@@ -252,7 +264,7 @@ async function main() {
     console.log('\n[3/7] 拉起应用,进那条会话,打开文件面板')
     app = await electron.launch({
       executablePath: electronBinary,
-      args: [mainEntry],
+      args: [mainEntry, `--user-data-dir=${userDataDir}`],
       env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
     })
     const page = await app.firstWindow()
@@ -566,6 +578,7 @@ async function main() {
     await delay(600)
     await rm(store, { recursive: true, force: true })
     await rm(workspaceRoot, { recursive: true, force: true })
+    await rm(userDataDir, { recursive: true, force: true })
   }
 }
 

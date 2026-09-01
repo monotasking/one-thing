@@ -287,6 +287,47 @@ describe('落点:宿主自带檐时合一', () => {
   }
 
   /*
+   * ── 型工具条的归属(09-01 自查走查:panel 一屏五条横带)──────────────────
+   * 走查读数(面板高 478):面包屑 45 + 名条 40 + **型工具条 51** + 正文 291
+   * + 状态条 26 + 提示行 25。工具条那 51px 是能省的 —— 40 高的名条右边空着
+   * 一大片,一排放得下就不该占两排。
+   * 合檐的落点里名条整条不画,那时它才自己成一条(宿主那条 header 是通用的,
+   * 塞不进一个这一型专用的分段器)。
+   */
+  it('有名条的落点:型工具条并进名条右端,不再自成一条', async () => {
+    installPort({
+      readContent: vi.fn(async () => ({ success: true, content: '# md\n', size: 5 })),
+    })
+    await open('/repo/a.md')
+    render(<FileViewer placement="panel" />)
+    // 那一格还在(渲染 ⇄ 源码切得动),但它长在名条里,不再是一条独立的带子。
+    expect(screen.getByRole('radio', { name: '渲染' })).toBeTruthy()
+    expect(screen.queryByTestId('viewer-toolbar')).toBeNull()
+    const chrome = document.querySelector('[data-viewer-chrome]')
+    expect(chrome?.contains(screen.getByRole('radio', { name: '渲染' }))).toBe(true)
+  })
+
+  it('合檐的落点:名条不画,型工具条自己成一条(宿主檐塞不进它)', async () => {
+    installPort({
+      readContent: vi.fn(async () => ({ success: true, content: '# md\n', size: 5 })),
+    })
+    await open('/repo/a.md')
+    render(<FileViewer placement="float" />)
+    expect(document.querySelector('[data-viewer-chrome]')).toBeNull()
+    expect(screen.getByTestId('viewer-toolbar')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: '渲染' })).toBeTruthy()
+  })
+
+  it('没有工具条的型:两种落点都不留一条空带子', async () => {
+    installPort()
+    await open('/repo/a.ts')
+    const view = render(<FileViewer placement="panel" />)
+    expect(screen.queryByTestId('viewer-toolbar')).toBeNull()
+    view.rerender(<FileViewer placement="float" />)
+    expect(screen.queryByTestId('viewer-toolbar')).toBeNull()
+  })
+
+  /*
    * 滚动归属:**永远是查看器 .body**,不随落点变。这一条守的是那个前提 ——
    * `.body` 拿得到确定高度。判据按源文本:`.viewer` 那条 `height: 100%` 是
    * 修好这条病的**唯一**一行(修前它没有 height,在宿主那个块级内容盒里高度
