@@ -15,7 +15,7 @@ function def(kind: string): BlockDef {
   return {
     kind: kind as BlockDef['kind'],
     presentation: 'flow',
-    streaming: 'append',
+  stream: { midway: 'grow', settled: 'same', failure: 'source', identity: 'origin', geometry: 'flow' },
     Component: () => null,
   }
 }
@@ -39,6 +39,17 @@ describe('块注册表', () => {
   it('连兜底都没注册 = 装配错了,当场说清是哪件事没做', () => {
     const registry = new BlockRegistry()
     expect(() => registry.resolve('paragraph')).toThrow(/source-fallback/)
+  })
+
+  it('流式五问缺一问,注册当场抛(不是 warn —— warn 会被滚过去)', () => {
+    const registry = new BlockRegistry()
+    const bare = { ...def('code'), stream: undefined } as unknown as BlockDef
+    expect(() => registry.register(bare)).toThrow(/五问缺一/)
+    const partial = {
+      ...def('code'),
+      stream: { midway: 'grow', settled: 'same' },
+    } as unknown as BlockDef
+    expect(() => registry.register(partial)).toThrow(/failure \/ identity \/ geometry/)
   })
 
   it('同一个 kind 注册两次抛错,不静默覆盖', () => {

@@ -29,7 +29,7 @@ function def(kind: string): BlockDef {
   return {
     kind: kind as BlockDef['kind'],
     presentation: 'flow',
-    streaming: 'append',
+  stream: { midway: 'grow', settled: 'same', failure: 'source', identity: 'origin', geometry: 'flow' },
     Component: () => null,
   }
 }

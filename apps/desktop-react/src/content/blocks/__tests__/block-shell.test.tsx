@@ -40,7 +40,7 @@ const gate = { fail: true }
 const bomb: BlockDef = {
   kind: 'code',
   presentation: 'object',
-  streaming: 'atomic',
+  stream: { midway: 'hold', settled: 'same', failure: 'source', identity: 'origin', geometry: 'flow' },
   Component: () => {
     if (gate.fail) throw new Error('渲染器炸了')
     return <div data-testid="bomb-ok">画出来了</div>
