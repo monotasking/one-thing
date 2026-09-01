@@ -71,6 +71,110 @@ function catalog(props: Partial<Parameters<typeof ModelCatalog>[0]> = {}) {
   )
 }
 
+/* ══ 位置固化:交互中的列表不许在用户手底下重排(09-01 报障)══════════════ */
+
+describe('勾选不挪窝', () => {
+  /** 8 行,头两行已选 —— 混合表才有「已选置顶」这回事。 */
+  function mixed(pickedIds: string[] = ['m-0', 'm-1']): CatalogRow[] {
+    return Array.from({ length: 8 }, (_, i) =>
+      row(`m-${i}`, { selected: pickedIds.includes(`m-${i}`) }),
+    )
+  }
+
+  /** 屏幕上的行序(DOM 顺序),外加某一行的节点身份。 */
+  function shot(id: string) {
+    const all = Array.from(document.querySelectorAll('[data-testid^="model-row-"]'))
+    const node = document.querySelector(`[data-testid="model-row-${id}"]`)
+    return { order: all.map((el) => el.getAttribute('data-testid')), index: all.indexOf(node!), node }
+  }
+
+  it('勾上中段那一行:行序不动、**同一个 DOM 节点**、勾选框是勾上的', () => {
+    const { rerender } = render(catalog({ rows: mixed(), fetchedAt: 1000 }))
+    const before = shot('m-5')
+    expect(before.index).toBe(5)
+
+    // 用户勾上了 m-5:活值翻了,但这一次刷新没发生过(fetchedAt 没动)。
+    rerender(catalog({ rows: mixed(['m-0', 'm-1', 'm-5']), fetchedAt: 1000 }))
+    const after = shot('m-5')
+
+    expect(after.index).toBe(before.index) // 零位移
+    expect(after.node).toBe(before.node) // 零重挂:前后是同一个节点
+    expect(after.order).toEqual(before.order)
+    expect((after.node!.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(
+      true,
+    )
+  })
+
+  it('取消勾选同理:留在已选区里不动,勾选框变成没勾', () => {
+    const { rerender } = render(catalog({ rows: mixed(), fetchedAt: 1000 }))
+    const before = shot('m-1')
+
+    rerender(catalog({ rows: mixed(['m-0']), fetchedAt: 1000 }))
+    const after = shot('m-1')
+
+    expect(after.index).toBe(before.index)
+    expect(after.node).toBe(before.node)
+    expect((after.node!.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(
+      false,
+    )
+  })
+
+  it('组头读数报的是**此刻真勾着几个**,不是这一区里有几行', () => {
+    // 分组要生效才画组头,所以这一格用长表。
+    const long = Array.from({ length: GROUP_MIN_ROWS + 20 }, (_, i) =>
+      row(`vendor/m-${i}`, { selected: i < 3 }),
+    )
+    const { rerender } = render(catalog({ rows: long, fetchedAt: 1000 }))
+    expect(screen.getByText(/已选 · 3/)).toBeTruthy()
+
+    const dropped = long.map((r) => (r.id === 'vendor/m-1' ? { ...r, selected: false } : r))
+    rerender(catalog({ rows: dropped, fetchedAt: 1000 }))
+    // 读数说事实:真勾着的只剩 2 个。
+    expect(screen.getByText(/已选 · 2/)).toBeTruthy()
+    /*
+     * 而区里**还是 3 行** —— 这一格才是这条断言的分量所在:没有固化的话,
+     * m-1 当场掉回它的厂牌组,区里剩 2 行、读数也是 2,两个数一致地骗过去了。
+     * 「行数 3 而读数 2」正是「位置冻住、状态照实」的唯一可观测形状。
+     */
+    const head = screen.getByText(/已选 · 2/)
+    const inRegion: Element[] = []
+    for (let node = head.nextElementSibling; node; node = node.nextElementSibling) {
+      const testid = node.getAttribute('data-testid') ?? ''
+      if (!testid.startsWith('model-row-')) break
+      inRegion.push(node)
+    }
+    expect(inRegion).toHaveLength(3)
+  })
+
+  it('显式刷新(fetchedAt 前进)才重排 —— 「重排只在下次进入或刷新发生」', () => {
+    const { rerender } = render(catalog({ rows: mixed(), fetchedAt: 1000 }))
+    rerender(catalog({ rows: mixed(['m-0', 'm-1', 'm-5']), fetchedAt: 1000 }))
+    expect(shot('m-5').index).toBe(5)
+
+    rerender(catalog({ rows: mixed(['m-0', 'm-1', 'm-5']), fetchedAt: 2000 }))
+    expect(shot('m-5').index).toBe(2) // 已选置顶,排在 m-0 / m-1 之后
+  })
+
+  it('换一坑也重排 —— 进入是另一次固化', () => {
+    const { rerender } = render(catalog({ rows: mixed(), fetchedAt: 1000 }))
+    rerender(catalog({ rows: mixed(['m-0', 'm-1', 'm-5']), fetchedAt: 1000 }))
+    expect(shot('m-5').index).toBe(5)
+
+    rerender(catalog({ providerId: 'another', rows: mixed(['m-0', 'm-1', 'm-5']), fetchedAt: 1000 }))
+    expect(shot('m-5').index).toBe(2)
+  })
+
+  it('反证:把 fetchedAt 也跟着勾选一起变(= 没冻),行当场飞上去', () => {
+    // 这就是修之前的行为:真机量到第 16 行 → 第 3 行、-689px、DOM 节点被换掉。
+    const { rerender } = render(catalog({ rows: mixed(), fetchedAt: 1000 }))
+    const before = shot('m-5')
+    rerender(catalog({ rows: mixed(['m-0', 'm-1', 'm-5']), fetchedAt: 1001 }))
+    const after = shot('m-5')
+    expect(after.index).not.toBe(before.index)
+    expect(after.node).not.toBe(before.node)
+  })
+})
+
 describe('状态戏份 · 重拉不清屏(律②)', () => {
   it('phase 已 ready(此刻还有一发在飞):旧行仍在 DOM,没有骨架/空态那句话', () => {
     // 「在飞」在这块组件里**没有 prop** —— 它只被刷新钮读(AsyncButton 直接吃

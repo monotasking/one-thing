@@ -4,6 +4,7 @@ import { Button } from '../../ui/Button'
 import { Checkbox } from '../../ui/Checkbox'
 import { Input } from '../../ui/Input'
 import { Tooltip } from '../../ui/Tooltip'
+import { useFrozenFlags } from '../../ui/list-placement'
 import { Brain, ChevronsUp, Image, ImagePlus, Mic, TriangleAlert, Wrench } from '../../components/icons'
 import type { LucideIcon } from '../../components/icons'
 import { useT } from '../../i18n'
@@ -72,13 +73,6 @@ const CAP_LABELS: Record<ModelCap, MessageKey> = {
 const SKIP_ROWS_FROM = 40
 
 /**
- * 「一次落位」的淡入闸:token 变了就播一遍,`animationend` 自己收 ——
- * **没有一个 ms 字面量**,时长归 CSS 的 --dur 族,动效档调到「无」时它是 0ms,
- * 于是 animationend 立刻回来,这段逻辑连分支都不必写。
- *
- * 挂载那一次不播:那时屏幕上本来就在长内容,再淡一次是噪音。
- */
-/**
  * 往上找第一个**自己会滚**的祖先。认的是计算样式(`overflow-y` 是 auto / scroll),
  * 不是类名 —— 类名会被改,而「谁在滚」是一条样式事实。
  * 一个都没有 = 在滚的是视口本身,交回 null(IntersectionObserver 的缺省 root)。
@@ -93,6 +87,13 @@ function scrollParentOf(node: Element): Element | null {
   return null
 }
 
+/**
+ * 「一次落位」的淡入闸:token 变了就播一遍,`animationend` 自己收 ——
+ * **没有一个 ms 字面量**,时长归 CSS 的 --dur 族,动效档调到「无」时它是 0ms,
+ * 于是 animationend 立刻回来,这段逻辑连分支都不必写。
+ *
+ * 挂载那一次不播:那时屏幕上本来就在长内容,再淡一次是噪音。
+ */
 function useSettlePulse(token: number): { on: boolean; end: () => void } {
   const seen = useRef(token)
   const [on, setOn] = useState(false)
@@ -151,7 +152,30 @@ export function ModelCatalog({
   const included = priceIsIncluded(kind)
   const searching = query.trim().length > 0
 
-  const grouped = useMemo(() => groupCatalog(rows, searching), [rows, searching])
+  /*
+   * ── 位置固化(09-01 报障:「选中或取消它的位置会改变,很难受」)──────────
+   * 「已选置顶」这条判据从前直接读 `row.selected`,于是**勾选就是一次重排**:
+   * 真机量到勾一下中段的模型,它当场从第 16 行飞到第 3 行(-689px),而且因为
+   * 换了父容器,DOM 节点整个被换掉。
+   *
+   * 修法是把**位置**与**状态**拆开(原语 `ui/list-placement`,交互稳定四律
+   * C 型变体):位置读一张快照,状态照旧读活值。
+   *
+   * 快照什么时候重拍,由 `token` 一句话说清 —— **换一坑** 或 **拉到一份新目录**
+   * (`fetchedAt` 每次成功拉取都前进,显式点「刷新目录」也在内)。
+   * 用户改的那一格(`selected`)**不在 token 里**,这正是「冻住」的全部含义。
+   */
+  const placement = useFrozenFlags(
+    rows,
+    (row) => row.id,
+    (row) => row.selected,
+    `${providerId}:${fetchedAt ?? 0}`,
+  )
+
+  const grouped = useMemo(
+    () => groupCatalog(rows, searching, placement),
+    [rows, searching, placement],
+  )
 
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
   const [adding, setAdding] = useState(false)
@@ -364,10 +388,16 @@ export function ModelCatalog({
           {/*
             已选置顶。**只有折叠生效时才画这条组头** —— 平铺的目录里
             「已选 · 3」是一句废话,行本来就都在眼前。
+
+            读数报的是**此刻真的勾着几个**,不是这一区里有几行:位置固化之后,
+            刚被取消的那一行会留在这一区里(不许在用户手底下挪窝),但它已经
+            不算「已选」了。区里有几行是排版的事,读数说的必须是事实。
           */}
           {grouped.grouped && grouped.picked.length > 0 && (
             <div className={s.groupHead}>
-              {t('providers.groupPicked', { count: grouped.picked.length })}
+              {t('providers.groupPicked', {
+                count: grouped.picked.filter((row) => row.selected).length,
+              })}
             </div>
           )}
           {grouped.picked.map((row) => (

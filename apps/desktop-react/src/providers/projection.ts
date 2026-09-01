@@ -1,4 +1,5 @@
 import { isProviderEnabledIn } from '@renderer/stores/helpers/provider-model'
+import { frozenFlagOf } from '../ui/list-placement'
 import type { OpenRouterModel, ProviderConfig } from '@shared/ipc/providers'
 import type {
   SpaceCredentialEntrySummary,
@@ -512,10 +513,25 @@ export function vendorPrefixOf(id: string): string | null {
  *
  * 注意 `rows` 已经是**过滤后**的(`buildCatalogRows` 吃过 query),所以这里的
  * `searching` 只用来决定「要不要截」与「组要不要自动展开」,不再筛一遍。
+ *
+ * ── `placement`:①用的是**固化过的**「已选」,不是此刻的(09-01 报障)────────
+ * 判据①一旦直接读 `row.selected`,勾选就成了重排:真机量到勾一下中段的模型,
+ * 它当场从第 16 行飞到第 3 行(-689px),而且因为换了父容器,DOM 节点被整个
+ * 换掉。用户原话「很难受」。
+ *
+ * 所以**位置与状态分家**:`placement` 是进这块面 / 显式刷新时拍的一张快照
+ * (`ui/list-placement`),决定行落在哪一区;`row.selected` 仍然是活值,决定
+ * 勾选框画成什么样。快照不认识的行(刚手填的那种)按活值算。
+ * 不给 `placement` = 老行为(立刻重排),只留给不在交互中的调用方与测试。
  */
-export function groupCatalog(rows: readonly CatalogRow[], searching: boolean): GroupedCatalog {
-  const picked = rows.filter((row) => row.selected)
-  const rest = rows.filter((row) => !row.selected)
+export function groupCatalog(
+  rows: readonly CatalogRow[],
+  searching: boolean,
+  placement?: ReadonlyMap<string, boolean>,
+): GroupedCatalog {
+  const placedPicked = (row: CatalogRow) => frozenFlagOf(placement, row.id, row.selected)
+  const picked = rows.filter(placedPicked)
+  const rest = rows.filter((row) => !placedPicked(row))
 
   // 检索时只截未选的那一半:已选是「我在用的」,再多也得画全。
   const capped = searching ? rest.slice(0, SEARCH_ROW_CAP) : rest

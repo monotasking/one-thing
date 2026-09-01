@@ -397,6 +397,57 @@ describe('groupCatalog', () => {
     expect(grouped.groups.flatMap((g) => g.rows).map((r) => r.id)).not.toContain('openai/m3')
   })
 
+  /* ── 位置固化(09-01 报障:勾选一下模型就换位置)────────────────────── */
+
+  it('给了 placement:位置读快照,**勾选框读活值** —— 位置与状态分家', () => {
+    const all = rows([['openai', 70]], ['openai/m3'])
+    // 用户刚勾上了 m9(活值 true),快照里它还是 false。
+    const live = all.map((r) => (r.id === 'openai/m9' ? { ...r, selected: true } : r))
+    const placement = new Map(all.map((r) => [r.id, r.selected]))
+
+    const grouped = groupCatalog(live, false, placement)
+    // 位置:m9 仍留在它原来那一组里,一步没挪。
+    expect(grouped.picked.map((r) => r.id)).toEqual(['openai/m3'])
+    expect(grouped.groups.flatMap((g) => g.rows).map((r) => r.id)).toContain('openai/m9')
+    // 状态:那一行交出去的仍然是**勾上了**的活值。
+    const row = grouped.groups.flatMap((g) => g.rows).find((r) => r.id === 'openai/m9')!
+    expect(row.selected).toBe(true)
+  })
+
+  it('取消勾选也不挪窝:仍留在已选区里,但它的活值是没勾', () => {
+    const all = rows([['openai', 70]], ['openai/m3', 'openai/m9'])
+    const live = all.map((r) => (r.id === 'openai/m9' ? { ...r, selected: false } : r))
+    const placement = new Map(all.map((r) => [r.id, r.selected]))
+
+    const grouped = groupCatalog(live, false, placement)
+    expect(grouped.picked.map((r) => r.id)).toEqual(['openai/m3', 'openai/m9'])
+    expect(grouped.picked.find((r) => r.id === 'openai/m9')!.selected).toBe(false)
+  })
+
+  it('反证:不给 placement 就是老行为 —— 勾一下当场换区', () => {
+    const all = rows([['openai', 70]], ['openai/m3'])
+    const live = all.map((r) => (r.id === 'openai/m9' ? { ...r, selected: true } : r))
+
+    const grouped = groupCatalog(live, false)
+    expect(grouped.picked.map((r) => r.id)).toEqual(['openai/m3', 'openai/m9'])
+    expect(grouped.groups.flatMap((g) => g.rows).map((r) => r.id)).not.toContain('openai/m9')
+  })
+
+  it('快照不认识的行(刚手填的那一条)按活值算 —— 它没有旧位置可守', () => {
+    const all = rows([['openai', 70]])
+    const placement = new Map(all.map((r) => [r.id, r.selected]))
+    const fresh = {
+      ...all[0],
+      id: 'hand/typed',
+      name: 'hand/typed',
+      selected: true,
+      manual: true,
+    }
+
+    const grouped = groupCatalog([fresh, ...all], false, placement)
+    expect(grouped.picked.map((r) => r.id)).toEqual(['hand/typed'])
+  })
+
   it('检索时截 50 行并如实报剩余;已选那一半不截', () => {
     const grouped = groupCatalog(rows([['openai', 200]], ['openai/m0', 'openai/m1']), true)
     expect(grouped.groups.flatMap((g) => g.rows)).toHaveLength(50)
