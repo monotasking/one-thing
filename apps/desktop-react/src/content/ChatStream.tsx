@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 import { useChatSource } from '../data/chat-source'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useExposeStore } from '../expose/store'
@@ -205,7 +205,21 @@ interface RowProps {
   flash: boolean
 }
 
-function MessageRow({ t, message, streaming, flash }: RowProps) {
+/**
+ * 一条消息一行。
+ *
+ * ── 为什么包 `memo`(09-01 P0,60 万 token 长会话流式期 3–4fps)──────────
+ * 流式期间 `chat-source` 每帧推一次屏,列表数组每帧是新的 —— 不包 memo,**整篇
+ * 抄本的每一行每帧都重渲染一次**,代价 ∝ 会话长度。包上之后判据变成「这条消息的
+ * 对象引用变了没有」:上游按 `(投影节点, node.rev)` 缓存物化(`data/chat-materialize`),
+ * 没变的消息逐帧是**同一个对象**,于是活消息那一行重渲染,其余全部短路。
+ *
+ * 默认浅比就够:四个 prop 里 `t` 是 `useT()` 按 locale memo 的稳定函数,
+ * `message` 是那份缓存过的对象,`streaming` / `flash` 是布尔。
+ * **别在这里加自定义比较函数** —— 那等于把「什么算变了」从上游搬一份到这儿,
+ * 两处判据迟早分叉;要短路就让上游把引用稳住。
+ */
+const MessageRow = memo(function MessageRow({ t, message, streaming, flash }: RowProps) {
   const role = message.role
   const className = [s.row, flash && s.flash].filter(Boolean).join(' ')
 
@@ -270,7 +284,7 @@ function MessageRow({ t, message, streaming, flash }: RowProps) {
       )}
     </article>
   )
-}
+})
 
 function OverlayRow({ t, entry }: { t: TFn; entry: OverlayEntry }) {
   const retry = useChatSource((st) => st.retry)

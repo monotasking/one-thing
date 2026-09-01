@@ -3,7 +3,7 @@ import {
   createSessionProjectionState,
   reduceSessionProjection,
 } from '@onething/core/session/projection/reducer'
-import { materializeChatMessages } from '@onething/core/session/projection/chat-messages'
+import { materializeChatMessagesCached } from './chat-materialize'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@renderer/platform/types'
@@ -20,6 +20,7 @@ import {
 } from './chat-fold'
 import { chatPort } from './chat-port'
 import { notify } from '../services/notify'
+import { perfSpan } from '../services/perf'
 import { t } from '../i18n'
 
 /**
@@ -140,6 +141,14 @@ let tail: Tail | undefined
  */
 let tailLens: { messageId: string; lens: FoldLens; contentCoverage: number } | undefined
 /**
+ * blob 缓存的**世代号**(见 `chat-materialize` 的 memo 键)。
+ *
+ * 物化按 `(节点, node.rev)` 缓存,而壳这条读路的物化选项 `resolveBlob` 读的是模块级
+ * 那张 blob 表 —— 一条 blob 换回来之后成品会变,账本却一个字没动。所以另立这一格
+ * 单调号,blob 落一条就 +1(唯一产地在 `resolveBlob` 的 finally 里)。
+ */
+let blobEpoch = 0
+/**
  * 重折在飞时到达的活事件 —— **攒着,不是丢掉**。
  *
  * 从前这里是丢("重折读的整份账本里本来就有它们"),但那句话对**重折发出之后
@@ -206,24 +215,36 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         blobsMissing.add(key)
       } finally {
         blobsInFlight.delete(key)
+        // **blob 世代前进 —— 这是本文件唯一一处**。物化按节点缓存(chat-materialize),
+        // 而这条 blob 换回来之后成品会变、账本却没变(`node.rev` 不动)。少了这一格,
+        // 附件正文会永远停在「还没读回来」的那一版。
+        blobEpoch += 1
         schedulePush()
       }
     })()
     return undefined
   }
 
-  /** 折叠产物 → 屏幕树。顺序要紧:先接尾巴,再叠 overlay。 */
+  /**
+   * 折叠产物 → 屏幕树。顺序要紧:先接尾巴,再叠 overlay。
+   *
+   * 物化走**按节点缓存**那一口(`chat-materialize`):流式期间真正在变的只有一条
+   * 消息,其余全部命中上一帧的成品 —— 于是这一帧的代价与抄本长度脱钩。
+   * 打点埋在这里而不是 `schedulePush`:要量的是「组一次屏要多久」,不是排队。
+   */
   function compose(): void {
     if (!fold || fold.pending) return
-    const projected = materializeChatMessages(fold.state, { resolveBlob })
-    const base = projected.messages as ProjectedMessage[]
-    const overlay = reconcileOverlay(get().overlay, base)
-    set({
-      status: 'ready',
-      error: undefined,
-      messages: appendTail(base, tail, tailLens?.messageId === tail?.messageId ? tailLens?.contentCoverage : undefined),
-      activeMessageId: projected.activeRun?.messageId,
-      overlay,
+    perfSpan('chat.compose', () => {
+      const projected = materializeChatMessagesCached(fold!.state, { resolveBlob }, blobEpoch)
+      const base = projected.messages
+      const overlay = reconcileOverlay(get().overlay, base)
+      set({
+        status: 'ready',
+        error: undefined,
+        messages: appendTail(base, tail, tailLens?.messageId === tail?.messageId ? tailLens?.contentCoverage : undefined),
+        activeMessageId: projected.activeRun?.messageId,
+        overlay,
+      })
     })
   }
 
@@ -248,7 +269,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
    * 数错这一格就是 09-01 那条「思考块消失 2 秒」的报障。
    */
   function lensOf(state: ReturnType<typeof createSessionProjectionState>, messageId: string): FoldLens {
-    const found = materializeChatMessages(state).messages.find((message) => message.id === messageId)
+    const found = materializeChatMessagesCached(state, { resolveBlob }, blobEpoch).messages.find(
+      (message) => message.id === messageId,
+    )
     const parts = (found?.contentParts ?? []) as ReadonlyArray<{ type?: string; content?: string }>
     let reasoningInline = 0
     for (const part of parts) {
