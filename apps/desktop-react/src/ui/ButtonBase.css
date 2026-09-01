@@ -1,0 +1,67 @@
+/*
+ * 无样式按钮基座:**只清 UA,不画任何东西**。
+ *
+ * ── 为什么这个文件叫 `.css` 而不是 `.module.css`(09-02 病历,批 3.6)───────
+ * 它从前叫 `ButtonBase.module.css`,里面每一条规则都写成 `:global(:where(…))`
+ * —— 也就是说,**它一个局部类名都没有,整份是全局样式表**。而 `ButtonBase.tsx`
+ * 只能对它做一次「只为副作用」的 import(没有类名可取,拿不到任何绑定)。
+ * 这两件事凑在一起,在 `vite build` 里的后果是:那个 CSS Module 变成一个
+ * 没有任何导出被消费的 JS 模块,被 rollup 摇掉,**它的 CSS 也跟着一起没进产物**。
+ *
+ * 病是「dev 有 prod 无」的那一型,所以极难自己暴露:
+ *  · dev(vite serve)不做 tree-shaking,模块被当成 `__vite__updateStyle` 的
+ *    副作用照常求值 —— 屏幕上一切正常;
+ *  · prod(`npm run app:build`)里 `dist/assets/*.css` 整份不含 `data-ui-base`,
+ *    真机 computed `appearance` 读回 `auto`。
+ * 之所以一直没炸,是 `styles/global.css` 里那条 `button { … }` 兜住了大半
+ * (font / color / border / background / padding / cursor 六条它都给了),
+ * 真正掉在地上的只有 `appearance` 与 `text-align` 这两条它没给的。
+ *
+ * 修法是**改文件的种类,不是给它找个理由活下去**:这份东西本来就是全局样式表,
+ * 那就让它是一份普通 `.css`。普通 CSS 的 import 在 vite 里是不可摇的副作用
+ * (`global.css` / `tokens.css` 一直这么进来的),规则从此必然进产物;
+ * `:global()` 那层包装随之退役 —— 它是 CSS Modules 专用的伪类,写在普通 CSS 里
+ * 是**非法选择器**,整条规则会被丢掉(所以下面只剩 `:where()`)。
+ * 反例记档:给模块补一个「只为让它活着」的本地类同样能救,但那会让基座往元素上
+ * 挂一个 (0,1,0) 的类 —— 正是下面那一节说的、必须避免的那件事。
+ *
+ * 守卫:`scripts/verify.mjs` 的 buttonbase-css 一步在构建后 grep 整棵 dist/,
+ * 三个探针缺一即红;`__tests__/ButtonBase.test.tsx` 另有一条源码侧的早鸣
+ * (全 src 不许再出现「只为副作用的 .module.css import」)。
+ *
+ * ── 为什么是 `:where()` + 属性选择器,不是一个类 ────────────────────────────
+ * 基座要被「瓦 / 卡 / 行 / 琴键」这类**视觉本该定制**的结构件消费,而它们各自
+ * 的皮肤(背景、内边距、圆角)必须**无条件**盖过基座。
+ * 如果基座是一个普通类,两边都是 (0,1,0),谁赢由**打包顺序**决定 —— 那是一场
+ * 抽奖,产物次序不该决定一个按钮长什么样。
+ * `:where(...)` 把特异性压成 **0**:消费方随便一个类都赢,顺序再也不参与。
+ * 属性选择器(而不是类名)是因为基座本来就不该往元素上挂类 —— data 属性是
+ * 组件自己贴的,零特异性,也不参与任何一份改写表。
+ *
+ * 焦点环**不在这里**:全局 `:focus-visible`(styles/global.css)已经统一画,
+ * 基座再画一次就是两个产地。基座只保证一件事 —— 清 UA 的时候**不许**把
+ * outline 一起清掉(所以下面没有 `outline: none`,那是禁令)。
+ *
+ * ── 留账(09-02,不在本批处置)───────────────────────────────────────────
+ * 下面 `:disabled { cursor: default }` 这一条**至今仍然不生效**:它被 `:where()`
+ * 压成 0 特异性,而 `styles/global.css` 里的 `button { cursor: pointer }` 是
+ * (0,0,1) —— 元素选择器赢零特异性,与先后次序无关。要让它兑现,得动全局那条
+ * `button` 规则(把 cursor 从那儿摘掉,或让基座不压 disabled 这一句的特异性),
+ * 那是一次用户可感知的行为变化,要单独拍板。留在这里是**声明意图**,不是在装作
+ * 它已经生效。
+ */
+:where(button[data-ui-base]) {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+:where(button[data-ui-base]:disabled) {
+  cursor: default;
+}

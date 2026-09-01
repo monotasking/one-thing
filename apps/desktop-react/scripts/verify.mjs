@@ -93,6 +93,70 @@ function checkOfflineFonts() {
   process.stdout.write(`  ✓ 零外部字体请求;本地 woff2 ${woff2.length} 个,共 ${mb.toFixed(2)} MB\n`)
 }
 
+/**
+ * ── buttonbase-css 这一步在验什么(09-02 立,批 3.6)────────────────────────
+ * `ui/ButtonBase` 是全仓每一个结构性交互件(瓦 / 卡 / 行 / 琴键 / 选项,以及
+ * `ui/IconButton` 的底座)的 UA 清除层。它的规则**整份没进过生产产物**:那时它
+ * 叫 `ButtonBase.module.css`、零本地类名、只被「为副作用」import 一次,于是
+ * `vite build` 把那个没有任何导出被消费的模块摇掉,CSS 跟着一起消失。
+ *
+ * 这个病的可怕之处在于**它只在生产里存在**:dev 不做 tree-shaking,屏幕上一切
+ * 正常;typecheck / lint / 单测 / 真机门(都跑在装了 global.css 兜底的页面上)
+ * 一个都看不见它 —— 只有拿构建产物本身去问,才问得出来。
+ * 所以它与 offline-fonts 同一个体例:**grep 整棵 dist/**,三个探针缺一即红。
+ *
+ * 探针挑的是「只有基座给、global.css 的 `button {}` 兜不住」的那几条:
+ *  · `data-ui-base`   —— 选择器本身在不在(整份文件在不在的直接判据);
+ *  · `appearance`     —— UA 外观清除,兜底那条一个字都没说;
+ *  · `text-align:inherit` —— UA 的 `text-align: center` 清除,同上。
+ * 反证:把 ButtonBase.tsx 里那句 import 改回 `.module.css` 形态(或删掉),
+ * 这一步当场红。
+ */
+const BUTTON_BASE_PROBES = ['data-ui-base', 'appearance', 'text-align:inherit']
+
+function checkButtonBaseCss() {
+  process.stdout.write('\n── buttonbase-css(基座的 UA 清除必须真的在产物里)──\n')
+  if (!existsSync(distDir)) {
+    process.stdout.write('[verify] FAILED: 没有 dist/ —— build 那一步应该产出它\n')
+    process.exit(1)
+  }
+  const css = walk(distDir)
+    .filter((f) => f.endsWith('.css'))
+    .map((f) => readFileSync(f, 'utf-8'))
+    .join('\n')
+  const missing = BUTTON_BASE_PROBES.filter((probe) => !css.includes(probe))
+  if (missing.length) {
+    process.stdout.write(
+      '[verify] FAILED: 产物 CSS 里找不到 ui/ButtonBase 的 UA 清除规则\n'
+        + `  缺的探针:${missing.join(' / ')}\n`
+        + '  多半是那份样式表又变回了「只为副作用 import 的 .module.css」——\n'
+        + '  那种模块没有任何导出被消费,vite build 会连同它的 CSS 一起摇掉。\n'
+        + '  病历与修法写在 src/ui/ButtonBase.css 文件头。\n',
+    )
+    process.exit(1)
+  }
+  process.stdout.write(`  ✓ 三个探针都在产物里:${BUTTON_BASE_PROBES.join(' / ')}\n`)
+}
+
+/*
+ * `node scripts/verify.mjs --only <name>` —— 只跑那一步产物检查,不碰整条链。
+ * 立这个口子只有一个理由:**反证纪律**要求每条守卫断言至少真跑一次「拆掉即红」,
+ * 而这两步是内联在 verify 里的,没有这口子就只能陪跑十分钟的全链才验得到它们。
+ * 它只接受这两个名字,不是通用的分步执行器。
+ */
+const ONLY_CHECKS = { 'offline-fonts': checkOfflineFonts, 'buttonbase-css': checkButtonBaseCss }
+const onlyIndex = process.argv.indexOf('--only')
+if (onlyIndex !== -1) {
+  const name = process.argv[onlyIndex + 1]
+  const check = ONLY_CHECKS[name]
+  if (!check) {
+    process.stdout.write(`[verify] --only 只认:${Object.keys(ONLY_CHECKS).join(' / ')}\n`)
+    process.exit(2)
+  }
+  check()
+  process.exit(0)
+}
+
 const serverEntry = path.join(repoRoot, 'dist/server/main.js')
 if (!existsSync(serverEntry)) {
   process.stdout.write(
@@ -111,6 +175,7 @@ run('motion-gate', 'npm', ['run', '--silent', 'motion-gate'])
 run('test', 'npm', ['run', '--silent', 'test'])
 run('build', 'npm', ['run', '--silent', 'app:build'])
 checkOfflineFonts()
+checkButtonBaseCss()
 /*
  * 构建链冒烟(A1-a):壳的 main 侧现在 inline 着整棵 core/runtime/backend,而那棵树
  * 里有四处东西 esbuild 默认处理不了(`?raw` / `import.meta.url` / 三个原生模块 /
@@ -178,5 +243,6 @@ run('gate:a11y', 'npm', ['run', '--silent', 'gate:a11y'])
 
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
-    + ' / offline-fonts / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y)全绿\n',
+    + ' / offline-fonts / buttonbase-css'
+    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y)全绿\n',
 )

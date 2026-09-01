@@ -1,6 +1,9 @@
 import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes } from 'react'
-import './ButtonBase.module.css'
+// 普通 `.css`,不是 `.module.css` —— 这份东西整份是全局样式表(零本地类名),
+// 而「只为副作用」的 CSS Module import 会被 `vite build` 摇掉、规则整份不进产物
+// (09-02 病历,全文在 ButtonBase.css 文件头)。普通 CSS 的 import 摇不掉。
+import './ButtonBase.css'
 
 /**
  * **无样式按钮基座**(09-01 立,起因:业务面 88 处裸 `<button>`)。
