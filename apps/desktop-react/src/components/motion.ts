@@ -34,6 +34,13 @@ export const ESC_STOP_WINDOW_MS = 2000
  */
 export const COPY_FEEDBACK_MS = 1500
 
+/**
+ * --dur-dock-follow:Dock 磁性放大那条 rAF 环的**时间常数**(临界阻尼的 τ),
+ * 不是一段动画的长度。进 / 跟 / 放三段共用它一个数,理由(以及为什么不是两档)
+ * 写在 tokens.css 那一节里。动效档「无」/ reduced-motion 下由 useMagnify 把它按 0 用。
+ */
+export const MAGNIFY_TAU_MS = 25
+
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
 /**
  * 一条 toast 自动消失前活多久 —— 按级别分档(--dur-toast-success / -info / -warn)。

@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useStageStore } from '../stage/store'
 import {
   GLOBAL_ITEMS,
@@ -14,6 +15,7 @@ import { useWorkspaceViews } from '../workspace/store'
 import sw from '../workspace/swatch.module.css'
 import { DockTile } from './DockTile'
 import { useMagnify } from './useMagnify'
+import { REST_FACTOR } from './dock-magnify'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { useT } from '../i18n'
 import { isItemHidden, memoryIsAt } from '../stage/transitions'
@@ -21,8 +23,6 @@ import { DOCK_AXIS, OPEN_PLACEMENT_CHOICES } from '../stage/types'
 import type { DockEdge, DockSize, StageItemSpec } from '../stage/types'
 import type { LabelSide } from './DockTile'
 import s from './Dock.module.css'
-
-const REST_FACTOR = 1
 
 /** 瓷砖在条上的线性次序 —— 磁性放大按这个次序索引,分隔线不占位。 */
 type Tile =
@@ -68,6 +68,12 @@ const LABEL_SIDE: Record<DockEdge, LabelSide> = {
   right: 'left',
 }
 
+/** 钉住量落到哪个方向 —— 两条轴各一格,CSS 侧一条 translate() 把它们合起来。 */
+const SHIFT_VAR: Record<'x' | 'y', string> = {
+  x: '--dock-shift-x',
+  y: '--dock-shift-y',
+}
+
 /** 瓦朝内长:下/右边锚末端(默认),上/左边锚起点。 */
 const ANCHOR_START: Record<DockEdge, boolean> = {
   bottom: false,
@@ -94,6 +100,9 @@ export function Dock() {
   const memory = useStageStore((st) => st.memory)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockSize = useStageStore((st) => st.dockSize)
+  // 沿边对齐档只有磁性放大读它(条自己的贴边定位在 AppShell 那层)——
+  // 它决定条长大时朝哪边退,见 dock-magnify.ts 的 GROWTH_BIAS。
+  const dockAlign = useStageStore((st) => st.dockAlign)
   // 藏起来的瓦不在条上露面。它是**配置**(见 StageSettings.hiddenItems),
   // 与「这块瓦此刻在哪」无关 —— 所以它与 placements 是两条独立的订阅。
   const hiddenItems = useStageStore((st) => st.hiddenItems)
@@ -124,11 +133,18 @@ export function Dock() {
    * 连同 ui/hover-intent、stage/transitions 的三角区几何一起删干净 —— 条上剩下的
    * 悬停只有瓦自己那条 300ms 名字标签,它从不需要跨瓦仲裁。
    */
-  const { stripRef, setTileRef, factors, tracking, onMouseMove, onMouseLeave } = useMagnify(
-    tiles.length,
-    axis,
-  )
-
+  /*
+   * 磁性放大要的全是**这一刻的布局事实**:几块瓦、分隔线插在哪、停哪条边、
+   * 沿边怎么对齐、多大档。它不量瓦 —— 静止坐标系由这几个数加一个锚点算出来
+   * (见 dock-magnify.ts 的文件头)。这五格里任何一格变了都会让那个锚点作废。
+   */
+  const { stripRef, factors, shift, onMouseMove, onMouseLeave } = useMagnify({
+    count: tiles.length,
+    sepAfter,
+    edge: dockEdge,
+    align: dockAlign,
+    size: dockSize,
+  })
 
   return (
     <div
@@ -141,7 +157,6 @@ export function Dock() {
         SIZE_CLASS[dockSize],
         axis === 'y' && s.vertical,
         ANCHOR_START[dockEdge] && s.anchorStart,
-        tracking && s.tracking,
       ]
         .filter(Boolean)
         .join(' ')}
@@ -149,6 +164,13 @@ export function Dock() {
        * (09-02 之前还有第二个 —— 预览泡的瞄准区,随泡一起退役)。 */
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
+      /* 指针钉住用的那一格平移(式子与来历见 dock-magnify.ts 的 magnifyLayout)。
+       * 它落在**条**上而不是宿主 <nav> 上:宿主那条 transform 带着
+       * `transition: transform var(--dur-enter)`(贴边 / 藏起来用的),
+       * 把逐帧的钉住量塞进去等于让它慢 140ms 到位,当场就不跟手了。
+       * 与 factors 同一次 setState 出去 —— 两者必须落在同一帧,
+       * 差一帧脚下那块就晃一下。 */
+      style={{ [SHIFT_VAR[axis]]: `${shift}px` } as CSSProperties}
     >
       {tiles.map((tile, i) => {
         const node =
@@ -158,7 +180,6 @@ export function Dock() {
               title={t('dock.add')}
               plus
               factor={factors[i] ?? REST_FACTOR}
-              tileRef={setTileRef(i)}
               labelSide={LABEL_SIDE[dockEdge]}
             />
           ) : (
@@ -187,7 +208,6 @@ export function Dock() {
               }
               running={tile.item.id in placements}
               factor={factors[i] ?? REST_FACTOR}
-              tileRef={setTileRef(i)}
               labelSide={LABEL_SIDE[dockEdge]}
               onClick={() => click(tile.item.id)}
               onContextMenu={(e) => {

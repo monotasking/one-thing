@@ -1,6 +1,14 @@
 .strip {
   position: relative;
   display: flex;
+  /* 指针钉住:条整体平移一格,好让指针脚下那一点在放大前后落在同一个像素上
+   * (式子与来历见 components/dock-magnify.ts 的 magnifyLayout)。两条轴各一格
+   * 自定义属性,横排只写 x、竖排只写 y,没写的那格落回 0 —— 一条 translate()
+   * 把两档合起来,省掉「哪条规则在后面」这种靠顺序吃饭的写法。
+   * 落点是**条**不是外面那层 <nav>:宿主那条 transform 带着
+   * `transition: transform var(--dur-enter)`(贴边 / 藏起来在用),
+   * 钉住量塞进去就会慢 140ms 到位,当场不跟手。 */
+  transform: translate(var(--dock-shift-x, 0px), var(--dock-shift-y, 0px));
   align-items: flex-end;
   /* 条的高度钉死(瓦 + 上下内距 + 上下边框):放大的瓦向上长出条外,
    * 条只变宽不变高 —— 动效板「Dock 放大」的既定条款,漏钉会让条像气球一样鼓。 */
@@ -52,7 +60,7 @@
 .sizeMd { --tile-size: var(--tile-size-md); --r-tile: var(--r-tile-md); }
 .sizeLg { --tile-size: var(--tile-size-lg); --r-tile: var(--r-tile-lg); }
 
-/* 跟手定律(动效板):指针在条上时瓷砖零过渡逐帧跟,离开才走 --dur-release 回位。
- * 开关经 CSS 变量传给瓷砖:--tile-size-dur 在跟手期归零。 */
-.strip { --tile-size-dur: var(--dur-release); }
-.tracking { --tile-size-dur: 0ms; }
+/* 09-02:这里曾有一对 `--tile-size-dur` 规则(条上挂 160ms、跟手期由 .tracking
+ * 掰成 0ms),用来给瓦的 width/height 开关 CSS 过渡。**整套退役** —— 尺寸现在
+ * 由 useMagnify 的一条 rAF 环逐帧给,进 / 跟 / 放三段同一个机制、没有开关可掰,
+ * 「掰的那一帧把累积滞后一次性补齐」这个病也就没有产地了。 */

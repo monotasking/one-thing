@@ -17,8 +17,12 @@
   border: 1px solid var(--line-1);
   color: var(--text-1);
   box-shadow: var(--sh-1);
-  /* 磁性放大走布局尺寸(见 useMagnify 头注);释放回位 --dur-release,跟手期由 .tracking 关闭过渡 */
-  transition: width var(--tile-size-dur, var(--dur-release)) var(--ease-out), height var(--tile-size-dur, var(--dur-release)) var(--ease-out), background var(--dur) var(--ease);
+  /* 磁性放大走布局尺寸(见 dock-magnify.ts 头注),而**尺寸不吃 CSS 过渡**:
+   * 进 / 跟 / 放三段全由 useMagnify 那条 rAF 环上的临界阻尼逐帧给。曾经这里挂着
+   * `width/height var(--tile-size-dur, var(--dur-release))`,配一把「跟手期把它
+   * 掰成 0ms」的开关 —— 掰的那一帧会把过渡追不上攒下的滞后一次性补齐,那就是
+   * 09-02 用户报的「不顺手」。底色的过渡与放大无关,原样留着。 */
+  transition: background var(--dur) var(--ease);
 }
 
 .tile:hover {
@@ -144,6 +148,7 @@
 /* 关键帧 labelIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 @media (prefers-reduced-motion: reduce) {
-  .tile { transition: background var(--dur) var(--ease); }
+  /* 尺寸这一维在这一档下由 JS 侧把 τ 归零(瞬到,不是不放大),
+   * 见 useMagnify 的交互状态表 —— CSS 这边只剩标签那条出场要关。 */
   .label { animation: none; }
 }

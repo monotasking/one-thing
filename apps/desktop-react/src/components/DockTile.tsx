@@ -61,9 +61,14 @@ interface Props {
    * **列表里的区分记号**,不是一块瓦的脸。
    */
   face?: { className: string }
-  /** 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。 */
+  /**
+   * 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。
+   *
+   * 09-02 起这块瓦**不再往外交一个 ref**:静止坐标系改成「一个锚点 + 一串常量」
+   * 算出来之后,没有人再需要量单块瓦的矩形了(见 dock-magnify.ts 的文件头)。
+   * 那个 `tileRef` 从「写了没人读」变成「连写都不必写」,一并摘掉。
+   */
   factor: number
-  tileRef: (el: HTMLElement | null) => void
   labelSide?: LabelSide
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
@@ -79,7 +84,6 @@ export function DockTile({
   plus,
   face,
   factor,
-  tileRef,
   labelSide = 'top',
   onClick,
   onContextMenu,
@@ -121,7 +125,6 @@ export function DockTile({
       {/* 瓦是裸钮三类判的第③类(结构性交互件:视觉本该定制)—— 消费
         * `ui/ButtonBase` 只清 UA,磁性放大 / 色底 / 徽 / 点那一整套皮肤原样留在本地。 */}
       <ButtonBase
-        ref={tileRef as (el: HTMLButtonElement | null) => void}
         className={
           plus
             ? `${s.tile} ${s.plus}`

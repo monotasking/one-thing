@@ -27,7 +27,20 @@
  *
  * 跑法:`node scripts/gate-motion.mjs`
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
- * 可重复:每次一个全新的临时 store,跑完删干净。
+ * 可重复:每次一个全新的临时 store + 全新的 --user-data-dir,跑完删干净。
+ *
+ * ── 隔离(09-02 结清的存量红)──────────────────────────────────────────────
+ * 这三轮从前只隔离了 store,**没给 --user-data-dir**:三次 electron.launch 用的都是
+ * 壳的公共 profile —— 于是它既**读**用户自己那份 localStorage(第一次开窗时屏幕上
+ * 有些什么、开着哪些浮层,都跟着用户的历史走),又**写**它(launchWithTier 会往
+ * `onething.reading` 里塞档位再 reload)。3966123c 记的那条存量红就长在这儿:
+ * 「关浮窗下一帧就没有了」在 HEAD 上稳定复现 2→1(数到两扇窗,说明屏上原本就
+ * 多着一扇不是这条门开的)。09-02 照 gate-a11y 的写法起一个临时 userDataDir,
+ * 三轮共用、跑完与 store 一起删 —— 两趟都读到 1 → 0,红转绿。
+ *
+ * 这条红的反证**故意不做**:要复现它就得让 electron 再去读写用户真实 profile,
+ * 而那正是这次要治的害(见 CLAUDE.md「验证不改用户状态」)。证据是修前修后
+ * 同一条断言的读数(2→1 转 1→0),不是把病再犯一次。
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -118,10 +131,10 @@ function assert(condition, message) {
  * reading/apply → 属性 → CSS 档位块)都成立。直接贴属性只证了最后两段,
  * 而"设置面改了但 boot 时没贴上"正是最容易出的那种错。
  */
-async function launchWithTier(store, tier) {
+async function launchWithTier(store, userDataDir, tier) {
   const app = await electron.launch({
     executablePath: electronBinary,
-    args: [mainEntry],
+    args: [mainEntry, `--user-data-dir=${userDataDir}`],
     env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
   })
   const page = await app.firstWindow()
@@ -236,9 +249,9 @@ function toMs(value) {
   return value.trim().endsWith('ms') ? n : n * 1000
 }
 
-async function runNone(store) {
+async function runNone(store, userDataDir) {
   console.log('\n── none:切到「无」之后,屏幕上一个时长都不剩 ──────────────')
-  const { app, page } = await launchWithTier(store, 'none')
+  const { app, page } = await launchWithTier(store, userDataDir, 'none')
   try {
     const opened = await openFloatingLayers(page)
     console.log(`  (顺手开出来的浮层:${opened.length ? opened.join(' / ') : '无'})`)
@@ -279,9 +292,9 @@ async function runNone(store) {
   }
 }
 
-async function runStandard(store) {
+async function runStandard(store, userDataDir) {
   console.log('\n── standard:所有非零时长都在 token 值集合里 ─────────────────')
-  const { app, page } = await launchWithTier(store, 'standard')
+  const { app, page } = await launchWithTier(store, userDataDir, 'standard')
   try {
     await openFloatingLayers(page)
     // token 值集合从 :root 的计算样式里现读 —— 不在脚本里抄一份 tokens.css。
@@ -334,9 +347,9 @@ async function runStandard(store) {
   }
 }
 
-async function runCalm(store) {
+async function runCalm(store, userDataDir) {
   console.log('\n── calm:五个装饰时长减半,--dur 与 --dur-release 不动 ────────')
-  const { app, page } = await launchWithTier(store, 'calm')
+  const { app, page } = await launchWithTier(store, userDataDir, 'calm')
   try {
     const values = await page.evaluate(names => {
       const style = getComputedStyle(document.documentElement)
@@ -368,6 +381,7 @@ async function main() {
   }
 
   const store = await mkdtemp(path.join(tmpdir(), 'motion-gate-'))
+  const userDataDir = await mkdtemp(path.join(tmpdir(), 'motion-gate-userdata-'))
   let server
   try {
     console.log('\n[0] 起一台 core')
@@ -387,15 +401,16 @@ async function main() {
     })
     assert(await portConnects(record.host, record.port), `core 端口 ${record.port} 可连`)
 
-    await runNone(store)
-    await runStandard(store)
-    await runCalm(store)
+    await runNone(store, userDataDir)
+    await runStandard(store, userDataDir)
+    await runCalm(store, userDataDir)
 
     console.log('\n[motion-gate] ok —— 三档都对得上:none 全 0(两条豁免)、standard 无野生时长、calm 减半')
   } finally {
     if (server && pidAlive(server.pid)) server.kill('SIGTERM')
     await delay(600)
     await rm(store, { recursive: true, force: true })
+    await rm(userDataDir, { recursive: true, force: true })
   }
 }
 
