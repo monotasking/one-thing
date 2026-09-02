@@ -138,13 +138,36 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   max-height: var(--block-clamp-h);
-  /* 超出部分渐隐 —— 用遮罩而不是叠一层渐变 div:后者会盖住底下的字并吃掉点击。 */
+}
+
+/*
+ * 超出部分渐隐 —— 用遮罩而不是叠一层渐变 div:后者会盖住底下的字并吃掉点击。
+ *
+ * ── 遮罩挂在**真被裁断的那一块**上,不挂在 `.body` 上(09-02 用户报「代码块最后
+ * 一行有一层雾」)────────────────────────────────────────────────────────────
+ * 从前这一句写在 `.body` 里,于是每一块都雾着底下 24px,只有 `.bodyExpanded` 撤。
+ * 可 `max-height` 是**上限**不是定高:一行的 bash 块高 40px,从来没被裁过一个像素,
+ * 却照样把最后一行(也就是它唯一那一行)的下缘淡掉 —— 屏幕上说了一件不存在的事
+ * 「下面还有,只是没画出来」。真机读数:`.body` 高 40 / scrollHeight 40 / 无展开钮,
+ * 而 computed `mask-image` 是那条渐变。
+ *
+ * 「裁没裁断」壳里本来就量着(`ClampedBody` 的 `overflows`,ResizeObserver 跟着
+ * 内容长),从前只拿去决定画不画展开钮 —— 遮罩与展开钮说的是**同一件事**
+ * (「下面还有」),所以它们从同一格出:`overflows && !expanded` 时才挂这个类。
+ * 首帧不会先雾后清:`overflows` 初值 false = 不挂,量在 `useLayoutEffect` 里、
+ * 绘制之前,超高的那一块在同一帧就带着遮罩画出来。
+ */
+.bodyClamped {
   mask-image: linear-gradient(to bottom, var(--surface-2) calc(100% - var(--sp-6)), transparent);
 }
 
+/*
+ * 展开 = 撤掉钳子。遮罩这里**不必再撤**:它只长在 `.bodyClamped` 上,而那个类与
+ * 这个类在 `ClampedBody` 里是互斥的两条分支(从前那句 `mask-image: none` 是
+ * `.body` 无条件挂遮罩时代的解药,产地没了,解药也就没有对象了)。
+ */
 .bodyExpanded {
   max-height: none;
-  mask-image: none;
 }
 
 /*

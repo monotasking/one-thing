@@ -291,6 +291,10 @@ function BlockActions({
  * 「先出现展开钮再消失」的一帧。jsdom 里没有排版、两个值都是 0,于是单测里
  * 永远不折叠 —— 这正确:测试要验的是块画出来了什么,不是浏览器怎么排版。
  *
+ * **渐隐与展开钮是同一格 `overflows` 的两个出口**(09-02 修:从前渐隐无条件写在
+ * `.body` 上,于是一行的短块也被雾掉底下 24px —— 屏幕上说「下面还有」而其实没有)。
+ * 判据只有这一处;CSS 那一侧的病历写在 `BlockShell.module.css` 的 `.bodyClamped`。
+ *
  * ── 内容会**后来才长高**,所以量一次不够(P3 真机抓到) ──────────────────
  * 图要等 mermaid 渲完、代码要等 shiki 拉到,这两下都发生在块自己的 state 里,
  * 外面这一层的 `children` 引用一动不动 —— 于是只在挂载时量的话,一张 414px 高的图
@@ -321,9 +325,20 @@ function ClampedBody({ t, children }: { t: TFn; children: ReactNode }) {
     return () => observer.disconnect()
   }, [expanded, children])
 
+  /*
+   * 三档一处产地:展开(撤钳子)/ 裁断中(挂遮罩)/ 没裁到(什么都不挂)。
+   * 遮罩与展开钮读的是**同一格** `overflows` —— 它们说的本来就是同一件事
+   * 「下面还有」,分成两个判据就会出现「雾着却没有钮」(09-02 那条报障的形)。
+   */
+  const bodyClass = expanded
+    ? `${s.body} ${s.bodyExpanded}`
+    : overflows
+      ? `${s.body} ${s.bodyClamped}`
+      : s.body
+
   return (
     <>
-      <div ref={ref} className={expanded ? `${s.body} ${s.bodyExpanded}` : s.body}>
+      <div ref={ref} className={bodyClass}>
         <div ref={inner}>{children}</div>
       </div>
       {overflows && (

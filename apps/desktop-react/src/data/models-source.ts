@@ -608,9 +608,11 @@ export const useModelsSource = create<ModelsSourceState>()((set, get) => ({
      * `refetch` 不清屏(kernel 的 keep-previous),所以律②不受影响:回到一个
      * 问过的空间时,旧答案先在屏上,新答案到了才换。
      *
-     * **留账(不在本批)**:「设置面写完 provider 设置 → 这一格该作废」是**两侧
-     * 从前就没有的对账**,不是迁移带出来的洞。落点应该在 `providers/store.ts` 的
-     * `settingsMutation.settle` 里 `prefsQuery.invalidate()`,那是另一批的事。
+     * 这一格还有**第二个作废源**(09-02 结清,起因是用户报「设置里 disable 掉一家
+     * provider,输入框的模型选择器仍列出它的模型」):设置面写完盘之后,
+     * `providers/store.ts` 的 `settingsMutation.settle` 会 `prefsQuery.invalidate(空间 id)`。
+     * 换空间与写设置是「这一格旧了」的**两个产地、同一口作废**,都走 kernel 的
+     * 保旧后台补拉 —— 抽屉开着不闪、没人看则只记脏标记等下一次 `ensure`。
      */
     unsubscribeSpace?.()
     unsubscribeSpace = subscribeCurrentSpace(() => {

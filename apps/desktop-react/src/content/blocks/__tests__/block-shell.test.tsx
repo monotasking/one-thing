@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { BlockShell } from '../shell/BlockShell'
+import shellStyles from '../shell/BlockShell.module.css'
 import { clearBlockLoaderCache } from '../shell/loader'
 import { BlockView } from '../BlockView'
 import type { BlockCtx, BlockDef } from '../registry'
@@ -82,6 +83,21 @@ describe('块体的滚动契约', () => {
   it('纵向显式 hidden:横滚的 auto 不许把另一轴带成 auto', () => {
     expect(declarations).toContain('overflow-x: auto;')
     expect(declarations).toContain('overflow-y: hidden;')
+  })
+
+  /*
+   * 渐隐遮罩的**唯一产地**是 `.bodyClamped`(09-02 用户报「代码块最后一行有一层雾」)。
+   * 从前它无条件写在 `.body` 上,而 `max-height` 是上限不是定高 —— 一行的 bash 块
+   * 从来没被裁过一个像素,却照样把唯一那一行的下缘淡掉,屏幕上说了一件不存在的事。
+   * 这一条与上面两条同理只能落在 CSS 文本上:哪个类挂了 mask 是这份文件的字面事实。
+   */
+  it('遮罩只长在 .bodyClamped 上:.body 与 .bodyExpanded 一句都没有', () => {
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const at = (selector: string) => rules.indexOf(selector)
+    const slice = (from: string, to: string) => rules.slice(at(from), at(to))
+    expect(slice('.body {', '.bodyClamped {')).not.toContain('mask-image')
+    expect(slice('.bodyClamped {', '.bodyExpanded {')).toContain('mask-image: linear-gradient(')
+    expect(rules.slice(at('.bodyExpanded {')).split('}')[0]).not.toContain('mask-image')
   })
 })
 
@@ -205,5 +221,65 @@ describe('檐与动作组', () => {
 
     fireEvent.click(screen.getByText('收起源码'))
     expect(screen.getByTestId('bomb-ok')).toBeTruthy()
+  })
+})
+
+/**
+ * 渐隐遮罩与展开钮是**同一格 `overflows`** 的两个出口(09-02 报障「代码块最后一行
+ * 有一层雾」)。它们说的本来就是同一句话「下面还有」,分成两个判据就会出现
+ * 「雾着却没有钮」—— 那正是这条报障的形。
+ *
+ * jsdom 不排版(`scrollHeight` / `clientHeight` 恒 0),所以「超高」这一档要把浏览器
+ * 该给的那两个读数按在原型上假一次。假的**只有那两个数**:判据
+ * (`scrollHeight > clientHeight + 1`)与类名怎么挂全是被测代码自己的。
+ * 短块那一档不必假 —— jsdom 的 0 = 0 正是「一行的 bash 块」。
+ */
+describe('限高折叠:雾只在真被裁断时挂', () => {
+  const bodyOf = (container: HTMLElement) =>
+    container.querySelector(`.${shellStyles.body}`) as HTMLElement
+
+  /** 假两个读数,交回一口还原 —— 原型上的改动必须在同一个 it 里收干净。 */
+  function fakeHeights(scrollHeight: number, clientHeight: number): () => void {
+    const proto = window.HTMLElement.prototype
+    const before = {
+      scrollHeight: Object.getOwnPropertyDescriptor(proto, 'scrollHeight'),
+      clientHeight: Object.getOwnPropertyDescriptor(proto, 'clientHeight'),
+    }
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => clientHeight })
+    return () => {
+      if (before.scrollHeight) Object.defineProperty(proto, 'scrollHeight', before.scrollHeight)
+      if (before.clientHeight) Object.defineProperty(proto, 'clientHeight', before.clientHeight)
+    }
+  }
+
+  beforeEach(() => {
+    gate.fail = false
+  })
+
+  it('没裁到的短块:不挂遮罩类,也没有展开钮', () => {
+    // 先证明那个类**存在** —— 类名没了的话下面那句 `contains(undefined)` 恒假,
+    // 断言会在遮罩搬回 `.body` 的世界里照样绿(反证时实测过)。
+    expect(typeof shellStyles.bodyClamped).toBe('string')
+    const { container } = render(<BlockShell def={bomb} model={codeModel} ctx={ctx} />)
+    const body = bodyOf(container)
+    expect(body.classList.contains(shellStyles.body)).toBe(true)
+    expect(body.classList.contains(shellStyles.bodyClamped)).toBe(false)
+    expect(screen.queryByText('展开')).toBeNull()
+  })
+
+  it('被裁断的高块:挂遮罩类 + 出展开钮;展开之后遮罩撤掉', () => {
+    const restore = fakeHeights(400, 320)
+    try {
+      const { container } = render(<BlockShell def={bomb} model={codeModel} ctx={ctx} />)
+      expect(bodyOf(container).classList.contains(shellStyles.bodyClamped)).toBe(true)
+
+      fireEvent.click(screen.getByText('展开'))
+      const expanded = bodyOf(container)
+      expect(expanded.classList.contains(shellStyles.bodyExpanded)).toBe(true)
+      expect(expanded.classList.contains(shellStyles.bodyClamped)).toBe(false)
+    } finally {
+      restore()
+    }
   })
 })

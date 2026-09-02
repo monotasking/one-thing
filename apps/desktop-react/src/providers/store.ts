@@ -11,6 +11,8 @@ import type { AppSettings } from '@shared/ipc/settings'
 import type { SpaceCredentialsSummary, SpaceProviderCredentialSummary } from '@shared/ipc/spaces'
 import { providerSettingsPort } from '../data/provider-settings-port'
 import { createMutation } from '../data/kernel'
+// 聊天那边的名册读的是这一格;设置写完必须作废它(理由写在 `settle` 里)。
+import { prefsQuery } from '../data/models-source'
 import { catalogQuery } from './catalog-query'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
@@ -266,6 +268,13 @@ export interface SettingsCommit {
    * 再去读一次,拿到的可能已经是另一发写完之后的了。
    */
   baseSpaceAi: SpaceProviderSettings | undefined
+  /**
+   * 写进**哪一个空间**。与 `baseSpaceAi` 在同一刻捕获,理由也同一条:写到一半
+   * 用户切了空间,`run` 里再读一次 `currentSpaceId()` 就会把这一份写去别人家。
+   * 对账那一步(`prefsQuery.invalidate`)要作废的也正是这一格 —— 写的目标与
+   * 作废的目标是**同一个字符串**,不是各读一次凑巧相等。
+   */
+  spaceId: string
   /** 这一发打在哪一格上。产地只有下面那张表。 */
   key: string
 }
@@ -305,7 +314,7 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
       // 写的是**这个空间那一份**,不是整份应用设置 —— 理由(以及 default 为什么
       // 不是特例)写在 `data/provider-settings-port.ts` 的 ③′。
       const response = await port.writeProviderSettings({
-        id: currentSpaceId(),
+        id: input.spaceId,
         ai: splitSpaceProviderSettings(input.next, input.baseSpaceAi),
       })
       // 「后端说没成」与「这一发抛了」在这条原语里是同一件事:都得回滚。
@@ -313,6 +322,29 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
       return response.ai
     },
     settle: (ai, input) => {
+      /*
+       * ── 设置写完 → 聊天那边的名册作废(09-02 修)──────────────────────────
+       *
+       * 报障:「在设置里 disable 掉一家 provider,输入框的模型选择器里还看得见
+       * 它的模型」。病根不是抽屉的分组判据(`buildProviderGroups` 的两道闸一直
+       * 是对的),而是**两侧从来没对过账**:抽屉读的是 `data/models-source` 的
+       * `prefsQuery`(键 = 空间 id),而这块面写完盘之后谁也没告诉它那一格已经旧了。
+       * 于是要等到「换个空间再换回来」或整个重开,抽屉才看得见新的开关。
+       * 留账原文在 `models-source.ts` 的 `start()` 里,本批结清。
+       *
+       * `invalidate` 而不是 `refetch`:kernel 的这一口是**保旧后台补拉**(有人在
+       * 看就后台重问、屏幕上的旧答案一格不清;没人看只记脏标记,下次 `ensure`
+       * 才问)—— 屏幕上的旧内容一格不清(律②),而重拉真的会发生:这一格有一个
+       * **常驻订阅者** —— `AppShell` 里永远挂着的 `Composer` 读
+       * `useCurrentModelSelection` → `useProviderPrefs`,设置面在不在屏上都一样。
+       * 所以这里不必(也不该)用 `refetch` 去硬发一发。
+       *
+       * 摆在 `if (!ai)` **之前**:后端认没认下这件事与「它回没回那一份」是两件事。
+       * 走到 settle 就说明写成了(失败走的是回滚 + onError,根本不到这里),
+       * 而盘上那一份已经变了 —— 名册照样得作废,不然「后端没把结果说回来」这一档
+       * 会静静地留下一个过期的抽屉。
+       */
+      prefsQuery.invalidate(input.spaceId)
       // 后端没回那一份就保持乐观值 —— 它已经被后端认下了,只是没把结果说回来。
       if (!ai) return
       // 底本永远是后端认下的最后一份 —— 连 `settings` 那一格也照它重合一次,
@@ -416,7 +448,14 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
    * 另一发写完之后的那一份,拆出来的 delta 就带着一格没人认下过的事实。
    */
   async function commitSettings(base: AppSettings, next: AppSettings, key: string): Promise<void> {
-    await settingsMutation.run({ base, next, baseSpaceAi: get().spaceAi, key })
+    await settingsMutation.run({
+      base,
+      next,
+      baseSpaceAi: get().spaceAi,
+      // 与 `baseSpaceAi` 同一刻取:这一发要写去哪个空间,在发起的这一瞬就定死了。
+      spaceId: currentSpaceId(),
+      key,
+    })
   }
 
   /**

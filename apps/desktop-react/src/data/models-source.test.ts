@@ -29,6 +29,9 @@ import {
   useModelsSource,
 } from './models-source'
 import { useSessionsSource } from './sessions-source'
+import { useProviderSettings } from '../providers/store'
+import { buildFamilies, findFamily } from '../providers/families'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 
 /**
  * 模型目录与切换(D2 波一,批 7b 迁 kernel 原语)。四块各自钉死:
@@ -609,5 +612,138 @@ describe('模型表跟着当前工作区走', () => {
     hold.resolve({ success: true, ai: BY_SPACE.default })
     await vi.waitFor(() => expect(prefsQuery.get('default').get().inflight).toBe(false))
     expect(prefsQuery.get('default').get().data?.prefs.defaultProvider).toBe('xai')
+  })
+})
+
+/* ── 设置面写完 → 抽屉的名册作废(09-02 报障)───────────────────────────── */
+
+/**
+ * 报障原话:「provider service disable 模型后,输入框模型选择仍能看到其 provider
+ * 的模型」。
+ *
+ * 病根不在两道闸(`buildProviderGroups` 一直是对的),而在**两侧从来没对过账**:
+ * 设置面把 `enabled:false` 写进了盘,而抽屉读的这一格 `prefsQuery` 没人告诉它
+ * 「你手上那份旧了」。于是要等换个空间再换回来、或者整个重开,抽屉才看得见。
+ * 修法是 `providers/store.ts` 的 `settingsMutation.settle` 里
+ * `prefsQuery.invalidate(那一发写去的空间)`。
+ *
+ * 这一组用**同一份盘**喂两个端口(设置面写它、抽屉读它)—— 真机上本来就是一份
+ * 文件两个读者,分两份假货就测不出「对没对上账」这件事本身。
+ */
+describe('设置面写完 provider 设置 → 名册这一格作废', () => {
+  /** 盘上那一份。设置面写进它,模型抽屉从它读。 */
+  let disk: SpaceProviderSettings
+  /** 抽屉那一族的名册(内置两家)—— 与两个端口交出去的是同一张表。 */
+  const ROSTER = [provider('xai', 'xAI'), provider('deepseek', 'DeepSeek')]
+  const XAI = findFamily(buildFamilies(ROSTER), 'xai')!
+
+  /** 抽屉此刻列得出哪几组 —— 判据只有 `buildProviderGroups` 一处。 */
+  function drawerGroups(current: { provider: string; model: string } | null = null) {
+    const prefs = prefsQuery.get(DEFAULT_SPACE_ID).get().data?.prefs
+    return buildProviderGroups(
+      ROSTER.map((info) => ({ id: info.id, name: info.name })),
+      prefs ?? { defaultProvider: '', configs: {} },
+      {},
+      current,
+    )
+  }
+
+  beforeEach(() => {
+    disk = settingsWith(
+      {
+        xai: { selectedModels: ['grok-4', 'grok-4-fast'] },
+        deepseek: { selectedModels: ['deepseek-chat'] },
+      },
+      'xai',
+    )
+    useProviderSettings.getState().reset()
+    // 抽屉那一侧:每次都现读盘。
+    installPort({
+      readProviderSettings: async () => {
+        calls.settings += 1
+        return { success: true, ai: disk }
+      },
+    })
+    // 设置面那一侧:读同一份盘,写也真的落进去(不落盘就测不出重读读到了什么)。
+    configureProviderSettingsPort(
+      fakeProviderPort({
+        listProviders: async () => ({ success: true, providers: ROSTER }),
+        listModels: async (providerId: string) => {
+          calls.models.push(providerId)
+          return { success: true, models: [] }
+        },
+        readSettings: async () => ({
+          success: true,
+          settings: { ai: {}, storage: { spaceProviderSettingsMigratedAt: 1 } } as never,
+        }),
+        readProviderSettings: async () => ({ success: true, ai: disk }),
+        writeProviderSettings: async (request) => {
+          disk = request.ai as SpaceProviderSettings
+          return { success: true, ai: disk }
+        },
+      }),
+    )
+  })
+
+  afterEach(() => {
+    useProviderSettings.getState().reset()
+  })
+
+  it('禁用一家 → 抽屉开着时后台补拉,那一组整个消失', async () => {
+    await useModelsSource.getState().start()
+    expect(drawerGroups().map((group) => group.id)).toEqual(['xai', 'deepseek'])
+
+    // 抽屉开着 = 这一格有人在看。kernel 的 invalidate 在这一档才后台补拉。
+    const off = prefsQuery.get(DEFAULT_SPACE_ID).subscribe(() => {})
+    try {
+      await useProviderSettings.getState().start()
+      await useProviderSettings.getState().setFamilyEnabled(XAI, false)
+
+      await vi.waitFor(() =>
+        expect(prefsQuery.get(DEFAULT_SPACE_ID).get().data?.prefs.configs.xai?.enabled).toBe(false),
+      )
+      expect(drawerGroups().map((group) => group.id)).toEqual(['deepseek'])
+    } finally {
+      off()
+    }
+  })
+
+  it('作废是标脏不是重拉:没人在看时一发都不发,下一次 ensure 才问', async () => {
+    await useModelsSource.getState().start()
+    const before = calls.settings
+
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setFamilyEnabled(XAI, false)
+    // 抽屉没开过 —— 屏幕上没有一处在读这一格,那就一发都不该发(律②的另一半)。
+    expect(calls.settings).toBe(before)
+    // 手上那份还是旧的,但它已经被标脏了。
+    expect(prefsQuery.get(DEFAULT_SPACE_ID).get().data?.prefs.configs.xai?.enabled).toBeUndefined()
+
+    // 下一次有人问(抽屉打开)才去问盘 —— 而这一次问到的是新的。
+    await prefsQuery.get(DEFAULT_SPACE_ID).ensure()
+    expect(calls.settings).toBe(before + 1)
+    expect(drawerGroups().map((group) => group.id)).toEqual(['deepseek'])
+  })
+
+  it('取消勾选一个模型 → 抽屉里那一行消失;正在用的那一个例外,仍然置顶', async () => {
+    await useModelsSource.getState().start()
+    const off = prefsQuery.get(DEFAULT_SPACE_ID).subscribe(() => {})
+    try {
+      await useProviderSettings.getState().start()
+      await useProviderSettings.getState().toggleModel('xai', 'grok-4-fast', false)
+      await vi.waitFor(() =>
+        expect(
+          prefsQuery.get(DEFAULT_SPACE_ID).get().data?.prefs.configs.xai?.selectedModels,
+        ).toEqual(['grok-4']),
+      )
+
+      expect(drawerGroups()[0].models.map((entry) => entry.model)).toEqual(['grok-4'])
+      // 正在跑的那一个即使被取消勾选也照样列出来,而且**排在最前**
+      // (`modelIdsOf` 的那一手:抽屉里找不到自己正在用的模型会让人以为看错了)。
+      const withCurrent = drawerGroups({ provider: 'xai', model: 'grok-4-fast' })
+      expect(withCurrent[0].models.map((entry) => entry.model)).toEqual(['grok-4-fast', 'grok-4'])
+    } finally {
+      off()
+    }
   })
 })
