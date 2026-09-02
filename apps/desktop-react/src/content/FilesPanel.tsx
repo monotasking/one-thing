@@ -1,36 +1,21 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
-import {
-  ChevronDown,
-  ChevronRight,
-  ChevronsUp,
-  Ellipsis,
-  Info,
-  RotateCcw,
-  TriangleAlert,
-} from '../components/icons'
-import { Button } from '../ui/Button'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
+import { ChevronsUp, Info, RotateCcw } from '../components/icons'
 import { ButtonBase } from '../ui/ButtonBase'
 import { IconButton } from '../ui/IconButton'
 import { Splitter } from '../ui/Splitter'
-import { Input } from '../ui/Input'
 import { useT } from '../i18n'
 import type { MessageKey, TFn } from '../i18n'
 import { useExposeStore } from '../expose/store'
-import { useSessionsSource } from '../data/sessions-source'
 import {
-  breadcrumbsOf,
   flattenTree,
   revealMutation,
-  rowWindow,
   useDirStates,
   useFileDetail,
   useFilesSource,
   useSessionCwd,
 } from '../data/files-source'
-import type { Crumb, FileFailure, RootStatus, TreeRow } from '../data/files-source'
-import { useAsyncPending } from '../data/kernel'
-import { sessionMutation, workdirKey } from '../data/sessions-source'
+import type { FileFailure, RootStatus } from '../data/files-source'
 import { useFileOpenMode } from '../data/file-open-mode'
 import {
   DEFAULT_SPLIT_RATIOS,
@@ -40,11 +25,16 @@ import {
   useSplitPrefs,
   useSplitRatio,
 } from '../data/split-prefs'
-import { glyphOf, isHiddenName } from '../data/file-icons'
 import { useViewerSource } from '../data/viewer-source'
-import { FileGlyphMark } from './FileGlyph'
 import { FileActionsMenu } from './FileActionsMenu'
-import { DETAIL_POPOVER_GAP, FileDetailPopover } from './FileDetailPopover'
+import { FileDetailPopover } from './FileDetailPopover'
+import { useFileFloats } from './file-floats'
+import type { FloatOrigin, OpenDetailOptions } from './file-floats'
+import { NoWorkdirNotice } from './files/NoWorkdirNotice'
+import { RootCrumbs } from './files/RootCrumbs'
+import { TreeEntryRow, depthVar } from './files/TreeEntryRow'
+import type { EntryRow } from './files/TreeEntryRow'
+import { useRowWindow } from './files/useRowWindow'
 import { FileViewer } from './viewer/FileViewer'
 import { closeViewerEverywhere, openFileInCurrentTarget } from './viewer/open-target'
 import s from './FilesPanel.module.css'
@@ -58,6 +48,15 @@ import s from './FilesPanel.module.css'
  * (常驻的窗口化树 | 0fr⇄1fr 长出来的查看区)/ 底(一句用法提示)+ 两层浮起来的
  * 东西(行菜单 / 详情浮层)。
  *
+ * ── 这块面自己剩下什么(09-02 批 9d 拆分之后)──────────────────────────────
+ * 它是**编排**:取数、把三形行摊到窗口里、把两层浮层的落点接上、判分栏开不开。
+ * 四件有自己名字的东西已经各自出文件,一件都不该再回来:
+ *   · `files/useRowWindow`   量视口 + 跟卷轴(窗口化的那一半量测,与文件无关)
+ *   · `files/RootCrumbs`     头上那一排路径(纯投影)
+ *   · `files/NoWorkdirNotice` 告知条 + 绑定行(它有自己的四态与一口后端写)
+ *   · `files/TreeEntryRow`   树上一行(含 ⌘I/⌘↵ 那条面域局部键的落点)
+ * 浮层的**落点**在 `content/file-floats`(9b 立件,与查看器共用一份锚点算式)。
+ *
  * ── 分栏:树是**常驻**的,不是被替换的(F1 §0 铁律 3)────────────────────────
  * 从前那层「预览」是 `position:absolute; inset:0` —— 它**盖住**整棵树:回来时
  * 滚动位置还在,但那一屏里你什么都干不了(点不到第二个文件,只能先关掉)。
@@ -66,7 +65,9 @@ import s from './FilesPanel.module.css'
  *
  * 结构上兑现这条铁律的只有一件事:那棵树的 DOM 位置**恒定** —— 它永远是
  * `.split` 的第一个孩子,查看区在它旁边出现或消失。所以「开一个文件 / 换一个
- * 文件 / 关掉查看器」三下都不会让 React 重挂树上任何一行(有三条断言钉着)。
+ * 文件 / 关掉查看器」三下都不会让 React 重挂树上任何一行(有三条断言钉着),
+ * 而且 `.split` 里**不许再插任何包裹层**:`gate:files` 那一步问的是
+ * `[data-testid="files-tree"] + [data-testid="file-viewer"]` 这条**相邻兄弟**。
  *
  * 「打开方式」那七档里,**「面板内」指的就是这条分栏**。F2 把另外六档也接上了
  * (查看器成了一块普通的瓦),所以这条分栏现在只在 `panel` 档长出来 ——
@@ -76,9 +77,9 @@ import s from './FilesPanel.module.css'
  * 定稿相对上一版(989dd3b6)的六处改判,每一处各自的理由:
  *
  * ① **类型标识拆成二形**。语言画**品牌色字标**(TS / PY / LUA / SH / MD /『{ }』),
- *    说不出语言的画 lucide 图标 —— 判据与两张表都在 `data/file-icons.ts`,
- *    这里只把交出来的名字兑成组件与变量。理由:lucide 没有语言 logo,一屏里
- *    全是同一张「带尖括号的纸」,扫的时候读不出是哪一门。
+ *    说不出语言的画 lucide 图标 —— 判据与两张表都在 `data/file-icons.ts`。
+ *    理由:lucide 没有语言 logo,一屏里全是同一张「带尖括号的纸」,扫的时候
+ *    读不出是哪一门。画法在 `content/FileGlyph`(查看器檐上那枚徽是第二个消费方)。
  *
  * ② **「打开」与「选中」分离**。选中 = 底色(此刻手指头点在哪一行),打开 = 行尾
  *    一颗 accent 圆点(这个文件的内容正开着)。它们是两件事:你可以选中 A 而开着 B。
@@ -86,7 +87,6 @@ import s from './FilesPanel.module.css'
  * ③ **行尾 ⋯ / 右键出菜单**。09-01 起它升格为**动作单产地**:一个文件的全部动作
  *    (打开 / 打开方式七档 / 编辑 / 详情 / 复制路径 / 在 Finder 显示)都在这一张表里,
  *    而且与查看区右键弹的是**同一件组件**(content/FileActionsMenu)。
- *    七档打开方式 F2 全接上了,「还没接上」那句注脚随之退役。
  *
  * ④ **详情从 Dialog 改成附属浮层**(ui/Popover)。理由是语义:详情是「瞄一眼」,
  *    不是「答一道题」——Dialog 压一层遮罩,把树整个盖住,而回来时滚动位置已经变了。
@@ -96,26 +96,72 @@ import s from './FilesPanel.module.css'
  *
  * ⑤ **窗口化渲染**。只画可视窗 + 上下各 8 行,前后各垫一块空撑子 —— 卷轴长度与
  *    「全画出来」逐像素相同。行高恒定 27 是它的前提,所以骨架 / 空 / 失败三种注行
- *    与条目行**同高**(那不是审美对齐,那是算式的前提)。算术在 `rowWindow`,纯函数。
+ *    与条目行**同高**(那不是审美对齐,那是算式的前提)。算术在 `rowWindow`(纯
+ *    函数),量测在 `files/useRowWindow`。
  *
  * ⑥ **三种「还没有内容」各说各的**:懒展开画两条骨架短横(不是「正在读取…」四个字
  *    ——那四个字在一屏树里读起来像一行文件名)、空目录画一行斜体、读失败画一句
  *    danger 小字 + 一颗「重试」(只重拉出错那一层,不是整棵树重来)。
  *
- * ── 键盘:⌘I 是一条**面域局部键**(09-01 三层立法,F1 那条留账结清)────────────
- * ⌘I / ⌘↵ 唤详情,它们长在行自己的 keydown 上 —— 因为「看这一项的详情」需要一个
- * **目标**,焦点不在某一行上时它无事可做,所以它不属于全局命令那一族。
+ * ══ 表一 · 生命周期 ═══════════════════════════════════════════════════════
+ * | 事件            | 这块面做什么                                             |
+ * |-----------------|----------------------------------------------------------|
+ * | 挂载            | 订阅两个 store(files / viewer)+ 一格会话 id;`setRoot(cwd)`|
+ * |                 | 幂等地把根交下去(判据在 `useSessionCwd`,不在这里)。       |
+ * | 换会话          | `cwd` 变 → 同一条 `setRoot`;**选中态归零靠的不是它** ——     |
+ * |                 | 选中是视图状态,换根之后那条路径自然不在树上了。            |
+ * | **换宿主**      | 面板内 / 浮窗 / 舞台 / 钉边 —— 这块面在四种落点里**长得一样**,|
+ * |                 | 因为它整块被 `renderContent('files')` 原样交出去。真正跟着换 |
+ * |                 | 的只有两件:①`useRowWindow` 的 ResizeObserver 量到新高度(换 |
+ * |                 | 宿主 = 一次真的尺寸变化,那条 `onScroll` 里的补量正是为「观察 |
+ * |                 | 者还没回调而用户已经在卷」的那一帧留的);②两格浮层锚点归零   |
+ * |                 | (它们贴的是**屏幕坐标**,换了宿主原来那一点不再指向任何东西)。|
+ * |                 | 查看器自己的换宿主由 `viewer/` 那一面管,不在这块表里。       |
+ * | 开 / 换 / 关文件 | **零重挂**:树的 DOM 位置恒定,`key` 是 `row.path`。三条断言  |
+ * |                 | 钉着(files-panel.test「树不卸载」那一组)。                 |
+ * | 卸载            | 一条 `keydown` 监听摘掉。无计时器、无模块级副作用 →          |
+ * |                 | **不需要 HMR dispose**(寿命是组件,不是模块实例)。          |
  *
- * F1 时它**不在任何表里**,留账写着「用户把某条命令改绑到 ⌘I 会静默把它盖住」。
- * 09-01 立了第二层:声明进 `keymap/scopes.ts` 的 SCOPED_KEYS(一处查得全、撞车
- * 说得出口),裁决靠一条机制 —— 行上接住了就 `preventDefault()`,全局派发器开头
- * 一句 `if (e.defaultPrevented) return` 让开。两处会不会分叉由
- * `keymap/__tests__/keymap-scopes.test.ts` 钉着。
+ * ══ 表二 · UI 生命状态 ════════════════════════════════════════════════════
+ * 「还没有内容」在这块面里有**六个不同的产地**,从前各说各的,这里收成一张表:
+ * | 档              | 谁在说              | 画成什么                                |
+ * |-----------------|---------------------|-----------------------------------------|
+ * | 根还没定        | rootStatus idle/load| 头上一句「正在定」(RootCrumbs 第一档)   |
+ * | 根定不下来      | rootStatus error    | 头上一句「定不下来」+ **底注**一句后端原话|
+ * | 没绑工作目录    | rootOrigin 'home'   | 告知条(NoWorkdirNotice)——它带着一个可做 |
+ * |                 |                     | 的动作,所以不是一句躺在底部的灰字。      |
+ * | 某一层还在读    | 行 kind 'skeleton'  | 两条骨架短横(**只第一条报 status**:两条 |
+ * |                 |                     | 合起来才是一句话)                        |
+ * | 某一层是空的    | 行 note 'empty'     | 一行斜体灰,占一格**正常行高**            |
+ * | 某一层读失败    | 行 note denied/     | 一句 danger 小字 + 后端原话 + 一颗「重试」|
+ * |                 | missing/failed      | (只重拉那一层)                          |
+ * | **超量**        | rows.length 很大    | 窗口化:只画可视窗 ± 8 行,前后两块空撑子 |
+ * |                 |                     | 把卷轴撑成整表那么长(`useRowWindow`)。   |
+ * 三档失败共用一张 `NOTE_LABELS`,**每一档一句不同的话** —— 不拿一句「读不到」
+ * 糊三种原因(没权限 / 不存在 / 别的)。
+ *
+ * ══ 表三 · UI 交互状态 ════════════════════════════════════════════════════
+ * | 落点          | rest      | hover      | focus | active/pending | disabled     |
+ * |---------------|-----------|------------|-------|----------------|--------------|
+ * | 面包屑祖先段  | text-2    | 换底       | 全局环| —              | —            |
+ * | 面包屑尾段/…  | 不是钮    | —          | —     | —              | —            |
+ * | 全部收起      | IconButton| st-hover   | 全局环| st-active      | 没展开的层时 |
+ * | 重新读取      | IconButton| st-hover   | 全局环| st-active +    | 根没 ready 时|
+ * |               |           |            |       | 图标转一圈     |              |
+ * | 树行 / 行尾 ⋯ | 见 `files/TreeEntryRow` 的表三(选中 / 打开 / 隐藏三格另算)   |
+ * | 注行「重试」  | ButtonBase| 下划线     | 全局环| —              | —            |
+ * | 分隔杆        | 见 `ui/Splitter`;**只在分栏真长出来时才在**(不可调的        |
+ * |               | separator 进 Tab 序是纯噪音,APG)。                            |
+ * | 告知条 / 绑定 | 见 `files/NoWorkdirNotice` 的表三(pending 的唯一产地在那儿)  |
+ * 这块面自己**没有 pending 档**:它发起的每一件异步事(展开 / 重拉 / reveal /
+ * 绑目录)的忙态都长在**发起它的那个控件**旁边(律③),不在面板级的一颗布尔上。
+ *
+ * ── 键盘:⌘I 是一条**面域局部键**(09-01 三层立法)────────────────────────
+ * ⌘I / ⌘↵ 唤详情,它们长在**行自己的 keydown** 上(落点与那条留账的结清记在
+ * `files/TreeEntryRow` 的文件头);这块面自己只吃一下 Esc(收起查看区),
+ * 而且**只在真的收了才 stopPropagation** —— 消费掉的键才有资格挡住别人。
  * ──────────────────────────────────────────────────────────────────────────
  */
-
-/** 面包屑最多平铺几段;再多就把**中段**折成一个 `…`(首段与末两段永远在)。 */
-const CRUMB_MAX = 4
 
 /** 注行的两档失败 + 一档非失败,各一句人话。 */
 const NOTE_LABELS: Record<'empty' | FileFailure, MessageKey> = {
@@ -123,12 +169,6 @@ const NOTE_LABELS: Record<'empty' | FileFailure, MessageKey> = {
   denied: 'files.dirDenied',
   missing: 'files.dirMissing',
   failed: 'files.dirFailed',
-}
-
-/** 一处浮层的落点(视口坐标)。菜单与详情浮层共用这一个形状。 */
-interface Anchor {
-  x: number
-  y: number
 }
 
 export function FilesPanel() {
@@ -194,10 +234,14 @@ export function FilesPanel() {
    * 而 store 里那份「树展开到哪儿」是要活过面板开合的(树不卸载铁律)。
    */
   const [selected, setSelected] = useState<string | null>(null)
-  /** 行菜单:开在哪一行、开在哪个点。 */
-  const [menu, setMenu] = useState<{ row: EntryRow; at: Anchor } | null>(null)
-  /** 详情浮层贴在哪儿(它跟着开它的那一行走,不是屏幕中央)。 */
-  const [detailAt, setDetailAt] = useState<Anchor | null>(null)
+  /*
+   * 两层浮层**开在哪一点**走 `content/file-floats`(9b 立件,与查看器共用)。
+   * 这里只多留一格:菜单开在**哪一行**上 —— 那是这块面自己的事(锚点件管坐标,
+   * 不管坐标底下站着谁),而菜单收起时两者必须一起清。
+   */
+  const { menuAt, detailAt, openMenuAt, openDetailAt, closeMenu, closeDetail: closeDetailAt } =
+    useFileFloats()
+  const [menuRow, setMenuRow] = useState<EntryRow | null>(null)
   /** 「重新读取」按了几次 —— 那枚图标每按一次多转一圈(单调递增,见下面的注)。 */
   const [spins, setSpins] = useState(0)
 
@@ -229,7 +273,7 @@ export function FilesPanel() {
     if (!el) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
-      if (menu || detail) return
+      if (menuAt || detail) return
       // 查看器不在这条分栏里(摆去了舞台 / 浮窗 / 钉栏)时**不接**:那一下 Esc
       // 属于摆着它的那一层,不属于这块面。
       if (!splitOpen) return
@@ -238,7 +282,7 @@ export function FilesPanel() {
     }
     el.addEventListener('keydown', onKey)
     return () => el.removeEventListener('keydown', onKey)
-  }, [menu, detail, splitOpen, closeViewer])
+  }, [menuAt, detail, splitOpen, closeViewer])
 
   // 根跟着活跃会话走。判据不在这里 —— useSessionCwd 是它唯一的产地,
   // 这里只负责把结果交给数据源(setRoot 自己幂等)。
@@ -247,38 +291,40 @@ export function FilesPanel() {
   }, [cwd, setRoot])
 
   const rows = useMemo(() => flattenTree(root, dirs, expanded), [root, dirs, expanded])
+  /* 窗口化:量视口 + 跟卷轴那一半在 `files/useRowWindow`,算术在 `rowWindow`。 */
+  const { bodyRef, onScroll, shown, padTop, padBottom } = useRowWindow(rows)
 
-  /* ── 窗口化:量视口 + 跟卷轴 ─────────────────────────────────────────── */
-  const bodyRef = useRef<HTMLDivElement>(null)
-  const [scrollTop, setScrollTop] = useState(0)
-  const [viewportH, setViewportH] = useState(0)
+  /*
+   * 两条「开浮层」都收**来源**往下递(一次指针事件 / 一块元素矩),自己一格
+   * 坐标都不算:锚点算式只有一处产地(`content/file-floats`)。批 9d 的真机
+   * 前后对照量出过这条 —— 行上先算一遍、这里再算一遍,浮层就多隔了一条缝。
+   */
+  const openMenuFor = useCallback(
+    (row: EntryRow, origin: FloatOrigin) => {
+      setSelected(row.path)
+      setMenuRow(row)
+      openMenuAt(origin)
+    },
+    [openMenuAt],
+  )
 
-  useLayoutEffect(() => {
-    const el = bodyRef.current
-    if (!el) return
-    const measure = () => setViewportH(el.clientHeight)
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  const win = rowWindow(rows.length, scrollTop, viewportH)
-  const shown = rows.slice(win.start, win.end)
-
-  const openMenuFor = useCallback((row: EntryRow, at: Anchor) => {
-    setSelected(row.path)
-    setMenu({ row, at })
-  }, [])
+  /** 关菜单 = 那一格坐标与「开在哪一行」一起清:留下任何一半都是一张半开的菜单。 */
+  const dismissMenu = useCallback(() => {
+    setMenuRow(null)
+    closeMenu()
+  }, [closeMenu])
 
   const openDetailFor = useCallback(
-    (row: { path: string; name: string; type: 'file' | 'directory' }, at: Anchor) => {
+    (
+      row: { path: string; name: string; type: 'file' | 'directory' },
+      origin: FloatOrigin,
+      options?: OpenDetailOptions,
+    ) => {
       setSelected(row.path)
-      setDetailAt(at)
+      openDetailAt(origin, options)
       void openDetail({ path: row.path, name: row.name, type: row.type })
     },
-    [openDetail],
+    [openDetailAt, openDetail],
   )
 
   const footNote = footNoteOf(rootStatus, rootError, t)
@@ -302,36 +348,41 @@ export function FilesPanel() {
         >
           <RootCrumbs root={root} status={rootStatus} t={t} onJump={(at) => void navigateRoot(at)} />
         </nav>
-        <Button
-          iconOnly
-          aria-label={t('files.collapseAll')}
+        {/*
+         * 头上这两颗从 `Button iconOnly` 迁成 `ui/IconButton`(09-01 立法:图标钮
+         * 必须消费图标钮那件库件)。`size="md"` 与 `--btn-sm` 同为 28,字形同为
+         * 14 —— **几何逐像素相同**;两处规范修正逐条记在批报告里:①多了 `:active`
+         * (按住比悬停深一档 —— Button.iconOnly 从来没有这一格);②悬停多一条
+         * `ui/Tooltip`(库件的硬规矩:只有「旁边就写着同一句话」才关得掉,这两颗
+         * 旁边什么都没写)。
+         */}
+        <IconButton
+          icon={ChevronsUp}
+          size="md"
+          label={t('files.collapseAll')}
           disabled={Object.keys(expanded).length === 0}
           onClick={collapseAll}
-        >
-          <ChevronsUp className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-        </Button>
-        <Button
-          iconOnly
-          aria-label={t('files.refresh')}
+        />
+        {/*
+         * 「重新读取」按下去转一圈。**是一次过渡,不是一段循环动画**:它说的是
+         * 「你刚才那一下到了」,不是「我在忙」(忙由树上那两条骨架说)。所以角度
+         * 单调递增(每按一次 +360),靠 .headSpin 上那条 transform 过渡走完 ——
+         * 一个 @keyframes 都不用加(全仓关键帧只在 styles/motion.css 里长)。
+         * 圈数走一格无单位自定义属性(与 `--depth` / `--files-split` 同一手):
+         * 转的**只有那枚字形**,不是整颗钮 —— 钮连同它的悬停底一起转是另一种动效。
+         */}
+        <IconButton
+          icon={RotateCcw}
+          size="md"
+          className={s.headSpin}
+          style={{ '--files-spin': spins } as CSSProperties}
+          label={t('files.refresh')}
           disabled={rootStatus !== 'ready'}
           onClick={() => {
             setSpins((n) => n + 1)
             void refresh()
           }}
-        >
-          {/*
-           * 「重新读取」按下去转一圈。**是一次过渡,不是一段循环动画**:它说的是
-           * 「你刚才那一下到了」,不是「我在忙」(忙由树上那两条骨架说)。所以角度
-           * 单调递增(每按一次 +360),靠 .headIcon 上那条 transform 过渡走完 ——
-           * 一个 @keyframes 都不用加(全仓关键帧只在 styles/motion.css 里长)。
-           */}
-          <RotateCcw
-            className={s.headIcon}
-            style={{ transform: `rotate(${spins * -360}deg)` }}
-            strokeWidth={1.75}
-            aria-hidden="true"
-          />
-        </Button>
+        />
       </div>
 
       {noWorkdir && <NoWorkdirNotice sessionId={sessionId} t={t} />}
@@ -341,6 +392,7 @@ export function FilesPanel() {
        * 这一条就是「树常驻」铁律在 DOM 上的全部实现:树的位置不随查看器的开合
        * 变动,于是 React 没有任何理由重挂它(零重挂的三条断言钉的正是这件事)。
        * 列宽由 CSS 按 data-viewer 翻(0fr ⇄ 1fr),不在 JS 里算像素。
+       * **这里不许再插一层包裹**:门那一步问的是树与查看器的相邻兄弟关系。
        */}
       <div
         className={s.split}
@@ -357,20 +409,10 @@ export function FilesPanel() {
         id="files-tree-column"
         aria-label={t('files.treeLabel')}
         data-testid="files-tree"
-        onScroll={(e) => {
-          setScrollTop(e.currentTarget.scrollTop)
-          /*
-           * 顺手把视口高度也读一遍。ResizeObserver 是**主要**产地,这里是补丁:
-           * 面板刚从收起态展开、或宿主换了形态的那一帧,观察者还没来得及回调,
-           * 而用户已经在卷了 —— 那一帧按旧高度算窗口会短一截。
-           * 代价是一次 clientHeight 读(我们本来就在读 scrollTop,同一次布局),
-           * 而且值没变时 setState 会被 React 直接短路,不引起重渲染。
-           */
-          setViewportH(e.currentTarget.clientHeight)
-        }}
+        onScroll={onScroll}
       >
         {/* 窗口前后的两块空撑子:它们不是内容,只是让卷轴与「全画出来」一样长。 */}
-        {win.padTop > 0 && <div style={{ height: win.padTop }} aria-hidden="true" />}
+        {padTop > 0 && <div style={{ height: padTop }} aria-hidden="true" />}
         {shown.map((row) =>
           row.kind === 'skeleton' ? (
             <div
@@ -410,12 +452,12 @@ export function FilesPanel() {
                 if (row.type === 'directory') void toggleDir(row.path)
                 else openFile(row.path)
               }}
-              onDetail={(at) => openDetailFor(row, at)}
-              onMenu={(at) => openMenuFor(row, at)}
+              onDetail={(origin) => openDetailFor(row, origin)}
+              onMenu={(origin) => openMenuFor(row, origin)}
             />
           ),
         )}
-        {win.padBottom > 0 && <div style={{ height: win.padBottom }} aria-hidden="true" />}
+        {padBottom > 0 && <div style={{ height: padBottom }} aria-hidden="true" />}
       </div>
 
         {/*
@@ -468,18 +510,24 @@ export function FilesPanel() {
        * 行的右键 / ⋯ 菜单 —— **动作单产地**(09-01 裁定):这张表与查看区右键
        * 弹出来的是同一件组件,所以「一个文件能做什么」全仓只有一份定义。
        */}
-      {menu && (
+      {menuRow && menuAt && (
         <FileActionsMenu
           target={{
-            path: menu.row.path,
-            name: menu.row.name,
-            type: menu.row.type,
-            expanded: menu.row.expanded,
+            path: menuRow.path,
+            name: menuRow.name,
+            type: menuRow.type,
+            expanded: menuRow.expanded,
           }}
-          x={menu.at.x}
-          y={menu.at.y}
-          onClose={() => setMenu(null)}
-          onDetail={() => openDetailFor(menu.row, menu.at)}
+          x={menuAt.x}
+          y={menuAt.y}
+          onClose={dismissMenu}
+          /*
+           * 从菜单里开详情:**落在菜单那一点上,不再隔一条缝**(9b 留给 9d 的
+           * 那格拍板,已裁:承认两种用法)。理由是这张菜单自己已经贴在行矩下方
+           * 隔过一条缝了,详情再隔一条就是两条 —— 那格空白说不出任何事实。
+           * 查看器那一面的菜单是从光标点开出来的,所以它照旧隔一条(缺省档)。
+           */
+          onDetail={() => openDetailFor(menuRow, menuAt, { gap: false })}
         />
       )}
 
@@ -489,7 +537,7 @@ export function FilesPanel() {
           x={detailAt.x}
           y={detailAt.y}
           onClose={() => {
-            setDetailAt(null)
+            closeDetailAt()
             closeDetail()
           }}
         />
@@ -497,13 +545,6 @@ export function FilesPanel() {
 
     </div>
   )
-}
-
-type EntryRow = Extract<TreeRow, { kind: 'entry' }>
-
-/** 缩进不写字面 px:深度以无单位数进 CSS 变量,一格多宽由样式表说了算。 */
-function depthVar(depth: number): CSSProperties {
-  return { '--depth': depth } as CSSProperties
 }
 
 /**
@@ -514,323 +555,3 @@ function footNoteOf(status: RootStatus, error: string | undefined, t: TFn): stri
   if (status === 'error') return error ?? t('files.rootFailed')
   return null
 }
-
-/**
- * 无工作目录告知条。**一条带子,不是一块面**:它说一句事实,并给出唯一那个
- * 能改变这件事实的动作。
- *
- * 「绑定…」为什么是**一行输入**而不是一个系统目录选择器:这层壳里没有 dialog 桥
- * (`shell:invoke` 的 `dialog` 域住在 Electron 宿主里,而这块面在 web 面上也要能用)。
- * 与其画一颗点了什么都不发生的「浏览…」,不如老老实实收一条绝对路径 ——
- * 后端 `updateWorkingDirectory` 本来收的也正是一条路径。记档:有了 dialog 桥之后
- * 这里应当补一颗「浏览…」,而不是把这条输入行删掉(键盘用户仍然要它)。
- */
-function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn }) {
-  const setWorkingDirectory = useSessionsSource((st) => st.setWorkingDirectory)
-  const [editing, setEditing] = useState(false)
-  const [value, setValue] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  /*
-   * ── 忙态**读**自 mutation,不再自己记一格(7d 结掉批 6 留的那笔账)────────
-   * 它护的不是一个文件操作,而是 `sessions-source` 的 `setWorkingDirectory`
-   * ——「把这条会话挪到这个目录」那一口后端写。7e 已经把那一口迁进了
-   * `sessionMutation`(键 `workdir:<sessionId>`),所以这里的 `useState(busy)`
-   * 从「唯一产地」降格成了「第二份真相」,当场退役:忙态由那一格 pending 说,
-   * 逐会话记账(律③要的**逐格**,不是整面一颗)。
-   *
-   * `useState` 管 async pending 是 kernel 手册明令禁止的一条(「自己记一份必然
-   * 与真相漂开」),而 `ui-consume` 的 `async-busy-boolean` 刻意只扫 `.ts` ——
-   * 组件里这一格是它的**盲区**,所以这一处由本批人工结掉并在报告里点名。
-   *
-   * 律③的另一半(忙起来钮上换字)本批**不补**:换文案是可感知的改版,
-   * 而这一颗今天只上无障碍语义 —— `aria-busy` + 那道二次闸,零新像素。
-   */
-  const busy = useAsyncPending(sessionMutation, workdirKey(sessionId))
-
-  const submit = async () => {
-    const dir = value.trim()
-    if (!dir || busy) return
-    const outcome = await setWorkingDirectory(sessionId, dir)
-    if (outcome.ok) {
-      setEditing(false)
-      setValue('')
-      setError(null)
-      return
-    }
-    // 失败**留在原地说**:输入行不收,用户刚打的那条路径还在,改一个字就能重试。
-    setError(outcome.error)
-  }
-
-  if (!editing) {
-    return (
-      <div className={s.notice} data-testid="files-no-workdir">
-        <TriangleAlert className={s.noticeIcon} strokeWidth={1.75} aria-hidden="true" />
-        <span className={s.noticeText}>{t('files.rootFallback')}</span>
-        {/* 没有当前会话就没有可绑的对象 —— 那时只说事实,不画一颗按不响的钮。 */}
-        {sessionId && (
-          <ButtonBase className={s.noticeAction} onClick={() => setEditing(true)}>
-            {t('files.bind')}
-          </ButtonBase>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className={s.bindRow} data-testid="files-bind-row" ref={focusFieldOnMount}>
-      <Input
-        size="sm"
-        className={s.bindInput}
-        value={value}
-        onValueChange={setValue}
-        invalid={Boolean(error)}
-        aria-label={t('files.bindPlaceholder')}
-        placeholder={t('files.bindPlaceholder')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void submit()
-          if (e.key === 'Escape') setEditing(false)
-        }}
-      />
-      <Button
-        variant="primary"
-        disabled={!value.trim() || busy}
-        aria-busy={busy || undefined}
-        onClick={() => void submit()}
-      >
-        {t('common.confirm')}
-      </Button>
-      <Button onClick={() => setEditing(false)}>{t('common.cancel')}</Button>
-      {error && (
-        <span className={s.bindError}>
-          {t('files.bindFailed')}
-          <span className={s.noteDetail}>{error}</span>
-        </span>
-      )}
-    </div>
-  )
-}
-
-/**
- * 输入行一出现就把光标放进去。
- *
- * **不用 `autoFocus`**:那个属性是「页面一加载就抢焦点」,jsx-a11y 拦它拦得对 ——
- * 但这里的语义完全不同:用户刚**亲手点了**「绑定…」,焦点跟着那一下走是他要的结果
- * (与 Menu 开启时把焦点移进容器同一条口径)。所以走一颗回调 ref:元素挂上来的
- * 那一刻放焦点,元素卸载时(ref 收到 null)什么都不做。
- */
-function focusFieldOnMount(node: HTMLDivElement | null): void {
-  node?.querySelector('input')?.focus()
-}
-
-/**
- * 头上那一排路径。**这是投影**(breadcrumbsOf 是纯函数,判据不在这里)。
- * 三档各说各的,**不拿一个假路径去顶**还没定下来的根。
- *
- * 段数超过 CRUMB_MAX 时把**中段**折成一个 `…`:首段(通常是 `/Users`)与末两段
- * (「我在哪儿」与「从哪儿来的」)是这条路径上唯一还在被读的三格,中间那几层
- * 在窄面板里只会把整条头挤成一条横向滚轨。折的是**显示**不是事实 ——
- * 那条完整路径仍然原样挂在 `data-root` 上。
- */
-function RootCrumbs({
-  root,
-  status,
-  t,
-  onJump,
-}: {
-  root: string | null
-  status: RootStatus
-  t: TFn
-  onJump: (path: string) => void
-}) {
-  if (status === 'loading' || status === 'idle') {
-    return <span className={s.crumbNote}>{t('files.rootLoading')}</span>
-  }
-  if (status === 'error' || !root) {
-    return <span className={s.crumbNote}>{t('files.rootFailed')}</span>
-  }
-  const crumbs = breadcrumbsOf(root)
-  // 根就是 `/`:一段可点的都没有,屏幕上只剩那条领头的斜杠。这是事实不是缺陷。
-  if (crumbs.length === 0) return <span className={s.crumbSep}>/</span>
-  const shown: (Crumb | 'ellipsis')[] =
-    crumbs.length > CRUMB_MAX
-      ? [crumbs[0], 'ellipsis', ...crumbs.slice(-2)]
-      : crumbs
-  return (
-    <>
-      {shown.map((crumb, index) => {
-        if (crumb === 'ellipsis') {
-          return (
-            <Fragment key="ellipsis">
-              <span className={s.crumbSep}>/</span>
-              {/* 折起来的那几段。它不可点 —— 点它没有一个确定的去处。 */}
-              <span className={s.crumbFold} aria-hidden="true">
-                …
-              </span>
-            </Fragment>
-          )
-        }
-        const last = index === shown.length - 1
-        return (
-          <Fragment key={crumb.path}>
-            {/* 分隔斜杠是**真的文本**(不是 CSS ::before):读屏与门看到的是同一句话。 */}
-            <span className={s.crumbSep}>/</span>
-            {last ? (
-              <span className={s.crumbCurrent} aria-current="location">
-                {crumb.name}
-              </span>
-            ) : (
-              <ButtonBase className={s.crumb} onClick={() => onJump(crumb.path)}>
-                {crumb.name}
-              </ButtonBase>
-            )}
-          </Fragment>
-        )
-      })}
-    </>
-  )
-}
-
-/*
- * 类型标识那两形的画法搬去了 `content/FileGlyph.tsx`(F1)。搬家的理由只有一条:
- * 查看器檐上那枚类型徽是它的第二个消费方,而两处各画一遍必然分叉。
- * 判据(哪个文件画哪一枚)一个字没动,仍在 data/file-icons.ts。
- */
-
-/**
- * 一行 = 一颗按钮(箭头 / 标识 / 名字)+ 两件挂在行尾的东西。
- *
- * 为什么行尾那两件是按钮的**兄弟**而不是它的孩子:`<button>` 里不许再套
- * `<button>`(HTML 明令,而且读屏软件会把内层那颗念丢)。所以外面裹一层 div
- * 管悬停底色与右键,`data-file-*` 那一族仍然挂在**按钮本身**上 —— 门与单测
- * `querySelector('[data-file-path=…]').click()` 走的还是同一条路,一个字不用改。
- *
- * ── 09-01 裁定:**没有双击**,动作全在右键菜单里 ────────────────────────
- * 报障原话是「file 的双击,间隔多久了,还能出现?」。查下去发现两件事:
- *  · 这台壳对「隔多久还算双击」**一个判据都没有** —— 挂的是 `onDoubleClick`,
- *    而 Blink 自己不计时,它只看平台递进来的 `clickCount` 是不是 2;那个数在
- *    macOS 上由 AppKit 按**系统偏好里的「双击速度」**算,滑杆调慢就没有上限;
- *  · 更要命的是**触控板双指点按到达时就是双击形态**,与右键语义正面打架 ——
- *    用户想开右键菜单,得到的是详情浮层。
- * 用户的裁定不是「把窗口收紧」,是**整条删掉**:打开 = 单击 / ↵,动作 = 右键菜单,
- * 详情不再设双击入口(它的两个入口是 ⌘I 与右键菜单里的那一行)。
- * CLAUDE.md 禁令区「禁双击作为动作触发」就是这条判例。
- *
- * 于是这一行上只剩两种手势:**单击 = 打开 / 展开**,**右键(或行尾 ⋯)= 动作菜单**。
- */
-function TreeEntryRow({
-  row,
-  t,
-  selected,
-  opened,
-  onActivate,
-  onDetail,
-  onMenu,
-}: {
-  row: EntryRow
-  t: TFn
-  selected: boolean
-  opened: boolean
-  onActivate: () => void
-  onDetail: (at: Anchor) => void
-  onMenu: (at: Anchor) => void
-}) {
-  const Caret = row.expanded ? ChevronDown : ChevronRight
-  const glyph = glyphOf(row.name, row.type, row.expanded)
-  const hidden = isHiddenName(row.name)
-  const wrapRef = useRef<HTMLDivElement>(null)
-
-  /** 浮层贴着这一行的左下角长出来(不是屏幕中央 —— 它是这一行的附属)。 */
-  const anchorOfRow = (): Anchor => {
-    const rect = wrapRef.current?.getBoundingClientRect()
-    return { x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + DETAIL_POPOVER_GAP }
-  }
-
-  const cls = [s.rowWrap, selected && s.rowSel, hidden && s.rowHidden].filter(Boolean).join(' ')
-
-  return (
-    <div
-      ref={wrapRef}
-      className={cls}
-      style={depthVar(row.depth)}
-      onContextMenu={(e: ReactMouseEvent) => {
-        e.preventDefault()
-        onMenu({ x: e.clientX, y: e.clientY })
-      }}
-    >
-      {/*
-       * 一行是**结构件**(视觉本该定制:缩进、标识槽、名字),所以它消费
-       * `ui/ButtonBase`(只清 UA)而不是 `ui/Button` —— 套一颗 ghost 钮上来,
-       * 27 高的紧凑树当场变成一列按钮。
-       */}
-      <ButtonBase
-        className={s.row}
-        aria-expanded={row.type === 'directory' ? row.expanded : undefined}
-        /* 门用的稳定选择器(与 EdgeShelf 的 data-shelf / data-panel 同一条判例):
-         * 文案会跟着语言变,路径不会。标识也留两格 —— 「这一行画的是哪一枚」
-         * 是可断言的事实,而 SVG 里的 path 数据不是。 */
-        data-file-path={row.path}
-        data-file-type={row.type}
-        data-file-depth={row.depth}
-        data-file-form={glyph.kind}
-        data-file-icon={glyph.kind === 'icon' ? glyph.icon : undefined}
-        data-file-tone={glyph.kind === 'icon' ? glyph.tone : undefined}
-        data-file-brand={glyph.kind === 'brand' ? glyph.brand : undefined}
-        data-file-hidden={hidden ? 'true' : undefined}
-        data-file-open={opened ? 'true' : undefined}
-        data-file-selected={selected ? 'true' : undefined}
-        onClick={onActivate}
-        onKeyDown={(e) => {
-          // ⌘I / Ctrl+I = 详情(裁定与留账写在文件头)。⌘↵ 是它从上一版继承下来
-          // 的第二个键面,留着不动:删一个已经好使的键位是可感知的能力损失。
-          if ((e.key === 'i' || e.key === 'I' || e.key === 'Enter') && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault()
-            onDetail(anchorOfRow())
-          }
-        }}
-      >
-        {row.type === 'directory' ? (
-          <Caret className={s.caret} strokeWidth={1.75} aria-hidden="true" />
-        ) : (
-          // 文件没有箭头,但**位子留着** —— 不留,同一层的文件名就会比目录名靠左一截。
-          <span className={s.caret} aria-hidden="true" />
-        )}
-        <FileGlyphMark glyph={glyph} className={s.glyph} />
-        <span className={s.rowName}>{row.name}</span>
-      </ButtonBase>
-      {/* 「这个文件正开着」。它与选中态是两件事,所以是两处画法(圆点 vs 底色)。 */}
-      {opened && <span className={s.openDot} data-testid="files-open-dot" aria-hidden="true" />}
-      {/*
-       * 行尾的 ⋯。**消费 ui/IconButton**(09-01 立法:图标钮必须用库件)——
-       * 从前它是一颗自绘的 `.more`,hover 配方与别处各写各的,正是那条法的判例。
-       * `tip` 关掉:菜单本身就叫「更多操作」,悬停再弹一句同样的话是噪音,
-       * 而且它盖在紧挨着的下一行上。
-       */}
-      <IconButton
-        icon={Ellipsis}
-        size="xs"
-        label={t('files.rowMenu')}
-        tip={false}
-        className={s.more}
-        /* 稳定取件口。从前是 `data-file-more={path}`(自绘钮上的一个自定义属性);
-         * 换库件之后走库件那一格 `testId`,值仍然带着路径 —— 门与单测要的是
-         * 「按这一行取它的 ⋯」,那一格叫什么名字不是它们关心的事。 */
-        testId={`files-more:${row.path}`}
-        onClick={() => {
-          const rect = wrapRef.current?.getBoundingClientRect()
-          onMenu({ x: rect?.left ?? 0, y: (rect?.bottom ?? 0) + DETAIL_POPOVER_GAP })
-        }}
-      />
-    </div>
-  )
-}
-
-
-/*
- * ── 「预览层」整块退役了(查看器 F1)────────────────────────────────────────
- * 它从前是一层 `position:absolute; inset:0` 的覆盖物,四态各画各的,正文走一个
- * 代码块。取代它的是 `content/viewer/` 那块内容 + 面板里那条分栏:
- *   · 盖住 → 并排(树常驻,再点一个文件就地换内容);
- *   · 一种画法(代码块)→ 四形(code / markdown / image / 诚实态);
- *   · 四态 → 六格(五形 + 读失败),仍然是「一种都不回退到别的那一种」。
- * 那四句预览文案也随之从字典里删掉了 —— 查看器有自己的一套(viewer.*)。
- */

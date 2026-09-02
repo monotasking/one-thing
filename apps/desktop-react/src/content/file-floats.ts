@@ -36,14 +36,20 @@ import { DETAIL_POPOVER_GAP } from './FileDetailPopover'
  *     而「开在哪儿」这件事是同步算出来的。
  *  ③ UI 交互状态:无。它不画任何东西,所以没有 rest/hover/focus/disabled。
  *
- * ── 留给 9d 的一格(FilesPanel 收编时要拍的板)──────────────────────────
- * 今天两面有一处**真的不一样**:从右键菜单里点「详情」时,查看器把详情
- * 往下挪一条缝(`menuAt.y + DETAIL_POPOVER_GAP`),而树面直接复用菜单那一点
- * (`openDetailFor(menu.row, menu.at)`,不加缝)。本批**保住查看器今天的
- * 行为**(9b 是拆分批,逐像素零差是它的验收条件),所以 `openDetailAt` 这一口
- * 一律隔一条缝。9d 把树面迁进来时要拍的正是这一格:是让树面也隔一条缝
- * (两面从此一致,代价是树面详情下移 4px),还是承认这是两种用法。
- * 别默默地把其中一面改了 —— 那是用户可感知的位置变化。
+ * ── 那一格已经拍了:**承认两种用法**(09-02 批 9d)────────────────────────
+ * 9b 留的板是:从右键菜单里点「详情」时,查看器把详情往下挪一条缝
+ * (`menuAt.y + DETAIL_POPOVER_GAP`),而树面直接落在菜单那一点上(不加缝)。
+ * 两条路都跑了很久,谁都不是抄漏 —— 它们回答的是**两个不同的问题**:
+ *
+ *  · 查看器那一档:菜单是从**光标那一点**开出来的(点锚),详情要贴在
+ *    「刚才那一下」的下面,不隔缝就会压住光标本身;
+ *  · 树面那一档:菜单已经贴在**那一行的矩**下面了(它自己就是隔着一条缝
+ *    长出来的),详情再隔一条就是隔了两条 —— 那一格空白说不出任何事实。
+ *
+ * 所以本批**不统一**,而是把这件事写进口子:`openDetailAt` 多一格 `gap`
+ * (缺省 `true` = 查看器今天的行为,一个字节没动),树面传 `gap: false`
+ * 落在给定的那一点上 —— 两面各自逐像素与迁移前相同,零像素。
+ * 不替用户把树面详情下移 4px:那是用户可感知的位置变化,得他自己拍。
  */
 
 /** 一处浮层的落点(视口坐标)。菜单与详情浮层共用这一个形状。 */
@@ -83,12 +89,26 @@ export function anchorAtPointer(event: { clientX: number; clientY: number }): An
  * 取不到矩时落在 `(0, GAP)`:与迁移前那两面逐字相同(`rect?.left ?? 0`)。
  * 这不是兜底策略而是**如实**——元素不在文档里的时候没有「它下面」这个位置,
  * 编个屏幕中央出来只会让人以为浮层是随机弹的。
+ *
+ * `gap` 是**一格数**而不是一个布尔:它本来就是一段长度,传 0 就是「贴着长」。
+ * 唯一的非缺省调用点是树面从菜单里开详情那一档(理由见文件头最后一节)。
  */
-export function anchorBelow(origin: FloatOrigin): Anchor {
-  if (!origin) return { x: 0, y: DETAIL_POPOVER_GAP }
-  if (isRectLike(origin)) return { x: origin.left, y: origin.bottom + DETAIL_POPOVER_GAP }
-  if (isPointerLike(origin)) return { x: origin.clientX, y: origin.clientY + DETAIL_POPOVER_GAP }
-  return { x: origin.x, y: origin.y + DETAIL_POPOVER_GAP }
+export function anchorBelow(origin: FloatOrigin, gap: number = DETAIL_POPOVER_GAP): Anchor {
+  if (!origin) return { x: 0, y: gap }
+  if (isRectLike(origin)) return { x: origin.left, y: origin.bottom + gap }
+  if (isPointerLike(origin)) return { x: origin.clientX, y: origin.clientY + gap }
+  return { x: origin.x, y: origin.y + gap }
+}
+
+/** `openDetailAt` 的第二格。今天只有一格,所以它是个对象而不是位置参数 —— 调用点读得出自己在说哪件事。 */
+export interface OpenDetailOptions {
+  /**
+   * 隔不隔那条缝。缺省 `true`(贴着开它的那件东西下面长出来)。
+   *
+   * `false` 的唯一正当理由:**开它的那件东西自己已经隔过一条缝了** ——
+   * 树面的行菜单贴在行矩下方,详情再隔一条就是两条(判例见文件头最后一节)。
+   */
+  gap?: boolean
 }
 
 export interface FileFloats {
@@ -98,8 +118,8 @@ export interface FileFloats {
   detailAt: Anchor | null
   /** 指针事件 → 点锚;元素矩 / 一个点 → 矩锚(左下角隔一条缝)。 */
   openMenuAt: (origin: FloatOrigin) => void
-  /** 详情**永远**隔一条缝长在开它的那件东西下面(留账见文件头最后一节)。 */
-  openDetailAt: (origin: FloatOrigin) => void
+  /** 详情缺省隔一条缝长在开它的那件东西下面;`{ gap: false }` 就落在给定的那一点上。 */
+  openDetailAt: (origin: FloatOrigin, options?: OpenDetailOptions) => void
   closeMenu: () => void
   closeDetail: () => void
 }
@@ -111,8 +131,8 @@ export function useFileFloats(): FileFloats {
   const openMenuAt = useCallback((origin: FloatOrigin) => {
     setMenuAt(origin && isPointerLike(origin) ? anchorAtPointer(origin) : anchorBelow(origin))
   }, [])
-  const openDetailAt = useCallback((origin: FloatOrigin) => {
-    setDetailAt(anchorBelow(origin))
+  const openDetailAt = useCallback((origin: FloatOrigin, options?: OpenDetailOptions) => {
+    setDetailAt(anchorBelow(origin, options?.gap === false ? 0 : DETAIL_POPOVER_GAP))
   }, [])
   const closeMenu = useCallback(() => setMenuAt(null), [])
   const closeDetail = useCallback(() => setDetailAt(null), [])

@@ -54,8 +54,12 @@ describe('面域局部键:声明与落点不许分叉', () => {
      * `if ((e.key === 'i' …) && (e.metaKey || e.ctrlKey))`,渲染层测得到的是
      * 「按 ⌘I 出详情」(那条断言在 files-panel 里),而这里要守的是
      * **表上那两行没有变成孤儿声明**。删掉行上那段判断 → 这一条红。
+     *
+     * 09-02 批 9d:那一行搬出了 `content/FilesPanel.tsx`(职责拆分),所以这里
+     * 读的路径跟着改成它的新家 —— **两条正则一个字没动**。换的是文件不是约定:
+     * 「声明与落点不许分叉」这条守卫认的始终是那段 keydown 本身在哪儿。
      */
-    const source = readFileSync(path.join(srcRoot, 'content/FilesPanel.tsx'), 'utf-8')
+    const source = readFileSync(path.join(srcRoot, 'content/files/TreeEntryRow.tsx'), 'utf-8')
     expect(source).toMatch(/e\.key === 'i'/)
     expect(source).toMatch(/e\.key === 'Enter'/)
     expect(scopedKeysOf('files.row').map((k) => key(k.combo)).sort()).toEqual([

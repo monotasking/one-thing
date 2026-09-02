@@ -126,6 +126,21 @@
   transition: transform var(--dur-release) var(--ease);
 }
 
+/*
+ * 「重新读取」那一圈(09-02 批 9d:那两颗头钮迁成 `ui/IconButton` 之后)。
+ *
+ * 转的**只有那枚字形**,不是整颗钮:一颗 28×28 的钮连同它的悬停底一起转,
+ * 是另一种动效 —— 而用户手指此刻正压在那颗钮上,底恰恰是亮着的。库件把
+ * `className` 摊在钮上、字形的类名归它自己,所以这里按后代取那枚 svg;
+ * 圈数走一格**无单位**自定义属性(与 `--depth` / `--files-split` 同一手,
+ * 由 tsx 单调递增地给)。@keyframes 一个都不加 —— 它是一次过渡,不是循环。
+ * 上面 `.headIcon` 留着不动:它是这条过渡的原产地,值逐字相同。
+ */
+.headSpin svg {
+  transform: rotate(calc(var(--files-spin, 0) * -360deg));
+  transition: transform var(--dur-release) var(--ease);
+}
+
 /* ── 告知条:没绑工作目录 ─────────────────────────────────────────────── */
 /*
  * warn 的**晕底**而不是实色:它是一句提醒,不是一次报错 —— 实色会在一屏安静的
