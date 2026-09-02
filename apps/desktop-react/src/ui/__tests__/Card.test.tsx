@@ -25,6 +25,64 @@ describe('Card:区块卡骨架', () => {
     expect(container.firstElementChild?.textContent).toBe('body')
   })
 
+  /**
+   * 檐动作槽(09-02 批 8a)。这一条守的是**檐的在场判据是三格的并** ——
+   * 只有动作时檐照样画。拆掉即红:动作会掉进卡身,跟着内容一起往下走。
+   */
+  it('生命状态:三格全缺才不画檐 —— 只有 actions 时檐仍在', () => {
+    const { container: bare } = render(<Card>body</Card>)
+    expect(bare.querySelector('[class*="head"]')).toBeNull()
+
+    const { container } = render(<Card actions={<button type="button">R</button>}>body</Card>)
+    const head = container.querySelector('[class*="head"]') as HTMLElement
+    expect(head).not.toBeNull()
+    // 动作在檐里,不在卡身里:这是这一条的全部。
+    expect(head.querySelector('button')?.textContent).toBe('R')
+    expect(head.querySelector('h3')).toBeNull()
+  })
+
+  it('数据状态:actions 落在檐右端 —— inline 注在它前面,below 注在檐外', () => {
+    const { container: inline } = render(
+      <Card title="Usage" note="cached 3m ago" actions={<button type="button">R</button>}>
+        b
+      </Card>,
+    )
+    const head = inline.querySelector('[class*="head"]') as HTMLElement
+    // 檐里三格的**次序**:标题 → 读数 → 动作(动作永远是最后一格)。
+    const kids = [...head.children] as HTMLElement[]
+    expect(kids.map((el) => el.tagName)).toEqual(['H3', 'SPAN', 'DIV'])
+    expect(kids[2].className).toMatch(/_actions_/)
+    expect(kids[2].textContent).toBe('R')
+
+    const { container: below } = render(
+      <Card title="Mode" note="a sentence" notePlacement="below" actions={<button type="button">E</button>}>
+        b
+      </Card>,
+    )
+    const belowHead = below.querySelector('[class*="head"]') as HTMLElement
+    // 注掉到檐外,动作**仍在檐右**:落点由「它是动作」决定,不由注站在哪儿决定。
+    expect([...belowHead.children].map((el) => el.tagName)).toEqual(['H3', 'DIV'])
+    expect(belowHead.querySelector('[class*="actions"]')?.textContent).toBe('E')
+    expect(below.querySelector('p[class*="noteBelow"]')?.textContent).toBe('a sentence')
+  })
+
+  /**
+   * `actions` **不让卡变成控件**:交互归塞进来的那几颗钮自己。
+   * 这条与上面「卡不是控件」那条是一对 —— 哪天有人顺手给 Card 加 onClick,两条一起红。
+   */
+  it('交互状态:actions 在场时卡本身仍不是控件(钮是塞进来的那几颗)', () => {
+    const { container } = render(
+      <Card title="Usage" actions={<button type="button">R</button>}>
+        b
+      </Card>,
+    )
+    const root = container.firstElementChild as HTMLElement
+    expect(root.tagName).toBe('DIV')
+    expect(root.hasAttribute('tabindex')).toBe(false)
+    // 整屏只有塞进来的那一颗钮,卡自己没有长出第二颗。
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+  })
+
   it('生命状态:只给 note(inline)时檐在、标题不在;只给 title 时反过来', () => {
     const { container: onlyNote } = render(<Card note="cached 3m ago">b</Card>)
     expect(onlyNote.querySelector('[class*="head"]')).not.toBeNull()

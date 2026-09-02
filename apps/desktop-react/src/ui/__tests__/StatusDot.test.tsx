@@ -41,6 +41,51 @@ describe('StatusDot:状态点', () => {
   })
 
   /**
+   * 尺寸两档(09-02 批 8a)。守的是**档位不是自由量**:
+   *  · 缺省 = md,而 md **不挂第二个类**(几何写在基类里);
+   *  · sm 加且只加一条覆盖类;
+   *  · 两档都不接受消费方写死的几何 —— 它没有 style 出口,这里连带钉住。
+   * 拆掉即红:sm 与 md 会长得一模一样,那两处檐上的丸就只能继续留在外面自绘。
+   */
+  it('数据状态:size 两档 —— 缺省 md 不挂第二类,sm 才加一条覆盖', () => {
+    const { container: def } = render(<StatusDot tone="warn" />)
+    const defCls = (def.firstElementChild as HTMLElement).className
+    expect(defCls).toMatch(/_dot_/)
+    expect(defCls).not.toMatch(/_sm_/)
+
+    const { container: md } = render(<StatusDot tone="warn" size="md" />)
+    // 显式 md 与缺省逐字相同:缺省档就是 md,不是「另一条路」。
+    expect((md.firstElementChild as HTMLElement).className).toBe(defCls)
+
+    const { container: sm } = render(<StatusDot tone="warn" size="sm" />)
+    const smCls = (sm.firstElementChild as HTMLElement).className
+    expect(smCls).toMatch(/_dot_/)
+    expect(smCls).toMatch(/_warn_/)
+    expect(smCls).toMatch(/_sm_/)
+    expect(smCls).not.toBe(defCls)
+  })
+
+  it('数据状态:size 与 tone 是两格独立开关(六档 × 两档都成立)', () => {
+    const seen = new Set<string>()
+    for (const tone of TONES) {
+      for (const size of ['sm', 'md'] as const) {
+        const { container, unmount } = render(<StatusDot tone={tone} size={size} />)
+        seen.add((container.firstElementChild as HTMLElement).className)
+        unmount()
+      }
+    }
+    expect(seen.size).toBe(TONES.length * 2)
+  })
+
+  it('交互状态:sm 档同样不是控件(尺寸不改变它是什么)', () => {
+    const { container } = render(<StatusDot tone="bad" size="sm" label="Unsaved" />)
+    const el = container.firstElementChild as HTMLElement
+    expect(el.tagName).toBe('SPAN')
+    expect(el.hasAttribute('tabindex')).toBe(false)
+    expect(el.getAttribute('role')).toBe('img')
+  })
+
+  /**
    * 守卫:**不给 label 就 aria-hidden**。点旁边通常已经有等价文字,
    * 再念一遍是噪音 —— 这条判据是这件的无障碍全部,拆掉即红。
    */

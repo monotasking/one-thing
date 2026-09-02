@@ -100,6 +100,23 @@ function GalleryFieldInput() {
   return <Input {...field} value={value} onValueChange={setValue} placeholder="sk-…" />
 }
 
+/**
+ * Field 里装一件**标不动的控件**(09-02 批 8a)。`<label htmlFor>` 只认可标注元素,
+ * 而 Segmented 的根是 `role="radiogroup"` 的 `<div>` —— 关联靠 Field 多交出来的
+ * `aria-labelledby`。写法与上面那件逐字相同(一句 `{...field}`),这正是那一格
+ * 走 context + 透传、而不是让 Segmented 去吃 Field 的 context 的理由。
+ */
+function GalleryFieldSegmented({
+  value,
+  onChange,
+}: {
+  value: 'cozy' | 'compact'
+  onChange: (v: 'cozy' | 'compact') => void
+}) {
+  const field = useFieldControlProps()
+  return <Segmented {...field} options={DENSITY} value={value} onChange={onChange} />
+}
+
 export function Gallery() {
   const [text, setText] = useState('claude-fable-5')
   const splitRef = useRef<HTMLDivElement>(null)
@@ -115,6 +132,10 @@ export function Gallery() {
   const [collapsed, setCollapsed] = useState(true)
   const [dialog, setDialog] = useState(false)
   const [answer, setAnswer] = useState<string>('—')
+  // IconButton 的 ref 展位(09-02 批 8a):这一格证明 ref 真的落在那颗 <button> 上。
+  const measureRef = useRef<HTMLButtonElement>(null)
+  const [measured, setMeasured] = useState<number | null>(null)
+  const [fieldDensity, setFieldDensity] = useState<'cozy' | 'compact'>('cozy')
   const confirm = useConfirm()
 
   return (
@@ -155,7 +176,16 @@ export function Gallery() {
         <IconButton icon={PencilIcon} label="Edit" pressed />
         <IconButton icon={X} label="Delete" tone="danger" />
         <IconButton icon={Copy} label="Copy" disabled />
+        {/* ref 展位(09-02 批 8a):点它读自己的矩形 —— 从前要在外面包一格贴身
+            span 才量得到。这一格演的是「口子真的通到那颗 <button>」。 */}
+        <IconButton
+          ref={measureRef}
+          icon={Search}
+          label="Measure me"
+          onClick={() => setMeasured(measureRef.current?.getBoundingClientRect().width ?? null)}
+        />
         <Note>rest / hover / active / pressed / disabled;提示走 Tooltip,禁 native title</Note>
+        <Note>ref 落在那颗 &lt;button&gt; 上 —— 量得到 {measured == null ? '(点一下)' : `${Math.round(measured)}px`}</Note>
       </Section>
 
       {/* 分隔杆(第 19 件,09-01 立)。APG window splitter:←/→ 调、Home/End 到头、↵ 回默认。 */}
@@ -336,6 +366,11 @@ export function Gallery() {
         <StatusDot tone="off" />
         <StatusDot tone="bad" label="Auth failed" />
         <Note>ok / info / warn / bad / idle / off;旁边已有文字就不给 label(给了会被念两遍)</Note>
+        {/* 尺寸两档并排(09-02 批 8a):sm 是檐上那一颗(未保存丸),md 是列表里那一族。
+            并排才看得出「档位」是什么意思 —— 它只有这两种,不是一个自由量。 */}
+        <StatusDot tone="warn" size="sm" />
+        <StatusDot tone="warn" size="md" />
+        <Note>size:sm 5px(檐上)/ md 6px(缺省,列表与详情栏)—— 档位不是自由量</Note>
       </Section>
 
       <Section name="GroupHead">
@@ -366,7 +401,37 @@ export function Gallery() {
             pad lg, no border, h4.
           </Card>
         </div>
+        {/*
+         * 檐动作槽(09-02 批 8a)。三格摆在一起才看得出裁定:
+         * inline 注贴着标题走、动作永远靠右;below 注掉到檐外,动作**仍在檐右**。
+         * 第三格是「只有动作」——檐照样画,动作不掉进卡身。
+         */}
+        <div className={s.cell}>
+          <Card
+            title="Usage"
+            note="cached 3m ago"
+            actions={<Button size="sm">Refresh</Button>}
+          >
+            actions sit at the far right of the head row.
+          </Card>
+        </div>
+        <div className={s.cell}>
+          <Card
+            title="Mode"
+            note="Subscription mode does not use an API key."
+            notePlacement="below"
+            actions={<IconButton icon={PencilIcon} label="Edit mode" />}
+          >
+            note drops below; actions stay on the head row.
+          </Card>
+        </div>
+        <div className={s.cell}>
+          <Card actions={<IconButton icon={X} label="Dismiss" />}>
+            No title, no note — the head row still renders because actions are there.
+          </Card>
+        </div>
         <Note>空槽不渲染 DOM;卡不是控件 —— 整张可点的那一形归 ButtonBase</Note>
+        <Note>actions 在檐右端;note 两个落点都不改它的落点</Note>
       </Section>
 
       <Section name="Field">
@@ -390,7 +455,18 @@ export function Gallery() {
             <GalleryFieldInput />
           </Field>
         </div>
+        {/*
+         * 不可标注的控件那一格(09-02 批 8a)。radiogroup 的根是个 <div>,
+         * `<label htmlFor>` 指不动它 —— 关联靠 Field 交出来的 `aria-labelledby`,
+         * 消费方照旧一句 `{...field}`。这一格演的就是那条路。
+         */}
+        <div className={s.cell}>
+          <Field label="Density" hint="Applies to lists and cards.">
+            <GalleryFieldSegmented value={fieldDensity} onChange={setFieldDensity} />
+          </Field>
+        </div>
         <Note>控件经 useFieldControlProps() 拿 id / aria-describedby / aria-invalid</Note>
+        <Note>radiogroup 这类标不动的控件靠同一口 aria-labelledby 关联(htmlFor 指不动 div)</Note>
       </Section>
 
       <Section name="Kbd">

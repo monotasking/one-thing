@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createRef } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { IconButton } from '../IconButton'
 import { X } from '../../components/icons'
@@ -110,6 +111,45 @@ describe('IconButton:透传落点自己的身份', () => {
   it('落点直写 `data-testid=` 时以落点为准(`testId` 只是它的短写)', () => {
     render(<IconButton icon={X} label="关闭" testId="short" data-testid="explicit" />)
     expect(screen.getByRole('button').getAttribute('data-testid')).toBe('explicit')
+  })
+
+  /**
+   * 守卫:**`ref` 穿过两层落在那颗 `<button>` 上**(09-02 批 8a 补口)。
+   * 链是 `IconButton`(函数组件,React 19 里 ref 是普通 prop → 进 rest)→
+   * `ui/ButtonBase`(forwardRef,React 把 props 里的 ref 摘出来)→ `<button ref>`。
+   * 三段里任何一段断掉这条就红 —— 而它治的正是「钮自己的矩形量不到」:
+   * 从前 FloatWindow 的钉边钮只好在外面包一格贴身 `span` 去量。
+   */
+  it('ref 落到那颗 <button> 上(不是包在外面的任何一层)', () => {
+    const ref = createRef<HTMLButtonElement>()
+    render(<IconButton ref={ref} icon={X} label="钉住" testId="pin" />)
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement)
+    expect(ref.current).toBe(screen.getByTestId('pin'))
+    // 量得到自己的矩形 —— 这条口子存在的理由(jsdom 下是 0,但 API 在)。
+    expect(typeof ref.current?.getBoundingClientRect().width).toBe('number')
+  })
+
+  it('ref 与 Tooltip 包裹并存:提示那一层不抢 ref', () => {
+    const ref = createRef<HTMLButtonElement>()
+    render(<IconButton ref={ref} icon={X} label="有提示" testId="tipped" />)
+    expect(ref.current).toBe(screen.getByTestId('tipped'))
+    expect(ref.current?.tagName).toBe('BUTTON')
+  })
+
+  it('ref 回调形也收得到,卸载时回收(null)', () => {
+    const seen: Array<HTMLButtonElement | null> = []
+    const { unmount } = render(
+      <IconButton
+        ref={(el) => {
+          seen.push(el)
+        }}
+        icon={X}
+        label="回调"
+      />,
+    )
+    expect(seen[0]).toBeInstanceOf(HTMLButtonElement)
+    unmount()
+    expect(seen.at(-1)).toBeNull()
   })
 })
 

@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Field, useFieldControlProps } from '../Field'
+import { Segmented } from '../Segmented'
 
 /** 规格页与真实消费面的用法:摊上去,不做别的。 */
 function Control() {
   const field = useFieldControlProps()
   return <input {...field} readOnly value="" />
+}
+
+/**
+ * 装一件**标不动的控件**(09-02 批 8a):写法与上面那件逐字相同 ——
+ * 一句 `{...field}`,消费方不必知道自己装的是可标注元素还是 radiogroup。
+ */
+const DENSITY = [
+  { value: 'cozy' as const, label: 'Cozy' },
+  { value: 'compact' as const, label: 'Compact' },
+]
+
+function FieldSegmented() {
+  const field = useFieldControlProps()
+  return <Segmented {...field} options={DENSITY} value="cozy" onChange={() => {}} />
 }
 
 describe('Field:表单行', () => {
@@ -141,5 +156,46 @@ describe('Field:表单行', () => {
       </>,
     )
     expect(screen.getByLabelText('API key').id).not.toBe(screen.getByLabelText('Base URL').id)
+  })
+
+  /**
+   * 不可标注的控件那一格(09-02 批 8a)。`<label htmlFor>` 只认可标注元素,
+   * radiogroup 的根是个 `<div>` —— 从前那条 label 指了个空:点标签不聚焦、
+   * 读屏软件念不出这一组叫什么。修法是 Field 多交一格 `aria-labelledby`。
+   *
+   * 这一条断的是**可访问名**,不是「属性挂上了没有」:
+   * `getByRole('radiogroup', { name })` 走的正是浏览器那套名字计算。
+   * 拆掉 Field 那一格(或拆掉 Segmented 的透传),这里当场红。
+   */
+  it('无障碍:radiogroup 这类标不动的控件靠 aria-labelledby 关联,可访问名 = label 文字', () => {
+    render(
+      <Field label="Density" hint="Applies to lists.">
+        <FieldSegmented />
+      </Field>,
+    )
+    const group = screen.getByRole('radiogroup', { name: 'Density' })
+    // 名字真的来自那条 <label>(不是控件自己写了一句同样的话)。
+    const labelId = group.getAttribute('aria-labelledby') as string
+    expect(document.getElementById(labelId)?.tagName).toBe('LABEL')
+    expect(document.getElementById(labelId)?.textContent).toBe('Density')
+    // hint 那一格照旧跟着走:两条关联互不干扰。
+    const describedBy = group.getAttribute('aria-describedby') as string
+    expect(document.getElementById(describedBy)?.textContent).toBe('Applies to lists.')
+  })
+
+  /**
+   * 加性守卫:可标注控件**一个字都不用改**。多出来的 `aria-labelledby` 指的是
+   * 同一条 label,可访问名算出来逐字相同 —— 这条钉住「这一格不是破坏性变更」。
+   */
+  it('无障碍:可标注控件同时拿到 htmlFor 与 aria-labelledby,名字仍是同一句', () => {
+    render(
+      <Field label="API key">
+        <Control />
+      </Field>,
+    )
+    const input = screen.getByLabelText('API key') as HTMLInputElement
+    const labelId = input.getAttribute('aria-labelledby') as string
+    expect(document.getElementById(labelId)?.getAttribute('for')).toBe(input.id)
+    expect(screen.getByRole('textbox', { name: 'API key' })).toBe(input)
   })
 })

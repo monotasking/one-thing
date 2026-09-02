@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createRef } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { Button } from '../Button'
 
@@ -118,5 +119,23 @@ describe('Button:透传与默认 type', () => {
     fireEvent.click(btn)
     expect(onClick).not.toHaveBeenCalled()
     expect(btn.className).toMatch(/danger/)
+  })
+
+  /**
+   * 守卫:**`ref` 落在那颗 `<button>` 上**(09-02 批 8a,与 `ui/IconButton` 同批)。
+   * 这件的根就是那个真 `<button>`,ref 只穿一层;拆掉这条,量矩形 / 手动聚焦
+   * 的落点又要退回「在外面包一格贴身 span」。
+   */
+  it('ref 落到那颗 <button> 上,且档位皮肤照旧', () => {
+    const ref = createRef<HTMLButtonElement>()
+    render(
+      <Button ref={ref} variant="primary" pill data-testid="r">
+        a
+      </Button>,
+    )
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement)
+    expect(ref.current).toBe(screen.getByTestId('r'))
+    expect(ref.current?.className).toMatch(/primary/)
+    expect(ref.current?.className).toMatch(/pill/)
   })
 })

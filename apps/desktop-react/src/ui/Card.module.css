@@ -60,6 +60,21 @@
   color: var(--text-2);
 }
 
+/*
+ * 檐右端那一撮动作(09-02 批 8a)。`margin-left: auto` 而不是靠标题的 `flex: 1`
+ * 把它顶过去:标题这一格**可以缺席**(只有动作的檐),那时没有任何东西在推它,
+ * 而动作的落点是「檐右」这个事实,不该取决于左边碰巧站着谁。
+ * `flex: none` = 动作不弯腰;一行恰有一个弯腰件,那一件是标题(挤压纪律律一)。
+ * 间距取 --sp-1:动作彼此是一撮,比它们与标题之间(--sp-2)近一档。
+ */
+.actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: auto;
+}
+
 /* 标题下方那一段弱色注(ProviderDetail 的 .cardNote)。它是一句**话**,
  * 所以字号大一档、有行距、允许换行 —— 与上面那格「一个读数」不是一回事。 */
 .noteBelow {

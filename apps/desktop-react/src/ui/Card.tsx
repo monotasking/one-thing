@@ -22,15 +22,37 @@ import s from './Card.module.css'
  * 缺省 h3(详情栏里最常见的一档:面标题 h2 → 卡标题 h3),
  * 迁移时各面按原级显式传,不引起无障碍树跳级。
  *
+ * ── 檐上第三格:`actions`(09-02 批 8a 补口)────────────────────────────
+ * 同一个缺口撞过三次,三处都被迫绕开这件的檐自己画一行:UsageCard 的檐是
+ * 「标题 + 缓存读数 + 刷新钮」、CredentialPool 的檐挂着三件、总览的三件头也一样。
+ * 封闭两槽(title / note)塞不下第三件,于是那三处各写一份 `.head` ——
+ * 正是立这件要治的病本身。
+ *
+ * 它是 **props 而不是 children**,与 title / note 同一条判据(文件头「API 形状」):
+ * 檐是**卡自己的**,形态封闭 —— 一行标题、一格弱色注、右端一撮动作。
+ * 卡身才是开放的那一半。
+ *
+ * 与 `note` 的位置关系,两档各说一次:
+ *  · `notePlacement='inline'`(缺省)→ 檐里三件依次是 标题 / 读数 / 动作,
+ *    **动作在最右**(读数是标题的附注,贴着标题走;动作是这张卡的入口,靠边站);
+ *  · `notePlacement='below'` → 注自成一段落在檐外,檐里只剩标题与动作,
+ *    **动作仍在檐右**(它的落点由「它是动作」决定,不由注站在哪儿决定)。
+ *
+ * 它**不会**让卡变成控件:动作是消费方塞进来的 `ui/Button` / `ui/IconButton`,
+ * 卡自己一个事件都不收(见下「交互状态」那条守卫)。
+ *
  * ── 三类状态(库件规格)────────────────────────────────────────────────
  *   生命状态:无订阅 / 无计时器 / 无模块级副作用 → 不需要 HMR dispose;
- *             `title` 与 `note` 都缺席时**整条檐不渲染 DOM**(不是渲染一个空 div ——
- *             空檐会在 column flex 里多吃一个 gap,卡身位置整段下移)。
+ *             `title` / `note` / `actions` **全部缺席时整条檐不渲染 DOM**
+ *             (不是渲染一个空 div —— 空檐会在 column flex 里多吃一个 gap,
+ *             卡身位置整段下移);三格里任一格在场,檐就在。
  *   交互状态:无。**卡不是控件** —— 它没有 hover / focus / disabled。
  *             整张卡可点的那一形(WorkspaceOverview 的工作区卡)是**结构性交互件**,
  *             归 `ui/ButtonBase`,不归这件:一件既是容器又是按钮,
  *             迟早要给它加 `onClick` 再加 `disabled` 再加 hover 配方。
- *   数据状态:pad 两档、bordered 两态、note 两个落点、超长标题截断不换行。
+ *             `actions` 不是这条的例外:交互归塞进来的那几颗钮自己,卡只给一格地方。
+ *   数据状态:pad 两档、bordered 两态、note 两个落点、actions 在场 / 不在场、
+ *             超长标题截断不换行(动作不弯腰 —— 一行恰有一个弯腰件)。
  *
  * ── 透传口子:落点自己的身份,不是样式旁路(09-01 批 2c)────────────────
  * 剩下的 `HTMLAttributes` 原样摊到根 `<div>`(照 `ui/Button` 的既有先例)。
@@ -56,6 +78,11 @@ export interface CardProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'>
    * 两者字号与行距不同,因为它们不是同一种东西 —— 见 .module.css。
    */
   notePlacement?: 'inline' | 'below'
+  /**
+   * 檐右端那一撮动作(刷新钮 / ⋯ / 一对开关)。两档 note 之下**都在檐右**。
+   * 塞进来的应当是 `ui/Button` / `ui/IconButton` —— 卡自己不收任何事件。
+   */
+  actions?: ReactNode
   /** 标题的标签名。缺省 h3;迁移时各面保持原级,别让无障碍树跳级。 */
   titleAs?: 'h2' | 'h3' | 'h4'
   /** `'md'`(缺省)= --sp-3,并集里五处的值;`'lg'` = --sp-4,错误卡那一档。 */
@@ -70,6 +97,7 @@ export function Card({
   title,
   note,
   notePlacement = 'inline',
+  actions,
   titleAs: Title = 'h3',
   pad = 'md',
   bordered = true,
@@ -88,18 +116,23 @@ export function Card({
 
   const inlineNote = notePlacement === 'inline' && note != null
   const belowNote = notePlacement === 'below' && note != null
+  const hasActions = actions != null
+  // 檐的在场判据是**三格的并**:动作独自在场时檐照样要画(总览那种「只有一行
+  // 动作、没有标题」的卡),否则动作会掉进卡身里跟着内容走。
+  const hasHead = title != null || inlineNote || hasActions
 
   return (
     // `className` 显式在前:皮肤是这件算出来的那一串,`rest` 里已经没有它
     //(它被上面解构走了),所以透传不可能把皮肤覆盖掉。
     <div className={cls} {...rest}>
       {/* 空槽不渲染 DOM —— 理由见文件头「生命状态」。 */}
-      {title == null && !inlineNote ? null : (
+      {hasHead ? (
         <div className={s.head}>
           {title == null ? null : <Title className={s.title}>{title}</Title>}
           {inlineNote ? <span className={s.note}>{note}</span> : null}
+          {hasActions ? <div className={s.actions}>{actions}</div> : null}
         </div>
-      )}
+      ) : null}
       {belowNote ? <p className={s.noteBelow}>{note}</p> : null}
       {children}
     </div>

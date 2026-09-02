@@ -32,10 +32,29 @@ import s from './Field.module.css'
  *   数据状态:rest / 只有 hint / 只有 error / hint 与 error 并存
  *             (并存时 aria-describedby 两个 id 都在,**错误排在前面** ——
  *             读屏软件按顺序念,先说「错在哪」再说「该怎么填」)。
+ *
+ * ── 不可标注的控件走 `aria-labelledby`(09-02 批 8a 补口)──────────────────
+ * `<label htmlFor>` 只认**可标注元素**(input / select / textarea / button / …)。
+ * 一格里装的若是 `role="radiogroup"` 那一族(`ui/Segmented`,它的根是个 `<div>`),
+ * `htmlFor` 就指了个空:点标签不聚焦,读屏软件念不出这一组叫什么。
+ * 修法不是让库件去吃库件的 context(`ui/Segmented` 自己 `useFieldControlProps()`
+ * 是隐式耦合:一件基础件凭空多出一个「必须长在 Field 里」的前提),
+ * 而是**把 label 自己的 id 一起交出去**:控件 props 里多一格 `aria-labelledby`,
+ * 消费方照旧一句 `<Segmented {...field} />` 就关联上了 —— 主动权仍在消费方手里,
+ * 与本件不用 cloneElement 是同一条理由。
+ *
+ * 两格并存不打架:`<input id=X aria-labelledby=L>` 与 `<label for=X id=L>` 指的是
+ * 同一段文字,可访问名算出来逐字相同(aria-labelledby 优先,内容一样)。
+ * 所以这一格是**加性**的 —— 既有的可标注控件一个字都不用改。
  * ──────────────────────────────────────────────────────────────────────
  */
 export interface FieldControlProps {
   id?: string
+  /**
+   * 这一格 `<label>` 自己的 id。**可标注的控件用不上它**(htmlFor 已经够了),
+   * 它是给 radiogroup / listbox 那一族「`htmlFor` 指不动」的控件用的出口。
+   */
+  'aria-labelledby'?: string
   'aria-describedby'?: string
   'aria-invalid'?: true
 }
@@ -76,6 +95,7 @@ export interface FieldProps {
 export function Field({ label, hint, error, className, children }: FieldProps) {
   const base = useId()
   const controlId = `${base}control`
+  const labelId = `${base}label`
   const hintId = `${base}hint`
   const errorId = `${base}error`
 
@@ -87,14 +107,17 @@ export function Field({ label, hint, error, className, children }: FieldProps) {
     const described = [hasError ? errorId : null, hasHint ? hintId : null].filter(Boolean)
     return {
       id: controlId,
+      // 恒在,不看控件是哪一族:这件不知道消费方要往里塞什么,而多给一格
+      // 指向同一段文字的 aria-labelledby 对可标注控件是无害的(名字算出来一样)。
+      'aria-labelledby': labelId,
       'aria-describedby': described.length ? described.join(' ') : undefined,
       'aria-invalid': hasError ? true : undefined,
     }
-  }, [controlId, errorId, hintId, hasError, hasHint])
+  }, [controlId, labelId, errorId, hintId, hasError, hasHint])
 
   return (
     <div className={[s.field, className ?? ''].filter(Boolean).join(' ')}>
-      <label className={s.label} htmlFor={controlId}>
+      <label className={s.label} id={labelId} htmlFor={controlId}>
         {label}
       </label>
       <FieldContext.Provider value={control}>{children}</FieldContext.Provider>

@@ -352,7 +352,64 @@ function ruleHandwrittenFloat(file, text) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
- * 规则 ⑦  视觉词汇的多产地 —— 同一个词在各面各画一遍
+ * 规则 ⑦  Spinner 的落点 —— 只许在按钮内或状态栏
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 法条原文(CLAUDE.md 禁令区):**「Spinner 只许出现在按钮内或状态栏;
+ * 列表/卡的加载态用文字或骨架」**。
+ *
+ * ── 为什么这条门判的是「每一处」,不是「非法的那几处」──────────────────
+ * 「它在不在按钮里」是**上下文**,而这套门是行级的形状判定,静态判不出来:
+ * 一颗 Spinner 可能长在 `<Button>` 的 children 里,也可能隔着两层 `<span>`
+ * 长在状态栏那条带子里,还可能被抽成一个变量再插进去。给判据加「往上找几层
+ * 有没有 Button」那种启发式,只会得到一条**既漏又误**的规则(而误报的代价是
+ * 下一个人去改规则,不是去改代码 —— 判例:icon-button-hover 那条命名近似
+ * 规则的注释里已经写过同一件事)。
+ *
+ * 所以这条反过来做:**命中全部,合法的那些逐处就地豁免**。
+ * 每一处合法的 Spinner 都要在自己头上写一行
+ * `ui-consume-allow: spinner-placement — <它在按钮内 / 状态栏的理由>`,
+ * 于是**每一颗转圈都在原地说明自己为什么合法** —— 而不是躲在一份别处的基线里。
+ * 这也是它不入基线的理由:基线是「暂时留着的账」,而这些是「永久正确的落点」,
+ * 两者混在一起会让基线越来越不像一张待办表。
+ *
+ * ── 判例(批 6,09-02:五处判定、四处换文字)────────────────────────────
+ *  · FileViewer 首载那一颗 —— 去掉,旁边的文字说的是同一句;
+ *  · FileDetailPopover —— 去掉,错误分支本就纯文字,两态同形;
+ *  · ToolRow —— 去掉,**不是状态栏**:行尾读数已经写着「运行中」,
+ *    首图标还在脉冲,转圈是第三遍说同一件事;
+ *  · ResearchSegment —— 去掉,**不是状态栏**:prose 流里那块 surface-1
+ *    已经写着「正在阅读…」外加一条进度副行。
+ * 留下来的四处(providers 两张卡的钮内 × 3、FileViewer 状态栏 × 1)
+ * 正是这条法说的两个允许位。
+ *
+ * 扫描面刻意收窄到**业务面的 `.tsx`**:`src/ui/**` 是被消费的那一头(walk 已排除),
+ * `src/dev/**` 是规格页(它的职责就是把每件组件摊平并排,那里的 Spinner 是**样品**
+ * 不是加载态),测试文件按的是渲染结果、不是落点裁定。
+ */
+const SPINNER_TAG = /<Spinner\b/g
+
+const isDev = (file) => /(^|[\\/])src[\\/]dev[\\/]/.test(file)
+
+function ruleSpinnerPlacement(file, text) {
+  if (isTest(file) || isDev(file) || !file.endsWith('.tsx')) return []
+  const hits = []
+  SPINNER_TAG.lastIndex = 0
+  let m
+  while ((m = SPINNER_TAG.exec(text)) !== null) {
+    hits.push({
+      rule: 'spinner-placement',
+      file,
+      line: lineOf(text, m.index),
+      note: 'Spinner 只许在按钮内或状态栏(合法处逐处就地豁免,不进基线)',
+    })
+  }
+  return hits
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+ * 规则 ⑧  视觉词汇的多产地 —— 同一个词在各面各画一遍
  * ──────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -395,6 +452,7 @@ export const RULE_SEVERITY = {
   'bare-button-structural': 'debt',
   'async-busy-boolean': 'debt',
   'float-handwritten': 'violation',
+  'spinner-placement': 'violation',
   'shared-vocab-css': 'debt',
 }
 
@@ -419,6 +477,7 @@ export function findViolations() {
       found.push(...ruleBareButton(rel, tags))
       found.push(...ruleAsyncBusyBoolean(rel, text))
       found.push(...ruleHandwrittenFloat(rel, text))
+      found.push(...ruleSpinnerPlacement(rel, text))
     }
     // 豁免读的是**原文**:注释在上面已经被抹平了,而豁免恰恰写在注释里。
     const lines = raw.split('\n')

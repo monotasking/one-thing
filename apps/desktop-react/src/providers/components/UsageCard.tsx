@@ -45,6 +45,8 @@ export function UsageCard({
         <h3 className={s.title}>{t('providers.usage')}</h3>
         {/* 缓存寿命写在脸上:这一口是真去问服务商的,读数不是每次开面都新鲜。 */}
         <span className={s.cache}>{t('providers.usageCache')}</span>
+        {/* ui-consume-allow: spinner-placement — 它在这颗「刷新」钮的 children 里:
+            忙时整颗钮换成转圈 + disabled(律③)。允许位「按钮内」。 */}
         <Button size="sm" disabled={loading} onClick={onRefresh}>
           {loading ? <Spinner label={t('providers.usageRefresh')} /> : t('providers.usageRefresh')}
         </Button>

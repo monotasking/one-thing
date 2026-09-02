@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes } from 'react'
+import type { ButtonHTMLAttributes, Ref } from 'react'
 import { ButtonBase } from './ButtonBase'
 import { Tooltip } from './Tooltip'
 import type { LucideIcon } from '../components/icons'
@@ -47,9 +47,22 @@ import s from './IconButton.module.css'
  * JSX 里的显式 children 静默盖掉,与 `ui/GroupHead` 同一手)、`title`
  *(原生 `title=` 是浏览器那条小黄条,全仓明令禁止 —— 这件的提示走
  * `ui/Tooltip`,内容就是 `label`;`ui/Card` 已有同样的 Omit 先例)。
+ *
+ * ── `ref` 是第三条透传,单独声明(09-02 批 8a 补口)──────────────────────
+ * React 19 里 `ref` 对函数组件是一个**普通 prop**,所以运行时它本来就跟着
+ * `...rest` 摊到 `ui/ButtonBase`(那件是 `forwardRef`,React 会把 props 里的
+ * `ref` 摘出来交给它),最后落在那颗 `<button>` 上 —— 链是通的。
+ * 缺的只是**类型**:`ButtonHTMLAttributes` 里没有 `ref`(它在 `ClassAttributes`
+ * / `RefAttributes` 上),于是 `<IconButton ref={r}>` 过不了 tsc。这里补的就是那一格。
+ * 它治的是「钮自己的矩形量不到」的另一半:批 3.5 放宽 `onClick` 收到了
+ * `e.currentTarget`(点击那一刻的矩形),而 FloatWindow 的钉边钮要的是
+ * **任意时刻**量一次 —— 那只能靠一个 ref。从前的绕法是在外面包一格贴身 `span`。
+ * (消费面的收编不在本批:批 8a 只补库件的口。)
  */
 export interface IconButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'title'> {
+  /** 那颗 `<button>` 本身。经 `ui/ButtonBase` 的 forwardRef 落到 DOM 节点上。 */
+  ref?: Ref<HTMLButtonElement>
   icon: LucideIcon
   /** 这颗钮叫什么。aria-label 与 Tooltip 共用它 —— 说给眼睛和说给读屏的是同一句。 */
   label: string

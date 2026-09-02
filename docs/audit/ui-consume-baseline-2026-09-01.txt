@@ -175,6 +175,24 @@
 #      关在 zustand creator 闭包里,模块级够不着,迁它得先把 sessions-source 的
 #      重拉那一半提到模块级。理由逐条写在该处注释里。
 #
+# ── 批 8a(09-02):`spinner-placement` 立门,**这张表一行都没加** ────────
+#   新规则 `spinner-placement`(violation)判的是「非 ui/、非 dev/、非测试的
+#   `.tsx` 里每一处 `<Spinner`」。它**故意不进基线**,这是这条规则的形状:
+#
+#   「它在不在按钮里」是上下文,行级的形状判定看不见。给判据加「往上找几层
+#   有没有 Button」的启发式,得到的是一条既漏又误的规则,而误报的代价是下一个人
+#   去改规则、不是去改代码。所以这条反过来做:**命中全部,合法的逐处就地豁免** ——
+#   每一颗转圈在原地写一行 `ui-consume-allow: spinner-placement — <理由>`,
+#   说明自己为什么在允许位上。基线是「暂时留着的账」,这些是「永久正确的落点」,
+#   混在一起会让基线越来越不像一张待办表。
+#
+#   立门时全仓 4 处命中,全部落在两个允许位上,逐处豁免、零入基线:
+#     · providers/components/OAuthCard.tsx  登录钮内 / 提交授权码钮内(2 处)
+#     · providers/components/UsageCard.tsx  刷新钮内(1 处)
+#     · content/viewer/FileViewer.tsx       查看器底部状态栏(1 处)
+#   批 6 判掉的四处(FileViewer 首载 / FileDetailPopover / ToolRow /
+#   ResearchSegment)已经不在了 —— 那一批的记录在上面 ⑥。
+#
 shared-vocab-css src/components/AgentChip.module.css:16 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:30 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:34 视觉词汇多产地(chip),待批 2 立件收编

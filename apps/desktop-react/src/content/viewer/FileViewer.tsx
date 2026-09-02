@@ -702,6 +702,10 @@ function StatusBar({
          */}
         {reading ? (
           <span className={s.statusNote} data-testid="viewer-inflight">
+            {/* ui-consume-allow: spinner-placement — 这里是查看器**底部状态栏**那条带子
+                (.statusMid 是它的中段),不是内容区、不是卡:允许位的第二个。
+                批 6 已经把这一面**其余四处**判掉了(首载内容区 / 详情浮层 /
+                工具行 / 研究段),留下的就是这一颗。 */}
             <Spinner label={t('viewer.reading')} />
             {t('viewer.reading')}
           </span>

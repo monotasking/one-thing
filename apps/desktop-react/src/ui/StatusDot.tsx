@@ -26,7 +26,21 @@ import s from './StatusDot.module.css'
  *             卸载即无,所以也不需要 HMR dispose。
  *   交互状态:无。**它不是控件**:不进 Tab 序、没有 hover/active/disabled。
  *             一行的 hover 归那一行画,不归点画。
- *   数据状态:六档 tone,各出一条独立配方(见 .module.css)。
+ *   数据状态:六档 tone,各出一条独立配方(见 .module.css)× 两档 size。
+ *
+ * ── `size` 是**档位,不是自由量**(09-02 批 8a 补口)────────────────────
+ * 起因:宿主檐上那颗未保存丸(`components/HostTitle`)与查看器自己那颗迁不进来,
+ * 唯一的差别是几何 —— 它们画的是 5px(`--files-open-dot`),这件只认 6px。
+ * 于是那两处各自留在外面自绘,而「同一种东西在两块面里长得不一样」正是立这件
+ * 要治的病。
+ *
+ * 补的是**两个档位**(`'md'` 缺省 6px / `'sm'` 5px),不是一个 `size?: number`
+ * 也不是一格 `--dot-size` 让消费方去覆盖:一旦几何可以被消费方自由写,
+ * 这件就退回成一个「圆点渲染器」,下一次就会出现 7px 和 4.5px ——
+ * 档位的意义在于**穷举**,它把「有几种点」这件事留在库里回答。
+ * 两档各有自己的 token(`--status-dot` / `--status-dot-sm`),
+ * 与 Dock 瓦角那颗 4px 的未读点仍然是三个名字:值撞了也不合并,
+ * 「有新东西」与「现在什么状态」是两个词(理由原文在 tokens.css 那一节)。
  *
  * ── `info` 是 09-02 批 6 补的第六档,不是凑数 ──────────────────────────
  * 收编通知中心那一列点时发现:那面画的是**四档命运**(ok / info / warn /
@@ -39,9 +53,14 @@ import s from './StatusDot.module.css'
  */
 export type StatusDotTone = 'ok' | 'info' | 'warn' | 'bad' | 'idle' | 'off'
 
+/** `md` 6px(缺省,列表 / 详情栏那一族);`sm` 5px(檐上贴着标题的那一颗)。 */
+export type StatusDotSize = 'sm' | 'md'
+
 export interface StatusDotProps {
   /** ok 正常 / info 一条提示 / warn 要注意 / bad 有错 / idle 还没配 / off 停用。 */
   tone: StatusDotTone
+  /** 尺寸是**档位不是自由量**(理由见文件头)。缺省 md。 */
+  size?: StatusDotSize
   /**
    * 无障碍名。**只在这颗点是唯一信息载体时给** —— 旁边已经写着同一句话时
    * 给它就是让读屏软件念两遍(判据见文件头)。文案归调用方,组件里不落字面。
@@ -50,8 +69,10 @@ export interface StatusDotProps {
   className?: string
 }
 
-export function StatusDot({ tone, label, className }: StatusDotProps) {
-  const cls = [s.dot, s[tone], className ?? ''].filter(Boolean).join(' ')
+export function StatusDot({ tone, size = 'md', label, className }: StatusDotProps) {
+  // `md` 不挂第二个类:它的几何就写在 `.dot` 里(缺省档 = 基类),
+  // 只有 `sm` 加一条覆盖 —— 少一个类名,也少一次「两个档谁赢」的疑问。
+  const cls = [s.dot, s[tone], size === 'sm' ? s.sm : '', className ?? ''].filter(Boolean).join(' ')
   if (label === undefined) return <span className={cls} aria-hidden="true" />
   return <span className={cls} role="img" aria-label={label} />
 }

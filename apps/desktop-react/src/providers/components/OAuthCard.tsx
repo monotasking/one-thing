@@ -63,6 +63,9 @@ export function OAuthCard({
     return (
       <Card>
         <div className={s.row}>
+          {/* ui-consume-allow: spinner-placement — 它就在这颗「登录」钮的 children 里:
+              忙时整颗钮换成转圈 + disabled(律③:异步动作必有进行中反馈)。
+              这是禁令原文的第一个允许位「按钮内」。 */}
           <Button size="sm" variant="primary" disabled={flow.busy} onClick={onSignIn}>
             {flow.busy ? <Spinner label={t('providers.subSignIn')} /> : t('providers.subSignIn')}
           </Button>
@@ -178,6 +181,8 @@ function FlowScreen({
             disabled={flow.busy || !flow.code.trim()}
             onClick={onSubmitCode}
           >
+            {/* ui-consume-allow: spinner-placement — 同上,在这颗「提交授权码」钮的
+                children 里:忙时换成转圈 + disabled。允许位「按钮内」。 */}
             {flow.busy ? (
               <Spinner label={t('providers.subCodeSubmit')} />
             ) : (

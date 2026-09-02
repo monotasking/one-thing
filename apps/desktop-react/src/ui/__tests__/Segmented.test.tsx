@@ -60,6 +60,75 @@ describe('Segmented:键盘路', () => {
   })
 })
 
+/**
+ * 透传口子(09-02 批 8a)。起因是一格具体的哑火:`ui/Field` 里包一件 Segmented
+ * 时 `htmlFor` 指了个空,而关联需要落点把 `aria-labelledby` 递进来 ——
+ * 这一组守的就是「递得进来、而且盖不掉这件自己的身份与皮肤」。
+ */
+describe('Segmented:透传口子', () => {
+  it('落点自己的 id / aria-* / data-* 原样落到根 <div> 上', () => {
+    render(
+      <Segmented
+        options={OPTIONS}
+        value="a"
+        onChange={() => {}}
+        id="density"
+        aria-labelledby="density-label"
+        aria-describedby="density-hint"
+        data-testid="seg"
+      />,
+    )
+    const group = screen.getByTestId('seg')
+    expect(group.tagName).toBe('DIV')
+    expect(group.id).toBe('density')
+    expect(group.getAttribute('aria-labelledby')).toBe('density-label')
+    expect(group.getAttribute('aria-describedby')).toBe('density-hint')
+  })
+
+  /**
+   * `role` 是这件的语义身份,写在 rest **之后** —— 透传盖不掉。
+   * 拆掉那条次序,一个落点就能把 radiogroup 变成别的东西,而它的
+   * `role="radio"` 子项当场失去合法的父容器。
+   */
+  it('role 盖不掉:落点写 role=group 也仍然是 radiogroup', () => {
+    render(
+      <Segmented
+        options={OPTIONS}
+        value="a"
+        onChange={() => {}}
+        role="group"
+        data-testid="seg"
+      />,
+    )
+    expect(screen.getByTestId('seg').getAttribute('role')).toBe('radiogroup')
+    expect(screen.getAllByRole('radio')).toHaveLength(OPTIONS.length)
+  })
+
+  it('className 追加而不是覆盖 —— 落点的皮肤加得上,槽底配方掉不了', () => {
+    render(
+      <Segmented options={OPTIONS} value="a" onChange={() => {}} className="mine" data-testid="seg" />,
+    )
+    const cls = screen.getByTestId('seg').className
+    expect(cls).toMatch(/_group_/)
+    expect(cls).toMatch(/(^| )mine( |$)/)
+  })
+
+  /**
+   * `label` 缺席时不许把落点自己传的 `aria-label` 抹掉 —— 这正是
+   * `aria-label` 排在 rest **之前**的理由(排在后面会写进一个 undefined)。
+   */
+  it('不给 label 时,落点自己的 aria-label 活着;给了 label 则以它为名', () => {
+    const { unmount } = render(
+      <Segmented options={OPTIONS} value="a" onChange={() => {}} aria-label="从落点来的" />,
+    )
+    expect(screen.getByRole('radiogroup', { name: '从落点来的' })).toBeTruthy()
+    unmount()
+
+    render(<Segmented options={OPTIONS} value="a" onChange={() => {}} label="从 label 来的" />)
+    expect(screen.getByRole('radiogroup', { name: '从 label 来的' })).toBeTruthy()
+  })
+})
+
 const TABS = [
   { id: 'x', label: 'X' },
   { id: 'y', label: 'Y' },

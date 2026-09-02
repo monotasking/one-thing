@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react'
+import type { ButtonHTMLAttributes, Ref, ReactNode } from 'react'
 import s from './Button.module.css'
 
 /**
@@ -34,7 +34,17 @@ import s from './Button.module.css'
  * 缺了会被 lint 的 jsx-a11y 与真机门 gate:a11y 的 axe 一起抓。
  * ──────────────────────────────────────────────────────────────────────
  */
+/**
+ * ── `ref` 单独声明一格(09-02 批 8a 补口,与 `ui/IconButton` 同一笔账)──────
+ * React 19 里 `ref` 对函数组件是普通 prop,所以它本来就跟着 `...rest` 摊到
+ * 下面那个真 `<button>` 上 —— 运行时的链一直是通的。缺的是**类型**:
+ * `ButtonHTMLAttributes` 不含 `ref`(它长在 `ClassAttributes`/`RefAttributes` 上),
+ * 于是 `<Button ref={r}>` 过不了 tsc。补这一格,量矩形 / 手动聚焦 / 挂锚点
+ * 才不必在外面再包一层贴身 `span`。
+ */
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** 那颗 `<button>` 本身。 */
+  ref?: Ref<HTMLButtonElement>
   variant?: 'primary' | 'ghost' | 'danger'
   size?: 'sm' | 'md'
   /** 丸形:只影响圆角 */
