@@ -55,6 +55,7 @@ bun run evals:diagnose     # scripts/diagnose-weekly.mjs
 **两份锁文件,各有权威**:`package-lock.json` 是打包的权威——package.json scripts 全走 npm、
 electron-builder 的 node-module-collector 按锁文件探测包管理器(07-29 "bun collector 打包缺依赖"的变通);
 `bun.lock` 只服务日常 dev/test 执行。两份都提交,不是误跑残留。
+**bun 必须用提升式布局**(`bunfig.toml` 钉 `linker = "hoisted"`,09-03 立):bun 1.3 对带 workspaces 的仓缺省走隔离式(pnpm 式 `node_modules/.bun`),根目录不放 `@onething/*`,而 apps/desktop-react 与 apps/web 不是 workspace 成员、靠向上解析,隔离式下 esbuild 直接报 `Could not resolve @onething/backend/...`。别删 bunfig.toml。
 (2026-09-03:第三条理由「`npm rebuild better-sqlite3` 是 test/postinstall 硬依赖」随 better-sqlite3
 退役一起没了 —— 今天的 `postinstall` 只剩 `fix:node-pty-perms`,`test` 直接 `vitest run`。)
 
