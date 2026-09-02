@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { PERF_BUDGET, overBudget } from '../../perf-budget'
 import {
+  PERF_COUNT_KEY_CAP,
+  PERF_RING_CAPACITY,
   PERF_SPAN_MIN_MS,
   __pushPerfForTests,
+  __resetPerfCountThrottleForTests,
   __resetPerfForTests,
   collectScripts,
   describeTarget,
@@ -10,6 +13,7 @@ import {
   eventPhases,
   formatPerfDetail,
   loafPhases,
+  perfCount,
   perfMark,
   perfReport,
   perfSpan,
@@ -549,5 +553,59 @@ describe('观察器回调只入队,归因与上报挪到空闲', () => {
     // 「回调返回时环是空的」不是因为环坏了。
     __pushPerfForTests({ ts: 0, kind: 'longFrame', ms: 120, name: 'frame', scripts: [] })
     expect(dumpPerf()).toHaveLength(1)
+  })
+})
+
+/**
+ * **`perfCount`:「理论不可能」的计数器进可见面**(09-02,设计审查条 13)。
+ *
+ * 三条纪律各一条用例:永不抛、节流去重、键带现场。
+ */
+describe('perfCount(自愈路上的记账)', () => {
+  beforeEach(() => {
+    __resetPerfForTests()
+    __resetPerfCountThrottleForTests()
+  })
+
+  it('记一笔进同一个环 —— HUD 与通知中心读的就是它', () => {
+    perfCount('stream.water.gap', { session: 's1', message: 'a1', total: 3 })
+    const entries = dumpPerf()
+    expect(entries).toHaveLength(1)
+    expect(entries[0]).toMatchObject({ kind: 'span', ms: 0, name: 'stream.water.gap' })
+    expect(entries[0].detail).toBe('session=s1 message=a1 total=3')
+    expect(formatPerfDetail(entries[0])).toBe('stream.water.gap · session=s1 message=a1 total=3')
+  })
+
+  it('节流去重:同一个键连着来只记一笔', () => {
+    // 缺段是**成串**发生的(一条丢了,后面每一条都对不上偏移)——
+    // 不节流的话 200 格的环会被同一件事冲干净,别的读数全丢。
+    for (let i = 0; i < 50; i += 1) perfCount('stream.water.gap', { session: 's1', message: 'a1' })
+    expect(dumpPerf()).toHaveLength(1)
+  })
+
+  it('键带现场:换会话 / 换消息各记各的', () => {
+    perfCount('stream.water.gap', { session: 's1', message: 'a1' })
+    perfCount('stream.water.gap', { session: 's1', message: 'a2' })
+    perfCount('stream.water.gap', { session: 's2', message: 'a1' })
+    expect(dumpPerf()).toHaveLength(3)
+  })
+
+  it('永不抛 —— 它的调用点全在自愈分支里', () => {
+    const hostile = { get bad() { throw new Error('boom') } } as unknown as Record<string, string>
+    expect(() => perfCount('stream.block.violation', hostile)).not.toThrow()
+  })
+})
+
+describe('perfCount 的节流表是有界的', () => {
+  it('键满了整份丢 —— 键里带消息 id,长会话上它只增', () => {
+    __resetPerfForTests()
+    __resetPerfCountThrottleForTests()
+    for (let i = 0; i < PERF_COUNT_KEY_CAP + 5; i += 1) {
+      perfCount('stream.water.gap', { message: `m${i}` })
+    }
+    // 丢过一次之后照旧记账,不会因为满了就哑掉(环自己只留最后 200 格)。
+    const entries = dumpPerf()
+    expect(entries.length).toBe(PERF_RING_CAPACITY)
+    expect(entries[entries.length - 1].detail).toBe(`message=m${PERF_COUNT_KEY_CAP + 4}`)
   })
 })

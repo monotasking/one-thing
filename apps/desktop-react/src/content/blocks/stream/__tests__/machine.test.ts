@@ -92,6 +92,15 @@ describe('机器:容器栈(单调流长出来的是一棵树)', () => {
     expect(m.snapshot().map((n) => n.id)).toEqual(['after'])
   })
 
+  it('L5 另一半:`close` 打在容器上违法(混用会把栈的维护漏掉)', () => {
+    const m = new BlockStreamMachine()
+    m.apply({ op: 'open-container', id: 'q', kind: 'quote' })
+    expect(() => m.apply({ op: 'close', id: 'q' })).toThrow(/容器要用 close-container 关/)
+    // 违法那条被丢掉 —— 栈还在,后面开的块照旧落进容器里(自愈,不是半死不活)。
+    open(m, 'inner')
+    expect(m.snapshot()[0].children?.map((n) => n.id)).toEqual(['inner'])
+  })
+
   it('关过的容器不许再撤回(L2 对容器一样成立)', () => {
     const m = new BlockStreamMachine()
     m.apply({ op: 'open-container', id: 'q', kind: 'quote' })

@@ -1,3 +1,4 @@
+import { perfCount } from '../../services/perf'
 import type { BlockEvent, BlockId } from '../blocks/stream/events'
 import { BlockStreamMachine, type BlockNode } from '../blocks/stream/machine'
 import type { BlockModel } from '../model/blocks'
@@ -59,6 +60,8 @@ interface Rec {
 interface Lane {
   machine: BlockStreamMachine
   recs: Rec[]
+  /** 上一帧看到的那两个计数器 —— 只在**涨了**的那一帧记账,见 `frame` 里的注。 */
+  telemetry: { violations: number; revivals: number }
 }
 
 export class MarkdownBlockStream {
@@ -79,6 +82,24 @@ export class MarkdownBlockStream {
     const { parsed, cut } = this.md.parseBlocks(id, text, live)
     const events = reconcile(lane.recs, parsed, text, live ? cut : text.length, live)
     lane.machine.applyAll(events)
+    /*
+     * **「理论不可能」的两个计数器接可见面**(设计审查条 13)。
+     *
+     * 机器生产态永不抛(dev 也在这一侧),于是违法与复生这两件事从前只活在一个
+     * 内存里的数上 —— 没人看得见就等于没记。这里在**它们真的涨了**的那一帧记一笔
+     * 进性能环(HUD 与通知中心的诊断区读同一份),节流去重在 `perfCount` 里。
+     *
+     * 比的是「涨了没有」不是「大于零」:大于零会每帧记一笔,把 200 格的环冲干净。
+     */
+    const seen = lane.telemetry
+    const now = { violations: lane.machine.violations, revivals: lane.machine.revivals }
+    if (now.violations > seen.violations) {
+      perfCount('stream.block.violation', { lane: id, total: now.violations })
+    }
+    if (now.revivals > seen.revivals) {
+      perfCount('stream.block.revival', { lane: id, total: now.revivals })
+    }
+    lane.telemetry = now
     return project(lane.machine.snapshot())
   }
 
@@ -108,7 +129,7 @@ export class MarkdownBlockStream {
   private lane(id: string): Lane {
     let lane = this.lanes.get(id)
     if (!lane) {
-      lane = { machine: new BlockStreamMachine(), recs: [] }
+      lane = { machine: new BlockStreamMachine(), recs: [], telemetry: { violations: 0, revivals: 0 } }
       this.lanes.set(id, lane)
     }
     return lane

@@ -196,6 +196,7 @@ const TOKENS = {
   reasontool: ['TKR1', 'TKR2'],
   // 无正文变体:用户截图的真形(推理直接接工具,整条消息一个字正文都没有)。
   reasonbare: ['TKR1', 'TKR2'],
+  midjoin: ['TKJ0', 'TKJ1'],
 }
 
 /**
@@ -438,6 +439,54 @@ const REASON_BARE_TURNS = {
   },
 }
 
+/**
+ * 素材十:**中途入场 / 重连**(09-02,编排者读源码审出的真回归)。
+ *
+ * 链是三段合起来才成立的,单看每一段都对:
+ *  ① `contentParts` 只在 `requestSettled` 之后物化;
+ *  ② `anchorMessage` 只在 parts **整个为空**时才回落 `message.content`;
+ *  ③ 水位表按连续前缀律把「中途入场收到的第一条 delta(偏移不为 0)」丢掉。
+ * 于是**当前这一个请求已经流出来的正文一个字都不画**,直到 `run/end`。而「账本
+ * ≤2s 自愈」在这里不成立:打包行只让 `message.content` 变长,不物化 parts。
+ *
+ * 复现要两个条件同时成立,少一个就照不见:
+ *  · **前面得有一个已经结算的请求**(否则 parts 整个为空,②那条回落把它救了);
+ *  · **壳要来晚**(`lateOpen`:先开流、隔 `LATE_OPEN_MS` 再开会话)。
+ * 所以第一轮走「正文 + 两次工具」把请求 0 结算掉,第二轮是一段长正文 —— 壳正好在
+ * 那一段还在流的时候进场。
+ *
+ * 第二段验的是**重连**:进场之后再退回总览、再点回来(壳重新 `open`,水位整份丢),
+ * 而那一轮还在流 —— 与断线重连是同一形。
+ */
+const MIDJOIN_LONG = [
+  '第二个请求的正文 TKJ1。这一段要够长,好让壳在它还在流的时候才进场 ——',
+  '「中途入场」的定义就是壳来晚了:第一条 delta 的偏移不为 0,按连续前缀律被丢掉,',
+  '所以这一段既不在水位、也不在 parts(它所属的请求还没结算)。屏幕上要是一个字都',
+  '没有,那就是这条回归。甲乙丙丁戊己庚辛壬癸,子丑寅卯辰巳午未申酉戌亥,',
+  '天地玄黄宇宙洪荒,日月盈昃辰宿列张,寒来暑往秋收冬藏,闰余成岁律吕调阳,',
+  '云腾致雨露结为霜,金生丽水玉出昆冈,剑号巨阙珠称夜光,果珍李柰菜重芥姜,',
+  '海咸河淡鳞潜羽翔,龙师火帝鸟官人皇,始制文字乃服衣裳,推位让国有虞陶唐。',
+  '再补一段把长度垫够,好让「退回总览再点回来」那一下也落在这一轮里。',
+].join('')
+
+const MIDJOIN_TURNS = {
+  1: async ({ say, callTool, finish }) => {
+    // 第一轮:正文 + 两次工具 —— 目的只有一个,把请求 0 结算掉(有 parts 了,
+    // 「parts 整个为空就回落 content」那条兜底才不会把病盖住)。
+    await say('content', '第一个请求的正文 TKJ0,它会结算。\n')
+    await callTool(0, 'call_j1', 'time', '{"action":"now","timezone":"Asia/Shanghai","format":"iso8601"}')
+    await callTool(1, 'call_j2', 'time', '{"action":"now","timezone":"UTC","format":"iso8601"}')
+    finish('tool_calls')
+  },
+  2: async ({ say, finish }) => {
+    await say('content', `\n${MIDJOIN_LONG}\n`)
+    finish('stop')
+  },
+}
+
+/** 壳晚多久进场 —— 要落在第二轮那段长正文还在流的时候。 */
+const LATE_OPEN_MS = 2500
+
 const CASES = {
   think: { tools: false, pieces: [6, 2] },
   tool: { tools: true, pieces: [6, 2] },
@@ -453,6 +502,7 @@ const CASES = {
   nested: { tools: false, pieces: [7], delayMs: 25, script: NESTED_SCRIPT, rowSafe: true },
   reasontool: { tools: true, pieces: [6], turns: REASON_TOOL_TURNS },
   reasonbare: { tools: true, pieces: [6], turns: REASON_BARE_TURNS },
+  midjoin: { tools: true, pieces: [6], turns: MIDJOIN_TURNS, lateOpen: true },
 }
 
 const TRIGGER = 'STREAM_STRUCTURE_GATE'
@@ -625,9 +675,18 @@ async function clickTestId(page, testId) {
  * 可见文本(`full`)由这几件拼,**不取整条消息的 textContent**:消息尾那行
  * `Generating · N.Ns` 在跳秒,拿整条量出来的非前缀率 98% 是它(测量坑 1)。
  */
-function installSampler(page, tokens, geometry = false) {
-  return page.evaluate(({ marks, geometry }) => {
-    const baseline = document.querySelectorAll('[data-message-id][data-role="assistant"]').length
+function installSampler(page, tokens, geometry = false, countExisting = false) {
+  return page.evaluate(({ marks, geometry, countExisting }) => {
+    /*
+     * `baseline` 的本意是「这一格开始之前就在的那些 assistant 消息不算」——
+     * 同一台应用连着跑好几格,上一格的消息还在屏上。
+     *
+     * **晚进场那一格反过来**(`countExisting`):要量的那条消息在装采样器之前就
+     * 已经在流了,把它排除掉等于一帧都采不到。所以那时基线要退一格,把**最后
+     * 那一条**算进来。
+     */
+    const rows = document.querySelectorAll('[data-message-id][data-role="assistant"]').length
+    const baseline = countExisting ? Math.max(0, rows - 1) : rows
     window.__struct = { frames: [], done: false, baseline, seenReadout: false }
     /**
      * 一帧里每个记号出现了几次(H 条:零双画)。
@@ -722,7 +781,7 @@ function installSampler(page, tokens, geometry = false) {
       if (!window.__struct.done) requestAnimationFrame(tick)
     }
     requestAnimationFrame(tick)
-  }, { marks: tokens, geometry })
+  }, { marks: tokens, geometry, countExisting })
 }
 
 /** 屏幕上那条消息里每张表各画了几列(Q 条的读数:削列到底削没削)。 */
@@ -1022,6 +1081,20 @@ async function runCell({ record, page, kind, piece, index }) {
   const made = await rpc(record, 'sessions', 'create', { name: `结构门 ${kind}-${piece}` })
   const sessionId = made?.session?.id
   if (!sessionId) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(made)}`)
+  /*
+   * **壳来晚**(`lateOpen`):先开流、隔 `LATE_OPEN_MS` 再开会话。
+   * 中途入场的定义就是这一下 —— 壳订上推送时,这一轮已经流了一半,
+   * 第一条 delta 的偏移不为 0,按连续前缀律被水位表丢掉。
+   */
+  const lateOpen = CASES[kind]?.lateOpen === true
+  const sendTrigger = () => rpc(record, 'session-command', 'emit', {
+    sessionId,
+    command: { type: 'command:send-message', content: `${TRIGGER} 请开始`, suppressTitleGeneration: true },
+  })
+  if (lateOpen) {
+    await sendTrigger()
+    await delay(LATE_OPEN_MS)
+  }
   await clickTestId(page, 'dock-tile-sessions')
   await waitFor('总览画出那张卡', () =>
     page.evaluate(id => Boolean(document.querySelector(`[data-testid="card-${id}"]`)), sessionId),
@@ -1031,7 +1104,7 @@ async function runCell({ record, page, kind, piece, index }) {
     page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
   )
 
-  await installSampler(page, TOKENS[kind] ?? [], CASES[kind]?.geometry === true)
+  await installSampler(page, TOKENS[kind] ?? [], CASES[kind]?.geometry === true, lateOpen)
   /*
    * 诊断口:`STRUCT_SHOTS=<dir>` 时直播期每 `SHOT_INTERVAL_MS` 抓一张图。
    * 门自己不写文件(跑完即走);修前 / 修后的视觉对照要的就是这几张。
@@ -1073,10 +1146,22 @@ async function runCell({ record, page, kind, piece, index }) {
    */
   const watchSelection = kind === 'think' || kind === 'pack' || kind === 'table'
   let selectionSeeded = false
-  await rpc(record, 'session-command', 'emit', {
-    sessionId,
-    command: { type: 'command:send-message', content: `${TRIGGER} 请开始`, suppressTitleGeneration: true },
-  })
+  if (!lateOpen) await sendTrigger()
+  /*
+   * **重连补齐**:进场之后再退回总览、再点回来 —— 壳重新 `open`,水位整份丢,
+   * 而那一轮还在流。与断线重连是同一形,所以这一下就是那条素材的第二段。
+   * 记一个时刻,断言只看这之后的帧。
+   */
+  let reopened = false
+  const reopenIfNeeded = async () => {
+    if (!lateOpen || reopened) return
+    reopened = true
+    await page.evaluate(() => { window.__reopenAt = performance.now() })
+    await clickTestId(page, 'dock-tile-sessions')
+    await delay(300)
+    await clickTestId(page, `card-${sessionId}`)
+    await page.evaluate(() => { window.__reopenDoneAt = performance.now() })
+  }
   await waitFor('assistant 完稿', async () => {
     // 第一段正文一上屏就把选区种下去,然后让它在整条流里活着。
     if (watchSelection && !selectionSeeded) {
@@ -1112,6 +1197,8 @@ async function runCell({ record, page, kind, piece, index }) {
       seen: window.__struct?.seenReadout ?? false,
       n: window.__struct?.frames.length ?? 0,
     }))
+    // 进场之后采到一批帧了、而且还在直播 —— 这一刻做那一次重连。
+    if (lateOpen && !reopened && state.readout && state.n > 60) await reopenIfNeeded()
     return state.seen && !state.readout && state.n > 50 ? state : undefined
   }, 180_000)
   if (watchSelection) {
@@ -1153,6 +1240,7 @@ async function runCell({ record, page, kind, piece, index }) {
   await delay(400)
   if (shots) await shots()
   const frames = await page.evaluate(() => { window.__struct.done = true; return window.__struct.frames })
+  const reopenAt = await page.evaluate(() => window.__reopenDoneAt ?? null)
   const liveShape = await readShape(page)
 
   /*
@@ -1420,6 +1508,56 @@ async function runCell({ record, page, kind, piece, index }) {
       )
     }
     assert(true, `U2 推理(2) 上屏后推理(1) 零增长(${oneAfter.length} 帧,恒 ${oneAfter[0]?.n} 字)`)
+    return
+  }
+
+  if (kind === 'midjoin') {
+    /*
+     * ── V:**中途入场 / 重连时,当前请求已经流出来的正文必须可见** ────────────
+     *
+     * 判据是二值的,所以不设阈值:在**直播期**(读数行还在)那个记号有没有上过屏。
+     * 修前它一帧都不上 —— 那一段既不在水位(第一条 delta 偏移不为 0 被丢)、也不在
+     * parts(所属请求还没结算),要等 `run/end` 才整段冒出来。
+     */
+    const liveFrames = frames.filter(f => f.lv !== false)
+    const seenLive = (tokenIndex, from = 0) =>
+      liveFrames.filter(f => f.t >= from && f.s.some(b => (b.mk ?? []).includes(tokenIndex))).length
+
+    const settledSeen = seenLive(0)
+    const inflightSeen = seenLive(1)
+    const firstAt = liveFrames.find(f => f.s.some(b => (b.mk ?? []).includes(1)))?.t
+    const sampleStart = frames[0]?.t
+    console.log(`  【V】直播帧 ${liveFrames.length} / 采到 ${frames.length}`)
+    console.log(`  【V】已结算那一段 TKJ0 直播期可见 ${settledSeen} 帧(复现条件:前面确实有结算过的请求)`)
+    console.log(
+      `  【V】在飞那一段 TKJ1 直播期可见 ${inflightSeen} 帧`
+      + (firstAt !== undefined && sampleStart !== undefined ? `,进场后 ${firstAt - sampleStart}ms 就上屏` : ''),
+    )
+    console.log(`  【V】重连时刻 ${reopenAt === null ? '(没做)' : `${Math.round(reopenAt)}ms`}`)
+
+    assert(liveFrames.length > 20, `V 采到了直播期的帧(${liveFrames.length} 帧,读数行还在)`)
+    assert(
+      settledSeen > 0,
+      `V 复现条件成立:前一个请求已经结算(TKJ0 在屏 ${settledSeen} 帧,parts 不是空的)`,
+    )
+    if (inflightSeen === 0) {
+      throw new Error(
+        '断言失败:V 中途入场时当前请求的正文一帧都没上屏 —— 直到 run/end 才出现'
+        + '\n  —— 链:contentParts 只在 requestSettled 后物化 / anchorMessage 只在 parts 全空时才回落 content'
+        + ' / 水位按连续前缀律丢掉了偏移不为 0 的第一条;三段各自都对,合起来就是这条回归',
+      )
+    }
+    assert(true, `V1 中途入场:当前请求的正文在直播期就可见(${inflightSeen} 帧)`)
+
+    if (reopenAt !== null) {
+      const afterReopen = seenLive(1, reopenAt)
+      if (afterReopen === 0) {
+        throw new Error(
+          `断言失败:V2 重连之后当前请求的正文又不见了(重连时刻 ${Math.round(reopenAt)}ms 之后 0 帧)`,
+        )
+      }
+      assert(true, `V2 重连补齐:退回总览再点回来之后照样可见(${afterReopen} 帧)`)
+    }
     return
   }
 

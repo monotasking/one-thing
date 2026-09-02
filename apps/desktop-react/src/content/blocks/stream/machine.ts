@@ -16,7 +16,8 @@ import { isStructuralEvent, type BlockEvent, type BlockId } from './events'
  *  L3 **结构只在尾巴上收**:`retract` 只许作用于**开着的末块**(容器栈当前层的末位;
  *     栈顶容器自己也算 —— 它没长成时先弹栈,再从父层摘掉)。
  *  L4 **收得到人**:`append`/`tail`/`close`/`retract` 的目标必须存在且开着。
- *  L5 **容器成对**:`close-container` 只关栈顶,栈空时关容器违法。
+ *  L5 **容器成对**:`close-container` 只关栈顶,栈空时关容器违法;反过来,
+ *     `close` 打在容器上同样违法(混用会把栈的维护漏掉,树当场错而且不出声)。
  *
  * **永不 throw**(设计审查条 13:不变式违反 = 自愈 + 计数,不是让屏幕白掉)——
  * dev 也算在这一侧,理由见下面 `ENFORCE` 的注。违法的那条事件被丢掉,`violations`
@@ -147,6 +148,15 @@ export class BlockStreamMachine {
       case 'close': {
         const rec = this.find(event.id)
         if (!rec) return this.illegal(`关一块不存在的:${event.id}`)
+        /*
+         * **容器要用 `close-container` 关**(L5 的另一半,09-02 补)。
+         *
+         * 从前这里只看「存不存在、关没关过」,于是一条 `close` 打在容器上会**悄悄
+         * 成功**:容器被标成关了,而**栈没有弹**——后面开的块继续往这个已经关掉的
+         * 容器里落,树当场是错的,而且一声不吭。两个词分管两件事(叶子的落定 /
+         * 容器的收口),混用就是把栈的维护漏掉,所以它是违法而不是等价写法。
+         */
+        if (rec.container) return this.illegal(`容器要用 close-container 关:${event.id}`)
         if (rec.closed) return this.illegal(`重复关块:${event.id}`)
         // 关块把活尾槽收进提交:关的那一刻屏幕上画的就是最终的那一份。
         if (rec.tail !== undefined) {

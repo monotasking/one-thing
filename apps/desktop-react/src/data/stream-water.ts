@@ -98,6 +98,7 @@ export class StreamWater {
   private readonly messages = new Map<string, WaterMessage>()
   /** 「理论不可能」的计数器(审查条 13:自愈 + 计数,永不 throw)。 */
   private gaps = 0
+  private divergences = 0
 
   /**
    * 一条盖过章的裸 delta 进水位。
@@ -228,20 +229,55 @@ export class StreamWater {
    * 这是第六不变式的落点:打包行到达那一帧只做这件事,而清格**不改 `max` 的结果**
    * (账本 ≥ 水位才清),所以屏幕上零像素变化。清干净了整条消息也一起丢。
    */
-  settle(messageId: string, drawableByPart: ReadonlyMap<number, number>): void {
+  settle(
+    messageId: string,
+    drawableByPart: ReadonlyMap<number, number>,
+    /**
+     * **前缀定律的对账口**(09-02 加)。给了它,清格那一刻顺手验一次:账本这一段
+     * 与水位这一段必须是**同一个字符串的两个前缀**。
+     *
+     * 为什么验在这里、不是每帧:定律的地基是账本,而账本只在打包行到达那一刻长
+     * (≤2s 一次)。每帧验是拿一条 2 秒才变一次的事实去做每秒六十次的功
+     * —— 而且那正是审查条 5 明令禁止的那类天真代价。
+     */
+    ledgerTextOf?: (partIndex: number) => string | undefined,
+  ): { diverged: number } {
     const message = this.messages.get(messageId)
-    if (!message) return
-    let changed = false
+    if (!message) return { diverged: 0 }
+    let diverged = 0
     for (const [key, part] of message.parts) {
-      const drawable = drawableByPart.get(partIndexOf(key))
-      if (drawable !== undefined && drawable >= part.length) {
-        message.parts.delete(key)
-        changed = true
+      const partIndex = partIndexOf(key)
+      /*
+       * 先验后清。两条字符串谁长不一定(水位领先是常态,账本追平那一刻齐平),
+       * 所以按**短的那一条**当前缀去比 —— `startsWith` 是原生比较,不拼串不分配,
+       * 一条几万字的段也只是一次 memcmp。
+       */
+      if (ledgerTextOf) {
+        const ledgerText = ledgerTextOf(partIndex)
+        if (ledgerText !== undefined) {
+          const waterText = joinPart(part)
+          const ok = ledgerText.length >= waterText.length
+            ? ledgerText.startsWith(waterText)
+            : waterText.startsWith(ledgerText)
+          if (!ok) {
+            /*
+             * 走到这里 = 前缀定律被上游破坏(第 2 条不变式)。生产态**永不抛**:
+             * 那一格当场退役(屏幕退回纯账本投影,是**诚实**的那一份),计一笔,
+             * 由调用方去排一次定向重折。留着它才是继续说谎。
+             */
+            this.divergences += 1
+            diverged += 1
+            message.parts.delete(key)
+            continue
+          }
+        }
       }
+      const drawable = drawableByPart.get(partIndex)
+      if (drawable !== undefined && drawable >= part.length) message.parts.delete(key)
     }
     if (message.parts.size === 0 && message.tools.size === 0) this.messages.delete(messageId)
     // 清格不动 version:它答的是「长过新东西没有」,退役不是长新东西。
-    void changed
+    return { diverged }
   }
 
   /** 这一轮收尾 / 这条消息换代:整条丢。 */
@@ -254,9 +290,14 @@ export class StreamWater {
     this.messages.clear()
   }
 
-  /** 遥测:缺段丢弃了几条(生产应恒 0;不为 0 = 前缀定律被上游破坏)。 */
+  /** 遥测:缺段丢弃了几条(生产应恒 0;不为 0 = 上游漏了段)。 */
   get gapCount(): number {
     return this.gaps
+  }
+
+  /** 遥测:前缀定律对不上几次(生产应恒 0;不为 0 = 定律被上游破坏)。 */
+  get divergenceCount(): number {
+    return this.divergences
   }
 
   private forMessage(messageId: string): WaterMessage {

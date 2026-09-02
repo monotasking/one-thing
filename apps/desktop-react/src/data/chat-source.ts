@@ -25,7 +25,7 @@ import {
 } from './chat-fold'
 import { chatPort } from './chat-port'
 import { notify } from '../services/notify'
-import { perfSpan } from '../services/perf'
+import { perfCount, perfSpan } from '../services/perf'
 import { t } from '../i18n'
 
 /**
@@ -428,24 +428,66 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
    * 不是 `message.content`(它把没结算的轮次也折进去了)—— 与合并式同一把尺,
    * 两处用不同的尺就是下一轮事故。
    */
-  function settleWater(state: ReturnType<typeof createSessionProjectionState>): void {
+  /**
+   * **缺段记一笔**(审查条 3 的可见面)。
+   *
+   * 「偏移接不上就丢」是对的(带洞的字符串比没有更坏),但**丢了这件事本身不该
+   * 静默**:它要么说明上游漏了段,要么说明这一刻是中途入场 / 重连 —— 后者屏幕上
+   * 该由账本补账那条路接住(见 `mergeWater` 的「账本比 parts 长的那截」),
+   * 而这一笔就是那条路有没有真接住的对照。
+   *
+   * 节流与去重在 `perfCount` 里:缺段是**成串**发生的,一条丢了后面每一条都对不上。
+   */
+  function reportWaterGap(messageId: string, kind: string): void {
+    perfCount('stream.water.gap', {
+      session: get().sessionId,
+      message: messageId,
+      kind,
+      total: water?.gapCount,
+    })
+  }
+
+  function settleWater(state: ReturnType<typeof createSessionProjectionState>, mine: LiveFold): void {
     if (!water) return
     const projected = materializeChatMessagesCached(
       state,
       { resolveBlob, includePartIndex: true },
       blobEpoch,
     )
+    let diverged = 0
     for (const message of projected.messages) {
       const drawable = new Map<number, number>()
+      const ledgerText = new Map<number, string>()
       for (const part of (message.contentParts ?? []) as Array<{ partIndex?: number; content?: string }>) {
-        if (part.partIndex !== undefined) drawable.set(part.partIndex, part.content?.length ?? 0)
+        if (part.partIndex === undefined) continue
+        drawable.set(part.partIndex, part.content?.length ?? 0)
+        ledgerText.set(part.partIndex, part.content ?? '')
       }
       // 顶部推理不在 parts 里,它的产地是 `message.reasoning` —— 那一格由消息级
       // 长度追平(段号未知,所以按「这条消息的 top 段」整体判,见水位表的 settle)。
-      if (drawable.size > 0) water.settle(message.id, drawable)
+      if (drawable.size > 0) {
+        /*
+         * 清格顺手验一次**前缀定律**(第 2 条不变式):账本这一段与水位这一段必须是
+         * 同一个字符串的两个前缀。验在这里而不是每帧 —— 定律的地基是账本,而账本只在
+         * 打包行到达那一刻长。对不上:那一格已被水位表自己退役(诚实地退回纯账本投影),
+         * 这里补两件事 —— 记一笔可见的账,排一次定向重折让账本重新说一遍。
+         */
+        const result = water.settle(message.id, drawable, index => ledgerText.get(index))
+        if (result.diverged > 0) {
+          diverged += result.diverged
+          perfCount('stream.water.divergence', {
+            session: get().sessionId,
+            message: message.id,
+            parts: result.diverged,
+            total: water.divergenceCount,
+          })
+        }
+      }
       const ledgerCallIds = new Set((message.toolCalls ?? []).map(call => call.id))
       if (ledgerCallIds.size > 0) water.settleTools(message.id, ledgerCallIds)
     }
+    // 定向重折走既有那一口(带节流),不另开一条自愈路。
+    if (diverged > 0) scheduleRefold(get().sessionId, mine)
   }
 
   /** 起底 / 重折:整份账本折一遍。`token` 是换会话的防串号闸。 */
@@ -524,7 +566,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     mine.lastSeq = seq
     // R2 第六不变式:**打包行到达那一帧只清格,不画画**。账本对这一段画得出来的
     // 长度追平水位,那一格就退役 —— 清格不改 `max` 的结果,所以屏幕零像素变化。
-    if (STREAM_R2) settleWater(mine.state)
+    if (STREAM_R2) settleWater(mine.state, mine)
     // 折进新东西之后,尾巴把「账本这一刻新画得出来的那一截」交出去 —— 判据不看
     // 这是不是一条打包行(见 handOverToLedger 的病历:打包行只说明「进账本了」,
     // 不说明「画得出来」;行内推理要等 parts 物化才有第二个产地)。
@@ -645,9 +687,13 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       if (chunk.type === 'tool-input-delta') {
         // 参数那一路按 toolCallId 落格(章上没有这一格 —— 名字与身份由
         // `tool:input-start` 给,章只负责说偏移)。
-        if (chunk.toolCallId) water.feedToolArgs(messageId, chunk.toolCallId, stamp.charOffset, text)
+        if (chunk.toolCallId) {
+          const result = water.feedToolArgs(messageId, chunk.toolCallId, stamp.charOffset, text)
+          if (result.outcome === 'gap') reportWaterGap(messageId, 'tool-input')
+        }
       } else {
-        water.feed(stamp, text, chunk.placement)
+        const result = water.feed(stamp, text, chunk.placement)
+        if (result.outcome === 'gap') reportWaterGap(messageId, stamp.kind)
       }
       schedulePush()
       return

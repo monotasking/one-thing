@@ -56,6 +56,8 @@ function fold(events: Ev[]) {
 }
 
 const OPTS = {} as Parameters<typeof materializeChatMessagesCached>[1]
+/** 壳这条读路的档:段号必须带上,水位才认得出「同一段」(见 includePartIndex 的注)。 */
+const R2_OPTS = { includePartIndex: true } as Parameters<typeof materializeChatMessagesCached>[1]
 
 describe('materializeChatMessagesCached 的引用契约', () => {
   it('同一份 state 连问两次:数组与每条消息都是同一个对象,零 miss', () => {
@@ -148,12 +150,100 @@ describe('活水位插进 contentParts 的那一段带着回合号', () => {
       { messageId: 'a2', runId: 'r2', requestIndex: 1, partIndex: 3, kind: 'reasoning', charOffset: 0, gen: 0, turnIndex: 2 },
       '工具结果之后新到的推理',
     )
-    const { messages } = materializeChatMessagesCached(state, OPTS, 0, water)
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, water)
     const target = messages.find((m) => m.id === 'a2')
     const part = (target?.contentParts ?? []).find(
       (p) => (p as { partIndex?: number }).partIndex === 3,
     ) as { type?: string; turnIndex?: number } | undefined
     expect(part?.type).toBe('reasoning')
     expect(part?.turnIndex).toBe(2)
+  })
+})
+
+/**
+ * **中途入场 / 重连:当前请求已经流出来的正文必须可见**(09-02,编排者读源码审出的真回归)。
+ *
+ * 链是三段合起来才成立的:`contentParts` 只在 `requestSettled` 之后物化;
+ * `anchorMessage` 只在 parts **整个为空**时才回落 `message.content`;而水位表按
+ * 连续前缀律把中途入场收到的第一条 delta(偏移不为 0)丢掉——三条各自都对,
+ * 合起来就是「当前这一个请求的正文一个字都不画,直到 run/end」。
+ * 「账本 ≤2s 自愈」在这里不成立:打包行只让 `message.content` 变长,不物化 parts。
+ */
+describe('账本比 parts 长的那截照样画(中途入场)', () => {
+  /** 第 0 个请求结算了(有 parts),第 1 个请求还在飞(只进了 content)。 */
+  function midJoinLedger(): Ev[] {
+    return [
+      { seq: 1, time: T0, type: 'session/created', data: { sessionId: 's1' } },
+      {
+        seq: 2,
+        time: T0,
+        type: 'user/message',
+        data: { message: { id: 'u1', role: 'user', content: '问', timestamp: T0 } },
+      },
+      { seq: 3, time: T0, type: 'run/start', data: { runId: 'r1', kind: 'chat', assistantMessageId: 'a1', timestamp: T0 } },
+      { seq: 4, time: T0, type: 'request/start', data: { runId: 'r1', requestIndex: 0, time: T0 } },
+      {
+        seq: 5,
+        time: T0,
+        type: 'assistant/chunks',
+        data: { runId: 'r1', requestIndex: 0, messageId: 'a1', partIndex: 0, kind: 'text', time0: T0, dt: [0], text: ['已结算的一段。'] },
+      },
+      { seq: 6, time: T0, type: 'request/end', data: { runId: 'r1', requestIndex: 0, time: T0 } },
+      // ★ 第二个请求:chunks 到了,request/end 没到 —— parts 画不出来,content 有。
+      { seq: 7, time: T0, type: 'request/start', data: { runId: 'r1', requestIndex: 1, time: T0 } },
+      {
+        seq: 8,
+        time: T0,
+        type: 'assistant/chunks',
+        data: { runId: 'r1', requestIndex: 1, messageId: 'a1', partIndex: 1, kind: 'text', time0: T0, dt: [0], text: ['正在飞的这一段。'] },
+      },
+    ]
+  }
+
+  const partsOf = (m: { contentParts?: unknown }) =>
+    (m.contentParts ?? []) as Array<{ type?: string; content?: string; turnIndex?: number }>
+
+  it('修前的形:未结算那一段不在 parts 里(病根,不是我们造的)', () => {
+    const state = fold(midJoinLedger())
+    const { messages } = materializeChatMessagesCached(state, {} as typeof OPTS, 0)
+    // 不开水位:这是账本自己的样子 —— parts 只有已结算那一格。
+    const target = messages.find((m) => m.id === 'a1')!
+    expect(partsOf(target).filter((p) => p.type === 'text')).toHaveLength(1)
+    expect(target.content).toContain('正在飞的这一段。')
+  })
+
+  it('补一格:parts 拼出来的正文与 message.content 逐字相同', () => {
+    const state = fold(midJoinLedger())
+    const water = new StreamWater() // 中途入场:一格都没有(第一条 delta 偏移不为 0 已被丢)
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, water)
+    const target = messages.find((m) => m.id === 'a1')!
+    const texts = partsOf(target).filter((p) => p.type === 'text')
+    expect(texts).toHaveLength(2)
+    expect(texts.map((p) => p.content).join('')).toBe(target.content)
+    expect(texts[1].content).toBe('正在飞的这一段。')
+  })
+
+  it('补出来那一格的回合号取最佳可知值 —— 已落地的工具锚点排在它前面', () => {
+    const state = fold(midJoinLedger())
+    const water = new StreamWater()
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, water)
+    const target = messages.find((m) => m.id === 'a1')!
+    const texts = partsOf(target).filter((p) => p.type === 'text')
+    expect(texts[1].turnIndex).toBeGreaterThanOrEqual(texts[0].turnIndex ?? 0)
+  })
+
+  it('不是前缀关系就一个字都不补 —— 宁可少画一截,不肯画错位置', () => {
+    const state = fold(midJoinLedger())
+    const water = new StreamWater()
+    // 水位替第 0 段说了一句**和账本不一样**的话(前缀关系当场不成立)。
+    water.feed(
+      { messageId: 'a1', runId: 'r1', requestIndex: 0, partIndex: 0, kind: 'text', charOffset: 0, gen: 0, turnIndex: 0 },
+      '另一条路上的一段话,比账本那格长得多也不一样。',
+    )
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, water)
+    const target = messages.find((m) => m.id === 'a1')!
+    const texts = partsOf(target).filter((p) => p.type === 'text')
+    // 只有水位那一格,没有凭空补出来的第二格。
+    expect(texts).toHaveLength(1)
   })
 })

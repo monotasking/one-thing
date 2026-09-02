@@ -85,6 +85,14 @@ export type PerfEntry = {
   processingMs?: number
   /** 只有 interaction 有:回调结束 → 上屏。大 = 排版/绘制慢,不是脚本慢。 */
   presentationMs?: number
+  /**
+   * 一句现场(只有 `perfCount` 记的那种 span 有)。
+   *
+   * 「理论不可能」的计数器不该只有一个数:哪条会话、哪条消息、第几次,是排障时
+   * 唯一有用的三格。它们不各占一个字段 —— 那会让 `PerfEntry` 长成一张什么都往里
+   * 塞的表;拼成一句话进这一格,HUD 与通知中心照原样显示。
+   */
+  detail?: string
 }
 
 export const PERF_RING_CAPACITY = 200
@@ -324,7 +332,10 @@ export function formatPerfDetail(entry: PerfEntry): string {
     return lines.join('\n')
   }
 
-  if (entry.kind === 'span') return `span ${entry.name} ${ms}ms`
+  if (entry.kind === 'span') {
+    // `perfCount` 记的那种 span 没有耗时可言(ms 恒 0),显示它只会误导。
+    return entry.detail ? `${entry.name} · ${entry.detail}` : `span ${entry.name} ${ms}ms`
+  }
 
   lines.push(`${entry.name} ${ms}ms`)
   if (entry.target) lines.push(`target ${entry.target}`)
@@ -397,6 +408,60 @@ export function perfSpan<T>(name: string, fn: () => T): T {
  * 更新,真正的开销落在随后那一帧的 React 渲染里)。那种地方 perfSpan 只会量到
  * 一个 0.1ms 的假读数,而一个标记恰好告诉你「后面那帧是这个动作引起的」。
  */
+/**
+ * **「理论不可能」的计数器进环**(R 线设计审查条 13:不变式违反 = 自愈 + 计数,
+ * 永不 throw;计数器须有可见面)。
+ *
+ * 三条纪律,每条都有来处:
+ *
+ *  · **永不抛**。它的调用点全在自愈分支里 —— 那些分支本来就是「已经出事了但屏幕
+ *    要活着」的地方,记一笔的动作自己再炸一次就是把自愈变成事故。
+ *  · **节流去重**。缺段与违法都是**成串**发生的(一条 delta 丢了,后面每一条都对
+ *    不上偏移),不节流的话 200 格的环会被同一件事冲干净,别的读数全丢 ——
+ *    这与 `perfSpan` 设 `PERF_SPAN_MIN_MS` 门槛是同一条理由。
+ *  · **键带现场**。同一条会话的同一件事按键节流,换会话 / 换消息各记各的。
+ *
+ * 落点是既有的那个环(HUD 与通知中心的诊断区读同一份),不新开一条观测路。
+ */
+export const PERF_COUNT_THROTTLE_MS = 5000
+
+/** 节流表的上限(见 `perfCount` 里那段注:键只增,满了整份丢)。 */
+export const PERF_COUNT_KEY_CAP = 500
+
+const countSeenAt = new Map<string, number>()
+
+export function perfCount(
+  name: string,
+  fields?: Record<string, string | number | undefined>,
+  throttleMs: number = PERF_COUNT_THROTTLE_MS,
+): void {
+  try {
+    const detail = Object.entries(fields ?? {})
+      .filter(([, value]) => value !== undefined && value !== '')
+      .map(([key, value]) => `${key}=${String(value)}`)
+      .join(' ')
+    const key = `${name}|${detail}`
+    const now = Date.now()
+    const seen = countSeenAt.get(key)
+    if (seen !== undefined && now - seen < throttleMs) return
+    /*
+     * 节流表按 (名字, 现场) 分键,而现场里有消息 id —— 一条长会话里键是**只增**的。
+     * 生产上这几个计数器应当恒 0(键一个都不长),但「应当」不是「必然」:满了就
+     * 整份丢,下一轮从头节流。丢的代价只是可能多记一笔,而留着的代价是无界。
+     */
+    if (countSeenAt.size >= PERF_COUNT_KEY_CAP) countSeenAt.clear()
+    countSeenAt.set(key, now)
+    push({ ts: now, kind: 'span', ms: 0, name, ...(detail ? { detail } : {}) })
+  } catch {
+    // 记一笔都记不成,那也只能算了 —— 绝不把自愈路上的一次记账变成第二次事故。
+  }
+}
+
+/** 测试用:把节流表清干净(它按会话 / 消息分键,用例之间会互相污染)。 */
+export function __resetPerfCountThrottleForTests(): void {
+  countSeenAt.clear()
+}
+
 export function perfMark(name: string): void {
   push({ ts: Date.now(), kind: 'span', ms: 0, name })
   try {

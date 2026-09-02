@@ -17,7 +17,7 @@ import {
 } from "@shared/ipc.js";
 import { getEventBus } from "../../../events/index.js";
 import { createEventOnlyEmitter } from "../../../events/event-only-emitter.js";
-import { offerDeltaStamp } from "../../../events/delta-stamp.js";
+import { clearDeltaStamps, offerDeltaStamp } from "../../../events/delta-stamp.js";
 import {
 	isUiEventStreamEnabled,
 	pushSessionUiStreamEvent,
@@ -1125,6 +1125,20 @@ export async function executeAgentLoopStreamGeneration(
 		throw error;
 	} finally {
 		state.eventRecorder?.flush();
+		/*
+		 * **散场收台面**(R1 交接台,09-02 补)。
+		 *
+		 * 台子上那一格是「刚刚铸好、等下一条裸 delta 来取」的一枚章。正常一来一取
+		 * 之间没有空隙,但**这一轮的最后一条**可能没人来取(中断 / 出错 / 旁路直接
+		 * 发的正文认领不到),于是一枚**上一轮的**章留在台上过夜。
+		 *
+		 * 它不是内存问题(一个会话一格),是**盖错章的风险**:台子按 `(kind, 原文)`
+		 * 认领,而下一轮开头完全可能又是同一句短话("好"、"嗯"、一个换行)——
+		 * 那时新 delta 会认领到旧 run 的章,水位表把这一段正文写进**上一轮的段号**里。
+		 * 交接台的头注写着「宁可缺一枚章,不肯盖一枚错的」,这一句就是那句话在
+		 * 生命周期上的落点。
+		 */
+		clearDeltaStamps(ctx.sessionId);
 		// U0:同步点换过锚点但消费侧没来得及接手(中断 / 出错 / 循环到头)——
 		// 那道影子闸必须开,否则被接手的那条 run 永远不比(门看的是 run 数)。
 		state.pendingAssistantRotation?.releaseShadow();

@@ -41,7 +41,9 @@ const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } 
 const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
 const { beginSessionRun, resetSessionRuns } = await import('../../../../session/runs.js')
 const { resetSessionEventStatsCache } = await import('../../../../session/event-stats.js')
-const { createSessionEventRecorder } = await import('../session-event-recorder.js')
+const { createSessionEventRecorder, attachSessionEventRecorder } = await import(
+  '../session-event-recorder.js'
+)
 const { createStreamBuffer, appendStreamBufferChunk, drainStreamBuffer, SessionStreamCoalescer } = await import(
   '../../../../events/stream-coalescer.js'
 )
@@ -368,5 +370,103 @@ describe('R1 出口:合帧器交出去的那一份带着章', () => {
     expect(deltas).toHaveLength(1)
     expect(deltas[0]).toMatchObject({ text: '甲乙', messageId: 'a1', stamp: { charOffset: 0, partIndex: 0 } })
     coalescer.dispose()
+  })
+})
+
+/**
+ * **交接台的两条生命周期法**(09-02 补,编排者读源码审出的两格)。
+ */
+describe('交接台:同步次序与散场收台', () => {
+  const textEvent = (delta: string) =>
+    ({ type: 'text-delta', delta } as unknown as AgentStreamEvent)
+
+  /** 用**真包装器**(不是抄一份)搭一条「记录器 → 执行器」的链。 */
+  function wrap(onEvent: (event: AgentStreamEvent) => void) {
+    return attachSessionEventRecorder(
+      { onEvent } as never,
+      {
+        sessionId: SESSION,
+        providerId: 'p',
+        model: 'm',
+        systemPrompt: 'sys',
+        tools: [],
+        getMessageId: () => 'a1',
+        offerDeltaStamp: (slot: Minted) => offerDeltaStamp(SESSION, slot),
+      } as never,
+    )
+  }
+
+  it('记录器先铸章、执行器后发 delta —— 中间没有 await,所以认领必命中', () => {
+    /*
+     * 这条法不是巧合,是 `attachSessionEventRecorder` 那个包装器自己立的规矩:
+     * 同一条 agent-loop 事件,`recorder.handle(event)` 跑完才轮到原来的 `onEvent`。
+     * 一旦有人在这两句之间插一个 `await`,`onEvent` 就退到微任务里跑,而台面上那一格
+     * 早被下一条事件覆盖 —— 这条用例当场红。它守的就是那个「没有 await」。
+     */
+    const claimed: (StreamDeltaStamp | undefined)[] = []
+    const { runtime } = wrap(event => {
+      if ((event as { type?: string }).type !== 'text-delta') return
+      const delta = (event as { delta?: string }).delta ?? ''
+      claimed.push(claimDeltaStamp(SESSION, 'text', delta))
+    })
+    // 先开一轮 —— 章上要有 requestIndex,那一格由 `turn-start` 给。
+    runtime.onEvent?.({ type: 'turn-start', turn: 1 } as unknown as AgentStreamEvent)
+    runtime.onEvent?.(textEvent('先说结论'))
+    runtime.onEvent?.(textEvent(':通的。'))
+    expect(claimed).toHaveLength(2)
+    expect(claimed[0]).toMatchObject({ messageId: 'a1', partIndex: 0, charOffset: 0 })
+    expect(claimed[1]).toMatchObject({ partIndex: 0, charOffset: '先说结论'.length })
+  })
+
+  it('插一个 await 就认领不到 —— 上面那条法守的正是这个', async () => {
+    // 反证写成用例:同一条链,只把认领挪到微任务里(等价于包装器插了个 await)。
+    const claimed: (StreamDeltaStamp | undefined)[] = []
+    const pending: Promise<void>[] = []
+    const { runtime } = wrap(event => {
+      if ((event as { type?: string }).type !== 'text-delta') return
+      const delta = (event as { delta?: string }).delta ?? ''
+      pending.push(Promise.resolve().then(() => {
+        claimed.push(claimDeltaStamp(SESSION, 'text', delta))
+      }))
+    })
+    runtime.onEvent?.({ type: 'turn-start', turn: 1 } as unknown as AgentStreamEvent)
+    runtime.onEvent?.(textEvent('第一截'))
+    runtime.onEvent?.(textEvent('第二截'))
+    await Promise.all(pending)
+    // 台面上只剩最后一枚章,第一条认领不到(第二条也只可能对上它自己那一枚)。
+    expect(claimed[0]).toBeUndefined()
+  })
+
+  it('散场收台面:留在台上的旧章不许被下一轮同文认领', () => {
+    /*
+     * 台子按 `(kind, 原文)` 认领。这一轮最后一条没人来取时,那枚章会留到下一轮;
+     * 下一轮开头又是同一句短话(「好」这种)就会认领到**上一轮的段号**,水位表
+     * 于是把正文写进错误的段。执行器的 `finally` 里那一句 `clearDeltaStamps` 治的
+     * 就是它 —— 这条用例把危险与修法各证一半。
+     */
+    offerDeltaStamp(SESSION, {
+      kind: 'text',
+      text: '好',
+      stamp: { messageId: 'a-old', runId: 'r-old', requestIndex: 9, partIndex: 7, kind: 'text', charOffset: 42, gen: 0 },
+    })
+    // 不收台:下一轮同一句短话认领到了上一轮的段号 —— 这就是要防的那件事。
+    expect(claimDeltaStamp(SESSION, 'text', '好')).toMatchObject({ partIndex: 7, charOffset: 42 })
+
+    offerDeltaStamp(SESSION, {
+      kind: 'text',
+      text: '好',
+      stamp: { messageId: 'a-old', runId: 'r-old', requestIndex: 9, partIndex: 7, kind: 'text', charOffset: 42, gen: 0 },
+    })
+    clearDeltaStamps(SESSION)
+    expect(claimDeltaStamp(SESSION, 'text', '好')).toBeUndefined()
+  })
+
+  it('收台只收自己那一格 —— 别的会话不受影响(审查条 4)', () => {
+    const stamp = { messageId: 'a', runId: 'r', requestIndex: 0, partIndex: 0, kind: 'text' as const, charOffset: 0, gen: 0 }
+    offerDeltaStamp('other', { kind: 'text', text: '好', stamp })
+    offerDeltaStamp(SESSION, { kind: 'text', text: '好', stamp })
+    clearDeltaStamps(SESSION)
+    expect(claimDeltaStamp(SESSION, 'text', '好')).toBeUndefined()
+    expect(claimDeltaStamp('other', 'text', '好')).toEqual(stamp)
   })
 })

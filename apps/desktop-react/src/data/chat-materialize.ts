@@ -163,8 +163,12 @@ export function __countMemoMisses(
  */
 function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMessage {
   if (!water) return message
+  /*
+   * **水位空着也要往下走**(09-02):中途入场那一形的定义就是「水位一格都没有」
+   * —— 在这里早退等于把补账那一段(见下面「账本比 parts 长的那截」)直接关掉。
+   * 水位空时下面两个循环各自空转,代价是零。
+   */
   const live = water.parts(message.id)
-  if (live.length === 0) return message
 
   const ledger = (message.contentParts ?? []) as Array<{
     type?: string
@@ -231,6 +235,64 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
    * 「锚点没认领到的调用摆出来」自然把它排在最后 —— 而「刚刚开始的这一次」
    * 本来就该在最后。账本已经有的 id 一律不画(少一张是说谎,多一张是重影)。
    */
+  /*
+   * ── **中途入场 / 重连:账本已经收到、但 parts 还画不出来的那一截**(09-02 修)──
+   *
+   * 病历(编排者读源码审出来的真回归,链是三段合起来才成立的):
+   *  ① `contentParts` 只在 `requestSettled` 之后物化(投影的那道闸);
+   *  ② `anchorMessage` 只在 parts **整个为空**时才回落 `message.content`;
+   *  ③ 水位表按连续前缀律收 delta —— 中途入场那一刻收到的第一条偏移不为 0,
+   *     按律丢掉(**这是对的**:带洞的字符串比没有更坏)。
+   * 三条各自都对,合起来就是:当前这一个请求已经流出来的正文,**既不在水位、
+   * 也不在 parts**,屏幕上一个字都没有,一直等到 `run/end`。而「账本 ≤2s 自愈」
+   * 在这里不成立 —— 打包行只让 `message.content` 变长,不物化 parts。
+   *
+   * 旧路本来有这条(6ce26668 的第 ② 条「账本正文比 parts 长的那截照样画」),
+   * R2 把拼装机器整条退役时一并带走了。这里把它按新坐标系接回来。
+   *
+   * ── 三条判据,一条都不能少 ────────────────────────────────────────────
+   *  · **只在账本比画得出来的长时补**,补的是那一截差额;
+   *  · **必须是前缀关系**(`startsWith`)。不是前缀 = 两边说的不是同一个字符串
+   *    (水位领先、或者段序错开),那时**一个字都不补** —— 宁可少画一截,
+   *    不肯画错位置(这条不对称决定了所有取舍,与增量解析器那条同源);
+   *  · **不引回尾巴**:补出来的是一格 `contentParts`,走的还是 parts 那套坐标系,
+   *    没有第二条内容车道。
+   *
+   * ── 记档:两处已知的照不到 ────────────────────────────────────────────
+   *  · 未结算请求里的**行内推理**补不出来 —— `message.content` 是正文,推理不在
+   *    里面,账本侧没有第二个产地可比(顶部推理有 `message.reasoning`,不受影响);
+   *  · 「水位领先某一段 + 另一段中途入场」混在一起时前缀关系不成立,按上面第二条
+   *    整段作废。两条都不静默:它们各是一次 `stream.water.divergence` 之外的
+   *    「照不到」,写在这里而不是假装已经盖住。
+   */
+  const drawnText = parts
+    .filter(part => part.type === 'text')
+    .map(part => part.content ?? '')
+    .join('')
+  const ledgerContent = message.content ?? ''
+  if (ledgerContent.length > drawnText.length && ledgerContent.startsWith(drawnText)) {
+    /*
+     * 回合号取「这条消息此刻**最佳可知**的那个」:水位章上的(最准)、账本 parts 上的、
+     * steps 上的,三者取大。这一截按定义属于**当前**这个请求,而当前请求排在所有
+     * 已经落地的工具之后 —— 取大正好让 `insertDataStepsByTurn` 把那些锚点排在它前面。
+     *
+     * 它是**推断**不是事实:真正权威的号在身份章上,而中途入场这一形按定义没有章
+     * (第一条 delta 就被连续前缀律丢了)。所以这里写明是最佳可知值,不假装是事实。
+     */
+    const currentTurn = Math.max(
+      0,
+      ...live.map(part => part.turnIndex ?? 0),
+      ...ledger.map(part => part.turnIndex ?? 0),
+      ...((message.steps ?? []) as Array<{ turnIndex?: number }>).map(step => step.turnIndex ?? 0),
+    )
+    if (!changed) { parts = [...ledger]; changed = true }
+    parts.push({
+      type: 'text',
+      content: ledgerContent.slice(drawnText.length),
+      turnIndex: currentTurn,
+    })
+  }
+
   const ledgerCallIds = new Set((message.toolCalls ?? []).map(call => call.id))
   const liveTools = water.tools(message.id).filter(tool => !ledgerCallIds.has(tool.id))
   if (liveTools.length > 0) changed = true

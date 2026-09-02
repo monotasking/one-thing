@@ -134,3 +134,64 @@ describe('清格(第六不变式的落点)', () => {
     expect(water.parts('a1')).toHaveLength(0)
   })
 })
+
+/**
+ * **前缀定律的对账**(09-02,第 2 条不变式的岗哨)。
+ *
+ * 定律说:对每个 (消息, part),活流与账本装下的是**同一字符串的两个前缀**。
+ * 它是「同一截只画一次」「只长不缩」的地基,而地基本身从前没有任何人验过 ——
+ * 上游一旦破坏它,屏幕会安静地画一份拼错的正文。
+ *
+ * 验在**清格**那一刻(打包行到达,≤2s 一次),不是每帧:定律的地基是账本,而账本
+ * 只在那一刻长。对不上就当场退役那一格(退回纯账本投影 = 诚实的那一份)+ 计一笔,
+ * **永不抛**(审查条 13)。
+ */
+describe('前缀定律对账(审查条 13 的自愈 + 计数)', () => {
+  it('对得上:照旧只按长度清格,一格都不误伤', () => {
+    const water = new StreamWater()
+    water.feed(stamp(), '先说结论:')
+    water.feed(stamp({ charOffset: 5 }), '通的。')
+    // 账本此刻画得出 5 个字,是水位那 8 个字的前缀 —— 合法,而且没追平,不清。
+    const result = water.settle('a1', new Map([[0, 5]]), () => '先说结论:')
+    expect(result.diverged).toBe(0)
+    expect(textOf(water, 'a1')).toBe('先说结论:通的。')
+    expect(water.divergenceCount).toBe(0)
+  })
+
+  it('账本追平了就清格 —— 对账不改「清格不改结果」那条', () => {
+    const water = new StreamWater()
+    water.feed(stamp(), '先说结论:')
+    const result = water.settle('a1', new Map([[0, 5]]), () => '先说结论:')
+    expect(result.diverged).toBe(0)
+    expect(textOf(water, 'a1')).toBeUndefined()
+  })
+
+  it('对不上:那一格当场退役 + 计一笔,不抛', () => {
+    const water = new StreamWater()
+    water.feed(stamp(), '水位这边说的是这一句。')
+    expect(() => {
+      const result = water.settle('a1', new Map([[0, 3]]), () => '账本那边说的是另一句')
+      expect(result.diverged).toBe(1)
+    }).not.toThrow()
+    // 退回纯账本投影 —— 留着它才是继续说谎。
+    expect(textOf(water, 'a1')).toBeUndefined()
+    expect(water.divergenceCount).toBe(1)
+  })
+
+  it('不给对账口就只按长度清格(旧行为逐字不变)', () => {
+    const water = new StreamWater()
+    water.feed(stamp(), '水位这边说的是这一句。')
+    const result = water.settle('a1', new Map([[0, 3]]))
+    expect(result.diverged).toBe(0)
+    expect(textOf(water, 'a1')).toBe('水位这边说的是这一句。')
+  })
+
+  it('账本比水位短也验:短的那条当前缀比', () => {
+    const water = new StreamWater()
+    water.feed(stamp(), '同一句话的前半截还有后半截')
+    // 账本只画得出前 5 个字,而那 5 个字与水位对得上 —— 合法。
+    expect(water.settle('a1', new Map([[0, 5]]), () => '同一句话的').diverged).toBe(0)
+    // 换成对不上的 5 个字 —— 当场违法。
+    expect(water.settle('a1', new Map([[0, 5]]), () => '另外一句话').diverged).toBe(1)
+  })
+})
