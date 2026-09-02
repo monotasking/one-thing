@@ -374,6 +374,26 @@
 }
 
 /*
+ * 「这次没拿到,原话是这句」—— **与列表并存**的那一行(7e 规范修正)。
+ * 与 .state 那块窄栏是两件事:.state 是「屏幕上没有卡」的整块空态,
+ * 这一行是「卡还在,只是这次没刷新成功」。
+ *
+ * 危险色**只上图标与字**:不铺底、不描边(规范画布状态色纪律)。
+ * 左右内边距对齐搜索条那一栏(--expose-pad),所以它读起来是表头下面的一行,
+ * 而不是浮在内容上的一块。形照 providers/ModelCatalog.module.css 的 .error。
+ */
+.error {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0 var(--expose-pad) var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+/*
  * 搜不到:一行灰字,居中,不出插画 —— 「没配上这个词」是一次很轻的事件,
  * 和上面那三种「这里没有卡」不是同一个量级,所以不共用 .state 那块窄栏。
  */

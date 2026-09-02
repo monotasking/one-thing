@@ -3,7 +3,12 @@ import type { SessionMeta } from '@shared/ipc/chat'
 import type { SpaceRecord } from '@shared/ipc/spaces'
 import { configureSpacesPort } from '../../data/spaces-port'
 import { configureSessionsPort, type SessionsPort } from '../../data/sessions-port'
-import { REFRESH_THROTTLE_MS, onSessionsRemoved, useSessionsSource } from '../../data/sessions-source'
+import {
+  REFRESH_THROTTLE_MS,
+  onSessionsRemoved,
+  sessionsQuery,
+  useSessionsSource,
+} from '../../data/sessions-source'
 import { useWorkspaceStore } from '../store'
 import { currentSpaceId, subscribeCurrentSpace } from '../current'
 import { DEFAULT_SPACE_ID } from '../types'
@@ -170,7 +175,9 @@ describe('会话列表按空间投影', () => {
       // 新世界的首屏是**同步**就位的 —— 这一句就是「不闪」的机器证明:
       // 没有请求就没有等待,也就没有骨架的位置。
       expect(useSessionsSource.getState().sessions.map((s) => s.id)).toEqual(['in-work'])
-      expect(useSessionsSource.getState().status).toBe('ready')
+      // 换世界一发请求都不打,所以那一格 query 一动没动:还是上一次那份答案。
+      expect(sessionsQuery.get().phase).toBe('ready')
+      expect(sessionsQuery.get().inflight).toBe(false)
 
       useWorkspaceStore.getState().switchTo(DEFAULT_SPACE_ID)
       expect(useSessionsSource.getState().sessions.map((s) => s.id)).toEqual([
@@ -210,8 +217,9 @@ describe('会话列表按空间投影', () => {
     const st = useSessionsSource.getState()
     expect(st.sessions).toEqual([])
     expect(st.groups).toEqual([])
-    expect(st.status).toBe('ready')
-    expect(st.error).toBeUndefined()
+    // 空列表不是错误态:那一格照样是 ready,一句错都没有。
+    expect(sessionsQuery.get().phase).toBe('ready')
+    expect(sessionsQuery.get().error).toBeUndefined()
   })
 })
 

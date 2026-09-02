@@ -227,8 +227,7 @@ describe('expose.newSession:唯一的建会话入口', () => {
   })
 
   it('⌘N 那一条落在**当前会话的项目**下', async () => {
-    useSessionsSource.setState({ status: 'ready' })
-    await useSessionsSource.getState().refresh()
+    await useSessionsSource.getState().start()
     useExposeStore.setState({ currentSessionId: 'os-provider' })
     landOnServer(ONETHING_DIR)
 

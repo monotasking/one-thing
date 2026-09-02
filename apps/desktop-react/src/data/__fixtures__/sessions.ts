@@ -1,9 +1,11 @@
 import type { SessionMeta } from '@shared/ipc/chat'
 import { buildGroups, buildProjects, toSessionSummary } from '../../expose/projection'
+import { configureSessionsPort } from '../sessions-port'
 import {
   chaptersQuery,
   markersQuery,
   messagesQuery,
+  sessionsQuery,
   useSessionsSource,
 } from '../sessions-source'
 import type {
@@ -170,15 +172,27 @@ export function seedSessionsSource(
     chapters: Record<string, SessionChapter[]>
     messages: Record<string, SessionPreviewMessage[]>
     markers: Record<string, SessionMarker[]>
-    status: 'idle' | 'loading' | 'ready' | 'error'
-    error?: string
+    /**
+     * 列表那一格此刻是「从来没问过」还是「手上有答案」(7e:从前那个压扁的
+     * `status` 退役了,这里跟着换成 query 的 `phase`)。
+     *  · `'ready'`(缺省)—— `patch` 一份样本进去,phase 走到 ready;
+     *  · `'initial'` —— 那一格回出厂,屏幕上该画「正在读会话」。
+     * **error 不在这里摆**:它只有走一次真的失败才拿得到,见 `seedSessionsFailure`。
+     */
+    phase: 'initial' | 'ready'
   }> = {},
 ): void {
   const sessions = overrides.sessions ?? SESSIONS
   const projects = buildProjects(sessions)
+  /*
+   * 列表那一格也要摆(7e):产品那条路上 store 的三格是它的投影,
+   * 而消费者里已经有人直接读那一格的 `phase` / `error`(总览的三种空态)。
+   * 用 `patch()` 而不是配一个端口再 `ensure` —— 组件测试要的是「数据在场时屏幕
+   * 长什么样」,不是「取数怎么发生」(与下面三张按需缓存同一条理由)。
+   */
+  sessionsQuery.reset()
+  if ((overrides.phase ?? 'ready') === 'ready') sessionsQuery.patch(sessions)
   useSessionsSource.setState({
-    status: overrides.status ?? 'ready',
-    error: overrides.error,
     sessions,
     projects,
     groups: buildGroups(projects, sessions),
@@ -210,4 +224,36 @@ export function seedSessionCaches(
   for (const [id, value] of Object.entries(caches.chapters ?? {})) chaptersQuery.get(id).patch(value)
   for (const [id, value] of Object.entries(caches.messages ?? {})) messagesQuery.get(id).patch(value)
   for (const [id, value] of Object.entries(caches.markers ?? {})) markersQuery.get(id).patch(value)
+}
+
+/**
+ * 摆一个**真的失败过**的列表格(7e)。
+ *
+ * 与三张缓存那边的 `patch` 不同,这一格没法「摆一个错进去」—— kernel 里没有
+ * 「就地设一句错」的口,而**也不该有**:错误是取数失败的结果,给原语开一个
+ * 只有测试用的写口,等于让屏幕上那句话多一个不经过真实路径的产地。
+ *
+ * 所以这里走的是真路:换一个「后端说不行」的端口,`refetch()` 一次。
+ * 因此它是 async 的,调用点得 await —— 那正是这条路真实的样子。
+ *
+ * `sessions` 给非空表就得到「有列表 + 有错」那一档(7e 规范修正要验的并存),
+ * 缺省是「一条都没有 + 有错」那一档(整块「没连上 core」空态)。
+ */
+export async function seedSessionsFailure(
+  error: string,
+  sessions: SessionSummary[] = [],
+): Promise<void> {
+  seedSessionsSource({ sessions, phase: sessions.length > 0 ? 'ready' : 'initial' })
+  configureSessionsPort({
+    ready: async () => undefined,
+    listMeta: async () => ({ success: false, error }),
+    getSegments: async () => ({ success: true, segments: [] }),
+    getMessagesPage: async () => ({ success: true, messages: [] }),
+    getUserMarkers: async () => ({ success: true, markers: [] }),
+    create: async () => ({ success: false, error: 'not stubbed' }),
+    updateWorkingDirectory: async () => ({ success: true }),
+    onSessionEvent: () => () => undefined,
+    onSessionLifecycle: () => () => undefined,
+  })
+  await sessionsQuery.refetch()
 }

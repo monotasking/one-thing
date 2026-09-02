@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react'
-import { ChevronDown, ChevronRight, Plus, Search } from '../../components/icons'
+import { ChevronDown, ChevronRight, Plus, Search, TriangleAlert } from '../../components/icons'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { useT } from '../../i18n'
-import { useSessionsSource } from '../../data/sessions-source'
+import { useAsyncPending } from '../../data/kernel'
+import { CREATE_KEY, sessionMutation, useSessionsList, useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
 import { useExposeLive } from './use-live'
 import { columnsFromTemplate, filterGroups, isCollapsed } from '../transitions'
@@ -134,8 +135,20 @@ export function Overview() {
   const focusVisible = useExposeStore((st) => st.focusVisible)
   const setColumns = useExposeStore((st) => st.setColumns)
   const allGroups = useSessionsSource((st) => st.groups)
-  const status = useSessionsSource((st) => st.status)
-  const error = useSessionsSource((st) => st.error)
+  /*
+   * 「读到哪一步了」读的是列表那一格 query 的快照,不再是 store 上一个压扁的
+   * `status`(7e)。两个读数**正交**,各画各的:
+   *  · `phase === 'initial'` = 从来没有过列表 → 只有这时候画「正在读」;
+   *    一旦有过就永远是 ready,重拉时屏幕上那份留着(律②),不退回等待态;
+   *  · `error` = 最近一次没拿到的原话,**与列表并存**(见下面那行 errorLine)。
+   */
+  const list = useSessionsList()
+  const { phase, error } = list
+  /*
+   * 建会话正在飞吗 —— 逐格读数(键 = `CREATE_KEY`),不是整面的忙布尔。
+   * 组头那颗 `+` 据它上 `aria-busy` 并挡住第二发(律③)。
+   */
+  const creating = useAsyncPending(sessionMutation, CREATE_KEY)
   const inputRef = useRef<HTMLInputElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -269,7 +282,19 @@ export function Overview() {
                 className={s.plus}
                 data-testid={`group-plus-${group.id}`}
                 aria-label={t('expose.newSessionIn', { name: name ?? group.id })}
-                onClick={() => void useExposeStore.getState().newSession(group.projectId)}
+                /*
+                 * 律③:反馈长在**发起它的那个控件**上。这一格今天只上无障碍语义
+                 * (`aria-busy`)—— **零新像素**:这颗钮的几何与配色一个字不动。
+                 * 不用 `disabled`,因为「在飞」不是「不可用」:禁灰会把它从焦点序
+                 * 里摘掉,键盘走到一半的人当场丢焦点。
+                 */
+                aria-busy={creating || undefined}
+                onClick={() => {
+                  // 二次闸:飞着的时候再按几下都当没按(⌘N 长按的自动重复同理,
+                  // 那条路的闸在 `expose/store.newSession` 里,判的是整段编排)。
+                  if (creating) return
+                  void useExposeStore.getState().newSession(group.projectId)
+                }}
               >
                 <Plus className={s.plusIcon} strokeWidth={1.75} aria-hidden="true" />
               </Button>
@@ -310,17 +335,23 @@ export function Overview() {
       return <p className={s.noMatch}>{t('expose.noMatchingSessions')}</p>
     }
 
-    if (status === 'error') {
+    /*
+     * 手上**一条列表都没有**时,那句错就是这块面的全部内容 —— 整块空态说全话
+     * (标题 + 原文)。手上有列表的那一档不走这里:它是表头下面那一行
+     * `errorLine`,与列表并存(7e 规范修正,见 render 里那段)。
+     */
+    if (error) {
       return (
         <div className={s.state}>
           <span className={s.stateTitle}>{t('expose.disconnectedTitle')}</span>
           <span className={s.stateHint}>
-            {t('expose.disconnectedHint', { error: error ?? '' })}
+            {t('expose.disconnectedHint', { error })}
           </span>
         </div>
       )
     }
-    if (status === 'idle' || status === 'loading') {
+    // 骨架 / 等待只看 `phase`(律①):从来没有过列表才算「还在读」。
+    if (phase === 'initial') {
       return (
         <div className={s.state}>
           <span className={s.stateHint}>{t('expose.loading')}</span>
@@ -356,6 +387,30 @@ export function Overview() {
           {t('expose.newProject')}
         </Button>
       </header>
+
+      {/*
+        ── 7e 规范修正(勘察偏离 5 结掉)──────────────────────────────────
+        **错误与列表并存**(律②的另一半):手上还有列表时,这一行只说
+        「这次没拿到,原话是这句」,它不负责把列表清掉、也不负责替代列表。
+
+        从前这块面只有一种画法 —— 整块「没连上 core」空态,而它排在
+        `renderGroups()` 的「有卡就画卡」后面,于是**有列表时那句错永远画不出来**
+        (分支顺序把它遮住了)。形照 `providers/ModelCatalog` 表头下面那一行:
+        危险色只上图标与字,不铺底、不描边(规范画布状态色纪律)。
+
+        判据用 `allGroups`(过滤前)而不是 `groups`:搜不到词的那一屏手上照样
+        有列表,那句错该照说。文案复用这块面既有的两个键,零新键。
+      */}
+      {error && allGroups.length > 0 && (
+        <p className={s.error} role="status">
+          <TriangleAlert size={14} aria-hidden="true" />
+          <span>
+            {t('expose.disconnectedTitle')}
+            {' · '}
+            {t('expose.disconnectedHint', { error })}
+          </span>
+        </p>
+      )}
 
       {/*
        * data-testid 是给真机门的**稳定选择器**(同 ListView 那一枚):CSS Modules

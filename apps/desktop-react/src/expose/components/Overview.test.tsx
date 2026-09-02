@@ -1,10 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useStageStore } from '../../stage/store'
 import { Overview } from './Overview'
-import { GROUPS, seedSessionsSource } from '../../data/__fixtures__/sessions'
+import {
+  GROUPS,
+  SESSIONS,
+  SESSION_META,
+  seedSessionsFailure,
+  seedSessionsSource,
+} from '../../data/__fixtures__/sessions'
+import { configureSessionsPort } from '../../data/sessions-port'
+import { sessionMutation, sessionsQuery } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
 import { initialExposeState } from '../transitions'
 
@@ -92,24 +100,214 @@ describe('总览组头:折叠/展开是原地形变', () => {
  * 还在读 / 读不到(没连上 core)/ 真的一条会话都没有。
  */
 describe('会话侧的三种空态', () => {
-  it('读不到时说的是「没连上 core」,并带上那句错误原文', () => {
-    seedSessionsSource({ status: 'error', error: '连不上', sessions: [] })
+  it('读不到时说的是「没连上 core」,并带上那句错误原文', async () => {
+    await seedSessionsFailure('连不上')
     render(<Overview />)
     expect(screen.getByText('没连上 core')).toBeTruthy()
     expect(screen.getByText(/连不上/)).toBeTruthy()
   })
 
   it('还在读时说的是「正在读会话」,不画一张假卡', () => {
-    seedSessionsSource({ status: 'loading', sessions: [] })
+    // 律①:骨架 / 等待只看 `phase === 'initial'` —— 「从来没有过列表」。
+    seedSessionsSource({ sessions: [], phase: 'initial' })
     render(<Overview />)
     expect(screen.getByText('正在读会话…')).toBeTruthy()
     expect(screen.queryAllByTestId(/^group-toggle-/).length).toBe(0)
   })
 
   it('真的一条都没有时是「这里还没有会话」', () => {
-    seedSessionsSource({ status: 'ready', sessions: [] })
+    seedSessionsSource({ sessions: [] })
     render(<Overview />)
     expect(screen.getByText('这里还没有会话')).toBeTruthy()
+  })
+
+  /**
+   * 律①:等待态的判据**只有** `phase === 'initial'`(「从来没有过列表」),
+   * 不许掺 `inflight`。
+   *
+   * 分得开的那一档正是这里:后端说过「你一条会话都没有」(phase 走到 ready),
+   * 此刻一发后台重拉在飞 —— 该说的仍然是「这里还没有会话」。掺了 inflight 的话,
+   * 每秒一次的重拉都会把这句话换成「正在读会话…」再换回来,一句结论闪成一个转圈。
+   * (有卡的那一档由「有卡就画卡」那条分支兜住,分不出两种判据。)
+   */
+  it('空列表 + 后台重拉在飞:说的仍是「这里还没有会话」,不是「正在读」', async () => {
+    seedSessionsSource({ sessions: [] })
+    let release!: () => void
+    const gate = new Promise<void>((res) => {
+      release = res
+    })
+    configureSessionsPort({
+      ready: async () => undefined,
+      listMeta: async () => {
+        await gate
+        return { success: true, sessions: [] }
+      },
+      getSegments: async () => ({ success: true, segments: [] }),
+      getMessagesPage: async () => ({ success: true, messages: [] }),
+      getUserMarkers: async () => ({ success: true, markers: [] }),
+      create: async () => ({ success: false, error: 'not stubbed' }),
+      updateWorkingDirectory: async () => ({ success: true }),
+      onSessionEvent: () => () => undefined,
+      onSessionLifecycle: () => () => undefined,
+    })
+
+    let flying!: Promise<void>
+    await act(async () => {
+      flying = sessionsQuery.refetch()
+      await Promise.resolve()
+    })
+    render(<Overview />)
+
+    expect(sessionsQuery.get().inflight).toBe(true)
+    expect(sessionsQuery.get().phase).toBe('ready')
+    expect(screen.getByText('这里还没有会话')).toBeTruthy()
+    expect(screen.queryByText('正在读会话…')).toBeNull()
+
+    await act(async () => {
+      release()
+      await flying
+    })
+  })
+})
+
+/**
+ * ── 7e 规范修正(勘察偏离 5 结掉)──────────────────────────────────────────
+ * 从前这块面只有一种画法:整块「没连上 core」空态,而它排在「有卡就画卡」
+ * 后面 —— 于是**手上有列表时那句错永远画不出来**(分支顺序把它遮住了)。
+ * 现在错误与列表**并存**:卡照留在屏上(律②),表头下面多一行原话。
+ */
+describe('错误与列表并存', () => {
+  it('手上有列表时:卡还在屏上,同时多出那一行原话', async () => {
+    await seedSessionsFailure('连不上', SESSIONS)
+    render(<Overview />)
+
+    // 列表没被清掉 —— 组还在,卡还在(这一句就是律②)。
+    expect(screen.getAllByTestId(/^group-toggle-/).length).toBeGreaterThan(0)
+    // 那句错也在,而且是那一行(role=status),不是整块空态。
+    const line = screen.getByRole('status')
+    expect(line.textContent).toContain('没连上 core')
+    expect(line.textContent).toContain('连不上')
+    // 整块空态的两句话一句都没出现(它们是「屏幕上没有卡」那一档的)。
+    expect(screen.queryByText('这里还没有会话')).toBeNull()
+    expect(screen.queryByText('正在读会话…')).toBeNull()
+  })
+
+  it('搜不到词的那一屏照样说 —— 手上有列表这件事不因为过滤而改变', async () => {
+    await seedSessionsFailure('连不上', SESSIONS)
+    useExposeStore.setState({ query: '绝不可能命中的词' })
+    render(<Overview />)
+
+    expect(screen.getByRole('status').textContent).toContain('连不上')
+  })
+
+  it('没有错误时那一行不在场(零常驻像素)', () => {
+    seedSessionsSource()
+    render(<Overview />)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+})
+
+/**
+ * 律③:异步动作的反馈长在**发起它的那个控件**上,而且是**逐格**的。
+ * 建会话唯一的入口就是组头那颗 `+`。
+ */
+describe('新建入口的进行中反馈', () => {
+  /** 可控的一发建会话:拿住「正在飞」那一刻,拿计时器去撞是碰运气。 */
+  function flyCreate(): { land: () => void; done: Promise<unknown> } {
+    let release!: () => void
+    const gate = new Promise<void>((res) => {
+      release = res
+    })
+    configureSessionsPort({
+      ready: async () => undefined,
+      // 落地之后 settle 会重拉一次 —— 回的是同一份样本,于是 `equals` 判「没变」、
+      // kernel 留住上一份、屏幕上那些组一个都不换(顺带就是律④那条守卫)。
+      listMeta: async () => ({ success: true, sessions: SESSION_META }),
+      getSegments: async () => ({ success: true, segments: [] }),
+      getMessagesPage: async () => ({ success: true, messages: [] }),
+      getUserMarkers: async () => ({ success: true, markers: [] }),
+      create: async () => {
+        await gate
+        return {
+          success: true,
+          session: { id: 'new-1', name: 'New Chat', messages: [], createdAt: 0, updatedAt: 0 },
+        }
+      },
+      updateWorkingDirectory: async () => ({ success: true }),
+      onSessionEvent: () => () => undefined,
+      onSessionLifecycle: () => () => undefined,
+    })
+    /*
+     * 直接跑那只 mutation,而不是点钮走 `newSession` —— 这一批要钉的是
+     * 「控件读的是不是那一格忙态」,而 `newSession` 后面还挂着进会话 / 开聊天面
+     * 一整串编排(那条链在 data/session-create.test.ts 里钉)。
+     */
+    return { land: release, done: sessionMutation.run({ kind: 'create', projectId: null }) }
+  }
+
+  afterEach(() => sessionMutation.reset())
+
+  it('在飞时那颗 + 上 aria-busy —— 逐格,不是整面禁灰', async () => {
+    seedSessionsSource()
+    render(<Overview />)
+    const plus = screen.getByTestId(`group-plus-${FIRST_GROUP}`)
+    expect(plus.getAttribute('aria-busy')).toBeNull()
+
+    let flight!: ReturnType<typeof flyCreate>
+    await act(async () => {
+      flight = flyCreate()
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId(`group-plus-${FIRST_GROUP}`).getAttribute('aria-busy')).toBe('true')
+
+    await act(async () => {
+      flight.land()
+      await flight.done
+    })
+    expect(screen.getByTestId(`group-plus-${FIRST_GROUP}`).getAttribute('aria-busy')).toBeNull()
+  })
+
+  it('二次闸:飞着的时候再点几下,一发都不发出去', async () => {
+    seedSessionsSource()
+    render(<Overview />)
+    const calls: (string | null)[] = []
+    const before = useExposeStore.getState().newSession
+    useExposeStore.setState({ newSession: async (projectId) => void calls.push(projectId) })
+    try {
+      let flight!: ReturnType<typeof flyCreate>
+      await act(async () => {
+        flight = flyCreate()
+        await Promise.resolve()
+      })
+      fireEvent.click(screen.getByTestId(`group-plus-${FIRST_GROUP}`))
+      fireEvent.click(screen.getByTestId(`group-plus-${FIRST_GROUP}`))
+      expect(calls).toEqual([])
+
+      await act(async () => {
+        flight.land()
+        await flight.done
+      })
+      // 落地之后那颗钮照常工作 —— 闸是「在飞时」而不是「按过一次就废」。
+      fireEvent.click(screen.getByTestId(`group-plus-${FIRST_GROUP}`))
+      expect(calls).toEqual([GROUPS[0].projectId])
+    } finally {
+      useExposeStore.setState({ newSession: before })
+    }
+  })
+
+  it('**不用 disabled**:在飞时那颗钮仍在焦点序里(禁灰会当场把键盘的人甩掉)', async () => {
+    seedSessionsSource()
+    render(<Overview />)
+    let flight!: ReturnType<typeof flyCreate>
+    await act(async () => {
+      flight = flyCreate()
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId(`group-plus-${FIRST_GROUP}`).hasAttribute('disabled')).toBe(false)
+    await act(async () => {
+      flight.land()
+      await flight.done
+    })
   })
 })
 

@@ -8,10 +8,14 @@ import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
 import {
   chaptersQuery,
+  CREATE_KEY,
   markersQuery,
   messagesQuery,
   REFRESH_THROTTLE_MS,
+  sessionMutation,
+  sessionsQuery,
   useSessionsSource,
+  workdirKey,
 } from './sessions-source'
 import { isListedSession, toSessionSummary } from '../expose/projection'
 import { AGENT_SESSION_META, NOW, ONETHING_DIR, SESSION_META } from './__fixtures__/sessions'
@@ -122,7 +126,9 @@ describe('start', () => {
   it('拉一次列表并投影成组;状态走到 ready', async () => {
     await start()
     const state = useSessionsSource.getState()
-    expect(state.status).toBe('ready')
+    // 「读到哪一步了」7e 之后是列表那一格 query 的读数,不再是 store 上一个压扁的
+    // status:有过一次答案 = phase 走到 ready(而且从此再也不退回去,律②)。
+    expect(sessionsQuery.get().phase).toBe('ready')
     // 群房 rm-release 被投影滤掉,其余八条原样在列表里(次序仍是夹具次序)。
     expect(state.sessions.map((s) => s.id)).toEqual(LISTED_IDS)
     expect(state.sessions.map((s) => s.id)).not.toContain('rm-release')
@@ -141,8 +147,10 @@ describe('start', () => {
   it('后端说不成功时进 error 并留住那句人话 —— **不回退 mock**', async () => {
     listMeta.mockResolvedValue({ success: false, error: '连不上' })
     await start()
-    expect(useSessionsSource.getState().status).toBe('error')
-    expect(useSessionsSource.getState().error).toBe('连不上')
+    expect(sessionsQuery.get().error).toBe('连不上')
+    // 一次都没成过,所以 phase 还在 initial —— 总览据它画「正在读」还是「没连上」,
+    // 判据分开了(从前两件事压在一个 status 里)。
+    expect(sessionsQuery.get().phase).toBe('initial')
     expect(useSessionsSource.getState().sessions).toEqual([])
   })
 
@@ -150,6 +158,84 @@ describe('start', () => {
     await start()
     useSessionsSource.getState().reset()
     expect(unsubscribed).toBe(1)
+  })
+})
+
+/**
+ * ── 7e:列表那一发迁 `createQuery` ────────────────────────────────────────
+ * 这一批钉的是**迁移换来的那几条性质**,而不是「还能拉到数据」:
+ * equals(同答案不换身份)、keep-previous(重拉不清屏)、以及那道
+ * 「屏幕那一份到底变没变」的闸(它换掉了从前手记的 onScreen 布尔)。
+ */
+describe('列表那一格 query', () => {
+  it('equals:同一份答案重拉 —— dataRev 不动、data 不换引用、屏幕那一份一格不重投影', async () => {
+    await start()
+    const rev = sessionsQuery.get().dataRev
+    const data = sessionsQuery.get().data
+    const { sessions, groups, projects } = useSessionsSource.getState()
+
+    await useSessionsSource.getState().refresh()
+
+    // 确实重问了一遍(不是被折叠掉了)。
+    expect(listMeta).toHaveBeenCalledTimes(2)
+    // 但答案逐条相同 —— 于是 kernel 留住上一份,身份一格没换(律④)。
+    expect(sessionsQuery.get().dataRev).toBe(rev)
+    expect(sessionsQuery.get().data).toBe(data)
+    // 屏幕那一份也没重投影:`buildProjects` / `buildGroups` 一次都没跑。
+    expect(useSessionsSource.getState().sessions).toBe(sessions)
+    expect(useSessionsSource.getState().groups).toBe(groups)
+    expect(useSessionsSource.getState().projects).toBe(projects)
+    // 「上次拉取」照样前进 —— 问过没有与答案变没变是两件事。
+    expect(sessionsQuery.get().updatedAt).toBeGreaterThan(0)
+  })
+
+  it('内容真变了就该换:dataRev 前进,分组跟着重算', async () => {
+    await start()
+    const rev = sessionsQuery.get().dataRev
+    const groups = useSessionsSource.getState().groups
+
+    listMeta.mockResolvedValue({
+      success: true,
+      sessions: SESSION_META.map((m) => (m.id === 'os-compact' ? { ...m, name: '换了个名字' } : m)),
+    })
+    await useSessionsSource.getState().refresh()
+
+    expect(sessionsQuery.get().dataRev).toBe(rev + 1)
+    expect(useSessionsSource.getState().groups).not.toBe(groups)
+    expect(
+      useSessionsSource.getState().sessions.find((s) => s.id === 'os-compact')!.title,
+    ).toBe('换了个名字')
+  })
+
+  it('律②:重拉在飞时旧列表一直在屏上,phase 不退回 initial(骨架一次都不画)', async () => {
+    await start()
+    const before = useSessionsSource.getState().sessions
+    const gate = deferred<{ success: true; sessions: typeof SESSION_META }>()
+    listMeta.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().refresh()
+    await vi.advanceTimersByTimeAsync(0)
+
+    // 这三行就是律②:在飞、旧内容还在、phase 停在 ready。
+    expect(sessionsQuery.get().inflight).toBe(true)
+    expect(sessionsQuery.get().phase).toBe('ready')
+    expect(useSessionsSource.getState().sessions).toBe(before)
+
+    gate.resolve({ success: true, sessions: SESSION_META })
+    await flying
+    expect(useSessionsSource.getState().sessions).toBe(before)
+  })
+
+  it('重拉失败:那句原话记在这一格上,而上一份列表**一条都没少**', async () => {
+    await start()
+    const before = useSessionsSource.getState().sessions
+    listMeta.mockResolvedValue({ success: false, error: '断了' })
+
+    await useSessionsSource.getState().refresh()
+
+    expect(sessionsQuery.get().error).toBe('断了')
+    expect(sessionsQuery.get().phase).toBe('ready')
+    expect(useSessionsSource.getState().sessions).toBe(before)
   })
 })
 
@@ -267,6 +353,68 @@ describe('SSE 判据', () => {
     expect(useSessionsSource.getState().sessions).toHaveLength(LISTED)
   })
 
+  /**
+   * 「别的工作区里的会话来一条 delta **刻意不重投影**」—— 7e 迁移必须原样保住的
+   * 那条性质。判据换了产地(从手记的一格 onScreen 布尔换成算出来的事实),
+   * 但可观察的行为逐字相同:账上照样更新、屏幕那一份一格不动、一发请求都不打。
+   */
+  it('别的工作区里的会话来一条 delta:账上照样更新,屏幕那一份**刻意不重投影**', async () => {
+    const elsewhere = {
+      id: 'in-other-space',
+      name: '别处的会话',
+      createdAt: NOW,
+      updatedAt: NOW,
+      workspaceId: 'ws-other',
+    }
+    listMeta.mockResolvedValue({ success: true, sessions: [...SESSION_META, elsewhere] })
+    await start()
+    // 它认识(在账上),但不在当前工作区的屏幕那一份里。
+    expect(sessionsQuery.get().data!.map((s) => s.id)).toContain('in-other-space')
+    expect(useSessionsSource.getState().sessions.map((s) => s.id)).not.toContain('in-other-space')
+
+    const sessions = useSessionsSource.getState().sessions
+    const groups = useSessionsSource.getState().groups
+    const rev = sessionsQuery.get().dataRev
+
+    emit?.(envelope('in-other-space', SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED))
+
+    // 账上那一格真的抬了时间 —— 切回那个空间时次序就是对的。
+    expect(sessionsQuery.get().dataRev).toBe(rev + 1)
+    expect(sessionsQuery.get().data!.find((s) => s.id === 'in-other-space')!.updatedAt).toBe(
+      NOW + 60_000,
+    )
+    // 屏幕那一份**同一个数组**:`buildProjects` / `buildGroups` 一次都没跑(律④)。
+    expect(useSessionsSource.getState().sessions).toBe(sessions)
+    expect(useSessionsSource.getState().groups).toBe(groups)
+    // 也没有被判据 a 当成新建 —— 一发重拉都不打。
+    await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('a 的另一半:认识的会话只打增量 —— 一发请求都不发,而且那一格真的变了', async () => {
+    await start()
+    const rev = sessionsQuery.get().dataRev
+    emit?.(envelope('os-compact', SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED))
+    expect(sessionsQuery.get().dataRev).toBe(rev + 1)
+    await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('增量抬不动就不抬:信封比账上还旧时,连一次重投影都没有', async () => {
+    await start()
+    const sessions = useSessionsSource.getState().sessions
+    const rev = sessionsQuery.get().dataRev
+    // 这条会话的 updatedAt 就是 NOW 附近,给一个更早的时刻。
+    emit?.({
+      sessionId: 'os-compact',
+      sequence: 1,
+      timestamp: 1,
+      event: { type: SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED } as SessionEventEnvelope['event'],
+    })
+    expect(sessionsQuery.get().dataRev).toBe(rev)
+    expect(useSessionsSource.getState().sessions).toBe(sessions)
+  })
+
   it('e:与列表无关的事件一律忽略', async () => {
     await start()
     const before = useSessionsSource.getState().sessions
@@ -307,7 +455,9 @@ describe('按需取数', () => {
     expect(chaptersQuery.get('os-provider').get().data).toEqual([])
     // fetcher 自己把「拉不到」读成空表,所以这一格的 error 是空的(见 orEmpty)。
     expect(chaptersQuery.get('os-provider').get().error).toBeUndefined()
-    expect(useSessionsSource.getState().status).toBe('ready')
+    // 列表那一格一点事都没有:一条会话没有目录,不是整个面读不到了。
+    expect(sessionsQuery.get().error).toBeUndefined()
+    expect(sessionsQuery.get().phase).toBe('ready')
   })
 
   it('键控:三族各按 sessionId 分格,一格答案不串到另一格', async () => {
@@ -371,6 +521,151 @@ describe('按需取数', () => {
   })
 })
 
+
+/**
+ * ── 7e:写路迁 `createMutation` ────────────────────────────────────────────
+ * 两口一个联合(`create` / `workdir`),而这一批钉的是迁移换来的三条:
+ * 逐格忙态(律③)、对账排在返回之前(调用方的承诺)、失败那句原话原样交出去。
+ * 「建会话打了哪几发、次序是什么」在 data/session-create.test.ts,不在这里重抄。
+ */
+describe('写路:一只 mutation,两口一个联合', () => {
+  it('忙态是**逐格**的:建会话占 CREATE_KEY,换目录占 workdir:<会话 id>', async () => {
+    await start()
+    const gate = deferred<{ success: true; session: { id: string } }>()
+    create.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().create(null)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sessionMutation.isPending(CREATE_KEY)).toBe(true)
+    // 别的格一格都没被点亮 —— 不是整面一颗忙布尔。
+    expect(sessionMutation.isPending(workdirKey('os-compact'))).toBe(false)
+
+    gate.resolve({ success: true, session: { id: 'new-1' } })
+    await flying
+    expect(sessionMutation.isPending(CREATE_KEY)).toBe(false)
+  })
+
+  it('换目录的忙态跟着会话走:换 A 的目录,B 那一格不亮', async () => {
+    await start()
+    const gate = deferred<{ success: true }>()
+    updateWorkingDirectory.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().setWorkingDirectory('os-compact', ONETHING_DIR)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sessionMutation.isPending(workdirKey('os-compact'))).toBe(true)
+    expect(sessionMutation.isPending(workdirKey('os-provider'))).toBe(false)
+    expect(sessionMutation.isPending(CREATE_KEY)).toBe(false)
+
+    gate.resolve({ success: true })
+    await flying
+    expect(sessionMutation.isPending(workdirKey('os-compact'))).toBe(false)
+  })
+
+  it('create:回来的那一刻列表里已经有它 —— 对账那一发排在返回之前', async () => {
+    await start()
+    create.mockImplementation(async () => {
+      // 建成之后线上就多了这一条,重拉才看得见。
+      listMeta.mockResolvedValue({
+        success: true,
+        sessions: [...SESSION_META, { id: 'new-1', name: 'New Chat', createdAt: NOW, updatedAt: NOW }],
+      })
+      return { success: true, session: { id: 'new-1' } }
+    })
+    expect(useSessionsSource.getState().sessions.map((s) => s.id)).not.toContain('new-1')
+
+    const outcome = await useSessionsSource.getState().create(null)
+
+    expect(outcome).toEqual({ ok: true, sessionId: 'new-1' })
+    expect(listMeta).toHaveBeenCalledTimes(2)
+    expect(useSessionsSource.getState().sessions.map((s) => s.id)).toContain('new-1')
+  })
+
+  /**
+   * 次序那一格:**控件**的忙态在对账之前就解除(律③要的那一拍 —— 对账是后台的
+   * 事,不该把钮多按住一拍),而 **create 自己**多等一口(它对调用方的承诺是
+   * 「回来的那一刻列表里已经有它」)。两件事各归各位,这条用例同时钉住两头。
+   */
+  it('忙态在对账之前解除,而 create 自己要等到对账落地才返回', async () => {
+    await start()
+    const gate = deferred<{ success: true; sessions: typeof SESSION_META }>()
+    listMeta.mockReturnValue(gate.promise)
+
+    let returned = false
+    const flying = useSessionsSource.getState().create(null)
+    void flying.then(() => {
+      returned = true
+    })
+    await vi.advanceTimersByTimeAsync(0)
+
+    // 建那一发已经落地:控件解禁了(钮上的「…中」这时就该没了)。
+    expect(sessionMutation.isPending(CREATE_KEY)).toBe(false)
+    // 但 create 还没回来 —— 它在等对账那一发。
+    expect(returned).toBe(false)
+    expect(listMeta).toHaveBeenCalledTimes(2)
+
+    gate.resolve({ success: true, sessions: SESSION_META })
+    await flying
+    expect(returned).toBe(true)
+  })
+
+  it('setWorkingDirectory 成功:同步重拉,回来的那一刻分组已经跟着换了', async () => {
+    await start()
+    expect(
+      useSessionsSource.getState().groups.find((g) => g.id === ONETHING_DIR)!.sessions.map((s) => s.id),
+    ).not.toContain('lo-notes')
+    listMeta.mockImplementation(async () => ({
+      success: true,
+      sessions: SESSION_META.map((m) =>
+        m.id === 'lo-notes' ? { ...m, workingDirectory: ONETHING_DIR } : m,
+      ),
+    }))
+
+    const outcome = await useSessionsSource.getState().setWorkingDirectory('lo-notes', ONETHING_DIR)
+
+    expect(outcome).toEqual({ ok: true })
+    expect(updateWorkingDirectory).toHaveBeenCalledWith('lo-notes', ONETHING_DIR)
+    expect(listMeta).toHaveBeenCalledTimes(2)
+    expect(
+      useSessionsSource.getState().groups.find((g) => g.id === ONETHING_DIR)!.sessions.map((s) => s.id),
+    ).toContain('lo-notes')
+  })
+
+  it('setWorkingDirectory:后端说不行 → **原话**原样交出去,一次重拉都不发', async () => {
+    await start()
+    updateWorkingDirectory.mockResolvedValue({
+      success: false,
+      error: 'Working directory must stay inside the workspace sandbox root.',
+    })
+
+    const outcome = await useSessionsSource.getState().setWorkingDirectory('lo-notes', '/nope')
+
+    expect(outcome).toEqual({
+      ok: false,
+      error: 'Working directory must stay inside the workspace sandbox root.',
+    })
+    // 写没成 = 列表没有任何理由变。
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('setWorkingDirectory:端口自己抛也收成同一种答案(不是一次没人接的 rejection)', async () => {
+    await start()
+    updateWorkingDirectory.mockRejectedValue(new Error('socket 断了'))
+
+    const outcome = await useSessionsSource.getState().setWorkingDirectory('lo-notes', '/nope')
+
+    expect(outcome).toEqual({ ok: false, error: 'socket 断了' })
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('setWorkingDirectory:空 id 连一发都不打 —— 它是问错了的话,不是一次失败的写', async () => {
+    await start()
+    const outcome = await useSessionsSource.getState().setWorkingDirectory('', ONETHING_DIR)
+    expect(outcome).toEqual({ ok: false, error: 'sessionId 为空' })
+    expect(updateWorkingDirectory).not.toHaveBeenCalled()
+  })
+})
 
 /**
  * H 批:删除不再等下一次整表重拉。判据全在这一批用例里 ——
