@@ -41,7 +41,10 @@ import { configureAppSkillsLoader } from './wiring/skills/loader.js'
 import { configureAppPermissionGrants } from './wiring/permission/permission-grants.js'
 import { createEventSystem } from './events/index.js'
 import { createSessionLayer } from './session/index.js'
-import { installSessionPermissionEventRecorders } from './session/permission-events.js'
+import {
+  installSessionPermissionEventRecorders,
+  uninstallSessionPermissionEventRecorders,
+} from './session/permission-events.js'
 import {
   installSessionLedgerEventBroadcaster,
   uninstallSessionLedgerEventBroadcaster,
@@ -111,13 +114,26 @@ export function configureAppRuntimeAdapters(): void {
   configureSessionHistoryBuilder(sessionHistoryBuilder)
 }
 
+/**
+ * 宿主插进装配序列里的三步。
+ *
+ * A3:三个钩子都**收到那只正在装配的实例**作为参数。理由是关机对称
+ * (方案 §2.4「谁起的,谁 `own()`」):钩子里起的东西(桌面的 todo / 草稿纸
+ * watcher)也得有地方登记收尾,而钩子跑的时候 `createOnethingBackend(...)`
+ * **还没返回**,宿主自己那个 `let desktopBackend` 还是 null —— 拿不到实例就
+ * 只能把收尾再手抄一份到别处,而那正是这一期要消掉的东西。
+ *
+ * 参数是**实例本身**而不是一个窄的 `{ own }`:钩子里已经有人在读装配产物
+ * (`getEventBus()` / `getStreamEngine()`),把整只交出去让那些读法有朝一日
+ * 能改成显式的 `backend.eventBus`,而不是又多一个只能 own 的把手。
+ */
 export interface OnethingBackendHooks {
   /** Runs right after settings are loaded (desktop: shortcuts, network proxy). */
-  afterSettings?: () => void | Promise<void>
+  afterSettings?: (backend: OnethingBackend) => void | Promise<void>
   /** Runs after the engine + triggers are up, before Permission/tools. */
-  afterEngine?: () => void | Promise<void>
+  afterEngine?: (backend: OnethingBackend) => void | Promise<void>
   /** Runs after the tool registry is ready (desktop: IPC, todo watcher). */
-  afterTools?: () => void | Promise<void>
+  afterTools?: (backend: OnethingBackend) => void | Promise<void>
 }
 
 export interface OnethingBackendOptions {
@@ -224,6 +240,18 @@ export class OnethingBackend implements BackendHandle {
     return this.disposing
   }
 
+  /**
+   * 已登记的收尾标签,**登记序**(`dispose()` 按它的逆序跑)。
+   *
+   * 只读快照,给两类调用方:A0 的生命周期门要断言"宿主起的那几件真的登记进来了"
+   * (`process.getActiveResourcesInfo()` 数定时器在满载 vitest 下抖得没法当判据,
+   * 见 `assembly-lifecycle.test.ts` ⑨),以及排障时想知道这只实例到底owned了什么。
+   * 返回的是拷贝 —— 没人能从这里改清单。
+   */
+  ownedLabels(): readonly string[] {
+    return this.disposers.map(disposer => disposer.label)
+  }
+
   /** @deprecated 过渡别名 = `dispose()`。 */
   async shutdown(): Promise<void> {
     return this.dispose()
@@ -296,7 +324,7 @@ export class OnethingBackend implements BackendHandle {
     // Agents are read on every turn (and once per room member); warm the cache
     // here so nothing downstream pays a synchronous read + normalize.
     await initializeAgents()
-    await options.hooks?.afterSettings?.()
+    await options.hooks?.afterSettings?.(this)
 
     const { eventBus, streamChannel } = createEventSystem()
     this.parts.eventBus = eventBus
@@ -320,7 +348,15 @@ export class OnethingBackend implements BackendHandle {
     const engineLayer = createStreamEngineLayer({ eventBus, streamChannel })
     this.parts.engine = engineLayer.engine
     this.parts.runtime = engineLayer.runtime
-    registerBuiltinTriggers()
+    /*
+     * A3(方案 §2.5,(b) 类闩):内置触发器注册返回 disposer。
+     *
+     * `triggerManager` 是模块级单例,三只触发器里握着这一份装配的引擎与总线。
+     * 从前那个单向闩让"装配 → dispose → 再装配"只在第一份里注册过 —— 第二份
+     * 跑的是第一份的尸体。登记在这里(而不是并进下面那处显式反序块):触发器是
+     * 被动的,谁先谁后都不影响关机语义。
+     */
+    this.own(registerBuiltinTriggers(), 'builtinTriggers')
 
     if (options.promptVersion) {
       // promptVersion stamps eval traces with the live minimal-scene output so
@@ -334,7 +370,7 @@ export class OnethingBackend implements BackendHandle {
       }
     }
 
-    await options.hooks?.afterEngine?.()
+    await options.hooks?.afterEngine?.(this)
 
     Permission.initialize(
       eventBus,
@@ -355,6 +391,12 @@ export class OnethingBackend implements BackendHandle {
     // S1a(session-event-sourcing §10.2 的"权限/交互层"):两条等待链的时刻与
     // 决定进会话事件日志。必须在两个 initialize 之后 —— 它接的是同一对单例。
     installSessionPermissionEventRecorders()
+    // A3:`uninstall*` 自 S1a 起就存在却零调用者 —— 它把 core 那两个 recorder
+    // 槽置回 null。不摘的后果:dispose 之后 `Permission`/`Interaction`(core 的
+    // 进程级单例,不随 backend 走)手里还攥着指向**已关掉的**事件账本的回调,
+    // 而第二份装配会用自己的那对把它们盖掉,于是这条只在"关了但还没再装"的
+    // 窗口里咬人 —— 正是最难查的那种。
+    this.own(() => uninstallSessionPermissionEventRecorders(), 'sessionPermissionRecorders')
 
     /*
      * 三件的登记**放在一处并显式反序**,而不是各自"起的那一行紧接着 own()"。
@@ -371,9 +413,12 @@ export class OnethingBackend implements BackendHandle {
     // Variables must precede the tool registry (the variable tool reads a
     // populated registry); goal breakers and project dirs are order-free but
     // belong before the first stream.
-    bootstrapVariableSystem()
-    bootstrapGoalStreamBreakers()
-    bootstrapProjectDirs()
+    // A3:三件都改成"注册返回 disposer"(方案 §2.5)。变量注册表撞 id 会抛
+    // PROVIDER_CONFLICT、目标断路器的五条订阅挂在这一份的总线上 —— 闩放回去而
+    // 不摘干净,第二次装配不是"重跑"而是"抛错"或"挂在死总线上"。
+    this.own(bootstrapVariableSystem(), 'variableSystem')
+    this.own(bootstrapGoalStreamBreakers(), 'goalStreamBreakers')
+    this.own(bootstrapProjectDirs(), 'projectDirs')
 
     // 缝 4 —— 三档目录。R4b 之后它是**唯一**一本工具册子(旧注册表已删)。
     //
@@ -400,7 +445,7 @@ export class OnethingBackend implements BackendHandle {
     // dependencies lazily, per call.
     const disposeRpcDomains = await registerAppRpcDomains()
 
-    await options.hooks?.afterTools?.()
+    await options.hooks?.afterTools?.(this)
 
     if (options.sessionSkills) {
       await initializeSessionSkills()

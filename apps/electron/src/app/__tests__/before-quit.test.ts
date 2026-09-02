@@ -26,9 +26,8 @@ describe('electron before-quit cleanup', () => {
         shutdownVoiceService: asyncFn('shutdownVoiceService'),
         shutdownMusicService: asyncFn('shutdownMusicService'),
         unregisterGlobalWindowShortcuts: fn('unregisterGlobalWindowShortcuts'),
-        shutdownGateway: asyncFn('shutdownGateway'),
-        shutdownMCP: asyncFn('shutdownMCP'),
-        shutdownACP: asyncFn('shutdownACP'),
+        // A3:网关 / MCP / ACP 三格搬去了 `backend.own(...)`(它们是装配之后
+        // 由 post-window 起的),所以这张表上不再有它们。
         killAllBrowserTabs: fn('killAllBrowserTabs'),
         shutdownPlugins: fn('shutdownPlugins'),
         // A2:引擎 / 权限 / 会话层 / 事件系统 / 两次落盘 / 子进程 / 终端那九行
@@ -55,9 +54,6 @@ describe('electron before-quit cleanup', () => {
       'shutdownVoiceService',
       'shutdownMusicService',
       'unregisterGlobalWindowShortcuts',
-      'shutdownGateway',
-      'shutdownMCP',
-      'shutdownACP',
       'killAllBrowserTabs',
       'disposeBackend',
       'shutdownAppLogging',
@@ -105,7 +101,7 @@ describe('electron before-quit cleanup', () => {
      * **这条是真机走查抓到的那个缺陷的回归防线。**
      *
      * `before-quit` 的监听器不被 Electron await,所以这张表只有第一个 await
-     * 之前的同步段是有保证的。实测:一次 Cmd+Q 里链条断在 `shutdownMCP` 里,
+     * 之前的同步段是有保证的。实测:一次 Cmd+Q 里链条断在 MCP 收尾那一步里,
      * `[EventSystem] Shut down` 与 store lock 释放都没跑到 —— 而插件拆除当时
      * 排在第 11 位,插件在 onDispose 里写的数据全丢。
      *

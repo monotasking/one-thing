@@ -78,12 +78,48 @@ function unregisterUserTask(id: string): void {
   userTaskHandles.delete(id)
 }
 
-export function initializeUserSchedulerTasks(): void {
-  if (initialized) return
+/**
+ * 盘上那些用户定义的定时任务装进调度器。
+ *
+ * A3(`docs/design/backend-composition-root-2026-09.md` §2.4「谁起的,谁 own()」):
+ * 返回一个 disposer,两个 GUI 宿主起完就 `backend.own(...)` 它 —— 从前这件事
+ * **没有 stop 口**,于是它是关机链上唯一一件按设计就关不掉的:每个 handle 背后
+ * 是 `Scheduler` 的 `setTimeout` 链(scheduler.ts `rescheduleTimer`),而那条链
+ * 只有在表空了之后 `rescheduleTimer` 才会 `clearTimeout` 且不再续。
+ *
+ * disposer 幂等,并且把 `initialized` 放回去 —— 装配 → dispose → 再装配要真的
+ * 重新读一次盘,否则第二份进程里一条用户任务都不会被注册。
+ */
+export function initializeUserSchedulerTasks(): () => void {
+  if (initialized) return stopUserSchedulerTasks
   initialized = true
   for (const task of userTaskStore.list()) {
     registerUserTask(task as SchedulerUserTaskDTO)
   }
+  return stopUserSchedulerTasks
+}
+
+/**
+ * 对称的收尾:把这里注册进去的每一只都从调度器上摘掉。
+ *
+ * 只摘**自己**注册的那些(`userTaskHandles` 里的),插件任务与内置任务不碰 ——
+ * 摘完最后一只时 `Scheduler.unregister` 自己会 `rescheduleTimer`,表空了那条
+ * `setTimeout` 链就断了。没起过就是一次 no-op。
+ */
+export function stopUserSchedulerTasks(): void {
+  for (const handle of userTaskHandles.values()) {
+    try {
+      handle.unregister()
+    } catch (error) {
+      log.error('scheduled task unregister failed', { taskId: handle.id }, error)
+    }
+  }
+  const stopped = userTaskHandles.size
+  userTaskHandles.clear()
+  initialized = false
+  // 关机链上这一步从前不存在,所以它在账本里也不存在 —— 真机走查判断"调度器
+  // 到底收没收摊"时,没有这一行就只能靠猜。
+  if (stopped > 0) log.info('scheduled tasks stopped', { count: stopped })
 }
 
 export function isUserSchedulerTask(id: string): boolean {

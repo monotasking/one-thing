@@ -59,6 +59,8 @@
 		"log:smoke": "node scripts/log-smoke.mjs",
 		"session:check": "node scripts/session-check.mjs",
 		"session:gate": "node scripts/session-gate.mjs",
+		"assembly:check": "node scripts/assembly-gate.mjs --list",
+		"assembly:gate": "node scripts/assembly-gate.mjs",
 		"sessions:verify": "bun scripts/session-verify.ts",
 		"sessions:events-selfcheck": "bun scripts/session-events-read-selfcheck.ts",
 		"sessions:hydration-contract": "bun scripts/session-hydration-contract.ts",

@@ -26,11 +26,21 @@ const log = getLogger('project-dirs')
 
 let bootstrapped = false
 
-export function bootstrapProjectDirs(): void {
-  if (bootstrapped) return
+/**
+ * A3(方案 §2.5,(b) 类闩):返回 disposer,由 `assembleSteps` 的 `own()` 接住。
+ *
+ * 这一件本身只是**暖缓存**(`getProjectsStore().initialize()` 读一次盘),没有
+ * 订阅、没有定时器,所以 disposer 只把闩放回去 —— 让第二份装配真的再暖一次,
+ * 而不是靠"上一份进程里读过了"这个偶然。store 自己是进程级单例,不在这里关。
+ */
+export function bootstrapProjectDirs(): () => void {
+  if (bootstrapped) return () => {}
   bootstrapped = true
   getProjectsStore().initialize()
   log.info('project-dirs subsystem bootstrapped')
+  return () => {
+    bootstrapped = false
+  }
 }
 
 /**

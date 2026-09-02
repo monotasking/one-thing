@@ -17,8 +17,14 @@ import {
 // (从前它挂在 `@main/ipc/skills.ts` 的适配上,而那个适配已经没有了)。
 import { initializeSkills } from "@onething/backend/wiring/skills/session-skills.js";
 import { getSettings } from "@onething/backend/stores/settings.js";
-import { startTodoPlanWatcher } from "@onething/backend/wiring/todo-plan/store.js";
-import { startScratchpadWatcher } from "@onething/runtime/scratchpad/service-bound";
+import {
+	startTodoPlanWatcher,
+	stopTodoPlanWatcher,
+} from "@onething/backend/wiring/todo-plan/store.js";
+import {
+	startScratchpadWatcher,
+	stopScratchpadWatcher,
+} from "@onething/runtime/scratchpad/service-bound";
 import { configureSandboxHost } from "@onething/backend/wiring/tools/core/sandbox.js";
 import { configurePluginAppVersion } from "@onething/runtime/plugins/app-version";
 import { getPluginManager } from "@onething/backend/wiring/plugins/manager.js";
@@ -328,15 +334,24 @@ async function initializeElectronReadyServices(): Promise<void> {
 				});
 				await applyNetworkProxySettings();
 			},
-			afterTools: async () => {
+			/*
+			 * A3:钩子现在**收到那只正在装配的实例**(`OnethingBackendHooks` 的
+			 * 三个签名一起改)。理由就在下面两行 `own()` 上:钩子跑的时候
+			 * `createOnethingBackend(...)` 还没返回,`desktopBackend` 还是 null
+			 * —— 两个 watcher 从前因此**没有任何收尾**(`stopTodoPlanWatcher`
+			 * 自诞生起零调用者),而它们各自握着一个 fs.watch 句柄。
+			 */
+			afterTools: async (backend) => {
 				// Initialize IPC handlers, then watch the todo store: the AI
 				// edits its todo with the plain write/edit tools, so nothing
 				// else would tell the UI those edits landed.
 				initializeIPC();
 				await startTodoPlanWatcher();
+				backend.own(() => stopTodoPlanWatcher(), "todoPlanWatcher");
 				// Same deal for the scratchpad: the AI edits the paper with the
 				// plain write/edit tools, so the watcher is the UI's only signal.
 				await startScratchpadWatcher();
+				backend.own(() => stopScratchpadWatcher(), "scratchpadWatcher");
 			},
 		},
 	});
@@ -370,13 +385,31 @@ function startEmbeddedCoreHttpSurface(): void {
 		log.error("embedded HTTP surface not mounted", { reason: "backend is not ready" });
 		return;
 	}
-	void startEmbeddedOnethingHttpServer(backend).catch((error) => {
+	const mounting = startEmbeddedOnethingHttpServer(backend).catch((error) => {
 		log.error(
 			"embedded HTTP surface mount failed",
 			{ subsystem: "core-http", blocking: false },
 			error,
 		);
 	});
+	/*
+	 * A3:收尾**登记在起的这一行旁边**(方案 §2.4)。登记是同步的,而 disposer
+	 * 里第一件事是等挂面那条 promise —— 挂面非阻塞,一次早退(启动两秒内 Cmd+Q)
+	 * 会让 stop 跑在 listen 之前,那时 `stopEmbeddedOnethingHttpServer` 看到的
+	 * `current` 还是 null,一句 no-op 返回,而随后 listen 成功的那台面就留下了。
+	 *
+	 * before-quit 表上那一格**留着**,与 `shutdownPlugins` 同一条理由(见
+	 * before-quit.ts 的字段注释):发现文件必须先于第一个 await 从盘上消失。
+	 * 那一格是同步的删文件 + fire-and-forget 关端口,这里这一格是"关干净"。
+	 * 两次都跑得到:`stopEmbeddedOnethingHttpServer` 关过之后是 no-op。
+	 */
+	backend.own(async () => {
+		await mounting;
+		await stopEmbeddedOnethingHttpServer().catch((error: unknown) => {
+			log.error("embedded HTTP surface shutdown failed", { subsystem: "core-http" }, error);
+		});
+		removeHttpDiscovery();
+	}, "embeddedHttpSurface");
 }
 
 function startPostWindowServices(): void {
@@ -395,18 +428,32 @@ function startPostWindowServices(): void {
 	});
 
 	import("@onething/backend/wiring/scheduler/user-tasks.js")
-		.then(({ initializeUserSchedulerTasks }) => initializeUserSchedulerTasks())
+		.then(({ initializeUserSchedulerTasks }) => {
+			// A3 新增的对称 stop:从前用户定时任务那条 setTimeout 链没有任何人
+			// 关得掉(`initializeUserSchedulerTasks` 是关机清单上唯一按设计就
+			// 没有 stop 口的一件)。
+			desktopBackend?.own(initializeUserSchedulerTasks(), "userSchedulerTasks");
+		})
 		.catch((err) => {
 			log.error("subsystem startup failed", { subsystem: "scheduler", blocking: false }, err);
 		});
 
 	// Initialize MCP system asynchronously (don't block startup)
-	initializeMCP().catch((err) => {
-		log.error("subsystem startup failed", { subsystem: "mcp", blocking: false }, err);
-	});
+	initializeMCP()
+		.then(() => {
+			// A3:桌面是 `mcpAcp: false` 装配的(MCP 在窗口之后才起),所以
+			// backend 自己那格 `mcpAcp` disposer 直接 return —— 收尾归起它的人。
+			desktopBackend?.own(() => shutdownMCP(), "mcpManager");
+		})
+		.catch((err) => {
+			log.error("subsystem startup failed", { subsystem: "mcp", blocking: false }, err);
+		});
 
 	try {
 		initializeACP();
+		// `shutdownACP` 连着外部执行体连接器一起收(acp.ts)。backend 那格
+		// `externalAgents` 是无条件登记的兜底,dispose 幂等,两次都调得起。
+		desktopBackend?.own(() => shutdownACP(), "acpManager");
 	} catch (err) {
 		log.error("subsystem startup failed", { subsystem: "acp", blocking: false }, err);
 	}
@@ -419,9 +466,15 @@ function startPostWindowServices(): void {
 
 	// Gateway is an Electron-hosted service. Enable from Settings > Channels
 	// or with legacy gateway env vars so IM messages enter the real onething runtime.
-	initializeGateway().catch((err) => {
-		log.error("subsystem startup failed", { subsystem: "gateway", blocking: false }, err);
-	});
+	initializeGateway()
+		.then(() => {
+			// A3:网关也归 `own()`。它从 before-quit 那张表上搬过来了 —— 一件
+			// 东西只有一个收尾产地,而它是 backend 起来之后才起的。
+			desktopBackend?.own(() => shutdownGateway(), "gateway");
+		})
+		.catch((err) => {
+			log.error("subsystem startup failed", { subsystem: "gateway", blocking: false }, err);
+		});
 
 	// Plugin roots can contribute skills, so load skills after plugin bootstrap
 	// has had a chance to register its roots.
@@ -592,9 +645,9 @@ export function startOnethingElectronMain(): void {
 				disposeMusicService();
 			},
 			unregisterGlobalWindowShortcuts,
-			shutdownGateway,
-			shutdownMCP,
-			shutdownACP,
+			// A3:网关 / MCP / ACP 三行搬进了 `startPostWindowServices` 的
+			// `backend.own(...)` —— 它们是 backend 起来之后才起的,收尾跟着
+			// `dispose()` 走(方案 §2.4「谁起的,谁 own()」)。
 			killAllBrowserTabs,
 			// 插件系统:桌面宿主是**唯一真的跑插件的宿主**,它的退出路径就是这张表。
 			//

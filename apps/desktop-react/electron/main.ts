@@ -215,7 +215,8 @@ function startPostWindowServices(): void {
   if (b) {
     // HTTP/SSE 面:owner=`shell` 写进发现文件(A1 拍板)。挂不上不阻塞壳 ——
     // 但渲染层的数据面就是这条,所以失败要如实反映到 `host:connection`。
-    connectionReady = startEmbeddedOnethingHttpServer(b, { owner: 'shell' })
+    const mounting = startEmbeddedOnethingHttpServer(b, { owner: 'shell' })
+    connectionReady = mounting
       .then(embedded => {
         log.info('embedded core http surface listening', { url: embedded.url })
         return connectionOf(embedded)
@@ -227,17 +228,44 @@ function startPostWindowServices(): void {
           error: error instanceof Error ? error.message : String(error),
         }
       })
+
+    /*
+     * A3(方案 §2.4「谁起的,谁 `own()`」):这三件从前散在 `shutdownOwnCore`
+     * 的 finally 里(HTTP 面)或者根本没有收尾(调度器、MCP)。
+     *
+     * 登记是**同步的**(就在 listen 那一行之后),而收尾里第一件事是
+     * `await connectionReady` —— 挂面是非阻塞起的,dispose 可能比 listen 还早
+     * 到(壳起来两秒内 Cmd+Q)。不等它起完就 stop,`stopEmbeddedOnethingHttpServer`
+     * 看到的 `current` 还是 null,于是它一句 no-op 就返回,而随后 listen 成功
+     * 的那台面留在进程里,连带一份指向它的发现文件。等一下就没这条竞速。
+     * `connectionReady` 自带 catch,永不 reject,所以这一等不会翻车。
+     */
+    b.own(async () => {
+      await connectionReady
+      await stopEmbeddedOnethingHttpServer().catch(() => {})
+      // `close()` 里已经删过一次;这一发兜的是"根本没挂上"的那条路 —— 那时
+      // 发现文件也没写过,`rmSync({force:true})` 是 no-op。
+      removeHttpDiscovery()
+    }, 'embeddedHttpSurface')
+
+    void import('@onething/backend/wiring/scheduler/user-tasks.js')
+      .then(({ initializeUserSchedulerTasks }) => {
+        // A3 新增的对称 stop:从前用户定时任务的 setTimeout 链没有任何人关得掉。
+        b.own(initializeUserSchedulerTasks(), 'userSchedulerTasks')
+      })
+      .catch((error: unknown) => {
+        log.error('subsystem startup failed', { subsystem: 'scheduler', blocking: false }, error)
+      })
+
+    void initializeShellMCP()
+      .then(async () => {
+        const { MCPManager } = await import('@onething/runtime/mcp/index.wiring')
+        b.own(() => MCPManager.shutdown(), 'mcpManager')
+      })
+      .catch((error: unknown) => {
+        log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
+      })
   }
-
-  void import('@onething/backend/wiring/scheduler/user-tasks.js')
-    .then(({ initializeUserSchedulerTasks }) => initializeUserSchedulerTasks())
-    .catch((error: unknown) => {
-      log.error('subsystem startup failed', { subsystem: 'scheduler', blocking: false }, error)
-    })
-
-  void initializeShellMCP().catch((error: unknown) => {
-    log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
-  })
 
   void refreshModelsOnFirstStartup().catch((error: unknown) => {
     log.error('subsystem startup failed', { subsystem: 'model-registry', blocking: false }, error)
@@ -387,19 +415,20 @@ void app.whenReady().then(async () => {
   })
 })
 
-/** 收尾。顺序:引擎(冲盘)→ HTTP 面 → 发现文件。 */
+/**
+ * 收尾 = **一行**。
+ *
+ * A3:HTTP 面与发现文件从这里的 `finally` 搬进了 `startPostWindowServices` 的
+ * `b.own(...)`(方案 §2.4)。于是清单只有一份,住在起的那一行旁边;这里再也
+ * 没有"壳自己记得关什么"这件事 —— 顺序(宿主起的三件 → 引擎 → 落盘)由登记
+ * 逆序给出,不再由这个函数复述。
+ */
 async function shutdownOwnCore(): Promise<void> {
   const b = backend
   backend = undefined
   if (!b) return
-  try {
-    // A2:装配产物的关机口叫 `dispose()`(`shutdown()` 还在,是过渡别名)。
-    // 它跑的是装配途中 `own()` 登记下来的清单,逆序、每步单独 try/catch。
-    await b.dispose()
-  } finally {
-    await stopEmbeddedOnethingHttpServer().catch(() => {})
-    removeHttpDiscovery()
-  }
+  // 它跑的是装配途中与 post-window `own()` 登记下来的清单,逆序、每步单独 try/catch。
+  await b.dispose()
 }
 
 // D0 是单窗薄壳:窗关了就退(mac 上的常驻托盘行为留给 P4 的窗口系批)。

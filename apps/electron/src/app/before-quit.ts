@@ -12,9 +12,14 @@ export interface ElectronBeforeQuitCleanupOptions {
   shutdownVoiceService: CleanupFn
   shutdownMusicService: CleanupFn
   unregisterGlobalWindowShortcuts: CleanupFn
-  shutdownGateway: CleanupFn
-  shutdownMCP: CleanupFn
-  shutdownACP: CleanupFn
+  /*
+   * A3 搬走的三格(`docs/design/backend-composition-root-2026-09.md` §2.4):
+   * `shutdownGateway` / `shutdownMCP` / `shutdownACP`。三件都是 backend 装配
+   * **之后**由 `startPostWindowServices` 起的,所以它们的收尾登记在起的那一行
+   * 旁边(`desktopBackend.own(...)`),随 `disposeBackend` 那一格逆序跑掉 ——
+   * 一件东西只留一个收尾产地。这张表上剩下的每一格都是**窗口系统**或**比
+   * backend 活得久**的东西。
+   */
   /**
    * 内嵌浏览器的标签页。**留在这张表上**:那是窗口系统的东西(view 挂在主窗的
    * contentView 上),backend 的清单里没有也不该有它。
@@ -112,10 +117,6 @@ export async function runElectronBeforeQuitCleanup(
   await options.shutdownVoiceService()
   await options.shutdownMusicService()
   options.unregisterGlobalWindowShortcuts()
-
-  await options.shutdownGateway()
-  await options.shutdownMCP()
-  await options.shutdownACP()
 
   options.killAllBrowserTabs()
 

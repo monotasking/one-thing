@@ -55,8 +55,18 @@ const log = getLogger('variables')
 let bootstrapped = false;
 let unsubscribeBridge: (() => void) | null = null;
 
-export function bootstrapVariableSystem(): void {
-	if (bootstrapped) return;
+/**
+ * A3(方案 §2.5,(b) 类闩):注册返回 disposer,由 `assembleSteps` 的 `own()`
+ * 接住。
+ *
+ * 这个闩必须能放回去,而且**只能**跟 disposer 一起放回去:`VariableRegistry.register`
+ * 撞 id 是 `throw new VariableError('PROVIDER_CONFLICT')`(registry.ts:50),
+ * 所以"闩放回去但 provider 没摘"这条路上第二次装配是**抛错**而不是重复注册。
+ * disposer 走 `registry.reset()` —— 它一次清掉 providers / listeners /
+ * externalUnsubs / writeChains 四样,正是这里装进去的那四样。
+ */
+export function bootstrapVariableSystem(): () => void {
+	if (bootstrapped) return () => {};
 	bootstrapped = true;
 
 	// Persistence layer comes online first — providers read from it.
@@ -119,6 +129,15 @@ export function bootstrapVariableSystem(): void {
 	});
 
 	log.info("variables subsystem bootstrapped");
+
+	return () => {
+		unsubscribeBridge?.();
+		unsubscribeBridge = null;
+		// providers / listeners / 外部变更订阅一并清掉 —— 下一次装配从空表开始。
+		registry.reset();
+		bootstrapped = false;
+		log.info("variables subsystem shut down");
+	};
 }
 
 function emitVariablesSnapshot(

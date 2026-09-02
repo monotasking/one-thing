@@ -105,23 +105,29 @@ let bootstrapped = false;
 /**
  * Subscribe the goal breakers to stream lifecycle events. Idempotent; called
  * once from main bootstrap alongside the other engine wiring.
+ *
+ * A3(方案 §2.5,(b) 类闩):返回 disposer,由 `assembleSteps` 的 `own()` 接住。
+ * 五条订阅挂在**这一份装配的**总线上,而闩住在模块里 —— 从前 dispose 之后闩
+ * 还是 true,第二份装配一条都不订阅,于是"目标续推"在第二份 backend 上静默
+ * 消失(总线换了一条,而没有人往新的那条挂过)。disposer 摘订阅 + 放闩。
  */
-export function bootstrapGoalStreamBreakers(): void {
-	if (bootstrapped) return;
+export function bootstrapGoalStreamBreakers(): () => void {
+	if (bootstrapped) return () => {};
 	bootstrapped = true;
 	const bus = getEventBus();
+	const unsubscribes: Array<() => void> = [];
 
 	// A new run supersedes any pending retry: whatever started it (user
 	// message, retry kick, continuation) is now the goal's driver.
-	bus.onAnySession(
+	unsubscribes.push(bus.onAnySession(
 		SESSION_EVENT_TYPES.STREAM_START,
 		({ sessionId }) => {
 			cancelGoalRetry(sessionId);
 		},
 		"goal-breaker",
-	);
+	));
 
-	bus.onAnySession(
+	unsubscribes.push(bus.onAnySession(
 		SESSION_EVENT_TYPES.STREAM_COMPLETE,
 		({ sessionId, event }) => {
 			lastUsageTick.delete(sessionId);
@@ -139,9 +145,9 @@ export function bootstrapGoalStreamBreakers(): void {
 			}
 		},
 		"goal-breaker",
-	);
+	));
 
-	bus.onAnySession(
+	unsubscribes.push(bus.onAnySession(
 		SESSION_EVENT_TYPES.STREAM_ERROR,
 		({ sessionId, event }) => {
 			lastUsageTick.delete(sessionId);
@@ -152,9 +158,9 @@ export function bootstrapGoalStreamBreakers(): void {
 			}
 		},
 		"goal-breaker",
-	);
+	));
 
-	bus.onAnySession(
+	unsubscribes.push(bus.onAnySession(
 		SESSION_EVENT_TYPES.STREAM_ABORTED,
 		({ sessionId }) => {
 			lastUsageTick.delete(sessionId);
@@ -166,15 +172,21 @@ export function bootstrapGoalStreamBreakers(): void {
 			}
 		},
 		"goal-breaker",
-	);
+	));
 
 	// A permission prompt hands the clock to the user; drop the tick so the
 	// approval wait is not billed as goal working time.
-	bus.onAnySession(
+	unsubscribes.push(bus.onAnySession(
 		SESSION_EVENT_TYPES.PERMISSION_REQUEST,
 		({ sessionId }) => {
 			lastUsageTick.delete(sessionId);
 		},
 		"goal-breaker",
-	);
+	));
+
+	return () => {
+		for (const unsubscribe of unsubscribes) unsubscribe();
+		unsubscribes.length = 0;
+		bootstrapped = false;
+	};
 }

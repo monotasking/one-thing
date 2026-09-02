@@ -148,9 +148,12 @@ Vue 桌面的 `beforeQuit` 表里凡是 backend 已关的行删掉(窗口/托盘
 
 26 个模块级单向闩分两类处理:
 - **纯适配注册**(`configureApp*` 那 11 个,把 runtime 的端口指向 backend 的实现,无状态):保持幂等,不动。
-- **持有状态的**(`providerRegistryInitialized`、`bootstrapped`、`builtinTriggersRegistered`、`skillsLoaderConfigured` 等):
+- **持有状态的**(`builtinTriggersRegistered`、变量系统的 `bootstrapped`、goal breakers、project-dirs、用户调度器的 `initialized`):
   改成"注册时返回 disposer,`own()` 进实例",dispose 时清掉,让 assemble → dispose → assemble 真的重跑。
-  A3 逐个审,审出来的清单写进 A3 的提交说明。
+  A3 实测(2026-09-03):`packages/backend` 非测试文件里模块级 `let` 是 **99 个 / 63 文件**,不是审计估的 26;
+  三类账在 A3 提交说明与 `docs/audit/assembly-baseline-2026-09-02.txt`。**修正**:`providerRegistryInitialized` /
+  `skillsLoaderConfigured` 属于 (a) 纯适配注册——它们住在 `configureAppRuntimeAdapters()` 里,那个函数的契约是
+  "显式且幂等,宿主与测试可直接调",且 provider 注册表从不拆、自己的访问器会自愈地重设闩,结构上不可 own。
 
 ## 3. 分期与门
 

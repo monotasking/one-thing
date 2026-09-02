@@ -9,6 +9,8 @@ import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import {
   createUserSchedulerTask,
   deleteUserSchedulerTask,
+  initializeUserSchedulerTasks,
+  stopUserSchedulerTasks,
   updateUserSchedulerTask,
 } from '../user-tasks.js'
 import {
@@ -38,6 +40,38 @@ afterEach(() => {
 })
 
 describe('user scheduler tasks', () => {
+  /**
+   * A3(`docs/design/backend-composition-root-2026-09.md` §2.4)。
+   *
+   * 从前 `initializeUserSchedulerTasks` 是关机清单上**唯一按设计就没有 stop 口**
+   * 的一件:每只 handle 背后是 `Scheduler` 的 setTimeout 链,而那条链只有在任务
+   * 表空了之后才断。现在它返回 disposer,两个 GUI 宿主起完就 `backend.own(...)`。
+   *
+   * 三条判据:摘干净(调度器里查不到了)、幂等(再调一次不抛)、闩放回去
+   * (第二次 initialize 真的再读一次盘,而不是被闩挡住)。
+   */
+  it('A3:stopUserSchedulerTasks 摘掉自己注册的每一只,并把闩放回去', () => {
+    const created = createUserSchedulerTask({
+      name: 'Nightly digest',
+      prompt: 'Summarise the day.',
+      agentId: 'default',
+      enabled: true,
+      schedule: { kind: 'interval', everyMs: 60000 },
+    })
+    expect(getScheduler().getStatus(created.id)).toBeTruthy()
+
+    const stop = initializeUserSchedulerTasks()
+    stop()
+    expect(getScheduler().getStatus(created.id)).toBeUndefined()
+    // 幂等:关机路径上第二次调用(宿主 own + 手抄清单并存的过渡期)不许抛。
+    expect(() => stop()).not.toThrow()
+
+    // 闩放回去了 —— 第二份装配从盘上重新读一次,那只任务回到调度器里。
+    initializeUserSchedulerTasks()
+    expect(getScheduler().getStatus(created.id)?.name).toBe('Nightly digest')
+    stopUserSchedulerTasks()
+  })
+
   it('creates, updates, registers, and deletes agent tasks', () => {
     const created = createUserSchedulerTask({
       name: 'Morning news',

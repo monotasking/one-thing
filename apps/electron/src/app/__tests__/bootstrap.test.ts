@@ -125,9 +125,7 @@ describe('electron app bootstrap', () => {
         shutdownVoiceService: vi.fn(),
         shutdownMusicService: vi.fn(),
         unregisterGlobalWindowShortcuts: vi.fn(),
-        shutdownGateway: vi.fn(),
-        shutdownMCP: vi.fn(),
-        shutdownACP: vi.fn(),
+        // A3:网关 / MCP / ACP 三格搬去了 `backend.own(...)`。
         killAllBrowserTabs: vi.fn(),
         disposeBackend: vi.fn(),
         shutdownAppLogging: vi.fn(),

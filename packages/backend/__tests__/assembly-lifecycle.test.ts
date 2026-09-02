@@ -24,6 +24,16 @@
  *      进程当前实例槽必须是 `null`,而且下一次装配照样成功 —— 失败的装配不许
  *      在进程里留下一个半死的槽。
  *   ⑦ 同一只实例 `dispose()` 两次不抛(幂等)。
+ *   ⑧ **(b) 类闩真的重跑**(A3,方案 §2.5):内置触发器在第二份装配里是**重新
+ *      注册的**。判据取 `triggerManager.getTriggers()` 的条目数 —— 装配后 3 条、
+ *      dispose 后 0 条、再装配回到 3 条。选它是因为它是这四个闩里唯一一个"注册
+ *      进了一张能被数的表"的:变量注册表撞 id 直接抛(那条由 ④ 之后的再装配
+ *      顺带证),目标断路器与 project-dirs 只留下订阅与缓存,数不出来。
+ *   ⑨ **dispose 之后没有留下新的定时器**(A3)。两条判据一起上:`own()` 登记表
+ *      在 dispose 之后清空(`ownedLabels()`,确定性判据),以及
+ *      `process.getActiveResourcesInfo()` 里 `Timeout` 的条数不高于装配之前
+ *      (真实判据,但它会被 vitest 自己的定时器与同 worker 的邻居影响 —— 所以
+ *      它是**不高于**而不是**等于**,并且只在这一条里出现)。
  *
  * **store 隔离**:`stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就
  * 解析 store 根,所以 `ONETHING_STORE_PATH` 必须在任何 backend 模块被求值之前
@@ -162,5 +172,58 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     const fourth = await assemble()
     await expect(fourth.dispose()).resolves.toBeUndefined()
     await expect(fourth.dispose()).resolves.toBeUndefined()
+  })
+
+  /**
+   * A3。反证做法:把 `backend.ts` 里 `this.own(registerBuiltinTriggers(), …)`
+   * 换回 `registerBuiltinTriggers()`(丢掉 disposer),这一条的第二段与第三段
+   * 立刻红 —— 闩留在 true,第二份装配一条都不注册。
+   */
+  it('⑧ (b) 类闩重跑:内置触发器在第二份装配里重新注册', { timeout: 180_000 }, async () => {
+    const { triggerManager } = await import('../wiring/engine/triggers/index.js')
+
+    const fifth = await assemble()
+    const afterAssemble = triggerManager.getTriggers().length
+    expect(afterAssemble).toBe(3)
+
+    await fifth.dispose()
+    expect(triggerManager.getTriggers().length).toBe(0)
+
+    const sixth = await assemble()
+    expect(triggerManager.getTriggers().length).toBe(afterAssemble)
+    await sixth.dispose()
+    expect(triggerManager.getTriggers().length).toBe(0)
+  })
+
+  /**
+   * A3。`ownedLabels()` 那一半是确定性的;定时器那一半是**真判据**但会抖
+   * (vitest 自己的超时钟、同一个 worker 里邻居文件的残留),所以口径是"不高于
+   * 装配之前",而且判的是 `Timeout` 这一类而不是资源总数。
+   */
+  it('⑨ dispose 之后 own 表清空,且没留下新的定时器', { timeout: 180_000 }, async () => {
+    const timeouts = (): number =>
+      process.getActiveResourcesInfo().filter(kind => kind === 'Timeout').length
+    const before = timeouts()
+
+    const seventh = await assemble()
+    // 装配途中登记下来的收尾:清单非空,且带得出名字(排障时要看的就是这张表)。
+    const labels = seventh.ownedLabels()
+    expect(labels.length).toBeGreaterThan(10)
+    expect(labels).toContain('builtinTriggers')
+    expect(labels).toContain('variableSystem')
+    expect(labels).toContain('flushAllPendingSaves')
+
+    // 宿主口:起完就登记,dispose 时逆序跑到。两个 GUI 宿主的调度器 / watcher /
+    // 内嵌 HTTP 面走的就是这条(A3 §2.4)。
+    let hostServiceStopped = false
+    seventh.own(() => {
+      hostServiceStopped = true
+    }, 'hostService')
+    expect(seventh.ownedLabels()).toContain('hostService')
+
+    await seventh.dispose()
+    expect(hostServiceStopped).toBe(true)
+    expect(seventh.ownedLabels()).toEqual([])
+    expect(timeouts()).toBeLessThanOrEqual(before)
   })
 })
