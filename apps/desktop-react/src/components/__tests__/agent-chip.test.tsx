@@ -1,11 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import type { AgentDefinition } from '@shared/ipc/agents'
 import { AgentChip, gradientIndexOf } from '../AgentChip'
 import { TopBar } from '../TopBar'
 import { useAgentMenu } from '../agent-menu'
 import { configureAgentsPort, type AgentsPort } from '../../data/agents-port'
-import { toAgentOption, useAgentsSource } from '../../data/agents-source'
+import {
+  agentMutation,
+  agentsQuery,
+  switchKey,
+  toAgentOption,
+  useAgentsSource,
+} from '../../data/agents-source'
+import { configureSessionsPort, type SessionsPort } from '../../data/sessions-port'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../../expose/store'
 import { useNotifyStore } from '../../services/notify-store'
@@ -59,9 +66,12 @@ function installPort(over: Partial<AgentsPort> = {}): void {
   })
 }
 
-/** 名册直接灌进 store —— 「拉名册」那条路自己有一组用例,这里不重复走一遍。 */
+/**
+ * 名册直接打进那一格 —— 「拉名册」那条路自己有一组用例,这里不重复走一遍。
+ * `patch` 是 kernel 交出来的就地补丁口(顺带把 phase 推到 ready),不绕过任何东西。
+ */
 function seedRoster(agents: AgentDefinition[]): void {
-  useAgentsSource.setState({ status: 'ready', agents: agents.map(toAgentOption) })
+  agentsQuery.patch(agents.map(toAgentOption))
 }
 
 function seedSession(summary: SessionSummary | null): void {
@@ -69,15 +79,52 @@ function seedSession(summary: SessionSummary | null): void {
   useExposeStore.setState({ currentSessionId: summary?.id ?? '' })
 }
 
+/** 把微任务队列跑干净 —— 一次写要经过端口、原语、对账好几层 await。 */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 8; i += 1) await Promise.resolve()
+}
+
+/**
+ * 会话表那一口的假端口。默认与 `src/test/setup.ts` 装的那份同形(读得到但是空);
+ * `listMeta` 可以换成一发**停在半空**的,用来验对账的次序。
+ */
+function installSessionsPort(listMeta?: SessionsPort['listMeta']): void {
+  configureSessionsPort({
+    ready: async () => undefined,
+    listMeta: listMeta ?? (async () => ({ success: true, sessions: [] })),
+    getSegments: async () => ({ success: true, segments: [] }),
+    getMessagesPage: async () => ({ success: true, messages: [] }),
+    getUserMarkers: async () => ({ success: true, markers: [] }),
+    create: async () => ({ success: false, error: 'fake port' }),
+    updateWorkingDirectory: async () => ({ success: true }),
+    onSessionEvent: () => () => undefined,
+    onSessionLifecycle: () => () => undefined,
+  })
+}
+
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   list = vi.fn(async () => ({ success: true, agents: [] }))
   updateSessionAgent = vi.fn(async () => ({ success: true }))
   installPort()
+  installSessionsPort()
   useAgentsSource.getState().reset()
   useAgentMenu.setState({ open: false })
   useNotifyStore.setState({ items: [] })
   seedSession(null)
+})
+
+/*
+ * 归零要包在 act 里:vitest 的 afterEach 是后进先出,所以这一钩比 RTL 自己的
+ * 卸载先跑 —— 那时组件还挂着,一次归零(名册 query 会 emit)就是一次 act 之外的
+ * 重渲染。与 MeterCard.test.tsx 同一条判例。
+ */
+afterEach(() => {
+  act(() => {
+    // 端口是模块级单例:换过就得换回去,别把下一条用例连坐。
+    installSessionsPort()
+    useAgentsSource.getState().reset()
+  })
 })
 
 describe('徽上写谁', () => {
@@ -162,7 +209,7 @@ describe('菜单', () => {
   })
 
   it('名册拉不到:只有默认助手 + 一行灰字,不假装', () => {
-    useAgentsSource.setState({ status: 'error', error: 'boom', agents: [] })
+    // 拉不到 = 那一格既没有 data 也不在飞。灰字的判据是这两条,不是某个 status 字面量。
     render(<AgentChip />)
     open()
     expect(screen.getByText('名册不可用')).toBeTruthy()
@@ -239,6 +286,121 @@ describe('切换', () => {
   })
 })
 
+describe('切换的生命周期(批 7a:写路迁 createMutation)', () => {
+  it('对账的次序:重拉会话表**之后**才撤牌 —— 中间那一段仍由牌顶着', async () => {
+    let releaseList: (() => void) | undefined
+    installSessionsPort(async () => {
+      await new Promise<void>((resolve) => {
+        releaseList = resolve
+      })
+      return { success: true, sessions: [] }
+    })
+    seedRoster([REVIEWER])
+    seedSession(session({ id: 's1' }))
+
+    const done = useAgentsSource.getState().switchAgent('s1', 'reviewer')
+    await flush()
+
+    // 写已经回来了(忙态该解了),但对账还停在半空 —— 牌必须还在。
+    expect(updateSessionAgent).toHaveBeenCalledWith('s1', 'reviewer')
+    expect(agentMutation.isPending(switchKey('s1'))).toBe(false)
+    expect(releaseList).toBeTruthy()
+    expect(useAgentsSource.getState().optimistic).toEqual({ s1: 'reviewer' })
+
+    releaseList?.()
+    await done
+    // 对账落地之后牌才撤 —— 屏幕从此读的是 listMeta 的事实。
+    expect(useAgentsSource.getState().optimistic).toEqual({})
+  })
+
+  it('同一条会话在飞时,第二下切换被挡住 —— 不发第二发', async () => {
+    let releaseWrite: (() => void) | undefined
+    updateSessionAgent = vi.fn(async () => {
+      await new Promise<void>((resolve) => {
+        releaseWrite = resolve
+      })
+      return { success: true }
+    })
+    installPort()
+    seedRoster([REVIEWER, PLANNER])
+    seedSession(session({ id: 's1' }))
+
+    const first = useAgentsSource.getState().switchAgent('s1', 'reviewer')
+    await flush()
+    expect(agentMutation.isPending(switchKey('s1'))).toBe(true)
+
+    await useAgentsSource.getState().switchAgent('s1', 'planner')
+    expect(updateSessionAgent).toHaveBeenCalledTimes(1)
+
+    releaseWrite?.()
+    await first
+    expect(agentMutation.isPending(switchKey('s1'))).toBe(false)
+  })
+
+  it('忙态是逐格的:另一条会话上那一格照样是闲的', async () => {
+    let releaseWrite: (() => void) | undefined
+    updateSessionAgent = vi.fn(async () => {
+      await new Promise<void>((resolve) => {
+        releaseWrite = resolve
+      })
+      return { success: true }
+    })
+    installPort()
+    seedRoster([REVIEWER])
+    seedSession(session({ id: 's1' }))
+
+    const first = useAgentsSource.getState().switchAgent('s1', 'reviewer')
+    await flush()
+    expect(agentMutation.isPending(switchKey('s1'))).toBe(true)
+    expect(agentMutation.isPending(switchKey('s2'))).toBe(false)
+
+    releaseWrite?.()
+    await first
+  })
+
+  it('在飞时徽上 aria-busy;点第二下一发都不多发', async () => {
+    let releaseWrite: (() => void) | undefined
+    updateSessionAgent = vi.fn(async () => {
+      await new Promise<void>((resolve) => {
+        releaseWrite = resolve
+      })
+      return { success: true }
+    })
+    installPort()
+    seedRoster([REVIEWER, PLANNER])
+    seedSession(session({ id: 's1' }))
+    render(<AgentChip />)
+
+    const chip = screen.getByRole('button', { name: 'Agent 切换器' })
+    expect(chip.getAttribute('aria-busy')).toBe('false')
+
+    act(() => {
+      fireEvent.click(chip)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText('审阅者'))
+      await flush()
+    })
+    expect(chip.getAttribute('aria-busy')).toBe('true')
+
+    // 再开一次菜单点另一个人:在飞时这一下不该发第二发。
+    act(() => {
+      fireEvent.click(chip)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText('规划师'))
+      await flush()
+    })
+    expect(updateSessionAgent).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      releaseWrite?.()
+      await flush()
+    })
+    expect(chip.getAttribute('aria-busy')).toBe('false')
+  })
+})
+
 describe('名册取数', () => {
   it('连通后拉一次', async () => {
     list = vi.fn(async () => ({ success: true, agents: [REVIEWER] }))
@@ -247,10 +409,10 @@ describe('名册取数', () => {
       await useAgentsSource.getState().start()
     })
     expect(list).toHaveBeenCalledTimes(1)
-    expect(useAgentsSource.getState().agents.map((a) => a.id)).toEqual(['reviewer'])
+    expect(agentsQuery.get().data?.map((a) => a.id)).toEqual(['reviewer'])
   })
 
-  it('失败只重试一次就停,状态落在 error', async () => {
+  it('失败只重试一次就停,后端原话留在那一格上', async () => {
     list = vi.fn(async () => {
       throw new Error('断了')
     })
@@ -258,8 +420,25 @@ describe('名册取数', () => {
     await act(async () => {
       await useAgentsSource.getState().start()
     })
+    // **恰好两次**:纪律在 fetcher 里(kernel 自己不重试),多一次少一次都是病。
     expect(list).toHaveBeenCalledTimes(2)
-    expect(useAgentsSource.getState().status).toBe('error')
+    expect(agentsQuery.get().error).toBe('断了')
+    expect(agentsQuery.get().data).toBeUndefined()
+  })
+
+  it('重拉失败:上一份名册还在屏上,错误与它并存(律②)', async () => {
+    list = vi.fn(async () => ({ success: true, agents: [REVIEWER] }))
+    installPort()
+    await act(async () => {
+      await useAgentsSource.getState().start()
+    })
+    list = vi.fn(async () => ({ success: false, error: '后端拒了' }))
+    installPort()
+    await act(async () => {
+      await useAgentsSource.getState().refresh()
+    })
+    expect(agentsQuery.get().data?.map((a) => a.id)).toEqual(['reviewer'])
+    expect(agentsQuery.get().error).toBe('后端拒了')
   })
 })
 

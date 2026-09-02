@@ -7,12 +7,16 @@ import { Menu, MenuItem, MenuSeparator } from '../ui/Menu'
 import { ButtonBase } from '../ui/ButtonBase'
 import { useAgentMenu } from './agent-menu'
 import {
+  agentMutation,
   findAgentOption,
   resolveAgentId,
   rosterOf,
+  switchKey,
+  useAgentRoster,
   useAgentsSource,
   type AgentOption,
 } from '../data/agents-source'
+import { useAsyncPending } from '../data/kernel'
 import { useSessionsSource } from '../data/sessions-source'
 import { findSession } from '../expose/projection'
 import { useExposeStore } from '../expose/store'
@@ -112,8 +116,7 @@ export function AgentChip() {
   const setOpen = useAgentMenu((st) => st.setOpen)
   const toggle = useAgentMenu((st) => st.toggle)
 
-  const agents = useAgentsSource((st) => st.agents)
-  const status = useAgentsSource((st) => st.status)
+  const { agents, inflight: rosterInflight } = useAgentRoster()
   const optimistic = useAgentsSource((st) => st.optimistic)
   const pendingAgentId = useAgentsSource((st) => st.pendingAgentId)
   const switchAgent = useAgentsSource((st) => st.switchAgent)
@@ -121,6 +124,20 @@ export function AgentChip() {
   const currentSessionId = useExposeStore((st) => st.currentSessionId)
   const sessions = useSessionsSource((st) => st.sessions)
   const session = findSession(sessions, currentSessionId)
+
+  /**
+   * **这一条会话上有没有一发切人在飞**(律③,批 7a 补的口)。
+   *
+   * 逐格,不是整面:`useAsyncPending(agentMutation, switchKey(sid))` 问的是
+   * 「**这一格**在飞吗」——别人家会话的切换不该把这枚徽变成忙态。没有会话时
+   * 键是 `switch:`,那一格永远没人写(草稿态只记 pendingAgentId,不发请求),
+   * 所以恒 false。hook 不能有条件地调,所以键在这里恒定算出来。
+   *
+   * 反馈**不画新东西**:忙就是 `aria-busy`(读屏软件听得见)+ 点了不发第二发
+   * (下面 `pick` 那道闸)。徽本身不禁用 —— 禁了连菜单都开不了,那是把
+   * 「一发在飞」说成「这枚控件坏了」。
+   */
+  const switching = useAsyncPending(agentMutation, switchKey(session?.id ?? ''))
 
   // 没有会话时,徽上显示的是「下一条新会话归谁」;有会话时是这条会话的事实。
   const activeId = session
@@ -164,6 +181,9 @@ export function AgentChip() {
 
   const pick = (agentId: string) => {
     setOpen(false)
+    // 同一条会话连点两下不该发两发。闸也在 source 里(那是真正的产地),
+    // 这里这一道是为了连 `setOpen` 之外一个字都不做 —— 两处判据读的是同一格。
+    if (switching) return
     void switchAgent(session?.id ?? null, agentId)
   }
 
@@ -176,6 +196,7 @@ export function AgentChip() {
         className={s.chip}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-busy={switching}
         aria-label={t('agent.menuLabel')}
         // 与 ui/Select 同一条:不拦住这一下,再点一次徽会先关再开,看着像没反应。
         onPointerDown={(e) => e.stopPropagation()}
@@ -213,8 +234,10 @@ export function AgentChip() {
               </MenuItem>
             ))}
 
-            {/* 拉不到名册就说拉不到 —— 不拿一个空列表冒充「你只有默认助手」。 */}
-            {rosterMissing && status !== 'loading' && (
+            {/* 拉不到名册就说拉不到 —— 不拿一个空列表冒充「你只有默认助手」。
+              * 判据从 `status !== 'loading'` 换成 `!rosterInflight`,同义:
+              * 还在问的那一程不说「不可用」(那是抢答),问完了才说。 */}
+            {rosterMissing && !rosterInflight && (
               <div className={s.unavailable}>{t('agent.rosterUnavailable')}</div>
             )}
 

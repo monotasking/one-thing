@@ -9,6 +9,7 @@ import {
   cacheHitPctOf,
   contextUsedOf,
   isMeterInvalidation,
+  meterQuery,
   meterViewOf,
   useMeterSource,
 } from './meter-source'
@@ -41,6 +42,36 @@ let fetches: { usage: number; tokens: number }
 let emit: ((envelope: SessionEventEnvelope) => void) | undefined
 let usageThrows = false
 
+/**
+ * 一道可控的闸:关上之后账本那一口停在半空,直到 `openGate()` 放行。
+ * 「重拉期间屏幕上是什么」这类断言必须在**在飞的那一刻**读,所以要有它。
+ */
+let gate: Promise<void> | undefined
+let openGate: (() => void) | undefined
+
+function shutGate(): void {
+  gate = new Promise<void>((resolve) => {
+    openGate = () => {
+      gate = undefined
+      resolve()
+    }
+  })
+}
+
+/** 把微任务队列跑干净 —— 一发取数要经过好几层 await。 */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 6; i += 1) await Promise.resolve()
+}
+
+/**
+ * 「屏幕上有人在看这一格」。kernel 的 `invalidate()` **只在有订阅者时**才后台补拉
+ * (没人看就只留一个脏标记),而真机上环与明细卡一直订着当前这条会话 ——
+ * 所以要验「账本一响就补拉」,先得把那个看客摆上。
+ */
+function watch(sessionId: string): () => void {
+  return meterQuery.get(sessionId).subscribe(() => undefined)
+}
+
 function ledger(sessionId: string, type: string): SessionEventEnvelope {
   return {
     sessionId,
@@ -52,6 +83,8 @@ beforeEach(() => {
   fetches = { usage: 0, tokens: 0 }
   usageThrows = false
   emit = undefined
+  gate = undefined
+  openGate = undefined
   useMeterSource.getState().reset()
 
   configureChatPort({
@@ -74,6 +107,7 @@ beforeEach(() => {
     ready: async () => undefined,
     getSessionUsage: async () => {
       fetches.usage += 1
+      if (gate) await gate
       if (usageThrows) throw new Error('账本答不上话')
       return usageResponse()
     },
@@ -165,32 +199,108 @@ describe('刷新时机', () => {
   it('开一条会话拉一次;两口各拉各的', async () => {
     await useMeterSource.getState().open('s1')
     expect(fetches).toEqual({ usage: 1, tokens: 1 })
-    expect(useMeterSource.getState().facts?.sessionId).toBe('s1')
+    expect(meterQuery.get('s1').get().data?.sessionId).toBe('s1')
   })
 
   it('run/end 与 session/compacted 再拉;别的账本行不拉', async () => {
     await useMeterSource.getState().open('s1')
+    // 屏幕上有人在看这一格(真机上环与卡一直订着)——「一响就补拉」的前提。
+    const stop = watch('s1')
     emit?.(ledger('s1', 'assistant/chunks'))
-    await Promise.resolve()
+    await flush()
     expect(fetches.usage).toBe(1)
 
     emit?.(ledger('s1', 'run/end'))
-    await Promise.resolve()
-    await Promise.resolve()
+    await flush()
     expect(fetches.usage).toBe(2)
 
     emit?.(ledger('s1', 'session/compacted'))
-    await Promise.resolve()
-    await Promise.resolve()
+    await flush()
+    expect(fetches.usage).toBe(3)
+    stop()
+  })
+
+  it('别人家的会话事件不理会 —— 一发请求都不发', async () => {
+    await useMeterSource.getState().open('s1')
+    emit?.(ledger('s2', 'run/end'))
+    await flush()
+    expect(fetches.usage).toBe(1)
+  })
+
+  /*
+   * 键控缓存必须补的那一格:在 s2 期间 s1 又跑完一轮,回到 s1 不该拿一份陈的
+   * 读数画在环上。机制是「标脏但不发」+「回去时 ensure 因为脏而重拉」——
+   * 没人看的那一格一发请求都不发,所以往返次数与从前逐字相同。
+   */
+  it('别人家的会话跑完一轮:当场只标脏;回到那条会话时才补拉', async () => {
+    await useMeterSource.getState().open('s1')
+    await useMeterSource.getState().open('s2')
+    expect(fetches.usage).toBe(2)
+
+    // 人在 s2,s1 那边跑完一轮 —— 没人看,所以此刻一发都不发。
+    emit?.(ledger('s1', 'run/end'))
+    await flush()
+    expect(fetches.usage).toBe(2)
+
+    // 回到 s1:那一格是脏的,ensure 于是真去问一次。
+    await useMeterSource.getState().open('s1')
     expect(fetches.usage).toBe(3)
   })
 
-  it('别人家的会话事件不理会', async () => {
+  it('什么都没发生时回到旧会话:不白问一次(ensure 是「确保问过」不是「再问」)', async () => {
     await useMeterSource.getState().open('s1')
-    emit?.(ledger('s2', 'run/end'))
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(fetches.usage).toBe(1)
+    await useMeterSource.getState().open('s2')
+    await useMeterSource.getState().open('s1')
+    expect(fetches.usage).toBe(2)
+    expect(meterQuery.get('s1').get().data?.sessionId).toBe('s1')
+  })
+
+  it('换一条会话不串值:两格各记各的(键控)', async () => {
+    await useMeterSource.getState().open('s1')
+    await useMeterSource.getState().open('s2')
+    expect(meterQuery.get('s1').get().data?.sessionId).toBe('s1')
+    expect(meterQuery.get('s2').get().data?.sessionId).toBe('s2')
+    expect(meterQuery.keys()).toEqual(['s1', 's2'])
+  })
+
+  it('重拉期间旧读数一直在屏上,骨架判据不退回首载(律②)', async () => {
+    await useMeterSource.getState().open('s1')
+    const before = meterQuery.get('s1').get().data
+    expect(before?.tokens?.contextSize).toBe(124_000)
+
+    shutGate()
+    const inflight = useMeterSource.getState().refresh()
+    await flush()
+
+    const during = meterQuery.get('s1').get()
+    expect(during.inflight).toBe(true)
+    // 「有过内容」之后永远是 ready —— 骨架只看 phase,所以重拉不画骨架。
+    expect(during.phase).toBe('ready')
+    // 连引用都没换:屏幕上一格都没动过。
+    expect(during.data).toBe(before)
+
+    openGate?.()
+    await inflight
+    expect(meterQuery.get('s1').get().inflight).toBe(false)
+  })
+
+  it('账本一响:后台补拉的那一程,旧读数仍然在屏上(不清屏)', async () => {
+    await useMeterSource.getState().open('s1')
+    const before = meterQuery.get('s1').get().data
+    const stop = watch('s1')
+
+    shutGate()
+    emit?.(ledger('s1', 'run/end'))
+    await flush()
+
+    expect(fetches.usage).toBe(2)
+    expect(meterQuery.get('s1').get().inflight).toBe(true)
+    expect(meterQuery.get('s1').get().data).toBe(before)
+
+    openGate?.()
+    await flush()
+    expect(meterQuery.get('s1').get().inflight).toBe(false)
+    stop()
   })
 
   it('悬停开卡再拉一次 —— 那一眼要是最新的', async () => {
@@ -202,7 +312,7 @@ describe('刷新时机', () => {
   it('没有会话:不订不拉,读数是缺席态', async () => {
     await useMeterSource.getState().open(null)
     expect(fetches).toEqual({ usage: 0, tokens: 0 })
-    expect(useMeterSource.getState().facts).toBeNull()
+    expect(meterQuery.get('').get().data).toBeUndefined()
     // refresh 在草稿态是恒等,不发请求。
     await useMeterSource.getState().refresh()
     expect(fetches.usage).toBe(0)
@@ -211,7 +321,7 @@ describe('刷新时机', () => {
   it('一半失败不该把另一半也抹掉', async () => {
     usageThrows = true
     await useMeterSource.getState().open('s1')
-    const facts = useMeterSource.getState().facts
+    const facts = meterQuery.get('s1').get().data
     expect(facts?.usage).toBeNull()
     expect(facts?.tokens?.contextSize).toBe(124_000)
   })

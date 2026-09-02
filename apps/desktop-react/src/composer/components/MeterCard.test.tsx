@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { ContextRing, MeterCard } from './MeterCard'
-import { useMeterSource } from '../../data/meter-source'
+import { meterQuery, useMeterSource } from '../../data/meter-source'
+import type { MeterFacts } from '../../data/meter-source'
 import { useModelsSource } from '../../data/models-source'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useStageStore } from '../../stage/store'
@@ -58,6 +59,14 @@ const USAGE = {
   },
 }
 
+/**
+ * 读数直接打进那一格 —— 「怎么拉」有它自己一组用例(data/meter-source.test.ts),
+ * 这一层只管「画成什么样」。`patch` 是 kernel 交出来的就地补丁口,不绕过任何东西。
+ */
+function seedFacts(facts: MeterFacts): void {
+  meterQuery.get(facts.sessionId).patch(facts)
+}
+
 /** 摆一条「正在这条会话上、跑着 grok-4」的现场。`window` 给 null = 目录还没到。 */
 function stage(window: number | null): void {
   useSessionsSource.setState({
@@ -66,11 +75,8 @@ function stage(window: number | null): void {
   useModelsSource.setState({
     catalog: window === null ? {} : { xai: [{ id: 'grok-4', contextLength: window }] },
   })
-  useMeterSource.setState({
-    sessionId: 's1',
-    status: 'ready',
-    facts: { sessionId: 's1', tokens: TOKENS, usage: USAGE },
-  })
+  useMeterSource.setState({ sessionId: 's1' })
+  seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
 }
 
 beforeEach(() => {
@@ -132,12 +138,10 @@ describe('明细卡', () => {
 
   it('缓存分母为 0(这条会话什么都还没送过):整行不画', () => {
     stage(200_000)
-    useMeterSource.setState({
-      facts: {
-        sessionId: 's1',
-        tokens: TOKENS,
-        usage: { ...USAGE, usage: { ...USAGE.usage, inputTokens: 0, cacheReadTokens: 0 } },
-      },
+    seedFacts({
+      sessionId: 's1',
+      tokens: TOKENS,
+      usage: { ...USAGE, usage: { ...USAGE.usage, inputTokens: 0, cacheReadTokens: 0 } },
     })
     render(<MeterCard open />)
     expect(screen.queryByText('缓存命中')).toBeNull()
@@ -152,12 +156,10 @@ describe('明细卡', () => {
 
   it('缓存有读数:画出来,并且不带「省了多少钱」那半句(整仓无产地)', () => {
     stage(200_000)
-    useMeterSource.setState({
-      facts: {
-        sessionId: 's1',
-        tokens: TOKENS,
-        usage: { ...USAGE, usage: { ...USAGE.usage, inputTokens: 1_000, cacheReadTokens: 9_000 } },
-      },
+    seedFacts({
+      sessionId: 's1',
+      tokens: TOKENS,
+      usage: { ...USAGE, usage: { ...USAGE.usage, inputTokens: 1_000, cacheReadTokens: 9_000 } },
     })
     render(<MeterCard open />)
     expect(screen.getByText('缓存命中')).toBeTruthy()
@@ -174,9 +176,7 @@ describe('明细卡', () => {
 
   it('厂商报了价:多一行,**并存**不替换本地估算', () => {
     stage(200_000)
-    useMeterSource.setState({
-      facts: { sessionId: 's1', tokens: TOKENS, usage: { ...USAGE, providerCostUSD: 1.5 } },
-    })
+    seedFacts({ sessionId: 's1', tokens: TOKENS, usage: { ...USAGE, providerCostUSD: 1.5 } })
     render(<MeterCard open />)
     expect(screen.getByText('$0.87')).toBeTruthy()
     expect(screen.getByText('厂商报价')).toBeTruthy()
@@ -190,6 +190,8 @@ describe('明细卡', () => {
     expect(screen.queryByText(/\$/)).toBeNull()
   })
 
+  // 从前这条钉的是一句手写的陈值门;迁到键控 query 之后钉的是**缓存的形状**:
+  // 换一条会话读的就是另一格,别人的账根本到不了屏幕上。
   it('手上这份读数不属于当前会话时当没有 —— 不画别人的账', () => {
     stage(200_000)
     useMeterSource.setState({ sessionId: 's2' })
