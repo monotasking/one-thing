@@ -22,6 +22,8 @@ import { Spinner } from '../ui/Spinner'
 import { Switch } from '../ui/Switch'
 import { Tabs } from '../ui/Tabs'
 import { pushToast, ToastHost } from '../ui/Toast'
+import { useScrolledPast } from '../ui/scrolled-past'
+import { useSettlePulse } from '../ui/settle-pulse'
 import { createMutation } from '../data/kernel'
 import { TOAST_LIFE_MS } from '../components/motion'
 import { Tooltip } from '../ui/Tooltip'
@@ -115,6 +117,72 @@ function GalleryFieldSegmented({
 }) {
   const field = useFieldControlProps()
   return <Segmented {...field} options={DENSITY} value={value} onChange={onChange} />
+}
+
+/**
+ * `useScrolledPast` 那一格(09-02 批 9a)。它必须演在一个**内层滚动容器**里 ——
+ * 这只件的第二条判例正是「root 取真正在滚的那一层,不是缺省的视口」,
+ * 拿整页视口演恰好演不出它。哨兵零高度、不占位、不进无障碍树。
+ */
+function GalleryScrolledPast() {
+  const box = useRef<HTMLDivElement>(null)
+  const mark = useRef<HTMLDivElement>(null)
+  const { past } = useScrolledPast(mark)
+  return (
+    <div
+      className={s.scrollDemo}
+      ref={box}
+      /* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex --
+       * 刻意的,而且是**本批 gate:a11y 当场抓出来的**:axe 的
+       * `scrollable-region-focusable`(serious)—— 一块自己会滚、里面又没有可聚焦
+       * 内容的区域,键盘用户根本滚不动它(这一格静息形里那颗回顶钮还没出来,
+       * 整块是死的)。静态规则说非交互元素不该可 tab,一般对;但**可滚就是一种
+       * 键盘可达性义务**,两条门在这一格上要的东西正好相反,以能被人用为准。
+       * 不改成 role="button":它不执行动作,报成按钮是对读屏软件说谎。
+       * 产品那一层的滚动区(详情列)不需要这一句 —— 它里面全是钮与勾选框。 */
+      tabIndex={0}
+      role="region"
+      aria-label="Scroll demo"
+    >
+      <div ref={mark} aria-hidden="true" />
+      {Array.from({ length: 24 }, (_, i) => (
+        <p key={i} className={s.note}>
+          Row {i + 1}
+        </p>
+      ))}
+      {past && (
+        <div className={s.scrollFoot}>
+          <Button size="sm" pill onClick={() => box.current?.scrollTo({ top: 0 })}>
+            Back to top
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * `useSettlePulse` 那一格(09-02 批 9a)。按一下 = token 前进一格 = 播一遍;
+ * 收尾看 `animationend`,所以动效档调到「无」时它当场回来。
+ * 挂载那一次**不播** —— 屏幕上本来就在长内容,再淡一次是噪音。
+ */
+function GallerySettlePulse() {
+  const [token, setToken] = useState(0)
+  const pulse = useSettlePulse(token)
+  return (
+    <>
+      <Button size="sm" onClick={() => setToken((n) => n + 1)}>
+        Bump token
+      </Button>
+      <span
+        className={pulse.on ? s.settled : undefined}
+        onAnimationEnd={pulse.end}
+        data-testid="gallery-settle"
+      >
+        settled #{token}
+      </span>
+    </>
+  )
 }
 
 export function Gallery() {
@@ -473,6 +541,19 @@ export function Gallery() {
         <Kbd>⌘</Kbd>
         <Kbd>K</Kbd>
         <Kbd>Esc</Kbd>
+      </Section>
+
+      <Section name="useScrolledPast">
+        <div className={s.wide}>
+          <GalleryScrolledPast />
+        </div>
+        <Note>滚过哨兵那个点才出现回顶钮;哨兵还在下面(没滚到)不算</Note>
+        <Note>root 取自 overflow 祖先 —— 缺省视口那一档量的是窗口矩形,判据会恒假</Note>
+      </Section>
+
+      <Section name="useSettlePulse">
+        <GallerySettlePulse />
+        <Note>token 变一次播一次;挂载那一次不播;收尾看 animationend 不看计时器</Note>
       </Section>
 
       <Dialog

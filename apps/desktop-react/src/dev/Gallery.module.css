@@ -52,3 +52,38 @@
   font-size: var(--fs-meta);
   color: var(--text-3);
 }
+
+/*
+ * `useScrolledPast` 那一格的演示盒(09-02 批 9a)。这只件的**第二条判例**是
+ * 「root 必须是真正在滚的那一层」,所以规格页得真给它一个**内层滚动容器** ——
+ * 拿整页视口演,恰好演不出那条判例。
+ * 高度借浮层列表那一档(--select-menu-max-h):这一格与它同类 ——
+ * 「一块自己会滚、有上限的内层区域」。
+ */
+.scrollDemo {
+  width: 100%;
+  max-height: var(--select-menu-max-h);
+  overflow-y: auto;
+  padding: var(--sp-3);
+  border: var(--bw-1) solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+}
+
+/* 回顶那一条:粘在滚动层底缘,滚过哨兵才在场。整条不吃指针,只有钮吃。 */
+.scrollFoot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.scrollFoot > * {
+  pointer-events: auto;
+}
+
+/* `useSettlePulse` 那一格:动画名与时长都是 token,与真实消费面逐字同一条。 */
+.settled {
+  animation: var(--kf-settle) var(--dur-enter) var(--ease-out);
+}
