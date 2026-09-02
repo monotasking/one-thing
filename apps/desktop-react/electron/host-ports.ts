@@ -11,18 +11,17 @@
  * 会让两个壳的启动路径互相牵制,过渡期恰恰要它们各自独立。四件东西加起来六十行,
  * 抄形比接线便宜。
  *
- * 四颗里的两颗在这里(另外两颗 —— sender noop 与 collab:true —— 在 main.ts 的
- * `createOnethingBackend` 调用里):
- *  · `configureAuthHost` —— 凭证解密的**唯一**口。不注入 = token 落盘是明文、
- *    而已有的 safeStorage 密文一律解不开 → provider 目录看上去是空的(旧 spawn
- *    server 路径的真实症状)。
- *  · `configureSandboxHost` / `configureStorePathHost` —— 下载目录 / 打包资源目录。
+ * A1(2026-09-02)之后这里不再自己调 `configure*Host`,而是**交出一张表**
+ * (`OnethingHostPorts`,`packages/backend/host-ports.ts`):装配层第一步
+ * `applyHostPorts` 逐项接线。每一项必填,没接的显式写 `null` —— 于是"这个壳
+ * 缺什么能力"是可数的,而不是靠比对两个壳的调用清单才看得出来。
+ *
+ * 这个壳真的交出来的三件:auth(凭证解密的唯一口)、sandbox(下载目录)、
+ * storePath(打包资源目录);其余十一项是 `null`。
  */
 import { app, net, safeStorage, session } from 'electron'
-import { configureAuthHost } from '@onething/runtime/auth/host-ports'
 import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'
-import { configureSandboxHost } from '@onething/backend/wiring/tools/core/sandbox.js'
-import { configureStorePathHost } from '@onething/backend/stores/docs-paths.js'
+import type { OnethingHostPorts } from '@onething/backend/host-ports.js'
 import {
   clearAppDispatcherCache,
   createRequiredAppFetch,
@@ -106,17 +105,48 @@ export async function applyShellNetworkProxySettings(
 }
 
 /**
- * 全部注入。**必须在 `createOnethingBackend` 之前调用** —— sandbox / store-path
- * 两个端口在装配过程中就会被读到;auth 那两个是逐调用现读的,早注入也没坏处。
+ * 这个壳交给装配层的**全表**(A1)。
+ *
+ * 从前这里是三次 `configure*Host` 调用,「这个壳没接什么」是看不见的 —— 留账②
+ * (打包态找不到内建 skills 目录)正是漏了 `skillsEnvironment` 那一项,而它在
+ * 代码里没有留下任何痕迹。现在每一项都要写,没接的写 `null`:下面这十一个
+ * `null` 就是这个壳的能力缺口清单,一眼可数。
+ *
+ * 接与不接是**产品决定**,不是这一批的事:A 只负责让"没接"从静默变成一行代码。
+ *
+ * 调用点:`createOnethingBackend({ host: … })`,装配第一步就 `applyHostPorts`。
  */
-export function configureShellHostPorts(): void {
-  configureAuthHost({
-    authFetch: createShellAuthFetch(),
-    tokenCryptoAdapter: getShellSafeStorage,
-  })
-  configureSandboxHost({ getPath: name => app.getPath(name as Parameters<typeof app.getPath>[0]) })
-  configureStorePathHost({
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-  })
+export function createShellHostPorts(): OnethingHostPorts {
+  return {
+    storePath: {
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+    },
+    sandbox: {
+      getPath: name => app.getPath(name as Parameters<typeof app.getPath>[0]),
+    },
+    /**
+     * 凭证解密的**唯一**口。不注入 = token 落盘是明文、而已有的 safeStorage
+     * 密文一律解不开 → provider 目录看上去是空的(旧 spawn server 路径的真实症状)。
+     */
+    auth: {
+      authFetch: createShellAuthFetch(),
+      tokenCryptoAdapter: getShellSafeStorage,
+    },
+    // ── 以下是这个壳还没有的能力。每一行都是一笔待办,不是一次省略。 ──
+    // 日志目录与 renderer console 兜底采集:壳走 `configureLogging` 自己开
+    // `shell.jsonl`,那两件宿主采集能力还没接。
+    logging: null,
+    shell: null,
+    voice: null,
+    // 留账②:打包态的内建 skills 目录靠这一项指路,这个壳还没注入。
+    skillsEnvironment: null,
+    todoPlan: null,
+    scratchpad: null,
+    plugins: null,
+    gateway: null,
+    settings: null,
+    evals: null,
+    mcp: null,
+  }
 }

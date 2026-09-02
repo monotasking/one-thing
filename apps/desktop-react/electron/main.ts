@@ -42,7 +42,7 @@ import {
 } from '@onething/backend/server/embed.js'
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { configureLogging, getLogger } from '@onething/backend/wiring/logging/index.js'
-import { applyShellNetworkProxySettings, configureShellHostPorts } from './host-ports.js'
+import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
 
 /**
  * ── 同店同钥:app 名字就是 safeStorage 的钥匙名 ─────────────────────────────
@@ -177,17 +177,17 @@ function connectionOf(record: { host: string; port: number; token?: string }): H
  * 自己当 core。顺序不是随手排的:
  *   configureLogging  —— 必须最早。它之后的每一条记录才落进 `<store>/log/shell.jsonl`;
  *                        在它之前抛的错只留在内存环里。
- *   configureShellHostPorts —— 必须在装配之前。sandbox / store-path 两个端口在装配
- *                        过程中就会被读到。
- *   createOnethingBackend —— 唯一的装配配方,顺序约束都在它里面。
+ *   createOnethingBackend —— 唯一的装配配方,顺序约束都在它里面。宿主能力经
+ *                        `host:` 一次交清(A1),由它的第一步 `applyHostPorts`
+ *                        接线 —— 壳这边不再有"记得在装配前调"这件事。
  */
 async function assembleOwnCore(): Promise<OnethingBackend> {
   // 日志单开一本 `shell.jsonl`:过渡期两个壳可能先后服务同一个 store,混进 app.jsonl
   // 会让那本账在「谁在当家」这件事上说谎。代价见文件末尾的留账①。
   configureLogging({ fileBaseName: 'shell', src: 'main' })
-  configureShellHostPorts()
 
   return createOnethingBackend({
+    host: createShellHostPorts(),
     toolRegistry: 'full',
     promptVersion: true,
     // 四颗必落件之二:agent-dm(协作房间)的开关。不开 = 房间入口闸拒流,
@@ -393,7 +393,9 @@ async function shutdownOwnCore(): Promise<void> {
   backend = undefined
   if (!b) return
   try {
-    await b.shutdown()
+    // A2:装配产物的关机口叫 `dispose()`(`shutdown()` 还在,是过渡别名)。
+    // 它跑的是装配途中 `own()` 登记下来的清单,逆序、每步单独 try/catch。
+    await b.dispose()
   } finally {
     await stopEmbeddedOnethingHttpServer().catch(() => {})
     removeHttpDiscovery()

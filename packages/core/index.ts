@@ -467,10 +467,6 @@ export {
   EventBus,
   RingBuffer,
   StreamChannel,
-  getEventBus,
-  getStreamChannel,
-  initializeEventSystem,
-  shutdownEventSystem,
 } from './events/index.js'
 export type {
   EmitResult,

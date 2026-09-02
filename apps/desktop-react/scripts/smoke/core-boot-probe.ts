@@ -54,6 +54,24 @@ async function probe(): Promise<void> {
   const started = Date.now()
   configureLogging({ fileBaseName: 'shell', src: 'main' })
   const backend = await createOnethingBackend({
+    // 探针不是宿主:它验的是构建链,不接任何 Electron 能力(壳自己那张表在
+    // `electron/host-ports.ts`)。两件必填项给空对象 —— 与"从未注入"逐字相同。
+    host: {
+      storePath: {},
+      sandbox: {},
+      auth: null,
+      logging: null,
+      shell: null,
+      voice: null,
+      skillsEnvironment: null,
+      todoPlan: null,
+      scratchpad: null,
+      plugins: null,
+      gateway: null,
+      settings: null,
+      evals: null,
+      mcp: null,
+    },
     toolRegistry: 'full',
     promptVersion: true,
     collab: true,
@@ -81,7 +99,7 @@ async function probe(): Promise<void> {
   }
   emit(`PTY ${pty}\n`)
 
-  await backend.shutdown()
+  await backend.dispose()
   await stopEmbeddedOnethingHttpServer()
   removeHttpDiscovery()
   emit('DONE\n')

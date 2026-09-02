@@ -26,20 +26,25 @@ import {
 } from '../runtime.js'
 import { createTestServerRuntime } from './test-helpers.js'
 
+/**
+ * A2:装配产物是一只类实例了(`OnethingBackend`),替身只需要 `toOnethingServerBackend`
+ * 真正读的那四格 —— 所以先过 `unknown` 再断言,`as OnethingBackend` 直接断不动
+ * (类还带私有字段)。关机口跟着改名成 `dispose`。
+ */
 function createFakeBackend(): {
   backend: OnethingBackend
   abort: ReturnType<typeof vi.fn>
-  shutdown: ReturnType<typeof vi.fn>
+  dispose: ReturnType<typeof vi.fn>
 } {
   const abort = vi.fn()
-  const shutdown = vi.fn(async () => {})
+  const dispose = vi.fn(async () => {})
   const backend = {
     engine: { abort } as unknown as OnethingBackend['engine'],
     eventBus: new EventBus() as unknown as OnethingBackend['eventBus'],
     streamChannel: new StreamChannel() as unknown as OnethingBackend['streamChannel'],
-    shutdown,
-  } as OnethingBackend
-  return { backend, abort, shutdown }
+    dispose,
+  } as unknown as OnethingBackend
+  return { backend, abort, dispose }
 }
 
 describe('toOnethingServerBackend', () => {
@@ -56,12 +61,12 @@ describe('toOnethingServerBackend', () => {
   it('owns the backend by default and lets it go when borrowed', async () => {
     const owned = createFakeBackend()
     await toOnethingServerBackend(owned.backend).shutdown()
-    expect(owned.shutdown).toHaveBeenCalledTimes(1)
+    expect(owned.dispose).toHaveBeenCalledTimes(1)
 
     const borrowed = createFakeBackend()
     await toOnethingServerBackend(borrowed.backend, { ownsBackend: false }).shutdown()
     // 桌面借出来的那只:关 HTTP 面绝不能把宿主的引擎一起关了。
-    expect(borrowed.shutdown).not.toHaveBeenCalled()
+    expect(borrowed.dispose).not.toHaveBeenCalled()
   })
 })
 
@@ -81,7 +86,7 @@ describe('createOnethingServerRuntimeOverBackend', () => {
   })
 
   it('builds the same facade surface the development runtime builds', async () => {
-    const { backend, shutdown } = createFakeBackend()
+    const { backend, dispose } = createFakeBackend()
     const overBackend = await createOnethingServerRuntimeOverBackend(backend, {
       storePath,
       workspaceRoot: path.join(storePath, 'workspaces'),
@@ -106,7 +111,7 @@ describe('createOnethingServerRuntimeOverBackend', () => {
       rmSync(echoStorePath, { recursive: true, force: true })
     }
     // 借来的后端不被关掉。
-    expect(shutdown).not.toHaveBeenCalled()
+    expect(dispose).not.toHaveBeenCalled()
   })
 
   it('chains the host todo-plan port instead of clobbering it', async () => {

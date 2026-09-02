@@ -2924,7 +2924,11 @@ function checkElectronHostOwnsGatewayLifecycle(): void {
     ...(!mainGatewayIpcContent.includes('@onething/electron-host/gateway/lifecycle')
       ? [`${rel(mainGatewayIpcFile)}: Electron host must import gateway lifecycle operations from electron-host directly`]
       : []),
+    // A1(`docs/design/backend-composition-root-2026-09.md`):宿主改成把整张
+    // `OnethingHostPorts` 表交给 `createOnethingBackend({ host })`,于是这一格写成
+    // 聚合表里的一行。断言问的还是同一件事 ——「桌面宿主有没有供上这件能力」。
     ...(!mainGatewayIpcContent.includes('configureGatewayHost')
+      && !/\bgateway:\s*\{/.test(mainGatewayIpcContent)
       ? [`${rel(mainGatewayIpcFile)}: Electron host must inject the gateway lifecycle through configureGatewayHost`]
       : []),
     ...(!mainSettingsIpcContent.includes('@onething/electron-host/gateway/lifecycle')
@@ -4161,14 +4165,19 @@ function checkElectronHostOwnsBeforeQuitCleanup(): void {
   const packageContent = fs.existsSync(electronPackage) ? fs.readFileSync(electronPackage, 'utf-8') : ''
   const electronBeforeQuitContent = fs.existsSync(electronBeforeQuitFile) ? fs.readFileSync(electronBeforeQuitFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
+  // A2(`docs/design/backend-composition-root-2026-09.md`):落盘那两步(抄本
+  // 队列 + 事件账本队列)从这张表搬进了 `OnethingBackend.dispose()` 的清单里,
+  // 所以这里问的从"表上有没有 flushAllPendingSaves 这一行"改成"表上有没有
+  // backend 那一段"。断言问的还是同一件事 —— 桌面宿主的退出路径**必须**过
+  // 数据关键的收尾,而不是只关窗口。
   const requiredBeforeQuitSymbols = [
     'registerElectronBeforeQuitCleanup',
     'before-quit',
     'markVoiceQuitRequested',
     'shutdownGateway',
-    'flushAllPendingSaves',
+    'disposeBackend',
     'releaseDesktopStoreLock',
-    'flushAllPendingSaves error',
+    'disposeBackend error',
   ]
   const lines = [
     ...(!packageContent.includes('./app/before-quit')
@@ -4434,7 +4443,11 @@ function checkElectronHostOwnsShellOperations(): void {
     ...['configureShellHost', 'getShellHost', 'SHELL_HOST_UNAVAILABLE']
       .filter(symbol => !shellHostPortContent.includes(symbol))
       .map(symbol => `${rel(shellHostPortFile)}: missing shell host port symbol ${symbol}`),
+    // A1(`docs/design/backend-composition-root-2026-09.md`):宿主改成把整张
+    // `OnethingHostPorts` 表交给 `createOnethingBackend({ host })`,于是这一格写成
+    // 聚合表里的一行。断言问的还是同一件事 ——「桌面宿主有没有供上这件能力」。
     ...(!mainProcessWiringContent.includes('configureShellHost')
+      && !/\bshell:\s*\{/.test(mainProcessWiringContent)
       ? [`${rel(mainProcessWiringFile)}: Electron host must wire configureShellHost`]
       : []),
   ]
@@ -4585,7 +4598,12 @@ function checkEvalsHostPorts(): void {
     ...(fs.existsSync(mainAdapterFile)
       ? [`${rel(mainAdapterFile)}: evals provider adapter moved to packages/backend/wiring/evals/provider-adapter.ts`]
       : []),
+    // A1(`docs/design/backend-composition-root-2026-09.md`):宿主不再各自调
+    // `configure*Host`,而是把整张表交给 `createOnethingBackend({ host })`。断言问
+    // 的还是同一件事 ——「桌面宿主有没有供上这件能力」—— 只是它现在写成聚合表里
+    // 的一格(`evals: { … }`)。两种写法都算数,零格才是红。
     ...(!mainProcessContent.includes('configureEvalsHost')
+      && !/\bevals:\s*\{/.test(mainProcessContent)
       ? [`${rel(mainProcessFile)}: Electron host must wire configureEvalsHost`]
       : []),
   ]
@@ -4623,7 +4641,11 @@ function checkGatewayAndFilesHostPorts(): void {
     ...(gatewayDomainContent.includes('@onething/electron-host')
       ? [`${rel(gatewayDomainFile)}: gateway RPC domain must not import the Electron host directly`]
       : []),
+    // A1(`docs/design/backend-composition-root-2026-09.md`):宿主改成把整张
+    // `OnethingHostPorts` 表交给 `createOnethingBackend({ host })`,于是这一格写成
+    // 聚合表里的一行。断言问的还是同一件事 ——「桌面宿主有没有供上这件能力」。
     ...(!mainProcessContent.includes('configureGatewayHost')
+      && !/\bgateway:\s*\{/.test(mainProcessContent)
       ? [`${rel(mainProcessFile)}: Electron host must wire configureGatewayHost`]
       : []),
     ...['startWorkspaceWatch', 'stopWorkspaceWatch', 'subscribeWorkspaceFileChanged', 'closeAllWorkspaceWatches']
@@ -5307,7 +5329,9 @@ function checkElectronHostOwnsSkillsEnvironment(): void {
     ...(!packageContent.includes('./skills/environment')
       ? [`${rel(electronPackage)}: missing skills environment export`]
       : []),
+    // A1 同上:桌面宿主改成在 `OnethingHostPorts` 里交出 `skillsEnvironment: { … }`。
     ...(!mainProcessWiringContent.includes('configureSkillsEnvironmentHost')
+      && !/\bskillsEnvironment:\s*\{/.test(mainProcessWiringContent)
       ? [`${rel(mainProcessWiringFile)}: Electron host must wire configureSkillsEnvironmentHost`]
       : []),
     ...(mainSkillsContent.includes('@onething/electron-host/')

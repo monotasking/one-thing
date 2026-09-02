@@ -1,0 +1,77 @@
+packages/backend/stores/docs-paths.ts:26  export function configureStorePathHost(host: StorePathHost): void {
+packages/backend/server/search-providers.ts:31  export function configureServerSearchPort(next: ServerSearchPort | null): () => void {
+packages/backend/server/local-trust.ts:70  export function configureFilesLocalTrust(
+packages/backend/server/plugin-catalog.ts:46  export function configureServerPluginCatalogPort(
+packages/backend/utils/ripgrep.ts:9  export function configureAppRipgrep(): void {
+packages/backend/channel/connector-registry.ts:46  export function configureIMConnectorHooks(options: RegisterIMConnectorOptions): void {
+packages/backend/wiring/settings/host-ports.ts:39  export function configureSettingsHost(ports: SettingsHostPorts): void {
+packages/backend/wiring/settings/events.ts:41  export function configureSettingsEventBroadcaster(
+packages/backend/wiring/evals/host-ports.ts:33  export function configureEvalsHost(next: EvalsHostPorts): void {
+packages/backend/wiring/evals/events.ts:34  export function configureEvalsEventBroadcaster(next: EvalsEventBroadcaster | null): void {
+packages/backend/wiring/tools/core/sandbox.ts:33  export function configureAppToolSandbox(): void {
+packages/backend/wiring/tools/core/sandbox.ts:56  export function configureSandboxHost(host: SandboxHost): void {
+packages/backend/wiring/auth/oauth-events.ts:51  export function configureOAuthEventBroadcaster(next: OAuthEventBroadcaster | null): void {
+packages/backend/wiring/plugins/install.ts:144  export function configurePluginMarketIndex(url: string | null): void {
+packages/backend/wiring/plugins/host-ports.ts:71  export function configurePluginsHost(ports: PluginsHostPorts): void {
+packages/backend/wiring/plugins/events.ts:32  export function configurePluginRequestProgressBroadcaster(
+packages/backend/wiring/providers/space-credentials.ts:406  export function configureAppSpaceCredentialsCrypto(): void {
+packages/backend/wiring/providers/index.ts:89  export function configureAppProviderRegistry(): void {
+packages/backend/wiring/providers/credential-strategy.ts:408  export function configureAppPluginCredentialStrategyHost(): void {
+packages/backend/wiring/search/providers.ts:23  export function configureAppSearchProviders(): void {
+packages/backend/wiring/collab/agent-activity.ts:105  export function configureCollabAgentActivitySource(
+packages/backend/wiring/collab/external-observability.ts:70  export function configureCollabExternalLogSink(next: CollabSchedulerLogSink | null): void {
+packages/backend/wiring/collab/inspector.ts:84  export function configureCollabRoomSnapshotSource(source: CollabRoomSnapshotSource | null): void {
+packages/backend/wiring/skills/manage.ts:12  export function configureAppSkillManage(): void {
+packages/backend/wiring/skills/loader.ts:39  export function configureSkillsEnvironmentHost(ports: SkillsEnvironmentHostPorts): void {
+packages/backend/wiring/skills/loader.ts:46  export function configureAppSkillsLoader(): void {
+packages/backend/wiring/todo-plan/store.ts:33  export function configureTodoPlanHost(ports: TodoPlanHostPorts): void {
+packages/backend/wiring/permission/permission-grants.ts:12  export function configureAppPermissionGrants(): void {
+packages/backend/wiring/toolkit/jobs.ts:192  function configuredShellPath(): string | undefined {
+packages/backend/wiring/toolkit/catalog.ts:89  function configuredEnvAllowlist(): string[] | null {
+packages/backend/wiring/toolkit/catalog.ts:94  function configuredShellPath(): string | undefined {
+packages/backend/wiring/logging/index.ts:70  export function configureAppLoggingHost(ports: AppLoggingHostPorts): void {
+packages/backend/wiring/logging/index.ts:169  export function configureLogging(options: ConfigureLoggingOptions = {}): LoggingHandle {
+packages/backend/wiring/gateway/host-ports.ts:119  export function configureGatewayHost(ports: GatewayHostPorts): void {
+packages/backend/backend.ts:81  export function configureAppRuntimeAdapters(): void {
+packages/backend/session/reads.ts:124  export function configureSessionHistoryBuilder(builder: SessionHistoryBuilder | undefined): void {
+packages/backend/session/testing/facade-mock.ts:37  export function bindSessionFacadeMock(options: {
+packages/onething-runtime/src/tools/background-jobs-bound.ts:8  export function configureAppBackgroundJobs(): void {
+packages/onething-runtime/src/tools/background-jobs.ts:38  export function configureCoreBackgroundJobs(options: { getLogRootDir?: () => string } = {}): void {
+packages/onething-runtime/src/tools/sandbox-runtime.ts:46  export function configureOnethingToolSandboxRuntime(adapters: OnethingToolSandboxRuntimeAdapters): void {
+packages/onething-runtime/src/external-agents/host-mcp/context.ts:38  export function bindHostToolContext(context: HostToolTurnContext): () => void {
+packages/onething-runtime/src/auth/host-ports.ts:19  export function configureAuthHost(ports: AuthHostPorts): void {
+packages/onething-runtime/src/plugins/config-access.ts:44  export function configurePluginConfigBroadcast(next: ((pluginId: string) => void) | null): void {
+packages/onething-runtime/src/plugins/app-version.ts:10  export function configurePluginAppVersion(version: string | undefined): void {
+packages/onething-runtime/src/plugins/status-bound.ts:64  export function configurePluginStatusHost(options: StatusHostPorts): void {
+packages/onething-runtime/src/plugins/health.ts:106  export function configurePluginHealthHost(next: PluginHealthHost | null): void {
+packages/onething-runtime/src/plugins/config.ts:44  export function configurePluginConfigHost(next: PluginConfigHost | null): void {
+packages/onething-runtime/src/shell/host-ports.ts:51  export function configureShellHost(ports: ShellHostPorts): void {
+packages/onething-runtime/src/markdown/asset-service.ts:298  function configuredAttachmentDirectory(root: string, configured?: string): string {
+packages/onething-runtime/src/spaces/credentials.ts:268  export function configureSpaceCredentialsCrypto(
+packages/onething-runtime/src/spaces/credentials.ts:504  export function configureSpaceCredentialPluginStrategyHost(
+packages/onething-runtime/src/scratchpad/service-bound.ts:26  export function configureScratchpadHost(ports: ScratchpadHostPorts): void {
+packages/onething-runtime/src/scheduler/scheduler.ts:644  export function configureOnethingScheduler(options: SchedulerOptions): void {
+packages/onething-runtime/src/scheduler/scheduler-bound.ts:31  export function configureAppScheduler(): void {
+packages/onething-runtime/src/terminal/service.wiring.ts:317  export function configureTerminalBroadcaster(next: TerminalBroadcaster | null): void {
+packages/onething-runtime/src/mcp/manager.ts:19  export function configureMCPClientHost(
+packages/onething-runtime/src/mcp/identity.ts:19  export function configureMCPClientIdentity(next: { name?: string; version?: string }): void {
+packages/onething-runtime/src/mcp/oauth/index.ts:31  export function configureMCPOAuthAuthorizedHandler(handler: (serverId: string) => void): void {
+packages/onething-runtime/src/mcp/capabilities-changed.ts:16  export function configureMCPCapabilitiesChangedHandler(h: ((serverId: string) => void) | null): void {
+packages/onething-runtime/src/mcp/capabilities-changed.ts:29  export function configureToolkitMCPCapabilitiesChangedHandler(h: ((serverId: string) => void) | null): void {
+packages/onething-runtime/src/permissions/permission-runtime.ts:53  export function configurePermissionGrantFileStorage(adapters: PermissionGrantFileStorageAdapters): void {
+packages/onething-runtime/src/permissions/permission-runtime.ts:57  export function configureOnethingPermissionGrantStorage(
+packages/onething-runtime/src/search/providers.ts:111  export function configureOnethingSearchProviders(adapters: OnethingSearchProvidersAdapters): void {
+packages/onething-runtime/src/collab/drive-guard.ts:26  export function configureCollabDriveGuard(token: string | null): void {
+packages/onething-runtime/src/collab/actors/turn-context.wiring.ts:112  export function configureCollabV3SpeakPort(port: CollabV3SpeakPort | null): void {
+packages/onething-runtime/src/collab/actors/turn-context.wiring.ts:120  export function configureCollabV3RoomPostPort(port: CollabV3RoomPostPort | null): void {
+packages/onething-runtime/src/collab/actors/turn-context.wiring.ts:128  export function configureCollabV3RoomResetPort(port: CollabV3RoomResetPort | null): void {
+packages/onething-runtime/src/collab/actors/turn-context.wiring.ts:150  export function configureCollabV3TurnObserver(observer: CollabV3TurnObserver | null): void {
+packages/onething-runtime/src/voice/host-ports.wiring.ts:57  export function configureVoiceHost(ports: VoiceHostPorts): void {
+packages/onething-runtime/src/files/ripgrep.ts:55  export function configureOnethingRipgrepRuntime(adapters: OnethingRipgrepRuntimeAdapters): void {
+packages/onething-runtime/src/skills/manage.ts:73  export function configureOnethingSkillManageRuntime(adapters: OnethingSkillManageAdapters | undefined): void {
+packages/onething-runtime/src/skills/loader.ts:69  export function configureOnethingSkillsLoaderRuntime(adapters: OnethingSkillsLoaderAdapters | undefined): void {
+packages/onething-runtime/src/practice/service.wiring.ts:40  export function configurePracticeEventBroadcaster(
+packages/onething-runtime/src/toolkit/host.ts:23  export function configureToolkitCatalog(catalog: Catalog | undefined): void {
+packages/core/permission/permission-grants.ts:81  export function configurePermissionGrantStorage(nextStorage: PermissionGrantStorage): void {
+packages/core/toolkit/job.ts:86  export function bindJobRegistry(
+packages/core/logging/port.ts:26  export function configureCoreLogging(next: CoreLoggingPort | CompatLogger | null): void {

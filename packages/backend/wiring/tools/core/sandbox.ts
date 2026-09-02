@@ -20,7 +20,7 @@ import {
 } from '@onething/runtime/storage'
 import { getVariablesStore } from '@onething/runtime/variables/store-bound'
 
-interface SandboxHost {
+export interface SandboxHost {
   getPath?: (name: string) => string
 }
 

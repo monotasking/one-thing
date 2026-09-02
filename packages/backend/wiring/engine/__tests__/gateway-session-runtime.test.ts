@@ -64,13 +64,18 @@ describe('main gateway conversation runtime sessions', () => {
   })
 
   it('creates gateway conversations as persistent sessions without stealing the current session', async () => {
-    const {
-      getConversationRuntime,
-      initializeStreamEngine,
-      shutdownStreamEngine,
-    } = await import('../index.js')
+    const { getConversationRuntime, createStreamEngineLayer } = await import('../index.js')
+    const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
+    const { getEventBus, getStreamChannel } = await import('../../../events/index.js')
 
-    initializeStreamEngine()
+    // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
+    // 读的就是那个槽。这份测试把事件系统整个 mock 成空对象,所以两件依赖直接
+    // 从被 mock 的那两个 getter 拿。
+    const layer = createStreamEngineLayer({
+      eventBus: getEventBus(),
+      streamChannel: getStreamChannel(),
+    })
+    setCurrentBackend(createBackendHandle({ engine: layer.engine, runtime: layer.runtime }))
     getConversationRuntime().ensureSession('gateway:wechat:user@im.wechat')
 
     expect(mocks.createSession).toHaveBeenCalledWith(
@@ -81,7 +86,8 @@ describe('main gateway conversation runtime sessions', () => {
     expect(mocks.getOrCreate).toHaveBeenCalledWith('gateway:wechat:user@im.wechat')
     expect(mocks.currentSessionId).toBe('regular-session')
 
-    shutdownStreamEngine()
+    layer.dispose()
+    setCurrentBackend(null)
   })
 
   it('does not create duplicate persistent sessions for existing gateway conversations', async () => {
@@ -89,19 +95,25 @@ describe('main gateway conversation runtime sessions', () => {
       id: 'gateway:wechat:user@im.wechat',
       name: 'WeChat - user@im.wechat',
     })
-    const {
-      getConversationRuntime,
-      initializeStreamEngine,
-      shutdownStreamEngine,
-    } = await import('../index.js')
+    const { getConversationRuntime, createStreamEngineLayer } = await import('../index.js')
+    const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
+    const { getEventBus, getStreamChannel } = await import('../../../events/index.js')
 
-    initializeStreamEngine()
+    // A2:引擎层是造出来的,产物装进进程当前实例槽 —— `getConversationRuntime()`
+    // 读的就是那个槽。这份测试把事件系统整个 mock 成空对象,所以两件依赖直接
+    // 从被 mock 的那两个 getter 拿。
+    const layer = createStreamEngineLayer({
+      eventBus: getEventBus(),
+      streamChannel: getStreamChannel(),
+    })
+    setCurrentBackend(createBackendHandle({ engine: layer.engine, runtime: layer.runtime }))
     getConversationRuntime().ensureSession('gateway:wechat:user@im.wechat')
 
     expect(mocks.createSession).not.toHaveBeenCalled()
     expect(mocks.setCurrentSessionId).not.toHaveBeenCalled()
     expect(mocks.getOrCreate).toHaveBeenCalledWith('gateway:wechat:user@im.wechat')
 
-    shutdownStreamEngine()
+    layer.dispose()
+    setCurrentBackend(null)
   })
 })

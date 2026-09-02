@@ -93,11 +93,13 @@ describe('结算态进账本', () => {
     process.env.ONETHING_STORE_PATH = store
     const { resetSessionEventLogCache, readSessionLogEvents, flushSessionEventLog } =
       await import('../../../session/event-log.js')
-    const { initializeEventSystem, shutdownEventSystem } =
-      await import('../../../events/index.js')
+    const { createEventSystem } = await import('../../../events/index.js')
+    const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
     const { publishExternalAgentBackgroundStatus } = await import('../background-status.js')
     resetSessionEventLogCache()
-    initializeEventSystem()
+    // A2:造一套事件系统装进进程当前实例槽(只填它那两格)。
+    const { eventBus, streamChannel } = createEventSystem()
+    setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
 
     try {
       // 账本得先开张(真机上这条会话早就有账了)。
@@ -127,7 +129,9 @@ describe('结算态进账本', () => {
         durationMs: 4200,
       })
     } finally {
-      shutdownEventSystem()
+      eventBus.shutdown()
+      streamChannel.shutdown()
+      setCurrentBackend(null)
       if (previous === undefined) delete process.env.ONETHING_STORE_PATH
       else process.env.ONETHING_STORE_PATH = previous
       fs.rmSync(store, { recursive: true, force: true })

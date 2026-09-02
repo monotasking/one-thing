@@ -15,8 +15,14 @@ export interface ElectronBeforeQuitCleanupOptions {
   shutdownGateway: CleanupFn
   shutdownMCP: CleanupFn
   shutdownACP: CleanupFn
-  killTrackedDetachedChildren: CleanupFn
-  killAllTerminals: CleanupFn
+  /**
+   * 内嵌浏览器的标签页。**留在这张表上**:那是窗口系统的东西(view 挂在主窗的
+   * contentView 上),backend 的清单里没有也不该有它。
+   *
+   * 隔壁两件走了:`killTrackedDetachedChildren` / `killAllTerminals` 现在由
+   * `disposeBackend` 那一格代跑 —— 它们收的是**工具**跑出去的进程,而没有
+   * backend 就没有工具,也就没有它们要收的东西。
+   */
   killAllBrowserTabs: CleanupFn
   /**
    * 拆插件系统。**必须是同步的**(签名刻意不是 CleanupFn)。
@@ -31,9 +37,9 @@ export interface ElectronBeforeQuitCleanupOptions {
    *
    * 插件 dispose 是**数据关键**的(插件在 onDispose 里存盘,与
    * flushAllPendingSaves 同级),所以它必须待在同步段里,而不是排在十个 await
-   * 后面。同步段执行也顺带满足两个既有约束:它早于 shutdownEventSystem
-   * (dispose 还要往总线发 cleared 与 catalog-changed),且此刻总线、引擎、
-   * 存储都还活着。
+   * 后面。同步段执行也顺带满足两个既有约束:它早于 `disposeBackend`(backend
+   * 的清单里事件系统就关在那一段,而插件 dispose 还要往总线发 cleared 与
+   * catalog-changed),且此刻总线、引擎、存储都还活着。
    *
    * `PluginManager.shutdown()` 本身是全同步的(drainCallbacks + 同步 fs),
    * 所以把它放进同步段是真的有保证,不是碰运气。
@@ -49,26 +55,29 @@ export interface ElectronBeforeQuitCleanupOptions {
    * 可选:没挂 HTTP 面的宿主(测试)不用给。
    */
   stopEmbeddedHttpServer?: () => void
-  shutdownStreamEngine: CleanupFn
-  shutdownPermission: CleanupFn
-  shutdownSessionLayer: CleanupFn
-  shutdownEventSystem: CleanupFn
-  flushAllPendingSaves: CleanupFn
   /**
-   * 事件账本(`sessions/<id>/events.jsonl`)的收尾:排空每会话写队列 + fsync,
-   * 然后把影子统计表落盘(§15.12(a)(b))。
+   * backend 那一整段收尾:`OnethingBackend.dispose()`(A2,
+   * `docs/design/backend-composition-root-2026-09.md` §2.4)。
    *
-   * 与 `flushAllPendingSaves` **不是**一件事:那一只排的是 messages.jsonl 的
-   * 300ms 节流队列,事件有自己的每会话队列,从前在这张表上一次都没被排空过
-   * (§15.11 第五节结论 1)。抄本停写之后它就是唯一持久化,退出那一刻队列里
-   * 剩什么就丢什么。
+   * 这一格顶掉了从前手抄在这张表上的九行 —— `shutdownStreamEngine` /
+   * `shutdownPermission` / `shutdownSessionLayer` / `shutdownEventSystem` /
+   * `flushAllPendingSaves` / `flushSessionEventLedger` /
+   * `killTrackedDetachedChildren` / `killAllTerminals`,外加从来没抄进来过的
+   * 那几件(RPC 域、协作运行时、外部执行体、Interaction、账本广播、两个启动期
+   * 定时器)。清单现在只有一份,住在 `assemble` 途中的 `own()` 登记里:
+   * 起的那一行与关的那一行看得见彼此,漏一件是结构上不可能的。
    *
-   * **自带 2s 时限**(实现在 `flushSessionEventLedger`):这一步排在第一个
-   * await 之后,本来就在和退出赛跑(见 `shutdownPlugins` 的注释),再叠一次
-   * 无上限的等待只会把"退不出去"换成另一种病;超时记一行 warn,不阻退出。
-   * 可选:没有事件账本的宿主(测试)不用给。
+   * **顺序**:`dispose()` 内部按登记逆序跑,与从前这张表里那九行的先后逐字
+   * 相同;它自己每步 try/catch 记 error,所以一个子系统关不掉不会挡住后面的
+   * 落盘。落盘(messages.jsonl 的节流队列 + 事件账本的每会话队列,后者自带
+   * 2s 时限)排在最后两步,与从前这张表相同。
+   *
+   * **`flushAllPendingSaves`**:仍然由它跑,只是搬进了 backend 的清单里 ——
+   * 这一格的错误处理是 `dispose()` 自己的逐步 try/catch。
+   *
+   * 可选:没有装配 backend 的宿主(测试)不用给。
    */
-  flushSessionEventLedger?: CleanupFn
+  disposeBackend?: CleanupFn
   shutdownAppLogging: CleanupFn
   releaseDesktopStoreLock: CleanupFn
   app?: ElectronBeforeQuitAppLike
@@ -108,27 +117,20 @@ export async function runElectronBeforeQuitCleanup(
   await options.shutdownMCP()
   await options.shutdownACP()
 
-  options.killTrackedDetachedChildren()
-  options.killAllTerminals()
   options.killAllBrowserTabs()
 
-  await options.shutdownStreamEngine()
-  options.shutdownPermission()
-  options.shutdownSessionLayer()
-  options.shutdownEventSystem()
-
+  /*
+   * backend 那一段(引擎 → 权限 → 会话层 → 事件系统 → flushAllPendingSaves →
+   * 事件账本 flush)。位置就是从前那九行所在的位置:窗口系统那几件之后、
+   * 日志与 store lock 之前。
+   *
+   * `dispose()` 自己不抛(每个 disposer 单独 try/catch 记 error),这一层的
+   * try/catch 兜的是"连 dispose 本身都没能开始"这种反常。
+   */
   try {
-    await options.flushAllPendingSaves()
+    await options.disposeBackend?.()
   } catch (err) {
-    logger.error('[Shutdown] flushAllPendingSaves error:', err)
-  }
-
-  // 抄本刷完紧接着刷事件账本 —— 两条队列同级,谁也不该独自代表"已落盘"。
-  // 它自己带 2s 时限,所以这一步不会把关停钉住(见选项上的注释)。
-  try {
-    await options.flushSessionEventLedger?.()
-  } catch (err) {
-    logger.error('[Shutdown] flushSessionEventLedger error:', err)
+    logger.error('[Shutdown] disposeBackend error:', err)
   }
 
   await options.shutdownAppLogging()

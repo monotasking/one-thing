@@ -1,8 +1,10 @@
 /**
- * StreamEngine — Singleton Access & Lifecycle
+ * StreamEngine — 纯工厂 + 当前实例的访问器
  *
- * Provides singleton getter for the StreamEngine, plus init/shutdown
- * functions called from main/index.ts.
+ * A2(`docs/design/backend-composition-root-2026-09.md` §2.2)之后这里没有模块级
+ * `let`:`createStreamEngineLayer()` 造引擎与 runtime 并把它这一层留下的尾巴
+ * (出站派发器的 start、频道提示词供给的注册)收进返回的 `dispose`;
+ * `getStreamEngine()` 等四个访问器读进程当前实例。
  */
 
 import type { StreamChunk } from '@shared/events/index.js'
@@ -12,7 +14,8 @@ import {
   type OnethingRuntime,
 } from '@onething/runtime/runtime'
 import type { CoreConversationRuntime } from '@onething/core/gateway-runtime'
-import { getEventBus, getStreamChannel } from '../../events/index.js'
+import type { EventBus } from '../../events/event-bus.js'
+import type { StreamChannel } from '../../events/stream-channel.js'
 import {
   createBoundStreamEngine,
   type StreamEngine,
@@ -30,16 +33,14 @@ import {
   registerChannelPromptContextProvider,
   unregisterChannelPromptContextProvider,
 } from '../../channel/index.js'
+import { getCurrentBackend, getCurrentBackendSafe } from '../../current.js'
 import { getLogger } from '../logging/index.js'
 
 const log = getLogger('engine.stream')
 
 
-let streamEngine: StreamEngine | null = null
-let onethingRuntime: MainOnethingRuntime | null = null
-
 export type MainOnethingRuntime = OnethingRuntime<
-  ReturnType<typeof getEventBus>,
+  EventBus,
   StreamSender,
   StreamChunk,
   StreamEngine
@@ -47,28 +48,28 @@ export type MainOnethingRuntime = OnethingRuntime<
 
 /**
  * Get the singleton StreamEngine instance.
- * Throws if called before initializeStreamEngine().
+ * Throws if no backend is assembled (or assembly has not reached the engine yet).
  */
 export function getStreamEngine(): StreamEngine {
-  if (!streamEngine) {
-    throw new Error('[StreamEngine] Not initialized. Call initializeStreamEngine() first.')
-  }
-  return streamEngine
+  return getCurrentBackend('engine').engine
 }
 
 /**
- * Get the StreamEngine if initialized, or null.
- * Safe to call during shutdown when engine may already be destroyed.
+ * Get the StreamEngine if available, or null.
+ * Safe to call during shutdown when the engine may already be destroyed.
  */
 export function getStreamEngineSafe(): StreamEngine | null {
-  return streamEngine
+  const handle = getCurrentBackendSafe()
+  if (!handle) return null
+  try {
+    return handle.engine
+  } catch {
+    return null
+  }
 }
 
 export function getOnethingRuntime(): MainOnethingRuntime {
-  if (!onethingRuntime) {
-    throw new Error('[OnethingRuntime] Not initialized. Call initializeStreamEngine() after initializeEventSystem().')
-  }
-  return onethingRuntime
+  return getCurrentBackend('runtime').runtime
 }
 
 export function getConversationRuntime(): CoreConversationRuntime<StreamChunk> {
@@ -76,29 +77,37 @@ export function getConversationRuntime(): CoreConversationRuntime<StreamChunk> {
 }
 
 /**
- * Initialize the StreamEngine. Called after initializeSessionLayer().
+ * 造引擎层。纯工厂:造完把引擎、runtime 与**它自己留下的收尾**一起交出去。
+ *
+ * 两件尾巴写在这里而不是散在关机链上:频道提示词供给是这一层注册的,出站回复
+ * 派发器是这一层 start 的 —— 起它的那一行与关它的那一行因此看得见彼此。
+ *
+ * `runtime` 与派发器两处 try/catch 保持 A2 之前的形状:上游单测把事件系统整个
+ * mock 成空对象,那种场景下这两步失败是预期的,而引擎本身照样要交得出来。
  */
-export function initializeStreamEngine(): void {
-  if (streamEngine) {
-    log.warn('stream engine already initialized')
-    return
-  }
-
+export function createStreamEngineLayer(deps: {
+  eventBus: EventBus
+  streamChannel: StreamChannel
+}): {
+  engine: StreamEngine
+  runtime: MainOnethingRuntime | undefined
+  dispose: () => void
+} {
   const streamRuntime = createMainStreamEngineRuntime()
   registerChannelPromptContextProvider()
   const engine = createBoundStreamEngine(streamRuntime)
-  streamEngine = engine
 
+  let runtime: MainOnethingRuntime | undefined
   try {
-    onethingRuntime = createOnethingRuntimeFromStreamRuntime<
-      ReturnType<typeof getEventBus>,
+    runtime = createOnethingRuntimeFromStreamRuntime<
+      EventBus,
       StreamSender,
       StreamChunk,
       StreamEngine
     >({
       streamRuntime: streamRuntime as unknown as CoreRuntime,
-      eventBus: getEventBus(),
-      streamChannel: getStreamChannel(),
+      eventBus: deps.eventBus,
+      streamChannel: deps.streamChannel,
       createEngine: () => engine,
       sessionRuntime: {
         ensureSession: sessionId => {
@@ -117,24 +126,24 @@ export function initializeStreamEngine(): void {
     // EventBus may not be initialized yet in test scenarios
   }
   try {
-    getOutboundReplyDispatcher().start(getEventBus())
+    getOutboundReplyDispatcher().start(deps.eventBus)
   } catch {
     // EventBus may not be initialized yet in test scenarios
   }
   log.info('stream engine initialized')
-}
 
-/**
- * Shut down the StreamEngine. Called from app.on('before-quit').
- */
-export function shutdownStreamEngine(): void {
-  if (streamEngine) {
-    getOutboundReplyDispatcher().stop()
-    unregisterChannelPromptContextProvider()
-    streamEngine.shutdown()
-    streamEngine = null
+  let disposed = false
+  return {
+    engine,
+    runtime,
+    dispose: () => {
+      if (disposed) return
+      disposed = true
+      getOutboundReplyDispatcher().stop()
+      unregisterChannelPromptContextProvider()
+      engine.shutdown()
+    },
   }
-  onethingRuntime = null
 }
 
 function ensurePersistentGatewaySession(sessionId: string): void {

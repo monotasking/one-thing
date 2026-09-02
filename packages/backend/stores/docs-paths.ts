@@ -16,7 +16,7 @@ import {
   getOnethingToolUsageDocsPath,
 } from '@onething/runtime/storage'
 
-interface StorePathHost {
+export interface StorePathHost {
   isPackaged?: boolean
   resourcesPath?: string
 }

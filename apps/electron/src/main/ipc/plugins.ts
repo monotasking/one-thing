@@ -37,7 +37,7 @@ import {
   listPluginCommandsForGateway,
 } from '@onething/backend/wiring/plugins/commands.js'
 import { configurePluginRequestProgressBroadcaster } from '@onething/backend/wiring/plugins/events.js'
-import { configurePluginsHost } from '@onething/backend/wiring/plugins/host-ports.js'
+import { configurePluginsHost, type PluginsHostPorts } from '@onething/backend/wiring/plugins/host-ports.js'
 import { getLogger } from '@onething/backend/wiring/logging/index.js'
 
 const log = getLogger('ipc.plugins')
@@ -58,21 +58,28 @@ export function createGatewayPluginCommandProvider(): GatewayCommandProvider {
   }
 }
 
+/**
+ * A1:这两件宿主能力也进桌面那张 `OnethingHostPorts` 表(`main-process.ts`),于是
+ * 装配的第一步就接上,而不是等 `initializeIPC()`(afterTools 钩子)。定义留在
+ * 这里 —— 对话框与子进程是插件域自己的事。
+ */
+export const electronPluginsHostPorts: PluginsHostPorts = {
+  /**
+   * `file-pick` 的一次导入(B 期,用户壁纸)。
+   *
+   * 全程在主进程:对话框 → 闸 → 拷贝 → 返回一个 `storage:` 地址。
+   * renderer 收到的是地址,插件收到的也是地址 —— **字节两边都不过手**。
+   *
+   * 手势锚定是天然的:原生对话框只能由用户那一次点击拉起来。这里不需要
+   * (也无法伪造)一个 `userGesture` 布尔。
+   */
+  pickFile: (request, callerId) => pickPluginFileForCaller(request, callerId),
+  execCommand: (command, args, options) =>
+    execPluginCommandOnDesktop(command, args, options),
+}
+
 export function registerPluginHandlers(): void {
-  configurePluginsHost({
-    /**
-     * `file-pick` 的一次导入(B 期,用户壁纸)。
-     *
-     * 全程在主进程:对话框 → 闸 → 拷贝 → 返回一个 `storage:` 地址。
-     * renderer 收到的是地址,插件收到的也是地址 —— **字节两边都不过手**。
-     *
-     * 手势锚定是天然的:原生对话框只能由用户那一次点击拉起来。这里不需要
-     * (也无法伪造)一个 `userGesture` 布尔。
-     */
-    pickFile: (request, callerId) => pickPluginFileForCaller(request, callerId),
-    execCommand: (command, args, options) =>
-      execPluginCommandOnDesktop(command, args, options),
-  })
+  configurePluginsHost(electronPluginsHostPorts)
 
   configurePluginRequestProgressBroadcaster((progress, callerId) => {
     sendPluginRequestProgressToCaller(

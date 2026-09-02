@@ -6,7 +6,8 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { UiAssistantDeltaChunk } from '@onething/core/events'
-import { getStreamChannel, initializeEventSystem, shutdownEventSystem } from '../index.js'
+import { createEventSystem, getStreamChannel } from '../index.js'
+import { createBackendHandle, setCurrentBackend } from '../../current.js'
 import { isUiEventStreamEnabled, onethingUiStreamMode, pushSessionUiStreamEvent } from '../ui-stream.js'
 
 const SESSION_ID = 'ui-stream-switch'
@@ -24,15 +25,28 @@ const DELTA: UiAssistantDeltaChunk = {
 
 let previous: string | undefined
 
+/**
+ * A2:事件系统不再有自己的 `let` —— 造一套、装进进程当前实例槽(只填两格,
+ * 其余的读一下就抛,这份测试也不读)。
+ */
+let disposeEventSystem: (() => void) | null = null
+
 beforeEach(() => {
   previous = process.env.ONETHING_UI_STREAM
-  initializeEventSystem()
+  const { eventBus, streamChannel } = createEventSystem()
+  setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
+  disposeEventSystem = () => {
+    eventBus.shutdown()
+    streamChannel.shutdown()
+  }
 })
 
 afterEach(() => {
   if (previous === undefined) delete process.env.ONETHING_UI_STREAM
   else process.env.ONETHING_UI_STREAM = previous
-  shutdownEventSystem()
+  disposeEventSystem?.()
+  disposeEventSystem = null
+  setCurrentBackend(null)
 })
 
 describe('ONETHING_UI_STREAM', () => {

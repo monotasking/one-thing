@@ -781,7 +781,7 @@ export function toOnethingServerBackend(
 			backend.engine.abort(sessionId, reason ?? "server abort");
 		},
 		shutdown: async () => {
-			if (ownsBackend) await backend.shutdown();
+			if (ownsBackend) await backend.dispose();
 		},
 	};
 }
@@ -816,11 +816,39 @@ async function createRealServerBackend(storePath: string): Promise<OnethingBacke
 		});
 	}
 	return createOnethingBackend({
-		sandboxHost: {
-			getPath(name) {
-				if (name === "downloads") return join(homedir(), "Downloads");
-				return homedir();
+		/*
+		 * A1:宿主能力一次交清。这个进程是个无头 server —— 除了下载目录之外
+		 * 一件宿主能力都没有,于是十二个 `null` 就是这里的事实清单(从前那是
+		 * 「一个 `sandboxHost` 之外什么都没写」,看不出是没有还是漏了)。
+		 *
+		 * `storePath: {}` = 打包资源目录无话可说,与从前从不调
+		 * `configureStorePathHost` 时的缺省逐字相同(`isPackaged` 为假、
+		 * `resourcesPath` 退到 `process.resourcesPath`)。
+		 *
+		 * MCP 那一格仍是 `null`:server 自己的客户端工厂由
+		 * `createServerRuntimeOverServerBackend` 在**后面**按 `processPorts`
+		 * 决定装不装(它要 stdio 闸门与借来/自有的判定),不归这张表。
+		 */
+		host: {
+			storePath: {},
+			sandbox: {
+				getPath(name) {
+					if (name === "downloads") return join(homedir(), "Downloads");
+					return homedir();
+				},
 			},
+			auth: null,
+			logging: null,
+			shell: null,
+			voice: null,
+			skillsEnvironment: null,
+			todoPlan: null,
+			scratchpad: null,
+			plugins: null,
+			gateway: null,
+			settings: null,
+			evals: null,
+			mcp: null,
 		},
 		toolRegistry: serverToolRegistry,
 		sessionSkills: true,
@@ -2284,7 +2312,9 @@ async function createServerRuntimeOverServerBackend(
 				log.error("flush local sessions failed", {}, error);
 			}
 			// 事件账本的排空 + fsync 就在这一步里(§15.12(d)):
-			// `backend.shutdown()` → `createOnethingBackend` 的收尾表 →
+			// `backend.shutdown()`(这里的 `backend` 是 `OnethingServerBackend`
+			// 包装,它自己按 `ownsBackend` 决定要不要调装配产物的 `dispose()`)
+			// → 装配途中 `own()` 登记的收尾清单 →
 			// `flushSessionEventLedger()`。所以 `apps/server` SIGTERM 的 5s 预算
 			// (`SHUTDOWN_FLUSH_TIMEOUT_MS`)天然罩住它,而账本自己还带一层 2s 时限
 			// —— 两层都不会把进程钉死。借来的 backend(桌面内嵌 HTTP 面,

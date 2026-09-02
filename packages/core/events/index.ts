@@ -1,42 +1,14 @@
 /**
- * Headless event system lifecycle for core consumers.
+ * core 的事件系统桶。
+ *
+ * A2(`docs/design/backend-composition-root-2026-09.md`)删掉了这里从前那一对
+ * `eventBus` / `streamChannel` 模块级 `let` 与同名的
+ * `getEventBus` / `getStreamChannel` / `initializeEventSystem` /
+ * `shutdownEventSystem`:全仓**没有任何一个宿主初始化过它们**,也没有任何一个
+ * 文件 import 过(只有 `packages/core/index.ts` 把它们再导出了一次)。留着的
+ * 唯一作用是与 `packages/backend/events/index.ts` 的同名函数撞名 —— 排障时
+ * "getEventBus 抛了"要先分辨是哪一份。
  */
-
-import { EventBus } from './event-bus.js'
-import { StreamChannel } from './stream-channel.js'
-
-let eventBus: EventBus | null = null
-let streamChannel: StreamChannel | null = null
-
-export function getEventBus(): EventBus {
-  if (!eventBus) {
-    throw new Error('[CoreEventSystem] EventBus not initialized. Call initializeEventSystem() first.')
-  }
-  return eventBus
-}
-
-export function getStreamChannel(): StreamChannel {
-  if (!streamChannel) {
-    throw new Error('[CoreEventSystem] StreamChannel not initialized. Call initializeEventSystem() first.')
-  }
-  return streamChannel
-}
-
-export function initializeEventSystem(): void {
-  if (eventBus) {
-    return
-  }
-
-  eventBus = new EventBus()
-  streamChannel = new StreamChannel()
-}
-
-export function shutdownEventSystem(): void {
-  eventBus?.shutdown()
-  streamChannel?.shutdown()
-  eventBus = null
-  streamChannel = null
-}
 
 export { EventBus } from './event-bus.js'
 export {

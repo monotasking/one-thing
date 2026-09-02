@@ -37,10 +37,15 @@ async function loadIsolatedStores() {
   const paths = await import('@onething/runtime/storage')
   const sessions = await import('../sessions.js')
   const events = await import('../../events/index.js')
+  // A2:`vi.resetModules()` 之后连"进程当前实例槽"也是新的一份,所以这里连
+  // `current.js` 一起重新 import —— 装进旧那份模块实例的槽,`sessions.ts` 读的
+  // 是新那份,`isEventSystemInitialized()` 会答"没有"。
+  const current = await import('../../current.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
-  events.initializeEventSystem()
-  return { sessions, eventBus: events.getEventBus() }
+  const { eventBus, streamChannel } = events.createEventSystem()
+  current.setCurrentBackend(current.createBackendHandle({ eventBus, streamChannel }))
+  return { sessions, eventBus }
 }
 
 beforeEach(() => {
@@ -52,6 +57,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await loadedSessions?.flushAllPendingSaves()
+  const current = await import('../../current.js')
+  current.setCurrentBackend(null)
   process.env.HOME = previousHome
   fs.rmSync(tempHome, { recursive: true, force: true })
 })

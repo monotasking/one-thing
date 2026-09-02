@@ -2,12 +2,19 @@
  * The product assembly factory: the single recipe that turns the @onething/backend
  * subsystems into a running onething backend.
  *
- * Every host (Electron desktop, CLI daemon, headless server) boots through
- * this function instead of hand-sequencing the initialize* steps — the
+ * Every host (Electron desktop, React shell, CLI daemon, headless server) boots
+ * through this recipe instead of hand-sequencing the initialize* steps — the
  * ordering constraints (variables before tools, engine before Permission, …)
- * live here and nowhere else. Host-specific surfaces arrive through the
- * configure*Host ports and the options/hooks below; importing this module
- * (or any @onething/backend module) performs no configuration by itself.
+ * live here and nowhere else. Host-specific surfaces arrive as one object
+ * (`options.host`, see `host-ports.ts`) and through the hooks below; importing
+ * this module (or any @onething/backend module) performs no configuration by
+ * itself.
+ *
+ * A2(`docs/design/backend-composition-root-2026-09.md`):装配产物是一只
+ * `OnethingBackend` **实例**的字段,不再是散在三个模块里的 `let`;关机是那只
+ * 实例的 `dispose()`,而 `dispose()` 跑的是装配途中 `own()` 登记下来的清单 ——
+ * 不再手抄第二份。一个进程里已有活实例时再装配一次,`assemble` 第一行就抛
+ * `BackendAlreadyAssembledError`。
  */
 import { initializeStores, flushAllPendingSaves } from './store.js'
 import { flushSessionEventLedger } from './session/event-log.js'
@@ -16,7 +23,8 @@ import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-p
 import { getSettings, initializeSettings } from './stores/settings.js'
 import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from './wiring/agents/index.js'
-import { configureSandboxHost, configureAppToolSandbox } from './wiring/tools/core/sandbox.js'
+import { configureAppToolSandbox } from './wiring/tools/core/sandbox.js'
+import { applyHostPorts, type OnethingHostPorts } from './host-ports.js'
 import { configureAppBackgroundJobs } from '@onething/runtime/tools/background-jobs-bound'
 import { configureAppProviderRegistry } from './wiring/providers/index.js'
 import { configureAppSpaceCredentialsCrypto } from './wiring/providers/space-credentials.js'
@@ -31,25 +39,16 @@ import { configureAppSearchProviders } from './wiring/search/providers.js'
 import { configureAppSkillManage } from './wiring/skills/manage.js'
 import { configureAppSkillsLoader } from './wiring/skills/loader.js'
 import { configureAppPermissionGrants } from './wiring/permission/permission-grants.js'
-import {
-  initializeEventSystem,
-  shutdownEventSystem,
-  getEventBus,
-  getStreamChannel,
-} from './events/index.js'
-import { initializeSessionLayer, shutdownSessionLayer } from './session/index.js'
+import { createEventSystem } from './events/index.js'
+import { createSessionLayer } from './session/index.js'
 import { installSessionPermissionEventRecorders } from './session/permission-events.js'
 import {
   installSessionLedgerEventBroadcaster,
   uninstallSessionLedgerEventBroadcaster,
 } from './session/event-broadcast.js'
-import {
-  initializeStreamEngine,
-  shutdownStreamEngine,
-  getStreamEngine,
-} from './wiring/engine/index.js'
+import { createStreamEngineLayer, type MainOnethingRuntime } from './wiring/engine/index.js'
 import type { PermissionMode } from '@shared/ipc.js'
-import type { BindableStreamSender } from './wiring/engine/stream-engine-bound.js'
+import type { BindableStreamSender, StreamEngine } from './wiring/engine/stream-engine-bound.js'
 import { registerBuiltinTriggers } from './wiring/engine/triggers/index.js'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from './wiring/collab/index.js'
 import { Permission } from './wiring/permission/index.js'
@@ -69,6 +68,17 @@ import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
 import { configureSessionHistoryBuilder, type SessionHistoryBuilder } from './session/reads.js'
 import { buildHistoryMessages, historyProjectionRecipe } from './wiring/engine/stream/message-helpers.js'
 import { getLogger } from './wiring/logging/index.js'
+import {
+  BackendAlreadyAssembledError,
+  getCurrentBackendSafe,
+  requireBackendField,
+  setCurrentBackend,
+  type BackendHandle,
+  type BackendHandleParts,
+} from './current.js'
+import type { EventBus } from './events/event-bus.js'
+import type { StreamChannel } from './events/stream-channel.js'
+import type { SessionManager } from '@onething/core/session'
 
 const log = getLogger('app.backend')
 
@@ -111,8 +121,12 @@ export interface OnethingBackendHooks {
 }
 
 export interface OnethingBackendOptions {
-  /** Tool sandbox path surface (downloads/home). Omit to keep the host's own wiring. */
-  sandboxHost?: { getPath?: (name: string) => string }
+  /**
+   * 这个宿主交出来的**全部**宿主独有能力(A1,`host-ports.ts`)。必填,且每一
+   * 项都要写 —— 没有那件能力就显式 `null`。漏写一项是 `tsc` 错误,不是运行期
+   * 某个能力静默变成降级路。
+   */
+  host: OnethingHostPorts
   /**
    * 'full' registers every builtin tool (desktop); 'headless' the reduced set;
    * 'readonly' only tools with zero local side effects (server degradation).
@@ -135,242 +149,370 @@ export interface OnethingBackendOptions {
   hooks?: OnethingBackendHooks
 }
 
-export interface OnethingBackend {
-  engine: ReturnType<typeof getStreamEngine>
-  eventBus: ReturnType<typeof getEventBus>
-  streamChannel: ReturnType<typeof getStreamChannel>
-  shutdown(): Promise<void>
-}
+/**
+ * 装配的产物 —— 一只实例,不再是一张摊在模块全局里的桌子。
+ *
+ * 五个字段是 **getter**:装配把自己第一时间装进进程当前实例槽(方案 §5 风险 1
+ * —— `installSessionLedgerEventBroadcaster()` / `registerBuiltinTriggers()` /
+ * `createMainStreamEngineRuntime()` 都在装配**中途**调 `getEventBus()`),而还
+ * 没建到的那一格读起来抛 `BackendNotAssembledError('engine')`,与 A2 之前
+ * "未初始化就抛"逐字同义。
+ */
+export class OnethingBackend implements BackendHandle {
+  private readonly parts: BackendHandleParts = {}
+  private readonly disposers: Array<{ label: string; run: () => void | Promise<void> }> = []
+  private disposing: Promise<void> | null = null
 
-export async function createOnethingBackend(
-  options: OnethingBackendOptions = {},
-): Promise<OnethingBackend> {
-  configureAppRuntimeAdapters()
-  if (options.sandboxHost) configureSandboxHost(options.sandboxHost)
+  readonly options: Readonly<OnethingBackendOptions>
 
-  initializeStores()
-  await initializeSettings()
-  // 「诊断模式」是设置里的一格,但生效面在日志系统(等级 spec + provider 转储)。
-  // 落点就在读完 settings 的第一时间 —— 再晚一点,启动期的 debug 行就已经被
-  // 默认等级滤掉了。之后每次保存设置由 `stores/settings.ts` 的同一个函数续上。
-  applyDiagnosticsMode(getSettings().diagnostics?.enabled === true)
-  // provider 配置迁进空间层(C1)。位置是**刚读完 settings、任何人问「这个
-  // provider 配了没有」之前** —— 引擎、工具、插件都会问,而迁移之前那个答案
-  // 还在旧形状里。幂等:标记在就是一次同步返回。迁移失败不写标记、不清旧字段,
-  // 下次启动重跑;把整次装配拖垮才是更坏的结果,所以这里只记不抛。
-  try {
-    await migrateProviderConfigToDefaultSpace()
-  } catch (error) {
-    log.error('provider config migration failed, will retry next boot', {}, error)
+  private constructor(options: OnethingBackendOptions) {
+    this.options = options
   }
-  // 盘上遗留的**明文**凭证池升级成密文(2026-08-31)。排在迁移之后:这一次真的
-  // 迁了的话写出去的本来就是密文,这一步看一眼就过。它救的是雷已经炸过的机器
-  // ——「没有加密能力的进程抢先当了 core」留下的 `encryption: 'none'`,以及
-  // B3~B7 时期的无信封老明文。没有加密能力的宿主整个跳过(不会反向降级)。
-  try {
-    upgradeSpaceCredentialsEncryptionAtRest()
-  } catch (error) {
-    log.error('credentials re-encryption failed, will retry next boot', {}, error)
+
+  get eventBus(): EventBus {
+    return requireBackendField(this.parts, 'eventBus')
   }
-  // Agents are read on every turn (and once per room member); warm the cache
-  // here so nothing downstream pays a synchronous read + normalize.
-  await initializeAgents()
-  await options.hooks?.afterSettings?.()
 
-  initializeEventSystem()
-  initializeSessionLayer()
-  // B 期(§17.8):写入口每落一条事件,原样在总线上广播一份 —— 桌面 IPC 与
-  // web SSE 都观察总线,于是"两个传输同步"是构造性的。必须在事件系统之后
-  // (它要 `getEventBus()`),在任何一条事件被写下之前。
-  installSessionLedgerEventBroadcaster()
-  initializeStreamEngine()
-  registerBuiltinTriggers()
+  get streamChannel(): StreamChannel {
+    return requireBackendField(this.parts, 'streamChannel')
+  }
 
-  if (options.promptVersion) {
-    // promptVersion stamps eval traces with the live minimal-scene output so
-    // recorded incidents replay against the prompt that actually shipped.
+  get sessionManager(): SessionManager {
+    return requireBackendField(this.parts, 'sessionManager')
+  }
+
+  get engine(): StreamEngine {
+    return requireBackendField(this.parts, 'engine')
+  }
+
+  get runtime(): MainOnethingRuntime {
+    return requireBackendField(this.parts, 'runtime')
+  }
+
+  /**
+   * 谁起了一件会留尾巴的东西,谁把收尾登记进来。`dispose()` 按**登记逆序**跑。
+   *
+   * 宿主在装配之后起的东西(内嵌 HTTP 面、用户调度器、todo/草稿纸 watcher、
+   * MCP)也从这个口登记 —— 那是 A3 的活,A2 只把口开出来。
+   */
+  own(disposer: () => void | Promise<void>, label = 'anonymous'): void {
+    this.disposers.push({ label, run: disposer })
+  }
+
+  /**
+   * 幂等;逆序跑完 `own()` 登记的全部 disposer,再清掉进程当前实例槽。
+   *
+   * 每个 disposer 单独 try/catch 并记 error:一个失败不许挡住后面的 —— 关机链
+   * 上排在最后的是**落盘**,让它被前面某个 shutdown 的异常吞掉是这条链最坏的
+   * 失败形态。
+   */
+  async dispose(): Promise<void> {
+    if (this.disposing) return this.disposing
+    this.disposing = (async () => {
+      for (let i = this.disposers.length - 1; i >= 0; i -= 1) {
+        const disposer = this.disposers[i]!
+        try {
+          await disposer.run()
+        } catch (error) {
+          log.error('backend disposer failed', { step: disposer.label }, error)
+        }
+      }
+      this.disposers.length = 0
+      // 只清自己那一格:别人已经装了新实例的话,清掉等于替他关门。
+      if (getCurrentBackendSafe() === this) setCurrentBackend(null)
+    })()
+    return this.disposing
+  }
+
+  /** @deprecated 过渡别名 = `dispose()`。 */
+  async shutdown(): Promise<void> {
+    return this.dispose()
+  }
+
+  static async assemble(options: OnethingBackendOptions): Promise<OnethingBackend> {
+    // 第一行就拒。A2 之前这条路静默返回第一份,而整次装配还是会在第 31 步
+    // (RPC 域的重复挂载守卫)炸掉 —— 那时前 30 步已经又跑了一遍且不可回滚。
+    if (getCurrentBackendSafe()) throw new BackendAlreadyAssembledError()
+
+    const backend = new OnethingBackend(options)
+    // 装配**中途**就得可见(方案 §5 风险 1)。
+    setCurrentBackend(backend)
     try {
-      const { initPromptVersion, buildOnethingSystemPrompt } = await import('@onething/runtime')
-      const { system, developer } = await buildOnethingSystemPrompt({ hasTools: false, skills: [] })
-      initPromptVersion([system, ...developer].filter(Boolean).join('\n\n'))
+      await backend.assembleSteps()
+      return backend
     } catch (error) {
-      log.warn('prompt version init failed', {}, error)
+      // 失败的装配不许在进程里留下一个半死的槽:逆序跑掉已经登记的收尾,清槽,
+      // 再把**原来那个**错误抛出去(`dispose()` 自己每步 try/catch,不会盖掉它)。
+      await backend.dispose()
+      throw error
     }
   }
 
-  await options.hooks?.afterEngine?.()
+  private async assembleSteps(): Promise<void> {
+    const options = this.options
+    configureAppRuntimeAdapters()
+    // 宿主能力先落位:它们是**输入**,装配的每一步都可能读到(sandbox 在工具目录
+    // 之前、auth 在凭证升级之前、storePath 在 docs 目录之前)。一次性交出来的好处
+    // 就在这里 —— 顺序问题只有这一个答案:全部,在最前面。
+    applyHostPorts(options.host)
 
-  Permission.initialize(
-    getEventBus(),
-    sessionId => getStreamEngine().getChannel(sessionId),
-    // 引擎归位到产品层之后返回裸 `string`(产品层读不到 @shared 的 `PermissionMode`
-    // 联合);跨进程词汇的收敛点就在装配层这一行。
-    sessionId => getStreamEngine().getPermissionMode(sessionId) as PermissionMode,
-  )
+    initializeStores()
+    /*
+     * 落盘是关机链上的**最后**两步,所以它们是最先登记的两件(逆序)。
+     *
+     * 顺序:`flushAllPendingSaves` 排的是 messages.jsonl 的 300ms 节流队列;
+     * 事件账本有**自己**的每会话写队列(§15.12(a)(b)),必须排在它之后 ——
+     * 抄本停写之后那就是唯一持久化,退出那一刻队列里剩什么就丢什么。
+     * 账本那一步自带 2s 时限,超时记一行 warn 不阻退出。
+     */
+    this.own(async () => {
+      await flushSessionEventLedger()
+    }, 'flushSessionEventLedger')
+    this.own(() => flushAllPendingSaves(), 'flushAllPendingSaves')
 
-  // 提问链与审批链是两条并列的等待链,同一个接入点、同一个通道解析器
-  // (claude-code-integration-v2 §4)。同样要求 engine 先在位——targetChannel
-  // 是 ask 当场从 engine 取的。
-  Interaction.initialize(
-    getEventBus(),
-    sessionId => getStreamEngine().getChannel(sessionId),
-  )
+    await initializeSettings()
+    // 「诊断模式」是设置里的一格,但生效面在日志系统(等级 spec + provider 转储)。
+    // 落点就在读完 settings 的第一时间 —— 再晚一点,启动期的 debug 行就已经被
+    // 默认等级滤掉了。之后每次保存设置由 `stores/settings.ts` 的同一个函数续上。
+    applyDiagnosticsMode(getSettings().diagnostics?.enabled === true)
+    // provider 配置迁进空间层(C1)。位置是**刚读完 settings、任何人问「这个
+    // provider 配了没有」之前** —— 引擎、工具、插件都会问,而迁移之前那个答案
+    // 还在旧形状里。幂等:标记在就是一次同步返回。迁移失败不写标记、不清旧字段,
+    // 下次启动重跑;把整次装配拖垮才是更坏的结果,所以这里只记不抛。
+    try {
+      await migrateProviderConfigToDefaultSpace()
+    } catch (error) {
+      log.error('provider config migration failed, will retry next boot', {}, error)
+    }
+    // 盘上遗留的**明文**凭证池升级成密文(2026-08-31)。排在迁移之后:这一次真的
+    // 迁了的话写出去的本来就是密文,这一步看一眼就过。它救的是雷已经炸过的机器
+    // ——「没有加密能力的进程抢先当了 core」留下的 `encryption: 'none'`,以及
+    // B3~B7 时期的无信封老明文。没有加密能力的宿主整个跳过(不会反向降级)。
+    try {
+      upgradeSpaceCredentialsEncryptionAtRest()
+    } catch (error) {
+      log.error('credentials re-encryption failed, will retry next boot', {}, error)
+    }
+    // Agents are read on every turn (and once per room member); warm the cache
+    // here so nothing downstream pays a synchronous read + normalize.
+    await initializeAgents()
+    await options.hooks?.afterSettings?.()
 
-  // S1a(session-event-sourcing §10.2 的"权限/交互层"):两条等待链的时刻与
-  // 决定进会话事件日志。必须在两个 initialize 之后 —— 它接的是同一对单例。
-  installSessionPermissionEventRecorders()
+    const { eventBus, streamChannel } = createEventSystem()
+    this.parts.eventBus = eventBus
+    this.parts.streamChannel = streamChannel
+    this.own(() => {
+      eventBus.shutdown()
+      streamChannel.shutdown()
+      log.info('event system shut down')
+    }, 'eventSystem')
 
-  // Variables must precede the tool registry (the variable tool reads a
-  // populated registry); goal breakers and project dirs are order-free but
-  // belong before the first stream.
-  bootstrapVariableSystem()
-  bootstrapGoalStreamBreakers()
-  bootstrapProjectDirs()
+    const sessionLayer = createSessionLayer(eventBus, streamChannel)
+    this.parts.sessionManager = sessionLayer.sessionManager
+    this.own(() => sessionLayer.dispose(), 'sessionLayer')
 
-  // 缝 4 —— 三档目录。R4b 之后它是**唯一**一本工具册子(旧注册表已删)。
-  //
-  // `feature_*` 与插件工具**不在这里**:前者由 self-evolution feature 在 mount 时
-  // 自己装进目录,后者由 `api.registerTool` 装 —— 两者的寿命都不是"一档目录"的寿命。
-  buildToolkitCatalog(options.toolRegistry ?? 'headless')
-  // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
-  // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
-  configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())
+    // B 期(§17.8):写入口每落一条事件,原样在总线上广播一份 —— 桌面 IPC 与
+    // web SSE 都观察总线,于是"两个传输同步"是构造性的。必须在事件系统之后
+    // (它要 `getEventBus()`),在任何一条事件被写下之前。
+    installSessionLedgerEventBroadcaster()
+    this.own(() => uninstallSessionLedgerEventBroadcaster(), 'sessionLedgerBroadcaster')
 
-  // RPC domains go up BEFORE afterTools: that hook is where the Electron host
-  // runs initializeIPC() and mounts the `rpc:invoke` adapter, so the table it
-  // dispatches into must already be complete. Registration itself is pure
-  // bookkeeping (closures into a Map) — the handlers resolve their
-  // dependencies lazily, per call.
-  const disposeRpcDomains = await registerAppRpcDomains()
+    const engineLayer = createStreamEngineLayer({ eventBus, streamChannel })
+    this.parts.engine = engineLayer.engine
+    this.parts.runtime = engineLayer.runtime
+    registerBuiltinTriggers()
 
-  await options.hooks?.afterTools?.()
-
-  if (options.sessionSkills) {
-    await initializeSessionSkills()
-  }
-
-  if (options.collab) {
-    // Room prompts are assembled as persona-only system prompts inside the
-    // prompt build path (engine/prompt/system-prompt.ts collabRoomOverrides)
-    // — no plugin prompt provider involved. Static import (top of file): a
-    // dynamic import here left the collab modules bundled INSIDE the desktop
-    // entry chunk (the ingress gate references them statically), and the CLI
-    // daemon's dynamic load then pulled the whole electron entry into Node.
-    //
-    // D6-a(docs/design/collab-actor-v3.md §6):协作的生产路径从 v2 协调器换成
-    // v3 actor 运行时。boot 里那一趟 marker 门控的迁移住在它里面 —— 单向门只有
-    // 一个触发点,而这里是唯一一个会在启动时走到它的地方。
-    //
-    // `await`:迁移与房账续播都要落盘,而它们必须排在第一条用户消息之前 ——
-    // 一间还没续播完的房收到 posted,会把上一条命没投完的广播与新消息交错投出去。
-    await initializeCollabV3Runtime()
-  }
-
-  if (options.mcpAcp) {
-    const settings = getSettings()
-    await MCPManager.initialize(settings.mcp || DEFAULT_MCP_SETTINGS)
-    await registerMCPTools()
-    ACPManager.initialize(settings.acp || { enabled: true, agents: [] })
-  }
-
-  if (options.sender) {
-    getStreamEngine().bind(options.sender)
-  }
-
-  // S3w-4:blob 孤儿的启动后延迟治理。**默认不跑** —— `ONETHING_SESSION_BLOB_GC`
-  // 没设就直接返回 undefined,这一行在缺省档上是纯声明。定时器 unref,所以
-  // 它自己留不住进程;disposer 挂在下面的 shutdown 上。
-  const cancelBlobGc = scheduleSessionBlobGcOnStartup()
-
-  /*
-   * E2:会话列表投影的**存量回填**。E 批把 `messageCount` / `lastMessagePreview`
-   * 挂在写侧("不回填、下次写自愈"),对存量库等于功能不存在 —— 真机 439 条
-   * 会话里 0 条带摘要格。这一趟把写侧本该留下的两格补上,读面纪律不动。
-   *
-   * 装在这里 = 两端都装:桌面与 standalone server 走的是同一个装配配方,而这
-   * 件事属于装配层(它只关心"这个 store 的索引里缺格"),不是哪个宿主特有的。
-   * 定时器 unref + 判据幂等,所以短命的 CLI daemon 顶多跑几条就随进程走。
-   */
-  const cancelListBackfill = scheduleSessionListProjectionBackfillOnStartup({
-    // 正在流式中的会话本轮跳过:它的账本此刻在长,而写侧本来就会把格盖上。
-    isSessionBusy: sessionId => getStreamEngine().getActiveSessionIds().includes(sessionId),
-  })
-
-  return {
-    engine: getStreamEngine(),
-    eventBus: getEventBus(),
-    streamChannel: getStreamChannel(),
-    async shutdown() {
-      cancelBlobGc?.()
-      cancelListBackfill?.()
-      // Reversible registration: a second createOnethingBackend in the same
-      // process (tests, host restarts) must not trip the duplicate-domain guard.
-      await disposeRpcDomains()
-      if (options.collab) {
-        try {
-          await shutdownCollabV3Runtime()
-        } catch (error) {
-          log.error('collab shutdown failed', {}, error)
-        }
+    if (options.promptVersion) {
+      // promptVersion stamps eval traces with the live minimal-scene output so
+      // recorded incidents replay against the prompt that actually shipped.
+      try {
+        const { initPromptVersion, buildOnethingSystemPrompt } = await import('@onething/runtime')
+        const { system, developer } = await buildOnethingSystemPrompt({ hasTools: false, skills: [] })
+        initPromptVersion([system, ...developer].filter(Boolean).join('\n\n'))
+      } catch (error) {
+        log.warn('prompt version init failed', {}, error)
       }
-      getStreamEngine().abortAll()
+    }
+
+    await options.hooks?.afterEngine?.()
+
+    Permission.initialize(
+      eventBus,
+      sessionId => engineLayer.engine.getChannel(sessionId),
+      // 引擎归位到产品层之后返回裸 `string`(产品层读不到 @shared 的 `PermissionMode`
+      // 联合);跨进程词汇的收敛点就在装配层这一行。
+      sessionId => engineLayer.engine.getPermissionMode(sessionId) as PermissionMode,
+    )
+
+    // 提问链与审批链是两条并列的等待链,同一个接入点、同一个通道解析器
+    // (claude-code-integration-v2 §4)。同样要求 engine 先在位——targetChannel
+    // 是 ask 当场从 engine 取的。
+    Interaction.initialize(
+      eventBus,
+      sessionId => engineLayer.engine.getChannel(sessionId),
+    )
+
+    // S1a(session-event-sourcing §10.2 的"权限/交互层"):两条等待链的时刻与
+    // 决定进会话事件日志。必须在两个 initialize 之后 —— 它接的是同一对单例。
+    installSessionPermissionEventRecorders()
+
+    /*
+     * 三件的登记**放在一处并显式反序**,而不是各自"起的那一行紧接着 own()"。
+     *
+     * 理由是逆序登记登不出今天的关机顺序:引擎建在 Permission / Interaction
+     * **之前**,而关机链是「引擎 → Permission → Interaction」。A2 只改"这份
+     * 清单由谁记",不改关机语义,所以这里显式把三件按今天的顺序反着登记进去,
+     * `dispose()` 跑出来与 A2 之前逐字相同。
+     */
+    this.own(() => Interaction.shutdown(), 'interaction')
+    this.own(() => Permission.shutdown(), 'permission')
+    this.own(() => engineLayer.dispose(), 'streamEngine')
+
+    // Variables must precede the tool registry (the variable tool reads a
+    // populated registry); goal breakers and project dirs are order-free but
+    // belong before the first stream.
+    bootstrapVariableSystem()
+    bootstrapGoalStreamBreakers()
+    bootstrapProjectDirs()
+
+    // 缝 4 —— 三档目录。R4b 之后它是**唯一**一本工具册子(旧注册表已删)。
+    //
+    // `feature_*` 与插件工具**不在这里**:前者由 self-evolution feature 在 mount 时
+    // 自己装进目录,后者由 `api.registerTool` 装 —— 两者的寿命都不是"一档目录"的寿命。
+    buildToolkitCatalog(options.toolRegistry ?? 'headless')
+    // §13.7 裁定 5:服务器工具面变了就重算目录。挂在既有的唯一通知点上,
+    // 不顶掉宿主自己那个 handler(它注册的是另一个口子)。
+    configureToolkitMCPCapabilitiesChangedHandler(() => refreshToolkitMcpTools())
+
+    /*
+     * 工具跑出去的进程要收回来。挂在工具目录这一步:没有目录就没有工具,也就
+     * 没有这两件尾巴。两条都是"没起过就是 no-op",所以无条件登记。
+     * (登记顺序反着写 —— 关机链上是 `killTrackedDetachedChildren` 先、
+     * `killAllTerminals` 后。)
+     */
+    this.own(() => killAllTerminals(), 'killAllTerminals')
+    this.own(() => killTrackedDetachedChildren(), 'killTrackedDetachedChildren')
+
+    // RPC domains go up BEFORE afterTools: that hook is where the Electron host
+    // runs initializeIPC() and mounts the `rpc:invoke` adapter, so the table it
+    // dispatches into must already be complete. Registration itself is pure
+    // bookkeeping (closures into a Map) — the handlers resolve their
+    // dependencies lazily, per call.
+    const disposeRpcDomains = await registerAppRpcDomains()
+
+    await options.hooks?.afterTools?.()
+
+    if (options.sessionSkills) {
+      await initializeSessionSkills()
+    }
+
+    if (options.collab) {
+      // Room prompts are assembled as persona-only system prompts inside the
+      // prompt build path (engine/prompt/system-prompt.ts collabRoomOverrides)
+      // — no plugin prompt provider involved. Static import (top of file): a
+      // dynamic import here left the collab modules bundled INSIDE the desktop
+      // entry chunk (the ingress gate references them statically), and the CLI
+      // daemon's dynamic load then pulled the whole electron entry into Node.
+      //
+      // D6-a(docs/design/collab-actor-v3.md §6):协作的生产路径从 v2 协调器换成
+      // v3 actor 运行时。boot 里那一趟 marker 门控的迁移住在它里面 —— 单向门只有
+      // 一个触发点,而这里是唯一一个会在启动时走到它的地方。
+      //
+      // `await`:迁移与房账续播都要落盘,而它们必须排在第一条用户消息之前 ——
+      // 一间还没续播完的房收到 posted,会把上一条命没投完的广播与新消息交错投出去。
+      await initializeCollabV3Runtime()
+    }
+
+    if (options.mcpAcp) {
+      const settings = getSettings()
+      await MCPManager.initialize(settings.mcp || DEFAULT_MCP_SETTINGS)
+      await registerMCPTools()
+      ACPManager.initialize(settings.acp || { enabled: true, agents: [] })
+    }
+
+    /*
+     * ── 关机链的**头**六件,一处登记、显式反序 ──
+     *
+     * 这六件的关机顺序有真实约束,而那个顺序**不是**装配顺序的逆:
+     *  · RPC 面第一个下(不再接新调用),但它建在第 31 步;
+     *  · `abortAll` 必须排在 MCP/ACP 收摊**之前**(先停我们这侧的流,再拆它
+     *    要用的服务器),而引擎建在第 14 步;
+     *  · 插件与 MCP/ACP 在桌面上根本不是装配起的(宿主在窗口之后起),这里
+     *    的登记是**无条件、幂等**的兜底 —— A3 会把它们交回各自的宿主 `own()`。
+     * 所以这六件按今天 `shutdown()` 里的顺序反着登记在这一处,`dispose()` 跑
+     * 出来与 A2 之前逐字相同。
+     */
+    this.own(async () => {
+      /*
+       * 插件系统必须在**事件系统之前**拆。
+       *
+       * 插件 dispose 会往总线上发 cleared(R6 的状态清扫)、发 catalog-changed;
+       * 总线先关的话那些事件发进一个已经没人听的地方,而账本里留着记录。
+       *
+       * 动态 import:装配层的静态图里不该多一条只在收摊时才用得上的边
+       * (`import-side-effect-free` 那条纪律)。
+       */
+      const plugins = await import('./wiring/plugins/manager.js')
+      plugins.getPluginManager()?.shutdown()
+    }, 'pluginManager')
+    this.own(async () => {
+      if (!options.mcpAcp) return
+      await ACPManager.shutdown()
+      await MCPManager.shutdown()
+    }, 'mcpAcp')
+    this.own(async () => {
       /**
        * 外部执行体跟着收摊(E4/G10)。`abortAll` 停的是我们这一侧的流,外部 agent
        * 的进程要它自己的 dispose 才会走 —— 漏了它,退出之后 CLI 子进程还活着。
        *
        * 无条件调:连接器是懒建的,没建过就是一次 no-op。桌面端另有一条
        * `shutdownACP` 也会调到它,dispose 本身幂等(表清空后再调直接返回)。
-       *
-       * 动态 import:装配层的静态图里不该多一条只在收摊时才用得上的边
-       * (`import-side-effect-free` 那条纪律)。
        */
-      try {
-        const externalAgents = await import('./wiring/external-agents/index.js')
-        await externalAgents.disposeExternalAgentConnectors()
-      } catch (error) {
-        log.error('external agent dispose failed', {}, error)
-      }
-      if (options.mcpAcp) {
-        await ACPManager.shutdown()
-        await MCPManager.shutdown()
-      }
-      /*
-       * 插件系统必须在 **shutdownEventSystem 之前**拆。
-       *
-       * 插件 dispose 会往总线上发 cleared(R6 的状态清扫)、发 catalog-changed;
-       * 总线先关的话那些事件发进一个已经没人听的地方,而账本里留着记录。
-       * 这行此前一直是缺的 —— `CorePluginManager.shutdown` 与
-       * `PluginManager.shutdown` 生产代码零调用者,R6 尾巴清理只是把那句
-       * 不兑现的契约往上挪了一层。
-       */
-      try {
-        const plugins = await import('./wiring/plugins/manager.js')
-        plugins.getPluginManager()?.shutdown()
-      } catch (error) {
-        log.error('plugin manager shutdown failed', {}, error)
-      }
-      killTrackedDetachedChildren()
-      // No-op unless a host actually created terminals. NOTE: the Electron
-      // host quits through its beforeQuit cleanup table, not this shutdown —
-      // it calls killAllTerminals there itself.
-      killAllTerminals()
-      shutdownStreamEngine()
-      Permission.shutdown()
-      Interaction.shutdown()
-      uninstallSessionLedgerEventBroadcaster()
-      shutdownSessionLayer()
-      shutdownEventSystem()
-      try {
-        await flushAllPendingSaves()
-      } catch (error) {
-        log.error('flush pending saves failed', {}, error)
-      }
-      // 事件账本的收尾(§15.12(a)(b))。`flushAllPendingSaves` 排的是
-      // messages.jsonl 的 300ms 节流队列 —— 事件有**自己**的每会话写队列,
-      // 从前在关停链上一次都没被排空过(§15.11 第五节结论 1)。抄本停写之后
-      // 那就是 §14.7 风险②的正面:退出那一刻队列里剩什么就丢什么。
-      // 自带 2s 时限,超时记一行 warn 不阻退出。
-      await flushSessionEventLedger()
-    },
+      const externalAgents = await import('./wiring/external-agents/index.js')
+      await externalAgents.disposeExternalAgentConnectors()
+    }, 'externalAgents')
+    this.own(() => engineLayer.engine.abortAll(), 'engineAbortAll')
+    this.own(async () => {
+      if (!options.collab) return
+      await shutdownCollabV3Runtime()
+    }, 'collab')
+    // Reversible registration: a second assemble in the same process (tests,
+    // host restarts) must not trip the duplicate-domain guard.
+    this.own(() => disposeRpcDomains(), 'rpcDomains')
+
+    if (options.sender) {
+      engineLayer.engine.bind(options.sender)
+    }
+
+    // S3w-4:blob 孤儿的启动后延迟治理。**默认不跑** —— `ONETHING_SESSION_BLOB_GC`
+    // 没设就直接返回 undefined,这一行在缺省档上是纯声明。定时器 unref,所以
+    // 它自己留不住进程。
+    const cancelBlobGc = scheduleSessionBlobGcOnStartup()
+    this.own(() => cancelBlobGc?.(), 'sessionBlobGc')
+
+    /*
+     * E2:会话列表投影的**存量回填**。E 批把 `messageCount` / `lastMessagePreview`
+     * 挂在写侧("不回填、下次写自愈"),对存量库等于功能不存在 —— 真机 439 条
+     * 会话里 0 条带摘要格。这一趟把写侧本该留下的两格补上,读面纪律不动。
+     *
+     * 装在这里 = 两端都装:桌面与 standalone server 走的是同一个装配配方,而这
+     * 件事属于装配层(它只关心"这个 store 的索引里缺格"),不是哪个宿主特有的。
+     * 定时器 unref + 判据幂等,所以短命的 CLI daemon 顶多跑几条就随进程走。
+     */
+    const cancelListBackfill = scheduleSessionListProjectionBackfillOnStartup({
+      // 正在流式中的会话本轮跳过:它的账本此刻在长,而写侧本来就会把格盖上。
+      isSessionBusy: sessionId => engineLayer.engine.getActiveSessionIds().includes(sessionId),
+    })
+    this.own(() => cancelListBackfill?.(), 'sessionListBackfill')
   }
+}
+
+/**
+ * 过渡别名。四个宿主的调用点先不改名 —— 改名是 A4 文档期顺手的事,而这一期
+ * 已经动了 `backend.ts` 与四个宿主的关机路。
+ */
+export function createOnethingBackend(
+  options: OnethingBackendOptions,
+): Promise<OnethingBackend> {
+  return OnethingBackend.assemble(options)
 }

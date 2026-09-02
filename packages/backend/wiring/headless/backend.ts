@@ -30,9 +30,7 @@ import {
   upsertOnethingHeadlessProviderConfig,
   useOnethingHeadlessProvider,
 } from '@onething/runtime/headless/index'
-import { createOnethingBackend } from '../../backend.js'
-import { flushAllPendingSaves } from '../../store.js'
-import { flushSessionEventLedger } from '../../session/event-log.js'
+import { createOnethingBackend, type OnethingBackend } from '../../backend.js'
 import {
   createSession,
   deleteSession,
@@ -54,23 +52,13 @@ import {
 import { ensureCollabGroupRoom } from '../collab/room-create.js'
 import { getSettings } from '../../stores/settings.js'
 import { toolkitCatalogToolDefinitions } from '@onething/runtime/toolkit/catalog-projection.wiring'
-import { shutdownEventSystem, getEventBus, getStreamChannel } from '../../events/index.js'
-import { initializeSessionLayer, shutdownSessionLayer } from '../../session/index.js'
+import { getEventBus, getStreamChannel } from '../../events/index.js'
 import { sessionReads } from '../../session/reads.js'
-import { shutdownStreamEngine, getStreamEngine } from '../engine/index.js'
-import { Permission } from '../permission/index.js'
-import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
-import { ACPManager } from '@onething/runtime/acp/index'
-import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
-import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
+import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
-import { getLogger } from '../logging/index.js'
 import type { BindableOnethingStreamSender } from '@onething/runtime/stream-sender'
-
-const log = getLogger('daemon')
-
 
 type EmitStreamEvent = (event: DaemonStreamEvent) => void
 
@@ -94,6 +82,13 @@ interface ActiveStreamRecord extends ActiveStreamInfo {
 
 export class HeadlessBackend {
   private started = false
+  /**
+   * A2:daemon 持有装配产物本身。从前这里只有一个 `started` 布尔,关机靠
+   * 下面那张**手抄**的清单 —— 抄漏了八件(RPC 域、协作、外部执行体、
+   * 插件、Interaction、账本广播、两个启动期定时器),而没有任何一道门看得见
+   * 它抄漏了。现在关机就是 `backend.dispose()`,清单归装配层一处。
+   */
+  private backend: OnethingBackend | null = null
   private sender = new HeadlessSender()
   private activeStreams = new Map<string, ActiveStreamRecord>()
   private activeStreamBySession = new Map<string, string>()
@@ -101,13 +96,34 @@ export class HeadlessBackend {
   async start(): Promise<void> {
     if (this.started) return
 
-    await createOnethingBackend({
-      sandboxHost: {
-        getPath(name) {
-          if (name === 'downloads') return path.join(os.homedir(), 'Downloads')
-          if (name === 'home') return os.homedir()
-          return os.homedir()
+    this.backend = await createOnethingBackend({
+      /*
+       * A1:宿主能力一次交清。CLI daemon 除了下载目录之外一件宿主能力都没有
+       * (它没有窗口、没有托盘、没有 Keychain 身份),十二个 `null` 就是这里的
+       * 事实清单。`storePath: {}` 与从前从不调 `configureStorePathHost` 时的
+       * 缺省逐字相同。
+       */
+      host: {
+        storePath: {},
+        sandbox: {
+          getPath(name) {
+            if (name === 'downloads') return path.join(os.homedir(), 'Downloads')
+            if (name === 'home') return os.homedir()
+            return os.homedir()
+          },
         },
+        auth: null,
+        logging: null,
+        shell: null,
+        voice: null,
+        skillsEnvironment: null,
+        todoPlan: null,
+        scratchpad: null,
+        plugins: null,
+        gateway: null,
+        settings: null,
+        evals: null,
+        mcp: null,
       },
       toolRegistry: 'headless',
       sessionSkills: true,
@@ -131,23 +147,12 @@ export class HeadlessBackend {
           : { type: 'done', stopReason: 'aborted' },
       })
     }
-    getStreamEngine().abortAll()
-    await ACPManager.shutdown()
-    await MCPManager.shutdown()
-    killTrackedDetachedChildren()
-    killAllTerminals() // always a no-op here — the daemon never creates terminals
-    shutdownStreamEngine()
-    Permission.shutdown()
-    shutdownSessionLayer()
-    shutdownEventSystem()
-    try {
-      await flushAllPendingSaves()
-    } catch (error) {
-      log.error('flush pending saves failed', {}, error)
-    }
-    // 事件账本的收尾(§15.12(a)(b)):`flushAllPendingSaves` 排的是
-    // messages.jsonl 的节流队列,事件有自己的每会话写队列。自带 2s 时限。
-    await flushSessionEventLedger()
+    // 关机的全部内容就是这一行:清单由 `assemble` 途中的 `own()` 登记,
+    // 顺序是登记逆序(引擎收流 → 外部执行体 → MCP/ACP → 插件 → 子进程/终端 →
+    // 引擎 → 权限 → 会话层 → 事件系统 → 两次落盘)。daemon 起 `mcpAcp: true`,
+    // 所以 MCP/ACP 那一步在装配层那一份里是真的会跑的。
+    await this.backend?.dispose()
+    this.backend = null
     this.activeStreams.clear()
     this.activeStreamBySession.clear()
     this.started = false

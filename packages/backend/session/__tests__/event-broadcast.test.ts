@@ -18,26 +18,35 @@ const { resetSessionEventLogCache } = await import('../event-log.js')
 const { writeSessionEvent } = await import('../event-writer.js')
 const { installSessionLedgerEventBroadcaster, uninstallSessionLedgerEventBroadcaster } =
   await import('../event-broadcast.js')
-const { initializeEventSystem, shutdownEventSystem, getEventBus } =
-  await import('../../events/index.js')
+const { createEventSystem, getEventBus } = await import('../../events/index.js')
+const { createBackendHandle, setCurrentBackend } = await import('../../current.js')
 
 const SESSION = 'ledger-broadcast-1'
 
 let store = ''
 let previousStorePath: string | undefined
+/** A2:事件系统是造出来的,不是"初始化"出来的;槽里只填它那两格。 */
+let disposeEventSystem: (() => void) | null = null
 
 beforeEach(() => {
   previousStorePath = process.env.ONETHING_STORE_PATH
   store = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ledger-cast-'))
   process.env.ONETHING_STORE_PATH = store
   resetSessionEventLogCache()
-  initializeEventSystem()
+  const { eventBus, streamChannel } = createEventSystem()
+  setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
+  disposeEventSystem = () => {
+    eventBus.shutdown()
+    streamChannel.shutdown()
+  }
   installSessionLedgerEventBroadcaster()
 })
 
 afterEach(() => {
   uninstallSessionLedgerEventBroadcaster()
-  shutdownEventSystem()
+  disposeEventSystem?.()
+  disposeEventSystem = null
+  setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath
   fs.rmSync(store, { recursive: true, force: true })
