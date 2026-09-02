@@ -1,3 +1,4 @@
+import type { HTMLAttributes } from 'react'
 import s from './StatusDot.module.css'
 
 /**
@@ -49,6 +50,33 @@ import s from './StatusDot.module.css'
  * 要么把那面留在外面继续自绘。两条都是把库件的缺口转嫁给消费方。
  * `--info` 本来就是 palette 里的第四档语义色(有自己的产地),所以补的是
  * 一格**已经存在的事实**,不是新造一个语汇。
+ *
+ * ── 透传口子:落点自己的身份,不是样式旁路(09-02 批 8c 补口)──────────────
+ * 剩下的 `HTMLAttributes` 原样摊到根 `<span>`,照 `ui/Card` / `ui/GroupHead` /
+ * `ui/Segmented` 的先例。它开的是**落点自己的 `data-testid` / `aria-describedby`**
+ * —— 「这颗丸是不是某条契约的锚点」是落点的事实,不是这件的事实,
+ * 所以它不该变成第 N 个 prop。
+ * **样式仍然只走 `className` 皮肤**:透传不是给人塞 `style={{…}}` 的口子,
+ * 那会把配方产地重新打散成每个消费面一份 —— 正是立这件要治的病。
+ *
+ * 起因是一格具体的哑火:批 8b 把宿主檐那颗未保存丸收编进来时,既有契约
+ * `data-testid="host-title-dirty"` **无处可挂** —— 这件当时是封闭的四格,
+ * 于是那个 testid 只能落在外面那格纯排版的落位 span 上,读到的是「落位」
+ * 不是「那颗丸」。批 8a 给 Card / GroupHead / Segmented 开口子时独漏了它。
+ *
+ * 撞名的三个键 Omit 掉,各有理由:
+ *  · `role` 与 `aria-label` —— 这两格由**给不给 `label`** 那条判据自己定
+ *    (文件头「无障碍」那节):给了 label 就是 `role="img"` + 名字,
+ *    没给就是 `aria-hidden` 的装饰。让外面盖掉等于把那条判据交出去,
+ *    于是又会出现「旁边写着一句话、丸自己也念一遍」的那种噪音;
+ *  · `children` —— 它没有身子(整件就是一颗点),收了只会被静默丢掉。
+ *
+ * 属性次序是**算出来的**:`className` 解构走并入算好的皮肤(透传盖不掉),
+ * `role` / `aria-label` / `aria-hidden` 一律排在 rest **之后** —— 它们是这件
+ * 的语义身份,类型上已经拦住(`aria-hidden` 没拦,但排在后面就盖不动)。
+ * 这里不需要 `ui/Segmented` 那条「`aria-label` 要排 rest 之前」的例外:
+ * 那条治的是「本件的可选 `aria-label` 缺席时会写进 undefined 抹掉落点自传的」,
+ * 而这件的 `aria-label` 只在 `label` 在场那条分支上出现,永不为 undefined。
  * ──────────────────────────────────────────────────────────────────────
  */
 export type StatusDotTone = 'ok' | 'info' | 'warn' | 'bad' | 'idle' | 'off'
@@ -56,7 +84,8 @@ export type StatusDotTone = 'ok' | 'info' | 'warn' | 'bad' | 'idle' | 'off'
 /** `md` 6px(缺省,列表 / 详情栏那一族);`sm` 5px(檐上贴着标题的那一颗)。 */
 export type StatusDotSize = 'sm' | 'md'
 
-export interface StatusDotProps {
+export interface StatusDotProps
+  extends Omit<HTMLAttributes<HTMLSpanElement>, 'children' | 'role' | 'aria-label'> {
   /** ok 正常 / info 一条提示 / warn 要注意 / bad 有错 / idle 还没配 / off 停用。 */
   tone: StatusDotTone
   /** 尺寸是**档位不是自由量**(理由见文件头)。缺省 md。 */
@@ -69,10 +98,12 @@ export interface StatusDotProps {
   className?: string
 }
 
-export function StatusDot({ tone, size = 'md', label, className }: StatusDotProps) {
+export function StatusDot({ tone, size = 'md', label, className, ...rest }: StatusDotProps) {
   // `md` 不挂第二个类:它的几何就写在 `.dot` 里(缺省档 = 基类),
   // 只有 `sm` 加一条覆盖 —— 少一个类名,也少一次「两个档谁赢」的疑问。
   const cls = [s.dot, s[tone], size === 'sm' ? s.sm : '', className ?? ''].filter(Boolean).join(' ')
-  if (label === undefined) return <span className={cls} aria-hidden="true" />
-  return <span className={cls} role="img" aria-label={label} />
+  // 两条分支里 `className` 都显式在前且已不在 rest 里(解构走了),
+  // 无障碍那三格都排在 rest 之后 —— 透传盖不掉皮肤,也盖不掉语义身份。
+  if (label === undefined) return <span className={cls} {...rest} aria-hidden="true" />
+  return <span className={cls} {...rest} role="img" aria-label={label} />
 }

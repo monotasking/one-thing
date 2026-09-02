@@ -110,4 +110,45 @@ describe('StatusDot:状态点', () => {
     expect(cls).toMatch(/_ok_/)
     expect(cls).toMatch(/(^| )mine( |$)/)
   })
+
+  /**
+   * 属性透传(09-02 批 8c)。守的是**落点自己的身份**这一格:
+   *  · `data-testid` / `aria-describedby` 真的到得了 DOM —— 起因是批 8b 时
+   *    宿主檐那颗丸的既有契约 testid 无处可挂,只好落在外面那格落位 span 上;
+   *  · 透传与 `className` 皮肤同时在场时两不相扰(透传不是样式旁路);
+   *  · `role` / `aria-label` 是这件自己的语义身份,**外面盖不掉** ——
+   *    类型上已经 Omit 掉(所以下面那条要绕过类型才写得出),
+   *    运行时靠它们排在 rest 之后兜住。
+   * 拆掉 rest 即红:三条一起挂。
+   */
+  it('透传:data-testid 与 aria-describedby 真的到 DOM,且不动皮肤', () => {
+    const { container } = render(
+      <StatusDot tone="warn" size="sm" className="mine" data-testid="dot-x" aria-describedby="why" />,
+    )
+    const el = container.firstElementChild as HTMLElement
+    expect(el.getAttribute('data-testid')).toBe('dot-x')
+    expect(el.getAttribute('aria-describedby')).toBe('why')
+    // 皮肤三格一格不少:透传摊在 className 之后,但 className 已被解构走,
+    // rest 里根本没有它 —— 覆盖不可能发生。
+    expect(el.className).toMatch(/_dot_/)
+    expect(el.className).toMatch(/_warn_/)
+    expect(el.className).toMatch(/_sm_/)
+    expect(el.className).toMatch(/(^| )mine( |$)/)
+  })
+
+  it('透传盖不掉语义身份:给了 label 时外部 role 与 aria-label 都写不进去', () => {
+    // 两个键在类型上已被 Omit,这里刻意绕过类型断言**运行时**也拦得住 ——
+    // 判据由「给不给 label」定,不许从外面交出去。
+    const sneak = { role: 'button', 'aria-label': 'nope' } as Record<string, string>
+    const { container } = render(<StatusDot tone="bad" label="Auth failed" {...sneak} />)
+    const el = container.firstElementChild as HTMLElement
+    expect(el.getAttribute('role')).toBe('img')
+    expect(el.getAttribute('aria-label')).toBe('Auth failed')
+  })
+
+  it('透传盖不掉语义身份:不给 label 时外部 aria-hidden 也翻不过来', () => {
+    const sneak = { 'aria-hidden': 'false' } as Record<string, string>
+    const { container } = render(<StatusDot tone="idle" {...sneak} />)
+    expect((container.firstElementChild as HTMLElement).getAttribute('aria-hidden')).toBe('true')
+  })
 })

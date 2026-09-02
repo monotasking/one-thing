@@ -38,9 +38,9 @@ describe('HostTitle:未保存丸由 ui/StatusDot 画', () => {
   it('有未保存改动时画的是 StatusDot 的 warn × sm 档', () => {
     publish(true)
     render(<HostTitle id="viewer" fallback="查看器" />)
-    const slot = screen.getByTestId('host-title-dirty')
-    const dot = slot.firstElementChild as HTMLElement
-    expect(dot).toBeTruthy()
+    // 09-02 批 8c:`data-testid` 由 `ui/StatusDot` 的属性透传直接带到丸上,
+    // 不再靠外面那格落位 span 承载 —— 契约读到的从此就是那颗丸本身。
+    const dot = screen.getByTestId('host-title-dirty')
     expect(dot.classList.contains(statusDotCss.dot)).toBe(true)
     expect(dot.classList.contains(statusDotCss.warn)).toBe(true)
     // `sm` 是 5px 那一档 —— 缺了它这颗丸会从 5px 胖到 6px(缺省 md)。
@@ -48,6 +48,9 @@ describe('HostTitle:未保存丸由 ui/StatusDot 画', () => {
     // 旁边就写着文件名,丸是纯装饰:给它一个名字等于让读屏软件念两遍。
     expect(dot.getAttribute('aria-hidden')).toBe('true')
     expect(dot.getAttribute('aria-label')).toBeNull()
+    // 落位件仍在:margin-left + vertical-align 是宿主檐的排版事实,
+    // testid 挪到丸上不等于这一格该跟着走(拆了它丸会贴着文件名且不与那行字对齐)。
+    expect((dot.parentElement as HTMLElement).classList.contains(hostTitleCss.dirtySlot)).toBe(true)
   })
 
   it('本地只剩「落位」两格,丸自己的几何与底色已经删干净', () => {

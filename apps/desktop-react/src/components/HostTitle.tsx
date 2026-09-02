@@ -26,13 +26,15 @@ export function HostTitle({ id, fallback, className }: { id: string; fallback: s
         外面这一格 span 只管**落位**(左边距 + 与文字的垂直对齐)——那是宿主檐的
         排版事实,不是「一枚状态点」的事实;它 inline-flex + 内容 flex:none,
         所以盒子逐像素等于那颗 5px 的丸本身。
-        它同时是 `data-testid` 的落点:`ui/StatusDot` 的 API 是封闭的四格
-        (tone / size / label / className),没有 `testId` 也没有属性透传 ——
-        这一格缺口记在交卷报告里,不在本批就地开(ui/ 本批只消费)。
+
+        `data-testid` 落在**丸自己**身上(09-02 批 8c:`ui/StatusDot` 开了
+        `HTMLAttributes` 透传)。批 8b 时它只能挂在外面这格落位上 —— 那件当时
+        是封闭的四格,读到的是「落位」不是「那颗丸」;既有契约的两条断言只问
+        「在不在」,所以挪到丸上逐字等价,而这一格落位仍是它该在的地方。
       */}
       {live?.dirty && (
-        <span className={s.dirtySlot} data-testid="host-title-dirty">
-          <StatusDot tone="warn" size="sm" />
+        <span className={s.dirtySlot}>
+          <StatusDot tone="warn" size="sm" data-testid="host-title-dirty" />
         </span>
       )}
     </span>
