@@ -108,6 +108,36 @@ describe('ModelCatalog · 设为当前 / 手填 ID', () => {
     fireEvent.click(screen.getByRole('button', { name: '添加' }))
     expect(field.value).toBe('')
   })
+
+  /**
+   * 09-02 批 10:这一行收编 `ui/Field` 的横排档,结掉 9a 留的那笔账 ——
+   * 「错误那一句没有跟输入框关联」。断的是**关联**不是文字在不在:
+   * 上面那条「被拒时显示原因」对手写 `<span>` 也绿,这一条不会。
+   *
+   * 反证:把 `error={addError}` 从 `<Field>` 上摘掉(错误改回自己画一个 span),
+   * 或者把 `layout="inline"` 摘掉 —— 两处各当场红一条。
+   */
+  it('手填被拒:错误经 Field 的 error 槽关联到输入框(aria-describedby + aria-invalid)', () => {
+    render(catalog({ onAddManual: vi.fn(() => 'a 已经在这一坑的列表里了') }))
+    fireEvent.click(screen.getByRole('button', { name: '＋ 手填 ID' }))
+    const field = screen.getByLabelText('手填模型 ID') as HTMLInputElement
+    fireEvent.change(field, { target: { value: 'a' } })
+    fireEvent.click(screen.getByRole('button', { name: '添加' }))
+
+    expect(field.getAttribute('aria-invalid')).toBe('true')
+    const describedBy = field.getAttribute('aria-describedby') as string
+    expect(document.getElementById(describedBy)?.textContent).toBe('a 已经在这一坑的列表里了')
+
+    // 名字来自一条真 `<label>`(只念不看),不再是 `aria-label` 那一句凭空的字符串。
+    const labelId = field.getAttribute('aria-labelledby') as string
+    const label = document.getElementById(labelId) as HTMLLabelElement
+    expect(label.tagName).toBe('LABEL')
+    expect(label.className).toBe('visually-hidden')
+    expect(label.getAttribute('for')).toBe(field.id)
+
+    // 形由库件给:横排档在根上落一格类,不是这块面自己掰 flex-direction。
+    expect((label.parentElement as HTMLElement).className).toMatch(/_inline_/)
+  })
 })
 
 describe('ModelCatalog · 厂牌折叠', () => {

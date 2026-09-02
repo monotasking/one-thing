@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { TriangleAlert } from '../../components/icons'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { Field, useFieldControlProps } from '../../ui/Field'
 import { Input } from '../../ui/Input'
 import type { TFn } from '../../i18n'
 import { useAsyncPending } from '../../data/kernel'
@@ -25,14 +26,18 @@ import s from '../FilesPanel.module.css'
  *    四边边线 + `--surface-2` 底;这条带子是横排、定高 `--files-notice-h`、
  *    左右 `--sp-3` 上下 0、只有一条下边线、warn 8% 晕底。把它塞进卡里不是迁移,
  *    是把一条带子改画成一块面(这个文件头第一句话说的就是它不是一块面)。
- *  · 绑定行 → `ui/Field`:**不迁**。Field 是**竖排表单行**,`label` 是必给的
- *    可见标签;这一行今天没有可见标签(名字走 `aria-label` + placeholder),
- *    横排、错误行 `flex: 1 0 100%` 折到第二行、字号 `--fs-nano`(Field 的
- *    `.error` 是 `--fs-micro`)。迁过去要凭空造一句可见标签 —— 那是改版。
- *    **留账**:Field 真正值钱的那一格是 `aria-describedby`(把错误那句话关联到
- *    输入框上),这一行今天没有。本批**不在业务面手写它**(基础件先行:手写
- *    等于把库件职责又摊回一份),正解是给 `ui/Field` 补一档「横排 / 无可见标签」
- *    的形 —— 那要动 `src/ui`,不在本批可动面里。
+ *  · 绑定行 → `ui/Field`:9d **不迁**、批 10 **迁了**。9d 记的三条(竖排 /
+ *    必给可见标签 / 错误折行)说的都是库件当时缺的形;同一个缺口在
+ *    WorkspaceOverview 与 AddModelRow 又各撞一次之后,编排裁定给库件开档:
+ *    `layout="inline"` + `labelHidden` 正是照这一行的形立的(错误那条
+ *    `flex: 1 0 100%` 逐字搬进了 `ui/Field.module.css`)。9d 留的那笔账
+ *    ——「错误没有跟输入框关联」—— 随之结清:`aria-describedby` 由 error 槽给。
+ *    **规范修正**:那句「绑不上」从 `--fs-nano`(10px)升到库件常规档的
+ *    `--fs-micro`(11px)。库件把间距与附注字号绑在同一个 `size` 旋钮上,
+ *    而这一行的间距是 `--sp-2` = 常规档;取紧凑档能拿回 10px 却要把 gap 从
+ *    8px 收成 4px —— 那是把休止态整行的几何改掉,代价大得多。
+ *    读下来反而更对:错误那**一句话** 11px 在前,跟在后面的路径**原文**
+ *    (`.noteDetail`,仍是 10px 等宽字)在后,主次是分开的。
  *
  * ── 三张状态表(状态先行)────────────────────────────────────────────────
  *  ① 生命周期:两形(告知条 / 绑定行)由本地 `editing` 切,**切的是同一次挂载**;
@@ -97,19 +102,28 @@ export function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn })
   }
 
   return (
-    <div className={s.bindRow} data-testid="files-bind-row" ref={focusFieldOnMount}>
-      <Input
-        size="sm"
-        className={s.bindInput}
+    <Field
+      layout="inline"
+      labelHidden
+      label={t('files.bindPlaceholder')}
+      error={
+        error ? (
+          <span className={s.bindError}>
+            {t('files.bindFailed')}
+            <span className={s.noteDetail}>{error}</span>
+          </span>
+        ) : undefined
+      }
+      className={s.bindRow}
+      data-testid="files-bind-row"
+    >
+      <BindInput
         value={value}
-        onValueChange={setValue}
         invalid={Boolean(error)}
-        aria-label={t('files.bindPlaceholder')}
         placeholder={t('files.bindPlaceholder')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') void submit()
-          if (e.key === 'Escape') setEditing(false)
-        }}
+        onValueChange={setValue}
+        onSubmit={() => void submit()}
+        onCancel={() => setEditing(false)}
       />
       {/*
        * 律③的另一半(09-02 批 9d 补齐,批 6 记的那笔账):忙起来这颗钮从前
@@ -130,24 +144,56 @@ export function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn })
         {t('common.confirm')}
       </AsyncButton>
       <Button onClick={() => setEditing(false)}>{t('common.cancel')}</Button>
-      {error && (
-        <span className={s.bindError}>
-          {t('files.bindFailed')}
-          <span className={s.noteDetail}>{error}</span>
-        </span>
-      )}
-    </div>
+    </Field>
   )
 }
 
 /**
- * 输入行一出现就把光标放进去。
+ * 输入框那一件。**单独一件是因为 hook 只能在组件里调**:`useFieldControlProps()`
+ * 拿的是 `<Field>` 往下发的 context,在 Field 外面那一层调只会拿到空对象。
+ *
+ * 「一出现就把光标放进去」也住在这里(从前是外壳上一颗 `querySelector('input')`
+ * 的回调 ref):Field 交了一个稳定的 id 过来,直接按 id 取 —— 找的是**这一格的
+ * 那个** input,不是「壳里第一个」。`data-testid` 留在外壳上,那是这一行的名牌。
  *
  * **不用 `autoFocus`**:那个属性是「页面一加载就抢焦点」,jsx-a11y 拦它拦得对 ——
  * 但这里的语义完全不同:用户刚**亲手点了**「绑定…」,焦点跟着那一下走是他要的结果
- * (与 Menu 开启时把焦点移进容器同一条口径)。所以走一颗回调 ref:元素挂上来的
- * 那一刻放焦点,元素卸载时(ref 收到 null)什么都不做。
+ * (与 Menu 开启时把焦点移进容器同一条口径)。
  */
-function focusFieldOnMount(node: HTMLDivElement | null): void {
-  node?.querySelector('input')?.focus()
+function BindInput({
+  value,
+  invalid,
+  placeholder,
+  onValueChange,
+  onSubmit,
+  onCancel,
+}: {
+  value: string
+  invalid: boolean
+  placeholder: string
+  onValueChange: (v: string) => void
+  onSubmit: () => void
+  onCancel: () => void
+}) {
+  const field = useFieldControlProps()
+  const controlId = field.id
+  useEffect(() => {
+    if (!controlId) return
+    document.getElementById(controlId)?.focus()
+  }, [controlId])
+  return (
+    <Input
+      {...field}
+      size="sm"
+      className={s.bindInput}
+      value={value}
+      onValueChange={onValueChange}
+      invalid={invalid}
+      placeholder={placeholder}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onSubmit()
+        if (e.key === 'Escape') onCancel()
+      }}
+    />
+  )
 }

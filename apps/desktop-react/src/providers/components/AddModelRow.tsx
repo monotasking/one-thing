@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AsyncButton } from '../../ui/AsyncButton'
+import { Field, useFieldControlProps } from '../../ui/Field'
 import { Input } from '../../ui/Input'
 import { useT } from '../../i18n'
 import type { AsyncSource } from '../../data/kernel'
@@ -31,24 +32,19 @@ import s from './ModelCatalog.module.css'
  *   UI 交互状态:输入框 rest / hover / focus / invalid(被拒时边线转 danger);
  *             提交钮 rest / hover / focus / disabled(草稿是空)/ pending。
  *
- * ── 为什么这一行**没有**消费 `ui/Field`(09-02 批 9a 记档,与派工令的出入)──
- * 派工令要求顺手迁 `ui/Field`。逐条对过之后没有迁,三条理由都是结构性的:
- *  ① **方向不对**。`ui/Field` 的根是 `flex-direction: column`(标签在上、控件
- *     居中、错误在下),而这一行是**横排**:输入框 + 提交钮并肩,错误跟在右边。
- *     照 Field 的原形装,提交钮会掉到输入框**下面**去 —— 那不是等价替换。
- *  ② **靠 className 掰方向 = 特异性赌局**。要横过来就得从消费方覆盖
- *     `flex-direction`,而两边都是单类选择器,谁赢取决于打包器把哪份
- *     module.css 排在后面 —— 本仓「特异性坑」判例簇里正是这一类。
- *  ③ **它会凭空多一个可见标签**。`Field` 的 `label` 是必填且**画出来**的,
- *     而这一行今天只有占位字与 `aria-label`。加一行可见标签是**改版**,
- *     不是迁移,归用户拍板(「行为裁定须先问」)。
- * 而 `ui/Field.module.css` 的文件头本就记过同一条判例:WorkspaceOverview 那个
- * **横排**的改名格「不是这件的形」。这一行与它同类。
+ * ── 这一行消费 `ui/Field` 的横排档(09-02 批 10,结掉 9a 留的那笔账)────────
+ * 9a 记过三条不迁的理由:方向不对(Field 只有竖排)、靠 className 掰方向是
+ * 特异性赌局、`label` 必给可见标签等于凭空改版。三条**都是对库件说的**,
+ * 而不是对这一行说的 —— 同一个缺口在 WorkspaceOverview / NoWorkdirNotice
+ * 又各撞一次之后,编排裁定给库件开档:`layout="inline"` 收前两条,
+ * `labelHidden` 收第三条(名字仍在,只是只念不看,与从前的 `aria-label` 等价)。
  *
- * 留账:错误那一句今天**没有**跟输入框关联(没有 `aria-describedby`),
- * 读屏软件读得到边线转红(`aria-invalid`)却读不到原因。补法有两条 ——
- * 给 `ui/Field` 开一档横排,或把这一行改成竖排的真表单行 —— 两条都动到既有
- * 库件或版式,归下一批拍板;这一批不就地手写一份(那正是「基础件先行」要治的病)。
+ * 于是 9a 那笔账结清:错误那一句现在经 Field 的 `error` 槽拿到 `aria-describedby`,
+ * 读屏软件读得到边线转红(`aria-invalid`),也读得到**红在哪里**。
+ *
+ * **规范修正**(逐像素记档):错误从「跟在提交钮右边同一行」变成「折到第二行占满宽」
+ * —— 那是横排档唯一的错误落点(`flex: 1 0 100%`)。休止态零像素差(没有错误时
+ * 不折行);只有出错那一态行会高一档,而一句被挤在钮右边缝里的错误本来也读不完。
  */
 export function AddModelRow({
   open,
@@ -93,24 +89,22 @@ export function AddModelRow({
   if (!open) return null
 
   return (
-    <div className={s.addRow}>
+    <Field
+      layout="inline"
+      labelHidden
+      label={t('providers.addModelLabel')}
+      error={addError}
+      className={s.addRow}
+    >
       <div className={s.addField}>
-        <Input
-          size="sm"
-          value={draft}
-          onValueChange={(value) => {
+        <ManualIdInput
+          draft={draft}
+          invalid={Boolean(addError)}
+          onDraft={(value) => {
             setDraft(value)
             setAddError(undefined)
           }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              submitManual()
-            }
-          }}
-          invalid={Boolean(addError)}
-          placeholder={t('providers.addModelPlaceholder')}
-          aria-label={t('providers.addModelLabel')}
+          onSubmit={submitManual}
         />
       </div>
       {/*
@@ -129,7 +123,46 @@ export function AddModelRow({
       >
         {t('providers.addModelSubmit')}
       </AsyncButton>
-      {addError && <span className={s.addError}>{addError}</span>}
-    </div>
+    </Field>
+  )
+}
+
+/**
+ * 输入框那一件。**单独一件是因为 hook 只能在组件里调**:`useFieldControlProps()`
+ * 拿的是 `<Field>` 往下发的 context,在 Field 外面那一层调只会拿到空对象
+ * (id / aria-describedby / aria-invalid 全丢)。
+ *
+ * `invalid`(边线转 danger)与 `aria-invalid` 是**两件事**:前者给眼睛,
+ * 后者给读屏软件,后者由 Field 按 error 在不在场自己给 —— 所以这里只摊 `{...field}`,
+ * 不再手写 `aria-invalid`。
+ */
+function ManualIdInput({
+  draft,
+  invalid,
+  onDraft,
+  onSubmit,
+}: {
+  draft: string
+  invalid: boolean
+  onDraft: (value: string) => void
+  onSubmit: () => void
+}) {
+  const t = useT()
+  const field = useFieldControlProps()
+  return (
+    <Input
+      {...field}
+      size="sm"
+      value={draft}
+      onValueChange={onDraft}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          onSubmit()
+        }
+      }}
+      invalid={invalid}
+      placeholder={t('providers.addModelPlaceholder')}
+    />
   )
 }

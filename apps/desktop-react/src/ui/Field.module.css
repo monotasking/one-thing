@@ -1,17 +1,58 @@
 /*
- * 表单行。配方抄自 CustomProviderDialog 的 .field / .label / .hint / .problem
- * (那是并集里唯一一处形态完整的表单行),另一处 WorkspaceOverview 的 .field
- * 是**横排**的改名格 —— 那不是这件的形,记在 Field.tsx 的出入表里。
+ * 表单行。竖排那一形的配方抄自 CustomProviderDialog 的
+ * .field / .label / .hint / .problem(那是并集里唯一一处形态完整的表单行)。
+ *
+ * 09-02 批 10:**横排那一形也进来了**。从前这里写着「WorkspaceOverview 的 .field
+ * 是横排的改名格 —— 那不是这件的形」;同一个缺口后来又撞了两次
+ * (providers/AddModelRow、content/files/NoWorkdirNotice),编排裁定开档,
+ * 所以那句话作废 —— 横排现在**就是**这件的第二形(`layout="inline"`)。
+ * 出入表与三个产地记在 Field.tsx 的文件头。
  */
 .field {
   display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
   min-width: 0;
 }
 
+/* 竖排(缺省形):标签在上、控件居中、附注在下,一格一行。 */
+.stack {
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/*
+ * 横排:标签与控件同一行,**附注折到第二行占满宽**(下面那条 .inline .hint /
+ * .inline .error)。所以 `flex-wrap: wrap` 是这一形的承重件,不是保险 ——
+ * 没有它,`flex-basis: 100%` 会把行撑爆而不是折行。
+ */
+.inline {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--field-gap);
+}
+
+/*
+ * 档(`size`)。**一个旋钮同时定间距与附注字号** —— 它们说的是同一件事:
+ * 这一行有多紧。拆成两个旋钮就会长出「间距很松、字却很小」这种没人想要的组合,
+ * 而消费方也就得逐处拍两次板 —— 那正是「各写各的」。
+ *   md(缺省)= 常规档:间距 --sp-2、标签 --fs-meta、错误 --fs-micro(= 竖排今天的值)
+ *   sm       = 紧凑档:间距 --sp-1、标签 --fs-micro、错误 --fs-nano
+ * hint 两档都是 --fs-nano:它已经在字号阶的最下面一级,再降就不是弱化是看不见。
+ */
+.md {
+  --field-gap: var(--sp-2);
+  --field-label-fs: var(--fs-meta);
+  --field-error-fs: var(--fs-micro);
+}
+
+.sm {
+  --field-gap: var(--sp-1);
+  --field-label-fs: var(--fs-micro);
+  --field-error-fs: var(--fs-nano);
+}
+
 .label {
-  font-size: var(--fs-meta);
+  font-size: var(--field-label-fs);
   color: var(--text-1);
 }
 
@@ -30,6 +71,19 @@
  */
 .error {
   margin: 0;
-  font-size: var(--fs-micro);
+  font-size: var(--field-error-fs);
   color: var(--danger);
+}
+
+/*
+ * 横排里的附注:**整条折到第二行**。
+ * `flex: 1 0 100%` = 基准满宽 + 不许收缩,于是它一定是这一行放不下的那一件,
+ * 被 wrap 推到下一行并占满 —— 一句话不该被挤在钮右边那道缝里念。
+ * (0,2,0) 压过上面两条单类规则是**刻意**的:附注在哪一形里长什么样由形说了算,
+ * 而不是由打包器把哪份 module.css 排在后面说了算。
+ */
+.inline .hint,
+.inline .error {
+  flex: 1 0 100%;
+  min-width: 0;
 }

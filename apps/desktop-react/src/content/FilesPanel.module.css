@@ -118,14 +118,6 @@
   text-overflow: ellipsis;
 }
 
-.headIcon {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  /* 「重新读取」按下去转一圈用的那条过渡(角度由 tsx 单调递增地给,不是关键帧)。
-   * 收在 --dur-release(跟手形变的回位档):它是一次**回应**,不该比手慢。 */
-  transition: transform var(--dur-release) var(--ease);
-}
-
 /*
  * 「重新读取」那一圈(09-02 批 9d:那两颗头钮迁成 `ui/IconButton` 之后)。
  *
@@ -134,7 +126,10 @@
  * `className` 摊在钮上、字形的类名归它自己,所以这里按后代取那枚 svg;
  * 圈数走一格**无单位**自定义属性(与 `--depth` / `--files-split` 同一手,
  * 由 tsx 单调递增地给)。@keyframes 一个都不加 —— 它是一次过渡,不是循环。
- * 上面 `.headIcon` 留着不动:它是这条过渡的原产地,值逐字相同。
+ *
+ * 9d 在这上面留过一条 `.headIcon`(这条过渡的原产地,值逐字相同)并记着
+ * 「现零消费者,归下次清账删」—— **09-02 批 10 删了**:字形的几何现在由
+ * `ui/IconButton` 给,过渡由下面这条给,那条规则没有任何人再读。
  */
 .headSpin svg {
   transform: rotate(calc(var(--files-spin, 0) * -360deg));
@@ -189,13 +184,17 @@
   text-decoration: underline;
 }
 
-/* 输入行:它比告知条高一档(装得下一个输入框),所以它不吃 --files-notice-h。 */
+/*
+ * 输入行:它比告知条高一档(装得下一个输入框),所以它不吃 --files-notice-h。
+ *
+ * **横排那一层归 `ui/Field` 的 `layout="inline"` 档**(09-02 批 10):
+ * display / align-items / flex-wrap / gap 四条由库件给(常规档 gap 逐字仍是
+ * --sp-2),这里只留下这条带子自己的皮肤 —— 不参与伸缩、内边距、warn 8% 的晕底、
+ * 以及与下面那棵树之间的那条线。错误折到第二行那条 `flex: 1 0 100%` 也搬走了:
+ * 它现在是横排档对**所有**附注的规矩,不是这一处的偏方。
+ */
 .bindRow {
   flex: none;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   background: color-mix(in srgb, var(--warn) 8%, transparent);
   border-bottom: var(--bw-1) solid var(--line-1);
@@ -206,14 +205,17 @@
   min-width: 0;
 }
 
+/*
+ * 「绑不上」那一句的**身子**:两段并排(一句话 + 后面那条路径原文),
+ * 所以它自己还是一条 flex。折行、颜色、字号三件归 Field 的 `.error` 那一格
+ * (规范修正:字号从本地的 --fs-nano 升到库件常规档的 --fs-micro,
+ * 理由记在 NoWorkdirNotice 的文件头)。
+ */
 .bindError {
-  flex: 1 0 100%;
-  min-width: 0;
   display: flex;
   align-items: baseline;
   gap: var(--sp-2);
-  font-size: var(--fs-nano);
-  color: var(--danger);
+  min-width: 0;
 }
 
 /* ── 身:两列(树 | 查看区)────────────────────────────────────────────── */

@@ -71,11 +71,17 @@
 }
 
 /* 手填 ID 那一行。展开时才在,收起时连盒子都不留。 */
+/*
+ * 手填那一条带子。**横排那一层归 `ui/Field` 的 `layout="inline"` 档**
+ * (09-02 批 10):display / align-items / gap 三条由库件给(常规档 gap 逐字仍是
+ * --sp-2),这里只留「它在目录这根竖列里怎么坐」这件本地的事 —— 不参与伸缩、
+ * 自己的内边距、以及与下面那张表之间的那条线。
+ * 错误那一句也随之交给 Field 的 error 槽(本地 `.addError` 退役):
+ * 库件的 `.error` 是同一句配方(--fs-micro + --danger),外加这一行从前没有的
+ * `aria-describedby` 关联。
+ */
 .addRow {
   flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   border-bottom: var(--bw-1) solid var(--line-1);
 }
@@ -84,11 +90,6 @@
   flex: 1 1 auto;
   min-width: 0;
   max-width: var(--pv-key-w);
-}
-
-.addError {
-  font-size: var(--fs-micro);
-  color: var(--danger);
 }
 
 /*

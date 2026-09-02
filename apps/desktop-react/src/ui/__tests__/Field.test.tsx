@@ -183,6 +183,96 @@ describe('Field:表单行', () => {
     expect(document.getElementById(describedBy)?.textContent).toBe('Applies to lists.')
   })
 
+  /* ── 横排档(09-02 批 10)──────────────────────────────────────────────── */
+
+  /**
+   * 生命状态:形由 `layout` 定,而且**两形共用同一套关联**。断的是「换了形
+   * 之后 id / label / describedby 一格不少」—— 横排从前是三处业务面各写一份
+   * CSS 加一份 `aria-label`,收编的价值正在这里。
+   */
+  it('横排:layout="inline" 换的是形,关联一格不少', () => {
+    const { container } = render(
+      <Field layout="inline" label="Working directory" error="No such directory.">
+        <Control />
+      </Field>,
+    )
+    const row = container.firstElementChild as HTMLElement
+    // 形是这件自己给的一格类,不是消费方从外面掰 flex-direction(特异性赌局)。
+    expect(row.className).toMatch(/_inline_/)
+    expect(row.className).not.toMatch(/_stack_/)
+
+    const input = screen.getByLabelText('Working directory')
+    const describedBy = input.getAttribute('aria-describedby') as string
+    expect(document.getElementById(describedBy)?.textContent).toBe('No such directory.')
+    expect(input.getAttribute('aria-invalid')).toBe('true')
+  })
+
+  it('生命状态:不给 layout 时是竖排(缺省不变 —— 既有消费面一个字都不用改)', () => {
+    const { container } = render(
+      <Field label="API key">
+        <Control />
+      </Field>,
+    )
+    expect((container.firstElementChild as HTMLElement).className).toMatch(/_stack_/)
+  })
+
+  /**
+   * 数据状态:`size` 是一个旋钮同时定间距与附注字号(理由见 module.css)。
+   * 这里断的是**档真的落到根上**了 —— 值本身归 CSS,jsdom 不算样式。
+   */
+  it('数据状态:size 落在根上,缺省是 md', () => {
+    const { container, rerender } = render(
+      <Field layout="inline" label="Name">
+        <Control />
+      </Field>,
+    )
+    expect((container.firstElementChild as HTMLElement).className).toMatch(/_md_/)
+
+    rerender(
+      <Field layout="inline" size="sm" label="Name">
+        <Control />
+      </Field>,
+    )
+    const cls = (container.firstElementChild as HTMLElement).className
+    expect(cls).toMatch(/_sm_/)
+    expect(cls).not.toMatch(/_md_/)
+  })
+
+  /**
+   * 无障碍:**标签只念不看**。断的是可访问名照旧算得出来 —— 断掉 `labelHidden`
+   * 那一格(比如改成不渲染 label),`getByLabelText` / `getByRole(name)` 当场红。
+   * 这正是三处产地从 `aria-label` 迁过来时不能丢的那一格。
+   */
+  it('无障碍:labelHidden 只藏眼睛不藏读屏 —— 名字算得出来,label 仍在 DOM 里', () => {
+    const { container } = render(
+      <Field layout="inline" labelHidden label="Working directory">
+        <Control />
+      </Field>,
+    )
+    const label = container.querySelector('label') as HTMLLabelElement
+    // 用的是仓里既有的那条全局类,不是 display:none(那会连读屏一起藏)。
+    expect(label.className).toBe('visually-hidden')
+    const input = screen.getByLabelText('Working directory') as HTMLInputElement
+    expect(label.getAttribute('for')).toBe(input.id)
+    expect(screen.getByRole('textbox', { name: 'Working directory' })).toBe(input)
+  })
+
+  /**
+   * 透传口子(照 ui/GroupHead / ui/Segmented 的先例):落点自己的身份摊到根上。
+   * `content/files` 那条绑定行的 `data-testid="files-bind-row"` 是八条既有测试
+   * 找人的名牌 —— 收编时它必须还在。
+   */
+  it('横排:落点自己的 data-testid / role 透传到根上,className 仍并皮肤', () => {
+    const { container } = render(
+      <Field layout="inline" labelHidden label="Working directory" data-testid="bind-row">
+        <Control />
+      </Field>,
+    )
+    const row = container.firstElementChild as HTMLElement
+    expect(screen.getByTestId('bind-row')).toBe(row)
+    expect(row.className).toMatch(/_inline_/)
+  })
+
   /**
    * 加性守卫:可标注控件**一个字都不用改**。多出来的 `aria-labelledby` 指的是
    * 同一条 label,可访问名算出来逐字相同 —— 这条钉住「这一格不是破坏性变更」。

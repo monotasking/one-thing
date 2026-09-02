@@ -199,7 +199,17 @@
 #   并改名 `.dirtySlot`,那个产地随之消失。当时忘了在这里记一笔,于是这份文件
 #   自己算不平账(上面批 6 那节收在 40,表上却是 39)。09-02 收尾批补记。
 #
-# ── 今天这张表:**39 条**。改动之后请把这个数一起改准。 ───────────────────
+# ── 批 10(09-02):Field 开横排档 + 三处横排表单行收编,39 → 37 条,删 2 条 ──
+#   `shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:136 field`
+#   `shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:143 field`
+#   —— 改名格那条横排 `.field`(flex / 居中 / gap / min-width)整条退役,四条
+#   逐条由 `ui/Field` 的 `layout="inline" size="sm"` 给;`.fieldIcon` 是那两颗
+#   iconOnly 钮里的字形,`.field` 没了之后它的名字指着一个不存在的东西,
+#   随之改名 `.actionIcon`(零像素)。两条产地一起消失。
+#   同批另两处横排表单行(providers/AddModelRow、content/files/NoWorkdirNotice)
+#   本来就不叫 `.field`,不在这张表上 —— 它们的收编记在各自的文件头。
+#
+# ── 今天这张表:**37 条**。改动之后请把这个数一起改准。 ───────────────────
 #
 shared-vocab-css src/components/AgentChip.module.css:16 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:30 视觉词汇多产地(chip),待批 2 立件收编
@@ -238,5 +248,3 @@ shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:54 视觉
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:67 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:73 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:78 视觉词汇多产地(card),待批 2 立件收编
-shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:136 视觉词汇多产地(field),待批 2 立件收编
-shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:143 视觉词汇多产地(field),待批 2 立件收编

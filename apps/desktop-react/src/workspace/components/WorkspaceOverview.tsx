@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Check, Plus, X } from '../../components/icons'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { Field, useFieldControlProps } from '../../ui/Field'
 import { Input } from '../../ui/Input'
 import { useConfirm } from '../../ui/Dialog'
 import { useMutation } from '../../data/kernel'
@@ -326,6 +327,23 @@ export function WorkspaceOverview() {
 /**
  * 改名 / 新建共用的那一格。抽出来不是为了省行数,是为了让「↵ 落定、Esc 收回、
  * 一进来就选中全文」这三条**只成立一次** —— 两处各写一遍必然漂。
+ *
+ * ── 09-02 批 10:横排那一层交给 `ui/Field` ──────────────────────────────
+ * 本地那条 `.field`(flex 横排 + 居中 + gap)从前是自己画的,`ui/Field.module.css`
+ * 的文件头还专门记着「这个横排的改名格不是那件的形」。同一个缺口后来又撞了两次
+ * (AddModelRow / NoWorkdirNotice),库件开了 `layout="inline"` 档,那句话作废。
+ * 收编换来的不只是少一份同构 CSS:名字从 `aria-label` 变成一条真 `<label>`
+ * (只念不看),于是**点标签也能聚焦**、而且这一格从此有了 `aria-describedby`
+ * 的落点(这一格今天不画错误,但形在了)。
+ * 档取 `sm`:本地那条 gap 是 `--sp-1`,而 sm 正是紧凑档 —— 逐像素同。
+ *
+ * **规范修正一条(真机对照抓到的存量真缺陷)**:这一行从来就排不下。`ui/Input`
+ * 的外壳是 `inline-flex`、宽度由 `<input>` 的固有尺寸给(185px),而这张卡定宽 196
+ * 且 `overflow: hidden`,身内只有 162 —— 迁移前 ✓ 与 ✕ 落在 x=423 / 455,
+ * 卡的右边界在 413,**两颗钮整个被剪掉,一格像素都看不见**,只能盲按 ↵ / Esc。
+ * 库件横排档会 wrap,迁过去它先变成「两行、看得见」;再给输入框一条
+ * `.nameInput { flex: 1; min-width: 0 }`(抗挤压律一:一行恰有一个弯腰件),
+ * 三件回到同一行、行高仍是 28、且全在卡里。前后读数逐条记在交卷报告里。
  */
 function RenameField({
   value,
@@ -341,44 +359,67 @@ function RenameField({
   onCancel: () => void
 }) {
   const t = useT()
-  /*
-   * 焦点从**外壳**上找里面那个 input:`ui/Input` 今天不转发 ref
-   * (它的 props 是 InputHTMLAttributes 的子集,`ref` 不在其中)。给它加一格
-   * 转发是改公共组件的形状 —— 那是组件库那一批的事,不该由一块业务面顺手改。
-   * `autoFocus` 也不用:那颗 prop 在 jsx-a11y 里是有争议的一档,而这里
-   * 「一进来就选中全文」本来也需要拿到元素。
-   */
-  const box = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = box.current?.querySelector('input')
-    el?.focus()
-    el?.select()
-  }, [])
   return (
-    <div className={s.field} ref={box}>
-      <Input
-        size="sm"
-        value={value}
-        onValueChange={onChange}
-        aria-label={label}
-        data-testid="workspace-name-input"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            onCommit()
-          }
-          if (e.key === 'Escape') {
-            e.preventDefault()
-            onCancel()
-          }
-        }}
-      />
+    <Field layout="inline" size="sm" labelHidden label={label}>
+      <RenameInput value={value} onChange={onChange} onCommit={onCommit} onCancel={onCancel} />
       <Button iconOnly aria-label={t('common.confirm')} onClick={onCommit}>
-        <Check className={s.fieldIcon} strokeWidth={2} aria-hidden="true" />
+        <Check className={s.actionIcon} strokeWidth={2} aria-hidden="true" />
       </Button>
       <Button iconOnly aria-label={t('common.cancel')} onClick={onCancel}>
-        <X className={s.fieldIcon} strokeWidth={2} aria-hidden="true" />
+        <X className={s.actionIcon} strokeWidth={2} aria-hidden="true" />
       </Button>
-    </div>
+    </Field>
+  )
+}
+
+/**
+ * 输入框那一件。**单独一件是因为 hook 只能在组件里调**:`useFieldControlProps()`
+ * 要在 `<Field>` 的 context 之内才拿得到东西,而 RenameField 自己是 provider 的
+ * **外面**那一层 —— 在那里调拿到的是空对象(id / aria 全丢)。
+ *
+ * 「一进来就选中全文」也搬到了这里,而且**换了找法**:从前是从外壳 `querySelector`
+ * 里面那个 input(`ui/Input` 今天仍不转发 ref);现在 Field 把一个稳定的 id
+ * 交到手上,直接按 id 取就行 —— 找的是**这一格的那个** input,不是「壳里第一个」。
+ * `autoFocus` 照旧不用:那颗 prop 在 jsx-a11y 里是有争议的一档,而这里
+ * 「选中全文」本来也要拿到元素。
+ */
+function RenameInput({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onCommit: () => void
+  onCancel: () => void
+}) {
+  const field = useFieldControlProps()
+  const controlId = field.id
+  useEffect(() => {
+    if (!controlId) return
+    const el = document.getElementById(controlId) as HTMLInputElement | null
+    el?.focus()
+    el?.select()
+  }, [controlId])
+  return (
+    <Input
+      {...field}
+      size="sm"
+      className={s.nameInput}
+      value={value}
+      onValueChange={onChange}
+      data-testid="workspace-name-input"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          onCommit()
+        }
+        if (e.key === 'Escape') {
+          e.preventDefault()
+          onCancel()
+        }
+      }}
+    />
   )
 }

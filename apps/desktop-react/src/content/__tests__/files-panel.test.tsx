@@ -604,7 +604,10 @@ describe('无工作目录:告知条 + 绑定', () => {
     fireEvent.click(confirm)
     await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'))
 
-    // 连点:那道二次闸吃掉第二下(钮**没有**被禁掉 —— aria-busy 说的是「在飞」)。
+    // 连点:第二下打不进去。**挡它的是钮自己的 disabled**(`ui/AsyncButton` 忙起来
+    // 立刻禁用 + `aria-busy`),不是 submit 里那道二次闸 —— 这条断言分不出是哪一道
+    // (09-02 批 10 记档:此处原注写「钮没有被禁掉」,与代码不符)。二次闸挡的是
+    // **↵**:输入框上的回车不经过那颗钮,那条路上没有 disabled 可依。
     fireEvent.click(confirm)
     expect(updateWorkingDirectory).toHaveBeenCalledTimes(1)
 

@@ -533,8 +533,39 @@ export function Gallery() {
             <GalleryFieldSegmented value={fieldDensity} onChange={setFieldDensity} />
           </Field>
         </div>
+        {/*
+         * 横排档三形(09-02 批 10)。演的是「标签与控件同一行、附注折到第二行
+         * 占满宽」,以及**标签只念不看**那一格 —— 三处产地里两处正是它
+         * (WorkspaceOverview 改名格 / NoWorkdirNotice 绑定行),从前它们各写
+         * 一份 `aria-label` 加一份同构的横排 CSS。
+         */}
+        <div className={s.cell}>
+          <Field layout="inline" size="sm" label="Name">
+            <GalleryFieldInput />
+            <Button>Save</Button>
+          </Field>
+        </div>
+        <div className={s.cell}>
+          <Field layout="inline" labelHidden label="Working directory">
+            <GalleryFieldInput />
+            <Button variant="primary">Bind</Button>
+          </Field>
+        </div>
+        <div className={s.cell}>
+          <Field
+            layout="inline"
+            labelHidden
+            label="Model id"
+            error="That id is not in the catalog."
+          >
+            <GalleryFieldInput />
+            <Button variant="primary">Add</Button>
+          </Field>
+        </div>
         <Note>控件经 useFieldControlProps() 拿 id / aria-describedby / aria-invalid</Note>
         <Note>radiogroup 这类标不动的控件靠同一口 aria-labelledby 关联(htmlFor 指不动 div)</Note>
+        <Note>inline 档:标签与控件同一行,hint / error 折第二行占满宽</Note>
+        <Note>labelHidden:名字只念不看 —— 关联一格不少,不是「没有标签」</Note>
       </Section>
 
       <Section name="Kbd">

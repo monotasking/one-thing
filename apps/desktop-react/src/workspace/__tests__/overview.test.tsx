@@ -101,6 +101,28 @@ describe('改名与换色', () => {
     expect(port.update).toHaveBeenCalledWith({ id: 'ws-lenovo', name: 'Lenovo' })
   })
 
+  /**
+   * 09-02 批 10:改名格收编 `ui/Field` 的横排档。断三件 ——
+   * ① 名字来自一条真 `<label>`(只念不看),不再是 `aria-label` 那句凭空的字符串;
+   * ② 形由库件给(根上一格 inline 类),不是这块面自己写 flex-direction;
+   * ③ 「一进来就选中全文」还在,而且它现在**按 id 找那一格的 input**,不是壳里第一个。
+   * 反证:摘掉 `layout="inline"` 红在②,摘掉 `labelHidden` 红在①(label 不再是那条全局类),
+   * 摘掉 `{...field}` 红在①(label 的 for 指空)与③(找不到元素,焦点不在)。
+   */
+  it('改名:名字走一条只念不看的真 label,形由 Field 的横排档给,焦点仍落在框里', async () => {
+    installPort()
+    await renderOverview()
+    act(() => void fireEvent.click(screen.getByTestId('workspace-rename-ws-lenovo')))
+
+    const input = screen.getByTestId('workspace-name-input') as HTMLInputElement
+    expect(screen.getByRole('textbox', { name: '工作区名字' })).toBe(input)
+    const label = document.querySelector(`label[for="${input.id}"]`) as HTMLLabelElement
+    expect(label.className).toBe('visually-hidden')
+    expect(label.textContent).toBe('工作区名字')
+    expect((label.parentElement as HTMLElement).className).toMatch(/_inline_/)
+    expect(document.activeElement).toBe(input)
+  })
+
   it('改名:Esc 收回,一个字都不写出去', async () => {
     const port = installPort()
     await renderOverview()
