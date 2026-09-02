@@ -2,33 +2,13 @@
  * 只依赖自己的 token,不依赖「我在设置面里」这件事。
  * 卡面本身收进了 `ui/Card`(09-01 批 2b),那九行与 Card 默认档逐字相同。
  *
- * ── 标题行为什么**没有**走 Card 的 title / note 槽 ───────────────────────
- * Card 的檐形态封闭:一行标题 + 一格弱色注,两件。这里的标题行是**三件**
- * (标题 / 缓存寿命读数 / 刷新钮)。塞进 Card 的檐会把刷新钮挤到下一行
- * (它就成了 column flex 的下一个孩子)—— 那是真的换了排版。所以檐留在本地,
- * Card 只当那只盒子:「檐是三件」是这块面的事实,不是 Card 该长的第三个槽。 */
-.head {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-
-.title {
-  margin: 0;
-  flex: 1;
-  min-width: 0;
-  font-size: var(--fs-label);
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-/* 「60s 缓存」是**读数的产地说明**,不是按钮的副标题:它告诉人这数可能是一分钟前的。 */
-.cache {
-  flex: none;
-  font-size: var(--fs-nano);
-  color: var(--text-2);
-}
-
+ * ── 檐三件也收进去了(09-02 批 8b)────────────────────────────────────────
+ * 批 2b 记档的那句「檐是三件,Card 的两槽塞不下,留在本地」在批 8a 结掉了:
+ * Card 补了第三格 `actions`,于是标题 / 缓存读数 / 刷新钮分别落进
+ * `title` / `note`(inline 档)/ `actions`,本地那三条 `.head` / `.title` /
+ * `.cache` 一起删 —— 它们与 Card 的 `.head` / `.title` / `.note` 逐字同,
+ * 只有 `.title` 从 `flex: 1` 变成 Card 的 `flex: 1 1 auto` 并多了一格截断
+ *(两处在这条檐上算出来的宽度相同,截断只在标题长到装不下时才看得见)。 */
 .error {
   margin: 0;
   font-size: var(--fs-micro);

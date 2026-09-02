@@ -57,13 +57,9 @@
  * 檐上三颗钮的配方已经整份迁进 `ui/IconButton`(md 档 = 28×28,与从前的
  * --btn-sm 逐像素相同),所以这里从前那 20 行 `.action` / `.action:hover` /
  * `.icon` 一起删了 —— 它们就是「各面自绘图标钮」那条病的一个产地。
- * 剩下的只有一格**落点**:钉边钮要能被量出矩形(菜单贴它的下缘开),
- * 而库件不透传 ref,所以外面包一层贴身的 span。
+ * 09-02 批 8b 又删掉最后一格 `.actionSlot`:它是钉边钮的贴身外包,
+ * 存在的唯一理由是「库件递不进 ref」,而批 8a 把那格补上了。
  */
-.actionSlot {
-  flex: none;
-  display: inline-flex;
-}
 
 .body {
   flex: 1;

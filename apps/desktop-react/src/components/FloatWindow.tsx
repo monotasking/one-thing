@@ -57,19 +57,17 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const liveRef = useRef<FloatRect | null>(null)
   /*
-   * 钉边菜单贴着**那颗钮**的下缘开。坐标量的是**包着它的那一格**:span 是
-   * inline-flex 且 flex:none,逐像素等于钮自己的矩形(与 FilesPanel 行尾 ⋯ 的
-   * wrapRef 同一手)。刻意不改成「在 onPointerDown 里记一次」:那条路键盘按 ↵
-   * 走不到,菜单会开在 0,0。
+   * 钉边菜单贴着**那颗钮**的下缘开,所以要能**在任意时刻**量到那颗钮的矩形。
+   * 刻意不改成「在 onPointerDown 里记一次」:那条路键盘按 ↵ 走不到,
+   * 菜单会开在 0,0。
    *
-   * 09-01 批 3.5 核对(`ui/IconButton` 这批开了 ButtonHTMLAttributes 透传):
-   * 这格绕法**保留不动**。透传摊的是普通 props,而 `ref` 不是普通 prop ——
-   * IconButton 不是 forwardRef,`ref={…}` 经 rest 到不了那颗 `<button>` 上,
-   * 所以「拿到钮自己的 DOM 节点」这件事仍然只有外包一格才做得到。
-   * (`onClick` 这批确实开始收事件了,`e.currentTarget` 是第二条可走的路;
-   * 不改是因为等价迁移期禁止顺手改邻批的行为 —— 记账不动手。)
+   * 09-02 批 8b:ref 直接落在 `ui/IconButton` 上(批 8a 给它补了 `ref` 那一格
+   * 类型 —— React 19 里 ref 对函数组件是普通 prop,经 rest 摊到
+   * `ui/ButtonBase` 那件 forwardRef,最后落在真的 `<button>` 上)。
+   * 从前外面包的那格贴身 `span`(`.actionSlot`,inline-flex + flex:none,
+   * 逐像素等于钮自己)因此退役 —— 它存在的唯一理由就是库件递不进 ref。
    */
-  const pinRef = useRef<HTMLSpanElement>(null)
+  const pinRef = useRef<HTMLButtonElement>(null)
 
   const rect = live ?? stored
   const item = findItem(id)
@@ -168,18 +166,17 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
         {/* 檐上三颗全部消费 `ui/IconButton`;本地那份 `.action` 皮肤已删 ——
           * 28×28 正是库件的 md 档,hover / active / 焦点环从此随件走。
           * `onPointerDown` 那一下仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */}
-        <span ref={pinRef} className={s.actionSlot}>
-          <IconButton
-            icon={Pin}
-            size="md"
-            label={t('stage.pinToEdge')}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => {
-              const r = pinRef.current?.getBoundingClientRect()
-              if (r) setMenu({ x: r.left, y: r.bottom })
-            }}
-          />
-        </span>
+        <IconButton
+          ref={pinRef}
+          icon={Pin}
+          size="md"
+          label={t('stage.pinToEdge')}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => {
+            const r = pinRef.current?.getBoundingClientRect()
+            if (r) setMenu({ x: r.left, y: r.bottom })
+          }}
+        />
         <IconButton
           icon={Maximize2}
           size="md"

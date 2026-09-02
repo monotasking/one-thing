@@ -63,15 +63,18 @@ export function CredentialPool({
   }, [providerId])
 
   return (
-    <Card>
-      <div className={s.head}>
-        <h3 className={s.title}>{t('providers.keyCount', { count: pool.rows.length })}</h3>
+    <Card
+      title={t('providers.keyCount', { count: pool.rows.length })}
+      /* 「顺序即优先级」那句读法是**这张卡的一句话**,不是列表里的一行 ——
+         正是 Card 的 note below 档(与本地 `.hint` 逐字同一副配方)。 */
+      note={t('providers.keyOrderHint')}
+      notePlacement="below"
+      actions={
         <Button size="sm" disabled={busy} onClick={() => setAdding((open) => !open)} aria-expanded={adding}>
           {t('providers.keyAdd')}
         </Button>
-      </div>
-      <p className={s.hint}>{t('providers.keyOrderHint')}</p>
-
+      }
+    >
       {adding && (
         <div className={s.addRow}>
           <div className={s.addKey}>

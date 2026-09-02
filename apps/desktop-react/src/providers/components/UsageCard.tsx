@@ -40,18 +40,19 @@ export function UsageCard({
   const extras = main ? limits.filter((limit) => limit.id !== main.id) : limits
 
   return (
-    <Card>
-      <div className={s.head}>
-        <h3 className={s.title}>{t('providers.usage')}</h3>
-        {/* 缓存寿命写在脸上:这一口是真去问服务商的,读数不是每次开面都新鲜。 */}
-        <span className={s.cache}>{t('providers.usageCache')}</span>
-        {/* ui-consume-allow: spinner-placement — 它在这颗「刷新」钮的 children 里:
-            忙时整颗钮换成转圈 + disabled(律③)。允许位「按钮内」。 */}
+    <Card
+      title={t('providers.usage')}
+      /* 缓存寿命写在脸上:这一口是真去问服务商的,读数不是每次开面都新鲜。
+         它是「标题右侧的一个读数」——正是 Card 的 note inline 档说的那一格。 */
+      note={t('providers.usageCache')}
+      actions={
+        /* ui-consume-allow: spinner-placement — 它在这颗「刷新」钮的 children 里:
+           忙时整颗钮换成转圈 + disabled(律③)。允许位「按钮内」。 */
         <Button size="sm" disabled={loading} onClick={onRefresh}>
           {loading ? <Spinner label={t('providers.usageRefresh')} /> : t('providers.usageRefresh')}
         </Button>
-      </div>
-
+      }
+    >
       {status === 'error' && (
         <p className={s.error}>
           {t('providers.usageFailed')}

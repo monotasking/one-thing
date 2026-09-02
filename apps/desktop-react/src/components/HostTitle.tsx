@@ -1,3 +1,4 @@
+import { StatusDot } from '../ui/StatusDot'
 import { Tooltip } from '../ui/Tooltip'
 import { useLiveTitle } from '../stage/live-title'
 import s from './HostTitle.module.css'
@@ -19,7 +20,21 @@ export function HostTitle({ id, fallback, className }: { id: string; fallback: s
   const body = (
     <span className={className} data-host-title={id}>
       {text}
-      {live?.dirty && <span className={s.dot} data-testid="host-title-dirty" aria-hidden="true" />}
+      {/*
+        未保存丸走 `ui/StatusDot`(09-02 批 8b 收编;批 8a 给它补了 `sm` 5px 那一档,
+        与这里从前借 `--files-open-dot` 画的那颗**逐字同色同大小**)。
+        外面这一格 span 只管**落位**(左边距 + 与文字的垂直对齐)——那是宿主檐的
+        排版事实,不是「一枚状态点」的事实;它 inline-flex + 内容 flex:none,
+        所以盒子逐像素等于那颗 5px 的丸本身。
+        它同时是 `data-testid` 的落点:`ui/StatusDot` 的 API 是封闭的四格
+        (tone / size / label / className),没有 `testId` 也没有属性透传 ——
+        这一格缺口记在交卷报告里,不在本批就地开(ui/ 本批只消费)。
+      */}
+      {live?.dirty && (
+        <span className={s.dirtySlot} data-testid="host-title-dirty">
+          <StatusDot tone="warn" size="sm" />
+        </span>
+      )}
     </span>
   )
   // 截断的标题配 Tooltip 全名(禁令区那条)。没有全名可说就不挂 —— 一个与

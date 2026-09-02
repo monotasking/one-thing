@@ -1,17 +1,25 @@
 /*
- * 宿主檐上那颗未保存丸。与查看器自己那颗(FileViewer.module.css 的 .dirtyDot)
- * 是**同一副画法**:--warn 实心小圆点(与那一处逐字同色同大小),不换底、不加字
- * —— 状态色只上点(四轴第一条)。
- * 两处各画一次是有意的:一处在合檐后的宿主檐里,一处在面板 / 架子那两档
- * 查看器自己的檐里,它们分属两个组件的排版,共用一个类反而要跨模块拉线。
+ * 宿主檐上那颗未保存丸的**落位**。
+ *
+ * 09-02 批 8b:丸自己整份进了 `ui/StatusDot`(`tone="warn"` + 批 8a 补的 `sm`
+ * 5px 档 —— 与这里从前借 `--files-open-dot` 画的那颗逐字同色同大小),
+ * 所以从前那五行几何 / 底色 / 圆角一起删了:同一个词(`.dot`)在 8 个
+ * module.css 各画一遍,正是 `shared-vocab-css` 记的那笔账。
+ *
+ * 剩下的两格是**这条檐自己的排版**,不是「一枚状态点」的事实,所以它们留在本地
+ *(名字也跟着改成 `.dirtySlot`:它已经不是「一枚点」了,是**那枚点的落位**。
+ * `ui:consume` 的 `shared-vocab-css` 把 `.dot` 记成一个产地,而这一格不再画
+ * 任何一枚点 —— 留着旧名字才是说谎):
+ * 左边距(丸贴在文件名右边一档)与 `vertical-align: middle`(丸与那行字对齐)。
+ * `inline-flex` + 孩子 `flex: none` 让这一格逐像素等于那颗 5px 的丸本身
+ *(与 FloatWindow 从前那格贴身 span 同一手),所以收编前后零像素差。
+ *
+ * 查看器自己那颗(`FileViewer.module.css` 的 `.dirtyDot`)是另一处落点,
+ * 归它那一批收 —— 两处分属两个组件的排版,共用一个类反而要跨模块拉线。
  */
-.dot {
-  display: inline-block;
+.dirtySlot {
+  display: inline-flex;
   flex: none;
-  width: var(--files-open-dot);
-  height: var(--files-open-dot);
   margin-left: var(--sp-1);
-  border-radius: var(--r-full);
-  background: var(--warn);
   vertical-align: middle;
 }

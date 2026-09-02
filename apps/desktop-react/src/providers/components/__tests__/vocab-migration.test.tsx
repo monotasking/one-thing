@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { useStageStore } from '../../../stage/store'
@@ -428,5 +430,108 @@ describe('Field 收编:自定义家对话框', () => {
       expect(field.querySelector(`.${fieldCss.error}`)).toBeNull()
       expect(field.querySelector('input')?.getAttribute('aria-invalid') ?? null).toBeNull()
     }
+  })
+
+  /**
+   * 批 2b 留的那条账(「Segmented 那一格 Field 的 label 指空」)在 09-02 批 8b
+   * 结清:批 8a 的两半 —— Field 多交一格 `aria-labelledby`、Segmented 开
+   * HTMLAttributes 透传 —— 让这一格照旧一句 `{...field}` 就接上了。
+   *
+   * 反证:把 `CompatSegmented` 里的 `{...field}` 摘掉 → 两条都真红
+   *(名字没了、labelledby 没了)。所以这里刻意**不再**给 Segmented 传
+   * 它自己的 `label`:传了的话名字有两个产地,摘掉 field 也照样叫得出名字,
+   * 这条断言就成了陪跑。
+   */
+  it('分段器那一格的名字来自 Field 的 label(aria-labelledby 真接上了)', () => {
+    const { baseElement } = open()
+    const group = screen.getByRole('radiogroup', { name: '兼容形 · 必填' })
+    const by = group.getAttribute('aria-labelledby')
+    expect(by).toBeTruthy()
+    const label = baseElement.querySelector(`#${by}`)
+    expect(label?.tagName).toBe('LABEL')
+    expect(label?.textContent).toBe('兼容形 · 必填')
+    // 名字只有一个产地:这一格不再自带 aria-label。
+    expect(group.getAttribute('aria-label')).toBeNull()
+    // 它就长在那一格 Field 里,不是页面上另一处同名的东西。
+    expect(group.closest(`.${fieldCss.field}`)).toBe(label?.parentElement)
+  })
+})
+
+/**
+ * **批 8b:三处「檐三件」收进 `ui/Card` 的 title / note / actions。**
+ *
+ * 批 2b 时 Card 的檐只有两槽(标题 + 弱色注),塞不下第三件,于是 UsageCard 与
+ * CredentialPool 各写了一份 `.head` —— 正是立 Card 要治的病本身。批 8a 补了
+ * `actions` 那一格,这里把两处收编。
+ *
+ * 判据同上:比的是**谁画的**(class 与 `ui/Card.module.css` 导出的同值),
+ * 外加读源文本证明本地那几条真的删了(CSS Modules 在 vitest 里是 proxy,
+ * `usageCss.head` 永远不是 undefined,那种断言会陪跑)。
+ */
+describe('Card 檐三件收编(批 8b)', () => {
+  function stripComments(file: string) {
+    return readFileSync(path.resolve(__dirname, file), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')
+  }
+
+  it('订阅用量的檐三件:标题 / 缓存读数 / 刷新钮 全在 Card 自己的檐里', () => {
+    const { container } = render(
+      <UsageCard
+        usage={{ usage: { limits: [] } } as never}
+        status="ready"
+        onRefresh={() => {}}
+      />,
+    )
+    const card = container.querySelector(`.${cardCss.card}`)!
+    const head = card.querySelector(`.${cardCss.head}`)
+    expect(head).toBeTruthy()
+    // 檐是卡的**第一个**孩子:它若掉进卡身,下面的读数就会挤到它上面去。
+    expect(card.firstElementChild).toBe(head)
+    const title = head!.querySelector(`.${cardCss.title}`)
+    expect(title?.tagName).toBe('H3')
+    expect(title?.textContent).toBe('订阅用量')
+    expect(head!.querySelector(`.${cardCss.note}`)?.textContent).toBe('60s 缓存')
+    // 刷新钮在檐右那一撮里,不是散在檐上。
+    const actions = head!.querySelector(`.${cardCss.actions}`)
+    expect(actions?.querySelector('button')?.textContent).toBe('刷新')
+  })
+
+  it('凭证池的檐:读数 + 添加钮在檐里,那句读法走 note 的 below 档', () => {
+    const { container } = render(
+      <CredentialPool
+        providerId="demo"
+        pool={EMPTY_POOL}
+        busy={false}
+        onAdd={() => {}}
+        onReplace={() => {}}
+        onRemove={() => {}}
+        onMove={() => {}}
+        onRotation={() => {}}
+      />,
+    )
+    const card = container.querySelector(`.${cardCss.card}`)!
+    const head = card.querySelector(`.${cardCss.head}`)
+    expect(card.firstElementChild).toBe(head)
+    expect(head!.querySelector(`.${cardCss.title}`)?.tagName).toBe('H3')
+    expect(head!.querySelector(`.${cardCss.actions}`)?.querySelector('button')?.textContent).toBe(
+      '＋ 添加密钥',
+    )
+    // 「顺序即优先级」那句话是卡的注,落在檐外、卡身之前 —— below 档的位置。
+    const note = card.querySelector(`.${cardCss.noteBelow}`)
+    expect(note?.tagName).toBe('P')
+    expect(card.children[1]).toBe(note)
+    // inline 档的那一格不许同时在场(一句话不该既是读数又是段落)。
+    expect(head!.querySelector(`.${cardCss.note}`)).toBeNull()
+  })
+
+  it('两处本地的檐配方都删干净了(读源文本,CSS Modules 的 proxy 判不了)', () => {
+    for (const file of ['../UsageCard.module.css', '../CredentialPool.module.css']) {
+      const css = stripComments(file)
+      expect(css).not.toContain('.head')
+      expect(css).not.toContain('.title')
+    }
+    // UsageCard 的 `.cache` 一起走了;CredentialPool 的 `.hint` **留着** ——
+    // 它还有两个消费者(「最后一条不可删」的理由、轮换策略那句语义说明)。
+    expect(stripComments('../UsageCard.module.css')).not.toContain('.cache')
+    expect(stripComments('../CredentialPool.module.css')).toContain('.hint')
   })
 })

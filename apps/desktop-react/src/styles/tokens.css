@@ -357,7 +357,10 @@
   --avatar-overlap: -6px;
   --unread-size: 18px;
   --kind-badge: 18px;
-  --status-dot: 6px;
+  /* `--status-dot` 从前也在这里声明一次(同值 6px)。09-02 批 8b 删掉这一条:
+   * 一个名两处产地,改一处就是埋一颗「改了没生效」的雷。留下的那一条在批 2a
+   * 的视觉词汇族里,它带着「为什么不叫 --dot-size / 为什么与 sm 档不合并」
+   * 的上下文注释 —— 两条里只能留带理由的那条。 */
   --list-row-h: 40px;
   --indent-1: 26px;
   --indent-2: 42px;

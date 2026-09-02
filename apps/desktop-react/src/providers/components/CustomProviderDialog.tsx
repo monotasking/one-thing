@@ -122,17 +122,17 @@ export function CustomProviderDialog({
         </Field>
 
         {/*
-          这一格的控件是 Segmented,而 Segmented **不收 id**(它的名由自己的
-          `label` prop 给成 aria-label)。所以 Field 的 `<label htmlFor>` 在这一格
-          指空 —— 与迁移前逐字等价:迁移前是一个 `<label>` 裹着一个**不可标注**的
-          radiogroup,同样只是视觉标签,点它一样不聚焦。要真接上得给 ui/Segmented
-          加 id 透传,那是 ui/ 的改动,不在本批面上 —— 留账。
+          09-02 批 8b 结账:那条留账(「Field 的 label 在这一格指空」)由批 8a 的
+          两半补上了 —— Field 多交一格 `aria-labelledby`(指着它自己那条 label),
+          Segmented 开了 HTMLAttributes 透传。于是这一格照旧一句 `{...field}`。
+          Segmented 自己的 `label` prop **去掉**:名字从此只有一个产地(那条
+          `<label>` 的文字),而不是同一句话在 aria-label 与 label 各写一遍;
+          可访问名算出来逐字相同(aria-labelledby 优先,内容一样),零像素。
         */}
         <Field label={t('providers.customCompat')}>
-          <Segmented
+          <CompatSegmented
             value={form.apiType}
             onChange={(apiType) => patch({ apiType })}
-            label={t('providers.customCompat')}
             options={[
               { value: 'openai' as const, label: t('providers.customCompatOpenai') },
               { value: 'anthropic' as const, label: t('providers.customCompatAnthropic') },
@@ -187,4 +187,18 @@ export function CustomProviderDialog({
 function FieldInput(props: ComponentProps<typeof Input>) {
   const field = useFieldControlProps()
   return <Input {...field} {...props} />
+}
+
+/**
+ * 一格里的分段器。与 `FieldInput` 同一条理由(hook 只能在组件里调),
+ * 但摊的次序**相反**:这里 `{...field}` 排在**后面**。
+ *
+ * 因为这一格没有自己的名 —— 名就是 Field 那条 `<label>`,而 `ui/Segmented`
+ * 把 `aria-label` 排在 rest **之前**(它文件头写了为什么:排后面会在 `label`
+ * 缺席时写进一个 `undefined`,把落点自己传的名静默抹掉)。所以 `aria-labelledby`
+ * 从 rest 进来即可,两格并存时可访问名以 labelledby 为准。
+ */
+function CompatSegmented(props: ComponentProps<typeof Segmented<'openai' | 'anthropic'>>) {
+  const field = useFieldControlProps()
+  return <Segmented {...props} {...field} />
 }
