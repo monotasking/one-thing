@@ -162,6 +162,88 @@ describe('新建', () => {
   })
 })
 
+/* ── 忙态零扇出(09-02 批 5:全局 busy 布尔迁 createMutation)─────────────── */
+
+describe('写在飞时只禁自己那张卡', () => {
+  /**
+   * 病型 B(粒度病)的反证。从前总览读的是 store 上一颗全局 `busy` 布尔,
+   * 于是**改 A 的名字**会把 B、C 两张卡上的六颗钮一起禁灰。
+   *
+   * 这一组卡住 rename 的那一发端口调用(端口返回一条永不 resolve 的 promise),
+   * 在那一程里逐颗读 disabled。把 pending 改回一颗全局布尔,第二条断言当场红。
+   *
+   * 还多问一句「是不是同一个 DOM 节点」:律④要的是别人家的钮**没被重挂**,
+   * 而不只是「重挂之后碰巧也没禁」。
+   */
+  function installStuckRename(): { release: () => void } {
+    let release = (): void => undefined
+    // 执行体是同步跑的,所以 installPort 之前 release 已经就位。
+    const stuck = new Promise<Awaited<ReturnType<SpacesPort['update']>>>((resolve) => {
+      release = () => resolve({ success: true })
+    })
+    installPort({ update: vi.fn(() => stuck) })
+    return { release: () => release() }
+  }
+
+  it('改 A 的名字,B 卡那三颗钮照旧能点,而且还是原来那个节点', async () => {
+    const stuck = installStuckRename()
+    await renderOverview()
+
+    const before = screen.getByTestId('workspace-rename-ws-personal') as HTMLButtonElement
+    act(() => void fireEvent.click(screen.getByTestId('workspace-rename-ws-lenovo')))
+    // 改名先出输入框,↵ 才发写 —— 卡住的是这一发。
+    const input = screen.getByTestId('workspace-name-input')
+    act(() => void fireEvent.change(input, { target: { value: 'Lenovo X' } }))
+    act(() => void fireEvent.keyDown(input, { key: 'Enter' }))
+
+    // A 自己那颗禁住了(反过来说明这一程真的在飞,断言不是恒真)。
+    await waitFor(() =>
+      expect((screen.getByTestId('workspace-rename-ws-lenovo') as HTMLButtonElement).disabled).toBe(
+        true,
+      ),
+    )
+    // B 卡一格都不该被拖下水。
+    const after = screen.getByTestId('workspace-rename-ws-personal') as HTMLButtonElement
+    expect(after.disabled).toBe(false)
+    expect((screen.getByTestId('workspace-recolor-ws-personal') as HTMLButtonElement).disabled).toBe(
+      false,
+    )
+    expect((screen.getByTestId('workspace-remove-ws-personal') as HTMLButtonElement).disabled).toBe(
+      false,
+    )
+    // 零重挂:前后是同一个节点。
+    expect(after).toBe(before)
+    // 「新建」那张卡也不该被别人的写按住。
+    expect((screen.getByTestId('workspace-create') as HTMLButtonElement).disabled).toBe(false)
+
+    await act(async () => {
+      stuck.release()
+    })
+  })
+
+  it('同一张卡上,改名在飞不牵连它自己的换色 —— 格子是按动作分的', async () => {
+    const stuck = installStuckRename()
+    await renderOverview()
+    act(() => void fireEvent.click(screen.getByTestId('workspace-rename-ws-lenovo')))
+    const input = screen.getByTestId('workspace-name-input')
+    act(() => void fireEvent.change(input, { target: { value: 'Lenovo X' } }))
+    act(() => void fireEvent.keyDown(input, { key: 'Enter' }))
+
+    await waitFor(() =>
+      expect((screen.getByTestId('workspace-rename-ws-lenovo') as HTMLButtonElement).disabled).toBe(
+        true,
+      ),
+    )
+    expect((screen.getByTestId('workspace-recolor-ws-lenovo') as HTMLButtonElement).disabled).toBe(
+      false,
+    )
+
+    await act(async () => {
+      stuck.release()
+    })
+  })
+})
+
 describe('读不到列表', () => {
   it('如实说读不到,并把后端原话摆出来', async () => {
     installPort({ list: async () => ({ success: false, error: 'core unreachable' }) })

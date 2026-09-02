@@ -146,13 +146,19 @@ bare-button-icon src/providers/components/ModelCatalog.tsx:393 图标钮,该 ui/
 bare-button-structural src/providers/components/ProviderRail.tsx:84 结构件裸钮,欠 ui/ButtonBase
 
 # ── 09-01 批 0 新立的三条规则,存量入账(棘轮:新增即红)────────────────
-# async-busy-boolean         4 条 [debt]:source 自己记一颗
+# async-busy-boolean         4 → **2** 条 [debt]:source 自己记一颗
 #   saving/busy/loading/pending/inflight 布尔 —— 该迁 data/kernel 的
 #   createMutation(律③要的是逐格 pending)。立门时是 5 条;
 #   `src/providers/store.ts` 那一条已在同日批 1 迁到 settingsMutation
 #   (勾选闪烁的病根),所以基线只收其余四处。
 #   只扫 .ts 不扫 .tsx:组件 props 里的同名字段是 store 那一格的下游,
 #   上游迁掉下游自然跟着换,两头都扫就是同一笔账记两遍。
+#   **09-02 批 5 结清两条**:workspace/store.ts 真迁 workspaceMutation,
+#   providers/auth.ts 是粒度已合律的登录流状态机,写了豁免。
+#   还剩两条:`src/data/viewer-source.ts:85` 的 `edit.saving` 是真写路,
+#   但唯一消费方 FileViewer 在 content 避让区,留给 content 批;
+#   `src/data/chat-source.ts:130` 是规则误报(模块级 LiveFold 的折叠机内部闸门,
+#   非可渲染态非写路),豁免注释已拟好但该文件正被别批施工,等它落地再写进去。
 # float-handwritten          4 → **2** 条 [violation]:手写浮层散场(window pointerdown /
 #   捕获相位 keydown)—— 该消费 ui/float 的 useFloatDismiss。四条各有另案:
 #   composer 的点外关、键位设置与跳转条的 Esc 捕获、舞台盖(ExposeView)。
@@ -241,7 +247,6 @@ shared-vocab-css src/expose/components/Overview.module.css:264 视觉词汇多�
 shared-vocab-css src/expose/components/QuickLook.module.css:67 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/expose/components/SessionCard.module.css:10 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/expose/components/SessionCard.module.css:39 视觉词汇多产地(card),待批 2 立件收编
-async-busy-boolean src/providers/auth.ts:53 手写忙布尔,该迁 data/kernel createMutation(律③逐格 pending)
 shared-vocab-css src/providers/components/UsageCard.module.css:67 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/providers/components/UsageCard.module.css:73 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/providers/components/UsageCard.module.css:83 视觉词汇多产地(meter),待批 2 立件收编
@@ -257,4 +262,3 @@ shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:73 视觉
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:78 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:136 视觉词汇多产地(field),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:143 视觉词汇多产地(field),待批 2 立件收编
-async-busy-boolean src/workspace/store.ts:95 手写忙布尔,该迁 data/kernel createMutation(律③逐格 pending)

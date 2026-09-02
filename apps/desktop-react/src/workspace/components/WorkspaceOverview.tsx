@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Plus, X } from '../../components/icons'
+import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Input } from '../../ui/Input'
 import { useConfirm } from '../../ui/Dialog'
+import { useMutation } from '../../data/kernel'
 import { useT } from '../../i18n'
-import { useWorkspaceStore, useWorkspaceViews } from '../store'
+import { useWorkspaceStore, useWorkspaceViews, workspaceKey, workspaceMutation } from '../store'
 import { useStageStore } from '../../stage/store'
 import { WORKSPACE_ITEM_ID } from '../../stage/items'
 import { announce } from '../../ui/a11y/live-region'
@@ -38,7 +40,6 @@ export function WorkspaceOverview() {
   const views = useWorkspaceViews()
   const status = useWorkspaceStore((st) => st.status)
   const error = useWorkspaceStore((st) => st.error)
-  const busy = useWorkspaceStore((st) => st.busy)
   const load = useWorkspaceStore((st) => st.load)
   const switchTo = useWorkspaceStore((st) => st.switchTo)
   const createWorkspace = useWorkspaceStore((st) => st.createWorkspace)
@@ -46,6 +47,32 @@ export function WorkspaceOverview() {
   const recolor = useWorkspaceStore((st) => st.recolor)
   const remove = useWorkspaceStore((st) => st.remove)
   const confirm = useConfirm()
+
+  /*
+   * 忙态是**逐格**读的(交互稳定律③)。从前这里读的是 store 上一颗全局 `busy`
+   * 布尔,于是改 A 的名字会把 B、C 两张卡的六颗钮一起禁灰 —— 病型 B(粒度病)。
+   * 现在读的是写路那只 mutation 的在飞格子表,一张卡只认自己那三格。
+   *
+   * 表在**渲染体外**算一次(useMemo),不在 zustand 选择器里现算:选择器每次
+   * 返回新对象会让 `useSyncExternalStore` 判定「变了」而无限重渲(poolViewOf 判例)。
+   * `pendingKeys` 与 `views` 都是身份稳定的快照,所以这颗 memo 真的只在写路
+   * 起落或列表变化时重算。
+   */
+  const pendingKeys = useMutation(workspaceMutation).pendingKeys
+  const cardPending = useMemo(
+    () =>
+      new Map(
+        views.map((v) => [
+          v.id,
+          {
+            rename: pendingKeys.has(workspaceKey.rename(v.id)),
+            recolor: pendingKeys.has(workspaceKey.recolor(v.id)),
+            remove: pendingKeys.has(workspaceKey.remove(v.id)),
+          },
+        ]),
+      ),
+    [views, pendingKeys],
+  )
 
   /** 此刻正在改名的那张卡(null = 没有)。同一时刻只有一张 —— 两个输入框会打架。 */
   const [editing, setEditing] = useState<string | null>(null)
@@ -145,7 +172,10 @@ export function WorkspaceOverview() {
       </div>
 
       <div className={s.cards}>
-        {views.map((view) => (
+        {views.map((view) => {
+          /** **这一张卡**此刻在飞的那几格。别人家的写一格都进不来。 */
+          const flying = cardPending.get(view.id)
+          return (
           <div
             key={view.id}
             className={view.isCurrent ? `${s.card} ${s.cardCurrent}` : s.card}
@@ -212,7 +242,7 @@ export function WorkspaceOverview() {
             <div className={s.ops}>
               <Button
                 className={s.op}
-                disabled={busy}
+                disabled={flying?.rename}
                 data-testid={`workspace-rename-${view.id}`}
                 onClick={() => startRename(view)}
               >
@@ -220,7 +250,7 @@ export function WorkspaceOverview() {
               </Button>
               <Button
                 className={s.op}
-                disabled={busy}
+                disabled={flying?.recolor}
                 data-testid={`workspace-recolor-${view.id}`}
                 onClick={() => {
                   setEditing(null)
@@ -233,7 +263,7 @@ export function WorkspaceOverview() {
               {!view.isCurrent && !view.isDefault && (
                 <Button
                   className={`${s.op} ${s.opDanger}`}
-                  disabled={busy}
+                  disabled={flying?.remove}
                   data-testid={`workspace-remove-${view.id}`}
                   onClick={() => void askRemove(view)}
                 >
@@ -242,7 +272,8 @@ export function WorkspaceOverview() {
               )}
             </div>
           </div>
-        ))}
+          )
+        })}
 
         {creating ? (
           <div className={`${s.card} ${s.cardNew}`}>
@@ -260,17 +291,32 @@ export function WorkspaceOverview() {
             </div>
           </div>
         ) : (
-          /* 虚线新建卡是**一张卡**(与旁边那几张同宽同高),不是一颗钮 ——
-           * 裸钮三类判第③类 → `ui/ButtonBase`,那身虚线皮肤一个像素不动。 */
-          <ButtonBase
+          /*
+           * 虚线新建卡。它仍然是**一张卡**(与旁边那几张同宽同高),皮肤一个像素
+           * 不动 —— 但它同时是**发起「建一个工作区」那一发写的控件**,而律③要求
+           * 进行中反馈长在发起它的那个控件上。所以它从 `ui/ButtonBase` 换成
+           * `ui/AsyncButton`(=`ui/Button` + 逐格忙态):忙态是**读来的**
+           * (`workspaceMutation` 的 create 那一格),不是本地记的一份。
+           *
+           * 换件带来的几何由 `.newCard` 收回(定高 / 内边距 / flex 三条),
+           * 逐条理由写在 `WorkspaceOverview.module.css` 那一节 —— 与三枚文字键
+           * 迁 `ui/Button` 时的做法逐字相同。
+           *
+           * 顺序说明:`commitCreate` 是先 `setCreating(false)` 再 `await
+           * createWorkspace`,所以写在飞的那一程,屏幕上站着的正是这张卡。
+           */
+          <AsyncButton
             className={s.newCard}
-            disabled={busy}
+            action={workspaceMutation}
+            pendingKey={workspaceKey.create()}
+            /* 零新键:复用那句通用的「正在保存…」(ModelCatalog 的手填提交也用它)。 */
+            pendingLabel={t('viewer.saving')}
             data-testid="workspace-create"
             onClick={() => setCreating(true)}
           >
             <Plus className={s.newIcon} strokeWidth={1.75} aria-hidden="true" />
             {t('workspace.create')}
-          </ButtonBase>
+          </AsyncButton>
         )}
       </div>
     </div>

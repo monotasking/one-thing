@@ -202,14 +202,38 @@
   color: var(--danger);
 }
 
-/* ── 新建卡 ─────────────────────────────────────────────────────────── */
+/* ── 新建卡 ───────────────────────────────────────────────────────────
+ *
+ * 09-02 批 5:它从 `ui/ButtonBase` 换成了 `ui/AsyncButton`(理由在 .tsx 里 ——
+ * 它是发起「建一个工作区」那一发写的控件,律③要的进行中反馈得长在它身上)。
+ * AsyncButton 底下是 `ui/Button`,于是这里多背了一份 `.btn` 的几何。本地留的
+ * 仍然是**落点几何**:这是一张卡,不是一颗 28px 的 ghost 钮。
+ *
+ * 三条是**等价还原**(不是规范修正,像素一格不动),逐条说清收回的是什么:
+ *  · `flex: 0 1 auto` —— `.btn` 给的是 `flex: none`。旁边那几张 `.card` 用的是
+ *    初始值(可收缩),而抗挤压那条规矩要的是「架子里窄下去时它们一起换行/
+ *    收缩」,不是新建卡一个人硬挺着;
+ *  · `height: auto` —— `.btn` 给的是 `--btn-sm`(28px)。这里靠 `min-height`
+ *    与旁边的卡同高;
+ *  · `padding: 0` —— `.btn` 给的是 `0 var(--btn-pad-x)`,而这张卡是居中的
+ *    图标 + 一行字,内边距由卡自己的定高交待。
+ * 边框 / 圆角 / 字号 / 字重 / gap / display 六条本来就写在下面,顺位盖过 `.btn`
+ * 与 `.ghost`(与三枚文字键 `.op` 同一条先例,真机对照 0.000%)。
+ *
+ * transition 多带一格 opacity:`.btn` 的那份里 opacity 是有过渡的(disabled
+ * 那一下不该硬切成灰),本地这一句会整条盖掉它,所以把那一格补回来。
+ * 底下的 prefers-reduced-motion 块照旧把整条清零。
+ */
 .newCard {
   width: var(--ws-card-w);
   min-height: var(--ws-card-min-h);
+  flex: 0 1 auto;
+  height: auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
+  padding: 0;
   border: 1.5px dashed var(--line-2);
   border-radius: var(--r-card);
   background: none;
@@ -218,7 +242,7 @@
   font-size: var(--fs-label);
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
 
 .newCard:hover {

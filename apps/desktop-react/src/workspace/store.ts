@@ -2,6 +2,8 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { SpaceRecord } from '@shared/ipc/spaces'
+import { createMutation } from '../data/kernel'
+import type { Mutation } from '../data/kernel'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import type { MessageKey } from '../i18n'
@@ -23,6 +25,7 @@ import {
  * 分工:
  *  - 形状与判据(次序 / 色标 / 字标 / 序号键 / 过滤):`workspace/projection.ts` 的纯函数;
  *  - 取数与写回:端口(`data/spaces-port.ts`,后端 spaces 域四条口);
+ *  - **写路的生命周期**:下面那只 `workspaceMutation`(`data/kernel` 的 createMutation);
  *  - 唯一碰 DOM 的那一半:`workspace/apply.ts`;
  *  - 画:`workspace/components/*`。
  *
@@ -75,6 +78,14 @@ const REMOVE_REJECTION: Record<string, MessageKey> = {
   NOT_FOUND: 'workspace.removeMissing',
 }
 
+/** 四个写口各自那句「没成」。产地只有这一张表 —— 四处各写一遍就是四处会漂。 */
+const FAILED_TITLE: Record<WorkspaceWrite['kind'], MessageKey> = {
+  create: 'workspace.createFailed',
+  rename: 'workspace.renameFailed',
+  recolor: 'workspace.recolorFailed',
+  remove: 'workspace.removeFailed',
+}
+
 /**
  * 新建时挑一个还没被用的色 —— 挑不出(六格用完了)就从头轮。
  * 它只是个**默认值**:建完在总览卡上一点「换色」就能改。
@@ -84,6 +95,193 @@ function nextSwatch(spaces: readonly SpaceRecord[]): WorkspaceSwatch {
   return WORKSPACE_SWATCHES.find((c) => !used.has(c)) ?? WORKSPACE_SWATCHES[spaces.length % WORKSPACE_SWATCHES.length]
 }
 
+/**
+ * 一次端口往返,**拒绝也是一个答案**。
+ *
+ * 这一层不是防御性编程,是把两种失败归一:传输层拒绝(没连上 core、404、
+ * 超时)与后端答「不成功」对这块界面来说是同一件事 —— 都是「这台机器
+ * 此刻给不出工作区」。不归一的话前者会变成一条逃逸的 promise:
+ * 08-31 真机上就是这样 —— 浏览器直开(没有 core)时 `list()` 直接 reject,
+ * 崩溃捕获弹出一条「Something broke in promise」,而 store 永远停在
+ * loading、兜底表一次都没落上,瓦面也就没有字标。
+ *
+ * 原话原样留在 `error` 里:「404 Not Found」与「space not found」是两句
+ * 不同的话,合成一句就没法排障了。
+ */
+async function call<T extends { success: boolean; error?: string }>(
+  run: (port: Awaited<ReturnType<typeof spacesPort>>) => Promise<T>,
+  onReject: (message: string) => T,
+): Promise<T> {
+  try {
+    return await run(await spacesPort())
+  } catch (err) {
+    return onReject(err instanceof Error ? err.message : String(err))
+  }
+}
+
+/** 写操作的共同收尾:重读列表(后端是唯一事实源,不在本地拼状态)。 */
+async function reload(): Promise<void> {
+  const response = await call(
+    (port) => port.list(),
+    (error) => ({ success: false, error }),
+  )
+  if (response.success && response.spaces) {
+    useWorkspaceStore.setState({ spaces: response.spaces, status: 'ready', error: undefined })
+    return
+  }
+  useWorkspaceStore.setState({ spaces: fallbackSpaces(), status: 'error', error: response.error })
+}
+
+/** 失败弹出来,不吞。后端原话原样进 detail —— 那是排障唯一的线索。 */
+function reportFailure(title: MessageKey, error: string | undefined): false {
+  notify({ level: 'error', source: 'workspace', title: t(title), detail: error })
+  return false
+}
+
+/* ── 写路:一条 mutation,四个格 ──────────────────────────────────────────
+ *
+ * 从前这里是 state 上一颗全局 `busy` 布尔,四个写口各自 set true/false。
+ * 后果是**病型 B(粒度病)**:改 A 的名字,B、C 两张卡上的六颗钮全部禁灰 ——
+ * 用户看见的是「改一个名把整面锁住了」,而实际在飞的只有一格。
+ *
+ * 交互稳定律③要的是**逐格** pending,而「哪一格」这件事只有发起方说得清。
+ * 所以写路整只交给 `data/kernel` 的 `createMutation`(与 providers 那一路
+ * `settingsMutation` 逐字同形):它按 `key(input)` 分格记账,同一格连点两下
+ * 也不会被第一发的收尾提前解禁。
+ *
+ * **不做乐观更新**:现状就是等后端回话再重读列表,这一批是等价迁移,不借机
+ * 改语义。真要上乐观补丁是另一次拍板(名字/颜色可以,新建与删除牵涉列表身份)。
+ */
+
+/** 忙态格子的**唯一词表**。store 记账与组件读账共用它 —— 两头各拼一次字符串就是两处会漂。 */
+export const workspaceKey = {
+  /** 新建只有一颗钮,格子不带 id(那一刻新空间还没有 id)。 */
+  create: () => 'create',
+  /** 其余三口一张卡一格 —— 律③要的「长在被点的那一个控件上」就是这一格。 */
+  rename: (id: string) => `rename:${id}`,
+  recolor: (id: string) => `recolor:${id}`,
+  remove: (id: string) => `remove:${id}`,
+} as const
+
+/** 一次工作区写要带的全部东西。四口一个联合,`kind` 同时是分派与格子的产地。 */
+export type WorkspaceWrite =
+  | { kind: 'create'; name: string }
+  | { kind: 'rename'; id: string; name: string }
+  | { kind: 'recolor'; id: string; swatch: WorkspaceSwatch }
+  | { kind: 'remove'; id: string }
+
+/** 写完之后 settle 要用的那点东西。create 之外三口没有东西要交待。 */
+interface WorkspaceWriteDone {
+  /** 只有 create 有:新空间的 id。对账落地之后「当前」就挪到它上面。 */
+  createdId?: string
+}
+
+function keyOf(input: WorkspaceWrite): string {
+  return input.kind === 'create' ? workspaceKey.create() : workspaceKey[input.kind](input.id)
+}
+
+/**
+ * 「后端说没成」抛出来的那一发。
+ *
+ * 为什么不是一个普通 `new Error(response.error)`:后端原话**可能没有**
+ * (`error` 是可选的),而 `Error.message` 会把「没有原话」变成空字符串 ——
+ * 那两件事在通知的 detail 里长得不一样(一条没有详情 vs 一条详情是空)。
+ * 删除那一路还多一格 `code`(DEFAULT_SPACE / NOT_EMPTY / NOT_FOUND),
+ * 它决定弹哪一句人话,塞进 message 里就得再解析出来。两格都原样带着。
+ */
+class WorkspaceWriteError extends Error {
+  /** 后端原话,可能没有 —— 原样带着,这里不编一句。 */
+  readonly detail: string | undefined
+  /** 删除被拒的码。只有 remove 用得上。 */
+  readonly code: string | undefined
+  constructor(detail: string | undefined, code?: string) {
+    super(detail ?? '')
+    this.name = 'WorkspaceWriteError'
+    this.detail = detail
+    this.code = code
+  }
+}
+
+/**
+ * 最近一次**对账**(settle 里那发 reload)的把手。
+ *
+ * 为什么需要它:`createMutation` 的 settle 是**不被 await 的** —— 对账是后台
+ * 的事,不该把钮多按住一拍(理由写在 kernel 的 `mutation.ts` 里)。但这四个
+ * action 的返回值是**有承诺的**:`createWorkspace` 交出 id 之后,调用方下一句
+ * 就去屏幕上找那张卡(`WorkspaceOverview.commitCreate` 的 rAF + scrollIntoView),
+ * 而「当前」也得已经挪过去。所以两件事各归各位:**钮**的忙态在 settle 之前
+ * 解除(律③要的那一拍),**action 自己**多等这一口对账。
+ */
+let reconcile: Promise<void> | undefined
+
+/*
+ * 类型**显式写出来**,不靠推断:这只 mutation 与下面那只 store 互相引用
+ * (它读 `getState().spaces` 挑色、写 `setState({ currentId })`;store 的四个
+ * action 又调它的 `run`)。运行期没问题(两边都是**调用时**才碰对方),但
+ * TS 的推断会绕成一个环 —— 一句注解就把环剪断,比拆结构便宜得多。
+ */
+export const workspaceMutation: Mutation<WorkspaceWrite, WorkspaceWriteDone> = createMutation<
+  WorkspaceWrite,
+  WorkspaceWriteDone
+>('workspace', {
+  key: keyOf,
+  run: async (input) => {
+    switch (input.kind) {
+      case 'create': {
+        const response = await call(
+          (port) =>
+            port.create({ name: input.name, color: nextSwatch(useWorkspaceStore.getState().spaces) }),
+          (error) => ({ success: false, error }),
+        )
+        // 「后端说没成」与「这一发抛了」在这条原语里是同一件事:都得走 onError。
+        if (!response.success || !response.space) throw new WorkspaceWriteError(response.error)
+        return { createdId: response.space.id }
+      }
+      case 'rename': {
+        const response = await call(
+          (port) => port.update({ id: input.id, name: input.name }),
+          (error) => ({ success: false, error }),
+        )
+        if (!response.success) throw new WorkspaceWriteError(response.error)
+        return {}
+      }
+      case 'recolor': {
+        const response = await call(
+          (port) => port.update({ id: input.id, color: input.swatch }),
+          (error) => ({ success: false, error }),
+        )
+        if (!response.success) throw new WorkspaceWriteError(response.error)
+        return {}
+      }
+      case 'remove': {
+        const response = await call(
+          (port) => port.remove(input.id),
+          (error) => ({ success: false, error }),
+        )
+        // 拒绝码原样带上去:界面据它说人话,不在这里判第二次。
+        if (!response.success) throw new WorkspaceWriteError(response.error, response.code)
+        return {}
+      }
+    }
+  },
+  settle: (result) => {
+    reconcile = (async () => {
+      await reload()
+      // 建完就切过去:「新建」这个动作的全部语义就是「我要去那儿」。
+      // 排在 reload **之后** —— 列表里还没有它的时候把「当前」指过去,
+      // `currentSpaceId()` 会当场把它解析成默认空间(见 workspace/current.ts)。
+      if (result.createdId) useWorkspaceStore.setState({ currentId: result.createdId })
+    })()
+  },
+  onError: (error, input) => {
+    const failure = error instanceof WorkspaceWriteError ? error : undefined
+    const reason = failure?.code ? REMOVE_REJECTION[failure.code] : undefined
+    // 拒绝码只在删除那一路有意义;其余三口恒走自己那句。
+    const title = input.kind === 'remove' ? reason ?? FAILED_TITLE.remove : FAILED_TITLE[input.kind]
+    reportFailure(title, failure ? failure.detail : error.message)
+  },
+})
+
 export interface WorkspaceState {
   spaces: SpaceRecord[]
   status: WorkspaceStatus
@@ -91,8 +289,6 @@ export interface WorkspaceState {
   error?: string
   /** 这台壳记住的当前工作区。见文件头。 */
   currentId: string
-  /** 有写操作在飞 —— 总览上的动作键据此禁用,防连点建出两个同名空间。 */
-  busy: boolean
 
   /** 读一次列表。幂等(已经在读就不重入);失败退兜底表并如实标注。 */
   load(): Promise<void>
@@ -110,59 +306,15 @@ export interface WorkspaceState {
 
 export const useWorkspaceStore = create<WorkspaceState>()(
   persist(
-    (set, get) => {
+    (set, get): WorkspaceState => {
       /** 一次在飞的读。幂等靠它,不靠 status —— status 会被写操作后的重读改。 */
       let loading: Promise<void> | undefined
-
-      /**
-       * 一次端口往返,**拒绝也是一个答案**。
-       *
-       * 这一层不是防御性编程,是把两种失败归一:传输层拒绝(没连上 core、404、
-       * 超时)与后端答「不成功」对这块界面来说是同一件事 —— 都是「这台机器
-       * 此刻给不出工作区」。不归一的话前者会变成一条逃逸的 promise:
-       * 08-31 真机上就是这样 —— 浏览器直开(没有 core)时 `list()` 直接 reject,
-       * 崩溃捕获弹出一条「Something broke in promise」,而 store 永远停在
-       * loading、兜底表一次都没落上,瓦面也就没有字标。
-       *
-       * 原话原样留在 `error` 里:「404 Not Found」与「space not found」是两句
-       * 不同的话,合成一句就没法排障了。
-       */
-      async function call<T extends { success: boolean; error?: string }>(
-        run: (port: Awaited<ReturnType<typeof spacesPort>>) => Promise<T>,
-        onReject: (message: string) => T,
-      ): Promise<T> {
-        try {
-          return await run(await spacesPort())
-        } catch (err) {
-          return onReject(err instanceof Error ? err.message : String(err))
-        }
-      }
-
-      /** 写操作的共同收尾:重读列表(后端是唯一事实源,不在本地拼状态)。 */
-      async function reload(): Promise<void> {
-        const response = await call(
-          (port) => port.list(),
-          (error) => ({ success: false, error }),
-        )
-        if (response.success && response.spaces) {
-          set({ spaces: response.spaces, status: 'ready', error: undefined })
-          return
-        }
-        set({ spaces: fallbackSpaces(), status: 'error', error: response.error })
-      }
-
-      /** 失败弹出来,不吞。后端原话原样进 detail —— 那是排障唯一的线索。 */
-      function reportFailure(title: MessageKey, error: string | undefined): false {
-        notify({ level: 'error', source: 'workspace', title: t(title), detail: error })
-        return false
-      }
 
       return {
         spaces: [],
         status: 'idle',
         error: undefined,
         currentId: DEFAULT_SPACE_ID,
-        busy: false,
 
         load: async () => {
           if (loading) return loading
@@ -188,88 +340,59 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           set({ currentId: id })
         },
 
+        /*
+         * 四个写口一个形状:名字先 trim / 该拦的先拦 → 交给 mutation 那一格 →
+         * 砸了就照原样回(通知已经在 onError 里发过,这里不再报第二遍,列表也不重拉)
+         * → 成了就等这一口对账落地,再把承诺兑现给调用方。
+         */
         createWorkspace: async (name) => {
           const trimmed = name.trim()
           if (!trimmed) return null
-          set({ busy: true })
-          try {
-            const response = await call(
-              (port) => port.create({ name: trimmed, color: nextSwatch(get().spaces) }),
-              (error) => ({ success: false, error }),
-            )
-            if (!response.success || !response.space) {
-              reportFailure('workspace.createFailed', response.error)
-              return null
-            }
-            await reload()
-            // 建完就切过去:「新建」这个动作的全部语义就是「我要去那儿」。
-            set({ currentId: response.space.id })
-            return response.space.id
-          } finally {
-            set({ busy: false })
-          }
+          const done = await workspaceMutation.run({ kind: 'create', name: trimmed })
+          if (!done) return null
+          await reconcile
+          return done.createdId ?? null
         },
 
         rename: async (id, name) => {
           const trimmed = name.trim()
           if (!trimmed) return false
-          set({ busy: true })
-          try {
-            const response = await call(
-              (port) => port.update({ id, name: trimmed }),
-              (error) => ({ success: false, error }),
-            )
-            if (!response.success) return reportFailure('workspace.renameFailed', response.error)
-            await reload()
-            return true
-          } finally {
-            set({ busy: false })
-          }
+          const done = await workspaceMutation.run({ kind: 'rename', id, name: trimmed })
+          if (!done) return false
+          await reconcile
+          return true
         },
 
         recolor: async (id, swatch) => {
-          set({ busy: true })
-          try {
-            const response = await call(
-              (port) => port.update({ id, color: swatch }),
-              (error) => ({ success: false, error }),
-            )
-            if (!response.success) return reportFailure('workspace.recolorFailed', response.error)
-            await reload()
-            return true
-          } finally {
-            set({ busy: false })
-          }
+          const done = await workspaceMutation.run({ kind: 'recolor', id, swatch })
+          if (!done) return false
+          await reconcile
+          return true
         },
 
         remove: async (id) => {
           // 当前那一个不许删 —— 删掉脚下这块地会让「当前」当场变成幽灵。
           if (get().currentId === id) return false
-          set({ busy: true })
-          try {
-            const response = await call(
-              (port) => port.remove(id),
-              (error) => ({ success: false, error }),
-            )
-            if (!response.success) {
-              const reason = response.code ? REMOVE_REJECTION[response.code] : undefined
-              return reportFailure(reason ?? 'workspace.removeFailed', response.error)
-            }
-            await reload()
-            return true
-          } finally {
-            set({ busy: false })
-          }
+          const done = await workspaceMutation.run({ kind: 'remove', id })
+          if (!done) return false
+          await reconcile
+          return true
         },
 
+        /**
+         * 本模块**唯一的那一口拆卸**:读的闸、对账的把手、写路那只 mutation
+         * (它自带监听表与逐格计数)连同 store 自己一起归零。
+         * 下面的 HMR dispose 复用它,不另写一套。
+         */
         reset: () => {
           loading = undefined
+          reconcile = undefined
+          workspaceMutation.reset()
           set({
             spaces: [],
             status: 'idle',
             error: undefined,
             currentId: DEFAULT_SPACE_ID,
-            busy: false,
           })
         },
       }
@@ -282,6 +405,23 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     },
   ),
 )
+
+/**
+ * **HMR 退役**(09-01 批 1 立的纪律,起因是 chat-source 那一案:热更之后旧模块
+ * 的模块级副作用没死,两个实例同时活着)。
+ *
+ * 这个文件的模块级副作用有两样:写路那只 `workspaceMutation`(监听表 + 逐格
+ * 计数)与对账把手 `reconcile`。两样的寿命都是「这个模块实例」,而热更换的
+ * 正是模块实例 —— 不退役,旧 mutation 的监听表会攥着已卸载组件的回调。
+ *
+ * 退役**复用这个模块已有的那一口拆卸**(`reset()`),不写第二套。它自身幂等;
+ * 生产构建里 `import.meta.hot` 是 undefined,整段被 tree-shake 掉。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    useWorkspaceStore.getState().reset()
+  })
+}
 
 /**
  * 屏幕上的那份工作区表。**三个入口都调它** —— 投影只在这里发生一次,

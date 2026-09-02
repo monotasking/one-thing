@@ -49,7 +49,21 @@ export interface AuthFlowState {
   paste?: PasteFlowFacts
   /** 贴码框里那个正在打的码。 */
   code: string
-  /** 正在起步 / 正在提交码 —— 钮上转 spinner 的那一档。 */
+  /**
+   * 正在起步 / 正在提交码 —— 钮上转 spinner 的那一档。
+   *
+   * 它是**登录流状态机**(kind / device / paste / code / busy / error 六格一体)
+   * 的一档,而这台状态机本身**按 providerId 逐坑分格**存
+   * (`authFlow: Record<providerId, AuthFlowState>`);消费面 `OAuthCard` 只读
+   * 自己那一坑、只禁自己那颗钮 —— 没有「一坑在登录、整面禁灰」这回事。
+   * 换句话说这里的忙态是**流程的一个档位**(与 kind/error 同生共死,回到
+   * `IDLE_AUTH_FLOW` 时一起归零),不是一颗写路布尔。
+   * 什么时候该迁:若日后把 `start` / `submit` 两步各自拆成一条 mutation
+   * (那时忙态的产地就变成那两发写、而不是这台状态机),这一格随之退役。
+   *
+   * ui-consume-allow: async-busy-boolean — 逐坑分格,粒度已经合律③;它是登录流
+   * 状态机的一档而非写路布尔,今天没有一条 mutation 可挂。理由全文见上。
+   */
   busy: boolean
   error?: string
 }

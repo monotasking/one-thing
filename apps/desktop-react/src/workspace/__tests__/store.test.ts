@@ -173,3 +173,79 @@ describe('写', () => {
     expect(latest?.detail).toBe('space still has 3 sessions')
   })
 })
+
+/* ── 写路迁 createMutation 之后,失败那一半逐字等价(09-02 批 5)──────────── */
+
+describe('写砸了', () => {
+  /**
+   * 迁移是**等价替换**,而最容易在换心的时候漏掉的正是失败那一半。三条一起钉:
+   * ①一条通知到(标题是这个口自己那句、详情是后端原话);②返回值是原来那个
+   * false/null;③**列表不重拉** —— 后端都说没成了还去重读一遍,等于用一次
+   * 多余的往返把屏幕上的东西重铺一遍(律②/律④两头都不划算)。
+   */
+  async function listCallsAfter(run: () => Promise<unknown>, port: SpacesPort): Promise<number> {
+    await useWorkspaceStore.getState().load()
+    ;(port.list as ReturnType<typeof vi.fn>).mockClear()
+    await run()
+    return (port.list as ReturnType<typeof vi.fn>).mock.calls.length
+  }
+
+  it('建砸了:回 null、弹一条 createFailed、列表不重拉', async () => {
+    const port = installPort({ create: vi.fn(async () => ({ success: false, error: '建不了' })) })
+    let answer: string | null = 'sentinel'
+    const calls = await listCallsAfter(async () => {
+      answer = await useWorkspaceStore.getState().createWorkspace('新的')
+    }, port)
+    expect(answer).toBeNull()
+    expect(calls).toBe(0)
+    expect(useNotifyStore.getState().items[0]?.detail).toBe('建不了')
+    expect(useNotifyStore.getState().items[0]?.level).toBe('error')
+  })
+
+  it('改名砸了:回 false、弹一条、列表不重拉', async () => {
+    const port = installPort({ update: vi.fn(async () => ({ success: false, error: '名字重了' })) })
+    let answer = true
+    const calls = await listCallsAfter(async () => {
+      answer = await useWorkspaceStore.getState().rename('ws-personal', '私人')
+    }, port)
+    expect(answer).toBe(false)
+    expect(calls).toBe(0)
+    expect(useNotifyStore.getState().items[0]?.detail).toBe('名字重了')
+  })
+
+  it('换色砸了:回 false、弹一条、列表不重拉', async () => {
+    const port = installPort({ update: vi.fn(async () => ({ success: false, error: '色没换上' })) })
+    let answer = true
+    const calls = await listCallsAfter(async () => {
+      answer = await useWorkspaceStore.getState().recolor('ws-personal', 'teal')
+    }, port)
+    expect(answer).toBe(false)
+    expect(calls).toBe(0)
+    expect(useNotifyStore.getState().items[0]?.detail).toBe('色没换上')
+  })
+
+  it('删砸了:回 false、列表不重拉', async () => {
+    const port = installPort({
+      remove: vi.fn(async () => ({ success: false, code: 'NOT_EMPTY', error: '还有会话' })),
+    })
+    let answer = true
+    const calls = await listCallsAfter(async () => {
+      answer = await useWorkspaceStore.getState().remove('ws-personal')
+    }, port)
+    expect(answer).toBe(false)
+    expect(calls).toBe(0)
+    expect(useNotifyStore.getState().items[0]?.detail).toBe('还有会话')
+  })
+
+  /**
+   * 后端答「不成功」但**一个字的原话都没给**。这一条钉的是换心时最容易丢的那格:
+   * 抛的若是 `new Error(response.error)`,「没有原话」会变成空字符串,通知的
+   * detail 就从「没有」变成「空的」。所以 store 抛的是自带 detail/code 两格的
+   * `WorkspaceWriteError`。
+   */
+  it('后端没给原话时,详情是「没有」而不是空字符串', async () => {
+    installPort({ update: vi.fn(async () => ({ success: false })) })
+    expect(await useWorkspaceStore.getState().rename('ws-personal', '私人')).toBe(false)
+    expect(useNotifyStore.getState().items[0]?.detail).toBeUndefined()
+  })
+})

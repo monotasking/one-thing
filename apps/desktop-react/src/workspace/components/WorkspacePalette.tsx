@@ -6,11 +6,12 @@ import { Kbd } from '../../ui/Kbd'
 import { useFocusTrap } from '../../ui/a11y/focus-trap'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { useAsyncPending } from '../../data/kernel'
 import { useT } from '../../i18n'
 import { currentKeymapPlatform, useKeymapStore } from '../../keymap/store'
 import { effectiveCombo, formatCombo, workspaceSlotCommandId } from '../../keymap/transitions'
 import { filterWorkspaces } from '../projection'
-import { useWorkspaceStore, useWorkspaceViews } from '../store'
+import { useWorkspaceStore, useWorkspaceViews, workspaceKey, workspaceMutation } from '../store'
 import type { WorkspaceView } from '../types'
 import { useWorkspacePalette } from './palette-hub'
 import sw from '../swatch.module.css'
@@ -45,7 +46,12 @@ export function WorkspacePalette() {
   const views = useWorkspaceViews()
   const switchTo = useWorkspaceStore((st) => st.switchTo)
   const createWorkspace = useWorkspaceStore((st) => st.createWorkspace)
-  const busy = useWorkspaceStore((st) => st.busy)
+  /*
+   * 新建那一格在不在飞。读的是 `workspaceMutation` 的 create 那一格,不是从前
+   * store 上那颗全局 `busy` 布尔 —— 别处的改名 / 换色 / 删除不该把这块面的
+   * 「新建『<词>』工作区…」那一行拦住(病型 B)。
+   */
+  const creating = useAsyncPending(workspaceMutation, workspaceKey.create())
   const overrides = useKeymapStore((st) => st.overrides)
   const platform = currentKeymapPlatform()
 
@@ -108,7 +114,7 @@ export function WorkspacePalette() {
 
   const create = () => {
     const name = query.trim()
-    if (!name || busy) return
+    if (!name || creating) return
     void createWorkspace(name)
     setOpen(false)
   }

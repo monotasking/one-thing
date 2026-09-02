@@ -33,6 +33,17 @@ function walk(dir: string): string[] {
   return out
 }
 
+/** 同一趟走法,换一种后缀 —— 下面那条 cursor 断言扫的是样式表不是源码。 */
+function walkCss(dir: string): string[] {
+  const out: string[] = []
+  for (const name of readdirSync(dir)) {
+    const full = path.join(dir, name)
+    if (statSync(full).isDirectory()) out.push(...walkCss(full))
+    else if (/\.css$/.test(full)) out.push(full)
+  }
+  return out
+}
+
 describe('ButtonBase:组件行为', () => {
   it('默认 type="button"(表单里不许顺手提交整张表)', () => {
     render(<ButtonBase>展开这一组</ButtonBase>)
@@ -120,5 +131,43 @@ describe('ButtonBase:样式表的配方', () => {
 
   it('禁裸删 outline:清 UA 不许把焦点环一起清掉', () => {
     expect(sheet).not.toMatch(/outline\s*:\s*none/)
+  })
+})
+
+/**
+ * ── 兑现那一条 `:disabled { cursor: default }`(09-02 批 5)────────────────
+ * 基座自己那一句被 `:where()` 压成 0 特异性,赢不过 `styles/global.css` 里
+ * (0,0,1) 的 `button { cursor: pointer }` —— 从写下那天起就没生效过。
+ * 兑现它的是**全局那一条** `button:disabled { cursor: default }`(0,1,1)。
+ *
+ * 为什么断言读的是**源文本**而不是渲染后的 computed:jsdom 不做层叠计算,
+ * 也根本不加载 `global.css`,`getComputedStyle` 在这里恒回空 —— 拿它当判据
+ * 会得到一条永远绿的假断言。真机侧的读数(禁用基座钮 computed cursor 读回
+ * `default`)是这条的另一半,两条一起才算钉住。
+ */
+describe('ButtonBase:禁用的钮不给「可点」的手势', () => {
+  const globalCss = readStripped(path.resolve(srcDir, 'styles/global.css'))
+
+  it('全局那条 (0,1,1) 在 —— 没有它,基座那一句是死信', () => {
+    expect(globalCss, 'src/styles/global.css 读不到').not.toBe('')
+    expect(globalCss).toMatch(/(^|\})\s*button:disabled\s*\{[^}]*cursor:\s*default/)
+  })
+
+  it('基座自己那一句也留着 —— 它是基座对这一格的表态,两条同向', () => {
+    expect(sheet).toMatch(/:where\(button\[data-ui-base\]:disabled\)\s*\{[^}]*cursor:\s*default/)
+  })
+
+  it('全 src 没有哪一处在 :disabled 上反着写 pointer / not-allowed', () => {
+    const offenders: string[] = []
+    for (const file of walkCss(srcDir)) {
+      const text = readStripped(file)
+      // 选择器里带 :disabled 的那些块,块内不许出现 pointer / not-allowed。
+      for (const [, selector, body] of text.matchAll(/([^{}]*:disabled[^{}]*)\{([^}]*)\}/g)) {
+        if (/cursor:\s*(pointer|not-allowed)/.test(body)) {
+          offenders.push(`${path.relative(srcDir, file)} — ${selector.trim()}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
   })
 })

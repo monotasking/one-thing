@@ -109,8 +109,11 @@ describe('subscribeCurrentSpace —— 只在解析过的 id 真变了才叫', (
     const stop = subscribeCurrentSpace((next) => seen.push(next))
 
     // store 的每一次写都会推一次订阅,这三次都不该穿过去。
-    useWorkspaceStore.setState({ busy: true })
-    useWorkspaceStore.setState({ busy: false })
+    // (09-02 批 5:前两发原本推的是 `busy: true/false` —— 那颗全局忙布尔已经迁进
+    //  workspaceMutation,不在 store 上了。换成读列表那两档状态翻转,推的次数
+    //  与「不该穿过去」这件事一字不变。)
+    useWorkspaceStore.setState({ status: 'loading' })
+    useWorkspaceStore.setState({ status: 'ready' })
     useWorkspaceStore.setState({ spaces: [DEFAULT, { ...WORK, name: '工作(改过名)' }] })
     expect(seen).toEqual([])
 

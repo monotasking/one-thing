@@ -56,6 +56,47 @@ button {
   cursor: pointer;
 }
 
+/*
+ * **禁用的按钮不给「可点」的手势**(09-02 批 5)。
+ *
+ * 上面那条 `button` 是 (0,0,1),它把 `cursor: pointer` 发给了每一颗按钮 ——
+ * 包括按不动的那些。`ui/ButtonBase` 里那句
+ * `:where(button[data-ui-base]:disabled) { cursor: default }` 想纠正这一格,
+ * 但 `:where()` 把它压成 **0** 特异性,元素选择器恒赢,于是那句话从写下的那天
+ * 起就没生效过(病历原文在 `ui/ButtonBase.css` 文件头)。
+ *
+ * 修在**这里**而不是那里:病根是全局这条规则说得太满,不是基座压得太狠 ——
+ * 基座压零特异性是它的立身之本(消费方随便一个类都要能盖过它,顺序不参与)。
+ * 这条 (0,1,1) 既赢得过 (0,0,1) 的元素选择器,也赢得过消费方皮肤上那些
+ * (0,1,0) 的 `cursor: pointer`(`.newCard` / `.name` / `.op` 之类),
+ * 所以它对**全仓每一颗禁用 button** 都成立 —— 那正是设计本意,不是副作用。
+ *
+ * 全 src 核过一遍:没有任何一处在 `:disabled` 上写 `cursor: pointer` 或
+ * `not-allowed`,所以这条盖不掉任何一个刻意的相反决定;`ui/Button`、
+ * `ui/IconButton`、`ui/GroupHead`、`WorkspaceOverview` 的 `.name` 那几句
+ * `:disabled { cursor: default }` 与它同向,留着不冲突(它们 (0,2,0) 本来就更高)。
+ *
+ * ── 它今天到底改了谁(真机量过,不吹)───────────────────────────────────
+ * **今天的存量几乎读不出差别**:凡是能进禁用态的钮,要么走 ui/Button ·
+ * ui/IconButton · ui/GroupHead(各自那句 (0,2,0) 早把这一格钉住了),要么像
+ * 总览卡的名字 `.name` 一样自己写了一句。真机 A/B(剜掉产物里这条规则再读一遍)
+ * 在总览那一屏读数**一动不动**,正是这个原因。
+ * 真正的战场是**没有自己那一句的基座消费方** —— 两个探针量得清清楚楚:
+ * 光秃秃的禁用基座钮 default→pointer、带一个 (0,1,0) `cursor: pointer` 皮肤的
+ * 禁用基座钮 default→pointer(没禁的那颗恒 pointer,对照不动)。
+ * `WorkspaceOverview.module.css` 的 `.newCard` 正是后一形:它有
+ * `cursor: pointer` 而没有 `:disabled` 那一句,忙起来的那一程就靠这条规则说话。
+ * 换句话说这条规则治的是**将来每一颗**结构件禁用钮,顺带把基座那句死了很久的
+ * 声明兑现掉 —— 它不是一次视觉改版。
+ *
+ * 守卫:`ui/__tests__/ButtonBase.test.tsx` 读这份源文本断言这条规则在
+ * (jsdom 不做层叠计算,computed 在那里恒空,拿它当判据是条假断言);
+ * 真机侧那两个层叠探针是另一半,拆掉即红。
+ */
+button:disabled {
+  cursor: default;
+}
+
 /* 无位移原则:hover/active 一律不位移。唯二例外 = Dock 磁性放大、(未来的)弹跳提醒。 */
 
 /* ── 焦点柔光环:全系统的**兜底**画法(A11y 线 · A2)────────────────────────
