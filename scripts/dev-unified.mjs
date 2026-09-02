@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import os from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import process from 'node:process'
 
 import {
@@ -451,45 +451,6 @@ function shutdown(code = 0, signal = 'SIGTERM') {
   })()
 }
 
-// better-sqlite3 只在 Node ABI / 包版本变化时才需要 rebuild;
-// 无脑 `npm rebuild` 每次要 ~1.3s,且重写 .node 会连带触发 dev 签名重签。
-function ensureBetterSqliteNodeAbi() {
-  const markerPath = join('node_modules', '.cache', 'onething-sqlite-abi.json')
-  const binaryPath = join('node_modules', 'better-sqlite3', 'build', 'Release', 'better_sqlite3.node')
-  let pkgVersion = ''
-  try {
-    pkgVersion = JSON.parse(readFileSync(join('node_modules', 'better-sqlite3', 'package.json'), 'utf8')).version
-  } catch {
-    // 包不存在时走 rebuild 报错路径。
-  }
-  const expected = {
-    nodeVersion: process.version,
-    nodeModulesAbi: process.versions.modules,
-    pkgVersion,
-  }
-
-  try {
-    const marker = JSON.parse(readFileSync(markerPath, 'utf8'))
-    if (
-      existsSync(binaryPath)
-      && marker.nodeVersion === expected.nodeVersion
-      && marker.nodeModulesAbi === expected.nodeModulesAbi
-      && marker.pkgVersion === expected.pkgVersion
-    ) {
-      log('server', 'better-sqlite3 matches Node ABI, skipping rebuild')
-      return
-    }
-  } catch {
-    // 标记缺失或损坏 → rebuild。
-  }
-
-  runBlocking('server', npmCommand(), ['run', 'rebuild:sqlite:node'], {
-    title: 'rebuilding better-sqlite3 for Node',
-  })
-  mkdirSync(dirname(markerPath), { recursive: true })
-  writeFileSync(markerPath, JSON.stringify(expected))
-}
-
 async function startBackendLane() {
   // 桌面在同一次 run 里 → 它就是这个 store 的 core,不起第二个引擎进程。
   if (managesElectron) {
@@ -503,7 +464,10 @@ async function startBackendLane() {
     return
   }
   log('dev', 'preparing web backend')
-  ensureBetterSqliteNodeAbi()
+  // 这里曾有一段「按标记文件决定要不要 `npm rebuild better-sqlite3`」的 ABI 舞步。
+  // better-sqlite3 已于 2026-09-03 整体退役(全仓零消费者),而今天真在用的三个原生
+  // 模块都是 N-API,一块二进制两个运行时通吃 —— 没有 ABI 要对,也就没有这一步。
+  // 想知道它们到底能不能在两个运行时下加载:`npm run gate:native`。
   // dev-self 的 server bundle 走独立 outDir:两条泳道往同一个
   // dist/server/main.js 里构建会互相截断,产物路径本身也是进程 marker。
   runBlocking('server', npmCommand(), [

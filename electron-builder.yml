@@ -1,12 +1,30 @@
 appId: com.onething.app
 productName: onething
-# castlabs electron 的版本号 41.1.1+wvcus 让 node-abi 解析失败;native 模块
-# (better-sqlite3/node-pty/sherpa) 已按该 electron 的 ABI 编好(dev 实机在跑),
-# 打包直接带现有 .node,跳过 rebuild。
+# 这棵树里的原生模块**一块二进制同时喂两个运行时**,所以不重建:
+#   node-pty / sherpa-onnx-node(+ 各平台包)/ resources/native/macos_panel.node
+# 三件全是 **N-API** 插件 —— N-API 是 ABI 稳定的 C 接口,不吃 V8 的内部 ABI,
+# 同一份 .node 在 Node(server / CLI / vitest)与 Electron(桌面)下都能 dlopen。
+# 重建对它们只是白烧一遍工具链,还会把 sherpa 的预编译平台包顶掉。
+#
+# **这句话不是靠注释成立的**:`npm run gate:native` 逐块二进制在系统 Node 与
+# `ELECTRON_RUN_AS_NODE=1` 的 Electron 下各 require 一次,再用 `nm -u` 扫未定义
+# 符号(出现 _v8 / node:: / node_module_register 即红)。加新原生依赖先过那道门。
+# 2026-09-03 读数:node-pty / sherpa-onnx-darwin-arm64 / macos_panel 三块在
+# Node ABI 127 与 Electron ABI 145 下全部加载成功,napi_* 符号 38 / 58 / 7,
+# v8+node 内部符号 0。
+#
+# 第二条理由(与 N-API 无关,单独成立):这条链上的 node-abi 根本不认识 Electron 41。
+# electron-builder@26.4.0 → @electron/rebuild@4.0.1 → node-abi@4.25.0,它的 electron
+# 目标表最高只到 40.0.0-alpha.2,`getAbi('41.1.1','electron')` 直接抛
+# "Could not detect abi"。**换回官方版本号并不能修好这一条** —— 实测 `41.1.1` 与
+# 旧的 `41.1.1+wvcus` 一样抛。旧注释把这件事记成「castlabs 的版本号让 node-abi 解析
+# 失败」,那是把「node-abi 太老」误写成「版本号不合法」;这一行的正确理由是上面那条
+# N-API,node-abi 只是又一个不该走 rebuild 的原因。
+#
+# 2026-09-03 起 electron 换回官方 npm 包(41.1.1,内嵌 Node 24.14 / ABI 145 与
+# castlabs 那份逐字相同),它在官方下载源里有,`electronDist: node_modules/electron/dist`
+# 那条变通随之退役。
 npmRebuild: false
-nodeGypRebuild: false
-# castlabs electron(41.1.1+wvcus)不在官方下载源;直接用本地安装的 dist。
-electronDist: node_modules/electron/dist
 directories:
   buildResources: build
   output: release

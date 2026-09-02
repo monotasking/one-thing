@@ -26,7 +26,9 @@ let currentProxyConfig: ElectronProxyConfig | null = null
  * The UA the embedded browser presents — the PROVEN recipe for logging into
  * Google inside an embedded Chromium (replicates Flow Browser, which logs into
  * Google on castlabs Electron). Verified against the real "browser may not be
- * secure" block 2026-07-26.
+ * secure" block 2026-07-26. **2026-09-03 换回官方 Electron 后这条配方未重验** ——
+ * 它由 UA 与 FedCM 两格构成,与 Widevine / CDM 无关(那一格已随换核变成 no-op),
+ * 但「不依赖」是推理不是读数,真要用内嵌登录时按同法再验一次。
  *
  * The ONE thing that matters: strip ONLY the ` Electron/<ver>` token and keep
  * EVERYTHING else — the app product token (`onething/x.y.z`) AND the full

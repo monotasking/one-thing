@@ -84,9 +84,10 @@ export class BrowserViewService {
 		this.coalescer = createTabStateCoalescer((event) => {
 			this.getBroadcaster()?.sendTabsChanged(event)
 		})
-		// castlabs Widevine must be readied before the browser loads DRM content;
-		// kick it off the moment the browser subsystem first wakes (memoized;
-		// no-op on non-castlabs Electron). Part of the embedded-Google-login recipe.
+		// Widevine must be readied before the browser loads DRM content; kick it off
+		// the moment the browser subsystem first wakes (memoized). Since 2026-09-03
+		// this is a **no-op in production** — the repo runs official Electron, which
+		// ships no CDM; the call survives so a CDM-bearing base would just work.
 		void ensureWidevineReady()
 	}
 

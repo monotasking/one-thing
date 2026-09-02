@@ -1,5 +1,16 @@
 # castlabs Electron 迁移 — 内嵌浏览器登录 Google
 
+> **已退役(2026-09-03,用户拍板)。本文自此是历史记录,不是现状。**
+> 仓根依赖换回官方 `electron@41.1.1`(同大版本,内嵌 Node 24.14 / ABI 145 不变),
+> `experiment/castlabs-electron` 分支本地与 origin 均已删除。
+> 随之作废的现状描述:`package.json` 的 github 依赖串、`electron-builder.yml` 的
+> `electronDist` 与 `npmRebuild:false` 的旧理由、下文 §"分发要补的 EVS 脚手架"。
+> **代价(用户已接受)**:官方构建不带 Widevine CDM,`ensureWidevineReady()` 在生产上
+> 恒为 no-op,内嵌浏览器不再能播 DRM 内容。UA + FedCM 那两格登录配方与 CDM 无关,
+> 但换核后**未重验**,记在 `apps/electron/src/browser/session.ts` 文件头。
+> 换回来的理由:一个不在官方下载源、node-abi 不认版本号的定制底座,把打包链逼出了
+> 一串只为它存在的变通,而它换来的能力(DRM 播放)今天没有产品在用。
+>
 > 分支 `experiment/castlabs-electron`。2026-07-26 落地，真机已验证内嵌浏览器可登录 Google。
 
 ## 为什么

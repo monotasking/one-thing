@@ -16,8 +16,9 @@ import { createServer } from 'vite'
 /**
  * **Electron 本体不在这个应用里重装一份**(D0 裁量,2026-08-29)。
  *
- * 仓根已经装着这个壳要用的那一份 —— 而且不是 npm 上的 `electron`,是
- * `github:castlabs/electron-releases#v41.1.1+wvcus`(带 Widevine 的定制 build)。
+ * 仓根已经装着这个壳要用的那一份 —— 官方 npm 包 `electron@41.1.1`(2026-09-03 从
+ * castlabs 的 `41.1.1+wvcus` 定制 build 换回来,内嵌 Node 24.14 / ABI 145 不变;
+ * 代价是 Widevine 不再就绪,内嵌浏览器的 DRM 播放没了,登录配方本身不依赖它)。
  * 在这里再声明一个 `electron` devDep 会得到:第二份 ~250MB 二进制、和旧壳漂开的
  * 版本、以及一次必然要联网的 postinstall。`import 'electron'` 从这里出发按 node
  * 解析往上走,命中的就是仓根那一份 —— 两个壳同一个运行时,正是并行过渡期要的。

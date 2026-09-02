@@ -32,7 +32,7 @@ bun run sign:dev:mac       # sign dev binaries
 # Linting & Testing
 bun run lint               # ESLint with auto-fix
 bun run lint:ci            # eslint . --max-warnings 200
-bun run test               # vitest run (rebuilds better-sqlite3 for Node ABI first)
+bun run test               # vitest run (no native rebuild — every native module here is N-API)
 bun run test:watch         # vitest (watch mode)
 bun run typecheck          # typecheck:node + typecheck:web
 
@@ -41,6 +41,7 @@ bun run boundary           # full static boundary checker (scripts/headless-boun
 bun run boundary:gate      # zero-baseline hard gate: any `[boundary] failed:` line exits 1
 bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
 bun run log:check          # the full console.* call-site list behind that gate
+bun run gate:native        # every native .node loads under BOTH Node and Electron (N-API law)
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
@@ -51,9 +52,25 @@ bun run evals              # bun evals/run.mjs
 bun run evals:diagnose     # scripts/diagnose-weekly.mjs
 ```
 
-**两份锁文件,各有权威**:`package-lock.json` 是打包 / rebuild 的权威——package.json scripts 全走 npm、
-`npm rebuild better-sqlite3` 是 test/postinstall 硬依赖、electron-builder 的 node-module-collector 按锁文件探测包管理器
-(07-29 "bun collector 打包缺依赖"的变通);`bun.lock` 只服务日常 dev/test 执行。两份都提交,不是误跑残留。
+**两份锁文件,各有权威**:`package-lock.json` 是打包的权威——package.json scripts 全走 npm、
+electron-builder 的 node-module-collector 按锁文件探测包管理器(07-29 "bun collector 打包缺依赖"的变通);
+`bun.lock` 只服务日常 dev/test 执行。两份都提交,不是误跑残留。
+(2026-09-03:第三条理由「`npm rebuild better-sqlite3` 是 test/postinstall 硬依赖」随 better-sqlite3
+退役一起没了 —— 今天的 `postinstall` 只剩 `fix:node-pty-perms`,`test` 直接 `vitest run`。)
+
+**Node 版本**:`.nvmrc` = `24`(Electron 41 内嵌的就是 Node 24.14 / ABI 145,开发机与桌面运行时同一个大版本);
+`engines.node` = `>=22.13 <26`,地板 22.13 是 `node:sqlite` 免 `--experimental` 标志的第一个版本。
+
+**换过 Electron 二进制之后,第一次起桌面必须是「人手起、并在钥匙串弹框上点允许」**
+(2026-09-03 换核时实测挖出来的,不是理论):`safeStorage` 是 Keychain 的门面,**绑 app 的代码签名身份**。
+`sign:dev:mac` 给 Electron.app 打的是 ad-hoc 签名,换一份二进制就是换一个身份,于是同一条
+「onething Safe Storage」钥匙串条目的 ACL 不再匹配 → macOS 弹授权框。**脚本起的进程没人点那个框,
+于是 `safeStorage.isEncryptionAvailable()` 永不返回**:表现是 `createOnethingBackend` 停在
+`migrateProviderConfigToDefaultSpace()`,进程 0% CPU、不报错、`<store>/log/*.jsonl` 一行都没有、窗口不开。
+任何自己装配 backend 的门(React 壳的 `gate:connect` 路径一、`bun run electron:dev`)都会这样挂住。
+点过一次「始终允许」之后 ACL 收下新身份,后续脚本启动才正常。
+**这不是回归,是 macOS 的凭证隔离在按设计工作** —— 也正是 `apps/desktop-react/electron/main.ts` 文件头
+「子进程是另一个 app 身份,safeStorage 的密文它解不开」那条判例的同一个机制。
 
 Dev ports: Electron renderer dev server **5173**, web frontend **5174**. The core HTTP/SSE port is **dynamic** since A 期 (`docs/design/one-core-2026-08.md`): whoever serves the store writes `<store>/run/http.json`, and apps/web's dev `/api` proxy (`apps/web/dev-api-proxy.ts`, a plugin — vite's built-in proxy pins its target at creation) re-reads that file per request and injects the Bearer token, falling back to `ONETHING_API_URL` || `http://127.0.0.1:8787`. `bun run dev` with the electron lane does NOT start a second server process — the desktop is the core.
 
@@ -182,6 +199,15 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend`, baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
+- `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
+  at the top of this file. It enumerates every native addon this repo actually ships
+  (`node-pty`, `sherpa-onnx-node` + the platform package for the current OS/arch,
+  `resources/native/macos_panel.node`) and, for each binary, (a) `require`s it under the **system Node**
+  and again under **`ELECTRON_RUN_AS_NODE=1` Electron** — a `NODE_MODULE_VERSION` mismatch prints the
+  runtime's own words and turns the gate red — and (b) on macOS runs `nm -u` over it: any undefined
+  `_v8…` / `node::…` / `_ZN2v8…` symbol is a V8-ABI-private binding and is red on the spot (the static
+  half; on non-macOS it is skipped with a printed reason). `--json` prints the machine-readable table.
+  Adding a native dependency means passing this gate — the ABI claim never lives in a comment again.
 - `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
 
 Notes:

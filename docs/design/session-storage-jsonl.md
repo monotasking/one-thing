@@ -3,8 +3,14 @@
 状态:Phase 0-2 已实施(2026-07-07)。flag `settings.storage.sessionFormat` 默认 **jsonl**(设 legacy-json 即回滚);
 惰性迁移在会话冷加载时触发(暂存目录 + 写代际冲突检测 + 逐条校验 + legacy-backup);
 真实数据灰度:164 会话 276MB 双向转换往返,语义 diff = 0。
-偏差记录:`rebuild:sqlite:node` 保留(memory 系统仍用 better-sqlite3,test 脚本依赖);
-repository/message-runtime 的 `sqlite?` 适配器接口位与 `syncSessionToSqliteIfReady` 调用链暂保留为空挂钩,后续单独清理。
+偏差记录:~~`rebuild:sqlite:node` 保留(memory 系统仍用 better-sqlite3,test 脚本依赖)~~
+**2026-09-03 结清**:memory 系统 2026-08-06 已整体退役,better-sqlite3 从此零消费者;
+本日把依赖、`@types/better-sqlite3`、`rebuild:sqlite:node`、`migrate:sessions:sqlite`
+与 dev-unified 的 ABI 标记块一并删掉,`postinstall` 只剩 `fix:node-pty-perms`、
+`test` 直接 `vitest run`。下文 §"清理清单" 里那句"根 package.json 的 better-sqlite3
+依赖因 memory 仍需保留"随之作废。
+repository/message-runtime 的 `sqlite?` 适配器接口位与 `syncSessionToSqliteIfReady` 调用链**仍是**空挂钩
+(它们只是形状,不 import 任何 sqlite 包,删除是一次跨 backend/runtime 的重构),后续单独清理。
 Phase 3(steps/toolCalls 去重已由 session-dehydrate 覆盖大半;blob 外置)待实施。
 日期:2026-07-07
 前置阅读:`docs/design/long-session-storage-and-rendering.md`(旧 SQLite 方案,已废弃)

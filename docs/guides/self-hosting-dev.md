@@ -82,8 +82,8 @@ git worktree remove ../start-electron-dev             # 拆掉(提交不丢,历�
    `packages/onething-runtime/src/prompts/builder.ts`(`AGENTS.md` 优先、`CLAUDE.md` 垫底,
    上限 64KB —— 本仓 CLAUDE.md 41.7KB,不会被截)。
 
-3. **改码。** 正常用 edit/write/bash;跑测试用 `bun run test`(先 rebuild better-sqlite3,
-   耗时但与在跑的实例无冲突),门用 `bun run typecheck` / `boundary:gate` / `ui:gate`。
+3. **改码。** 正常用 edit/write/bash;跑测试用 `bun run test`(直接 `vitest run`,不再有
+   原生模块 rebuild 那一步),门用 `bun run typecheck` / `boundary:gate` / `ui:gate`。
 
 4. **`bun run dev:self` 起 B,真机走查。**
    默认只起 Electron(桌面宿主):
@@ -144,8 +144,8 @@ server 的 `dist/dev-self-server/main.js`;web 前端没有产物路径,用它独
 - **同一个 store 里 desktop 和 server 不能同时起**:`StoreLock` 一个 store 只允许一位持有者
   (`desktop` / `daemon` / `server`)。所以 `dev:self all` 在桌面已起时,server 泳道会撞锁。
   要同时要两条,给 server 另开一个 store(`ONETHING_STORE_PATH` 指别处再单起)。
-- **`bun run test` 会先 `npm rebuild better-sqlite3`**:与正在跑的实例没有冲突(Electron 用的是
-  自己那份 ABI),只是每次多花十几秒。
+- **`bun run test` 不再 rebuild 任何原生模块**(2026-09-03,better-sqlite3 退役):今天在用的
+  三件都是 N-API,一块二进制同时喂 Node 与 Electron,没有 ABI 要对。想验这句话:`bun run gate:native`。
 - **验证不改状态**:真机走查时别去点会持久化的控件;要手改 `~/.onething` 下的文件,先把对应
   实例停掉,否则内存里的缓存会把你的手改盖回去。这条对 `~/.onething-dev` 同样成立。
 - **`build:native:mac` / `sign:dev:mac` 是共享步骤**:两条泳道起手都会跑一遍(检查即跳过),
