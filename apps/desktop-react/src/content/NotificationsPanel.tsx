@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
+import { ButtonBase } from '../ui/ButtonBase'
 import { Segmented } from '../ui/Segmented'
 import type { SegmentedOption } from '../ui/Segmented'
+import { StatusDot } from '../ui/StatusDot'
+import type { StatusDotTone } from '../ui/StatusDot'
 import { serializeNotifications, useNotifyStore } from '../services/notify-store'
 import type { NotifyLevel, NotifyRecord } from '../services/notify-store'
 import { useSessionTime } from '../expose/components/session-time'
@@ -40,13 +43,21 @@ const BUCKET_LABELS: Record<DayBucket, MessageKey> = {
   earlier: 'notify.earlier',
 }
 
-/** 级别 → 那颗色点的类。silent 也有一颗(line-2 的灰):它进了存档,就得看得见。 */
-const DOT_CLASS: Record<NotifyLevel, string> = {
-  success: 'dotSuccess',
-  info: 'dotInfo',
-  warn: 'dotWarn',
-  error: 'dotError',
-  silent: 'dotSilent',
+/**
+ * 级别 → `ui/StatusDot` 的哪一档(09-02 批 6 收编,原先这里是本地 `.dot*` 五条自绘)。
+ *
+ * 五档一一对得上,一格都没有将就:success→ok(--ok)、info→info(--info,
+ * 批 6 给库件补的第六档,理由见 StatusDot.tsx)、warn→warn、error→bad(--danger)、
+ * **silent→off**(--line-2)—— silent 从来没弹过但它进了存档,`off` 说的正是
+ * 「这一档存在、但它不出声」,与库件里那句「停用」是同一个意思。
+ * 底色逐格与从前逐字相同,几何也同(--notify-dot 与 --status-dot 同为 6px)。
+ */
+const DOT_TONE: Record<NotifyLevel, StatusDotTone> = {
+  success: 'ok',
+  info: 'info',
+  warn: 'warn',
+  error: 'bad',
+  silent: 'off',
 }
 
 /** 过滤是**减法**,不是重排:'all' 原样返回,别的只留那一档。 */
@@ -172,16 +183,23 @@ export function NotificationsPanel() {
         ) : (
           groups.map((group, i) => (
             <section key={`${group.bucket}-${i}`} className={s.group}>
-              <h3 className={s.groupHead}>{t(BUCKET_LABELS[group.bucket])}</h3>
+              {/*
+                * `.bucketLabel` 而不是从前那个 `.groupHead`(09-02 批 6 改名):
+                * 这是一句**小节标**(小字 / 撑开字距 / 英文小写 / text-3),与
+                * `ui/GroupHead` 那件「组名 text-1 + 右侧读数 + caret」的形不是一件
+                * 东西。同名不同形正是 `shared-vocab-css` 那条门要抓的病,所以这里
+                * 让名字说实话,而不是硬套一件形状对不上的库件。
+                */}
+              <h3 className={s.bucketLabel}>{t(BUCKET_LABELS[group.bucket])}</h3>
               {group.items.map((record) => (
                 <div key={record.id} className={s.item}>
-                  <button
-                    type="button"
+                  <ButtonBase
                     className={s.row}
                     aria-expanded={record.detail ? openId === record.id : undefined}
                     onClick={() => setOpenId((id) => (id === record.id ? null : record.id))}
                   >
-                    <span className={`${s.dot} ${s[DOT_CLASS[record.level]]}`} aria-hidden="true" />
+                    {/* 点旁边就是标题那句话,所以不给 label —— 给了读屏会念两遍。 */}
+                    <StatusDot tone={DOT_TONE[record.level]} className={s.levelDot} />
                     <span className={record.read ? s.rowTitle : `${s.rowTitle} ${s.unread}`}>
                       {record.title}
                     </span>
@@ -191,7 +209,7 @@ export function NotificationsPanel() {
                     {record.body ? <span className={s.rowBody}>{record.body}</span> : null}
                     <span className={s.source}>{record.source}</span>
                     <span className={s.time}>{timeOf(record.time)}</span>
-                  </button>
+                  </ButtonBase>
                   {openId === record.id && record.detail ? (
                     <pre className={s.detail}>{record.detail}</pre>
                   ) : null}
@@ -209,9 +227,11 @@ export function NotificationsPanel() {
        * 接上之后换掉的就是这一个节点 —— 面板结构、分组、详情一格不动。
        */}
       <div className={s.foot}>
-        <button type="button" className={s.footLink} disabled>
+        {/* 一句静默的门(fs-meta / text-3 / 无边框无底),视觉本该定制 ——
+          * 三类判的第三类,皮肤留本地、清 UA 归基座。 */}
+        <ButtonBase className={s.footLink} disabled>
           {t('notify.openLog')}
-        </button>
+        </ButtonBase>
       </div>
     </div>
   )

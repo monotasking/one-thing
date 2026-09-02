@@ -103,110 +103,78 @@
 #   层叠时只有最上面那一层认领 Esc(判据:DOM 包含优先,平手看入栈序),
 #   `ui/Dialog` 的手写 Esc 段随之退役,改消费 useFloatDismiss 的 `outside:false` 档。
 #
-bare-button-icon src/content/AppsPanel.tsx:66 图标钮,该 ui/IconButton
-tooltip-native-title src/content/blocks/inline/InlineRun.tsx:52 native title= on <span>
-bare-button-icon src/content/blocks/kinds/table/Table.tsx:70 图标钮,该 ui/IconButton
-tooltip-native-title src/content/blocks/kinds/table/Table.tsx:70 native title= on <button>
-bare-button-icon src/content/blocks/shell/BlockShell.tsx:217 图标钮,该 ui/IconButton
-bare-button-icon src/content/blocks/shell/BlockShell.tsx:229 图标钮,该 ui/IconButton
-bare-button-icon src/content/blocks/shell/BlockShell.tsx:309 图标钮,该 ui/IconButton
-bare-button-text src/content/ChatStream.tsx:301 文字动作钮,该 ui/Button
-bare-button-text src/content/ChatStream.tsx:305 文字动作钮,该 ui/Button
-bare-button-icon src/content/FileDetailPopover.tsx:104 图标钮,该 ui/IconButton
-bare-button-text src/content/FilesPanel.tsx:381 文字动作钮,该 ui/Button
-bare-button-text src/content/FilesPanel.tsx:530 文字动作钮,该 ui/Button
-bare-button-structural src/content/FilesPanel.tsx:636 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/content/FilesPanel.tsx:714 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/content/KeymapSettings.tsx:96 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/content/message/MessageActions.tsx:64 文字动作钮,该 ui/Button
-bare-button-text src/content/message/MessageActions.tsx:85 文字动作钮,该 ui/Button
-bare-button-text src/content/message/StreamReadout.tsx:71 文字动作钮,该 ui/Button
-bare-button-structural src/content/NotificationsPanel.tsx:178 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/content/NotificationsPanel.tsx:212 文字动作钮,该 ui/Button
-bare-button-structural src/content/research/ResearchSegment.tsx:82 结构件裸钮,欠 ui/ButtonBase
-tooltip-native-title src/content/research/ResearchSegment.tsx:122 native title= on <span>
-bare-button-icon src/content/research/ResearchSegment.tsx:201 图标钮,该 ui/IconButton
-tooltip-native-title src/content/research/ResearchSegment.tsx:201 native title= on <button>
-tooltip-native-title src/content/research/ResearchSegment.tsx:211 native title= on <div>
-bare-button-structural src/content/research/SourceFoot.tsx:42 结构件裸钮,欠 ui/ButtonBase
-bare-button-structural src/content/tools/ToolGroup.tsx:35 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/content/tools/ToolGroup.tsx:76 文字动作钮,该 ui/Button
-bare-button-structural src/content/tools/ToolRow.tsx:87 结构件裸钮,欠 ui/ButtonBase
-tooltip-native-title src/content/tools/ToolRow.tsx:108 native title= on <span>
-bare-button-text src/content/viewer/FileViewer.tsx:580 文字动作钮,该 ui/Button
-bare-button-icon src/content/viewer/FileViewer.tsx:597 图标钮,该 ui/IconButton
-bare-button-text src/content/viewer/FileViewer.tsx:614 文字动作钮,该 ui/Button
-bare-button-text src/content/viewer/FileViewer.tsx:626 文字动作钮,该 ui/Button
-bare-button-structural src/content/viewer/FileViewer.tsx:638 结构件裸钮,欠 ui/ButtonBase
-bare-button-text src/content/viewer/FileViewer.tsx:655 文字动作钮,该 ui/Button
-bare-button-text src/content/viewer/FileViewer.tsx:660 文字动作钮,该 ui/Button
-kbd-select-handwritten src/content/viewer/JumpBar.tsx:122 手写 ↑↓ 走行,未消费 a11y 原语
-bare-button-structural src/content/viewer/JumpBar.tsx:161 结构件裸钮,欠 ui/ButtonBase
-bare-button-icon src/providers/components/ModelCatalog.tsx:393 图标钮,该 ui/IconButton
-bare-button-structural src/providers/components/ProviderRail.tsx:84 结构件裸钮,欠 ui/ButtonBase
-
-# ── 09-01 批 0 新立的三条规则,存量入账(棘轮:新增即红)────────────────
-# async-busy-boolean         4 → **2** 条 [debt]:source 自己记一颗
-#   saving/busy/loading/pending/inflight 布尔 —— 该迁 data/kernel 的
-#   createMutation(律③要的是逐格 pending)。立门时是 5 条;
-#   `src/providers/store.ts` 那一条已在同日批 1 迁到 settingsMutation
-#   (勾选闪烁的病根),所以基线只收其余四处。
-#   只扫 .ts 不扫 .tsx:组件 props 里的同名字段是 store 那一格的下游,
-#   上游迁掉下游自然跟着换,两头都扫就是同一笔账记两遍。
-#   **09-02 批 5 结清两条**:workspace/store.ts 真迁 workspaceMutation,
-#   providers/auth.ts 是粒度已合律的登录流状态机,写了豁免。
-#   还剩两条:`src/data/viewer-source.ts:85` 的 `edit.saving` 是真写路,
-#   但唯一消费方 FileViewer 在 content 避让区,留给 content 批;
-#   `src/data/chat-source.ts:130` 是规则误报(模块级 LiveFold 的折叠机内部闸门,
-#   非可渲染态非写路),豁免注释已拟好但该文件正被别批施工,等它落地再写进去。
-# float-handwritten          4 → **2** 条 [violation]:手写浮层散场(window pointerdown /
-#   捕获相位 keydown)—— 该消费 ui/float 的 useFloatDismiss。四条各有另案:
-#   composer 的点外关、键位设置与跳转条的 Esc 捕获、舞台盖(ExposeView)。
-#   立门时都在别批的避让区,只立门不搬;**09-01 批 4 结清其中两条**
-#   (composer 迁原语、键位设置写豁免,见文件末「批 4」一节),
-#   剩下的跳转条与舞台盖仍属别批避让区,留账不留改。
-# shared-vocab-css          73 → 53 → **51** 条 [debt]:.dot / .card / .groupHead /
-#   .field / .meter / .pill / .badge / .chip 八个**视觉词汇**在各面各画一遍
-#   (立门时:dot 8 个产地 / card 7 / groupHead 4 / meter 2 / chip 4 / field 3 /
-#   badge 2 / pill 1)。同名不同形没有任何一道门看得见 —— 每一份自己都合规。
-#   批 2 立件收编时,这张表就是清单。
+# ── 09-02 批 6(content 区收尾),96 → 40 条,删 56 条 ──────────────────────
+#   src/content/** 此前是别批的避让区,本批解封收尾。删掉的 56 条分两笔:
+#     · **陈账 16 条** —— 上面那句「合树收账时把『已经不在了』逐行删掉」的兑现。
+#       FilesPanel / FileViewer / FileDetailPopover / JumpBar / ModelCatalog /
+#       ProviderRail 各自那几条早被别批修掉了,基线一直虚胖着。
+#     · **本批真消 40 条** —— 逐类清零:
+#       bare-button-icon 6→0、bare-button-text 7→0、bare-button-structural 6→0、
+#       tooltip-native-title 6→0、float-handwritten 2→1、async-busy-boolean 2→0、
+#       shared-vocab-css content 那 12 条 → 0。
 #
-#   ── 09-01 批 2b 收编,删 20 条(每条的去向)────────────────────────────
-#   迁进库件(8 面):ProviderRail 的组头 → ui/GroupHead、五档状态点 → ui/StatusDot;
-#     OAuthCard 的卡面 → ui/Card、两颗点 → ui/StatusDot;ModeCard / UsageCard 的
-#     卡面 → ui/Card(UsageCard 的檐是三件,不进 Card 那两槽的封闭檐,留在本地);
-#     CustomProviderDialog 的表单行 → ui/Field。
-#   清死码(1 面):ProviderDetail 的 .card / .cardTitle / .cardNote / .cardBody
-#     四条**零消费者** —— 批二把坑里的内容搬走时留在了原地,从没画过一个像素。
-#   改错名(3 面):QuickLook 的 .dot 是一个中点分隔符(`·`)、WorkspaceMenuRows 与
-#     WorkspacePalette 的 .dot 是**工作区色标**(--ws-face 身份色、8px)。三处都不是
-#     状态点,迁 StatusDot 会把语义弄反(那件明说底色不许从外面换),所以改的是名字:
-#     `sep` / `swatch`。零像素变化,理由逐条写在各自 module.css 上。
+#   ① 裸钮三类判(19 处)。落在 content 的这一批**绝大多数是第三类**:
+#      檐上 / 脚注 / 读数带上的微型静默件(fs-micro、零底零框、图标与字一体),
+#      视觉本该定制 —— 与批 3 把「加载更多」判进基座是同一形,换成 `ui/Button`
+#      那种 28 高描边钮会把消息流里的注脚做成实体按钮,那不是等价替换。
+#      真图标钮只有两颗,都迁 `ui/IconButton`:表格列头的 ⧉ 复制列、块檐上的 ⋯。
+#      **这一判请编排复核**:三类判的边界(「重试」既是 ButtonBase.tsx 文件头
+#      举的①类例子,又确实长成一句 fs-micro 的脚注)是本批唯一的自由裁量处。
 #
-#   ── 批 2b 当场停、留在表上的 3 条 ────────────────────────────────────
-#   ModelCatalog:290(两形组头共用一条规则)—— 可折叠那一形带 data-testid,
-#     测试逐字读 `getByTestId('model-group-…').disabled`,而 ui/GroupHead 不透传
-#     任意属性;两形必须同批迁(它们是同一份皮肤),所以整格停,等 ui/ 开口子。
-#   Overview:152 / 264 —— 形对不上:它的组头是「容器 + 开关 + 两个入口」三件,
-#     caret 是带色过渡的图标而不是 GroupHead 写死的 ▸/▾ 文字,GroupHead 也没有尾槽。
-#   (ErrorBoundary:3 的卡同理停在 role="alert" + data-testid 上,详见交卷报告。)
+#   ② tooltip-native-title 6 处全换 `ui/Tooltip`(cloneElement 注入,零 DOM 变化):
+#      行内链接的 href、表格列头、研究段的流中态行与来源行两形、工具行的全名。
 #
-#   ── 09-01 批 2c 收编,再删 2 条(就是上面那两格停摆的面)──────────────
-#   口子先开:ui/Card 与 ui/GroupHead 两形都透传 HTMLAttributes(照 ui/Button
-#     的既有先例摊到根元素)。透传开的是**落点自己的 data-testid / role / aria**,
-#     不是样式旁路 —— 样式仍然只走 className 皮肤,两件的测试各有一条守着次序。
-#   ModelCatalog:290 → 两条组头都迁 ui/GroupHead(已选那条走静态形、厂牌那条走
-#     可折叠形);sticky / 底色 / 下轨留在本地当落点皮肤(`.stickyHead`),
-#     mono 组名与「已选」的弱色包在内容那一层交给 label 槽(名册 2b 同一手)。
-#     既有的 `model-catalog-state` / `batch2-ui` 逐字读 data-testid 与 disabled,
-#     原样绿 —— 它们就是这次等价迁移的证词。
-#   ErrorBoundary:3 → 外框迁 ui/Card 的 pad='lg' 档;role="alert" 与 data-testid
-#     经透传落在同一个根上(没有为了挂 role 再包一层)。落点皮肤改名 `.errorCard`:
-#     卡的产地已经是 ui/Card,名字留在 card 一族会让这一行继续被记成第 7 个产地,
-#     而它已经不画卡了。基类的 `flex: none` 用一句 `flex: 0 1 auto` 补回原样。
-#   同批清尸(不进本表,记在这里备查):ProviderDetail 的 .keyRow / .keyField /
-#     .accountRow / .mono / .absent / .absentNote / .state 七条零消费者死码,
-#     与 tokens.css 的 --pv-dot(状态点 2b 已迁 ui/StatusDot)。
+#   ③ float-handwritten:`content/viewer/JumpBar.tsx` **真迁**(判据同批 4:
+#      它是一层开在查看器上的临时面,「这一下 Esc 属于最上面哪一层」正是浮层栈
+#      答的问题)。`outside:false` 保住现状(跳转条不点外关)。
+#      剩下的 `expose/components/ExposeView.tsx` 照旧留账 —— 批 4 已判它与退层链
+#      纠缠、迁法要单独设计。
+#
+#   ④ async-busy-boolean 两条:
+#      · `data/viewer-source.ts` —— **真迁**。`edit.saving` 那颗共享布尔进了
+#        `viewerSaveMutation`(createMutation,key = `save:<path>`),三格语义
+#        (conflict / error / savedAt)逐字保留;确认对话框那颗「保存并关闭」
+#        本来就是 `ui/Button`,随之换成 `ui/AsyncButton`(零像素 + 150ms 防闪)。
+#        状态栏那颗**如实偏离不换 AsyncButton**:那件的身子是 28 高的 Button,
+#        而那是 26 高读数带上的 mono 动作链接,换过去不是等价替换 —— 理由写在
+#        FileViewer.tsx 该处;律③要的禁用 + 换字一件不少,忙态产地已经是逐格。
+#      · `data/chat-source.ts` —— **规则误报,写豁免**(理由压在命中上方 8 行内):
+#        那是模块级 LiveFold 的折叠机内部闸门,没有任何控件读它。
+#
+#   ⑤ shared-vocab-css content 12 条,逐条判:
+#      · NotificationsPanel 的 `.dot` 五档 → **真迁 `ui/StatusDot`**(几何同为
+#        6px 圆、五档底色一格不差)。为此给库件补了第六档 tone `info`:那面画的
+#        是四档命运(ok/info/warn/error),而库件当时只认得三档 —— 缺的那一档
+#        逼消费方要么把「一条提示」染成 idle(最淡的一档墨),要么继续自绘。
+#        `--info` 本来就是 palette 的第四档语义色,补的是已经存在的事实。
+#        `--notify-dot` 随之清尸(与批 2c 删 `--pv-dot` 同一笔账)。
+#      · NotificationsPanel 的 `.groupHead` → **改名 `.bucketLabel`**:它是一句
+#        小节标(小字/撑开字距/英文小写/text-3),与 `ui/GroupHead` 那件
+#        「组名 text-1 + 右侧读数 + caret + 可折叠」不同形。
+#      · `content/mocks.module.css` 的 `.field` 一族(4 条)→ **改名 `.settingRow`
+#        一族**:它是**横排**设置行,而 `ui/Field` 的形是竖排(标签在上、控件在下、
+#        底下挂 hint 与 error)。判据早就写在 Field.module.css 的文件头里。
+#      · `content/FileGlyph.module.css` 的 `.badge` → **改名 `.ext`**:它是扩展名
+#        字标(小圆角矩形 / mono 700 / 品牌色当数据),`ui/Badge` 是计数丸。
+#      三处改名都是零像素:改的是名字,一条规则的值都没动。
+#
+#   ⑥ 同批兑现的两条禁令(不在这张表上,记在这里备查):
+#      · **Spinner 只许出现在按钮内或状态栏** —— 内容区四处退成文字:
+#        FileViewer 首载、FileDetailPopover 详情加载、ToolRow 行内、
+#        ResearchSegment 流中态行。后两处逐处判过「算不算状态栏」:都不算
+#        (它们长在聊天正文流里),而且两处本来就已经有文字在说同一件事,
+#        ToolRow 那一处还叠着图标呼吸,转圈是第三遍。
+#        **状态栏那一颗留着**(FileViewer 脚下 26 高读数带,允许的两处之一)。
+#      · i18n 立 `common.saving`(zh 正在保存… / en Saving…),`viewer.saving`
+#        随之删:那句话本来就是任何一颗异步钮的忙态话,被三处跨域借用过。
+#
+#   ⑦ 本批读过但**没有迁**的一处(留账待独立一批):
+#      `content/FilesPanel.tsx` 的 `NoWorkdirNotice` 那颗 `useState(busy)`。
+#      它护的是 `sessions-source` 的 `setWorkingDirectory` 后端写,按律③该走
+#      mutation;没迁是因为产地不在 content —— 那一口的 settle 要做的重拉两句
+#      关在 zustand creator 闭包里,模块级够不着,迁它得先把 sessions-source 的
+#      重拉那一半提到模块级。理由逐条写在该处注释里。
+#
 shared-vocab-css src/components/AgentChip.module.css:16 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:30 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:34 视觉词汇多产地(chip),待批 2 立件收编
@@ -218,42 +186,27 @@ shared-vocab-css src/components/DockTile.module.css:101 视觉词汇多产地(do
 shared-vocab-css src/components/DockTile.module.css:102 视觉词汇多产地(dot),待批 2 立件收编
 shared-vocab-css src/components/HostTitle.module.css:8 视觉词汇多产地(dot),待批 2 立件收编
 shared-vocab-css src/composer/components/Composer.module.css:394 视觉词汇多产地(chip),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:433 视觉词汇多产地(pill),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:480 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:497 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:501 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:507 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:511 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:516 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/composer/components/Composer.module.css:522 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/content/FileGlyph.module.css:11 视觉词汇多产地(badge),待批 2 立件收编
-shared-vocab-css src/content/mocks.module.css:135 视觉词汇多产地(field),待批 2 立件收编
-shared-vocab-css src/content/mocks.module.css:142 视觉词汇多产地(field),待批 2 立件收编
-shared-vocab-css src/content/mocks.module.css:147 视觉词汇多产地(field),待批 2 立件收编
-shared-vocab-css src/content/mocks.module.css:153 视觉词汇多产地(field),待批 2 立件收编
-shared-vocab-css src/content/NotificationsPanel.module.css:53 视觉词汇多产地(groupHead),待批 2 立件收编
-shared-vocab-css src/content/NotificationsPanel.module.css:86 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/content/NotificationsPanel.module.css:94 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/content/NotificationsPanel.module.css:101 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/content/NotificationsPanel.module.css:105 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/content/NotificationsPanel.module.css:109 视觉词汇多产地(dot),待批 2 立件收编
-shared-vocab-css src/content/NotificationsPanel.module.css:114 视觉词汇多产地(dot),待批 2 立件收编
-float-handwritten src/content/viewer/JumpBar.tsx:107 手写 Esc 捕获相位认领,该消费 ui/float useFloatDismiss
-async-busy-boolean src/data/chat-source.ts:130 手写忙布尔,该迁 data/kernel createMutation(律③逐格 pending)
-async-busy-boolean src/data/viewer-source.ts:85 手写忙布尔,该迁 data/kernel createMutation(律③逐格 pending)
+shared-vocab-css src/composer/components/Composer.module.css:426 视觉词汇多产地(pill),待批 2 立件收编
+shared-vocab-css src/composer/components/Composer.module.css:482 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/composer/components/Composer.module.css:499 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/composer/components/Composer.module.css:503 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/composer/components/Composer.module.css:509 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/composer/components/Composer.module.css:513 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/composer/components/Composer.module.css:518 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/composer/components/Composer.module.css:524 视觉词汇多产地(meter),待批 2 立件收编
 float-handwritten src/expose/components/ExposeView.tsx:141 手写 Esc 捕获相位认领,该消费 ui/float useFloatDismiss
 shared-vocab-css src/expose/components/Overview.module.css:152 视觉词汇多产地(groupHead),待批 2 立件收编
 shared-vocab-css src/expose/components/Overview.module.css:264 视觉词汇多产地(groupHead),待批 2 立件收编
 shared-vocab-css src/expose/components/QuickLook.module.css:67 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/expose/components/SessionCard.module.css:10 视觉词汇多产地(card),待批 2 立件收编
 shared-vocab-css src/expose/components/SessionCard.module.css:39 视觉词汇多产地(card),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:67 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:73 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:83 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:92 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:99 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:109 视觉词汇多产地(meter),待批 2 立件收编
-shared-vocab-css src/providers/components/UsageCard.module.css:116 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/providers/components/UsageCard.module.css:63 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/providers/components/UsageCard.module.css:69 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/providers/components/UsageCard.module.css:79 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/providers/components/UsageCard.module.css:88 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/providers/components/UsageCard.module.css:95 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/providers/components/UsageCard.module.css:105 视觉词汇多产地(meter),待批 2 立件收编
+shared-vocab-css src/providers/components/UsageCard.module.css:112 视觉词汇多产地(meter),待批 2 立件收编
 shared-vocab-css src/search/components/SearchPanel.module.css:139 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/search/components/SearchPanel.module.css:158 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/workspace/components/WorkspaceOverview.module.css:54 视觉词汇多产地(card),待批 2 立件收编

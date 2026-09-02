@@ -126,6 +126,11 @@ interface LiveFold {
   state: ReturnType<typeof createSessionProjectionState>
   /** 已折进去的最后一条 seq。0 = 还没起底。 */
   lastSeq: number
+  /*
+   * ui-consume-allow: async-busy-boolean — 规则误报:它是这只模块级 LiveFold 的
+   * 折叠机内部闸门,既不是可渲染状态也不是写路忙态 —— 没有任何控件读它,
+   * 逐格 pending 在这里无处可挂,迁过去只会把一个进程事实伪装成一次用户的写。
+   */
   /** 起底 / 重折还没完成时,新到的行进 `pendingLedger` 攒着,完成后排空回放。 */
   pending: boolean
   lastRefoldAt: number

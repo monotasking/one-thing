@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Button } from '../ui/Button'
+import { ButtonBase } from '../ui/ButtonBase'
 import { Kbd } from '../ui/Kbd'
 import { useT } from '../i18n'
 import { useKeymapStore, currentKeymapPlatform } from '../keymap/store'
@@ -94,16 +95,17 @@ export function KeymapSettings() {
         const conflictWith = isRecording && conflict ? findCommand(conflict) : undefined
 
         return (
-          <div className={s.field} key={command.id}>
-            <div className={s.fieldLabel}>{name}</div>
+          <div className={s.settingRow} key={command.id}>
+            <div className={s.settingRowLabel}>{name}</div>
             <div className={s.keyRight}>
               {conflictWith && (
                 <span className={s.keyConflict}>
                   {t('keymap.conflict', { name: t(conflictWith.labelKey) })}
                 </span>
               )}
-              <button
-                type="button"
+              {/* 键位面是一颗**结构件**(一格键位槽,视觉本该定制:录制态换底换边、
+                * 里面装的是 Kbd 帽子)——三类判的第三类,清 UA 归 `ui/ButtonBase`。 */}
+              <ButtonBase
                 className={isRecording ? `${s.keySlot} ${s.keySlotOn}` : s.keySlot}
                 aria-label={t('keymap.recordOf', { name })}
                 onClick={() => {
@@ -118,7 +120,7 @@ export function KeymapSettings() {
                 ) : (
                   <span className={s.keyMuted}>{t('keymap.unbound')}</span>
                 )}
-              </button>
+              </ButtonBase>
               {hasOverride(state, command.id) && (
                 <Button
                   aria-label={t('keymap.resetOf', { name })}

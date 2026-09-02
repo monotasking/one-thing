@@ -4,6 +4,7 @@ import { COPY_FEEDBACK_MS } from '../../components/motion'
 import { useChatSource } from '../../data/chat-source'
 import { useT } from '../../i18n'
 import { announce } from '../../ui/a11y/live-region'
+import { ButtonBase } from '../../ui/ButtonBase'
 import s from './MessageChrome.module.css'
 
 /**
@@ -61,8 +62,12 @@ export function MessageActions({ messageId, text }: { messageId: string; text: s
       role="group"
       aria-label={t('chat.messageActions')}
     >
-      <button
-        type="button"
+      {/*
+        三类判的第三类:**幽灵动作**(零底零框、常显占位只动 opacity、图标+字一体),
+        视觉本该定制,不是 `ui/Button` 那种描边定高的文字钮 —— 换过去会给每条
+        消息底下压两颗实体钮,「幽灵」这个词就没了。皮肤留本地,清 UA 归基座。
+      */}
+      <ButtonBase
         className={s.ghost}
         data-testid="chat-action-copy"
         onClick={() => {
@@ -76,21 +81,20 @@ export function MessageActions({ messageId, text }: { messageId: string; text: s
       >
         <Copy className={s.ghostIcon} strokeWidth={1.9} aria-hidden="true" />
         {copied === null ? t('chat.copy') : t(copied ? 'common.copied' : 'common.copyFailed')}
-      </button>
+      </ButtonBase>
       {/*
         重试 = core 的 `command:retry-message`(端口那一口照 abort 惯例:同一条
         命令总线,一个字段都不多给)。**壳不动屏幕** —— 重跑会在账本上开一条新
         run,屏幕跟着折叠产物走。
       */}
-      <button
-        type="button"
+      <ButtonBase
         className={s.ghost}
         data-testid="chat-action-retry"
         onClick={() => regenerate(messageId)}
       >
         <RotateCcw className={s.ghostIcon} strokeWidth={1.9} aria-hidden="true" />
         {t('chat.retry')}
-      </button>
+      </ButtonBase>
     </div>
   )
 }

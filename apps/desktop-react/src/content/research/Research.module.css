@@ -30,9 +30,10 @@
   min-width: 0;
 }
 
-.liveSpinner {
-  flex: none;
-}
+/*
+ * `.liveSpinner` 随批 6 退役:流中态行不转圈了(Spinner 只许在按钮内或状态栏,
+ * 而这块衬块长在正文流里)。这一行说的话本来就在那儿 —— 「正在阅读 …」+ 进度副行。
+ */
 
 .liveText {
   min-width: 0;

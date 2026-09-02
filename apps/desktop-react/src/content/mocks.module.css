@@ -132,25 +132,34 @@
   color: var(--text-3);
 }
 
-.field {
+/*
+ * 设置面的一行:**横排**(左边是它是什么,右边是关于它的那一个决定)。
+ *
+ * 09-02 批 6 从 `.field` 一族改到这个名字。判据早就写在 `ui/Field.module.css`
+ * 的文件头里:那件的形是**竖排**(标签在上、控件在下、下面还能挂 hint 与
+ * error),配方抄自 CustomProviderDialog;横排的这一族「不是这件的形」。
+ * 同名不同形正是 `shared-vocab-css` 那条门要抓的病 —— 硬套过去会把一整面
+ * 设置行从横排改成竖排,那不是收编,那是改版。所以改的是名字。
+ */
+.settingRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
 }
 
-.fieldLabel {
+.settingRowLabel {
   font-size: var(--fs-label);
   color: var(--text-1);
 }
 
-.fieldHint {
+.settingRowHint {
   font-size: var(--fs-micro);
   color: var(--text-3);
 }
 
-/* 整段说明:跟在它解释的那个 field 底下,所以往上收一格抵掉节内的 gap。 */
-.fieldNote {
+/* 整段说明:跟在它解释的那一行底下,所以往上收一格抵掉节内的 gap。 */
+.settingRowNote {
   margin-top: calc(var(--sp-3) * -1);
   font-size: var(--fs-meta);
   color: var(--text-3);

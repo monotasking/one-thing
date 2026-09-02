@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
 import { useT, type TFn } from '../../i18n'
 import { resolveIcon } from '../../components/icons'
-import { Spinner } from '../../ui/Spinner'
+import { ButtonBase } from '../../ui/ButtonBase'
+import { Tooltip } from '../../ui/Tooltip'
 import type { BlockCtx } from '../blocks/registry'
 import type { ToolOutcomeModel, ToolRowModel, ToolStepModel } from '../model/segments'
 import { ToolDrawer } from './ToolDrawer'
@@ -103,9 +104,11 @@ export function ToolCardBody({ step, ctx }: { step: ToolStepModel; ctx: BlockCtx
   return (
     <>
       {expandable ? (
-        <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
+        /* 一行工具是**结构件**(图标 · 名 · 摘要 · 右端读数,视觉本该定制)——
+         * 三类判的第三类,皮肤留本地、清 UA 归 `ui/ButtonBase`。 */
+        <ButtonBase className={s.head} onClick={toggle} aria-expanded={open}>
           <ToolRowFace t={t} row={row} tone={tone} />
-        </button>
+        </ButtonBase>
       ) : (
         // 不能展开时**不画按钮**:一个按得动却什么也不发生的钮是「假按钮」,
         // 它比没有钮更费人 —— 焦点会停在它上面,读屏会念它可点。
@@ -124,12 +127,20 @@ function ToolRowFace({ t, row, tone }: { t: TFn; row: ToolRowModel; tone: ToolTo
   return (
     <>
       <Icon className={s.toolIcon} strokeWidth={1.75} aria-hidden="true" />
-      <span className={s.toolName} title={row.title}>
-        {row.name}
-      </span>
+      {/* 全名走 `ui/Tooltip`(禁 native `title=`):行上画的是短名,长的那一句
+        * (带参数的标题)在悬停时说。cloneElement 注入,不多包一层 DOM。 */}
+      <Tooltip content={row.title}>
+        <span className={s.toolName}>{row.name}</span>
+      </Tooltip>
       {row.summary && <span className={s.toolSummary}>{row.summary}</span>}
       <span className={s.toolRight}>
-        {tone === 'busy' && <Spinner size="sm" className={s.toolSpinner} />}
+        {/*
+          * **这里不转圈**(09-02 批 6 兑现禁令)。判的是这一格算不算「状态栏」:
+          * 不算 —— 它是一行工具自己的右端读数,长在聊天正文流里,不是壳的状态栏。
+          * 而且这一格已经有**两个**产地在说同一件事:右端那句话在忙态下说
+          * 「运行中」(ToolRightText 的第二支),行首那枚图标同时按
+          * `[data-tool-tone='busy']` 呼吸成 accent。转圈是第三遍。
+          */}
         <ToolRightText t={t} row={row} tone={tone} />
       </span>
     </>

@@ -198,12 +198,21 @@ describe('行内那一层(全仓一份)', () => {
     expect(container.querySelector('s')?.textContent).toBe('删')
   })
 
-  it('链接本批不是 `<a>`:目标地址进 title,点击行为留账(壳里还没有开外链的面)', () => {
+  /**
+   * 09-02 批 6:目标地址从 native `title=`(禁令)换成了 `ui/Tooltip`。
+   * 断言跟着换了两格,**要证的那两件事一件没少**:
+   *  · 这一批仍然不画 `<a>`(点了会把整个应用导航走,壳就没了);
+   *  · 地址仍然说得出口 —— 只是从浏览器那条小黄条换成了库件的提示。
+   * 提示是**悬停才出现**的浮层,所以这里断言的是那条锚点还在(文字画对了)
+   * 加上「一个 title 属性都不许再有」——后者正是这次要钉住的规矩。
+   */
+  it('链接本批不是 `<a>`:不画 native title,目标地址走 ui/Tooltip', () => {
     const { container } = draw({
       kind: 'paragraph',
       inline: [{ type: 'link', href: 'http://x', children: text('文') }],
     })
     expect(container.querySelector('a')).toBeNull()
-    expect(container.querySelector('[title="http://x"]')?.textContent).toBe('文')
+    expect(container.querySelector('[title]')).toBeNull()
+    expect(container.textContent).toContain('文')
   })
 })

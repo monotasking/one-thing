@@ -365,7 +365,7 @@ export function ModelCatalog({
             variant="primary"
             action={write}
             pendingKey={settingsKey.manual(providerId)}
-            pendingLabel={t('viewer.saving')}
+            pendingLabel={t('common.saving')}
             disabled={!draft.trim()}
             onClick={submitManual}
           >

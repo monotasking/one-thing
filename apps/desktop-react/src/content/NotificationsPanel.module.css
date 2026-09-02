@@ -48,9 +48,15 @@
   margin-bottom: var(--sp-3);
 }
 
-/* 组头:小字、灰、字距撑开。分量由 CSS 给,层级由 <h3> 给 —— 两件事不混。
- * text-transform 是给英文的(today / yesterday / earlier),中文不受影响。 */
-.groupHead {
+/*
+ * 天分组的**小节标**:小字、灰、字距撑开。分量由 CSS 给,层级由 <h3> 给 ——
+ * 两件事不混。text-transform 是给英文的(today / yesterday / earlier),中文不受影响。
+ *
+ * 09-02 批 6 从 `.groupHead` 改到这个名字:它与 `ui/GroupHead` **不是同一种东西**
+ * (那件是「组名 text-1 + 右侧弱色读数 + caret + 可折叠」的列表组头),同名不同形
+ * 正是 `shared-vocab-css` 那条门要抓的病。名字说实话比硬套一件形状对不上的库件诚实。
+ */
+.bucketLabel {
   margin: 0;
   padding: var(--sp-2) var(--sp-3) var(--sp-1);
   font-size: var(--fs-micro);
@@ -83,36 +89,18 @@
   background: var(--st-hover);
 }
 
-.dot {
-  flex: none;
+/*
+ * 那颗级别点**整个迁进了 `ui/StatusDot`**(09-02 批 6):几何(6px 圆)与五档底色
+ * 一格不差地由那件给,映射表在 NotificationsPanel.tsx 的 `DOT_TONE`。
+ * `--info` 那一档是这面推着库件补出来的第六档 tone —— 从前这里那句「四档命运里
+ * 只有它画的不是语义色」的病历,现在长在 `ui/StatusDot.module.css` 上。
+ *
+ * 留在本地的只剩一句**这一行自己的事实**:行是 `align-items: baseline` 排的
+ * (标题与正文要压同一条基线),而一颗圆点没有基线可压,得自己回到竖直中间。
+ * 那不是点的属性,是这一行的排法,所以它留在这里。
+ */
+.levelDot {
   align-self: center;
-  width: var(--notify-dot);
-  height: var(--notify-dot);
-  border-radius: var(--r-full);
-}
-
-.dotSuccess {
-  background: var(--ok);
-}
-
-/* info 有自己的色了(--info,palette.css 的第四档语义色)。从前这里借 --text-3 ——
- * 那是「最淡的字」,不是「一条提示」:四档命运里只有它画的不是语义色,于是
- * 一条 info 在名册里看起来像一条褪了色的记录,而不是一档独立的命运。 */
-.dotInfo {
-  background: var(--info);
-}
-
-.dotWarn {
-  background: var(--warn);
-}
-
-.dotError {
-  background: var(--danger);
-}
-
-/* silent 从来没弹过,但它进了存档 —— 最淡的一档,看得见就够了。 */
-.dotSilent {
-  background: var(--line-2);
 }
 
 .rowTitle {

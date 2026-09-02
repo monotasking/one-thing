@@ -1,3 +1,4 @@
+import { Tooltip } from '../../../ui/Tooltip'
 import type { InlineNode } from '../../model/inline'
 import s from './InlineRun.module.css'
 
@@ -12,7 +13,7 @@ import s from './InlineRun.module.css'
  * 桌面壳里点外链必须交给宿主(`shell.openExternal`),而 P1 的壳还没有那个面
  * (platform 层没有 shell 域)。两个错误答案:画成 `<a href>` —— 点了会把整个应用
  * 导航走,壳就没了;悄悄画成纯文字 —— 人看不出这里本来有个链接。
- * 所以本批画成**看得出是链接、能选中、title 显示目标地址**的一段字:信息一点不少,
+ * 所以本批画成**看得出是链接、能选中、悬停显示目标地址**的一段字:信息一点不少,
  * 点击行为留账(等 shell 面进来,这里加一个 onClick,别处不动)。
  */
 export function InlineRun({ nodes }: { nodes: readonly InlineNode[] }) {
@@ -48,10 +49,18 @@ function renderInline(node: InlineNode, index: number) {
         </s>
       )
     case 'link':
+      /*
+       * 目标地址走 `ui/Tooltip`,不是 native `title=`(禁令区)。Tooltip 是
+       * cloneElement 注入,**不多包一层 DOM** —— 这一格在行内流里,多一个元素
+       * 会把 `pre-wrap` 的空白折叠规则在边界上改掉(同文件 'text' 那一支的理由)。
+       * 地址是数据不是文案,所以它不经 i18n:字典里没有一条「某个链接的 href」。
+       */
       return (
-        <span key={index} className={s.link} title={node.href}>
-          <InlineRun nodes={node.children} />
-        </span>
+        <Tooltip key={index} content={node.href}>
+          <span className={s.link}>
+            <InlineRun nodes={node.children} />
+          </span>
+        </Tooltip>
       )
     case 'citation':
       // 角标的呈现(预览卡、来源清单联动)是 P4 的事;在那之前只画一个数字,

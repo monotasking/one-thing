@@ -310,7 +310,7 @@ export function WorkspaceOverview() {
             action={workspaceMutation}
             pendingKey={workspaceKey.create()}
             /* 零新键:复用那句通用的「正在保存…」(ModelCatalog 的手填提交也用它)。 */
-            pendingLabel={t('viewer.saving')}
+            pendingLabel={t('common.saving')}
             data-testid="workspace-create"
             onClick={() => setCreating(true)}
           >

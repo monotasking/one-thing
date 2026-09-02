@@ -5,6 +5,7 @@ import { IconButton } from '../../ui/IconButton'
 import { Spinner } from '../../ui/Spinner'
 import { Tooltip } from '../../ui/Tooltip'
 import { Button } from '../../ui/Button'
+import { AsyncButton } from '../../ui/AsyncButton'
 /*
  * 状态栏那一排是**结构性交互元素**(视觉本该定制:mono、极小、无底、贴着读数站),
  * 所以它们消费的是 `ui/ButtonBase`(只清 UA、一个像素都不画),不是 `ui/Button`
@@ -17,8 +18,15 @@ import type { TFn } from '../../i18n'
 import { baseNameOf, formatBytes, useFilesSource } from '../../data/files-source'
 import { glyphOf } from '../../data/file-icons'
 import { closeViewerEverywhere } from './open-target'
-import { isDirty, isEditableFile, useViewerSource } from '../../data/viewer-source'
+import {
+  isDirty,
+  isEditableFile,
+  useViewerSource,
+  viewerSaveKey,
+  viewerSaveMutation,
+} from '../../data/viewer-source'
 import type { ViewerFile, ViewerView } from '../../data/viewer-source'
+import { useAsyncPending } from '../../data/kernel/react'
 import { FileGlyphMark } from '../FileGlyph'
 import { FileActionsMenu } from '../FileActionsMenu'
 import { DETAIL_POPOVER_GAP, FileDetailPopover } from '../FileDetailPopover'
@@ -101,8 +109,11 @@ import s from './FileViewer.module.css'
  * ── UI 状态纪律(四律,逐条落在这里)──────────────────────────────────────
  *  ① **切文件 / 载入中,旧内容留着**:`file` 与 `pending` 是两格(判据在 store),
  *     檐上那格读数说出「正在读取…」,屏幕上没有任何一帧是空的;
- *  ② **骨架只首载**:第一次打开(手上什么都没有)才画转圈,之后一律不画;
- *  ③ **所有异步钮有 pending 态**:存盘那颗在 `edit.saving` 时禁用并换字;
+ *  ② **骨架只首载**:第一次打开(手上什么都没有)才画那一行「正在读取…」,
+ *     之后一律不画(09-02 批 6:那里从前是一颗 Spinner,而禁令区只许它出现在
+ *     按钮内或状态栏 —— 状态栏那一颗留着,内容区这一颗退成文字);
+ *  ③ **所有异步钮有 pending 态**:存盘那颗禁用并换字,忙态读自写路
+ *     `viewerSaveMutation` 的**逐格** pending(`save:<path>`),不是一颗共享布尔;
  *  ④ **跳转滚动不闪**:落点用 `scrollIntoView({block:'center'})`,不重挂 body。
  */
 /**
@@ -139,6 +150,14 @@ export function FileViewer({
   const setEditing = useViewerSource((st) => st.setEditing)
   const setDraft = useViewerSource((st) => st.setDraft)
   const save = useViewerSource((st) => st.save)
+  /*
+   * 存盘的忙态**读自写路**(09-02 批 6),不是 store 上一颗共享布尔:
+   * `viewerSaveMutation` 按 `save:<path>` 逐格记账(律③),所以两个落点各开一个
+   * 文件时,一颗钮忙不会把另一颗按住。`file` 缺席时不给 key —— hook 不能有条件
+   * 地调,所以给的是 undefined 而不是在这里分一条支。
+   */
+  const saveKey = file ? viewerSaveKey(file.path) : undefined
+  const saving = useAsyncPending(viewerSaveMutation, saveKey)
 
   const rootRef = useRef<HTMLElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
@@ -457,8 +476,13 @@ export function FileViewer({
            * ② 骨架**只首载**:走到这里必然是「手上什么都没有、而且正在读」的
            * 第一帧。之后再切文件,上面那一支永远成立(旧内容还在),不会再来。
            */
+          /*
+           * **这里不转圈**(09-02 批 6 兑现禁令):Spinner 只许出现在按钮内或
+           * 状态栏,内容区的加载态用文字或骨架。从前这一格是「转圈 + 同一句话」
+           * ——转圈说的话与它旁边那行字逐字相同,删掉一个字都没少。
+           * 那一颗在状态栏里的仍然留着(它在允许的两处之一,见下面 StatusBar)。
+           */
           <p className={s.note} data-testid="viewer-first-load">
-            <Spinner label={t('viewer.reading')} />
             <span className={s.noteDetail}>{t('viewer.reading')}</span>
           </p>
         ) : (
@@ -480,7 +504,8 @@ export function FileViewer({
         lineCount={lineCount}
         status={handler?.status && bodyProps ? handler.status(bodyProps) : undefined}
         statusItems={handler?.statusItems && bodyProps ? handler.statusItems(bodyProps) : []}
-        saving={edit.saving}
+        saving={saving}
+        saveKey={saveKey}
         savedAt={edit.savedAt}
         saveError={edit.error}
         conflict={edit.conflict}
@@ -510,9 +535,17 @@ export function FileViewer({
             >
               {t('viewer.discard')}
             </Button>
-            <Button
+            {/*
+              * 这一颗**本来就是 `ui/Button`**,所以它换成 `ui/AsyncButton` 是零像素的:
+              * 忙态改由写路逐格给(`pendingKey`),还顺带白拿了那件的 150ms 防闪闸
+              * ——比 150ms 更快回来的那一发不该报告自己在忙(E 型闪的判例)。
+              * disabled 仍然立刻生效:它挡的是连点,而连点就发生在头 150ms 里。
+              */}
+            <AsyncButton
               variant="primary"
-              disabled={edit.saving}
+              action={viewerSaveMutation}
+              pendingKey={saveKey}
+              pendingLabel={t('common.saving')}
               onClick={() => {
                 void runSave().then((outcome) => {
                   if (!outcome.ok) return
@@ -521,8 +554,8 @@ export function FileViewer({
                 })
               }}
             >
-              {t(edit.saving ? 'viewer.saving' : 'viewer.saveAndClose')}
-            </Button>
+              {t('viewer.saveAndClose')}
+            </AsyncButton>
           </>
         }
       >
@@ -603,6 +636,7 @@ function StatusBar({
   status,
   statusItems,
   saving,
+  saveKey,
   savedAt,
   saveError,
   conflict,
@@ -621,7 +655,14 @@ function StatusBar({
   lineCount: number | undefined
   status: string | undefined
   statusItems: { id: string; labelKey: Parameters<TFn>[0]; on?: boolean; onToggle(): void }[]
+  /**
+   * 存盘这一格在不在飞。**它是 `viewerSaveMutation` 逐格算出来的读数**
+   * (`useAsyncPending(…, saveKey)`),不是 store 上一颗共享布尔 ——
+   * 门规则 `async-busy-boolean` 只扫 `.ts`,组件收一个布尔 prop 是合规的下游写法。
+   */
   saving: boolean
+  /** 那一格的键(`save:<path>`)。没开文件时缺席。 */
+  saveKey: string | undefined
   savedAt: number | undefined
   saveError: string | undefined
   conflict: boolean
@@ -685,14 +726,26 @@ function StatusBar({
       </span>
 
       {editing && (
-        /* ③ 异步钮的 pending 态:存盘在飞时禁用并换字,不给第二次机会。 */
+        /*
+         * ③ 异步钮的 pending 态:存盘在飞时禁用并换字,不给第二次机会。
+         *
+         * **这一颗不换 `ui/AsyncButton`**(09-02 批 6 的一处如实偏离):那件的身子
+         * 是 `ui/Button`(28 高、描边、字重 600),而这一排是 26 高状态栏里的
+         * mono 动作链接 —— 换过去这一行就不再是读数带了,那不是等价替换。
+         * 律③要的两件(禁用 + 换字)这里一件不少;**忙态的产地**已经按批 6 的
+         * 本意换成了写路逐格(`saving` 由 `useAsyncPending(mutation, saveKey)` 算),
+         * 这正是这次迁移真正要治的那一格。`saveKey` 在这里不消费,但它跟着
+         * 传下来一格 —— 读数是按哪一格算的,状态栏说得出口。
+         */
         <ButtonBase
           className={s.statusLink}
           disabled={saving}
+          aria-busy={saving || undefined}
+          data-save-key={saveKey}
           data-testid="viewer-save"
           onClick={onSave}
         >
-          {t(saving ? 'viewer.saving' : 'viewer.save')}
+          {t(saving ? 'common.saving' : 'viewer.save')}
         </ButtonBase>
       )}
       {editing && (

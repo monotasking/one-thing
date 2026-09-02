@@ -26,13 +26,21 @@ import s from './StatusDot.module.css'
  *             卸载即无,所以也不需要 HMR dispose。
  *   交互状态:无。**它不是控件**:不进 Tab 序、没有 hover/active/disabled。
  *             一行的 hover 归那一行画,不归点画。
- *   数据状态:五档 tone,各出一条独立配方(见 .module.css)。
+ *   数据状态:六档 tone,各出一条独立配方(见 .module.css)。
+ *
+ * ── `info` 是 09-02 批 6 补的第六档,不是凑数 ──────────────────────────
+ * 收编通知中心那一列点时发现:那面画的是**四档命运**(ok / info / warn /
+ * error),而这件当时只认得其中三档 —— 缺的那一档一迁过来就只剩两条路:
+ * 要么把「一条提示」染成 `idle`(最淡的一档墨,说的是「还没配」),
+ * 要么把那面留在外面继续自绘。两条都是把库件的缺口转嫁给消费方。
+ * `--info` 本来就是 palette 里的第四档语义色(有自己的产地),所以补的是
+ * 一格**已经存在的事实**,不是新造一个语汇。
  * ──────────────────────────────────────────────────────────────────────
  */
-export type StatusDotTone = 'ok' | 'warn' | 'bad' | 'idle' | 'off'
+export type StatusDotTone = 'ok' | 'info' | 'warn' | 'bad' | 'idle' | 'off'
 
 export interface StatusDotProps {
-  /** ok 正常 / warn 要注意 / bad 有错 / idle 还没配 / off 停用。 */
+  /** ok 正常 / info 一条提示 / warn 要注意 / bad 有错 / idle 还没配 / off 停用。 */
   tone: StatusDotTone
   /**
    * 无障碍名。**只在这颗点是唯一信息载体时给** —— 旁边已经写着同一句话时

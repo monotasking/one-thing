@@ -3,6 +3,7 @@ import { useT } from '../../../../i18n'
 import { COPY_FEEDBACK_MS } from '../../../../components/motion'
 import { announce } from '../../../../ui/a11y/live-region'
 import { resolveIcon } from '../../../../components/icons'
+import { IconButton } from '../../../../ui/IconButton'
 import type { BlockModel } from '../../../model/blocks'
 import { InlineRun } from '../../inline/InlineRun'
 import { runBlockAction } from '../../shell/actions'
@@ -86,11 +87,11 @@ export function Table({ model }: { model: TableModel }) {
                 <span className={s.headText}>
                   <InlineRun nodes={cell} />
                 </span>
-                <button
-                  type="button"
+                <IconButton
+                  icon={copiedCol === col ? CheckIcon : CopyIcon}
+                  size="xs"
                   className={s.colCopy}
-                  aria-label={t(copiedCol === col ? 'common.copied' : 'block.action.copyColumn')}
-                  title={t('block.action.copyColumn')}
+                  label={t(copiedCol === col ? 'common.copied' : 'block.action.copyColumn')}
                   onClick={() => {
                     // 块内热区,走的仍是**壳的那一个执行器** —— 复制在全系统是同一件事。
                     // 反馈也走同一条拍板(08-31):就地换形(⧉ → ✓)一拍 + 播报,不弹通知。
@@ -108,13 +109,7 @@ export function Table({ model }: { model: TableModel }) {
                       copiedTimer.current = setTimeout(() => setCopiedCol(null), COPY_FEEDBACK_MS)
                     })
                   }}
-                >
-                  {copiedCol === col ? (
-                    <CheckIcon className={s.colCopyIcon} strokeWidth={1.75} aria-hidden="true" />
-                  ) : (
-                    <CopyIcon className={s.colCopyIcon} strokeWidth={1.75} aria-hidden="true" />
-                  )}
-                </button>
+                />
               </span>
             </th>
           ))}

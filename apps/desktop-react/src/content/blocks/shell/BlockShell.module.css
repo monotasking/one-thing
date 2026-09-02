@@ -111,10 +111,10 @@
   outline-offset: 2px;
 }
 
-.actionIcon {
-  width: var(--fs-meta);
-  height: var(--fs-meta);
-}
+/*
+ * `.actionIcon` 随批 6 退役:檐上唯一那颗图标钮(⋯)迁进 `ui/IconButton`,
+ * 图标尺寸由那件的 `--icon-btn-glyph-xs` 说了算(与这里的 --fs-meta 同为 12px)。
+ */
 
 /* ── 本体容器:块内横滚 + 限高折叠 ────────────────────────────────────── */
 

@@ -35,7 +35,7 @@ export function FileGlyphMark({
     const { bg, fg } = brandVars(glyph.brand)
     return (
       <span
-        className={className ? `${className} ${s.badge}` : s.badge}
+        className={className ? `${className} ${s.ext}` : s.ext}
         style={{ background: bg, color: fg } as CSSProperties}
         aria-hidden="true"
       >

@@ -4,7 +4,6 @@ import { COPY_FEEDBACK_MS } from '../components/motion'
 import { Button } from '../ui/Button'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Popover } from '../ui/Popover'
-import { Spinner } from '../ui/Spinner'
 import { useT, resolveLang } from '../i18n'
 import type { Lang, MessageKey } from '../i18n'
 import { useStageStore } from '../stage/store'
@@ -120,9 +119,14 @@ export function FileDetailPopover({
           </ButtonBase>
         </div>
 
+        {/*
+          * **这里不转圈**(09-02 批 6 兑现禁令:Spinner 只许出现在按钮内或状态栏,
+          * 浮层 / 卡的加载态用文字或骨架)。从前这一格是「转圈 + 同一句话」——
+          * 转圈说的话与它旁边那行字逐字相同,删掉一个字都没少;而它下面那条
+          * error 分支本来就只有文字,两态从此同一副形。
+          */}
         {detail.status === 'loading' && (
           <p className={s.detailNote}>
-            <Spinner label={t('files.detailLoading')} />
             <span className={s.noteDetail}>{t('files.detailLoading')}</span>
           </p>
         )}

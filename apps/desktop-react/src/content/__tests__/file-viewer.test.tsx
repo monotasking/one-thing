@@ -18,7 +18,7 @@ import '../viewer/navigators'
 import '../viewer/keymaps'
 import { configureFilesPort } from '../../data/files-port'
 import type { FilesPort } from '../../data/files-port'
-import { useViewerSource } from '../../data/viewer-source'
+import { useViewerSource, viewerSaveKey, viewerSaveMutation } from '../../data/viewer-source'
 import type { ViewerFile } from '../../data/viewer-source'
 import { useFileOpenMode } from '../../data/file-open-mode'
 import { useStageStore } from '../../stage/store'
@@ -522,6 +522,42 @@ describe('四律:切文件不闪 / 骨架只首载 / 异步钮有 pending', () =
       release?.({ success: true })
     })
   })
+
+  /**
+   * 09-02 批 6:存盘的忙态从 store 上一颗 `edit.saving` 布尔搬进了写路
+   * (`viewerSaveMutation`),按 `save:<path>` **逐格**记账。这一条钉的是
+   * 那笔迁移真正买到的东西 —— 律③要的「反馈长在被点的那一个上」:
+   * 在飞的是这个文件那一格,别的路径那一格是静的。
+   * 拆掉逐格(把 key 摘了)当场红:那时任何一个 key 都会读回 true。
+   */
+  it('存盘的忙态由写路**逐格**给:飞的是这个文件那一格,别的路径不受连累', async () => {
+    let release: ((v: { success: true }) => void) | undefined
+    installPort({
+      saveContent: vi.fn(
+        () =>
+          new Promise<{ success: true }>((resolve) => {
+            release = resolve
+          }),
+      ),
+    })
+    await open('/repo/a.ts')
+    render(<FileViewer />)
+    await toggleEditViaMenu()
+    fireEvent.change(screen.getByTestId('viewer-editor'), { target: { value: 'changed' } })
+    fireEvent.click(screen.getByTestId('viewer-save'))
+
+    await waitFor(() =>
+      expect(viewerSaveMutation.isPending(viewerSaveKey('/repo/a.ts'))).toBe(true),
+    )
+    expect(viewerSaveMutation.isPending(viewerSaveKey('/repo/other.ts'))).toBe(false)
+    // 钮上那一格是按 key 算的读数,状态栏说得出它是哪一格。
+    expect(screen.getByTestId('viewer-save').getAttribute('data-save-key')).toBe('save:/repo/a.ts')
+
+    await act(async () => {
+      release?.({ success: true })
+    })
+    expect(viewerSaveMutation.isPending(viewerSaveKey('/repo/a.ts'))).toBe(false)
+  })
 })
 
 /* ── 轻编辑 ────────────────────────────────────────────────────────────── */
@@ -728,6 +764,40 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
     await open('/repo/README.md')
     render(<FileViewer />)
     expect(screen.queryByTestId('viewer-jump')).toBeNull()
+  })
+
+  /**
+   * 09-02 批 6:散场行为迁进 `ui/float` 的 `useFloatDismiss`。
+   * 两条各钉一件,拆掉哪一条都当场红:
+   *  · Esc 关掉,而且**认领这一下**(preventDefault)—— 退层链读的正是它,
+   *    不认领的话同一下 Esc 会继续往外把查看器所在的那块面一起收掉;
+   *  · **不点外关**(`outside: false`):点到正文上不该把条收掉,那一下多半
+   *    正是用户在看清楚要跳哪儿。原语的默认档是点外关,所以这一条是真守卫。
+   */
+  it('Esc 关掉跳转条,并认领这一下(退层链据 defaultPrevented 让位)', async () => {
+    installPort()
+    await open('/repo/a.ts')
+    render(<FileViewer />)
+    fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'l', metaKey: true })
+    await screen.findByTestId('viewer-jump-bar')
+
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+    act(() => {
+      window.dispatchEvent(esc)
+    })
+    await waitFor(() => expect(screen.queryByTestId('viewer-jump-bar')).toBeNull())
+    expect(esc.defaultPrevented).toBe(true)
+  })
+
+  it('点条外面**不**关它(原语默认是关的,这一档是显式关掉的)', async () => {
+    installPort()
+    await open('/repo/a.ts')
+    render(<FileViewer />)
+    fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'l', metaKey: true })
+    await screen.findByTestId('viewer-jump-bar')
+
+    fireEvent.pointerDown(document.body)
+    expect(screen.getByTestId('viewer-jump-bar')).toBeTruthy()
   })
 })
 

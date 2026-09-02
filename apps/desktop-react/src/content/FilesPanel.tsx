@@ -511,6 +511,24 @@ function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn }) {
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
+  /*
+   * ── 临时手写(09-02 批 6 读过并留账,**没有**迁)──────────────────────────
+   * 它护的**不是**一个文件操作,而是 `sessions-source` 的 `setWorkingDirectory`
+   * ——「把这条会话挪到这个目录」那一口后端写。所以按律③它该走 `data/kernel` 的
+   * createMutation、按 `workdir:<sessionId>` 逐格记账,与 viewer 存盘同一形。
+   *
+   * 没有就地迁,理由是**产地不在这里**:mutation 得长在写的那一层
+   * (`data/sessions-source.ts`),而那一口的 settle 要做的两件事
+   * (`lastRefreshAt = Date.now()` + `await loadList()`)都关在 zustand 那个
+   * creator 闭包里,模块级够不着 —— 迁它等于先把 sessions-source 的重拉那一半
+   * 提到模块级(`workspace/store.ts` 的 `reload()` 就是那个形)。那是一次
+   * 共享数据源的结构改动,不属于「content 区收尾」这一批的面,硬塞进来是拿一个
+   * 全壳都在订的 source 去赌。**记档待独立一批**。
+   *
+   * 这一格今天不是病型 B(粒度病):它只禁**发起它的那一颗**确认钮,一屏也只有
+   * 一条绑定行。律③真正欠的是另一半 —— 忙起来钮上**不换字**(只变灰),
+   * 以及没有 `aria-busy`;那两件跟着迁 mutation 一起补(AsyncButton 白送)。
+   */
   const [busy, setBusy] = useState(false)
 
   const submit = async () => {

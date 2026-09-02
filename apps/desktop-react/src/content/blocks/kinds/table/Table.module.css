@@ -69,28 +69,28 @@
 
 /* ── 列头的 ⧉ 复制列:静默,列被感应到才亮 ──────────────────────────── */
 
-.colCopy {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  color: var(--text-4);
+/*
+ * 这颗钮的**皮肤归 ui/IconButton**(size="xs"):底、字色、hover / active / focus
+ * 四态、几何全在那件里,这里一个字都不再画(09-02 批 6 收编 —— 从前这里自绘了
+ * 一份 rest text-4 / hover text-1 的配方,正是「图标钮各面自绘」那条病)。
+ *
+ * 留在这里的只有一件库件不该知道的事:**它静默,列被感应到才亮**。
+ * 那是这张表的列感应机制(下面 nth-child 那一段)的一部分,不是按钮的属性。
+ * 键盘另开一格:焦点落上来必须亮,否则 Tab 到一颗看不见的钮上。
+ *
+ * 写成 `.headInner .colCopy`(0,2,0)而不是裸 `.colCopy`(0,1,0)只为**赢一次平局**:
+ * `ui/IconButton` 的 `.btn` 自己带一句 `transition: … opacity var(--dur) …`,两边
+ * 同为 (0,1,0) 时谁赢由打包顺序决定 —— 而这一格要的恰恰是**慢档** 300ms
+ * (露出一个悬停才有的挂件,与 hover 淡入同一条),不是控件换态那档 120ms。
+ * 多一个祖先类是这里唯一诚实的加权:它说的是事实(这颗钮就长在列头里)。
+ */
+.headInner .colCopy {
   opacity: 0;
-  transition: opacity var(--dur-hover-fade) var(--ease), color var(--dur) var(--ease);
-}
-
-.colCopy:hover {
-  color: var(--text-1);
+  transition: opacity var(--dur-hover-fade) var(--ease);
 }
 
 .colCopy:focus-visible {
   opacity: 1;
-  outline: var(--focus-ring-w) solid var(--accent-ring);
-  outline-offset: 2px;
-}
-
-.colCopyIcon {
-  width: var(--fs-meta);
-  height: var(--fs-meta);
 }
 
 /*

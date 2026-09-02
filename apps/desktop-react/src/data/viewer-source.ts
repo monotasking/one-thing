@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { baseNameOf, classifyFileFailure } from './files-source'
 import { filesPort } from './files-port'
+import { createMutation } from './kernel/mutation'
+import type { Mutation } from './kernel/mutation'
 import { VIEWER_CHUNK_BYTES, isSvgPath, resolveViewerSpec, specOf, specOfPath } from './viewer-kinds'
 import type { ViewerFile } from './viewer-kinds'
 
@@ -81,8 +83,15 @@ export interface ViewerEdit {
   editing: boolean
   /** 编辑区里此刻这份文本;null = 没进过编辑。 */
   draft: string | null
-  /** 存盘在飞(所有异步钮要 pending 态,四律之一)。 */
-  saving: boolean
+  /*
+   * 从前这里有一格 `saving: boolean`。它**搬去了 `viewerSaveMutation`**(09-02 批 6):
+   * 忙态是写路的事,而写路的产地是 `data/kernel` 的 createMutation ——
+   * 「谁在写、写的是哪一格」由它按 `save:<path>` 逐格记(律③),界面读
+   * `useAsyncPending(viewerSaveMutation, viewerSaveKey(path))`。
+   * 留在这里的三格(error / savedAt / conflict)是**结论**不是忙态:它们在写完
+   * 之后还要继续说话(状态栏那一闪「已保存」、撞车那一句警告),所以它们仍然
+   * 是这个文件的可渲染状态。
+   */
   /** 上一次存盘的失败原话;成功后清空。 */
   error?: string
   /** 上一次存盘成功的时刻 —— 状态栏那一闪「已保存」读它。 */
@@ -157,7 +166,6 @@ const EMPTY_VIEW: ViewerView = {
 const EMPTY_EDIT: ViewerEdit = {
   editing: false,
   draft: null,
-  saving: false,
   error: undefined,
   savedAt: undefined,
   conflict: false,
@@ -170,6 +178,103 @@ const EMPTY_EDIT: ViewerEdit = {
 function viewForNextFile(view: ViewerView): ViewerView {
   return { ...EMPTY_VIEW, wrap: view.wrap, keymap: view.keymap }
 }
+
+/* ── ③' 存盘那一发:走 data/kernel 的写数原语 ───────────────────────────── */
+
+/**
+ * 这一发打在**哪一格**上。一个文件一格 —— 律③要的逐格 pending 就是这个键:
+ * 同时开着两个查看器落点各存各的文件时,一颗钮忙不该把另一颗也按住。
+ * 键的形照 `workspace/store.ts` 的 `workspaceKey`:一个函数,不是散在调用点的字符串。
+ */
+export const viewerSaveKey = (path: string): string => `save:${path}`
+
+export interface ViewerSaveInput {
+  path: string
+  draft: string
+  /** 乐观锁:手上这份内容读进来时盘上的时刻。 */
+  mtimeMs: number | undefined
+  /**
+   * 这一发的**回执格**。`Mutation.run` 刻意不抛(失败已经在 onError 里处理完了,
+   * 再抛一遍只会逼每个调用点写空 catch),它失败只回一个 `undefined` ——
+   * 而 `save()` 的调用方要区分「撞车」与「没写成」这两句话。所以由 onError
+   * 往这一格里写一次,`save()` 读它。
+   *
+   * 为什么不读 store 上那两格(edit.conflict / edit.error):**存盘期间用户可能
+   * 已经切走了**,那一支按老规矩一个字都不往 store 上写(不去改一份别人的内容),
+   * 于是从 store 读回来的会是「没失败」——一句假话。每发一格,顺带也不会有
+   * 两个文件同时在存时互相读串的问题。
+   */
+  outcome: { conflict: boolean; error?: string }
+}
+
+export interface ViewerSaveDone {
+  /** 后端写完之后盘上的新时刻;没给就沿用手上那一个。 */
+  mtimeMs: number | undefined
+}
+
+/**
+ * 「后端说没成」抛出来的那一发。照 `workspace/store.ts` 的 `WorkspaceWriteError`:
+ * 后端原话**可能没有**,而 `Error.message` 会把「没有原话」变成空字符串 ——
+ * 那两件事在状态栏里长得不一样(一条没有详情 vs 一条详情是空)。撞车那一格
+ * 同理原样带着:它决定状态栏说「盘上被别人改过」还是照抄一句后端原话。
+ */
+class ViewerSaveError extends Error {
+  readonly detail: string | undefined
+  readonly conflict: boolean
+
+  constructor(detail: string | undefined, conflict: boolean) {
+    super(detail ?? 'save failed')
+    this.name = 'ViewerSaveError'
+    this.detail = detail
+    this.conflict = conflict
+  }
+}
+
+/**
+ * 存盘的**唯一写口**。三格语义与从前那只手写状态机逐字相同:
+ *  · 撞车(conflict)与普通失败是两句话 —— 前者说「盘上被别人改过」;
+ *  · 失败原话照抄后端,渲染层不编一句更好听的;
+ *  · 存成了就地把手上这份内容换成草稿并记下 `savedAt`(状态栏那一闪「已保存」),
+ *    **不重读一遍盘** —— 刚写下去的就是这份字节,再读只是多一次往返,
+ *    而且中间那一帧会让编辑区闪一下。
+ *
+ * 变的只有一件:忙态从 store 上一颗共享布尔换成了这只 mutation 按 key 记的账。
+ */
+export const viewerSaveMutation: Mutation<ViewerSaveInput, ViewerSaveDone> = createMutation<
+  ViewerSaveInput,
+  ViewerSaveDone
+>('viewer.save', {
+  key: (input) => viewerSaveKey(input.path),
+  run: async (input) => {
+    const port = await filesPort()
+    const response = await port.saveContent(input.path, input.draft, input.mtimeMs)
+    // 「后端说没成」与「这一发抛了」在这条原语里是同一件事:都得走 onError。
+    if (!response.success) throw new ViewerSaveError(response.error, response.conflict === true)
+    return { mtimeMs: response.mtimeMs }
+  },
+  settle: (result, input) => {
+    // 存盘期间用户可能已经切走了 —— 那就什么都不做,不去改一份别人的内容。
+    if (useViewerSource.getState().file?.path !== input.path) return
+    useViewerSource.setState((st) => ({
+      file:
+        st.file && isEditableFile(st.file)
+          ? { ...st.file, content: input.draft, mtimeMs: result.mtimeMs ?? st.file.mtimeMs }
+          : st.file,
+      edit: { ...st.edit, error: undefined, conflict: false, savedAt: Date.now() },
+    }))
+  },
+  onError: (error, input) => {
+    const failure = error instanceof ViewerSaveError ? error : undefined
+    // 回执格**无条件**填:切走了也得让 save() 说得出这一发是撞车还是没写成。
+    input.outcome.conflict = failure?.conflict ?? false
+    input.outcome.error = failure ? failure.detail : error.message
+    // 屏幕上那两格只在还停在这个文件上时才动 —— 与 settle 同一条判据。
+    if (useViewerSource.getState().file?.path !== input.path) return
+    useViewerSource.setState((st) => ({
+      edit: { ...st.edit, conflict: input.outcome.conflict, error: input.outcome.error },
+    }))
+  },
+})
 
 export const useViewerSource = create<ViewerSourceState>()((set, get) => {
   let token = 0
@@ -315,34 +420,22 @@ export const useViewerSource = create<ViewerSourceState>()((set, get) => {
       if (!isEditableFile(file) || edit.draft === null) {
         return { ok: false, reason: 'not-editable' }
       }
-      const draft = edit.draft
-      set((st) => ({ edit: { ...st.edit, saving: true, error: undefined, conflict: false } }))
-      const port = await filesPort()
-      const response = await port.saveContent(file.path, draft, file.mtimeMs)
-      // 存盘期间用户可能已经切走了 —— 那就只收起 saving,不去改一份别人的内容。
-      if (get().file?.path !== file.path) {
-        set((st) => ({ edit: { ...st.edit, saving: false } }))
-        return response.success ? { ok: true } : { ok: false, reason: 'failed', error: response.error }
-      }
-      if (!response.success) {
-        const conflict = response.conflict === true
-        set((st) => ({
-          edit: { ...st.edit, saving: false, conflict, error: response.error },
-        }))
-        return { ok: false, reason: conflict ? 'conflict' : 'failed', error: response.error }
-      }
       /*
-       * 存成了:**手上这份内容就地换成草稿**,时间戳跟着后端给的走。
-       * 不重读一遍盘 —— 刚写下去的就是这份字节,再读一次只是多一次往返,
-       * 而且中间那一帧会让编辑区闪一下。
+       * 开一发之前先把**上一次的结论**清掉。这两格从前是跟着 `saving: true` 一起
+       * 写的(同一句 set),忙态搬走之后它们留在这里 —— 清的时机一格没变:
+       * 就在这一发出发之前,而不是等回执回来。
        */
-      set((st) => ({
-        file: st.file && isEditableFile(st.file)
-          ? { ...st.file, content: draft, mtimeMs: response.mtimeMs ?? st.file.mtimeMs }
-          : st.file,
-        edit: { ...st.edit, saving: false, error: undefined, conflict: false, savedAt: Date.now() },
-      }))
-      return { ok: true }
+      set((st) => ({ edit: { ...st.edit, error: undefined, conflict: false } }))
+      const outcome: ViewerSaveInput['outcome'] = { conflict: false }
+      const done = await viewerSaveMutation.run({
+        path: file.path,
+        draft: edit.draft,
+        mtimeMs: file.mtimeMs,
+        outcome,
+      })
+      if (done) return { ok: true }
+      // 失败:mutation 不抛,结论从这一发自己的回执格里读(理由见 outcome 的注释)。
+      return { ok: false, reason: outcome.conflict ? 'conflict' : 'failed', error: outcome.error }
     },
 
     reset: () => {

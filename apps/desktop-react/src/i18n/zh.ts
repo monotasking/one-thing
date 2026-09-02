@@ -494,6 +494,10 @@ export const zh = {
   // 08-31 起复制反馈就地长在按钮上,notify.copied / copyFailed 两键成孤儿(照仓惯例保留)。
   'common.copied': '已复制',
   'common.copyFailed': '没能复制',
+  // 09-02 批 6:「正在保存…」是**任何一颗异步钮**的忙态话,不是查看器的话。
+  // 从前三处(查看器存盘、模型目录手填钮、总览新建卡)借的都是 `viewer.saving` ——
+  // 一个域的键被别的域借用,改一个字就会在两个不相干的面上同时变。
+  'common.saving': '正在保存…',
   'notify.copied': '已复制这条回复',
   'notify.copyFailed': '没能复制',
   'notify.retryFailed': '重试没有发出去',
@@ -607,7 +611,8 @@ export const zh = {
   'viewer.editing': '正在编辑 {name}',
   'viewer.unsaved': '未保存',
   'viewer.save': '保存 ⌘S',
-  'viewer.saving': '正在保存…',
+  // `viewer.saving` 已删(09-02 批 6):那句话进了 `common.saving` —— 它本来就是
+  // 任何一颗异步钮的忙态话,查看器只是它的第一个消费者(而后来又被另外两处借走)。
   'viewer.saved': '已保存',
   'viewer.saveFailed': '没能保存',
   'viewer.conflict': '这个文件在你打开之后被改过 —— 没有覆盖',

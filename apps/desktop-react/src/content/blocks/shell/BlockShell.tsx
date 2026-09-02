@@ -1,6 +1,8 @@
 import { Suspense, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useT, type MessageKey, type TFn } from '../../../i18n'
+import { ButtonBase } from '../../../ui/ButtonBase'
+import { IconButton } from '../../../ui/IconButton'
 import { Menu, MenuItem } from '../../../ui/Menu'
 import { resolveIcon } from '../../../components/icons'
 import type { BlockModel } from '../../model/blocks'
@@ -225,29 +227,37 @@ function BlockActions({
         const key = `${entry.action.verb}:${index}`
         const fed = copied?.key === key
         return (
-          <button
+          /*
+           * 三类判的第三类:**檐上的静默微型动作**(fs-micro / text-4 / 无边框
+           * 无底),视觉本该定制 —— 与批 3 把「加载更多」判进基座是同一形,
+           * 不是 `ui/Button` 那种 28 高带描边的文字钮。所以皮肤留在本地,
+           * 清 UA 归 `ui/ButtonBase`。
+           */
+          <ButtonBase
             key={key}
-            type="button"
             className={s.action}
             data-copied={fed ? '' : undefined}
             onClick={() => run(entry.action, key)}
           >
             {fed ? t(copied.ok ? 'common.copied' : 'common.copyFailed') : t(entry.labelKey)}
-          </button>
+          </ButtonBase>
         )
       })}
       {rest.length > 0 && (
-        <button
-          type="button"
-          className={s.action}
-          aria-label={t('block.actions')}
+        /*
+         * 这一颗是**真图标钮**(⋯),所以它归 `ui/IconButton` —— 名字、提示、
+         * 四态配方与几何全在库件里,本地不再挂 `.action`(那份皮肤是给文字钮的)。
+         * `e.currentTarget` 拿得到:批 3.5 起 IconButton 的 onClick 收事件。
+         */
+        <IconButton
+          icon={MoreIcon}
+          size="xs"
+          label={t('block.actions')}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect()
             setMenu({ x: r.left, y: r.bottom })
           }}
-        >
-          <MoreIcon className={s.actionIcon} strokeWidth={1.75} aria-hidden="true" />
-        </button>
+        />
       )}
       {menu && (
         <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={t('block.actions')}>
@@ -317,9 +327,10 @@ function ClampedBody({ t, children }: { t: TFn; children: ReactNode }) {
         <div ref={inner}>{children}</div>
       </div>
       {overflows && (
-        <button type="button" className={s.expand} onClick={() => setExpanded((v) => !v)}>
+        /* 与檐上那几颗同判:微型静默文字钮,皮肤本地、清 UA 归基座。 */
+        <ButtonBase className={s.expand} onClick={() => setExpanded((v) => !v)}>
           {t(expanded ? 'block.collapse' : 'block.expand')}
-        </button>
+        </ButtonBase>
       )}
     </>
   )

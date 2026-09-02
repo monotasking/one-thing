@@ -329,12 +329,13 @@ export function Gallery() {
        */}
       <Section name="StatusDot">
         <StatusDot tone="ok" />
+        <StatusDot tone="info" />
         <StatusDot tone="warn" />
         <StatusDot tone="bad" />
         <StatusDot tone="idle" />
         <StatusDot tone="off" />
         <StatusDot tone="bad" label="Auth failed" />
-        <Note>ok / warn / bad / idle / off;旁边已有文字就不给 label(给了会被念两遍)</Note>
+        <Note>ok / info / warn / bad / idle / off;旁边已有文字就不给 label(给了会被念两遍)</Note>
       </Section>
 
       <Section name="GroupHead">

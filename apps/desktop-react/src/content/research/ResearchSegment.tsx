@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from 'react'
 import { useT, type TFn } from '../../i18n'
 import { resolveIcon } from '../../components/icons'
-import { Spinner } from '../../ui/Spinner'
+import { ButtonBase } from '../../ui/ButtonBase'
+import { Tooltip } from '../../ui/Tooltip'
 import type { BlockCtx } from '../blocks/registry'
 import type {
   ResearchActivity,
@@ -79,7 +80,9 @@ export function ResearchSegment({
       data-open={open || undefined}
       data-prose="object"
     >
-      <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
+      {/* 收起行是一件**结构件**(caret + 一行灰字 + 右端读数,视觉本该定制)——
+        * 三类判的第三类,皮肤留本地、清 UA 归 `ui/ButtonBase`。 */}
+      <ButtonBase className={s.head} onClick={toggle} aria-expanded={open}>
         <CaretIcon className={s.caret} strokeWidth={2} aria-hidden="true" />
         <FaviconStack domains={domains} />
         <span className={s.headText}>
@@ -100,7 +103,7 @@ export function ResearchSegment({
             <span className={s.duration}>{formatDuration(t, episode.durationMs)}</span>
           )}
         </span>
-      </button>
+      </ButtonBase>
 
       {open && <ResearchList t={t} episode={episode} ctx={ctx} />}
     </div>
@@ -118,10 +121,18 @@ function ResearchLive({ t, episode }: { t: TFn; episode: ResearchEpisodeModel })
   return (
     <div className={s.live}>
       <span className={s.liveHead}>
-        <Spinner size="sm" className={s.liveSpinner} />
-        <span className={s.liveText} title={text}>
-          {text}
-        </span>
+        {/*
+          * **这里不转圈**(09-02 批 6 兑现禁令)。判的是这一格算不算「状态栏」:
+          * 不算 —— 它是长在聊天正文流里的一块 surface-1 衬块,不是壳的状态栏
+          * (那两处是查看器脚下那条 26 高的读数带、以及按钮内)。而且这一行
+          * 本来就在说话:「正在阅读 web.dev — 标题…」随检索推进自己换词,
+          * 底下还有一条进度副行。转圈在这里是把同一件事说第三遍。
+          *
+          * 全名走 `ui/Tooltip`(禁 native `title=`):这一行会截断,悬停要看得到全句。
+          */}
+        <Tooltip content={text}>
+          <span className={s.liveText}>{text}</span>
+        </Tooltip>
       </span>
       <span className={s.liveSub}>
         {t('chat.research.progress', { q: episode.queries.length, p: episode.openedCount })}
@@ -197,20 +208,23 @@ function SourceRow({
 
   return (
     <div className={s.source} data-source-open={open || undefined}>
+      {/*
+        * 两形共一句提示:整条地址走 `ui/Tooltip`(禁 native `title=`)——
+        * 行上画的是标题与域名,完整 URL 只在悬停时说。Tooltip 是 cloneElement
+        * 注入,**不多包一层 DOM**,两形的排版一个像素都不动。
+        * 能不能展开决定它是钮还是一块 div(结局没定下来就不给假按钮),
+        * 而钮那一形是**结构件**(一行来源),清 UA 归 `ui/ButtonBase`。
+        */}
       {expandable ? (
-        <button
-          type="button"
-          className={s.sourceFace}
-          onClick={toggle}
-          aria-expanded={open}
-          title={source.url}
-        >
-          {face}
-        </button>
+        <Tooltip content={source.url}>
+          <ButtonBase className={s.sourceFace} onClick={toggle} aria-expanded={open}>
+            {face}
+          </ButtonBase>
+        </Tooltip>
       ) : (
-        <div className={s.sourceFace} title={source.url}>
-          {face}
-        </div>
+        <Tooltip content={source.url}>
+          <div className={s.sourceFace}>{face}</div>
+        </Tooltip>
       )}
       {open && step && <ToolDrawer call={step.call} ctx={ctx} />}
     </div>

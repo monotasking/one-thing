@@ -108,9 +108,11 @@ button.head:focus-visible {
   color: var(--text-4);
 }
 
-.toolSpinner {
-  color: var(--accent);
-}
+/*
+ * `.toolSpinner` 随批 6 退役:行内不转圈了(Spinner 只许在按钮内或状态栏)。
+ * 「还在忙」这件事这一行本来就有两个产地在说 —— 右端那句「运行中」,
+ * 以及下面 `[data-tool-tone='busy'] .toolIcon` 那记 accent 呼吸。
+ */
 
 /* ── V2 三态:全部长在图标上 ─────────────────────────────────────────── */
 

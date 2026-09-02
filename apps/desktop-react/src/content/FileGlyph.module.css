@@ -7,8 +7,13 @@
 /*
  * 语言字标。底色与字色由行内变量给(值在 tokens.css 的数据节 —— 官方色是数据,
  * 不过主题)。mono + 700 + 紧字距:两三个大写字母要在 20×15 里读得出来。
+ *
+ * 09-02 批 6 从 `.badge` 改到这个名字:它与 `ui/Badge` **不是同一种东西** ——
+ * 那件是「计数 / 未读」的圆丸(r-full、语义实底、--on-* 前景),这一格是
+ * 一枚**扩展名字标**(小圆角矩形、mono 700、品牌色当数据)。同名不同形正是
+ * `shared-vocab-css` 那条门要抓的病;这里让名字说实话,而不是把两件事合并。
  */
-.badge {
+.ext {
   min-width: var(--files-glyph-slot);
   width: auto;
   padding: 0 var(--files-badge-pad-x);

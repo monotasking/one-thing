@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useT, type TFn } from '../../i18n'
 import { resolveIcon } from '../../components/icons'
+import { ButtonBase } from '../../ui/ButtonBase'
 import type { BlockCtx } from '../blocks/registry'
 import type { ToolGroupEntry, ToolGroupModel, ToolStepModel } from '../model/segments'
 import { ToolCardBody, ToolStepRow, formatDuration, toolCardShell, toolTone } from './ToolRow'
@@ -64,7 +65,8 @@ export function ToolGroup({ group, ctx }: { group: ToolGroupModel; ctx: BlockCtx
       {single ? (
         <ToolCardBody step={single} ctx={ctx} />
       ) : (
-        <button type="button" className={s.head} onClick={toggle} aria-expanded={open}>
+        /* 组头是**结构件**(caret + 读数 + 右端),视觉本该定制 —— 清 UA 归 `ui/ButtonBase`。 */
+        <ButtonBase className={s.head} onClick={toggle} aria-expanded={open}>
           <CaretIcon className={s.caret} strokeWidth={2} aria-hidden="true" />
           <span className={s.count}>
             {t('chat.toolGroup.count', { n: group.total })}
@@ -79,7 +81,7 @@ export function ToolGroup({ group, ctx }: { group: ToolGroupModel; ctx: BlockCtx
               <span className={s.duration}>{formatDuration(t, group.durationMs)}</span>
             )}
           </span>
-        </button>
+        </ButtonBase>
       )}
 
       {!single && open && (
@@ -106,7 +108,8 @@ function GroupEntry({ entry, ctx }: { entry: ToolGroupEntry; ctx: BlockCtx }) {
   const Icon = resolveIcon(entry.row.icon)
   return (
     <>
-      <button type="button" className={s.aggregate} onClick={toggle} aria-expanded={open}>
+      /* 聚合行同判:一行「工具名 ×N」,结构件。 */
+      <ButtonBase className={s.aggregate} onClick={toggle} aria-expanded={open}>
         <Icon className={s.aggregateIcon} strokeWidth={1.75} aria-hidden="true" />
         <span className={s.aggregateName}>{entry.tool}</span>
         <span className={s.times}>{t('chat.toolGroup.times', { n: entry.count })}</span>
@@ -115,7 +118,7 @@ function GroupEntry({ entry, ctx }: { entry: ToolGroupEntry; ctx: BlockCtx }) {
             <span className={s.failed}>{t('chat.toolGroup.failed', { n: entry.failed })}</span>
           )}
         </span>
-      </button>
+      </ButtonBase>
       {open && (
         <ul className={s.children}>
           {failedFirst(entry.children).map((step) => (

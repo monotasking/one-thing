@@ -138,8 +138,8 @@ export function SettingsMock() {
     <div className={s.demo}>
       <div className={s.form}>
         <Section titleKey="settings.sectionGeneral">
-          <div className={s.field}>
-            <div className={s.fieldLabel}>{t('settings.language')}</div>
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('settings.language')}</div>
             <Segmented
               options={opts(LOCALE_OPTIONS)}
               value={locale}
@@ -148,8 +148,8 @@ export function SettingsMock() {
             />
           </div>
 
-          <div className={s.field}>
-            <div className={s.fieldLabel}>{t('settings.workdir')}</div>
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('settings.workdir')}</div>
             <div className={s.stub} />
           </div>
         </Section>
@@ -161,8 +161,8 @@ export function SettingsMock() {
           「读物」,判据写在 styles/tokens.css 的阅读轴一节)。
         */}
         <Section titleKey="settings.sectionReading">
-          <div className={s.field}>
-            <div className={s.fieldLabel}>{t('settings.readingFs')}</div>
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('settings.readingFs')}</div>
             <Segmented
               options={opts(READING_FS_OPTIONS)}
               value={readingFs}
@@ -171,10 +171,10 @@ export function SettingsMock() {
             />
           </div>
 
-          <div className={s.field}>
+          <div className={s.settingRow}>
             <div>
-              <div className={s.fieldLabel}>{t('settings.readingDensity')}</div>
-              <div className={s.fieldHint}>{t('settings.readingDensityHint')}</div>
+              <div className={s.settingRowLabel}>{t('settings.readingDensity')}</div>
+              <div className={s.settingRowHint}>{t('settings.readingDensityHint')}</div>
             </div>
             <Segmented
               options={opts(READING_DENSITY_OPTIONS)}
@@ -184,8 +184,8 @@ export function SettingsMock() {
             />
           </div>
 
-          <div className={s.field}>
-            <div className={s.fieldLabel}>{t('settings.readingCol')}</div>
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('settings.readingCol')}</div>
             <Segmented
               options={opts(READING_COL_OPTIONS)}
               value={readingCol}
@@ -194,10 +194,10 @@ export function SettingsMock() {
             />
           </div>
 
-          <div className={s.field}>
+          <div className={s.settingRow}>
             <div>
-              <div className={s.fieldLabel}>{t('settings.motion')}</div>
-              <div className={s.fieldHint}>{t('settings.motionHint')}</div>
+              <div className={s.settingRowLabel}>{t('settings.motion')}</div>
+              <div className={s.settingRowHint}>{t('settings.motionHint')}</div>
             </div>
             <Segmented
               options={opts(MOTION_OPTIONS)}
@@ -209,10 +209,10 @@ export function SettingsMock() {
         </Section>
 
         <Section titleKey="settings.sectionDock">
-          <div className={s.field}>
+          <div className={s.settingRow}>
             <div>
-              <div className={s.fieldLabel}>{t('settings.dockDisplay')}</div>
-              <div className={s.fieldHint}>{t('settings.dockDisplayHint')}</div>
+              <div className={s.settingRowLabel}>{t('settings.dockDisplay')}</div>
+              <div className={s.settingRowHint}>{t('settings.dockDisplayHint')}</div>
             </div>
             <Segmented
               options={opts(DOCK_OPTIONS)}
@@ -222,8 +222,8 @@ export function SettingsMock() {
             />
           </div>
 
-          <div className={s.field}>
-            <div className={s.fieldLabel}>{t('dock.edge')}</div>
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('dock.edge')}</div>
             <Segmented
               options={opts(EDGE_OPTIONS)}
               value={dockEdge}
@@ -232,8 +232,8 @@ export function SettingsMock() {
             />
           </div>
 
-          <div className={s.field}>
-            <div className={s.fieldLabel}>{t('dock.align')}</div>
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('dock.align')}</div>
             <Segmented
               options={opts(ALIGN_OPTIONS)}
               value={dockAlign}
@@ -242,8 +242,8 @@ export function SettingsMock() {
             />
           </div>
 
-          <div className={s.field}>
-            <div className={s.fieldLabel}>{t('dock.size')}</div>
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('dock.size')}</div>
             <Segmented
               options={opts(SIZE_OPTIONS)}
               value={dockSize}
@@ -254,10 +254,10 @@ export function SettingsMock() {
         </Section>
 
         <Section titleKey="dock.openWith">
-          <div className={s.field}>
+          <div className={s.settingRow}>
             <div>
-              <div className={s.fieldLabel}>{t('settings.defaultOpen')}</div>
-              <div className={s.fieldHint}>{t('settings.defaultOpenHint')}</div>
+              <div className={s.settingRowLabel}>{t('settings.defaultOpen')}</div>
+              <div className={s.settingRowHint}>{t('settings.defaultOpenHint')}</div>
             </div>
             <Segmented
               options={opts(OPEN_OPTIONS)}
@@ -266,7 +266,7 @@ export function SettingsMock() {
               label={t('settings.defaultOpen')}
             />
           </div>
-          <div className={s.fieldNote}>{t('settings.defaultOpenNote')}</div>
+          <div className={s.settingRowNote}>{t('settings.defaultOpenNote')}</div>
         </Section>
 
         <Section titleKey="settings.sectionKeymap">

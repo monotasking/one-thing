@@ -4,6 +4,7 @@ import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useExposeStore } from '../expose/store'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
+import { ButtonBase } from '../ui/ButtonBase'
 import { assembleMessage, segmentKey } from './assemble'
 import type { SegmentModel } from './model/segments'
 import { MessageActions } from './message/MessageActions'
@@ -312,13 +313,19 @@ function OverlayRow({ t, entry }: { t: TFn; entry: OverlayEntry }) {
         <span className={s.pendingFoot}>
           {/* 失败的理由照抄后端说的 —— 渲染层不替它编一句更好听的。 */}
           <span className={s.pendingError}>{entry.error}</span>
-          <button type="button" className={s.pendingAction} onClick={() => retry(entry.id)}>
+          {/*
+            * 三类判的第三类:脚注上的**微型静默文字动作**(fs-micro / 无边框无底 /
+            * 长在一行错误说明的旁边),视觉本该定制 —— 与批 3 把「加载更多」判进
+            * 基座同一形。换成 `ui/Button` 会在这一行里塞进两颗 28 高的描边钮,
+            * 那不是等价替换而是改版。皮肤留本地,清 UA 归 `ui/ButtonBase`。
+            */}
+          <ButtonBase className={s.pendingAction} onClick={() => retry(entry.id)}>
             <RetryIcon className={s.pendingIcon} strokeWidth={1.9} aria-hidden="true" />
             {t('chat.retry')}
-          </button>
-          <button type="button" className={s.pendingAction} onClick={() => dismiss(entry.id)}>
+          </ButtonBase>
+          <ButtonBase className={s.pendingAction} onClick={() => dismiss(entry.id)}>
             {t('chat.discard')}
-          </button>
+          </ButtonBase>
         </span>
       )}
     </div>

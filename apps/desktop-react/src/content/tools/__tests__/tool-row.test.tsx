@@ -69,12 +69,18 @@ describe('V2:状态长在图标上,不长成一个词', () => {
     expect(container.textContent).toContain('ENOENT: 没有这个文件')
   })
 
-  it('运行中 = busy 态,右端一枚 spinner + 那一档状态', async () => {
+  /**
+   * 09-02 批 6:**右端那枚 spinner 退役**(Spinner 只许出现在按钮内或状态栏,
+   * 而这是长在聊天正文流里的一行)。断言反过来钉住它不许回来 —— 同时钉住
+   * 「还在忙」这件事仍然说得出口:右端那句「执行中」在,行首那枚图标带着
+   * busy 标(呼吸动画由 `[data-tool-tone='busy'] .toolIcon` 画)。
+   */
+  it('运行中 = busy 态,右端是那一档状态的话,**不转圈**', async () => {
     const { container } = await draw({ status: 'executing' })
     expect(card(container).getAttribute('data-tool-tone')).toBe('busy')
     expect(container.textContent).toContain('执行中')
-    // spinner 是装饰性的(没有 label),所以按 aria-hidden 找而不是按 role。
-    expect(container.querySelector('[aria-hidden="true"][class*="ring"]')).toBeTruthy()
+    // ui/Spinner 的环那一格带 class *ring*(装饰性、无 label)—— 一颗都不许有。
+    expect(container.querySelector('[aria-hidden="true"][class*="ring"]')).toBeNull()
   })
 
   it('认不出的状态既不猜是哪一态,也不吞掉那个枚举', async () => {

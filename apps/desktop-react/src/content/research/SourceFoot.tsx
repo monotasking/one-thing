@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { useT } from '../../i18n'
+import { ButtonBase } from '../../ui/ButtonBase'
 import { segmentKey } from '../assemble/key'
 import type { SegmentModel } from '../model/segments'
 import { FaviconStack } from './Favicon'
@@ -39,8 +40,9 @@ export function MessageSourceFoot({
     // (content/ChatStream.module.css)。
     <div className={s.foot} data-testid="research-foot" data-prose="object">
       {foots.map((foot) => (
-        <button
-          type="button"
+        /* 一枚**药丸**(favicon 堆 + 一句读数),视觉本该定制 ——
+         * 三类判的第三类,皮肤留本地、清 UA 归 `ui/ButtonBase`。 */
+        <ButtonBase
           key={foot.id}
           className={s.footPill}
           onClick={() => revealResearch(foot.id)}
@@ -48,7 +50,7 @@ export function MessageSourceFoot({
         >
           <FaviconStack domains={foot.domains} />
           {t('chat.research.sources', { n: foot.count })}
-        </button>
+        </ButtonBase>
       ))}
     </div>
   )

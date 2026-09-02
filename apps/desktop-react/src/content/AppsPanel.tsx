@@ -2,6 +2,7 @@ import { useStageStore } from '../stage/store'
 import { STAGE_ITEMS } from '../stage/items'
 import { isItemHidden } from '../stage/transitions'
 import { resolveIcon } from '../components/icons'
+import { ButtonBase } from '../ui/ButtonBase'
 import { Switch } from '../ui/Switch'
 import { useT } from '../i18n'
 import s from './AppsPanel.module.css'
@@ -63,15 +64,14 @@ export function AppsPanel() {
             <li key={item.id} className={s.row} data-testid={`apps-row-${item.id}`}>
               {/* 名字本身就是那道门:清单里点一块面 = 打开它(与点 Dock 瓦同一条路,
                 * 所以藏起来的面照样打得开)。 */}
-              <button
-                type="button"
+              <ButtonBase
                 className={s.open}
                 onClick={() => click(item.id)}
                 aria-label={t('apps.open', { name })}
               >
                 <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
                 <span className={s.name}>{name}</span>
-              </button>
+              </ButtonBase>
               {locked && <span className={s.note}>{t('apps.alwaysInDock')}</span>}
               <Switch
                 checked={!hidden}

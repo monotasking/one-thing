@@ -7,10 +7,10 @@ import { StatusDot, type StatusDotTone } from '../StatusDot'
  *  · 生命状态:挂载即一个节点,卸载零残留(它没有订阅,所以「干净」= 节点走光);
  *  · 交互状态:**它不是控件** —— 反过来断言:任何角色下都不该是 button,
  *    不进 Tab 序。这一条是守卫:哪天有人给它加 onClick,这里当场红;
- *  · 数据状态:五档 tone 各出各的 class,而且五个互不相同。
+ *  · 数据状态:六档 tone 各出各的 class,而且六个互不相同。
  */
 describe('StatusDot:状态点', () => {
-  const TONES: StatusDotTone[] = ['ok', 'warn', 'bad', 'idle', 'off']
+  const TONES: StatusDotTone[] = ['ok', 'info', 'warn', 'bad', 'idle', 'off']
 
   it('生命状态:挂载画一个节点,卸载后容器空干净', () => {
     const { container, unmount } = render(<StatusDot tone="ok" />)
@@ -27,7 +27,7 @@ describe('StatusDot:状态点', () => {
     expect(el.getAttribute('role')).toBe('img')
   })
 
-  it('数据状态:五档 tone 各出一条自己的 class,互不相同', () => {
+  it('数据状态:六档 tone 各出一条自己的 class,互不相同', () => {
     const seen = new Set<string>()
     for (const tone of TONES) {
       const { container, unmount } = render(<StatusDot tone={tone} />)

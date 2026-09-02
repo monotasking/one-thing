@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { composerSink } from '../../composer/sink'
 import { useT } from '../../i18n'
+import { ButtonBase } from '../../ui/ButtonBase'
 import s from './MessageChrome.module.css'
 
 /**
@@ -68,14 +69,15 @@ export function StreamReadout({ startedAt }: { startedAt: number }) {
         那颗停止键按的也是它,于是"停"这件事在这台上只有一个实现、一个失败处理
         (`chat-source.abort`:没在跑就是恒等,发不出去是 error 档通知)。
       */}
-      <button
-        type="button"
+      {/* 与动作行那两颗同判(见 MessageActions):幽灵皮肤留本地,清 UA 归基座。
+        * 这一颗还比它们再小一档(`.readout .ghost`)—— 它是读数的一部分。 */}
+      <ButtonBase
         className={s.ghost}
         data-testid="chat-stop"
         onClick={() => composerSink().abort()}
       >
         {t('chat.stop')}
-      </button>
+      </ButtonBase>
     </div>
   )
 }
