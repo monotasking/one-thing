@@ -122,42 +122,56 @@ apps/web/                    # Browser build of packages/renderer; talks to what
 
 ### createOnethingBackend — the single assembly recipe
 
-`packages/backend/backend.ts`. Every host boots through this function; ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/backend` modules performs no configuration** — enforced by `packages/backend/__tests__/import-side-effect-free.test.ts`.
+`packages/backend/backend.ts`. Every host boots through `OnethingBackend.assemble(options)` (`createOnethingBackend` is the alias every call site still uses); ordering constraints (variables before tools, engine before Permission) live here and nowhere else. **Importing `@onething/backend` modules performs no configuration** — enforced by `packages/backend/__tests__/import-side-effect-free.test.ts`; **the assembly itself is exercised end to end** by `packages/backend/__tests__/assembly-lifecycle.test.ts` (nine assertions on a temp store: assemble → dispose → assemble, double-assembly rejection, mid-assembly failure rollback, latch re-registration, timer hygiene).
+
+**`OnethingBackend` is a class, not a bag of globals** (组合根 A, `docs/design/backend-composition-root-2026-09.md`, landed 2026-09-02/03):
+
+- The assembly products are **fields** — `eventBus` / `streamChannel` / `sessionManager` / `engine` / `runtime` / `options` — created by pure factories (`events/index.ts` `createEventSystem()`, `session/index.ts` `createSessionLayer(eventBus, streamChannel)`, `wiring/engine/index.ts` `createStreamEngineLayer({eventBus, streamChannel})`) and passed step to step. The old `initializeX` / `shutdownX` pairs are gone.
+- **One process slot, `packages/backend/current.ts`** — the only module-level `let` the assembly layer keeps (`assembly:gate` exempts it). The 121 `getXxx()` accessors (`getEventBus`, `getStreamEngine`, `getSessionManager`, …) still exist but read the **current instance**; before assembly, or for a field not yet built, they throw `BackendNotAssembledError('<field>')`. Assembling while an instance is live throws `BackendAlreadyAssembledError` on the first line (it used to warn-and-return the first backend's engine). A failed assembly runs the disposers registered so far and clears the slot before rethrowing.
+- **`own(disposer, label)` / `dispose()`** — whoever starts something that leaves a tail registers its teardown next to the start line; `dispose()` runs the list in reverse, each disposer in its own try/catch, then clears the slot. It is idempotent. `shutdown()` survives as a deprecated alias. `ownedLabels()` is a read-only snapshot for tests. The rule reaches the hosts: everything a host starts after assembly (embedded HTTP surface, user scheduler, watchers, MCP/ACP, gateway) is `backend.own(...)`'d at its start site, so every host's shutdown is one `await backend.dispose()`.
 
 Options (`OnethingBackendOptions`):
 
-- `sandboxHost?: { getPath?(name) }` — downloads/home surface
+- `host: OnethingHostPorts` — **required**; the whole host-capability table in one object (see below)
 - `toolRegistry?: 'full' | 'headless' | 'readonly'` — full = every builtin (desktop), headless = reduced set (default when omitted), readonly = zero-local-side-effect tools (server degradation)
 - `promptVersion?` — stamp eval traces with live minimal-scene prompt output
-- `sessionSkills?`, `mcpAcp?` — opt-in subsystems (hosts may instead init MCP/ACP post-window)
+- `sessionSkills?`, `collab?`, `mcpAcp?` — opt-in subsystems (hosts may instead init MCP/ACP post-window and `own()` the shutdown)
 - `sender?: BindableStreamSender` — `engine.bind(sender)`; EventBus-observing hosts pass a noop (the engine drops commands silently with no sender bound)
-- `hooks?: { afterSettings, afterEngine, afterTools }` — host-specific steps injected into the sequence
+- `hooks?: { afterSettings, afterEngine, afterTools }` — each is `(backend: OnethingBackend) => void | Promise<void>`: the instance is handed in **because `assemble` has not returned yet when hooks run**, and a hook that starts a watcher must `backend.own()` it
 
-Boot order: `configureAppRuntimeAdapters()` (idempotent) → stores → settings → afterSettings → event system → session layer → StreamEngine → triggers → afterEngine → `Permission.initialize` → variable system → goal breakers → project dirs → tool registry by tier → afterTools → optional sessionSkills / MCP+ACP / bind. Returns `{ engine, eventBus, streamChannel, shutdown() }`.
+Boot order (unchanged): `configureAppRuntimeAdapters()` (idempotent) → `applyHostPorts(options.host)` → stores → settings → afterSettings → event system → session layer → StreamEngine → triggers → afterEngine → `Permission.initialize` → variable system → goal breakers → project dirs → tool registry by tier → RPC domains → afterTools → optional sessionSkills / collab / MCP+ACP / bind. Steps that hold state return a disposer that is `own()`'d on the spot (`registerBuiltinTriggers`, `bootstrapVariableSystem`, `bootstrapGoalStreamBreakers`, `bootstrapProjectDirs`, the RPC table, the ledger broadcaster, the permission/interaction recorders); the eleven `configureApp*` adapter bindings stay idempotent latches by contract.
 
-Host call sites:
+Host call sites (four; the Vue desktop is retired as a product but still compiles and boots):
 
 | Host | Call site | Config |
 | --- | --- | --- |
-| Electron desktop | `apps/electron/src/app/main-process.ts` | `toolRegistry: 'full'`, `promptVersion: true`, hooks: shortcuts+proxy / `initializeIPC()`+todo watcher; engine binds to window later via `getStreamEngine().bind(webContents)`. **Also mounts the HTTP/SSE surface** over that same backend post-window (`startEmbeddedOnethingHttpServer`, non-blocking) |
-| Headless server | `packages/backend/server/runtime.ts` (`createRealServerBackend` → `createOnethingServerRuntimeOverBackend`) | `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly) |
-| CLI daemon | `packages/backend/wiring/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, noop sender |
+| React shell (current desktop) | `apps/desktop-react/electron/main.ts` (`assembleOwnCore`; renderer talks HTTP/SSE, one `host:connection` IPC) | `host: createShellHostPorts()` — auth / sandbox / storePath real, **eleven explicit `null`s** (the shell's capability gap is that list, not a silent omission); `toolRegistry: 'full'`, `promptVersion: true`, `collab: true`, `sessionSkills: true`, noop sender; post-window `own()`s the embedded HTTP surface + discovery file, the user scheduler and MCP; attaches to a live core from `run/http.json` instead of assembling when one exists |
+| Electron desktop (Vue, retired) | `apps/electron/src/app/main-process.ts` | `host: createElectronDesktopHostPorts()` (full table; `storePath` / `sandbox` captured from the ready hooks, `logging` also configured before `configureLogging` for timing), `toolRegistry: 'full'`, `promptVersion: true`, `collab: true`, hooks own the todo/scratchpad watchers; before-quit keeps only window-system rows plus the two sync-prefix items that must beat the first `await` (`shutdownPlugins`, `stopEmbeddedHttpServer`), then `desktopBackend.dispose()` |
+| Headless server | `packages/backend/server/runtime.ts` (`createRealServerBackend` → `createOnethingServerRuntimeOverBackend`) | `host`: sandbox real, `storePath: {}`, twelve `null`s; `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly); its own MCP client factory is installed later by the server runtime per `processPorts`, not through the table |
+| CLI daemon | `packages/backend/wiring/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | same `host` shape as the server; `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, `collab: true`, noop sender; shutdown = `backend.dispose()` (the hand-written list is gone) |
 
 Note: `backend.ts` carries static `import './tools/builtin/{index,headless,readonly}.js'` edges purely so single-file bundlers order the tool barrels before the factory's top-level await (the registry itself dynamic-imports them for test mocks). Do not remove them.
 
-**Host injection ports** (`configure*Host`, in `packages/backend` except where noted, late-bound and consulted per call — how hosts contribute Electron-only surfaces without the assembly layer importing electron):
+**Host ports are one table, `OnethingHostPorts` (`packages/backend/host-ports.ts`)** — how hosts contribute Electron-only surfaces without the assembly layer importing electron. Every key is required; twelve accept an explicit `null`, which means "this host has no such capability" and leaves the underlying port untouched (today's structured degrade or noop — `applyHostPorts` simply does not call that `configure*`). Omitting a key is a `tsc` error (`__tests__/host-ports.type.test.ts` pins it). The underlying single-slot `configure*` functions are unchanged; hosts just no longer call them one by one:
 
-| Port | File |
-| --- | --- |
-| `configureStorePathHost` | `backend/stores/docs-paths.ts` |
-| `configureSandboxHost` | `backend/wiring/tools/core/sandbox.ts` |
-| `configureAuthHost` | `auth/host-ports.ts` (product layer since P3'a-1 — zero spine deps) |
-| `configureVoiceHost` | `runtime/src/voice/host-ports.wiring.ts` |
-| `configureShellHost` | `runtime/src/shell/host-ports.ts` (P4c 第二批 —— 打开路径 / 打开外链 / 在文件管理器里定位;未注入即结构化降级,今天的消费者只有 skills 域的 `openDirectory`) |
-| `configureAppLoggingHost` | `backend/wiring/logging/index.ts` |
-| `configureSkillsEnvironmentHost` | `backend/wiring/skills/loader.ts` |
-| `configureTodoPlanHost` | `backend/wiring/todo-plan/store.ts` |
-| `configurePluginsHost` | `backend/wiring/plugins/host-ports.ts` (native file dialog + plugin-command subprocess runner; unset = structured degrade) |
+| Key | Underlying port | File |
+| --- | --- | --- |
+| `storePath` (non-null) | `configureStorePathHost` | `backend/stores/docs-paths.ts` |
+| `sandbox` (non-null) | `configureSandboxHost` | `backend/wiring/tools/core/sandbox.ts` |
+| `auth` | `configureAuthHost` | `runtime/src/auth/host-ports.ts` (product layer since P3'a-1 — zero spine deps) |
+| `logging` | `configureAppLoggingHost` | `backend/wiring/logging/index.ts` |
+| `shell` | `configureShellHost` | `runtime/src/shell/host-ports.ts` (打开路径 / 打开外链 / 在文件管理器里定位;未注入即结构化降级) |
+| `voice` | `configureVoiceHost` | `runtime/src/voice/host-ports.wiring.ts` |
+| `skillsEnvironment` | `configureSkillsEnvironmentHost` | `backend/wiring/skills/loader.ts` |
+| `todoPlan` | `configureTodoPlanHost` | `backend/wiring/todo-plan/store.ts` |
+| `scratchpad` | `configureScratchpadHost` | `runtime/src/scratchpad/service-bound.ts` |
+| `plugins` | `configurePluginsHost` | `backend/wiring/plugins/host-ports.ts` (native file dialog + plugin-command subprocess runner; unset = structured degrade) |
+| `gateway` | `configureGatewayHost` | `backend/wiring/gateway/host-ports.ts` |
+| `settings` | `configureSettingsHost` | `backend/wiring/settings/host-ports.ts` |
+| `evals` | `configureEvalsHost` | `backend/wiring/evals/host-ports.ts` |
+| `mcp` | `configureMCPClientHost` (only when `clientFactory` is non-null — `null` keeps the built-in `MCPClient`) + `configureMCPClientIdentity` | `runtime/src/mcp/{manager,identity}.ts` |
+
+**Deliberately outside the table**: `configureLogging` (the host calls it *before* assembly; it owns the log file and the janitor, which outlive the backend), the window-system ports (`configureGlobalWindowShortcuts` / `configureBrowserWindowProvider` / `configureDeepLinkService` / `configureVoiceTray` / `configurePluginAppVersion` / `configurePluginMarketIndex`), the eleven `configureApp*` internal adapter bindings, and the three `configureServer*Port` slots the server runtime fills itself.
 
 ### Guardrails
 
@@ -165,6 +179,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs`, a **zero-baseline hard gate**: any `[boundary] failed:` line exits 1. The ratchet and `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds) were retired 2026-08-21 by 结构债方案 P2 — 4 reds were fixed in source, the other 9 were stale/false-positive assertions and were fixed in the checker. Two anti-footgun guards survive: no `[boundary] complete:` marker (checker crashed mid-run) or no `[boundary] ok:` line at all (output shape changed) is red, not green.
 - UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
+- `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend`, baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
 - `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
 
 Notes:
