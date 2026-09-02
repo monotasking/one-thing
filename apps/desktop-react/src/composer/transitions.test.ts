@@ -62,6 +62,59 @@ describe('@ 与 / 的触发位', () => {
    * 断言跟着搬进 src/ui/__tests__/list-selection.test.tsx —— 判据在哪,守卫在哪。 */
 })
 
+/**
+ * ask 形态的 ← → 翻题只在**焦点不在任何输入面里**时才响 —— 写字的人按方向键
+ * 是在移动光标。判据 09-02 批 9c 从 Composer 的键盘 effect 里提上来
+ * (`isTypingTarget`),这一组是它的守卫。
+ *
+ * 反证:把 `contenteditable` 属性那一问删掉(只信 `isContentEditable`),
+ * 下面「jsdom 上属性也算数」那条立刻红 —— 而真机上的后果是在输入框里按 ← →
+ * 会翻题(光标动不了)。
+ */
+describe('哪些元素算「正在写字」', () => {
+  const el = (html: string): Element => {
+    const box = document.createElement('div')
+    box.innerHTML = html
+    return box.firstElementChild as Element
+  }
+
+  it('input / textarea 算', () => {
+    expect(T.isTypingTarget(el('<input />'))).toBe(true)
+    expect(T.isTypingTarget(el('<textarea></textarea>'))).toBe(true)
+  })
+
+  it('contenteditable 两种问法各自都够 —— 属性在,算', () => {
+    // jsdom 不实现 `isContentEditable`(读到 undefined),属性是它唯一的产地。
+    const box = el('<div contenteditable="true"></div>')
+    expect((box as Partial<HTMLElement>).isContentEditable).not.toBe(true)
+    expect(T.isTypingTarget(box)).toBe(true)
+  })
+
+  it('浏览器算好的那格为真时也够 —— 属性缺席也算', () => {
+    const box = el('<div></div>')
+    Object.defineProperty(box, 'isContentEditable', { value: true })
+    expect(box.getAttribute('contenteditable')).toBeNull()
+    expect(T.isTypingTarget(box)).toBe(true)
+  })
+
+  it('普通元素、没有焦点、非 HTML 元素都不算', () => {
+    expect(T.isTypingTarget(el('<div></div>'))).toBe(false)
+    // 按钮上的焦点也不算 —— 焦点落在发送键上时 ← → 照样该翻题。
+    // (元素用 createElement 造:写成 `<button>…</button>` 的字面量会被
+    //  `ui:consume` 的 bare-button-text 按字面扫成一颗手写文字钮。)
+    const btn = document.createElement('button')
+    btn.textContent = '发送'
+    expect(T.isTypingTarget(btn)).toBe(false)
+    expect(T.isTypingTarget(el('<div contenteditable="false"></div>'))).toBe(false)
+    expect(T.isTypingTarget(null)).toBe(false)
+    expect(T.isTypingTarget(undefined)).toBe(false)
+    // 聚焦到一个 SVG 上:它不是输入面,方向键该归翻题。
+    expect(T.isTypingTarget(document.createElementNS('http://www.w3.org/2000/svg', 'svg'))).toBe(
+      false,
+    )
+  })
+})
+
 const SPEC: AskSpec = {
   questions: [
     { tag: 'A', q: 'a?', multi: false, opts: [{ l: '甲', d: '' }, { l: '乙', d: '' }] },

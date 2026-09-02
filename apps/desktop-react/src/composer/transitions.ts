@@ -32,6 +32,35 @@ export function parseToken(upto: string, full: string): TokenHit | null {
 }
 
 /**
+ * 这个元素**是不是一块正在写字的输入面**。
+ *
+ * 用处只有一个:ask 形态的 ← → 翻题只在焦点不在任何输入面里时才响 ——
+ * 写字的人按方向键是在移动光标,把它抢走就等于「打字时不能移动光标」。
+ *
+ * 它照样是**纯判据**,与本文件其余函数同一条规矩:
+ * 「谁是焦点」是宿主的事实,由调用方(`document.activeElement`)量好递进来;
+ * 这里只读递进来那个元素身上的属性,一次 `document` / `window` / `getSelection`
+ * 都不问,所以给一个手搓的元素就能逐条测。
+ *
+ * contenteditable **两种问法都要问**,因为它们的可用性不一样:
+ *  · `isContentEditable` 是浏览器算好的值(现行标准),但没实现该字段的宿主
+ *    (jsdom)上它是 `undefined`;
+ *  · `contenteditable` 属性是它的产地,任何宿主上都在。
+ * 只信前者会在 jsdom 上漏判,而漏判的后果正是「测试绿、真机翻题翻错」。
+ *
+ * 非 HTML 元素(聚焦到 SVG)与没有焦点(`null` / `<body>`)都是 false ——
+ * 它们不是输入面,方向键该归翻题。
+ */
+export function isTypingTarget(el: Element | null | undefined): boolean {
+  if (!el) return false
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') return true
+  // `isContentEditable` 只长在 HTMLElement 上,别的元素上读到的是 undefined ——
+  // 恒等于 `true` 的比较因此同时充当了「它是不是 HTML 元素」那道闸。
+  if ((el as Partial<HTMLElement>).isContentEditable === true) return true
+  return el.getAttribute('contenteditable') === 'true'
+}
+
+/**
  * 文件是**包含**匹配(路径中段也该命中)。
  *
  * D3 波二起 `@` 候选由后端筛(`files.list` 收 `query`),但这一条不但没退役,
