@@ -7,8 +7,9 @@ import { Popover } from '../ui/Popover'
 import { useT, resolveLang } from '../i18n'
 import type { Lang, MessageKey } from '../i18n'
 import { useStageStore } from '../stage/store'
-import { formatBytes, formatMtime, useFilesSource } from '../data/files-source'
+import { formatBytes, formatMtime, revealKey, revealMutation } from '../data/files-source'
 import type { FileDetailState, FileFailure } from '../data/files-source'
+import { useAsyncPending } from '../data/kernel'
 import { glyphOf } from '../data/file-icons'
 import { FileGlyphMark } from './FileGlyph'
 import { copyPathAnnouncing } from './FileActionsMenu'
@@ -83,6 +84,11 @@ export function FileDetailPopover({
   const ready = detail.status === 'ready'
   const sizeText = ready && detail.size !== undefined ? formatBytes(detail.size) : ABSENT
   const mtimeText = (ready && formatMtime(detail.mtimeMs, lang)) || ABSENT
+  /*
+   * 「这一条路径的 reveal 此刻在飞吗」(7d,律③)。逐格 —— 键是那条路径,
+   * 所以同屏两个详情浮层(树行一个、查看区一个)各禁各的。
+   */
+  const revealing = useAsyncPending(revealMutation, revealKey(detail.path))
 
   return (
     /*
@@ -130,10 +136,16 @@ export function FileDetailPopover({
             <span className={s.noteDetail}>{t('files.detailLoading')}</span>
           </p>
         )}
-        {detail.status === 'error' && (
+        {/*
+          * 判据是 `error` 在不在,**不是** `status === 'error'`(7d 规范修正):
+          * 再问一次砸了而手上还有上一次那四格时,两件事同时为真 —— 值照画、
+          * 那句原话也照说(律②:错误与旧答案共存)。手上一格都没有时这两个判据
+          * 逐字等价,所以常态下屏幕一个像素都没变。
+          */}
+        {detail.error && (
           <p className={s.detailNote}>
             <span className={s.noteFail}>{t(DETAIL_FAILURE_LABELS[detail.failure ?? 'failed'])}</span>
-            {detail.error && <span className={s.noteDetail}>{detail.error}</span>}
+            <span className={s.noteDetail}>{detail.error}</span>
           </p>
         )}
 
@@ -159,7 +171,18 @@ export function FileDetailPopover({
         </dl>
 
         <div className={s.detailFoot}>
-          <Button onClick={() => void useFilesSource.getState().reveal(detail.path)}>
+          {/*
+            * **刻意不 disabled**(与 7e 总览 `+` 钮同一条):`aria-busy` 说的是
+            * 「在飞」不是「不可用」,禁了会让键盘用户在往返中途掉出焦点序。
+            * 连点由那道二次闸吃掉。零新像素 —— 这一格只上无障碍语义。
+            */}
+          <Button
+            aria-busy={revealing || undefined}
+            onClick={() => {
+              if (revealing) return
+              void revealMutation.run(detail.path)
+            }}
+          >
             <RevealIcon className={s.detailBtnIcon} strokeWidth={1.75} aria-hidden="true" />
             {t('files.reveal')}
           </Button>

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureFilesPort } from './files-port'
 import type { FilesPort } from './files-port'
-import { useFilesSource } from './files-source'
+import { dirsQuery, useFilesSource } from './files-source'
 import { useViewerSource } from './viewer-source'
 import { VIEWER_CHUNK_BYTES, VIEWER_OVERSIZE_BYTES } from './viewer-kinds'
 
@@ -254,7 +254,8 @@ describe('分家:它不认识文件树', () => {
     useViewerSource.getState().close()
     const after = useFilesSource.getState()
     expect(after.root).toBe(before.root)
-    expect(after.dirs).toBe(before.dirs)
     expect(after.expanded).toBe(before.expanded)
+    // 目录缓存 7d 起住在 `dirsQuery` 那一族里 —— 「一格都没建过」比「引用没变」更强。
+    expect(dirsQuery.keys()).toEqual([])
   })
 })

@@ -7,7 +7,8 @@ import type { FilesPort } from '../../data/files-port'
 import { FILES_ROW_H, useFilesSource } from '../../data/files-source'
 import { useViewerSource } from '../../data/viewer-source'
 import { useFileOpenMode } from '../../data/file-open-mode'
-import { useSessionsSource } from '../../data/sessions-source'
+import { sessionMutation, useSessionsSource } from '../../data/sessions-source'
+import { configureSessionsPort } from '../../data/sessions-port'
 import { useExposeStore } from '../../expose/store'
 import { useStageStore } from '../../stage/store'
 import { useNotifyStore } from '../../services/notify-store'
@@ -68,8 +69,18 @@ function installPort(overrides: Partial<FilesPort> = {}): FilesPort {
   return port
 }
 
+/**
+ * 会话源那两口**真的动作**。有几条用例会 `setState` 换掉它们(那是 zustand 里
+ * 覆盖一格的写法,不是「这一条用例内」的作用域),所以每条用例开头装回去 ——
+ * 不装的话,后面那条要走**真路**的用例会静默跑在上一条留下的假动作上。
+ */
+const REAL_SESSION_ACTIONS = {
+  setWorkingDirectory: useSessionsSource.getState().setWorkingDirectory,
+}
+
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
+  useSessionsSource.setState(REAL_SESSION_ACTIONS)
   seedSessionsSource()
   useExposeStore.setState({ currentSessionId: SESSION_WITH_DIR })
   useFilesSource.getState().reset()
@@ -304,6 +315,56 @@ describe('打开 ≠ 选中', () => {
  * 而这条铁律正是那个形状要保住的东西。
  */
 describe('树不卸载:零重挂', () => {
+  /*
+   * ── 病型 A 的 DOM 侧反证(7d)────────────────────────────────────────────
+   * 真机探针修前采到:点一下「重新读取」,5 行掉到 3 行、出现骨架、节点身份全换。
+   * 这一条把那三件事在 jsdom 里各钉一句 —— 刻意让重拉**停在半路**,断言那一刻
+   * 屏幕上的行还在、还是同一批 DOM 节点、一条骨架都没有。
+   * 把 `refresh()` 里那句 `set({ dirs: {} })` 换回去必红。
+   */
+  it('点「重新读取」:重拉在飞时旧行还在屏上,同一批 DOM 节点,零骨架', async () => {
+    /** 重拉时每一层各扣一发在手上,逐层放行 —— 扣的是**那一层自己**的答案。 */
+    const held = new Map<string, () => void>()
+    let live = false
+    installPort({
+      listDirectory: vi.fn((path: string) => {
+        const answer = TREE[path]
+          ? { success: true as const, entries: TREE[path] }
+          : { success: false as const, error: 'Failed to list directory' }
+        if (!live) return Promise.resolve(answer)
+        return new Promise<typeof answer>((resolve) => {
+          held.set(path, () => resolve(answer))
+        })
+      }),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    fireEvent.click(screen.getByText('packages'))
+    await waitFor(() => expect(screen.getByText('core')).toBeTruthy())
+    const kept = [row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]
+
+    live = true
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('重新读取'))
+      await Promise.resolve()
+    })
+
+    // 重拉还没回来的这一刻:三行都在、都是同一个节点、树里没有 role=status 的骨架。
+    expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
+      kept,
+    )
+    expect(within(screen.getByTestId('files-tree')).queryByRole('status')).toBeNull()
+
+    await act(async () => {
+      for (const release of held.values()) release()
+      await Promise.resolve()
+    })
+    // 答案没变 → `sameEntries` 让 kernel 留住上一个数组 → 连行都没重渲一遍。
+    expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
+      kept,
+    )
+  })
+
   it('开一个文件不重挂树(打开态是 viewer state,key 不跟着它变)', async () => {
     installPort()
     render(<>{renderContent('files')}</>)
@@ -505,6 +566,111 @@ describe('无工作目录:告知条 + 绑定', () => {
     expect(screen.getByText('sandbox root')).toBeTruthy()
     // 刚打的那条路径还在,改一个字就能重试。
     expect(screen.getByLabelText('输入工作目录的绝对路径')).toHaveProperty('value', '/nope')
+  })
+
+  /*
+   * ── 7d:那颗确认钮的忙态**读自 `sessionMutation`**,不再自己记一格 ────────
+   * 这条用例刻意**不 stub** `setWorkingDirectory` —— 它要走的正是产品那条真路:
+   * 组件 → store action → `sessionMutation.run({kind:'workdir'})` → 端口。
+   * 把 `useAsyncPending(...)` 换回 `useState(busy)` 必红(那一格与真相无关,
+   * 而这里断言的是**发起它的那一格**在飞)。
+   */
+  it('绑定在飞时:确认钮 aria-busy,而且连点不发第二发(律③逐格)', async () => {
+    useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
+    let release: ((value: { success: true }) => void) | undefined
+    const updateWorkingDirectory = vi.fn(
+      () => new Promise<{ success: true }>((resolve) => { release = resolve }),
+    )
+    configureSessionsPort({
+      ready: async () => undefined,
+      listMeta: async () => ({ success: true, sessions: [] }),
+      getSegments: async () => ({ success: true, segments: [] }),
+      getMessagesPage: async () => ({ success: true, messages: [] }),
+      getUserMarkers: async () => ({ success: true, markers: [] }),
+      create: async () => ({ success: false, error: 'not stubbed' }),
+      updateWorkingDirectory,
+      onSessionEvent: () => () => undefined,
+      onSessionLifecycle: () => () => undefined,
+    })
+    installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    fireEvent.change(screen.getByLabelText('输入工作目录的绝对路径'), {
+      target: { value: '/work/here' },
+    })
+    const confirm = screen.getByRole('button', { name: '确定' })
+    fireEvent.click(confirm)
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'))
+
+    // 连点:那道二次闸吃掉第二下(钮**没有**被禁掉 —— aria-busy 说的是「在飞」)。
+    fireEvent.click(confirm)
+    expect(updateWorkingDirectory).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      release?.({ success: true })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(screen.queryByTestId('files-bind-row')).toBeNull())
+  })
+
+  /*
+   * ── 上一条判不出「谁记的账」,这一条判得出 ────────────────────────────
+   * `useState(busy)` 与 `useAsyncPending(...)` 在「自己点自己」那条路上长得一样,
+   * 所以上一条对两种写法都绿(诚实记档)。**真正的区别是那一格账在谁手上**:
+   *  · 那一发写**不经过这颗钮**发起(别处也能改同一条会话的工作目录)时,
+   *    钮照样得说「在飞」—— 自己记一格的写法看不见它;
+   *  · 而**别的会话**在飞时它必须不动 —— 律③要的是逐格,不是整面一颗。
+   * 把 `useAsyncPending` 换回 `useState` 必红。
+   */
+  it('忙态是**那一条会话**那一格的账:别处发起也照说,别的会话在飞则不动', async () => {
+    useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
+    let release: ((value: { success: true }) => void) | undefined
+    configureSessionsPort({
+      ready: async () => undefined,
+      listMeta: async () => ({ success: true, sessions: [] }),
+      getSegments: async () => ({ success: true, segments: [] }),
+      getMessagesPage: async () => ({ success: true, messages: [] }),
+      getUserMarkers: async () => ({ success: true, markers: [] }),
+      create: async () => ({ success: false, error: 'not stubbed' }),
+      updateWorkingDirectory: () =>
+        new Promise<{ success: true }>((resolve) => { release = resolve }),
+      onSessionEvent: () => () => undefined,
+      onSessionLifecycle: () => () => undefined,
+    })
+    installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
+    const confirm = screen.getByRole('button', { name: '确定' })
+    expect(confirm.getAttribute('aria-busy')).toBeNull()
+
+    // ① **别的会话**在飞:这颗钮一动不动(逐格,不是整面一颗)。
+    await act(async () => {
+      void sessionMutation.run({ kind: 'workdir', sessionId: '别人', workingDirectory: '/x' })
+      await Promise.resolve()
+    })
+    expect(confirm.getAttribute('aria-busy')).toBeNull()
+    const releaseOther = release
+    release = undefined
+
+    // ② **这一条会话**在飞、而且不是这颗钮发起的:它照样说「在飞」。
+    await act(async () => {
+      void sessionMutation.run({
+        kind: 'workdir',
+        sessionId: SESSION_WITHOUT_DIR,
+        workingDirectory: '/y',
+      })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'))
+
+    await act(async () => {
+      releaseOther?.({ success: true })
+      release?.({ success: true })
+      await Promise.resolve()
+    })
   })
 })
 
@@ -749,6 +915,40 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     expect(within(screen.getByTestId('files-detail')).getByText(`${ROOT}/README.md`)).toBeTruthy()
   })
 
+  /*
+   * ── 7d 规范修正:再问一次砸了时,那四格与那句错**同屏** ──────────────
+   * 判据从 `status === 'error'` 换成了「`error` 在不在」。手上一格都没有时两个
+   * 判据逐字等价(所以常态零像素变化);而这一条走的正是它们不等价的那一档 ——
+   * 从前:值被抹掉、屏幕上只剩一句错;现在:值留着(律②),错在它上面并陈。
+   */
+  it('详情再问一次砸了:上一次那四格留在屏上,错误并陈', async () => {
+    let ok = true
+    installPort({
+      stat: vi.fn(async () =>
+        ok
+          ? {
+              success: true as const,
+              type: 'file' as const,
+              path: `${ROOT}/README.md`,
+              size: 4096,
+            }
+          : { success: false as const, error: 'EACCES: permission denied, stat' },
+      ),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    await openDetail('README.md')
+    await waitFor(() => expect(screen.getByTestId('files-detail-size').textContent).toBe('4.0 KB'))
+
+    ok = false
+    fireEvent.keyDown(document, { key: 'Escape' })
+    await openDetail('README.md')
+
+    await waitFor(() => expect(screen.getByText('EACCES: permission denied, stat')).toBeTruthy())
+    // **那一格没有退回破折号** —— 上一次问到的大小还在屏上。
+    expect(screen.getByTestId('files-detail-size').textContent).toBe('4.0 KB')
+  })
+
   it('目录:一样出详情,类型说「目录」,而且没有「预览打开」那颗钮', async () => {
     installPort({
       stat: vi.fn(async () => ({
@@ -797,6 +997,40 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     )
     await waitFor(() => expect(port.reveal).toHaveBeenCalledWith(`${ROOT}/README.md`))
     expect(useNotifyStore.getState().items).toEqual([])
+  })
+
+  /*
+   * ── 7d 律③:reveal 在飞时那颗钮 aria-busy,而且挡住第二发 ────────────
+   * **不禁用**(`aria-busy` 说的是「在飞」不是「不可用」,与 7e 总览 `+` 钮同一条):
+   * 禁了会让键盘用户在往返中途掉出焦点序。零新像素。
+   */
+  it('reveal 在飞:那颗钮 aria-busy 但不禁用,连点不发第二发', async () => {
+    let release: ((value: { success: true }) => void) | undefined
+    const port = installPort({
+      reveal: vi.fn(() => new Promise<{ success: true }>((resolve) => { release = resolve })),
+    })
+    render(<>{renderContent('files')}</>)
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    await openDetail('README.md')
+    const btn = within(screen.getByTestId('files-detail')).getByRole('button', {
+      name: '在文件管理器中显示',
+    })
+
+    await act(async () => {
+      fireEvent.click(btn)
+      await Promise.resolve()
+    })
+    expect(btn.getAttribute('aria-busy')).toBe('true')
+    expect(btn.hasAttribute('disabled')).toBe(false)
+
+    fireEvent.click(btn)
+    expect(port.reveal).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      release?.({ success: true })
+      await Promise.resolve()
+    })
+    await waitFor(() => expect(btn.getAttribute('aria-busy')).toBeNull())
   })
 
   it('reveal 做不到就弹一条 error —— 点了没反应是最坏的那一种', async () => {

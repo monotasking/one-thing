@@ -7,7 +7,7 @@ import { formatCombo, platformOf } from '../keymap/transitions'
 import { copyText } from '../services/clipboard'
 import { useT } from '../i18n'
 import type { TFn } from '../i18n'
-import { useFilesSource } from '../data/files-source'
+import { revealKey, revealMutation, useFilesSource } from '../data/files-source'
 import { viewerKindOfPath } from '../data/viewer-kinds'
 import { useViewerSource } from '../data/viewer-source'
 import {
@@ -219,10 +219,17 @@ export function FileActionsMenu({
           </span>
         </span>
       </MenuItem>
+      {/*
+        * reveal 走 `revealMutation`(7d)。**这一条上没有 aria-busy**:点完菜单
+        * 当场关掉,那颗控件下一帧就不在了 —— 律③要的「反馈长在发起它的那个控件上」
+        * 在这里没有落点(反馈只能是失败时那条通知)。留下的只有那道二次闸,
+        * 它挡的是「同一条路径的上一发还没回来」。
+        */}
       <MenuItem
         onClick={() => {
           onClose()
-          void useFilesSource.getState().reveal(target.path)
+          if (revealMutation.isPending(revealKey(target.path))) return
+          void revealMutation.run(target.path)
         }}
       >
         <span className={s.menuLine}>

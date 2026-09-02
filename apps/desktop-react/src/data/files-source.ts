@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { languageIdOfExtension } from './languages'
 import type { FileSearchEntry, FilesDirectoryEntry } from '@shared/ipc/files'
@@ -7,6 +7,8 @@ import type { SessionSummary } from '../expose/types'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
 import { filesPort } from './files-port'
+import { createMutation, createQueryFamily } from './kernel'
+import type { Mutation, QuerySnapshot } from './kernel'
 import { swapSpace, type PerSpaceSpec } from '../workspace/per-space'
 import { useSessionsSource } from './sessions-source'
 
@@ -32,10 +34,80 @@ import { useSessionsSource } from './sessions-source'
  * 根本没有那个事实,拼出来就是编。
  *
  * ── 缓存与刷新 ────────────────────────────────────────────────────────────
- * 每个目录**拉一次就缓存**(`dirs[path]`),展开态(`expanded`)只活在内存里:
- * 它是「我此刻正看着树的哪一段」,不是偏好,不进 localStorage。
- * 刷新是**显式**的一颗钮:`refresh()` 清掉缓存,重拉根与所有仍然展开的目录。
- * 没有 watch —— 理由写在 files-port.ts 的留账里。
+ * 每个目录**拉一次就缓存**(`dirsQuery` 那一族里的一格),展开态(`expanded`)
+ * 只活在内存里:它是「我此刻正看着树的哪一段」,不是偏好,不进 localStorage。
+ * 刷新是**显式**的一颗钮:`refresh()` 重拉根与所有仍然展开的目录 ——
+ * **不清缓存**(判据见下面 7d 拍板一)。没有 watch —— 理由写在 files-port.ts 的留账里。
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * 7d(读路战役):目录与详情迁 data/kernel,reveal 迁 mutation
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * ── 拍板一:`refresh()` 那句 `set({ dirs: {} })` 删掉 —— 这是病型 A 的根治 ──
+ * 旧的刷新是「清空 → 骨架 → 重灌」:一句 `set({ dirs: {} })` 把整棵树的缓存抹掉,
+ * 于是 `flattenTree` 当场只剩两条骨架短横,读回来再长出来。真机探针(修前)采到的
+ * 就是这个:5 行的树在刷新中掉到 3 行、出现 1 条骨架、而且 180 帧里那几行的
+ * **DOM 节点身份全换过**(律④当场破)。
+ *
+ * 现在刷新 = 对**已展开的每一格** `refetch()`:旧 entries 留在屏上(keep-previous
+ * 是原语的性质,不是选项),读回来答案没变时 `equals` 让 kernel 留住上一个数组 ——
+ * 于是连重渲染都省了。收起来的那些格改判 `invalidate()`:它们没人看着,只留一个
+ * 脏标记,下次展开时 `ensure()` 自然重拉。**不是 `drop()`** —— 丢格说的是「这个键
+ * 指的东西没了」,而一个收起来的目录还在盘上。
+ *
+ * ── 拍板二:失败与旧 entries **并存** ────────────────────────────────────
+ * 从前目录读失败写的是 `{ status:'error', entries: [] }` —— 一次刷新失败会把已经
+ * 读到的那一层整个抹掉。现在错误行画在**那一层的最前面**、旧行照留在它下面
+ * (与 7e 总览「错误行并存于列表上方」逐字同形)。骨架只在**从来没有过内容**
+ * 那一档画(`phase === 'initial'`,律②)。
+ *
+ * ── 拍板三:检索侧**就地保留**,不迁族 ──────────────────────────────────
+ * 它的键是随击键变化的 `(cwd, query, limit)`,建族就等于给每一个前缀永久留一格
+ * (与 `file-mentions-source` 同一条裁定)。本批只结掉那条偏离:失败不再清空命中。
+ * 清与不清的判据是**手上那批命中是不是同一个问题的答案** —— 同一个词的重查
+ * (翻页)失败,旧命中留屏(律②);换了词才失败,那批命中说的是别的词,留着就是
+ * 在屏幕上说谎。这恰好是键控语义的手写等价物:同键留、异键换。
+ *
+ * ── 拍板四:换根仍然把树整棵扔掉,换空间也是 ────────────────────────────
+ * `setRoot` / `navigateRoot` 里那一句 `dirsQuery.reset()` 是**旧语义原样保留**:
+ * 上一条会话展开的那几层不许跟过来,而且缓存里那些绝对路径属于上一棵树。
+ * 它与拍板一不冲突 —— 换根是「换了一棵树」,刷新是「同一棵树再读一遍」。
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * 状态先行:三张表(只列本批动的三族)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * ── ① 生命周期 ──────────────────────────────────────────────────────────
+ *  · 挂载   —— import 只建两只**空**族 + 一只 mutation,零往返、零订阅;
+ *  · 首载   —— 根定下来时 `ensure()` 根那一格;展开一个目录时 `ensure()` 它那一格。
+ *              「问过一次且不脏就什么都不做」由原语承担,旧的 `if (cached &&
+ *              cached.status !== 'error') return` 逐字等价(失败过的 dataRev 仍是 0,
+ *              所以 `ensure` 会重试);
+ *  · 换宿主 —— 目录格跟着**路径**走,不跟会话走。换会话 = 换根 = 换一棵树,
+ *              所以那时整族 reset(拍板四);
+ *  · 作废   —— 刷新:展开的 `refetch()`、收起的 `invalidate()`(拍板一);
+ *  · 丢格   —— 换根 / 换空间 = 整族 `reset()`;单格 `drop()` 本批没有产地
+ *              (一个目录「不在了」这件事今天没有人告诉这块面 —— 没有 watch);
+ *  · 卸载   —— `reset()`:两族 + mutation + 本地态一起归零。HMR dispose 复用它。
+ *
+ * ── ② UI 生命状态(消费者:FilesPanel 的树 / 详情浮层)───────────────────
+ *  · empty   —— 目录真的是空的 → 一行斜体「这里没有更多东西了」;
+ *  · loading —— **只有首载算**:`phase === 'initial'` 且还没有错 → 两条骨架短横。
+ *               重拉期间 `phase` 停在 ready,骨架一次都不画(律②);
+ *  · ready   —— 有过一次内容就永远是它,重拉保旧;
+ *  · error   —— 后端原话画成那一层最前面的一行 + 一颗「重试」,**旧行照留**;
+ *  · 超量    —— 一个目录几千项是常事,削量在**画**的那一侧(rowWindow 窗口化),
+ *               不在数据这一层。
+ *
+ * ── ③ UI 交互状态 ───────────────────────────────────────────────────────
+ *  · 读那两族不画控件(展开 / 刷新 / 重试都是幂等取数,忙态由骨架与旧内容说);
+ *  · **pending** —— 只有 reveal 是真·写动作(它让访达跳出来)。格键
+ *    `reveal:<path>`,由 `useAsyncPending(revealMutation, revealKey(path))` 读:
+ *    详情浮层底部那颗钮在飞时 `aria-busy` 并挡住第二发(律③,**零新像素**);
+ *    行菜单里那一条点完菜单当场关掉 —— 控件都不在了,律③没有落点,只留那道闸;
+ *  · disabled —— reveal 那颗钮**永不禁用**(`aria-busy` 说的是「在飞」不是「不可用」,
+ *    与 7e 总览 `+` 钮同一条)。
+ * ══════════════════════════════════════════════════════════════════════════
  */
 
 /**
@@ -183,12 +255,31 @@ export function breadcrumbsOf(root: string | null): Crumb[] {
 
 /* ── 树的形状 ──────────────────────────────────────────────────────────── */
 
-export type DirStatus = 'loading' | 'ready' | 'error'
-
+/**
+ * 一层目录此刻的处境 —— **`dirsQuery` 那一格快照的投影**,不是第二份状态。
+ *
+ * 三个读数**正交**,这是 7d 把它从 `status: 'loading'|'ready'|'error'` 拆开的全部
+ * 理由(与 kernel 拆 `phase` / `inflight` 逐字同一条判例):
+ *  · `phase`    —— 这一层**从来有没有过内容**。骨架只许在 'initial' 画;
+ *  · `inflight` —— 此刻有没有一发在飞。**它不清屏**,今天也没有消费者(树上那一层
+ *                  的忙态由旧内容原地留着来说,而不是画一个转圈);
+ *  · `error`    —— 最近一次失败的后端原话,**与 entries 共存**(拍板二)。
+ *
+ * 压成一个 `status` 的代价在真机上量到过:刷新时 `'loading'` 与首载的 `'loading'`
+ * 长得一样,于是 `flattenTree` 画骨架 —— 用户看到的是「刚才那棵树没了」。
+ */
 export interface DirState {
-  status: DirStatus
-  entries: FilesDirectoryEntry[]
-  /** 后端原话。归类交给 classifyFileFailure,原话原样进详情。 */
+  phase: 'initial' | 'ready'
+  /*
+   * ui-consume-allow: async-busy-boolean — 这一格**不是**手写的忙布尔,它是
+   * `QuerySnapshot.inflight` 逐字的投影(`dirStateOf` 是唯一产地,没有第二处写它)。
+   * 规则要拦的是「source 自己记一格忙态」,而这里恰恰是**消费** kernel 那一格 ——
+   * 规则头上写着「data/kernel 自己不受这条管:它就是被消费的那一头」,这条投影
+   * 是那句话的下游。就地豁免、不进基线(与批 8a 的 spinner-placement 同一手)。
+   */
+  inflight: boolean
+  entries: readonly FilesDirectoryEntry[]
+  /** 后端原话。归类交给 classifyFileFailure,原话原样进注行。 */
   error?: string
 }
 
@@ -237,6 +328,22 @@ export type TreeRow =
  * 这里一个字不重排 —— 两处各排一次就会漂)。
  *
  * 根自己不出现在表里:它是面板头上那一行,不是树里的一行。
+ *
+ * ── 环保护:一个目录在一次摊平里最多走一遍(7d)────────────────────────────
+ * 产地是**符号链接环**:后端的 `listDirectory` 直接 `fs.readdir`,一个指回祖先的
+ * 符号链接会照实回一条 `type:'directory'` 的条目(它不解引用、也不去判环),
+ * 于是「展开 A → 里面有指回 A 的 B → 展开 B」在这里就是一条无限递归 ——
+ * `walk` 会一层层套下去直到栈满,整块面被 ErrorBoundary 接走。
+ *
+ * 这不是纸上推演:7d 写用例时喂了一份互指的假目录,**当场 RangeError:
+ * Maximum call stack size exceeded**,componentStack 停在 `FilesPanel`。
+ * 那份夹具随即留成了下面这条用例。
+ *
+ * 修法是一格 `seen`:再遇到已经走过的路径就**当场返回** —— 不抛(环是数据的
+ * 事实,不是这次调用出了错)、也不画第二遍(那一行本身照旧在,只是它的孩子
+ * 不再摊一次;摊了也是同一批路径,屏幕上就成了重影)。判据因此是
+ * 「一个目录在一张表里最多出现一次」,而不是「深度不许超过 N」—— 后者要挑一个
+ * 说不出理由的数,而且真有 40 层深的仓库时它会当场说谎。
  */
 export function flattenTree(
   root: string | null,
@@ -245,14 +352,29 @@ export function flattenTree(
 ): TreeRow[] {
   if (!root) return []
   const rows: TreeRow[] = []
+  /** 这一次摊平里已经走过的目录。环保护的全部实现就是它 + 下面那一句早退。 */
+  const seen = new Set<string>()
   const walk = (dir: string, depth: number): void => {
+    // 符号链接环(理由与实证写在文件头上面那一节):走过的目录不再摊第二遍。
+    if (seen.has(dir)) return
+    seen.add(dir)
     const state = dirs[dir]
-    if (!state || state.status === 'loading') {
+    /*
+     * 骨架**只在这一层从来没有过内容、而且也没有话要说**的时候画(律②)。
+     * 重拉期间 `phase` 已经是 'ready',所以那两条短横一次都不出现 —— 那正是
+     * 病型 A 的根治点:屏幕上留着的是上一次读到的那几行。
+     */
+    if (!state || (state.phase === 'initial' && !state.error)) {
       rows.push({ kind: 'skeleton', id: `${dir}:skel:1`, depth, bar: 1 })
       rows.push({ kind: 'skeleton', id: `${dir}:skel:2`, depth, bar: 2 })
       return
     }
-    if (state.status === 'error') {
+    /*
+     * 失败那一行画在**这一层的最前面**,底下的旧行照留(拍板二,与 7e 总览
+     * 「错误行并存于列表上方」同形)。从来没读到过时它下面本来就没有东西,
+     * 于是这一档与迁移前逐字同形。
+     */
+    if (state.error) {
       rows.push({
         kind: 'note',
         id: `${dir}:error`,
@@ -261,10 +383,14 @@ export function flattenTree(
         note: classifyFileFailure(state.error),
         error: state.error,
       })
-      return
     }
+    if (state.phase === 'initial') return
     if (state.entries.length === 0) {
-      rows.push({ kind: 'note', id: `${dir}:empty`, dir, depth, note: 'empty' })
+      // 读失败**而且**手上一行都没有时不再多说一句「这里是空的」——
+      // 那是两句互相矛盾的话。错误行已经交代过了。
+      if (!state.error) {
+        rows.push({ kind: 'note', id: `${dir}:empty`, dir, depth, note: 'empty' })
+      }
       return
     }
     for (const entry of state.entries) {
@@ -379,6 +505,120 @@ export interface FileDetailState {
   error?: string
 }
 
+/**
+ * 详情那一格**问回来的事实**(`files.stat` 的四格)。
+ *
+ * 它与 `FileDetailState` 分成两个形状而不是一个:后者是**屏幕上那一格**,里头的
+ * `name` / 起始 `type` 是「用户点的是树上哪一行」这件事(本地态,产地在 store),
+ * 而这里只有 stat 说的话。合成一个的话,那族 query 就得把「谁点的」也存一份 ——
+ * 那是把一件本地的事塞进一个键控缓存里。
+ */
+export interface FileStatFacts {
+  /** stat 真正认到的那条绝对路径(`~` 已展开),以它为准。 */
+  path: string
+  /** 后端认出来的类型 —— 符号链接指向哪儿只有 stat 知道,它压过树上那一格。 */
+  type?: 'file' | 'directory'
+  size?: number
+  mtimeMs?: number
+}
+
+/* ── 取数与写数:两族 query + 一只 mutation ───────────────────────────── */
+
+/** 空表的**同一个**引用 —— 没拉过的格摊出来的 entries 不该每次都是新数组。 */
+const NO_ENTRIES: readonly FilesDirectoryEntry[] = []
+
+/**
+ * 「这两次列出来的是不是同一层」。
+ *
+ * **必须给**:`listDirectory` 每一发都把整层重新造成一批新对象,不给 equals 的话
+ * `Object.is` 判每次都变 —— 于是一次「刷新但目录没动过」会推进 `dataRev`、换掉
+ * `data` 引用,`flattenTree` 重算、整层行重渲(律④)。真机探针修前采到的
+ * 「180 帧节点身份全换」正是这条。
+ *
+ * 比的是**屏幕上认得出的三格**(名 / 路径 / 类型)—— 后端还给了别的字段,但树上
+ * 一格都没读;真要读了,那一格就得加进这份清单(与 7e 的 `sameSession` 同一条纪律)。
+ */
+function sameEntries(a: readonly FilesDirectoryEntry[], b: readonly FilesDirectoryEntry[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((x, i) => x.name === b[i].name && x.path === b[i].path && x.type === b[i].type)
+}
+
+/**
+ * 一层目录 = 一格。**键就是那条绝对路径** —— 「拉过一次就缓存」「换一坑再换回来
+ * 不重拉」这两件事因此是键控自带的,不必再记一张表。
+ *
+ * 「后端说 `success:false`」在这里是**失败**而不是空目录:回一张空表会把
+ * 「没权限」画成「这里什么都没有」,那是编。抛出去之后 kernel 记进 `error`
+ * 并**留住上一次读到的那些行**(拍板二)。
+ */
+export const dirsQuery = createQueryFamily<FilesDirectoryEntry[]>(
+  'files.dir',
+  async (ctx) => {
+    const port = await filesPort()
+    const response = await port.listDirectory(ctx.key)
+    if (!response.success) throw new Error(response.error || 'files.listDirectory 未成功')
+    return response.entries ?? []
+  },
+  { equals: sameEntries },
+)
+
+/**
+ * 一条路径的详情 = 一格。**`detailToken` 那条竞速由键控退役** —— 双击第二行时
+ * 第一行的 stat 回来了也只会落进它自己那一格,屏幕上那一格问的是另一个键。
+ *
+ * 与目录同一条口径:后端说不行 = 抛出去,归类由 `classifyFileFailure` 在投影时做
+ * (三处失败共用同一条归类,不在这里各判一遍)。
+ */
+export const detailQuery = createQueryFamily<FileStatFacts>('files.detail', async (ctx) => {
+  const port = await filesPort()
+  const response = await port.stat(ctx.key)
+  if (!response.success) throw new Error(response.error || 'files.stat 未成功')
+  return {
+    path: response.path ?? ctx.key,
+    ...(response.type ? { type: response.type } : {}),
+    ...(response.size === undefined ? {} : { size: response.size }),
+    ...(response.mtimeMs === undefined ? {} : { mtimeMs: response.mtimeMs }),
+  }
+})
+
+/**
+ * 忙态格子的唯一词表 —— 发起的控件与这里共用它(与 `sessions-source.workdirKey`
+ * 同一条:两头各拼一次就是两处会漂)。
+ */
+export function revealKey(path: string): string {
+  return `reveal:${path}`
+}
+
+/**
+ * 在文件管理器里定位。**这是这块面唯一一件真·写动作**(它让访达跳出来),
+ * 所以它是 mutation 而不是 query:重做一遍不是无害的。
+ *
+ * 失败**弹出来**,不静默:级别 error(用户点了一下,期待访达跳出来,什么都没发生
+ * 就是出错了),后端原话原样进 detail ——「在联网宿主上做不到」与「路径越界」
+ * 是两句不同的话,不该被合成一句。这段话与迁移前逐字相同,搬的只有它的家。
+ *
+ * 没有 `optimistic`,也没有 `settle`:reveal 不改这台壳里的任何一格数据,
+ * 它的全部效果在另一个进程里(拿 `invalidate` 去「对账」一次目录是无中生有)。
+ */
+export const revealMutation: Mutation<string, void> = createMutation<string, void>('files.reveal', {
+  key: revealKey,
+  run: async (path) => {
+    const port = await filesPort()
+    const response = await port.reveal(path)
+    if (!response.success) throw new Error(response.error || '')
+  },
+  onError: (error, path) => {
+    notify({
+      level: 'error',
+      source: 'files.reveal',
+      title: t('files.revealFailed'),
+      body: path,
+      // 后端没给原话时如实缺席(空串 = 没有 detail 那一行),不拿一句「操作失败」顶。
+      ...(error.message ? { detail: error.message } : {}),
+    })
+  },
+})
+
 /* ── store ────────────────────────────────────────────────────────────── */
 
 export type RootStatus = 'idle' | 'loading' | 'ready' | 'error'
@@ -397,9 +637,15 @@ export interface FilesSourceState {
    */
   rootOrigin: 'session' | 'home' | 'manual'
   rootError?: string
-  dirs: Record<string, DirState>
   expanded: Record<string, true>
-  detail: FileDetailState | null
+  /**
+   * 详情浮层此刻问的是**树上哪一行**(null = 没开着)。
+   *
+   * 它是本地态而不是取数:`name` 与起始 `type` 是「用户点的那一行知道的事实」,
+   * 原样带进来(那一行的名字不必再问一次后端)。stat 回来的四格住在
+   * `detailQuery` 那一格里,两半由 `useFileDetail()` 合成屏幕上那一格。
+   */
+  detailTarget: { path: string; name: string; type: 'file' | 'directory' } | null
   searchStatus: SearchStatus
   searchHits: FileSearchEntry[]
   /**
@@ -465,8 +711,6 @@ export interface FilesSourceState {
    */
   openDetail(entry: { path: string; name: string; type: 'file' | 'directory' }): Promise<void>
   closeDetail(): void
-  /** 在文件管理器里定位。失败**弹出来**,不静默。 */
-  reveal(path: string): Promise<void>
   /**
    * 按名字搜文件。空词 = 清空(见 search/data.ts 顶部的诚实缺口)。
    *
@@ -484,9 +728,8 @@ const EMPTY: Pick<
   | 'rootStatus'
   | 'rootOrigin'
   | 'rootError'
-  | 'dirs'
   | 'expanded'
-  | 'detail'
+  | 'detailTarget'
   | 'searchStatus'
   | 'searchHits'
   | 'searchQuery'
@@ -497,9 +740,8 @@ const EMPTY: Pick<
   rootStatus: 'idle',
   rootOrigin: 'session',
   rootError: undefined,
-  dirs: {},
   expanded: {},
-  detail: null,
+  detailTarget: null,
   searchStatus: 'idle',
   searchHits: [],
   searchQuery: '',
@@ -523,13 +765,13 @@ const FILES_PER_SPACE: PerSpaceSpec<FilesSourceState, { expanded: Record<string,
 
 export const useFilesSource = create<FilesSourceState>()((set, get) => {
   /*
-   * 三个令牌各管一条竞速。合成一个会互相作废:换根期间开一次检索,
+   * 两个令牌各管一条竞速。合成一个会互相作废:换根期间开一次检索,
    * 检索不该因为根换完了而被判过期。
+   * (从前还有第三条 `detailToken` —— 7d 由 `detailQuery` 的键控吃掉了:
+   *  第一行的 stat 回来只会落进它自己那一格,不可能改到别人那一格。)
    */
   let rootToken = 0
   let searchToken = 0
-  /** 详情自己一条竞速:双击第二行时,第一行的 stat 回来了也不许改屏。 */
-  let detailToken = 0
   /** 上一次 setRoot 收到的入参 —— 幂等的判据(注意 null 是合法值,不能用 ?? 兜)。 */
   let lastCwd: string | null | undefined
   // 换空间那条订阅要清它(理由写在文件末尾那段);闭包变量在模块外够不着,
@@ -537,27 +779,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
   resetFilesRootGate = () => {
     rootToken += 1
     searchToken += 1
-    detailToken += 1
     lastCwd = undefined
-  }
-
-  /** 拉一个目录进缓存。已经在拉 / 已经拉好的直接返回。 */
-  async function loadDir(path: string, force = false): Promise<void> {
-    if (!force) {
-      const cached = get().dirs[path]
-      if (cached && cached.status !== 'error') return
-    }
-    set((st) => ({ dirs: { ...st.dirs, [path]: { status: 'loading', entries: [] } } }))
-    const port = await filesPort()
-    const response = await port.listDirectory(path)
-    set((st) => ({
-      dirs: {
-        ...st.dirs,
-        [path]: response.success
-          ? { status: 'ready', entries: response.entries ?? [] }
-          : { status: 'error', entries: [], error: response.error },
-      },
-    }))
   }
 
   return {
@@ -568,6 +790,8 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       if (lastCwd === cwd && get().rootStatus !== 'idle') return
       lastCwd = cwd
       const token = ++rootToken
+      // 换根 = 换了一棵树:上一棵的缓存里全是别的绝对路径(拍板四)。
+      dirsQuery.reset()
       set({
         ...EMPTY,
         rootStatus: 'loading',
@@ -594,7 +818,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       }
       if (rootToken !== token) return
       set({ root, rootStatus: 'ready' })
-      await loadDir(root)
+      await dirsQuery.get(root).ensure()
     },
 
     navigateRoot: async (path) => {
@@ -602,6 +826,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       const token = ++rootToken
       // 幂等基准跟着走(理由写在接口那一条的注里)。
       lastCwd = path
+      dirsQuery.reset()
       set({
         ...EMPTY,
         root: path,
@@ -615,7 +840,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
         searchError: get().searchError,
       })
       if (rootToken !== token) return
-      await loadDir(path)
+      await dirsQuery.get(path).ensure()
     },
 
     toggleDir: async (path) => {
@@ -629,7 +854,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
         return
       }
       set((st) => ({ expanded: { ...st.expanded, [path]: true } }))
-      await loadDir(path)
+      await dirsQuery.get(path).ensure()
     },
 
     collapseAll: () => {
@@ -637,70 +862,45 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
     },
 
     retryDir: async (path) => {
-      await loadDir(path, true)
+      await dirsQuery.get(path).refetch()
     },
 
     refresh: async () => {
       const { root, expanded } = get()
       if (!root) return
-      set({ dirs: {} })
-      await loadDir(root, true)
-      // 仍然展着的那些一起重拉 —— 刷新之后树的形状不该塌回一层。
-      await Promise.all(Object.keys(expanded).map((path) => loadDir(path, true)))
+      /*
+       * ── 病型 A 的根治点(拍板一)────────────────────────────────────────
+       * 从前这里有一句 `set({ dirs: {} })` —— 清空 → 骨架 → 重灌。现在什么都不清:
+       * 屏上这几层各自 `refetch()`,旧 entries 留着(keep-previous 是原语的性质),
+       * 答案没变时 `sameEntries` 让 kernel 连引用都不换。
+       */
+      const onScreen = [root, ...Object.keys(expanded)]
+      const shown = new Set(onScreen)
+      /*
+       * 收起来的那些格**标脏而不是重拉**:没人看着它们,`invalidate()` 只留一个
+       * 脏标记,下次展开时那一发 `ensure()` 自然会去问。这一句补的是旧代码
+       * 靠「整族清空」附带做到的事 —— 少了它,刷新之后再展开一个收着的目录
+       * 会拿到刷新之前的旧内容。
+       */
+      for (const key of dirsQuery.keys()) {
+        if (!shown.has(key)) dirsQuery.invalidate(key)
+      }
+      await Promise.all(onScreen.map((path) => dirsQuery.get(path).refetch()))
     },
 
     openDetail: async (entry) => {
-      const token = ++detailToken
-      set({ detail: { ...entry, status: 'loading' } })
-      const port = await filesPort()
-      const response = await port.stat(entry.path)
-      if (detailToken !== token) return
-      if (!response.success) {
-        set({
-          detail: {
-            ...entry,
-            status: 'error',
-            failure: classifyFileFailure(response.error),
-            error: response.error,
-          },
-        })
-        return
-      }
-      set({
-        detail: {
-          ...entry,
-          // stat 回的是**真正 stat 到的**那条绝对路径(`~` 已展开),以它为准。
-          path: response.path ?? entry.path,
-          // 后端认出来的类型压过树上那一格 —— 符号链接指向哪儿,只有 stat 知道。
-          type: response.type ?? entry.type,
-          status: 'ready',
-          size: response.size,
-          mtimeMs: response.mtimeMs,
-        },
-      })
+      set({ detailTarget: entry })
+      /*
+       * `refetch()` 而不是 `ensure()`:**每开一次就再问一次**,与迁移前逐字同义
+       * (大小与时间是会变的,而用户点开详情正是为了看此刻那两个数)。
+       * 手上有上一次的答案时它照旧留在屏上(律②)—— 那是这一批白得的一格:
+       * 从前每开一次都先画一遍「正在读取…」。
+       */
+      await detailQuery.get(entry.path).refetch()
     },
 
     closeDetail: () => {
-      detailToken += 1
-      set({ detail: null })
-    },
-
-    reveal: async (path) => {
-      const port = await filesPort()
-      const response = await port.reveal(path)
-      if (response.success) return
-      /*
-       * 失败必须可见。走 notify 而不是吞掉:级别 error(用户点了一下,期待
-       * 访达跳出来,什么都没发生就是出错了),后端原话原样进 detail ——
-       * 「在联网宿主上做不到」与「路径越界」是两句不同的话,不该被合成一句。
-       */
-      notify({
-        level: 'error',
-        source: 'files.reveal',
-        title: t('files.revealFailed'),
-        body: path,
-        detail: response.error,
-      })
+      set({ detailTarget: null })
     },
 
     searchFiles: async (query, cwd, limit = FILE_SEARCH_LIMIT) => {
@@ -725,11 +925,22 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       })
       if (searchToken !== token) return
       if (!response.success) {
+        /*
+         * ── 失败不清命中(7d 拍板三)────────────────────────────────────
+         * 判据是**手上那批命中是不是同一个问题的答案**:
+         *  · 同一个词的重查(翻页要更多条)失败 → 旧命中留在屏上,错误行并陈
+         *    (律②;从前这里一句 `searchHits: []` 会把用户正在读的那一页抹掉);
+         *  · 换了词才失败 → 那批命中说的是**别的词**,留着就是在屏幕上说谎
+         *    (检索面按 `searchQuery` 对得上才画命中,留下来也只会被判成不是当前的)。
+         * 这恰好是键控的手写等价物:同键留、异键换 —— 而这块面刻意不建族,
+         * 理由(键随击键无限长)写在文件头拍板三。
+         * `searchLimit` 跟着命中走:它回答的是「手上这批取尽了没有」。
+         */
+        const sameQuestion = get().searchQuery === q
         set({
           searchStatus: 'error',
-          searchHits: [],
+          ...(sameQuestion ? {} : { searchHits: [], searchLimit: 0 }),
           searchQuery: q,
-          searchLimit: limit,
           searchError: response.error,
         })
         return
@@ -751,10 +962,149 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
 
     reset: () => {
       resetFilesRootGate()
+      dirsQuery.reset()
+      detailQuery.reset()
+      revealMutation.reset()
       set({ ...EMPTY, byWorkspace: {} })
     },
   }
 })
+
+/* ── 组件侧的读法 ─────────────────────────────────────────────────────── */
+
+/**
+ * 屏幕上那几层目录的现状。**键面由屏幕给定**(根 + 展开着的那几支),所以这里是
+ * 逐键订(`useCatalogRecord` 那一手),不是订整族 —— 后者服务的是「哪些键有内容
+ * 由数据说了算」那一种读法(检索面的章节缓存)。判据写在 kernel 的
+ * `QueryFamily.subscribe` 头上。
+ *
+ * 两层身份守卫,都是律④要的:
+ *  · **每一格**的 `DirState` 只在那一格的快照真变了时才重造(kernel 保证快照对象
+ *    在读数没变时逐次同引用,所以这里比引用就够,不必逐字段比);
+ *  · **整张表**在所有格都没变时原样交回上一个对象 —— `useSyncExternalStore` 要求
+ *    getSnapshot 稳定,不稳定不只是白重渲,是无限重渲。
+ */
+export function useDirStates(paths: readonly string[]): Readonly<Record<string, DirState>> {
+  /** 订阅面与快照都按这一串认身份 —— 数组每次渲染都是新的,字符串不是。 */
+  const key = paths.join('\n')
+  const ids = useMemo(() => (key ? key.split('\n') : []), [key])
+  /*
+   * 「从来没算过」用 `key: null` 表达而不是一个「不可能的字符串」:`join` 出来的
+   * 键**可以是空串**(还没有根的那一屏),任何字符串哨兵都得先证明自己撞不上。
+   */
+  const cache = useRef<{
+    key: string | null
+    /** 上一次每一格看到的**那个快照对象**(kernel 保证读数没变时逐次同引用)。 */
+    seen: Map<string, { snap: QuerySnapshot<FilesDirectoryEntry[]>; state: DirState }>
+    value: Readonly<Record<string, DirState>>
+  }>({ key: null, seen: new Map(), value: {} })
+
+  const subscribe = useCallback(
+    (listener: () => void) => {
+      const offs = ids.map((id) => dirsQuery.get(id).subscribe(listener))
+      return () => {
+        for (const off of offs) off()
+      }
+    },
+    [ids],
+  )
+
+  const snapshot = useCallback(() => {
+    const held = cache.current
+    const seen = new Map<string, { snap: QuerySnapshot<FilesDirectoryEntry[]>; state: DirState }>()
+    let changed = held.key !== key
+    for (const id of ids) {
+      const snap = dirsQuery.get(id).get()
+      const before = held.seen.get(id)
+      // 那一格的快照没变 = 那一格的投影没变 = 交回上一次那个对象(那一层的行不必重渲)。
+      if (before && before.snap === snap) {
+        seen.set(id, before)
+        continue
+      }
+      changed = true
+      seen.set(id, { snap, state: dirStateOf(snap) })
+    }
+    if (!changed) return held.value
+    const value: Record<string, DirState> = {}
+    for (const [id, entry] of seen) value[id] = entry.state
+    cache.current = { key, seen, value }
+    return value
+  }, [ids, key])
+
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
+}
+
+/** 一格快照 → 屏幕上那一层的现状。**这是投影,不是第二份状态。** */
+function dirStateOf(snap: QuerySnapshot<FilesDirectoryEntry[]>): DirState {
+  return {
+    phase: snap.phase,
+    inflight: snap.inflight,
+    entries: snap.data ?? NO_ENTRIES,
+    ...(snap.error ? { error: snap.error } : {}),
+  }
+}
+
+/**
+ * 一层目录此刻的现状(非组件侧的读法:测试与门用它)。
+ * **不订阅**,只问一次 —— 组件一律走 `useDirStates`。
+ */
+export function dirStateAt(path: string): DirState {
+  return dirStateOf(dirsQuery.get(path).get())
+}
+
+/**
+ * 屏幕上那一格详情 —— **两半合成**:store 里「问的是哪一行」+ 那一格 stat 的答案。
+ *
+ * 合成在这里做一次,而不是让两个宿主(树面板 / 查看区)各拼一遍:三档状态
+ * (loading / ready / error)的判据只该有一处产地。归类走 `classifyFileFailure`,
+ * 与树、查看器共用同一条。
+ */
+export function useFileDetail(): FileDetailState | null {
+  const target = useFilesSource((st) => st.detailTarget)
+  const query = useMemo(() => detailQuery.get(target?.path ?? ''), [target?.path])
+  const subscribe = useCallback((listener: () => void) => query.subscribe(listener), [query])
+  const read = useCallback(() => query.get(), [query])
+  const snap = useSyncExternalStore(subscribe, read, read)
+  return useMemo(() => (target ? projectDetail(target, snap) : null), [target, snap])
+}
+
+/**
+ * 屏幕上那一格详情(非组件侧的读法:测试与门用它)。**不订阅**,只问一次 ——
+ * 与 `dirStateAt` 同一体例,组件一律走 `useFileDetail`。
+ */
+export function currentFileDetail(): FileDetailState | null {
+  const target = useFilesSource.getState().detailTarget
+  return target ? projectDetail(target, detailQuery.get(target.path).get()) : null
+}
+
+function projectDetail(
+  target: { path: string; name: string; type: 'file' | 'directory' },
+  snap: QuerySnapshot<FileStatFacts>,
+): FileDetailState {
+  /*
+   * 错误与旧答案**共存**(律②的另一半):再问一次砸了、而手上还有上一次的四格时,
+   * `status` 说的是「这几格里有真数字」,`error` 说的是「最近一次没问到,原话是这句」。
+   * 两件事各占一格,所以浮层上那条错误行的判据是 `error` 在不在,不是 status。
+   */
+  const failed = snap.error
+    ? { failure: classifyFileFailure(snap.error), error: snap.error }
+    : undefined
+  if (snap.data) {
+    return {
+      ...target,
+      // stat 回的是**真正 stat 到的**那条绝对路径(`~` 已展开),以它为准。
+      path: snap.data.path,
+      // 后端认出来的类型压过树上那一格 —— 符号链接指向哪儿,只有 stat 知道。
+      type: snap.data.type ?? target.type,
+      status: 'ready',
+      ...(snap.data.size === undefined ? {} : { size: snap.data.size }),
+      ...(snap.data.mtimeMs === undefined ? {} : { mtimeMs: snap.data.mtimeMs }),
+      ...failed,
+    }
+  }
+  if (failed) return { ...target, status: 'error', ...failed }
+  return { ...target, status: 'loading' }
+}
 
 /**
  * 换工作区 = 文件树整棵换掉(T-W1)。**订阅不在这里** —— 它在
@@ -765,15 +1115,37 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
  * 那些路径属于上一个空间的根:
  *  · `root` / `rootStatus` / `rootOrigin` —— 根由新空间的活跃会话重新推出来
  *    (`useSessionCwd` → FilesPanel 的 setRoot),这里先归零免得旧根多留一帧;
- *  · `dirs` —— 上一个空间那些绝对路径的目录内容,在新空间里一条都用不上;
- *  · `detail` / `search*` —— 同理,它们说的都是上一个空间的文件。
+ *  · 目录那一族 —— 上一个空间那些绝对路径的目录内容,在新空间里一条都用不上;
+ *  · `detailTarget` / 详情那一族 / `search*` —— 同理,说的都是上一个空间的文件。
  * 而 `lastCwd` 那格幂等闸也要清:不清的话新空间恰好是同一个 cwd 时,
  * `setRoot` 会当场早退,树就再也不重建了。
  *
- * **一次 `set` 完成**,所以中间没有「新账配旧树」的那一帧。
+ * ── 次序:**先本地态,后两族**(7d)────────────────────────────────────────
+ * 从前一句 `set` 就完事,现在有三处要动,所以次序成了一件要拍的事。判据是
+ * **中间那一步屏幕上是什么**:先 set(`root` 归 null)→ `flattenTree` 当场回空表,
+ * 那一帧是「一棵还没有根的树」,与换空间之后本来就该有的样子逐字相同;反过来先
+ * reset 两族的话,那一步 `root` 还是旧的,树会画成两条骨架短横 —— 凭空多一帧闪。
+ * (React 18 的自动批处理多半会把这两步合成一次渲染,所以这一条是**兜底**:
+ * 不去赌批处理,而是让中间那一步本身就无害。)
  */
 export function swapFilesForSpace(next: string, previous: string): void {
   const swapped = swapSpace(useFilesSource.getState(), FILES_PER_SPACE, next, previous)
   resetFilesRootGate()
   useFilesSource.setState({ ...EMPTY, ...swapped })
+  dirsQuery.reset()
+  detailQuery.reset()
+}
+
+/**
+ * 模块级副作用的退役口(09-01 立法)。这个模块在模块作用域里留着两族 query、
+ * 一只 mutation 与 `resetFilesRootGate` 那格闭包 —— 它们的寿命就是「这个模块实例」,
+ * 所以热更时必须退役,否则新旧两份缓存同时活着各自应答。
+ *
+ * 退役**复用这个模块已有的那一口拆卸**(`reset()`),不写第二套:两套拆卸迟早漏一格。
+ * 它自身幂等;生产构建里 `import.meta.hot` 是 undefined,整段被 tree-shake 掉。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    useFilesSource.getState().reset()
+  })
 }

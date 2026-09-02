@@ -15,7 +15,7 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { announce } from '../../ui/a11y/live-region'
 import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
-import { baseNameOf, formatBytes, useFilesSource } from '../../data/files-source'
+import { baseNameOf, formatBytes, useFileDetail, useFilesSource } from '../../data/files-source'
 import { glyphOf } from '../../data/file-icons'
 import { closeViewerEverywhere } from './open-target'
 import {
@@ -176,7 +176,7 @@ export function FileViewer({
   const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null)
   /** 详情浮层贴在哪儿。与菜单同一条口径:内容是共用件,锚点是宿主自己的事。 */
   const [detailAt, setDetailAt] = useState<{ x: number; y: number } | null>(null)
-  const detail = useFilesSource((st) => st.detail)
+  const detail = useFileDetail()
   const openDetail = useFilesSource((st) => st.openDetail)
   const closeDetail = useFilesSource((st) => st.closeDetail)
 

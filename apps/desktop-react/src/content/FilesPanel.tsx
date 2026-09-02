@@ -21,11 +21,16 @@ import { useSessionsSource } from '../data/sessions-source'
 import {
   breadcrumbsOf,
   flattenTree,
+  revealMutation,
   rowWindow,
+  useDirStates,
+  useFileDetail,
   useFilesSource,
   useSessionCwd,
 } from '../data/files-source'
 import type { Crumb, FileFailure, RootStatus, TreeRow } from '../data/files-source'
+import { useAsyncPending } from '../data/kernel'
+import { sessionMutation, workdirKey } from '../data/sessions-source'
 import { useFileOpenMode } from '../data/file-open-mode'
 import {
   DEFAULT_SPLIT_RATIOS,
@@ -135,9 +140,17 @@ export function FilesPanel() {
   const rootStatus = useFilesSource((st) => st.rootStatus)
   const rootOrigin = useFilesSource((st) => st.rootOrigin)
   const rootError = useFilesSource((st) => st.rootError)
-  const dirs = useFilesSource((st) => st.dirs)
   const expanded = useFilesSource((st) => st.expanded)
-  const detail = useFilesSource((st) => st.detail)
+  /*
+   * 目录内容住在 `dirsQuery` 那一族里(7d)。**键面由屏幕给定** —— 根 + 此刻展着的
+   * 那几支,一个不多:没展开的目录一格都不订(也就不会为它们建格)。
+   */
+  const dirPaths = useMemo(
+    () => (root ? [root, ...Object.keys(expanded)] : []),
+    [root, expanded],
+  )
+  const dirs = useDirStates(dirPaths)
+  const detail = useFileDetail()
   const setRoot = useFilesSource((st) => st.setRoot)
   const navigateRoot = useFilesSource((st) => st.navigateRoot)
   const toggleDir = useFilesSource((st) => st.toggleDir)
@@ -146,7 +159,6 @@ export function FilesPanel() {
   const refresh = useFilesSource((st) => st.refresh)
   const openDetail = useFilesSource((st) => st.openDetail)
   const closeDetail = useFilesSource((st) => st.closeDetail)
-  const reveal = useFilesSource((st) => st.reveal)
 
   /*
    * 查看器住**另一个 store**(data/viewer-source)。面板从它这里只取两件事:
@@ -424,7 +436,14 @@ export function FilesPanel() {
             onCommit={(next) => setSplitRatio(FILES_SPLIT_ID, next)}
           />
         )}
-        {splitOpen && <FileViewer onReveal={(path) => void reveal(path)} />}
+        {/*
+          * reveal 走 `revealMutation`(7d)。**这一处不加二次闸**:查看器身上那颗
+          * 「在 Finder 里显示」长在 content/viewer/HonestState 里,面板这边只是
+          * 一条透传的回调 —— 闸要长在**发起它的那个控件**旁边(律③),
+          * 隔着两层组件去猜它此刻的样子是把闸装错了地方。记档:那颗钮的
+          * aria-busy 与二次闸属于 viewer/ 那一面,不在本批的可动面里。
+          */}
+        {splitOpen && <FileViewer onReveal={(path) => void revealMutation.run(path)} />}
       </div>
 
       {footNote && <p className={s.foot}>{footNote}</p>}
@@ -512,31 +531,26 @@ function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn }) {
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   /*
-   * ── 临时手写(09-02 批 6 读过并留账,**没有**迁)──────────────────────────
-   * 它护的**不是**一个文件操作,而是 `sessions-source` 的 `setWorkingDirectory`
-   * ——「把这条会话挪到这个目录」那一口后端写。所以按律③它该走 `data/kernel` 的
-   * createMutation、按 `workdir:<sessionId>` 逐格记账,与 viewer 存盘同一形。
+   * ── 忙态**读**自 mutation,不再自己记一格(7d 结掉批 6 留的那笔账)────────
+   * 它护的不是一个文件操作,而是 `sessions-source` 的 `setWorkingDirectory`
+   * ——「把这条会话挪到这个目录」那一口后端写。7e 已经把那一口迁进了
+   * `sessionMutation`(键 `workdir:<sessionId>`),所以这里的 `useState(busy)`
+   * 从「唯一产地」降格成了「第二份真相」,当场退役:忙态由那一格 pending 说,
+   * 逐会话记账(律③要的**逐格**,不是整面一颗)。
    *
-   * 没有就地迁,理由是**产地不在这里**:mutation 得长在写的那一层
-   * (`data/sessions-source.ts`),而那一口的 settle 要做的两件事
-   * (`lastRefreshAt = Date.now()` + `await loadList()`)都关在 zustand 那个
-   * creator 闭包里,模块级够不着 —— 迁它等于先把 sessions-source 的重拉那一半
-   * 提到模块级(`workspace/store.ts` 的 `reload()` 就是那个形)。那是一次
-   * 共享数据源的结构改动,不属于「content 区收尾」这一批的面,硬塞进来是拿一个
-   * 全壳都在订的 source 去赌。**记档待独立一批**。
+   * `useState` 管 async pending 是 kernel 手册明令禁止的一条(「自己记一份必然
+   * 与真相漂开」),而 `ui-consume` 的 `async-busy-boolean` 刻意只扫 `.ts` ——
+   * 组件里这一格是它的**盲区**,所以这一处由本批人工结掉并在报告里点名。
    *
-   * 这一格今天不是病型 B(粒度病):它只禁**发起它的那一颗**确认钮,一屏也只有
-   * 一条绑定行。律③真正欠的是另一半 —— 忙起来钮上**不换字**(只变灰),
-   * 以及没有 `aria-busy`;那两件跟着迁 mutation 一起补(AsyncButton 白送)。
+   * 律③的另一半(忙起来钮上换字)本批**不补**:换文案是可感知的改版,
+   * 而这一颗今天只上无障碍语义 —— `aria-busy` + 那道二次闸,零新像素。
    */
-  const [busy, setBusy] = useState(false)
+  const busy = useAsyncPending(sessionMutation, workdirKey(sessionId))
 
   const submit = async () => {
     const dir = value.trim()
     if (!dir || busy) return
-    setBusy(true)
     const outcome = await setWorkingDirectory(sessionId, dir)
-    setBusy(false)
     if (outcome.ok) {
       setEditing(false)
       setValue('')
@@ -577,7 +591,12 @@ function NoWorkdirNotice({ sessionId, t }: { sessionId: string; t: TFn }) {
           if (e.key === 'Escape') setEditing(false)
         }}
       />
-      <Button variant="primary" disabled={!value.trim() || busy} onClick={() => void submit()}>
+      <Button
+        variant="primary"
+        disabled={!value.trim() || busy}
+        aria-busy={busy || undefined}
+        onClick={() => void submit()}
+      >
         {t('common.confirm')}
       </Button>
       <Button onClick={() => setEditing(false)}>{t('common.cancel')}</Button>

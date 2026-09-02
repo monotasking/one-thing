@@ -2,9 +2,8 @@ import { useEffect } from 'react'
 import { useStageStore } from '../../stage/store'
 import { VIEWER_ITEM_ID } from '../../stage/items'
 import { useLiveTitleStore } from '../../stage/live-title'
-import { useFilesSource } from '../../data/files-source'
 import { isDirty, useViewerSource } from '../../data/viewer-source'
-import { baseNameOf } from '../../data/files-source'
+import { baseNameOf, revealMutation } from '../../data/files-source'
 import { FileViewer } from './FileViewer'
 import type { Placement } from '../../stage/types'
 
@@ -20,7 +19,6 @@ import type { Placement } from '../../stage/types'
  */
 export function ViewerPanel() {
   const placement = useStageStore((st) => st.placements[VIEWER_ITEM_ID])
-  const reveal = useFilesSource((st) => st.reveal)
 
   /*
    * ── 合檐的另一半:**把文件身份交给宿主檐**(09-01 回炉)────────────────
@@ -49,9 +47,14 @@ export function ViewerPanel() {
   }, [name, fullPath, dirty, setLiveTitle])
 
   return (
+    /*
+     * reveal 走 `revealMutation`(7d)。这里与 FilesPanel 逐字同一条:面板 / 瓦
+     * 都只是把回调透传下去,那颗真钮长在 viewer/HonestState 里 —— 律③的落点
+     * 在它旁边,不在这条透传上(记档:那颗钮的忙态属于 viewer/ 那一面)。
+     */
     <FileViewer
       placement={frameOf(placement)}
-      onReveal={(path) => void reveal(path)}
+      onReveal={(path) => void revealMutation.run(path)}
     />
   )
 }
