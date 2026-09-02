@@ -178,7 +178,6 @@
   gap: var(--sp-1);
   padding: 0 var(--sp-2);
   margin-left: calc(-1 * var(--sp-2));
-  text-align: left;
 }
 
 .caret {

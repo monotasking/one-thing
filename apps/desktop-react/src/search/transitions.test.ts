@@ -5,7 +5,6 @@ import {
   fileExt,
   fileName,
   moreState,
-  moveRow,
   nextScope,
   originText,
   pageWindow,
@@ -185,18 +184,6 @@ describe('scope 轮转', () => {
     expect(nextScope('all', -1)).toBe('files')
     expect(nextScope('files', -1)).toBe('sessions')
     expect(nextScope('sessions', -1)).toBe('all')
-  })
-})
-
-describe('走行', () => {
-  it('夹住两端,不回卷', () => {
-    expect(moveRow(0, -1, 3)).toBe(0)
-    expect(moveRow(2, 1, 3)).toBe(2)
-    expect(moveRow(0, 1, 3)).toBe(1)
-  })
-
-  it('空列表永远停在 0', () => {
-    expect(moveRow(0, 1, 0)).toBe(0)
   })
 })
 

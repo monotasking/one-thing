@@ -83,7 +83,6 @@
   color: var(--text-1);
   font-family: var(--font-ui);
   font-size: var(--fs-label);
-  text-align: left;
   cursor: pointer;
 }
 

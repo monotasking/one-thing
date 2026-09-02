@@ -78,14 +78,12 @@ export function nextScope(scope: SearchScope, step: 1 | -1): SearchScope {
   return SCOPES[(at + step + SCOPES.length) % SCOPES.length]
 }
 
-/**
- * ↑↓ 走行:**夹住两端,不回卷**。列表是一条有始有终的东西,
- * 在第一行按 ↑ 回到最后一行会让「我在哪」这件事丢失。
+/*
+ * ↑↓ 走行的 `moveRow` 在这里退役(09-02 清尸):09-01 批 4 把检索面的走行迁进了
+ * `ui/a11y/list-selection` 的 `useListSelection`(`loop: false` 那一档就是它
+ * 原来那次夹),之后这个函数只剩自己的单测吊着 —— 零产品消费者。
+ * 「到端点就停、不回卷」那条判据没有丢,它现在写在原语那一侧。
  */
-export function moveRow(index: number, step: 1 | -1, count: number): number {
-  if (count <= 0) return 0
-  return Math.min(Math.max(index + step, 0), count - 1)
-}
 
 /* ── 路径拆解 ──────────────────────────────────────────────────────────── */
 

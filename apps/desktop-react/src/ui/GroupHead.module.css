@@ -19,7 +19,6 @@
   padding: var(--sp-1) var(--sp-3);
   font-size: var(--fs-micro);
   color: var(--text-2);
-  text-align: left;
 }
 
 /* caret 定宽:开合时组名不许左右跳(▾ 与 ▸ 的字宽本来就不同)。 */

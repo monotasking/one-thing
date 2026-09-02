@@ -70,7 +70,6 @@
   padding: var(--sp-2) var(--sp-3);
   border-left: var(--search-mark) solid transparent;
   border-radius: var(--r-1);
-  text-align: left;
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
@@ -99,7 +98,6 @@
   padding: var(--sp-2) var(--sp-3);
   border-left: var(--search-mark) solid transparent;
   border-radius: var(--r-1);
-  text-align: left;
   font-size: var(--fs-meta);
 }
 

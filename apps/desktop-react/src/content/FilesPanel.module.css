@@ -303,7 +303,6 @@
   height: 100%;
   padding-left: calc(var(--sp-1) + var(--depth, 0) * var(--tree-indent));
   border-radius: var(--r-1);
-  text-align: left;
   background: none;
 }
 

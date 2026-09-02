@@ -14,8 +14,10 @@
  * `inline-flex` + 孩子 `flex: none` 让这一格逐像素等于那颗 5px 的丸本身
  *(与 FloatWindow 从前那格贴身 span 同一手),所以收编前后零像素差。
  *
- * 查看器自己那颗(`FileViewer.module.css` 的 `.dirtyDot`)是另一处落点,
- * 归它那一批收 —— 两处分属两个组件的排版,共用一个类反而要跨模块拉线。
+ * 查看器自己那颗是另一处落点,09-02 批 9b 已经跟着迁进 `ui/StatusDot`
+ *(同样是 `tone="warn" size="sm"`,落点在 `content/viewer/ViewerChrome.tsx`;
+ * 它从前那条本地的 `.dirtyDot` 规则已退役)。两处仍**各留各的落位**:
+ * 它们分属两个组件的排版,共用一个类反而要跨模块拉线。
  */
 .dirtySlot {
   display: inline-flex;

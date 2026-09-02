@@ -20,7 +20,6 @@
   gap: var(--card-row-gap-fluid);
   min-height: var(--card-min-h);
   padding: var(--card-pad-block-fluid) var(--card-pad-inline-fluid);
-  text-align: left;
   border: 1px solid var(--line-1);
   border-radius: var(--r-card);
   background: var(--surface-2);

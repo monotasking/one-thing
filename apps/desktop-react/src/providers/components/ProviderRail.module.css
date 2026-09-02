@@ -82,7 +82,6 @@
   align-items: center;
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
-  text-align: left;
   color: inherit;
 }
 
@@ -144,8 +143,10 @@
   color: var(--danger);
 }
 
-/* 五档状态点已收进 `ui/StatusDot`(09-01 批 2b)—— 这里一格配方都不留:
- * `--pv-dot` 与库件的 `--status-dot` 同为 6px,色 token 也逐档相同,零漂移。 */
+/* 五档状态点已收进 `ui/StatusDot`(09-01 批 2b)—— 这里一格配方都不留。
+ * 零漂移是量过的:这条 rail 从前那颗点走的是 `--pv-dot`,与库件的
+ * `--status-dot` 同为 6px,色 token 也逐档相同。`--pv-dot` 随后在批 2c
+ * 清尸时删掉了(它从此零消费者),所以今天全仓只剩 `--status-dot` 一个产地。 */
 
 .none {
   margin: 0;

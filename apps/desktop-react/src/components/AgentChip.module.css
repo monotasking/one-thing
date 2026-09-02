@@ -157,7 +157,6 @@
   border-radius: var(--r-1);
   font-size: var(--fs-menu);
   color: var(--text-3);
-  text-align: left;
 }
 
 .manage:disabled {

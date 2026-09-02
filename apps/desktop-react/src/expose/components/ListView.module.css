@@ -136,7 +136,6 @@
   height: var(--list-row-h);
   padding: 0 var(--sp-3);
   border-radius: var(--r-2);
-  text-align: left;
   transition: background var(--dur) var(--ease);
 }
 

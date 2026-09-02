@@ -193,6 +193,14 @@
 #   批 6 判掉的四处(FileViewer 首载 / FileDetailPopover / ToolRow /
 #   ResearchSegment)已经不在了 —— 那一批的记录在上面 ⑥。
 #
+# ── 批 8b(09-02):四缺口的消费面收编,40 → 39 条,删 1 条 ────────────────
+#   `shared-vocab-css src/components/HostTitle.module.css:8 dot` —— 宿主檐那颗
+#   未保存丸迁进了 `ui/StatusDot`(`tone="warn" size="sm"`),本地只剩落位一格
+#   并改名 `.dirtySlot`,那个产地随之消失。当时忘了在这里记一笔,于是这份文件
+#   自己算不平账(上面批 6 那节收在 40,表上却是 39)。09-02 收尾批补记。
+#
+# ── 今天这张表:**39 条**。改动之后请把这个数一起改准。 ───────────────────
+#
 shared-vocab-css src/components/AgentChip.module.css:16 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:30 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:34 视觉词汇多产地(chip),待批 2 立件收编

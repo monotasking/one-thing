@@ -15,8 +15,10 @@
  *     四屏各扫一遍:产品外壳、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
- *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(15 件 ui 组件一次
+ *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(24 个展位一次
  *     全在场,这是唯一能把每一件都摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
+ *     这个数是**日志里的一句话,不是断言**:规格页加一件展位不该让这条门变红,
+ *     所以它跟着 `src/dev/Gallery.tsx` 的 `<Section>` 数走,由改那张页的人顺手改。
  *
  *  ② **键盘走查**(手写断言,axe 查不到的那一半)。axe 是静态分析一棵树,它看不见
  *     「按 Tab 会走到哪」「Esc 之后焦点回没回来」。五条:
@@ -625,7 +627,9 @@ async function main() {
       page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
     )
 
-    console.log('\n[7/8] 组件规格页(?gallery):17 件 ui 组件一次全在场')
+    // 24 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(22 件组件 +
+    // useScrolledPast / useSettlePulse 两件 hook)。日志读数,不是断言。
+    console.log('\n[7/8] 组件规格页(?gallery):24 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。

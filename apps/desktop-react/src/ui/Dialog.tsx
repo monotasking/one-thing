@@ -35,12 +35,12 @@ import s from './Dialog.module.css'
  * 指了个空 / 两颗檐上的丸画的是 5px 而 StatusDot 当时只认 6px),这一格没有。
  * 真出现第一个要更宽的落点时再补,那时也才知道该按板上哪一档补。
  *
- * 上面那句括号里的第四条已经**结清**(09-02 批 8c 记档,留在这里是因为它是
- * 「产地证据」这条判据的例子,不是现状):批 8a 给 `ui/StatusDot` 补上 `sm`
- * 5px 档之后,那两颗丸各自的去向是 —— 宿主檐那颗(`components/HostTitle`)
- * 批 8b 已迁;查看器自己那颗(`content/viewer/FileViewer.module.css` 的
- * `.dirtyDot` = 5px 圆 + `--warn`)**现在迁得进去了**,但那是消费面收编,
- * 归文件面那一批,不在 ui/ 的本批就地动。
+ * 上面那句括号里的第四条已经**结清**(留在这里是因为它是「产地证据」这条判据
+ * 的例子,不是现状):批 8a 给 `ui/StatusDot` 补上 `sm` 5px 档之后,那两颗丸
+ * 都迁完了 —— 宿主檐那颗(`components/HostTitle`)批 8b 迁,查看器那颗
+ * 批 9b 迁,今天两处都是 `<StatusDot tone="warn" size="sm">`
+ *(查看器那一颗的落点在 `content/viewer/ViewerChrome.tsx`;它从前是
+ * `FileViewer.module.css` 里一条本地的 `.dirtyDot`,那条规则已经退役)。
  * 顺带记一条容易看串的:文件树那颗 `.openDot`(`content/FilesPanel.module.css`)
  * 迁不进去,而且不是几何的事 —— 它画的是 `--accent`,不在这件的六档语义色里,
  * 说的也不是「什么状态」而是「这个文件正开着」。

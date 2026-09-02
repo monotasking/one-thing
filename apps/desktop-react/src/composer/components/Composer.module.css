@@ -81,7 +81,6 @@
   padding: var(--sp-2) var(--composer-pad-x);
   font-size: var(--fs-meta);
   color: var(--text-2);
-  text-align: left;
   cursor: pointer;
   transition: background var(--dur) var(--ease);
 }
@@ -208,7 +207,6 @@
   border-radius: var(--r-1);
   font-size: var(--fs-label);
   color: var(--text-2);
-  text-align: left;
   cursor: pointer;
 }
 
@@ -767,7 +765,6 @@
   border: 1px solid var(--line-1);
   border-radius: var(--r-2);
   background: var(--surface-2);
-  text-align: left;
   transition:
     border-color var(--dur) var(--ease),
     background var(--dur) var(--ease);
