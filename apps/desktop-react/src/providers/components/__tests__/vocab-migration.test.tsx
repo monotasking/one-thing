@@ -70,7 +70,6 @@ const EMPTY_POOL: PoolView = {
   rows: [],
   policy: 'sequential',
   policyUnavailable: false,
-  canDelete: false,
 }
 
 function mode(over: Partial<ProviderMode> = {}): ProviderMode {
@@ -313,6 +312,7 @@ describe('Card 收编:详情栏那几张卡', () => {
         busy={false}
         onAdd={() => {}}
         onReplace={() => {}}
+        onRelabel={() => {}}
         onRemove={() => {}}
         onMove={() => {}}
         onRotation={() => {}}
@@ -338,10 +338,12 @@ describe('Card 收编:详情栏那几张卡', () => {
         poolBusy={false}
         onAddKey={() => {}}
         onReplaceKey={() => {}}
+        onRelabelKey={() => {}}
         onRemoveKey={() => {}}
         onMoveKey={() => {}}
         onRotation={() => {}}
         onDials={() => {}}
+        onBaseUrl={() => {}}
         authStatus={undefined}
         authFlow={IDLE_AUTH_FLOW}
         onSignIn={() => {}}
@@ -503,6 +505,7 @@ describe('Card 檐三件收编(批 8b)', () => {
         busy={false}
         onAdd={() => {}}
         onReplace={() => {}}
+        onRelabel={() => {}}
         onRemove={() => {}}
         onMove={() => {}}
         onRotation={() => {}}

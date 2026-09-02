@@ -506,19 +506,15 @@ describe('poolViewOf', () => {
     ])
   })
 
-  it('最后一条不可删 —— 后端本来就拒空列表', () => {
-    expect(poolViewOf(summary([{ id: 'a', authType: 'apiKey', source: 'user' }]), NOW).canDelete).toBe(
-      false,
-    )
-    expect(
-      poolViewOf(
-        summary([
-          { id: 'a', authType: 'apiKey', source: 'user' },
-          { id: 'b', authType: 'apiKey', source: 'user' },
-        ]),
-        NOW,
-      ).canDelete,
-    ).toBe(true)
+  /*
+   * 09-02 批 11:从前这里钉着 `canDelete`(最后一条不可删)。那一格连同那条禁令
+   * 一起退役 —— 删最后一条改走 `spaces.clearCredential`,空池 = 这一家回到未配置,
+   * 是合法终态(理由全文在 projection.ts 那段与 store 的 removeCredential)。
+   * 留下的这一条钉的是**它真的没了**:投影里不该再冒出一个恒真的判据字段。
+   */
+  it('投影里没有 canDelete 这一格 —— 每一条都删得动', () => {
+    const view = poolViewOf(summary([{ id: 'a', authType: 'apiKey', source: 'user' }]), NOW)
+    expect(Object.keys(view).sort()).toEqual(['policy', 'policyUnavailable', 'rows'])
   })
 
   it('冷却按时刻现判,过去的时刻不算冷却', () => {
@@ -542,7 +538,7 @@ describe('poolViewOf', () => {
   it('摘要整个缺席 = 空池,不炸', () => {
     const view = poolViewOf(undefined, NOW)
     expect(view.rows).toEqual([])
-    expect(view.canDelete).toBe(false)
+    expect(view.policy).toBe('single')
   })
 })
 

@@ -681,6 +681,9 @@ export const zh = {
   'providers.keySaveFailed': '密钥没保存上',
   'providers.baseUrl': '高级 · Base URL',
   'providers.baseUrlDefault': '(默认)',
+  'providers.baseUrlSave': '保存 Base URL',
+  'providers.baseUrlDefaultIs': '默认地址 {url} —— 清空这一格就回到它。',
+  'providers.baseUrlDialOwned': '这一家的地址由上面的计费档位算出来:手改之后再拨一次档位会把它覆盖掉。',
 
   /* 凭证池:多把密钥 / 顺序 / 轮换策略 / 冷却
    * 「顺序即优先级」不是一句提示,是这张表的**读法** —— 第 1 条就是最先用的那条。
@@ -691,13 +694,13 @@ export const zh = {
   'providers.keyAdd': '＋ 添加密钥',
   'providers.keyAddNew': '新密钥',
   'providers.keyAddNote': '备注名(可空)',
-  'providers.keyReplace': '换密钥',
   'providers.keyReplaceFor': '给第 {ordinal} 条换一把密钥',
+  'providers.keyLabelFor': '改第 {ordinal} 条的备注名',
+  'providers.keyLabelAdd': '＋ 备注',
   'providers.keyReplaceHint': '换 key **不换条目** —— 用量账按条目归因,换条目就断了账。',
   'providers.keyDelete': '删除',
   'providers.keyDeleteConfirm': '真删?',
   'providers.keyDeleteFor': '删除第 {ordinal} 条',
-  'providers.keyLastKept': '最后一条不能删 —— 删完这一家就没有可用的凭证了。',
   'providers.keyMoveUp': '上移',
   'providers.keyMoveDown': '下移',
   'providers.keyMoveUpFor': '把第 {ordinal} 条上移',

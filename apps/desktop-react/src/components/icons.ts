@@ -130,6 +130,7 @@ export {
   Image,
   ImagePlus,
   Mic,
+  Pencil,
   Wrench,
   Plus,
   X,

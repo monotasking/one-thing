@@ -22,6 +22,7 @@ import { Spinner } from '../ui/Spinner'
 import { Switch } from '../ui/Switch'
 import { Tabs } from '../ui/Tabs'
 import { pushToast, ToastHost } from '../ui/Toast'
+import { useInlineEdit } from '../ui/inline-edit'
 import { useScrolledPast } from '../ui/scrolled-past'
 import { useSettlePulse } from '../ui/settle-pulse'
 import { createMutation } from '../data/kernel'
@@ -183,6 +184,61 @@ function GallerySettlePulse() {
       </span>
     </>
   )
+}
+
+/**
+ * `useInlineEdit` 那一格(09-02 批 11)。演的是**原地**:休止态是一段文字
+ * (它自己就是入口),点它当场换成同一行的输入框 —— ↵ 落定 / Esc 收回 /
+ * 失焦取消,进来就选中全文。
+ * 这一格打开 `cancelOnBlur`,因为它**没有并肩的提交钮**;有钮的那一形(总览改名格)
+ * 缺省关着它,理由是 blur 在 click 之前到 —— 两形并排看才说得清那条判据。
+ */
+function GalleryInlineEdit() {
+  const [value, setValue] = useState('sk-live-1a2b3c4d')
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  if (!editing) {
+    return (
+      <Button
+        size="sm"
+        onClick={() => {
+          setDraft(value)
+          setEditing(true)
+        }}
+      >
+        {value}
+      </Button>
+    )
+  }
+  return (
+    <Field layout="inline" size="sm" labelHidden label="Secret">
+      <GalleryInlineEditInput
+        value={draft}
+        onChange={setDraft}
+        onCommit={() => {
+          setValue(draft)
+          setEditing(false)
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    </Field>
+  )
+}
+
+function GalleryInlineEditInput({
+  value,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  value: string
+  onChange: (v: string) => void
+  onCommit: () => void
+  onCancel: () => void
+}) {
+  const field = useFieldControlProps()
+  const edit = useInlineEdit({ controlId: field.id, onCommit, onCancel, cancelOnBlur: true })
+  return <Input {...field} {...edit} size="sm" value={value} onValueChange={onChange} />
 }
 
 export function Gallery() {
@@ -585,6 +641,13 @@ export function Gallery() {
       <Section name="useSettlePulse">
         <GallerySettlePulse />
         <Note>token 变一次播一次;挂载那一次不播;收尾看 animationend 不看计时器</Note>
+      </Section>
+
+      <Section name="useInlineEdit">
+        <GalleryInlineEdit />
+        <Note>点那段文字 = 同一格换成输入框;↵ 落定 / Esc 收回 / 失焦取消</Note>
+        <Note>一进来就选中全文 —— 接着打是覆盖不是追加(controlId 缺席则不自动聚焦)</Note>
+        <Note>cancelOnBlur 缺省关:并肩站着提交钮时,blur 在 click 之前到会把那颗钮废掉</Note>
       </Section>
 
       <Dialog

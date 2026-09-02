@@ -6,6 +6,7 @@ import { ButtonBase } from '../../ui/ButtonBase'
 import { Field, useFieldControlProps } from '../../ui/Field'
 import { Input } from '../../ui/Input'
 import { useConfirm } from '../../ui/Dialog'
+import { useInlineEdit } from '../../ui/inline-edit'
 import { useMutation } from '../../data/kernel'
 import { useT } from '../../i18n'
 import { useWorkspaceStore, useWorkspaceViews, workspaceKey, workspaceMutation } from '../store'
@@ -377,11 +378,16 @@ function RenameField({
  * 要在 `<Field>` 的 context 之内才拿得到东西,而 RenameField 自己是 provider 的
  * **外面**那一层 —— 在那里调拿到的是空对象(id / aria 全丢)。
  *
- * 「一进来就选中全文」也搬到了这里,而且**换了找法**:从前是从外壳 `querySelector`
- * 里面那个 input(`ui/Input` 今天仍不转发 ref);现在 Field 把一个稳定的 id
- * 交到手上,直接按 id 取就行 —— 找的是**这一格的那个** input,不是「壳里第一个」。
- * `autoFocus` 照旧不用:那颗 prop 在 jsx-a11y 里是有争议的一档,而这里
- * 「选中全文」本来也要拿到元素。
+ * ── 09-02 批 11:手势整只交给 `ui/inline-edit` ────────────────────────────
+ * 「↵ 落定 / Esc 收回 / 一进来就选中全文」从前就写在这里。密钥池那一行要的是
+ * **同一组**手势,而「基础件先行」那条法说得很直白:没有对应件就先立件再消费,
+ * 禁止在业务面各写一份。所以那三条搬进了 `ui/inline-edit`,这里改成消费方。
+ * 行为**逐字不变**:`cancelOnBlur` 缺省关着 —— 这一格旁边站着 ✓ / ✕ 两颗钮,
+ * 而 `blur` 在 `click` 之前到,打开它等于让那两颗钮永远点不到。
+ *
+ * 「选中全文」的找法没变(仍然按 Field 交出来的稳定 id 取元素,不是从外壳
+ * `querySelector` 里面第一个 input);`autoFocus` 照旧不用(那颗 prop 在
+ * jsx-a11y 里是有争议的一档,而「选中全文」本来也要拿到元素)。
  */
 function RenameInput({
   value,
@@ -395,31 +401,16 @@ function RenameInput({
   onCancel: () => void
 }) {
   const field = useFieldControlProps()
-  const controlId = field.id
-  useEffect(() => {
-    if (!controlId) return
-    const el = document.getElementById(controlId) as HTMLInputElement | null
-    el?.focus()
-    el?.select()
-  }, [controlId])
+  const edit = useInlineEdit({ controlId: field.id, onCommit, onCancel })
   return (
     <Input
       {...field}
+      {...edit}
       size="sm"
       className={s.nameInput}
       value={value}
       onValueChange={onChange}
       data-testid="workspace-name-input"
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          onCommit()
-        }
-        if (e.key === 'Escape') {
-          e.preventDefault()
-          onCancel()
-        }
-      }}
     />
   )
 }

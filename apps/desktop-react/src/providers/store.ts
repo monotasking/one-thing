@@ -187,6 +187,8 @@ export interface ProviderSettingsState {
   addCredential: (providerId: string, apiKey: string, label: string) => Promise<void>
   /** 换一把 key 但**不换条目**(带 entryId = 改这一条),用量账才连得上。 */
   replaceCredential: (providerId: string, entryId: string, apiKey: string) => Promise<void>
+  /** 只改这一条的备注名(带 entryId 不带 key —— 契约上那一档就是「只改非密钥字段」)。 */
+  relabelCredential: (providerId: string, entryId: string, label: string) => Promise<void>
   removeCredential: (providerId: string, entryId: string) => Promise<void>
   moveCredential: (providerId: string, entryId: string, delta: -1 | 1) => Promise<void>
   setRotation: (providerId: string, policy: string) => Promise<void>
@@ -214,6 +216,11 @@ export interface ProviderSettingsState {
   deleteCustomProvider: (providerId: string) => Promise<void>
   /** 拨一次计费档位。**档位与 baseUrl 一起写**(理由见 dials.ts)。 */
   setDials: (providerId: string, apiMode: string, region: string) => Promise<void>
+  /**
+   * 手改端点。空串 = 回落这家自己的缺省(不是写一个空地址)。
+   * 自定义家**两处一起写**,与 `saveCustomProvider` 同一条理由。
+   */
+  setBaseUrl: (providerId: string, baseUrl: string) => Promise<void>
 
   reset: () => void
 }
@@ -292,6 +299,8 @@ export const settingsKey = {
   family: (family: ProviderFamilyView) => `family:${family.id || providerIdsOf(family)[0] || ''}`,
   /** 计费档位一坑一格。 */
   dials: (providerId: string) => `dials:${providerId}`,
+  /** 手改端点一坑一格 —— 它与档位是两颗旋钮,忙态不该互相禁。 */
+  baseUrl: (providerId: string) => `baseUrl:${providerId}`,
   /** 自定义家的新建 / 保存 / 删除。 */
   custom: (providerId: string) => `custom:${providerId}`,
   /** 组件侧按前缀滤出「这一坑此刻在写的那些模型 id」。 */
@@ -831,18 +840,52 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       )
     },
 
-    removeCredential: async (providerId, entryId) => {
-      const ids = entryIdsOf(providerId)
-      // 最后一条不删:后端本来就拒空列表,这里先挡一道并说清理由。
-      if (ids.length <= 1) return
+    /**
+     * 改一条的**备注名**。走的仍是 `setCredential`,只是这一发**不带 key** ——
+     * 契约上那正是「带 entryId 而不带 key = 只改非密钥字段」那一档
+     * (`@shared/ipc/spaces.ts:253`),渲染层本来就拿不到密钥原文,
+     * 逼它为了改一个名字重打一遍 key 才是错的。
+     */
+    relabelCredential: async (providerId, entryId, label) => {
       await writePool(
         providerId,
         (port) =>
-          port.setCredentialPool({
+          port.setCredential({
             id: currentSpaceId(),
             providerId,
-            entryIds: ids.filter((id) => id !== entryId),
+            entryId,
+            label: label.trim(),
           }),
+        t('providers.keySaveFailed'),
+      )
+    },
+
+    /**
+     * 删一条。**最后一条也删得动**(09-02 批 11,用户报障「单个 key 无法删除」)。
+     *
+     * ── 为什么删最后一条要换一口,而不是改后端 ──────────────────────────
+     * `spaces.setCredentialPool` 拒空列表(`runtime/spaces/ipc-operations.ts:378`,
+     * 错误话是「凭证列表不能为空(要清空整段请用『清除』)」)。那道闸拒的是
+     * **一次"排序"请求顺手清空一个 provider**,不是「这一家不许回到未配置」——
+     * 持久层自己就把空池当合法终态:`credentials.ts:741` 删空即摘掉整段,
+     * 并有单测钉着(`credential-rotation.test.ts:311` 「删光最后一条 = 整段消失
+     * (= 未配置),不留空壳」)。所以正解是**走后端自己指的那扇门**:
+     * `spaces.clearCredential`(整段清掉,与空池写落到的是同一个持久层动作)。
+     * 后端一个字没改,那道防误操作的闸原样留着。
+     *
+     * 这一口本来就在用(删自定义家时连带清凭证),不是为这一批新开的。
+     */
+    removeCredential: async (providerId, entryId) => {
+      const ids = entryIdsOf(providerId)
+      // 不在池里 = 没什么可删的。发一次空写只会让屏幕闪一下忙态。
+      if (!ids.includes(entryId)) return
+      const next = ids.filter((id) => id !== entryId)
+      await writePool(
+        providerId,
+        (port) =>
+          next.length === 0
+            ? port.clearCredential({ id: currentSpaceId(), providerId })
+            : port.setCredentialPool({ id: currentSpaceId(), providerId, entryIds: next }),
         t('providers.poolFailed'),
       )
     },
@@ -1150,6 +1193,56 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       const spec = providerDialsOf(providerId)
       if (!spec) return
       await writeProviders({ [providerId]: dialPatchOf(spec, apiMode, region) }, settingsKey.dials(providerId))
+    },
+
+    /**
+     * 手改端点(09-02 批 11,用户报障「baseurl 无法修改或者说很难找到改的地方」)。
+     *
+     * ── 两种家两种形状,**同一条写路** ────────────────────────────────────
+     * 写口仍然是 `commitSettings`(→ `settingsMutation`),不另开第二条 ——
+     * 差的只是这一发要改哪几格:
+     *  · 内置家:`ai.providers[id].baseUrl` 一格(与 `writeProviders` 逐字同形);
+     *  · 自定义家:`ai.customProviders[i].baseUrl` **与** `ai.providers[id].baseUrl`
+     *    两格。理由与 `saveCustomProvider` 那段逐字相同 —— 前者是这一家的定义,
+     *    而真正发请求时读的是后者;只写一处,改完的地址不会生效(或者反过来,
+     *    界面上显示的还是旧的)。所以这里不走 `writeProviders`(它只认得后者)。
+     *
+     * ── 空串 = 回落缺省,不是「写一个空地址」 ────────────────────────────
+     * 内置家的缺省在名册上(`ProviderMode.defaultBaseUrl`),清空这一格就回到它。
+     * **自定义家没有缺省可回**(它的"缺省"就是这一格本身),所以那一形由界面挡住
+     * 空值(与 `CustomProviderDialog` 的 `customBaseUrlRequired` 同一条),
+     * 这里再挡一道:自定义家收到空串直接不写。
+     */
+    setBaseUrl: async (providerId, baseUrl) => {
+      const base = get().settings
+      if (!base) return
+      const next = baseUrl.trim()
+      const customs = base.ai?.customProviders ?? []
+      const custom = customs.find((item) => item.id === providerId)
+      if (custom && !next) return
+      const current = base.ai?.providers?.[providerId]?.baseUrl ?? ''
+      // 没变就不发 —— 一次空写会让屏幕闪一下忙态却什么都没做(与 moveCredential 同手)。
+      if (current === next && (!custom || (custom.baseUrl ?? '') === next)) return
+      if (!custom) {
+        await writeProviders({ [providerId]: { baseUrl: next } }, settingsKey.baseUrl(providerId))
+        return
+      }
+      const nextProviders: Record<string, ProviderConfig> = { ...(base.ai?.providers ?? {}) }
+      nextProviders[providerId] = { ...EMPTY_CONFIG, ...nextProviders[providerId], baseUrl: next }
+      await commitSettings(
+        base,
+        {
+          ...base,
+          ai: {
+            ...base.ai,
+            customProviders: customs.map((item) =>
+              item.id === providerId ? { ...item, baseUrl: next } : item,
+            ),
+            providers: nextProviders,
+          },
+        } as AppSettings,
+        settingsKey.baseUrl(providerId),
+      )
     },
 
     reset: () => {

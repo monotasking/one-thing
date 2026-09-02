@@ -130,16 +130,20 @@ export interface PoolRow {
   cooling: boolean
 }
 
+/**
+ * ── `canDelete` 已退役(09-02 批 11)────────────────────────────────────
+ * 从前这里有一格 `canDelete: entries.length > 1`,理由写的是「后端本来就拒空列表」。
+ * 那句话只对了一半:后端拒的是**用一次排序请求顺手清空一个 provider**
+ * (`runtime/spaces/ipc-operations.ts:378`),而不是「这一家不许回到未配置」——
+ * 它自己那句错误话就指着正路:「要清空整段请用『清除』」。删最后一条改走
+ * `spaces.clearCredential` 之后,**每一条都删得动**,这一格恒等于「有没有行」,
+ * 一个恒真的字段只会让人以为它在判什么。所以删掉,不留恒真尸体。
+ */
 export interface PoolView {
   rows: PoolRow[]
   policy: string
   /** 策略是插件给的、而此刻那个插件不在。字段不改,画灰 + 一句说明。 */
   policyUnavailable: boolean
-  /**
-   * 删得动吗。**最后一条不可删** —— 后端本来就会拒(空列表不收),
-   * 与其让人点一下再收到一句拒绝,不如把钮禁掉并说清理由。
-   */
-  canDelete: boolean
 }
 
 export function poolViewOf(
@@ -161,7 +165,6 @@ export function poolViewOf(
     })),
     policy: summary?.policy || 'single',
     policyUnavailable: summary?.policyUnavailable === true,
-    canDelete: entries.length > 1,
   }
 }
 

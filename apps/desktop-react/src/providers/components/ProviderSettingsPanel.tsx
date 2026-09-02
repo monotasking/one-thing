@@ -79,10 +79,12 @@ export function ProviderSettingsPanel() {
   const removeManualModel = useProviderSettings((st) => st.removeManualModel)
   const addCredential = useProviderSettings((st) => st.addCredential)
   const replaceCredential = useProviderSettings((st) => st.replaceCredential)
+  const relabelCredential = useProviderSettings((st) => st.relabelCredential)
   const removeCredential = useProviderSettings((st) => st.removeCredential)
   const moveCredential = useProviderSettings((st) => st.moveCredential)
   const setRotation = useProviderSettings((st) => st.setRotation)
   const setDials = useProviderSettings((st) => st.setDials)
+  const setBaseUrl = useProviderSettings((st) => st.setBaseUrl)
   const checkAuth = useProviderSettings((st) => st.checkAuth)
   const startAuth = useProviderSettings((st) => st.startAuth)
   const setAuthCode = useProviderSettings((st) => st.setAuthCode)
@@ -336,6 +338,7 @@ export function ProviderSettingsPanel() {
             poolBusy={poolBusy[mode.providerId] === true}
             poolError={poolError[mode.providerId] || undefined}
             onAddKey={(apiKey, label) => void addCredential(mode.providerId, apiKey, label)}
+            onRelabelKey={(entryId, label) => void relabelCredential(mode.providerId, entryId, label)}
             onReplaceKey={(entryId, apiKey) =>
               void replaceCredential(mode.providerId, entryId, apiKey)
             }
@@ -343,6 +346,7 @@ export function ProviderSettingsPanel() {
             onMoveKey={(entryId, delta) => void moveCredential(mode.providerId, entryId, delta)}
             onRotation={(policy) => void setRotation(mode.providerId, policy)}
             onDials={(apiMode, region) => void setDials(mode.providerId, apiMode, region)}
+            onBaseUrl={(baseUrl) => void setBaseUrl(mode.providerId, baseUrl)}
             authStatus={authStatus[mode.providerId]}
             authFlow={flow}
             onSignIn={() => void startAuth(mode.providerId)}

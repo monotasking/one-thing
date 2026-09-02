@@ -213,7 +213,6 @@ function pool(over: Partial<PoolView> = {}): PoolView {
     ],
     policy: 'priority-failover',
     policyUnavailable: false,
-    canDelete: true,
     ...over,
   }
 }
@@ -226,6 +225,7 @@ function credentialPool(over: Partial<Parameters<typeof CredentialPool>[0]> = {}
       busy={false}
       onAdd={vi.fn()}
       onReplace={vi.fn()}
+      onRelabel={vi.fn()}
       onRemove={vi.fn()}
       onMove={vi.fn()}
       onRotation={vi.fn()}
@@ -260,23 +260,111 @@ describe('CredentialPool', () => {
     expect(onRemove).toHaveBeenCalledWith('e0')
   })
 
-  it('最后一条:钮禁掉并说清理由 —— 禁用的钮自己不会解释自己', () => {
-    render(
-      credentialPool({
-        pool: pool({ rows: [pool().rows[0]], canDelete: false }),
-      }),
-    )
-    expect((screen.getByLabelText('删除第 1 条') as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByText(/最后一条不能删/)).toBeTruthy()
+  /*
+   * 09-02 批 11:这一条从前钉的是反面 —— 「最后一条:钮禁掉并说清理由」。
+   * 那条禁令连同它那句提示一起退役(空池 = 这一家回到未配置,是合法终态;
+   * 后端那扇门是 `clearCredential`,理由全文在 store 的 removeCredential)。
+   */
+  it('只剩一条时**照样删得动** —— 钮不禁,也不再有那句「最后一条不能删」', () => {
+    const onRemove = vi.fn()
+    render(credentialPool({ onRemove, pool: pool({ rows: [pool().rows[0]] }) }))
+    const del = screen.getByLabelText('删除第 1 条') as HTMLButtonElement
+    expect(del.disabled).toBe(false)
+    expect(screen.queryByText(/最后一条/)).toBeNull()
+    fireEvent.click(del)
+    fireEvent.click(del)
+    expect(onRemove).toHaveBeenCalledWith('e0')
   })
 
-  it('换密钥打的是**那一条**的 entryId', () => {
+  it('原地编辑:点掩码就在**同一格**换成输入框,↵ 落定,打的是那一条的 entryId', () => {
     const onReplace = vi.fn()
     render(credentialPool({ onReplace }))
-    fireEvent.click(screen.getAllByRole('button', { name: '换密钥' })[1])
-    fireEvent.change(screen.getByLabelText('给第 2 条换一把密钥'), { target: { value: 'sk-x' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    // 掩码本身就是入口(不必先找那颗铅笔钮)。
+    // 一行两个同名入口(掩码 + 铅笔钮);这一条走掩码那一个。
+    fireEvent.click(screen.getAllByRole('button', { name: '给第 2 条换一把密钥' })[0])
+    const box = screen.getByLabelText('给第 2 条换一把密钥') as HTMLInputElement
+    expect(box.tagName).toBe('INPUT')
+    expect(box.type).toBe('password')
+    // 副行还在 —— 改的是哪一条要看得见。
+    expect(screen.getByText(/公司报销/)).toBeTruthy()
+    fireEvent.change(box, { target: { value: 'sk-x' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
     expect(onReplace).toHaveBeenCalledWith('e1', 'sk-x')
+  })
+
+  it('原地编辑:Esc 收回,一个字都不写;失焦同理', () => {
+    const onReplace = vi.fn()
+    render(credentialPool({ onReplace }))
+    fireEvent.click(screen.getAllByRole('button', { name: '给第 1 条换一把密钥' })[0])
+    const box = screen.getByLabelText('给第 1 条换一把密钥')
+    fireEvent.change(box, { target: { value: 'sk-x' } })
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(onReplace).not.toHaveBeenCalled()
+    expect(screen.getByText('…8c1d')).toBeTruthy()
+
+    fireEvent.click(screen.getAllByRole('button', { name: '给第 1 条换一把密钥' })[0])
+    fireEvent.blur(screen.getByLabelText('给第 1 条换一把密钥'))
+    expect(onReplace).not.toHaveBeenCalled()
+    expect(screen.getByText('…8c1d')).toBeTruthy()
+  })
+
+  it('备注名也原地可编:点它换成输入框,现值预填,↵ 只写这一格', () => {
+    const onRelabel = vi.fn()
+    render(credentialPool({ onRelabel }))
+    fireEvent.click(screen.getByRole('button', { name: '改第 1 条的备注名' }))
+    const box = screen.getByLabelText('改第 1 条的备注名') as HTMLInputElement
+    // 备注名读得回来,所以从现值开始 —— 与密钥那一格(永不回读、从空开始)不同。
+    expect(box.value).toBe('个人')
+    expect(box.type).toBe('text')
+    fireEvent.change(box, { target: { value: '我的' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(onRelabel).toHaveBeenCalledWith('e0', '我的')
+  })
+
+  it('没有备注的那一条给一个「＋ 备注」入口 —— 否则只有添加时能填一次', () => {
+    const onRelabel = vi.fn()
+    render(
+      credentialPool({
+        onRelabel,
+        pool: pool({ rows: [{ ...pool().rows[0], label: '' }] }),
+      }),
+    )
+    // 入口得**看得见**:一颗没有可见文字的钮等于没有入口(它只对读屏软件存在)。
+    const entry = screen.getByRole('button', { name: '改第 1 条的备注名' })
+    expect(entry.textContent).toBe('＋ 备注')
+    fireEvent.click(entry)
+    const box = screen.getByLabelText('改第 1 条的备注名') as HTMLInputElement
+    expect(box.value).toBe('')
+    fireEvent.change(box, { target: { value: '公司' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(onRelabel).toHaveBeenCalledWith('e0', '公司')
+  })
+
+  it('没改就不发 —— 一次空写只会让屏幕闪一下忙态', () => {
+    const onRelabel = vi.fn()
+    render(credentialPool({ onRelabel }))
+    fireEvent.click(screen.getByRole('button', { name: '改第 1 条的备注名' }))
+    fireEvent.keyDown(screen.getByLabelText('改第 1 条的备注名'), { key: 'Enter' })
+    expect(onRelabel).not.toHaveBeenCalled()
+  })
+
+  it('密钥与备注两格**互斥** —— 一行一次只做一件事', () => {
+    render(credentialPool())
+    fireEvent.click(screen.getAllByRole('button', { name: '给第 1 条换一把密钥' })[0])
+    expect(screen.getByLabelText('给第 1 条换一把密钥')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '改第 1 条的备注名' }))
+    expect(screen.getByLabelText('改第 1 条的备注名')).toBeTruthy()
+    // 密钥那一格收了回去(掩码又变回两个入口)。
+    expect(screen.getAllByRole('button', { name: '给第 1 条换一把密钥' })).toHaveLength(2)
+  })
+
+  it('铅笔钮与掩码是同一个入口 —— 两条路都开同一格', () => {
+    render(credentialPool())
+    // 一行两颗同名控件:掩码(第 0 个)与铅笔钮(第 1 个)。
+    const entries = screen.getAllByRole('button', { name: '给第 1 条换一把密钥' })
+    expect(entries).toHaveLength(2)
+    fireEvent.click(entries[1])
+    expect((screen.getByLabelText('给第 1 条换一把密钥') as HTMLInputElement).tagName).toBe('INPUT')
   })
 
   it('每一档策略都带一句语义说明 —— 三个名字单看字面分不出来', () => {
@@ -293,7 +381,7 @@ describe('CredentialPool', () => {
     expect(screen.queryByText(/从上往下取第一条可用的/)).toBeNull()
   })
 
-  it('OAuth 那一条没有「换密钥」—— 它的换法是重新授权', () => {
+  it('OAuth 那一条不可编辑 —— 它没有密钥可换,换法是重新授权', () => {
     render(
       credentialPool({
         pool: pool({
@@ -308,12 +396,12 @@ describe('CredentialPool', () => {
               cooling: false,
             },
           ],
-          canDelete: false,
         }),
       }),
     )
     expect(screen.getByText('me@example.com')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '换密钥' })).toBeNull()
+    // 掩码不是钮、铅笔钮也不画:两个入口一个都没有。
+    expect(screen.queryAllByRole('button', { name: '给第 1 条换一把密钥' })).toHaveLength(0)
   })
 })
 
@@ -564,14 +652,16 @@ describe('ModeCard · 计费档位', () => {
         mode={mode(providerId)}
         config={config as never}
         dialsPending={false}
-        pool={pool({ rows: [], canDelete: false })}
+        pool={pool({ rows: [] })}
         poolBusy={false}
         onAddKey={vi.fn()}
         onReplaceKey={vi.fn()}
+        onRelabelKey={vi.fn()}
         onRemoveKey={vi.fn()}
         onMoveKey={vi.fn()}
         onRotation={vi.fn()}
         onDials={vi.fn()}
+        onBaseUrl={vi.fn()}
         authStatus={undefined}
         authFlow={IDLE_AUTH_FLOW}
         onSignIn={vi.fn()}
@@ -615,14 +705,16 @@ describe('ModeCard · 计费档位', () => {
         mode={mode('zhipu')}
         config={undefined}
         dialsPending={false}
-        pool={pool({ rows: [], canDelete: false })}
+        pool={pool({ rows: [] })}
         poolBusy={false}
         onAddKey={vi.fn()}
         onReplaceKey={vi.fn()}
+        onRelabelKey={vi.fn()}
         onRemoveKey={vi.fn()}
         onMoveKey={vi.fn()}
         onRotation={vi.fn()}
         onDials={onDials}
+        onBaseUrl={vi.fn()}
         authStatus={undefined}
         authFlow={IDLE_AUTH_FLOW}
         onSignIn={vi.fn()}

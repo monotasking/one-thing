@@ -385,7 +385,12 @@ describe('凭证池的写', () => {
     expect(vi.mocked(port.setCredentialPool).mock.calls[0][0].entryIds).toEqual(['e1'])
   })
 
-  it('只剩一条时删不动 —— 后端本来就拒空列表,这里先挡一道', async () => {
+  /*
+   * 09-02 批 11:从前这里钉的是「只剩一条时删不动」。现在删得动,而且走的是
+   * **另一扇门** —— `spaces.clearCredential`,正是后端拒空列表那句话指的那扇
+   * (「要清空整段请用『清除』」)。池那一口一个字没改,它那道防误排序的闸原样留着。
+   */
+  it('删最后一条:改走 clearCredential,**不**拿一个空列表去撞池那一口', async () => {
     const port = installPort({
       readCredentials: vi.fn(async () => ({
         success: true as const,
@@ -402,6 +407,26 @@ describe('凭证池的写', () => {
     await useProviderSettings.getState().start()
     await useProviderSettings.getState().removeCredential('claude', 'e0')
     expect(port.setCredentialPool).not.toHaveBeenCalled()
+    expect(vi.mocked(port.clearCredential).mock.calls[0][0]).toMatchObject({ providerId: 'claude' })
+  })
+
+  it('改备注名:带 entryId **不带 key**(契约上「只改非密钥字段」那一档)', async () => {
+    const port = poolPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().relabelCredential('claude', 'e1', '  公司报销  ')
+    const sent = vi.mocked(port.setCredential).mock.calls[0][0]
+    expect(sent).toMatchObject({ providerId: 'claude', entryId: 'e1', label: '公司报销' })
+    // 渲染层拿不到密钥原文,逼它为了改一个名字重打一遍 key 才是错的。
+    expect(sent.apiKey).toBeUndefined()
+    expect(port.setCredentialPool).not.toHaveBeenCalled()
+  })
+
+  it('删一条不在池里的 id:一发都不发', async () => {
+    const port = poolPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().removeCredential('claude', 'ghost')
+    expect(port.setCredentialPool).not.toHaveBeenCalled()
+    expect(port.clearCredential).not.toHaveBeenCalled()
   })
 
   it('调序 = 一次交换后的整串;越界不发请求', async () => {
@@ -699,5 +724,72 @@ describe('setDials', () => {
       kimiApiMode: 'coding-plan',
       baseUrl: 'https://api.kimi.com/coding/v1',
     })
+  })
+})
+
+/* ── 批 11:手改端点 ────────────────────────────────────────────────────── */
+
+describe('setBaseUrl', () => {
+  it('内置家:只改 providers[id].baseUrl 那一格', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setBaseUrl('claude', ' https://proxy.test/v1 ')
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[0][0]
+    expect(sent.ai.providers.claude).toMatchObject({ baseUrl: 'https://proxy.test/v1' })
+  })
+
+  it('内置家清空 = 写空串(回落名册那个缺省),不是写一个空地址', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setBaseUrl('claude', 'https://proxy.test/v1')
+    await useProviderSettings.getState().setBaseUrl('claude', '   ')
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[1][0]
+    expect(sent.ai.providers.claude.baseUrl).toBe('')
+  })
+
+  it('没变就不发 —— 一次空写只会让屏幕闪一下忙态', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().setBaseUrl('claude', '')
+    expect(port.writeProviderSettings).not.toHaveBeenCalled()
+  })
+
+  it('自定义家:**两处一起写**(定义那一份与聊天真正读的那一份)', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().saveCustomProvider({
+      name: '我的 vLLM',
+      description: '',
+      apiType: 'openai',
+      baseUrl: 'http://192.168.1.8:8000/v1',
+      apiKey: '',
+      model: 'qwen3-32b-awq',
+    })
+    const id = vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id
+
+    await useProviderSettings.getState().setBaseUrl(id, 'http://10.0.0.2:8000/v1')
+    const sent = vi.mocked(port.writeProviderSettings).mock.calls[1][0]
+    expect(sent.ai.customProviders!.find((item) => item.id === id)!.baseUrl).toBe(
+      'http://10.0.0.2:8000/v1',
+    )
+    expect(sent.ai.providers[id].baseUrl).toBe('http://10.0.0.2:8000/v1')
+  })
+
+  it('自定义家不许清空 —— 它没有缺省可回', async () => {
+    const port = installPort()
+    await useProviderSettings.getState().start()
+    await useProviderSettings.getState().saveCustomProvider({
+      name: '我的 vLLM',
+      description: '',
+      apiType: 'openai',
+      baseUrl: 'http://192.168.1.8:8000/v1',
+      apiKey: '',
+      model: 'qwen3-32b-awq',
+    })
+    await useProviderSettings.getState().setBaseUrl(
+      vi.mocked(port.writeProviderSettings).mock.calls[0][0].ai.customProviders![0].id,
+      '  ',
+    )
+    expect(port.writeProviderSettings).toHaveBeenCalledTimes(1)
   })
 })
