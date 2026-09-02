@@ -7,7 +7,7 @@ import type { SessionEventEnvelope } from '@shared/events/envelope'
 import { createQueryFamily, useQuery } from './kernel'
 import { chatPort } from './chat-port'
 import { meterPort } from './meter-port'
-import { contextWindowOf, useCurrentModelSelection, useModelsSource } from './models-source'
+import { useCurrentModelSelection, useModelWindow } from './models-source'
 
 /**
  * 读数的**真数据源**(D2 波一):context 环与它悬停出来的四行明细,数从这里来。
@@ -343,12 +343,14 @@ if (import.meta.hot) {
 export function useMeterView(): MeterView {
   const sessionId = useMeterSource((st) => st.sessionId)
   const facts = useQuery(meterQuery.get(sessionId)).data ?? null
-  const catalog = useModelsSource((st) => st.catalog)
   // 会话 id 取**读数自己开着的那条** —— 它由 open() 跟着当前会话走,所以与总览
   // 同源;就地再读一次总览 store 只会多一条会漂的读法。
   const selection = useCurrentModelSelection(sessionId)
-  return useMemo(
-    () => meterViewOf(facts, contextWindowOf(catalog, selection)),
-    [facts, catalog, selection],
-  )
+  /*
+   * 窗口那一格由 models-source 现问(判据仍是它的 `contextWindowOf`)。
+   * 批 7b 起目录是一族键控 query,所以这里订的只有**当前这一家**那一格 ——
+   * 从前订的是整张 `catalog` 表,别人家的目录到了也要让环重渲一次。
+   */
+  const windowTokens = useModelWindow(selection)
+  return useMemo(() => meterViewOf(facts, windowTokens), [facts, windowTokens])
 }

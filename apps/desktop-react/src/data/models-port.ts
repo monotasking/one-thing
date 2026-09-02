@@ -1,4 +1,4 @@
-import type { GetProvidersResponse, ModelsListResponse } from '@shared/ipc/providers'
+import type { GetProvidersResponse } from '@shared/ipc/providers'
 import type { SpacesGetProviderSettingsResponse } from '@shared/ipc/spaces'
 import type { GetSettingsResponse } from '@shared/ipc/settings'
 import type { SessionMutationResponse } from '@shared/ipc/sessions'
@@ -11,8 +11,16 @@ import type { SessionMutationResponse } from '@shared/ipc/sessions'
  * `configureModelsPort` 换成假的。
  *
  * 形状是**平台调用面的子集**,不是新契约:四条各自对应
- * `providersApi.getProviders` / `modelsApi.getModelsWithCapabilities` /
- * `spacesApi.getProviderSettings` / `sessionsApi.updateModel`,一个字段都没有多。
+ * `providersApi.getProviders` / `spacesApi.getProviderSettings` /
+ * `settingsApi.getSettings` / `sessionsApi.updateModel`,一个字段都没有多。
+ *
+ * ── 目录那一口已经删了(批 7b)────────────────────────────────────────────
+ * 这里从前还有第五条 `listModels(providerId)` → `modelsApi.getModelsWithCapabilities`。
+ * 它与 `provider-settings-port.listModels(pid, force)` **是同一口**:同一个平台
+ * 调用面、同一条 RPC 路由(`modelsRouter.getWithCapabilities`)、同一份 model
+ * registry、同一个 `ModelsListResponse`;唯一差别是这一条从不递 `forceRefresh`。
+ * 同一份答案在一个进程里缓存两遍就是两个时刻、两条在飞链 —— 所以目录收敛到
+ * `providers/catalog-query.ts` 那一族,这一口零消费者,连同它的类型一起删掉。
  *
  * ── 为什么空间的 provider 设置也在这条端口上 ─────────────────────────────
  * 「哪一家可见」的两道闸(开关、选过哪些模型)读的是那个空间的
@@ -37,14 +45,10 @@ import type { SessionMutationResponse } from '@shared/ipc/sessions'
 export interface ModelsPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
   ready(): Promise<unknown>
-  /** 有哪些 provider(名字与 id)。目录里的 `models` 不吃 —— 见 listModels。 */
-  listProviders(): Promise<GetProvidersResponse>
   /**
-   * 一家的模型明细。**吃缓存语义**:不传 `forceRefresh`,后端有缓存就给缓存
-   * (`models.getWithCapabilities`)—— 抽屉是随手开合的东西,不该每开一次
-   * 就去问一遍 models.dev。
+   * 有哪些 provider(名字与 id)。目录里的 `models` 不吃 —— 见文件头的合并记档。
    */
-  listModels(providerId: string): Promise<ModelsListResponse>
+  listProviders(): Promise<GetProvidersResponse>
   /**
    * **当前空间那一份 provider 设置**(`workspaces/<id>/providers.json`)——
    * 「哪一家可见」「这一家列哪些型」「默认是哪一家」三格的真产地。
@@ -90,14 +94,12 @@ export function configureModelsPort(next: ModelsPort | undefined): void {
 async function realPort(): Promise<ModelsPort> {
   const [
     { providersApi },
-    { modelsApi },
     { spacesApi },
     { settingsApi },
     { sessionsApi },
     { whenConnected },
   ] = await Promise.all([
     import('@renderer/platform/providers-client'),
-    import('@renderer/platform/models-client'),
     import('@renderer/platform/spaces-client'),
     import('@renderer/platform/settings-client'),
     import('@renderer/platform/sessions-client'),
@@ -106,7 +108,6 @@ async function realPort(): Promise<ModelsPort> {
   return {
     ready: () => whenConnected(),
     listProviders: () => providersApi.getProviders(),
-    listModels: (providerId) => modelsApi.getModelsWithCapabilities(providerId),
     readProviderSettings: (spaceId) => spacesApi.getProviderSettings({ id: spaceId }),
     readSettings: () => settingsApi.getSettings(),
     updateSessionModel: (sessionId, provider, model) =>

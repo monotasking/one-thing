@@ -14,7 +14,11 @@ import {
   useFileMentionsSource,
 } from '../../data/file-mentions-source'
 import { configureFilesPort } from '../../data/files-port'
-import { useModelsSource } from '../../data/models-source'
+import { prefsQuery, providersQuery, useModelsSource } from '../../data/models-source'
+import { configureModelsPort } from '../../data/models-port'
+import { useExposeStore } from '../../expose/store'
+import { catalogQuery } from '../../providers/catalog-query'
+import { openRouterModel } from '../../data/__fixtures__/models'
 
 /**
  * D3 起 composer 不再自己攒一条假队列 —— 它把话**交给 sink**(见 composer/sink.ts)。
@@ -98,20 +102,22 @@ beforeEach(() => {
   // 命令表:内置那七条是编译期常量(不经端口),插件那一半用 setup 里的空表。
   useCommandsSource.getState().reset()
   /*
-   * 模型目录:直接摆一份 store 状态,不去动端口 —— 这一层要验的是「谁在场」,
-   * 取数(两道闸、懒加载、上行三态)归 data/models-source.test.ts。
+   * 模型侧:直接把答案**打进那三格 query**,不去动端口 —— 这一层要验的是
+   * 「谁在场」,取数(两道闸、懒加载、上行三态)归 data/models-source.test.ts。
+   * `patch` 是 kernel 交出来的就地补丁口,不绕过任何东西(与 MeterCard.test 同一手)。
+   *
+   * 目录那一格**已经拉好**:抽屉一开就不会再去拉一次(懒加载那条路归
+   * data/models-source.test.ts 验)。这里要的是一份静止的现场。
    * 没有当前会话,所以这里选中的模型落进 `pending`(草稿态那一格)。
    */
   useModelsSource.getState().reset()
-  useModelsSource.setState({
-    status: 'ready',
-    providers: [{ id: 'xai', name: 'xAI' }],
+  catalogQuery.reset()
+  providersQuery.patch([{ id: 'xai', name: 'xAI' }])
+  prefsQuery.get('default').patch({
     prefs: { defaultProvider: '', configs: { xai: { selectedModels: ['grok-4'], model: '' } } },
-    catalog: { xai: [{ id: 'grok-4', contextLength: 500_000 }] },
-    // 目录**已经拉好**:抽屉一开就不会再去拉一次(懒加载那条路归
-    // data/models-source.test.ts 验)。这里要的是一份静止的现场。
-    catalogStatus: { xai: 'ready' },
+    custom: [],
   })
+  catalogQuery.get('xai').patch([openRouterModel('grok-4', 500_000)])
 })
 
 afterEach(() => {
@@ -124,6 +130,9 @@ afterEach(() => {
   // 那时组件还挂着 —— 一次 store 归零就是一次 act 之外的重渲染。
   act(() => {
     useModelsSource.getState().reset()
+    // 目录那一族有自己的家(providers/catalog-query.ts),models-source 的 reset
+    // 不收它 —— 两个 reset 收同一格就是两个主人。所以用例自己收。
+    catalogQuery.reset()
   })
 })
 
@@ -199,7 +208,8 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
   })
 
   it('一个模型都还没有:药丸写「选择模型」,不拿目录第一条去顶', () => {
-    useModelsSource.setState({ providers: [], prefs: { defaultProvider: '', configs: {} } })
+    providersQuery.patch([])
+    prefsQuery.get('default').patch({ prefs: { defaultProvider: '', configs: {} }, custom: [] })
     render(<Composer />)
     expect(modelPill().textContent).toContain('选择模型')
   })
@@ -848,5 +858,87 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
     expect(starts).toBe(1)
     expect(handed).toHaveLength(0)
     expect(box().textContent).toBe('这句话不能丢')
+  })
+})
+
+/**
+ * 律③补口(批 7b):切模型这一发在飞时,反馈长在**发起它的那个控件**上,
+ * 而且是**逐格**的 —— 不是把整条工具行禁灰。
+ *
+ * 两处读的是同一格(`selectKey(sessionId)`):
+ *  · 药丸 `aria-busy`(它永不禁用 —— 禁了就连抽屉都开不了,与 AgentChip 同一条);
+ *  · 抽屉 commit 的那道闸(在飞时**连抽屉都不收**,因为它根本没走到 `choose`)。
+ */
+describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', () => {
+  const updates: string[] = []
+  let land: (value: { success: boolean }) => void = () => undefined
+
+  /** 药丸按 aria-expanded 认 —— 它的 aria-label 会跟着选中的模型改名。 */
+  const pill = () => screen.getAllByRole('button').find((b) => b.hasAttribute('aria-expanded'))!
+  /**
+   * 抽屉里那一行。**不能按文字找**:立牌之后药丸上写的也是 grok-4,
+   * `getByText` 会一次找到两个 —— 行是那个不带 aria-expanded 的钮。
+   */
+  const row = () =>
+    screen
+      .getAllByRole('button')
+      .find((b) => !b.hasAttribute('aria-expanded') && (b.textContent ?? '').includes('grok-4'))!
+
+  beforeEach(() => {
+    updates.length = 0
+    useExposeStore.setState({ currentSessionId: 's1' })
+    configureModelsPort({
+      ready: async () => undefined,
+      listProviders: async () => ({ success: true, providers: [] }),
+      readProviderSettings: async () => ({ success: false, error: '这组用例不走取数口' }),
+      readSettings: async () => ({ success: true, settings: {} as never }),
+      updateSessionModel: async (_sessionId, _provider, model) => {
+        updates.push(model)
+        return new Promise((resolve) => {
+          land = resolve
+        })
+      },
+    })
+  })
+
+  /*
+   * 把那一发放走再拆台:挂着的 promise 会让 mutation 的收尾落在用例之外,
+   * 那正是 React 抱怨「act 之外的更新」的形状。
+   */
+  afterEach(async () => {
+    await act(async () => {
+      land({ success: true })
+      // settle 那一路是**不被 await 的**(重拉会话表 → 撤牌),让它在这里跑完,
+      // 否则那次撤牌会落在用例之外。
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    configureModelsPort(undefined)
+    useExposeStore.setState({ currentSessionId: '' })
+  })
+
+  it('在飞时药丸 aria-busy,而且它自己不被禁用', async () => {
+    render(<Composer />)
+    fireEvent.click(pill())
+    await act(async () => void fireEvent.mouseDown(row()))
+
+    expect(updates).toEqual(['grok-4'])
+    expect(pill().getAttribute('aria-busy')).toBe('true')
+    expect(pill().hasAttribute('disabled')).toBe(false)
+
+    await act(async () => land({ success: true }))
+    expect(pill().getAttribute('aria-busy')).toBe('false')
+  })
+
+  it('在飞时抽屉的第二下**不发**,而且连抽屉都不收(闸在 commit,不在 store)', async () => {
+    render(<Composer />)
+    fireEvent.click(pill())
+    await act(async () => void fireEvent.mouseDown(row()))
+    expect(state().drawerKind).toBeNull()
+
+    // 重新打开,再点同一行:commit 那道闸把它整下拦掉 —— 收抽屉这一步都没跑到。
+    fireEvent.click(pill())
+    await act(async () => void fireEvent.mouseDown(row()))
+    expect(updates).toEqual(['grok-4'])
+    expect(state().drawerKind).toBe('model')
   })
 })

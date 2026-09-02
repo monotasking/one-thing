@@ -135,19 +135,22 @@ configureFilesPort({
 })
 
 /**
- * 模型目录的端口:同一条理由,同一手(D2)。composer 在每一个渲染了外壳的
- * 用例里都在,不装的话它们会一起去摸真的 `@renderer/platform`。
+ * 模型名册与切模型的端口:同一条理由,同一手(D2)。composer 在每一个渲染了
+ * 外壳的用例里都在,不装的话它们会一起去摸真的 `@renderer/platform`。
  *
  * 默认这一份**成功但是空**:一个连上了、然而这台机器一个 provider 都没配的
- * core 是真实存在的状态(空表 ≠ 出错),抽屉据此画「无匹配」。要验目录的用例
+ * core 是真实存在的状态(空表 ≠ 出错),抽屉据此画「无匹配」。要验的用例
  * 自己 `configureModelsPort` 换一个。
+ *
+ * **模型目录不在这条端口上**(批 7b 合并):它与设置面共用一格
+ * (`providers/catalog-query.ts`),假端口在下面那份 `configureProviderSettingsPort`
+ * 里 —— 同一个产地,同一份假货。
  */
 import { configureModelsPort } from '../data/models-port'
 
 configureModelsPort({
   ready: async () => undefined,
   listProviders: async () => ({ success: true, providers: [] }),
-  listModels: async () => ({ success: true, models: [] }),
   readProviderSettings: async () => ({ success: false, error: 'no models port in tests' }),
   // 缺省**答「迁移过」**:那是今天绝大多数机器的样子,也让用例默认走
   // 「以空间那份为准、无回落」那条严格路(未迁移那条由专门的用例点名测)。

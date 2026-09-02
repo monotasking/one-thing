@@ -19,7 +19,13 @@ import {
 } from '../../data/file-mentions-source'
 import { useSessionCwd } from '../../data/files-source'
 import { useMeterSource } from '../../data/meter-source'
-import { useCurrentModelSelection, useModelsSource } from '../../data/models-source'
+import {
+  ensureCatalog,
+  modelMutation,
+  selectKey,
+  useCurrentModelSelection,
+} from '../../data/models-source'
+import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
 import { notify } from '../../services/notify'
 import { ESC_STOP_WINDOW_MS } from '../../components/motion'
@@ -89,7 +95,13 @@ export function Composer() {
   const sessionId = useExposeStore((st) => st.currentSessionId)
   // 药丸上写谁:三层事实里推出来的那一个(见 resolveModelSelection)。
   const selection = useCurrentModelSelection(sessionId)
-  const ensureCatalog = useModelsSource((st) => st.ensureCatalog)
+  /*
+   * 律③:切模型这一发在飞时,药丸上 `aria-busy` —— 反馈长在**发起它的那个
+   * 控件**上,而不是把整条工具行禁灰。药丸本身**永不禁用**(禁了就连抽屉都
+   * 开不了,与 AgentChip 同一条);「不可再点」那一半的闸落在抽屉的 commit 里,
+   * 两处读的是同一格(`selectKey(sessionId)`)。
+   */
+  const switchingModel = useAsyncPending(modelMutation, selectKey(sessionId))
   const openMeter = useMeterSource((st) => st.open)
   const refreshMeter = useMeterSource((st) => st.refresh)
 
@@ -105,7 +117,7 @@ export function Composer() {
    */
   useEffect(() => {
     if (selection?.provider) void ensureCatalog(selection.provider)
-  }, [selection?.provider, ensureCatalog])
+  }, [selection?.provider])
 
   const panelRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<ComposerInputHandle | null>(null)
@@ -601,6 +613,7 @@ export function Composer() {
                       : t('composer.modelUnset')
                   }
                   aria-expanded={drawerKind === 'model'}
+                  aria-busy={switchingModel}
                   onClick={toggleModelDrawer}
                 >
                   {selection ? selection.model : t('composer.modelUnset')}

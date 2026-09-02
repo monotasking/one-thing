@@ -21,6 +21,20 @@ import { providerSettingsPort } from '../data/provider-settings-port'
  *
  * 不弹通知:人正在看这块面,错误就地画在表头下面那一行,离出事的地方最近
  * (这条纪律从旧 store 原样搬过来)。
+ *
+ * ── 批 7b 起它有**两个**消费者,而且这正是它存在的意义 ─────────────────────
+ * `data/models-source.ts`(模型抽屉与读数环)从前有自己的一族目录缓存,走
+ * `models-port.listModels(pid)`。两条线落在**同一口**:两个端口的真实现都是
+ * `modelsApi.getModelsWithCapabilities`,同一条 RPC 路由、同一份 model registry、
+ * 同一个 `ModelsListResponse`。所以那一族退役,目录在这个进程里只剩这一格。
+ *
+ * 两个消费者读法不同、判据不同,但**答案同源**:设置面读整份 `OpenRouterModel`
+ * (要价格与能力),抽屉只投 `{id, contextLength}`(`toCatalogModels`)——
+ * 投影在读的那一侧做,缓存只有这一份。
+ *
+ * 文件位置留在 `providers/` 而不是搬去 `data/`:它今天的两个消费者一个在这里、
+ * 一个在 data,搬家会动到不属于那一批的文件(`providers/store.ts` 与
+ * `ProviderSettingsPanel.tsx` 的 import),而位置本身不影响「只有一格」这件事。
  */
 export const catalogQuery = createQueryFamily<readonly OpenRouterModel[]>(
   'providers.catalog',

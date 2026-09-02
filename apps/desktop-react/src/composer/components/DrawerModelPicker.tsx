@@ -4,9 +4,15 @@ import { useT } from '../../i18n'
 import { Search } from '../../components/icons'
 import {
   buildProviderGroups,
+  ensureVisibleCatalogs,
+  modelMutation,
+  selectKey,
+  useCatalogRecord,
   useCurrentModelSelection,
-  useModelsSource,
+  useProviderOptions,
+  useProviderPrefs,
 } from '../../data/models-source'
+import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
 import { filterProviders, formatCount } from '../transitions'
 import { useComposerStore } from '../store'
@@ -43,22 +49,33 @@ export function DrawerModelPicker() {
   const ref = useRef<HTMLInputElement>(null)
 
   const sessionId = useExposeStore((st) => st.currentSessionId)
-  const providers = useModelsSource((st) => st.providers)
-  const prefs = useModelsSource((st) => st.prefs)
-  const catalog = useModelsSource((st) => st.catalog)
-  const ensureVisibleCatalogs = useModelsSource((st) => st.ensureVisibleCatalogs)
+  const providers = useProviderOptions()
+  const prefs = useProviderPrefs()
+  /*
+   * 订阅面按**名册全集**,不按可见集:没拉过的格是空的,拼进去连一个键都不占
+   * (见 useCatalogRecord),而按可见集订就得先白建一次组表。拉哪几家仍然只按
+   * 可见集(`ensureVisibleCatalogs`)—— 订与拉是两件事。
+   */
+  const catalogIds = useMemo(() => providers.map((p) => p.id), [providers])
+  const catalog = useCatalogRecord(catalogIds)
   const current = useCurrentModelSelection(sessionId)
+  /*
+   * 律③:同一条会话上已经有一发切模型在飞时,这张表不再发第二发。
+   * 读的是与药丸上那个 aria-busy 完全同一格(`selectKey(sessionId)`)——
+   * 反馈画在药丸上,闸落在这里,两处读同一个数才不会说两句话。
+   */
+  const switching = useAsyncPending(modelMutation, selectKey(sessionId))
 
   // 抽屉一开焦点就在搜索行:开它的那一下手已经离开键盘了,别再让人多点一次。
   useEffect(() => {
     ref.current?.focus()
   }, [])
 
-  // 懒加载:这块组件挂上 = 抽屉开了。每家目录拉一次就缓存(端口那层还有一道
-  // 在飞去重),所以反复开合不会反复往返。
+  // 懒加载:这块组件挂上 = 抽屉开了。每家目录拉一次就缓存(kernel 那一族自带
+  // 并发折叠与缓存),所以反复开合不会反复往返。
   useEffect(() => {
     void ensureVisibleCatalogs(current)
-  }, [ensureVisibleCatalogs, current])
+  }, [current])
 
   const groups = useMemo(
     () => filterProviders(buildProviderGroups(providers, prefs, catalog, current), query),
@@ -82,6 +99,8 @@ export function DrawerModelPicker() {
   }, [query, select])
 
   const commit = (index: number) => {
+    // 在飞就不接第二下(律③的另一半:反馈是「不可再点」)。草稿态永远不在飞。
+    if (switching) return
     const row = rows[index]
     if (!row) return
     choose(sessionId || null, row.providerId, row.model)

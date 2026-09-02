@@ -4,6 +4,8 @@ import { ContextRing, MeterCard } from './MeterCard'
 import { meterQuery, useMeterSource } from '../../data/meter-source'
 import type { MeterFacts } from '../../data/meter-source'
 import { useModelsSource } from '../../data/models-source'
+import { catalogQuery } from '../../providers/catalog-query'
+import { openRouterModel } from '../../data/__fixtures__/models'
 import { useSessionsSource } from '../../data/sessions-source'
 import { useStageStore } from '../../stage/store'
 import type { SessionSummary } from '../../expose/types'
@@ -72,9 +74,9 @@ function stage(window: number | null): void {
   useSessionsSource.setState({
     sessions: [session({ id: 's1', model: 'grok-4', provider: 'xai' })],
   })
-  useModelsSource.setState({
-    catalog: window === null ? {} : { xai: [{ id: 'grok-4', contextLength: window }] },
-  })
+  // 窗口那一格的产地是目录那一族(批 7b 合并后与设置面共用一格)。
+  // `window === null` = 那一格**从没拉过** —— 那正是「目录还没到」的真形状。
+  if (window !== null) catalogQuery.get('xai').patch([openRouterModel('grok-4', window)])
   useMeterSource.setState({ sessionId: 's1' })
   seedFacts({ sessionId: 's1', tokens: TOKENS, usage: USAGE })
 }
@@ -82,6 +84,9 @@ function stage(window: number | null): void {
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   useModelsSource.getState().reset()
+  // 目录那一族有自己的家(providers/catalog-query.ts),models-source 的 reset
+  // 不收它 —— 两个 reset 收同一格就是两个主人。所以用例自己收。
+  catalogQuery.reset()
   useMeterSource.getState().reset()
   useSessionsSource.setState({ sessions: [] })
 })
@@ -93,6 +98,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => {
     useModelsSource.getState().reset()
+    catalogQuery.reset()
     useMeterSource.getState().reset()
   })
 })

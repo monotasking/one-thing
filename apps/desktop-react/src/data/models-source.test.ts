@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
+import type { OpenRouterModel, ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { configureModelsPort } from './models-port'
+import { configureProviderSettingsPort } from './provider-settings-port'
 import { configureSpacesPort } from './spaces-port'
+import { openRouterModel as model } from './__fixtures__/models'
+import { fakeProviderPort } from '../providers/__tests__/fake-port'
+import { catalogQuery } from '../providers/catalog-query'
+import { useNotifyStore } from '../services/notify-store'
 import { useWorkspaceStore } from '../workspace/store'
 import type { ModelsPort } from './models-port'
 import {
@@ -10,21 +15,33 @@ import {
   contextWindowOf,
   customProviderOptionsOf,
   defaultSelectionOf,
+  ensureCatalog,
+  ensureVisibleCatalogs,
+  mergeProviderOptions,
   modelIdsOf,
+  modelMutation,
+  prefsQuery,
+  providersQuery,
   resolveModelSelection,
+  selectKey,
+  toCatalogModels,
   toProviderPrefs,
   useModelsSource,
 } from './models-source'
 import { useSessionsSource } from './sessions-source'
 
 /**
- * 模型目录与切换(D2 波一)。三块各自钉死:
+ * 模型目录与切换(D2 波一,批 7b 迁 kernel 原语)。四块各自钉死:
  *  ① **两道闸**(开关 + 有模型可列)—— 谁出现在抽屉里是纯判据,一台 core 都不用起;
- *  ② **懒加载** —— 目录是每家一次 RPC 的东西,同一家不许拉第二遍;
- *  ③ **选中的三态** —— 有会话上行 / 上行失败不动本地 / 草稿态暂存后补发。
+ *  ② **懒加载与键控** —— 设置一空间一格、名册一格、目录一家一格,各拉各的;
+ *  ③ **目录只有一格** —— 设置面与模型抽屉共用 `providers/catalog-query.ts`,
+ *     一边拉过另一边就不再发(批 7b 的合并守卫);
+ *  ④ **写路三态** —— 有会话上行 / 上行失败回滚 + notify / 草稿态暂存后补发,
+ *     外加律③那两条(settle 排在重拉之后、在飞不接第二发)。
  *
- * 端口用 `configureModelsPort` 换成假的(与 files-source.test 同一手),
- * 并且**记账每一次调用** —— 「拉了几次」正是这批要验的东西之一。
+ * 端口用 `configureModelsPort` / `configureProviderSettingsPort` 换成假的
+ * (与 files-source.test 同一手),并且**记账每一次调用** ——
+ * 「拉了几次」正是这批要验的东西之一。
  */
 
 function provider(id: string, name = id): ProviderInfo {
@@ -78,23 +95,6 @@ function installPort(over: Partial<ModelsPort> = {}): void {
       calls.providers += 1
       return { success: true, providers: [provider('xai', 'xAI'), provider('deepseek', 'DeepSeek')] }
     },
-    listModels: async (providerId) => {
-      calls.models.push(providerId)
-      return {
-        success: true,
-        models: [
-          {
-            id: 'grok-4',
-            name: 'Grok 4',
-            context_length: 500_000,
-            architecture: { modality: '', input_modalities: [], output_modalities: [], tokenizer: '' },
-            pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
-            top_provider: { context_length: 0, max_completion_tokens: 0, is_moderated: false },
-            supported_parameters: [],
-          },
-        ],
-      }
-    },
     readSettings: async () => ({
       success: true,
       settings: { storage: { spaceProviderSettingsMigratedAt: 1 } } as never,
@@ -117,17 +117,55 @@ function installPort(over: Partial<ModelsPort> = {}): void {
   })
 }
 
+/**
+ * 目录那一格走的是**设置面那条端口**(批 7b 合并之后只有这一个产地)。
+ * 记账同一本 `calls.models` —— 「一共发了几发目录」这件事不该有两本账。
+ */
+function installCatalogPort(listModels?: ProviderSettingsPortListModels): void {
+  configureProviderSettingsPort(
+    fakeProviderPort({
+      listModels:
+        listModels ??
+        (async (providerId: string) => {
+          calls.models.push(providerId)
+          return { success: true, models: [model('grok-4', 500_000)] }
+        }),
+    }),
+  )
+}
+
+type ProviderSettingsPortListModels = (
+  providerId: string,
+  forceRefresh?: boolean,
+) => Promise<{ success: boolean; models?: OpenRouterModel[]; error?: string }>
+
+/** 一个手动决定何时落地的承诺 —— 「在飞」那几条断言全靠它。 */
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
 beforeEach(() => {
   calls = { providers: 0, settings: 0, models: [], updates: [] }
   updateOk = true
   useModelsSource.getState().reset()
+  // 目录那一族有自己的家(providers/catalog-query.ts),models-source 的 reset
+  // 不收它 —— 两个 reset 收同一格就是两个主人。所以用例自己收。
+  catalogQuery.reset()
   useSessionsSource.setState({ sessions: [] })
+  useNotifyStore.setState({ items: [] })
   installPort()
+  installCatalogPort()
 })
 
 afterEach(() => {
   configureModelsPort(undefined)
+  configureProviderSettingsPort(undefined)
   useModelsSource.getState().reset()
+  catalogQuery.reset()
 })
 
 describe('设置的窄投影', () => {
@@ -150,6 +188,22 @@ describe('设置的窄投影', () => {
     expect(
       buildProviderGroups([{ id: 'my-llm', name: '自建' }], prefs, {}, null)[0].models,
     ).toEqual([{ model: 'qwen-max', contextLength: null }])
+  })
+})
+
+describe('名册两半合流', () => {
+  const builtin = [{ id: 'xai', name: 'xAI' }]
+
+  it('没有自定义那一半时**原样交回**内置那张表(身份不换,律④)', () => {
+    expect(mergeProviderOptions(builtin, [])).toBe(builtin)
+    expect(mergeProviderOptions(builtin, [{ id: 'xai', name: '撞名的' }])).toBe(builtin)
+  })
+
+  it('内置在前、自定义在后;id 撞了以内置为准', () => {
+    expect(mergeProviderOptions(builtin, [{ id: 'my-llm', name: '自建' }])).toEqual([
+      { id: 'xai', name: 'xAI' },
+      { id: 'my-llm', name: '自建' },
+    ])
   })
 })
 
@@ -295,40 +349,55 @@ describe('取数:设置热,名册与目录都冷', () => {
     expect(calls.models).toEqual([])
   })
 
-  it('名册在抽屉打开时才拉,而且只拉一次', async () => {
+  it('名册在 ensure 之后才发第一发,而且只发一次', async () => {
     await useModelsSource.getState().start()
-    await Promise.all([
-      useModelsSource.getState().ensureProviders(),
-      useModelsSource.getState().ensureProviders(),
-    ])
-    await useModelsSource.getState().ensureProviders()
+    expect(calls.providers).toBe(0)
+    await Promise.all([providersQuery.ensure(), providersQuery.ensure()])
+    await providersQuery.ensure()
     expect(calls.providers).toBe(1)
-    expect(useModelsSource.getState().providers.map((p) => p.id)).toEqual(['xai', 'deepseek'])
+    expect((providersQuery.get().data ?? []).map((p) => p.id)).toEqual(['xai', 'deepseek'])
   })
 
-  it('同一家的目录只拉一次(缓存 + 在飞去重)', async () => {
+  it('同一家的目录只拉一次(键控缓存 + 并发折叠)', async () => {
     await useModelsSource.getState().start()
-    await Promise.all([
-      useModelsSource.getState().ensureCatalog('xai'),
-      useModelsSource.getState().ensureCatalog('xai'),
-    ])
-    await useModelsSource.getState().ensureCatalog('xai')
+    await Promise.all([ensureCatalog('xai'), ensureCatalog('xai')])
+    await ensureCatalog('xai')
     expect(calls.models).toEqual(['xai'])
-    expect(useModelsSource.getState().catalog.xai).toEqual([{ id: 'grok-4', contextLength: 500_000 }])
+    expect(toCatalogModels(catalogQuery.get('xai').get().data ?? [])).toEqual([
+      { id: 'grok-4', contextLength: 500_000 },
+    ])
+  })
+
+  it('目录重拉期间**旧目录还在屏上**(律②:keep-previous)', async () => {
+    await ensureCatalog('xai')
+    const hold = deferred<{ success: boolean; models?: OpenRouterModel[] }>()
+    installCatalogPort(async (providerId) => {
+      calls.models.push(providerId)
+      return hold.promise
+    })
+    const q = catalogQuery.get('xai')
+    const running = q.refetch()
+    expect(q.get().inflight).toBe(true)
+    expect(q.get().phase).toBe('ready')
+    expect((q.get().data ?? []).map((m) => m.id)).toEqual(['grok-4'])
+    hold.resolve({ success: true, models: [model('grok-4-fast', 128_000)] })
+    await running
+    expect((q.get().data ?? []).map((m) => m.id)).toEqual(['grok-4-fast'])
   })
 
   it('抽屉打开:名册 + **可见**那几家的目录一起到位', async () => {
     await useModelsSource.getState().start()
     // deepseek 关掉:它不该被拉。
-    useModelsSource.setState({
+    prefsQuery.get('default').patch({
       prefs: toProviderPrefs(
         settingsWith({
           xai: { selectedModels: ['grok-4'] },
           deepseek: { selectedModels: ['deepseek-chat'], enabled: false },
         }),
       ),
+      custom: [],
     })
-    await useModelsSource.getState().ensureVisibleCatalogs(null)
+    await ensureVisibleCatalogs(null)
     expect(calls.providers).toBe(1)
     expect(calls.models).toEqual(['xai'])
   })
@@ -336,7 +405,25 @@ describe('取数:设置热,名册与目录都冷', () => {
   it('设置拿不到 = 空投影(抽屉一家都不列),不是「列全部」', async () => {
     installPort({ readProviderSettings: async () => ({ success: false, error: '答不上话' }) })
     await useModelsSource.getState().start()
-    expect(useModelsSource.getState().prefs).toEqual({ defaultProvider: '', configs: {} })
+    expect(prefsQuery.get('default').get().data?.prefs).toEqual({ defaultProvider: '', configs: {} })
+  })
+})
+
+/* ── 合并守卫(批 7b):目录在这个进程里只有一格 ─────────────────────────── */
+
+describe('目录只有一个产地', () => {
+  it('设置面拉过之后,模型侧**不再发第二发**;两边读到的 id 集合逐字相同', async () => {
+    // 设置面那一路(ProviderSettingsPanel 走的就是这一句)。
+    await catalogQuery.get('xai').ensure()
+    expect(calls.models).toEqual(['xai'])
+
+    // 模型侧那一路。两族各一份的话这里会多出一发。
+    await ensureCatalog('xai')
+    expect(calls.models).toEqual(['xai'])
+
+    const raw = catalogQuery.get('xai').get().data ?? []
+    expect(toCatalogModels(raw).map((m) => m.id)).toEqual(raw.map((m) => m.id))
+    expect(raw.map((m) => m.id)).toEqual(['grok-4'])
   })
 })
 
@@ -348,12 +435,50 @@ describe('选中一个模型:三态', () => {
     expect(useModelsSource.getState().optimistic).toEqual({})
   })
 
-  it('上行失败 → 撤牌,本地不动(绝不留一块后端没认下的牌)', async () => {
+  it('上行失败 → 撤牌 + notify(warn) 带后端原话,本地不动', async () => {
     updateOk = false
     await useModelsSource.getState().selectModel('s1', 'xai', 'grok-4')
     expect(calls.updates).toHaveLength(1)
     expect(useModelsSource.getState().optimistic).toEqual({})
     expect(useModelsSource.getState().pending).toBeNull()
+    const items = useNotifyStore.getState().items
+    expect(items).toHaveLength(1)
+    expect(items[0].level).toBe('warn')
+    expect(items[0].body).toBe('后端拒绝了')
+  })
+
+  it('撤牌排在**重拉之后** —— 中间那一段仍由牌顶着,药丸不闪回旧模型', async () => {
+    const seen: Array<Record<string, unknown>> = []
+    const original = useSessionsSource.getState().refresh
+    useSessionsSource.setState({
+      refresh: async () => {
+        seen.push({ ...useModelsSource.getState().optimistic })
+      },
+    })
+    try {
+      await useModelsSource.getState().selectModel('s1', 'xai', 'grok-4')
+    } finally {
+      useSessionsSource.setState({ refresh: original })
+    }
+    expect(seen).toEqual([{ s1: { provider: 'xai', model: 'grok-4' } }])
+    expect(useModelsSource.getState().optimistic).toEqual({})
+  })
+
+  it('同一条会话上已经有一发在飞:第二下**不发**(律③的另一半)', async () => {
+    const hold = deferred<{ success: boolean }>()
+    installPort({
+      updateSessionModel: async (sessionId, providerId, model) => {
+        calls.updates.push({ sessionId, provider: providerId, model })
+        return hold.promise
+      },
+    })
+    const first = useModelsSource.getState().selectModel('s1', 'xai', 'grok-4')
+    expect(modelMutation.isPending(selectKey('s1'))).toBe(true)
+    await useModelsSource.getState().selectModel('s1', 'deepseek', 'deepseek-chat')
+    expect(calls.updates).toHaveLength(1)
+    hold.resolve({ success: true })
+    await first
+    expect(modelMutation.isPending(selectKey('s1'))).toBe(false)
   })
 
   it('草稿态 → 只记账不发请求;建会话时兑现一次并清空', async () => {
@@ -371,6 +496,9 @@ describe('选中一个模型:三态', () => {
     await useModelsSource.getState().selectModel(null, 'xai', 'grok-4')
     await useModelsSource.getState().applyPendingModel('new-1')
     expect(useModelsSource.getState().pending).toBeNull()
+    // 兑现那一路**不立牌**,所以失败也没有牌要撤;只剩一句 warn。
+    expect(useModelsSource.getState().optimistic).toEqual({})
+    expect(useNotifyStore.getState().items).toHaveLength(1)
   })
 
   it('没有预选时兑现是恒等,不发请求', async () => {
@@ -379,7 +507,7 @@ describe('选中一个模型:三态', () => {
   })
 })
 
-/* ── 工作区(09-01「真切换」批)──────────────────────────────────────────── */
+/* ── 工作区(09-01「真切换」批;批 7b 起由键控 query 承担)──────────────── */
 
 describe('模型表跟着当前工作区走', () => {
   /** 两个空间各一份 provider 设置 —— 可见的家与可列的型都不一样。 */
@@ -423,25 +551,63 @@ describe('模型表跟着当前工作区走', () => {
     await seedSpaces()
     useWorkspaceStore.getState().switchTo('ws-work')
     await useModelsSource.getState().start()
-    expect(useModelsSource.getState().prefs.defaultProvider).toBe('deepseek')
-    expect(useModelsSource.getState().prefs.configs.deepseek.selectedModels).toEqual([
-      'deepseek-chat',
-    ])
+    const prefs = prefsQuery.get('ws-work').get().data?.prefs
+    expect(prefs?.defaultProvider).toBe('deepseek')
+    expect(prefs?.configs.deepseek.selectedModels).toEqual(['deepseek-chat'])
     // 别的空间勾的那一型在这里根本不存在 —— 这就是「两套完整独立的设置」。
-    expect(useModelsSource.getState().prefs.configs.xai).toBeUndefined()
+    expect(prefs?.configs.xai).toBeUndefined()
   })
 
-  it('切过去当场换一份;**名册不重拉**(它是机器级的事实)', async () => {
+  it('切过去**当场真发一发**换一格;**名册不重拉**(它是机器级的事实)', async () => {
     await seedSpaces()
     await useModelsSource.getState().start()
-    await useModelsSource.getState().ensureProviders()
-    expect(useModelsSource.getState().prefs.defaultProvider).toBe('xai')
+    await providersQuery.ensure()
+    expect(prefsQuery.get('default').get().data?.prefs.defaultProvider).toBe('xai')
+    expect(calls.settings).toBe(1)
     expect(calls.providers).toBe(1)
 
     useWorkspaceStore.getState().switchTo('ws-work')
     await vi.waitFor(() =>
-      expect(useModelsSource.getState().prefs.defaultProvider).toBe('deepseek'),
+      expect(prefsQuery.get('ws-work').get().data?.prefs.defaultProvider).toBe('deepseek'),
     )
+    // **换空间必重读**(迁移前那条往返时机原样保留):新那一格真去问了一次。
+    expect(calls.settings).toBe(2)
     expect(calls.providers).toBe(1)
+  })
+
+  it('**换键不串**:两格各存各的;回去那一格重读,而重读期间旧答案在屏上(律②)', async () => {
+    await seedSpaces()
+    await useModelsSource.getState().start()
+    useWorkspaceStore.getState().switchTo('ws-work')
+    await vi.waitFor(() => expect(prefsQuery.keys()).toContain('ws-work'))
+    await vi.waitFor(() =>
+      expect(prefsQuery.get('ws-work').get().data?.prefs.defaultProvider).toBe('deepseek'),
+    )
+    expect(calls.settings).toBe(2)
+
+    // 两格并存,谁也没串到谁头上。
+    expect(prefsQuery.get('default').get().data?.prefs.defaultProvider).toBe('xai')
+    expect(prefsQuery.get('ws-work').get().data?.prefs.defaultProvider).toBe('deepseek')
+
+    /*
+     * 回去那一格:换空间照旧**必重读**(与迁移前逐字同一条时机)。
+     * 挂住这一发,断言重读**不清屏** —— 旧答案还在,phase 也没退回 initial。
+     */
+    const hold = deferred<{ success: boolean; ai: SpaceProviderSettings }>()
+    installPort({
+      readProviderSettings: async (spaceId: string) => {
+        calls.settings += 1
+        return spaceId === 'default' ? hold.promise : { success: true, ai: BY_SPACE[spaceId] }
+      },
+    })
+    useWorkspaceStore.getState().switchTo('default')
+    await vi.waitFor(() => expect(prefsQuery.get('default').get().inflight).toBe(true))
+    expect(calls.settings).toBe(3)
+    expect(prefsQuery.get('default').get().phase).toBe('ready')
+    expect(prefsQuery.get('default').get().data?.prefs.defaultProvider).toBe('xai')
+
+    hold.resolve({ success: true, ai: BY_SPACE.default })
+    await vi.waitFor(() => expect(prefsQuery.get('default').get().inflight).toBe(false))
+    expect(prefsQuery.get('default').get().data?.prefs.defaultProvider).toBe('xai')
   })
 })
