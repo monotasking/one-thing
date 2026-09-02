@@ -1,47 +1,67 @@
 #!/usr/bin/env node
 /**
- * Dock 磁性放大的**真机门**(09-02「现在的不顺手」重做批)。
+ * Dock 磁性放大的**真机门**(09-02 第二轮:用户试过 9cbdb496 那版后报「新的还不如
+ * 旧的,有抖动感」,整套推倒重做)。
  *
- * 用户的报障是手感,手感在纸上诊断不出来 —— 这条门把「不顺手」翻译成五个读数,
- * 于是它既是改前的复现,也是改后的验收。五条各查一件事:
+ * 上一轮这条门问的是「指针脚下那块瓦动了没有」——它绿了,而用户手上的感受是红的。
+ * 说明那五条读数没有把「抖动」翻译进来。这一轮补的两条才是抖动的机器定义,它们
+ * 各自对应一种**镜头本不该有的自由度**:
  *
- *  ① **指针停在一块瓦的静止中心上时,那块瓦一个像素都不许动**。逐块量
- *     「此刻的中心 − 静止的中心」。这个差在**条中段**天然是 0(左右生长对称,
- *     条居中长,一半的退让恰好抵消一半的推挤),而在**两端**不是:余弦核被条端
- *     截断,左边长的和右边长的不一样多,而条只会朝两边各退一半 —— 差额就是漂移。
- *     顺带沿条每 8px 走一遍,量**连续性**:任何一块瓦一步之内不许跳。
- *     (「一步之内不许跳」是钉住式修法的守卫:钉「那块瓦的中心」是做不到的 ——
- *     指针从一块瓦交到下一块时它会要求条瞬移十来个像素;能钉住且连续的只有
- *     **指针脚下那一点**,而钉住那一点等价于让每块瓦的中心在过它时恰好回零。)
- *  ② **入场不许有一帧跳**。两问:
- *     ②a 从条外落进来、指针不动 —— 逐帧采系数,单帧涨幅有上限、几帧内到位;
- *     ②b 从条外进来**并持续横扫** —— 这才是「不顺手」的真现场:改前的入场缓冲
- *     是「160ms 里吃一条 CSS 过渡」,而 rAF 每帧都在改目标,过渡永远追不上;
- *     160ms 一到把 `--tile-size-dur` 掰成 0ms,攒下的滞后当帧一次性补齐。
- *     指针不动时那条过渡能顺顺当当跑完(所以 ②a 单独测抓不到它),一边走一边
- *     进才现形。判据:越过入场那几帧之后,单帧涨幅不许超过**几何上限**
- *     (系数对位移的最大斜率 × 这一帧指针走了多远)的两倍。
- *  ③ **手离开要在一个回位时长内收干净**(--dur-release 的量级)。
- *  ④ **相邻两瓦零重叠**(挤压纪律)。放大走布局尺寸就该天然成立,这条是它的守卫:
- *     哪天有人改回 transform: scale,这里当场红(08-28 的「鼓包挤成一坨」)。
- *  ⑤ **reduced-motion 档瞬到**:一帧到目标,不插值。
+ *  ① **手停着,屏幕就该是死的。** 上一版的放大量是一条 rAF 环上的临界阻尼,
+ *     指针停下之后它还要收好几帧;条又跟着指针平移(shift),两条量各有各的相位。
+ *     于是「手已经不动了,画面还在爬」。两问:
+ *     ①a 入场落定后指针纹丝不动,连采 60 帧,**任何一块瓦的矩形有一点变化就算一帧**;
+ *     ①b 匀速扫过之后**骤停**,量它还要几帧才咬住最终值(这一条才抓得到跟手期的
+ *        尾巴 —— ①a 那种「停久了」的场景阻尼早就收干净了)。
+ *
+ *  ② **手匀速走,每块瓦就该匀速走。** 指针 2px/帧从条左扫到条右,逐帧记每块瓦
+ *     中心与底板左缘的位置,量两件事:
+ *     ②a **方向反转次数**(死区 0.1px,滤掉亚像素噪声)。纯几何有它天然的下界:
+ *        每块瓦被指针扫过时先被左边推右、再被右边推左,**两个拐点 = 2 次反转**。
+ *        多出来的都是抖 —— 而抖的来源不止一个阻尼:
+ *        **余弦钟形的半径若不是瓦距的整数倍,整条 Dock 会呼吸**。
+ *        (Hann 窗以 hop = R/k(k 为 ≥2 的整数)重叠相加恒为常数 —— 就是信号处理里
+ *        的 COLA 条件。半径 R = k·pitch 时 Σ 各瓦的放大量恒定 ⇒ 条的总长恒定 ⇒
+ *        不呼吸;R = 1.81·pitch(上一版的 96px / 53px)时那条和会随指针起伏,
+ *        条一伸一缩,每块瓦都跟着来回。纯几何数值模型:R=1.81p 每块瓦 15–19 次反转,
+ *        R=2p 降到 2–4 次。)
+ *     ②b **8 帧窗口内的非单调量**(窗口内走过的总路程 − 净位移)。反转次数说
+ *        「抖了几下」,这一条说「抖多大」——拐点处的曲率会贡献一点点(模型 0.27px),
+ *        真正的抖动会大一个量级。
+ *
+ * 余下六条是上一轮留下来的守卫,判据按新做法重写:
+ *  ③ 入场不许有一帧跳(单帧涨幅 ≤ 声明的缓动 × 时长算得出的几何上限)。
+ *  ④ 手离开 ≤ 200ms 回基准,且**基准矩形与进条前逐字节同**。
+ *  ⑤ 放大到顶时相邻两瓦不但不重叠,**缝还得与静止时逐字节相等**(新几何的恒等式:
+ *     dx 的定义使相邻缝恒等于静止缝,见 dock-lens.ts;这条是它的守卫)。
+ *  ⑥ **确定性**:同一个 x 进两次,几何逐字相同(纯函数 + 布局基准的直接后果;
+ *     任何缓存 / 冻结 / 插值状态回来都会让这条红)。
+ *  ⑦ reduced-motion(= 动效档「无」)瞬到。
+ *  ⑧ **静息态那张脸**:把镜头从头到尾用一遍之后回到静息,截图与开场那张**字节级
+ *     相同**。它守的是「这套东西只在放大的时候存在」——用完不留痕。
+ *     (跨版本的 before/after 截图也照样存下来,但那一份**不适合当断言**:放大从
+ *     布局尺寸改成 transform 之后,瓦各自上了合成层,圆角与描边的抗锯齿必然重算 ——
+ *     真机实测 7.3% 的像素差 1/255、144 个像素差到 24,全在瓦的圆角曲线上。
+ *     几何那一半由 ④⑥ 逐字钉着,像素那一半只报读数不判红。)
+ *  ⑨ **设置里关掉磁性放大之后,匀速扫一遍全程零变化**(09-02 追补,对齐 macOS
+ *     Dock 偏好里那枚「放大」开关)。关掉不该是「放大到 1 倍」——后者仍在逐帧写
+ *     十几组自定义属性、仍挂着镜头开关,只是数字碰巧是 1;这条判的是**矩形逐字不变**,
+ *     写 1 也能过,所以它守的是「不抖」,而 `dock-lens-hook.test.tsx` 那条单测守的是
+ *     「一格都不写」。两条各守一半,合起来才是「这条链根本不跑」。
  *
  * ── 量法 ───────────────────────────────────────────────────────────────────
  * 指针一律走 CDP `Input.dispatchMouseEvent`:只进目标窗口,**不动真光标、不抢焦点**
- * (09-01 判例:系统级合成输入干扰用户用电脑)。尺寸系数不从 JS 里读私有状态,
- * 而是量**瓦的矩形宽度 ÷ 静止宽度** —— 这样同一份脚本能原样跑在改前的代码上
- * (改前没有「系数」这个出口),before/after 才可比。
- *
- * 「等它稳住」不是「等 2 帧」:改后跟手期本身带一个指数插值,2 帧还没收敛,
- * 而改前跟手期是零过渡当帧到位。两边都用同一条「连续 3 帧矩形不变」的判据,
- * 读的才是同一件事(**静态钉住**),不是「谁的插值更快」。
+ * (09-01 判例:系统级合成输入干扰用户用电脑)。尺寸系数不读 JS 私有状态,而是量
+ * **瓦的矩形宽度 ÷ 静止宽度**,所以同一份脚本原样跑得动改前的代码,before/after 才可比。
  *
  * 跑法:`npm run gate:dock`
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
+ * 截图与读数落在 `DOCK_GATE_OUT` 指定的目录(不给就落进临时目录,只打 sha256)。
  * 可重复:每次一个全新的临时 store + 全新的 --user-data-dir,跑完删干净。
  */
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -57,55 +77,71 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 
 /* ── 判据(每条都写清「为什么是这个数」)───────────────────────────────────── */
 
-/** ① 瓦停在自己静止中心上时的最大允许漂移(px)。1 = 一个物理像素。 */
-const MAX_DRIFT_PX = 1
-/** ① 沿条走的步长(px)。 */
-const WALK_STEP_PX = 8
+/** ①a 指针停着连采多少帧。60 帧 @60Hz = 一秒;阻尼那条尾巴远短于它,采不到才叫干净。 */
+const STILL_FRAMES = 60
+/** ①a 判「这一帧变了」的阈值(px)。0.02 在亚像素噪声之上、在任何真实位移之下。 */
+const STILL_EPSILON = 0.02
+/** ①b 骤停后允许再花几帧咬住最终值。纯几何是当帧(rAF 合帧最多差一帧),取 2 留一帧余量。 */
+const MAX_TAIL_FRAMES = 2
+
+/** ② 扫条的步长(px/帧)与节拍(ms)。2px/帧 ≈ 120px/s,一次从容的横扫。 */
+const SWEEP_STEP_PX = 2
+const SWEEP_TICK_MS = 1000 / 60
+/** ②a 方向反转的死区(px)。亚像素取整噪声在 0.02 量级,0.1 滤得掉又漏不掉真位移。 */
+const REVERSAL_DEADBAND_PX = 0.1
 /**
- * ① 连续性:沿条走一步(8px),任何一块瓦的中心最多能挪多远。
- *
- * 这个数是**几何算出来的**,不是拍的:系数对指针位移的最大斜率是
- * `MAX_GROW·π/(2R)` = 0.35π/192 ≈ 0.00573 /px,一块瓦的宽度变化率就是它乘瓦宽
- * (44 → 0.252 px/px),而一块瓦的中心挪多快至多是它左边那些瓦的变化率之和 ——
- * 半径内至多 4 块同时在变,所以 8px 一步的上限约 8 × 0.252 × 4 ≈ 8px。
- * 取 8 是「连续」的守卫,不是「小」的守卫:钉瓦心那种做法一步会跳 10px 以上。
+ * ②a 允许的反转次数。纯几何的下界是 **2**(每块瓦被扫过时的两个拐点);
+ * 分隔线让瓦距在那一处不是等距,COLA 在局部破掉,数值模型给到 4。取 6 留两次余量,
+ * 抓的是「十几次」那个量级(模型:半径不是整数倍瓦距时 15–19 次)。
  */
-const MAX_WALK_STEP_PX = 8
+const MAX_REVERSALS = 6
+/** ②b 8 帧窗口(≈130ms,一次「手感」的时间尺度)内允许的非单调量(px)。模型 0.27。 */
+const WOBBLE_WINDOW = 8
+const MAX_WOBBLE_PX = 0.5
+
+/** ③ 峰值缩放与镜头开合时长 —— 与 tokens.css 的 --dock-lens-max / --dur-dock-lens 同值。 */
+const LENS_MAX = 1.35
+const LENS_MS = 140
 /**
- * ② 入场时单帧允许的系数涨幅(按 16.7ms 归一 —— 掉帧时一帧本来就该走得更远,
- * 那是对的物理,不该判它红)。0.08 在 md 档(44px)= 3.5px/帧。
+ * ③ `--ease-soft` = cubic-bezier(0.33, 0, 0.67, 1) 的最大斜率(数值解 1.493):
+ * 一段缓动最快的那一瞬比匀速快多少倍。入场时一块瓦一共要涨 (Smax−1),一帧占整段的
+ * FRAME_MS/LENS_MS,所以**几何上限** = (Smax−1) × 最大斜率 × 一帧的份额。
+ * 留 1.25 的余量给帧间抖动 —— 超出这个数才叫「跳」,而不是「快」。
  */
-const MAX_ENTRY_STEP = 0.08
-/**
- * ② 入场「到位」的判据与上限**耗时**。到位 = 离目标 0.05 以内(md 档 2.2px)。
- *
- * 判耗时不判帧数:这台机器的屏是 120Hz,同一段动作按帧数数出来是 60Hz 机器的两倍,
- * 门会跟着屏幕的刷新率变红变绿 —— 那判的就不是产品了。100ms = 6 帧 @60fps,
- * 也是编排令那句「≤ 6 帧到位」换算过来的同一个意思。
- */
+const EASE_SOFT_PEAK_SLOPE = 1.493
+const ENTRY_HEADROOM = 1.25
+/** ③ 入场「到位」的判据与上限耗时。判 ms 不判帧:本机 120Hz,按帧数会跟着刷新率变红变绿。 */
 const ENTRY_SETTLED = 0.05
-const MAX_ENTRY_MS = 100
-/** ②b 横扫时单帧涨幅的上限 = 几何上限的 2 倍。几何上限见 MAX_WALK_STEP_PX 那段。 */
-const SWEEP_SLOPE_PER_PX = (0.35 * Math.PI) / (2 * 96)
-const SWEEP_HEADROOM = 2
-/** ②b 横扫的步长与节拍(≈ 500px/s,一次真实的扫条速度)。 */
-const SWEEP_STEP_PX = 8
-const SWEEP_TICK_MS = 16
-/** ②b 越过入场那几帧才开始判(前几帧的鼓起由 ②a 管)。 */
-const SWEEP_SKIP_FRAMES = 6
-/** ③ 手离开后收回静止的上限(ms)。--dur-release 是 160ms,留一档余量。 */
+const MAX_ENTRY_MS = 220
+/** ④ 手离开后收回静止的上限(ms)。--dur-dock-lens 是 140ms,留一档余量。 */
 const MAX_RELEASE_MS = 200
-/** ④ 相邻两瓦允许的重叠(px)。0.5 是亚像素取整的余量,不是放水。 */
-const MAX_OVERLAP_PX = 0.5
-/** ⑤ reduced-motion 档「瞬到」的帧数上限。 */
+/** ④⑥ 判「两份矩形逐字节同」的阈值(px)。 */
+const SAME_RECT_PX = 0.05
+/** ⑤ 放大到顶时,相邻缝与静止缝允许的差(px)。0.5 是亚像素取整的余量,不是放水。 */
+const MAX_GAP_DRIFT_PX = 0.5
+/** ⑦ reduced-motion 档「瞬到」的帧数上限。 */
 const MAX_REDUCED_FRAMES = 1
+/**
+ * 刚把指针挪上条之后,起量前先静默这么久(ms)。必须**大于 --dur-dock-lens(140)**:
+ * 镜头开合期间矩形是在变的,但开合起步前有几帧一动不动,不设这个下界就会在那几帧
+ * 上判「已经稳住了」。320 ≈ 两个开合时长。
+ */
+const ENTER_SETTLE_MS = 320
+/** ⑨ 关掉放大之后扫多少帧。与 ①a 同一个量级,足够长到任何插值都藏不住。 */
+const OFF_SWEEP_FRAMES = 60
+/** 形态机存盘的键与版本(与 src/stage/store.ts 的 `name` / STAGE_PERSIST_VERSION 同源)。 */
+const STAGE_KEY = 'onething.stage'
+const STAGE_VERSION = 7
 /** 判「系数已经回到静止」的阈值。0.005 在 md 档 = 0.22px。 */
 const REST_EPSILON = 0.005
 /** 一帧的名义长度(ms)—— 单帧涨幅按它归一。 */
 const FRAME_MS = 1000 / 60
 
+const MAX_ENTRY_STEP = (LENS_MAX - 1) * EASE_SOFT_PEAK_SLOPE * (FRAME_MS / LENS_MS) * ENTRY_HEADROOM
+
 const failures = []
 const readings = {}
+const outDir = process.env.DOCK_GATE_OUT
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -162,57 +198,72 @@ function check(ok, message) {
 /* ── 页面里的探针 ─────────────────────────────────────────────────────────── */
 
 /**
- * 量各瓦的矩形。**瓦 = 条的每个直接子 div(.wrap)里那颗 button** ——
- * 分隔线是 `<span>`,天然不进这张表;`[data-testid^=dock-tile]` 会漏掉「+」那块
- * (它没有 testId),而放大是按格子的线性次序算的,漏一格就对不上号。
+ * 量各瓦的矩形。**瓦 = 条的每个直接子 div 里那颗 button** —— 分隔线是 `<span>`,
+ * 天然不进这张表;`[data-testid^=dock-tile]` 会漏掉「+」那块(它没有 testId),
+ * 而放大按格子的线性次序算,漏一格就对不上号。
+ * 第一格是**底板**(条自己的矩形):新做法里底板是一个独立子元素,取不到就退回条本身,
+ * 于是同一份读法在改前改后都成立。
  */
-const READ_TILES_SRC = `[...document.querySelectorAll('[data-dock="strip"] > div')]
-  .map((w) => w.querySelector('button'))
-  .filter(Boolean)
-  .map((t) => { const r = t.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] })`
+const READ_SRC = `(() => {
+  const strip = document.querySelector('[data-dock="strip"]')
+  const plate = strip.querySelector('[data-dock="plate"]') ?? strip
+  const box = (el) => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height] }
+  return {
+    viewport: [window.innerWidth, window.innerHeight],
+    plate: box(plate),
+    tiles: [...strip.children]
+      .map((w) => (w.tagName === 'DIV' ? w.querySelector('button') : null))
+      .filter(Boolean)
+      .map(box),
+  }
+})()`
 
 /**
- * 等到连续 3 帧矩形不变(或超时),返回最后一次读数。
+ * 等到连续 3 帧读数不变(或超时),返回最后一次。
  *
- * 读瓦的那段表达式经 `new Function` 现造 —— 打包产物里这段脚本是**注入**的,
- * 把同一份读法在三个探针里各抄一遍是三处会分叉的地方。
+ * `minMs` 是**起量前的静默期**,专治一类假绿:指针刚落到条上时,mousemove → rAF →
+ * 写几何 → 过渡起步要过几帧,这几帧里矩形一动不动 —— 「连续 3 帧不变」当场就满足了,
+ * 于是 settle 在镜头还没开之前就返回,后面那 60 帧静止采样正好采到开合过程,
+ * 判出一个根本不存在的「手停着画面还在动」。所以凡是**刚挪上条**的地方都给一段
+ * 比 --dur-dock-lens 长的静默期(09-02 真机上这条假红出现过一次:3 帧 / 1.25px)。
  */
-function settleTiles(page, maxMs = 900) {
+function settle(page, maxMs = 900, minMs = 0) {
   return page.evaluate(
-    async ([readSrc, cap]) => {
-      const read = new Function(`return ${readSrc}`)
+    async ([src, cap, floor]) => {
+      const read = new Function(`return ${src}`)
+      const same = (a, b) =>
+        a.tiles.length === b.tiles.length &&
+        a.plate.every((n, j) => Math.abs(n - b.plate[j]) < 0.01) &&
+        a.tiles.every((v, i) => v.every((n, j) => Math.abs(n - b.tiles[i][j]) < 0.01))
       const t0 = performance.now()
       let prev = read()
       let stable = 0
       while (performance.now() - t0 < cap) {
         await new Promise((r) => requestAnimationFrame(r))
         const cur = read()
-        const same =
-          cur.length === prev.length &&
-          cur.every((v, i) => v.every((n, j) => Math.abs(n - prev[i][j]) < 0.01))
-        stable = same ? stable + 1 : 0
+        stable = same(cur, prev) ? stable + 1 : 0
         prev = cur
-        if (stable >= 3) break
+        if (stable >= 3 && performance.now() - t0 >= floor) break
       }
       return prev
     },
-    [READ_TILES_SRC, maxMs],
+    [READ_SRC, maxMs, minMs],
   )
 }
 
-/** 逐帧采样 n 帧(带时间戳),给入场 / 释放两条曲线用。 */
+/** 逐帧采样 n 帧(带时间戳)。 */
 function sampleFrames(page, frames) {
   return page.evaluate(
-    async ([readSrc, n]) => {
-      const read = new Function(`return ${readSrc}`)
+    async ([src, n]) => {
+      const read = new Function(`return ${src}`)
       const out = []
       for (let i = 0; i < n; i += 1) {
         await new Promise((r) => requestAnimationFrame(r))
-        out.push({ t: performance.now(), rects: read() })
+        out.push({ t: performance.now(), ...read() })
       }
       return out
     },
-    [READ_TILES_SRC, frames],
+    [READ_SRC, frames],
   )
 }
 
@@ -223,8 +274,40 @@ function move(cdp, x, y) {
 /* ── 几何小工具 ───────────────────────────────────────────────────────────── */
 
 const centerX = (r) => r[0] + r[2] / 2
-const factorsOf = (rects, tileSize) => rects.map((r) => r[2] / tileSize)
+const factorsOf = (tiles, tileSize) => tiles.map((r) => r[2] / tileSize)
 const maxAbs = (xs) => xs.reduce((m, v) => Math.max(m, Math.abs(v)), 0)
+
+/** 一条位置序列的方向反转次数(死区之内的抖动不算一次运动)。 */
+function reversals(series, deadband) {
+  let dir = 0
+  let count = 0
+  let ext = series[0]
+  for (const v of series) {
+    if (Math.abs(v - ext) < deadband) continue
+    const d = Math.sign(v - ext)
+    if (dir !== 0 && d !== dir) count += 1
+    dir = d
+    ext = v
+  }
+  return count
+}
+
+/** 任意 w 帧窗口内的**非单调量** = 窗口里走过的总路程 − 净位移。单调段恒为 0。 */
+function wobble(series, w) {
+  let worst = 0
+  for (let i = w; i < series.length; i += 1) {
+    let travel = 0
+    for (let j = i - w + 1; j <= i; j += 1) travel += Math.abs(series[j] - series[j - 1])
+    worst = Math.max(worst, travel - Math.abs(series[i] - series[i - w]))
+  }
+  return worst
+}
+
+/** 两份读数逐字节同? */
+const sameRects = (a, b) =>
+  a.tiles.length === b.tiles.length &&
+  a.plate.every((n, j) => Math.abs(n - b.plate[j]) <= SAME_RECT_PX) &&
+  a.tiles.every((v, i) => v.every((n, j) => Math.abs(n - b.tiles[i][j]) <= SAME_RECT_PX))
 
 /* ── 主流程 ───────────────────────────────────────────────────────────────── */
 
@@ -245,7 +328,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/8] 起一台 core')
+    console.log('\n[1/10] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -262,7 +345,7 @@ async function main() {
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
     console.log('  ✓ core 起来了')
 
-    console.log('\n[2/8] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/10] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -273,184 +356,248 @@ async function main() {
     await waitFor('Dock 就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-dock="strip"] > div button'))),
     )
+    /*
+     * 还要等**主题落地**才量:⑧ 比的是静息态的像素,而主题是异步贴到 :root 上的一组
+     * `--ui-*`。贴上之前 `--surface-2` 落回 palette.css 的浅色缺省(#ffffff),瓦是白的;
+     * 贴上之后才是这台真正的样子。09-02 真机上抓到过一次:两趟跑的截图差了 7 万像素,
+     * 追下去是这条竞态,与被测的放大一点关系都没有。
+     */
+    await waitFor('主题贴到 :root 上', () =>
+      page.evaluate(() =>
+        Boolean(
+          getComputedStyle(document.documentElement).getPropertyValue('--ui-surface-panel-bg').trim(),
+        ),
+      ),
+    )
+    /*
+     * 最后等**窗口身量稳住**。Electron 起窗之后还会自己调一两次大小(还原上次的
+     * 身量、显示器 DPI 生效…),而 Dock 是居中的浮层 —— 窗口一宽一窄,整条就横着挪。
+     * 09-02 真机上吃过一次:量出「一帧跳 113px」的抖动,追下去是窗口在扫描中途变了宽,
+     * 与被测的放大毫无关系。所以先等它连续 10 帧不变,再开量;下面每一段还会核对一次。
+     */
+    const viewport = await waitFor('窗口身量稳住', () =>
+      page.evaluate(async () => {
+        let prev = [window.innerWidth, window.innerHeight]
+        for (let i = 0; i < 10; i += 1) {
+          await new Promise((r) => requestAnimationFrame(r))
+          const cur = [window.innerWidth, window.innerHeight]
+          if (cur[0] !== prev[0] || cur[1] !== prev[1]) return null
+          prev = cur
+        }
+        return prev
+      }),
+    )
+    readings.viewport = viewport
     const cdp = await app.context().newCDPSession(page)
-    console.log('  ✓ 外壳画出来了,CDP 会话已开')
+    console.log(`  ✓ 外壳画出来了(窗口 ${viewport.join('×')}),CDP 会话已开`)
 
-    console.log('\n[3/8] 静止坐标系:把指针挪到条外,等它稳住')
+    console.log('\n[3/10] 静息态:指针挪到条外,量基准 + 存截图')
     await move(cdp, 10, 10)
-    const rest = await settleTiles(page)
-    const tileSize = rest[0][2]
-    const restCenters = rest.map(centerX)
-    const probeY = rest[0][1] + rest[0][3] / 2
-    console.log(
-      `  静止:${rest.length} 块瓦,瓦宽 ${tileSize.toFixed(1)}px,` +
-        `中心 [${restCenters.map((c) => c.toFixed(1)).join(', ')}],探针 y=${probeY.toFixed(1)}`,
-    )
-    readings.tileCount = rest.length
+    const rest = await settle(page)
+    const tileSize = rest.tiles[0][2]
+    const restCenters = rest.tiles.map(centerX)
+    const restGaps = rest.tiles.slice(1).map((r, i) => r[0] - (rest.tiles[i][0] + rest.tiles[i][2]))
+    const probeY = rest.tiles[0][1] + rest.tiles[0][3] / 2
+    readings.tileCount = rest.tiles.length
     readings.tileSize = Number(tileSize.toFixed(2))
-
-    console.log('\n[4/8] ①a 逐块停在自己的静止中心上:那块瓦动了没有')
-    const pins = []
-    for (let i = 0; i < restCenters.length; i += 1) {
-      await move(cdp, restCenters[i], probeY)
-      const live = await settleTiles(page)
-      if (live.length !== rest.length) continue
-      pins.push({ i, drift: centerX(live[i]) - restCenters[i] })
+    readings.restPlate = rest.plate.map((n) => Number(n.toFixed(2)))
+    console.log(
+      `  静止:${rest.tiles.length} 块瓦,瓦宽 ${tileSize.toFixed(1)}px,底板 [${readings.restPlate.join(', ')}],探针 y=${probeY.toFixed(1)}`,
+    )
+    // ⑧ 截的是**视口里那一块固定的区域**(基准矩形外扩 12px),不是元素本身 ——
+    // 新做法的底板是条的一个子元素、会长到条外去,截元素两边框不住同一块地方。
+    const clip = {
+      x: Math.max(0, Math.floor(rest.plate[0] - 12)),
+      y: Math.max(0, Math.floor(rest.plate[1] - 12)),
+      width: Math.ceil(rest.plate[2] + 24),
+      height: Math.ceil(rest.plate[3] + 24),
     }
-    readings.pinDriftPx = pins.map((s) => Number(s.drift.toFixed(2)))
-    readings.pinDriftMaxPx = Number(maxAbs(pins.map((s) => s.drift)).toFixed(2))
-    const worstPin = pins.reduce((a2, b2) => (Math.abs(b2.drift) > Math.abs(a2.drift) ? b2 : a2), pins[0])
-    console.log(`  逐块漂移 [${readings.pinDriftPx.join(', ')}]`)
-    console.log(`  最大 ${readings.pinDriftMaxPx}px(第 ${worstPin.i} 块;两端是 ${readings.pinDriftPx[0]} / ${readings.pinDriftPx[readings.pinDriftPx.length - 1]})`)
+    const shot = await page.screenshot({ clip })
+    readings.restShotSha256 = createHash('sha256').update(shot).digest('hex').slice(0, 16)
+    readings.restShotBytes = shot.length
+    if (outDir) writeFileSync(path.join(outDir, 'dock-rest.png'), shot)
+    console.log(`  静息截图 ${shot.length}B sha256:${readings.restShotSha256}`)
+
+    console.log('\n[4/10] ①a 入场落定后指针纹丝不动:60 帧里有几帧变了')
+    const target = restCenters[Math.floor(restCenters.length / 2)]
+    await move(cdp, target, probeY)
+    await settle(page, 1200, ENTER_SETTLE_MS)
+    const still = await sampleFrames(page, STILL_FRAMES)
+    let stillChanged = 0
+    let stillWorst = 0
+    for (let i = 1; i < still.length; i += 1) {
+      const d = Math.max(
+        maxAbs(still[i].plate.map((n, j) => n - still[i - 1].plate[j])),
+        ...still[i].tiles.map((r, k) => maxAbs(r.map((n, j) => n - still[i - 1].tiles[k][j]))),
+      )
+      if (d > STILL_EPSILON) stillChanged += 1
+      stillWorst = Math.max(stillWorst, d)
+    }
+    readings.stillChangedFrames = stillChanged
+    readings.stillWorstPx = Number(stillWorst.toFixed(3))
+    console.log(`  ${still.length} 帧里 ${stillChanged} 帧有变化,最大一帧动了 ${readings.stillWorstPx}px`)
+    check(stillChanged === 0, `①a 手停着画面就是死的(${STILL_FRAMES} 帧里 0 帧变化,实测 ${stillChanged} 帧)`)
+
+    console.log('\n[5/10] ② 匀速扫过 + ①b 骤停:抖动的两条读数')
+    await move(cdp, 10, 10)
+    await settle(page)
+    const sweepFrom = restCenters[0]
+    const sweepTo = restCenters[restCenters.length - 1]
+    const steps = Math.ceil((sweepTo - sweepFrom) / SWEEP_STEP_PX)
+    // 先进条并等镜头开完 —— ② 问的是**跟手**,不是入场(入场归 ③)。
+    await move(cdp, sweepFrom, probeY)
+    await settle(page, 1200, ENTER_SETTLE_MS)
+    const sweepSampling = sampleFrames(page, steps + 8)
+    for (let i = 1; i <= steps; i += 1) {
+      await move(cdp, sweepFrom + i * SWEEP_STEP_PX, probeY)
+      await delay(SWEEP_TICK_MS)
+    }
+    const sweep = await sweepSampling
+    // 扫完之后的尾巴(①b):最后一次 move 之后还在动的那几帧。
+    const tail = await sampleFrames(page, 12)
+    const settledAfterSweep = await settle(page)
+
+    // 扫描期间窗口 / 瓦数变了的话,下面那两条读的就不是同一件事 —— 当场判无效,
+    // 不许把「窗口挪了窝」记成「镜头在抖」。
+    const viewports = [...new Set(sweep.map((f) => f.viewport.join('×')))]
+    readings.sweepViewports = viewports
+    const counts = [...new Set(sweep.map((f) => f.tiles.length))]
+    const plateMoves = sweep.map((f) => f.plate[0])
+    readings.sweepTileCounts = counts
+    readings.sweepPlateRange = [Math.min(...plateMoves), Math.max(...plateMoves)].map((n) => Number(n.toFixed(2)))
+    if (counts.length > 1) console.log(`  ⚠ 扫描期间瓦数变过:${counts.join(' → ')}`)
+    const tileSeries = rest.tiles.map((_, i) => sweep.map((f) => centerX(f.tiles[i] ?? [NaN, 0, 0, 0])))
+    const plateSeries = sweep.map((f) => f.plate[0])
+    readings.sweepFrames = sweep.length
+    readings.tileReversals = tileSeries.map((s) => reversals(s, REVERSAL_DEADBAND_PX))
+    readings.plateReversals = reversals(plateSeries, REVERSAL_DEADBAND_PX)
+    readings.tileReversalMax = Math.max(...readings.tileReversals)
+    readings.tileWobblePx = Number(Math.max(...tileSeries.map((s) => wobble(s, WOBBLE_WINDOW))).toFixed(3))
+    readings.plateWobblePx = Number(wobble(plateSeries, WOBBLE_WINDOW).toFixed(3))
+    console.log(`  ${sweep.length} 帧;逐块反转次数 [${readings.tileReversals.join(', ')}],底板 ${readings.plateReversals}`)
+    console.log(`  ${WOBBLE_WINDOW} 帧窗口内非单调量:瓦 ${readings.tileWobblePx}px,底板 ${readings.plateWobblePx}px`)
+    {
+      const worst = tileSeries.reduce((a2, s2) => (wobble(s2, WOBBLE_WINDOW) > wobble(a2, WOBBLE_WINDOW) ? s2 : a2), tileSeries[0])
+      let at = 1
+      for (let i = 2; i < worst.length; i += 1) if (Math.abs(worst[i] - worst[i - 1]) > Math.abs(worst[at] - worst[at - 1])) at = i
+      console.log(`  最坏那块瓦第 ${at} 帧跳了 ${(worst[at] - worst[at - 1]).toFixed(2)}px;前后 [${worst.slice(Math.max(at - 4, 0), at + 4).map((v) => v.toFixed(1)).join(', ')}]`)
+      console.log(`  扫描期间瓦数 ${readings.sweepTileCounts.join('/')},底板左缘 ${readings.sweepPlateRange.join(' -> ')}`)
+    }
     check(
-      readings.pinDriftMaxPx <= MAX_DRIFT_PX,
-      `①a 每块瓦停在自己中心上时漂移 ≤ ${MAX_DRIFT_PX}px(实测 ${readings.pinDriftMaxPx}px)`,
+      viewports.length === 1 && counts.length === 1,
+      `② 读数有效(扫描全程窗口与瓦数不变;实测 窗口 ${viewports.join(' / ')},瓦数 ${counts.join(' / ')})`,
+    )
+    check(
+      readings.tileReversalMax <= MAX_REVERSALS && readings.plateReversals <= MAX_REVERSALS,
+      `②a 匀速扫过零抖动(方向反转 ≤ ${MAX_REVERSALS};实测 瓦 ${readings.tileReversalMax} / 底板 ${readings.plateReversals})`,
+    )
+    check(
+      readings.tileWobblePx <= MAX_WOBBLE_PX && readings.plateWobblePx <= MAX_WOBBLE_PX,
+      `②b ${WOBBLE_WINDOW} 帧窗口内非单调量 ≤ ${MAX_WOBBLE_PX}px(实测 瓦 ${readings.tileWobblePx} / 底板 ${readings.plateWobblePx})`,
     )
 
-    console.log('\n[5/8] ①b 沿条每 8px 走一遍:有没有哪一步跳了')
-    const walk = []
-    const firstLeft = rest[0][0]
-    const lastRight = rest[rest.length - 1][0] + rest[rest.length - 1][2]
-    for (let x = Math.ceil(firstLeft); x <= Math.floor(lastRight); x += WALK_STEP_PX) {
-      await move(cdp, x, probeY)
-      const live = await settleTiles(page)
-      if (live.length !== rest.length) continue
-      walk.push({ x, centers: live.map(centerX) })
-    }
-    let walkStep = 0
-    let walkAt = 0
-    for (let i = 1; i < walk.length; i += 1) {
-      const d = maxAbs(walk[i].centers.map((c, j) => c - walk[i - 1].centers[j]))
-      if (d > walkStep) {
-        walkStep = d
-        walkAt = walk[i].x
+    let tailFrames = tail.length
+    for (let i = 0; i < tail.length; i += 1) {
+      if (tail.slice(i).every((f) => sameRects(f, settledAfterSweep))) {
+        tailFrames = i
+        break
       }
     }
-    readings.walkSamples = walk.length
-    readings.walkMaxStepPx = Number(walkStep.toFixed(2))
-    console.log(`  ${walk.length} 个采样点;一步之内任何一块瓦最多挪 ${readings.walkMaxStepPx}px(x=${walkAt})`)
+    readings.tailFrames = tailFrames
+    readings.tailDriftPx = Number(
+      maxAbs(tail[0].tiles.flatMap((r, k) => r.map((n, j) => n - settledAfterSweep.tiles[k][j]))).toFixed(3),
+    )
+    console.log(`  骤停后 ${tailFrames} 帧咬住最终值(第一帧离终值 ${readings.tailDriftPx}px)`)
     check(
-      readings.walkMaxStepPx <= MAX_WALK_STEP_PX,
-      `①b 沿条走一步没有瞬移(任何一块瓦 ≤ ${MAX_WALK_STEP_PX}px,实测 ${readings.walkMaxStepPx}px)`,
+      tailFrames <= MAX_TAIL_FRAMES,
+      `①b 手一停画面就停(骤停后 ≤ ${MAX_TAIL_FRAMES} 帧到终值,实测 ${tailFrames} 帧)`,
     )
 
-    console.log('\n[6/8] ②a 落进来不动:逐帧看它是鼓起来的还是跳过去的')
+    console.log('\n[6/10] ⑤ 放大到顶:相邻缝与静止缝逐字节同(零重叠的强化式)')
+    const peak = settledAfterSweep
+    const peakGaps = peak.tiles.slice(1).map((r, i) => r[0] - (peak.tiles[i][0] + peak.tiles[i][2]))
+    readings.gapDriftPx = Number(maxAbs(peakGaps.map((g, i) => g - restGaps[i])).toFixed(2))
+    readings.minGapPx = Number(Math.min(...peakGaps).toFixed(2))
+    console.log(`  最小缝 ${readings.minGapPx}px;与静止缝最大差 ${readings.gapDriftPx}px`)
+    check(
+      readings.gapDriftPx <= MAX_GAP_DRIFT_PX,
+      `⑤ 相邻缝恒等于静止缝(最大差 ${readings.gapDriftPx}px ≤ ${MAX_GAP_DRIFT_PX})`,
+    )
+
+    console.log('\n[7/10] ③ 入场:逐帧看它是鼓起来的还是跳过去的')
     await move(cdp, 10, 10)
-    await settleTiles(page)
-    const target = restCenters[Math.floor(restCenters.length / 2)]
+    await settle(page)
     const entrySampling = sampleFrames(page, 45)
     await move(cdp, target, probeY)
     const entry = await entrySampling
-    const entryF = entry.map((f) => factorsOf(f.rects, tileSize))
+    const entryF = entry.map((f) => factorsOf(f.tiles, tileSize))
     const final = entryF[entryF.length - 1]
     const startIdx = entryF.findIndex((f) => f.some((v) => Math.abs(v - 1) > REST_EPSILON))
-    const steps = []
+    const entrySteps = []
     for (let i = Math.max(startIdx, 1); i < entryF.length; i += 1) {
-      // 掉帧那一帧本来就该走得更远,判它红是判错了物理 —— 所以**只往下归一**:
-      // dt 比一帧长就按比例折算回来,比一帧短则原样算(短帧里走一大步仍是跳)。
+      // 掉帧那一帧本来就该走得更远,判它红是判错了物理 —— 所以**只往下归一**。
       const dt = Math.max(entry[i].t - entry[i - 1].t, 1)
-      const scale = Math.min(FRAME_MS / dt, 1)
-      steps.push(maxAbs(entryF[i].map((v, j) => v - entryF[i - 1][j])) * scale)
+      entrySteps.push(maxAbs(entryF[i].map((v, j) => v - entryF[i - 1][j])) * Math.min(FRAME_MS / dt, 1))
     }
     const settledAt = entryF.findIndex(
       (f, i) => i >= startIdx && f.every((v, j) => Math.abs(v - final[j]) <= ENTRY_SETTLED),
     )
     readings.entryPeakFactor = Number(Math.max(...final).toFixed(3))
-    readings.entryMaxStep = Number(maxAbs(steps).toFixed(3))
-    readings.entryMaxStepFrame = steps.indexOf(Math.max(...steps.map(Math.abs))) + 1
-    readings.entryFrames = settledAt < 0 ? -1 : settledAt - startIdx + 1
+    readings.entryMaxStep = Number(maxAbs(entrySteps).toFixed(3))
+    readings.entryMaxStepPx = Number((maxAbs(entrySteps) * tileSize).toFixed(2))
     readings.entryMs =
       settledAt < 0 ? -1 : Number((entry[settledAt].t - entry[Math.max(startIdx - 1, 0)].t).toFixed(1))
-    readings.entrySteps = steps.slice(0, 12).map((v) => Number(v.toFixed(3)))
+    readings.entrySteps = entrySteps.slice(0, 14).map((v) => Number(v.toFixed(3)))
     console.log(`  峰值系数 ${readings.entryPeakFactor};逐帧涨幅 [${readings.entrySteps.join(', ')}]`)
     console.log(
-      `  最大单帧涨幅 ${readings.entryMaxStep}(第 ${readings.entryMaxStepFrame} 帧);` +
-        `到位用了 ${readings.entryMs}ms(${readings.entryFrames} 帧 —— 本机屏刷新率决定帧数,所以判的是 ms)`,
+      `  最大单帧涨幅 ${readings.entryMaxStep}(= ${readings.entryMaxStepPx}px);到位 ${readings.entryMs}ms`,
     )
     check(
       readings.entryMaxStep <= MAX_ENTRY_STEP,
-      `②a 入场无单帧跳变(单帧涨幅 ≤ ${MAX_ENTRY_STEP},实测 ${readings.entryMaxStep})`,
+      `③ 入场无单帧跳变(几何上限 ${MAX_ENTRY_STEP.toFixed(3)},实测 ${readings.entryMaxStep})`,
     )
     check(
       readings.entryMs > 0 && readings.entryMs <= MAX_ENTRY_MS,
-      `②a 入场 ≤ ${MAX_ENTRY_MS}ms 到位(= 6 帧 @60fps;实测 ${readings.entryMs}ms)`,
+      `③ 入场 ≤ ${MAX_ENTRY_MS}ms 到位(实测 ${readings.entryMs}ms)`,
     )
 
-    console.log('\n[7/8] ②b 一边进一边扫:入场缓冲那一下的真现场')
-    await move(cdp, 10, 10)
-    await settleTiles(page)
-    const sweepFrom = restCenters[1]
-    const sweepSampling = sampleFrames(page, 45)
-    for (let i = 0; i < 30; i += 1) {
-      await move(cdp, sweepFrom + i * SWEEP_STEP_PX, probeY)
-      await delay(SWEEP_TICK_MS)
-    }
-    const sweep = await sweepSampling
-    const sweepF = sweep.map((f) => factorsOf(f.rects, tileSize))
-    const sweepStart = sweepF.findIndex((f) => f.some((v) => Math.abs(v - 1) > REST_EPSILON))
-    const sweepSteps = []
-    for (let i = Math.max(sweepStart + SWEEP_SKIP_FRAMES, 1); i < sweepF.length; i += 1) {
-      const dt = Math.max(sweep[i].t - sweep[i - 1].t, 1)
-      const pointerPx = (SWEEP_STEP_PX * dt) / SWEEP_TICK_MS
-      const geometric = SWEEP_SLOPE_PER_PX * pointerPx
-      sweepSteps.push({
-        step: maxAbs(sweepF[i].map((v, j) => v - sweepF[i - 1][j])),
-        limit: geometric * SWEEP_HEADROOM,
-        frame: i,
-      })
-    }
-    const worstSweep = sweepSteps.reduce(
-      (a2, b2) => (b2.step - b2.limit > a2.step - a2.limit ? b2 : a2),
-      sweepSteps[0] ?? { step: 0, limit: 1, frame: -1 },
-    )
-    readings.sweepMaxStep = Number(worstSweep.step.toFixed(3))
-    readings.sweepLimit = Number(worstSweep.limit.toFixed(3))
-    readings.sweepWorstFrame = worstSweep.frame
-    readings.sweepSteps = sweepSteps.slice(0, 16).map((v) => Number(v.step.toFixed(3)))
-    console.log(`  跨过入场那几帧之后的逐帧涨幅 [${readings.sweepSteps.join(', ')}]`)
-    console.log(
-      `  最坏一帧 ${readings.sweepMaxStep}(第 ${readings.sweepWorstFrame} 帧;这一帧的几何上限 × ${SWEEP_HEADROOM} = ${readings.sweepLimit})`,
-    )
-    check(
-      worstSweep.step <= worstSweep.limit,
-      `②b 横扫入场全程没有一帧超出几何上限的 ${SWEEP_HEADROOM} 倍(最坏 ${readings.sweepMaxStep} vs ${readings.sweepLimit})`,
-    )
-
-    console.log('\n[8/8] ③④⑤ 释放耗时 / 相邻零重叠 / reduced-motion')
-    // 此刻还停在放大态(上一步刚进条)。先量重叠,再放手量收回。
-    const peak = await settleTiles(page)
-    const overlaps = []
-    for (let i = 0; i + 1 < peak.length; i += 1) {
-      overlaps.push(peak[i][0] + peak[i][2] - peak[i + 1][0])
-    }
-    readings.maxOverlapPx = Number(Math.max(...overlaps).toFixed(2))
-    check(
-      readings.maxOverlapPx <= MAX_OVERLAP_PX,
-      `④ 放大到顶时相邻两瓦零重叠(最大重叠 ${readings.maxOverlapPx}px ≤ ${MAX_OVERLAP_PX})`,
-    )
-
+    console.log('\n[8/10] ④ 收回 + ⑥ 确定性')
     const releaseSampling = sampleFrames(page, 40)
     await move(cdp, 10, 10)
     const release = await releaseSampling
-    const relF = release.map((f) => ({ t: f.t, f: factorsOf(f.rects, tileSize) }))
+    const relF = release.map((f) => ({ t: f.t, f: factorsOf(f.tiles, tileSize) }))
     const relStart = relF.findIndex((s, i) => i > 0 && maxAbs(s.f.map((v, j) => v - relF[i - 1].f[j])) > 0.001)
-    const relEnd = relF.findIndex((s, i) => i >= relStart && relStart >= 0 && s.f.every((v) => v - 1 <= REST_EPSILON))
+    const relEnd = relF.findIndex(
+      (s, i) => i >= relStart && relStart >= 0 && s.f.every((v) => v - 1 <= REST_EPSILON),
+    )
     readings.releaseMs =
       relStart < 0 || relEnd < 0 ? -1 : Number((relF[relEnd].t - relF[relStart - 1].t).toFixed(1))
-    console.log(`  收回耗时 ${readings.releaseMs}ms`)
+    const backToRest = await settle(page)
+    readings.restReturnSame = sameRects(backToRest, rest)
+    console.log(`  收回耗时 ${readings.releaseMs}ms;回到的基准与进条前${readings.restReturnSame ? '逐字节同' : '**不同**'}`)
     check(
       readings.releaseMs > 0 && readings.releaseMs <= MAX_RELEASE_MS,
-      `③ 手离开后 ≤ ${MAX_RELEASE_MS}ms 回到静止(实测 ${readings.releaseMs}ms)`,
+      `④ 手离开后 ≤ ${MAX_RELEASE_MS}ms 回到静止(实测 ${readings.releaseMs}ms)`,
     )
+    check(readings.restReturnSame, '④ 回到的基准矩形与进条前逐字节相同')
 
-    console.log('\n  —— ⑤ reduced-motion 档:瞬到')
+    await move(cdp, target, probeY)
+    const first = await settle(page, 1200, ENTER_SETTLE_MS)
+    await move(cdp, 10, 10)
+    await settle(page, 1200, ENTER_SETTLE_MS)
+    await move(cdp, target, probeY)
+    const second = await settle(page, 1200, ENTER_SETTLE_MS)
+    readings.deterministic = sameRects(first, second)
+    check(readings.deterministic, '⑥ 同一个 x 进两次,几何逐字相同(确定性)')
+
+    console.log('\n[9/10] ⑦ reduced-motion 档:瞬到')
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await move(cdp, 10, 10)
-    await settleTiles(page)
+    await settle(page)
     const reducedSampling = sampleFrames(page, 12)
     await move(cdp, target, probeY)
     const reduced = await reducedSampling
-    const redF = reduced.map((f) => factorsOf(f.rects, tileSize))
+    const redF = reduced.map((f) => factorsOf(f.tiles, tileSize))
     const redFinal = redF[redF.length - 1]
     const redStart = redF.findIndex((f) => f.some((v) => Math.abs(v - 1) > REST_EPSILON))
     const redDone = redF.findIndex(
@@ -460,9 +607,69 @@ async function main() {
     console.log(`  reduced-motion:${readings.reducedFrames} 帧到目标`)
     check(
       readings.reducedFrames > 0 && readings.reducedFrames <= MAX_REDUCED_FRAMES,
-      `⑤ reduced-motion 档一帧到位(实测 ${readings.reducedFrames} 帧)`,
+      `⑦ reduced-motion 档一帧到位(实测 ${readings.reducedFrames} 帧)`,
     )
     await page.emulateMedia({ reducedMotion: null })
+
+    // ⑧ 用完不留痕:镜头从头到尾走了一遍,回到静息的那张脸得与开场那张逐字节相同。
+    await move(cdp, 10, 10)
+    await settle(page, 1200, ENTER_SETTLE_MS)
+    const closing = await page.screenshot({ clip })
+    readings.closingShotSha256 = createHash('sha256').update(closing).digest('hex').slice(0, 16)
+    check(
+      readings.closingShotSha256 === readings.restShotSha256,
+      `⑧ 用完回到静息那张脸与开场逐字节相同(${readings.restShotSha256} vs ${readings.closingShotSha256})`,
+    )
+
+    console.log('\n[10/10] ⑨ 设置里关掉磁性放大:匀速扫一遍,屏幕上一个像素都不许动')
+    /*
+     * 走**存盘 + reload** 而不是直接改 DOM:门要证的是整条链(设置 → 存盘 → store →
+     * Dock → useDockLens)都成立,贴个属性只证了最后一段(与 gate-motion 同一手)。
+     */
+    await move(cdp, 10, 10)
+    await page.evaluate(
+      ([key, version]) => {
+        const raw = window.localStorage.getItem(key)
+        const prev = raw ? JSON.parse(raw) : { state: {}, version }
+        window.localStorage.setItem(
+          key,
+          JSON.stringify({ ...prev, state: { ...prev.state, dockMagnify: false }, version }),
+        )
+      },
+      [STAGE_KEY, STAGE_VERSION],
+    )
+    await page.reload()
+    await page.waitForLoadState('domcontentloaded')
+    await waitFor('关掉放大之后 Dock 还在', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-dock="strip"] > div button'))),
+    )
+    await waitFor('主题贴到 :root 上', () =>
+      page.evaluate(() =>
+        Boolean(
+          getComputedStyle(document.documentElement).getPropertyValue('--ui-surface-panel-bg').trim(),
+        ),
+      ),
+    )
+    await move(cdp, 10, 10)
+    const offRest = await settle(page)
+    const offSampling = sampleFrames(page, OFF_SWEEP_FRAMES)
+    for (let i = 0; i < OFF_SWEEP_FRAMES - 4; i += 1) {
+      await move(cdp, restCenters[0] + i * 8, probeY)
+      await delay(SWEEP_TICK_MS)
+    }
+    const off = await offSampling
+    const offMoved = off.filter((f) => !sameRects(f, offRest)).length
+    readings.offSweepMovedFrames = offMoved
+    readings.offLensAttr = await page.evaluate(() =>
+      document.querySelector('[data-dock="strip"]')?.getAttribute('data-lens'),
+    )
+    console.log(
+      `  ${off.length} 帧里 ${offMoved} 帧动过;镜头开关 data-lens=${JSON.stringify(readings.offLensAttr)}`,
+    )
+    check(
+      offMoved === 0 && readings.offLensAttr === null,
+      `⑨ 关掉放大之后指针扫过条:${OFF_SWEEP_FRAMES} 帧零变化且镜头开关始终没挂(实测 ${offMoved} 帧 / ${JSON.stringify(readings.offLensAttr)})`,
+    )
 
     await app.close()
     app = undefined
@@ -474,12 +681,15 @@ async function main() {
     await rm(userDataDir, { recursive: true, force: true })
   }
 
+  if (outDir) writeFileSync(path.join(outDir, 'dock-readings.json'), JSON.stringify(readings, null, 2))
   console.log(`\n[dock-gate] 读数:${JSON.stringify(readings)}`)
   if (failures.length) {
     console.error(`\n[dock-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[dock-gate] ok —— 零漂移 / 入场无跳 / 收回及时 / 零重叠 / reduced 瞬到')
+  console.log(
+    '\n[dock-gate] ok —— 手停画面停 / 匀速零抖 / 入场无跳 / 收回归位 / 缝恒定 / 确定 / reduced 瞬到 / 关掉即静止',
+  )
 }
 
 main().catch((error) => {

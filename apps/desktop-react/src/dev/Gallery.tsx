@@ -466,6 +466,15 @@ export function Gallery() {
 
       <Section name="Segmented">
         <Segmented options={DENSITY} value={density} onChange={setDensity} label="Density" />
+        {/* 整组禁用(09-02):粒度只有一整组 —— 「这个问题现在轮不到你答」。
+            选中的那一段照旧标着,禁掉不等于失忆。 */}
+        <Segmented
+          options={DENSITY}
+          value={density}
+          onChange={setDensity}
+          label="Density (disabled)"
+          disabled
+        />
       </Section>
 
       <Section name="Badge">

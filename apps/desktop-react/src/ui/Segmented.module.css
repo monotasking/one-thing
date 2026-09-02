@@ -15,8 +15,14 @@
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
-.seg:hover {
+.seg:hover:not(:disabled) {
   background: var(--st-hover);
+}
+
+/* 整组禁用:配方与 Button / Switch 同一条(--btn-disabled-o),
+ * 原生 disabled 已经把点击与 Tab 序拿掉了,这里只画那一层灰。 */
+.disabled {
+  opacity: var(--btn-disabled-o);
 }
 
 /* 选中段抬起一层:换底 + sh-1,不动尺寸 */

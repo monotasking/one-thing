@@ -728,6 +728,24 @@ describe('migrateStagePersisted', () => {
     expect(out.locale).toBe('zh')
   })
 
+  it('v6 → v7:Dock 放大那三格铺底,缺省逐字等于升级前的行为(零迁移感)', () => {
+    const out = migrateStagePersisted({ dockEdge: 'left' }, 6) as Record<string, unknown>
+    expect(out.dockMagnify).toBe(true)
+    expect(out.dockMagnifyLevel).toBe('md')
+    expect(out.dockRunningDot).toBe(true)
+    expect(out.dockEdge).toBe('left')
+  })
+
+  it('v7 的铺底也是铺底不是覆盖:自己关过放大的档案升上来还是关着', () => {
+    const out = migrateStagePersisted({ dockMagnify: false, dockMagnifyLevel: 'lg' }, 6) as Record<
+      string,
+      unknown
+    >
+    expect(out.dockMagnify).toBe(false)
+    expect(out.dockMagnifyLevel).toBe('lg')
+    expect(out.dockRunningDot).toBe(true)
+  })
+
   it('已经是当前版本的原样放行', () => {
     const current = { placements: {}, dockEdge: 'right' }
     expect(migrateStagePersisted(current, STAGE_PERSIST_VERSION)).toBe(current)
@@ -1583,9 +1601,17 @@ describe('migrateStagePersisted v5 → v6(家具按工作区各持一份)', () =
     expect(out.hiddenItems).toEqual(['music'])
   })
 
-  it('已经有账的档案原样放行 —— 迁移幂等(存量实例的写盘会带着新版本号落旧值)', () => {
+  it('已经有账的档案不再折一次 —— 折叠幂等(存量实例的写盘会带着新版本号落旧值)', () => {
     const already = { byWorkspace: { 'ws-a': { placements: {} } }, dockEdge: 'top' }
-    expect(migrateStagePersisted(already, 5)).toBe(already)
+    const out = migrateStagePersisted(already, 5) as Record<string, unknown>
+    /*
+     * 09-02 起这一条断言的是**账本原样**而不是整份对象原样:v7 会给这份档案补上
+     * Dock 放大那三格(它们在 v5 时还不存在),所以外层必然是个新对象。要守的那件事
+     * 没变 —— 「已经有账的不许再折一次」,把账本按身份比就正好只守它:再折一次会
+     * 造出一个新的 byWorkspace,并把 ws-a 折进默认空间里去。
+     */
+    expect(out.byWorkspace).toBe(already.byWorkspace)
+    expect(out.dockEdge).toBe('top')
   })
 
   it('v0 的老档一路连到 v6:翻译的产物落在账里,零丢失', () => {

@@ -8,7 +8,7 @@ import {
   EXIT_MS,
   EXIT_MS_BY_TIER,
   FLASH_MS,
-  MAGNIFY_TAU_MS,
+  DOCK_LENS_MS,
   RELEASE_MS,
   TOAST_LIFE_MS,
   TOC_FLASH_MS,
@@ -59,11 +59,12 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-toc-flash', TOC_FLASH_MS],
     ['--dur-att-grace', ATT_GRACE_MS],
     /*
-     * 跟手期的时间常数(分类 ④,见 styles/motion.css 文件头)。它进这张表的理由
-     * 与其它几行一模一样:**时长的产地是 tokens.css**,JS 那份是镜像;
-     * 它不进任何 CSS 档位块,是因为它的档位在 JS 侧(τ=0 瞬到)。
+     * Dock 镜头开合(分类 ④,见 styles/motion.css 文件头)。它进这张表的理由与
+     * 其它几行一模一样:**时长的产地是 tokens.css**,JS 那份是镜像。
+     * 09-02 第二轮它换了名字与语义:从「跟手期临界阻尼的 τ」变成「进出标量的
+     * 过渡时长」—— 跟手期已经没有第二个时钟了。
      */
-    ['--dur-dock-follow', MAGNIFY_TAU_MS],
+    ['--dur-dock-lens', DOCK_LENS_MS],
     /* **手势/宽限**窗口(不是动画,动效档不清零它)。这一类一直有 token 也一直有
      * JS 常量,却一直不在这张表里 —— 09-01 顺手补齐:一个数只有一个出处这条纪律,
      * 不该按「是不是动画」挑着执行。09-02 预览泡退役,它那四条(preview-delay /

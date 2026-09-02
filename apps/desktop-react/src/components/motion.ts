@@ -35,11 +35,14 @@ export const ESC_STOP_WINDOW_MS = 2000
 export const COPY_FEEDBACK_MS = 1500
 
 /**
- * --dur-dock-follow:Dock 磁性放大那条 rAF 环的**时间常数**(临界阻尼的 τ),
- * 不是一段动画的长度。进 / 跟 / 放三段共用它一个数,理由(以及为什么不是两档)
- * 写在 tokens.css 那一节里。动效档「无」/ reduced-motion 下由 useMagnify 把它按 0 用。
+ * --dur-dock-lens:Dock 磁性放大的**镜头开合**时长 —— 手落进条里那格
+ * `--dock-amount` 从 0 走到 1、手离开时从 1 回到 0,各花这么久。
+ * **它不是跟手的快慢**:跟手期那格恒为 1,几何每次 pointermove 直接写、零插值
+ * (见 components/useDockLens.ts)。整条链子在 CSS 里跑完,JS 侧一个计时器都没有 ——
+ * 这一行是**镜像**,由 __tests__/motion-tokens.test.ts 与 tokens.css 逐条比对,
+ * 真机门 scripts/gate-dock.mjs 的入场判据也按它算几何上限。
  */
-export const MAGNIFY_TAU_MS = 25
+export const DOCK_LENS_MS = 140
 
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
 /**

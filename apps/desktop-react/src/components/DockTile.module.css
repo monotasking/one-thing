@@ -1,8 +1,20 @@
+/* 外壳 = 这块瓦**在条上的位置**。磁性放大把「推开邻居」的那一格位移写在这里
+ * (--tile-dx-x / -y,两条轴各一格,没写的那格落回 0,一条 translate() 合起来),
+ * 把「变大」写在里头那颗按钮上。分成两层是有理由的:名字标签与运行点长在外壳里,
+ * 它们该**跟着瓦横向走、却不跟着一起变大**(macOS 同形);而外壳自己的
+ * offsetLeft / offsetWidth 是布局值,transform 改不动 —— 放大着的时候量基准,
+ * 读到的和静止时逐字节相同,于是整套「冻结 / 作废静止坐标系」的机件都不必存在。
+ * 位移同样乘开合标量 --dock-amount,与缩放同一格、同一条过渡,不会差相位。 */
 .wrap {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  transform: translate(
+    calc(var(--dock-amount, 0) * var(--tile-dx-x, 0) * 1px),
+    calc(var(--dock-amount, 0) * var(--tile-dx-y, 0) * 1px)
+  );
+  will-change: transform;
 }
 
 .tile {
@@ -17,11 +29,18 @@
   border: 1px solid var(--line-1);
   color: var(--text-1);
   box-shadow: var(--sh-1);
-  /* 磁性放大走布局尺寸(见 dock-magnify.ts 头注),而**尺寸不吃 CSS 过渡**:
-   * 进 / 跟 / 放三段全由 useMagnify 那条 rAF 环上的临界阻尼逐帧给。曾经这里挂着
-   * `width/height var(--tile-size-dur, var(--dur-release))`,配一把「跟手期把它
-   * 掰成 0ms」的开关 —— 掰的那一帧会把过渡追不上攒下的滞后一次性补齐,那就是
-   * 09-02 用户报的「不顺手」。底色的过渡与放大无关,原样留着。 */
+  /* 磁性放大**走 transform,不走布局尺寸**(09-02 第二轮):瓦的 width/height
+   * 一帧都不变,条因此永不重排、永不被居中定位来回拉。支点 --tile-origin 由条按
+   * 停靠边给(下边 = 底边中点,于是瓦朝屏内长)。
+   * 缩放量 = 1 + 开合标量 × (这块瓦的目标系数 − 1):跟手期开合标量恒为 1,
+   * 目标系数每次 pointermove 直接写进来,**中间没有插值、没有阻尼、没有第二个时钟**。
+   * 曾经这里挂过 `width/height var(--tile-size-dur, …)` 加一把「跟手期掰成 0ms」的
+   * 开关 —— 掰的那一帧把过渡追不上攒的滞后一次性补齐,那是 09-02 报的「不顺手」;
+   * 换成阻尼之后每块瓦各有各的相位,那是同一天报的「有抖动感」。两条病根一起没了。
+   * 底色的过渡与放大无关,原样留着。 */
+  transform-origin: var(--tile-origin, center bottom);
+  transform: scale(calc(1 + var(--dock-amount, 0) * (var(--tile-scale, 1) - 1)));
+  will-change: transform;
   transition: background var(--dur) var(--ease);
 }
 
@@ -91,7 +110,9 @@
   box-shadow: 0 0 0 var(--dock-sep-w) var(--surface-2);
 }
 
-/* 运行点贴瓦的**朝外侧**(Dock 条靠屏幕边那一侧)= 标签的对面;四向各一类。 */
+/* 运行点贴瓦的**朝外侧**(Dock 条靠屏幕边那一侧)= 标签的对面;四向各一类。
+ * 它长在**外壳**上(不在按钮里),所以放大时它跟着瓦横向走、大小不变、离边距离
+ * 不变 —— 静止时外壳与按钮逐像素重合,位置一个像素都没挪。 */
 .dot {
   position: absolute;
   width: var(--dot-size);
@@ -148,7 +169,8 @@
 /* 关键帧 labelIn 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
 
 @media (prefers-reduced-motion: reduce) {
-  /* 尺寸这一维在这一档下由 JS 侧把 τ 归零(瞬到,不是不放大),
-   * 见 useMagnify 的交互状态表 —— CSS 这边只剩标签那条出场要关。 */
+  /* 放大这一维在这一档下由 --dur-dock-lens 归零(见 styles/motion.css 的档位块:
+   * 没显式选过动效档时系统偏好把档拨到「无」)—— **瞬到,不是不放大**,
+   * 放大是这块面的读法不是装饰。CSS 这边只剩标签那条出场要关。 */
   .label { animation: none; }
 }

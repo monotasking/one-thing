@@ -1,20 +1,44 @@
+/* 条的**盒子一动不动**:瓦的放大走 transform,布局宽度永远是那几块静止瓦之和。
+ * 09-02 之前放大走布局尺寸(瓦真的变宽,flex 把邻居推开、条随之变宽),代价是
+ * 每一帧都要重排,而且条一变宽,居中档的定位(left:50% + translate(-50%))就把
+ * 整条来回拉 —— 那是「抖动感」的一半来源。现在条不重排、不平移,只有底板会朝
+ * 主轴两头长出去(见 .bg)。 */
 .strip {
   position: relative;
   display: flex;
-  /* 指针钉住:条整体平移一格,好让指针脚下那一点在放大前后落在同一个像素上
-   * (式子与来历见 components/dock-magnify.ts 的 magnifyLayout)。两条轴各一格
-   * 自定义属性,横排只写 x、竖排只写 y,没写的那格落回 0 —— 一条 translate()
-   * 把两档合起来,省掉「哪条规则在后面」这种靠顺序吃饭的写法。
-   * 落点是**条**不是外面那层 <nav>:宿主那条 transform 带着
-   * `transition: transform var(--dur-enter)`(贴边 / 藏起来在用),
-   * 钉住量塞进去就会慢 140ms 到位,当场不跟手。 */
-  transform: translate(var(--dock-shift-x, 0px), var(--dock-shift-y, 0px));
   align-items: flex-end;
   /* 条的高度钉死(瓦 + 上下内距 + 上下边框):放大的瓦向上长出条外,
    * 条只变宽不变高 —— 动效板「Dock 放大」的既定条款,漏钉会让条像气球一样鼓。 */
   height: calc(var(--tile-size) + 2 * var(--dock-pad-y) + 2px);
   gap: var(--dock-gap);
+  /* 边框透明留在条上:底板画的那一圈实线在 .bg 上,而这 1px 仍要占住盒子,
+   * 好让内容盒的位置与改前逐字节相同(瓦的 offsetLeft 也从这条边框后面起算)。 */
+  border: 1px solid transparent;
   padding: var(--dock-pad-y) var(--dock-pad-x);
+  /* 瓦朝哪一头长:横排停下边 = 绕底边中点放大(向上长)。四档见下面三条覆写。 */
+  --tile-origin: center bottom;
+  /* 镜头开合:全条**只有这一个标量**在动,进 / 出走它的过渡,跟手期它恒为 1。
+   * 注册在 styles/motion.css 的 @property(自定义属性不注册就不能过渡)。
+   * `--ease-soft` 两头都软:--ease 的中段斜率 2.73 会让峰值那一帧吃掉整段的三成,
+   * 那读起来是「弹一下」不是「鼓起来」。 */
+  transition: --dock-amount var(--dur-dock-lens) var(--ease-soft);
+}
+
+.strip[data-lens='on'] {
+  --dock-amount: 1;
+}
+
+/* 底板 —— 条的那张脸(玻璃底 + 边 + 投影 + 圆角)。它是子元素不是条自己的背景,
+ * 因为放大时它要朝主轴两头长出条身,而条身必须一动不动。
+ * `inset: -1px` 让它盖住条的整个边框盒:条的边框是透明的占位,实线由这里画,
+ * 于是静息态与改前逐像素相同。
+ * 长出多少 = --dock-grow-before / -after(useDockLens 按 growth 与对齐档算好,px 数),
+ * 再乘开合标量 --dock-amount(0 = 收着,1 = 全开)。 */
+.bg {
+  position: absolute;
+  inset: -1px;
+  left: calc(-1px - var(--dock-amount, 0) * var(--dock-grow-before, 0) * 1px);
+  right: calc(-1px - var(--dock-amount, 0) * var(--dock-grow-after, 0) * 1px);
   border-radius: var(--r-dock);
   /* backdrop-filter 全系统只许出现在这里 */
   background: var(--glass);
@@ -22,6 +46,7 @@
   -webkit-backdrop-filter: blur(var(--dock-blur));
   border: 1px solid var(--line-1);
   box-shadow: var(--sh-2);
+  pointer-events: none;
 }
 
 /* 竖排(停左/右边):对称于横排钉死高度的那条规则 —— 条的**宽度**钉死
@@ -32,13 +57,27 @@
   height: auto;
   width: calc(var(--tile-size) + 2 * var(--dock-pad-y) + 2px);
   padding: var(--dock-pad-x) var(--dock-pad-y);
+  --tile-origin: right center;
+}
+
+/* 竖排时底板朝**上下**两头长,左右齐条身。 */
+.vertical .bg {
+  left: -1px;
+  right: -1px;
+  top: calc(-1px - var(--dock-amount, 0) * var(--dock-grow-before, 0) * 1px);
+  bottom: calc(-1px - var(--dock-amount, 0) * var(--dock-grow-after, 0) * 1px);
 }
 
 /* 瓦朝「内侧」长出条外。内侧在交叉轴的哪一端,只取决于停哪条边:
  * 下 / 右 → 内侧是交叉轴起点,瓦锚在末端(默认的 flex-end);
- * 上 / 左 → 内侧是交叉轴末端,瓦锚在起点。 */
+ * 上 / 左 → 内侧是交叉轴末端,瓦锚在起点。放大的支点(transform-origin)跟着翻。 */
 .anchorStart {
   align-items: flex-start;
+  --tile-origin: center top;
+}
+
+.vertical.anchorStart {
+  --tile-origin: left center;
 }
 
 .sep {
@@ -55,12 +94,15 @@
   height: var(--dock-sep-w);
 }
 
+/* 放大幅度三档(09-02 追补:设置里那枚分段器)。与大小三档同一手 —— 只在条上覆写
+ * 一个变量,几何那边现读,JS 一个数都不认识。
+ * 「关掉放大」不是第四档:关掉时 useDockLens 一格几何都不写、开关也不挂,
+ * 这三条规则谁都不会被读到(见 useDockLens 的配置态那一行)。 */
+.magnifySm { --dock-lens-max: var(--dock-lens-max-sm); }
+.magnifyMd { --dock-lens-max: var(--dock-lens-max-md); }
+.magnifyLg { --dock-lens-max: var(--dock-lens-max-lg); }
+
 /* 大小三档:只在 Dock 根节点上覆写这两个变量,瓦、圆角、图标(41% 比例)全自动跟。 */
 .sizeSm { --tile-size: var(--tile-size-sm); --r-tile: var(--r-tile-sm); }
 .sizeMd { --tile-size: var(--tile-size-md); --r-tile: var(--r-tile-md); }
 .sizeLg { --tile-size: var(--tile-size-lg); --r-tile: var(--r-tile-lg); }
-
-/* 09-02:这里曾有一对 `--tile-size-dur` 规则(条上挂 160ms、跟手期由 .tracking
- * 掰成 0ms),用来给瓦的 width/height 开关 CSS 过渡。**整套退役** —— 尺寸现在
- * 由 useMagnify 的一条 rAF 环逐帧给,进 / 跟 / 放三段同一个机制、没有开关可掰,
- * 「掰的那一帧把累积滞后一次性补齐」这个病也就没有产地了。 */

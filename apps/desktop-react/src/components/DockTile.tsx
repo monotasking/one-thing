@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, MouseEvent } from 'react'
+import type { MouseEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
 import { ButtonBase } from '../ui/ButtonBase'
@@ -61,14 +61,6 @@ interface Props {
    * **列表里的区分记号**,不是一块瓦的脸。
    */
   face?: { className: string }
-  /**
-   * 磁性放大的尺寸系数(1 = 静止)。布局尺寸,不是 transform。
-   *
-   * 09-02 起这块瓦**不再往外交一个 ref**:静止坐标系改成「一个锚点 + 一串常量」
-   * 算出来之后,没有人再需要量单块瓦的矩形了(见 dock-magnify.ts 的文件头)。
-   * 那个 `tileRef` 从「写了没人读」变成「连写都不必写」,一并摘掉。
-   */
-  factor: number
   labelSide?: LabelSide
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
@@ -83,7 +75,6 @@ export function DockTile({
   running,
   plus,
   face,
-  factor,
   labelSide = 'top',
   onClick,
   onContextMenu,
@@ -120,7 +111,11 @@ export function DockTile({
   const badgeText = badge ? (badge.text ?? String(badge.count ?? '')) : ''
 
   return (
-    <div className={s.wrap} onMouseEnter={enter} onMouseLeave={leave}>
+    /* `data-dock-tile` 是磁性放大认这块外壳的**唯一**记号(useDockLens 按它取一排
+     * 外壳,分隔线那个 <span> 天然不带)。位移落在外壳上、缩放落在里头那颗按钮上:
+     * 于是名字标签与运行点跟着瓦横向走、却不跟着一起变大(macOS 同形),而外壳的
+     * offsetLeft / offsetWidth 仍是**布局值**,量基准时 transform 一点都掺不进来。 */
+    <div className={s.wrap} data-dock-tile="" onMouseEnter={enter} onMouseLeave={leave}>
       {labelVisible && <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>}
       {/* 瓦是裸钮三类判的第③类(结构性交互件:视觉本该定制)—— 消费
         * `ui/ButtonBase` 只清 UA,磁性放大 / 色底 / 徽 / 点那一整套皮肤原样留在本地。 */}
@@ -131,17 +126,6 @@ export function DockTile({
             : face
               ? `${s.tile} ${s.faced} ${face.className}`
               : s.tile
-        }
-        /* 放大系数也进一格自定义属性。图标本身靠 width/height 的百分比就跟着长大,
-         * 这一格留给那些**只能按父字号缩放**的东西(font-size 的百分比量的是父字号
-         * 而不是父盒子)。字标瓦面退役后今天没有消费者,留着是因为下一个字形瓦面
-         * 一定会再要它 —— 删了就得连同这段病历一起重新踩一遍。 */
-        style={
-          {
-            width: `calc(var(--tile-size) * ${factor})`,
-            height: `calc(var(--tile-size) * ${factor})`,
-            '--tile-factor': factor,
-          } as CSSProperties
         }
         onClick={onClick}
         onContextMenu={onContextMenu}
@@ -159,8 +143,11 @@ export function DockTile({
         {/* 未读点。位置与徽同一个角(右上),所以它不吃 DOT_CLASS 那张按边翻向的表 ——
             那张表管的是**运行点**,它贴的是朝外那一侧。 */}
         {dot && <span className={s.unread} data-testid="dock-unread" aria-hidden="true" />}
-        {running && <span className={`${s.dot} ${s[DOT_CLASS[labelSide]]}`} aria-hidden="true" />}
       </ButtonBase>
+      {/* 运行点长在**外壳**上而不是按钮里:它是「这块瓦开着」的常驻状态位,不该
+        * 跟着镜头一起变大变远(macOS 的运行点也是恒定大小)。静止时外壳与按钮
+        * 逐像素重合,所以它落在哪儿一个像素都没变。 */}
+      {running && <span className={`${s.dot} ${s[DOT_CLASS[labelSide]]}`} aria-hidden="true" />}
     </div>
   )
 }

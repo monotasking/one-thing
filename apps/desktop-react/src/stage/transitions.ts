@@ -107,7 +107,7 @@ export const DOCK_HOLD_PAD = 24
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 6
+export const STAGE_PERSIST_VERSION = 7
 
 const DOCK: Placement = { kind: 'dock' }
 
@@ -191,6 +191,10 @@ export const initialStageSettings: StageSettings = {
   dockEdge: 'bottom',
   dockAlign: 'center',
   dockSize: 'md',
+  // 三格缺省 = 09-02 之前的行为逐字不变:放大开着、幅度是那时唯一的那一档、运行点画着。
+  dockMagnify: true,
+  dockMagnifyLevel: 'md',
+  dockRunningDot: true,
   hiddenItems: [],
 }
 
@@ -1116,6 +1120,19 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
      * `workspace/per-space.ts` 文件头)。它们留在扁平层,一个字不动。
      */
     out = foldFlatIntoDefaultSpace(out, STAGE_FURNITURE_KEYS, DEFAULT_SPACE_ID) as Record<string, unknown>
+  }
+  if (version < 7) {
+    /*
+     * 09-02:Dock 放大变成可配置的三格(开关 / 幅度 / 运行点)。**铺底不覆盖** ——
+     * 三个缺省就是升级前的行为,所以老档案升上来一点感觉都没有:放大照旧开着、
+     * 幅度就是那时唯一存在的那一档、运行点照旧画。
+     */
+    out = {
+      dockMagnify: initialStageSettings.dockMagnify,
+      dockMagnifyLevel: initialStageSettings.dockMagnifyLevel,
+      dockRunningDot: initialStageSettings.dockRunningDot,
+      ...out,
+    }
   }
   return out
 }

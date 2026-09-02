@@ -106,6 +106,14 @@ export const en: Record<MessageKey, string> = {
   'dock.sizeSm': 'Small',
   'dock.sizeMd': 'Medium',
   'dock.sizeLg': 'Large',
+  'dock.magnify': 'Magnification',
+  'dock.magnifyHint': 'Icons swell under the pointer; turn it off and the Dock stays perfectly still',
+  'dock.magnifyLevel': 'Magnification amount',
+  'dock.magnifySm': 'Small',
+  'dock.magnifyMd': 'Medium',
+  'dock.magnifyLg': 'Large',
+  'dock.runningDot': 'Running indicators',
+  'dock.runningDotHint': 'Draw a small dot under each panel that is currently open',
   'dock.settings': 'Dock settings…',
 
   /* ── dock tiles ───────────────────────────────────────────────────── */

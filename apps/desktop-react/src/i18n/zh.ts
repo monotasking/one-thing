@@ -129,6 +129,14 @@ export const zh = {
   'dock.sizeSm': '小',
   'dock.sizeMd': '中',
   'dock.sizeLg': '大',
+  'dock.magnify': '磁性放大',
+  'dock.magnifyHint': '指针滑过时脚下的图标鼓起来;关掉之后整条纹丝不动',
+  'dock.magnifyLevel': '放大幅度',
+  'dock.magnifySm': '小',
+  'dock.magnifyMd': '中',
+  'dock.magnifyLg': '大',
+  'dock.runningDot': '运行中指示点',
+  'dock.runningDotHint': '正开着的那几块瓦上画一颗小圆点',
   'dock.settings': 'Dock 设置…',
 
   /* ── Dock 上那几块瓷砖的名字(是界面标签,不是内容) ───────────────── */

@@ -2,9 +2,17 @@ import type { ReactNode } from 'react'
 import { useStageStore } from '../stage/store'
 import { Segmented } from '../ui/Segmented'
 import type { SegmentedOption } from '../ui/Segmented'
+import { Switch } from '../ui/Switch'
 import { useT } from '../i18n'
 import type { Locale, MessageKey } from '../i18n'
-import type { DockAlign, DockDisplay, DockEdge, DockSize, ResolvedOpen } from '../stage/types'
+import type {
+  DockAlign,
+  DockDisplay,
+  DockEdge,
+  DockMagnifyLevel,
+  DockSize,
+  ResolvedOpen,
+} from '../stage/types'
 import { useReadingStore, effectiveMotionTier } from '../reading/store'
 import { useSystemReducedMotion } from '../reading/useSystemReducedMotion'
 import type { MotionTier, ReadingColumn, ReadingDensity, ReadingFontSize } from '../reading/types'
@@ -45,6 +53,16 @@ const SIZE_OPTIONS: Array<{ value: DockSize; labelKey: MessageKey }> = [
   { value: 'sm', labelKey: 'dock.sizeSm' },
   { value: 'md', labelKey: 'dock.sizeMd' },
   { value: 'lg', labelKey: 'dock.sizeLg' },
+]
+
+/*
+ * 放大幅度三档(09-02 追补)。macOS 那里是一根连续滑杆,这里按「设置极简」收敛成
+ * 三格 —— 三个真实的数住在 tokens.css 的 --dock-lens-max-*,这张表只认档名。
+ */
+const MAGNIFY_OPTIONS: Array<{ value: DockMagnifyLevel; labelKey: MessageKey }> = [
+  { value: 'sm', labelKey: 'dock.magnifySm' },
+  { value: 'md', labelKey: 'dock.magnifyMd' },
+  { value: 'lg', labelKey: 'dock.magnifyLg' },
 ]
 
 // 舞台不在此列(08-30 拍板:点开统一浮窗,舞台只是浮窗的放大目标 —— 见 stage/types.ts)。
@@ -113,6 +131,12 @@ export function SettingsMock() {
   const setDockAlign = useStageStore((st) => st.setDockAlign)
   const dockSize = useStageStore((st) => st.dockSize)
   const setDockSize = useStageStore((st) => st.setDockSize)
+  const dockMagnify = useStageStore((st) => st.dockMagnify)
+  const setDockMagnify = useStageStore((st) => st.setDockMagnify)
+  const dockMagnifyLevel = useStageStore((st) => st.dockMagnifyLevel)
+  const setDockMagnifyLevel = useStageStore((st) => st.setDockMagnifyLevel)
+  const dockRunningDot = useStageStore((st) => st.dockRunningDot)
+  const setDockRunningDot = useStageStore((st) => st.setDockRunningDot)
   const defaultOpen = useStageStore((st) => st.defaultOpen)
   const setDefaultOpen = useStageStore((st) => st.setDefaultOpen)
   const locale = useStageStore((st) => st.locale)
@@ -249,6 +273,43 @@ export function SettingsMock() {
               value={dockSize}
               onChange={setDockSize}
               label={t('dock.size')}
+            />
+          </div>
+
+          {/*
+            磁性放大那两行(09-02 追补,对齐 macOS 「Dock 与菜单栏」里那枚放大开关 +
+            那根幅度滑杆)。**开关与幅度是两件事**:关掉是「这条链不跑」,幅度只是
+            条上一个 CSS 变量。所以幅度那一行在关掉时**禁掉而不是藏掉** —— 藏掉会让
+            人以为这个选项没了,禁掉才说得清「它还在,只是现在管不着」。
+          */}
+          <div className={s.settingRow}>
+            <div>
+              <div className={s.settingRowLabel}>{t('dock.magnify')}</div>
+              <div className={s.settingRowHint}>{t('dock.magnifyHint')}</div>
+            </div>
+            <Switch checked={dockMagnify} onChange={setDockMagnify} label={t('dock.magnify')} />
+          </div>
+
+          <div className={s.settingRow}>
+            <div className={s.settingRowLabel}>{t('dock.magnifyLevel')}</div>
+            <Segmented
+              options={opts(MAGNIFY_OPTIONS)}
+              value={dockMagnifyLevel}
+              onChange={setDockMagnifyLevel}
+              label={t('dock.magnifyLevel')}
+              disabled={!dockMagnify}
+            />
+          </div>
+
+          <div className={s.settingRow}>
+            <div>
+              <div className={s.settingRowLabel}>{t('dock.runningDot')}</div>
+              <div className={s.settingRowHint}>{t('dock.runningDotHint')}</div>
+            </div>
+            <Switch
+              checked={dockRunningDot}
+              onChange={setDockRunningDot}
+              label={t('dock.runningDot')}
             />
           </div>
         </Section>

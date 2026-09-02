@@ -1,5 +1,4 @@
 import { Fragment, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { useStageStore } from '../stage/store'
 import {
   GLOBAL_ITEMS,
@@ -14,13 +13,12 @@ import { currentWorkspace } from '../workspace/projection'
 import { useWorkspaceViews } from '../workspace/store'
 import sw from '../workspace/swatch.module.css'
 import { DockTile } from './DockTile'
-import { useMagnify } from './useMagnify'
-import { REST_FACTOR } from './dock-magnify'
+import { useDockLens } from './useDockLens'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { useT } from '../i18n'
 import { isItemHidden, memoryIsAt } from '../stage/transitions'
 import { DOCK_AXIS, OPEN_PLACEMENT_CHOICES } from '../stage/types'
-import type { DockEdge, DockSize, StageItemSpec } from '../stage/types'
+import type { DockEdge, DockMagnifyLevel, DockSize, StageItemSpec } from '../stage/types'
 import type { LabelSide } from './DockTile'
 import s from './Dock.module.css'
 
@@ -60,18 +58,19 @@ const SIZE_CLASS: Record<DockSize, string> = {
   lg: s.sizeLg,
 }
 
+/** 放大幅度三档 → 条上覆写 --dock-lens-max 的那三条类。与 SIZE_CLASS 同一手。 */
+const MAGNIFY_CLASS: Record<DockMagnifyLevel, string> = {
+  sm: s.magnifySm,
+  md: s.magnifyMd,
+  lg: s.magnifyLg,
+}
+
 /** 名字标签永远翻到「朝内」那一侧 —— 停下边就浮在上方,停左边就浮在右侧。 */
 const LABEL_SIDE: Record<DockEdge, LabelSide> = {
   bottom: 'top',
   top: 'bottom',
   left: 'right',
   right: 'left',
-}
-
-/** 钉住量落到哪个方向 —— 两条轴各一格,CSS 侧一条 translate() 把它们合起来。 */
-const SHIFT_VAR: Record<'x' | 'y', string> = {
-  x: '--dock-shift-x',
-  y: '--dock-shift-y',
 }
 
 /** 瓦朝内长:下/右边锚末端(默认),上/左边锚起点。 */
@@ -100,8 +99,16 @@ export function Dock() {
   const memory = useStageStore((st) => st.memory)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockSize = useStageStore((st) => st.dockSize)
+  /*
+   * 放大的三格配置(09-02 追补,对齐 macOS Dock 偏好)。开关与幅度是**两件事**:
+   * 关掉是「这条链不跑」,幅度只是条上一个 CSS 变量 —— 所以一个进 hook、一个进类名。
+   * 运行点那格更是第三件事:它跟放大毫无关系,只决定画不画那颗点。
+   */
+  const dockMagnify = useStageStore((st) => st.dockMagnify)
+  const dockMagnifyLevel = useStageStore((st) => st.dockMagnifyLevel)
+  const dockRunningDot = useStageStore((st) => st.dockRunningDot)
   // 沿边对齐档只有磁性放大读它(条自己的贴边定位在 AppShell 那层)——
-  // 它决定条长大时朝哪边退,见 dock-magnify.ts 的 GROWTH_BIAS。
+  // 它决定条长大时朝哪边退,见 dock-lens.ts 的 GROWTH_BIAS。
   const dockAlign = useStageStore((st) => st.dockAlign)
   // 藏起来的瓦不在条上露面。它是**配置**(见 StageSettings.hiddenItems),
   // 与「这块瓦此刻在哪」无关 —— 所以它与 placements 是两条独立的订阅。
@@ -129,21 +136,20 @@ export function Dock() {
    * ── 悬停预览泡已退役(09-02 用户裁定「不需要这个功能了」)───────────────
    *
    * 条这一层曾经还养着一只 hover-intent(跨瓦的「一次只有一个泡」主角制 + 朝泡
-   * 走的瞄准三角区),以及交给 useMagnify 的「主人瓦钉满档」下标。泡没了,那两件
+   * 走的瞄准三角区),以及交给放大那只 hook 的「主人瓦钉满档」下标。泡没了,那两件
    * 连同 ui/hover-intent、stage/transitions 的三角区几何一起删干净 —— 条上剩下的
    * 悬停只有瓦自己那条 300ms 名字标签,它从不需要跨瓦仲裁。
    */
   /*
-   * 磁性放大要的全是**这一刻的布局事实**:几块瓦、分隔线插在哪、停哪条边、
-   * 沿边怎么对齐、多大档。它不量瓦 —— 静止坐标系由这几个数加一个锚点算出来
-   * (见 dock-magnify.ts 的文件头)。这五格里任何一格变了都会让那个锚点作废。
+   * 磁性放大只问两件事:**停哪条边**(定轴)与**沿边怎么对齐**(定条长大时朝哪边退)。
+   * 09-02 之前它还要被喂瓦数 / 分隔线落点 / 大小档三样,因为静止坐标系是「一个锚点 +
+   * 一串常量」算出来的,那三样一变锚点就得作废。现在基准直接从布局现读(瓦的
+   * offsetLeft / offsetWidth,transform 改不动它们),没有旧值可过期,那三格就不必递了。
    */
-  const { stripRef, factors, shift, onMouseMove, onMouseLeave } = useMagnify({
-    count: tiles.length,
-    sepAfter,
+  const { stripRef, onMouseMove, onMouseLeave } = useDockLens({
     edge: dockEdge,
     align: dockAlign,
-    size: dockSize,
+    enabled: dockMagnify,
   })
 
   return (
@@ -155,6 +161,7 @@ export function Dock() {
       className={[
         s.strip,
         SIZE_CLASS[dockSize],
+        MAGNIFY_CLASS[dockMagnifyLevel],
         axis === 'y' && s.vertical,
         ANCHOR_START[dockEdge] && s.anchorStart,
       ]
@@ -164,14 +171,12 @@ export function Dock() {
        * (09-02 之前还有第二个 —— 预览泡的瞄准区,随泡一起退役)。 */
       onMouseMove={onMouseMove}
       onMouseLeave={onMouseLeave}
-      /* 指针钉住用的那一格平移(式子与来历见 dock-magnify.ts 的 magnifyLayout)。
-       * 它落在**条**上而不是宿主 <nav> 上:宿主那条 transform 带着
-       * `transition: transform var(--dur-enter)`(贴边 / 藏起来用的),
-       * 把逐帧的钉住量塞进去等于让它慢 140ms 到位,当场就不跟手了。
-       * 与 factors 同一次 setState 出去 —— 两者必须落在同一帧,
-       * 差一帧脚下那块就晃一下。 */
-      style={{ [SHIFT_VAR[axis]]: `${shift}px` } as CSSProperties}
     >
+      {/* 底板。它是条的一个**子元素**而不是条自己的背景:放大时底板要朝主轴两头
+        * 长出去,而条的盒子必须一动不动(瓦的放大走 transform,条的布局宽度是
+        * 那 13 块瓦的静止宽度之和,任何一帧都不该重排)。长出多少由
+        * --dock-grow-before / -after 两格给,乘上 --dock-amount 那格开合标量。 */}
+      <span className={s.bg} data-dock="plate" aria-hidden="true" />
       {tiles.map((tile, i) => {
         const node =
           tile.kind === 'plus' ? (
@@ -179,7 +184,6 @@ export function Dock() {
               key="__plus"
               title={t('dock.add')}
               plus
-              factor={factors[i] ?? REST_FACTOR}
               labelSide={LABEL_SIDE[dockEdge]}
             />
           ) : (
@@ -206,8 +210,7 @@ export function Dock() {
                   ? { className: sw[workspace.swatch] }
                   : undefined
               }
-              running={tile.item.id in placements}
-              factor={factors[i] ?? REST_FACTOR}
+              running={dockRunningDot && tile.item.id in placements}
               labelSide={LABEL_SIDE[dockEdge]}
               onClick={() => click(tile.item.id)}
               onContextMenu={(e) => {

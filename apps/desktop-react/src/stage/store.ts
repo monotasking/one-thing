@@ -13,6 +13,7 @@ import type {
   DockAlign,
   DockDisplay,
   DockEdge,
+  DockMagnifyLevel,
   DockSize,
   FloatRect,
   Placement,
@@ -57,6 +58,10 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   setDockEdge: (e: DockEdge) => void
   setDockAlign: (a: DockAlign) => void
   setDockSize: (z: DockSize) => void
+  /** 磁性放大的三格(对齐 macOS Dock 偏好:放大开关 / 放大幅度 / 运行指示灯)。 */
+  setDockMagnify: (on: boolean) => void
+  setDockMagnifyLevel: (level: DockMagnifyLevel) => void
+  setDockRunningDot: (on: boolean) => void
   setDefaultOpen: (d: ResolvedOpen) => void
   setLocale: (l: Locale) => void
   /** 「所有应用」那块管理瓦上的一行开关:这块瓦在 Dock 上露不露面。 */
@@ -145,6 +150,9 @@ export const useStageStore = create<StageStore>()(
       setDockEdge: (dockEdge) => set({ dockEdge }),
       setDockAlign: (dockAlign) => set({ dockAlign }),
       setDockSize: (dockSize) => set({ dockSize }),
+      setDockMagnify: (dockMagnify) => set({ dockMagnify }),
+      setDockMagnifyLevel: (dockMagnifyLevel) => set({ dockMagnifyLevel }),
+      setDockRunningDot: (dockRunningDot) => set({ dockRunningDot }),
       setDefaultOpen: (defaultOpen) => set({ defaultOpen }),
       setLocale: (locale) => set({ locale }),
       setItemHidden: (id, hidden) =>
@@ -202,6 +210,9 @@ export const useStageStore = create<StageStore>()(
         dockEdge: s.dockEdge,
         dockAlign: s.dockAlign,
         dockSize: s.dockSize,
+        dockMagnify: s.dockMagnify,
+        dockMagnifyLevel: s.dockMagnifyLevel,
+        dockRunningDot: s.dockRunningDot,
         hiddenItems: s.hiddenItems,
         defaultOpen: s.defaultOpen,
         locale: s.locale,

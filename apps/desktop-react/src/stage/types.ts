@@ -185,6 +185,19 @@ export interface StageSettings {
   /** 瓦的大小档。 */
   dockSize: DockSize
   /**
+   * 磁性放大开不开(对齐 macOS 「Dock 与菜单栏 · 放大」那枚开关)。
+   * 关掉不是「放大成 0」,是**这条链根本不跑**:指针滑过条时一格几何都不写、
+   * 镜头开关不挂,条与瓦纹丝不动(gate:dock 的 ⑨ 钉着这一条)。
+   */
+  dockMagnify: boolean
+  /** 放大幅度三档(对齐 macOS 那条「放大」滑杆,收敛成三格)。 */
+  dockMagnifyLevel: DockMagnifyLevel
+  /**
+   * 画不画「正开着」那颗运行点(对齐 macOS 「在 Dock 中显示打开应用的指示灯」)。
+   * 关掉只是不画那颗点,瓦的运行状态本身照旧(点是**指示**不是状态)。
+   */
+  dockRunningDot: boolean
+  /**
    * **不在 Dock 上露面**的那些瓦(存 id)。存「藏起来的」而不是「露面的」,
    * 是为了让新加的瓦默认露面 —— 反过来存一张白名单,以后每加一块瓦都得记得
    * 往每个人的档案里补一行,漏了就是「新功能上线了但没人看得见」。
@@ -205,6 +218,13 @@ export type DockEdge = 'bottom' | 'top' | 'left' | 'right'
 export type DockAlign = 'start' | 'center' | 'end'
 
 export type DockSize = 'sm' | 'md' | 'lg'
+
+/**
+ * 放大幅度三档。macOS 那里是一根连续滑杆,这里收敛成三格 —— 「设置极简」那条法:
+ * 技术参数走默认值,调参收敛成档位。三个数住在 tokens.css 的 --dock-lens-max-* 里,
+ * 这里只有档名(CSS 认档,JS 不认那三个数)。
+ */
+export type DockMagnifyLevel = 'sm' | 'md' | 'lg'
 
 /**
  * 边 → 条的主轴。横边(上/下)排成一行走 x,竖边(左/右)排成一列走 y。

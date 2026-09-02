@@ -16,6 +16,39 @@ const OPTIONS = [
   { value: 'c', label: 'C' },
 ]
 
+describe('Segmented:整组禁用(09-02 Dock 放大批立)', () => {
+  it('禁着时:点不动、整组退出 Tab 序、也不再入 roving 组', () => {
+    const onChange = vi.fn()
+    const { container } = render(
+      <Segmented options={OPTIONS} value="b" onChange={onChange} label="g" disabled />,
+    )
+    const radios = screen.getAllByRole('radio')
+    fireEvent.click(radios[0])
+    expect(onChange).not.toHaveBeenCalled()
+    expect(radios.every((el) => (el as HTMLButtonElement).disabled)).toBe(true)
+    expect(container.querySelectorAll('[data-roving-item]')).toHaveLength(0)
+  })
+
+  it('禁着时组上挂 aria-disabled;不禁时那个属性根本不在(而不是 "false")', () => {
+    const { rerender } = render(
+      <Segmented options={OPTIONS} value="b" onChange={() => {}} label="g" disabled />,
+    )
+    expect(screen.getByRole('radiogroup').getAttribute('aria-disabled')).toBe('true')
+    rerender(<Segmented options={OPTIONS} value="b" onChange={() => {}} label="g" />)
+    expect(screen.getByRole('radiogroup').hasAttribute('aria-disabled')).toBe(false)
+    expect(screen.getAllByRole('radio').every((el) => !(el as HTMLButtonElement).disabled)).toBe(true)
+  })
+
+  it('禁着不等于失忆:选中的那一段照旧标着 aria-checked', () => {
+    render(<Segmented options={OPTIONS} value="c" onChange={() => {}} label="g" disabled />)
+    expect(screen.getAllByRole('radio').map((el) => el.getAttribute('aria-checked'))).toEqual([
+      'false',
+      'false',
+      'true',
+    ])
+  })
+})
+
 describe('Segmented:键盘路', () => {
   it('整组一个 Tab 位,落在选中的那一段上', () => {
     render(<Segmented options={OPTIONS} value="b" onChange={() => {}} label="g" />)
