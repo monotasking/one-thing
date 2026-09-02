@@ -86,6 +86,7 @@ export const en: Record<MessageKey, string> = {
   'ask.joiner': ', ',
 
   /* ── dock & context menu ──────────────────────────────────────────── */
+  'dock.label': 'Dock',
   'dock.add': 'Add',
   'dock.openWith': 'Open as',
   'dock.openStage': 'Popup',
@@ -199,8 +200,6 @@ export const en: Record<MessageKey, string> = {
   'keys.scopeFilesRow': 'A row in the file tree',
 
   /* ── browser shell ────────────────────────────────────────────────── */
-  'dock.previewOf': '{name} preview',
-
   'browser.pagePlaceholder': 'Page placeholder',
 
   /* ── session exposé ───────────────────────────────────────────────── */

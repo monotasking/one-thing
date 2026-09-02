@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
 import { ButtonBase } from '../ui/ButtonBase'
-import { DockPreview } from './DockPreview'
 import type { StageBadge } from '../stage/types'
 import { TOOLTIP_DELAY_MS } from './motion'
 import s from './DockTile.module.css'
@@ -52,8 +51,8 @@ interface Props {
    * 实色瓦面:给这块瓦铺一层底色,底色由外面递进来的类名给
    * (那个类只做一件事:把 `--ws-face` 指到某一格色上,见 workspace/swatch.module.css)。
    *
-   * 它不是「另一种瓦」,是同一块瓦的另一张脸:图标照画,放大 / 降淡 / 名字标签 /
-   * 预览泡 / 运行点 / 右键菜单,一件都不变。今天唯一的用户是工作区切换器那一块——
+   * 它不是「另一种瓦」,是同一块瓦的另一张脸:图标照画,放大 / 名字标签 /
+   * 运行点 / 右键菜单,一件都不变。今天唯一的用户是工作区切换器那一块——
    * **色**承载「我在哪」(瓦面同时就是那条常驻指示),**形**仍由图标承载。
    *
    * 08-31 之前这一格还带一个 `letter`,用一个字取代图标;用户否决了(拿字当图标
@@ -66,21 +65,6 @@ interface Props {
   factor: number
   tileRef: (el: HTMLElement | null) => void
   labelSide?: LabelSide
-  /**
-   * 给了就**可能**出预览泡,不给就永远不出。**该不该出是 Dock 的判断**(它知道形态),
-   * 「已经看得见的东西不必再预览」这条规则不该抄两份。
-   */
-  previewId?: string
-  /**
-   * 此刻这块瓦的泡开着没有 —— 09-01 起这一格是**受控**的:
-   * 「一次只有一个泡」是**条**的性质,不是瓦的性质,所以主角是谁由 Dock 那只
-   * hover-intent 说了算(病历见 ui/hover-intent.ts 文件头:所有权散在各瓦里时,
-   * 两块瓦可以同时以为泡是自己的,而没有人能说「他正冲着我来,你们都别动」)。
-   */
-  previewOpen?: boolean
-  /** 指针进 / 出这块瓦(泡是瓦的后代,所以停在泡上仍算「在瓦里」)。 */
-  onHoverEnter?: () => void
-  onHoverLeave?: () => void
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
 }
@@ -97,23 +81,11 @@ export function DockTile({
   factor,
   tileRef,
   labelSide = 'top',
-  previewId,
-  previewOpen = false,
-  onHoverEnter,
-  onHoverLeave,
   onClick,
   onContextMenu,
 }: Props) {
   const [labelVisible, setLabelVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  /*
-   * 把 onClick 收进 ref,再交给泡一个**恒定**的回调 —— 这样泡的四个 prop 全稳定,
-   * `memo(DockPreview)` 才真的拦得住(摆瓦的人给的是行内箭头函数,每次渲染换身份,
-   * 而磁性放大每帧都让这里重渲一次)。09-01 真机 longFrame 的第二半修的就是它。
-   */
-  const clickRef = useRef(onClick)
-  clickRef.current = onClick
-  const openPreview = useCallback(() => clickRef.current?.(), [])
 
   useEffect(
     () => () => {
@@ -123,28 +95,21 @@ export function DockTile({
   )
 
   /**
-   * 两级悬停:300ms 出名字,600ms 出预览。第二级到了就把第一级收掉 ——
-   * 一次一个主角:泡里已经写着标题,标签留着就是同一句话说两遍。
+   * 悬停 300ms 出名字标签 —— **这是瓦上仅剩的一级悬停**。
    *
-   * **这里只剩第一级**。第二级(泡)09-01 上收到 Dock 那只 hover-intent:
-   * 「一次只有一个泡」「走向泡的路上谁都别插队」都是**跨瓦**的话,一块瓦
-   * 说不出口(病历与真机读数见 ui/hover-intent.ts 文件头)。瓦仍然是那个
-   * 报「指针进了 / 出了」的人 —— 泡是 .wrap 的后代,所以停在泡上照样算在瓦里,
-   * 不必给泡另挂一套监听(挂了就是两处各记一半的 hover 状态)。
-   * 前提是泡得吃指针:它的 pointer-events 是 auto(见 DockPreview)。
+   * 曾经还有第二级:600ms 长出一块预览泡(一眼活视图),出泡时把标签收掉。
+   * 09-02 用户裁定「不需要这个功能了」,泡连同它的整套机件(跨瓦的 hover-intent
+   * 主角制、瞄准三角区、收拢宽限、自动隐藏的回身窗口)一起退役 —— 于是瓦也不再
+   * 需要向条报「指针进了 / 出了」,`onHoverEnter` / `onHoverLeave` 两个口子随之摘掉。
    *
-   * 标签没有缝的烦恼(它贴着瓦),所以照旧移开即散。
+   * 标签没有缝的烦恼(它贴着瓦,不是浮在 12px 之外),所以照旧移开即散。
    */
   const enter = () => {
-    onHoverEnter?.()
-    // 泡已经在场时不重排标签:从缝里回到泡上不该让它「重新长一遍」。
-    if (previewOpen) return
     timer.current = setTimeout(() => setLabelVisible(true), TOOLTIP_DELAY_MS)
   }
   const leave = () => {
     if (timer.current) clearTimeout(timer.current)
     setLabelVisible(false)
-    onHoverLeave?.()
   }
 
   const Icon = plus ? Plus : resolveIcon(icon ?? '')
@@ -152,14 +117,7 @@ export function DockTile({
 
   return (
     <div className={s.wrap} onMouseEnter={enter} onMouseLeave={leave}>
-      {labelVisible && !previewOpen && (
-        <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>
-      )}
-      {previewOpen && previewId && (
-        /* 点泡 = 点这块瓦。泡里那一眼说的就是「打开之后长这样」,
-         * 所以点它的意思只可能是「那就打开吧」—— 不该再让用户把手移回瓦上。 */
-        <DockPreview id={previewId} title={title} side={labelSide} onOpen={openPreview} />
-      )}
+      {labelVisible && <span className={`${s.label} ${LABEL_CLASS[labelSide]}`}>{title}</span>}
       {/* 瓦是裸钮三类判的第③类(结构性交互件:视觉本该定制)—— 消费
         * `ui/ButtonBase` 只清 UA,磁性放大 / 色底 / 徽 / 点那一整套皮肤原样留在本地。 */}
       <ButtonBase

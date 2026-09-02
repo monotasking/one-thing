@@ -31,8 +31,8 @@ import s from './Overview.module.css'
  * 会再次触发那颗按钮、把面板关掉:那是 08-30 用户报的键盘死区的另一半。
  *
  * 判据是 live(placed × interactive,见 use-live.ts)升起,而不是挂载:
- * 舞台 ⇄ 浮窗 ⇄ 架子搬家时它不变,不会重复抢焦点;Dock 预览泡与架子后台
- * keep-alive 层 interactive 恒为假 —— 看一眼不该把光标从别处夺走。
+ * 舞台 ⇄ 浮窗 ⇄ 架子搬家时它不变,不会重复抢焦点;架子后台 keep-alive 层
+ * interactive 恒为假 —— 看不见的一份不该把光标从别处夺走。
  *
  * 装在渲染 null 的叶子里而不是长在 Overview 身上,是因为 live 随切 tab 翻转:
  * 谁的渲染输出消费它,谁就跟着整棵重渲 —— Overview 消费它的话,439 张卡每次

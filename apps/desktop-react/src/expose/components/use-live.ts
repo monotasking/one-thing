@@ -8,9 +8,11 @@ import { usePanelVisibility } from '../../content/visibility'
  *
  *  · placed —— 「这块面被摆出来了吗」,stage store 里的全局事实。归位的时机是它
  *    翻真的那一刻,而不是组件挂载那一刻(出场动画会让内容在收回后多活一帧;
- *    舞台 ⇄ 浮窗 ⇄ 架子搬家不算重开)。Dock 预览泡里它也可能为真 —— 所以它一个人不够。
+ *    舞台 ⇄ 浮窗 ⇄ 架子搬家不算重开)。架子上被切到后台那一层里它照样为真 ——
+ *    所以它一个人不够。
  *  · interactive —— 「宿主认不认我这一份」,PanelVisibilityContext 里宿主的声明。
- *    预览泡与架子后台 keep-alive 层都是 false:照样渲染,但不许占用全局输入。
+ *    架子后台 keep-alive 层是 false:照样渲染,但不许占用全局输入。
+ *    (09-02 之前 Dock 悬停预览泡是第三个 false 的宿主;泡退役,判据不变。)
  *
  * 这个 hook 是**叶子专用**的:谁调它,谁就会在可见性翻转时重渲染。所以只有
  * 渲染 null 的绑定组件(ExposeBindings / AutoFocusSearch)可以调 —— 画卡网格的

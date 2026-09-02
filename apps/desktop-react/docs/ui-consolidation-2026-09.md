@@ -8,7 +8,7 @@
 - **决定性事实:有门的品类 100% 合规,没门的 20~45%**——spinner/动效(gate:motion)与 tab/分段器业务面零自写;button/tooltip/键盘列表无门,过半自写。采用率的自变量是门,不是文档。
 - 最健康:toast 单一产地 `services/notify.ts`;点外关 100% 走库。
 - 最重灾:卡/行配方(`:hover{bg}` 48 处 25 文件,圆角+描边 43 块)= hover 屡犯判例的量化病根;tooltip 原生 `title=` 11 处(有专条禁令仍犯);徽章两套六态色表并存。
-- 组件库在给自己的样例台供货:Gallery 是 Radio/AsyncButton/Checkbox/Splitter/Badge/Toast/Tabs/Select/Switch/Tooltip/IconButton 的主要(常是唯一)消费者;Radio/roving/hover-intent 业务面零消费。
+- 组件库在给自己的样例台供货:Gallery 是 Radio/AsyncButton/Checkbox/Splitter/Badge/Toast/Tabs/Select/Switch/Tooltip/IconButton 的主要(常是唯一)消费者;Radio/roving 业务面零消费(hover-intent 当时的唯一消费者是 Dock 预览泡,09-02 随泡一起删)。
 
 ## 二、库缺口(12 件,按解锁量排序)
 
@@ -32,7 +32,7 @@ ListRow(48 处) → Card(43) → ScrollArea(25,顺修 4 处漏 overscroll-behavi
 | 0 | **立门** `ui:consume`(9 条规则+基线,棘轮) | 在飞(select 批,含 hover≠active 原语 list-selection 与 88 处裸钮三类归档) |
 | 1 | 纯净三件:EmptyState/Skeleton/ScrollArea(零历史包袱)+4 处 overscroll 真缺陷 | 待派 |
 | 2 | 配方三件:ListRow/Card/StatusDot(48+43 处病根) | 待派 |
-| 3 | tooltip 面:TruncatedText+迁 11 处原生 title;DockPreview 并不并入 Tooltip 属可感知变化**待用户拍** | 待派 |
+| 3 | tooltip 面:TruncatedText+迁 11 处原生 title(DockPreview 那一问 09-02 作废:用户裁定预览泡整个退役,已连同 hover-intent / 瞄准区 / 回身窗口一起删) | 待派 |
 | 4 | expose 面(4 文件五品类)——打法最小闭环验证 | 待派 |
 | 5 | 键盘列表品类:ListBox/Combobox+迁 SearchPanel/JumpBar/ComposerInput/DrawerModelPicker/ListView(样板 WorkspacePalette) | 待派 |
 | 6 | composer 面(13 钮+最重的 Composer.module.css,手感判例密集,须真机 A/B) | 待派 |
@@ -62,6 +62,5 @@ ListRow(48 处) → Card(43) → ScrollArea(25,顺修 4 处漏 overscroll-behavi
 4. C3 浮窗定高 vs 贴内容。
 5. C5 规格页加强制态列(建议做,确认即派)。
 6. 检索底部读数行是否常驻面板下缘(现为列表末条,25 条须滚到底)。
-7. DockPreview 是否并入 Tooltip(战役第 3 批留账)。
-8. 盖层开着时顶 28px 拖拽区被盖(窗口批留账,drag 与点盖底关闭打架)。
-9. CGEvent 拖拽三断言待终端辅助功能权限后补跑。
+7. 盖层开着时顶 28px 拖拽区被盖(窗口批留账,drag 与点盖底关闭打架)。
+8. CGEvent 拖拽三断言待终端辅助功能权限后补跑。

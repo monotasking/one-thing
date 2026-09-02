@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { PEAK_FACTOR, magnifyAt, useMagnify } from '../useMagnify'
+import { magnifyAt, useMagnify } from '../useMagnify'
 import { RELEASE_MS } from '../motion'
 
 /** 静止几何:五块瓷砖,间距 53(44 瓦 + 9 缝),第一块中心在 22。 */
@@ -80,60 +80,6 @@ describe('useMagnify:入场先缓一段,过后才跟手', () => {
       expect(result.current.tracking).toBe(false)
       act(() => result.current.onMouseMove(move(120)))
       expect(result.current.tracking).toBe(false)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-})
-
-/**
- * 钉主人瓦(09-01 报障:「从 dock item 移动到 preview 的时候,dock item 不要变小」)。
- *
- * 修前指针一离开瓦朝泡走,距离拉开、余弦一落,主人瓦当场缩回去,而泡还挂在它头上 ——
- * 视觉上「泡没有主人了」。裁定语义:**泡开着期间主人瓦钉在满档**;
- * 泡关掉或换主才按 --dur-release 平滑回落,换主时新主接过满档。
- *
- * 反证:把 `shownFactors` 那一段换回直接交 `factors`,下面第一条立刻红。
- */
-describe('useMagnify:泡的主人瓦钉在满档', () => {
-  const move = (x: number) =>
-    ({ clientX: x, clientY: 0 }) as unknown as React.MouseEvent<HTMLDivElement>
-
-  it('钉住的那一格恒是满档,别人照旧按距离算', () => {
-    const { result, rerender } = renderHook(({ pin }: { pin: number | null }) => useMagnify(3, 'x', pin), {
-      initialProps: { pin: null as number | null },
-    })
-    act(() => result.current.onMouseMove(move(10_000))) // 指针在天边:所有人都该回静止
-    expect(result.current.factors.every((f) => f === 1)).toBe(true)
-    rerender({ pin: 1 })
-    expect(result.current.factors[1]).toBe(PEAK_FACTOR)
-    expect(result.current.factors[0]).toBe(1)
-    expect(result.current.factors[2]).toBe(1)
-  })
-
-  it('指针整个离开条(泡里也算离开条身)之后,钉住的那一格仍是满档', () => {
-    const { result, rerender } = renderHook(({ pin }: { pin: number | null }) => useMagnify(3, 'x', pin), {
-      initialProps: { pin: 1 as number | null },
-    })
-    act(() => result.current.onMouseLeave())
-    expect(result.current.factors[1]).toBe(PEAK_FACTOR)
-    rerender({ pin: null })
-    expect(result.current.factors[1]).toBe(1)
-  })
-
-  it('换主 / 解钉那一下重开入场缓冲 —— 旧主平滑落、新主平滑起,不「啪」一下', () => {
-    vi.useFakeTimers()
-    try {
-      const { result, rerender } = renderHook(({ pin }: { pin: number | null }) => useMagnify(3, 'x', pin), {
-        initialProps: { pin: null as number | null },
-      })
-      act(() => result.current.onMouseMove(move(100)))
-      act(() => vi.advanceTimersByTime(RELEASE_MS))
-      expect(result.current.tracking).toBe(true)
-      act(() => rerender({ pin: 2 }))
-      expect(result.current.tracking).toBe(false) // 过渡打开 = 这一下走 --dur-release
-      act(() => vi.advanceTimersByTime(RELEASE_MS))
-      expect(result.current.tracking).toBe(true)
     } finally {
       vi.useRealTimers()
     }

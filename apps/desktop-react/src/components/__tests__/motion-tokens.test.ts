@@ -3,16 +3,11 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import {
   ATT_GRACE_MS,
-  DOCK_AIM_WINDOW_MS,
   DOCK_HIDE_DELAY_MS,
-  DOCK_REENTRY_MS,
   DUR_MS,
   EXIT_MS,
   EXIT_MS_BY_TIER,
   FLASH_MS,
-  PREVIEW_DELAY_MS,
-  PREVIEW_GRACE_MS,
-  PREVIEW_SWITCH_MS,
   RELEASE_MS,
   TOAST_LIFE_MS,
   TOC_FLASH_MS,
@@ -59,18 +54,14 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     ['--dur-release', RELEASE_MS],
     ['--dur-flash', FLASH_MS],
     ['--dur-tooltip-delay', TOOLTIP_DELAY_MS],
-    ['--dur-preview-delay', PREVIEW_DELAY_MS],
     ['--dur-toc-hover', TOC_HOVER_MS],
     ['--dur-toc-flash', TOC_FLASH_MS],
     ['--dur-att-grace', ATT_GRACE_MS],
-    /* 三条**手势/宽限**窗口(不是动画,动效档不清零它们)。它们一直有 token
-     * 也一直有 JS 常量,却一直不在这张表里 —— 09-01 加瞄准窗口时顺手补齐:
-     * 一个数只有一个出处这条纪律,不该按「是不是动画」挑着执行。 */
-    ['--dur-preview-grace', PREVIEW_GRACE_MS],
-    ['--dur-preview-switch', PREVIEW_SWITCH_MS],
-    ['--dur-dock-aim-window', DOCK_AIM_WINDOW_MS],
+    /* **手势/宽限**窗口(不是动画,动效档不清零它)。这一类一直有 token 也一直有
+     * JS 常量,却一直不在这张表里 —— 09-01 顺手补齐:一个数只有一个出处这条纪律,
+     * 不该按「是不是动画」挑着执行。09-02 预览泡退役,它那四条(preview-delay /
+     * -grace / -switch / dock-aim-window)与回身窗口的 dock-reentry 一并删了。 */
     ['--dur-dock-hide-delay', DOCK_HIDE_DELAY_MS],
-    ['--dur-dock-reentry', DOCK_REENTRY_MS],
   ])('%s', (name, js) => {
     expect(tokenMs(tokensCss, name), `tokens.css 里找不到 ${name}`).toBe(js)
   })

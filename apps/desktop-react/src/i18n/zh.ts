@@ -106,6 +106,10 @@ export const zh = {
   'ask.joiner': '、',
 
   /* ── Dock 与右键菜单 ──────────────────────────────────────────────── */
+  /** 整条 Dock 的地标名(`<nav aria-label>`)。Dock 挂在 `<main>` 外面,没有地标
+   * 就是一块「不在任何地标里」的页面内容(axe region);它是一排通往各块面的入口,
+   * 所以地标类型是导航而不是补充说明。 */
+  'dock.label': '应用坞',
   'dock.add': '添加',
   'dock.openWith': '打开方式',
   'dock.openStage': '弹窗',
@@ -220,9 +224,6 @@ export const zh = {
   'keymap.scopedNote': '面域局部键(查看器 ⌘S/⌘L/⌘F、文件行 ⌘I)只在焦点落在那块面里时生效,局部先接、没接住才轮到全局',
   'keymap.scopedConflict': '「{scope}」里被「{action}」占着',
   'keys.scopeFilesRow': '文件树的一行',
-
-  /* ── Dock 预览泡 ─────────────────────────────────────────────────── */
-  'dock.previewOf': '{name} 预览',
 
   /* ── 浏览器面(壳,不是页面内容) ─────────────────────────────────── */
   'browser.pagePlaceholder': '页面占位',

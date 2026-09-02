@@ -135,9 +135,11 @@ export function NotificationsPanel() {
   /*
    * 面板到场 = 这些都看见了,未读清零。
    *
-   * 判据是 `visible && interactive`,不是「组件挂上了」:Dock 悬停预览泡里也挂着
-   * **同一块内容的第二份**(visible 但 interactive: false),悬停看一眼不该把未读抹掉
-   * —— 这与 ExposeView 不许在泡里抢键盘是同一条判据(见 content/visibility.ts)。
+   * 判据是 `visible && interactive`,不是「组件挂上了」:架子上被切到后台那一层
+   * **照样挂着**这块内容(keep-alive),看不见的一份不该把未读抹掉
+   * —— 这与 ExposeView 不许在后台层抢键盘是同一条判据(见 content/visibility.ts)。
+   * (09-02 之前还有第三个宿主:Dock 悬停预览泡里那一份 visible 但 interactive:false,
+   *  悬停看一眼同样不该清未读。泡已退役,判据一个字没动。)
    *
    * 依赖里带 items 是有意的:面板开着时新来的通知同样是「当场就看见了」。
    * 这不会自激,因为 markAllRead 在全都已读时原样返回旧 state(zustand 不通知)。
