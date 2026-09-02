@@ -13,6 +13,11 @@
  * 而同一文件同一规则的**条数**要算 —— 所以键带序号(第 n 条),
  * 与 squeeze-gate 只用「文件 + 选择器」不同:那边一个块只可能有一条,这边会有 33 条。
  *
+ * `report` 档(09-02 响应链 R0 立的三条)**不进这道棘轮**:那三条问的是
+ * 「机制住在哪儿」,而 R0 只立树、零消费者 —— 此刻判红等于要求一批干完三批的活。
+ * 它们在这里只打一行读数,当 R1 / R2 的清单;R3 那一批把 severity 改成
+ * violation、基线零,它们才进棘轮。
+ *
  * 想看全表:`node scripts/ui-consume-check.mjs`。
  */
 import { readFileSync } from 'node:fs'
@@ -43,7 +48,11 @@ const baselineLines = readFileSync(baselineFile, 'utf-8')
 
 const baseline = new Set(keys(baselineLines))
 
-const current = findViolations().map((h) => `${h.rule} ${h.file}:${h.line} ${h.note}`)
+const all = findViolations()
+const reported = all.filter((h) => RULE_SEVERITY[h.rule] === 'report')
+const current = all
+  .filter((h) => RULE_SEVERITY[h.rule] !== 'report')
+  .map((h) => `${h.rule} ${h.file}:${h.line} ${h.note}`)
 const currentKeys = keys(current)
 const byKey = new Map(currentKeys.map((k, i) => [k, current[i]]))
 
@@ -79,3 +88,13 @@ console.log(
   `\n[ui-consume] ok —— ${current.length} 条,全在基线内(基线 ${baseline.size} 条;`
     + `其中 debt/待迁基座 ${debt} 条)`,
 )
+
+if (reported.length) {
+  const byRule = new Map()
+  for (const h of reported) byRule.set(h.rule, (byRule.get(h.rule) ?? 0) + 1)
+  console.log(
+    `[ui-consume] 另有 report 档 ${reported.length} 条(**不判红**,响应链 R1/R2 的清单):`
+      + `${[...byRule].sort().map(([rule, n]) => `\n  ${rule.padEnd(24)} ${n}`).join('')}`
+      + '\n  全表:node scripts/ui-consume-check.mjs',
+  )
+}

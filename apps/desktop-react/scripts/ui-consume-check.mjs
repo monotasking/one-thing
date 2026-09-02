@@ -34,13 +34,20 @@ const srcDir = path.join(appRoot, 'src')
 /** 组件库自己与全局样式产地不受这条门管 —— 它们**就是**被消费的那一头。 */
 const EXEMPT_DIRS = [path.join(srcDir, 'ui'), path.join(srcDir, 'styles')]
 
-function walk(dir) {
+/**
+ * `all: true` 时**连 `src/ui/` 与 `src/styles/` 一起扫** —— 响应链那三条问的是
+ * 「机制住在哪儿」,组件库自己正是要被收编的一头(`ui/float.ts` 的 Esc 捕获、
+ * `ui/a11y/focus-trap.ts` 的圈禁),漏扫它们等于把清单删掉一半。
+ */
+function walk(dir, opts = {}) {
   const out = []
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name)
     if (statSync(full).isDirectory()) {
-      if (EXEMPT_DIRS.some((d) => full === d || full.startsWith(`${d}${path.sep}`))) continue
-      out.push(...walk(full))
+      if (!opts.all && EXEMPT_DIRS.some((d) => full === d || full.startsWith(`${d}${path.sep}`))) {
+        continue
+      }
+      out.push(...walk(full, opts))
       continue
     }
     if (/\.(tsx?|module\.css)$/.test(full)) out.push(full)
@@ -440,7 +447,99 @@ function ruleSharedVocabCss(file, css) {
   return hits
 }
 
-/** severity 表。加规则 = 加一行这里 + 一个 judge。 */
+/* ────────────────────────────────────────────────────────────────────────
+ * 规则 ⑨⑩⑪  响应链的三条(设计 `docs/design/react-shell-focus-2026-09.md` §8)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * **R0 里这三条只报数,不判红**(severity `report`,棘轮跳过它们)。
+ *
+ * 立法在响应链设计的三条不变量上:
+ *  · I2 —— `keydown` 监听只许出现在 `src/focus/`;
+ *  · I3 —— `.focus()` 只许出现在 `src/focus/` 与三处**作用域内部**的焦点移动;
+ *  · 「我是不是当前」不许靠读 `document.activeElement`(改问 `useFocusScope().isActive`)。
+ *
+ * 为什么先立成只读:R0 立的是树,**零消费者** —— 八套旧机制一格没动,此刻判红
+ * 等于要求 R0 一批干完 R1+R2 的活。所以本批给的是一张**清单**(R1/R2 照着拆),
+ * R3 那一批把 severity 改成 violation、基线零。
+ *
+ * ── 这三条的扫描面比别的规则**宽一格**:`src/ui/**` 也扫 ─────────────────
+ * 别的规则问的是「业务面有没有手写 ui/ 已有职责的东西」,组件库自己是被消费的
+ * 那一头,所以豁免。这三条问的是**机制住在哪儿**:`ui/float.ts` 的 Esc 捕获、
+ * `ui/a11y/focus-trap.ts` 的 Tab 圈禁,正是要被树收编的两件,漏扫它们等于把
+ * R1 的清单删掉一半。
+ *
+ * ── 内置允许区(设计里写死的那几处,不是「暂时留着」)────────────────────
+ *  · `src/focus/**` —— 树自己;
+ *  · `ui/a11y/roving.ts` 的容器级 keydown 与 `.focus()`、`list-selection`、
+ *    `ui/inline-edit.ts` —— **作用域内部**的焦点移动(方向键在项之间走、
+ *    编辑框拿到手就选中),它们不跨作用域,设计 §4.3 明确留着;
+ *  · `ui/a11y/**` 读 `activeElement` —— roving 的当前项判据就是它。
+ */
+const KEYDOWN_LISTENER = /\b(?:window|document|[\w.?]+)\.addEventListener\(\s*['"]keydown['"]/g
+const FOCUS_CALL = /\.focus\s*\(/g
+const ACTIVE_ELEMENT = /document\.activeElement/g
+
+const inFocusDomain = (file) => /(^|[\\/])src[\\/]focus[\\/]/.test(file)
+/** 作用域**内部**的焦点移动:方向键走项、编辑框拿到手就选中。不跨作用域,留着。 */
+const SCOPE_INTERNAL_FOCUS = [
+  'src/ui/a11y/roving.ts',
+  'src/ui/a11y/list-selection.ts',
+  'src/ui/inline-edit.ts',
+]
+const inA11yDir = (file) => /(^|[\\/])src[\\/]ui[\\/]a11y[\\/]/.test(file)
+
+function ruleFocusDomain(file, text) {
+  if (isTest(file) || inFocusDomain(file)) return []
+  const norm = file.split(path.sep).join('/')
+  const hits = []
+
+  KEYDOWN_LISTENER.lastIndex = 0
+  let m
+  while ((m = KEYDOWN_LISTENER.exec(text)) !== null) {
+    // roving 的容器级 keydown 是作用域内部的方向键,设计里留着。
+    if (norm === 'src/ui/a11y/roving.ts') continue
+    const global = /\b(?:window|document)\.addEventListener/.test(m[0])
+    hits.push({
+      rule: 'keydown-outside-focus',
+      file,
+      line: lineOf(text, m.index),
+      note: `${global ? 'window/document' : '元素'}级 keydown 监听,该收进 src/focus/dispatch(I2)`,
+    })
+  }
+
+  if (!SCOPE_INTERNAL_FOCUS.includes(norm)) {
+    FOCUS_CALL.lastIndex = 0
+    while ((m = FOCUS_CALL.exec(text)) !== null) {
+      hits.push({
+        rule: 'focus-outside-focus',
+        file,
+        line: lineOf(text, m.index),
+        note: '跨作用域搬焦点,该走 activate() / 结构性归还(I3)',
+      })
+    }
+  }
+
+  if (!inA11yDir(file)) {
+    ACTIVE_ELEMENT.lastIndex = 0
+    while ((m = ACTIVE_ELEMENT.exec(text)) !== null) {
+      hits.push({
+        rule: 'active-element-read',
+        file,
+        line: lineOf(text, m.index),
+        note: '读 activeElement 判「我是不是当前」,该问 useFocusScope().isActive',
+      })
+    }
+  }
+
+  return hits
+}
+
+/**
+ * severity 表。加规则 = 加一行这里 + 一个 judge。
+ *   'violation' / 'debt' —— 进棘轮,只减不增;
+ *   'report'             —— **只打表不判红**(响应链三条在 R0 的档,R3 转 violation)。
+ */
 export const RULE_SEVERITY = {
   'kbd-select-hover': 'violation',
   'kbd-select-handwritten': 'violation',
@@ -454,11 +553,27 @@ export const RULE_SEVERITY = {
   'float-handwritten': 'violation',
   'spinner-placement': 'violation',
   'shared-vocab-css': 'debt',
+  'keydown-outside-focus': 'report',
+  'focus-outside-focus': 'report',
+  'active-element-read': 'report',
 }
 
 export function findViolations() {
   const hits = []
-  for (const file of walk(srcDir)) {
+  /*
+   * 组件库自己(`src/ui/**`)只进**响应链那三条**的扫描面,别的规则照旧豁免它 ——
+   * 理由写在那三条的注释里:它们问的是「机制住在哪儿」,而 ui/ 正是要被收编的一头。
+   */
+  const consumeFiles = new Set(walk(srcDir))
+  for (const file of walk(srcDir, { all: true })) {
+    if (consumeFiles.has(file) || file.endsWith('.css')) continue
+    const rel = path.relative(appRoot, file)
+    const raw = readFileSync(file, 'utf-8')
+    const lines = raw.split('\n')
+    const found = ruleFocusDomain(rel, stripComments(raw, false))
+    hits.push(...found.filter((h) => !waived(lines, h.rule, h.line)))
+  }
+  for (const file of consumeFiles) {
     const rel = path.relative(appRoot, file)
     const isCss = file.endsWith('.css')
     const raw = readFileSync(file, 'utf-8')
@@ -478,6 +593,7 @@ export function findViolations() {
       found.push(...ruleAsyncBusyBoolean(rel, text))
       found.push(...ruleHandwrittenFloat(rel, text))
       found.push(...ruleSpinnerPlacement(rel, text))
+      found.push(...ruleFocusDomain(rel, text))
     }
     // 豁免读的是**原文**:注释在上面已经被抹平了,而豁免恰恰写在注释里。
     const lines = raw.split('\n')

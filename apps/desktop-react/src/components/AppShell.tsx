@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { useKeymapDispatch } from '../keymap/dispatch'
+import { FocusScope } from '../focus/FocusScope'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ChatStream } from '../content/ChatStream'
@@ -265,101 +266,118 @@ export function AppShell() {
     .filter(Boolean)
     .join(' ')
 
+  /*
+   * **响应链的根**(09-02 R0,设计 `docs/design/react-shell-focus-2026-09.md` §9)。
+   *
+   * `<FocusScope>` 是 render-prop 形的:它自己**一个 DOM 节点都不渲染**,
+   * 属性铺在下面那个本来就有的壳根上 —— 三明治网格(顶栏 / 三轨主区 / Dock)
+   * 全靠这一层的类名与 grid 模板,中间插一层 div 会把布局掀了。
+   *
+   * R0 只立树、零消费者:根的 `onEscape` 还没接(R1 才把 `escapeTopmost()`
+   * 挂上来当最后一环),`useKeymapDispatch` / `useEscapeChain` 一个字没动。
+   * 这一层此刻交出去的只有 `data-focus-scope="root"`(I4 的第一格)与一个
+   * 根元素引用;`tabIndex` 由 `FocusTree.policy.moveFocus` 闸着,R1 才出现
+   * (理由写在 FocusScope.tsx 文件头)。
+   */
   return (
-    <div className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
-      {/* 顶栏**就是**这扇窗的顶带(09-01 用户看真机后的裁定:红绿灯与 header 同一行)。
-        * 系统标题栏已摘,所以壳里的第一件必须从 y=0 起 —— 顶栏自己承载拖拽区与
-        * 红绿灯让位,判例写在 TopBar.tsx 的文件头。上一版那条独立的 28px 空带
-        * (components/TitleBar.*)因此退役:它白占了一条。 */}
-      <TopBar />
+    <FocusScope scope="root">
+      {({ scopeProps }) => (
+        <div {...scopeProps} className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
+          {/* 顶栏**就是**这扇窗的顶带(09-01 用户看真机后的裁定:红绿灯与 header 同一行)。
+            * 系统标题栏已摘,所以壳里的第一件必须从 y=0 起 —— 顶栏自己承载拖拽区与
+            * 红绿灯让位,判例写在 TopBar.tsx 的文件头。上一版那条独立的 28px 空带
+            * (components/TitleBar.*)因此退役:它白占了一条。 */}
+          <TopBar />
 
-      {/* 三明治网格:上架子一行 / [左架子 | 主区 | 右架子] / 下架子一行。
-        * 架子是布局列/行,所以它挤压主区而不是盖住它(既有拍板)。
-        * 空架子自己 return null,那条 auto 轨道就塌成 0 —— 「不渲染、不占布局」是同一件事。 */}
-      <main className={s.main}>
-        {/*
-          外壳的一级标题:只念不看(A11y 线 · A2)。
-          这台上没有一句「大标题」可看 —— 顶栏是控件条,聊天区是内容。但读屏软件的
-          「按标题浏览」是从 h1 起步的,一张没有 h1 的页,那一手从第一步就落空。
-          所以补一个视觉隐藏的 h1,而不是把某个控件强行升格成标题。
-          放在 <main> **里面**:axe 的 region 那条要的是「页面内容都落在地标里」,
-          挂在 <main> 外面的话它自己就是那块无主内容。它是 position:absolute,
-          不是网格项,三明治那三条轨道一格都不动。
-        */}
-        <h1 className="visually-hidden">{t('a11y.appTitle')}</h1>
-        {SHELF_SIDES.map((side) => (
-          <EdgeShelf key={side} side={side} />
-        ))}
-        <div className={s.center}>
-          {/* 键列钉在聊天区(不含输入框)的右缘,所以定位参考系是这一层 */}
-          <div className={s.chatArea}>
-            {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
-              * 合成一界的话这两件事会互相拖死,那正是分区边界要避免的。 */}
-            <ErrorBoundary where="chat">
-              <ChatStream scrollRef={chatRef} onScroll={onScroll} flashMessageId={flashMessageId} />
-            </ErrorBoundary>
-            <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
-          </div>
-          <ErrorBoundary where="composer">
-            <Composer />
-          </ErrorBoundary>
+          {/* 三明治网格:上架子一行 / [左架子 | 主区 | 右架子] / 下架子一行。
+            * 架子是布局列/行,所以它挤压主区而不是盖住它(既有拍板)。
+            * 空架子自己 return null,那条 auto 轨道就塌成 0 —— 「不渲染、不占布局」是同一件事。 */}
+          <main className={s.main}>
+            {/*
+              外壳的一级标题:只念不看(A11y 线 · A2)。
+              这台上没有一句「大标题」可看 —— 顶栏是控件条,聊天区是内容。但读屏软件的
+              「按标题浏览」是从 h1 起步的,一张没有 h1 的页,那一手从第一步就落空。
+              所以补一个视觉隐藏的 h1,而不是把某个控件强行升格成标题。
+              放在 <main> **里面**:axe 的 region 那条要的是「页面内容都落在地标里」,
+              挂在 <main> 外面的话它自己就是那块无主内容。它是 position:absolute,
+              不是网格项,三明治那三条轨道一格都不动。
+            */}
+            <h1 className="visually-hidden">{t('a11y.appTitle')}</h1>
+            {SHELF_SIDES.map((side) => (
+              <EdgeShelf key={side} side={side} />
+            ))}
+            <div className={s.center}>
+              {/* 键列钉在聊天区(不含输入框)的右缘,所以定位参考系是这一层 */}
+              <div className={s.chatArea}>
+                {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
+                  * 合成一界的话这两件事会互相拖死,那正是分区边界要避免的。 */}
+                <ErrorBoundary where="chat">
+                  <ChatStream scrollRef={chatRef} onScroll={onScroll} flashMessageId={flashMessageId} />
+                </ErrorBoundary>
+                <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
+              </div>
+              <ErrorBoundary where="composer">
+                <Composer />
+              </ErrorBoundary>
+            </div>
+          </main>
+
+          {/* 盖:第三种形态。09-01 用户推翻了「只接管内容栏」——盖要**盖满整扇窗**
+            * (含顶带 / 顶栏 / 四条边上的架子),所以它从 .center 里搬到壳的根上,
+            * 定位也从 absolute 换成 fixed(参考系换成视口)。
+            *
+            * 它与舞台的差别因此**不再是盖住多少**,而是那两件一直就在的事:
+            * 盖是一块铺满的面(舞台是定尺画布 + scrim),而且它压不过浮窗
+            * (--z-cover 100 < --z-float 200)。层级一格没动:Dock 仍在 650,
+            * 所以盖开着时 Dock 照样唤得出、切得走 —— 那正是「盖=独占形态」该有的
+            * 出口(独占的是内容,不是整台机器)。 */}
+          <CoverLayer />
+
+          {/* 两种显示模式共用这一个浮层容器:always 从不加 .hidden,autohide 平时藏着。
+            *
+            * 它是 `<nav>` 而不是 `<div>`(09-02):Dock 挂在 `<main>` **外面**,所以它
+            * 画出来的东西——瓦、悬停名字条——都是「不在任何地标里」的页面内容,axe 的
+            * region 那条会红(gate-a11y-settle 的 PARK 注释里记着这条留账)。地标类型
+            * 取导航:整条 Dock 就是一排通往各块面的入口。**只换标签不换样式**:定位与
+            * 显隐全在 `.dock` 那个类上,`<nav>` 与 `<div>` 的缺省 display 同为 block,
+            * 真机截图字节级不动。 */}
+          <nav ref={dockRef} className={dockClass} aria-label={t('dock.label')}>
+            <Dock />
+          </nav>
+
+          {/* 浮窗层:在内容之上、在舞台 scrim 之下(--z-float 200 < --z-overlay 500)。 */}
+          <FloatLayer />
+
+          {/* 吸附预示:拖窗进热带时那条边浮出的薄膜。两个拖拽起点共用这一个消费者。 */}
+          <SnapHint />
+
+          <StageOverlay />
+
+          {/* 工作区命令面板(⌘⇧W)。挂在壳的根上一次 —— 它自己 portal 到 body,
+            * 开关住在 workspace/components/palette-hub(与 agent 菜单同一手:
+            * 两个产地共一个布尔)。 */}
+          <WorkspacePalette />
+
+          {/*
+            useConfirm 的落点。挂一次,`ui/Dialog` 的那个单槽 hub 才有地方渲染 ——
+            今天的用户是工作区删除的两段确认。它与 ToastHost 同层同理由:
+            「问一句 yes/no」不该由每块业务面各摆一个自己的对话框。
+          */}
+          <ConfirmHost />
+
+          {/*
+            Toast 的落点。挂在壳的根上一次,notify 才有地方渲染(它自己 portal 到 body)。
+            文案与「点小丸去哪」由这一层给 —— ui/ 组件不认识 i18n,也不认识通知中心是哪块瓦。
+            小丸走的就是**点 Dock 图标**那条路(clickDockIcon = 按它自己的打开方式开),
+            不是另开一个特权浮层:通知中心是一块普通的瓦,进出口只该有一条。
+          */}
+          <ToastHost
+            closeLabel={t('common.close')}
+            moreText={(count) => t('notify.more', { count })}
+            onMore={() => clickDockIcon(NOTIFICATIONS_ITEM_ID)}
+          />
         </div>
-      </main>
-
-      {/* 盖:第三种形态。09-01 用户推翻了「只接管内容栏」——盖要**盖满整扇窗**
-        * (含顶带 / 顶栏 / 四条边上的架子),所以它从 .center 里搬到壳的根上,
-        * 定位也从 absolute 换成 fixed(参考系换成视口)。
-        *
-        * 它与舞台的差别因此**不再是盖住多少**,而是那两件一直就在的事:
-        * 盖是一块铺满的面(舞台是定尺画布 + scrim),而且它压不过浮窗
-        * (--z-cover 100 < --z-float 200)。层级一格没动:Dock 仍在 650,
-        * 所以盖开着时 Dock 照样唤得出、切得走 —— 那正是「盖=独占形态」该有的
-        * 出口(独占的是内容,不是整台机器)。 */}
-      <CoverLayer />
-
-      {/* 两种显示模式共用这一个浮层容器:always 从不加 .hidden,autohide 平时藏着。
-        *
-        * 它是 `<nav>` 而不是 `<div>`(09-02):Dock 挂在 `<main>` **外面**,所以它
-        * 画出来的东西——瓦、悬停名字条——都是「不在任何地标里」的页面内容,axe 的
-        * region 那条会红(gate-a11y-settle 的 PARK 注释里记着这条留账)。地标类型
-        * 取导航:整条 Dock 就是一排通往各块面的入口。**只换标签不换样式**:定位与
-        * 显隐全在 `.dock` 那个类上,`<nav>` 与 `<div>` 的缺省 display 同为 block,
-        * 真机截图字节级不动。 */}
-      <nav ref={dockRef} className={dockClass} aria-label={t('dock.label')}>
-        <Dock />
-      </nav>
-
-      {/* 浮窗层:在内容之上、在舞台 scrim 之下(--z-float 200 < --z-overlay 500)。 */}
-      <FloatLayer />
-
-      {/* 吸附预示:拖窗进热带时那条边浮出的薄膜。两个拖拽起点共用这一个消费者。 */}
-      <SnapHint />
-
-      <StageOverlay />
-
-      {/* 工作区命令面板(⌘⇧W)。挂在壳的根上一次 —— 它自己 portal 到 body,
-        * 开关住在 workspace/components/palette-hub(与 agent 菜单同一手:
-        * 两个产地共一个布尔)。 */}
-      <WorkspacePalette />
-
-      {/*
-        useConfirm 的落点。挂一次,`ui/Dialog` 的那个单槽 hub 才有地方渲染 ——
-        今天的用户是工作区删除的两段确认。它与 ToastHost 同层同理由:
-        「问一句 yes/no」不该由每块业务面各摆一个自己的对话框。
-      */}
-      <ConfirmHost />
-
-      {/*
-        Toast 的落点。挂在壳的根上一次,notify 才有地方渲染(它自己 portal 到 body)。
-        文案与「点小丸去哪」由这一层给 —— ui/ 组件不认识 i18n,也不认识通知中心是哪块瓦。
-        小丸走的就是**点 Dock 图标**那条路(clickDockIcon = 按它自己的打开方式开),
-        不是另开一个特权浮层:通知中心是一块普通的瓦,进出口只该有一条。
-      */}
-      <ToastHost
-        closeLabel={t('common.close')}
-        moreText={(count) => t('notify.more', { count })}
-        onMore={() => clickDockIcon(NOTIFICATIONS_ITEM_ID)}
-      />
-    </div>
+      )}
+    </FocusScope>
   )
 }
