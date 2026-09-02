@@ -80,10 +80,22 @@ describe('Dock 悬停', () => {
    * preventDefault,所以这一位与「有没有一份 ExposeView 在听」严格同步,
    * 不必先把会话数据摆好。对照组(真的摆出来那一份)同时钉住「别把该吃的也关掉」。
    */
+  /**
+   * ── R2:方向键挂在**总览那一格作用域的根**上,不再是 window ─────────────
+   * 判据因此从「往 window 派一下,看有没有人 preventDefault」变成「屏幕上有没有
+   * 一份能接方向键的总览」—— 问的仍然是同一件事(悬停不会凭空多出第二份内容),
+   * 只是这一批之后「有没有人在听」的答案直接写在 DOM 上。
+   */
+  function exposeRoot(): HTMLElement | null {
+    return document.querySelector('[data-focus-scope="expose"]')
+  }
+
   function pressArrowDown(): boolean {
+    const root = exposeRoot()
+    if (!root) return false
     const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
     act(() => {
-      window.dispatchEvent(event)
+      root.dispatchEvent(event)
     })
     return event.defaultPrevented
   }
@@ -98,6 +110,7 @@ describe('Dock 悬停', () => {
     act(() => useStageStore.getState().closeToDock('sessions'))
     hover('会话总览', LONG_HOVER_MS)
     expect(document.querySelector('[data-preview]')).toBeNull()
+    expect(exposeRoot()).toBeNull()
     expect(pressArrowDown()).toBe(false)
   })
 })

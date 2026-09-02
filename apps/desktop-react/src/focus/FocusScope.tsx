@@ -106,6 +106,12 @@ export interface FocusScopeProps {
   onEscape?: () => boolean
   /** 局部键的落点,键是 `ScopedKey.action`(表在 `focus/scopes.ts`)。 */
   keyHandlers?: Readonly<Record<string, (() => void) | undefined>>
+  /**
+   * 这一格**替谁摆着**(R2)。只有 Placement 宿主层填它 —— 填它此刻装着的那块面
+   * 的 item id,`activateScope(scope, { owner })` 据此在四条边的架子 / 几扇浮窗里
+   * 精确取那一份(§3.5 规则 3「焦点跟着那块面走」)。内容面不填。
+   */
+  owner?: string
   children: (render: FocusScopeRender) => ReactNode
 }
 
@@ -118,6 +124,7 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
     restingTarget,
     onEscape,
     keyHandlers,
+    owner,
     children,
   } = props
   const parent = useContext(FocusScopeContext)
@@ -181,6 +188,7 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
         restingTarget: () => restingRef.current?.() ?? null,
         onEscape: hasEscape ? () => escapeRef.current?.() ?? false : null,
         keyHandlers: keysBox,
+        owner,
       },
       instanceId,
     )
@@ -203,6 +211,15 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
   useLayoutEffect(() => {
     handleRef.current?.update({ inert })
   }, [inert])
+
+  /*
+   * 住户换人**不是重挂**:架子那一层的 tab 换了内容、浮窗里的面被替掉,
+   * 实例仍是同一格(`lastFocused` 与 `returnTo` 都该活过这一次)。所以 `owner`
+   * 与 `inert` 同款,走就地改的那条路,不进登记 effect 的依赖表。
+   */
+  useLayoutEffect(() => {
+    handleRef.current?.update({ owner })
+  }, [owner])
 
   useLayoutEffect(() => {
     handleRef.current?.update({

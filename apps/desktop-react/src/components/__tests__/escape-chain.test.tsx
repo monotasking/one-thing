@@ -90,19 +90,24 @@ describe('Esc 退层链(root 作用域的 onEscape)', () => {
   })
 
   it('内层已消费(defaultPrevented)时**不接**:让位契约的宿主半边', () => {
-    render(<AppShell />)
-    act(() => useStageStore.getState().openAs('sessions', { kind: 'float' }))
-
     /*
-     * 模拟还没接树的那几家(ExposeView / composer / viewer / files)先把这一下
-     * 吃掉。它们 R1 一个都没动,所以这条契约仍然靠 `defaultPrevented` 成立 ——
-     * 派发器冒泡半开头那一句读的正是它。
+     * ── R2:这条契约的**站位**变了,契约本身一个字没变 ──────────────────────
+     * R1 时壳里还有四家没接树(ExposeView / composer / viewer / files),它们各在
+     * 自己的相位上,所以「别人先吃掉了这一下」靠 `defaultPrevented` 在派发器的
+     * 冒泡半开头成立。R2 把那四家全接进了树:壳里再没有第二个 keydown 监听,
+     * 派发器合成**一个捕获相位**的监听 —— 于是「比它更早」只剩一种可能:
+     * **在它之前登记的另一个捕获监听**。所以这只探针要在 `render` 之前挂。
+     *
+     * 那一句 `if (e.defaultPrevented) return` 因此在今天恒不触发,但它留着:
+     * 它是一条契约(别人真接住了就让开),不是一处优化。删掉它 → 这一条红。
      */
     const consume = (e: KeyboardEvent) => {
       if (e.key === 'Escape') e.preventDefault()
     }
     window.addEventListener('keydown', consume, true)
     try {
+      render(<AppShell />)
+      act(() => useStageStore.getState().openAs('sessions', { kind: 'float' }))
       pressEscape()
     } finally {
       window.removeEventListener('keydown', consume, true)
@@ -161,13 +166,15 @@ describe('浮层压在面板上:一下 Esc 只退一层', () => {
   }
 
   it('浮层先退,面板一动不动', () => {
-    render(<AppShell />)
-    act(() => useStageStore.getState().openAs('files', { kind: 'float' }))
+    // R2:探针要比派发器**先登记**才排得到它前面(同一相位按登记序),
+    // 理由与上一组那条「让位契约」逐字相同。
     let overlayClosed = false
     const off = mountOverlayLike(true, () => {
       overlayClosed = true
     })
     try {
+      render(<AppShell />)
+      act(() => useStageStore.getState().openAs('files', { kind: 'float' }))
       pressEscape()
     } finally {
       off()

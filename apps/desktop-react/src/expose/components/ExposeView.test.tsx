@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { AppShell } from '../../components/AppShell'
 import { SESSIONS_ITEM_ID } from '../../stage/items'
 import { useStageStore } from '../../stage/store'
+import { focusTree } from '../../focus/registry'
 import { initialStageState } from '../../stage/transitions'
 import { useKeymapStore } from '../../keymap/store'
 import { initialKeymapState } from '../../keymap/transitions'
@@ -199,27 +200,56 @@ describe('Esc 的让位契约', () => {
  * 不由内容自己猜。预览泡那一份在 dock-preview.test.tsx 里钉;这里钉架子上的后台那一份。
  */
 describe('哪一份实例算数', () => {
-  const arrowDown = () => {
+  /**
+   * ── R2:方向键挂在**作用域根**上,「谁算数」由树答 ────────────────────────
+   * 从前这一组派的是 window 上的一下 ArrowDown,由 ExposeView 那条捕获监听的
+   * `live` 门决定接不接。R2 之后方向键是这块面的**行内结构键**(挂在作用域根上),
+   * 而「后台那一份不吃键」不再需要一道自制的门:架子把后台层打了 `inert`,
+   * ①浏览器据此把整层移出焦点序与命中测试,②注册表据此不选它当第一响应者、
+   * 路径经过它就截断(§4.7)。所以这一组改问那两件事本身。
+   */
+  const arrowDownOn = (root: Element) => {
     const event = new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
     act(() => {
-      window.dispatchEvent(event)
+      root.dispatchEvent(event)
     })
     return event.defaultPrevented
   }
 
-  it('架子上被切到后台的那一份:还挂着(keep-alive),但不吃方向键', () => {
+  const exposeRootIn = (layer: Element) =>
+    layer.querySelector('[data-focus-scope="expose"]') as HTMLElement
+
+  const layerOf = (id: string) =>
+    document.querySelector(`[data-panel-layer="${id}"]`) as HTMLElement
+
+  it('架子上被切到后台的那一份:还挂着(keep-alive),但整层 inert —— 键盘够不着', () => {
     render(<AppShell />)
     act(() => useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'edge', side: 'right' }))
-    expect(arrowDown()).toBe(true)
+    const live = layerOf(SESSIONS_ITEM_ID)
+    expect(live.hasAttribute('inert')).toBe(false)
+    expect(arrowDownOn(exposeRootIn(live))).toBe(true)
 
     // 同一条架子上再钉一块,它成了活动 tab —— 总览那一层退到后台。
     act(() => useStageStore.getState().openAs('files', { kind: 'edge', side: 'right' }))
     expect(useStageStore.getState().shelves.right.activeId).toBe('files')
-    expect(document.querySelector(`[data-panel-layer="${SESSIONS_ITEM_ID}"]`)).toBeTruthy()
-    expect(arrowDown()).toBe(false)
+    const background = layerOf(SESSIONS_ITEM_ID)
+    // ①还挂着(keep-alive);②整层 inert;③树里那一格也 inert —— 两遍必须同源,
+    // 少了给树的那一遍,后台那一份照样能被算成第一响应者(R1 立的判例)。
+    expect(background).toBeTruthy()
+    expect(background.hasAttribute('inert')).toBe(true)
+    const dumped = focusTree
+      .dump()
+      .nodes.filter((n) => n.scope === 'shelf-layer' && n.owner === SESSIONS_ITEM_ID)
+    expect(dumped.some((n) => n.inert)).toBe(true)
+    expect(focusTree.activePath()).not.toContain(
+      focusTree.dump().nodes.find((n) => n.scope === 'expose' && dumped.some((d) => d.instanceId === n.parent))
+        ?.instanceId,
+    )
 
     // 切回来:同一份实例,键盘也一起回来。
     act(() => useStageStore.getState().activateShelfTab('right', SESSIONS_ITEM_ID))
-    expect(arrowDown()).toBe(true)
+    const back = layerOf(SESSIONS_ITEM_ID)
+    expect(back.hasAttribute('inert')).toBe(false)
+    expect(arrowDownOn(exposeRootIn(back))).toBe(true)
   })
 })

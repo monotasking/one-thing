@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { RefObject } from 'react'
 import { ESC_STOP_WINDOW_MS } from '../components/motion'
 
 /**
@@ -44,13 +43,22 @@ export interface EscStop {
 }
 
 /**
- * @param panelRef 这块面板的根。「焦点在这块面板里」是必要条件 —— 不加的话,
- *   在总览 / 检索面板里按 Esc 退层时会顺手把后台那一轮停掉,那是一次看不见的破坏。
+ * ── 「焦点在这块面板里」这条前提**没了参数,变成了结构**(09-03 R2)──────────
+ * R2 之前它是 `panelRef.contains(document.activeElement)` 一句判据(不加的话,
+ * 在总览 / 检索面板里按 Esc 退层会顺手把后台那一轮停掉 —— 一次看不见的破坏)。
+ * 接进响应链之后那句判据**没有换一种写法,而是没有了**:`tryStop` 的唯一调用点
+ * 是输入面板那一格作用域的 `onEscape`,而树只在这块面**在活动路径上**时才问它。
+ * 前提于是由结构保证,不再由这只 hook 自己去问一个全局(设计 §7 的第三条:
+ * 别再读 `activeElement` 判「我是不是当前」)。
+ *
+ * 中间还站过一版 `active: boolean`(把 `<FocusScope>` 的 `isActive` 递进来)。
+ * 那一版**测不出来**:`isActive` 与「树问不问它」是同一件事,给它传 `true` 也
+ * 翻不红任何用例 —— 一条翻不红的守卫就是一条没有守卫的注释,所以删掉。
+ *
  * @param busy 引擎在不在跑。
  * @param onAbort 第二下 Esc 交出去的那一停。
  */
-export function useEscStop<T extends HTMLElement>(
-  panelRef: RefObject<T | null>,
+export function useEscStop(
   /* ui-consume-allow: async-busy-boolean — 这不是一格手写的忙布尔,是**读来的**:
    * 引擎忙不忙唯一产地在 `data/chat-source.ts` 的 `selectEngineBusy`,编排点
    * (`useComposerBusy()`)订到之后原样递进来。这里既不置它也不清它。 */
@@ -89,8 +97,7 @@ export function useEscStop<T extends HTMLElement>(
   )
 
   const tryStop = useCallback(() => {
-    const inPanel = panelRef.current?.contains(document.activeElement) ?? false
-    if (!busy || !inPanel) return false
+    if (!busy) return false
     if (armed) {
       disarm()
       onAbort()
@@ -98,7 +105,7 @@ export function useEscStop<T extends HTMLElement>(
       arm()
     }
     return true
-  }, [panelRef, busy, armed, arm, disarm, onAbort])
+  }, [busy, armed, arm, disarm, onAbort])
 
   return { armed, tryStop }
 }

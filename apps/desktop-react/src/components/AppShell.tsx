@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
+import { useStageFocusFollow } from '../stage/focus-follow'
 import { useKeymapCommandRunner } from '../keymap/dispatch'
 import { FocusScope } from '../focus/FocusScope'
 import { useFocusDispatch } from '../focus/dispatch'
+import { focusTree } from '../focus/registry'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ChatStream } from '../content/ChatStream'
@@ -69,6 +71,38 @@ export function AppShell() {
    * 常驻挂在这一层的理由没变:它得能在面板关着时把面叫起来,而面板此刻并不挂载。
    */
   useFocusDispatch({ runCommand: useKeymapCommandRunner() })
+
+  /**
+   * **规则 3:挪到哪,焦点跟到哪**(设计 §3.5 / §11 拍点 2)。判据与执行整件在
+   * `stage/focus-follow.ts`(一只纯函数 + 一只 hook)—— 这里只挂一次。
+   */
+  useStageFocusFollow()
+
+  /**
+   * **规则 1:壳一挂起来就得有第一响应者**(设计 §3.5 规则 1)。
+   *
+   * 「启动时没有焦点」是错觉 —— 焦点环只在键盘会话亮(08-28 判例),所以看不出来;
+   * 但没有第一响应者的那一刻,键盘是无主的:⌘F 找不到查看器、Esc 不知道退哪一层,
+   * 而 `document.activeElement` 停在 `<body>` 上(I1 说的那种孤儿焦点)。
+   *
+   * 三级回落,**顺序就是判据**:
+   *  ① 输入面板 —— 「有会话则是它的输入面板」(规则 1 的原话),这台壳的主内容
+   *     恒在中央那条聊天区,输入面板是里面唯一「该打字的地方」;
+   *  ② 消息流 —— 输入面板还没挂上来(错误边界塌了、或者这一帧还没到)时,
+   *     主内容区仍然有一格能接住;
+   *  ③ 壳根 —— 前两格都答不出时的结构兜底(它总在),于是 I1 恒成立。
+   *
+   * 只在**挂载**时发一次:再往后「焦点该在哪」由用户的手与那几条规则说了算,
+   * 这一句不该在任何重渲染里再抢一次。
+   */
+  useEffect(() => {
+    const landed =
+      focusTree.activateScope('composer', { reason: 'restore' })
+      || focusTree.activateScope('chat', { reason: 'restore' })
+      || focusTree.activateScope('root', { reason: 'restore' })
+    // 三格都答不出 = 树还一格都没登记完(理论上到不了这儿,因为根就在这一层)。
+    if (!landed) focusTree.recoverOrphanFocus()
+  }, [])
 
   /**
    * 退层链本体仍是 `stage/transitions.escapeTargetOf` 那个纯函数(次序 = z 序:

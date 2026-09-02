@@ -112,7 +112,7 @@ interface Props {
 const ShelfTabLayer = memo(function ShelfTabLayer({ id, on }: { id: string; on: boolean }) {
   const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
   return (
-    <FocusScope scope="shelf-layer" inert={!on}>
+    <FocusScope scope="shelf-layer" inert={!on} owner={id}>
       {({ scopeProps }) => (
         <div
           {...scopeProps}

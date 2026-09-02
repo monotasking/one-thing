@@ -13,6 +13,7 @@ import { useExposeStore } from '../../expose/store'
 import { useStageStore } from '../../stage/store'
 import { useNotifyStore } from '../../services/notify-store'
 import { ONETHING_DIR, seedSessionsSource } from '../../data/__fixtures__/sessions'
+import { FOCUS_SCOPES } from '../../focus/scopes'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 
@@ -904,12 +905,50 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     expect(row(`${ROOT}/packages`)).toBeTruthy()
   })
 
-  it('⌘I 是它的第二个入口(全局 keymap 里没人占 `i`,所以这一下落在行上)', async () => {
+  /*
+   * ── R2:⌘I 的落点在**面板那一格作用域**上,不在行上 ─────────────────────
+   * 所以按下去之前要先让焦点真的落在那一行:①它把自己报成「当前行」
+   * (面板据此交出 `keyHandlers.detail`);②它把这块面送上活动路径(路由问的是
+   * 「files 在不在路径上」,不是「这一下按键经不经过谁」)。
+   * 用真的 `.focus()` 而不是 `fireEvent.focus`:树听的是 `focusin`,而
+   * `fireEvent.focus` 只派一个不冒泡的 `focus`,两者不是一回事。
+   */
+  it('⌘I 是它的第二个入口(全局 keymap 里没人占 `i`,所以这一下归当前那一行)', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    act(() => row(`${ROOT}/README.md`).focus())
     fireEvent.keyDown(row(`${ROOT}/README.md`), { key: 'i', metaKey: true })
     await waitFor(() => expect(screen.getByTestId('files-detail')).toBeTruthy())
+  })
+
+  /**
+   * **声明与落点不许分叉**(设计 §8):表里写着的 action,这块面真的交出了同名的
+   * 处理器。R2 之前这条对的是「查看器键位表 vs SCOPED_KEYS」;R2 之后声明只有
+   * `FOCUS_SCOPES` 一份,而落点是作用域实例注入的那张表 —— 所以对表要在
+   * **真的挂起来的实例**上做,读的是树自己的排障口。
+   * 反证:把 `filesKeys` 那一格改名(比如 `detail` → `info`)→ 这一条当场红。
+   */
+  it('作用域实例注入的 keyHandlers 名单 = FOCUS_SCOPES.files.keys 的 action 集合', async () => {
+    installPort()
+    renderFiles()
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    const node = focusTree.dump().nodes.find((n) => n.scope === 'files')
+    expect(node?.keys.slice().sort()).toEqual([
+      ...new Set(FOCUS_SCOPES.files.keys?.map((k) => k.action) ?? []),
+    ].sort())
+  })
+
+  it('一行都没拿焦点时 ⌘I **不接** —— 交不出处理器,这一下原样落给全局命令表', async () => {
+    installPort()
+    renderFiles()
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    act(() => screen.getByTestId('files-panel').focus())
+    const handled = fireEvent.keyDown(screen.getByTestId('files-panel'), { key: 'i', metaKey: true })
+    // fireEvent 回 true = 没人 preventDefault。反证:把 `current ? … : undefined`
+    // 那一格改成恒给处理器 → 这一下会被吞掉(表现为「按了没反应」)。
+    expect(handled).toBe(true)
+    expect(screen.queryByTestId('files-detail')).toBeNull()
   })
 
   it('三格元信息 + 一条完整路径;数走 stat 那一口', async () => {
@@ -1212,6 +1251,9 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
     fireEvent.click(screen.getByText('README.md'))
     await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
 
+    // R2:Esc 是这块面那一格作用域的 `onEscape`,前提是它在活动路径上 ——
+    // 焦点摆进这块面里(真机上点开一个文件本来就落在这儿)。
+    act(() => screen.getByTestId('files-panel').focus())
     fireEvent.keyDown(screen.getByTestId('files-panel'), { key: 'Escape' })
     await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
     expect(document.querySelector('[data-viewer="open"]')).toBeNull()
@@ -1253,5 +1295,48 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
 
     fireEvent.click(within(screen.getByTestId('files-detail')).getByRole('button', { name: '打开查看' }))
     await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
+  })
+})
+
+/* ── ↵ 开文件把焦点送进查看器(§11 拍点 1 的另一半)──────────────────────── */
+
+describe('↵ 开文件:焦点进查看器', () => {
+  /**
+   * 真机门场景 10 逮到的那一形:**↵ 开的正是此刻已经开着的那个文件**。
+   * 那一下 `openPath` 与 `viewerOpen` 都没变,所以「等查看器到位再送焦点」那条
+   * effect 的依赖表一格不动 —— 少了那格自增的触发器,effect 根本不跑,焦点留在树上。
+   * 反证:把 `openTick` 从依赖表里摘掉 → 第二段当场红。
+   */
+  it('同一个文件再按一次 ↵,焦点照样进查看器', async () => {
+    installPort()
+    renderFiles()
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+
+    const target = row(`${ROOT}/README.md`)
+    act(() => target.focus())
+    fireEvent.keyDown(target, { key: 'Enter' })
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
+    await waitFor(() =>
+      expect(document.activeElement?.closest('[data-focus-scope="viewer"]')).toBeTruthy(),
+    )
+
+    // 回到树上,对**同一个文件**再按一次 ↵。
+    act(() => row(`${ROOT}/README.md`).focus())
+    expect(document.activeElement?.closest('[data-focus-scope="files"]')).toBeTruthy()
+    fireEvent.keyDown(row(`${ROOT}/README.md`), { key: 'Enter' })
+    await waitFor(() =>
+      expect(document.activeElement?.closest('[data-focus-scope="viewer"]')).toBeTruthy(),
+    )
+  })
+
+  it('单击不送:焦点留在树这块面里(拍点 1 的 (a) 档)', async () => {
+    installPort()
+    renderFiles()
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    const target = row(`${ROOT}/README.md`)
+    act(() => target.focus())
+    fireEvent.click(target)
+    await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
+    expect(document.activeElement).toBe(target)
   })
 })

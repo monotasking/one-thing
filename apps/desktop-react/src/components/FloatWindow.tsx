@@ -150,7 +150,7 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
    * 就不需要 —— 点击自己会落焦。
    */
   return (
-    <FocusScope scope="float-layer">
+    <FocusScope scope="float-layer" owner={id}>
       {({ scopeProps }) => (
         <section
           {...scopeProps}

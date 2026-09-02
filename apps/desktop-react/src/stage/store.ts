@@ -107,7 +107,14 @@ function openMemoryFor(s: StageState & StageSettings, id: string) {
  */
 export const useStageStore = create<StageStore>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      /*
+       * ── 形态落定 → 焦点跟过去,**接线不在这里** ─────────────────────────
+       * 判据是前后两份 `placements` 的差,执行必须落在 React 提交之后(落定那一刻
+       * 宿主层还没挂上来)—— 所以它整件住在 `stage/focus-follow.ts`,由 `AppShell`
+       * 挂一次 `useStageFocusFollow()`。这里一个字都不必知道那件事。
+       */
+      return {
       ...T.initialStageState,
       ...T.initialStageSettings,
       byWorkspace: {},
@@ -164,7 +171,8 @@ export const useStageStore = create<StageStore>()(
             findItem(id)?.alwaysInDock === true,
           ),
         })),
-    }),
+      }
+    },
     {
       name: 'onething.stage',
       version: T.STAGE_PERSIST_VERSION,

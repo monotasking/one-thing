@@ -6,6 +6,7 @@ import { useT } from '../../i18n'
 import { useAsyncPending } from '../../data/kernel'
 import { CREATE_KEY, sessionMutation, useSessionsList, useSessionsSource } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
+import { useFocusScope } from '../../focus/useFocusScope'
 import { useExposeLive } from './use-live'
 import { columnsFromTemplate, filterGroups, isCollapsed } from '../transitions'
 import { Highlight } from './Highlight'
@@ -38,11 +39,14 @@ import s from './Overview.module.css'
  * 谁的渲染输出消费它,谁就跟着整棵重渲 —— Overview 消费它的话,439 张卡每次
  * 切换全量重造(08-30 真机画像里的 ~300ms 主项)。叶子翻转,卡树不动。
  */
-function AutoFocusSearch({ inputRef }: { inputRef: RefObject<HTMLInputElement | null> }) {
+function AutoFocusSearch() {
   const live = useExposeLive()
+  const { activate } = useFocusScope()
   useEffect(() => {
-    if (live) inputRef.current?.focus()
-  }, [live, inputRef])
+    // 摆出来那一刻把键盘交给这块面:落焦是 `activate()`,**焦点具体落在哪儿**
+    // 由这一格作用域的 `restingTarget` 答(还没交接给网格就是搜索条)。
+    if (live) activate('placement')
+  }, [live, activate])
   return null
 }
 
@@ -117,7 +121,7 @@ function useStuckHeads(scrollRef: RefObject<HTMLElement | null>, groupKey: strin
   }, [scrollRef, groupKey])
 }
 
-export function Overview() {
+export function Overview({ searchRef }: { searchRef: RefObject<HTMLInputElement | null> }) {
   const t = useT()
   /**
    * 只订阅画面真正消费的五个字段,**不整仓订阅**(08-30 真机画像的第二记):
@@ -149,12 +153,18 @@ export function Overview() {
    * 组头那颗 `+` 据它上 `aria-busy` 并挡住第二发(律③)。
    */
   const creating = useAsyncPending(sessionMutation, CREATE_KEY)
-  const inputRef = useRef<HTMLInputElement>(null)
+  /*
+   * 搜索条那一格 ref **由 `ExposeView` 持有**(R2):它是这块面那一格作用域的
+   * **落点**,而落点是作用域的声明,不是某个子组件的私产。这里只负责把它铺上去。
+   */
+  const inputRef = searchRef
   const innerRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const searching = query.trim().length > 0
 
   const groups = useMemo(() => filterGroups(allGroups, query), [allGroups, query])
+  /** 这块面住在总览那一格作用域里(`ExposeView` 铺的根),所以拿到的是它的句柄。 */
+  const { activate } = useFocusScope()
 
   useGridColumns(innerRef, setColumns, groups.length)
   /* 依赖是**组的身份表**而不是 groups.length:过滤把「三组」换成另外「三组」时
@@ -181,8 +191,17 @@ export function Overview() {
      */
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault()
+      /*
+       * 把键盘交给卡网格。**两句话是一件事**:`focusGrid()` 让键盘位显形
+       * (`focusVisible`),`activate()` 把焦点从搜索条挪到这块面的根上 ——
+       * 因为落点那一格正是按 `focusVisible` 分档的(见 ExposeView)。
+       *
+       * 从前这里是 `inputRef.current?.blur()`:焦点掉到 body。R1 之后孤儿焦点
+       * 会被收回落点,那一手会让焦点**弹回搜索条**,于是接着按 ↓ 又被「输入面里
+       * 的无修饰单键」那条规则让给输入框,网格纹丝不动。
+       */
       useExposeStore.getState().focusGrid()
-      inputRef.current?.blur()
+      activate('programmatic')
       return
     }
     if (e.key !== 'Enter') return
@@ -368,7 +387,7 @@ export function Overview() {
 
   return (
     <div className={s.overview}>
-      <AutoFocusSearch inputRef={inputRef} />
+      <AutoFocusSearch />
       <header className={s.top}>
         <div className={s.searchWrap}>
           <Search className={s.searchIcon} strokeWidth={1.75} aria-hidden="true" />

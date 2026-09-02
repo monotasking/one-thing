@@ -53,6 +53,7 @@ function scopeNode(
     inert: false,
     root: null,
     lastFocused: null,
+    lastActiveAt: 0,
     ...extra,
   }
 }
@@ -241,7 +242,88 @@ describe('routeEscape —— 由深到浅的候选序', () => {
   })
 })
 
-describe('returnTargetOf —— 卸载后焦点回哪儿(归还是结构性的)', () => {
+describe('returnTargetOf ① returnTo —— 兄弟之间的那一格(§4.5 R1 裁定,R2 落地)', () => {
+  /**
+   * 场景就是 gate 场景 12:焦点在输入面板 → ⌘P 开出检索面(**兄弟**,不是孩子)→
+   * Esc 关掉。父链只到得了 root,所以「回开它之前那个输入框」必须靠 `returnTo`。
+   *
+   * 反证:把 `returnTargetOf` 开头那一段 returnTo 判据删掉 → 这一条回的是 root。
+   */
+  it('兄弟归还:检索面关掉,焦点回它开出来之前那个输入框', () => {
+    const rootEl = el()
+    const composerRoot = el()
+    const box = document.createElement('textarea')
+    composerRoot.append(box)
+    const t = tree(
+      scopeNode('r', 'root', null, { root: rootEl }),
+      scopeNode('c', 'composer', 'r', { root: composerRoot, lastFocused: box }),
+      scopeNode('s', 'search', 'r', {
+        root: el(),
+        returnTo: { instanceId: 'c', element: box },
+      }),
+    )
+    expect(returnTargetOf(t, t.get('s'))).toEqual({ instanceId: 'c', element: box })
+  })
+
+  it('returnTo 那一格**已经卸载** → 退回父链(不去猜第二个候选)', () => {
+    const rootEl = el()
+    const gone = document.createElement('textarea')
+    document.body.append(gone)
+    const t = tree(
+      scopeNode('r', 'root', null, { root: rootEl }),
+      // 'c' 不在表里 = 它自己也卸载了。
+      scopeNode('s', 'search', 'r', {
+        root: el(),
+        returnTo: { instanceId: 'c', element: gone },
+      }),
+    )
+    expect(returnTargetOf(t, t.get('s'))).toEqual({ instanceId: 'r', element: rootEl })
+  })
+
+  it('returnTo 那一格**变 inert** → 退回父链(不往看不见的面上送焦点)', () => {
+    const rootEl = el()
+    const shelfRoot = el()
+    const box = document.createElement('input')
+    shelfRoot.append(box)
+    const t = tree(
+      scopeNode('r', 'root', null, { root: rootEl }),
+      scopeNode('c', 'composer', 'r', { root: shelfRoot, lastFocused: box, inert: true }),
+      scopeNode('s', 'search', 'r', {
+        root: el(),
+        returnTo: { instanceId: 'c', element: box },
+      }),
+    )
+    expect(returnTargetOf(t, t.get('s'))).toEqual({ instanceId: 'r', element: rootEl })
+  })
+
+  it('returnTo 记的**元素已经不连通** → 退回父链', () => {
+    const rootEl = el()
+    const detached = document.createElement('textarea') // 没进文档
+    const t = tree(
+      scopeNode('r', 'root', null, { root: rootEl }),
+      scopeNode('c', 'composer', 'r', { root: el() }),
+      scopeNode('s', 'search', 'r', {
+        root: el(),
+        returnTo: { instanceId: 'c', element: detached },
+      }),
+    )
+    expect(returnTargetOf(t, t.get('s'))).toEqual({ instanceId: 'r', element: rootEl })
+  })
+
+  it('没有 returnTo 的一格,走的仍然是原来那三格父链', () => {
+    const viewerRoot = el()
+    const row = document.createElement('button')
+    viewerRoot.append(row)
+    const t = tree(
+      scopeNode('r', 'root', null, { root: el() }),
+      scopeNode('v', 'viewer', 'r', { root: viewerRoot, lastFocused: row }),
+      scopeNode('j', 'jumpbar', 'v'),
+    )
+    expect(returnTargetOf(t, t.get('j'))).toEqual({ instanceId: 'v', element: row })
+  })
+})
+
+describe('returnTargetOf ② 父链 —— 卸载后焦点回哪儿(归还是结构性的)', () => {
   it('回父的 lastFocused:跳转条卸载,焦点回查看器上次那一行', () => {
     const viewerRoot = el()
     const row = document.createElement('button')

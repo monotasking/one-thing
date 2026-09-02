@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useState } from 'react'
 import { useInlineEdit } from '../inline-edit'
+import { focusTree } from '../../focus/registry'
+import { FocusDispatchHarness } from '../../test/focus-harness'
 
 /**
  * `useInlineEdit` 的门。五条性质各配一个反证:
@@ -103,5 +105,54 @@ describe('useInlineEdit:原地编辑那一格的手势', () => {
     fireEvent.change(el, { target: { value: 'sk-typed2' } })
     expect(el.selectionStart).toBe(9)
     expect(el.selectionEnd).toBe(9)
+  })
+})
+
+/* ── Esc 在树上那个座位(09-03 R2)────────────────────────────────────────── */
+
+describe('Esc 的座位:外面那层不许把这一下收走', () => {
+  afterEach(() => focusTree.reset())
+
+  /**
+   * 响应链的唯一派发器跑在 **window 捕获**相位,比这件的 `onKeyDown` 早 ——
+   * 不打招呼的话,原地编辑时按 Esc 会先被外面那层收走(改名改到一半,整块面板
+   * 关了)。所以这件登记了一个**瞬态 Esc 口**,派发器在问活动路径之前先问它。
+   *
+   * 反证:把 `registerTransient` 那一段删掉 → 下面第一条里 `outer` 会被叫到,
+   * 而那正是「改名改到一半面板关了」。
+   */
+  it('这一格拿着焦点时,Esc 归它 —— 外面那层一个字都收不到', () => {
+    const onCancel = vi.fn()
+    const outer = vi.fn(() => true)
+    render(
+      <>
+        <FocusDispatchHarness />
+        <Host onCommit={vi.fn()} onCancel={onCancel} />
+      </>,
+    )
+    focusTree.register('root', null, { onEscape: outer }).activate()
+    fireEvent.focus(probe())
+
+    fireEvent.keyDown(probe(), { key: 'Escape' })
+    expect(onCancel).toHaveBeenCalledTimes(1)
+    expect(outer).not.toHaveBeenCalled()
+  })
+
+  it('**没拿焦点**就不截胡:开在别处的原地编辑不该吃掉这一下 Esc', () => {
+    const onCancel = vi.fn()
+    const outer = vi.fn(() => true)
+    render(
+      <>
+        <FocusDispatchHarness />
+        <Host onCommit={vi.fn()} onCancel={onCancel} />
+      </>,
+    )
+    focusTree.register('root', null, { onEscape: outer }).activate()
+    fireEvent.focus(probe())
+    fireEvent.blur(probe())
+
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(outer).toHaveBeenCalledTimes(1)
+    expect(onCancel).not.toHaveBeenCalled()
   })
 })

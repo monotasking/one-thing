@@ -25,7 +25,7 @@ import type { ComposerInputHandle } from './components/ComposerInput'
 function fakeInput(): { ref: { current: ComposerInputHandle | null }; clears: () => number } {
   let clears = 0
   const handle: ComposerInputHandle = {
-    focus: () => {},
+    element: () => null,
     insert: () => {},
     text: () => '',
     clear: () => void (clears += 1),

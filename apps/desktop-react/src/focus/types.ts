@@ -78,6 +78,19 @@ export interface ScopedKey {
   action: string
 }
 
+/**
+ * 一个节点**上一任第一响应者**的座位(§4.5 的 R1 审查裁定,R2 落地)。
+ *
+ * 「关掉什么,焦点回打开它的地方」(§3.5 规则 5)与「路径缩回父」(§4.2 来源 3)
+ * 不是一回事:⌘P 开出来的检索面与它之前那块输入面板是**兄弟**,父链到不了。
+ * 所以树在第一响应者**换人**的那一刻,给新任记下上一任是谁、焦点当时落在哪个
+ * 元素上 —— 一格,不是一条链(§10「不做焦点历史」因此仍然成立)。
+ */
+export interface FocusReturnSeat {
+  instanceId: FocusInstanceId
+  element: HTMLElement
+}
+
 /** 一格**声明**。标签与局部键表按 id 记一次,树上有几份实例与它无关(§4.8)。 */
 export interface FocusScopeSpec {
   id: FocusScopeId
@@ -121,6 +134,30 @@ export interface ScopeNode {
   onEscape?: () => boolean
   /** 局部键的落点。键是 `ScopedKey.action`。 */
   keyHandlers?: Readonly<Record<string, (() => void) | undefined>>
+  /**
+   * 这一格**替谁摆着**(R2)。宿主层填它装着的那块面的 id(`stage/items` 的 item id)。
+   *
+   * 它存在的唯一理由是 §3.5 规则 3:「把面拼到舞台 / 钉到边 / 撕成浮窗,焦点跟着
+   * **那块面**走」—— 落定那一刻要激活的不是「某个 float-layer」,而是**装着这块面
+   * 的那一扇**。同一种 layer 同时有好几份(四条边的架子 / 几扇浮窗),按 scope id
+   * 选 MRU 会选错人,所以宿主把自己此刻的住户名报上来,`activateScope(scope,
+   * { owner })` 据此精确取那一格。内容面不填(它们一种只有一份可交互的)。
+   */
+  owner?: string
+  /**
+   * 上一任第一响应者。**换人**那一刻由 `activate` / `focusin` 写(§4.5 R1 裁定),
+   * 卸载 / 变 inert 时 `returnTargetOf` 第一个问它。
+   *
+   * 收回(I1)与 `pointerdown` 抢根这两种程序置焦**不算换人**,不写这一格 ——
+   * 免得把「开检索面之前在输入框」记成「在壳根」。
+   */
+  returnTo?: FocusReturnSeat
+  /**
+   * 最近一次在活动路径上的**序号**(单调递增的 tick,不是时间戳)。
+   * `activateScope` 的 MRU 读它:同一个 scope 有好几份可交互实例时,取最近用过的。
+   * 从没上过路径的是 0。用 tick 不用 `Date.now()` 是因为同一帧里的两次切换必须分得开。
+   */
+  lastActiveAt: number
 }
 
 /** 不可变的树。键是实例 id。 */

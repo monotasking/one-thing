@@ -3,22 +3,29 @@
  * **响应链的真机门**(09-02 R0 立,设计 `docs/design/react-shell-focus-2026-09.md` §8)。
  *
  * ── 它为什么在 R0 就先立、而且**先钉红** ───────────────────────────────────
- * R0 立的是树,零消费者;八套旧机制一格没动。所以这道门此刻量到的是**病本身**——
+ * R0 立的是树,零消费者;八套旧机制一格没动。所以那时这道门量到的是**病本身**——
  * 场景 1 就是用户报的那条(树行 Enter 开文件 → ⌘F 开检索条 → Esc 关掉 → ⌘F 再也
- * 开不出来)。先把红钉下来,R1 / R2 才有一个「改前 vs 改后」的机器读数;等改完
- * 再来写门,验的就只是「今天这样」而不是「治好了没有」。
+ * 开不出来)。先把红钉下来,R1 / R2 才有一个「改前 vs 改后」的机器读数。
  *
- * 所以本批跑它一律带 `--expect-red`:有红也退 0,红绿逐条打表进交卷报。
- * R3 那一批去掉这个档,门进 verify。
+ * **R2 起它不再带 `--expect-red` 跑**:内容面全部接树之后,十二个场景应当全绿。
+ * 那个档留着只为一件事 —— 下一次要先钉红再修的时候还用得上(有红也退 0,
+ * 红绿逐条打表)。R3 那一批把这道门收进 verify。
  *
- * ── 六个场景(设计 §8 逐条)────────────────────────────────────────────────
- *  1. 树行 ↵ 开文件 → ⌘F → Esc → ⌘F 再开。**用户报的那条,钉红**。
+ * ── 十二个场景(1-6 设计 §8 逐条;7-12 是 R2 那几条规则与拍点的读数)────────
+ *  1. 树行 ↵ 开文件 → ⌘F → Esc → ⌘F 再开。**用户报的那条**。
  *  2. ⌘P 开检索 → Esc → 焦点回到开它之前那块面里。
- *  3. 架子两 tab 切换 → 焦点落在新层内;旧层 `inert`。
+ *  3. 架子两 tab 切换 → 焦点落在新层内;旧层 `inert`(§11 拍点 2)。
  *  4. 对话框里开菜单 → Esc 只关菜单 → 再 Esc 关对话框 → 焦点回触发钮。
  *  5. 焦点在输入面板 + 旁边开着浮窗时按 Esc(§11 拍点 3:按树 = 输入面板先答)。
- *  6. 每个场景**每一步**之后断言 I1(`activeElement` 不是 body);整机扫 I4
- *     (每个 Placement 宿主层根元素带 `data-focus-scope`)。
+ *  6. 整机扫 I4(每个 Placement 宿主层根元素带 `data-focus-scope`)。
+ *  7. 壳一起来,第一响应者就是输入面板(§3.5 规则 1)。
+ *  8. 总览里进一条会话 → 焦点落进那条会话的输入框(§3.5 规则 2)。
+ *  9. 拼舞台 → 钉右边 → 撕浮窗,每步之后焦点都在那块面所在的那一层里(规则 3)。
+ * 10. 文件树单击开文件**焦点留树**,↵ 开文件**焦点进查看器**(§11 拍点 1 的 (a) 档)。
+ * 11. ⌘F 在浮窗里的查看器与架子 tab 里的查看器**各开一次**(多实例:路由看实例)。
+ * 12. ⌘P → Esc → 焦点回到开它之前**那个输入框**(§4.5 的 returnTo,兄弟之间的归还)。
+ *
+ *  每个场景**每一步**之后断言 I1(`activeElement` 不是 body)。
  *
  * ── 纪律(照 gate-a11y / gate-dock 的配方)────────────────────────────────
  *  · 真 Electron + 隔离 `--user-data-dir` + 一次性临时 store,跑完删干净;
@@ -120,6 +127,74 @@ async function clickSelector(page, selector) {
   if (!clicked) throw new Error(`点不到:${selector} 不在 DOM 里`)
 }
 
+/**
+ * 右键一块瓦,按菜单项的文案选一种打开方式。回 false = 菜单里没有那一项。
+ *
+ * 走的是**用户真走的那条路**(Dock 瓦的右键菜单 = 打开方式),不去改 store ——
+ * 形态落定之后焦点跟不跟得过去,正是这条路上的事(设计 §3.5 规则 3)。
+ */
+async function openAsFromDockMenu(page, tile, labelRe) {
+  const opened = await page.evaluate((id) => {
+    const el = document.querySelector(`[data-testid="dock-tile-${id}"]`)
+    if (!(el instanceof HTMLElement)) return false
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
+    return true
+  }, tile)
+  if (!opened) return false
+  await delay(350)
+  const picked = await page.evaluate((source) => {
+    const re = new RegExp(source)
+    const items = Array.from(document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]'))
+    const hit = items.find((el) => re.test(el.textContent ?? ''))
+    if (hit instanceof HTMLElement) {
+      hit.click()
+      return true
+    }
+    // 没命中就把菜单收掉,别让它挡住下一步。
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    return false
+  }, labelRe.source)
+  await delay(500)
+  return picked
+}
+
+/**
+ * 进那条夹具会话(总览里点那张卡)。**重载之后必须再走一遍**:文件树的根跟着
+ * 「当前会话的工作目录」走,而当前会话是内存态 —— 重载之后它是空的,树会退回
+ * 主目录,那时候树上有什么就不由这道门说了算了。
+ */
+async function enterGateSession(page, sessionId) {
+  // 重载之后先等那一次 RPC 往返:会话表是拉回来的,拉回来之前总览上没有卡。
+  await waitFor('渲染层完成一次 RPC 往返', async () => {
+    const value = await page.evaluate(() => window.__d0 ?? null)
+    return value && value.rpcOk ? value : undefined
+  })
+  const cardShown = () =>
+    page.evaluate((id) => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId)
+  /*
+   * 点瓦是**开关**语义:总览已经摆出来了就别再点一下(那一下会把它收回去)。
+   * 而「摆出来了没有」在重载之后有一格窗口期读不准(落点是记忆,面画出来要一帧,
+   * 卡还要等列表拉回来)—— 所以这里点完先等,等不到就**再点一次**:上一下
+   * 十有八九是把它收回去了。两下都等不到才是真的没有(那时超时,是夹具的问题)。
+   */
+  for (let attempt = 0; attempt < 2 && !(await cardShown()); attempt += 1) {
+    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+    await delay(700)
+  }
+  await waitFor('总览画出那张卡', cardShown)
+  await clickSelector(page, `[data-testid="card-${sessionId}"]`)
+  await delay(400)
+}
+
+/** 树上此刻有没有一行**文件**(目录行不算:目录的 ↵ 是展开,不是打开)。 */
+function hasFileRow(page) {
+  return page.evaluate(() =>
+    Boolean(
+      document.querySelector('[data-testid="files-tree"] [data-file-path][data-file-type="file"]'),
+    ),
+  )
+}
+
 /* ── 记分板:每个场景一格,逐条打表 ────────────────────────────────────── */
 
 const scenarios = []
@@ -187,6 +262,16 @@ async function main() {
     await mkdir(path.join(workspaceRoot, 'notes'), { recursive: true })
     await writeFile(path.join(workspaceRoot, 'notes', 'alpha.md'), '# alpha\n\nzorbulax\n')
     await writeFile(path.join(workspaceRoot, 'readme.md'), '# readme\n')
+    /*
+     * **一份按行寻址的内容**(场景 1 / 11 的 ⌘F 要它):跳转条只在
+     * `handler.lineCount` 答得出数时才开(图 / 渲染态 markdown / 诚实态都答不出,
+     * 那时 ⌘F 原样落给全局命令表 —— 那是产品行为,不是响应链的事)。
+     * 树上文件按名排序,`a.ts` 因此是第一个 `data-file-type="file"` 的行。
+     */
+    await writeFile(
+      path.join(workspaceRoot, 'a.ts'),
+      "export const gate = 'focus'\nconst second = 2\nconst third = 3\n",
+    )
 
     console.log('[1/3] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
@@ -231,16 +316,12 @@ async function main() {
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="dock-tile"]'))),
     )
     // 进那条会话(门要走用户真正走的那条路)。
-    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
-    await waitFor('总览画出那张卡', () =>
-      page.evaluate((id) => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId),
-    )
-    await clickSelector(page, `[data-testid="card-${sessionId}"]`)
+    await enterGateSession(page, sessionId)
 
-    console.log('[3/3] 六个场景')
+    console.log('[3/3] 十二个场景')
 
     /* ── 场景 1:⌘F → Esc → ⌘F(用户报的那条)──────────────────────────── */
-    scenario('树行 ↵ 开文件 → ⌘F → Esc → ⌘F 再开(**钉红**:改前开不出第二次)')
+    scenario('树行 ↵ 开文件 → ⌘F → Esc → ⌘F 再开(用户报的那条;R1 之前第二次开不出来)')
     await clickSelector(page, '[data-testid="dock-tile-files"]')
     await waitFor('文件树画出来', () =>
       page.evaluate(() =>
@@ -473,38 +554,12 @@ async function main() {
       `(此刻整机 ${[...new Set(await scopesNow())].join(' / ') || '—'})`,
     )
 
-    /** 右键一块瓦,按菜单项的文案选一种打开方式。回 false = 菜单里没有那一项。 */
-    async function openAs(tile, labelRe) {
-      const opened = await page.evaluate((id) => {
-        const el = document.querySelector(`[data-testid="dock-tile-${id}"]`)
-        if (!(el instanceof HTMLElement)) return false
-        el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
-        return true
-      }, tile)
-      if (!opened) return false
-      await delay(350)
-      const picked = await page.evaluate((source) => {
-        const re = new RegExp(source)
-        const items = Array.from(document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]'))
-        const hit = items.find((el) => re.test(el.textContent ?? ''))
-        if (hit instanceof HTMLElement) {
-          hit.click()
-          return true
-        }
-        // 没命中就把菜单收掉,别让它挡住下一步。
-        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
-        return false
-      }, labelRe.source)
-      await delay(500)
-      return picked
-    }
-
     for (const [key, labelRe] of [
       ['float-layer', /浮窗|Float/],
       ['stage-layer', /弹出|Popup/],
       ['cover-layer', /盖|Cover/],
     ]) {
-      const picked = await openAs('files', labelRe)
+      const picked = await openAsFromDockMenu(page, 'files', labelRe)
       if (!picked) {
         skip(`${key} 的根带 data-focus-scope`, `Dock 菜单里没有 ${labelRe} 那一项`)
         continue
@@ -516,6 +571,254 @@ async function main() {
 
     // shelf-layer 那一格在场景 3 里验(层是按需挂载的,只能在它在场的那一刻问)。
     console.log('  · shelf-layer:见场景 3 最后一条')
+
+
+    /* ── 场景 7:启动第一响应者 ──────────────────────────────────────── */
+    scenario('壳一起来,第一响应者就是输入面板(§3.5 规则 1)')
+    /*
+     * 整页重载一次:这一条问的是**刚起来那一刻**的事实,而前面六个场景已经把
+     * 焦点摆到别处去了。重载之后照样要等那一次 RPC 往返(与开场同一条等待)。
+     */
+    await page.goto(page.url().split('?')[0])
+    await waitFor('壳回来了', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+    )
+    await delay(400)
+    const boot = await page.evaluate(() => ({
+      testid: document.activeElement?.getAttribute?.('data-testid') ?? null,
+      scope:
+        document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+        ?? null,
+      first: window.__focus?.dump?.().path.at(-1) ?? null,
+    }))
+    assert(
+      boot.scope === 'composer',
+      '第一响应者 = 输入面板',
+      `(焦点此刻在 [${boot.testid ?? '—'}],作用域 ${boot.scope ?? '—'};树说 ${boot.first ?? '—'})`,
+    )
+    await assertNoOrphan(page, '壳刚起来')
+
+    /* ── 场景 8:Expose 进会话 → 焦点在输入框 ────────────────────────── */
+    scenario('总览里进一条会话 → 焦点落在那条会话的输入框里(§3.5 规则 2)')
+    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+    await waitFor('总览画出那张卡', () =>
+      page.evaluate((id) => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId),
+    )
+    await assertNoOrphan(page, '开总览之后')
+    await clickSelector(page, `[data-testid="card-${sessionId}"]`)
+    await delay(500)
+    const entered = await page.evaluate(() => ({
+      testid: document.activeElement?.getAttribute?.('data-testid') ?? null,
+      scope:
+        document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+        ?? null,
+    }))
+    assert(
+      entered.scope === 'composer',
+      '进会话之后焦点在输入面板里',
+      `(焦点此刻在 [${entered.testid ?? '—'}],作用域 ${entered.scope ?? '—'})`,
+    )
+    await assertNoOrphan(page, '进会话之后')
+
+    /* ── 场景 9:拼舞台 → 钉右边 → 撕浮窗,每步焦点跟着那块面 ────────── */
+    scenario('形态变化三步:拼舞台 → 钉右边 → 撕成浮窗,每步之后焦点都在那块面里(§3.5 规则 3)')
+    /**
+     * 焦点此刻落在哪一层里 —— 按**宿主层的根**问(`data-focus-scope` 的四种 layer),
+     * 而不是问最内层那一格:规则 3 说的是「跟着那块面走」,那块面装在哪一层里
+     * 才是这一条要量的东西。
+     */
+    const layerNow = () =>
+      page.evaluate(() => {
+        const el = document.activeElement
+        const layer = el?.closest?.(
+          '[data-focus-scope="stage-layer"],[data-focus-scope="float-layer"],'
+            + '[data-focus-scope="shelf-layer"],[data-focus-scope="cover-layer"]',
+        )
+        return {
+          layer: layer?.getAttribute('data-focus-scope') ?? null,
+          panel: layer?.closest?.('[data-panel-layer]')?.getAttribute('data-panel-layer') ?? null,
+          scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+        }
+      })
+    /*
+     * ── 先把它**开出来**,再量挪动 ──────────────────────────────────────────
+     * 「从 Dock 开一块面」与「把一块开着的面挪个地方」是两件事,规则也不同:
+     * 前者(dock → 任何形态)焦点**不跟**(指针点瓦之后焦点留在瓦上,是今天的
+     * 行为),后者才是规则 3 说的「焦点跟着那块面走」。所以这一步只做准备,
+     * 不断言 —— 三条读数量的是它开出来**之后**的三次挪动。
+     */
+    const prepared = await openAsFromDockMenu(page, 'files', /浮窗|Float/)
+    if (!prepared) skip('准备:先把文件树开成浮窗', 'Dock 菜单里没有「浮窗 / Float」那一项')
+    // 拼上舞台(菜单那条路 = 用户真走的路)。
+    const staged = await openAsFromDockMenu(page, 'files', /弹出|Popup/)
+    if (!staged) {
+      skip('拼舞台之后焦点在舞台那一层里', 'Dock 菜单里没有「弹出 / Popup」那一项')
+    } else {
+      const at = await layerNow()
+      assert(at.layer === 'stage-layer', '拼舞台之后焦点在舞台那一层里', `(读数 ${JSON.stringify(at)})`)
+      await assertNoOrphan(page, '拼舞台之后')
+    }
+    const pinned = await openAsFromDockMenu(page, 'files', /右侧栏|Right/)
+    if (!pinned) {
+      skip('钉右边之后焦点在那条架子的层里', 'Dock 菜单里没有「右侧栏 / Right」那一项')
+    } else {
+      const at = await layerNow()
+      assert(
+        at.layer === 'shelf-layer' && at.panel === 'files',
+        '钉右边之后焦点在**装着这块面**的那一层里',
+        `(读数 ${JSON.stringify(at)})`,
+      )
+      await assertNoOrphan(page, '钉右边之后')
+    }
+    const floated = await openAsFromDockMenu(page, 'files', /浮窗|Float/)
+    if (!floated) {
+      skip('撕成浮窗之后焦点在那扇窗里', 'Dock 菜单里没有「浮窗 / Float」那一项')
+    } else {
+      const at = await layerNow()
+      assert(at.layer === 'float-layer', '撕成浮窗之后焦点在那扇窗里', `(读数 ${JSON.stringify(at)})`)
+      await assertNoOrphan(page, '撕成浮窗之后')
+    }
+
+    /* ── 场景 10:树行单击不抢焦点,↵ 抢 ─────────────────────────────── */
+    scenario('文件树:单击开文件但焦点留树,↵ 开文件并把焦点送进查看器(§11 拍点 1)')
+    await page.goto(page.url().split('?')[0])
+    await waitFor('壳回来了', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+    )
+    await enterGateSession(page, sessionId)
+    /*
+     * 前面几个场景把 files 那块瓦挪去了别的形态,而落点是**记忆**(存 localStorage,
+     * 重载之后还在)—— 所以这里不能想当然地点一下瓦就以为树会出来:那一下多半是
+     * 「收回去」。走菜单点名回「面板内 / Dock」那一档,状态从此确定。
+     */
+    if (!(await hasFileRow(page))) {
+      await clickSelector(page, '[data-testid="dock-tile-files"]')
+      await delay(500)
+    }
+    await waitFor('文件树画出一行**文件**', () => hasFileRow(page))
+    const rowSelector = '[data-testid="files-tree"] [data-file-path][data-file-type="file"]'
+    /*
+     * 这一条**必须用真的鼠标点**(playwright 的 click → CDP `Input.dispatchMouseEvent`,
+     * 只进目标窗口、不动真光标)。别处那只 `clickSelector` 走的是页面里的
+     * `el.click()` —— 它派的是一个合成事件,**不落焦**;而这一条量的正是
+     * 「点完之后焦点在哪儿」,拿合成点击去量等于量了个寂寞(第一版就栽在这儿:
+     * 读数说焦点还在输入面板里,而那是探针自己没落焦)。
+     */
+    await page.click(rowSelector)
+    await delay(600)
+    const afterClick = await page.evaluate((css) => {
+      const row = document.querySelector(css)
+      return {
+        opened: Boolean(document.querySelector('[data-testid="file-viewer"]')),
+        onRow: document.activeElement === row,
+        scope:
+          document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+          ?? null,
+      }
+    }, rowSelector)
+    assert(afterClick.opened, '单击开出了查看器')
+    assert(
+      afterClick.scope === 'files',
+      '单击之后焦点**留在树这块面里**(拍点 1 的 (a) 档)',
+      `(在行上:${afterClick.onRow};作用域 ${afterClick.scope ?? '—'})`,
+    )
+    await assertNoOrphan(page, '单击开文件之后')
+
+    // ↵:先把焦点摆回那一行(真机上单击本来就落在它身上),再按。
+    await page.evaluate((css) => {
+      const row = document.querySelector(css)
+      if (row instanceof HTMLElement) row.focus()
+    }, rowSelector)
+    await page.keyboard.press('Enter')
+    await delay(600)
+    const afterEnter = await page.evaluate(() => ({
+      scope:
+        document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+        ?? null,
+      inViewer: Boolean(document.activeElement?.closest?.('[data-testid="file-viewer"]')),
+    }))
+    assert(
+      afterEnter.inViewer,
+      '↵ 之后焦点**进了查看器**',
+      `(作用域 ${afterEnter.scope ?? '—'})`,
+    )
+    await assertNoOrphan(page, '↵ 开文件之后')
+
+    /* ── 场景 11:多实例 —— 浮窗里的查看器与架子里的查看器各开一次 ⌘F ── */
+    scenario('⌘F 在**浮窗里的查看器**与**架子 tab 里的查看器**各开一次(多实例)')
+    for (const [labelRe, where] of [
+      [/浮窗|Float/, '浮窗'],
+      [/右侧栏|Right/, '架子'],
+    ]) {
+      const moved = await openAsFromDockMenu(page, 'viewer', labelRe)
+      if (!moved) {
+        skip(`⌘F 在${where}里的查看器上开得出检索条`, `Dock 菜单里没有 ${labelRe} 那一项`)
+        continue
+      }
+      await delay(400)
+      const there = await page.evaluate(() =>
+        Boolean(document.querySelector('[data-testid="file-viewer"]')),
+      )
+      if (!there) {
+        skip(`⌘F 在${where}里的查看器上开得出检索条`, '那一档里查看器没画出来')
+        continue
+      }
+      // 焦点摆进那一份查看器(真机上把它摆过去时宿主已经送过一次,这里补稳)。
+      await page.evaluate(() => {
+        const viewer = document.querySelector('[data-focus-scope="viewer"]')
+        if (viewer instanceof HTMLElement) viewer.focus()
+      })
+      await page.keyboard.press('Meta+f')
+      await delay(300)
+      const opened = await page.evaluate(() =>
+        Boolean(document.querySelector('[data-testid="viewer-jump-bar"]')),
+      )
+      assert(opened, `⌘F 在${where}里的那一份查看器上开得出检索条`)
+      if (opened) {
+        await page.keyboard.press('Escape')
+        await delay(250)
+        await assertNoOrphan(page, `${where}:Esc 关掉检索条之后`)
+      }
+    }
+
+    /* ── 场景 12:⌘P → Esc → 回到开它之前那个输入框(returnTo)────────── */
+    scenario('⌘P → Esc → 焦点回到**开它之前那个元素**(§4.5 的 returnTo)')
+    await page.goto(page.url().split('?')[0])
+    await waitFor('壳回来了', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+    )
+    await enterGateSession(page, sessionId)
+    await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="composer-input"]')
+      if (box instanceof HTMLElement) box.focus()
+    })
+    const beforePalette = await page.evaluate(
+      () => document.activeElement?.getAttribute?.('data-testid') ?? null,
+    )
+    assert(beforePalette === 'composer-input', '开检索面之前焦点在输入框里(前提)')
+    await page.keyboard.press('Meta+p')
+    await delay(400)
+    assert(
+      await page.evaluate(() =>
+        Boolean(document.querySelector('[data-testid="search-panel"], [data-panel-layer="search"]')),
+      ),
+      '⌘P 把检索面开出来了',
+    )
+    await assertNoOrphan(page, '⌘P 开面之后')
+    await page.keyboard.press('Escape')
+    await delay(500)
+    const backTo = await page.evaluate(() => ({
+      testid: document.activeElement?.getAttribute?.('data-testid') ?? null,
+      scope:
+        document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+        ?? null,
+    }))
+    assert(
+      backTo.testid === 'composer-input',
+      '**焦点回到了开它之前那个输入框**(兄弟之间的归还)',
+      `(此刻在 [${backTo.testid ?? '—'}],作用域 ${backTo.scope ?? '—'})`,
+    )
+    await assertNoOrphan(page, 'Esc 收检索面之后')
 
     await app.close()
     app = undefined
@@ -554,7 +857,7 @@ async function main() {
   console.log(
     red
       ? '\n[focus-gate] 带 --expect-red:上面的红是**本批预期的读数**,不判失败'
-      : '\n[focus-gate] ok —— 六个场景全绿',
+      : `\n[focus-gate] ok —— ${scenarios.length} 个场景全绿`,
   )
 }
 

@@ -11,7 +11,7 @@ import type { ViewerFile, ViewerView } from '../../data/viewer-source'
  *
  *   registerViewer     型处理器:match → Body(+ 可选 Toolbar / status)
  *   registerNavigator  ⌘L 跳转条的候选提供者(**跳转只有这一个入口**)
- *   registerKeymap     键位档:把手势映射到**已注册的能力**,不新增能力
+ *   registerKeymap     键位档:模式标 / 命令行 / 状态栏那个开关(键位路由归响应链)
  *
  * 三张表共用同一套规矩(与块注册表 `content/blocks/registry.ts` 逐条同款):
  *  1. **重复注册 = 抛错**,不静默覆盖 —— 静默后胜会让「我改了怎么没生效」变成
@@ -234,25 +234,24 @@ export function navigatorFor(query: string): ViewerNavigator | undefined {
 /* ── ③ 键位档 ──────────────────────────────────────────────────────────── */
 
 /**
- * 键位能触发的**全部**能力。这张联合是封闭的,而且刻意与查看器已有的动作一一对应
- * ——「键位只把手势映射到已注册能力,**不新增能力**」是定稿的原话:一个键位档
- * 不该能做出一件用鼠标做不到的事。
+ * ── 键位**路由**已经不在这张表里了(09-03 R2)────────────────────────────
+ * 从前这里还有一格 `bindings: Record<string, ViewerCommand>`(`mod+s` 那种写法)
+ * 与一只 `commandFor` 纯函数,查看器把它挂在自己根元素上当面域局部键。R2 把
+ * 面域局部键整族迁进了响应链:声明的正本是 `focus/scopes.ts` 的
+ * `FOCUS_SCOPES.viewer.keys`,落点是 `FileViewer` 交给 `<FocusScope>` 的
+ * `keyHandlers`。留着 `bindings` 就是同一份声明的第二个产地 —— 而两个产地
+ * 迟早分叉,分叉那天没有一条测试会红,只有用户按下去发现响的是上一版。
+ *
+ * **键位档本身留着**:它管的是模式标(Vim 的 NORMAL / INSERT)、命令行那一条、
+ * 与状态栏上那个开关 —— 那几件与「哪个键做哪件事」不是一回事。
+ * 留账:vim 档将来要改键位路由时,改的是 `FOCUS_SCOPES.viewer.keys` 怎么按档
+ * 取值,不是把 bindings 加回来(那是拍板件,不该被顺手改动替用户回答)。
  */
-export type ViewerCommand = 'save' | 'jump' | 'find' | 'toggleWrap' | 'toggleEdit' | 'close'
-
-/**
- * `find`(⌘F)与 `jump`(⌘L)不是两条路,是**同一条路的两个入口**:
- * 两者都开那一条跳转条,差别只在 ⌘F 把 `/` 那个前缀先替用户打上 ——
- * 于是「检索」在这台上没有第二套 UI、第二套键、第二处高亮。
- */
-
 export interface ViewerKeymap {
   id: string
   nameKey: MessageKey
   /** 模式标(Vim 档才有)。空 = 无模式。 */
   modes?: readonly string[]
-  /** 组合键 → 能力。键的写法:`mod+s`(mod = ⌘ / Ctrl)。 */
-  bindings: Record<string, ViewerCommand>
   /**
    * 底部那条 `:` 命令行(Vim 档)。**F1 只立表形与状态栏开关位**,
    * hjkl / gg / G / :42 / `/搜索` 的绑定实现留后批 —— 留账写在 keymaps.ts。
@@ -277,21 +276,4 @@ export function listKeymaps(): readonly ViewerKeymap[] {
 
 export function keymapById(id: string): ViewerKeymap | undefined {
   return keymaps.find((k) => k.id === id)
-}
-
-/**
- * 一次按键 → 一件能力(或什么都不是)。**纯函数**,所以键位表逐条钉得死。
- * 组合写法与 `keymap/transitions.ts` 的出厂表同一口径:mod = ⌘(mac)/ Ctrl。
- */
-export function commandFor(
-  keymap: ViewerKeymap | undefined,
-  event: { key: string; metaKey: boolean; ctrlKey: boolean; shiftKey: boolean; altKey: boolean },
-): ViewerCommand | undefined {
-  if (!keymap) return undefined
-  const parts: string[] = []
-  if (event.metaKey || event.ctrlKey) parts.push('mod')
-  if (event.shiftKey) parts.push('shift')
-  if (event.altKey) parts.push('alt')
-  parts.push(event.key.toLowerCase())
-  return keymap.bindings[parts.join('+')]
 }

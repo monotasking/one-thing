@@ -12,6 +12,7 @@ import { useWorkspacePalette } from '../workspace/components/palette-hub'
 import { currentWorkspace } from '../workspace/projection'
 import { useWorkspaceViews } from '../workspace/store'
 import sw from '../workspace/swatch.module.css'
+import { FocusScope } from '../focus/FocusScope'
 import { DockTile } from './DockTile'
 import { useDockLens } from './useDockLens'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
@@ -152,140 +153,159 @@ export function Dock() {
     enabled: dockMagnify,
   })
 
+  /*
+   * ── Dock 是响应链上的一格 `region`(09-03 R2)──────────────────────────────
+   * 它**不声明落点**:条上的瓦本来就是按钮,焦点落在瓦上(浏览器自己干),
+   * 落在条这块「面」上没有意义 —— 所以走缺省档(根)。它也没有局部键、不认 Esc。
+   *
+   * 那它为什么要接树:①有了它,「焦点此刻在 Dock 上」是一个说得出名字的答案,
+   * 于是从瓦上开出来的浮层(右键菜单)在树上是它的孩子,一下 Esc 先关菜单;
+   * ②`stripRef` 与树登记**共用同一只 ref 回调**(`<FocusScope rootRef>`),
+   * 磁性放大量锚点那一路一个字没动。
+   *
+   * **指针点瓦不 `activate()`**(§7 宿主的义务那一条:指针操作不调,点击自己
+   * 落焦)。「从 Dock 开一块面,焦点进不进那块面」在键盘那条路上由
+   * `useKeymapCommandRunner` 答(规则 2),鼠标那条路维持今天 —— 焦点留在瓦上,
+   * 连着按两下同一块瓦仍然是「开、关」,而不是「开了之后按键落在别处」。
+   */
   return (
-    <div
-      ref={stripRef}
-      /* 条本身的身份标记:同一块内容在舞台/浮窗里也叫同一个名字,
-       * 所以「这一块是坞里的那一块」得有个不靠文案的说法。 */
-      data-dock="strip"
-      className={[
-        s.strip,
-        SIZE_CLASS[dockSize],
-        MAGNIFY_CLASS[dockMagnifyLevel],
-        axis === 'y' && s.vertical,
-        ANCHOR_START[dockEdge] && s.anchorStart,
-      ]
-        .filter(Boolean)
-        .join(' ')}
-      /* 这条 move 今天只有一个消费者:磁性放大读它算系数
-       * (09-02 之前还有第二个 —— 预览泡的瞄准区,随泡一起退役)。 */
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-    >
-      {/* 底板。它是条的一个**子元素**而不是条自己的背景:放大时底板要朝主轴两头
-        * 长出去,而条的盒子必须一动不动(瓦的放大走 transform,条的布局宽度是
-        * 那 13 块瓦的静止宽度之和,任何一帧都不该重排)。长出多少由
-        * --dock-grow-before / -after 两格给,乘上 --dock-amount 那格开合标量。 */}
-      <span className={s.bg} data-dock="plate" aria-hidden="true" />
-      {tiles.map((tile, i) => {
-        const node =
-          tile.kind === 'plus' ? (
-            <DockTile
-              key="__plus"
-              title={t('dock.add')}
-              plus
-              labelSide={LABEL_SIDE[dockEdge]}
-            />
-          ) : (
-            <DockTile
-              key={tile.item.id}
-              title={t(tile.item.titleKey)}
-              testId={`dock-tile-${tile.item.id}`}
-              icon={tile.item.icon}
-              badge={tile.item.badge}
-              dot={tile.item.id === NOTIFICATIONS_ITEM_ID && unread > 0}
-              /* 工作区那块瓦画的是**当前工作区的色底 + 这块瓦自己的图标**。
-               * 色承载「我在哪」(它同时就是那条常驻指示),形承载「这是什么」——
-               * 两件事各归各的,一个都不少。
-               *
-               * 08-31 用户否决了原来的「色底 + 首字母」:拿字当图标与这套风格不符
-               * (整条 Dock 上只有它一块是字,扫一眼就跳出来,而它并不比别人重要)。
-               * 首字母没有退役,只是退回它本来该在的地方 —— 右键快切表与总览卡上
-               * 的小色点,那两处它是**列表里的区分记号**而不是一块瓦的脸。
-               *
-               * 列表还没读到(或者读不到)时 workspace 是 undefined,瓦退回没有色底
-               * 的普通图标:那时候确实没有「我在哪」可画,不该拿默认色冒充。 */
-              face={
-                tile.item.id === WORKSPACE_ITEM_ID && workspace
-                  ? { className: sw[workspace.swatch] }
-                  : undefined
-              }
-              running={dockRunningDot && tile.item.id in placements}
-              labelSide={LABEL_SIDE[dockEdge]}
-              onClick={() => click(tile.item.id)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                setMenu({
-                  item: tile.item,
-                  title: t(tile.item.titleKey),
-                  x: e.clientX,
-                  y: e.clientY,
-                })
-              }}
-            />
-          )
-        if (i === sepAfter) {
-          return (
-            <Fragment key={`group-${i}`}>
-              {node}
-              <span className={s.sep} aria-hidden="true" />
-            </Fragment>
-          )
-        }
-        return node
-      })}
-
-      {menu && (
-        <Menu x={menu.x} y={menu.y} onClose={closeMenu} label={menu.title}>
-          {/*
-            工作区那块瓦的右键 = **快切表**(08-31 追补裁定)。它借的是这条既有的
-            右键菜单机制,不是另一个浮层 —— 「零新原语」说的就是这件事。
-            这块瓦因此**不显示那排落点单选**:一条菜单短到一眼能读完是它的目的
-            (与文件头那段同一条判据),而落点仍然改得了 —— 浮窗头 / 舞台头上
-            那个「钉到边」菜单是同一件事的另一处入口。
-          */}
-          {menu.item.id === WORKSPACE_ITEM_ID ? (
-            <WorkspaceMenuRows
-              onOpenOverview={() => click(WORKSPACE_ITEM_ID)}
-              /* 新建的落点是命令面板:名字在那里输,↵ 落定。
-               * 不给菜单再挂一个只为收一个名字的对话框 —— 那就是新原语了。 */
-              onCreate={() => openWorkspacePalette(true)}
-              onDone={closeMenu}
-            />
-          ) : (
-            <>
-              {/* 每块瓦都有落点可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}
-              <MenuSection>{t('dock.openWith')}</MenuSection>
-              {OPEN_PLACEMENT_CHOICES.map((c, i) => (
-                <Fragment key={c.key}>
-                  {i === PIN_FROM && <MenuSection>{t('stage.pinToEdge')}</MenuSection>}
-                  <MenuItem
-                    checked={memoryIsAt(memory[menu.item.id], c.placement)}
-                    onClick={() => {
-                      // 既执行也写记忆:openAs 落定的那一刻自己就记下了,这里不必再记一次。
-                      openAs(menu.item.id, c.placement)
-                      closeMenu()
-                    }}
-                  >
-                    {t(c.labelKey)}
-                  </MenuItem>
+    <FocusScope scope="dock" rootRef={stripRef}>
+      {({ scopeProps }) => (
+        <div
+          /* 条本身的身份标记:同一块内容在舞台/浮窗里也叫同一个名字,
+           * 所以「这一块是坞里的那一块」得有个不靠文案的说法。 */
+          {...scopeProps}
+          data-dock="strip"
+          className={[
+            s.strip,
+            SIZE_CLASS[dockSize],
+            MAGNIFY_CLASS[dockMagnifyLevel],
+            axis === 'y' && s.vertical,
+            ANCHOR_START[dockEdge] && s.anchorStart,
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          /* 这条 move 今天只有一个消费者:磁性放大读它算系数
+           * (09-02 之前还有第二个 —— 预览泡的瞄准区,随泡一起退役)。 */
+          onMouseMove={onMouseMove}
+          onMouseLeave={onMouseLeave}
+        >
+          {/* 底板。它是条的一个**子元素**而不是条自己的背景:放大时底板要朝主轴两头
+            * 长出去,而条的盒子必须一动不动(瓦的放大走 transform,条的布局宽度是
+            * 那 13 块瓦的静止宽度之和,任何一帧都不该重排)。长出多少由
+            * --dock-grow-before / -after 两格给,乘上 --dock-amount 那格开合标量。 */}
+          <span className={s.bg} data-dock="plate" aria-hidden="true" />
+          {tiles.map((tile, i) => {
+            const node =
+              tile.kind === 'plus' ? (
+                <DockTile
+                  key="__plus"
+                  title={t('dock.add')}
+                  plus
+                  labelSide={LABEL_SIDE[dockEdge]}
+                />
+              ) : (
+                <DockTile
+                  key={tile.item.id}
+                  title={t(tile.item.titleKey)}
+                  testId={`dock-tile-${tile.item.id}`}
+                  icon={tile.item.icon}
+                  badge={tile.item.badge}
+                  dot={tile.item.id === NOTIFICATIONS_ITEM_ID && unread > 0}
+                  /* 工作区那块瓦画的是**当前工作区的色底 + 这块瓦自己的图标**。
+                   * 色承载「我在哪」(它同时就是那条常驻指示),形承载「这是什么」——
+                   * 两件事各归各的,一个都不少。
+                   *
+                   * 08-31 用户否决了原来的「色底 + 首字母」:拿字当图标与这套风格不符
+                   * (整条 Dock 上只有它一块是字,扫一眼就跳出来,而它并不比别人重要)。
+                   * 首字母没有退役,只是退回它本来该在的地方 —— 右键快切表与总览卡上
+                   * 的小色点,那两处它是**列表里的区分记号**而不是一块瓦的脸。
+                   *
+                   * 列表还没读到(或者读不到)时 workspace 是 undefined,瓦退回没有色底
+                   * 的普通图标:那时候确实没有「我在哪」可画,不该拿默认色冒充。 */
+                  face={
+                    tile.item.id === WORKSPACE_ITEM_ID && workspace
+                      ? { className: sw[workspace.swatch] }
+                      : undefined
+                  }
+                  running={dockRunningDot && tile.item.id in placements}
+                  labelSide={LABEL_SIDE[dockEdge]}
+                  onClick={() => click(tile.item.id)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setMenu({
+                      item: tile.item,
+                      title: t(tile.item.titleKey),
+                      x: e.clientX,
+                      y: e.clientY,
+                    })
+                  }}
+                />
+              )
+            if (i === sepAfter) {
+              return (
+                <Fragment key={`group-${i}`}>
+                  {node}
+                  <span className={s.sep} aria-hidden="true" />
                 </Fragment>
-              ))}
-            </>
-          )}
-          <MenuSeparator />
+              )
+            }
+            return node
+          })}
 
-          <MenuItem
-            onClick={() => {
-              // 设置页按它自己的打开方式开 —— 它也是一块普通的瓦,不该有特权。
-              click('settings')
-              closeMenu()
-            }}
-          >
-            {t('dock.settings')}
-          </MenuItem>
-        </Menu>
+          {menu && (
+            <Menu x={menu.x} y={menu.y} onClose={closeMenu} label={menu.title}>
+              {/*
+                工作区那块瓦的右键 = **快切表**(08-31 追补裁定)。它借的是这条既有的
+                右键菜单机制,不是另一个浮层 —— 「零新原语」说的就是这件事。
+                这块瓦因此**不显示那排落点单选**:一条菜单短到一眼能读完是它的目的
+                (与文件头那段同一条判据),而落点仍然改得了 —— 浮窗头 / 舞台头上
+                那个「钉到边」菜单是同一件事的另一处入口。
+              */}
+              {menu.item.id === WORKSPACE_ITEM_ID ? (
+                <WorkspaceMenuRows
+                  onOpenOverview={() => click(WORKSPACE_ITEM_ID)}
+                  /* 新建的落点是命令面板:名字在那里输,↵ 落定。
+                   * 不给菜单再挂一个只为收一个名字的对话框 —— 那就是新原语了。 */
+                  onCreate={() => openWorkspacePalette(true)}
+                  onDone={closeMenu}
+                />
+              ) : (
+                <>
+                  {/* 每块瓦都有落点可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}
+                  <MenuSection>{t('dock.openWith')}</MenuSection>
+                  {OPEN_PLACEMENT_CHOICES.map((c, i) => (
+                    <Fragment key={c.key}>
+                      {i === PIN_FROM && <MenuSection>{t('stage.pinToEdge')}</MenuSection>}
+                      <MenuItem
+                        checked={memoryIsAt(memory[menu.item.id], c.placement)}
+                        onClick={() => {
+                          // 既执行也写记忆:openAs 落定的那一刻自己就记下了,这里不必再记一次。
+                          openAs(menu.item.id, c.placement)
+                          closeMenu()
+                        }}
+                      >
+                        {t(c.labelKey)}
+                      </MenuItem>
+                    </Fragment>
+                  ))}
+                </>
+              )}
+              <MenuSeparator />
+
+              <MenuItem
+                onClick={() => {
+                  // 设置页按它自己的打开方式开 —— 它也是一块普通的瓦,不该有特权。
+                  click('settings')
+                  closeMenu()
+                }}
+              >
+                {t('dock.settings')}
+              </MenuItem>
+            </Menu>
+          )}
+        </div>
       )}
-    </div>
+    </FocusScope>
   )
 }

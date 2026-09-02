@@ -16,6 +16,7 @@ import type {
 import { useReadingStore, effectiveMotionTier } from '../reading/store'
 import { useSystemReducedMotion } from '../reading/useSystemReducedMotion'
 import type { MotionTier, ReadingColumn, ReadingDensity, ReadingFontSize } from '../reading/types'
+import { FocusScope } from '../focus/FocusScope'
 import { KeymapSettings } from './KeymapSettings'
 import s from './mocks.module.css'
 
@@ -158,182 +159,194 @@ export function SettingsMock() {
     table: Array<{ value: T; labelKey: MessageKey }>,
   ): Array<SegmentedOption<T>> => table.map((o) => ({ value: o.value, label: t(o.labelKey) }))
 
+  /*
+   * ── 设置面是响应链上的一格 `region`(09-03 R2)────────────────────────────
+   * 与消息流同一条:它没有局部键、不认 Esc,接树买到的是「焦点此刻在哪块面」
+   * 有一个说得出名字的答案 —— 尤其它里面装着**录制态那个独占口**
+   * (`KeymapSettings`:录键时要吃所有键),而独占与作用域是两回事:
+   * 独占口向注册表申请,作用域回答「这块面是不是当前」。两者都在树上,
+   * 于是「录制的时候 ⌘P 不会真的把检索面弹出来」不再取决于谁的监听先挂。
+   */
   return (
-    <div className={s.demo}>
-      <div className={s.form}>
-        <Section titleKey="settings.sectionGeneral">
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('settings.language')}</div>
-            <Segmented
-              options={opts(LOCALE_OPTIONS)}
-              value={locale}
-              onChange={setLocale}
-              label={t('settings.language')}
-            />
-          </div>
+    <FocusScope scope="settings">
+      {({ scopeProps }) => (
+        <div {...scopeProps} className={s.demo}>
+          <div className={s.form}>
+            <Section titleKey="settings.sectionGeneral">
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('settings.language')}</div>
+                <Segmented
+                  options={opts(LOCALE_OPTIONS)}
+                  value={locale}
+                  onChange={setLocale}
+                  label={t('settings.language')}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('settings.workdir')}</div>
-            <div className={s.stub} />
-          </div>
-        </Section>
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('settings.workdir')}</div>
+                <div className={s.stub} />
+              </div>
+            </Section>
 
-        {/*
-          外观·阅读 —— 四根**正交**的轴,读者自己调读物长什么样。
-          分区判据照旧是「用户想改的是哪件事」:这四件都是「这段字读起来怎么样」,
-          所以它们归一区;它们**只管聊天正文列**,不动外壳与面板(那是「界面」不是
-          「读物」,判据写在 styles/tokens.css 的阅读轴一节)。
-        */}
-        <Section titleKey="settings.sectionReading">
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('settings.readingFs')}</div>
-            <Segmented
-              options={opts(READING_FS_OPTIONS)}
-              value={readingFs}
-              onChange={setReadingFs}
-              label={t('settings.readingFs')}
-            />
-          </div>
+            {/*
+              外观·阅读 —— 四根**正交**的轴,读者自己调读物长什么样。
+              分区判据照旧是「用户想改的是哪件事」:这四件都是「这段字读起来怎么样」,
+              所以它们归一区;它们**只管聊天正文列**,不动外壳与面板(那是「界面」不是
+              「读物」,判据写在 styles/tokens.css 的阅读轴一节)。
+            */}
+            <Section titleKey="settings.sectionReading">
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('settings.readingFs')}</div>
+                <Segmented
+                  options={opts(READING_FS_OPTIONS)}
+                  value={readingFs}
+                  onChange={setReadingFs}
+                  label={t('settings.readingFs')}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div>
-              <div className={s.settingRowLabel}>{t('settings.readingDensity')}</div>
-              <div className={s.settingRowHint}>{t('settings.readingDensityHint')}</div>
-            </div>
-            <Segmented
-              options={opts(READING_DENSITY_OPTIONS)}
-              value={readingDensity}
-              onChange={setReadingDensity}
-              label={t('settings.readingDensity')}
-            />
-          </div>
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('settings.readingDensity')}</div>
+                  <div className={s.settingRowHint}>{t('settings.readingDensityHint')}</div>
+                </div>
+                <Segmented
+                  options={opts(READING_DENSITY_OPTIONS)}
+                  value={readingDensity}
+                  onChange={setReadingDensity}
+                  label={t('settings.readingDensity')}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('settings.readingCol')}</div>
-            <Segmented
-              options={opts(READING_COL_OPTIONS)}
-              value={readingCol}
-              onChange={setReadingCol}
-              label={t('settings.readingCol')}
-            />
-          </div>
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('settings.readingCol')}</div>
+                <Segmented
+                  options={opts(READING_COL_OPTIONS)}
+                  value={readingCol}
+                  onChange={setReadingCol}
+                  label={t('settings.readingCol')}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div>
-              <div className={s.settingRowLabel}>{t('settings.motion')}</div>
-              <div className={s.settingRowHint}>{t('settings.motionHint')}</div>
-            </div>
-            <Segmented
-              options={opts(MOTION_OPTIONS)}
-              value={motion}
-              onChange={setMotion}
-              label={t('settings.motion')}
-            />
-          </div>
-        </Section>
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('settings.motion')}</div>
+                  <div className={s.settingRowHint}>{t('settings.motionHint')}</div>
+                </div>
+                <Segmented
+                  options={opts(MOTION_OPTIONS)}
+                  value={motion}
+                  onChange={setMotion}
+                  label={t('settings.motion')}
+                />
+              </div>
+            </Section>
 
-        <Section titleKey="settings.sectionDock">
-          <div className={s.settingRow}>
-            <div>
-              <div className={s.settingRowLabel}>{t('settings.dockDisplay')}</div>
-              <div className={s.settingRowHint}>{t('settings.dockDisplayHint')}</div>
-            </div>
-            <Segmented
-              options={opts(DOCK_OPTIONS)}
-              value={dockDisplay}
-              onChange={setDockDisplay}
-              label={t('settings.dockDisplay')}
-            />
-          </div>
+            <Section titleKey="settings.sectionDock">
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('settings.dockDisplay')}</div>
+                  <div className={s.settingRowHint}>{t('settings.dockDisplayHint')}</div>
+                </div>
+                <Segmented
+                  options={opts(DOCK_OPTIONS)}
+                  value={dockDisplay}
+                  onChange={setDockDisplay}
+                  label={t('settings.dockDisplay')}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('dock.edge')}</div>
-            <Segmented
-              options={opts(EDGE_OPTIONS)}
-              value={dockEdge}
-              onChange={setDockEdge}
-              label={t('dock.edge')}
-            />
-          </div>
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('dock.edge')}</div>
+                <Segmented
+                  options={opts(EDGE_OPTIONS)}
+                  value={dockEdge}
+                  onChange={setDockEdge}
+                  label={t('dock.edge')}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('dock.align')}</div>
-            <Segmented
-              options={opts(ALIGN_OPTIONS)}
-              value={dockAlign}
-              onChange={setDockAlign}
-              label={t('dock.align')}
-            />
-          </div>
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('dock.align')}</div>
+                <Segmented
+                  options={opts(ALIGN_OPTIONS)}
+                  value={dockAlign}
+                  onChange={setDockAlign}
+                  label={t('dock.align')}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('dock.size')}</div>
-            <Segmented
-              options={opts(SIZE_OPTIONS)}
-              value={dockSize}
-              onChange={setDockSize}
-              label={t('dock.size')}
-            />
-          </div>
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('dock.size')}</div>
+                <Segmented
+                  options={opts(SIZE_OPTIONS)}
+                  value={dockSize}
+                  onChange={setDockSize}
+                  label={t('dock.size')}
+                />
+              </div>
 
-          {/*
-            磁性放大那两行(09-02 追补,对齐 macOS 「Dock 与菜单栏」里那枚放大开关 +
-            那根幅度滑杆)。**开关与幅度是两件事**:关掉是「这条链不跑」,幅度只是
-            条上一个 CSS 变量。所以幅度那一行在关掉时**禁掉而不是藏掉** —— 藏掉会让
-            人以为这个选项没了,禁掉才说得清「它还在,只是现在管不着」。
-          */}
-          <div className={s.settingRow}>
-            <div>
-              <div className={s.settingRowLabel}>{t('dock.magnify')}</div>
-              <div className={s.settingRowHint}>{t('dock.magnifyHint')}</div>
-            </div>
-            <Switch checked={dockMagnify} onChange={setDockMagnify} label={t('dock.magnify')} />
-          </div>
+              {/*
+                磁性放大那两行(09-02 追补,对齐 macOS 「Dock 与菜单栏」里那枚放大开关 +
+                那根幅度滑杆)。**开关与幅度是两件事**:关掉是「这条链不跑」,幅度只是
+                条上一个 CSS 变量。所以幅度那一行在关掉时**禁掉而不是藏掉** —— 藏掉会让
+                人以为这个选项没了,禁掉才说得清「它还在,只是现在管不着」。
+              */}
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('dock.magnify')}</div>
+                  <div className={s.settingRowHint}>{t('dock.magnifyHint')}</div>
+                </div>
+                <Switch checked={dockMagnify} onChange={setDockMagnify} label={t('dock.magnify')} />
+              </div>
 
-          <div className={s.settingRow}>
-            <div className={s.settingRowLabel}>{t('dock.magnifyLevel')}</div>
-            <Segmented
-              options={opts(MAGNIFY_OPTIONS)}
-              value={dockMagnifyLevel}
-              onChange={setDockMagnifyLevel}
-              label={t('dock.magnifyLevel')}
-              disabled={!dockMagnify}
-            />
-          </div>
+              <div className={s.settingRow}>
+                <div className={s.settingRowLabel}>{t('dock.magnifyLevel')}</div>
+                <Segmented
+                  options={opts(MAGNIFY_OPTIONS)}
+                  value={dockMagnifyLevel}
+                  onChange={setDockMagnifyLevel}
+                  label={t('dock.magnifyLevel')}
+                  disabled={!dockMagnify}
+                />
+              </div>
 
-          <div className={s.settingRow}>
-            <div>
-              <div className={s.settingRowLabel}>{t('dock.runningDot')}</div>
-              <div className={s.settingRowHint}>{t('dock.runningDotHint')}</div>
-            </div>
-            <Switch
-              checked={dockRunningDot}
-              onChange={setDockRunningDot}
-              label={t('dock.runningDot')}
-            />
-          </div>
-        </Section>
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('dock.runningDot')}</div>
+                  <div className={s.settingRowHint}>{t('dock.runningDotHint')}</div>
+                </div>
+                <Switch
+                  checked={dockRunningDot}
+                  onChange={setDockRunningDot}
+                  label={t('dock.runningDot')}
+                />
+              </div>
+            </Section>
 
-        <Section titleKey="dock.openWith">
-          <div className={s.settingRow}>
-            <div>
-              <div className={s.settingRowLabel}>{t('settings.defaultOpen')}</div>
-              <div className={s.settingRowHint}>{t('settings.defaultOpenHint')}</div>
-            </div>
-            <Segmented
-              options={opts(OPEN_OPTIONS)}
-              value={defaultOpen}
-              onChange={setDefaultOpen}
-              label={t('settings.defaultOpen')}
-            />
-          </div>
-          <div className={s.settingRowNote}>{t('settings.defaultOpenNote')}</div>
-        </Section>
+            <Section titleKey="dock.openWith">
+              <div className={s.settingRow}>
+                <div>
+                  <div className={s.settingRowLabel}>{t('settings.defaultOpen')}</div>
+                  <div className={s.settingRowHint}>{t('settings.defaultOpenHint')}</div>
+                </div>
+                <Segmented
+                  options={opts(OPEN_OPTIONS)}
+                  value={defaultOpen}
+                  onChange={setDefaultOpen}
+                  label={t('settings.defaultOpen')}
+                />
+              </div>
+              <div className={s.settingRowNote}>{t('settings.defaultOpenNote')}</div>
+            </Section>
 
-        <Section titleKey="settings.sectionKeymap">
-          <KeymapSettings />
-        </Section>
-      </div>
-    </div>
+            <Section titleKey="settings.sectionKeymap">
+              <KeymapSettings />
+            </Section>
+          </div>
+        </div>
+      )}
+    </FocusScope>
   )
 }

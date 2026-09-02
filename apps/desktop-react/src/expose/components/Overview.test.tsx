@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useStageStore } from '../../stage/store'
-import { Overview } from './Overview'
+import { ExposeView } from './ExposeView'
 import {
   GROUPS,
   SESSIONS,
@@ -49,7 +49,7 @@ const ids = () =>
 
 describe('总览组头:折叠/展开是原地形变', () => {
   it('鼠标不动连点四次 = 精确切换四次,且每次命中的是同一个 DOM 节点', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const toggle = screen.getByTestId(`group-toggle-${FIRST_GROUP}`)
 
     expect(useExposeStore.getState().collapsedGroups).not.toContain(FIRST_GROUP)
@@ -62,7 +62,7 @@ describe('总览组头:折叠/展开是原地形变', () => {
   })
 
   it('组头在两态里是同一个节点,aria-expanded 跟着翻,组头本身不被卸载', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const toggle = screen.getByTestId(`group-toggle-${FIRST_GROUP}`)
     expect(toggle).toHaveProperty('isConnected', true)
     expect(toggle.getAttribute('aria-expanded')).toBe('true')
@@ -77,7 +77,7 @@ describe('总览组头:折叠/展开是原地形变', () => {
   })
 
   it('组的次序只由数据决定,手动折叠不重排', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const before = ids()
     fireEvent.click(screen.getByTestId(`group-toggle-${FIRST_GROUP}`))
     expect(ids()).toEqual(before)
@@ -86,7 +86,7 @@ describe('总览组头:折叠/展开是原地形变', () => {
   })
 
   it('折叠只收起卡片区,组头那一行仍在(所以位置不跳)', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const toggle = screen.getByTestId(`group-toggle-${FIRST_GROUP}`)
     const headerBefore = toggle.parentElement
     fireEvent.click(toggle)
@@ -102,7 +102,7 @@ describe('总览组头:折叠/展开是原地形变', () => {
 describe('会话侧的三种空态', () => {
   it('读不到时说的是「没连上 core」,并带上那句错误原文', async () => {
     await seedSessionsFailure('连不上')
-    render(<Overview />)
+    render(<ExposeView />)
     expect(screen.getByText('没连上 core')).toBeTruthy()
     expect(screen.getByText(/连不上/)).toBeTruthy()
   })
@@ -110,14 +110,14 @@ describe('会话侧的三种空态', () => {
   it('还在读时说的是「正在读会话」,不画一张假卡', () => {
     // 律①:骨架 / 等待只看 `phase === 'initial'` —— 「从来没有过列表」。
     seedSessionsSource({ sessions: [], phase: 'initial' })
-    render(<Overview />)
+    render(<ExposeView />)
     expect(screen.getByText('正在读会话…')).toBeTruthy()
     expect(screen.queryAllByTestId(/^group-toggle-/).length).toBe(0)
   })
 
   it('真的一条都没有时是「这里还没有会话」', () => {
     seedSessionsSource({ sessions: [] })
-    render(<Overview />)
+    render(<ExposeView />)
     expect(screen.getByText('这里还没有会话')).toBeTruthy()
   })
 
@@ -156,7 +156,7 @@ describe('会话侧的三种空态', () => {
       flying = sessionsQuery.refetch()
       await Promise.resolve()
     })
-    render(<Overview />)
+    render(<ExposeView />)
 
     expect(sessionsQuery.get().inflight).toBe(true)
     expect(sessionsQuery.get().phase).toBe('ready')
@@ -179,7 +179,7 @@ describe('会话侧的三种空态', () => {
 describe('错误与列表并存', () => {
   it('手上有列表时:卡还在屏上,同时多出那一行原话', async () => {
     await seedSessionsFailure('连不上', SESSIONS)
-    render(<Overview />)
+    render(<ExposeView />)
 
     // 列表没被清掉 —— 组还在,卡还在(这一句就是律②)。
     expect(screen.getAllByTestId(/^group-toggle-/).length).toBeGreaterThan(0)
@@ -195,14 +195,14 @@ describe('错误与列表并存', () => {
   it('搜不到词的那一屏照样说 —— 手上有列表这件事不因为过滤而改变', async () => {
     await seedSessionsFailure('连不上', SESSIONS)
     useExposeStore.setState({ query: '绝不可能命中的词' })
-    render(<Overview />)
+    render(<ExposeView />)
 
     expect(screen.getByRole('status').textContent).toContain('连不上')
   })
 
   it('没有错误时那一行不在场(零常驻像素)', () => {
     seedSessionsSource()
-    render(<Overview />)
+    render(<ExposeView />)
     expect(screen.queryByRole('status')).toBeNull()
   })
 })
@@ -249,7 +249,7 @@ describe('新建入口的进行中反馈', () => {
 
   it('在飞时那颗 + 上 aria-busy —— 逐格,不是整面禁灰', async () => {
     seedSessionsSource()
-    render(<Overview />)
+    render(<ExposeView />)
     const plus = screen.getByTestId(`group-plus-${FIRST_GROUP}`)
     expect(plus.getAttribute('aria-busy')).toBeNull()
 
@@ -269,7 +269,7 @@ describe('新建入口的进行中反馈', () => {
 
   it('二次闸:飞着的时候再点几下,一发都不发出去', async () => {
     seedSessionsSource()
-    render(<Overview />)
+    render(<ExposeView />)
     const calls: (string | null)[] = []
     const before = useExposeStore.getState().newSession
     useExposeStore.setState({ newSession: async (projectId) => void calls.push(projectId) })
@@ -297,7 +297,7 @@ describe('新建入口的进行中反馈', () => {
 
   it('**不用 disabled**:在飞时那颗钮仍在焦点序里(禁灰会当场把键盘的人甩掉)', async () => {
     seedSessionsSource()
-    render(<Overview />)
+    render(<ExposeView />)
     let flight!: ReturnType<typeof flyCreate>
     await act(async () => {
       flight = flyCreate()
@@ -322,7 +322,7 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
     fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value } })
 
   it('搜索时屏幕仍是「项目头 + 卡网格」:组头与卡的 testid 一个没换', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     type('Exposé')
     expect(screen.getByTestId(`group-toggle-${FIRST_GROUP}`)).toBeTruthy()
     expect(screen.getByTestId('card-os-expose')).toBeTruthy()
@@ -331,7 +331,7 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
   })
 
   it('不命中的卡消失,变空的组整个消失', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     type('Exposé')
     expect(screen.queryByTestId('card-os-provider')).toBeNull()
     expect(screen.queryByTestId('group-toggle-collab')).toBeNull()
@@ -339,7 +339,7 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
   })
 
   it('命中项目名时该组整组保留 —— 组里每一条都还在', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     type('start-electron')
     for (const id of ['os-provider', 'os-compact', 'os-expose', 'os-toolkit']) {
       expect(screen.getByTestId(`card-${id}`)).toBeTruthy()
@@ -349,14 +349,14 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
   })
 
   it('命中词在卡上高亮', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     type('Exposé')
     const marks = [...document.querySelectorAll('mark')].map((m) => m.textContent)
     expect(marks).toContain('Exposé')
   })
 
   it('搜不到时是一行灰字,不是「这里还没有会话」也不是插画', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     type('这个词哪儿都没有')
     expect(screen.getByText('没有匹配的会话')).toBeTruthy()
     expect(screen.queryByText('这里还没有会话')).toBeNull()
@@ -364,7 +364,7 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
   })
 
   it('清空搜索词就回到全量,一格没变', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const before = screen.getAllByTestId(/^card-[^p]/).map((el) => el.getAttribute('data-testid'))
     type('Exposé')
     type('')
@@ -374,7 +374,7 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
   })
 
   it('回车进入的是屏幕上第一张卡(过滤后的阅读次序,不是第二套命中排序)', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     type('transreader')
     fireEvent.keyDown(screen.getByLabelText('搜索会话'), { key: 'Enter' })
     expect(useExposeStore.getState().currentSessionId).toBe('tr-menubar')
@@ -396,31 +396,43 @@ describe('总览的键盘交接', () => {
 
   it('摆出来的那一刻焦点落进搜索条(不再留在 Dock 那块瓦上)', () => {
     placeSessions()
-    render(<Overview />)
+    render(<ExposeView />)
     expect(document.activeElement).toBe(search())
   })
 
   it('没摆出来就不抢焦点 —— Dock 悬停预览泡里也渲染一份,不该夺走光标', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     expect(document.activeElement).not.toBe(search())
   })
 
   it('搜索条里按 ↓:焦点交给网格,搜索词原样留着', () => {
     placeSessions()
-    render(<Overview />)
+    render(<ExposeView />)
     fireEvent.change(search(), { target: { value: 'Exposé' } })
     fireEvent.keyDown(search(), { key: 'ArrowDown' })
     expect(useExposeStore.getState().query).toBe('Exposé')
     expect(useExposeStore.getState().focusVisible).toBe(true)
     expect(useExposeStore.getState().focusId).toBe('os-expose')
-    expect(document.activeElement).not.toBe(search())
+    /*
+     * 交接之后焦点落在**这块面的根**上,不是掉到 body 上 —— 后者正是 R1 之前
+     * 那一手 `blur()` 的结果,而孤儿焦点会被收回落点、于是弹回搜索条,接着按 ↓
+     * 又被「输入面里的无修饰单键」让给输入框,网格纹丝不动。
+     * 反证:把 `activate('programmatic')` 换回 `inputRef.current?.blur()` → 这一条红。
+     */
+    const view = document.querySelector('[data-focus-scope="expose"]')
+    expect(document.activeElement).toBe(view)
   })
 
   it('↑ 同理:交接那一下只点亮锚点,不顺手再走一步', () => {
-    // 开场归位会把锚点放在当前会话上;这里直接摆一个,验的就是「它不动」。
-    useExposeStore.setState({ focusId: 'os-toolkit', focusVisible: false })
     placeSessions()
-    render(<Overview />)
+    render(<ExposeView />)
+    /*
+     * 开场归位(`open()`)会把锚点放在当前会话上,而这一条要验的是「交接那一下
+     * 不动锚点」—— 所以摆锚点要在**归位之后**。R2 之前这一组渲染的是光秃秃的
+     * `<Overview>`(没有 `ExposeBindings`,归位根本不跑),所以摆在前面也没事;
+     * 现在渲染的是整块面(落点声明在它身上),归位真的会跑。
+     */
+    act(() => useExposeStore.setState({ focusId: 'os-toolkit', focusVisible: false }))
     fireEvent.keyDown(search(), { key: 'ArrowUp' })
     expect(useExposeStore.getState().focusVisible).toBe(true)
     expect(useExposeStore.getState().focusId).toBe('os-toolkit')
@@ -434,9 +446,10 @@ describe('总览的键盘交接', () => {
    * 而网格的行距更小,拽走一次更难被看成是自己按错了。
    */
   it('mouseenter 不改锚点:鼠标扫过别的卡,键盘位一格不动', () => {
-    useExposeStore.setState({ focusId: 'os-toolkit', focusVisible: true })
     placeSessions()
-    render(<Overview />)
+    render(<ExposeView />)
+    // 同上:摆锚点在归位之后(理由见上一条)。
+    act(() => useExposeStore.setState({ focusId: 'os-toolkit', focusVisible: true }))
     const cards = screen.getAllByTestId(/^card-[\w-]+$/)
     // 防空转:一张卡都没扫到的话下面那句断言是白给的。
     expect(cards.length).toBeGreaterThan(1)
@@ -449,7 +462,7 @@ describe('总览的键盘交接', () => {
 
   it('←→ 不接:焦点留在输入框里给光标用,状态机一格不动', () => {
     placeSessions()
-    render(<Overview />)
+    render(<ExposeView />)
     const before = useExposeStore.getState()
     for (const key of ['ArrowLeft', 'ArrowRight']) {
       const e = fireEvent.keyDown(search(), { key })
@@ -482,20 +495,20 @@ describe('组头:计数禁令 + 幽灵入口 + 只截断不换行', () => {
   }
 
   it('组头上不出现个数 —— 「N 会话」那颗按钮整个没了', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     // 文案层:fixtures 里每组的条数都 ≥ 1,任何一句「N 会话」都不该在 DOM 里。
     expect(screen.queryByText(/\d+\s*会话/)).toBeNull()
     expect(screen.queryByText(/\d+\s*sessions?/)).toBeNull()
   })
 
   it('进组入口还在:点组头右端的「›」= 原来点计数徽,进的是同一组', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     fireEvent.click(screen.getByTestId(`group-enter-${FIRST_GROUP}`))
     expect(useExposeStore.getState().view).toEqual({ mode: 'list', groupId: FIRST_GROUP })
   })
 
   it('入口是幽灵的:常驻在 DOM 里(不是 hover 才插进来 —— 那会挤动整行)', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     for (const group of GROUPS) {
       expect(screen.getByTestId(`group-enter-${group.id}`)).toBeTruthy()
     }
@@ -503,7 +516,7 @@ describe('组头:计数禁令 + 幽灵入口 + 只截断不换行', () => {
   })
 
   it('入口的 aria-label 是组名(本批禁改 i18n,字典里没有「进入某组」这句话)', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const first = GROUPS[0]
     const label = first.nameKey ? undefined : first.name
     expect(screen.getByTestId(`group-enter-${first.id}`).getAttribute('aria-label')).toBe(
@@ -640,7 +653,7 @@ describe('粘附侦测:哨兵 + IntersectionObserver 的接线', () => {
   const latest = () => calls[calls.length - 1]
 
   it('每组一枚哨兵,且每一枚都是它那组的第一个孩子(组头是它的下一个兄弟)', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const sentinels = [...document.querySelectorAll('[data-sentinel]')]
     expect(sentinels.length).toBe(GROUPS.length)
     for (const group of GROUPS) {
@@ -654,7 +667,7 @@ describe('粘附侦测:哨兵 + IntersectionObserver 的接线', () => {
   })
 
   it('root 是滚动容器、threshold 是 1,并且每一枚哨兵都被观察上了', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const io = latest()
     expect(io.threshold).toBe(1)
     // root 必须是**滚动容器**(哨兵 → 组 → .inner → .scroll),不是文档视口:
@@ -667,7 +680,7 @@ describe('粘附侦测:哨兵 + IntersectionObserver 的接线', () => {
   })
 
   it('哨兵滚出去 → 组头挂上 data-stuck;滚回来 → 摘掉', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const io = latest()
     const head = screen.getByTestId(`group-head-${FIRST_GROUP}`)
     const sentinel = document.querySelector(`[data-sentinel="${FIRST_GROUP}"]`)!
@@ -681,7 +694,7 @@ describe('粘附侦测:哨兵 + IntersectionObserver 的接线', () => {
   })
 
   it('只影响自己那一组的头 —— 一枚哨兵翻,别的组头不动', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const io = latest()
     io.cb([{ target: document.querySelector(`[data-sentinel="${FIRST_GROUP}"]`)!, isIntersecting: false }])
     expect(screen.getByTestId(`group-head-${FIRST_GROUP}`).hasAttribute('data-stuck')).toBe(true)
@@ -689,7 +702,7 @@ describe('粘附侦测:哨兵 + IntersectionObserver 的接线', () => {
   })
 
   it('组列表变了(搜索过滤)就重观察:新的哨兵一一对应,没有谁被落下', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const before = calls.length
     fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value: 'Exposé' } })
     // 组少了 → effect 重跑 → 造了新的一台
@@ -706,7 +719,7 @@ describe('粘附侦测:哨兵 + IntersectionObserver 的接线', () => {
   })
 
   it('卸载时断开观察,不留悬着的 observer', () => {
-    const view = render(<Overview />)
+    const view = render(<ExposeView />)
     const io = latest()
     expect(io.targets.length).toBeGreaterThan(0)
     view.unmount()
@@ -769,7 +782,7 @@ describe('组头的 +:在这一组下新建会话', () => {
   }
 
   it('项目组:把那个组的工作目录递过去', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const spy = spyNewSession()
     try {
       fireEvent.click(screen.getByTestId(`group-plus-${FIRST_GROUP}`))
@@ -781,7 +794,7 @@ describe('组头的 +:在这一组下新建会话', () => {
   })
 
   it('合成组(协作 / 独立会话)没有项目,递 null —— 不替它编一个目录', () => {
-    render(<Overview />)
+    render(<ExposeView />)
     const synthetic = GROUPS.find((g) => g.projectId === null)
     expect(synthetic).toBeTruthy()
     const spy = spyNewSession()

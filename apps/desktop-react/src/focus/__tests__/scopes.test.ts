@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { FOCUS_SCOPED_KEYS, FOCUS_SCOPES, FOCUS_SCOPE_LIST, focusScopeKeysOf } from '../scopes'
-import { KEY_SCOPES, SCOPED_KEYS } from '../../keymap/scopes'
 import { zh } from '../../i18n/zh'
 import { en } from '../../i18n/en'
 import type { FocusScopeId, FocusScopeKind } from '../types'
@@ -100,15 +99,11 @@ describe('局部键:今天只有查看器与文件树两格', () => {
   })
 })
 
-describe('keymap/scopes 是它的投影,不是第二份声明', () => {
-  it('条数逐条对得上(旧表现在从 FOCUS_SCOPES 派生)', () => {
-    expect(SCOPED_KEYS.length).toBe(FOCUS_SCOPED_KEYS.length)
-    expect(SCOPED_KEYS.map((k) => k.combo)).toEqual(FOCUS_SCOPED_KEYS.map((k) => k.combo))
-  })
-
-  it('唯一一处不是恒等的:`files` 在旧表里叫 `files.row`,名字也照旧', () => {
-    expect(KEY_SCOPES.map((s) => s.id)).toEqual(['viewer', 'files.row'])
-    expect(KEY_SCOPES.find((s) => s.id === 'files.row')?.labelKey).toBe('keys.scopeFilesRow')
-    expect(SCOPED_KEYS.filter((k) => k.scope === 'files.row')).toHaveLength(2)
-  })
-})
+/*
+ * ── 「keymap/scopes 是它的投影」那一组 09-03(R2)退役 ──────────────────────
+ * R0 时 `keymap/scopes.ts` 还留着一层兼容投影(`KEY_SCOPES` / `SCOPED_KEYS` /
+ * `comboFromChord`,连 `files.row` 这个旧面域 id 都原样发出去),那一组用例守的
+ * 正是「投影不许与正本分叉」。R2 把落点也迁进了作用域实例,旧形状一个消费者都
+ * 没有了,整层连同那三条用例一起退役 —— **没有第二份声明可对**,这只文件上面
+ * 那几组守的就是正本本身。
+ */

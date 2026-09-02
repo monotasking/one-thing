@@ -221,7 +221,19 @@ export interface FocusReturnTarget {
 /**
  * 一个作用域卸载 / 变得不可交互之后,焦点回哪儿(§4.5)。
  *
- * 从它的**父**开始往上,第一个可交互的祖先接手,顺序是:
+ * ── ① `returnTo`:兄弟之间的那一格(R2 落地 §4.5 的 R1 审查裁定)────────────
+ * 「关掉什么,焦点回打开它的地方」(§3.5 规则 5)与「缩回父」不是一回事:⌘P 开
+ * 出来的检索面与它之前那块输入面板是**兄弟**,父链到不了。所以先问树替这一格
+ * 记下的上一任第一响应者,三条判据缺一不可:
+ *  · 那一格**仍在树上**(它自己可能已经先卸载了);
+ *  · 仍**可交互**(架子切 tab 之后它可能正 inert —— 往一块看不见的面送焦点比
+ *    孤儿焦点更难排查);
+ *  · 记下的那个元素**仍连通**(往一个已经离开文档的节点 focus,浏览器把焦点
+ *    扔回 body,那正是 I1 要根治的东西)。
+ * 任一条不成立就**退回父链**(下面那三格),不去猜第二个候选 —— 记的是一格,
+ * 不是一条链(§10「不做焦点历史」)。
+ *
+ * ── ② 父链:从它的**父**开始往上,第一个可交互的祖先接手,顺序是:
  *  ① 那个祖先「上次焦点所在」的元素 —— 前提是它**仍然连通**且**仍在那个祖先里**
  *    (跳转条卸载后回查看器上次那一行,就是这一格);
  *  ② 它声明的落点(`restingTarget()`);
@@ -237,6 +249,13 @@ export function returnTargetOf(
   nodes: FocusTreeNodes,
   node: ScopeNode | undefined,
 ): FocusReturnTarget | null {
+  const seat = node?.returnTo
+  if (seat) {
+    const back = nodes.get(seat.instanceId)
+    if (isInteractive(back) && seat.element.isConnected) {
+      return { instanceId: back.instanceId, element: seat.element }
+    }
+  }
   const seen = new Set<FocusInstanceId>()
   let at = node?.parent ?? null
   while (at && !seen.has(at)) {

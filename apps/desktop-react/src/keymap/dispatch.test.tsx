@@ -5,6 +5,7 @@ import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
 import { initialStageState } from '../stage/transitions'
+import { focusTree } from '../focus/registry'
 import { useKeymapStore } from './store'
 import { initialKeymapState } from './transitions'
 
@@ -17,6 +18,8 @@ beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   useKeymapStore.setState({ ...initialKeymapState })
   useAgentMenu.setState({ open: false })
+  // 响应链是模块级单例(同 store):一份用例留下的作用域不该被下一份看见。
+  focusTree.reset()
 })
 
 describe('快捷键派发', () => {
@@ -64,6 +67,58 @@ describe('快捷键派发', () => {
 
     act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
     expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
+  })
+})
+
+describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
+  /** 第一响应者此刻是哪一格声明。 */
+  const firstResponder = () => focusTree.current()?.scope ?? null
+
+  it('壳一挂起来,第一响应者就是输入面板(规则 1 的第一格)', () => {
+    render(<AppShell />)
+    // 反证:把 AppShell 里那条三级回落的 effect 删掉 → 这里是 null(键盘无主)。
+    expect(firstResponder()).toBe('composer')
+  })
+
+  /*
+   * 量这一句要挑一块**自己不抢焦点**的面。检索面不行:它自己声明了
+   * `activateOnMount`(⌘P 敲出来就打字是它的产品语义),所以就算把规则 2 那一句
+   * 删掉它照样入焦 —— 用它当判据等于量了个寂寞(第一版就栽在这儿,反证不红)。
+   * 文件树没有那一格,所以它能分辨「是谁把焦点送进去的」。
+   */
+  it('**用键盘**从 Dock 开一块面 → 焦点进那块面(规则 2)', () => {
+    render(<AppShell />)
+    act(() => useKeymapStore.setState({ overrides: { 'toggle:files': { meta: true, key: 'k' } } }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
+    expect(useStageStore.getState().placements.files).toBeTruthy()
+    /*
+     * 反证:把 `requestFocusOnOpen(item)` 那一句删掉 → 焦点留在 composer 上,
+     * 「⌘K 敲出来键盘就在那块面里」当场不成立。
+     *
+     * 断言落在**那一层**上而不是 `files` 那一格:这份夹具没有配文件端口,
+     * 面板挂不起来(错误边界接住),所以层里此刻一个可交互的孩子都没有 ——
+     * `entryOf` 于是退回层的根(那一条本身在 registry 那组用例里单独钉着)。
+     * 要紧的是焦点**进了装着这块面的那一层**,而不是留在原处。
+     */
+    expect(firstResponder()).toBe('float-layer')
+    expect(focusTree.current()?.owner).toBe('files')
+  })
+
+  it('同一个键把它收回 Dock 时**不送**焦点(没有可送的面)', () => {
+    render(<AppShell />)
+    act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
+    expect(useStageStore.getState().placements.search).toBeUndefined()
+    /*
+     * **收回去不送焦点**:点名那一句照样发(键盘不知道这一下是开还是关),但
+     * 判据在纯函数那一头 —— 收回 Dock 之后 `placements[item]` 缺席,那张表里
+     * 根本没有它,于是这一次点名被当场丢掉。
+     * 这里不断言「第一响应者已经变回输入面板」:那扇窗此刻还挂着(浮窗有一段
+     * 出场动画,`FloatWindow` 会多留它一帧再卸载),归还要等它真的卸载。
+     * 反证:把 `focusFollowTarget` 里 `after.placements` 那条循环改成读
+     * `before.placements` → 收回去也会送一次,这里当场红。
+     */
+    expect(firstResponder()).toBe('search')
   })
 })
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import type { FocusEvent, KeyboardEvent } from 'react'
+import { focusTree } from '../focus/registry'
 
 /**
  * **原地编辑那一格的行为**(09-02 批 11 立件)。
@@ -26,9 +27,22 @@ import type { FocusEvent, KeyboardEvent } from 'react'
  * 是「这一格有没有别的落点在抢那一下点击」的事实。
  *
  * ── `preventDefault` 而不 `stopPropagation` ─────────────────────────────
- * 快捷键三层的撞键裁决原话:**局部先接,接住了才 `preventDefault()`**,
- * 全局派发器开头一句 `if (e.defaultPrevented) return`。所以这里只按下 default,
- * 不掐冒泡 —— 掐了就等于给这条链再开一套自己的裁决。
+ * 快捷键三层的撞键裁决原话:**局部先接,接住了才 `preventDefault()`**。
+ * 所以这里只按下 default,不掐冒泡 —— 掐了就等于给这条链再开一套自己的裁决。
+ *
+ * ── Esc 要在**树上有个座位**(09-03 R2)────────────────────────────────
+ * 响应链的唯一派发器跑在 **window 捕获**相位 —— 它比这件的 `onKeyDown` 早。
+ * 而 Esc 是唯一由树处理的结构键:不打招呼的话,原地编辑时按 Esc 会先被外面那层
+ * 收走(改名改到一半,整块面板关了),这件的 `onCancel` 根本轮不到。
+ *
+ * 所以这件向树登记一个**瞬态 Esc 口**(`registerTransient`,与 Tooltip 同一口):
+ * 派发器在问活动路径**之前**先问它。判据是「这一格此刻拿着焦点没有」——
+ * 由这件自己 `onFocus` / `onBlur` 记账,**不去读 `document.activeElement`**
+ * (设计 §7 的第三条)。
+ *
+ * 它只**认领**、不动手:答 true 让派发器停下并按下 default,真正的 `onCancel`
+ * 仍然由下面那句 `onKeyDown` 跑 —— 事件照样传到这件控件上,一件事一个产地。
+ * 于是没有派发器的地方(规格页 / 单测)这件照样收得回,行为一个字不变。
  *
  * ── 三类状态(库件规格)────────────────────────────────────────────────
  *   生命状态:`controlId` 一到手就 focus + select 一次(那一格刚长出来,
@@ -68,9 +82,11 @@ export interface InlineEditOptions {
   cancelOnBlur?: boolean
 }
 
-/** 摊到那件控件上的两格。**摊在自己的 props 之后**,免得被同名的覆盖掉。 */
+/** 摊到那件控件上的那几格。**摊在自己的 props 之后**,免得被同名的覆盖掉。 */
 export interface InlineEditProps {
   onKeyDown: (event: KeyboardEvent<HTMLElement>) => void
+  /** 只用来记「这一格此刻拿着焦点没有」(见文件头「Esc 要在树上有个座位」)。 */
+  onFocus: (event: FocusEvent<HTMLElement>) => void
   onBlur?: (event: FocusEvent<HTMLElement>) => void
 }
 
@@ -87,12 +103,29 @@ export function useInlineEdit({
   commitRef.current = onCommit
   cancelRef.current = onCancel
 
+  /**
+   * 这一格此刻拿着焦点没有。**只给瞬态 Esc 口当判据**(见文件头那一段)——
+   * 一块没在编辑的面上按 Esc 不该被一个开在别处的原地编辑截胡。
+   */
+  const focused = useRef(false)
+
+  useEffect(
+    () =>
+      focusTree.registerTransient(() => {
+        if (!focused.current) return false
+        // 只认领,不动手:cancel 归下面那句 onKeyDown(一件事一个产地)。
+        return true
+      }),
+    [],
+  )
+
   useEffect(() => {
     if (!controlId) return
     const el = document.getElementById(controlId)
     if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return
     el.focus()
     el.select()
+    focused.current = true
   }, [controlId])
 
   const onKeyDown = useCallback((event: KeyboardEvent<HTMLElement>) => {
@@ -107,9 +140,18 @@ export function useInlineEdit({
     }
   }, [])
 
+  const onFocus = useCallback(() => {
+    focused.current = true
+  }, [])
+
   const onBlur = useCallback(() => {
+    focused.current = false
     cancelRef.current()
   }, [])
 
-  return cancelOnBlur ? { onKeyDown, onBlur } : { onKeyDown }
+  const onBlurOnly = useCallback(() => {
+    focused.current = false
+  }, [])
+
+  return cancelOnBlur ? { onKeyDown, onFocus, onBlur } : { onKeyDown, onFocus, onBlur: onBlurOnly }
 }

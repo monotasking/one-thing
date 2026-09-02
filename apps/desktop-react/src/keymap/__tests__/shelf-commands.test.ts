@@ -7,7 +7,7 @@ import {
   shelfSideOfCommand,
   shelfToggleCommandId,
 } from '../transitions'
-import { SCOPED_KEYS } from '../scopes'
+import { FOCUS_SCOPED_KEYS } from '../../focus/scopes'
 import type { KeymapState } from '../types'
 import type { ShelfSide } from '../../stage/types'
 
@@ -82,7 +82,7 @@ describe('全表冲突检查(加键之前那一步的机器化)', () => {
     for (const side of SIDES) {
       const combo = findCommand(shelfToggleCommandId(side))?.defaultCombo
       if (!combo) continue
-      for (const scoped of SCOPED_KEYS) {
+      for (const scoped of FOCUS_SCOPED_KEYS) {
         if (sameCombo(combo, scoped.combo)) clashes.push(`${side} ↔ ${scoped.scope}`)
       }
     }

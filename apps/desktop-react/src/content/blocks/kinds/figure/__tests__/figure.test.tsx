@@ -5,6 +5,8 @@ import type { BlockCtx } from '../../../registry'
 import { FigureKindRegistry, clearFigureCacheForTest, renderFigure, resolveFigureKind } from '../registry'
 import { resetMermaidForTest } from '../mermaid'
 import { useStageStore } from '../../../../../stage/store'
+import { focusTree } from '../../../../../focus/registry'
+import { FocusDispatchHarness } from '../../../../../test/focus-harness'
 
 /**
  * 图种二级表 + 图块上屏。
@@ -30,11 +32,24 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   clearFigureCacheForTest()
   resetMermaidForTest()
+  // 响应链是模块级单例:一份用例留下的作用域不该被下一份看见。
+  focusTree.reset()
 })
 
 const ctx: BlockCtx = { messageId: 'm1', streaming: false }
+/**
+ * 画一块图。**带上那一格派发器**(09-03 R2):放大层的 Esc 从前是它自己挂的一条
+ * window 监听,现在是响应链上一格 `float` 的 `onEscape` —— 真正听键盘的只有
+ * `focus/dispatch.ts` 那一个,而它挂在外壳上。单独渲染一块图去按 Esc,
+ * 等于在一台没有外壳的机器上按键。
+ */
 const drawFigure = (figKind: string, source: string) =>
-  render(<BlockView block={{ kind: 'figure', figKind, source }} ctx={ctx} />)
+  render(
+    <>
+      <FocusDispatchHarness />
+      <BlockView block={{ kind: 'figure', figKind, source }} ctx={ctx} />
+    </>,
+  )
 
 describe('图种表(与主表同构的第二张表)', () => {
   it('重复注册抛错 —— 不静默后胜', () => {

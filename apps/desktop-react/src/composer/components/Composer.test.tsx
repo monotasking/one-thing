@@ -3,6 +3,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { createFileToken } from '@shared/prompt-references'
 import type { FilesListRequest } from '@shared/ipc/files'
 import { Composer } from './Composer'
+import { focusTree } from '../../focus/registry'
+import { FocusDispatchHarness } from '../../test/focus-harness'
 import { useComposerStore, resetComposerStore } from '../store'
 import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
@@ -134,9 +136,38 @@ afterEach(() => {
     // 不收它 —— 两个 reset 收同一格就是两个主人。所以用例自己收。
     catalogQuery.reset()
   })
+  // 响应链是模块级单例(同 store):一份用例留下的作用域不该被下一份看见。
+  focusTree.reset()
 })
 
 const state = () => useComposerStore.getState()
+/**
+ * **输入面板 + 那一格派发器**(09-03 R2)。
+ *
+ * Esc 三层与 ask 的 ← → 从前挂在一条 window keydown 上,单独渲染这块面按键就会响;
+ * R2 之后它们是**作用域声明**(`onEscape` / 作用域根上的行内结构键),真正听键盘的
+ * 只有 `focus/dispatch.ts` 那一个,而它挂在外壳上。所以这一族用例要补两样才是
+ * 「一台真机器」:①那个派发器;②**这块面在活动路径上** —— 路由问的是
+ * 「composer 是不是当前」,不是「这一下按键经不经过它的根」。
+ */
+function renderComposer() {
+  const view = render(
+    <>
+      <FocusDispatchHarness />
+      <Composer />
+    </>,
+  )
+  act(() => {
+    focusTree.activateScope('composer')
+  })
+  return view
+}
+
+/** 输入面板那一格作用域的根。ask 的 ← → 是**行内结构键**,派在它身上。 */
+function panel(): HTMLElement {
+  return document.querySelector('[data-focus-scope="composer"]') as HTMLElement
+}
+
 const modelPill = () => screen.getByRole('button', { name: /选择模型/ })
 const inputBox = () => screen.getByRole('textbox', { name: /说点什么|再按一次/ })
 
@@ -167,7 +198,7 @@ function type(el: HTMLElement, text: string) {
 describe('抽屉:一个槽,后来者顶替先来者', () => {
   it('打出 @ 就开文件抽屉;模型抽屉正开着时被它直接顶掉', async () => {
     vi.useFakeTimers()
-    render(<Composer />)
+    renderComposer()
     fireEvent.click(modelPill())
     expect(screen.getByLabelText('搜模型或 Provider…')).toBeTruthy()
 
@@ -181,7 +212,7 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
   })
 
   it('Esc 收抽屉(并 preventDefault:外层只在 !defaultPrevented 时才轮到它)', () => {
-    render(<Composer />)
+    renderComposer()
     fireEvent.click(modelPill())
     expect(state().drawerKind).toBe('model')
 
@@ -191,14 +222,25 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
   })
 
   it('点 composer 外面:模型抽屉一律关,选没选都关', () => {
-    render(<Composer />)
+    renderComposer()
     fireEvent.click(modelPill())
     fireEvent.pointerDown(document.body)
     expect(state().drawerKind).toBeNull()
   })
 
+  it('抽屉一开焦点就在搜索行(开它的那一下手已经离开键盘了)', () => {
+    renderComposer()
+    fireEvent.click(modelPill())
+    /*
+     * 反证:把 `DrawerModelPicker` 那句 `activateOnMount restingTarget=…` 拆掉 →
+     * 焦点留在药丸上,打字打不进搜索行。R2 之前这是一条
+     * `useEffect(() => ref.current?.focus(), [])`,现在是一句声明。
+     */
+    expect(document.activeElement).toBe(screen.getByLabelText('搜模型或 Provider…'))
+  })
+
   it('选一个模型:pill 换名,抽屉收起', () => {
-    render(<Composer />)
+    renderComposer()
     fireEvent.click(modelPill())
     fireEvent.mouseDown(screen.getByText('grok-4'))
     expect(state().drawerKind).toBeNull()
@@ -207,15 +249,38 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
     expect(modelPill().textContent).toContain('grok-4')
   })
 
+  /**
+   * **render-prop 里不许读写外层的可变游标**(09-03 R2 施工中抓到的真 bug)。
+   *
+   * 抽屉的行下标从前是一个「边画边走」的游标(`let flat = -1`,在 JSX 里 `flat += 1`)。
+   * 把这块面包进 `<FocusScope>` 的 render-prop 之后,那段 JSX 由**子组件**产生 ——
+   * 子组件自己重渲一次(它订着响应链,焦点一动就重渲)游标就接着往上加,于是
+   * 第二遍画出来的行下标全体 +1:点第一行选到第二个模型,点最后一行什么都不发生。
+   * 这一条逼出那次重渲再点,拆掉 `offsets` 那格纯派生量当场红。
+   */
+  it('焦点动过一次(抽屉重渲)之后,点第一行选到的仍然是第一个模型', () => {
+    renderComposer()
+    fireEvent.click(modelPill())
+    // 焦点从搜索行挪到别处再回来 —— 树一变,FocusScope 就重渲一次它的 children。
+    act(() => {
+      focusTree.activateScope('composer')
+    })
+    act(() => {
+      focusTree.activateScope('drawer')
+    })
+    fireEvent.mouseDown(screen.getByText('grok-4'))
+    expect(useModelsSource.getState().pending).toEqual({ provider: 'xai', model: 'grok-4' })
+  })
+
   it('一个模型都还没有:药丸写「选择模型」,不拿目录第一条去顶', () => {
     providersQuery.patch([])
     prefsQuery.get('default').patch({ prefs: { defaultProvider: '', configs: {} }, custom: [] })
-    render(<Composer />)
+    renderComposer()
     expect(modelPill().textContent).toContain('选择模型')
   })
 
   it('命令抽屉里的 /ask-demo 是 dev 扳机:选中即把本体变成问卷', () => {
-    render(<Composer />)
+    renderComposer()
     type(inputBox(), '/ask')
     fireEvent.mouseDown(screen.getByText('/ask-demo'))
     expect(state().mode).toBe('ask')
@@ -234,7 +299,7 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
   })
 
   it('去抖 120ms:窗口里连打几下只发一次,发的就是最后那个词', async () => {
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
 
     type(box, '看看 @m')
@@ -250,7 +315,7 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
   })
 
   it('抽屉一收就把候选散掉 —— 它是「此刻在匹配什么」,不是缓存', async () => {
-    render(<Composer />)
+    renderComposer()
     type(inputBox(), '看看 @mod')
     await settleMentions()
     expect(useFileMentionsSource.getState().mentions).toHaveLength(2)
@@ -261,7 +326,7 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
   })
 
   it('已到手的那批里再收一次 —— 多打两个字,列表当场收窄,不等下一次往返', async () => {
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
     // 刚敲下 `@`:空词也发,该出全表。
     type(box, '看看 @')
@@ -276,16 +341,30 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
   })
 
   it('选中一条:chip 上写路径,交出去的那句话里是 {{file:…}}', async () => {
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
     type(box, '看看 @model')
     await settleMentions()
 
+    /*
+     * 插完一枚 chip,光标回到这块可编辑区:接着打字就是接着说话。
+     *
+     * 这一条**只能钉「有没有把焦点要回去」这个动作**,不能钉最终的 activeElement:
+     * 候选行走的是 `onMouseDown + preventDefault`(那正是为了不让输入框失焦),
+     * 所以焦点从头到尾没离开过 box —— 而把焦点先挪开再点会连插入本身一起弄坏
+     * (`caretToken` 读的是当下的 selection,焦点一走光标就没了)。
+     * 反证:把 `ComposerInput` 那句 `activate('programmatic')` 删掉 → 这里红。
+     */
+    const refocus = vi.spyOn(box, 'focus')
     fireEvent.mouseDown(screen.getByText('/repo/src/model-capability.ts'))
     expect(state().drawerKind).toBeNull()
     // 屏幕上是一枚写着 `@路径` 的 chip(呈现)。
     expect(box.textContent).toContain('@/repo/src/model-capability.ts')
+    expect(refocus).toHaveBeenCalled()
+    refocus.mockRestore()
 
+    // 发送那一条得**先把焦点挪开**才量得出东西(壳一挂起来它本来就在 box 上)。
+    act(() => screen.getByTestId('composer-send').focus())
     fireEvent.click(screen.getByTestId('composer-send'))
     // 交出去的是**草稿**:chip 那一格换成它代表的 token(位置)。
     expect(handed.at(-1)).toEqual({
@@ -293,6 +372,12 @@ describe('@ 引用:候选是真的,插进去的是 token', () => {
       attachments: 0,
       text: `看看 ${createFileToken('/repo/src/model-capability.ts')}`,
     })
+    /*
+     * 发完话光标回输入框。R2 之前这是 `inputRef.current?.focus()`(一次跨作用域的
+     * 程序置焦),现在是 `activateScope('composer')` —— 焦点落在这块面**声明的
+     * 落点**上。反证:把 `useComposerSend` 里那句 `backToComposer()` 删掉 → 这里红。
+     */
+    expect(document.activeElement).toBe(box)
   })
 })
 
@@ -304,7 +389,7 @@ describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => 
   const send = () => screen.getByTestId('composer-send')
 
   it('抽屉里列的是 core 注册表那七条,不是壳编的', () => {
-    render(<Composer />)
+    renderComposer()
     type(inputBox(), '/c')
     expect(screen.getByText('/cd')).toBeTruthy()
     expect(screen.getByText('/compact')).toBeTruthy()
@@ -313,7 +398,7 @@ describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => 
   })
 
   it('选中 /cd:只把命令徽插进框里(参数是选完之后才打的),不执行', () => {
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
     type(box, '/cd')
     // 输入框里此刻也写着 `/cd`,所以要的是抽屉里那一行(按钮),不是随便一处文字。
@@ -324,7 +409,7 @@ describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => 
   })
 
   it('/new + 回车:走建会话的唯一编排点,一条消息都不发', async () => {
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
     type(box, '/new')
 
@@ -336,7 +421,7 @@ describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => 
   })
 
   it('/goal 那一类壳不执行:原样当一条消息发出去,不报错也不吞掉', async () => {
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
     type(box, '/goal 把徽标那处改了')
 
@@ -347,7 +432,7 @@ describe('/ 命令:选中只插文本,执行在按下发送的那一刻', () => 
   })
 
   it('句中的斜杠不是命令 —— 「看看 /new 那条」照常是一句话', () => {
-    render(<Composer />)
+    renderComposer()
     type(inputBox(), '看看 /new 那条')
     fireEvent.click(send())
     expect(starts).toBe(0)
@@ -366,7 +451,7 @@ describe('状态条:执行完不消失,只换成绿点', () => {
   }
 
   it('开一次执行:条出现、状态抽屉跟着开;点条收起,条还在', () => {
-    render(<Composer />)
+    renderComposer()
     act(() => state().beginStatus(spec))
     const bar = screen.getByLabelText('执行状态')
     expect(bar.textContent).toContain('正在执行 /review')
@@ -378,7 +463,7 @@ describe('状态条:执行完不消失,只换成绿点', () => {
   })
 
   it('走到最后一步就自己落定成完成:条改念「执行完成」', () => {
-    render(<Composer />)
+    renderComposer()
     act(() => state().beginStatus(spec))
     act(() => state().tickStatus())
     expect(state().status?.stepIdx).toBe(1)
@@ -392,7 +477,7 @@ describe('ask 形态:本体的另一副样子', () => {
   const openDemo = () => act(() => state().openAsk(ASK_DEMO_SPEC))
 
   it('变形即问卷在场;Esc 整单拒绝,回落 write 并在流里留一条', () => {
-    render(<Composer />)
+    renderComposer()
     openDemo()
     expect(screen.getByText(ASK_DEMO_SPEC.questions[0].q)).toBeTruthy()
 
@@ -409,7 +494,7 @@ describe('ask 形态:本体的另一副样子', () => {
    *(真机 hover 转红的对照另见交卷报告)。
    */
   it('「拒绝」挂 ui/Button 的 danger 档(危险语义回填,不是 ghost)', () => {
-    render(<Composer />)
+    renderComposer()
     openDemo()
     const reject = screen.getByRole('button', { name: '拒绝回答' })
     expect(reject.className).toMatch(/danger/)
@@ -419,7 +504,7 @@ describe('ask 形态:本体的另一副样子', () => {
   })
 
   it('单选再点即取消;没答全时提交按钮不亮', () => {
-    render(<Composer />)
+    renderComposer()
     openDemo()
     const first = ASK_DEMO_SPEC.questions[0].opts[0].l
     fireEvent.click(screen.getByText(first))
@@ -430,7 +515,7 @@ describe('ask 形态:本体的另一副样子', () => {
   })
 
   it('三题答满才亮提交;交出去的是一条合并消息,本体回落 write', () => {
-    render(<Composer />)
+    renderComposer()
     openDemo()
     // 第一题单选 → 第二题多选两条 → 第三题单选,中间用 › 翻题
     fireEvent.click(screen.getByText(ASK_DEMO_SPEC.questions[0].opts[0].l))
@@ -458,7 +543,7 @@ describe('ask 形态:本体的另一副样子', () => {
   })
 
   it('「其他」就在行里写,回车即答;点记号即取消,不新开任何输入框', () => {
-    render(<Composer />)
+    renderComposer()
     openDemo()
     const free = screen.getAllByRole('textbox', { name: /就在这行写/ })[0]
     free.textContent = '两处都先别动'
@@ -470,14 +555,20 @@ describe('ask 形态:本体的另一副样子', () => {
   })
 
   it('← → 翻题,但焦点在输入面里时不抢(写字的人按方向键是在移光标)', () => {
-    render(<Composer />)
+    renderComposer()
     openDemo()
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(panel(), { key: 'ArrowRight' })
     expect(state().askIdx).toBe(1)
 
+    /*
+     * 「焦点在输入面里」这一半:真机上那一下按键的 target **就是**拿着焦点的
+     * 那个元素,所以判据从 `document.activeElement` 换成 `e.target` 是同义改写
+     * (设计 §7:别再读 activeElement 判「我是不是当前」)。用例因此也得照真机
+     * 派事件 —— 派在那格自由输入上,它自己冒泡到作用域根。
+     */
     const free = screen.getAllByRole('textbox', { name: /就在这行写/ })[0]
     free.focus()
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(free, { key: 'ArrowRight' })
     expect(state().askIdx).toBe(1)
   })
 })
@@ -491,7 +582,7 @@ describe('拍立得附件', () => {
   }
 
   it('📎 进来几张就有几张卡,计数徽念总数;删一张其余就位', () => {
-    const { container } = render(<Composer />)
+    const { container } = renderComposer()
     attach(container, ['a.log', 'b.png'])
     const stack = screen.getByLabelText('附件')
     expect(within(stack).getAllByLabelText('移除附件')).toHaveLength(2)
@@ -504,7 +595,7 @@ describe('拍立得附件', () => {
 
   it('离开摞带 200ms 宽限,再进即取消(卡缝与删卡的瞬间出界不塌摞)', () => {
     vi.useFakeTimers()
-    const { container } = render(<Composer />)
+    const { container } = renderComposer()
     attach(container, ['a.log'])
     const stack = screen.getByLabelText('附件')
 
@@ -527,7 +618,7 @@ describe('拍立得附件', () => {
 
 describe('发送', () => {
   it('空话不发;有话就交出去,附件随消息一起离开,输入框清空', () => {
-    const { container } = render(<Composer />)
+    const { container } = renderComposer()
     const box = screen.getByRole('textbox', { name: /说点什么/ })
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
     fireEvent.change(input, { target: { files: [new File(['x'], 'a.log')] } })
@@ -561,7 +652,7 @@ describe('发送', () => {
     ['标准问法 isComposing', { isComposing: true }],
     ['老实现 keyCode 229', { keyCode: 229 }],
   ])('组字确认的那一下回车不发送(%s),随后的真回车发且只发一条', (_label, composing) => {
-    render(<Composer />)
+    renderComposer()
     const box = screen.getByRole('textbox', { name: /说点什么/ })
     type(box, 'hi')
 
@@ -579,7 +670,7 @@ describe('发送', () => {
    */
   it('组字期间上下键归输入法,不去翻抽屉的选中项', async () => {
     vi.useFakeTimers()
-    render(<Composer />)
+    renderComposer()
     const box = screen.getByRole('textbox', { name: /说点什么/ })
     type(box, '看看 @')
     expect(state().drawerKind).toBe('files')
@@ -623,7 +714,7 @@ describe('抽屉列表封顶之后:选中项要滚进视野', () => {
     Element.prototype.scrollIntoView = scrollIntoView
     try {
       vi.useFakeTimers()
-      render(<Composer />)
+      renderComposer()
       const box = inputBox()
       type(box, '看看 @')
       await settleMentions()
@@ -660,7 +751,7 @@ describe('抽屉列表封顶之后:选中项要滚进视野', () => {
 describe('抽屉候选:hover 不许影响 select', () => {
   it('鼠标经过第二条,选中位一格不动', async () => {
     vi.useFakeTimers()
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
     type(box, '看看 @')
     await settleMentions()
@@ -677,7 +768,7 @@ describe('抽屉候选:hover 不许影响 select', () => {
 
   it('滚入视野之后补来的那发合成 mouseenter,同样拽不走选中位', async () => {
     vi.useFakeTimers()
-    render(<Composer />)
+    renderComposer()
     const box = inputBox()
     type(box, '看看 @')
     await settleMentions()
@@ -701,13 +792,13 @@ describe('发送键的两副面孔:闲时发送,忙时停止', () => {
   const sendBtn = () => screen.getByTestId('composer-send')
 
   it('闲时:aria-label 是发送,data-mode 说的也是 send', () => {
-    render(<Composer />)
+    renderComposer()
     expect(sendBtn().getAttribute('data-mode')).toBe('send')
     expect(sendBtn().getAttribute('aria-label')).toBe('发送')
   })
 
   it('忙时同一颗按钮换脸:label 变「停止生成」,点它是交出一次 abort 而不是发消息', () => {
-    render(<Composer />)
+    renderComposer()
     const box = screen.getByRole('textbox', { name: /说点什么/ })
     type(box, '这句话不该在这时候被发出去')
     busy()
@@ -723,7 +814,7 @@ describe('发送键的两副面孔:闲时发送,忙时停止', () => {
   })
 
   it('Esc 停止是两段式(08-31 拍板对齐 Vue):第一下只预备并换占位话,窗口内第二下才停', () => {
-    render(<Composer />)
+    renderComposer()
     const box = screen.getByRole('textbox', { name: /说点什么/ })
     box.focus()
     busy()
@@ -741,7 +832,7 @@ describe('发送键的两副面孔:闲时发送,忙时停止', () => {
   it('预备窗口过期后再按 Esc 只是重新预备;引擎收尾也拆预备', () => {
     vi.useFakeTimers()
     try {
-      render(<Composer />)
+      renderComposer()
       const box = screen.getByRole('textbox', { name: /说点什么/ })
       box.focus()
       busy()
@@ -758,7 +849,7 @@ describe('发送键的两副面孔:闲时发送,忙时停止', () => {
   })
 
   it('抽屉开着时 Esc 先收抽屉 —— 看得见的那层先退,这一下不会顺手停掉一轮', () => {
-    render(<Composer />)
+    renderComposer()
     fireEvent.click(modelPill())
     expect(state().drawerKind).toBe('model')
     busy()
@@ -768,11 +859,30 @@ describe('发送键的两副面孔:闲时发送,忙时停止', () => {
     expect(aborts).toBe(0)
   })
 
-  it('焦点不在这块面板里时 Esc 不停 —— 别处按 Esc 退层不该顺手掐掉后台那一轮', () => {
-    render(<Composer />)
-    document.body.focus()
+  /**
+   * 「焦点在这块面板里」R2 之后**不是一句判据,是结构**:两段式停止的唯一调用点
+   * 是这块面那一格作用域的 `onEscape`,而树只在它在活动路径上时才问。所以这一条
+   * 照树的说法摆现场:把第一响应者指到**别的一格**上(这里是壳根),再按 Esc。
+   * 反证:把 `focus/transitions.routeEscape` 里那句「不在路径上的不进候选表」
+   * 拆掉 → 这一条当场红(别处按 Esc 退层会顺手掐掉后台那一轮)。
+   */
+  it('这块面不是当前时 Esc 不停 —— 别处按 Esc 退层不该顺手掐掉后台那一轮', () => {
+    renderComposer()
     busy()
+    const elsewhere = document.createElement('div')
+    elsewhere.tabIndex = -1
+    document.body.append(elsewhere)
+    act(() => {
+      const root = focusTree.register('root', null)
+      root.setRoot(elsewhere)
+      root.activate('programmatic')
+    })
 
+    /*
+     * **按两下**:第一下只预备(静默),第二下才交 abort —— 只按一下的话
+     * 「没接住」与「接住了但还在预备」读数相同,那条守卫就翻不红了。
+     */
+    act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
     act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
     expect(aborts).toBe(0)
   })
@@ -795,7 +905,7 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
 
   it('恰好建一条会话,原话发进去,输入框清空', async () => {
     hasSession = false
-    render(<Composer />)
+    renderComposer()
     type(box(), '先建一条会话再说')
 
     await act(async () => void fireEvent.click(sendBtn()))
@@ -807,7 +917,7 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
 
   it('空话不建会话 —— 「开始一段对话」的前提是真有一句话要说', async () => {
     hasSession = false
-    render(<Composer />)
+    renderComposer()
 
     await act(async () => void fireEvent.click(sendBtn()))
 
@@ -822,7 +932,7 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
       new Promise((resolve) => {
         release = resolve
       })
-    render(<Composer />)
+    renderComposer()
     type(box(), 'hi')
 
     fireEvent.click(sendBtn())
@@ -850,7 +960,7 @@ describe('首开草稿态:没有会话时发送 = 先建一条,再把这句话�
   it('建不成:话留在框里,这一层不再加第二条提示(编排点已经说过了)', async () => {
     hasSession = false
     answerStart = async () => undefined
-    render(<Composer />)
+    renderComposer()
     type(box(), '这句话不能丢')
 
     await act(async () => void fireEvent.click(sendBtn()))
@@ -917,7 +1027,7 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
   })
 
   it('在飞时药丸 aria-busy,而且它自己不被禁用', async () => {
-    render(<Composer />)
+    renderComposer()
     fireEvent.click(pill())
     await act(async () => void fireEvent.mouseDown(row()))
 
@@ -930,7 +1040,7 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
   })
 
   it('在飞时抽屉的第二下**不发**,而且连抽屉都不收(闸在 commit,不在 store)', async () => {
-    render(<Composer />)
+    renderComposer()
     fireEvent.click(pill())
     await act(async () => void fireEvent.mouseDown(row()))
     expect(state().drawerKind).toBeNull()

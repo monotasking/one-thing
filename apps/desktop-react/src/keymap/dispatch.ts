@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useTocStore } from '../toc/store'
 import { useStageStore } from '../stage/store'
+import { requestFocusOnOpen } from '../stage/focus-follow'
 import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
 import { useWorkspacePalette } from '../workspace/components/palette-hub'
@@ -40,7 +41,34 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
   return useCallback(
     (id: CommandId) => {
       if (id.startsWith(TOGGLE_COMMAND_PREFIX)) {
-        toggleItem(id.slice(TOGGLE_COMMAND_PREFIX.length))
+        const item = id.slice(TOGGLE_COMMAND_PREFIX.length)
+        /*
+         * ── §3.5 规则 2:**用键盘打开一块面,焦点进那块面** ────────────────
+         * 「从 Dock 开一块面」有两条路,答案不一样:指针点那块瓦时焦点已经落在
+         * 瓦上了(点击自己落焦),再送会把焦点从瓦上拽走 —— 连着按两下同一块瓦
+         * 就不再是「开、关」。所以那条路维持今天,**这条路**(键盘)才送:
+         * 按下 ⌘ 数字的人手在键盘上,他要的正是接着用键盘。
+         *
+         * 这里**点名**而不是当场 `activate`:落定那一刻装着它的宿主层还没挂上来
+         * (React 要到下一次提交才渲染那一层),当场叫一律落空 —— 单测证伪过一版。
+         * 点完名之后由那唯一的接线处(`stage/focus-follow` 的 hook)在提交之后送。
+         * 收回 Dock 的那一下点名会被同一只纯函数当场丢掉(那时没有可送的面)。
+         */
+        requestFocusOnOpen(item)
+        toggleItem(item)
+        /*
+         * ── §3.5 规则 2:**用键盘打开一块面,焦点进那块面** ────────────────
+         * 「从 Dock 开一块面」有两条路,而它们的答案不一样:指针点那块瓦时
+         * 焦点已经落在瓦上了(点击自己落焦),再 `activate` 会把焦点从瓦上拽走 ——
+         * 连着按两下同一块瓦就不再是「开、关」。所以那条路维持今天,**这条路**
+         * (键盘)才送:按下 ⌘ 数字的人手在键盘上,他要的正是接着用键盘。
+         *
+         * 这里是键盘这条路**唯一**的入口,所以这一句只此一处;形态之间的挪动
+         * (拼舞台 / 钉边 / 撕浮窗)是另一回事,收在 `stage/focus-follow` 那一处。
+         *
+         * 收回 Dock 的那一下不送(`toggleItem` 是开关语义):那时没有可送的面,
+         * 焦点该回哪儿是结构归还的事。
+         */
         return
       }
       /*

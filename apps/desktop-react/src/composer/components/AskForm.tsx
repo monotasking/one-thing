@@ -1,5 +1,5 @@
-import { useRef } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, RefObject } from 'react'
+import { useFocusScope } from '../../focus/useFocusScope'
 import { useT } from '../../i18n'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
@@ -28,7 +28,19 @@ const ROW_GAP = 5
  * 3. 每题底下**永远多一条「其他」**,就在行里写、回车即答,不新开输入框;
  * 4. 几何钉死:按选项最多的那题预留高度,翻题时面板一动不动。
  */
-export function AskForm({ spec }: { spec: AskSpec }) {
+export function AskForm({
+  spec,
+  freeRef,
+}: {
+  spec: AskSpec
+  /**
+   * 「其他」那一格自由输入。**由输入面板持有**(它是这一形的落点,见 Composer 的
+   * `restingTarget`)—— 这一层因此不再自己 `.focus()`:点记号 = 一句 `activate()`,
+   * 焦点落到哪儿由那一格声明答。设计 §7:跨作用域搬焦点谁都不许,作用域内部的
+   * 移动走落点。
+   */
+  freeRef: RefObject<HTMLSpanElement | null>
+}) {
   const t = useT()
   const answers = useComposerStore((st) => st.askAnswers)
   const idx = useComposerStore((st) => st.askIdx)
@@ -37,7 +49,8 @@ export function AskForm({ spec }: { spec: AskSpec }) {
   const move = useComposerStore((st) => st.moveAsk)
   const submit = useComposerStore((st) => st.submitAsk)
   const reject = useComposerStore((st) => st.rejectAsk)
-  const freeRef = useRef<HTMLSpanElement>(null)
+  /** 这块表单住在输入面板那一格作用域里,所以拿到的是它的句柄。 */
+  const { activate } = useFocusScope()
 
   const question = spec.questions[idx]
   if (!question) return null
@@ -133,12 +146,17 @@ export function AskForm({ spec }: { spec: AskSpec }) {
             role="button"
             tabIndex={0}
             aria-label={t('ask.other')}
-            onClick={() => (customOn ? setCustom('') : freeRef.current?.focus())}
+            /*
+             * 点记号 = **取消这句自定义答案**;还没写过就把光标送进那一行。
+             * 「送进去」走 `activate()`(输入面板的落点在 ask 形态下就是那一行),
+             * 不再自己 `.focus()` —— 落点是声明,不是每个调用方各记一遍。
+             */
+            onClick={() => (customOn ? setCustom('') : activate('open'))}
             onKeyDown={(e) => {
               if (e.key !== 'Enter' && e.key !== ' ') return
               e.preventDefault()
               if (customOn) setCustom('')
-              else freeRef.current?.focus()
+              else activate('open')
             }}
           />
           <span className={s.askLabel}>{t('ask.other')}</span>

@@ -116,6 +116,25 @@ Esc 那段历史(08-30 microtask 失败 → 08-31 改相位 → 09-01 立浮层�
 R0 已写);②`focusout` 且 `relatedTarget === null` → 微任务后查 `activeElement === body` 则收回;
 ③唯一派发器每次 keydown 开头:`activeElement === body` 先收回再路由(这条兜住所有静默移除)。
 
+**R2 落地时的三条修正(09-03,逐条有代码与用例)**:
+
+1. **`layer` 的落点那一格是真的要写代码的**。上表 `layer` 行的「进入落点 = 第一个
+   可交互子作用域,否则根」在 R1 只是一句表述;R2 补上实现(`FocusTree.entryOf`)。
+   少了它,「切 tab / 开面 / 挪位置之后键盘立刻可用」只兑现一半:焦点停在层的根上,
+   而那块面不在活动路径上 —— 紧接着按 ⌘F 一样落空。
+2. **多实例的 layer 要认得出「装着哪块面」**(`ScopeNode.owner`)。§4.8 说「局部键
+   路由看实例」,但没给一条按名字取实例的路;而规则 3 要激活的不是「某个
+   float-layer」,是**装着这块面的那一扇**(四条边的架子 / 几扇浮窗同时在场时,
+   MRU 会选到「最近用过的那一份」,而它恰恰不是刚落定的那一份)。所以宿主层报
+   `owner`,`activateScope(scope, { owner })` 据此精确取。
+3. **落焦必须排在 React 提交之后**。规则 2/3 的第一版把 `activate` 直接写在
+   store 的写点上(`set` 的包装 / 命令表那一句),真机当场证伪:落定那一刻装着
+   这块面的宿主层还没挂上来(架子切 tab 更刁 —— 两层都挂着,但旧层的 `inert`
+   也要等那次提交才翻),`activateScope` 一律答 false,焦点一步都没跟。
+   所以判据留在纯函数里(`stage/focus-follow.ts`),**执行挪到提交之后**
+   (一只订阅 + 一格 state + 一条 effect);键盘那条打开路因此也改成**点名**
+   (`requestFocusOnOpen`)而不是当场叫。
+
 ### 4.2 活动路径怎么定
 
 三个来源,一条优先级,全部写在纯函数 `focus/transitions.ts` 里:
@@ -261,7 +280,7 @@ focus/
 | --- | --- | --- |
 | R0 树 | `src/focus/` 全部文件 + 纯函数单测;root 作用域挂在 AppShell;旧机制**全部保留**,树零消费者。`gate-focus` 先钉红。 | 无 |
 | R1 层与 Esc | 四个 Placement 宿主 + Dialog/Menu/Popover/Palette/Tooltip 接树;`floatStack`、`useEscapeChain`、`useFocusTrap`(整只)、`useFloatDismiss` Esc 半边退役;唯一派发器上线,旧全局派发器监听删。**已落地(09-02)**:派发器是**两半相位**的过渡形(捕获半 = 浮层 Esc + 模态 Tab + 录制独占 + I1 收回,冒泡半 = 面的 Esc + 局部键 + 全局命令),分界就是今天那条相位线,好让还没接树的 ExposeView / composer / viewer / files 四家的相对次序一格不变;R2 把它们接进树之后两半合一。Tooltip 走**瞬态口**(`registerTransient`)而不是作用域 —— 它没有一个包着触发元素的根。 | Esc 层叠语义与今天逐条相同(gate 场景 4/5 守,真机矩阵逐条同);孤儿焦点消失(gate I1 由 3 红转全绿)。 |
-| R2 内容面 | viewer / files / composer / search / expose / chat / settings / dock 接树;局部键表迁入;八处 element/window 监听删;`registerComposerFocus` 退役;宿主补 `activate()`。 | ⌘F 根治;切 tab / 开面 / 程序置顶后键盘立刻可用。 |
+| R2 内容面 | viewer / files / composer / search / expose / chat / settings / dock 接树;局部键表迁入;八处 element/window 监听删;`registerComposerFocus` 退役;宿主补 `activate()`。**已落地(09-03)**:派发器两半合一(只剩一个**捕获**相位的 window 监听,加一格 `isComposing` 放行);`returnTo` 按 §4.5 的 R1 裁定实现;`keymap/scopes.ts` 的兼容层(`KEY_SCOPES`/`SCOPED_KEYS`/`comboFromChord`/`files.row`)与查看器键位表的 `bindings`/`commandFor` 一起退役;三条棘轮读数 12/22/2 → **0/0/0**;`gate-focus` 补到十二个场景并**去掉 `--expect-red`**(0 红 / 56 断言)。 | ⌘F 根治;切 tab / 开面 / 挪位置后键盘立刻可用;启动即有第一响应者;树行单击留树、↵ 进查看器。 |
 | R3 执法 | 三条棘轮归零;`gate-focus` 进 verify;设置页快捷键区读合并表;dev `__focus.dump()`。 | 无 |
 
 R1 与 R2 各一批,不合并(R1 守的是"行为不变",R2 才带可感知变化,分开才查得清)。

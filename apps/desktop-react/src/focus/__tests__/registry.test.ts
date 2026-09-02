@@ -439,3 +439,245 @@ describe('activate:已经在我里面了就不往回拽', () => {
     expect(focusTree.current()?.scope).toBe('dialog')
   })
 })
+
+describe('returnTo —— 换人那一刻记下上一任(§4.5 R1 裁定,R2 落地)', () => {
+  /** 造一格真能拿焦点的输入框,挂在给定的根里。 */
+  function boxIn(root: HTMLElement): HTMLInputElement {
+    const box = document.createElement('input')
+    root.append(box)
+    return box
+  }
+
+  it('兄弟归还:检索面关掉,焦点回它开出来之前那个输入框', () => {
+    const shell = document.createElement('div')
+    const composerRoot = document.createElement('div')
+    const searchRoot = document.createElement('div')
+    shell.append(composerRoot, searchRoot)
+    document.body.append(shell)
+
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const composer = focusTree.register('composer', root.instanceId)
+    composer.setRoot(composerRoot)
+    const box = boxIn(composerRoot)
+    box.focus()
+    expect(focusTree.current()?.scope).toBe('composer')
+
+    // ⌘P:检索面是 root 的孩子,与 composer 是**兄弟** —— 父链到不了它。
+    const search = focusTree.register('search', root.instanceId)
+    search.setRoot(searchRoot)
+    const field = boxIn(searchRoot)
+    search.activate('open')
+    field.focus()
+
+    search.unregister()
+    expect(document.activeElement).toBe(box)
+  })
+
+  it('收回(I1)**不算换人**:壳根接过焦点,壳根那一格不会记下一个 returnTo', () => {
+    const shell = document.createElement('div')
+    shell.tabIndex = -1
+    const composerRoot = document.createElement('div')
+    shell.append(composerRoot)
+    document.body.append(shell)
+
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const composer = focusTree.register('composer', root.instanceId)
+    composer.setRoot(composerRoot)
+    boxIn(composerRoot).focus()
+    expect(focusTree.current()?.scope).toBe('composer')
+
+    /*
+     * 焦点掉到 body,而第一响应者此刻答不出落点(换宿主中途:根还没铺回来)——
+     * 收回于是退到壳根那一格。**这一下不许写 returnTo**:它记下来的会是
+     * 「开检索面之前我在壳根」,而事实是在那个输入框里(§4.5 裁定的原话)。
+     */
+    composer.setRoot(null)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    focusTree.recoverOrphanFocus()
+    expect(document.activeElement).toBe(shell)
+
+    const rootDump = focusTree.dump().nodes.find((n) => n.scope === 'root')
+    // 反证:把 recoverOrphanFocus 里那层 withoutReturnSeat 拆掉 → 这里会是 composer 的实例 id。
+    expect(rootDump?.returnTo).toBeNull()
+  })
+
+  it('pointerdown 抢根在今天的壳里**够不着**(作用域根自带 tabIndex,浏览器原生已经做完这件事)', () => {
+    const shell = document.createElement('div')
+    shell.tabIndex = -1
+    const viewerRoot = document.createElement('div')
+    viewerRoot.tabIndex = -1
+    const body = document.createElement('pre')
+    viewerRoot.append(body)
+    shell.append(viewerRoot)
+    document.body.append(shell)
+
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const viewer = focusTree.register('viewer', root.instanceId)
+    viewer.setRoot(viewerRoot)
+
+    const grab = vi.spyOn(viewerRoot, 'focus')
+    body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    /*
+     * §4.6 那只 document 监听头一句就是「点在一个自己能接焦点的东西上 → 不插手」,
+     * 判据是 `closest('…,[tabindex],…')` —— 而 R1 起**每一个作用域根都铺着
+     * `tabIndex={-1}`**,所以这一句在壳里恒真:抢根那一路够不着。
+     * 它并不是白留着:浏览器原生就把「点非可聚焦元素 → 焦点给最近的可聚焦祖先」
+     * 做完了(那正是这条判据要让开的东西),而这一格守着「别有人为了让它跑起来
+     * 去把 `[tabindex]` 从那串选择器里删掉」—— 删了就等于每一次点正文都抢一遍焦点。
+     * 抢根**不算换人**(不写 returnTo)那一条因此是防御性的,记在 R2 交卷报里。
+     */
+    expect(grab).not.toHaveBeenCalled()
+  })
+})
+
+describe('activateScope —— 说得出「哪一种面」,说不出「哪一份实例」', () => {
+  it('一份都没有 → false,什么都不做', () => {
+    focusTree.register('root', null).setRoot(document.createElement('div'))
+    expect(focusTree.activateScope('viewer')).toBe(false)
+  })
+
+  it('还没铺根 / 正 inert 的那几份不算', () => {
+    const shell = document.createElement('div')
+    document.body.append(shell)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+
+    const pending = focusTree.register('viewer', root.instanceId) // 没 setRoot
+    expect(pending.instanceId).toBeTruthy()
+    const hidden = focusTree.register('viewer', root.instanceId, { inert: true })
+    const hiddenRoot = document.createElement('div')
+    hiddenRoot.tabIndex = -1
+    shell.append(hiddenRoot)
+    hidden.setRoot(hiddenRoot)
+
+    expect(focusTree.activateScope('viewer')).toBe(false)
+  })
+
+  it('多份可交互 → 取 MRU(最近在活动路径上那一份)', () => {
+    const shell = document.createElement('div')
+    document.body.append(shell)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+
+    const mk = () => {
+      const el = document.createElement('div')
+      el.tabIndex = -1
+      shell.append(el)
+      const handle = focusTree.register('viewer', root.instanceId)
+      handle.setRoot(el)
+      return { handle, el }
+    }
+    const a = mk()
+    const b = mk()
+    a.handle.activate('open')
+    b.handle.activate('open')
+    root.activate('open') // 焦点离开两份查看器
+
+    expect(focusTree.activateScope('viewer')).toBe(true)
+    // 最近用过的是 b。反证:把 MRU 换成「取第一个」→ 这里会是 a。
+    expect(document.activeElement).toBe(b.el)
+  })
+
+  it('owner 给了就精确取那一份(同一种 layer 的好几扇)', () => {
+    const shell = document.createElement('div')
+    document.body.append(shell)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+
+    const mk = (owner: string) => {
+      const el = document.createElement('div')
+      el.tabIndex = -1
+      shell.append(el)
+      const handle = focusTree.register('float-layer', root.instanceId, { owner })
+      handle.setRoot(el)
+      return { handle, el }
+    }
+    const files = mk('files')
+    const sessions = mk('sessions')
+    sessions.handle.activate('open') // MRU 指向 sessions
+    root.activate('open')
+
+    expect(focusTree.activateScope('float-layer', { owner: 'files' })).toBe(true)
+    expect(document.activeElement).toBe(files.el)
+    expect(focusTree.activateScope('float-layer', { owner: 'nobody' })).toBe(false)
+  })
+})
+
+describe('layer 的落点 = 第一个可交互子作用域(设计 §4.1 那张表)', () => {
+  function mountLayer(): {
+    layer: ReturnType<typeof focusTree.register>
+    pane: HTMLElement
+    layerEl: HTMLElement
+  } {
+    const shell = document.createElement('div')
+    shell.tabIndex = -1
+    const layerEl = document.createElement('div')
+    layerEl.tabIndex = -1
+    const pane = document.createElement('div')
+    pane.tabIndex = -1
+    layerEl.append(pane)
+    shell.append(layerEl)
+    document.body.append(shell)
+
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const layer = focusTree.register('float-layer', root.instanceId, { owner: 'files' })
+    layer.setRoot(layerEl)
+    const viewer = focusTree.register('viewer', layer.instanceId)
+    viewer.setRoot(pane)
+    return { layer, pane, layerEl }
+  }
+
+  it('激活一层 → 焦点进它装着的那块面,不是停在层的根上', () => {
+    const { layer, pane } = mountLayer()
+    layer.activate('placement')
+    /*
+     * 反证:把 `entryOf` 摘掉(activate 直接用 `restingElementOf(node)`)→ 焦点
+     * 停在层的根上,那块面不在活动路径上,紧接着按 ⌘F 一样落空 ——
+     * 「切 tab / 开面 / 挪位置之后键盘立刻可用」当场只兑现一半。
+     */
+    expect(document.activeElement).toBe(pane)
+    expect(focusTree.current()?.scope).toBe('viewer')
+  })
+
+  it('层自己声明了落点就听它的(宿主的显式意见优先于这条缺省规矩)', () => {
+    const shell = document.createElement('div')
+    const layerEl = document.createElement('div')
+    layerEl.tabIndex = -1
+    const box = document.createElement('input')
+    const pane = document.createElement('div')
+    pane.tabIndex = -1
+    layerEl.append(box, pane)
+    shell.append(layerEl)
+    document.body.append(shell)
+
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const layer = focusTree.register('float-layer', root.instanceId, {
+      restingTarget: () => box,
+    })
+    layer.setRoot(layerEl)
+    const viewer = focusTree.register('viewer', layer.instanceId)
+    viewer.setRoot(pane)
+
+    layer.activate('placement')
+    expect(document.activeElement).toBe(box)
+  })
+
+  it('孩子正 inert(架子后台那一层里的那份)→ 退回层的根', () => {
+    const { layer, layerEl } = mountLayer()
+    const inertChild = [...focusTree.nodes().values()].find((n) => n.scope === 'viewer')
+    expect(inertChild).toBeTruthy()
+    focusTree.dump() // 只为读一眼,不改状态
+    // 把那块面打成不可交互(架子切到后台的形)。
+    const handle = focusTree.register('viewer', layer.instanceId, { inert: true })
+    handle.setRoot(document.createElement('div'))
+    // 原来那份也 inert 掉,层里于是一个可交互的孩子都没有。
+    if (inertChild) inertChild.inert = true
+    layer.activate('placement')
+    expect(document.activeElement).toBe(layerEl)
+  })
+})

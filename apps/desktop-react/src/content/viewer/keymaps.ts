@@ -23,11 +23,6 @@ import { disposeRegistrations, registerKeymap } from './registry'
 registerKeymap({
   id: 'default',
   nameKey: 'viewer.keymapDefault',
-  bindings: {
-    'mod+s': 'save',
-    'mod+l': 'jump',
-    'mod+f': 'find',
-  },
   implemented: true,
 })
 
@@ -55,11 +50,6 @@ registerKeymap({
   id: 'vim',
   nameKey: 'viewer.keymapVim',
   modes: ['normal', 'insert'],
-  bindings: {
-    'mod+s': 'save',
-    'mod+l': 'jump',
-    'mod+f': 'find',
-  },
   commandLine: true,
   implemented: false,
 })

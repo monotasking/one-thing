@@ -10,6 +10,7 @@ import {
   useCommandsSource,
 } from '../data/commands-source'
 import type { CommandEntry } from '../data/commands-source'
+import { focusTree } from '../focus/registry'
 import { notify } from '../services/notify'
 import { ASK_DEMO_SPEC, DEV_COMMANDS } from './data'
 import { composerSink } from './sink'
@@ -46,6 +47,22 @@ export interface ComposerSendDeps {
   closeDrawer: () => void
   /** store 的那一口。返回 false = 没交出去(空话,或者还没有当前会话)。 */
   send: (text: string) => boolean
+}
+
+/**
+ * 发完一句话,光标回输入框。
+ *
+ * R2 之前这是 `inputRef.current?.focus()` —— 一次**跨作用域的程序置焦**,而
+ * 设计 §7 的「谁都不许」第二条正是这个。改走响应链:`activateScope('composer')`
+ * 把焦点送到输入面板**声明的落点**上,于是「落点是哪一格」只有一个产地
+ * (write 形态是那块可编辑区、ask 形态是自由答案那一格,见 Composer 的
+ * `restingTarget`),这里不必知道。
+ *
+ * 输入面板没挂载(还在总览里)时它答 false,什么都不做 —— 与从前那个
+ * 「没人登记就是恒等」的单槽口(`composer/focus.ts`,本批退役)逐字同义。
+ */
+function backToComposer(): void {
+  focusTree.activateScope('composer')
 }
 
 export function useComposerSend({
@@ -144,7 +161,7 @@ export function useComposerSend({
     (text: string) => {
       if (send(text)) {
         inputRef.current?.clear()
-        inputRef.current?.focus()
+        backToComposer()
         return
       }
       /*
@@ -155,7 +172,7 @@ export function useComposerSend({
        * 归宿完全不同(一条什么都不做,一条要建会话)。
        */
       if (!text.trim() || starting.current) {
-        inputRef.current?.focus()
+        backToComposer()
         return
       }
       starting.current = true
@@ -167,7 +184,7 @@ export function useComposerSend({
           if (sessionId && send(text)) inputRef.current?.clear()
         } finally {
           starting.current = false
-          inputRef.current?.focus()
+          backToComposer()
         }
       })()
     },
@@ -193,13 +210,13 @@ export function useComposerSend({
             sendPlain(text)
           } finally {
             running.current = false
-            inputRef.current?.focus()
+            backToComposer()
           }
         })()
         return
       }
       sendPlain(text)
     },
-    [runCommand, sendPlain, inputRef],
+    [runCommand, sendPlain],
   )
 }

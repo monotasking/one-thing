@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { TriangleAlert } from '../../components/icons'
 import { AsyncButton } from '../../ui/AsyncButton'
 import { Button } from '../../ui/Button'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Field, useFieldControlProps } from '../../ui/Field'
 import { Input } from '../../ui/Input'
+import { useInlineEdit } from '../../ui/inline-edit'
 import type { TFn } from '../../i18n'
 import { useAsyncPending } from '../../data/kernel'
 import { sessionMutation, useSessionsSource, workdirKey } from '../../data/sessions-source'
@@ -176,11 +177,22 @@ function BindInput({
   onCancel: () => void
 }) {
   const field = useFieldControlProps()
-  const controlId = field.id
-  useEffect(() => {
-    if (!controlId) return
-    document.getElementById(controlId)?.focus()
-  }, [controlId])
+  /*
+   * ── 这一格就是**原地编辑**,所以它消费 `ui/inline-edit`(09-03 R2)──────────
+   * 从前这里是三句手写:一条 effect 按 `controlId` 取元素 `focus()`,加 `↵ 落定`
+   * 与 `Esc 收回` 两条分支 —— 而那正是 09-02 批 11 立件时点名的那组手势
+   * (「基础件先行」:有件必须消费)。迁过去之后这一格一句焦点代码都没有,
+   * `.focus()` 从此只在库件那一处(I3 允许的三个产地之一)。
+   *
+   * `cancelOnBlur` 走缺省的 `false`:这一行旁边还站着一颗「确认」钮,而 `blur`
+   * 在 `click` 之前到 —— 打开它会把那颗钮变成永远点不到的(库件文件头的原话)。
+   *
+   * **规范修正一处**:库件「一进来就选中全文」,而手写那版只 focus 不选。
+   * 可感知面只有一种走法:打了几个字 → Esc 收回 → 再点「绑定」重开,那时框里
+   * 留着上次那串路径,现在会被选中(接着打就是覆盖)。这是消费库件带来的
+   * 规格对齐,逐条记在交卷报里。
+   */
+  const edit = useInlineEdit({ controlId: field.id, onCommit: onSubmit, onCancel })
   return (
     <Input
       {...field}
@@ -190,10 +202,7 @@ function BindInput({
       onValueChange={onValueChange}
       invalid={invalid}
       placeholder={placeholder}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') onSubmit()
-        if (e.key === 'Escape') onCancel()
-      }}
+      {...edit}
     />
   )
 }

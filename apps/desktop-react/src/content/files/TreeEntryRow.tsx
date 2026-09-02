@@ -44,14 +44,25 @@ export function depthVar(depth: number): CSSProperties {
  *
  * 于是这一行上只剩两种手势:**单击 = 打开 / 展开**,**右键(或行尾 ⋯)= 动作菜单**。
  *
- * ── 键盘:⌘I / ⌘↵ 是**面域局部键**(快捷键三层的第二层)──────────────────
- * 它们长在这一行自己的 `keydown` 上 —— 因为「看这一项的详情」需要一个**目标**,
- * 焦点不在某一行上时它无事可做,所以它不属于全局命令那一族。声明在
- * `keymap/scopes.ts` 的 `SCOPED_KEYS`(scope `files.row`),两处会不会分叉由
- * `keymap/__tests__/keymap-scopes.test.ts` 钉着 —— **那条守卫按源文本读这个文件**
- * (9d 把行搬出 FilesPanel 时同批改了它读的路径;两条正则一个字没动)。
- * 裁决靠一条机制:行上接住了就 `preventDefault()`,全局派发器开头一句
- * `if (e.defaultPrevented) return` 让开。
+ * ── 单击与 ↵ 的差别只有一件事:**焦点去哪**(09-03 R2,§11 拍点 1 的 (a) 档)──
+ * 两者都打开那份文件;单击**焦点留在树上**(浏览器自己把焦点落在这颗按钮上,
+ * 这一行一个字都不用做),↵ 额外把焦点送进查看器 —— 「导航器里浏览不抢焦点,
+ * 确认才抢」(VS Code / Finder 惯例)。这一行只负责说清楚「这一下是哪种手势」
+ * (`onActivate(viaKeyboard)`),**焦点送到哪儿由面板那一层用 `activateScope`
+ * 去问树** —— 查看器此刻可能在面板分栏里、也可能在舞台 / 浮窗 / 架子上,
+ * 一行文件树不该知道那件事。
+ *
+ * ── 键盘:⌘I / ⌘↵ **不在这一行上了**(09-03 R2)────────────────────────────
+ * 它们仍然是面域局部键(「看这一项的详情」需要一个目标,所以不属于全局那一族),
+ * 但落点从这一行自己的 `keydown` 搬到了**面板那一格作用域**的 `keyHandlers`:
+ * 声明在 `focus/scopes.ts` 的 `FOCUS_SCOPES.files.keys`,路由由响应链按活动路径
+ * 的深度做(设计 §4.3),裁决仍是「局部先接、没接住放行全局」——只是那个「先」
+ * 不再靠冒泡序。
+ *
+ * 这一行于是只剩**报到**:拿到焦点时把自己交给面板(`onCurrent`),失去时销号。
+ * 「哪一行」这个问题必须有人答,而答案不许是 `document.activeElement`
+ * (设计 §7「谁都不许」的第三条)——这一行本来就是焦点真的落在上面的那一族,
+ * 所以由它逐行报,比全局查一次更准也更便宜。
  *
  * ── 三张状态表(状态先行)────────────────────────────────────────────────
  *  ① 生命周期:纯受控件,零 store 订阅、零副作用(只有一颗量矩用的 `wrapRef`)。
@@ -74,15 +85,24 @@ export function TreeEntryRow({
   selected,
   opened,
   onActivate,
-  onDetail,
+  onCurrent,
   onMenu,
 }: {
   row: EntryRow
   t: TFn
   selected: boolean
   opened: boolean
-  onActivate: () => void
-  onDetail: (origin: FloatOrigin) => void
+  /**
+   * 打开 / 展开这一项。`viaKeyboard` = 这一下是**↵ 按出来的**,不是鼠标点的 ——
+   * 「导航器里浏览不抢焦点,确认才抢」(§3.5 规则 4 / §11 拍点 1 的 (a) 档)
+   * 全靠这一格分开两种手势,判据在按下去的那一刻就有,不必事后猜。
+   */
+  onActivate: (viaKeyboard: boolean) => void
+  /**
+   * 焦点进 / 出这一行。`el` 是这一行的**外框**(浮层贴的是它的矩,与右键那一路
+   * 同一处锚点算式);交出 null = 焦点离开了这一行。
+   */
+  onCurrent: (row: EntryRow, el: HTMLElement | null) => void
   onMenu: (origin: FloatOrigin) => void
 }) {
   const Caret = row.expanded ? ChevronDown : ChevronRight
@@ -110,6 +130,13 @@ export function TreeEntryRow({
         // 指针事件原样交出去 → 点锚(光标那一点就是落点,不加缝)。
         onMenu(e)
       }}
+      /*
+       * 焦点进 / 出**这一行**(含行尾那颗 ⋯:它也在这一行里,⌘I 该作用在同一行)。
+       * React 的 onFocus / onBlur 底下是 focusin / focusout,会冒泡 —— 所以挂在
+       * 外框上一处就够,不必每颗控件各挂一遍。
+       */
+      onFocus={() => onCurrent(row, wrapRef.current)}
+      onBlur={() => onCurrent(row, null)}
     >
       {/*
        * 一行是**结构件**(视觉本该定制:缩进、标识槽、名字),所以它消费
@@ -132,15 +159,21 @@ export function TreeEntryRow({
         data-file-hidden={hidden ? 'true' : undefined}
         data-file-open={opened ? 'true' : undefined}
         data-file-selected={selected ? 'true' : undefined}
-        onClick={onActivate}
+        onClick={() => onActivate(false)}
+        /*
+         * ── ↵:开文件**并且**把焦点送进查看器(§11 拍点 1)────────────────
+         * 一颗 `<button>` 上的 ↵ 本来就会合成一次 click,所以这里必须
+         * `preventDefault()` 把那一次挡掉 —— 不挡就开两遍(目录那一行更明显:
+         * 展开又收起,等于按了个寂寞)。挡掉之后由这一句自己叫,并且告诉面板
+         * 「这是键盘那条路」。
+         *
+         * **带修饰键的 ↵ 不算**:⌘↵ 是面域局部键(详情),归那唯一的派发器;
+         * 它已经 `preventDefault` 过了,这里再接一次就会**同时**开详情和开文件。
+         */
         onKeyDown={(e) => {
-          // ⌘I / Ctrl+I = 详情(裁定与留账写在文件头)。⌘↵ 是它从上一版继承下来
-          // 的第二个键面,留着不动:删一个已经好使的键位是可感知的能力损失。
-          if ((e.key === 'i' || e.key === 'I' || e.key === 'Enter') && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault()
-            // 这一行的矩交出去 → 矩锚(贴着左下角隔一条缝)。
-            onDetail(wrapRef.current?.getBoundingClientRect())
-          }
+          if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return
+          e.preventDefault()
+          onActivate(true)
         }}
       >
         {row.type === 'directory' ? (

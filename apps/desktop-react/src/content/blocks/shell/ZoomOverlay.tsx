@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { FocusScope } from '../../../focus/FocusScope'
 import { useT } from '../../../i18n'
 import { SvgCanvas } from './SvgCanvas'
 import s from './ZoomOverlay.module.css'
@@ -23,19 +24,20 @@ import s from './ZoomOverlay.module.css'
  * 一份状态,并族时整件换掉即可。
  */
 export function ZoomOverlay({ svg, onClose }: { svg: string; onClose: () => void }) {
-  const canvas = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    canvas.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
+  const canvas = useRef<HTMLDivElement | null>(null)
   const t = useT()
 
+  /*
+   * ── 开出来入焦 + Esc 关掉:两句**声明**(09-03 R2)────────────────────────
+   * 从前这里是一条 `useEffect`:一句 `canvas.focus()` 加一个 window keydown。
+   * 两件事现在都归响应链上这一格 `float`:`activateOnMount` + `restingTarget`
+   * 说「刚开出来就把焦点送到画布上」,`onEscape` 说「这一下 Esc 归我」——
+   * 认领(preventDefault)与「这一层在不在最上面」由那唯一的派发器按活动路径答,
+   * 不再由「谁的 window 监听后挂」决定。
+   *
+   * 关掉之后焦点回哪儿也不必这里管:它在树上是开出它的那块内容的孩子,
+   * 路径缩回去,焦点回那块面上次所在的元素(§4.5 的结构归还)。
+   */
   return createPortal(
     /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
      * 与 Dialog 同一条:遮罩点击是鼠标的顺手路,不是唯一出口(Esc 已经能关)。
@@ -47,16 +49,24 @@ export function ZoomOverlay({ svg, onClose }: { svg: string; onClose: () => void
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div
-        ref={canvas}
-        className={s.canvas}
-        role="dialog"
-        aria-modal="true"
-        aria-label={t('block.zoom.label')}
-        tabIndex={-1}
+      <FocusScope
+        scope="zoom"
+        rootRef={canvas}
+        activateOnMount
+        onEscape={() => (onClose(), true)}
       >
-        <SvgCanvas svg={svg} className={s.figure} />
-      </div>
+        {({ scopeProps }) => (
+          <div
+            {...scopeProps}
+            className={s.canvas}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('block.zoom.label')}
+          >
+            <SvgCanvas svg={svg} className={s.figure} />
+          </div>
+        )}
+      </FocusScope>
     </div>,
     document.body,
   )

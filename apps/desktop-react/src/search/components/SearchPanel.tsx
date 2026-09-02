@@ -6,6 +6,7 @@ import { useFilesSource, useSessionCwd } from '../../data/files-source'
 import { useExposeStore } from '../../expose/store'
 import { Highlight } from '../../expose/components/Highlight'
 import { useSessionTime } from '../../expose/components/session-time'
+import { FocusScope } from '../../focus/FocusScope'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Input } from '../../ui/Input'
@@ -108,6 +109,8 @@ export function SearchPanel() {
   const locateMessage = useLocateMessage((st) => st.locateMessage)
   const timeOf = useSessionTime()
   const listRef = useRef<HTMLDivElement>(null)
+  /** 这块面的根。由 `<FocusScope rootRef>` 写进来(落点从它里面找那格输入框)。 */
+  const panelRef = useRef<HTMLDivElement | null>(null)
 
   /*
    * 换词 / 换范围 = 换了一张列表:选中回第一行、页码回第一页。
@@ -422,174 +425,196 @@ export function SearchPanel() {
     }
   }
 
+  /*
+   * ── 开出来就打字:一句**声明**,不是一个 `autoFocus`(09-03 R2)──────────
+   * 从前那格输入框挂着 DOM 的 `autoFocus`(带一条 jsx-a11y 豁免:「这块面板是
+   * 用户刚刚显式召唤出来的」)。R2 之后这块面是响应链上的一格 `region`:
+   * `restingTarget` 说落点是这格输入框,`activateOnMount` 说「挂上来就把焦点
+   * 送进去」—— 于是「焦点落在哪儿」与「什么时候送」变成两句可读的话,
+   * 而不是一个 DOM 属性 + 一条豁免注释。
+   *
+   * 顺带兑现的另一件:`autoFocus` 只在**首次挂载**那一帧有效,而这块面被架子
+   * keep-alive 着切来切去时并不重挂 —— 从此那件事由宿主的 `activate()` 答
+   * (§11 拍点 2),不再取决于「这一次是不是真的重新挂载」。
+   *
+   * **Esc 一个字不写**:让位契约由宿主(舞台 / 浮窗 / 架子)执行 —— 树里那就是
+   * 「这一格不声明 `onEscape`,于是根本不进 Esc 候选表」。
+   */
   return (
+    <FocusScope
+      scope="search"
+      rootRef={panelRef}
+      restingTarget={() => panelRef.current?.querySelector('input') ?? null}
+      activateOnMount
+    >
+      {({ scopeProps }) => (
     /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
-     * 这里挂 onKeyDown 是**事件委托**,不是把一个 div 变成控件:真正拿焦点的是里面那个
-     * 输入框(autoFocus),↑↓/⏎ 从它冒泡上来,由面板统一按当前 cursor 处理。
-     * 规则防的是「给死元素装交互却不给焦点」—— 焦点在,只是在子节点上。 */
-    <div className={s.panel} data-testid="search-panel" onKeyDown={onKeyDown}>
-      <div className={s.head}>
-        <Input
-          className={s.input}
-          value={query}
-          onValueChange={setQuery}
-          size="lg"
-          /* eslint-disable-next-line jsx-a11y/no-autofocus --
-           * 命令面板的**唯一**用法就是「⌘P 敲出来就打字」。这里不自动聚焦等于
-           * 让每个用户开完面板再按一次 Tab —— 规则防的是「页面一进来就抢焦点」,
-           * 而这块面板是用户刚刚显式召唤出来的瞬态浮层,焦点本来就该在它身上。 */
-          autoFocus
-          prefix={<Search className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
-          placeholder={t('search.placeholder')}
-          aria-label={t('search.label')}
-        />
-        <Segmented
-          options={options}
-          value={scope}
-          onChange={setScope}
-          label={t('search.scopeLabel')}
-        />
-      </div>
+         * 这里挂 onKeyDown 是**事件委托**,不是把一个 div 变成控件:真正拿焦点的是里面那个
+         * 输入框(落点声明),↑↓/⏎ 从它冒泡上来,由面板统一按当前 cursor 处理。
+         * 规则防的是「给死元素装交互却不给焦点」—— 焦点在,只是在子节点上。
+         *
+         * 面板内的 Tab / ⇧Tab 是**换搜索范围**,仍然是这一层的行内结构键(不进任何表):
+         * 派发器只在 `modal` 作用域里圈禁 Tab,这块面是 `region`,所以那一下原样到这儿。 */
+        <div {...scopeProps} className={s.panel} data-testid="search-panel" onKeyDown={onKeyDown}>
+          <div className={s.head}>
+            <Input
+              className={s.input}
+              value={query}
+              onValueChange={setQuery}
+              size="lg"
+              prefix={<Search className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
+              placeholder={t('search.placeholder')}
+              aria-label={t('search.label')}
+            />
+            <Segmented
+              options={options}
+              value={scope}
+              onChange={setScope}
+              label={t('search.scopeLabel')}
+            />
+          </div>
 
-      {/*
-        * 文件检索失败不许静默:它与「没搜到」是两件事,合成一句「无结果」等于
-        * 把一次失败说成一次空结果。这一行在**有命中时也画**(会话侧照常有结果,
-        * 但文件侧那一半确实塌了),后端原话原样跟在后面。
-        */}
-      {scope !== 'sessions' && fileStatus === 'error' && fileAnswerIsCurrent && (
-        <p className={s.failed}>
-          {t('search.filesFailed')}
-          <span className={s.failedDetail}>{fileError}</span>
-        </p>
+          {/*
+            * 文件检索失败不许静默:它与「没搜到」是两件事,合成一句「无结果」等于
+            * 把一次失败说成一次空结果。这一行在**有命中时也画**(会话侧照常有结果,
+            * 但文件侧那一半确实塌了),后端原话原样跟在后面。
+            */}
+          {scope !== 'sessions' && fileStatus === 'error' && fileAnswerIsCurrent && (
+            <p className={s.failed}>
+              {t('search.filesFailed')}
+              <span className={s.failedDetail}>{fileError}</span>
+            </p>
+          )}
+
+          {/*
+            * 正文检索失败(09-02):**同一条判据、同一个形制**,只是换一句话与另一个
+            * 产地的原话。两路各说各的 —— 合成一句「检索失败」会让人分不清是哪一半塌了,
+            * 而它们是两条独立的口(一条可能好着,另一条塌了)。
+            *
+            * 判据里没有「答案是不是当前这个词」那一句(文件侧要问):正文侧是键控的
+            * 一格 query,`messageAnswer` 本身就只属于当前这个词与这一页。
+            */}
+          {scope !== 'files' && searching && messageAnswer.error && (
+            <p className={s.failed}>
+              {t('search.messagesFailed')}
+              <span className={s.failedDetail}>{messageAnswer.error}</span>
+            </p>
+          )}
+
+          <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
+            {rows.length === 0 ? (
+              <p className={s.none}>
+                {/* 空词 + 只看文件 = 不是「无结果」,是「还没给词」:文件侧在浏览态**没有
+                  * 产地**(`files.list` 只在带词时才有意义),见 search/transitions.ts
+                  * 文件头第 2 条。这句话如实说出那个缺口,不去伪造一张「最近打开」。
+                  * 会话侧的浏览态不落在这一支:它有产地(整张 listMeta),所以走列表。 */}
+                {scope === 'files' && !searching ? t('search.filesNeedQuery') : t('search.noResults')}
+              </p>
+            ) : (
+              visible.map((row, i) => (
+                /* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */
+                <ButtonBase
+                  key={row.id}
+                  role="option"
+                  aria-selected={!onMore && i === cursor}
+                  data-row={i}
+                  className={!onMore && i === cursor ? `${s.row} ${s.rowOn}` : s.row}
+                  onClick={() => {
+                    setOnMore(false)
+                    // **显式点击**是原语允许改 active 的第二条产地(第一条是键盘)。
+                    // 与它对着的禁令:行上一个 mouseenter / mouseover 都不许挂。
+                    selection.select(i)
+                    activate(row)
+                  }}
+                >
+                  {/*
+                    * 徽是**两层**:外层那颗胶囊 hug 内容(宽度由内容定,不写死),
+                    * 内层负责弯腰 —— text-overflow 只在块容器上生效,而胶囊为了居中
+                    * 是 inline-flex,直接挂在它身上的省略号永远不会出现。
+                    * 09-01 报障:徽列按四字符(CHAT/MSG/MD)写死 34px,八字符的
+                    * NOTEBOOK 直接撑破边框 —— 词表是**数据**(扩展名 / 无扩展名的整个
+                    * 文件名都会进来),不是一张可以枚举完的表,所以修法只能是结构性的。
+                    */}
+                  <span className={s.chip}>
+                    <span className={s.chipText}>{badgeText(row.badge, t)}</span>
+                  </span>
+                  <span className={row.code ? `${s.text} ${s.code}` : s.text}>
+                    {/* 高亮两条产地一条渲染:行自带 `highlight`(正文命中,后端判的)
+                      * 就用那一份,没有就照当前的词自己切 —— 判据写在 Highlight 上。 */}
+                    <Highlight
+                      text={row.text}
+                      query={searching ? query : ''}
+                      {...(row.highlight ? { ranges: row.highlight } : {})}
+                    />
+                  </span>
+                  <span className={s.origin}>{originText(row.origin)}</span>
+                </ButtonBase>
+              ))
+            )}
+
+            {/*
+              * 「加载更多」是**列表最后一条 item**,不是一颗悬浮在角上的按钮:
+              * 它跟着列表滚、跟着列表排、跟着 ↑↓ 走(末位),形制照这张表既有的行语汇
+              * (同一个 .row 骨架,只是没有徽、没有出处),所以它读起来是这张列表的
+              * 一部分而不是一件外挂控件。
+              *
+              * 取尽那一刻它换成一条**读数**(不是按钮、不进轮转序列)—— 一条按不动的
+              * 按钮比一句话更让人犹豫。
+              *
+              * 08-31 拍板:搜索态下这一行**常驻**。读数与按钮之间怎么切由 moreState
+              * 那张判据表定,这里只负责画:能按的那三种走上面的 button,`end`/`count`
+              * 两种读数走下面的 p —— 所以「共 N 条」不再是翻过页的人才看得到。
+              *
+              * 09-01 拍板:**空词那张浏览列表也走这一行**(用户:「我要能够在这里面看到
+              * 所有的条数,所有的记录,要能够翻页」)。这里一个字都不用改 —— 判据表把
+              * 浏览态翻成了 'exhausted',于是它自动落在 more(带 total)/ end 两格上。
+              *
+              * 里面那句话裹了一层 span:底部这一行也是 subgrid,文字要落在**第二列**
+              * (与上面各行的正文同一条竖线起笔)。从前靠 padding-left 的 calc 对齐,
+              * 而徽列换成内容自适应之后那个 calc 已经算不出来了。
+              */}
+            {moreIsItem && (
+              /* 「加载更多」是列表的**最后一条 item**(同一套行语汇)→ `ui/ButtonBase`。 */
+              <ButtonBase
+                role="option"
+                aria-selected={onMore}
+                data-row="more"
+                data-testid="search-more"
+                className={onMore ? `${s.more} ${s.rowOn}` : s.more}
+                onClick={() => {
+                  setOnMore(true)
+                  activateMore()
+                }}
+              >
+                <span className={s.moreText}>
+                  {more.kind === 'loading' && t('search.loading')}
+                  {more.kind === 'error' && t('search.loadFailed')}
+                  {more.kind === 'more' &&
+                    (more.total === null
+                      ? t('search.loadMore')
+                      : t('search.loadMoreCount', { shown: more.shown, total: more.total }))}
+                </span>
+              </ButtonBase>
+            )}
+            {more.kind === 'end' && (
+              <p className={s.end}>
+                {/* 英文里 result / results 是两句话(08-31 走查在屏幕上量到「1 results」)。
+                    选键走 i18n 的 `plural`,与 QuickLook 的消息数逐字同一手。 */}
+                <span className={s.moreText}>
+                  {t(plural(more.total, 'search.allShownOne', 'search.allShown'), {
+                    total: more.total,
+                  })}
+                </span>
+              </p>
+            )}
+            {more.kind === 'count' && (
+              <p className={s.end}>
+                <span className={s.moreText}>{t('search.shownCount', { shown: more.shown })}</span>
+              </p>
+            )}
+          </div>
+        </div>
       )}
-
-      {/*
-        * 正文检索失败(09-02):**同一条判据、同一个形制**,只是换一句话与另一个
-        * 产地的原话。两路各说各的 —— 合成一句「检索失败」会让人分不清是哪一半塌了,
-        * 而它们是两条独立的口(一条可能好着,另一条塌了)。
-        *
-        * 判据里没有「答案是不是当前这个词」那一句(文件侧要问):正文侧是键控的
-        * 一格 query,`messageAnswer` 本身就只属于当前这个词与这一页。
-        */}
-      {scope !== 'files' && searching && messageAnswer.error && (
-        <p className={s.failed}>
-          {t('search.messagesFailed')}
-          <span className={s.failedDetail}>{messageAnswer.error}</span>
-        </p>
-      )}
-
-      <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
-        {rows.length === 0 ? (
-          <p className={s.none}>
-            {/* 空词 + 只看文件 = 不是「无结果」,是「还没给词」:文件侧在浏览态**没有
-              * 产地**(`files.list` 只在带词时才有意义),见 search/transitions.ts
-              * 文件头第 2 条。这句话如实说出那个缺口,不去伪造一张「最近打开」。
-              * 会话侧的浏览态不落在这一支:它有产地(整张 listMeta),所以走列表。 */}
-            {scope === 'files' && !searching ? t('search.filesNeedQuery') : t('search.noResults')}
-          </p>
-        ) : (
-          visible.map((row, i) => (
-            /* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */
-            <ButtonBase
-              key={row.id}
-              role="option"
-              aria-selected={!onMore && i === cursor}
-              data-row={i}
-              className={!onMore && i === cursor ? `${s.row} ${s.rowOn}` : s.row}
-              onClick={() => {
-                setOnMore(false)
-                // **显式点击**是原语允许改 active 的第二条产地(第一条是键盘)。
-                // 与它对着的禁令:行上一个 mouseenter / mouseover 都不许挂。
-                selection.select(i)
-                activate(row)
-              }}
-            >
-              {/*
-                * 徽是**两层**:外层那颗胶囊 hug 内容(宽度由内容定,不写死),
-                * 内层负责弯腰 —— text-overflow 只在块容器上生效,而胶囊为了居中
-                * 是 inline-flex,直接挂在它身上的省略号永远不会出现。
-                * 09-01 报障:徽列按四字符(CHAT/MSG/MD)写死 34px,八字符的
-                * NOTEBOOK 直接撑破边框 —— 词表是**数据**(扩展名 / 无扩展名的整个
-                * 文件名都会进来),不是一张可以枚举完的表,所以修法只能是结构性的。
-                */}
-              <span className={s.chip}>
-                <span className={s.chipText}>{badgeText(row.badge, t)}</span>
-              </span>
-              <span className={row.code ? `${s.text} ${s.code}` : s.text}>
-                {/* 高亮两条产地一条渲染:行自带 `highlight`(正文命中,后端判的)
-                  * 就用那一份,没有就照当前的词自己切 —— 判据写在 Highlight 上。 */}
-                <Highlight
-                  text={row.text}
-                  query={searching ? query : ''}
-                  {...(row.highlight ? { ranges: row.highlight } : {})}
-                />
-              </span>
-              <span className={s.origin}>{originText(row.origin)}</span>
-            </ButtonBase>
-          ))
-        )}
-
-        {/*
-          * 「加载更多」是**列表最后一条 item**,不是一颗悬浮在角上的按钮:
-          * 它跟着列表滚、跟着列表排、跟着 ↑↓ 走(末位),形制照这张表既有的行语汇
-          * (同一个 .row 骨架,只是没有徽、没有出处),所以它读起来是这张列表的
-          * 一部分而不是一件外挂控件。
-          *
-          * 取尽那一刻它换成一条**读数**(不是按钮、不进轮转序列)—— 一条按不动的
-          * 按钮比一句话更让人犹豫。
-          *
-          * 08-31 拍板:搜索态下这一行**常驻**。读数与按钮之间怎么切由 moreState
-          * 那张判据表定,这里只负责画:能按的那三种走上面的 button,`end`/`count`
-          * 两种读数走下面的 p —— 所以「共 N 条」不再是翻过页的人才看得到。
-          *
-          * 09-01 拍板:**空词那张浏览列表也走这一行**(用户:「我要能够在这里面看到
-          * 所有的条数,所有的记录,要能够翻页」)。这里一个字都不用改 —— 判据表把
-          * 浏览态翻成了 'exhausted',于是它自动落在 more(带 total)/ end 两格上。
-          *
-          * 里面那句话裹了一层 span:底部这一行也是 subgrid,文字要落在**第二列**
-          * (与上面各行的正文同一条竖线起笔)。从前靠 padding-left 的 calc 对齐,
-          * 而徽列换成内容自适应之后那个 calc 已经算不出来了。
-          */}
-        {moreIsItem && (
-          /* 「加载更多」是列表的**最后一条 item**(同一套行语汇)→ `ui/ButtonBase`。 */
-          <ButtonBase
-            role="option"
-            aria-selected={onMore}
-            data-row="more"
-            data-testid="search-more"
-            className={onMore ? `${s.more} ${s.rowOn}` : s.more}
-            onClick={() => {
-              setOnMore(true)
-              activateMore()
-            }}
-          >
-            <span className={s.moreText}>
-              {more.kind === 'loading' && t('search.loading')}
-              {more.kind === 'error' && t('search.loadFailed')}
-              {more.kind === 'more' &&
-                (more.total === null
-                  ? t('search.loadMore')
-                  : t('search.loadMoreCount', { shown: more.shown, total: more.total }))}
-            </span>
-          </ButtonBase>
-        )}
-        {more.kind === 'end' && (
-          <p className={s.end}>
-            {/* 英文里 result / results 是两句话(08-31 走查在屏幕上量到「1 results」)。
-                选键走 i18n 的 `plural`,与 QuickLook 的消息数逐字同一手。 */}
-            <span className={s.moreText}>
-              {t(plural(more.total, 'search.allShownOne', 'search.allShown'), {
-                total: more.total,
-              })}
-            </span>
-          </p>
-        )}
-        {more.kind === 'count' && (
-          <p className={s.end}>
-            <span className={s.moreText}>{t('search.shownCount', { shown: more.shown })}</span>
-          </p>
-        )}
-      </div>
-    </div>
+    </FocusScope>
   )
 }

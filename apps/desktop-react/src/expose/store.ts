@@ -9,7 +9,7 @@ import {
 import { useAgentsSource } from '../data/agents-source'
 import { useModelsSource } from '../data/models-source'
 import { useChatSource } from '../data/chat-source'
-import { focusComposer } from '../composer/focus'
+import { focusTree } from '../focus/registry'
 import { findSession } from './projection'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
@@ -127,6 +127,13 @@ export const useExposeStore = create<ExposeStore>()(
       setQuery: (query) => set((s) => T.setQuery(s, query, currentGroups())),
       enterSession: (sessionId) => {
         set((s) => T.enterSession(s, sessionId))
+        /*
+         * 「开会话 → 焦点进它的输入面板」(§3.5 规则 2)。落在这一层而不是各个
+         * 入口上,理由与这个函数头上那句话逐字相同:**进会话的唯一编排点**——
+         * 卡上单击、Quick Look 里的 ↵、检索面里的一行、建完一条新会话,四条路
+         * 都从这儿过。输入面板还没挂起来时它答 false,什么都不做。
+         */
+        focusTree.activateScope('composer', { reason: 'open' })
         // 进了会话,目录(钢琴键)与首页消息就都成了「此刻要看的东西」。
         void useSessionsSource.getState().ensureChapters(sessionId)
         void useSessionsSource.getState().ensureMessages(sessionId)
@@ -203,8 +210,9 @@ export const useExposeStore = create<ExposeStore>()(
          * 同样**不 await**:顺手落一笔,失败自己 notify(warn)。
          */
         void useModelsSource.getState().applyPendingModel(outcome.sessionId)
+        // 焦点进输入面板那一句在 `enterSession` 里(上面那一行就走了它)——
+        // R2 之前这里还要自己叫一次那口单槽接缝(`composer/focus.ts`,本批退役)。
         get().enterSession(outcome.sessionId)
-        focusComposer()
         /*
          * 平时没人在这里显式开聊天面 —— ChatStream 有个 effect 盯着「当前会话」,
          * 换一条它就 open 一次。但 effect 要等 React 提交完那一帧才跑,而

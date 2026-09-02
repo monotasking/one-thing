@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
@@ -13,13 +13,13 @@ import {
 } from '../../data/models-source'
 import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
-import { registerComposerFocus } from '../focus'
 import { composerSink, useComposerBusy } from '../sink'
 import { revokeAllAttachments, useComposerStore } from '../store'
-import { useComposerKeys } from '../useComposerKeys'
+import { isTypingTarget } from '../transitions'
 import { useComposerSend } from '../useComposerSend'
 import { useEscStop } from '../useEscStop'
 import { usePickDrawer } from '../usePickDrawer'
+import { FocusScope } from '../../focus/FocusScope'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { useFloatDismiss } from '../../ui/float'
 import { IconButton } from '../../ui/IconButton'
@@ -58,8 +58,10 @@ const StopIcon = resolveIcon('Square')
  *   `usePickDrawer`    —— 抽屉里那两位输入驱动的住户(候选、键盘位、选中);
  *   `useComposerSend`  —— 发送的三口(命令岔口、惰性建会话、两把防重闸);
  *   `useEscStop`       —— Esc 的两段式停止(预备态与它的三条拆除路);
- *   `useComposerKeys`  —— 这块面的全局键(Esc 三层次序、ask 的 ← → 翻题)。
- * 留在这里的只剩「谁在场」:store 的订阅、四条 hook 的接线、和那棵树。
+ *   ~~`useComposerKeys`~~ —— **09-03 R2 退役**:这块面的键不再是一条 window
+ *   监听,而是响应链上那一格的声明(Esc 三层 = `onEscape`,ask 的 ← → =
+ *   作用域根上的行内结构键)。
+ * 留在这里的只剩「谁在场」:store 的订阅、三条 hook 的接线、和那棵树。
  *
  * ── 三张状态表(09-01 用户令「状态先行」) ──────────────────────────────────
  *
@@ -157,11 +159,53 @@ export function Composer() {
   /* 切线 C:发送的三口。交出来的只有 `doSend` —— 输入框的回车与发送键读同一个它。 */
   const doSend = useComposerSend({ allCommands, sessionId, inputRef, openAsk, closeDrawer, send })
 
-  /* 切线 A:Esc 的两段式停止。`armed` 唯一的消费点是下面输入框的占位符。 */
-  const escStop = useEscStop(panelRef, busy, () => composerSink().abort())
+  /*
+   * ── 切线 A:Esc 的两段式停止 ──────────────────────────────────────────
+   * 「焦点在这块面板里」那个前提 R2 之后**不再是一句判据,而是结构**:
+   * `tryStop` 的唯一调用点是下面那句 `onEscape`,而树只在这块面在活动路径上时
+   * 才问它(理由整段写在 `useEscStop` 的文件头)。
+   */
+  const escStop = useEscStop(busy, () => composerSink().abort())
 
-  /* 切线 B:这块面的全局键。Esc 三层的次序在那个文件里,③ 由 `tryStop` 接。 */
-  useComposerKeys({ mode, closeDrawer, rejectAsk, moveAsk, tryStop: escStop.tryStop })
+  /*
+   * ── 切线 B 退役:Esc 三层成了一句 `onEscape` ────────────────────────────
+   * 次序一个字没改(ask 拒答 → 收抽屉 → 两段停止),换的是它靠什么成立:从前是
+   * 一条 window keydown 监听里的三条分支,现在是这块面在响应链上那一格的
+   * `onEscape` —— **答 true = 这一下归我**,由那唯一的派发器代劳 preventDefault
+   * 并停止继续往外问。三条都不成立就答 false,这一下原样传给外面的层
+   * (§11 拍点 3 的裁定:输入面板先答,轮不到它才是退层链)。
+   *
+   * `drawerKind` 仍然**当场现读**(`getState()`)而不是订阅:它每敲一个字都在变,
+   * 而这只闭包走 `escapeRef`,读到的永远是这一帧的事实(理由与从前那条
+   * 「不进依赖表,免得每敲一个字重排一次 window 监听队列」同源)。
+   */
+  const onEscape = useCallback(() => {
+    if (mode === 'ask') {
+      rejectAsk()
+      return true
+    }
+    if (useComposerStore.getState().drawerKind) {
+      closeDrawer()
+      return true
+    }
+    // 没有任何一层浮着:焦点在这块面板里、且引擎在跑 → 两段式停止。
+    return escStop.tryStop()
+  }, [mode, rejectAsk, closeDrawer, escStop])
+
+  /**
+   * 落点:**write 形态是那块可编辑区,ask 形态是自由答案那一格**。
+   *
+   * 两格不是一件事的两种写法:ask 在场时那块可编辑区整个不可见(`.modeOff`),
+   * 把焦点送到一块看不见的东西上,人看到的就是「光标不见了」。而 ask 这一形里
+   * 唯一能打字的地方就是「其他」那一行 —— 所以它是那一形的落点。
+   * `askFreeRef` 由 `AskForm` 铺(它自己不再写任何 `.focus()`:点记号 = 一句
+   * `activate()`,焦点落哪儿由这一格答)。
+   */
+  const askFreeRef = useRef<HTMLSpanElement>(null)
+  const restingTarget = useCallback(
+    () => (mode === 'ask' ? askFreeRef.current : inputRef.current?.element() ?? null),
+    [mode],
+  )
 
   /* ── 点 composer 外面:瞬态抽屉(模型)一律关,选没选都关 ────────────────
    * 只关模型:files / commands 由输入驱动,状态抽屉是人主动开的,都不该被一次
@@ -182,13 +226,6 @@ export function Composer() {
   // 整块面板下场时把还挂着的缩略图 URL 销掉(造它的是 store,所以销也调 store 那口)。
   useEffect(() => revokeAllAttachments, [])
 
-  /* 别处(建完一条新会话)要把光标交过来时,叫的就是登记在这里的这一口。
-   * 登记的是一个每次都现读 ref 的闭包,所以它不随重渲染失效。 */
-  useEffect(() => {
-    registerComposerFocus(() => inputRef.current?.focus())
-    return () => registerComposerFocus(undefined)
-  }, [])
-
   /* ── 拖拽落区 = 整块面板 ──────────────────────────────────────────────── */
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -198,13 +235,32 @@ export function Composer() {
   }
 
   return (
+    <FocusScope
+      scope="composer"
+      rootRef={panelRef}
+      restingTarget={restingTarget}
+      onEscape={onEscape}
+    >
+      {({ scopeProps }) => (
     <div className={s.wrap}>
       <div className={s.anchor}>
         <MeterCard open={meterOpen} />
         <AttachmentStack />
 
+        {/*
+          * ── ask 的 ← → 是**行内结构键**,所以它挂在作用域根上 ─────────────
+          * 结构键不进任何表(快捷键三层的第三层),它们是这套形态语法本身;
+          * 而「翻到上一题 / 下一题」正是 ask 这一形里的结构导航。判据一个字没改:
+          * ask 在场、且焦点不在任何输入面里(写字的人按方向键是在移动光标)——
+          * 只是「焦点在哪儿」从 `document.activeElement` 换成了这一下按键的 target
+          * (真机上两者恒等,而后者不必去问一个全局)。
+          */}
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
+          * 规则拦的是「给死元素装交互却不给焦点」——这块面的焦点在里面那些真控件上
+          * (输入框 / 药丸 / 发送键),这里挂的是**容器级手势**的委托,
+          * 与 `search/components/SearchPanel` 那一处同判例。 */}
         <div
-          ref={panelRef}
+          {...scopeProps}
           className={dragging ? `${s.panel} ${s.dragging}` : s.panel}
           onDragOver={(e) => {
             e.preventDefault()
@@ -212,6 +268,18 @@ export function Composer() {
           }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
+          onKeyDown={(e) => {
+            if (mode !== 'ask') return
+            if (e.target instanceof Element && isTypingTarget(e.target)) return
+            if (e.key === 'ArrowLeft') {
+              e.preventDefault()
+              moveAsk(-1)
+            }
+            if (e.key === 'ArrowRight') {
+              e.preventDefault()
+              moveAsk(1)
+            }
+          }}
         >
           {status && (
             <StatusBar
@@ -353,11 +421,14 @@ export function Composer() {
 
             {/* ask 形态:本体的另一副样子,不是抽屉里的一块内容。 */}
             <div className={mode === 'ask' ? s.mode : `${s.mode} ${s.modeOff}`}>
-              {askSpec && <AskForm spec={askSpec} />}
+              {askSpec && <AskForm spec={askSpec} freeRef={askFreeRef} />}
             </div>
           </div>
         </div>
       </div>
     </div>
+      )}
+    </FocusScope>
   )
 }
+

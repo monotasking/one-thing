@@ -5,14 +5,10 @@ import { fileURLToPath } from 'node:url'
 import { useRef } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { ViewerChrome, hostOwnsChrome } from '../ViewerChrome'
-import { useViewerKeymap } from '../useViewerKeymap'
-import type { ViewerKeymapContext } from '../useViewerKeymap'
 import { useViewerScroll } from '../useViewerScroll'
 import { anchorAtPointer, anchorBelow, useFileFloats } from '../../file-floats'
 import type { FileFloats } from '../../file-floats'
 import { DETAIL_POPOVER_GAP } from '../../FileDetailPopover'
-import { disposeRegistrations, registerKeymap } from '../registry'
-import { SEARCH_SIGIL } from '../navigators'
 import { useViewerSource } from '../../../data/viewer-source'
 
 /**
@@ -27,118 +23,20 @@ import { useViewerSource } from '../../../data/viewer-source'
  * 那个大文件:下一个人改 hook 时,红的仍然只会是别人的用例。
  */
 
-/* ── 键位派发(切线 B)─────────────────────────────────────────────────── */
-
-/**
- * 默认档只绑了 save / jump / find 三条(keymaps.ts:它只映射屏幕上本来就有的钮)。
- * 要逐条钉住**六条命令 → 五个动作**那张表,得有一档把六条全绑上 ——
- * 这一档只活在这一组用例里,注册在 beforeEach、退役在 afterEach。
+/* ── 键位派发(切线 B)—— 09-03 R2 整只退役 ───────────────────────────────
+ *
+ * `useViewerKeymap` 与查看器键位表那一格 `bindings` 一起删了:面域局部键从
+ * 「挂在自己根元素上的监听 + 一张私有键表」变成了**作用域声明**——
+ * 表在 `focus/scopes.ts` 的 `FOCUS_SCOPES.viewer.keys`,落点是 `FileViewer`
+ * 交给 `<FocusScope keyHandlers>` 的那三格,路由由响应链按活动路径的深度做。
+ *
+ * 它从前钉的三件事各自搬去了新的产地,一件都没丢:
+ *  · 「六条命令 → 五个动作」→ `keymap/__tests__/keymap-scopes.test.ts`
+ *    (声明与落点逐条对表,设计 §8);
+ *  · 「接住了才 preventDefault、没接住原样放行」→ `focus/__tests__/transitions.test.ts`
+ *    的 routeKey 那一组(「命中了但那一格没有注入处理器 → 当作没命中」);
+ *  · 「三条判据各挡各的」→ `content/__tests__/file-viewer.test.tsx`(真的按下去看)。
  */
-const TEST_KEYMAP = 'test-full'
-
-function keyEvent(el: Element, key: string): void {
-  fireEvent.keyDown(el, { key, metaKey: true, bubbles: true })
-}
-
-function KeymapHarness(props: Omit<ViewerKeymapContext, 'keymap'> & { keymap?: string }) {
-  const ref = useRef<HTMLElement>(null)
-  useViewerKeymap(ref, { ...props, keymap: props.keymap ?? TEST_KEYMAP })
-  return <section ref={ref} data-testid="root" tabIndex={-1} />
-}
-
-function keymapCalls() {
-  return {
-    onSave: vi.fn(),
-    onJump: vi.fn(),
-    onWrap: vi.fn(),
-    onEdit: vi.fn(),
-    onClose: vi.fn(),
-  }
-}
-
-describe('useViewerKeymap —— 六条命令逐条落在五个动作上', () => {
-  beforeEach(() => {
-    registerKeymap({
-      id: TEST_KEYMAP,
-      nameKey: 'viewer.keymapDefault',
-      bindings: {
-        'mod+s': 'save',
-        'mod+l': 'jump',
-        'mod+f': 'find',
-        'mod+w': 'toggleWrap',
-        'mod+e': 'toggleEdit',
-        'mod+escape': 'close',
-      },
-      implemented: true,
-    })
-  })
-  afterEach(() => disposeRegistrations({ keymaps: [TEST_KEYMAP] }))
-
-  function mount(over: Partial<ViewerKeymapContext> = {}) {
-    const calls = keymapCalls()
-    render(
-      <KeymapHarness
-        wrap={false}
-        editing={true}
-        lineCount={10}
-        editable={true}
-        {...calls}
-        {...over}
-      />,
-    )
-    return { calls, root: screen.getByTestId('root') }
-  }
-
-  it('六条键各自到位:save / jump / find / toggleWrap / toggleEdit / close', () => {
-    const { calls, root } = mount()
-    keyEvent(root, 's')
-    keyEvent(root, 'l')
-    keyEvent(root, 'f')
-    keyEvent(root, 'w')
-    keyEvent(root, 'e')
-    keyEvent(root, 'Escape')
-    expect(calls.onSave).toHaveBeenCalledTimes(1)
-    // jump 与 find 是**同一个动作**,差别只在那个前缀(registry 的 ViewerCommand 注)。
-    expect(calls.onJump.mock.calls).toEqual([[''], [SEARCH_SIGIL]])
-    expect(calls.onWrap).toHaveBeenCalledWith(true)
-    expect(calls.onEdit).toHaveBeenCalledWith(false)
-    expect(calls.onClose).toHaveBeenCalledTimes(1)
-  })
-
-  it('接住了才 preventDefault:表里没有的键原样冒上去(全局派发器还用得着)', () => {
-    const { root } = mount()
-    const taken = fireEvent.keyDown(root, { key: 's', metaKey: true, bubbles: true, cancelable: true })
-    const passed = fireEvent.keyDown(root, { key: 'k', metaKey: true, bubbles: true, cancelable: true })
-    // fireEvent 返回 false = 被 preventDefault 了。
-    expect(taken).toBe(false)
-    expect(passed).toBe(true)
-  })
-
-  it('三条判据各挡各的:不在编辑态不存盘 / 不按行寻址不开跳转条 / 不可编辑不切编辑', () => {
-    const { calls, root } = mount({ editing: false, lineCount: undefined, editable: false })
-    const save = fireEvent.keyDown(root, { key: 's', metaKey: true, bubbles: true, cancelable: true })
-    const jump = fireEvent.keyDown(root, { key: 'l', metaKey: true, bubbles: true, cancelable: true })
-    const find = fireEvent.keyDown(root, { key: 'f', metaKey: true, bubbles: true, cancelable: true })
-    const edit = fireEvent.keyDown(root, { key: 'e', metaKey: true, bubbles: true, cancelable: true })
-    expect(calls.onSave).not.toHaveBeenCalled()
-    expect(calls.onJump).not.toHaveBeenCalled()
-    expect(calls.onEdit).not.toHaveBeenCalled()
-    // 判据在 preventDefault **之前**:挡掉的那一下不许顺手吞了那个键。
-    expect([save, jump, find, edit]).toEqual([true, true, true, true])
-  })
-
-  it('语境走 ref:监听只挂一次,读到的仍是这一帧的事实(改了 wrap,下一下就该翻过来)', () => {
-    const calls = keymapCalls()
-    const { rerender } = render(
-      <KeymapHarness wrap={false} editing lineCount={1} editable {...calls} />,
-    )
-    const root = screen.getByTestId('root')
-    keyEvent(root, 'w')
-    rerender(<KeymapHarness wrap={true} editing lineCount={1} editable {...calls} />)
-    keyEvent(root, 'w')
-    expect(calls.onWrap.mock.calls).toEqual([[true], [false]])
-  })
-})
 
 /* ── 滚动三件(切线 C)─────────────────────────────────────────────────── */
 

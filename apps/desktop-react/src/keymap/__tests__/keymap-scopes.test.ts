@@ -2,16 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  KEY_SCOPES,
-  SCOPED_KEYS,
-  comboFromChord,
-  scopedCollisionsOf,
-  scopedKeysOf,
-} from '../scopes'
-import { KEYMAP_COMMANDS, effectiveCombo, sameCombo } from '../transitions'
-import { keymapById } from '../../content/viewer/registry'
-import '../../content/viewer/keymaps'
+import { scopedCollisionsOf } from '../scopes'
+import { KEYMAP_COMMANDS, effectiveCombo } from '../transitions'
+import { FOCUS_SCOPES, FOCUS_SCOPED_KEYS, focusScopeKeysOf } from '../../focus/scopes'
 import type { Combo } from '../types'
 
 /**
@@ -21,8 +14,17 @@ import type { Combo } from '../types'
  * ③ 行内结构键(方向键 / ↵,不进任何表)。这一组守的是**中间那一层不撒谎**:
  * 表上写着的键,那块面里真接着;那块面接着的键,表上真写着。
  *
- * 反证纪律:把 `SCOPED_KEYS` 里查看器那三行删掉一行 → 第一条当场红;
- * 把 `content/viewer/keymaps.ts` 的 `mod+f` 删掉 → 同一条从另一头红。
+ * ── 09-03(R2):对表的**两头都换了** ─────────────────────────────────────
+ * 声明那一头从 `keymap/scopes.ts` 的 `SCOPED_KEYS` 换成正本
+ * `focus/scopes.ts` 的 `FOCUS_SCOPES[id].keys`(R0 起前者只是后者的投影,
+ * R2 把那层兼容表连同 `files.row` 这个旧 id 一起退役);落点那一头从
+ * 「那块面根元素上的 keydown」换成**作用域实例注入的 `keyHandlers`**——
+ * 而实例只有在那块面真挂起来的时候才有,所以「注入的名单对不对」那一条
+ * 落在各自的面里验(`content/__tests__/file-viewer.test.tsx` 与
+ * `files-panel.test.tsx` 各有一条,读的是 `focusTree.dump()`),
+ * 这只文件守的是**声明这一头**:表本身自洽、撞键说得出口、全局那一侧让位。
+ *
+ * 反证纪律:把 `FOCUS_SCOPES.viewer.keys` 删掉一行 → 第一条当场红。
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -34,43 +36,43 @@ function key(combo: Combo): string {
     .join('+')
 }
 
-describe('面域局部键:声明与落点不许分叉', () => {
-  it('查看器那一格 = 它默认键位档里的全部绑定,一条不多一条不少', () => {
-    const declared = scopedKeysOf('viewer').map((k) => key(k.combo)).sort()
-    const wired = Object.keys(keymapById('default')?.bindings ?? {}).sort()
-    expect(declared).toEqual(wired)
-  })
-
-  it('每一条声明都写得出组合(chord 与 Combo 两种写法折成同一个形状)', () => {
-    for (const chord of Object.keys(keymapById('default')?.bindings ?? {})) {
-      const combo = comboFromChord(chord)
-      expect(SCOPED_KEYS.some((k) => sameCombo(k.combo, combo))).toBe(true)
-    }
-  })
-
-  it('文件行那一格真的长在行上 —— 源码里那段 keydown 认得出 ⌘I 与 ⌘↵', () => {
-    /*
-     * 这一条按**源文本**验,不按渲染验:那段 keydown 是行组件自己的一句
-     * `if ((e.key === 'i' …) && (e.metaKey || e.ctrlKey))`,渲染层测得到的是
-     * 「按 ⌘I 出详情」(那条断言在 files-panel 里),而这里要守的是
-     * **表上那两行没有变成孤儿声明**。删掉行上那段判断 → 这一条红。
-     *
-     * 09-02 批 9d:那一行搬出了 `content/FilesPanel.tsx`(职责拆分),所以这里
-     * 读的路径跟着改成它的新家 —— **两条正则一个字没动**。换的是文件不是约定:
-     * 「声明与落点不许分叉」这条守卫认的始终是那段 keydown 本身在哪儿。
-     */
-    const source = readFileSync(path.join(srcRoot, 'content/files/TreeEntryRow.tsx'), 'utf-8')
-    expect(source).toMatch(/e\.key === 'i'/)
-    expect(source).toMatch(/e\.key === 'Enter'/)
-    expect(scopedKeysOf('files.row').map((k) => key(k.combo)).sort()).toEqual([
+describe('面域局部键:声明这一头', () => {
+  it('今天有局部键的只有两格:查看器三条、文件树两条', () => {
+    const withKeys = Object.values(FOCUS_SCOPES)
+      .filter((spec) => (spec.keys?.length ?? 0) > 0)
+      .map((spec) => spec.id)
+    expect(withKeys).toEqual(['viewer', 'files'])
+    expect(focusScopeKeysOf('viewer').map((k) => key(k.combo)).sort()).toEqual([
+      'mod+f',
+      'mod+l',
+      'mod+s',
+    ])
+    // 两条键面同一个动作(⌘I 与 ⌘↵ 都是「详情」)—— **两行,不是一行两键**。
+    expect(focusScopeKeysOf('files').map((k) => key(k.combo)).sort()).toEqual([
       'mod+enter',
       'mod+i',
     ])
+    expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
   })
 
-  it('每个面域都在 KEY_SCOPES 里有名字(表里不许有无主的 scope)', () => {
-    const known = new Set(KEY_SCOPES.map((s) => s.id))
-    for (const scoped of SCOPED_KEYS) expect(known.has(scoped.scope)).toBe(true)
+  it('每一行都报得出自己属于哪一格,而且那一格真的在表里(不许有无主的声明)', () => {
+    for (const scoped of FOCUS_SCOPED_KEYS) {
+      expect(FOCUS_SCOPES[scoped.scope]).toBeTruthy()
+      expect(FOCUS_SCOPES[scoped.scope].keys).toContain(scoped)
+    }
+  })
+
+  it('结构键一格都不在表里(§4.3 的封闭裁定:方向键 / ↵ / Space / Tab 不进任何表)', () => {
+    /*
+     * 这一条是**派发器相位**的前提:R2 之后那唯一的监听跑在**捕获**相位,
+     * 它跑在元素级 onKeyDown 之前。之所以仍然抢不走那些键,靠的就是这张表里
+     * 一条结构键都没有(唯一的例外 Esc 由树处理,那是设计 §4.3 明写的)。
+     * 往表里加一条裸 ↵ / 方向键 → 这一条当场红,而红的正是那个前提。
+     */
+    for (const scoped of FOCUS_SCOPED_KEYS) {
+      const bare = !scoped.combo.meta && !scoped.combo.ctrl && !scoped.combo.alt
+      expect(bare).toBe(false)
+    }
   })
 })
 
@@ -83,7 +85,7 @@ describe('撞键:局部先接,没接住放行全局', () => {
     const state = { overrides: { 'toc.toggle': { meta: true, key: 'i' } as Combo } }
     const collisions = scopedCollisionsOf(state)
     expect(collisions.map((c) => c.command)).toEqual(['toc.toggle'])
-    expect(collisions[0].scoped.scope).toBe('files.row')
+    expect(collisions[0].scoped.scope).toBe('files')
     /*
      * 撞车**不是错误**:局部先接、没接住放行,两者可以共存(⌘I 在文件行上开详情,
      * 在别处仍然是那条全局命令)。所以 `bindCombo` 的口径一个字不改 —— 它拦的是
@@ -93,16 +95,13 @@ describe('撞键:局部先接,没接住放行全局', () => {
     expect(effectiveCombo(state, 'toc.toggle')).toEqual({ meta: true, key: 'i' })
   })
 
-  it('派发器冒泡半开头那句 `defaultPrevented` 就是裁决本身(源码级守卫)', () => {
+  it('派发器开头那句 `defaultPrevented` 就是裁决本身(源码级守卫)', () => {
     /*
-     * 「局部先接」不靠任何调度器:viewer / files 的局部监听仍挂在各自面域根上
-     * (先于 window 的冒泡半收到),接住了就 preventDefault。这一句是它在全局
-     * 那一侧的另一半。删掉它 → 改绑到 ⌘I 的那条全局命令会与行内键**同时**响,
-     * 而那正是 F1 记下的那条留账。
-     *
-     * 09-02 R1 起这一句搬了家:唯一的派发器在 `focus/dispatch.ts`,`keymap/` 只
-     * 剩那张动作表(`useKeymapCommandRunner`)。守卫跟着搬,判据一个字没变 ——
-     * 它守的是「全局那一侧要让位」,不是「它长在哪只文件里」。
+     * 「局部先接」现在由**树的深度**保证(局部键由深到浅问,root 的命令表排最后),
+     * 而这一句守的是另一半:**别人真接住了就让开**。R2 把派发器合成一个捕获相位
+     * 的监听之后它恒为 false(window 捕获是整条传播路径的第一站),但它是一条
+     * **契约**不是一处优化 —— 哪天前面再站一个更早的消费者,这一句就是它的出口。
+     * 删掉它 = 把那条契约从代码里抹掉。
      */
     const source = readFileSync(path.join(srcRoot, 'focus/dispatch.ts'), 'utf-8')
     expect(source).toMatch(/if \(e\.defaultPrevented\) return/)

@@ -11,6 +11,7 @@ import { MessageActions } from './message/MessageActions'
 import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
+import { FocusScope } from '../focus/FocusScope'
 import s from './ChatStream.module.css'
 
 const ClipIcon = resolveIcon('Paperclip')
@@ -69,37 +70,51 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
   const foldedSessionId = useChatSource((st) => st.sessionId)
   const onScrollWithLanding = useEnterAtBottom(scrollRef, foldedSessionId, messages, onScroll)
 
+  /*
+   * ── 消息流是响应链上的一格 `region`(09-03 R2)──────────────────────────────
+   * 它自己**一条键都不认**:没有局部键表、不声明 `onEscape`(所以根本不进 Esc
+   * 候选表)。接树买到的是另外两件:①它成了「焦点此刻在哪块面」的一个合法答案 ——
+   * 点在消息正文的空白处、或者浮层关掉之后焦点回落,都有一格能接住,不会掉到
+   * body 上(I1);②「打开什么焦点进什么」那条规则里,主内容区有一个说得出名字的
+   * 落点(壳启动时输入面板还没到位就退到它,见 `AppShell` 的规则 1)。
+   * 落点用缺省档(根本身,`tabIndex=-1` 由 `scopeProps` 铺)—— 消息流里没有
+   * 一个「该落在这儿」的控件,落在这块面上正是「我在读这一段」的意思。
+   */
   return (
-    <div ref={scrollRef} className={s.scroll} onScroll={onScrollWithLanding} data-testid="chat-stream">
-      <div className={s.column}>
-        {/* 三种空态各说各话,一种都不回退到假数据(与 D1 同一条纪律)。 */}
-        {!sessionId && <p className={s.empty}>{t('chat.noSession')}</p>}
-        {sessionId && status === 'loading' && <p className={s.empty}>{t('chat.loading')}</p>}
-        {sessionId && status === 'error' && (
-          <p className={s.empty}>
-            {t('chat.error')}
-            <span className={s.errorText}>{error}</span>
-          </p>
-        )}
-        {sessionId && status === 'ready' && messages.length === 0 && overlay.length === 0 && (
-          <p className={s.empty}>{t('chat.empty')}</p>
-        )}
+    <FocusScope scope="chat" rootRef={scrollRef}>
+      {({ scopeProps }) => (
+        <div {...scopeProps} className={s.scroll} onScroll={onScrollWithLanding} data-testid="chat-stream">
+          <div className={s.column}>
+            {/* 三种空态各说各话,一种都不回退到假数据(与 D1 同一条纪律)。 */}
+            {!sessionId && <p className={s.empty}>{t('chat.noSession')}</p>}
+            {sessionId && status === 'loading' && <p className={s.empty}>{t('chat.loading')}</p>}
+            {sessionId && status === 'error' && (
+              <p className={s.empty}>
+                {t('chat.error')}
+                <span className={s.errorText}>{error}</span>
+              </p>
+            )}
+            {sessionId && status === 'ready' && messages.length === 0 && overlay.length === 0 && (
+              <p className={s.empty}>{t('chat.empty')}</p>
+            )}
 
-        {messages.map((message) => (
-          <MessageRow
-            key={message.id}
-            t={t}
-            message={message}
-            streaming={message.id === activeMessageId}
-            flash={message.id === flashMessageId}
-          />
-        ))}
+            {messages.map((message) => (
+              <MessageRow
+                key={message.id}
+                t={t}
+                message={message}
+                streaming={message.id === activeMessageId}
+                flash={message.id === flashMessageId}
+              />
+            ))}
 
-        {overlay.map((entry) => (
-          <OverlayRow key={entry.id} t={t} entry={entry} />
-        ))}
-      </div>
-    </div>
+            {overlay.map((entry) => (
+              <OverlayRow key={entry.id} t={t} entry={entry} />
+            ))}
+          </div>
+        </div>
+      )}
+    </FocusScope>
   )
 }
 

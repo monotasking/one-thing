@@ -98,6 +98,17 @@ import type {
  * 所以给它一张**瞬态表**:登记一个 `onEscape`,派发器在问活动路径**之前**先问
  * 这张表。它仍然住在 `src/focus/` 里、仍然只有那一个派发器,没有第二个 window 监听。
  * 答 true = 这一下我吃了(tooltip 答 **false**:APG 说它的 Esc 不该拦别人)。
+ *
+ * ── R2 补的三格 ──────────────────────────────────────────────────────────
+ *  · **`returnTo`**(§4.5 的 R1 审查裁定):第一响应者**换人**那一刻,给新任记下
+ *    上一任是谁 + 焦点当时落在它的哪个元素上。⌘P 开出来的检索面与它之前那块
+ *    输入面板是**兄弟**,父链到不了 —— 这一格就是「关掉什么,焦点回打开它的
+ *    地方」的结构答案。收回(I1)与 `pointerdown` 抢根**不算换人**
+ *    (`noReturnDepth`),否则记下的会是「壳根」而不是那个输入框。
+ *  · **`activateScope(scope, { owner })`**:调用方说得出「要哪一种面」却说不出
+ *    「哪一份实例」。挑法 = 可交互 ∧ 已铺根 ∧(给了 owner 就对上)→ MRU。
+ *  · **`owner`**:宿主层报出它此刻装着哪块面。同一种 layer 有好几份时(四条边的
+ *    架子 / 几扇浮窗),「装着这块面的那一扇」不是 MRU 猜得出来的。
  */
 
 /** 注册时可以交代的东西。全是可选 —— 一个什么都不声明的作用域也是合法的。 */
@@ -114,6 +125,8 @@ export interface FocusScopeRegisterOptions {
   onEscape?: (() => boolean) | null
   /** 局部键的落点,键是 `ScopedKey.action`。 */
   keyHandlers?: Readonly<Record<string, (() => void) | undefined>>
+  /** 这一格替谁摆着(宿主层填住户的 item id,见 `ScopeNode.owner`)。 */
+  owner?: string
 }
 
 /** 登记之后拿到的句柄。它是**唯一**能改这一格的口子。 */
@@ -188,6 +201,8 @@ export class FocusTree {
       restingTarget: opts.restingTarget,
       onEscape: opts.onEscape ?? undefined,
       keyHandlers: opts.keyHandlers,
+      owner: opts.owner,
+      lastActiveAt: 0,
     }
     this.map.set(instanceId, node)
     this.attach()
@@ -213,6 +228,7 @@ export class FocusTree {
         if ('restingTarget' in patch) at.restingTarget = patch.restingTarget
         if ('onEscape' in patch) at.onEscape = patch.onEscape ?? undefined
         if ('keyHandlers' in patch) at.keyHandlers = patch.keyHandlers
+        if ('owner' in patch) at.owner = patch.owner
         // 变得不可交互 = 结构变化(§4.2 来源 3),与卸载同一条路。
         if (patch.inert) this.settle(at)
         else this.notify()
@@ -309,13 +325,52 @@ export class FocusTree {
         return
       }
     }
-    this.focused = instanceId
+    const entry = this.entryOf(node)
+    this.setFocused(entry.instanceId, true)
     this.lastReason = reason
     if (this.policy.moveFocus) {
-      const el = restingElementOf(node)
+      const el = restingElementOf(entry)
+      /*
+       * 送焦点的这一下会同步发一个 `focusin`,而那一路会再跑一次 `setFocused` ——
+       * 那时第一响应者已经是 `instanceId` 了(上面刚写),所以「换人」不成立,
+       * `returnTo` 不会被自己覆盖一遍。次序在这里是判据,不是巧合。
+       */
       el?.focus({ preventScroll: true })
     }
     this.notify()
+  }
+
+  /**
+   * **按声明 id 激活一格**(R2,设计 §3.5 规则 2/3 与 §11 拍点 2/3 的落点)。
+   *
+   * 调用方多半说得出「要哪一种面」却说不出「哪一份实例」:文件树 ↵ 开文件时
+   * 查看器可能在舞台 / 浮窗 / 架子任一宿主里,壳启动时输入面板还没登记完。
+   * 所以这一口收的是**声明 id**,实例由树自己挑:
+   *  · 只在**可交互且已经铺上根**的那几份里挑(inert 的架子后台层、还没到位的
+   *    半挂载实例都不算);
+   *  · `owner` 给了就再筛一道 —— 同一种 layer 同时有好几份时(四条边的架子 /
+   *    几扇浮窗),「装着这块面的那一扇」不是 MRU 能猜出来的(§3.5 规则 3);
+   *  · 剩下不止一份时取 **MRU**(`lastActiveAt` 最大 = 最近一次在活动路径上的
+   *    那一份),都没用过就取登记序第一个 —— 「最近用过的那一份」是用户心里
+   *    那块面,而登记序是 React 的实现细节,只配当兜底。
+   *
+   * 回 false = 这一种面此刻一份可交互的实例都没有。调用方据此决定要不要退而求
+   * 其次(壳启动那条链就是这么串起来的),**不抛** —— 「这块面还没开出来」
+   * 是常态,不是错误。
+   */
+  activateScope(
+    scope: FocusScopeId,
+    opts: { owner?: string; reason?: ActivateReason } = {},
+  ): boolean {
+    let best: ScopeNode | null = null
+    for (const node of this.map.values()) {
+      if (node.scope !== scope || !isInteractive(node) || !node.root) continue
+      if (opts.owner !== undefined && node.owner !== opts.owner) continue
+      if (!best || node.lastActiveAt > best.lastActiveAt) best = node
+    }
+    if (!best) return false
+    this.activate(best.instanceId, opts.reason ?? 'programmatic')
+    return true
   }
 
   /**
@@ -363,7 +418,9 @@ export class FocusTree {
     const active = document.activeElement
     if (active && active !== document.body) return
     const target = restingElementOf(this.current()) ?? restingElementOf(this.rootNode())
-    target?.focus({ preventScroll: true })
+    // 收回**不算换人**(§4.5 裁定点名排除):不写 `returnTo`,否则「开检索面之前
+    // 我在输入框」会被记成「我在壳根」。
+    if (target) this.withoutReturnSeat(() => target.focus({ preventScroll: true }))
   }
 
   /* ── 内部 ────────────────────────────────────────────────────────────── */
@@ -371,11 +428,116 @@ export class FocusTree {
   /** 最近一次 activate 的理由。只进 `__focus.dump()`,路由不看。 */
   private lastReason: ActivateReason | null = null
 
+  /** MRU 的单调计数。用序号不用时间戳:同一帧里的两次切换必须分得开。 */
+  private tick = 0
+
+  /**
+   * **激活一格 layer,焦点其实该落进它装着的那块面**(设计 §4.1 那张表的
+   * `layer` 行:「进入落点 = 第一个可交互子作用域,否则根」)。
+   *
+   * 少了这一格,「切 tab / 开面 / 挪位置之后键盘立刻可用」只兑现一半:焦点停在
+   * 层的根上,而那块面(查看器 / 文件树 / 检索)不在活动路径上 —— 于是紧接着按
+   * ⌘F 一样落空,正是这条链要治的那个病换了个地方犯。
+   *
+   * 三条判据:
+   *  · 只对 `layer` 生效 —— region / float / modal 的落点是它们自己声明的事;
+   *  · 层**自己声明了落点**就听它的(那是宿主的显式意见,比这条缺省规矩优先);
+   *  · 孩子按**登记序**取第一个可交互且已经铺了根的(登记序 = 挂载序 = 屏幕上
+   *    从上到下的次序);孩子还是层就再往里走一层(架子层里套内容层的形)。
+   */
+  private entryOf(node: ScopeNode): ScopeNode {
+    const seen = new Set<FocusInstanceId>()
+    let at: ScopeNode = node
+    while (at.kind === 'layer' && !at.restingTarget && !seen.has(at.instanceId)) {
+      seen.add(at.instanceId)
+      let child: ScopeNode | undefined
+      for (const candidate of this.map.values()) {
+        if (candidate.parent !== at.instanceId) continue
+        if (!isInteractive(candidate) || !candidate.root) continue
+        child = candidate
+        break
+      }
+      if (!child) break
+      at = child
+    }
+    return at
+  }
+
+  /**
+   * 这一发程序置焦**不算换人**(I1 收回 / `pointerdown` 抢根)。
+   *
+   * 两者都会同步发 `focusin`,而那一路要写 `returnTo`。写了的话「⌘P 之前我在
+   * 输入框」就会被记成「我在壳根」——§4.5 的裁定原话点名排除的正是这两种。
+   * 计数而不是布尔:两条路有可能嵌套(收回落在根上,根的 pointerdown…),
+   * 布尔会被内层提前清掉。
+   */
+  private noReturnDepth = 0
+
+  /** 一段「这一发不算换人」的程序置焦。`focus()` 同步发事件,所以同步包一层就够。 */
+  private withoutReturnSeat(run: () => void): void {
+    this.noReturnDepth += 1
+    try {
+      run()
+    } finally {
+      this.noReturnDepth -= 1
+    }
+  }
+
+  /**
+   * **第一响应者换人的唯一一口**(R2)。两件事在这里一起做,不许分开:
+   *  ① 给新任写 `returnTo`(上一任是谁 + 焦点当时落在它的哪个元素上,§4.5);
+   *  ② 沿新路径盖 MRU 戳(`activateScope` 靠它挑实例)。
+   *
+   * `recordReturn` 由**调用路**决定,不由这只函数猜:`activate` 与 `focusin`
+   * 是真换人(写),I1 收回与 `pointerdown` 抢根不是(不写,见 `noReturnDepth`)。
+   */
+  private setFocused(next: FocusInstanceId | null, recordReturn: boolean): void {
+    if (next !== this.focused && next && recordReturn && this.noReturnDepth === 0) {
+      const node = this.map.get(next)
+      const prev = this.focused ? this.map.get(this.focused) : undefined
+      const element = prev?.lastFocused
+      /*
+       * 上一任那格元素要**此刻仍连通**才记:记一个已经离开文档的节点,等于把
+       * 「回哪儿」这个问题在写的时候就答错了(读的时候还得再判一次,那是两处判据)。
+       */
+      if (node && prev && element && element.isConnected) {
+        node.returnTo = { instanceId: prev.instanceId, element }
+      }
+    }
+    this.focused = next
+    /*
+     * 节点**对象**也留一份(不只是 id):卸载一整层时,那一格常常先从表里出去,
+     * 而「回哪儿」的那一格 `returnTo` 正记在它身上(检索面开在浮窗里 —— 拿到
+     * 焦点的是 `search` 那一格,先卸载的可能是装着它的层)。留着这个引用,
+     * 归还才问得到真正的那一任(见 `settle`)。
+     */
+    this.focusedNode = next ? (this.map.get(next) ?? null) : null
+    this.stampPath(next)
+  }
+
+  /** 当前第一响应者的节点对象。出表之后仍然留着,只给 `settle` 问归还用。 */
+  private focusedNode: ScopeNode | null = null
+
+  /** 从第一响应者往上,给整条路径盖一次 MRU 戳。 */
+  private stampPath(from: FocusInstanceId | null): void {
+    const seen = new Set<FocusInstanceId>()
+    let at = from
+    this.tick += 1
+    while (at && !seen.has(at)) {
+      seen.add(at)
+      const node = this.map.get(at)
+      if (!node) break
+      node.lastActiveAt = this.tick
+      at = node.parent
+    }
+  }
+
   /**
    * 结构变化之后的结算:路径缩、焦点回落。
    * `gone` 是刚消失 / 刚变 inert 的那一格 —— 焦点回哪儿从**它**往上问。
    */
   private settle(gone: ScopeNode): void {
+    const departing = this.focusedNode ?? gone
     const stillHere = this.focused ? this.map.get(this.focused) : undefined
     const focusedGone =
       !stillHere || !isInteractive(stillHere) || this.isDescendantOf(this.focused, gone.instanceId)
@@ -388,10 +550,21 @@ export class FocusTree {
      * 合成一句的后果被单测逮住过:祖先此刻还没铺上根元素(合法中间态)时,
      * 「焦点落哪儿」答不出来,于是整条路径被清空、第一响应者凭空消失。
      */
-    this.focused = nearestInteractiveAncestorOf(this.map, gone)?.instanceId ?? null
+    this.setFocused(nearestInteractiveAncestorOf(this.map, gone)?.instanceId ?? null, false)
     if (this.policy.moveFocus) {
-      const back = returnTargetOf(this.map, gone)
-      back?.element.focus({ preventScroll: true })
+      /*
+       * 结构归还:焦点落到 `returnTargetOf` 答的那个元素上,随后那一发 `focusin`
+       * 把第一响应者指到它所在的那一格 —— **不算换人**(这是归还,不是新的接管),
+       * 所以 `returnTo` 不在这条路上写。
+       */
+      /*
+       * 从**离场的那一任**问起,答不出再问刚消失的这一格:一整层塌下去时,
+       * `returnTo` 记在拿过焦点的那一格上(检索面),而先触发结算的可能是
+       * 装着它的层。两问一句 `??`,不是两套判据 —— 同一只 `returnTargetOf`。
+       */
+      const back =
+        returnTargetOf(this.map, departing) ?? (departing === gone ? null : returnTargetOf(this.map, gone))
+      if (back) this.withoutReturnSeat(() => back.element.focus({ preventScroll: true }))
     }
     this.notify()
   }
@@ -437,7 +610,7 @@ export class FocusTree {
      */
     if (target instanceof HTMLElement) node.lastFocused = target
     if (this.focused === node.instanceId) return
-    this.focused = node.instanceId
+    this.setFocused(node.instanceId, true)
     this.notify()
   }
 
@@ -467,7 +640,10 @@ export class FocusTree {
     if (target.closest('a[href],button,input,select,textarea,[tabindex],[contenteditable]')) return
     const node = scopeAtElement(this.map, target)
     if (!isInteractive(node)) return
-    node.root?.focus({ preventScroll: true })
+    const root = node.root
+    // 抢根**不算换人**(§4.5 裁定点名排除的第二种):点在空白处说的是「我在看这块面」,
+    // 不是「我从别处交接过来」。
+    if (root) this.withoutReturnSeat(() => root.focus({ preventScroll: true }))
   }
 
   private attach(): void {
@@ -493,8 +669,11 @@ export class FocusTree {
     this.listeners.clear()
     this.transients.clear()
     this.focused = null
+    this.focusedNode = null
     this.captured = null
     this.lastReason = null
+    this.tick = 0
+    this.noReturnDepth = 0
   }
 
   /** 排障口的内容。见 `window.__focus.dump()`。 */
@@ -513,6 +692,8 @@ export class FocusTree {
       hasRoot: boolean
       keys: string[]
       escape: boolean
+      owner: string | null
+      returnTo: string | null
     }[]
   } {
     return {
@@ -530,6 +711,8 @@ export class FocusTree {
         hasRoot: Boolean(n.root),
         keys: Object.keys(n.keyHandlers ?? {}),
         escape: Boolean(n.onEscape),
+        owner: n.owner ?? null,
+        returnTo: n.returnTo?.instanceId ?? null,
       })),
     }
   }

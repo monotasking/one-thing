@@ -5,7 +5,6 @@ import { focusTree } from './registry'
 import { tabStopWithin } from './tab-trap'
 import { modalTrapNode, routeEscape, routeKey } from './transitions'
 import type { CommandId } from '../keymap/types'
-import type { ScopeNode } from './types'
 
 /**
  * **全壳唯一的 window keydown 派发器**(设计 §4.3)。
@@ -15,29 +14,40 @@ import type { ScopeNode } from './types'
  * 09-01 立浮层栈)就是没有响应链时用 DOM 事件顺序硬凑出来的。这只文件是那 13 个
  * 的终点:一次按键先问树,树答不出才轮到全局命令表。
  *
- * ══ R1 的**过渡形**:一个派发器,两半相位 ════════════════════════════════
- * 这一节是**过渡,不是设计的一部分**;R2 把内容面接进树之后两半合成一个。
+ * ══ R2:两半合一,只剩**一个捕获相位的监听** ══════════════════════════════
+ * R1 的过渡形把它切成两半(捕获管浮层 Esc / 模态 Tab / 录制独占,冒泡管面的
+ * Esc / 局部键 / 全局命令),分界就是当时那条相位线 —— 因为 ExposeView /
+ * composer / viewer / files 四家还挂着自己的监听,那一批守的是「与 HEAD 逐条相同」。
+ * R2 把它们接进了树,于是那条线没有两侧了,两半合成这一张表:
  *
- * 今天(R1 之前)一下 Esc 的实际次序是:
- *   浮层 Esc(window 捕获)→ ExposeView(window 捕获)→ composer(window 冒泡)
- *   → 退层链(window 冒泡)→ 全局命令(window 冒泡)
- * 而 ExposeView / composer / viewer / files 四家的监听 **R1 一个都不动**(R2 才迁)。
- * 如果本批把树的路由整个塞进单一相位,这四家与浮层 / 全局的相对次序就会变 ——
- * 而 R1 守的正是「产品语义逐条与 HEAD 相同」。所以派发器分两半,**都在
- * `src/focus/`**、都由这一只 hook 装拆:
+ * | # | 管什么 | 从前住在谁那儿 |
+ * | --- | --- | --- |
+ * | ① | 录制态独占 | `KeymapSettings` 的 window 捕获 |
+ * | ② | I1 收回(焦点掉到 body 先接回来再路由) | 无(R1 新立) |
+ * | ③ | 输入法组字放行 | 无(R2 新立,见下) |
+ * | ④ | 瞬态 Esc 口(Tooltip / 原地编辑) | `Tooltip` 的 document 监听 |
+ * | ⑤ | 路径上的 Esc,由深到浅 | `ui/float` 捕获 + `useEscapeChain` 冒泡 + composer / ExposeView / FilesPanel 各自那一份 |
+ * | ⑥ | `modal` 的 Tab 圈禁 | `a11y/focus-trap` 的 document 捕获 |
+ * | ⑦ | 输入面里的无修饰单键放行 | `keymap/dispatch` 的同一句 |
+ * | ⑧ | 局部键(由深到浅) | viewer / files 各自面域根上的元素监听 |
+ * | ⑨ | 全局命令表 | `keymap/dispatch` 的 window 冒泡 |
  *
- * | 半 | 相位 | 管什么 | 对应今天的谁 |
- * | --- | --- | --- | --- |
- * | 捕获半 | `window` capture | ①录制态独占 ②I1 收回 ③路径上 **float / modal** 的 Esc ④**modal** 的 Tab 圈禁 | `ui/float` 的 Esc 捕获、`a11y/focus-trap` 的 document 捕获、`KeymapSettings` 的录制捕获 |
- * | 冒泡半 | `window` bubble | ①`defaultPrevented` 让位 ②路径上 **root / layer / region** 的 Esc ③输入面单键放行 ④局部键 ⑤全局命令表 | `useEscapeChain`(退层链)、`keymap/dispatch` 的全局派发 |
+ * ── 相位为什么是**捕获** ─────────────────────────────────────────────────
+ * 相位从前要回答两个问题:「这一下归哪一层浮层」(靠捕获抢在前面)与「局部先接、
+ * 没接住放行全局」(靠冒泡排在后面)。第一个问题现在由树答,第二个由树的深度答 ——
+ * 相位于是只剩**一件**事要保:**React 元素级的结构键不被抢**。而结构键
+ * (方向键 / ↵ / Space / Tab)**一格都不在局部键表里**(§4.3 的封闭裁定),
+ * 所以捕获相位跑在它们之前也拿不走它们:⑦ 先把输入面里的无修饰单键放掉,
+ * ⑧ 只按表匹配(表里每一条都带修饰键),⑥ 只在真有 modal 时才碰 Tab。
  *
- * 两半的分界不是随手切的,它就是今天那条相位线:**浮层认捕获、面认冒泡**。
- * 于是 ExposeView 的捕获监听仍然排在浮层之后(它比壳晚挂载 = 晚注册),
- * composer 的冒泡监听仍然排在退层链之前(子组件的 effect 先于 AppShell 的跑)。
- * R2 把那四家迁进树之后,`region` 的 Esc 与局部键就都由树来答,两半合一。
+ * **Esc 是唯一的例外**,因为它是唯一由树处理的结构键:元素级也想接住这一下的
+ * 那一族(原地编辑的「Esc 收回」)因此不能靠相位赢,得**在树上有个座位** ——
+ * 那正是瞬态口④(`ui/inline-edit` 登记它,答 true 即认领)。用相位去解这件事
+ * 就回到了 08-30 → 09-01 那三轮:相位只有两格,而要排序的东西不止两件。
  *
- * 冒泡半开头仍然读 `defaultPrevented`:viewer / files 的元素级局部键还挂在各自
- * 面域根上,它们接住了就是这么让位的(09-01 三层立法的原话)。
+ * `defaultPrevented` 让位那一句留着(⑤/⑧/⑨ 三处各一次):捕获相位里它今天恒为
+ * false(window 捕获是整条传播路径的第一站),但「别人真接住了就让开」是一条
+ * **契约**,不是一处优化 —— 哪天前面再站一个更早的消费者,这一句就是它的出口。
  * ═══════════════════════════════════════════════════════════════════════
  *
  * ── 为什么 `runCommand` 是注入的 ─────────────────────────────────────────
@@ -46,18 +56,28 @@ import type { ScopeNode } from './types'
  * 抄一份进来的话那张动作表就有了两个产地,而它们迟早分叉 —— 所以是**共用一份**,
  * 由 `AppShell` 把 runner 递进来(R0 留账 4 的结清)。
  *
+ * ── 输入法组字为什么单列一格(R2 新增)─────────────────────────────────────
+ * 拼音输入法在候选框开着时,每一下按键先发一个 `keydown`(`isComposing === true`)
+ * 给 IME,组完字再发真正那一下。捕获相位跑在最前面,所以这一格不放行的话,
+ * 「选字时按 Esc」= 树把它当成「退一层」,把用户正在写字的那块面收掉 ——
+ * 08-31 那条「中文输入法下回车发两次」是同一个病根的另一面
+ * (`ComposerInput.isComposingKey` 的两种问法在那儿逐字写着)。
+ * 这里只问标准那一条(`e.isComposing`):`keyCode === 229` 那条老约定是给
+ * **元素级**的回车判的,而组字期间树本来就一格都不该动。
+ *
  * ── 一次按键的顺序(与设计 §4.3 / §4.4 逐条对应)──────────────────────────
  *  ① **独占口**(录制态):它要吃所有键,含全局命令。树一格都不问。
  *  ② **I1 收回**:焦点掉到 body 了先接回来再路由 —— 被聚焦的元素被静默移除时
  *     `focusout` 都不发,这一处是三处收回里兜底的那一处(§4.1 修正段)。
- *  ③ **瞬态口**:Tooltip 那一族(不占焦点、没有自己的根)。答 true 才认领。
- *  ④ **Esc**:沿活动路径由深到浅问 `onEscape()`,第一个答 true 的消费掉。
- *     没人答 true → **不 preventDefault**(输入法组字等后面的消费者照旧)。
- *  ⑤ **Tab**:只在 `modal` 作用域被圈禁,别处一律放行(结构键不进表)。
- *  ⑥ 输入面里的**无修饰单键**归输入框(判据与旧派发器逐字相同)。
- *  ⑦ **局部键**:由深到浅找第一个命中的作用域;命中即 `preventDefault` 并跑
+ *  ③ **组字放行**:见上。
+ *  ④ **瞬态口**:Tooltip / 原地编辑那一族(不占焦点、或没有自己的根)。答 true 才认领。
+ *  ⑤ **Esc**:沿活动路径由深到浅问 `onEscape()`,第一个答 true 的消费掉。
+ *     没人答 true → **不 preventDefault**(后面的消费者照旧)。
+ *  ⑥ **Tab**:只在 `modal` 作用域被圈禁,别处一律放行(结构键不进表)。
+ *  ⑦ 输入面里的**无修饰单键**归输入框(判据与旧派发器逐字相同)。
+ *  ⑧ **局部键**:由深到浅找第一个命中的作用域;命中即 `preventDefault` 并跑
  *     它注入的处理器。
- *  ⑧ 都没命中 → 全局命令表。
+ *  ⑨ 都没命中 → 全局命令表。
  *
  * 「局部先接、没接住放行全局」这条裁定一个字没变,变的是它靠什么成立:
  * 从前靠 DOM 冒泡序(局部监听挂在面域根上,先于 window 收到),现在靠树的深度。
@@ -70,11 +90,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 }
 
-/** 捕获半管的那两档:浮层。冒泡半管其余(root / layer / region)。 */
-function isFloatKind(node: ScopeNode): boolean {
-  return node.kind === 'float' || node.kind === 'modal'
-}
-
 export interface FocusDispatchOptions {
   /** 全局命令的落点。见文件头「为什么是注入的」。 */
   runCommand: (id: CommandId) => void
@@ -85,8 +100,7 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
   const { runCommand } = opts
 
   useEffect(() => {
-    /* ── 捕获半:独占 / 收回 / 瞬态 / 浮层 Esc / 模态 Tab ──────────────── */
-    const onCapture = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       // ① 独占(录制态)—— §5 里唯一那条例外,它仍然不许自己挂 window。
       //    `stopPropagation` 是录制态成立的前提:不掐断,录 ⌘P 时检索面会真的弹出来。
       const captured = focusTree.capturedHandler()
@@ -100,53 +114,29 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
       // ② I1 的第三处收回。放在路由之前:这一下按键该由谁接,取决于焦点在哪儿。
       focusTree.recoverOrphanFocus()
 
-      if (e.key === 'Escape') {
-        // ③ 瞬态口(Tooltip)。它多半**不认领**,所以问完照旧往下走。
-        for (const handler of focusTree.transientEscapeHandlers()) {
-          if (handler()) {
-            e.preventDefault()
-            return
-          }
-        }
-        // ④ 浮层那一半的 Esc:由深到浅,第一个答 true 的消费掉。
-        for (const node of routeEscape(focusTree.nodes(), focusTree.activePath())) {
-          if (!isFloatKind(node)) continue
-          if (node.onEscape?.()) {
-            e.preventDefault()
-            return
-          }
-        }
-        return
-      }
+      // ③ 组字期间整台树都不动(理由见文件头那一段)。
+      if (e.isComposing) return
 
-      // ⑤ Tab:只有 modal 圈禁。哪一格圈得住由 `modalTrapNode` 判(两步,见那只函数)。
-      if (e.key === 'Tab') {
-        const trap = modalTrapNode(focusTree.nodes(), focusTree.activePath())
-        if (!trap?.root) return
-        const stop = tabStopWithin(trap.root, document.activeElement, e.shiftKey)
-        if (!stop) return
-        e.preventDefault()
-        if (focusTree.policy.moveFocus) stop.focus({ preventScroll: true })
-      }
-    }
-
-    /* ── 冒泡半:让位 / 面的 Esc / 局部键 / 全局命令 ──────────────────── */
-    const onBubble = (e: KeyboardEvent) => {
-      // 录制态吃掉一切:捕获半已经 stopPropagation,这里其实收不到 —— 留着这一句
-      // 是因为「谁在独占」不该依赖另一半的实现细节(测试直接派在 window 上时两半
-      // 都会跑到,那正是这一句守着的形)。
-      if (focusTree.capturedHandler()) return
-      // ② 别人真消费掉了就让开(捕获半认领的、viewer/files 元素级局部键接住的)。
+      // 别人真接住了就让开(契约,见文件头末段)。
       if (e.defaultPrevented) return
 
       const nodes = focusTree.nodes()
       const path = focusTree.activePath()
 
       if (e.key === 'Escape') {
-        // 面那一半的 Esc:root 的 `escapeTopmost` 是最后一环(§4.4)。
-        // 这里**不判 isTypingTarget** —— 退层链从来不判,输入框里按 Esc 照样退一层。
+        // ④ 瞬态口(Tooltip / 原地编辑)。答 true 才认领,tooltip 一族答 false。
+        for (const handler of focusTree.transientEscapeHandlers()) {
+          if (handler()) {
+            e.preventDefault()
+            return
+          }
+        }
+        /*
+         * ⑤ 路径上的 Esc:由深到浅,第一个答 true 的消费掉;root 的
+         * `escapeTopmost` 是最后一环(§4.4)。
+         * **不判 isTypingTarget** —— 退层链从来不判,输入框里按 Esc 照样退一层。
+         */
         for (const node of routeEscape(nodes, path)) {
-          if (isFloatKind(node)) continue
           if (node.onEscape?.()) {
             e.preventDefault()
             return
@@ -155,13 +145,21 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
         return
       }
 
-      // Tab 归捕获半(圈禁),这里一个字都不管:结构键不进表。
-      if (e.key === 'Tab') return
+      // ⑥ Tab:只有 modal 圈禁。哪一格圈得住由 `modalTrapNode` 判(两步,见那只函数)。
+      if (e.key === 'Tab') {
+        const trap = modalTrapNode(nodes, path)
+        if (!trap?.root) return
+        const stop = tabStopWithin(trap.root, document.activeElement, e.shiftKey)
+        if (!stop) return
+        e.preventDefault()
+        if (focusTree.policy.moveFocus) stop.focus({ preventScroll: true })
+        return
+      }
 
-      // ⑥ 输入框里的无修饰单键让给输入。
+      // ⑦ 输入框里的无修饰单键让给输入。
       if (isTypingTarget(e.target) && !hasModifier(e)) return
 
-      // ⑦⑧ 局部先接,没接住放行全局。
+      // ⑧⑨ 局部先接,没接住放行全局。
       const route = routeKey(nodes, path, e, (ev) => lookupCommand({ overrides }, ev))
       if (!route) return
       e.preventDefault()
@@ -181,11 +179,9 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
      * 设计 §8 的原话是「现有 float-handwritten 规则退役(被 I2 覆盖)」——
      * 那一步在 R3(三条棘轮归零那一批)做,这里先按规则自己的口径写豁免。
      */
-    window.addEventListener('keydown', onCapture, true)
-    window.addEventListener('keydown', onBubble)
+    window.addEventListener('keydown', onKeyDown, true)
     return () => {
-      window.removeEventListener('keydown', onCapture, true)
-      window.removeEventListener('keydown', onBubble)
+      window.removeEventListener('keydown', onKeyDown, true)
     }
   }, [overrides, runCommand])
 }

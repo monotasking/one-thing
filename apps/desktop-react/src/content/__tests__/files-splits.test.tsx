@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useState } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useT } from '../../i18n'
 import { FILES_ROW_H } from '../../data/files-source'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { anchorBelow, useFileFloats } from '../file-floats'
-import type { FloatOrigin } from '../file-floats'
 import { DETAIL_POPOVER_GAP } from '../FileDetailPopover'
 import { useRowWindow } from '../files/useRowWindow'
 import { TreeEntryRow } from '../files/TreeEntryRow'
@@ -122,7 +122,14 @@ const ROW: EntryRow = {
 function RowFloatsHarness({ detailFromMenu = false }: { detailFromMenu?: boolean }) {
   const t = useT()
   const { menuAt, detailAt, openMenuAt, openDetailAt } = useFileFloats()
-  const onDetail = (origin: FloatOrigin) => openDetailAt(origin)
+  /*
+   * ── R2:⌘I 的落点搬到了**面板那一格作用域**上 ────────────────────────────
+   * 行不再自己接键,它只**报到**(`onCurrent`)。所以这只夹具照面板那一处的样子
+   * 记一格「当前是哪一行、它的外框是谁」,再由下面那颗 `keys-detail` 钮代替
+   * `keyHandlers.detail` 按下去 —— 锚点算式(交出去的是**来源**不是坐标)
+   * 一个字没动,这一组守的正是那件事。
+   */
+  const [current, setCurrent] = useState<HTMLElement | null>(null)
   return (
     <div>
       <TreeEntryRow
@@ -131,9 +138,15 @@ function RowFloatsHarness({ detailFromMenu = false }: { detailFromMenu?: boolean
         selected={false}
         opened={false}
         onActivate={() => undefined}
-        onDetail={onDetail}
+        onCurrent={(_row, el) => setCurrent(el)}
         onMenu={openMenuAt}
       />
+      <ButtonBase
+        data-testid="keys-detail"
+        onClick={() => openDetailAt(current?.getBoundingClientRect())}
+      >
+        detail-by-key
+      </ButtonBase>
       {/* 从菜单里开详情那一路(树面传 gap:false —— 菜单自己已经隔过一条缝了)。 */}
       {detailFromMenu && menuAt && (
         <ButtonBase
@@ -162,10 +175,10 @@ function at(testId: string): { x: string; y: string } {
   return { x: el.getAttribute('data-x') ?? '', y: el.getAttribute('data-y') ?? '' }
 }
 
-describe('切线 C · TreeEntryRow:搬了家,键位与三条回调一格不少', () => {
+describe('切线 C · TreeEntryRow:搬了家,三条回调一格不少', () => {
   function mount() {
     const onActivate = vi.fn()
-    const onDetail = vi.fn()
+    const onCurrent = vi.fn()
     const onMenu = vi.fn()
     function Harness() {
       const t = useT()
@@ -176,14 +189,14 @@ describe('切线 C · TreeEntryRow:搬了家,键位与三条回调一格不少',
           selected={false}
           opened={false}
           onActivate={onActivate}
-          onDetail={onDetail}
+          onCurrent={onCurrent}
           onMenu={onMenu}
         />
       )
     }
     render(<Harness />)
     const button = document.querySelector('[data-file-path="/w/a.ts"]') as HTMLElement
-    return { onActivate, onDetail, onMenu, button }
+    return { onActivate, onCurrent, onMenu, button }
   }
 
   it('单击 = 打开(唯一的打开手势;双击那条路 09-01 已整条删掉)', () => {
@@ -192,26 +205,26 @@ describe('切线 C · TreeEntryRow:搬了家,键位与三条回调一格不少',
     expect(onActivate).toHaveBeenCalledTimes(1)
   })
 
-  it('⌘I 出详情,并且**接住了就 preventDefault**(局部先接的机制那一半)', () => {
-    const { onDetail, button } = mount()
-    const handled = fireEvent.keyDown(button, { key: 'i', metaKey: true })
-    expect(onDetail).toHaveBeenCalledTimes(1)
-    // fireEvent 返回 false = 有人 preventDefault 了 —— 全局派发器那句
-    // `if (e.defaultPrevented) return` 认的就是这一格。
-    expect(handled).toBe(false)
+  /*
+   * ── R2:这一行**不再自己接键** ─────────────────────────────────────────
+   * ⌘I / ⌘↵ 的落点搬进了面板那一格作用域的 `keyHandlers`(声明在
+   * `FOCUS_SCOPES.files.keys`),行只回答「当前是哪一行」。下面两条钉的正是
+   * 这次搬家的两头:**键不在行上了**,而**报到还在**。
+   */
+  it('行上一条键都不接了:⌘I / ⌘↵ 原样冒上去(归面板那一格作用域)', () => {
+    const { button } = mount()
+    const i = fireEvent.keyDown(button, { key: 'i', metaKey: true })
+    const enter = fireEvent.keyDown(button, { key: 'Enter', ctrlKey: true })
+    // fireEvent 返回 true = 没人 preventDefault —— 这一行让开了。
+    expect([i, enter]).toEqual([true, true])
   })
 
-  it('⌘↵ 是它的第二个键面(继承下来的,删一个好使的键位是可感知的能力损失)', () => {
-    const { onDetail, button } = mount()
-    fireEvent.keyDown(button, { key: 'Enter', ctrlKey: true })
-    expect(onDetail).toHaveBeenCalledTimes(1)
-  })
-
-  it('光秃秃的 i / ↵ 不算 —— 没有修饰键的那一下该打字就打字、该激活就激活', () => {
-    const { onDetail, button } = mount()
-    fireEvent.keyDown(button, { key: 'i' })
-    fireEvent.keyDown(button, { key: 'Enter' })
-    expect(onDetail).not.toHaveBeenCalled()
+  it('焦点进 / 出这一行都报到:进的时候交外框,出的时候交 null', () => {
+    const { onCurrent, button } = mount()
+    fireEvent.focus(button)
+    expect(onCurrent).toHaveBeenLastCalledWith(ROW, button.parentElement)
+    fireEvent.blur(button)
+    expect(onCurrent).toHaveBeenLastCalledWith(ROW, null)
   })
 })
 
@@ -235,10 +248,11 @@ describe('切线 C+D · 锚点只算一遍:一行交的是**来源**,不是算�
     expect(at('menu-at')).toEqual({ x: '0', y: String(DETAIL_POPOVER_GAP) })
   })
 
-  it('⌘I = 矩锚:详情同样只隔一条缝', () => {
+  it('⌘I = 矩锚:详情同样只隔一条缝(R2:落点在面板,来源仍是那一行的外框)', () => {
     render(<RowFloatsHarness />)
     const button = document.querySelector('[data-file-path="/w/a.ts"]') as HTMLElement
-    fireEvent.keyDown(button, { key: 'i', metaKey: true })
+    fireEvent.focus(button)
+    fireEvent.click(screen.getByTestId('keys-detail'))
     expect(at('detail-at')).toEqual({ x: '0', y: String(DETAIL_POPOVER_GAP) })
   })
 
@@ -413,5 +427,51 @@ describe('切线 B · NoWorkdirNotice:绑定的成败,以及律③的两半', ()
     const confirm = screen.getByRole('button', { name: '确定' })
     expect(confirm.getAttribute('aria-busy')).toBeNull()
     expect(confirm).toHaveProperty('disabled', false)
+  })
+})
+
+/* ── 拍点 1:单击留树,↵ 进查看器 ─────────────────────────────────────────── */
+
+describe('切线 C · 打开手势:单击与 ↵ 的差别只有「焦点去哪」', () => {
+  function mount() {
+    const onActivate = vi.fn()
+    function Harness() {
+      const t = useT()
+      return (
+        <TreeEntryRow
+          row={ROW}
+          t={t}
+          selected={false}
+          opened={false}
+          onActivate={onActivate}
+          onCurrent={() => undefined}
+          onMenu={() => undefined}
+        />
+      )
+    }
+    render(<Harness />)
+    return { onActivate, button: document.querySelector('[data-file-path="/w/a.ts"]') as HTMLElement }
+  }
+
+  it('单击报 viaKeyboard=false(焦点留树,浏览器自己落在这颗钮上)', () => {
+    const { onActivate, button } = mount()
+    fireEvent.click(button)
+    expect(onActivate).toHaveBeenCalledWith(false)
+  })
+
+  it('↵ 报 viaKeyboard=true,并且**挡掉那次合成 click**(不然开两遍)', () => {
+    const { onActivate, button } = mount()
+    const handled = fireEvent.keyDown(button, { key: 'Enter' })
+    expect(onActivate).toHaveBeenCalledWith(true)
+    expect(onActivate).toHaveBeenCalledTimes(1)
+    // 反证:把那句 preventDefault 删掉 → 浏览器补一次 click,面板会开两遍
+    // (目录那一行更明显:展开又收起)。
+    expect(handled).toBe(false)
+  })
+
+  it('⌘↵ 不归这一行:它是面域局部键(详情),这一行一个字都不接', () => {
+    const { onActivate, button } = mount()
+    fireEvent.keyDown(button, { key: 'Enter', metaKey: true })
+    expect(onActivate).not.toHaveBeenCalled()
   })
 })

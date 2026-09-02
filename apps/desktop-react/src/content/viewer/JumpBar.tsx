@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Input } from '../../ui/Input'
 import { FocusScope } from '../../focus/FocusScope'
@@ -90,19 +90,25 @@ export function JumpBar({
   const rootRef = useRef<HTMLDivElement | null>(null)
 
   /*
-   * 一出现就把光标放进去 —— 用户刚按了 ⌘L / ⌘F,焦点跟着那一下走正是他要的结果。
+   * **落点是声明,不是一句 `.focus()`**(09-03 R2)。
    *
-   * 从前这是一个回调 ref(同 FilesPanel 那条「绑定…」输入行的判例)。R1 换成
-   * `useLayoutEffect` 不是风格改动,是**次序**:回调 ref 在提交阶段就跑,那时
-   * 这一层的 `<FocusScope>` 还没登记完,焦点落进输入框时树里根本没有「跳转条」
-   * 这一格 —— 第一响应者会被算成外面那块面,于是 Esc 再也退不到这一层。
-   * layout effect 在子(FocusScope)的登记之后、浏览器绘制之前跑,两头都对。
-   * 用户看到的一模一样:两者之间没有一次绘制。
+   * 「一出现就把光标放进去」这件事的两半从此分家:**焦点落在哪儿**由这一层
+   * 交给树(`restingTarget` + `activateOnMount`,落焦是 `activate('open')` 干的);
+   * **光标落在那一格的哪个位置**仍然是这条输入行自己的语义,留在下面这条
+   * layout effect 里。
+   *
+   * 次序不是巧合:`<FocusScope>` 是这棵子树的**孩子**,React 的 layout effect
+   * 子先于父跑 —— 所以焦点已经在框里了,这里只把插入点挪到末尾,两者之间
+   * 没有一次绘制,用户看到的一模一样。
    */
+  const restingTarget = useCallback(
+    () => rootRef.current?.querySelector('input') ?? null,
+    [],
+  )
+
   useLayoutEffect(() => {
     const input = rootRef.current?.querySelector('input')
     if (!input) return
-    input.focus()
     // 光标落到**末尾**而不是选中全文:⌘F 已经替用户打了一个 `/`,
     // 选中它意味着下一个字符会把前缀吃掉,那条路当场变成行号档。
     const at = input.value.length
@@ -140,12 +146,20 @@ export function JumpBar({
    * 想看清楚要跳哪儿)—— 所以这里连 `useFloatDismiss` 都不用了(它的另一半
    * `outside` 本来就关着)。
    *
-   * 入焦仍写在这块面自己身上(上面那条 layout effect),没有换成 `restingTarget`
-   * —— R1 只做最小接入,R2 把内容面整体迁进树时再统一。理由:**光标落在末尾**
-   * 那一手(⌘F 已经替用户打了一个 `/`)是这条输入行自己的语义,搬家时要连着一起搬。
+   * 入焦(R2)是一句**声明**:`restingTarget` 指着那格输入框、`activateOnMount`
+   * 说「刚开出来就把焦点送进去」,落焦由 `activate('open')` 干 —— 设计 §7 说的
+   * 「自己开的临时面不写任何 focus/keydown 代码」到这一批才算真的兑现。
+   * 关掉之后焦点回哪儿也不必这里管:跳转条是查看器的孩子,路径缩回查看器,
+   * 焦点回它上次那一行(§4.5 的结构归还)——**这就是用户报的 ⌘F 那条的根治点**。
    */
   return (
-    <FocusScope scope="jumpbar" rootRef={rootRef} onEscape={() => (onClose(), true)}>
+    <FocusScope
+      scope="jumpbar"
+      rootRef={rootRef}
+      restingTarget={restingTarget}
+      activateOnMount
+      onEscape={() => (onClose(), true)}
+    >
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.jump} data-testid="viewer-jump-bar">
           <Input

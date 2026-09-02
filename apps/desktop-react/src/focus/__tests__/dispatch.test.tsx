@@ -218,8 +218,8 @@ describe('⑥⑦ 局部先接,没接住放行全局', () => {
   })
 })
 
-describe('两半相位:浮层认捕获,面认冒泡(R1 过渡形)', () => {
-  /** 在 window 捕获相位上排一个探针,它跑在派发器的冒泡半**之前**。 */
+describe('一张表,一个捕获相位的监听(R2 两半合一)', () => {
+  /** 在 window 捕获相位上排一个探针。它比派发器**晚**登记,所以跑在它后面。 */
   function witness(): { seen: string[]; off: () => void } {
     const seen: string[] = []
     const onKey = () => seen.push('capture-witness')
@@ -227,24 +227,28 @@ describe('两半相位:浮层认捕获,面认冒泡(R1 过渡形)', () => {
     return { seen, off: () => window.removeEventListener('keydown', onKey, true) }
   }
 
-  it('浮层的 Esc 在**捕获**半认领 —— 冒泡相位的旁观者看到的已经是 defaultPrevented', () => {
+  /**
+   * 反证:把派发器的相位改回冒泡(`window.addEventListener('keydown', onKey)`),
+   * 下面这两条当场红 —— 冒泡相位里,捕获探针看到的 `defaultPrevented` 会是 false。
+   */
+  it('浮层的 Esc 在**捕获**相位就认领掉了', () => {
     render(<Harness run={runCommand} />)
     const root = focusTree.register('root', null)
     const jump = focusTree.register('jumpbar', root.instanceId, { onEscape: () => true })
     jump.activate()
 
-    let prevented: boolean | null = null
-    const onBubble = (e: KeyboardEvent) => {
-      prevented = e.defaultPrevented
+    let preventedAtCapture: boolean | null = null
+    const onCapture = (e: KeyboardEvent) => {
+      preventedAtCapture = e.defaultPrevented
     }
-    window.addEventListener('keydown', onBubble)
+    window.addEventListener('keydown', onCapture, true)
     fireEvent.keyDown(document.body, { key: 'Escape' })
-    window.removeEventListener('keydown', onBubble)
+    window.removeEventListener('keydown', onCapture, true)
 
-    expect(prevented).toBe(true)
+    expect(preventedAtCapture).toBe(true)
   })
 
-  it('面(root / layer / region)的 Esc 在**冒泡**半 —— 捕获相位的旁观者还没看到认领', () => {
+  it('**面(root / layer / region)的 Esc 也在同一个相位** —— 这就是两半合一的读数', () => {
     render(<Harness run={runCommand} />)
     const answered: string[] = []
     const root = focusTree.register('root', null, {
@@ -261,10 +265,42 @@ describe('两半相位:浮层认捕获,面认冒泡(R1 过渡形)', () => {
     window.removeEventListener('keydown', onCapture, true)
 
     expect(answered).toEqual(['root'])
-    expect(preventedAtCapture).toBe(false)
+    expect(preventedAtCapture).toBe(true)
   })
 
-  it('录制态独占**掐断传播**:捕获半之后的旁观者一个字都收不到(录 ⌘P 不会真开检索)', () => {
+  it('window 上**只有这一个** keydown 监听(两半合一的另一半读数)', () => {
+    const added: boolean[] = []
+    const spy = vi
+      .spyOn(window, 'addEventListener')
+      .mockImplementation(((type: string, _fn: unknown, opts: unknown) => {
+        if (type === 'keydown') added.push(opts === true)
+      }) as typeof window.addEventListener)
+    render(<Harness run={runCommand} />)
+    spy.mockRestore()
+    // 一条,而且是捕获档。反证:把冒泡半加回去 → 长度变 2。
+    expect(added).toEqual([true])
+  })
+
+  it('输入法组字期间树一格都不动(⑤ Esc 不退层、⑨ 全局命令不响)', () => {
+    render(<Harness run={runCommand} />)
+    const answered: string[] = []
+    focusTree
+      .register('root', null, { onEscape: () => (answered.push('root'), true) })
+      .activate()
+
+    const esc = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true })
+    Object.defineProperty(esc, 'isComposing', { value: true })
+    window.dispatchEvent(esc)
+    expect(answered).toEqual([])
+    expect(esc.defaultPrevented).toBe(false)
+
+    const cmd = new KeyboardEvent('keydown', { key: 'p', metaKey: true, cancelable: true })
+    Object.defineProperty(cmd, 'isComposing', { value: true })
+    window.dispatchEvent(cmd)
+    expect(runCommand).not.toHaveBeenCalled()
+  })
+
+  it('录制态独占**掐断传播**:派发器之后的旁观者一个字都收不到(录 ⌘P 不会真开检索)', () => {
     render(<Harness run={runCommand} />)
     focusTree.capture(() => true)
     const w = witness()

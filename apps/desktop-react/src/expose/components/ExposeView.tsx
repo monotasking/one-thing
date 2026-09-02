@@ -1,5 +1,7 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow'
+import { FocusScope } from '../../focus/FocusScope'
 import { useExposeStore } from '../store'
 import { useExposeLive } from './use-live'
 import type { FocusDir } from '../types'
@@ -52,13 +54,113 @@ export function ExposeView() {
    * 引用比较会让这里每次都重渲染,连带把没 memo 的 Overview(439 张卡)整棵重造。
    * 内容没变就不重渲染,这一层不动,卡树自然一格不动(08-30 真机画像的第三记)。
    */
+  /*
+   * ── 键盘:从一条 window 捕获监听,变成这一格作用域的两句声明(09-03 R2)────
+   * 方向键 / Space / ↵ 挂在作用域根上(行内结构键,不进任何表),Esc 走 `onEscape`。
+   * 「谁来听」那个问题因此不再需要 `live` 那道自制的门:**在不在活动路径上**
+   * 就是答案 —— 架子后台那一层被打了 `inert`,路径在那儿截断,它里面这一份
+   * 连被问到的机会都没有(§4.7);而 `live` 那一格(placed × interactive)
+   * 留着回答它原来的另一个问题:「这一份算不算数,要不要归位(open)」。
+   */
   const view = useExposeStore(useShallow((st) => st.view))
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * 搜索条那一格。**落点**(`restingTarget`)在这一层持有,由 `Overview` 铺 ——
+   * 「焦点进这块面时落在哪儿」是这一格作用域的声明,而搜索条只是它此刻的那个元素。
+   */
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  /**
+   * 落点两档,判据是 `focusVisible`(键盘位显不显形):
+   *  · 还没交接 → 搜索条(「摆出来的那一刻键盘归这块面,焦点落进搜索条」);
+   *  · 已经交给网格 → **答不出**,于是落在这块面的根上(`restingElementOf` 的
+   *    缺省档)。这一格不是可有可无的:交接之后焦点必须离开搜索条,否则
+   *    ↑↓/Space/↵ 会被「输入面里的无修饰单键」那条规则让给输入框,网格当场不动。
+   *    从前那一手是 `inputRef.current?.blur()` —— 焦点掉到 body,而 R1 之后
+   *    孤儿焦点会被收回落点,于是它会**弹回搜索条**。落点分两档才是这条手势
+   *    在响应链上的正确写法。
+   */
+  const restingTarget = useCallback(
+    () => (useExposeStore.getState().focusVisible ? null : searchRef.current),
+    [],
+  )
+
+  /**
+   * Esc 的三档,次序与从前那条监听逐字相同:
+   *  ① 总览这一层且搜索条有词 → **先清词**(Esc 的第 0 层);
+   *  ② 总览这一层且没有词 → **不拦**,让宿主那一层去收这块面(退层链);
+   *  ③ 组列表 / Quick Look → 退一层。
+   */
+  const onEscape = useCallback(() => {
+    const st = useExposeStore.getState()
+    if (st.view.mode === 'overview') {
+      if (!st.query.trim()) return false
+      st.setQuery('')
+      return true
+    }
+    st.escape()
+    return true
+  }, [])
+
+  /**
+   * 方向键 / Space / ↵。判据一个字没改,只有「焦点在输入框里」那一条从
+   * `e.target`(真机上它就是拿着焦点的那个元素)问,不再问一个全局。
+   */
+  const onGridKey = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const st = useExposeStore.getState()
+    // 输入框里方向键 / 空格属于输入框,不属于总览。
+    if (isTypingTarget(e.target)) return
+
+    if (st.view.mode === 'quicklook') {
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        st.quickLookPrev()
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        st.quickLookNext()
+      } else if (e.key === ' ') {
+        e.preventDefault()
+        st.closeQuickLook()
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        st.enterSession(st.view.sessionId)
+      }
+      return
+    }
+
+    if (st.view.mode !== 'overview') return
+
+    const dir = ARROWS[e.key]
+    if (dir) {
+      e.preventDefault()
+      st.moveFocus(dir)
+      return
+    }
+    if (e.key === ' ' && st.focusId) {
+      e.preventDefault()
+      st.openQuickLook(st.focusId)
+      return
+    }
+    if (e.key === 'Enter' && st.focusId) {
+      e.preventDefault()
+      st.enterSession(st.focusId)
+    }
+  }, [])
+
   return (
-    <div className={s.view}>
-      <ExposeBindings />
-      {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview />}
-      {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
-    </div>
+    <FocusScope scope="expose" rootRef={rootRef} restingTarget={restingTarget} onEscape={onEscape}>
+      {({ scopeProps }) => (
+        /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
+         * 方向键 / Space / ↵ 是**行内结构键**(不进任何表),它们是总览这套形态的
+         * 语法本身;挂在作用域根上是事件委托,不是把一个 div 变成控件 ——
+         * 焦点在里面那些真控件上(搜索条 / 卡),与 `search/SearchPanel` 同判例。 */
+        <div {...scopeProps} className={s.view} onKeyDown={onGridKey}>
+          <ExposeBindings />
+          {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview searchRef={searchRef} />}
+          {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
+        </div>
+      )}
+    </FocusScope>
   )
 }
 
@@ -81,66 +183,6 @@ function ExposeBindings() {
   useEffect(() => {
     if (live) open()
   }, [live, open])
-
-  useEffect(() => {
-    if (!live) return
-    const onKey = (e: KeyboardEvent) => {
-      const st = useExposeStore.getState()
-
-      if (e.key === 'Escape') {
-        // Esc 的第 0 层:搜索条有内容时先清词,再往上退。
-        if (st.view.mode === 'overview') {
-          if (!st.query.trim()) return
-          e.preventDefault()
-          st.setQuery('')
-          return
-        }
-        e.preventDefault()
-        st.escape()
-        return
-      }
-      // 输入框里方向键 / 空格属于输入框,不属于总览。
-      if (isTypingTarget(e.target)) return
-
-      if (st.view.mode === 'quicklook') {
-        if (e.key === 'ArrowLeft') {
-          e.preventDefault()
-          st.quickLookPrev()
-        } else if (e.key === 'ArrowRight') {
-          e.preventDefault()
-          st.quickLookNext()
-        } else if (e.key === ' ') {
-          e.preventDefault()
-          st.closeQuickLook()
-        } else if (e.key === 'Enter') {
-          e.preventDefault()
-          st.enterSession(st.view.sessionId)
-        }
-        return
-      }
-
-      if (st.view.mode !== 'overview') return
-
-      const dir = ARROWS[e.key]
-      if (dir) {
-        e.preventDefault()
-        st.moveFocus(dir)
-        return
-      }
-      if (e.key === ' ' && st.focusId) {
-        e.preventDefault()
-        st.openQuickLook(st.focusId)
-        return
-      }
-      if (e.key === 'Enter' && st.focusId) {
-        e.preventDefault()
-        st.enterSession(st.focusId)
-      }
-    }
-
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [live])
 
   return null
 }

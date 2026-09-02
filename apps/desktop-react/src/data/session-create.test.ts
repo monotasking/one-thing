@@ -5,7 +5,7 @@ import { configureAgentsPort, type AgentsPort } from './agents-port'
 import { useAgentsSource } from './agents-source'
 import { useSessionsSource } from './sessions-source'
 import { useChatSource } from './chat-source'
-import { registerComposerFocus } from '../composer/focus'
+import { focusTree } from '../focus/registry'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
 import { useNotifyStore } from '../services/notify-store'
@@ -66,7 +66,20 @@ beforeEach(() => {
   updateSessionAgent = vi.fn(async () => ({ success: true }))
   configureSessionsPort(sessionsPortStub())
   configureAgentsPort(agentsPortStub())
-  registerComposerFocus(() => void (focused += 1))
+  /*
+   * ── 「把光标交给输入框」现在是树的一句 `activateScope('composer')`(R2)──
+   * 从前这里登记的是那口单槽接缝(`composer/focus.ts`,本批退役)。改法照旧
+   * **只记账不搬焦点**:在树上真登记一格输入面板,让它的落点是一个数着次数的
+   * 假元素 —— 于是这两条用例问的仍然是同一件事:「那一口被叫了几次」。
+   */
+  focusTree.reset()
+  const box = document.createElement('input')
+  document.body.append(box)
+  box.addEventListener('focus', () => void (focused += 1))
+  const root = focusTree.register('root', null)
+  root.setRoot(document.body)
+  const composer = focusTree.register('composer', root.instanceId, { restingTarget: () => box })
+  composer.setRoot(box.parentElement)
   useSessionsSource.getState().reset()
   useAgentsSource.getState().reset()
   // 建会话的编排点末尾会把聊天面开在新会话上(见下方那条用例),所以它也要归零。
@@ -76,7 +89,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  registerComposerFocus(undefined)
+  focusTree.reset()
+  document.body.innerHTML = ''
   useSessionsSource.getState().reset()
   useAgentsSource.getState().reset()
   useChatSource.getState().reset()

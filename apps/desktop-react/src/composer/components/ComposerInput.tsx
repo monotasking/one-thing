@@ -1,5 +1,6 @@
 import { useImperativeHandle, useRef } from 'react'
 import type { KeyboardEvent, RefObject } from 'react'
+import { useFocusScope } from '../../focus/useFocusScope'
 import { parseToken } from '../transitions'
 import type { TokenHit } from '../types'
 import s from './Composer.module.css'
@@ -15,7 +16,12 @@ import s from './Composer.module.css'
  */
 
 export interface ComposerInputHandle {
-  focus: () => void
+  /**
+   * 那块可编辑区本身。**给树当落点用**(`Composer` 的 `restingTarget`)——
+   * 从前这里是一口 `focus()`,谁想抢焦点就叫一声;R2 之后「焦点落在哪儿」是
+   * 输入面板那一格作用域的**声明**,交出去的于是从一个动作变成一个事实。
+   */
+  element: () => HTMLElement | null
   /**
    * 把光标处的 @xx / /xx 换成一枚 chip(files)或命令徽(commands)。
    *
@@ -109,9 +115,11 @@ export function ComposerInput({
   onSend,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null)
+  /* 这块可编辑区住在输入面板那一格作用域里,所以拿到的是它的句柄。 */
+  const { activate } = useFocusScope()
 
   useImperativeHandle(apiRef, () => ({
-    focus: () => ref.current?.focus(),
+    element: () => ref.current,
     text: () => (ref.current ? readDraft(ref.current) : ''),
     clear: () => {
       if (ref.current) ref.current.innerHTML = ''
@@ -141,7 +149,13 @@ export function ComposerInput({
       range.collapse(true)
       sel?.removeAllRanges()
       sel?.addRange(range)
-      el.focus()
+      /*
+       * 插完一枚 chip 之后光标回到这块可编辑区 —— **作用域内部**的一次移动,
+       * 所以走树的 `activate()`(它把焦点送到这块面声明的落点上,而在 write
+       * 形态下那个落点就是这块可编辑区),不再自己 `el.focus()`。
+       * 插入点已经在上面设好了:focus 一块 contenteditable 不会动 selection。
+       */
+      activate('programmatic')
     },
   }))
 

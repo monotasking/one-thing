@@ -10,12 +10,12 @@ import { FileDetailPopover } from '../FileDetailPopover'
 import { useFileFloats } from '../file-floats'
 import { resolveViewer } from './registry'
 import type { ViewerBodyProps } from './registry'
+import { FocusScope } from '../../focus/FocusScope'
 import { JumpBar } from './JumpBar'
 import { ViewerChrome, hostOwnsChrome } from './ViewerChrome'
 import { ViewerCloseConfirm } from './ViewerCloseConfirm'
 import { ViewerEditArea } from './ViewerEditArea'
 import { ViewerStatusBar } from './ViewerStatusBar'
-import { useViewerKeymap } from './useViewerKeymap'
 import { useViewerScroll } from './useViewerScroll'
 // 三张注册表的注册 barrel:import 它们**就是**「这台上认得哪些型 / 哪些跳法 /
 // 哪些键位档」。放在这里而不是应用入口 —— 谁要查表,谁负责保证表是装好的
@@ -246,206 +246,200 @@ export function FileViewer({
     return outcome
   }, [save, t])
 
-  // 面域局部键(⌘S / ⌘L / ⌘F / …)。判据与撞键裁决在 useViewerKeymap 文件头。
-  useViewerKeymap(rootRef, {
-    keymap: view.keymap,
-    wrap: view.wrap,
-    editing: edit.editing,
-    lineCount,
-    editable: Boolean(handler?.editable),
-    onSave: () => void runSave(),
-    onJump: setJumpQuery,
-    onWrap: (wrap) => setView({ wrap }),
-    onEdit: setEditing,
-    onClose: requestClose,
-  })
+  /*
+   * **面域局部键的落点**(R2:从元素监听迁进作用域声明)。
+   *
+   * 表在 `focus/scopes.ts` 的 `FOCUS_SCOPES.viewer.keys`(⌘S / ⌘L / ⌘F 三行),
+   * 这里交出的是**同名的处理器**;路由由响应链按活动路径的深度做,不再靠
+   * 「这一下按键经不经过我的根」—— 用户报的 ⌘F 死的正是后一条判据。
+   *
+   * 三格 `undefined` 是**判据本身**,不是防御:交不出处理器的那一格,
+   * `routeKey` 当没命中处理,这一下原样落到全局命令表去(与从前
+   * 「接住了才 preventDefault」逐字同义):
+   *  · `save` —— 不在编辑态时这块面没有存盘这回事;
+   *  · `jump` / `find` —— 这一型不按行寻址(图 / 播放条 / 诚实态)时跳转条整条不接。
+   * 从前那张查看器自己的 `mod+s` 键位表(`content/viewer/keymaps.ts` 的 bindings)
+   * 随本批退役:它与 `FOCUS_SCOPES.viewer.keys` 是同一份声明的两个产地,
+   * 而键位档(default / vim)本身留着 —— 它管的是模式标与命令行,不是键位路由。
+   */
+  const viewerKeys = {
+    save: edit.editing ? () => void runSave() : undefined,
+    jump: lineCount === undefined ? undefined : () => setJumpQuery(''),
+    find: lineCount === undefined ? undefined : () => setJumpQuery(SEARCH_SIGIL),
+  }
 
   return (
-    <section
-      ref={rootRef}
-      className={`${s.viewer} ${s[`frame-${placement}`] ?? ''}`}
-      data-testid="file-viewer"
-      /*
-       * **面域局部键的落点**(09-01 三层立法,表在 keymap/scopes.ts)。
-       * ⌘S / ⌘L / ⌘F 只在焦点落在这块面里时才响 —— 监听挂在这个根上,
-       * 于是它天然先于 window 上那个全局派发器收到按键;接住了就 preventDefault,
-       * 全局那边开头一句 `if (e.defaultPrevented) return` 让开。
-       *
-       * `tabIndex={-1}` 是那条路的前提:一个 `<section>` 默认不可落焦,点在
-       * 代码上焦点会留在 body,按键根本到不了这个根。-1 = **只接程序焦点**,
-       * 不进 Tab 序(它不是控件,不该在 Tab 上占一站)。
-       */
-      data-key-scope="viewer"
-      tabIndex={-1}
-      onPointerDown={(e) => {
-        // 点在里面的真控件上时不抢焦点(那颗钮自己会拿);点在正文上才把焦点
-        // 收到面域根上 —— 那正是「我在看这块面」的意思。
-        if ((e.target as HTMLElement).closest('button, input, textarea, a')) return
-        rootRef.current?.focus({ preventScroll: true })
-      }}
-      data-placement={placement}
-      data-viewer-kind={handler?.id}
-      aria-label={t('viewer.label')}
-    >
-      {/*
-       * 宿主自带檐时**整条不画**(09-01 合檐):不是把里面几件藏掉 —— 那样还剩
-       * 一条 40px 的空带子,而这正是报障里「空间利用度很低」的那 40px。
-       */}
-      {!chromeless && (
-        <ViewerChrome
-          t={t}
-          path={path}
-          name={name}
-          dirty={dirty}
-          toolbar={toolbar}
-          onClose={requestClose}
-        />
-      )}
+    <FocusScope scope="viewer" rootRef={rootRef} keyHandlers={viewerKeys}>
+      {({ scopeProps }) => (
+        <section
+          {...scopeProps}
+          className={`${s.viewer} ${s[`frame-${placement}`] ?? ''}`}
+          data-testid="file-viewer"
+          data-placement={placement}
+          data-viewer-kind={handler?.id}
+          aria-label={t('viewer.label')}
+        >
+          {/*
+           * 宿主自带檐时**整条不画**(09-01 合檐):不是把里面几件藏掉 —— 那样还剩
+           * 一条 40px 的空带子,而这正是报障里「空间利用度很低」的那 40px。
+           */}
+          {!chromeless && (
+            <ViewerChrome
+              t={t}
+              path={path}
+              name={name}
+              dirty={dirty}
+              toolbar={toolbar}
+              onClose={requestClose}
+            />
+          )}
 
-      {/*
-       * 合檐的落点里名条整条不画,那时工具条**自己成一条**(宿主那条 header 是
-       * 通用的,塞不进一个这一型专用的分段器)。没有工具条就整条不画,
-       * 不留一条空带子。
-       */}
-      {chromeless && toolbar && (
-        <div className={s.toolbar} data-testid="viewer-toolbar">
-          {toolbar}
-        </div>
-      )}
+          {/*
+           * 合檐的落点里名条整条不画,那时工具条**自己成一条**(宿主那条 header 是
+           * 通用的,塞不进一个这一型专用的分段器)。没有工具条就整条不画,
+           * 不留一条空带子。
+           */}
+          {chromeless && toolbar && (
+            <div className={s.toolbar} data-testid="viewer-toolbar">
+              {toolbar}
+            </div>
+          )}
 
-      <div
-        className={s.body}
-        ref={bodyRef}
-        data-testid="viewer-body"
-        onScroll={onScroll}
-        /*
-         * 身上右键 = 这个文件的动作菜单(09-01 裁定:动作单产地)。
-         * 与树行右键弹的是**同一件组件**,所以两处的项与次序不可能分叉。
-         *
-         * **落在编辑框里的那一下不接**:那时右键该是文本域自己的那一套
-         * (粘贴 / 撤销 / 拼写)。判据是「点在哪儿」而不是「在不在编辑态」——
-         * 后者会把编辑态下点在别处的右键也一起吞掉,而那时用户找不到出口。
-         */
-        onContextMenu={(e) => {
-          if (!file) return
-          if ((e.target as HTMLElement).closest('textarea')) return
-          e.preventDefault()
-          floats.openMenuAt(e)
-        }}
-      >
-        {jumpQuery !== null && lineCount !== undefined && file && (
-          <JumpBar
-            file={file}
-            lineCount={lineCount}
-            initialQuery={jumpQuery}
-            onClose={() => setJumpQuery(null)}
-            /* 落点只做一件事:改当前行。**关不关条由那一档说了算**(检索要连着走,
-             * 行号跳完就收)—— 判据在 navigator.cycle 上,不在这里。 */
-            onJump={(line) => setView({ currentLine: line })}
-          />
-        )}
-        {file && bodyProps && handler ? (
-          edit.editing ? (
-            <ViewerEditArea key={file.path} file={file} draft={edit.draft ?? ''} onDraft={setDraft} t={t} />
-          ) : (
+          <div
+            className={s.body}
+            ref={bodyRef}
+            data-testid="viewer-body"
+            onScroll={onScroll}
             /*
-             * **按 path 作 key**:换文件时本体整个换掉(滚动位、缩放、图的失败态
-             * 都不该从上一个文件继承),而头、脚、宿主、乃至左边那棵树一动不动。
+             * 身上右键 = 这个文件的动作菜单(09-01 裁定:动作单产地)。
+             * 与树行右键弹的是**同一件组件**,所以两处的项与次序不可能分叉。
+             *
+             * **落在编辑框里的那一下不接**:那时右键该是文本域自己的那一套
+             * (粘贴 / 撤销 / 拼写)。判据是「点在哪儿」而不是「在不在编辑态」——
+             * 后者会把编辑态下点在别处的右键也一起吞掉,而那时用户找不到出口。
              */
-            <handler.Body key={file.path} {...bodyProps} />
-          )
-        ) : pending ? (
-          /*
-           * ② 骨架**只首载**:走到这里必然是「手上什么都没有、而且正在读」的
-           * 第一帧。之后再切文件,上面那一支永远成立(旧内容还在),不会再来。
-           *
-           * **这里不转圈**(09-02 批 6 兑现禁令):Spinner 只许出现在按钮内或
-           * 状态栏,内容区的加载态用文字或骨架。从前这一格是「转圈 + 同一句话」
-           * ——转圈说的话与它旁边那行字逐字相同,删掉一个字都没少。
-           * 那一颗在状态栏里的仍然留着(它在允许的两处之一,见 ViewerStatusBar)。
-           */
-          <p className={s.note} data-testid="viewer-first-load">
-            <span className={s.noteDetail}>{t('viewer.reading')}</span>
-          </p>
-        ) : (
-          /*
-           * **空态**(F2 才有得着):查看器成了一块普通的瓦,于是它可以在
-           * 「一个文件都没打开」的情况下被点开(Dock 上点那块瓦)。这一格说的是
-           * 实话 —— 不转圈(没有东西在读),也不假装是个错误。
-           */
-          <p className={s.note} data-testid="viewer-empty">
-            <span className={s.noteDetail}>{t('viewer.noFile')}</span>
-          </p>
-        )}
-      </div>
+            onContextMenu={(e) => {
+              if (!file) return
+              if ((e.target as HTMLElement).closest('textarea')) return
+              e.preventDefault()
+              floats.openMenuAt(e)
+            }}
+          >
+            {jumpQuery !== null && lineCount !== undefined && file && (
+              <JumpBar
+                file={file}
+                lineCount={lineCount}
+                initialQuery={jumpQuery}
+                onClose={() => setJumpQuery(null)}
+                /* 落点只做一件事:改当前行。**关不关条由那一档说了算**(检索要连着走,
+                 * 行号跳完就收)—— 判据在 navigator.cycle 上,不在这里。 */
+                onJump={(line) => setView({ currentLine: line })}
+              />
+            )}
+            {file && bodyProps && handler ? (
+              edit.editing ? (
+                <ViewerEditArea key={file.path} file={file} draft={edit.draft ?? ''} onDraft={setDraft} t={t} />
+              ) : (
+                /*
+                 * **按 path 作 key**:换文件时本体整个换掉(滚动位、缩放、图的失败态
+                 * 都不该从上一个文件继承),而头、脚、宿主、乃至左边那棵树一动不动。
+                 */
+                <handler.Body key={file.path} {...bodyProps} />
+              )
+            ) : pending ? (
+              /*
+               * ② 骨架**只首载**:走到这里必然是「手上什么都没有、而且正在读」的
+               * 第一帧。之后再切文件,上面那一支永远成立(旧内容还在),不会再来。
+               *
+               * **这里不转圈**(09-02 批 6 兑现禁令):Spinner 只许出现在按钮内或
+               * 状态栏,内容区的加载态用文字或骨架。从前这一格是「转圈 + 同一句话」
+               * ——转圈说的话与它旁边那行字逐字相同,删掉一个字都没少。
+               * 那一颗在状态栏里的仍然留着(它在允许的两处之一,见 ViewerStatusBar)。
+               */
+              <p className={s.note} data-testid="viewer-first-load">
+                <span className={s.noteDetail}>{t('viewer.reading')}</span>
+              </p>
+            ) : (
+              /*
+               * **空态**(F2 才有得着):查看器成了一块普通的瓦,于是它可以在
+               * 「一个文件都没打开」的情况下被点开(Dock 上点那块瓦)。这一格说的是
+               * 实话 —— 不转圈(没有东西在读),也不假装是个错误。
+               */
+              <p className={s.note} data-testid="viewer-empty">
+                <span className={s.noteDetail}>{t('viewer.noFile')}</span>
+              </p>
+            )}
+          </div>
 
-      <ViewerStatusBar
-        t={t}
-        file={file}
-        view={view}
-        lineCount={lineCount}
-        status={handler?.status && bodyProps ? handler.status(bodyProps) : undefined}
-        statusItems={handler?.statusItems && bodyProps ? handler.statusItems(bodyProps) : []}
-        saving={saving}
-        saveKey={saveKey}
-        savedAt={edit.savedAt}
-        saveError={edit.error}
-        conflict={edit.conflict}
-        editing={edit.editing}
-        reading={pending !== null}
-        onSave={() => void runSave()}
-        onEditDone={() => setEditing(false)}
-        onJump={() => setJumpQuery('')}
-        onFind={() => setJumpQuery(SEARCH_SIGIL)}
-        onKeymap={(id) => setView({ keymap: id })}
-        onLoadMore={() => void loadMore()}
-      />
+          <ViewerStatusBar
+            t={t}
+            file={file}
+            view={view}
+            lineCount={lineCount}
+            status={handler?.status && bodyProps ? handler.status(bodyProps) : undefined}
+            statusItems={handler?.statusItems && bodyProps ? handler.statusItems(bodyProps) : []}
+            saving={saving}
+            saveKey={saveKey}
+            savedAt={edit.savedAt}
+            saveError={edit.error}
+            conflict={edit.conflict}
+            editing={edit.editing}
+            reading={pending !== null}
+            onSave={() => void runSave()}
+            onEditDone={() => setEditing(false)}
+            onJump={() => setJumpQuery('')}
+            onFind={() => setJumpQuery(SEARCH_SIGIL)}
+            onKeymap={(id) => setView({ keymap: id })}
+            onLoadMore={() => void loadMore()}
+          />
 
-      <ViewerCloseConfirm
-        t={t}
-        open={confirmClose}
-        name={name}
-        saveKey={saveKey}
-        onCancel={() => setConfirmClose(false)}
-        onDiscard={() => {
-          setConfirmClose(false)
-          close()
-        }}
-        onSave={runSave}
-        onSaved={() => {
-          setConfirmClose(false)
-          close()
-        }}
-      />
+          <ViewerCloseConfirm
+            t={t}
+            open={confirmClose}
+            name={name}
+            saveKey={saveKey}
+            onCancel={() => setConfirmClose(false)}
+            onDiscard={() => {
+              setConfirmClose(false)
+              close()
+            }}
+            onSave={runSave}
+            onSaved={() => {
+              setConfirmClose(false)
+              close()
+            }}
+          />
 
-      {/*
-       * 身上右键那张动作菜单 —— 与树行**同一件**(动作单产地)。
-       * 目录那一支在这里不可能出现:查看器手上永远是一个文件。
-       */}
-      {floats.menuAt && file && (
-        <FileActionsMenu
-          target={{ path: file.path, name: file.name, type: 'file' }}
-          x={floats.menuAt.x}
-          y={floats.menuAt.y}
-          onClose={floats.closeMenu}
-          onDetail={() => {
-            floats.openDetailAt(floats.menuAt)
-            void openDetail({ path: file.path, name: file.name, type: 'file' })
-          }}
-        />
+          {/*
+           * 身上右键那张动作菜单 —— 与树行**同一件**(动作单产地)。
+           * 目录那一支在这里不可能出现:查看器手上永远是一个文件。
+           */}
+          {floats.menuAt && file && (
+            <FileActionsMenu
+              target={{ path: file.path, name: file.name, type: 'file' }}
+              x={floats.menuAt.x}
+              y={floats.menuAt.y}
+              onClose={floats.closeMenu}
+              onDetail={() => {
+                floats.openDetailAt(floats.menuAt)
+                void openDetail({ path: file.path, name: file.name, type: 'file' })
+              }}
+            />
+          )}
+          {detail && floats.detailAt && (
+            <FileDetailPopover
+              detail={detail}
+              x={floats.detailAt.x}
+              y={floats.detailAt.y}
+              onClose={() => {
+                floats.closeDetail()
+                closeDetail()
+              }}
+            />
+          )}
+        </section>
       )}
-      {detail && floats.detailAt && (
-        <FileDetailPopover
-          detail={detail}
-          x={floats.detailAt.x}
-          y={floats.detailAt.y}
-          onClose={() => {
-            floats.closeDetail()
-            closeDetail()
-          }}
-        />
-      )}
-    </section>
+    </FocusScope>
   )
 }
 

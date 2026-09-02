@@ -90,7 +90,7 @@ export function StageOverlay() {
         if (e.target === e.currentTarget) closeStage()
       }}
     >
-      <FocusScope scope="stage-layer">
+      <FocusScope scope="stage-layer" owner={shown.id}>
         {({ scopeProps }) => (
           <>
             <section

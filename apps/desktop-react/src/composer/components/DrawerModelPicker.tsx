@@ -17,6 +17,7 @@ import { useExposeStore } from '../../expose/store'
 import { filterProviders, formatCount } from '../transitions'
 import { useComposerStore } from '../store'
 import { useListSelection } from '../../ui/a11y/list-selection'
+import { FocusScope } from '../../focus/FocusScope'
 import { ButtonBase } from '../../ui/ButtonBase'
 import s from './Composer.module.css'
 
@@ -66,11 +67,6 @@ export function DrawerModelPicker() {
    */
   const switching = useAsyncPending(modelMutation, selectKey(sessionId))
 
-  // 抽屉一开焦点就在搜索行:开它的那一下手已经离开键盘了,别再让人多点一次。
-  useEffect(() => {
-    ref.current?.focus()
-  }, [])
-
   // 懒加载:这块组件挂上 = 抽屉开了。每家目录拉一次就缓存(kernel 那一族自带
   // 并发折叠与缓存),所以反复开合不会反复往返。
   useEffect(() => {
@@ -114,63 +110,102 @@ export function DrawerModelPicker() {
     commit(index)
   }
 
-  /** 拍平序里的游标:边画边走,免得在 JSX 里再算一次 offset。 */
-  let flat = -1
+  /**
+   * 每一组在拍平序里的**起点**。
+   *
+   * 从前这里是一个「边画边走」的可变游标(`let flat = -1`,在 JSX 里 `flat += 1`)。
+   * R2 把这块面包进 `<FocusScope>` 的 render-prop 之后那一手当场坏掉,而且坏得
+   * 很安静:**render-prop 的那段 JSX 由子组件产生**,子组件自己重渲一次
+   * (`FocusScope` 订着树,焦点一动就重渲)就会把外层那个游标接着往上加 ——
+   * 于是第二次渲染出来的行下标全体 +1,点第一行选到的是第二个模型,
+   * 点最后一行什么都不发生(`rows[i]` 越界)。真机上表现为「点了没反应」。
+   *
+   * 判例记这里:**render-prop 里不许读写外层的可变游标**。下标改成一次算好的
+   * 纯派生量,画多少遍都是同一个数。
+   */
+  const offsets = useMemo(() => {
+    const out = new Map<string, number>()
+    let at = 0
+    for (const g of groups) {
+      out.set(g.id, at)
+      at += g.models.length
+    }
+    return out
+  }, [groups])
 
+  /*
+   * ── 抽屉一开焦点就在搜索行 —— 一句**声明**(09-03 R2)────────────────────
+   * 从前是一条 `useEffect(() => ref.current?.focus(), [])`。R2 把它换成响应链上
+   * 的一格 `float`:`activateOnMount` 说「刚开出来就把焦点送进去」、`restingTarget`
+   * 说「送到搜索行」,落焦由 `activate('open')` 干。开它的那一下手已经离开键盘了,
+   * 别再让人多点一次 —— 这句判据一个字没变,变的是谁去执行它。
+   *
+   * **Esc 不在这一层认领**:抽屉的收起归输入面板那三层次序里的第②层
+   * (`Composer.onEscape`),这一格若自己也答 true,同一下 Esc 就有两个主人。
+   * `float` 的「Esc 缺省关自己」是**缺省**,不是必须 —— 不声明 `onEscape` 就
+   * 根本不进 Esc 候选表(`FocusScope` 那格 prop 的原话)。
+   *
+   * 外面那层 `div` 是这一格的根:这只组件从前交出的是一个 Fragment,而作用域
+   * 要一个真的根元素(树认的是元素,不是组件)。它是块级、无样式,套在
+   * `.drawerBody`(有 padding,所以外边距不会穿过它塌到父身上)里 —— 几何零变化。
+   */
   return (
-    <>
-      <div className={s.modelSearch}>
-        <Search className={s.searchIcon} strokeWidth={2} aria-hidden="true" />
-        <input
-          ref={ref}
-          className={s.modelSearchInput}
-          value={query}
-          placeholder={t('composer.modelSearch')}
-          aria-label={t('composer.modelSearch')}
-          onChange={(e) => setQuery(e.target.value)}
-          /* ↑↓ 与 ↵ 是**这个输入框里的语法**(焦点恒在它身上,列表从不落焦),
-           * 与 composer 的 @ / 抽屉、工作区快切同一手。Home/End 不接:
-           * 它们在一个还在编辑的输入框里是到行首行尾(判据见 list-selection)。 */
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              e.preventDefault()
-              move(e.key === 'ArrowDown' ? 1 : -1)
-              return
-            }
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              commit(active)
-            }
-          }}
-        />
-      </div>
-      {/* 限高与滚入视野是同一件事的两半(抽屉判例):十几家 × 上百条不封顶会把
-          聊天顶出屏外,封了顶就必须把键盘位滚回视野 —— 后者在 rowRef 里。 */}
-      <div className={s.pickScroll}>
-        {groups.length === 0 && <div className={s.pickEmpty}>{t('composer.noMatch')}</div>}
-        {groups.map((g) => (
-          <div key={g.id}>
-            <div className={s.provHead}>{g.provider}</div>
-            {g.models.map((m) => {
-              flat += 1
-              const i = flat
-              return (
-                <ButtonBase
-                  key={m.model}
-                  ref={rowRef(i)}
-                  className={i === active ? `${s.pickRow} ${s.pickSel}` : s.pickRow}
-                  onMouseDown={pick(i)}
-                >
-                  <span className={s.pickMono}>{m.model}</span>
-                  {/* 窗口大小是**数据**不是文案(与 files-source.formatBytes 同判据):
-                      换一门语言 '200k' 不该变。不知道就不画那一格,不写「未知」。 */}
-                  <span>{m.contextLength === null ? '' : formatCount(m.contextLength)}</span>
-                </ButtonBase>
-              )
-            })}
+    <FocusScope scope="drawer" activateOnMount restingTarget={() => ref.current}>
+      {({ scopeProps }) => (
+        <div {...scopeProps}>
+          <div className={s.modelSearch}>
+            <Search className={s.searchIcon} strokeWidth={2} aria-hidden="true" />
+            <input
+              ref={ref}
+              className={s.modelSearchInput}
+              value={query}
+              placeholder={t('composer.modelSearch')}
+              aria-label={t('composer.modelSearch')}
+              onChange={(e) => setQuery(e.target.value)}
+              /* ↑↓ 与 ↵ 是**这个输入框里的语法**(焦点恒在它身上,列表从不落焦),
+               * 与 composer 的 @ / 抽屉、工作区快切同一手。Home/End 不接:
+               * 它们在一个还在编辑的输入框里是到行首行尾(判据见 list-selection)。 */
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  move(e.key === 'ArrowDown' ? 1 : -1)
+                  return
+                }
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  commit(active)
+                }
+              }}
+            />
           </div>
-        ))}
-      </div>
-    </>
+          {/* 限高与滚入视野是同一件事的两半(抽屉判例):十几家 × 上百条不封顶会把
+              聊天顶出屏外,封了顶就必须把键盘位滚回视野 —— 后者在 rowRef 里。 */}
+          <div className={s.pickScroll}>
+            {groups.length === 0 && <div className={s.pickEmpty}>{t('composer.noMatch')}</div>}
+            {groups.map((g) => (
+              <div key={g.id}>
+                <div className={s.provHead}>{g.provider}</div>
+                {g.models.map((m, index) => {
+                  const i = (offsets.get(g.id) ?? 0) + index
+                  return (
+                    <ButtonBase
+                      key={m.model}
+                      ref={rowRef(i)}
+                      className={i === active ? `${s.pickRow} ${s.pickSel}` : s.pickRow}
+                      onMouseDown={pick(i)}
+                    >
+                      <span className={s.pickMono}>{m.model}</span>
+                      {/* 窗口大小是**数据**不是文案(与 files-source.formatBytes 同判据):
+                          换一门语言 '200k' 不该变。不知道就不画那一格,不写「未知」。 */}
+                      <span>{m.contextLength === null ? '' : formatCount(m.contextLength)}</span>
+                    </ButtonBase>
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </FocusScope>
   )
 }

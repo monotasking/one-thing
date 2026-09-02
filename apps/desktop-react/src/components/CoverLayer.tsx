@@ -89,7 +89,7 @@ export function CoverLayer() {
         * 退层链里(`stage/transitions.escapeTargetOf`,盖排第一),而退层链是
         * 响应链**根**的 `onEscape`。这一格回答的是「焦点此刻在不在盖里」,
         * 于是盖里开出来的浮层在树上是它的孩子,一下 Esc 先关那层。 */}
-      <FocusScope scope="cover-layer">
+      <FocusScope scope="cover-layer" owner={shown.id}>
         {({ scopeProps }) => (
           <section {...scopeProps} className={s.panel} role="dialog" aria-label={title}>
             <header className={s.header}>

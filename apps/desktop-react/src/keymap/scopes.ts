@@ -1,8 +1,7 @@
-import { FOCUS_SCOPE_LIST } from '../focus/scopes'
+import { FOCUS_SCOPED_KEYS } from '../focus/scopes'
 import { KEYMAP_COMMANDS, effectiveCombo, sameCombo } from './transitions'
-import type { FocusScopeId } from '../focus/types'
-import type { Combo, CommandId, KeymapState } from './types'
-import type { MessageKey } from '../i18n'
+import type { ScopedKey } from '../focus/types'
+import type { CommandId, KeymapState } from './types'
 
 /**
  * **快捷键三层立法**(09-01 用户报障「快捷键要分清局部和全局」后立)。
@@ -13,17 +12,17 @@ import type { MessageKey } from '../i18n'
  * 债记下了(FilesPanel 文件头:「用户把某条命令改绑到 ⌘I,bindCombo 看不见这条
  * 行内键,会静默把它盖住」)。这个文件就是那条债的还款。
  *
- * ── 09-02(R0):表搬走了,这只文件成了它的**投影** ────────────────────────
- * 声明的正本现在是 `focus/scopes.ts` 的 `FOCUS_SCOPES` —— 面域局部键本来就是
- * 「作用域自己的键」,而作用域是响应链上的东西,不是快捷键系统里的东西。这只
- * 文件保留下来只做一件事:**把那张表投影成三层立法这一侧的旧形状**,让今天的
- * 读者(设置页的撞键提示、`__tests__/keymap-scopes.test.ts`)一个字都不用改。
+ * ── 09-02(R0)→ 09-03(R2):表搬走了,这只文件只剩**撞键那一问** ──────────
+ * 声明的正本是 `focus/scopes.ts` 的 `FOCUS_SCOPES` —— 面域局部键本来就是
+ * 「作用域自己的键」,而作用域是响应链上的东西,不是快捷键系统里的东西。
+ * R0 时这只文件还留着一层投影(把新表翻回旧形状:`KeyScopeId` / `KEY_SCOPES` /
+ * `SCOPED_KEYS` / `comboFromChord`,连 `files.row` 这个旧面域 id 都原样发出去),
+ * 好让当时的读者一个字不改。R2 把落点也迁进了作用域实例(`keyHandlers`),
+ * 旧形状于是一个消费者都没有了 —— 整层兼容表连同 `files.row` 那个 id 一起退役,
+ * 这只文件只剩下**一件**别处没有的事:
  *
- * 投影里唯一一处不是恒等的:旧表把文件树那两条键的面域叫 `files.row`(键长在
- * **行**上),新表归到 `files` 作用域名下 —— 树上不会有「一行」这么细的作用域
- * (行是文件树内部的 roving 目标,不是一块能接键盘的面)。下面那张兼容表把
- * 新 id 翻回旧 id,连 labelKey 都是原来那一条。R2 把落点迁进作用域实例时,
- * 这只文件与那张兼容表一起退役。
+ *   `scopedCollisionsOf` —— 「用户把某条全局命令改绑到了一个已经被面域局部键
+ *   占着的组合上」这句话说给用户听。它读的是正本那张表,不再有第二份数据。
  *
  * ── 三层 ────────────────────────────────────────────────────────────────
  *
@@ -40,70 +39,15 @@ import type { MessageKey } from '../i18n'
  *    一旦可配置,「Esc 就是退一层」这条全局承诺就没了。
  *
  * ── 撞键裁决:局部先接,没接住放行全局 ───────────────────────────────────
- * 机制只有一条,而且不需要任何调度器:面域局部键**接住了才 `preventDefault()`**,
- * 而全局派发器开头一句 `if (e.defaultPrevented) return`。于是
- *  · 局部接住 → 全局当场让开(修前是两边都响,那正是 ⌘I 那条留账的病);
- *  · 局部没接(比如查看器里按 ⌘P)→ 事件原样冒到 window,全局照常派发。
+ * **R2 起这条「先」不靠冒泡序,靠树的深度**:唯一那个派发器沿活动路径由深到浅
+ * 问局部键表,都没命中才轮到全局命令表(`focus/dispatch.ts` 的 ⑧⑨)。
+ *  · 局部接住 → 全局当场轮不到(修前是两边都响,那正是 ⌘I 那条留账的病);
+ *  · 局部没接(比如查看器里按 ⌘P,或者那一格没交出处理器)→ 落全局命令表。
  *
- * ── 这张表为什么是**声明**而不是注册 ─────────────────────────────────────
- * 局部键真正的落点在各自那块面里(查看器的 `keymaps.ts` / 文件行的 onKeyDown),
- * 表在这里是为了两件事:**一处查得全**(设置页要能说出「⌘I 已经被文件行占着」),
- * 与**撞车说得出口**(`scopedCollisionsOf`)。两处会不会分叉?由
- * `__tests__/keymap-scopes.test.ts` 逐条比对查看器注册表钉着 —— 声明与落点对不上
- * 当场红,而不是等用户按下去才发现。
+ * 撞车**说得出口**是这只文件唯一还在做的事:设置页要能讲出「⌘I 已经被文件树
+ * 占着」。声明与落点会不会分叉由 `__tests__/keymap-scopes.test.ts`(声明这一头)
+ * 与各面自己的用例(落点那一头,读 `focusTree.dump()`)一起钉着。
  */
-
-/** 面域 id。它同时是那块面根元素上 `data-key-scope` 的值(门与单测按它取件)。 */
-export type KeyScopeId = 'viewer' | 'files.row'
-
-export interface KeyScopeSpec {
-  id: KeyScopeId
-  /** 面域名是界面文案,所以只持有 key(同 StageItemSpec.titleKey 的判例)。 */
-  labelKey: MessageKey
-}
-
-/**
- * **兼容表**:新作用域 id → 三层立法这一侧的旧面域 id 与旧名字。
- * 只列有局部键的那几格;R2 迁落点时整张表随这只文件退役。
- */
-const LEGACY_SCOPE: Partial<Record<FocusScopeId, KeyScopeSpec>> = {
-  viewer: { id: 'viewer', labelKey: 'viewer.label' },
-  files: { id: 'files.row', labelKey: 'keys.scopeFilesRow' },
-}
-
-export const KEY_SCOPES: readonly KeyScopeSpec[] = FOCUS_SCOPE_LIST.filter(
-  (spec) => (spec.keys?.length ?? 0) > 0,
-).map((spec) => {
-  const legacy = LEGACY_SCOPE[spec.id]
-  if (!legacy) throw new Error(`[keymap/scopes] ${spec.id} 有局部键却没有旧 id 的兼容行`)
-  return legacy
-})
-
-export interface ScopedKey {
-  scope: KeyScopeId
-  combo: Combo
-  /** 这个键干什么。设置页的撞键提示与将来的键位速查都读它。 */
-  labelKey: MessageKey
-}
-
-/**
- * **面域局部键的全表**(从 `FOCUS_SCOPES` 投影)。加一个局部键 = 在**那边**加一行
- * + 在那块面里真接上,两件事缺一个都会被 keymap-scopes 那条测试抓住。
- *
- * `viewer` 那三条与 `content/viewer/keymaps.ts` 的默认档逐条对应(⌘F 是 F2 新加的
- * 查看器局部检索);`files.row` 那两条是文件树行上的行内键。
- */
-export const SCOPED_KEYS: readonly ScopedKey[] = FOCUS_SCOPE_LIST.flatMap((spec) =>
-  (spec.keys ?? []).map((k) => {
-    const legacy = LEGACY_SCOPE[k.scope]
-    if (!legacy) throw new Error(`[keymap/scopes] 局部键的作用域 ${k.scope} 没有旧 id 的兼容行`)
-    return { scope: legacy.id, combo: k.combo, labelKey: k.labelKey }
-  }),
-)
-
-export function scopedKeysOf(scope: KeyScopeId): ScopedKey[] {
-  return SCOPED_KEYS.filter((k) => k.scope === scope)
-}
 
 /**
  * 全局命令与局部键撞在同一个组合上的那些。
@@ -120,25 +64,10 @@ export function scopedCollisionsOf(
   for (const command of KEYMAP_COMMANDS) {
     const combo = effectiveCombo(state, command.id)
     if (!combo) continue
-    for (const scoped of SCOPED_KEYS) {
+    for (const scoped of FOCUS_SCOPED_KEYS) {
       if (sameCombo(combo, scoped.combo)) out.push({ command: command.id, scoped })
     }
   }
   return out
 }
 
-/**
- * 查看器键位表那种写法(`mod+s` / `mod+shift+l`)→ Combo。
- *
- * 它只服务**对表**(测试拿它把两处的写法折成同一种形状再比),不参与匹配 ——
- * 查看器自己那条路走的是 `registry.commandFor`,一个字都不经过这里。
- */
-export function comboFromChord(chord: string): Combo {
-  const parts = chord.split('+')
-  const key = parts[parts.length - 1]
-  const combo: Combo = { key }
-  if (parts.includes('mod')) combo.meta = true
-  if (parts.includes('shift')) combo.shift = true
-  if (parts.includes('alt')) combo.alt = true
-  return combo
-}
