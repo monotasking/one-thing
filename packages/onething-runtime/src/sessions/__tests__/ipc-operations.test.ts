@@ -250,6 +250,28 @@ describe('session IPC operations', () => {
     expect(deleteMarkerMessage).toHaveBeenCalledWith('s1', 'marker-1')
   })
 
+  /**
+   * 改名的端口回一个字面 `false` = 仓说「查无此会话」(仓层
+   * `applySessionMetadataMutationWithAdapters` 只在拿不到 session 时回 false)。
+   * 上面那条 happy path 用的是 `vi.fn()`(回 undefined)且照旧 success —— 两条一起
+   * 钉住判据是**恒等于 false**,不是 falsy:「没表态」不等于「说没改到」。
+   */
+  it('rename:端口说 false 就是查无此会话,别的返回值一律当改到了', async () => {
+    await expect(renameOnethingSessionForIpc({
+      sessionId: 'missing',
+      newName: 'Nope',
+      renameSession: () => false,
+    })).resolves.toEqual({ success: false, error: 'Session not found' })
+
+    for (const answer of [undefined, true, null, 0, '']) {
+      await expect(renameOnethingSessionForIpc({
+        sessionId: 's1',
+        newName: 'Renamed',
+        renameSession: () => answer,
+      })).resolves.toEqual({ success: true })
+    }
+  })
+
   it('normalizes session token usage for IPC callers', async () => {
     expect(normalizeOnethingSessionTokenUsage(undefined)).toEqual({
       totalInputTokens: 0,

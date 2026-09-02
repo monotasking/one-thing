@@ -23,6 +23,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
+import { SESSION_EVENT_TYPES } from '@onething/core/events'
 
 const store = vi.hoisted(() => ({
   getSessionsList: vi.fn(() => [] as unknown[]),
@@ -72,6 +73,8 @@ const engine = vi.hoisted(() => ({
 const events = vi.hoisted(() => ({
   destroySession: vi.fn(),
   streamDestroySession: vi.fn(),
+  /** 改名之后那一发 —— 域现在也往总线上写,不只是删会话时拆通道。 */
+  emit: vi.fn(async () => undefined),
 }))
 const permission = vi.hoisted(() => ({ clearSession: vi.fn() }))
 
@@ -101,7 +104,7 @@ vi.mock('../../wiring/agents/index.js', () => agents)
 vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }))
 vi.mock('../../wiring/permission/index.js', () => ({ Permission: permission }))
 vi.mock('../../events/index.js', () => ({
-  getEventBus: () => ({ destroySession: events.destroySession }),
+  getEventBus: () => ({ destroySession: events.destroySession, emit: events.emit }),
   getStreamChannel: () => ({ destroySession: events.streamDestroySession }),
 }))
 
@@ -137,6 +140,7 @@ describe('sessions RPC domain', () => {
     engine.abort.mockReset()
     events.destroySession.mockReset()
     events.streamDestroySession.mockReset()
+    events.emit.mockReset().mockResolvedValue(undefined)
     permission.clearSession.mockReset()
     variables.workdirGateway.write.mockReset().mockResolvedValue(undefined)
 
@@ -300,6 +304,85 @@ describe('sessions RPC domain', () => {
     })
     expect(store.setCurrentSessionId).toHaveBeenCalledWith(SESSION_ID)
     expect(todoPlan.notifyTodoPlanActiveSessionChanged).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * 改名要发一条 `session:renamed`(读路战役 7e:桌面壳听得见、别的客户端听不见)。
+   *
+   * 从前这条 RPC 改完盘就结束了 —— 全仓唯一的 `session:renamed` 产地是自动起题
+   * (`core/engine/core-stream-engine.ts` 的 `generateAndApplySessionTitle`),显式
+   * 改名一发都不发,于是浏览器那一份 / 另一扇窗里的名字要等整表重拉才跟上。
+   */
+  it('rename 成功时往总线上发一条 session:renamed(sessionId + name 都对)', async () => {
+    const { dispatchRpc } = await loadDomain()
+
+    await expect(
+      dispatchRpc({ domain: 'sessions', method: 'rename', payload: { sessionId: SESSION_ID, newName: '新名字' } }),
+    ).resolves.toEqual({ ok: true, data: { success: true } })
+
+    expect(store.renameSession).toHaveBeenCalledWith(SESSION_ID, '新名字')
+    expect(events.emit).toHaveBeenCalledTimes(1)
+    expect(events.emit).toHaveBeenCalledWith(SESSION_ID, {
+      type: SESSION_EVENT_TYPES.SESSION_RENAMED,
+      name: '新名字',
+    })
+  })
+
+  it('rename 失败时一发都不发(盘上没变,别让别人显示一个不存在的名字)', async () => {
+    const { dispatchRpc } = await loadDomain()
+    store.renameSession.mockImplementation(() => {
+      throw new Error('rename failed')
+    })
+
+    await expect(
+      dispatchRpc({ domain: 'sessions', method: 'rename', payload: { sessionId: SESSION_ID, newName: '新名字' } }),
+    ).resolves.toEqual({ ok: true, data: { success: false, error: 'rename failed' } })
+
+    expect(events.emit).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 改一条**不存在**的会话:仓层早就知道(`applyMetadataMutation` 拿不到 session 就
+   * 回 false),从前那条布尔被 `stores/sessions.ts` 吞掉,于是一路回 success、还顺手
+   * 推一条改名出去 —— 别的客户端会因此显示一个不存在的名字。09-02 收紧:布尔传出来,
+   * 投影据此回 `Session not found`,这一路自然一发都不发。
+   */
+  it('改不存在的会话:success:false(Session not found)且 emit 零调用', async () => {
+    const { dispatchRpc } = await loadDomain()
+    // 仓层那条「没改到」的布尔 —— 现在它到得了域这一层。
+    store.renameSession.mockReturnValue(false)
+
+    await expect(
+      dispatchRpc({ domain: 'sessions', method: 'rename', payload: { sessionId: SESSION_ID, newName: '新名字' } }),
+    ).resolves.toEqual({ ok: true, data: { success: false, error: 'Session not found' } })
+
+    expect(events.emit).not.toHaveBeenCalled()
+  })
+
+  /**
+   * **两处产地同形**。这条不看域自己发了什么(上面那条已经钉死了),看的是
+   * **自动起题那一发**至今仍是 `{ type, name }` 两格 —— 谁哪天在引擎那边往载荷里
+   * 添一格(或把 `name` 改名),这里当场红,免得两个产地各说各话:消费方
+   * (`apps/desktop-react/src/data/sessions-source.ts` 判据 b、renderer 的 chat store)
+   * 只认这两格,而它分不清一条 `session:renamed` 是谁发的。
+   */
+  it('载荷形状与自动起题那一发逐字同形 —— 引擎源码里也只有 { type, name } 两格', async () => {
+    const { dispatchRpc } = await loadDomain()
+    await dispatchRpc({ domain: 'sessions', method: 'rename', payload: { sessionId: SESSION_ID, newName: '新名字' } })
+    const emitted = (events.emit.mock.calls as unknown as unknown[][])[0]?.[1] as Record<string, unknown>
+    expect(Object.keys(emitted)).toEqual(['type', 'name'])
+
+    const engineSource = fs.readFileSync(
+      new URL('../../../core/engine/core-stream-engine.ts', import.meta.url),
+      'utf-8',
+    )
+    // 引擎那两发(正常 + 兜底标题)都长这样:type 一行、name 一行,再无第三格。
+    const engineEmits = engineSource.match(
+      /type:\s*SESSION_EVENT_TYPES\.SESSION_RENAMED,\s*\n\s*name:\s*\w+,\s*\n\s*\}/g,
+    )
+    const allRenamedEmits = engineSource.match(/SESSION_EVENT_TYPES\.SESSION_RENAMED/g)
+    expect(engineEmits?.length ?? 0).toBeGreaterThan(0)
+    expect(engineEmits?.length).toBe(allRenamedEmits?.length)
   })
 
   it('cascades the AI todo delete over every session the store删掉的 id', async () => {

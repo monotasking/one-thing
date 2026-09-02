@@ -75,6 +75,7 @@ import {
   updateOnethingSessionWorkingDirectory,
 } from '@onething/runtime/sessions'
 import { isValidSpaceId } from '@onething/runtime/spaces/types'
+import { SESSION_EVENT_TYPES, emitCoreSessionEventSafely } from '@onething/core/events'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest, PermissionMode } from '@shared/ipc.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionsRoutes } from '@shared/ipc/sessions.js'
@@ -312,12 +313,42 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     })
   },
   async rename(request) {
-    return renameOnethingSessionForIpc({
+    const result = await renameOnethingSessionForIpc({
       sessionId: request.sessionId,
       newName: request.newName,
       renameSession: (id, nextName) => store.renameSession(id, nextName),
       logger: consoleLog,
     })
+    // **显式改名也要有推送**。从前这条路改完盘就结束了:别的客户端(浏览器那一份、
+    // 另一扇窗)对着旧名字,只能等下一次整表重拉才看得见 —— 而列表这一层根本没有
+    // 定时重拉。
+    //
+    // 载荷与**自动起题**那一发逐字同形(`packages/core/engine/core-stream-engine.ts`
+    // 的 `generateAndApplySessionTitle`:`eventBus.emit(sessionId, { type:
+    // SESSION_RENAMED, name })`)。两处产地形状相同不是巧合也不是抄写:说的是同一
+    // 件事(这条会话现在叫什么),走的也是**同一条总线** —— 引擎手里那只 `eventBus`
+    // 就是 `wiring/engine/index.ts` 注进去的 `getEventBus()`,而扇出是通用的
+    // (IPCBridge 的 `onAnySessionAny` → `session:event`,SSE 同名),一发同时到桌面
+    // 与浏览器。引擎那一发在 core 的私有方法里,RPC 域拿不到那个句柄,所以这里用
+    // 装配层现成的出口 `getEventBus()` 发同一形状的第二个产地,而**不是**第二份载荷
+    // 语义:`{ type, name }` 两格,消费方(`apps/desktop-react` 的 sessions-source
+    // 判据 b、renderer 的 chat store)只认这两格。
+    //
+    // `name` 原样带出请求里那个字符串:仓的改名没有归一化(core 的 `applySessionName`
+    // 就是一句赋值),所以事件里的名字与盘上的名字是同一个字符串。
+    //
+    // **失败不发**:`success: false` = 仓抛了 = 盘上没变,这时候推一条改名出去就是
+    // 让别的客户端显示一个不存在的名字。
+    if (result.success) {
+      await emitCoreSessionEventSafely({
+        sessionId: request.sessionId,
+        event: { type: SESSION_EVENT_TYPES.SESSION_RENAMED, name: request.newName },
+        eventBus: getEventBus(),
+        logger: consoleLog,
+        errorLabel: '[SessionsRPC] EventBus emit failed:',
+      })
+    }
+    return result
   },
   async updatePin(request) {
     return updateOnethingSessionPinForIpc({

@@ -546,8 +546,19 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
 }
 
 // Rename a session (does not update updatedAt to avoid reordering)
-export function renameSession(sessionId: string, newName: string): void {
-	sessionRepository.renameSession(sessionId, newName);
+//
+// **回的是仓层那句「改到了没有」**(09-02:显式改名要发 `session:renamed`,发之前
+// 得先知道这一改到底落没落盘)。仓里那条布尔只有一个含义 —— `applied: false`
+// ⟺ 查无此会话(`core/session/store-helpers.ts` 的
+// `applySessionMetadataMutationWithAdapters`:拿不到 session 就直接回 false,
+// 别的分支一条都不产生 false),所以它不是「成功/失败」而是「这条会话在不在」。
+// 从前这里把它吞了,于是改一条不存在的会话也一路回 success —— 再往总线上推一条
+// 改名,别的客户端就会显示一个不存在的名字。
+//
+// 现存调用方没有一个读返回值(collab 三处建房/改房、engine 的 store 端口、
+// headless backend、CLI daemon 都是语句调用),所以这一改对它们零影响。
+export function renameSession(sessionId: string, newName: string): boolean {
+	return sessionRepository.renameSession(sessionId, newName);
 }
 
 // Update session pin status (does not affect sort order)

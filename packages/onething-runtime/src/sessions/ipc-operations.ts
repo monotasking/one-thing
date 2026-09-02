@@ -330,16 +330,30 @@ export async function deleteOnethingSessionForIpc(
   }
 }
 
+/**
+ * 改名。
+ *
+ * **仓交回一个字面的 `false` = 查无此会话**,这一路回 `ONETHING_SESSION_NOT_FOUND`
+ * —— 与本文件里另外六处「拿不到就说没有」同一句话(09-02 收紧:从前不论仓怎么答
+ * 都回 success,于是改一条不存在的会话也算成功,调用方据此往总线上推一条
+ * `session:renamed`,别的客户端就显示一个不存在的名字)。
+ *
+ * 判据刻意是**恒等于 `false`**,不是 falsy:端口的返回值声明成 `unknown`,今天既有
+ * 返回布尔的仓(`@onething/backend/store`),也有返回 `undefined` 的接线与测试替身
+ * —— 「没说」不等于「说没有」,只有明确说了「没改到」才当作查无此会话。
+ */
 export async function renameOnethingSessionForIpc(
   options: {
     sessionId: string
     newName: string
+    /** 回 `false` = 查无此会话;回 `undefined` / 别的值 = 没表态,当作改到了。 */
     renameSession(sessionId: string, newName: string): MaybePromise<unknown>
     logger?: OnethingSessionsIpcLogger
   },
 ): Promise<OnethingSessionsIpcResult> {
   try {
-    await options.renameSession(options.sessionId, options.newName)
+    const applied = await options.renameSession(options.sessionId, options.newName)
+    if (applied === false) return { success: false, error: ONETHING_SESSION_NOT_FOUND }
     return { success: true }
   } catch (error) {
     return sessionIpcError(options.logger, 'rename session', error, 'Failed to rename session')
