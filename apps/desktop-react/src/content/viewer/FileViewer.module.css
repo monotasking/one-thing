@@ -180,12 +180,13 @@
   white-space: nowrap;
 }
 
-.dirtyDot {
-  width: var(--files-open-dot);
-  height: var(--files-open-dot);
-  border-radius: var(--r-full);
-  background: var(--warn);
-}
+/*
+ * `.dirtyDot` 退役(09-02 批 9b):那颗未保存丸迁进了 `ui/StatusDot`
+ * (`tone="warn" size="sm"` —— 批 8a 补的 5px 档,值就取自这一颗,所以逐像素相同)。
+ * 墓碑留在这里,因为 `ui/Dialog.tsx` 与 `components/HostTitle.module.css` 两处注释
+ * 还按名字指着它:那两处是别批的地界,改名字的账在那儿结。
+ */
+
 
 /*
  * 「正在读取…」的读数。切文件时旧内容还在屏幕上(四律①),所以这一格是唯一
