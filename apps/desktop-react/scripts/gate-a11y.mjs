@@ -38,8 +38,14 @@
  *
  * ── 反证(照 gate:motion 的纪律)────────────────────────────────────────
  * 每一条断言都要能被「把实现拆掉」反证成红,否则它只是在陪跑。三处已经真验过:
- *   · 把 ui/Dialog.tsx 里的 `useFocusTrap(panel, open)` 注释掉  → (b)(c) 必红
- *     (焦点留在开它的那个按钮上,Esc 之后也无所谓「还」不还);
+ *   · 把 ui/Dialog.tsx 那层 `<FocusScope scope="dialog" activateOnMount onEscape=…>`
+ *     换成一个普通 `<div>`                                    → (b)(c) 必红
+ *     (焦点留在开它的那个按钮上,Esc 之后也无所谓「还」不还)。
+ *     **09-02 R1 起圈禁与归还都不再是这件组件自己的事**:圈禁是 `modal` 行为档的
+ *     缺省(判据在 `src/focus/tab-trap.ts`,由 `src/focus/dispatch.ts` 那唯一的
+ *     派发器执行),归还是结构性的(路径缩回父,焦点回它上次所在的元素)。
+ *     旧那只 `ui/a11y/focus-trap` 已删 —— 这一条从前写的是「注释掉
+ *     `useFocusTrap(panel, open)`」,那句话今天在源码里找不到落点了;
  *   · 把 ui/Menu.tsx 里的 `useRoving(ref, …)` 注释掉          → (d) 必红
  *     (方向键不再移动焦点,tabIndex 表也不再是「一个 0、其余 -1」);
  *   · 把 styles/global.css 那条 `:focus-visible` 规则注释掉    → (e) 必红

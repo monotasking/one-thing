@@ -171,13 +171,11 @@ export function useFocusDispatch(opts: FocusDispatchOptions): void {
     }
 
     /*
-     * ui-consume-allow: float-handwritten —— 这**就是**那个唯一产地。
-     * 那条规则按「window 上的捕获相位 keydown」认人,立法时它指的是「别的地方
-     * 又抄了一份浮层散场」;而 R1 之后浮层的 Esc 认领**只在这一行**发生
-     * (`ui/float` 那一半已经退役,连同它的浮层栈)。让这一行去消费
-     * `useFloatDismiss` 是循环:那只 hook 现在只剩点外关。
-     * 设计 §8 的原话是「现有 float-handwritten 规则退役(被 I2 覆盖)」——
-     * 那一步在 R3(三条棘轮归零那一批)做,这里先按规则自己的口径写豁免。
+     * **全壳唯一一行 window keydown**。R3 起 `keydown-outside-focus`(I2)是硬闸,
+     * 允许区只有 `src/focus/` —— 这一行就住在允许区里,不需要豁免。
+     * (R1/R2 期间这里还挂着一条 `float-handwritten` 的豁免:那条规则曾按
+     * 「window 上的捕获相位 keydown」认人,与 I2 问的是同一件事而判得更松。
+     * R3 把它那半边探针删了,豁免随之退役 —— 同一笔账不记两遍。)
      */
     window.addEventListener('keydown', onKeyDown, true)
     return () => {

@@ -143,6 +143,20 @@ export function useRoving(ref: RefObject<HTMLElement | null>, options: RovingOpt
       list[next].focus()
     }
 
+    /*
+     * 全仓唯一一条不住在 `src/focus/` 的 keydown 监听,而它**不是**响应链要
+     * 收编的那一类。三条判据:
+     *  ① 它挂在**容器**上,不是 window / document —— I2 的原文管的是后者
+     *    (「`window|document.addEventListener('keydown')` 只出现在 `src/focus/`」);
+     *  ② 它接的全是**结构键**(方向键 / Home / End),而结构键**一格都不进**
+     *    局部键表(设计 §4.3 的封闭裁定:「方向键归 roving / list-selection ——
+     *    作用域内部」),所以它与树争不起来;
+     *  ③ 它只在自己那一格作用域**内部**移动焦点(同一张菜单 / 同一条 tab 条的
+     *    项之间),从不跨作用域 —— 与 I3 放行这只文件的 `.focus()` 是同一条理由。
+     * R0→R2 期间这条豁免是写死在 ui-consume-check 那只函数里的一个分支;R3 收硬闸
+     * 时挪到这里,好让规则的允许区只剩「`src/focus/`」一句话,例外各自当场说理由。
+     */
+    /* ui-consume-allow: keydown-outside-focus — 容器级、只接结构键、只在作用域内部移动焦点(三条判据见上) */
     container.addEventListener('keydown', onKeyDown)
     return () => container.removeEventListener('keydown', onKeyDown)
   })

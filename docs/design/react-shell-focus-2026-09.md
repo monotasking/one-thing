@@ -1,6 +1,8 @@
 # React 壳响应链:焦点与键盘输入的统一规范(2026-09-02,v2 推翻式)
 
-状态:**方案,待用户拍 §11 后开工**。执行序按仓规:Fable 拆分/审查,opus 执行,haiku 提交。
+状态:**已落地 R0–R3**(09-02 → 09-03,四批四个提交:R0 `5677257a` / R1 `01797772` /
+R2 `7bdaa6f0` / R3 本批)。§11 的六个拍点用户 09-02 已全部拍定。**留账见 §12**。
+执行序按仓规:Fable 拆分/审查,opus 执行,haiku 提交。
 v1(同日上午)是给检索条补归还的止血案,用户否决("要根治不要亡羊补牢"),本版整体替换。
 
 ## 0. 一句话
@@ -281,7 +283,7 @@ focus/
 | R0 树 | `src/focus/` 全部文件 + 纯函数单测;root 作用域挂在 AppShell;旧机制**全部保留**,树零消费者。`gate-focus` 先钉红。 | 无 |
 | R1 层与 Esc | 四个 Placement 宿主 + Dialog/Menu/Popover/Palette/Tooltip 接树;`floatStack`、`useEscapeChain`、`useFocusTrap`(整只)、`useFloatDismiss` Esc 半边退役;唯一派发器上线,旧全局派发器监听删。**已落地(09-02)**:派发器是**两半相位**的过渡形(捕获半 = 浮层 Esc + 模态 Tab + 录制独占 + I1 收回,冒泡半 = 面的 Esc + 局部键 + 全局命令),分界就是今天那条相位线,好让还没接树的 ExposeView / composer / viewer / files 四家的相对次序一格不变;R2 把它们接进树之后两半合一。Tooltip 走**瞬态口**(`registerTransient`)而不是作用域 —— 它没有一个包着触发元素的根。 | Esc 层叠语义与今天逐条相同(gate 场景 4/5 守,真机矩阵逐条同);孤儿焦点消失(gate I1 由 3 红转全绿)。 |
 | R2 内容面 | viewer / files / composer / search / expose / chat / settings / dock 接树;局部键表迁入;八处 element/window 监听删;`registerComposerFocus` 退役;宿主补 `activate()`。**已落地(09-03)**:派发器两半合一(只剩一个**捕获**相位的 window 监听,加一格 `isComposing` 放行);`returnTo` 按 §4.5 的 R1 裁定实现;`keymap/scopes.ts` 的兼容层(`KEY_SCOPES`/`SCOPED_KEYS`/`comboFromChord`/`files.row`)与查看器键位表的 `bindings`/`commandFor` 一起退役;三条棘轮读数 12/22/2 → **0/0/0**;`gate-focus` 补到十二个场景并**去掉 `--expect-red`**(0 红 / 56 断言)。 | ⌘F 根治;切 tab / 开面 / 挪位置后键盘立刻可用;启动即有第一响应者;树行单击留树、↵ 进查看器。 |
-| R3 执法 | 三条棘轮归零;`gate-focus` 进 verify;设置页快捷键区读合并表;dev `__focus.dump()`。 | 无 |
+| R3 执法 | 三条棘轮归零;`gate-focus` 进 verify;设置页快捷键区读合并表;dev `__focus.dump()`。**已落地(09-03)**:三条棘轮 `report` → `violation`,**基线零、不进 baseline 文件**(一条新命中直接红);`roving.ts` 那条容器级 keydown 的豁免从规则里的硬分支改为**就地豁免**,于是三条的允许区只剩「`src/focus/`」一句话;`float-handwritten` 的 **Esc 半边**退役(被 I2 覆盖且判得更严),`focus/dispatch.ts` 那条豁免随之删,**点外关半边留着**(I2 一个字没覆盖 `pointerdown`,而「浮层行为单产地」那条禁令仍立着);`gate:focus` 进 `verify`(排 `gate:a11y` 之后,同一条「答案确定、不看机器状况」的判据);门场景 5 补成**真开一扇浮窗**再按 Esc(两条读数:焦点仍在输入框 ∧ 那扇窗收掉);设置页把「⌘I 被『文件』里的『详情』占着」说出口(`scopedCollisionsOf` 读正本表);CLAUDE.md 四处法条改写 + 新立「响应链」一节。`__focus.dump()` R0 就已在,本批未动。 | 无 |
 
 R1 与 R2 各一批,不合并(R1 守的是"行为不变",R2 才带可感知变化,分开才查得清)。
 
@@ -300,7 +302,21 @@ R1 与 R2 各一批,不合并(R1 守的是"行为不变",R2 才带可感知变�
 5. **⌘F 在活动路径上没有查看器时**:静默(建议)/ 送给最近用过的查看器 / 升为全局命令。
 6. **录制态独占**(§5 KeymapSettings 行)保留为唯一例外,还是也改成 `modal` 作用域声明 keys 吃全键。建议独占口,因为它要吃的键集合不可枚举。
 
-## 12. 证据索引(勘察 09-02)
+## 12. 留账(R0–R3 收口,09-03)
+
+四批的留账在这里收成一张表。**只列今天仍然开着的**;已经结清的那些不再重复(结清的
+去处逐条写在 §4.1 的三段「落地修正」、§4.5 的 R1 裁定、§9 那张分期表的各期「已落地」
+括号里)。
+
+| # | 留账 | 状态 | 去处 / 判据 |
+| --- | --- | --- | --- |
+| 1 | **门场景 5 的另一半:输入面板正在生成时按 Esc** —— 拍点 3 的两种答案只在这一格分岔(生成中 = 两段停止、浮窗不收;不生成 = 输入面板不答、root 收浮窗)。R3 已把「不生成」那一半量成真的(真开一扇浮窗再按),生成那一半仍未进真机门。 | **开着** | 要一台真在流的 provider(`gate:chat` 那套假慢流)才造得出「生成中」;在门里塞一个假 `streaming` 标志 = 断言自己写进去的那格状态,那种绿比红更坏。今天由 jsdom 用例守着:`composer/components/Composer.test.tsx` 的 Esc 三分支 + `useEscStop`。门里记的是 `skip`,不是绿。 |
+| 2 | **指针操作不 `activate()`**:Dock 瓦点击后焦点留在瓦上、浮窗指针置顶只改 z 序不动焦点。 | **开着(是裁定,不是缺口)** | §7 的原话「指针操作不调(点击自己落焦)」。规则 3 说的是「**挪**到哪焦点跟到哪」,而从 Dock 点开一块面是「**开**」不是「挪」—— 两者今天的行为不同,gate 场景 9 因此先把面开出来再量三次挪动。要改成「点瓦也跟」是一次**可感知**的行为变化,须先拍板。 |
+| 3 | **`act()` 警告**:接树之后若干用例新增了几条 React 的「not wrapped in act」。 | **开着** | 既有病型(全仓多处,非本线开的病根):store 是模块单例,而复位/推送发生在组件仍挂着的时刻。本线新写的用例已按「先 `cleanup()` 再复位」写(`content/__tests__/keymap-settings.test.tsx` 的注释里写着理由),存量那些没有统一整改。 |
+| 4 | **`keymap.scopedNote` 是一条孤儿 i18n 键**(zh/en 成对存在,零消费者)。 | **开着** | 它是「面域局部键只在那块面里生效」的一句常驻说明。R3 只把**撞车提示**(`keymap.scopedConflict`,默认零撞车 = 默认不出现)接了出去,没有把这句常驻文案铺到设置页 —— 多一行常驻说明是**可感知变化**,按「行为裁定须先问」留给用户拍。 |
+| 5 | **`float-handwritten` 只退役了 Esc 半边**,点外关半边留着。 | **有意偏离,已记** | 设计 §8 原文是「现有 `float-handwritten` 规则退役(**被 I2 覆盖**)」,而括号里那句理由只对 keydown 那半边成立:I2 判的是 `keydown`,`pointerdown` 一个字没覆盖。整条退役 = 白丢「浮层点外关单产地」这一格执法,而那条禁令在 `apps/desktop-react/CLAUDE.md` 里仍然立着。判词写在 `scripts/ui-consume-check.mjs` 规则 ⑥ 的文件注释里。 |
+
+## 13. 证据索引(勘察 09-02)
 
 - 13 个 keydown 监听位置:`keymap/dispatch.ts:117` `ui/a11y/roving.ts:146` `ui/Tooltip.tsx:111` `ui/a11y/focus-trap.ts:137` `ui/float.ts:169` `components/useEscapeChain.ts:44` `expose/components/ExposeView.tsx:141` `workspace/components/WorkspacePalette.tsx:109` `composer/useComposerKeys.ts:82` `content/KeymapSettings.tsx:83` `content/FilesPanel.tsx:283` `content/viewer/useViewerKeymap.ts:108` `content/blocks/shell/ZoomOverlay.tsx:33`。
 - 15 个 `.focus()` 文件、6 个 `activeElement` 读者:见 §2 表下段。

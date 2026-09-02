@@ -13,10 +13,15 @@
  * 而同一文件同一规则的**条数**要算 —— 所以键带序号(第 n 条),
  * 与 squeeze-gate 只用「文件 + 选择器」不同:那边一个块只可能有一条,这边会有 33 条。
  *
- * `report` 档(09-02 响应链 R0 立的三条)**不进这道棘轮**:那三条问的是
- * 「机制住在哪儿」,而 R0 只立树、零消费者 —— 此刻判红等于要求一批干完三批的活。
- * 它们在这里只打一行读数,当 R1 / R2 的清单;R3 那一批把 severity 改成
- * violation、基线零,它们才进棘轮。
+ * ── 响应链那三条(keydown / focus / activeElement)是**零基线硬闸** ──────────
+ * 09-02 R0 立它们时用的是 `report` 档(只打读数不判红):那时树零消费者,判红
+ * 等于要求一批干完三批的活。R2 内容面接树之后三条读数归零,R3(09-03)把
+ * severity 改成 `violation` —— 它们于是走这道棘轮的**普通路**,而基线文件里
+ * 一条都没有,所以「基线零」不是另一套逻辑,就是这道门原本的算法:
+ * 命中不在基线里 = 新增 = 红。一条新命中直接红,没有先记一笔账那条路。
+ *
+ * `report` 档的机制留着(今天零条规则用它),它是「先立门、后分期还账」这条路
+ * 本身 —— 下一条要分期还的规则照 R0→R3 走一遍。
  *
  * 想看全表:`node scripts/ui-consume-check.mjs`。
  */
@@ -78,6 +83,10 @@ if (added.length) {
       + '\n    icon-button-* → src/ui/IconButton'
       + '\n    bare-button-text / -icon → src/ui/Button · AsyncButton / IconButton'
       + '\n    bare-button-structural   → src/ui/ButtonBase(只清 UA 的基座)'
+      + '\n    keydown-outside-focus / focus-outside-focus / active-element-read'
+      + '\n                  → src/focus/(响应链;设计 react-shell-focus-2026-09.md §3 的 I2/I3)'
+      + '\n                    键盘监听收进 focus/dispatch;跨作用域搬焦点改 activate();'
+      + '\n                    「我是不是当前」改问 useFocusScope().isActive'
       + '\n  确实不该改的,在命中处上方 8 行内写 `ui-consume-allow: <规则> — <理由>`(理由必填)。',
   )
   process.exit(1)
@@ -89,11 +98,23 @@ console.log(
     + `其中 debt/待迁基座 ${debt} 条)`,
 )
 
+/*
+ * 响应链三条**报个零**。它们已经在上面那道棘轮里判过了(零基线,一条即红),
+ * 这一行不是第二次判,是把「今天仍然是零」说出口 —— 一道永远沉默的门,
+ * 读者没法从输出里知道它跑过没有。
+ */
+const FOCUS_RULES = ['keydown-outside-focus', 'focus-outside-focus', 'active-element-read']
+const focusHits = current.filter((l) => FOCUS_RULES.includes(l.split(/\s+/)[0])).length
+console.log(
+  `[ui-consume] 响应链三条(I2/I3,零基线硬闸):${focusHits} 条`
+    + `${focusHits === 0 ? ' —— keydown 监听 / 跨作用域 .focus() / 读 activeElement 全在 src/focus/ 里' : ''}`,
+)
+
 if (reported.length) {
   const byRule = new Map()
   for (const h of reported) byRule.set(h.rule, (byRule.get(h.rule) ?? 0) + 1)
   console.log(
-    `[ui-consume] 另有 report 档 ${reported.length} 条(**不判红**,响应链 R1/R2 的清单):`
+    `[ui-consume] 另有 report 档 ${reported.length} 条(**不判红**,分期还账中的规则):`
       + `${[...byRule].sort().map(([rule, n]) => `\n  ${rule.padEnd(24)} ${n}`).join('')}`
       + '\n  全表:node scripts/ui-consume-check.mjs',
   )

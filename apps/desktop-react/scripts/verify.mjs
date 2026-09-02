@@ -236,6 +236,20 @@ run('gate:motion', 'npm', ['run', '--silent', 'gate:motion'])
  */
 run('gate:a11y', 'npm', ['run', '--silent', 'gate:a11y'])
 /*
+ * gate:focus 与 gate:a11y **同一条理由、同一个价位**进得来(响应链 R3,09-03)。
+ * 它断言的是**焦点落点与 Esc 归属**:每一步按完键去问 `document.activeElement`
+ * 在哪个 `data-focus-scope` 里、那扇浮层收没收掉 —— 同一份代码同一个视口跑一百遍
+ * 是同一个答案,没有余量一说,不看机器状况(与 gate:perf 那种毫秒读数正相反)。
+ * gate:a11y 的键盘走查本来就是这一形(逐下按键读 activeElement),这道门只是把
+ * 同一种读法铺到十二个场景上。
+ *
+ * 它比 gate:a11y 贵一点:要在真 store 上建一条会话、摆一棵工作目录树,并且中途
+ * 整页重载好几次。这是**排在最后**的理由,不是不进来的理由 —— 用户报的
+ * 「⌘F → Esc → ⌘F 失灵」正是这道门场景 1 量的那条,而那条病 typecheck / lint /
+ * 单测**一个都看不见**(jsdom 的绿不算数,08-30 判例)。
+ */
+run('gate:focus', 'npm', ['run', '--silent', 'gate:focus'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -244,5 +258,5 @@ run('gate:a11y', 'npm', ['run', '--silent', 'gate:a11y'])
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
     + ' / offline-fonts / buttonbase-css'
-    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y)全绿\n',
+    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus)全绿\n',
 )

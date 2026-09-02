@@ -209,7 +209,23 @@
 #   同批另两处横排表单行(providers/AddModelRow、content/files/NoWorkdirNotice)
 #   本来就不叫 `.field`,不在这张表上 —— 它们的收编记在各自的文件头。
 #
-# ── 今天这张表:**37 条**。改动之后请把这个数一起改准。 ───────────────────
+# ── 09-03 响应链 R3(执法):这张表**一条不加不减**,记的是规则表的变化 ─────
+#   ① `keydown-outside-focus` / `focus-outside-focus` / `active-element-read`
+#      三条从 `report` 档转 `violation`,**基线零、不进这份文件** —— 它们不是
+#      「暂时留着的账」,是「一条都不许有」的不变量(设计
+#      docs/design/react-shell-focus-2026-09.md §3 的 I2/I3)。R0 立时读数
+#      12 / 22 / 2,R1 拆到 5 / 15 / 2,R2 内容面接树后归零,R3 把零钉死。
+#      要留的那一处在**命中处就地写理由**(`ui/a11y/roving.ts` 的容器级方向键,
+#      理由在它自己的注释里),而不是在这份基线里挂一行。
+#   ② `float-handwritten` 只退役了**Esc 那半边**(它与 I2 问同一件事而判得更松,
+#      `focus/dispatch.ts` 那条豁免随之删);**点外关那半边留着** —— I2 判的是
+#      keydown,`pointerdown` 一个字没覆盖,而「浮层行为单产地 = ui/float」
+#      那条禁令仍立着。判词在 scripts/ui-consume-check.mjs 规则 ⑥ 的注释里。
+#      这份基线里本来就没有 `float-handwritten` 的条目(09-02 批 6 清完了),
+#      所以没有一行要删。
+#
+# ── 今天这张表:**36 条**(全是 shared-vocab-css / debt 档)。
+#    改动之后请把这个数一起改准 —— 09-03 发现它一直写着 37,是陈数。 ─────────
 #
 shared-vocab-css src/components/AgentChip.module.css:16 视觉词汇多产地(chip),待批 2 立件收编
 shared-vocab-css src/components/AgentChip.module.css:30 视觉词汇多产地(chip),待批 2 立件收编

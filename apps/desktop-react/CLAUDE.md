@@ -5,7 +5,7 @@
 ## 验收四轴(每批交付必须自证,缺轴打回)
 
 1. **Token 纪律**:组件文件零字面色值/px/ms,一切量入 `src/styles/tokens.css` 对应节(唯一例外:`--fb-*` 品牌色数据节,官方色是数据);状态色只上图标/点,永不换底;焦点一律走全局 `:focus-visible` 环(outline 形,`--focus-ring-w`+`--accent-ring`),**禁裸删 outline**。
-2. **无障碍**(规范:`docs/design/react-shell-a11y-2026-08.md`):jsx-a11y 零违例;新 surface 必须追加进 `scripts/gate-a11y.mjs` 扫描屏;行为件用 `src/ui/a11y/`(focus-trap/roving/live-region),照 WAI-ARIA APG 写,不引库。
+2. **无障碍**(规范:`docs/design/react-shell-a11y-2026-08.md`):jsx-a11y 零违例;新 surface 必须追加进 `scripts/gate-a11y.mjs` 扫描屏;行为件用 `src/ui/a11y/`(roving/list-selection/live-region),照 WAI-ARIA APG 写,不引库。**焦点归属整体归 `src/focus/`**:`ui/a11y/focus-trap` 已删(09-02 R1),模态圈禁的判据现在是 `src/focus/tab-trap.ts`,由那唯一的派发器调用。**新面接树 = 三件声明**:它的 scope id(`focus/scopes.ts` 里加一行)、落点(`restingTarget`,不声明就是根)、认不认 Esc(`onEscape`)—— 除此之外一行焦点代码都不该写。
 3. **交互稳定性四律**(规范:`docs/design/react-shell-2026-08.md` §8;根治原语在 `src/data/kernel/`,落地前的手写异步须注释标「临时手写」):
    - 写操作**就地更新**,重拉后台对账,禁「清空→骨架→重灌」;
    - 重拉期间**旧内容保留在屏**,骨架只许首载(`phase==='initial'`)画;
@@ -35,25 +35,66 @@
   - 执法:`npm run ui:consume` 的 `kbd-select-hover` / `kbd-select-handwritten` 两条;反证测试见 `src/ui/__tests__/list-selection.test.tsx`(mouseenter 后 active 不变、scrollIntoView 后 active 不跳),消费面各自还有一份(`palette.test.tsx` / `Composer.test.tsx`)。
 - **裸 `<button>` 三类判**(`ui:consume` 的 `bare-button-*`):①文字动作钮→`ui/Button`·`AsyncButton`;②图标钮→`ui/IconButton`;③结构性交互件(瓦/卡/行/琴键/选项,视觉本该定制)→**不违例但不许裸着**,消费 `ui/ButtonBase`(只清 UA、`:where()` 压零特异性,一个像素都不画,焦点环仍走全局)。**①/③ 边界(09-02 批 6 细化)**:带文字不等于①——**行内微型文字动作**(fs-micro、无边无底、与正文同行的重试/展开/丢弃/消息脚注动作)是③,走 ButtonBase 保本地皮肤;换成 28px 描边的 `ui/Button` 是改版不是等价迁移。判据是「它有没有自己的按钮形」:有边或底、独立成钮的文字动作才是①。
 - **库件 API 两种风格,判据是集合开不开放(09-01 库自审立法)**:选项是**封闭集合、行形态统一**的件走数据表驱动(`options`/`items` 数组 —— Select/Segmented/Tabs);项里装什么**由消费方决定、形态开放**的件走复合 children(Menu 族/RadioGroup)。新库件先答「项的内容谁说了算」再定 API 形状;两种混用(既收表又收 children)禁止。
-- **浮层行为单产地 = `ui/float`(09-01 库自审立法)**:Esc 捕获相位认领关闭、点外关、定位与跟随三件事只许经 `useFloatDismiss`/`useFloatPosition`,库件与业务面一律禁止手写(判例:Menu 与 Popover 曾各抄一份,Esc 认领那条判例修过三轮,产地越多越漂)。定位两档的裁定:**矩锚跟滚**(rect 档,贴着元素的浮层 —— Select 面板/Tooltip —— 滚动/resize 时跟随锚点重定位),**点锚不跟滚**(point 档,光标坐标开出的右键菜单滚动时维持原位,变更此裁定须再拍板);两档都在 resize 时重 clamp 进视口。
+- **浮层行为单产地 = `ui/float`(09-01 库自审立法,09-02 R1 收窄一格)**:点外关、定位与跟随只许经 `useFloatDismiss`/`useFloatPosition`,库件与业务面一律禁止手写(判例:Menu 与 Popover 曾各抄一份,产地越多越漂)。**Esc 那一件已经不在这里** —— 它归响应链:浮层声明 `onEscape`(`float`/`modal` 档缺省就是「关自己」),由唯一那个派发器沿活动路径由深到浅问(见下「响应链」节)。「Esc 该由谁认领」那条判例修过三轮(microtask → 改相位 → 浮层栈),三轮都是在没有树的情况下拿 DOM 事件顺序硬凑,`useFloatDismiss` 的 `escape` 参数与整只浮层栈随 R1 一起退役。定位两档的裁定:**矩锚跟滚**(rect 档,贴着元素的浮层 —— Select 面板/Tooltip —— 滚动/resize 时跟随锚点重定位),**点锚不跟滚**(point 档,光标坐标开出的右键菜单滚动时维持原位,变更此裁定须再拍板);两档都在 resize 时重 clamp 进视口。
 
 ## 快捷键三层(09-01 立法,报障「快捷键要分清局部和全局」)
 
 一个键属于哪一层,由**它需不需要一个目标**决定,不由它好不好按决定。
 
 1. **全局档** —— `keymap/transitions.ts` 的 `KEYMAP_COMMANDS`。焦点在哪儿都响,**可改绑**,
-   `keymap/dispatch.ts` 是唯一派发器。语义:呼出一块面 / 做一件全局的事。
+   由 `focus/dispatch.ts` 那**唯一的派发器**在活动路径都没接住时兜底跑
+   (`keymap/dispatch.ts` 09-02 R1 起只剩 `useKeymapCommandRunner` —— 命令的**落点**
+   那张动作表,监听已经删了)。语义:呼出一块面 / 做一件全局的事。
    **加全局键 = 表里加一行**;改既有键位是用户的拍点,不许顺手动。
-2. **面域局部键** —— `keymap/scopes.ts` 的 `SCOPED_KEYS`(声明)+ 那块面自己根元素上的
-   监听(落点)。焦点落在**那块面的根里**才响。今天两格:查看器 `⌘S/⌘L/⌘F`、
-   文件行 `⌘I/⌘↵`。两处会不会分叉由 `keymap/__tests__/keymap-scopes.test.ts` 逐条钉着。
+2. **面域局部键** —— 声明的**正本**是 `focus/scopes.ts` 的 `FOCUS_SCOPES[id].keys`;
+   落点是**作用域实例注入的 `keyHandlers`**(不再是那块面自己根元素上的监听,
+   09-03 R2 迁完)。那块面在**活动路径**上才响 —— 不是「焦点落在它的根里」:
+   portal 出去的子面在 DOM 上根本不在那个根里,而用户报的 ⌘F 死的正是旧那条判据。
+   今天两格:查看器 `⌘S/⌘L/⌘F`、文件树 `⌘I/⌘↵`(旧名 `files.row` 随兼容层退役 ——
+   树上不会有「一行」这么细的作用域,行是文件树内部的 roving 目标)。
+   两处会不会分叉由 `keymap/__tests__/keymap-scopes.test.ts` 的比对表(声明这一头)
+   与各面自己读 `focusTree.dump()` 的用例(实例注入的名单那一头)一起钉着;
+   `keymap/scopes.ts` 现在只剩 `scopedCollisionsOf` 一件事 —— 把撞车说给设置页听。
 3. **行内结构键** —— 方向键 / ↵ / Space / Tab / Esc 的 DOM 焦点语义。**不进任何表**
    (理由见 `keymap/types.ts` 顶部:它们是这套形态语法本身,可配置就等于不一致)。
 
-**撞键裁决:局部先接,没接住放行全局。** 机制只有一条、不需要调度器 —— 局部监听挂在
-面域根上(先于 window 收到),**接住了才 `preventDefault()`**;全局派发器开头一句
-`if (e.defaultPrevented) return`。判例:F1 时 `⌘I` 长在文件行上却不在任何表里,
-用户一旦把某条全局命令改绑到 `⌘I`,两者会同时响(F1 已记为留账,09-01 结清)。
+**撞键裁决:局部先接,没接住放行全局。** 这条裁定一个字没变,变的是它靠什么成立:
+那个「先」由**活动路径的深度**保证,不再靠冒泡序。全壳**唯一的派发器**是
+`src/focus/dispatch.ts`(**捕获**相位的一条 window keydown,`keydown-outside-focus`
+硬闸守着它的唯一性),它沿活动路径由深到浅问局部键表,都没命中才轮到全局命令表 ——
+局部接住了全局当场轮不到。`if (e.defaultPrevented) return` 那一句**留为契约**:
+捕获相位是整条传播路径的第一站,所以它今天恒不触发,但「别人真接住了就让开」
+不是一处优化 —— 哪天前面再站一个更早的消费者,这一句就是它的出口。
+判例:F1 时 `⌘I` 长在文件行上却不在任何表里,用户一旦把某条全局命令改绑到 `⌘I`,
+两者会同时响(09-01 结清);今天它进了正本表,设置页那一行还会说出「被『文件』里的
+『详情』占着」(`scopedCollisionsOf`)—— 撞车不是错误,但不许**静默**。
+
+## 响应链(09-02/03 立法,设计 `docs/design/react-shell-focus-2026-09.md`)
+
+壳里任何时刻恰有一条**活动路径**(从根到最深那块能接键盘的面);所有键盘输入、Esc 退层、
+焦点进出全部由这条路径决定。立法起因:从前 13 个 keydown 监听、22 处 `.focus()`、
+6 处读 `activeElement` 分属八套互不认识的机制,「谁在接键盘」没有一个人持有答案 ——
+用户报的「⌘F → Esc → ⌘F 再也开不出来」只是病根显形。
+
+**五条不变量**(每条都有门或单测钉着):
+
+- **I1** `document.activeElement` 永远不是 `<body>`(壳还没挂载那一瞬除外)。三处收回:卸载 / inert 路的 `settle()`、`focusout` 且 `relatedTarget === null` 的微任务复查、派发器每次 keydown 开头。
+- **I2** `keydown` 监听只许住在 `src/focus/` —— 全仓就那一条(`focus/dispatch.ts` 的 window 捕获)。唯一的例外是 `ui/a11y/roving.ts` 的容器级方向键,理由写在它自己的命中处(容器级、只接结构键、只在作用域内部移动)。
+- **I3** `.focus()` 只许出现在 `src/focus/` 与 `ui/a11y/roving.ts` / `ui/a11y/list-selection.ts` / `ui/inline-edit.ts` —— 后三处是作用域**内部**的移动,不跨作用域;跨作用域搬焦点一律走 `activateScope()`。
+- **I4** 每个 Placement 宿主层(舞台 / 浮窗 / 架子 tab 层 / 盖层)的根元素都带 `data-focus-scope`。
+- **I5** 快捷键三层的语义不变:全局可改绑、局部先接、结构键不进表(见上一节)。
+
+**七条行为规则**(用户 09-02 口述模型,与 Apple HIG / WAI-ARIA APG「管理焦点」一致):
+
+1. 任何时刻恰有一个第一响应者;应用启动时是主内容(有会话则是它的输入面板)。「启动时没有焦点」是错觉 —— 焦点环只在键盘会话亮(08-28 判例)。
+2. **打开什么,焦点进什么**:开会话 → 它的输入面板;从 Dock 开一块面 → 那块面。
+3. **挪到哪,焦点跟到哪**:拼舞台 / 钉到边 / 撕成浮窗,焦点跟着那块面走 —— 宿主在**落定之后**`activate()`,而那一句必须排在 React 提交之后(判据留在纯函数 `stage/focus-follow.ts`,写在 store 的写点上真机当场证伪:那一刻宿主层还没挂上来)。
+4. **导航器里浏览不抢焦点,确认才抢**:文件树单击只显示、焦点留树;↵ 焦点进查看器(本台禁双击作动作,所以没有双击那一格)。
+5. **关掉什么,焦点回打开它的地方**:**结构性的**,不靠调用方记得 —— 树在第一响应者换人那一刻记一格 `returnTo`,卸载时 `returnTo` → 父链依次回落。写浮层的人不需要知道有归还这回事。
+6. 焦点永远不落在「没有东西」上(= I1)。
+7. **Esc 从第一响应者开始往外退一层**:沿活动路径由深到浅问 `onEscape()`,第一个答 `true` 的消费掉;`root` 的 `escapeTopmost()` 是最后一环;没人答 true 就**不** `preventDefault`(输入法组字等后面的消费者照旧)。
+
+**执法**:`npm run ui:consume` 的三条**零基线硬闸** `keydown-outside-focus` / `focus-outside-focus` / `active-element-read`(不进 baseline 文件,一条新命中直接红;确实该留的在命中处上方 8 行内写 `ui-consume-allow: <规则> — <理由>`),加真机门 `npm run gate:focus`(十二个场景,已进 `npm run verify`)。交互时序类改动**必须真机对照**,jsdom 的绿不算数(08-30 判例)。
 
 ## 施工纪律
 

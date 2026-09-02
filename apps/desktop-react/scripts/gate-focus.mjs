@@ -9,14 +9,22 @@
  *
  * **R2 起它不再带 `--expect-red` 跑**:内容面全部接树之后,十二个场景应当全绿。
  * 那个档留着只为一件事 —— 下一次要先钉红再修的时候还用得上(有红也退 0,
- * 红绿逐条打表)。R3 那一批把这道门收进 verify。
+ * 红绿逐条打表)。
+ *
+ * **R3 起它进 `npm run verify`**(排在 gate:a11y 之后、整条链最后)。理由与
+ * gate:a11y 逐字相同:它断言的是焦点落点与 Esc 归属,同一份代码同一个视口跑
+ * 一百遍是同一个答案,没有余量、不看机器状况 —— 与 gate:perf 那种毫秒读数
+ * 正相反。判词写在 `scripts/verify.mjs` 那一行上头。
  *
  * ── 十二个场景(1-6 设计 §8 逐条;7-12 是 R2 那几条规则与拍点的读数)────────
  *  1. 树行 ↵ 开文件 → ⌘F → Esc → ⌘F 再开。**用户报的那条**。
  *  2. ⌘P 开检索 → Esc → 焦点回到开它之前那块面里。
  *  3. 架子两 tab 切换 → 焦点落在新层内;旧层 `inert`(§11 拍点 2)。
  *  4. 对话框里开菜单 → Esc 只关菜单 → 再 Esc 关对话框 → 焦点回触发钮。
- *  5. 焦点在输入面板 + 旁边开着浮窗时按 Esc(§11 拍点 3:按树 = 输入面板先答)。
+ *  5. 焦点在输入面板 + 旁边**真开着一扇浮窗**时按 Esc(§11 拍点 3:按树 =
+ *     输入面板先答)。R3 补真:R2 版没真开浮窗(在场 0 扇),拍点 3 没被量到。
+ *     两条读数缺一不可 —— 焦点仍在输入框 ∧ 那扇浮窗收掉了。生成中那半边这道门
+ *     造不出来(要一台在流的 provider),**记跳过不假造**,由 jsdom 用例守着。
  *  6. 整机扫 I4(每个 Placement 宿主层根元素带 `data-focus-scope`)。
  *  7. 壳一起来,第一响应者就是输入面板(§3.5 规则 1)。
  *  8. 总览里进一条会话 → 焦点落进那条会话的输入框(§3.5 规则 2)。
@@ -159,11 +167,20 @@ async function openAsFromDockMenu(page, tile, labelRe) {
 }
 
 /**
- * 进那条夹具会话(总览里点那张卡)。**重载之后必须再走一遍**:文件树的根跟着
- * 「当前会话的工作目录」走,而当前会话是内存态 —— 重载之后它是空的,树会退回
- * 主目录,那时候树上有什么就不由这道门说了算了。
+ * 把那条夹具会话的卡**摆到屏幕上**(不点它)。
+ *
+ * 点瓦是**开关**语义:总览已经摆出来了就别再点一下(那一下会把它收回去)。
+ * 而「摆出来了没有」在两种时刻都读不准 —— ①重载之后有一格窗口期(落点是记忆,
+ * 面画出来要一帧,卡还要等列表拉回来);②上一个场景可能刚好把它留在开着的状态
+ * (R3 判例:场景 5 改成真开浮窗之后,那一下 Esc 收的是浮窗而不是从前那一层,
+ * 于是走到场景 8 时总览是开着的,一点就关,waitFor 白等 20 秒)。
+ * 所以这里点完先等,等不到就**再点一次**:上一下十有八九是把它收回去了。
+ * 两下都等不到才是真的没有(那时超时,是夹具的问题)。
+ *
+ * 单独抽出来是因为它有**两个**调用点:进会话那条路,和场景 8(它要自己断言
+ * 「点卡之后焦点去哪」,不能整段复用进会话)。同一段判据抄两份迟早分叉。
  */
-async function enterGateSession(page, sessionId) {
+async function ensureOverviewCard(page, sessionId) {
   // 重载之后先等那一次 RPC 往返:会话表是拉回来的,拉回来之前总览上没有卡。
   await waitFor('渲染层完成一次 RPC 往返', async () => {
     const value = await page.evaluate(() => window.__d0 ?? null)
@@ -171,17 +188,20 @@ async function enterGateSession(page, sessionId) {
   })
   const cardShown = () =>
     page.evaluate((id) => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId)
-  /*
-   * 点瓦是**开关**语义:总览已经摆出来了就别再点一下(那一下会把它收回去)。
-   * 而「摆出来了没有」在重载之后有一格窗口期读不准(落点是记忆,面画出来要一帧,
-   * 卡还要等列表拉回来)—— 所以这里点完先等,等不到就**再点一次**:上一下
-   * 十有八九是把它收回去了。两下都等不到才是真的没有(那时超时,是夹具的问题)。
-   */
   for (let attempt = 0; attempt < 2 && !(await cardShown()); attempt += 1) {
     await clickSelector(page, '[data-testid="dock-tile-sessions"]')
     await delay(700)
   }
   await waitFor('总览画出那张卡', cardShown)
+}
+
+/**
+ * 进那条夹具会话(总览里点那张卡)。**重载之后必须再走一遍**:文件树的根跟着
+ * 「当前会话的工作目录」走,而当前会话是内存态 —— 重载之后它是空的,树会退回
+ * 主目录,那时候树上有什么就不由这道门说了算了。
+ */
+async function enterGateSession(page, sessionId) {
+  await ensureOverviewCard(page, sessionId)
   await clickSelector(page, `[data-testid="card-${sessionId}"]`)
   await delay(400)
 }
@@ -503,33 +523,86 @@ async function main() {
     await assertNoOrphan(page, 'Esc 关对话框之后')
 
     /* ── 场景 5:输入面板 vs 浮窗的 Esc 归属 ─────────────────────────── */
-    scenario('焦点在输入面板、旁边开着浮窗时 Esc(§11 拍点 3:按树,输入面板先答)')
+    scenario('焦点在输入面板、旁边**真开着一扇浮窗**时 Esc(§11 拍点 3:按树,输入面板先答)')
+    /*
+     * ── R3 补的那一格(R2 留账)─────────────────────────────────────────────
+     * R2 版这一步只 `clickSelector` 点了一下 files 那块瓦,而那时它的落点是
+     * 「面板内」——**按 Esc 前在场的浮层是 0 扇**,于是这个场景量到的其实只有
+     * 「Esc 没把焦点从输入框里抢走」,拍点 3 那句「输入面板先答,才轮到 root
+     * 收浮窗」一个字都没被验到(留账原话:「门场景 5 未真开浮窗,拍点 3 靠
+     * jsdom 用例」)。R3 走菜单把它**真开成一扇浮窗**再问同一下 Esc,于是
+     * 这一格量的是两件事,缺一不可:
+     *   ① 焦点仍在输入框里(输入面板答了「不是我的」,但没被人把焦点搬走);
+     *   ② 那扇浮窗**收掉了**(没人认领 → 一路传到 root 的退层链 → escapeTopmost)。
+     * 只有 ① 的话,「树根本没把这一下往外传」也能过;只有 ② 的话,「浮窗那一路
+     * 抢先并顺手改了焦点」也能过。
+     */
     await page.goto(page.url().split('?')[0])
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
     )
-    await clickSelector(page, '[data-testid="dock-tile-files"]')
-    await delay(400)
+    const floatPrepared = await openAsFromDockMenu(page, 'files', /浮窗|Float/)
     const floatOpen = await page.evaluate(
       () => document.querySelectorAll('section[role="dialog"]').length,
     )
-    await page.evaluate(() => {
-      const box = document.querySelector('[data-testid="composer-input"]')
-      if (box instanceof HTMLElement) box.focus()
-    })
-    await assertNoOrphan(page, '焦点摆进输入面板之后')
-    await page.keyboard.press('Escape')
-    await delay(300)
-    const afterEsc = await page.evaluate(() => ({
-      inComposer: document.activeElement?.getAttribute?.('data-testid') === 'composer-input',
-      floatStill: document.querySelectorAll('section[role="dialog"]').length,
-    }))
-    assert(
-      afterEsc.inComposer,
-      '一下 Esc 之后焦点仍在输入面板里(不是被浮窗那一路抢走)',
-      `(按 Esc 前在场的浮层 ${floatOpen} 扇,按完还剩 ${afterEsc.floatStill} 扇)`,
+    if (!floatPrepared || floatOpen === 0) {
+      skip(
+        '旁边真开着一扇浮窗时按 Esc',
+        floatPrepared
+          ? '选了「浮窗 / Float」但一扇都没画出来'
+          : 'Dock 菜单里没有「浮窗 / Float」那一项',
+      )
+    } else {
+      assert(floatOpen > 0, '前提:真开出了浮窗', `(在场 ${floatOpen} 扇)`)
+      /*
+       * 焦点摆回输入框。用 `.focus()` 而不是真鼠标点:这一步只是**摆好前提**,
+       * 而真机上点输入框会先走一趟 pointerdown 抢根(§4.6),那是另一条路的事。
+       * 场景 10 那种「点完之后焦点在哪儿」才必须用真鼠标点。
+       */
+      await page.evaluate(() => {
+        const box = document.querySelector('[data-testid="composer-input"]')
+        if (box instanceof HTMLElement) box.focus()
+      })
+      const ready = await page.evaluate(() => ({
+        inComposer: document.activeElement?.getAttribute?.('data-testid') === 'composer-input',
+        scope:
+          document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+          ?? null,
+      }))
+      assert(ready.inComposer, '前提:焦点在输入框里', `(作用域 ${ready.scope ?? '—'})`)
+      await assertNoOrphan(page, '焦点摆进输入面板之后')
+
+      await page.keyboard.press('Escape')
+      await delay(400)
+      const afterEsc = await page.evaluate(() => ({
+        inComposer: document.activeElement?.getAttribute?.('data-testid') === 'composer-input',
+        floatStill: document.querySelectorAll('section[role="dialog"]').length,
+      }))
+      assert(
+        afterEsc.inComposer,
+        '① 一下 Esc 之后焦点**仍在输入面板里**(不是被浮窗那一路抢走)',
+        `(按 Esc 前在场的浮层 ${floatOpen} 扇,按完还剩 ${afterEsc.floatStill} 扇)`,
+      )
+      assert(
+        afterEsc.floatStill < floatOpen,
+        '② 那扇浮窗**收掉了**(输入面板没认领 → 传到 root 的退层链)',
+        `(${floatOpen} → ${afterEsc.floatStill} 扇)`,
+      )
+      await assertNoOrphan(page, '输入面板里按 Esc 之后')
+    }
+    /*
+     * 拍点 3 的**另一半**(「输入面板正在生成时,Esc 归两段停止,浮窗不收」)
+     * 这道门量不到,如实记跳过而不是假造一个生成态:要造出「生成中」得有一台
+     * 真在流的 provider(gate:chat 那一套假慢流),而那是另一道门的夹具。
+     * 在这里塞一个假的 `streaming` 标志 = 门断言的是自己写进去的那格状态,
+     * 不是产品的行为 —— 那种绿比红更坏。
+     * 今天守着这一半的是 jsdom 用例:`composer/components/Composer.test.tsx`
+     * 的 Esc 三分支(拒答 / 关抽屉 / 两段停止)与 `useEscStop`。
+     */
+    skip(
+      '生成中按 Esc:两段停止、浮窗不收(拍点 3 的另一半)',
+      '造不出真的生成态 —— 要一台在流的 provider(gate:chat 的夹具);今天由 Composer.test.tsx 的 Esc 三分支守着',
     )
-    await assertNoOrphan(page, '输入面板里按 Esc 之后')
 
     /* ── 场景 6:I4 整机扫 ───────────────────────────────────────────── */
     scenario('I4:每个 Placement 宿主层的根元素都带 data-focus-scope')
@@ -600,10 +673,12 @@ async function main() {
 
     /* ── 场景 8:Expose 进会话 → 焦点在输入框 ────────────────────────── */
     scenario('总览里进一条会话 → 焦点落在那条会话的输入框里(§3.5 规则 2)')
-    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
-    await waitFor('总览画出那张卡', () =>
-      page.evaluate((id) => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId),
-    )
+    /*
+     * 「把卡摆上屏」与「点那张卡」是两件事,这里只能借前者:这一格要自己断言
+     * 点完之后焦点去哪,整段借 `enterGateSession` 就把被测的那一下也吞进去了。
+     * 摆上屏那一半为什么要重试,写在 `ensureOverviewCard` 的注释里(点瓦是开关)。
+     */
+    await ensureOverviewCard(page, sessionId)
     await assertNoOrphan(page, '开总览之后')
     await clickSelector(page, `[data-testid="card-${sessionId}"]`)
     await delay(500)
@@ -840,7 +915,19 @@ async function main() {
     const skips = s.checks.filter((c) => c.skipped)
     red += bad.length
     skipped += skips.length
-    const tag = bad.length === 0 ? (skips.length ? '跳过' : '绿') : `红 ${bad.length}/${s.checks.length}`
+    /*
+     * 「整个场景没搭起来」与「场景绿了、其中一格如实记跳过」是两件事,标签要分得开
+     * (R3:场景 5 的五条读数全绿,只有拍点 3 的生成中那半边跳过 —— 标成「跳过」
+     * 会让人以为这一整格没量)。
+     */
+    const tag =
+      bad.length > 0
+        ? `红 ${bad.length}/${s.checks.length}`
+        : skips.length === s.checks.length
+          ? '跳过'
+          : skips.length
+            ? `绿(${skips.length} 条跳过)`
+            : '绿'
     console.log(`场景 ${i + 1} ${tag}  ${s.name}`)
     for (const c of bad) console.log(`   ✗ ${c.message}${c.detail ? `  ${c.detail}` : ''}`)
     for (const c of skips) console.log(`   ⊘ ${c.message}(${c.detail})`)

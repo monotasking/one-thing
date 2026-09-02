@@ -3,8 +3,10 @@ import { Button } from '../ui/Button'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Kbd } from '../ui/Kbd'
 import { focusTree } from '../focus/registry'
+import { FOCUS_SCOPES } from '../focus/scopes'
 import { useT } from '../i18n'
 import { useKeymapStore, currentKeymapPlatform } from '../keymap/store'
+import { scopedCollisionsOf } from '../keymap/scopes'
 import {
   KEYMAP_COMMANDS,
   effectiveCombo,
@@ -18,6 +20,18 @@ import s from './mocks.module.css'
 
 /**
  * 设置页的「快捷键」区。一行 = 一条命令 + 它当下绑的键 + (改过才出现的)恢复默认。
+ *
+ * ── 两种撞车,两句不同的话(09-03 R3)────────────────────────────────────
+ * 这块面要说得出**两种**撞车,它们的严重程度根本不同:
+ *  · **全局 ↔ 全局**(`bind` 回一个被占的 command id):真的有一个按不响 ——
+ *    所以它拦住写入,留在录制态、行内说清撞的是谁,让用户直接再按一个。
+ *  · **全局 ↔ 面域局部键**(`scopedCollisionsOf`,读的是正本
+ *    `focus/scopes.ts` 的 `FOCUS_SCOPES[id].keys`):**不是错误**,两者共存 ——
+ *    局部先接、没接住放行全局(⌘I 在文件树里开详情,在别处仍是那条全局命令)。
+ *    所以它不拦写入,只在那一行旁边**说出所属的那块面**(用作用域自己的
+ *    `labelKey`,「文件」「查看器」……),这正是 F1 那条留账要的东西:从前
+ *    「用户把某条命令改绑到 ⌘I」是**静默**盖住行内键的。
+ *    出厂表下零撞车,所以这句话默认一个字都不出现。
  *
  * 三件事值得记一笔:
  * 1. 录制态向响应链**申请独占**(`focusTree.capture`,09-02 R1;从前是这块面
@@ -44,6 +58,8 @@ export function KeymapSettings() {
 
   const platform = currentKeymapPlatform()
   const state = { overrides }
+  /** 全局命令与面域局部键撞在同一个组合上的那些。出厂表下是空的。 */
+  const scopedCollisions = scopedCollisionsOf(state)
 
   useEffect(() => {
     if (!recording) return
@@ -90,6 +106,7 @@ export function KeymapSettings() {
         const combo = effectiveCombo(state, command.id)
         const isRecording = recording === command.id
         const conflictWith = isRecording && conflict ? findCommand(conflict) : undefined
+        const scoped = scopedCollisions.filter((c) => c.command === command.id)
 
         return (
           <div className={s.settingRow} key={command.id}>
@@ -100,6 +117,17 @@ export function KeymapSettings() {
                   {t('keymap.conflict', { name: t(conflictWith.labelKey) })}
                 </span>
               )}
+              {/* 面域局部键那种撞车:不拦写入,只说清是**哪一块面**里的**哪个动作**
+                * 占着这个组合(局部先接、没接住放行全局)。同一句话与全局撞车共用
+                * 一件皮肤(fs-micro + text-3):两者都是行内的一句提示,不是错误态。 */}
+              {scoped.map((c) => (
+                <span className={s.keyConflict} key={`${c.scoped.scope}:${c.scoped.action}`}>
+                  {t('keymap.scopedConflict', {
+                    scope: t(FOCUS_SCOPES[c.scoped.scope].labelKey),
+                    action: t(c.scoped.labelKey),
+                  })}
+                </span>
+              ))}
               {/* 键位面是一颗**结构件**(一格键位槽,视觉本该定制:录制态换底换边、
                 * 里面装的是 Kbd 帽子)——三类判的第三类,清 UA 归 `ui/ButtonBase`。 */}
               <ButtonBase

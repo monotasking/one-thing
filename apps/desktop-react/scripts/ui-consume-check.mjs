@@ -328,32 +328,37 @@ function ruleAsyncBusyBoolean(file, text) {
  * ──────────────────────────────────────────────────────────────────────── */
 
 /**
- * 「点外面关掉」与「Esc 在捕获相位认领关闭」是浮层散场的两半,CLAUDE.md 禁令区
- * 已经把它们判给了唯一产地 `ui/float`(`useFloatDismiss`)。这条规则是字面执法。
+ * 「点外面关掉」与「Esc 在捕获相位认领关闭」曾是浮层散场的两半,CLAUDE.md 禁令区
+ * 把它们判给了唯一产地 `ui/float`(`useFloatDismiss`)。这条规则是字面执法。
  *
  * 判例:Menu 与 Popover 曾各抄一份散场逻辑,而「Esc 该由谁认领」那条判例
  * **修过三轮** —— 产地越多越漂,每修一轮都要去找齐所有抄本。
  *
- * 存量命中里有两类**本来就该留着**的,一并入基线不去动它们:
- *  · 退层链本体(`components/useEscapeChain.ts` 一族)—— 它是机制那一头;
- *  · 窗口系统件(舞台盖 / 键位设置捕获 / 跳转条)—— 各有另案,不属浮层散场。
+ * ── R3(09-03):**Esc 那半边退役,点外关那半边留着** ──────────────────────
+ * 设计 §8 的原话是「现有 `float-handwritten` 规则退役(**被 I2 覆盖**)」。
+ * 括号里那句理由只对**一半**成立:`keydown` 捕获相位那条探针问的正是 I2 问的
+ * 同一件事(「keydown 监听住在哪儿」),而 I2 现在是硬闸、允许区只有 `src/focus/`,
+ * 判得比它严 —— 那半边留着就是同一笔账记两遍(`focus/dispatch.ts` 那唯一一行
+ * 还得为它写一条豁免)。所以 keydown 探针**删掉**,连同那条豁免。
+ *
+ * 点外关那半边 I2 一个字都没覆盖(它判的是 `pointerdown`,不是 keydown),
+ * 而「浮层行为单产地 = ui/float」这条禁令在 CLAUDE.md 里仍然立着 ——
+ * 整条规则退役 = 白白丢掉这一格的执法。所以这只函数现在只剩点外关。
  */
 const FLOAT_POINTERDOWN = /window\.addEventListener\(\s*['"]pointerdown['"]/g
-const FLOAT_KEYDOWN_CAPTURE =
-  /window\.addEventListener\(\s*['"]keydown['"]\s*,[^()\n]*,\s*(?:true|\{[^}]*capture\s*:\s*true[^}]*\})\s*\)/g
 
 function ruleHandwrittenFloat(file, text) {
   if (isTest(file)) return []
   const hits = []
-  for (const [re, note] of [
-    [FLOAT_POINTERDOWN, '手写点外关(window pointerdown),该消费 ui/float useFloatDismiss'],
-    [FLOAT_KEYDOWN_CAPTURE, '手写 Esc 捕获相位认领,该消费 ui/float useFloatDismiss'],
-  ]) {
-    re.lastIndex = 0
-    let m
-    while ((m = re.exec(text)) !== null) {
-      hits.push({ rule: 'float-handwritten', file, line: lineOf(text, m.index), note })
-    }
+  FLOAT_POINTERDOWN.lastIndex = 0
+  let m
+  while ((m = FLOAT_POINTERDOWN.exec(text)) !== null) {
+    hits.push({
+      rule: 'float-handwritten',
+      file,
+      line: lineOf(text, m.index),
+      note: '手写点外关(window pointerdown),该消费 ui/float useFloatDismiss',
+    })
   }
   return hits
 }
@@ -452,29 +457,41 @@ function ruleSharedVocabCss(file, css) {
  * ──────────────────────────────────────────────────────────────────────── */
 
 /**
- * **R0 里这三条只报数,不判红**(severity `report`,棘轮跳过它们)。
+ * **R3(09-03)起这三条是硬闸:severity `violation`、基线零、不进 baseline 文件。**
+ * 一条新命中直接红 —— 没有「先记一笔账」这条路,因为响应链的整个价值就是
+ * 「谁在接键盘」只有一个答案,而一条例外就是第二个答案。
  *
- * 立法在响应链设计的三条不变量上:
+ * 立法在响应链设计的三条不变量上(`docs/design/react-shell-focus-2026-09.md` §3):
  *  · I2 —— `keydown` 监听只许出现在 `src/focus/`;
  *  · I3 —— `.focus()` 只许出现在 `src/focus/` 与三处**作用域内部**的焦点移动;
  *  · 「我是不是当前」不许靠读 `document.activeElement`(改问 `useFocusScope().isActive`)。
  *
- * 为什么先立成只读:R0 立的是树,**零消费者** —— 八套旧机制一格没动,此刻判红
- * 等于要求 R0 一批干完 R1+R2 的活。所以本批给的是一张**清单**(R1/R2 照着拆),
- * R3 那一批把 severity 改成 violation、基线零。
+ * 三条走过的路:R0 立成 `report` 档只打表(12 / 22 / 2),因为那时树**零消费者**,
+ * 八套旧机制一格没动,判红等于要求一批干完三批的活;R1 拆到 5 / 15 / 2;
+ * R2 内容面接树之后归零(0 / 0 / 0);R3 就是把那个零钉死。
  *
  * ── 这三条的扫描面比别的规则**宽一格**:`src/ui/**` 也扫 ─────────────────
  * 别的规则问的是「业务面有没有手写 ui/ 已有职责的东西」,组件库自己是被消费的
- * 那一头,所以豁免。这三条问的是**机制住在哪儿**:`ui/float.ts` 的 Esc 捕获、
- * `ui/a11y/focus-trap.ts` 的 Tab 圈禁,正是要被树收编的两件,漏扫它们等于把
- * R1 的清单删掉一半。
+ * 那一头,所以豁免。这三条问的是**机制住在哪儿**,而当年要被树收编的两件
+ * (`ui/float.ts` 的 Esc 捕获、`ui/a11y/focus-trap.ts` 的 Tab 圈禁)恰恰长在
+ * `src/ui/` 里 —— 漏扫它们等于把清单删掉一半。两件今天都已退役,扫描面留着:
+ * 下一个想在库件里自己接一下键盘的人,得先撞上这道门。
  *
- * ── 内置允许区(设计里写死的那几处,不是「暂时留着」)────────────────────
- *  · `src/focus/**` —— 树自己;
- *  · `ui/a11y/roving.ts` 的容器级 keydown 与 `.focus()`、`list-selection`、
+ * ── 内置允许区(设计 I2/I3 写死的那几处,不是「暂时留着」)──────────────────
+ *  · `src/focus/**` —— 树自己(三条全免);
+ *  · `.focus()` 另许 `ui/a11y/roving.ts` / `ui/a11y/list-selection.ts` /
  *    `ui/inline-edit.ts` —— **作用域内部**的焦点移动(方向键在项之间走、
  *    编辑框拿到手就选中),它们不跨作用域,设计 §4.3 明确留着;
- *  · `ui/a11y/**` 读 `activeElement` —— roving 的当前项判据就是它。
+ *  · `activeElement` 另许 `ui/a11y/**` —— roving 的当前项判据就是它。
+ *
+ * `keydown` 那一条的允许区**只有 `src/focus/**`**,一格不多:R0/R1/R2 期间
+ * `roving.ts` 那条容器级监听是写死在这只函数里的一个分支,R3 把它拆出去改成
+ * **就地豁免**(照 spinner-placement 的体例:合法的那几处各自在原地说明自己
+ * 为什么合法,而不是躲在这只函数里)。于是这三条的判据从此只有一句话:
+ * **不在允许区里 = 红**,想留就在命中处上方写理由。
+ *
+ * 测试文件整体不受这三条管:用例**按**键、**摆**焦点,那是夹具在驱动产品,
+ * 不是产品自己又长了一套机制。
  */
 const KEYDOWN_LISTENER = /\b(?:window|document|[\w.?]+)\.addEventListener\(\s*['"]keydown['"]/g
 const FOCUS_CALL = /\.focus\s*\(/g
@@ -497,8 +514,6 @@ function ruleFocusDomain(file, text) {
   KEYDOWN_LISTENER.lastIndex = 0
   let m
   while ((m = KEYDOWN_LISTENER.exec(text)) !== null) {
-    // roving 的容器级 keydown 是作用域内部的方向键,设计里留着。
-    if (norm === 'src/ui/a11y/roving.ts') continue
     const global = /\b(?:window|document)\.addEventListener/.test(m[0])
     hits.push({
       rule: 'keydown-outside-focus',
@@ -538,7 +553,10 @@ function ruleFocusDomain(file, text) {
 /**
  * severity 表。加规则 = 加一行这里 + 一个 judge。
  *   'violation' / 'debt' —— 进棘轮,只减不增;
- *   'report'             —— **只打表不判红**(响应链三条在 R0 的档,R3 转 violation)。
+ *   'report'             —— **只打表不判红**。今天一条都没有:响应链三条在 R0 用的
+ *                           就是这一档,R3 全部转 `violation`。这一档留着不是死码,
+ *                           它是「先立门、后还账」那条路本身(R0→R2 走了一遍,
+ *                           下一条要分期还的规则照走)。
  */
 export const RULE_SEVERITY = {
   'kbd-select-hover': 'violation',
@@ -553,9 +571,10 @@ export const RULE_SEVERITY = {
   'float-handwritten': 'violation',
   'spinner-placement': 'violation',
   'shared-vocab-css': 'debt',
-  'keydown-outside-focus': 'report',
-  'focus-outside-focus': 'report',
-  'active-element-read': 'report',
+  // 响应链三条(R3 起硬闸,基线零,不进 baseline 文件)。
+  'keydown-outside-focus': 'violation',
+  'focus-outside-focus': 'violation',
+  'active-element-read': 'violation',
 }
 
 export function findViolations() {
