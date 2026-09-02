@@ -8,10 +8,12 @@ import {
   nextScope,
   originText,
   pageWindow,
+  remoteSide,
   searchRows,
   targetText,
 } from './transitions'
 import type { SearchMaterial } from './transitions'
+import type { MessageHit } from './types'
 import type { FileSearchEntry } from '@shared/ipc/files'
 import { CHAPTERS, SESSIONS } from '../data/__fixtures__/sessions'
 
@@ -132,6 +134,137 @@ describe('scope 过滤', () => {
 })
 
 /**
+ * 正文命中(09-02)。它是第三个产地,而且是**唯一一个后端说了算的会话侧产地**:
+ * 命中由后端判、片段由后端截、高亮区间由后端给 —— 所以这一组验的三件事分别是
+ * 「合流」「去重」「高亮不本地再算一遍」。
+ */
+describe('searchRows:消息正文这一路', () => {
+  /** 归到第一条会话(`os-provider`)名下的一条正文命中。 */
+  const hit = (over: Partial<MessageHit> = {}): MessageHit => ({
+    id: 'msg:os-provider:m9',
+    sessionId: 'os-provider',
+    messageId: 'm9',
+    text: '...三处读取点里有两处走的是 provider 的老路...',
+    ranges: [{ start: 17, end: 25 }],
+    ...over,
+  })
+
+  const withHits = (hits: MessageHit[]): SearchMaterial => ({ ...material, messages: hits })
+
+  it('合流进同一张平铺列表:消息徽、正文级、出处是所属会话名', () => {
+    const rows = searchRows(Q, 'all', withHits([hit()]))
+    const row = rows.find((r) => r.id === 'msg:os-provider:m9')
+    expect(row).toBeTruthy()
+    expect(row?.domain).toBe('session')
+    expect(row?.badge).toEqual({ kind: 'message' })
+    expect(row?.tier).toBe('body')
+    expect(row?.code).toBe(false)
+    expect(originText(row!.origin)).toBe(SESSIONS[0].title)
+  })
+
+  it('落点带 messageId —— 那正是「点了能滚到那条消息」的全部依据', () => {
+    const row = searchRows(Q, 'all', withHits([hit()])).find((r) => r.id === 'msg:os-provider:m9')
+    expect(row?.target).toEqual({ kind: 'session', sessionId: 'os-provider', messageId: 'm9' })
+    // 别的几种命中一格都没多:它们的落点本来就是会话本身。
+    const title = searchRows(Q, 'all', material).find((r) => r.id === 'os-provider:title')
+    expect(title?.target).toEqual({ kind: 'session', sessionId: 'os-provider' })
+  })
+
+  it('高亮用后端给的区间,不拿当前的词再 indexOf 一遍', () => {
+    const row = searchRows(Q, 'all', withHits([hit()])).find((r) => r.id === 'msg:os-provider:m9')
+    expect(row?.highlight).toEqual([{ start: 17, end: 25 }])
+    // 本地滤出来的那几路没有这一格 —— 视图照当前的词自己切。
+    const title = searchRows(Q, 'all', material).find((r) => r.id === 'os-provider:title')
+    expect(title?.highlight).toBeUndefined()
+  })
+
+  it('**不再滤第二遍**:词与素材对不上时照样原样转述(与文件侧同一条判据)', () => {
+    const rows = searchRows('zzzzzz', 'all', { ...withHits([hit()]), files: [] })
+    expect(rows.map((r) => r.id)).toEqual(['msg:os-provider:m9'])
+  })
+
+  /*
+   * 空间投影就长在这一条上:`sessionRows` 遍历的是**屏幕那份会话表**,
+   * 命中按会话号去认领。认不到主的(别的空间 / 刚被删掉的会话)自然不出行 ——
+   * 不需要第二套「哪些命中该丢」的名单。
+   */
+  it('会话不在屏幕那份表里 = 那条命中不出行(空间投影 / 会话已删)', () => {
+    const rows = searchRows(Q, 'all', withHits([hit({ sessionId: 'not-on-screen' })]))
+    expect(rows.some((r) => r.id === 'msg:os-provider:m9')).toBe(false)
+  })
+
+  it('归到会话名下:同一条会话的四种命中连在一起,不散在列表四处', () => {
+    const rows = searchRows(Q, 'all', withHits([hit()]))
+    const ids = rows.filter((r) => r.domain === 'session').map((r) => r.id)
+    const mine = ids.filter((id) => id.startsWith('os-provider'))
+    const at = ids.indexOf('msg:os-provider:m9')
+    // 正文行紧跟在这条会话自己那几行之后(中间没有插进别的会话的行)。
+    expect(at).toBe(ids.indexOf(mine[mine.length - 1]) + 1)
+  })
+
+  it('这一档不看会话时(scope=files)一条正文行都不出', () => {
+    expect(searchRows(Q, 'files', withHits([hit()])).some((r) => r.badge.kind === 'message')).toBe(
+      false,
+    )
+  })
+
+  /* ── 去重:预览命中的正是第一条用户消息 ───────────────────────────────── */
+
+  it('同一段话两路都命中时,预览行让位给带 messageId 的正文行', () => {
+    const preview = SESSIONS[0].preview
+    const rows = searchRows(Q, 'all', withHits([hit({ text: `...${preview}...` })]))
+    expect(rows.some((r) => r.id === 'os-provider:preview')).toBe(false)
+    expect(rows.some((r) => r.id === 'msg:os-provider:m9')).toBe(true)
+  })
+
+  it('片段比预览长(后端多截了一截)也算同一段话', () => {
+    const rows = searchRows(
+      Q,
+      'all',
+      withHits([hit({ text: `...前面还有一句。${SESSIONS[0].preview} 后面又说了一句...` })]),
+    )
+    expect(rows.some((r) => r.id === 'os-provider:preview')).toBe(false)
+  })
+
+  it('是**别的**一条消息就两行都留 —— 判不出来时宁可多一行,不少一行', () => {
+    const rows = searchRows(Q, 'all', withHits([hit()]))
+    expect(rows.some((r) => r.id === 'os-provider:preview')).toBe(true)
+    expect(rows.some((r) => r.id === 'msg:os-provider:m9')).toBe(true)
+  })
+
+  it('去重只在**同一条会话**里发生:别人的正文命中动不了我的预览行', () => {
+    const preview = SESSIONS[0].preview
+    const rows = searchRows(
+      Q,
+      'all',
+      withHits([hit({ sessionId: 'os-compact', id: 'msg:os-compact:m1', text: preview })]),
+    )
+    expect(rows.some((r) => r.id === 'os-provider:preview')).toBe(true)
+  })
+})
+
+describe('remoteSide(两路远端合成一路)', () => {
+  it('一路都没有 = 没有人可问 = 取尽', () => {
+    expect(remoteSide()).toBe('exhausted')
+    expect(remoteSide('exhausted', 'exhausted')).toBe('exhausted')
+  })
+
+  it('失败排第一:一次失败必须说出来(底下那条 item 是重试的落点)', () => {
+    expect(remoteSide('failed', 'more')).toBe('failed')
+    expect(remoteSide('exhausted', 'failed')).toBe('failed')
+  })
+
+  it("'more' 排在 pending 前:另一路还没说话,不该把已经知道的那条路堵掉", () => {
+    expect(remoteSide('more', 'pending')).toBe('more')
+    expect(remoteSide('pending', 'more')).toBe('more')
+  })
+
+  it('剩下的才轮到 pending:没人说过有,于是不许诺', () => {
+    expect(remoteSide('pending', 'exhausted')).toBe('pending')
+  })
+})
+
+/**
  * 空词 = **浏览态**(09-01 用户裁定推翻了从前那张硬截 8 条的「最近」)。
  * 用户原话:「我要能够在这里面看到所有的条数,所有的记录,要能够翻页」。
  */
@@ -248,7 +381,7 @@ describe('会话侧的素材(D1)', () => {
  * 「有几条」变成了翻过页的人才配知道的事,现在它要么是按钮要么是读数,但一直在。
  */
 describe('moreState:底部那一行说什么', () => {
-  const base = { searching: true, page: 1, total: SEARCH_FIRST_PAGE + 5, files: 'exhausted' as const }
+  const base = { searching: true, page: 1, total: SEARCH_FIRST_PAGE + 5, remote: 'exhausted' as const }
 
   /*
    * 09-01 再收一格:空词从前落 'none'(于是那张列表既没总数也不能翻页),
@@ -270,7 +403,7 @@ describe('moreState:底部那一行说什么', () => {
   })
 
   it('文件侧「给满了」不等于「还有」—— 总数不知道就是 null,不猜一个数', () => {
-    expect(moreState({ ...base, files: 'more' })).toEqual({
+    expect(moreState({ ...base, remote: 'more' })).toEqual({
       kind: 'more',
       shown: SEARCH_FIRST_PAGE,
       total: null,
@@ -282,12 +415,12 @@ describe('moreState:底部那一行说什么', () => {
    * 不是「什么都不说」:此刻这几条是会话侧已经定了的数,照实报出来。
    */
   it('第一页没落定就不许诺,但条数照实报 —— 报数不是许诺', () => {
-    expect(moreState({ ...base, total: 3, files: 'pending' })).toEqual({ kind: 'count', shown: 3 })
+    expect(moreState({ ...base, total: 3, remote: 'pending' })).toEqual({ kind: 'count', shown: 3 })
   })
 
   it('第一页文件侧塌了:那句「没搜成」归列表上面那行,这条 item 是重试的入口', () => {
     // 塌了 = 这一半从没答过话,所以「还有没有更多」是不知道 —— 于是 total 为 null。
-    expect(moreState({ ...base, total: 3, files: 'failed' })).toEqual({
+    expect(moreState({ ...base, total: 3, remote: 'failed' })).toEqual({
       kind: 'more',
       shown: 3,
       total: null,
@@ -295,8 +428,8 @@ describe('moreState:底部那一行说什么', () => {
   })
 
   it('翻过页之后,加载中与失败由这条 item 自己说', () => {
-    expect(moreState({ ...base, page: 2, files: 'pending' }).kind).toBe('loading')
-    expect(moreState({ ...base, page: 2, files: 'failed' }).kind).toBe('error')
+    expect(moreState({ ...base, page: 2, remote: 'pending' }).kind).toBe('loading')
+    expect(moreState({ ...base, page: 2, remote: 'failed' }).kind).toBe('error')
   })
 
   it('全都装下 + 文件侧取尽 = 「共 N 条 · 已全部显示」', () => {
@@ -321,12 +454,12 @@ describe('moreState:底部那一行说什么', () => {
    * 全遍历。从前是 4 文件态 × 2 页 × 3 条数 = 24 格(只有搜索态);
    * 09-01 空词进表,乘上 searching 两值 = **48 格**。
    */
-  const FILES_SIDES = ['exhausted', 'more', 'pending', 'failed'] as const
+  const REMOTE_SIDES = ['exhausted', 'more', 'pending', 'failed'] as const
   const PAGES = [1, 2]
   const TOTALS = [1, SEARCH_FIRST_PAGE, SEARCH_FIRST_PAGE + 5]
   const GRID = [true, false].flatMap((searching) =>
-    FILES_SIDES.flatMap((files) =>
-      PAGES.flatMap((page) => TOTALS.map((total) => ({ searching, page, total, files }))),
+    REMOTE_SIDES.flatMap((remote) =>
+      PAGES.flatMap((page) => TOTALS.map((total) => ({ searching, page, total, remote }))),
     ),
   )
 
@@ -346,12 +479,12 @@ describe('moreState:底部那一行说什么', () => {
     for (const input of GRID.filter((x) => !x.searching)) {
       const got = moreState(input)
       expect(['more', 'end'], JSON.stringify(input)).toContain(got.kind)
-      expect(moreState({ ...input, files: 'exhausted' }), JSON.stringify(input)).toEqual(got)
+      expect(moreState({ ...input, remote: 'exhausted' }), JSON.stringify(input)).toEqual(got)
     }
   })
 
   it('浏览态:装不下就是「加载更多 · 已显示 a / 共 b」,总数当场就知道(不是 null)', () => {
-    expect(moreState({ searching: false, page: 1, total: 500, files: 'pending' })).toEqual({
+    expect(moreState({ searching: false, page: 1, total: 500, remote: 'pending' })).toEqual({
       kind: 'more',
       shown: SEARCH_FIRST_PAGE,
       total: 500,
@@ -360,7 +493,7 @@ describe('moreState:底部那一行说什么', () => {
 
   it('浏览态:翻到装得下的那一页就换成读数「共 N 条 · 已全部显示」', () => {
     const total = pageWindow(2)
-    expect(moreState({ searching: false, page: 2, total, files: 'failed' })).toEqual({
+    expect(moreState({ searching: false, page: 2, total, remote: 'failed' })).toEqual({
       kind: 'end',
       total,
     })

@@ -11,10 +11,32 @@ import { CHAPTERS, NOW, SESSIONS, seedSessionsSource } from '../../data/__fixtur
 import { toSessionSummary } from '../../expose/projection'
 import type { SessionSummary } from '../../expose/types'
 import { configureFilesPort } from '../../data/files-port'
+import { configureSearchPort } from '../../data/search-port'
+import { useLocateMessage } from '../../content/locate-message'
 import type { FilesPort } from '../../data/files-port'
 import { useFilesSource } from '../../data/files-source'
 import { translate } from '../../i18n'
-import { SEARCH_FIRST_PAGE, SEARCH_PAGE_SIZE } from '../transitions'
+import {
+  messageSearchKey,
+  messageSearchQuery,
+  resetMessageSearch,
+} from '../../data/message-search-source'
+import type { MessageHit } from '../types'
+import { SEARCH_FIRST_PAGE, SEARCH_PAGE_SIZE, pageWindow } from '../transitions'
+
+/**
+ * 正文那一路的种子(09-02)。它是 kernel 的一族 query,键 = 「词 + 这一页要多少条」,
+ * 所以种一格 = `patch` 那一格 —— 与文件侧直接 `useFilesSource.setState` 同一手:
+ * 这一批验的是**面板怎么用这批命中**,取数本身在数据源自己的用例里验。
+ *
+ * `patch` 把那一格落成 `phase:'ready'` 且不在飞 —— 也就是「这个问题已经有答案了」。
+ * 不种的那些格照旧是 pending(**那也是真的**:去抖窗口还没到点、请求还没发),
+ * 于是底部读数不许诺总数 —— 分页那一组因此必须把用到的每一页都种上。
+ */
+function seedMessageHits(query: string, page: number, hits: MessageHit[] = []): void {
+  const limit = pageWindow(page)
+  messageSearchQuery.get(messageSearchKey(query, limit)).patch({ hits, limit })
+}
 
 /**
  * 文件侧的素材 = `files.list` 交回来的那份 entries(D5 接真数据之后)。
@@ -32,6 +54,10 @@ const FILE_HITS = [
  * 不去戳 keymap 注册表(那是「面板关着时也要能触发」的那一类,与这里无关)。
  */
 beforeEach(() => {
+  // 模块级的一族 query:用例之间必须归零,否则上一条用例种下的那一格会答下一条。
+  resetMessageSearch()
+  // 「落到某条消息」那格待办同理 —— 它跨组件活着,上一条用例留下的会漏进下一条。
+  useLocateMessage.getState().reset()
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   // 两侧都吃真数据源:会话侧 D1,文件侧 D5(../data.ts 那张 mock 表已随批退役)。
   seedSessionsSource({ chapters: CHAPTERS })
@@ -212,6 +238,139 @@ describe('命中列表:走行与跳转', () => {
   })
 })
 
+/**
+ * 消息正文这一路(09-02,报障「有些 message 搜索不到」)。
+ *
+ * 面板这一侧只有三件事要验:**画出来了没有**(合流)、**点了留没留下待办**
+ * (落到那条消息的全部依据)、**去抖发没发第二次**。命中怎么造出来在
+ * `search/transitions.test.ts`,取数怎么缓存在 `data/message-search-source.test.ts`。
+ */
+describe('消息正文命中', () => {
+  const BODY_QUERY = '读取点'
+  const bodyHit = {
+    id: 'msg:os-provider:m9',
+    type: 'message' as const,
+    title: '...三处读取点里有两处走的是老路...',
+    sessionId: SESSIONS[0].id,
+    messageId: 'm9',
+    /*
+     * 区间**刻意不指向本地 indexOf 会找到的那一段**:词是「读取点」(落在 5..8),
+     * 而后端说的是 15..17 的「老路」。两个产地给的答案因此不同 —— 这一条才判得出
+     * 「画的到底是谁给的那一份」。指向同一段的话,拆掉整条 ranges 通路它照样绿。
+     */
+    matchRanges: [{ start: 15, end: 17 }],
+  }
+
+  /** 把正文那一格直接种上(与文件侧 `useFilesSource.setState` 同一手)。 */
+  const seedBody = () => seedMessageHits(BODY_QUERY, 1, [
+    {
+      id: bodyHit.id,
+      sessionId: bodyHit.sessionId,
+      messageId: bodyHit.messageId,
+      text: bodyHit.title,
+      ranges: bodyHit.matchRanges,
+    },
+  ])
+
+  const bodyRow = () =>
+    options().find((el) => (el.textContent ?? '').includes('三处读取点里有两处'))
+
+  it('画进同一张平铺列表:消息徽 + 片段 + 所属会话名', () => {
+    seedBody()
+    render(<SearchPanel />)
+    type(BODY_QUERY)
+    const row = bodyRow()
+    expect(row).toBeTruthy()
+    expect(row?.textContent).toContain('消息')
+    expect(row?.textContent).toContain(SESSIONS[0].title)
+  })
+
+  it('高亮画的是后端给的那一段,不是拿当前的词再切一遍', () => {
+    seedBody()
+    render(<SearchPanel />)
+    type(BODY_QUERY)
+    const marks = Array.from(bodyRow()?.querySelectorAll('mark') ?? []).map((m) => m.textContent)
+    // 后端说的那一段(15..17 =「老路」),不是本地 indexOf 会找到的「读取点」。
+    expect(marks).toEqual([bodyHit.title.slice(15, 17)])
+    expect(marks).not.toEqual([BODY_QUERY])
+  })
+
+  it('点一行:进那条会话,并留下「落到那条消息」的待办', () => {
+    seedBody()
+    useStageStore.setState({ placements: { search: { kind: 'stage' } } })
+    render(<SearchPanel />)
+    type(BODY_QUERY)
+    fireEvent.click(bodyRow() as HTMLElement)
+    expect(useExposeStore.getState().currentSessionId).toBe(SESSIONS[0].id)
+    expect(useLocateMessage.getState().request).toMatchObject({
+      sessionId: SESSIONS[0].id,
+      messageId: 'm9',
+    })
+    expect('search' in useStageStore.getState().placements).toBe(false)
+  })
+
+  it('别的几种命中不留待办 —— 它们的落点本来就是会话本身', () => {
+    render(<SearchPanel />)
+    type(SESSIONS[0].title)
+    fireEvent.click(options()[0])
+    expect(useExposeStore.getState().currentSessionId).toBe(SESSIONS[0].id)
+    expect(useLocateMessage.getState().request).toBeNull()
+  })
+
+  it('浏览态(空词)不出正文行 —— 「全库消息」不是一张能浏览的表', () => {
+    seedBody()
+    render(<SearchPanel />)
+    expect(bodyRow()).toBeUndefined()
+  })
+
+  /* ── 去抖:一个窗口两路 ─────────────────────────────────────────────── */
+
+  it('打字期间不发请求,停下来才发一次(两路共用同一个窗口)', async () => {
+    const asked: Array<{ query: string; limit: number }> = []
+    configureSearchPort({
+      ready: async () => undefined,
+      queryMessages: async (query, limit) => {
+        asked.push({ query, limit })
+        return { success: true, results: [] }
+      },
+    })
+    try {
+      render(<SearchPanel />)
+      type('读')
+      type('读取')
+      type('读取点')
+      // 窗口还没到点:三次击键一发都没出门。
+      expect(asked).toEqual([])
+      await waitFor(() => expect(asked.length).toBe(1))
+      expect(asked[0]).toEqual({ query: '读取点', limit: SEARCH_FIRST_PAGE })
+    } finally {
+      configureSearchPort({
+        ready: async () => undefined,
+        queryMessages: async () => ({ success: true, results: [] }),
+      })
+    }
+  })
+
+  it('正文没搜成:单独一行说出来,与文件那一行各说各的', async () => {
+    configureSearchPort({
+      ready: async () => undefined,
+      queryMessages: async () => ({ success: false, results: [] }),
+    })
+    try {
+      render(<SearchPanel />)
+      type(BODY_QUERY)
+      await waitFor(() => expect(screen.queryByText('消息没搜成')).toBeTruthy())
+      // 会话侧那几行照旧在屏幕上 —— 一路塌了不清另一路的屏。
+      expect(screen.queryByText('文件没搜成')).toBeNull()
+    } finally {
+      configureSearchPort({
+        ready: async () => undefined,
+        queryMessages: async () => ({ success: true, results: [] }),
+      })
+    }
+  })
+})
+
 describe('两种空', () => {
   /*
    * 09-01:空词是**浏览态**(列全部会话),不是「没找到」。SESSIONS 这批夹具比
@@ -319,6 +478,17 @@ describe('分页:底部那条 item', () => {
       searchLimit: SEARCH_FIRST_PAGE,
       searchError: undefined,
     })
+    /*
+     * 正文侧同理:一条都不给,而且明确说它取尽了(09-02)。
+     *
+     * **两个词、两页都要种**:分页的读数问的是「两路远端都说完了没有」,
+     * 只要有一路还没落定,「共 N 条」这句关于总数的断言就没人有资格下。
+     * 这一组验的是分页机件本身,不是「远端还没回来时读数说什么」——
+     * 后者有它自己的用例(下面那一组的 pending / failed 两格)。
+     */
+    for (const query of ['alpha', 'beta']) {
+      for (const page of [1, 2]) seedMessageHits(query, page)
+    }
   })
 
   it('首屏给 SEARCH_FIRST_PAGE 条,点一下底部那条 item 就追加下一页', () => {

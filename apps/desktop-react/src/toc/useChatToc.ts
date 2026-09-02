@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { TOC_FLASH_MS } from '../components/motion'
+import { useChatSource } from '../data/chat-source'
 import { useSessionMarkers } from '../data/sessions-source'
+import { useLocateMessage } from '../content/locate-message'
 import { useExposeStore } from '../expose/store'
+import { useT } from '../i18n'
+import { notify } from '../services/notify'
 import { currentTurnIndex } from './transitions'
 
 /**
@@ -19,6 +23,15 @@ import { currentTurnIndex } from './transitions'
  *
  * 锚点在页面上**可能缺席**(账本里的那条消息还没折出来、或已被删)。缺席的那几枚
  * 键照旧点不动 —— 但现在这是一个可判定的事实(id 不在树上),不是两套下标的漂移。
+ *
+ * ── 09-02:同一条接缝上多了第二个入口 ────────────────────────────────────
+ * 检索面搜到一条**消息正文**,点它要落到那条消息上。它与钢琴键说的是同一件事
+ * (「滚到 `data-message-id=X` 那一条并点亮」),差别只在**怎么拿到那个 id**:
+ * 键是锚点列的下标(只有用户消息),检索命中直接给 messageId(助手消息也在内)。
+ *
+ * 所以这里不新开第二条接缝,而是把「滚过去 + 点亮」抽成 `useScrollToMessage`
+ * 让两个入口共用;跨组件的那一格待办住在 `content/locate-message.ts`
+ * (点击处与办得成的地方之间隔着换会话与重折两层异步,理由写在那个文件头)。
  */
 export interface ChatToc {
   /** 当前键:视口内最近一条用户消息在**锚点列**里的下标 */
@@ -61,10 +74,54 @@ function measureAnchors(
   return found
 }
 
+/**
+ * 滚过去 + 点亮。**这一手在这只 hook 里只有一个产地** —— `pickTurn`(点键)与
+ * 「落到某条消息」(检索面点一条正文命中)是同一件事的两个入口,只是**怎么找到
+ * 那条消息**不同:一个按锚点列的下标,一个直接拿 messageId。
+ *
+ * 09-02 抽出来之前它长在 `pickTurn` 里,于是「落到消息」那一路只能抄一遍 ——
+ * 抄的那一份迟早会漏掉「先清再点」那句(同一个类名不换,CSS 动画不会重放)。
+ */
+function useScrollToMessage(
+  scrollRef: RefObject<HTMLDivElement | null>,
+  setFlashMessageId: (id: string | null) => void,
+  flashTimer: RefObject<ReturnType<typeof setTimeout> | null>,
+): (messageId: string) => boolean {
+  return useCallback(
+    (messageId: string) => {
+      const el = scrollRef.current
+      const node = el ? anchorNodes(el).get(messageId) : undefined
+      // 锚点不在树上 = 这一下办不成。**如实回 false**,不去滚一个最近的位置 ——
+      // 滚到别的地方再点亮别人,比什么都不做更像在说谎。
+      if (!el || !node) return false
+      // jsdom 里没有 scrollTo;守一手,免得测试环境把渲染层拖红。
+      if (typeof el.scrollTo === 'function') {
+        const top = node.getBoundingClientRect().top - (el.getBoundingClientRect().top - el.scrollTop)
+        el.scrollTo({ top, behavior: 'smooth' })
+      }
+      // 先清再点,连点同一条时 CSS 动画才会重放(同一个类名不换是不会重来的)。
+      setFlashMessageId(null)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      const raf =
+        typeof requestAnimationFrame === 'function'
+          ? requestAnimationFrame
+          : (fn: () => void) => setTimeout(fn, 0)
+      raf(() => {
+        setFlashMessageId(messageId)
+        flashTimer.current = setTimeout(() => setFlashMessageId(null), TOC_FLASH_MS)
+      })
+      return true
+    },
+    [scrollRef, setFlashMessageId, flashTimer],
+  )
+}
+
 export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc {
+  const t = useT()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollToMessage = useScrollToMessage(scrollRef, setFlashMessageId, flashTimer)
 
   // 键与锚点同源:两边都是这条会话的用户消息锚点列(TocPanel 读的是同一份)。
   const sessionId = useExposeStore((st) => st.currentSessionId)
@@ -98,30 +155,62 @@ export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc
     (index: number) => {
       const messageId = anchorIds[index]
       if (!messageId) return
-      const el = scrollRef.current
-      if (el) {
-        const node = anchorNodes(el).get(messageId)
-        // jsdom 里没有 scrollTo;守一手,免得测试环境把渲染层拖红。
-        if (node && typeof el.scrollTo === 'function') {
-          const top = node.getBoundingClientRect().top - (el.getBoundingClientRect().top - el.scrollTop)
-          el.scrollTo({ top, behavior: 'smooth' })
-        }
-      }
+      /*
+       * 当前键**照旧跟着走**,即使锚点此刻不在树上(账本里那条消息还没折出来 /
+       * 已被删)。键是「用户点了第几个」,与「滚成功了没有」是两件事 ——
+       * 这一条与 09-02 抽出 `scrollToMessage` 之前逐字相同。
+       */
       setCurrentIndex(index)
-      // 先清再点,连点同一条时 CSS 动画才会重放(同一个类名不换是不会重来的)。
-      setFlashMessageId(null)
-      if (flashTimer.current) clearTimeout(flashTimer.current)
-      const raf =
-        typeof requestAnimationFrame === 'function'
-          ? requestAnimationFrame
-          : (fn: () => void) => setTimeout(fn, 0)
-      raf(() => {
-        setFlashMessageId(messageId)
-        flashTimer.current = setTimeout(() => setFlashMessageId(null), TOC_FLASH_MS)
-      })
+      scrollToMessage(messageId)
     },
-    [scrollRef, anchorIds],
+    [anchorIds, scrollToMessage],
   )
+
+  /*
+   * ── 落到某条消息(09-02 正文检索)────────────────────────────────────────
+   * 检索面点一条正文命中 = 进那条会话 + 滚到那条消息。两件事之间隔着两层异步
+   * (换会话要重开折叠、折出来的消息要渲染成 DOM),所以点击那一下只留一格待办
+   * (`content/locate-message.ts`),由这里在锚点真的出现时把它消掉。
+   *
+   * **判据是「这条会话的折叠落地了没有」**,不是猜一个延迟:
+   *  · 当前会话还不是待办那条 → 等(`enterSession` 刚发生,ChatStream 还没 open);
+   *  · 折叠没落地(status !== 'ready') → 等;
+   *  · 落地了、锚点在 → 滚过去点亮,待办消掉;
+   *  · 落地了、锚点不在 → **如实说**:进是进来了,那条消息不在这棵树上
+   *    (被删 / 被压缩掉)。走 notify(info 级,进通知中心存档),
+   *    而不是静默地把待办丢掉 —— 用户按了一下,总得知道结果。
+   *
+   * 依赖表里的 `messages` 是**节拍**:它一变就说明树重画过一次,该再找一次锚点。
+   */
+  const locate = useLocateMessage((st) => st.request)
+  const settleLocate = useLocateMessage((st) => st.settleLocate)
+  const foldSessionId = useChatSource((st) => st.sessionId)
+  const foldStatus = useChatSource((st) => st.status)
+  const foldMessages = useChatSource((st) => st.messages)
+  useEffect(() => {
+    if (!locate) return
+    if (sessionId !== locate.sessionId) return
+    if (foldSessionId !== locate.sessionId || foldStatus !== 'ready') return
+    if (scrollToMessage(locate.messageId)) {
+      settleLocate(locate.token)
+      return
+    }
+    settleLocate(locate.token)
+    notify({
+      level: 'info',
+      source: 'search.open',
+      title: t('search.messageGone'),
+    })
+  }, [
+    locate,
+    sessionId,
+    foldSessionId,
+    foldStatus,
+    foldMessages,
+    scrollToMessage,
+    settleLocate,
+    t,
+  ])
 
   return { currentIndex, flashMessageId, syncFromScroll, pickTurn }
 }

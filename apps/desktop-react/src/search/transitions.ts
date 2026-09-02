@@ -2,7 +2,13 @@ import type { FileSearchEntry } from '@shared/ipc/files'
 import { projectNameOf } from '../expose/projection'
 import { splitHighlight } from '../expose/transitions'
 import type { SessionChapter, SessionSummary } from '../expose/types'
-import type { SearchOrigin, SearchRow, SearchScope, SearchTarget } from './types'
+import type {
+  MessageHit,
+  SearchOrigin,
+  SearchRow,
+  SearchScope,
+  SearchTarget,
+} from './types'
 
 /**
  * 检索面的全部逻辑。纯函数,不认识 React —— 组件只负责画。
@@ -18,8 +24,31 @@ import type { SearchOrigin, SearchRow, SearchScope, SearchTarget } from './types
  *  - 章节:`sessions.getSegments`,**按需**拉、拉过就缓存 —— 所以这里收的是
  *    「已经到手的那份缓存」,而不是一个会去发请求的取数函数。
  *
- * **消息正文搜不到**(诚实缺口):后端没有跨会话内容检索面,判据写在
- * expose/transitions.ts 的 sessionMatchesQuery 上,两个面同一条口径,留待后批。
+ * ── 09-02:正文接上了,那句「诚实缺口」是错的 ────────────────────────────
+ * 这里从前写着一句「**消息正文搜不到**(诚实缺口):后端没有跨会话内容检索面」。
+ * **那句话在写下的时候就不对**,而它正是用户报障「搜索有问题,有些 message
+ * 搜索不到」的第一半病根:后端一直有 —— `@shared/ipc/search.ts` 的 `searchRouter`
+ * (`category:'messages'`)、`runtime/src/search/providers.ts` 的 `searchMessages`
+ * (逐会话读消息 `content` 做 indexOf,回执带 `sessionId` / `messageId` /
+ * `matchRanges` 与一段截断片段)。缺的是壳这一侧没有接。
+ *
+ * 接上之后,这张表**现在的实情**是:
+ *
+ * | 搜得到 | 产地 | 怎么滤 |
+ * | --- | --- | --- |
+ * | 会话标题 | `SessionMeta.name` | 本地(整张 listMeta 在手) |
+ * | 会话预览(首条用户消息的截断) | `SessionMeta.previewText` | 本地 |
+ * | 章节标题 / 摘要 | `sessions.getSegments`(按需拉、拉过就缓存) | 本地 |
+ * | **消息正文** | `search.query` 的 `category:'messages'` | **后端**(`data/message-search-source.ts`) |
+ * | 文件名 | `files.list` | 后端 |
+ *
+ * | 还搜不到 | 为什么 |
+ * | --- | --- |
+ * | 文件**内容**的那一行 | `files.list` 是按名字找文件,给不出行号与行文(见下面 D5 那一节) |
+ * | 归档会话里的消息 | 后端 `searchMessages` 一句 `if (meta.isArchived) continue` —— 判据在那一侧,壳这边不去绕过它 |
+ * | 别的工作区的消息 | 后端搜的是整台机器,而这块面画的是**当前空间**那一份;命中按会话表投影(见 `messageRows`) |
+ * | 消息里的工具调用 / 思考 / 附件文本 | 后端只看消息的 `content` 那一格 |
+ * | 正文命中的**总数** | 后端不下发 total,也没有游标(见下面「分页」一节) |
  *
  * ── D5:文件侧接真数据(`./data.ts` 那张 mock 表连同文件一起退役) ────────
  * 素材从 `files.list` 来(数据源 `data/files-source.ts` 的 `searchHits`),
@@ -63,6 +92,11 @@ export interface SearchMaterial {
    * **缺席 = 一条都没有**,不是「掉回一张假表」—— mock 已经退役。
    */
   files?: readonly FileSearchEntry[]
+  /**
+   * `search.query`(`category:'messages'`)这一次交回来的正文命中
+   * (`data/message-search-source.ts`)。**缺席 = 一条都没有**。
+   */
+  messages?: readonly MessageHit[]
   /** 相对时间的成品句子(要查字典,所以由渲染层递进来)。 */
   timeOf: (session: SessionSummary) => string
 }
@@ -152,16 +186,84 @@ function sessionHead(session: SessionSummary, time: string): SearchOrigin {
     : { kind: 'time', time }
 }
 
+/**
+ * 把后端那批正文命中按会话归堆。**只此一次**,不是每条会话再扫一遍整表 ——
+ * 命中最多几十条、会话可能几百条,乘起来就是一次纯粹白烧的 O(n·m)。
+ */
+function hitsBySession(messages: readonly MessageHit[]): Map<string, MessageHit[]> {
+  const map = new Map<string, MessageHit[]>()
+  for (const hit of messages) {
+    const bucket = map.get(hit.sessionId)
+    if (bucket) bucket.push(hit)
+    else map.set(hit.sessionId, [hit])
+  }
+  return map
+}
+
+/**
+ * 去重用的归一:把两头的省略号与首尾空白削掉,内部连续空白压成一个空格。
+ *
+ * 两边都是**同一段原文的不同截法**:预览是 `SessionMeta.previewText`
+ * (第一条用户消息的截断),片段是后端在命中前后各留一段截出来的
+ * (`providers.ts` 的 `searchMessages`,两头按需补 `...`)。所以比之前得先把
+ * 各自的截断痕迹去掉,否则一句话的两种截法永远互不包含。
+ */
+function coreText(text: string): string {
+  return text
+    .replace(/^(\.{3}|…)+/, '')
+    .replace(/(\.{3}|…)+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** 归一之后短到这个长度以下就不做包含判定 —— 太短的串谁都包含得了。 */
+const DEDUP_MIN = 8
+
+/**
+ * 这条正文命中说的是不是**预览那一段**。
+ *
+ * 用途只有一个:预览行与正文行同时命中同一条消息时去掉一行(预览命中的正是
+ * **第一条用户消息**,而正文行是它更精确的那一份 —— 带 messageId、能滚过去)。
+ *
+ * 判据是**两段归一之后互相包含**,不是「这条会话有正文命中就把预览删掉」:
+ * 后者在 limit 截断时会把「第一条消息也命中了」这件事整条抹掉(那条命中没回来,
+ * 预览行又被删了,于是屏幕上一行都不剩)。判不出来的时候**两行都留** ——
+ * 多一行是噪音,少一行是丢信息。
+ */
+function coversPreview(preview: string, hitText: string): boolean {
+  const a = coreText(preview)
+  const b = coreText(hitText)
+  if (!a || !b) return false
+  if (a === b) return true
+  const shorter = a.length <= b.length ? a : b
+  if (shorter.length < DEDUP_MIN) return false
+  return a.includes(b) || b.includes(a)
+}
+
 function sessionRows(
   q: string,
   sessions: SessionSummary[],
   chapters: Record<string, SessionChapter[]>,
+  messages: readonly MessageHit[],
   timeOf: (session: SessionSummary) => string,
 ): SearchRow[] {
   const rows: SearchRow[] = []
+  const bySession = hitsBySession(messages)
   for (const session of sessions) {
     const target: SearchTarget = { kind: 'session', sessionId: session.id }
     const inSession: SearchOrigin = { kind: 'session', session: session.title }
+    /*
+     * 正文命中**按会话归到这里**,而不是另起一路再和会话侧交替。
+     *
+     * 判据是「它是谁的内容」:一条正文命中说的是**这条会话里的一句话**,
+     * 与预览 / 章节是同一类东西(都挂 `inSession` 出处、都是 body 级)。
+     * 另起一路的话,同一条会话的四种命中会散在列表的四个地方 —— 而这张表
+     * 本来就按会话的次序走,归堆之后一条会话的东西是连着的,扫得动。
+     *
+     * 「不按类型分堆」那条说的是**会话侧与文件侧**(interleave 那一手),
+     * 不是「会话侧内部也要打散」。
+     */
+    const hits = bySession.get(session.id) ?? []
 
     // 标题命中 = 顶级:整条会话就叫这个名字。
     if (has(session.title, q)) {
@@ -178,7 +280,14 @@ function sessionRows(
     }
     // 预览是会话**内容**(第一条用户消息的截断),所以它是「消息」徽、正文级 ——
     // 不因为挂在会话头上就升级。
-    if (session.preview && has(session.preview, q)) {
+    //
+    // 09-02:同一条消息已经由正文那一路给出来时,这一行让位 —— 那一份带
+    // messageId(点了能滚到那条消息),而这一份只能落到会话头上。
+    if (
+      session.preview
+      && has(session.preview, q)
+      && !hits.some((hit) => coversPreview(session.preview, hit.text))
+    ) {
       rows.push({
         id: `${session.id}:preview`,
         domain: 'session',
@@ -215,6 +324,30 @@ function sessionRows(
           tier: 'body',
         })
       }
+    }
+    /*
+     * 正文命中(09-02)。**这里不再滤一遍**:后端已经按词判过了 —— 壳再 indexOf
+     * 一次就是两个产地各说一次「什么算命中」(后端的 `normalizeQuery` 剥掉了开头的
+     * `>` 与 `/`,本地那一遍不会)。与文件侧那条判据逐字同源。
+     *
+     * 高亮同理:切片用后端给的 `ranges`,不用当前的词现算(`SearchRow.highlight`)。
+     *
+     * 出处是**所属会话名**(与预览 / 章节同一形),不是后端回执里的 `subtitle` ——
+     * 会话名的产地是壳里那张会话表(改名走 SSE 增量),留两个产地必然漂。
+     */
+    for (const hit of hits) {
+      rows.push({
+        id: hit.id,
+        domain: 'session',
+        badge: { kind: 'message' },
+        text: hit.text,
+        // 消息正文是散文不是代码行,不上等宽 —— 与预览 / 章节同一档。
+        code: false,
+        origin: inSession,
+        target: { kind: 'session', sessionId: session.id, messageId: hit.messageId },
+        tier: 'body',
+        highlight: hit.ranges,
+      })
     }
   }
   return rows
@@ -273,8 +406,17 @@ export function searchRows(
 ): SearchRow[] {
   const q = query.trim().toLowerCase()
   if (!q) return []
-  const { sessions, chapters = {}, files = [], timeOf } = material
-  const fromSessions = scope === 'files' ? [] : sessionRows(q, sessions, chapters, timeOf)
+  const { sessions, chapters = {}, files = [], messages = [], timeOf } = material
+  /*
+   * 正文命中跟着**会话档**走(scope 'files' 那一档一条都不出):它说的是
+   * 「这条会话里的一句话」,不是一个文件。
+   *
+   * 命中在这里**没有被单独过滤一遍**:`sessionRows` 逐条会话去 `bySession` 里取,
+   * 而它遍历的是**屏幕那份会话表**(当前空间的投影)—— 于是「别的空间的会话」
+   * 与「刚被删掉的会话」的命中天然不出行,不需要第二套名单去追。
+   */
+  const fromSessions =
+    scope === 'files' ? [] : sessionRows(q, sessions, chapters, messages, timeOf)
   const fromFiles = scope === 'sessions' ? [] : fileRows(files)
   return [
     ...interleave(fromSessions.filter(isTitle), fromFiles.filter(isTitle)),
@@ -286,15 +428,25 @@ export function searchRows(
  *
  * ## 为什么是「递增 limit 重查」而不是真游标
  *
- * 两个产地都没有游标,也都不下发命中总数:
+ * 两个远端产地都没有游标,也都不下发命中总数:
  *  - 文件侧 `files.list`(`@shared/ipc/files.ts` 的 `FilesListRequest`)只有
  *    `limit` 一格;后端 `listOnethingFileSearchEntries` 数到 limit 就 break,
  *    回执里没有 total。
- *  - 后端那个 `search` 域(`@shared/ipc/search.ts` 的 `SearchRequest`)同样
- *    只有 `limit`,而且这块面板根本没用它。
+ *  - 正文侧 `search.query`(`@shared/ipc/search.ts` 的 `SearchRequest`)同样
+ *    只有 `limit`。09-02 之前这一行末尾写着「而且这块面板根本没用它」——
+ *    那句话现在不成立了:正文检索走的正是它(`data/message-search-source.ts`)。
  * 于是分页只能是**要更多**:第 n 页带一个更大的 limit 从头重查一遍。
  * **代价如实记在这里**:每翻一页都是一次全量重拉再截断,不是增量取。
  * 后端补游标(以及下发 total)属另拍,不在本批。
+ *
+ * ## 正文侧的 limit 还多一层损耗(留账)
+ *
+ * `searchMessages` 的 limit 是**全局的**:它按会话表的次序扫,数满就 break ——
+ * 所以「前 20 条」可能全部落在头两条会话里,后面的会话根本没被扫到。
+ * 而壳这边还要再过一道**当前空间**的投影(别的空间的命中不出行),于是要了 20 条
+ * 真正上屏的可能只有几条。两件事叠起来的样子是:**翻页在正文侧比在文件侧更早
+ * 需要按**。这是后端那条口今天的形状,不在壳里补偿(补偿就是猜一个 limit 倍数,
+ * 那会让「取尽了没有」这条唯一判据失真)。
  *
  * ## 「取尽」的唯一判据
  *
@@ -318,7 +470,7 @@ export function searchRows(
 /** 首屏默认给多少条。 */
 export const SEARCH_FIRST_PAGE = 20
 
-/** 每按一次「加载更多」再放出多少条(同时也是文件侧 limit 的增量)。 */
+/** 每按一次「加载更多」再放出多少条(同时也是两路远端 limit 的增量)。 */
 export const SEARCH_PAGE_SIZE = 20
 
 /** 第 n 页(从 1 数)的窗口大小 = 首屏 + 之后每页的增量。 */
@@ -327,11 +479,16 @@ export function pageWindow(page: number): number {
 }
 
 /**
- * 文件侧那一半此刻的处境。**四态,不是三个布尔** —— 「还在路上」与「给满了」
+ * **一个远端产地**此刻的处境。**四态,不是三个布尔** —— 「还在路上」与「给满了」
  * 与「取尽了」是三件不同的事,合成布尔就得在读的地方再拼一次。
+ *
+ * 09-02 之前这里叫 `SearchFileSide`,因为远端只有文件一路。正文检索接上之后
+ * 有两路(文件 / 消息),名字跟着改成中性的 —— 类型说的一直是「一个会去问别人
+ * 的产地此刻怎么样」,与它是哪一路无关。会话侧不在这张表上:它整表在手,
+ * 「后面还有没有」当场就知道,恒定 `exhausted`。
  */
-export type SearchFileSide =
-  /** 取尽了(或这一档根本不看文件):后面没有了。 */
+export type SearchRemoteSide =
+  /** 取尽了(或这一档根本不看这一路):后面没有了。 */
   | 'exhausted'
   /** 给满了(回来的条数 == 要的条数):后面**可能**还有,但没人说过有。 */
   | 'more'
@@ -339,6 +496,26 @@ export type SearchFileSide =
   | 'pending'
   /** 这一次塌了。 */
   | 'failed'
+
+/**
+ * 两路远端合成一路。**次序是判据,不是口味**:
+ *
+ *  1. `failed` —— 一次失败必须说出来,而底部那条 item 正是「再试一次」的落点;
+ *  2. `more`   —— 有人说「我给满了」= 后面可能还有,那就得留一条能按的 item
+ *     (排在 pending 前面:另一路还没说话不该把这条已经知道的路堵掉);
+ *  3. `pending`—— 还没人说过有,于是**不许诺**,只报此刻的条数;
+ *  4. `exhausted` —— 两路都说完了才轮得到它。
+ *
+ * 空入参(两档都不看远端)= `exhausted`:没有人可问,就是没有更多。
+ */
+const REMOTE_ORDER: SearchRemoteSide[] = ['failed', 'more', 'pending', 'exhausted']
+
+export function remoteSide(...sides: SearchRemoteSide[]): SearchRemoteSide {
+  for (const candidate of REMOTE_ORDER) {
+    if (sides.includes(candidate)) return candidate
+  }
+  return 'exhausted'
+}
 
 /**
  * 列表底部那条 item 的处境。它是**一条 item**,不是一颗悬浮按钮 ——
@@ -349,16 +526,16 @@ export type SearchFileSide =
  */
 export type SearchMore =
   | { kind: 'none' }
-  /** 还能再要。`total` 只有在文件侧取尽时才知道 —— 不知道就是 null,不猜。 */
+  /** 还能再要。`total` 只有在远端取尽时才知道 —— 不知道就是 null,不猜。 */
   | { kind: 'more'; shown: number; total: number | null }
   | { kind: 'loading' }
   | { kind: 'error' }
   /** 取尽了:「共 N 条 · 已全部显示」。非交互读数,第一页就取尽也算数。 */
   | { kind: 'end'; total: number }
   /**
-   * 文件侧还没落定,而会话侧那份数已经定了:先如实报**此刻已经在屏幕上的条数**。
-   * 非交互读数 —— 它既不许诺「还有更多」(文件侧没说过话),也不说「全都在这了」
-   * (那要等文件侧取尽)。用「已显示」而不是「共」正是这个区别:
+   * 远端还没落定,而会话侧那份数已经定了:先如实报**此刻已经在屏幕上的条数**。
+   * 非交互读数 —— 它既不许诺「还有更多」(远端没说过话),也不说「全都在这了」
+   * (那要等远端取尽)。用「已显示」而不是「共」正是这个区别:
    * 「共」是一句关于总数的断言,这一刻还没人有资格下。
    */
   | { kind: 'count'; shown: number }
@@ -368,7 +545,7 @@ export interface SearchMoreInput {
    * 此刻有没有词。
    *
    * 它**不再决定「有没有底部这一行」**(那是 09-01 之前的读法),只决定
-   * 「还有没有更多」这件事去问谁:搜索态问文件侧那四态,浏览态谁都不用问 ——
+   * 「还有没有更多」这件事去问谁:搜索态问远端那四态,浏览态谁都不用问 ——
    * 行全部来自会话侧,而会话侧整张表在手,后面有没有当场就知道。
    */
   searching: boolean
@@ -376,7 +553,12 @@ export interface SearchMoreInput {
   page: number
   /** 此刻**造得出来**的全部行数(受当前 limit 约束的那一份)。 */
   total: number
-  files: SearchFileSide
+  /**
+   * 远端那几路合成的一个处境(09-02 起有两路:文件 / 消息正文,由 `remoteSide`
+   * 合成)。这里只收合成之后的那一个 —— 判据表要问的一直是「后面还有没有」,
+   * 那是一个问题,不是每来一路就多一个入参。
+   */
+  remote: SearchRemoteSide
 }
 
 /**
@@ -398,7 +580,14 @@ export interface SearchMoreInput {
  * 整张表在手 —— 所以它在这张表里就是**恒定的 `exhausted`**(后面确实没有了)。
  * 于是 count / end / 加载更多逐格复用,没有第二套。
  *
- * | 行数  | searching | page | files      | 结果      | 屏幕上                       |
+ * ## 09-02:远端从一路变两路,判据表一格没动
+ *
+ * 正文检索接上之后远端有两路(文件 / 消息)。合成发生在**进这张表之前**
+ * (`remoteSide`,次序 failed > more > pending > exhausted),所以这里收到的
+ * 仍然是一个处境 —— 判据表要问的一直是「后面还有没有」,那是一个问题,
+ * 不是每来一路就多一列。
+ *
+ * | 行数  | searching | page | remote     | 结果      | 屏幕上                       |
  * | ---   | ---       | ---  | ---        | ---       | ---                          |
  * | 0 条  | 任意      | 任意 | 任意       | `none`    | 什么都不画                    |
  * | >0    | 空词      | 任意 | (不问)    | 同 exhausted 那两格 | 「加载更多 · 已显示 a / 共 b」或「共 N 条 · 已全部显示」 |
@@ -411,22 +600,22 @@ export interface SearchMoreInput {
  * | 全装下            | 搜索态 | 任意 | more/failed | `more`(total=null) | 「加载更多」            |
  *
  * 两处**没有**跟着改的地方,理由都还成立:
- *  - 文件侧 pending 的第一页**仍然不许诺**「加载更多」:那一句是在说「后面还有」,
+ *  - 远端 pending 的第一页**仍然不许诺**「加载更多」:那一句是在说「后面还有」,
  *    而这一刻没人说过有;每敲一个字母闪一下它就是噪音。改的只是那一格从「什么都
  *    不画」变成「照实报此刻的条数」—— 报数不是许诺,而且这个数是**会话侧已经定了
- *    的那一份**(文件侧此刻恒空,不猜它)。
+ *    的那一份**(远端此刻恒空,不猜它)。
  *  - failed 的语义一格没动:第一页塌了那次,「没搜成」归列表上面那行,而这条 item
  *    是「再试一次」的落点(所以它是可按的 `more`,不是读数)。
  */
-export function moreState({ searching, page, total, files }: SearchMoreInput): SearchMore {
+export function moreState({ searching, page, total, remote }: SearchMoreInput): SearchMore {
   if (total === 0) return { kind: 'none' }
   /*
    * 浏览态(空词)的行全部来自会话侧,而会话侧整张 listMeta 在手 ——
    * 「后面还有没有」这件事当场就知道,而且答案永远是「没有了」。所以这里不是
-   * 一条支路,是**一次翻译**:把浏览态翻成文件侧那四态里的 'exhausted',
+   * 一条支路,是**一次翻译**:把浏览态翻成远端那四态里的 'exhausted',
    * 下面每一格照旧,count / end / 加载更多一格都不用重写。
    */
-  const side = searching ? files : 'exhausted'
+  const side = searching ? remote : 'exhausted'
   /*
    * 加载中 / 失败这两种只在**翻过页之后**才由这条 item 来说。
    * 第一页那次失败归列表上面那行(`search.filesFailed`)—— 一次失败说两遍
@@ -438,7 +627,7 @@ export function moreState({ searching, page, total, files }: SearchMoreInput): S
   }
   const shown = Math.min(total, pageWindow(page))
   if (shown < total) return { kind: 'more', shown, total: side === 'exhausted' ? total : null }
-  // 窗口已经装下此刻的全部行 —— 还有没有更多,只有文件侧那一边知道。
+  // 窗口已经装下此刻的全部行 —— 还有没有更多,只有远端那几路知道。
   // 取尽 = 后面没有了,这就是最终那个数,**第一页就取尽也算数**。
   if (side === 'exhausted') return { kind: 'end', total }
   /*

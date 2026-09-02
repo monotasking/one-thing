@@ -24,6 +24,7 @@ import {
   setColumns,
   setQuery,
   splitHighlight,
+  splitHighlightRanges,
   timeBucket,
   toggleGroupCollapsed,
   visibleCardIds,
@@ -408,6 +409,62 @@ describe('搜索 = 过滤器,不是第四种形态', () => {
 
   it('splitHighlight 空词时原样返回一片', () => {
     expect(splitHighlight('abc', '')).toEqual([{ text: 'abc', hit: false }])
+  })
+})
+
+/**
+ * 命中区间由**别人**判好递进来的那个入口(09-02 正文检索:后端给 `matchRanges`)。
+ *
+ * 入参当作不可信 —— 它跨了一个进程,而「今天只给一段、一定不越界」不是一条能
+ * 依赖的性质。所以这一组里大半是边界:越界、乱序、重叠、空段。
+ */
+describe('splitHighlightRanges(区间由产地给定)', () => {
+  const text = '重构 provider 抽象'
+  /** 每一组都要成立的那条不变量:片段拼起来 === 原文,一个字符不多不少。 */
+  const joined = (ranges: { start: number; end: number }[]) =>
+    splitHighlightRanges(text, ranges).map((p) => p.text).join('')
+
+  it('照区间切,命中段就是那一截', () => {
+    const parts = splitHighlightRanges(text, [{ start: 3, end: 11 }])
+    expect(parts.filter((p) => p.hit).map((p) => p.text)).toEqual(['provider'])
+    expect(parts.map((p) => p.text).join('')).toBe(text)
+  })
+
+  it('多段:各切各的,次序按位置', () => {
+    const parts = splitHighlightRanges('aXbXc', [
+      { start: 1, end: 2 },
+      { start: 3, end: 4 },
+    ])
+    expect(parts.filter((p) => p.hit).length).toBe(2)
+    expect(parts.map((p) => p.text).join('')).toBe('aXbXc')
+  })
+
+  it('空表 = 不高亮,原样一片(不去拿词再算一遍)', () => {
+    expect(splitHighlightRanges(text, [])).toEqual([{ text, hit: false }])
+  })
+
+  it('越界的区间被夹进文本 —— 不交出一串错位的片', () => {
+    expect(joined([{ start: -5, end: 999 }])).toBe(text)
+    expect(splitHighlightRanges(text, [{ start: -5, end: 999 }]).every((p) => p.hit)).toBe(true)
+  })
+
+  it('乱序进来照样按位置切', () => {
+    const parts = splitHighlightRanges('aXbXc', [
+      { start: 3, end: 4 },
+      { start: 1, end: 2 },
+    ])
+    expect(parts.map((p) => p.text).join('')).toBe('aXbXc')
+    expect(parts.filter((p) => p.hit).length).toBe(2)
+  })
+
+  it('重叠 / 被吞掉的区间不会把文本切重', () => {
+    expect(joined([{ start: 0, end: 6 }, { start: 3, end: 11 }])).toBe(text)
+    expect(joined([{ start: 0, end: 11 }, { start: 3, end: 6 }])).toBe(text)
+  })
+
+  it('空段(start === end,或反着来)直接丢掉', () => {
+    expect(splitHighlightRanges(text, [{ start: 4, end: 4 }])).toEqual([{ text, hit: false }])
+    expect(splitHighlightRanges(text, [{ start: 8, end: 3 }])).toEqual([{ text, hit: false }])
   })
 })
 

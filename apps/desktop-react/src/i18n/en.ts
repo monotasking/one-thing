@@ -249,6 +249,15 @@ export const en: Record<MessageKey, string> = {
    * files" record, and a failed search is not an empty one. */
   'search.filesNeedQuery': 'Type a keyword to search files',
   'search.filesFailed': 'File search failed',
+  /* 09-02: message bodies are a second remote producer (search.query,
+   * category 'messages'). Its failure gets its own line for the same reason the
+   * file one does — one half can be fine while the other is down, and merging
+   * them into "search failed" hides which. */
+  'search.messagesFailed': 'Message search failed',
+  /* The session opened, the message did not turn up in its ledger (deleted, or
+   * compacted away). Said out loud rather than swallowed: the click has to have
+   * a visible outcome, and "scrolled somewhere near it" would be a lie. */
+  'search.messageGone': 'Opened the session — that message is no longer in it',
   /* The last item in the list. The count is a READOUT, not a badge: the total is
    * only knowable once the file side runs dry (the backend sends no total — see
    * the pagination section of search/transitions.ts), so until then we say

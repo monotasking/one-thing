@@ -146,6 +146,21 @@ configureFilesPort({
  * (`providers/catalog-query.ts`),假端口在下面那份 `configureProviderSettingsPort`
  * 里 —— 同一个产地,同一份假货。
  */
+/**
+ * 跨会话正文检索的端口(09-02):同一条理由,同一手。检索面板一敲词就会去摸它,
+ * 不装的话每个渲染了检索面的用例都会动态 import 真的 `@renderer/platform`。
+ *
+ * 默认这一份**成功但是空**:一台连上了、然而一条消息都没搜到的 core 是真实存在
+ * 的状态(空表 ≠ 出错),面板据此不画正文行、也不画那句「消息没搜成」。
+ * 要验取数或失败态的用例自己 `configureSearchPort` 换一个。
+ */
+import { configureSearchPort } from '../data/search-port'
+
+configureSearchPort({
+  ready: async () => undefined,
+  queryMessages: async () => ({ success: true, results: [] }),
+})
+
 import { configureModelsPort } from '../data/models-port'
 
 configureModelsPort({

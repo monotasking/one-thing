@@ -394,6 +394,48 @@ export function splitHighlight(text: string, query: string): HighlightPart[] {
 }
 
 /**
+ * 同一件事的第二个**入口**,不是第二份实现:命中区间由**别人**判好了递进来。
+ *
+ * `splitHighlight` 服务的是「文本与词都在手上,自己 indexOf」那一路(会话 /
+ * 文件命中都是本地滤出来的);这一路服务的是「命中是产地判的」——
+ * 跨会话正文检索的片段与 `matchRanges` 都由后端给出,而后端的判据与本地的
+ * `indexOf` 不完全一样(它先 `normalizeQuery` 剥掉开头的 `>` 与 `/`)。
+ * 拿本地那条再算一遍就有两个产地各说一次「什么算命中」—— 迟早对不上。
+ *
+ * 切片纪律与上面那只逐字相同(不重叠、按序、片段拼起来 === 原文),
+ * 所以视图那一头一个字都不用改:两只都交 `HighlightPart[]`。
+ *
+ * 入参**当作不可信**:区间来自另一个进程,可能越界、可能乱序、可能重叠
+ * (后端今天只给一段,但「今天只给一段」不是一条能依赖的性质)。
+ * 于是这里排序、夹进 `[0, text.length]`、丢掉空段与被前一段吞掉的那一段 ——
+ * 而不是让 `slice` 交出一串错位的片。
+ */
+export function splitHighlightRanges(
+  text: string,
+  ranges: readonly { start: number; end: number }[],
+): HighlightPart[] {
+  const clamped = ranges
+    .map((range) => ({
+      start: Math.max(0, Math.min(text.length, Math.trunc(range.start))),
+      end: Math.max(0, Math.min(text.length, Math.trunc(range.end))),
+    }))
+    .filter((range) => range.end > range.start)
+    .sort((a, b) => a.start - b.start)
+  const parts: HighlightPart[] = []
+  let from = 0
+  for (const range of clamped) {
+    // 与前一段重叠(或被它整个吞掉)的那一段:只取还没画过的那一截。
+    const start = Math.max(range.start, from)
+    if (range.end <= start) continue
+    if (start > from) parts.push({ text: text.slice(from, start), hit: false })
+    parts.push({ text: text.slice(start, range.end), hit: true })
+    from = range.end
+  }
+  if (from < text.length) parts.push({ text: text.slice(from), hit: false })
+  return parts.length > 0 ? parts : [{ text, hit: false }]
+}
+
+/**
  * 时间桶是**标识**,不是文案:纯函数不许产出界面字符串,
  * 否则换一门语言就得改状态机。小标题由 ListView 拿这个标识去查字典。
  */

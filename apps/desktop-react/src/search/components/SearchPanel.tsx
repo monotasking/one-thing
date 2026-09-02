@@ -22,11 +22,18 @@ import {
   nextScope,
   originText,
   pageWindow,
+  remoteSide,
   searchRows,
   targetText,
 } from '../transitions'
-import type { SearchFileSide, SearchMaterial } from '../transitions'
-import type { SearchBadge, SearchRow, SearchScope } from '../types'
+import type { SearchMaterial, SearchRemoteSide } from '../transitions'
+import type { MessageHit, SearchBadge, SearchRow, SearchScope } from '../types'
+import {
+  ensureMessageSearch,
+  refetchMessageSearch,
+  useMessageSearch,
+} from '../../data/message-search-source'
+import { useLocateMessage } from '../../content/locate-message'
 import s from './SearchPanel.module.css'
 
 /**
@@ -46,11 +53,18 @@ import s from './SearchPanel.module.css'
 const CHAPTER_PREFETCH_LIMIT = 8
 
 /**
- * 文件检索的合并窗口(D5)。会话侧是本地滤(整张 listMeta 在手,零延迟),
- * 文件侧是**一次真查询**(后端 ripgrep 列目录再滤),所以每敲一个字母就发一次
- * 请求是不合适的。窗口按「打完一个词的停顿」取,不按「最快能有多快」取。
+ * 远端检索的合并窗口(D5 立,09-02 起两路共用)。会话侧是本地滤(整张 listMeta
+ * 在手,零延迟),文件侧与正文侧都是**一次真查询**(前者后端列目录再滤,后者
+ * 后端逐会话读消息),所以每敲一个字母就发一次请求是不合适的。
+ * 窗口按「打完一个词的停顿」取,不按「最快能有多快」取。
+ *
+ * **一个窗口、一条副作用管两路**,不是各自去抖:两路的主语里都有那个词,
+ * 两个计时器只会让它们在不同的帧上落地,屏幕上多闪一次。
  */
-const FILE_SEARCH_DEBOUNCE_MS = 220
+const SEARCH_DEBOUNCE_MS = 220
+
+/** 「正文那一路此刻一条都没有」的那**一个**空表(身份稳定,见消费处)。 */
+const NO_HITS: readonly MessageHit[] = []
 
 const SCOPE_LABELS: Record<SearchScope, MessageKey> = {
   all: 'search.scopeAll',
@@ -90,6 +104,8 @@ export function SearchPanel() {
   const fileError = useFilesSource((st) => st.searchError)
   const fileLimit = useFilesSource((st) => st.searchLimit)
   const searchFiles = useFilesSource((st) => st.searchFiles)
+  /** 点一条正文命中 = 进会话 + 留一格「落到那条消息」的待办(见 activate)。 */
+  const locateMessage = useLocateMessage((st) => st.locateMessage)
   const timeOf = useSessionTime()
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -122,9 +138,26 @@ export function SearchPanel() {
     () => (fileAnswerIsCurrent ? fileHits : []),
     [fileAnswerIsCurrent, fileHits],
   )
+  /*
+   * 正文那一路(09-02)。它是 kernel 的一格 query,键 = 「词 + 这一页要多少条」——
+   * 所以**不必再问一句「这批答案是不是此刻这个词」**:换词就是换了一格,
+   * 那一格自己的 `data` 天然只属于自己的词(文件侧要问那一句,是因为它把
+   * 「上一次的答案」存在一个跟着词走的公共格子里)。
+   */
+  const messageLimit = pageWindow(page)
+  const messageAnswer = useMessageSearch(query, scope === 'files' ? 0 : messageLimit)
+  // 缺席那一份用**同一个**空表:每次渲染现造一个 `[]` 会让下面那只 memo 的
+  // 依赖每帧都变,整张列表白重算一遍(律④那条身份纪律的同一件事)。
+  const messages = messageAnswer.data?.hits ?? NO_HITS
   const material: SearchMaterial = useMemo(
-    () => ({ sessions, chapters, files, timeOf: (session) => timeOf(session.updatedAt) }),
-    [sessions, chapters, files, timeOf],
+    () => ({
+      sessions,
+      chapters,
+      files,
+      messages,
+      timeOf: (session) => timeOf(session.updatedAt),
+    }),
+    [sessions, chapters, files, messages, timeOf],
   )
   const rows = useMemo(
     () => (searching ? searchRows(query, scope, material) : browseRows(scope, material)),
@@ -136,14 +169,37 @@ export function SearchPanel() {
    * 游标也不下发总数,这是唯一能判的一句(理由写在 transitions 的「分页」一节)。
    * `scope === 'sessions'` 时这一档根本不看文件,所以它恒定「取尽」。
    */
-  const fileSide: SearchFileSide = useMemo(() => {
+  const fileSide: SearchRemoteSide = useMemo(() => {
     if (scope === 'sessions') return 'exhausted'
     if (!fileAnswerIsCurrent || fileStatus === 'idle' || fileStatus === 'loading') return 'pending'
     if (fileStatus === 'error') return 'failed'
     return fileHits.length < fileLimit ? 'exhausted' : 'more'
   }, [scope, fileAnswerIsCurrent, fileStatus, fileHits.length, fileLimit])
 
-  const more = moreState({ searching, page, total: rows.length, files: fileSide })
+  /**
+   * 正文侧此刻的处境。**同一张四态表,判据逐条对应** —— 两路的形状一样,
+   * 只是读的是 kernel 的快照而不是手写的四件套:
+   *  · 这一档不看正文(`scope === 'files'`)/ 没给词 → 恒定「取尽」(没有人可问);
+   *  · 在飞、或者这一格从来没有过答案 → pending;
+   *  · 上一发塌了(错误在,而且**没有旧答案**)→ failed;
+   *    有旧答案时错误只由列表上面那行说,底下照旧按旧答案判取尽 —— 律②。
+   *  · 落地了 → 回来的条数 < 要的条数 = 取尽。
+   */
+  const messageSide: SearchRemoteSide = useMemo(() => {
+    if (scope === 'files' || !searching) return 'exhausted'
+    const answer = messageAnswer.data
+    if (messageAnswer.inflight || !answer) {
+      return messageAnswer.error && !answer ? 'failed' : 'pending'
+    }
+    return answer.hits.length < answer.limit ? 'exhausted' : 'more'
+  }, [scope, searching, messageAnswer.data, messageAnswer.inflight, messageAnswer.error])
+
+  const more = moreState({
+    searching,
+    page,
+    total: rows.length,
+    remote: remoteSide(fileSide, messageSide),
+  })
   /** 屏幕上这一页。会话侧本来就全量在手,所以翻页在那一侧纯粹是把窗口拉大。 */
   const visible = useMemo(() => rows.slice(0, pageWindow(page)), [rows, page])
   /** 底部那条 item 能不能按(加载中也留在轮转序列里,免得焦点在加载途中蒸发)。 */
@@ -193,24 +249,34 @@ export function SearchPanel() {
   }, [searching, query, scope, sessions, ensureChapters])
 
   /*
-   * 文件侧是一次**真查询**,所以它有自己的取数副作用(会话侧没有:整张表在手)。
-   * 合并窗口挡的是「每敲一个字母发一次请求」;`scope === 'sessions'` 时连发都不发 ——
-   * 用户已经说了这一轮不看文件。
+   * 两路远端各是一次**真查询**,所以它们有自己的取数副作用(会话侧没有:整张表
+   * 在手)。合并窗口挡的是「每敲一个字母发一次请求」;各自的档位闸另判 ——
+   * `scope === 'sessions'` 连文件都不发,`scope === 'files'` 连正文都不发:
+   * 用户已经说了这一轮不看那一侧。
    *
-   * 分页是**递增 limit 重查**:第 n 页带一个更大的 limit 从头再要一次(后端只有
-   * limit 没有游标 —— 代价与留账写在 transitions 的「分页」一节),所以 `page`
-   * 也在依赖表里:翻一页就是重发一次。
+   * 分页是**递增 limit 重查**:第 n 页带一个更大的 limit 从头再要一次(两条口都
+   * 只有 limit 没有游标 —— 代价与留账写在 transitions 的「分页」一节),
+   * 所以 `page` 也在依赖表里:翻一页就是重发一次。
    *
    * 合并窗口只挡**打字的余波**:主语(词 + 根)没变 —— 也就是这一次是翻页或者
    * 「重试」—— 就当场发。让一次确定的点击等 220ms 是把它当成了打字。
+   *
+   * ── 09-02:一条副作用两路,不是两条各自去抖 ──────────────────────────────
+   * 主语里的 `cwd` 只与文件那一路有关:换工作目录会让这条重跑,于是正文那一路
+   * 也跟着 `ensure` 一次。**那一次是免费的** —— 正文侧是键控缓存,同一个
+   * 「词 + limit」问过就当场早退,一个字节都不出门。这正是把缓存做成键控换来的
+   * 那一格:两路可以共用一个主语,而不必为了省一次请求去拆第二个计时器。
    */
   const askedSubject = useRef<string | null>(null)
   useEffect(() => {
-    if (scope === 'sessions') return
+    if (scope === 'sessions' && !searching) return
     const subject = JSON.stringify([query.trim(), cwd])
     const sameSubject = askedSubject.current === subject
     askedSubject.current = subject
-    const run = () => void searchFiles(query, cwd, pageWindow(page))
+    const run = () => {
+      if (scope !== 'sessions') void searchFiles(query, cwd, pageWindow(page))
+      if (scope !== 'files') void ensureMessageSearch(query, pageWindow(page))
+    }
     /*
      * 主语没变、而且已经翻过页 —— 那这一次只能是「加载更多」或者「重试」,
      * 两者都是一次**确定的点击**,当场发。第一页永远走合并窗口:换词换范围都
@@ -220,9 +286,9 @@ export function SearchPanel() {
       run()
       return
     }
-    const timer = setTimeout(run, FILE_SEARCH_DEBOUNCE_MS)
+    const timer = setTimeout(run, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [query, scope, cwd, page, searchFiles])
+  }, [query, scope, cwd, page, searching, searchFiles])
 
   // 底部那条 item 没了(取尽 / 列表空了)就不能再让选中停在它上面。
   useEffect(() => {
@@ -253,6 +319,20 @@ export function SearchPanel() {
     switch (row.target.kind) {
       case 'session':
         enterSession(row.target.sessionId)
+        /*
+         * 正文命中还带一个落点(09-02):进会话之后要滚到**那条消息**上。
+         *
+         * 这一下**只留一格待办**,不在这里去找 DOM:换会话之后聊天区要重开一次
+         * 折叠、折出来的消息还要渲染成节点,而这一帧那棵树还是上一条会话的。
+         * 待办由 `toc/useChatToc` 在锚点真的出现时消掉(判据是折叠落地,
+         * 不是猜一个延迟)—— 理由与整条链写在 `content/locate-message.ts` 头上。
+         *
+         * 缺席 messageId 的那几种(标题 / 预览 / 章节命中)一个字都不改:
+         * 它们的落点本来就是这条会话本身。
+         */
+        if (row.target.messageId) {
+          locateMessage(row.target.sessionId, row.target.messageId)
+        }
         break
       case 'file':
         /*
@@ -286,7 +366,14 @@ export function SearchPanel() {
       setPage((p) => p + 1)
       return
     }
-    if (more.kind === 'error') void searchFiles(query, cwd, pageWindow(page))
+    if (more.kind !== 'error') return
+    /*
+     * 重试**两路一起重来**(09-02)。底下那条 item 只有一个 —— 用户按的是
+     * 「再来一次」,而不是「重试文件那一半」;哪一路塌了不是他要分辨的事。
+     * 正文那一路走 `refetch`(用户明确要求重来,不是 `ensure` 的「问过就算了」)。
+     */
+    if (scope !== 'sessions') void searchFiles(query, cwd, pageWindow(page))
+    if (scope !== 'files') void refetchMessageSearch(query, pageWindow(page))
   }
 
   /*
@@ -376,6 +463,21 @@ export function SearchPanel() {
         </p>
       )}
 
+      {/*
+        * 正文检索失败(09-02):**同一条判据、同一个形制**,只是换一句话与另一个
+        * 产地的原话。两路各说各的 —— 合成一句「检索失败」会让人分不清是哪一半塌了,
+        * 而它们是两条独立的口(一条可能好着,另一条塌了)。
+        *
+        * 判据里没有「答案是不是当前这个词」那一句(文件侧要问):正文侧是键控的
+        * 一格 query,`messageAnswer` 本身就只属于当前这个词与这一页。
+        */}
+      {scope !== 'files' && searching && messageAnswer.error && (
+        <p className={s.failed}>
+          {t('search.messagesFailed')}
+          <span className={s.failedDetail}>{messageAnswer.error}</span>
+        </p>
+      )}
+
       <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
         {rows.length === 0 ? (
           <p className={s.none}>
@@ -414,7 +516,13 @@ export function SearchPanel() {
                 <span className={s.chipText}>{badgeText(row.badge, t)}</span>
               </span>
               <span className={row.code ? `${s.text} ${s.code}` : s.text}>
-                <Highlight text={row.text} query={searching ? query : ''} />
+                {/* 高亮两条产地一条渲染:行自带 `highlight`(正文命中,后端判的)
+                  * 就用那一份,没有就照当前的词自己切 —— 判据写在 Highlight 上。 */}
+                <Highlight
+                  text={row.text}
+                  query={searching ? query : ''}
+                  {...(row.highlight ? { ranges: row.highlight } : {})}
+                />
               </span>
               <span className={s.origin}>{originText(row.origin)}</span>
             </ButtonBase>

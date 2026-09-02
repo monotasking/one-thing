@@ -29,7 +29,19 @@ export type SearchBadge =
  * 届时这里一个字不用改 —— 这正是把它写成可选而不是删掉的理由。
  */
 export type SearchTarget =
-  | { kind: 'session'; sessionId: string }
+  | {
+      kind: 'session'
+      sessionId: string
+      /**
+       * 落到会话里**哪一条消息**上(09-02 正文检索)。缺席 = 落点就是这条会话本身
+       * (标题 / 预览 / 章节命中都给不出一个具体的消息 id —— 章节说的是一段,
+       * 预览说的是一段截断)。
+       *
+       * 与 `line` 那一格是同一条判据的两个例子:**产地给得出才有值**,
+       * 给不出就缺席,不去补一个「第一条」凑格式。
+       */
+      messageId?: string
+    }
   | { kind: 'file'; path: string; line?: number }
 
 /**
@@ -55,6 +67,12 @@ export type SearchOrigin =
  */
 export type SearchTier = 'title' | 'body'
 
+/** 一段命中区间(后端 `SearchResult.matchRanges` 的形状,半开区间 `[start, end)`)。 */
+export interface HighlightRange {
+  start: number
+  end: number
+}
+
 export interface SearchRow {
   id: string
   domain: SearchDomain
@@ -66,7 +84,47 @@ export interface SearchRow {
   origin: SearchOrigin
   target: SearchTarget
   tier: SearchTier
+  /**
+   * 这一行的高亮**由产地给定**(09-02 正文检索)。缺席 = 视图照当前的词自己切
+   * (会话 / 文件那两路本来就是本地滤出来的,词与文本都在手上)。
+   *
+   * 在场的那一路是消息正文:命中是**后端**判出来的,片段也是它截的
+   * (前后各留一段 + 省略号)。让视图拿本地的词再 indexOf 一遍会有两个产地各说
+   * 一次「什么算命中」—— 后端的 `normalizeQuery` 剥掉了开头的 `>` 与 `/`,
+   * 本地那一遍不会,于是同一个词两边切出来的片能对不上。
+   */
+  highlight?: readonly HighlightRange[]
 }
+
+/**
+ * 一条**正文命中**的素材(`data/message-search-source.ts` 交下来的那一份)。
+ *
+ * 它是后端 `SearchResult` 的一次**收窄**,不是「在契约旁边立第二份形状」:
+ * 契约上那张表要同时装得下 action / prompt / file 几种命中,所以 `sessionId` /
+ * `messageId` 都是可选的;而这一路的行必须**能落地**(点它要进会话、滚到那条
+ * 消息),缺一格就画不出来。收窄只发生一次(在数据源那只 `toHits` 里),
+ * 于是下游没有一处需要再判 `if (!hit.sessionId)`。
+ */
+export interface MessageHit {
+  /** 后端给的 id(`msg:<sessionId>:<messageId>`);缺席时由数据源按同一形状补。 */
+  id: string
+  sessionId: string
+  messageId: string
+  /** 后端截好的片段(命中前后各留一段,两头可能带省略号)。 */
+  text: string
+  /** 后端判出来的命中区间,坐标落在 `text` 上。空表 = 这一行不高亮。 */
+  ranges: readonly HighlightRange[]
+}
+
+/*
+ * 后端那份 `SearchResult` 上还有三格**没有搬过来**,理由逐条:
+ *  · `timestamp` —— 正文行的出处画的是**所属会话名**(与章节行同一形),
+ *    没有一处画消息时刻;搬一格没人读的字段就是留一个将来会和真相漂开的副本。
+ *  · `subtitle`(后端给的会话名)—— 会话名的产地是壳里那张会话表(改名走 SSE
+ *    增量,后端这一份是查询那一刻的快照)。**两个产地说同一个名字**,只留一个。
+ *  · `detail`('User message' / 'Assistant message')—— 它是后端硬编码的英文,
+ *    而界面文案要查字典。要画角色就得由徽或行自己去说,不能直接铺一句英文。
+ */
 
 /* ── 文件侧素材 ──────────────────────────────────────────────────────────
  * D5 之后这里**一个类型都没有**:文件侧的素材就是 `@shared/ipc/files` 的
