@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +22,8 @@ import { useViewerSource, viewerSaveKey, viewerSaveMutation } from '../../data/v
 import type { ViewerFile } from '../../data/viewer-source'
 import { useFileOpenMode } from '../../data/file-open-mode'
 import { useStageStore } from '../../stage/store'
+import { focusTree } from '../../focus/registry'
+import { FocusDispatchHarness } from '../../test/focus-harness'
 
 /**
  * 文件查看器(F1)。这一组验的是**查看器这一块内容自己**:三张注册表、
@@ -70,6 +72,11 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   useViewerSource.getState().reset()
   useFileOpenMode.setState({ mode: 'panel' })
+})
+
+// 响应链是模块级单例(同 store):一份用例留下的作用域不该被下一份看见。
+afterEach(() => {
+  focusTree.reset()
 })
 
 /* ── 三张注册表 ────────────────────────────────────────────────────────── */
@@ -767,17 +774,25 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
   })
 
   /**
-   * 09-02 批 6:散场行为迁进 `ui/float` 的 `useFloatDismiss`。
-   * 两条各钉一件,拆掉哪一条都当场红:
+   * 散场行为的两条,拆掉哪一条都当场红:
    *  · Esc 关掉,而且**认领这一下**(preventDefault)—— 退层链读的正是它,
    *    不认领的话同一下 Esc 会继续往外把查看器所在的那块面一起收掉;
-   *  · **不点外关**(`outside: false`):点到正文上不该把条收掉,那一下多半
-   *    正是用户在看清楚要跳哪儿。原语的默认档是点外关,所以这一条是真守卫。
+   *  · **不点外关**:点到正文上不该把条收掉,那一下多半正是用户在看清楚要跳哪儿。
+   *
+   * 09-02 批 6 它从手写监听迁进 `ui/float` 的 `useFloatDismiss`(浮层栈);
+   * R1 再迁一次,这回迁到响应链:跳转条是一格 `float` 作用域,`onEscape` 一句
+   * 声明,认领由那唯一的派发器代劳 —— 所以夹具里要有那个派发器
+   * (`FocusDispatchHarness`),它就是外壳上那一格。
    */
   it('Esc 关掉跳转条,并认领这一下(退层链据 defaultPrevented 让位)', async () => {
     installPort()
     await open('/repo/a.ts')
-    render(<FileViewer />)
+    render(
+      <>
+        <FocusDispatchHarness />
+        <FileViewer />
+      </>,
+    )
     fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'l', metaKey: true })
     await screen.findByTestId('viewer-jump-bar')
 

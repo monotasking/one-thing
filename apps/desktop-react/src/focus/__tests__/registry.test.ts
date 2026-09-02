@@ -7,15 +7,23 @@ import { focusTree } from '../registry'
  * 这一组钉的是那张表里每一格真的成立:换宿主保住 `lastFocused`、宿主打 inert
  * 等于结构变化、孤儿焦点不改路径、独占口吃掉一切、`reset()` 是唯一那口拆卸。
  *
- * **R0 的闸**:`policy.moveFocus` 缺省 false —— 本批只观察不搬焦点。所以每条
- * 「焦点真的被送到哪儿」的用例都自己把闸打开再验,同时另有一条验它关着时
- * 一个 `focus()` 都不发(那正是「零可感知变化」在单测里的形)。
+ * **那道闸**:`policy.moveFocus` R0 缺省 false(只观察),**R1 起缺省 true**。
+ * 所以这一组的 `afterEach` 把它还原成 true —— 还原成 false 的话,下一份用例
+ * 就在一个产品里不存在的档位上跑。要验「关着时一个 `focus()` 都不发」的那条
+ * 自己临时关掉再验,那是这道闸留着的唯一理由(真机上万一某条搬焦点的路有害,
+ * 一句话退回只观察)。
  */
 
 afterEach(() => {
   focusTree.reset()
-  focusTree.policy.moveFocus = false
+  focusTree.policy.moveFocus = true
   document.body.innerHTML = ''
+})
+
+describe('闸', () => {
+  it('R1 缺省搬焦点(R0 是 false,那一批只观察)', () => {
+    expect(focusTree.policy.moveFocus).toBe(true)
+  })
 })
 
 /**
@@ -134,8 +142,7 @@ describe('DOM 焦点(focusin)', () => {
 })
 
 describe('结构变化后的结算', () => {
-  it('第一响应者卸载 → 路径缩回父,焦点回父的 lastFocused(闸开着时)', () => {
-    focusTree.policy.moveFocus = true
+  it('第一响应者卸载 → 路径缩回父,焦点回父的 lastFocused', () => {
     const row = focusable('row')
     const input = document.createElement('input')
     const barEl = subPane('bar', input)
@@ -154,7 +161,8 @@ describe('结构变化后的结算', () => {
     expect(document.activeElement).toBe(row)
   })
 
-  it('闸关着(R0 缺省)时路径照缩,但**一个 focus() 都不发**', () => {
+  it('闸关掉时路径照缩,但**一个 focus() 都不发**(这道闸留着的理由)', () => {
+    focusTree.policy.moveFocus = false
     const input = document.createElement('input')
     const barEl = subPane('bar', input)
     const { shell, pane } = mount(focusable('row'), barEl)
@@ -278,19 +286,156 @@ describe('订阅与拆卸', () => {
     const add = vi.spyOn(document, 'addEventListener')
     const remove = vi.spyOn(document, 'removeEventListener')
     const watched = (calls: unknown[][]) =>
-      calls.filter((c) => c[0] === 'focusin' || c[0] === 'pointerdown').length
+      calls.filter((c) => c[0] === 'focusin' || c[0] === 'focusout' || c[0] === 'pointerdown').length
 
     focusTree.register('root', null)
-    expect(watched(add.mock.calls), '登记第一格时装上两个监听').toBe(2)
+    expect(watched(add.mock.calls), '登记第一格时装上三个监听').toBe(3)
     focusTree.register('viewer', null)
-    expect(watched(add.mock.calls), '第二格不再重复装(attach 幂等)').toBe(2)
+    expect(watched(add.mock.calls), '第二格不再重复装(attach 幂等)').toBe(3)
 
     focusTree.reset()
-    expect(watched(remove.mock.calls), 'reset 把两个都摘了').toBe(2)
+    expect(watched(remove.mock.calls), 'reset 把三个都摘了').toBe(3)
     focusTree.reset()
-    expect(watched(remove.mock.calls), '再 reset 一次不重复摘(幂等)').toBe(2)
+    expect(watched(remove.mock.calls), '再 reset 一次不重复摘(幂等)').toBe(3)
 
     add.mockRestore()
     remove.mockRestore()
+  })
+})
+
+/**
+ * **I1 的三处收回**(设计 §4.1 修正段)。R0 只有 `settle()` 那一处,R1 补齐另外两处 ——
+ * 少一处都不成立:焦点掉到 body 不发 `focusin`(所以要 `focusout`),被聚焦的元素
+ * 被静默移除时连 `focusout` 都不发(所以派发器每次按键之前还要再问一次)。
+ */
+describe('孤儿焦点收回(I1)', () => {
+  function tree(): { shell: HTMLElement; pane: HTMLElement; probe: HTMLButtonElement } {
+    const probe = focusable('probe')
+    const { shell, pane } = mount(probe)
+    shell.tabIndex = -1
+    pane.tabIndex = -1
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const viewer = focusTree.register('viewer', root.instanceId)
+    viewer.setRoot(pane)
+    return { shell, pane, probe }
+  }
+
+  it('焦点落回落点(第一响应者的根),不是留在 body 上', () => {
+    const { pane, probe } = tree()
+    probe.focus()
+    expect(focusTree.current()?.scope).toBe('viewer')
+
+    probe.blur()
+    expect(document.activeElement).toBe(document.body)
+    focusTree.recoverOrphanFocus()
+    expect(document.activeElement).toBe(pane)
+  })
+
+  it('焦点没掉到 body 时一个字都不做(不许把正在用的焦点抢走)', () => {
+    const { probe } = tree()
+    probe.focus()
+    focusTree.recoverOrphanFocus()
+    expect(document.activeElement).toBe(probe)
+  })
+
+  it('第一响应者答不出落点时回 root 的根(树刚起来、或那一格没铺根)', () => {
+    const shell = document.createElement('div')
+    shell.tabIndex = -1
+    document.body.append(shell)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    // 一格没铺根元素的作用域当第一响应者:它答不出落点。
+    const viewer = focusTree.register('viewer', root.instanceId)
+    viewer.activate()
+
+    focusTree.recoverOrphanFocus()
+    expect(document.activeElement).toBe(shell)
+  })
+
+  it('闸关掉时一个 focus() 都不发', () => {
+    focusTree.policy.moveFocus = false
+    const { probe } = tree()
+    probe.focus()
+    probe.blur()
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus')
+    focusTree.recoverOrphanFocus()
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('`focusout` 且 relatedTarget 为空 → 微任务之后收回(body 不发 focusin,这一处不能省)', async () => {
+    const { pane, probe } = tree()
+    probe.focus()
+    probe.blur()
+    // blur() 在 jsdom 里也发一发 focusout(relatedTarget 为 null),与真机同形。
+    await Promise.resolve()
+    expect(document.activeElement).toBe(pane)
+  })
+
+  it('正常的焦点转移(relatedTarget 有值)不触发收回 —— 否则每一次点击都会被拽回去', async () => {
+    const { probe } = tree()
+    const other = focusable('other')
+    document.body.append(other)
+    probe.focus()
+    // 焦点从 probe 交给 other:真机上 focusout 的 relatedTarget 就是 other。
+    other.focus()
+    await Promise.resolve()
+    expect(document.activeElement).toBe(other)
+  })
+})
+
+/**
+ * **瞬态口**(Tooltip 那一族:不占焦点、也没有一个包着触发元素的根)。
+ * 它不是作用域,所以按登记序被问、且被问在活动路径之前(见 `registry.ts` 文件头)。
+ */
+describe('瞬态 Esc 口', () => {
+  it('登记 → 在表上;解除函数摘掉它;摘两次是幂等的', () => {
+    const off = focusTree.registerTransient(() => false)
+    expect(focusTree.transientEscapeHandlers().length).toBe(1)
+    off()
+    off()
+    expect(focusTree.transientEscapeHandlers()).toEqual([])
+  })
+
+  it('按登记序交出去(后登记的后问,与「后开的在上面」同向)', () => {
+    const first = () => false
+    const second = () => false
+    focusTree.registerTransient(first)
+    focusTree.registerTransient(second)
+    expect(focusTree.transientEscapeHandlers()).toEqual([first, second])
+  })
+
+  it('reset() 把它一并清掉(HMR dispose 复用的就是这一口)', () => {
+    focusTree.registerTransient(() => false)
+    focusTree.reset()
+    expect(focusTree.transientEscapeHandlers()).toEqual([])
+  })
+})
+
+/**
+ * `activate()` 不把第一响应者从**自己的后代**那里拽回来(R1 补)。
+ * 病历:React 的 effect 子先于父跑,同一次提交里一起挂载的父子两层,
+ * 父那一句 `activate` 会把层序整个倒过来。
+ */
+describe('activate:已经在我里面了就不往回拽', () => {
+  it('第一响应者是我的后代 → activate 不改路径', () => {
+    const root = focusTree.register('root', null)
+    const dialog = focusTree.register('dialog', root.instanceId)
+    const menu = focusTree.register('menu', dialog.instanceId)
+    menu.activate('open')
+    expect(focusTree.current()?.scope).toBe('menu')
+
+    dialog.activate('open')
+    expect(focusTree.current()?.scope).toBe('menu')
+  })
+
+  it('第一响应者在别的枝上 → 照常拽过来', () => {
+    const root = focusTree.register('root', null)
+    const stage = focusTree.register('stage-layer', root.instanceId)
+    const dialog = focusTree.register('dialog', root.instanceId)
+    stage.activate('open')
+    dialog.activate('open')
+    expect(focusTree.current()?.scope).toBe('dialog')
   })
 })

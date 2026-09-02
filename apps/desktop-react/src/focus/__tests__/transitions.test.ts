@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   activePathOf,
+  modalTrapNode,
   restingElementOf,
   returnTargetOf,
   routeEscape,
@@ -325,5 +326,66 @@ describe('落点与「这个元素归哪块面」', () => {
     expect(scopeAtElement(t, leaf)?.instanceId).toBe('v')
     expect(scopeAtElement(t, null)).toBeNull()
     expect(scopeAtElement(t, document.body)).toBeNull()
+  })
+})
+
+/**
+ * **Tab 圈在哪一格里**(`modalTrapNode`)。两步判据,第二步有病历:
+ * `ui/a11y/focus-trap` 那只退役的 hook 之所以把监听挂在 document 而不是容器上,
+ * 逐字的理由是「焦点万一已经跑到容器外面,挂容器就再也收不到这一下 Tab」。
+ * 只按活动路径判等于把那条判例丢掉,所以有第二步。
+ */
+describe('modalTrapNode —— Tab 圈在哪一格里', () => {
+  it('路径上最深那个 modal:对话框里开菜单,圈的是菜单', () => {
+    const t = tree(
+      scopeNode('r', 'root', null, { root: el() }),
+      scopeNode('d', 'dialog', 'r', { root: el() }),
+      scopeNode('m', 'menu', 'd', { root: el() }),
+    )
+    expect(modalTrapNode(t, ['r', 'd', 'm'])?.instanceId).toBe('m')
+    // 菜单关掉之后路径缩回对话框,圈的就是对话框。
+    expect(modalTrapNode(t, ['r', 'd'])?.instanceId).toBe('d')
+  })
+
+  it('**焦点跑到模态外面**:路径上一个 modal 都没有,照样圈得住(退役 hook 那条判例)', () => {
+    const t = tree(
+      scopeNode('r', 'root', null, { root: el() }),
+      scopeNode('d', 'dialog', 'r', { root: el() }),
+    )
+    // 路径只有 root —— 焦点被别处抢走了。模态还在场,Tab 仍归它。
+    expect(modalTrapNode(t, ['r'])?.instanceId).toBe('d')
+  })
+
+  it('一格 modal 都没有 → null(结构键放行,别处一律不管)', () => {
+    const t = tree(
+      scopeNode('r', 'root', null, { root: el() }),
+      scopeNode('v', 'viewer', 'r', { root: el() }),
+    )
+    expect(modalTrapNode(t, ['r', 'v'])).toBeNull()
+  })
+
+  it('没铺根元素的不算 —— 还没到位的东西圈不住任何东西', () => {
+    const t = tree(
+      scopeNode('r', 'root', null, { root: el() }),
+      scopeNode('d', 'dialog', 'r'),
+    )
+    expect(modalTrapNode(t, ['r', 'd'])).toBeNull()
+  })
+
+  it('inert 的不算(整块看不见的面不该圈住键盘)', () => {
+    const t = tree(
+      scopeNode('r', 'root', null, { root: el() }),
+      scopeNode('d', 'dialog', 'r', { root: el(), inert: true }),
+    )
+    expect(modalTrapNode(t, ['r'])).toBeNull()
+  })
+
+  it('第二步取**树深最大**的那一个(与第一步同一个口径,不引入第二种说法)', () => {
+    const t = tree(
+      scopeNode('r', 'root', null, { root: el() }),
+      scopeNode('d', 'dialog', 'r', { root: el() }),
+      scopeNode('m', 'menu', 'd', { root: el() }),
+    )
+    expect(modalTrapNode(t, ['r'])?.instanceId).toBe('m')
   })
 })

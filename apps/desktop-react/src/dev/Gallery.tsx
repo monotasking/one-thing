@@ -29,6 +29,8 @@ import { useInlineEdit } from '../ui/inline-edit'
 import { useScrolledPast } from '../ui/scrolled-past'
 import { useSettlePulse } from '../ui/settle-pulse'
 import { createMutation } from '../data/kernel'
+import { FocusScope } from '../focus/FocusScope'
+import { useFocusDispatch } from '../focus/dispatch'
 import { TOAST_LIFE_MS } from '../components/motion'
 import { Tooltip } from '../ui/Tooltip'
 import s from './Gallery.module.css'
@@ -260,6 +262,16 @@ function GalleryInlineEditInput({
 }
 
 export function Gallery() {
+  /*
+   * **规格页也要那一个派发器**(09-02 R1)。浮层的 Esc / 模态的 Tab 现在是声明,
+   * 真正听键盘的只有它 —— 而它挂在 `AppShell` 上,规格页是与外壳**二选一**的另一条
+   * 路(App.tsx),所以这里要自己挂一份。
+   *
+   * `runCommand` 是空的:全局命令的落点是外壳那几个 store(开面 / 切工作区 / 新建
+   * 会话),规格页上没有外壳可开。这与改前逐字相同 —— 旧的 `useKeymapDispatch`
+   * 同样只挂在 `AppShell` 上,规格页从来就不响全局快捷键。
+   */
+  useFocusDispatch({ runCommand: () => {} })
   const [text, setText] = useState('claude-fable-5')
   const splitRef = useRef<HTMLDivElement>(null)
   const [split, setSplit] = useState(45)
@@ -286,470 +298,484 @@ export function Gallery() {
      * 「页面内容有没有落在地标里」—— 一张没有地标的页,读屏软件的「跳到主内容」
      * 那一手就落空了。外壳那边本来就有 <main>(AppShell),这里补齐。
      */
-    <main className={s.page}>
-      <h1 className={s.head}>src/ui</h1>
+    /*
+     * **规格页也有一棵响应链**(09-02 R1)。它是 `?gallery` 那条 dev 路,与外壳
+     * 二选一(App.tsx),所以「一台窗口一棵树、一棵树一个 root」在这里的读法是:
+     * 这一页自己有一格 root。
+     *
+     * 不给的话,页上那几件浮层(Dialog / Menu / Popover)登记出来的父就是 null,
+     * 每一件各自成一棵树 —— 关掉时「路径缩回父、焦点回父上次所在的元素」这条
+     * 结构归还(§4.5)没有父可缩,焦点会掉回 `<body>`。而规格页正是 `gate:a11y`
+     * 与 `gate:focus` 验「Esc 之后焦点回没回来」的那块场地。
+     */
+    <FocusScope scope="root">
+      {({ scopeProps }) => (
+        <main {...scopeProps} className={s.page}>
+          <h1 className={s.head}>src/ui</h1>
 
-      <Section name="Button">
-        <Button>ghost sm</Button>
-        <Button size="md">ghost md</Button>
-        <Button variant="primary">primary sm</Button>
-        <Button variant="primary" size="md">primary md</Button>
-        <Button pill variant="primary">pill</Button>
-        {/* danger 与 ghost 并排摆:两者几何逐字相同,差的只有字色 ——
-            并排才看得出「危险色只上字、hover 才浅底、永不实底红」。 */}
-        <Button variant="danger">danger sm</Button>
-        <Button variant="danger" size="md">danger md</Button>
-        <Button iconOnly aria-label="Search"><Search size={14} /></Button>
-        <Button disabled>disabled</Button>
-        <Button variant="danger" disabled>danger disabled</Button>
-        <Button variant="primary" size="md"><Spinner /> loading</Button>
-      </Section>
+          <Section name="Button">
+            <Button>ghost sm</Button>
+            <Button size="md">ghost md</Button>
+            <Button variant="primary">primary sm</Button>
+            <Button variant="primary" size="md">primary md</Button>
+            <Button pill variant="primary">pill</Button>
+            {/* danger 与 ghost 并排摆:两者几何逐字相同,差的只有字色 ——
+                并排才看得出「危险色只上字、hover 才浅底、永不实底红」。 */}
+            <Button variant="danger">danger sm</Button>
+            <Button variant="danger" size="md">danger md</Button>
+            <Button iconOnly aria-label="Search"><Search size={14} /></Button>
+            <Button disabled>disabled</Button>
+            <Button variant="danger" disabled>danger disabled</Button>
+            <Button variant="primary" size="md"><Spinner /> loading</Button>
+          </Section>
 
-      {/* 每个输入框都得有名字 —— Input 自己**故意**不给默认 aria-label(名字是业务),
-          所以规格页也要像真调用方一样给。少一个,axe 的 label 那条当场红。 */}
-      {/*
-       * 图标钮(第 18 件,09-01 立)。规格页把**每一档尺寸、每一个状态**摊平并排,
-       * 正是这件立件的理由 —— 从前各面各画一套,谁也说不出「标准的 hover 是什么」。
-       */}
-      <Section name="IconButton">
-        <IconButton icon={X} label="Close" size="xs" />
-        <IconButton icon={X} label="Close" size="sm" />
-        <IconButton icon={X} label="Close" size="md" />
-        <IconButton icon={PencilIcon} label="Edit" pressed />
-        <IconButton icon={X} label="Delete" tone="danger" />
-        <IconButton icon={Copy} label="Copy" disabled />
-        {/* ref 展位(09-02 批 8a):点它读自己的矩形 —— 从前要在外面包一格贴身
-            span 才量得到。这一格演的是「口子真的通到那颗 <button>」。 */}
-        <IconButton
-          ref={measureRef}
-          icon={Search}
-          label="Measure me"
-          onClick={() => setMeasured(measureRef.current?.getBoundingClientRect().width ?? null)}
-        />
-        <Note>rest / hover / active / pressed / disabled;提示走 Tooltip,禁 native title</Note>
-        <Note>ref 落在那颗 &lt;button&gt; 上 —— 量得到 {measured == null ? '(点一下)' : `${Math.round(measured)}px`}</Note>
-      </Section>
+          {/* 每个输入框都得有名字 —— Input 自己**故意**不给默认 aria-label(名字是业务),
+              所以规格页也要像真调用方一样给。少一个,axe 的 label 那条当场红。 */}
+          {/*
+           * 图标钮(第 18 件,09-01 立)。规格页把**每一档尺寸、每一个状态**摊平并排,
+           * 正是这件立件的理由 —— 从前各面各画一套,谁也说不出「标准的 hover 是什么」。
+           */}
+          <Section name="IconButton">
+            <IconButton icon={X} label="Close" size="xs" />
+            <IconButton icon={X} label="Close" size="sm" />
+            <IconButton icon={X} label="Close" size="md" />
+            <IconButton icon={PencilIcon} label="Edit" pressed />
+            <IconButton icon={X} label="Delete" tone="danger" />
+            <IconButton icon={Copy} label="Copy" disabled />
+            {/* ref 展位(09-02 批 8a):点它读自己的矩形 —— 从前要在外面包一格贴身
+                span 才量得到。这一格演的是「口子真的通到那颗 <button>」。 */}
+            <IconButton
+              ref={measureRef}
+              icon={Search}
+              label="Measure me"
+              onClick={() => setMeasured(measureRef.current?.getBoundingClientRect().width ?? null)}
+            />
+            <Note>rest / hover / active / pressed / disabled;提示走 Tooltip,禁 native title</Note>
+            <Note>ref 落在那颗 &lt;button&gt; 上 —— 量得到 {measured == null ? '(点一下)' : `${Math.round(measured)}px`}</Note>
+          </Section>
 
-      {/* 分隔杆(第 19 件,09-01 立)。APG window splitter:←/→ 调、Home/End 到头、↵ 回默认。 */}
-      <Section name="Splitter">
-        <div className={s.wide} ref={splitRef} style={{ display: 'flex', height: 72 }}>
-          <div style={{ width: `${split}%`, background: 'var(--surface-1)' }} id="gallery-split-a" />
-          <Splitter
-            containerRef={splitRef}
-            value={split}
-            defaultValue={45}
-            label="Resize the left pane"
-            controls="gallery-split-a"
-            onCommit={setSplit}
-          />
-          <div style={{ flex: 1, background: 'var(--surface-2)' }} />
-        </div>
-        <Note>拖 / ←→ / Home / End / ↵ 回默认;拖拽期间零 React 重渲</Note>
-      </Section>
+          {/* 分隔杆(第 19 件,09-01 立)。APG window splitter:←/→ 调、Home/End 到头、↵ 回默认。 */}
+          <Section name="Splitter">
+            <div className={s.wide} ref={splitRef} style={{ display: 'flex', height: 72 }}>
+              <div style={{ width: `${split}%`, background: 'var(--surface-1)' }} id="gallery-split-a" />
+              <Splitter
+                containerRef={splitRef}
+                value={split}
+                defaultValue={45}
+                label="Resize the left pane"
+                controls="gallery-split-a"
+                onCommit={setSplit}
+              />
+              <div style={{ flex: 1, background: 'var(--surface-2)' }} />
+            </div>
+            <Note>拖 / ←→ / Home / End / ↵ 回默认;拖拽期间零 React 重渲</Note>
+          </Section>
 
-      <Section name="Input">
-        <Input size="sm" value={text} onValueChange={setText} aria-label="Input sm" />
-        <Input size="md" value={text} onValueChange={setText} aria-label="Input md" />
-        <Input size="lg" value={text} onValueChange={setText} aria-label="Input lg" />
-        <Input value="" onValueChange={() => {}} placeholder="Placeholder" aria-label="Input placeholder" />
-        <Input value={text} onValueChange={setText} prefix={<Search />} aria-label="Input with prefix" />
-        <Input value={text} onValueChange={setText} invalid aria-label="Input invalid" />
-        <Input value={text} onValueChange={setText} disabled aria-label="Input disabled" />
-      </Section>
+          <Section name="Input">
+            <Input size="sm" value={text} onValueChange={setText} aria-label="Input sm" />
+            <Input size="md" value={text} onValueChange={setText} aria-label="Input md" />
+            <Input size="lg" value={text} onValueChange={setText} aria-label="Input lg" />
+            <Input value="" onValueChange={() => {}} placeholder="Placeholder" aria-label="Input placeholder" />
+            <Input value={text} onValueChange={setText} prefix={<Search />} aria-label="Input with prefix" />
+            <Input value={text} onValueChange={setText} invalid aria-label="Input invalid" />
+            <Input value={text} onValueChange={setText} disabled aria-label="Input disabled" />
+          </Section>
 
-      <Section name="Switch">
-        <Switch checked={on} onChange={setOn} label="Demo switch" />
-        <Switch checked={!on} onChange={(v) => setOn(!v)} label="Mirror switch" />
-        <Switch checked disabled onChange={() => {}} label="Disabled on" />
-        <Switch checked={false} disabled onChange={() => {}} label="Disabled off" />
-      </Section>
+          <Section name="Switch">
+            <Switch checked={on} onChange={setOn} label="Demo switch" />
+            <Switch checked={!on} onChange={(v) => setOn(!v)} label="Mirror switch" />
+            <Switch checked disabled onChange={() => {}} label="Disabled on" />
+            <Switch checked={false} disabled onChange={() => {}} label="Disabled off" />
+          </Section>
 
-      <Section name="Checkbox">
-        <Checkbox checked={checked} onChange={setChecked} label="Checked" />
-        <Checkbox checked={false} onChange={() => {}} label="Unchecked" />
-        <Checkbox checked={half} indeterminate onChange={setHalf} label="Indeterminate" />
-        <Checkbox checked disabled onChange={() => {}} label="Disabled" />
-      </Section>
+          <Section name="Checkbox">
+            <Checkbox checked={checked} onChange={setChecked} label="Checked" />
+            <Checkbox checked={false} onChange={() => {}} label="Unchecked" />
+            <Checkbox checked={half} indeterminate onChange={setHalf} label="Indeterminate" />
+            <Checkbox checked disabled onChange={() => {}} label="Disabled" />
+          </Section>
 
-      <Section name="Radio">
-        <RadioGroup value={radio} onChange={setRadio} label="Open behaviour">
-          <Radio value="stage">Stage</Radio>
-          <Radio value="pinned">Pinned</Radio>
-          <Radio value="none" disabled>Disabled</Radio>
-        </RadioGroup>
-      </Section>
+          <Section name="Radio">
+            <RadioGroup value={radio} onChange={setRadio} label="Open behaviour">
+              <Radio value="stage">Stage</Radio>
+              <Radio value="pinned">Pinned</Radio>
+              <Radio value="none" disabled>Disabled</Radio>
+            </RadioGroup>
+          </Section>
 
-      <Section name="Select">
-        <div className={s.cell}>
-          <Select options={MODELS} value={model} onChange={setModel} size="sm" label="Model sm" />
-        </div>
-        <div className={s.cell}>
-          <Select options={MODELS} value={model} onChange={setModel} label="Model md" />
-        </div>
-        <div className={s.cell}>
-          <Select options={MODELS} value={model} onChange={setModel} size="lg" label="Model lg" />
-        </div>
-        <div className={s.cell}>
-          <Select options={MODELS} value={model} onChange={setModel} disabled label="Model disabled" />
-        </div>
-      </Section>
+          <Section name="Select">
+            <div className={s.cell}>
+              <Select options={MODELS} value={model} onChange={setModel} size="sm" label="Model sm" />
+            </div>
+            <div className={s.cell}>
+              <Select options={MODELS} value={model} onChange={setModel} label="Model md" />
+            </div>
+            <div className={s.cell}>
+              <Select options={MODELS} value={model} onChange={setModel} size="lg" label="Model lg" />
+            </div>
+            <div className={s.cell}>
+              <Select options={MODELS} value={model} onChange={setModel} disabled label="Model disabled" />
+            </div>
+          </Section>
 
-      <Section name="Tooltip">
-        <Tooltip content="Anchored above, flips below near the top edge">
-          <Button>hover me</Button>
-        </Tooltip>
-        <Tooltip content="Focus opens it too — try Tab">
-          <Button>focus me</Button>
-        </Tooltip>
-        <Note>delay = --dur-tooltip-delay</Note>
-      </Section>
+          <Section name="Tooltip">
+            <Tooltip content="Anchored above, flips below near the top edge">
+              <Button>hover me</Button>
+            </Tooltip>
+            <Tooltip content="Focus opens it too — try Tab">
+              <Button>focus me</Button>
+            </Tooltip>
+            <Note>delay = --dur-tooltip-delay</Note>
+          </Section>
 
-      <Section name="Dialog">
-        <Button onClick={() => setDialog(true)}>open dialog</Button>
-        <Button
-          variant="primary"
-          onClick={() => {
-            void confirm({
-              title: 'Discard this draft?',
-              description: 'The draft has unsaved edits. This cannot be undone.',
-            }).then((ok) => setAnswer(String(ok)))
-          }}
-        >
-          useConfirm
-        </Button>
-        <Note>last answer: {answer}</Note>
-      </Section>
+          <Section name="Dialog">
+            <Button onClick={() => setDialog(true)}>open dialog</Button>
+            <Button
+              variant="primary"
+              onClick={() => {
+                void confirm({
+                  title: 'Discard this draft?',
+                  description: 'The draft has unsaved edits. This cannot be undone.',
+                }).then((ok) => setAnswer(String(ok)))
+              }}
+            >
+              useConfirm
+            </Button>
+            <Note>last answer: {answer}</Note>
+          </Section>
 
-      {/* 规格页直接戳 hub —— 产品代码走 services/notify(一条入口),
-          但这一页要演示的正是这个组件本身,不该经过通知中心。 */}
-      <Section name="Toast">
-        <Button onClick={() => pushToast({ level: 'info', title: 'Saved to this session', lifeMs: TOAST_LIFE_MS.info })}>info</Button>
-        <Button onClick={() => pushToast({ level: 'success', title: 'Reconnected', body: '3 updates caught up', lifeMs: TOAST_LIFE_MS.success })}>success</Button>
-        <Button onClick={() => pushToast({ level: 'warn', title: 'Running on a stale catalog', lifeMs: TOAST_LIFE_MS.warn })}>warn</Button>
-        <Button onClick={() => pushToast({ level: 'error', title: 'Could not reach the model host', lifeMs: null })}>error</Button>
-        <Note>hover to pause the timer · error stays until you close it · 4th one folds the stack</Note>
-      </Section>
+          {/* 规格页直接戳 hub —— 产品代码走 services/notify(一条入口),
+              但这一页要演示的正是这个组件本身,不该经过通知中心。 */}
+          <Section name="Toast">
+            <Button onClick={() => pushToast({ level: 'info', title: 'Saved to this session', lifeMs: TOAST_LIFE_MS.info })}>info</Button>
+            <Button onClick={() => pushToast({ level: 'success', title: 'Reconnected', body: '3 updates caught up', lifeMs: TOAST_LIFE_MS.success })}>success</Button>
+            <Button onClick={() => pushToast({ level: 'warn', title: 'Running on a stale catalog', lifeMs: TOAST_LIFE_MS.warn })}>warn</Button>
+            <Button onClick={() => pushToast({ level: 'error', title: 'Could not reach the model host', lifeMs: null })}>error</Button>
+            <Note>hover to pause the timer · error stays until you close it · 4th one folds the stack</Note>
+          </Section>
 
-      {/* 第 17 件:忙态是**读来的**,不是调用方 useState 记的一份。
-          点下去 → 立刻 disabled + aria-busy;150ms 之后才换字(极快的请求
-          不该闪一记「在办了」再闪回来)。 */}
-      <Section name="AsyncButton">
-        <AsyncButton
-          action={demoSave}
-          pendingKey="ok"
-          pendingLabel="Saving…"
-          variant="primary"
-          onClick={() => void demoSave.run('ok')}
-        >
-          save
-        </AsyncButton>
-        <AsyncButton
-          action={demoSave}
-          pendingKey="fail"
-          pendingLabel="Saving…"
-          onClick={() => void demoSave.run('fail')}
-        >
-          save (fails)
-        </AsyncButton>
-        <AsyncButton action={demoSave} pendingKey="never" pendingLabel="Saving…" disabled>
-          disabled
-        </AsyncButton>
-        <Note>忙态逐格:点一颗,另一颗照常可点</Note>
-      </Section>
+          {/* 第 17 件:忙态是**读来的**,不是调用方 useState 记的一份。
+              点下去 → 立刻 disabled + aria-busy;150ms 之后才换字(极快的请求
+              不该闪一记「在办了」再闪回来)。 */}
+          <Section name="AsyncButton">
+            <AsyncButton
+              action={demoSave}
+              pendingKey="ok"
+              pendingLabel="Saving…"
+              variant="primary"
+              onClick={() => void demoSave.run('ok')}
+            >
+              save
+            </AsyncButton>
+            <AsyncButton
+              action={demoSave}
+              pendingKey="fail"
+              pendingLabel="Saving…"
+              onClick={() => void demoSave.run('fail')}
+            >
+              save (fails)
+            </AsyncButton>
+            <AsyncButton action={demoSave} pendingKey="never" pendingLabel="Saving…" disabled>
+              disabled
+            </AsyncButton>
+            <Note>忙态逐格:点一颗,另一颗照常可点</Note>
+          </Section>
 
-      <Section name="Spinner">
-        <Spinner size="sm" />
-        <Spinner size="md" />
-        <Note>status bar / button loading only</Note>
-      </Section>
+          <Section name="Spinner">
+            <Spinner size="sm" />
+            <Spinner size="md" />
+            <Note>status bar / button loading only</Note>
+          </Section>
 
-      <Section name="Menu">
-        <Button onClick={(e) => setMenuAt({ x: e.clientX, y: e.clientY })}>open menu</Button>
-        {menuAt && (
-          <Menu x={menuAt.x} y={menuAt.y} onClose={() => setMenuAt(null)} label="Gallery menu">
-            <MenuSection>OPEN WITH</MenuSection>
-            <MenuItem checked onClick={() => setMenuAt(null)}>Stage</MenuItem>
-            <MenuItem checked={false} onClick={() => setMenuAt(null)}>Pinned</MenuItem>
-            <MenuSeparator />
-            <MenuItem onClick={() => setMenuAt(null)}>Settings…</MenuItem>
-            {/* 禁灰档:形状恒定,做不动的那一项留在原位(09-02 批 12)。 */}
-            <MenuItem disabled onClick={() => setMenuAt(null)}>Move up</MenuItem>
-          </Menu>
-        )}
-        <Note>disabled 的项禁灰**不消失** —— 菜单的形状不该随上下文变</Note>
-      </Section>
+          <Section name="Menu">
+            <Button onClick={(e) => setMenuAt({ x: e.clientX, y: e.clientY })}>open menu</Button>
+            {menuAt && (
+              <Menu x={menuAt.x} y={menuAt.y} onClose={() => setMenuAt(null)} label="Gallery menu">
+                <MenuSection>OPEN WITH</MenuSection>
+                <MenuItem checked onClick={() => setMenuAt(null)}>Stage</MenuItem>
+                <MenuItem checked={false} onClick={() => setMenuAt(null)}>Pinned</MenuItem>
+                <MenuSeparator />
+                <MenuItem onClick={() => setMenuAt(null)}>Settings…</MenuItem>
+                {/* 禁灰档:形状恒定,做不动的那一项留在原位(09-02 批 12)。 */}
+                <MenuItem disabled onClick={() => setMenuAt(null)}>Move up</MenuItem>
+              </Menu>
+            )}
+            <Note>disabled 的项禁灰**不消失** —— 菜单的形状不该随上下文变</Note>
+          </Section>
 
-      <Section name="Tabs">
-        <div className={s.wide}>
-          <Tabs items={TABS} activeId={tab} onSelect={setTab} onClose={() => {}} label="Gallery tabs" />
-        </div>
-      </Section>
+          <Section name="Tabs">
+            <div className={s.wide}>
+              <Tabs items={TABS} activeId={tab} onSelect={setTab} onClose={() => {}} label="Gallery tabs" />
+            </div>
+          </Section>
 
-      <Section name="Segmented">
-        <Segmented options={DENSITY} value={density} onChange={setDensity} label="Density" />
-        {/* 整组禁用(09-02):粒度只有一整组 —— 「这个问题现在轮不到你答」。
-            选中的那一段照旧标着,禁掉不等于失忆。 */}
-        <Segmented
-          options={DENSITY}
-          value={density}
-          onChange={setDensity}
-          label="Density (disabled)"
-          disabled
-        />
-      </Section>
+          <Section name="Segmented">
+            <Segmented options={DENSITY} value={density} onChange={setDensity} label="Density" />
+            {/* 整组禁用(09-02):粒度只有一整组 —— 「这个问题现在轮不到你答」。
+                选中的那一段照旧标着,禁掉不等于失忆。 */}
+            <Segmented
+              options={DENSITY}
+              value={density}
+              onChange={setDensity}
+              label="Density (disabled)"
+              disabled
+            />
+          </Section>
 
-      <Section name="Badge">
-        <Badge tone="danger">3</Badge>
-        <Badge tone="ok">✓</Badge>
-        <Badge tone="unread">12</Badge>
-      </Section>
+          <Section name="Badge">
+            <Badge tone="danger">3</Badge>
+            <Badge tone="ok">✓</Badge>
+            <Badge tone="unread">12</Badge>
+          </Section>
 
-      {/*
-       * ── 批 2a 立的四件「视觉词汇」(09-01)──────────────────────────────
-       * 它们不是新控件,是把存量里各画各的那几个词收成一件:状态点 8 产地、
-       * 卡 7 产地、组头 4 产地、表单行 2 产地(`ui:consume` 的 shared-vocab-css
-       * 记着这笔账)。规格页在这里把每一档摊平并排 —— 收编(批 2b)时,
-       * 这一屏就是「迁移前后该长得一模一样」的那张对照表。
-       */}
-      <Section name="StatusDot">
-        <StatusDot tone="ok" />
-        <StatusDot tone="info" />
-        <StatusDot tone="warn" />
-        <StatusDot tone="bad" />
-        <StatusDot tone="idle" />
-        <StatusDot tone="off" />
-        <StatusDot tone="bad" label="Auth failed" />
-        <Note>ok / info / warn / bad / idle / off;旁边已有文字就不给 label(给了会被念两遍)</Note>
-        {/* 尺寸两档并排(09-02 批 8a):sm 是檐上那一颗(未保存丸),md 是列表里那一族。
-            并排才看得出「档位」是什么意思 —— 它只有这两种,不是一个自由量。 */}
-        <StatusDot tone="warn" size="sm" />
-        <StatusDot tone="warn" size="md" />
-        <Note>size:sm 5px(檐上)/ md 6px(缺省,列表与详情栏)—— 档位不是自由量</Note>
-      </Section>
+          {/*
+           * ── 批 2a 立的四件「视觉词汇」(09-01)──────────────────────────────
+           * 它们不是新控件,是把存量里各画各的那几个词收成一件:状态点 8 产地、
+           * 卡 7 产地、组头 4 产地、表单行 2 产地(`ui:consume` 的 shared-vocab-css
+           * 记着这笔账)。规格页在这里把每一档摊平并排 —— 收编(批 2b)时,
+           * 这一屏就是「迁移前后该长得一模一样」的那张对照表。
+           */}
+          <Section name="StatusDot">
+            <StatusDot tone="ok" />
+            <StatusDot tone="info" />
+            <StatusDot tone="warn" />
+            <StatusDot tone="bad" />
+            <StatusDot tone="idle" />
+            <StatusDot tone="off" />
+            <StatusDot tone="bad" label="Auth failed" />
+            <Note>ok / info / warn / bad / idle / off;旁边已有文字就不给 label(给了会被念两遍)</Note>
+            {/* 尺寸两档并排(09-02 批 8a):sm 是檐上那一颗(未保存丸),md 是列表里那一族。
+                并排才看得出「档位」是什么意思 —— 它只有这两种,不是一个自由量。 */}
+            <StatusDot tone="warn" size="sm" />
+            <StatusDot tone="warn" size="md" />
+            <Note>size:sm 5px(檐上)/ md 6px(缺省,列表与详情栏)—— 档位不是自由量</Note>
+          </Section>
 
-      <Section name="GroupHead">
-        <div className={s.wide}>
-          <GroupHead label="CLOUD" />
-          <GroupHead label="anthropic/" note="12 models" collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
-          <GroupHead label="openai/" note="filtered open — cannot collapse while searching" collapsed={false} disabled onToggle={() => {}} />
-        </div>
-        <Note>静态 / 可折叠(▾▸ + aria-expanded)/ 禁用;note 是文字读数,不是计数徽</Note>
-      </Section>
+          <Section name="GroupHead">
+            <div className={s.wide}>
+              <GroupHead label="CLOUD" />
+              <GroupHead label="anthropic/" note="12 models" collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+              <GroupHead label="openai/" note="filtered open — cannot collapse while searching" collapsed={false} disabled onToggle={() => {}} />
+            </div>
+            <Note>静态 / 可折叠(▾▸ + aria-expanded)/ 禁用;note 是文字读数,不是计数徽</Note>
+          </Section>
 
-      <Section name="Card">
-        <div className={s.cell}>
-          <Card>Body only — no header row is rendered at all.</Card>
-        </div>
-        <div className={s.cell}>
-          <Card title="Usage" note="cached 3m ago">
-            Body sits under the title row.
-          </Card>
-        </div>
-        <div className={s.cell}>
-          <Card title="Mode" note="Subscription mode does not use an API key." notePlacement="below">
-            Body sits under the note.
-          </Card>
-        </div>
-        <div className={s.cell}>
-          <Card title="Crash" pad="lg" bordered={false} titleAs="h4">
-            pad lg, no border, h4.
-          </Card>
-        </div>
-        {/*
-         * 檐动作槽(09-02 批 8a)。三格摆在一起才看得出裁定:
-         * inline 注贴着标题走、动作永远靠右;below 注掉到檐外,动作**仍在檐右**。
-         * 第三格是「只有动作」——檐照样画,动作不掉进卡身。
-         */}
-        <div className={s.cell}>
-          <Card
-            title="Usage"
-            note="cached 3m ago"
-            actions={<Button size="sm">Refresh</Button>}
+          <Section name="Card">
+            <div className={s.cell}>
+              <Card>Body only — no header row is rendered at all.</Card>
+            </div>
+            <div className={s.cell}>
+              <Card title="Usage" note="cached 3m ago">
+                Body sits under the title row.
+              </Card>
+            </div>
+            <div className={s.cell}>
+              <Card title="Mode" note="Subscription mode does not use an API key." notePlacement="below">
+                Body sits under the note.
+              </Card>
+            </div>
+            <div className={s.cell}>
+              <Card title="Crash" pad="lg" bordered={false} titleAs="h4">
+                pad lg, no border, h4.
+              </Card>
+            </div>
+            {/*
+             * 檐动作槽(09-02 批 8a)。三格摆在一起才看得出裁定:
+             * inline 注贴着标题走、动作永远靠右;below 注掉到檐外,动作**仍在檐右**。
+             * 第三格是「只有动作」——檐照样画,动作不掉进卡身。
+             */}
+            <div className={s.cell}>
+              <Card
+                title="Usage"
+                note="cached 3m ago"
+                actions={<Button size="sm">Refresh</Button>}
+              >
+                actions sit at the far right of the head row.
+              </Card>
+            </div>
+            <div className={s.cell}>
+              <Card
+                title="Mode"
+                note="Subscription mode does not use an API key."
+                notePlacement="below"
+                actions={<IconButton icon={PencilIcon} label="Edit mode" />}
+              >
+                note drops below; actions stay on the head row.
+              </Card>
+            </div>
+            <div className={s.cell}>
+              <Card actions={<IconButton icon={X} label="Dismiss" />}>
+                No title, no note — the head row still renders because actions are there.
+              </Card>
+            </div>
+            <Note>空槽不渲染 DOM;卡不是控件 —— 整张可点的那一形归 ButtonBase</Note>
+            <Note>actions 在檐右端;note 两个落点都不改它的落点</Note>
+          </Section>
+
+          <Section name="Field">
+            <div className={s.cell}>
+              <Field label="API key">
+                <GalleryFieldInput />
+              </Field>
+            </div>
+            <div className={s.cell}>
+              <Field label="Base URL" hint="Ends with /v1">
+                <GalleryFieldInput />
+              </Field>
+            </div>
+            <div className={s.cell}>
+              <Field label="Base URL" error="Not a valid URL.">
+                <GalleryFieldInput />
+              </Field>
+            </div>
+            <div className={s.cell}>
+              <Field label="Base URL" hint="Ends with /v1" error="Not a valid URL.">
+                <GalleryFieldInput />
+              </Field>
+            </div>
+            {/*
+             * 不可标注的控件那一格(09-02 批 8a)。radiogroup 的根是个 <div>,
+             * `<label htmlFor>` 指不动它 —— 关联靠 Field 交出来的 `aria-labelledby`,
+             * 消费方照旧一句 `{...field}`。这一格演的就是那条路。
+             */}
+            <div className={s.cell}>
+              <Field label="Density" hint="Applies to lists and cards.">
+                <GalleryFieldSegmented value={fieldDensity} onChange={setFieldDensity} />
+              </Field>
+            </div>
+            {/*
+             * 横排档三形(09-02 批 10)。演的是「标签与控件同一行、附注折到第二行
+             * 占满宽」,以及**标签只念不看**那一格 —— 三处产地里两处正是它
+             * (WorkspaceOverview 改名格 / NoWorkdirNotice 绑定行),从前它们各写
+             * 一份 `aria-label` 加一份同构的横排 CSS。
+             */}
+            <div className={s.cell}>
+              <Field layout="inline" size="sm" label="Name">
+                <GalleryFieldInput />
+                <Button>Save</Button>
+              </Field>
+            </div>
+            <div className={s.cell}>
+              <Field layout="inline" labelHidden label="Working directory">
+                <GalleryFieldInput />
+                <Button variant="primary">Bind</Button>
+              </Field>
+            </div>
+            <div className={s.cell}>
+              <Field
+                layout="inline"
+                labelHidden
+                label="Model id"
+                error="That id is not in the catalog."
+              >
+                <GalleryFieldInput />
+                <Button variant="primary">Add</Button>
+              </Field>
+            </div>
+            <Note>控件经 useFieldControlProps() 拿 id / aria-describedby / aria-invalid</Note>
+            <Note>radiogroup 这类标不动的控件靠同一口 aria-labelledby 关联(htmlFor 指不动 div)</Note>
+            <Note>inline 档:标签与控件同一行,hint / error 折第二行占满宽</Note>
+            <Note>labelHidden:名字只念不看 —— 关联一格不少,不是「没有标签」</Note>
+          </Section>
+
+          <Section name="Kbd">
+            <Kbd>⌘</Kbd>
+            <Kbd>K</Kbd>
+            <Kbd>Esc</Kbd>
+          </Section>
+
+          <Section name="useScrolledPast">
+            <div className={s.wide}>
+              <GalleryScrolledPast />
+            </div>
+            <Note>滚过哨兵那个点才出现回顶钮;哨兵还在下面(没滚到)不算</Note>
+            <Note>root 取自 overflow 祖先 —— 缺省视口那一档量的是窗口矩形,判据会恒假</Note>
+          </Section>
+
+          <Section name="useSettlePulse">
+            <GallerySettlePulse />
+            <Note>token 变一次播一次;挂载那一次不播;收尾看 animationend 不看计时器</Note>
+          </Section>
+
+          <Section name="SecretInput">
+            <GallerySecretInput />
+            <Note>挂载恒是暗的;眼睛钮 aria-pressed 报明暗,禁用跟着输入框一起禁</Note>
+            <Note>那颗钮走 ui/Input 的 action 槽(可交互),不是 aria-hidden 的 suffix 槽</Note>
+          </Section>
+
+          <Section name="InlineEditStrip">
+            <div className={s.wide}>
+              <InlineEditStrip
+                prefix={<span>sk-f44••••a477 →</span>}
+                saveLabel="Save"
+                savingLabel="Saving…"
+                cancelLabel="Cancel"
+                canSave={false}
+                onCommit={() => {}}
+                onCancel={() => {}}
+              >
+                <Input aria-label="New key" value="" onValueChange={() => {}} size="sm" />
+              </InlineEditStrip>
+            </div>
+            <div className={s.wide}>
+              <InlineEditStrip
+                prefix={<span>Delete this key? Usage already attributed to it stays in the ledger.</span>}
+                tone="danger"
+                saveLabel="Delete"
+                savingLabel="Deleting…"
+                cancelLabel="Cancel"
+                onCommit={() => {}}
+                onCancel={() => {}}
+              />
+            </div>
+            <div className={s.wide}>
+              <InlineEditStrip
+                saveLabel="Save"
+                savingLabel="Saving…"
+                cancelLabel="Cancel"
+                busy
+                onCommit={() => {}}
+                onCancel={() => {}}
+              >
+                <Input aria-label="Busy sample" value="sk-live" onValueChange={() => {}} size="sm" />
+              </InlineEditStrip>
+            </div>
+            <Note>三形:带前缀的编辑条 / 没有控件槽的确认条(danger)/ 忙态(转圈在钮里)</Note>
+          </Section>
+
+          <Section name="Reveal">
+            <span className={s.wide} {...REVEAL_SCOPE}>
+              <Button size="sm">hover this scope</Button>
+              <Reveal>
+                <IconButton size="sm" icon={PencilIcon} label="Ghost action" />
+              </Reveal>
+            </span>
+            <Note>占位常驻只动 opacity;判据挂在作用域上,:focus-within 与 hover 同权</Note>
+          </Section>
+
+          <Section name="useInlineEdit">
+            <GalleryInlineEdit />
+            <Note>点那段文字 = 同一格换成输入框;↵ 落定 / Esc 收回 / 失焦取消</Note>
+            <Note>一进来就选中全文 —— 接着打是覆盖不是追加(controlId 缺席则不自动聚焦)</Note>
+            <Note>cancelOnBlur 缺省关:并肩站着提交钮时,blur 在 click 之前到会把那颗钮废掉</Note>
+          </Section>
+
+          <Dialog
+            open={dialog}
+            onClose={() => setDialog(false)}
+            title="Plain dialog"
+            footer={<Button variant="primary" onClick={() => setDialog(false)}>OK</Button>}
           >
-            actions sit at the far right of the head row.
-          </Card>
-        </div>
-        <div className={s.cell}>
-          <Card
-            title="Mode"
-            note="Subscription mode does not use an API key."
-            notePlacement="below"
-            actions={<IconButton icon={PencilIcon} label="Edit mode" />}
-          >
-            note drops below; actions stay on the head row.
-          </Card>
-        </div>
-        <div className={s.cell}>
-          <Card actions={<IconButton icon={X} label="Dismiss" />}>
-            No title, no note — the head row still renders because actions are there.
-          </Card>
-        </div>
-        <Note>空槽不渲染 DOM;卡不是控件 —— 整张可点的那一形归 ButtonBase</Note>
-        <Note>actions 在檐右端;note 两个落点都不改它的落点</Note>
-      </Section>
+            Scrim click and Esc both close it. Focus lands on the panel when it opens.
+          </Dialog>
 
-      <Section name="Field">
-        <div className={s.cell}>
-          <Field label="API key">
-            <GalleryFieldInput />
-          </Field>
-        </div>
-        <div className={s.cell}>
-          <Field label="Base URL" hint="Ends with /v1">
-            <GalleryFieldInput />
-          </Field>
-        </div>
-        <div className={s.cell}>
-          <Field label="Base URL" error="Not a valid URL.">
-            <GalleryFieldInput />
-          </Field>
-        </div>
-        <div className={s.cell}>
-          <Field label="Base URL" hint="Ends with /v1" error="Not a valid URL.">
-            <GalleryFieldInput />
-          </Field>
-        </div>
-        {/*
-         * 不可标注的控件那一格(09-02 批 8a)。radiogroup 的根是个 <div>,
-         * `<label htmlFor>` 指不动它 —— 关联靠 Field 交出来的 `aria-labelledby`,
-         * 消费方照旧一句 `{...field}`。这一格演的就是那条路。
-         */}
-        <div className={s.cell}>
-          <Field label="Density" hint="Applies to lists and cards.">
-            <GalleryFieldSegmented value={fieldDensity} onChange={setFieldDensity} />
-          </Field>
-        </div>
-        {/*
-         * 横排档三形(09-02 批 10)。演的是「标签与控件同一行、附注折到第二行
-         * 占满宽」,以及**标签只念不看**那一格 —— 三处产地里两处正是它
-         * (WorkspaceOverview 改名格 / NoWorkdirNotice 绑定行),从前它们各写
-         * 一份 `aria-label` 加一份同构的横排 CSS。
-         */}
-        <div className={s.cell}>
-          <Field layout="inline" size="sm" label="Name">
-            <GalleryFieldInput />
-            <Button>Save</Button>
-          </Field>
-        </div>
-        <div className={s.cell}>
-          <Field layout="inline" labelHidden label="Working directory">
-            <GalleryFieldInput />
-            <Button variant="primary">Bind</Button>
-          </Field>
-        </div>
-        <div className={s.cell}>
-          <Field
-            layout="inline"
-            labelHidden
-            label="Model id"
-            error="That id is not in the catalog."
-          >
-            <GalleryFieldInput />
-            <Button variant="primary">Add</Button>
-          </Field>
-        </div>
-        <Note>控件经 useFieldControlProps() 拿 id / aria-describedby / aria-invalid</Note>
-        <Note>radiogroup 这类标不动的控件靠同一口 aria-labelledby 关联(htmlFor 指不动 div)</Note>
-        <Note>inline 档:标签与控件同一行,hint / error 折第二行占满宽</Note>
-        <Note>labelHidden:名字只念不看 —— 关联一格不少,不是「没有标签」</Note>
-      </Section>
-
-      <Section name="Kbd">
-        <Kbd>⌘</Kbd>
-        <Kbd>K</Kbd>
-        <Kbd>Esc</Kbd>
-      </Section>
-
-      <Section name="useScrolledPast">
-        <div className={s.wide}>
-          <GalleryScrolledPast />
-        </div>
-        <Note>滚过哨兵那个点才出现回顶钮;哨兵还在下面(没滚到)不算</Note>
-        <Note>root 取自 overflow 祖先 —— 缺省视口那一档量的是窗口矩形,判据会恒假</Note>
-      </Section>
-
-      <Section name="useSettlePulse">
-        <GallerySettlePulse />
-        <Note>token 变一次播一次;挂载那一次不播;收尾看 animationend 不看计时器</Note>
-      </Section>
-
-      <Section name="SecretInput">
-        <GallerySecretInput />
-        <Note>挂载恒是暗的;眼睛钮 aria-pressed 报明暗,禁用跟着输入框一起禁</Note>
-        <Note>那颗钮走 ui/Input 的 action 槽(可交互),不是 aria-hidden 的 suffix 槽</Note>
-      </Section>
-
-      <Section name="InlineEditStrip">
-        <div className={s.wide}>
-          <InlineEditStrip
-            prefix={<span>sk-f44••••a477 →</span>}
-            saveLabel="Save"
-            savingLabel="Saving…"
-            cancelLabel="Cancel"
-            canSave={false}
-            onCommit={() => {}}
-            onCancel={() => {}}
-          >
-            <Input aria-label="New key" value="" onValueChange={() => {}} size="sm" />
-          </InlineEditStrip>
-        </div>
-        <div className={s.wide}>
-          <InlineEditStrip
-            prefix={<span>Delete this key? Usage already attributed to it stays in the ledger.</span>}
-            tone="danger"
-            saveLabel="Delete"
-            savingLabel="Deleting…"
-            cancelLabel="Cancel"
-            onCommit={() => {}}
-            onCancel={() => {}}
-          />
-        </div>
-        <div className={s.wide}>
-          <InlineEditStrip
-            saveLabel="Save"
-            savingLabel="Saving…"
-            cancelLabel="Cancel"
-            busy
-            onCommit={() => {}}
-            onCancel={() => {}}
-          >
-            <Input aria-label="Busy sample" value="sk-live" onValueChange={() => {}} size="sm" />
-          </InlineEditStrip>
-        </div>
-        <Note>三形:带前缀的编辑条 / 没有控件槽的确认条(danger)/ 忙态(转圈在钮里)</Note>
-      </Section>
-
-      <Section name="Reveal">
-        <span className={s.wide} {...REVEAL_SCOPE}>
-          <Button size="sm">hover this scope</Button>
-          <Reveal>
-            <IconButton size="sm" icon={PencilIcon} label="Ghost action" />
-          </Reveal>
-        </span>
-        <Note>占位常驻只动 opacity;判据挂在作用域上,:focus-within 与 hover 同权</Note>
-      </Section>
-
-      <Section name="useInlineEdit">
-        <GalleryInlineEdit />
-        <Note>点那段文字 = 同一格换成输入框;↵ 落定 / Esc 收回 / 失焦取消</Note>
-        <Note>一进来就选中全文 —— 接着打是覆盖不是追加(controlId 缺席则不自动聚焦)</Note>
-        <Note>cancelOnBlur 缺省关:并肩站着提交钮时,blur 在 click 之前到会把那颗钮废掉</Note>
-      </Section>
-
-      <Dialog
-        open={dialog}
-        onClose={() => setDialog(false)}
-        title="Plain dialog"
-        footer={<Button variant="primary" onClick={() => setDialog(false)}>OK</Button>}
-      >
-        Scrim click and Esc both close it. Focus lands on the panel when it opens.
-      </Dialog>
-
-      <ConfirmHost />
-      <ToastHost
-        closeLabel="Close"
-        moreText={(count) => `+${count} earlier`}
-      />
-    </main>
+              <ConfirmHost />
+              <ToastHost
+                closeLabel="Close"
+                moreText={(count) => `+${count} earlier`}
+              />
+        </main>
+      )}
+    </FocusScope>
   )
 }

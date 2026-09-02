@@ -169,17 +169,15 @@ export function Composer() {
    *
    * 09-01 批 4:这一段从手写迁进 `ui/float` 的 `useFloatDismiss` —— 它就是那件
    * 原语说的「点外关」,判据(点没点在我这块面里)与 Menu / Popover 逐字相同。
-   * 两个档位都是为了**保住现状**,不是新行为:
-   *  · `outside: 'capture'` —— 照旧走捕获阶段,免得被别处的 stopPropagation 挡住
-   *    (Select / Tabs / FloatWindow / AgentChip 各有一句 onPointerDown 掐断,
-   *    React 合成事件那一下会连原生冒泡一起停);
-   *  · `escape: false` —— 这块面的 Esc 是自己那三层(ask / 抽屉 / 两段式停止,
-   *    见 `useComposerKeys`),不许原语插一脚;不认 Esc 也就**不进浮层栈**,
-   *    不会挡住别人那层。 */
-  useFloatDismiss(panelRef, closeDrawer, drawerKind === 'model', {
-    escape: false,
-    outside: 'capture',
-  })
+   * `outside: 'capture'` —— 照旧走捕获阶段,免得被别处的 stopPropagation 挡住
+   * (Select / Tabs / FloatWindow / AgentChip 各有一句 onPointerDown 掐断,
+   * React 合成事件那一下会连原生冒泡一起停)。
+   *
+   * 从前这里还有一格 `escape: false`(「这块面的 Esc 是自己那三层,不许原语插
+   * 一脚」)。09-02 R1 之后**原语里已经没有 Esc 那一半了** —— 它归响应链,而
+   * composer 本批还没接树(R2),所以它自己那三层照旧由 `useComposerKeys` 的
+   * window 监听接。那格 prop 随着浮层栈一起退役,语义一个字没变。 */
+  useFloatDismiss(panelRef, closeDrawer, drawerKind === 'model', { outside: 'capture' })
 
   // 整块面板下场时把还挂着的缩略图 URL 销掉(造它的是 store,所以销也调 store 那口)。
   useEffect(() => revokeAllAttachments, [])

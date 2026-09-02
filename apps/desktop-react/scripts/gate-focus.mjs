@@ -364,9 +364,20 @@ async function main() {
           focusInLive: layers.some(
             (l) => !l.hasAttribute('inert') && active instanceof Node && l.contains(active),
           ),
+          scopes: layers.map((l) => l.getAttribute('data-focus-scope')),
         }
       })
       assert(state.inertOld > 0, '旧层打上了 inert')
+      /*
+       * I4 的架子那一格在**这里**验,不在场景 6 —— 那时架子上多半已经空了
+       * (场景 5 的整页重载 + 场景 6 把瓦挪去别的形态)。层是按需挂载的东西,
+       * 只能在它确实在场的那一刻问。
+       */
+      assert(
+        state.scopes.length > 0 && state.scopes.every((v) => v === 'shelf-layer'),
+        'I4 · shelf-layer:架子上**每一层**的根都带 data-focus-scope',
+        `(${state.scopes.length} 层:${[...new Set(state.scopes)].join(' / ') || '—'})`,
+      )
       assert(state.focusInLive, '焦点落在新层内(§11 拍点 2:切 tab 进内容)')
       await assertNoOrphan(page, '切 tab 之后')
     }
@@ -441,30 +452,70 @@ async function main() {
 
     /* ── 场景 6:I4 整机扫 ───────────────────────────────────────────── */
     scenario('I4:每个 Placement 宿主层的根元素都带 data-focus-scope')
-    const i4 = await page.evaluate(() => ({
-      scopes: Array.from(document.querySelectorAll('[data-focus-scope]')).map((el) =>
-        el.getAttribute('data-focus-scope'),
-      ),
-      shelfHost: document.querySelectorAll('[data-shelf]').length,
-      dialogHost: document.querySelectorAll('section[role="dialog"]').length,
-    }))
-    assert(
-      i4.scopes.includes('root'),
-      '壳根带 data-focus-scope="root"(R0 唯一接了树的那一格)',
-      `(此刻整机 ${i4.scopes.length} 格:${[...new Set(i4.scopes)].join(' / ') || '—'})`,
-    )
     /*
-     * 四个 Placement 宿主层(舞台 / 浮窗 / 架子 / 盖)**R1 才接树**,所以这一批
-     * 只报覆盖率读数、不断言 —— 断言一件下一批才做的事,红的是排期不是代码。
+     * ── 为什么这一格要**把四种形态各摆出来一次**(R1 改)────────────────────
+     * R0 版只在跑完最后一步的那一刻扫一次 DOM,于是读到的是「此刻恰好开着什么」——
+     * 那时四种形态多半一个都不在场,扫出来永远只有 root,「未接树」与「没开出来」
+     * 两件事分不开。宿主层是**按需挂载**的(舞台没开就不渲染),所以 I4 只能这么验:
+     * 走用户真走的那条路(Dock 瓦的右键菜单 = 打开方式)把每一种形态开出来,
+     * 开出来了再问它的根带不带 `data-focus-scope`。
+     * 开不出来(菜单里没有那一项)记**跳过**,不记红 —— 那是夹具没搭起来。
      */
-    for (const key of ['stage-layer', 'float-layer', 'shelf-layer', 'cover-layer']) {
-      const has = i4.scopes.includes(key)
-      console.log(`  · ${key}:${has ? '已接树' : '未接树(R1)'}`)
-    }
-    console.log(
-      `  · 覆盖率读数:${i4.scopes.length} 格作用域在场;`
-        + `架子宿主 ${i4.shelfHost} 个、浮层宿主 ${i4.dialogHost} 个`,
+    const scopesNow = () =>
+      page.evaluate(() =>
+        Array.from(document.querySelectorAll('[data-focus-scope]')).map((el) =>
+          el.getAttribute('data-focus-scope'),
+        ),
+      )
+    assert(
+      (await scopesNow()).includes('root'),
+      '壳根带 data-focus-scope="root"',
+      `(此刻整机 ${[...new Set(await scopesNow())].join(' / ') || '—'})`,
     )
+
+    /** 右键一块瓦,按菜单项的文案选一种打开方式。回 false = 菜单里没有那一项。 */
+    async function openAs(tile, labelRe) {
+      const opened = await page.evaluate((id) => {
+        const el = document.querySelector(`[data-testid="dock-tile-${id}"]`)
+        if (!(el instanceof HTMLElement)) return false
+        el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
+        return true
+      }, tile)
+      if (!opened) return false
+      await delay(350)
+      const picked = await page.evaluate((source) => {
+        const re = new RegExp(source)
+        const items = Array.from(document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]'))
+        const hit = items.find((el) => re.test(el.textContent ?? ''))
+        if (hit instanceof HTMLElement) {
+          hit.click()
+          return true
+        }
+        // 没命中就把菜单收掉,别让它挡住下一步。
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        return false
+      }, labelRe.source)
+      await delay(500)
+      return picked
+    }
+
+    for (const [key, labelRe] of [
+      ['float-layer', /浮窗|Float/],
+      ['stage-layer', /弹出|Popup/],
+      ['cover-layer', /盖|Cover/],
+    ]) {
+      const picked = await openAs('files', labelRe)
+      if (!picked) {
+        skip(`${key} 的根带 data-focus-scope`, `Dock 菜单里没有 ${labelRe} 那一项`)
+        continue
+      }
+      const scopes = await scopesNow()
+      assert(scopes.includes(key), `${key} 的根带 data-focus-scope`, `(在场:${[...new Set(scopes)].join(' / ')})`)
+      await assertNoOrphan(page, `以 ${key} 打开之后`)
+    }
+
+    // shelf-layer 那一格在场景 3 里验(层是按需挂载的,只能在它在场的那一刻问)。
+    console.log('  · shelf-layer:见场景 3 最后一条')
 
     await app.close()
     app = undefined

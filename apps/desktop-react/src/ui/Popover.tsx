@@ -1,7 +1,7 @@
 import { useRef } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
-import { useFocusTrap } from './a11y/focus-trap'
+import { FocusScope } from '../focus/FocusScope'
 import { useFloatDismiss, useFloatPosition } from './float'
 import s from './Popover.module.css'
 
@@ -23,9 +23,11 @@ import s from './Popover.module.css'
  *  ③ 点浮层外面就关(与 Menu 同一条手势),而不是只有那颗关闭钮。
  *
  * ── 焦点照 Menu 的手 ────────────────────────────────────────────────────────
- * 开时焦点移进容器(`tabIndex={-1}`)、Tab 圈在里面、关时还给锚点 —— 三件全由
- * `useFocusTrap` 白送。圈禁与 `aria-modal` 是两件事:前者管**键盘走不丢**,
- * 后者管**读屏能不能看见外面**。附属浮层要前者,不要后者。
+ * 开时焦点移进容器(`tabIndex={-1}`)、Tab 圈在里面、关时焦点回去 —— 三件全由
+ * `modal` 作用域白送(09-02 R1;从前是 `ui/a11y/focus-trap`)。圈禁与 `aria-modal`
+ * 是两件事:前者管**键盘走不丢**,后者管**读屏能不能看见外面**。附属浮层要前者,
+ * 不要后者 —— 所以它在响应链上是 `modal` 档(Tab 圈禁),在 ARIA 上不是模态。
+ * 两个「modal」不是同一个词:响应链的 kind 说的是**键盘走不走得出去**。
  * ──────────────────────────────────────────────────────────────────────────
  */
 interface PopoverProps {
@@ -43,26 +45,28 @@ interface PopoverProps {
 export function Popover({ x, y, onClose, label, children, testId }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null)
 
-  useFocusTrap(ref, true)
-
-  // 定位(按锚点画一帧、量到身量后同帧 clamp)、Esc 关、点外关三件与 Menu 同源:
-  // 行为与判例见 ui/float。
+  // 定位(按锚点画一帧、量到身量后同帧 clamp)与点外关两件与 Menu 同源:
+  // 行为与判例见 ui/float。Esc 与 Tab 归响应链(同 Menu)。
   const pos = useFloatPosition(ref, { kind: 'point', x, y })
   useFloatDismiss(ref, onClose)
 
   return createPortal(
-    <div
-      ref={ref}
-      className={s.pop}
-      style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
-      role="dialog"
-      /* ⚠ 这里**故意没有** aria-modal:理由写在文件头 ②。 */
-      aria-label={label}
-      tabIndex={-1}
-      data-testid={testId}
-    >
-      {children}
-    </div>,
+    <FocusScope scope="popover" rootRef={ref} activateOnMount onEscape={() => (onClose(), true)}>
+      {({ scopeProps }) => (
+        <div
+          {...scopeProps}
+          className={s.pop}
+          style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+          role="dialog"
+          /* ⚠ 这里**故意没有** aria-modal:理由写在文件头 ②。 */
+          aria-label={label}
+          tabIndex={-1}
+          data-testid={testId}
+        >
+          {children}
+        </div>
+      )}
+    </FocusScope>,
     document.body,
   )
 }

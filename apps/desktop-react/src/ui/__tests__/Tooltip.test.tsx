@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { Tooltip } from '../Tooltip'
 import { TOOLTIP_DELAY_MS } from '../../components/motion'
+import { focusTree } from '../../focus/registry'
 
 /**
  * Tooltip 的全部行为就是一句话:**悬停够久才出现,一离开立刻收**。
@@ -18,6 +19,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  focusTree.reset()
 })
 
 const tip = () => screen.queryByRole('tooltip')
@@ -165,5 +167,56 @@ describe('Tooltip:延迟出现,离开即收', () => {
 
     expect(container.querySelector('[role="tooltip"]')).toBe(null)
     expect(document.body.contains(tip())).toBe(true)
+  })
+})
+
+/**
+ * **Esc 走响应链的瞬态口**(09-02 R1;从前是这只组件自己在 document 上挂的一条)。
+ *
+ * 二选一里选的是瞬态口而不是作用域,理由写在 `Tooltip.tsx` 那段注释上:它没有一个
+ * 包着触发元素的根 —— 提示体是 portal 出去的,锚点是消费方自己那颗按钮。
+ * 行为两条,与从前逐字相同:提示在场时按 Esc 消掉它;**不认领**这一下
+ * (APG:tooltip 的 Esc 不该拦别人)。
+ */
+describe('Tooltip:Esc 消提示(响应链的瞬态口)', () => {
+  function shown(): void {
+    render(
+      <Tooltip content="hint">
+        <button type="button">anchor</button>
+      </Tooltip>,
+    )
+    fireEvent.mouseOver(screen.getByText('anchor'))
+    act(() => void vi.advanceTimersByTime(TOOLTIP_DELAY_MS))
+    expect(tip()).toBeTruthy()
+  }
+
+  it('提示在场 = 瞬态表上有它一格;收掉之后那一格也没了(不挂不属于自己的键)', () => {
+    shown()
+    expect(focusTree.transientEscapeHandlers().length).toBe(1)
+
+    fireEvent.mouseOut(screen.getByText('anchor'))
+    act(() => void vi.advanceTimersByTime(0))
+    expect(tip()).toBe(null)
+    expect(focusTree.transientEscapeHandlers()).toEqual([])
+  })
+
+  it('那一格答 **false** —— 消掉提示,但这一下 Esc 继续传给别人', () => {
+    shown()
+    const [handler] = focusTree.transientEscapeHandlers()
+    let claimed: boolean | undefined
+    act(() => {
+      claimed = handler()
+    })
+    expect(claimed).toBe(false)
+    expect(tip()).toBe(null)
+  })
+
+  it('提示还没出现时表上一格都没有', () => {
+    render(
+      <Tooltip content="hint">
+        <button type="button">anchor</button>
+      </Tooltip>,
+    )
+    expect(focusTree.transientEscapeHandlers()).toEqual([])
   })
 })

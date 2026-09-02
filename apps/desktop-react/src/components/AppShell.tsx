@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
-import { useKeymapDispatch } from '../keymap/dispatch'
+import { useKeymapCommandRunner } from '../keymap/dispatch'
 import { FocusScope } from '../focus/FocusScope'
+import { useFocusDispatch } from '../focus/dispatch'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from './ErrorBoundary'
 import { ChatStream } from '../content/ChatStream'
@@ -9,7 +10,6 @@ import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
 import { CoverLayer } from './CoverLayer'
-import { useEscapeChain } from './useEscapeChain'
 import { EdgeShelf } from './EdgeShelf'
 import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
@@ -57,18 +57,26 @@ export function AppShell() {
   const clickDockIcon = useStageStore((st) => st.clickDockIcon)
 
   /**
-   * 全仓唯一的快捷键入口。以前这里手写着一条 ⌘P 监听,现在那条绑定是注册表里的
-   * 一行数据(keymap/transitions.ts 的 DEFAULT_COMBOS),外壳只负责让派发器挂上。
-   * 常驻监听住在这一层的理由没变:它得能在面板关着时把它叫起来,而面板此刻并不挂载。
+   * **全壳唯一的键盘派发器**(09-02 R1,设计 §4.3)。
+   *
+   * 从前这一层挂两条 window 监听:`useKeymapDispatch`(全局命令)与
+   * `useEscapeChain`(Esc 退一层)。两者现在都是响应链上的一格:
+   *  · 全局命令 = root 作用域的命令表 —— 动作表仍在 `keymap/`(`useKeymapCommandRunner`),
+   *    **共用一份不复制**,监听收进 `useFocusDispatch`;
+   *  · 退层链 = root 的 `onEscape`(下面那句 `escapeTopmost`),沿活动路径由深到浅
+   *    问下来的**最后一环**。
+   *
+   * 常驻挂在这一层的理由没变:它得能在面板关着时把面叫起来,而面板此刻并不挂载。
    */
-  useKeymapDispatch()
+  useFocusDispatch({ runCommand: useKeymapCommandRunner() })
 
   /**
-   * 全仓唯一的「Esc 退一层」宿主。与快捷键派发器分开挂,是因为它们是两件事:
-   * 派发器认注册表(用户改得了键),退层链认形态(Esc 是形态语法的一部分,
-   * 不参与改键 —— keymap/types.ts 顶部那段立的就是这条)。
+   * 退层链本体仍是 `stage/transitions.escapeTargetOf` 那个纯函数(次序 = z 序:
+   * 盖 → 舞台 → 最上面那扇浮窗;架子是常驻家具,不在链里),这里只把它交给树。
+   * 「接住了才拦」照旧:`escapeTopmost()` 没收掉任何面时答 false,这一下 Esc
+   * 继续往后传(输入法组字、Composer 的两段式停止都在后面等它)。
    */
-  useEscapeChain()
+  const escapeTopmost = useStageStore((st) => st.escapeTopmost)
 
   // 聊天滚动容器只有一个 ref,两个消费者:Dock 降淡 与 TOC 当前键。
   const chatRef = useRef<HTMLDivElement>(null)
@@ -273,14 +281,13 @@ export function AppShell() {
    * 属性铺在下面那个本来就有的壳根上 —— 三明治网格(顶栏 / 三轨主区 / Dock)
    * 全靠这一层的类名与 grid 模板,中间插一层 div 会把布局掀了。
    *
-   * R0 只立树、零消费者:根的 `onEscape` 还没接(R1 才把 `escapeTopmost()`
-   * 挂上来当最后一环),`useKeymapDispatch` / `useEscapeChain` 一个字没动。
-   * 这一层此刻交出去的只有 `data-focus-scope="root"`(I4 的第一格)与一个
-   * 根元素引用;`tabIndex` 由 `FocusTree.policy.moveFocus` 闸着,R1 才出现
-   * (理由写在 FocusScope.tsx 文件头)。
+   * R1 起它是**真的根**:`onEscape` = 退层链(最后一环),`tabIndex={-1}` 随
+   * `policy.moveFocus` 一起到位 —— 焦点无处可去时(浮层关掉、宿主卸载)结构性地
+   * 回落到这块根上,I1 于是成立。根不画焦点环,那条唯一的容器例外在
+   * `focus/focus-scope.css` 里。
    */
   return (
-    <FocusScope scope="root">
+    <FocusScope scope="root" onEscape={escapeTopmost}>
       {({ scopeProps }) => (
         <div {...scopeProps} className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
           {/* 顶栏**就是**这扇窗的顶带(09-01 用户看真机后的裁定:红绿灯与 header 同一行)。

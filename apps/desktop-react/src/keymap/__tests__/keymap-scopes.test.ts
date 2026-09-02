@@ -93,14 +93,18 @@ describe('撞键:局部先接,没接住放行全局', () => {
     expect(effectiveCombo(state, 'toc.toggle')).toEqual({ meta: true, key: 'i' })
   })
 
-  it('全局派发器开头那句 `defaultPrevented` 就是裁决本身(源码级守卫)', () => {
+  it('派发器冒泡半开头那句 `defaultPrevented` 就是裁决本身(源码级守卫)', () => {
     /*
-     * 「局部先接」不靠任何调度器:局部监听挂在面域根上(先于 window 收到),
-     * 接住了就 preventDefault。这一句是它在全局那一侧的另一半。
-     * 删掉它 → 改绑到 ⌘I 的那条全局命令会与行内键**同时**响,而那正是
-     * F1 记下的那条留账。
+     * 「局部先接」不靠任何调度器:viewer / files 的局部监听仍挂在各自面域根上
+     * (先于 window 的冒泡半收到),接住了就 preventDefault。这一句是它在全局
+     * 那一侧的另一半。删掉它 → 改绑到 ⌘I 的那条全局命令会与行内键**同时**响,
+     * 而那正是 F1 记下的那条留账。
+     *
+     * 09-02 R1 起这一句搬了家:唯一的派发器在 `focus/dispatch.ts`,`keymap/` 只
+     * 剩那张动作表(`useKeymapCommandRunner`)。守卫跟着搬,判据一个字没变 ——
+     * 它守的是「全局那一侧要让位」,不是「它长在哪只文件里」。
      */
-    const source = readFileSync(path.join(srcRoot, 'keymap/dispatch.ts'), 'utf-8')
+    const source = readFileSync(path.join(srcRoot, 'focus/dispatch.ts'), 'utf-8')
     expect(source).toMatch(/if \(e\.defaultPrevented\) return/)
   })
 })

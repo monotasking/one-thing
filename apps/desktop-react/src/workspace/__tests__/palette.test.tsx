@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import type { SpaceRecord } from '@shared/ipc/spaces'
 import { configureSpacesPort } from '../../data/spaces-port'
@@ -10,6 +10,8 @@ import { WorkspacePalette } from '../components/WorkspacePalette'
 import { useWorkspacePalette } from '../components/palette-hub'
 import { useWorkspaceStore } from '../store'
 import { DEFAULT_SPACE_ID } from '../types'
+import { focusTree } from '../../focus/registry'
+import { FocusDispatchHarness } from '../../test/focus-harness'
 
 /**
  * ⌘⇧W 命令面板。三件事,一件不多:过滤 / ↵ 切换 / 一条「新建『<词>』」的出口。
@@ -34,6 +36,10 @@ beforeEach(() => {
     update: async () => ({ success: true }),
     remove: async () => ({ success: true, removed: true }),
   })
+})
+
+afterEach(() => {
+  focusTree.reset()
 })
 
 function type(text: string) {
@@ -96,18 +102,29 @@ describe('键盘', () => {
   })
 
   /*
-   * Esc 听在 window 上(与 ui/Menu、ui/Dialog 同一手),所以这条用例**从 window 打** ——
-   * 08-31 真机上就是这条露的馅:从前它挂在面板的 onKeyDown 上,焦点一旦不在面板里
-   * 就关不掉。浮层的逃生口必须与焦点在哪无关。
+   * Esc 从 window 打:这块面自己不挂监听,认领这一下的是响应链上唯一那个派发器
+   * (`FocusDispatchHarness` 就是它)。**逃生口与焦点在哪无关**这条判据没变,
+   * 变的是它靠什么成立 —— 从前靠「监听挂在 window 而不是面板上」(08-31 真机
+   * 露馅的正是相反那种写法),现在靠「这一格在不在活动路径上」。
    */
   it('Esc 关掉面板 —— 焦点在哪都得关得掉', () => {
-    render(<WorkspacePalette />)
+    render(
+      <>
+        <FocusDispatchHarness />
+        <WorkspacePalette />
+      </>,
+    )
     act(() => void fireEvent.keyDown(window, { key: 'Escape' }))
     expect(useWorkspacePalette.getState().open).toBe(false)
   })
 
   it('焦点在输入框里按 Esc 同样关得掉(真键会冒泡到 window)', () => {
-    render(<WorkspacePalette />)
+    render(
+      <>
+        <FocusDispatchHarness />
+        <WorkspacePalette />
+      </>,
+    )
     act(() => void fireEvent.keyDown(screen.getByTestId('workspace-palette-input'), { key: 'Escape' }))
     expect(useWorkspacePalette.getState().open).toBe(false)
   })

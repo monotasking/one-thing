@@ -1,46 +1,44 @@
-import { useEffect } from 'react'
+import { useCallback } from 'react'
 import { useTocStore } from '../toc/store'
 import { useStageStore } from '../stage/store'
 import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
-import { useKeymapStore } from './store'
 import { useWorkspacePalette } from '../workspace/components/palette-hub'
 import { useWorkspaceStore } from '../workspace/store'
 import { projectWorkspaces, workspaceAtSlot } from '../workspace/projection'
 import {
   TOGGLE_COMMAND_PREFIX,
   WORKSPACE_SLOT_COMMAND_PREFIX,
-  hasModifier,
-  lookupCommand,
   shelfSideOfCommand,
 } from './transitions'
 import type { CommandId } from './types'
 
-/** 焦点在输入面里:无修饰的单键属于输入框,不属于快捷键。 */
-function isTypingTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false
-  return target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-}
-
 /**
- * 全局唯一的键盘派发器 —— 外壳挂一次,别处不许再挂第二个 window keydown。
+ * **一条全局命令怎么落地** —— 命令 id → 真正的那个动作。
  *
- * 它只认识注册表:一次按键先问「这落在哪条命令上」,命中才动手。
- * 所以「⌘P 开检索」这件事在代码里已经没有落点了 —— 那是注册表里的一行数据,
- * 用户改绑之后老组合当场失效,新组合当场生效,派发器一个字都不用改。
+ * ── 它从前是派发器,现在只是派发器的一半(09-02 R1)────────────────────────
+ * 这只文件从前叫 `useKeymapDispatch`:一条 window keydown 监听 + 一张动作表。
+ * R1 把**监听**收进了全壳唯一的那一个(`focus/dispatch.ts` 的 `useFocusDispatch`),
+ * 留在这里的是**动作表**,提成 `useKeymapCommandRunner()` 由那边消费。
  *
- * 结构导航键(Esc / 方向键 / Enter / Space)不经过这里,理由见 types.ts 顶部。
+ * 为什么是提出来共用、而不是抄一份过去(R0 留账 4 的结清):这张表订阅着五个
+ * store,抄一份就等于「⌘P 开检索」这件事有了两个产地 —— 它们迟早分叉,而分叉
+ * 的那一天没有任何一条测试会红,只有用户按下去发现响的是上一版。
+ *
+ * 表本身一个字没改:命令 id 的形状与反解仍然只有 `keymap/transitions` 一个产地,
+ * 这里认不出的 id 一律放行给后面的分支,不去猜。
+ *
+ * 结构导航键(Esc / 方向键 / Enter / Space)不进这张表,理由见 types.ts 顶部。
  */
-export function useKeymapDispatch(): void {
-  const overrides = useKeymapStore((st) => st.overrides)
+export function useKeymapCommandRunner(): (id: CommandId) => void {
   const toggleItem = useStageStore((st) => st.toggleItem)
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
   const toggleToc = useTocStore((st) => st.togglePanel)
   const toggleAgentMenu = useAgentMenu((st) => st.toggle)
   const toggleWorkspacePalette = useWorkspacePalette((st) => st.toggle)
 
-  useEffect(() => {
-    const run = (id: CommandId) => {
+  return useCallback(
+    (id: CommandId) => {
       if (id.startsWith(TOGGLE_COMMAND_PREFIX)) {
         toggleItem(id.slice(TOGGLE_COMMAND_PREFIX.length))
         return
@@ -60,7 +58,7 @@ export function useKeymapDispatch(): void {
       }
       /*
        * 四条架子各一条(09-01)。**反解落在 transitions 那一处** ——
-       * 派发器不认识 `shelf.<side>.toggle` 的拼法,那个字符串只有一个产地;
+       * 这里不认识 `shelf.<side>.toggle` 的拼法,那个字符串只有一个产地;
        * 认不出的 id 一律放行给后面的分支,不去猜是哪一侧。
        */
       const shelfSide = shelfSideOfCommand(id)
@@ -86,35 +84,12 @@ export function useKeymapDispatch(): void {
        * 新建会话。**取动作而不是订阅** —— 它是个 async action,订阅它只会让
        * 这条 effect 白重挂一次;`getState()` 的引用是稳的(与 Overview 里
        * 事件处理器一律走 getState 同一口径)。
-       * 落在哪个项目下由那条 action 自己判(当前会话的项目),派发器不判。
+       * 落在哪个项目下由那条 action 自己判(当前会话的项目),这里不判。
        */
       if (id === 'session.new') {
         void useExposeStore.getState().newSessionInCurrentProject()
       }
-    }
-
-    const onKey = (e: KeyboardEvent) => {
-      /*
-       * **局部先接,没接住才轮到全局**(09-01 三层立法,见 keymap/scopes.ts)。
-       *
-       * 面域局部键(查看器的 ⌘S/⌘L/⌘F、文件行的 ⌘I)挂在各自那块面的**根元素**上,
-       * 于是它们先于这个 window 监听收到同一下按键;接住的那一下会 `preventDefault()`。
-       * 这一句是裁决的全部实现 —— 修前没有它,「用户把某条命令改绑到 ⌘I」会让
-       * 文件行的详情键和那条全局命令**同时响**(F1 那条留账说的正是这件事)。
-       *
-       * 它只认 `defaultPrevented`,不认「是谁接的」:任何一层真正消费掉了这一下,
-       * 全局就该让开。反过来,没消费的一律放行 —— 查看器里按 ⌘P 照样开检索。
-       */
-      if (e.defaultPrevented) return
-      // 输入框里带修饰键的组合照常派发(⌘P 在写字时也该好使),无修饰的单键让给输入。
-      if (isTypingTarget(e.target) && !hasModifier(e)) return
-      const id = lookupCommand({ overrides }, e)
-      if (!id) return
-      e.preventDefault()
-      run(id)
-    }
-
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [overrides, toggleItem, toggleShelfCollapsed, toggleToc, toggleAgentMenu, toggleWorkspacePalette])
+    },
+    [toggleItem, toggleShelfCollapsed, toggleToc, toggleAgentMenu, toggleWorkspacePalette],
+  )
 }

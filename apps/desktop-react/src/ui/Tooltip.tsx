@@ -2,6 +2,7 @@ import { cloneElement, useCallback, useEffect, useId, useRef, useState } from 'r
 import { createPortal } from 'react-dom'
 import type { ReactElement, ReactNode, Ref } from 'react'
 import { TOOLTIP_DELAY_MS } from '../components/motion'
+import { focusTree } from '../focus/registry'
 import { useFloatPosition } from './float'
 import s from './Tooltip.module.css'
 
@@ -25,8 +26,9 @@ import s from './Tooltip.module.css'
  *
  * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
  *   聚焦锚点(Tab 走到它)   与 hover 同一条路,同样延迟后出现
- *   Esc                    当场消失,**不关**锚点所在的任何浮层
- *                          (APG:tooltip 的 Esc 只消 tooltip)
+ *   Esc                    当场消失,**不关**锚点所在的任何浮层,也**不认领**
+ *                          这一下(APG:tooltip 的 Esc 只消 tooltip)——
+ *                          09-02 R1 起走响应链的瞬态口,见下面那段
  * 语义:提示体 role=tooltip,出现期间锚点带 aria-describedby 指着它 ——
  * 「这个控件还有一句补充说明」得说得出口,光画在屏幕上不算。
  * 它自己**永不进 Tab 序**:提示不是控件。
@@ -98,18 +100,27 @@ export function Tooltip({ content, delayMs = TOOLTIP_DELAY_MS, children }: Toolt
   useEffect(() => hide, [hide])
 
   /*
-   * Esc 消提示。只在提示**已经出现**时挂监听:不挂着不该属于自己的键 ——
-   * tooltip 消失了还吃 Esc,会把它所在的对话框那一下也吞掉。
-   * 不 preventDefault / 不 stopPropagation 同理:消掉提示之后,这一下 Esc
-   * 该继续传给谁就传给谁(APG 明说 tooltip 的 Esc 不该拦别人)。
+   * ── Esc 消提示:走响应链的**瞬态口**,不是一个作用域(09-02 R1)────────────
+   *
+   * 收编时的二选一,选的是 (b)。理由是这件组件**没有一个包着触发元素的根**:
+   * 它用 `cloneElement` 把手接在消费方自己那颗按钮上,提示体则 portal 到 body。
+   * 做成 `float` 作用域的话根只能铺在**锚点**上(提示体是 portal 出去的一小块,
+   * 铺在它身上等于「提示自己是一块能接键盘的面」,而它连焦点都不占),于是
+   * 「焦点在那颗按钮上」就会等于「tooltip 是第一响应者」—— 那是假的,而且这台上
+   * 每一颗图标钮都包着 Tooltip,假的第一响应者会遍地都是。
+   *
+   * 所以它登记的是 `focusTree.registerTransient(onEscape)`:仍然住在 `src/focus/`、
+   * 仍然只有那一个 window 监听,派发器在问活动路径**之前**先问这张表。
+   * 只在提示**已经出现**时登记(不挂着不该属于自己的键),并且**答 false** ——
+   * 消掉提示之后这一下 Esc 该继续传给谁就传给谁(APG 明说 tooltip 的 Esc
+   * 不该拦别人,从前那条监听不 preventDefault 也不 stopPropagation,同一个意思)。
    */
   useEffect(() => {
     if (!shown) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') hide()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return focusTree.registerTransient(() => {
+      hide()
+      return false
+    })
   }, [shown, hide])
 
   const childProps = children.props

@@ -1,34 +1,52 @@
 import { useState } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../Menu'
+import { FocusScope } from '../../focus/FocusScope'
+import { focusTree } from '../../focus/registry'
+import { FocusDispatchHarness } from '../../test/focus-harness'
 
 /**
  * A11y 线 · A2:菜单的**键盘路**与角色。
  *
- * roving 与 focus-trap 的机制各有自己的用例(ui/a11y/__tests__/),这里验的是接线:
- * 菜单开出来焦点真的进去了、方向键真的走项、Esc 真的把焦点还给开它的那个元素、
- * 项的角色真的随容器的 role 走(menu → menuitem,listbox → option)。
+ * roving 的机制有自己的用例(ui/a11y/__tests__/),Tab 圈禁与 Esc 退一层归响应链
+ * (src/focus/__tests__/),这里验的是接线:菜单开出来焦点真的进去了、方向键真的
+ * 走项、Esc 真的关掉它并把焦点还回去、项的角色真的随容器的 role 走
+ * (menu → menuitem,listbox → option)。
+ *
+ * **夹具里多了两件**(09-02 R1):一格 `root` 作用域(菜单在树上是它的孩子,
+ * 焦点归还就还到这一格上次所在的元素 = 那颗 opener)与那一个派发器
+ * (`FocusDispatchHarness`)—— 从前 Esc / Tab 是 Menu 自己挂的监听,现在它们是
+ * 声明,听键盘的只有外壳上那一个。
  */
 function Harness({ role }: { role?: 'menu' | 'listbox' }) {
   const [open, setOpen] = useState(false)
   return (
-    <>
-      <button type="button" data-testid="opener" onClick={() => setOpen(true)}>
-        open
-      </button>
-      {open && (
-        <Menu x={10} y={10} role={role} onClose={() => setOpen(false)} label="m">
-          <MenuSection>组</MenuSection>
-          <MenuItem onClick={() => {}}>一</MenuItem>
-          <MenuItem onClick={() => {}}>二</MenuItem>
-          <MenuSeparator />
-          <MenuItem onClick={() => {}}>三</MenuItem>
-        </Menu>
+    <FocusScope scope="root">
+      {({ scopeProps }) => (
+        <div {...scopeProps}>
+          <FocusDispatchHarness />
+          <button type="button" data-testid="opener" onClick={() => setOpen(true)}>
+            open
+          </button>
+          {open && (
+            <Menu x={10} y={10} role={role} onClose={() => setOpen(false)} label="m">
+              <MenuSection>组</MenuSection>
+              <MenuItem onClick={() => {}}>一</MenuItem>
+              <MenuItem onClick={() => {}}>二</MenuItem>
+              <MenuSeparator />
+              <MenuItem onClick={() => {}}>三</MenuItem>
+            </Menu>
+          )}
+        </div>
       )}
-    </>
+    </FocusScope>
   )
 }
+
+afterEach(() => {
+  focusTree.reset()
+})
 
 describe('Menu:键盘路', () => {
   it('开出来焦点进容器,↑↓ 走项,整组只占一个 Tab 位', () => {
@@ -199,5 +217,32 @@ describe('MenuItem 的禁灰档', () => {
     const menu = screen.getByRole('menu')
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
     expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: '下移' }))
+  })
+})
+
+/**
+ * **点外关**(`ui/float` 的 `useFloatDismiss`)。它读的是这块面自己的 ref,而那格 ref
+ * 现在由 `<FocusScope rootRef>` 一并写 —— DOM 上只有一格 `ref` 属性,菜单又同时要
+ * 定位、判「点没点在我身上」、当作用域根。
+ *
+ * 所以这一条同时是那格 `rootRef` 的守卫:**不把元素写回消费方那格 ref**,
+ * `ref.current` 恒为 null,`contains()` 恒 false —— 点在菜单**里面**也会把它关掉。
+ * 反证:摘掉 `FocusScope` 里那句 `outerRef.current.current = el` → 第二条当场红。
+ */
+describe('Menu:点外关', () => {
+  it('点菜单外面关掉', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    expect(screen.getByRole('menu')).toBeTruthy()
+
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('menu')).toBe(null)
+  })
+
+  it('点菜单**里面**不关(判据是那格 rootRef 真的拿到了元素)', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByTestId('opener'))
+    fireEvent.pointerDown(screen.getByText('二'))
+    expect(screen.queryByRole('menu')).toBeTruthy()
   })
 })

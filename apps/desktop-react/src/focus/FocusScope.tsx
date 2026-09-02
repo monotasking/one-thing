@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { focusTree } from './registry'
+import './focus-scope.css'
 import type { ReactNode } from 'react'
 import type { FocusScopeHandle } from './registry'
 import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
@@ -44,6 +45,22 @@ import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
  * 副作用:点空白处时 `activeElement` 从 `body` 变成那个根,`focus-trap` 记的
  * 锚点跟着变,Esc 回焦时有几率画出一圈焦点环。一个开关管一件事 —— R1 翻开关,
  * 行为与属性同时到位。`data-focus-scope` 不受这个闸管(I4 现在就要能扫)。
+ *
+ * 作用域根**不画焦点环**,那条唯一的例外规则在 `focus/focus-scope.css` 里,
+ * 理由写在那只文件的头上(容器不是控件)。
+ *
+ * ── `rootRef`:DOM 上只有一格 ref(R1 补)────────────────────────────────
+ * 消费方本来就常常有自己的一个 ref(浮层要量矩形定位、要判「点没点在我身上」),
+ * 而一个元素上只能写一个 `ref` 属性。就地拼一个 `(el) => { mine.current = el;
+ * scopeProps.ref(el) }` 会**每渲染一次换一个身份**,React 于是每渲染都先用 null
+ * 调一次再用元素调一次 —— 根一摘一挂,树看到的是「根没了又回来了」。
+ * 所以由这只组件一并写:传进来的 ref 与树的登记走**同一只回调**(身份恒定)。
+ *
+ * ── `activateOnMount`:开出来就把焦点送进落点 ────────────────────────────
+ * 浮层的「开启即入焦」从前长在 `useFocusTrap`(容器档)与各面自己那句
+ * `input.focus()` 里。树里它是一句声明:`activateOnMount` + `restingTarget`,
+ * 落焦由 `activate('open')` 干 —— 设计 §7 说的「自己开的临时面不写任何
+ * focus/keydown 代码」就是这一格。只在**挂载**时发一次:再开一次 = 一次新的挂载。
  */
 
 /** 父作用域的实例 id。根之外的每一格都从这里拿自己的 parent。 */
@@ -68,6 +85,21 @@ export interface FocusScopeProps {
   scope: FocusScopeId
   /** 这一份此刻不可交互(架子 keep-alive 的后台层)。缺省可交互。 */
   inert?: boolean
+  /**
+   * 消费方自己那格 ref —— 与树登记根元素**共用同一只回调**(见文件头)。
+   * 元素上仍然只铺 `scopeProps`,不再写第二个 `ref`。
+   */
+  rootRef?: { current: HTMLElement | null }
+  /**
+   * 挂载时把焦点送进落点(浮层的「开启即入焦」)。缺省不送。
+   *
+   * **不叫 `autoFocus`**:那是 DOM 上那个同名属性的名字,而这一格说的是
+   * 「向树申请 `activate('open')`」—— 焦点具体落到哪儿由 `restingTarget` 答。
+   * 名字撞上还会当场踩 `jsx-a11y/no-autofocus`(那条规则按 prop 名认人,
+   * 不管这是不是一个 DOM 元素),而那条规则说的正经事(别在页面载入时抢焦点)
+   * 与这里无关:这一格只在**用户刚亲手开出一层浮层**时才用得上。
+   */
+  activateOnMount?: boolean
   /** 进入时焦点落在哪。答不出就落根上。 */
   restingTarget?: () => HTMLElement | null
   /** 这一层认不认 Esc。答 true = 这一下归我。**不传 = 根本不进 Esc 候选表**。 */
@@ -78,7 +110,16 @@ export interface FocusScopeProps {
 }
 
 export function FocusScope(props: FocusScopeProps): ReactNode {
-  const { scope, inert = false, restingTarget, onEscape, keyHandlers, children } = props
+  const {
+    scope,
+    inert = false,
+    rootRef,
+    activateOnMount = false,
+    restingTarget,
+    onEscape,
+    keyHandlers,
+    children,
+  } = props
   const parent = useContext(FocusScopeContext)
   /*
    * 实例 id 由 `useId()` 给:StrictMode 的挂载→卸载→再挂载会重跑登记 effect,
@@ -109,15 +150,23 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
   if (keyHandlers) Object.assign(keysBox, keyHandlers)
 
   const handleRef = useRef<FocusScopeHandle | null>(null)
-  const rootRef = useRef<HTMLElement | null>(null)
+  const rootElRef = useRef<HTMLElement | null>(null)
+
+  /*
+   * 外面那格 ref 也走 ref、不进依赖表:它通常是 `useRef` 交出来的对象(身份恒定),
+   * 但条件渲染时也可能一会儿有一会儿没有,而根的登记回调必须身份恒定(见文件头)。
+   */
+  const outerRef = useRef(rootRef)
+  outerRef.current = rootRef
 
   /*
    * ref 回调与登记 effect 的先后**两种都可能**:元素的 ref 在子 fiber 的提交阶段
    * 就挂上(早于本组件的 layout effect),而条件渲染时又可能反过来。
-   * 所以两头各写一次:回调先把元素存进 `rootRef`,登记完再补交一次。
+   * 所以两头各写一次:回调先把元素存进 `rootElRef`,登记完再补交一次。
    */
   const setRoot = useCallback((el: HTMLElement | null) => {
-    rootRef.current = el
+    rootElRef.current = el
+    if (outerRef.current) outerRef.current.current = el
     handleRef.current?.setRoot(el)
   }, [])
 
@@ -136,15 +185,17 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
       instanceId,
     )
     handleRef.current = handle
-    handle.setRoot(rootRef.current)
+    handle.setRoot(rootElRef.current)
+    if (activateOnMount) handle.activate('open')
     return () => {
       handleRef.current = null
       handle.unregister()
     }
     /*
-     * `inert` / `hasEscape` 故意不进依赖表:它们是**数据**,由下面两条 effect
-     * 就地改。重登记会把 `lastFocused` 一起丢掉,而「关掉什么焦点回打开它的
-     * 地方」(§3.5 规则 5)全靠那一格活着。
+     * `inert` / `hasEscape` / `activateOnMount` 故意不进依赖表:前两个是**数据**,
+     * 由下面两条 effect 就地改;`activateOnMount` 说的是「这一次**挂载**要不要入焦」,
+     * 进依赖表等于「这个 prop 一变就再抢一次焦点」。重登记还会把 `lastFocused`
+     * 一起丢掉,而「关掉什么焦点回打开它的地方」(§3.5 规则 5)全靠那一格活着。
      */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, parent, instanceId, keysBox])

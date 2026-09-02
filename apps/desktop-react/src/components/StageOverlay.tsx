@@ -4,6 +4,7 @@ import { stageIdOf } from '../stage/transitions'
 import { findItem } from '../stage/items'
 import { HostTitle, useHostTitleText } from './HostTitle'
 import { renderContent } from '../content'
+import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
 import { Button } from '../ui/Button'
@@ -56,18 +57,19 @@ export function StageOverlay() {
   }, [item, held])
 
   /*
-   * ── Esc 不在这里了(08-31 搬走)──────────────────────────────────────
+   * ── Esc 不在这里了(08-31 搬走,09-02 R1 接进树)────────────────────────
    * 从前这一层自己挂一条 Esc 关舞台。搬走的理由是**它挡不住的那些形态**:
    * 这个组件只在有舞台时挂载,于是浮窗 / 盖按 Esc 全都掉进空里(用户 08-31
-   * 报的「Esc 关不掉」正是这一条,真机复现:浮窗按 Esc,placements 一个字节
-   * 不变)。给浮窗也挂一条的话,「谁该先退」就会在三处各写一遍。
+   * 报的「Esc 关不掉」正是这一条)。给浮窗也挂一条的话,「谁该先退」就会在
+   * 三处各写一遍。
    *
-   * 现在链是 stage/transitions.escapeTargetOf 那个纯函数(盖 → 舞台 → 最上面
-   * 那扇浮窗;架子是常驻家具,不在链里),宿主只剩一条 window 监听:
-   * components/useEscapeChain。那里也保管着这一段的全部判例 ——
-   * 「内层先退」靠的是**传播相位**(内容听捕获、宿主听冒泡)而不是注册序,
-   * 以及两版错法(同相位+同步读会被 StrictMode 双挂载翻盘;queueMicrotask
-   * 推迟判定会落在下一个监听器**之前**)的病历。
+   * 链仍然是 stage/transitions.escapeTargetOf 那个纯函数(盖 → 舞台 → 最上面
+   * 那扇浮窗;架子是常驻家具,不在链里),它现在是**响应链根的 `onEscape`**
+   * (AppShell 那一句),沿活动路径由深到浅问下来的最后一环。
+   *
+   * 这一层自己是响应链上的一格 `layer`(下面那个 `<FocusScope>`):它不认 Esc,
+   * 只回答「焦点此刻在不在舞台里」—— 舞台里的浮层(菜单)因此在树上是它的孩子,
+   * 一下 Esc 先关菜单、再轮到退层链收舞台。
    */
 
   const shown = item ?? held
@@ -88,53 +90,60 @@ export function StageOverlay() {
         if (e.target === e.currentTarget) closeStage()
       }}
     >
-      <section
-        className={leaving ? `${s.panel} ${s.leaving}` : s.panel}
-        role="dialog"
-        aria-label={title}
-      >
-        <header className={s.header}>
-          <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-          <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
-          {/* 「钉到边▸」是**带字的动作钮** → `ui/Button`(ghost 档);它透传
-            * ButtonHTMLAttributes,所以量矩形那一手(菜单贴它下缘开)一字未动。 */}
-          <Button
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              setMenu({ x: r.left, y: r.bottom })
-            }}
-          >
-            <Pin className={s.icon} strokeWidth={1.75} aria-hidden="true" />
-            {t('stage.pinToEdge')}
-          </Button>
-          {/* 另外两颗是纯图标钮 → `ui/IconButton` 的 md 档(28×28,与旧 .close 同尺寸)。 */}
-          <IconButton
-            icon={PictureInPicture2}
-            size="md"
-            onClick={stageToFloat}
-            label={t('stage.toFloat')}
-          />
-          <IconButton icon={X} size="md" onClick={closeStage} label={t('common.close')} />
-        </header>
-        <div className={s.body}>{renderContent(shown.id)}</div>
-      </section>
-
-      {menu && (
-        <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={t('stage.pinToEdge')}>
-          <MenuSection>{t('stage.pinToEdge')}</MenuSection>
-          {SHELF_SIDE_CHOICES.map((c) => (
-            <MenuItem
-              key={c.value}
-              onClick={() => {
-                stageToEdge(c.value)
-                setMenu(null)
-              }}
+      <FocusScope scope="stage-layer">
+        {({ scopeProps }) => (
+          <>
+            <section
+              {...scopeProps}
+              className={leaving ? `${s.panel} ${s.leaving}` : s.panel}
+              role="dialog"
+              aria-label={title}
             >
-              {t(c.labelKey)}
-            </MenuItem>
-          ))}
-        </Menu>
-      )}
+              <header className={s.header}>
+                <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
+                <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
+                {/* 「钉到边▸」是**带字的动作钮** → `ui/Button`(ghost 档);它透传
+                  * ButtonHTMLAttributes,所以量矩形那一手(菜单贴它下缘开)一字未动。 */}
+                <Button
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setMenu({ x: r.left, y: r.bottom })
+                  }}
+                >
+                  <Pin className={s.icon} strokeWidth={1.75} aria-hidden="true" />
+                  {t('stage.pinToEdge')}
+                </Button>
+                {/* 另外两颗是纯图标钮 → `ui/IconButton` 的 md 档(28×28,与旧 .close 同尺寸)。 */}
+                <IconButton
+                  icon={PictureInPicture2}
+                  size="md"
+                  onClick={stageToFloat}
+                  label={t('stage.toFloat')}
+                />
+                <IconButton icon={X} size="md" onClick={closeStage} label={t('common.close')} />
+              </header>
+              <div className={s.body}>{renderContent(shown.id)}</div>
+            </section>
+
+            {menu && (
+              <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={t('stage.pinToEdge')}>
+                <MenuSection>{t('stage.pinToEdge')}</MenuSection>
+                {SHELF_SIDE_CHOICES.map((c) => (
+                  <MenuItem
+                    key={c.value}
+                    onClick={() => {
+                      stageToEdge(c.value)
+                      setMenu(null)
+                    }}
+                  >
+                    {t(c.labelKey)}
+                  </MenuItem>
+                ))}
+              </Menu>
+            )}
+          </>
+        )}
+      </FocusScope>
     </div>
   )
 }

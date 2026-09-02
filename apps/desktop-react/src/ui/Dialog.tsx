@@ -1,10 +1,9 @@
-import { useCallback, useId, useRef } from 'react'
+import { useCallback, useId } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { create } from 'zustand'
 import { useT } from '../i18n'
-import { useFocusTrap } from './a11y/focus-trap'
-import { useFloatDismiss } from './float'
+import { FocusScope } from '../focus/FocusScope'
 import { Button } from './Button'
 import s from './Dialog.module.css'
 
@@ -17,12 +16,20 @@ import s from './Dialog.module.css'
  * 遮罩点击判 mousedown 且 target === currentTarget(按下和松开都在遮罩上才算点遮罩,
  * 从面板里拖出去松手不该关窗)、入场用同一组关键帧、层级 --z-overlay / --z-modal。
  *
- * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
- *   Tab / Shift+Tab   在面板内循环,**出不去**(ui/a11y/focus-trap)
- *   Esc               关闭 → 焦点还给开它的那个元素
+ * ── 键盘表(A11y 线 · A2;09-02 R1 起三件全由响应链答)────────────────────
+ *   Tab / Shift+Tab   在面板内循环,**出不去**(`modal` 作用域的内置行为)
+ *   Esc               关闭 → 焦点**结构性地**回到开它的那块面上次所在的元素
  *   Enter / Space     落在哪个按钮上就触发哪个(原生 <button>,不自造)
  * 打开时焦点落在面板本身(tabIndex=-1)—— APG 对话框模式允许的落点,
- * 也是这件组件从前的行为,本批不改;换的只是「出不去、回得来」这两条。
+ * 也是这件组件一直以来的行为:`<FocusScope>` 不声明 `restingTarget`,落点就是根。
+ *
+ * 三件从前分别来自 `ui/a11y/focus-trap`(圈禁 + 锚点归还)与 `ui/float` 的
+ * Esc 半边(浮层栈判谁在最上面)。R1 一起退役:圈禁成了 `modal` 档的缺省,
+ * 「谁在最上面」由树的深度回答(portal 出去的菜单在 DOM 上是这块面的兄弟,
+ * 在树上是它的孩子 —— 那正是浮层栈要用两条判据去猜的事),归还是**结构性**的
+ * (§4.5:这块面卸载,路径缩回它的父,焦点回父上次所在的元素),
+ * 所以这里再没有一句「借了要还」的簿记。
+ *
  * 语义:role="dialog" + aria-modal + aria-labelledby 指向可见标题
  * (没有可见标题时退回 aria-label,由调用方经 i18n 给)。
  *
@@ -60,30 +67,15 @@ interface DialogProps {
 }
 
 export function Dialog({ open, onClose, title, children, footer, label }: DialogProps) {
-  const panel = useRef<HTMLDivElement>(null)
   const titleId = useId()
-
-  // 圈禁 + 还锚点。开启时把焦点移进面板这一步也归它 —— 从前那行 panel.focus()
-  // 就是它的 initialFocus: 'container' 默认档,行为逐字不变。
-  useFocusTrap(panel, open)
-
-  /*
-   * Esc 关(09-01 批 4:从手写迁进 `ui/float` 的 `useFloatDismiss`)。
-   * 退得动就把这一下吃掉,否则同一下 Esc 会顺手把对话框底下那块面也收掉 ——
-   * 契约与判例见 components/useEscapeChain(Menu / Popover 同款)。
-   *
-   * 从前这里自己在 window 捕获相位挂一条,与 Menu / Popover 逐字相同,
-   * 而**同相位之间按注册序**:对话框先开、菜单后开,一下 Esc 先被对话框接走,
-   * 两层齐关。现在由原语那只浮层栈判「谁是栈顶」,内层先退。
-   *
-   * `outside: false` —— 这件的「点外面」是遮罩自己的 mousedown
-   * (按下与松开都要落在遮罩上才算,从面板里拖出去松手不关),
-   * 不是一条 window 上的 pointerdown;开着那条会把这条规矩绕过去。
-   */
-  useFloatDismiss(panel, onClose, open, { outside: false })
 
   if (!open) return null
 
+  /*
+   * 「点外面」不进 `useFloatDismiss`:这件的点外面是**遮罩自己的 mousedown**
+   * (按下与松开都要落在遮罩上才算,从面板里拖出去松手不关),不是一条 window 上的
+   * pointerdown。所以这只组件现在一句浮层原语都不用 —— Esc 归树,点外归遮罩。
+   */
   return createPortal(
 /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
      * 遮罩点击关闭是**鼠标的顺手路**,不是唯一出口:Esc 已经能关(键盘监听见本文件 /
@@ -97,25 +89,33 @@ export function Dialog({ open, onClose, title, children, footer, label }: Dialog
         if (e.target === e.currentTarget) onClose()
       }}
     >
-      <div
-        ref={panel}
-        className={s.panel}
-        role="dialog"
-        aria-modal="true"
-        /* 有可见标题就指过去(读屏软件念的是屏幕上那句,不是另一份说法);
-         * 没有才退回调用方给的 aria-label。两者只该有一个生效。 */
-        aria-labelledby={title ? titleId : undefined}
-        aria-label={title ? undefined : label}
-        tabIndex={-1}
-      >
-        {title && (
-          <h2 className={s.title} id={titleId}>
-            {title}
-          </h2>
+      {/* `activateOnMount` = 开出来就把焦点送进落点(不声明 restingTarget,落点就是面板
+        * 本身)—— 从前那句 `panel.focus()` 的等价声明式说法。
+        * `onEscape` 答 true:这一下归我,别再往外传(不认领的话同一下 Esc 会顺手
+        * 把对话框底下那块面也收掉 —— 用户想退的只有一层)。 */}
+      <FocusScope scope="dialog" activateOnMount onEscape={() => (onClose(), true)}>
+        {({ scopeProps }) => (
+          <div
+            {...scopeProps}
+            className={s.panel}
+            role="dialog"
+            aria-modal="true"
+            /* 有可见标题就指过去(读屏软件念的是屏幕上那句,不是另一份说法);
+             * 没有才退回调用方给的 aria-label。两者只该有一个生效。 */
+            aria-labelledby={title ? titleId : undefined}
+            aria-label={title ? undefined : label}
+            tabIndex={-1}
+          >
+            {title && (
+              <h2 className={s.title} id={titleId}>
+                {title}
+              </h2>
+            )}
+            {children && <div className={s.body}>{children}</div>}
+            {footer && <div className={s.footer}>{footer}</div>}
+          </div>
         )}
-        {children && <div className={s.body}>{children}</div>}
-        {footer && <div className={s.footer}>{footer}</div>}
-      </div>
+      </FocusScope>
     </div>,
     document.body,
   )

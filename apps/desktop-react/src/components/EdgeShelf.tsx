@@ -13,6 +13,7 @@ import {
 } from '../stage/transitions'
 import { setSnapSide } from './snap-hint'
 import { renderContent } from '../content'
+import { FocusScope } from '../focus/FocusScope'
 import { perfMark } from '../services/perf'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
@@ -95,18 +96,35 @@ interface Props {
  *
  * `inert` 与 `content-visibility: hidden` 分工不同,两个都要:前者管**可交互性**
  * (焦点序、指针、辅助树),后者管**渲染开销**。少哪一个都会留下一个能摸到却看不见的面板。
+ *
+ * ── 每一层是响应链上的一格 `layer`(09-02 R1)────────────────────────────────
+ * `inert` 因此要说**两遍**,而且必须是同一个判据:一遍给 DOM(浏览器据此把这一层
+ * 移出焦点序与辅助树),一遍给树(`<FocusScope inert>` —— 注册表据此不选它当第一
+ * 响应者,而且**路径经过它就在那儿截断**)。
+ * 少了给树的那一遍,后台那层照样能被算成第一响应者,它的局部键会在看不见的地方响;
+ * 少了给 DOM 的那一遍,焦点能 Tab 进一块看不见的面。
+ *
+ * 这一格治的正是设计 §2 记的那条:切 tab 之后旧层打上 `inert`,而焦点还留在里面 ——
+ * 浏览器当场把它扔给 `<body>`,于是键盘从此没有主人(I1 的那条孤儿焦点)。
+ * 现在它是一次**结构变化**:路径缩到最近仍可交互的祖先,焦点跟着回落。
+ * 「切 tab 之后焦点进不进新层」是另一件事(§11 拍点 2),那一格由 R2 补 `activate()`。
  */
 const ShelfTabLayer = memo(function ShelfTabLayer({ id, on }: { id: string; on: boolean }) {
   const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
   return (
-    <div
-      className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
-      data-panel-layer={id}
-      data-panel-on={on || undefined}
-      inert={!on || undefined}
-    >
-      {renderContent(id, visibility)}
-    </div>
+    <FocusScope scope="shelf-layer" inert={!on}>
+      {({ scopeProps }) => (
+        <div
+          {...scopeProps}
+          className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
+          data-panel-layer={id}
+          data-panel-on={on || undefined}
+          inert={!on || undefined}
+        >
+          {renderContent(id, visibility)}
+        </div>
+      )}
+    </FocusScope>
   )
 })
 

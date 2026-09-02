@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { useFloatDismiss, useFloatPosition } from '../float'
@@ -59,34 +59,16 @@ function DismissHarness({ onClose, active }: { onClose: () => void; active?: boo
   )
 }
 
-/** Esc 一定要**可取消**才谈得上「认领」——不可取消的事件 preventDefault 是空转。 */
-function escape(): KeyboardEvent {
-  return new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
-}
-
+/**
+ * **Esc 那一半退役了**(09-02 R1)。这只原语从前还管「Esc 认领关闭」,判据是一只
+ * 模块级浮层栈(DOM 包含 + 入栈序两条猜出来的判据)。它连同「层叠时只退一层」
+ * 那一组用例整个搬进了响应链:`<FocusScope onEscape>` 声明,唯一那个派发器沿
+ * 活动路径由深到浅问。对应的守卫现在在 `src/focus/__tests__/modal-scope.test.tsx`
+ * (对话框里开菜单,一下 Esc 只关菜单)与 `dispatch.test.tsx`(退一层的次序)。
+ *
+ * 所以这一组只剩点外关 —— 它各浮层各判各的,从来没有次序问题。
+ */
 describe('useFloatDismiss:怎么散', () => {
-  it('Esc 关,并且**认领这一下**(defaultPrevented) —— 不认领会连底下那层一起收', () => {
-    const onClose = vi.fn()
-    render(<DismissHarness onClose={onClose} />)
-
-    const ev = escape()
-    act(() => void window.dispatchEvent(ev))
-
-    expect(onClose).toHaveBeenCalledTimes(1)
-    expect(ev.defaultPrevented).toBe(true)
-  })
-
-  it('别的键不碰:既不关也不认领', () => {
-    const onClose = vi.fn()
-    render(<DismissHarness onClose={onClose} />)
-
-    const ev = new KeyboardEvent('keydown', { key: 'a', bubbles: true, cancelable: true })
-    act(() => void window.dispatchEvent(ev))
-
-    expect(onClose).not.toHaveBeenCalled()
-    expect(ev.defaultPrevented).toBe(false)
-  })
-
   it('点浮层外关,点浮层里不关', () => {
     const onClose = vi.fn()
     render(<DismissHarness onClose={onClose} />)
@@ -98,184 +80,57 @@ describe('useFloatDismiss:怎么散', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('active=false 零反应 —— 关着的浮层不许还在听键盘和指针', () => {
+  it('Esc 一个字都不管了(它归响应链)', () => {
     const onClose = vi.fn()
-    render(<DismissHarness onClose={onClose} active={false} />)
+    render(<DismissHarness onClose={onClose} />)
 
-    const ev = escape()
+    const ev = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     act(() => void window.dispatchEvent(ev))
-    fireEvent.pointerDown(document.body)
 
     expect(onClose).not.toHaveBeenCalled()
     expect(ev.defaultPrevented).toBe(false)
   })
 
-  it('卸载即拆监听(拆得干净:卸载后再打一下 Esc 没有人接)', () => {
+  it('active=false 零反应 —— 关着的浮层不许还在听指针', () => {
+    const onClose = vi.fn()
+    render(<DismissHarness onClose={onClose} active={false} />)
+
+    fireEvent.pointerDown(document.body)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('卸载即拆监听(拆得干净:卸载后再点一下没有人接)', () => {
     const onClose = vi.fn()
     const view = render(<DismissHarness onClose={onClose} />)
     view.unmount()
 
-    const ev = escape()
-    act(() => void window.dispatchEvent(ev))
-
+    fireEvent.pointerDown(document.body)
     expect(onClose).not.toHaveBeenCalled()
-    expect(ev.defaultPrevented).toBe(false)
-  })
-})
-
-/* ── 层叠:Esc 单层退 ─────────────────────────────────────────────────────
- * 「外 Dialog 内 Menu」的形。两层都是 useFloatDismiss 的默认档(认 Esc),
- * 用裸 hook 模拟就够 —— 要验的是**原语的栈**,不是任何一件组件的皮肤。
- * 内层的挂载序在外层之后(它长在外层的 children 里),这正是真机里的次序。
- * ──────────────────────────────────────────────────────────────────────── */
-
-function Layer({
-  onClose,
-  active = true,
-  testId,
-  children,
-}: {
-  onClose: () => void
-  active?: boolean
-  testId: string
-  children?: React.ReactNode
-}) {
-  const ref = useRef<HTMLDivElement>(null)
-  useFloatDismiss(ref, onClose, active)
-  return (
-    <div ref={ref} data-testid={testId}>
-      {children}
-    </div>
-  )
-}
-
-/**
- * 「对话框开着,里面又开了一张菜单」的真机形:菜单是 portal 出去的,DOM 上与
- * 对话框面板是**兄弟**,谁也不套着谁 —— 层序只能由入栈序说话。
- * 内层由外层的一次交互开出来,所以它后开、后入栈。
- */
-function SiblingStack({
-  closeOuter,
-  closeInner,
-  bumpable = false,
-}: {
-  closeOuter: () => void
-  closeInner: () => void
-  bumpable?: boolean
-}) {
-  const [innerOpen, setInnerOpen] = useState(false)
-  const [, bump] = useState(0)
-  return (
-    <>
-      {/* onClose 是就地闭包:每渲染一次都是新函数。进了依赖表就会出栈再入栈。 */}
-      <Layer onClose={() => closeOuter()} testId="outer">
-        <button type="button" onClick={() => setInnerOpen(true)}>
-          open inner
-        </button>
-        {bumpable && (
-          <button type="button" onClick={() => bump((n) => n + 1)}>
-            bump
-          </button>
-        )}
-      </Layer>
-      {innerOpen && (
-        <Layer
-          onClose={() => {
-            closeInner()
-            setInnerOpen(false)
-          }}
-          testId="inner"
-        />
-      )}
-    </>
-  )
-}
-
-describe('useFloatDismiss:层叠时只退一层', () => {
-  it('后开的那层先退:一下 Esc 只关内层;再一下才关外层', () => {
-    const closeOuter = vi.fn()
-    const closeInner = vi.fn()
-    render(<SiblingStack closeOuter={closeOuter} closeInner={closeInner} />)
-    fireEvent.click(screen.getByText('open inner'))
-
-    const first = escape()
-    act(() => void window.dispatchEvent(first))
-    expect(closeInner).toHaveBeenCalledTimes(1)
-    expect(closeOuter).not.toHaveBeenCalled()
-    // 认领仍然发生 —— 只是由最上面那一层认领,外壳退层链照旧让位。
-    expect(first.defaultPrevented).toBe(true)
-    expect(screen.queryByTestId('inner')).toBeNull()
-
-    const second = escape()
-    act(() => void window.dispatchEvent(second))
-    expect(closeOuter).toHaveBeenCalledTimes(1)
-    expect(closeInner).toHaveBeenCalledTimes(1)
-    expect(second.defaultPrevented).toBe(true)
   })
 
-  it('套着的形:同一次提交里父子两层都在场,认领的是里面那层(effect 子先于父,入栈序在这一形上是反的)', () => {
-    const closeOuter = vi.fn()
-    const closeInner = vi.fn()
-    render(
-      <Layer onClose={closeOuter} testId="outer">
-        <Layer onClose={closeInner} testId="inner" />
-      </Layer>,
-    )
-
-    act(() => void window.dispatchEvent(escape()))
-    expect(closeInner).toHaveBeenCalledTimes(1)
-    expect(closeOuter).not.toHaveBeenCalled()
-  })
-
-  it('内层 escape:false(自己另有 Esc 语义)不进栈,也就不挡住外层', () => {
+  it('两层都开着时,点在两层外面两层都收到(各判各的,没有栈)', () => {
     const closeOuter = vi.fn()
     const closeInner = vi.fn()
 
-    function Stacked() {
-      const ref = useRef<HTMLDivElement>(null)
-      // 只要点外关、Esc 归自己 —— composer 就是这一档。
-      useFloatDismiss(ref, closeInner, true, { escape: false })
+    function Nested() {
+      const outer = useRef<HTMLDivElement>(null)
+      const inner = useRef<HTMLDivElement>(null)
+      useFloatDismiss(outer, closeOuter)
+      useFloatDismiss(inner, closeInner)
       return (
-        <Layer onClose={closeOuter} testId="outer">
-          <div ref={ref} data-testid="inner" />
-        </Layer>
+        <div ref={outer} data-testid="outer">
+          <div ref={inner} data-testid="inner" />
+        </div>
       )
     }
-    render(<Stacked />)
-
-    act(() => void window.dispatchEvent(escape()))
-    expect(closeInner).not.toHaveBeenCalled()
-    expect(closeOuter).toHaveBeenCalledTimes(1)
-  })
-
-  it('外层重渲染不会把自己顶上去(onClose 换了身份也不重排层序)', () => {
-    const closeOuter = vi.fn()
-    const closeInner = vi.fn()
-    render(<SiblingStack closeOuter={closeOuter} closeInner={closeInner} bumpable />)
-    fireEvent.click(screen.getByText('open inner'))
-
-    fireEvent.click(screen.getByText('bump'))
-    act(() => void window.dispatchEvent(escape()))
-
-    expect(closeInner).toHaveBeenCalledTimes(1)
-    expect(closeOuter).not.toHaveBeenCalled()
-  })
-
-  it('点外关那条不进栈:内层开着,点在两层外面时两层都收到(各判各的)', () => {
-    const closeOuter = vi.fn()
-    const closeInner = vi.fn()
-    render(
-      <Layer onClose={closeOuter} testId="outer">
-        <Layer onClose={closeInner} testId="inner" />
-      </Layer>,
-    )
+    render(<Nested />)
 
     fireEvent.pointerDown(document.body)
     expect(closeOuter).toHaveBeenCalledTimes(1)
     expect(closeInner).toHaveBeenCalledTimes(1)
   })
 
-  it('outside:false 只要 Esc 不要点外关(Dialog 那一档)', () => {
+  it('outside:false 一条路都不留(Dialog 那一档:它的点外面是遮罩自己的 mousedown)', () => {
     const onClose = vi.fn()
     function Only() {
       const ref = useRef<HTMLDivElement>(null)
@@ -286,9 +141,6 @@ describe('useFloatDismiss:层叠时只退一层', () => {
 
     fireEvent.pointerDown(document.body)
     expect(onClose).not.toHaveBeenCalled()
-
-    act(() => void window.dispatchEvent(escape()))
-    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it("outside:'capture' 走捕获相位:半路 stopPropagation 也拦不住点外关", () => {

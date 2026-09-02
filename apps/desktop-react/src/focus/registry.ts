@@ -72,14 +72,32 @@ import type {
  * 「不许用」由 `inert` 一格表达,不需要第二个词。
  * ══════════════════════════════════════════════════════════════════════
  *
- * ── R0 的闸:`policy.moveFocus` ─────────────────────────────────────────
- * 本批**只观察、不搬焦点**:两个监听照装,内部路径与 `lastFocused` 照更新,
- * 但「孤儿焦点收回」(I1)与「点空白处进作用域」(§4.6)两件**会动 DOM 焦点**的
- * 事写好了由这个开关关着,R1 打开。`<FocusScope>` 铺不铺 `tabIndex={-1}` 也
- * 跟着它 —— 那个属性存在的唯一理由就是「焦点能被送到根上」,搬焦点还没上线时
- * 提前铺它只会多出一个可感知的副作用(点空白处 `activeElement` 从 body 变成
- * 那个根,`focus-trap` 的锚点跟着变,Esc 回焦时有几率画出一圈焦点环)。
- * 一个开关管一件事:R1 那一批把它翻成 true,行为与属性同时到位。
+ * ── 闸:`policy.moveFocus`(R0 关着,**R1 起缺省打开**)────────────────────
+ * R0 只观察不搬焦点:两个监听照装,内部路径与 `lastFocused` 照更新,但「孤儿
+ * 焦点收回」(I1)与「点空白处进作用域」(§4.6)两件**会动 DOM 焦点**的事被它
+ * 关着。R1 把它翻成 `true`,同一刻 `<FocusScope>` 才开始铺 `tabIndex={-1}` ——
+ * 那个属性存在的唯一理由就是「焦点能被送到根上」,一个开关管一件事。
+ * 它留着是因为**关掉即回到只观察**:测试要验「不搬焦点时一个 `focus()` 都不发」
+ * 靠它,真机上万一发现某条搬焦点的路有害也靠它一句话退回去。
+ *
+ * ── I1 的收回有**三处**,少一处都不成立(R0 审查补的那一格,设计 §4.1)────
+ *  ① `settle()` —— 卸载 / 变 inert 这条结构路(R0 已写);
+ *  ② `focusout` 且 `relatedTarget === null` —— 焦点从一个元素上掉下来、又没有
+ *     落到下一个元素上。**掉到 body 本身不发 `focusin`**,所以光靠 `focusin`
+ *     那一路收不回来;
+ *  ③ 唯一派发器每次 keydown 开头 —— 被聚焦的元素**被静默移除**时 Chrome 连
+ *     `focusout` 都不发,这一条兜住剩下的一切:下一次按键之前先把焦点接回来,
+ *     于是「按键没反应」在时间上不可能发生。
+ * 三处走的是同一只 `recoverOrphanFocus()`(不写第二套):落点 =
+ * `restingElementOf(current())`,第一响应者答不出(树刚起来 / 它没铺根)就落 root 根。
+ *
+ * ── 瞬态口 `registerTransient`(R1 补,给 Tooltip 那一族)──────────────────
+ * 有一种面**不占焦点、也没有一个包着触发元素的根**:Tooltip 把提示体 portal 出去,
+ * 而锚点是消费方自己那颗按钮 —— 把作用域根铺在锚点上会让「焦点在那颗按钮上」
+ * 等于「tooltip 是第一响应者」,那是假的。它又确实要在 Esc 时消失(WCAG 1.4.13)。
+ * 所以给它一张**瞬态表**:登记一个 `onEscape`,派发器在问活动路径**之前**先问
+ * 这张表。它仍然住在 `src/focus/` 里、仍然只有那一个派发器,没有第二个 window 监听。
+ * 答 true = 这一下我吃了(tooltip 答 **false**:APG 说它的 Esc 不该拦别人)。
  */
 
 /** 注册时可以交代的东西。全是可选 —— 一个什么都不声明的作用域也是合法的。 */
@@ -114,19 +132,28 @@ export interface FocusScopeHandle {
 /** 独占口的处理器(录制态)。答 true = 这一下我吃了。 */
 export type FocusCaptureHandler = (e: KeyboardEvent) => boolean
 
+/** 瞬态口的处理器(Tooltip 那一族)。答 true = 这一下我认领了。 */
+export type FocusTransientEscapeHandler = () => boolean
+
 type Listener = () => void
 
 let seq = 0
 
 export class FocusTree {
   /**
-   * 会不会真的搬 DOM 焦点。R0 = false(只观察);R1 翻 true。
+   * 会不会真的搬 DOM 焦点。R0 = false(只观察);**R1 起缺省 true**。
    * 见文件头那一段 —— 它同时管着 `scopeProps` 铺不铺 `tabIndex`。
    */
-  policy = { moveFocus: false }
+  policy = { moveFocus: true }
 
   private readonly map = new Map<FocusInstanceId, ScopeNode>()
   private readonly listeners = new Set<Listener>()
+  /**
+   * 瞬态 Esc 口。**有序集合**:后登记的后问,与浮层的「后开的在上面」同向。
+   * 存的是处理器本身,解除函数按身份删 —— 同一个组件重挂拿到的是新闭包,
+   * 按身份删才不会误伤别人那一格(与 `popFloatLayer` 当年那条判例同型)。
+   */
+  private readonly transients = new Set<FocusTransientEscapeHandler>()
   private focused: FocusInstanceId | null = null
   private captured: FocusCaptureHandler | null = null
   private attached = false
@@ -231,6 +258,22 @@ export class FocusTree {
     return this.captured
   }
 
+  /** 此刻挂着的瞬态 Esc 口,按登记序。`dispatch` 在问路径之前问它。 */
+  transientEscapeHandlers(): readonly FocusTransientEscapeHandler[] {
+    return [...this.transients]
+  }
+
+  /**
+   * 树上的那一格 root。收回焦点时的最后落点 —— 第一响应者答不出话
+   * (树刚起来、或它此刻没铺根元素)时焦点回这儿,而不是留在 body 上。
+   */
+  private rootNode(): ScopeNode | undefined {
+    for (const node of this.map.values()) {
+      if (node.kind === 'root' && !node.inert) return node
+    }
+    return undefined
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener)
     return () => {
@@ -244,11 +287,28 @@ export class FocusTree {
    * 宿主激活一格(§4.2 来源 2):打开一块面、切 tab、程序置顶浮窗。
    *
    * 它做两件事:把第一响应者指过去,并**把焦点送到那一格的落点** —— 后者由
-   * `policy.moveFocus` 闸着(R0 关)。指针操作不该调它:点击本身就落焦。
+   * `policy.moveFocus` 闸着(R1 起缺省开)。指针操作不该调它:点击本身就落焦。
    */
   activate(instanceId: FocusInstanceId, reason: ActivateReason = 'programmatic'): void {
     const node = this.map.get(instanceId)
     if (!isInteractive(node)) return
+    /*
+     * **已经在我里面了就不往回拽**(R1 补)。`activate` 的意思是「让这一格成为
+     * 当前」,而第一响应者要是我的**后代**,这句话早就成立了 —— 路径上有我。
+     *
+     * 不判这一条会踩 React 的 effect 次序:**子先于父**跑,所以同一次提交里一起
+     * 挂载的父子两层(对话框里一开始就带着一张菜单),菜单先登记先入焦,随后
+     * 父那一句 `activate` 把第一响应者拽回自己身上,层序整个倒过来。
+     * 这正是 `ui/float.ts` 的浮层栈当年要用判据①(DOM 包含)去兜的那一形 ——
+     * 树里它是一句结构判断,不必猜。
+     */
+    if (this.focused && this.focused !== instanceId) {
+      const current = this.map.get(this.focused)
+      if (isInteractive(current) && this.isDescendantOf(this.focused, instanceId)) {
+        this.lastReason = reason
+        return
+      }
+    }
     this.focused = instanceId
     this.lastReason = reason
     if (this.policy.moveFocus) {
@@ -272,6 +332,38 @@ export class FocusTree {
         this.notify()
       }
     }
+  }
+
+  /**
+   * **瞬态 Esc 口**(见文件头)。给「不占焦点、也没有自己的根」的那一族用 ——
+   * 今天只有 Tooltip 一个消费者。返回解除函数,幂等。
+   *
+   * 它与作用域的差别只有一条:作用域答「这一下键归谁」要先证明自己在活动路径上,
+   * 而瞬态口没有位置可言(提示体 portal 出去了,锚点是别人的按钮),所以它按
+   * **登记序**被问,并且被问在路径之前。能这么放心是因为它只被允许**不认领**地
+   * 消费(答 false),真要认领也只能是它自己那一层。
+   */
+  registerTransient(handler: FocusTransientEscapeHandler): () => void {
+    this.transients.add(handler)
+    return () => {
+      this.transients.delete(handler)
+    }
+  }
+
+  /**
+   * **孤儿焦点收回**(I1)。三处收回共用的那一只 —— 文件头列了是哪三处。
+   *
+   * 判据只有一条:`document.activeElement` 是 body(或 null)。**路径不变**:
+   * 第一响应者不会因为一个 DOM 节点消失而消失(§4.2),所以这里只搬焦点、
+   * 一个字都不改树。落点答不出来就什么都不做 —— 往一个不连通的元素上 focus
+   * 只会再掉一次 body。
+   */
+  recoverOrphanFocus(): void {
+    if (!this.policy.moveFocus || typeof document === 'undefined') return
+    const active = document.activeElement
+    if (active && active !== document.body) return
+    const target = restingElementOf(this.current()) ?? restingElementOf(this.rootNode())
+    target?.focus({ preventScroll: true })
   }
 
   /* ── 内部 ────────────────────────────────────────────────────────────── */
@@ -331,12 +423,11 @@ export class FocusTree {
       /*
        * 焦点掉出了所有作用域(十有八九是掉到 body 上 —— 本仓一切「按键没反应」
        * 的病根)。**路径不变**:第一响应者不会因为一个 DOM 节点消失而消失(§4.2)。
-       * 收回是 I1 的落地,由 policy 闸着(R0 只观察)。
+       * 收回是 I1 的落地,三处共用 `recoverOrphanFocus()`(它自己判 policy 与
+       * 「此刻真的在 body 上吗」——焦点落进一个还没登记的元素里也会走到这里,
+       * 那时候什么都不该做)。
        */
-      if (this.policy.moveFocus) {
-        const el = restingElementOf(this.current())
-        el?.focus({ preventScroll: true })
-      }
+      this.recoverOrphanFocus()
       return
     }
     /*
@@ -348,6 +439,24 @@ export class FocusTree {
     if (this.focused === node.instanceId) return
     this.focused = node.instanceId
     this.notify()
+  }
+
+  /**
+   * **I1 收回的第二处**(设计 §4.1 修正段)。
+   *
+   * `relatedTarget === null` = 焦点从这个元素上掉下来、并没有落到下一个元素上
+   * (点了空白、元素被禁用、容器被 `inert`…)。此时 `activeElement` 变成 body,
+   * 而 **body 不发 `focusin`** —— 所以 `onFocusIn` 那一路根本收不到这一刻。
+   *
+   * 推到**微任务**再看:`focusout` 是在焦点转移的**中途**发的,同一拍里浏览器
+   * 常常紧接着把焦点交给下一个元素(点一颗按钮就是这么两步)。当场判会把
+   * 每一次正常的焦点转移都误判成孤儿,然后把焦点抢回上一格 —— 那是比孤儿
+   * 更糟的一种病。微任务落在这一串同步事件之后、下一次渲染之前。
+   */
+  private readonly onFocusOut = (e: FocusEvent): void => {
+    if (!this.policy.moveFocus) return
+    if (e.relatedTarget !== null) return
+    queueMicrotask(() => this.recoverOrphanFocus())
   }
 
   private readonly onPointerDown = (e: PointerEvent): void => {
@@ -364,6 +473,7 @@ export class FocusTree {
   private attach(): void {
     if (this.attached || typeof document === 'undefined') return
     document.addEventListener('focusin', this.onFocusIn)
+    document.addEventListener('focusout', this.onFocusOut)
     document.addEventListener('pointerdown', this.onPointerDown, true)
     this.attached = true
   }
@@ -375,11 +485,13 @@ export class FocusTree {
   reset(): void {
     if (this.attached && typeof document !== 'undefined') {
       document.removeEventListener('focusin', this.onFocusIn)
+      document.removeEventListener('focusout', this.onFocusOut)
       document.removeEventListener('pointerdown', this.onPointerDown, true)
     }
     this.attached = false
     this.map.clear()
     this.listeners.clear()
+    this.transients.clear()
     this.focused = null
     this.captured = null
     this.lastReason = null
@@ -390,6 +502,7 @@ export class FocusTree {
     focused: FocusInstanceId | null
     reason: ActivateReason | null
     captured: boolean
+    transients: number
     path: ActivePath
     nodes: {
       instanceId: string
@@ -406,6 +519,7 @@ export class FocusTree {
       focused: this.focused,
       reason: this.lastReason,
       captured: Boolean(this.captured),
+      transients: this.transients.size,
       path: this.activePath(),
       nodes: [...this.map.values()].map((n) => ({
         instanceId: n.instanceId,

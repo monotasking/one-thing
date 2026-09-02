@@ -140,6 +140,49 @@ export function routeEscape(nodes: FocusTreeNodes, path: ActivePath): readonly S
 }
 
 /**
+ * **Tab 该被圈在哪一格里**(§4.1 `modal` 那一行的内置行为)。
+ *
+ * 判据分两步,第二步是有病历的:
+ *  ① 活动路径上**最深**的那个 modal —— 正常情形(焦点在模态里),
+ *    「对话框里开一张菜单,Tab 圈在菜单里」由深度回答。
+ *  ② 路径上一个 modal 都没有,但树上有 —— **焦点跑到模态外面去了**。
+ *    这一步不能省:`ui/a11y/focus-trap` 那只退役的 hook 把监听挂在 document 上
+ *    而不是容器上,理由逐字是「焦点万一已经跑到容器外面,挂容器就再也收不到
+ *    这一下 Tab,圈禁当场失效」。只按路径判等于把那条判例丢掉:一次程序置焦、
+ *    一次点击落在浮层背后,模态就再也圈不住键盘了。
+ *    模态的意思本来就是「这块面在,键盘不许走开」,所以它不该取决于焦点此刻
+ *    恰好在哪儿。
+ *
+ * 两步都取**树深最大**的那一个:同时有两格模态时(对话框 + 它里面的菜单),
+ * 深的那一个赢 —— 与①同一个口径,不引入第二种说法。
+ * 没铺根元素的不算(还没到位的东西圈不住任何东西)。
+ */
+export function modalTrapNode(nodes: FocusTreeNodes, path: ActivePath): ScopeNode | null {
+  for (let i = path.length - 1; i >= 0; i -= 1) {
+    const node = nodes.get(path[i])
+    if (node && node.kind === 'modal' && isInteractive(node) && node.root) return node
+  }
+  let best: ScopeNode | null = null
+  let bestDepth = -1
+  for (const node of nodes.values()) {
+    if (node.kind !== 'modal' || !isInteractive(node) || !node.root) continue
+    let depth = 0
+    const seen = new Set<FocusInstanceId>()
+    let up: FocusInstanceId | null = node.parent
+    while (up && !seen.has(up)) {
+      seen.add(up)
+      depth += 1
+      up = nodes.get(up)?.parent ?? null
+    }
+    if (depth > bestDepth) {
+      best = node
+      bestDepth = depth
+    }
+  }
+  return best
+}
+
+/**
  * 一个节点最近的**仍可交互的祖先**(§4.2 来源 3 的**结构**那一半)。
  *
  * 它与 `returnTargetOf` 是两件事,必须分开:前者答「路径缩到谁」,后者答

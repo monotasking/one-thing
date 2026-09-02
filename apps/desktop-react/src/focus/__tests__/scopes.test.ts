@@ -64,10 +64,15 @@ describe('FOCUS_SCOPES 封闭表', () => {
     for (const id of ['stage-layer', 'float-layer', 'shelf-layer', 'cover-layer'] as const) {
       expect(FOCUS_SCOPES[id].kind).toBe('layer')
     }
-    for (const id of ['dialog', 'menu', 'palette'] as const) {
+    /*
+     * `popover` 在 modal 这一格(R1 改),理由写在 `scopes.ts` 那一行上:
+     * 行为档 `modal` 说的是 **Tab 走不走得出去**,与 ARIA 的 `aria-modal`
+     * 不是一个词 —— 而 `ui/Popover` 今天就在圈禁 Tab。
+     */
+    for (const id of ['dialog', 'menu', 'palette', 'popover'] as const) {
       expect(FOCUS_SCOPES[id].kind).toBe('modal')
     }
-    for (const id of ['jumpbar', 'drawer', 'zoom', 'popover', 'tooltip'] as const) {
+    for (const id of ['jumpbar', 'drawer', 'zoom', 'tooltip'] as const) {
       expect(FOCUS_SCOPES[id].kind).toBe('float')
     }
   })

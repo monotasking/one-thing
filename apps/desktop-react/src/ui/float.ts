@@ -1,84 +1,23 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 
-/* ── 浮层栈:Esc 只退一层的产地(09-01 批 4)───────────────────────────────
+/* ── 浮层栈退役了(09-02 R1)────────────────────────────────────────────────
  *
- * 病(0.5 复核发现):Dialog 与 Menu / Popover 都在 window 的**捕获**相位听 Esc。
- * 捕获相位解决的是「浮层 vs 外壳退层链」那一对(捕获永远先于冒泡),但**同相位
- * 之间**靠的仍是注册序 —— 先开的那个先收到。于是「对话框里开一张菜单」这个层叠
- * 场景里,一下 Esc 先被 Dialog 接走,菜单和对话框一起关。
- * 「用户想退的只有一层」那条契约在层叠场景下是破的。
+ * 这只文件从前顶着一段模块级的**浮层栈**:每个认 Esc 的浮层挂载入栈、卸载出栈,
+ * 一下 Esc 只有栈顶那层认领。它回答的是「这一下 Esc 属于最上面的哪一层」,
+ * 而判据得靠两条**猜**出来 —— DOM 包含(portal 出去的菜单与对话框面板是兄弟,
+ * 答不出)加入栈序(React 的 effect 子先于父跑,同一次提交里一起挂载的父子
+ * 层序整个倒过来,也答不出)。两条互相兜,才勉强兜住了那几种形。
  *
- * 修法不是给每个浮层加判据(谁在谁上面,浮层自己不知道),而是立一个**栈**:
- * 挂载入栈、卸载出栈,Esc 到来时**只有最上面那一层认领**(preventDefault + onClose),
- * 其余的监听器一个字不做。谁在最上面由 `topFloatLayer` 判 —— 两条判据(DOM 包含,
- * 平手看入栈序),理由写在那只函数上。
+ * 响应链把那个问题变成了结构问题:菜单在 React 树上就是对话框的孩子,
+ * 由深到浅问下来第一个答 true 的消费掉(设计 §4.4)。于是栈、`topFloatLayer`、
+ * 那条 window 捕获监听、`escape` 那格 prop,连同它们的三轮判例一起退役 ——
+ * 判例本身没作废,它搬进了 `focus/dispatch.ts` 的相位表与 `focus/transitions.ts`
+ * 的 `routeEscape`。
  *
- * 进栈的判据是「这个浮层认不认 Esc」:`escape: false` 档(Dialog 之外的另一头 ——
- * 自己另有 Esc 语义的消费方,如 composer)**不进栈**,也就不会挡住别人。
- * 点外关同样不进栈:那条路各浮层各自判「点没点在我身上」,互不干扰,没有次序问题。
- *
- * 与外壳退层链(components/useEscapeChain)的关系没有变:栈顶认领之后
- * `defaultPrevented` 为真,冒泡相位的退层链照旧让位;整个栈空了才轮到外壳。
+ * 留在这里的是**点外关**与**定位**:前者各浮层各自判「点没点在我身上」,
+ * 互不干扰、从来没有次序问题;后者与键盘无关。
  */
-
-/** 栈里的一格。身份牌 + 它那块元素(判「谁套着谁」要用)。 */
-interface FloatLayer {
-  readonly ref: RefObject<HTMLElement | null>
-}
-
-const floatStack: FloatLayer[] = []
-
-/** 入栈。 */
-function pushFloatLayer(ref: RefObject<HTMLElement | null>): FloatLayer {
-  const layer: FloatLayer = { ref }
-  floatStack.push(layer)
-  return layer
-}
-
-/**
- * 出栈。用 `lastIndexOf` 而不是 `pop`:卸载序不保证是入栈序的逆
- * (React 卸载一棵树时子在前、父在后,而两个平级浮层的卸载序由各自的 state 决定),
- * 按身份删才不会误伤别人那一格。幂等 —— 已经不在表上就什么都不做。
- */
-function popFloatLayer(layer: FloatLayer): void {
-  const at = floatStack.lastIndexOf(layer)
-  if (at >= 0) floatStack.splice(at, 1)
-}
-
-/**
- * 谁在最上面。两条判据,**套着的先于后开的**:
- *
- *  ① **DOM 包含**:一层的元素长在另一层的元素里,里面那层就在上面。
- *  ② 平手时看**入栈序**:后开的在上面。
- *
- * 为什么不能只要②(这是第一版写法,当场被自己的用例逮住):入栈发生在 effect 里,
- * 而 React 的 effect **子先于父**跑 —— 同一次提交里一起挂载的父子两层,父反而
- * 后入栈、成了「栈顶」,层序整个倒过来。真机上层叠多半是先后开出来的
- * (要开内层那张菜单,得先有外层那张对话框),②答得对;但「一进来就是层叠」
- * 这一形(初次渲染时两层都在场)②答得反,所以要①兜。
- *
- * 为什么不能只要①:菜单 / 气泡多半是 portal 到 body 的,它与对话框面板在 DOM 上
- * 是**兄弟**,谁也不套着谁 —— ①在那一形上什么都答不出,得由②说话。
- *
- * 元素此刻量不到(还没挂上 / 正在卸载)按「谁也不套着它」算,即退回②。
- */
-function topFloatLayer(): FloatLayer | null {
-  let top: FloatLayer | null = null
-  let topDepth = -1
-  floatStack.forEach((layer) => {
-    const el = layer.ref.current
-    const depth = el
-      ? floatStack.filter((other) => other !== layer && other.ref.current?.contains(el)).length
-      : 0
-    // `>=` 而不是 `>`:同深度时后遍历到的(= 后入栈的)胜出,这就是判据②。
-    if (depth >= topDepth) {
-      top = layer
-      topDepth = depth
-    }
-  })
-  return top
-}
 
 /**
  * **浮层的两件行为**,收成两个原语:怎么散(`useFloatDismiss`)、摆在哪
@@ -91,42 +30,19 @@ function topFloatLayer(): FloatLayer | null {
  * ── 状态表 ────────────────────────────────────────────────────────────────
  * 生命周期:关(`active=false`,零监听)→ 开(装监听 + 首帧定位)
  *          → 跟随(仅 rect 档:锚点一动就重算)→ 关 / 卸载(全部拆掉,幂等)。
- * 交互:Esc 认领关、点外关、程序关(消费方自己 setState)三条路,同一个 `onClose`。
+ * 交互:点外关、程序关(消费方自己 setState)两条路,同一个 `onClose`;
+ *      Esc 归响应链(`<FocusScope onEscape>`),不在这只原语里。
  * ──────────────────────────────────────────────────────────────────────────
  */
 
 /**
- * Esc 关 + 点外关。`active=false` 时一个监听都不装。
+ * 点外关。`active=false` 时一个监听都不装。
  *
- * ── Esc 走**捕获**相位,不是冒泡(08-31)──────────────────────────────
- * 光 preventDefault 不够。外壳那条退层链(components/useEscapeChain)也听
- * window,而它在**应用启动时**就挂上了,浮层是后来才开的 —— 同相位下注册序
- * 说了算,于是外壳先跑、先把浮层底下那块面收了,浮层这一手根本轮不上。
- * 08-31 报障「文件面板里开详情浮层,一下 Esc 两层一起关」正是这一条。
- *
- * 捕获相位的监听器永远跑在同一个 window 上的冒泡监听器之前,与谁先注册无关 ——
- * 于是「内层先退」成了结构保证。这条判例第一次立是在 StageOverlay 与
- * ExposeView 之间(那次还试过 queueMicrotask,同样失效)。
- * 点外关那条照旧冒泡:它与退层链没有次序纠纷。
- *
- * 关掉自己之后**认领这一下**(08-31 补):不认领的话同一下 Esc 会继续
- * 往外传,把浮层底下那块面一起收掉 —— 用户想退的只有一层。
- * 认领的说法就是 preventDefault:外壳那条退层链读的正是 defaultPrevented。
- * 这是「内层先退,退得动就把这一下吃掉」那条契约的内层半边。
- *
- * ── 层叠时只退一层:栈顶认领(09-01 批 4)────────────────────────────────
- * 捕获相位只摆平了「浮层 vs 外壳」。浮层**互相之间**同相位,靠注册序 = 挂载序,
- * 先开的先收到 —— 于是对话框里开一张菜单,一下 Esc 两层齐关。判据换成上面那只
- * 模块级浮层栈:每个认 Esc 的浮层挂载时入栈,**只有栈顶那一个**认领,其余不动。
- * 见文件头「浮层栈」那节。
+ * **Esc 不在这儿了**(09-02 R1):它是响应链上「退一层」的那件事,由
+ * `<FocusScope onEscape>` 声明、由唯一那个派发器沿活动路径由深到浅问下来。
+ * 见文件头那段退役记。
  */
 export interface FloatDismissOptions {
-  /**
-   * Esc 认领关闭。默认 **true**(Menu / Popover 就是这一档,一个字都不用写)。
-   * 传 false = 这个浮层的 Esc 另有语义、由消费方自己写(composer 的三层 Esc);
-   * 它**不进浮层栈**,也就不会挡住别人那一层。
-   */
-  escape?: boolean
   /**
    * 点浮层外关。默认 **`'bubble'`**(与退层链没有次序纠纷,照旧走冒泡)。
    *  · `false` —— 关掉这条路。Dialog 是这一档:它的「点外面」是遮罩自己的
@@ -145,33 +61,15 @@ export function useFloatDismiss(
   active = true,
   opts: FloatDismissOptions = {},
 ): void {
-  const escape = opts.escape ?? true
   const outside = opts.outside ?? 'bubble'
 
   /*
-   * onClose 走 ref、不进依赖表。理由是栈:进了依赖表的话,消费方每渲染一次
-   * (onClose 通常是就地闭包)这一格就出栈再入栈一次 —— 一个后台重渲染会把
-   * 底层浮层顶到栈顶去,层序当场失真。
+   * onClose 走 ref、不进依赖表:消费方每渲染一次它通常都是个新闭包,进依赖表
+   * 等于每渲染一次就拆装一遍监听 —— 一次后台重渲染就能把一发正在派送的
+   * pointerdown 漏掉。
    */
   const closeRef = useRef(onClose)
   closeRef.current = onClose
-
-  useEffect(() => {
-    if (!active || !escape) return
-    const layer = pushFloatLayer(ref)
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      // 不是最上面那一层就一个字都不做:这一下不属于我,让别人去认领。
-      if (topFloatLayer() !== layer) return
-      e.preventDefault()
-      closeRef.current()
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => {
-      window.removeEventListener('keydown', onKey, true)
-      popFloatLayer(layer)
-    }
-  }, [ref, active, escape])
 
   useEffect(() => {
     if (!active || outside === false) return
@@ -340,14 +238,10 @@ export function useFloatPosition(
 }
 
 /*
- * 热更退役(09-01 立法)。`floatStack` 是模块作用域里的可变状态,寿命 = 这个模块
- * 实例:换掉模块时旧那一份栈会连同它里面的层一起留下,新模块开出来的浮层永远
- * 排在那些尸体下面、当不上栈顶,Esc 当场全哑。拆卸**复用既有的那一口**
- * `popFloatLayer`(不写第二套),从顶往下逐格摘;栈空了跑一遍什么都不做,所以幂等。
- * 生产构建里 `import.meta.hot` 是 undefined,整段被 tree-shake 掉。
+ * 这只文件从前有一段 HMR dispose(09-01 立法),因为 `floatStack` 是模块作用域里的
+ * 可变状态 —— 换掉模块时旧那一份栈会连同层一起留下,新浮层永远当不上栈顶。
+ * 栈退役之后**模块作用域里一格状态都没有了**(两只 hook 的监听都长在组件的 effect
+ * 里,React 卸载时自然拆),所以那段 dispose 一并删掉:判据是那条法自己的一句话 ——
+ * 「这东西的寿命是不是『这个模块实例』」。这里的答案现在是「没有这东西」。
+ * 同一条纪律的活例子在 `focus/registry.ts` 末尾(那棵树才是模块级单例)。
  */
-if (import.meta.hot) {
-  import.meta.hot.dispose(() => {
-    while (floatStack.length > 0) popFloatLayer(floatStack[floatStack.length - 1])
-  })
-}

@@ -10,14 +10,14 @@ import { focusTree } from '../registry'
  *  ① 它一个 DOM 节点都不许多加(region / layer 全长在 grid 里,多一层 div 掀布局);
  *  ② 父子关系来自**逻辑嵌套**,不是 DOM 位置(portal 出去的菜单照样是对话框的孩子)。
  *
- * 外加 R0 那道闸:`policy.moveFocus` 关着时 `scopeProps` **不铺 `tabIndex`** ——
- * 那是「零可感知变化」在组件层的形(铺了的话点空白处 activeElement 会从 body
- * 变成那个根,`focus-trap` 的锚点跟着变)。
+ * 外加那道闸在组件层的形:`tabIndex={-1}` 只在 `policy.moveFocus` 开着时才铺
+ * (R1 起缺省开)—— 那个属性存在的唯一理由就是「焦点能被送到根上」,
+ * 一个开关管一件事。`data-focus-scope` 不受它管(I4 任何时候都要能扫)。
  */
 
 afterEach(() => {
   focusTree.reset()
-  focusTree.policy.moveFocus = false
+  focusTree.policy.moveFocus = true
 })
 
 describe('零 DOM:属性铺在消费方自己的根上', () => {
@@ -29,21 +29,23 @@ describe('零 DOM:属性铺在消费方自己的根上', () => {
     expect(container.firstElementChild?.id).toBe('shell')
   })
 
-  it('根上带 `data-focus-scope`(I4 的判据),而 R0 里**不带 tabIndex**', () => {
+  it('根上带 `data-focus-scope`(I4 的判据)与 `tabIndex=-1`(R1 起)', () => {
     const { container } = render(
       <FocusScope scope="root">{({ scopeProps }) => <div {...scopeProps} />}</FocusScope>,
     )
     const el = container.firstElementChild as HTMLElement
     expect(el.getAttribute('data-focus-scope')).toBe('root')
-    expect(el.hasAttribute('tabindex')).toBe(false)
+    expect(el.getAttribute('tabindex')).toBe('-1')
   })
 
-  it('闸打开(R1)之后同一段代码就铺上 `tabIndex=-1`', () => {
-    focusTree.policy.moveFocus = true
+  it('闸关掉时同一段代码**不铺 tabIndex**,但 `data-focus-scope` 照旧在', () => {
+    focusTree.policy.moveFocus = false
     const { container } = render(
       <FocusScope scope="root">{({ scopeProps }) => <div {...scopeProps} />}</FocusScope>,
     )
-    expect((container.firstElementChild as HTMLElement).getAttribute('tabindex')).toBe('-1')
+    const el = container.firstElementChild as HTMLElement
+    expect(el.hasAttribute('tabindex')).toBe(false)
+    expect(el.getAttribute('data-focus-scope')).toBe('root')
   })
 
   it('根元素真的交到了树上(ref 与登记两头都补一次)', () => {
@@ -189,5 +191,38 @@ describe('声明的进出', () => {
     const id = [...focusTree.nodes().values()][0].instanceId
     rerender(<Case off />)
     expect(focusTree.nodes().get(id)?.inert).toBe(true)
+  })
+})
+
+/**
+ * `rootRef`:消费方那格 ref 与树的登记**共用同一只回调**。
+ * DOM 上只有一格 `ref` 属性,而浮层同时要定位、要判「点没点在我身上」、
+ * 要当作用域根 —— 就地拼一个回调会每渲染换一次身份(根一摘一挂),
+ * 所以由这只组件一并写。
+ */
+describe('rootRef:一格 ref,两个读者', () => {
+  it('元素同时写进消费方那格 ref 与树里那一格', () => {
+    const mine: { current: HTMLElement | null } = { current: null }
+    const { container } = render(
+      <FocusScope scope="menu" rootRef={mine}>
+        {({ scopeProps }) => <div {...scopeProps} id="panel" />}
+      </FocusScope>,
+    )
+    const el = container.firstElementChild as HTMLElement
+    expect(mine.current).toBe(el)
+    expect([...focusTree.nodes().values()][0].root).toBe(el)
+  })
+
+  it('卸载时两头一起摘(不留一个指着游离节点的 ref)', () => {
+    const mine: { current: HTMLElement | null } = { current: null }
+    const view = render(
+      <FocusScope scope="menu" rootRef={mine}>
+        {({ scopeProps }) => <div {...scopeProps} />}
+      </FocusScope>,
+    )
+    expect(mine.current).not.toBeNull()
+    view.unmount()
+    expect(mine.current).toBeNull()
+    expect(focusTree.nodes().size).toBe(0)
   })
 })

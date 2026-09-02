@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Button } from '../ui/Button'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Kbd } from '../ui/Kbd'
+import { focusTree } from '../focus/registry'
 import { useT } from '../i18n'
 import { useKeymapStore, currentKeymapPlatform } from '../keymap/store'
 import {
@@ -19,9 +20,13 @@ import s from './mocks.module.css'
  * 设置页的「快捷键」区。一行 = 一条命令 + 它当下绑的键 + (改过才出现的)恢复默认。
  *
  * 三件事值得记一笔:
- * 1. 录制态的按键在 **window 的捕获阶段**被截住并 stopPropagation ——
- *    捕获在派发器(window 冒泡)之前跑,所以录 ⌘P 的时候检索面板不会真的弹出来。
- *    这不是「顺手加的保险」,是录制态成立的前提:不截住就没法录任何已绑的组合。
+ * 1. 录制态向响应链**申请独占**(`focusTree.capture`,09-02 R1;从前是这块面
+ *    自己在 window 捕获阶段挂一条并 stopPropagation)。独占口是设计 §5 里
+ *    **唯一那条例外** —— 别的键都能写成一张表,而录制要吃的键集合不可枚举
+ *    (它得能录下任何一个已经绑出去的组合)。截住这件事没变,只是改由那一个
+ *    派发器代劳:它拿到独占口就一格作用域都不问,并在认领时 stopPropagation,
+ *    所以录 ⌘P 的时候检索面板仍然不会真的弹出来。这不是「顺手加的保险」,
+ *    是录制态成立的前提。
  * 2. 冲突**不静默覆盖**:撞了就留在录制态、行内说清撞的是谁,用户可以直接再按一个。
  * 3. 行不是一个 <button> —— 键位面与「恢复默认」是两颗兄弟按钮,不是嵌套的
  *    (嵌套 button 是铁律里的禁令,也确实点不动)。
@@ -43,45 +48,37 @@ export function KeymapSettings() {
   useEffect(() => {
     if (!recording) return
 
-    const onKey = (e: KeyboardEvent) => {
-      e.preventDefault()
-      // 捕获阶段就掐断:这一下按键属于录制,不属于任何命令。
-      e.stopPropagation()
-
+    /*
+     * 答 **true = 这一下我吃了**(派发器据此 preventDefault + stopPropagation)。
+     * 录制态里**每一下**按键都归录制,连没认出来的(`ignore`,比如单按一个 ⌘)
+     * 也一样 —— 那一下要是放出去,录 ⌘P 的中途检索面板就弹出来了。
+     * Esc 在这里不是「关闭浮层」而是一条**录制结果**(`recordKey` 判 'cancel'),
+     * 所以它也归这一口,不该落到响应链的退层链上。
+     */
+    return focusTree.capture((e) => {
       const outcome = recordKey(e)
-      if (outcome.kind === 'ignore') return
+      if (outcome.kind === 'ignore') return true
       if (outcome.kind === 'cancel') {
         setRecording(null)
         setConflict(null)
-        return
+        return true
       }
       if (outcome.kind === 'unbind') {
         unbind(recording)
         setRecording(null)
         setConflict(null)
-        return
+        return true
       }
       const taken = bind(recording, outcome.combo)
       // 撞了就留在录制态,让用户直接再按一个 —— 退出去重来是白白多一步。
       if (taken) {
         setConflict(taken)
-        return
+        return true
       }
       setRecording(null)
       setConflict(null)
-    }
-
-    /*
-     * ui-consume-allow: float-handwritten —— 这不是浮层散场,是**录制**。
-     * 规则按「window 上的捕获相位 keydown」认人,而这条监听与 Esc 关一层毫无关系:
-     * 它把录制态里的**每一下**按键都截住(preventDefault + stopPropagation),
-     * 好让 ⌘P 这种已经绑出去的组合录得进来 —— 截不住就录不了任何已绑的键。
-     * Esc 在这里也不是「关闭浮层」而是一条**录制结果**(`recordKey` 判 'cancel'),
-     * 迁 useFloatDismiss 会把它变成一次散场:别的键当场全录不到。
-     * 这一格没有浮层,连一块要散的面都没有。
-     */
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+      return true
+    })
   }, [recording, bind, unbind])
 
   return (

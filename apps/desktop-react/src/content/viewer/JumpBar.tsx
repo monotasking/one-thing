@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { Input } from '../../ui/Input'
-import { useFloatDismiss } from '../../ui/float'
+import { FocusScope } from '../../focus/FocusScope'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { useT } from '../../i18n'
 import type { ViewerFile } from '../../data/viewer-source'
@@ -86,41 +86,28 @@ export function JumpBar({
   selectRef.current = selection.select
   useEffect(() => selectRef.current(0), [query])
 
-  /** 这条的根。两个消费者:入焦(下面那一手)与浮层散场(再下面那一句)。 */
-  const rootRef = useRef<HTMLDivElement>(null)
+  /** 这条的根。由 `<FocusScope rootRef>` 写进来(一个元素上只能有一格 ref)。 */
+  const rootRef = useRef<HTMLDivElement | null>(null)
 
-  // 一出现就把光标放进去 —— 用户刚按了 ⌘L / ⌘F,焦点跟着那一下走正是他要的结果
-  // (同 FilesPanel 那条「绑定…」输入行的判例:回调 ref,不是 autoFocus)。
-  const focusOnMount = useRef((node: HTMLDivElement | null) => {
-    rootRef.current = node
-    const input = node?.querySelector('input')
+  /*
+   * 一出现就把光标放进去 —— 用户刚按了 ⌘L / ⌘F,焦点跟着那一下走正是他要的结果。
+   *
+   * 从前这是一个回调 ref(同 FilesPanel 那条「绑定…」输入行的判例)。R1 换成
+   * `useLayoutEffect` 不是风格改动,是**次序**:回调 ref 在提交阶段就跑,那时
+   * 这一层的 `<FocusScope>` 还没登记完,焦点落进输入框时树里根本没有「跳转条」
+   * 这一格 —— 第一响应者会被算成外面那块面,于是 Esc 再也退不到这一层。
+   * layout effect 在子(FocusScope)的登记之后、浏览器绘制之前跑,两头都对。
+   * 用户看到的一模一样:两者之间没有一次绘制。
+   */
+  useLayoutEffect(() => {
+    const input = rootRef.current?.querySelector('input')
     if (!input) return
     input.focus()
     // 光标落到**末尾**而不是选中全文:⌘F 已经替用户打了一个 `/`,
     // 选中它意味着下一个字符会把前缀吃掉,那条路当场变成行号档。
     const at = input.value.length
     input.setSelectionRange(at, at)
-  }).current
-
-  /*
-   * Esc 关掉 —— 走 `ui/float` 的 `useFloatDismiss`(09-02 批 6:浮层散场单产地)。
-   *
-   * **判它是不是浮层散场:是**。跳转条是一层开在查看器上的临时面,而它要答的
-   * 恰恰是那只浮层栈答的那个问题 ——「这一下 Esc 属于最上面的哪一层」。
-   * 从前这里是一段手写的 window keydown 捕获 + `stopPropagation()`:捕获相位
-   * 摆得平「浮层 vs 外壳」,却摆不平「浮层互相之间」(查看器还能摆进浮窗 / 盖 /
-   * 舞台,那几层各有自己的 Esc,同相位下只剩注册序说话)。收进原语之后,
-   * 「谁在最上」由 DOM 包含 + 入栈序两条判据答,这一层不必知道自己被摆在哪儿。
-   *
-   * `outside: false` —— **这条不点外关**,原样保留今天的行为:跳转条只被 Esc、
-   * 落一次点(非 cycle 档)或再按一次 ⌘L 关掉。鼠标点到查看器正文上不该收掉它
-   * (正文那一下多半正是用户想看清楚要跳哪儿)。
-   *
-   * 认领的说法从 `stopPropagation` 换成原语的 `preventDefault`:两者对退层链
-   * (`components/useEscapeChain` 听冒泡、开头读 `defaultPrevented`)是同一个
-   * 结果,而 preventDefault 是全仓那条「接住了才拦」契约的通用说法。
-   */
-  useFloatDismiss(rootRef, onClose, true, { outside: false })
+  }, [])
 
   const cycling = navigator?.cycle === true
   const at = selection.active
@@ -137,74 +124,98 @@ export function JumpBar({
     selection.move(1)
   }
 
+  /*
+   * ── Esc 关掉:响应链的 `float` 一层(09-02 R1)────────────────────────────
+   *
+   * 从前这里先是一段手写的 window keydown 捕获 + `stopPropagation()`,09-02 批 6
+   * 迁进 `ui/float` 的 `useFloatDismiss`(浮层栈判「谁在最上面」)。两版都是在
+   * 没有树的时候回答同一个问题:**这一下 Esc 属于最上面的哪一层**。
+   * 树里那个问题有结构答案:跳转条是查看器上开出来的一层,所以它在树上就是
+   * 查看器(或此刻装着查看器的那一层)的孩子,由深到浅第一个被问到。
+   * 查看器还能摆进浮窗 / 盖 / 舞台,而这一层不必知道自己被摆在哪儿 —— 这正是
+   * 浮层栈当年要用「DOM 包含 + 入栈序」两条判据去猜的那件事。
+   *
+   * **这条不点外关**,原样保留今天的行为:跳转条只被 Esc、落一次点(非 cycle 档)
+   * 或再按一次 ⌘L 关掉。鼠标点到查看器正文上不该收掉它(正文那一下多半正是用户
+   * 想看清楚要跳哪儿)—— 所以这里连 `useFloatDismiss` 都不用了(它的另一半
+   * `outside` 本来就关着)。
+   *
+   * 入焦仍写在这块面自己身上(上面那条 layout effect),没有换成 `restingTarget`
+   * —— R1 只做最小接入,R2 把内容面整体迁进树时再统一。理由:**光标落在末尾**
+   * 那一手(⌘F 已经替用户打了一个 `/`)是这条输入行自己的语义,搬家时要连着一起搬。
+   */
   return (
-    <div className={s.jump} data-testid="viewer-jump-bar" ref={focusOnMount}>
-      <Input
-        size="sm"
-        className={s.jumpInput}
-        value={query}
-        onValueChange={setQuery}
-        aria-label={t('viewer.jumpLabel')}
-        placeholder={t('viewer.jumpPlaceholder')}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            commit()
-            return
-          }
-          // ↑↓ 归原语管;它没接住的键**原样放行**(吞掉不认识的键是「键盘可达」
-          // 最常见的反面教材)。
-          if (selection.handleKey(e.key)) e.preventDefault()
-        }}
-      />
-      {/* 「第几个 / 共几个」。它是**读数不是文案**里的数,所以句子进字典、数进插值。 */}
-      {cycling && candidates.length > 0 && (
-        <span className={s.jumpCount} data-testid="viewer-jump-count">
-          {t('viewer.jumpHitCount', { index: `${at + 1}`, total: `${candidates.length}` })}
-        </span>
+    <FocusScope scope="jumpbar" rootRef={rootRef} onEscape={() => (onClose(), true)}>
+      {({ scopeProps }) => (
+        <div {...scopeProps} className={s.jump} data-testid="viewer-jump-bar">
+          <Input
+            size="sm"
+            className={s.jumpInput}
+            value={query}
+            onValueChange={setQuery}
+            aria-label={t('viewer.jumpLabel')}
+            placeholder={t('viewer.jumpPlaceholder')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commit()
+                return
+              }
+              // ↑↓ 归原语管;它没接住的键**原样放行**(吞掉不认识的键是「键盘可达」
+              // 最常见的反面教材)。
+              if (selection.handleKey(e.key)) e.preventDefault()
+            }}
+          />
+          {/* 「第几个 / 共几个」。它是**读数不是文案**里的数,所以句子进字典、数进插值。 */}
+          {cycling && candidates.length > 0 && (
+            <span className={s.jumpCount} data-testid="viewer-jump-count">
+              {t('viewer.jumpHitCount', { index: `${at + 1}`, total: `${candidates.length}` })}
+            </span>
+          )}
+          {cycling && query.length > 1 && candidates.length === 0 && (
+            <span className={s.jumpCount} data-testid="viewer-jump-empty">
+              {t('viewer.jumpNoHit')}
+            </span>
+          )}
+          <ul className={s.jumpList} data-testid="viewer-jump-list">
+            {!query &&
+              navigators.map((nav) => (
+                <li key={nav.id} className={s.jumpHint}>
+                  <span className={s.jumpSigil}>{nav.sigil || '123'}</span>
+                  <span className={s.jumpLabel}>{t(nav.labelKey)}</span>
+                  {!nav.list && <span className={s.jumpSoon}>{t('files.openModeSoon')}</span>}
+                </li>
+              ))}
+            {query && navigator && !navigator.list && (
+              <li className={s.jumpHint} data-testid="viewer-jump-soon">
+                <span className={s.jumpLabel}>{t(navigator.labelKey)}</span>
+                <span className={s.jumpSoon}>{t('files.openModeSoon')}</span>
+              </li>
+            )}
+            {candidates.map((candidate, index) => (
+              <li key={candidate.id} ref={selection.rowRef(index)}>
+                {/*
+                 * 结构件(一行候选),视觉本该定制 —— 所以它消费 `ui/ButtonBase`
+                 * (只清 UA、一个像素都不画),而不是 `ui/Button`。
+                 * **点击是显式落位**,可以改键盘位;鼠标经过不行(那是 CSS 的事)。
+                 */}
+                <ButtonBase
+                  className={index === at ? `${s.jumpRow} ${s.jumpRowOn}` : s.jumpRow}
+                  data-jump-active={index === at ? 'true' : undefined}
+                  onClick={() => {
+                    selection.select(index)
+                    onJump(candidate.line)
+                    if (!cycling) onClose()
+                  }}
+                >
+                  <span className={s.jumpLabel}>{candidate.label}</span>
+                  {candidate.hint && <span className={s.jumpSoon}>{candidate.hint}</span>}
+                </ButtonBase>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-      {cycling && query.length > 1 && candidates.length === 0 && (
-        <span className={s.jumpCount} data-testid="viewer-jump-empty">
-          {t('viewer.jumpNoHit')}
-        </span>
-      )}
-      <ul className={s.jumpList} data-testid="viewer-jump-list">
-        {!query &&
-          navigators.map((nav) => (
-            <li key={nav.id} className={s.jumpHint}>
-              <span className={s.jumpSigil}>{nav.sigil || '123'}</span>
-              <span className={s.jumpLabel}>{t(nav.labelKey)}</span>
-              {!nav.list && <span className={s.jumpSoon}>{t('files.openModeSoon')}</span>}
-            </li>
-          ))}
-        {query && navigator && !navigator.list && (
-          <li className={s.jumpHint} data-testid="viewer-jump-soon">
-            <span className={s.jumpLabel}>{t(navigator.labelKey)}</span>
-            <span className={s.jumpSoon}>{t('files.openModeSoon')}</span>
-          </li>
-        )}
-        {candidates.map((candidate, index) => (
-          <li key={candidate.id} ref={selection.rowRef(index)}>
-            {/*
-             * 结构件(一行候选),视觉本该定制 —— 所以它消费 `ui/ButtonBase`
-             * (只清 UA、一个像素都不画),而不是 `ui/Button`。
-             * **点击是显式落位**,可以改键盘位;鼠标经过不行(那是 CSS 的事)。
-             */}
-            <ButtonBase
-              className={index === at ? `${s.jumpRow} ${s.jumpRowOn}` : s.jumpRow}
-              data-jump-active={index === at ? 'true' : undefined}
-              onClick={() => {
-                selection.select(index)
-                onJump(candidate.line)
-                if (!cycling) onClose()
-              }}
-            >
-              <span className={s.jumpLabel}>{candidate.label}</span>
-              {candidate.hint && <span className={s.jumpSoon}>{candidate.hint}</span>}
-            </ButtonBase>
-          </li>
-        ))}
-      </ul>
-    </div>
+    </FocusScope>
   )
 }

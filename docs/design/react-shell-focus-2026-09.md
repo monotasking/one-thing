@@ -89,6 +89,28 @@ Esc 那段历史(08-30 microtask 失败 → 08-31 改相位 → 09-01 立浮层�
 **scope id**(`FocusScopeId`,21 格,`FOCUS_SCOPES[id] = { kind, labelKey, keys? }`)。组件 prop 叫
 `scope`,实例 id 是 `scope@reactId`。下文凡说"按 kind 记表"读作"按 scope id 记表"。
 
+**R1 落地时的四条修正(09-02,逐条有代码与用例)**:
+
+1. **`popover` 归 `modal`,不是 `float`**。上表 `float` 行括号里的「非模态」说的是 **ARIA**
+   (要不要 `aria-modal`、读屏能不能看见外面);行为档 `modal` 说的是 **Tab 走不走得出去**。
+   `ui/Popover` 今天就在圈禁 Tab(它消费 `useFocusTrap`,文件头写着「圈禁与 aria-modal
+   是两件事:附属浮层要前者不要后者」),归 float 会当场少掉圈禁 = 可感知的行为变化。
+   所以按**它今天的行为**归档。
+2. **Tab 圈禁不能只看活动路径**(`focus/transitions.ts` 的 `modalTrapNode` 两步判据)。
+   `ui/a11y/focus-trap` 把监听挂在 document 而不是容器上的原话是「焦点万一已经跑到容器
+   外面,挂容器就再也收不到这一下 Tab」。只按路径判等于丢掉那条判例:一次程序置焦、
+   一次点在浮层背后,模态就再也圈不住键盘。所以第二步 = 树上仍在场的最深那个 modal。
+3. **`activate()` 不把第一响应者从自己的后代那里拽回来**。React 的 effect **子先于父**跑,
+   同一次提交里一起挂载的父子两层(对话框里一开始就带着一张菜单),父那一句
+   `activate` 会把层序整个倒过来 —— 这正是 `floatStack` 当年要用判据①(DOM 包含)兜的
+   那一形。
+4. **§8 场景 2 与 §4.5 打架,留给 R2 拍**:场景 2 写「⌘P → Esc → 焦点在**开它之前的
+   作用域**里」,而 §4.5 的结构归还是「路径缩回**父**」。开检索面之前的第一响应者是
+   *另一扇浮窗*(兄弟),不是父 —— 树按 §4.5 答「回 root」,按 §8 答「回那扇浮窗」。
+   后者要的是**兄弟间的 MRU**,而 §10 明说不做焦点历史。R1 按 §4.5 实现,gate 场景 2
+   因此仍红;R2 决定是补「宿主在形态变化时 `activate()`」(拍点 2/3 的自然延伸)还是
+   改场景 2 的判据。
+
 **R1 必须补的一格(R0 审查)**:I1 的收回不能只挂 `focusin` —— 焦点掉到 body 不触发 `focusin`,
 被聚焦元素从 DOM 移除时 Chrome 连 `focusout` 都不发。收回要三处:①`settle()`(卸载 / inert 路,
 R0 已写);②`focusout` 且 `relatedTarget === null` → 微任务后查 `activeElement === body` 则收回;
@@ -138,6 +160,15 @@ v1 靠每个浮层记得调 `useFocusReturn`;那正是亡羊补牢。本版里**
 跳转条是查看器的子作用域,它卸载,路径缩回查看器,焦点回查看器上次所在的元素。
 写检索条的人不需要知道有归还这回事;忘了也忘不掉,因为没有东西可忘。
 `useFocusTrap` 的锚点半边随之退役,它只剩 Tab 圈禁,并成为 `modal` kind 的内置行为。
+
+**R1 审查裁定(09-03,结清 §4.1 修正 4 的矛盾)**:"回打开它的地方"(规则 5)与"缩回父"不是一回事 ——
+兄弟之间(⌘P 检索面 vs 之前的浮窗 / 输入面板)父链到不了。裁定:**树在一个节点首次接管焦点时,
+记下上一任第一响应者**(`node.returnTo = { instanceId, element }`,由 `activate` / `focusin` 在
+第一响应者**换人**的那一刻写,只写一次);卸载 / 变 inert 时 `returnTargetOf` 的顺序改为
+① `returnTo`(仍在树上、可交互、元素连通)→ ② 父链的 lastFocused / 落点 / 根(原三格)。这是旧
+`focus-trap` 锚点的结构化版本:记的人是树不是组件,所以仍然"没有东西可忘";§10 "不做焦点历史"
+仍成立 —— 这是一格不是一条链,不暴露成命令。收回(I1)与 `pointerdown` 抢根这两种程序置焦**不算
+换人**,不写 `returnTo`,免得把"开检索面之前在输入框"记成"在壳根"。场景 2 的判据不改。
 
 ### 4.6 指针怎么进作用域
 
@@ -229,7 +260,7 @@ focus/
 | 期 | 内容 | 可感知变化 |
 | --- | --- | --- |
 | R0 树 | `src/focus/` 全部文件 + 纯函数单测;root 作用域挂在 AppShell;旧机制**全部保留**,树零消费者。`gate-focus` 先钉红。 | 无 |
-| R1 层与 Esc | 四个 Placement 宿主 + Dialog/Menu/Popover/Palette/Tooltip 接树;`floatStack`、`useEscapeChain`、`useFocusTrap` 锚点半边、`useFloatDismiss` Esc 半边退役;唯一派发器上线,旧全局派发器监听删。 | Esc 层叠语义与今天逐条相同(gate 场景 4 守);孤儿焦点消失。 |
+| R1 层与 Esc | 四个 Placement 宿主 + Dialog/Menu/Popover/Palette/Tooltip 接树;`floatStack`、`useEscapeChain`、`useFocusTrap`(整只)、`useFloatDismiss` Esc 半边退役;唯一派发器上线,旧全局派发器监听删。**已落地(09-02)**:派发器是**两半相位**的过渡形(捕获半 = 浮层 Esc + 模态 Tab + 录制独占 + I1 收回,冒泡半 = 面的 Esc + 局部键 + 全局命令),分界就是今天那条相位线,好让还没接树的 ExposeView / composer / viewer / files 四家的相对次序一格不变;R2 把它们接进树之后两半合一。Tooltip 走**瞬态口**(`registerTransient`)而不是作用域 —— 它没有一个包着触发元素的根。 | Esc 层叠语义与今天逐条相同(gate 场景 4/5 守,真机矩阵逐条同);孤儿焦点消失(gate I1 由 3 红转全绿)。 |
 | R2 内容面 | viewer / files / composer / search / expose / chat / settings / dock 接树;局部键表迁入;八处 element/window 监听删;`registerComposerFocus` 退役;宿主补 `activate()`。 | ⌘F 根治;切 tab / 开面 / 程序置顶后键盘立刻可用。 |
 | R3 执法 | 三条棘轮归零;`gate-focus` 进 verify;设置页快捷键区读合并表;dev `__focus.dump()`。 | 无 |
 

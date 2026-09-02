@@ -4,6 +4,7 @@ import { coverIdOf } from '../stage/transitions'
 import { findItem } from '../stage/items'
 import { HostTitle, useHostTitleText } from './HostTitle'
 import { renderContent } from '../content'
+import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { IconButton } from '../ui/IconButton'
 import { resolveIcon, X } from './icons'
@@ -84,16 +85,24 @@ export function CoverLayer() {
         if (e.target === e.currentTarget) closeCover()
       }}
     >
-      <section className={s.panel} role="dialog" aria-label={title}>
-        <header className={s.header}>
-          <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-          <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
-          {/* 檐上那颗 ✕ 消费 `ui/IconButton`(md 档 = 28×28,与旧 `.close` 同尺寸);
-            * 本地皮肤整份退役,hover / active / 焦点环从此随件走。 */}
-          <IconButton icon={X} size="md" onClick={closeCover} label={t('cover.close')} />
-        </header>
-        <div className={s.body}>{renderContent(shown.id)}</div>
-      </section>
+      {/* 盖是响应链上的一格 `layer`(09-02 R1):它自己不认 Esc —— 收盖那件事在
+        * 退层链里(`stage/transitions.escapeTargetOf`,盖排第一),而退层链是
+        * 响应链**根**的 `onEscape`。这一格回答的是「焦点此刻在不在盖里」,
+        * 于是盖里开出来的浮层在树上是它的孩子,一下 Esc 先关那层。 */}
+      <FocusScope scope="cover-layer">
+        {({ scopeProps }) => (
+          <section {...scopeProps} className={s.panel} role="dialog" aria-label={title}>
+            <header className={s.header}>
+              <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
+              <HostTitle id={shown.id} fallback={t(shown.titleKey)} className={s.title} />
+              {/* 檐上那颗 ✕ 消费 `ui/IconButton`(md 档 = 28×28,与旧 `.close` 同尺寸);
+                * 本地皮肤整份退役,hover / active / 焦点环从此随件走。 */}
+              <IconButton icon={X} size="md" onClick={closeCover} label={t('cover.close')} />
+            </header>
+            <div className={s.body}>{renderContent(shown.id)}</div>
+          </section>
+        )}
+      </FocusScope>
     </div>
   )
 }

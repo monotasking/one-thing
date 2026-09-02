@@ -6,6 +6,7 @@ import { HostTitle, useHostTitleText } from './HostTitle'
 import { clampFloatRect, resizeFrom, snapSideAt } from '../stage/transitions'
 import { setSnapSide } from './snap-hint'
 import { renderContent } from '../content'
+import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
 import { IconButton } from '../ui/IconButton'
@@ -137,90 +138,106 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   const title = liveTitle || t(item.titleKey)
   const Icon = resolveIcon(item.icon)
 
+  /*
+   * **每扇窗一格 `layer`**(09-02 R1)。它自己不认 Esc —— 收窗那件事在退层链里
+   * (`stage/transitions.escapeTargetOf`:盖 → 舞台 → 最上面那扇浮窗),而退层链
+   * 是响应链**根**的 `onEscape`。这一格回答的是「焦点此刻在哪扇窗里」,于是
+   * 窗里开出来的菜单在树上是这扇窗的孩子(一下 Esc 先关菜单),窗关掉时焦点
+   * 结构性地回到它的父。
+   *
+   * `focusFloat` 的 z 序纯函数**一个字没动**,这里也没有补 `activate()`:
+   * 「程序置顶浮窗时把焦点也送过去」是 R2 的事(拍点 3 那一族),指针置顶本来
+   * 就不需要 —— 点击自己会落焦。
+   */
   return (
-    <section
-      className={leaving ? `${s.win} ${s.leaving}` : s.win}
-      style={{
-        left: `${rect.x}px`,
-        top: `${rect.y}px`,
-        width: `${rect.w}px`,
-        height: `${rect.h}px`,
-        zIndex: `calc(var(--z-float) + ${Math.max(order, 0)})`,
-      }}
-      role="dialog"
-      aria-label={title}
-      onPointerDown={() => focusFloat(id)}
-    >
-      <header
-        className={s.head}
-        onPointerDown={(e) => {
-          // 头上的三个控件自己吃掉 pointerdown 才不会一按就开始拖。
-          if ((e.target as HTMLElement).closest('button')) return
-          begin(e, null)
-        }}
-        onDoubleClick={() => openAs(id, { kind: 'stage' })}
-      >
-        <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-        <HostTitle id={id} fallback={t(item.titleKey)} className={s.title} />
-
-        {/* 檐上三颗全部消费 `ui/IconButton`;本地那份 `.action` 皮肤已删 ——
-          * 28×28 正是库件的 md 档,hover / active / 焦点环从此随件走。
-          * `onPointerDown` 那一下仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */}
-        <IconButton
-          ref={pinRef}
-          icon={Pin}
-          size="md"
-          label={t('stage.pinToEdge')}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => {
-            const r = pinRef.current?.getBoundingClientRect()
-            if (r) setMenu({ x: r.left, y: r.bottom })
+    <FocusScope scope="float-layer">
+      {({ scopeProps }) => (
+        <section
+          {...scopeProps}
+          className={leaving ? `${s.win} ${s.leaving}` : s.win}
+          style={{
+            left: `${rect.x}px`,
+            top: `${rect.y}px`,
+            width: `${rect.w}px`,
+            height: `${rect.h}px`,
+            zIndex: `calc(var(--z-float) + ${Math.max(order, 0)})`,
           }}
-        />
-        <IconButton
-          icon={Maximize2}
-          size="md"
-          label={t('float.toStage')}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => openAs(id, { kind: 'stage' })}
-        />
-        <IconButton
-          icon={X}
-          size="md"
-          label={t('float.toDock')}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => closeToDock(id)}
-        />
-      </header>
+          role="dialog"
+          aria-label={title}
+          onPointerDown={() => focusFloat(id)}
+        >
+          <header
+            className={s.head}
+            onPointerDown={(e) => {
+              // 头上的三个控件自己吃掉 pointerdown 才不会一按就开始拖。
+              if ((e.target as HTMLElement).closest('button')) return
+              begin(e, null)
+            }}
+            onDoubleClick={() => openAs(id, { kind: 'stage' })}
+          >
+            <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
+            <HostTitle id={id} fallback={t(item.titleKey)} className={s.title} />
 
-      <div className={s.body}>{renderContent(id)}</div>
-
-      {HANDLES.map((h) => (
-        <div
-          key={h.dir}
-          className={`${s.handle} ${h.cls}`}
-          aria-hidden="true"
-          onPointerDown={(e) => begin(e, h.dir)}
-        />
-      ))}
-
-      {menu && (
-        <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={t('stage.pinToEdge')}>
-          <MenuSection>{t('stage.pinToEdge')}</MenuSection>
-          {SHELF_SIDE_CHOICES.map((c) => (
-            <MenuItem
-              key={c.value}
+            {/* 檐上三颗全部消费 `ui/IconButton`;本地那份 `.action` 皮肤已删 ——
+              * 28×28 正是库件的 md 档,hover / active / 焦点环从此随件走。
+              * `onPointerDown` 那一下仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */}
+            <IconButton
+              ref={pinRef}
+              icon={Pin}
+              size="md"
+              label={t('stage.pinToEdge')}
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={() => {
-                floatToEdge(id, c.value)
-                setMenu(null)
+                const r = pinRef.current?.getBoundingClientRect()
+                if (r) setMenu({ x: r.left, y: r.bottom })
               }}
-            >
-              {t(c.labelKey)}
-            </MenuItem>
+            />
+            <IconButton
+              icon={Maximize2}
+              size="md"
+              label={t('float.toStage')}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => openAs(id, { kind: 'stage' })}
+            />
+            <IconButton
+              icon={X}
+              size="md"
+              label={t('float.toDock')}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={() => closeToDock(id)}
+            />
+          </header>
+
+          <div className={s.body}>{renderContent(id)}</div>
+
+          {HANDLES.map((h) => (
+            <div
+              key={h.dir}
+              className={`${s.handle} ${h.cls}`}
+              aria-hidden="true"
+              onPointerDown={(e) => begin(e, h.dir)}
+            />
           ))}
-        </Menu>
+
+          {menu && (
+            <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={t('stage.pinToEdge')}>
+              <MenuSection>{t('stage.pinToEdge')}</MenuSection>
+              {SHELF_SIDE_CHOICES.map((c) => (
+                <MenuItem
+                  key={c.value}
+                  onClick={() => {
+                    floatToEdge(id, c.value)
+                    setMenu(null)
+                  }}
+                >
+                  {t(c.labelKey)}
+                </MenuItem>
+              ))}
+            </Menu>
+          )}
+        </section>
       )}
-    </section>
+    </FocusScope>
   )
 }
 

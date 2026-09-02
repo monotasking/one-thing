@@ -72,13 +72,22 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   jumpbar: { id: 'jumpbar', kind: 'float', labelKey: 'focus.scope.jumpbar' },
   drawer: { id: 'drawer', kind: 'float', labelKey: 'focus.scope.drawer' },
   zoom: { id: 'zoom', kind: 'float', labelKey: 'focus.scope.zoom' },
-  popover: { id: 'popover', kind: 'float', labelKey: 'focus.scope.popover' },
   tooltip: { id: 'tooltip', kind: 'float', labelKey: 'focus.scope.tooltip' },
 
   /* ── modal:Tab 出不去 ──────────────────────────────────────────────── */
   dialog: { id: 'dialog', kind: 'modal', labelKey: 'focus.scope.dialog' },
   menu: { id: 'menu', kind: 'modal', labelKey: 'focus.scope.menu' },
   palette: { id: 'palette', kind: 'modal', labelKey: 'focus.scope.palette' },
+  /*
+   * **popover 归 modal,不是 float**(R1 收编时改的一格,设计 §4.1 那张表里它
+   * 写在 float 行)。理由是那张表的 `float` 行括号里写着「非模态」,而**那个
+   * 「模态」说的是 ARIA**(要不要 `aria-modal`、读屏能不能看见外面);行为档
+   * `modal` 说的是**Tab 走不走得出去**,两个词在这里刚好错开。
+   * `ui/Popover` 今天就在圈禁 Tab(它消费 `useFocusTrap`,文件头写着「圈禁与
+   * aria-modal 是两件事:附属浮层要前者不要后者」)。归 float 会当场少掉圈禁 ——
+   * 那是可感知的行为变化,而 R1 守的是逐条相同。所以按**它今天的行为**归档。
+   */
+  popover: { id: 'popover', kind: 'modal', labelKey: 'focus.scope.popover' },
 }
 
 /** 全表,按声明序。 */

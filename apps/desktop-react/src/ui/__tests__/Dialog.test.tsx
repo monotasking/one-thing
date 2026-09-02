@@ -1,9 +1,13 @@
 import { useState } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { ConfirmHost, Dialog, useConfirm, useConfirmHub } from '../Dialog'
 import { useStageStore } from '../../stage/store'
+import { FocusScope } from '../../focus/FocusScope'
+import { focusTree } from '../../focus/registry'
+import { FocusDispatchHarness } from '../../test/focus-harness'
 import { en } from '../../i18n/en'
+import type { ReactNode } from 'react'
 
 /**
  * 两件事:对话框自己的**逃生口**(Esc / 点遮罩),和 useConfirm 的 promise 语义。
@@ -20,10 +24,38 @@ beforeEach(() => {
   useConfirmHub.setState({ request: null })
 })
 
+afterEach(() => {
+  focusTree.reset()
+})
+
+/**
+ * **一台最小的外壳**(09-02 R1)。Esc 关这件事现在是一句声明
+ * (`<FocusScope onEscape>`),真正听键盘的是外壳上那唯一一个派发器;焦点归还也
+ * 不再是对话框自己记的锚点,而是「路径缩回父、焦点回父上次所在的元素」——
+ * 所以要有一格 `root` 当那个父。两件都摆进来,这一组才是在验对话框,而不是在验
+ * 「一台没有外壳的机器上按 Esc 会怎样」。
+ */
+function Shell({ children }: { children: ReactNode }) {
+  return (
+    <FocusScope scope="root">
+      {({ scopeProps }) => (
+        <div {...scopeProps}>
+          <FocusDispatchHarness />
+          {children}
+        </div>
+      )}
+    </FocusScope>
+  )
+}
+
 describe('Dialog:逃生口', () => {
   it('Esc 关', () => {
     const onClose = vi.fn()
-    render(<Dialog open onClose={onClose} label="d" />)
+    render(
+      <Shell>
+        <Dialog open onClose={onClose} label="d" />
+      </Shell>,
+    )
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -48,7 +80,11 @@ describe('Dialog:逃生口', () => {
 
   it('关着时什么都不渲染,Esc 也不再触发', () => {
     const onClose = vi.fn()
-    render(<Dialog open={false} onClose={onClose} label="d" />)
+    render(
+      <Shell>
+        <Dialog open={false} onClose={onClose} label="d" />
+      </Shell>,
+    )
     expect(screen.queryByRole('dialog')).toBe(null)
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).not.toHaveBeenCalled()
@@ -64,12 +100,12 @@ describe('Dialog:逃生口', () => {
 function Harness({ onDone }: { onDone: (v: boolean) => void }) {
   const confirm = useConfirm()
   return (
-    <>
+    <Shell>
       <button type="button" onClick={() => void confirm({ title: 'Sure?' }).then(onDone)}>
         ask
       </button>
       <ConfirmHost />
-    </>
+    </Shell>
   )
 }
 
@@ -124,24 +160,25 @@ describe('useConfirm:promise 化的一问一答', () => {
 })
 
 /**
- * A11y 线 · A2:焦点圈禁与无障碍名。
+ * A11y 线 · A2:焦点与无障碍名。
  *
- * 圈禁本身的机制归 ui/a11y/__tests__/focus-trap.test.tsx;这里验的是**接线**——
- * Dialog 真的接上了它(开时焦点进面板、关时还给锚点),以及标题真的被指为名字。
+ * 圈禁与退一层的机制归响应链自己那一组(src/focus/__tests__/);这里验的是
+ * **接线** —— Dialog 真的接上了它(开时焦点进面板、关时结构性地还回去),
+ * 以及标题真的被指为名字。
  */
 describe('Dialog:焦点与名字', () => {
   it('打开时焦点进面板,关闭时还给开它的那个元素', () => {
     function Harness() {
       const [open, setOpen] = useState(false)
       return (
-        <>
+        <Shell>
           <button type="button" data-testid="opener" onClick={() => setOpen(true)}>
             open
           </button>
           <Dialog open={open} onClose={() => setOpen(false)} label="d">
             body
           </Dialog>
-        </>
+        </Shell>
       )
     }
     render(<Harness />)

@@ -2,7 +2,7 @@ import { createContext, useContext, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { Check } from '../components/icons'
-import { useFocusTrap } from './a11y/focus-trap'
+import { FocusScope } from '../focus/FocusScope'
 import { useRoving } from './a11y/roving'
 import { useFloatDismiss, useFloatPosition } from './float'
 import type { FloatAnchor } from './float'
@@ -19,13 +19,16 @@ import s from './Menu.module.css'
  * 用 portal 挂到 body 不是洁癖:Dock 条上有 backdrop-filter,而 backdrop-filter
  * 会给 position:fixed 的后代造一个包含块,菜单留在 Dock 里会以 Dock 为原点定位。
  *
- * ── 键盘表(A11y 线 · A2)───────────────────────────────────────────────
+ * ── 键盘表(A11y 线 · A2;09-02 R1 起 Tab / Esc 由响应链答)────────────────
  *   ↑ / ↓             在项之间移动(循环),整组只占**一个** Tab 位
  *   Home / End        到首项 / 末项
  *   Enter / Space     触发当前项(原生 <button> 白送,不自造)
  *   Tab / Shift+Tab   圈在菜单内 —— 浮层开着的时候焦点不许溜到它后面那一屏去
- *   Esc               关闭 → 焦点还给开它的那个元素
- * 开启瞬间焦点移进菜单容器(tabIndex=-1):不移进来,上面这几行就都够不着。
+ *                     (`modal` 作用域的内置行为,从前是 `ui/a11y/focus-trap`)
+ *   Esc               关闭 → 焦点结构性地回到开它的那块面(§4.5,没有锚点簿记了)
+ * 开启瞬间焦点移进菜单容器(tabIndex=-1,`activateOnMount` 那一格):不移进来,
+ * 上面这几行就都够不着。**「对话框里开一张菜单,一下 Esc 只关菜单」由树的深度
+ * 保证**:菜单 portal 到 body,在 DOM 上是对话框的兄弟,在树上是它的孩子。
  * ──────────────────────────────────────────────────────────────────────
  *
  * ── 两种角色,同一件浮层 ────────────────────────────────────────────────
@@ -86,11 +89,9 @@ export function Menu({
 }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null)
 
-  // 菜单在场即开启:圈禁 Tab、开时把焦点移进来、关时还给锚点。
-  useFocusTrap(ref, true)
   useRoving(ref, { axis: 'vertical' })
 
-  // 定位、Esc 关、点外关全在 ui/float —— 行为与判例都写在那儿,这里不重写一份。
+  // 定位与点外关在 ui/float —— 行为与判例都写在那儿,这里不重写一份。
   // x/y 在 anchor 在场时只当首帧兜底:矩形量得到就一次都用不上。
   const floatAnchor: FloatAnchor = anchor
     ? { kind: 'rect', get: anchor, place: anchorPlace }
@@ -100,20 +101,26 @@ export function Menu({
 
   return createPortal(
     <RoleCtx.Provider value={role}>
-      <div
-        ref={ref}
-        id={id}
-        className={s.menu}
-        style={{ left: `${pos.left}px`, top: `${pos.top}px`, ...(minWidth ? { minWidth } : {}) }}
-        role={role}
-        /* ARIA 菜单模式:容器**可编程聚焦**(-1),项走 roving tabindex。
-         * 不给 -1 的话容器根本拿不到焦点,读屏软件进不去这棵菜单树。 */
-        tabIndex={-1}
-        aria-label={label}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        {children}
-      </div>
+      {/* 菜单在场即开启,所以 `activateOnMount` 是「挂载即入焦」;`ref` 交给作用域一并写
+        * (定位与点外关都要读它,而一个元素上只能写一格 ref)。 */}
+      <FocusScope scope="menu" rootRef={ref} activateOnMount onEscape={() => (onClose(), true)}>
+        {({ scopeProps }) => (
+          <div
+            {...scopeProps}
+            id={id}
+            className={s.menu}
+            style={{ left: `${pos.left}px`, top: `${pos.top}px`, ...(minWidth ? { minWidth } : {}) }}
+            role={role}
+            /* ARIA 菜单模式:容器**可编程聚焦**(-1),项走 roving tabindex。
+             * 不给 -1 的话容器根本拿不到焦点,读屏软件进不去这棵菜单树。 */
+            tabIndex={-1}
+            aria-label={label}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            {children}
+          </div>
+        )}
+      </FocusScope>
     </RoleCtx.Provider>,
     document.body,
   )
