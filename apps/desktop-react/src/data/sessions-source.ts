@@ -1,3 +1,4 @@
+import { useCallback, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
@@ -21,6 +22,8 @@ import type {
   SessionPreviewMessage,
   SessionSummary,
 } from '../expose/types'
+import { createQueryFamily, useQuery } from './kernel'
+import type { QuerySnapshot } from './kernel'
 import { sessionsPort } from './sessions-port'
 
 /**
@@ -93,6 +96,52 @@ import { sessionsPort } from './sessions-port'
  * 08-31 那张 `hiddenIds` 名单随之退役:它当初存在是因为「被滤掉的会话不在
  * `state.sessions` 里,于是它们的事件会被判据 a 当成新建」。全库账里什么都有,
  * 「认不认识」直接问账本即可 —— 一个名单少一个会跟真相走散的副本。
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * 状态先行:三张表(09-01 用户令,施工纪律第一条)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * 本批(读路战役 7c)动的是**按会话的三张按需缓存**:章节 / 首页消息 / 用户锚点。
+ * 三张都迁进 `createQueryFamily`,键就是 sessionId。列表那一发、全库账、SSE 增量
+ * 投影、`create` / `setWorkingDirectory` 一个字不动 —— 那是另一批的射程。
+ *
+ * ── ① 生命周期 ──────────────────────────────────────────────────────────
+ *  · 挂载   —— import 只建三只**空**族,零往返、零订阅。族里一格都没有,
+ *              第一次 `ensureX(id)` 才建出那一格(键面由数据说了算,不是
+ *              「有几条会话就先建几格」);
+ *  · 首载   —— `ensureChapters/Messages/Markers(id)` = 那一格的 `ensure()`。
+ *              「问过一次且不脏就什么都不做」由原语承担 —— 从前那两张
+ *              `loadingChapters` / `loadingMessages` 去重表随之退役,
+ *              `ensureMarkers` 从来没有的那道去重也顺手补上(勘察偏离 6);
+ *  · 换宿主 —— 三张都是**跟着会话走**的东西。换会话 = 换一格键,不是重拉:
+ *              上一条的答案原样留在它自己那一格里,切回去时不再问一遍;
+ *  · 作废   —— SSE 说这条会话又动了(判据 c / d)→ 那一格 `invalidate()`。
+ *              **这是本批列明的规范修正**:从前是把缓存整格删掉(下次 ensure
+ *              重拉,屏幕先退回骨架再长回来),现在是标脏 —— 有人正看着就
+ *              后台补拉、旧内容留在屏上(律②),没人看着就等下一次 ensure;
+ *  · 丢格   —— 会话被删(onLifecycle deleted)→ `drop(id)`。它与作废是两件事:
+ *              作废说的是「答案旧了,再问」,丢格说的是「问谁?那条已经不在了」;
+ *  · 卸载   —— `reset()`:退订三条订阅 + 三族一起归零。HMR dispose 复用的就是它。
+ *
+ * ── ② UI 生命状态(三族共用一张,消费者各取所需)─────────────────────────
+ *  · empty   —— 拉到手是空表 = 「这条会话真的没有章 / 没有消息 / 没有锚点」。
+ *               目录 rail 整个不在场,Quick Look 说「还没有消息」;
+ *  · loading —— **只有首载算**:`phase === 'initial' && inflight`。Quick Look 的
+ *               骨架读的就是这一句(再经 `SKELETON_DELAY_MS` 防闪);重拉期间
+ *               `phase` 停在 ready,骨架一次都不画;
+ *  · ready   —— 有过一次答案就永远是它,重拉保旧(律②);
+ *  · error   —— 三只 fetcher 都**不抛**:拉不到 = 这条会话此刻没有目录 / 没有正文
+ *               可看,不是整个面的错误(逐字保留迁移前的裁定)。所以这三格的
+ *               `error` 恒为 undefined,屏幕上没有它的落点;
+ *  · 超量    —— 首页消息由 `PREVIEW_PAGE_SIZE` 封顶;章节 / 锚点是一条会话内部的
+ *               量级,不设削量(真长到要削的那天削的是钢琴键,不是这里)。
+ *
+ * ── ③ UI 交互状态 ───────────────────────────────────────────────────────
+ * 这一层不画任何控件,交出去的只有读数:
+ *  · 三个 `ensureX` 是**幂等的取数**,不是按钮动作 —— 没有 pending 反馈要长在
+ *    哪个控件上(律③在这条线上不适用:用户按不到它);
+ *  · 唯一与交互挂钩的是 Quick Look 的骨架与目录 rail 的在场与否,判据见上表。
+ * ══════════════════════════════════════════════════════════════════════════
  */
 
 /** 重拉的最小间隔。一次流里事件密集,合并窗口就是「最多一秒一次」。 */
@@ -100,6 +149,54 @@ export const REFRESH_THROTTLE_MS = 1000
 
 /** QuickLook 首页取多少条。够看清「最近在聊什么」,又不至于把一整条会话拖下来。 */
 export const PREVIEW_PAGE_SIZE = 20
+
+/* ── 三张按需缓存 = 三族 query,键 = sessionId ──────────────────────────── */
+
+/**
+ * 「拉不到就当作没有」这一条**留在 fetcher 里**,不上交给原语。
+ *
+ * 它是**这块面的裁定**而不是取数的通性(与 agents-source 那条「失败只重来一次」
+ * 同一处判例):一条会话拉不到章节,说的是「它此刻没有目录可看」,不是整个
+ * 总览面出了错 —— 从前那三个 `catch { = [] }` 就是这句话,原样搬进来。
+ *
+ * 所以三格的 `error` 恒为 undefined,而 `data` 恒为一张(可能是空的)表。
+ * 哪天要把「后端说不行」与「这条真的没有」分开画,改的是这三个 fetcher 的
+ * 一句 `throw`,不是每个消费者各加一条分支。
+ */
+async function orEmpty<T>(load: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await load()
+  } catch {
+    return []
+  }
+}
+
+/** 章节(`sessions.getSegments`)。作废的判据只有 `stream:complete` —— 章是一轮跑完才推导出来的。 */
+export const chaptersQuery = createQueryFamily<SessionChapter[]>('sessions.chapters', (ctx) =>
+  orEmpty(async () => {
+    const port = await sessionsPort()
+    const response = await port.getSegments(ctx.key)
+    return response.success ? (response.segments ?? []).map(toSessionChapter) : []
+  }),
+)
+
+/** 首页消息(`sessions.getMessagesPage`)。Quick Look 与「进入会话」都吃这一格。 */
+export const messagesQuery = createQueryFamily<SessionPreviewMessage[]>('sessions.messages', (ctx) =>
+  orEmpty(async () => {
+    const port = await sessionsPort()
+    const response = await port.getMessagesPage(ctx.key, PREVIEW_PAGE_SIZE)
+    return response.success ? (response.messages ?? []).map(toPreviewMessage) : []
+  }),
+)
+
+/** 用户消息锚点(`sessions.getUserMarkers`)= 钢琴键的键,也是滚动落点的 id。 */
+export const markersQuery = createQueryFamily<SessionMarker[]>('sessions.markers', (ctx) =>
+  orEmpty(async () => {
+    const port = await sessionsPort()
+    const response = await port.getUserMarkers(ctx.key)
+    return response.success ? (response.markers ?? []).map(toSessionMarker) : []
+  }),
+)
 
 export type SessionsSourceStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -129,15 +226,13 @@ export interface SessionsSourceState {
   sessions: SessionSummary[]
   projects: ProjectSummary[]
   groups: SessionGroup[]
-  /** 按会话缓存的章节。键在表里 = 拉过了(空数组是「真的没有章节」)。 */
-  chapters: Record<string, SessionChapter[]>
-  /** 按会话缓存的首页消息。 */
-  messages: Record<string, SessionPreviewMessage[]>
-  /** 按会话缓存的用户消息锚点(钢琴键的键)。 */
-  markers: Record<string, SessionMarker[]>
-  /** 正在飞的按需请求(章节 / 消息各一份),用来去重并驱动骨架。 */
-  loadingChapters: Record<string, true>
-  loadingMessages: Record<string, true>
+
+  /*
+   * 按会话的三张缓存**不在这里** —— 它们是 `chaptersQuery` / `messagesQuery` /
+   * `markersQuery` 三族(键 = sessionId,见文件头三张表)。留一份转发的壳只会
+   * 变成第二份真相(kernel 手册「迁移一个 source 的步骤」第 2 条)。
+   * 组件侧的读法是本文件末尾那四只 hook。
+   */
 
   /** 连通后启动:拉一次列表 + 订上 SSE。幂等。 */
   start: () => Promise<void>
@@ -173,6 +268,10 @@ export interface SessionsSourceState {
     sessionId: string,
     workingDirectory: string,
   ) => Promise<{ ok: true } | { ok: false; error: string }>
+  /**
+   * 三只「确保问过一次」。签名与迁移前逐字相同(调用点一个字不改),内部就是
+   * 对应族那一格的 `ensure()` —— 去重、缓存、脏标记全由原语承担。
+   */
   ensureChapters: (sessionId: string) => Promise<void>
   ensureMessages: (sessionId: string) => Promise<void>
   ensureMarkers: (sessionId: string) => Promise<void>
@@ -244,13 +343,14 @@ export function onSessionsRemoved(listener: SessionsRemovedListener): () => void
   return () => removedListeners.delete(listener)
 }
 
-/** 从一张按会话缓存里摘掉一批键;一个都没命中就**原样返回**(不制造新对象)。 */
-function dropKeys<T>(table: Record<string, T>, gone: Set<string>): Record<string, T> {
-  const hit = Object.keys(table).filter((id) => gone.has(id))
-  if (hit.length === 0) return table
-  const next = { ...table }
-  for (const id of hit) delete next[id]
-  return next
+/**
+ * 一条会话的三份按需缓存一起丢掉(`drop` 对没建过的键是恒等变换,
+ * 所以级联名单里那些从来没人问过的 id 不会在这里各建一格)。
+ */
+function dropSessionCaches(sessionId: string): void {
+  chaptersQuery.drop(sessionId)
+  messagesQuery.drop(sessionId)
+  markersQuery.drop(sessionId)
 }
 
 export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
@@ -323,25 +423,28 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       const next = ledger.map((s) =>
         s.id === sessionId ? { ...s, updatedAt: Math.max(s.updatedAt, envelope.timestamp) } : s,
       )
-      // 缓存作废**无条件**:三份按会话缓存与「这条会话此刻在不在屏上」无关,
-      // 少作废一次就会在切回那个工作区时拿一份陈的正文出来画。
-      const messages = { ...state.messages }
-      delete messages[sessionId]
-      const markers = { ...state.markers }
-      delete markers[sessionId]
-      const patch: Partial<SessionsSourceState> = { messages, markers }
-      if (type === SESSION_EVENT_TYPES.STREAM_COMPLETE) {
-        const chapters = { ...state.chapters }
-        delete chapters[sessionId]
-        patch.chapters = chapters
-      }
+      /*
+       * 作废**无条件**:三份按会话缓存与「这条会话此刻在不在屏上」无关,
+       * 少作废一次就会在切回那个工作区时拿一份陈的正文出来画。
+       *
+       * **本批的规范修正**:从前这里是把那一格整个删掉(`delete messages[id]`),
+       * 于是正开着 Quick Look 的人会看见「内容消失 → 骨架 → 重新长出来」。
+       * 现在是标脏 —— 有人正订着这一格就后台补拉、旧内容留在屏上(律②),
+       * 没人订就只留个脏标记,下一次 `ensureX` 才真去问。
+       *
+       * `invalidate(key)` 对没建过的键什么都不做,所以「一条从来没人看过的会话
+       * 在刷屏」不会在这里凭空建出三格。
+       */
+      messagesQuery.invalidate(sessionId)
+      markersQuery.invalidate(sessionId)
+      // 判据 d:章是一轮跑完才推导出来的,所以只有 stream:complete 动它。
+      if (type === SESSION_EVENT_TYPES.STREAM_COMPLETE) chaptersQuery.invalidate(sessionId)
       // 重投影只给屏上那批 —— 别的工作区里的流不该每条 delta 重排一次本区列表。
       if (!onScreen) {
         ledger = next
-        set(patch)
         return
       }
-      set({ ...patch, ...publish(next) })
+      set(publish(next))
     }
     // 判据 e:其余一律忽略。
   }
@@ -353,9 +456,11 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
    * 它的子会话,每条各来一次事件,但每一条都带着完整名单 —— 按名单摘是幂等的,
    * 所以级联的第二、三条事件到达时是恒等变换,不会各摘一次各重投影一次。
    *
-   * 缓存**无条件**作废:一条会话可以不在列表里(级联子会话)却在缓存里躺着。
-   * 正在飞的那两个按需请求不管 —— 它们落地时写进的是一条没人再问的键,
-   * 而半路抽掉 loading 闸只会换来一次重复请求。
+   * 缓存**丢格**(不是标脏):一条会话可以不在列表里(级联子会话)却在缓存里
+   * 躺着。这里用 `drop` 而不是 `invalidate` —— 「这条会话没了」不是「答案旧了」,
+   * 标脏会让还订着它的那一格当场后台补拉一发注定问不着的请求。
+   * 正在飞的那两个按需请求不管:它们落地时写进的是一格已经被摘掉的 query,
+   * 而半路抽掉在飞的那一发只会换来一次重复请求。
    */
   function onLifecycle(event: SessionLifecycleEvent): void {
     // `created` 不接:新建仍由判据 a 认出,两个产地说同一件事就会打架(见文件头)。
@@ -363,19 +468,13 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     const gone = new Set(event.cascadedSessionIds.filter((id) => typeof id === 'string' && id))
     if (gone.size === 0) return
 
-    const state = get()
     // 摘的是**全库账**:级联子会话常常既不在屏上、也不在当前工作区里,
     // 只摘屏幕那一份会让它们留在账上,下一条事件又把判据 a 骗成「有人新建」。
     const nextLedger = ledger.filter((s) => !gone.has(s.id))
-    const chapters = dropKeys(state.chapters, gone)
-    const messages = dropKeys(state.messages, gone)
-    const markers = dropKeys(state.markers, gone)
-    const untouched =
-      nextLedger.length === ledger.length &&
-      chapters === state.chapters &&
-      messages === state.messages &&
-      markers === state.markers
-    if (!untouched) set({ chapters, messages, markers, ...publish(nextLedger) })
+    for (const id of gone) dropSessionCaches(id)
+    // 账上一条都没摘掉 = 屏幕那一份不必重投影(三族有它们自己的订阅面,
+    // 丢格时各自喊过人了)。这一句护的是列表的行身份(律④)。
+    if (nextLedger.length !== ledger.length) set(publish(nextLedger))
 
     // 通知在 set 之后:形态机拿到的那份分组事实必须是**摘除之后**的,
     // 否则「焦点退到新序列首」会退到一张马上就要消失的卡上。
@@ -412,11 +511,6 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     sessions: [],
     projects: [],
     groups: [],
-    chapters: {},
-    messages: {},
-    markers: {},
-    loadingChapters: {},
-    loadingMessages: {},
 
     start: async () => {
       if (started) return
@@ -489,61 +583,27 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       return { ok: true }
     },
 
+    /*
+     * 三只 ensure 现在是**薄的**:空 id 挡掉(空串不是一条会话),其余原样交给
+     * 那一族的 `ensure()`。三条从前各自手写的东西 —— 「拉过了就别再拉」
+     * (`sessionId in table`)、「有一发在飞就别发第二发」(那两张 loading 表)、
+     * 「拉不到就缓存成空表」(catch) —— 分别由原语的脏标记、并发折叠与
+     * 上面那只 `orEmpty` 接手。`ensureMarkers` 从前**没有**去重表(同帧双发会真的
+     * 发两次,勘察偏离 6),现在三条走同一条路,那个偏离自动结掉。
+     */
     ensureChapters: async (sessionId) => {
-      const state = get()
       if (!sessionId) return
-      if (sessionId in state.chapters || state.loadingChapters[sessionId]) return
-      set({ loadingChapters: { ...state.loadingChapters, [sessionId]: true } })
-      const port = await sessionsPort()
-      let chapters: SessionChapter[] = []
-      try {
-        const response = await port.getSegments(sessionId)
-        chapters = response.success ? (response.segments ?? []).map(toSessionChapter) : []
-      } catch {
-        // 章节拉不到 = 这条会话此刻没有目录可看,不是整个面的错误 ——
-        // 所以它不进 status,缓存成空表(空态由渲染层画)。
-        chapters = []
-      }
-      set((prev) => {
-        const loading = { ...prev.loadingChapters }
-        delete loading[sessionId]
-        return { chapters: { ...prev.chapters, [sessionId]: chapters }, loadingChapters: loading }
-      })
+      await chaptersQuery.get(sessionId).ensure()
     },
 
     ensureMessages: async (sessionId) => {
-      const state = get()
       if (!sessionId) return
-      if (sessionId in state.messages || state.loadingMessages[sessionId]) return
-      set({ loadingMessages: { ...state.loadingMessages, [sessionId]: true } })
-      const port = await sessionsPort()
-      let messages: SessionPreviewMessage[] = []
-      try {
-        const response = await port.getMessagesPage(sessionId, PREVIEW_PAGE_SIZE)
-        messages = response.success ? (response.messages ?? []).map(toPreviewMessage) : []
-      } catch {
-        messages = []
-      }
-      set((prev) => {
-        const loading = { ...prev.loadingMessages }
-        delete loading[sessionId]
-        return { messages: { ...prev.messages, [sessionId]: messages }, loadingMessages: loading }
-      })
+      await messagesQuery.get(sessionId).ensure()
     },
 
     ensureMarkers: async (sessionId) => {
-      const state = get()
       if (!sessionId) return
-      if (sessionId in state.markers) return
-      const port = await sessionsPort()
-      let markers: SessionMarker[] = []
-      try {
-        const response = await port.getUserMarkers(sessionId)
-        markers = response.success ? (response.markers ?? []).map(toSessionMarker) : []
-      } catch {
-        markers = []
-      }
-      set((prev) => ({ markers: { ...prev.markers, [sessionId]: markers } }))
+      await markersQuery.get(sessionId).ensure()
     },
 
     reset: () => {
@@ -558,21 +618,38 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       lastRefreshAt = 0
       if (refreshTimer) clearTimeout(refreshTimer)
       refreshTimer = undefined
+      // 三族一起归零 —— 「回到未启动的干净态」包括那三张按会话缓存,
+      // 它们只是搬了家,不是不归这一口管了。
+      chaptersQuery.reset()
+      messagesQuery.reset()
+      markersQuery.reset()
       set({
         status: 'idle',
         error: undefined,
         sessions: [],
         projects: [],
         groups: [],
-        chapters: {},
-        messages: {},
-        markers: {},
-        loadingChapters: {},
-        loadingMessages: {},
       })
     },
   }
 })
+
+/**
+ * **HMR 退役**(09-01 立法,起因是 chat-source 那一案:热更之后旧模块的模块级
+ * 副作用没死,两个实例同时活着)。
+ *
+ * 这个文件的模块级副作用:三条订阅句柄(SSE / lifecycle / 工作区)、节流定时器、
+ * 启动闸、全库账,以及本批搬进来的三族 query(各自带一张监听表)。不退役的话,
+ * 旧模块那条 `onSessionEvent` 订阅还挂在传输面上,两台数据源各投影各的。
+ *
+ * 退役**复用这个模块已有的那一口拆卸**(`reset()`),不写第二套。它自身幂等;
+ * 生产构建里 `import.meta.hot` 是 undefined,整段被 tree-shake 掉。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    useSessionsSource.getState().reset()
+  })
+}
 
 /** 非组件上下文的读法(store 壳、纯函数的入参)。 */
 export function currentGroups(): SessionGroup[] {
@@ -581,4 +658,70 @@ export function currentGroups(): SessionGroup[] {
 
 export function currentSessions(): SessionSummary[] {
   return useSessionsSource.getState().sessions
+}
+
+/* ── 组件侧:三族的读法 ────────────────────────────────────────────────── */
+
+/**
+ * 一条会话的章 / 首页消息 / 锚点。交出去的是**整张快照**而不是 `data` ——
+ * Quick Look 的骨架要判 `phase === 'initial' && inflight`,只给数据的话它就得
+ * 自己再猜一遍「现在是首载还是重拉」,那正是 kernel 存在的理由。
+ *
+ * 空 `sessionId` 照常建一格(键就是空串)—— 它永远不会被 ensure,所以恒是
+ * 出厂快照。不在这里分岔的理由:hook 不能有条件地调。
+ */
+export function useSessionChapters(sessionId: string): QuerySnapshot<SessionChapter[]> {
+  return useQuery(chaptersQuery.get(sessionId))
+}
+
+export function useSessionMessages(sessionId: string): QuerySnapshot<SessionPreviewMessage[]> {
+  return useQuery(messagesQuery.get(sessionId))
+}
+
+export function useSessionMarkers(sessionId: string): QuerySnapshot<SessionMarker[]> {
+  return useQuery(markersQuery.get(sessionId))
+}
+
+/** 一条都还没拉到时交出去的那一份 —— 恒等引用,免得每次渲染都换一张新空表(律④)。 */
+const EMPTY_CHAPTER_RECORD: Readonly<Record<string, SessionChapter[]>> = {}
+
+/**
+ * **已经拉到手的全部章节**,摊成检索面板要的那张 `Record<sessionId, 章[]>`。
+ *
+ * 为什么不照 `useCatalogRecord(ids)` 那一手逐键订:那只 hook 的键面由**屏幕**
+ * 给定(设置面要列这几家),而这里的键面由**数据**给定 —— 检索的判据是
+ * 「凡是手上有章的会话,章里也搜一遍」,包括用户从没在这块面里点过、章却
+ * 因为别处(进入会话 / 目录 rail)已经拉到手的那些。逐键订要先 `get(key)` 建格,
+ * 于是「有几条会话就先建几格空格」(500 条会话 = 500 格 + 500 个订阅),
+ * 而且真正新落地的那一格反而没人订。
+ *
+ * 所以订的是**整族**(`chaptersQuery.subscribe`,O(1)),快照按 `keys()` 逐格记
+ * `dataRev`:只有哪一格的内容**真的变了**才换引用 —— 在飞 / 落地这种来回不算,
+ * 否则每一次后台补拉都会让整块检索结果重算一遍(律④)。
+ */
+export function useChapterRecord(): Readonly<Record<string, SessionChapter[]>> {
+  const cache = useRef<{ revs: string | null; value: Readonly<Record<string, SessionChapter[]>> }>({
+    revs: null,
+    value: EMPTY_CHAPTER_RECORD,
+  })
+
+  const subscribe = useCallback((listener: () => void) => chaptersQuery.subscribe(listener), [])
+
+  const snapshot = useCallback(() => {
+    const ids = chaptersQuery.keys()
+    const revs = ids.map((id) => `${id}:${chaptersQuery.get(id).get().dataRev}`).join('\n')
+    const held = cache.current
+    // 「从来没算过」用 `revs: null` 表达:`join` 的结果可以是空串(一格都没有),
+    // 所以空串不能当哨兵 —— null 不在 join 的值域里(models-source 同一处判例)。
+    if (held.revs === revs) return held.value
+    const value: Record<string, SessionChapter[]> = {}
+    for (const id of ids) {
+      const chapters = chaptersQuery.get(id).get().data
+      if (chapters) value[id] = chapters
+    }
+    cache.current = { revs, value }
+    return value
+  }, [])
+
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
 }

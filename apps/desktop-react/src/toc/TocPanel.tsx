@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { TOC_HOVER_MS } from '../components/motion'
-import { useSessionsSource } from '../data/sessions-source'
+import { useSessionChapters, useSessionMarkers, useSessionsSource } from '../data/sessions-source'
 import { useExposeStore } from '../expose/store'
 import { useT } from '../i18n'
 import { PianoKeys } from './PianoKeys'
@@ -44,8 +44,13 @@ export function TocPanel({ currentIndex, onPick }: Props) {
   const hoverKey = useTocStore((st) => st.hoverKey)
 
   const sessionId = useExposeStore((st) => st.currentSessionId)
-  const chapterSource = useSessionsSource((st) => st.chapters[sessionId])
-  const markerSource = useSessionsSource((st) => st.markers[sessionId])
+  /*
+   * 两族各订一格(键 = 这条会话)。这里只用得着 `data` —— 目录的空态是
+   * 「rail 整个不在场」,没有骨架也没有错误行,所以 `phase` / `inflight`
+   * 在这块面上没有落点(判据表见 data/sessions-source.ts 文件头 ②)。
+   */
+  const chapterSource = useSessionChapters(sessionId).data
+  const markerSource = useSessionMarkers(sessionId).data
   const ensureChapters = useSessionsSource((st) => st.ensureChapters)
   const ensureMarkers = useSessionsSource((st) => st.ensureMarkers)
 

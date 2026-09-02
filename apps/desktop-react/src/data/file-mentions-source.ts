@@ -24,6 +24,31 @@ import { filesPort } from './files-port'
  * ── 防抖不在这里 ────────────────────────────────────────────────────────────
  * `search` 是**立即**发的,竞速由令牌管。去抖是「人打字的节奏」,归调用现场
  * (`Composer.tsx` 的那只 effect,与 `search/components/SearchPanel.tsx` 逐条同款)。
+ *
+ * ── 为什么这一格**不迁** kernel(7c 批编排裁定,连同理由一起记档)────────────
+ * 别的按需缓存(会话的章 / 首页消息 / 锚点)都迁进了 `createQueryFamily`,这一格
+ * 没有,而且不该迁 —— 判据是**这个键指的东西活多久**:
+ *
+ *  1. 它的真实键是 `(query, cwd, sessionId)` 三元组,**随每一次击键变化**。
+ *     一族 query 会为每一个前缀永久留一格:敲 `@components/Button` 就留下
+ *     `@`、`@c`、`@co`… 十几格,每一格都攥着一份候选表,谁也不会再问第二次。
+ *  2. 抽屉一收,候选就该**散掉** —— 它是「此刻在匹配什么」,不是缓存
+ *     (`clear()` 那一口就是这句话)。kernel 里没有「退场即散」这个表达:
+ *     `invalidate` 是「答案旧了」、`drop` 是「这个键指的东西没了」,
+ *     都不是「这个问题本身已经不问了」。
+ *
+ * 两条合起来:这块面要的是一台**竞速受控的一次性查询**,不是一份带身份的缓存。
+ * 令牌那一手正是为它写的,原样留着。哪天 kernel 长出「一次性查询」这一族
+ * (寿命 = 一次提问,退场即散),再回来重判。
+ *
+ * ── 律②在这里怎么兑现(7c 批的规范修正)────────────────────────────────────
+ * 失败时**不清候选**:上一批候选留在屏上,错误与它并陈 —— 与 kernel 的
+ * 「错误不抹掉旧答案」逐字同一条(`SearchPanel:367` 有先例:有命中也照画失败行)。
+ * 从前是 `set({ status:'error', mentions: [] })`:一次抖动的失败会把人刚看见的
+ * 一屏候选抹掉,而下一次击键又把它拉回来 —— 那是律②说的那种「闪」。
+ *
+ * 今天 Composer 的文件抽屉**没有画错误的地方**(它只画列表),所以这一批只改
+ * 数据不动 UI:留账在此,哪天抽屉长出错误行,`error` 这一格就在手边。
  */
 
 /** 一次补全最多要多少条。 */
@@ -153,18 +178,31 @@ export const useFileMentionsSource = create<FileMentionsSourceState>()((set) => 
       const q = query.trim()
       const mine = ++token
       set({ status: 'loading' })
-      const port = await filesPort()
-      const response = await port.list({
-        ...(cwd ? { cwd } : {}),
-        query: q,
-        limit: FILE_MENTION_LIMIT,
-        // 接入目录是 per-space 的,而「哪个 space」由会话归属决定
-        // (`FilesListRequest.sessionId` 的契约注释)。没有会话就不带。
-        ...(sessionId ? { sessionId } : {}),
-      })
+      let response: FilesListResponse
+      try {
+        const port = await filesPort()
+        response = await port.list({
+          ...(cwd ? { cwd } : {}),
+          query: q,
+          limit: FILE_MENTION_LIMIT,
+          // 接入目录是 per-space 的,而「哪个 space」由会话归属决定
+          // (`FilesListRequest.sessionId` 的契约注释)。没有会话就不带。
+          ...(sessionId ? { sessionId } : {}),
+        })
+      } catch (error) {
+        // 抛出来的那一发与「后端说不成」是同一件事:都得落进 `error`,
+        // 而不是变成一条没人接的 rejection + 一个永远停在 loading 的抽屉。
+        if (token !== mine) return
+        // **不清 mentions**(律②):旧候选留在屏上,错误与它并陈。
+        // `query` 也不动 —— 它的语义是「**产生屏上这批候选**的那个词」,
+        // 而这一发一条候选都没产生出来;改成 q 就是让那句话说谎。
+        set({ status: 'error', error: error instanceof Error ? error.message : String(error) })
+        return
+      }
       if (token !== mine) return
       if (!response.success) {
-        set({ status: 'error', mentions: [], query: q, error: response.error })
+        // 同上:失败**不清候选**,`query` 也不动(它说的是屏上这批候选的出处)。
+        set({ status: 'error', error: response.error })
         return
       }
       set({ status: 'ready', mentions: toFileMentions(response, cwd), query: q, error: undefined })

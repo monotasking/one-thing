@@ -83,12 +83,38 @@ export interface QueryFamily<T, K extends string = string> {
   readonly name: string
   /** 拿这一格的 query。同一个 key 永远是同一个对象 —— 缓存就是这么键控的。 */
   get(key: K): Query<T>
-  /** 标脏一格;不给 key = 全家标脏。 */
+  /** 标脏一格;不给 key = 全家标脏。**不建格**:没建过的键什么都不做。 */
   invalidate(key?: K): void
+  /**
+   * 丢掉一格 —— 「这个键指的东西**没了**」(会话被删)。
+   *
+   * 与 `invalidate` 是两件事,判据是**这个键还值不值得再问一次**:
+   * 标脏说的是「答案旧了,再问」,丢格说的是「问谁?那条会话已经不在了」。
+   * 用标脏顶替会当场换来一发注定失败(或者更糟:被后端当成别的东西)的请求。
+   *
+   * 丢之前先 `reset()` 那一格:此刻还订着它的组件要立刻看见「回到出厂」,
+   * 而不是攥着一份被删对象的旧答案继续画。没建过的键是**恒等变换**
+   * (不建格、不喊人)—— 级联删除名单里绝大多数键从来没人问过。
+   */
+  drop(key: K): void
   /** 全家回到出厂。 */
   reset(): void
-  /** 此刻有哪些格建过。测试与调试用。 */
+  /** 此刻有哪些格建过。测试与调试用,也是整族快照(见 subscribe)的键面。 */
   keys(): readonly string[]
+  /**
+   * 订**整族**:任何一格 emit 都喊一次,包括此刻还没建出来的格。
+   *
+   * 它服务的是「屏幕要的是一张 `Record<key, T>`,而**哪些键**由数据自己说了算」
+   * 这一种读法(检索面板的章节缓存就是:它按会话 id 去问「这条有章节吗」,
+   * 键面等于「已经拉到手的那些」)。逐键订(`useCatalogRecord` 那一手)在
+   * 键面由**屏幕**给定时是对的;键面由**数据**给定时它办不到 —— 逐键订必须先
+   * `get(key)` 建格,于是「有几条会话就建几格空格」,而且新落地的那一格没人订。
+   *
+   * 快照那一头**不在这里**:整族的 `dataRev` 要怎么记账是消费者的事
+   * (章节那一路按 `keys()` 逐格记 `dataRev`,只有内容真变了才换引用),
+   * kernel 不替它拍一个「整族版本号」——那会把 inflight 的来回也算成一次变化。
+   */
+  subscribe(listener: () => void): () => void
 }
 
 interface Entry<T> {
@@ -113,6 +139,13 @@ function createEntryQuery<T>(
   key: string,
   fetcher: QueryFetcher<T>,
   equals: (a: T, b: T) => boolean,
+  /**
+   * 这一格喊人时**顺带**喊一声整族的订阅者(`QueryFamily.subscribe`)。
+   * 走这条而不是让家长自己 `subscribe()` 每一格:家长订自己的孩子会让
+   * `listeners.size > 0` 恒真,于是 `invalidate()` 永远走「有人在看 → 后台补拉」,
+   * 「没人看就留个脏标记」那一档当场消失。
+   */
+  notifyFamily: () => void = () => undefined,
 ): Query<T> {
   let state = freshEntry<T>()
   let running: { promise: Promise<void>; force: boolean } | undefined
@@ -161,6 +194,7 @@ function createEntryQuery<T>(
     // 先把快照算好再喊 —— 监听者第一件事就是 get()。
     get()
     for (const listener of listeners) listener()
+    notifyFamily()
   }
 
   /** 落一个成功答案。**data 只在这里和 patch 里变**。 */
@@ -277,11 +311,16 @@ export function createQueryFamily<T, K extends string = string>(
 ): QueryFamily<T, K> {
   const equals = opts.equals ?? Object.is
   const entries = new Map<string, Query<T>>()
+  const familyListeners = new Set<() => void>()
+
+  function notifyFamily(): void {
+    for (const listener of familyListeners) listener()
+  }
 
   function get(key: K): Query<T> {
     const existing = entries.get(key)
     if (existing) return existing
-    const created = createEntryQuery<T>(`${name}:${key}`, key, fetcher, equals)
+    const created = createEntryQuery<T>(`${name}:${key}`, key, fetcher, equals, notifyFamily)
     entries.set(key, created)
     return created
   }
@@ -296,11 +335,27 @@ export function createQueryFamily<T, K extends string = string>(
       }
       for (const entry of entries.values()) entry.invalidate()
     },
+    drop(key) {
+      const entry = entries.get(key)
+      // 没建过 = 恒等变换。级联删除名单里绝大多数键从来没人问过,
+      // 为它们各建一格再各喊一声人,是拿删除去制造缓存。
+      if (!entry) return
+      entries.delete(key)
+      // reset 在 delete **之后**:它会 emit,而那一声该让订阅者看见的是
+      // 「回到出厂」;此刻家里已经没有这一格了,`keys()` 也就不会再报它。
+      entry.reset()
+    },
     reset() {
       for (const entry of entries.values()) entry.reset()
       entries.clear()
     },
     keys: () => Array.from(entries.keys()),
+    subscribe(listener) {
+      familyListeners.add(listener)
+      return () => {
+        familyListeners.delete(listener)
+      }
+    },
   }
 }
 

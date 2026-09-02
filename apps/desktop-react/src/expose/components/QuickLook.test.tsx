@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QuickLook } from './QuickLook'
 import { SKELETON_DELAY_MS } from '../../components/motion'
-import { GROUPS, seedSessionsSource, SESSIONS } from '../../data/__fixtures__/sessions'
-import { useSessionsSource } from '../../data/sessions-source'
+import {
+  GROUPS,
+  seedSessionCaches,
+  seedSessionsSource,
+  SESSIONS,
+} from '../../data/__fixtures__/sessions'
+import { messagesQuery } from '../../data/sessions-source'
 import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../store'
 import { initialExposeState } from '../transitions'
@@ -26,7 +31,7 @@ afterEach(() => {
 
 describe('Quick Look 的消息', () => {
   it('消息到手就按 role 画出来(用户 / AI 各有标签)', () => {
-    useSessionsSource.setState({
+    seedSessionCaches({
       messages: {
         [session.id]: [
           { id: 'm1', role: 'user', text: '把能力判定收敛到一处' },
@@ -42,9 +47,33 @@ describe('Quick Look 的消息', () => {
   })
 
   it('一条消息都没有 = 「还没有消息」,而不是永远转圈', () => {
-    useSessionsSource.setState({ messages: { [session.id]: [] } })
+    seedSessionCaches({ messages: { [session.id]: [] } })
     render(<QuickLook sessionId={session.id} />)
     expect(screen.getByText('这条会话还没有消息')).toBeTruthy()
+  })
+
+  /**
+   * 7c 批的规范修正,用户能看见的那一半:那条会话又说话时(SSE 判据 c),
+   * 数据源现在是把这一格**标脏**而不是删格 —— 旧的首页消息原样留在屏上,
+   * 骨架一次都不画(律②)。从前是「内容消失 → 骨架 → 重新长出来」。
+   */
+  it('那条会话又说话了:旧消息留在屏上,骨架不出来', () => {
+    vi.useFakeTimers()
+    seedSessionCaches({
+      messages: { [session.id]: [{ id: 'm1', role: 'user', text: '把能力判定收敛到一处' }] },
+    })
+    render(<QuickLook sessionId={session.id} />)
+    const body = screen.getByTestId('quicklook-body')
+
+    act(() => {
+      messagesQuery.invalidate(session.id)
+    })
+    expect(screen.getByText('把能力判定收敛到一处')).toBeTruthy()
+    act(() => {
+      vi.advanceTimersByTime(SKELETON_DELAY_MS + 10)
+    })
+    expect(body.querySelector('[aria-label="正在读消息…"]')).toBeNull()
+    expect(screen.getByText('把能力判定收敛到一处')).toBeTruthy()
   })
 
   it('骨架延迟 150ms 才出 —— 比这更快到手的页面不该闪一下', () => {

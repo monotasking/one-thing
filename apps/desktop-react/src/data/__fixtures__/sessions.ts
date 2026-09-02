@@ -1,7 +1,17 @@
 import type { SessionMeta } from '@shared/ipc/chat'
 import { buildGroups, buildProjects, toSessionSummary } from '../../expose/projection'
-import { useSessionsSource } from '../sessions-source'
-import type { SessionChapter, SessionSummary } from '../../expose/types'
+import {
+  chaptersQuery,
+  markersQuery,
+  messagesQuery,
+  useSessionsSource,
+} from '../sessions-source'
+import type {
+  SessionChapter,
+  SessionMarker,
+  SessionPreviewMessage,
+  SessionSummary,
+} from '../../expose/types'
 
 /**
  * 测试用的**线上形状**样本 —— 只被 *.test.* 引用,不进产品树。
@@ -158,6 +168,8 @@ export function seedSessionsSource(
   overrides: Partial<{
     sessions: SessionSummary[]
     chapters: Record<string, SessionChapter[]>
+    messages: Record<string, SessionPreviewMessage[]>
+    markers: Record<string, SessionMarker[]>
     status: 'idle' | 'loading' | 'ready' | 'error'
     error?: string
   }> = {},
@@ -170,10 +182,32 @@ export function seedSessionsSource(
     sessions,
     projects,
     groups: buildGroups(projects, sessions),
-    chapters: overrides.chapters ?? {},
-    messages: {},
-    markers: {},
-    loadingChapters: {},
-    loadingMessages: {},
   })
+  // 三张按需缓存从 store 搬进了三族 query(7c 批),所以摆样本也得摆到那边去。
+  // **先清空再灌**:样本是「这一条用例的全部事实」,上一条用例留下的格不该
+  // 混进来(从前那份整份 setState 天然带着这层意思)。
+  chaptersQuery.reset()
+  messagesQuery.reset()
+  markersQuery.reset()
+  seedSessionCaches(overrides)
+}
+
+/**
+ * 只摆三张按需缓存,**不动列表**。
+ *
+ * 用 `patch()` 而不是先 `configureSessionsPort` 再 `ensure`:组件测试要的是
+ * 「数据在场时屏幕长什么样」,不是「取数怎么发生」。`patch` 把那一格推到
+ * `phase: 'ready'` 且 `dataRev > 0`,于是组件挂载时那一发 `ensureX` 是恒等变换
+ * (原语的「问过一次且不脏就什么都不做」),一条请求都不会发出去。
+ */
+export function seedSessionCaches(
+  caches: Partial<{
+    chapters: Record<string, SessionChapter[]>
+    messages: Record<string, SessionPreviewMessage[]>
+    markers: Record<string, SessionMarker[]>
+  }> = {},
+): void {
+  for (const [id, value] of Object.entries(caches.chapters ?? {})) chaptersQuery.get(id).patch(value)
+  for (const [id, value] of Object.entries(caches.messages ?? {})) messagesQuery.get(id).patch(value)
+  for (const [id, value] of Object.entries(caches.markers ?? {})) markersQuery.get(id).patch(value)
 }

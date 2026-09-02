@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useStageStore } from '../../stage/store'
-import { useSessionsSource } from '../../data/sessions-source'
+import { useChapterRecord, useSessionsSource } from '../../data/sessions-source'
 import { useFilesSource, useSessionCwd } from '../../data/files-source'
 import { useExposeStore } from '../../expose/store'
 import { Highlight } from '../../expose/components/Highlight'
@@ -76,7 +76,12 @@ export function SearchPanel() {
   const enterSession = useExposeStore((st) => st.enterSession)
   const closeToDock = useStageStore((st) => st.closeToDock)
   const sessions = useSessionsSource((st) => st.sessions)
-  const chapters = useSessionsSource((st) => st.chapters)
+  /*
+   * 章节缓存是**一族 query**(键 = sessionId),而这块面要的是「凡是手上有章的
+   * 会话,章里也搜一遍」—— 键面由数据说了算,不是由屏幕点名。所以订整族,
+   * 摊成 `searchRows` 一直吃的那张 Record(判据与形状逐字不变,见那只 hook)。
+   */
+  const chapters = useChapterRecord()
   const ensureChapters = useSessionsSource((st) => st.ensureChapters)
   const cwd = useSessionCwd()
   const fileHits = useFilesSource((st) => st.searchHits)

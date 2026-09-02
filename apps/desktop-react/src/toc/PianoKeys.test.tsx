@@ -5,7 +5,6 @@ import { TocPanel } from './TocPanel'
 import { useTocStore } from './store'
 import { initialTocState, tocChapters, tocKeys } from './transitions'
 import { seedSessionsSource, SESSIONS } from '../data/__fixtures__/sessions'
-import { useSessionsSource } from '../data/sessions-source'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
 import type { SessionChapter, SessionMarker } from '../expose/types'
@@ -44,12 +43,11 @@ function seedToc(
   chapters: SessionChapter[] = SEGMENTS,
   markers: SessionMarker[] = MARKERS,
 ): void {
-  seedSessionsSource()
-  useExposeStore.setState({ ...initialExposeState, currentSessionId: SESSION_ID })
-  useSessionsSource.setState({
+  seedSessionsSource({
     chapters: { [SESSION_ID]: chapters },
     markers: { [SESSION_ID]: markers },
   })
+  useExposeStore.setState({ ...initialExposeState, currentSessionId: SESSION_ID })
 }
 
 function rowSignature(): string[] {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { TOC_FLASH_MS } from '../components/motion'
-import { useSessionsSource } from '../data/sessions-source'
+import { useSessionMarkers } from '../data/sessions-source'
 import { useExposeStore } from '../expose/store'
 import { currentTurnIndex } from './transitions'
 
@@ -68,7 +68,7 @@ export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc
 
   // 键与锚点同源:两边都是这条会话的用户消息锚点列(TocPanel 读的是同一份)。
   const sessionId = useExposeStore((st) => st.currentSessionId)
-  const markerSource = useSessionsSource((st) => st.markers[sessionId])
+  const markerSource = useSessionMarkers(sessionId).data
   const anchorIds = useMemo(
     () => (markerSource ?? []).map((marker) => marker.id),
     [markerSource],

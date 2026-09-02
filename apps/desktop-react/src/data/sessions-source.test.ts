@@ -6,7 +6,13 @@ import { configureSessionsPort } from './sessions-port'
 import type { SessionsPort } from './sessions-port'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
-import { REFRESH_THROTTLE_MS, useSessionsSource } from './sessions-source'
+import {
+  chaptersQuery,
+  markersQuery,
+  messagesQuery,
+  REFRESH_THROTTLE_MS,
+  useSessionsSource,
+} from './sessions-source'
 import { isListedSession, toSessionSummary } from '../expose/projection'
 import { AGENT_SESSION_META, NOW, ONETHING_DIR, SESSION_META } from './__fixtures__/sessions'
 
@@ -32,6 +38,28 @@ let updateWorkingDirectory: ReturnType<typeof vi.fn>
 let emit: ((envelope: SessionEventEnvelope) => void) | undefined
 let emitLifecycle: ((event: SessionLifecycleEvent) => void) | undefined
 let unsubscribed = 0
+
+/**
+ * 「这一格手上有没有答案」—— 三张按需缓存迁进 query 族之后的读法(7c 批)。
+ *
+ * 从前是 `sessionId in state.chapters`;现在缓存不在 store 里,判据是
+ * 「这一族建过这个键**而且**那一格有 data」。`keys()` 只报建过的格,所以这里
+ * 不会因为一次查询就把格建出来(那正是 `drop` 之后该消失的东西)。
+ */
+function cached(id: string): { chapters: boolean; messages: boolean; markers: boolean } {
+  const has = (fam: typeof chaptersQuery | typeof messagesQuery | typeof markersQuery): boolean =>
+    fam.keys().includes(id) && fam.get(id).get().data !== undefined
+  return { chapters: has(chaptersQuery), messages: has(messagesQuery), markers: has(markersQuery) }
+}
+
+/** 可控的一发 —— 「在飞的那一刻」要靠它拿住,拿计时器去撞是碰运气。 */
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((res) => {
+    resolve = res
+  })
+  return { promise, resolve }
+}
 
 function envelope(sessionId: string, type: string, extra: Record<string, unknown> = {}): SessionEventEnvelope {
   return {
@@ -151,28 +179,74 @@ describe('SSE 判据', () => {
     expect(listMeta).toHaveBeenCalledTimes(1)
   })
 
-  it('c:消息动了 → 抬时间 + 作废那条会话的消息与锚点缓存,但不重拉整表', async () => {
+  /*
+   * ── 7c 的规范修正:作废 = 标脏,不是删格 ──────────────────────────────
+   * 从前 SSE 说这条会话动了,就把那一格缓存**整个删掉**(`delete messages[id]`),
+   * 于是正开着 Quick Look 的人会看见「内容消失 → 骨架 → 重新长出来」。现在是
+   * `invalidate()`:旧答案留在屏上,有人订着就后台补拉、没人订就等下一次 ensure。
+   * 所以判据从「表里还有没有这个键」换成「旧答案还在吗 + 下一次 ensure 会不会
+   * 真去问」——这两句合起来才是那条修正。
+   */
+  it('c:消息动了 → 抬时间 + 标脏那条会话的消息与锚点缓存,但不重拉整表', async () => {
     await start()
     await useSessionsSource.getState().ensureMessages('os-compact')
     await useSessionsSource.getState().ensureMarkers('os-compact')
-    expect('os-compact' in useSessionsSource.getState().messages).toBe(true)
+    expect(cached('os-compact').messages).toBe(true)
 
     emit?.(envelope('os-compact', SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED))
     const state = useSessionsSource.getState()
-    expect('os-compact' in state.messages).toBe(false)
-    expect('os-compact' in state.markers).toBe(false)
+    // 律②:旧答案一格没丢(从前这里是 `in` 判 false —— 那正是「清屏」的形状)。
+    expect(cached('os-compact').messages).toBe(true)
+    expect(cached('os-compact').markers).toBe(true)
     expect(state.sessions.find((s) => s.id === 'os-compact')!.updatedAt).toBe(NOW + 60_000)
+
+    // 但确实脏了:下一次 ensure 是**真去问**,不是恒等变换。
+    await useSessionsSource.getState().ensureMessages('os-compact')
+    await useSessionsSource.getState().ensureMarkers('os-compact')
+    expect(getMessagesPage).toHaveBeenCalledTimes(2)
+    expect(getUserMarkers).toHaveBeenCalledTimes(2)
+
     await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS + 50)
     expect(listMeta).toHaveBeenCalledTimes(1)
   })
 
-  it('d:只有 stream:complete 额外作废章节(章节是一轮跑完才推导出来的)', async () => {
+  it('c:那条会话从来没人问过时不凭空建格(标脏对没建过的键是恒等变换)', async () => {
+    await start()
+    emit?.(envelope('os-compact', SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED))
+    expect(messagesQuery.keys()).not.toContain('os-compact')
+    expect(markersQuery.keys()).not.toContain('os-compact')
+  })
+
+  it('d:只有 stream:complete 额外标脏章节(章节是一轮跑完才推导出来的)', async () => {
     await start()
     await useSessionsSource.getState().ensureChapters('os-compact')
+    expect(getSegments).toHaveBeenCalledTimes(1)
+
     emit?.(envelope('os-compact', SESSION_EVENT_TYPES.MESSAGE_UPDATED))
-    expect('os-compact' in useSessionsSource.getState().chapters).toBe(true)
+    await useSessionsSource.getState().ensureChapters('os-compact')
+    // 普通消息事件不动章节:这一发 ensure 什么都没发生。
+    expect(getSegments).toHaveBeenCalledTimes(1)
+
     emit?.(envelope('os-compact', SESSION_EVENT_TYPES.STREAM_COMPLETE))
-    expect('os-compact' in useSessionsSource.getState().chapters).toBe(false)
+    // 章节旧答案照样在屏上,只是脏了。
+    expect(cached('os-compact').chapters).toBe(true)
+    await useSessionsSource.getState().ensureChapters('os-compact')
+    expect(getSegments).toHaveBeenCalledTimes(2)
+  })
+
+  it('b:改名一格缓存都不动 —— 名字变了不等于正文变了', async () => {
+    await start()
+    await useSessionsSource.getState().ensureMessages('os-compact')
+    await useSessionsSource.getState().ensureMarkers('os-compact')
+    await useSessionsSource.getState().ensureChapters('os-compact')
+
+    emit?.(envelope('os-compact', SESSION_EVENT_TYPES.SESSION_RENAMED, { name: '新名字' }))
+    await useSessionsSource.getState().ensureMessages('os-compact')
+    await useSessionsSource.getState().ensureMarkers('os-compact')
+    await useSessionsSource.getState().ensureChapters('os-compact')
+    expect(getMessagesPage).toHaveBeenCalledTimes(1)
+    expect(getUserMarkers).toHaveBeenCalledTimes(1)
+    expect(getSegments).toHaveBeenCalledTimes(1)
   })
 
   it('a 的例外:被投影滤掉的会话在发事件 —— 认识但不陈列,一次都不重拉', async () => {
@@ -230,8 +304,70 @@ describe('按需取数', () => {
     await start()
     getSegments.mockRejectedValue(new Error('boom'))
     await useSessionsSource.getState().ensureChapters('os-provider')
-    expect(useSessionsSource.getState().chapters['os-provider']).toEqual([])
+    expect(chaptersQuery.get('os-provider').get().data).toEqual([])
+    // fetcher 自己把「拉不到」读成空表,所以这一格的 error 是空的(见 orEmpty)。
+    expect(chaptersQuery.get('os-provider').get().error).toBeUndefined()
     expect(useSessionsSource.getState().status).toBe('ready')
+  })
+
+  it('键控:三族各按 sessionId 分格,一格答案不串到另一格', async () => {
+    await start()
+    getSegments.mockImplementation(async (id: string) => ({
+      success: true,
+      segments: [{ id: `${id}-seg`, title: id, detail: '', kind: 'task', startMessageId: 'm1' }],
+    }))
+    await useSessionsSource.getState().ensureChapters('os-provider')
+    await useSessionsSource.getState().ensureChapters('os-compact')
+    expect(chaptersQuery.get('os-provider').get().data?.[0].title).toBe('os-provider')
+    expect(chaptersQuery.get('os-compact').get().data?.[0].title).toBe('os-compact')
+    // 三族之间也不串:章节拉过了不代表消息 / 锚点也拉过了。
+    expect(cached('os-provider')).toEqual({ chapters: true, messages: false, markers: false })
+  })
+
+  it('锚点同帧双发只飞一发(迁移前它是三条里唯一没有去重的那条)', async () => {
+    await start()
+    const gate = deferred<{ success: true; markers: never[] }>()
+    getUserMarkers.mockReturnValue(gate.promise)
+    const both = Promise.all([
+      useSessionsSource.getState().ensureMarkers('os-provider'),
+      useSessionsSource.getState().ensureMarkers('os-provider'),
+    ])
+    // 折叠发生在**发请求之前**(原语的 `running` 闸),但请求本身要先 await 一口
+    // 端口才发得出去 —— 所以这里放一次微任务,不是等谁落地(gate 还攥着)。
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getUserMarkers).toHaveBeenCalledTimes(1)
+    expect(markersQuery.get('os-provider').get().inflight).toBe(true)
+    gate.resolve({ success: true, markers: [] })
+    await both
+    expect(getUserMarkers).toHaveBeenCalledTimes(1)
+  })
+
+  it('律②:后台补拉在飞时,旧章节一直在屏上', async () => {
+    await start()
+    const seg = (title: string) => ({
+      success: true,
+      segments: [{ id: 's1', title, detail: '', kind: 'task', startMessageId: 'm1' }],
+    })
+    getSegments.mockResolvedValue(seg('第一版'))
+    await useSessionsSource.getState().ensureChapters('os-provider')
+    expect(chaptersQuery.get('os-provider').get().data?.[0].title).toBe('第一版')
+
+    // 有人订着这一格(屏幕上正开着目录),标脏就当场后台补拉。
+    const off = chaptersQuery.get('os-provider').subscribe(() => undefined)
+    const gate = deferred<ReturnType<typeof seg>>()
+    getSegments.mockReturnValue(gate.promise)
+    emit?.(envelope('os-provider', SESSION_EVENT_TYPES.STREAM_COMPLETE))
+
+    const flying = chaptersQuery.get('os-provider').get()
+    expect(flying.inflight).toBe(true)
+    // 这三行就是律②:在飞、旧内容还在、phase 没退回 initial(骨架不会画)。
+    expect(flying.data?.[0].title).toBe('第一版')
+    expect(flying.phase).toBe('ready')
+
+    gate.resolve(seg('第二版'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(chaptersQuery.get('os-provider').get().data?.[0].title).toBe('第二版')
+    off()
   })
 })
 
@@ -272,24 +408,63 @@ describe('会话删除(onSessionLifecycle)', () => {
     expect(ids).not.toContain('dm-ying')
   })
 
-  it('三份按需缓存一并作废(级联子会话可能不在列表里,却在缓存里躺着)', async () => {
+  /**
+   * 删除是**丢格**(`drop`)而不是标脏:「这条会话没了」不是「答案旧了」——
+   * 标脏会让还订着它的那一格当场后台补拉一发注定问不着的请求。
+   */
+  it('三份按需缓存一并丢格(级联子会话可能不在列表里,却在缓存里躺着)', async () => {
     await start()
     const source = useSessionsSource.getState()
     await source.ensureChapters('os-expose')
     await source.ensureMessages('os-expose')
     await source.ensureMarkers('os-expose')
-    expect('os-expose' in useSessionsSource.getState().chapters).toBe(true)
+    expect(cached('os-expose')).toEqual({ chapters: true, messages: true, markers: true })
 
     emitLifecycle!(deleted(['os-expose']))
 
-    const after = useSessionsSource.getState()
-    expect('os-expose' in after.chapters).toBe(false)
-    expect('os-expose' in after.messages).toBe(false)
-    expect('os-expose' in after.markers).toBe(false)
+    // 格本身没了(不是留着一份脏答案):三族的键面里都不再有它。
+    expect(chaptersQuery.keys()).not.toContain('os-expose')
+    expect(messagesQuery.keys()).not.toContain('os-expose')
+    expect(markersQuery.keys()).not.toContain('os-expose')
+    // 丢格不是后台补拉:一条请求都没多发。
+    expect(getSegments).toHaveBeenCalledTimes(1)
+
     // 别人的缓存一格没动。
     await useSessionsSource.getState().ensureChapters('os-provider')
     emitLifecycle!(deleted(['lo-notes']))
-    expect('os-provider' in useSessionsSource.getState().chapters).toBe(true)
+    expect(cached('os-provider').chapters).toBe(true)
+  })
+
+  it('丢格之后再问就是一次真的首载(不是拿被删那条的旧答案顶)', async () => {
+    await start()
+    await useSessionsSource.getState().ensureChapters('os-expose')
+    expect(getSegments).toHaveBeenCalledTimes(1)
+    emitLifecycle!(deleted(['os-expose']))
+    await useSessionsSource.getState().ensureChapters('os-expose')
+    expect(getSegments).toHaveBeenCalledTimes(2)
+  })
+
+  it('还订着那一格的人当场看见「回到出厂」', async () => {
+    await start()
+    await useSessionsSource.getState().ensureMessages('os-expose')
+    const seat = messagesQuery.get('os-expose')
+    let heard = 0
+    const off = seat.subscribe(() => {
+      heard += 1
+    })
+    emitLifecycle!(deleted(['os-expose']))
+    expect(heard).toBe(1)
+    expect(seat.get().phase).toBe('initial')
+    expect(seat.get().data).toBeUndefined()
+    off()
+  })
+
+  it('级联名单里从来没人问过的键不会被凭空建出格来', async () => {
+    await start()
+    emitLifecycle!(deleted(['os-expose', 'never-asked']))
+    expect(chaptersQuery.keys()).not.toContain('never-asked')
+    expect(messagesQuery.keys()).not.toContain('never-asked')
+    expect(markersQuery.keys()).not.toContain('never-asked')
   })
 
   it('created 那一半本批不接:新建仍走判据 a,不从这条订阅里再说一遍', async () => {

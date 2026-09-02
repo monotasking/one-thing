@@ -109,6 +109,33 @@ describe('搜索行:scope 分段器', () => {
   })
 })
 
+/**
+ * 章节缓存在 7c 批搬进了 `chaptersQuery` 一族(键 = sessionId),这块面读它的
+ * 那条路换成了 `useChapterRecord()` —— 订整族、按 `keys()` 摊成 Record。
+ * 这一组钉的就是那条路真的接上了:只在缓存里、不在 `listMeta` 里的字搜得到。
+ */
+describe('章节缓存那条路(useChapterRecord)', () => {
+  it('章的标题搜得到 —— 会话标题与预览里都没有这几个字', () => {
+    render(<SearchPanel />)
+    type('摸清三处读取点')
+    expect(screen.getByText('摸清三处读取点')).toBeTruthy()
+  })
+
+  it('章的正文也搜得到(它与标题是两条命中)', () => {
+    render(<SearchPanel />)
+    type('三处都改成调同一个纯函数')
+    expect(screen.getByText('三处都改成调同一个纯函数')).toBeTruthy()
+  })
+
+  it('还没拉到章的会话不出章节行 —— 键面由数据说了算,不凭空补', () => {
+    // 只给 os-provider 一格;别的会话的章从来没人问过,所以它们一行都不该出。
+    seedSessionsSource({ chapters: {} })
+    render(<SearchPanel />)
+    type('摸清三处读取点')
+    expect(screen.queryByText('摸清三处读取点')).toBeNull()
+  })
+})
+
 describe('命中列表:走行与跳转', () => {
   it('↑↓ 走行,选中停在两端不回卷', () => {
     render(<SearchPanel />)

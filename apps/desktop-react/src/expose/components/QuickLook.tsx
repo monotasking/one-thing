@@ -8,7 +8,7 @@ import { Tooltip } from '../../ui/Tooltip'
 import { Kbd } from '../../ui/Kbd'
 import { plural, useT } from '../../i18n'
 import type { MessageKey } from '../../i18n'
-import { useSessionsSource } from '../../data/sessions-source'
+import { useSessionMessages, useSessionsSource } from '../../data/sessions-source'
 import { findSession } from '../projection'
 import { useExposeStore } from '../store'
 import { quickLookNeighbors } from '../transitions'
@@ -58,7 +58,8 @@ export function QuickLook({ sessionId }: Props) {
   const quickLookNext = useExposeStore((st) => st.quickLookNext)
   const sessions = useSessionsSource((st) => st.sessions)
   const groups = useSessionsSource((st) => st.groups)
-  const messages = useSessionsSource((st) => st.messages[sessionId])
+  const page = useSessionMessages(sessionId)
+  const messages = page.data
   const ensureMessages = useSessionsSource((st) => st.ensureMessages)
   const session = findSession(sessions, sessionId)
 
@@ -81,8 +82,19 @@ export function QuickLook({ sessionId }: Props) {
     void ensureMessages(sessionId)
   }, [sessionId, ensureMessages])
 
-  // 骨架延迟 150ms 才出:比这更快到手的页面不该闪一下。
-  const showSkeleton = useDelayedFlag(messages === undefined, SKELETON_DELAY_MS)
+  /*
+   * 骨架延迟 150ms 才出:比这更快到手的页面不该闪一下。
+   *
+   * 判据是**首载**(`phase === 'initial' && inflight`),不是「此刻有没有数据」——
+   * 那条会话又说话时数据源现在是把这一格**标脏**(后台补拉),旧的首页消息
+   * 原样留在屏上(律②)。从前那里是把缓存整格删掉,于是屏幕会「内容消失 →
+   * 骨架 → 重新长出来」;本批把它改掉了(规范修正,见 sessions-source 文件头)。
+   *
+   * `data === undefined` 与 `phase === 'initial'` 是同一件事(data 只在落地与
+   * patch 里变,两处都把 phase 推到 ready),所以下面那条 `messages === undefined`
+   * 分支不必跟着改写 —— 它读的是同一句话。
+   */
+  const showSkeleton = useDelayedFlag(page.phase === 'initial' && page.inflight, SKELETON_DELAY_MS)
 
   if (!session) return null
 

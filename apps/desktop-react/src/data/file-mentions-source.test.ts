@@ -172,15 +172,46 @@ describe('取数', () => {
     expect(state().mentions).toEqual([{ path: '/repo/a.ts', label: 'a.ts', type: 'file' }])
   })
 
-  it('后端说不成功:候选清空,原话留着,不假装搜到了 0 条', async () => {
-    answer = { success: false, files: [], error: 'File search must stay inside …' }
+  /*
+   * 7c 批的规范修正:失败**不清候选**(律②)。
+   * 从前这里是 `mentions: []` —— 一次抖动的失败会把人刚看见的一屏候选抹掉,
+   * 下一次击键又把它拉回来,正是律②说的那种「闪」。现在错误与旧答案并陈。
+   */
+  it('后端说不成功:原话留着,**旧候选不清** —— 不假装搜到了 0 条,也不抹掉上一屏', async () => {
+    answer = { success: true, files: [], entries: [{ path: '/repo/a.ts', type: 'file' }] }
     await state().search('a', '/repo', 's1')
+    expect(state().mentions).toHaveLength(1)
+
+    answer = { success: false, files: [], error: 'File search must stay inside …' }
+    await state().search('ab', '/repo', 's1')
     expect(state()).toMatchObject({
       status: 'error',
-      mentions: [],
-      query: 'a',
       error: 'File search must stay inside …',
     })
+    // 旧候选还在屏上,而 `query` 仍念着**产生它**的那个词(不是这一发的 'ab')。
+    expect(state().mentions).toEqual([{ path: '/repo/a.ts', label: 'a.ts', type: 'file' }])
+    expect(state().query).toBe('a')
+  })
+
+  it('端口抛了也走同一条路:落进 error,而不是没人接的 rejection + 永远 loading', async () => {
+    answer = { success: true, files: [], entries: [{ path: '/repo/a.ts', type: 'file' }] }
+    await state().search('a', '/repo', 's1')
+
+    configureFilesPort({
+      ready: async () => undefined,
+      listDirectory: async () => ({ success: false, error: 'x' }),
+      stat: async () => ({ success: false, error: 'x' }),
+      readContent: async () => ({ success: false, error: 'x' }),
+      saveContent: async () => ({ success: true }),
+      reveal: async () => ({ success: false, error: 'x' }),
+      list: async () => {
+        throw new Error('传输面断了')
+      },
+    })
+    await expect(state().search('ab', '/repo', 's1')).resolves.toBeUndefined()
+    expect(state().status).toBe('error')
+    expect(state().error).toBe('传输面断了')
+    expect(state().mentions).toHaveLength(1)
   })
 
   it('竞速:先发的那一发回来晚了也不作数(去抖窗口里词已经变了)', async () => {

@@ -323,6 +323,104 @@ describe('ensure / invalidate 的边界', () => {
   })
 })
 
+/* ══ 一族的两口:drop(键指的东西没了)与 subscribe(整族)══════════════ */
+
+describe('QueryFamily.drop —— 与 invalidate 是两件事', () => {
+  it('丢格 = 那个键从家里消失,再问就是一次真的首载', async () => {
+    const fetcher = vi.fn(async () => ['a'])
+    const fam = createQueryFamily<string[]>('t.drop', fetcher)
+    await fam.get('x').ensure()
+    expect(fam.keys()).toEqual(['x'])
+
+    fam.drop('x')
+    expect(fam.keys()).toEqual([])
+    await fam.get('x').ensure()
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+
+  /**
+   * **反证(对照组)**:同一段剧情换成 `invalidate`,读数当场不同 ——
+   * 有人订着的那一格会**后台补拉一发**(问的还是那个已经不存在的东西),
+   * 而且格还留在家里。这两行读数说明 `drop` 守的是真东西,不是 `invalidate` 的别名。
+   */
+  it('反证:换成 invalidate,格还在、而且当场多发一发', async () => {
+    const fetcher = vi.fn(async () => ['a'])
+    const fam = createQueryFamily<string[]>('t.drop-vs-inv', fetcher)
+    await fam.get('x').ensure()
+    fam.get('x').subscribe(() => undefined)
+
+    fam.invalidate('x')
+    await Promise.resolve()
+    expect(fetcher).toHaveBeenCalledTimes(2) // 补拉了
+    expect(fam.keys()).toEqual(['x']) // 格还在
+
+    fam.drop('x')
+    await Promise.resolve()
+    expect(fetcher).toHaveBeenCalledTimes(2) // drop 不发请求
+    expect(fam.keys()).toEqual([])
+  })
+
+  it('还订着那一格的人当场看见「回到出厂」', async () => {
+    const fam = createQueryFamily<string[]>('t.drop-emit', async () => ['a'])
+    const seat = fam.get('x')
+    await seat.ensure()
+    let heard = 0
+    seat.subscribe(() => {
+      heard += 1
+    })
+    fam.drop('x')
+    expect(heard).toBe(1)
+    expect(seat.get().phase).toBe('initial')
+    expect(seat.get().data).toBeUndefined()
+  })
+
+  it('没建过的键是恒等变换:不建格、不喊人', () => {
+    const fam = createQueryFamily<string[]>('t.drop-miss', async () => ['a'])
+    let heard = 0
+    fam.subscribe(() => {
+      heard += 1
+    })
+    fam.drop('never')
+    expect(fam.keys()).toEqual([])
+    expect(heard).toBe(0)
+  })
+})
+
+describe('QueryFamily.subscribe —— 订整族', () => {
+  it('任何一格 emit 都喊一次,包括订阅之后才建出来的那一格', async () => {
+    const fam = createQueryFamily<string[]>('t.fam-sub', async () => ['a'])
+    let heard = 0
+    const off = fam.subscribe(() => {
+      heard += 1
+    })
+    await fam.get('later').ensure() // 订的时候这一格还不存在
+    expect(heard).toBeGreaterThan(0)
+
+    const before = heard
+    off()
+    await fam.get('other').ensure()
+    expect(heard).toBe(before) // 退订之后一声都不再喊
+  })
+
+  /**
+   * **反证**:整族订阅**不能**顺手把每一格算成「有人在看」。
+   * 若家长是靠 `entry.subscribe()` 实现的,`listeners.size > 0` 会恒真,
+   * 于是「没人看就只标脏」那一档当场消失 —— 这一条读的正是那个读数。
+   */
+  it('反证:只订整族不算「有人在看」,invalidate 仍然只标脏', async () => {
+    const fetcher = vi.fn(async () => ['a'])
+    const fam = createQueryFamily<string[]>('t.fam-sub-quiet', fetcher)
+    await fam.get('x').ensure()
+    fam.subscribe(() => undefined)
+
+    fam.invalidate('x')
+    await Promise.resolve()
+    expect(fetcher).toHaveBeenCalledTimes(1) // 没有偷偷补拉
+    await fam.get('x').ensure()
+    expect(fetcher).toHaveBeenCalledTimes(2) // 但确实脏了
+  })
+})
+
 describe('mutation 的忙态是逐格的', () => {
   it('两格各忙各的;整体读数说「有人在忙」', async () => {
     const gates = new Map<string, ReturnType<typeof deferred<void>>>()
