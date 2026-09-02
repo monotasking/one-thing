@@ -45,6 +45,38 @@
  * 验证记录写在汇报里。改了这条门的任何一条断言,请重跑一次它的反证。
  * ──────────────────────────────────────────────────────────────────────
  *
+ * ── 判例:这道门为什么等「真信号」而不是睡一觉(09-02 抖动根治)──────────
+ * 病:这道门约 1/3~1/4 概率红,同一构建重跑就绿,三批各自记过档。形态两种(第三种
+ * 见 `gate-a11y-settle.mjs` 里 `PARK` 的注释):
+ *   ① axe 报 `color-contrast`,配色是 `#9d9b94 on #3c3b39` 这种设计里根本不存在的一对;
+ *   ② 外壳屏「Tab 走 38 站(应 40)」「两个 input 只有光标没有环」。
+ *
+ * 根因**不是产品回归,是扫早了**。门从前开扫的判据只有两条:`__d0.rpcOk` 与
+ * 「Dock 瓦在 DOM 里」,两条都不管颜色;而这台壳的颜色是异步来的
+ * (`main.tsx` 里 `startThemeSource()` 是 fire-and-forget,要再走一趟
+ * `themes.apply` RPC)。09-02 探针在「门开扫那一刻」实测到的原始读数,三趟两中:
+ *   `{"d2":{"applied":false,"count":0},"bridge":false,"accent":"#7c6fa0","bg":""}`
+ * —— 主题没落定,**`--bg` 连定义都还没有**(读出来是空串),axe 只好拿底下透出来
+ * 的东西算对比度;146ms 后桥落地,accent 从 `#7c6fa0` 跳到 `#4385BE`、
+ * `bg` 从空串变 `#282726`,并**当场起 21 条过渡**,过渡中途每一帧前景背景都在混色。
+ * axe 自己那一注入 + 跑一遍要几百毫秒,所以红不红取决于对比度那条规则**恰好在
+ * 这段混色里的哪一帧读到样式** —— 这正是「1/4 概率、同构建重跑就绿」的形状。
+ *
+ * 治:`gate-a11y-settle.mjs` 的 `waitForScreenSettled` —— 等 `window.__d2.applied`
+ * 与 `data-theme-bridge`(主题自己的探针,不是启发式)、等色值与可聚焦元素计数
+ * 连续 3 帧逐字不变、等有终点的动画排空(排空后还会有新的起来,所以是循环)。
+ * 五屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
+ *
+ * 读数(同一构建、同一台机器,每组连跑 5 次):
+ *   · **修前 0 红 / 5**(这一轮没抖出来 —— 病历里的 1/4 是三批各自记的历史读数);
+ *   · **修后 0 红 / 5**;
+ *   · **反证**(把五处 `settle()` 全拆掉,其余一字不改)**1 红 / 5**:
+ *     文件查看器屏 `[serious] color-contrast`,`._noteDetail` 与 `._statusLink`
+ *     两处,读数 `4.12(前景 #9d9c95,背景 #3b3a38)`,要求 4.5 —— 与病历里
+ *     `#9d9b94 on #3c3b39` 是同一段过渡上相邻的一帧,签名对得上。
+ * 也就是说:这道等待不是保险,是这道门此刻唯一没在赌运气的地方。
+ * ──────────────────────────────────────────────────────────────────────
+ *
  * 跑法:`node scripts/gate-a11y.mjs`
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
  * 可重复:每次一个全新的临时 store + 全新的 --user-data-dir,跑完删干净。
@@ -59,6 +91,7 @@ import { fileURLToPath } from 'node:url'
 import { _electron as electron } from 'playwright'
 import electronBinary from 'electron'
 import { AxeBuilder } from '@axe-core/playwright'
+import { waitForScreenSettled } from './gate-a11y-settle.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = path.resolve(appRoot, '../..')
@@ -125,30 +158,18 @@ async function waitFor(label, predicate, timeoutMs = 20_000) {
 }
 
 /**
- * 等这一屏上的动画**播完**再量。
- *
- * axe 的对比度那条规则读的是**此刻**的计算样式,而入场动画(--dur-enter 那一族
- * 是 opacity + transform)中途的那一帧,前景与背景都还在半透明地混着 —— 于是
- * 同一屏两次跑会得出两个数(08-31 实测:4.04/2.43 与 3.99/2.39,差的正是那一帧)。
- * 一条会抖的门比没有门更糟:它教人重跑而不是教人修。
- *
- * 判据取 `document.getAnimations()`(CSS 动画与过渡都在里面),等它们各自的
- * `finished` —— 比「睡 400ms」准:睡多久都是猜,而这是问动画本人。
- * 无限循环的动画(spinner)永远不 finished,所以只等有终点的那些;
- * 最后再给一帧,让最后一次样式重算落地。
+ * 「这一屏可以量了」。判据与那段病历在 `gate-a11y-settle.mjs` 的文件头里,
+ * 一句话:等主题真的落定、色值与可聚焦计数连续三帧不变、没有还在播的过渡 ——
+ * 而不是睡一段猜出来的时间。**每一屏扫描之前都要调**(从前只有第 5、6 两屏
+ * 等动画,外壳 / 模型服务面 / 规格页三屏是裸扫的,那正是抖动的产地)。
  */
-async function settleAnimations(page) {
-  await page.evaluate(async () => {
-    const ending = document
-      .getAnimations()
-      .filter((a) => {
-        const d = a.effect?.getComputedTiming?.()
-        return d ? d.iterations !== Infinity : true
-      })
-      .map((a) => a.finished.catch(() => undefined))
-    await Promise.all(ending)
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-  })
+async function settle(page, label, opts) {
+  const report = await waitForScreenSettled(page, label, opts)
+  console.log(
+    `      · ${label} 稳了(${report.frames} 帧;accent=${report.accent}`
+      + ` bg=${report.bg} 可聚焦 ${report.focusables} 个`
+      + `${report.theme ? `;主题 ${report.theme.themeId}/${report.theme.mode} 贴了 ${report.theme.count} 个变量` : ''})`,
+  )
 }
 
 /** 与 gate-files.mjs 同一条理由:用 element.click() 绕开可操作性判定,派发的仍是真事件。 */
@@ -508,6 +529,8 @@ async function main() {
     console.log('  ✓ 外壳画出来了')
 
     console.log('\n[3/8] 产品外壳:axe 全页扫描 + Tab 序走查')
+    // 这一屏从前是裸扫的 —— 而颜色恰恰是最后才到的那样东西(见 settle 的文件头)。
+    await settle(page, '外壳')
     await scanAxe(page, '外壳')
     await checkComposerTabOrder(page)
 
@@ -528,6 +551,7 @@ async function main() {
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
     )
+    await settle(page, '模型服务面')
     await scanAxe(page, '模型服务面', '[data-testid="providers-panel"]')
 
     /*
@@ -548,7 +572,7 @@ async function main() {
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
     )
-    await settleAnimations(page)
+    await settle(page, '所有应用面')
     await scanAxe(page, '所有应用面', '[data-testid="apps-panel"]')
     // 扫完把它关掉(Esc 走的正是本批新立的退层链),免得盖着的那一层挡住下一屏。
     await page.keyboard.press('Escape')
@@ -573,7 +597,7 @@ async function main() {
     await waitFor('查看器就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
     )
-    await settleAnimations(page)
+    await settle(page, '文件查看器')
     await scanAxe(page, '文件查看器', '[data-testid="file-viewer"]')
     /*
      * 收回它。**关闭钮在宿主檐上,不在查看器里**(09-01 合檐:浮窗 / 舞台 / 盖
@@ -614,6 +638,11 @@ async function main() {
         Boolean([...document.querySelectorAll('button')].some((el) => (el.textContent ?? '').trim() === 'open dialog')),
       ),
     )
+    /*
+     * 这一屏是**整页重载**(改 location.search),所以 `startThemeSource()` 从头
+     * 再跑一遍 —— 主题又是异步到的。五屏里它是最需要这道等待的一屏。
+     */
+    await settle(page, '规格页')
     await scanAxe(page, '规格页')
 
     console.log('\n[8/8] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
