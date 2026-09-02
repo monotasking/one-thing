@@ -167,3 +167,37 @@ describe('MenuItem 的危险动作', () => {
     expect(onClick).toHaveBeenCalledTimes(1)
   })
 })
+
+/**
+ * 禁灰档(09-02 批 12)。判据两条:**它还在**(菜单形状恒定,不随上下文变形),
+ * 而且**它不响应** —— 点了什么都不发生,方向键也不会停在它身上
+ * (`a11y/roving` 的入组判据本来就把 disabled 排除在外)。
+ */
+describe('MenuItem 的禁灰档', () => {
+  function DisabledHarness({ onMove }: { onMove: () => void }) {
+    return (
+      <Menu x={0} y={0} onClose={() => {}} label="行动作">
+        <MenuItem disabled onClick={onMove}>
+          上移
+        </MenuItem>
+        <MenuItem onClick={() => {}}>下移</MenuItem>
+      </Menu>
+    )
+  }
+
+  it('禁掉的项**不消失**,只是点不动', () => {
+    const onMove = vi.fn()
+    render(<DisabledHarness onMove={onMove} />)
+    const up = screen.getByRole('menuitem', { name: '上移' }) as HTMLButtonElement
+    expect(up.disabled).toBe(true)
+    fireEvent.click(up)
+    expect(onMove).not.toHaveBeenCalled()
+  })
+
+  it('方向键不会停在禁掉的那一项上 —— 它压根不在 roving 组里', () => {
+    render(<DisabledHarness onMove={() => {}} />)
+    const menu = screen.getByRole('menu')
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: '下移' }))
+  })
+})

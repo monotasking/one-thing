@@ -12,10 +12,13 @@ import { IconButton } from '../ui/IconButton'
 import { Splitter } from '../ui/Splitter'
 import { Checkbox } from '../ui/Checkbox'
 import { ConfirmHost, Dialog, useConfirm } from '../ui/Dialog'
+import { InlineEditStrip } from '../ui/InlineEditStrip'
 import { Input } from '../ui/Input'
 import { Kbd } from '../ui/Kbd'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { Radio, RadioGroup } from '../ui/Radio'
+import { Reveal, REVEAL_SCOPE } from '../ui/Reveal'
+import { SecretInput } from '../ui/SecretInput'
 import { Segmented } from '../ui/Segmented'
 import { Select } from '../ui/Select'
 import { Spinner } from '../ui/Spinner'
@@ -183,6 +186,21 @@ function GallerySettlePulse() {
         settled #{token}
       </span>
     </>
+  )
+}
+
+/** `ui/SecretInput` 那一格(09-02 批 12):密码形 + 一颗切明暗的眼睛钮。 */
+function GallerySecretInput() {
+  const [value, setValue] = useState('sk-live-1a2b3c4d')
+  return (
+    <SecretInput
+      aria-label="Secret sample"
+      size="sm"
+      value={value}
+      onValueChange={setValue}
+      revealLabel="Show the key"
+      hideLabel="Hide the key"
+    />
   )
 }
 
@@ -454,8 +472,11 @@ export function Gallery() {
             <MenuItem checked={false} onClick={() => setMenuAt(null)}>Pinned</MenuItem>
             <MenuSeparator />
             <MenuItem onClick={() => setMenuAt(null)}>Settings…</MenuItem>
+            {/* 禁灰档:形状恒定,做不动的那一项留在原位(09-02 批 12)。 */}
+            <MenuItem disabled onClick={() => setMenuAt(null)}>Move up</MenuItem>
           </Menu>
         )}
+        <Note>disabled 的项禁灰**不消失** —— 菜单的形状不该随上下文变</Note>
       </Section>
 
       <Section name="Tabs">
@@ -650,6 +671,62 @@ export function Gallery() {
       <Section name="useSettlePulse">
         <GallerySettlePulse />
         <Note>token 变一次播一次;挂载那一次不播;收尾看 animationend 不看计时器</Note>
+      </Section>
+
+      <Section name="SecretInput">
+        <GallerySecretInput />
+        <Note>挂载恒是暗的;眼睛钮 aria-pressed 报明暗,禁用跟着输入框一起禁</Note>
+        <Note>那颗钮走 ui/Input 的 action 槽(可交互),不是 aria-hidden 的 suffix 槽</Note>
+      </Section>
+
+      <Section name="InlineEditStrip">
+        <div className={s.wide}>
+          <InlineEditStrip
+            prefix={<span>sk-f44••••a477 →</span>}
+            saveLabel="Save"
+            savingLabel="Saving…"
+            cancelLabel="Cancel"
+            canSave={false}
+            onCommit={() => {}}
+            onCancel={() => {}}
+          >
+            <Input aria-label="New key" value="" onValueChange={() => {}} size="sm" />
+          </InlineEditStrip>
+        </div>
+        <div className={s.wide}>
+          <InlineEditStrip
+            prefix={<span>Delete this key? Usage already attributed to it stays in the ledger.</span>}
+            tone="danger"
+            saveLabel="Delete"
+            savingLabel="Deleting…"
+            cancelLabel="Cancel"
+            onCommit={() => {}}
+            onCancel={() => {}}
+          />
+        </div>
+        <div className={s.wide}>
+          <InlineEditStrip
+            saveLabel="Save"
+            savingLabel="Saving…"
+            cancelLabel="Cancel"
+            busy
+            onCommit={() => {}}
+            onCancel={() => {}}
+          >
+            <Input aria-label="Busy sample" value="sk-live" onValueChange={() => {}} size="sm" />
+          </InlineEditStrip>
+        </div>
+        <Note>三形:带前缀的编辑条 / 没有控件槽的确认条(danger)/ 忙态(转圈在钮里)</Note>
+      </Section>
+
+      <Section name="Reveal">
+        <span className={s.wide} {...REVEAL_SCOPE}>
+          <Button size="sm">hover this scope</Button>
+          <Reveal>
+            <IconButton size="sm" icon={PencilIcon} label="Ghost action" />
+          </Reveal>
+        </span>
+        <Note>占位常驻只动 opacity;判据挂在作用域上,:focus-within 与 hover 同权</Note>
       </Section>
 
       <Section name="useInlineEdit">

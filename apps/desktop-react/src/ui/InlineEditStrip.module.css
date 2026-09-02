@@ -1,0 +1,55 @@
+/*
+ * 行内输入条。几何全部来自 tokens.css,这里一个字面值都没有。
+ * 抗挤压律一:这一条恰有**一个**弯腰件 —— 控件槽(`.control`)。
+ * 前缀与两颗钮都 `flex: none`,窄下来时先挤输入框,不是先把钮挤出去。
+ */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/*
+ * 左端那一格。两种内容(旧尾号 / 一句后果)字号不同,由消费方自己的皮肤给 ——
+ * 这件只负责「它在左边、它不弯腰、它不换行」。
+ */
+.prefix {
+  flex: none;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.control {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/*
+ * **只有一件控件时**它吃满这一格 —— 否则 inline-flex 的输入框只会有内容那么宽。
+ * 塞进来两件(添加那一形:密钥框 + 备注框)时这条不生效:谁弯腰、谁定宽,
+ * 那是消费方的裁定(抗挤压律一要求那一行恰有一个弯腰件,而库件不知道是哪一个)。
+ */
+.control > :only-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/*
+ * 没有控件槽的那一形(删除确认):**前缀改当弯腰件**,两颗钮才落在右端 ——
+ * 否则一句话与两颗钮会挤在左边,右边空一大片。这一形的前缀是**一句话**不是
+ * 一段读数,所以它换行而不是截断:一句说不完的后果等于没说
+ * (「结构行只截断不换行」管的是结构行,散文不在其内)。
+ */
+.noControl .prefix {
+  flex: 1 1 auto;
+  /* 律一:能拉伸就必须解开收缩下界 —— 少了它,一句长后果窄下来会溢出去压两颗钮。 */
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+}

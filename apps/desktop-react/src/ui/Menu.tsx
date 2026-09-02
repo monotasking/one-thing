@@ -63,6 +63,13 @@ interface MenuProps {
    * 两档的差别写在 ui/float 的 `FloatAnchor` 上。
    */
   anchor?: () => DOMRect | null
+  /**
+   * `anchor` 档的对齐边。缺省 `below-start`(贴锚点下缘左对齐,Select 面板那一形)。
+   * **锚点自己贴着右边线时给 `below-end`** —— 一行尾巴上的 ⋯ 左对齐开出去,
+   * 菜单整个探到那块面外面(判例:密钥池的行菜单,09-02 批 12)。
+   * 左对齐还是右对齐是「锚点在这一行的哪一头」的函数,不是口味,所以是一格 prop。
+   */
+  anchorPlace?: 'below-start' | 'below-end'
 }
 
 export function Menu({
@@ -75,6 +82,7 @@ export function Menu({
   id,
   minWidth,
   anchor,
+  anchorPlace = 'below-start',
 }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -85,7 +93,7 @@ export function Menu({
   // 定位、Esc 关、点外关全在 ui/float —— 行为与判例都写在那儿,这里不重写一份。
   // x/y 在 anchor 在场时只当首帧兜底:矩形量得到就一次都用不上。
   const floatAnchor: FloatAnchor = anchor
-    ? { kind: 'rect', get: anchor, place: 'below-start' }
+    ? { kind: 'rect', get: anchor, place: anchorPlace }
     : { kind: 'point', x, y }
   const pos = useFloatPosition(ref, floatAnchor, { fallback: { left: x, top: y } })
   useFloatDismiss(ref, onClose)
@@ -155,10 +163,29 @@ interface MenuItemProps {
    * 不该在那儿等着下一次误触。
    */
   confirmLabel?: ReactNode
+  /**
+   * **禁灰而不消失**(09-02 批 12 补口)。一张菜单的形状不该随上下文变 ——
+   * 「到顶了所以上移这一项没了」会让同一张菜单在第 1 行与第 2 行长得不一样,
+   * 于是每次打开都要重新找那一项在第几格。禁灰说的是「这一项此刻做不了」,
+   * 那是**同一张表的一个状态**,不是另一张表。
+   *
+   * 走原生 `disabled` 而不是 `aria-disabled`:`a11y/roving` 的入组判据
+   * (`itemsOf`)两者都认得,而原生那一格连点击都一并挡掉 —— `aria-disabled`
+   * 还要各消费方自己记得别响应。禁掉的项因此不进方向键的循环,这是对的:
+   * 方向键该在**做得动的**项之间走。
+   */
+  disabled?: boolean
   children: ReactNode
 }
 
-export function MenuItem({ onClick, checked, danger, confirmLabel, children }: MenuItemProps) {
+export function MenuItem({
+  onClick,
+  checked,
+  danger,
+  confirmLabel,
+  disabled,
+  children,
+}: MenuItemProps) {
   const menuRole = useContext(RoleCtx)
   const radio = checked !== undefined
   const listbox = menuRole === 'listbox'
@@ -177,6 +204,7 @@ export function MenuItem({ onClick, checked, danger, confirmLabel, children }: M
       // 不给初值的话,菜单开出来那一瞬间每一项都还在 Tab 序里。
       data-roving-item
       tabIndex={-1}
+      disabled={disabled}
       data-confirming={armed && confirming ? 'true' : undefined}
       onClick={() => {
         if (armed && !confirming) {

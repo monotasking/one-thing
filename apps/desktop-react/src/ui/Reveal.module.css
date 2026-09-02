@@ -1,0 +1,17 @@
+/*
+ * 幽灵现身槽。三条纪律的全文在 Reveal.tsx 的文件头,这里只留落点:
+ *  · 占位常驻(`display:inline-flex` + opacity 0),浮现不推开任何东西;
+ *  · 判据挂在**作用域**上(`[data-reveal-scope]`,一个跨模块可见的属性);
+ *  · `:focus-within` 与 hover 同权 —— 键盘也算「我在看这一行」。
+ */
+.reveal {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity var(--dur-hover-fade) var(--ease);
+}
+
+[data-reveal-scope]:hover .reveal,
+[data-reveal-scope]:focus-within .reveal {
+  opacity: 1;
+}

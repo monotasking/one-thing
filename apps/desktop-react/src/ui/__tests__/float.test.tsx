@@ -357,6 +357,31 @@ describe('useFloatPosition:rect 档跟着锚点走', () => {
     expect(readPos()).toEqual({ left: '120', top: '84', flipped: 'false' })
   })
 
+  /*
+   * `below-end`(09-02 批 12 补的第三档)。判据是**对齐的是锚点的右缘**:
+   * 左缘 = 右缘 − 浮层身量。jsdom 不排版(offsetWidth 恒 0),所以这里量到的是
+   * 那个退化式 `left === r.right` —— 身量那一半由 `place()` 的算式本身承担,
+   * 真机上的读数在 `scripts/gate-credential-pool.mjs` 里(菜单不再探出面板)。
+   * 它证的是这一档**真的走了另一条分支**:同一个锚点,两档给出的 left 不同。
+   */
+  it('below-end:对齐的是锚点右缘,与 below-start 分道扬镳', () => {
+    setViewport(1000, 800)
+    const { anchor } = liveRect(rectOf(120, 60, 90, 24))
+    const { unmount } = render(<PositionHarness anchor={anchor('below-end')} />)
+    expect(readPos()).toEqual({ left: '210', top: '84', flipped: 'false' })
+    unmount()
+    render(<PositionHarness anchor={anchor('below-start')} />)
+    expect(readPos().left).toBe('120')
+  })
+
+  it('below-end 也夹进视口:锚点右缘贴着屏幕边时不许溢出去', () => {
+    setViewport(200, 800)
+    const { anchor } = liveRect(rectOf(150, 60, 90, 24))
+    render(<PositionHarness anchor={anchor('below-end')} />)
+    // 理想位 240 越过 vw(200),夹到 vw − w = 200。
+    expect(readPos().left).toBe('200')
+  })
+
   it('滚一下 = 重新问锚点在哪儿,位置跟着移(这是「跟随」那一格)', async () => {
     setViewport(1000, 800)
     const { box, anchor } = liveRect(rectOf(120, 300, 90, 24))

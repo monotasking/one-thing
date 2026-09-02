@@ -85,3 +85,15 @@
   width: var(--input-icon);
   height: var(--input-icon);
 }
+
+/*
+ * 可交互右槽(`action`)。与 `.slot` 分开是因为它装的不是一枚定尺图标而是一颗钮:
+ * 尺寸由那颗钮自己说了算,这里只负责把它贴到右边线上 —— 负外边距吃掉半格内边距,
+ * 让钮的视觉边缘与输入框的圆角对齐,而不是浮在框中间。
+ */
+.action {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-right: calc(var(--sp-1) * -1);
+}

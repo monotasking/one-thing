@@ -497,7 +497,13 @@ describe('Card 檐三件收编(批 8b)', () => {
     expect(actions?.querySelector('button')?.textContent).toBe('刷新')
   })
 
-  it('凭证池的檐:读数 + 添加钮在檐里,那句读法走 note 的 below 档', () => {
+  /*
+   * 09-02 批 12:那句常驻读法(`note` 的 below 档)**退役**。所以这一条从
+   * 「note 在 below 档」改判成「檐里两件在,而 note 两档一格都不在」——
+   * 断言换的是判据,不是删掉一条断言换个绿:退役也要有守卫,否则下一个人
+   * 顺手把它加回来没有任何东西会红。
+   */
+  it('凭证池的檐:读数 + 添加钮在檐里;那句常驻读法两档都不在了', () => {
     const { container } = render(
       <CredentialPool
         providerId="demo"
@@ -518,11 +524,9 @@ describe('Card 檐三件收编(批 8b)', () => {
     expect(head!.querySelector(`.${cardCss.actions}`)?.querySelector('button')?.textContent).toBe(
       '＋ 添加密钥',
     )
-    // 「顺序即优先级」那句话是卡的注,落在檐外、卡身之前 —— below 档的位置。
-    const note = card.querySelector(`.${cardCss.noteBelow}`)
-    expect(note?.tagName).toBe('P')
-    expect(card.children[1]).toBe(note)
-    // inline 档的那一格不许同时在场(一句话不该既是读数又是段落)。
+    // 两档 note 一格都不在:「顺序即优先级」交给底部轮换那一句语义说明,
+    // 「换 key 不换条目」是只在改密钥那一刻才需要知道的常识,不常驻。
+    expect(card.querySelector(`.${cardCss.noteBelow}`)).toBeNull()
     expect(head!.querySelector(`.${cardCss.note}`)).toBeNull()
   })
 

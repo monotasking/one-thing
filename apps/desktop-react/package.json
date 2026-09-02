@@ -35,6 +35,7 @@
     "verify": "node scripts/verify.mjs",
     "smoke:core": "node scripts/smoke-core-boot.mjs",
     "gate:credentials": "node scripts/gate-credentials.mjs",
+    "gate:credential-pool": "node scripts/gate-credential-pool.mjs",
     "gate:workspace": "node scripts/gate-workspace.mjs",
     "gate:a11y": "node scripts/gate-a11y.mjs",
     "gate:dock": "node scripts/gate-dock.mjs",

@@ -733,9 +733,25 @@
    */
   --pv-catalog-narrow: 728px;
   --pv-catalog-tight: 604px;
-  /* 凭证池:序号列 / 备注名输入格。 */
+  /* ── 凭证池(providers/CredentialPool)几何 ─────────────────────────────
+   * 一行的形是 09-02 批 12 的五条拍板落点。四个数彼此**算得出来**,所以四个都
+   * 单列成 token:随手改一个而不重算另外三个,表现就是「序号比输入条高 5px」
+   * 那一类错位(用户点名过的那一条)。
+   *   --pv-pool-mask-lh   第 1 行(尾号)的行高。序号在休止态对齐的就是它。
+   *   --pv-pool-meta-lh   第 2 行(备注 / 冷却)的行高,同时是它的 min-height ——
+   *                       **没有备注也占位**,不然有备注的行与没备注的行不一样高。
+   *   --pv-pool-trail-lift 动作槽的上抬量 = (图标钮 22 − 第 1 行 18) / 2。
+   *   --pv-pool-row-inset  行的左右负外边距 / 内边距:hover 的底比文字宽出这一格。
+   * 改密钥时序号换成 `--btn-sm`(28)的行高去对齐那条输入条的竖中线 ——
+   * 那不是第五个数,是复用输入条自己的高。
+   */
   --pv-pool-ord-w: 18px;
-  --pv-pool-label-w: 160px;
+  --pv-pool-mask-lh: 18px;
+  --pv-pool-meta-lh: 16.5px;
+  --pv-pool-trail-lift: 2px;
+  --pv-pool-row-inset: 6px;
+  /* 添加行的备注格:定宽,不参与抢空间。 */
+  --pv-pool-label-w: 120px;
   /* 计费档位那一行的标签列。两行档位的选择器要从同一条竖线起笔。 */
   --pv-dial-label-w: 88px;
   /* 用量条:名字列 / 百分比列 / 轨的厚度。 */

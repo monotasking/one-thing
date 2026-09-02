@@ -40,12 +40,22 @@
   transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 
-.item:hover {
+.item:hover:not(:disabled) {
   background: var(--st-hover);
 }
 
-.item:active {
+.item:active:not(:disabled) {
   background: var(--st-active);
+}
+
+/*
+ * 禁灰(09-02 批 12)。只降透明度、不换色 —— 与按钮族的 `--btn-disabled-o`
+ * 同一档,一张菜单里禁掉的项与一行里禁掉的钮该长得一样。
+ * hover / active 两格上面已经自己排除了禁用态,所以这里不必再写一遍。
+ */
+.item:disabled {
+  opacity: var(--btn-disabled-o);
+  cursor: default;
 }
 
 /*

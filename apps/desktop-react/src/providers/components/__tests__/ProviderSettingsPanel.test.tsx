@@ -273,7 +273,8 @@ describe('写与缺席态', () => {
     expect(field.value).toBe('')
 
     fireEvent.change(field, { target: { value: 'sk-new' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    // 09-02 批 12:添加那一条的主钮叫「添加」(它加的是一条新条目,不是保存改动)。
+    fireEvent.click(screen.getByRole('button', { name: '添加' }))
     await waitFor(() => expect(port.setCredential).toHaveBeenCalledTimes(1))
     // 密钥**绝不**经 saveSettings —— 那条路会把它静默剥掉。
     expect(port.writeProviderSettings).not.toHaveBeenCalled()

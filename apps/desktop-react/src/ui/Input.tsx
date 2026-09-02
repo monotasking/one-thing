@@ -38,6 +38,20 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size' 
   prefix?: ReactNode
   /** 右槽:图标或单位。 */
   suffix?: ReactNode
+  /**
+   * 右槽的**可交互**那一档(09-02 批 12 补口)。
+   *
+   * `prefix` / `suffix` 两槽都包在 `aria-hidden="true"` 的壳里 —— 它们装的是
+   * 装饰(一枚图标、一个单位),报出来只会是没名字的噪音节点。但**一颗钮不是
+   * 装饰**:把它塞进 `suffix`,axe 的 `aria-hidden-focus` 当场判红(一个能拿到
+   * 焦点的东西藏在无障碍树外面,读屏用户 Tab 到了却听不见它是什么)。
+   *
+   * 所以开的是**第三槽**而不是「把 suffix 的 aria-hidden 摘掉」:两者要回答的
+   * 是同一个问题的两个答案,合成一格就等于让每个消费方自己去猜这一次该报不该报。
+   * 判据一句:**这一格能不能被点 / 被聚焦**?能就走 `action`。
+   * 今天唯一的消费者是 `ui/SecretInput` 的那颗眼睛钮。
+   */
+  action?: ReactNode
 }
 
 export function Input({
@@ -47,6 +61,7 @@ export function Input({
   invalid,
   prefix,
   suffix,
+  action,
   className,
   disabled,
   ...rest
@@ -81,6 +96,8 @@ export function Input({
           {suffix}
         </span>
       )}
+      {/* 可交互那一槽:**不包 aria-hidden**(见 props 上那段判据)。 */}
+      {action && <span className={s.action}>{action}</span>}
     </div>
   )
 }

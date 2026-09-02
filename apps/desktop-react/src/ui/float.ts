@@ -184,8 +184,16 @@ export function useFloatDismiss(
   }, [ref, active, outside])
 }
 
-/** 摆法。`below-start` = 贴锚点下缘、左对齐;`above-center` = 锚点正上方居中。 */
-export type FloatPlace = 'below-start' | 'above-center'
+/**
+ * 摆法。`below-start` = 贴锚点下缘、左对齐;`below-end` = 贴下缘、**右对齐**;
+ * `above-center` = 锚点正上方居中。
+ *
+ * `below-end` 是 09-02 批 12 补的第三档,理由是**锚点自己贴着右边线**:
+ * 一行尾巴上的 ⋯ 左对齐开出去,菜单整个探到那块面外面(密钥池那一行实测
+ * 探出面板右缘一大截,只靠视口 clamp 兜着)。左对齐与右对齐不是口味问题 ——
+ * 它是「锚点在这一行的哪一头」的函数,所以是一格 prop,不是各面自己算坐标。
+ */
+export type FloatPlace = 'below-start' | 'below-end' | 'above-center'
 
 /**
  * 锚 —— 两档,差别是**它会不会动**。
@@ -229,9 +237,12 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
   }
   const r = anchor.get()
   if (!r) return null
-  if (anchor.place === 'below-start') {
+  if (anchor.place === 'below-start' || anchor.place === 'below-end') {
+    // `below-end` 对的是锚点的**右缘**:左缘 = 右缘 − 身量。首帧 w=0 时它退化成
+    // 「贴着锚点右缘」,量到真身量之后在同一个 layout 相位里修正(纪律①)。
+    const ideal = anchor.place === 'below-end' ? r.right - w : r.left
     return {
-      left: Math.max(0, Math.min(r.left, vw - w)),
+      left: Math.max(0, Math.min(ideal, vw - w)),
       top: Math.max(0, Math.min(r.bottom, vh - h)),
       flipped: false,
     }

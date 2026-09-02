@@ -15,7 +15,7 @@
  *     四屏各扫一遍:产品外壳、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
- *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(25 个展位一次
+ *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(28 个展位一次
  *     全在场,这是唯一能把每一件都摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
  *     这个数是**日志里的一句话,不是断言**:规格页加一件展位不该让这条门变红,
  *     所以它跟着 `src/dev/Gallery.tsx` 的 `<Section>` 数走,由改那张页的人顺手改。
@@ -436,7 +436,9 @@ async function checkMenu(page) {
 
   const shape = await page.evaluate(() => {
     const menu = document.querySelector('[role="menu"]')
-    const items = [...menu.querySelectorAll('[role="menuitem"],[role="menuitemradio"]')]
+    const items = [...menu.querySelectorAll('[role="menuitem"],[role="menuitemradio"]')].filter(
+      (el) => !el.disabled && el.getAttribute('aria-disabled') !== 'true',
+    )
     return {
       focusInMenu: menu.contains(document.activeElement),
       count: items.length,
@@ -449,16 +451,28 @@ async function checkMenu(page) {
     `整组只占一个 Tab 位(${shape.count} 项,tabIndex 表 ${JSON.stringify(shape.tabIndexes)})`,
   )
 
-  // 方向键循环:按 count + 1 下 ↓,应当绕回第一项。
+  /*
+   * 方向键循环:按 count + 1 下 ↓,应当绕回第一项。
+   *
+   * **组 = 做得动的那些项**(09-02 批 12 补口)。`a11y/roving` 的入组判据
+   * (`itemsOf`)本来就把 `disabled` / `aria-disabled` 排掉 —— 方向键该在
+   * 做得动的项之间走。规格页的菜单从这一批起有一项是禁灰的样品,
+   * 上面三处取项因此都跟着筛一道:不筛的话这条门量的是「表里有几行」,
+   * 而它要问的是「方向键会停在几处」,两者从此不是同一个数。
+   */
   const first = await page.evaluate(() => {
     const menu = document.querySelector('[role="menu"]')
-    const items = [...menu.querySelectorAll('[role="menuitem"],[role="menuitemradio"]')]
+    const items = [...menu.querySelectorAll('[role="menuitem"],[role="menuitemradio"]')].filter(
+      (el) => !el.disabled && el.getAttribute('aria-disabled') !== 'true',
+    )
     return items[0].textContent?.trim() ?? ''
   })
   for (let i = 0; i < shape.count + 1; i += 1) await page.keyboard.press('ArrowDown')
   const looped = await page.evaluate(() => {
     const menu = document.querySelector('[role="menu"]')
-    const items = [...menu.querySelectorAll('[role="menuitem"],[role="menuitemradio"]')]
+    const items = [...menu.querySelectorAll('[role="menuitem"],[role="menuitemradio"]')].filter(
+      (el) => !el.disabled && el.getAttribute('aria-disabled') !== 'true',
+    )
     return {
       at: document.activeElement?.textContent?.trim() ?? '',
       isFirst: document.activeElement === items[0],
@@ -627,9 +641,9 @@ async function main() {
       page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
     )
 
-    // 25 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(22 件组件 +
+    // 28 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(25 件组件 +
     // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。日志读数,不是断言。
-    console.log('\n[7/8] 组件规格页(?gallery):25 个展位一次全在场')
+    console.log('\n[7/8] 组件规格页(?gallery):28 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
