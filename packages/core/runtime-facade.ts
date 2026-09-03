@@ -43,6 +43,19 @@ export interface RuntimeHostCapabilities {
    * HTTP 面)为 true;独立 `server:start` 今天不装配,为 false。
    */
   collabRooms?: boolean
+  /**
+   * 真 PTY 终端(B3,`docs/design/backend-transport-forks-2026-09.md` §2.3)。
+   * 与 `collabRooms` 同一个性质:问的不是"浏览器有没有这件东西",而是**这个进程
+   * 的宿主注没注入终端的输出广播器**(`OnethingHostPorts.terminal`)—— 也就是
+   * `terminal` 域自己那道闸 `hasTerminalHost()` 读的同一件事。省略 = 不表态。
+   */
+  terminal?: boolean
+  /**
+   * 插件**写面**(B3)。判据是 `getPluginManager() !== null` —— 与 `plugins` 域
+   * 判"这个进程装没装管理器"的那一问同源。省略 = 不表态,客户端用自己的默认值
+   * (渲染侧默认 `false`)。
+   */
+  pluginsManage?: boolean
 }
 
 export interface RuntimeEventSubscribeOptions {

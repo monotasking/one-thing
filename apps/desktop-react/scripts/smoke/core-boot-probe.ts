@@ -56,6 +56,8 @@ async function probe(): Promise<void> {
   const backend = await createOnethingBackend({
     // 探针不是宿主:它验的是构建链,不接任何 Electron 能力(壳自己那张表在
     // `electron/host-ports.ts`)。两件必填项给空对象 —— 与"从未注入"逐字相同。
+    // 唯一跟着壳走的一格是 `localTrust`(B3):探针要验的正是"装配之后能力位就是
+    // 真的",而那一位(`localFileSystem`)读的就是这句声明。
     host: {
       storePath: {},
       sandbox: {},
@@ -72,6 +74,7 @@ async function probe(): Promise<void> {
       settings: null,
       evals: null,
       mcp: null,
+      localTrust: { origin: 'desktop-embedded' },
     },
     toolRegistry: 'full',
     promptVersion: true,
@@ -88,8 +91,20 @@ async function probe(): Promise<void> {
     headers: embedded.token ? { authorization: `Bearer ${embedded.token}` } : {},
   })
   emit(`HTTP ${response.status}\n`)
-  const capabilities = (await response.json()) as { collabRooms?: boolean }
+  const capabilities = (await response.json()) as {
+    collabRooms?: boolean
+    localFileSystem?: boolean
+    terminal?: boolean
+    pluginsManage?: boolean
+  }
   emit(`COLLAB ${String(capabilities?.collabRooms)}\n`)
+  // B3:三位从后端事实推导出来的能力位。壳上的期望是 true / false / false ——
+  // 信任在宿主表里声明了,终端广播器与插件管理器这个壳都还没有。
+  emit(
+    `CAPS localFileSystem=${String(capabilities?.localFileSystem)}`
+    + ` terminal=${String(capabilities?.terminal)}`
+    + ` pluginsManage=${String(capabilities?.pluginsManage)}\n`,
+  )
 
   let pty = 'missing'
   try {

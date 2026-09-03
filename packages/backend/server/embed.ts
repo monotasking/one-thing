@@ -107,6 +107,14 @@ export async function startEmbeddedOnethingHttpServer(
   // —— 它跑在桌面主进程里、只服务本机同一个用户,token 写在 0600 的发现文件里。
   // 声明之后 `POST /api/rpc` 的 files / tools / search / evals / mcp / sessions 与
   // 桌面 IPC 同权;`ONETHING_SERVER_FILES_SANDBOX=1` 仍然压得住它(端口每次现读)。
+  //
+  // **两个声明点的关系**(B3):桌面宿主从 B3 起在**装配**时就声明同一个 origin
+  // (`OnethingHostPorts.localTrust = { origin: 'desktop-embedded' }`),所以下面
+  // 这次通常是"再说一遍同一句话"。留着它有两个理由:①这只面也可能挂在**别人的**
+  // backend 上(`startEmbeddedOnethingHttpServer(backend)` 收的是一只现成的实例,
+  // 那只实例的宿主表未必声明过);②它带 restore,卸载内嵌面时把声明弹回**装配时
+  // 的那一句**,而不是弹成"没人声明过" —— 桌面把 HTTP 面关掉之后,它自己的 IPC
+  // 调用方仍然可信。装配那次的 restore 由 `own('hostPorts')` 在 dispose 时跑。
   const restoreFilesTrust = configureHostLocalTrust({
     origin: 'desktop-embedded',
     host,

@@ -36,6 +36,10 @@ import { configurePluginsHost, type PluginsHostPorts } from './wiring/plugins/ho
 import { configureGatewayHost, type GatewayHostPorts } from './wiring/gateway/host-ports.js'
 import { configureSettingsHost, type SettingsHostPorts } from './wiring/settings/host-ports.js'
 import { configureEvalsHost, type EvalsHostPorts } from './wiring/evals/host-ports.js'
+import {
+  configureHostLocalTrust,
+  type HostLocalTrustDeclaration,
+} from './server/host-trust.js'
 import { configureAuthHost, type AuthHostPorts } from '@onething/runtime/auth/host-ports'
 import { configureShellHost, type ShellHostPorts } from '@onething/runtime/shell/host-ports'
 import { configureVoiceHost, type VoiceHostPorts } from '@onething/runtime/voice/host-ports.wiring'
@@ -113,6 +117,24 @@ export interface OnethingHostPorts {
   evals: EvalsHostPorts | null
   /** MCP 客户端工厂与 clientInfo。`null` = 两件都走缺省。 */
   mcp: McpHostPorts | null
+  /**
+   * **本机宿主可信**(B3,`docs/design/backend-transport-forks-2026-09.md`)。
+   *
+   * B2 之后 tools / search / evals / mcp / sessions / files 六个域都问
+   * `isHostLocallyTrusted()`,而这句话在 B2 里**只在内嵌 HTTP 面挂载成功那一刻**
+   * 才说得出口(`server/embed.ts`)。于是桌面自己的 IPC 调用方在面起来之前、或者
+   * 面根本没起来(端口被占、挂载失败)时,被当成不可信的联网调用方 —— `search.query`
+   * 直接抛 "not available on this host" 是其中最重的一条。
+   *
+   * 修法是把它挪到**装配时**:「我这台宿主服务的是本机同一个用户」是宿主自己知道
+   * 的事实,和有没有 HTTP 面无关。桌面(两个壳)写
+   * `{ origin: 'desktop-embedded' }`;独立 server 写 `null` —— 它在
+   * `apps/server/src/main.ts` 监听时按绑定地址回不回环自己声明,那条判据不能提前到
+   * 装配(装配时还不知道会绑到哪);CLI daemon 写 `null`(它不分发 RPC)。
+   *
+   * `ONETHING_SERVER_FILES_SANDBOX=1` 照旧压得住这条声明(端口每次现读)。
+   */
+  localTrust: HostLocalTrustDeclaration | null
 }
 
 /**
@@ -122,8 +144,15 @@ export interface OnethingHostPorts {
  * **`null` 的项不调**:那些端口都是"最后一次调用说了算"的单槽,用 `{}` 顶一次
  * 等于把宿主早先注入的东西擦掉(桌面的 sandbox 就是在装配前由 ready 钩子注入的),
  * 所以"没有"必须是**不调**,不是"调一个空的"。
+ *
+ * **返回一个还原函数**(B3)。十五格里只有 `localTrust` 一格有"还原"这回事 ——
+ * `configureHostLocalTrust` 是唯一返回 restore 的端口,因为桌面内嵌 HTTP 面与
+ * `server:start` 可能在同一个进程里先后起落,后者的收尾不许把前者的声明一起清掉。
+ * 其余十四格都是**单槽覆盖**、没有 restore("上一任是谁"这件事它们不记),所以
+ * 这个返回值恢复的只有信任那一格;`assembleSteps` 把它 `own('hostPorts')` 起来,
+ * 于是 `dispose()` 之后这个进程回到"没有宿主声明过可信"的状态。
  */
-export function applyHostPorts(host: OnethingHostPorts): void {
+export function applyHostPorts(host: OnethingHostPorts): () => void {
   configureStorePathHost(host.storePath)
   configureSandboxHost(host.sandbox)
   if (host.auth) configureAuthHost(host.auth)
@@ -143,5 +172,12 @@ export function applyHostPorts(host: OnethingHostPorts): void {
     // 的动作**(把别人装的工厂摘掉)。这里只在真给了工厂时调,不替宿主做那个决定。
     if (host.mcp.clientFactory) configureMCPClientHost(host.mcp.clientFactory)
     if (host.mcp.identity) configureMCPClientIdentity(host.mcp.identity)
+  }
+  // 唯一带 restore 的一格。`null` 与其它端口同义:不调 —— 独立 server 要自己按
+  // 绑定地址声明,替它调一次 `configureHostLocalTrust(null)` 会把它待会儿的声明
+  // 之前的状态搅乱(那个函数的 `null` 是"明确声明不可信",不是 no-op)。
+  const restoreLocalTrust = host.localTrust ? configureHostLocalTrust(host.localTrust) : null
+  return () => {
+    restoreLocalTrust?.()
   }
 }

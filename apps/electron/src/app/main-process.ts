@@ -272,6 +272,12 @@ function createElectronDesktopHostPorts(): OnethingHostPorts {
 		// 宿主能力一起在装配第一步接上 —— `terminal` 域的闸从「是不是 http」改成
 		// 「这台宿主有没有输出通道」之后,它必须在第一次派发之前就位。
 		terminal: electronTerminalHostPorts,
+		/**
+		 * 本机宿主可信(B3)。桌面服务的是本机同一个用户的同一个 store,所以装配
+		 * 时就声明 —— 内嵌 HTTP 面挂上来时 `server/embed.ts` 还会再声明一次同 origin
+		 * 的(那次带 restore,面卸载时弹回这一次的声明)。
+		 */
+		localTrust: { origin: "desktop-embedded" },
 		skillsEnvironment: {
 			isPackaged: getElectronAppIsPackaged,
 			getResourcesPath: getElectronResourcesPath,

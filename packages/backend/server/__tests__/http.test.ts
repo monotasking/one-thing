@@ -90,11 +90,18 @@ describe('createOnethingHttpServer', () => {
       clipboardWrite: false,
       desktopWindows: false,
       globalMenuEvents: false,
-      // P4 终态批 B(拍板 #12):`collabRooms` 是唯一一位**按进程状态现取**的能力
+      // P4 终态批 B(拍板 #12):`collabRooms` 是第一位**按进程状态现取**的能力
       // ——「这个进程里跑没跑 collab v3 的 actor」。这只测试进程和独立
       // `server:start` 一样不装配 collab,所以如实是 false;桌面的内嵌 HTTP 面
       // 挂的是自己那只 `collab: true` 的 backend,同一段代码在那里下发 true。
       collabRooms: false,
+      // B3:`terminal` / `pluginsManage` 与上面的 `localFileSystem` / `shellTools`
+      // 一起改成推导位(`hasTerminalHost()` / `getPluginManager()` /
+      // `isHostLocallyTrusted()` / `hasShellHost()`)。这只测试进程什么宿主能力都
+      // 没注入、也没声明可信,所以四位如实全 false —— 逐位的推导本身钉在
+      // `capabilities.test.ts`。
+      terminal: false,
+      pluginsManage: false,
     })
   })
 

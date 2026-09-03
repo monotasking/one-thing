@@ -128,6 +128,12 @@ import {
 // `/api/capabilities` 的 `collabRooms` 那一位:问的是这个进程里跑没跑 collab v3
 // 的 actor 运行时(桌面内嵌面 = 跑,独立 server:start = 不跑)。
 import { isCollabV3RuntimeRunning } from "../wiring/collab/index.js";
+// B3:`/api/capabilities` 的五位从这些判据推导 —— 每一个都是对应 RPC 域
+// 自己在读的那一个函数(方案 §2.3「一位能力 = 一个判据」)。
+import { getPluginManager } from "../wiring/plugins/index.js";
+import { isHostLocallyTrusted } from "./host-trust.js";
+import { hasShellHost } from "@onething/runtime/shell/host-ports";
+import { hasTerminalHost } from "@onething/runtime/terminal/service.wiring";
 import {
 	createOnethingSearchProviders,
 	executeOnethingSearchForIpc,
@@ -556,30 +562,54 @@ type ServerVariablesRuntime = {
 	store: VariablesStore;
 	unsubscribe: RuntimeUnsubscribe;
 };
-const webServerCapabilities: RuntimeHostCapabilities = {
-	localFileSystem: false,
+/**
+ * 只剩**纯客户端形态**的那几位:它们问的是"拿着这个 HTTP 面的那个客户端是不是
+ * 一只 Electron 窗口",与这个进程的宿主装了什么无关,所以常量就够。
+ *
+ * B3 之前这里还摊着 `localFileSystem` / `shellTools` 两个 `false` —— 那是两份
+ * 真相(后端护栏各自另有判据),已经删掉,见 `currentServerCapabilities()`。
+ */
+const webServerCapabilities: Omit<
+	RuntimeHostCapabilities,
+	"localFileSystem" | "shellTools" | "terminal" | "pluginsManage" | "collabRooms"
+> = {
 	workspaceFileSystem: true,
 	nativeWindowControls: false,
-	shellTools: false,
 	clipboardWrite: false,
 	desktopWindows: false,
 	globalMenuEvents: false,
 };
 
 /**
- * `/api/capabilities` 的出门快照(P4 终态批 B,拍板 #12)。
+ * `/api/capabilities` 的出门快照(P4 终态批 B 拍板 #12;B3 起五位从后端事实推导)。
  *
- * 静态那几位是「联网宿主的环境事实」,常量就够;`collabRooms` 不是 ——
- * 它问的是**这个进程里跑没跑 collab v3 那套 actor**,而同一份 `server/` 代码既
- * 被独立 `server:start` 用(不装配 collab),也被桌面内嵌 HTTP 面挂在自己那只
- * backend 上(`collab: true`)。所以每次现取,不缓存:答案是进程状态,不是配置。
+ * **一位能力 = 一个判据函数,而且是对应那个域自己在读的那一个**
+ * (方案 `docs/design/backend-transport-forks-2026-09.md` §2.3)。B3 之前除
+ * `collabRooms` 外全是静态常量,于是前端看到的能力位与后端真正的护栏是两套 ——
+ * 审计 `backend-architecture-review-2026-09-02.md` §2.6 说的"对不齐"就是这个。
+ * 现在下面每一行右边那个函数,都是同名的域处理器判"给不给做"时调的那一个;
+ * 每次现取、不缓存,因为答案是**进程状态**(宿主装了什么、信任声明了没有),
+ * 不是配置。
  *
- * 渲染侧 `platform/web.ts` 的静态默认是 `true` —— 这里下发 `false` 就把它盖掉,
- * 独立 server 上的浏览器因此看不到协作形态(房建得出来也没有 actor 驱动)。
+ * 同一份 `server/` 代码既被独立 `server:start` 用,也被桌面内嵌 HTTP 面挂在自己
+ * 那只 backend 上 —— 所以这五位在两种宿主上如实分岔,不需要两份代码。
+ *
+ * 不加 `voice` 一位:渲染侧 `PlatformCapabilities` 今天没有这一位,加就是新造一个
+ * wire 键,不在 B 的范围里。
  */
 function currentServerCapabilities(): RuntimeHostCapabilities {
 	return {
 		...webServerCapabilities,
+		// 与 files / tools / search / evals / mcp / sessions 六个域同判据
+		// (`isHostLocallyTrusted()`):可信 = 路径不夹,也就是"这台机器的文件系统"。
+		localFileSystem: isHostLocallyTrusted(),
+		// 与 oauth 域同判据(`hasShellHost()`):宿主注没注入"用系统的方式打开一个东西"。
+		shellTools: hasShellHost(),
+		// 与 terminal 域同判据(`hasTerminalHost()`):宿主注没注入 PTY 输出广播器。
+		terminal: hasTerminalHost(),
+		// 与 plugins 域同判据(`getPluginManager()`):这个进程装没装插件管理器。
+		pluginsManage: getPluginManager() !== null,
+		// 与 sessions 域建房那道闸同判据(`isCollabV3RuntimeRunning()`)。
 		collabRooms: isCollabV3RuntimeRunning(),
 	};
 }
@@ -850,6 +880,14 @@ async function createRealServerBackend(storePath: string): Promise<OnethingBacke
 			settings: null,
 			evals: null,
 			mcp: null,
+			/**
+			 * 本机可信在这里必须是 `null`(B3):独立 server 到底可不可信取决于它
+			 * **绑到哪个地址**,而装配的时候还没 listen。声明点在
+			 * `apps/server/src/main.ts` —— 回环才声明 `loopback-server`,非回环
+			 * 一个字不说。桌面把自己那只 backend 交给这段代码时(`embed.ts`)走的
+			 * 是另一张表,那张表里 `localTrust` 是 `desktop-embedded`。
+			 */
+			localTrust: null,
 		},
 		toolRegistry: serverToolRegistry,
 		sessionSkills: true,

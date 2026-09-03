@@ -13,7 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { applyHostPorts, type OnethingHostPorts } from '../host-ports.js'
 
-/** 十四项写全 = 合法。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
+/** 十五项写全 = 合法。这也是四个宿主(与冒烟探针)交出来的那张表的形状。 */
 const complete: OnethingHostPorts = {
   storePath: {},
   sandbox: {},
@@ -30,6 +30,7 @@ const complete: OnethingHostPorts = {
   settings: null,
   evals: null,
   mcp: null,
+  localTrust: null,
 }
 
 // 缺 `voice` 一项 → 不能赋给 `OnethingHostPorts`。这就是方案要的那道门:
@@ -49,6 +50,7 @@ const missingVoice: OnethingHostPorts = {
   settings: null,
   evals: null,
   mcp: null,
+  localTrust: null,
 }
 
 // `storePath` / `sandbox` 是**不可 null** 的两项(没有它们连 store 与工具沙箱的

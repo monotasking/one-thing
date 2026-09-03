@@ -93,6 +93,17 @@ async function runLane(label, executable, args, extraEnv) {
     assert(readings.OWNER === 'shell', `发现文件 owner === 'shell'(读到 ${readings.OWNER})`)
     assert(readings.HTTP === '200', `真 fetch 打 /api/capabilities → HTTP ${readings.HTTP}`)
     assert(readings.COLLAB === 'true', `capabilities.collabRooms === true(collab:true 真落到装配上)`)
+    // B3(`docs/design/backend-transport-forks-2026-09.md` §2.3):三位从后端事实
+    // 推导出来的能力位。壳上的期望是 true / false / false —— 这台面是可信的本机
+    // 面,终端广播器与插件管理器这个壳都还没接。
+    // 反证(实跑过):把 `server/runtime.ts` 的 `terminal` 改回常量 `false`,单测
+    // `server/__tests__/capabilities.test.ts` 的"判据同源"那条红。这条真机断言**测
+    // 不出宿主表里的 `localTrust`**:探针是在内嵌 HTTP 面挂上来之后问的,而
+    // `server/embed.ts` 会再声明一次同 origin —— 那一格的判据在 A0 第 ⑩ 条。
+    assert(
+      readings.CAPS === 'localFileSystem=true terminal=false pluginsManage=false',
+      `capabilities 三位推导正确(读到 ${readings.CAPS})`,
+    )
     assert(readings.PTY === 'ok', `require('node-pty') 拿到真模块(读到 ${readings.PTY})`)
     return readyMs
   } finally {

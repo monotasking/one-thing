@@ -149,5 +149,13 @@ export function createShellHostPorts(): OnethingHostPorts {
     settings: null,
     evals: null,
     mcp: null,
+    /**
+     * 唯一一格不是 `null` 的"缺口清单"外条目(B3):这个壳是**桌面**,它服务的是
+     * 本机同一个用户的同一个 store,而渲染层只走 HTTP/SSE —— 于是每一条 RPC 都
+     * 是"联网调用方"。装配时就说清楚,`tools` / `search` / `evals` / `mcp` /
+     * `sessions` / `files` 六个域的信任判据从第一毫秒起就是对的,不必等内嵌 HTTP
+     * 面挂上来(B2 之前正是那样:面起来之前 `search.query` 直接抛)。
+     */
+    localTrust: { origin: 'desktop-embedded' },
   }
 }

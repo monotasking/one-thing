@@ -7,7 +7,7 @@
  * A0 先把**当时**的行为钉下来,A2 把 ② 那条从"随便抛点什么"扳成具名拒绝,
  * 并补上 ⑥⑦ 两条只有实例化之后才问得出口的问题。
  *
- * 七条断言(A2 之后全绿):
+ * 十条断言(A2 之后全绿):
  *   ① 装配后 `engine` / `eventBus` / `streamChannel` 在位,且 `getEventBus()`
  *      拿到的就是返回值里那一只(不是另一份拷贝)。
  *   ② **不 dispose 直接第二次装配 → 抛 `BackendAlreadyAssembledError`。**
@@ -34,6 +34,18 @@
  *      `process.getActiveResourcesInfo()` 里 `Timeout` 的条数不高于装配之前
  *      (真实判据,但它会被 vitest 自己的定时器与同 worker 的邻居影响 —— 所以
  *      它是**不高于**而不是**等于**,并且只在这一条里出现)。
+ *   ⑩ **宿主表里的本机信任在装配那一刻就生效**(B3,方案
+ *      `backend-transport-forks-2026-09.md`)。B2 之前这句话只在内嵌 HTTP 面挂载
+ *      成功那一刻说得出口,于是桌面自己的调用方在面起来之前被当成不可信的联网
+ *      调用方(`search.query` 直接抛)。判据取 `isHostLocallyTrusted()` 与
+ *      `hostLocalTrustOrigin()` 这两个**六个域真在读的**函数,不另造一个观察口。
+ *      反证(实跑过):把 `host-ports.ts` 里 `applyHostPorts` 那句
+ *      `configureHostLocalTrust(host.localTrust)` 摘掉 → 这一条第一段立刻红
+ *      (`expected false to be true`)。**注意反证不是"改宿主的那张表"** ——
+ *      这份文件交的是自己那张表;而 React 壳那张表改成 `null` 之后 smoke:core
+ *      仍然绿,因为探针是在内嵌 HTTP 面挂上来**之后**才问的能力位,而
+ *      `server/embed.ts` 会再声明一次同 origin(见那里的"两个声明点"注释)。
+ *      宿主表那一格救的正是**挂载之前 / 挂载失败**那段时间,真机探针够不着。
  *
  * **store 隔离**:`stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就
  * 解析 store 根,所以 `ONETHING_STORE_PATH` 必须在任何 backend 模块被求值之前
@@ -54,7 +66,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
   /*
-   * 这份文件的七条是**接力**的(①建 → ③关 → ④再建 …),所以任何一条在整仓
+   * 这份文件的十条是**接力**的(①建 → ③关 → ④再建 …),所以任何一条在整仓
    * 满载下超时都会把后面几条一起带红,而且会把一只活 backend 留在进程当前实例
    * 槽里。超时是既有的负载抖动(真机实测:单文件跑 5s,整仓 300+ 文件并发时
    * 同一条要 60s+),不是这份改动的性质问题 —— 但槽必须还干净,所以收尾无条件
@@ -85,7 +97,12 @@ class NoopSender extends EventEmitter {
 
 type Backend = Awaited<ReturnType<typeof import('../backend.js')['createOnethingBackend']>>
 
-async function assemble(hooks?: { afterSettings?: () => void | Promise<void> }): Promise<Backend> {
+type LocalTrust = { origin: 'desktop-embedded' | 'loopback-server'; host?: string } | null
+
+async function assemble(
+  hooks?: { afterSettings?: () => void | Promise<void> },
+  localTrust: LocalTrust = null,
+): Promise<Backend> {
   const { createOnethingBackend } = await import('../backend.js')
   return createOnethingBackend({
     ...(hooks ? { hooks } : {}),
@@ -105,6 +122,7 @@ async function assemble(hooks?: { afterSettings?: () => void | Promise<void> }):
       settings: null,
       evals: null,
       mcp: null,
+      localTrust,
     },
     // 最小面:三档目录里最轻的一档,不开 collab / mcpAcp / sessionSkills /
     // promptVersion —— 这份测试问的是装配的生命周期,不是任何一个子系统。
@@ -226,5 +244,31 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     expect(hostServiceStopped).toBe(true)
     expect(seventh.ownedLabels()).toEqual([])
     expect(timeouts()).toBeLessThanOrEqual(before)
+  })
+
+  /**
+   * B3。`applyHostPorts` 是十五格里唯一带 restore 的那一格的登记点
+   * (`own('hostPorts')`),所以 dispose 之后信任必须弹回"从未声明"—— 否则一个
+   * 进程里先后装配两只 backend(测试、`server:start` 接管)会继承上一只的信任。
+   */
+  it('⑩ 宿主表的 localTrust 在装配那一刻生效,dispose 之后弹回', { timeout: 180_000 }, async () => {
+    const { isHostLocallyTrusted, hostLocalTrustOrigin } = await import('../server/host-trust.js')
+
+    expect(isHostLocallyTrusted()).toBe(false)
+    expect(hostLocalTrustOrigin()).toBeNull()
+
+    const trusted = await assemble(undefined, { origin: 'desktop-embedded' })
+    expect(isHostLocallyTrusted()).toBe(true)
+    expect(hostLocalTrustOrigin()).toBe('desktop-embedded')
+
+    await trusted.dispose()
+    expect(isHostLocallyTrusted()).toBe(false)
+    expect(hostLocalTrustOrigin()).toBeNull()
+
+    // `localTrust: null` = 这个宿主不声明可信(独立 server / CLI daemon 的那一列)。
+    const untrusted = await assemble()
+    expect(isHostLocallyTrusted()).toBe(false)
+    expect(hostLocalTrustOrigin()).toBeNull()
+    await untrusted.dispose()
   })
 })

@@ -282,7 +282,11 @@ export class OnethingBackend implements BackendHandle {
     // 宿主能力先落位:它们是**输入**,装配的每一步都可能读到(sandbox 在工具目录
     // 之前、auth 在凭证升级之前、storePath 在 docs 目录之前)。一次性交出来的好处
     // 就在这里 —— 顺序问题只有这一个答案:全部,在最前面。
-    applyHostPorts(options.host)
+    //
+    // B3 起 `applyHostPorts` 返回一个还原函数,里面只有 `localTrust` 那一格
+    // (它是十五格里唯一带 restore 的端口;其余都是没有 restore 的单槽覆盖)。
+    // 登记在这里 = dispose 之后这个进程回到"没有宿主声明过本机可信"。
+    this.own(applyHostPorts(options.host), 'hostPorts')
 
     initializeStores()
     /*

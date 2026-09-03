@@ -97,7 +97,6 @@ server / daemon / 冒烟探针 `null`。`applyHostPorts` 对 `terminal` 非 null
 {
   ...webServerCapabilities,            // 纯客户端形态的那几位(clipboardWrite / desktopWindows / globalMenuEvents …)照旧
   collabRooms: isCollabV3RuntimeRunning(),
-  voice: hasVoiceHost(),               // 新:与 voice 域同一判据
   terminal: hasTerminalHost(),         // 新:与 terminal 域同一判据
   pluginsManage: getPluginManager() !== null,
   shellTools: hasShellHost(),
@@ -106,8 +105,9 @@ server / daemon / 冒烟探针 `null`。`applyHostPorts` 对 `terminal` 非 null
 }
 ```
 
-`RuntimeHostCapabilities` 里今天没有的键(`voice`)按 `packages/renderer/platform/types.ts` 的 14 位对齐加上。
-渲染侧(Vue,退役)与 mobile 读到的就是后端护栏的真值,两套判据合成一套。`music` 那一位**不动**:
+`RuntimeHostCapabilities` 加可选键 `terminal` / `pluginsManage`(server 今天不发这两位)。**不加 `voice`**:渲染侧没有这一位,
+加就是新 wire 键。**`packages/renderer/` 一字不动**(用户 09-03 裁定:Vue 已退役,不给它加功能;它只要求还能编译),
+server 多发的键它收不收随它。任何 HTTP 客户端(mobile、以后的 React 壳)读到的就是后端护栏的真值。`music` 那一位**不动**:
 `web.ts:51` 已经写明"谁在服务这个 store 谁的机器就是放音机",这是裁定不是缺口;要改是另一票。
 
 ### 2.4 棘轮
