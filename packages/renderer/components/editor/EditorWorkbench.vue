@@ -1,6 +1,8 @@
 <template>
   <div
+    ref="workbenchRootRef"
     class="editor-workbench"
+    :style="shellResizeFreezeStyle"
     @keydown="onKeydown"
   >
     <Container
@@ -153,6 +155,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useEditorWorkspace } from '@/composables/useEditorWorkspace'
+import { useShellResizeFreeze } from '@/composables/useShellResizeFreeze'
 import { useSettingsStore } from '@/stores/settings'
 import Breadcrumb from '@/components/common/Breadcrumb.vue'
 import BreadcrumbItem from '@/components/common/BreadcrumbItem.vue'
@@ -194,6 +197,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   openFile: [filePath: string]
 }>()
+
+const workbenchRootRef = ref<HTMLElement | null>(null)
+/* 拖外壳分隔条期间冻结自身宽度:Monaco 的 automaticLayout + 内嵌 Splitter 对
+   每帧宽度变化做全量重排,是拖拽掉帧的大头;冻住后拖拽中被面板边缘裁切,
+   松手一次成型(composable 里有整段说明)。 */
+const shellResizeFreezeStyle = useShellResizeFreeze(workbenchRootRef)
 
 const editorWorkspace = useEditorWorkspace()
 const settingsStore = useSettingsStore()

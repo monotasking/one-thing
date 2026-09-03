@@ -15,7 +15,6 @@ import {
   LAYOUT_PREFS_STORAGE_KEY,
   LEGACY_LAYOUT_STORAGE_KEYS,
   MAX_SIDEBAR_WIDTH,
-  MAX_WORKBENCH_WIDTH,
   MIN_SIDEBAR_WIDTH,
   MIN_WORKBENCH_WIDTH,
   clampSidebarWidth,
@@ -45,9 +44,9 @@ describe('clamp', () => {
     expect(clampSidebarWidth(Number.NaN)).toBe(DEFAULT_SIDEBAR_WIDTH)
   })
 
-  it('右栏宽度收敛在 250–600 —— 250 是设计稿硬指标,不是百分比换算出来的', () => {
+  it('右栏宽度只守 250 地板,没有固定上限 —— 能拖多宽由协调器按聊天预算实时给', () => {
     expect(clampWorkbenchWidth(10)).toBe(MIN_WORKBENCH_WIDTH)
-    expect(clampWorkbenchWidth(2000)).toBe(MAX_WORKBENCH_WIDTH)
+    expect(clampWorkbenchWidth(2000)).toBe(2000)
     expect(clampWorkbenchWidth(Number.POSITIVE_INFINITY)).toBe(DEFAULT_WORKBENCH_WIDTH)
   })
 })
@@ -148,7 +147,7 @@ describe('loadLayoutPrefs —— 损坏数据', () => {
     })
     expect(mixed.sidebarWidth).toBe(DEFAULT_SIDEBAR_WIDTH)
     expect(mixed.sidebarCollapsed).toBe(false)
-    expect(mixed.workbenchWidth).toBe(MAX_WORKBENCH_WIDTH)
+    expect(mixed.workbenchWidth).toBe(999999)
     expect(mixed.workbenchOpen).toBeNull()
   })
 

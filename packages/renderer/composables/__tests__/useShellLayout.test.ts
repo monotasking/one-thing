@@ -18,7 +18,6 @@ import {
   DEFAULT_SIDEBAR_WIDTH,
   DEFAULT_WORKBENCH_WIDTH,
   MAX_SIDEBAR_WIDTH,
-  MAX_WORKBENCH_WIDTH,
   MIN_WORKBENCH_WIDTH,
 } from '@/stores/layoutPrefs'
 
@@ -53,8 +52,8 @@ describe('resolveShellLayout —— 降级顺序', () => {
       { sidebar: 'floating', workbench: false, chat: 700 },
       // 900:收到第二步,侧栏还在
       { sidebar: 'docked', workbench: false, chat: 600 },
-      // 1100:收到第一步,右栏压到 250
-      { sidebar: 'docked', workbench: MIN_WORKBENCH_WIDTH, chat: 550 },
+      // 1100:收到第一步,右栏收窄到刚好给聊天列留 480(1100 − 300 − 480 = 320)
+      { sidebar: 'docked', workbench: 320, chat: 480 },
       // 1400:预算够了,偏好原样兑现
       { sidebar: 'docked', workbench: DEFAULT_WORKBENCH_WIDTH, chat: 740 },
       { sidebar: 'docked', workbench: DEFAULT_WORKBENCH_WIDTH, chat: 1140 },
@@ -131,7 +130,8 @@ describe('resolveShellLayout —— 偏好组合', () => {
   })
 
   it('侧栏被拖宽后,同一档窗宽下留给别人的预算就少了', () => {
-    // 300 的侧栏在 1250 上放得下默认宽的右栏;拖到 500 就得把右栏压到地板
+    // 300 的侧栏在 1250 上放得下默认宽的右栏;拖到 500 右栏就得收窄到预算内
+    // (1250 − 500 − 480 = 270)
     expect(row(1250)).toEqual({
       sidebar: 'docked',
       workbench: DEFAULT_WORKBENCH_WIDTH,
@@ -139,8 +139,8 @@ describe('resolveShellLayout —— 偏好组合', () => {
     })
     expect(row(1250, { sidebarWidth: MAX_SIDEBAR_WIDTH })).toEqual({
       sidebar: 'docked',
-      workbench: MIN_WORKBENCH_WIDTH,
-      chat: 500,
+      workbench: 270,
+      chat: 480,
     })
   })
 
@@ -153,13 +153,14 @@ describe('resolveShellLayout —— 偏好组合', () => {
       workbenchCollapsedByBudget: false,
     })
     expect(layout.sidebarMaxWidth).toBe(MAX_SIDEBAR_WIDTH)
-    expect(layout.workbenchMaxWidth).toBe(MAX_WORKBENCH_WIDTH)
+    expect(layout.workbenchMaxWidth).toBe(Number.POSITIVE_INFINITY)
   })
 })
 
 describe('resolveShellLayout —— 拖拽上限', () => {
-  it('右栏上限永远给聊天列留 480px,且不超过 600', () => {
-    expect(resolveShellLayout(input({ shellWidth: 1800 })).workbenchMaxWidth).toBe(MAX_WORKBENCH_WIDTH)
+  it('右栏上限永远给聊天列留 480px —— 没有固定上限,屏幕越宽能拖越宽', () => {
+    // 1800:余量 1800 − 300 − 480 = 1020
+    expect(resolveShellLayout(input({ shellWidth: 1800 })).workbenchMaxWidth).toBe(1020)
     // 1100:余量 1100 − 300 − 480 = 320
     expect(resolveShellLayout(input({ shellWidth: 1100 })).workbenchMaxWidth).toBe(320)
     // 900:余量只剩 120,但 250 是硬地板,上限不许跌破它
@@ -170,7 +171,7 @@ describe('resolveShellLayout —— 拖拽上限', () => {
     expect(resolveShellLayout(input({ shellWidth: 1800 })).sidebarMaxWidth).toBe(MAX_SIDEBAR_WIDTH)
     // 1400:余量 1400 − 360 − 480 = 560 → 仍被 500 的产品上限收住
     expect(resolveShellLayout(input({ shellWidth: 1400 })).sidebarMaxWidth).toBe(MAX_SIDEBAR_WIDTH)
-    // 1100:右栏已被压到 250,余量 1100 − 250 − 480 = 370
-    expect(resolveShellLayout(input({ shellWidth: 1100 })).sidebarMaxWidth).toBe(370)
+    // 1100:右栏已收窄到 320,余量 1100 − 320 − 480 = 300
+    expect(resolveShellLayout(input({ shellWidth: 1100 })).sidebarMaxWidth).toBe(300)
   })
 })

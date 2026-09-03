@@ -24,6 +24,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from '@/components/common/Button.vue'
+import { shellResizing } from '@/composables/useShellLayout'
 import { useTerminalsStore } from '@/stores/terminals'
 import {
   detachView,
@@ -49,14 +50,29 @@ const descriptor = computed(() =>
 
 let observer: ResizeObserver | null = null
 let fitFrame = 0
+let fitDeferredByResize = false
 
+/* 拖外壳分隔条期间不 refit:xterm 的 fit 会整本重排 scrollback 并把新列数
+   同步给 PTY(SIGWINCH → shell 重绘回流),逐帧做就是拖拽掉帧的大头。拖拽中
+   内容保持旧排版被面板边缘裁切,松手补一次(shellResizing watch)。 */
 function scheduleFit(): void {
+  if (shellResizing.value) {
+    fitDeferredByResize = true
+    return
+  }
   if (fitFrame) return
   fitFrame = requestAnimationFrame(() => {
     fitFrame = 0
     fitTerminal(props.terminalId)
   })
 }
+
+watch(shellResizing, resizing => {
+  if (!resizing && fitDeferredByResize) {
+    fitDeferredByResize = false
+    scheduleFit()
+  }
+})
 
 async function mountTerminal(terminalId: string): Promise<void> {
   const container = containerRef.value

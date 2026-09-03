@@ -48,9 +48,12 @@ export const MIN_SIDEBAR_WIDTH = 200
 export const MAX_SIDEBAR_WIDTH = 500
 export const DEFAULT_SIDEBAR_WIDTH = 300
 
-/** 右栏最窄 250px 是设计稿硬指标(`right-panel.html`)。 */
+/**
+ * 右栏最窄 250px 是设计稿硬指标(`right-panel.html`)。宽度**没有固定上限**
+ * (2026-08-24 裁定):能拖多宽由布局协调器按"聊天列 ≥ 480px"的预算实时给,
+ * 偏好层只守地板。
+ */
 export const MIN_WORKBENCH_WIDTH = 250
-export const MAX_WORKBENCH_WIDTH = 600
 export const DEFAULT_WORKBENCH_WIDTH = 360
 
 export interface LayoutPrefs {
@@ -87,7 +90,7 @@ export function clampSidebarWidth(width: number): number {
 
 export function clampWorkbenchWidth(width: number): number {
   if (!Number.isFinite(width)) return DEFAULT_WORKBENCH_WIDTH
-  return Math.min(MAX_WORKBENCH_WIDTH, Math.max(MIN_WORKBENCH_WIDTH, Math.round(width)))
+  return Math.max(MIN_WORKBENCH_WIDTH, Math.round(width))
 }
 
 function resolveStorage(storage?: LayoutPrefsStorage | null): LayoutPrefsStorage | null {

@@ -53,7 +53,7 @@
       :workbench-slide-width="shellLayout.workbenchWidth"
       @sidebar-resize-start="handleSidebarResizeStart"
       @sidebar-resize-end="handleSidebarResizeEnd"
-      @workbench-resize-start="inspectorResizing = true"
+      @workbench-resize-start="handleInspectorResizeStart"
       @workbench-resize-end="handleInspectorResizeEnd"
       @update:workbench-panel-width="handleInspectorPanelSizeUpdate"
     >
@@ -165,7 +165,7 @@ import { useVoiceStore } from '@/stores/voice'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { resolveInspectorDefaultOpen } from '@/composables/useInspectorDefault'
 import { MIN_SIDEBAR_WIDTH, useLayoutPrefsStore } from '@/stores/layoutPrefs'
-import { CHAT_MIN_WIDTH, useShellLayout } from '@/composables/useShellLayout'
+import { CHAT_MIN_WIDTH, setShellResizing, useShellLayout } from '@/composables/useShellLayout'
 import { useFloatingSidebar } from '@/composables/useFloatingSidebar'
 import { Sidebar } from '@/components/sidebar'
 import AppShell from '@/components/shell/AppShell.vue'
@@ -727,8 +727,16 @@ onUnmounted(() => {
   disposeShellWidthObserver = null
 })
 
+/* `shellResizing` 是重内容组件(终端/编辑器)的"拖拽中"闸门:拖拽期间它们
+   暂停逐帧 refit/remeasure,松手一次成型(useShellLayout 里有整段说明)。 */
+function handleInspectorResizeStart() {
+  inspectorResizing.value = true
+  setShellResizing(true)
+}
+
 function handleInspectorResizeEnd() {
   inspectorResizing.value = false
+  setShellResizing(false)
   layoutPrefs.setWorkbenchWidth(workbenchPanelWidth.value)
 }
 

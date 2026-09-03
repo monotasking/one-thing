@@ -12,7 +12,7 @@
  *
  * 装不下就按固定顺序从右往左收(用户偏好只在预算允许时兑现):
  *
- *     1. workbench 收窄到 250
+ *     1. workbench 收窄到装得下(下限 250)
  *     2. workbench 折叠
  *     3. sidebar 从停靠转浮层
  *
@@ -31,7 +31,6 @@ import { computed, ref, type ComputedRef, type Ref } from 'vue'
 import {
   MAX_SIDEBAR_WIDTH,
   MIN_SIDEBAR_WIDTH,
-  MAX_WORKBENCH_WIDTH,
   MIN_WORKBENCH_WIDTH,
   clampSidebarWidth,
   clampWorkbenchWidth,
@@ -96,9 +95,12 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
   const room = () => width - occupied()
   const tight = () => width > 0 && room() < CHAT_MIN_WIDTH
 
-  // 1. 右栏收窄到 250(设计稿硬指标,再窄就只剩省略号)。
+  // 1. 右栏收窄到还装得下的宽度(下限 250 —— 设计稿硬指标,再窄就只剩省略号)。
+  //    右栏宽度没有固定上限,所以偏好可能远超当前窗宽;这里按预算把它压到刚好
+  //    给聊天列留出 480,而不是一刀切回 250。
   if (tight() && workbenchVisible && workbenchWidth > MIN_WORKBENCH_WIDTH) {
-    workbenchWidth = MIN_WORKBENCH_WIDTH
+    const fit = width - (sidebarDocked ? sidebarWidth : 0) - CHAT_MIN_WIDTH
+    workbenchWidth = Math.max(MIN_WORKBENCH_WIDTH, Math.min(workbenchWidth, fit))
   }
 
   // 2. 右栏折叠 —— store.workbenchOpen 不动,窗宽恢复自动回弹。
@@ -115,13 +117,12 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
 
   const chatWidth = width > 0 ? Math.max(0, room()) : 0
 
+  // 右栏没有固定上限:拖到头的约束只有"给聊天列留 480"。窗宽没量到时不设限
+  // (Splitter 对非有限的 max 就当没有上限)。
   const workbenchHeadroom = width > 0
     ? width - (sidebarDocked ? sidebarWidth : 0) - CHAT_MIN_WIDTH
-    : MAX_WORKBENCH_WIDTH
-  const workbenchMaxWidth = Math.max(
-    MIN_WORKBENCH_WIDTH,
-    Math.min(MAX_WORKBENCH_WIDTH, workbenchHeadroom),
-  )
+    : Number.POSITIVE_INFINITY
+  const workbenchMaxWidth = Math.max(MIN_WORKBENCH_WIDTH, workbenchHeadroom)
 
   const sidebarHeadroom = width > 0
     ? width - (workbenchVisible ? workbenchWidth : 0) - CHAT_MIN_WIDTH
@@ -151,6 +152,18 @@ export function resolveShellLayout(input: ShellLayoutInput): ShellLayout {
 const shellWidth = ref(0)
 /** 右栏该不该显示的运行时闸(有会话 / 过过工作区面板),由 App.vue 灌。 */
 const workbenchRequested = ref(false)
+/**
+ * 右栏分隔条拖拽进行中(App 在 workbench-resize-start/end 拨)。
+ *
+ * 重排昂贵的内容组件(终端 refit、编辑器 remeasure)订阅它,拖拽期间暂停对
+ * 每帧宽度变化的全量响应,松手后一次成型 —— 外壳层逐帧跟随实测只要几毫秒,
+ * 掉帧的大头是这些重消费者(2026-08-25 拖拽掉帧根治)。
+ */
+export const shellResizing = ref(false)
+
+export function setShellResizing(resizing: boolean): void {
+  shellResizing.value = resizing
+}
 
 export function setShellWidth(width: number): void {
   shellWidth.value = Number.isFinite(width) ? width : 0
@@ -164,6 +177,7 @@ export function setWorkbenchRequested(requested: boolean): void {
 export function resetShellLayoutRuntime(): void {
   shellWidth.value = 0
   workbenchRequested.value = false
+  shellResizing.value = false
 }
 
 /**
