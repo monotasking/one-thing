@@ -40,6 +40,11 @@
 | `interaction.ts:64` | 1 | `ipc` → 盖章 `'ipc'`,否则从 pending 读 | 通道亲和 | **保留** |
 | `logs.ts:66` | 1 | 只把 transport 写进日志字段 | 记账 | **保留** |
 
+**施工后(B0–B3,提交 92bdb43c / 84678457 / 298c42c5)**:上表里「外设」「信任」「面」三类全部归零,只剩
+`interaction 1 / logs 1 / mcp 1 / session-command 1 / settings 1`(mcp / settings 各是一个 `payloadLeavesProcess` helper);
+`OnethingHostPorts` 十五格(加 `terminal` 与 `localTrust`);`/api/capabilities` 五位从后端判据推导;
+`packages/renderer/` 一字未动。以下是施工前的现状记录,保留作对照。
+
 `/api/capabilities`(`server/runtime.ts:570-590`):除 `collabRooms` 外全是静态常量 `webServerCapabilities`,
 与后端实际护栏的判据是两套——这是审计 §2.6 说的"前端能力位与后端判据对不齐"的根。
 

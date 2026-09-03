@@ -183,7 +183,7 @@ Host call sites (four; the Vue desktop is retired as a product but still compile
 
 Note: `backend.ts` carries static `import './tools/builtin/{index,headless,readonly}.js'` edges purely so single-file bundlers order the tool barrels before the factory's top-level await (the registry itself dynamic-imports them for test mocks). Do not remove them.
 
-**Host ports are one table, `OnethingHostPorts` (`packages/backend/host-ports.ts`)** — how hosts contribute Electron-only surfaces without the assembly layer importing electron. Every key is required; twelve accept an explicit `null`, which means "this host has no such capability" and leaves the underlying port untouched (today's structured degrade or noop — `applyHostPorts` simply does not call that `configure*`). Omitting a key is a `tsc` error (`__tests__/host-ports.type.test.ts` pins it). The underlying single-slot `configure*` functions are unchanged; hosts just no longer call them one by one:
+**Host ports are one table, `OnethingHostPorts` (`packages/backend/host-ports.ts`)** — how hosts contribute Electron-only surfaces without the assembly layer importing electron. Every key is required (fifteen since B3); thirteen accept an explicit `null`, which means "this host has no such capability" and leaves the underlying port untouched (today's structured degrade or noop — `applyHostPorts` simply does not call that `configure*`). Omitting a key is a `tsc` error (`__tests__/host-ports.type.test.ts` pins it). The underlying single-slot `configure*` functions are unchanged; hosts just no longer call them one by one:
 
 | Key | Underlying port | File |
 | --- | --- | --- |
@@ -201,6 +201,8 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 | `settings` | `configureSettingsHost` | `backend/wiring/settings/host-ports.ts` |
 | `evals` | `configureEvalsHost` | `backend/wiring/evals/host-ports.ts` |
 | `mcp` | `configureMCPClientHost` (only when `clientFactory` is non-null — `null` keeps the built-in `MCPClient`) + `configureMCPClientIdentity` | `runtime/src/mcp/{manager,identity}.ts` |
+| `terminal` | `configureTerminalBroadcaster` (the PTY output push; `hasTerminalHost()` is what the `terminal` RPC domain asks) | `runtime/src/terminal/service.wiring.ts` (B1, 2026-09-03) |
+| `localTrust` | `configureHostLocalTrust` — `{ origin: 'desktop-embedded' }` on both desktop shells, `null` on server (it declares `loopback-server` itself at listen time) and daemon; the **only** key whose `configure*` returns a restore, which `assemble` `own()`s | `backend/server/host-trust.ts` (was `local-trust.ts`; B2/B3) |
 
 **Deliberately outside the table**: `configureLogging` (the host calls it *before* assembly; it owns the log file and the janitor, which outlive the backend), the window-system ports (`configureGlobalWindowShortcuts` / `configureBrowserWindowProvider` / `configureDeepLinkService` / `configureVoiceTray` / `configurePluginAppVersion` / `configurePluginMarketIndex`), the eleven `configureApp*` internal adapter bindings, and the three `configureServer*Port` slots the server runtime fills itself.
 
@@ -513,16 +515,14 @@ Notes:
     system at all (it is not "UI-less" — it has no plugins).
     Since P4 终态批 C2 (2026-08-23) the whole domain rides the generic RPC channel
     (`pluginsRouter`, 19 invoke methods; `packages/backend/rpc/domains/plugins.ts`) — the
-    six `/api/plugins*` REST routes and the parameterized 501 are gone. The domain forks on
-    `context.transport`: **http** read/toggle faces call the same server-mirror closures
-    through `backend/server/plugin-catalog.ts`'s single-slot port, `configGet` derives a
-    read-only projection from that catalog listing, and every write face is judged by
-    **whether a plugin manager is assembled in this process** (the Vue desktop's embedded HTTP
-    face has one and takes the same path as IPC for the 11 write faces — but its 7 read faces
-    (`list/enable/disable/refresh/commands/executeCommand/configGet`) still go through the
-    server mirror catalog because `configureServerPluginCatalogPort` in `server/runtime.ts` is
-    not guarded by `ownsProcessPorts` (audit 2026-09-02 §2.5); the React shell assembles no
-    plugin manager at all today, so on it every plugins face answers "desktop host only"; a standalone `server:start` does not and
+    six `/api/plugins*` REST routes and the parameterized 501 are gone. Since B1 (2026-09-03,
+    `docs/design/backend-transport-forks-2026-09.md`) the domain no longer reads
+    `context.transport` at all: every face is judged by **whether a plugin manager is assembled
+    in this process** — manager present → the manager (IPC and HTTP alike, so the old
+    read-mirror/write-desktop split-brain on the embedded face is gone); no manager → the 7 read
+    faces fall back to `backend/server/plugin-catalog.ts`'s single-slot server-mirror port when the
+    server runtime installed one, and the 11 write faces answer "desktop host only" (the React
+    shell assembles no plugin manager today, so on it every plugins face degrades that way; a standalone `server:start` does not and
     returns the structured "desktop host only" answers verbatim). The renderer adds a
     second layer: capability bit `pluginsManage` (`platform/types.ts`) is `false` on web,
     so `platform/plugins-client.ts` never even sends the write faces. Two pushes stay on
@@ -651,11 +651,21 @@ Notes:
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-Because the shell rides the HTTP face, everything in the `rpc/domains/*` handlers that forks on
-`context.transport === 'http'` (13 of 42 domains; voice 11/11, terminal 7/7, plugins 18/19 are whole-domain
-forks) applies to the desktop too — those forks encode "does this host have the peripheral", which is a
-host-port question, not a transport one (audit 2026-09-02 §2.6; route B in
-`docs/audit/backend-design-patterns-review-2026-09-02.md` §6 is the fix).
+Because the shell rides the HTTP face, an RPC handler that judged by `context.transport === 'http'` would
+treat the desktop as a remote client. Since route B (`docs/design/backend-transport-forks-2026-09.md`,
+2026-09-03) `transport` answers exactly one question — **which bus channel replies** (`session-command` /
+`interaction`) — plus the two redaction sites that ask whether the payload leaves the process over the network
+(`mcp` / `settings`, `payloadLeavesProcess`). Everything else asks a host fact: **does this host have the
+peripheral** (`hasVoiceHost()` / `hasTerminalHost()` / `hasShellHost()` / `getPluginManager()`, all read from
+the `OnethingHostPorts` table) or **is the caller locally trusted** (`isHostLocallyTrusted()` from
+`backend/server/host-trust.ts`, declared by the host table's `localTrust` key at assembly and again by the
+embedded HTTP face when it mounts; a loopback `server:start` declares itself at listen). The shell is therefore
+`desktop-embedded`-trusted: background jobs, whole-machine search, evals paths, MCP config reads and stdio
+probes behave as on the old IPC desktop. `GET /api/capabilities` derives `localFileSystem` / `shellTools` /
+`terminal` / `pluginsManage` / `collabRooms` from those same predicates, so a client's capability bits and
+the backend's guards can no longer disagree. `bun run transport:gate` ratchets the per-file count of
+`context.transport` reads in `rpc/domains` (baseline `docs/audit/transport-forks-baseline-2026-09-03.txt`:
+5 reads in 5 files, decrease-only) and pins the React shell's `ipcMain` registrations at ≤ 1.
 
 **The Vue host (`apps/electron`) is the three-process IPC design; retired as a product, kept compiling and booting** (it still owns the CLI daemon entry and the `@main` bridges, and it is the only host today that wires plugins / voice / music / gateway / deeplink / todo-plan watchers):
 
@@ -737,7 +747,7 @@ AI tool_call → tool executor → core Permission.ask
 | Web half | the server's own dispatch over `POST /api/rpc` | `packages/renderer/platform/shell-web/` — a *same-shaped* table in the renderer, because in a browser the "host" is the page itself |
 | Context | `RpcDispatchContext` (`transport` / `ownerUid` / `workspaceId` / `callerId` / `sandboxRoot`) | `ShellDispatchContext` (`callerId`) |
 
-Both share one envelope (`RpcRequest` / `RpcResponse`, `@shared/ipc/rpc.ts`), one contract style (`defineRouter`), one renderer client factory (`createRouterClient`), and one rule about identity: **the host mints the context after its own auth ran; it is never read off the envelope.**
+Both share one envelope (`RpcRequest` / `RpcResponse`, `@shared/ipc/rpc.ts`), one contract style (`defineRouter`), one renderer client factory (`createRouterClient`), and one rule about identity: **the host mints the context after its own auth ran; it is never read off the envelope.** A second rule since route B: **a handler may read `context.transport` only to pick the reply channel or to decide redaction for a payload that leaves the process** — "does this host have X" is a host-port question (`OnethingHostPorts`), "may this caller do X" is a local-trust question (`isHostLocallyTrusted()`), and `transport:gate` counts the reads per domain file, decrease-only.
 
 **To add a data-plane domain** (2 steps): `defineRouter` in `@shared/ipc/<d>.ts` → register handlers in `packages/backend/rpc/domains/<d>.ts` → one-line client `platform/<d>-client.ts`. No shell file changes.
 
