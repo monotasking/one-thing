@@ -55,6 +55,8 @@ export function commandBelongsToDevSelf(command) {
 // electron-vite 起 Electron 时把入口当第一个参数传(默认 '.';dev-self 走
 // ELECTRON_ENTRY 指到自己的产物)。入口字符串就是区分两只 Electron 的钥匙。
 export function electronMainCommandPrefix(projectRoot, devSelf) {
-  const entry = devSelf ? DEV_SELF_ELECTRON_ENTRY : '.'
+  // 日常泳道(2026-09-03 起)是 React 壳:apps/desktop-react/scripts/dev-app.mjs 把打好的
+  // dist-electron/main.cjs 当入口传给 Electron。dev-self 泳道仍是 Vue 宿主的产物入口(第四步一起退役)。
+  const entry = devSelf ? DEV_SELF_ELECTRON_ENTRY : `${projectRoot}/apps/desktop-react/dist-electron/main.cjs`
   return `${projectRoot}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron ${entry}`
 }

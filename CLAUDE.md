@@ -8,21 +8,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Development
-bun run dev                # unified dev: electron + web + server (scripts/dev-unified.mjs)
-bun run dev:electron       # managed lane: electron only (can run alongside dev:web)
+bun run dev                # unified dev: React desktop + web + server (scripts/dev-unified.mjs)
+bun run dev:electron       # managed lane: React desktop only (can run alongside dev:web)
 bun run dev:web            # managed lane: web frontend :5174 + headless server :8787
-bun run electron:dev       # electron only (dev-with-logging.mjs → electron-vite dev; dev.log keeps runner+stderr only — the main process writes app.jsonl itself)
+bun run electron:dev       # React desktop only (apps/desktop-react/scripts/dev-app.mjs: vite :5173 + Electron on dist-electron/main.cjs; the main process writes app.jsonl itself)
+bun run vue:dev            # retired Vue host (dev-with-logging.mjs → electron-vite dev; dev.log keeps runner+stderr only) — dies with step ④
 bun run web:dev            # bare vite for apps/web (no server, no cleanup)
 bun run server:start       # node dist/server/main.js (run server:build first; dynamic port
                            # unless ONETHING_SERVER_PORT; refuses if the desktop already
                            # serves this store — `--force` bypasses)
 
 # Production build
-bun run build              # electron build (native mac panel + electron-vite → out/)
+bun run build              # desktop build (scripts/build-desktop.mjs: native mac panel → dist/cli/main.cjs → apps/desktop-react/{dist,dist-electron})
+bun run build:cli          # CLI only → dist/cli/main.cjs (esbuild, same recipe as the React main process)
+bun run vue:build          # retired Vue host (electron-vite → out/); vue:unpack packs it with electron-builder.vue.yml
 bun run web:build          # web build (→ dist/web)
 bun run server:build       # headless server build (→ dist/server/main.js)
 bun run build:check        # typecheck + build
-bun run build:unpack       # build + electron-builder --dir
+bun run build:unpack       # build + electron-builder --dir (React shell; `main` = apps/desktop-react/dist-electron/main.cjs)
+bun run gate:packaged      # the packaging gate: build:unpack → launch the .app on a temp store → run/http.json → /api → CDP window → clean exit
 bun run build:mac          # build + electron-builder --mac
 bun run build:win          # build + electron-builder --win
 bun run build:linux        # build + electron-builder --linux
@@ -89,7 +93,7 @@ apps/*  (thin sockets)
 ┌───────────────┬────────────────┬──────────────┬─────────────────────┐
 │ desktop-react │ apps/server    │ apps/web     │ CLI daemon          │
 │ (React shell) │ HTTP + SSE     │ browser      │ bin/onething.mjs →  │
-│ own core+HTTP │ dynamic port   │ build (Vue,  │ out/main/cli.js     │
+│ own core+HTTP │ dynamic port   │ build (Vue,  │ dist/cli/main.cjs   │
 │ apps/electron │                │ retired)     │                     │
 │ = Vue, retired│                │              │                     │
 └──────┬────────┴───────┬────────┴──────┬───────┴──────────┬──────────┘
@@ -902,7 +906,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 
 **MCP / ACP / Skills**: MCP is product-layer since P3'b-A (`packages/onething-runtime/src/mcp/` — client / manager / OAuth / identity, plus the `@shared/ipc`-speaking `bridge.wiring.ts` reachable through `index.wiring.ts`); ACP / skills assembly wiring in `packages/backend/wiring/{acp,skills}/`; themes are product-only now (`packages/onething-runtime/src/themes/`), as is the rest of the product logic.
 
-**CLI daemon**: `bin/onething.mjs` → `out/main/cli.js` (built from `apps/electron/src/main/cli/index.ts`). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
+**CLI daemon**: `bin/onething.mjs` → `dist/cli/main.cjs` (`scripts/build-cli.mjs`, esbuild with the React main process's recipe; source still at `apps/electron/src/main/cli/index.ts` until step ④ moves it to apps/cli). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
 
 **Workspace panels**: the six builtin panels (media / agents / tasks / music / practice / archive, declared once in `packages/renderer/workspace/panel-registry.ts`) and every plugin panel are **tabs in `RightWorkbenchPanel.vue`**, not a main-area container. Its tab bar carries two domains — 会话域 (left) | 工作区域 (right) — under three rules: a divider is drawn only when both domains are non-empty; a workspace tab shows its ✕ only while selected; new panels arrive through the `+` picker. Workspace tabs sit in the trailing segment (`insertTab` is the only place that maintains the boundary) and are **cross-session**: switching sessions no longer closes or resets them. Entry points — the sidebar `⋯` menu and the per-panel `windowEvent`s — all funnel into `openWorkspaceTab(panelId)`, which takes builtin ids and `plugin:<id>:<panel>` nav ids alike. `MediaPanel.vue`, the old fullscreen container that covered the chat, is retired; the media view itself is `components/MediaPanelContent.vue`. Plugin manifests may still declare `placements`, but both values now land in the same place (the `+` list); it survives only as the self-promotion gate for `api.ui.openWorkbench`.
 
@@ -917,16 +921,18 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 ### Build Output
 
 ```
-out/                   # electron-vite output (packaged by electron-builder → release/)
-├── main/index.js      # main process
-├── main/cli.js        # CLI daemon entry (bin/onething.mjs imports this)
-├── preload/index.js   # bundled preload (CommonJS)
-└── renderer/          # Vite SPA output
+apps/desktop-react/    # THE desktop (packaged by electron-builder → release/; `main` in root package.json)
+├── dist/              # Vite SPA output (index.html + assets; base './' so it loads from the asar)
+└── dist-electron/     # esbuild: main.cjs (own core + embedded HTTP/SSE face) + preload.cjs
 
 dist/
+├── cli/main.cjs       # CLI daemon entry (bin/onething.mjs imports this; scripts/build-cli.mjs)
 ├── server/main.js     # apps/server single-file SSR bundle (inlineDynamicImports —
 │                      # chunk-split + top-level await deadlocks module evaluation)
 └── web/               # apps/web browser build
+
+out/                   # retired Vue host (vue:build → electron-vite; packed only by vue:unpack /
+                       # electron-builder.vue.yml) — deleted with step ④ of runtime unification
 ```
 
 ### Tech Stack

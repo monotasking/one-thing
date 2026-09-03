@@ -28,8 +28,11 @@ npmRebuild: false
 directories:
   buildResources: build
   output: release
+# 主入口 = React 壳(运行时统一第三步,2026-09-03):`main` 指 apps/desktop-react/dist-electron/main.cjs,
+# 页面在 apps/desktop-react/dist/。Vue 宿主的旧产物 out/ 由 electron-builder.vue.yml 单独打,第四步删。
 files:
-  - out/**/*
+  - apps/desktop-react/dist/**/*
+  - apps/desktop-react/dist-electron/**/*
   - package.json
   # Exclude unnecessary files from node_modules
   - "!**/{CHANGELOG.md,README.md,readme.md,LICENSE,license,License}"

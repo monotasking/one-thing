@@ -19,7 +19,7 @@
  * 「三条推送合流」本身 —— 那件事由
  * `packages/renderer/platform/__tests__/electron-transport.test.ts` 直接钉。
  *
- * 跑法:仓根先 `bun run build`(electron-vite build → out/),然后
+ * 跑法:仓根先 `bun run vue:build`(electron-vite build → out/;根 `build` 自 2026-09-03 起是 React 壳),然后
  * `node scripts/gate-vue-host.mjs`。每次一个全新的临时 store + user-data-dir,
  * 跑完删干净;绝不碰 `~/.onething`。
  */
