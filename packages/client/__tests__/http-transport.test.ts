@@ -279,6 +279,55 @@ describe('createHttpTransport.events', () => {
     }
   })
 
+  /**
+   * C1:自愈的传输必须自己说出「断了」。
+   *
+   * 只看那个 `for await` 是看不见断线的 —— 它自愈,从头到尾不结束。所以
+   * `onConnectionChange` 是**枢纽那一格 `reconnecting` 唯一的产地**(真机门
+   * `gate:connect` 路径三验的就是这条链的另一头)。
+   */
+  it('onConnectionChange:接上报 open,断了报 retrying,重连再报 open', async () => {
+    vi.useFakeTimers()
+    try {
+      let connection = 0
+      harness.onEventsConnection = (_after, write, end) => {
+        connection += 1
+        if (connection === 1) {
+          write('retry: 20\n\n')
+          write(sse('session:event', { sequence: 1 }, 1))
+          setTimeout(() => end(), 0)
+          return
+        }
+        write(sse('session:event', { sequence: 2 }, 2))
+      }
+
+      const transport = createHttpTransport({ baseUrl: harness.baseUrl })
+      const states: string[] = []
+      const off = transport.onConnectionChange?.(state => states.push(state))
+      expect(off).toBeTypeOf('function')
+
+      const controller = new AbortController()
+      const got: TransportEvent[] = []
+      const drain = (async () => {
+        for await (const event of transport.events({ signal: controller.signal })) {
+          got.push(event)
+          if (got.length === 2) controller.abort()
+        }
+      })()
+      for (let tick = 0; tick < 60 && got.length < 2; tick += 1) {
+        await vi.advanceTimersByTimeAsync(20)
+      }
+      await drain
+
+      // 只在**变了**的时候叫 —— 不是每次退避都重报一遍 retrying。
+      expect(states).toEqual(['open', 'retrying', 'open'])
+      off?.()
+      transport.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('close() 让在途的 events() 循环收尾', async () => {
     harness.onEventsConnection = (_after, write) => {
       write(sse('session:event', { sequence: 1 }, 1))

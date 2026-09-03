@@ -1,16 +1,26 @@
+import { pluginsRouter } from '@shared/ipc/plugins'
 import type {
   ExecutePluginCommandResponse,
   GetPluginCommandsResponse,
 } from '@shared/ipc/plugins'
-import type { SessionCommandEmitResult } from '@shared/ipc/session-command'
+import {
+  sessionCommandRouter,
+  type SessionCommandEmitResult,
+} from '@shared/ipc/session-command'
 
 /**
- * 斜杠命令里**插件那一半**与 `@renderer/platform` 之间的那一层端口
+ * 斜杠命令里**插件那一半**与 core 的客户端(`@onething/client`)之间的那一层端口
  * (D4 波二)—— 与 `data/models-port.ts` / `data/files-port.ts` 同一形状、同一理由。
  *
- * 形状是平台调用面的子集,不是新契约:三条逐条对应
- * `pluginsApi.getPluginCommands` / `pluginsApi.executePluginCommand` /
- * `sessionCommands.emit`,一个字段都没多。
+ * 形状是契约的子集,不是新契约:三条逐条对应 `pluginsRouter` 的
+ * `commands` / `executeCommand` 与 `sessionCommandRouter` 的 `emit`,
+ * 一个字段都没多。
+ *
+ * ── C1:两条读面不过能力位 ──────────────────────────────────────────────
+ * Vue 那侧的 `pluginsApi` 在**写面**十一条上垫了一道 `capabilities.pluginsManage`
+ * 的本地拒绝。这里用到的两条(`commands` / `executeCommand`)都在那道线**之上**
+ * ——「两个宿主都打真路由」是它自己的分节标题。所以直接取 router 不是绕过闸门,
+ * 是因为这两条本来就没有闸门;后端答什么就报什么(见下面那条留账)。
  *
  * ── 为什么内置那七条几乎不在这里 ────────────────────────────────────────────
  * 内置命令**表**不需要取数:它是 `@onething/core/slash-commands` 的
@@ -63,22 +73,21 @@ export function configureCommandsPort(next: CommandsPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:`@renderer/platform`
- * 在模块顶层就会去摸 `window`,而端口被换掉的测试根本不该把它拖进来
+ * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:它要的是那个连通之后
+ * 才存在的客户端,而端口被换掉的测试根本不该把连通面拖进来
  * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<CommandsPort> {
-  const [{ pluginsApi }, { sessionCommands }, { whenConnected }] = await Promise.all([
-    import('@renderer/platform/plugins-client'),
-    import('@renderer/platform/session-command-client'),
-    import('../platform/connection'),
-  ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const pluginsApi = client.api(pluginsRouter)
+  const sessionCommands = client.api(sessionCommandRouter)
   const { SESSION_COMMAND_TYPES } = await import('@shared/events/session-commands')
   return {
     ready: () => whenConnected(),
-    listPluginCommands: () => pluginsApi.getPluginCommands(),
+    listPluginCommands: () => pluginsApi.commands({}),
     executePluginCommand: (commandName, args, sessionId) =>
-      pluginsApi.executePluginCommand(commandName, args, sessionId),
+      pluginsApi.executeCommand({ commandName, args, sessionId }),
     compactContext: (sessionId) =>
       sessionCommands.emit({
         sessionId,

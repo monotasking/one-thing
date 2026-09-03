@@ -1,8 +1,11 @@
-import type {
-  GetProvidersResponse,
-  ModelsListResponse,
-  ProviderUsageResponse,
+import {
+  modelsRouter,
+  providersRouter,
+  type GetProvidersResponse,
+  type ModelsListResponse,
+  type ProviderUsageResponse,
 } from '@shared/ipc/providers'
+import { oauthRouter } from '@shared/ipc/oauth'
 import type {
   OAuthCallbackRequest,
   OAuthCallbackResponse,
@@ -15,7 +18,13 @@ import type {
   OAuthStatusRequest,
   OAuthStatusResponse,
 } from '@shared/ipc/oauth'
-import type { AppSettings, GetSettingsResponse, SaveSettingsResponse } from '@shared/ipc/settings'
+import {
+  settingsRouter,
+  type AppSettings,
+  type GetSettingsResponse,
+  type SaveSettingsResponse,
+} from '@shared/ipc/settings'
+import { spacesRouter } from '@shared/ipc/spaces'
 import type {
   SpacesClearCredentialRequest,
   SpacesClearCredentialResponse,
@@ -30,7 +39,7 @@ import type {
 } from '@shared/ipc/spaces'
 
 /**
- * 「模型服务」设置面与 `@renderer/platform` 之间的那一层**端口** ——
+ * 「模型服务」设置面与 core 的客户端(`@onething/client`)之间的那一层**端口** ——
  * 与 `files-port` / `sessions-port` / `models-port` 同一形状、同一理由:这块面的
  * 全部判据(哪一家算一家、模式怎么分、副行说什么、写回怎么合并)都是纯逻辑,
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用
@@ -162,32 +171,24 @@ export function configureProviderSettingsPort(next: ProviderSettingsPort | undef
 }
 
 /**
- * 真实现是**惰性**建的,理由与 models-port 逐字相同:`@renderer/platform`
- * 在模块顶层就会去摸 `window`,而端口被换掉的测试根本不该把它拖进来
+ * 真实现是**惰性**建的,理由与 models-port 逐字相同:它要的是那个连通之后
+ * 才存在的客户端,而端口被换掉的测试根本不该把连通面拖进来
  * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<ProviderSettingsPort> {
-  const [
-    { providersApi },
-    { modelsApi },
-    { settingsApi },
-    { spacesApi },
-    { oauthApi },
-    { whenConnected },
-  ] = await Promise.all([
-    import('@renderer/platform/providers-client'),
-    import('@renderer/platform/models-client'),
-    import('@renderer/platform/settings-client'),
-    import('@renderer/platform/spaces-client'),
-    import('@renderer/platform/oauth-client'),
-    import('../platform/connection'),
-  ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const providersApi = client.api(providersRouter)
+  const modelsApi = client.api(modelsRouter)
+  const settingsApi = client.api(settingsRouter)
+  const spacesApi = client.api(spacesRouter)
+  const oauthApi = client.api(oauthRouter)
   return {
     ready: () => whenConnected(),
-    listProviders: () => providersApi.getProviders(),
+    listProviders: () => providersApi.list({}),
     listModels: (providerId, forceRefresh) =>
-      modelsApi.getModelsWithCapabilities(providerId, forceRefresh ? { forceRefresh } : undefined),
-    readSettings: () => settingsApi.getSettings(),
+      modelsApi.getWithCapabilities({ providerId, ...(forceRefresh ? { forceRefresh } : {}) }),
+    readSettings: () => settingsApi.getSettings({}),
     saveSettings: (settings) => settingsApi.saveSettings(settings),
     readProviderSettings: (spaceId) => spacesApi.getProviderSettings({ id: spaceId }),
     writeProviderSettings: (request) => spacesApi.setProviderSettings(request),
@@ -200,7 +201,8 @@ async function realPort(): Promise<ProviderSettingsPort> {
     oauthDevicePoll: (request) => oauthApi.devicePoll(request),
     oauthCallback: (request) => oauthApi.callback(request),
     oauthLogout: (request) => oauthApi.logout(request),
-    getProviderUsage: (providerId, spaceId) => providersApi.getProviderUsage(providerId, spaceId),
+    getProviderUsage: (providerId, spaceId) =>
+      providersApi.usage({ providerId, ...(spaceId ? { spaceId } : {}) }),
   }
 }
 

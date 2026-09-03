@@ -1,10 +1,10 @@
-import type { GetProvidersResponse } from '@shared/ipc/providers'
-import type { SpacesGetProviderSettingsResponse } from '@shared/ipc/spaces'
-import type { GetSettingsResponse } from '@shared/ipc/settings'
-import type { SessionMutationResponse } from '@shared/ipc/sessions'
+import { providersRouter, type GetProvidersResponse } from '@shared/ipc/providers'
+import { spacesRouter, type SpacesGetProviderSettingsResponse } from '@shared/ipc/spaces'
+import { settingsRouter, type GetSettingsResponse } from '@shared/ipc/settings'
+import { sessionsRouter, type SessionMutationResponse } from '@shared/ipc/sessions'
 
 /**
- * 模型目录与模型切换,和 `@renderer/platform` 之间的那一层**端口** ——
+ * 模型目录与模型切换,和 core 的客户端(`@onething/client`)之间的那一层**端口** ——
  * 与 `data/files-port.ts` / `data/sessions-port.ts` 同一形状、同一理由:
  * models-source 的全部判据(哪一家可见、目录怎么懒加载、当前模型怎么解析)
  * 都是纯逻辑,不该为了测它去起一台 core。真实现是下面那一个,测试用
@@ -87,29 +87,22 @@ export function configureModelsPort(next: ModelsPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:`@renderer/platform`
- * 在模块顶层就会去摸 `window`,而端口被换掉的测试根本不该把它拖进来
+ * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:它要的是那个连通之后
+ * 才存在的客户端,而端口被换掉的测试根本不该把连通面拖进来
  * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<ModelsPort> {
-  const [
-    { providersApi },
-    { spacesApi },
-    { settingsApi },
-    { sessionsApi },
-    { whenConnected },
-  ] = await Promise.all([
-    import('@renderer/platform/providers-client'),
-    import('@renderer/platform/spaces-client'),
-    import('@renderer/platform/settings-client'),
-    import('@renderer/platform/sessions-client'),
-    import('../platform/connection'),
-  ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const providersApi = client.api(providersRouter)
+  const spacesApi = client.api(spacesRouter)
+  const settingsApi = client.api(settingsRouter)
+  const sessionsApi = client.api(sessionsRouter)
   return {
     ready: () => whenConnected(),
-    listProviders: () => providersApi.getProviders(),
+    listProviders: () => providersApi.list({}),
     readProviderSettings: (spaceId) => spacesApi.getProviderSettings({ id: spaceId }),
-    readSettings: () => settingsApi.getSettings(),
+    readSettings: () => settingsApi.getSettings({}),
     updateSessionModel: (sessionId, provider, model) =>
       sessionsApi.updateModel({ sessionId, provider, model }),
   }

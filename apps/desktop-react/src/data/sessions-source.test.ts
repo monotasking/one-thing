@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
-import type { SessionLifecycleEvent } from '@renderer/platform/session-lifecycle'
+import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
 import { configureSessionsPort } from './sessions-port'
 import type { SessionsPort } from './sessions-port'
 import { useExposeStore } from '../expose/store'

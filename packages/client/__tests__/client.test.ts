@@ -194,6 +194,91 @@ describe('createEventHub', () => {
     hub.close()
   })
 
+  /**
+   * C1:自愈传输的断线怎么被看见。
+   *
+   * HTTP 传输断了自己退避重连,那个 `for await` 从头到尾不结束 —— 只看迭代器
+   * 的话 `reconnecting` 永远到不了(真机门证伪过 C0 的注)。所以传输自己报,
+   * 枢纽只做翻译。这里的替身就是「一条不会结束、但会说自己断没断」的流。
+   */
+  it('传输报 retrying → reconnecting;报 open 回来 → connecting(不是 live)', async () => {
+    let announce: ((state: 'open' | 'retrying') => void) | undefined
+    const emitters: ((event: TransportEvent) => void)[] = []
+    const transport: Transport = {
+      invoke: async () => ({ ok: true, data: null }),
+      events: options => ({
+        [Symbol.asyncIterator]: (): AsyncIterator<TransportEvent> => {
+          const queue: TransportEvent[] = []
+          let wake: (() => void) | undefined
+          emitters.push(event => {
+            queue.push(event)
+            wake?.()
+          })
+          return {
+            next: async () => {
+              for (;;) {
+                if (options?.signal?.aborted) return { done: true, value: undefined }
+                const next = queue.shift()
+                if (next) return { done: false, value: next }
+                await new Promise<void>(resolve => {
+                  wake = resolve
+                  options?.signal?.addEventListener('abort', () => resolve(), { once: true })
+                })
+                wake = undefined
+              }
+            },
+          }
+        },
+      }),
+      capabilities: async () => ({}) as never,
+      onConnectionChange: listener => {
+        announce = listener
+        return () => { announce = undefined }
+      },
+      close: () => {},
+    }
+
+    const hub = createEventHub(transport)
+    const seen: string[] = []
+    hub.onStatusChange(status => seen.push(status))
+    hub.on(IPC_CHANNELS.SESSION_EVENT, () => {})
+    await settle()
+
+    announce?.('open')
+    emitters.forEach(emit => emit({ name: IPC_CHANNELS.SESSION_EVENT, data: 1 }))
+    await settle()
+    expect(hub.status()).toBe('live')
+
+    announce?.('retrying')
+    expect(hub.status()).toBe('reconnecting')
+
+    // 回来了但还没收到东西 —— 说 connecting,不许谎报 live。
+    announce?.('open')
+    expect(hub.status()).toBe('connecting')
+
+    emitters.forEach(emit => emit({ name: IPC_CHANNELS.SESSION_EVENT, data: 2 }))
+    await settle()
+    expect(hub.status()).toBe('live')
+    expect(seen).toEqual(['connecting', 'live', 'reconnecting', 'connecting', 'live'])
+    hub.close()
+  })
+
+  it('传输没有那个可选口时,状态照旧只看迭代器(内存替身一行不用改)', async () => {
+    const transport = createMemoryTransport()
+    expect(transport.onConnectionChange).toBeUndefined()
+    const hub = createEventHub(transport)
+    hub.on(IPC_CHANNELS.SESSION_EVENT, () => {})
+    await settle()
+    expect(hub.status()).toBe('connecting')
+    transport.emit({ name: IPC_CHANNELS.SESSION_EVENT, data: null })
+    await settle()
+    expect(hub.status()).toBe('live')
+    transport.close()
+    await settle()
+    expect(hub.status()).toBe('reconnecting')
+    hub.close()
+  })
+
   it('onStatusChange 报状态', async () => {
     const transport = createMemoryTransport()
     const hub = createEventHub(transport)

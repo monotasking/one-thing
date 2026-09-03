@@ -1,5 +1,6 @@
 import type { AgentsListResponse } from '@shared/ipc/agents'
-import type { SessionMutationResponse } from '@shared/ipc/sessions'
+import { sessionsRouter, type SessionMutationResponse } from '@shared/ipc/sessions'
+import { agentsRouter } from '@shared/ipc/agents'
 
 /**
  * agents 名册与「这条会话归谁」之间的那一层**端口**。
@@ -9,8 +10,8 @@ import type { SessionMutationResponse } from '@shared/ipc/sessions'
  * 切换的乐观更新与回滚)全是纯逻辑,不该为了测它去起一台 core。
  *
  * 三个方法逐条对应:
- *  - `agentsApi.listAgents`(`@shared/ipc/agents` 的 `agents.list`);
- *  - `sessionsApi.updateAgent`(`@shared/ipc/sessions` 的 `sessions.updateAgent`);
+ *  - `agentsRouter` 的 `agents.list`;
+ *  - `sessionsRouter` 的 `sessions.updateAgent`;
  *  - `whenConnected()`(D0 的连通面)。
  *
  * ── 为什么读面是 `agents.list` 而不是某个「名册投影」 ─────────────────────
@@ -40,18 +41,17 @@ export function configureAgentsPort(next: AgentsPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的,理由与 sessions-port 同一条:`@renderer/platform`
- * 在模块顶层就会去摸 `window`,而端口被换掉的测试根本不该把它拖进来。
+ * 真实现是**惰性**建的,理由与 sessions-port 同一条:它要的是那个连通之后才
+ * 存在的客户端,而端口被换掉的测试根本不该把连通面拖进来。
  */
 async function realPort(): Promise<AgentsPort> {
-  const [{ agentsApi }, { sessionsApi }, { whenConnected }] = await Promise.all([
-    import('@renderer/platform/agents-client'),
-    import('@renderer/platform/sessions-client'),
-    import('../platform/connection'),
-  ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const agentsApi = client.api(agentsRouter)
+  const sessionsApi = client.api(sessionsRouter)
   return {
     ready: () => whenConnected(),
-    list: () => agentsApi.listAgents(),
+    list: () => agentsApi.list({}),
     updateSessionAgent: (sessionId, agentId) => sessionsApi.updateAgent({ sessionId, agentId }),
   }
 }

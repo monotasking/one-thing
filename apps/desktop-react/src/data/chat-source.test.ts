@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
-import type { SessionStreamPayload } from '@renderer/platform/types'
+import type { SessionStreamPayload } from '@shared/events/envelope'
 import { configureChatPort, type ChatPort } from './chat-port'
 import { useNotifyStore } from '../services/notify-store'
 import { ABORT_SETTLE_MS, REFOLD_THROTTLE_MS, selectEngineBusy, useChatSource } from './chat-source'

@@ -23,7 +23,7 @@ import { ModelCatalog } from './ModelCatalog'
 import { catalogQuery } from '../catalog-query'
 import { useAsyncPending, useMutation, useQuery } from '../../data/kernel'
 import { CustomProviderDialog } from './CustomProviderDialog'
-import { isProviderEnabledIn } from '@renderer/stores/helpers/provider-model'
+import { isProviderEnabledIn } from '@onething/client/model/provider-model'
 import s from './ProviderSettingsPanel.module.css'
 
 /**

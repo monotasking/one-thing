@@ -2,7 +2,7 @@ import { useCallback, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
-import type { SessionLifecycleEvent } from '@renderer/platform/session-lifecycle'
+import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
 import {
   buildGroups,
   buildProjects,
@@ -46,7 +46,7 @@ import { sessionsPort } from './sessions-port'
  *
  * ── SSE 的判据(增量 vs 重拉) ────────────────────────────────────────────
  * 能到手的只有 `session:event`(按会话的信封)。`session:created` /
- * `session:deleted` 是**全局事件**,而 `@renderer/platform` 没有开全局事件的订阅面
+ * `session:deleted` 是**全局事件**,而当时的平台面没有开全局事件的订阅面
  * —— 所以「新建 / 删除」不能直接听见,只能从别的迹象推:
  *
  *  a. 信封的 sessionId **不在当前列表里** → 出现了我们不认识的会话 → 整表重拉

@@ -1,7 +1,7 @@
-import type { SearchResult } from '@shared/ipc/search'
+import { searchRouter, type SearchResult } from '@shared/ipc/search'
 
 /**
- * 跨会话**正文检索**与 `@renderer/platform` 之间的那一层端口 —— 与
+ * 跨会话**正文检索**与 core 的客户端(`@onething/client`)之间的那一层端口 —— 与
  * `data/files-port.ts` / `data/sessions-port.ts` 同一形状、同一理由:
  * 「哪些命中画得出来、怎么去重、怎么翻页」全是纯逻辑,不该为了测它去起一台 core。
  * 真实现是下面那一个,测试用 `configureSearchPort` 换成假的。
@@ -52,15 +52,14 @@ export function configureSearchPort(next: SearchPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的,理由与 files-port 逐字相同:`@renderer/platform`
- * 在模块顶层就会去摸 `window`,而端口被换掉的测试根本不该把它拖进来
+ * 真实现是**惰性**建的,理由与 files-port 逐字相同:它要的是那个连通之后才
+ * 存在的客户端,而端口被换掉的测试根本不该把连通面拖进来
  * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<SearchPort> {
-  const [{ searchApi }, { whenConnected }] = await Promise.all([
-    import('@renderer/platform/search-client'),
-    import('../platform/connection'),
-  ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const searchApi = client.api(searchRouter)
   return {
     ready: () => whenConnected(),
     queryMessages: async (query, limit) => {

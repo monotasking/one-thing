@@ -59,6 +59,19 @@ export interface TransportEvents {
 
 export type TransportEventName = Extract<keyof TransportEvents, string>
 
+/**
+ * 传输自己对「那条推送流通不通」的看法(C1 补)。
+ *
+ * 为什么需要它:`events()` 在 HTTP 上是**自愈**的 —— 断了它自己退避重连,那个
+ * `for await` 从头到尾不结束。于是枢纽光看迭代器**永远看不见断线**,`status()`
+ * 的 `reconnecting` 那一格在真机上不可达(C1 的真机门当场证伪了 C0 的那句
+ * 「流断了,传输在退避」)。断没断只有传输知道,所以由它说。
+ *
+ * 两格,不多不少:`open` = 这条流刚接上(还没收到第一条);`retrying` = 断了,
+ * 正在退避。**没有 `closed`** —— 那是 `close()` 的事,枢纽自己知道。
+ */
+export type TransportConnectionState = 'open' | 'retrying'
+
 export interface TransportEventsOptions {
   /** 从这个序号**之后**续播(server 侧 `?after=`,与 `Last-Event-ID` 同义)。 */
   after?: number
@@ -71,6 +84,14 @@ export interface Transport {
   /** 推送流。实现负责断线重连;消费者只管 `for await`。 */
   events(options?: TransportEventsOptions): AsyncIterable<TransportEvent>
   capabilities(): Promise<HostCapabilities>
+  /**
+   * **可选**:订这条传输对自己连接状态的看法。返回退订函数。
+   *
+   * 可选是有判据的:一个**不会断**的传输(内存替身、进程内 IPC 桥)没有这件事
+   * 可说,让它实现一个恒 `open` 的桩是在造假事实。枢纽的做法是「有就用,没有就
+   * 退回只看迭代器」—— 于是「加一种传输」照旧只是写一个文件(方案 §6 第二条)。
+   */
+  onConnectionChange?(listener: (state: TransportConnectionState) => void): () => void
   /** 停掉这条传输的一切在途工作(在途的 `events()` 循环会正常结束)。 */
   close(): void
 }

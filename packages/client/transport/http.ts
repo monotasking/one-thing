@@ -25,6 +25,7 @@ import type {
   ClientLogger,
   HostCapabilities,
   Transport,
+  TransportConnectionState,
   TransportEvent,
   TransportEventsOptions,
 } from './types.js'
@@ -87,6 +88,9 @@ class HttpTransport implements Transport {
   private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>
   /** 本传输自己的生命周期闸:`close()` 一拉,所有在途的 `events()` 循环收尾。 */
   private readonly lifetime = new AbortController()
+  /** 「那条流通不通」的订阅者(§4.1 的可选口)。 */
+  private readonly connectionListeners = new Set<(state: TransportConnectionState) => void>()
+  private connection: TransportConnectionState | undefined
 
   constructor(options: HttpTransportOptions) {
     this.options = options
@@ -135,6 +139,28 @@ class HttpTransport implements Transport {
     return (await response.json()) as HostCapabilities
   }
 
+  onConnectionChange(
+    listener: (state: TransportConnectionState) => void,
+  ): () => void {
+    this.connectionListeners.add(listener)
+    return () => this.connectionListeners.delete(listener)
+  }
+
+  /** 只在**变了**的时候叫一声 —— 每次退避都重报一遍 `retrying` 是噪音。 */
+  private setConnection(next: TransportConnectionState): void {
+    if (this.connection === next) return
+    this.connection = next
+    for (const listener of [...this.connectionListeners]) {
+      try {
+        listener(next)
+      } catch (error) {
+        this.options.logger?.warn?.('connection listener threw', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+  }
+
   events(options: TransportEventsOptions = {}): AsyncIterable<TransportEvent> {
     return this.eventLoop(options)
   }
@@ -165,6 +191,8 @@ class HttpTransport implements Transport {
             `Event stream failed: ${response.status} ${response.statusText}`,
           )
         }
+        // 接上了 —— 报在**读第一条之前**:一条什么都不发的活流也是接上了。
+        this.setConnection('open')
         for await (const message of parseSseStream(response.body, {
           onRetry: ms => { serverRetryMs = ms },
         })) {
@@ -186,6 +214,8 @@ class HttpTransport implements Transport {
         })
       }
       if (stopped()) return
+      // 走到这里就是断了(抛错 / 流干净地结束都算)——退避之前先说一声。
+      this.setConnection('retrying')
       // 流干净地结束(server 重启 / 代理收线)也走这条:一条推送流没有"正常结束"。
       const base = serverRetryMs ?? this.options.initialReconnectDelayMs ?? 1000
       const max = this.options.maxReconnectDelayMs ?? 30_000
@@ -199,6 +229,7 @@ class HttpTransport implements Transport {
 
   close(): void {
     if (!this.lifetime.signal.aborted) this.lifetime.abort()
+    this.connectionListeners.clear()
   }
 }
 

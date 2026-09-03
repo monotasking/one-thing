@@ -4,20 +4,24 @@ import type {
 } from '@shared/ipc/session-events'
 import type { SessionCommandEmitResult } from '@shared/ipc/session-command'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
-import type { SessionStreamPayload } from '@renderer/platform/types'
+import type { SessionStreamPayload } from '@shared/events/envelope'
+import { IPC_CHANNELS } from '@shared/ipc/channels'
+import { sessionEventsRouter } from '@shared/ipc/session-events'
+import { sessionCommandRouter } from '@shared/ipc/session-command'
 import { expandFileTokens } from '@shared/prompt-references'
 
 /**
- * 聊天数据源与 `@renderer/platform` 之间的那一层**端口**(D3,路线 A)。
+ * 聊天数据源与 core 的客户端(`@onething/client`)之间的那一层**端口**(D3,路线 A)。
  *
  * 与 `sessions-port.ts` 逐条同判例:形状是**平台调用面的子集**,不是新契约,
  * 存在的唯一理由是可测 —— chat-source 的全部判据(增量折 / 缺号重折 / 活尾巴 /
  * 认领出站)都是纯逻辑,不该为了测它去起一台 core。
  *
  * 六个方法逐条对应:
- *  - `sessionEventsApi.listRaw / readBlob`(`@shared/ipc/session-events`);
- *  - `platformApi.onSessionEvent / onSessionStream`;
- *  - `sessionCommands.emit`(`@shared/ipc/session-command`);
+ *  - `sessionEventsRouter` 的 `listRaw / readBlob`;
+ *  - 推送面上的 `session:event` / `session:stream`(同一条 SSE,由客户端的
+ *    事件枢纽按名分发 —— 从前这两条各开一条 EventSource);
+ *  - `sessionCommandRouter` 的 `emit`;
  *  - `whenConnected()`(D0 的连通面)。
  *
  * ── 为什么是 `listRaw` 而不是 `list` ─────────────────────────────────────
@@ -83,24 +87,27 @@ export function configureChatPort(next: ChatPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:`@renderer/platform`
- * 在模块顶层就会去摸 `window`,而端口被换掉的测试根本不该把它拖进来。
+ * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:它要的是那个连通之后
+ * 才存在的客户端,而端口被换掉的测试根本不该把连通面拖进来。
+ *
+ * ── 命令**整条**交出去,不再过一道「摊平 mentions」 ──────────────────────
+ * Vue 那侧的 `withPlainCommandMentions` 是为它自己的 composer 准备的:那里的
+ * mention 是 Vue 的响应式 Proxy,不摊平过不了结构化克隆。这台壳的命令里
+ * **根本没有 mentions 这一格**(见 `sendMessage` 的注:附件与 @ 都在正文里),
+ * 所以那一道在这里是空转 —— 不搬。哪天壳长出 mentions,摊平的落点是**这里**。
  */
 async function realPort(): Promise<ChatPort> {
-  const [{ platformApi }, { sessionEventsApi }, { sessionCommands }, { whenConnected }] =
-    await Promise.all([
-      import('@renderer/platform'),
-      import('@renderer/platform/session-events-client'),
-      import('@renderer/platform/session-command-client'),
-      import('../platform/connection'),
-    ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const sessionEventsApi = client.api(sessionEventsRouter)
+  const sessionCommands = client.api(sessionCommandRouter)
   const { SESSION_COMMAND_TYPES } = await import('@shared/events/session-commands')
   return {
     ready: () => whenConnected(),
     listRaw: (sessionId) => sessionEventsApi.listRaw({ sessionId }),
     readBlob: (sessionId, hash) => sessionEventsApi.readBlob({ sessionId, hash }),
-    onSessionEvent: (callback) => platformApi.onSessionEvent(callback),
-    onSessionStream: (callback) => platformApi.onSessionStream(callback),
+    onSessionEvent: (callback) => client.events.on(IPC_CHANNELS.SESSION_EVENT, callback),
+    onSessionStream: (callback) => client.events.on(IPC_CHANNELS.SESSION_STREAM, callback),
     // 命令**整条透传**,一个字段都不多给:`channel` 缺席时引擎按会话自己的
     // 频道走(默认 'ipc'),渲染层替它拍这个板就是在两处定义同一件事。
     sendMessage: (sessionId, content) =>

@@ -92,12 +92,18 @@ export interface Transport {
   invoke(request: RpcRequest): Promise<RpcResponse>          // 一条 RPC 信封(@shared/ipc/rpc)
   events(options?: { after?: number; signal?: AbortSignal }): AsyncIterable<TransportEvent>   // 推送流;after = 从这个序号续播
   capabilities(): Promise<PlatformCapabilities>              // GET /api/capabilities 的形(从 @shared 取类型)
+  onConnectionChange?(cb: (state: 'open' | 'retrying') => void): () => void   // C1 补,可选:传输自己知道那条流通不通
   close(): void
 }
 export interface TransportEvent { name: string; data: unknown; id?: number }
 ```
 
 - **http**:`invoke` = `POST /api/rpc`(Bearer 头);`events` = `GET /api/events`(Bearer 头,`?after=`),用 `fetch` 拿 `ReadableStream`,`parseSseStream` 解析;断线按 `retry` 指数退避重连,带上最后一个 `id` 当 `after`。**不用 `EventSource`**,所以 Node 22 / 24 与浏览器同一份代码;token 不再出现在 URL。
+- **`onConnectionChange`(C1 补,可选)**:`events()` 在 HTTP 上是**自愈**的 —— 断了它自己退避重连,
+  那个 `for await` 从头到尾不结束。于是枢纽光看迭代器**永远看不见断线**,`status()` 的 `reconnecting`
+  那一格在真机上不可达(C1 的真机门 `gate:connect` 路径三当场证伪了本文原来那句「流断了,传输在退避」)。
+  断没断只有传输知道,所以由它说;两格(`open` / `retrying`),**可选** —— 一个不会断的传输(内存替身)
+  没有这件事可说,让它实现一个恒 `open` 的桩是造假事实,枢纽退回只看迭代器。
 - **memory**:测试替身;也是「换传输不改上层」的活证据。
 - IPC 传输(Vue 桌面)**不在本包**:它需要 `window.electronAPI`,由 Vue renderer 自己实现 `Transport` 接口(`electron-transport.ts`,把 `rpcInvoke` 与 `on*` 订阅适配成 `invoke` / `events`),注入给本包的 `createOnethingClient`。
 
@@ -179,7 +185,7 @@ React Native 有全局 `fetch` 与 `ReadableStream`(0.7x 起),`createHttpTranspo
 | 期 | 交什么 | 门 |
 | --- | --- | --- |
 | **C0 包骨架 + 传输** | `packages/client` 全部(§3);root workspaces + exports;边界规则两条;Node 环境测试:`parseSseStream` 黄金表(多行 data / id / retry / 分块边界切在 `\n` 中间)、http 传输对一个本地假 server 的 invoke / events / 重连 / after 续播、memory 传输、`api(router)` 记忆、事件表类型测试(`expectTypeOf`) | `bun run test`(node env)绿;`boundary:gate` 绿;`tsc -p packages/client` 零错;**Node 22 与 Electron 24 两处各跑一次 SSE 测试**(与 gate:native 同一条「不靠注释」的法) |
-| **C1 React 壳迁移** | §5.1 全部;删 `@renderer` 别名;`host.ts` | React 壳 tsc / eslint / vitest 绿;`rg '@renderer' apps/desktop-react` = 0;真机门 `gate:chat` / `gate:data` / `gate:search-messages` / `gate:connect` 绿(隔离 store,CDP);边界门「壳不 import 壳」绿 |
+| **C1 React 壳迁移**(已落地 2026-09-03) | §5.1 全部;删 `@renderer` 别名;`host.ts`;`gate:connect` 加路径三(断了再回来)与「token 只在 Bearer 头里」的断言;`Transport.onConnectionChange` 补口 | React 壳 tsc / eslint / vitest 绿;`rg '@renderer' apps/desktop-react` = 0;真机门 `gate:chat` / `gate:data` / `gate:search-messages` / `gate:workspace` / `gate:theme` / `gate:connect`(三路径)绿(隔离 store,CDP);边界门「壳不 import 壳」**基线清零 → 零基线硬闸** |
 | **C2 Vue renderer 改消费** | §5.2 全部 | `bun run build` / `web:build` 绿;renderer 既有测试绿;`rg 'new EventSource' packages/renderer` = 0 |
 | C3(下一批)CLI 当客户端 | §5.3 | 另案 |
 
@@ -199,6 +205,10 @@ C0 → C1 → C2 串行;C1 与 C2 可并行(都只依赖 C0)但共享 `@shared` 
 
 - server 侧 `GET /api/events` 的 `?token=` 口:Vue 退役后删,顺带把 http.ts 那段注释一起删。
 - `PlatformApi` 大表与它的两张「web 上没有」名单:随 Vue 退役消失;React 壳不消费它。
-- `usage` 的 `getSessionUsage` / `getUsageSummary` 今天在 `PlatformApi` 上而不是 router 上——C1 时核,没有 router 就加(`@shared/ipc/usage.ts` 已有类型)。
+- ~~`usage` 的 `getSessionUsage` / `getUsageSummary` 今天在 `PlatformApi` 上而不是 router 上——C1 时核,没有 router 就加~~ **C1 核账结清:它有 router。**
+  `@shared/ipc/usage.ts` 的 `usageRouter`(`getSummary` / `getSession`)自 T0 试点起就在,后端
+  `packages/backend/rpc/domains/usage.ts` 也注册着;Vue 那侧的 `platformApi.getSessionUsage` 本来就是
+  `usageApi.getSession` 的一行别名(`platform/web.ts:597`、`platform/electron.ts:47`)。所以 C1
+  **一个域都没加**,`data/meter-port.ts` 直接 `client.api(usageRouter).getSession({ sessionId })`。
 - `readCoreDiscovery` 的判活判据与 `apps/server/src/main.ts` 的拒启判据要同一份(抽到 `@shared/backend`),否则 CLI 与 server 对「core 活没活」会各说各话。
 - 运行时统一第三步(根脚本与打包配置换主到 React 壳)与第四步(退役 Vue 宿主)在本批之后;本批做完,第四步删的只剩 Vue 自己的东西。

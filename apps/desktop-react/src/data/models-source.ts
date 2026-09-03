@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
-import { isProviderEnabledIn } from '@renderer/stores/helpers/provider-model'
+import { isProviderEnabledIn } from '@onething/client/model/provider-model'
 import type { OpenRouterModel, ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
 import { createMutation, createQuery, createQueryFamily, useQuery } from './kernel'
 import type { Mutation } from './kernel'

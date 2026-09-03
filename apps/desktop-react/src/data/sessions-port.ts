@@ -7,19 +7,21 @@ import type {
 import type { SessionMutationResponse, SessionsCreateRequest } from '@shared/ipc/sessions'
 import type { GetSessionSegmentsResponse } from '@shared/ipc/toc'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
-import type { SessionLifecycleEvent } from '@renderer/platform/session-lifecycle'
+import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
+import { IPC_CHANNELS } from '@shared/ipc/channels'
+import { sessionsRouter } from '@shared/ipc/sessions'
 
 /**
- * 数据源与 `@renderer/platform` 之间的那一层**端口**。
+ * 数据源与 core 的客户端(`@onething/client`)之间的那一层**端口**。
  *
  * 它存在的唯一理由是可测:sessions-source 的全部判据(节流、增量 vs 重拉、缓存
  * 失效)都是纯逻辑,不该为了测它去起一台 core。真实现是下面那一个,
  * 测试用 `configureSessionsPort` 换成假的。
  *
- * 形状是**平台调用面的子集**,不是新契约:八个方法逐条对应
- * `sessionsApi.listMeta / getSegments / getMessagesPage / getUserMarkers /
- * create / updateWorkingDirectory`、`platformApi.onSessionEvent` 与
- * `platform/session-lifecycle` 的 `onSessionLifecycle`,一个字段都没有多。
+ * 形状是**契约的子集**,不是新契约:八个方法逐条对应 `sessionsRouter` 的
+ * `listMeta / getSegments / getMessagesPage / getUserMarkers / create /
+ * updateWorkingDirectory`、推送面上的 `session:event`,与
+ * `@onething/client` 的 `onSessionLifecycle`,一个字段都没有多。
  */
 export interface SessionsPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
@@ -72,8 +74,8 @@ export function configureSessionsPort(next: SessionsPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的:`@renderer/platform` 在模块顶层就会去摸 `window`,
- * 而端口被换掉的测试根本不该把它拖进来(单元测试不碰网,默认假端口装在
+ * 真实现是**惰性**建的:它要的是那个**连通之后才存在**的客户端,而端口被换掉的
+ * 测试根本不该把连通面拖进来(单元测试不碰网,默认假端口装在
  * `src/test/setup.ts` 里)。
  *
  * vite build 会为此打一条 “dynamically imported … but also statically imported”
@@ -81,13 +83,12 @@ export function configureSessionsPort(next: SessionsPort | undefined): void {
  * 一个独立 chunk。**这是预期的** —— 它买的是测试隔离,不是分包。
  */
 async function realPort(): Promise<SessionsPort> {
-  const [{ platformApi }, { sessionsApi }, { onSessionLifecycle }, { whenConnected }] =
-    await Promise.all([
-      import('@renderer/platform'),
-      import('@renderer/platform/sessions-client'),
-      import('@renderer/platform/session-lifecycle'),
-      import('../platform/connection'),
-    ])
+  const [{ onethingClient, whenConnected }, { onSessionLifecycle }] = await Promise.all([
+    import('../platform/connection'),
+    import('@onething/client/events/session-lifecycle'),
+  ])
+  const client = await onethingClient()
+  const sessionsApi = client.api(sessionsRouter)
   return {
     ready: () => whenConnected(),
     listMeta: () => sessionsApi.listMeta({}),
@@ -100,8 +101,8 @@ async function realPort(): Promise<SessionsPort> {
     create: (request) => sessionsApi.create(request),
     updateWorkingDirectory: (sessionId, workingDirectory) =>
       sessionsApi.updateWorkingDirectory({ sessionId, workingDirectory }),
-    onSessionEvent: (callback) => platformApi.onSessionEvent(callback),
-    onSessionLifecycle: (callback) => onSessionLifecycle(callback),
+    onSessionEvent: (callback) => client.events.on(IPC_CHANNELS.SESSION_EVENT, callback),
+    onSessionLifecycle: (callback) => onSessionLifecycle(client.events, callback),
   }
 }
 

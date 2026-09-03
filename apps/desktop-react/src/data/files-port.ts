@@ -1,3 +1,4 @@
+import { filesRouter } from '@shared/ipc/files'
 import type {
   FilesActionResponse,
   FilesListDirectoryResponse,
@@ -9,7 +10,7 @@ import type {
 } from '@shared/ipc/files'
 
 /**
- * 文件面取数与 `@renderer/platform` 之间的那一层**端口** —— 与
+ * 文件面取数与 core 的客户端(`@onething/client`)之间的那一层**端口** —— 与
  * `data/sessions-port.ts` / `theme/theme-port.ts` 同一形状、同一理由:
  * files-source 的全部判据(根怎么定、懒展开、每目录一次、失败怎么归类)都是纯逻辑,
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用 `configureFilesPort`
@@ -29,10 +30,15 @@ import type {
  * 摊成四个位置参数会立刻长出一串 undefined,所以它原样收那个请求对象。
  *
  * ── 留账:watch 本批不做 ──────────────────────────────────────────────────
- * `watchStart` / `watchStop` 与 `platformApi.onWorkspaceFileChanged` 都没有出现在
- * 这个端口上。理由不是忘了:桌面那两条**从来是投影桩**(校验 root 之后回
- * `{success:true}`,全仓没有任何地方往 `FILE_WATCH_EVENT` 发过消息,见
+ * `watchStart` / `watchStop` 与那条文件变更推送都没有出现在这个端口上。
+ * 理由不是忘了:桌面那两条**从来是投影桩**(校验 root 之后回 `{success:true}`,
+ * 全仓没有任何地方往 `FILE_WATCH_EVENT` 发过消息,见
  * `packages/backend/rpc/domains/files.ts` 文件头第 3 条),http 那侧才是真的。
+ * 而且那条推送**不在 `GET /api/events` 上** —— 它骑的是另一条 SSE 路由
+ * (`/api/files/watch/events` 的 `workspace:file-changed`),不属于客户端事件枢纽
+ * 今天认的三个名(`session:event` / `session:stream` / `settings:changed`)。
+ * 也就是说「接上 watch」在两个宿主上是两种不同的东西,那是一次要拍板的取舍,
+ * 不是顺手件。
  * 也就是说「接上 watch」在两个宿主上是两种不同的东西,那是一次要拍板的取舍,
  * 不是顺手件。本批的刷新是**显式的**:面板头上那颗「重新读取」。
  */
@@ -79,15 +85,14 @@ export function configureFilesPort(next: FilesPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:`@renderer/platform`
- * 在模块顶层就会去摸 `window`,而端口被换掉的测试根本不该把它拖进来
+ * 真实现是**惰性**建的,理由与 sessions-port 逐字相同:它要的是那个连通之后
+ * 才存在的客户端,而端口被换掉的测试根本不该把连通面拖进来
  * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<FilesPort> {
-  const [{ filesApi }, { whenConnected }] = await Promise.all([
-    import('@renderer/platform/files-client'),
-    import('../platform/connection'),
-  ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const filesApi = client.api(filesRouter)
   return {
     ready: () => whenConnected(),
     listDirectory: (path) => filesApi.listDirectory({ path }),

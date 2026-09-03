@@ -6,10 +6,10 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": true,
-    // D0 起 `@renderer/platform` 的源码进了本程序的类型图。`noUnusedLocals` /
-    // `noUnusedParameters` 是**程序级**开关,没法只对自己这半边开 —— 开着就会把
-    // 仓里其它包的历史未用声明当成本应用的错误报出来。仓根三份 tsconfig 本来
-    // 就是关的,这里对齐它们(卫生靠 eslint,不靠这两颗)。
+    // 跨包源码(`@shared`、`@onething/*` 的 .ts exports)进了本程序的类型图。
+    // `noUnusedLocals` / `noUnusedParameters` 是**程序级**开关,没法只对自己这
+    // 半边开 —— 开着就会把仓里其它包的历史未用声明当成本应用的错误报出来。
+    // 仓根三份 tsconfig 本来就是关的,这里对齐它们(卫生靠 eslint,不靠这两颗)。
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
@@ -24,10 +24,24 @@
     // alias 与 vite.config.ts 逐条对齐(apps/web 同款做法:指源码目录)。
     // `@onething/*` 没有 paths —— 它们是真 workspace 包,走 exports 解析。
     "baseUrl": ".",
+    // C1 起壳自己的别名**只有 `@shared` 一条**:Vue 渲染层的包别名(以及它内部
+    // 自指别名的通配形)随「React 壳对 packages/renderer 零 import」一起删掉了,
+    // 边界门 `checkShellsDoNotImportOtherShells` 现在是零基线硬闸。
+    //
+    // 剩下的 `@/types` **不是壳的别名,是别人的账**:`electron/main.ts` 引
+    // `@onething/backend`,于是装配层进了本程序的类型图,而它里头有四处
+    // `import type … from '@/types'`(rpc/domains/acp.ts、rpc/domains/providers.ts、
+    // wiring/engine/stream/agent-loop-runtime.ts、wiring/engine/stream/tool-execution.ts)
+    // —— 装配层伸手去拿已退役的 Vue 渲染层那张类型桶。四条都是 `import type`,
+    // 构建期整条擦掉(所以 `scripts/build-electron.mjs` 至今只要一条 `@shared`),
+    // 只有 tsc 需要认得它。
+    //
+    // 写成**精确键**而不是通配 `@/*`:这样壳自己写 `from '@/xxx'` 照样 tsc 红,
+    // 别人的账不会顺手变成壳的一扇后门。真正的修法是把那四处改引 `@shared`
+    // (那张桶本身就是从 `@shared` 再导出的),归装配层另批。
     "paths": {
       "@shared/*": ["../../packages/shared/*"],
-      "@renderer/*": ["../../packages/renderer/*"],
-      "@/*": ["../../packages/renderer/*"]
+      "@/types": ["../../packages/renderer/types/index.ts"]
     }
   },
   // `packages/shared/types` 是**环境声明**目录(culori / *.md?raw 的 shim)。

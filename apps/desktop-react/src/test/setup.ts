@@ -45,7 +45,7 @@ if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !=
  * 会话数据源的端口:测试里默认是**一个什么都不回的假端口**。
  *
  * 不装这一手的话,任何渲染了会话侧的用例都会经 `sessionsPort()` 动态 import
- * 真的 `@renderer/platform`,进而在 jsdom 里发出 fetch / SSE ——
+ * 真的连通面,进而在 jsdom 里发出 fetch / SSE ——
  * 单元测试**不该碰网**。要验取数的用例自己 `configureSessionsPort` 换一个。
  */
 import { configureSessionsPort } from '../data/sessions-port'
@@ -68,7 +68,7 @@ configureSessionsPort({
  * 聊天数据源的端口:同一条理由,同一手 —— 默认是**一个什么都不回的假端口**。
  *
  * 不装的话,任何渲染了聊天区的用例都会经 `chatPort()` 动态 import 真的
- * `@renderer/platform`,进而在 jsdom 里发出 fetch / SSE。要验折叠的用例
+ * 真的连通面,进而在 jsdom 里发出 fetch / SSE。要验折叠的用例
  * 自己 `configureChatPort` 换一个。
  */
 import { configureChatPort } from '../data/chat-port'
@@ -104,7 +104,7 @@ configureCommandsPort({
 
 /**
  * agent 名册的端口:同一条理由,同一手。顶栏在每一个渲染了外壳的用例里都在,
- * 不装的话它们会一起去摸真的 `@renderer/platform`。
+ * 不装的话它们会一起去摸真的连通面。
  */
 import { configureAgentsPort } from '../data/agents-port'
 
@@ -116,7 +116,7 @@ configureAgentsPort({
 
 /**
  * 文件面的端口:同一条理由,同一手(D5)。检索面板与文件树面板都会去摸它,
- * 不装的话它们会一起动态 import 真的 `@renderer/platform`。
+ * 不装的话它们会一起动态 import 真的连通面。
  *
  * 默认这一份**什么都不回**,而且回的是「不成功」而不是「成功但是空」——
  * 一个没接线的端口不该假装自己看见了一个空目录。要验取数的用例自己
@@ -136,7 +136,7 @@ configureFilesPort({
 
 /**
  * 模型名册与切模型的端口:同一条理由,同一手(D2)。composer 在每一个渲染了
- * 外壳的用例里都在,不装的话它们会一起去摸真的 `@renderer/platform`。
+ * 外壳的用例里都在,不装的话它们会一起去摸真的连通面。
  *
  * 默认这一份**成功但是空**:一个连上了、然而这台机器一个 provider 都没配的
  * core 是真实存在的状态(空表 ≠ 出错),抽屉据此画「无匹配」。要验的用例
@@ -148,7 +148,7 @@ configureFilesPort({
  */
 /**
  * 跨会话正文检索的端口(09-02):同一条理由,同一手。检索面板一敲词就会去摸它,
- * 不装的话每个渲染了检索面的用例都会动态 import 真的 `@renderer/platform`。
+ * 不装的话每个渲染了检索面的用例都会动态 import 真的连通面。
  *
  * 默认这一份**成功但是空**:一台连上了、然而一条消息都没搜到的 core 是真实存在
  * 的状态(空表 ≠ 出错),面板据此不画正文行、也不画那句「消息没搜成」。
@@ -240,7 +240,7 @@ configureMeterPort({
 
 /**
  * 工作区(space)的端口:同一条理由,同一手。Dock 在每一个渲染了外壳的用例里都在,
- * 而它开工就读一次工作区列表 —— 不装的话它们会一起去摸真的 `@renderer/platform`。
+ * 而它开工就读一次工作区列表 —— 不装的话它们会一起去摸真的连通面。
  *
  * 默认这一份**读得到、只有默认那一个**:那是一台刚装好、还没建过空间的机器的
  * 真实样子(不是「读不到」—— 读不到会让瓦面退成兜底图标,把每个用例都拖进

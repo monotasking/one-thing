@@ -1,38 +1,22 @@
-# 壳不许 import 别的壳 —— 只减不增的棘轮基线(C0,docs/design/client-sdk-2026-09.md §3 / §7)
+# 壳不许 import 别的壳 —— 只减不增的棘轮基线(C0 立表 / C1 清零,
+# docs/design/client-sdk-2026-09.md §3 / §7)
 #
 # 一行一个文件:`<路径> <这个文件里跨壳 import 的条数>`。判据由
 # `scripts/headless-boundary-check.ts` 的 `checkShellsDoNotImportOtherShells()` 采:
 # 只看 **import 说明符**(注释与字符串先剥掉),命中
 # `@renderer/…` 或 `packages/renderer/…`,含动态 `import()` 与 `import type`。
 #
-# 规矩:**任一文件高于这里的数、或出现这里没有的文件 → 红**。降下来了不红,
-# checker 会打一行 note 提醒来收紧这张表。
+# 规矩:**任一文件高于这里的数、或出现这里没有的文件 → 红**。
 #
-# 这张表是 **C1 的施工清单**:方案 §5.1 把这 19 个文件逐条改成 `client.api(router)` /
-# `client.events.on(...)` / 从 `@onething/client` 引判据与类型。清零之后把
-# 下面的条目全删掉(保留这段头),这条就自动变成零基线硬闸 —— 不用改 checker 一行。
+# ── C1 已清零(2026-09-03),这张表下面一行都没有 ────────────────────────────
+# 采于 C0 那天是 19 个文件 / 39 条(那就是方案 §5.1 的施工清单)。C1 把它们逐条改成
+# `client.api(router)` / `client.events.on(...)` / 从 `@onething/client` 引判据与类型,
+# 并删掉了 apps/desktop-react 的 `@renderer` 与 `@/` 两条别名(tsconfig + vite.config)。
+# 表空了,**于是这条规则现在就是零基线硬闸** —— 与 boundary:gate 的其它零基线规则
+# 同形:任何一条跨壳 import 当场红,checker 一行未改(`baseline.get(file) ?? 0`)。
 #
-# 反方向(`packages/renderer` → `apps/desktop-react`)今天是 0,checker 里直接硬闸,
-# 不在这张表上。
+# 反方向(`packages/renderer` → `apps/desktop-react`)一直是 0,checker 里直接硬闸,
+# 从来不在这张表上。
 #
-# 采于 2026-09-03,19 个文件 / 39 条。
-
-apps/desktop-react/src/data/agents-port.ts 2
-apps/desktop-react/src/data/chat-port.ts 4
-apps/desktop-react/src/data/chat-source.test.ts 1
-apps/desktop-react/src/data/chat-source.ts 1
-apps/desktop-react/src/data/commands-port.ts 2
-apps/desktop-react/src/data/files-port.ts 1
-apps/desktop-react/src/data/meter-port.ts 2
-apps/desktop-react/src/data/models-port.ts 4
-apps/desktop-react/src/data/models-source.ts 1
-apps/desktop-react/src/data/provider-settings-port.ts 5
-apps/desktop-react/src/data/search-port.ts 1
-apps/desktop-react/src/data/sessions-port.ts 4
-apps/desktop-react/src/data/sessions-source.test.ts 1
-apps/desktop-react/src/data/sessions-source.ts 1
-apps/desktop-react/src/data/spaces-port.ts 1
-apps/desktop-react/src/platform/connection.ts 3
-apps/desktop-react/src/providers/components/ProviderSettingsPanel.tsx 1
-apps/desktop-react/src/providers/projection.ts 1
-apps/desktop-react/src/theme/theme-port.ts 3
+# 这张表**只减不增**。往里加一行 = 有人又把两个壳接了起来 —— 那是一次拍板,
+# 不是顺手件。

@@ -7,7 +7,7 @@ import { materializeChatMessagesCached } from './chat-materialize'
 import { StreamWater } from './stream-water'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
-import type { SessionStreamPayload } from '@renderer/platform/types'
+import type { SessionStreamPayload } from '@shared/events/envelope'
 import { coreRenderMessageHasToolWork } from '@onething/core/session/render-anchors'
 import {
   appendTail,

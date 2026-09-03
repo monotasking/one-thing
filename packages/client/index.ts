@@ -30,6 +30,7 @@ export type {
   ClientLogger,
   HostCapabilities,
   Transport,
+  TransportConnectionState,
   TransportEvent,
   TransportEventName,
   TransportEvents,

@@ -1,3 +1,4 @@
+import { spacesRouter } from '@shared/ipc/spaces'
 import type {
   SpacesCreateRequest,
   SpacesCreateResponse,
@@ -8,7 +9,7 @@ import type {
 } from '@shared/ipc/spaces'
 
 /**
- * 工作区(space)取数与 `@renderer/platform` 之间的那一层**端口** —— 与
+ * 工作区(space)取数与 core 的客户端(`@onething/client`)之间的那一层**端口** —— 与
  * `data/files-port.ts` / `data/sessions-port.ts` 同一形状、同一理由:
  * 切换器的全部判据(排序、字标、色标、序号键、过滤)都是纯逻辑,
  * 不该为了测它去起一台 core。真实现是下面那一个,测试用 `configureSpacesPort`
@@ -48,15 +49,14 @@ export function configureSpacesPort(next: SpacesPort | undefined): void {
 }
 
 /**
- * 真实现是**惰性**建的,理由与 files-port / sessions-port 逐字相同:
- * `@renderer/platform` 在模块顶层就会去摸 `window`,而端口被换掉的测试
- * 根本不该把它拖进来(默认假端口装在 `src/test/setup.ts` 里)。
+ * 真实现是**惰性**建的,理由与 files-port / sessions-port 逐字相同:它要的是
+ * 那个连通之后才存在的客户端,而端口被换掉的测试根本不该把连通面拖进来
+ * (默认假端口装在 `src/test/setup.ts` 里)。
  */
 async function realPort(): Promise<SpacesPort> {
-  const [{ spacesApi }, { whenConnected }] = await Promise.all([
-    import('@renderer/platform/spaces-client'),
-    import('../platform/connection'),
-  ])
+  const { onethingClient, whenConnected } = await import('../platform/connection')
+  const client = await onethingClient()
+  const spacesApi = client.api(spacesRouter)
   return {
     ready: () => whenConnected(),
     list: () => spacesApi.list({}),

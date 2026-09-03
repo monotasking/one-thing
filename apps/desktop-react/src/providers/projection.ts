@@ -1,4 +1,4 @@
-import { isProviderEnabledIn } from '@renderer/stores/helpers/provider-model'
+import { isProviderEnabledIn } from '@onething/client/model/provider-model'
 import { frozenFlagOf } from '../ui/list-placement'
 import type { OpenRouterModel, ProviderConfig } from '@shared/ipc/providers'
 import type {

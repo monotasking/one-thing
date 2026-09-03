@@ -12,6 +12,15 @@
  * 3. **状态是一格,由这里维护**,不由壳各自猜:`idle`(没人订)→ `connecting`
  *    (拉起来了,还没收到第一条)→ `live` → `reconnecting`(流断了,传输在退避)
  *    → `closed`(`close()` 之后,终态)。React 壳第一批自己维护的那一格搬进来。
+ *
+ *    **`reconnecting` 那一格的产地有两个**(C1 补的第二个):
+ *
+ *    - 迭代器结束而没人退订 —— 内存替身 `close()` 之后就是这样;
+ *    - 传输自己报 `retrying`(`Transport.onConnectionChange`,可选口)。HTTP 传输
+ *      是**自愈**的:断了它自己退避重连,那个 `for await` 从头到尾不结束 ——
+ *      只看迭代器的话 `reconnecting` 在真机上**永远到不了**(C1 的真机门当场
+ *      证伪了 C0 的那句注)。所以断没断由传输说,枢纽只做翻译。
+ *      传输没有这个口(内存替身)时退回只看迭代器,一行都不用改。
  */
 import type {
   ClientLogger,
@@ -53,6 +62,7 @@ export function createEventHub(
 
   let status: EventHubStatus = 'idle'
   let pump: AbortController | undefined
+  let offConnection: (() => void) | undefined
   let closed = false
   let after = options.after
 
@@ -93,11 +103,25 @@ export function createEventHub(
     }
   }
 
+  /**
+   * 传输的两格 → 枢纽的五格。
+   *
+   * `retrying` → `reconnecting` 一对一。`open` 只在**从 `reconnecting` 回来**时
+   * 说话,而且说的是 `connecting` 不是 `live`:新连上的那条流还没交出过一条,
+   * 谎报 `live` 会让壳以为一切照旧。第一条到手时 `deliver` 那边自然转 `live`。
+   */
+  const onTransportConnection = (state: 'open' | 'retrying'): void => {
+    if (closed || !pump) return
+    if (state === 'retrying') setStatus('reconnecting')
+    else if (status === 'reconnecting') setStatus('connecting')
+  }
+
   const startPump = (): void => {
     if (closed || pump) return
     const controller = new AbortController()
     pump = controller
     setStatus('connecting')
+    offConnection = transport.onConnectionChange?.(onTransportConnection)
     void (async () => {
       try {
         for await (const event of transport.events({
@@ -120,7 +144,11 @@ export function createEventHub(
           setStatus('reconnecting')
         }
       } finally {
-        if (pump === controller) pump = undefined
+        if (pump === controller) {
+          pump = undefined
+          offConnection?.()
+          offConnection = undefined
+        }
       }
     })()
   }
@@ -129,6 +157,8 @@ export function createEventHub(
     if (closed || subscriberCount() > 0) return
     pump?.abort()
     pump = undefined
+    offConnection?.()
+    offConnection = undefined
     setStatus('idle')
   }
 
@@ -175,6 +205,8 @@ export function createEventHub(
       closed = true
       pump?.abort()
       pump = undefined
+      offConnection?.()
+      offConnection = undefined
       byName.clear()
       anyListeners.clear()
       setStatus('closed')

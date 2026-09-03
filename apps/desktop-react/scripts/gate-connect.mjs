@@ -14,17 +14,29 @@
  *       `window.__d0.sseEvents > 0`(SSE 真的到了渲染层)
  *    ④ 应用退出后:那个 pid 没了、发现文件被删、**没有**任何遗留 core 进程
  *
+ *  路径三(C1 新增,`docs/design/client-sdk-2026-09.md` §5.1):**断了再回来**。
+ *    脚本把 core 钉在固定端口 + 固定 token 上起,拉起应用,收到过事件之后
+ *    SIGKILL 掉它 → 断言渲染层那一格状态走到 `reconnecting`;把同端口同 token 的
+ *    core 起回来 → 断言那一格回到 `live`、新造的事件照样到得了渲染层,而且**重连
+ *    那一次请求带着 `?after=<最后一个 SSE id>`**(续播语义;C0 之前的 EventSource
+ *    从来没带过这个参数)。
+ *
  *  路径二(core 已在跑):脚本先自己起 `dist/server/main.js` 写出发现文件 → 拉起应用 →
  *    断言应用**没有**再装配第二只 core(发现文件里的 pid 还是脚本那个),rpc/SSE 同样通过,
  *    应用退出后那台 server **还活着**(不属于它的不杀)。这条是 D0 的原样保留:
  *    换心不许改变「有人在当家就让位」这条行为。
  *
- * 跑法:`node scripts/gate-connect.mjs`(仓根先 `bun run server:build` —— 路径二要它)。
+ * 三条路径都额外钉一条 **C1 的传输事实**:渲染层拉 `GET /api/events` 时
+ * **token 在 `Authorization: Bearer` 头里、URL 里一个字都没有**。server 侧那条
+ * `?token=` 的口今天还认(它是给 Vue 的 `EventSource` 留的),所以「没走那条口」
+ * 只能由门看着 —— 它是本批唯一一处用户可感知的传输变化。
+ *
+ * 跑法:`node scripts/gate-connect.mjs`(仓根先 `bun run server:build` —— 路径二三要它)。
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { connect } from 'node:net'
+import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -112,6 +124,18 @@ async function rpc(record, domain, method, payload = {}) {
   return response.json()
 }
 
+/** 要一个当下空着的端口号 —— 路径三要「同一个端口再起一次」。 */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer()
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address()
+      probe.close(() => resolve(port))
+    })
+  })
+}
+
 async function launchApp(store) {
   const app = await electron.launch({
     executablePath: electronBinary,
@@ -124,7 +148,33 @@ async function launchApp(store) {
     },
   })
   const page = await app.firstWindow()
-  return { app, page }
+  // 推送流的每一次请求都记下来 —— 监听在 firstWindow 之后**立刻**挂,
+  // 渲染层的 JS 这时还没跑到订阅那一步。
+  const eventRequests = []
+  page.on('request', request => {
+    const url = request.url()
+    if (url.includes('/api/events')) eventRequests.push({ url, headers: request.headers() })
+  })
+  return { app, page, eventRequests }
+}
+
+/**
+ * C1 的传输断言:token 只在头里,URL 里一个字都没有。
+ *
+ * 拆掉传输那一侧的 Bearer 头(改回 `?token=`)这条当场红 —— 它是本批可感知的那处
+ * 变化的看守。
+ */
+async function assertEventsRideTheBearerHeader(eventRequests, label = '') {
+  const first = await waitFor(`渲染层拉起 GET /api/events${label}`, () => eventRequests[0])
+  assert(
+    !/[?&]token=/i.test(first.url),
+    `/api/events 的 URL 里没有 token${label}(${first.url.replace(/^https?:\/\/[^/]+/, '')})`,
+  )
+  assert(
+    typeof first.headers.authorization === 'string'
+      && first.headers.authorization.startsWith('Bearer '),
+    `/api/events 带着 Authorization: Bearer 头${label}`,
+  )
 }
 
 async function probeOf(page) {
@@ -171,6 +221,8 @@ async function runPathOne() {
       return value && value.sseEvents > 0 ? value : undefined
     })
     assert(withEvents.sseEvents > 0, `window.__d0.sseEvents === ${withEvents.sseEvents} > 0`)
+    assert(withEvents.status === 'live', `window.__d0.status === 'live'(推送流那一格)`)
+    await assertEventsRideTheBearerHeader(launched.eventRequests)
 
     await app.close()
     app = undefined
@@ -229,11 +281,110 @@ async function runPathTwo() {
       return value && value.sseEvents > 0 ? value : undefined
     })
     assert(withEvents.sseEvents > 0, `window.__d0.sseEvents === ${withEvents.sseEvents} > 0`)
+    await assertEventsRideTheBearerHeader(launched.eventRequests)
 
     await app.close()
     app = undefined
     await delay(1500)
     assert(pidAlive(server.pid), `应用退出后那台 server 还活着(pid ${server.pid})—— 不属于它的不杀`)
+  } finally {
+    if (app) await app.close().catch(() => {})
+    if (server && pidAlive(server.pid)) server.kill('SIGTERM')
+    await delay(500)
+    await rm(store, { recursive: true, force: true })
+  }
+}
+
+/**
+ * 路径三(C1):断了再回来。
+ *
+ * core 钉死端口与 token 起一次 → 应用连上 → 打死它 → 那一格走到 `reconnecting`
+ * → **同端口同 token** 把它起回来 → 那一格回 `live`、新事件照到、重连那一次
+ * 带着 `?after=`。
+ *
+ * 为什么是 SIGKILL 而不是 SIGSTOP:SIGSTOP 不关 TCP 连接,客户端一时半会儿察觉
+ * 不到 —— 那验的是超时不是断线。打死它,连接立刻 RST,传输当场进退避。
+ */
+async function runPathThree() {
+  console.log('\n[路径三] 断了再回来 —— 状态走到 reconnecting,回来后带 ?after= 续播')
+  const store = await mkdtemp(path.join(tmpdir(), 'a1-gate-reconnect-'))
+  const port = await freePort()
+  const token = 'gate-connect-reconnect-token'
+  let server
+  let app
+  const startServer = () => spawn(process.execPath, [serverEntry], {
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ONETHING_STORE_PATH: store,
+      ONETHING_SERVER_PORT: String(port),
+      ONETHING_SERVER_TOKEN: token,
+    },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  })
+  try {
+    server = startServer()
+    const record = await waitFor('脚本起的 core 写出发现文件', () => {
+      const found = readDiscovery(store)
+      return found && found.pid === server.pid ? found : undefined
+    })
+    assert(record.port === port, `core 钉在端口 ${port} 上(重启要落回同一个)`)
+
+    const launched = await launchApp(store)
+    app = launched.app
+    const page = launched.page
+
+    await waitFor('渲染层完成一次 RPC 往返', async () => {
+      const value = await probeOf(page)
+      return value && value.rpcOk ? value : undefined
+    })
+    await rpc(record, 'sessions', 'create', { name: 'a1-gate-reconnect-1' })
+    const before = await waitFor('第一批 SSE 事件到达渲染层', async () => {
+      const value = await probeOf(page)
+      return value && value.sseEvents > 0 && value.status === 'live' ? value : undefined
+    })
+    assert(before.status === 'live', `断线之前 window.__d0.status === 'live'`)
+    await assertEventsRideTheBearerHeader(launched.eventRequests, '(断线之前)')
+
+    // ── 断 ────────────────────────────────────────────────────────────────
+    server.kill('SIGKILL')
+    await waitFor('core 端口不通', async () => !(await portConnects('127.0.0.1', port)), 15_000)
+    const broken = await waitFor(`window.__d0.status 走到 'reconnecting'`, async () => {
+      const value = await probeOf(page)
+      return value && value.status === 'reconnecting' ? value : undefined
+    })
+    assert(broken.status === 'reconnecting', `断线后 window.__d0.status === 'reconnecting'`)
+
+    // ── 回 ────────────────────────────────────────────────────────────────
+    server = startServer()
+    const back = await waitFor('core 起回来并写出发现文件', () => {
+      const found = readDiscovery(store)
+      return found && found.pid === server.pid && found.port === port ? found : undefined
+    })
+    assert(back.port === port && back.token === token, `core 回到同一个端口与 token`)
+
+    const live = await waitFor(`window.__d0.status 回到 'live'`, async () => {
+      const value = await probeOf(page)
+      if (!value || value.status === 'live') return value
+      // 退避期间它自己会重试;这里顺手造事件,回来之后立刻有东西可收。
+      await rpc(back, 'sessions', 'create', { name: 'a1-gate-reconnect-2' }).catch(() => {})
+      return undefined
+    }, 40_000)
+    assert(live.status === 'live', `恢复后 window.__d0.status === 'live'`)
+    assert(
+      live.sseEvents > before.sseEvents,
+      `恢复后事件继续到达渲染层(${before.sseEvents} → ${live.sseEvents})`,
+    )
+
+    const withAfter = launched.eventRequests.filter(request => /[?&]after=\d+/.test(request.url))
+    assert(
+      withAfter.length > 0,
+      `重连那次 GET /api/events 带着 ?after=(${withAfter[0]?.url.replace(/^https?:\/\/[^/]+/, '') ?? '无'})`,
+    )
+    assert(
+      launched.eventRequests.every(request => !/[?&]token=/i.test(request.url)),
+      `${launched.eventRequests.length} 次 /api/events 请求里没有一次把 token 放进 URL`,
+    )
   } finally {
     if (app) await app.close().catch(() => {})
     if (server && pidAlive(server.pid)) server.kill('SIGTERM')
@@ -258,7 +409,8 @@ async function main() {
 
   await runPathOne()
   await runPathTwo()
-  console.log('\n[gate:connect] ok —— 两条路径全绿')
+  await runPathThree()
+  console.log('\n[gate:connect] ok —— 三条路径全绿')
 }
 
 main().catch(error => {
