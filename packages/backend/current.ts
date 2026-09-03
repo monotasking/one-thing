@@ -30,6 +30,7 @@ import type { StreamChannel } from './events/stream-channel.js'
 import type { SessionManager } from '@onething/core/session'
 import type { StreamEngine } from './wiring/engine/stream-engine-bound.js'
 import type { MainOnethingRuntime } from './wiring/engine/index.js'
+import type { OnethingBackend } from './backend.js'
 
 /**
  * 没有当前实例(或当前实例的这一格还没建好)。
@@ -150,4 +151,26 @@ export function getCurrentBackend(field?: keyof BackendHandle): BackendHandle {
 /** 当前实例或 `null` —— 给"有就用,没有就算了"的产地(关机途中、轻量单测)。 */
 export function getCurrentBackendSafe(): BackendHandle | null {
   return current
+}
+
+/**
+ * 当前槽里那只**完整的 `OnethingBackend` 实例**,或 `null`(C1,方案
+ * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。
+ *
+ * 为什么不是把 `mcp` / `acp` 加进 `BackendHandle`:句柄回答的是"这个进程里的引擎/
+ * 总线是哪一只",给的是那 121 个 `getXxx()`;子系统的调用方只有两类 —— 装配自己,
+ * 和拿得到实例的宿主/域处理器。给句柄开一格等于让所有 `getXxx()` 的读法都看得见
+ * 一件它们不该碰的东西。
+ *
+ * 判据是"**它 own 得了 disposer 吗**":`createBackendHandle()` 造出来的窄句柄
+ * (只想要事件系统的那些轻量单测在用)没有 `own`,真实例有。`import type` 是纯类型
+ * (编译期抹掉),所以这里不多一条指向 `backend.ts` 的运行期边 —— 与本文件顶上对
+ * `wiring/engine/index.js` 那句同一个理由。
+ *
+ * 拿不到就 `null`,由调用点自己退化(设置域在没有活实例时直接调 manager,与 C1
+ * 之前逐字相同)—— 这个函数不抛。
+ */
+export function getCurrentBackendInstance(): OnethingBackend | null {
+  const handle = current as Partial<OnethingBackend> | null
+  return typeof handle?.own === 'function' ? (handle as OnethingBackend) : null
 }

@@ -147,6 +147,34 @@ export class McpSubsystem {
   由子系统在构造时接一次,壳里那份重复接线删除。server runtime 的 `appMCPManager.initialize`(`processPorts==='own'`
   时)改成 `backend.mcp.start()`。
 - 设置域 `updateMCPSettings` → `backend.mcp.applySettings(next)`。
+
+**C1 落地记录(2026-09-03)与四处偏离**:
+
+1. **server runtime 那处接线没改**(派工令明确留到后面):`server/runtime.ts` 仍直接
+   `appMCPManager.initialize(...)`(该文件本轮由另一会话在改,一个字不碰)。子系统因此把
+   "要不要 `shutdown()`"的判据定成"**我 start 过没有**",而不是"manager 现在 initialized
+   没有" —— 后者会让 standalone server 的 `backend.dispose()` 顺手关掉 server 自己管的那台
+   MCP,那是今天没有的行为。这条判据也正好逐字保留了 C1 之前 `own('mcpAcp')` 里的
+   `if (!options.mcpAcp) return`。
+2. **`start()` 的位置从"设置读完那一行"挪到反序登记块之后**。原文只说"构造即 own",但
+   构造点(要在 `own` 的闭包之前)与 `own` 的位置(要保住关机顺序)天然分处两行;若 start
+   仍留在前面,`initialize` 抛错时 `assemble` 的 catch 去 dispose,表里还没有 MCP 那一格 ——
+   孤儿窗口原样还在。中间只跨过六句纯登记的 `own()`,零副作用。
+3. **ACP 的权限桥没搬进子系统**。今天接它的是 Vue 宿主自己的 `initializeACP()`
+   (`apps/electron/src/main/ipc/acp.ts`);装配层这条路(daemon 的 `mcpAcp: true`)从来没接过。
+   搬进来 = 给 daemon 新开一条今天没有的行为,属产品决定,不在本期。**React 壳也不起 ACP**
+   (原文只要求"壳不新增"),`backend.acp` 在壳上恒 `idle`,dispose 无害。
+4. **子系统不进 `BackendHandle`**:新增 `current.ts` 的 `getCurrentBackendInstance()`
+   (判据 = "槽里那只 own 得了 disposer 吗",`import type` 纯类型不产生运行期环),设置域 /
+   ACP 域经它拿子系统;拿不到就退化直调 manager(不装 backend 的那些单测走的就是这条)。
+
+**真机门的两半**(`apps/desktop-react/scripts/smoke-core-boot.mjs` 第三条泳道
+`mcp-early-exit` + 自带的 `scripts/smoke/fake-mcp-server.mjs`):它抓的是**登记**那一半
+(把两句 `own` 挪回 `if (options.mcpAcp)` → `pgrep` 读到 1 个残留,红)。"等在途 start 落地"
+那一半在真机上被 `HeadlessMCPManager` 自己的串行队列兜住了(`shutdown()` 是 enqueue 的),
+所以那一半的判据留在 `wiring/mcp/__tests__/subsystem.test.ts`(注入的替身没有那条队列,
+去掉 `await inFlight` 即红)。假服务器**故意不在 stdin 断掉时自杀** —— 会自杀的假服务器
+把孤儿伪装成没孤儿,门就恒绿了。
 - `OnethingBackend.own()` 加守卫(R1):已在 dispose 或已 dispose → **立即执行**传入的 disposer 并返回其 promise,
   不再入表;React 壳与 Vue 主进程里三处 `.then()` 内的 `own()` 因此自动安全,同时把调度器那处改成同步登记
   (`initializeUserSchedulerTasks()` 返回 stop 是同步的,只是被包在动态 import 里——改成静态 import)。
@@ -176,7 +204,7 @@ export class McpSubsystem {
 | 期 | 做什么 | 门 |
 | --- | --- | --- |
 | **C0 机械修复** ✅ 已落地 | R1 的 `own()` 守卫 + 同步登记;R2;R3 / R4 / R5 / R6 / R7 / R10;R9 的数字部分 | 各自反证;A0 变 12 条全绿;`assembly:gate` 不升 |
-| **C1 MCP/ACP 子系统** | `McpSubsystem` / `AcpSubsystem` + 三宿主接线 + 设置域接线 + `initializeShellMCP` 删除 | 在途 start → dispose 的反证;真机:壳启动后 1s 内退出,`ps` 无残留 MCP 子进程(smoke 脚本加一条) |
+| **C1 MCP/ACP 子系统** ✅ 已落地(2026-09-03) | `McpSubsystem` / `AcpSubsystem` + 壳/装配接线 + 设置域接线 + `initializeShellMCP` 删除(server runtime 那处留到 C2 之后,见 §2.2 偏离 1) | 在途 start → dispose 的反证(单测);真机:`smoke:core` 第三条泳道 `mcp-early-exit`,探针退出后 `pgrep -f <marker>` = 0;A0 升到 14 条 |
 | **C2 主体** | `Principal` + `TokenRing` + 三入口铸法 + 8 处判据改 `isOwner(context)` + `resolveRpcSandbox` + 退役进程级信任与宿主表 `localTrust` + 能力位按请求主体 + 棘轮第四族 + R8 | 每处判据 owner/client 两态单测;`isHostLocallyTrusted` 调用 0;真机:回环 server 用发现文件 token → owner 行为,用 `ONETHING_SERVER_TOKEN` 非回环 → client 行为(log:smoke 加两条) |
 | **C3 文档** | CLAUDE.md IPC 一节的"第二条规则"改成主体表述;host-ports 表删 `localTrust` 行;方案 B §4 补齐 | `grep -c isHostLocallyTrusted CLAUDE.md` = 0 |
 

@@ -66,13 +66,31 @@
  *      注入的语音端口 —— 而"这台宿主有没有语音"正是 B 期把 voice 域十一条挂上去的
  *      那句话。反证(实跑过):把 `host-ports.ts` 里 `restores.push(resetVoiceHost)`
  *      摘掉 → 这一条最后一段红。
+ *   ⑬ **MCP / ACP 的收尾"构造即登记",与起没起过无关**(C1,方案
+ *      `backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。`mcpAcp: false`
+ *      装配之后 `ownedLabels()` 里就得有 `mcp` 与 `acp` 两格,而两只子系统仍是
+ *      `idle` —— 这正是审查第 2 条的结构性修法:**登记不再等 start 完成**。
+ *      反证(实跑过):把 `backend.ts` 里那两句 `own(() => mcp.dispose(), 'mcp')` /
+ *      `'acp'` 挪回 `if (options.mcpAcp)` 里 → 这一条红。
+ *   ⑭ **在途的 start 上来一发 dispose,子进程照样收得回来**(C1)。装配成
+ *      `mcpAcp: false`,然后**不 await** 地 `backend.mcp.start()`,紧接着
+ *      `dispose()` —— 这就是"壳起来一秒内 Cmd+Q"那条真实路径(从前它靠壳里那句
+ *      `.then(() => own(MCPManager.shutdown))`,而 dispose 常常跑在它前面)。
+ *      dispose 返回时 `MCPManager.shutdown` 必须已经被调过。
+ *      反证(实跑过):把 `backend.ts` 那两句 `own(..., 'mcp'/'acp')` 挪回
+ *      `if (options.mcpAcp)` 里 → ⑬ 与这一条一起红。
+ *      **「shutdown 必须排在在途 start 落地之后」那半条判在别处**
+ *      (`wiring/mcp/__tests__/subsystem.test.ts`,反证 = 去掉 `dispose()` 里的
+ *      `await inFlight` → 红):在整只 backend 上判不了它 —— 要让"关到 mcp 那一格
+ *      时 start 仍在途"确定地成立,就得由 dispose 链自己去放闸,而正确实现正好
+ *      死等那个闸,判据会把自己判死锁。
  *
  * **store 隔离**:`stores/sessions.ts` / `stores/settings.ts` 在 **import 期**就
  * 解析 store 根,所以 `ONETHING_STORE_PATH` 必须在任何 backend 模块被求值之前
  * 设好 —— 这就是这份文件里全部 import 都是**动态**的原因(顶层只留 vitest 的),
  * 照 `server/__tests__/runtime-over-backend.test.ts` 的 mkdtemp + afterAll 还原先例。
  */
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -86,7 +104,7 @@ process.env.ONETHING_STORE_PATH = storeRoot
 
 afterAll(async () => {
   /*
-   * 这份文件的十二条是**接力**的(①建 → ③关 → ④再建 …),所以任何一条在整仓
+   * 这份文件的十四条是**接力**的(①建 → ③关 → ④再建 …),所以任何一条在整仓
    * 满载下超时都会把后面几条一起带红,而且会把一只活 backend 留在进程当前实例
    * 槽里。超时是既有的负载抖动(真机实测:单文件跑 5s,整仓 300+ 文件并发时
    * 同一条要 60s+),不是这份改动的性质问题 —— 但槽必须还干净,所以收尾无条件
@@ -366,5 +384,62 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     const withoutVoice = await assemble(undefined, null, null)
     expect(hasVoiceHost()).toBe(false)
     await withoutVoice.dispose()
+  })
+
+  /**
+   * C1。`assemble()` 这张表里 `mcpAcp` 是**不开**的(这份文件问的是装配生命周期,
+   * 不是任何一个子系统)—— 而这一条要的正是那个档:没起过 MCP 的 backend 也得把
+   * 收尾登记好,因为宿主(React 壳)是在开窗**之后**才 start 的。
+   */
+  it('⑬ mcpAcp:false 也登记 mcp / acp 两格收尾,子系统停在 idle', { timeout: 180_000 }, async () => {
+    const ninth = await assemble()
+    const labels = ninth.ownedLabels()
+    expect(labels).toContain('mcp')
+    expect(labels).toContain('acp')
+    expect(ninth.mcp.state).toBe('idle')
+    expect(ninth.acp.state).toBe('idle')
+    await ninth.dispose()
+  })
+
+  /**
+   * C1。审查第 2 条那条真实路径的端到端复现:壳开窗后非阻塞 `backend.mcp.start()`,
+   * 一秒内 Cmd+Q。`MCPManager` 是产品层的进程单例(子系统拿到的就是它),所以判据
+   * 直接钉在它的两个方法上。
+   */
+  it('⑭ 在途 start 上来一发 dispose:MCPManager.shutdown 仍被调到', { timeout: 180_000 }, async () => {
+    const { MCPManager } = await import('@onething/runtime/mcp/index.wiring')
+    const order: string[] = []
+    let openGate = (): void => {}
+    const gate = new Promise<void>(resolve => {
+      openGate = resolve
+    })
+    const initialize = vi.spyOn(MCPManager, 'initialize').mockImplementation(async () => {
+      order.push('initialize')
+      await gate
+    })
+    const shutdown = vi.spyOn(MCPManager, 'shutdown').mockImplementation(async () => {
+      order.push('shutdown')
+    })
+
+    try {
+      const tenth = await assemble()
+      // 不 await —— 这就是壳里那句 `void b.mcp.start().catch(...)`。
+      void tenth.mcp.start().catch(() => undefined)
+      expect(initialize).toHaveBeenCalledTimes(1)
+      // 关的这一刻,那趟 start 还挂在闸上(= stdio 子进程已经拉起来了)。
+      expect(shutdown).not.toHaveBeenCalled()
+
+      const disposed = tenth.dispose()
+      openGate()
+      await disposed
+
+      expect(shutdown).toHaveBeenCalledTimes(1)
+      expect(order).toEqual(['initialize', 'shutdown'])
+      expect(tenth.mcp.state).toBe('disposed')
+    } finally {
+      openGate()
+      initialize.mockRestore()
+      shutdown.mockRestore()
+    }
   })
 })

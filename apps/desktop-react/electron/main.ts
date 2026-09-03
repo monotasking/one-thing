@@ -270,44 +270,25 @@ function startPostWindowServices(): void {
     b.own(initializeUserSchedulerTasks(), 'userSchedulerTasks')
 
     /*
-     * MCP 的登记留在 `.then()` 里 —— 这一处的异步是真的(`initializeShellMCP()` 要
-     * 起 manager、连 server、建工具目录)。它现在安全的理由是 `own()` 的守卫
-     * (C0 R1):dispose 已经跑过时这一句会**就地执行**那只 shutdown,而不是被静默
-     * 丢掉 —— 从前那正是"壳起来两秒内退出留下孤儿 stdio 子进程"的产地。
-     * C1 会把整块换成 `backend.mcp` 子系统对象(构造即登记),本期不动它的结构。
+     * C1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
+     * 壳这边只剩"**何时** start"这一句。
+     *
+     * 从前这里是 `initializeShellMCP()`(自己 initialize manager、自己再配一遍
+     * `configureMCPCapabilitiesChangedHandler`、自己 `registerMCPTools`),收尾登记排在
+     * 它的 `.then()` 里 —— C0 的 `own()` 守卫让那条路不再丢 disposer,但"起完了才登记"
+     * 这个形状本身还在。现在收尾在装配时就登记好了(`backend.mcp` 构造即 `own`),
+     * 早退时 `dispose()` 会等这趟 start 落地再关,所以这里不再 `.then(own)`。
+     *
+     * 失败仍然不阻塞壳:MCP 起不来不该让窗口起不来。
      */
-    void initializeShellMCP()
-      .then(async () => {
-        const { MCPManager } = await import('@onething/runtime/mcp/index.wiring')
-        b.own(() => MCPManager.shutdown(), 'mcpManager')
-      })
-      .catch((error: unknown) => {
-        log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
-      })
+    void b.mcp.start().catch((error: unknown) => {
+      log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
+    })
   }
 
   void refreshModelsOnFirstStartup().catch((error: unknown) => {
     log.error('subsystem startup failed', { subsystem: 'model-registry', blocking: false }, error)
   })
-}
-
-/**
- * MCP 生命周期。形状照 `apps/electron/src/main/ipc/mcp.ts` 抄(那是 `@main` 的内部
- * 路径,跨 app import 不到)。传输面早已是 `mcpRouter`,这里只有「起一台 manager
- * 并把工具目录建出来」这一件进程内单例的事。
- */
-async function initializeShellMCP(): Promise<void> {
-  const [{ DEFAULT_MCP_SETTINGS }, mcp, capabilities, settings] = await Promise.all([
-    import('@onething/core/mcp'),
-    import('@onething/runtime/mcp/index.wiring'),
-    import('@onething/runtime/mcp/capabilities-changed'),
-    import('@onething/backend/stores/settings.js'),
-  ])
-  capabilities.configureMCPCapabilitiesChangedHandler(() => {
-    void mcp.registerMCPTools()
-  })
-  await mcp.MCPManager.initialize(settings.getSettings().mcp || DEFAULT_MCP_SETTINGS)
-  await mcp.registerMCPTools()
 }
 
 /** 首次启动从 models.dev 拉一次模型目录(已有目录就跳过)。 */

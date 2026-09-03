@@ -66,6 +66,8 @@ import { initializeSessionSkills } from './wiring/skills/session-skills.js'
 import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
 import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/runtime/acp'
+import { McpSubsystem } from './wiring/mcp/subsystem.js'
+import { AcpSubsystem } from './wiring/acp/subsystem.js'
 import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
 import { configureSessionHistoryBuilder, type SessionHistoryBuilder } from './session/reads.js'
@@ -73,6 +75,7 @@ import { buildHistoryMessages, historyProjectionRecipe } from './wiring/engine/s
 import { getLogger } from './wiring/logging/index.js'
 import {
   BackendAlreadyAssembledError,
+  BackendNotAssembledError,
   getCurrentBackendSafe,
   requireBackendField,
   setCurrentBackend,
@@ -189,6 +192,18 @@ export class OnethingBackend implements BackendHandle {
    */
   private disposeStarted = false
 
+  /**
+   * MCP / ACP 两只子系统(C1,方案
+   * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。
+   *
+   * 它们**不进** `BackendHandle` —— 那个窄接口回答的是"这个进程里的引擎/总线是哪一
+   * 只",给的是散在各处经 `getXxx()` 读装配产物的模块;而 MCP/ACP 的生命周期只有
+   * 两类调用方:装配自己,和拿着实例的宿主(壳的 `startPostWindowServices`)。
+   * 塞进句柄等于给一个不需要它的读法开一扇门。
+   */
+  private mcpSubsystem: McpSubsystem | null = null
+  private acpSubsystem: AcpSubsystem | null = null
+
   readonly options: Readonly<OnethingBackendOptions>
 
   private constructor(options: OnethingBackendOptions) {
@@ -213,6 +228,20 @@ export class OnethingBackend implements BackendHandle {
 
   get runtime(): MainOnethingRuntime {
     return requireBackendField(this.parts, 'runtime')
+  }
+
+  /**
+   * MCP 子系统。装配途中(工具目录那一步之后)建好;还没建到就抛,与五格产物同口径。
+   */
+  get mcp(): McpSubsystem {
+    if (!this.mcpSubsystem) throw new BackendNotAssembledError()
+    return this.mcpSubsystem
+  }
+
+  /** ACP 子系统。同上。 */
+  get acp(): AcpSubsystem {
+    if (!this.acpSubsystem) throw new BackendNotAssembledError()
+    return this.acpSubsystem
   }
 
   /**
@@ -520,23 +549,40 @@ export class OnethingBackend implements BackendHandle {
       await initializeCollabV3Runtime()
     }
 
-    if (options.mcpAcp) {
-      const settings = getSettings()
-      await MCPManager.initialize(settings.mcp || DEFAULT_MCP_SETTINGS)
-      await registerMCPTools()
-      ACPManager.initialize(settings.acp || { enabled: true, agents: [] })
-    }
+    /*
+     * C1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
+     * MCP / ACP 各是一只 backend 拥有的子系统对象。
+     *
+     * **构造在这里,`start()` 在下面那个反序块之后**。理由是孤儿:从前 MCP 的
+     * `initialize` 就写在这一行,而它的收尾要到下面那个块才登记 —— `initialize` 里
+     * 抛一个错,`assemble` 的 catch 去 `dispose()` 时表里根本没有 MCP 那一格,已经拉起
+     * 的 stdio 子进程就没人关。构造(不起任何东西)→ 登记 → 才 start,这条窗口
+     * 结构上就不存在了。设置**懒读**:构造点到 start 之间设置域可能已经改过。
+     */
+    const mcp = new McpSubsystem({
+      manager: MCPManager,
+      settings: () => getSettings().mcp || DEFAULT_MCP_SETTINGS,
+      registerTools: () => registerMCPTools(),
+    })
+    this.mcpSubsystem = mcp
+    const acp = new AcpSubsystem({
+      manager: ACPManager,
+      settings: () => getSettings().acp || { enabled: true, agents: [] },
+    })
+    this.acpSubsystem = acp
 
     /*
-     * ── 关机链的**头**六件,一处登记、显式反序 ──
+     * ── 关机链的**头**七件,一处登记、显式反序 ──
+     * (C1 之前是六件 —— `'mcpAcp'` 那一格拆成了 `'mcp'` / `'acp'` 两格。)
      *
-     * 这六件的关机顺序有真实约束,而那个顺序**不是**装配顺序的逆:
+     * 这七件的关机顺序有真实约束,而那个顺序**不是**装配顺序的逆:
      *  · RPC 面第一个下(不再接新调用),但它建在第 31 步;
      *  · `abortAll` 必须排在 MCP/ACP 收摊**之前**(先停我们这侧的流,再拆它
      *    要用的服务器),而引擎建在第 14 步;
-     *  · 插件与 MCP/ACP 在桌面上根本不是装配起的(宿主在窗口之后起),这里
-     *    的登记是**无条件、幂等**的兜底 —— A3 会把它们交回各自的宿主 `own()`。
-     * 所以这六件按今天 `shutdown()` 里的顺序反着登记在这一处,`dispose()` 跑
+     *  · 插件在桌面上根本不是装配起的(宿主在窗口之后起),这里的登记是
+     *    **无条件、幂等**的兜底 —— A3 会把它交回宿主的 `own()`。MCP/ACP 从 C1
+     *    起不再是"兜底":这两格就是它们唯一的登记点,宿主只决定何时 `start()`。
+     * 所以这七件按今天 `shutdown()` 里的顺序反着登记在这一处,`dispose()` 跑
      * 出来与 A2 之前逐字相同。
      */
     this.own(async () => {
@@ -552,11 +598,15 @@ export class OnethingBackend implements BackendHandle {
       const plugins = await import('./wiring/plugins/manager.js')
       plugins.getPluginManager()?.shutdown()
     }, 'pluginManager')
-    this.own(async () => {
-      if (!options.mcpAcp) return
-      await ACPManager.shutdown()
-      await MCPManager.shutdown()
-    }, 'mcpAcp')
+    /*
+     * C1:从前这里是一格 `'mcpAcp'`,里面手写 `ACPManager.shutdown()` 然后
+     * `MCPManager.shutdown()`,并且靠 `if (!options.mcpAcp) return` 判"这只 backend
+     * 起过没有"。现在是两格,各自问自己的子系统 —— 判据("我起过没有")与"等在途的
+     * start 落地"都住进了子系统里。登记序 mcp → acp,于是 `dispose()` 的逆序跑出来
+     * 仍然是先 acp 后 mcp,与 C1 之前逐字相同。
+     */
+    this.own(() => mcp.dispose(), 'mcp')
+    this.own(() => acp.dispose(), 'acp')
     this.own(async () => {
       /**
        * 外部执行体跟着收摊(E4/G10)。`abortAll` 停的是我们这一侧的流,外部 agent
@@ -576,6 +626,17 @@ export class OnethingBackend implements BackendHandle {
     // Reversible registration: a second assemble in the same process (tests,
     // host restarts) must not trip the duplicate-domain guard.
     this.own(() => disposeRpcDomains(), 'rpcDomains')
+
+    /*
+     * C1:`mcpAcp: true`(CLI daemon)才在装配里起。行为与 C1 之前逐字相同 ——
+     * `MCPManager.initialize` + `registerMCPTools` + `ACPManager.initialize`,同一个顺序。
+     * 位置从上面挪到这里**只跨过那一处纯登记的反序块**(六句 `own()`,零副作用),
+     * 换来的是"起之前收尾已经在表里"。
+     */
+    if (options.mcpAcp) {
+      await mcp.start()
+      await acp.start()
+    }
 
     if (options.sender) {
       engineLayer.engine.bind(options.sender)

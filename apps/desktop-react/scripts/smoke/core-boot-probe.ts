@@ -19,6 +19,17 @@
  *
  * 两个泳道跑同一份产物:纯 node 与 Electron 主进程。后者是 A1 的首验项 ——
  * A0 只在 node 下跑过,Electron 的 net stack 与 node 的不是同一套。
+ *
+ * ## 第二个场景:`ONETHING_SMOKE_SCENARIO=mcp-early-exit`(C1,方案
+ * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §3 的 C1 行)
+ *
+ * 同一份产物,另一条路:store 里预先配好一台 stdio MCP(探针自带的
+ * `fake-mcp-server.mjs`,命令行上带一个 marker),装配完**不 await** 地
+ * `backend.mcp.start()`,紧接着 `dispose()` —— 逐字就是"壳起来一秒内 Cmd+Q"。
+ * 探针退出之后由脚本侧 `pgrep -f <marker>` 数残留:必须是 0。
+ *
+ * 这条判的是单测判不到的那一半:真的 spawn 了一个 stdio 子进程,真的在它还没连完
+ * 的时候关门,真的看进程表。审查第 2 条(孤儿 MCP 子进程)的现场就是它。
  */
 import { EventEmitter } from 'node:events'
 import { createRequire } from 'node:module'
@@ -121,9 +132,48 @@ async function probe(): Promise<void> {
   emit('DONE\n')
 }
 
+/**
+ * `mcp-early-exit` 场景。**不开 HTTP 面、不问能力位** —— 它只问一件事:在途的
+ * `mcp.start()` 上来一发 `dispose()`,那台已经 spawn 出去的 stdio 子进程有没有人收。
+ */
+async function probeMcpEarlyExit(): Promise<void> {
+  configureLogging({ fileBaseName: 'shell', src: 'main' })
+  const backend = await createOnethingBackend({
+    host: {
+      storePath: {},
+      sandbox: {},
+      auth: null,
+      logging: null,
+      shell: null,
+      voice: null,
+      terminal: null,
+      skillsEnvironment: null,
+      todoPlan: null,
+      scratchpad: null,
+      plugins: null,
+      gateway: null,
+      settings: null,
+      evals: null,
+      mcp: null,
+      localTrust: { origin: 'desktop-embedded' },
+    },
+    // 这条场景只走 MCP 那一格,其余按最轻的档 —— 它量的不是启动预算。
+    toolRegistry: 'headless',
+    sender: new NoopSender() as never,
+  })
+  // 壳里那一句逐字:`void b.mcp.start().catch(...)`。
+  void backend.mcp.start().catch(() => undefined)
+  emit(`MCP_STATE ${backend.mcp.state}\n`)
+  // 一秒内退出:这里连一拍都不等 —— 比真机上人手 Cmd+Q 更狠。
+  await backend.dispose()
+  emit(`MCP_STATE_AFTER ${backend.mcp.state}\n`)
+  emit('DONE\n')
+}
+
 async function run(): Promise<number> {
   try {
-    await probe()
+    if (process.env.ONETHING_SMOKE_SCENARIO === 'mcp-early-exit') await probeMcpEarlyExit()
+    else await probe()
     return 0
   } catch (error) {
     emit(`PROBE_ERROR ${(error as Error)?.stack ?? String(error)}\n`)

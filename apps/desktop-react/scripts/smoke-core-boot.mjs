@@ -13,10 +13,21 @@
  * 每条泳道用一个一次性 store,四条读数逐条断言(见探针文件头)。
  * 与 gate:connect 的分工:这里不开窗、不碰渲染层 —— 坏了要一眼看出是构建链坏了,
  * 而不是在一条要拉起 Electron 窗口的门里去猜。
+ *
+ * ## 第三条泳道:`mcp-early-exit`(C1,方案
+ * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §3 的 C1 行)
+ *
+ * 前两条量的是构建链,这一条量的是**生命周期**:临时 store 里配一台 stdio MCP
+ * (探针自带的 `fake-mcp-server.mjs`,命令行带一个本次专属的 marker),探针装配完
+ * 不 await 地 `backend.mcp.start()` 紧接着 `dispose()`,然后**看进程表** ——
+ * `pgrep -f <marker>` 必须是 0。审查第 2 条那只孤儿 stdio 子进程的现场就在这里。
+ *
+ * 只在 node 泳道跑一次:判据是"谁杀子进程",与运行时的 net stack 无关,而它要真
+ * spawn 一台服务器,跑两遍只是把时间翻倍。
  */
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { build } from 'esbuild'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -111,6 +122,76 @@ async function runLane(label, executable, args, extraEnv) {
   }
 }
 
+/** `pgrep -f <pattern>` 的命中条数(没命中时 pgrep 退 1,不是错误)。 */
+function countProcesses(pattern) {
+  return new Promise(resolve => {
+    execFile('pgrep', ['-f', pattern], (error, stdout) => {
+      if (error && error.code === 1) return resolve(0)
+      if (error) return resolve(`pgrep 失败:${error.message}`)
+      resolve(stdout.split('\n').filter(line => line.trim()).length)
+    })
+  })
+}
+
+/**
+ * C1 的生命周期泳道:配一台真 stdio MCP,起了就立刻关,数残留。
+ *
+ * marker 里带 pid + 时间戳:同一台机器上并行跑两趟(或者上一趟留了尸体)也不会
+ * 互相冤枉 —— `pgrep -f` 只数这一次的。
+ *
+ * 反证(实跑过):把 `packages/backend/backend.ts` 那两句
+ * `own(() => mcp.dispose(), 'mcp')` / `'acp'` 挪回 `if (options.mcpAcp)` 里(= C1 之前
+ * 「起完了才登记」的形状)→ 这条泳道红在第一句:「残留 0 个(读到 1)」。
+ *
+ * **它抓的是"登记"那一半,不是"等在途 start"那一半**:后者在真机上被
+ * `HeadlessMCPManager` 自己的串行队列兜住了(`shutdown()` 是 enqueue 的,排在
+ * 在途的 `initialize` 后面),所以拆掉子系统 `dispose()` 里的 `await inFlight`
+ * 这道门仍然绿 —— 那一半的判据在 `wiring/mcp/__tests__/subsystem.test.ts`
+ * (注入的替身没有那条队列,拆掉即红)。两半各有各的判据,不互相冒充。
+ */
+async function runMcpEarlyExitLane() {
+  const label = 'mcp-early-exit'
+  process.stdout.write(`\n[${label}] 起一台真 stdio MCP,不等它连完就关\n`)
+  const marker = `onething-smoke-mcp-${process.pid}-${Date.now()}`
+  const fakeServer = path.join(appRoot, 'scripts/smoke/fake-mcp-server.mjs')
+  const store = await mkdtemp(path.join(tmpdir(), `a1-smoke-${label}-`))
+  try {
+    await writeFile(
+      path.join(store, 'settings.json'),
+      `${JSON.stringify({
+        mcp: {
+          enabled: true,
+          servers: [{
+            id: 'smoke-fake',
+            name: 'smoke fake',
+            transport: 'stdio',
+            enabled: true,
+            command: process.execPath,
+            args: [fakeServer, '--marker', marker],
+          }],
+        },
+      }, null, 2)}\n`,
+      'utf8',
+    )
+
+    const result = await runProbe(process.execPath, [probeBundle], store, {
+      ONETHING_SMOKE_SCENARIO: 'mcp-early-exit',
+    })
+    const readings = readingsOf(result.stdout)
+    const context = `\nexit=${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr.slice(-4000)}`
+    assert(result.code === 0, `探针退出码 0${result.code === 0 ? '' : context}`)
+    assert('DONE' in readings, `探针跑到底${'DONE' in readings ? '' : context}`)
+    // 头一条就是这道门的正题:看进程表。
+    const survivors = await countProcesses(marker)
+    assert(survivors === 0, `探针退出后 MCP 子进程残留 0 个(读到 ${survivors})${survivors === 0 ? '' : context}`)
+    // 关门那一刻 start 还在途 —— 这两条读数说的是"我们量的确实是在途那一段"。
+    assert(readings.MCP_STATE === 'starting', `dispose 之前子系统在 starting(读到 ${readings.MCP_STATE})`)
+    assert(readings.MCP_STATE_AFTER === 'disposed', `dispose 之后子系统 disposed(读到 ${readings.MCP_STATE_AFTER})`)
+  } finally {
+    await rm(store, { recursive: true, force: true })
+  }
+}
+
 async function main() {
   const started = Date.now()
   await build(shellEsbuildOptions({
@@ -123,6 +204,7 @@ async function main() {
   // Electron 泳道走的是**主进程**(不带 ELECTRON_RUN_AS_NODE):要的就是 app 身份
   // 与 Chromium 那套 net stack 在场时的行为。
   const electronMs = await runLane('electron-main', electronBinary, [probeBundle])
+  await runMcpEarlyExitLane()
 
   process.stdout.write(`\n[smoke:core] ok —— node ${nodeMs}ms / electron-main ${electronMs}ms\n`)
 }

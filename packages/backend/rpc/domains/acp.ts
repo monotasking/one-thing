@@ -41,6 +41,7 @@ import {
 import type { ACPSettings } from '@shared/ipc/acp.js'
 import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
+import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
@@ -60,7 +61,14 @@ async function saveACPSettings(acpSettings: ACPSettings): Promise<void> {
   const settings = getSettings()
   settings.acp = acpSettings
   saveSettings(settings)
-  ACPManager.updateSettings(acpSettings)
+  /*
+   * C1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
+   * 有活实例就经它的子系统改;没有(不装 backend 的那些单测)退化为直接调 manager,
+   * 行为与 C1 之前逐字相同。
+   */
+  const acp = getCurrentBackendInstance()?.acp
+  if (acp) await acp.applySettings(acpSettings)
+  else ACPManager.updateSettings(acpSettings)
 }
 
 function acpAdapters() {

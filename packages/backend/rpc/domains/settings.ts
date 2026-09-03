@@ -60,6 +60,7 @@
 import { DEFAULT_MCP_SETTINGS } from '@onething/core/mcp'
 import { ACPManager } from '@onething/runtime/acp'
 import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
+import { getCurrentBackendInstance } from '../../current.js'
 import {
   getOnethingSettingsForIpc,
   getOnethingSystemThemeForIpc,
@@ -116,6 +117,17 @@ async function saveSettingsFromRpc(
     ? (mergeServerSettingsUpdate(getSettings(), incoming) as SaveSettingsRequest)
     : incoming
 
+  /*
+   * C1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
+   * 有活实例就走它的子系统 —— 「改设置 + 重建工具目录」在子系统里是 `applySettings`
+   * 一件事,于是投影层那两格合并到第一格,第二格留空(否则工具目录白重建一遍)。
+   *
+   * 没有活实例时退化为直接调 manager:这条路今天真的走得到(不装 backend 只测设置
+   * 保存的那些单测),行为与 C1 之前逐字相同。
+   */
+  const mcp = getCurrentBackendInstance()?.mcp ?? null
+  const acp = getCurrentBackendInstance()?.acp ?? null
+
   const saveOnethingSettingsWithRuntimeEffectsOptions: SaveOnethingSettingsWithRuntimeEffectsOptions<AppSettings, SaveSettingsRequest> & { logger?: OnethingSettingsIpcLogger | undefined; } = {
     settings: settingsToSave,
     saveSettings: nextSettings => saveSettings(nextSettings),
@@ -125,9 +137,13 @@ async function saveSettingsFromRpc(
     registerGlobalWindowShortcuts: () => registerHostGlobalWindowShortcuts(),
     applyVoiceSettings: normalizedSettings =>
       getVoiceServiceSafe()?.applySettings(normalizedSettings),
-    updateMCPSettings: nextSettings => MCPManager.updateSettings(nextSettings),
-    registerMCPTools,
-    updateACPSettings: nextSettings => ACPManager.updateSettings(nextSettings),
+    updateMCPSettings: nextSettings => mcp
+      ? mcp.applySettings(nextSettings)
+      : MCPManager.updateSettings(nextSettings),
+    registerMCPTools: () => mcp ? undefined : registerMCPTools(),
+    updateACPSettings: nextSettings => acp
+      ? acp.applySettings(nextSettings)
+      : ACPManager.updateSettings(nextSettings),
     defaultMCPSettings: DEFAULT_MCP_SETTINGS,
     defaultACPSettings: { enabled: true, agents: [] },
     logger: consoleLog,
