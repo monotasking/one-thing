@@ -121,6 +121,13 @@
         "zod": "^4.2.0",
       },
     },
+    "packages/client": {
+      "name": "@onething/client",
+      "version": "0.0.0",
+      "dependencies": {
+        "@onething/core": "*",
+      },
+    },
     "packages/core": {
       "name": "@onething/core",
       "version": "0.0.0",
@@ -423,6 +430,8 @@
     "@one-ini/wasm": ["@one-ini/wasm@0.1.1", "", {}, "sha512-XuySG1E38YScSJoMlqovLru4KTUNSjgVTIjyh7qMX6aNN5HY5Ct5LhRJdxO79JtTzKfzV/bnWpz+zquYrISsvw=="],
 
     "@onething/backend": ["@onething/backend@workspace:packages/backend"],
+
+    "@onething/client": ["@onething/client@workspace:packages/client"],
 
     "@onething/core": ["@onething/core@workspace:packages/core"],
 

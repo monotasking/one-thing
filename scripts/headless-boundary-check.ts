@@ -9818,8 +9818,171 @@ function checkRuntimeOwnsConcreteBuiltinTools(): void {
   assertNoMatches('packages/onething-runtime owns concrete builtin tool implementations', lines)
 }
 
+// ── C0(`docs/design/client-sdk-2026-09.md` §3):`packages/client` 的两条边界 ──
+
+/**
+ * `packages/client`(`@onething/client`)禁 import 的东西。
+ *
+ * 判据一句话:**它是 core 的客户端底座,不是任何一个壳的一部分**。所以既不认识
+ * 前端框架(react / vue),也不认识宿主(electron / `@main` / `@preload`),也不
+ * 反向依赖上层(`@onething/backend` / `@onething/runtime` —— 依赖是单向的:
+ * 产品 ← 装配 ← 宿主,而客户端在这条链之外,只吃 `@shared` 契约与 `@onething/core`
+ * 的纯类型)。`@renderer` / `@/` 是 Vue 渲染层的两个别名 —— 搬家的**目的**就是
+ * 把这一层从那棵树里摘出来,搬完再引回去等于白搬。
+ */
+const CLIENT_PACKAGE_FORBIDDEN_IMPORT_PATTERNS: RegExp[] = [
+  /^react(?:\/|$)/,
+  /^react-dom(?:\/|$)/,
+  /^vue(?:\/|$)/,
+  /^electron(?:\/|$)/,
+  /^@main\//,
+  /^@preload\//,
+  /^@renderer(?:\/|$)/,
+  /^@\//,
+  /^@onething\/backend(?:\/|$)/,
+  /^@onething\/runtime(?:\/|$)/,
+  /^@onething\/electron-host(?:\/|$)/,
+  // 相对路径爬出包外(`../../renderer/...`)也是同一件事。
+  /^\.\.\/\.\.\//,
+]
+
+/**
+ * 浏览器独有的全局,`packages/client` 一个都不许**裸用** —— 连
+ * `typeof window === 'undefined'` 这种守卫也不许。
+ *
+ * 守卫看着无害,其实是这层"双环境"承诺的漏点:一旦允许问,下一步就是
+ * "在浏览器里走这条、在 Node 里走那条",于是 Node 那条永远没人跑,某天 CLI 一用
+ * 就炸。**本包根本不该问自己在哪儿** —— 宿主能力(系统主题 / 剪贴板 / 打开外链)
+ * 由参数注入,不由环境嗅探(§4.3)。
+ *
+ * `fetch` / `URL` / `TextDecoder` / `ReadableStream` / `AbortController` 不在名单上:
+ * 它们是 Node 18+ 与浏览器都有的标准全局,正是"同一份代码"的物质基础。
+ *
+ * 一个例外,**写在这里而不是写在注释里**:`__tests__` 里允许出现 `window`,因为
+ * "跑在 node 环境"这件事的证词恰恰是一句 `expect(typeof window).toBe('undefined')`。
+ */
+const CLIENT_PACKAGE_FORBIDDEN_GLOBAL_PATTERNS: RegExp[] = [
+  /(?<![\w.$])window(?![\w$])/,
+  /(?<![\w.$])document(?![\w$])/,
+  /(?<![\w.$])navigator(?![\w$])/,
+  /(?<![\w.$])EventSource(?![\w$])/,
+  /(?<![\w.$])localStorage(?![\w$])/,
+  /(?<![\w.$])sessionStorage(?![\w$])/,
+]
+
+/** 每个 client 测试文件都要自己钉住 node 环境(vitest 4 没有 environmentMatchGlobs)。 */
+const CLIENT_TEST_ENVIRONMENT_PRAGMA = /@vitest-environment\s+node/
+
+function checkClientPackageBoundary(): void {
+  const clientRoot = path.join(root, 'packages/client')
+  const files = walkFiles(clientRoot, [], { includeTests: true })
+  const sourceFiles = files.filter(file => !isClientTestFile(file))
+
+  const lines = [
+    ...files.flatMap(file =>
+      matchingImportSpecifierLines(file, CLIENT_PACKAGE_FORBIDDEN_IMPORT_PATTERNS)),
+    // 全局禁令只对**产品源码**生效;测试要用 `window` 当证词(见上面的常量注释)。
+    ...sourceFiles.flatMap(file =>
+      matchingCodeLines(file, CLIENT_PACKAGE_FORBIDDEN_GLOBAL_PATTERNS)),
+    ...files
+      .filter(file => isClientTestFile(file)
+        && !CLIENT_TEST_ENVIRONMENT_PRAGMA.test(fs.readFileSync(file, 'utf-8')))
+      .map(file => `${rel(file)}:1: missing \`// @vitest-environment node\``),
+  ]
+
+  assertNoMatches(
+    'packages/client stays framework-free, host-free and browser-global-free',
+    lines,
+  )
+}
+
+function isClientTestFile(file: string): boolean {
+  return file.includes(`${path.sep}__tests__${path.sep}`) || /\.(?:test|spec)\.tsx?$/.test(file)
+}
+
+/**
+ * **壳不许 import 别的壳**(§3)。
+ *
+ * `apps/desktop-react`(React 壳)今天还向 `packages/renderer`(Vue 渲染层)伸手 ——
+ * 那正是本方案要拆的东西。所以这条不是零基线硬闸,是**只减不增的棘轮**:基线
+ * `docs/audit/shell-isolation-baseline-2026-09-03.txt` 记着每个文件今天有几条,
+ * 任何文件高于它的数、或出现基线里没有的文件 → 红。C1 清零之后把基线清空,
+ * 这条自然变成硬闸。
+ *
+ * 反方向(`packages/renderer` → `apps/desktop-react`)今天是 0,所以直接硬闸:
+ * 一条都不许有,退役中的那棵树不该长出对新壳的依赖。
+ */
+const SHELL_ISOLATION_BASELINE_FILE = 'docs/audit/shell-isolation-baseline-2026-09-03.txt'
+
+const REACT_SHELL_FORBIDDEN_SHELL_IMPORT_PATTERNS: RegExp[] = [
+  /^@renderer(?:\/|$)/,
+  /packages\/renderer\//,
+]
+
+const VUE_RENDERER_FORBIDDEN_SHELL_IMPORT_PATTERNS: RegExp[] = [
+  /apps\/desktop-react/,
+]
+
+function readShellIsolationBaseline(): Map<string, number> {
+  const baseline = new Map<string, number>()
+  const filePath = path.join(root, SHELL_ISOLATION_BASELINE_FILE)
+  if (!fs.existsSync(filePath)) return baseline
+  for (const line of fs.readFileSync(filePath, 'utf-8').split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const match = /^(\S+)\s+(\d+)$/.exec(trimmed)
+    if (match) baseline.set(match[1], Number.parseInt(match[2], 10))
+  }
+  return baseline
+}
+
+function checkShellsDoNotImportOtherShells(): void {
+  const baseline = readShellIsolationBaseline()
+  const counts = new Map<string, string[]>()
+  for (const file of walkFiles(path.join(root, 'apps/desktop-react'), [], {
+    includeTests: true,
+    excludeDirs: ['dist', 'out', 'release'],
+  })) {
+    const hits = matchingImportSpecifierLines(file, REACT_SHELL_FORBIDDEN_SHELL_IMPORT_PATTERNS)
+    if (hits.length > 0) counts.set(rel(file), hits)
+  }
+
+  const lines: string[] = []
+  for (const [file, hits] of counts) {
+    const allowed = baseline.get(file) ?? 0
+    if (hits.length > allowed) {
+      lines.push(
+        `${file}: ${hits.length} cross-shell import(s), baseline ${allowed} — 壳不许 import 别的壳`,
+        ...hits.map(hit => `  ${hit}`),
+      )
+    }
+  }
+  // 反方向:硬闸,一条都不许。
+  lines.push(...walkFiles(path.join(root, 'packages/renderer'), [], { includeTests: true })
+    .flatMap(file => matchingImportSpecifierLines(file, VUE_RENDERER_FORBIDDEN_SHELL_IMPORT_PATTERNS)))
+
+  assertNoMatches(
+    `shells do not import other shells (ratchet: ${SHELL_ISOLATION_BASELINE_FILE})`,
+    lines,
+  )
+
+  // 基线松了就说一声(不判红)—— C1 迁完之后照这几行把基线收紧。
+  const improved: string[] = []
+  for (const [file, allowed] of baseline) {
+    const actual = counts.get(file)?.length ?? 0
+    if (actual < allowed) improved.push(`  ${file}: ${actual} < baseline ${allowed}`)
+  }
+  if (improved.length > 0) {
+    console.log(`[boundary] note: shell-isolation baseline can be tightened (${SHELL_ISOLATION_BASELINE_FILE})`)
+    for (const line of improved) console.log(line)
+  }
+}
+
+
 checkCoreForbiddenImports()
 checkRuntimeHostBoundary()
+checkClientPackageBoundary()
+checkShellsDoNotImportOtherShells()
 checkRuntimeWiringModulesStayAtTheEdge()
 checkSessionVocabularyUsesTheRegistry()
 checkGatewayHostBoundary()

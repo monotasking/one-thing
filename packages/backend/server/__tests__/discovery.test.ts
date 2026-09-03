@@ -6,7 +6,7 @@
  */
 import { createServer } from 'node:http'
 import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -182,5 +182,50 @@ describe('http discovery file', () => {
     expect(httpDiscoveryUrl({
       port: 5, host: '::1', pid: 1, startedAt: 0, owner: 'server',
     })).toBe('http://[::1]:5')
+  })
+})
+
+/**
+ * **一把尺子**(C0,`docs/design/client-sdk-2026-09.md` §9 留账那条)。
+ *
+ * 判活与记录形状已经搬进 `@shared/backend/http-discovery.ts`,好让
+ * `@onething/client/node`(禁 import backend / runtime)问同一个「core 活没活」。
+ * 代价是那份 shared 模块必须自己解析 store 根目录 —— 于是有了两处三段解析。
+ * **它们不许分叉,而这件事由这一格钉住,不由注释保证**:上面那句注释一旦成了
+ * 谎话(比如 shared 那边忘了认 `ONETHING_STORE_PATH`),这里当场红。
+ */
+describe('discovery 的 store 解析与 @shared 那份同形', () => {
+  let storePath: string
+  let previousStorePath: string | undefined
+
+  beforeEach(() => {
+    previousStorePath = process.env.ONETHING_STORE_PATH
+    storePath = mkdtempSync(path.join(tmpdir(), 'onething-discovery-shared-'))
+    process.env.ONETHING_STORE_PATH = storePath
+  })
+
+  afterEach(() => {
+    if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+    else process.env.ONETHING_STORE_PATH = previousStorePath
+    rmSync(storePath, { recursive: true, force: true })
+  })
+
+  it('显式 storePath / 环境变量 / 缺省家目录 三段都对得上', async () => {
+    const { resolveOnethingStoreRoot, httpDiscoveryPathIn } =
+      await import('@shared/backend/http-discovery.js')
+    const { getOnethingStorePath } = await import('@onething/runtime/storage')
+
+    // ① 环境变量那一段
+    expect(resolveOnethingStoreRoot()).toBe(getOnethingStorePath())
+    expect(httpDiscoveryPathIn(resolveOnethingStoreRoot())).toBe(getHttpDiscoveryPath())
+
+    // ② 显式 storePath 压过环境变量
+    const explicit = path.join(storePath, 'elsewhere')
+    expect(resolveOnethingStoreRoot(explicit)).toBe(getOnethingStorePath({ storePath: explicit }))
+
+    // ③ 两者都没有 → 家目录下的 `.onething`
+    delete process.env.ONETHING_STORE_PATH
+    expect(resolveOnethingStoreRoot()).toBe(getOnethingStorePath())
+    expect(resolveOnethingStoreRoot()).toBe(path.join(homedir(), '.onething'))
   })
 })

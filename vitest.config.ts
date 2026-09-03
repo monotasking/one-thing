@@ -14,6 +14,13 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // 全局缺省就是 node。**`packages/client` 必须是 node,而且不许靠这一行**
+    // (C0,`docs/design/client-sdk-2026-09.md` §7):那个包的卖点是"浏览器与
+    // Node 同一份代码",证词就是它的测试跑在没有 `window` 的环境里。vitest 4
+    // 删掉了 `environmentMatchGlobs`,所以钉子打在文件上 —— 每个
+    // `packages/client/__tests__/*.test.ts` 开头都有 `// @vitest-environment node`,
+    // 缺一个由 `bun run boundary` 判红(`checkClientPackageBoundary`)。
+    // 有人哪天把这里改成 jsdom,那个包依旧是 node。
     environment: 'node',
     setupFiles: [path.resolve(__dirname, 'vitest.setup.ts')],
     include: ['packages/**/*.test.ts', 'apps/**/*.test.ts'],

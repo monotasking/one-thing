@@ -5,6 +5,7 @@
     "packages/core/**/*",
     "packages/onething-runtime/**/*",
     "packages/backend/**/*",
+    "packages/client/**/*",
     "packages/gateway/**/*",
     "apps/electron/**/*",
     "apps/server/**/*",

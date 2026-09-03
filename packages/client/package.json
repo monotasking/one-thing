@@ -1,0 +1,19 @@
+{
+  "name": "@onething/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "core 的客户端底座:传输(HTTP/SSE)+ 泛型 RPC 域客户端 + 事件枢纽 + 纯判据。零 React / 零 Vue / 零 Electron,浏览器与 Node 双环境。",
+  "//exports": "家族式通配(与 @onething/backend 同形):`./*.js` 与 `./*` 都落到 `./*.ts`,加子路径不用改这里。`./node` 单列 —— 它是 Node 专用面(读 <store>/run/http.json),浏览器构建永远不引;单列是为了让「引没引它」在 exports 上就看得见,而不是藏在通配后面。",
+  "exports": {
+    ".": "./index.ts",
+    "./node": "./node.ts",
+    "./node.js": "./node.ts",
+    "./*.js": "./*.ts",
+    "./*": "./*.ts"
+  },
+  "//dependencies": "只有 workspace 兄弟包,零第三方。`@onething/core` 出的是纯类型(ipc 的 Router / RouteAPI、runtime-facade 的 RuntimeHostCapabilities)。`@shared` 不是包而是各配置里的别名,所以不在这里登记。",
+  "dependencies": {
+    "@onething/core": "*"
+  }
+}

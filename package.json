@@ -20,7 +20,8 @@
 		"packages/core",
 		"packages/gateway",
 		"packages/onething-runtime",
-		"packages/backend"
+		"packages/backend",
+		"packages/client"
 	],
 	"scripts": {
 		"dev": "node scripts/dev-unified.mjs",
@@ -55,6 +56,7 @@
 		"boundary:gate": "node scripts/boundary-gate.mjs",
 		"transport:gate": "node scripts/transport-gate.mjs",
 		"gate:native": "node scripts/gate-native-abi.mjs",
+		"gate:client": "node scripts/gate-client-runtimes.mjs",
 		"ui:check": "node scripts/ui-style-check.mjs",
 		"ui:gate": "node scripts/ui-gate.mjs",
 		"log:check": "node scripts/log-check.mjs",
