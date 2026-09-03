@@ -81,15 +81,17 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 
 - **packages/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
 - **packages/onething-runtime/src** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
-- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (28 dirs: acp / agent-loop / agents / auth / collab / deeplink / external-agents / goals / headless / interaction / logging / markdown / music / permission / plugins / project-dirs / providers / scheduler / search / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
+- **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (33 dirs: acp / agent-loop / agents / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / music / permission / plugins / project-dirs / providers / scheduler / search / settings / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
 - **apps/\*** — thin sockets: Electron (window/IPC/native panel), server (HTTP/SSE), web (browser build of the renderer), CLI daemon.
 
 ```
 apps/*  (thin sockets)
 ┌───────────────┬────────────────┬──────────────┬─────────────────────┐
-│ apps/electron │ apps/server    │ apps/web     │ CLI daemon          │
-│ window/IPC/   │ HTTP + SSE     │ browser      │ bin/onething.mjs →  │
-│ native panel  │ :8787          │ build        │ out/main/cli.js     │
+│ desktop-react │ apps/server    │ apps/web     │ CLI daemon          │
+│ (React shell) │ HTTP + SSE     │ browser      │ bin/onething.mjs →  │
+│ own core+HTTP │ dynamic port   │ build (Vue,  │ out/main/cli.js     │
+│ apps/electron │                │ retired)     │                     │
+│ = Vue, retired│                │              │                     │
 └──────┬────────┴───────┬────────┴──────┬───────┴──────────┬──────────┘
        │ createOnethingBackend(...)     │ /api → server    │
 ┌──────┴────────────────┴───────────────┴──────────────────┴──────────┐
@@ -127,17 +129,26 @@ packages/gateway/            # WeChat/Telegram channel gateway. Depends on core 
                              # Remote permission approval (reply 1/2/3), markdown-safe streaming.
 packages/shared/             # Shared IPC/event contracts + defaults ('@shared'). Also
                              # backend/ (store-lock for CLI), cli/, defaults/, types/, voice/.
-packages/renderer/           # Shared Vue 3 renderer UI ('@' / '@renderer'), consumed by
-                             # the Electron renderer build and apps/web.
-apps/electron/               # Electron host. src/main ('@main') = ipc/bridges/cli only;
+packages/renderer/           # Vue 3 renderer UI ('@' / '@renderer') — RETIRED as a product
+                             # (2026-09-02: the desktop is apps/desktop-react). Still compiles,
+                             # tests and boots under apps/electron and apps/web; no new work here.
+apps/desktop-react/          # THE desktop (React). electron/main.ts assembles its own core
+                             # (createOnethingBackend + createShellHostPorts()) when no live core
+                             # serves the store, mounts the HTTP/SSE face (owner 'shell'); the
+                             # renderer talks HTTP/SSE only (one `host:connection` IPC). Not a
+                             # workspace member (resolves @onething/* upward — bun must stay
+                             # hoisted). Has its own CLAUDE.md.
+apps/electron/               # Vue Electron host (retired with packages/renderer; still boots).
+                             # Still the home of the CLI daemon entry (src/main/cli/) and the
+                             # `@main` ipc/bridges. src/main ('@main') = ipc/bridges/cli only;
                              # the rest of src/* (window, app, voice, menu, search, …) is
                              # the '@onething/electron-host/*' alias family.
 apps/server/                 # Process shell only (main.ts + index.ts). The HTTP/SSE surface
                              # and the server runtime live in the assembly layer
                              # (packages/backend/server/), so the Electron
                              # desktop mounts the SAME code over its own backend.
-apps/web/                    # Browser build of packages/renderer; talks to whatever core
-                             # serves this store (desktop or server:start) via /api.
+apps/web/                    # Browser build of packages/renderer (Vue; retired with it); talks
+                             # to whatever core serves this store (desktop or server:start) via /api.
 ```
 
 ### createOnethingBackend — the single assembly recipe
@@ -286,39 +297,57 @@ Notes:
     record with `fields.stack`, and hub echoes dropped on sight (they carry a zero-width
     `RENDERER_LOG_ECHO_MARK`, so the fallback never double-records what the hub already sent).
 
-- Session persistence is file-based: new sessions use per-session JSONL dirs
-  (`sessions/<id>/meta.json` + `messages.jsonl`, append/suffix writes during streaming);
-  legacy whole-file `sessions/<id>.json` is still readable and lazily migrated
-  (originals kept in `sessions/legacy-backup/`). Toggle via
-  `settings.storage.sessionFormat` ('jsonl' default | 'legacy-json' to roll back).
-  Hybrid driver: `packages/onething-runtime/src/sessions/storage-driver.ts`; pure jsonl
+- Session persistence is file-based, one directory per session:
+  `sessions/<id>/meta.json` (session shell + log index — **the only file the repository
+  still writes through the storage driver**), `sessions/<id>/events.jsonl` (**the ledger —
+  the only persisted session history**), a content-addressed `sessions/<id>/blobs/` for
+  anything over 64KB, and, for sessions born before 2026-08-26, a read-only
+  `messages.jsonl` fossil (paging / user markers / the `history` tool / `verify #6` still
+  read it; sessions born later have no such file and those readers return `undefined`).
+  Legacy whole-file `sessions/<id>.json` is migrated **synchronously on first touch**
+  straight into `events.jsonl` (`migrateLegacySessionNow`, one `message/imported` per
+  message; originals kept in `sessions/legacy-backup/`). `settings.storage.sessionFormat`
+  ('jsonl' default | 'legacy-json') only decides the format of *new* sessions. Hybrid
+  driver: `packages/onething-runtime/src/sessions/storage-driver.ts`; pure jsonl
   codec/pager in `packages/core/session/storage/jsonl/`. See
-  `docs/design/session-storage-jsonl.md`; conversion: `scripts/convert-sessions.mjs`.
-  Cross-session search/indexing belongs in apps/server — do not add a database to the
-  Electron main process.
-- **Session event sourcing is in shadow mode** (S1, `docs/design/session-event-sourcing-2026-08.md`).
-  Every session also writes `sessions/<id>/events.jsonl` — a v2 event log (`session/created`,
-  `user/message`, `run/start|end`, `request/*`, `assistant/chunks|part-end`, `tool/*`,
-  `permission/*`, `session/compacted`, …) plus a content-addressed `sessions/<id>/blobs/`
-  for anything over 64KB. **`messages.jsonl` is still the only truth**; the event log is a
-  shadow that proves itself: at every `run/end` the projection of that run
-  (`projectChatMessages`) is deep-compared against the real messages, and before every
-  provider request the projected model history (`projectModelHistory`) is hash-compared
-  against what `buildHistoryMessages` actually sends. Both sides go through the one judge
-  in `packages/core/session/projection/canonical.ts` — extend that file, never add a
-  local exemption. Mismatches land one summary line each in
-  `<store>/log/session-shadow.jsonl` and count into `session-shadow-stats.json`;
-  `bun run sessions:shadow-report` is the gate (runs ≥ 200 ∧ mismatches = 0 ∧
-  appendFailures = 0), `sessions:shadow-reset` zeroes it, `sessions:shadow-overhead`
-  measures the cost. **`bun run sessions:shadow-battery` earns that gate in ~45s**
-  (§10.13/§10.14): it rebuilds `dist/server/main.js`, boots the real server on a throwaway
-  store behind a seeded fake provider, drives ~18 scenarios (one per fixed mismatch class)
-  × 9 passes over HTTP, and runs the report at the end — red on any scenario failure or
-  any mismatch line. Real usage is still the other half of the gate: it owns the unknown
-  unknowns (every fixed class so far came from a real machine, not from the matrix).
-  `ONETHING_SESSION_SHADOW=0` turns the comparison off (events keep
-  being written); it is **on by default**. S2 is what flips the read path over to the
-  projection — until then, nothing reads `events.jsonl` for product behavior.
+  `docs/design/session-storage-jsonl.md`. Cross-session search/indexing belongs in
+  apps/server — do not add a database to the Electron main process.
+- **Session event sourcing is the production write model, not a shadow** (F line landed
+  F4-c, 2026-08-27; `docs/design/session-event-sourcing-2026-08.md` §17 系统宪法 is the
+  three-law summary). Every fact — a user message, one streamed delta, a tool step,
+  a permission decision — is one logical event on one stream; the projection reducer
+  (`packages/core/session/projection/`) folds that stream into state, and
+  `session.messages` in memory is only the **materialized view** of it; the encoder packs
+  the same stream into `events.jsonl` (`assistant/chunks` batching is storage compression,
+  not semantics). **`events.jsonl` is the only truth on disk**: the `messages.jsonl` write
+  half was deleted (S3w-3 批 6b), event/blob write failures **throw** into the command
+  (never swallowed; a queued async failure latches and the *next* append throws
+  `SessionEventWriteError`), a foreign writer detected by byte-size drift on the ledger
+  also throws, and every product read path (`listMessages` / `getMessage` /
+  `pageMessages` / cold-load hydration) is projection-only — the `ONETHING_SESSION_READ`
+  / `_HYDRATE` / `_TRANSCRIPT` rollback levers were **burned**, rollback is `git revert`.
+  What survives of the old shadow machinery is the **refold durability gate**
+  (`backend/session/shadow.ts`, §14.3-B): at every run end the ledger's *file bytes* are
+  re-folded and compared with the live projection — two store-independent paths — and any
+  diff lands one summary line in `<store>/log/session-shadow.jsonl` and counts into
+  `session-shadow-stats.json` (`refoldChecks` / `refoldMismatches`). The identity gate
+  (projection vs in-memory store) was retired in c4 because the store is no longer any
+  read's source of truth — "comparing yourself with yourself" would go green for the wrong
+  reason. Both sides still go through the one judge in
+  `packages/core/session/projection/canonical.ts` — extend that file, never add a local
+  exemption. `ONETHING_SESSION_SHADOW=0` turns the refold bookkeeping off (events keep
+  being written); it is **on by default**. Gates: `bun run sessions:shadow-report`
+  (refold mismatches = 0 ∧ appendFailures = 0 over the real store),
+  `bun run sessions:shadow-battery` (rebuilds `dist/server/main.js`, boots the real server on
+  a throwaway store behind a seeded fake provider, drives the scenario matrix over HTTP,
+  samples refold at every run end — red on any scenario failure or mismatch line),
+  `sessions:hydration-contract` (projection hydration ≡ transcript hydration over every
+  real session), `sessions:verify`, `sessions:events-selfcheck`. Two things the ledger
+  does **not** yet guarantee (audit 2026-09-02, `docs/audit/backend-architecture-review-2026-09-02.md`
+  §2.4): `events.jsonl` and `meta.json` ride two independent write queues with no shared
+  failure handling, and two `server:start` processes on one store do not refuse each other
+  (`apps/server/src/main.ts` only refuses `owner !== 'server'`) — the foreign-writer guard
+  catches that after the fact.
 - **Trace = the read-only query surface over `events.jsonl`** (S3, §12 of the same doc).
   One pure assembler (`packages/core/session/trace/assemble.ts` → `Session → Run →
   Request → ToolCall`; timestamps only, no stored durations, no response body) feeds three
@@ -328,8 +357,7 @@ Notes:
   generic `POST /api/rpc` — there is deliberately **no** dedicated REST route; adding a
   domain must not add a hand-written channel), and the trajectory panel's run grouping.
   Response text is materialized on demand from the `assistant/chunks` fold, never carried
-  on the tree.
-  Buildable in shadow mode because the events are already written regardless of read mode.
+  on the tree. It reads the same ledger the product reads.
 - There is no memory subsystem. The soul-memory plugin (SOUL/MEMORY.md + daily notes,
   panel, settings tab, `/api/memory/*`) was retired 2026-08-06 — see
   `docs/audit/soul-memory-retirement-2026-08-06.md`. Nothing reads or writes those files;
@@ -489,8 +517,12 @@ Notes:
     `context.transport`: **http** read/toggle faces call the same server-mirror closures
     through `backend/server/plugin-catalog.ts`'s single-slot port, `configGet` derives a
     read-only projection from that catalog listing, and every write face is judged by
-    **whether a plugin manager is assembled in this process** (the desktop's embedded HTTP
-    face has one and takes the same path as IPC; a standalone `server:start` does not and
+    **whether a plugin manager is assembled in this process** (the Vue desktop's embedded HTTP
+    face has one and takes the same path as IPC for the 11 write faces — but its 7 read faces
+    (`list/enable/disable/refresh/commands/executeCommand/configGet`) still go through the
+    server mirror catalog because `configureServerPluginCatalogPort` in `server/runtime.ts` is
+    not guarded by `ownsProcessPorts` (audit 2026-09-02 §2.5); the React shell assembles no
+    plugin manager at all today, so on it every plugins face answers "desktop host only"; a standalone `server:start` does not and
     returns the structured "desktop host only" answers verbatim). The renderer adds a
     second layer: capability bit `pluginsManage` (`platform/types.ts`) is `false` on web,
     so `platform/plugins-client.ts` never even sends the write faces. Two pushes stay on
@@ -597,7 +629,35 @@ Notes:
   any file. `MediaAsset.source` (`ai-generated` / `user-upload` / `external`) now has real
   producers on every facet, so filtering by it no longer lies.
 
-### Three-Process Model (Electron host)
+### Process model
+
+**The current desktop (React shell, `apps/desktop-react`) is a two-process HTTP client of its own core**, not the three-process IPC design below:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Renderer (React, apps/desktop-react/src)                        │
+│  - talks ONLY HTTP/SSE: POST /api/rpc + GET /api/events          │
+│  - the one IPC it has is `host:connection` → { baseUrl, token }  │
+│    (the discovery file is 0600; the renderer never reads disk)   │
+└─────────────────────┬────────────────────────────────────────────┘
+                      │ HTTP / SSE (same face apps/web and mobile use)
+┌─────────────────────┴────────────────────────────────────────────┐
+│  Main (apps/desktop-react/electron/main.ts)                      │
+│  - if <store>/run/http.json names a live core → attach to it     │
+│  - else: configureLogging → createOnethingBackend({ host:        │
+│    createShellHostPorts(), … }) → window → mount the embedded     │
+│    HTTP/SSE face (owner 'shell') + scheduler + MCP, each own()'d  │
+│  - quit = await backend.dispose()                                │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Because the shell rides the HTTP face, everything in the `rpc/domains/*` handlers that forks on
+`context.transport === 'http'` (13 of 42 domains; voice 11/11, terminal 7/7, plugins 18/19 are whole-domain
+forks) applies to the desktop too — those forks encode "does this host have the peripheral", which is a
+host-port question, not a transport one (audit 2026-09-02 §2.6; route B in
+`docs/audit/backend-design-patterns-review-2026-09-02.md` §6 is the fix).
+
+**The Vue host (`apps/electron`) is the three-process IPC design; retired as a product, kept compiling and booting** (it still owns the CLI daemon entry and the `@main` bridges, and it is the only host today that wires plugins / voice / music / gateway / deeplink / todo-plan watchers):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -618,7 +678,7 @@ Notes:
 │  Main Process (Node.js)                                         │
 │  apps/electron/src/main/ ('@main': ipc/ bridges/ cli/ only)     │
 │  - boots createOnethingBackend (engine/events live in           │
-│    packages/backend/)                          │
+│    packages/backend/)                                           │
 │  - IPCBridge: the push side's single exit point                 │
 │    (session:event / session:stream / broadcasts)                │
 │  - Request/response rides TWO generic channels, never a new     │
@@ -628,7 +688,7 @@ Notes:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-Desktop boot: `apps/electron/src/main.ts` → `startOnethingElectronMain()` in `apps/electron/src/app/main-process.ts` — wires configure*Host ports, acquires the desktop `StoreLock`, calls `createOnethingBackend`, then post-window services (plugins, scheduler, MCP, ACP, gateway, skills) non-blocking.
+Vue desktop boot: `apps/electron/src/main.ts` → `startOnethingElectronMain()` in `apps/electron/src/app/main-process.ts` — acquires the desktop `StoreLock`, calls `createOnethingBackend({ host: createElectronDesktopHostPorts(), … })`, then post-window services (plugins, scheduler, MCP, ACP, gateway, skills) non-blocking, each `own()`'d on the backend.
 
 ### Key Data Flows
 
