@@ -20,6 +20,7 @@
     "./rpc/domains/permission-grants.js": "./rpc/domains/permission-grants.ts",
     "./rpc/registry.js": "./rpc/registry.ts",
     "./rpc/sandbox.js": "./rpc/sandbox.ts",
+    "./server/audience.js": "./server/audience.ts",
     "./server/discovery.js": "./server/discovery.ts",
     "./server/embed.js": "./server/embed.ts",
     "./server/http.js": "./server/http.ts",

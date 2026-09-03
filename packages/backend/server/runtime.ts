@@ -48,6 +48,16 @@ import {
 	type RuntimeUnsubscribe,
 } from "@onething/core";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
+import {
+	createTenantAudienceFactory,
+	ownerMatchesContext,
+	ownsSessionRecord,
+	sessionOwnerOf as sessionOwner,
+	type SessionAudience,
+	type SessionAudienceFactory,
+	type SessionIndexPort,
+	type SessionOwner as ServerSessionOwner,
+} from "./audience.js";
 import { invalidateSettingsCache as invalidateAppSettingsCache } from "@onething/backend/stores/settings.js";
 import { invalidateAgentsCache as invalidateAppAgentsCache } from "@onething/backend/wiring/agents/index.js";
 import { getProjectsStore as getAppProjectsStore } from "@onething/backend/wiring/project-dirs/index.js";
@@ -87,6 +97,10 @@ import {
 import { sessionCommandEvents } from "@onething/backend/session/command-events.js";
 import { hydrateSessionMessagesFromProjection } from "@onething/backend/session/hydrate.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
+import {
+	findSessionIndexMeta as findAppStoreSessionIndexMeta,
+	onSessionIndexChanged,
+} from "@onething/backend/stores/sessions.js";
 import { configureServerPluginCatalogPort } from "./plugin-catalog.js";
 import { configureServerSearchPort } from "./search-providers.js";
 import {
@@ -372,42 +386,12 @@ type ServerChatSession = ChatSession & {
 	lastMessagePreview?: string;
 };
 
-/** 一条会话的租户归属(两格都可能缺席 —— 缺席 = 无主,见 `ownsSession`)。 */
-interface ServerSessionOwner {
-	userId?: string;
-	workspaceId?: string;
-}
 
 /**
- * 读一条会话/元数据的**租户归属**。
- *
- * 存量兼容只认 `userId` 那一格:老盘上的 `workspaceId` 存的是**产品空间**,把它读成
- * 租户正是要修的那个 bug,所以这里**故意不回落**到它。
+ * 归属取材与归属判定这两句**住在 `server/audience.ts`**(批 A):受众对象与这里的
+ * `ownsSession` / `ownsSessionMeta` 判的必须是同一件事,所以它们共用同一个谓词,
+ * 不是两份各算一遍的规则。
  */
-function sessionOwner(
-	record: { userId?: string; ownerUserId?: string; ownerWorkspaceId?: string },
-): ServerSessionOwner {
-	return {
-		userId: record.ownerUserId ?? record.userId,
-		workspaceId: record.ownerWorkspaceId,
-	};
-}
-
-/**
- * 归属判定:**两格都空 = 无主,谁都读得到**(单用户服务端的常态);有值的那格才比。
- * 缺席的一格不参与比较 —— 老会话只盖过 `userId` 的那种,不该因为「没有租户作用域」
- * 就对所有人隐身。
- */
-function ownerMatchesContext(
-	owner: ServerSessionOwner,
-	context: RuntimeRequestContext,
-): boolean {
-	if (!owner.userId && !owner.workspaceId) return true;
-	return (
-		(owner.userId ?? context.userId) === context.userId &&
-		(owner.workspaceId ?? context.workspaceId) === context.workspaceId
-	);
-}
 
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
@@ -478,6 +462,15 @@ export interface OnethingServerRuntimeOptions {
 	 *   原本那只,再喂 SSE),`shutdown()` 里再把它们还原回去。
 	 */
 	processPorts?: "own" | "host";
+	/**
+	 * **受众**的产地(批 A,`docs/design/event-subscription-audience-2026-09.md` §3.1)。
+	 *
+	 * 一条订阅能看哪些会话,是订阅建立那一刻就定下的事实。缺省 = 按会话归属判
+	 * (`TenantAudience`,与批 A 之前逐字同判);单用户宿主(自装 core 的桌面壳)
+	 * 传 `createOpenAudienceFactory()`。**订阅代码不知道自己跑在哪** —— 新增一种
+	 * 宿主只是这里多注一个实现。
+	 */
+	audienceFactory?: SessionAudienceFactory;
 }
 
 export interface OnethingServerRuntimeOverBackendOptions
@@ -495,6 +488,11 @@ export interface ServerSettingsStore {
 }
 
 export interface ServerSessionStore {
+	/**
+	 * 按 id 取一条索引元数据(O(1) 的那口)。缺席时调用方退回对 `getSessionsList()`
+	 * 的线性 `find` —— 所以这是一格**加速**,不是新语义。
+	 */
+	findSessionMeta?(sessionId: string): SessionMeta | undefined;
 	getCurrentSessionId(): string;
 	setCurrentSessionId(sessionId: string): void;
 	saveUIState(uiState: unknown): {
@@ -1069,9 +1067,33 @@ async function createServerRuntimeOverServerBackend(
 	const findSessionIndexMeta = (
 		sessionId: string,
 	): ServerSessionIndexMeta | undefined =>
-		(sessionStore.getSessionsList() as ServerSessionIndexMeta[]).find(
-			(meta) => meta.id === sessionId,
-		);
+		sessionStore.findSessionMeta
+			? (sessionStore.findSessionMeta(sessionId) as
+					| ServerSessionIndexMeta
+					| undefined)
+			: (sessionStore.getSessionsList() as ServerSessionIndexMeta[]).find(
+					(meta) => meta.id === sessionId,
+				);
+
+	/**
+	 * 受众的真相源(批 A §3.1)。`findMeta` 走上面那口;`onChanged` 是 app 仓库
+	 * 索引写门的通知口。
+	 *
+	 * **为什么一个通知口就够**:备忘记的是「这条会话归不归我」,而归属只在会话
+	 * **创建**那一刻盖一次章(`stampOwner`),之后没有改归属的写路。新会话对备忘
+	 * 恒是一次未命中(没记过就现判),所以通知口今天的作用是**防御性**的 ——
+	 * 将来真出现「共享会话」这类新归属规则时,失效口已经在正确的位置上。
+	 */
+	const sessionIndexPort: SessionIndexPort = {
+		// 索引里没有这条时**回落到会话对象**:批 A 之前那把尺子问的是
+		// `getSessionForContext`(会话对象上的归属),而索引条目理论上可以还没写
+		// (存量盘、echo 后端的工作集)。回落只在**备忘未命中且索引查无此条**时跑,
+		// 热路上一步都不多 —— 换来的是与批 A 之前逐字同判,不是「大概一样」。
+		findMeta: (sessionId) => findSessionIndexMeta(sessionId) ?? resolveSession(sessionId),
+		onChanged: (listener) => onSessionIndexChanged(listener),
+	};
+	const audienceFactory: SessionAudienceFactory =
+		options.audienceFactory ?? createTenantAudienceFactory(sessionIndexPort);
 
 	const loadSessionIntoWorkingSet = (
 		sessionId: string,
@@ -2104,12 +2126,16 @@ async function createServerRuntimeOverServerBackend(
 			options,
 			context = defaultRequestContext(),
 		) {
-			const canReadSession = (targetSessionId: string) => {
-				return Boolean(getSessionForContext(targetSessionId, context));
+			// 批 A:受众在**订阅建立那一刻**算一次,之后 `covers` 是 O(1)、零 I/O。
+			// 从前这里每一条 envelope 都要 `getSession` → 整条会话全量物化。
+			const audience = audienceFactory(context);
+			const closed = (): RuntimeUnsubscribe => {
+				audience.dispose();
+				return () => {};
 			};
 
 			if (sessionId !== "*" && options?.afterSeq !== undefined) {
-				if (!canReadSession(sessionId)) return () => {};
+				if (!audience.covers(sessionId)) return closed();
 				for (const envelope of eventBus.replay(
 					sessionId,
 					options.afterSeq + 1,
@@ -2119,12 +2145,20 @@ async function createServerRuntimeOverServerBackend(
 			}
 
 			if (sessionId === "*") {
-				return eventBus.onAnySessionAny((envelope) => {
-					if (canReadSession(envelope.sessionId)) handler(envelope);
+				const off = eventBus.onAnySessionAny((envelope) => {
+					if (audience.covers(envelope.sessionId)) handler(envelope);
 				}, "ServerRuntimeEvents");
+				return () => {
+					off();
+					audience.dispose();
+				};
 			}
-			if (!canReadSession(sessionId)) return () => {};
-			return eventBus.onAny(sessionId, handler, "ServerRuntimeEvents");
+			if (!audience.covers(sessionId)) return closed();
+			const off = eventBus.onAny(sessionId, handler, "ServerRuntimeEvents");
+			return () => {
+				off();
+				audience.dispose();
+			};
 		},
 	};
 	const streamsPort: RuntimeStreamsAdapter<AgentEngineStreamChunk> = {
@@ -2134,19 +2168,29 @@ async function createServerRuntimeOverServerBackend(
 			_options,
 			context = defaultRequestContext(),
 		) {
-			const canReadSession = (targetSessionId: string) => {
-				return Boolean(getSessionForContext(targetSessionId, context));
-			};
+			// 与 `eventsPort` 同一条规矩:受众一次算定,分片上只问 `covers`。
+			const audience = audienceFactory(context);
 
 			if (sessionId === "*") {
-				return streamChannel.subscribeAny((payload) => {
-					if (canReadSession(payload.sessionId)) handler(payload);
+				const off = streamChannel.subscribeAny((payload) => {
+					if (audience.covers(payload.sessionId)) handler(payload);
 				});
+				return () => {
+					off();
+					audience.dispose();
+				};
 			}
-			if (!canReadSession(sessionId)) return () => {};
-			return streamChannel.subscribe(sessionId, (chunk) =>
+			if (!audience.covers(sessionId)) {
+				audience.dispose();
+				return () => {};
+			}
+			const off = streamChannel.subscribe(sessionId, (chunk) =>
 				handler({ sessionId, chunk }),
 			);
+			return () => {
+				off();
+				audience.dispose();
+			};
 		},
 		// P4c 第五批:`abort` / `active` 随 `chatRouter` 迁走。停止从此走桌面
 		// 那条完整收尾(取消挂起的 step、落 isStreaming:false、补
@@ -2746,6 +2790,9 @@ function toSessionMeta(session: ServerChatSession): SessionMeta {
 		ownerUserId: _ownerUserId,
 		ownerWorkspaceId: _ownerWorkspaceId,
 		workspaceId: _workspaceId,
+		// 摘出来单独条件展开 —— 留在 `...meta` 里的话,「键在、值是 undefined」
+		// 那一档照样会被铺进投影,条件展开就白写了。
+		previewText: _previewText,
 		...meta
 	} = session;
 	return {
@@ -2753,9 +2800,16 @@ function toSessionMeta(session: ServerChatSession): SessionMeta {
 		// P0.3:messageCount 由 normalize* / refreshSessionMeta 盖在会话上,
 		// 这里不再自己数一遍 `session.messages`(两只仓库各有各的取数口)。
 		messageCount: session.messageCount ?? 0,
-		previewText: session.previewText,
 		// 条件展开而不是直给:这份投影被 `Object.assign(meta, ...)` 灌进索引元数据,
 		// 直给 undefined 会把命令面刚维护好的那一格洗掉。
+		//
+		// 批 A 起 `previewText` 也走这一条(从前它是直给):`normalizeAppSession`
+		// 不再兜底重算之后,一条「索引里有 previewText、meta.json 里没有」的存量
+		// 会话再存一次就会被洗成 undefined。真机上这类条目 6/460 —— 数目小,但
+		// 洗掉是**可感知**的(会话卡上的预览那一行会空掉),所以按同款写法防住。
+		...(session.previewText !== undefined
+			? { previewText: session.previewText }
+			: {}),
 		...(session.lastMessagePreview !== undefined
 			? { lastMessagePreview: session.lastMessagePreview }
 			: {}),
@@ -2850,7 +2904,7 @@ function ownsSession(
 	session: ServerChatSession,
 	context = defaultRequestContext(),
 ): boolean {
-	return ownerMatchesContext(sessionOwner(session), context);
+	return ownsSessionRecord(session, context);
 }
 
 /**
@@ -2888,7 +2942,7 @@ function ownsSessionMeta(
 	meta: ServerSessionIndexMeta,
 	context = defaultRequestContext(),
 ): boolean {
-	return ownerMatchesContext(sessionOwner(meta), context);
+	return ownsSessionRecord(meta, context);
 }
 
 /**
@@ -3131,14 +3185,22 @@ export function createAppBackedServerSessionStore(
 	// → `computeSessionRepairOnLoad(session, session.messages)`,messages 不是数组
 	// 早就在那里 `.map` 崩了;createSession/createBranchSession 也恒建数组。
 	// 派生字段改从读门面取,server 不再持有 `session.messages`。
+	/**
+	 * 批 A §3.4:**只剩 `agentId` 缺省那一行**。
+	 *
+	 * 从前这里无条件 `listMessages(session.id)` 把整条会话物化一遍,只为填
+	 * `messageCount` 与 `previewText` 两个标量 —— 大会话上一次 69ms,而它挂在
+	 * `getSession` 上,于是每一条流式分片的归属判定都要付这笔钱。
+	 *
+	 * 那两格本来就有写侧在维护:`messageCount` 由命令面的列表投影
+	 * (`applySessionListProjectionToMeta`,E 批)每次落账时算,`previewText` 由
+	 * server 自己的 `refreshSessionMeta` 在保存时算。读侧再算一遍就是「两边各算
+	 * 一份」,正是这一批要消掉的东西。
+	 */
 	const normalizeAppSession = (
 		session: ServerChatSession,
 	): ServerChatSession => {
 		if (!session.agentId) session.agentId = DEFAULT_ONETHING_AGENT_ID;
-		const messages = appSessionReads.listMessages(session.id).messages;
-		session.messageCount = messages.length;
-		session.previewText =
-			session.previewText ?? sessionPreviewText(messages);
 		return session;
 	};
 	// P0.4:`saveSessionSnapshot` 后门退役 —— 会话级字段改走命令面的
@@ -3185,6 +3247,7 @@ export function createAppBackedServerSessionStore(
 		getSessions: () =>
 			(getAppStoreSessions() as ServerChatSession[]).map(normalizeAppSession),
 		getSessionsList: () => getAppStoreSessionsList(),
+		findSessionMeta: (sessionId) => findAppStoreSessionIndexMeta(sessionId),
 		// invalidateSession intentionally absent: single repository — the
 		// engine's cache IS the fresh copy; dropping it would only cost reloads.
 		getSession: (sessionId) => {

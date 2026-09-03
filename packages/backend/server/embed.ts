@@ -18,6 +18,7 @@ import {
   createOnethingServerRuntimeOverBackend,
   type OnethingServerRuntime,
 } from './runtime.js'
+import type { SessionAudienceFactory } from './audience.js'
 import {
   removeHttpDiscovery,
   writeHttpDiscovery,
@@ -44,6 +45,12 @@ export interface EmbeddedOnethingHttpServerOptions {
    * 对两者行为逐字相同,所以这只是可读性,不是新语义。
    */
   owner?: HttpDiscoveryOwner
+  /**
+   * **受众**的产地(批 A,`docs/design/event-subscription-audience-2026-09.md` §3.1)。
+   * 缺省不传 = 按会话归属判(与批 A 之前逐字同判);单用户宿主(React 壳自装 core)
+   * 传 `createOpenAudienceFactory()` —— 那里只有一个人,归属判定恒真。
+   */
+  audienceFactory?: SessionAudienceFactory
   logger?: Pick<Console, 'log' | 'warn' | 'error'>
 }
 
@@ -95,6 +102,7 @@ export async function startEmbeddedOnethingHttpServer(
   const runtime = await createOnethingServerRuntimeOverBackend(backend, {
     ownsBackend: false,
     processPorts: 'host',
+    ...(options.audienceFactory ? { audienceFactory: options.audienceFactory } : {}),
   })
   const server = createOnethingHttpServer({
     runtime: runtime.runtime,

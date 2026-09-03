@@ -14,6 +14,12 @@
  *     不是 node 侧轮询(轮询间隔会直接变成误差下限)。
  *  ③ **5k 字消息流式回放** —— 从 HTTP 注入一条长消息,量它上屏那一段的帧。
  *     判据:稳态里不出超过 33ms(30fps 一帧)的帧。
+ *  ④ **大会话 + 真流**(09-03 批 A 补,`docs/design/event-subscription-audience-2026-09.md` §6)
+ *     —— 门自己**种**一条与用户报障同量级的会话(≥3000 账本行、≥20 次工具调用),
+ *     再让一只假 provider 吐 50KB 带 ```html 围栏的回答 + 2 次工具调用。判据两条:
+ *     屏幕滞后于 provider 收尾 ≤ 1s、core 进程 CPU 中位 < 40%。
+ *     ③ 与 ④ 的差别正是设计 §1.4 说的那句:③ 只注入一条**用户**消息,没有 assistant
+ *     流、也不是大会话 —— 报障的现场它一条都没量到。
  *
  * ── 量法:CDP Tracing,不是页面里的秒表 ───────────────────────────────
  * `Tracing.start` 录的是渲染进程自己的任务流水。我们从中取**主线程(CrRendererMain)
@@ -31,9 +37,10 @@
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
  * 门红时 trace 会留在 /tmp/onething-perf-*.json,直接拖进 DevTools 的 Performance 面板看。
  */
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
+import http from 'node:http'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -87,6 +94,311 @@ const SHELF_PANELS = ['sessions', 'files', 'terminal']
 
 /** 场景③注入的那条长消息:5k 字。 */
 const LONG_MESSAGE = `性能门·长消息 ${'流式回放的稳态帧率是这一段要量的东西。'.repeat(200)}`.slice(0, 5000)
+
+/* ── 场景④:大会话 + 真流(批 A,docs/design/event-subscription-audience-2026-09.md §6) ──
+ *
+ * 场景③注入的是一条**用户**消息,没有 assistant 流、也不是大会话 —— 用户 09-03 报的
+ * 「发消息之后流式渲染整个应用卡死」它一条都没量到(设计 §1.4:场景没对上,不是门坏了)。
+ * 场景④把现场补齐:**门自己种**一条与报障同量级的会话(不许依赖某台机器上的私有会话),
+ * 再让一只假 provider 吐一条 50KB 带 ```html 围栏的回答 + 2 次工具调用。
+ *
+ * 判据两条,都是**从记录转断言**:
+ *  1. 屏幕上出现哨兵的时刻,滞后于 provider 吐完的时刻 ≤ 1s;
+ *  2. 这一段里 core 进程(跑过滤与合批的那一个)的 CPU 中位 < 40%。
+ */
+const PERF4_MARKER = '@@perf4@@'
+const PERF4_SEED_MARKER = '@@perf4seed@@'
+const PERF4_SENTINEL = 'PERF4ENDMARK'
+/**
+ * core 侧滞后预算(ms)—— **判据是 node 侧那条 SSE 上哨兵到达的时刻**,不是屏幕上的。
+ *
+ * 09-03 实测:同一条现场里,屏幕那一头量到的是**渲染层**的代价(单段主线程任务
+ * 能到 3–4s,shiki 把整段回答一遍遍重新高亮),它对批 A 改没改**毫无反应** ——
+ * 轻档会话上「改前 861ms / 改后 750ms」,重档会话上「改前 3050ms / 改后 4316ms」,
+ * 两边的差全是渲染噪声。而同一趟里 core 侧的读数是干净的两档(见反证)。
+ * 屏幕滞后照旧打印,只是不做判据 —— 它该由渲染侧的批来治。
+ */
+const PERF4_CORE_LAG_MS = 1000
+/** core 进程 CPU 中位预算(%)。 */
+const PERF4_CORE_CPU_PCT = 40
+/**
+ * 种一条大会话,「够大了」的判据。
+ *
+ * **为什么判账本字节而不是账本行数**:用户报障那条会话是 5135 行 / 6.3MB,而
+ * `assistant/chunks` 是**按时间**打包的 —— 一条流不管吐 77KB 还是 230KB,落进账本
+ * 都是那么几行(实测两档都是每回合约 35 行)。也就是说账本**行数只能拿墙钟买**
+ * (3000 行 ≈ 86 个回合 ≈ 十分钟),而它并不是代价的来源:一次物化的代价是
+ * **字节 × 消息条数 × 工具调用的 JSON**。所以这里按后三样判,并把行数一并打印出来。
+ * 种出来的现场在每一条代价轴上都不比报障那条轻(实测 5.8MB / 55 次工具调用 /
+ * 80 条消息,对报障的 6.3MB / 29 / 26)。
+ */
+const PERF4_SEED_MAX_TURNS = 40
+/** 种子工具调用的参数字数(见 mock 里那段注释:物化代价的大头在这里)。 */
+const PERF4_SEED_TOOL_ARG_CHARS = 30_000
+const PERF4_MIN_LEDGER_BYTES = 5 * 1024 * 1024
+const PERF4_MIN_TOOL_CALLS = 20
+
+/**
+ * 一条 ~50KB 的回答:正文 + ```html 围栏 + 收尾正文。
+ * 围栏是刻意的 —— 高亮与分块是渲染侧最重的一段,报障现场正是这个形状。
+ *
+ * **围栏 60 行、正文占大头**是量出来的:首版围栏 300 行时,渲染主线程单段任务最长
+ * 4.7s(shiki 每来一批分片就重新高亮整张表),屏幕滞后在 976ms / 1679ms 之间来回 ——
+ * 那把尺子量的已经不是这一批治的东西(core 侧滞后同一趟只有几十毫秒、core CPU 中位 3%),
+ * 而是渲染侧高亮一张大表的代价。围栏留着(形状要对),体量交给正文。
+ */
+function buildPerf4Answer(withSentinel, tableRows = 60, proseChars = 14_000) {
+  const prose1 = ('这一段是性能门产出的中文正文,用来还原真实回答里正文与代码块混排的形态。'
+    + '流式渲染期间每一帧都要把这条活消息重新组屏、重新分块、重新解析 markdown。').repeat(400)
+  const rows = []
+  for (let i = 0; i < tableRows; i += 1) {
+    rows.push(`    <tr class="row-${i}"><td data-idx="${i}">单元格 ${i}</td>`
+      + `<td><a href="#anchor-${i}" title="链接 ${i}">链接文本 ${i}</a></td>`
+      + `<td><span class="badge badge-${i % 7}">状态 ${i % 7}</span></td></tr>`)
+  }
+  const code = '<!doctype html>\n<html lang="zh">\n<head>\n  <meta charset="utf-8">\n'
+    + '  <title>性能门用的大代码块</title>\n</head>\n<body>\n  <table id="grid">\n'
+    + rows.join('\n') + '\n  </table>\n</body>\n</html>\n'
+  const prose2 = ('这一段是代码块之后的收尾正文。').repeat(200)
+  const body = `${prose1.slice(0, proseChars)}\n\n\`\`\`html\n${code}\n\`\`\`\n\n${prose2.slice(0, 2000)}`
+  return withSentinel ? `${body}\n\n${PERF4_SENTINEL}` : body
+}
+
+const PERF4_ANSWER = buildPerf4Answer(true)
+/**
+ * 种子那一支答得更长(900 行表格 ≈ 230KB):要在有限的回合里把账本堆到与用户报障
+ * 那条会话同量级(实测 5135 行 / 6.3MB),靠的是**每回合的字数**,不是回合数 ——
+ * 回合数直接变成门的墙钟。
+ */
+const PERF4_SEED_ANSWER = buildPerf4Answer(false, 1200, 120_000)
+
+/**
+ * 场景④要的那份设置。`withProvider` 决定假 provider **在不在场**。
+ *
+ * 为什么要能关掉:场景①②③ 是在「这台 core 上没有可用 provider」下定的基线 ——
+ * 那时 `session-command.emit` 发出去的用户消息引不出任何 assistant 流。假 provider
+ * 一路开着,场景③注入的那条消息就会真的跑一轮(哪怕回空),会话列表因此多刷一次
+ * 401 张卡,实测稳定多出一段 >33ms 的帧,把③从 0 段拖成 1 段。
+ *
+ * 于是这道门把 provider 的在场时间**掐到最小**:
+ *   起 core 时开着(种大会话要用)→ 种完、拉起应用**之前**关掉(经 settings RPC)
+ *   → ①②③ 在无 provider 的世界里跑 → ③ 跑完再开回来 → ④。
+ * API key 照旧走 `DEEPSEEK_API_KEY`(core 起动时就在 env 里),不进设置。
+ */
+function perf4Settings(mockPort, withProvider) {
+  return {
+    ai: {
+      provider: 'deepseek',
+      providers: withProvider
+        ? {
+            deepseek: {
+              baseUrl: `http://127.0.0.1:${mockPort}/v1`,
+              model: 'deepseek-chat',
+              selectedModels: ['deepseek-chat'],
+              enabled: true,
+              modelCapabilitiesByModel: {
+                'deepseek-chat': { tools: true, reasoning: false, vision: false },
+              },
+            },
+          }
+        : {},
+      customProviders: [],
+      modelCatalog: {},
+    },
+    tools: { enableToolCalls: true, permissionMode: 'dangerously-allow-all', tools: {} },
+    chat: { contextCompactEnabled: false },
+    diagnostics: { enabled: false },
+  }
+}
+
+/**
+ * 假 provider(OpenAI 兼容 SSE)。**不带记号的请求一律两帧收尾** —— 场景①②③
+ * 与自动标题走的就是那一支,行为与「没有可用 provider」时最接近。
+ *
+ * 工具调用用内建的 `time`(零副作用):请求里 `role:'tool'` 的条数 < 目标数就再要一次。
+ */
+function startMockProvider(port, state) {
+  const server = http.createServer((req, res) => {
+    if (String(req.url ?? '').includes('/images/generations')) {
+      req.resume()
+      res.writeHead(500, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ error: { message: 'perf-gate: no image api' } }))
+      return
+    }
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', async () => {
+      let payload = {}
+      try { payload = JSON.parse(body) } catch { /* 形状不对就走兜底那一支 */ }
+      const messages = Array.isArray(payload.messages) ? payload.messages : []
+      const flat = messages
+        .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')))
+        .join('\n')
+      const send = obj => {
+        if (res.writableEnded || res.destroyed) return
+        res.write(`data: ${JSON.stringify(obj)}\n\n`)
+      }
+      const frame = (delta, finish = null, usage) => ({
+        id: 'chatcmpl-perf4',
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model: 'deepseek-chat',
+        choices: [{ index: 0, delta, finish_reason: finish }],
+        ...(usage ? { usage } : {}),
+      })
+      const measured = flat.includes(PERF4_MARKER)
+      const seeding = flat.includes(PERF4_SEED_MARKER)
+      res.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        connection: 'keep-alive',
+      })
+      if (!measured && !seeding) {
+        // **不带记号的请求空手收尾**(一帧 `stop`,零正文)。场景①②③ 与自动标题都
+        // 走这一支:批 A 之前这道门根本没配过 provider,那时场景③注入的用户消息
+        // 引不出任何 assistant 流 —— 这一支要尽量还原那个现场。
+        // 试过的两种都不行:回 'ok' 与回 401 都会给场景③凭空加一次流/一条错误块,
+        // 实测各多出一段 >33ms 的帧(基线是 0 段)。
+        res.write(`data: ${JSON.stringify({
+          id: 'chatcmpl-perf4',
+          object: 'chat.completion.chunk',
+          created: Math.floor(Date.now() / 1000),
+          model: 'deepseek-chat',
+          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        })}\n\n`)
+        res.write('data: [DONE]\n\n')
+        res.end()
+        return
+      }
+      try {
+        {
+          // **本回合**已经交过几次工具结果 —— 整份历史里数会让第二回合起再也不调工具。
+          const lastUser = messages.map(m => m.role).lastIndexOf('user')
+          const toolTurns = messages.slice(lastUser + 1).filter(m => m.role === 'tool').length
+          if (toolTurns < 2) {
+            const id = `call_perf4_${toolTurns}`
+            // 种子那一支的工具参数**故意很大**:一次物化的代价里,工具调用参数的
+            // `JSON.parse` 是大头(用户报障那条会话 29 次工具调用 / 9MB blobs)。
+            // 参数里多出来的键被 zod `strip` 掉,工具照跑 —— 但它们照样落进消息、
+            // 照样在每次物化时被重新解析,那正是这一格要还原的代价。
+            const args = measured
+              ? '{}'
+              : JSON.stringify({ note: 'x'.repeat(PERF4_SEED_TOOL_ARG_CHARS) })
+            send(frame({ tool_calls: [{ index: 0, id, type: 'function', function: { name: 'time', arguments: '' } }] }))
+            send(frame({ tool_calls: [{ index: 0, function: { arguments: args } }] }))
+            send(frame({}, 'tool_calls', { prompt_tokens: 1000, completion_tokens: 10, total_tokens: 1010 }))
+            if (measured) state.toolCalls += 1
+            else state.seedToolCalls += 1
+          } else {
+            const answer = measured ? PERF4_ANSWER : PERF4_SEED_ANSWER
+            // 量的那一支节拍**故意密**(25 字 / 1ms):一条分片上的过滤代价只有比
+            // 分片间隔大,才会在一条流里累出可量的滞后 —— 这正是用户报障的形状
+            // (真机 2690 个分片 × 每片一次全量物化 = 49s)。
+            const chunkChars = measured ? 25 : 100
+            const chunkDelayMs = measured ? 1 : 2
+            // 种子那一支也带真节拍:`assistant/chunks` 是**按时间**打包的,
+            // 一口气吐完只会落成一两行,种不出一本厚账。
+            if (measured) state.sendStartAt = Date.now()
+            let n = 0
+            for (let i = 0; i < answer.length; i += chunkChars) {
+              if (res.destroyed) return
+              send(frame({ content: answer.slice(i, i + chunkChars) }))
+              n += 1
+              if (chunkDelayMs) await delay(chunkDelayMs)
+            }
+            if (measured) {
+              state.sendDoneAt = Date.now()
+              state.chunks = n
+            }
+            send(frame({}, 'stop', { prompt_tokens: 2000, completion_tokens: 5000, total_tokens: 7000 }))
+          }
+        }
+      } catch {
+        try { send(frame({}, 'stop')) } catch { /* 连接没了就算了 */ }
+      }
+      if (!res.writableEnded && !res.destroyed) {
+        res.write('data: [DONE]\n\n')
+        res.end()
+      }
+    })
+  })
+  return new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve(server)))
+}
+
+/**
+ * **node 侧的 SSE 订阅者** —— 只数字节与哨兵到达的时刻,不解析、不渲染。
+ *
+ * 它是场景④的判据所在:屏幕上那一头还夹着渲染层(实测同一趟里渲染主线程单段
+ * 任务能到 3s),把它算进来量的就不是这一批治的东西了。这条订阅与壳那条走的是
+ * **同一台 core、同一条过滤链**,所以它读到的滞后就是 core 侧的滞后。
+ */
+function subscribeCoreSse(record, sentinel, state) {
+  const request = http.request({
+    host: record.host,
+    port: record.port,
+    path: '/api/events',
+    method: 'GET',
+    headers: {
+      ...(record.token ? { authorization: `Bearer ${record.token}` } : {}),
+      accept: 'text/event-stream',
+    },
+  }, response => {
+    state.status = response.statusCode
+    response.setEncoding('utf-8')
+    response.on('data', chunk => {
+      state.bytes += chunk.length
+      if (!state.sentinelAt && chunk.includes(sentinel)) state.sentinelAt = Date.now()
+    })
+  })
+  request.on('error', error => { state.error = String(error?.message ?? error) })
+  request.end()
+  return () => request.destroy()
+}
+
+/**
+ * 采一段进程 CPU:`ps -o time=` 给的是**累计** CPU 时间(厘秒精度),两次相减除以
+ * 墙钟就是这一段的占用率。比 `ps -o %cpu`(一分钟的衰减平均)贴得住一段几秒的现场。
+ */
+function sampleProcessCpu(pid) {
+  try {
+    const raw = execFileSync('ps', ['-o', 'time=', '-p', String(pid)], { encoding: 'utf-8' }).trim()
+    if (!raw) return undefined
+    // 形如 `12:34.56` 或 `1-02:03:04`,统一折成秒。
+    const [daysPart, clock] = raw.includes('-') ? raw.split('-') : [null, raw]
+    const parts = clock.split(':').map(Number)
+    let seconds = parts.pop() ?? 0
+    let minutes = parts.pop() ?? 0
+    let hours = parts.pop() ?? 0
+    if (daysPart) hours += Number(daysPart) * 24
+    return seconds + minutes * 60 + hours * 3600
+  } catch {
+    return undefined
+  }
+}
+
+function startCpuSampler(pid, intervalMs = 300) {
+  const samples = []
+  let previous = { cpu: sampleProcessCpu(pid), at: Date.now() }
+  const timer = setInterval(() => {
+    const cpu = sampleProcessCpu(pid)
+    const at = Date.now()
+    if (cpu !== undefined && previous.cpu !== undefined && at > previous.at) {
+      samples.push(((cpu - previous.cpu) / ((at - previous.at) / 1000)) * 100)
+    }
+    previous = { cpu, at }
+  }, intervalMs)
+  return {
+    stop() {
+      clearInterval(timer)
+      const sorted = [...samples].sort((a, b) => a - b)
+      return {
+        n: sorted.length,
+        median: sorted.length ? Math.round(sorted[Math.floor(sorted.length / 2)]) : -1,
+        max: sorted.length ? Math.round(sorted[sorted.length - 1]) : -1,
+      }
+    },
+  }
+}
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -310,11 +622,23 @@ async function main() {
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'perf-gate-userdata-'))
   let server
   let app
+  let mock
+  let mockPort
+  let bigSessionId
+  const mockState = { sendStartAt: 0, sendDoneAt: 0, chunks: 0, toolCalls: 0, seedToolCalls: 0 }
   try {
-    console.log(`\n[1/6] 起一台 core,种 ${SEED_SESSIONS} 条会话`)
+    console.log(`\n[1/7] 起一台 core,种 ${SEED_SESSIONS} 条会话 + 一条大会话`)
+    // 假 provider 必须先于 core 起来:设置在 core 启动时读一次。
+    mockPort = 44100 + Math.floor(Math.random() * 400)
+    mock = await startMockProvider(mockPort, mockState)
+    writeFileSync(
+      path.join(store, 'settings.json'),
+      JSON.stringify(perf4Settings(mockPort, true), null, 2),
+      'utf-8',
+    )
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store },
+      env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-perf-gate' },
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const serverErr = []
@@ -337,7 +661,64 @@ async function main() {
     }
     console.log(`  ✓ 种了 ${created.length} 条会话`)
 
-    console.log('\n[2/6] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
+    // ── 种那条大会话。**在拉起应用之前**:此刻这台 core 上没有任何 SSE 订阅者,
+    // 所以种的过程不受订阅侧过滤影响 —— 反证跑的时候种子也不会跟着慢下来。
+    bigSessionId = (await rpc(rec, 'sessions', 'create', { name: 'perf-big' }))?.session?.id
+    if (!bigSessionId) throw new Error('大会话没建出来')
+    const ledgerPath = path.join(store, 'sessions', bigSessionId, 'events.jsonl')
+    const ledgerSize = () => {
+      try {
+        return readFileSync(ledgerPath, 'utf-8').split('\n').filter(Boolean).length
+      } catch {
+        return 0
+      }
+    }
+    const ledgerBytes = () => {
+      try {
+        return readFileSync(ledgerPath).length
+      } catch {
+        return 0
+      }
+    }
+    let turns = 0
+    while (turns < PERF4_SEED_MAX_TURNS) {
+      await rpc(rec, 'session-command', 'emit', {
+        sessionId: bigSessionId,
+        command: { type: 'command:send-message', content: `${PERF4_SEED_MARKER} 第 ${turns + 1} 回合` },
+      })
+      // 落账是异步的:等这一回合的账本行数不再涨,再进下一回合。
+      let previous = -1
+      for (let i = 0; i < 200; i += 1) {
+        await delay(150)
+        const now = ledgerSize()
+        if (now === previous && now > 0) break
+        previous = now
+      }
+      turns += 1
+      if (ledgerBytes() >= PERF4_MIN_LEDGER_BYTES
+        && mockState.seedToolCalls >= PERF4_MIN_TOOL_CALLS) break
+    }
+    const seededLines = ledgerSize()
+    const seededBytes = ledgerBytes()
+    console.log(
+      `  ✓ 大会话种好:${turns} 回合,账本 ${seededLines} 行 / ${(seededBytes / 1048576).toFixed(1)}MB,`
+        + `工具调用 ${mockState.seedToolCalls} 次`,
+    )
+    if (seededBytes < PERF4_MIN_LEDGER_BYTES || mockState.seedToolCalls < PERF4_MIN_TOOL_CALLS) {
+      throw new Error(
+        `场景④的现场没搭起来:账本 ${(seededBytes / 1048576).toFixed(1)}MB`
+          + `(要 ≥${(PERF4_MIN_LEDGER_BYTES / 1048576).toFixed(0)}MB)、`
+          + `工具调用 ${mockState.seedToolCalls} 次(要 ≥${PERF4_MIN_TOOL_CALLS})`,
+      )
+    }
+
+    // 种完就把假 provider 摘掉:①②③ 的基线是「没有可用 provider」(见
+    // `perf4Settings` 的注释)。走的是设置页自己那条 RPC,不是改盘 —— 设置有
+    // 进程内缓存,改盘那份进不了活着的 core。
+    await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, false))
+    console.log('  ✓ 假 provider 已摘(场景①②③ 在无 provider 下跑)')
+
+    console.log('\n[2/7] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -364,7 +745,7 @@ async function main() {
     console.log('  ✓ window.__log / __crash / __perf 三个 dump 口都在')
 
     /* ── 场景 ①:冷开会话总览 ─────────────────────────────────────────── */
-    console.log(`\n[3/6] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
+    console.log(`\n[3/7] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
     await waitFor('Dock 上的「会话总览」瓦就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
@@ -413,14 +794,14 @@ async function main() {
     }
 
     /* ── 场景②③ 共用的现场:钉栏默认档 + 进一条会话 ─────────────────── */
-    console.log('\n[4/6] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
+    console.log('\n[4/7] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
     await switchDefaultOpenToPinned(page)
     const targetId = created[0]
     await enterSession(page, targetId)
     console.log('  ✓ 已进入会话,聊天区起底完成')
 
     /* ── 场景 ②:架子 tab 连续切换 ×10 ────────────────────────────────── */
-    console.log(`\n[5/6] 场景② 右架子 tab 连续切换 ×10(真实负载:${SHELF_PANELS.join(' / ')} 同组)`)
+    console.log(`\n[5/7] 场景② 右架子 tab 连续切换 ×10(真实负载:${SHELF_PANELS.join(' / ')} 同组)`)
     const pinned = await pinPanels(page, SHELF_PANELS)
     console.log(`  · 右架子 tab 次序:${pinned.join(' / ') || '(空)'}`)
     // 现场对不上就红,不降级成「没量到」:场景②的全部意义是**重面板**在这条架子上。
@@ -507,7 +888,7 @@ async function main() {
      * 「后台面板会不会因为数据源一动就跟着重渲,把流式那条链拖慢」。
      * 排在前面就量不到,因为那时架子还是空的。
      */
-    console.log('\n[6/6] 场景③ 5k 字长消息注入 → 上屏')
+    console.log('\n[6/7] 场景③ 5k 字长消息注入 → 上屏')
 
     const stream = await recordTrace(cdp, 'long-message', async () => {
       const started = Date.now()
@@ -541,6 +922,71 @@ async function main() {
       stream.events,
     )
 
+    /* ── 场景 ④:大会话 + 真流(批 A)────────────────────────────────────
+     * 场景③量的是「注入一条用户消息」;这一格量的是用户真正报障的那条链:
+     * **大会话** + assistant 流 + 工具调用,而屏幕上那一头有一条活着的 SSE 订阅。
+     */
+    console.log('\n[7/7] 场景④ 大会话 + 假 provider 吐 50KB 带围栏回答 + 2 次工具调用')
+    // 装回假 provider。目录键变了,`saveSettings` 之后 provider 缓存自己重拉。
+    await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, true))
+    await delay(500)
+    await enterSession(page, bigSessionId)
+    await delay(1500)
+
+    const sse = { bytes: 0, sentinelAt: 0, status: 0, error: undefined }
+    const stopSse = subscribeCoreSse(rec, PERF4_SENTINEL, sse)
+    await delay(500)
+    const cpu = startCpuSampler(server.pid)
+    const perf4 = await recordTrace(cdp, 'big-session-stream', async () => {
+      await rpc(rec, 'session-command', 'emit', {
+        sessionId: bigSessionId,
+        command: { type: 'command:send-message', content: `${PERF4_MARKER} 请给出完整方案` },
+      })
+      let screenAt = 0
+      const deadline = Date.now() + 240_000
+      while (Date.now() < deadline) {
+        const hit = await page
+          .evaluate(sentinel => document.body.textContent?.includes(sentinel) ?? false, PERF4_SENTINEL)
+          .catch(() => false)
+        if (hit) {
+          screenAt = Date.now()
+          break
+        }
+        await delay(100)
+      }
+      await delay(400)
+      return { screenAt }
+    })
+    const cpuStats = cpu.stop()
+    stopSse()
+    const coreLag = sse.sentinelAt && mockState.sendDoneAt ? sse.sentinelAt - mockState.sendDoneAt : -1
+    const screenLag = perf4.result.screenAt && mockState.sendDoneAt
+      ? perf4.result.screenAt - mockState.sendDoneAt
+      : -1
+    const perf4Stats = frameStats(perf4.events, BUDGET.streamFrameMs)
+    console.log(
+      `  · provider 净吐 ${mockState.sendDoneAt - mockState.sendStartAt}ms / ${mockState.chunks} 块,`
+        + `工具调用 ${mockState.toolCalls} 次`
+        + `\n  · core 侧滞后(node SSE 哨兵 − provider 收尾)${coreLag}ms;`
+        + ` core 进程 CPU 中位 ${cpuStats.median}%(峰 ${cpuStats.max}%,${cpuStats.n} 个采样)`
+        + `\n  · 屏幕滞后 ${screenLag}ms(**只记录**:它夹着渲染层,`
+        + `本趟渲染主线程单段最长 ${perf4Stats.longest}ms)`,
+    )
+    keepTrace('big-session-stream', perf4.events)
+    record_('④大会话流式回放', perf4Stats, { ms: coreLag })
+    assertScenario(
+      'big-session-stream',
+      coreLag >= 0 && coreLag <= PERF4_CORE_LAG_MS,
+      `core 侧滞后 ${coreLag}ms ≤ ${PERF4_CORE_LAG_MS}ms`,
+      perf4.events,
+    )
+    assertScenario(
+      'big-session-stream',
+      cpuStats.median >= 0 && cpuStats.median < PERF4_CORE_CPU_PCT,
+      `core 进程 CPU 中位 ${cpuStats.median}% < ${PERF4_CORE_CPU_PCT}%`,
+      perf4.events,
+    )
+
     /* ── 第二路读数:页面自己的 LoAF 观察者 ──────────────────────────── */
     const inPage = await page.evaluate(() => (window.__perf ? window.__perf.dump() : []))
     console.log(
@@ -556,6 +1002,7 @@ async function main() {
     app = undefined
   } finally {
     if (app) await app.close().catch(() => {})
+    if (mock) await new Promise(resolve => mock.close(() => resolve()))
     if (server && pidAlive(server.pid)) server.kill('SIGTERM')
     await delay(600)
     await rm(store, { recursive: true, force: true })
@@ -566,7 +1013,7 @@ async function main() {
     console.error(`\n[perf-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[perf-gate] ok —— 三个场景都在预算内')
+  console.log('\n[perf-gate] ok —— 四个场景都在预算内')
 }
 
 /**
@@ -764,7 +1211,7 @@ async function measureClickToPaint(page, testId, appearSelector) {
 }
 
 function printTable() {
-  console.log('\n── 三场景实测 ──')
+  console.log('\n── 四场景实测 ──')
   const pad = (s, n) => String(s).padEnd(n)
   console.log(
     `${pad('场景', 26)}${pad('耗时', 10)}${pad('任务数', 8)}${pad('最长', 8)}${pad('p95', 8)}超标段`,

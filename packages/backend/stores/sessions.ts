@@ -14,7 +14,7 @@ import type {
 	UserMessageMarker,
 } from "@shared/ipc.js";
 import { join } from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import {
 	getOnethingSessionsDir,
 	getOnethingSessionPath,
@@ -132,11 +132,93 @@ const sessionRepository = createOnethingSessionRepository<
 	UserMessageMarker
 >(sessionRepositoryOptions);
 
+/* ── 会话索引:写点通知 + 按 id 的视图(批 A) ───────────────────────────────
+ *
+ * 索引是**归属判定的真相源**(`docs/design/event-subscription-audience-2026-09.md`
+ * §3.1):创建 / 删除 / 改归属三件事都要写索引,所以订阅侧的受众备忘只要在这一口
+ * 上失效就够了 —— 不必去事件总线上找一组它根本没有的事件类型。
+ */
+type SessionIndexChangedListener = (sessionId: string | undefined) => void;
+
+const sessionIndexChangedListeners = new Set<SessionIndexChangedListener>();
+
+/**
+ * 索引写点的通知口。回的是退订函数。
+ *
+ * **契约**:参数是被改的那一条 id;**`undefined` = 整份索引被换掉了**
+ * (`saveSessionsIndex`),听者要把自己按 id 记的东西**整本作废**,而不是删一格。
+ * 不用空串当哨兵 —— 空串是一个合法但不存在的 id,删它等于没失效。
+ *
+ * 与 `onSessionsDeleted` 并列而不是合并:那一口报的是「这批会话没了」(带级联
+ * id 表),这一口报的是「这条会话的索引元数据动过了」—— 删除会话两口都发。
+ */
+export function onSessionIndexChanged(
+	listener: SessionIndexChangedListener,
+): () => void {
+	sessionIndexChangedListeners.add(listener);
+	return () => {
+		sessionIndexChangedListeners.delete(listener);
+	};
+}
+
+function notifySessionIndexChanged(sessionId: string | undefined): void {
+	sessionIndexById.clear();
+	for (const listener of sessionIndexChangedListeners) {
+		try {
+			listener(sessionId);
+		} catch (error) {
+			log.error("session index listener failed", { sessionId }, error);
+		}
+	}
+}
+
+/**
+ * 索引的**按 id 视图** —— 从前按 id 找一条元数据是对数组线性 `find`,且每次都要
+ * 把整份 `index.json` 读回来再 `JSON.parse`。
+ *
+ * 新鲜度靠两口,**答案与「每次现读」逐字相同**:
+ *  1. 进程内每一次索引写点(`notifySessionIndexChanged`)整表作废;
+ *  2. 别的进程写盘时进程内没有通知,所以查之前 `stat` 一次 `index.json`,拿
+ *     `mtimeMs:size` 当指纹 —— 一次 `statSync` 比整份读盘 + 解析便宜两个数量级。
+ *
+ * 表本身是 `const`(装配硬闸只禁模块级 `let`);指纹住在一只 `const` 记号对象里,
+ * 它是**缓存**而不是装配期状态,不进 `OnethingBackend` 的 own 名单。
+ */
+const sessionIndexById = new Map<string, SessionMeta>();
+const sessionIndexFingerprint = { value: "" };
+
+function sessionsIndexFingerprint(): string {
+	try {
+		const stat = statSync(join(getOnethingSessionsDir(), "index.json"));
+		return `${stat.mtimeMs}:${stat.size}`;
+	} catch {
+		// 索引还不在(全新 store)—— 空指纹,下一次它出现时指纹就变了。
+		return "";
+	}
+}
+
+/** 按 id 取一条索引元数据。O(1)(指纹没变时),查无此条 = `undefined`。 */
+export function findSessionIndexMeta(
+	sessionId: string,
+): SessionMeta | undefined {
+	const fingerprint = sessionsIndexFingerprint();
+	if (fingerprint !== sessionIndexFingerprint.value || sessionIndexById.size === 0) {
+		sessionIndexById.clear();
+		for (const meta of sessionRepository.getSessionsList()) {
+			sessionIndexById.set(meta.id, meta);
+		}
+		sessionIndexFingerprint.value = fingerprint;
+	}
+	return sessionIndexById.get(sessionId);
+}
+
 function updateSessionsIndexMeta(
 	sessionId: string,
 	update: (meta: SessionMeta) => void,
 ): boolean {
-	return sessionRepository.updateSessionsIndexMeta(sessionId, update);
+	const applied = sessionRepository.updateSessionsIndexMeta(sessionId, update);
+	notifySessionIndexChanged(sessionId);
+	return applied;
 }
 
 /**
@@ -174,7 +256,10 @@ export function patchSessionFields(
 	patch: Partial<ChatSession>,
 	mutateIndexMeta?: (meta: SessionMeta, session: ChatSession) => void,
 ): boolean {
-	return sessionRepository.patchSession(sessionId, patch, mutateIndexMeta);
+	const applied = sessionRepository.patchSession(sessionId, patch, mutateIndexMeta);
+	// 归属盖章(server 的 `stampOwner` → `save`)走的就是这一口,所以它也是索引写点。
+	notifySessionIndexChanged(sessionId);
+	return applied;
 }
 
 /**
@@ -210,6 +295,9 @@ function loadSessionsIndex(): SessionMeta[] {
 // Save sessions index
 function saveSessionsIndex(index: SessionMeta[]): void {
 	sessionRepository.saveSessionsIndex(index);
+	// 整份换掉 = 每一条都可能动过归属,按会话报不出来 —— 发 `undefined`(契约见
+	// `onSessionIndexChanged`),听者整本作废。
+	notifySessionIndexChanged(undefined);
 }
 
 // Get all sessions with full data (legacy, for backward compatibility)
@@ -527,6 +615,8 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
 	// 所以这里只需要把进程内那三张表跟着摘掉 —— 留着的话,同 id 的新会话会接着
 	// 旧的 seq 数下去,而盘上那份已经没了。
 	for (const deletedId of result.deletedIds) {
+		// 删除也是索引写点(条目整条没了)—— 受众的备忘要跟着摘掉那一格。
+		notifySessionIndexChanged(deletedId);
 		resetSessionEventLogCache(deletedId);
 		resetSessionSurfaceCache(deletedId);
 		resetSessionRuns(deletedId);
@@ -821,9 +911,11 @@ export function updateSessionsIndexMetaForCommands(
 	sessionId: string,
 	update: (meta: { [key: string]: unknown }) => void,
 ): boolean {
-	return sessionRepository.updateSessionsIndexMeta(sessionId, (meta) =>
+	const applied = sessionRepository.updateSessionsIndexMeta(sessionId, (meta) =>
 		update(meta as unknown as { [key: string]: unknown }),
 	);
+	notifySessionIndexChanged(sessionId);
+	return applied;
 }
 
 /**
