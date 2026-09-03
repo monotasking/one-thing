@@ -8,6 +8,7 @@
     "packages/client/**/*",
     "packages/gateway/**/*",
     "apps/electron/**/*",
+    "apps/cli/**/*",
     "apps/server/**/*",
     "apps/web/**/*",
     "scripts/gateway-smoke-test.ts",

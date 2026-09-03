@@ -10,8 +10,9 @@
  * `.md?raw` 装载器、`@shared` 别名)—— 一份配方两份产物,CLI 与桌面主进程在同一个
  * 打包纪律下。
  *
- * CLI 源码此刻还住在 `apps/electron/src/main/cli/`(第四步搬到 apps/cli),这里只换产物
- * 的产地与路径,不动源码。`bin/onething.mjs` 指向这里的产物。
+ * CLI 源码住在 `apps/cli/src/`(第四步 4a,2026-09-03 从 `apps/electron/src/main/cli/`
+ * 整目录 `git mv` 过来 —— 它一个字节都不吃 Vue 宿主,只吃 `@onething/backend` 与
+ * `@shared`,所以 Vue 宿主退役时它不必跟着死)。`bin/onething.mjs` 指向这里的产物。
  *
  * CLI 跑在**系统 Node** 上(不是 Electron),所以 `electron` 被 external 掉也永远不会被
  * require 到 —— cli 目录里没有一处 import electron(2026-09-03 rg 核过)。
@@ -25,6 +26,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const outdir = path.join(repoRoot, 'dist/cli')
 
 await build(shellEsbuildOptions({
-  entryPoints: { main: path.join(repoRoot, 'apps/electron/src/main/cli/index.ts') },
+  entryPoints: { main: path.join(repoRoot, 'apps/cli/src/index.ts') },
   outdir,
 }))

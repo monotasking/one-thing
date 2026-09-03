@@ -299,10 +299,26 @@ async function cleanupPort(port) {
   await cleanupPids(`process on port ${port}`, pidsListeningOn(port))
 }
 
+/**
+ * web 泳道跑哪个壳(运行时统一第四步 4a,2026-09-03)。
+ *
+ * 缺省仍是 `apps/web`(Vue)—— 4a 是**建设性**的一半,不动缺省;`ONETHING_WEB_SHELL=react`
+ * 换成 React 壳的 web 模式(同一个 5174 端口、同一份发现文件、同一条 `/api` 代理语义)。
+ * 4b 删 apps/web 时把这里的缺省翻过来,这个 env 随之退役。
+ */
+const webShell = process.env.ONETHING_WEB_SHELL === 'react' ? 'react' : 'vue'
+const webViteConfig = webShell === 'react'
+  ? 'apps/desktop-react/vite.config.ts'
+  : 'apps/web/vite.config.ts'
+
 function isProjectWebDevCommand(command) {
   const normalized = normalizedCommand(command)
   if (!belongsToThisLane(normalized)) return false
-  return normalized.includes('apps/web/vite.config.ts') && normalized.includes('node_modules/.bin/vite')
+  if (!normalized.includes('node_modules/.bin/vite')) return false
+  // 两个壳的残留进程都要认得出来 —— 否则换过一次 env 之后,上一轮那只 vite
+  // 会一直蹲在 5174 上,而清扫只认当前这一份配置路径。
+  return normalized.includes('apps/web/vite.config.ts')
+    || normalized.includes('apps/desktop-react/vite.config.ts')
 }
 
 function isProjectServerCommand(command) {
@@ -488,9 +504,10 @@ async function startBackendLane() {
 }
 
 async function startWebLane() {
-  log('dev', 'starting web frontend')
+  log('dev', `starting web frontend (${webShell} shell: ${webViteConfig})`)
   spawnManaged('web', localBin('vite'), [
-    '--config', 'apps/web/vite.config.ts',
+    '--config', webViteConfig,
+    ...(webShell === 'react' ? ['--mode', 'web'] : []),
     '--host', '127.0.0.1',
     '--port', String(ports.web),
   ])

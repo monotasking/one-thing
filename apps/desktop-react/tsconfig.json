@@ -43,5 +43,7 @@
   // 所以要显式带上,否则跨包源码里的 `import 'culori'` 报 TS7016。
   // `scripts` 里只有一个 .ts(冒烟探针 scripts/smoke/core-boot-probe.ts;其余是 .mjs,
   // 没开 allowJs 就不会被收进来)。它是 main 进程侧的代码,理应和 electron/ 一起过类型。
-  "include": ["src", "electron", "scripts", "vite.config.ts", "../../packages/shared/types"]
+  // `vite/` = vite.config.ts 自己那一侧的模块(今天只有 web 模式的 /api dev 代理);
+  // 它被 vite.config.ts import,所以必须和 vite.config.ts 一起在类型图里。
+  "include": ["src", "electron", "scripts", "vite", "vite.config.ts", "../../packages/shared/types"]
 }

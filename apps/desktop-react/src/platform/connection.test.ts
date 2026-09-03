@@ -73,10 +73,33 @@ describe('D0 connection', () => {
     const { whenConnected } = await import('./connection')
     const probe = await whenConnected()
 
-    // 缺席 = 同源相对路径,一个字节不动(apps/web 的行为):空 baseUrl、无 token。
-    expect(hoisted.httpOptions).toEqual([{ baseUrl: '' }])
+    // 宿主缺席 = 浏览器壳(`web:dev:react`)。基址取**本页 origin**,token 一个字不给
+    // —— 补 Bearer 的是 dev 代理,壳不知道 token(见 vite/dev-api-proxy.ts)。
+    expect(hoisted.httpOptions).toEqual([{ baseUrl: window.location.origin }])
     expect(probe.hosted).toBe(false)
     expect(probe.rpcOk).toBe(true)
+  })
+
+  /**
+   * 这一条钉的是 **4a 修掉的那个真 bug**,不是风格。
+   *
+   * 从前这里交的是**空串**(「同源相对路径」)。`fetch('/api/rpc')` 照打,所以
+   * RPC 全绿看不出问题;但推送那一条打不出去:`createHttpTransport` 的 SSE 分支
+   * 要挂 `?after=`,于是走 `new URL(...)`,而 **`new URL('/api/events')` 没有 base
+   * 会当场抛 `TypeError: Invalid URL`** —— 那一抛落在传输自己的 try 里,被记成
+   * 「流断了」然后无限退避重连。表现:浏览器里 RPC 全通、推送**永远**收不到。
+   *
+   * 所以判据不是「等于某个字符串」,而是「**这个基址进得了 `new URL`**」——
+   * 那正是它必须满足的那件事。真机侧由 `scripts/gate-web-shell-react.mjs` 兜住
+   * (反证跑过:退回空串,用户消息落屏但 assistant 流式回复永不上屏)。
+   */
+  it('hands the transport a base URL that `new URL()` actually accepts (no-host path)', async () => {
+    const { whenConnected } = await import('./connection')
+    await whenConnected()
+
+    const { baseUrl } = (hoisted.httpOptions[0] ?? {}) as { baseUrl?: string }
+    expect(typeof baseUrl).toBe('string')
+    expect(() => new URL(`${baseUrl}/api/events`)).not.toThrow()
   })
 
   it('reports the host error instead of connecting when the core is unreachable', async () => {

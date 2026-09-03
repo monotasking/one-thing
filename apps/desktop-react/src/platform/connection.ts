@@ -3,8 +3,8 @@
  *
  * 三步,一次性:
  *  1. 宿主在场(Electron 壳)→ 问它要 `{ baseUrl, token }`;浏览器直开
- *     (`npm run dev` 不带 Electron)时这一步整个跳过,`baseUrl` 留空 =
- *     同源相对路径,与 apps/web 的行为逐字相同。
+ *     (`web:dev:react`,或 `npm run dev` 不带 Electron)时这一步整个跳过,
+ *     `baseUrl` 取**本页 origin**(见 `sameOriginBaseUrl()` 的那段注)。
  *  2. 拿这两格造 **一个** `OnethingClient`(HTTP 传输:`POST /api/rpc` +
  *     `GET /api/events`,token 一律进 `Authorization: Bearer` 头,**不进 URL**)。
  *  3. 订一条推送(`session:event`)、打一次真 RPC 往返(`sessions.list`)。
@@ -87,9 +87,36 @@ let pending: Promise<D0Probe> | undefined
  */
 const statusListeners = new Set<(status: EventHubStatus) => void>()
 
+/**
+ * 无宿主(= 浏览器里直开这台壳)时的基址:**本页 origin**。
+ *
+ * ── 为什么不是空串 ────────────────────────────────────────────────────
+ * 空串 = 同源相对路径,`fetch('/api/rpc')` 确实照打 —— 但推送那一条打不出去:
+ * `createHttpTransport` 的 SSE 分支要挂 `?after=`,所以走 `new URL(...)`,而
+ * **`new URL('/api/events')` 没有 base 会当场抛 `TypeError: Invalid URL`**
+ * (`packages/client/transport/http.ts` 的 `eventLoop`)。那一抛落在它自己的
+ * try 里,被记成一次「流断了」然后无限退避重连 —— 表现是浏览器里 RPC 全通、
+ * 推送**永远**收不到,而且日志上只有一串看不出根因的 `event stream dropped`。
+ *
+ * 取 origin 之后打出去的是**同一个请求**(同源、根绝对路径),dev 代理照旧接得住。
+ * 这也正是 Vue 渲染层那边的做法(`packages/renderer/platform/client.ts` 的
+ * `webBaseUrl()`,原话:「`createHttpTransport` 需要一个能进 `new URL()` 的绝对基址」)
+ * —— 两个壳同一条判据,不是这里独创的绕法。
+ *
+ * 没有 `window` 的环境(node 环境的单测)退到一个占位绝对基址:那种环境里没人
+ * 会真去打这条传输,给它一个能过 `new URL()` 的值即可。
+ *
+ * **token 这里一个字都不给**:补 Bearer 的是 dev 代理(它从发现文件里读),
+ * 浏览器不知道 token —— 这是设计,不是缺口。
+ */
+function sameOriginBaseUrl(): string {
+  if (typeof window === 'undefined') return 'http://localhost'
+  return window.location?.origin || 'http://localhost'
+}
+
 async function connect(): Promise<D0Probe> {
   const host = typeof window === 'undefined' ? undefined : window.onethingHost
-  let baseUrl = ''
+  let baseUrl = sameOriginBaseUrl()
   let token: string | undefined
   if (host) {
     probe.hosted = true
@@ -103,7 +130,7 @@ async function connect(): Promise<D0Probe> {
     }
   }
 
-  // 宿主说连不上时**也**把客户端造出来(空 baseUrl = 同源相对路径)——
+  // 宿主说连不上时**也**把客户端造出来(基址退回本页 origin)——
   // 与从前 `configureWebTransport` 没被调到时的形逐字相同:各端口照旧拿得到
   // 一个客户端,只是它打出去的请求会失败。没有客户端会让它们卡在 await 上。
   client = createOnethingClient({

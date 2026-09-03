@@ -90,7 +90,9 @@ export default tseslint.config(
     // 那些闭包是**发进页面里执行**的,`document` / `window` / `getComputedStyle`
     // 在那一侧真实存在。一个文件两种运行环境,ESLint 的 globals 是文件级的,
     // 所以这里取并集 —— 代价是脚本的 node 半边也认得 document,可接受。
-    files: ['scripts/**/*.mjs', 'vite.config.ts', 'eslint.config.js'],
+    // `vite/**/*.ts` 是 vite.config.ts 自己那一侧的模块(dev 代理中间件),
+    // 跑在 node 里、不在浏览器里 —— 与 vite.config.ts 同一格。
+    files: ['scripts/**/*.mjs', 'vite.config.ts', 'vite/**/*.ts', 'eslint.config.js'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
     rules: { 'no-console': 'off' },
   },

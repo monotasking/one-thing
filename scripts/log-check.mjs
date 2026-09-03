@@ -3,10 +3,10 @@
 //
 // 口径(docs/design/logging-system-2026-08.md §2.6):
 //   - 扫 packages/{core,onething-runtime/src,backend,renderer,gateway/src,shared} 与
-//     apps/{electron,server,web}/src(以及 apps/web 的少量根文件);
+//     apps/{electron,server,cli}/src(以及 apps/web 的少量根文件);
 //   - 跳过测试(`__tests__/`、`*.test.*`、`*.spec.*`)、类型声明、构建产物;
 //   - 白名单:`scripts/`(本来就是给人看的终端输出)与
-//     `apps/electron/src/main/cli/stdout.ts`(CLI 的产品输出口);
+//     `apps/cli/src/stdout.ts`(CLI 的产品输出口);
 //   - `console.` 出现在注释 / 字符串里不算 —— 只认 `console.<method>(` 这个调用形状,
 //     并剥掉行注释与整块注释。
 //
@@ -27,12 +27,13 @@ const ROOTS = [
   'packages/shared',
   'apps/electron/src',
   'apps/server/src',
+  'apps/cli/src',
   'apps/web',
 ]
 
 /** 不计入棘轮的产品输出口 / 工具脚本。 */
 const WHITELIST = new Set([
-  'apps/electron/src/main/cli/stdout.ts',
+  'apps/cli/src/stdout.ts',
 ])
 
 const SKIP_DIR = new Set(['node_modules', 'dist', 'out', 'release', '__tests__', '__mocks__', 'coverage'])

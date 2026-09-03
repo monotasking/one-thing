@@ -97,14 +97,27 @@ export default [
     },
   },
 
-  // 区 ③a Electron 宿主。产品代码只见 `getLogger(ns)`;CLI 的**用户输出**走
-  // `main/cli/stdout.ts`(它自己就是那个口,不能禁);测试里的 console 不算。
+  // 区 ③a Electron 宿主。产品代码只见 `getLogger(ns)`;测试里的 console 不算。
   {
     files: ['apps/electron/src/**/*.ts'],
     ignores: [
-      'apps/electron/src/main/cli/stdout.ts',
       'apps/electron/src/**/__tests__/**',
       'apps/electron/src/**/*.test.ts',
+    ],
+    rules: {
+      'no-console': 'error',
+    },
+  },
+
+  // 区 ③a′ CLI(2026-09-03 从 apps/electron/src/main/cli 搬到 apps/cli/src)。
+  // 排障日志走 `getLogger(ns)`;**给人/管道看的**产品输出走 `stdout.ts` ——
+  // 它自己就是那个口,不能禁;测试里的 console 不算。
+  {
+    files: ['apps/cli/src/**/*.ts'],
+    ignores: [
+      'apps/cli/src/stdout.ts',
+      'apps/cli/src/**/__tests__/**',
+      'apps/cli/src/**/*.test.ts',
     ],
     rules: {
       'no-console': 'error',

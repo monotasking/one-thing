@@ -13,7 +13,11 @@ bun run dev:electron       # managed lane: React desktop only (can run alongside
 bun run dev:web            # managed lane: web frontend :5174 + headless server :8787
 bun run electron:dev       # React desktop only (apps/desktop-react/scripts/dev-app.mjs: vite :5173 + Electron on dist-electron/main.cjs; the main process writes app.jsonl itself)
 bun run vue:dev            # retired Vue host (dev-with-logging.mjs → electron-vite dev; dev.log keeps runner+stderr only) — dies with step ④
-bun run web:dev            # bare vite for apps/web (no server, no cleanup)
+bun run web:dev            # bare vite for apps/web (Vue; no server, no cleanup) — dies with step ④b
+bun run web:dev:react      # THE browser shell: React shell in web mode (`--mode web` → :5174 + the
+                           # dynamic /api proxy, apps/desktop-react/vite/dev-api-proxy.ts).
+                           # `ONETHING_WEB_SHELL=react bun run dev:web` routes the unified web lane
+                           # here instead of apps/web. **4b 之后这两条改名接管 web:dev / web:build。**
 bun run server:start       # node dist/server/main.js (run server:build first; dynamic port
                            # unless ONETHING_SERVER_PORT; refuses if the desktop already
                            # serves this store — `--force` bypasses)
@@ -22,7 +26,10 @@ bun run server:start       # node dist/server/main.js (run server:build first; d
 bun run build              # desktop build (scripts/build-desktop.mjs: native mac panel → dist/cli/main.cjs → apps/desktop-react/{dist,dist-electron})
 bun run build:cli          # CLI only → dist/cli/main.cjs (esbuild, same recipe as the React main process)
 bun run vue:build          # retired Vue host (electron-vite → out/); vue:unpack packs it with electron-builder.vue.yml
-bun run web:build          # web build (→ dist/web)
+bun run web:build          # web build of apps/web (Vue → dist/web) — dies with step ④b
+bun run web:build:react    # React shell web build (`--mode web` → 仓根 dist/web, same path)
+bun run gate:web-shell:react  # real-machine gate for the React browser shell: server:build 产物 +
+                           # web:dev:react + headless Chromium → 流式回复上屏,且 token 不进 URL
 bun run server:build       # headless server build (→ dist/server/main.js)
 bun run build:check        # typecheck + build
 bun run build:unpack       # build + electron-builder --dir (React shell; `main` = apps/desktop-react/dist-electron/main.cjs)
@@ -77,7 +84,7 @@ electron-builder 的 node-module-collector 按锁文件探测包管理器(07-29 
 **这不是回归,是 macOS 的凭证隔离在按设计工作** —— 也正是 `apps/desktop-react/electron/main.ts` 文件头
 「子进程是另一个 app 身份,safeStorage 的密文它解不开」那条判例的同一个机制。
 
-Dev ports: Electron renderer dev server **5173**, web frontend **5174**. The core HTTP/SSE port is **dynamic** since A 期 (`docs/design/one-core-2026-08.md`): whoever serves the store writes `<store>/run/http.json`, and apps/web's dev `/api` proxy (`apps/web/dev-api-proxy.ts`, a plugin — vite's built-in proxy pins its target at creation) re-reads that file per request and injects the Bearer token, falling back to `ONETHING_API_URL` || `http://127.0.0.1:8787`. `bun run dev` with the electron lane does NOT start a second server process — the desktop is the core.
+Dev ports: Electron renderer dev server **5173**, web frontend **5174**. The core HTTP/SSE port is **dynamic** since A 期 (`docs/design/one-core-2026-08.md`): whoever serves the store writes `<store>/run/http.json`, and the web lane's dev `/api` proxy (`apps/desktop-react/vite/dev-api-proxy.ts` for the React browser shell, `apps/web/dev-api-proxy.ts` for the retiring Vue one — a plugin, because vite's built-in proxy pins its target at creation) re-reads that file per request and injects the Bearer token, falling back to `ONETHING_API_URL` || `http://127.0.0.1:8787`. `bun run dev` with the electron lane does NOT start a second server process — the desktop is the core.
 
 ## Architecture Overview
 
@@ -143,16 +150,22 @@ apps/desktop-react/          # THE desktop (React). electron/main.ts assembles i
                              # workspace member (resolves @onething/* upward — bun must stay
                              # hoisted). Has its own CLAUDE.md.
 apps/electron/               # Vue Electron host (retired with packages/renderer; still boots).
-                             # Still the home of the CLI daemon entry (src/main/cli/) and the
-                             # `@main` ipc/bridges. src/main ('@main') = ipc/bridges/cli only;
+                             # Still the home of the `@main` ipc/bridges. src/main ('@main') =
+                             # ipc/ + bridges/ only (the CLI moved out 2026-09-03, 4a);
                              # the rest of src/* (window, app, voice, menu, search, …) is
                              # the '@onething/electron-host/*' alias family.
+apps/cli/                    # THE CLI daemon (src/ = index/daemon-{client,server}/ndjson/paths/
+                             # stdout/plugin-command/trace-command + __tests__). Eats only
+                             # @onething/backend + @shared — zero Vue-host edges, which is why it
+                             # survives step ④b. Built by scripts/build-cli.mjs → dist/cli/main.cjs.
 apps/server/                 # Process shell only (main.ts + index.ts). The HTTP/SSE surface
                              # and the server runtime live in the assembly layer
                              # (packages/backend/server/), so the Electron
                              # desktop mounts the SAME code over its own backend.
-apps/web/                    # Browser build of packages/renderer (Vue; retired with it); talks
-                             # to whatever core serves this store (desktop or server:start) via /api.
+apps/web/                    # Browser build of packages/renderer (Vue; retired with it, dies in
+                             # 4b); talks to whatever core serves this store via /api. **The browser
+                             # shell is the React one now** (`web:dev:react` / `web:build:react`,
+                             # user ruling 2026-09-03) — same :5174, same dist/web, same proxy shape.
 ```
 
 ### createOnethingBackend — the single assembly recipe
@@ -217,7 +230,7 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run boundary` — `scripts/headless-boundary-check.ts`, the heavy static checker. Key rule sets: core bans electron/`shared/ipc`/better-sqlite3/mcp+acp SDKs/zod/diff/uuid; `packages/onething-runtime` bans electron **and** `@shared/ipc` — except `*.wiring.ts` files, which may import `@shared/ipc`/`@shared/events` and which no non-wiring product file may import (`checkRuntimeWiringModulesStayAtTheEdge`); `packages/backend` gets a relaxed set — `@shared/ipc` allowed, but electron, `@onething/electron-host`, `@main/`, `@preload/` banned (hosts inject via configure*Host ports).
 - `bun run boundary:gate` — `scripts/boundary-gate.mjs`, a **zero-baseline hard gate**: any `[boundary] failed:` line exits 1. The ratchet and `docs/audit/boundary-baseline-2026-08-07.txt` (13 known legacy reds) were retired 2026-08-21 by 结构债方案 P2 — 4 reds were fixed in source, the other 9 were stale/false-positive assertions and were fixed in the checker. Two anti-footgun guards survive: no `[boundary] complete:` marker (checker crashed mid-run) or no `[boundary] ok:` line at all (output shape changed) is red, not green.
 - UI 组件与样式规则见 `docs/design/ui-system.md`(浮层决策树、交互态配方、z-index 层级表、禁令清单),新代码须过 `bun run ui:gate` — `scripts/ui-gate.mjs` ratchet over `scripts/ui-style-check.mjs`'s 12 line-level rules (z-literal / z-fallback / raw-teleport / native-select / native-confirm / title-attr / ui-hex-fallback / transition-literal / shadow-literal-floating / focus-bare / overscroll-contain-chat / surface-literal), baseline `docs/audit/ui-baseline-2026-08-13.txt` (81 条 = 5 条逐条确认过的语义保留 + 76 条 `surface-literal` 区域面迁移待办)。`bun run ui:check` prints the full list.
-- `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/electron/src/main/cli/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
+- `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/cli/src/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend`, baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
 - `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
   at the top of this file. It enumerates every native addon this repo actually ships
@@ -675,7 +688,7 @@ the backend's guards can no longer disagree. `bun run transport:gate` ratchets t
 domains share, is in scope and asks `isHostLocallyTrusted()` too; baseline `docs/audit/transport-forks-baseline-2026-09-03.txt`:
 5 reads in 5 files, decrease-only) and pins the React shell's `ipcMain` registrations at ≤ 1.
 
-**The Vue host (`apps/electron`) is the three-process IPC design; retired as a product, kept compiling and booting** (it still owns the CLI daemon entry and the `@main` bridges, and it is the only host today that wires plugins / voice / music / gateway / deeplink / todo-plan watchers):
+**The Vue host (`apps/electron`) is the three-process IPC design; retired as a product, kept compiling and booting** (it still owns the `@main` bridges — the CLI daemon moved to `apps/cli` on 2026-09-03 — and it is the only host today that wires plugins / voice / music / gateway / deeplink / todo-plan watchers):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -845,7 +858,7 @@ packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared 
 │
 apps/electron/src/
 │   ├── main/                  # '@main' — ONLY: ipc/ (per-domain handlers + handlers.ts),
-│   │                          # bridges/ (ipc-bridge), cli/ (daemon), __tests__/
+│   │                          # bridges/ (ipc-bridge), __tests__/  (cli/ moved to apps/cli 4a)
 │   ├── app/                   # boot: main-process.ts, ready.ts, bootstrap.ts, …
 │   ├── window/                # main/settings/search/todo-plan windows, macos-panel, state
 │   ├── preload.ts + preload/  # bridge.ts (electronAPI factory) + create-api.ts (routers)
@@ -856,10 +869,15 @@ apps/electron/src/
 │   │                          # browser, shell) — plus each domain's thin registration point
 │   └── voice/ music/ menu/ search/ gateway/ auth/ shell/ …   # '@onething/electron-host/*'
 │
+apps/cli/src/                  # CLI daemon + commands: index.ts (arg parsing) daemon-client.ts
+│                              # daemon-server.ts (HeadlessBackend) ndjson.ts paths.ts stdout.ts
+│                              # (the product-output口) plugin-command.ts trace-command.ts + __tests__/
 apps/server/src/               # process shell only: main.ts (env, discovery-file refusal,
 │                              # listen, SIGTERM flush) + index.ts (re-exports @onething/backend/server/*)
 apps/web/                      # package.json + vite.config.ts + dev-api-proxy.ts (dynamic
-│                              # /api proxy via the discovery file); builds packages/renderer
+│                              # /api proxy via the discovery file); builds packages/renderer.
+│                              # Its React successor: apps/desktop-react/vite/dev-api-proxy.ts
+│                              # (a copy, deliberately — see that file's header) + `--mode web`
 │
 packages/renderer/             # Vue 3 frontend ('@' / '@renderer')
 │   ├── stores/                # Pinia (workspace, chat, sessions, settings, themes, media, …)
@@ -906,7 +924,7 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 
 **MCP / ACP / Skills**: MCP is product-layer since P3'b-A (`packages/onething-runtime/src/mcp/` — client / manager / OAuth / identity, plus the `@shared/ipc`-speaking `bridge.wiring.ts` reachable through `index.wiring.ts`); ACP / skills assembly wiring in `packages/backend/wiring/{acp,skills}/`; themes are product-only now (`packages/onething-runtime/src/themes/`), as is the rest of the product logic.
 
-**CLI daemon**: `bin/onething.mjs` → `dist/cli/main.cjs` (`scripts/build-cli.mjs`, esbuild with the React main process's recipe; source still at `apps/electron/src/main/cli/index.ts` until step ④ moves it to apps/cli). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
+**CLI daemon**: `bin/onething.mjs` → `dist/cli/main.cjs` (`scripts/build-cli.mjs`, esbuild with the React main process's recipe; source at `apps/cli/src/index.ts` since step ④a, 2026-09-03). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
 
 **Workspace panels**: the six builtin panels (media / agents / tasks / music / practice / archive, declared once in `packages/renderer/workspace/panel-registry.ts`) and every plugin panel are **tabs in `RightWorkbenchPanel.vue`**, not a main-area container. Its tab bar carries two domains — 会话域 (left) | 工作区域 (right) — under three rules: a divider is drawn only when both domains are non-empty; a workspace tab shows its ✕ only while selected; new panels arrive through the `+` picker. Workspace tabs sit in the trailing segment (`insertTab` is the only place that maintains the boundary) and are **cross-session**: switching sessions no longer closes or resets them. Entry points — the sidebar `⋯` menu and the per-panel `windowEvent`s — all funnel into `openWorkspaceTab(panelId)`, which takes builtin ids and `plugin:<id>:<panel>` nav ids alike. `MediaPanel.vue`, the old fullscreen container that covered the chat, is retired; the media view itself is `components/MediaPanelContent.vue`. Plugin manifests may still declare `placements`, but both values now land in the same place (the `+` list); it survives only as the self-promotion gate for `api.ui.openWorkbench`.
 
