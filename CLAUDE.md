@@ -166,7 +166,7 @@ Options (`OnethingBackendOptions`):
 - `host: OnethingHostPorts` — **required**; the whole host-capability table in one object (see below)
 - `toolRegistry?: 'full' | 'headless' | 'readonly'` — full = every builtin (desktop), headless = reduced set (default when omitted), readonly = zero-local-side-effect tools (server degradation)
 - `promptVersion?` — stamp eval traces with live minimal-scene prompt output
-- `sessionSkills?`, `collab?`, `mcpAcp?` — opt-in subsystems (hosts may instead init MCP/ACP post-window and `own()` the shutdown)
+- `sessionSkills?`, `collab?`, `mcpAcp?` — opt-in subsystems. **MCP and ACP are subsystem objects owned by the instance** (C1, `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2): `backend.mcp` / `backend.acp` (`wiring/mcp/subsystem.ts` `McpSubsystem`, `wiring/acp/subsystem.ts` `AcpSubsystem`; `start()` idempotent, `applySettings()`, `dispose()`, `state`) are constructed during assembly and `own()`'d **at construction**, so their teardown never depends on when — or whether — `start()` finished. `mcpAcp: true` (the CLI daemon) means assembly itself awaits `mcp.start()` / `acp.start()`; every other host calls `backend.mcp.start()` when it is ready (the React shell: post-window; the server runtime: after installing its own client factory). The settings domain routes `updateMCPSettings` / `updateACPSettings` through `applySettings`. `dispose()` waits for an in-flight `start()` and then `manager.shutdown()`, **bounded to 3s per subsystem** (`disposeTimeoutMs`): on timeout it logs `mcp shutdown timed out; continuing dispose` and returns, so the session flushes further down the dispose chain always run — a hung stdio handshake may then leave an orphan child, a deliberate trade (session data outranks an MCP child; the bound sits under the server's 5s SIGTERM deadline)
 - `sender?: BindableStreamSender` — `engine.bind(sender)`; EventBus-observing hosts pass a noop (the engine drops commands silently with no sender bound)
 - `hooks?: { afterSettings, afterEngine, afterTools }` — each is `(backend: OnethingBackend) => void | Promise<void>`: the instance is handed in **because `assemble` has not returned yet when hooks run**, and a hook that starts a watcher must `backend.own()` it
 
@@ -562,7 +562,8 @@ Notes:
   restored on shutdown. Whoever serves the store writes
   `<store>/run/http.json = {port, host, token, pid, startedAt, owner:'desktop'|'server'}`
   (0600, next to `daemon.sock`/`backend.lock`; run dir = `getOnethingRunDir()`), deletes it on
-  shutdown, and answers on a **dynamic** port unless `ONETHING_SERVER_PORT` pins one (pinned
+  shutdown (**only when the record's `pid` is its own** — `removeHttpDiscovery` never removes another live core's
+  record, so a failed mount on a busy port cannot orphan the core that actually owns it), and answers on a **dynamic** port unless `ONETHING_SERVER_PORT` pins one (pinned
   and busy = explicit error, never a silent fallback). `server:start` reads that file first and
   **refuses to start** when a live record says `owner !== 'server'` (`--force` bypasses); alive
   means pid alive **and** the port connects. Token = `ONETHING_SERVER_TOKEN` or a fresh
@@ -666,7 +667,8 @@ embedded HTTP face when it mounts; a loopback `server:start` declares itself at 
 probes behave as on the old IPC desktop. `GET /api/capabilities` derives `localFileSystem` / `shellTools` /
 `terminal` / `pluginsManage` / `collabRooms` from those same predicates, so a client's capability bits and
 the backend's guards can no longer disagree. `bun run transport:gate` ratchets the per-file count of
-`context.transport` reads in `rpc/domains` (baseline `docs/audit/transport-forks-baseline-2026-09-03.txt`:
+`context.transport` reads under `packages/backend/rpc/**` (recursive since C0 — `rpc/sandbox.ts`, the sandbox helper seven
+domains share, is in scope and asks `isHostLocallyTrusted()` too; baseline `docs/audit/transport-forks-baseline-2026-09-03.txt`:
 5 reads in 5 files, decrease-only) and pins the React shell's `ipcMain` registrations at ≤ 1.
 
 **The Vue host (`apps/electron`) is the three-process IPC design; retired as a product, kept compiling and booting** (it still owns the CLI daemon entry and the `@main` bridges, and it is the only host today that wires plugins / voice / music / gateway / deeplink / todo-plan watchers):
