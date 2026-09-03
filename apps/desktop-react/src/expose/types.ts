@@ -1,5 +1,3 @@
-import type { MessageKey } from '../i18n'
-
 /**
  * 会话总览(Exposé)的形状。和 stage/ 一样:这里只有数据,没有 React、没有 DOM。
  *
@@ -20,12 +18,18 @@ import type { MessageKey } from '../i18n'
  */
 
 /**
- * 形态徽的口径。`@shared/ipc/chat.ts` 的 `SessionKind` 是四档
- * ('chat' | 'room' | 'work' | 'agent'),再加一条 `room.dm === true` 的私聊标记
- * —— 屏幕上要分的正是五档,所以这里把那条标记摊平成第五个字面量。
+ * 行形态的口径。`@shared/ipc/chat.ts` 的 `SessionKind` 是四档
+ * ('chat' | 'room' | 'work' | 'agent'),私聊是 `room.dm === true` 那条标记
+ * —— 屏幕上要分的是**六**档,所以这里把那条标记摊平成两个字面量:
+ *  · `dm`   = 人 ⇄ agent 的私聊(`room.dm` 且成员一位);
+ *  · `swap` = agent ⇄ agent 的私聊(`room.dm` 且成员两位,`@shared/ipc/chat.ts`
+ *    的 `RoomConfig.dm` 注释里那条「双成员 = agent ↔ agent 私聊」)。
  * 缺席的 kind 读作 'chat'(与后端「旧会话零迁移」的读法一致)。
+ *
+ * 加一档 = 这个联合加一格 + `row-kinds.ts` 的 `ROW_KIND_SPECS` 加一行 +
+ * `projection.sessionKindOf` 一句 —— 别处不许再出现形态名的分支(§6 演练)。
  */
-export type SessionKind = 'chat' | 'room' | 'dm' | 'work' | 'agent'
+export type SessionKind = 'chat' | 'room' | 'dm' | 'swap' | 'work' | 'agent'
 
 /**
  * 一条会话在**列表面**上的全部事实。产地一律 `sessions.listMeta` 的 `SessionMeta`。
@@ -35,8 +39,24 @@ export interface SessionSummary {
   id: string
   /** SessionMeta.name */
   title: string
-  /** SessionMeta.kind(+ room.dm)*/
+  /** SessionMeta.kind(+ room.dm + 成员数)*/
   kind: SessionKind
+  /**
+   * SessionMeta.isPinned —— 用户手动置顶。缺席读作 **false**(不是 null):
+   * 「没置顶」是一个真状态,不是一格缺失的事实。它是分节表的第一道判据
+   * (置顶先于时间落桶,见 sections.ts),所以 `sameSession` 必须比它,
+   * 否则按下图钉之后列表一动不动(数据源那条 equals 会判两份列表一样)。
+   */
+  isPinned: boolean
+  /**
+   * SessionMeta.collab?.roomSessionId —— 这条会话服务的**父房间**。
+   * `work`(派工)与 `agent`(执行)两档才有;别的形态一律 null。
+   *
+   * 它是列表层级的**唯一**判据(list-model.attachChildren):父在集合里就挂上去,
+   * 父不在就回顶层(孤儿不静默丢,用户 09-03 拍板)。
+   * 会话与房间的关系是**数据**(后端 `CollabWorkRef`),不是列表现造的分组。
+   */
+  roomId: string | null
   /** 由 SessionMeta.workingDirectory 归一而来;null = 不属于任何项目 */
   projectId: string | null
   /**
@@ -113,25 +133,14 @@ export interface ProjectSummary {
   path: string
 }
 
-/**
- * 组是「总览的一行分区」,不是一张新表:项目组的 id 就是 projectId,
- * 协作 / 独立组的 projectId 是 null(它们的会话本来就不属于任何项目)。
+/*
+ * ── 09-04 P2:`SessionGroup` 已删 ────────────────────────────────────────
+ * 「组」曾是总览的一行分区(项目组 / 协作组 / 独立组)。方向 A 之后它不再是
+ * 列表的事实:列表只按时间分一次组(`sections.ts` 的 `SECTION_BUCKETS`),
+ * 项目降级成侧栏的一格范围(`scopes.ts` 的 `SCOPE_SPECS`)。
+ * 形状连同 `projection.buildGroups` / `sessions-source.groups` 一并退役,
+ * 列表的唯一模型是 `list-model.buildListModel`。
  */
-export interface SessionGroup {
-  id: string
-  /**
-   * 组名 / 副名有两种来源,恰有其一:
-   * - 项目组:name / path 是**数据**(目录末段与磁盘路径),换语言不该变;
-   * - 合成组(协作 / 独立会话):nameKey / pathKey 是**界面文案**,换语言要变。
-   * 所以这里不是「可选字段」而是「两条来源」,消费方一律 key 优先。
-   */
-  name?: string
-  nameKey?: MessageKey
-  path?: string
-  pathKey?: MessageKey
-  projectId: string | null
-  sessions: SessionSummary[]
-}
 
 /**
  * 章节 = `sessions.getSegments` 的一条(`@shared/ipc/toc.ts` 的 `SessionSegment`)。
@@ -167,19 +176,28 @@ export interface SessionPreviewMessage {
 }
 
 /**
- * 三层视图,没有第四层 —— 「关着」不再是内容的一种态:
- * 这块面在不在场由 Placement 说了算(08-29 去接管化拍板),
- * 所以状态机只管「在场时看到的是哪一层」。
+ * **两层**视图,没有第三层 —— 「关着」不是内容的一种态(这块面在不在场由
+ * Placement 说了算,08-29 去接管化拍板),而「进某个组的列表」这一层
+ * 09-04 随方向 A 一起退役:总览与组列表合并成同一张树
+ * (`docs/design/react-shell-sessions-list-2026-09.md` §1),
+ * 于是没有可以钻进去的第二屏,`enterList` / `backToOverview` 一并删除。
  */
 export type ExposeView =
   | { mode: 'overview' }
-  /**
-   * drill 的目标是**组**,不是项目 —— 协作组和独立组都没有 projectId,
-   * 以前两者都用 null 表示,于是「进协作组」和「进独立组」落到同一个视图里。
-   * 换成 groupId 之后每个组各进各的,面包屑也能直接用组名。
-   */
-  | { mode: 'list'; groupId: string }
   | { mode: 'quicklook'; sessionId: string }
+
+/**
+ * 侧栏的**范围**(方向 A §1.3)。四档,前三档是恒定的合成范围,第四档带着
+ * 一个项目目录(= `SessionSummary.projectId`)。
+ *
+ * 它是一个**联合而不是一个字符串**,因为 `project` 那一档携带参数;
+ * 判据表在 `scopes.ts`(`SCOPE_SPECS`),这里只有形状。
+ */
+export type ProjectScope =
+  | { kind: 'all' }
+  | { kind: 'collab' }
+  | { kind: 'loose' }
+  | { kind: 'project'; projectId: string }
 
 export interface ExposeState {
   view: ExposeView
@@ -188,35 +206,44 @@ export interface ExposeState {
   /** 焦点环是否点亮:只有键盘导航(方向键 / Quick Look 换卡)才点亮;打开总览只设锚点、不亮环 */
   focusVisible: boolean
   /**
-   * 卡网格「一行几张」。**产地是 CSS 的计算值**,不是这里算出来的:
-   * 网格用 `repeat(auto-fill, …)` 按容器宽度自适应(浮窗 / 架子的宽度连续可变),
-   * 渲染层读回那个数报进来(Overview 的 useGridColumns)。↑↓ 走一整行要用它,
-   * 所以它必须跟着屏幕走 —— 写死成 3 就会出现「窄到一列还跳三张」。
-   * 不持久化:它是当下这块面有多宽的事实,下次开可能完全不同。
-   */
-  columns: number
-  /**
-   * 折叠的组 id。唯一被持久化的字段。
+   * 侧栏选中的范围。缺省 `{ kind: 'all' }` —— 「打开就看见全部」是这块面的
+   * 出厂语义;记住上次选的那一格是**家具**(按工作区分格持久化,见 store.ts)。
    *
-   * D1 起**没有「默认折叠」这回事**:旧 mock 的 `ProjectMock.active` 在
-   * `SessionMeta` 上没有产地,按「最近更新」现造一个活跃度就是造概念。
-   * 于是所有组一律展开起步,折叠永远是一次用户动作(并被记住)。
+   * 列数(`columns`)与折叠组(`collapsedGroups`)09-04 随卡网格与项目组
+   * 一起退役:方向 A 的行是一维的(↑↓ 只走一行,不需要知道一行几张),
+   * 分节不可折叠(§1.2)。
    */
-  collapsedGroups: string[]
-  /** 搜索条内容;非空时总览的分组区换成搜索结果视图 */
+  scope: ProjectScope
+  /**
+   * 展开着的房间 id。房间(room / dm / swap)的子行(work / agent)缺省收起,
+   * 展开是一次用户动作 —— 与从前的 `collapsedGroups` 正好相反:那一格记的是
+   * 「我关掉了谁」,这一格记的是「我打开了谁」,因为**缺省态换了边**
+   * (顶层一行一条会话是这张表的常态,子行是展开才看的细节)。
+   *
+   * 搜索命中子行时父行**强制展开**,那是派生态(list-model 现算),不落这一格
+   * —— 落进来的话清掉搜索词之后房间会莫名其妙地敞着。
+   */
+  expandedRooms: string[]
+  /** 搜索条内容;非空时列表只留命中的行与还剩行的节(形状不变,§1.4) */
   query: string
   /** 「当前会话」= TopBar 显示的那个。空串 = 还没有(数据未到 / 一条都没有)。 */
   currentSessionId: string
 }
 
-export type FocusDir = 'up' | 'down' | 'left' | 'right'
+/**
+ * 活动行的走法。**只剩一维** —— 卡网格时代的 ←→(在同一行里走一格)随网格
+ * 一起退役;树上的 ←→ 不是「走一格」而是**树语义**(展开 / 收起 / 进子 / 回父),
+ * 它有自己的入口(`transitions.treeKey`),不共用这个联合:
+ * 两件事共用一个类型,正是从前 `moveFocus(state,'right')` 既像走位又像展开的来源。
+ */
+export type FocusDir = 'up' | 'down'
 
 /*
  * ── F 批:`SearchHit` 退役 ────────────────────────────────────────────────
  * 曾经搜索是**另一种呈现**(三层缩进的命中列表),于是它需要一个自己的形状。
  * 现在搜索只是**喂给分组纯函数的一个过滤参数** —— 屏幕上仍是「项目头 + 卡网格」,
  * 只是不命中的卡与变空的组不在了(expose/transitions.ts 的 filterGroups)。
- * 一个过滤器不需要自己的结果类型:结果就是 `SessionGroup[]`,和不搜时同一种东西。
+ * 一个过滤器不需要自己的结果类型:结果就是同一份 `ListModel`,和不搜时同一种东西。
  *
  * 随它一起退役的还有「章节也算命中」那一层:卡面上没有章节的位置,
  * 一张因为章节命中而出现、却没有任何高亮的卡只会让人以为过滤器坏了。

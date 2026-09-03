@@ -1166,10 +1166,10 @@ async function measureTabSwitch(page, index, expectedPanel) {
 /** 从总览进一条会话 —— 与 gate-chat 逐字同一条路:开总览 → 点那张卡。 */
 async function enterSession(page, sessionId) {
   await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('总览画出那张卡', () =>
-    page.evaluate(id => Boolean(document.querySelector(`[data-testid="card-${id}"]`)), sessionId),
+  await waitFor('总览画出那一行', () =>
+    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
   )
-  await clickTestId(page, `card-${sessionId}`)
+  await clickTestId(page, `session-row-${sessionId}`)
   await waitFor('聊天区起底完成', () =>
     page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
   )

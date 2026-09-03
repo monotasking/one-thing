@@ -73,7 +73,7 @@
  * 治:`gate-a11y-settle.mjs` 的 `waitForScreenSettled` —— 等 `window.__d2.applied`
  * 与 `data-theme-bridge`(主题自己的探针,不是启发式)、等色值与可聚焦元素计数
  * 连续 3 帧逐字不变、等有终点的动画排空(排空后还会有新的起来,所以是循环)。
- * 五屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
+ * 六屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
  *
  * 读数(同一构建、同一台机器,每组连跑 5 次):
  *   · **修前 0 红 / 5**(这一轮没抖出来 —— 病历里的 1/4 是三批各自记的历史读数);
@@ -91,7 +91,7 @@
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -148,6 +148,24 @@ function portConnects(host, port) {
     socket.once('timeout', () => settle(false))
     socket.once('error', () => settle(false))
   })
+}
+
+/** 种子走 core 的 RPC 口(与 gate-data / gate-squeeze 逐字同一条)。 */
+async function rpc(record, domain, method, payload = {}) {
+  const response = await fetch(`http://${record.host}:${record.port}/api/rpc`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(record.token ? { authorization: `Bearer ${record.token}` } : {}),
+    },
+    body: JSON.stringify({ domain, method, payload }),
+  })
+  if (!response.ok) throw new Error(`rpc ${domain}.${method} HTTP ${response.status}`)
+  const body = await response.json()
+  if (!body || body.ok !== true) {
+    throw new Error(`rpc ${domain}.${method} 失败:${JSON.stringify(body?.error ?? body)}`)
+  }
+  return body.data
 }
 
 async function waitFor(label, predicate, timeoutMs = 20_000) {
@@ -373,6 +391,73 @@ async function checkComposerTabOrder(page) {
   )
 }
 
+/**
+ * 会话总览的 **Tab 序**(09-04 方向 A,设计 §3.1)。
+ *
+ * 一块装着几百条会话的面,它的 Tab 位只许有**四个**:侧栏(一个,内部走 roving)、
+ * 搜索条、新会话、树容器(一个,活动行走 `aria-activedescendant`)。
+ * 行**一个都不进 Tab 序** —— 469 条会话不该是 469 次 Tab,这正是选 tree +
+ * activedescendant 而不是「每行一个 button」的全部理由,所以它得被钉住。
+ *
+ * 走法从**搜索条**出发(这块面摆出来时焦点就在它身上,`restingTarget` 第一档):
+ * 先反着走两下证「侧栏是一个 Tab 位」(第一下进侧栏、第二下就出了这块面),
+ * 再正着走**五**下:前四站按次序读出来,第五站证「树是最后一个 Tab 位」——
+ * 行如果长了 tabIndex,它们排在树容器之后,只走四下看不见(反证跑出来的)。
+ */
+async function checkExposeTabOrder(page) {
+  const probe = () =>
+    page.evaluate(() => {
+      const el = document.activeElement
+      const inExpose = Boolean(el?.closest?.('[data-focus-scope="expose"]'))
+      const testid = el?.getAttribute?.('data-testid') ?? null
+      return {
+        testid,
+        role: el?.getAttribute?.('role') ?? null,
+        inExpose,
+        inRail: Boolean(el?.closest?.('[data-testid="expose-rail"]')),
+        railSelected: el?.getAttribute?.('aria-selected') === 'true',
+        isSearch: Boolean(el?.hasAttribute?.('data-expose-search')),
+        isRow: Boolean(el?.hasAttribute?.('data-session-id')),
+      }
+    })
+
+  const start = await probe()
+  assert(start.isSearch, `总览摆出来时焦点落在搜索条上(此刻在 [${start.testid ?? start.role ?? '—'}])`)
+
+  await page.keyboard.press('Shift+Tab')
+  const back1 = await probe()
+  assert(back1.inRail && back1.railSelected, `搜索条往回一下 = 侧栏当前那一项(此刻在 [${back1.testid ?? '—'}])`)
+  await page.keyboard.press('Shift+Tab')
+  const back2 = await probe()
+  assert(!back2.inRail, `侧栏只占**一个** Tab 位:再往回一下就出了侧栏(到了 [${back2.testid ?? back2.role ?? '—'}])`)
+
+  /*
+   * 走**五**下不是四下:第五下是这一条断言的全部价值 —— 行如果长了 tabIndex,
+   * 它们排在树容器**之后**(它们是树的孩子),四下正好停在树上就看不见。
+   * 反证跑出来的:给 SessionRow 加一句 tabIndex={0},四下版全绿。
+   */
+  const forward = []
+  for (let i = 0; i < 5; i += 1) {
+    await page.keyboard.press('Tab')
+    forward.push(await probe())
+  }
+  const trail = forward.map((f) => f.testid ?? f.role ?? '(无名)')
+  assert(
+    forward[0].inRail && forward[1].isSearch
+      && forward[2].testid === 'expose-new-session'
+      && forward[3].testid === 'expose-tree',
+    `Tab 序 = 侧栏 → 搜索 → 新会话 → 树(实走:${trail.join(' → ')})`,
+  )
+  assert(
+    forward.every((f) => !f.isRow),
+    `Tab 序里一条会话行都没有(实走:${trail.join(' → ')})`,
+  )
+  assert(
+    !forward[4].inExpose,
+    `树是这块面**最后**一个 Tab 位:再按一下就出了这块面(到了 [${trail[4]}])`,
+  )
+}
+
 async function checkDialog(page) {
   // Gallery 上那颗「open dialog」。用 el.click() 而不是真鼠标:这条门要证的是
   // 焦点与语义,不是命中测试(同 gate:squeeze / gate:data 的口径)。
@@ -514,10 +599,19 @@ async function main() {
 
   const store = await mkdtemp(path.join(tmpdir(), 'a11y-gate-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'a11y-gate-userdata-'))
+  /*
+   * 会话总览那一屏要有**真行**才扫得到东西(空树上没有 treeitem、没有分节头、
+   * 侧栏也长不出项目那一档)。所以这道门从 09-04 起种两条会话,其中一条落在
+   * 一个真实存在的临时目录下 —— `sessions.updateWorkingDirectory` 在本机可信面
+   * 上把路径逐字当真,不存在的目录会被当场拒掉(gate-squeeze 那条判例)。
+   */
+  const projectsRoot = await mkdtemp(path.join(tmpdir(), 'a11y-gate-projects-'))
+  const projectDir = path.join(projectsRoot, 'a11y-fixture-project')
+  await mkdir(projectDir, { recursive: true })
   let server
   let app
   try {
-    console.log('\n[1/8] 起一台 core')
+    console.log('\n[1/9] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -532,9 +626,24 @@ async function main() {
       throw new Error(`${error.message}\nserver stderr:\n${serverErr.join('')}`)
     })
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
-    console.log('  ✓ core 起来了')
+    // 种两条会话:一条带项目(侧栏因此长出项目那一档),一条无项目(「无项目」那一档)。
+    const seeded = []
+    for (const [name, dir] of [['会话总览 · 带项目', projectDir], ['会话总览 · 无项目', null]]) {
+      const created = await rpc(rec, 'sessions', 'create', { name })
+      const id = created?.session?.id
+      if (!id) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(created)}`)
+      if (dir) {
+        const wrote = await rpc(rec, 'sessions', 'updateWorkingDirectory', {
+          sessionId: id,
+          workingDirectory: dir,
+        })
+        if (wrote?.success !== true) throw new Error(`工作目录没写进去:${JSON.stringify(wrote)}`)
+      }
+      seeded.push(id)
+    }
+    console.log(`  ✓ core 起来了,种了 ${seeded.length} 条会话`)
 
-    console.log('\n[2/8] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/9] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -550,7 +659,7 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/8] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/9] 产品外壳:axe 全页扫描 + Tab 序走查')
     // 这一屏从前是裸扫的 —— 而颜色恰恰是最后才到的那样东西(见 settle 的文件头)。
     await settle(page, '外壳')
     await scanAxe(page, '外壳')
@@ -568,7 +677,7 @@ async function main() {
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[4/8] 模型服务面:开一块面再扫一次')
+    console.log('\n[4/9] 模型服务面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-providers"]')
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
@@ -589,7 +698,7 @@ async function main() {
      * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
      * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
      */
-    console.log('\n[5/8] 所有应用面(cover 形态):开一块面再扫一次')
+    console.log('\n[5/9] 所有应用面(cover 形态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-apps"]')
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
@@ -614,7 +723,7 @@ async function main() {
      * 由 gate:files 那道门验(它自己建了一棵真目录树)—— 两道门各扫各的那一半,
      * 不在这里再造一次目录树。
      */
-    console.log('\n[6/8] 文件查看器(空态):开一块面再扫一次')
+    console.log('\n[6/9] 文件查看器(空态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-viewer"]')
     await waitFor('查看器就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
@@ -647,9 +756,36 @@ async function main() {
       page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
     )
 
+    /*
+     * 会话总览(09-04 方向 A 重建之后补的一屏)。
+     *
+     * 它进这道门的理由与前三屏逐字相同 —— **外壳那一屏看不见它**;而它是全壳
+     * 语义最密的一块:一只 `role="listbox"` 的侧栏、一只 `role="tree"` 的列表
+     * (`role="group"` 的分节 + `role="treeitem"` 的行 + `aria-activedescendant`)、
+     * 一只 `ui/Select`、一条搜索框,加上行里三颗 `tabIndex=-1` 的图标钮。
+     * 「树的项故意不可聚焦」这一形尤其值得被 axe 与 Tab 走查各查一遍:
+     * 前者管语义对不对,后者管 Tab 位有没有炸成几百个(axe 看不见这件事)。
+     *
+     * 扫的范围钉在这块面自己的作用域根上(`[data-focus-scope="expose"]`),
+     * 与前三屏同一条理由:外壳那一份别再报第二遍。
+     */
+    console.log('\n[7/9] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
+    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+    await waitFor('总览画出会话行', () =>
+      page.evaluate(() => document.querySelectorAll('[data-session-id]').length > 0),
+    )
+    await settle(page, '会话总览')
+    await scanAxe(page, '会话总览', '[data-focus-scope="expose"]')
+    await checkExposeTabOrder(page)
+    // 收回它(Esc 走退层链,最上面那扇浮窗),免得它挡住下一屏。
+    await page.keyboard.press('Escape')
+    await waitFor('总览已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-focus-scope="expose"]')),
+    )
+
     // 28 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(25 件组件 +
     // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。日志读数,不是断言。
-    console.log('\n[7/8] 组件规格页(?gallery):28 个展位一次全在场')
+    console.log('\n[8/9] 组件规格页(?gallery):28 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -664,12 +800,12 @@ async function main() {
     )
     /*
      * 这一屏是**整页重载**(改 location.search),所以 `startThemeSource()` 从头
-     * 再跑一遍 —— 主题又是异步到的。五屏里它是最需要这道等待的一屏。
+     * 再跑一遍 —— 主题又是异步到的。六屏里它是最需要这道等待的一屏。
      */
     await settle(page, '规格页')
     await scanAxe(page, '规格页')
 
-    console.log('\n[8/8] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[9/9] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 
@@ -681,13 +817,14 @@ async function main() {
     await delay(600)
     await rm(store, { recursive: true, force: true })
     await rm(userDataDir, { recursive: true, force: true })
+    await rm(projectsRoot, { recursive: true, force: true })
   }
 
   if (failures.length) {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 五屏 axe 零违例;键盘走查全绿')
+  console.log('\n[a11y-gate] ok —— 六屏 axe 零违例;键盘走查全绿')
 }
 
 main().catch((error) => {

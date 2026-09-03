@@ -204,28 +204,51 @@ async function main() {
     assert(probe.rpcOk === true, `连上了同一台 core(baseUrl=${probe.baseUrl})`)
 
     console.log('\n[3/4] 打开会话总览,断言渲染出的会话集合 = listMeta')
+    /*
+     * ── 「渲染出的集合」在树形列表里是什么(09-04 方向 A)────────────────────
+     * 列表从卡网格变成了 `role="tree"`:顶层行 `aria-level="1"`,房间的子行
+     * (`work` / `agent`)`aria-level="2"` 且**只在父行展开时才在 DOM 里**。
+     * 所以「屏幕上的集合 = listMeta」这句话在一般情形下要先展开所有房间才成立。
+     *
+     * 这道门的种子是两条 `sessions.create` 出来的**普通会话**(没有 room、没有
+     * 派工),于是屏幕上不存在可折叠的父行 —— 顶层可见集合就是全集。这一点不是
+     * 靠注释保证的:下面顺带断言「每一行都是 aria-level=1」,哪天种子里混进一条
+     * 子会话,这一条会当场红,提醒改门的人去展开房间(点 `session-row-caret-*`)
+     * 而不是悄悄放宽相等。
+     */
     // 按 data-testid 点,不按 aria-label —— 后者是翻译过的文案,会跟着系统语言变。
     await waitFor('Dock 上的「会话总览」瓦就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
     await clickTestId(page, 'dock-tile-sessions')
-    const rendered = await waitFor('总览画出会话卡', async () => {
+    const rendered = await waitFor('总览画出会话行', async () => {
       const rows = await page.evaluate(() =>
         Array.from(document.querySelectorAll('[data-session-id]')).map(el => ({
           id: el.getAttribute('data-session-id'),
+          // 契约:行里**第一个 `<span>` 就是完整标题**(Highlight 不许把它切碎)。
           title: el.querySelector('span')?.textContent ?? '',
+          role: el.getAttribute('role'),
+          level: el.getAttribute('aria-level'),
         })),
       )
       return rows.length > 0 ? rows : undefined
     })
-    const actual = sortByTitle(rendered)
+    assert(
+      rendered.every(r => r.role === 'treeitem'),
+      `每一行都是 role="treeitem"(树的项,不是按钮):${rendered.map(r => r.role).join(' / ')}`,
+    )
+    assert(
+      rendered.every(r => r.level === '1'),
+      `种子只有顶层会话,所以屏幕上没有折叠着的子行(层级:${rendered.map(r => r.level).join(' / ')})`,
+    )
+    const actual = sortByTitle(rendered.map(r => ({ id: r.id, title: r.title })))
     assert(
       JSON.stringify(actual) === JSON.stringify(expected),
       `渲染出的会话集合与 listMeta 逐条相等:${JSON.stringify(actual)}`,
     )
 
     console.log('\n[4/4] 进一条会话的 Quick Look,断言首页消息的正文出现')
-    await clickTestId(page, `card-preview-${target.id}`)
+    await clickTestId(page, `session-row-peek-${target.id}`)
     const shown = await waitFor('Quick Look 画出首页消息', async () => {
       const text = await page.evaluate(() => {
         const body = document.querySelector('[data-testid="quicklook-body"]')

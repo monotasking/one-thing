@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { useExposeStore } from './store'
+import { EXPOSE_PER_SPACE, useExposeStore } from './store'
+import { ALL_SCOPE, projectScope } from './scopes'
+import { spreadSpace, stashSpace } from '../workspace/per-space'
+import { DEFAULT_SPACE_ID } from '../workspace/types'
 import { useStageStore } from '../stage/store'
 import { initialStageState } from '../stage/transitions'
 import { initialExposeState } from './transitions'
@@ -40,5 +43,82 @@ describe('enterSession × 形态:瞬态收、钉住留', () => {
     useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'float' })
     useExposeStore.getState().enterSession('os-expose')
     expect(SESSIONS_ITEM_ID in useStageStore.getState().placements).toBe(false)
+  })
+})
+
+
+/**
+ * ── 持久化 v2(09-04)────────────────────────────────────────────────────
+ * 折叠组随项目组一起退役,家具换成范围与展开的房间。这一组钉两件事:
+ * ①存量档案(v1)迁上来**不许带着旧键**,②两格家具按工作区各持一份。
+ *
+ * `migrate` 不是导出符号(它长在 persist 配置里),所以这里走**真路**:
+ * 把一份 v1 档案写进 localStorage,再让 store 自己 rehydrate 一次。
+ */
+describe('onething.expose 持久化 v2', () => {
+  const STORE_KEY = 'onething.expose'
+
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('v1 → v2:丢掉 collapsedGroups,两格家具回出厂', () => {
+    localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({
+        version: 1,
+        state: { byWorkspace: { [DEFAULT_SPACE_ID]: { collapsedGroups: ['/Users/dev/code/x'] } } },
+      }),
+    )
+    useExposeStore.persist.rehydrate()
+    const state = useExposeStore.getState()
+    expect(state.scope).toEqual(ALL_SCOPE)
+    expect(state.expandedRooms).toEqual([])
+    expect(JSON.stringify(state.byWorkspace)).not.toContain('collapsedGroups')
+  })
+
+  it('v0(没有版本号的平铺档)照旧迁得动:先折进默认空间,再丢掉那一格', () => {
+    localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({ state: { collapsedGroups: ['/a'] } }),
+    )
+    useExposeStore.persist.rehydrate()
+    expect(useExposeStore.getState().scope).toEqual(ALL_SCOPE)
+    expect(JSON.stringify(useExposeStore.getState().byWorkspace)).not.toContain('collapsedGroups')
+  })
+
+  it('v2 档案原样摊开(范围与展开表都还在)', () => {
+    const scope = projectScope('/Users/dev/code/start-electron')
+    localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({
+        version: 2,
+        state: { byWorkspace: { [DEFAULT_SPACE_ID]: { scope, expandedRooms: ['rm-1'] } } },
+      }),
+    )
+    useExposeStore.persist.rehydrate()
+    expect(useExposeStore.getState().scope).toEqual(scope)
+    expect(useExposeStore.getState().expandedRooms).toEqual(['rm-1'])
+  })
+
+  it('两格家具按工作区各持一份:换个空间摊开的是那个空间自己那一份', () => {
+    const store = useExposeStore.getState()
+    const mine = { scope: projectScope('/p/a'), expandedRooms: ['rm-a'] }
+    const theirs = { scope: projectScope('/p/b'), expandedRooms: [] }
+    const table = { a: mine, b: theirs }
+    expect(spreadSpace({ ...table }, EXPOSE_PER_SPACE, 'a')).toEqual(mine)
+    expect(spreadSpace({ ...table }, EXPOSE_PER_SPACE, 'b')).toEqual(theirs)
+    // 没进过的空间摊开的是**出厂那一份**(全部 + 一间房都没展开)。
+    expect(spreadSpace({ ...table }, EXPOSE_PER_SPACE, 'never-been')).toEqual(
+      EXPOSE_PER_SPACE.factory(),
+    )
+    // pick 只挑那两格 —— 别的状态(焦点 / 搜索词 / 当前会话)不算家具。
+    expect(EXPOSE_PER_SPACE.pick({ ...store, ...mine })).toEqual(mine)
+    expect(EXPOSE_PER_SPACE.factory()).toEqual({ scope: ALL_SCOPE, expandedRooms: [] })
+    // 收进账:当前空间(默认那个)多出一格,别人的两格原样在。
+    const stashed = stashSpace({ ...store, ...mine }, table, EXPOSE_PER_SPACE)
+    expect(Object.keys(stashed).sort()).toEqual(['a', 'b', DEFAULT_SPACE_ID].sort())
+    expect(stashed[DEFAULT_SPACE_ID]).toEqual(mine)
+    expect(stashed.b).toEqual(theirs)
   })
 })

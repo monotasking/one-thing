@@ -1,0 +1,24 @@
+/*
+ * 粘顶、无底、无计数、不可折叠(见 SectionHead.tsx 的三条禁令)。
+ * 高度 = --list-row-h,与行同一个节拍;`scroll-padding-top` 在滚动容器那一侧
+ * 取的也是这个数(否则键盘走到视口外的行会被停在节头**底下**:环在,行看不见)。
+ */
+.head {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  height: var(--list-row-h);
+  margin: 0;
+  padding: 0 var(--sp-2);
+  background: transparent;
+  font-size: var(--fs-meta);
+  font-weight: 650;
+  color: var(--text-3);
+  /* 节头是**结构线**不是主角:降一档字号与灰度,行的标题才是这屏的主角。 */
+  letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

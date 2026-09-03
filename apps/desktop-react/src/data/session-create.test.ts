@@ -44,6 +44,7 @@ function sessionsPortStub(): SessionsPort {
     getUserMarkers: async () => ({ success: true, markers: [] }),
     create: (request) => create(request),
     updateWorkingDirectory: (id, dir) => updateWorkingDirectory(id, dir),
+    updatePin: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   }
@@ -136,8 +137,10 @@ describe('sessions-source.create:两发请求,次序即语义', () => {
 
     expect(listMeta).toHaveBeenCalledTimes(1)
     expect(useSessionsSource.getState().sessions.some((s) => s.id === NEW_ID)).toBe(true)
-    const group = useSessionsSource.getState().groups.find((g) => g.id === ONETHING_DIR)
-    expect(group?.sessions.some((s) => s.id === NEW_ID)).toBe(true)
+    // 归属读的是投影出来的事实(`projectId`),不是一份分好组的表 ——
+    // 09-04 P2 之后 store 里没有 `groups` 那一格了。
+    const fresh = useSessionsSource.getState().sessions.find((s) => s.id === NEW_ID)
+    expect(fresh?.projectId).toBe(ONETHING_DIR)
   })
 
   it('落目录失败不回滚:会话照样成立,但那句错要随结果交出去(不许无声)', async () => {

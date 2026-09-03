@@ -196,18 +196,20 @@ async function openPanel(page, itemId, readySelector) {
 }
 
 /**
- * 屏幕上此刻的会话卡。读的是 `data-testid="card-<id>"` 那一族的**标题文字**——
- * 断言按名字写(名字是种子给的),不依赖后端现给的 id。
+ * 屏幕上此刻的会话行。读的是 `[data-session-id]`(= `session-row-<id>`)那一族的
+ * **标题文字** —— 断言按名字写(名字是种子给的),不依赖后端现给的 id。
+ *
+ * 09-04 方向 A:卡网格换成了树形列表,testid 从 `card-<id>` 改名
+ * `session-row-<id>`,行里那三颗动作钮各有自己的前缀(`session-row-peek-` /
+ * `-pin-` / `-caret-`)。这里按 `[data-session-id]` 取行(动作钮身上没有这个属性),
+ * 于是不必再逐个排除前缀 —— 少一份会跟着改名漂的名单。
  */
 function readCards(page) {
   return page.evaluate(() => {
-    const cards = [...document.querySelectorAll('[data-testid^="card-"]')].filter(
-      el => !el.getAttribute('data-testid').startsWith('card-preview-')
-        && !el.getAttribute('data-testid').startsWith('card-digest-'),
-    )
+    const rows = [...document.querySelectorAll('[data-session-id]')]
     return {
-      titles: cards.map(el => (el.textContent || '').trim()),
-      count: cards.length,
+      titles: rows.map(el => (el.textContent || '').trim()),
+      count: rows.length,
       // 骨架在不在(切换那一刻屏幕上不许有它)。
       skeleton: Boolean(document.querySelector('[data-skeleton], [class*="skeleton"]')),
     }
@@ -384,7 +386,7 @@ async function main() {
       return value && value.rpcOk ? value : undefined
     })
 
-    await openPanel(page, 'sessions', '[data-testid^="card-"]')
+    await openPanel(page, 'sessions', '[data-session-id]')
     const inDefault = await waitFor('默认空间的卡画出来', async () => {
       const seen = await readCards(page)
       return seen.count > 0 ? seen : undefined
@@ -431,7 +433,7 @@ async function main() {
     )
 
     // 在第二个空间把会话面开出来,顺带看它只装着这个空间的会话。
-    await openPanel(page, 'sessions', '[data-testid^="card-"]')
+    await openPanel(page, 'sessions', '[data-session-id]')
     const inWork = await waitFor('第二个空间的卡画出来', async () => {
       const seen = await readCards(page)
       return seen.count > 0 ? seen : undefined
@@ -451,7 +453,7 @@ async function main() {
      *  · **一帧就位** —— 切换是纯投影(账本重投影 + 家具摊开),不发一次请求;
      *  · **零重挂** —— 那块面在两个空间都开着,所以它的滚动容器必须是同一个节点。
      * 抓的是滚动容器而不是某张卡的父节点:卡会换、组会换(两个空间的会话落在
-     * 不同项目下,分组本来就该重画)。第一版抓 `card-*.parentElement`(= 组的
+     * 不同项目下,分节本来就该重画)。第一版抓行的 `.parentElement`(= 分节的
      * section)红过一次 —— 那是量错了东西。
      */
     const beforeSwitch = await page.evaluate(() => {
@@ -502,7 +504,7 @@ async function main() {
      * 顺带证了另一半:切换那一刻旧会话被 `onSessionsRemoved` 从形态机上摘掉
      * (它不在新世界的列表里),所以这里点开的一定是新空间那条。
      */
-    await clickSelector(page, '[data-testid^="card-"]')
+    await clickSelector(page, '[data-session-id]')
     await openPanel(page, 'files', '[data-testid="files-root"]')
     const rootSeen = await waitFor('文件面读出根', async () => {
       const value = await page.evaluate(
@@ -523,8 +525,9 @@ async function main() {
     console.log('\n[6/11] 在第二个空间里从界面上建一条会话,回 core 侧核归属')
     const before = new Set((await rpc(record, 'sessions', 'listMeta', {})).sessions.map(s => s.id))
     // 上一步开了文件面,会话面让位给了它 —— 先把会话面开回来,那颗「+」才在 DOM 里。
-    await openPanel(page, 'sessions', '[data-testid^="group-plus-"]')
-    await clickSelector(page, '[data-testid^="group-plus-"]')
+    /* 09-04 方向 A:组头那颗 `+` 随项目组退役,「新会话」搬到工具栏。 */
+    await openPanel(page, 'sessions', '[data-testid="expose-new-session"]')
+    await clickSelector(page, '[data-testid="expose-new-session"]')
     const fresh = await waitFor('core 侧看到那条新会话', async () => {
       const listed = await rpc(record, 'sessions', 'listMeta', {})
       return listed.sessions.find(s => !before.has(s.id))

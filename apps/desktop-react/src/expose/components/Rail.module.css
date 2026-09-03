@@ -1,0 +1,92 @@
+/*
+ * 侧栏(Rail)—— 定宽一列,不吸空间(挤压律一:一行只许一个弯腰件,
+ * 这块面里吸空间的是会话标题)。宽档才在场,收起的规则在 Overview.module.css
+ * 的 `@container expose` 里(阈值 --expose-rail-bp 760)。
+ */
+.rail {
+  flex: none;
+  width: var(--expose-rail-w);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-2) var(--sp-4);
+}
+
+/*
+ * 一项 = 一行 40px(与列表行同一个节拍 --list-row-h,所以侧栏与列表的横线
+ * 读起来是同一套格子)。皮肤只有三态:静息 / 悬停(前景 6% 薄膜)/ 选中
+ * (accent 10% 晕 + 文字提亮)—— 与全壳的交互态词汇同一张表。
+ * 焦点环不在这里画:走全局 `:focus-visible`(禁裸删 outline)。
+ */
+.item {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  height: var(--list-row-h);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-1);
+  color: var(--text-2);
+  transition:
+    background-color var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+}
+
+.item:hover {
+  background: var(--st-hover);
+  color: var(--text-1);
+}
+
+.on {
+  background: var(--st-sel);
+  color: var(--text-1);
+}
+
+.on:hover {
+  background: var(--st-sel-hover);
+}
+
+.icon {
+  flex: none;
+  width: var(--fs-label);
+  height: var(--fs-label);
+  color: var(--text-3);
+}
+
+.on .icon {
+  color: var(--accent);
+}
+
+/* 律一:名字是这一行唯一的弯腰件 —— 可缩 + 单行省略,绝不换行。 */
+.label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: start;
+}
+
+.sep {
+  flex: none;
+  height: var(--bw-1);
+  margin: var(--sp-2) var(--sp-2);
+  background: var(--line-1);
+}
+
+/*
+ * ── 窄档(< 760,--expose-rail-bp):侧栏不在场 ─────────────────────────────
+ * 范围改由工具栏那只 `ui/Select` 管(同一张表)。`display: none` 顺手把整只
+ * listbox 移出无障碍树,所以任何一刻只有一个范围控件被读屏读到。
+ * `@container` 的条件里不能写 var(),760 在这里是字面量,名字在 tokens.css。
+ */
+@container expose (max-width: 760px) {
+  .rail {
+    display: none;
+  }
+}

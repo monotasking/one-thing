@@ -55,7 +55,13 @@ import {
   Square,
   Boxes,
   Layers,
+  MessageSquare,
   MessagesSquare,
+  Users,
+  ArrowLeftRight,
+  SquareCheck,
+  Zap,
+  PinOff,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -120,7 +126,17 @@ const REGISTRY: Record<string, LucideIcon> = {
   Square,
   Boxes,
   Layers,
+  /* 单气泡 = 「就是一条聊天」(expose 的 loose 范围)。空心方框 `Square` 在这套
+     词汇里已经是 composer 的「停止」,拿它当范围图标会被读成一枚勾选框
+     —— 09-04 真机走查用户看图当场指出的那一格。 */
+  MessageSquare,
   MessagesSquare,
+  /* 会话行的形态字形(expose/row-kinds 的 RowGlyph → 这五格,SessionRow 读表)。 */
+  Users,
+  ArrowLeftRight,
+  SquareCheck,
+  Zap,
+  PinOff,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -163,5 +179,11 @@ export {
   Bell,
   Square,
   Layers,
+  MessageSquare,
+  Users,
+  ArrowLeftRight,
+  SquareCheck,
+  Zap,
+  PinOff,
 }
 export type { LucideIcon }

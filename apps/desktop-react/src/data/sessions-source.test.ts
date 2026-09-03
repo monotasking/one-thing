@@ -6,6 +6,8 @@ import { configureSessionsPort } from './sessions-port'
 import type { SessionsPort } from './sessions-port'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
+import { scopeSpecOf } from '../expose/scopes'
+import type { ProjectScope } from '../expose/types'
 import {
   chaptersQuery,
   CREATE_KEY,
@@ -13,11 +15,11 @@ import {
   messagesQuery,
   REFRESH_THROTTLE_MS,
   sessionMutation,
+  pinKey,
   sessionsQuery,
   useSessionsSource,
   workdirKey,
 } from './sessions-source'
-import { isListedSession, toSessionSummary } from '../expose/projection'
 import { AGENT_SESSION_META, NOW, ONETHING_DIR, SESSION_META } from './__fixtures__/sessions'
 
 /**
@@ -26,11 +28,13 @@ import { AGENT_SESSION_META, NOW, ONETHING_DIR, SESSION_META } from './__fixture
  */
 
 /**
- * 夹具里**会被陈列**的那一批(08-31 投影过滤:kind 'agent' / 'room' 不进列表)。
- * 派生而不是写死数字:判据的单产地在 projection.isListedSession,这里跟着它走,
- * 哪天名单改了这些用例是跟着变而不是集体假红。
+ * 夹具里会被陈列的那一批 —— **09-04 起就是全部**。
+ *
+ * 08-31 那道「kind 'agent' / 'room' 不进列表」的投影过滤随方向 A 退役(层级铺开
+ * 之后没有一档需要被藏),所以这里不再 filter 一遍:名单就是夹具本身,
+ * 次序也是夹具的次序(数据源只按空间过滤,不重排)。
  */
-const LISTED_IDS = SESSION_META.map(toSessionSummary).filter(isListedSession).map((s) => s.id)
+const LISTED_IDS = SESSION_META.map((m) => m.id)
 const LISTED = LISTED_IDS.length
 
 let listMeta: ReturnType<typeof vi.fn>
@@ -39,6 +43,7 @@ let getMessagesPage: ReturnType<typeof vi.fn>
 let getUserMarkers: ReturnType<typeof vi.fn>
 let create: ReturnType<typeof vi.fn>
 let updateWorkingDirectory: ReturnType<typeof vi.fn>
+let updatePin: ReturnType<typeof vi.fn>
 let emit: ((envelope: SessionEventEnvelope) => void) | undefined
 let emitLifecycle: ((event: SessionLifecycleEvent) => void) | undefined
 let unsubscribed = 0
@@ -82,6 +87,7 @@ beforeEach(() => {
   getUserMarkers = vi.fn(async () => ({ success: true, markers: [] }))
   create = vi.fn(async () => ({ success: true, session: { id: 'new-1' } }))
   updateWorkingDirectory = vi.fn(async () => ({ success: true }))
+  updatePin = vi.fn(async () => ({ success: true }))
   emit = undefined
   emitLifecycle = undefined
   unsubscribed = 0
@@ -93,6 +99,7 @@ beforeEach(() => {
     getUserMarkers: (id) => getUserMarkers(id),
     create: (request) => create(request),
     updateWorkingDirectory: (id, dir) => updateWorkingDirectory(id, dir),
+    updatePin: (id, isPinned) => updatePin(id, isPinned),
     onSessionEvent: (callback) => {
       emit = callback
       return () => {
@@ -129,12 +136,9 @@ describe('start', () => {
     // 「读到哪一步了」7e 之后是列表那一格 query 的读数,不再是 store 上一个压扁的
     // status:有过一次答案 = phase 走到 ready(而且从此再也不退回去,律②)。
     expect(sessionsQuery.get().phase).toBe('ready')
-    // 群房 rm-release 被投影滤掉,其余八条原样在列表里(次序仍是夹具次序)。
+    // 09-04:一条都不滤(群房、执行会话、派工全在),次序仍是夹具次序。
     expect(state.sessions.map((s) => s.id)).toEqual(LISTED_IDS)
-    expect(state.sessions.map((s) => s.id)).not.toContain('rm-release')
-    // 协作组**没有整个消失**:私聊 dm-ying 仍陈列,它一条就把这个组撑住了。
-    expect(state.groups.map((g) => g.id)).toEqual([ONETHING_DIR, '/Users/dev/code/transreader', 'collab', 'loose'])
-    expect(state.groups.find((g) => g.id === 'collab')!.sessions.map((s) => s.id)).toEqual(['dm-ying'])
+    expect(state.sessions.map((s) => s.id)).toContain('rm-release')
     expect(listMeta).toHaveBeenCalledTimes(1)
   })
 
@@ -172,7 +176,7 @@ describe('列表那一格 query', () => {
     await start()
     const rev = sessionsQuery.get().dataRev
     const data = sessionsQuery.get().data
-    const { sessions, groups, projects } = useSessionsSource.getState()
+    const { sessions, projects } = useSessionsSource.getState()
 
     await useSessionsSource.getState().refresh()
 
@@ -181,18 +185,17 @@ describe('列表那一格 query', () => {
     // 但答案逐条相同 —— 于是 kernel 留住上一份,身份一格没换(律④)。
     expect(sessionsQuery.get().dataRev).toBe(rev)
     expect(sessionsQuery.get().data).toBe(data)
-    // 屏幕那一份也没重投影:`buildProjects` / `buildGroups` 一次都没跑。
+    // 屏幕那一份也没重投影:`buildProjects` 一次都没跑(引用逐格恒等)。
     expect(useSessionsSource.getState().sessions).toBe(sessions)
-    expect(useSessionsSource.getState().groups).toBe(groups)
     expect(useSessionsSource.getState().projects).toBe(projects)
     // 「上次拉取」照样前进 —— 问过没有与答案变没变是两件事。
     expect(sessionsQuery.get().updatedAt).toBeGreaterThan(0)
   })
 
-  it('内容真变了就该换:dataRev 前进,分组跟着重算', async () => {
+  it('内容真变了就该换:dataRev 前进,屏幕那一份跟着重投影', async () => {
     await start()
     const rev = sessionsQuery.get().dataRev
-    const groups = useSessionsSource.getState().groups
+    const sessionsBefore = useSessionsSource.getState().sessions
 
     listMeta.mockResolvedValue({
       success: true,
@@ -201,7 +204,7 @@ describe('列表那一格 query', () => {
     await useSessionsSource.getState().refresh()
 
     expect(sessionsQuery.get().dataRev).toBe(rev + 1)
-    expect(useSessionsSource.getState().groups).not.toBe(groups)
+    expect(useSessionsSource.getState().sessions).not.toBe(sessionsBefore)
     expect(
       useSessionsSource.getState().sessions.find((s) => s.id === 'os-compact')!.title,
     ).toBe('换了个名字')
@@ -335,13 +338,14 @@ describe('SSE 判据', () => {
     expect(getSegments).toHaveBeenCalledTimes(1)
   })
 
-  it('a 的例外:被投影滤掉的会话在发事件 —— 认识但不陈列,一次都不重拉', async () => {
-    // 执行会话(kind 'agent')不进列表,却照样在跑、照样推事件。若判据 a 只问
-    // 「在不在 sessions 里」,它每推一条就换来一次整表重拉(拉回来还是被滤掉,
-    // 下一条再拍一次)—— 忙起来就是每秒一发。
+  it('a 问的是**全库账**不是屏幕:账上认识的会话在发事件,一次都不重拉', async () => {
+    // 判据 a 的产地是 `ledger()`(listMeta 交下来那一份),不是 `state.sessions`。
+    // 09-04 之前这条用例靠「被投影滤掉的执行会话」来分辨这两者;过滤退役之后
+    // 分辨的活交给**空间**:别的工作区里的会话在账上、不在屏幕上(下一组钉它)。
+    // 这一条守住剩下那一半:在账上的会话推事件,不该换来一次整表重拉。
     listMeta.mockResolvedValue({ success: true, sessions: [...SESSION_META, AGENT_SESSION_META] })
     await start()
-    expect(useSessionsSource.getState().sessions.map((s) => s.id)).not.toContain(AGENT_SESSION_META.id)
+    expect(useSessionsSource.getState().sessions.map((s) => s.id)).toContain(AGENT_SESSION_META.id)
     expect(listMeta).toHaveBeenCalledTimes(1)
 
     for (let i = 0; i < 5; i += 1) {
@@ -349,8 +353,7 @@ describe('SSE 判据', () => {
     }
     await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
     expect(listMeta).toHaveBeenCalledTimes(1)
-    // 也没有被当成增量偷偷塞进列表。
-    expect(useSessionsSource.getState().sessions).toHaveLength(LISTED)
+    expect(useSessionsSource.getState().sessions).toHaveLength(LISTED + 1)
   })
 
   /**
@@ -373,7 +376,7 @@ describe('SSE 判据', () => {
     expect(useSessionsSource.getState().sessions.map((s) => s.id)).not.toContain('in-other-space')
 
     const sessions = useSessionsSource.getState().sessions
-    const groups = useSessionsSource.getState().groups
+    const projects = useSessionsSource.getState().projects
     const rev = sessionsQuery.get().dataRev
 
     emit?.(envelope('in-other-space', SESSION_EVENT_TYPES.MESSAGE_ASSISTANT_CREATED))
@@ -383,9 +386,9 @@ describe('SSE 判据', () => {
     expect(sessionsQuery.get().data!.find((s) => s.id === 'in-other-space')!.updatedAt).toBe(
       NOW + 60_000,
     )
-    // 屏幕那一份**同一个数组**:`buildProjects` / `buildGroups` 一次都没跑(律④)。
+    // 屏幕那一份**同一个数组**:`buildProjects` 一次都没跑(律④)。
     expect(useSessionsSource.getState().sessions).toBe(sessions)
-    expect(useSessionsSource.getState().groups).toBe(groups)
+    expect(useSessionsSource.getState().projects).toBe(projects)
     // 也没有被判据 a 当成新建 —— 一发重拉都不打。
     await vi.advanceTimersByTimeAsync(REFRESH_THROTTLE_MS * 2)
     expect(listMeta).toHaveBeenCalledTimes(1)
@@ -610,11 +613,16 @@ describe('写路:一只 mutation,两口一个联合', () => {
     expect(returned).toBe(true)
   })
 
-  it('setWorkingDirectory 成功:同步重拉,回来的那一刻分组已经跟着换了', async () => {
+  it('setWorkingDirectory 成功:同步重拉,回来的那一刻归属已经跟着换了', async () => {
     await start()
-    expect(
-      useSessionsSource.getState().groups.find((g) => g.id === ONETHING_DIR)!.sessions.map((s) => s.id),
-    ).not.toContain('lo-notes')
+    // 归属读的是**投影出来的事实**(`session.projectId`),不是一份分好组的表 ——
+    // 09-04 P2 之后 store 里没有 `groups` 那一格了(分组是 list-model 的事)。
+    const inProject = () =>
+      useSessionsSource
+        .getState()
+        .sessions.filter((s) => s.projectId === ONETHING_DIR)
+        .map((s) => s.id)
+    expect(inProject()).not.toContain('lo-notes')
     listMeta.mockImplementation(async () => ({
       success: true,
       sessions: SESSION_META.map((m) =>
@@ -627,9 +635,7 @@ describe('写路:一只 mutation,两口一个联合', () => {
     expect(outcome).toEqual({ ok: true })
     expect(updateWorkingDirectory).toHaveBeenCalledWith('lo-notes', ONETHING_DIR)
     expect(listMeta).toHaveBeenCalledTimes(2)
-    expect(
-      useSessionsSource.getState().groups.find((g) => g.id === ONETHING_DIR)!.sessions.map((s) => s.id),
-    ).toContain('lo-notes')
+    expect(inProject()).toContain('lo-notes')
   })
 
   it('setWorkingDirectory:后端说不行 → **原话**原样交出去,一次重拉都不发', async () => {
@@ -657,6 +663,112 @@ describe('写路:一只 mutation,两口一个联合', () => {
 
     expect(outcome).toEqual({ ok: false, error: 'socket 断了' })
     expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * ── 置顶那一口(09-04)────────────────────────────────────────────────────
+   * 与换目录同形,但对账的必要性更硬:后端这一发**一条事件都不推**
+   * (`updateOnethingSessionPinForIpc` 不叫 `notifySessionIndexChanged`),
+   * 不重拉的话按下图钉之后屏幕一动不动。所以这一组的头一条钉的就是那一发重拉。
+   *
+   * P1 又在它前面加了一层**乐观补丁**(交互四律第 1 条:写操作就地更新):
+   * 屏幕上那一行必须在**这一发还没回来**的时候就搬进「置顶」节 —— 下面两条
+   * 钉的就是那一层的两半(翻得动 / 翻得回来)。
+   */
+  it('乐观:那一发还在飞,账本上就已经翻了(就地更新,律①)', async () => {
+    await start()
+    const gate = deferred<{ success: true }>()
+    updatePin.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().setPinned('lo-notes', true)
+    // 一次 await 都没走 —— 补丁是**同步**打的,不是等 microtask。
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.isPinned).toBe(
+      true,
+    )
+
+    gate.resolve({ success: true })
+    await flying
+  })
+
+  it('乐观那一笔在**写没成**时翻回去 —— 屏幕上不许留一条后端并不认的置顶', async () => {
+    await start()
+    updatePin.mockResolvedValue({ success: false, error: '这条会话不在' })
+
+    const result = await useSessionsSource.getState().setPinned('lo-notes', true)
+
+    expect(result).toEqual({ ok: false, error: '这条会话不在' })
+    /*
+     * 这一条真的能判:写没成 = `settle` 直接返回 = **一次重拉都不发**
+     * (下一行钉着),所以账本上留下来的只可能是乐观那一笔本身。
+     * 反证:把 `if (!outcome.ok) flip(!isPinned)` 摘掉 → 这一条当场红。
+     */
+    expect(listMeta).toHaveBeenCalledTimes(1)
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.isPinned).toBe(
+      false,
+    )
+  })
+
+  it('setPinned 成功:同步重拉,回来的那一刻列表里那条已经是置顶的', async () => {
+    await start()
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.isPinned).toBe(
+      false,
+    )
+    listMeta.mockResolvedValue({
+      success: true,
+      sessions: SESSION_META.map((m) => (m.id === 'lo-notes' ? { ...m, isPinned: true } : m)),
+    })
+
+    const result = await useSessionsSource.getState().setPinned('lo-notes', true)
+
+    expect(result).toEqual({ ok: true })
+    expect(updatePin).toHaveBeenCalledWith('lo-notes', true)
+    expect(listMeta).toHaveBeenCalledTimes(2)
+    expect(useSessionsSource.getState().sessions.find((x) => x.id === 'lo-notes')!.isPinned).toBe(
+      true,
+    )
+  })
+
+  it('置顶的忙态按会话分格(pin:<id>),与换目录那一格互不干涉', async () => {
+    await start()
+    const gate = deferred<{ success: true }>()
+    updatePin.mockReturnValue(gate.promise)
+
+    const flying = useSessionsSource.getState().setPinned('os-compact', true)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(sessionMutation.isPending(pinKey('os-compact'))).toBe(true)
+    expect(sessionMutation.isPending(pinKey('os-provider'))).toBe(false)
+    expect(sessionMutation.isPending(workdirKey('os-compact'))).toBe(false)
+
+    gate.resolve({ success: true })
+    await flying
+    expect(sessionMutation.isPending(pinKey('os-compact'))).toBe(false)
+  })
+
+  it('后端说不行 → **原话**原样交出去,一次重拉都不发', async () => {
+    await start()
+    updatePin.mockResolvedValue({ success: false, error: '这条会话不在' })
+    const result = await useSessionsSource.getState().setPinned('lo-notes', true)
+    expect(result).toEqual({ ok: false, error: '这条会话不在' })
+    expect(listMeta).toHaveBeenCalledTimes(1)
+  })
+
+  it('端口自己抛也收成同一种答案(不是一次没人接的 rejection)', async () => {
+    await start()
+    updatePin.mockRejectedValue(new Error('socket 断了'))
+    expect(await useSessionsSource.getState().setPinned('lo-notes', true)).toEqual({
+      ok: false,
+      error: 'socket 断了',
+    })
+  })
+
+  it('空 id 连一发都不打 —— 它是问错了的话,不是一次失败的写', async () => {
+    await start()
+    expect(await useSessionsSource.getState().setPinned('', true)).toEqual({
+      ok: false,
+      error: 'sessionId 为空',
+    })
+    expect(updatePin).not.toHaveBeenCalled()
   })
 
   it('setWorkingDirectory:空 id 连一发都不打 —— 它是问错了的话,不是一次失败的写', async () => {
@@ -687,12 +799,23 @@ describe('会话删除(onSessionLifecycle)', () => {
     expect(listMeta).toHaveBeenCalledTimes(1)
   })
 
-  it('分组跟着重投影:空掉的组整个消失', async () => {
+  it('屏幕那一份跟着重投影:删光「无项目」那一档之后它一条都不剩', async () => {
+    const LOOSE_SCOPE: ProjectScope = { kind: 'loose' }
     await start()
-    // 独立会话组只有 lo-notes 一条。
-    expect(useSessionsSource.getState().groups.map((g) => g.id)).toContain('loose')
-    emitLifecycle!(deleted(['lo-notes']))
-    expect(useSessionsSource.getState().groups.map((g) => g.id)).not.toContain('loose')
+    // 无项目会话现在有三条:随手记、孤儿派工、执行会话 —— 09-04 起后两档也进
+    // 列表了,所以要删满才空得掉。判据从「组消失」改成「屏幕那一份里没有了」:
+    // P2 之后分组不在数据源这一层(它是 `expose/list-model` 的事)。
+    // 判据读**那张表**(`SCOPE_SPECS` 的 loose 一行),不在测试里手抄一份
+    // 「没目录且不是协作」—— 两份判据必然分叉(旧 COLLAB_KINDS 那一案的形状)。
+    const isLoose = scopeSpecOf(LOOSE_SCOPE).predicate
+    const loose = () =>
+      useSessionsSource
+        .getState()
+        .sessions.filter((s) => isLoose(s, LOOSE_SCOPE))
+        .map((s) => s.id)
+    expect(loose()).toEqual(expect.arrayContaining(['lo-notes', 'wk-orphan', 'ag-xiaoli']))
+    emitLifecycle!(deleted(['lo-notes', 'wk-orphan', 'ag-xiaoli']))
+    expect(loose()).toEqual([])
   })
 
   it('级联名单里的每一条都摘 —— 不是只摘信封上那一条', async () => {

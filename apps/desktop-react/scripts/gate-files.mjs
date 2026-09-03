@@ -278,10 +278,10 @@ async function main() {
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
     await clickSelector(page, '[data-testid="dock-tile-sessions"]')
-    await waitFor('总览画出那张卡', () =>
+    await waitFor('总览画出那一行', () =>
       page.evaluate(id => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId),
     )
-    await clickSelector(page, `[data-testid="card-${sessionId}"]`)
+    await clickSelector(page, `[data-testid="session-row-${sessionId}"]`)
     await waitFor('文件瓦就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-files"]'))),
     )

@@ -1,5 +1,5 @@
 import type { SessionMeta } from '@shared/ipc/chat'
-import { buildGroups, buildProjects, toSessionSummary } from '../../expose/projection'
+import { buildProjects, toSessionSummary } from '../../expose/projection'
 import { configureSessionsPort } from '../sessions-port'
 import {
   chaptersQuery,
@@ -8,6 +8,7 @@ import {
   sessionsQuery,
   useSessionsSource,
 } from '../sessions-source'
+import type { ListFacts } from '../../expose/transitions'
 import type {
   SessionChapter,
   SessionMarker,
@@ -37,7 +38,14 @@ function meta(partial: Partial<SessionMeta> & Pick<SessionMeta, 'id' | 'name' | 
 }
 
 /**
- * 九条会话:项目 A 四条(最近)、项目 B 两条、协作两条(房间 + 私聊)、独立一条。
+ * 十三条会话。**09-04 起这张表要撑住层级**(方向 A):
+ *  · 项目 A 四条(最近,其中 `os-toolkit` **置顶**)、项目 B 两条、独立一条;
+ *  · 协作三档各一条:群房 `rm-release`、人机私聊 `dm-ying`、
+ *    agent 私聊 `sw-pair`(`room.dm` + 两位成员 = kind 'swap');
+ *  · 群房的两条子行:`wk-verify`(work)与 `ag-xiaoli`(agent),
+ *    各自 `collab.roomSessionId` 指着 `rm-release`;
+ *  · **一条孤儿** `wk-orphan`:它的房间 `rm-gone` 不在这张表里 —— 用来钉
+ *    「父不在集合里就回顶层,不静默丢」(用户 09-03 裁决 5)。
  * 协作那两条**故意带着工作目录** —— 用来钉「协作形态优先于项目归属」这一条。
  */
 export const SESSION_META: SessionMeta[] = [
@@ -80,6 +88,9 @@ export const SESSION_META: SessionMeta[] = [
     updatedAt: NOW - 3 * DAY,
     workingDirectory: ONETHING_DIR,
     previewText: '工具系统要推翻重来',
+    // 唯一一条置顶。它**故意是三天前那条**:置顶先于时间落桶,所以它必须越过
+    // 「今天」那几条排到最上面 —— 一条今天的会话置顶了看不出这一条。
+    isPinned: true,
   }),
   meta({
     id: 'tr-menubar',
@@ -118,13 +129,56 @@ export const SESSION_META: SessionMeta[] = [
     updatedAt: NOW - 9 * DAY,
     previewText: '记一下今天的三件事',
   }),
+  meta({
+    // agent ⇄ agent 私聊:`room.dm` + **两位**成员(契约 RoomConfig.dm 的第二档)。
+    id: 'sw-pair',
+    name: 'reviewer ⇄ writer',
+    kind: 'room',
+    room: { memberAgentIds: ['reviewer', 'writer'], dm: true },
+    updatedAt: NOW - 50 * MINUTE,
+    previewText: '这段改完你再看一眼',
+  }),
+  meta({
+    // 群房的子行之一:派工。它带着工作目录,但归属由**父房间**说了算。
+    id: 'wk-verify',
+    name: 'V2-3:全链路验收',
+    kind: 'work',
+    collab: { roomSessionId: 'rm-release', taskId: 'task-3' },
+    updatedAt: NOW - 45 * MINUTE,
+    workingDirectory: ONETHING_DIR,
+    previewText: '按验收单跑一遍',
+  }),
+  meta({
+    // 群房的子行之二:执行会话。
+    id: 'ag-xiaoli',
+    name: '小李',
+    kind: 'agent',
+    collab: { roomSessionId: 'rm-release' },
+    updatedAt: NOW - 55 * MINUTE,
+    previewText: '房里的分工我先跑一遍',
+  }),
+  meta({
+    // **孤儿**:房间 `rm-gone` 不在这张表里(被删了 / 不在这个空间)。
+    // 它必须回顶层 —— 静默丢掉一条还在的会话是这批最要防的那件事。
+    id: 'wk-orphan',
+    name: '孤儿派工',
+    kind: 'work',
+    collab: { roomSessionId: 'rm-gone' },
+    updatedAt: NOW - 2 * HOUR,
+    previewText: '房间已经没了,活还在',
+  }),
 ]
 
 /**
- * 一条**执行会话**(协作房间派生的 agent-exec-*)。它刻意**不进** `SESSION_META`:
- * 那张表是「屏幕上的九条」,而这一条的用途正好相反 —— 它是投影过滤掉、却仍然在
- * 发事件的那一类,只被 sessions-source 的「认识但不陈列」用例点名。
- * 放进 SESSION_META 会把所有靠 SESSIONS / GROUPS 吃这张表的组件测试一起搅动。
+ * 另一条**执行会话**(agent-exec-*),刻意**不进** `SESSION_META` —— 它是用例
+ * 自己往名册里塞的那一条,用来钉「列表里本来没有它,它却在发事件」那条判据。
+ *
+ * ── 09-04 语义变了一格 ────────────────────────────────────────────────────
+ * 08-31 那会儿它的用途是「被投影过滤掉、却仍然在发事件」;方向 A 之后
+ * **没有一档会被藏**(`isListedSession` 已退役),所以它一旦进了名册就会陈列
+ * ——它没有 `collab.roomSessionId`,于是作为**孤儿**站在顶层。
+ * 判据 a(「账上不认识 = 有人新建了 = 整表重拉」)问的是**全库账**而不是屏幕,
+ * 所以那条用例守的东西一个字没变:它在账上,于是它的事件不该换来一次重拉。
  */
 export const AGENT_SESSION_META: SessionMeta = meta({
   id: 'agent-exec-1',
@@ -137,7 +191,13 @@ export const AGENT_SESSION_META: SessionMeta = meta({
 
 export const SESSIONS: SessionSummary[] = SESSION_META.map(toSessionSummary)
 export const PROJECTS = buildProjects(SESSIONS)
-export const GROUPS = buildGroups(PROJECTS, SESSIONS)
+/* 09-04 P2:`GROUPS` 已删 —— 项目组随方向 A 退役,用例吃 `FACTS` + `expose/list-model`。 */
+
+/**
+ * 状态机问屏幕时递进去的那两件事(`expose/transitions.ListFacts`)。
+ * `now` 钉死成 `NOW` —— 分节按「此刻」落桶,不钉的话这批用例半夜会红。
+ */
+export const FACTS: ListFacts = { sessions: SESSIONS, now: NOW }
 
 /** 按会话的章节缓存样本(数据源 chapters 表的形状)。 */
 export const CHAPTERS: Record<string, SessionChapter[]> = {
@@ -192,11 +252,7 @@ export function seedSessionsSource(
    */
   sessionsQuery.reset()
   if ((overrides.phase ?? 'ready') === 'ready') sessionsQuery.patch(sessions)
-  useSessionsSource.setState({
-    sessions,
-    projects,
-    groups: buildGroups(projects, sessions),
-  })
+  useSessionsSource.setState({ sessions, projects })
   // 三张按需缓存从 store 搬进了三族 query(7c 批),所以摆样本也得摆到那边去。
   // **先清空再灌**:样本是「这一条用例的全部事实」,上一条用例留下的格不该
   // 混进来(从前那份整份 setState 天然带着这层意思)。
@@ -252,6 +308,7 @@ export async function seedSessionsFailure(
     getUserMarkers: async () => ({ success: true, markers: [] }),
     create: async () => ({ success: false, error: 'not stubbed' }),
     updateWorkingDirectory: async () => ({ success: true }),
+    updatePin: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   })

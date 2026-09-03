@@ -82,6 +82,7 @@ beforeEach(() => {
       cds.push({ sessionId, dir: workingDirectory })
       return cdOk ? { success: true } : { success: false, error: '目录不存在' }
     },
+    updatePin: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   })

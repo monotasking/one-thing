@@ -57,6 +57,7 @@ function installSessionsPort(): void {
     getUserMarkers: async () => ({ success: true, markers: [] }),
     create: (request) => create(request),
     updateWorkingDirectory: async () => ({ success: true }),
+    updatePin: async () => ({ success: true }),
     onSessionEvent: () => () => {},
     onSessionLifecycle: () => () => {},
   }
@@ -216,7 +217,7 @@ describe('会话列表按空间投影', () => {
     useWorkspaceStore.getState().switchTo('ws-empty')
     const st = useSessionsSource.getState()
     expect(st.sessions).toEqual([])
-    expect(st.groups).toEqual([])
+    expect(st.projects).toEqual([])
     // 空列表不是错误态:那一格照样是 ready,一句错都没有。
     expect(sessionsQuery.get().phase).toBe('ready')
     expect(sessionsQuery.get().error).toBeUndefined()

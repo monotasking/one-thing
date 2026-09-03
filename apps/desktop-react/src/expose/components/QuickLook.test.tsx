@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { QuickLook } from './QuickLook'
 import { SKELETON_DELAY_MS } from '../../components/motion'
 import {
-  GROUPS,
+  FACTS,
   seedSessionCaches,
   seedSessionsSource,
   SESSIONS,
@@ -11,7 +11,7 @@ import {
 import { messagesQuery } from '../../data/sessions-source'
 import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../store'
-import { initialExposeState } from '../transitions'
+import { initialExposeState, rowIdsOf } from '../transitions'
 
 /**
  * D1:Quick Look 里画的是**真消息**(sessions.getMessagesPage 的首页),纯文本。
@@ -145,8 +145,12 @@ describe('Quick Look 头部的 meta', () => {
 })
 
 describe('Quick Look 的 ‹ › 换会话', () => {
-  /** 屏幕上的卡序(未搜索时)—— 邻居判据读的就是它。 */
-  const seq = GROUPS.flatMap((g) => g.sessions.map((x) => x.id))
+  /**
+   * 屏幕上的行序(未搜索时)—— 邻居判据读的就是它。
+   * 09-04:产地从旧分组换成 `rowIdsOf`(方向 A 的列表模型),
+   * 与键盘的 ← → 是同一条序列(那正是这一组守的东西)。
+   */
+  const seq = rowIdsOf(initialExposeState, FACTS)
 
   const open = (id: string) => {
     useExposeStore.setState({ view: { mode: 'quicklook', sessionId: id }, focusId: id })
@@ -178,12 +182,12 @@ describe('Quick Look 的 ‹ › 换会话', () => {
     expect((screen.getByTestId('quicklook-prev') as HTMLButtonElement).disabled).toBe(false)
   })
 
-  it('导航序列是**过滤后**的:搜着词时 › 走的是下一张命中卡', () => {
-    // 'transreader' 只留下那个项目组的两条,它们在全量序列里前面还有四条。
-    useExposeStore.setState({ query: 'transreader' })
-    open('tr-menubar')
+  it('导航序列是**过滤后**的:搜着词时 › 走的是下一行命中行', () => {
+    // 「房」命中两条(发版房 / 孤儿派工的预览),它们在全量序列里前面还有两行。
+    useExposeStore.setState({ query: '房' })
+    open('rm-release')
     expect((screen.getByTestId('quicklook-prev') as HTMLButtonElement).disabled).toBe(true)
     fireEvent.click(screen.getByTestId('quicklook-next'))
-    expect(useExposeStore.getState().view).toEqual({ mode: 'quicklook', sessionId: 'tr-flask' })
+    expect(useExposeStore.getState().view).toEqual({ mode: 'quicklook', sessionId: 'wk-orphan' })
   })
 })

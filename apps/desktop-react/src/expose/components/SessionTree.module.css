@@ -1,0 +1,73 @@
+/*
+ * 滚动容器。`scroll-padding-top` = 粘性节头的**滚动边界**:键盘走到视口外的行时
+ * SessionRow 会 `scrollIntoView({block:'nearest'})`,而「最近」认的是 padding 边 ——
+ * 不告诉它「上面那一行被节头占着」,它就会把行停在节头**底下**(环在,行看不见)。
+ * 取值 = 节头行高(--list-row-h),与 SectionHead 粘附的高度是同一个事实。
+ */
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
+  scroll-padding-top: var(--list-row-h);
+  padding: 0 var(--expose-pad) var(--sp-4);
+}
+
+/*
+ * 树容器自己**不画焦点环**(容器例外,同 focus-scope.css 判例)——
+ * 它是 Tab 位,但看得见的键盘位是那一行的柔光环。
+ */
+.tree {
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * 空态 / 载入态 / 断线态共用一块居中的窄栏。三种态结构相同是刻意的:
+ * 它们说的是同一件事(「现在这里没有行」),差别只在为什么。
+ */
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-8) var(--sp-4);
+  text-align: center;
+}
+
+.stateTitle {
+  font-size: var(--fs-body);
+  color: var(--text-2);
+}
+
+.stateHint {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  max-width: 34ch;
+}
+
+/*
+ * 搜不到:一行灰字,居中,不出插画 —— 「没配上这个词」是一次很轻的事件,
+ * 和上面那三种「这里没有行」不是同一个量级,所以不共用 .state 那块窄栏。
+ */
+.noMatch {
+  margin: 0;
+  padding: var(--sp-6) 0;
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 窄形(< 480):页边距 32px 在 240px 的架子里吃掉四分之一宽,收到 16px。 */
+@container expose (max-width: 480px) {
+  .scroll {
+    padding-inline: var(--sp-4);
+  }
+}

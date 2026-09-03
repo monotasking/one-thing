@@ -42,6 +42,8 @@ function session(over: Partial<SessionSummary> & { id: string }): SessionSummary
   return {
     title: 's',
     kind: 'chat',
+    isPinned: false,
+    roomId: null,
     projectId: null,
     preview: '',
     digest: null,
@@ -97,6 +99,7 @@ function installSessionsPort(listMeta?: SessionsPort['listMeta']): void {
     getUserMarkers: async () => ({ success: true, markers: [] }),
     create: async () => ({ success: false, error: 'fake port' }),
     updateWorkingDirectory: async () => ({ success: true }),
+    updatePin: async () => ({ success: true }),
     onSessionEvent: () => () => undefined,
     onSessionLifecycle: () => () => undefined,
   })

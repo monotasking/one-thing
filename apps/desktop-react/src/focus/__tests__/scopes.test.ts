@@ -77,12 +77,25 @@ describe('FOCUS_SCOPES 封闭表', () => {
   })
 })
 
-describe('局部键:今天只有查看器与文件树两格', () => {
-  it('查看器三条、文件树两条,别的作用域一条都没有', () => {
+describe('局部键:查看器 / 文件树 / 会话总览三格', () => {
+  it('查看器三条、文件树两条、总览一条,别的作用域一条都没有', () => {
     expect(focusScopeKeysOf('viewer').map((k) => k.action)).toEqual(['save', 'jump', 'find'])
     expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
+    // 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行。
+    expect(focusScopeKeysOf('expose').map((k) => k.action)).toEqual(['pin.toggle'])
     const withKeys = FOCUS_SCOPE_LIST.filter((s) => (s.keys?.length ?? 0) > 0).map((s) => s.id)
-    expect(withKeys).toEqual(['viewer', 'files'])
+    expect(withKeys).toEqual(['viewer', 'files', 'expose'])
+  })
+
+  /*
+   * 带修饰的组合进这张表**就是为了能对撞** —— ⌘P 已经被 `toggle:search` 占着,
+   * 而 ⌘⇧P 是另一个组合(`matchCombo` 判 shift)。这一条钉的是「新加的那条键
+   * 没有踩在某条已有的全局键上」,加下一条局部键时照抄一遍。
+   */
+  it('⌘⇧P 与全局的 ⌘P 不是同一个组合(shift 是判据的一格)', () => {
+    const pin = focusScopeKeysOf('expose')[0].combo
+    expect(pin).toEqual({ meta: true, shift: true, key: 'p' })
+    expect(pin.shift).toBe(true)
   })
 
   it('每条键的 scope 字段真的指着装它的那一格(表里不许有搬错家的行)', () => {

@@ -257,15 +257,30 @@ export const zh = {
   /* ── 会话总览 Exposé ──────────────────────────────────────────────── */
   'expose.searchPlaceholder': '搜索会话、章节、消息',
   'expose.searchLabel': '搜索会话',
-  'expose.newProject': 'Project',
-  'expose.sessionCount': '{count} 会话',
-  'expose.sessionCountOne': '{count} 会话',
-  'expose.newSessionIn': '在 {name} 新建会话',
   'expose.noMatchingSessions': '没有匹配的会话',
-  'expose.groupCollab': '协作',
-  'expose.groupCollabPath': '房间与私聊',
-  'expose.groupLoose': '独立会话',
-  'expose.groupLoosePath': '没有工作目录',
+
+  /* ── 侧栏范围(SCOPE_SPECS 读这几条;侧栏项不带数字)──────────────── */
+  'expose.scopeLabel': '项目',
+  'expose.scopeAll': '全部',
+  'expose.scopeCollab': '协作',
+  'expose.scopeLoose': '无项目',
+  'expose.newSession': '新会话',
+
+  /* ── 分节(SECTION_BUCKETS 读这几条;节头不带计数)────────────────── */
+  'expose.sectionPinned': '置顶',
+  'expose.sectionToday': '今天',
+  'expose.sectionYesterday': '昨天',
+  'expose.sectionThisWeek': '本周',
+  /* 跨年的月份才带年;本年的月份标题**就是** time.month<N> 自己,不再包一层。 */
+  'expose.sectionMonthYear': '{year} 年 {month}',
+
+  /* ── 行上的两个动作(图钉 / 展开)与它们的播报 ────────────────────── */
+  'expose.pin': '置顶',
+  'expose.unpin': '取消置顶',
+  'expose.pinnedAnnounce': '已置顶 {name}',
+  'expose.unpinnedAnnounce': '已取消置顶 {name}',
+  'expose.expandRoom': '展开 {name}',
+  'expose.collapseRoom': '收起 {name}',
   /* 空态 / 载入态:数据源说了算,不留 mock 兜底 —— 假数据比空更糟。 */
   'expose.loading': '正在读会话…',
   'expose.emptyTitle': '这里还没有会话',
@@ -273,16 +288,9 @@ export const zh = {
   'expose.disconnectedTitle': '没连上 core',
   'expose.disconnectedHint': '会话数据来自本机正在跑的 core;{error}',
 
-  /* ── 列表视图 ─────────────────────────────────────────────────────── */
-  'list.backToOverview': '‹ 总览',
-  // 面包屑后面只写组名。08-30「计数禁令」(tab / 列表 / 组头不挂个数)之后这里不再带条数,
-  // 于是单复数两支同文、`list.hereOne` 成了孤儿键 —— 与 `expose.sessionCountOne` 同一批同一形,
-  // 照仓里的读法留在原地等 i18n 批清理,不单独删。
-  'list.here': '{group}',
-  'list.hereOne': '{group}',
-  'list.filter': '在本组内过滤',
-  'list.bucketThisWeek': '本周',
-  'list.bucketEarlier': '更早',
+  /* ── 组列表视图 09-04 退役(方向 A:总览与组列表合并成一张树)──────────
+   * `list.*` 六条与 `expose.sessionCount*` 两条随 `ListView` 一起删:
+   * 没有第二屏了,也没有一处再写「N 会话」(08-30 计数禁令)。 */
 
   /* ── 检索面板(search/:搜索行 + 一张平铺列表) ────────────────────── */
   'search.placeholder': '搜文件、章节、消息、会话…',
@@ -434,11 +442,15 @@ export const zh = {
   'kind.chatBadge': '话',
   'kind.roomBadge': '室',
   'kind.dmBadge': '私',
+  /* agent ⇄ agent 私聊。徽用符号而不是汉字:它说的正是「两头都不是人」这件事,
+   * 而 ⇄ 在两门语言里读法相同(en 那本原样同一个字符)。 */
+  'kind.swapBadge': '⇄',
   'kind.workBadge': '工',
   'kind.agentBadge': '代',
   'kind.chat': '会话',
   'kind.room': '房间',
   'kind.dm': '私聊',
+  'kind.swap': 'Agent 私聊',
   'kind.work': '派工',
   'kind.agent': '代理执行',
 
@@ -463,6 +475,21 @@ export const zh = {
   'time.weekday4': '周四',
   'time.weekday5': '周五',
   'time.weekday6': '周六',
+  /* 月份名。中文是「9 月」,英文是「September」—— 一门语言一种体例,
+   * 所以它是一族十二条,而不是一个 '{month} 月' 的模板(那样英文拼不出月名)。
+   * 本年的分节标题**就是**这一条;跨年的由 expose.sectionMonthYear 再包一层。 */
+  'time.month1': '1 月',
+  'time.month2': '2 月',
+  'time.month3': '3 月',
+  'time.month4': '4 月',
+  'time.month5': '5 月',
+  'time.month6': '6 月',
+  'time.month7': '7 月',
+  'time.month8': '8 月',
+  'time.month9': '9 月',
+  'time.month10': '10 月',
+  'time.month11': '11 月',
+  'time.month12': '12 月',
 
   /* ── 快捷键字面(两种语言相同,但仍走字典:组件里不落字面文案) ────── */
   'shortcut.left': '←',

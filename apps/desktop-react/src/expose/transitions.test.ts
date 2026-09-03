@@ -1,50 +1,50 @@
 import { describe, it, expect } from 'vitest'
 import {
-  CARD_COLS,
-  backToOverview,
-  columnsFromTemplate,
   closeQuickLook,
-  enterList,
+  collapseRoom,
   enterSession,
   escape,
+  expandRoom,
   focusGrid,
   initialExposeState,
-  isCollapsed,
+  isRoomExpanded,
+  listModelOf,
   moveFocus,
   open,
   openQuickLook,
+  quickLookNeighbors,
   quickLookNext,
   quickLookPrev,
-  filterGroups,
-  groupMatchesQuery,
-  quickLookNeighbors,
   relativeTime,
+  rowIdsOf,
   sessionMatchesQuery,
   sessionsRemoved,
-  setColumns,
   setQuery,
+  setScope,
   splitHighlight,
   splitHighlightRanges,
-  timeBucket,
-  toggleGroupCollapsed,
-  visibleCardIds,
+  toggleRoom,
+  treeKey,
+  type ListFacts,
 } from './transitions'
-import { findGroup, findSession, sessionsOfGroup } from './projection'
-import {
-  GROUPS,
-  NOW,
-  ONETHING_DIR,
-  SESSIONS,
-} from '../data/__fixtures__/sessions'
-import { buildGroups, buildProjects } from './projection'
+import { findSession } from './projection'
+import { projectScope } from './scopes'
+import { FACTS, NOW, ONETHING_DIR, SESSIONS, TRANSREADER_DIR } from '../data/__fixtures__/sessions'
 import type { ExposeState } from './types'
 
-/** 当前会话在这些用例里就是列表里的第一条 —— 开场焦点该落在它身上。 */
+/** 当前会话在这些用例里就是夹具里的第一条 —— 开场焦点该落在它身上。 */
 const CURRENT = SESSIONS[0].id
 
 const base: ExposeState = { ...initialExposeState, currentSessionId: CURRENT }
-const overview = open(base, GROUPS)
-const seq = visibleCardIds(base, GROUPS)
+const overview = open(base, FACTS)
+const seq = rowIdsOf(base, FACTS)
+
+/** 名册换一份的那种用例:摘掉几条会话之后的那份事实。 */
+const without = (ids: string[]): ListFacts => ({
+  sessions: SESSIONS.filter((s) => !ids.includes(s.id)),
+  now: NOW,
+})
+const EMPTY: ListFacts = { sessions: [], now: NOW }
 
 describe('open(开场归位)', () => {
   it('开场落在 overview,焦点落在当前会话', () => {
@@ -52,35 +52,43 @@ describe('open(开场归位)', () => {
     expect(overview.focusId).toBe(CURRENT)
   })
 
-  it('当前会话被折叠藏起来时,焦点退到序列首', () => {
-    const hidden: ExposeState = { ...base, collapsedGroups: [GROUPS[0].id] }
-    const next = open(hidden, GROUPS)
-    expect(next.focusId).toBe(visibleCardIds(hidden, GROUPS)[0])
+  it('当前会话被范围滤掉时,焦点退到序列首', () => {
+    const elsewhere: ExposeState = { ...base, scope: projectScope(TRANSREADER_DIR) }
+    const next = open(elsewhere, FACTS)
+    expect(next.focusId).toBe(rowIdsOf(elsewhere, FACTS)[0])
     expect(next.focusId).not.toBe(CURRENT)
   })
 
   it('一条会话都没有时焦点是 null,而不是指向空气', () => {
-    expect(open(base, []).focusId).toBeNull()
+    expect(open(base, EMPTY).focusId).toBeNull()
   })
 
   it('开场是**无条件**归位:停在 quicklook、带着搜索词,再开一次都回到总览', () => {
-    const deep = setQuery(openQuickLook(overview, 'os-expose'), 'provider', GROUPS)
-    const reopened = open(deep, GROUPS)
+    const deep = setQuery(openQuickLook(overview, 'os-expose'), 'provider', FACTS)
+    const reopened = open(deep, FACTS)
     expect(reopened.view).toEqual({ mode: 'overview' })
     expect(reopened.query).toBe('')
   })
 
-  it('三层视图就是全部:没有第四层「关着」—— 面在不在场由 Placement 说了算', () => {
-    const modes = [overview, enterList(overview, GROUPS[0].id), openQuickLook(overview, 'os-expose')]
-    expect(modes.map((st) => st.view.mode)).toEqual(['overview', 'list', 'quicklook'])
-    // 状态机自己关不掉自己:总览上的 Esc 是恒等变换,那一下留给宿主。
+  it('**范围核一次**:记着的那一格站不住了就退回「全部」,而不是开出一张空表', () => {
+    const stale: ExposeState = { ...base, scope: projectScope('/已经没有了') }
+    expect(open(stale, FACTS).scope).toEqual({ kind: 'all' })
+    // 还站得住的那一格原样留着 —— 核不是「每次都重置」。
+    const live: ExposeState = { ...base, scope: projectScope(ONETHING_DIR) }
+    expect(open(live, FACTS).scope).toEqual(projectScope(ONETHING_DIR))
+  })
+
+  it('两层视图就是全部:list 那一层 09-04 退役,总览上的 Esc 是恒等变换', () => {
+    const modes = [overview, openQuickLook(overview, 'os-expose')]
+    expect(modes.map((st) => st.view.mode)).toEqual(['overview', 'quicklook'])
     expect(escape(overview)).toBe(overview)
   })
 
   it('是纯函数:不改原对象', () => {
     const before = JSON.parse(JSON.stringify(base))
-    open(base, GROUPS)
-    moveFocus(overview, 'right', GROUPS)
+    open(base, FACTS)
+    moveFocus(overview, 'down', FACTS)
+    treeKey(overview, 'expand', FACTS)
     expect(JSON.parse(JSON.stringify(base))).toEqual(before)
   })
 })
@@ -93,14 +101,9 @@ describe('Esc 逐层', () => {
     expect(escape(back)).toBe(back)
   })
 
-  it('quicklook 退回总览时焦点留在刚看的那张卡上', () => {
+  it('quicklook 退回总览时焦点留在刚看的那一行上', () => {
     const ql = openQuickLook(overview, 'lo-notes')
     expect(escape(ql).focusId).toBe('lo-notes')
-  })
-
-  it('list 也退回 overview,而不是直接关', () => {
-    const list = enterList(overview, 'collab')
-    expect(escape(list).view).toEqual({ mode: 'overview' })
   })
 
   it('初始态(总览)上 Esc 是恒等变换', () => {
@@ -113,292 +116,201 @@ describe('Esc 逐层', () => {
   })
 })
 
-describe('list 进出(drill 的目标是组,不是项目)', () => {
-  it('enterList 记住目标组,backToOverview 回去', () => {
-    const list = enterList(overview, GROUPS[0].id)
-    expect(list.view).toEqual({ mode: 'list', groupId: GROUPS[0].id })
-    expect(backToOverview(list).view).toEqual({ mode: 'overview' })
+describe('moveFocus(一维:↑↓)', () => {
+  it('↓ 走一行,↑ 走回来', () => {
+    const down = moveFocus(overview, 'down', FACTS)
+    expect(down.focusId).toBe(seq[seq.indexOf(CURRENT) + 1])
+    expect(moveFocus(down, 'up', FACTS).focusId).toBe(CURRENT)
   })
 
-  /*
-   * 协作组和独立组都没有 projectId,旧口径下两者都是 null → 点哪个都进同一个列表。
-   * 现在各进各的。
-   */
-  it('协作组与独立组各进各的,不再挤在同一个 null 里', () => {
-    expect(enterList(overview, 'collab').view).toEqual({ mode: 'list', groupId: 'collab' })
-    expect(enterList(overview, 'loose').view).toEqual({ mode: 'list', groupId: 'loose' })
-    expect(sessionsOfGroup(GROUPS, 'collab').map((s) => s.id)).toEqual(['rm-release', 'dm-ying'])
-    expect(sessionsOfGroup(GROUPS, 'loose').map((s) => s.id)).toEqual(['lo-notes'])
-  })
-
-  it('sessionsOfGroup 取的就是组自己带的那份,未知组回空表', () => {
-    expect(sessionsOfGroup(GROUPS, GROUPS[0].id).map((s) => s.id)).toEqual(
-      findGroup(GROUPS, GROUPS[0].id)?.sessions.map((s) => s.id),
-    )
-    expect(sessionsOfGroup(GROUPS, 'nope')).toEqual([])
-  })
-
-  it('已经在 overview 时 backToOverview 是恒等变换', () => {
-    expect(backToOverview(overview)).toBe(overview)
-  })
-})
-
-describe('moveFocus', () => {
-  it('→ 走一格,← 走回来', () => {
-    const right = moveFocus(overview, 'right', GROUPS)
-    expect(right.focusId).toBe(seq[1])
-    expect(moveFocus(right, 'left', GROUPS).focusId).toBe(seq[0])
-  })
-
-  it('↓ 走一整行(CARD_COLS 步)', () => {
-    expect(moveFocus(overview, 'down', GROUPS).focusId).toBe(seq[CARD_COLS])
-  })
-
-  /*
-   * 08-30 用户报:窄成钉边架子时网格只剩一列,而 ↑↓ 仍固执地跳三张(旧代码里
-   * 列数是常量 CARD_COLS)。列数改成状态里的一格之后,「走一整行」就等于
-   * 「走 state.columns 张」—— 这三条把那个等式钉死,一列 / 两列 / 三列各一条。
-   */
-  it('↓ 走的是 state.columns 张 —— 一列时就走一张', () => {
-    const oneCol: ExposeState = { ...overview, columns: 1 }
-    expect(moveFocus(oneCol, 'down', GROUPS).focusId).toBe(seq[1])
-    const twoCols: ExposeState = { ...overview, columns: 2 }
-    expect(moveFocus(twoCols, 'down', GROUPS).focusId).toBe(seq[2])
-  })
-
-  it('↑ 同理,反向走 state.columns 张', () => {
-    const twoCols: ExposeState = { ...overview, columns: 2, focusId: seq[4], focusVisible: true }
-    expect(moveFocus(twoCols, 'up', GROUPS).focusId).toBe(seq[2])
-  })
-
-  it('列数是脏值时按一列算,不会因为一次量错就跳飞', () => {
-    const broken: ExposeState = { ...overview, columns: 0 }
-    expect(moveFocus(broken, 'down', GROUPS).focusId).toBe(seq[1])
-  })
-})
-
-/**
- * 列数的产地是 CSS 的计算值 —— 这里只钉「怎么读那串字」与「读不出来怎么办」。
- * 读不出来一律 null = 不动状态:jsdom 与「还没解析的 repeat()」都走这条路,
- * 免得环境噪声把一个假列数写进状态机。
- */
-describe('columnsFromTemplate / setColumns', () => {
-  it('计算值是解析过的轨道表,数轨道就是数列', () => {
-    expect(columnsFromTemplate('286.93px 286.93px 286.93px')).toBe(3)
-    expect(columnsFromTemplate('  300px   300px  ')).toBe(2)
-    expect(columnsFromTemplate('187px')).toBe(1)
-  })
-
-  it('读不出来一律 null:空串 / none / 还没解析的 repeat()', () => {
-    expect(columnsFromTemplate('')).toBeNull()
-    expect(columnsFromTemplate(null)).toBeNull()
-    expect(columnsFromTemplate(undefined)).toBeNull()
-    expect(columnsFromTemplate('none')).toBeNull()
-    expect(columnsFromTemplate('repeat(auto-fill, minmax(260px, 1fr))')).toBeNull()
-  })
-
-  it('setColumns 钳到 ≥1,值没变时是恒等变换(不触发重渲染)', () => {
-    expect(setColumns(overview, 2).columns).toBe(2)
-    expect(setColumns(overview, 0).columns).toBe(1)
-    expect(setColumns(overview, -3).columns).toBe(1)
-    expect(setColumns(overview, Number.NaN).columns).toBe(CARD_COLS)
-    expect(setColumns(overview, CARD_COLS)).toBe(overview)
-  })
-})
-
-/**
- * 搜索框把键盘交给网格(08-30 键盘死区的修法):**只点亮,不移动**。
- * 开场归位已经把锚点放好了,交接那一下要让用户看见锚点在哪 ——
- * 顺手再走一步的话,他看见的是一个自己从没选过的位置。
- */
-describe('focusGrid', () => {
-  it('锚点还在序列里:只点亮环,焦点一格不动', () => {
-    const dark: ExposeState = { ...overview, focusId: seq[2], focusVisible: false }
-    const lit = focusGrid(dark, GROUPS)
-    expect(lit.focusId).toBe(seq[2])
-    expect(lit.focusVisible).toBe(true)
-  })
-
-  it('环已经亮着时是恒等变换', () => {
-    const lit: ExposeState = { ...overview, focusId: seq[2], focusVisible: true }
-    expect(focusGrid(lit, GROUPS)).toBe(lit)
-  })
-
-  it('锚点被过滤 / 折叠藏起来了就落到序列首', () => {
-    const stale: ExposeState = { ...overview, focusId: 'not-on-screen', focusVisible: false }
-    expect(focusGrid(stale, GROUPS).focusId).toBe(seq[0])
-    const nofocus: ExposeState = { ...overview, focusId: null }
-    expect(focusGrid(nofocus, GROUPS).focusId).toBe(seq[0])
-  })
-
-  it('一条卡都没有时是恒等变换', () => {
-    expect(focusGrid(overview, [])).toBe(overview)
-  })
-
-  it('序列是展开组拼接的:方向键能从第一个项目组一路走到协作组', () => {
-    let st = overview
-    for (let i = 0; i < 6; i += 1) st = moveFocus(st, 'right', GROUPS)
-    expect(st.focusId).toBe('rm-release')
+  it('序列是**整张表**拼起来的:一路按下去能从置顶节走到最后一个月桶', () => {
+    let st: ExposeState = { ...overview, focusId: seq[0] }
+    for (let i = 0; i < seq.length + 5; i += 1) st = moveFocus(st, 'down', FACTS)
+    expect(st.focusId).toBe(seq[seq.length - 1])
   })
 
   it('到头就停,不回绕(环已亮时撞边是恒等变换)', () => {
-    // 第一下撞边会点亮 focusVisible,所以恒等性在环亮之后测。
-    const lit = moveFocus(overview, 'left', GROUPS)
-    expect(lit.focusId).toBe(overview.focusId)
-    expect(moveFocus(lit, 'left', GROUPS)).toBe(lit)
-    expect(moveFocus(lit, 'up', GROUPS)).toBe(lit)
-    let st = overview
-    for (let i = 0; i < 20; i += 1) st = moveFocus(st, 'right', GROUPS)
-    expect(st.focusId).toBe(seq[seq.length - 1])
+    const top: ExposeState = { ...overview, focusId: seq[0] }
+    const lit = moveFocus(top, 'up', FACTS)
+    expect(lit.focusId).toBe(seq[0])
+    expect(moveFocus(lit, 'up', FACTS)).toBe(lit)
   })
 
   it('还没落焦时任何方向键都先把焦点放到序列首', () => {
     const nofocus: ExposeState = { ...overview, focusId: null }
-    expect(moveFocus(nofocus, 'up', GROUPS).focusId).toBe(seq[0])
+    expect(moveFocus(nofocus, 'up', FACTS).focusId).toBe(seq[0])
+    expect(moveFocus(nofocus, 'down', FACTS).focusId).toBe(seq[0])
   })
 
-  it('一条卡都没有时是恒等变换(空态里按方向键什么都不该发生)', () => {
-    expect(moveFocus(overview, 'right', [])).toBe(overview)
+  it('一行都没有时是恒等变换(空态里按方向键什么都不该发生)', () => {
+    expect(moveFocus(overview, 'down', EMPTY)).toBe(overview)
+  })
+})
+
+/**
+ * §3.2 那张表的「焦点在树」那一列。←→ 在树上是**层级**不是走位,
+ * 所以它有自己的入口(`treeKey`),不与 `moveFocus` 共用一个方向联合。
+ */
+describe('treeKey(树语义的 ←→ 与 Home / End)', () => {
+  const onRoom: ExposeState = { ...overview, focusId: 'rm-release', focusVisible: true }
+
+  it('→ 在收着的房间上 = 展开;再按一下 = 进第一个子行', () => {
+    const opened = treeKey(onRoom, 'expand', FACTS)
+    expect(isRoomExpanded(opened, 'rm-release')).toBe(true)
+    expect(opened.focusId).toBe('rm-release')
+    expect(treeKey(opened, 'expand', FACTS).focusId).toBe('wk-verify')
+  })
+
+  it('← 在子行上 = 回父;在展开的房间上 = 收起', () => {
+    const opened = treeKey(onRoom, 'expand', FACTS)
+    const onChild = treeKey(opened, 'expand', FACTS)
+    const backToParent = treeKey(onChild, 'collapse', FACTS)
+    expect(backToParent.focusId).toBe('rm-release')
+    expect(isRoomExpanded(backToParent, 'rm-release')).toBe(true)
+    const closed = treeKey(backToParent, 'collapse', FACTS)
+    expect(isRoomExpanded(closed, 'rm-release')).toBe(false)
+  })
+
+  it('非房间的行上 ←→ 都无动作(只点亮环,位置与展开态一格不动)', () => {
+    const onChat: ExposeState = { ...overview, focusId: CURRENT, focusVisible: true }
+    expect(treeKey(onChat, 'expand', FACTS)).toBe(onChat)
+    expect(treeKey(onChat, 'collapse', FACTS)).toBe(onChat)
+  })
+
+  it('没有子行的房间:→ 也不展开(表上它 expandable 是 false)', () => {
+    const onSwap: ExposeState = { ...overview, focusId: 'sw-pair', focusVisible: true }
+    expect(treeKey(onSwap, 'expand', FACTS)).toBe(onSwap)
+    expect(isRoomExpanded(treeKey(onSwap, 'expand', FACTS), 'sw-pair')).toBe(false)
+  })
+
+  it('Home / End 落首行末行', () => {
+    expect(treeKey(overview, 'home', FACTS).focusId).toBe(seq[0])
+    expect(treeKey(overview, 'end', FACTS).focusId).toBe(seq[seq.length - 1])
+  })
+
+  it('还没落焦时先落序列首;一行都没有时是恒等变换', () => {
+    const nofocus: ExposeState = { ...overview, focusId: null }
+    expect(treeKey(nofocus, 'expand', FACTS).focusId).toBe(seq[0])
+    expect(treeKey(overview, 'home', EMPTY)).toBe(overview)
+  })
+})
+
+describe('房间展开 / 收起', () => {
+  it('toggleRoom 来回切;expandRoom 幂等', () => {
+    const opened = toggleRoom(overview, 'rm-release', FACTS)
+    expect(rowIdsOf(opened, FACTS)).toContain('wk-verify')
+    expect(expandRoom(opened, 'rm-release')).toBe(opened)
+    expect(rowIdsOf(toggleRoom(opened, 'rm-release', FACTS), FACTS)).not.toContain('wk-verify')
+  })
+
+  it('收起时焦点正在子行上 → **退到房间那一行**,不是弹回列表开头', () => {
+    const opened = expandRoom(overview, 'rm-release')
+    const onChild: ExposeState = { ...opened, focusId: 'ag-xiaoli' }
+    expect(collapseRoom(onChild, 'rm-release', FACTS).focusId).toBe('rm-release')
+  })
+
+  it('收起别处的房间不动焦点', () => {
+    const opened = expandRoom({ ...overview, focusId: CURRENT }, 'rm-release')
+    expect(collapseRoom(opened, 'rm-release', FACTS).focusId).toBe(CURRENT)
+  })
+
+  it('收一间本来就没展开的房是恒等变换', () => {
+    expect(collapseRoom(overview, 'rm-release', FACTS)).toBe(overview)
+  })
+})
+
+describe('setScope(侧栏换范围)', () => {
+  it('换过去只剩这一档的行;搜索词**留着**(换个范围继续用同一个词)', () => {
+    const scoped = setScope({ ...overview, query: 'flask' }, projectScope(TRANSREADER_DIR), FACTS)
+    expect(scoped.query).toBe('flask')
+    expect(rowIdsOf(scoped, FACTS)).toEqual(['tr-flask'])
+  })
+
+  it('焦点被换掉的范围滤掉时退到新序列首', () => {
+    const scoped = setScope(overview, projectScope(TRANSREADER_DIR), FACTS)
+    expect(scoped.focusId).toBe(rowIdsOf(scoped, FACTS)[0])
+    expect(scoped.focusId).not.toBe(CURRENT)
+  })
+})
+
+/**
+ * 搜索框把键盘交给列表(08-30 键盘死区的修法):**只点亮,不移动**。
+ */
+describe('focusGrid', () => {
+  it('锚点还在序列里:只点亮环,焦点一格不动', () => {
+    const dark: ExposeState = { ...overview, focusId: seq[2], focusVisible: false }
+    const litted = focusGrid(dark, FACTS)
+    expect(litted.focusId).toBe(seq[2])
+    expect(litted.focusVisible).toBe(true)
+  })
+
+  it('环已经亮着时是恒等变换', () => {
+    const litted: ExposeState = { ...overview, focusId: seq[2], focusVisible: true }
+    expect(focusGrid(litted, FACTS)).toBe(litted)
+  })
+
+  it('锚点被过滤掉了就落到序列首', () => {
+    const stale: ExposeState = { ...overview, focusId: 'not-on-screen', focusVisible: false }
+    expect(focusGrid(stale, FACTS).focusId).toBe(seq[0])
+    const nofocus: ExposeState = { ...overview, focusId: null }
+    expect(focusGrid(nofocus, FACTS).focusId).toBe(seq[0])
+  })
+
+  it('一行都没有时是恒等变换', () => {
+    expect(focusGrid(overview, EMPTY)).toBe(overview)
   })
 })
 
 describe('quickLookPrev / Next', () => {
   it('← → 在 quicklook 内换会话,面板不关', () => {
     const ql = openQuickLook(overview, seq[1])
-    const next = quickLookNext(ql, GROUPS)
+    const next = quickLookNext(ql, FACTS)
     expect(next.view).toEqual({ mode: 'quicklook', sessionId: seq[2] })
-    expect(quickLookPrev(next, GROUPS).view).toEqual({ mode: 'quicklook', sessionId: seq[1] })
+    expect(quickLookPrev(next, FACTS).view).toEqual({ mode: 'quicklook', sessionId: seq[1] })
   })
 
   it('换会话时焦点跟着走', () => {
-    const ql = quickLookNext(openQuickLook(overview, seq[0]), GROUPS)
+    const ql = quickLookNext(openQuickLook(overview, seq[0]), FACTS)
     expect(ql.focusId).toBe(seq[1])
   })
 
   it('到头就停', () => {
     const first = openQuickLook(overview, seq[0])
-    expect(quickLookPrev(first, GROUPS)).toBe(first)
+    expect(quickLookPrev(first, FACTS)).toBe(first)
     const last = openQuickLook(overview, seq[seq.length - 1])
-    expect(quickLookNext(last, GROUPS)).toBe(last)
+    expect(quickLookNext(last, FACTS)).toBe(last)
   })
 
   it('不在 quicklook 里时是恒等变换', () => {
-    expect(quickLookNext(overview, GROUPS)).toBe(overview)
+    expect(quickLookNext(overview, FACTS)).toBe(overview)
   })
 })
 
-describe('toggleGroupCollapsed', () => {
-  it('起步一个组都不折叠 —— 「默认折叠」在真事实里没有产地', () => {
-    expect(initialExposeState.collapsedGroups).toEqual([])
-    for (const group of GROUPS) expect(isCollapsed(base, group.id)).toBe(false)
+describe('搜索 = 过滤器,不是另一层视图', () => {
+  it('焦点序列跟着过滤走:搜索之后方向键只在命中的行之间移动', () => {
+    const searched = setQuery(overview, 'Exposé', FACTS)
+    expect(rowIdsOf(searched, FACTS)).toEqual(['os-expose'])
+    expect(searched.focusId).toBe('os-expose')
   })
 
-  it('折叠一个组,它的卡离开序列;再切回来又进序列', () => {
-    const collapsed = toggleGroupCollapsed(base, 'collab', GROUPS)
-    expect(visibleCardIds(collapsed, GROUPS)).not.toContain('rm-release')
-    const reopened = toggleGroupCollapsed(collapsed, 'collab', GROUPS)
-    expect(visibleCardIds(reopened, GROUPS)).toContain('rm-release')
+  it('搜到一行都没有时焦点是 null,而不是指着一行不在屏幕上的行', () => {
+    const searched = setQuery(overview, '这个词哪儿都没有', FACTS)
+    expect(rowIdsOf(searched, FACTS)).toEqual([])
+    expect(searched.focusId).toBeNull()
   })
 
-  it('折叠掉焦点所在的组时,焦点退到新序列首', () => {
-    const next = toggleGroupCollapsed(overview, GROUPS[0].id, GROUPS)
-    expect(visibleCardIds(next, GROUPS)).not.toContain(CURRENT)
-    expect(next.focusId).toBe(visibleCardIds(next, GROUPS)[0])
+  it('焦点还在命中集里时不动它 —— 打字不该把光标从我正看的那一行上弹开', () => {
+    expect(setQuery(overview, 'provider', FACTS).focusId).toBe(CURRENT)
   })
 
-  it('折叠别的组不动焦点', () => {
-    expect(toggleGroupCollapsed(overview, 'loose', GROUPS).focusId).toBe(CURRENT)
-  })
-})
-
-describe('搜索 = 过滤器,不是第四种形态', () => {
-  /*
-   * F 批的裁定:输入搜索词之后屏幕仍是「项目头 + 卡网格」。所以搜索的**全部**
-   * 就是 filterGroups —— 一个分组事实 + 一个词 → 另一个分组事实。
-   * 这一批用例钉的正是那几种命中组合(卡命中 / 项目命中 / 两者并集 / 都不中)。
-   */
-  const onething = GROUPS.find((g) => g.id === ONETHING_DIR)!
-  const idsOf = (groups: typeof GROUPS) =>
-    groups.map((g) => [g.id, g.sessions.map((s) => s.id)] as const)
-
-  it('空词是恒等变换,而且原样返回同一个数组引用(不搜时零分配)', () => {
-    expect(filterGroups(GROUPS, '')).toBe(GROUPS)
-    expect(filterGroups(GROUPS, '   ')).toBe(GROUPS)
-  })
-
-  it('按标题命中:留下的只有那一张卡,它所在的组只剩它,别的组整个消失', () => {
-    expect(idsOf(filterGroups(GROUPS, 'Exposé'))).toEqual([[ONETHING_DIR, ['os-expose']]])
-  })
-
-  it('预览(第一条用户消息)也算命中 —— 搜的格与卡上画的格是同一批', () => {
-    expect(idsOf(filterGroups(GROUPS, '端口'))).toEqual([
-      ['/Users/dev/code/transreader', ['tr-flask']],
-    ])
-  })
-
-  it('命中项目名(路径末段)时该组**整组保留**:组里每一条都在,一条不少', () => {
-    const kept = filterGroups(GROUPS, 'start-electron')
-    expect(kept.map((g) => g.id)).toEqual([ONETHING_DIR])
-    expect(kept[0].sessions.map((s) => s.id)).toEqual(onething.sessions.map((s) => s.id))
-  })
-
-  it('项目命中与卡命中取并集:整组的那一组 + 别的组里逐张命中的卡', () => {
-    // 'e' 同时出现在 start-electron(项目名)与 transreader 的两条标题/预览里,
-    // 所以并集 = onething 整组 + transreader 的命中卡。
-    const kept = filterGroups(GROUPS, 'transreader')
-    expect(kept.map((g) => g.id)).toEqual(['/Users/dev/code/transreader'])
-
-    const both = filterGroups(GROUPS, 'flask')
-    expect(idsOf(both)).toEqual([['/Users/dev/code/transreader', ['tr-flask']]])
-  })
-
-  it('组名命中不看**路径**:绝对路径里那截公共前缀会让过滤器等于没有', () => {
-    expect(groupMatchesQuery(onething, 'start-electron')).toBe(true)
-    expect(groupMatchesQuery(onething, '/Users/dev')).toBe(false)
-    expect(filterGroups(GROUPS, 'Users')).toEqual([])
-  })
-
-  it('合成组(协作 / 独立)不按组名命中 —— 那名字是界面文案,会随语言变', () => {
-    const collab = GROUPS.find((g) => g.id === 'collab')!
-    expect(collab.name).toBeUndefined()
-    expect(groupMatchesQuery(collab, '协作')).toBe(false)
-    // 但它组里的卡照常按标题 / 预览命中。
-    expect(idsOf(filterGroups(GROUPS, '发版房'))).toEqual([['collab', ['rm-release']]])
-  })
-
-  it('一条都不中时是空表(而不是全量)', () => {
-    expect(filterGroups(GROUPS, '这个词哪儿都没有')).toEqual([])
-  })
-
-  it('大小写不敏感', () => {
-    expect(sessionMatchesQuery(SESSIONS[0], 'PROVIDER')).toBe(
-      sessionMatchesQuery(SESSIONS[0], 'provider'),
-    )
-    expect(idsOf(filterGroups(GROUPS, 'START-ELECTRON'))).toEqual(
-      idsOf(filterGroups(GROUPS, 'start-electron')),
-    )
+  it('子行命中:父作为通路进序列,子行跟在后面(展开是派生态,没落库)', () => {
+    const searched = setQuery(overview, '全链路验收', FACTS)
+    expect(rowIdsOf(searched, FACTS)).toEqual(['rm-release', 'wk-verify'])
+    expect(searched.expandedRooms).toEqual([])
   })
 
   it('空词时 sessionMatchesQuery 一律为真 —— 「没在搜」不等于「都不中」', () => {
     expect(SESSIONS.every((s) => sessionMatchesQuery(s, ''))).toBe(true)
-  })
-
-  it('焦点序列跟着过滤走:搜索之后方向键只在命中的卡之间移动', () => {
-    const searched = setQuery(overview, 'Exposé', GROUPS)
-    expect(visibleCardIds(searched, GROUPS)).toEqual(['os-expose'])
-    // 焦点原本在 os-provider 上,被过滤掉了 → 退到新序列首。
-    expect(searched.focusId).toBe('os-expose')
-  })
-
-  it('搜到一条都没有时焦点是 null,而不是指向一张不在屏幕上的卡', () => {
-    const searched = setQuery(overview, '这个词哪儿都没有', GROUPS)
-    expect(visibleCardIds(searched, GROUPS)).toEqual([])
-    expect(searched.focusId).toBeNull()
-  })
-
-  it('焦点还在命中集里时不动它 —— 打字不该把光标从我正看的那张卡上弹开', () => {
-    const searched = setQuery(overview, 'provider', GROUPS)
-    expect(searched.focusId).toBe(CURRENT)
   })
 
   it('splitHighlight 把命中段切出来', () => {
@@ -414,13 +326,10 @@ describe('搜索 = 过滤器,不是第四种形态', () => {
 
 /**
  * 命中区间由**别人**判好递进来的那个入口(09-02 正文检索:后端给 `matchRanges`)。
- *
- * 入参当作不可信 —— 它跨了一个进程,而「今天只给一段、一定不越界」不是一条能
- * 依赖的性质。所以这一组里大半是边界:越界、乱序、重叠、空段。
+ * 入参当作不可信 —— 所以这一组里大半是边界:越界、乱序、重叠、空段。
  */
 describe('splitHighlightRanges(区间由产地给定)', () => {
   const text = '重构 provider 抽象'
-  /** 每一组都要成立的那条不变量:片段拼起来 === 原文,一个字符不多不少。 */
   const joined = (ranges: { start: number; end: number }[]) =>
     splitHighlightRanges(text, ranges).map((p) => p.text).join('')
 
@@ -471,61 +380,50 @@ describe('splitHighlightRanges(区间由产地给定)', () => {
 describe('Quick Look 的换会话序列(‹ › 与 ← → 同一个判据)', () => {
   it('两头是 null,不回卷 —— 与 quickLookPrev / Next 的「到头就停」同一条口径', () => {
     const first = openQuickLook(overview, seq[0])
-    expect(quickLookNeighbors(first, GROUPS).prev).toBeNull()
-    expect(quickLookNeighbors(first, GROUPS).next).toBe(seq[1])
+    expect(quickLookNeighbors(first, FACTS).prev).toBeNull()
+    expect(quickLookNeighbors(first, FACTS).next).toBe(seq[1])
 
     const last = openQuickLook(overview, seq[seq.length - 1])
-    expect(quickLookNeighbors(last, GROUPS).next).toBeNull()
-    expect(quickLookNeighbors(last, GROUPS).prev).toBe(seq[seq.length - 2])
-
-    // 禁用的那一侧,键盘按下去也确实原地不动。
-    expect(quickLookPrev(first, GROUPS)).toBe(first)
-    expect(quickLookNext(last, GROUPS)).toBe(last)
+    expect(quickLookNeighbors(last, FACTS).next).toBeNull()
+    expect(quickLookNeighbors(last, FACTS).prev).toBe(seq[seq.length - 2])
   })
 
   it('中间两边都有邻居', () => {
     const mid = openQuickLook(overview, seq[1])
-    expect(quickLookNeighbors(mid, GROUPS)).toEqual({ prev: seq[0], next: seq[2] })
+    expect(quickLookNeighbors(mid, FACTS)).toEqual({ prev: seq[0], next: seq[2] })
   })
 
-  it('序列是**搜索过滤之后**的那一条,不是全量', () => {
-    const searched = setQuery(overview, 'transreader', GROUPS)
-    const visible = visibleCardIds(searched, GROUPS)
+  it('序列是**过滤之后**的那一条,不是全量', () => {
+    // 「房」命中两条:发版房(标题)与孤儿派工(预览「房间已经没了」)——
+    // 两条都**不是**全量序列的第一行,所以过滤没生效的话 prev 不会是 null。
+    const searched = setQuery(overview, '房', FACTS)
+    const visible = rowIdsOf(searched, FACTS)
     expect(visible.length).toBeGreaterThan(1)
-    // 这一条在全量序列里**不是头一个**(它前面还有 onething 那四条),
-    // 所以「过滤没生效」的话 prev 会是那四条里的最后一条,而不是 null。
     expect(seq.indexOf(visible[0])).toBeGreaterThan(0)
 
     const st = openQuickLook(searched, visible[0])
-    expect(quickLookNeighbors(st, GROUPS)).toEqual({ prev: null, next: visible[1] })
-    // 同一条会话,不搜时的邻居是全量序列里的前一张。
+    expect(quickLookNeighbors(st, FACTS)).toEqual({ prev: null, next: visible[1] })
     const unfiltered = openQuickLook(overview, visible[0])
-    expect(quickLookNeighbors(unfiltered, GROUPS).prev).toBe(seq[seq.indexOf(visible[0]) - 1])
+    expect(quickLookNeighbors(unfiltered, FACTS).prev).toBe(seq[seq.indexOf(visible[0]) - 1])
   })
 
   it('不在 quicklook 层时两边都是 null', () => {
-    expect(quickLookNeighbors(overview, GROUPS)).toEqual({ prev: null, next: null })
+    expect(quickLookNeighbors(overview, FACTS)).toEqual({ prev: null, next: null })
   })
 })
 
 describe('enterSession / 时间', () => {
   it('进入 = 换当前会话 + 内容回到起点(收回 Dock 是 store 壳的事,不在纯函数里)', () => {
-    const next = enterSession(setQuery(overview, 'x', GROUPS), 'tr-menubar')
+    const next = enterSession(setQuery(overview, 'x', FACTS), 'tr-menubar')
     expect(next.currentSessionId).toBe('tr-menubar')
     expect(next.view).toEqual({ mode: 'overview' })
     expect(next.query).toBe('')
   })
 
-  it('再开场不动折叠状态与当前会话', () => {
-    const st = enterSession(overview, 'lo-notes')
-    expect(open(st, GROUPS).currentSessionId).toBe('lo-notes')
-    expect(open(st, GROUPS).collapsedGroups).toEqual(base.collapsedGroups)
-  })
-
-  it('timeBucket 认的是真时间戳:一周之内本周,再早更早', () => {
-    expect(timeBucket(NOW, NOW)).toBe('thisWeek')
-    expect(timeBucket(NOW - 6 * 24 * 3600_000, NOW)).toBe('thisWeek')
-    expect(timeBucket(NOW - 8 * 24 * 3600_000, NOW)).toBe('earlier')
+  it('再开场不动那两格家具与当前会话', () => {
+    const st = expandRoom(enterSession(overview, 'lo-notes'), 'rm-release')
+    expect(open(st, FACTS).currentSessionId).toBe('lo-notes')
+    expect(open(st, FACTS).expandedRooms).toEqual(['rm-release'])
   })
 
   it('relativeTime 回的是标识不是文案(换语言不该改状态机)', () => {
@@ -544,113 +442,84 @@ describe('enterSession / 时间', () => {
 
 describe('焦点环点亮时机(focusVisible)', () => {
   it('打开总览只设锚点不亮环:focusId 有值、focusVisible 为 false', () => {
-    const st = open(base, GROUPS)
+    const st = open(base, FACTS)
     expect(st.focusId).not.toBeNull()
     expect(st.focusVisible).toBe(false)
   })
 
   it('按方向键才点亮;撞边不动位置也点亮', () => {
-    expect(moveFocus(open(base, GROUPS), 'right', GROUPS).focusVisible).toBe(true)
-    const edge = moveFocus({ ...open(base, GROUPS), focusId: null }, 'left', GROUPS)
+    expect(moveFocus(open(base, FACTS), 'down', FACTS).focusVisible).toBe(true)
+    const edge = moveFocus({ ...open(base, FACTS), focusId: null }, 'up', FACTS)
     expect(edge.focusVisible).toBe(true)
   })
 
   it('再开一次环回到熄灭(残留环就是 08-28 用户看见的"莫名阴影")', () => {
-    const lit = moveFocus(open(base, GROUPS), 'right', GROUPS)
-    expect(open(lit, GROUPS).focusVisible).toBe(false)
-  })
-})
-
-
-/**
- * H 批:摘要(`digest`,产地 `SessionMeta.lastMessagePreview`)进搜索判据。
- * 理由是 F 批那条口径的直接推论 —— 搜的格与卡上画的格必须是同一批,
- * 否则会出现「卡上明明标着那个词却搜不出来」。
- */
-describe('搜索判据含摘要行', () => {
-  const provider = SESSIONS.find((s) => s.id === 'os-provider')!
-
-  it('只出现在摘要里的词也算命中', () => {
-    // '判定函数' 只在 lastMessagePreview 里,标题与 previewText 都没有它。
-    expect(provider.title.includes('判定函数')).toBe(false)
-    expect(provider.preview.includes('判定函数')).toBe(false)
-    expect(sessionMatchesQuery(provider, '判定函数')).toBe(true)
-    expect(filterGroups(GROUPS, '判定函数').flatMap((g) => g.sessions.map((s) => s.id))).toEqual([
-      'os-provider',
-    ])
-  })
-
-  it('摘要缺席(存量老会话)不影响判定,更不会当成空串命中一切', () => {
-    const old = SESSIONS.find((s) => s.id === 'lo-notes')!
-    expect(old.digest).toBeNull()
-    expect(sessionMatchesQuery(old, '判定函数')).toBe(false)
-    expect(sessionMatchesQuery(old, '随手记')).toBe(true)
+    const litted = moveFocus(open(base, FACTS), 'down', FACTS)
+    expect(open(litted, FACTS).focusVisible).toBe(false)
   })
 })
 
 /**
  * H 批:有会话被删掉了。这个纯函数只做**夹持** —— 被删的那条留下的指针要收回来,
- * 还站得住的指针一格不动(见函数自己的注释里那四条)。
+ * 还站得住的指针一格不动。
  */
 describe('sessionsRemoved —— 会话没了之后的形态夹持', () => {
-  /** 摘除之后的分组事实。函数拿到的一律是这一份(数据源先改列表再叫它)。 */
-  const without = (ids: string[]) => {
-    const left = SESSIONS.filter((s) => !ids.includes(s.id))
-    return buildGroups(buildProjects(left), left)
-  }
-
   it('删的是别人时是恒等变换 —— 返回同一个 state 引用,这块面不重渲染', () => {
     const st = openQuickLook(overview, 'os-expose')
     expect(sessionsRemoved(st, ['lo-notes'], without(['lo-notes']))).toBe(st)
-    expect(sessionsRemoved(st, [], GROUPS)).toBe(st)
+    expect(sessionsRemoved(st, [], FACTS)).toBe(st)
   })
 
   it('Quick Look 正开着被删的那条 → 退回总览(否则状态机停在一个画不出来的档)', () => {
     const st = openQuickLook(overview, 'os-expose')
-    const next = sessionsRemoved(st, ['os-expose'], without(['os-expose']))
-    expect(next.view).toEqual({ mode: 'overview' })
+    expect(sessionsRemoved(st, ['os-expose'], without(['os-expose'])).view).toEqual({
+      mode: 'overview',
+    })
   })
 
   it('当前会话被删 → 回空态,而不是自动挑一条顶上', () => {
     const st = enterSession(overview, 'os-compact')
     const next = sessionsRemoved(st, ['os-compact'], without(['os-compact']))
     expect(next.currentSessionId).toBe('')
-    // 「挑一条顶上」是替用户做决定 —— 序列首那条一个字都没被写进去。
     expect(next.currentSessionId).not.toBe('os-provider')
   })
 
-  it('焦点落在已经不在的卡上 → 退到新序列首(与折叠 / 改搜索词同一句话)', () => {
+  it('焦点落在已经不在的行上 → 退到新序列首', () => {
     const st = { ...overview, focusId: 'os-expose' }
-    const groups = without(['os-expose'])
-    const next = sessionsRemoved(st, ['os-expose'], groups)
-    expect(next.focusId).toBe(visibleCardIds(next, groups)[0])
+    const facts = without(['os-expose'])
+    const next = sessionsRemoved(st, ['os-expose'], facts)
+    expect(next.focusId).toBe(rowIdsOf(next, facts)[0])
     expect(next.focusId).not.toBe('os-expose')
   })
 
-  it('一条不剩时焦点诚实地回到 null,而不是指着一张不存在的卡', () => {
+  it('一条不剩时焦点诚实地回到 null,而不是指着一行不存在的行', () => {
     const allIds = SESSIONS.map((s) => s.id)
-    const next = sessionsRemoved({ ...overview, focusId: 'os-provider' }, allIds, [])
-    expect(next.focusId).toBeNull()
-  })
-
-  it('组列表停在一个空掉之后消失了的组 → 退回总览', () => {
-    // 独立会话组只有 lo-notes 一条,删掉它这个组就从分组事实里消失。
-    const st = enterList(overview, 'loose')
-    const groups = without(['lo-notes'])
-    expect(groups.some((g) => g.id === 'loose')).toBe(false)
-    expect(sessionsRemoved(st, ['lo-notes'], groups).view).toEqual({ mode: 'overview' })
-  })
-
-  it('组还在(只是少了一条)就不退层 —— 还站得住的指针一格不动', () => {
-    const st = enterList(overview, ONETHING_DIR)
-    const next = sessionsRemoved(st, ['os-expose'], without(['os-expose']))
-    expect(next.view).toEqual({ mode: 'list', groupId: ONETHING_DIR })
+    expect(sessionsRemoved({ ...overview, focusId: 'os-provider' }, allIds, EMPTY).focusId).toBeNull()
   })
 
   it('级联删除:名单里的每一条都算数(删一间房连着删掉它的子会话)', () => {
-    const st = { ...enterSession(overview, 'rm-release'), view: { mode: 'quicklook' as const, sessionId: 'dm-ying' } }
-    const next = sessionsRemoved(st, ['rm-release', 'dm-ying'], without(['rm-release', 'dm-ying']))
+    const st = {
+      ...enterSession(overview, 'rm-release'),
+      view: { mode: 'quicklook' as const, sessionId: 'wk-verify' },
+    }
+    const next = sessionsRemoved(st, ['rm-release', 'wk-verify'], without(['rm-release', 'wk-verify']))
     expect(next.currentSessionId).toBe('')
     expect(next.view).toEqual({ mode: 'overview' })
+  })
+
+  it('删掉一间房之后,它留在展开表里那格死键不影响任何序列', () => {
+    const st = expandRoom(overview, 'rm-release')
+    const facts = without(['rm-release', 'wk-verify', 'ag-xiaoli'])
+    const next = sessionsRemoved(st, ['rm-release', 'wk-verify', 'ag-xiaoli'], facts)
+    expect(next.expandedRooms).toEqual(['rm-release'])
+    expect(rowIdsOf(next, facts)).not.toContain('rm-release')
+  })
+})
+
+describe('listModelOf —— 画面与键盘吃的是同一份模型', () => {
+  it('rowIds 与 sections 平铺出来的次序逐字相同', () => {
+    const model = listModelOf(overview, FACTS)
+    expect(model.rowIds).toEqual(model.sections.flatMap((s) => s.rows.map((r) => r.id)))
+    expect(model.rowIds).toEqual(rowIdsOf(overview, FACTS))
   })
 })

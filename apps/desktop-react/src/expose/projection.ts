@@ -4,10 +4,10 @@ import type { SessionMeta } from '@shared/ipc/chat'
 import type { SessionSegment } from '@shared/ipc/toc'
 import type { UserMessageMarker } from '@shared/ipc/chat'
 import type { ChatMessage } from '@shared/ipc/chat'
+import { isRoomKind } from './row-kinds'
 import type {
   ProjectSummary,
   SessionChapter,
-  SessionGroup,
   SessionKind,
   SessionMarker,
   SessionPreviewMessage,
@@ -22,12 +22,14 @@ import type {
  * 所以「后端字段怎么变成卡面上的一格」这件事只有一个产地,能被单测钉死。
  */
 
-/** 合成组的 id。它们不对应任何项目,所以 id 只能是约定值 —— 只此一处。 */
-export const COLLAB_GROUP_ID = 'collab'
-export const LOOSE_GROUP_ID = 'loose'
-
-/** 协作形态:这几档从项目组里被摘出来,单独成一组(与旧 mock 的读法逐字相同)。 */
-const COLLAB_KINDS: SessionKind[] = ['room', 'dm']
+/*
+ * ── 09-04 P2:分组三件套已删 ─────────────────────────────────────────────
+ * `COLLAB_GROUP_ID` / `LOOSE_GROUP_ID` / `COLLAB_KINDS` / `SessionGroup` /
+ * `buildGroups` 随方向 A 一起退役 —— 分组不再是投影的事(列表模型是
+ * `list-model.buildListModel`,项目降级成侧栏的一格范围 `scopes.SCOPE_SPECS`)。
+ * 「这条会话算不算协作」只剩**一张表**:`row-kinds.isRoomKind`(它认得 `swap`,
+ * 那份手抄的 COLLAB_KINDS 名单不认得,两份名单必然分叉)。
+ */
 
 /**
  * 工作目录归一:去掉末尾斜杠。**不做别的**(不解析 `~`、不 resolve 相对路径)——
@@ -48,12 +50,20 @@ export function projectNameOf(dir: string): string {
 }
 
 /**
- * kind 的五档口径。后端的 `SessionKind` 是四档,私聊是 `room` 上的一条标记
- * —— 屏幕要分五档,所以在这里摊平一次,别处不许再判 `room.dm`。
+ * kind 的**六档**口径。后端的 `SessionKind` 是四档,私聊是 `room` 上的一条标记
+ * —— 屏幕要分六档,所以在这里摊平一次,别处不许再判 `room.dm`。
+ *
+ * 私聊拆两档的判据是**成员数**,产地是契约自己那句话(`@shared/ipc/chat.ts`
+ * 的 `RoomConfig.dm`:「单成员 = 人 ↔ agent;双成员 = agent ↔ agent 私聊」):
+ * 两位成员的私聊里没有用户,是两个 agent 在对话(`swap`),行首那一格该画 ⇄
+ * 而不是一枚人像首字。成员数不是我们发明的启发式,是那份契约写着的语义。
  */
 export function sessionKindOf(meta: SessionMeta): SessionKind {
   const kind = meta.kind ?? 'chat'
-  if (kind === 'room') return meta.room?.dm === true ? 'dm' : 'room'
+  if (kind === 'room') {
+    if (meta.room?.dm !== true) return 'room'
+    return (meta.room.memberAgentIds?.length ?? 0) === 2 ? 'swap' : 'dm'
+  }
   if (kind === 'work' || kind === 'agent') return kind
   return 'chat'
 }
@@ -107,19 +117,18 @@ export function sessionMessageCountOf(meta: SessionMeta): number | null {
   return Math.floor(count)
 }
 
-/**
- * 列表**不陈列**的两档(08-31 用户拍板:「只保留私聊和普通的聊天」)——
- * `agent` 是协作房间派生的执行会话(agent-exec-*,机器开的工作台,不是人开的
- * 对话),`room` 是群房本体。两档都只是**投影过滤**:数据原样在 store 里,
- * 检索/账本/引擎一概不受影响,想翻案删掉这张表就回来了。
- * `dm`(私聊)与 `chat` 照常;`work` 未被点名,保留待问(记档)。
+/*
+ * ── `HIDDEN_SESSION_KINDS` / `isListedSession` 09-04 退役 ──────────────────
+ * 08-31 那张「只保留私聊和普通聊天」的名单把群房与执行会话整个滤出了列表 ——
+ * 那是卡网格时代的权宜:一张网格铺不下层级,于是干脆不铺。
+ *
+ * 方向 A 把层级铺开了(用户 09-03 裁决 5):房间(群房 / 私聊 / agent 私聊)
+ * 与聊天走同一条时间轴,`work`(派工)与 `agent`(执行)不占顶层、挂在父房间下
+ * 可展开,孤儿回顶层。于是**没有一档需要被藏**,这张名单连同它的判据一起删。
+ *
+ * 层级不是投影的事:`list-model.ts` 的 `attachChildren` 才是那份判据的家
+ * (它要同时知道父在不在集合里),投影只管「一条 SessionMeta 是什么样」。
  */
-const HIDDEN_SESSION_KINDS: SessionKind[] = ['agent', 'room']
-
-/** 这条会话该不该出现在列表投影里。单产地 —— 列表、分组、方向键序列同吃。 */
-export function isListedSession(session: SessionSummary): boolean {
-  return !HIDDEN_SESSION_KINDS.includes(session.kind)
-}
 
 /**
  * 这条会话属不属于某个工作区。**判据单产地** —— 列表过滤、检索、Quick Look、
@@ -149,6 +158,18 @@ export function toSessionSummary(meta: SessionMeta): SessionSummary {
     provider: sessionProviderOf(meta),
     agentId: sessionAgentIdOf(meta),
     workspaceId: meta.workspaceId || DEFAULT_SPACE_ID,
+    /*
+     * 置顶:缺席读作 **false**(不是 null)—— 「没置顶」是一个真状态。
+     * `=== true` 而不是 `!!`:这一格线上是可选布尔,别的假值不该被读成
+     * 「置顶了但值有点怪」。
+     */
+    isPinned: meta.isPinned === true,
+    /*
+     * 父房间:`work` / `agent` 两档才有(后端 `CollabWorkRef`)。别的形态即便
+     * 带着这一格也照样搬 —— 判「谁能当子行」是 `row-kinds` 那张表的事,
+     * 投影只如实转述后端写了什么(少一处判据就少一处会与那张表分叉的地方)。
+     */
+    roomId: meta.collab?.roomSessionId ?? null,
   }
 }
 
@@ -163,7 +184,7 @@ export function buildProjects(sessions: SessionSummary[]): ProjectSummary[] {
   const newest = new Map<string, number>()
   for (const session of sessions) {
     if (!session.projectId) continue
-    if (COLLAB_KINDS.includes(session.kind)) continue
+    if (isRoomKind(session.kind)) continue
     const seen = newest.get(session.projectId) ?? 0
     if (session.updatedAt > seen) newest.set(session.projectId, session.updatedAt)
   }
@@ -172,55 +193,17 @@ export function buildProjects(sessions: SessionSummary[]): ProjectSummary[] {
     .map(([dir]) => ({ id: dir, name: projectNameOf(dir), path: dir }))
 }
 
-/**
- * 组 = 总览的一行分区。三种,次序即阅读次序:
- * 项目组(按最近活动倒序)→ 协作组 → 独立会话组。
+/*
+ * ── 09-04 P1:`groupMatchesQuery` / `filterGroups` 已删 ────────────────────
+ * 过滤搬去了 `list-model.applyQuery`(它认得房间的子行,这两只不认得),
+ * 而删掉的判据是「grep 全仓零消费者」—— 卡片时代的 `Overview` 是它俩唯一的
+ * 调用点,那只组件在本批被三块面换掉了。
  *
- * 归属是**互斥且完备**的:协作形态(room / dm)一律进协作组(哪怕它带着工作目录),
- * 其余按工作目录进项目组,没有工作目录的进独立组。空组不出现在表里
- * —— 一个「0 会话」的分区在总览上没有任何可看的东西。
+ * P2 结清了 P1 留的那笔账:`buildGroups` / `SessionGroup` / 两个合成组 id /
+ * `sessions-source.groups` / 夹具 `GROUPS` / `expose.group*` 四条字典**全部删掉**。
+ * 那批测试断言钉的是「律④:值没变就不重投影」那条契约,不是分组本身 ——
+ * 所以它们改吃 `sessions` / `projects` 的引用恒等,契约一个字没变、被试更贴近真事实。
  */
-export function buildGroups(
-  projects: ProjectSummary[],
-  sessions: SessionSummary[],
-): SessionGroup[] {
-  const isCollab = (s: SessionSummary) => COLLAB_KINDS.includes(s.kind)
-  const byRecency = (a: SessionSummary, b: SessionSummary) => b.updatedAt - a.updatedAt
-
-  const groups: SessionGroup[] = projects.map((project) => ({
-    id: project.id,
-    name: project.name,
-    path: project.path,
-    projectId: project.id,
-    sessions: sessions
-      .filter((s) => !isCollab(s) && s.projectId === project.id)
-      .sort(byRecency),
-  }))
-
-  const collab = sessions.filter(isCollab).sort(byRecency)
-  if (collab.length > 0) {
-    groups.push({
-      id: COLLAB_GROUP_ID,
-      nameKey: 'expose.groupCollab',
-      pathKey: 'expose.groupCollabPath',
-      projectId: null,
-      sessions: collab,
-    })
-  }
-
-  const loose = sessions.filter((s) => !isCollab(s) && !s.projectId).sort(byRecency)
-  if (loose.length > 0) {
-    groups.push({
-      id: LOOSE_GROUP_ID,
-      nameKey: 'expose.groupLoose',
-      pathKey: 'expose.groupLoosePath',
-      projectId: null,
-      sessions: loose,
-    })
-  }
-
-  return groups.filter((group) => group.sessions.length > 0)
-}
 
 /* ── 取数(纯查表,不发请求) ─────────────────────────────────────────── */
 
@@ -232,18 +215,10 @@ export function findSession(
   return sessions.find((s) => s.id === id)
 }
 
-export function findGroup(groups: SessionGroup[], id: string): SessionGroup | undefined {
-  return groups.find((g) => g.id === id)
-}
-
-/**
- * list 视图的取数:**按组**,不按项目。
- * 组自己就带着 sessions(groups 是唯一那份分组事实),所以这里不重新 filter 一遍 ——
- * 重新 filter 就是第二份分组规则,协作组和独立组当年正是这样被合成一坨的。
+/*
+ * `findGroup` / `sessionsOfGroup` 09-04 P1 随 `ListView`(它俩唯一的调用点)
+ * 一起删 —— 没有第二屏,也就没有「按组取数」这件事。
  */
-export function sessionsOfGroup(groups: SessionGroup[], groupId: string): SessionSummary[] {
-  return findGroup(groups, groupId)?.sessions ?? []
-}
 
 /* ── 会话内部的两份按需数据 ──────────────────────────────────────────── */
 

@@ -231,29 +231,36 @@ export const en: Record<MessageKey, string> = {
   /* ── session exposé ───────────────────────────────────────────────── */
   'expose.searchPlaceholder': 'Search sessions, sections, messages',
   'expose.searchLabel': 'Search sessions',
-  'expose.newProject': 'Project',
-  'expose.sessionCount': '{count} sessions',
-  'expose.sessionCountOne': '{count} session',
-  'expose.newSessionIn': 'New session in {name}',
   'expose.noMatchingSessions': 'No matching sessions',
-  'expose.groupCollab': 'Collaboration',
-  'expose.groupCollabPath': 'rooms and direct messages',
-  'expose.groupLoose': 'Loose sessions',
-  'expose.groupLoosePath': 'no working directory',
   'expose.loading': 'Loading sessions…',
   'expose.emptyTitle': 'No sessions yet',
   'expose.emptyHint': 'Start a session in onething and it shows up here',
   'expose.disconnectedTitle': 'Not connected to a core',
   'expose.disconnectedHint': 'Sessions come from the core running on this machine; {error}',
 
-  /* ── list view ────────────────────────────────────────────────────── */
-  'list.backToOverview': '‹ Overview',
-  // 计数禁令之后只剩组名;hereOne 成了与 here 同文的孤儿键(理由见 zh.ts 同处)。
-  'list.here': '{group}',
-  'list.hereOne': '{group}',
-  'list.filter': 'Filter within this group',
-  'list.bucketThisWeek': 'This week',
-  'list.bucketEarlier': 'Earlier',
+  /* ── rail scopes ──────────────────────────────────────────────────── */
+  'expose.scopeLabel': 'Projects',
+  'expose.scopeAll': 'All',
+  'expose.scopeCollab': 'Collaboration',
+  'expose.scopeLoose': 'No project',
+  'expose.newSession': 'New session',
+
+  /* ── sections ─────────────────────────────────────────────────────── */
+  'expose.sectionPinned': 'Pinned',
+  'expose.sectionToday': 'Today',
+  'expose.sectionYesterday': 'Yesterday',
+  'expose.sectionThisWeek': 'This week',
+  'expose.sectionMonthYear': '{month} {year}',
+
+  /* ── row actions ──────────────────────────────────────────────────── */
+  'expose.pin': 'Pin',
+  'expose.unpin': 'Unpin',
+  'expose.pinnedAnnounce': 'Pinned {name}',
+  'expose.unpinnedAnnounce': 'Unpinned {name}',
+  'expose.expandRoom': 'Expand {name}',
+  'expose.collapseRoom': 'Collapse {name}',
+
+  /* ── list view: retired 09-04 (see zh.ts) ─────────────────────────── */
 
   /* ── search panel (search/: one search row + one flat hit list) ───── */
   'search.placeholder': 'Search files, sections, messages, sessions…',
@@ -393,11 +400,13 @@ export const en: Record<MessageKey, string> = {
   'kind.chatBadge': 'C',
   'kind.roomBadge': 'R',
   'kind.dmBadge': 'D',
+  'kind.swapBadge': '⇄',
   'kind.workBadge': 'W',
   'kind.agentBadge': 'A',
   'kind.chat': 'Chat',
   'kind.room': 'Room',
   'kind.dm': 'Direct message',
+  'kind.swap': 'Agent DM',
   'kind.work': 'Dispatched work',
   'kind.agent': 'Agent run',
 
@@ -420,6 +429,18 @@ export const en: Record<MessageKey, string> = {
   'time.weekday4': 'Thu',
   'time.weekday5': 'Fri',
   'time.weekday6': 'Sat',
+  'time.month1': 'January',
+  'time.month2': 'February',
+  'time.month3': 'March',
+  'time.month4': 'April',
+  'time.month5': 'May',
+  'time.month6': 'June',
+  'time.month7': 'July',
+  'time.month8': 'August',
+  'time.month9': 'September',
+  'time.month10': 'October',
+  'time.month11': 'November',
+  'time.month12': 'December',
 
   /* ── shortcut glyphs (same in both languages, still dictionary-owned) ─ */
   'shortcut.left': '←',

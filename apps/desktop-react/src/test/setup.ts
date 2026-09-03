@@ -60,6 +60,9 @@ configureSessionsPort({
   // 要验建会话的用例自己 configureSessionsPort 换一个会给出 session 的。
   create: async () => ({ success: false, error: 'fake port' }),
   updateWorkingDirectory: async () => ({ success: true }),
+  // 置顶默认**成功但什么都没发生**(这份假端口没有账本):与换目录同一档 ——
+  // 它不该让任何用例因为默认端口而红,要验对账的用例自己换一个会改列表的。
+  updatePin: async () => ({ success: true }),
   onSessionEvent: () => () => undefined,
   onSessionLifecycle: () => () => undefined,
 })

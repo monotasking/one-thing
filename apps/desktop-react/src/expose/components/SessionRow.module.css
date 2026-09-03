@@ -1,0 +1,166 @@
+/*
+ * 一条会话 —— 单行 40px(--list-row-h),永不换行、永不变形(设计裁决 2)。
+ * 顺序 = `[形态 16] [标题 flex 1] [展开箭头] [悬停动作] [项目] [时间 56]`。
+ * 挤压律一:这一行里吸剩余空间的只有标题,别的一律 flex: none。
+ */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  height: var(--list-row-h);
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-1);
+  cursor: default;
+  /* 无位移原则:hover / 当前 / 活动三态只上薄膜与环,一格位置都不动。 */
+  transition: background-color var(--dur) var(--ease);
+}
+
+/* 子行(派工 / 执行)缩进,其余同形 —— 缩的是内边距不是 margin,
+   所以整行的命中区仍然铺满,鼠标落在缩进那一段照样点得中。 */
+.row[data-depth='1'] {
+  padding-inline-start: calc(var(--sp-2) + var(--expose-indent));
+}
+
+/*
+ * ── hover ≠ active:两个状态,两条产地(09-01 用户裁定)────────────────────
+ * hover 是**纯视觉、不进 JS**:由这条 `:hover` 画,鼠标经过一个字都不写状态机。
+ * active(键盘位)由 store 的 focusId 派生成 `[data-active]`,只有键盘与显式点击
+ * 改得动它。两者可以同屏,叠在同一行时用 --st-sel-hover。
+ */
+.row:hover {
+  background: var(--st-hover);
+}
+
+/* 当前会话 = selected 词汇:accent 10% 晕(不是焦点环 —— 那是键盘位的语言)。 */
+.row[aria-selected='true'] {
+  background: var(--st-sel);
+}
+
+.row[aria-selected='true']:hover {
+  background: var(--st-sel-hover);
+}
+
+/*
+ * 键盘活动行的柔光环。**只在 focusVisible 为真时**存在 —— `data-active` 本身
+ * 就是 `focusVisible && focusId === id` 的投影(见 SessionTree),所以这条规则
+ * 天然只在键盘会话里亮。环画在行外(outline),不占布局。
+ */
+.row[data-active='true'] {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+}
+
+/*
+ * 形态图标列:**全行预留**,普通聊天留空。定宽 + flex: none,所以标题永远从
+ * 同一条竖线起笔(裁决 6,与检索面板同源)。
+ */
+.glyph {
+  flex: none;
+  width: var(--expose-glyph-w);
+  height: var(--expose-glyph-w);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-3);
+}
+
+.glyphIcon {
+  width: var(--expose-glyph-w);
+  height: var(--expose-glyph-w);
+}
+
+/* 私聊的首字牌:一个圆,字压在正中。 */
+.initial {
+  width: var(--expose-glyph-w);
+  height: var(--expose-glyph-w);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-full);
+  background: var(--st-hover);
+  font-size: var(--fs-nano);
+  line-height: 1;
+  color: var(--text-2);
+}
+
+/* 律一:标题是这一行唯一的弯腰件 —— 可缩、单行、省略号。 */
+.title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-label);
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.caret {
+  flex: none;
+  color: var(--text-3);
+}
+
+/*
+ * 悬停动作:**常驻占位、只动 opacity**(无位移原则)。看不见的时候
+ * `pointer-events: none`,所以也点不到;但它一直在原位,出现时零位移。
+ */
+.actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--text-3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-hover-fade) var(--ease);
+}
+
+.row:hover .actions,
+.row[data-active='true'] .actions,
+.actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/*
+ * 项目名。**不叫 .chip / .card / .badge**:`ui:consume` 的 `shared-vocab-css`
+ * 盯的是「同一个视觉词汇有几个产地」,新面不往那张待收编清单上加一行。
+ * 空心小牌、单行截断 —— 目录名可以很长,它不该把时间挤出行外。
+ */
+.project {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 30%;
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+  font-size: var(--fs-nano);
+  /*
+   * `--text-2` 而不是 `--text-3`(09-04 gate:a11y 判例,axe 量到 4.39:1 < 4.5)。
+   * `--text-3` 是**按面板底色调出来的**(theme-bridge 里它是 `color-mix(… 70%,
+   * --ui-surface-panel-bg)`),把它放到 `--st-hover` 这层更亮的薄膜上,那次调校
+   * 就不作数了。同一片薄膜上的 `.initial` 本来就用 `--text-2` —— 同一个面,
+   * 同一种墨。
+   */
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 时间:定宽右对齐 + 等宽数字,所以一列数字上下对齐、行与行之间不跳。 */
+.time {
+  flex: none;
+  width: var(--expose-time-w);
+  text-align: end;
+  font-size: var(--fs-nano);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-3);
+}
+
+/* 窄形(< 480,--expose-chip-bp):项目名降元素(律四:先截断,再有序降元素)。 */
+@container expose (max-width: 480px) {
+  .project {
+    display: none;
+  }
+}

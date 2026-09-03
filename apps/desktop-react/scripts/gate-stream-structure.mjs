@@ -1096,10 +1096,10 @@ async function runCell({ record, page, kind, piece, index }) {
     await delay(LATE_OPEN_MS)
   }
   await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('总览画出那张卡', () =>
-    page.evaluate(id => Boolean(document.querySelector(`[data-testid="card-${id}"]`)), sessionId),
+  await waitFor('总览画出那一行', () =>
+    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
   )
-  await clickTestId(page, `card-${sessionId}`)
+  await clickTestId(page, `session-row-${sessionId}`)
   await waitFor('聊天区就位', () =>
     page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
   )
@@ -1159,7 +1159,7 @@ async function runCell({ record, page, kind, piece, index }) {
     await page.evaluate(() => { window.__reopenAt = performance.now() })
     await clickTestId(page, 'dock-tile-sessions')
     await delay(300)
-    await clickTestId(page, `card-${sessionId}`)
+    await clickTestId(page, `session-row-${sessionId}`)
     await page.evaluate(() => { window.__reopenDoneAt = performance.now() })
   }
   await waitFor('assistant 完稿', async () => {
@@ -1253,10 +1253,10 @@ async function runCell({ record, page, kind, piece, index }) {
     page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
   )
   await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('刷新后总览画出那张卡', () =>
-    page.evaluate(id => Boolean(document.querySelector(`[data-testid="card-${id}"]`)), sessionId),
+  await waitFor('刷新后总览画出那一行', () =>
+    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
   )
-  await clickTestId(page, `card-${sessionId}`)
+  await clickTestId(page, `session-row-${sessionId}`)
   await waitFor('刷新后那条 assistant 消息回来', () =>
     page.evaluate(() => document.querySelectorAll('[data-message-id][data-role="assistant"]').length > 0),
   )

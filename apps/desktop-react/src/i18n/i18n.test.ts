@@ -99,6 +99,6 @@ describe('locale 解析', () => {
 
   it('t() 也走插值', () => {
     useStageStore.setState({ locale: 'en' })
-    expect(t('expose.sessionCount', { count: 5 })).toBe('5 sessions')
+    expect(t('expose.expandRoom', { name: 'onething' })).toBe('Expand onething')
   })
 })

@@ -4,20 +4,17 @@ import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionLifecycleEvent } from '@onething/client/events/session-lifecycle'
 import {
-  buildGroups,
   buildProjects,
   toPreviewMessage,
   toSessionChapter,
   toSessionMarker,
   toSessionSummary,
-  isListedSession,
   sessionBelongsToSpace,
 } from '../expose/projection'
 import { currentSpaceId, subscribeCurrentSpace } from '../workspace/current'
 import type {
   ProjectSummary,
   SessionChapter,
-  SessionGroup,
   SessionMarker,
   SessionPreviewMessage,
   SessionSummary,
@@ -86,7 +83,7 @@ import { sessionsPort } from './sessions-port'
  *  - **全库账** = `sessionsQuery` 那一格的 `data`:listMeta 那一份的原样,
  *    未经任何投影过滤。SSE 的增量(改名 / 抬时间 / 摘除)全都打在它身上
  *    (7e:从前是模块级 `let ledger`,现在是 query 缓存,见下文「增量落在哪」)。
- *  - **屏幕那一份**(store 里的 `sessions` / `projects` / `groups`):
+ *  - **屏幕那一份**(store 里的 `sessions` / `projects`):
  *    全库账 ∩ 可陈列的形态 ∩ **当前工作区**(`visibleOf`)。
  *
  * 分这两层是为了让**切换工作区不发一次请求**:换世界只是拿同一本账重投影一次,
@@ -114,7 +111,7 @@ import { sessionsPort } from './sessions-port'
  * 甲案不新开表,而那条 `onScreen` 闸换了个更结实的说法:它从前是**手记的一格
  * 布尔**(`state.sessions.some(id)`),现在是**结果的事实** —— `republish()`
  * 先算出屏幕那一份,与上一次交出去的那张逐个比引用,一模一样就当场返回,
- * 一次 `buildProjects` / `buildGroups` 都不跑、一次 `set` 都不发。
+ * 一次 `buildProjects` 都不跑、一次 `set` 都不发。
  *
  *  · 别的空间的会话被 patch 换了对象 → 它压根不在 `visibleOf` 的结果里 →
  *    数组逐个同引用 → 不重投影(那条闸原样在);
@@ -315,7 +312,13 @@ function sameSession(a: SessionSummary, b: SessionSummary): boolean {
     a.model === b.model &&
     a.provider === b.provider &&
     a.agentId === b.agentId &&
-    a.workspaceId === b.workspaceId
+    a.workspaceId === b.workspaceId &&
+    // 置顶是**分节的第一道判据**(sections.ts):不比它,按下图钉之后重拉回来
+    // 的那份列表会被判成「没变」,于是行不搬家,屏幕上什么都不发生。
+    a.isPinned === b.isPinned &&
+    // 父房间是**层级的唯一判据**(list-model.attachChildren):不比它,一条子
+    // 会话被改挂到别的房间之后,树上它还挂在老地方。
+    a.roomId === b.roomId
   )
 }
 
@@ -367,7 +370,6 @@ export interface SessionsSourceState {
    */
   sessions: SessionSummary[]
   projects: ProjectSummary[]
-  groups: SessionGroup[]
 
   /*
    * 「读到哪一步了」**不在这里** —— 那是 `sessionsQuery` 那一格的四个读数
@@ -424,6 +426,17 @@ export interface SessionsSourceState {
     workingDirectory: string,
   ) => Promise<{ ok: true } | { ok: false; error: string }>
   /**
+   * 置顶 / 取消置顶一条会话。
+   *
+   * 与 `setWorkingDirectory` 同形(一发写 + 一次同步对账),但对账的必要性
+   * 更硬:那一口后端好歹会让别处的读重新算,这一口**一条事件都不推**——
+   * 不重拉的话按下图钉之后列表一动不动,用户会以为没点上。
+   */
+  setPinned: (
+    sessionId: string,
+    isPinned: boolean,
+  ) => Promise<{ ok: true } | { ok: false; error: string }>
+  /**
    * 三只「确保问过一次」。签名与迁移前逐字相同(调用点一个字不改),内部就是
    * 对应族那一格的 `ensure()` —— 去重、缓存、脏标记全由原语承担。
    */
@@ -445,9 +458,13 @@ const MESSAGE_EVENTS: string[] = [
   SESSION_EVENT_TYPES.STREAM_COMPLETE,
 ]
 
-function project(sessions: SessionSummary[]): Pick<SessionsSourceState, 'sessions' | 'projects' | 'groups'> {
-  const projects = buildProjects(sessions)
-  return { sessions, projects, groups: buildGroups(projects, sessions) }
+/*
+ * 屏幕那一份的投影。09-04 P2 之后它只剩两格 —— `groups` 随
+ * `projection.buildGroups` 一起退役(分组不再是投影的事,列表模型是
+ * `expose/list-model.buildListModel`,项目降级成侧栏的一格范围)。
+ */
+function project(sessions: SessionSummary[]): Pick<SessionsSourceState, 'sessions' | 'projects'> {
+  return { sessions, projects: buildProjects(sessions) }
 }
 
 /**
@@ -463,12 +480,18 @@ function ledger(): readonly SessionSummary[] {
 }
 
 /**
- * 屏幕上那一份的**唯一**判据:可陈列的形态 ∩ 当前工作区。
- * 两条过滤都是投影,数据本体一条不动 —— 检索、账本、引擎一概不受影响。
+ * 屏幕上那一份的**唯一**判据:当前工作区。
+ *
+ * 09-04 少了一条 —— 从前还有一道「可陈列的形态」(把群房与执行会话整个滤掉),
+ * 那是卡网格铺不下层级时的权宜。方向 A 把层级铺开了(房间与聊天同一条时间轴、
+ * work / agent 挂在父房间下),于是**没有一档需要被藏**:这一层交出全部形态,
+ * 谁站顶层、谁当子行由 `expose/list-model.ts` 说了算。
+ *
+ * 空间过滤留着:它不是「藏起来」而是「不属于这个世界」。
  */
 function visibleOf(all: readonly SessionSummary[]): SessionSummary[] {
   const spaceId = currentSpaceId()
-  return all.filter((s) => isListedSession(s) && sessionBelongsToSpace(s, spaceId))
+  return all.filter((s) => sessionBelongsToSpace(s, spaceId))
 }
 
 /**
@@ -513,7 +536,7 @@ let reconcile: Promise<void> | undefined
  * 「有会话被摘掉了」的通知面。
  *
  * 数据源不认识形态机(反向依赖:expose/store.ts 已经在 import 这个文件),所以
- * 这里只把摘掉的 id 交出去,由那层壳自己决定形态怎么夹持 —— 与 `currentGroups()`
+ * 这里只把摘掉的 id 交出去,由那层壳自己决定形态怎么夹持 —— 与 `currentSessions()`
  * 是同一条接缝的两个方向。
  */
 export type SessionsRemovedListener = (removedIds: readonly string[]) => void
@@ -552,6 +575,14 @@ export function workdirKey(sessionId: string): string {
 }
 
 /**
+ * 置顶那一口的忙态格键。与换目录一样**按会话分格** —— 一次只置顶一条,
+ * 别的行的图钉不该跟着转(律③:反馈长在发起它的那个控件上)。
+ */
+export function pinKey(sessionId: string): string {
+  return `pin:${sessionId}`
+}
+
+/**
  * 一次写要带的全部东西。两口一个联合,`kind` 同时是分派与对账口径的产地:
  *  · `create`  —— 建一条会话(可选落目录)。成功后**同步重拉**;
  *  · `workdir` —— 给一条已存在的会话换工作目录。成功后**同步重拉**
@@ -563,9 +594,18 @@ export function workdirKey(sessionId: string): string {
 export type SessionWrite =
   | { kind: 'create'; projectId: string | null }
   | { kind: 'workdir'; sessionId: string; workingDirectory: string }
+  /**
+   * 置顶 / 取消置顶。成功后**同步重拉**,理由比换目录还硬:后端这一口
+   * **一条事件都不推**(`updateOnethingSessionPinForIpc` 不叫
+   * `notifySessionIndexChanged`),不对账的话屏幕永远不知道自己改成了。
+   */
+  | { kind: 'pin'; sessionId: string; isPinned: boolean }
 
 /** 换目录那一口的答案。成败两种形状,失败带后端原话。 */
 export type WorkdirOutcome = { ok: true } | { ok: false; error: string }
+
+/** 置顶那一口的答案。与换目录同形(同一种「改一条会话的一格」)。 */
+export type PinOutcome = { ok: true } | { ok: false; error: string }
 
 /**
  * 这只 mutation 的答案,**带着 `kind` 标签**。
@@ -577,6 +617,7 @@ export type WorkdirOutcome = { ok: true } | { ok: false; error: string }
 export type SessionWriteResult =
   | { kind: 'create'; outcome: CreateSessionOutcome }
   | { kind: 'workdir'; outcome: WorkdirOutcome }
+  | { kind: 'pin'; outcome: PinOutcome }
 
 /**
  * **这只 mutation 的失败通道是返回值,不是抛出** —— 与 agents / models 那两只
@@ -596,12 +637,18 @@ export const sessionMutation: Mutation<SessionWrite, SessionWriteResult> = creat
   SessionWrite,
   SessionWriteResult
 >('sessions.write', {
-  key: (input) => (input.kind === 'create' ? CREATE_KEY : workdirKey(input.sessionId)),
+  key: (input) => {
+    if (input.kind === 'create') return CREATE_KEY
+    return input.kind === 'pin' ? pinKey(input.sessionId) : workdirKey(input.sessionId)
+  },
 
   run: async (input) => {
     const port = await sessionsPort()
     if (input.kind === 'workdir') {
       return { kind: 'workdir', outcome: await updateWorkdir(port, input.sessionId, input.workingDirectory) }
+    }
+    if (input.kind === 'pin') {
+      return { kind: 'pin', outcome: await updatePin(port, input.sessionId, input.isPinned) }
     }
 
     let created
@@ -630,7 +677,7 @@ export const sessionMutation: Mutation<SessionWrite, SessionWriteResult> = creat
   },
 
   /*
-   * 对账:两口同一句话 —— **写成了就重拉一次列表**。
+   * 对账:三口同一句话 —— **写成了就重拉一次列表**。
    *
    * 建会话那一路即便带着 `workdirError` 也照样重拉(`outcome.ok` 仍是 true):
    * 分组要按**后端的事实**走,而不是按我们以为落成了的那个目录。
@@ -641,6 +688,29 @@ export const sessionMutation: Mutation<SessionWrite, SessionWriteResult> = creat
     reconcile = sessionsQuery.refetch()
   },
 })
+
+/**
+ * 置顶那一发的两种「没成」收成同一种答案 —— 与换目录逐字同一手。
+ *
+ * **它必须看 `success`**:后端 `updateOnethingSessionPinForIpc` 连返回值都不看
+ * (设计 §7 留账),前端再不看就成了两头都不看 —— 那正是 08-31 沙箱拒绝
+ * 无声蒸发的同一种病。
+ */
+async function updatePin(
+  port: Awaited<ReturnType<typeof sessionsPort>>,
+  sessionId: string,
+  isPinned: boolean,
+): Promise<PinOutcome> {
+  try {
+    const updated = await port.updatePin(sessionId, isPinned)
+    if (!updated?.success) {
+      return { ok: false, error: updated?.error || 'sessions.updatePin 未成功' }
+    }
+    return { ok: true }
+  } catch (error) {
+    return { ok: false, error: messageOf(error) }
+  }
+}
 
 /** 换目录那一发的两种「没成」收成同一种答案:后端说不行,与端口自己抛。 */
 async function updateWorkdir(
@@ -669,9 +739,9 @@ async function updateWorkdir(
  * 要维护的记账的样子。
  *
  * 那道「不重投影」的闸的下半截就在这里:先算出屏幕那一份,与上一次交出去的
- * 那张**逐个比引用**;一模一样就当场返回 —— 一次 `buildProjects` /
- * `buildGroups` 都不跑、一次 `setState` 都不发,于是订着 `sessions` / `groups`
- * 的组件一个都不重渲(律④)。
+ * 那张**逐个比引用**;一模一样就当场返回 —— 一次 `buildProjects` 都不跑、
+ * 一次 `setState` 都不发,于是订着 `sessions` / `projects` 的组件一个都不重渲
+ * (律④)。
  *
  * 它同时吃下三种「白重投影」:
  *  · 别的工作区里的会话来一条 delta(它压根不在 `visibleOf` 的结果里);
@@ -834,7 +904,6 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
   return {
     sessions: [],
     projects: [],
-    groups: [],
 
     start: async () => {
       if (started) return
@@ -884,6 +953,40 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
     },
 
     /*
+     * ── 置顶:**就地更新**在前,重拉对账在后(交互四律第 1 条)─────────────
+     * 从前这里是「打一发 → 等 settle → 等重拉 → 行才搬家」,一次往返里那一行
+     * 纹丝不动 —— 而置顶恰恰是**结果全在屏幕上**的动作(行要跳到「置顶」那一节)。
+     *
+     * 所以先在本地账本上把 `isPinned` 翻掉(与 SESSION_RENAMED 那一格增量补丁
+     * 逐字同一手:`patchLedger` 换引用才 emit,值没变连 patch 都不发),
+     * 再打那一发;**没成就把补丁翻回去**。后端 pin 不推事件(设计 §7 留账),
+     * 所以这条乐观补丁不是「抢在事件前面」,它是这条路上唯一的即时反馈。
+     *
+     * 注意补丁只翻这一格:`sameSession` 已经比 `isPinned`(P0 补的),
+     * 所以翻掉就一定重投影;别的字段照旧等重拉那一份权威覆盖。
+     */
+    setPinned: async (sessionId, isPinned) => {
+      // 空 id 连一发都不打:它不是一次失败的写,是一句问错了的话(同上口)。
+      if (!sessionId) return { ok: false, error: 'sessionId 为空' }
+      const flip = (want: boolean) =>
+        patchLedger((all) =>
+          all.some((s) => s.id === sessionId && s.isPinned !== want)
+            ? all.map((s) => (s.id === sessionId ? { ...s, isPinned: want } : s))
+            : all,
+        )
+      flip(isPinned)
+      const result = await sessionMutation.run({ kind: 'pin', sessionId, isPinned })
+      // 成功后**同步重拉**:重拉那一份才是权威,乐观补丁只负责这一个往返里的手感。
+      await reconcile
+      // 与 `create` / `setWorkingDirectory` 同一句兜底,理由也同一条(见那里)。
+      const outcome: PinOutcome =
+        result?.kind === 'pin' ? result.outcome : { ok: false, error: 'sessions.updatePin 未成功' }
+      // 没成就把乐观那一笔翻回去 —— 屏幕上不许留一条后端并不认的置顶。
+      if (!outcome.ok) flip(!isPinned)
+      return outcome
+    },
+
+    /*
      * 三只 ensure 现在是**薄的**:空 id 挡掉(空串不是一条会话),其余原样交给
      * 那一族的 `ensure()`。三条从前各自手写的东西 —— 「拉过了就别再拉」
      * (`sessionId in table`)、「有一发在飞就别发第二发」(那两张 loading 表)、
@@ -930,7 +1033,6 @@ export const useSessionsSource = create<SessionsSourceState>()((set, get) => {
       set({
         sessions: [],
         projects: [],
-        groups: [],
       })
     },
   }
@@ -966,10 +1068,6 @@ if (import.meta.hot) {
 }
 
 /** 非组件上下文的读法(store 壳、纯函数的入参)。 */
-export function currentGroups(): SessionGroup[] {
-  return useSessionsSource.getState().groups
-}
-
 export function currentSessions(): SessionSummary[] {
   return useSessionsSource.getState().sessions
 }
@@ -984,7 +1082,7 @@ export function currentSessions(): SessionSummary[] {
  * 一刻就又回到了 `status: 'idle'|'loading'|'ready'|'error'` 那种把两件事压成一
  * 个数的形状,而那正是本批要拆掉的东西。
  *
- * 屏幕上那份**分好组的**列表仍然读 store 的 `sessions` / `groups` / `projects`
+ * 屏幕上那份列表仍然读 store 的 `sessions` / `projects`
  * (它们是这一格 `data` 的投影),不从这里的 `data` 自己再过滤一遍:
  * 「屏幕上是哪一份」只许有一个答案。
  */

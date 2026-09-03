@@ -9,23 +9,23 @@ import { initialStageState } from '../../stage/transitions'
 import { useKeymapStore } from '../../keymap/store'
 import { initialKeymapState } from '../../keymap/transitions'
 import { useSessionsSource } from '../../data/sessions-source'
-import { GROUPS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
+import { FACTS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
 import { useExposeStore } from '../store'
 import { findSession } from '../projection'
-import { initialExposeState, visibleCardIds } from '../transitions'
+import { initialExposeState, rowIdsOf } from '../transitions'
 
 /**
  * 会话总览去接管化(08-29 拍板)之后要钉住的四件事:
  * 它按 Placement 开(不再是盖满一屏的覆盖层)、两个入口是同一条路、
  * 开场永远从总览起步,以及 **Esc 的让位契约**:
- * 内层(quicklook / list)先消费,消费不了才轮到宿主关这块面。
+ * 内层(quicklook)先消费,消费不了才轮到宿主关这块面。
  */
 beforeEach(() => {
   // 打开档默认即浮窗(08-30 拍板:点开统一浮窗;舞台=浮窗的放大目标)
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   // 数据先在场,再挂壳 —— 会话侧从此吃真数据源(D1),没有 mock 兜底。
   seedSessionsSource()
-  useExposeStore.setState({ ...initialExposeState, currentSessionId: SESSIONS[0].id })
+  useExposeStore.setState({ ...initialExposeState, currentSessionId: CURRENT_ID })
   useKeymapStore.setState({ ...initialKeymapState })
 })
 
@@ -33,8 +33,15 @@ const placementOfSessions = () => useStageStore.getState().placements[SESSIONS_I
 const esc = () => act(() => void fireEvent.keyDown(document.body, { key: 'Escape' }))
 const cmdE = () => act(() => void fireEvent.keyDown(document.body, { key: 'e', metaKey: true }))
 
-/** 展开组里第二张卡:既看得见,又不是当前会话 —— 「进入」要能真的换一个。 */
-const other = SESSIONS.find((s) => s.id === visibleCardIds(initialExposeState, GROUPS)[1])!
+/**
+ * 屏幕上第一条**不是当前会话**的行 —— 「进入」要能真的换一个。
+ * 09-04:序列的产地从 `visibleCardIds(groups)` 换成 `rowIdsOf(facts)`
+ * (置顶那条排在最前,所以它未必还是「第二张」)。
+ */
+const CURRENT_ID = SESSIONS[0].id
+const other = SESSIONS.find(
+  (s) => s.id === rowIdsOf(initialExposeState, FACTS).find((id) => id !== CURRENT_ID),
+)!
 
 describe('会话总览是一块普通的面', () => {
   it('⌘E 按打开方式把它开出来 —— 打开统一是浮窗(08-30 拍板),内容住在面里', () => {
@@ -86,14 +93,13 @@ describe('Esc 的让位契约', () => {
     expect(placementOfSessions()).toEqual({ kind: 'stage' })
   })
 
-  it('组列表同理:先退回总览,不是直接关面板', () => {
-    render(<AppShell />)
-    openOnStage()
-    act(() => useExposeStore.getState().enterList(GROUPS[0].id))
-    esc()
-    expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
-    expect(placementOfSessions()).toEqual({ kind: 'stage' })
-  })
+  /*
+   * ── 「组列表同理」那一条 09-04 随 list 视图一起退役 ────────────────────────
+   * 方向 A 把总览与组列表合并成同一张树(设计 §1),`view.mode === 'list'` 与
+   * `enterList` 一并删除 —— 没有那一层,也就没有「从那一层退回总览」这件事。
+   * Esc 的**让位契约**本身一个字没变,由上下两条(Quick Look 退层 / 总览让位)
+   * 与下面的相位组守着。
+   */
 
   it('内层消费不了才轮到宿主:总览上的 Esc 关掉这块面(宿主同步判定,不欠一拍)', () => {
     render(<AppShell />)

@@ -44,7 +44,8 @@ function furnish(mark: string): void {
   useStageStore.getState().openAs('diff', { kind: 'float' })
   useSplitPrefs.getState().setRatio('files', mark === 'A' ? 30 : 70)
   useFileOpenMode.getState().setMode(mark === 'A' ? 'panel' : 'float')
-  useExposeStore.setState({ collapsedGroups: [`group-${mark}`] })
+  // 09-04:折叠组退役,总览这一面的家具换成范围与展开的房间(见 expose/store.ts)。
+  useExposeStore.setState({ expandedRooms: [`room-${mark}`] })
   useFilesSource.setState({ expanded: { [`/p/${mark}`]: true } })
 }
 
@@ -59,7 +60,7 @@ function readFurniture() {
     memoryIds: Object.keys(stage.memory).sort(),
     ratio: useSplitPrefs.getState().ratios.files,
     openMode: useFileOpenMode.getState().mode,
-    collapsed: [...useExposeStore.getState().collapsedGroups],
+    expandedRooms: [...useExposeStore.getState().expandedRooms],
     expanded: Object.keys(useFilesSource.getState().expanded),
   }
 }
@@ -101,7 +102,7 @@ describe('五个面一起换装', () => {
     expect(inB.memoryIds).toEqual([])
     expect(inB.ratio).toBeUndefined()
     expect(inB.openMode).toBe('panel')
-    expect(inB.collapsed).toEqual([])
+    expect(inB.expandedRooms).toEqual([])
     expect(inB.expanded).toEqual([])
   })
 

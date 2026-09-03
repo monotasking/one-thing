@@ -15,5 +15,4 @@ src/content/NotificationsPanel.module.css .spacer
 src/content/blocks/kinds/diff/Diff.module.css .text
 src/content/mocks.module.css .addr
 src/content/mocks.module.css .stub
-src/expose/components/Overview.module.css .searchWrap
 src/ui/Menu.module.css .itemLabel

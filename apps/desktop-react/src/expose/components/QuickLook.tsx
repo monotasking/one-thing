@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, X } from '../../components/icons'
 import { SKELETON_DELAY_MS } from '../../components/motion'
 import { useDelayedFlag } from '../../components/useDelayedFlag'
@@ -12,25 +12,17 @@ import { useSessionMessages, useSessionsSource } from '../../data/sessions-sourc
 import { findSession } from '../projection'
 import { useExposeStore } from '../store'
 import { quickLookNeighbors } from '../transitions'
-import type { SessionKind, SessionPreviewMessage } from '../types'
+import { rowKindOf } from '../row-kinds'
+import type { SessionPreviewMessage } from '../types'
 import { useSessionTime } from './session-time'
 import s from './QuickLook.module.css'
 
 /** kind 徽的字面:一个字就够,鼠标不用悬停也认得出这是哪一类会话。 */
-const KIND_BADGE: Record<SessionKind, MessageKey> = {
-  chat: 'kind.chatBadge',
-  room: 'kind.roomBadge',
-  dm: 'kind.dmBadge',
-  work: 'kind.workBadge',
-  agent: 'kind.agentBadge',
-}
-const KIND_TITLE: Record<SessionKind, MessageKey> = {
-  chat: 'kind.chat',
-  room: 'kind.room',
-  dm: 'kind.dm',
-  work: 'kind.work',
-  agent: 'kind.agent',
-}
+/*
+ * 形态徽的字面与全称**从形态表读**(`expose/row-kinds.ts` 的 `ROW_KIND_SPECS`)。
+ * 09-04 之前这里手抄了两张 `Record<SessionKind, MessageKey>` —— 加一档形态
+ * (swap)要改三处的那种形状,正是「能力自述、别人读表」要收掉的东西。
+ */
 
 const ROLE_KEY: Record<SessionPreviewMessage['role'], MessageKey> = {
   user: 'quicklook.roleUser',
@@ -57,7 +49,13 @@ export function QuickLook({ sessionId }: Props) {
   const quickLookPrev = useExposeStore((st) => st.quickLookPrev)
   const quickLookNext = useExposeStore((st) => st.quickLookNext)
   const sessions = useSessionsSource((st) => st.sessions)
-  const groups = useSessionsSource((st) => st.groups)
+  /*
+   * 邻居判据要的那份事实(`ListFacts`)。`now` 用 `useMemo([sessions])` 钉住
+   * 而不是每次渲染现读:它只影响**分节**,而 `quickLookNeighbors` 只用
+   * 序列的次序 —— 每渲染一次换一个 now 会让下面两个选择器每次都重算一遍模型。
+   */
+  const sessionList = useSessionsSource((st) => st.sessions)
+  const facts = useMemo(() => ({ sessions: sessionList, now: Date.now() }), [sessionList])
   const page = useSessionMessages(sessionId)
   const messages = page.data
   const ensureMessages = useSessionsSource((st) => st.ensureMessages)
@@ -65,13 +63,13 @@ export function QuickLook({ sessionId }: Props) {
 
   /*
    * ‹ › 的可用性和键盘的 ← → 共用**同一个判据**(quickLookNeighbors 读的正是
-   * quickLookStep 那条 visibleCardIds),所以不会出现「按钮灰着但方向键还能走」。
+   * quickLookStep 那条 rowIds),所以不会出现「按钮灰着但方向键还能走」。
    * 序列是**搜索过滤之后**的那一条:搜着词开预览,左右就在命中的几张卡之间走。
    * 两个选择器各取一个 id 而不是一次取回 {prev,next} —— 后者每次渲染都是新对象,
    * zustand 的 Object.is 会判成「变了」,当场变成无限重渲染。
    */
-  const prevId = useExposeStore((st) => quickLookNeighbors(st, groups).prev)
-  const nextId = useExposeStore((st) => quickLookNeighbors(st, groups).next)
+  const prevId = useExposeStore((st) => quickLookNeighbors(st, facts).prev)
+  const nextId = useExposeStore((st) => quickLookNeighbors(st, facts).next)
 
   /*
    * 取数的触发点有两个,这里是**兜底**的那一个:store 壳在 openQuickLook /
@@ -117,13 +115,13 @@ export function QuickLook({ sessionId }: Props) {
               <span className={s.title}>{session.title}</span>
               {/*
                * kind 徽只写一个字(「房」「派」),全名靠提示补 —— 从前那是 native
-               * `title=`(全仓禁令),现在走 `ui/Tooltip`,文案仍是同一个 KIND_TITLE 键。
+               * `title=`(全仓禁令),现在走 `ui/Tooltip`,文案仍是形态表上那两个键。
                * 锚点是一枚 `<span>`:它不进 Tab 序,所以键盘那条路到不了。这不是回退 ——
                * native `title=` 同样只对鼠标出现,而 Tooltip 的文件头把「聚焦锚点也出提示」
                * 说给的是**控件**;把徽改成可聚焦元素等于往 Tab 序里塞一个不能操作的东西。
                */}
-              <Tooltip content={t(KIND_TITLE[session.kind])}>
-                <span className={s.kind}>{t(KIND_BADGE[session.kind])}</span>
+              <Tooltip content={t(rowKindOf(session.kind).labelKey)}>
+                <span className={s.kind}>{t(rowKindOf(session.kind).badgeKey)}</span>
               </Tooltip>
             </div>
 

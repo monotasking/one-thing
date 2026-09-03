@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_AGENT_ID } from '@shared/ipc/agents'
 import type { SessionMeta } from '@shared/ipc/chat'
-import { isListedSession,
-  buildGroups,
+import {
   buildProjects,
   normalizeWorkingDirectory,
   projectNameOf,
@@ -17,7 +16,6 @@ import { isListedSession,
   toSessionSummary,
 } from './projection'
 import {
-  GROUPS,
   ONETHING_DIR,
   PROJECTS,
   SESSIONS,
@@ -45,18 +43,42 @@ describe('SessionMeta → SessionSummary', () => {
     expect(toSessionSummary(bare).projectId).toBeNull()
   })
 
-  it('kind 五档:缺席读作 chat,room + dm 标记读作 dm', () => {
-    expect(sessionKindOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0 })).toBe('chat')
+  it('kind 六档:缺席读作 chat,room + dm 标记按**成员数**分 dm / swap', () => {
+    const at = { id: 'a', name: 'a', createdAt: 0, updatedAt: 0 }
+    expect(sessionKindOf(at)).toBe('chat')
+    expect(sessionKindOf({ ...at, kind: 'room', room: { memberAgentIds: [] } })).toBe('room')
+    // 单成员 = 人 ↔ agent;双成员 = agent ↔ agent(契约 RoomConfig.dm 那两句)。
+    expect(sessionKindOf({ ...at, kind: 'room', room: { memberAgentIds: ['x'], dm: true } })).toBe('dm')
     expect(
-      sessionKindOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0, kind: 'room', room: { memberAgentIds: [] } }),
-    ).toBe('room')
+      sessionKindOf({ ...at, kind: 'room', room: { memberAgentIds: ['x', 'y'], dm: true } }),
+    ).toBe('swap')
+    // 成员表缺席但打了 dm 标记:读作 dm(0 ≠ 2)—— 不去猜一个不存在的第二位。
+    expect(sessionKindOf({ ...at, kind: 'room', room: { dm: true } as never })).toBe('dm')
+    expect(sessionKindOf({ ...at, kind: 'work' })).toBe('work')
+  })
+
+  /**
+   * 方向 A 新增的两格。判据各自不同,所以分两条:
+   *  · 置顶:缺席读作 **false**(「没置顶」是真状态,不是缺失的事实);
+   *  · 父房间:`collab.roomSessionId` 原样搬,缺席读作 null。
+   */
+  it('isPinned 缺席读作 false,不是 null / undefined', () => {
+    const bare: SessionMeta = { id: 'x', name: 'x', createdAt: 0, updatedAt: 0 }
+    expect(toSessionSummary(bare).isPinned).toBe(false)
+    expect(toSessionSummary({ ...bare, isPinned: true }).isPinned).toBe(true)
+    expect(toSessionSummary({ ...bare, isPinned: false }).isPinned).toBe(false)
+    expect(SESSIONS.find((s) => s.id === 'os-toolkit')!.isPinned).toBe(true)
+    expect(SESSIONS.find((s) => s.id === 'os-provider')!.isPinned).toBe(false)
+  })
+
+  it('roomId 就是 collab.roomSessionId;缺席读作 null', () => {
+    const bare: SessionMeta = { id: 'x', name: 'x', createdAt: 0, updatedAt: 0 }
+    expect(toSessionSummary(bare).roomId).toBeNull()
     expect(
-      sessionKindOf({
-        id: 'a', name: 'a', createdAt: 0, updatedAt: 0,
-        kind: 'room', room: { memberAgentIds: [], dm: true },
-      }),
-    ).toBe('dm')
-    expect(sessionKindOf({ id: 'a', name: 'a', createdAt: 0, updatedAt: 0, kind: 'work' })).toBe('work')
+      toSessionSummary({ ...bare, kind: 'work', collab: { roomSessionId: 'rm-1' } }).roomId,
+    ).toBe('rm-1')
+    expect(SESSIONS.find((s) => s.id === 'wk-verify')!.roomId).toBe('rm-release')
+    expect(SESSIONS.find((s) => s.id === 'lo-notes')!.roomId).toBeNull()
   })
 })
 
@@ -77,52 +99,34 @@ describe('工作目录归一与项目名', () => {
   })
 })
 
-describe('分组', () => {
+/*
+ * 09-04 P2:`buildGroups` 与它那批「组的次序 / 空组不出现 / 合成组名走字典」的
+ * 用例随分组一起退役 —— 分组不再是投影的事(列表模型是 `list-model.buildListModel`,
+ * 一次只按时间分组)。**投影这一层剩下的分组事实只有一件**:侧栏那份项目名册。
+ * 那几条断言没有被删掉,是被搬到了它们今天真正的产地:
+ * 「协作与项目互斥」在 `scopes.test.ts`(SCOPE_SPECS 的 predicate),
+ * 「归属互斥且完备 / 次序 / 空节不出现」在 `list-model.test.ts`。
+ */
+describe('项目名册(侧栏那一列的产地)', () => {
   it('项目按「组内最近一条会话」倒序 —— 最近在动的排前面', () => {
     expect(PROJECTS.map((p) => p.id)).toEqual([ONETHING_DIR, TRANSREADER_DIR])
     expect(PROJECTS[0].name).toBe('start-electron')
   })
 
-  it('归属互斥且完备:每条会话恰好落在一个组里', () => {
-    const ids = GROUPS.flatMap((g) => g.sessions.map((s) => s.id))
-    expect(new Set(ids).size).toBe(ids.length)
-    expect([...ids].sort()).toEqual(SESSIONS.map((s) => s.id).sort())
-  })
-
-  it('协作形态优先于项目归属:带着工作目录的房间也进协作组', () => {
+  it('协作形态不开项目:带着工作目录的房间不会在名册里长出一格', () => {
     const room = SESSIONS.find((s) => s.id === 'rm-release')!
     expect(room.projectId).toBe(ONETHING_DIR)
-    expect(GROUPS.find((g) => g.id === ONETHING_DIR)!.sessions.map((s) => s.id)).not.toContain(
-      'rm-release',
-    )
-    expect(GROUPS.find((g) => g.id === 'collab')!.sessions.map((s) => s.id)).toContain('rm-release')
+    expect(buildProjects([room])).toEqual([])
   })
 
-  it('组的次序 = 项目组 → 协作 → 独立', () => {
-    expect(GROUPS.map((g) => g.id)).toEqual([ONETHING_DIR, TRANSREADER_DIR, 'collab', 'loose'])
+  it('末尾斜杠归一真的生效:两条目录只差一个斜杠的会话落在同一格项目上', () => {
+    const sameDir = SESSIONS.filter((s) => s.projectId === ONETHING_DIR).map((s) => s.id)
+    expect(sameDir).toContain('os-expose') // 它的 workingDirectory 带末尾斜杠
+    expect(buildProjects(SESSIONS).filter((p) => p.id === ONETHING_DIR)).toHaveLength(1)
   })
 
-  it('末尾斜杠的那条和别的会话在同一组(归一真的生效了)', () => {
-    expect(GROUPS[0].sessions.map((s) => s.id)).toEqual([
-      'os-provider',
-      'os-compact',
-      'os-expose',
-      'os-toolkit',
-    ])
-  })
-
-  it('空组不出现:一条会话都没有的分区在总览上没有任何可看的东西', () => {
-    expect(buildGroups(buildProjects([]), [])).toEqual([])
-    const onlyLoose = SESSIONS.filter((s) => s.id === 'lo-notes')
-    expect(buildGroups(buildProjects(onlyLoose), onlyLoose).map((g) => g.id)).toEqual(['loose'])
-  })
-
-  it('合成组的名字走字典(nameKey),项目组的名字是数据(name)', () => {
-    const collab = GROUPS.find((g) => g.id === 'collab')!
-    expect(collab.nameKey).toBe('expose.groupCollab')
-    expect(collab.name).toBeUndefined()
-    expect(GROUPS[0].name).toBe('start-electron')
-    expect(GROUPS[0].nameKey).toBeUndefined()
+  it('一条会话都没有就没有项目', () => {
+    expect(buildProjects([])).toEqual([])
   })
 })
 
@@ -226,14 +230,9 @@ describe('摘要 / 消息数两格的产地', () => {
   })
 })
 
-describe('列表投影过滤(08-31 拍板:只留私聊与普通聊天)', () => {
-  const meta = (id: string, kind?: string, dm?: boolean) =>
-    ({ id, name: id, updatedAt: 1, ...(kind ? { kind } : {}), ...(dm !== undefined ? { room: { dm } } : {}) }) as never
-
-  it('执行会话(agent)与群房(room)不陈列;dm 与 chat 照常', () => {
-    expect(isListedSession(toSessionSummary(meta('a', 'agent')))).toBe(false)
-    expect(isListedSession(toSessionSummary(meta('r', 'room', false)))).toBe(false)
-    expect(isListedSession(toSessionSummary(meta('d', 'room', true)))).toBe(true)
-    expect(isListedSession(toSessionSummary(meta('c')))).toBe(true)
-  })
-})
+/*
+ * ── 「列表投影过滤」那一组 09-04 退役 ──────────────────────────────────────
+ * 08-31 那张「只保留私聊和普通聊天」的名单(`isListedSession`)随方向 A 一起删:
+ * 层级铺开之后没有一档需要被藏。谁站顶层、谁当子行由 `list-model.ts` 说了算,
+ * 它自己那一组用例(`list-model.test.ts` 的 attachChildren 四条)守着这件事。
+ */

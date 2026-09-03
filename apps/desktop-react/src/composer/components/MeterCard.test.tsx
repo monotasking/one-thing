@@ -26,6 +26,8 @@ function session(over: Partial<SessionSummary> & { id: string }): SessionSummary
   return {
     title: 's',
     kind: 'chat',
+    isPinned: false,
+    roomId: null,
     projectId: null,
     preview: '',
     digest: null,

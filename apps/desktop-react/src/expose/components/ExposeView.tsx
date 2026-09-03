@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { FocusScope } from '../../focus/FocusScope'
@@ -6,15 +6,23 @@ import { useExposeStore } from '../store'
 import { useExposeLive } from './use-live'
 import type { FocusDir } from '../types'
 import { Overview } from './Overview'
-import { ListView } from './ListView'
 import { QuickLook } from './QuickLook'
+import { exposeIntentOf } from '../keys'
+import { togglePinAndAnnounce } from './pin-announce'
+import type { TreeKeyIntent } from '../transitions'
 import s from './ExposeView.module.css'
 
-const ARROWS: Record<string, FocusDir> = {
-  ArrowUp: 'up',
-  ArrowDown: 'down',
-  ArrowLeft: 'left',
-  ArrowRight: 'right',
+/**
+ * 意图 → 一维走位。键名判据在 `expose/keys.ts` 一处(方向 A §3.2 那道禁令),
+ * 这里只把它翻成 `moveFocus` 的那两档;树语义的 ←→ / Home / End 走 `treeKey`,
+ * 不经这张表。
+ */
+const MOVE: Partial<Record<string, FocusDir>> = { 'move-up': 'up', 'move-down': 'down' }
+const TREE: Partial<Record<string, TreeKeyIntent>> = {
+  expand: 'expand',
+  collapse: 'collapse',
+  home: 'home',
+  end: 'end',
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -23,12 +31,30 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 /**
+ * 「这一下键属于别人吗」—— 委托必须问的那一句(P1)。
+ *
+ * 树的结构键挂在**作用域根**上是事件委托(一个键一个产地),但这块面里还住着
+ * 另外三种自己认结构键的控件:搜索框(文本编辑的基本盘)、侧栏那只
+ * `role="option"` 列表(`ui/a11y/roving` 在容器上接方向键)、以及各种按钮
+ * (Space / ↵ 是它们自己的激活键)。焦点落在它们身上时,这一下**不是树的**。
+ *
+ * 判据问的是**事件的 target**(键盘事件的 target 就是拿着焦点的那个元素),
+ * 不是 `document.activeElement` —— 后者是响应链禁令的第三条。
+ */
+function ownsStructuralKeys(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('input, textarea, button, [role="option"], [role="combobox"]'))
+}
+
+/**
  * 会话总览的内容面 —— 一块普通的 Dock 内容(id 'sessions'),所以它能上舞台 /
  * 变浮窗 / 钉到边,三种形态里长得一模一样(08-29 去接管化拍板:总览不再是盖满一屏的
  * 覆盖层)。它只负责**填满所属容器**,自己不画 scrim、不定位、不管进出场动画 ——
  * 那些是宿主那一层的事。
  *
- * 内部仍是三层视图 + 一台状态机:总览 / 组列表 / Quick Look。
+ * 内部是**两层**视图 + 一台状态机:总览 / Quick Look ——「进某个组的列表」那一层
+ * 09-04 随方向 A 退役(总览与组列表合并成同一张树,见
+ * `docs/design/react-shell-sessions-list-2026-09.md` §1)。
  *
  * ── 谁来听键盘 ────────────────────────────────────────────────────────────
  * 只有**算数的那一份**听:摆出来了(placed)且宿主认它(interactive)。
@@ -36,7 +62,7 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * 它只是不许占用 window 上的键盘。(09-02 之前还有一种:Dock 悬停预览泡。)
  *
  * ── Esc 的让位契约 ────────────────────────────────────────────────────────
- * 内层先消费:quicklook / list 上的 Esc 退一层并 preventDefault();
+ * 内层先消费:quicklook 上的 Esc 退一层并 preventDefault();
  * 已经在总览这一层时**不拦**,宿主(StageOverlay 只在 !defaultPrevented 时关面板)
  * 才轮得到。
  *
@@ -65,23 +91,43 @@ export function ExposeView() {
   const view = useExposeStore(useShallow((st) => st.view))
   const rootRef = useRef<HTMLDivElement | null>(null)
   /**
-   * 搜索条那一格。**落点**(`restingTarget`)在这一层持有,由 `Overview` 铺 ——
-   * 「焦点进这块面时落在哪儿」是这一格作用域的声明,而搜索条只是它此刻的那个元素。
+   * 树容器那一格。**它是这块面真正的那个 Tab 位**(`role="tree" tabIndex=0`),
+   * 活动行由 `aria-activedescendant` 指着 —— 所以「焦点交给列表」= 焦点落在它身上。
    */
-  const searchRef = useRef<HTMLInputElement>(null)
+  const treeRef = useRef<HTMLDivElement>(null)
 
   /**
    * 落点两档,判据是 `focusVisible`(键盘位显不显形):
-   *  · 还没交接 → 搜索条(「摆出来的那一刻键盘归这块面,焦点落进搜索条」);
-   *  · 已经交给网格 → **答不出**,于是落在这块面的根上(`restingElementOf` 的
-   *    缺省档)。这一格不是可有可无的:交接之后焦点必须离开搜索条,否则
-   *    ↑↓/Space/↵ 会被「输入面里的无修饰单键」那条规则让给输入框,网格当场不动。
-   *    从前那一手是 `inputRef.current?.blur()` —— 焦点掉到 body,而 R1 之后
-   *    孤儿焦点会被收回落点,于是它会**弹回搜索条**。落点分两档才是这条手势
-   *    在响应链上的正确写法。
+   *  · 还没交接 → **搜索条**(「摆出来的那一刻键盘归这块面,焦点落进搜索条」);
+   *  · 已经交给列表 → **树容器**。这一格不是可有可无的:交接之后焦点必须离开
+   *    搜索条,否则 ↑↓/Space/↵ 会被「输入面里的无修饰单键」那条规则让给输入框,
+   *    列表当场不动。从前那一手是 `blur()` —— 焦点掉到 body,而 R1 之后孤儿焦点
+   *    会被收回落点,于是它会**弹回搜索条**。落点分两档才是这条手势在响应链上的
+   *    正确写法。
+   *
+   * 搜索条按**取件口**取(`data-expose-search`,Toolbar 挂的),不为了一个落点
+   * 去改库件 `ui/Input` 的 props 形状 —— 与 `viewer/JumpBar` 的
+   * `restingTarget = () => root.querySelector('input')` 同一判例。
    */
-  const restingTarget = useCallback(
-    () => (useExposeStore.getState().focusVisible ? null : searchRef.current),
+  const restingTarget = useCallback(() => {
+    if (useExposeStore.getState().focusVisible) return treeRef.current
+    return rootRef.current?.querySelector<HTMLInputElement>('[data-expose-search]') ?? null
+  }, [])
+
+  /**
+   * 面域局部键的**落点**(声明的正本是 `FOCUS_SCOPES.expose.keys`,今天一条:
+   * ⌘⇧P = `pin.toggle`)。作用在**活动行**上 —— 与 `files` 那格 `⌘I` 同一手:
+   * 不去读 `document.activeElement`,读这块面自己的选择状态(store 的 focusId)。
+   * 没有活动行时这一下什么都不做(而不是让这一层去订阅 `focusId` ——
+   * 订了它,每按一次方向键这整块面连同侧栏 / 工具栏都要跟着重渲一遍)。
+   */
+  const exposeKeys = useMemo(
+    () => ({
+      'pin.toggle': () => {
+        const { focusId } = useExposeStore.getState()
+        if (focusId) togglePinAndAnnounce(focusId)
+      },
+    }),
     [],
   )
 
@@ -89,7 +135,7 @@ export function ExposeView() {
    * Esc 的三档,次序与从前那条监听逐字相同:
    *  ① 总览这一层且搜索条有词 → **先清词**(Esc 的第 0 层);
    *  ② 总览这一层且没有词 → **不拦**,让宿主那一层去收这块面(退层链);
-   *  ③ 组列表 / Quick Look → 退一层。
+   *  ③ Quick Look → 退一层。
    */
   const onEscape = useCallback(() => {
     const st = useExposeStore.getState()
@@ -103,60 +149,91 @@ export function ExposeView() {
   }, [])
 
   /**
-   * 方向键 / Space / ↵。判据一个字没改,只有「焦点在输入框里」那一条从
-   * `e.target`(真机上它就是拿着焦点的那个元素)问,不再问一个全局。
+   * 方向键 / ←→ / Home / End / Space / ↵ —— 这块面的**行内结构键**(不进任何表),
+   * 事件委托挂在作用域根上。三层让位,顺序就是判据:
+   *  ① 别人已经接住了(`defaultPrevented`)—— 侧栏那只 roving 是唯一的常客,
+   *    它在容器上消费方向键并 preventDefault;不让开的话侧栏里按一下 ↓
+   *    会顺手把树的活动行也挪一格(一下键两处响);
+   *  ② 输入框(搜索条)—— 方向键 / 空格属于文本编辑;
+   *  ③ 其它自己认结构键的控件(侧栏项 / 选择器 / 按钮),见 `ownsStructuralKeys`。
    */
   const onGridKey = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
     const st = useExposeStore.getState()
+    if (e.defaultPrevented) return
     // 输入框里方向键 / 空格属于输入框,不属于总览。
     if (isTypingTarget(e.target)) return
 
+    const intent = exposeIntentOf(e.key)
+    if (!intent) return
+
     if (st.view.mode === 'quicklook') {
-      if (e.key === 'ArrowLeft') {
+      // Quick Look 里的 ←→ 是**换会话**(不是树的展开 / 收起):同一对键在两层
+      // 各有各的语义,分岔判据就是这一句 `view.mode`,与迁到意图表之前逐字相同。
+      if (intent === 'collapse') {
         e.preventDefault()
         st.quickLookPrev()
-      } else if (e.key === 'ArrowRight') {
+      } else if (intent === 'expand') {
         e.preventDefault()
         st.quickLookNext()
-      } else if (e.key === ' ') {
+      } else if (intent === 'quicklook') {
         e.preventDefault()
         st.closeQuickLook()
-      } else if (e.key === 'Enter') {
+      } else if (intent === 'enter') {
         e.preventDefault()
         st.enterSession(st.view.sessionId)
       }
       return
     }
 
-    if (st.view.mode !== 'overview') return
+    // 侧栏项 / 选择器 / 按钮各认各的结构键(Space 激活、roving 走位),这一下不是树的。
+    if (ownsStructuralKeys(e.target)) return
 
-    const dir = ARROWS[e.key]
+    const dir = MOVE[intent]
     if (dir) {
       e.preventDefault()
       st.moveFocus(dir)
       return
     }
-    if (e.key === ' ' && st.focusId) {
+    /*
+     * 树语义的 ←→ / Home / End(设计 §3.2):
+     *  · → 房间未展开 → 展开;已展开 → 进第一个子行;非房间 → 无动作;
+     *  · ← 子行 → 回父;展开的房间 → 收起;其余 → 无动作;
+     *  · Home / End → 首行 / 末行。
+     * 判定全在 `transitions.treeKey`(纯函数,有单测),这里只负责把意图递过去。
+     */
+    const tree = TREE[intent]
+    if (tree) {
+      e.preventDefault()
+      st.treeKey(tree)
+      return
+    }
+    if (intent === 'quicklook' && st.focusId) {
       e.preventDefault()
       st.openQuickLook(st.focusId)
       return
     }
-    if (e.key === 'Enter' && st.focusId) {
+    if (intent === 'enter' && st.focusId) {
       e.preventDefault()
       st.enterSession(st.focusId)
     }
   }, [])
 
   return (
-    <FocusScope scope="expose" rootRef={rootRef} restingTarget={restingTarget} onEscape={onEscape}>
+    <FocusScope
+      scope="expose"
+      rootRef={rootRef}
+      restingTarget={restingTarget}
+      onEscape={onEscape}
+      keyHandlers={exposeKeys}
+    >
       {({ scopeProps }) => (
         /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
          * 方向键 / Space / ↵ 是**行内结构键**(不进任何表),它们是总览这套形态的
          * 语法本身;挂在作用域根上是事件委托,不是把一个 div 变成控件 ——
-         * 焦点在里面那些真控件上(搜索条 / 卡),与 `search/SearchPanel` 同判例。 */
+         * 焦点在里面那些真控件上(搜索条 / 树容器),与 `search/SearchPanel` 同判例。 */
         <div {...scopeProps} className={s.view} onKeyDown={onGridKey}>
           <ExposeBindings />
-          {view.mode === 'list' ? <ListView groupId={view.groupId} /> : <Overview searchRef={searchRef} />}
+          <Overview treeRef={treeRef} />
           {view.mode === 'quicklook' && <QuickLook sessionId={view.sessionId} />}
         </div>
       )}

@@ -613,6 +613,7 @@ describe('无工作目录:告知条 + 绑定', () => {
       getUserMarkers: async () => ({ success: true, markers: [] }),
       create: async () => ({ success: false, error: 'not stubbed' }),
       updateWorkingDirectory,
+      updatePin: async () => ({ success: true }),
       onSessionEvent: () => () => undefined,
       onSessionLifecycle: () => () => undefined,
     })
@@ -663,6 +664,7 @@ describe('无工作目录:告知条 + 绑定', () => {
       create: async () => ({ success: false, error: 'not stubbed' }),
       updateWorkingDirectory: () =>
         new Promise<{ success: true }>((resolve) => { release = resolve }),
+      updatePin: async () => ({ success: true }),
       onSessionEvent: () => () => undefined,
       onSessionLifecycle: () => () => undefined,
     })

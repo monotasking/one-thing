@@ -330,21 +330,33 @@
   --key-slot-w: 96px;
   --row-h: 28px;
 
-  /* ── L2 会话总览 Exposé 几何 ─────────────────────────────────────────── */
+  /* ── L2 会话总览 Exposé 几何(09-04 方向 A「档案」:三块面 + 一张树)───────
+   * 卡片时代的那一族(--expose-search-w / --expose-max-w / --expose-gap* /
+   * --card-min-* / --card-*-fluid / --model-max-w-narrow)随 SessionCard 一起退役,
+   * 设计 §1.5 列的退役表。`--r-card` **留着**:它另有两个消费者
+   * (workspace/WorkspaceOverview、expose/QuickLook),不是这一批的孤儿。
+   * ────────────────────────────────────────────────────────────────────── */
   --r-card: 16px;
   --expose-pad: 32px;
-  --expose-search-w: 440px;
-  --expose-search-h: 36px;
-  --expose-gap: 14px;
-  --expose-max-w: 1120px;
-  --card-min-h: 118px;
+  /* 侧栏(Rail)的定宽。它是一列固定的范围表,不随内容伸缩 —— 会话标题才是
+   * 这块面里吸空间的那一个(挤压律一:一行只许一个弯腰件)。 */
+  --expose-rail-w: 196px;
   /*
-   * 卡的最小体面宽 —— 列数由它和容器宽度算出来(见 Overview.module.css 的 .grid)。
-   * 260 不是随手取的:舞台满宽(--expose-max-w 1120 减两侧 --expose-pad)下
-   * (1056 + 14) / (260 + 14) = 3.9 → 仍是 3 列,所以宽处的版式**逐像素不变**;
-   * 窄一档(约 550px 起)自然落到 2 列、再窄落到 1 列。
+   * 两档宽度阈值(设计 §1.5)。`@container` 的条件里**不能写 var()**,所以两处
+   * 各有一份:查询那一侧是字面量,这里是它的名字 —— 改的时候两处一起改
+   * (与 --squeeze-narrow / 420 那一对同一条判例)。
+   *  · 760 —— 侧栏收起、顶栏长出项目选择器;
+   *  · 480 —— 项目 chip 降元素、新会话缩成图标钮、工具栏换行。
    */
-  --card-min-w: 260px;
+  --expose-rail-bp: 760px;
+  --expose-chip-bp: 480px;
+  /* 行首形态图标列:**全行预留**,普通聊天留空(设计 §1.1 裁决 6)——
+   * 标题永远从同一条竖线起笔,所以这一格是定宽而不是「有图标才占位」。 */
+  --expose-glyph-w: 16px;
+  /* 子行(派工 / 执行)相对父房间的缩进。 */
+  --expose-indent: 26px;
+  /* 时间列的定宽:四档相对时间里最长的是「12月31日」,56 装得下且右对齐不跳。 */
+  --expose-time-w: 56px;
   --focus-ring-w: var(--bw-ring);
   --avatar-size: 20px;
   --avatar-overlap: -6px;
@@ -388,35 +400,13 @@
   --squeeze-stagger-1: 0ms;
   --squeeze-stagger-2: 40ms;
   --squeeze-stagger-3: 80ms;
-  --expose-gap-fluid: clamp(
-    var(--sp-2),
-    calc(var(--expose-gap) - var(--squeeze-ramp) * 0.05),
-    var(--expose-gap)
-  );
-  --card-pad-block-fluid: clamp(
-    var(--sp-2),
-    calc(var(--sp-3) - var(--squeeze-ramp) * 0.033),
-    var(--sp-3)
-  );
-  --card-pad-inline-fluid: clamp(
-    var(--sp-3),
-    calc(var(--sp-4) - var(--squeeze-ramp) * 0.033),
-    var(--sp-4)
-  );
-  --card-row-gap-fluid: clamp(
-    var(--sp-1),
-    calc(var(--sp-2) - var(--squeeze-ramp) * 0.033),
-    var(--sp-2)
-  );
-  --group-name-fs-fluid: clamp(
-    var(--fs-label),
-    calc(var(--fs-body) - var(--squeeze-ramp) * 0.0083),
-    var(--fs-body)
-  );
-  /* 压缩形的卡:一行标题 + 一行预览 + 一行脚,74 是这三行加收紧后的内边距。 */
-  --card-min-h-narrow: 74px;
-  /* 模型徽在窄档的硬顶。它是 mono 长串,不设顶就会把相对时间挤出卡外。 */
-  --model-max-w-narrow: 92px;
+  /*
+   * 09-04:会话总览那一族 `*-fluid`(--expose-gap-fluid / --card-pad-*-fluid /
+   * --card-row-gap-fluid / --group-name-fs-fluid)与两个窄档硬顶
+   * (--card-min-h-narrow / --model-max-w-narrow)随卡片退役(设计 §1.5)。
+   * 上面那三格 `--squeeze-*` 是**挤压纪律的基础设施**,不属于卡片 —— 它们留着,
+   * 别的面(与将来的连续量)照旧读得到。
+   */
 
   /* ── L3 钢琴键会话目录(TOC)几何 ────────────────────────────────────────
    * 这一节就是「几何栈」本身:键列与展开面板**共用**这几个数,

@@ -167,7 +167,10 @@ async function openAsFromDockMenu(page, tile, labelRe) {
 }
 
 /**
- * 把那条夹具会话的卡**摆到屏幕上**(不点它)。
+ * 把那条夹具会话的**行**摆到屏幕上(不点它)。
+ *
+ * 09-04 方向 A:总览的卡网格换成了树形列表,`card-<id>` 改名 `session-row-<id>`;
+ * 「在不在屏上」的判据仍是 `[data-session-id="<id>"]`(那条契约一个字没改)。
  *
  * 点瓦是**开关**语义:总览已经摆出来了就别再点一下(那一下会把它收回去)。
  * 而「摆出来了没有」在两种时刻都读不准 —— ①重载之后有一格窗口期(落点是记忆,
@@ -178,31 +181,31 @@ async function openAsFromDockMenu(page, tile, labelRe) {
  * 两下都等不到才是真的没有(那时超时,是夹具的问题)。
  *
  * 单独抽出来是因为它有**两个**调用点:进会话那条路,和场景 8(它要自己断言
- * 「点卡之后焦点去哪」,不能整段复用进会话)。同一段判据抄两份迟早分叉。
+ * 「点行之后焦点去哪」,不能整段复用进会话)。同一段判据抄两份迟早分叉。
  */
-async function ensureOverviewCard(page, sessionId) {
+async function ensureOverviewRow(page, sessionId) {
   // 重载之后先等那一次 RPC 往返:会话表是拉回来的,拉回来之前总览上没有卡。
   await waitFor('渲染层完成一次 RPC 往返', async () => {
     const value = await page.evaluate(() => window.__d0 ?? null)
     return value && value.rpcOk ? value : undefined
   })
-  const cardShown = () =>
+  const rowShown = () =>
     page.evaluate((id) => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId)
-  for (let attempt = 0; attempt < 2 && !(await cardShown()); attempt += 1) {
+  for (let attempt = 0; attempt < 2 && !(await rowShown()); attempt += 1) {
     await clickSelector(page, '[data-testid="dock-tile-sessions"]')
     await delay(700)
   }
-  await waitFor('总览画出那张卡', cardShown)
+  await waitFor('总览画出那一行', rowShown)
 }
 
 /**
- * 进那条夹具会话(总览里点那张卡)。**重载之后必须再走一遍**:文件树的根跟着
+ * 进那条夹具会话(总览里点那一行)。**重载之后必须再走一遍**:文件树的根跟着
  * 「当前会话的工作目录」走,而当前会话是内存态 —— 重载之后它是空的,树会退回
  * 主目录,那时候树上有什么就不由这道门说了算了。
  */
 async function enterGateSession(page, sessionId) {
-  await ensureOverviewCard(page, sessionId)
-  await clickSelector(page, `[data-testid="card-${sessionId}"]`)
+  await ensureOverviewRow(page, sessionId)
+  await clickSelector(page, `[data-testid="session-row-${sessionId}"]`)
   await delay(400)
 }
 
@@ -674,13 +677,13 @@ async function main() {
     /* ── 场景 8:Expose 进会话 → 焦点在输入框 ────────────────────────── */
     scenario('总览里进一条会话 → 焦点落在那条会话的输入框里(§3.5 规则 2)')
     /*
-     * 「把卡摆上屏」与「点那张卡」是两件事,这里只能借前者:这一格要自己断言
+     * 「把行摆上屏」与「点那一行」是两件事,这里只能借前者:这一格要自己断言
      * 点完之后焦点去哪,整段借 `enterGateSession` 就把被测的那一下也吞进去了。
-     * 摆上屏那一半为什么要重试,写在 `ensureOverviewCard` 的注释里(点瓦是开关)。
+     * 摆上屏那一半为什么要重试,写在 `ensureOverviewRow` 的注释里(点瓦是开关)。
      */
-    await ensureOverviewCard(page, sessionId)
+    await ensureOverviewRow(page, sessionId)
     await assertNoOrphan(page, '开总览之后')
-    await clickSelector(page, `[data-testid="card-${sessionId}"]`)
+    await clickSelector(page, `[data-testid="session-row-${sessionId}"]`)
     await delay(500)
     const entered = await page.evaluate(() => ({
       testid: document.activeElement?.getAttribute?.('data-testid') ?? null,
@@ -694,6 +697,76 @@ async function main() {
       `(焦点此刻在 [${entered.testid ?? '—'}],作用域 ${entered.scope ?? '—'})`,
     )
     await assertNoOrphan(page, '进会话之后')
+
+    /* ── 场景 8b:总览的键盘交接(搜索条 ↓ 交给树,树 ↵ 进会话)────────── */
+    scenario('总览:搜索条 ↓ 把键盘交给树(活动行由 aria-activedescendant 指着),树上 ↵ 进会话')
+    /*
+     * 这一格钉的是设计 §3.2 那张键表最要紧的两行,以及 §3.1 那条形:
+     * 树是**一个 Tab 位**(`role="tree" tabIndex=0`),469 条会话不是 469 个 Tab 位,
+     * 活动行由 `aria-activedescendant` 指着而不是靠 `.focus()` 一行一行搬。
+     * 所以「键盘交出去了没有」的判据必须是**两条一起**:焦点在树容器上 **且**
+     * activedescendant 真的指着一个在场的 `#expose-row-<id>` —— 只看第一条的话,
+     * 一棵没有活动行的树也会绿(而那正是键盘走不动的样子)。
+     */
+    await ensureOverviewRow(page, sessionId)
+    await assertNoOrphan(page, '开总览之后(键盘交接)')
+    /*
+     * 先把焦点摆进搜索条。**这一格不断言「摆出来那一刻焦点就在搜索条」** ——
+     * 上一个场景刚进过一条会话,按规则 2 焦点此刻正在 composer 里,而总览这块面
+     * 一直开着(`ensureOverviewRow` 看见行在屏上就不会再点一次瓦,点瓦是开关)。
+     * 「摆出来那一刻落在搜索条」是 `restingTarget` 第一档的事,由 Overview.test
+     * 那组落点用例守着;这里要量的是**交接**,所以它自己把起点摆好。
+     *
+     * 用 Playwright 的真点击(底下是 CDP `Input.dispatchMouseEvent`),不用页面里
+     * 那只 `el.click()`:合成 click 不落焦,输入框上尤其不落 —— 那样量的就是
+     * 「焦点本来在哪」而不是「↓ 把它交给了谁」。
+     */
+    await page.click('[data-expose-search]')
+    await delay(200)
+    const onSearch = await page.evaluate(() =>
+      Boolean(document.activeElement?.hasAttribute?.('data-expose-search')),
+    )
+    assert(onSearch, '点一下搜索条,焦点落在它身上(交接的起点摆好了)')
+    await page.keyboard.press('ArrowDown')
+    await delay(300)
+    const handed = await page.evaluate(() => {
+      const el = document.activeElement
+      const active = el?.getAttribute?.('aria-activedescendant') ?? null
+      return {
+        testid: el?.getAttribute?.('data-testid') ?? null,
+        active,
+        // activedescendant 指的那一行**真的在 DOM 里**吗(指着空气 = 键盘走不动)。
+        present: Boolean(active && document.getElementById(active)),
+        rowTestid: active
+          ? (document.getElementById(active)?.getAttribute('data-testid') ?? null)
+          : null,
+      }
+    })
+    assert(
+      handed.testid === 'expose-tree',
+      '↓ 把焦点交给了树容器(这块面唯一那个 Tab 位)',
+      `(焦点此刻在 [${handed.testid ?? '—'}])`,
+    )
+    assert(
+      handed.present,
+      'aria-activedescendant 指着一个在场的行',
+      `(指着 ${handed.active ?? '—'},那一行是 [${handed.rowTestid ?? '—'}])`,
+    )
+    await assertNoOrphan(page, '键盘交给树之后')
+    await page.keyboard.press('Enter')
+    await delay(500)
+    const enteredByKey = await page.evaluate(() => ({
+      testid: document.activeElement?.getAttribute?.('data-testid') ?? null,
+      scope:
+        document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+        ?? null,
+    }))
+    assert(
+      enteredByKey.scope === 'composer',
+      '树上 ↵ 进会话之后焦点在输入面板里(与点行那条路同一个落点)',
+      `(焦点此刻在 [${enteredByKey.testid ?? '—'}],作用域 ${enteredByKey.scope ?? '—'})`,
+    )
+    await assertNoOrphan(page, '树上 ↵ 进会话之后')
 
     /* ── 场景 9:拼舞台 → 钉右边 → 撕浮窗,每步焦点跟着那块面 ────────── */
     scenario('形态变化三步:拼舞台 → 钉右边 → 撕成浮窗,每步之后焦点都在那块面里(§3.5 规则 3)')

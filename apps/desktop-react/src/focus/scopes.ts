@@ -35,6 +35,27 @@ const VIEWER_KEYS: readonly ScopedKey[] = [
 ]
 
 /**
+ * 会话总览一条:⌘⇧P = 置顶 / 取消置顶**活动行**(09-04 方向 A §3.2)。
+ *
+ * 它为什么是一条**面域局部键**而不是行内结构键(像 ↑↓ / Space / ↵ 那样直接挂在
+ * 作用域根的 onKeyDown 上):带修饰的组合会与全局键位撞车,而这张表正是撞键的
+ * 唯一账本(设置页的撞键提示与键位速查都读 `FOCUS_SCOPED_KEYS`)。
+ * 无修饰的单键不进表 —— 它们是这块面形态的语法,不是可改的键位。
+ *
+ * labelKey 复用行上那颗图钉的名字(`expose.pin`),不新开一句:同一个动作在
+ * 两处出现只该有一个说法(i18c 纪律,与 `files` 那两行复用 `files.detailAction`
+ * 同一条)。
+ */
+const EXPOSE_KEYS: readonly ScopedKey[] = [
+  {
+    scope: 'expose',
+    combo: { meta: true, shift: true, key: 'p' },
+    labelKey: 'expose.pin',
+    action: 'pin.toggle',
+  },
+]
+
+/**
  * 文件树两条键面同一个动作(⌘I 与 ⌘↵ 都是「详情」)。**两行,不是一行两键**:
  * 表要能逐条说出「⌘↵ 被谁占着」,一行装两个组合就说不出口了。
  */
@@ -57,7 +78,7 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   files: { id: 'files', kind: 'region', labelKey: 'item.files', keys: FILES_KEYS },
   composer: { id: 'composer', kind: 'region', labelKey: 'focus.scope.composer' },
   search: { id: 'search', kind: 'region', labelKey: 'item.search' },
-  expose: { id: 'expose', kind: 'region', labelKey: 'item.sessions' },
+  expose: { id: 'expose', kind: 'region', labelKey: 'item.sessions', keys: EXPOSE_KEYS },
   chat: { id: 'chat', kind: 'region', labelKey: 'focus.scope.chat' },
   settings: { id: 'settings', kind: 'region', labelKey: 'item.settings' },
   dock: { id: 'dock', kind: 'region', labelKey: 'dock.label' },

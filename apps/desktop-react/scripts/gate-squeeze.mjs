@@ -10,11 +10,14 @@
  * 每一档在**真机真排版**下扫一遍架子里画着东西的盒子,两两求交。任何一对相交
  * (容差 1px)= 红,并打印元素对与档位。五档全绿才算过。
  *
- * **两个场景,同一把尺**(08-30 补):总览是一屏,进组之后的会话列表(ListView)
- * 是另一屏 —— 它有自己的顶行(面包屑 + 组名 + 过滤框),那一行的挤压行为与
- * 总览的组头毫无关系。只扫总览的话,ListView 顶行的病对这条门是隐形的
- * (08-30 用户报的「钉边窄档里过滤框被长组名推出去裁掉」正是这么漏网的)。
- * 所以第二个场景 = 点进一个长名组,再把同样的五档、同样的重叠尺跑一遍。
+ * **09-04 方向 A 之后第二个场景换了内容**:项目组连同「进组之后的会话列表
+ * (ListView)」一起退役了,总览现在是**一块面三档宽**(侧栏 / 顶栏选择器 /
+ * 项目 chip 按容器宽有序降元素)。所以第二场景改成 `[8/11]` 的**三档宽度在场表**
+ * 加 `[9/11]` 的**行几何**:一把重叠尺量不出「谁该在场谁不该」,也量不出
+ * 「同一列的右缘对没对齐」—— 那两件事各有自己的判据,理由分别写在
+ * `checkWidthBands` 与 `checkRowGeometry` 头上。
+ * 08-30 那条「长名把同行别的件挤出容器」的判据没丢:它变成了
+ * `checkWidthBands` 里那句「工具栏三件一件都不许冲出容器右缘」。
  *
  * ── 为什么不是「可见兄弟元素两两求交」 ───────────────────────────────────
  * 立项时写的是兄弟两两。真机复现之后改了口径,理由是**兄弟检测抓不到报障那一例**:
@@ -31,7 +34,7 @@
  * 理由。默认**不**整类豁免绝对定位:绝对定位恰恰是「覆盖」最常见的实现方式,
  * 整类放行等于把律三的执法面挖空。
  *
- * **律二也在这条门里**(09-03 补,`[6/10]`):composer 本体行的工具件不折行、
+ * **律二也在这条门里**(09-03 补,`[6/11]`):composer 本体行的工具件不折行、
  * 不悬在文本的竖中线上。律二说的是「结构行里的文本永不换行,只截断」——
  * 那是**排版**,静态门看不见(`squeeze-check` 只查「flex: 1 却没 min-width」),
  * 所以它必须在这里量。判据与病历写在 `checkComposerToolRow` 头上。
@@ -59,14 +62,18 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 const THICKNESSES = [240, 300, 360, 420, 560]
 
 /**
- * 种子:**组名的形状**才是这条门的被试,不是会话条数。
- * 三种长名各一组,因为它们的断行行为完全不同:
+ * 种子:**名字的形状**才是这条门的被试,不是会话条数。
+ *
+ * 09-04 之前项目是「组头」,那三种长名量的是组头的断行;方向 A 之后同一批名字
+ * 变成了侧栏那一列与行上那枚项目 chip,断行行为一个字没变(仍是同样三种
+ * `word-break` 机会),所以种子照旧 —— 换的只是它们出现在屏幕上的哪一处:
  *  - 带连字符的 uuid:CSS 允许在连字符后断行 → 会**折行**(报障视频里那一例);
  *  - 不带连字符的 32 位十六进制:没有任何断行机会 → 会**整条溢出**;
  *  - 长 kebab 路径末段:连字符很多 → 折成三四行。
- * 外加一个普通短名组当对照(它在任何档位都不该红)。
+ * 外加一个普通短名组当对照(它在任何档位都不该红),以及一组没有工作目录的
+ * (侧栏「无项目」那一档、行上没有 chip 的那一形)。
  */
-const SEED_GROUPS = [
+const SEED_PROJECTS = [
   { dir: '3f2a9c7e-8b41-4d6a-9f02-7c1e5b8d4a63', names: ['dm 甲', 'dm 乙', 'dm 丙'] },
   { dir: 'a1b2c3d4e5f60718293a4b5c6d7e8f90', names: ['room 甲', 'room 乙'] },
   {
@@ -74,15 +81,38 @@ const SEED_GROUPS = [
     names: ['squeeze 甲', 'squeeze 乙', 'squeeze 丙'],
   },
   { dir: 'short', names: ['短组甲', '短组乙'] },
-  { dir: null, names: ['独立甲', '独立乙'] },
+  /*
+   * 最后一组没有工作目录。第三条的标题**故意很长** —— 行几何那一步的
+   * 「标题只截断不溢出」判据只有在真有一条标题挤不下时才醒着:短标题
+   * `scrollWidth === clientWidth`,那条断言就是在陪跑(09-04 反证跑出来的:
+   * 把 `.title` 的 `overflow` 改成 visible,短标题那一版三档全绿)。
+   */
+  {
+    dir: null,
+    names: [
+      '独立甲',
+      '独立乙',
+      '这条会话的标题故意很长很长,长到任何一档容器宽都必须靠省略号收场,而不是把时间列挤出行外',
+    ],
+  },
 ]
 
 /**
- * 场景②进哪一组。取**没有任何断行机会**的那个 32 位十六进制目录名:它在 flex 行里
- * 拿的是 max-content 宽度,一个字符都没法折 —— 长名把同行别的件挤走的最坏一例。
- * 用户报障那一屏(钉边 ~300px、组名长)就是这一形。
+ * 三档容器宽的被试值(设计 §1.5 的三档:≥760 / 480–760 / <480)。
+ * 760 那一档取 **800** 而不是 761:阈值上骑着的那一像素量的是舍入,不是形。
+ * 这三个数说的是**容器宽**(`[data-focus-scope="expose"]` 的 inline-size),
+ * 不是架子厚度 —— 两者差着架子的内衬,所以下面那只 `setExposeContainerTo`
+ * 是「设一次量一次修一次」,而不是直接把这三个数当厚度去拖。
  */
-const LIST_SCENARIO_GROUP = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
+const CONTAINER_BANDS = [800, 640, 460]
+
+/**
+ * 量三档要多宽的窗。800 那一档的架子厚度 ≈ 800 + 内衬,而架子上限是
+ * `SHELF_MAX_RATIO 0.55 × 视口宽` —— 1280 的默认窗最多只能拖到 704,够不着。
+ * 所以这一步先把窗撑到 1600(与 `narrowComposerTo` 同一只手:放开 minWidth
+ * 再 setSize),量完还原。
+ */
+const WIDE_WINDOW = { width: 1600, height: 900 }
 
 /**
  * ── 工作目录怎么种(08-31 改:相对路径那一套已经过期)──────────────────────
@@ -99,11 +129,11 @@ const LIST_SCENARIO_GROUP = 'a1b2c3d4e5f60718293a4b5c6d7e8f90'
  * 所以现在照 gate-files 的起法:**mkdtemp 一个真临时根,组目录是它下面真实存在
  * 的子目录,递绝对路径**,退出时整根删掉。
  *
- * 组名形状(这条门的全部测试意图)一个字都没变:屏幕上的组名 = 路径**末段**
+ * 项目名形状(这条门的全部测试意图)一个字都没变:屏幕上的项目名 = 路径**末段**
  * (expose/projection.projectNameOf),所以换成绝对路径之后,那四种名字形状
  * ——32 位无断点十六进制 / uuid / 长英文串 / 短名 —— 逐字照旧。
  */
-const PROJECT_DIR_NAMES = SEED_GROUPS.flatMap((g) => (g.dir ? [g.dir] : []))
+const PROJECT_DIR_NAMES = SEED_PROJECTS.flatMap((g) => (g.dir ? [g.dir] : []))
 
 /**
  * 允许的覆盖。每条 = 一对选择器片段(按 CSS 类名 / data 属性的子串匹配),
@@ -111,9 +141,12 @@ const PROJECT_DIR_NAMES = SEED_GROUPS.flatMap((g) => (g.dir ? [g.dir] : []))
  * 不是「门太吵了就往里塞」的地方。
  */
 const ALLOWED_OVERLAP = [
-  // 卡右上角的 QuickLook 预览眼是**常驻占位**的浮层入口:.head 用 padding-right
-  // 给它留了槽位(律三的布局预留),所以它不压文字;但它与卡自身的盒子必然相交。
-  { a: 'SessionCard_peek', b: 'SessionCard_', why: 'QuickLook 幽灵眼:常驻占位、已在 .head 留槽,压的是卡的空白' },
+  /*
+   * 09-04:卡片时代那一条(`SessionCard_peek` × `SessionCard_`)随卡一起退役。
+   * 新的行把两颗悬停动作放进行**内部**的一格 `.actions` 里,而重叠尺本来就跳过
+   * 祖孙对 —— 于是它连一条豁免都不需要。**空表是目标**:这张表是律三的例外表,
+   * 不是「门太吵了就往里塞」的地方。
+   */
 ]
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -189,34 +222,320 @@ async function clickTestId(page, testId) {
 }
 
 /**
- * 点开一个**长名组**,进它的会话列表(ListView)。
- *
- * 组 id = 归一之后的工作目录(见 expose/projection.ts),而种子递的是一条临时根下的
- * **绝对路径** —— 所以 id 里带着一截每次都不同的 mkdtemp 名,写不出字面 testid。
- * 这里按**组头的文字**去找(组名 = 路径末段 = 种子目录名,见 projectNameOf),
- * 找到之后点它右端那枚常驻的「›」入口。
- *
- * 入口是 `flex: none` 的常驻项、只动 opacity(律三),所以不 hover 也点得到 ——
- * 和 clickTestId 一样走 `el.click()`,理由同样是「这条门要证的是排版,不是命中测试」。
+ * 右键一块 Dock 瓦,按菜单项的文案选一种打开方式(与 gate-focus 逐字同一手)。
+ * 走的是**用户真走的那条路**:显式手势自己就说得出落点,于是它同时把「记忆」
+ * 写成那一档 —— 浮窗几何那一步要的正是「宽屏时存下的一格 rect」。
  */
-async function enterGroupNamed(page, fragment) {
-  const result = await page.evaluate((frag) => {
-    const heads = [...document.querySelectorAll('[data-testid^="group-head-"]')]
-    const head = heads.find((el) => (el.textContent ?? '').includes(frag))
-    if (!head) {
-      return { ok: false, seen: heads.map((el) => (el.textContent ?? '').trim().slice(0, 48)) }
+async function openAsFromDockMenu(page, tile, labelRe) {
+  const opened = await page.evaluate((id) => {
+    const el = document.querySelector(`[data-testid="dock-tile-${id}"]`)
+    if (!(el instanceof HTMLElement)) return false
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
+    return true
+  }, tile)
+  if (!opened) return false
+  await delay(350)
+  const picked = await page.evaluate((source) => {
+    const re = new RegExp(source)
+    const items = Array.from(document.querySelectorAll('[role="menuitemradio"], [role="menuitem"]'))
+    const hit = items.find((el) => re.test(el.textContent ?? ''))
+    if (hit instanceof HTMLElement) {
+      hit.click()
+      return true
     }
-    const enter = head.querySelector('[data-testid^="group-enter-"]')
-    if (!enter) return { ok: false, seen: ['组头在,但里面没有 group-enter-*'] }
-    enter.click()
-    return { ok: true }
-  }, fragment)
-  if (!result.ok) {
-    throw new Error(`进不去组「${fragment}」—— 现有组头:\n  ${result.seen.join('\n  ')}`)
-  }
-  await waitFor('ListView 就位', () =>
-    page.evaluate(() => Boolean(document.querySelector('[data-testid="expose-list"]'))),
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    return false
+  }, labelRe.source)
+  await delay(500)
+  return picked
+}
+
+/** 会话总览这块面的**容器宽** —— 三档全靠它说话(`container-name: expose` 就长在它身上)。 */
+async function measureExposeContainer(page) {
+  return page.evaluate(() => {
+    const el = document.querySelector('[data-focus-scope="expose"]')
+    return el ? el.getBoundingClientRect().width : -1
+  })
+}
+
+/**
+ * 把总览的**容器宽**调到目标值 —— 手仍然是拖架子厚度(生产那只手),
+ * 但判据换成容器自己的宽:容器 = 厚度 − 架子内衬,而内衬会随主题 / 边距改。
+ * 拿厚度当容器宽用,就是把一个会变的差额写死进门里。
+ *
+ * 与 `narrowComposerTo` 同一套配方:设一次 → 量一次 → 按差额修一次(线性关系,
+ * 一轮就够;第二轮留给亚像素与钳制)。真实落到多少一律打印。
+ */
+async function setExposeContainerTo(page, want) {
+  let container = await measureExposeContainer(page)
+  if (container < 0) throw new Error('会话总览不在 DOM 里 —— 三档宽这一步没有被试')
+  let thickness = await page.evaluate(
+    () => document.querySelector('[data-shelf="right"]')?.getBoundingClientRect().width ?? -1,
   )
+  for (let round = 0; round < 3 && Math.abs(container - want) > 1; round += 1) {
+    thickness = Math.round(thickness + (want - container))
+    await dragThicknessTo(page, thickness)
+    container = await measureExposeContainer(page)
+  }
+  return { container, thickness }
+}
+
+/**
+ * 三档宽度的**在场表**(设计 §1.5;09-04 换掉 ListView 那个场景之后的第二把尺)。
+ *
+ * ── 为什么这一条不能靠上面那把重叠尺 ────────────────────────────────────
+ * 「有序降元素」这件事在重叠尺眼里是**隐形**的:一件被 `display: none` 掉,
+ * 它连盒子都没有,自然一对相交都不会有 —— 修前修后同样零相交。而降错元素
+ * (窄档还留着侧栏、宽档却把选择器也画出来)恰恰是这一档最容易犯的病:
+ * 两个范围控件同时在场时,读屏软件会念出两遍同一件事。
+ * 所以这一条的判据是**在场表**:每一档里谁必须在、谁必须不在,逐条列出来。
+ *
+ * 第二半是**工具栏不许被挤出去**(08-30 那条报障判据的继承者):三件的右缘
+ * 都必须落在容器可视区内 —— 被挤出边界不在「有序降元素」的名单里,
+ * 没有谁声明过搜索框可以消失。
+ *
+ * 第三半只在最窄那一档问:`[选择器][+]` 同排、搜索独占第二行 —— 这正是 09-04
+ * 真机走查那张 460px 截图报的病(`+` 被挤到自己一行去了),病根是 `ui/Select`
+ * 的根写着 `width: 100%`,`flex-basis: auto` 于是把整行宽当成了基准尺寸。
+ */
+async function checkWidthBands(page, band) {
+  return page.evaluate((width) => {
+    const root = document.querySelector('[data-focus-scope="expose"]')
+    if (!root) return { error: '会话总览不在 DOM 里' }
+    const toolbar = root.querySelector('[data-testid="expose-toolbar"]')
+    if (!toolbar) return { error: '工具栏不在 DOM 里' }
+
+    const shown = (el) => {
+      if (!el) return false
+      const st = getComputedStyle(el)
+      if (st.display === 'none' || st.visibility === 'hidden') return false
+      const r = el.getBoundingClientRect()
+      return r.width > 0 && r.height > 0
+    }
+    const rail = root.querySelector('[data-testid="expose-rail"]')
+    // 窄档那只项目选择器 = 工具栏里的 combobox(ui/Select 的根)。
+    const select = toolbar.querySelector('[role="combobox"]')
+    const search = root.querySelector('[data-expose-search]')
+    const newWide = root.querySelector('[data-testid="expose-new-session"]')
+    const newNarrow = root.querySelector('[data-testid="expose-new-session-narrow"]')
+    /*
+     * 项目 chip:行的直接子 `<span>` 恰好是 [标题, (项目), 时间] ——
+     * 三个就是带 chip,两个就是没有。按结构问而不是按类名问,是因为
+     * CSS Module 的类名带哈希,而这块面刻意**没有**叫 `.chip` 的词汇
+     * (ui:consume 的 shared-vocab-css 那条)。
+     *
+     * **问全部行,不问第一行**:没有工作目录的会话本来就没有 chip,而种子里
+     * 最新的那两条恰恰是「独立甲 / 独立乙」—— 拿第一行当被试,这一条在修前修后
+     * 都会说「chip 不在场」(首跑就是这么假红的)。
+     */
+    const chip = [...root.querySelectorAll('[data-session-id][data-depth="0"]')]
+      .map((row) => [...row.children].filter((el) => el.tagName === 'SPAN'))
+      .filter((spans) => spans.length === 3)
+      .map((spans) => spans[1])
+      .find((el) => shown(el)) ?? null
+
+    const state = {
+      rail: shown(rail),
+      select: shown(select),
+      search: shown(search),
+      newWide: shown(newWide),
+      newNarrow: shown(newNarrow),
+      chip: Boolean(chip),
+    }
+
+    const problems = []
+    const want = (key, expected, why) => {
+      if (state[key] !== expected) {
+        problems.push(`${key} 应当${expected ? '在场' : '不在场'}(${why}),实际${state[key] ? '在场' : '不在场'}`)
+      }
+    }
+    if (width > 760) {
+      want('rail', true, '≥760 档:侧栏在场')
+      want('select', false, '≥760 档:侧栏已经是范围控件,顶栏不再出第二个')
+      want('newWide', true, '≥760 档:「新会话」是带文字的钮')
+      want('newNarrow', false, '任何一刻只有一颗新会话钮在焦点序里')
+      want('chip', true, '「全部」范围下项目名在场')
+    } else if (width > 480) {
+      want('rail', false, '480–760 档:侧栏收起')
+      want('select', true, '480–760 档:顶栏出项目选择器')
+      want('newWide', true, '480–760 档:「新会话」仍是带文字的钮')
+      want('newNarrow', false, '任何一刻只有一颗新会话钮在焦点序里')
+      want('chip', true, '480–760 档:项目 chip 还在')
+    } else {
+      want('rail', false, '<480 档:侧栏收起')
+      want('select', true, '<480 档:顶栏出项目选择器')
+      want('chip', false, '<480 档:项目 chip 降元素')
+      want('newWide', false, '<480 档:「新会话」缩成图标钮')
+      want('newNarrow', true, '<480 档:图标钮上场')
+    }
+    want('search', true, '搜索条任何一档都在场')
+
+    // 工具栏三件一件都不许冲出容器右缘(08-30 那条报障判据的继承者)。
+    const clip = root.getBoundingClientRect()
+    const seen = [`容器 ${width.toFixed(0)}`]
+    for (const [name, el] of [['选择器', select], ['搜索', search], ['新会话', shown(newWide) ? newWide : newNarrow]]) {
+      if (!shown(el)) continue
+      const r = el.getBoundingClientRect()
+      seen.push(`${name} 右缘余量 ${(clip.right - r.right).toFixed(0)}`)
+      if (r.right - clip.right > 1) problems.push(`${name} 右缘冲出容器 ${(r.right - clip.right).toFixed(1)}px`)
+      if (clip.left - r.left > 1) problems.push(`${name} 左缘冲出容器 ${(clip.left - r.left).toFixed(1)}px`)
+    }
+
+    // 最窄那一档:第一行 = [选择器][+],第二行 = 搜索。
+    if (width <= 480 && shown(select) && shown(newNarrow) && shown(search)) {
+      const a = select.getBoundingClientRect()
+      const b = newNarrow.getBoundingClientRect()
+      const c = search.getBoundingClientRect()
+      const mid = (r) => r.top + r.height / 2
+      seen.push(
+        `选择器 中线 ${mid(a).toFixed(0)} 右缘 ${a.right.toFixed(0)}`
+        + ` / + 中线 ${mid(b).toFixed(0)} 左缘 ${b.left.toFixed(0)} / 搜索 top ${c.top.toFixed(0)}`,
+      )
+      /*
+       * 「同一行」的判据是**竖中线**,不是 top:两件身量不同(选择器是 sm 档的
+       * 输入形,图标钮是一颗方钮),而工具栏 `align-items: center` —— 它们本来
+       * 就该 top 差着几像素、中线对齐。拿 top 判会把「对的」判成红(首跑差 3px)。
+       */
+      if (Math.abs(mid(a) - mid(b)) > 1) {
+        problems.push(
+          `<480 档:选择器与「新会话」不在同一行(竖中线差 ${Math.abs(mid(a) - mid(b)).toFixed(1)}px)`
+          + ' —— ui/Select 的 width:100% 又把 flex-basis 撑成整行了?',
+        )
+      }
+      // 而且次序是 [选择器][+]:`+` 在选择器右边,不是换行换到它下面去了。
+      if (b.left < a.right - 1) {
+        problems.push(
+          `<480 档:「新会话」没有排在选择器右边(它的左缘 ${b.left.toFixed(1)} < 选择器右缘 ${a.right.toFixed(1)})`,
+        )
+      }
+      if (c.top < a.bottom - 1) {
+        problems.push(`<480 档:搜索条没有独占第二行(它的 top ${c.top.toFixed(1)} 还在选择器下缘 ${a.bottom.toFixed(1)} 之上)`)
+      }
+    }
+    return { problems, seen, state }
+  }, band)
+}
+
+/**
+ * 行的几何(设计 §1.1:一行 = 固定字形列 + 弹性标题 + 右端定宽时间列)。
+ *
+ * 四条判据,一条都不能由重叠尺代劳:
+ *  ① **标题只截断不溢出**:`scrollWidth > clientWidth` 只有配着 `overflow: hidden`
+ *     才是「截断」,否则是墨溢出到别人身上(那把尺看不见墨);
+ *  ② **时间列右缘逐行对齐**(±0.5px):裁决 6 那条「标题永远从同一条竖线起笔」的
+ *     另一端 —— 右端也要是一条竖线,否则一列时间读起来是锯齿;
+ *  ③ **字形列左缘逐行对齐**:同一条判据的左端(普通聊天留空但**占位**);
+ *  ④ **树零横向溢出**:`scrollWidth ≤ clientWidth` —— 一行挤不下时该截断,
+ *     不该把整棵树推出一条横向滚动条。
+ *
+ * 只量顶层行(`data-depth="0"`):子行按设计缩进 26px,拿它去比左缘是在量缩进。
+ */
+async function checkRowGeometry(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('[data-focus-scope="expose"]')
+    const tree = root?.querySelector('[data-testid="expose-tree"]')
+    if (!root || !tree) return { error: '会话总览或树容器不在 DOM 里' }
+    const rows = [...tree.querySelectorAll('[data-session-id][data-depth="0"]')]
+    if (rows.length < 2) return { error: `顶层行只有 ${rows.length} 条 —— 对齐要至少两行才量得出` }
+
+    const problems = []
+    const seen = []
+    const lefts = []
+    const rights = []
+    for (const row of rows) {
+      const spans = [...row.children].filter((el) => el.tagName === 'SPAN')
+      const title = spans[0]
+      const time = spans[spans.length - 1]
+      const glyph = row.firstElementChild
+      if (!title || !time || !glyph) {
+        problems.push('行的结构对不上(字形列 / 标题 span / 时间 span 少了一格)')
+        continue
+      }
+      if (title.scrollWidth > title.clientWidth + 1) {
+        const st = getComputedStyle(title)
+        if (st.overflow === 'visible' && st.overflowX === 'visible') {
+          problems.push(
+            `标题「${(title.textContent ?? '').slice(0, 16)}」墨宽 ${title.scrollWidth}`
+            + ` > 盒宽 ${title.clientWidth},而 overflow 是 visible —— 那是溢出不是截断`,
+          )
+        }
+      }
+      lefts.push(glyph.getBoundingClientRect().left)
+      rights.push(time.getBoundingClientRect().right)
+    }
+    const spread = (xs) => Math.max(...xs) - Math.min(...xs)
+    seen.push(`${rows.length} 行:字形列左缘散布 ${spread(lefts).toFixed(2)}px,时间列右缘散布 ${spread(rights).toFixed(2)}px`)
+    if (spread(lefts) > 0.5) problems.push(`字形列左缘没对齐,散布 ${spread(lefts).toFixed(2)}px(标题该从同一条竖线起笔)`)
+    if (spread(rights) > 0.5) problems.push(`时间列右缘没对齐,散布 ${spread(rights).toFixed(2)}px`)
+
+    const over = tree.scrollWidth - tree.clientWidth
+    seen.push(`树 scrollWidth ${tree.scrollWidth} / clientWidth ${tree.clientWidth}`)
+    if (over > 1) problems.push(`树横向溢出 ${over}px —— 挤不下时该截断,不该推出横向滚动条`)
+    return { problems, seen }
+  })
+}
+
+/**
+ * 浮窗几何的**重钳**(设计 §4;实现是 34d91682 的 `fitFloatRect` + `useViewportReclamp`)。
+ *
+ * 病历逐字:宽屏上开出来的浮窗存下 `x=260 w=880`,把窗缩到 1100 之后
+ * `260 + 880 = 1140 > 1100`,右边缘被裁在屏幕外 —— 用户 09-03 报的
+ * 「不同宽度下 Sessions 浮窗展示奇怪」。
+ *
+ * 所以这一步必须**先宽后窄**:在 1400 的窗上用真手势(Dock 右键 → 浮窗)开出来,
+ * 让那格「宽屏的 rect」真的被存下,再 `setSize(1100, 800)` —— 只在窄窗上开一次
+ * 是量不到这个病的(那时候默认 rect 本来就是按窄视口算的)。
+ * 判据是 `FLOAT_MARGIN = 16`:整扇窗四边都要落在视口内缩 16px 的框里。
+ */
+const FLOAT_MARGIN = 16
+
+async function checkFloatReclamp(app, page) {
+  const win = await app.browserWindow(page)
+  const before = await win.evaluate((w) => ({ size: w.getSize(), min: w.getMinimumSize() }))
+  await win.evaluate((w) => w.setMinimumSize(320, 480))
+  try {
+    await win.evaluate((w) => w.setSize(1400, 860))
+    await delay(500)
+    const opened = await openAsFromDockMenu(page, 'sessions', /浮窗|Float/)
+    if (!opened) return { error: 'Dock 菜单里没有「浮窗 / Float」那一项 —— 这一步没有被试' }
+    await waitFor('浮窗里的总览就位', () =>
+      page.evaluate(() =>
+        Boolean(document.querySelector('[data-focus-scope="expose"]')?.closest('[role="dialog"]')),
+      ),
+    )
+    const wide = await page.evaluate(() => {
+      const el = document.querySelector('[data-focus-scope="expose"]')?.closest('[role="dialog"]')
+      const r = el.getBoundingClientRect()
+      return { x: Math.round(r.left), w: Math.round(r.width), vw: window.innerWidth }
+    })
+    await win.evaluate((w) => w.setSize(1100, 800))
+    // 重钳走的是一条 resize + rAF 合并,给它两帧再加一点余量。
+    await delay(600)
+    const narrow = await page.evaluate((margin) => {
+      const el = document.querySelector('[data-focus-scope="expose"]')?.closest('[role="dialog"]')
+      if (!el) return { error: '缩窗之后浮窗不在 DOM 里' }
+      const r = el.getBoundingClientRect()
+      const problems = []
+      if (r.right > window.innerWidth - margin + 0.5) {
+        problems.push(`右缘 ${r.right.toFixed(1)} > 视口 ${window.innerWidth} − ${margin}`)
+      }
+      if (r.left < margin - 0.5) problems.push(`左缘 ${r.left.toFixed(1)} < ${margin}`)
+      if (r.bottom > window.innerHeight - margin + 0.5) {
+        problems.push(`下缘 ${r.bottom.toFixed(1)} > 视口高 ${window.innerHeight} − ${margin}`)
+      }
+      return {
+        problems,
+        seen: `x=${Math.round(r.left)} w=${Math.round(r.width)} 右缘=${Math.round(r.right)} 视口=${window.innerWidth}×${window.innerHeight}`,
+      }
+    }, FLOAT_MARGIN)
+    return { ...narrow, wide: `宽窗上 x=${wide.x} w=${wide.w}(视口 ${wide.vw})` }
+  } finally {
+    await win.evaluate((w, back) => {
+      w.setSize(back.size[0], back.size[1])
+      w.setMinimumSize(back.min[0], back.min[1])
+    }, before)
+    await delay(500)
+  }
 }
 
 /**
@@ -593,47 +912,6 @@ async function sweep(page) {
 }
 
 /**
- * ListView 顶行的**在场检查** —— 律一/律四在「行溢出」这一形上的判据。
- *
- * ── 为什么这一条不能靠上面那把重叠尺 ────────────────────────────────────
- * 08-30 报障是「长组名把过滤框推出容器右缘,过滤框被裁掉」。flex 行里的项**永不
- * 互相重叠**:挤不下的时候它们是一个接一个地溢出到容器外面去,然后被祖先的
- * overflow 裁掉。于是 scanOverlaps 在修前修后都是零相交 —— 真机实测过,那一档的
- * 盒子清单里干脆没有 input(它整个被裁没了,连相交的资格都没有)。
- * 一把只会说「有没有压着」的尺,对「有没有被挤没」这一形是结构性失明的。
- *
- * 所以这个场景带自己的判据:**结构行里的每一件都必须完整落在容器可视区内**。
- * 这正是律四那句「变窄的次序永远是先截断 → 再有序降元素」的机器化 —— 被挤出
- * 边界不在「有序降元素」的名单里,没有谁声明过过滤框可以消失。
- * ──────────────────────────────────────────────────────────────────────
- */
-async function checkListTopRow(page) {
-  return page.evaluate(() => {
-    const shelf = document.querySelector('[data-shelf="right"]')
-    const list = document.querySelector('[data-testid="expose-list"]')
-    if (!shelf || !list) return { error: 'ListView 或右架子不在 DOM 里' }
-    const header = list.querySelector('header')
-    if (!header) return { error: 'ListView 顶行(header)不在 DOM 里' }
-    const clip = shelf.getBoundingClientRect()
-    const problems = []
-    const seen = []
-    for (const el of header.children) {
-      const r = el.getBoundingClientRect()
-      if (r.width <= 0 || r.height <= 0) continue
-      const cls = (typeof el.className === 'string' ? el.className : el.getAttribute('class')) ?? ''
-      const desc = `${el.tagName.toLowerCase()}${cls ? `.${String(cls).trim().split(/\s+/).join('.')}` : ''}`
-      const outRight = r.right - clip.right
-      const outLeft = clip.left - r.left
-      seen.push(`${desc} w=${r.width.toFixed(0)} 右缘余量=${(-outRight).toFixed(0)}`)
-      // 1px 容差与重叠尺同一口径(亚像素排版)。
-      if (outRight > 1) problems.push(`${desc} 右缘冲出容器 ${outRight.toFixed(1)}px(宽 ${r.width.toFixed(0)})`)
-      if (outLeft > 1) problems.push(`${desc} 左缘冲出容器 ${outLeft.toFixed(1)}px(宽 ${r.width.toFixed(0)})`)
-    }
-    return { problems, seen }
-  })
-}
-
-/**
  * 崩溃现场那条长 URL —— toast 挤压检查的被试。
  *
  * 形状是真机报障那一条逐字照抄:带 `?t=` 时间戳的模块 URL。它的要害是
@@ -740,22 +1018,13 @@ async function checkToastSqueeze(page) {
 
 /**
  * 一个场景 = 五档厚度,逐档滚一遍扫重叠。
- * 场景名只进日志与失败行 —— 尺一把,场景两个,判据一个字都不许分岔。
- * `extra` 是场景自带的附加判据(见 checkListTopRow 顶部为什么需要它)。
+ * 场景名只进日志与失败行 —— 尺一把,判据一个字都不许分岔。
+ * (09-04:`extra` 那格附加判据随 ListView 场景一起退役;三档在场表与行几何
+ * 各自成步,理由写在 `checkWidthBands` / `checkRowGeometry` 头上。)
  */
-async function sweepThicknesses(page, scenario, failures, extra) {
+async function sweepThicknesses(page, scenario, failures) {
   for (const target of THICKNESSES) {
     const width = await dragThicknessTo(page, target)
-    if (extra) {
-      const { error, problems, seen } = await extra(page)
-      if (error) throw new Error(error)
-      if (process.env.SQUEEZE_DUMP) console.log(`    [row ${target}px] ${seen.join(' | ')}`)
-      if (problems.length) {
-        console.log(`  ✗ ${scenario} ${target}px —— 结构行被挤出容器:`)
-        for (const problem of problems) console.log(`      ${problem}`)
-        failures.push(`${scenario} ${target}px:${problems.length} 件被挤出容器`)
-      }
-    }
     const { hits, boxes, steps } = await sweep(page)
     if (process.env.SQUEEZE_DUMP) {
       console.log(`    [dump ${scenario} ${target}px]\n      ${boxes.join('\n      ')}`)
@@ -781,7 +1050,7 @@ async function sweepThicknesses(page, scenario, failures, extra) {
 /**
  * 竖排 Dock 的预留检查(09-01 用户报障带截图:竖排 Dock 盖住右架子里查看器的正文)。
  *
- * 与 [4/10] 是同一条律三、同一把尺,只是换了一条边:那条量的是底边 Dock 压 composer,
+ * 与 [4/11] 是同一条律三、同一把尺,只是换了一条边:那条量的是底边 Dock 压 composer,
  * 这条量的是**左右边 Dock 压侧架子**。判据也是同一句——把该侧架子里「自己画内容」
  * 的盒子逐个取右缘,问一次 elementFromPoint:命中 Dock 就是被盖。
  *
@@ -1078,7 +1347,7 @@ async function main() {
   let app
   const failures = []
   try {
-    console.log('\n[1/10] 起一台 core,种下四种组名形状')
+    console.log('\n[1/11] 起一台 core,种下四种项目名形状 + 一组无项目')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -1101,7 +1370,7 @@ async function main() {
     if (!(await portConnects(rec.host, rec.port))) throw new Error('core 端口连不上')
 
     let seeded = 0
-    for (const group of SEED_GROUPS) {
+    for (const group of SEED_PROJECTS) {
       for (const name of group.names) {
         const result = await rpc(rec, 'sessions', 'create', { name })
         const id = result?.session?.id
@@ -1131,9 +1400,9 @@ async function main() {
         seeded += 1
       }
     }
-    console.log(`  ✓ 种了 ${seeded} 条会话 / ${SEED_GROUPS.length} 组`)
+    console.log(`  ✓ 种了 ${seeded} 条会话 / ${SEED_PROJECTS.length} 组(4 个项目 + 无项目)`)
 
-    console.log('\n[2/10] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
+    console.log('\n[2/11] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -1159,7 +1428,7 @@ async function main() {
     )
     console.log('  ✓ 钉上了,卡也画出来了')
 
-    console.log('\n[3/10] 律三的预留检查(粘性覆盖的代价)')
+    console.log('\n[3/11] 律三的预留检查(粘性覆盖的代价)')
     const reservation = await checkStickyReservation(page)
     if (reservation.error) throw new Error(reservation.error)
     if (reservation.problems.length) {
@@ -1174,7 +1443,7 @@ async function main() {
      * 与上一步分开报,是因为它们是**两个坐标系**里的同一件事(滚动 / 屏幕),
      * 红起来该修的地方也不同 —— 一条门该指得出该谁修。
      */
-    console.log('\n[4/10] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
+    console.log('\n[4/11] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
     const dockReserve = await checkDockReservation(page)
     if (dockReserve.error) throw new Error(dockReserve.error)
     if (dockReserve.skipped) {
@@ -1186,7 +1455,7 @@ async function main() {
       console.log(`  ✓ composer 四件全可达(${dockReserve.readings.join(' · ')})`)
     }
 
-    console.log('\n[5/10] 律三的预留检查(竖排 Dock:侧架子内容可达性)')
+    console.log('\n[5/11] 律三的预留检查(竖排 Dock:侧架子内容可达性)')
     for (const edge of ['right', 'left']) {
       const side = await checkSideShelfReach(page, edge)
       if (side.error) throw new Error(side.error)
@@ -1202,7 +1471,7 @@ async function main() {
      * 竖排 Dock 会把主区宽度整个改掉,不还原就是拿另一套布局去判它们(试过,红一档)。 */
     await checkSideShelfReach(page, 'bottom')
 
-    console.log('\n[6/10] 律二:composer 工具行不折行、不悬中(09-03 报障的产地)')
+    console.log('\n[6/11] 律二:composer 工具行不折行、不悬中(09-03 报障的产地)')
     const narrow = await narrowComposerTo(app, page, TARGET_PANEL_W)
     console.log(
       `    窗口宽 ${narrow.width} → composer 面板宽 ${narrow.panel.toFixed(1)}(目标 ${TARGET_PANEL_W})`,
@@ -1225,16 +1494,74 @@ async function main() {
       await narrow.restore()
     }
 
-    console.log('\n[7/10] 场景①总览:五档厚度,逐档滚一遍扫重叠')
+    console.log('\n[7/11] 场景①总览:五档厚度,逐档滚一遍扫重叠')
     await sweepThicknesses(page, '总览', failures)
 
-    console.log(`\n[8/10] 场景②进组后 ListView(长名组「${LIST_SCENARIO_GROUP}」):同样五档`)
-    // 在宽档(五档的最后一档 560)上点进去,窄档只负责被量 —— 这条门量的是排版,
-    // 不是「窄到 240 还点不点得中」。
-    await enterGroupNamed(page, LIST_SCENARIO_GROUP)
-    await sweepThicknesses(page, 'ListView', failures, checkListTopRow)
+    console.log('\n[8/11] 三档容器宽:谁在场、谁降元素、工具栏没被挤出去')
+    /*
+     * 窗要先撑宽:800 那一档的架子厚度够不着 `0.55 × 1280`(见 WIDE_WINDOW)。
+     * 撑宽这一手与 `[6/11]` 的 `narrowComposerTo` 是同一只(放开 minWidth 再
+     * setSize),量完在 finally 里还原 —— 后面几步量的是别的布局。
+     */
+    const winForBands = await app.browserWindow(page)
+    const sizeBefore = await winForBands.evaluate((w) => ({
+      size: w.getSize(),
+      min: w.getMinimumSize(),
+    }))
+    try {
+      await winForBands.evaluate((w, m) => w.setMinimumSize(m.minWidth, m.minHeight), NARROW_WINDOW)
+      await winForBands.evaluate((w, s2) => w.setSize(s2.width, s2.height), WIDE_WINDOW)
+      await delay(600)
+      const viewport = await page.evaluate(() => window.innerWidth)
+      console.log(`    窗撑到 ${viewport}(想要 ${WIDE_WINDOW.width};架子上限 = 0.55 × 视口)`)
+      for (const band of CONTAINER_BANDS) {
+        const { container, thickness } = await setExposeContainerTo(page, band)
+        if (Math.abs(container - band) > 2) {
+          console.log(`  ✗ 容器宽调不到 ${band}(实际 ${container.toFixed(1)},架子厚 ${thickness})`)
+          failures.push(`容器宽 ${band}:调不到位(实际 ${container.toFixed(1)})`)
+          continue
+        }
+        const bands = await checkWidthBands(page, container)
+        if (bands.error) throw new Error(bands.error)
+        console.log(`    [${band}px] ${bands.seen.join(' | ')}`)
+        if (bands.problems.length) {
+          for (const problem of bands.problems) console.log(`  ✗ 容器 ${band}px:${problem}`)
+          failures.push(`容器宽 ${band}px:${bands.problems.length} 条`)
+        } else {
+          console.log(`  ✓ 容器 ${band}px:在场表逐条对上,工具栏三件都在容器里`)
+        }
 
-    console.log('\n[9/10] 挤压纪律的 toast 版(崩溃弹框里那条无断点长 URL)')
+        // 行几何在**每一档**都问一遍:对齐是排版的性质,它在哪一档塌都算塌。
+        const geom = await checkRowGeometry(page)
+        if (geom.error) throw new Error(geom.error)
+        console.log(`    [${band}px] ${geom.seen.join(' | ')}`)
+        if (geom.problems.length) {
+          for (const problem of geom.problems) console.log(`  ✗ 容器 ${band}px:${problem}`)
+          failures.push(`行几何 ${band}px:${geom.problems.length} 条`)
+        } else {
+          console.log(`  ✓ 容器 ${band}px:标题只截断 · 两列各自一条竖线 · 树零横向溢出`)
+        }
+      }
+    } finally {
+      await winForBands.evaluate((w, back) => {
+        w.setSize(back.size[0], back.size[1])
+        w.setMinimumSize(back.min[0], back.min[1])
+      }, sizeBefore)
+      await delay(500)
+    }
+
+    console.log('\n[9/11] 浮窗几何:宽窗上开出来,缩到 1100 之后右缘不许出视口(设计 §4)')
+    const float = await checkFloatReclamp(app, page)
+    if (float.error) throw new Error(float.error)
+    console.log(`    ${float.wide} → 缩窗后 ${float.seen}`)
+    if (float.problems.length) {
+      for (const problem of float.problems) console.log(`  ✗ 浮窗重钳:${problem}`)
+      failures.push(`浮窗重钳:${float.problems.length} 条`)
+    } else {
+      console.log('  ✓ 缩窗一帧之后整扇窗回到视口内缩 16px 的框里')
+    }
+
+    console.log('\n[10/11] 挤压纪律的 toast 版(崩溃弹框里那条无断点长 URL)')
     const toast = await checkToastSqueeze(page)
     if (toast.error) throw new Error(toast.error)
     if (process.env.SQUEEZE_DUMP) console.log(`    [toast] ${toast.seen.join(' | ')}`)
@@ -1245,7 +1572,7 @@ async function main() {
       console.log(`  ✓ ${toast.rows} 条 toast:盒子没被撑宽,墨一件都没顶穿 padding`)
     }
 
-    console.log('\n[10/10] 收工')
+    console.log('\n[11/11] 收工')
     await app.close()
     app = undefined
   } finally {
@@ -1261,7 +1588,7 @@ async function main() {
     console.error(`\n[squeeze-gate] FAILED(${failures.length} 档):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[squeeze-gate] ok —— 两场景 × 五档全绿,零重叠')
+  console.log('\n[squeeze-gate] ok —— 五档零重叠 · 三档在场表与行几何全对 · 浮窗重钳回框')
 }
 
 main().catch((error) => {

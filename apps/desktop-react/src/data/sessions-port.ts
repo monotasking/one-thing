@@ -3,6 +3,7 @@ import type {
   GetSessionMessagesPageResponse,
   GetSessionUserMarkersResponse,
   GetSessionsListResponse,
+  UpdateSessionPinResponse,
 } from '@shared/ipc/chat'
 import type { SessionMutationResponse, SessionsCreateRequest } from '@shared/ipc/sessions'
 import type { GetSessionSegmentsResponse } from '@shared/ipc/toc'
@@ -18,9 +19,9 @@ import { sessionsRouter } from '@shared/ipc/sessions'
  * 失效)都是纯逻辑,不该为了测它去起一台 core。真实现是下面那一个,
  * 测试用 `configureSessionsPort` 换成假的。
  *
- * 形状是**契约的子集**,不是新契约:八个方法逐条对应 `sessionsRouter` 的
+ * 形状是**契约的子集**,不是新契约:九个方法逐条对应 `sessionsRouter` 的
  * `listMeta / getSegments / getMessagesPage / getUserMarkers / create /
- * updateWorkingDirectory`、推送面上的 `session:event`,与
+ * updateWorkingDirectory / updatePin`、推送面上的 `session:event`,与
  * `@onething/client` 的 `onSessionLifecycle`,一个字段都没有多。
  */
 export interface SessionsPort {
@@ -51,6 +52,15 @@ export interface SessionsPort {
     sessionId: string,
     workingDirectory: string | null,
   ): Promise<SessionMutationResponse>
+  /**
+   * 置顶 / 取消置顶(`sessions.updatePin`,契约 `@shared/ipc/sessions.ts`)。
+   *
+   * **后端不推事件**:`updateOnethingSessionPinForIpc` 改完账本就完事,没有
+   * `session:*` 广播,也不叫 `notifySessionIndexChanged` —— 所以这一口的
+   * 「屏幕怎么知道改成了」只能靠写路自己 `settle` 里那一发重拉(对账),
+   * 与工作目录那一口逐字同形。后端加固另批(见设计 §7 留账)。
+   */
+  updatePin(sessionId: string, isPinned: boolean): Promise<UpdateSessionPinResponse>
   getSegments(sessionId: string): Promise<GetSessionSegmentsResponse>
   getMessagesPage(sessionId: string, limit: number): Promise<GetSessionMessagesPageResponse>
   getUserMarkers(sessionId: string): Promise<GetSessionUserMarkersResponse>
@@ -101,6 +111,7 @@ async function realPort(): Promise<SessionsPort> {
     create: (request) => sessionsApi.create(request),
     updateWorkingDirectory: (sessionId, workingDirectory) =>
       sessionsApi.updateWorkingDirectory({ sessionId, workingDirectory }),
+    updatePin: (sessionId, isPinned) => sessionsApi.updatePin({ sessionId, isPinned }),
     onSessionEvent: (callback) => client.events.on(IPC_CHANNELS.SESSION_EVENT, callback),
     onSessionLifecycle: (callback) => onSessionLifecycle(client.events, callback),
   }

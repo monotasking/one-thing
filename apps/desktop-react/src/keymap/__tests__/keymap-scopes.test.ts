@@ -37,11 +37,14 @@ function key(combo: Combo): string {
 }
 
 describe('面域局部键:声明这一头', () => {
-  it('今天有局部键的只有两格:查看器三条、文件树两条', () => {
+  it('今天有局部键的三格:查看器三条、文件树两条、会话总览一条', () => {
     const withKeys = Object.values(FOCUS_SCOPES)
       .filter((spec) => (spec.keys?.length ?? 0) > 0)
       .map((spec) => spec.id)
-    expect(withKeys).toEqual(['viewer', 'files'])
+    expect(withKeys).toEqual(['viewer', 'files', 'expose'])
+    // 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行(⌘P 是全局的 toggle:search,
+    // shift 那一格正是两者的分界 —— 撞键表读的就是这一行)。
+    expect(focusScopeKeysOf('expose').map((k) => key(k.combo))).toEqual(['mod+shift+p'])
     expect(focusScopeKeysOf('viewer').map((k) => key(k.combo)).sort()).toEqual([
       'mod+f',
       'mod+l',

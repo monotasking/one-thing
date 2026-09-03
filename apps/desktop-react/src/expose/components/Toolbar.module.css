@@ -1,0 +1,93 @@
+/*
+ * 工具栏 —— 一行,三件:[窄档项目选择器] [搜索(弯腰件)] [新会话]。
+ * 挤压律一:这一行里吸剩余空间的只有搜索框,两端一律 flex: none。
+ */
+.toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--expose-pad) var(--sp-3);
+}
+
+/*
+ * 窄档才出场的项目选择器。**常驻 DOM**,由容器查询决定显不显 ——
+ * `display: none` 顺手把它移出无障碍树,所以任何一刻只有一个范围控件
+ * (宽档是侧栏那只 listbox)被读屏读到。
+ * 阈值 760 与 tokens 的 --expose-rail-bp 是同一事实的两处写法:
+ * `@container` 的条件里不能写 var(),改的时候两处一起改。
+ */
+.scopePick {
+  flex: none;
+  max-width: 40%;
+}
+
+.search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.searchIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+  color: var(--text-3);
+}
+
+.newWide {
+  flex: none;
+}
+
+.newIcon {
+  width: var(--fs-label);
+  height: var(--fs-label);
+}
+
+/* 窄档(< 480)那一颗:平时不在场。 */
+.newNarrow {
+  display: none;
+  flex: none;
+}
+
+/* ── 宽档(≥ 760):侧栏在场,顶栏不需要选择器 ────────────────────────── */
+@container expose (min-width: 761px) {
+  .scopePick {
+    display: none;
+  }
+}
+
+/*
+ * ── 窄形(< 480,--expose-chip-bp):搜索独占一行,新会话缩成图标钮 ────────
+ * 「缩成图标钮」是两件的换手,不是一件的变形:两颗按钮逻辑同一份(见 Toolbar.tsx),
+ * 任何一刻只有一颗在场,所以焦点序里也只有一颗。
+ */
+@container expose (max-width: 480px) {
+  .toolbar {
+    flex-wrap: wrap;
+    padding: var(--sp-3) var(--sp-4) var(--sp-2);
+  }
+  /* 律一在这一档要**重申一遍**:改了 flex 就要就地把收缩下界一起解开
+     (棘轮认的是「同一条规则里有没有」,不是「上面那条写过」)。 */
+  .search {
+    flex: 1 1 100%;
+    min-width: 0;
+    order: 2;
+  }
+  /*
+   * `flex: 1 1 0` 而不是 `1 1 auto`:`ui/Select` 的根(那颗 `.trigger`)自己写着
+   * `width: 100%`,basis 取 auto 时它会把**整行的宽**当成自己的基准尺寸,于是
+   * 「选择器 + 图标钮」加起来超过一行、图标钮被挤到第二行去(09-04 真机走查
+   * 460px 那张截图的病根)。basis 钉 0 之后两颗按剩余空间分,第一行就是
+   * `[选择器][+]`,搜索条靠 `order: 2` 独占第二行 —— 设计 §1.5 那一档的形。
+   */
+  .scopePick {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+  }
+  .newWide {
+    display: none;
+  }
+  .newNarrow {
+    display: inline-flex;
+  }
+}

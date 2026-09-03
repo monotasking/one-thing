@@ -257,10 +257,10 @@ async function runScenario(page, record, scenario) {
   const sessionId = made?.session?.id
   if (!sessionId) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(made)}`)
   await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('总览画出那张卡', () =>
-    page.evaluate(id => Boolean(document.querySelector(`[data-testid="card-${id}"]`)), sessionId),
+  await waitFor('总览画出那一行', () =>
+    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
   )
-  await clickTestId(page, `card-${sessionId}`)
+  await clickTestId(page, `session-row-${sessionId}`)
   await waitFor('聊天区就位(空树)', () =>
     page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
   )

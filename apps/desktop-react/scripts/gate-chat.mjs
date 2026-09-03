@@ -237,10 +237,13 @@ async function main() {
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
     await clickTestId(page, 'dock-tile-sessions')
-    await waitFor('总览画出那张卡', () =>
-      page.evaluate(id => Boolean(document.querySelector(`[data-testid="card-${id}"]`)), sessionId),
+    await waitFor('总览画出那一行', () =>
+      page.evaluate(
+        id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)),
+        sessionId,
+      ),
     )
-    await clickTestId(page, `card-${sessionId}`)
+    await clickTestId(page, `session-row-${sessionId}`)
     // 进会话 = 聊天区起底(listRaw → 折)。空会话折出来是空树,不是错误。
     await waitFor('聊天区就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
@@ -306,17 +309,20 @@ async function main() {
       `两侧都是 ${compared.expected.length} 条:${JSON.stringify(compared.expected)}`,
     )
 
-    console.log('\n[6/7] ④ 在总览组头上点那颗 + —— core 那边必须真的多一条会话')
-    // 门里建的那条会话没有 workingDirectory,所以它落在「独立会话」组
-    // (expose/projection.ts 的 LOOSE_GROUP_ID)。组头那颗 + 的落点就在它上面。
+    console.log('\n[6/7] ④ 在总览工具栏上点「新会话」—— core 那边必须真的多一条会话')
+    /*
+     * 09-04 方向 A:项目组连同组头那颗 `+` 一起退役,「新会话」搬到工具栏
+     * (`expose-new-session`),范围是 `all` 时建的是一条无项目会话 ——
+     * 与从前「落在独立会话组、点它组头那颗 +」逐字同一件事。
+     */
     await clickTestId(page, 'dock-tile-sessions')
-    await waitFor('总览里那个组的组头就位', () =>
-      page.evaluate(() => Boolean(document.querySelector('[data-testid="group-plus-loose"]'))),
+    await waitFor('总览工具栏上的「新会话」就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="expose-new-session"]'))),
     )
     const idsBefore = new Set(
       ((await rpc(record, 'sessions', 'listMeta')).sessions ?? []).map(s => s.id),
     )
-    await clickTestId(page, 'group-plus-loose')
+    await clickTestId(page, 'expose-new-session')
 
     const createdId = await waitFor('core 的会话列表里多出一条', async () => {
       const list = await rpc(record, 'sessions', 'listMeta')
