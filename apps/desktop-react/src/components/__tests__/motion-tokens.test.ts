@@ -4,6 +4,7 @@ import path from 'node:path'
 import {
   ATT_GRACE_MS,
   DOCK_HIDE_DELAY_MS,
+  DOCK_WAKE_DWELL_MS,
   DUR_MS,
   EXIT_MS,
   EXIT_MS_BY_TIER,
@@ -70,6 +71,9 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
      * 不该按「是不是动画」挑着执行。09-02 预览泡退役,它那四条(preview-delay /
      * -grace / -switch / dock-aim-window)与回身窗口的 dock-reentry 一并删了。 */
     ['--dur-dock-hide-delay', DOCK_HIDE_DELAY_MS],
+    /* 09-03 新增的同类:唤醒停留门槛(碰到 → 停留)。它与收回宽限是一对
+     * ——一个说「多久才叫得出来」,一个说「多久才收得回去」,两个都是手势窗口。 */
+    ['--dur-dock-wake', DOCK_WAKE_DWELL_MS],
   ])('%s', (name, js) => {
     expect(tokenMs(tokensCss, name), `tokens.css 里找不到 ${name}`).toBe(js)
   })
@@ -153,6 +157,7 @@ describe('动效档:JS 镜像的那一列与 motion.css 的档位块相等', () 
       '--dur-preview-delay',
       '--dur-toc-hover',
       '--dur-att-grace',
+      '--dur-dock-wake',
       '--dur-spin',
       '--dur-toast-success',
       '--dur-toast-info',

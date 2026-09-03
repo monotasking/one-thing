@@ -20,11 +20,12 @@ import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
 import { TocPanel } from '../toc/TocPanel'
 import { useChatToc } from '../toc/useChatToc'
-import { DOCK_HIDE_DELAY_MS } from './motion'
+import { DOCK_HIDE_DELAY_MS, DOCK_WAKE_DWELL_MS } from './motion'
 import { useT } from '../i18n'
 import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
-import { SHELF_SIDES, settledDockRect, shouldShowDock } from '../stage/transitions'
+import { SHELF_SIDES, settledDockRect, shouldShowDock, withinDockWakeBand } from '../stage/transitions'
 import type { Rect } from '../stage/transitions'
+import type { Point } from '../stage/types'
 import { DOCK_AXIS } from '../stage/types'
 import type { DockAlign, DockEdge, DockSize } from '../stage/types'
 import s from './AppShell.module.css'
@@ -170,6 +171,48 @@ export function AppShell() {
         hideTimer = null
       }
     }
+    /** 收回宽限:离开留驻区(或出了窗)之后缓一拍再收,路过抖动不塌;再进入即取消。 */
+    const scheduleHide = () => {
+      if (hideTimer) return
+      hideTimer = setTimeout(() => {
+        hideTimer = null
+        setShown(false)
+      }, DOCK_HIDE_DELAY_MS)
+    }
+
+    /*
+     * ── 唤醒生命周期(09-03,报障「dock 的出现太敏感」)───────────────────────
+     *
+     * 「藏着 → 出来」这一跳前多了一道**停留门槛**:进带不算数,在带内连续停满
+     * DOCK_WAKE_DWELL_MS 才唤醒。判据本身在纯函数 shouldShowDock 里(宿主只喂时间),
+     * 这里管的是那张表的**寿命**,六件事:
+     *
+     *   进带 → **起表**:那一发 move 排一个计时器,记下进带的时刻。
+     *   在带 → **续表**:之后每一发 move 只更新「最后一次已知指针」,计时器不重排
+     *                     —— 停留是「连续待够」,不是「最后一下之后再等 180ms」。
+     *   出带 → **清表**:任一方向离开窄带即 clearTimeout,下次进带重新计时。
+     *   出窗 → **清表**:pointerleave / mouseout 无 relatedTarget / 坐标越出视口 /
+     *                     window blur / 页面转入后台。**这一件是本批的另一半**:
+     *                     出窗之后 pointermove 就停发了,计时器不会知道手已经走了,
+     *                     于是「去点系统 Dock,我们的也跟着弹出来」。
+     *   到点 → **再判一次**:拿最后一次已知指针再问一遍 shouldShowDock(带上真实
+     *                     停留时长)。计时器到点不等于此刻还在带内 —— 最后一发 move
+     *                     可能正踩在带外,或者干脆已经没有指针了。
+     *   之后 → **交给留驻语义**:出来之后这条路一个字不动(24 余量 / 停稳位 /
+     *                     300ms 收回宽限 / 08-31 那 12 组手势)。
+     *
+     * 这些量为什么不是 state:它们每帧都可能变,进依赖数组就是每帧重挂一次监听。
+     */
+    let wakeTimer: ReturnType<typeof setTimeout> | null = null
+    let bandEnteredAt = 0
+    let lastPointer: Point | null = null
+    const cancelWake = () => {
+      if (wakeTimer) {
+        clearTimeout(wakeTimer)
+        wakeTimer = null
+      }
+      lastPointer = null
+    }
     /*
      * Dock 离那条边多远(--sp-3)。量一次而不是每帧问一次:它是个设计常数,
      * 不会在指针移动期间变 —— 而 pointermove 是每帧都跑的那条路。
@@ -253,37 +296,102 @@ export function AppShell() {
        * 藏着的时候连量都不量:留驻区讲的是「手已经在 Dock 上了」,那时候没有主语。
        * 顺带省下每帧一次 getBoundingClientRect —— pointermove 是每帧都跑的那条路。
        *
+       * 下面因此是**三段**,顺序就是判据的顺序:出窗 → 藏着(唤醒)→ 出来(留驻)。
+       */
+      const shown = peekingRef.current
+      /*
+       * 坐标越出视口 = 手已经不在这扇窗里了(拖到系统 Dock 上、拖到别的屏)。
+       * 这一发之后 pointermove 多半就停发了,所以当场按「出窗」办 —— 详见 onLeaveWindow。
+       */
+      if (pointer.x < 0 || pointer.y < 0 || pointer.x > viewport.w || pointer.y > viewport.h) {
+        onLeaveWindow()
+        return
+      }
+      if (!shown) {
+        /*
+         * 藏着的时候 = 只认贴边窄带,**而且要停够**,连缓存都不必碰(纯算术,零 DOM)。
+         * 这一支是「唤醒要克制」那条线:08-31「自动出现范围太大」与 09-03「出现太敏感」
+         * 都由它守着 —— 前者管范围(窄带),后者管意图(停留)。
+         *
+         * **每帧零布局读**:进带那一发排一个计时器,之后每一发只做一次算术判「还在带内吗」。
+         */
+        if (!withinDockWakeBand(pointer, viewport, dockEdge)) {
+          cancelWake()
+          return
+        }
+        lastPointer = pointer
+        if (!wakeTimer) {
+          bandEnteredAt = Date.now()
+          wakeTimer = setTimeout(() => {
+            wakeTimer = null
+            const settledPointer = lastPointer
+            if (!settledPointer) return
+            // 到点再判一次:判据仍只有 shouldShowDock 一处,宿主只把「停了多久」递进去。
+            if (
+              shouldShowDock({
+                shown: false,
+                pointer: settledPointer,
+                viewport,
+                edge: dockEdge,
+                dwelledMs: Date.now() - bandEnteredAt,
+              })
+            ) {
+              cancelHide()
+              setShown(true)
+            }
+          }, DOCK_WAKE_DWELL_MS)
+        }
+        return
+      }
+      /*
+       * 已经出来 = 留驻语义,**一个字没动**(09-03 只在上面那一跳前加了门槛)。
        * 量到手时判的是**停稳位**不是量到的那个矩形(08-31 修「唤醒后轻微上移秒消失」):
        * 滑入动画走 transform,140ms 里矩形一直在动,而手往上够那块瓦只要几十
        * 毫秒 —— 拿飞行中的位置去问「离开没有」,答案必然是「离开了」。
        * 真机时间线与换算见 transitions.settledDockRect 的注释。
        */
-      const shown = peekingRef.current
-      /*
-       * 藏着的时候 = 只认贴边窄带,连缓存都不必碰(纯算术,零 DOM)。
-       * 这一支也是「唤醒要克制」的那条线:08-31「自动出现范围太大」由它守着。
-       */
-      const g = shown ? (geom ?? measure()) : null
-      if (shouldShowDock({ shown, pointer, viewport, edge: dockEdge, rect: g?.rect })) {
+      const g = geom ?? measure()
+      if (shouldShowDock({ shown: true, pointer, viewport, edge: dockEdge, rect: g?.rect })) {
         cancelHide()
         setShown(true)
         return
       }
-      // 收回宽限:离开留驻区后缓一拍再收,路过抖动不塌;再进入即取消。
-      if (!hideTimer) {
-        hideTimer = setTimeout(() => {
-          hideTimer = null
-          setShown(false)
-        }, DOCK_HIDE_DELAY_MS)
-      }
+      scheduleHide()
+    }
+    /*
+     * 出窗:唤醒那张表**当场作废**,而已经出来的 Dock 走既有的 300ms 收回宽限
+     * (出窗之后没有第二发 pointermove 来替它排这一拍,所以在这里排)。
+     * 三个来源判的是同一件事「指针不在这扇窗里了」,缺一个都会漏:
+     *   · pointerleave / mouseout(relatedTarget 为 null)—— 指针移出文档;
+     *   · window blur —— 焦点被别的窗口拿走(点系统 Dock 就是这一条);
+     *   · visibilitychange 转 hidden —— 窗口被遮住 / 转入后台,move 一样停发。
+     */
+    const onLeaveWindow = () => {
+      cancelWake()
+      if (peekingRef.current) scheduleHide()
+    }
+    const onMouseOut = (e: MouseEvent) => {
+      if (e.relatedTarget === null) onLeaveWindow()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') onLeaveWindow()
     }
     window.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerleave', onLeaveWindow)
+    document.addEventListener('mouseout', onMouseOut)
+    window.addEventListener('blur', onLeaveWindow)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelHide()
+      cancelWake()
       classWatch.disconnect()
       treeWatch.disconnect()
       window.removeEventListener('resize', onResize)
       window.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerleave', onLeaveWindow)
+      document.removeEventListener('mouseout', onMouseOut)
+      window.removeEventListener('blur', onLeaveWindow)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [autohide, dockEdge])
 

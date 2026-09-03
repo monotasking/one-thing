@@ -15,6 +15,19 @@ export const FLASH_MS = 240 // --dur-flash
 export const TOOLTIP_DELAY_MS = 300 // --dur-tooltip-delay
 // --dur-dock-hide-delay:自动隐藏的收回宽限,离开留驻区后缓这么久才收,路过抖动不塌
 export const DOCK_HIDE_DELAY_MS = 300
+/**
+ * --dur-dock-wake:自动隐藏的**唤醒停留门槛** —— 指针进了贴边窄带之后要在带内
+ * 连续停满这么久,藏着的 Dock 才出来(09-03 用户报障「dock 的出现太敏感」)。
+ *
+ * macOS 的屏幕边是**墙**:指针顶上去停在那儿是自然结果。我们的窗口边不是墙 ——
+ * 去点系统 Dock、去别的窗口、去拖窗口边,每一次都要**穿过**那 8px,穿一次唤醒一次。
+ * 所以门槛不是「碰到」而是「停留」:穿过去的手一次都留不住,想叫它的手停一下就出来。
+ *
+ * 180ms 是「一次有意的停顿」的量级(比一次穿越的 20–30ms 大一个量级,比
+ * --dur-tooltip-delay 的 300ms 短 —— 唤醒一条边不该比读一句提示还慢)。
+ * 它是**意图门槛**不是动画,动效档(none)不清零它,reduced-motion 也不影响它。
+ */
+export const DOCK_WAKE_DWELL_MS = 180
 // --dur-skeleton-delay:载入骨架的出场延迟。比这更快回来的请求根本不该闪一下骨架
 // (规范:150ms 内到手就当作「立刻」)。
 export const SKELETON_DELAY_MS = 150

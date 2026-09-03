@@ -13,6 +13,7 @@ import type {
   StageState,
   Viewport,
 } from './types'
+import { DOCK_WAKE_DWELL_MS } from '../components/motion'
 import { foldFlatIntoDefaultSpace } from '../workspace/per-space'
 import { DEFAULT_SPACE_ID } from '../workspace/types'
 
@@ -77,6 +78,26 @@ export const TEAR_OFF_DISTANCE = 24
  * 唤醒热区因此高 12(inset) + 62(身量) + 24(pad) = **98px**、宽 707px,
  * 而 composer 输入区是 y 775…799 —— **整条输入区 100% 落在唤醒区里**,
  * 指针放到输入框上 Dock 就弹出来,正是用户报的那件事。
+ *
+ * ── 09-03 追补:唤醒从「碰到」改成「停留」,于是这里是**两个语义、三个数** ──
+ *
+ * 病历:用户报「dock 的出现太敏感」。09-01 那一批把唤醒收窄到 8px 之后,唤醒
+ * 判据仍然是「离边 ≤8px 立刻为真」—— **零停留、零出窗判断**。macOS 的屏幕边是
+ * 一堵墙(指针顶住会自然停在那里),而我们的窗口边不是:去点系统 Dock、去别的
+ * 窗口、去拖窗口边,都要**穿过**这 8px,穿一次唤醒一次。
+ *
+ * 修法不是把带宽再调小(它只能往小调,而再小就瞄不准了 —— 见 DOCK_WAKE_BAND),
+ * 而是给这一跳加一道**意图门槛**:进带之后要连续停满 DOCK_WAKE_DWELL_MS 才唤醒。
+ * 穿越在自然速度下只在带内待 1–2 帧,一次都留不住;想叫它的手停一下就出来。
+ *
+ * 与之配套的另一半在**宿主**里(AppShell 的「唤醒生命周期」一节):指针出了窗
+ * (pointerleave / mouseout 无 relatedTarget / 坐标越出视口 / window blur /
+ * 页面转入后台)必须当场清掉那张表 —— 出窗之后 pointermove 就停发了,
+ * 计时器会以为手还老老实实停在边上,于是「去点系统 Dock,我们的也弹出来」。
+ * 这一件只能在宿主判(纯函数看不见「事件不来了」),所以它不在这个文件里。
+ *
+ * **留驻语义一个字没动**:24 的余量、停稳位判据、300ms 收回宽限、08-31 那 12 组
+ * 手势,全部原样 —— 报障出在「怎么叫得出来」,不在「出来之后怎么留住」。
  */
 
 /**
@@ -85,8 +106,26 @@ export const TEAR_OFF_DISTANCE = 24
  * 它必须窄到碰不到任何可交互的东西:同一次真机量到,最低的那件(composer 输入区 /
  * 发送键)下缘离视口底 29px,8 留出 21px 余地。底边挂了架子时那一截还会更薄,
  * 所以这个数只该往小调,不该往大调 —— 想让 Dock 更好叫出来,调的是别处。
+ *
+ * 09-03「太敏感」那一批**一个字没动它**:带宽不是病根(见 DOCK_WAKE_DWELL_MS 的病历),
+ * 而这个数往哪个方向调都会踩到上面那句 —— 调大就碰输入区,调小就更难瞄准。
  */
 export const DOCK_WAKE_BAND = 8
+
+/**
+ * **停留**:进了窄带之后要在带内连续停满多久才唤醒(与 --dur-dock-wake 同一事实,
+ * JS 侧的产地是 components/motion.ts —— 时长只许有一处镜像)。
+ *
+ * 病历(09-03,用户报「dock 的出现太敏感」):修前唤醒是「离边 ≤8px 立刻为真」,
+ * **零停留、零出窗判断**。macOS 的屏幕边是一堵墙,指针顶上去停在那儿是物理结果;
+ * 我们的窗口边不是墙 —— 去点系统 Dock、去别的窗口、去拖窗口边,每一次都要
+ * **穿过**这 8px。一次穿越在自然速度(6px/帧)下只占带内 1–2 帧(20–30ms),
+ * 却每次都唤醒一次,这就是「太敏感」的字面机制。
+ *
+ * 所以门槛换成**意图**:穿过去的手一次都留不住,想叫它的手停一下就出来。
+ * 这一格只挡「藏着 → 出来」那一跳,出来之后的留驻语义一个字不动(见 shouldShowDock)。
+ */
+export { DOCK_WAKE_DWELL_MS }
 
 /**
  * **留驻**:Dock 已经出来之后,在本体四周放多少余量仍算「手还在这儿」
@@ -955,10 +994,14 @@ export function withinDockHoldZone(
 /**
  * **Dock 此刻该不该在屏上** —— 唯一回答这句话的地方(09-01)。
  *
- * 两个语义在这里分岔,而分岔就是那一行 `if (!shown) return false`:
- *  - 还没出来(`shown === false`)→ **唤醒**:只认贴边窄带。留驻区一个字都不问 ——
- *    它讲的是「手已经在 Dock 上了,别为一点抖动就跑」,而手还没把它叫出来时,
- *    这句话没有主语。
+ * 两个语义在这里分岔,而分岔就是那一行 `if (!shown)`:
+ *  - 还没出来(`shown === false`)→ **唤醒**:贴边窄带 **且**在带内停够
+ *    `DOCK_WAKE_DWELL_MS`。留驻区一个字都不问 —— 它讲的是「手已经在 Dock 上了,
+ *    别为一点抖动就跑」,而手还没把它叫出来时,这句话没有主语。
+ *    停留那一半是 09-03 加的(报障「dock 的出现太敏感」):窗口边不是墙,
+ *    穿过去的手不该唤醒它,病历写在 DOCK_WAKE_DWELL_MS 上。
+ *    时间由宿主喂(`dwelledMs` = 指针在带内已经连续待了多久),**判据仍只有这一处**:
+ *    宿主只负责起表 / 续表 / 清表,「够不够」这句话不许在宿主里再写一遍。
  *  - 已经出来(`shown === true`)→ **留驻**:窄带 ∪ 停稳位留驻区(含本体到视口边
  *    那条 4px 死缝,08-29「一闪而逝」的根因)。
  *
@@ -967,6 +1010,7 @@ export function withinDockHoldZone(
  * 判据进了这里,合并就得先删掉一行有名字、有病历、有反证用例的代码。
  *
  * `rect` = Dock 的**停稳位**(settledDockRect 算出来的),藏着时不必量也不该量。
+ * `dwelledMs` 缺省 0:纯函数不认识时钟,不喂时间就是「刚碰到」。
  */
 export function shouldShowDock(args: {
   shown: boolean
@@ -974,10 +1018,15 @@ export function shouldShowDock(args: {
   viewport: Viewport
   edge: DockEdge
   rect?: Rect
+  dwelledMs?: number
 }): boolean {
-  const { shown, pointer, viewport, edge, rect } = args
-  if (withinDockWakeBand(pointer, viewport, edge)) return true
-  if (!shown) return false
+  const { shown, pointer, viewport, edge, rect, dwelledMs } = args
+  const inBand = withinDockWakeBand(pointer, viewport, edge)
+  // 藏着 → 唤醒:窄带**且**停够。缺省 0 = 「刚碰到」,所以不传时间就永远唤不醒 ——
+  // 宿主漏喂时间会当场表现为「叫不出来」,而不是悄悄退回旧的碰一下就出来。
+  if (!shown) return inBand && (dwelledMs ?? 0) >= DOCK_WAKE_DWELL_MS
+  // 已经出来 → 留驻:窄带 ∪ 停稳位留驻区,**不看** dwelledMs(它是入门的门槛,不是住下的条件)。
+  if (inBand) return true
   return rect ? withinDockHoldZone(pointer, viewport, edge, rect) : false
 }
 

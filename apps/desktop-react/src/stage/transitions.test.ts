@@ -65,6 +65,7 @@ import {
   shouldShowDock,
   DOCK_HOLD_PAD,
   DOCK_WAKE_BAND,
+  DOCK_WAKE_DWELL_MS,
 } from './transitions'
 import { emptyShelves } from './transitions'
 import { DEFAULT_SPACE_ID } from '../workspace/types'
@@ -1471,8 +1472,13 @@ describe('自动隐藏的留驻区:判停稳位而不是飞行中的矩形', () 
 describe('唤醒与留驻是两个语义(09-01 报障:输入区被唤醒区盖住)', () => {
   const vp: Viewport = { w: 1280, h: 828 }
   const SETTLED = { left: 310.5, right: 969.5, top: 754, bottom: 816 }
-  const at = (shown: boolean, x: number, y: number) =>
-    shouldShowDock({ shown, pointer: { x, y }, viewport: vp, edge: 'bottom', rect: SETTLED })
+  /**
+   * 09-03 起唤醒多了一个入参:**在窄带里已经停了多久**。这个帮手默认喂足
+   * (DOCK_WAKE_DWELL_MS),于是下面「藏着时」那几条判的仍然是**范围**这件事 ——
+   * 停留门槛单独由下一个 describe 钉,两件事不搅在一组断言里。
+   */
+  const at = (shown: boolean, x: number, y: number, dwelledMs = DOCK_WAKE_DWELL_MS) =>
+    shouldShowDock({ shown, pointer: { x, y }, viewport: vp, edge: 'bottom', rect: SETTLED, dwelledMs })
 
   it('藏着时:composer 输入区 / 发送键上的每一点都不唤醒(报障那几点)', () => {
     expect(at(false, 552, 787)).toBe(false) // 输入区中心
@@ -1518,11 +1524,91 @@ describe('唤醒与留驻是两个语义(09-01 报障:输入区被唤醒区盖�
     ]
     for (const { edge, wake, inside } of edges) {
       const rect = { left: 0, right: vp.w, top: 0, bottom: vp.h }
-      expect(shouldShowDock({ shown: false, pointer: wake, viewport: vp, edge })).toBe(true)
-      expect(shouldShowDock({ shown: false, pointer: inside, viewport: vp, edge })).toBe(false)
+      const dwelledMs = DOCK_WAKE_DWELL_MS
+      expect(shouldShowDock({ shown: false, pointer: wake, viewport: vp, edge, dwelledMs })).toBe(true)
+      expect(shouldShowDock({ shown: false, pointer: inside, viewport: vp, edge, dwelledMs })).toBe(false)
       // 同一点,出来之后被留驻区接住(这里的矩形铺满视口,只为证明分岔真的分了)。
       expect(shouldShowDock({ shown: true, pointer: inside, viewport: vp, edge, rect })).toBe(true)
     }
+  })
+})
+
+/**
+ * 09-03 报障:「dock 的出现太敏感」。
+ *
+ * 唤醒从「碰到」改成「停留」:进了窄带还不算数,要在带内**连续停满**
+ * DOCK_WAKE_DWELL_MS 才唤醒。理由是窗口边不是墙 —— 去点系统 Dock / 去别的窗口 /
+ * 拖窗口边都要穿过那 8px,穿一次唤醒一次(病历写在 transitions.ts 的文件头)。
+ *
+ * **反证纪律**:把 shouldShowDock 里 `&& (dwelledMs ?? 0) >= DOCK_WAKE_DWELL_MS`
+ * 那半句删掉,下面「不够不出来」三条立刻红(已真跑过);真机那一半(出窗之后
+ * 计时器还在跑)在纯函数里看不见,由 scripts/gate-dock-wake.mjs 的③与
+ * components/__tests__/dock-autohide.test.tsx 钉着。
+ */
+describe('唤醒是停留不是碰到(09-03 报障:出现太敏感)', () => {
+  const vp: Viewport = { w: 1280, h: 828 }
+  const SETTLED = { left: 310.5, right: 969.5, top: 754, bottom: 816 }
+  const wake = (dwelledMs?: number) =>
+    shouldShowDock({
+      shown: false,
+      pointer: { x: 640, y: vp.h - 2 },
+      viewport: vp,
+      edge: 'bottom',
+      rect: SETTLED,
+      dwelledMs,
+    })
+
+  it('藏着 + 带内 + 停够 → 出来', () => {
+    expect(wake(DOCK_WAKE_DWELL_MS)).toBe(true)
+    expect(wake(DOCK_WAKE_DWELL_MS + 1000)).toBe(true)
+  })
+
+  it('藏着 + 带内 + 停不够 → 不出来(「穿过去」那一下就落在这里)', () => {
+    expect(wake(DOCK_WAKE_DWELL_MS - 1)).toBe(false)
+    // 自然速度 6px/帧 穿过 8px 的带 ≈ 1.3 帧 ≈ 22ms —— 差一个量级。
+    expect(wake(22)).toBe(false)
+    expect(wake(0)).toBe(false)
+  })
+
+  it('不喂时间 = 刚碰到 —— 纯函数不认识时钟,缺省不许退回旧行为', () => {
+    expect(wake(undefined)).toBe(false)
+  })
+
+  it('停够也只在带内算数:输入区上停一整天照旧不唤醒', () => {
+    const onComposer = shouldShowDock({
+      shown: false,
+      pointer: { x: 552, y: 787 },
+      viewport: vp,
+      edge: 'bottom',
+      rect: SETTLED,
+      dwelledMs: 10_000,
+    })
+    expect(onComposer).toBe(false)
+  })
+
+  it('已经出来之后**不看**停留 —— 它是入门的门槛,不是住下的条件', () => {
+    const hold = (dwelledMs?: number) =>
+      shouldShowDock({
+        shown: true,
+        pointer: { x: 640, y: SETTLED.top - 10 },
+        viewport: vp,
+        edge: 'bottom',
+        rect: SETTLED,
+        dwelledMs,
+      })
+    expect(hold(undefined)).toBe(true)
+    expect(hold(0)).toBe(true)
+    // 窄带那一支同理(留驻语义 08-31 那 12 组一条不回退)。
+    expect(
+      shouldShowDock({
+        shown: true,
+        pointer: { x: 640, y: vp.h - 1 },
+        viewport: vp,
+        edge: 'bottom',
+        rect: SETTLED,
+        dwelledMs: 0,
+      }),
+    ).toBe(true)
   })
 })
 
@@ -1555,6 +1641,15 @@ describe('--dock-wake-band / --dock-hold-pad 与 JS 常量同源', () => {
 
   it('唤醒必须比留驻克制 —— 反过来就是报障那一天', () => {
     expect(DOCK_WAKE_BAND).toBeLessThan(DOCK_HOLD_PAD)
+  })
+
+  /**
+   * 停留门槛的两侧对账在 components/__tests__/motion-tokens.test.ts(ms 那张表的产地
+   * 是 tokens.css,JS 侧唯一镜像是 components/motion.ts)。这里只钉它的**量级**:
+   * 一次自然速度的穿越在带内只待 20–30ms,门槛必须比那大一个量级才拦得住。
+   */
+  it('停留门槛比一次穿越大一个量级', () => {
+    expect(DOCK_WAKE_DWELL_MS).toBeGreaterThanOrEqual(100)
   })
 })
 

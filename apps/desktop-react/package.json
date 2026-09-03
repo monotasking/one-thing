@@ -39,6 +39,7 @@
     "gate:workspace": "node scripts/gate-workspace.mjs",
     "gate:a11y": "node scripts/gate-a11y.mjs",
     "gate:dock": "node scripts/gate-dock.mjs",
+    "gate:dock-wake": "node scripts/gate-dock-wake.mjs",
     "gate:focus": "node scripts/gate-focus.mjs"
   },
   "dependencies": {

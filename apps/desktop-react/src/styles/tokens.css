@@ -103,6 +103,11 @@
   /* Dock 自动隐藏的收回宽限:离开留驻区之后缓这么久才收,路过抖动不塌;
    * 再进入即取消(JS 侧镜像见 components/motion.ts)。 */
   --dur-dock-hide-delay: 300ms;
+  /* Dock 自动隐藏的**唤醒停留门槛**:指针进了 --dock-wake-band 那条窄带之后,
+   * 要在带内连续停满这么久才把藏着的 Dock 叫出来(09-03「出现太敏感」的修法 ——
+   * 窗口边不是墙,穿过去的手不该唤醒它)。手势门槛不是动画,动效档不清零它。
+   * JS 侧镜像见 components/motion.ts,由 __tests__/motion-tokens.test.ts 逐条比对。 */
+  --dur-dock-wake: 180ms;
 
   /* 投影 */
   --sh-1: 0 1px 3px rgba(43, 42, 38, 0.08);
