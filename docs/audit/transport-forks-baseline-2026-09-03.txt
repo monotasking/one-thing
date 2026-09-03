@@ -1,0 +1,33 @@
+# transport 分叉棘轮基线 (B0, docs/design/backend-transport-forks-2026-09.md §2.4)
+# 两把尺子,都由 `scripts/transport-gate.mjs` 采,规矩一条:**只许降**。
+#
+# `forks:<域文件> <n>` —— `packages/backend/rpc/domains/*.ts` 里读了几次派发上下文的
+#   `transport`(注释与字符串先剥掉;认 context/ctx/dispatchContext/rpcContext 四种形参名)。
+#   **不认** `request.config?.transport === 'stdio'` 那种:它问的是 MCP server 用哪种传输起,
+#   与派发上下文无关。任一文件高于这里的数、或出现这里没有的域文件 → 红;
+#   文件从表里消失 = 那个域治愈了(降到 0),是 improvement。
+#
+# `ipcMain:apps/desktop-react/electron <n>` —— 新壳主进程手写的 IPC 通道条数
+#   (`ipcMain.handle(` + `ipcMain.on(`)。今天只有 `host:connection` 一条:
+#   渲染层其余全走 HTTP/SSE(CLAUDE.md「Process model」的二进程图)。
+#
+# 2026-09-03 B0 起点(HEAD 6182962e 之后的工作树):20 处读法 / 14 个域文件,ipcMain 1 条。
+#   voice 1 / terminal 1 / plugins 2 / oauth 1 / tools 4 / sessions 3 /
+#   evals 1 / files 1 / search 1 / mcp 1 / settings 1 / session-command 1 / interaction 1 / logs 1。
+# 2026-09-03 B1 收紧:外设四域清零 —— voice / terminal 改问 `hasVoiceHost()` / `hasTerminalHost()`,
+#   plugins 改问 `getPluginManager()`,oauth 改问 `hasShellHost()`。20 → 15 处 / 14 → 10 文件。
+#   B2 目标:tools / search / evals / mcp(两处)/ sessions(三处)/ files 改问
+#   `isHostLocallyTrusted()` 或去掉 `http &&`,只剩 session-command / interaction / logs 的通道亲和
+#   与 mcp / settings 的出界脱敏(那几处会改名 `payloadLeavesProcess`,计数不变)。
+# 降了之后跑 `bun run transport:gate --write-baseline` 收紧(重写会保留本段注释)。
+forks:packages/backend/rpc/domains/evals.ts 1
+forks:packages/backend/rpc/domains/files.ts 1
+forks:packages/backend/rpc/domains/interaction.ts 1
+forks:packages/backend/rpc/domains/logs.ts 1
+forks:packages/backend/rpc/domains/mcp.ts 1
+forks:packages/backend/rpc/domains/search.ts 1
+forks:packages/backend/rpc/domains/session-command.ts 1
+forks:packages/backend/rpc/domains/sessions.ts 3
+forks:packages/backend/rpc/domains/settings.ts 1
+forks:packages/backend/rpc/domains/tools.ts 4
+ipcMain:apps/desktop-react/electron 1

@@ -45,6 +45,7 @@ import type { OnethingHostPorts, StorePathHost, SandboxHost } from "@onething/ba
 import { electronTodoPlanHostPorts } from "@main/ipc/todo-plan.js";
 import { electronScratchpadHostPorts } from "@main/ipc/scratchpad.js";
 import { electronPluginsHostPorts } from "@main/ipc/plugins.js";
+import { electronTerminalHostPorts } from "@main/ipc/terminal.js";
 import {
     startEmbeddedOnethingHttpServer,
     stopEmbeddedOnethingHttpServer,
@@ -267,6 +268,10 @@ function createElectronDesktopHostPorts(): OnethingHostPorts {
 			runtimeWindow: voiceRuntimeWindow,
 			updateTray: updateVoiceTray,
 		},
+		// 终端的输出广播器(B1)。这一格从前在 `initializeIPC()` 里注入,现在与其它
+		// 宿主能力一起在装配第一步接上 —— `terminal` 域的闸从「是不是 http」改成
+		// 「这台宿主有没有输出通道」之后,它必须在第一次派发之前就位。
+		terminal: electronTerminalHostPorts,
 		skillsEnvironment: {
 			isPackaged: getElectronAppIsPackaged,
 			getResourcesPath: getElectronResourcesPath,

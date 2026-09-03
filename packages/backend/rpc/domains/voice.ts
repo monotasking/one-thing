@@ -32,16 +32,22 @@
  * web 侧同样保持旧行为:server 从来没有 `/api/voice/audio-chunk` 这条路由,
  * 旧 `platform/web.ts` 发出去再 `.catch()` 吞掉 —— 现在干脆不发。
  *
- * ## http 分叉:逐字保留「server 上没有语音运行时」
+ * ## 闸:这台宿主有没有语音(B1,不再问 transport)
  *
  * 语音要的是**宿主机器上**的麦克风与那扇隐藏的运行时窗;浏览器点一下只会让服务器
- * 那台机器录音。所以 `transport === 'http'` 这一支逐字沿用旧 server adapter 的
- * 十一个答案(同一句 `SERVER_VOICE_UNAVAILABLE_ERROR`、同一份「停用」状态、
- * 同一份空模型表、`stop` 恒 `{success:true}`)。桌面这一支与迁移前逐字同义。
+ * 那台机器录音。从前这条闸写成 `transport === 'http'` —— 那是**用传输回答外设**:
+ * 桌面自己也挂着同一份 HTTP 面(A 期的内嵌 server),于是同一台有麦克风的机器,
+ * 从 IPC 问是真的、从自己的 HTTP 面问就成了假态。
+ *
+ * B1(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2)改成问
+ * `hasVoiceHost()` —— 也就是这台宿主的 `OnethingHostPorts.voice` 那一格注没注入。
+ * 十一个答案逐字不变(同一句 `SERVER_VOICE_UNAVAILABLE_ERROR`、同一份「停用」状态、
+ * 同一份空模型表、`stop` 恒 `{success:true}`);变的只是**谁在回答**:
+ * server / daemon / React 壳三家 `voice: null`,答案与从前的 http 支一字不差;
+ * Vue 桌面注入了那一格,于是它的内嵌 HTTP 面从此与 IPC 同权。
  *
  * 注意这不是「能力位」那一类闸(music / interaction / evals 的闸在渲染侧客户端),
- * 这是**服务端**的分叉 —— 因为桌面自己也挂着同一份 HTTP 面(A 期的内嵌 server),
- * 闸必须落在知道 transport 的那一层。
+ * 这是**服务端**的闸 —— 拿到 Bearer 的浏览器不能绕过它。
  */
 import {
   acknowledgeOnethingVoiceRuntimeReadyForIpc,
@@ -51,8 +57,7 @@ import {
   testOnethingVoiceASRForIpc,
   testOnethingVoiceTTSForIpc,
 } from '@onething/runtime/voice'
-import { getVoiceHostPorts } from '@onething/runtime/voice/host-ports.wiring'
-import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
+import { getVoiceHostPorts, hasVoiceHost } from '@onething/runtime/voice/host-ports.wiring'
 import type { VoiceRuntimeState } from '@shared/ipc/voice.js'
 import type { VoiceRoutes } from '@shared/ipc/voice.js'
 import { getSettings } from '../../stores/settings.js'
@@ -75,22 +80,17 @@ function createServerVoiceState(lastError?: string): VoiceRuntimeState {
   }
 }
 
-/** 语音只在宿主机器上成立 —— 网络那一侧永远拿旧 server 那批答案。 */
-function isRemoteCaller(context: RpcDispatchContext): boolean {
-  return context.transport === 'http'
-}
-
 type VoiceRuntimeSender = Parameters<ReturnType<typeof getVoiceService>['handleRuntimeReady']>[0]
 
 export const voiceRpcHandlers: RpcRouteHandlers<VoiceRoutes> = {
-  async getState(_input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: true, state: createServerVoiceState() }
+  async getState(_input) {
+    if (!hasVoiceHost()) return { success: true, state: createServerVoiceState() }
     return getOnethingVoiceStateForIpc({
       getState: () => getVoiceService().getState(),
     })
   },
-  async start(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async start(input) {
+    if (!hasVoiceHost()) {
       return {
         success: false,
         error: SERVER_VOICE_UNAVAILABLE_ERROR,
@@ -99,54 +99,54 @@ export const voiceRpcHandlers: RpcRouteHandlers<VoiceRoutes> = {
     }
     return getVoiceService().start(input)
   },
-  async stop(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: true }
+  async stop(input) {
+    if (!hasVoiceHost()) return { success: true }
     return getVoiceService().stop(input)
   },
-  async submitUtterance(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+  async submitUtterance(input) {
+    if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
     return getVoiceService().submitUtterance(input)
   },
-  async submitTranscript(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+  async submitTranscript(input) {
+    if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
     return getVoiceService().submitTranscript(input)
   },
-  async synthesize(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+  async synthesize(input) {
+    if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
     return getVoiceService().synthesize(input)
   },
-  async testASR(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+  async testASR(input) {
+    if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
     return testOnethingVoiceASRForIpc({
       request: input,
       getVoiceSettings: () => getSettings().voice!,
       transcribeUtterance,
     })
   },
-  async testTTS(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+  async testTTS(input) {
+    if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
     return testOnethingVoiceTTSForIpc({
       request: input,
       synthesize: nextRequest => getVoiceService().synthesize(nextRequest),
     })
   },
-  async getTTSModels(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: true, models: [], fetchedAt: Date.now() }
+  async getTTSModels(input) {
+    if (!hasVoiceHost()) return { success: true, models: [], fetchedAt: Date.now() }
     return listOnethingVoiceTTSModelsForIpc({
       request: input,
       getTTSModels: force => getOpenRouterTTSModels(force),
     })
   },
-  async runtimeReady(_input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+  async runtimeReady(_input) {
+    if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
     return acknowledgeOnethingVoiceRuntimeReadyForIpc({
       // 宿主认得那扇窗;未注入 = 不抑制回声(headless 上根本没有运行时窗)。
       sender: (getVoiceHostPorts().runtimeWindow?.getWebContents?.() ?? undefined) as VoiceRuntimeSender,
       handleRuntimeReady: runtimeSender => getVoiceService().handleRuntimeReady(runtimeSender),
     })
   },
-  async runtimeEvent(input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+  async runtimeEvent(input) {
+    if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
     return handleOnethingVoiceRuntimeEventForIpc({
       event: input,
       handleRuntimeEvent: event => getVoiceService().handleRuntimeEvent(event),

@@ -9,7 +9,7 @@
  * 服务本体一格没动:`@onething/runtime/terminal/service.wiring` 的
  * `getTerminalService()` 是懒单例(never constructed inside
  * `createOnethingBackend`),所以 CLI daemon 与 readonly server 仍然不会 load
- * node-pty —— 本域的 http 分叉(见下)保证了这一点不会因为「域挂上了」而破。
+ * node-pty —— 本域的宿主闸(见下)保证了这一点不会因为「域挂上了」而破。
  *
  * 每条的错误包装逐字照搬旧 `@main/ipc/terminal.ts`:
  *  - `create` / `list` / `attach` 用 try/catch 折成结构化失败(`list` 额外带
@@ -19,45 +19,41 @@
  *  - `ack` 从前是单向 `ipcRenderer.send` 无回执,搬到只有请求/响应面的 router
  *    上之后补一条空回执 `{ success: true }` —— 渲染侧本来就不等它。
  *
- * ## http 分叉:七条一律结构化拒绝
+ * ## 闸:这台宿主有没有终端输出通道(B1,不再问 transport)
  *
- * 用户拍板「能力位默认关」:web 上的 `terminal` 能力位是 `false`,UI 因此不出现,
- * 这七条本就不会被调到。但桌面自己也挂着同一份 HTTP 面(A 期的内嵌 server),
- * 所以闸必须落在**知道 transport 的这一层**而不是渲染侧客户端 —— 否则任何拿到
- * Bearer 的浏览器都能在宿主机器上开一个真 shell,那是本仓权限模型里最大的一格。
+ * 闸的理由从来不是「远不远」,而是**只能写不能读的终端不如不开**:输出推送
+ * (`configureTerminalBroadcaster`)今天只有 Electron 那一个实现,没有它,开出来的
+ * shell 是个哑巴。从前这件事写成 `transport === 'http'`,于是同一台装了广播器的
+ * 桌面,从自己的内嵌 HTTP 面问就被拒 —— 用传输回答了外设。
  *
- * 拒绝是**结构化失败**,不是抛、不读盘、不碰服务:`getTerminalService()` 在
- * http 这一支上一次都不会被求值,所以 `server:start` / CLI daemon 依旧不 load
- * node-pty。`/api/capabilities` 也已如实 `terminal: false`。
+ * B1(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2)改成问
+ * `hasTerminalHost()`,也就是 `OnethingHostPorts.terminal` 那一格注没注入。
+ * **上面那句「将来放开 = 去掉分叉 + 给 server 接广播器」现在是同一件事**:
+ * 谁接了广播器谁就有终端,一处。
  *
- * **将来放开 = 去掉这层分叉 + 给 server 接推送广播器,一处。** 推送(输出流)
- * 今天只有 Electron 那一个实现(`configureTerminalBroadcaster` 推 webContents);
- * server 侧要么把它串进一条 SSE、要么上 WS —— 在那之前放开请求面等于开了一个
- * 只能写不能读的终端,所以两件事必须一起做。
+ * 七条的拒绝逐字不变:结构化失败,不抛、不读盘、不碰服务 —— `getTerminalService()`
+ * 在拒绝这一支上一次都不会被求值,所以 `server:start` / CLI daemon 依旧不 load
+ * node-pty。安全性也没松:任何拿到 Bearer 的浏览器仍开不了宿主机器上的真 shell,
+ * 因为那要求这台进程本来就装着一条能把输出送回去的通道。
  */
 import {
   getTerminalService,
+  hasTerminalHost,
 } from '@onething/runtime/terminal/service.wiring'
-import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { TerminalRoutes } from '@shared/ipc/terminal.js'
 import type { RpcRouteHandlers } from '../registry.js'
 
-/** 七条 http 拒绝共用的那一句话。 */
+/** 七条拒绝共用的那一句话(宿主没有终端输出通道时)。 */
 export const TERMINAL_DESKTOP_ONLY_ERROR =
   'Terminal is available on the desktop host only'
-
-/** 终端要的是**宿主机器上**的那个 shell —— 网络那一侧一条都不给。 */
-function isRemoteCaller(context: RpcDispatchContext): boolean {
-  return context.transport === 'http'
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
 export const terminalRpcHandlers: RpcRouteHandlers<TerminalRoutes> = {
-  async create(request, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async create(request) {
+    if (!hasTerminalHost()) {
       return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     try {
@@ -66,8 +62,8 @@ export const terminalRpcHandlers: RpcRouteHandlers<TerminalRoutes> = {
       return { success: false, error: errorMessage(error) }
     }
   },
-  async list(_input, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async list() {
+    if (!hasTerminalHost()) {
       return { success: false, terminals: [], error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     try {
@@ -76,29 +72,29 @@ export const terminalRpcHandlers: RpcRouteHandlers<TerminalRoutes> = {
       return { success: false, terminals: [], error: errorMessage(error) }
     }
   },
-  async write(request, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async write(request) {
+    if (!hasTerminalHost()) {
       return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     getTerminalService().write(request.terminalId, request.data)
     return { success: true }
   },
-  async resize(request, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async resize(request) {
+    if (!hasTerminalHost()) {
       return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     getTerminalService().resize(request.terminalId, request.cols, request.rows)
     return { success: true }
   },
-  async kill(request, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async kill(request) {
+    if (!hasTerminalHost()) {
       return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     getTerminalService().kill(request.terminalId)
     return { success: true }
   },
-  async attach(request, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async attach(request) {
+    if (!hasTerminalHost()) {
       return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     try {
@@ -107,8 +103,8 @@ export const terminalRpcHandlers: RpcRouteHandlers<TerminalRoutes> = {
       return { success: false, error: errorMessage(error) }
     }
   },
-  async ack(payload, context = DESKTOP_RPC_CONTEXT) {
-    if (isRemoteCaller(context)) {
+  async ack(payload) {
+    if (!hasTerminalHost()) {
       return { success: false, error: TERMINAL_DESKTOP_ONLY_ERROR }
     }
     getTerminalService().ack(payload.terminalId, payload.bytes, payload.generation)

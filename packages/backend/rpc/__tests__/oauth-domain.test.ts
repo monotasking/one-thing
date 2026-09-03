@@ -9,8 +9,11 @@
  *    `configureOAuthEventBroadcaster` 注入端口 —— router 今天没有推送面);
  *  - 凭证写回目标(批 B6 的 spaceId / entryId / label)真的传到 authService 了
  *    —— 从前 web 壳把它收下即丢;
- *  - **`start` 在 http 上不开浏览器**:旧 server 路由从来就没递过 `openExternal`,
- *    这条分叉逐字保留;桌面(desktop 上下文)才走 shell 端口;
+ *  - **`start` 只在宿主有外壳能力时开浏览器**(B1,方案
+ *    `docs/design/backend-transport-forks-2026-09.md` §2.2):从前的判据是
+ *    `transport === 'http'`,现在是 `hasShellHost()` —— 没接外壳的宿主拿到的响应
+ *    形状与旧 server 路由逐字相同(带 `authUrl` 回去,由调用方自己开),接了外壳的
+ *    宿主在两种 transport 上都真的开;
  *  - `refresh` 失败时把「令牌过期」经**事件源**通知出去(而不是像从前桌面那样
  *    直接调 Electron 广播),于是桌面窗口与 web 的 SSE 收到的是同一次事件。
  */
@@ -36,7 +39,12 @@ const events = vi.hoisted(() => ({
 
 vi.mock('../../wiring/auth/auth-service.js', () => ({ authService }))
 vi.mock('../../wiring/auth/oauth-events.js', () => events)
-vi.mock('@onething/runtime/shell/host-ports', () => ({ getShellHost: () => shell }))
+let shellHostPresent = true
+
+vi.mock('@onething/runtime/shell/host-ports', () => ({
+  getShellHost: () => shell,
+  hasShellHost: () => shellHostPresent,
+}))
 
 const HTTP_CONTEXT = {
   transport: 'http' as const,
@@ -69,6 +77,7 @@ describe('oauth RPC domain', () => {
       isLoggedIn: true,
     })
     authService.deleteToken.mockReset().mockResolvedValue({ success: true })
+    shellHostPresent = true
     shell.openExternal.mockReset().mockResolvedValue({ success: true })
     events.notifyOAuthTokenExpired.mockReset()
 
@@ -100,7 +109,7 @@ describe('oauth RPC domain', () => {
     }
   })
 
-  it('start opens the browser on the desktop and never on http', async () => {
+  it('start opens the browser whenever the host has a shell — on http too (B1)', async () => {
     const { dispatchRpc } = await loadDomain()
 
     await expect(dispatchRpc({ domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } }))
@@ -115,8 +124,24 @@ describe('oauth RPC domain', () => {
       HTTP_CONTEXT,
     )
     await Promise.resolve()
-    // http 上响应照常带着 authUrl 回去 —— 由调用方自己开(旧 server 路由的形状)。
     expect(remote).toMatchObject({ ok: true, data: { authUrl: 'https://example.test/authorize' } })
+    // B1:判据是宿主有没有默认浏览器,不是问的人从哪条总线来。
+    expect(shell.openExternal).toHaveBeenCalledWith('https://example.test/authorize')
+  })
+
+  it('start never opens the browser when the host has no shell — authUrl goes back instead', async () => {
+    shellHostPresent = false
+    const { dispatchRpc } = await loadDomain()
+
+    for (const context of [undefined, HTTP_CONTEXT]) {
+      const answer = await dispatchRpc(
+        { domain: 'oauth', method: 'start', payload: { providerId: 'claude-code' } },
+        context,
+      )
+      await Promise.resolve()
+      // 与 B1 之前的 http 支逐字相同的形状:响应带着 authUrl 回给调用方。
+      expect(answer).toMatchObject({ ok: true, data: { success: true, authUrl: 'https://example.test/authorize' } })
+    }
     expect(shell.openExternal).not.toHaveBeenCalled()
   })
 

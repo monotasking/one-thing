@@ -99,7 +99,7 @@ export class HeadlessBackend {
     this.backend = await createOnethingBackend({
       /*
        * A1:宿主能力一次交清。CLI daemon 除了下载目录之外一件宿主能力都没有
-       * (它没有窗口、没有托盘、没有 Keychain 身份),十二个 `null` 就是这里的
+       * (它没有窗口、没有托盘、没有 Keychain 身份),十三个 `null` 就是这里的
        * 事实清单。`storePath: {}` 与从前从不调 `configureStorePathHost` 时的
        * 缺省逐字相同。
        */
@@ -116,6 +116,7 @@ export class HeadlessBackend {
         logging: null,
         shell: null,
         voice: null,
+        terminal: null,
         skillsEnvironment: null,
         todoPlan: null,
         scratchpad: null,

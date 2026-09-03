@@ -18,19 +18,23 @@
  * **定向回发起窗** —— 设置窗是独立 BrowserWindow,广播出去等于每扇窗都收一份
  * 别人的进度。
  *
- * ## http 分叉:server 今天的语义逐字不变
+ * ## 闸:这个进程装没装 PluginManager(B1,不再问 transport)
  *
- * 方案 A(设计文档 §6)下**插件只在 Electron 桌面宿主执行**,apps/server 的插件
- * 目录是另一棵树(`owners/<uid>/<wid>/plugin-store/plugins`)的只读镜像。所以:
+ * 方案 A(设计文档 §6)下**插件只在装了管理器的宿主上执行**,没装的进程手里最多
+ * 有一本只读镜像目录(`owners/<uid>/<wid>/plugin-store/plugins`,由
+ * `server/plugin-catalog.ts` 那个单槽端口提供)。全域 18 条因此只问一个问题:
  *
- *  - 六条读/开关面(list / enable / disable / refresh / commands /
- *    executeCommand)走 `server/plugin-catalog.ts` 那个单槽端口 —— 端口里装的就是
- *    从前 `/api/plugins*` 六条路由背后的**同一批闭包**,一行没搬;
- *  - `configGet` 的 http 分支 = 从那份清单投影里就地派生只读值,逐字搬自
- *    迁移前 `platform/web.ts` 的 `getPluginConfig`;
- *  - 其余写面按**「插件管理器在不在场」**判定(同 B 批 `collabRooms` 判例):
- *    桌面内嵌 HTTP 面上 `getPluginManager()` 已装配 → 与 ipc 同一条路;独立
- *    `server:start` 没装配 → 回迁移前 `platform/web.ts` 那句**逐字相同**的文案。
+ *  - 7 条读面(list / enable / disable / refresh / commands / executeCommand /
+ *    configGet):管理器在场 → 走管理器,与 IPC 逐字同;不在场 → 退到镜像端口
+ *    (端口里装的就是从前 `/api/plugins*` 六条路由背后的**同一批闭包**,一行没搬;
+ *    `configGet` 从那份清单投影里就地派生只读值,逐字搬自迁移前 `platform/web.ts`);
+ *  - 11 条写面:管理器不在场 → 回迁移前 `platform/web.ts` 那句**逐字相同**的文案。
+ *
+ * B1 之前这两组判据都还挂着 `transport === 'http' &&`,于是**桌面内嵌 HTTP 面
+ * 同时装着真管理器与镜像端口**:IPC 读桌面真树、自己的 HTTP 面读一棵它根本不写的
+ * 镜像树(审计 2026-09-02 §2.5 的脑裂)。去掉那半个判据后,读面与写面的判据合成
+ * 同一个,脑裂消失;React 壳(无管理器、无端口)与独立 `server:start`(无管理器、
+ * 有端口)的答案逐字不变。
  *
  * 渲染侧另有一层:能力位 `pluginsManage`(web 默认 false)让写面**根本不发请求**,
  * 就地返回同一批文案(`platform/plugins-client.ts`)。这里是第二道,不是唯一一道。
@@ -117,14 +121,20 @@ const WEB_PLUGIN_REQUEST_DESKTOP_ONLY
 const pluginConfigAccess = createPluginConfigAccess()
 
 /**
- * 这条请求要不要走 server 那本只读镜像。
+ * 这条读请求要不要退到 server 那本只读镜像。
  *
- * 判据不是「是不是 server」,而是「这台进程有没有装 server 目录端口」——
- * 桌面内嵌 HTTP 面同样装(它也起了一只 server runtime),于是浏览器读到的
- * 依旧是迁移前 `/api/plugins` 给的那份目录,一字不差。
+ * B1(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2)之前的判据是
+ * 「是不是 http」,再看端口在不在。那是**两个进程混成一个问题**:桌面内嵌 HTTP 面
+ * 同时装着真管理器与 server 镜像端口,于是同一台机器,IPC 读桌面真树、自己的
+ * HTTP 面读一棵它根本不写的镜像树 —— 审计 2026-09-02 §2.5 记的那个脑裂。
+ *
+ * 现在只问一件事:**这个进程装没装 PluginManager**。装了 → `null`(走管理器那条路,
+ * 与 IPC 逐字同);没装 → 退到镜像端口(可能也没有 → 调用点回今天那句结构化拒绝)。
+ * 于是 React 壳(无管理器、无端口)与独立 `server:start`(无管理器、有端口)的答案
+ * 逐字不变,变的只有 Vue 桌面内嵌面那 7 条读面 —— 它们从此读自己真的那棵树。
  */
-function serverCatalog(context: RpcDispatchContext) {
-  if (context.transport !== 'http') return null
+function pluginCatalogFallback() {
+  if (getPluginManager() !== null) return null
   return getServerPluginCatalogPort()
 }
 
@@ -135,16 +145,20 @@ function runtimeContext(context: RpcDispatchContext) {
 }
 
 /**
- * 写面在 http 上的判据:插件管理器在不在场(同 B 批 `collabRooms` 判例)。
- * 桌面内嵌 HTTP 面已装配 → 与 ipc 同一条路;独立 server 没装配 → 结构化降级。
+ * 写面的判据:插件管理器在不在场(同 B 批 `collabRooms` 判例)。
+ *
+ * B1 去掉了从前那半个 `context.transport === 'http' &&`:管理器不在场时,
+ * 这些写面在 IPC 上本来也做不成事(`manager: null` 会一路走到投影层的空手降级),
+ * 只是从前答的是投影层的话、现在答的是这里这句 —— 而**唯一挂 IPC 面的宿主是
+ * Vue 桌面,它一定装了管理器**,所以现役宿主上一条都不变。
  */
-function pluginsUnmanaged(context: RpcDispatchContext): boolean {
-  return context.transport === 'http' && getPluginManager() === null
+function pluginsUnmanaged(): boolean {
+  return getPluginManager() === null
 }
 
 export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   async list(_request, context = DESKTOP_RPC_CONTEXT): Promise<ListPluginsResponse> {
-    const catalog = serverCatalog(context)
+    const catalog = pluginCatalogFallback()
     if (catalog) {
       return (await catalog.list(runtimeContext(context))) as ListPluginsResponse
     }
@@ -160,7 +174,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   async enable(request, context = DESKTOP_RPC_CONTEXT) {
-    const catalog = serverCatalog(context)
+    const catalog = pluginCatalogFallback()
     if (catalog) {
       return (await catalog.enable(request?.pluginId ?? '', runtimeContext(context))) as {
         success: boolean
@@ -175,7 +189,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   async disable(request, context = DESKTOP_RPC_CONTEXT) {
-    const catalog = serverCatalog(context)
+    const catalog = pluginCatalogFallback()
     if (catalog) {
       return (await catalog.disable(request?.pluginId ?? '', runtimeContext(context))) as {
         success: boolean
@@ -192,7 +206,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   async refresh(_request, context = DESKTOP_RPC_CONTEXT) {
-    const catalog = serverCatalog(context)
+    const catalog = pluginCatalogFallback()
     if (catalog) {
       return (await catalog.refresh(runtimeContext(context))) as {
         success: boolean
@@ -206,7 +220,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   async commands(_request, context = DESKTOP_RPC_CONTEXT) {
-    const catalog = serverCatalog(context)
+    const catalog = pluginCatalogFallback()
     if (catalog) {
       return (await catalog.commands(runtimeContext(context))) as {
         success: boolean
@@ -221,7 +235,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   async executeCommand(request, context = DESKTOP_RPC_CONTEXT) {
-    const catalog = serverCatalog(context)
+    const catalog = pluginCatalogFallback()
     if (catalog) {
       return (await catalog.executeCommand(request, runtimeContext(context))) as {
         success: boolean
@@ -241,7 +255,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
    * 这里只把 progress 接到推送端口上,并把「谁在问」原样递过去。
    */
   async request(payload, context = DESKTOP_RPC_CONTEXT): Promise<PluginRequestResult> {
-    if (pluginsUnmanaged(context)) {
+    if (pluginsUnmanaged()) {
       return {
         success: false,
         requestId: payload?.requestId ?? '',
@@ -260,8 +274,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
     })
   },
 
-  async requestAbort(request, context = DESKTOP_RPC_CONTEXT): Promise<AbortPluginRequestResult> {
-    if (pluginsUnmanaged(context)) {
+  async requestAbort(request): Promise<AbortPluginRequestResult> {
+    if (pluginsUnmanaged()) {
       return { success: false, aborted: false, error: WEB_PLUGINS_EXECUTE_DESKTOP_ONLY }
     }
     return abortOnethingPluginRequestForIpc({
@@ -280,7 +294,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
    * `platform/web.ts` 的 `getPluginConfig`。
    */
   async configGet(request, context = DESKTOP_RPC_CONTEXT): Promise<PluginConfigResponse> {
-    const catalog = serverCatalog(context)
+    const catalog = pluginCatalogFallback()
     if (catalog) {
       const pluginId = request?.pluginId ?? ''
       try {
@@ -316,8 +330,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
     })
   },
 
-  async configSet(request, context = DESKTOP_RPC_CONTEXT): Promise<SetPluginConfigResponse> {
-    if (pluginsUnmanaged(context)) {
+  async configSet(request): Promise<SetPluginConfigResponse> {
+    if (pluginsUnmanaged()) {
       return { success: false, error: WEB_PLUGINS_CONFIG_READ_ONLY }
     }
     return setOnethingPluginConfigForIpc({
@@ -328,8 +342,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
     })
   },
 
-  async uninstall(request, context = DESKTOP_RPC_CONTEXT): Promise<UninstallPluginResponse> {
-    if (pluginsUnmanaged(context)) {
+  async uninstall(request): Promise<UninstallPluginResponse> {
+    if (pluginsUnmanaged()) {
       return { success: false, error: WEB_PLUGINS_READ_ONLY }
     }
     return uninstallOnethingPluginForIpc({
@@ -339,8 +353,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
     })
   },
 
-  async footprint(request, context = DESKTOP_RPC_CONTEXT): Promise<PluginFootprintResponse> {
-    if (pluginsUnmanaged(context)) {
+  async footprint(request): Promise<PluginFootprintResponse> {
+    if (pluginsUnmanaged()) {
       return { success: false, error: WEB_PLUGINS_FOOTPRINT_DESKTOP_ONLY }
     }
     return getOnethingPluginFootprintForIpc({
@@ -361,8 +375,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   // ── P1:npm 生命周期 —— 命令链在 core manager,这里只做转调。──
-  async install(request, context = DESKTOP_RPC_CONTEXT): Promise<InstallPluginResponse> {
-    if (pluginsUnmanaged(context)) {
+  async install(request): Promise<InstallPluginResponse> {
+    if (pluginsUnmanaged()) {
       return { success: false, error: WEB_PLUGINS_INSTALL_DESKTOP_ONLY }
     }
     return installOnethingPluginForIpc({
@@ -375,8 +389,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
     })
   },
 
-  async update(request, context = DESKTOP_RPC_CONTEXT): Promise<UpdatePluginResponse> {
-    if (pluginsUnmanaged(context)) {
+  async update(request): Promise<UpdatePluginResponse> {
+    if (pluginsUnmanaged()) {
       return { success: false, pluginId: '', error: WEB_PLUGINS_UPDATE_DESKTOP_ONLY }
     }
     return updateOnethingPluginForIpc({
@@ -386,8 +400,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
     })
   },
 
-  async checkUpdates(_request, context = DESKTOP_RPC_CONTEXT): Promise<CheckPluginUpdatesResponse> {
-    if (pluginsUnmanaged(context)) return { success: true, offers: [] }
+  async checkUpdates(): Promise<CheckPluginUpdatesResponse> {
+    if (pluginsUnmanaged()) return { success: true, offers: [] }
     return checkOnethingPluginUpdatesForIpc({
       manager: getPluginManager(),
       logger: consoleLog,
@@ -395,8 +409,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   // 裁决 8:v1 依赖本机 npm —— 能力面先行,设置页据此置灰并说明。
-  async lifecycleInfo(_request, context = DESKTOP_RPC_CONTEXT): Promise<PluginLifecycleInfoResponse> {
-    if (pluginsUnmanaged(context)) return { success: true, npmAvailable: false }
+  async lifecycleInfo(): Promise<PluginLifecycleInfoResponse> {
+    if (pluginsUnmanaged()) return { success: true, npmAvailable: false }
     return getOnethingPluginLifecycleInfoForIpc({
       probeNpmAvailability: probePluginNpmAvailability,
     })
@@ -404,8 +418,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
 
   // 装前清单预读:包名与声明都在 tarball 里,宿主自己读出来。
   // 纯读取,不落任何盘 —— 安装闸一条不松(预读不是信任来源)。
-  async readTarball(request, context = DESKTOP_RPC_CONTEXT): Promise<ReadPluginTarballResponse> {
-    if (pluginsUnmanaged(context)) {
+  async readTarball(request): Promise<ReadPluginTarballResponse> {
+    if (pluginsUnmanaged()) {
       return {
         success: false,
         errorCode: 'not-supported',
@@ -417,8 +431,8 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
 
   // P3:市场 —— 索引视图在装配层 join 好(安装态 + 版本兼容 + 缓存龄),
   // renderer 只渲染;拉取失败回上次缓存并 stale 置位(断网容忍)。
-  async market(request, context = DESKTOP_RPC_CONTEXT): Promise<GetPluginMarketResponse> {
-    if (pluginsUnmanaged(context)) {
+  async market(request): Promise<GetPluginMarketResponse> {
+    if (pluginsUnmanaged()) {
       return {
         success: false,
         entries: [],

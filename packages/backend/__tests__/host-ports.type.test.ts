@@ -21,6 +21,7 @@ const complete: OnethingHostPorts = {
   logging: null,
   shell: null,
   voice: null,
+  terminal: null,
   skillsEnvironment: null,
   todoPlan: null,
   scratchpad: null,

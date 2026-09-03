@@ -96,6 +96,7 @@ async function assemble(hooks?: { afterSettings?: () => void | Promise<void> }):
       logging: null,
       shell: null,
       voice: null,
+      terminal: null,
       skillsEnvironment: null,
       todoPlan: null,
       scratchpad: null,

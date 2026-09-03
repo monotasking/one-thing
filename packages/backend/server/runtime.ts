@@ -841,6 +841,7 @@ async function createRealServerBackend(storePath: string): Promise<OnethingBacke
 			logging: null,
 			shell: null,
 			voice: null,
+			terminal: null,
 			skillsEnvironment: null,
 			todoPlan: null,
 			scratchpad: null,

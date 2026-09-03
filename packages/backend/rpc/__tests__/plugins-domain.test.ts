@@ -263,12 +263,17 @@ describe('plugins RPC domain', () => {
     expect(pickFile).toHaveBeenCalledWith({ pluginId: 'demo', accept: ['png'] }, 7)
   })
 
-  // ── http 分支 ───────────────────────────────────────────────
-  describe('http:六条读/开关面走 server 那本只读镜像目录', () => {
+  // ── 管理器不在场:退到 server 那本只读镜像目录 ────────────────
+  //
+  // B1(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2):这一组从前
+  // 钉在 `transport === 'http'` 上,于是**装着真管理器的桌面内嵌 HTTP 面也走镜像**
+  // (审计 2026-09-02 §2.5 的脑裂)。现在判据只有一个 —— 这个进程装没装管理器。
+  describe('无管理器(独立 server / React 壳):七条读面退到镜像目录', () => {
     beforeEach(async () => {
       const catalogPort = await import('../../server/plugin-catalog.js')
       restoreCatalog?.()
       restoreCatalog = catalogPort.configureServerPluginCatalogPort(catalog)
+      mocks.currentManager.value = null
     })
 
     it('list / enable / disable / refresh / commands / executeCommand 全走端口', async () => {
@@ -310,7 +315,44 @@ describe('plugins RPC domain', () => {
     })
   })
 
-  describe('http:写面按「插件管理器在不在场」判定', () => {
+  // B1 的正题:同一条 http 请求,管理器在位就读自己那棵真树。
+  describe('管理器在场 + http:读面读管理器,不读镜像(B1 修脑裂)', () => {
+    beforeEach(async () => {
+      const catalogPort = await import('../../server/plugin-catalog.js')
+      restoreCatalog?.()
+      // 端口也装着 —— 桌面内嵌 HTTP 面就是这个处境(两样都有)。
+      restoreCatalog = catalogPort.configureServerPluginCatalogPort(catalog)
+      mocks.currentManager.value = manager
+    })
+
+    it('list / enable / commands 走管理器那条路,镜像目录一次都不问', async () => {
+      expect(unwrap(await call('list', {}, HTTP))).toMatchObject({ success: true, plugins: [] })
+      expect(manager.getPlugins).toHaveBeenCalled()
+      expect(unwrap(await call('enable', { pluginId: 'demo' }, HTTP))).toEqual({ success: true })
+      expect(manager.enablePlugin).toHaveBeenCalledWith('demo')
+      await call('commands', {}, HTTP)
+      for (const fn of Object.values(catalog)) expect(fn).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('两者都无:读面与 ipc 上管理器缺席时逐字同一批答案', () => {
+    beforeEach(async () => {
+      const catalogPort = await import('../../server/plugin-catalog.js')
+      restoreCatalog?.()
+      restoreCatalog = catalogPort.configureServerPluginCatalogPort(null)
+      mocks.currentManager.value = null
+    })
+
+    it('http 与 ipc 给出同一个答案 —— 判据里已经没有 transport 了', async () => {
+      const overHttp = unwrap(await call('list', {}, HTTP))
+      const overIpc = unwrap(await call('list', {}, IPC))
+      expect(overHttp).toEqual(overIpc)
+      const commandsHttp = unwrap(await call('commands', {}, HTTP))
+      expect(commandsHttp).toEqual(unwrap(await call('commands', {}, IPC)))
+    })
+  })
+
+  describe('写面按「插件管理器在不在场」判定(B1 去掉了 `http &&` 那半个条件)', () => {
     it('管理器缺席(独立 server)= 逐字相同的降级文案', async () => {
       mocks.currentManager.value = null
       expect(unwrap(await call('install', { pkg: 'demo' }, HTTP)))

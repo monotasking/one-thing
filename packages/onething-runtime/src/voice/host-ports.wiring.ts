@@ -53,13 +53,36 @@ export interface VoiceHostPorts {
 }
 
 let hostPorts: VoiceHostPorts = {}
+/**
+ * 「宿主到底接没接语音」是**调过没调过 `configureVoiceHost`**,不是「端口对象里
+ * 有几个方法」——`{}` 是一个合法的注入(宿主说「我有语音,但这三件推送我不需要」),
+ * 而缺省值恰好也是 `{}`,两者只有这一个布尔分得开。
+ *
+ * 判据不能靠 `getVoiceHostPorts()` 的内容,是因为 `voice` 域要拿它替掉
+ * `transport === 'http'`(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2):
+ * 那十一条问的是「这台机器上有没有麦克风与那扇运行时窗」,答案由宿主表的
+ * `voice: null` 还是 `voice: {…}` 说了算。
+ */
+let hostConfigured = false
 
 export function configureVoiceHost(ports: VoiceHostPorts): void {
   hostPorts = ports
+  hostConfigured = true
 }
 
 export function getVoiceHostPorts(): VoiceHostPorts {
   return hostPorts
+}
+
+/** 这台宿主有没有语音(窗口 + 托盘)。未注入 = 没有。 */
+export function hasVoiceHost(): boolean {
+  return hostConfigured
+}
+
+/** 测试专用:把端口打回「从未注入」。生产代码不要调。 */
+export function resetVoiceHostForTests(): void {
+  hostPorts = {}
+  hostConfigured = false
 }
 
 /** Broadcast to every renderer surface; no-op until the host wires a port. */

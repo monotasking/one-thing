@@ -1,14 +1,21 @@
 /**
- * terminal 域,端到端穿过 dispatcher(结构债 P4 终态批 D2)。
+ * terminal 域,端到端穿过 dispatcher(结构债 P4 终态批 D2;闸的判据 B1 换掉)。
  *
  * 接的是被删掉的两处转发的测试位:`apps/electron/src/ipc/terminal.ts` 那只可移植
  * 工厂与 `@main/ipc/terminal.ts` 的七条壳适配。值得钉的是:
- *  - **ipc 分支**七条都真的落到服务上,参数解包与错误包装逐字沿用旧壳适配
+ *  - **端口注入**时七条都真的落到服务上,参数解包与错误包装逐字沿用旧壳适配
  *    (`create` / `list` / `attach` 折结构化失败,`list` 额外带空表;
  *    `write` / `resize` / `kill` 恒 `{success:true}`;`ack` 补一条空回执);
- *  - **http 分支**七条一律结构化拒绝,而且**一次都不求值 `getTerminalService()`**
+ *  - **端口未注入**时七条一律结构化拒绝,而且**一次都不求值 `getTerminalService()`**
  *    —— 懒单例因此仍然不会在 server / CLI 上 load node-pty,这正是能力位默认关
  *    背后的那条硬保证。
+ *
+ * B1(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2)之前这两组分别
+ * 钉在 `transport: 'ipc'` 与 `transport: 'http'` 上。现在判据是宿主端口
+ * (`hasTerminalHost()`),所以这里**两种 transport 各跑一遍**:
+ *  - 端口未注入 + http → 与 B1 之前的 http 答案逐字相同(独立 server / React 壳);
+ *  - 端口注入 + http → 走真路(桌面内嵌 HTTP 面从此与 IPC 同权,这是 B1 的目的);
+ *  - 端口注入 + ipc → 与 B1 之前的 ipc 答案逐字相同(Vue 桌面)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
@@ -33,8 +40,11 @@ const service = {
 }
 const getTerminalService = vi.fn(() => service)
 
+let terminalHostPresent = true
+
 vi.mock('@onething/runtime/terminal/service.wiring', () => ({
   getTerminalService: () => getTerminalService(),
+  hasTerminalHost: () => terminalHostPresent,
 }))
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
@@ -66,6 +76,7 @@ describe('terminal RPC domain', () => {
     registry.resetRpcRegistryForTests()
     dispose = registry.registerRouterHandlers(terminalRouter, domain.terminalRpcHandlers)
     desktopOnlyError = domain.TERMINAL_DESKTOP_ONLY_ERROR
+    terminalHostPresent = true
     getTerminalService.mockClear()
     for (const fn of Object.values(service)) fn.mockReset()
     service.create.mockReturnValue(TERMINAL_INFO)
@@ -87,7 +98,7 @@ describe('terminal RPC domain', () => {
   const call = (method: string, payload: unknown, context: RpcDispatchContext) =>
     dispatchRpc({ domain: 'terminal', method, payload }, context)
 
-  describe('ipc: every method reaches the service', () => {
+  describe('terminal host injected: every method reaches the service', () => {
     it('creates a terminal and returns its info', async () => {
       const data = unwrap(await call('create', { cwd: '/repo', sessionId: 's1' }, IPC))
       expect(service.create).toHaveBeenCalledWith({ cwd: '/repo', sessionId: 's1' })
@@ -159,7 +170,26 @@ describe('terminal RPC domain', () => {
     })
   })
 
-  describe('http: all seven refuse without touching the service', () => {
+  describe('terminal host injected: http reaches the service too (B1)', () => {
+    it('creates a terminal over http when the host has an output channel', async () => {
+      const data = unwrap(await call('create', { cwd: '/repo' }, HTTP))
+      expect(service.create).toHaveBeenCalledWith({ cwd: '/repo' })
+      expect(data).toEqual({ success: true, terminal: TERMINAL_INFO })
+    })
+
+    it('lists over http when the host has an output channel', async () => {
+      expect(unwrap(await call('list', {}, HTTP))).toEqual({
+        success: true,
+        terminals: [TERMINAL_INFO],
+      })
+    })
+  })
+
+  describe('no terminal host: all seven refuse without touching the service', () => {
+    beforeEach(() => {
+      terminalHostPresent = false
+    })
+
     it('refuses every method with the same structured error', async () => {
       const answers = await Promise.all([
         call('create', {}, HTTP),
@@ -180,7 +210,15 @@ describe('terminal RPC domain', () => {
       })
     })
 
-    it('never evaluates the lazy service singleton on the http path', async () => {
+    it('refuses on ipc too — the judgement is the port, not the transport', async () => {
+      expect(unwrap(await call('create', {}, IPC))).toEqual({
+        success: false,
+        error: desktopOnlyError,
+      })
+      expect(getTerminalService).not.toHaveBeenCalled()
+    })
+
+    it('never evaluates the lazy service singleton when the port is absent', async () => {
       await call('create', {}, HTTP)
       await call('list', {}, HTTP)
       await call('attach', { terminalId: 't-1' }, HTTP)

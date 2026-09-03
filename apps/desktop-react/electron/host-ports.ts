@@ -17,7 +17,7 @@
  * 缺什么能力"是可数的,而不是靠比对两个壳的调用清单才看得出来。
  *
  * 这个壳真的交出来的三件:auth(凭证解密的唯一口)、sandbox(下载目录)、
- * storePath(打包资源目录);其余十一项是 `null`。
+ * storePath(打包资源目录);其余十二项是 `null`。
  */
 import { app, net, safeStorage, session } from 'electron'
 import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'
@@ -109,7 +109,7 @@ export async function applyShellNetworkProxySettings(
  *
  * 从前这里是三次 `configure*Host` 调用,「这个壳没接什么」是看不见的 —— 留账②
  * (打包态找不到内建 skills 目录)正是漏了 `skillsEnvironment` 那一项,而它在
- * 代码里没有留下任何痕迹。现在每一项都要写,没接的写 `null`:下面这十一个
+ * 代码里没有留下任何痕迹。现在每一项都要写,没接的写 `null`:下面这十二个
  * `null` 就是这个壳的能力缺口清单,一眼可数。
  *
  * 接与不接是**产品决定**,不是这一批的事:A 只负责让"没接"从静默变成一行代码。
@@ -139,6 +139,7 @@ export function createShellHostPorts(): OnethingHostPorts {
     logging: null,
     shell: null,
     voice: null,
+    terminal: null,
     // 留账②:打包态的内建 skills 目录靠这一项指路,这个壳还没注入。
     skillsEnvironment: null,
     todoPlan: null,

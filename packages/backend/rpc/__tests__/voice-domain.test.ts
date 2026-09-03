@@ -7,11 +7,18 @@
  *  - 十一个方法都在 router 的白名单上,**两条推送不在**(它们早就是
  *    `configureVoiceHost` 的端口,本批一行没动),**`audioChunk` 也不在** ——
  *    高频 PCM 单向上行按拍板 #10 留在手写通道上(流式单向残留集);
- *  - `transport:'ipc'` 逐条转调 VoiceService / runtime 投影,与迁移前同义;
- *  - `transport:'http'` 逐字沿用旧 server adapter 的十一个答案 ——
+ *  - **宿主注入了语音端口**时逐条转调 VoiceService / runtime 投影,与迁移前同义;
+ *  - **没注入**时逐字沿用旧 server adapter 的十一个答案 ——
  *    同一句话、同一份「停用」状态、同一份空模型表、`stop` 恒成功,
  *    **且一次都不碰 VoiceService**;
  *  - `runtimeReady` 的发起窗改由 `runtimeWindow.getWebContents` 端口指认。
+ *
+ * B1(方案 `docs/design/backend-transport-forks-2026-09.md` §2.2)之前这两组分别
+ * 钉在 `transport:'ipc'` 与 `transport:'http'` 上。判据换成宿主端口
+ * (`hasVoiceHost()`)之后,这里两种 transport 各跑一遍:
+ *  - 端口未注入 + http → 与 B1 之前的 http 答案逐字相同(server / daemon / React 壳);
+ *  - 端口注入 + http → 走真路(桌面内嵌 HTTP 面从此与 IPC 同权,这是 B1 的目的);
+ *  - 端口注入 + ipc → 与 B1 之前的 ipc 答案逐字相同(Vue 桌面)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { voiceRouter } from '@shared/ipc/voice.js'
@@ -89,13 +96,16 @@ describe('voice RPC domain', () => {
     dispose = undefined
     const { resetRpcRegistryForTests } = await import('../registry.js')
     resetRpcRegistryForTests()
-    const { configureVoiceHost } = await import('@onething/runtime/voice/host-ports.wiring')
-    configureVoiceHost({})
+    const { resetVoiceHostForTests } = await import('@onething/runtime/voice/host-ports.wiring')
+    resetVoiceHostForTests()
     vi.resetModules()
   })
 
   it('forwards the desktop calls straight to the voice service', async () => {
-    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    // 「这台宿主有语音」= 宿主表的 `voice` 那一格注入过。空对象是合法注入
+    // (桌面有麦克风,只是这个用例不关心那三件推送)。
+    configureVoiceHost({})
     dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'getState', payload: {} })))
@@ -116,7 +126,8 @@ describe('voice RPC domain', () => {
   })
 
   it('keeps the PCM uplink off the router (one-way channel, 拍板 #10)', async () => {
-    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    configureVoiceHost({})
     dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     const response = await dispatchRpc({
@@ -140,7 +151,9 @@ describe('voice RPC domain', () => {
   })
 
   it('marks runtime-ready without a sender when no host window is injected', async () => {
-    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    // 有语音端口,但那一格里没有运行时窗 —— 回声抑制不成立,语音本身照常。
+    configureVoiceHost({})
     dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'runtimeReady', payload: {} })))
@@ -148,7 +161,7 @@ describe('voice RPC domain', () => {
     expect(service.handleRuntimeReady).toHaveBeenCalledWith(undefined)
   })
 
-  it('answers every http caller with the old server-runtime stubs', async () => {
+  it('answers every caller with the old server-runtime stubs when no voice host is injected', async () => {
     const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
     dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
@@ -172,10 +185,29 @@ describe('voice RPC domain', () => {
 
     // 一次都没碰真服务。
     for (const fn of Object.values(service)) expect(fn).not.toHaveBeenCalled()
+
+    // 同一批答案在 ipc 上也成立:判据是端口,不是传输。
+    expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'getState', payload: {} })))
+      .toEqual({ success: true, state: expect.objectContaining({ status: 'disabled' }) })
+    expect(service.getState).not.toHaveBeenCalled()
+  })
+
+  it('reaches the real voice service over http once the host injects the port (B1)', async () => {
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    configureVoiceHost({})
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
+
+    expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'getState', payload: {} }, HTTP)))
+      .toEqual({ success: true, state: expect.objectContaining({ status: 'idle', enabled: true }) })
+    expect(service.getState).toHaveBeenCalled()
+
+    await dispatchRpc({ domain: 'voice', method: 'start', payload: { sessionId: 's1', reason: 'manual' } }, HTTP)
+    expect(service.start).toHaveBeenCalledWith({ sessionId: 's1', reason: 'manual' })
   })
 
   it('refuses a method that is not on the router', async () => {
-    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers } = await loadDomain()
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    configureVoiceHost({})
     dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
 
     const response = await dispatchRpc({ domain: 'voice', method: 'onVoiceEvent', payload: {} })

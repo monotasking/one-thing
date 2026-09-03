@@ -40,6 +40,10 @@ import { configureAuthHost, type AuthHostPorts } from '@onething/runtime/auth/ho
 import { configureShellHost, type ShellHostPorts } from '@onething/runtime/shell/host-ports'
 import { configureVoiceHost, type VoiceHostPorts } from '@onething/runtime/voice/host-ports.wiring'
 import {
+  configureTerminalBroadcaster,
+  type TerminalHostPorts,
+} from '@onething/runtime/terminal/service.wiring'
+import {
   configureScratchpadHost,
   type ScratchpadHostPorts,
 } from '@onething/runtime/scratchpad/service-bound'
@@ -87,6 +91,12 @@ export interface OnethingHostPorts {
   shell: ShellHostPorts | null
   /** 语音的窗口与托盘。`null` = 这个宿主没有语音。 */
   voice: VoiceHostPorts | null
+  /**
+   * 终端(真 PTY)的输出广播器。`null` = 这个宿主没有终端输出通道 ——
+   * 于是 `terminal` 域一条都不给(方案 backend-transport-forks-2026-09 §2.1:
+   * 只能写不能读的终端不如不开)。
+   */
+  terminal: TerminalHostPorts | null
   /** 技能目录在打包态的落点。`null` = 视为非打包。 */
   skillsEnvironment: SkillsEnvironmentHostPorts | null
   /** todo 变更广播 + 在文件管理器里定位。`null` = 不广播、不定位。 */
@@ -120,6 +130,7 @@ export function applyHostPorts(host: OnethingHostPorts): void {
   if (host.logging) configureAppLoggingHost(host.logging)
   if (host.shell) configureShellHost(host.shell)
   if (host.voice) configureVoiceHost(host.voice)
+  if (host.terminal) configureTerminalBroadcaster(host.terminal.broadcaster)
   if (host.skillsEnvironment) configureSkillsEnvironmentHost(host.skillsEnvironment)
   if (host.todoPlan) configureTodoPlanHost(host.todoPlan)
   if (host.scratchpad) configureScratchpadHost(host.scratchpad)

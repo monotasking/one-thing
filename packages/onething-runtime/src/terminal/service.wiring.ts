@@ -36,6 +36,18 @@ export interface TerminalBroadcaster {
   sendExit(event: TerminalExitEvent): void
 }
 
+/**
+ * 这台宿主的终端输出通道 —— `OnethingHostPorts` 里 `terminal` 那一格的形状
+ * (方案 `docs/design/backend-transport-forks-2026-09.md` §2.1)。
+ *
+ * 只有一件事:把 PTY 的输出推到消费者那边。没有它,请求面(开 shell / 写入)
+ * 就是「只能写不能读」,所以 `terminal` 域拿 `hasTerminalHost()` 当闸,替掉
+ * 从前的 `transport === 'http'`。
+ */
+export interface TerminalHostPorts {
+  broadcaster: TerminalBroadcaster
+}
+
 export interface TerminalServiceOptions {
   flushIntervalMs?: number
   ringMaxUnits?: number
@@ -316,6 +328,14 @@ let serviceInstance: TerminalService | null = null
 /** Host injection port (practice-broadcaster pattern); consulted per call. */
 export function configureTerminalBroadcaster(next: TerminalBroadcaster | null): void {
   broadcaster = next
+}
+
+/**
+ * 这台宿主有没有终端输出通道。未注入 = 没有 —— 于是 `terminal` 域一条都不给,
+ * 与从前 `transport === 'http'` 那七条结构化拒绝逐字同一批答案。
+ */
+export function hasTerminalHost(): boolean {
+  return broadcaster !== null
 }
 
 export function getTerminalService(): TerminalService {
