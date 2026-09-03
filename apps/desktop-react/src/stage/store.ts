@@ -50,6 +50,12 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   focusFloat: (id: string) => void
   moveFloat: (id: string, x: number, y: number) => void
   resizeFloat: (id: string, rect: FloatRect) => void
+  /**
+   * 视口变了之后把所有浮窗矩形重钳一遍(09-04 §4)。参数是视口而不是「自己去量」——
+   * 与别的动作同一条纪律:store 是 transitions 的壳,量视口的活在宿主那一侧。
+   * 一格都没动时 `reclampAll` 交回同一个对象,zustand 于是连订阅都不推。
+   */
+  reclampFloats: (viewport: Viewport) => void
   activateShelfTab: (side: ShelfSide, id: string) => void
   toggleShelfCollapsed: (side: ShelfSide) => void
   closeShelf: (side: ShelfSide) => void
@@ -85,7 +91,7 @@ export const STAGE_PER_SPACE: PerSpaceSpec<StageStore, T.StageFurniture> = {
  * 视口是宿主的事实,不是形态机的 —— transitions 一行都不许读 window,
  * 所以「当下多大」在这里量一次递进去。
  */
-function viewport(): Viewport {
+export function viewport(): Viewport {
   return { w: window.innerWidth, h: window.innerHeight }
 }
 
@@ -146,6 +152,7 @@ export const useStageStore = create<StageStore>()(
       focusFloat: (id) => set((s) => T.focusFloat(s, id)),
       moveFloat: (id, x, y) => set((s) => T.moveFloat(s, id, x, y, viewport())),
       resizeFloat: (id, rect) => set((s) => T.resizeFloat(s, id, rect, viewport())),
+      reclampFloats: (vp) => set((s) => T.reclampAll(s, vp)),
       activateShelfTab: (side, id) => set((s) => T.activateShelfTab(s, side, id)),
       toggleShelfCollapsed: (side) => set((s) => T.toggleShelfCollapsed(s, side)),
       closeShelf: (side) => set((s) => T.closeShelf(s, side)),
@@ -201,6 +208,19 @@ export const useStageStore = create<StageStore>()(
         // 一个 undefined 会让 Dock 的投影在第一帧上抛。不写迁移段的理由也在这里:
         // 「缺席读作空」本身就是这一格的语义,不需要翻译。
         merged.hiddenItems = Array.isArray(merged.hiddenItems) ? merged.hiddenItems : []
+        /*
+         * 档案里的浮窗矩形当场重钳一遍(09-04 §4)。
+         *
+         * 存下来的那份身量是**上一台窗口**的:1400 宽的窗里摆好的 880 浮窗,搬到
+         * 1100 宽的窗里右缘就在屏幕外了 —— 而钳制从前只在手势那一刻发生,于是那扇窗
+         * 从开机起就是坏的,拖它一下才好。这里连同 `byWorkspace` 账上每个空间那一格
+         * 一起钳(reclampAll 自己走那本账),所以切到别的空间也不会露出同一个病。
+         *
+         * 视口量不出来就**跳过**(jsdom / SSR:window 在但尺寸是 0)—— 拿 0 去钳会把
+         * 每一扇窗都压成最小档,那比不钳坏得多。
+         */
+        const vp = typeof window === 'undefined' ? null : viewport()
+        if (vp && vp.w > 0 && vp.h > 0) Object.assign(merged, T.reclampAll(merged, vp))
         return merged
       },
       /*

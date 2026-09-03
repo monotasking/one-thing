@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import { useStageFocusFollow } from '../stage/focus-follow'
+import { useViewportReclamp } from '../stage/viewport-reclamp'
 import { useKeymapCommandRunner } from '../keymap/dispatch'
 import { FocusScope } from '../focus/FocusScope'
 import { useFocusDispatch } from '../focus/dispatch'
@@ -78,6 +79,13 @@ export function AppShell() {
    * `stage/focus-follow.ts`(一只纯函数 + 一只 hook)—— 这里只挂一次。
    */
   useStageFocusFollow()
+
+  /**
+   * **窗子改了尺寸 → 浮窗回到视口里**(09-04 §4)。与上面那一条同一个形:判据在
+   * `stage/` 的纯函数里,壳只负责挂一次监听。挂在这一层的理由也一样 —— 它管的是
+   * **所有**浮窗(还包括此刻关着、只在记忆里的那些),不是某一扇窗自己的事。
+   */
+  useViewportReclamp()
 
   /**
    * **规则 1:壳一挂起来就得有第一响应者**(设计 §3.5 规则 1)。

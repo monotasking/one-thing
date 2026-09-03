@@ -5,6 +5,7 @@ import {
   FLOAT_DEFAULT_H,
   FLOAT_DEFAULT_W,
   FLOAT_KEEP,
+  FLOAT_MARGIN,
   FLOAT_MIN_H,
   FLOAT_MIN_W,
   FALLBACK_VIEWPORT,
@@ -21,6 +22,8 @@ import {
   defaultFloatRect,
   defaultOpenMemory,
   edgeToFloat,
+  factoryStageFurniture,
+  fitFloatRect,
   floatRectForGrab,
   floatToEdge,
   focusFloat,
@@ -36,6 +39,7 @@ import {
   openFromMemory,
   clampDefaultOpen,
   placementForOpen,
+  reclampAll,
   closeShelf,
   placementOf,
   resizeFloat,
@@ -544,6 +548,10 @@ describe('浮窗', () => {
     expect(focusFloat(raised, 'terminal')).toBe(raised)
   })
 
+  /*
+   * 09-04 §4 之后**这条口径一字未改**:拖拽走的是 `clampFloatRect` 那把尺,位置照旧
+   * 允许出界、只保证露出 FLOAT_KEEP。重钳那把尺(fitFloatRect)另有一组用例在下面。
+   */
   it('拖移钳制:横向至少留 40px 在视口内,纵向不许推出屏顶', () => {
     const st = openAs(base, 'files', FLOAT, VP)
     const far = moveFloat(st, 'files', 9999, 9999, VP)
@@ -604,9 +612,16 @@ describe('浮窗', () => {
     expect(resizeFloat(base, 'files', { x: 0, y: 0, w: 500, h: 400 }, VP)).toBe(base)
   })
 
-  it('视口比默认身量还小:新窗取视口那么大', () => {
+  it('视口比默认身量还小:新窗取视口减掉两道气口(位置口径未动,仍从 0 起算)', () => {
     const small: Viewport = { w: 500, h: 400 }
-    expect(defaultFloatRect(small)).toEqual({ x: 0, y: 0, w: 500, h: 400 })
+    // 09-04 §4 只加了**身量上界**这一格:从前是 500×400(整个视口),现在留出两道气口。
+    // x/y 仍是 0 —— 拖拽那把尺的位置口径一字没改,居中算出来是 0 就是 0。
+    expect(defaultFloatRect(small)).toEqual({
+      x: 0,
+      y: 0,
+      w: 500 - 2 * FLOAT_MARGIN,
+      h: 400 - 2 * FLOAT_MARGIN,
+    })
   })
 
   it('clampFloatRect 是纯算术,两处(拖拽预览与落库)共用同一把尺', () => {
@@ -616,6 +631,92 @@ describe('浮窗', () => {
       w: 900,
       h: 700,
     })
+  })
+
+  it('身量上界是本批唯一加在手势那条路上的新约束:比视口还宽的窗子拉不出来', () => {
+    // 反证:把 clampFloatSize 里 w 那一句改回 Math.max(FLOAT_MIN_W, …) → 这条红。
+    const rect = clampFloatRect({ x: 0, y: 0, w: 9999, h: 9999 }, VP)
+    expect(rect.w).toBe(VP.w - 2 * FLOAT_MARGIN)
+    expect(rect.h).toBe(VP.h - 2 * FLOAT_MARGIN)
+  })
+
+  /* ── 视口重钳(09-04 §4;宿主那一半在 __tests__/viewport-reclamp.test.tsx)── */
+
+  it('fitFloatRect:放得下就整扇拉回视口内,两端各留 FLOAT_MARGIN', () => {
+    // 同一份矩形、同一台视口,两把尺给出**不同**的答案 —— 这正是本批拆成两把的理由。
+    // 反证:让 fitFloatRect 直接 return clampFloatRect(...) → 这条与下面两条一起红。
+    const far = { x: 9999, y: 9999, w: FLOAT_DEFAULT_W, h: FLOAT_DEFAULT_H }
+    expect(fitFloatRect(far, VP)).toEqual({
+      x: VP.w - FLOAT_MARGIN - FLOAT_DEFAULT_W,
+      y: VP.h - FLOAT_MARGIN - FLOAT_DEFAULT_H,
+      w: FLOAT_DEFAULT_W,
+      h: FLOAT_DEFAULT_H,
+    })
+    expect(clampFloatRect(far, VP).x).toBe(VP.w - FLOAT_KEEP)
+
+    const near = fitFloatRect({ x: -9999, y: -9999, w: 600, h: 400 }, VP)
+    expect(near.x).toBe(FLOAT_MARGIN)
+    expect(near.y).toBe(FLOAT_MARGIN)
+  })
+
+  it('fitFloatRect:视口窄到塞不下最小档时退回 KEEP 那把尺,窗子还看得见、还抓得住', () => {
+    // 两轴都要塞不下才走这一支:280 + 2*16 = 312 > 300(横),200 + 2*16 = 232 > 220(纵)。
+    const narrow: Viewport = { w: 300, h: 220 }
+    const far = fitFloatRect({ x: 9999, y: 9999, w: 280, h: 200 }, narrow)
+    expect(far.x).toBe(narrow.w - FLOAT_KEEP)
+    expect(far.y).toBe(narrow.h - FLOAT_KEEP)
+    const near = fitFloatRect({ x: -9999, y: -9999, w: 280, h: 200 }, narrow)
+    expect(near.x).toBe(FLOAT_KEEP - 280)
+    // 纵向下界仍是 0:标题栏被推出屏顶就再也拖不回来了。
+    expect(near.y).toBe(0)
+  })
+
+  it('宽窗里存下的浮窗落进 1100 视口:先钳身量再钳位置,右缘不出界', () => {
+    // 真机报障那一份逐字:x=260 / w=879,搬进 1100 宽的窗里右缘在 1139 —— 屏幕外。
+    const vp: Viewport = { w: 1100, h: 800 }
+    const st = {
+      ...base,
+      floats: { sessions: { x: 260, y: 40, w: 879, h: 700 } },
+      memory: { sessions: { kind: 'float' as const, rect: { x: 260, y: 40, w: 879, h: 700 } } },
+    }
+    const next = reclampAll(st, vp)
+    const rect = next.floats.sessions
+    // 反证:让 reclampAll 改用 clampFloatRect(手势那把尺)→ x 停在 260,右缘 1139,这条红。
+    expect(rect.x + rect.w).toBeLessThanOrEqual(vp.w - FLOAT_MARGIN)
+    expect(rect.y + rect.h).toBeLessThanOrEqual(vp.h - FLOAT_MARGIN)
+    expect(rect.w).toBeGreaterThanOrEqual(FLOAT_MIN_W)
+    expect(rect.x).toBeGreaterThanOrEqual(FLOAT_MARGIN)
+    // 记忆里那一份同样钳过 —— 不然关掉再开又是坏的。
+    expect(next.memory.sessions).toEqual({ kind: 'float', rect })
+  })
+
+  it('账上每个空间那一格家具也钳(切回去不会露出同一个病)', () => {
+    const vp: Viewport = { w: 1100, h: 800 }
+    const st = {
+      ...base,
+      byWorkspace: {
+        other: {
+          ...factoryStageFurniture(),
+          floats: { sessions: { x: 260, y: 40, w: 879, h: 700 } },
+        },
+      },
+    }
+    const rect = reclampAll(st, vp).byWorkspace.other.floats.sessions
+    expect(rect.x + rect.w).toBeLessThanOrEqual(vp.w - FLOAT_MARGIN)
+  })
+
+  it('一格都没越界 = 恒等变换:交回同一个对象,resize 不白推一轮渲染', () => {
+    const vp: Viewport = { w: 1100, h: 800 }
+    const fits = { x: 100, y: 100, w: 600, h: 400 }
+    const st = {
+      ...base,
+      floats: { sessions: fits },
+      memory: { sessions: { kind: 'float' as const, rect: fits } },
+      byWorkspace: { other: { ...factoryStageFurniture(), floats: { diff: fits } } },
+    }
+    // 反证:把 reclampFloatMap 的 `return next ?? floats` 改成 `return { ...floats }`
+    // → 这一条当场红(而屏幕上的表现是每发 resize 都重渲染一次浮窗层)。
+    expect(reclampAll(st, vp)).toBe(st)
   })
 })
 

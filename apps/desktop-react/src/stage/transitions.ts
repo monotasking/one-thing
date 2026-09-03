@@ -15,6 +15,7 @@ import type {
 } from './types'
 import { DOCK_WAKE_DWELL_MS } from '../components/motion'
 import { foldFlatIntoDefaultSpace } from '../workspace/per-space'
+import type { PerSpaceState, SpaceLedger } from '../workspace/per-space'
 import { DEFAULT_SPACE_ID } from '../workspace/types'
 
 /**
@@ -29,6 +30,18 @@ export const SHELF_DEFAULT_THICKNESS = 400
 export const FLOAT_MIN_W = 280
 export const FLOAT_MIN_H = 200
 export const FLOAT_KEEP = 40
+/**
+ * 浮窗与视口边缘之间那道**气口**(09-04 §4)。
+ *
+ * 它与 FLOAT_KEEP 是两条相反的界,别混:KEEP 说的是「最少露多少出来」(允许
+ * 出界),MARGIN 说的是「最多贴多近」(不许出界)。两条界各服务一把尺 ——
+ * 手势与落定认 KEEP(`clampFloatRect`),视口重钳认 MARGIN(`fitFloatRect`),
+ * 那张分工表在「浮窗几何」那一节的开头。身量上界(vp - 2*MARGIN)两把尺共用。
+ *
+ * 它是 **JS 几何**不是 CSS 间距,所以住在这里而不是 tokens.css:纯函数不读 CSS,
+ * 而 FLOAT_MIN_W / FLOAT_KEEP / FLOAT_DEFAULT_W 这一族本来就都在这一处。
+ */
+export const FLOAT_MARGIN = 16
 /*
  * 新窗默认宽度 08-31 由 720 加宽一档到 880。
  *
@@ -464,13 +477,43 @@ export function resolveOpen(
 
 /* ── 浮窗几何(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
 
+/*
+ * ── **两把尺,各服务一条路**(09-04 §4,用户判例「行为裁定须先问、缺省保旧」)──
+ *
+ * 同一份矩形在两种时刻被钳,两种时刻要的手感不一样,所以是两个函数而不是一个:
+ *
+ *  | 尺 | 谁在用 | 位置口径 |
+ *  | --- | --- | --- |
+ *  | `clampFloatRect` | **手势与落定**:拖移 / 缩放(`moveFloat`/`resizeFloat`/`FloatWindow` 的逐帧预览)、开窗(`defaultFloatRect`)、按记忆还原(`openFromMemory`/`floatRectForGrab`) | **旧口径一字不动**:允许出界,只保证至少 FLOAT_KEEP=40 那么一截留在视口里(纵向下界 0) |
+ *  | `fitFloatRect`   | **重钳**:视口变了 / 档案是别的尺寸的窗存下的(`reclampAll` → store 的 `reclampFloats` 与 persist 的 `merge`) | **整扇拉回视口内**,两端各留 FLOAT_MARGIN;塞不下才退回上面那条 KEEP |
+ *
+ * 两把尺**共用身量那一格**(`clampFloatSize`):`w ∈ [FLOAT_MIN_W, vp.w - 2*MARGIN]`,
+ * 高同理 —— 这是本批唯一加在手势那条路上的新约束(从前 w 只有下界,于是 1400 宽的窗里
+ * 拉出来的 1300 宽浮窗换到 1100 的窗里怎么钳都出界)。
+ *
+ * **留账:拖拽是否也改认 MARGIN(即拖窗不再能推出屏幕边缘)待用户拍板。** 本批按
+ * 「缺省保旧」只让重钳这条路认 MARGIN;要统一成一把尺的话,删掉 clampFloatRect 里
+ * 的 KEEP 分支、让它直接调 fitFloatRect 即可,四条既有用例会当场红出差异。
+ */
+
 /**
- * 钳制一个浮窗矩形:身量不小于最小档,且至少 FLOAT_KEEP 那么一截留在视口里。
+ * 身量钳制:两把尺共用的那一格。上界是 09-04 §4 新加的 —— 只有下界的话,
+ * 从宽屏存下来的身量在窄窗里无论怎么摆都出界(报障现场:1100 宽的窗里躺着 w=879)。
+ */
+function clampFloatSize(rect: FloatRect, viewport: Viewport): { w: number; h: number } {
+  return {
+    w: clamp(Math.round(rect.w), FLOAT_MIN_W, viewport.w - 2 * FLOAT_MARGIN),
+    h: clamp(Math.round(rect.h), FLOAT_MIN_H, viewport.h - 2 * FLOAT_MARGIN),
+  }
+}
+
+/**
+ * **手势与落定那把尺**(位置口径 09-04 之前一字不动):身量不小于最小档、不大于
+ * 视口减两道气口,且至少 FLOAT_KEEP 那么一截留在视口里。
  * 纵向下界是 0 而不是「露出 40px」—— 标题栏被推出屏顶就再也拖不回来了。
  */
 export function clampFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
-  const w = Math.max(FLOAT_MIN_W, Math.round(rect.w))
-  const h = Math.max(FLOAT_MIN_H, Math.round(rect.h))
+  const { w, h } = clampFloatSize(rect, viewport)
   return {
     w,
     h,
@@ -479,11 +522,125 @@ export function clampFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
   }
 }
 
+/**
+ * **重钳那把尺**:**先尺寸后位置,整扇拉回视口内**。
+ *
+ * 先后次序是判据的一部分 —— 反过来算的话右边缘用的是还没钳过的宽度,钳完位置窗子
+ * 照样探出去(09-04 报障就是这一格:x=260 / w=879 落进 1100 宽的窗,只钳位置时 x
+ * 合法而 x+w=1139 > 1100,右缘被切)。
+ *
+ * 位置:放得下就 `x ∈ [MARGIN, vp.w - MARGIN - w]`(整扇在内);**放不下才退回
+ * `clampFloatRect` 那条 KEEP 老规矩** —— 「放不下」= 视口比 `FLOAT_MIN_W + 2*MARGIN`
+ * 还窄,那是最小档窗子都塞不进去的视口,「整扇留在里面」根本无解,只能保「还看得见、
+ * 还抓得住」。
+ */
+export function fitFloatRect(rect: FloatRect, viewport: Viewport): FloatRect {
+  const { w, h } = clampFloatSize(rect, viewport)
+  const keep = clampFloatRect(rect, viewport)
+  return {
+    w,
+    h,
+    x: fitFloatAxis(Math.round(rect.x), w, viewport.w, keep.x),
+    y: fitFloatAxis(Math.round(rect.y), h, viewport.h, keep.y),
+  }
+}
+
+/** 一条轴:放得下认 MARGIN(整扇在内),放不下就交回 KEEP 那把尺已经算好的值。 */
+function fitFloatAxis(pos: number, size: number, extent: number, fallback: number): number {
+  const inside = extent - FLOAT_MARGIN - size
+  return inside >= FLOAT_MARGIN ? clamp(pos, FLOAT_MARGIN, inside) : fallback
+}
+
 /** 新浮窗:居中、默认身量(视口比默认还小就取视口)。 */
 export function defaultFloatRect(viewport: Viewport): FloatRect {
   const w = Math.min(FLOAT_DEFAULT_W, viewport.w)
   const h = Math.min(FLOAT_DEFAULT_H, viewport.h)
   return clampFloatRect({ w, h, x: (viewport.w - w) / 2, y: (viewport.h - h) / 2 }, viewport)
+}
+
+/**
+ * **视口变了之后把每一格浮窗矩形重钳一遍**(09-04 §4)。
+ *
+ * 它治的是「钳制只发生在手势那一刻」这条老毛病:窗子放大时存下来的 880 宽浮窗,
+ * 换到 1100 宽的窗里既没人量也没人钳,于是右缘被切在屏幕外 —— 而拖它一下就好了,
+ * 正说明少的不是判据(clampFloatRect 一直在),是**触发时机**。
+ *
+ * 钳的是三处、同一句话:
+ *  · `floats` —— 此刻开着的那些窗;
+ *  · `memory` 里 `kind: 'float'` 的那些 rect —— 关着的窗再开出来也得是钳过的;
+ *  · `byWorkspace` 每个空间那一格家具里的同样两格 —— 别的空间切回来时同样在这扇窗里。
+ *
+ * 用的是**重钳那把尺** `fitFloatRect`(整扇拉回视口内),不是手势那把 —— 两把尺的
+ * 分工见上面那张表。
+ *
+ * **不变即恒等**:一格都没动就交回**同一个对象**,于是 store 的 `set` 认得出
+ * (zustand 对 `Object.is(next, state)` 直接不通知),一次 resize 不会白推一轮渲染。
+ */
+export function reclampAll<S extends StageState & Partial<PerSpaceState<StageFurniture>>>(
+  state: S,
+  viewport: Viewport,
+): S {
+  const live = reclampFloatGeometry(state, viewport)
+  const ledger = state.byWorkspace
+  if (!ledger) return live
+  let nextLedger: SpaceLedger<StageFurniture> | null = null
+  for (const [spaceId, furniture] of Object.entries(ledger)) {
+    const reclamped = reclampFloatGeometry(furniture, viewport)
+    if (reclamped === furniture) continue
+    nextLedger ??= { ...ledger }
+    nextLedger[spaceId] = reclamped
+  }
+  if (!nextLedger) return live
+  return { ...live, byWorkspace: nextLedger }
+}
+
+/**
+ * 一份「有 floats 与 memory 的东西」里的全部浮窗矩形重钳。活状态与账上某个空间的
+ * 那一格家具形状相同(两者都是 `Pick<StageState, 'floats' | 'memory'>` 的超集),
+ * 所以这一句只写一遍 —— 两处各写一遍正是「存的时候多钳一格、摊的时候少钳一格」的来源。
+ */
+function reclampFloatGeometry<T extends Pick<StageState, 'floats' | 'memory'>>(
+  source: T,
+  viewport: Viewport,
+): T {
+  const floats = reclampFloatMap(source.floats, viewport)
+  const memory = reclampMemoryMap(source.memory, viewport)
+  if (floats === source.floats && memory === source.memory) return source
+  return { ...source, floats, memory }
+}
+
+function reclampFloatMap(
+  floats: StageState['floats'],
+  viewport: Viewport,
+): StageState['floats'] {
+  let next: StageState['floats'] | null = null
+  for (const [id, rect] of Object.entries(floats)) {
+    const clamped = fitFloatRect(rect, viewport)
+    if (sameRect(clamped, rect)) continue
+    next ??= { ...floats }
+    next[id] = clamped
+  }
+  return next ?? floats
+}
+
+function reclampMemoryMap(
+  memory: StageState['memory'],
+  viewport: Viewport,
+): StageState['memory'] {
+  let next: StageState['memory'] | null = null
+  for (const [id, remembered] of Object.entries(memory)) {
+    if (remembered.kind !== 'float') continue
+    const clamped = fitFloatRect(remembered.rect, viewport)
+    if (sameRect(clamped, remembered.rect)) continue
+    next ??= { ...memory }
+    next[id] = { kind: 'float', rect: clamped }
+  }
+  return next ?? memory
+}
+
+/** 逐格相等 —— 「有没有变」是这一族恒等语义的判据,不能靠引用(钳制每次都造新对象)。 */
+function sameRect(a: FloatRect, b: FloatRect): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h
 }
 
 export type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
