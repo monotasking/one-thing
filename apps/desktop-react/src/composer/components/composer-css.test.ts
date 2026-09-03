@@ -20,10 +20,17 @@ import { describe, expect, it } from 'vitest'
  * 从**应用根**拼路径(vitest 的 cwd 就是 apps/desktop-react):`import.meta.url`
  * 在这套配置下不是一条 file: URL,拿它去 fileURLToPath 会当场抛。
  */
-const css = readFileSync(
+const raw = readFileSync(
   resolve(process.cwd(), 'src/composer/components/Composer.module.css'),
   'utf8',
 )
+
+/*
+ * **先剥注释**(CLAUDE.md 那条:读样式表源文本的门先剥注释)。这份样式表里的
+ * 注释写的是病历 —— 「从前这里是 flex: 1」「药丸被压到 min-content 会折行」——
+ * 病历里出现的正是断言要找 / 要否掉的那些字,不剥就会让断言自绿或自红。
+ */
+const css = raw.replace(/\/\*[\s\S]*?\*\//g, '')
 
 /** 取一条规则的整块声明(`.sel {...}` 里那一段)。 */
 function block(selector: string): string {
@@ -81,5 +88,44 @@ describe('抽屉候选列表:封顶 + 自己滚 + 不把滚动传给身后', () 
   it('抽屉自己仍然是 grid 0fr↔1fr,没有被顺手改成 max-height', () => {
     expect(block('.drawer')).toMatch(/grid-template-rows:\s*0fr/)
     expect(block('.drawer')).not.toMatch(/max-height/)
+  })
+})
+
+/**
+ * 本体行的**两行布局**与药丸的**永不折行**(09-03 真机报障的产地)。
+ *
+ * 守在产地上读源文件的理由与本文件头部那一段逐字相同(CSS Modules 那份样式表
+ * 没进过 jsdom),不再复述。这一族守的是两件事:
+ *   ① 四件工具不再与会长高的文本同行 —— `.writeRow` 是竖排;
+ *   ② 药丸永不换行,只截断 —— 律二(`docs/design/react-shell-squeeze-rules-2026-08.md`)。
+ *
+ * 「窄档下药丸真的只占一行」是**排版**,CSS 源文本说不出这句话:它在真机门
+ * `npm run gate:squeeze` 的律二那一步里量。两件事必须都在 —— 这里守住有人把
+ * 这几行删了,那里守住这几行真的管用。
+ */
+describe('本体行两行布局 + 药丸永不折行(09-03 报障的产地)', () => {
+  it('.writeRow 是竖排:输入面独占上行,四件退到工具行', () => {
+    expect(block('.writeRow')).toMatch(/flex-direction:\s*column/)
+  })
+
+  it('.modelPill 永不换行,而且真的缩得下去(min-width: 0 解开自动最小尺寸)', () => {
+    expect(block('.modelPill')).toMatch(/white-space:\s*nowrap/)
+    expect(block('.modelPill')).toMatch(/min-width:\s*0/)
+  })
+
+  it('.modelPillLabel 是截断的产地(text-overflow 只认块级容器里的行内文本)', () => {
+    expect(block('.modelPillLabel')).toMatch(/text-overflow:\s*ellipsis/)
+  })
+
+  it('.input 声明 min-width: 0 —— 长 URL 撑不宽这一行', () => {
+    expect(block('.input')).toMatch(/min-width:\s*0/)
+  })
+
+  /* 律一的分工:工具行里唯一承担伸缩的是药丸,右半那两件一格都不让。 */
+  it.each([
+    ['.toolsRight', '圆环 + 发送那一半'],
+    ['.sendBtn', '发送键'],
+  ])('%s(%s)不弯腰:flex: none', (selector) => {
+    expect(block(selector)).toMatch(/flex:\s*none/)
   })
 })

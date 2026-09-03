@@ -334,88 +334,109 @@ export function Composer() {
                     e.target.value = ''
                   }}
                 />
-                {/* 回形针消费 `ui/IconButton`(sm 档 22×22,图标 14px —— 与从前
-                  * 「--sp-1 内边距 + --composer-attach-icon」逐像素相同)。
-                  * 本地那条 `.toolBtn:hover`(只换字色、不换底)是 `icon-button-hover`
-                  * 门唯一那条命中,随这次迁移一起删 —— 配方从此只有库件一个产地。 */}
-                <IconButton
-                  icon={PaperclipIcon}
-                  className={s.toolBtn}
-                  label={t('composer.attach')}
-                  onClick={() => fileRef.current?.click()}
-                />
 
                 {/*
-                  * 三层事实都答不上来时药丸写的是「选择模型」——**不拿目录里
-                  * 第一家第一型去顶**(SessionSummary.model 早就定下的口径)。
+                  * ── 下行 = 工具行(09-03 用户拍板 B:本体行改两行)────────────────
+                  * 报障两条同一个根:①窄档里模型药丸在连字符处折成两行;②输入面多行时
+                  * 回形针 / 药丸 / 圆环悬在输入面的竖中线上、发送键沉在底部。病根是
+                  * **四件与文本同行** —— 单行沉底只治第二条的症状,第一条照旧。
+                  * 所以输入面独占上行撑满,四件退到自己的一行:左边回形针 + 药丸,
+                  * 右边圆环 + 发送。四件的 DOM 顺序 / aria-label / data-testid /
+                  * data-mode / onClick 一个字没动 —— 挪的是行,不是身份。
                   */}
-                {/* 药丸是结构件(裸钮三类判第③类):描边丸形是这块面自己的语汇,
-                  * 所以只接 `ui/ButtonBase` 清 UA,`.modelPill` 皮肤一个像素不动。 */}
-                <ButtonBase
-                  className={s.modelPill}
-                  aria-label={
-                    selection
-                      ? t('composer.model', { name: selection.model })
-                      : t('composer.modelUnset')
-                  }
-                  aria-expanded={drawerKind === 'model'}
-                  aria-busy={switchingModel}
-                  onClick={toggleModelDrawer}
-                >
-                  {selection ? selection.model : t('composer.modelUnset')}
-                  <ChevronDown className={s.pillChev} strokeWidth={2} aria-hidden="true" />
-                </ButtonBase>
-
-                {/* 开卡的那一眼要是最新的:悬停 / 聚焦时顺手再拉一次读数
-                    (Vue 壳 InputBox 的同一判例)。没有会话时 refresh 是恒等。 */}
-                <ContextRing
-                  onEnter={() => {
-                    setMeterOpen(true)
-                    void refreshMeter()
-                  }}
-                  onLeave={() => setMeterOpen(false)}
-                />
-
-                {/*
-                 * 一颗按钮两副面孔:闲时发送(↑),忙时停止(■)。
-                 *
-                 * **不是两颗按钮**,理由是手感:发送键的位置是肌肉记忆里的一个点,
-                 * 在旁边再长一颗停止键会让那个点在两种状态下指向不同的东西。
-                 * `data-testid` 因此**恒定**(门按位置找它,不按状态找),
-                 * 状态挂在 `data-mode` 上 —— 那才是「它此刻是哪副面孔」的产地。
-                 *
-                 * ── 09-01 批 3.5 的裁定:**签名件走 `ui/ButtonBase`** ────────
-                 * 批 3 在这里当场停,报的缺口是「IconButton 不透传」。缺口这批补上了
-                 * (IconButton 现在摊 ButtonHTMLAttributes),但**这一处仍然不迁
-                 * IconButton** —— 编排拍定:发送键是 accent **实底圆**的签名件,
-                 * 而 `ui/IconButton` 是「檐上那种钮」,无边框、无实底、只换字色。
-                 * 把实底主色塞进 IconButton 等于给它长一整个实底家族,那件立件的
-                 * 前提(配方单一)当场没了。所以走裸钮三类判第③类:
-                 * **结构性交互件 → `ui/ButtonBase`**(只清 UA,一个像素都不画),
-                 * 皮肤 `.sendBtn` 原样留在本地当签名件皮肤。
-                 * `data-mode` / `aria-label` / `onClick` 经 ButtonBase 原样透传,
-                 * `type='button'` 是它的默认档,所以这里不必再写一遍。
-                 */}
-                <ButtonBase
-                  className={s.sendBtn}
-                  aria-label={busy ? t('composer.stop') : t('composer.send')}
-                  data-testid="composer-send"
-                  data-mode={busy ? 'stop' : 'send'}
-                  onClick={() =>
-                    busy ? composerSink().abort() : doSend(inputRef.current?.text() ?? '')
-                  }
-                >
-                  {busy ? (
-                    <StopIcon
-                      className={s.sendIcon}
-                      strokeWidth={2.4}
-                      fill="currentColor"
-                      aria-hidden="true"
+                <div className={s.toolRow}>
+                  <div className={s.toolsLeft}>
+                    {/* 回形针消费 `ui/IconButton`(sm 档 22×22,图标 14px —— 与从前
+                      * 「--sp-1 内边距 + --composer-attach-icon」逐像素相同)。
+                      * 本地那条 `.toolBtn:hover`(只换字色、不换底)是 `icon-button-hover`
+                      * 门唯一那条命中,随这次迁移一起删 —— 配方从此只有库件一个产地。 */}
+                    <IconButton
+                      icon={PaperclipIcon}
+                      className={s.toolBtn}
+                      label={t('composer.attach')}
+                      onClick={() => fileRef.current?.click()}
                     />
-                  ) : (
-                    <SendIcon className={s.sendIcon} strokeWidth={2.4} aria-hidden="true" />
-                  )}
-                </ButtonBase>
+
+                    {/*
+                      * 三层事实都答不上来时药丸写的是「选择模型」——**不拿目录里
+                      * 第一家第一型去顶**(SessionSummary.model 早就定下的口径)。
+                      */}
+                    {/* 药丸是结构件(裸钮三类判第③类):描边丸形是这块面自己的语汇,
+                      * 所以只接 `ui/ButtonBase` 清 UA,`.modelPill` 皮肤一个像素不动。 */}
+                    <ButtonBase
+                      className={s.modelPill}
+                      aria-label={
+                        selection
+                          ? t('composer.model', { name: selection.model })
+                          : t('composer.modelUnset')
+                      }
+                      aria-expanded={drawerKind === 'model'}
+                      aria-busy={switchingModel}
+                      onClick={toggleModelDrawer}
+                    >
+                      {/* 文字必须自成一块:`text-overflow: ellipsis` 只作用于**块级容器里的
+                        * 行内文本**,写在这枚 inline-flex 钮身上是空话。截断的产地因此是
+                        * `.modelPillLabel`,药丸自己只负责「永不折行」那一半。 */}
+                      <span className={s.modelPillLabel}>
+                        {selection ? selection.model : t('composer.modelUnset')}
+                      </span>
+                      <ChevronDown className={s.pillChev} strokeWidth={2} aria-hidden="true" />
+                    </ButtonBase>
+                  </div>
+
+                  <div className={s.toolsRight}>
+                    {/* 开卡的那一眼要是最新的:悬停 / 聚焦时顺手再拉一次读数
+                        (Vue 壳 InputBox 的同一判例)。没有会话时 refresh 是恒等。 */}
+                    <ContextRing
+                      onEnter={() => {
+                        setMeterOpen(true)
+                        void refreshMeter()
+                      }}
+                      onLeave={() => setMeterOpen(false)}
+                    />
+
+                    {/*
+                     * 一颗按钮两副面孔:闲时发送(↑),忙时停止(■)。
+                     *
+                     * **不是两颗按钮**,理由是手感:发送键的位置是肌肉记忆里的一个点,
+                     * 在旁边再长一颗停止键会让那个点在两种状态下指向不同的东西。
+                     * `data-testid` 因此**恒定**(门按位置找它,不按状态找),
+                     * 状态挂在 `data-mode` 上 —— 那才是「它此刻是哪副面孔」的产地。
+                     *
+                     * ── 09-01 批 3.5 的裁定:**签名件走 `ui/ButtonBase`** ────────
+                     * 批 3 在这里当场停,报的缺口是「IconButton 不透传」。缺口这批补上了
+                     * (IconButton 现在摊 ButtonHTMLAttributes),但**这一处仍然不迁
+                     * IconButton** —— 编排拍定:发送键是 accent **实底圆**的签名件,
+                     * 而 `ui/IconButton` 是「檐上那种钮」,无边框、无实底、只换字色。
+                     * 把实底主色塞进 IconButton 等于给它长一整个实底家族,那件立件的
+                     * 前提(配方单一)当场没了。所以走裸钮三类判第③类:
+                     * **结构性交互件 → `ui/ButtonBase`**(只清 UA,一个像素都不画),
+                     * 皮肤 `.sendBtn` 原样留在本地当签名件皮肤。
+                     * `data-mode` / `aria-label` / `onClick` 经 ButtonBase 原样透传,
+                     * `type='button'` 是它的默认档,所以这里不必再写一遍。
+                     */}
+                    <ButtonBase
+                      className={s.sendBtn}
+                      aria-label={busy ? t('composer.stop') : t('composer.send')}
+                      data-testid="composer-send"
+                      data-mode={busy ? 'stop' : 'send'}
+                      onClick={() =>
+                        busy ? composerSink().abort() : doSend(inputRef.current?.text() ?? '')
+                      }
+                    >
+                      {busy ? (
+                        <StopIcon
+                          className={s.sendIcon}
+                          strokeWidth={2.4}
+                          fill="currentColor"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <SendIcon className={s.sendIcon} strokeWidth={2.4} aria-hidden="true" />
+                      )}
+                    </ButtonBase>
+                  </div>
+                </div>
               </div>
             </div>
 

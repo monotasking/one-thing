@@ -342,15 +342,69 @@
   pointer-events: none;
 }
 
+/*
+ * ── 本体行是**两行**(09-03 用户拍板 B)────────────────────────────────────
+ * 上行:输入面独占,撑满整宽。下行:工具行(回形针 + 药丸 | 圆环 + 发送)。
+ *
+ * 从前四件与文本同行,那一行是 `align-items: flex-end` 的 flex,病历两条:
+ *   ① 窄档里药丸被 flex 压到 min-content,在 `deepseek-v4-pro` 的连字符处折成两行
+ *      —— 违反挤压律二「结构行里的文本永不换行,只截断」;
+ *   ② 输入面多行时,三件写了 `align-self: center` 各自悬在输入面的**竖中线**上,
+ *      而发送键没写、沉在底部 —— 四件一行里站四个高度。
+ * 两条同一个根:**四件不该与一块会长高的文本同行**。单行沉底只治 ②,① 照旧。
+ *
+ * 竖排之后 `align-items` 不再有话可说(每一行自己占满宽),那句 flex-end 删掉;
+ * 三件的 `align-self: center` 也一并退役 —— 它们现在住在一条 `align-items: center`
+ * 的横行里,那句话是死的。
+ */
 .writeRow {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: var(--sp-2);
   padding: var(--composer-pad-y) var(--composer-pad-x);
 }
 
+/*
+ * 工具行 = 下行。**律一(一行一个弯腰件)的分工写在这里**:这一行里唯一承担
+ * 伸缩的是模型药丸(它以截断收场,见 `.modelPillLabel`),回形针 / 圆环 / 发送三件
+ * 一律 `flex: none` —— 图标钮被压扁不是「有序降元素」,是变形。
+ */
+.toolRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 左半装着这一行唯一可缩的件(药丸),所以它自己也要能缩:min-width: 0
+ * 少一句,flex 项的自动最小尺寸(min-content)会把整段撑住,截断永不发生。 */
+.toolsLeft {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 右半是两件定尺寸的钮:一格都不让。 */
+.toolsRight {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/*
+ * 竖排之后 `flex: 1` 会变成「在竖轴上抢高度」—— 与从前那句(横轴上撑满)不是
+ * 同一件事。高度仍旧由 min/max-height + 内容说了算,所以这里是 `flex: none`;
+ * 宽度由 `align-items: stretch`(flex 容器的缺省)撑满,与从前逐像素相同。
+ * `min-width: 0` 是律二的另一半:flex 项的自动最小尺寸会拿 min-content 顶住,
+ * 长 URL / 长路径就能把这一行撑宽 —— 从前靠 `min-height` 蒙过了静态门。
+ */
 .input {
-  flex: 1;
+  flex: none;
+  min-width: 0;
   min-height: var(--composer-input-min);
   max-height: var(--composer-input-max);
   overflow-y: auto;
@@ -406,18 +460,39 @@
 }
 
 /*
- * 回形针迁 `ui/IconButton` 之后本地只剩一格**落点**:这一行是 baseline 对齐的
- * flex,钮要自己站到中线上。配方(rest text-3 / hover 换底又换字 / active /
- * 焦点环)全归库件 —— 从前那条 `.toolBtn:hover` 是 `icon-button-hover` 门
- * 唯一一条命中,它「只换字色不换底」正是那条法说的「各面自绘必然走形」。
+ * 回形针迁 `ui/IconButton` 之后本地只剩一格**落点**:它住在工具行里,是那一行
+ * 三件不弯腰的件之一(律一的分工见 `.toolRow`)。从前这里写的是
+ * `align-self: center`,配的注释说「这一行是 baseline 对齐的 flex,钮要自己站到
+ * 中线上」—— 09-03 改两行之后那句话两头都不成立了(行是 `align-items: center`,
+ * 也不再有 baseline),所以换成它现在真正的那一格:不许被压扁。
+ * 配方(rest text-3 / hover 换底又换字 / active / 焦点环)全归库件 —— 从前那条
+ * `.toolBtn:hover` 是 `icon-button-hover` 门唯一一条命中,它「只换字色不换底」
+ * 正是那条法说的「各面自绘必然走形」。
  */
 .toolBtn {
-  align-self: center;
+  flex: none;
 }
 
 .sendIcon {
   width: var(--composer-send-icon);
   height: var(--composer-send-icon);
+}
+
+/*
+ * 药丸上那截文字。`text-overflow: ellipsis` 只作用于**块级容器里的行内文本**,
+ * 写在 inline-flex 的药丸身上是空话 —— 所以文字自成一块,截断守在这里。
+ * 三句缺一不可:能缩(min-width: 0)、藏得住(overflow: hidden)、不换行(nowrap)。
+ *
+ * 名字带 `model` 前缀不是啰嗦:`ui:consume` 的 `shared-vocab-css` 认的是**行首
+ * 那个词**(`^\.pill…` 属于「丸」这个共享视觉词汇),叫 `.pillLabel` 会在那张
+ * 「同一个词有几个产地」的账上凭空添一条 —— 而它根本不是一枚新的丸,是
+ * `.modelPill` 身上的一截文字。
+ */
+.modelPillLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 模型 pill 上那枚小箭头比状态条的窄一档:它挂在一枚 pill 上,不该比字还重。 */
@@ -431,11 +506,20 @@
   display: none;
 }
 
+/*
+ * 工具行里**唯一那个弯腰件**(律一):`flex: 0 1 auto` = 不抢多余的,但让得出去;
+ * `min-width: 0` 解开 flex 项的自动最小尺寸,让它真的缩得下去;
+ * `white-space: nowrap` 是律二那一句 —— 结构行里的文本**永不换行,只截断**。
+ * 09-03 报障就死在缺这一句上:`deepseek-v4-pro` 里的连字符是合法断点,药丸被压到
+ * min-content 时当场折成两行。截断本身在 `.modelPillLabel`(text-overflow 只认块级容器)。
+ */
 .modelPill {
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
-  align-self: center;
   gap: var(--sp-1);
+  min-width: 0;
+  white-space: nowrap;
   padding: var(--sp-1) var(--sp-3);
   border: 1px solid var(--line-1);
   border-radius: var(--r-full);
@@ -449,9 +533,10 @@
   border-color: var(--line-accent);
 }
 
+/* 圆环也是工具行里不弯腰的三件之一(律一的分工见 `.toolRow`)。 */
 .ctxRing {
   display: flex;
-  align-self: center;
+  flex: none;
   cursor: default;
 }
 

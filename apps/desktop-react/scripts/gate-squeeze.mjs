@@ -31,6 +31,11 @@
  * 理由。默认**不**整类豁免绝对定位:绝对定位恰恰是「覆盖」最常见的实现方式,
  * 整类放行等于把律三的执法面挖空。
  *
+ * **律二也在这条门里**(09-03 补,`[6/10]`):composer 本体行的工具件不折行、
+ * 不悬在文本的竖中线上。律二说的是「结构行里的文本永不换行,只截断」——
+ * 那是**排版**,静态门看不见(`squeeze-check` 只查「flex: 1 却没 min-width」),
+ * 所以它必须在这里量。判据与病历写在 `checkComposerToolRow` 头上。
+ *
  * 跑法:`node scripts/gate-squeeze.mjs`
  * (仓根先 `bun run server:build`,本目录先 `npm run app:build`)。
  * 可重复:每次一个全新的临时 store + 全新的 --user-data-dir,跑完删干净。
@@ -776,7 +781,7 @@ async function sweepThicknesses(page, scenario, failures, extra) {
 /**
  * 竖排 Dock 的预留检查(09-01 用户报障带截图:竖排 Dock 盖住右架子里查看器的正文)。
  *
- * 与 [3.5/7] 是同一条律三、同一把尺,只是换了一条边:那条量的是底边 Dock 压 composer,
+ * 与 [4/10] 是同一条律三、同一把尺,只是换了一条边:那条量的是底边 Dock 压 composer,
  * 这条量的是**左右边 Dock 压侧架子**。判据也是同一句——把该侧架子里「自己画内容」
  * 的盒子逐个取右缘,问一次 elementFromPoint:命中 Dock 就是被盖。
  *
@@ -854,6 +859,195 @@ async function checkSideShelfReach(page, edge) {
   })
 }
 
+/**
+ * ── 律二在 composer 本体行上的那一步(09-03 用户报障,拍板 B:本体行改两行)──
+ *
+ * 报障两张截图两条病,同一个根:①窄宽度下模型药丸「deepseek-v4-pro」在连字符处
+ * **折成两行**;②输入面多行时,回形针 / 药丸 / 圆环悬在输入面的**竖中线**上,
+ * 发送键沉在底部 —— 四件一行里站四个高度。病根是「四件与一块会长高的文本同行」。
+ *
+ * 静态门为什么漏:`squeeze-check` 那条只查「`flex: 1` 却没 `min-width: 0`」——
+ * 药丸不是 `flex: 1`(它没写 flex,吃的是缺省 `0 1 auto`),`.input` 则靠 `min-height`
+ * 蒙了过去。**「这段文字会不会折行」是排版,只有真机量得出来**,所以补在这条门里。
+ *
+ * 三条判据,全部 `page.evaluate` 读真排版:
+ *   ① 窄档药丸**单行**:盒高 < 2 × 行盒高,且药丸上那截文字的 `Range.getClientRects()`
+ *      只有一块 —— 后者是「文本占了几行」的直接读数,不是从高度反推的。
+ *   ② 多行时四件**全在输入面之下**:每件 `rect.top ≥ 输入面 rect.bottom - 1`。
+ *   ③ 四件同一条**竖中线**:两两的 `top + height/2` 差 ≤ 1px。
+ * ②③ 都在**输入面被敲成 6 行之后**量 —— 单行时旧写法的四件恰好也差不多齐,
+ * 那一档量不出病(试过:不敲字这一步在旧写法下也绿)。
+ *
+ * 四件一律按**产品自己的落点**找(data-testid / aria-label / role),不按 CSS 类名:
+ * 反证要把 JSX 与 CSS 一起换回旧写法,按类名找会变成「探针挂了」而不是「判据红了」。
+ */
+/**
+ * 窄档取多窄:**盯着 composer 面板自己的宽度**,不盯窗口宽度。
+ *
+ * 面板宽 = 窗口宽 − 右架子厚度 − `.wrap` 的左右内缩,而架子厚度是上一步留下来的
+ * 状态 —— 拿窗口宽当判据,换一次默认厚度这一步量的就是另一个宽度。所以这里
+ * 反着来:设一次窗口宽 → 量一次面板 → 按差额修一次,最多修三轮(两者是线性关系,
+ * 一轮就够,多的两轮是给 55% 架子钳制那种非线性留的)。真实落到多少一律打印。
+ *
+ * 200 这个数是**反证跑出来的**,不是拍的:09-03 把 Composer.tsx + .module.css 一起
+ * 换回旧写法跑这一步,在面板 200px 上三条判据各红一条(药丸「gpt-4o」的文字占 2 行、
+ * 四件的上缘还在输入面里、发送键与另外三件的竖中线差 46px)。**再宽就不成立**:
+ * 这条门里药丸上写的是这台机器的默认模型「gpt-4o」(六个字符),它的 max-content
+ * 很窄 —— 宽一档旧写法压根压不到它,①「药丸单行」就成了一条只会绿的断言。
+ * 换一天这条门有了长模型名(报障那条是 `deepseek-v4-pro`),这个数可以放宽,
+ * 但**放宽之前必须重跑一次反证**:判据的价值全在「拆掉即红」上。
+ * 另一头也有底:面板再窄下去工具行自己会顶出面板(`.panel` 是 `overflow: hidden`),
+ * 那时量的就是另一个病了 —— 那一档没量过,要往下调先补量。
+ */
+const TARGET_PANEL_W = 200
+const NARROW_WINDOW = { minWidth: 320, minHeight: 480 }
+
+async function measureComposerPanel(page) {
+  return page.evaluate(() => {
+    const scope = document.querySelector('[data-focus-scope="composer"]')
+    return scope ? scope.getBoundingClientRect().width : -1
+  })
+}
+
+async function narrowComposerTo(app, page, targetPanel) {
+  const win = await app.browserWindow(page)
+  const before = await win.evaluate((w) => ({ size: w.getSize(), min: w.getMinimumSize() }))
+  // minWidth 在 electron/main.ts 里是 900:不放开这一格,setSize 会被当场钳回去。
+  await win.evaluate((w, m) => w.setMinimumSize(m.minWidth, m.minHeight), NARROW_WINDOW)
+  let width = before.size[0]
+  let panel = await measureComposerPanel(page)
+  for (let round = 0; round < 3 && Math.abs(panel - targetPanel) > 8; round += 1) {
+    width = Math.max(NARROW_WINDOW.minWidth, Math.round(width + (targetPanel - panel)))
+    await win.evaluate((w, s) => w.setSize(s.width, w.getSize()[1]), { width })
+    await delay(400)
+    panel = await measureComposerPanel(page)
+  }
+  const restore = async () => {
+    await win.evaluate((w, back) => {
+      w.setSize(back.size[0], back.size[1])
+      w.setMinimumSize(back.min[0], back.min[1])
+    }, before)
+    await delay(500)
+  }
+  return { panel, width, restore }
+}
+
+/**
+ * 把光标放进输入面。
+ *
+ * **不用 `page.click`**:Playwright 的点击带可操作性检查(要可见、要稳定),
+ * 而这一步存心把面板挤到 200px —— 反证跑旧写法时输入面被四件挤成零宽,
+ * 点击于是超时**抛异常**,判据一条都没跑到。探针要报的是「判据红了」,
+ * 不是「探针自己挂了」。落焦走页面内的 `focus()`,键盘仍是真的 CDP 按键。
+ */
+async function focusComposerInput(page) {
+  const ok = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="composer-input"]')
+    if (!(el instanceof HTMLElement)) return false
+    el.focus()
+    return document.activeElement === el
+  })
+  if (!ok) throw new Error('光标进不了 composer 的输入面')
+  await delay(120)
+}
+
+/** 六行:`Shift+Enter` 是产品自己的换行手势(裸 Enter 会把话发出去)。 */
+async function typeSixLines(page) {
+  await focusComposerInput(page)
+  for (let i = 1; i <= 6; i += 1) {
+    await page.keyboard.type(`第 ${i} 行`)
+    if (i < 6) await page.keyboard.press('Shift+Enter')
+  }
+  await delay(250)
+}
+
+async function clearComposer(page) {
+  const selectAll = process.platform === 'darwin' ? 'Meta+a' : 'Control+a'
+  await focusComposerInput(page)
+  await page.keyboard.press(selectAll)
+  await page.keyboard.press('Backspace')
+  await delay(200)
+}
+
+async function checkComposerToolRow(page) {
+  return page.evaluate(() => {
+    const scope = document.querySelector('[data-focus-scope="composer"]')
+    const input = document.querySelector('[data-testid="composer-input"]')
+    const send = document.querySelector('[data-testid="composer-send"]')
+    const buttons = [...document.querySelectorAll('button')]
+    const byLabel = (re) => buttons.find((b) => re.test(b.getAttribute('aria-label') ?? ''))
+    const clip = byLabel(/添加附件|Add attachment/)
+    const pill = byLabel(/选择模型|Pick a model/)
+    const ring = scope?.querySelector('[role="img"]')
+    if (!scope || !input || !send || !clip || !pill || !ring) {
+      return {
+        error: `composer 的落点对不上(scope=${!!scope} input=${!!input} 回形针=${!!clip}`
+          + ` 药丸=${!!pill} 圆环=${!!ring} 发送=${!!send})—— 选择器对不上就等于这一步在陪跑`,
+      }
+    }
+
+    const problems = []
+    const readings = []
+    const panel = scope.getBoundingClientRect()
+    readings.push(`composer 面板宽 ${panel.width.toFixed(1)}`)
+
+    // ── ① 药丸单行 ───────────────────────────────────────────────────────
+    // 药丸上那截文字:新写法里是一枚 <span>(截断的产地),旧写法里是直接的文本节点。
+    const labelNode =
+      pill.querySelector('span') ?? [...pill.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim())
+    if (!labelNode) return { error: '药丸上找不到那截文字' }
+    const range = document.createRange()
+    range.selectNodeContents(labelNode)
+    const lineRects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0)
+    const lineBox = lineRects.length ? Math.max(...lineRects.map((r) => r.height)) : 0
+    const pillBox = pill.getBoundingClientRect()
+    readings.push(
+      `药丸「${(labelNode.textContent ?? '').trim()}」盒高 ${pillBox.height.toFixed(1)}`
+      + ` / 行盒 ${lineBox.toFixed(1)} × ${lineRects.length} 块`,
+    )
+    if (lineRects.length !== 1) {
+      problems.push(
+        `① 药丸上的文字占了 ${lineRects.length} 行(律二:结构行里的文本永不换行,只截断)`,
+      )
+    }
+    if (lineBox > 0 && pillBox.height >= lineBox * 2) {
+      problems.push(
+        `① 药丸盒高 ${pillBox.height.toFixed(1)} ≥ 2 × 行盒 ${lineBox.toFixed(1)} —— 它折行了`,
+      )
+    }
+
+    // ── ②③ 四件退到输入面之下,而且站在同一条竖中线上 ──────────────────
+    const four = [
+      ['回形针', clip],
+      ['药丸', pill],
+      ['圆环', ring],
+      ['发送键', send],
+    ].map(([name, el]) => ({ name, r: el.getBoundingClientRect() }))
+    const inputBox = input.getBoundingClientRect()
+    readings.push(`输入面 ${inputBox.top.toFixed(1)}→${inputBox.bottom.toFixed(1)}`)
+    for (const { name, r } of four) {
+      readings.push(`${name} top ${r.top.toFixed(1)} 中线 ${(r.top + r.height / 2).toFixed(1)}`)
+      if (r.top < inputBox.bottom - 1) {
+        problems.push(
+          `② ${name} 的上缘 ${r.top.toFixed(1)} 还在输入面里(输入面下缘 ${inputBox.bottom.toFixed(1)})`
+          + ' —— 四件仍与会长高的文本同行',
+        )
+      }
+    }
+    for (let i = 0; i < four.length; i += 1) {
+      for (let j = i + 1; j < four.length; j += 1) {
+        const a = four[i]
+        const b = four[j]
+        const gap = Math.abs(a.r.top + a.r.height / 2 - (b.r.top + b.r.height / 2))
+        if (gap > 1) {
+          problems.push(`③ ${a.name} 与 ${b.name} 的竖中线差 ${gap.toFixed(1)}px(> 1px)`)
+        }
+      }
+    }
+    return { problems, readings }
+  })
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(
@@ -884,7 +1078,7 @@ async function main() {
   let app
   const failures = []
   try {
-    console.log('\n[1/7] 起一台 core,种下四种组名形状')
+    console.log('\n[1/10] 起一台 core,种下四种组名形状')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: {
@@ -939,7 +1133,7 @@ async function main() {
     }
     console.log(`  ✓ 种了 ${seeded} 条会话 / ${SEED_GROUPS.length} 组`)
 
-    console.log('\n[2/7] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
+    console.log('\n[2/10] 拉起应用(独立 --user-data-dir),把会话总览钉到右架子')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -965,7 +1159,7 @@ async function main() {
     )
     console.log('  ✓ 钉上了,卡也画出来了')
 
-    console.log('\n[3/7] 律三的预留检查(粘性覆盖的代价)')
+    console.log('\n[3/10] 律三的预留检查(粘性覆盖的代价)')
     const reservation = await checkStickyReservation(page)
     if (reservation.error) throw new Error(reservation.error)
     if (reservation.problems.length) {
@@ -980,7 +1174,7 @@ async function main() {
      * 与上一步分开报,是因为它们是**两个坐标系**里的同一件事(滚动 / 屏幕),
      * 红起来该修的地方也不同 —— 一条门该指得出该谁修。
      */
-    console.log('\n[3.5/7] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
+    console.log('\n[4/10] 律三的预留检查(Dock 常显覆盖的代价:主输入可达性)')
     const dockReserve = await checkDockReservation(page)
     if (dockReserve.error) throw new Error(dockReserve.error)
     if (dockReserve.skipped) {
@@ -992,7 +1186,7 @@ async function main() {
       console.log(`  ✓ composer 四件全可达(${dockReserve.readings.join(' · ')})`)
     }
 
-    console.log('\n[3.6/7] 律三的预留检查(竖排 Dock:侧架子内容可达性)')
+    console.log('\n[5/10] 律三的预留检查(竖排 Dock:侧架子内容可达性)')
     for (const edge of ['right', 'left']) {
       const side = await checkSideShelfReach(page, edge)
       if (side.error) throw new Error(side.error)
@@ -1008,16 +1202,39 @@ async function main() {
      * 竖排 Dock 会把主区宽度整个改掉,不还原就是拿另一套布局去判它们(试过,红一档)。 */
     await checkSideShelfReach(page, 'bottom')
 
-    console.log('\n[4/7] 场景①总览:五档厚度,逐档滚一遍扫重叠')
+    console.log('\n[6/10] 律二:composer 工具行不折行、不悬中(09-03 报障的产地)')
+    const narrow = await narrowComposerTo(app, page, TARGET_PANEL_W)
+    console.log(
+      `    窗口宽 ${narrow.width} → composer 面板宽 ${narrow.panel.toFixed(1)}(目标 ${TARGET_PANEL_W})`,
+    )
+    try {
+      await typeSixLines(page)
+      const toolRow = await checkComposerToolRow(page)
+      if (toolRow.error) throw new Error(toolRow.error)
+      console.log(`    ${toolRow.readings.join(' | ')}`)
+      if (toolRow.problems.length) {
+        for (const problem of toolRow.problems) console.log(`  ✗ ${problem}`)
+        failures.push(`composer 工具行:${toolRow.problems.length} 条`)
+      } else {
+        console.log('  ✓ 药丸单行 · 四件全在输入面之下 · 四件同一条竖中线')
+      }
+    } finally {
+      /* 敲进去的字与窗口尺寸都要还原:后面两个场景量的是架子厚度下的排版,
+       * 多一块六行高的输入面、少几百像素的窗口宽,量的就是另一套布局。 */
+      await clearComposer(page).catch(() => {})
+      await narrow.restore()
+    }
+
+    console.log('\n[7/10] 场景①总览:五档厚度,逐档滚一遍扫重叠')
     await sweepThicknesses(page, '总览', failures)
 
-    console.log(`\n[5/7] 场景②进组后 ListView(长名组「${LIST_SCENARIO_GROUP}」):同样五档`)
+    console.log(`\n[8/10] 场景②进组后 ListView(长名组「${LIST_SCENARIO_GROUP}」):同样五档`)
     // 在宽档(五档的最后一档 560)上点进去,窄档只负责被量 —— 这条门量的是排版,
     // 不是「窄到 240 还点不点得中」。
     await enterGroupNamed(page, LIST_SCENARIO_GROUP)
     await sweepThicknesses(page, 'ListView', failures, checkListTopRow)
 
-    console.log('\n[6/7] 挤压纪律的 toast 版(崩溃弹框里那条无断点长 URL)')
+    console.log('\n[9/10] 挤压纪律的 toast 版(崩溃弹框里那条无断点长 URL)')
     const toast = await checkToastSqueeze(page)
     if (toast.error) throw new Error(toast.error)
     if (process.env.SQUEEZE_DUMP) console.log(`    [toast] ${toast.seen.join(' | ')}`)
@@ -1028,7 +1245,7 @@ async function main() {
       console.log(`  ✓ ${toast.rows} 条 toast:盒子没被撑宽,墨一件都没顶穿 padding`)
     }
 
-    console.log('\n[7/7] 收工')
+    console.log('\n[10/10] 收工')
     await app.close()
     app = undefined
   } finally {

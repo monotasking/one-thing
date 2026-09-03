@@ -90,6 +90,25 @@
 正文区反过来:`.summary` 允许两行(`line-clamp: 2`),因为卡的高度是
 `min-height` 不是 `height` —— 它准备好为内容长高。
 
+### 病历 · composer 药丸折行 + 工具件悬中(09-03,用户带两张截图)
+
+报障两条:①窄宽度下模型药丸「deepseek-v4-pro」折成两行;②输入面多行时,回形针 /
+药丸 / 圆环悬在输入面的**竖中线**上,发送键沉在底部。产地都在
+`apps/desktop-react/src/composer/components/Composer.module.css`:`.modelPill` 既没有
+`white-space: nowrap` 也没有 `flex: none`,flex 压它时按 min-content 在连字符处折行;
+`.writeRow` 是 `align-items: flex-end` 的一行,三件各写 `align-self: center`、发送键
+没写 —— 四件一行里站四个高度。**两条同一个根:四件与一块会长高的文本同行。**
+
+用户拍板 **B(本体行改两行)**:输入面独占上行撑满,下行是工具行(回形针 + 药丸靠左,
+圆环 + 发送靠右)。单行沉底只治 ②,① 照旧。
+
+静态门为什么漏:`squeeze-check` 那条只查「`flex: 1` 却没 `min-width: 0`」——
+药丸压根没写 `flex`(吃的是缺省 `0 1 auto`),`.input` 则靠 `min-height` 蒙了过去。
+**「这段文字会不会折行」是排版,静态源码看不见**,所以真机门补了一步:
+`apps/desktop-react/scripts/gate-squeeze.mjs` 的 `[6/10]`,三条判据 —— 窄档药丸的
+`Range.getClientRects()` 只有一块、四件的 `rect.top ≥ 输入面 rect.bottom - 1`、
+四件竖中线两两差 ≤ 1px(后两条在输入面被敲成 6 行之后量)。
+
 ## 律三 · 覆盖内容必须有布局预留
 
 > 任何盖在内容上面的元素,都要在布局里**先把位置空出来**。
