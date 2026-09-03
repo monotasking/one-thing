@@ -12,7 +12,7 @@ packages/backend/channel/session-router.ts 1
 packages/backend/features/cordis-root.ts 1
 packages/backend/rpc/domains/evals.ts 1
 packages/backend/server/embed.ts 1
-packages/backend/server/local-trust.ts 1
+packages/backend/server/host-trust.ts 1
 packages/backend/server/plugin-catalog.ts 1
 packages/backend/server/search-providers.ts 1
 packages/backend/session/commands.ts 1

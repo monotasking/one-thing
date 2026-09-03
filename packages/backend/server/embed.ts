@@ -23,7 +23,7 @@ import {
   writeHttpDiscovery,
   type HttpDiscoveryOwner,
 } from './discovery.js'
-import { configureFilesLocalTrust } from './local-trust.js'
+import { configureHostLocalTrust } from './host-trust.js'
 
 export interface EmbeddedOnethingHttpServerOptions {
   /**
@@ -103,11 +103,11 @@ export async function startEmbeddedOnethingHttpServer(
     workspaceRoot: runtime.workspaceRoot,
   })
 
-  // files 域的本机宿主豁免(2026-08-30 拍板):这只面**无条件可信** —— 它跑在桌面
-  // 主进程里、只服务本机同一个用户,token 写在 0600 的发现文件里。声明之后
-  // `POST /api/rpc` 的 files 域与桌面 IPC 同权;`ONETHING_SERVER_FILES_SANDBOX=1`
-  // 仍然压得住它(端口每次现读)。
-  const restoreFilesTrust = configureFilesLocalTrust({
+  // 本机宿主可信(2026-08-30 拍板,09-03 B2 起六个域共用):这只面**无条件可信**
+  // —— 它跑在桌面主进程里、只服务本机同一个用户,token 写在 0600 的发现文件里。
+  // 声明之后 `POST /api/rpc` 的 files / tools / search / evals / mcp / sessions 与
+  // 桌面 IPC 同权;`ONETHING_SERVER_FILES_SANDBOX=1` 仍然压得住它(端口每次现读)。
+  const restoreFilesTrust = configureHostLocalTrust({
     origin: 'desktop-embedded',
     host,
   })

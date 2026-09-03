@@ -15,10 +15,13 @@
  * server 共用的同一个单例),设置取的是 `@onething/backend/stores/settings` ——
  * 与迁移前 `@main` 那份适配逐字同义。
  *
- * ## 按 `context.transport` 分叉的四道护栏(拍板 #20 的纪律:不放宽)
+ * ## 四道护栏(拍板 #20 的纪律:不放宽)
  *
- * 旧 server adapter 比桌面多出来的东西里,有四件是**真的校验/隔离**,逐字保留在
- * `transport === 'http'` 这一支上:
+ * 旧 server adapter 比桌面多出来的东西里,有四件是**真的校验/隔离**,逐字保留。
+ * B2(`docs/design/backend-transport-forks-2026-09.md`)之后它们分成**两问**:
+ * 1 与 2 问的是「这份 payload 出不出进程」(`payloadLeavesProcess`,transport 真
+ * 答得了的问题);3 与 4 问的是「调用方是不是本机可信」(`server/host-trust.ts`),
+ * 4 还要再细一档(只认桌面内嵌面,见 `canSpawnLocalProcesses`)。
  *
  *  1. **私密字段脱敏**:`command` / `args` / `env` / `cwd` / `url` / `headers` 出
  *     `getServers` 与四条变更结果(add / update / connect / refresh)之前一律换成
@@ -26,11 +29,13 @@
  *     在同一台机器上,脱了反而让设置页读不到自己刚填的值。
  *  2. **更新时把脱敏值合并回去**:客户端交回来的配置若在私密键上带着哨兵(或
  *     干脆没带这个键),用磁盘上那份真值补齐,于是「只改个名字」不会把凭证洗掉。
- *  3. **`readConfigFile` 在 http 上不读本机文件**:旧 adapter 递的是
- *     `fileExists: () => false`(一句「文件不存在」),这里逐字照抄 —— 浏览器不该
- *     能拿这条通道当任意文件读取器。
- *  4. **stdio 探测在 http 上默认关闭**:`ONETHING_SERVER_MCP_STDIO === '1'` 才放行,
- *     否则回旧 server 那句 `MCP stdio transport is disabled in the web server runtime.`
+ *  3. **`readConfigFile` 在不可信宿主上不读本机文件**:旧 adapter 递的是
+ *     `fileExists: () => false`(一句「文件不存在」),这里逐字照抄 —— 联网的
+ *     浏览器不该能拿这条通道当任意文件读取器。本机可信的面(桌面内嵌 / 回环
+ *     server)读的是自己机器上那份配置,与桌面 IPC 同权。
+ *  4. **stdio 探测默认只给桌面内嵌面**:其余宿主 `ONETHING_SERVER_MCP_STDIO === '1'`
+ *     才放行,否则回旧 server 那句
+ *     `MCP stdio transport is disabled in the web server runtime.`
  *     ——`allowMCPStdio` 的默认值本来就是这个环境变量。
  *
  * 剩下两类**不是**护栏,按 #20 / #27 / #28 同判例接受:
@@ -69,6 +74,7 @@ import { getMCPOAuthFlowManager } from '@onething/runtime/mcp/oauth/index'
 import type { MCPSettings } from '@shared/ipc/mcp.js'
 import type { McpRoutes } from '@shared/ipc/mcp.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
+import { hostLocalTrustOrigin, isHostLocallyTrusted } from '../../server/host-trust.js'
 import {
   mergeRedactedMCPServerConfig,
   sanitizeMCPMutationResultForClient,
@@ -88,9 +94,29 @@ const consoleLog: ConsoleLikePort & OnethingMCPIpcLogger = consolePort(log)
 const SERVER_MCP_STDIO_DISABLED_ERROR =
   'MCP stdio transport is disabled in the web server runtime.'
 
-/** 只有网络那一侧要脱敏 —— 桌面读的是自己刚填进去的值。 */
-function isRemoteCaller(context: RpcDispatchContext): boolean {
+/**
+ * payload 会不会走网络离开这个进程。
+ *
+ * 问的**不是**「调用方远不远」,而是「这份回应要不要出界」—— 出界就摘密钥。
+ * 这是 `transport` 真正答得了的问题之一(B2 §2.1 把那个误导的旧名
+ * 「远端调用方」换成了它):同一台机器上的 HTTP 面也照样脱敏,因为密文一旦上了 socket
+ * 就不在进程里了;桌面 IPC 读的是自己刚填进去的值,不脱。
+ */
+function payloadLeavesProcess(context: RpcDispatchContext): boolean {
   return context.transport === 'http'
+}
+
+/**
+ * 能不能替调用方在这台机器上**起一个进程**(mcp stdio probe 的闸)。
+ *
+ * B2 的保守裁定(方案 §4「请拍板」那一行的取值,施工者按缺省取保守):可信分两
+ * 档,只有**桌面内嵌面**(`desktop-embedded`)免闸 —— 它跑在桌面主进程里,与用户
+ * 自己点开设置面板去 probe 是同一件事;回环 `server:start` 虽然也算本机可信
+ * (files / tools / search 那几道闸对它开),但"起本机子进程"比"读本机文件"更重,
+ * 仍旧只由 `ONETHING_SERVER_MCP_STDIO=1` 决定。
+ */
+function canSpawnLocalProcesses(): boolean {
+  return hostLocalTrustOrigin() === 'desktop-embedded'
 }
 
 function getMCPSettings(): MCPSettings {
@@ -116,14 +142,14 @@ function mcpServerAdapters() {
 
 function projectStates(context: RpcDispatchContext): MCPServerState[] {
   const states = MCPManager.getServerStates()
-  return isRemoteCaller(context) ? sanitizeMCPServerStatesForClient(states) : states
+  return payloadLeavesProcess(context) ? sanitizeMCPServerStatesForClient(states) : states
 }
 
 function projectMutation<T extends { server?: MCPServerState }>(
   result: T,
   context: RpcDispatchContext,
 ): T {
-  return isRemoteCaller(context) ? sanitizeMCPMutationResultForClient(result) : result
+  return payloadLeavesProcess(context) ? sanitizeMCPMutationResultForClient(result) : result
 }
 
 /** 与 `server/runtime.ts` 里 `allowMCPStdio` 的默认值同源(环境变量,每次现读)。 */
@@ -149,7 +175,7 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
   async updateServer(request, context = DESKTOP_RPC_CONTEXT) {
     // 护栏 2:客户端拿到的是脱敏后的配置,交回来时把真值合并回去。桌面不走这一步
     // (它拿到的本来就是真值,合并等于空操作,但保持形状「只有 http 有分叉」)。
-    const config = isRemoteCaller(context)
+    const config = payloadLeavesProcess(context)
       ? mergeRedactedMCPServerConfig(
           request.config,
           getMCPSettings().servers.find(
@@ -193,10 +219,10 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
     };
     return logoutOnethingMCPServerForIpc(mCPServerIpcAdapters6) as Promise<McpRoutes['logoutServer']['output']>
   },
-  async probeServer(request, context = DESKTOP_RPC_CONTEXT) {
-    // 护栏 4:起本机进程这件事,网络那一侧默认不给。
+  async probeServer(request) {
+    // 护栏 4:起本机进程这件事,默认只给桌面内嵌面(见 `canSpawnLocalProcesses`)。
     if (
-      isRemoteCaller(context)
+      !canSpawnLocalProcesses()
       && request.config?.transport === 'stdio'
       && !serverAllowsMcpStdio()
     ) {
@@ -260,9 +286,11 @@ export const mcpRpcHandlers: RpcRouteHandlers<McpRoutes> = {
       logger: consoleLog,
     }) as Promise<McpRoutes['getPrompt']['output']>
   },
-  async readConfigFile(request, context = DESKTOP_RPC_CONTEXT) {
-    // 护栏 3:网络那一侧拿到的是一句「文件不存在」,与旧 adapter 逐字同义。
-    const remote = isRemoteCaller(context)
+  async readConfigFile(request) {
+    // 护栏 3:不可信宿主拿到的是一句「文件不存在」,与旧 adapter 逐字同义。
+    // B2:判据从 `transport === 'http'` 改成本机可信 —— 读本机上那份 MCP 配置
+    // 文件,桌面内嵌面与回环 server 与桌面 IPC 同权。
+    const remote = !isHostLocallyTrusted()
     return readOnethingMCPConfigFileForIpc({
       filePath: remote ? '' : request.filePath,
       fileExists: remote ? () => false : filePath => fs.existsSync(filePath),

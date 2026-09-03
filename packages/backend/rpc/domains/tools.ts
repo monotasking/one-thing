@@ -15,13 +15,21 @@
  * **本域零推送** —— 工具的执行进展走会话事件/流(`tool:*` chunk),不是这个域的
  * 通道,所以两只宿主件整只删掉(同 acp / collab / themes 判例)。
  *
- * ## #19 的安全面:逐方法的 http 分叉
+ * ## #19 的安全面:逐方法的护栏(B2 起判据是**本机可信**,不是传输)
  *
  * 这是继 `files` 之后第二个把护栏逐方法写进域处理者的域。规矩同 `../sandbox.ts`:
- * `transport:'ipc'` 不夹 —— 桌面是用户自己的机器,与迁移前 `@main` handler 逐字
- * 同义;`transport:'http'` **逐字照搬**旧 server 路由那一份语义,文案一个字不改。
+ * 本机可信的宿主不夹 —— 那是用户自己的机器,与迁移前 `@main` handler 逐字同义;
+ * 不可信的宿主 **逐字照搬**旧 server 路由那一份语义,文案一个字不改。
  *
- * | 方法                 | `transport:'ipc'`(桌面) | `transport:'http'`(联网宿主) |
+ * 判据 B2(`docs/design/backend-transport-forks-2026-09.md` §2.2)之前写的是
+ * `context.transport === 'http'`。它问错了问题:桌面内嵌 HTTP 面与回环
+ * `server:start` 服务的都是本机同一个用户的同一个 store,却被当成"别人的机器"
+ * ——后台任务表恒空、停止与工具调用更新恒拒、执行面只剩 `read`。改问
+ * `isHostLocallyTrusted()`(`server/host-trust.ts`,装配时声明、
+ * `ONETHING_SERVER_FILES_SANDBOX=1` 压得住)之后,独立部署的 server 逐字不变,
+ * 本机那几只面与桌面 IPC 同权。
+ *
+ * | 方法                 | 本机可信(桌面 / 内嵌面 / 回环) | 不可信(联网宿主) |
  * | -------------------- | ------------------------- | ----------------------------- |
  * | `getTools`           | 目录投影                   | **同左**(见下「一处口径变化」) |
  * | `executeTool`        | 直跑 runner                | 三道闸:白名单 `read` → 会话存在 → 路径夹进会话沙箱,过闸之后跑**同一个** runner |
@@ -30,7 +38,7 @@
  * | `backgroundJobsList` | 真表                       | **空表**,逐字沿用旧 adapter    |
  * | `backgroundJobsStop` | 真停                       | **拒绝**,文案逐字沿用旧 adapter |
  *
- * 三条 http 侧的执行闸(白名单 / 会话 / 路径)与旧 `server/runtime.ts` 的
+ * 三条不可信侧的执行闸(白名单 / 会话 / 路径)与旧 `server/runtime.ts` 的
  * `serverReadOnlyToolIds` + `validateServerReadOnlyToolAccess` +
  * `resolveSessionToolPath` **逐字同义**,包括「相对路径以会话工作目录为基准(工作
  * 目录本身必须在沙箱内,否则退回沙箱根)」这条细节 —— 所以下面自己写了一份
@@ -79,6 +87,7 @@ import {
 } from '../../wiring/toolkit/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
+import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingToolsIpcLogger } from '@onething/runtime/tools/ipc-operations'
@@ -170,8 +179,11 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
 
   async executeTool(request, context = DESKTOP_RPC_CONTEXT) {
     const { toolId, arguments: args, messageId, sessionId } = request
-    if (context.transport === 'http') {
+    if (!isHostLocallyTrusted()) {
       // 三道闸,逐字照搬旧 `/api/tools/execute` 背后的那份 adapter。
+      // (B2 之前的判据是 `context.transport === 'http'`;沙箱根仍从上下文取 ——
+      //  不可信的 ipc 上下文经 `resolveRpcSandbox` 得到 `{confined:false}`,
+      //  三道闸里只有白名单与会话那两道还咬得住,与旧语义一致。)
       if (!HTTP_EXECUTABLE_TOOL_IDS.has(toolId)) {
         return failure(`Tool execution for "${toolId}" is disabled in the web server runtime.`)
       }
@@ -211,24 +223,25 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
     return cancelOnethingToolForIpc({ toolCallId: request.toolCallId, logger: consoleLog })
   },
 
-  async backgroundJobsList(request, context = DESKTOP_RPC_CONTEXT) {
-    // 旧 adapter 在 http 上恒报空表(联网宿主上没有后台任务这个概念)。这里换的是
+  async backgroundJobsList(request) {
+    // 旧 adapter 在联网宿主上恒报空表(那里没有后台任务这个概念)。这里换的是
     // **货源**而不是投影:同一个产品层投影,只是 lister 交出去一张空表 —— 响应形状
     // 因此逐字相同,而「投影不许在传输层重抄」那条线也没被绕过去。
-    const listJobs = context.transport === 'http' ? () => [] : listBackgroundJobs
+    // 后台任务表是**本进程**的表,本机可信的调用方本来就该看得见它(B2)。
+    const listJobs = isHostLocallyTrusted() ? listBackgroundJobs : () => []
     return listOnethingBackgroundJobsForIpc({
       includeInactive: request.includeInactive,
       listJobs,
     })
   },
 
-  async backgroundJobsStop(request, context = DESKTOP_RPC_CONTEXT) {
-    if (context.transport === 'http') return failure(HTTP_BACKGROUND_JOBS_DISABLED)
+  async backgroundJobsStop(request) {
+    if (!isHostLocallyTrusted()) return failure(HTTP_BACKGROUND_JOBS_DISABLED)
     return stopOnethingBackgroundJobForIpc({ jobId: request.jobId, stopJob: stopBackgroundJob })
   },
 
-  async updateToolCall(request, context = DESKTOP_RPC_CONTEXT) {
-    if (context.transport === 'http') return failure(HTTP_UPDATE_TOOL_CALL_DISABLED)
+  async updateToolCall(request) {
+    if (!isHostLocallyTrusted()) return failure(HTTP_UPDATE_TOOL_CALL_DISABLED)
     const { sessionId, messageId, toolCallId, updates } = request
     const applyOnethingToolCallUpdateOptions: ApplyOnethingToolCallUpdateOptions<OnethingToolCallStateLike, OnethingToolStepStateLike<OnethingToolCallStateLike>, OnethingToolMessageStateLike<OnethingToolCallStateLike, OnethingToolStepStateLike<OnethingToolCallStateLike>>, ChatSession> & { logger?: OnethingToolCallStateIpcLogger | undefined; } = {
       sessionId,

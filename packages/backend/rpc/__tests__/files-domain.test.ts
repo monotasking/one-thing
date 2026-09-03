@@ -20,9 +20,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { filesRouter } from '@shared/ipc/files.js'
 import {
-  configureFilesLocalTrust,
-  resetFilesLocalTrustForTests,
-} from '../../server/local-trust.js'
+  configureHostLocalTrust,
+  resetHostLocalTrustForTests,
+} from '../../server/host-trust.js'
 
 const ripgrep = vi.hoisted(() => ({ listFiles: vi.fn() }))
 const shell = vi.hoisted(() => ({ revealPath: vi.fn() }))
@@ -86,14 +86,14 @@ describe('files RPC domain', () => {
 
     // 本机宿主豁免是**进程级单槽**:每条用例从"未声明 + 无强制开关"起跑,
     // 否则一条用例的声明会漏进下一条。
-    resetFilesLocalTrustForTests()
+    resetHostLocalTrustForTests()
     delete process.env.ONETHING_SERVER_FILES_SANDBOX
   })
 
   afterEach(() => {
     dispose?.()
     dispose = undefined
-    resetFilesLocalTrustForTests()
+    resetHostLocalTrustForTests()
     delete process.env.ONETHING_SERVER_FILES_SANDBOX
     vi.restoreAllMocks()
   })
@@ -182,7 +182,7 @@ describe('files RPC domain', () => {
     })
 
     it('gives http the same rights as desktop IPC once the host declares local trust', async () => {
-      configureFilesLocalTrust({ origin: 'loopback-server', host: '127.0.0.1' })
+      configureHostLocalTrust({ origin: 'loopback-server', host: '127.0.0.1' })
 
       const read = unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot)))
       expect(read).toMatchObject({ success: true, content: 'from the real disk' })
@@ -200,7 +200,7 @@ describe('files RPC domain', () => {
     })
 
     it('lets ONETHING_SERVER_FILES_SANDBOX=1 override a declared trust', async () => {
-      configureFilesLocalTrust({ origin: 'desktop-embedded', host: '127.0.0.1' })
+      configureHostLocalTrust({ origin: 'desktop-embedded', host: '127.0.0.1' })
       process.env.ONETHING_SERVER_FILES_SANDBOX = '1'
 
       expect(unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot))))
@@ -215,8 +215,8 @@ describe('files RPC domain', () => {
     })
 
     it('restores the previous declaration instead of clearing the slot', async () => {
-      const restoreOuter = configureFilesLocalTrust({ origin: 'desktop-embedded' })
-      const restoreInner = configureFilesLocalTrust({ origin: 'loopback-server' })
+      const restoreOuter = configureHostLocalTrust({ origin: 'desktop-embedded' })
+      const restoreInner = configureHostLocalTrust({ origin: 'loopback-server' })
       // 内层让位(桌面内嵌面与 server:start 在同一进程里先后起落),外层还在。
       restoreInner()
       expect(unwrap(await call('readContent', { path: join(outside, 'real.txt') }, http(sandboxRoot))))

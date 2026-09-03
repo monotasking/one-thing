@@ -23,7 +23,7 @@
  * 越界回结构化失败,**文案逐字沿用旧 server 路由的原话**。
  *
  * 2026-08-30 用户拍板加了一条豁免:**本机可信宿主的 HTTP 面与 IPC 同权**
- * (`resolveFilesSandbox` 与 `server/local-trust.ts`)。下面那张夹紧表因此读作
+ * (`resolveFilesSandbox` 与 `server/host-trust.ts`)。下面那张夹紧表因此读作
  * 「http 且未声明本机可信」这一支;声明了可信的那一支走的是 `ipc` 那一列,一格
  * 不多一格不少。独立部署(非回环)的 server 不声明,表原样生效。
  *
@@ -106,7 +106,7 @@ import {
   stopWorkspaceWatch,
 } from '../../wiring/files/workspace-watch.js'
 import { walkWorkspaceFiles } from '../../wiring/files/workspace-walk.js'
-import { isFilesHostLocallyTrusted } from '../../server/local-trust.js'
+import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import {
   resolveInsideSandbox,
   resolveRpcSandbox,
@@ -133,20 +133,24 @@ const consoleLog: ConsoleLikePort & OnethingDirectoryIpcLogger & OnethingFilesIp
  * 文件树 / 检索 / reveal 对仓内任何真实路径全被拒。
  *
  * 拍板:**本机可信宿主的 HTTP 面与 IPC 同权**(桌面 parity 既有裁定的延伸)。
- * 可信与否由装配处声明(`server/local-trust.ts`),请求信封一个字都没变 ——
+ * 可信与否由装配处声明(`server/host-trust.ts`),请求信封一个字都没变 ——
  * 「身份由宿主 mint」的原则不动。豁免时走的就是桌面那条路,`resolveInsideSandbox`
  * 的未夹紧分支照样 `resolve()`,**没有引入任何新的放宽**。
  *
  * 独立部署(非回环绑定)的 server 一律不声明,`resolveRpcSandbox` 的三条不变量
  * 原样生效 —— 含「http 却没有 sandboxRoot = 接线 bug,直接抛」的 fail-closed。
  *
- * 只有 files 域改了判据。`project-dirs` / `markdown` 等域仍然直问
- * `resolveRpcSandbox`,那是另外的拍板。
+ * `project-dirs` / `markdown` 等域仍然直问 `resolveRpcSandbox`,那是另外的拍板。
+ *
+ * ## B2(2026-09-03,`docs/design/backend-transport-forks-2026-09.md` §2.2)
+ *
+ * 判据里的 `transport === 'http' &&` 去掉了:可信是**面级事实**,不是传输属性。
+ * 声明过可信的进程里,`ipc` 与 `http` 得到的是同一个不夹紧的沙箱(桌面本来就
+ * 走 `resolveRpcSandbox` 的 ipc 分支 → `{confined:false}`,逐字同);没声明的
+ * 进程 `http` 照夹、`ipc` 照旧不夹。两种传输的答案因此仍然是今天那两个。
  */
 function resolveFilesSandbox(context: RpcDispatchContext): RpcSandbox {
-  if (context.transport === 'http' && isFilesHostLocallyTrusted()) {
-    return { confined: false }
-  }
+  if (isHostLocallyTrusted()) return { confined: false }
   return resolveRpcSandbox(context)
 }
 

@@ -19,15 +19,19 @@
 #   B2 目标:tools / search / evals / mcp(两处)/ sessions(三处)/ files 改问
 #   `isHostLocallyTrusted()` 或去掉 `http &&`,只剩 session-command / interaction / logs 的通道亲和
 #   与 mcp / settings 的出界脱敏(那几处会改名 `payloadLeavesProcess`,计数不变)。
+# 2026-09-03 B2 收紧:信任与面六域清零 —— tools 4 / sessions 3 / evals 1 / files 1 /
+#   search 1 改问 `isHostLocallyTrusted()`(`server/host-trust.ts`,由 `local-trust.ts` 改名)
+#   或直接去掉 `http &&`;mcp 的 stdio 闸改问 `hostLocalTrustOrigin() === 'desktop-embedded'`、
+#   读配置文件改问信任。15 → 5 处 / 10 → 5 文件。
+#   **与方案 §2.4 的目标基线的偏离**:那里写的是 `mcp 3 / settings 3`,实际到的是各 1。
+#   两域的三处脱敏各自经**一个本地函数** `payloadLeavesProcess(context)`,而这把尺子数的是
+#   `context.transport` 的读法,一个函数就是一处 —— 比目标更低,不是漏采。
+#   剩下的 5 处就是方案 §5「明确不做」的那两类:通道亲和(session-command / interaction)、
+#   记账(logs)、出界脱敏(mcp / settings)。B3 之后这五处应当原地不动。
 # 降了之后跑 `bun run transport:gate --write-baseline` 收紧(重写会保留本段注释)。
-forks:packages/backend/rpc/domains/evals.ts 1
-forks:packages/backend/rpc/domains/files.ts 1
 forks:packages/backend/rpc/domains/interaction.ts 1
 forks:packages/backend/rpc/domains/logs.ts 1
 forks:packages/backend/rpc/domains/mcp.ts 1
-forks:packages/backend/rpc/domains/search.ts 1
 forks:packages/backend/rpc/domains/session-command.ts 1
-forks:packages/backend/rpc/domains/sessions.ts 3
 forks:packages/backend/rpc/domains/settings.ts 1
-forks:packages/backend/rpc/domains/tools.ts 4
 ipcMain:apps/desktop-react/electron 1

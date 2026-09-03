@@ -30,22 +30,24 @@
  * `session:event` / `session:stream` / `sessions:messages-changed` /
  * `sessions:context-size-updated` 是**推送**,router 没有推送面,留在原地。
  *
- * ## 三处按 `context.transport` 分叉(与 session-command 域同一判例)
+ * ## 三道门(B2 之前它们都挂在 `context.transport === 'http'` 上)
  *
- * 会话不是一个纯粹的读写域:同一条请求从桌面渲染层来、从浏览器来,能碰到的
- * 东西并不一样。被删掉的 server 实现上有三道桌面没有的门,它们**不是**实现
- * 细节而是行为契约,所以这里逐条补回 `http` 分支,`ipc` 形状一格不动:
+ * 会话不是一个纯粹的读写域:被删掉的 server 实现上有三道桌面没有的门,它们
+ * **不是**实现细节而是行为契约。B2(`docs/design/backend-transport-forks-2026-09.md`
+ * §2.2)把每一道各自问回它真正在问的那件事,`transport` 一处不读:
  *
- *  1. **`updateWorkingDirectory`**:`http` 把路径夹进本次请求的 `sandboxRoot`
- *     (`rpc/sandbox.ts` 的同一套判定,project-dirs 已经在用),越界回旧的
- *     `Working directory must stay inside the workspace sandbox root.`;
- *     `ipc` 照旧只 `fs.stat`。
- *  2. **`delete`**:`http` 先做旧路由那三件收尾(中止活流、清权限询问、拆事件/
- *     流通道),再走仓的删除与级联;`ipc` 保持桌面原样(它本来就没有这一段)。
- *  3. **`create`**:`http` 上带 `kind` 的请求要看**协调器在不在场**(P4 终态批 B,
- *     拍板 #12)。在场(桌面的内嵌 HTTP 面 —— 它挂的就是桌面那只 `collab: true`
- *     的 backend)走与 `ipc` 完全同一条 `ensureCollabGroupRoom`;不在场(独立
- *     `server:start` 不装配 collab)照旧拒,文案逐字沿用旧 REST。判据与
+ *  1. **`updateWorkingDirectory`**:**不可信**宿主把路径夹进本次请求的
+ *     `sandboxRoot`(`rpc/sandbox.ts` 的同一套判定,project-dirs 已经在用),
+ *     越界回旧的 `Working directory must stay inside the workspace sandbox root.`;
+ *     本机可信(桌面 / 内嵌面 / 回环 server)只 `fs.stat`。判据
+ *     `isHostLocallyTrusted()` 08-31 就在了,B2 只去掉了它前面那个 `http &&`。
+ *  2. **`delete`**:两条传输都做那三件收尾(中止活流、清权限询问、拆事件/流
+ *     通道)。它们各自带守卫,没有进程内活计时整段是 no-op —— 从来不是「联网
+ *     宿主专属」,只是当初没给桌面接(桌面因此多一个修正:删一条还在生成的会话
+ *     会中止那条流)。
+ *  3. **`create`**:带 `kind` 的请求看**协调器在不在场**(P4 终态批 B,拍板 #12)。
+ *     在场(桌面 / 壳的 backend 带 `collab: true`)走 `ensureCollabGroupRoom`;
+ *     不在场(独立 `server:start` 不装配 collab)拒,文案逐字沿用旧 REST。判据与
  *     `/api/capabilities` 下发的 `collabRooms` 同源,UI 与后端不会半开。
  */
 import fs from 'node:fs/promises'
@@ -95,7 +97,7 @@ import { readSessionSegments } from '../../wiring/toc/index.js'
 import { deleteSessionAiTodo, notifyTodoPlanActiveSessionChanged } from '../../wiring/todo-plan/store.js'
 import { workdirGateway } from '../../wiring/variables/gateways.js'
 import { resolveInsideSandbox, resolveRpcSandbox } from '../sandbox.js'
-import { isHostLocallyTrusted } from '../../server/local-trust.js'
+import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { UpdateOnethingSessionWorkingDirectoryOptions } from '@onething/runtime/sessions/working-directory'
 import type { UpdateOnethingSessionAgentOptions } from '@onething/runtime/sessions/session-updates'
@@ -129,7 +131,11 @@ const WORKDIR_SANDBOX_ERROR = {
  * 的等价问法 —— 没有活流就不去碰引擎(`abort` 顺带清的 steering / follow-up
  * 队列对一条正在被删的会话无所谓,但不惊动 `onSessionCleared` 更接近原文)。
  *
- * 桌面(ipc)不走这里:迁移前 `@main` 那条路本来就没有这一段,本批不改桌面。
+ * B2(方案 §2.2「面」)起**两条传输都走这里**:这四步各自带守卫(没有活流就不
+ * 碰引擎,没有 pending 就不清,通道不在就不拆),一条没有任何进程内活计的会话上
+ * 整段是 no-op —— 所以它从来就不是「联网宿主专属」,只是当初没给桌面接。桌面因此
+ * 多出一个**修正**:删掉一条还在生成的会话时,那条流会被中止(从前它会继续跑到
+ * 底,往一个已经不存在的会话上写)。
  */
 function releaseServedSession(sessionId: string): void {
   if (getStreamEngine().getController(sessionId)) {
@@ -220,12 +226,11 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       return { success: false, segments: [] }
     }
   },
-  async create(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
+  async create(request) {
     const { name, sessionId, workspaceId, kind, room } = request
-    // **传输面分叉(与 session-command 同一判例)**:建房要 in-process 的 collab
-    // v3 actor 运行时。P4 终态批 B(拍板 #12)之前这里对 `http` 上任何 `kind` 一律
-    // 拒;放开 `collabRooms` 能力位之后,拒的判据从「哪条传输」换成**协调器在不
-    // 在场**:
+    // **建房要 in-process 的 collab v3 actor 运行时**。P4 终态批 B(拍板 #12)
+    // 之前这里对 `http` 上任何 `kind` 一律拒;放开 `collabRooms` 能力位之后,拒的
+    // 判据从「哪条传输」换成**协调器在不在场**:
     //
     //  - 桌面的内嵌 HTTP 面挂在自己那只 `collab: true` 的 backend 上,actor 就在
     //    这个进程里 —— 浏览器建的房与桌面自己建的是同一间,所以放行,走下面与
@@ -238,7 +243,12 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     // (`server/runtime.ts` 的 `currentServerCapabilities`),所以「UI 让不让建」
     // 与「后端收不收」永远同进同退,不会出现界面开着而请求被拒的半开状态。
     // 排在最前,与旧路由的顺序一致:带 kind 的请求在碰 id 校验之前就被挡掉。
-    if (context.transport === 'http' && kind !== undefined && !isCollabV3RuntimeRunning()) {
+    //
+    // B2(方案 §2.2「面」)去掉了 `transport === 'http' &&`:actor 在不在场是
+    // **进程事实**,与调用方走哪条总线无关。Vue 桌面从前不查这一条是遗留 ——
+    // 它的 backend 带 `collab: true`,判据在那里恒真,所以这一步逐字不变;真正
+    // 变的是「装配里没有 collab 的进程从 ipc 也建不出死房」。
+    if (kind !== undefined && !isCollabV3RuntimeRunning()) {
       return {
         success: false,
         error: `Session kind '${kind}' is not supported on the server host`,
@@ -286,7 +296,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
-  async delete(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
+  async delete(request) {
     return deleteOnethingSessionForIpc({
       sessionId: request.sessionId,
       deleteSession: (id) => {
@@ -298,15 +308,13 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
             log.error('delete session AI todo failed', { sessionId: deletedId }, error)
           })
         }
-        // **传输面分叉**:联网宿主还要把这条会话在进程里的“活”收干净 ——
-        // 中止活流、清权限询问、拆事件/流通道。名单用的是原文那份
-        // (`deletedIds` 空时退回请求里那一个),不是上面 AI todo 的那份。
-        if (context.transport === 'http') {
-          const teardownIds = result.deletedIds.length ? result.deletedIds : [id]
-          for (const deletedId of teardownIds) releaseServedSession(deletedId)
-          // 原文在循环之后又清了一次请求里那条 —— 逐字保留(级联名单里没有它时才有意义)。
-          Permission.clearSession(id)
-        }
+        // 把这条会话在**这个进程里**的“活”收干净 —— 中止活流、清权限询问、
+        // 拆事件/流通道。名单用的是原文那份(`deletedIds` 空时退回请求里那一个),
+        // 不是上面 AI todo 的那份。B2 起无条件跑(见 `releaseServedSession` 的注释)。
+        const teardownIds = result.deletedIds.length ? result.deletedIds : [id]
+        for (const deletedId of teardownIds) releaseServedSession(deletedId)
+        // 原文在循环之后又清了一次请求里那条 —— 逐字保留(级联名单里没有它时才有意义)。
+        Permission.clearSession(id)
         return result
       },
       logger: consoleLog,
@@ -375,15 +383,18 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     // 清空(null / '')两边都直接放行:它不是一条路径。
     //
     // 08-31 追补:**本机可信宿主的 HTTP 面与 IPC 同权**(files 域方案 1 的第二个
-    // 消费者,`server/local-trust.ts` 的 `isHostLocallyTrusted`)。React 壳走 http
+    // 消费者,`server/host-trust.ts` 的 `isHostLocallyTrusted`)。React 壳走 http
     // 面,从项目建会话的第二步(落目录)曾被这道夹持逐次拒掉 —— 真机账单:会话
     // 71886081 落成空目录,claude-code-agent 因此拒启。声明过可信(桌面/壳内嵌面、
     // 回环 server)走 `ipc` 那一列;独立部署与 `ONETHING_SERVER_FILES_SANDBOX=1`
     // 强制收紧时,夹持逐字原样。
+    //
+    // B2 去掉了 `transport === 'http' &&`:可信是面级事实,不是传输属性。没声明
+    // 可信的进程里,`ipc` 的路径也会过一遍 `resolveInsideSandbox` 的**未夹紧**
+    // 分支(那一支只做 `resolve()` + `~` 展开,不拒任何路径),所以桌面语义没变。
     let workingDirectory = request.workingDirectory
     if (
-      context.transport === 'http'
-      && !isHostLocallyTrusted()
+      !isHostLocallyTrusted()
       && typeof workingDirectory === 'string'
       && workingDirectory !== ''
     ) {

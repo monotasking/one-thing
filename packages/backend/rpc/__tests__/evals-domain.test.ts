@@ -61,17 +61,24 @@ function unwrap(response: RpcResponse): Record<string, unknown> {
 describe('evals RPC domain', () => {
   let dispatchRpc: (typeof import('../registry.js'))['dispatchRpc']
   let configureEvalsHost: (typeof import('../../wiring/evals/host-ports.js'))['configureEvalsHost']
+  let configureHostLocalTrust: (typeof import('../../server/host-trust.js'))['configureHostLocalTrust']
+  let resetHostLocalTrustForTests: (typeof import('../../server/host-trust.js'))['resetHostLocalTrustForTests']
   let dispose: (() => void) | undefined
   let tmpDir: string
 
   beforeEach(async () => {
-    const [registry, domain, ports] = await Promise.all([
+    const [registry, domain, ports, trust] = await Promise.all([
       import('../registry.js'),
       import('../domains/evals.js'),
       import('../../wiring/evals/host-ports.js'),
+      import('../../server/host-trust.js'),
     ])
     dispatchRpc = registry.dispatchRpc
     configureEvalsHost = ports.configureEvalsHost
+    configureHostLocalTrust = trust.configureHostLocalTrust
+    resetHostLocalTrustForTests = trust.resetHostLocalTrustForTests
+    // 可信是**进程级单槽**:每条用例从"未声明"起跑。
+    resetHostLocalTrustForTests()
     registry.resetRpcRegistryForTests()
     domain.resetEvalsRunStateForTests()
     dispose = registry.registerRouterHandlers(evalsRouter, domain.evalsRpcHandlers)
@@ -84,6 +91,7 @@ describe('evals RPC domain', () => {
     dispose?.()
     dispose = undefined
     configureEvalsHost({})
+    resetHostLocalTrustForTests()
     fs.rmSync(tmpDir, { recursive: true, force: true })
     vi.clearAllMocks()
   })
@@ -114,6 +122,8 @@ describe('evals RPC domain', () => {
   })
 
   it('reads prompt and context snapshots', async () => {
+    // 桌面 = 本机可信(B2 之后这是「路径不夹」的判据,见下面那条夹紧用例)。
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
     const promptPath = path.join(tmpDir, 'a.prompt.json')
     fs.writeFileSync(promptPath, JSON.stringify({ system: 'S' }), 'utf-8')
     const contextPath = path.join(tmpDir, 'a.context.jsonl')
@@ -146,9 +156,13 @@ describe('evals RPC domain', () => {
    * 不能再一律拒 —— 拒了就是位开着面死着。改成**夹紧**:路径必须落在 evals 面自己
    * 的两棵树里(`<repoDir>/evals` 与 `~/.onething/evals/fixtures/auto`)。
    *
-   * 三支都要钉:树里的读得到、树外的结构化失败、桌面(ipc)一格没动。
+   * 三支都要钉:树里的读得到、树外的结构化失败、本机可信的宿主一格没动。
+   *
+   * B2(`docs/design/backend-transport-forks-2026-09.md` §2.2)把判据从
+   * `transport === 'http'` 换成 `isHostLocallyTrusted()`,所以"一格没动"那一支
+   * 现在由**声明可信**指认,而不是由 transport 指认。
    */
-  it('http clamps wire paths into the evals roots instead of refusing them', async () => {
+  it('clamps wire paths into the evals roots on an untrusted host instead of refusing them', async () => {
     configureEvalsHost({ repoDir: () => tmpDir })
     const fixturesDir = path.join(tmpDir, 'evals', 'fixtures')
     fs.mkdirSync(fixturesDir, { recursive: true })
@@ -196,14 +210,20 @@ describe('evals RPC domain', () => {
       })
     }
 
-    // ipc 一格没动:桌面就是本机那个人,树外照读
-    expect(unwrap(await call('readSnapshot', { path: outside }))).toMatchObject({
+    // 本机可信一格没动:桌面就是本机那个人,树外照读 —— 而且 B2 之后
+    // **两种 transport 同一个答案**(桌面内嵌 HTTP 面与 IPC 同权)。
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const trustedIpc = unwrap(await call('readSnapshot', { path: outside }))
+    const trustedHttp = unwrap(await call('readSnapshot', { path: outside }, HTTP_CONTEXT))
+    expect(trustedIpc).toMatchObject({
       success: true,
       snapshotType: 'prompt',
       promptSnapshot: { system: 'X' },
     })
+    expect(trustedHttp).toEqual(trustedIpc)
+    resetHostLocalTrustForTests()
 
-    // fail-closed:联网宿主没接沙箱根 = 宿主接线漏了,拒而不是「不夹」
+    // fail-closed:不可信宿主没接沙箱根 = 宿主接线漏了,拒而不是「不夹」
     const noSandbox = unwrap(
       await call('readSnapshot', { path: insidePrompt }, { transport: 'http' }),
     )

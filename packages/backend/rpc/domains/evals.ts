@@ -24,16 +24,21 @@
  *    变化**(单窗 → 全窗),事件体一字未变;桌面只有一扇设置窗承载评估页,
  *    而渲染侧的订阅只在 `startRun` 时才建立,所以可感知结果不变。
  *
- * ## http 分叉:按 wire 上的绝对路径读盘的四条,在 http 上夹进 evals 面自己那两棵树
+ * ## 不可信宿主上,按 wire 上的绝对路径读盘的四条夹进 evals 面自己那两棵树
  *
  * `readSnapshot` / `readFixture` / `promoteFixture` / `readRunDetail` 会把请求
  * 里带来的路径直接交给 `fs`。桌面上这是对的(用户就是本机那个人,形状与迁移前
  * 逐字相同);挂上通用通道之后 server 上同一条会变成「读服务器上任意文件」。
  *
  * P4 终态批 B(拍板 #15)放开了渲染侧能力位 `evals`,所以这四条不能再一律拒 ——
- * 拒了等于位开着面死着。改成**夹紧**:`transport === 'http'` 时路径必须落在 evals
- * 面自己的两棵树里(`<repoDir>/evals` 与 `~/.onething/evals/fixtures/auto`),
- * 越界回一句结构化失败,不抛、不读盘。
+ * 拒了等于位开着面死着。改成**夹紧**:路径必须落在 evals 面自己的两棵树里
+ * (`<repoDir>/evals` 与 `~/.onething/evals/fixtures/auto`),越界回一句结构化
+ * 失败,不抛、不读盘。
+ *
+ * 判据 B2(`docs/design/backend-transport-forks-2026-09.md` §2.2)起是**本机
+ * 可信**(`server/host-trust.ts`)而不是 `transport === 'http'`:桌面内嵌面与
+ * 回环 `server:start` 服务的是本机同一个人的同一个 evals 仓,夹它没有道理。
+ * 独立部署的 server 未声明可信,夹持逐字不变。
  *
  * **为什么不是 `resolveRpcSandbox` 的 sandboxRoot**:那是 `<workspaceRoot>/<uid>/<wid>`
  * 的 per-owner 工作区(默认在 tmpdir 下),而 evals 仓是宿主机器上的**代码仓**
@@ -69,6 +74,7 @@ import { getLogger } from '../../wiring/logging/index.js'
 import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
 import { analyzeIncidentInBackground } from './evals-workbench.js'
 import { isPathInside, resolveRpcSandbox } from '../sandbox.js'
+import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
 
 const log = getLogger('rpc.evals')
@@ -92,11 +98,11 @@ function evalsWireRoots(): string[] {
 type EvalsWirePath = { ok: true; path: string } | { ok: false; error: string }
 
 /**
- * 请求里带来的路径 → 这次真的可以交给 `fs` 的路径(见文件头「http 分叉」)。
+ * 请求里带来的路径 → 这次真的可以交给 `fs` 的路径(见文件头那节夹紧说明)。
  *
- * `ipc`:原样(桌面语义就是「用户说哪就是哪」,与迁移前逐字相同)。
- * `http`:先过 `resolveRpcSandbox` 的 fail-closed 闸(没接沙箱根就抛,那是宿主
- * 接线 bug,不是用户输入错误),再要求解析后的绝对路径落在 evals 面的根里。
+ * **本机可信**:原样(桌面语义就是「用户说哪就是哪」,与迁移前逐字相同)。
+ * **不可信**:先过 `resolveRpcSandbox` 的 fail-closed 闸(没接沙箱根就抛,那是
+ * 宿主接线 bug,不是用户输入错误),再要求解析后的绝对路径落在 evals 面的根里。
  * 比较一律在 `path.resolve()` 之后做,`..` 在比较前就已经塌掉了。
  */
 function clampEvalsWirePath(
@@ -105,8 +111,10 @@ function clampEvalsWirePath(
 ): EvalsWirePath {
   const value = typeof rawPath === 'string' ? rawPath.trim() : ''
   if (!value) return { ok: false, error: 'Path required' }
-  if (context?.transport !== 'http') return { ok: true, path: value }
-  resolveRpcSandbox(context)
+  if (isHostLocallyTrusted()) return { ok: true, path: value }
+  // 上下文缺席(直调处理器)时没有沙箱根可问,fail-closed 那一闸跳过;
+  // 真正的边界(evals 面的两棵根)照样要过。
+  if (context) resolveRpcSandbox(context)
   const candidate = path.resolve(value)
   const inside = evalsWireRoots().some(root => isPathInside(candidate, root))
   return inside ? { ok: true, path: candidate } : { ok: false, error: EVALS_PATH_OUTSIDE }

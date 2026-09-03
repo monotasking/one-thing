@@ -9,12 +9,16 @@
  * `registerMCPTools`、`probeMCPServerConfig`)与设置缓存,**投影不桩** ——
  * `*OnethingMCP*ForIpc` 是真跑的。
  *
- * 除了「域把端口接对了」,这里主要钉的是**四道按 `context.transport` 分叉的护栏**
- * (拍板 #20 的纪律:server 侧比桌面多的校验一条不放宽):
- *  1. 私密字段(command/args/env/cwd/url/headers)在 http 上脱敏、在 ipc 上原样;
+ * 除了「域把端口接对了」,这里主要钉的是**四道护栏**(拍板 #20 的纪律:server 侧
+ * 比桌面多的校验一条不放宽)。B2(`docs/design/backend-transport-forks-2026-09.md`
+ * §2.2)之后四道分成两问 —— 1/2 问「payload 出不出进程」(还是 `transport`),
+ * 3/4 问「调用方是不是本机可信」(`server/host-trust.ts`):
+ *  1. 私密字段(command/args/env/cwd/url/headers)出界脱敏、进程内原样;
  *  2. 更新时把哨兵合并回磁盘上的真值 —— 「只改个名字」不会洗掉凭证;
- *  3. `readConfigFile` 在 http 上不读本机文件;
- *  4. stdio 探测在 http 上默认拒绝(`ONETHING_SERVER_MCP_STDIO !== '1'`)。
+ *  3. `readConfigFile` 在**不可信**宿主上不读本机文件;
+ *  4. stdio 探测**只对桌面内嵌面**免闸(方案 §4 的保守裁定);其余宿主 —— 包括
+ *     声明了可信的回环 `server:start` —— 仍旧 `ONETHING_SERVER_MCP_STDIO === '1'`
+ *     才放行。「起本机子进程」比「读本机文件」重,所以它比 3 多一档。
  */
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { SERVER_REDACTED_SECRET } from '../../server/mcp-secrets.js'
@@ -76,9 +80,26 @@ function stateOf(config: unknown) {
 }
 
 async function loadDomain() {
-  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { mcpRpcHandlers }] =
-    await Promise.all([import('../registry.js'), import('../domains/mcp.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers }
+  const [
+    { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests },
+    { mcpRpcHandlers },
+    { configureHostLocalTrust, resetHostLocalTrustForTests },
+  ] = await Promise.all([
+    import('../registry.js'),
+    import('../domains/mcp.js'),
+    import('../../server/host-trust.js'),
+  ])
+  // 可信是**进程级单槽**;这个文件每条用例都 `vi.resetModules()` 重装一次模块图,
+  // 但清一次不花钱,也让"从未声明起跑"这条写在明面上。
+  resetHostLocalTrustForTests()
+  return {
+    dispatchRpc,
+    resetRpcRegistryForTests,
+    registerRouterHandlers,
+    mcpRpcHandlers,
+    configureHostLocalTrust,
+    resetHostLocalTrustForTests,
+  }
 }
 
 describe('mcp RPC domain', () => {
@@ -221,29 +242,42 @@ describe('mcp RPC domain', () => {
     expect(JSON.stringify(saved)).not.toContain(SERVER_REDACTED_SECRET)
   })
 
-  it('refuses to read a local config file for an http caller, reads it on ipc', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
+  it('refuses to read a local config file for an untrusted caller, reads it once trusted', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers, configureHostLocalTrust } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
 
-    const remote = await dispatchRpc(
-      { domain: 'mcp', method: 'readConfigFile', payload: { filePath: '/etc/hosts' } },
-      HTTP_CONTEXT,
-    )
-    expect(remote.ok).toBe(true)
-    expect(remote.ok && (remote.data as { success: boolean }).success).toBe(false)
+    // 未声明可信:两种 transport 都拿那句恒定的「不存在」,一个字节不读盘。
+    for (const context of [HTTP_CONTEXT, IPC_CONTEXT]) {
+      const refused = await dispatchRpc(
+        { domain: 'mcp', method: 'readConfigFile', payload: { filePath: '/etc/hosts' } },
+        context,
+      )
+      expect(refused.ok).toBe(true)
+      expect(refused.ok && (refused.data as { success: boolean }).success).toBe(false)
+    }
 
-    const local = await dispatchRpc(
+    // 声明可信之后**真的**去看盘,只是文件不在 —— 与上面那条恒定的「不存在」不同源;
+    // 而且 http 与 ipc 逐字同一个答案(B2 的目的)。
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const overIpc = await dispatchRpc(
       { domain: 'mcp', method: 'readConfigFile', payload: { filePath: '/definitely/not/here.json' } },
       IPC_CONTEXT,
     )
-    // 桌面这条**真的**去看了盘,只是文件不在 —— 与 http 那条恒定的「不存在」不同源。
-    expect(local.ok).toBe(true)
-    expect(local.ok && (local.data as { success: boolean }).success).toBe(false)
+    const overHttp = await dispatchRpc(
+      { domain: 'mcp', method: 'readConfigFile', payload: { filePath: '/definitely/not/here.json' } },
+      HTTP_CONTEXT,
+    )
+    expect(overIpc.ok).toBe(true)
+    expect(overIpc.ok && (overIpc.data as { success: boolean }).success).toBe(false)
+    expect(overHttp.ok && overHttp.data).toEqual(overIpc.ok && overIpc.data)
   })
 
-  it('refuses a stdio probe over http unless the server opts in, never on ipc', async () => {
-    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers } = await loadDomain()
+  /**
+   * 「替调用方起本机进程」的三态(方案 §4 的保守裁定:用户缺省 = 只给桌面内嵌面)。
+   */
+  it('opens the stdio probe only for the desktop-embedded face; loopback still needs the env opt-in', async () => {
+    const { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mcpRpcHandlers, configureHostLocalTrust, resetHostLocalTrustForTests } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(mcpRouter, mcpRpcHandlers)
     const stdioConfig = {
@@ -253,29 +287,37 @@ describe('mcp RPC domain', () => {
       enabled: true,
       command: 'npx',
     }
-
-    const refused = await dispatchRpc(
-      { domain: 'mcp', method: 'probeServer', payload: { config: stdioConfig } },
-      HTTP_CONTEXT,
-    )
-    expect(refused.ok && refused.data).toEqual({
+    const probe = (context: typeof HTTP_CONTEXT | typeof IPC_CONTEXT) =>
+      dispatchRpc({ domain: 'mcp', method: 'probeServer', payload: { config: stdioConfig } }, context)
+    const REFUSED = {
       ok: false,
       error: 'MCP stdio transport is disabled in the web server runtime.',
-    })
+    }
+
+    // ① 未声明可信:两种 transport 都拒,一次都不起进程。
+    for (const context of [HTTP_CONTEXT, IPC_CONTEXT]) {
+      expect((await probe(context) as { ok: true; data: unknown }).data).toEqual(REFUSED)
+    }
     expect(wiring.probeMCPServerConfig).not.toHaveBeenCalled()
 
-    await dispatchRpc(
-      { domain: 'mcp', method: 'probeServer', payload: { config: stdioConfig } },
-      IPC_CONTEXT,
-    )
-    expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(1)
+    // ② 回环 server 声明了可信 —— 别的闸(读配置文件 / 文件树)对它开,这一道**仍然拒**。
+    const restoreLoopback = configureHostLocalTrust({ origin: 'loopback-server', host: '127.0.0.1' })
+    expect((await probe(HTTP_CONTEXT) as { ok: true; data: unknown }).data).toEqual(REFUSED)
+    expect(wiring.probeMCPServerConfig).not.toHaveBeenCalled()
 
+    // ③ 回环 + 环境变量显式开:放行(旧口径一格没动)。
     process.env.ONETHING_SERVER_MCP_STDIO = '1'
-    await dispatchRpc(
-      { domain: 'mcp', method: 'probeServer', payload: { config: stdioConfig } },
-      HTTP_CONTEXT,
-    )
-    expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(2)
+    await probe(HTTP_CONTEXT)
+    expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(1)
+    delete process.env.ONETHING_SERVER_MCP_STDIO
+    restoreLoopback()
+    resetHostLocalTrustForTests()
+
+    // ④ 桌面内嵌面:不看环境变量,直接放行,两种 transport 同权。
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    await probe(HTTP_CONTEXT)
+    await probe(IPC_CONTEXT)
+    expect(wiring.probeMCPServerConfig).toHaveBeenCalledTimes(3)
   })
 
   it('routes capability reads at the live manager', async () => {

@@ -94,8 +94,15 @@ const log = getLogger('rpc.settings')
 /** 投影层收的是鸭子 logger;从前 `@main` 那层递的是裸 `console`。 */
 const consoleLog: ConsoleLikePort & OnethingSettingsIpcLogger = consolePort(log)
 
-/** 只有网络那一侧要脱敏 —— 桌面读的是自己刚填进去的值。 */
-function isRemoteCaller(context: RpcDispatchContext): boolean {
+/**
+ * payload 会不会走网络离开这个进程。
+ *
+ * 问的**不是**「调用方远不远」,而是「这份回应要不要出界」—— 出界就摘密钥,
+ * 收回来时再把真值合并回去。这是 `transport` 真正答得了的问题之一(B2 §2.1 把那个
+ * 误导的旧名「远端调用方」换成了它):同一台机器上的 HTTP 面也照样脱敏,
+ * 因为密文一旦上了 socket 就不在进程里了;桌面 IPC 读的是自己刚填进去的值,不脱。
+ */
+function payloadLeavesProcess(context: RpcDispatchContext): boolean {
   return context.transport === 'http'
 }
 
@@ -103,9 +110,9 @@ async function saveSettingsFromRpc(
   incoming: SaveSettingsRequest,
   context: RpcDispatchContext,
 ) {
-  // http 上客户端交回来的是**脱敏过的**那份;先把真值补齐再进副作用链,
+  // 出过界的客户端交回来的是**脱敏过的**那份;先把真值补齐再进副作用链,
   // 否则「只改个主题」会把凭证洗成哨兵字符串。
-  const settingsToSave = isRemoteCaller(context)
+  const settingsToSave = payloadLeavesProcess(context)
     ? (mergeServerSettingsUpdate(getSettings(), incoming) as SaveSettingsRequest)
     : incoming
 
@@ -148,7 +155,7 @@ async function saveSettingsFromRpc(
   // 草稿。「谁在问」是宿主铸进 dispatch context 的事实(`callerId`),不从信封里读。
   broadcastSettingsChanged(normalizedSettings, { excludeCallerId: context.callerId })
 
-  return isRemoteCaller(context)
+  return payloadLeavesProcess(context)
     ? { success: true as const, settings: sanitizeSettingsForClient(normalizedSettings) }
     : result
 }
@@ -159,7 +166,7 @@ export const settingsRpcHandlers: RpcRouteHandlers<SettingsRoutes> = {
       getSettings: () => getSettings(),
       logger: consoleLog,
     })
-    if (!result.success || !isRemoteCaller(context)) return result
+    if (!result.success || !payloadLeavesProcess(context)) return result
     return { success: true, settings: sanitizeSettingsForClient(result.settings) }
   },
   async saveSettings(input, context = DESKTOP_RPC_CONTEXT) {

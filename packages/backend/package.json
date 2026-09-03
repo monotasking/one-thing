@@ -23,7 +23,7 @@
     "./server/discovery.js": "./server/discovery.ts",
     "./server/embed.js": "./server/embed.ts",
     "./server/http.js": "./server/http.ts",
-    "./server/local-trust.js": "./server/local-trust.ts",
+    "./server/host-trust.js": "./server/host-trust.ts",
     "./server/runtime.js": "./server/runtime.ts",
     "./session/commands.js": "./session/commands.ts",
     "./session/event-log.js": "./session/event-log.ts",

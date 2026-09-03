@@ -133,6 +133,10 @@ describe('sessions RPC domain', () => {
     store.getSessionsList.mockReturnValue([])
     store.getSession.mockReturnValue(undefined)
     collab.ensureCollabGroupRoom.mockReset()
+    // B2:建房的闸从「http 才问」改成无条件问协调器在不在场。现役宿主(Vue 桌面 /
+    // React 壳)的 backend 都带 `collab: true`,所以缺省摆成"在场" —— 那条闸自己的
+    // 用例再把它扳到两边去。
+    collab.isCollabV3RuntimeRunning.mockReset().mockReturnValue(true)
     todoPlan.deleteSessionAiTodo.mockReset().mockResolvedValue(undefined)
     todoPlan.notifyTodoPlanActiveSessionChanged.mockReset()
     agents.agentExists.mockReset().mockReturnValue(true)
@@ -504,9 +508,9 @@ describe('sessions RPC domain', () => {
     // 被沙箱逐次拒掉,渲染层又吞了 success:false —— 会话落成空目录,外部 agent
     // 拒启。声明可信后 http 走 ipc 那一列;强制收紧环境变量仍压得住(反证)。
     const { dispatchRpc } = await loadDomain()
-    const { configureFilesLocalTrust } = await import('../../server/local-trust.js')
+    const { configureHostLocalTrust } = await import('../../server/host-trust.js')
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-sessions-trust-'))
-    const restore = configureFilesLocalTrust({ origin: 'desktop-embedded', host: '127.0.0.1' })
+    const restore = configureHostLocalTrust({ origin: 'desktop-embedded', host: '127.0.0.1' })
     try {
       await expect(dispatchRpc(
         {
@@ -544,7 +548,15 @@ describe('sessions RPC domain', () => {
     }
   })
 
-  it('http delete aborts the live stream and tears the session channels down; ipc does not', async () => {
+  /**
+   * B2(方案 §2.2「面」):这四步收尾从「http 才做」改成**无条件做**。
+   *
+   * 两半各钉一条:
+   *  - 有活流时,两种 transport 做的是**同一件事**(桌面因此多一个修正:删掉一条
+   *    还在生成的会话会中止那条流,不再让它对着一个已删的会话继续写);
+   *  - 没有任何进程内活计时整段是 **no-op** —— 这正是"无条件跑"成立的理由。
+   */
+  it('delete aborts the live stream and tears the session channels down on both transports (B2)', async () => {
     const { dispatchRpc } = await loadDomain()
     store.deleteSession.mockReturnValue({ deletedIds: [SESSION_ID, 'child-1'], deletedCount: 2 })
     engine.getController.mockReturnValue({})
@@ -560,24 +572,48 @@ describe('sessions RPC domain', () => {
     expect(events.streamDestroySession).toHaveBeenCalledWith('child-1')
     expect(permission.clearSession).toHaveBeenCalledWith(SESSION_ID)
 
-    // 桌面那条路一件也不做(迁移前 `@main` 本来就没有这一段)。
+    // 桌面(ipc)从 B2 起做同样四件事 —— 逐调用对齐,不是"差不多"。
     engine.abort.mockReset()
     events.destroySession.mockReset()
     events.streamDestroySession.mockReset()
     permission.clearSession.mockReset()
     await dispatchRpc({ domain: 'sessions', method: 'delete', payload: { sessionId: SESSION_ID } })
+    expect(engine.abort.mock.calls).toEqual([
+      [SESSION_ID, 'session deleted'],
+      ['child-1', 'session deleted'],
+    ])
+    expect(events.destroySession).toHaveBeenCalledWith('child-1')
+    expect(events.streamDestroySession).toHaveBeenCalledWith('child-1')
+    expect(permission.clearSession).toHaveBeenCalledWith(SESSION_ID)
+  })
+
+  it('delete is a no-op teardown when the session has nothing live in this process (B2)', async () => {
+    const { dispatchRpc } = await loadDomain()
+    store.deleteSession.mockReturnValue({ deletedIds: [SESSION_ID], deletedCount: 1 })
+    // 没有活流 —— `getController` 交白卷,引擎一次都不该被碰。
+    engine.getController.mockReturnValue(undefined)
+
+    await expect(dispatchRpc(
+      { domain: 'sessions', method: 'delete', payload: { sessionId: SESSION_ID } },
+    )).resolves.toEqual({ ok: true, data: { success: true, deletedCount: 1 } })
+
     expect(engine.abort).not.toHaveBeenCalled()
-    expect(events.destroySession).not.toHaveBeenCalled()
-    expect(events.streamDestroySession).not.toHaveBeenCalled()
-    expect(permission.clearSession).not.toHaveBeenCalled()
+    // 清询问与拆通道本来就是"没有就不做"的守卫式调用(核实过 B1 报告里那条)。
+    expect(permission.clearSession).toHaveBeenCalledWith(SESSION_ID)
+    expect(events.destroySession).toHaveBeenCalledWith(SESSION_ID)
+    expect(events.streamDestroySession).toHaveBeenCalledWith(SESSION_ID)
   })
 
   /**
-   * P4 终态批 B(拍板 #12):`create` 的 http 分叉从「按传输一刀切」换成「按协调器
-   * 在不在场」。两支都要钉,因为这条判据同时是 `/api/capabilities` 里 `collabRooms`
+   * P4 终态批 B(拍板 #12):`create` 的分叉从「按传输一刀切」换成「按协调器在不
+   * 在场」。两支都要钉,因为这条判据同时是 `/api/capabilities` 里 `collabRooms`
    * 的货源 —— 判反了就会出现「界面开着而请求被拒」的半开状态。
+   *
+   * B2(方案 §2.2「面」)去掉了剩下那半个 `transport === 'http' &&`:actor 在不在
+   * 场是进程事实。于是**没有 collab 的进程从 ipc 也建不出死房**,这是本批唯一一处
+   * 对 ipc 收紧的地方(现役宿主的 backend 都带 `collab: true`,判据在那里恒真)。
    */
-  it('http refuses a create `kind` only when no collab runtime is in the process', async () => {
+  it('refuses a create `kind` whenever no collab runtime is in the process — either transport', async () => {
     const { dispatchRpc } = await loadDomain()
     collab.ensureCollabGroupRoom.mockReturnValue({ success: true, session: { id: SESSION_ID } })
     collab.isCollabV3RuntimeRunning.mockReturnValue(false)
@@ -606,13 +642,24 @@ describe('sessions RPC domain', () => {
     )).resolves.toEqual({ ok: true, data: { success: true, session: { id: SESSION_ID } } })
     expect(collab.ensureCollabGroupRoom).toHaveBeenCalledTimes(1)
 
-    // ipc 一格没动:桌面从来不问这个问题。
-    collab.isCollabV3RuntimeRunning.mockReturnValue(false)
+    // ipc 也走同一条判据:协调器在场就建(与上面那条 http 逐字同一个答案)。
     await expect(dispatchRpc({
       domain: 'sessions',
       method: 'create',
       payload: roomPayload,
     })).resolves.toEqual({ ok: true, data: { success: true, session: { id: SESSION_ID } } })
+    expect(collab.ensureCollabGroupRoom).toHaveBeenCalledTimes(2)
+
+    // B2 的收紧:协调器不在场时 ipc 也拒(从前只有 http 会拒)。
+    collab.isCollabV3RuntimeRunning.mockReturnValue(false)
+    await expect(dispatchRpc({
+      domain: 'sessions',
+      method: 'create',
+      payload: roomPayload,
+    })).resolves.toEqual({
+      ok: true,
+      data: { success: false, error: "Session kind 'room' is not supported on the server host" },
+    })
     expect(collab.ensureCollabGroupRoom).toHaveBeenCalledTimes(2)
   })
 
