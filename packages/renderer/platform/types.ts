@@ -1,4 +1,4 @@
-import type { SessionEventEnvelope } from '@shared/events'
+import type { SessionEventEnvelope, SessionStreamPayload } from '@shared/events'
 import type {
   ElectronAPI,
   GetSessionUsageRequest,
@@ -17,7 +17,6 @@ import type {
   PromptListResponse,
   PromptUpdateRequest,
   PromptUpdateResponse,
-  SessionStreamPayload,
   TodoPlanCreateRequest,
   TodoPlanCreateResponse,
   TodoPlanDeleteRequest,
@@ -34,6 +33,8 @@ export type PlatformEnvironment = 'electron' | 'web'
 
 // `PlatformApi` 是 `ElectronAPI` 的交集类型:两边声明的 `onSessionStream` 必须是
 // **同一个**类型,否则交集会摊成重载,未标注的回调参数会落回先声明的那一条。
+// C2 起那"同一个"直接从 `@shared/events` 取(`types/index.ts` 的那份也只是
+// 从那里再导出)—— 推送面的契约只有一个产地。
 export type { SessionStreamPayload }
 
 export interface PlatformCapabilities {

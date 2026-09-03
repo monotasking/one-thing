@@ -11,10 +11,9 @@ import type {
   GetProvidersResponse,
   ProviderUsageResponse,
 } from '@shared/ipc/providers.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const providers = createRouterClient(providersRouter, request => platformApi.rpcInvoke(request))
+const providers = clientApi(providersRouter)
 
 export const providersApi = {
   getProviders: (): Promise<GetProvidersResponse> => providers.list({}),

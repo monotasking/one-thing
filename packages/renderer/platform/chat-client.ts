@@ -15,9 +15,6 @@
  * 不在这里也不在别处。
  */
 import { chatRouter } from '@shared/ipc/chat.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const chatApi = createRouterClient(chatRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const chatApi = clientApi(chatRouter)

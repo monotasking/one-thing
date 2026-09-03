@@ -7,14 +7,10 @@
  * (与其它路由同一道 Bearer 闸),`transport:gate` 的四枚计量壳一行不动。
  */
 import { logsRouter } from '@shared/ipc/logs.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
 /**
  * `rpcInvoke` 在**调用时**才从 `platformApi` 上取:那是按访问解析的代理
  * (electron 桥 / web fetch 二选一),提前快照会把它钉死在模块求值那一刻的那一侧。
  */
-export const logsApi = createRouterClient(
-  logsRouter,
-  request => platformApi.rpcInvoke(request),
-)
+export const logsApi = clientApi(logsRouter)

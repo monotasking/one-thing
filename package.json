@@ -57,6 +57,8 @@
 		"transport:gate": "node scripts/transport-gate.mjs",
 		"gate:native": "node scripts/gate-native-abi.mjs",
 		"gate:client": "node scripts/gate-client-runtimes.mjs",
+		"gate:vue-host": "node scripts/gate-vue-host.mjs",
+		"gate:web-shell": "node scripts/gate-web-shell.mjs",
 		"ui:check": "node scripts/ui-style-check.mjs",
 		"ui:gate": "node scripts/ui-gate.mjs",
 		"log:check": "node scripts/log-check.mjs",

@@ -16,8 +16,7 @@
 import type { SessionCommand } from '@shared/events'
 import type { ChatMessageMention } from '@shared/ipc/chat.js'
 import { sessionCommandRouter } from '@shared/ipc/session-command.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
 /**
  * 把 mentions 变成可 `structuredClone` 的普通对象。
@@ -44,9 +43,7 @@ export function withPlainCommandMentions(command: SessionCommand): SessionComman
   } as SessionCommand
 }
 
-const client = createRouterClient(sessionCommandRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+const client = clientApi(sessionCommandRouter)
 
 export const sessionCommands = {
   emit: (request: { sessionId: string; command: SessionCommand }) =>

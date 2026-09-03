@@ -5,7 +5,7 @@
 
 import { sessionReads } from '../../../session/reads.js'
 import * as store from '../../../store.js'
-import type { Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
+import type { DiffHunk, Step, StepType, SkillDefinition, ToolCall } from '@shared/ipc.js'
 import type { JsonObject } from '@shared/json.js'
 import type { ToolExecutionContext, ToolExecutionResult, ToolPartialResultUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
 import type { Principal } from '@onething/core/permission'
@@ -29,7 +29,6 @@ import { runToolkitToolDirectly } from '../../toolkit/wiring.js'
 import { consolePort, getLogger } from '../../logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { LegacyDuckLogger } from '@onething/core/logging'
-import type { DiffHunk } from '@/types'
 import type { ToolMetadataUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
 import type { ExecuteCoreToolAndUpdateOptions, CoreExecutableSessionLike, CoreToolExecutionStore } from '@onething/core/engine/tool-orchestration'
 

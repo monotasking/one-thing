@@ -12,9 +12,6 @@
  * `filesApi.stat({ path })` —— 与 themes / oauth 同判例,不包一层旧签名。
  */
 import { filesRouter } from '@shared/ipc/files.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const filesApi = createRouterClient(filesRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const filesApi = clientApi(filesRouter)

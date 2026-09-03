@@ -26,9 +26,6 @@
  * 仍然是 `collab:*-changed` / `message:updated` 会话事件。
  */
 import { collabRouter } from '@shared/ipc/collab.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const collabApi = createRouterClient(collabRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const collabApi = clientApi(collabRouter)

@@ -22,9 +22,9 @@
 import type { AppSettings, ProxySettings } from '@shared/ipc/settings.js'
 import { settingsRouter } from '@shared/ipc/settings.js'
 import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const settings = createRouterClient(settingsRouter, request => platformApi.rpcInvoke(request))
+const settings = clientApi(settingsRouter)
 
 /** 迁移前 `platform/web.ts` 的 `getPreferredColorScheme`,逐字。 */
 function preferredColorScheme(): 'light' | 'dark' {

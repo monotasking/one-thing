@@ -3,35 +3,28 @@ import { promptsRouter } from '@shared/ipc/prompts.js'
 import { todoPlanRouter } from '@shared/ipc/todo-plan.js'
 import { usageRouter } from '@shared/ipc/usage.js'
 import type { ElectronAPI } from '@/types'
-import { createRouterClient } from './router-client'
-import type { PlatformApi, PlatformCapabilities } from './types'
+import { clientFor } from './client'
+import { ELECTRON_HOST_CAPABILITIES } from './electron-capabilities'
+import type { PlatformApi } from './types'
 
-const electronCapabilities: PlatformCapabilities = {
-  localFileSystem: true,
-  workspaceFileSystem: true,
-  nativeWindowControls: true,
-  shellTools: true,
-  terminal: true,
-  embeddedBrowser: true,
-  collabRooms: true,
-  music: true,
-  interactionRespond: true,
-  evals: true,
-  pluginsManage: true,
-  clipboardWrite: true,
-  desktopWindows: true,
-  globalMenuEvents: true,
-}
+/**
+ * 桌面的能力表住在 `./electron-capabilities`(C2 抽出去的,内容一位没改):
+ * `platform/client.ts` 造 IPC 传输时要把它递给 `Transport.capabilities()`,
+ * 而本文件反过来要 `client.ts` 的 `clientFor` —— 留在原处就是一条模块环。
+ */
+const electronCapabilities = ELECTRON_HOST_CAPABILITIES
 
 export function createElectronPlatformApi(electronAPI: ElectronAPI): PlatformApi {
-  // 每个 router 域一行。传输面(rpcInvoke)只写这一次 —— 加域不再动本文件的管道。
-  // 延迟到调用时取 electronAPI.rpcInvoke:preload 在 reload 时会整只换掉方法,
-  // 和本文件其余部分「按访问转发、不快照」的规矩保持一致。
-  const invoke = (request: Parameters<ElectronAPI['rpcInvoke']>[0]) => electronAPI.rpcInvoke(request)
-  const usage = createRouterClient(usageRouter, invoke)
-  const prompts = createRouterClient(promptsRouter, invoke)
-  const goal = createRouterClient(goalRouter, invoke)
-  const todoPlan = createRouterClient(todoPlanRouter, invoke)
+  // 每个 router 域一行。**传输面已经归 `@onething/client`**(C2):这只桥的
+  // `Transport` 实现在 `platform/electron-transport.ts`,`clientFor` 按 electronAPI
+  // 对象记忆,所以这里拿到的与 `platformApi` / `client` 拿到的是同一份。
+  // 「延迟到调用时取 electronAPI.rpcInvoke」那条纪律搬进了传输实现里(preload 在
+  // reload 时会整只换掉方法),与本文件其余部分「按访问转发、不快照」一致。
+  const client = clientFor(electronAPI)
+  const usage = client.api(usageRouter)
+  const prompts = client.api(promptsRouter)
+  const goal = client.api(goalRouter)
+  const todoPlan = client.api(todoPlanRouter)
 
   const extras = {
     environment: 'electron' as const,

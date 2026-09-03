@@ -9,6 +9,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
+import type { RpcResponse } from '@shared/ipc'
 import PluginsSettingsTab from '../PluginsSettingsTab.vue'
 import Switch from '../../common/Switch.vue'
 
@@ -28,7 +29,7 @@ const platform = vi.hoisted(() => ({
   saveSettings: vi.fn(async (settings: Record<string, unknown>) => ({ success: true, settings })),
   // P4c 第十一批:设置面走通用 RPC 通道;`saveSettings` 间谍保留,
   // 由这只 `rpcInvoke` 转调 —— 与真渲染层那条路径同形,断言逐字不变。
-  rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }) => {
+  rpcInvoke: vi.fn(async (request: { domain: string; method: string; payload?: unknown }): Promise<RpcResponse> => {
     if (request.domain === 'settings' && request.method === 'saveSettings') {
       return { ok: true, data: await platform.saveSettings(request.payload as Record<string, unknown>) }
     }
@@ -40,6 +41,16 @@ const platform = vi.hoisted(() => ({
   environment: 'electron',
 }))
 vi.mock('@/platform', () => ({ platformApi: platform }))
+// C2:域客户端的传输面从 `platformApi.rpcInvoke` 换成了 `@onething/client` 的
+// `Transport`,于是这里多钉一条缝 —— `platform.rpcInvoke` 那只间谍(以及它背后的
+// `saveSettings` 间谍)照旧是被断言的那一个,断言逐字不变。
+vi.mock('@/platform/client', async () => {
+  const { createRouterClient } = await import('@onething/client')
+  return {
+    clientApi: (router: Parameters<typeof createRouterClient>[0]) =>
+      createRouterClient(router, request => platform.rpcInvoke(request as never)),
+  }
+})
 // P4 终态批 C2:插件面走 `plugins` 域,客户端在 `@/platform/plugins-client`。
 vi.mock('@/platform/plugins-client', () => ({ pluginsApi: platform }))
 

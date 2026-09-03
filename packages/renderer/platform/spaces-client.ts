@@ -16,9 +16,6 @@
  * `platformApi.onSpacesChanged`。
  */
 import { spacesRouter } from '@shared/ipc/spaces.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const spacesApi = createRouterClient(spacesRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const spacesApi = clientApi(spacesRouter)

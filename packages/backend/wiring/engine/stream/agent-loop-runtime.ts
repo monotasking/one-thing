@@ -45,11 +45,10 @@ import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingAgentLoopLogger } from '@onething/runtime/agent-loop/stream-runtime'
 import type { ToolExecutionResult, ToolPartialResultUpdate } from '@onething/runtime/toolkit/execution-types.wiring'
 import type { ContextCompactResult } from '../context-compact.js'
-import type { ContentPart } from '@/types'
 import type { PromptRequestMessage } from '../prompt/system-prompt.js'
 import type { CoreAgentLoopRuntimeToolSettingsLike } from '@onething/core/engine'
 import type { ProviderConfigWithKey } from './stream-executor.js'
-import type { AppSettings, ToolDefinition } from '@shared/ipc.js'
+import type { AppSettings, ContentPart, ToolDefinition } from '@shared/ipc.js'
 import type { OnethingAgentLoopRuntimeHostAdapters } from '@onething/runtime/agent-loop/stream-runtime'
 
 const log = getLogger('engine.stream')

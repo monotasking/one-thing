@@ -12,10 +12,9 @@ import type {
   ModelRefreshRegistryResponse,
   ModelsListResponse,
 } from '@shared/ipc/providers.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const models = createRouterClient(modelsRouter, request => platformApi.rpcInvoke(request))
+const models = clientApi(modelsRouter)
 
 export const modelsApi = {
   getModelsWithCapabilities: (

@@ -9,9 +9,6 @@
  * 无参的三条(`getAll` / `refresh` / `openFolder`)按本仓惯例递 `{}`。
  */
 import { themesRouter } from '@shared/ipc/themes.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const themesApi = createRouterClient(themesRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const themesApi = clientApi(themesRouter)

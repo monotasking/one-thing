@@ -38,7 +38,7 @@ import {
   removeOnethingACPAgentForIpc,
   updateOnethingACPAgentForIpc,
 } from '@onething/runtime/acp'
-import type { ACPSettings } from '@shared/ipc/acp.js'
+import type { ACPAgentConfig, ACPAgentState, ACPSettings } from '@shared/ipc/acp.js'
 import type { AcpRoutes } from '@shared/ipc/acp.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
@@ -46,7 +46,6 @@ import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingACPIpcLogger } from '@onething/runtime/acp/ipc-operations'
-import type { ACPAgentConfig, ACPAgentState } from '@/types'
 import type { OnethingACPIpcAdapters } from '@onething/runtime/acp/ipc-operations'
 
 const log = getLogger('rpc.acp')

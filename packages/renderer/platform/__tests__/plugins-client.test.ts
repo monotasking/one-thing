@@ -12,22 +12,31 @@
  *     文案必须**逐字**是迁移前那几句 —— 迁的是通道,不是可感知行为。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { RpcResponse } from '@shared/ipc'
 
 const mocks = vi.hoisted(() => ({
-  rpcInvoke: vi.fn(async (_request: unknown) => ({ ok: true, data: { success: true } })),
+  rpcInvoke: vi.fn(async (_request: unknown): Promise<RpcResponse> => ({ ok: true, data: { success: true } })),
   capabilities: { pluginsManage: true } as { pluginsManage: boolean },
 }))
 
 vi.mock('../index', () => ({
   platformApi: {
-    get rpcInvoke() {
-      return mocks.rpcInvoke
-    },
     get capabilities() {
       return mocks.capabilities
     },
   },
 }))
+// C2:传输面从 `platformApi.rpcInvoke` 换成了 `@onething/client` 的 `Transport`,
+// 于是这组用例要钉的那条缝从 `../index` 挪到了 `../client` 的 `clientApi`。
+// 用的还是包里那只真 `createRouterClient` —— 被测的是 plugins 客户端自己(过线
+// 前的 payload 自检 + 能力位降级),不是路由器,所以断言一个字没改。
+vi.mock('../client', async () => {
+  const { createRouterClient } = await import('@onething/client')
+  return {
+    clientApi: (router: Parameters<typeof createRouterClient>[0]) =>
+      createRouterClient(router, request => mocks.rpcInvoke(request)),
+  }
+})
 
 async function client() {
   const { pluginsApi } = await import('../plugins-client')

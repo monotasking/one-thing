@@ -9,9 +9,6 @@
  * `GET /api/scratchpad/events` 的 SSE)。
  */
 import { scratchpadRouter } from '@shared/ipc/scratchpad.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const scratchpadApi = createRouterClient(scratchpadRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const scratchpadApi = clientApi(scratchpadRouter)

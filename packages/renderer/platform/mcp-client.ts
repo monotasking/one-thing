@@ -11,9 +11,6 @@
  * 渲染层看到的是下一次 `getServers` 的读数。
  */
 import { mcpRouter } from '@shared/ipc/mcp.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const mcpApi = createRouterClient(mcpRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const mcpApi = clientApi(mcpRouter)

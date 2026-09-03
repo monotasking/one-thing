@@ -41,9 +41,9 @@ import type {
   MusicSetupResponse,
 } from '@shared/ipc/music.js'
 import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const music = createRouterClient(musicRouter, request => platformApi.rpcInvoke(request))
+const music = clientApi(musicRouter)
 
 /** 与迁移前 `platform/web.ts` 那十四条硬桩逐字相同的那句话。 */
 const MUSIC_UNSUPPORTED = '音乐电台仅在桌面端可用'

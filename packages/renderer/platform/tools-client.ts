@@ -14,10 +14,9 @@
 import type { ToolCall } from '@shared/ipc/tools.js'
 import type { JsonObject } from '@shared/json.js'
 import { toolsRouter } from '@shared/ipc/tools.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const tools = createRouterClient(toolsRouter, request => platformApi.rpcInvoke(request))
+const tools = clientApi(toolsRouter)
 
 export const toolsApi = {
   getTools: () => tools.getTools({}),

@@ -10,9 +10,6 @@
  * 询问的到达同样不在这里:`permission:request` 是会话事件。
  */
 import { permissionRouter } from '@shared/ipc/permissions.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const permissionApi = createRouterClient(permissionRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const permissionApi = clientApi(permissionRouter)

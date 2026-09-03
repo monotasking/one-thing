@@ -2,7 +2,8 @@
  * **会话生命周期订阅口**(共享层读侧补齐 E 批)。
  *
  * 折叠是纯函数,所以主体测的是它 —— 不用造宿主。最后一节钉的是"订阅口真的骑
- * `platformApi.onSessionEvent`",那是这个模块唯一的接线事实。
+ * **当前宿主那份客户端的事件枢纽**上的 `session:event`",那是这个模块 C2 之后
+ * 唯一的接线事实(折叠器本体已搬进 `@onething/client`,这里只剩接线)。
  */
 import { describe, expect, it, vi } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
@@ -13,15 +14,19 @@ const hoisted = vi.hoisted(() => ({
   unsubscribed: 0,
 }))
 
-vi.mock('../index', () => ({
-  platformApi: {
-    onSessionEvent: (callback: (envelope: SessionEventEnvelope) => void) => {
-      hoisted.handlers.push(callback)
-      return () => {
-        hoisted.unsubscribed += 1
-      }
+vi.mock('../client', () => ({
+  currentClient: () => ({
+    events: {
+      on: (name: string, callback: (envelope: SessionEventEnvelope) => void) => {
+        // 名字打错就收不到 —— 这一格钉的正是"骑的是 `session:event` 那条"。
+        if (name !== 'session:event') return () => {}
+        hoisted.handlers.push(callback)
+        return () => {
+          hoisted.unsubscribed += 1
+        }
+      },
     },
-  },
+  }),
 }))
 
 const { foldSessionLifecycleEvent, onSessionLifecycle } = await import('../session-lifecycle')
@@ -104,7 +109,7 @@ describe('foldSessionLifecycleEvent —— 不是这两件事', () => {
 })
 
 describe('onSessionLifecycle', () => {
-  it('骑 platformApi.onSessionEvent,只把这两件事交出去', () => {
+  it('骑客户端事件枢纽的 session:event,只把这两件事交出去', () => {
     hoisted.handlers = []
     hoisted.unsubscribed = 0
     const seen: unknown[] = []

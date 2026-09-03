@@ -1,55 +1,14 @@
 /**
- * The generic RPC client — renderer half (主线 T0).
+ * 通用 RPC 客户端 —— **本体已搬进 `@onething/client`**(C2,
+ * `docs/design/client-sdk-2026-09.md` §5.2)。
  *
- * Turns a router definition into a typed method object over ONE `invoke`
- * function. Each platform supplies its own transport (`electronAPI.rpcInvoke`
- * on desktop, `POST /api/rpc` on web) and every domain reuses it, so adding a
- * domain never touches `electron.ts` / `web.ts` plumbing again — only the
- * one-line client construction.
+ * 这里只剩一行再导出,活着是为了**不动 renderer 里几十处既有 import 路径**
+ * (Vue 渲染层已退役,不做新功能;本批的目的只有一条:不留两份实现)。
+ * 随 Vue 宿主退役一起删。
  *
- * This file imports the router *definition* from `@shared/ipc` and nothing
- * else: the renderer must never reach into `@onething/backend` (tsconfig.web.json
- * has no path for it, and the architecture test guards the direction).
- *
- * `RpcResponse.ok === false` becomes a thrown `Error` here — the single place
- * where the result union turns back into the exception shape every existing
- * caller already handles.
+ * 新代码不要用它:域客户端的正路是 `platform/client.ts` 的
+ * `clientApi(xxxRouter)` —— 它拿的是同一份 `createRouterClient`,外加"按 router
+ * 记忆"与"按访问解析宿主"两件事。
  */
-import type { DomainRoutes, RouteAPI, Router } from '@onething/core/ipc'
-import type { RpcRequest, RpcResponse } from '@shared/ipc/rpc.js'
-
-export type RpcInvoke = (request: RpcRequest) => Promise<RpcResponse>
-
-/** Error thrown for a failed RPC. `code` is set only when the request never reached a handler. */
-export class RpcError extends Error {
-  readonly code?: string
-
-  constructor(message: string, code?: string) {
-    super(message)
-    this.name = 'RpcError'
-    this.code = code
-  }
-}
-
-export function createRouterClient<T extends DomainRoutes>(
-  router: Router<T>,
-  invoke: RpcInvoke,
-): RouteAPI<T> {
-  const api = {} as Record<string, (input: unknown) => Promise<unknown>>
-  for (const method of router.methods) {
-    api[method] = async (payload: unknown) => {
-      const response = await invoke({ domain: router.domain, method, payload })
-      if (!response || typeof response !== 'object' || !('ok' in response)) {
-        throw new RpcError(
-          `Malformed RPC response for ${router.domain}.${method}`,
-        )
-      }
-      if (response.ok) return response.data
-      throw new RpcError(
-        response.error?.message ?? `RPC ${router.domain}.${method} failed`,
-        response.error?.code,
-      )
-    }
-  }
-  return api as RouteAPI<T>
-}
+export { RpcError, createRouterClient } from '@onething/client'
+export type { RpcInvoke } from '@onething/client'

@@ -49,9 +49,9 @@ import type {
   EvalsRunStartResponse,
 } from '@shared/ipc/evals.js'
 import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const evals = createRouterClient(evalsRouter, request => platformApi.rpcInvoke(request))
+const evals = clientApi(evalsRouter)
 
 /** 与迁移前 `platform/web.ts` 那批硬桩逐字相同的那句话。 */
 export const EVALS_UNSUPPORTED = 'Evals is not supported in the web build'

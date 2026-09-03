@@ -16,9 +16,6 @@
  * `platformApi.onPracticeEvent`。
  */
 import { practiceRouter } from '@shared/ipc/practice.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const practiceApi = createRouterClient(practiceRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const practiceApi = clientApi(practiceRouter)

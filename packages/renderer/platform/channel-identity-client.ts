@@ -9,10 +9,6 @@
  * (electron 桥 / web fetch 二选一),提前快照会把它钉死在模块求值那一刻的那一侧。
  */
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const channelIdentityApi = createRouterClient(
-  channelIdentityRouter,
-  request => platformApi.rpcInvoke(request),
-)
+export const channelIdentityApi = clientApi(channelIdentityRouter)

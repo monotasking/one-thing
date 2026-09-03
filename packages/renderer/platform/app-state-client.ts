@@ -8,9 +8,6 @@
  * `handleSaveUiState` 同名):同一件事从此只有一个拼法。
  */
 import { appStateRouter } from '@shared/ipc/app-state.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const appStateApi = createRouterClient(appStateRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const appStateApi = clientApi(appStateRouter)

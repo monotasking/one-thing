@@ -16,7 +16,7 @@
  *    与第一批 `goal` 补齐 web 桩同类:顺带补齐,不是等价搬迁。
  */
 import type { RouteHandlers } from '@onething/core/ipc'
-import type { ProvidersRoutes } from '@shared/ipc/providers.js'
+import type { ProviderInfo, ProvidersRoutes } from '@shared/ipc/providers.js'
 import { AIProvider } from '@shared/ipc/providers.js'
 import {
   getOnethingProviderUsage,
@@ -38,7 +38,6 @@ import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingProviderPresentationIpcLogger } from '@onething/runtime/providers/provider-presentation'
 import type { OAuthToken, CodexProviderUsage } from '@shared/ipc.js'
 import type { GetOnethingProviderUsageOptions } from '@onething/runtime/providers/provider-usage'
-import type { ProviderInfo } from '@/types'
 import type { ListOnethingProvidersOptions } from '@onething/runtime/providers/provider-presentation'
 
 const log = getLogger('ipc.providers')

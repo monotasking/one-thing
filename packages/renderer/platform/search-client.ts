@@ -10,9 +10,6 @@
  * `platform/search-window-client.ts` 上;`onSearchAction` 是推送,仍在 platformApi 上。
  */
 import { searchRouter } from '@shared/ipc/search.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const searchApi = createRouterClient(searchRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const searchApi = clientApi(searchRouter)

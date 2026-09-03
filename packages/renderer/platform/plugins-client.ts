@@ -53,9 +53,9 @@ import type {
 } from '@shared/ipc/plugins.js'
 import type { ExecutePluginCommandResponse } from '@/types'
 import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const plugins = createRouterClient(pluginsRouter, request => platformApi.rpcInvoke(request))
+const plugins = clientApi(pluginsRouter)
 
 /** 与迁移前 `platform/web.ts` 那批硬桩逐字相同的那几句话。 */
 const PLUGINS_READ_ONLY

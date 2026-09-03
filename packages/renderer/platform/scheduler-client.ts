@@ -12,9 +12,6 @@
  * 落地时接的就是这里,不必再回头补一遍传输面。
  */
 import { schedulerRouter } from '@shared/ipc/scheduler.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const schedulerApi = createRouterClient(schedulerRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const schedulerApi = clientApi(schedulerRouter)

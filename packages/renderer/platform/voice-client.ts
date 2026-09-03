@@ -34,9 +34,9 @@ import type {
 } from '@shared/ipc/voice.js'
 import { voiceRouter } from '@shared/ipc/voice.js'
 import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const voice = createRouterClient(voiceRouter, request => platformApi.rpcInvoke(request))
+const voice = clientApi(voiceRouter)
 
 export const voiceApi = {
   getState: () => voice.getState({}),

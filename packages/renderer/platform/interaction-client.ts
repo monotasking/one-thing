@@ -26,11 +26,9 @@ import type {
   InteractionRespondResponse,
 } from '@shared/ipc/interaction.js'
 import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const interaction = createRouterClient(interactionRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+const interaction = clientApi(interactionRouter)
 
 /** 与迁移前 web 硬桩逐字同形的失败信封(`unsupported(method)` 的那句话)。 */
 function unavailable(method: string): { success: false; error: string } {

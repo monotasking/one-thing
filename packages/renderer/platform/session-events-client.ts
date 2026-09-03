@@ -12,15 +12,11 @@
  * 换来的是四壳 diff 为零。
  */
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
 /**
  * `rpcInvoke` 在**调用时**才从 `platformApi` 上取:那是一个按访问解析的代理
  * (electron 桥 / web fetch 二选一),提前快照就会把它钉死在模块求值那一刻的
  * 那一侧。与 `electron.ts` 里 `invoke` 的写法同一条道理。
  */
-export const sessionEventsApi = createRouterClient(
-  sessionEventsRouter,
-  request => platformApi.rpcInvoke(request),
-)
+export const sessionEventsApi = clientApi(sessionEventsRouter)

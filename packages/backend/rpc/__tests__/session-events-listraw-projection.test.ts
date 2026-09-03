@@ -22,7 +22,7 @@ import { encodeSessionLogEventLine } from '@onething/core/session/events'
 import type { SessionLogEventRecord } from '@onething/core/session/events'
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
 import { compareUiRefold, foldLedgerMessages } from '@/stores/ui-refold'
-import type { ChatMessage } from '@/types'
+import type { ChatMessage } from '@shared/ipc'
 
 const paths = vi.hoisted(() => ({ sessionsDir: '' }))
 

@@ -2475,12 +2475,24 @@ function checkCoreForbiddenImports(): void {
 // apps/electron/src/main 的胶水) is the product assembly package. Unlike the
 // runtime product package it may import @shared contracts and cordis — but it
 // must stay electron-free: hosts inject their surfaces through configure*Host.
+//
+// C2(2026-09-03,`docs/design/client-sdk-2026-09.md` §5.2)加最后两条:**装配层
+// 不许伸手拿壳的类型**。`@/` 与 `@renderer` 是 Vue 渲染层的两个别名 —— 装配层
+// 引它们等于把一棵已退役的壳树钉进自己的类型图,还逼得 React 壳的 tsconfig 替
+// 别人的账留一条 `@/types` 精确键(C1 留账,C2 结清:那四处已改引 `@shared/ipc`,
+// 那张 Vue 桶本来就是从 `@shared` 再导出的)。方向只有一条:装配层 → `@shared`。
+// **只管非测试文件**(`walkFiles` 缺省跳过 `__tests__`):
+// `rpc/__tests__/session-events-listraw-projection.test.ts` 故意拿渲染层的
+// `stores/ui-refold` 折叠器当被测对象——那是"RPC 交回来的账本喂不喂得动壳的折叠器"
+// 这一格的**测试意图**,不是产品代码的依赖。
 const APP_ASSEMBLY_FORBIDDEN_PATTERNS: RegExp[] = [
   /from\s+['"]electron['"]/,
   /require\(['"]electron['"]\)/,
   /@onething\/electron-host/,
   /from\s+['"]@main\//,
   /from\s+['"]@preload\//,
+  /from\s+['"]@\//,
+  /from\s+['"]@renderer(?:\/|['"])/,
 ]
 
 /**

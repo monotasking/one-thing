@@ -14,18 +14,22 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SessionCommand } from '@shared/events'
+import type { RpcResponse } from '@shared/ipc'
 
 const mocks = vi.hoisted(() => ({
-  rpcInvoke: vi.fn(async (_request: unknown) => ({ ok: true, data: { success: true } })),
+  rpcInvoke: vi.fn(async (_request: unknown): Promise<RpcResponse> => ({ ok: true, data: { success: true } })),
 }))
 
-vi.mock('../index', () => ({
-  platformApi: {
-    get rpcInvoke() {
-      return mocks.rpcInvoke
-    },
-  },
-}))
+// C2:传输面从 `platformApi.rpcInvoke` 换成了 `@onething/client` 的 `Transport`,
+// 于是这条缝从 `../index` 挪到了 `../client` 的 `clientApi`。用的还是包里那只真
+// `createRouterClient`,所以"过线那一刻长什么样"这件被守的事一个字没变。
+vi.mock('../client', async () => {
+  const { createRouterClient } = await import('@onething/client')
+  return {
+    clientApi: (router: Parameters<typeof createRouterClient>[0]) =>
+      createRouterClient(router, request => mocks.rpcInvoke(request)),
+  }
+})
 
 async function emit(command: SessionCommand): Promise<SessionCommand> {
   const { sessionCommands } = await import('../session-command-client')

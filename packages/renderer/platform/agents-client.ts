@@ -14,10 +14,9 @@ import type {
   AgentUpdateResponse,
   AgentsListResponse,
 } from '@shared/ipc/agents.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const agents = createRouterClient(agentsRouter, request => platformApi.rpcInvoke(request))
+const agents = clientApi(agentsRouter)
 
 export const agentsApi = {
   listAgents: (): Promise<AgentsListResponse> => agents.list({}),

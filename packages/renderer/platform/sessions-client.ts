@@ -16,9 +16,6 @@
  * `session-command-client.ts`,不是这里。
  */
 import { sessionsRouter } from '@shared/ipc/sessions.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const sessionsApi = createRouterClient(sessionsRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const sessionsApi = clientApi(sessionsRouter)

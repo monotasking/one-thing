@@ -10,9 +10,6 @@
  * 无参的两条(`refresh` / `listDirectories`)按本仓惯例递 `{}`。
  */
 import { skillsRouter } from '@shared/ipc/skills.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const skillsApi = createRouterClient(skillsRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const skillsApi = clientApi(skillsRouter)

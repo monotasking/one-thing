@@ -17,9 +17,6 @@
  * 与迁移前 web 壳那批「不支持」硬桩同型。
  */
 import { terminalRouter } from '@shared/ipc/terminal.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const terminalApi = createRouterClient(terminalRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const terminalApi = clientApi(terminalRouter)

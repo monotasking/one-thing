@@ -9,10 +9,6 @@
  * 归属校验 helper 收成一份实现；能力保持可达，等权限账页 UI 接上来时直接用。
  */
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const permissionGrantsApi = createRouterClient(
-  permissionGrantsRouter,
-  request => platformApi.rpcInvoke(request),
-)
+export const permissionGrantsApi = clientApi(permissionGrantsRouter)

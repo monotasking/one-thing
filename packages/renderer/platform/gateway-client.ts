@@ -8,9 +8,6 @@
  * 无参的两条(`getStatus` / `stop`)按本仓惯例递 `{}`。
  */
 import { gatewayRouter } from '@shared/ipc/gateway.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const gatewayApi = createRouterClient(gatewayRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const gatewayApi = clientApi(gatewayRouter)

@@ -10,9 +10,6 @@
  * `onSessionStream` 送,与这个客户端无关。
  */
 import { acpRouter } from '@shared/ipc/acp.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const acpApi = createRouterClient(acpRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const acpApi = clientApi(acpRouter)

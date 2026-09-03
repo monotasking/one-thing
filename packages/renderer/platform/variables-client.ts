@@ -10,9 +10,6 @@
  * 这个域只负责初始快照与写。
  */
 import { variablesRouter } from '@shared/ipc/variables.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const variablesApi = createRouterClient(variablesRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const variablesApi = clientApi(variablesRouter)

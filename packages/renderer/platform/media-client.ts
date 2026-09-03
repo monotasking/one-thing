@@ -14,9 +14,6 @@
  * 不是数据。
  */
 import { mediaRouter } from '@shared/ipc/media.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const mediaApi = createRouterClient(mediaRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const mediaApi = clientApi(mediaRouter)

@@ -394,18 +394,17 @@ import type {
 import type { DeepLinkConfirmRequest } from "@shared/ipc/deeplink";
 import type {
 	SessionEventEnvelope,
-	StreamChunk,
+	SessionStreamPayload,
 } from "@shared/events";
 
 /**
- * 流通道上的一片。底座是 `StreamChunk`,`messageId` 不在分片自己的契约里 ——
- * 它是发出前由 `SessionStreamCoalescer` 盖的号(装配层的 `OutgoingStreamChunk`),
- * 老的重放数据里可能没有。
+ * 流通道上的一片 —— **契约已归 `@shared/events/envelope`**(C0 搬的,C2 结清)。
+ *
+ * IPCBridge 与 `GET /api/events` 的 SSE 送出去的是同一个对象,而认它的客户端
+ * 现在不止一个(`@onething/client` 的 `TransportEvents` 表、React 壳、本渲染层)
+ * —— 所以这里只再导出,不留第二份同形声明。
  */
-export type SessionStreamPayload = {
-	sessionId: string;
-	chunk: StreamChunk & { messageId?: string };
-};
+export type { SessionStreamPayload };
 
 export type {
 	ChatMessage,

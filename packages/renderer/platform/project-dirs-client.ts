@@ -10,9 +10,6 @@
  * 浏览器里切空间等于没切。走这条通道之后它真的传下去了。
  */
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const projectDirsApi = createRouterClient(projectDirsRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const projectDirsApi = clientApi(projectDirsRouter)

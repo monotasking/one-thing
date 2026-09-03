@@ -35,12 +35,9 @@ import type {
   EvalsRoundReplayResponse,
 } from '@shared/ipc/evals.js'
 import { EVALS_UNSUPPORTED, evalsEnabled } from './evals-client'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-const workbench = createRouterClient(evalsWorkbenchRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+const workbench = clientApi(evalsWorkbenchRouter)
 
 function unsupported<T>(): Promise<T> {
   return Promise.resolve({ success: false, error: EVALS_UNSUPPORTED } as unknown as T)

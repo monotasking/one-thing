@@ -7,18 +7,16 @@ import type {
 } from "@/types";
 import type { SessionEventEnvelope } from "@shared/events";
 import type { AppSettings } from "@shared/ipc/settings.js";
-import type { RpcResponse } from "@shared/ipc/rpc.js";
+import type { RpcRequest, RpcResponse } from "@shared/ipc/rpc.js";
+import { IPC_CHANNELS } from "@shared/ipc/channels.js";
 import { goalRouter } from "@shared/ipc/goal.js";
 import { promptsRouter } from "@shared/ipc/prompts.js";
 import { todoPlanRouter } from "@shared/ipc/todo-plan.js";
 import { usageRouter } from "@shared/ipc/usage.js";
-import { createRouterClient, type RpcInvoke } from "./router-client";
+import type { TransportEvents } from "@onething/client";
+import { clientApi, clientFor, transportFor, webApiUrl } from "./client";
 import { dispatchWebShell, registerWebShellDomains } from "./shell-web";
-import {
-	applyAuthHeaders,
-	resolveApiUrl,
-	resolveEventSourceUrl,
-} from "./transport-config";
+import { subscribeWebSse } from "./web-sse";
 import type {
 	PlatformApi,
 	PlatformCapabilities,
@@ -26,9 +24,6 @@ import type {
 } from "./types";
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
-import { getLogger } from "@/services/log";
-
-const log = getLogger("renderer.platform-web");
 
 function browserClipboardWriteCapability(): boolean {
 	return (
@@ -79,14 +74,6 @@ const searchActionHandlers = new Set<SearchActionHandler>();
 const imagePreviewUpdateHandlers = new Set<
 	(payload: ImagePreviewUpdatePayload) => void
 >();
-const sharedEventSources = new Map<
-	string,
-	{
-		refCount: number;
-		source: EventSource;
-	}
->();
-
 function emitSearchAction(actionId: string): void {
 	for (const handler of searchActionHandlers) handler(actionId);
 }
@@ -107,16 +94,21 @@ function subscribeImagePreviewUpdate(
 	return () => imagePreviewUpdateHandlers.delete(callback);
 }
 
+/**
+ * 剩下的这一条 `fetch` 包装只服务**宿主壳路由的 web 侧**(`shell-web/search-window`
+ * 的 `POST /api/search/execute-action`)—— core 的三条口(`/api/rpc` /
+ * `/api/events` / `/api/capabilities`)已经全归 `@onething/client` 的 HTTP 传输,
+ * 本文件不再自己拼它们。基址与传输同一个(`webApiUrl`);**Bearer 仍由
+ * `apps/web/dev-api-proxy.ts` 注入,这里一个 token 都不补**(决不双份注入 ——
+ * C1 之前 `transport-config.ts` 那条纪律的原话)。
+ */
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-	// 基址与 Bearer 走 `transport-config` 的单槽端口:没配置时 `resolveApiUrl` 原样
-	// 返回相对路径、`applyAuthHeaders` 原样返回入参 —— apps/web 依旧靠 dev 代理
-	// 注入,这里一个字节不动(决不双份注入)。
-	const response = await fetch(resolveApiUrl(path), {
+	const response = await fetch(webApiUrl(path), {
 		...init,
-		headers: applyAuthHeaders({
+		headers: {
 			...(init?.body ? { "content-type": "application/json" } : {}),
 			...init?.headers,
-		}),
+		},
 	});
 
 	if (!response.ok) {
@@ -136,14 +128,17 @@ function postJson<T>(path: string, body?: unknown): Promise<T> {
 }
 
 /**
- * 通用 RPC 传输面(主线 T0):所有 router 域共用这一条路由。
- * 每个域在下面的 webApi 里各占一行 —— 加域不再往本文件加 fetch 包装。
+ * 通用 RPC 传输面 —— C2 起底下是 `@onething/client` 的 HTTP 传输
+ * (`POST /api/rpc`,与从前逐字同一条路由),而不是本文件手拼的 fetch。
+ * `rpcInvoke` 仍挂在 `PlatformApi` 上:它是 `ElectronAPI` 契约的一格,web 实现
+ * 必须给出。四个域客户端走 `clientApi(...)`(按访问解析宿主 + 按 router 记忆)。
  */
-const rpcInvoke: RpcInvoke = request => postJson<RpcResponse>("/api/rpc", request);
-const usageApi = createRouterClient(usageRouter, rpcInvoke);
-const promptsApi = createRouterClient(promptsRouter, rpcInvoke);
-const goalApi = createRouterClient(goalRouter, rpcInvoke);
-const todoPlanApi = createRouterClient(todoPlanRouter, rpcInvoke);
+const rpcInvoke = (request: RpcRequest): Promise<RpcResponse> =>
+	transportFor().invoke(request);
+const usageApi = clientApi(usageRouter);
+const promptsApi = clientApi(promptsRouter);
+const goalApi = clientApi(goalRouter);
+const todoPlanApi = clientApi(todoPlanRouter);
 
 /**
  * 宿主壳传输面(结构债 P4 终态批 A1-a)。窗口系的"宿主"在浏览器里就是渲染层
@@ -193,8 +188,12 @@ function normalizeServerCapabilities(value: unknown): PlatformCapabilities {
 }
 
 async function refreshWebCapabilities(): Promise<PlatformCapabilities> {
+	// `GET /api/capabilities` 走客户端(它记忆一次;`true` = 明确重新问一遍)。
+	// 交回来的形是 `RuntimeHostCapabilities`,比渲染层的 `PlatformCapabilities`
+	// 少几位 —— `normalizeServerCapabilities` 本来就按字段名逐位读、缺位用默认值,
+	// 所以这里一个字都不用改。
 	const capabilities = normalizeServerCapabilities(
-		await requestJson("/api/capabilities"),
+		await clientFor().capabilities(true),
 	);
 	Object.assign(webCapabilities, capabilities);
 	return webCapabilities;
@@ -207,46 +206,27 @@ function getPreferredColorScheme(): "light" | "dark" {
 		: "dark";
 }
 
-function createEventSourceSubscription<T>(
-	path: string,
-	eventName: string,
-	callback: (payload: T) => void,
+/**
+ * core 的**主推送流** `GET /api/events` 上的一条 —— 走 `@onething/client` 的事件
+ * 枢纽(一条 SSE 连接、按名分发、断线自愈、`?after=` 续播,Bearer 进 header
+ * 不进 URL)。表里只有三个名字,全是 `IPC_CHANNELS` 常量(打错一个字母是 tsc 红)。
+ *
+ * **`EventSource` 与它那张共享表整段没了**(C2):浏览器的 `EventSource` 带不了
+ * header,token 只能进 `?token=` query —— 那扇门是为它开的,现在没有消费者了
+ * (server 侧那条口留到 Vue 宿主退役再删,方案 §9)。
+ */
+function subscribeCoreEvent<K extends keyof TransportEvents>(
+	name: K,
+	callback: (payload: TransportEvents[K]) => void,
 ): Unsubscribe {
-	if (typeof EventSource === "undefined") return () => {};
+	return clientFor().events.on(name, callback);
+}
 
-	// 去重键仍是**应用内路径**(不是解析后的 URL):一次配置对整个进程生效,
-	// 两者一一对应,拿路径当键既保住原语义,也让键不带 token。
-	let entry = sharedEventSources.get(path);
-	if (!entry) {
-		entry = {
-			refCount: 0,
-			// EventSource 带不了 header,token 只能进 query(服务端只对
-			// `GET /api/events` 认这条 query)。未配置时 URL 原样是相对路径。
-			source: new EventSource(resolveEventSourceUrl(path)),
-		};
-		sharedEventSources.set(path, entry);
-	}
-	entry.refCount += 1;
-
-	const listener = (event: MessageEvent<string>) => {
-		try {
-			callback(JSON.parse(event.data) as T);
-		} catch (error) {
-			log.warn("ignored malformed sse event", { eventName }, error);
-		}
-	};
-
-	entry.source.addEventListener(eventName, listener);
-	return () => {
-		const current = sharedEventSources.get(path);
-		if (!current) return;
-		current.source.removeEventListener(eventName, listener);
-		current.refCount -= 1;
-		if (current.refCount <= 0) {
-			current.source.close();
-			sharedEventSources.delete(path);
-		}
-	};
+/** 会话事件流上的一条,先按 `envelope.event.type` 过一道。 */
+function subscribeSessionEvent(
+	callback: (envelope: SessionEventEnvelope) => void,
+): Unsubscribe {
+	return subscribeCoreEvent(IPC_CHANNELS.SESSION_EVENT, callback);
 }
 
 function createSessionMessagesChangedSubscription(
@@ -256,10 +236,7 @@ function createSessionMessagesChangedSubscription(
 		messageId?: string;
 	}) => void,
 ): Unsubscribe {
-	return createEventSourceSubscription<SessionEventEnvelope>(
-		"/api/events",
-		"session:event",
-		(envelope) => {
+	return subscribeSessionEvent((envelope) => {
 			// `envelope.event` 已经是 `SessionBusMessage` 判别联合 —— 按 `type` 收窄即可,
 			// 不再用结构断言把共享契约打回匿名对象。
 			const event = envelope.event;
@@ -300,8 +277,7 @@ function createSessionMessagesChangedSubscription(
 					messageId: event.messageId,
 				});
 			}
-		},
-	);
+	});
 }
 
 function createStepAddedSubscription(
@@ -311,10 +287,7 @@ function createStepAddedSubscription(
 		step: Step;
 	}) => void,
 ): Unsubscribe {
-	return createEventSourceSubscription<SessionEventEnvelope>(
-		"/api/events",
-		"session:event",
-		(envelope) => {
+	return subscribeSessionEvent((envelope) => {
 			const event = envelope.event;
 			if (event?.type !== SESSION_EVENT_TYPES.STEP_ADDED) return;
 			// 归属的 messageId 一直是从 step 里读的,而 `Step` 契约上没有这个字段
@@ -326,8 +299,7 @@ function createStepAddedSubscription(
 				messageId: typeof stepMessageId === "string" ? stepMessageId : "",
 				step: event.step,
 			});
-		},
-	);
+	});
 }
 
 function createStepUpdatedSubscription(
@@ -338,10 +310,7 @@ function createStepUpdatedSubscription(
 		updates: Partial<Step>;
 	}) => void,
 ): Unsubscribe {
-	return createEventSourceSubscription<SessionEventEnvelope>(
-		"/api/events",
-		"session:event",
-		(envelope) => {
+	return subscribeSessionEvent((envelope) => {
 			const event = envelope.event;
 			if (event?.type !== SESSION_EVENT_TYPES.STEP_UPDATED || typeof event.stepId !== "string")
 				return;
@@ -351,8 +320,7 @@ function createStepUpdatedSubscription(
 				stepId: event.stepId,
 				updates: event.updates,
 			});
-		},
-	);
+	});
 }
 
 function createSkillActivatedSubscription(
@@ -362,10 +330,7 @@ function createSkillActivatedSubscription(
 		skillName: string;
 	}) => void,
 ): Unsubscribe {
-	return createEventSourceSubscription<SessionEventEnvelope>(
-		"/api/events",
-		"session:event",
-		(envelope) => {
+	return subscribeSessionEvent((envelope) => {
 			const event = envelope.event;
 			if (
 				event?.type !== SESSION_EVENT_TYPES.SKILL_ACTIVATED ||
@@ -377,17 +342,13 @@ function createSkillActivatedSubscription(
 				messageId: "",
 				skillName: event.skillName,
 			});
-		},
-	);
+	});
 }
 
 function createContextSizeUpdatedSubscription(
 	callback: (data: { sessionId: string; contextSize: number }) => void,
 ): Unsubscribe {
-	return createEventSourceSubscription<SessionEventEnvelope>(
-		"/api/events",
-		"session:event",
-		(envelope) => {
+	return subscribeSessionEvent((envelope) => {
 			const event = envelope.event;
 			if (
 				event?.type !== SESSION_EVENT_TYPES.CONTEXT_SIZE_UPDATED ||
@@ -398,8 +359,7 @@ function createContextSizeUpdatedSubscription(
 				sessionId: envelope.sessionId,
 				contextSize: event.contextSize,
 			});
-		},
-	);
+	});
 }
 
 // P1(2026-08-14):createContextCompactStartedSubscription /
@@ -488,7 +448,7 @@ const webApi = {
 	// 作为一条具名 SSE 事件下发(载荷是脱敏过的整份设置,与 `settings.getSettings`
 	// 在同一道 Bearer 闸后交出去的逐字同形)。不新开路由、不新开通道。
 	onSettingsChanged: (callback: (settings: AppSettings) => void) =>
-		createEventSourceSubscription<AppSettings>("/api/events", "settings:changed", callback),
+		subscribeCoreEvent(IPC_CHANNELS.SETTINGS_CHANGED, callback),
 	// web 端没有第二个窗口,也没有这条广播(批 B9-0):noop 退订即可。
 	onSpacesChanged: () => () => {},
 	// `searchQuery` 于 A1-b 迁到通用 RPC 通道的 backend `search` 域(域自己按
@@ -513,7 +473,7 @@ const webApi = {
 	// —— 两个宿主吃的也是同一台 authService、同一本令牌账。
 	// **两条推送仍走 SSE**:router 今天没有推送面。
 	onOAuthTokenRefreshed: (callback: (data: { providerId: string }) => void) =>
-		createEventSourceSubscription<{ providerId: string }>(
+		subscribeWebSse<{ providerId: string }>(
 			"/api/oauth/events",
 			"oauth:token-refreshed",
 			callback,
@@ -521,7 +481,7 @@ const webApi = {
 	onOAuthTokenExpired: (
 		callback: (data: { providerId: string; error?: string }) => void,
 	) =>
-		createEventSourceSubscription<{ providerId: string; error?: string }>(
+		subscribeWebSse<{ providerId: string; error?: string }>(
 			"/api/oauth/events",
 			"oauth:token-expired",
 			callback,
@@ -535,13 +495,13 @@ const webApi = {
 	// —— 发出去、404、吞掉。可观察行为一字未变,只是不再白发那一趟。
 	voiceAudioChunk: () => {},
 	onVoiceEvent: (callback: (event: VoiceEvent) => void) =>
-		createEventSourceSubscription<VoiceEvent>(
+		subscribeWebSse<VoiceEvent>(
 			"/api/voice/events",
 			"voice:event",
 			callback,
 		),
 	onVoiceRuntimeCommand: (callback: (command: VoiceRuntimeCommand) => void) =>
-		createEventSourceSubscription<VoiceRuntimeCommand>(
+		subscribeWebSse<VoiceRuntimeCommand>(
 			"/api/voice/runtime-commands",
 			"voice:runtime-command",
 			callback,
@@ -573,7 +533,7 @@ const webApi = {
 			eventType: string;
 		}) => void,
 	) =>
-		createEventSourceSubscription(
+		subscribeWebSse(
 			"/api/files/watch/events",
 			"workspace:file-changed",
 			callback,
@@ -646,7 +606,7 @@ const webApi = {
 			createdAt: number;
 		}) => void,
 	) =>
-		createEventSourceSubscription(
+		subscribeWebSse(
 			"/api/media/events",
 			"media:image-generated",
 			callback,
@@ -722,20 +682,20 @@ const webApi = {
 	// `openExternal` 于 A1-b 搬进 `shell-web/shell.ts`(`window.open` 那段逐字),
 	// 与 `openPath` / `getDataPath` 同一个 `shell` 域。
 	onSessionEvent: (callback: (envelope: SessionEventEnvelope) => void) =>
-		createEventSourceSubscription("/api/events", "session:event", callback),
+		subscribeCoreEvent(IPC_CHANNELS.SESSION_EVENT, callback),
 	onSessionStream: (callback: (payload: SessionStreamPayload) => void) =>
-		createEventSourceSubscription("/api/events", "session:stream", callback),
+		subscribeCoreEvent(IPC_CHANNELS.SESSION_STREAM, callback),
 	onStepAdded: createStepAddedSubscription,
 	onStepUpdated: createStepUpdatedSubscription,
 	onSkillActivated: createSkillActivatedSubscription,
 	onTodoPlanChanged: (callback: (payload: TodoPlanChangedPayload) => void) =>
-		createEventSourceSubscription<TodoPlanChangedPayload>(
+		subscribeWebSse<TodoPlanChangedPayload>(
 			"/api/todo-plan/events",
 			"todo-plan:changed",
 			callback,
 		),
 	onScratchpadChanged: (callback: (payload: ScratchpadChangedPayload) => void) =>
-		createEventSourceSubscription<ScratchpadChangedPayload>(
+		subscribeWebSse<ScratchpadChangedPayload>(
 			"/api/scratchpad/events",
 			"scratchpad:changed",
 			callback,

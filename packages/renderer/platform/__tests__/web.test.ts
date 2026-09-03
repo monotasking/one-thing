@@ -1,6 +1,93 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+/** 请求 URL 的路径部分 —— C2 起传输打的是绝对 URL(`origin + /api/...`)。 */
+function pathOf(input: unknown): string {
+  return new URL(String(input), 'http://localhost').pathname
+}
+
+interface FakeSseStream {
+  path: string
+  closed: boolean
+  /** 往这条流里推一帧,并等泵把它读完分发完。 */
+  emit(name: string, payload: unknown): Promise<void>
+}
+
+/**
+ * 假的 SSE 服务器 —— **C2 把 `EventSource` 换成了 fetch 流**(web 壳 core 那条主
+ * 推送流走 `@onething/client` 的 HTTP 传输,另外七条旁路走 `platform/web-sse.ts`
+ * 里那份复用 `parseSseStream` 的共享订阅)。所以这里替的不再是 `EventSource`
+ * 这个全局,而是 `fetch` 本身:`accept: text/event-stream` 的走流,其余走 `rest`。
+ *
+ * 交回来的**不是** `Response` 实例而是一个鸭子对象:两边的实现只读 `ok` /
+ * `status` / `statusText` / `body`,而 `Response` 能不能带 `ReadableStream` body
+ * 在不同测试环境里不一样 —— 鸭子把这层环境差异挡在外面。
+ */
+function stubSseServer(options: {
+  rest?: (input: unknown, init?: RequestInit) => Promise<Response>
+} = {}) {
+  const streams: FakeSseStream[] = []
+  const encoder = new TextEncoder()
+
+  const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+    const accept = (init?.headers as Record<string, string> | undefined)?.accept
+    if (accept !== 'text/event-stream') {
+      if (options.rest) return options.rest(input, init)
+      throw new Error('server unavailable')
+    }
+
+    let controller!: ReadableStreamDefaultController<Uint8Array>
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        controller = c
+      },
+    })
+    const stream: FakeSseStream = {
+      path: pathOf(input),
+      closed: false,
+      async emit(name, payload) {
+        controller.enqueue(
+          encoder.encode(`event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`),
+        )
+        await settle()
+      },
+    }
+    streams.push(stream)
+    init?.signal?.addEventListener('abort', () => {
+      if (stream.closed) return
+      stream.closed = true
+      try {
+        controller.error(new Error('aborted'))
+      } catch {
+        // 已经关了 —— 不该把退订链打断。
+      }
+    }, { once: true })
+
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      body,
+    } as unknown as Response
+  })
+
+  return {
+    streams,
+    fetch: fetchMock,
+    /** 等到至少 `count` 条流被打开(泵是异步起的)。 */
+    async opened(count: number): Promise<FakeSseStream[]> {
+      for (let i = 0; i < 200 && streams.length < count; i += 1) await settle()
+      return streams
+    },
+  }
+}
+
+/** 把微任务与一轮宏任务都跑干净 —— 解析与分发全是异步的。 */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 20; i += 1) await Promise.resolve()
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
 describe('createWebPlatformApi', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -62,7 +149,9 @@ describe('createWebPlatformApi', () => {
     const api = createWebPlatformApi()
     const capabilities = await api.getCapabilities()
 
-    expect(fetch).toHaveBeenCalledWith('/api/capabilities', expect.any(Object))
+    // C2:传输打的是绝对 URL(`origin + /api/...`,同源同一个请求),断路径。
+    expect((fetch as unknown as { mock: { calls: unknown[][] } }).mock.calls
+      .map(([input]) => pathOf(input))).toContain('/api/capabilities')
     expect(capabilities).toEqual({
       localFileSystem: false,
       workspaceFileSystem: true,
@@ -224,39 +313,8 @@ describe('createWebPlatformApi', () => {
   })
 
   it('subscribes to generated image media events over SSE', async () => {
-    const events: FakeEventSource[] = []
-    class FakeEventSource {
-      closed = false
-      private listeners = new Map<string, Set<(event: { data: string }) => void>>()
-
-      constructor(readonly url: string) {
-        events.push(this)
-      }
-
-      addEventListener(name: string, listener: (event: { data: string }) => void) {
-        const listeners = this.listeners.get(name) ?? new Set()
-        listeners.add(listener)
-        this.listeners.set(name, listeners)
-      }
-
-      removeEventListener(name: string, listener: (event: { data: string }) => void) {
-        this.listeners.get(name)?.delete(listener)
-      }
-
-      close() {
-        this.closed = true
-      }
-
-      emit(name: string, payload: unknown) {
-        for (const listener of this.listeners.get(name) ?? []) {
-          listener({ data: JSON.stringify(payload) })
-        }
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('server unavailable')
-    }))
+    const sse = stubSseServer()
+    vi.stubGlobal('fetch', sse.fetch)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -264,8 +322,9 @@ describe('createWebPlatformApi', () => {
     const callback = vi.fn()
     const cleanup = api.onImageGenerated(callback)
 
-    expect(events[0]?.url).toBe('/api/media/events')
-    events[0]?.emit('media:image-generated', {
+    await sse.opened(1)
+    expect(sse.streams[0]?.path).toBe('/api/media/events')
+    await sse.streams[0]?.emit('media:image-generated', {
       id: 'image-1',
       url: '/api/media/file/image-1.png',
       prompt: 'Image',
@@ -277,43 +336,12 @@ describe('createWebPlatformApi', () => {
       prompt: 'Image',
     })
     cleanup()
-    expect(events[0]?.closed).toBe(true)
+    expect(sse.streams[0]?.closed).toBe(true)
   })
 
   it('subscribes to OAuth token events over SSE', async () => {
-    const events: FakeEventSource[] = []
-    class FakeEventSource {
-      closed = false
-      private listeners = new Map<string, Set<(event: { data: string }) => void>>()
-
-      constructor(readonly url: string) {
-        events.push(this)
-      }
-
-      addEventListener(name: string, listener: (event: { data: string }) => void) {
-        const listeners = this.listeners.get(name) ?? new Set()
-        listeners.add(listener)
-        this.listeners.set(name, listeners)
-      }
-
-      removeEventListener(name: string, listener: (event: { data: string }) => void) {
-        this.listeners.get(name)?.delete(listener)
-      }
-
-      close() {
-        this.closed = true
-      }
-
-      emit(name: string, payload: unknown) {
-        for (const listener of this.listeners.get(name) ?? []) {
-          listener({ data: JSON.stringify(payload) })
-        }
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('server unavailable')
-    }))
+    const sse = stubSseServer()
+    vi.stubGlobal('fetch', sse.fetch)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -323,52 +351,22 @@ describe('createWebPlatformApi', () => {
     const offRefreshed = api.onOAuthTokenRefreshed(refreshed)
     const offExpired = api.onOAuthTokenExpired(expired)
 
-    expect(events.map(event => event.url)).toEqual(['/api/oauth/events'])
-    events[0]?.emit('oauth:token-refreshed', { providerId: 'codex' })
-    events[0]?.emit('oauth:token-expired', { providerId: 'codex', error: 'expired' })
+    await sse.opened(1)
+    expect(sse.streams.map(stream => stream.path)).toEqual(['/api/oauth/events'])
+    await sse.streams[0]?.emit('oauth:token-refreshed', { providerId: 'codex' })
+    await sse.streams[0]?.emit('oauth:token-expired', { providerId: 'codex', error: 'expired' })
 
     expect(refreshed).toHaveBeenCalledWith({ providerId: 'codex' })
     expect(expired).toHaveBeenCalledWith({ providerId: 'codex', error: 'expired' })
     offRefreshed()
-    expect(events[0]?.closed).toBe(false)
+    expect(sse.streams[0]?.closed).toBe(false)
     offExpired()
-    expect(events[0]?.closed).toBe(true)
+    expect(sse.streams[0]?.closed).toBe(true)
   })
 
   it('subscribes to voice host events over SSE', async () => {
-    const events: FakeEventSource[] = []
-    class FakeEventSource {
-      closed = false
-      private listeners = new Map<string, Set<(event: { data: string }) => void>>()
-
-      constructor(readonly url: string) {
-        events.push(this)
-      }
-
-      addEventListener(name: string, listener: (event: { data: string }) => void) {
-        const listeners = this.listeners.get(name) ?? new Set()
-        listeners.add(listener)
-        this.listeners.set(name, listeners)
-      }
-
-      removeEventListener(name: string, listener: (event: { data: string }) => void) {
-        this.listeners.get(name)?.delete(listener)
-      }
-
-      close() {
-        this.closed = true
-      }
-
-      emit(name: string, payload: unknown) {
-        for (const listener of this.listeners.get(name) ?? []) {
-          listener({ data: JSON.stringify(payload) })
-        }
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('server unavailable')
-    }))
+    const sse = stubSseServer()
+    vi.stubGlobal('fetch', sse.fetch)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -378,17 +376,18 @@ describe('createWebPlatformApi', () => {
     const offVoiceEvent = api.onVoiceEvent(voiceEvent)
     const offRuntimeCommand = api.onVoiceRuntimeCommand(runtimeCommand)
 
-    expect(events[0]?.url).toBe('/api/voice/events')
-    expect(events[1]?.url).toBe('/api/voice/runtime-commands')
-    events[0]?.emit('voice:event', { type: 'error', error: 'disabled' })
-    events[1]?.emit('voice:runtime-command', { type: 'stop' })
+    await sse.opened(2)
+    expect(sse.streams[0]?.path).toBe('/api/voice/events')
+    expect(sse.streams[1]?.path).toBe('/api/voice/runtime-commands')
+    await sse.streams[0]?.emit('voice:event', { type: 'error', error: 'disabled' })
+    await sse.streams[1]?.emit('voice:runtime-command', { type: 'stop' })
 
     expect(voiceEvent).toHaveBeenCalledWith({ type: 'error', error: 'disabled' })
     expect(runtimeCommand).toHaveBeenCalledWith({ type: 'stop' })
     offVoiceEvent()
     offRuntimeCommand()
-    expect(events[0]?.closed).toBe(true)
-    expect(events[1]?.closed).toBe(true)
+    expect(sse.streams[0]?.closed).toBe(true)
+    expect(sse.streams[1]?.closed).toBe(true)
   })
 
   it('emits image preview updates after opening a web preview', async () => {
@@ -419,7 +418,8 @@ describe('createWebPlatformApi', () => {
       method: 'openPreview',
       payload: { src: 'data:image/png;base64,aW1hZ2U=', alt: 'Image' },
     })).resolves.toEqual({ ok: true, data: { success: true } })
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/media/preview/open', expect.anything())
+    expect(fetchMock.mock.calls.map(([input]) => pathOf(input)))
+      .not.toContain('/api/media/preview/open')
 
     expect(callback).toHaveBeenCalledWith({
       mode: 'single',
@@ -433,44 +433,14 @@ describe('createWebPlatformApi', () => {
       method: 'openGallery',
       payload: { mediaId: 'asset-1' },
     })).resolves.toEqual({ ok: true, data: { success: true } })
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/media/gallery/open', expect.anything())
+    expect(fetchMock.mock.calls.map(([input]) => pathOf(input)))
+      .not.toContain('/api/media/gallery/open')
     cleanup()
   })
 
   it('subscribes to workspace file change events over SSE', async () => {
-    const events: FakeEventSource[] = []
-    class FakeEventSource {
-      closed = false
-      private listeners = new Map<string, Set<(event: { data: string }) => void>>()
-
-      constructor(readonly url: string) {
-        events.push(this)
-      }
-
-      addEventListener(name: string, listener: (event: { data: string }) => void) {
-        const listeners = this.listeners.get(name) ?? new Set()
-        listeners.add(listener)
-        this.listeners.set(name, listeners)
-      }
-
-      removeEventListener(name: string, listener: (event: { data: string }) => void) {
-        this.listeners.get(name)?.delete(listener)
-      }
-
-      close() {
-        this.closed = true
-      }
-
-      emit(name: string, payload: unknown) {
-        for (const listener of this.listeners.get(name) ?? []) {
-          listener({ data: JSON.stringify(payload) })
-        }
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('server unavailable')
-    }))
+    const sse = stubSseServer()
+    vi.stubGlobal('fetch', sse.fetch)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -478,8 +448,9 @@ describe('createWebPlatformApi', () => {
     const callback = vi.fn()
     const cleanup = api.onWorkspaceFileChanged(callback)
 
-    expect(events[0]?.url).toBe('/api/files/watch/events')
-    events[0]?.emit('workspace:file-changed', {
+    await sse.opened(1)
+    expect(sse.streams[0]?.path).toBe('/api/files/watch/events')
+    await sse.streams[0]?.emit('workspace:file-changed', {
       root: '/workspace',
       path: '/workspace/src/a.ts',
       eventType: 'change',
@@ -491,43 +462,12 @@ describe('createWebPlatformApi', () => {
       eventType: 'change',
     })
     cleanup()
-    expect(events[0]?.closed).toBe(true)
+    expect(sse.streams[0]?.closed).toBe(true)
   })
 
   it('derives session message change subscriptions from SSE session events', async () => {
-    const events: FakeEventSource[] = []
-    class FakeEventSource {
-      closed = false
-      private listeners = new Map<string, Set<(event: { data: string }) => void>>()
-
-      constructor(readonly url: string) {
-        events.push(this)
-      }
-
-      addEventListener(name: string, listener: (event: { data: string }) => void) {
-        const listeners = this.listeners.get(name) ?? new Set()
-        listeners.add(listener)
-        this.listeners.set(name, listeners)
-      }
-
-      removeEventListener(name: string, listener: (event: { data: string }) => void) {
-        this.listeners.get(name)?.delete(listener)
-      }
-
-      close() {
-        this.closed = true
-      }
-
-      emit(name: string, payload: unknown) {
-        for (const listener of this.listeners.get(name) ?? []) {
-          listener({ data: JSON.stringify(payload) })
-        }
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('server unavailable')
-    }))
+    const sse = stubSseServer()
+    vi.stubGlobal('fetch', sse.fetch)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -535,20 +475,21 @@ describe('createWebPlatformApi', () => {
     const callback = vi.fn()
     const cleanup = api.onSessionMessagesChanged(callback)
 
-    expect(events[0]?.url).toBe('/api/events')
-    events[0]?.emit('session:event', {
+    await sse.opened(1)
+    expect(sse.streams[0]?.path).toBe('/api/events')
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'message:user-created', message: { id: 'message-1' } },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'message:updated', messageId: 'message-1' },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'message:deleted', messageId: 'message-1' },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'stream:start', messageId: 'message-2' },
     })
@@ -571,43 +512,12 @@ describe('createWebPlatformApi', () => {
     })
 
     cleanup()
-    expect(events[0]?.closed).toBe(true)
+    expect(sse.streams[0]?.closed).toBe(true)
   })
 
   it('derives step and skill subscriptions from SSE session events', async () => {
-    const events: FakeEventSource[] = []
-    class FakeEventSource {
-      closed = false
-      private listeners = new Map<string, Set<(event: { data: string }) => void>>()
-
-      constructor(readonly url: string) {
-        events.push(this)
-      }
-
-      addEventListener(name: string, listener: (event: { data: string }) => void) {
-        const listeners = this.listeners.get(name) ?? new Set()
-        listeners.add(listener)
-        this.listeners.set(name, listeners)
-      }
-
-      removeEventListener(name: string, listener: (event: { data: string }) => void) {
-        this.listeners.get(name)?.delete(listener)
-      }
-
-      close() {
-        this.closed = true
-      }
-
-      emit(name: string, payload: unknown) {
-        for (const listener of this.listeners.get(name) ?? []) {
-          listener({ data: JSON.stringify(payload) })
-        }
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('server unavailable')
-    }))
+    const sse = stubSseServer()
+    vi.stubGlobal('fetch', sse.fetch)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -619,20 +529,21 @@ describe('createWebPlatformApi', () => {
     const cleanupStepUpdated = api.onStepUpdated(stepUpdated)
     const cleanupSkill = api.onSkillActivated(skillActivated)
 
-    expect(events.map(event => event.url)).toEqual(['/api/events'])
-    events[0]?.emit('session:event', {
+    await sse.opened(1)
+    expect(sse.streams.map(stream => stream.path)).toEqual(['/api/events'])
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'step:added', step: { id: 'step-1', title: 'Read files', messageId: 'message-1' } },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'step:updated', stepId: 'step-1', updates: { status: 'completed' } },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'step:updated', stepId: 123, updates: { status: 'ignored' } },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'skill:activated', skillName: 'review' },
     })
@@ -658,43 +569,12 @@ describe('createWebPlatformApi', () => {
     cleanupStepAdded()
     cleanupStepUpdated()
     cleanupSkill()
-    expect(events.every(event => event.closed)).toBe(true)
+    expect(sse.streams.every(stream => stream.closed)).toBe(true)
   })
 
   it('derives context subscriptions from SSE session events', async () => {
-    const events: FakeEventSource[] = []
-    class FakeEventSource {
-      closed = false
-      private listeners = new Map<string, Set<(event: { data: string }) => void>>()
-
-      constructor(readonly url: string) {
-        events.push(this)
-      }
-
-      addEventListener(name: string, listener: (event: { data: string }) => void) {
-        const listeners = this.listeners.get(name) ?? new Set()
-        listeners.add(listener)
-        this.listeners.set(name, listeners)
-      }
-
-      removeEventListener(name: string, listener: (event: { data: string }) => void) {
-        this.listeners.get(name)?.delete(listener)
-      }
-
-      close() {
-        this.closed = true
-      }
-
-      emit(name: string, payload: unknown) {
-        for (const listener of this.listeners.get(name) ?? []) {
-          listener({ data: JSON.stringify(payload) })
-        }
-      }
-    }
-    vi.stubGlobal('EventSource', FakeEventSource)
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      throw new Error('server unavailable')
-    }))
+    const sse = stubSseServer()
+    vi.stubGlobal('fetch', sse.fetch)
     vi.stubGlobal('navigator', {})
 
     const { createWebPlatformApi } = await import('../web.js')
@@ -702,25 +582,26 @@ describe('createWebPlatformApi', () => {
     const sizeCallback = vi.fn()
     const cleanupSize = api.onContextSizeUpdated(sizeCallback)
 
-    expect(events.map(event => event.url)).toEqual(['/api/events'])
-    events[0]?.emit('session:event', {
+    await sse.opened(1)
+    expect(sse.streams.map(stream => stream.path)).toEqual(['/api/events'])
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'context:size-updated', contextSize: 1234 },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'context:size-updated', contextSize: '1234' },
     })
     // P1:压缩事件不再有专属平台订阅 —— 它们走 onSessionEvent → ipc-hub。
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'context:compact-started' },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'context:compact-completed', success: false, error: 'too large' },
     })
-    events[0]?.emit('session:event', {
+    await sse.streams[0]?.emit('session:event', {
       sessionId: 'session-1',
       event: { type: 'stream:start' },
     })
@@ -734,7 +615,7 @@ describe('createWebPlatformApi', () => {
     expect('onContextCompactCompleted' in api).toBe(false)
 
     cleanupSize()
-    expect(events[0]?.closed).toBe(true)
+    expect(sse.streams[0]?.closed).toBe(true)
   })
 
   it('reports unsupported command-style platform methods explicitly', async () => {
@@ -886,8 +767,8 @@ describe('createWebPlatformApi', () => {
   // 连同它一起退休,而不是改写。
 
   it('maps settings and network platform methods to server REST endpoints', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = pathOf(input)
       if (url === '/api/capabilities') {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -923,16 +804,17 @@ describe('createWebPlatformApi', () => {
     expect(searchAction).toHaveBeenCalledWith('open-settings')
     unsubscribeSearchAction()
 
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/search/query', expect.anything())
-    expect(fetchMock).toHaveBeenCalledWith('/api/search/actions', expect.objectContaining({
+    const calls = fetchMock.mock.calls.map(([input, init]) => [pathOf(input), init] as const)
+    expect(calls.map(([path]) => path)).not.toContain('/api/search/query')
+    expect(calls).toContainEqual(['/api/search/actions', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ actionId: 'open-settings' }),
-    }))
+    })])
   })
 
   it('maps theme platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
+      const url = pathOf(input)
       if (url === '/api/capabilities') {
         return new Response(JSON.stringify({}), {
           status: 200,
@@ -955,7 +837,7 @@ describe('createWebPlatformApi', () => {
 
   it('maps prompt and todo-plan platform methods to server REST endpoints', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
+      const url = pathOf(input)
       // 走了通用 RPC 的域(prompts / goal / todo-plan 数据面)命中这一支:
       // 回的是 RpcResponse 信封,把域名与方法原样送回,好断言路由对不对。
       if (url === '/api/rpc') {

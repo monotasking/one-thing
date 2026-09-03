@@ -10,9 +10,6 @@
  * `oauthApi.start({ providerId, spaceId, entryId, label })`。
  */
 import { oauthRouter } from '@shared/ipc/oauth.js'
-import { platformApi } from './index'
-import { createRouterClient } from './router-client'
+import { clientApi } from './client'
 
-export const oauthApi = createRouterClient(oauthRouter, request =>
-  platformApi.rpcInvoke(request),
-)
+export const oauthApi = clientApi(oauthRouter)
