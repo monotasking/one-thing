@@ -1,0 +1,54 @@
+# 运行时统一(2026-09)—— 四步的总账与第三、四步方案
+
+> 起因:09-02 深夜勘察发现仓里两个运行时(桌面 = Electron,server / CLI / vitest = 系统 Node)共用一份
+> node_modules,而 better-sqlite3 这类 V8 ABI 专属插件结构上不可能两边都对;electron-builder.yml 一句
+> 「已按 Electron ABI 编好」的假话活了两个月。用户 09-03 拍:去 castlabs 换官方 Electron、原生只许 N-API、
+> Node 钉 24、壳只留 React。**统一不可能在运行时层做(桌面永远 Electron,server 永远 Node),只能在
+> 依赖层(N-API / 内建)与版本层(Node 24)做,再把壳收成一个。**
+
+## 0. 四步总账
+
+| 步 | 内容 | 状态 |
+| --- | --- | --- |
+| ① 原生清账 | 官方 Electron 41.1.1、删 better-sqlite3 及脚本、`gate:native` 双运行时门、`.nvmrc` 24 / engines ≥22.13、删 experiment/castlabs-electron 分支 | **入库 ae4eadd5**;顺带 bunfig.toml 钉 hoisted(618479ea) |
+| ② 客户端 SDK | `@onething/client`(C0 26293417)→ React 壳零 @renderer(C1 1cab7a17)→ Vue renderer 改消费(C2 752c8203) | **入库**,方案 docs/design/client-sdk-2026-09.md |
+| ③ 换主 | 根脚本、`main` 字段、electron-builder 输入、dev 泳道、CLI 构建全部指向 React 壳;Vue 宿主降为 `vue:*` 别名 | 本文 §1 |
+| ④ 退役 | 删 apps/electron、packages/renderer、apps/web(Vue)、vue/pinia/electron-vite/plugin-vue 依赖;CLI 源码搬出 apps/electron;删 server `?token=` 口与两道 Vue 真机门 | 本文 §2(方案,待①③落地后派) |
+
+## 1. 第三步:换主(本批)
+
+### 1.1 现状(只列会动的)
+
+- 根 `package.json`:`"main": "./out/main/index.js"`(Vue 宿主 electron-vite 产物);`build` = `electron:build` = `build:native:mac && electron-vite build`;`electron:dev` = `dev-with-logging.mjs dev`(electron-vite dev);`dev-unified.mjs` 的 Electron 泳道 spawn `electron:dev`;`build:unpack` / `build:mac|win|linux` 都先 `npm run build`。
+- `electron-builder.yml`:`files: out/**` + `package.json`;`extraResources` 五项(templates / docs / skills / native / models);`asarUnpack` sherpa 与 node-pty;`directories.buildResources: build`(icon.icns / ico / png 在根 `build/`);mac / win / linux target 表。
+- React 壳:`apps/desktop-react` 自己有 `app:dev`(`scripts/dev-app.mjs`)与 `app:build`(vite build → `dist/` + esbuild → `dist-electron/{main,preload}.cjs`,`base: './'`,主进程 `loadFile(appRoot/dist/index.html)`,`host-ports.ts` 已把 `app.isPackaged` / `process.resourcesPath` 交给 backend 的路径解析);**没有打包配置**。
+- CLI:`bin/onething.mjs` → `../out/main/cli.js`,那份 js 由 Vue 宿主的 `electron.vite.config.ts` 的第二入口(`apps/electron/src/main/cli/index.ts`)打出来。CLI 源码只 import `./daemon-client` / `./paths` / `./stdout` / `@shared/cli/protocol`,不吃 Vue 宿主任何东西;daemon 侧吃 `@onething/backend` 的 HeadlessBackend。
+- 原生 `macos_panel.node`:Vue 宿主的窗口用;React 壳未引用;`build:native:mac` 仍要跑(它产出 `resources/native/macos_panel.node` 进 extraResources,第四步再定去留)。
+
+### 1.2 改法
+
+1. **根 `package.json`**
+   - `"main": "apps/desktop-react/dist-electron/main.cjs"`。
+   - `build` = `build:native:mac && build:cli && (cd apps/desktop-react && npm run app:build)`(写成一个 `scripts/build-desktop.mjs`,不用 shell `&&` 串 cd;`build:check` / `build:unpack` / `build:mac|win|linux` 不改,它们只认 `build`)。
+   - `electron:dev` → `node apps/desktop-react/scripts/dev-app.mjs`;`dev-unified.mjs` 的 Electron 泳道 spawn 它(端口约定:React 渲染 dev server 5173 不变);`dev-with-logging.mjs` 若只为 electron-vite 而存在则退役,否则改包 React 的 dev。
+   - Vue 宿主的三条留别名:`vue:dev`(原 electron-vite dev)、`vue:build`(原 electron-vite build)、`vue:unpack`(临时 electron-builder 配置见 1.2.3);`gate:vue-host` / `gate:web-shell` 改调它们。第四步整批删。
+   - `typecheck` 加 `typecheck:desktop`(`tsc --noEmit -p apps/desktop-react`),根级 typecheck 覆盖唯一的桌面壳。
+2. **CLI 构建脱离 electron-vite**:新 `scripts/build-cli.mjs`,复用 `apps/desktop-react/scripts/build-electron.mjs` 已导出的 `shellEsbuildOptions`(node 平台、`node-pty` 等原生模块 external、`import.meta.url` 垫片)把 `apps/electron/src/main/cli/index.ts` 打成 `dist/cli/main.cjs`;`bin/onething.mjs` 改 import 它;`package.json` 的 `bin` 若指向 out 一并改。**CLI 源码本批不搬**(第四步搬到 `apps/cli`),只换产物路径。
+3. **`electron-builder.yml`**:`files` → `apps/desktop-react/dist/**`、`apps/desktop-react/dist-electron/**`、`package.json`,其余排除项照旧;`extraResources` / `asarUnpack` / `buildResources` / 三平台 target **一字不动**;头部注释加一行「主入口 = React 壳」。Vue 的 `vue:unpack` 用一份 `electron-builder.vue.yml`(`files: out/**`,其余 `extends` 主文件)撑到第四步。
+4. **打包门 `scripts/gate-packaged.mjs`(`gate:packaged`)**:跑 `build:unpack` → 起 `release/mac-arm64/onething.app/Contents/MacOS/onething`(`ONETHING_STORE_PATH` 临时目录、临时 user-data-dir)→ 等 `<store>/run/http.json` 出现 → 用其 token 打 `/api/capabilities` 与 `POST /api/rpc sessions.list` → 断言窗口存在(CDP `--remote-debugging-port`)→ 退出 → 断言 `run/http.json` 已删、零残留。**这是第三步唯一的真验收**:asar 内 `loadFile` 路径、preload 路径、`resourcesPath` 下的 skills / templates / models、node-pty 解包,全靠它一次证。
+5. 文档:CLAUDE.md 「Build & Development Commands」段与 Process model 段改现状(Vue 宿主行改 `vue:*`);apps/desktop-react/CLAUDE.md 若写了「没有打包配置」改掉。
+
+### 1.3 门
+
+`bun run build` 绿;`gate:packaged` 绿(首次跑会遇钥匙串框——打包出来的 app 是新签名身份,须用户点一次「始终允许」,门里检测到 `SecurityAgent` 就明说而不是挂死);`vue:build` 仍绿(退役前的最低要求);`bin/onething.mjs --help` 与 `onething daemon status` 在新产物上跑通;`dev-unified.mjs` 起 React 泳道 + web 泳道,web 连到桌面 core(`run/http.json` owner 判据不变);既有 verify / 各 gate 不变;`gate:native` 绿。反证:`main` 改回 `out/main/index.js` → `gate:packaged` 起的是 Vue 宿主(窗口标题 / `owner` 不同)红;`files` 少 `dist-electron/**` → 包起不来红。
+
+### 1.4 留账
+
+- `macos_panel.node` 在 React 壳里无消费者,第四步决定删或留(留的理由只有「将来 React 壳要浮窗面板」)。
+- 第四步之前 `out/` 与 `dist/cli` 并存;`.gitignore` 两处都在。
+
+## 2. 第四步:退役 Vue 宿主(方案,待派)
+
+删:`apps/electron`(除 `src/main/cli/` 先搬到 `apps/cli/`)、`packages/renderer`、`apps/web`(Vue 构建;web 壳将来由 React 壳的 `vite build` 出浏览器版,另案)、`electron.vite.config.ts`、`electron-builder.vue.yml`、`vue:*` 脚本、`gate:vue-host` / `gate:web-shell`、依赖 vue / pinia / electron-vite / @vitejs/plugin-vue / vue-tsc 及只被它们引的包(逐个 `rg` 证零消费者)、`onething.aliases.ts` 的 `@renderer` / `@` / `electronHostAliases`、boundary 检查器里针对 renderer 的规则(改成守 React 壳)、server `GET /api/events` 的 `?token=` 口、`ui:gate` 的 Vue 基线(`docs/audit/ui-baseline-2026-08-13.txt`)、`@shared` 里只被 Vue 用的类型桶(`packages/renderer/types` 那张 `ElectronAPI` 大表若被 backend 引则先断)。
+门:全仓 typecheck / vitest / boundary / 各 gate 绿;`rg -i 'vue|pinia' package.json` = 0;锁文件净减;`bun run build` + `gate:packaged` 绿;CLI 从 `apps/cli` 打出并跑通。
+拍点:`apps/web` 删掉后浏览器壳由谁提供(React 壳的 web 构建是另案);`macos_panel` 去留。
