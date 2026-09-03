@@ -10,16 +10,34 @@
  * 从 server 搬进 app 层，两个宿主共用同一份实现 —— 这个文件就是那份实现。
  *
  * 三条不变量：
- * 1. **fail-closed**：`transport:'http'` 却没有 sandboxRoot = 宿主接线漏了，
+ * 1. **fail-closed**：不可信的宿主上没有 sandboxRoot = 宿主接线漏了，
  *    直接拒绝，绝不退回「不夹」。宁可一条 RPC 报错，也不要在联网宿主上悄悄放开
  *    整个文件系统。
- * 2. **desktop 不夹**：`transport:'ipc'` 是用户自己的机器，语义与迁移前
+ * 2. **本机宿主不夹**：这台宿主服务的是本机同一个用户时，语义与迁移前
  *    `@main` handler 逐字一致（那些 handler 从来没有沙箱概念）。
  * 3. **只认已解析路径**：所有比较都在 `resolve()` 之后做，`..` 与符号链接式的
  *    相对拼接在比较前就已经塌掉了。
+ *
+ * ## C0 R2(2026-09-03,`docs/design/backend-principal-and-mcp-lifecycle-2026-09.md`)
+ *
+ * 不变量 2 从前写作 `context.transport === 'ipc'`。那是 B 期之前的口径：把
+ * 「本机」等同于「走 IPC」。B2 把 files / tools / search / evals / mcp / sessions
+ * 六个域的同一问改成了 `isHostLocallyTrusted()`（`server/host-trust.ts`：宿主在
+ * 装配时声明「我服务的是本机同一个用户」），这个文件是**七个域共用**的那一份，
+ * 却因为不在 `rpc/domains/` 目录下、棘轮扫不到而漏掉了。后果是真的：React 壳的
+ * 渲染层只走 HTTP，于是 `project-dirs` / `markdown` / `permission-grants` 三个域
+ * 在自己的桌面上被夹进 `<workspaceRoot>/<uid>/<wid>` 那棵空子树。
+ *
+ * 改成同一个判据之后：
+ *  · 声明过可信的宿主（两个桌面壳、回环 `server:start`）—— ipc 与 http 同为不夹，
+ *    桌面那条路逐字不变；
+ *  · 没声明的宿主（非回环 server）—— http 照夹、fail-closed 照抛，逐字不变。
+ * 变的只有「声明过可信的宿主上的 http」那一格，而那正是 B2 已经为另外六个域
+ * 拍过板的同一件事。
  */
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
+import { isHostLocallyTrusted } from '../server/host-trust.js'
 
 /** 未夹紧：桌面宿主，请求可以碰用户机器上的任何路径（迁移前的行为）。 */
 export interface UnconfinedRpcSandbox {
@@ -53,11 +71,11 @@ export function isPathInside(candidate: string, root: string): boolean {
  * 改代码的人看，不写给终端用户看。
  */
 export function resolveRpcSandbox(context: RpcDispatchContext): RpcSandbox {
-  if (context.transport === 'ipc') return { confined: false }
+  if (isHostLocallyTrusted()) return { confined: false }
   const root = typeof context.sandboxRoot === 'string' ? context.sandboxRoot.trim() : ''
   if (!root || !isAbsolute(root)) {
     throw new Error(
-      '[rpc] A networked (transport:"http") dispatch context arrived without an absolute '
+      '[rpc] A dispatch context on an untrusted host arrived without an absolute '
       + 'sandboxRoot. The host must mint one — refusing rather than running unconfined.',
     )
   }

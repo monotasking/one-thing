@@ -333,6 +333,33 @@ describe('plugins RPC domain', () => {
       await call('commands', {}, HTTP)
       for (const fn of Object.values(catalog)) expect(fn).not.toHaveBeenCalled()
     })
+
+    /**
+     * C0 R4(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §1.3)。
+     *
+     * `configGet` 是七条读面里唯一一条从前**没有** HTTP 侧断言的:它的镜像半边被
+     * 上面那个 describe 钉着,管理器在位这一半却是裸的 —— 而这一半才是有意行为的
+     * 那一半(方案 §4 拍板 3:owner 用 HTTP 客户端管插件,交出的是**真配置**且
+     * `editable:true`,与 IPC 逐字同一批答案;插件配置没有密钥概念,与设置域的
+     * 出界脱敏不是一回事)。
+     *
+     * 三条判据:真配置(不是投影里那份派生值)、可编辑、镜像目录一次都没问。
+     * 反证(实跑过):把 `configGet` 里的 `pluginCatalogFallback()` 换成
+     * `getServerPluginCatalogPort()`(即回到 B1 之前"http 就读镜像"的口径)→
+     * 这三条一起红。
+     */
+    it('C0 R4:configGet 交出真配置且可编辑,不经镜像端口', async () => {
+      expect(unwrap(await call('configGet', { pluginId: 'demo' }, HTTP))).toMatchObject({
+        success: true,
+        declared: true,
+        editable: true,
+        config: { retentionDays: 7 },
+      })
+      // 只读那条路会带上 `readOnlyReason` —— 管理器在位时不该出现。
+      expect(unwrap(await call('configGet', { pluginId: 'demo' }, HTTP)))
+        .not.toHaveProperty('readOnlyReason')
+      for (const fn of Object.values(catalog)) expect(fn).not.toHaveBeenCalled()
+    })
   })
 
   describe('两者都无:读面与 ipc 上管理器缺席时逐字同一批答案', () => {

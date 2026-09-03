@@ -293,4 +293,24 @@ describe('启动挂点', () => {
     process.env.ONETHING_SESSION_LIST_BACKFILL = '0'
     expect(scheduleSessionListProjectionBackfillOnStartup({ delayMs: 60_000 })).toBeUndefined()
   })
+
+  /**
+   * C0 R3。理由与 `blob-gc` 那条逐字相同:这里的 `setTimeout` 也 `unref` 过,
+   * `process.getActiveResourcesInfo()` 看不见,只有 `vi.getTimerCount()` 看得见。
+   *
+   * 反证(实跑过):把 `list-projection-backfill.ts` 里 disposer 的
+   * `clearTimeout(timer)` 摘掉 → 最后一句红(`expected 1 to be +0`)。
+   */
+  it('C0 R3:cancel 之后不留定时器(unref 的也算)', () => {
+    vi.useFakeTimers()
+    try {
+      expect(vi.getTimerCount()).toBe(0)
+      const cancel = scheduleSessionListProjectionBackfillOnStartup({ delayMs: 60_000 })
+      expect(vi.getTimerCount()).toBe(1)
+      cancel?.()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

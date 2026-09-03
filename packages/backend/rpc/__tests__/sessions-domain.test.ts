@@ -492,12 +492,23 @@ describe('sessions RPC domain', () => {
       expect(variables.workdirGateway.write).not.toHaveBeenCalled()
 
       // 桌面不夹:同一条路径原样落到 `fs.stat` 那道判定,然后写下去。
-      await expect(dispatchRpc({
-        domain: 'sessions',
-        method: 'updateWorkingDirectory',
-        payload: { sessionId: SESSION_ID, workingDirectory: outside },
-      })).resolves.toEqual({ ok: true, data: { success: true } })
-      expect(variables.workdirGateway.write).toHaveBeenCalledWith(SESSION_ID, outside)
+      //
+      // C0 R2:"桌面"这句话要**声明**出来了 —— `resolveRpcSandbox` 的判据从
+      // `transport === 'ipc'` 换成了 `isHostLocallyTrusted()`(两个桌面壳都在装配时
+      // 写 `{ origin: 'desktop-embedded' }`)。喂进去的 context 一个字没改;声明只
+      // 罩住这一段,上面那半条(未声明 + http = 照夹)必须留在"未声明"里。
+      const { configureHostLocalTrust } = await import('../../server/host-trust.js')
+      const restoreDesktopTrust = configureHostLocalTrust({ origin: 'desktop-embedded' })
+      try {
+        await expect(dispatchRpc({
+          domain: 'sessions',
+          method: 'updateWorkingDirectory',
+          payload: { sessionId: SESSION_ID, workingDirectory: outside },
+        })).resolves.toEqual({ ok: true, data: { success: true } })
+        expect(variables.workdirGateway.write).toHaveBeenCalledWith(SESSION_ID, outside)
+      } finally {
+        restoreDesktopTrust()
+      }
     } finally {
       fs.rmSync(outside, { recursive: true, force: true })
     }

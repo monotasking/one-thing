@@ -178,6 +178,16 @@ export class OnethingBackend implements BackendHandle {
   private readonly parts: BackendHandleParts = {}
   private readonly disposers: Array<{ label: string; run: () => void | Promise<void> }> = []
   private disposing: Promise<void> | null = null
+  /**
+   * `dispose()` 开跑了没有 —— **同步**的那一格。
+   *
+   * 不能只看 `disposing`:`this.disposing = (async () => { … })()` 里那只 IIFE 的
+   * 函数体先跑到第一个 `await`(第一只 disposer)才把 promise 赋回来,于是"第一只
+   * disposer 正在跑"那一段时间里 `disposing` 还是 `null`。而 R1 要挡的正是那一段:
+   * 一个 disposer 里(或它 await 的东西里)冒出来的 `own()` 若被推进表,循环下标
+   * 早已走过它,随后 `disposers.length = 0` 把它静默丢掉。
+   */
+  private disposeStarted = false
 
   readonly options: Readonly<OnethingBackendOptions>
 
@@ -210,8 +220,29 @@ export class OnethingBackend implements BackendHandle {
    *
    * 宿主在装配之后起的东西(内嵌 HTTP 面、用户调度器、todo/草稿纸 watcher、
    * MCP)也从这个口登记 —— 那是 A3 的活,A2 只把口开出来。
+   *
+   * **关门之后来的登记就地执行**(C0 R1,方案
+   * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §1.3):宿主里有几处
+   * 登记排在一个 `.then()` 里(MCP 的 manager、从前的调度器),而 `dispose()` 可能比
+   * 那个 `.then()` 先跑完 —— 壳起来两秒内 Cmd+Q 就是。从前那种登记被**静默丢弃**,
+   * 于是已经拉起来的 stdio 子进程成了孤儿。现在:已在 dispose 或已 dispose 完的实例
+   * 收到 `own()`,**立刻跑**这只 disposer 并把它的 promise 交回去(不入表 —— 表已经
+   * 或正在被逆序跑完,再入表要么跑两次要么跑不到)。
+   *
+   * 错误在这里**记日志不上抛**:调用点是 `b.own(x)` 这种"登记"语句,不是"关机"语句,
+   * 让它抛等于把一次收尾失败变成一条启动路径上的异常。与 `dispose()` 里逐个
+   * try/catch 同口径。
    */
-  own(disposer: () => void | Promise<void>, label = 'anonymous'): void {
+  own(disposer: () => void | Promise<void>, label = 'anonymous'): void | Promise<void> {
+    if (this.disposeStarted) {
+      return (async () => {
+        try {
+          await disposer()
+        } catch (error) {
+          log.error('backend disposer failed after dispose', { step: label }, error)
+        }
+      })()
+    }
     this.disposers.push({ label, run: disposer })
   }
 
@@ -224,6 +255,9 @@ export class OnethingBackend implements BackendHandle {
    */
   async dispose(): Promise<void> {
     if (this.disposing) return this.disposing
+    // 同步先立旗(见 `disposeStarted` 的注释):IIFE 的 promise 要到第一个 await
+    // 之后才赋回 `this.disposing`,而 `own()` 的守卫在那之前就得说得出话。
+    this.disposeStarted = true
     this.disposing = (async () => {
       for (let i = this.disposers.length - 1; i >= 0; i -= 1) {
         const disposer = this.disposers[i]!
@@ -234,6 +268,18 @@ export class OnethingBackend implements BackendHandle {
         }
       }
       this.disposers.length = 0
+      /*
+       * C0 R10:装配产物那五格也清掉。
+       *
+       * 从前只清进程当前实例槽,于是**这只实例**手上还攥着已经关掉的引擎/总线:
+       * `backend.engine` 照样交得出来,拿到的是一只 shutdown 过的东西。今天没有
+       * 已知的实害(全仓的 safe 访问器都经槽走,槽清了它们就回 null/false),
+       * 但"关完还能从这只实例上摸到活引擎"是个说谎的形状 —— 清掉之后
+       * `backend.engine` 抛 `BackendNotAssembledError`,与"还没建到那一格"同义。
+       */
+      for (const field of Object.keys(this.parts) as Array<keyof BackendHandleParts>) {
+        delete this.parts[field]
+      }
       // 只清自己那一格:别人已经装了新实例的话,清掉等于替他关门。
       if (getCurrentBackendSafe() === this) setCurrentBackend(null)
     })()
@@ -283,9 +329,11 @@ export class OnethingBackend implements BackendHandle {
     // 之前、auth 在凭证升级之前、storePath 在 docs 目录之前)。一次性交出来的好处
     // 就在这里 —— 顺序问题只有这一个答案:全部,在最前面。
     //
-    // B3 起 `applyHostPorts` 返回一个还原函数,里面只有 `localTrust` 那一格
-    // (它是十五格里唯一带 restore 的端口;其余都是没有 restore 的单槽覆盖)。
-    // 登记在这里 = dispose 之后这个进程回到"没有宿主声明过本机可信"。
+    // `applyHostPorts` 返回一个还原函数。C0 R6 起它还原的是**十六格全部**
+    // (从前只有 `localTrust` 那一格有 restore,其余是没有回头路的单槽覆盖):
+    // 登记在这里 = dispose 之后这个进程回到"没有宿主注入过任何能力"的状态,
+    // 于是同一个进程里先后装配两只 backend 时,第二只不会继承第一只的语音 /
+    // 插件 / 沙箱端口。
     this.own(applyHostPorts(options.host), 'hostPorts')
 
     initializeStores()

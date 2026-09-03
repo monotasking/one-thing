@@ -79,11 +79,17 @@ export function hasVoiceHost(): boolean {
   return hostConfigured
 }
 
-/** 测试专用:把端口打回「从未注入」。生产代码不要调。 */
-export function resetVoiceHostForTests(): void {
+/**
+ * 还原到**未注入**态(C0 R6 把它从「测试专用」提成正式的还原口:
+ * `applyHostPorts` 的还原函数在 `backend.dispose()` 时调它)。
+ */
+export function resetVoiceHost(): void {
   hostPorts = {}
   hostConfigured = false
 }
+
+/** @deprecated 改用 {@link resetVoiceHost}(同一个函数,C0 R6 改名)。 */
+export const resetVoiceHostForTests = resetVoiceHost
 
 /** Broadcast to every renderer surface; no-op until the host wires a port. */
 export function broadcastVoiceHostMessage(message: VoiceHostMessage): void {

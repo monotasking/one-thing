@@ -42,8 +42,15 @@ const SHELL_FILES = [
   'packages/shared/ipc/channels.ts',
 ]
 
-/** RPC 域目录：`forks:` 那把尺子的扫描根。 */
-const DOMAINS_DIR = 'packages/backend/rpc/domains'
+/**
+ * `forks:` 那把尺子的扫描根。
+ *
+ * C0 R2(2026-09-03)把它从 `…/rpc/domains` 提到 `…/rpc` 并改成**递归**:
+ * `rpc/sandbox.ts` 是七个域共用的沙箱判据、按 `context.transport` 分叉，却因为
+ * 不在 domains/ 目录下而在棘轮量程之外整整一期。量程就该覆盖整棵 rpc 树 ——
+ * 「哪个文件在拿 transport 当判据」与它排在哪一层目录无关。
+ */
+const DOMAINS_DIR = 'packages/backend/rpc'
 /** 扫描规模下限：遍历坏了长得像「全治愈了」。 */
 const MIN_DOMAIN_FILES = 30
 
@@ -207,6 +214,32 @@ function listTsFiles(relativeDir) {
     .sort()
 }
 
+/**
+ * 递归列出一棵树下的 `.ts` 文件，相对仓根，排序稳定。
+ *
+ * `__tests__` 整个目录跳过：测试里造 `{transport:'http'}` 夹具是**在验**分叉的
+ * 行为，把它数进指标等于「写测试就红」。同理跳过 `.test.ts` / `.d.ts`。
+ */
+function listTsFilesRecursive(relativeDir) {
+  const absolute = path.join(root, relativeDir)
+  if (!existsSync(absolute)) {
+    throw new Error(`度量目录不存在：${relativeDir} —— 若确已搬家，请显式改脚本`)
+  }
+  const out = []
+  for (const entry of readdirSync(absolute, { withFileTypes: true })) {
+    if (entry.name === '__tests__' || entry.name === 'node_modules') continue
+    const relative = `${relativeDir}/${entry.name}`
+    if (entry.isDirectory()) {
+      out.push(...listTsFilesRecursive(relative))
+      continue
+    }
+    if (!entry.name.endsWith('.ts')) continue
+    if (entry.name.endsWith('.test.ts') || entry.name.endsWith('.d.ts')) continue
+    out.push(relative)
+  }
+  return out.sort()
+}
+
 /** 采一次当前指标。键名即基线文件里的行首。 */
 export function measure(readFile = readShell) {
   const metrics = {}
@@ -218,14 +251,13 @@ export function measure(readFile = readShell) {
     }
   }
 
-  const domainFiles = listTsFiles(DOMAINS_DIR)
+  const domainFiles = listTsFilesRecursive(DOMAINS_DIR)
   if (domainFiles.length < MIN_DOMAIN_FILES) {
     throw new Error(
       `只扫到 ${domainFiles.length} 个 RPC 域文件(下限 ${MIN_DOMAIN_FILES})—— 遍历坏了，不认这次结果`,
     )
   }
-  for (const name of domainFiles) {
-    const relativePath = `${DOMAINS_DIR}/${name}`
+  for (const relativePath of domainFiles) {
     const n = countContextTransportReads(readFile(relativePath))
     // 0 不入表：域文件治愈后就该从基线里消失，而不是留一行 `… 0`。
     if (n > 0) metrics[`forks:${relativePath}`] = n

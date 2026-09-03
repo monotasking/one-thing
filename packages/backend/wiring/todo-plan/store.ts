@@ -35,6 +35,14 @@ export function configureTodoPlanHost(ports: TodoPlanHostPorts): void {
 }
 
 /**
+ * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
+ * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
+ */
+export function resetTodoPlanHost(): void {
+  hostPorts = {}
+}
+
+/**
  * 当前注入的端口。单槽端口的**串联**要靠它:A 期桌面内嵌 HTTP 面之后,
  * todo/plan 的变更既要走 IPC 给 renderer,又要走 SSE 给浏览器 —— 后来的那位
  * 必须先读到前一位再把自己叠上去,否则就是把宿主的接线覆盖掉。

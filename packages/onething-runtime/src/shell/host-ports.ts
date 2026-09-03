@@ -47,9 +47,29 @@ export interface ShellHost {
 }
 
 let hostPorts: ShellHostPorts = {}
+/**
+ * 宿主**声明过**这件能力没有(C0 R7)。
+ *
+ * 与 `hostPorts` 分开记,因为它们回答的是两个问题:`hostPorts` 是"具体给了哪几件",
+ * 这一格是"这台宿主认不认领外壳能力"。R7 之前 `hasShellHost()` 数的是前者的内容,
+ * 而 `hasVoiceHost()` / `hasTerminalHost()` 数的是后者(闩 / 广播器非 null)——
+ * 同一族访问器两种口径。统一成闩:`configureShellHost({})` 也算声明,与
+ * `configureVoiceHost({})` 逐字同义(声明了一张空表是宿主自己的事)。
+ */
+let declared = false
 
 export function configureShellHost(ports: ShellHostPorts): void {
   hostPorts = ports
+  declared = true
+}
+
+/**
+ * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
+ * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
+ */
+export function resetShellHost(): void {
+  hostPorts = {}
+  declared = false
 }
 
 /** 当前注入的原始端口。串联/诊断用;日常调用请走 `getShellHost()`。 */
@@ -57,13 +77,18 @@ export function getShellHostPorts(): ShellHostPorts {
   return hostPorts
 }
 
-/** 宿主到底有没有外壳能力(UI 据此决定要不要画那个按钮)。 */
+/**
+ * 宿主到底有没有外壳能力(UI 据此决定要不要画那个按钮)。
+ *
+ * C0 R7:判据是**宿主声明过**(闩),不再是"这张表里至少有一个函数"。今天没有
+ * 任何宿主写 `shell: {}` —— Vue 桌面给三件齐全的实现,其余四个宿主一律 `null` ——
+ * 所以两种口径对现网的每一台宿主给出的答案逐字相同;变的是口径本身的一致性
+ * (与 `hasVoiceHost()` / `hasTerminalHost()` 同一句话)。真写了 `shell: {}` 的
+ * 宿主从此拿到 `true`,而三件事各自的降级仍在 `getShellHost()` 里 —— 那才是
+ * "给了没给这一件"的产地。
+ */
 export function hasShellHost(): boolean {
-  return (
-    typeof hostPorts.openPath === 'function'
-    || typeof hostPorts.openExternal === 'function'
-    || typeof hostPorts.revealPath === 'function'
-  )
+  return declared
 }
 
 /**

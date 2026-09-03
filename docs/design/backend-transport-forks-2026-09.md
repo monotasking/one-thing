@@ -151,6 +151,9 @@ server 多发的键它收不收随它。任何 HTTP 客户端(mobile、以后的
 | 独立部署 server(未声明可信) | 逐字不变 | — |
 | React 壳 / server / daemon 的 voice / terminal / plugins | 逐字不变(端口本来就是 null / 管理器本来就没装) | — |
 | Vue 桌面内嵌面(退役) | plugins 7 条读面改读桌面真树 | 修脑裂 |
+| 任何装着插件管理器的宿主的 HTTP 客户端 | `plugins.configGet` 交出**真配置**且 `editable: true`(不是那份只读投影) | B1 就已生效、当时漏报;方案 B′ §4 拍板 3 追认(插件配置没有密钥概念,与设置域的出界脱敏不是一回事)。测试 `plugins-domain.test.ts` 的「管理器在场 + http」补了断言(C0 R4) |
+| 接了外壳能力的宿主(今天只有 Vue 桌面) | oauth `start` 在**两种 transport 上**都真的开浏览器 | B1 就已生效、当时漏报;判据从 `transport === 'http'` 改成 `hasShellHost()`。C0 R7 又补上:开不成时记一行错、不再被 `.then(() => undefined)` 吞成成功(响应形状不变,仍交回 `authUrl`) |
+| 回环 `server:start` 上那六个域**放开到什么程度** | `files.readConfigFile` 等读面可达**任意路径**(不再夹进 per-owner 沙箱根);`tools.executeTool` 免白名单三道闸;evals 的路径不再夹进 evals 面的两棵根 | B2 已生效、当时只写了「同上一行」没有展开。这三条就是「本机可信 = 与桌面 IPC 同权」的具体内容,供拍板时看清楚放开的是什么 |
 
 不在 B 里、需要单独拍板的:`ONETHING_SERVER_TOOLS` 缺省 `full`(审计 §2.6);`music` 能力位的裁定;
 React 壳要不要接终端(需要给 HTTP 面加终端数据的 SSE 路由,那是 C 之外的一票)。

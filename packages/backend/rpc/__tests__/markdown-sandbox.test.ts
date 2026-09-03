@@ -19,6 +19,7 @@ import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js
 import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
 import { updateSettingsInMemory } from '../../stores/settings.js'
 import { markdownRpcHandlers } from '../domains/markdown.js'
+import { configureHostLocalTrust } from '../../server/host-trust.js'
 
 const tempRoots: string[] = []
 
@@ -35,6 +36,25 @@ function httpContext(sandboxRoot: string): RpcDispatchContext {
     ownerUid: 'alice',
     workspaceId: 'default',
     sandboxRoot,
+  }
+}
+
+/**
+ * 「在一台桌面上」跑一次调用。
+ *
+ * C0 R2:`resolveRpcSandbox` 的"不夹"判据从 `context.transport === 'ipc'` 换成了
+ * `isHostLocallyTrusted()` —— 那句话由宿主在**装配时**说(两个桌面壳都写
+ * `{ origin: 'desktop-embedded' }`),不再由一个 transport 字面量说。这份文件比的是
+ * 「同一个 handler、两种 context」,两种 context 一个字没改;桌面那一侧现在多一句
+ * 声明,而且**只罩住那一次调用** —— 夹紧那一侧必须留在"未声明"里,否则这份文件
+ * 就不再是在验护栏了。
+ */
+async function onDesktopHost<T>(run: () => Promise<T>): Promise<T> {
+  const restore = configureHostLocalTrust({ origin: 'desktop-embedded' })
+  try {
+    return await run()
+  } finally {
+    restore()
   }
 }
 
@@ -77,10 +97,10 @@ describe('markdown RPC domain · dispatch context decides the sandbox', () => {
     )).resolves.toEqual({ success: false, error: OUTSIDE_DOC })
 
     // 同一条请求在桌面 context 下不被沙箱拦(桌面根本没有沙箱)。
-    const desktop = await markdownRpcHandlers.resolveAsset(
+    const desktop = await onDesktopHost(() => markdownRpcHandlers.resolveAsset(
       { documentPath: secret, rawTarget: 'x.png' },
       DESKTOP_RPC_CONTEXT,
-    )
+    ))
     expect(desktop.success).toBe(true)
     expect(desktop.error).toBeUndefined()
   })
@@ -169,14 +189,14 @@ describe('markdown RPC domain · dispatch context decides the sandbox', () => {
     )).resolves.toEqual({ success: false, error: OUTSIDE_CONFIG, code: 'WORKSPACE_PATH' })
 
     // 桌面 context 下同一个 vault 配置照旧生效 —— 那是用户自己的机器。
-    const desktop = await markdownRpcHandlers.saveAttachments(
+    const desktop = await onDesktopHost(() => markdownRpcHandlers.saveAttachments(
       {
         documentPath: notePath,
         workspaceRoot: path.join(sandboxRoot, 'vault'),
         files: [{ fileName: 'a.png', mimeType: 'image/png', base64Data: 'AA==' }],
       },
       DESKTOP_RPC_CONTEXT,
-    )
+    ))
     expect(desktop.success).toBe(true)
     expect(desktop.attachments?.[0]?.absolutePath.startsWith(outside)).toBe(true)
   })

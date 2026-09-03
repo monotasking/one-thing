@@ -34,6 +34,14 @@ export function configureEvalsHost(next: EvalsHostPorts): void {
   ports = next ?? {}
 }
 
+/**
+ * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
+ * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
+ */
+export function resetEvalsHost(): void {
+  ports = {}
+}
+
 /** 当前注入的端口(诊断/测试用)。 */
 export function getEvalsHostPorts(): EvalsHostPorts {
   return ports

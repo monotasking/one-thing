@@ -17,7 +17,7 @@
  * 缺什么能力"是可数的,而不是靠比对两个壳的调用清单才看得出来。
  *
  * 这个壳真的交出来的三件:auth(凭证解密的唯一口)、sandbox(下载目录)、
- * storePath(打包资源目录);其余十二项是 `null`。
+ * storePath(打包资源目录)与 localTrust(`desktop-embedded`,B3);其余十二项是 `null`。
  */
 import { app, net, safeStorage, session } from 'electron'
 import type { OnethingTokenCryptoAdapter } from '@onething/runtime/auth'

@@ -41,6 +41,8 @@ import {
   stopEmbeddedOnethingHttpServer,
 } from '@onething/backend/server/embed.js'
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
+import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler/user-tasks.js'
+import { createOpenAudienceFactory } from '@onething/backend/server/audience.js'
 import { configureLogging, getLogger } from '@onething/backend/wiring/logging/index.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
 
@@ -215,7 +217,12 @@ function startPostWindowServices(): void {
   if (b) {
     // HTTP/SSE 面:owner=`shell` 写进发现文件(A1 拍板)。挂不上不阻塞壳 ——
     // 但渲染层的数据面就是这条,所以失败要如实反映到 `host:connection`。
-    const mounting = startEmbeddedOnethingHttpServer(b, { owner: 'shell' })
+    // 受众:壳是**单用户宿主**,自装的这只 core 只服务本机这一个人 —— 归属判定
+    // 恒真,所以把那句话说出口(批 A §3.1),而不是让过滤代码每条分片重新问一遍。
+    const mounting = startEmbeddedOnethingHttpServer(b, {
+      owner: 'shell',
+      audienceFactory: createOpenAudienceFactory(),
+    })
     connectionReady = mounting
       .then(embedded => {
         log.info('embedded core http surface listening', { url: embedded.url })
@@ -248,15 +255,27 @@ function startPostWindowServices(): void {
       removeHttpDiscovery()
     }, 'embeddedHttpSurface')
 
-    void import('@onething/backend/wiring/scheduler/user-tasks.js')
-      .then(({ initializeUserSchedulerTasks }) => {
-        // A3 新增的对称 stop:从前用户定时任务的 setTimeout 链没有任何人关得掉。
-        b.own(initializeUserSchedulerTasks(), 'userSchedulerTasks')
-      })
-      .catch((error: unknown) => {
-        log.error('subsystem startup failed', { subsystem: 'scheduler', blocking: false }, error)
-      })
+    /*
+     * C0 R1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
+     * 从动态 import 的 `.then()` 里挪出来,改成**同步登记**。
+     *
+     * `initializeUserSchedulerTasks()` 本来就是同步的(它读一次盘、往调度器里注册,
+     * 返回 stop);包在动态 import 里没有任何理由 —— 这个文件顶上已经静态 import 了
+     * `@onething/backend/backend.js`,整棵装配层早就在包里了,晚一拍加载省不下东西,
+     * 只多出一段"起完了但还没登记收尾"的窗口。壳起来两秒内 Cmd+Q 正好落在里面。
+     *
+     * `own()` 的守卫(同批)兜的是**兜不干净的那些**(MCP 那处是真异步);能同步的
+     * 就别靠守卫兜 —— 守卫让漏登记变得安全,不代表漏登记本身该留着。
+     */
+    b.own(initializeUserSchedulerTasks(), 'userSchedulerTasks')
 
+    /*
+     * MCP 的登记留在 `.then()` 里 —— 这一处的异步是真的(`initializeShellMCP()` 要
+     * 起 manager、连 server、建工具目录)。它现在安全的理由是 `own()` 的守卫
+     * (C0 R1):dispose 已经跑过时这一句会**就地执行**那只 shutdown,而不是被静默
+     * 丢掉 —— 从前那正是"壳起来两秒内退出留下孤儿 stdio 子进程"的产地。
+     * C1 会把整块换成 `backend.mcp` 子系统对象(构造即登记),本期不动它的结构。
+     */
     void initializeShellMCP()
       .then(async () => {
         const { MCPManager } = await import('@onething/runtime/mcp/index.wiring')

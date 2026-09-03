@@ -29,7 +29,13 @@ export function getMCPClientIdentity(): MCPClientIdentity {
   return identity
 }
 
-/** Test hook: restore the compiled-in default between suites. */
-export function resetMCPClientIdentityForTests(): void {
+/**
+ * 还原成编译进来的缺省(C0 R6 把它从「测试专用」提成正式的还原口:
+ * `applyHostPorts` 的还原函数在 `backend.dispose()` 时调它)。
+ */
+export function resetMCPClientIdentity(): void {
   identity = { name: 'onething', version: '0.0.0' }
 }
+
+/** @deprecated 改用 {@link resetMCPClientIdentity}(同一个函数,C0 R6 改名)。 */
+export const resetMCPClientIdentityForTests = resetMCPClientIdentity

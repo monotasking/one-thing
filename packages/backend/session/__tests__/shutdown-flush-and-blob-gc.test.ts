@@ -265,4 +265,30 @@ describe('session blob GC (§15.12 B1)', () => {
     expect(typeof cancel).toBe('function')
     cancel?.()
   })
+
+  /**
+   * C0 R3(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
+   *
+   * A0 ⑨ 从前用 `process.getActiveResourcesInfo()` 数定时器,而这个挂点的
+   * `setTimeout` 是 **`unref` 过**的 —— 那张表里根本看不见它,于是那半条断言在
+   * 量的是别人(vitest 自己的超时钟与同 worker 的邻居),恒绿。`vi.useFakeTimers()`
+   * 的 `getTimerCount()` 看得见 unref 定时器,所以泄漏判据挪到这里,由每个起
+   * 定时器的模块自己钉。
+   *
+   * 反证(实跑过):把 `blob-gc.ts` 里 `return () => clearTimeout(timer)` 换成
+   * `return () => {}` → 最后一句 `toBe(0)` 红(`expected 1 to be +0`)。
+   */
+  it('C0 R3:cancel 之后不留定时器(unref 的也算)', () => {
+    vi.useFakeTimers()
+    try {
+      expect(vi.getTimerCount()).toBe(0)
+      process.env.ONETHING_SESSION_BLOB_GC = '1'
+      const cancel = scheduleSessionBlobGcOnStartup({ delayMs: 60_000 })
+      expect(vi.getTimerCount()).toBe(1)
+      cancel?.()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

@@ -72,6 +72,38 @@ describe('user scheduler tasks', () => {
     stopUserSchedulerTasks()
   })
 
+  /**
+   * C0 R3(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
+   *
+   * A0 ⑨ 那半条"定时器没变多"的断言用的是 `process.getActiveResourcesInfo()`,
+   * 而调度器那条链的 `setTimeout` 是 `unref` 过的 —— 那张表里看不见,断言恒绿。
+   * `vi.getTimerCount()` 看得见,所以泄漏判据挪到起定时器的模块自己这里。
+   *
+   * 判据是**表空了链就断**:`Scheduler.unregister` 摘掉最后一只时会
+   * `rescheduleTimer`,而那一句里的 `clearTimeout` 才是这条链真正的收尾。
+   * 反证(实跑过):把 `packages/onething-runtime/src/scheduler/scheduler.ts`
+   * `rescheduleTimer` 开头那句 `clearTimeout(this.timer)` 摘掉 → 最后一句红。
+   */
+  it('C0 R3:stop 之后调度器不留定时器(unref 的也算)', () => {
+    vi.useFakeTimers()
+    try {
+      expect(vi.getTimerCount()).toBe(0)
+      createUserSchedulerTask({
+        name: 'Nightly digest',
+        prompt: 'Summarise the day.',
+        agentId: 'default',
+        enabled: true,
+        schedule: { kind: 'interval', everyMs: 60000 },
+      })
+      const stop = initializeUserSchedulerTasks()
+      expect(vi.getTimerCount()).toBeGreaterThan(0)
+      stop()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('creates, updates, registers, and deletes agent tasks', () => {
     const created = createUserSchedulerTask({
       name: 'Morning news',

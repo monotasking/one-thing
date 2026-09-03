@@ -37,6 +37,26 @@ const events = vi.hoisted(() => ({
   notifyOAuthTokenExpired: vi.fn(),
 }))
 
+/**
+ * C0 R7 要观察的是「开浏览器失败有没有被吞掉」,而唯一的出口是投影层那句
+ * `logger.error('[OAuth] Open external URL failed:', …)`。所以这份测试把域用的
+ * 那只 logger 换成可数的:`getLogger` 与 `consolePort` 交出同一只 spy。
+ */
+const oauthLog = vi.hoisted(() => ({
+  error: vi.fn(),
+  warn: vi.fn(),
+  info: vi.fn(),
+  debug: vi.fn(),
+  trace: vi.fn(),
+  fatal: vi.fn(),
+  log: vi.fn(),
+}))
+
+vi.mock('../../wiring/logging/index.js', () => ({
+  getLogger: () => oauthLog,
+  consolePort: () => oauthLog,
+}))
+
 vi.mock('../../wiring/auth/auth-service.js', () => ({ authService }))
 vi.mock('../../wiring/auth/oauth-events.js', () => events)
 let shellHostPresent = true
@@ -80,6 +100,7 @@ describe('oauth RPC domain', () => {
     shellHostPresent = true
     shell.openExternal.mockReset().mockResolvedValue({ success: true })
     events.notifyOAuthTokenExpired.mockReset()
+    for (const fn of Object.values(oauthLog)) fn.mockReset()
 
     const { resetRpcRegistryForTests, registerRouterHandlers, oauthRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
@@ -143,6 +164,44 @@ describe('oauth RPC domain', () => {
       expect(answer).toMatchObject({ ok: true, data: { success: true, authUrl: 'https://example.test/authorize' } })
     }
     expect(shell.openExternal).not.toHaveBeenCalled()
+  })
+
+  /**
+   * C0 R7(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
+   *
+   * `hasShellHost()` 改成闩之后,一台声明了 `shell: {}` 的宿主会走进「递
+   * openExternal」那一支,而门面对没给的那一件返回的是结构化失败 —— 从前那句
+   * `.then(() => undefined)` 把它折成 resolve,于是**一行日志都没有**,
+   * 「浏览器没开」与「开了」在外面看来一模一样。
+   *
+   * 现在失败沿投影层现成的那条路回去:记一行 `[OAuth] Open external URL failed:`,
+   * 而响应形状一个字没变(仍然带着 `authUrl`,调用方自己开)。
+   *
+   * 反证(实跑过):把 `oauth.ts` 里那句 `if (!result.success) throw …` 换回
+   * `.then(() => undefined)` → 这条的日志断言红(`expected "error" to be called`)。
+   */
+  it('C0 R7:声明了外壳却开不成时记一行错,不再静默(响应仍交回 authUrl)', async () => {
+    shell.openExternal.mockResolvedValue({ success: false, error: 'shell host not available' })
+    const { dispatchRpc } = await loadDomain()
+
+    const answer = await dispatchRpc({
+      domain: 'oauth',
+      method: 'start',
+      payload: { providerId: 'claude-code' },
+    })
+    // fire-and-forget 的那一发要跑完 await + catch 两轮微任务。
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(answer).toMatchObject({
+      ok: true,
+      data: { success: true, authUrl: 'https://example.test/authorize' },
+    })
+    expect(oauthLog.error).toHaveBeenCalledWith(
+      '[OAuth] Open external URL failed:',
+      expect.objectContaining({ message: 'shell host not available' }),
+    )
   })
 
   it('carries the credential target through to the auth service on every method', async () => {

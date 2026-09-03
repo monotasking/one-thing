@@ -27,6 +27,14 @@ export function configureStorePathHost(host: StorePathHost): void {
   storePathHost = host
 }
 
+/**
+ * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
+ * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
+ */
+export function resetStorePathHost(): void {
+  storePathHost = {}
+}
+
 function hostOptions() {
   return {
     isPackaged: Boolean(storePathHost.isPackaged),

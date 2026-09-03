@@ -28,6 +28,13 @@
 #   `context.transport` 的读法,一个函数就是一处 —— 比目标更低,不是漏采。
 #   剩下的 5 处就是方案 §5「明确不做」的那两类:通道亲和(session-command / interaction)、
 #   记账(logs)、出界脱敏(mcp / settings)。B3 之后这五处应当原地不动。
+# 2026-09-03 C0 R2(docs/design/backend-principal-and-mcp-lifecycle-2026-09.md):`forks:` 的扫描根
+#   从 `packages/backend/rpc/domains`(不递归)提到 `packages/backend/rpc`(**递归**,跳过
+#   `__tests__`)。理由:`rpc/sandbox.ts` 是七个域共用的沙箱判据、一直按 `context.transport`
+#   分叉,却因为不在 domains/ 底下而在量程外整整一期(B0–B3 都没看见它)。同一批把它改成问
+#   `isHostLocallyTrusted()`,所以扩量程之后**表里不新增任何行** —— 递归扫到的另外两个文件
+#   (`rpc/index.ts` / `rpc/registry.ts`)读法为 0(index.ts 那处 `context.transport` 在注释里,
+#   剥注释后不计)。反证:把 sandbox.ts 改回 transport 判 → `forks:…/rpc/sandbox.ts 0 → 1` 红。
 # 降了之后跑 `bun run transport:gate --write-baseline` 收紧(重写会保留本段注释)。
 forks:packages/backend/rpc/domains/interaction.ts 1
 forks:packages/backend/rpc/domains/logs.ts 1

@@ -24,35 +24,84 @@
  *    `configureDeepLinkService` / `configureVoiceTray` / `configurePluginAppVersion`
  *    —— 窗口系统与壳自己的东西,归壳。
  */
-import { configureStorePathHost, type StorePathHost } from './stores/docs-paths.js'
-import { configureSandboxHost, type SandboxHost } from './wiring/tools/core/sandbox.js'
-import { configureAppLoggingHost, type AppLoggingHostPorts } from './wiring/logging/index.js'
+import {
+  configureStorePathHost,
+  resetStorePathHost,
+  type StorePathHost,
+} from './stores/docs-paths.js'
+import {
+  configureSandboxHost,
+  resetSandboxHost,
+  type SandboxHost,
+} from './wiring/tools/core/sandbox.js'
+import {
+  configureAppLoggingHost,
+  resetAppLoggingHost,
+  type AppLoggingHostPorts,
+} from './wiring/logging/index.js'
 import {
   configureSkillsEnvironmentHost,
+  resetSkillsEnvironmentHost,
   type SkillsEnvironmentHostPorts,
 } from './wiring/skills/loader.js'
-import { configureTodoPlanHost, type TodoPlanHostPorts } from './wiring/todo-plan/store.js'
-import { configurePluginsHost, type PluginsHostPorts } from './wiring/plugins/host-ports.js'
-import { configureGatewayHost, type GatewayHostPorts } from './wiring/gateway/host-ports.js'
-import { configureSettingsHost, type SettingsHostPorts } from './wiring/settings/host-ports.js'
-import { configureEvalsHost, type EvalsHostPorts } from './wiring/evals/host-ports.js'
+import {
+  configureTodoPlanHost,
+  resetTodoPlanHost,
+  type TodoPlanHostPorts,
+} from './wiring/todo-plan/store.js'
+import {
+  configurePluginsHost,
+  resetPluginsHost,
+  type PluginsHostPorts,
+} from './wiring/plugins/host-ports.js'
+import {
+  configureGatewayHost,
+  resetGatewayHost,
+  type GatewayHostPorts,
+} from './wiring/gateway/host-ports.js'
+import {
+  configureSettingsHost,
+  resetSettingsHost,
+  type SettingsHostPorts,
+} from './wiring/settings/host-ports.js'
+import {
+  configureEvalsHost,
+  resetEvalsHost,
+  type EvalsHostPorts,
+} from './wiring/evals/host-ports.js'
 import {
   configureHostLocalTrust,
   type HostLocalTrustDeclaration,
 } from './server/host-trust.js'
-import { configureAuthHost, type AuthHostPorts } from '@onething/runtime/auth/host-ports'
-import { configureShellHost, type ShellHostPorts } from '@onething/runtime/shell/host-ports'
-import { configureVoiceHost, type VoiceHostPorts } from '@onething/runtime/voice/host-ports.wiring'
+import {
+  configureAuthHost,
+  resetAuthHost,
+  type AuthHostPorts,
+} from '@onething/runtime/auth/host-ports'
+import {
+  configureShellHost,
+  resetShellHost,
+  type ShellHostPorts,
+} from '@onething/runtime/shell/host-ports'
+import {
+  configureVoiceHost,
+  resetVoiceHost,
+  type VoiceHostPorts,
+} from '@onething/runtime/voice/host-ports.wiring'
 import {
   configureTerminalBroadcaster,
   type TerminalHostPorts,
 } from '@onething/runtime/terminal/service.wiring'
 import {
   configureScratchpadHost,
+  resetScratchpadHost,
   type ScratchpadHostPorts,
 } from '@onething/runtime/scratchpad/service-bound'
 import { configureMCPClientHost } from '@onething/runtime/mcp/manager'
-import { configureMCPClientIdentity } from '@onething/runtime/mcp/identity'
+import {
+  configureMCPClientIdentity,
+  resetMCPClientIdentity,
+} from '@onething/runtime/mcp/identity'
 import type { MCPClientFactory, MCPClientLike } from '@onething/core/mcp'
 
 /**
@@ -145,39 +194,103 @@ export interface OnethingHostPorts {
  * 等于把宿主早先注入的东西擦掉(桌面的 sandbox 就是在装配前由 ready 钩子注入的),
  * 所以"没有"必须是**不调**,不是"调一个空的"。
  *
- * **返回一个还原函数**(B3)。十五格里只有 `localTrust` 一格有"还原"这回事 ——
- * `configureHostLocalTrust` 是唯一返回 restore 的端口,因为桌面内嵌 HTTP 面与
- * `server:start` 可能在同一个进程里先后起落,后者的收尾不许把前者的声明一起清掉。
- * 其余十四格都是**单槽覆盖**、没有 restore("上一任是谁"这件事它们不记),所以
- * 这个返回值恢复的只有信任那一格;`assembleSteps` 把它 `own('hostPorts')` 起来,
- * 于是 `dispose()` 之后这个进程回到"没有宿主声明过可信"的状态。
+ * **返回一个还原函数,十六格全部可还原**(C0 R6,方案
+ * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.3)。
+ *
+ * B3 那版只还原 `localTrust` 一格,因为当时只有它带 restore;其余十五格是没有
+ * 回头路的单槽覆盖(表一共十六格)。后果是 `backend.dispose()` **不干净**:一个进程里先后装配
+ * 两只 backend(测试、`server:start` 接管一台桌面),第二只会继承第一只注入的
+ * 语音 / 插件 / 沙箱端口 —— 而"这台宿主有没有语音"正是 B 期把六个域的判据挂上去
+ * 的那句话,继承过来就是说谎。
+ *
+ * 修法不是给每个端口造一份"上一任是谁"的栈:那会把十五个模块都变成有历史的东西。
+ * 修法是**还原到未注入态** —— 每个模块导出一个 `reset*`,还原函数**逆序**调用
+ * 这次真正调过的那几件。语义是"这只 backend 注入过的都撤回",与 `dispose()` 的
+ * 其余部分同一句话。
+ *
+ * 逆序不是为了对称好看:`localTrust` 那一格的 restore 是**身份守卡**
+ * (`if (declaration === next)`),它必须在别人还没改过这一格的时候跑;把它排在
+ * 最后登记、最先还原,与 `dispose()` 逆序跑 disposer 的理由逐字相同。
+ *
+ * `assembleSteps` 把这个返回值 `own('hostPorts')` 起来。
  */
 export function applyHostPorts(host: OnethingHostPorts): () => void {
+  /** 这次真正调过的那几件的还原口,**登记序**;返回值逆序跑。 */
+  const restores: Array<() => void> = []
+
   configureStorePathHost(host.storePath)
+  restores.push(resetStorePathHost)
   configureSandboxHost(host.sandbox)
-  if (host.auth) configureAuthHost(host.auth)
-  if (host.logging) configureAppLoggingHost(host.logging)
-  if (host.shell) configureShellHost(host.shell)
-  if (host.voice) configureVoiceHost(host.voice)
-  if (host.terminal) configureTerminalBroadcaster(host.terminal.broadcaster)
-  if (host.skillsEnvironment) configureSkillsEnvironmentHost(host.skillsEnvironment)
-  if (host.todoPlan) configureTodoPlanHost(host.todoPlan)
-  if (host.scratchpad) configureScratchpadHost(host.scratchpad)
-  if (host.plugins) configurePluginsHost(host.plugins)
-  if (host.gateway) configureGatewayHost(host.gateway)
-  if (host.settings) configureSettingsHost(host.settings)
-  if (host.evals) configureEvalsHost(host.evals)
+  restores.push(resetSandboxHost)
+  if (host.auth) {
+    configureAuthHost(host.auth)
+    restores.push(resetAuthHost)
+  }
+  if (host.logging) {
+    configureAppLoggingHost(host.logging)
+    restores.push(resetAppLoggingHost)
+  }
+  if (host.shell) {
+    configureShellHost(host.shell)
+    restores.push(resetShellHost)
+  }
+  if (host.voice) {
+    configureVoiceHost(host.voice)
+    restores.push(resetVoiceHost)
+  }
+  if (host.terminal) {
+    configureTerminalBroadcaster(host.terminal.broadcaster)
+    // 这一格的"未注入"就是 `null` —— 它本来就是端口自己的缺省值,不必另开 reset。
+    restores.push(() => configureTerminalBroadcaster(null))
+  }
+  if (host.skillsEnvironment) {
+    configureSkillsEnvironmentHost(host.skillsEnvironment)
+    restores.push(resetSkillsEnvironmentHost)
+  }
+  if (host.todoPlan) {
+    configureTodoPlanHost(host.todoPlan)
+    restores.push(resetTodoPlanHost)
+  }
+  if (host.scratchpad) {
+    configureScratchpadHost(host.scratchpad)
+    restores.push(resetScratchpadHost)
+  }
+  if (host.plugins) {
+    configurePluginsHost(host.plugins)
+    restores.push(resetPluginsHost)
+  }
+  if (host.gateway) {
+    configureGatewayHost(host.gateway)
+    restores.push(resetGatewayHost)
+  }
+  if (host.settings) {
+    configureSettingsHost(host.settings)
+    restores.push(resetSettingsHost)
+  }
+  if (host.evals) {
+    configureEvalsHost(host.evals)
+    restores.push(resetEvalsHost)
+  }
   if (host.mcp) {
     // 工厂缺省是内置 `MCPClient`,而 `configureMCPClientHost(null)` 是一个**有意义
-    // 的动作**(把别人装的工厂摘掉)。这里只在真给了工厂时调,不替宿主做那个决定。
-    if (host.mcp.clientFactory) configureMCPClientHost(host.mcp.clientFactory)
-    if (host.mcp.identity) configureMCPClientIdentity(host.mcp.identity)
+    // 的动作**(把别人装的工厂摘掉)。这里只在真给了工厂时调,不替宿主做那个决定 ——
+    // 还原同理:没调过就不还原,免得把 server runtime 按 `processPorts` 自己装的
+    // 那只工厂(它不走这张表)顺手摘掉。
+    if (host.mcp.clientFactory) {
+      configureMCPClientHost(host.mcp.clientFactory)
+      restores.push(() => configureMCPClientHost(null))
+    }
+    if (host.mcp.identity) {
+      configureMCPClientIdentity(host.mcp.identity)
+      restores.push(resetMCPClientIdentity)
+    }
   }
-  // 唯一带 restore 的一格。`null` 与其它端口同义:不调 —— 独立 server 要自己按
-  // 绑定地址声明,替它调一次 `configureHostLocalTrust(null)` 会把它待会儿的声明
-  // 之前的状态搅乱(那个函数的 `null` 是"明确声明不可信",不是 no-op)。
-  const restoreLocalTrust = host.localTrust ? configureHostLocalTrust(host.localTrust) : null
+  // `null` 与其它端口同义:不调 —— 独立 server 要自己按绑定地址声明,替它调一次
+  // `configureHostLocalTrust(null)` 会把它待会儿的声明之前的状态搅乱(那个函数的
+  // `null` 是"明确声明不可信",不是 no-op)。
+  if (host.localTrust) restores.push(configureHostLocalTrust(host.localTrust))
+
   return () => {
-    restoreLocalTrust?.()
+    for (let i = restores.length - 1; i >= 0; i -= 1) restores[i]!()
   }
 }

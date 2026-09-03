@@ -71,6 +71,19 @@ export function configureAppLoggingHost(ports: AppLoggingHostPorts): void {
   hostPorts = ports
 }
 
+/**
+ * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
+ * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
+ */
+/**
+ * 注意与 `resetLoggingForTests()` 的区别:那一个拆的是 `configureLogging()` 起的
+ * 文件 sink / janitor / crash hooks(宿主在装配**之前**调、寿命比 backend 长);
+ * 这一个只清宿主表 `logging` 那一格递进来的两件采集能力。
+ */
+export function resetAppLoggingHost(): void {
+  hostPorts = {}
+}
+
 const DEFAULT_LEVEL_SPEC = 'info'
 const MEMORY_RING_SIZE = 400
 

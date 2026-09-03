@@ -51,6 +51,24 @@ async function loadDomain() {
   return permissionGrantsRpcHandlers
 }
 
+/**
+ * 桌面那一侧的加载口。
+ *
+ * 「这是一台桌面」这句话,C0 R2 之后要**声明**出来:`resolveRpcSandbox` 的"不夹"
+ * 判据从 `transport === 'ipc'` 换成了 `isHostLocallyTrusted()`,而那句话由宿主在
+ * **装配时**说(两个桌面壳都写 `{ origin: 'desktop-embedded' }`)。
+ *
+ * 声明必须排在 `loadDomain()` **之后**:它里面那句 `vi.resetModules()` 会把
+ * `host-trust.js` 也重新求值一遍,先声明的那份会被丢掉。同一个理由让这份文件
+ * 不需要 afterEach 还原 —— 每条用例都从一份全新的、未声明的模块起跑。
+ */
+async function loadDesktopDomain() {
+  const handlers = await loadDomain()
+  const { configureHostLocalTrust } = await import('../../server/host-trust.js')
+  configureHostLocalTrust({ origin: 'desktop-embedded' })
+  return handlers
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getSessionsList.mockReturnValue([])
@@ -61,7 +79,7 @@ beforeEach(() => {
 
 describe('permissionGrants RPC domain · desktop context', () => {
   it('passes the request through untouched — no ownership, no clamping', async () => {
-    const handlers = await loadDomain()
+    const handlers = await loadDesktopDomain()
 
     await handlers.list(
       { sessionId: 'session-1', workspaceRoot: '/anywhere/on/disk', userId: 'bob' },
@@ -78,7 +96,7 @@ describe('permissionGrants RPC domain · desktop context', () => {
   })
 
   it('revokes any grant without an ownership lookup', async () => {
-    const handlers = await loadDomain()
+    const handlers = await loadDesktopDomain()
 
     await expect(handlers.revoke({ id: 'grant-from-nowhere' }, DESKTOP_RPC_CONTEXT))
       .resolves.toEqual({ success: true })

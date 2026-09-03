@@ -27,6 +27,14 @@ export function configureScratchpadHost(ports: ScratchpadHostPorts): void {
   hostPorts = ports
 }
 
+/**
+ * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
+ * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
+ */
+export function resetScratchpadHost(): void {
+  hostPorts = {}
+}
+
 /** 当前注入的端口 —— 单槽端口串联用,理由同 `getTodoPlanHostPorts`。 */
 export function getScratchpadHostPorts(): ScratchpadHostPorts {
   return hostPorts

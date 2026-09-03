@@ -5,7 +5,7 @@
  * 「活着」是 pid + 端口两段判定 —— 只过一段不算。
  */
 import { createServer } from 'node:http'
-import { mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -96,6 +96,36 @@ describe('http discovery file', () => {
     removeHttpDiscovery()
     expect(readHttpDiscovery()).toBeUndefined()
     expect(() => removeHttpDiscovery()).not.toThrow()
+  })
+
+  /**
+   * C0 R5。删的判据是**这份是不是我写的**,不是"盘上有没有文件"。
+   * 反证(实跑过):把 `if (record?.pid !== process.pid) return` 那一句摘掉 →
+   * 第一段立刻红(别人的宣告被删掉了)。
+   */
+  it('C0 R5:别人 pid 的宣告不删,自己 pid 的才删', () => {
+    writeHttpDiscovery({
+      port: 1,
+      host: '127.0.0.1',
+      // 一个绝不可能是自己的 pid(1 = init;这份测试跑在 vitest worker 里)。
+      pid: process.pid + 1,
+      startedAt: 0,
+      owner: 'desktop',
+    })
+    removeHttpDiscovery()
+    expect(readHttpDiscovery()?.pid).toBe(process.pid + 1)
+
+    writeHttpDiscovery({ port: 2, host: '127.0.0.1', pid: process.pid, startedAt: 0, owner: 'shell' })
+    removeHttpDiscovery()
+    expect(readHttpDiscovery()).toBeUndefined()
+  })
+
+  /** 坏文件 / 读不出来时也不删 —— "读不到" 不等于 "是我的"。 */
+  it('C0 R5:解析不了的文件不删', () => {
+    mkdirSync(path.join(storePath, 'run'), { recursive: true })
+    writeFileSync(path.join(storePath, 'run', 'http.json'), 'not json at all')
+    removeHttpDiscovery()
+    expect(existsSync(path.join(storePath, 'run', 'http.json'))).toBe(true)
   })
 
   describe('isHttpDiscoveryAlive', () => {

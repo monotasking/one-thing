@@ -57,6 +57,11 @@ export function configureSandboxHost(host: SandboxHost): void {
   sandboxHost = host
 }
 
+/** 还原到未注入态(C0 R6;口径见 `backend/host-ports.ts` 的 `applyHostPorts`)。 */
+export function resetSandboxHost(): void {
+  sandboxHost = {}
+}
+
 export const expandPath = expandOnethingToolSandboxPath
 export const resolveToolPath = resolveOnethingToolPath
 export const isPathContained = isOnethingToolPathContained

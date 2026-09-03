@@ -102,6 +102,19 @@ describe('files RPC domain', () => {
     return dispatchRpc({ domain: 'files', method, payload }, context)
   }
 
+  /**
+   * 「这是一台桌面」这句话,C0 R2 之后要**声明**出来。
+   *
+   * 从前 `resolveRpcSandbox` 认的是 `transport === 'ipc'`,所以喂一个 IPC context
+   * 就等于"我是桌面";现在它与 files 域自己那条判据合并成同一句
+   * `isHostLocallyTrusted()` —— 而那句话由宿主在**装配时**说(两个桌面壳都写
+   * `{ origin: 'desktop-embedded' }`)。这份测试里没有装配,所以由这个 helper 顶上。
+   * 上面 beforeEach 里的 `resetHostLocalTrustForTests()` 保证它不漏到下一条。
+   */
+  function declareDesktopHost(): void {
+    configureHostLocalTrust({ origin: 'desktop-embedded', host: '127.0.0.1' })
+  }
+
   // ── #19:http 夹紧 ───────────────────────────────────────────────
 
   it('refuses every path-carrying method that escapes the http sandbox', async () => {
@@ -237,6 +250,7 @@ describe('files RPC domain', () => {
   // ── 桌面:不夹 ──────────────────────────────────────────────────
 
   it('does not clamp on the desktop transport', async () => {
+    declareDesktopHost()
     const outside = await mkdtemp(join(tmpdir(), 'onething-files-outside-'))
     await writeFile(join(outside, 'note.md'), 'desktop', 'utf-8')
 
@@ -249,6 +263,7 @@ describe('files RPC domain', () => {
   })
 
   it('keeps watchStart/watchStop as the desktop projection stub', async () => {
+    declareDesktopHost()
     expect(unwrap(await call('watchStart', { root: '/anywhere' }, IPC))).toEqual({ success: true })
     expect(unwrap(await call('watchStart', { root: '' }, IPC)))
       .toEqual({ success: false, error: 'Workspace root is required' })
@@ -258,6 +273,7 @@ describe('files RPC domain', () => {
   // ── reveal:宿主端口 ────────────────────────────────────────────
 
   it('degrades reveal structurally when no shell host is injected', async () => {
+    declareDesktopHost()
     const target = join(sandboxRoot, 'shown.txt')
     await writeFile(target, 'x', 'utf-8')
     shell.revealPath.mockResolvedValue({ success: false, error: 'shell host not available' })
@@ -273,6 +289,7 @@ describe('files RPC domain', () => {
   // ── list:两侧的搜索根 ──────────────────────────────────────────
 
   it('resolves connected directories by the session that asked (desktop only)', async () => {
+    declareDesktopHost()
     const connectedDir = await mkdtemp(join(tmpdir(), 'onething-files-connected-'))
     connected.getConnectedDirectoriesForSession.mockReturnValue([connectedDir])
     ripgrep.listFiles.mockReturnValue(emit([]))
@@ -287,6 +304,7 @@ describe('files RPC domain', () => {
   })
 
   it('offers notes and Downloads as directory roots for a bare @ on the desktop', async () => {
+    declareDesktopHost()
     const { getDownloadsDirectory } = await import('../../wiring/tools/core/sandbox.js')
     const { resetVariablesStoreForTests } = await import('@onething/runtime/variables/store-bound')
     const { createDefaultVariablesFile } = await import('@onething/runtime/variables/schema')

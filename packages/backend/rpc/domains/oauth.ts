@@ -38,6 +38,10 @@
  * 闭包会走进 `getShellHost()` 的结构化失败并被 `.then(() => undefined)` 吞掉 ——
  * 于是「浏览器没开」看上去和「开了」一模一样。现在没接就不递,调用方拿得到 `authUrl`。
  *
+ * C0 R7 补完另一半:`hasShellHost()` 改成"宿主声明过"的闩(与 `hasVoiceHost()` /
+ * `hasTerminalHost()` 同口径)之后,声明了空表的宿主会走进递 `openExternal` 那一支,
+ * 于是那句吞错的 `.then(() => undefined)` 必须一起去掉 —— 见 `start` 里的说明。
+ *
  * ## 两条推送不在这里
  *
  * `OAUTH_TOKEN_REFRESHED` / `OAUTH_TOKEN_EXPIRED` 走
@@ -86,9 +90,25 @@ export const oauthRpcHandlers: RpcRouteHandlers<OAuthRoutes> = {
     const startOnethingOAuthForIpcOptions: StartOnethingOAuthForIpcOptions = {
       providerId: request.providerId,
       start: providerId => authService.start(providerId, target),
-      // 没有外壳能力就不开浏览器:调用方拿 `authUrl` 自己开(旧 server 路由的形状)。
+      /*
+       * 没有外壳能力就不开浏览器:调用方拿 `authUrl` 自己开(旧 server 路由的形状)。
+       *
+       * C0 R7:开不成时**不再静默**。`hasShellHost()` 自这一批起是"宿主声明过"的闩,
+       * 于是一台声明了 `shell: {}`(表里没有 `openExternal`)的宿主会走进这条分支,
+       * 而 `getShellHost().openExternal` 对未注入的那件返回的是结构化失败
+       * `{success:false}` —— 从前那句 `.then(() => undefined)` 把它折成 resolve,
+       * `startOnethingOAuthForIpc` 里那条 `.catch(… logger.error …)` 于是永远等不到,
+       * 「浏览器没开」看上去和「开了」一模一样。
+       *
+       * 改法是让失败**沿既有的那条路**回去:把结构化失败抛出来,`startOnethingOAuthForIpc`
+       * 现成的 catch 记一行 `[OAuth] Open external URL failed:`。响应形状一个字没变 ——
+       * 它本来就带着 `authUrl`,调用方照样能自己开(这就是"交回 authUrl")。
+       */
       openExternal: hasShellHost()
-        ? url => getShellHost().openExternal(url).then(() => undefined)
+        ? async (url: string) => {
+            const result = await getShellHost().openExternal(url)
+            if (!result.success) throw new Error(result.error || 'shell host could not open the URL')
+          }
         : undefined,
       logger: consoleLog,
     };

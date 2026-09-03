@@ -44,6 +44,12 @@ async function loadDomain() {
   return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, projectDirsRpcHandlers }
 }
 
+/**
+ * 「这是一台桌面」这句话,C0 R2 之后要**声明**出来:`resolveRpcSandbox` 的"不夹"
+ * 判据从 `transport === 'ipc'` 换成了 `isHostLocallyTrusted()`,而那句话由宿主在
+ * **装配时**说(两个桌面壳都写 `{ origin: 'desktop-embedded' }`)。这份测试里没有
+ * 装配,所以由 beforeEach 顶上;afterEach 打回未声明,免得漏进下一条。
+ */
 describe('project-dirs RPC domain', () => {
   let dispose: (() => void) | undefined
 
@@ -58,11 +64,17 @@ describe('project-dirs RPC domain', () => {
     const { resetRpcRegistryForTests, registerRouterHandlers, projectDirsRpcHandlers } = await loadDomain()
     resetRpcRegistryForTests()
     dispose = registerRouterHandlers(projectDirsRouter, projectDirsRpcHandlers)
+
+    // C0 R2:见下面的说明 —— 这份文件喂的全是桌面 context。
+    const { configureHostLocalTrust } = await import('../../server/host-trust.js')
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     dispose?.()
     dispose = undefined
+    const { resetHostLocalTrustForTests } = await import('../../server/host-trust.js')
+    resetHostLocalTrustForTests()
   })
 
   it('binds all five methods — an unlisted one never reaches a handler', async () => {

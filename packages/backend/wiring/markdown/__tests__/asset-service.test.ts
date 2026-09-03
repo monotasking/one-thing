@@ -14,12 +14,18 @@ import type {
   MarkdownSaveAttachmentsResponse,
 } from '@shared/ipc/markdown.js'
 import { markdownRpcHandlers } from '../../../rpc/domains/markdown.js'
+import {
+  configureHostLocalTrust,
+  resetHostLocalTrustForTests,
+} from '../../../server/host-trust.js'
 
 /**
- * 主线 T 批 3 之后这两个方法的唯一入口是域 handler。这里用桌面 context
- * (`transport:'ipc'` = 未夹紧) 薄封一层,**下面每一条断言一字未改** ——
- * 这正是本文件在这一批要证的事:桌面语义与迁移前逐字相同。
- * 夹紧宿主的行为另有一份 `__tests__/markdown-sandbox.test.ts`。
+ * 主线 T 批 3 之后这两个方法的唯一入口是域 handler。这里用桌面 context 薄封一层,
+ * **下面每一条断言一字未改** —— 这正是本文件在这一批要证的事:桌面语义与迁移前
+ * 逐字相同。夹紧宿主的行为另有一份 `__tests__/markdown-sandbox.test.ts`。
+ *
+ * C0 R2:"桌面 = 未夹紧"从前由 `transport:'ipc'` 这个字面量说,现在由宿主的
+ * 本机可信声明说(见文件下方 beforeEach) —— context 本身一个字没变。
  */
 async function resolveMarkdownAsset(
   request: MarkdownResolveAssetRequest,
@@ -76,6 +82,8 @@ function fileInput(fileName: string, mimeType = 'image/png') {
 
 beforeEach(() => {
   configureEditor()
+  // C0 R2:桌面 = 宿主声明了本机可信(见文件上方 saveMarkdownAttachments 的说明)。
+  configureHostLocalTrust({ origin: 'desktop-embedded' })
   const store = resetVariablesStoreForTests()
   store.hydrateForTests({
     ...createDefaultVariablesFile(),
@@ -86,6 +94,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   configureEditor()
+  resetHostLocalTrustForTests()
   resetVariablesStoreForTests()
   await Promise.all(tempRoots.splice(0).map(root => fs.rm(root, { recursive: true, force: true })))
 })

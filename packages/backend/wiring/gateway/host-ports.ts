@@ -120,6 +120,14 @@ export function configureGatewayHost(ports: GatewayHostPorts): void {
   hostPorts = ports
 }
 
+/**
+ * 还原到**未注入**态(C0 R6)。`applyHostPorts` 的还原函数逆序调它,于是
+ * `backend.dispose()` 之后这个进程回到"没有宿主声明过这件能力"。
+ */
+export function resetGatewayHost(): void {
+  hostPorts = {}
+}
+
 /** 当前注入的原始端口。串联/诊断用;日常调用请走 `getGatewayHost()`。 */
 export function getGatewayHostPorts(): GatewayHostPorts {
   return hostPorts
