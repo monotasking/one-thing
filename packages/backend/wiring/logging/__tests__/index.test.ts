@@ -14,13 +14,6 @@ const mocks = vi.hoisted(() => ({
   },
 }))
 
-vi.mock('@onething/electron-host/logging/console-capture', () => ({
-  createElectronRendererConsoleCapture: (options: { log: (entry: unknown) => void }) => {
-    mocks.rendererCapture.log = options.log
-    return { attach: mocks.rendererCapture.attach, detach: mocks.rendererCapture.detach }
-  },
-  setElectronAppLogsPath: mocks.setElectronAppLogsPath,
-}))
 
 vi.mock('@onething/runtime/storage/index', () => ({
   ensureDir: mocks.ensureDir,
@@ -113,40 +106,6 @@ describe('app logging assembly (configureLogging)', () => {
       }),
       expect.objectContaining({ ns: 'console', msg: expect.stringContaining('[IPCBridge] Unbound') }),
     ]))
-  })
-
-  it('wires the host ports: log dir mirror + renderer capture with structured fields', async () => {
-    const { createElectronRendererConsoleCapture, setElectronAppLogsPath } =
-      await import('@onething/electron-host/logging/console-capture')
-    const logging = await import('../index.js')
-    logging.configureAppLoggingHost({
-      setAppLogsPath: setElectronAppLogsPath,
-      createRendererConsoleCapture: createElectronRendererConsoleCapture as never,
-    })
-    const handle = logging.configureLogging({ janitor: false, legacyConsole: false })
-
-    expect(mocks.setElectronAppLogsPath).toHaveBeenCalledWith(mocks.logDir)
-    expect(mocks.rendererCapture.attach).toHaveBeenCalled()
-
-    mocks.rendererCapture.log?.({
-      level: 'warn',
-      ns: 'renderer',
-      source: 'renderer:1',
-      msg: '[Vue warn]: Invalid prop',
-      fields: { webContentsId: 1, stack: 'at <Container>' },
-    })
-    handle.flushSync()
-
-    const record = readRecords().find(entry => entry.ns === 'renderer')
-    expect(record).toMatchObject({
-      level: 'warn',
-      src: 'renderer',
-      msg: '[Vue warn]: Invalid prop',
-      fields: { webContentsId: 1, stack: 'at <Container>', source: 'renderer:1' },
-    })
-
-    await logging.shutdownAppLogging()
-    expect(mocks.rendererCapture.detach).toHaveBeenCalled()
   })
 
   it('reads ONETHING_LOG at configure time and can be re-pointed at runtime', async () => {

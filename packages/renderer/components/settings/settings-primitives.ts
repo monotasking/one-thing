@@ -1,6 +1,0 @@
-export { default as SettingsActionBar } from './SettingsActionBar.vue'
-export { default as SettingsEmptyState } from './SettingsEmptyState.vue'
-export { default as SettingsField } from './SettingsField.vue'
-export { default as SettingsGroup } from './SettingsGroup.vue'
-export { default as SettingsSection } from './SettingsSection.vue'
-export { default as SettingRow } from './SettingRow.vue'

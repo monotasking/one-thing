@@ -85,7 +85,5 @@
 #   删新增一条**会话事件词**(`SESSION_EVENT_TYPES.SESSION_REMOVED`,不是 `IPC_CHANNELS` 常量),
 #   渲染侧的折叠住在壳外一个模块 `platform/session-lifecycle.ts` —— 四壳一行不动。
 channels:IPC_CHANNELS 42
-lines:apps/electron/src/preload/bridge.ts 674
 lines:packages/backend/server/http.ts 786
-lines:packages/renderer/platform/web.ts 775
 lines:packages/shared/ipc/channels.ts 234

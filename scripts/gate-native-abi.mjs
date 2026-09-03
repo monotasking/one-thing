@@ -30,7 +30,6 @@
  * 枚举**这个仓今天真的装了 / 真的产出**的原生插件:
  *   - `node-pty`(终端)
  *   - `sherpa-onnx-node` + 当前平台的 `sherpa-onnx-<platform>-<arch>`(语音)
- *   - `resources/native/macos_panel.node`(macOS 面板;`bun run build:native:mac` 的产物)
  * 没装 / 没构建的条目记 SKIP 并说明,不冒充绿也不误报红 —— 一块不存在的二进制没有 ABI
  * 可判。真正的红只有两种:**存在但装不上**,和**存在但绑了 V8 内部符号**。
  *
@@ -76,16 +75,6 @@ function targets() {
 		packageDir: platformDir,
 	})
 
-	// ── macos_panel.node:不是 npm 包,是 build:native:mac 的产物,产品代码用
-	//    `process.dlopen` 加载(apps/electron/src/window/macos-panel.ts),门照同一种法。
-	list.push({
-		name: 'resources/native/macos_panel.node',
-		kind: 'dlopen',
-		binary: join(repoRoot, 'resources', 'native', 'macos_panel.node'),
-		packageDir: join(repoRoot, 'resources', 'native'),
-		onlyOn: 'darwin',
-		hint: '跑 `bun run build:native:mac` 产出它',
-	})
 
 	return list
 }

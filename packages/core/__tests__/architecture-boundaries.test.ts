@@ -151,24 +151,8 @@ describe('architecture boundaries', () => {
     ])).toEqual([])
   })
 
-  it('keeps renderer product code behind platformApi instead of direct IPC', () => {
-    expect(findForbiddenReferences('packages/renderer', [
-      /window\.electronAPI/,
-      /\bipcMain\b/,
-      /\bipcRenderer\b/,
-      /from\s+['"]electron['"]/,
-      /import\s*\(\s*['"]electron['"]\s*\)/,
-      /require\s*\(\s*['"]electron['"]\s*\)/,
-    ], {
-      allowFile: filePath => (
-        filePath.startsWith('packages/renderer/platform/')
-        || filePath === 'packages/renderer/types/index.ts'
-      ),
-    })).toEqual([])
-  })
-
-  it('keeps web and server hosts independent from Electron host code', () => {
-    expect(findForbiddenReferences('apps/web', hostOnlyPatterns)).toEqual([])
+  it('keeps the server host independent from Electron host code', () => {
+    // apps/web(Vue 浏览器构建)于 2026-09-04 随 Vue 宿主退役;浏览器壳现在是 apps/desktop-react 的 web 模式。
     expect(findForbiddenReferences('apps/server', hostOnlyPatterns)).toEqual([])
   })
 
@@ -226,8 +210,8 @@ describe('architecture boundaries', () => {
 
     for (const directory of [
       'packages/shared',
-      'packages/renderer',
-      'apps/electron/src',
+      'packages/client',
+      'apps/desktop-react/src',
       'apps/server/src',
     ]) {
       expect(findForbiddenReferencesInCode(directory, [deadNames])).toEqual([])

@@ -1,16 +1,15 @@
 appId: com.onething.app
 productName: onething
 # 这棵树里的原生模块**一块二进制同时喂两个运行时**,所以不重建:
-#   node-pty / sherpa-onnx-node(+ 各平台包)/ resources/native/macos_panel.node
-# 三件全是 **N-API** 插件 —— N-API 是 ABI 稳定的 C 接口,不吃 V8 的内部 ABI,
+#   node-pty / sherpa-onnx-node(+ 各平台包)
+# 两件全是 **N-API** 插件 —— N-API 是 ABI 稳定的 C 接口,不吃 V8 的内部 ABI,
 # 同一份 .node 在 Node(server / CLI / vitest)与 Electron(桌面)下都能 dlopen。
 # 重建对它们只是白烧一遍工具链,还会把 sherpa 的预编译平台包顶掉。
 #
 # **这句话不是靠注释成立的**:`npm run gate:native` 逐块二进制在系统 Node 与
 # `ELECTRON_RUN_AS_NODE=1` 的 Electron 下各 require 一次,再用 `nm -u` 扫未定义
 # 符号(出现 _v8 / node:: / node_module_register 即红)。加新原生依赖先过那道门。
-# 2026-09-03 读数:node-pty / sherpa-onnx-darwin-arm64 / macos_panel 三块在
-# Node ABI 127 与 Electron ABI 145 下全部加载成功,napi_* 符号 38 / 58 / 7,
+# 2026-09-03 读数:node-pty / sherpa-onnx-darwin-arm64 两块在 Node ABI 127 与 Electron ABI 145 下全部加载成功。
 # v8+node 内部符号 0。
 #
 # 第二条理由(与 N-API 无关,单独成立):这条链上的 node-abi 根本不认识 Electron 41。
@@ -41,10 +40,6 @@ files:
   - "!**/.{eslint,prettier,github,vscode}*"
   # onnxruntime-web is not needed in Electron main process
   - "!node_modules/onnxruntime-web"
-  # Font packages are bundled by Vite into renderer, no need in asar
-  - "!node_modules/@fontsource-variable"
-  - "!node_modules/lxgw-wenkai-webfont"
-  - "!node_modules/lxgw-wenkai-screen-webfont"
 
 # Native sherpa-onnx addon and its dylibs must stay on disk (loaded via
 # process dlopen; the darwin package already carries an @loader_path rpath).
@@ -71,10 +66,6 @@ extraResources:
       - "**/*"
   - from: resources/skills
     to: skills
-    filter:
-      - "**/*"
-  - from: resources/native
-    to: native
     filter:
       - "**/*"
   - from: resources/models

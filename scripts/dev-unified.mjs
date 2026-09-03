@@ -306,10 +306,8 @@ async function cleanupPort(port) {
  * 换成 React 壳的 web 模式(同一个 5174 端口、同一份发现文件、同一条 `/api` 代理语义)。
  * 4b 删 apps/web 时把这里的缺省翻过来,这个 env 随之退役。
  */
-const webShell = process.env.ONETHING_WEB_SHELL === 'react' ? 'react' : 'vue'
-const webViteConfig = webShell === 'react'
-  ? 'apps/desktop-react/vite.config.ts'
-  : 'apps/web/vite.config.ts'
+// 浏览器壳 = React 壳的 web 模式(运行时统一第四步,2026-09-04;apps/web 的 Vue 构建已删)。
+const webViteConfig = 'apps/desktop-react/vite.config.ts'
 
 function isProjectWebDevCommand(command) {
   const normalized = normalizedCommand(command)
@@ -317,8 +315,7 @@ function isProjectWebDevCommand(command) {
   if (!normalized.includes('node_modules/.bin/vite')) return false
   // 两个壳的残留进程都要认得出来 —— 否则换过一次 env 之后,上一轮那只 vite
   // 会一直蹲在 5174 上,而清扫只认当前这一份配置路径。
-  return normalized.includes('apps/web/vite.config.ts')
-    || normalized.includes('apps/desktop-react/vite.config.ts')
+  return normalized.includes('apps/desktop-react/vite.config.ts')
 }
 
 function isProjectServerCommand(command) {

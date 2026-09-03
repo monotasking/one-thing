@@ -664,18 +664,6 @@ function getRuntimeRequestContext(
   }
 }
 
-/**
- * `GET /api/events` 是**唯一**接受 `?token=` 的路由。
- *
- * 理由是 `EventSource` 这个 Web API 带不了自定义 header —— 浏览器/Electron 渲染层
- * 想订这条 SSE,除了 query 没有第二条路(React 壳方案 §5.6 甲案)。名单只有这一条,
- * 其它路由带上 query token 一律照旧当没带(POST 都能带 header,不需要这个口子)。
- *
- * token 不落日志:`logRequest` 记的是 `url.pathname`,query 从不进 `fields`。
- */
-function acceptsQueryToken(method: string | undefined, pathname: string): boolean {
-  return (method || 'GET') === 'GET' && pathname === '/api/events'
-}
 
 function checkRequestAuthorization(
   request: IncomingMessage,
@@ -683,10 +671,9 @@ function checkRequestAuthorization(
   options: OnethingHttpServerOptions,
 ): string | undefined {
   if (options.authToken) {
+    // 2026-09-04 起只认 Bearer 头:从前 `GET /api/events` 额外认 `?token=`,是给浏览器 `EventSource`
+    // (带不了 header)留的口;@onething/client 用 fetch 流解析 SSE 后全仓无人再构造它,Vue 壳退役时删。
     const bearer = readBearerToken(request)
-      ?? (acceptsQueryToken(request.method, url.pathname)
-        ? url.searchParams.get('token') || undefined
-        : undefined)
     if (!bearer || !tokenMatches(bearer, options.authToken)) {
       return 'Unauthorized: this server requires a Bearer token (ONETHING_SERVER_TOKEN).'
     }

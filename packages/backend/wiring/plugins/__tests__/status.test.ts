@@ -200,9 +200,9 @@ describe('R6 status registry — 格子语义与清扫', () => {
 
     // 跨文件:曾经的手抄点现在都必须从 shared 取,不许再出现字面量三连。
     const handCopied = /'stream:complete'\s*,\s*'stream:error'\s*,\s*'stream:aborted'|'stream:complete'\s*\|\|[^\n]*'stream:aborted'/
+    // renderer/stores/voice.ts 曾在名单里,随 Vue 宿主于 2026-09-04 退役删除。
     for (const relative of [
       '../../../../onething-runtime/src/collab/typing.ts',
-      '../../../../renderer/stores/voice.ts',
     ]) {
       const source = fs.readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf-8')
       expect(source, `${relative} must not re-list the terminal events`).not.toMatch(handCopied)

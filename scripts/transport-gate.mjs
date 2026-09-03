@@ -34,11 +34,9 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const baselinePath = path.join(root, 'docs/audit/transport-baseline-2026-08-14.txt')
 const forksBaselinePath = path.join(root, 'docs/audit/transport-forks-baseline-2026-09-03.txt')
 
-/** 四个壳文件：加一个域时历史上必须逐个改的那四处。 */
+/** 壳文件：加一个域时历史上必须逐个改的地方(Vue 的 preload/bridge 与 renderer/web.ts 随 2026-09-04 退役删除)。 */
 const SHELL_FILES = [
   'packages/backend/server/http.ts',
-  'apps/electron/src/preload/bridge.ts',
-  'packages/renderer/platform/web.ts',
   'packages/shared/ipc/channels.ts',
 ]
 

@@ -428,7 +428,9 @@ function cancelResponseBody(response: Response): void {
 
 async function defaultNetworkFetch(input: RequestInfo | URL, init: OnethingAppFetchNetworkInit): Promise<Response> {
   const response = await undici.fetch(input as UndiciFetchInput, init as UndiciFetchInit)
-  return response as Response
+  // undici 的 Response 与 lib.dom 的 Response 类型不再「足够重叠」(2026-09-04 Vue 宿主退役后 electron 的
+  // 类型不再进 node typecheck 图);运行时是同一个 WHATWG 形,经 unknown 过桥。
+  return response as unknown as Response
 }
 
 async function executeOnethingFetch(

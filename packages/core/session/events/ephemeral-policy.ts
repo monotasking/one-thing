@@ -82,7 +82,12 @@ export interface SessionEphemeralFactPolicy {
 const CONTRACT = 'packages/core/session/__tests__/projection-contract.test.ts'
 const POLICY = 'packages/core/session/__tests__/ephemeral-policy.test.ts'
 const CODEC = 'packages/core/session/__tests__/session-chunk-codec.test.ts'
-const PLUGIN_STATUS = 'packages/renderer/stores/__tests__/plugin-status-parts.test.ts'
+/**
+ * 2026-09-04:Vue renderer(与它的 plugin-status-parts.test)随运行时统一第四步删除;这三条证明改指
+ * 装配层的状态注册表测试(同一组事实:状态活在流里、回合收尾被扫、已结算的落账本)。React 壳今天
+ * 还没有插件状态 UI,壳侧那一半证明暂缺,记在下面各条的 note 里。
+ */
+const PLUGIN_STATUS = 'packages/backend/wiring/plugins/__tests__/status.test.ts'
 /** 结算态的产地(§17.8 前置批,留账 #10 结清)。 */
 const PLUGIN_STATUS_LANDING = 'packages/backend/wiring/external-agents/__tests__/background-status.test.ts'
 
@@ -169,9 +174,9 @@ export const SESSION_EPHEMERAL_FACT_POLICY: readonly SessionEphemeralFactPolicy[
       + '(`plugin/status`,带 `startedAt` / `durationMs` / `cleared`)。',
     proofKind: 'substitute-derivable',
     proofs: [
-      { file: PLUGIN_STATUS, test: 'is stream-scoped transient, not placeholder transient' },
-      { file: PLUGIN_STATUS, test: '已结算的那条不再是 transient —— 定格的总耗时活过回合收尾' },
-      { file: PLUGIN_STATUS, test: '回合收尾:在跑的被扫掉,已结算的留下' },
+      { file: PLUGIN_STATUS, test: 'refuses a session with no running stream — status lives inside a bubble' },
+      { file: PLUGIN_STATUS_LANDING, test: 'settled 写一条 plugin/status;running 一条都不写' },
+      { file: PLUGIN_STATUS, test: 'sweeps a whole session and reports every part that has to be taken down' },
       // 取代者**转真**:结算那一刻真的写下了一条 `plugin/status`。
       { file: PLUGIN_STATUS_LANDING, test: 'settled 写一条 plugin/status;running 一条都不写' },
     ],

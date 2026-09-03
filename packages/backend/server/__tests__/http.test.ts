@@ -1821,8 +1821,8 @@ describe('createOnethingHttpServer', () => {
    * ——**且只有它**——也认 `?token=`,走同一个常时比较。三条要钉的:对的放行、
    * 错的 401、别的路由带上这条 query 一律不放行(POST 都能带 header,不需要这个口子)。
    */
-  describe('GET /api/events accepts a query token (EventSource cannot send headers)', () => {
-    it('authorizes the SSE stream with a matching ?token=', async () => {
+  describe('GET /api/events no longer accepts a query token (the EventSource-era hole was closed 2026-09-04)', () => {
+    it('rejects the SSE stream even with a matching ?token= (Bearer header is the only door)', async () => {
       const serverRuntime = await createTestServerRuntime()
       runtimes.push(serverRuntime)
       const server = await listen(createOnethingHttpServer({
@@ -1836,8 +1836,7 @@ describe('createOnethingHttpServer', () => {
           `${baseUrl(server)}/api/events?token=${encodeURIComponent(TEST_SERVER_AUTH_TOKEN)}`,
           { signal: controller.signal },
         )
-        expect(response.status).toBe(200)
-        expect(response.headers.get('content-type')).toContain('text/event-stream')
+        expect(response.status).toBe(401)
       } finally {
         controller.abort()
       }

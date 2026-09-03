@@ -45,8 +45,10 @@ function kwsModelDirCandidates(): string[] {
     path.resolve(__dirname, '..', '..', 'resources', 'models', 'kws'),
     path.resolve(__dirname, '..', '..', '..', 'resources', 'models', 'kws'),
   ]
-  if (process.resourcesPath) {
-    candidates.unshift(path.join(process.resourcesPath, 'models', 'kws'))
+  // `process.resourcesPath` 只在 Electron 里有;类型上按 skills/loader.ts 的同一手窄化(electron 的类型不再进 node typecheck 图)。
+  const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath
+  if (resourcesPath) {
+    candidates.unshift(path.join(resourcesPath, 'models', 'kws'))
   }
   return candidates
 }

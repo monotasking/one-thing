@@ -1,30 +1,16 @@
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
-import pluginVue from 'eslint-plugin-vue'
 import globals from 'globals'
 
 export default [
   // Global ignores (must be a standalone config object)
   {
-    ignores: ['dist/**', 'out/**', 'release/**', 'node_modules/**'],
+    ignores: ['dist/**', 'out/**', 'release/**', 'node_modules/**', '**/dist-electron/**', 'apps/desktop-react/dist/**', '.claude/**', 'public/**'],
   },
 
   js.configs.recommended,
   ...tseslint.configs.recommended,
-  ...pluginVue.configs['flat/recommended'],
 
-  // Vue files: use typescript-eslint parser inside <script lang="ts">
-  {
-    files: ['**/*.vue'],
-    languageOptions: {
-      parserOptions: {
-        parser: tseslint.parser,
-      },
-    },
-    rules: {
-      'vue/multi-word-component-names': 'off',
-    },
-  },
 
   // General settings
   {
@@ -41,7 +27,7 @@ export default [
 
   // Relax rules that are too noisy for this codebase
   {
-    files: ['**/*.ts', '**/*.vue'],
+    files: ['**/*.ts'],
     rules: {
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'off',
@@ -98,16 +84,6 @@ export default [
   },
 
   // 区 ③a Electron 宿主。产品代码只见 `getLogger(ns)`;测试里的 console 不算。
-  {
-    files: ['apps/electron/src/**/*.ts'],
-    ignores: [
-      'apps/electron/src/**/__tests__/**',
-      'apps/electron/src/**/*.test.ts',
-    ],
-    rules: {
-      'no-console': 'error',
-    },
-  },
 
   // 区 ③a′ CLI(2026-09-03 从 apps/electron/src/main/cli 搬到 apps/cli/src)。
   // 排障日志走 `getLogger(ns)`;**给人/管道看的**产品输出走 `stdout.ts` ——
@@ -124,18 +100,4 @@ export default [
     },
   },
 
-  // 区 ③b renderer。产品代码只见 `@/services/log` 的 `getLogger(ns)`;
-  // hub 自己的 console 回显走动态成员访问(`target[method]`),不是字面量,
-  // 所以不需要白名单;测试里的 console 不算。
-  {
-    files: ['packages/renderer/**/*.ts', 'packages/renderer/**/*.vue'],
-    ignores: [
-      'packages/renderer/**/__tests__/**',
-      'packages/renderer/**/*.test.ts',
-      'packages/renderer/**/*.spec.ts',
-    ],
-    rules: {
-      'no-console': 'error',
-    },
-  },
 ]

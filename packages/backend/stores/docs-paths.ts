@@ -38,7 +38,7 @@ export function resetStorePathHost(): void {
 function hostOptions() {
   return {
     isPackaged: Boolean(storePathHost.isPackaged),
-    resourcesPath: storePathHost.resourcesPath || process.resourcesPath,
+    resourcesPath: storePathHost.resourcesPath || (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath,
     cwd: process.cwd(),
   }
 }

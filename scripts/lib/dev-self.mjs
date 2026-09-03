@@ -57,6 +57,8 @@ export function commandBelongsToDevSelf(command) {
 export function electronMainCommandPrefix(projectRoot, devSelf) {
   // 日常泳道(2026-09-03 起)是 React 壳:apps/desktop-react/scripts/dev-app.mjs 把打好的
   // dist-electron/main.cjs 当入口传给 Electron。dev-self 泳道仍是 Vue 宿主的产物入口(第四步一起退役)。
-  const entry = devSelf ? DEV_SELF_ELECTRON_ENTRY : `${projectRoot}/apps/desktop-react/dist-electron/main.cjs`
+  // dev-self 泳道(Vue 宿主的 B 实例)随第四步退役;两档都认 React 入口,参数留着不改调用方。
+  void devSelf
+  const entry = `${projectRoot}/apps/desktop-react/dist-electron/main.cjs`
   return `${projectRoot}/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron ${entry}`
 }

@@ -1,7 +1,0 @@
-{
-  "name": "@onething/renderer",
-  "version": "0.0.0",
-  "type": "module",
-  "private": true,
-  "description": "Shared Vue 3 renderer UI consumed by the Electron host and the web build (aliased as '@' / '@renderer')."
-}

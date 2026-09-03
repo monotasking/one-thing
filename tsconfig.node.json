@@ -1,16 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "include": [
-    "electron.vite.config.*",
     "packages/core/**/*",
     "packages/onething-runtime/**/*",
     "packages/backend/**/*",
     "packages/client/**/*",
     "packages/gateway/**/*",
-    "apps/electron/**/*",
     "apps/cli/**/*",
     "apps/server/**/*",
-    "apps/web/**/*",
     "scripts/gateway-smoke-test.ts",
     "packages/shared/**/*"
   ],

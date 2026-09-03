@@ -11,23 +11,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bun run dev                # unified dev: React desktop + web + server (scripts/dev-unified.mjs)
 bun run dev:electron       # managed lane: React desktop only (can run alongside dev:web)
 bun run dev:web            # managed lane: web frontend :5174 + headless server :8787
-bun run electron:dev       # React desktop only (apps/desktop-react/scripts/dev-app.mjs: vite :5173 + Electron on dist-electron/main.cjs; the main process writes app.jsonl itself)
-bun run vue:dev            # retired Vue host (dev-with-logging.mjs → electron-vite dev; dev.log keeps runner+stderr only) — dies with step ④
-bun run web:dev            # bare vite for apps/web (Vue; no server, no cleanup) — dies with step ④b
-bun run web:dev:react      # THE browser shell: React shell in web mode (`--mode web` → :5174 + the
-                           # dynamic /api proxy, apps/desktop-react/vite/dev-api-proxy.ts).
-                           # `ONETHING_WEB_SHELL=react bun run dev:web` routes the unified web lane
-                           # here instead of apps/web. **4b 之后这两条改名接管 web:dev / web:build。**
+bun run electron:dev       # React desktop only (apps/desktop-react/scripts/dev-app.mjs: vite :5175 + Electron on dist-electron/main.cjs; the main process writes app.jsonl itself)
+bun run web:dev            # THE browser shell: React shell in web mode (`--mode web` → :5174 + the
+                           # dynamic /api proxy, apps/desktop-react/vite/dev-api-proxy.ts)
 bun run server:start       # node dist/server/main.js (run server:build first; dynamic port
                            # unless ONETHING_SERVER_PORT; refuses if the desktop already
                            # serves this store — `--force` bypasses)
 
 # Production build
-bun run build              # desktop build (scripts/build-desktop.mjs: native mac panel → dist/cli/main.cjs → apps/desktop-react/{dist,dist-electron})
+bun run build              # desktop build (scripts/build-desktop.mjs: dist/cli/main.cjs → apps/desktop-react/{dist,dist-electron})
 bun run build:cli          # CLI only → dist/cli/main.cjs (esbuild, same recipe as the React main process)
-bun run vue:build          # retired Vue host (electron-vite → out/); vue:unpack packs it with electron-builder.vue.yml
-bun run web:build          # web build of apps/web (Vue → dist/web) — dies with step ④b
-bun run web:build:react    # React shell web build (`--mode web` → 仓根 dist/web, same path)
+bun run web:build          # React shell web build (`--mode web` → dist/web)
 bun run gate:web-shell:react  # real-machine gate for the React browser shell: server:build 产物 +
                            # web:dev:react + headless Chromium → 流式回复上屏,且 token 不进 URL
 bun run server:build       # headless server build (→ dist/server/main.js)
@@ -84,7 +78,7 @@ electron-builder 的 node-module-collector 按锁文件探测包管理器(07-29 
 **这不是回归,是 macOS 的凭证隔离在按设计工作** —— 也正是 `apps/desktop-react/electron/main.ts` 文件头
 「子进程是另一个 app 身份,safeStorage 的密文它解不开」那条判例的同一个机制。
 
-Dev ports: Electron renderer dev server **5173**, web frontend **5174**. The core HTTP/SSE port is **dynamic** since A 期 (`docs/design/one-core-2026-08.md`): whoever serves the store writes `<store>/run/http.json`, and the web lane's dev `/api` proxy (`apps/desktop-react/vite/dev-api-proxy.ts` for the React browser shell, `apps/web/dev-api-proxy.ts` for the retiring Vue one — a plugin, because vite's built-in proxy pins its target at creation) re-reads that file per request and injects the Bearer token, falling back to `ONETHING_API_URL` || `http://127.0.0.1:8787`. `bun run dev` with the electron lane does NOT start a second server process — the desktop is the core.
+Dev ports: React desktop renderer dev server **5175** (`app:dev`), browser shell **5174** (`web:dev`). The core HTTP/SSE port is **dynamic** since A 期 (`docs/design/one-core-2026-08.md`): whoever serves the store writes `<store>/run/http.json`, and the web lane's dev `/api` proxy (`apps/desktop-react/vite/dev-api-proxy.ts` for the React browser shell, `apps/web/dev-api-proxy.ts` for the retiring Vue one — a plugin, because vite's built-in proxy pins its target at creation) re-reads that file per request and injects the Bearer token, falling back to `ONETHING_API_URL` || `http://127.0.0.1:8787`. `bun run dev` with the electron lane does NOT start a second server process — the desktop is the core.
 
 ## Architecture Overview
 
@@ -93,18 +87,17 @@ This is **onething**, an AI chat app with multi-provider support, tool calling, 
 - **packages/core** — engine skeleton. Zero dependencies, zero Electron. Event bus, session, permission, tool-loop, storage primitives.
 - **packages/onething-runtime/src** — the product itself (prompts, sessions, tools, providers, themes, …). Electron-free; bans `@shared/ipc` (checker-enforced); must not import the assembly tree. **The one exception is a `*.wiring.ts` file** (I3, P3'a-1): the role is in the filename, so a module that has to speak the cross-process vocabulary may import `@shared/ipc` / `@shared/events` — and nothing but another `*.wiring.ts` (or the assembly layer) may import it back. All other bans still apply to it.
 - **packages/backend** — the assembly layer, a real workspace package (`@onething/backend`; it was `runtime/src/app` until P3'd, 2026-08-21). All migrated main-process glue. `@shared` IS allowed here. Exposes `createOnethingBackend`, the single assembly recipe. **Package root = the backend spine** (`backend.ts` / `store.ts` + engine/ server/ rpc/ stores/ session/ events/ channel/ features/ utils/ + `provider-binding/`); **`wiring/<domain>/` = the thin wiring** that only exists to plug a runtime domain into that spine (33 dirs: acp / agent-loop / agents / auth / collab / deeplink / engine / evals / external-agents / files / gateway / goals / headless / interaction / logging / markdown / music / permission / plugins / project-dirs / providers / scheduler / search / settings / skills / tasks / toc / todo-plan / toolkit / tools / usage / variables / voice; "thin" is aspirational — `collab` is 9.3k lines and `engine` 6.7k, and `logging` is a cross-cutting facility that happens to live in a wiring slot, fan-in 142). Since P3'c (2026-08-21) the root holds **no thick twin at all** — every domain has exactly one home. The path carries the role, so `backend/wiring/<d>` never collides with `runtime/<d>` (I1).
-- **apps/\*** — thin sockets: Electron (window/IPC/native panel), server (HTTP/SSE), web (browser build of the renderer), CLI daemon.
+- **apps/\*** — thin sockets: the React desktop (`apps/desktop-react`, also the browser shell via `--mode web`), server (HTTP/SSE), CLI daemon (`apps/cli`). The Vue host / renderer / web build were deleted 2026-09-04 (runtime unification step ④; `checkVueHostStaysRetired` keeps them out).
 
 ```
 apps/*  (thin sockets)
 ┌───────────────┬────────────────┬──────────────┬─────────────────────┐
-│ desktop-react │ apps/server    │ apps/web     │ CLI daemon          │
-│ (React shell) │ HTTP + SSE     │ browser      │ bin/onething.mjs →  │
-│ own core+HTTP │ dynamic port   │ build (Vue,  │ dist/cli/main.cjs   │
-│ apps/electron │                │ retired)     │                     │
-│ = Vue, retired│                │              │                     │
+│ desktop-react │ apps/server    │ desktop-react│ CLI daemon (apps/cli)│
+│ (React shell) │ HTTP + SSE     │ --mode web   │ bin/onething.mjs →  │
+│ own core+HTTP │ dynamic port   │ browser shell│ dist/cli/main.cjs   │
+│ (Electron)    │                │ (dist/web)   │                     │
 └──────┬────────┴───────┬────────┴──────┬───────┴──────────┬──────────┘
-       │ createOnethingBackend(...)     │ /api → server    │
+       │ createOnethingBackend(...)     │ /api → core      │
 ┌──────┴────────────────┴───────────────┴──────────────────┴──────────┐
 │ packages/backend                        ASSEMBLY ('@onething/backend')│
 │  spine at the package root: backend.ts (factory) + engine/ server/   │
@@ -140,20 +133,16 @@ packages/gateway/            # WeChat/Telegram channel gateway. Depends on core 
                              # Remote permission approval (reply 1/2/3), markdown-safe streaming.
 packages/shared/             # Shared IPC/event contracts + defaults ('@shared'). Also
                              # backend/ (store-lock for CLI), cli/, defaults/, types/, voice/.
-packages/renderer/           # Vue 3 renderer UI ('@' / '@renderer') — RETIRED as a product
-                             # (2026-09-02: the desktop is apps/desktop-react). Still compiles,
-                             # tests and boots under apps/electron and apps/web; no new work here.
-apps/desktop-react/          # THE desktop (React). electron/main.ts assembles its own core
-                             # (createOnethingBackend + createShellHostPorts()) when no live core
-                             # serves the store, mounts the HTTP/SSE face (owner 'shell'); the
-                             # renderer talks HTTP/SSE only (one `host:connection` IPC). Not a
+packages/client/             # core 的客户端 SDK ('@onething/client'): Transport (http = fetch +
+                             # fetch-stream SSE, Bearer header) + client.api(router) + events hub +
+                             # pure model helpers. Node & browser; zero React/Vue/Electron.
+apps/desktop-react/          # THE desktop (React) AND the browser shell (`--mode web` → dist/web,
+                             # /api dev proxy in vite/dev-api-proxy.ts). electron/main.ts assembles
+                             # its own core (createOnethingBackend + createShellHostPorts()) when no
+                             # live core serves the store, mounts the HTTP/SSE face (owner 'shell');
+                             # the renderer talks HTTP/SSE only (one `host:connection` IPC). Not a
                              # workspace member (resolves @onething/* upward — bun must stay
                              # hoisted). Has its own CLAUDE.md.
-apps/electron/               # Vue Electron host (retired with packages/renderer; still boots).
-                             # Still the home of the `@main` ipc/bridges. src/main ('@main') =
-                             # ipc/ + bridges/ only (the CLI moved out 2026-09-03, 4a);
-                             # the rest of src/* (window, app, voice, menu, search, …) is
-                             # the '@onething/electron-host/*' alias family.
 apps/cli/                    # THE CLI daemon (src/ = index/daemon-{client,server}/ndjson/paths/
                              # stdout/plugin-command/trace-command + __tests__). Eats only
                              # @onething/backend + @shared — zero Vue-host edges, which is why it
@@ -162,10 +151,6 @@ apps/server/                 # Process shell only (main.ts + index.ts). The HTTP
                              # and the server runtime live in the assembly layer
                              # (packages/backend/server/), so the Electron
                              # desktop mounts the SAME code over its own backend.
-apps/web/                    # Browser build of packages/renderer (Vue; retired with it, dies in
-                             # 4b); talks to whatever core serves this store via /api. **The browser
-                             # shell is the React one now** (`web:dev:react` / `web:build:react`,
-                             # user ruling 2026-09-03) — same :5174, same dist/web, same proxy shape.
 ```
 
 ### createOnethingBackend — the single assembly recipe
@@ -194,9 +179,8 @@ Host call sites (four; the Vue desktop is retired as a product but still compile
 | Host | Call site | Config |
 | --- | --- | --- |
 | React shell (current desktop) | `apps/desktop-react/electron/main.ts` (`assembleOwnCore`; renderer talks HTTP/SSE, one `host:connection` IPC) | `host: createShellHostPorts()` — auth / sandbox / storePath real plus `localTrust: { origin: 'desktop-embedded' }`, **twelve explicit `null`s** (the shell's capability gap is that list, not a silent omission); `toolRegistry: 'full'`, `promptVersion: true`, `collab: true`, `sessionSkills: true`, noop sender; post-window `own()`s the embedded HTTP surface + discovery file, the user scheduler and MCP; attaches to a live core from `run/http.json` instead of assembling when one exists |
-| Electron desktop (Vue, retired) | `apps/electron/src/app/main-process.ts` | `host: createElectronDesktopHostPorts()` (full table; `storePath` / `sandbox` captured from the ready hooks, `logging` also configured before `configureLogging` for timing), `toolRegistry: 'full'`, `promptVersion: true`, `collab: true`, hooks own the todo/scratchpad watchers; before-quit keeps only window-system rows plus the two sync-prefix items that must beat the first `await` (`shutdownPlugins`, `stopEmbeddedHttpServer`), then `desktopBackend.dispose()` |
 | Headless server | `packages/backend/server/runtime.ts` (`createRealServerBackend` → `createOnethingServerRuntimeOverBackend`) | `host`: sandbox real, `storePath: {}`, fourteen `null`s; `toolRegistry: ONETHING_SERVER_TOOLS === 'readonly' ? 'readonly' : 'full'` (desktop parity by default), `sessionSkills: true`, noop sender (SSE observes the bus directly); its own MCP client factory is installed later by the server runtime per `processPorts`, not through the table |
-| CLI daemon | `packages/backend/wiring/headless/backend.ts` (`HeadlessBackend`, used by `apps/electron/src/main/cli/daemon-server.ts`) | same `host` shape as the server (fourteen `null`s); `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, `collab: true`, noop sender; shutdown = `backend.dispose()` (the hand-written list is gone) |
+| CLI daemon | `packages/backend/wiring/headless/backend.ts` (`HeadlessBackend`, used by `apps/cli/src/daemon-server.ts`) | same `host` shape as the server (fourteen `null`s); `toolRegistry: 'headless'`, `sessionSkills: true`, `mcpAcp: true`, `collab: true`, noop sender; shutdown = `backend.dispose()` (the hand-written list is gone) |
 
 Note: `backend.ts` carries static `import './tools/builtin/{index,headless,readonly}.js'` edges purely so single-file bundlers order the tool barrels before the factory's top-level await (the registry itself dynamic-imports them for test mocks). Do not remove them.
 
@@ -234,14 +218,13 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend`, baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
 - `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
   at the top of this file. It enumerates every native addon this repo actually ships
-  (`node-pty`, `sherpa-onnx-node` + the platform package for the current OS/arch,
-  `resources/native/macos_panel.node`) and, for each binary, (a) `require`s it under the **system Node**
+  (`node-pty`, `sherpa-onnx-node` + the platform package for the current OS/arch) and, for each binary, (a) `require`s it under the **system Node**
   and again under **`ELECTRON_RUN_AS_NODE=1` Electron** — a `NODE_MODULE_VERSION` mismatch prints the
   runtime's own words and turns the gate red — and (b) on macOS runs `nm -u` over it: any undefined
   `_v8…` / `node::…` / `_ZN2v8…` symbol is a V8-ABI-private binding and is red on the spot (the static
   half; on non-macOS it is skipped with a printed reason). `--json` prints the machine-readable table.
   Adding a native dependency means passing this gate — the ABI claim never lives in a comment again.
-- `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; renderer never touches `window.electronAPI` outside `packages/renderer/platform/`; apps/web and apps/server are Electron-free.
+- `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; apps/server is Electron-free (the Vue renderer / apps/web rules died with them on 2026-09-04).
 
 Notes:
 
@@ -283,8 +266,8 @@ Notes:
   - Process safety: `installProcessCrashHooks` logs `unhandledRejection` /
     `uncaughtException` as `fatal` and `flushSync`s — via `uncaughtExceptionMonitor` by
     default, so Node's own crash behaviour is unchanged.
-  - **Renderer logs ride their own hub, not a console side-effect** (L3):
-    `packages/renderer/services/log.ts` — `getLogger(ns)` over a `RendererLogHub`
+  - **Renderer logs ride their own hub, not a console side-effect** (L3; the React shell's copy is
+    `apps/desktop-react/src/services/log.ts`, the Vue original died 2026-09-04): `getLogger(ns)` over a `RendererLogHub`
     (memory ring 200, dev-only pretty echo, batched transport every 16ms / 50 records,
     `beforeunload` + `fatal` flush immediately). It reuses the **same** `packages/core/logging`
     kernel the main process does — that package is browser-safe. Transport is the generic
@@ -449,7 +432,7 @@ Notes:
     a slot declaring `drawer: true` gets host-drawn toggles and three host-owned states
     (expanded 240px / peek 32px / collapsed to one chip in the S status band); the plugin
     only sees `ctx.drawerState` (`'expanded' | 'peek'`) and the state machine lives in
-    `packages/renderer/workspace/ui-anchor-registry.ts` (localStorage, per window).
+    the Vue renderer's `ui-anchor-registry` (deleted 2026-09-04 with the Vue host — the plugin UI-slot surface has **no React consumer yet**; the contract in `packages/core/plugins/ui-anchor.ts` stands).
     Render ctx carries `anchor` +
     `sessionId`, the host re-pulls on session switch. Renderer pieces:
     `components/plugins/{UiSlotHost,UiSlotBlock,PluginTriggerPopover}.vue` +
@@ -606,9 +589,7 @@ Notes:
   respond whose channel doesn't match. When answering from another transport, adopt the
   ask's targetChannel (the server HTTP respond does this — owner is already authenticated
   at the HTTP boundary; affinity guards against cross-channel spoofing on the bus).
-- Renderer code accesses the host through `platformApi` (`packages/renderer/platform/`),
-  never `window.electronAPI` directly. `platformApi` resolves per access: electronAPI
-  present → Electron bridge, else the web implementation over `fetch('/api/…')` + SSE.
+- Renderer code talks to core only through `@onething/client` (`createOnethingClient` over an http `Transport`); the React shell's single IPC is `host:connection`. `window.electronAPI` no longer exists anywhere.
 - System prompt assembly is a single "directory at top, copy below" builder in
   `packages/onething-runtime/src/prompts/builder.ts`, composed by a **`PromptComposer`
   over `PromptSource`s** (2026-08-18, `docs/design/prompt-composition-2026-08.md`).
@@ -641,9 +622,8 @@ Notes:
   wrapper in `backend/wiring/engine/stream/agent-loop-runtime.ts`) persists the delta on the message
   as `ChatMessage.turnContext`, so a rebuild replays identical bytes.
 - Media library: drag-and-drop ingest and export run over `media:ingest-files` /
-  `media:save-as` (`packages/shared/ipc/channels.ts` → `apps/electron/src/main/ipc/media.ts`
-  → `mediaLibraryService.ingestLocalFiles`). The `media://` protocol
-  (`apps/electron/src/media/protocol.ts`) serves **two** directories — images/ first,
+  `media:save-as` (`packages/shared/ipc/channels.ts` → `mediaLibraryService.ingestLocalFiles`; the Vue host's IPC adapter and its
+  `media://` protocol handler died 2026-09-04 — the React shell has not re-wired media ingest yet). That protocol served **two** directories — images/ first,
   files/ on miss (non-image assets landed with ingest) — and re-resolves every name against
   the root prefix, since the name comes from the renderer and `../` would otherwise read
   any file. `MediaAsset.source` (`ai-generated` / `user-upload` / `external`) now has real
@@ -660,7 +640,7 @@ Notes:
 │  - the one IPC it has is `host:connection` → { baseUrl, token }  │
 │    (the discovery file is 0600; the renderer never reads disk)   │
 └─────────────────────┬────────────────────────────────────────────┘
-                      │ HTTP / SSE (same face apps/web and mobile use)
+                      │ HTTP / SSE (same face the browser shell and mobile use)
 ┌─────────────────────┴────────────────────────────────────────────┐
 │  Main (apps/desktop-react/electron/main.ts)                      │
 │  - if <store>/run/http.json names a live core → attach to it     │
@@ -688,48 +668,15 @@ the backend's guards can no longer disagree. `bun run transport:gate` ratchets t
 domains share, is in scope and asks `isHostLocallyTrusted()` too; baseline `docs/audit/transport-forks-baseline-2026-09-03.txt`:
 5 reads in 5 files, decrease-only) and pins the React shell's `ipcMain` registrations at ≤ 1.
 
-**The Vue host (`apps/electron`) is the three-process IPC design; retired as a product, kept compiling and booting** (it still owns the `@main` bridges — the CLI daemon moved to `apps/cli` on 2026-09-03 — and it is the only host today that wires plugins / voice / music / gateway / deeplink / todo-plan watchers):
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Renderer Process (Vue 3 + Pinia)                               │
-│  packages/renderer/                                             │
-│  - UI components, stores, composables                           │
-│  - Calls platformApi.* (wraps electronAPI) for IPC              │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │ Electron IPC
-┌─────────────────────┴───────────────────────────────────────────┐
-│  Preload Script                                                 │
-│  apps/electron/src/preload.ts → preload/bridge.ts               │
-│  - installOnethingPreloadBridge(): contextBridge exposes        │
-│    electronAPI (create-api.ts only generates router wrappers)   │
-└─────────────────────┬───────────────────────────────────────────┘
-                      │
-┌─────────────────────┴───────────────────────────────────────────┐
-│  Main Process (Node.js)                                         │
-│  apps/electron/src/main/ ('@main': ipc/ bridges/ cli/ only)     │
-│  - boots createOnethingBackend (engine/events live in           │
-│    packages/backend/)                                           │
-│  - IPCBridge: the push side's single exit point                 │
-│    (session:event / session:stream / broadcasts)                │
-│  - Request/response rides TWO generic channels, never a new     │
-│    per-domain one: rpc:invoke -> packages/backend/rpc/domains/  │
-│    (data plane), shell:invoke -> src/ipc/shell/ (window system: │
-│    handlers that must touch Electron itself)                    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-Vue desktop boot: `apps/electron/src/main.ts` → `startOnethingElectronMain()` in `apps/electron/src/app/main-process.ts` — acquires the desktop `StoreLock`, calls `createOnethingBackend({ host: createElectronDesktopHostPorts(), … })`, then post-window services (plugins, scheduler, MCP, ACP, gateway, skills) non-blocking, each `own()`'d on the backend.
+**There is no second host.** The Vue three-process IPC host (`apps/electron` + `packages/renderer` + `apps/web`) was deleted on 2026-09-04 (runtime unification step ④, `docs/design/runtime-unification-2026-09.md`). Its `shell:invoke` window-system channel, `@main` / `@preload` / `@renderer` aliases, `electron-vite` build, `macos_panel` native module and the `?token=` query hole on `GET /api/events` went with it. Push to the desktop renderer rides the same SSE face every other client uses.
 
 ### Key Data Flows
 
 **Chat Message Flow (both transports, same engine):**
 
 ```
-renderer chatStore → sessionCommands.emit({ sessionId, command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, … } })
-  (packages/renderer/platform/session-command-client.ts — a router client, not a
-   platformApi property; it flattens @mentions into plain objects on the way out)
-→ generic RPC envelope: desktop `rpc:invoke`, web `POST /api/rpc` (same domain,
+renderer (React) → client.api(sessionCommandRouter).emit({ sessionId, command: { type: SESSION_COMMAND_TYPES.SEND_MESSAGE, … } })
+→ generic RPC envelope `POST /api/rpc` (desktop over its embedded HTTP face, browser via the dev proxy / server; same domain,
   same handler — there is deliberately no hand-written session-command channel)
 → packages/backend/rpc/domains/session-command.ts → emitCoreSessionCommandForIpc
   (ipc: sanitizeRendererCommand stamps origin + amends the evals turn record;
@@ -759,41 +706,37 @@ AI tool_call → tool executor → core Permission.ask
 
 ### IPC Communication Pattern
 
-**Request/response never gets a new channel. There are exactly two, and which one a domain uses is a fact about where its handler can live:**
+**Request/response never gets a new channel. There is exactly one data-plane channel** — `POST /api/rpc` (the React desktop rides it too, over its embedded HTTP face):
 
-| | `rpc:invoke` / `POST /api/rpc` | `shell:invoke` |
-| --- | --- | --- |
-| Handler lives in | `packages/backend/rpc/domains/` (assembly layer, electron banned) | `apps/electron/src/ipc/shell/` (the host — `BrowserWindow` / `dialog` / `Notification`) |
-| Dispatch table | `packages/backend/rpc/registry.ts` | `apps/electron/src/ipc/shell-registry.ts` |
-| Web half | the server's own dispatch over `POST /api/rpc` | `packages/renderer/platform/shell-web/` — a *same-shaped* table in the renderer, because in a browser the "host" is the page itself |
-| Context | `RpcDispatchContext` (`transport` / `ownerUid` / `workspaceId` / `callerId` / `sandboxRoot`) | `ShellDispatchContext` (`callerId`) |
+| | `POST /api/rpc` |
+| --- | --- |
+| Handler lives in | `packages/backend/rpc/domains/` (assembly layer, electron banned) |
+| Dispatch table | `packages/backend/rpc/registry.ts` |
+| Client | `@onething/client` — `client.api(router)` over a `Transport` (generic: no per-domain client files) |
+| Context | `RpcDispatchContext` (`transport` / `ownerUid` / `workspaceId` / `callerId` / `sandboxRoot`) |
 
-Both share one envelope (`RpcRequest` / `RpcResponse`, `@shared/ipc/rpc.ts`), one contract style (`defineRouter`), one renderer client factory (`createRouterClient`), and one rule about identity: **the host mints the context after its own auth ran; it is never read off the envelope.** A second rule since route B: **a handler may read `context.transport` only to pick the reply channel or to decide redaction for a payload that leaves the process** — "does this host have X" is a host-port question (`OnethingHostPorts`), "may this caller do X" is a local-trust question (`isHostLocallyTrusted()`), and `transport:gate` counts the reads per domain file, decrease-only.
+(The Vue host's second channel `shell:invoke` — window-system handlers that had to touch Electron itself — died with it on 2026-09-04; the React shell keeps exactly one IPC, `host:connection`.) The envelope (`RpcRequest` / `RpcResponse`, `@shared/ipc/rpc.ts`), the contract style (`defineRouter`), the client factory (`createRouterClient`) and one rule about identity: **the host mints the context after its own auth ran; it is never read off the envelope.** A second rule since route B: **a handler may read `context.transport` only to pick the reply channel or to decide redaction for a payload that leaves the process** — "does this host have X" is a host-port question (`OnethingHostPorts`), "may this caller do X" is a local-trust question (`isHostLocallyTrusted()`), and `transport:gate` counts the reads per domain file, decrease-only.
 
-**To add a data-plane domain** (2 steps): `defineRouter` in `@shared/ipc/<d>.ts` → register handlers in `packages/backend/rpc/domains/<d>.ts` → one-line client `platform/<d>-client.ts`. No shell file changes.
+**To add a data-plane domain** (2 steps): `defineRouter` in `@shared/ipc/<d>.ts` → register handlers in `packages/backend/rpc/domains/<d>.ts`. Clients call `client.api(<d>Router)` — no client file, no shell file changes.
 
-**To add a window-system (shell) domain** (4 places): `defineRouter` in `@shared/ipc/<d>.ts` → host handlers in `apps/electron/src/ipc/shell/<d>.ts` (registered from that domain's existing `@main/ipc/<d>.ts` wiring — **not** a new line in `handlers.ts`) → web handlers in `packages/renderer/platform/shell-web/<d>.ts` (+ one line in its `index.ts`) → client `platform/<d>-client.ts`. No new channel constant, no preload edit, no `web.ts` edit.
+**`packages/shared/ipc/channels.ts` is now the push side plus one residue**: `session:event` / `session:stream` / per-domain broadcasts (including browser's single `browser:tabs-changed`), plus the one-way high-frequency `voice:audio-chunk`. Since A1-b (2026-08-23) the whole window system rides `shell:invoke` — browser's 19 request verbs, and the four channels that were never in this table at all (`shell:open-path` / `shell:open-external` / `app:get-data-path` → the new `shellRouter`; `window:set-button-visibility` → `windowRouter`, because it acts on the **caller's own window**). `search:query` became the backend `search` RPC domain, forked on `context.transport` like files/tools (http goes through the `backend/server/search-providers.ts` single-slot port — the same closure the old `POST /api/search/query` route called). `bun run transport:gate` is a **numeric ratchet** over its constant count and the shell files (`server/http.ts`, `shared/ipc/channels.ts`) — a new hand-written channel turns it red.
 
-**`packages/shared/ipc/channels.ts` is now the push side plus one residue**: `session:event` / `session:stream` / per-domain broadcasts (including browser's single `browser:tabs-changed`), plus the one-way high-frequency `voice:audio-chunk`. Since A1-b (2026-08-23) the whole window system rides `shell:invoke` — browser's 19 request verbs, and the four channels that were never in this table at all (`shell:open-path` / `shell:open-external` / `app:get-data-path` → the new `shellRouter`; `window:set-button-visibility` → `windowRouter`, because it acts on the **caller's own window**). `search:query` became the backend `search` RPC domain, forked on `context.transport` like files/tools (http goes through the `backend/server/search-providers.ts` single-slot port — the same closure the old `POST /api/search/query` route called). `bun run transport:gate` is a **numeric ratchet** over its constant count and the four shell files — a new hand-written channel turns it red; the boundary checker separately ratchets those four literal channel names out of `apps/electron/src`.
-
-Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/command types** `packages/shared/events/*.ts`; **preload bridge** `apps/electron/src/preload.ts` → `preload/bridge.ts` (`installOnethingPreloadBridge` — it exposes `rpcInvoke`, `shellInvoke`, and the `on*` push subscriptions, nothing per-domain).
-
-Note: `apps/electron/src/ipc/*` is a portable tree (no `electron` import in `shell-registry.ts` / `shell/*.ts`; the electron-touching implementations are injected by the `@main` wiring), consumed by the `@main` handlers — don't confuse it with `@main/ipc/`.
+Supporting files: **type definitions** `packages/shared/ipc/*.ts`; **event/command types** `packages/shared/events/*.ts`; **client** `packages/client/`.
 
 ### Alias Registry
 
 Two mechanisms, and which one a package uses is a fact about that package, not a style choice.
 
-**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/core", "packages/gateway", "packages/onething-runtime", "packages/backend"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` links them at `node_modules/@onething/{core,gateway,runtime,backend}`, so `@onething/core` / `@onething/gateway` / `@onething/runtime` (90 export keys) / `@onething/backend` (88: 85 explicit subpaths generated from the repo's actual import specifiers, `"."` → `./backend.ts`, plus the two fallbacks `"./*.js"` and `"./*"` → `./*.ts`) resolve through **their own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` in all three tsconfigs honours exports pointing straight at `.ts` sources). There is no alias entry and no tsconfig `paths` entry for them: **add a new subpath to that package's `package.json` "exports"**, and a missing one now fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` — electron-vite's `externalizeDepsPlugin` reads that list and would externalize them, and the asar has no built `.js` behind those exports (`workspaces` and `dependencies` are unrelated fields).
+**Every `@onething/*` is a real workspace package (node resolves them).** Root `package.json` declares `"workspaces": ["packages/core", "packages/gateway", "packages/onething-runtime", "packages/backend", "packages/client"]` — **listed one by one, never a `packages/*` / `apps/*` glob** (`apps/mobile` would drag in expo + react-native). `npm install` / `bun install` (hoisted) link them at `node_modules/@onething/{core,gateway,runtime,backend,client}`, so `@onething/core` / `@onething/gateway` / `@onething/runtime` (90 export keys) / `@onething/backend` (88: 85 explicit subpaths generated from the repo's actual import specifiers, `"."` → `./backend.ts`, plus the two fallbacks `"./*.js"` and `"./*"` → `./*.ts`) resolve through **their own `package.json` "exports"** in node, vite, vitest and tsc alike (`moduleResolution: bundler` in all three tsconfigs honours exports pointing straight at `.ts` sources). There is no alias entry and no tsconfig `paths` entry for them: **add a new subpath to that package's `package.json` "exports"**, and a missing one now fails at **typecheck**, not only at build/run. `@onething/*` must **never** appear in the root `package.json` `dependencies`/`devDependencies` (`workspaces` and `dependencies` are unrelated fields; the React main-process bundle inlines them via esbuild).
 
-**Alias table (what is not a package).** `onething.aliases.ts` (repo root) no longer carries a single `@onething/*` package entry — the last one, `@onething/app`, died with P3'd (it could never be an exports key: a package name is not a subpath of `@onething/runtime`, so it needed a real package to disappear). `@onething/electron-host/*` is **not** a package — it is apps/electron's internal path family, so it lives in a separate `electronHostAliases` export (2 regex entries: the `window` barrel anchored above a `apps/electron/src/$1.ts` catch-all) that only `electron.vite.config.ts` and `vitest.config.ts` spread. `@shared`/`@main`/`@renderer`/`@`/`@preload` are declared per-config, not here.
+**Alias table.** There is none any more: `onething.aliases.ts` (the `@onething/electron-host/*` family) died with the Vue host on 2026-09-04. The only non-package alias left is `@shared` (= `packages/shared`), declared per-config (root `tsconfig.json` paths, `vitest.config.ts`, the React shell's vite/esbuild configs).
 
 **Adding a new runtime or backend subpath:**
 
 1. Add the key to that package's `package.json` `"exports"` (`packages/onething-runtime` or `packages/backend`). Prefer the family wildcard (`"./x/*": "./src/x/*.ts"`) that is usually already there — a whole new family needs the pair `"./x": "./src/x/index.ts"` + `"./x/*": "./src/x/*.ts"`, and a nested directory barrel (`src/x/y/index.ts`) needs its own exact key `"./x/y"` because `*` cannot express "directory index". Exact keys win over wildcards; keep them above their wildcard sibling anyway.
 2. No alias edit, no tsconfig edit, no config edit — all four build/test configs and tsc go through the same exports map, and a missing key fails at **typecheck**.
 
-Failure mode of the alias table: a missing entry fails only at build/run time, never at typecheck. No `@onething/*` family has that failure mode any more — they are all workspace packages, and a missing exports key fails at typecheck.
+Every `@onething/*` family is a workspace package, so a missing exports key fails at typecheck.
 
 ### Directory Structure
 
@@ -856,39 +799,18 @@ packages/backend/              # ASSEMBLY package ('@onething/backend'; @shared 
 │                              # providers scheduler search skills tasks toc
 │                              # todo-plan toolkit tools usage variables voice
 │
-apps/electron/src/
-│   ├── main/                  # '@main' — ONLY: ipc/ (per-domain handlers + handlers.ts),
-│   │                          # bridges/ (ipc-bridge), __tests__/  (cli/ moved to apps/cli 4a)
-│   ├── app/                   # boot: main-process.ts, ready.ts, bootstrap.ts, …
-│   ├── window/                # main/settings/search/todo-plan windows, macos-panel, state
-│   ├── preload.ts + preload/  # bridge.ts (electronAPI factory) + create-api.ts (routers)
-│   ├── ipc/                   # portable host surface, no electron import in the dispatch half:
-│   │                          # shell-registry.ts (the `shell:invoke` table) + shell/<d>.ts —
-│   │                          # ten window-system handler tables (todo-plan-window, search-window,
-│   │                          # settings-window, window, dialog, media-window, notify, deeplink,
-│   │                          # browser, shell) — plus each domain's thin registration point
-│   └── voice/ music/ menu/ search/ gateway/ auth/ shell/ …   # '@onething/electron-host/*'
-│
 apps/cli/src/                  # CLI daemon + commands: index.ts (arg parsing) daemon-client.ts
 │                              # daemon-server.ts (HeadlessBackend) ndjson.ts paths.ts stdout.ts
 │                              # (the product-output口) plugin-command.ts trace-command.ts + __tests__/
 apps/server/src/               # process shell only: main.ts (env, discovery-file refusal,
 │                              # listen, SIGTERM flush) + index.ts (re-exports @onething/backend/server/*)
-apps/web/                      # package.json + vite.config.ts + dev-api-proxy.ts (dynamic
-│                              # /api proxy via the discovery file); builds packages/renderer.
-│                              # Its React successor: apps/desktop-react/vite/dev-api-proxy.ts
-│                              # (a copy, deliberately — see that file's header) + `--mode web`
+packages/client/               # '@onething/client' — transport/ (types, http, sse, memory) rpc/ events/ model/ client.ts node.ts
 │
-packages/renderer/             # Vue 3 frontend ('@' / '@renderer')
-│   ├── stores/                # Pinia (workspace, chat, sessions, settings, themes, media, …)
-│   ├── components/ composables/ services/ (ipc-hub) editor/ types/
-│   │   ├── workbench/         # RightWorkbenchPanel — hosts BOTH tab domains (see below)
-│   │   └── workspace/         # shared panel skeleton parts (PanelShell & co.)
-│   ├── workspace/             # panel-registry: the single source of truth for which
-│   │                          # workspace panels exist (builtin six + plugin panels)
-│   └── platform/              # platformApi: electron.ts + web.ts (fetch/SSE) + index.ts proxy;
-│                              # <d>-client.ts per domain (rpc or shell), shell-web/ = the web
-│                              # host's own window-system handler table
+apps/desktop-react/            # THE desktop + browser shell (React). Has its own CLAUDE.md.
+│   ├── electron/              # main.ts (own core + embedded HTTP face) / preload.ts / host-ports.ts
+│   ├── src/                   # renderer (React): data/ platform/ content/ ui/ search/ providers/ …
+│   ├── vite/                  # dev-api-proxy.ts (web mode: /api → live core via run/http.json)
+│   └── scripts/               # dev-app / build-electron / gate-* / verify
 │
 packages/shared/               # '@shared'
 │   ├── ipc/                   # channels.ts + ~30 domain type files + router.ts
@@ -926,15 +848,13 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 
 **CLI daemon**: `bin/onething.mjs` → `dist/cli/main.cjs` (`scripts/build-cli.mjs`, esbuild with the React main process's recipe; source at `apps/cli/src/index.ts` since step ④a, 2026-09-03). NDJSON RPC over a unix socket at `<store>/run/daemon.sock`; `StoreLock.acquire('daemon')`; assembles via `HeadlessBackend`.
 
-**Workspace panels**: the six builtin panels (media / agents / tasks / music / practice / archive, declared once in `packages/renderer/workspace/panel-registry.ts`) and every plugin panel are **tabs in `RightWorkbenchPanel.vue`**, not a main-area container. Its tab bar carries two domains — 会话域 (left) | 工作区域 (right) — under three rules: a divider is drawn only when both domains are non-empty; a workspace tab shows its ✕ only while selected; new panels arrive through the `+` picker. Workspace tabs sit in the trailing segment (`insertTab` is the only place that maintains the boundary) and are **cross-session**: switching sessions no longer closes or resets them. Entry points — the sidebar `⋯` menu and the per-panel `windowEvent`s — all funnel into `openWorkspaceTab(panelId)`, which takes builtin ids and `plugin:<id>:<panel>` nav ids alike. `MediaPanel.vue`, the old fullscreen container that covered the chat, is retired; the media view itself is `components/MediaPanelContent.vue`. Plugin manifests may still declare `placements`, but both values now land in the same place (the `+` list); it survives only as the self-promotion gate for `api.ui.openWorkbench`.
-
-**Panel skeleton**: workspace panels are all built on `PanelShell` — `packages/renderer/components/workspace/` holds `PanelShell`, `LedgerGroupHeader`, `PanelLedgerRow`, `PanelPrimaryAction`, `MusicPlayerBar`, `MusicEqualizerBars`, `MediaFileRow`, `SelectionMark`, `PanelSkeleton`; plus `components/common/SegmentedPill` and the global `.text-action` class (`styles/components.css`). Two rules: a workspace panel is always assembled on `PanelShell`, and a spinner may appear only in the status bar.
+**Workspace panels / panel skeleton**: the Vue workbench (`RightWorkbenchPanel`, `PanelShell` & co.) died with the Vue host on 2026-09-04; the React shell's equivalents are its Dock / stage / viewer (see `apps/desktop-react/CLAUDE.md`).
 
 ### State Management
 
 - **Backend**: app-layer stores in `packages/backend/stores/` (sessions repository with LRU + 300ms throttled async saves, settings cache with sync hot path, app-state)
-- **Renderer**: Pinia stores in `packages/renderer/stores/`
-- **Cross-process sync**: EventBus → IPCBridge/SSE events + explicit IPC/HTTP fetch calls
+- **Renderer**: zustand stores + query kernel in `apps/desktop-react/src/data/` (see its CLAUDE.md)
+- **Cross-process sync**: EventBus → SSE events (`@onething/client` events hub) + RPC calls
 
 ### Build Output
 
@@ -947,10 +867,7 @@ dist/
 ├── cli/main.cjs       # CLI daemon entry (bin/onething.mjs imports this; scripts/build-cli.mjs)
 ├── server/main.js     # apps/server single-file SSR bundle (inlineDynamicImports —
 │                      # chunk-split + top-level await deadlocks module evaluation)
-└── web/               # apps/web browser build
-
-out/                   # retired Vue host (vue:build → electron-vite; packed only by vue:unpack /
-                       # electron-builder.vue.yml) — deleted with step ④ of runtime unification
+└── web/               # React shell browser build (`web:build`, `--mode web`)
 ```
 
 ### Tech Stack
@@ -958,9 +875,9 @@ out/                   # retired Vue host (vue:build → electron-vite; packed o
 | Layer | Technology |
 | ------- | ----------- |
 | Desktop | Electron |
-| Frontend | Vue 3 + TypeScript + Pinia |
+| Frontend | React + TypeScript (zustand) — `apps/desktop-react`, desktop and browser |
 | AI SDK | Hand-rolled fetch/SSE per provider (`packages/onething-runtime/src/agent-loop/providers/`) |
 | Storage | File-based (JSON + per-session JSONL) |
-| Build | electron-vite (Vite renderer + Vite main + esbuild preload); vite SSR for apps/server |
+| Build | Vite (renderer) + esbuild (main / preload / CLI, `apps/desktop-react/scripts/build-electron.mjs` recipe); vite SSR for apps/server |
 | Test | Vitest |
-| Virtual Scroll | Hand-rolled, tables only (`packages/renderer/components/common/virtual-table/useVirtualAxis.ts`). The message list is NOT virtualized — it is a plain `v-for` inside `Scrollbar`. |
+| Virtual Scroll | None — the React message list is a plain list with block-level memo (R 线, `apps/desktop-react/docs/stream-render-2026-09.md`). |
