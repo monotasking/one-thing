@@ -12,12 +12,15 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { MCPSettings } from '@onething/core/mcp'
+import { getLogger } from '../../logging/index.js'
 import { McpSubsystem, type McpSubsystemDeps } from '../subsystem.js'
 
 const SETTINGS: MCPSettings = { enabled: true, servers: [] }
 
 /** 可控的替身:`initialize` 悬在一只手动 resolve 的闸上,顺带记调用次序。 */
-function makeDeps(options: { initializeGate?: Promise<void> } = {}) {
+function makeDeps(
+  options: { initializeGate?: Promise<void>; shutdownGate?: Promise<void>; disposeTimeoutMs?: number } = {},
+) {
   const calls: string[] = []
   const capabilitiesSlot: { handler: ((serverId: string) => void) | null } = { handler: null }
   const manager = {
@@ -31,6 +34,7 @@ function makeDeps(options: { initializeGate?: Promise<void> } = {}) {
     }),
     shutdown: vi.fn(async () => {
       calls.push('shutdown')
+      if (options.shutdownGate) await options.shutdownGate
     }),
   }
   const registerTools = vi.fn(async () => {
@@ -43,6 +47,7 @@ function makeDeps(options: { initializeGate?: Promise<void> } = {}) {
     onCapabilitiesChanged: handler => {
       capabilitiesSlot.handler = handler
     },
+    disposeTimeoutMs: options.disposeTimeoutMs,
   }
   return { deps, manager, registerTools, calls, capabilitiesSlot }
 }
@@ -172,5 +177,51 @@ describe('McpSubsystem', () => {
     await mcp.start()
     expect(mcp.state).toBe('running')
     expect(manager.initialize).toHaveBeenCalledTimes(2)
+  })
+
+  /*
+   * 收尾批(2026-09-03,用户裁定 b):**等待有界**。
+   *
+   * C1 的"dispose 等在途 start 落地"在一台握手挂死的 stdio 服务器上会把
+   * `apps/server` 那 5s SIGTERM 预算吃干净(实测 5.06s +
+   * `shutdown did not finish in time; pending session writes may be lost`)。
+   * 上限压在 5s 底下,超时记 warn 并照常返回,把剩下的时间留给排在 dispose 链
+   * 后面的会话账本 flush。反证:去掉 `raceDisposeTimeout` 里那只 deadline(或直接
+   * `await work`)→ 下面第一条挂在 `dispose()` 上永不返回,超时红。
+   */
+  it('shutdown 挂住:dispose 在上限内返回,并记一行 warn', async () => {
+    // 永不 resolve 的闸 = 真机上那台在握手上挂死的 stdio 服务器。
+    const { deps, manager } = makeDeps({ shutdownGate: new Promise<void>(() => {}), disposeTimeoutMs: 30 })
+    const warn = vi.spyOn(getLogger('app.mcp.subsystem'), 'warn').mockImplementation(() => {})
+    const mcp = new McpSubsystem(deps)
+    await mcp.start()
+
+    const startedAt = Date.now()
+    // 不加上限的话这一句永远不返回 —— 用例会被 vitest 的超时判红。
+    await mcp.dispose()
+    const elapsed = Date.now() - startedAt
+
+    expect(manager.shutdown).toHaveBeenCalledTimes(1)
+    expect(elapsed).toBeLessThan(2000)
+    expect(mcp.state).toBe('disposed')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toBe('mcp shutdown timed out; continuing dispose')
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({ servers: 0 })
+    expect(typeof (warn.mock.calls[0]?.[1] as { elapsedMs?: unknown })?.elapsedMs).toBe('number')
+    warn.mockRestore()
+  })
+
+  it('正常收尾:不触发上限,一个 warn 都不记', async () => {
+    const { deps, manager } = makeDeps({ disposeTimeoutMs: 30 })
+    const warn = vi.spyOn(getLogger('app.mcp.subsystem'), 'warn').mockImplementation(() => {})
+    const mcp = new McpSubsystem(deps)
+    await mcp.start()
+
+    await mcp.dispose()
+
+    expect(manager.shutdown).toHaveBeenCalledTimes(1)
+    expect(mcp.state).toBe('disposed')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

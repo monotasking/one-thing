@@ -24,6 +24,7 @@ import {
   createOnethingServerRuntimeOverBackend,
   toOnethingServerBackend,
 } from '../runtime.js'
+import { MCPManager as appMCPManager } from '@onething/runtime/mcp/index.wiring'
 import { createTestServerRuntime } from './test-helpers.js'
 
 /**
@@ -163,5 +164,72 @@ describe('createDevelopmentOnethingServerRuntime', () => {
       await runtime.shutdown()
       rmSync(storePath, { recursive: true, force: true })
     }
+  })
+})
+
+/**
+ * C1 收尾(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2
+ * 偏离 1 留的那一条):server runtime 起 MCP 的那三句手写词改成问子系统要。
+ *
+ * 钉两件事,而且是**互补**的两件:`backend.mcp.start()` 被调了,以及
+ * `appMCPManager.initialize` **没有**被直接调 —— 只断言前一条的话,把 `start()`
+ * 改回直调 `initialize` 会同时满足(替身的 start 是个 mock,不真去起 manager),
+ * 反证就红不了。
+ */
+describe('server runtime MCP start (C1 收尾)', () => {
+  let storePath: string
+  let previousStorePath: string | undefined
+
+  beforeEach(() => {
+    previousStorePath = process.env.ONETHING_STORE_PATH
+    storePath = mkdtempSync(path.join(tmpdir(), 'onething-mcp-start-'))
+    // 装配层的路径解析读这个 env,不读 runtime 的 storePath 选项 —— 不钉住的话
+    // 这个用例的落盘副作用会掉进开发机真的 ~/.onething。
+    process.env.ONETHING_STORE_PATH = storePath
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+    else process.env.ONETHING_STORE_PATH = previousStorePath
+    rmSync(storePath, { recursive: true, force: true })
+  })
+
+  async function runWith(processPorts: 'own' | 'host') {
+    const start = vi.fn(async () => {})
+    const initialize = vi.spyOn(appMCPManager, 'initialize').mockResolvedValue(undefined)
+    const runtime = await createDevelopmentOnethingServerRuntime({
+      storePath,
+      workspaceRoot: path.join(storePath, 'workspaces'),
+      dataRoot: storePath,
+      processPorts,
+      // `persistsMessages: true` 是选中「真 backend」那条路的开关;`mcp` 就是
+      // `toOnethingServerBackend` 从产品后端透传下来的那一格。
+      createBackend: async () => ({
+        eventBus: new EventBus() as never,
+        streamChannel: new StreamChannel() as never,
+        persistsMessages: true,
+        mcp: { start },
+        abortSession() {},
+        async shutdown() {},
+      }),
+    })
+    // `start()` 是 `void`ed 的,让微任务队列跑一轮再断言。
+    await Promise.resolve()
+    await runtime.shutdown()
+    return { start, initialize }
+  }
+
+  it("starts MCP through the subsystem when this process owns the ports", async () => {
+    const { start, initialize } = await runWith('own')
+    expect(start).toHaveBeenCalledTimes(1)
+    // 反证的那一半:改回 `appMCPManager.initialize(...)` 直调 → 这条红。
+    expect(initialize).not.toHaveBeenCalled()
+  })
+
+  it("leaves MCP to the host when the ports are borrowed", async () => {
+    const { start, initialize } = await runWith('host')
+    expect(start).not.toHaveBeenCalled()
+    expect(initialize).not.toHaveBeenCalled()
   })
 })

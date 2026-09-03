@@ -8,11 +8,14 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { ACPSettings } from '@onething/runtime/acp'
+import { getLogger } from '../../logging/index.js'
 import { AcpSubsystem, type AcpSubsystemDeps } from '../subsystem.js'
 
 const SETTINGS: ACPSettings = { enabled: true, agents: [] }
 
-function makeDeps(options: { initializeGate?: Promise<void> } = {}) {
+function makeDeps(
+  options: { initializeGate?: Promise<void>; shutdownGate?: Promise<void>; disposeTimeoutMs?: number } = {},
+) {
   const calls: string[] = []
   const manager = {
     initialize: vi.fn(async (settings: ACPSettings) => {
@@ -25,9 +28,14 @@ function makeDeps(options: { initializeGate?: Promise<void> } = {}) {
     }),
     shutdown: vi.fn(async () => {
       calls.push('shutdown')
+      if (options.shutdownGate) await options.shutdownGate
     }),
   }
-  const deps: AcpSubsystemDeps = { manager, settings: () => SETTINGS }
+  const deps: AcpSubsystemDeps = {
+    manager,
+    settings: () => SETTINGS,
+    disposeTimeoutMs: options.disposeTimeoutMs,
+  }
   return { deps, manager, calls }
 }
 
@@ -91,5 +99,41 @@ describe('AcpSubsystem', () => {
     const acp = new AcpSubsystem(deps)
     await acp.applySettings({ enabled: false, agents: [] })
     expect(manager.updateSettings).toHaveBeenCalledWith({ enabled: false, agents: [] })
+  })
+
+  /*
+   * 收尾批(2026-09-03,用户裁定 b):等待有界,与 MCP 同型。理由见
+   * `wiring/mcp/__tests__/subsystem.test.ts` 末尾那两条。
+   */
+  it('shutdown 挂住:dispose 在上限内返回,并记一行 warn', async () => {
+    const { deps, manager } = makeDeps({ shutdownGate: new Promise<void>(() => {}), disposeTimeoutMs: 30 })
+    const warn = vi.spyOn(getLogger('app.acp.subsystem'), 'warn').mockImplementation(() => {})
+    const acp = new AcpSubsystem(deps)
+    await acp.start()
+
+    const startedAt = Date.now()
+    await acp.dispose()
+
+    expect(manager.shutdown).toHaveBeenCalledTimes(1)
+    expect(Date.now() - startedAt).toBeLessThan(2000)
+    expect(acp.state).toBe('disposed')
+    expect(warn).toHaveBeenCalledTimes(1)
+    expect(warn.mock.calls[0]?.[0]).toBe('acp shutdown timed out; continuing dispose')
+    expect(warn.mock.calls[0]?.[1]).toMatchObject({ agents: 0 })
+    warn.mockRestore()
+  })
+
+  it('正常收尾:不触发上限,一个 warn 都不记', async () => {
+    const { deps, manager } = makeDeps({ disposeTimeoutMs: 30 })
+    const warn = vi.spyOn(getLogger('app.acp.subsystem'), 'warn').mockImplementation(() => {})
+    const acp = new AcpSubsystem(deps)
+    await acp.start()
+
+    await acp.dispose()
+
+    expect(manager.shutdown).toHaveBeenCalledTimes(1)
+    expect(acp.state).toBe('disposed')
+    expect(warn).not.toHaveBeenCalled()
+    warn.mockRestore()
   })
 })

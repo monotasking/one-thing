@@ -148,14 +148,55 @@ export class McpSubsystem {
   时)改成 `backend.mcp.start()`。
 - 设置域 `updateMCPSettings` → `backend.mcp.applySettings(next)`。
 
-**C1 落地记录(2026-09-03)与四处偏离**:
+**C1 落地记录(2026-09-03)与四处偏离**(第 1 条已于同日的收尾批销账,余三条仍成立):
 
-1. **server runtime 那处接线没改**(派工令明确留到后面):`server/runtime.ts` 仍直接
-   `appMCPManager.initialize(...)`(该文件本轮由另一会话在改,一个字不碰)。子系统因此把
-   "要不要 `shutdown()`"的判据定成"**我 start 过没有**",而不是"manager 现在 initialized
-   没有" —— 后者会让 standalone server 的 `backend.dispose()` 顺手关掉 server 自己管的那台
-   MCP,那是今天没有的行为。这条判据也正好逐字保留了 C1 之前 `own('mcpAcp')` 里的
-   `if (!options.mcpAcp) return`。
+1. ~~**server runtime 那处接线没改**~~ —— **已于本批收尾(2026-09-03,C1 收尾批)**。当时
+   `server/runtime.ts` 由另一会话在改,一个字不碰,所以留了这条账。现在:
+   `OnethingServerBackend` 多一格可选的 `mcp?: Pick<McpSubsystem, 'start'>`,
+   `toOnethingServerBackend` 从产品后端透传,`ownsProcessPorts` 那一支改成
+   `if (backend.mcp) void backend.mcp.start().catch(...)`,`getMCPSettingsForContext` 与
+   server 自己那份 `configureMCPCapabilitiesChangedHandler`(单槽端口,子系统构造时已接
+   逐字同一个 `registerMCPTools`)一并删除。**设置同源核实**:server 那条读法走
+   `createDefaultContextServerSettingsStore`,它把**默认上下文**特判到
+   `<store>/settings.json`,与子系统的 `getSettings().mcp` 同一个文件同一个
+   `mergeWithDefaults`(`resolveEffectiveAppSettings` 只重算 `.ai`);唯一分叉是显式
+   `ONETHING_SERVER_SETTINGS_ROOT` / `options.settingsRoot` / `options.settingsStore`,
+   那会把连默认 owner 在内的设置整体挪到 `<root>/<uid>/<wid>.json` —— 而进程里的引擎
+   照旧读 `<store>/settings.json`,也就是说那条路上 MCP 从前是全进程唯一一个跟着挪的
+   读者,现在跟其余部分对齐了。仓里无人设这个 env。
+   子系统"要不要 `shutdown()`"的判据仍然是"**我 start 过没有**"(不是"manager 现在
+   initialized 没有"):它现在对 standalone server 也答"起过 → 该我关",于是 MCP 的收尾
+   从"`backend.dispose()` 跑完之后那一圈 `mcpManagersByOwner`"提前到了 dispose 之内
+   (`engineAbortAll` 之后、`pluginManager` 之前)—— 两个位置都在 abortAll 之后,约束不变。
+   那一圈保留:它还管着 scoped owner 的 server-local manager,对默认 owner 是幂等的第二次调用。
+   这条判据也仍然逐字保留了 C1 之前 `own('mcpAcp')` 里的 `if (!options.mcpAcp) return`
+   (`mcpAcp:false` 且宿主从不 `start()` 的那些 backend 不替别人关门)。
+   **收尾批实测出来的两件事,列在这里等裁定**:
+   (a) *可观测性*——core 自己那两句 `mcp initializing` / `mcp connecting to servers`
+   从此进不了独立 server 的 `server.jsonl`:`apps/server/src/main.ts` 要等 runtime 装配完
+   才 `configureLogging`,而从前那句 `await getMCPSettingsForContext()` 带一次真实文件读,
+   把 `initialize` 顶到了接线之后(是运气不是设计);子系统读设置是同步的。补法是
+   server runtime 在 `start()` 兑现时自己记一行 `mcp subsystem started {servers:N}`
+   ——实测 `{servers:0}` 与 `{servers:1}` 两档都到。
+   (b) *收尾时长*——**用户裁定:不接受无界等待,已改**。发现的问题是:一台在初次握手上
+   挂死的 stdio 服务器会把 `server:start` 的 SIGTERM 收尾拖满 5s 预算(实测 5.06s +
+   `shutdown did not finish in time; pending session writes may be lost`),从前 0.05s ——
+   因为收尾进了 `dispose()`,而子系统按设计要等在途 `start()`。
+   改法:`McpSubsystem` / `AcpSubsystem` 的 `dispose()` 各给"等在途 start +
+   `manager.shutdown()`"**合起来**设一个上限(`DEFAULT_*_DISPOSE_TIMEOUT_MS = 3000`,
+   构造参数 `disposeTimeoutMs` 可覆盖,单测传 30ms),超时记一行
+   `mcp|acp shutdown timed out; continuing dispose {elapsedMs, servers|agents}` 并照常返回,
+   让排在 dispose 链后面的会话账本 flush 一定跑得到。3000 卡在 `apps/server/src/main.ts`
+   那条 5s 死线底下并留出余量。摘 capabilities 口挪到计时区之外(同步、挂不住,而
+   "超时就把已死的 backend 留在通知端口上"是另一个泄漏)。
+   **超时之后可能留下一只孤儿 stdio 子进程,这是有意的取舍:会话数据比 MCP 子进程重要**
+   ——C1 引进"等在途 start"针对的是早退孤儿(manager 几十毫秒就收摊的常态),握手挂死
+   属于另一类事故。ACP 与 MCP 各自计时不共用预算(两台同时挂死才会合计 6s 顶穿死线,
+   而共用预算会让先关的那格饿死后关的那格)。
+   实测:挂死档 5.06s → **3.05s**,`pending session writes may be lost` 消失,warn 记到
+   `{elapsedMs:3000, servers:1}`,其后 variables / stream engine / permission / interaction /
+   event system 五格照常跑完;0 台档 0.04s、快速失败档 0.18s 不触发上限;
+   `smoke:core` 的 `mcp-early-exit` 泳道残留仍是 0(常态收尾远在上限之内)。
 2. **`start()` 的位置从"设置读完那一行"挪到反序登记块之后**。原文只说"构造即 own",但
    构造点(要在 `own` 的闭包之前)与 `own` 的位置(要保住关机顺序)天然分处两行;若 start
    仍留在前面,`initialize` 抛错时 `assemble` 的 catch 去 dispose,表里还没有 MCP 那一格 ——
@@ -204,7 +245,7 @@ export class McpSubsystem {
 | 期 | 做什么 | 门 |
 | --- | --- | --- |
 | **C0 机械修复** ✅ 已落地 | R1 的 `own()` 守卫 + 同步登记;R2;R3 / R4 / R5 / R6 / R7 / R10;R9 的数字部分 | 各自反证;A0 变 12 条全绿;`assembly:gate` 不升 |
-| **C1 MCP/ACP 子系统** ✅ 已落地(2026-09-03) | `McpSubsystem` / `AcpSubsystem` + 壳/装配接线 + 设置域接线 + `initializeShellMCP` 删除(server runtime 那处留到 C2 之后,见 §2.2 偏离 1) | 在途 start → dispose 的反证(单测);真机:`smoke:core` 第三条泳道 `mcp-early-exit`,探针退出后 `pgrep -f <marker>` = 0;A0 升到 14 条 |
+| **C1 MCP/ACP 子系统** ✅ 已落地(2026-09-03) | `McpSubsystem` / `AcpSubsystem` + 壳/装配接线 + 设置域接线 + `initializeShellMCP` 删除;**收尾批(同日)**把 server runtime 那处也接进子系统(§2.2 偏离 1 已销账) | 在途 start → dispose 的反证(单测);真机:`smoke:core` 第三条泳道 `mcp-early-exit`,探针退出后 `pgrep -f <marker>` = 0;A0 升到 14 条;收尾批另加 `runtime-over-backend.test.ts` 两例(`processPorts:'own'` → `start` 恰好一次且 `initialize` 未被直调 / `'host'` → 都不调) |
 | **C2 主体** | `Principal` + `TokenRing` + 三入口铸法 + 8 处判据改 `isOwner(context)` + `resolveRpcSandbox` + 退役进程级信任与宿主表 `localTrust` + 能力位按请求主体 + 棘轮第四族 + R8 | 每处判据 owner/client 两态单测;`isHostLocallyTrusted` 调用 0;真机:回环 server 用发现文件 token → owner 行为,用 `ONETHING_SERVER_TOKEN` 非回环 → client 行为(log:smoke 加两条) |
 | **C3 文档** | CLAUDE.md IPC 一节的"第二条规则"改成主体表述;host-ports 表删 `localTrust` 行;方案 B §4 补齐 | `grep -c isHostLocallyTrusted CLAUDE.md` = 0 |
 

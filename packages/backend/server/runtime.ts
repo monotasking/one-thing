@@ -48,6 +48,7 @@ import {
 	type RuntimeUnsubscribe,
 } from "@onething/core";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
+import type { McpSubsystem } from "@onething/backend/wiring/mcp/subsystem.js";
 import {
 	createTenantAudienceFactory,
 	ownerMatchesContext,
@@ -64,10 +65,8 @@ import { getProjectsStore as getAppProjectsStore } from "@onething/backend/wirin
 import {
 	MCPManager as appMCPManager,
 	configureMCPClientHost,
-	registerMCPTools as registerAppMCPTools,
 } from "@onething/runtime/mcp/index.wiring";
 import { configureMCPClientIdentity } from "@onething/runtime/mcp/identity";
-import { configureMCPCapabilitiesChangedHandler } from "@onething/runtime/mcp/capabilities-changed";
 import {
 	createBranchSession as createAppStoreBranchSession,
 	createSession as createAppStoreSession,
@@ -121,7 +120,6 @@ import {
 } from "@onething/core/plugins";
 import {
 	createMCPServerState,
-	DEFAULT_MCP_SETTINGS,
 	HeadlessMCPManager,
 	type MCPClientLike,
 } from "@onething/core/mcp";
@@ -330,11 +328,7 @@ import type {
 	Step,
 	UserMessageMarker,
 } from "@shared/ipc/chat.js";
-import type {
-	MCPServerConfig,
-	MCPServerState,
-	MCPSettings,
-} from "@shared/ipc/mcp.js";
+import type { MCPServerConfig, MCPServerState } from "@shared/ipc/mcp.js";
 import type { AppSettings } from "@shared/ipc/settings.js";
 import type { SessionCommand } from "@shared/events/session-commands.js";
 import type { ToolCall } from "@shared/ipc/tools.js";
@@ -436,6 +430,18 @@ export interface OnethingServerBackend {
 	 * (test/echo backends).
 	 */
 	persistsMessages: boolean;
+	/**
+	 * 产品后端拥有的 MCP 子系统(C1 收尾,方案
+	 * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2)。
+	 *
+	 * 只暴露 `start` —— server runtime 对 MCP 的全部要求就是"这个进程是 core
+	 * 进程时,把它起起来";关它的事归 `backend.dispose()` 里那格 `own('mcp')`。
+	 *
+	 * **可选**是因为这个接口的另一类实现是 echo/local 测试替身(它们根本没有产品
+	 * 后端)。缺席 = 不起 MCP,与替身今天走的路一致:替身的 `persistsMessages`
+	 * 通常是 `false`,压根进不到那个块。
+	 */
+	mcp?: Pick<McpSubsystem, "start">;
 	abortSession(sessionId: string, reason?: string): void;
 	shutdown(): Promise<void>;
 }
@@ -805,6 +811,9 @@ export function toOnethingServerBackend(
 		eventBus: backend.eventBus as unknown as EventBus<AgentEngineSessionEvent>,
 		streamChannel: backend.streamChannel as unknown as ServerStreamChannelLike,
 		persistsMessages: true,
+		// C1 收尾:MCP 的起法从 server runtime 手写的那三句改成问子系统要。透传的
+		// 是**同一只** `MCPManager` 进程单例的门面 —— 子系统构造时拿的就是它。
+		mcp: backend.mcp,
 		abortSession(sessionId, reason) {
 			backend.engine.abort(sessionId, reason ?? "server abort");
 		},
@@ -846,7 +855,7 @@ async function createRealServerBackend(storePath: string): Promise<OnethingBacke
 	return createOnethingBackend({
 		/*
 		 * A1:宿主能力一次交清。这个进程是个无头 server —— 除了下载目录之外
-		 * 一件宿主能力都没有,于是十二个 `null` 就是这里的事实清单(从前那是
+		 * 一件宿主能力都没有,于是十四个 `null` 就是这里的事实清单(从前那是
 		 * 「一个 `sandboxHost` 之外什么都没写」,看不出是没有还是漏了)。
 		 *
 		 * `storePath: {}` = 打包资源目录无话可说,与从前从不调
@@ -1281,16 +1290,10 @@ async function createServerRuntimeOverServerBackend(
 		}
 	}, "ServerRuntimeStore");
 
-	const getMCPSettingsForContext = async (
-		context = defaultRequestContext(),
-	): Promise<MCPSettings> => {
-		const settings = await getOwnerSettings(
-			settingsByOwner,
-			settingsStore,
-			context,
-		);
-		return cloneJson(settings.mcp ?? DEFAULT_MCP_SETTINGS);
-	};
+	// C1 收尾:`getMCPSettingsForContext` 随最后一个调用方(下面那句 `initialize`)
+	// 一起没了 —— 默认 owner 的 MCP 设置现在由子系统自己读(`getSettings().mcp`,
+	// 同一个 `<store>/settings.json`,见下面那段的核实记录)。scoped owner 从来
+	// 不经这条路:它们各有自己的 server-local manager。
 
 	// The engine's MCP bridge is hard-bound to the @onething/backend singleton
 	// manager, so the default owner MUST route through that same instance —
@@ -1316,25 +1319,80 @@ async function createServerRuntimeOverServerBackend(
 				// Root package.json unreadable → identity default stays.
 			}
 			configureMCPClientHost(mcpClientFactory);
-			// P2-1: server-pushed list changes re-read into state by the client;
-			// regenerate the model-facing catalog through the same path.
-			configureMCPCapabilitiesChangedHandler(() => {
-				void registerAppMCPTools();
-			});
+			// P2-1(server-pushed list changes → 重建模型面的工具目录)那口
+			// `configureMCPCapabilitiesChangedHandler` 从这里删掉了:它是个**单槽**
+			// 端口,而 `McpSubsystem` 在构造点就接了逐字同一个函数
+			// (`registerMCPTools`,本文件里的别名是 `registerAppMCPTools`)。从前
+			// 两处各接一份,谁后接谁生效;现在只有子系统那一份,而且它在
+			// `dispose()` 里会把这口摘回 `null` —— 从前 server 这份接上去就再也没人摘。
 		}
 		mcpManagersByOwner.set(
 			ownerKey(defaultRequestContext()),
 			appMCPManager as ServerMCPManager,
 		);
 		if (ownsProcessPorts) {
-			void (async () => {
-				try {
-					await appMCPManager.initialize(await getMCPSettingsForContext());
-					await registerAppMCPTools();
-				} catch (error) {
-					log.error("mcp initialization failed", {}, error);
-				}
-			})();
+			/*
+			 * C1 收尾(方案 §2.2 偏离 1 留的那一条):从前这里是
+			 * `appMCPManager.initialize(await getMCPSettingsForContext())` +
+			 * `registerAppMCPTools()` 两句手写词,与装配层、React 壳各抄一遍的
+			 * 那两份并列。现在问子系统要 —— `start()` 内部就是这两句同一个顺序。
+			 *
+			 * **设置同源已核实**:`getMCPSettingsForContext(defaultRequestContext())`
+			 * 走 `createDefaultContextServerSettingsStore`,它对**默认上下文**特判到
+			 * `createSingleFileServerSettingsStore(getOnethingSettingsPath({storePath}))`
+			 * = `<store>/settings.json`;而子系统读的 `getSettings().mcp` 走
+			 * `stores/settings.ts` 的 repository,`filePath: getOnethingSettingsPath`,
+			 * 同一个文件、同一个 `mergeWithDefaults`(`resolveEffectiveAppSettings`
+			 * 只重算 `.ai`,不碰 `.mcp`)。`createRealServerBackend` 开头就把
+			 * `ONETHING_STORE_PATH` 钉到同一个 storePath,所以两边的路径也同一个。
+			 * 唯一的分叉是显式 `ONETHING_SERVER_SETTINGS_ROOT` / `options.settingsRoot`
+			 * / `options.settingsStore` —— 那会把**连默认 owner 在内**的设置整体挪到
+			 * `<root>/<uid>/<wid>.json`,而进程里的引擎照旧读 `<store>/settings.json`,
+			 * 也就是说那条路上 MCP 从前是全进程唯一一个跟着挪的读者。仓里无人设它。
+			 *
+			 * `backend.mcp` 缺席(echo/local 测试替身)= 不起 MCP。替身的
+			 * `persistsMessages` 是 `false`,本来就进不到这个块。
+			 *
+			 * 顺序不动:`configureMCPClientIdentity` / `configureMCPClientHost` 必须
+			 * 排在 `start()` 之前 —— manager 是在 start 里才按工厂建客户端的。
+			 *
+			 * **一处真实的行为变化**:MCP 的收尾从"`backend.shutdown()` 跑完之后
+			 * 那一圈 fire-and-forget 的 `mcpManagersByOwner`"挪进了 `backend.dispose()`
+			 * (`own('mcp')` 那一格),而子系统的 `dispose()` 按 C1 的设计**要等在途的
+			 * `start()` 落地**。于是一台在初次握手上挂死的 stdio 服务器会拖住收尾 ——
+			 * 初版实测把 `apps/server` 那 5s 预算吃干净(5.06s + `shutdown did not
+			 * finish in time; pending session writes may be lost`),从前是 0.05s。
+			 * **用户裁定不接受无界等待**,于是 `McpSubsystem.dispose()` 现在自带
+			 * 3000ms 上限(见 `wiring/mcp/subsystem.ts` 的
+			 * `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`),超时记 warn 并放行,把余量留给排在
+			 * 后面的账本 flush:同一场景现在 3.05s,那行 `pending session writes` 消失。
+			 * MCP 正常(0 台 / 连不上但快速失败)时收尾仍是 0.04–0.18s。
+			 */
+			if (backend.mcp) {
+				void backend.mcp
+					.start()
+					.then(() => {
+						/*
+						 * 起完了记一行 —— 这行是**新加的**,补的是一个真实的可观测性
+						 * 缺口:core 自己那两句(`mcp initializing` /
+						 * `mcp connecting to servers`)在独立 server 上从此进不了
+						 * `server.jsonl` 了。原因不是行为变了,是**时序**:
+						 * `apps/server/src/main.ts` 要等 runtime 装配完才
+						 * `configureLogging`(store 根由装配钉死,提前接线会写进另一个
+						 * store 的 log/),而从前那句 `await getMCPSettingsForContext()`
+						 * 带一次真实的文件读,把 `initialize` 顶到了 `configureLogging`
+						 * 之后 —— 那是运气,不是设计。子系统读设置是同步的
+						 * (`getSettings()` 走内存缓存),于是 core 那两句落在了接线之前。
+						 * `start()` 兑现时接线早已完成,所以这一行必到。
+						 */
+						log.info("mcp subsystem started", {
+							servers: appMCPManager.getSettings().servers.length,
+						});
+					})
+					.catch((error: unknown) => {
+						log.error("mcp initialization failed", {}, error);
+					});
+			}
 		}
 	}
 
@@ -2403,6 +2461,14 @@ async function createServerRuntimeOverServerBackend(
 			// —— 两层都不会把进程钉死。借来的 backend(桌面内嵌 HTTP 面,
 			// `ownsBackend:false`)这一步是 no-op:那份账本归宿主的 before-quit 收。
 			await backend.shutdown();
+			// C1 收尾之后,默认 owner 那一格(`appMCPManager`)在上面
+			// `backend.shutdown()` → `dispose()` → `own('mcp')` → 子系统 dispose 里
+			// **已经**关过一次了,这一圈对它是第二次调用 —— 保留不动:
+			// `HeadlessMCPManager.shutdown()` 是幂等的(它 enqueue 一次
+			// `disconnectAllInternal`,而 clients 表第一次就清空了,第二次遍历空表)。
+			// 这一圈真正还有活干的是 scoped owner 的那些 server-local manager,
+			// 它们不归任何 backend 管。借来的 backend(`ownsBackend:false`)那一格
+			// 更是没关过 —— 宿主的 before-quit 才关。
 			for (const manager of mcpManagersByOwner.values()) {
 				manager.shutdown().catch(() => {});
 			}

@@ -14,6 +14,9 @@
  *    这一期的机械搬运。留账在方案 §2.2。
  */
 import type { ACPSettings } from '@onething/runtime/acp'
+import { getLogger } from '../logging/index.js'
+
+const log = getLogger('app.acp.subsystem')
 
 /**
  * 子系统看得见的 manager 面 —— 三件事,不是整只 `ACPManager`。
@@ -33,7 +36,22 @@ export interface AcpSubsystemDeps {
   manager: AcpSubsystemManagerPort
   /** 读**当下**的 ACP 设置(构造点比 `start()` 早)。 */
   settings: () => ACPSettings
+  /** `dispose()` 的上限,毫秒。缺省 {@link DEFAULT_ACP_DISPOSE_TIMEOUT_MS};单测传小值。 */
+  disposeTimeoutMs?: number
 }
+
+/**
+ * 与 `McpSubsystem` 同型同数的收尾上限 —— 理由逐字相同,见
+ * `wiring/mcp/subsystem.ts` 的 `DEFAULT_MCP_DISPOSE_TIMEOUT_MS`:
+ * 卡在 `apps/server/src/main.ts` 那条 5s 死线底下,给排在 dispose 链后面的
+ * 会话账本 flush 留出余量。**超时可能留下孤儿子进程,这是有意的取舍:
+ * 会话数据比 ACP 子进程重要。**
+ *
+ * ACP 与 MCP 各自计时(不共用一份预算):两格挨着登记,最坏情况下合计 6s 会顶穿
+ * 5s 死线 —— 但那要求两台外部执行体同时挂死,而分一份预算的代价是先关的那格
+ * 把后关的那格饿死。宁可两格各自诚实。
+ */
+export const DEFAULT_ACP_DISPOSE_TIMEOUT_MS = 3000
 
 export type AcpSubsystemState = 'idle' | 'starting' | 'running' | 'disposed'
 
@@ -82,16 +100,56 @@ export class AcpSubsystem {
     await this.deps.manager.updateSettings(next)
   }
 
-  /** 幂等;先等在途的 start 落地(不管成败),再 shutdown;从未 start 过则不 shutdown。 */
+  /**
+   * 幂等;先等在途的 start 落地(不管成败),再 shutdown;从未 start 过则不 shutdown。
+   *
+   * **等待有界**({@link DEFAULT_ACP_DISPOSE_TIMEOUT_MS}):那两段合起来超时就记一行
+   * warn 并照常返回,让 dispose 链后面的账本 flush 一定跑得到。
+   */
   async dispose(): Promise<void> {
     if (this.disposing) return this.disposing
     this.disposing = (async () => {
-      const inFlight = this.starting
-      if (inFlight) await inFlight.catch(() => undefined)
-      if (this.everStarted) await this.deps.manager.shutdown()
+      const startedAt = Date.now()
+      const timedOut = await this.raceDisposeTimeout(this.shutdownInFlightThenManager())
+      if (timedOut) {
+        log.warn('acp shutdown timed out; continuing dispose', {
+          elapsedMs: Date.now() - startedAt,
+          agents: this.countConfiguredAgents(),
+        })
+      }
       this.starting = null
       this.currentState = 'disposed'
     })()
     return this.disposing
+  }
+
+  /** 计时区里的活:先等在途的 start,再关 manager。 */
+  private async shutdownInFlightThenManager(): Promise<void> {
+    const inFlight = this.starting
+    if (inFlight) await inFlight.catch(() => undefined)
+    if (this.everStarted) await this.deps.manager.shutdown()
+  }
+
+  /** 见 `McpSubsystem.raceDisposeTimeout`,逐字同型。 */
+  private raceDisposeTimeout(work: Promise<void>): Promise<boolean> {
+    const timeoutMs = this.deps.disposeTimeoutMs ?? DEFAULT_ACP_DISPOSE_TIMEOUT_MS
+    work.catch(() => undefined)
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<boolean>(resolve => {
+      timer = setTimeout(() => resolve(true), timeoutMs)
+      if (typeof timer.unref === 'function') timer.unref()
+    })
+    return Promise.race([work.then(() => false), deadline]).finally(() => {
+      if (timer) clearTimeout(timer)
+    })
+  }
+
+  /** warn 里的读数。设置读法是宿主的闭包,读不到就不写这一格。 */
+  private countConfiguredAgents(): number | undefined {
+    try {
+      return this.deps.settings().agents.length
+    } catch {
+      return undefined
+    }
   }
 }
