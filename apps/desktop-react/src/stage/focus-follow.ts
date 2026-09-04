@@ -123,6 +123,27 @@ export function focusFollowTarget(
 }
 
 /**
+ * **落定之后盯着那块面的那扇窄口**(09-04,起因见下)。单位毫秒。
+ *
+ * 一次落定只送一遍焦点,在**这块面刚挂上来就又被重挂一次**时不够 —— 送进去的那
+ * 一格作用域当场卸载,树的结构归还(§4.5)把焦点送回按键之前的输入框,而点名已经
+ * 被消费掉了,新挂上来的那一份没有人再叫它。真机读数(09-04,dev 壳 + React
+ * StrictMode 的模拟重挂):12 块面里 10 块开出来之后焦点又回到 `composer-input`,
+ * 只有自己声明 `activateOnMount` 的检索面与总览幸免。
+ *
+ * 所以这扇窄口的语义是:**这一下落定的焦点,在它真的落进去之前不算送完**。
+ * 窄到 250ms 是为了不与人打架 —— 键盘召唤之后的四分之一秒里,除了「那一层重挂」
+ * 没有别的东西会让一个 scope+owner 相符的实例重新登记(人手挪焦点不登记实例)。
+ */
+export const FOCUS_FOLLOW_SETTLE_MS = 250
+
+/** 一次落定的目标 + 一个序号 —— 序号让「同一个目标连来两次」也能重跑那只 effect。 */
+interface PendingFollow {
+  target: FocusFollowTarget
+  seq: number
+}
+
+/**
  * 形态落定 → 焦点跟过去。**全壳唯一那一处接线**,挂在 `AppShell` 上一次。
  *
  * ── 为什么是一只 hook,而不是包在 store 的 `set` 上 ─────────────────────────
@@ -135,27 +156,67 @@ export function focusFollowTarget(
  * 所以判据留在纯函数里(上面那只),**执行挪到提交之后**:订阅拿前后两份状态
  * 算出目标 → 进一格 state → effect 在提交后落焦。接线仍然只有这一处,
  * 加一个新的形态动作不必记得接一遍(那才是「六路各接一遍」要治的病)。
+ *
+ * ── 落定之后还要**盯一小会儿**(09-04)─────────────────────────────────────
+ * 「送一次就完」在那块面刚挂上来又被重挂一次时不成立(判词与读数写在
+ * `FOCUS_FOLLOW_SETTLE_MS` 头上)。所以这只 effect 送完不撒手:窄口内树一变就
+ * 回头看一眼焦点在不在它里面,不在就补一次。
  */
 export function useStageFocusFollow(): void {
-  const [pending, setPending] = useState<FocusFollowTarget | null>(null)
+  const [pending, setPending] = useState<PendingFollow | null>(null)
 
   useEffect(
     () =>
       useStageStore.subscribe((after, before) => {
         const target = focusFollowTarget(before, after, takeOpenRequest())
-        if (target) setPending(target)
+        if (target) setPending((prev) => ({ target, seq: (prev?.seq ?? 0) + 1 }))
       }),
     [],
   )
 
   useEffect(() => {
     if (!pending) return
+    const { scope, owner } = pending.target
     /*
-     * 送不进去(那一层正 inert / 那一档根本没有层)就算了,不重试:留一个跨帧的
-     * 悬念比少送一次更难排查。真要「等它到位再送」的那一种(文件树 ↵ 开文件)
-     * 由那块面自己立旗等 —— 那是**它**的手势,不是形态机的事。
+     * 送不进去(那一层正 inert / 那一档根本没有层)不追到天涯海角:窄口一过就
+     * 放手。真要「等它到位再送」的那一种(文件树 ↵ 开文件)由那块面自己立旗等 ——
+     * 那是**它**的手势,不是形态机的事。
      */
-    focusTree.activateScope(pending.scope, { owner: pending.owner, reason: 'placement' })
-    setPending(null)
+    focusTree.activateScope(scope, { owner, reason: 'placement' })
+
+    /*
+     * 窄口内补送:树一变(实例注销 / 新实例登记 / 根到位 / 焦点被结构归还搬走)
+     * 就回头看一眼焦点在不在它里面,不在就再送一次;**送进去了就收手**
+     * (`settled`)—— 此后这四分之一秒里谁把焦点挪走都不再抢回来。
+     *
+     * 两条闸,各治一种死循环:
+     *  · `inside` 治**重入** —— 送成功那一下 `activateScope` 自己会 `notify()`,
+     *    不拦这一句就是「送 → 通知 → 再送」;
+     *  · `settled` 治**次数** —— 送不进去时 `activateScope` 在挑不到实例那一步就
+     *    返回 false,**它自己不 notify**,所以失败不会自己喂自己;真正把重试喂饱的
+     *    只有别人发的通知,而那是有限的几下(09-04 读数:重挂那一轮先来三下
+     *    「注销 / setRoot(null)」再来一下「重新登记」——所以这里**不能**按次数封顶,
+     *    第一版封 3 次当场被那三下吃光,补送永远轮不到真正该送的那一下)。
+     */
+    let settled = false
+    let inside = false
+    const stop = focusTree.subscribe(() => {
+      if (inside || settled) return
+      if (focusTree.isOwnerActive(owner)) {
+        settled = true
+        return
+      }
+      inside = true
+      try {
+        if (focusTree.activateScope(scope, { owner, reason: 'placement' })) settled = true
+      } finally {
+        inside = false
+      }
+    })
+    const timer = window.setTimeout(stop, FOCUS_FOLLOW_SETTLE_MS)
+    return () => {
+      window.clearTimeout(timer)
+      stop()
+    }
   }, [pending])
 }

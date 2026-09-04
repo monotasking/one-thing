@@ -37,6 +37,10 @@
  *     09-04 S2 用户报障时这道门正是这么一声不吭的);焦点在面里 → 回输入框;看得见没聚焦
  *     → 只聚焦;架子上切走了 tab → 露出来 + 焦点进。后三态每一步都同时量
  *     「placements 一个字节没变」—— 召唤与旧那条纯开关的分歧就是这一句。
+ *     **09-04 补两处**:①-a 从「按一下」扩成**三连按**(出现 / 隐藏 / 再出现 ——
+ *     用户报的正是这三下里第二下变成了「没反应」);新增 ①-c **位置记忆四形**
+ *     (弹窗 / 浮窗 / 盖满 / 钉右边,种在 files 上),把 `openFromMemory` 的四条
+ *     支路各走一遍 —— 从前这道门只量过「新 store 的缺省档」。
  *
  * (打表时的编号比这里多一格:总览那条键盘交接是 8b,自成一个场景。)
  *
@@ -856,7 +860,17 @@ async function main() {
     await page.evaluate(() => {
       localStorage.setItem(
         'onething.keymap',
-        JSON.stringify({ state: { overrides: { 'toggle:workspace': { meta: true, shift: true, key: 'u' } } }, version: 2 }),
+        JSON.stringify({
+          state: {
+            overrides: {
+              'toggle:workspace': { meta: true, shift: true, key: 'u' },
+              // ①-c 那一步要按它:工作区那块瓦的右键是**快切表**,没有「打开方式」,
+              // 所以四种位置记忆只能种在一块有那张菜单的瓦上 —— files。
+              'toggle:files': { meta: true, shift: true, key: 'k' },
+            },
+          },
+          version: 2,
+        }),
       )
     })
     await page.goto(page.url().split('?')[0])
@@ -1133,10 +1147,41 @@ async function main() {
         `(此刻在 [${landed.testid ?? '—'}])`,
       )
       await assertNoOrphan(page, '①-a 召唤开面之后')
-      // 再按一下把它收走(第四态),别让它挡住后面几步。
+      /*
+       * **第二下必须是「隐藏」,不是「只聚焦」**(09-04 用户报障的判据)。
+       * 用户数的那三下是「出现 / 没反应 / 隐藏」——「没反应」正是第一下焦点没跟
+       * 进去、第二下补聚焦(这些面没有 region,焦点落在层根上不画环,所以无声)。
+       * 所以这一步只加两条读数就把那条病钉死了:第二下面**不在场**,第三下又
+       * 回来并且焦点仍然进得去。
+       */
+      await page.keyboard.press('Meta+Shift+u')
+      await delay(700)
+      assert(
+        !(await workspaceOnScreen()),
+        '①-a 第二下 = **隐藏**(焦点已经在面里;不是「补一次聚焦」)',
+      )
+      await page.keyboard.press('Meta+Shift+u')
+      await delay(700)
+      assert(await workspaceOnScreen(), '①-a 第三下把它召唤回来了')
+      const again = await page.evaluate(() => {
+        const el = document.activeElement
+        const layer = el?.closest?.('[data-focus-scope$="-layer"]') ?? null
+        return {
+          testid: el?.getAttribute?.('data-testid') ?? el?.tagName ?? null,
+          inWorkspacePane: Boolean(layer?.querySelector('[data-testid="workspace-overview"]')),
+        }
+      })
+      assert(
+        again.inWorkspacePane && again.testid !== 'composer-input',
+        '①-a 第三下焦点同样进了那一层(不是「开了但焦点留在输入框」)',
+        `(此刻在 [${again.testid ?? '—'}])`,
+      )
+      await assertNoOrphan(page, '①-a 三连按之后')
+      // 收走,别让它挡住后面几步。
       await page.keyboard.press('Meta+Shift+u')
       await delay(600)
     }
+
 
     /* ①-b 检索面开出来 —— 后面 ②③④ 都在它身上量,所以这一步只管把它摆上台。 */
     await page.evaluate(() => {
@@ -1354,6 +1399,131 @@ async function main() {
         await assertNoOrphan(page, '④-b 召唤收起架子之后')
       }
     }
+
+    /*
+     * ── ①-c 为什么排在**最后** ────────────────────────────────────────────
+     * 它的拆台是栏头那颗 X(`closeShelf`:整条一起收回 Dock,记忆原样留着 ——
+     * 「只关这一格」这个口不存在)。而上面 ② / ④-b 要那条右架子上**有两个 tab**
+     * 才切得走,所以这一步一旦排在它们前面,就会把它们的夹具一起收掉
+     * (09-04 施工时真踩过:② 与 ④-b 当场变成「那条架子上只有 1 个 tab」的跳过,
+     * 断言从 113 掉到 110 —— 门还是绿的,少的那三条读数一声不吭)。
+     */
+    /*
+     * ①-c **位置记忆四形**(09-04 补,起因见下)。
+     *
+     * ── 这一步补的是门自己的盲区 ──────────────────────────────────────────
+     * ①-a 量的是**新 store 的缺省档**(没有记忆 = 浮窗)。而「打开」走的是
+     * `resolveOpen` 的三层序(记忆 > item 天生落点 > 全局档),真用户的账上那一格
+     * 多半是记忆 —— `openFromMemory` 的四条支路(舞台 / 浮窗 / 盖 / 钉边)在这道门
+     * 里一条都没被走过。09-04 用户报障时第一反应就是「会不会是记忆那条路上多写了
+     * 一次 store」,而门答不上话,因为它只量过缺省档。
+     *
+     * ── 为什么种在 files 上 ───────────────────────────────────────────────
+     * 工作区那块瓦的右键是**快切表**(Dock.tsx 的判词),没有「打开方式」那一排,
+     * 所以四种记忆只能种在一块有那张菜单的瓦上。files 还多一样好处:它**有**
+     * 自己的 region(`focus/scopes.ts` 里那一行),于是这一步与 ①-a 正好凑成
+     * 「有 region / 无 region」两半 —— 前者判到 scope,后者只判到层。
+     *
+     * ── 「钉边**且架子收着**」那一形不在这里 ──────────────────────────────
+     * 它要那条架子上**另有一个 tab**(只剩一个 tab 时收起整条架子与关掉它没法
+     * 分辨),而栏头那颗 X 是 `closeShelf`(整条一起收),没有「只关这一格」的口。
+     * 造那个夹具要多钉一块面上去、再把活动 tab 切走,而它走的仍是这四条支路里的
+     * `edge` 那一条 —— 差别只在 `shelves[side].collapsed`,那一格由 ②(露出来)
+     * 与 ④-b(收起整条)两步各量了一遍。09-04 的真机读数也单独走过它。
+     */
+    const filesOnScreen = () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="files-tree"]')))
+    /** 把 files 送回 Dock,**不动它的记忆**:架子走栏头那颗 X(closeShelf 自己留记忆),别的形态走退层链。 */
+    const filesBackToDock = async () => {
+      for (let i = 0; i < 6 && (await filesOnScreen()); i += 1) {
+        const closedShelf = await page.evaluate(() => {
+          const shelf = document.querySelector('[data-shelf]')
+          if (!shelf) return false
+          const x = Array.from(shelf.querySelectorAll('button[aria-label]')).find((b) =>
+            /^(关闭整栏|Close all in)/.test(b.getAttribute('aria-label') ?? ''),
+          )
+          if (x instanceof HTMLElement) {
+            x.click()
+            return true
+          }
+          return false
+        })
+        if (!closedShelf) await page.keyboard.press('Escape')
+        await delay(450)
+      }
+    }
+    const MEMORY_FORMS = [
+      { key: 'stage', label: '弹窗(舞台)', menu: /^(Popup|弹窗)$/ },
+      { key: 'float', label: '浮窗', menu: /^(Float|浮窗)$/ },
+      { key: 'cover', label: '盖满', menu: /^(Cover|盖满)$/ },
+      { key: 'edge', label: '钉右边', menu: /^(Right|右边)$/ },
+    ]
+    for (const form of MEMORY_FORMS) {
+      await filesBackToDock()
+      const seeded = await openAsFromDockMenu(page, 'files', form.menu)
+      if (!seeded) {
+        skip(`①-c 记忆=${form.label}`, `Dock 菜单里没有「${form.menu.source}」那一项`)
+        continue
+      }
+      await delay(300)
+      await filesBackToDock()
+      if (await filesOnScreen()) {
+        skip(`①-c 记忆=${form.label}`, 'files 送不回 Dock(夹具没搭起来)')
+        continue
+      }
+      await page.evaluate(() => {
+        const box = document.querySelector('[data-testid="composer-input"]')
+        if (box instanceof HTMLElement) box.focus()
+      })
+      await delay(150)
+
+      // 第一下:按记忆开出来 + 焦点进去(files 有自己的 region,所以判得到 scope)。
+      await page.keyboard.press('Meta+Shift+k')
+      await delay(700)
+      assert(await filesOnScreen(), `①-c 记忆=${form.label}:第一下把它开出来了`)
+      const landedOnce = await page.evaluate(() => {
+        const el = document.activeElement
+        const layer = el?.closest?.('[data-focus-scope$="-layer"]') ?? null
+        return {
+          testid: el?.getAttribute?.('data-testid') ?? el?.tagName ?? null,
+          scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+          inPane: Boolean(layer?.querySelector('[data-testid="files-tree"]')),
+        }
+      })
+      assert(
+        landedOnce.inPane && landedOnce.testid !== 'composer-input',
+        `①-c 记忆=${form.label}:第一下焦点就进了那块面(不是留在输入框)`,
+        `(此刻在 [${landedOnce.testid ?? '—'}],作用域 ${landedOnce.scope ?? '—'})`,
+      )
+      await assertNoOrphan(page, `①-c 记忆=${form.label} 开面之后`)
+
+      // 第二下:隐藏(焦点已经在里面)。这一条正是用户数的那三下里「没反应」的位置。
+      await page.keyboard.press('Meta+Shift+k')
+      await delay(700)
+      assert(
+        !(await filesOnScreen()),
+        `①-c 记忆=${form.label}:第二下 = **隐藏**(不是补一次聚焦)`,
+      )
+
+      // 第三下:再召唤回来,焦点同样进去。
+      await page.keyboard.press('Meta+Shift+k')
+      await delay(700)
+      const landedAgain = await page.evaluate(() => {
+        const el = document.activeElement
+        const layer = el?.closest?.('[data-focus-scope$="-layer"]') ?? null
+        return {
+          testid: el?.getAttribute?.('data-testid') ?? el?.tagName ?? null,
+          inPane: Boolean(layer?.querySelector('[data-testid="files-tree"]')),
+        }
+      })
+      assert(
+        (await filesOnScreen()) && landedAgain.inPane && landedAgain.testid !== 'composer-input',
+        `①-c 记忆=${form.label}:第三下又出来了,焦点仍然进得去`,
+        `(此刻在 [${landedAgain.testid ?? '—'}])`,
+      )
+      await assertNoOrphan(page, `①-c 记忆=${form.label} 三连按之后`)
+    }
+    await filesBackToDock()
 
     await app.close()
     app = undefined

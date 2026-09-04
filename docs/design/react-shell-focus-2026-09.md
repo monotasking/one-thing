@@ -317,6 +317,7 @@ R1 与 R2 各一批,不合并(R1 守的是"行为不变",R2 才带可感知变�
 | 5 | **`float-handwritten` 只退役了 Esc 半边**,点外关半边留着。 | **有意偏离,已记** | 设计 §8 原文是「现有 `float-handwritten` 规则退役(**被 I2 覆盖**)」,而括号里那句理由只对 keydown 那半边成立:I2 判的是 `keydown`,`pointerdown` 一个字没覆盖。整条退役 = 白丢「浮层点外关单产地」这一格执法,而那条禁令在 `apps/desktop-react/CLAUDE.md` 里仍然立着。判词写在 `scripts/ui-consume-check.mjs` 规则 ⑥ 的文件注释里。 |
 | 6 | **七块面没有自己的 `FocusScope` region**(workspace / apps / notifications / providers / diff / terminal / browser)。 | **开着(读数已量,是不是要补 region 留给下一批)** | 09-04 S2 读数(隔离 store,键盘召唤逐块量):焦点落在**装着它的那一层**的根上(`<section tabIndex=-1>`),活动路径 `[root, <某>-layer]`,I1 不破;按一下 Tab 就进到那一层里的第一个可聚焦控件(浮窗形是檐上那三颗 IconButton),**键盘可用**。所以这不是一条 bug,是「这块面没有自述落点」的自然后果:它拿不到局部键表、`restingTarget` 也无从声明。给它们各补一格 region 是一次**声明**上的扩表(`focus/scopes.ts` 加行 + labelKey 成对),不是修 bug,本批不做。 |
 | 7 | **`useFocusScopeActive()` 生产代码里零消费者**(壳里四个用响应链的组件都只要 `activate`)。 | **有意留着,已记** | 09-04 S2 把订阅从 `useFocusScope()` 拆出去时留下的。它与留账里那种「多出来的第二个口」不同:它是设计 §4.2「我是不是当前」这个问题**仅有的**正确答案,删了下一个真需要这个布尔的人就会回去写 `ref.current.contains(document.activeElement)` —— 那正是这条链立法要治的东西。语义由 `focus/__tests__/FocusScope.test.tsx` 两组用例钉着。 |
+| 8 | **落定跟焦的那扇 250ms 窄口**(09-04 `stage/focus-follow.ts` 的 `FOCUS_FOLLOW_SETTLE_MS`):送进去之后的四分之一秒里,只要焦点不在那块面里、树又变了一下,就再送一次。 | **有意的取舍,已记** | 它治的是「那一层刚挂上来又被重挂一次」(判词与读数在 §14 的 09-04 那段)。代价:这四分之一秒里若有别的东西把焦点挪走,会被抢回来一次。按键之后的 250ms 里人手挪不动焦点,而程序里今天没有第二个人在这个时刻搬焦点 —— 所以这条代价目前不可观测;要是哪天真撞上了,判据在那只 effect 里一处,窄口改小或改成「只认新实例登记」都是一行。 |
 
 ## 14. 召唤三态(S1,09-03 用户提出;第四格先拍 (a) 回去,同日改判 (b) 隐藏)
 
@@ -348,6 +349,47 @@ R1 与 R2 各一批,不合并(R1 守的是"行为不变",R2 才带可感知变�
 「看得见」的判据只有一个产地:`stage/transitions` 已有的可见性查询(ExposeView 的 live / EdgeShelf 的 on 都从它读),summon 不另写第二份。
 
 **门**:`gate-focus` 加场景 13(四态各一步:Dock→召唤开+焦点进;钉架子切走 tab→召唤露出+焦点进;焦点在输入框→召唤只聚焦、placements 字节不变;焦点在面里→隐藏:钉边形收起整条架子(placements 字节不变、shelves[side].collapsed 翻真、面仍是 activeId)/ 浮窗形回 Dock(placements 少一条);两形焦点都回输入框、不落隔壁 tab)。
+
+── **09-04 结案:「第一下出现、第二下没反应、第三下才隐藏」** ────────────────────
+用户 09-04 报:键盘召唤工作区面,第一下面出现、第二下没反应、第三下才隐藏。读法一句:
+第二下落在「看得见、焦点不在它里面」那一格(只聚焦,而这些面没有自己的 region、
+焦点落在层根上不画环,所以无声),第三下才轮到隐藏 —— 也就是**第一下的焦点没跟进去**。
+
+**编排时的假设被真机证伪**。假设是「记忆那条路上 store 连写两次以上,而点名
+(`requestFocusOnOpen`)被第一次 set 吃掉」。隔离 store + 独立 user-data-dir 逐形量
+(记忆 = 缺省浮窗 / 浮窗 / 舞台 / 盖 / 钉边-架子里只有它 / 钉边-架子上另有活动 tab-展开 /
+同前但整条收着,外加 12 块面各按一遍):**每一形都只有一次 set 带着点名**,
+`focusFollowTarget` 每一形都答得出目标,`activateScope` 每一形都答 `true`,焦点每一形
+都跟过去了。连写两次的那一形确实存在(收着的架子 + 活动 tab 是别人 → 先
+`activateShelfTab` 再 `toggleShelfCollapsed`),但第一次 set 就已经由「切 tab」那一档
+答出了同一个目标,所以它也没病。用户自己那台机器的账也读了(`onething.stage`):
+`workspace` 的记忆就是**浮窗**,四条架子全空 —— 与假设指的那一形无关。
+
+**真因是「那一层刚挂上来就被重挂了一次」**。用户跑的是 dev 壳(账本的 origin 是
+`http://127.0.0.1:5175`),而 `main.tsx` 外面套着 `<StrictMode>`:开发期 React 会给每个
+**新挂载**的组件模拟一遍「卸载 → 再挂载」。于是这一串:`focus-follow` 在提交之后
+`activateScope` 把焦点送进那一层(答 true)→ StrictMode 模拟卸载 → `unregister` →
+结构归还(§4.5 `returnTo` → 父链)把焦点送回按键之前那个输入框 → 再挂载 →
+**没有人再叫它**(点名是一次性的,早被消费掉了)。读数:dev 壳上 12 块面里 **10 块**
+开出来之后 `activeElement` 又是 `composer-input`,只有自己声明 `activateOnMount` 的
+检索面与总览幸免;同一份代码的**生产构建全绿**(StrictMode 在生产 React 里是空操作),
+把 `<StrictMode>` 摘掉再量 dev 也全绿 —— 两条反证互相对上。
+
+**修法**:`focus-follow` 那只 effect 送完不撒手 —— 窄口(`FOCUS_FOLLOW_SETTLE_MS` =
+250ms)内订阅树的变化,焦点不在那块面里就再送一次,送进去了就收手(`settled`)。
+判据仍在那一处唯一的接线里,`summon` / store / 纯函数一个字没动。守它的是
+`stage/__tests__/focus-follow-settle.test.tsx`:用 `key` 换值造出**同一串树操作**
+(`unregister` → 归还 → `register`)——守的是「这一层重挂了一次」这件事,不是
+「StrictMode」,所以它在生产构建里同样成立(换宿主 / 错误边界重试 / 换工作区 / 热更
+走的都是这一串)。
+
+**门补两处**:①-a 从「按一下」扩成**三连按**(出现 / 隐藏 / 再出现 —— 用户数的正是
+这三下);新增 **①-c 位置记忆四形**(弹窗 / 浮窗 / 盖满 / 钉右边,种在 files 上,
+因为工作区那块瓦的右键是快切表、没有「打开方式」),把 `openFromMemory` 的四条支路
+各走一遍 —— 从前这道门只量过「新 store 的缺省档」,这正是编排时那句假设无人能证伪的
+原因。①-c 排在场景 14 的**最后**:它的拆台是栏头那颗 X(`closeShelf`),排在前面会把
+② / ④-b 的夹具一起收掉。**这道门跑的是生产构建,所以它照不出上面那条 StrictMode 的病**
+(改前改后都绿);照得出它的是那组 jsdom 用例与 dev 壳的真机读数。
 
 ## 13. 证据索引(勘察 09-02)
 
