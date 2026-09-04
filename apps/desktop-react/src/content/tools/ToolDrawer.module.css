@@ -65,3 +65,27 @@
   font-size: var(--fs-meta);
   color: var(--text-4);
 }
+
+/*
+ * 活输出(C2-b,§6.2「执行中」列)。
+ *
+ * 它**不是代码块**:代码块有檐、有复制、有语言标签,而这段文字随时会被下一份
+ * 快照整段替换 —— 给一段随时消失的读数配一整套块壳,是把读数当成果。
+ *
+ * 几何:限高 + 纵滚(`--tool-progress-tail-max`),`overscroll-behavior: contain`
+ * 挡住滚到底之后把外面那条聊天流带走(全仓同一条)。横向不滚 —— 输出是要读的,
+ * 横滚会把它变成要拖的(与上面 `.argValue` 同一条判)。
+ */
+.liveOutput {
+  max-height: var(--tool-progress-tail-max);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  /* 与代码块同一个行距(1.6):同是 mono 的多行文本,两处读起来该一样。 */
+  line-height: 1.6;
+  color: var(--text-3);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   appendTail,
+  applyToolProgress,
   tailTextLength,
   feedTail,
   feedTailToolArgs,
@@ -608,5 +609,94 @@ describe('overlay:以折叠为准的认领', () => {
         message({ id: 'm2', role: 'user' }),
       ]),
     ).toEqual(['m1', 'm2'])
+  })
+})
+
+
+/* ── C2-b:工具进度活流 ─────────────────────────────────────────────────── */
+
+const executingCall = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  toolId: 'bash',
+  toolName: 'bash',
+  arguments: { command: 'seq 1 20' },
+  status: 'executing',
+  timestamp: 1_000,
+  startTime: 1_000,
+  ...over,
+})
+
+describe('applyToolProgress:快照,替换不拼接', () => {
+  it('后一条整条盖掉前一条 —— outputTail 不是追加缓冲', () => {
+    let tail = applyToolProgress(undefined, 'a1', 'c1', { outputTail: '1\n2' }, 100)
+    tail = applyToolProgress(tail, 'a1', 'c1', { outputTail: '19\n20' }, 200)
+    expect(tail?.progress.c1).toEqual({ value: { outputTail: '19\n20' }, at: 200 })
+  })
+
+  it('**不必先建过卡** —— 进度在执行中到达,那时尾巴里那张卡早就退役了', () => {
+    const tail = applyToolProgress(undefined, 'a1', 'c1', { message: 'seq 1 20' }, 100)
+    expect(tail?.tools).toEqual([])
+    expect(tail?.progress.c1?.value).toEqual({ message: 'seq 1 20' })
+  })
+
+  it('参数还在流的那一段里来了进度:那张卡的 lastDeltaAt 一并推到此刻', () => {
+    let tail = startTailTool(undefined, 'a1', 'c1', 'bash', 1_000, 100)
+    tail = applyToolProgress(tail, 'a1', 'c1', { message: 'x' }, 350)
+    expect(tail?.tools[0].lastDeltaAt).toBe(350)
+  })
+
+  it('没有 messageId / toolCallId 的一条原样交回,不新开尾巴', () => {
+    expect(applyToolProgress(undefined, '', 'c1', { message: 'x' })).toBeUndefined()
+    expect(applyToolProgress(undefined, 'a1', '', { message: 'x' })).toBeUndefined()
+  })
+})
+
+describe('appendTail:进度盖在账本那次调用上', () => {
+  it('执行中的那一次拿到 progress,liveAt 推到收到进度的时刻', () => {
+    const list = [message({ id: 'a1', toolCalls: [executingCall('c1')] as never })]
+    const tail = applyToolProgress(undefined, 'a1', 'c1', { outputTail: '19\n20', ratio: 0.95 }, 5_000)
+    const [painted] = appendTail(list, tail)
+    const call = painted.toolCalls![0] as { progress?: unknown; liveAt?: number }
+    expect(call.progress).toEqual({ outputTail: '19\n20', ratio: 0.95 })
+    expect(call.liveAt).toBe(5_000)
+  })
+
+  it('**收场了的调用不盖** —— 那一行该说成果,不该挂一句关于过去的现在时', () => {
+    const list = [
+      message({ id: 'a1', toolCalls: [executingCall('c1', { status: 'completed' })] as never }),
+    ]
+    const tail = applyToolProgress(undefined, 'a1', 'c1', { outputTail: '19\n20' }, 5_000)
+    const [painted] = appendTail(list, tail)
+    expect((painted.toolCalls![0] as { progress?: unknown }).progress).toBeUndefined()
+  })
+
+  it('一格没盖 = 整条消息**按引用**原样交回(下游 memo 认的就是它)', () => {
+    const list = [
+      message({ id: 'a1', toolCalls: [executingCall('c1', { status: 'completed' })] as never }),
+    ]
+    const tail = applyToolProgress(undefined, 'a1', 'c9', { outputTail: 'x' }, 5_000)
+    expect(appendTail(list, tail)[0]).toBe(list[0])
+  })
+
+  it('账本换了一份进度 = 换了引用:少了这一条,那一行的摘要逐帧在变而屏幕一动不动', () => {
+    const list = [message({ id: 'a1', toolCalls: [executingCall('c1')] as never })]
+    const first = appendTail(list, applyToolProgress(undefined, 'a1', 'c1', { outputTail: 'a' }, 1))[0]
+    const second = appendTail(list, applyToolProgress(undefined, 'a1', 'c1', { outputTail: 'b' }, 2))[0]
+    expect(first).not.toBe(second)
+    expect((second.toolCalls![0] as { progress?: { outputTail?: string } }).progress?.outputTail).toBe('b')
+  })
+})
+
+describe('handOverToLedger:进度不随交接退役', () => {
+  it('账本认领了这次调用,那张卡没了,而进度那张表还在', () => {
+    let tail = startTailTool(undefined, 'a1', 'c1', 'bash', 1_000, 100)
+    tail = applyToolProgress(tail, 'a1', 'c1', { outputTail: '1' }, 200)
+    const lens: FoldLens = { content: 0, reasoningTop: 0, reasoningInline: 0 }
+    const { tail: next } = handOverToLedger(tail, lens, {
+      ...lens,
+      ledgerToolCallIds: new Set(['c1']),
+    })
+    expect(next?.tools).toEqual([])
+    expect(next?.progress.c1?.value).toEqual({ outputTail: '1' })
   })
 })

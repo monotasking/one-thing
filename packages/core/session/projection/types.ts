@@ -53,10 +53,32 @@ export interface ProjectedToolCall {
    */
   liveAt?: number
   /**
+   * **执行中的过程读数**(C2-b,`apps/desktop-react/docs/workbench-2026-09.md`
+   * §6.2 表「执行中」列)。
+   *
+   * 与上面那个 `liveAt` 同一条纪律,理由也同一条:它**不进账本** —— 「此刻跑到
+   * 第 7 行」是过程,不是会话的事实;重开会话看到的是结局。产地是
+   * `tool-progress` 那条只走 StreamChannel 的 chunk,折叠从不产出这一格,
+   * 是壳把活流那一份**盖**在账本那次调用上。
+   *
+   * 快照语义:后一条整条替换前一条,不追加。
+   */
+  progress?: ProjectedToolProgress
+  /**
    * edit/write 的结构化 diff(`CoreToolCallChangesLike`,§13.17)。工具卡的 diff
    * 视图读它;`tool/result.changes` 物化出来的那一份。不透明,不含 originalContent。
    */
   changes?: unknown
+}
+
+/** 一次调用此刻的过程读数(C2-b)。三格全可选:工具报得出哪格才有哪格。 */
+export interface ProjectedToolProgress {
+  /** 一句话:此刻在干什么。 */
+  message?: string
+  /** 已完成比例 ∈ [0,1]。算不出就缺席 —— 假进度条比没有更糟。 */
+  ratio?: number
+  /** 此刻最后几行给人看的输出(整段替换,不追加)。 */
+  outputTail?: string
 }
 
 export type ProjectedStepStatus =

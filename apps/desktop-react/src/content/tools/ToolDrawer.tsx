@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useT } from '../../i18n'
 import { BlockView } from '../blocks/BlockView'
 import { blockKey } from '../assemble'
 import type { BlockCtx } from '../blocks/registry'
 import type { ProjectedToolCall } from '../model/segments'
+import type { ToolProgress } from './card'
 import { resolveToolPresenter } from './presenter'
 import s from './ToolDrawer.module.css'
 
@@ -28,6 +29,7 @@ export function ToolDrawer({
   call,
   ctx,
   live = false,
+  progress,
 }: {
   call: ProjectedToolCall
   ctx: BlockCtx
@@ -36,9 +38,17 @@ export function ToolDrawer({
    *
    * 它只改**空态那句话**:「这次调用没有留下结果」是给收场了的调用说的,
    * 对一条正在跑的调用说这句话是**说错**(它还没到留下结果的时候)。
-   * 正在长的输出要等 C2-b 的 tool-progress 活流,那之前这里诚实地说「还没有输出」。
+   * 正在长的输出由 C2-b 的 `progress` 那一格摆出来(下面「实时输出」一节)。
    */
   live?: boolean
+  /**
+   * 这次调用**此刻**的过程读数(C2-b)。
+   *
+   * 它是**读数不是结果**:每来一份快照整段替换,不进账本,收场那一刻整节消失
+   * (结果那一节接手)。所以它单独一节、单独一套样式,不混进「结果」那一节 ——
+   * 混进去等于让一段随时会被替换掉的文字冒充这次调用的产出。
+   */
+  progress?: ToolProgress
 }) {
   const t = useT()
 
@@ -49,6 +59,8 @@ export function ToolDrawer({
 
   // 抽屉里的块与正文里的块共用 key 的派生规则,只是段身份换成了这次调用。
   const keyBase = `tool:${call.id}`
+
+  const tail = live ? progress?.outputTail : undefined
 
   return (
     <div className={s.drawer}>
@@ -66,6 +78,13 @@ export function ToolDrawer({
         </section>
       )}
 
+      {tail && (
+        <section className={s.section}>
+          <h4 className={s.label}>{t('chat.tool.liveOutput')}</h4>
+          <LiveOutput text={tail} />
+        </section>
+      )}
+
       <section className={s.section}>
         <h4 className={s.label}>{t('chat.tool.result')}</h4>
         {blocks.length === 0 ? (
@@ -78,6 +97,46 @@ export function ToolDrawer({
         )}
       </section>
     </div>
+  )
+}
+
+/**
+ * 活输出那一小块:**限高 + 新行到达时跟到底**。
+ *
+ * ── 跟底判据 ──────────────────────────────────────────────────────────
+ * 「新行到达前**此前是贴底的**」才跟 —— 用户自己往上翻了就别把他拽回去,那是
+ * 这台上所有跟随滚动共用的一条判(C1 的消息跟随会把这条判据抽成公用件,
+ * **归并待办留账在这里**:那时这个组件改成消费它,判据一个字不用变)。
+ *
+ * 量「此前贴底没有」必须在 DOM 改之前(`useLayoutEffect` 的上一轮结束时已经晚了),
+ * 所以用一个 ref 记住上一次渲染后的贴底状态,`useLayoutEffect` 里读它再决定跟不跟。
+ */
+function LiveOutput({ text }: { text: string }) {
+  const ref = useRef<HTMLPreElement | null>(null)
+  const wasAtBottom = useRef(true)
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (wasAtBottom.current) el.scrollTop = el.scrollHeight
+  }, [text])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      // 2px 余量:亚像素与缩放会让「正好贴底」量出 0.5px 的差。
+      wasAtBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 2
+    }
+    measure()
+    el.addEventListener('scroll', measure, { passive: true })
+    return () => el.removeEventListener('scroll', measure)
+  }, [])
+
+  return (
+    <pre className={s.liveOutput} ref={ref} data-tool-live-output="true">
+      {text}
+    </pre>
   )
 }
 

@@ -583,3 +583,123 @@ describe('停止:忙判据只有一个产地,发出去之后壳不动屏幕', ()
     expect(useNotifyStore.getState().items).toEqual([])
   })
 })
+
+
+/**
+ * C2-b:**工具进度活流**在两条车道之前分流。
+ *
+ * 要证的只有一件事:一条 `tool-progress` chunk 从推送口进来,最后盖在**账本那次
+ * 调用**上(而不是新画一张卡、也不是被 messageId 闸 / R2 的身份章闸吃掉)。
+ */
+describe('工具进度活流(C2-b)', () => {
+  const partEnd = (seq: number, runId: string, messageId: string, callId: string): Ledger => ({
+    seq,
+    time: T0,
+    type: 'assistant/part-end',
+    data: {
+      runId,
+      requestIndex: 0,
+      messageId,
+      partIndex: 0,
+      kind: 'tool-input',
+      toolCallId: callId,
+      toolName: 'bash',
+      len: 22,
+      hash: 'h',
+    },
+  })
+
+  const toolCall = (seq: number, runId: string, messageId: string, callId: string): Ledger => ({
+    seq,
+    time: T0,
+    type: 'tool/call',
+    data: { callId, name: 'bash', argumentsRaw: '{"command":"seq 1 20"}', messageId, runId },
+  })
+
+  const callOf = (messageId: string) =>
+    (state().messages.find(m => m.id === messageId)?.toolCalls ?? [])[0] as
+      | { id: string; progress?: { outputTail?: string; ratio?: number } }
+      | undefined
+
+  const ledger = (): Ledger[] => [
+    created(1),
+    userMessage(2, 'm1', '跑一下'),
+    runStart(3, 'r1', 'a1'),
+    partEnd(4, 'r1', 'a1', 'c1'),
+    toolCall(5, 'r1', 'a1', 'c1'),
+  ]
+
+  it('一条进度盖到账本那次调用上(**不带身份章**也照样收 —— 它不是正文)', async () => {
+    const h = harness(ledger())
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({
+      sessionId: SESSION,
+      chunk: {
+        type: 'tool-progress',
+        toolCallId: 'c1',
+        messageId: 'a1',
+        outputTail: '18\n19\n20',
+        ratio: 0.95,
+      } as never,
+    })
+    await settle()
+
+    expect(callOf('a1')?.progress).toEqual({ outputTail: '18\n19\n20', ratio: 0.95 })
+  })
+
+  it('快照:后一条整条替换前一条', async () => {
+    const h = harness(ledger())
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    for (const tail of ['1\n2', '9\n10', '19\n20']) {
+      h.emitStream({
+        sessionId: SESSION,
+        chunk: { type: 'tool-progress', toolCallId: 'c1', messageId: 'a1', outputTail: tail } as never,
+      })
+    }
+    await settle()
+    expect(callOf('a1')?.progress?.outputTail).toBe('19\n20')
+  })
+
+  it('没有 messageId 的一条被闸吃掉(合批器直送那一支负责盖上它)', async () => {
+    const h = harness(ledger())
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({
+      sessionId: SESSION,
+      chunk: { type: 'tool-progress', toolCallId: 'c1', outputTail: 'x' } as never,
+    })
+    await settle()
+    expect(callOf('a1')?.progress).toBeUndefined()
+  })
+
+  it('这一轮收尾:进度随尾巴 / 水位一起丢(重开会话只见结局)', async () => {
+    const h = harness(ledger())
+    configureChatPort(h.port)
+    await state().open(SESSION)
+    await settle()
+
+    h.emitStream({
+      sessionId: SESSION,
+      chunk: { type: 'tool-progress', toolCallId: 'c1', messageId: 'a1', outputTail: '20' } as never,
+    })
+    await settle()
+    expect(callOf('a1')?.progress?.outputTail).toBe('20')
+
+    h.emitEvent({
+      sessionId: SESSION,
+      sequence: 9,
+      timestamp: T0,
+      event: { type: SESSION_EVENT_TYPES.STREAM_COMPLETE, messageId: 'a1', data: {} } as never,
+    })
+    await settle()
+    expect(callOf('a1')?.progress).toBeUndefined()
+  })
+})

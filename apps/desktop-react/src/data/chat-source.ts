@@ -11,6 +11,7 @@ import type { SessionStreamPayload } from '@shared/events/envelope'
 import { coreRenderMessageHasToolWork } from '@onething/core/session/render-anchors'
 import {
   appendTail,
+  applyToolProgress,
   feedTail,
   feedTailToolArgs,
   reconcileOverlay,
@@ -702,6 +703,9 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       turnIndex?: number
       toolCallId?: string
       argsTextDelta?: string
+      ratio?: number
+      outputTail?: string
+      message?: string
       stamp?: import('@shared/events/index.js').StreamDeltaStamp
     }
     const messageId = chunk?.messageId
@@ -720,6 +724,29 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       chunk.type === 'tool-input-delta'
     ) {
       lastDelta = { messageId, at: Date.now() }
+    }
+    /*
+     * ── C2-b 工具进度:**两条车道之前分流** ────────────────────────────
+     *
+     * 分在这里而不是各分一次,理由是它与下面那道 `STREAM_R2` 分叉说的不是同一
+     * 件事:R2 分的是「正文这一截归水位表还是归活尾巴」,而进度**不是正文** ——
+     * 它不带身份章、不进水位、不参与前缀定律,两条路要的是同一份读数。
+     *
+     * `messageId` 那道闸在它之前(合批器的直送分支替旁路 chunk 盖了那一格,
+     * 见 `stream-coalescer.ts` 的 bufferable 表旁注)—— 没盖上的一条本来就没法
+     * 落到任何一条消息上。
+     */
+    if (chunk.type === 'tool-progress') {
+      if (!chunk.toolCallId) return
+      const progress = {
+        ...(chunk.message !== undefined ? { message: chunk.message } : {}),
+        ...(chunk.ratio !== undefined ? { ratio: chunk.ratio } : {}),
+        ...(chunk.outputTail !== undefined ? { outputTail: chunk.outputTail } : {}),
+      }
+      if (STREAM_R2) water?.feedToolProgress(messageId, chunk.toolCallId, progress)
+      else tail = applyToolProgress(tail, messageId, chunk.toolCallId, progress)
+      schedulePush()
+      return
     }
     const hasContent = get().messages.some(
       (message) => message.id === messageId && Boolean(message.content),

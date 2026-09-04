@@ -32,7 +32,7 @@ import type {
   RuntimeVariableSetInput,
 } from '../index.js'
 import type { BashOperations } from '../../tools/bash-executor.js'
-import { IpcProjector, splitResultContent, stepFromEvent } from '../ipc-observer.wiring.js'
+import { IpcProjector, splitResultContent, stepFromEvent, toolProgressFromEvent } from '../ipc-observer.wiring.js'
 
 // ── 夹具 ────────────────────────────────────────────────────────────────────
 
@@ -397,4 +397,50 @@ describe('IpcProjector · bash 后台句柄', () => {
     expect(data.output).toContain('Log file: /tmp/bg-1.log')
     expect(spawned[0]?.owner).toEqual({ sessionId: 'test-session', toolCallId: 'test-call' })
   }, 10_000)
+})
+
+
+// ── C2-b:progress 有了自己的出口 ──────────────────────────────────────────
+
+describe('IpcProjector · progress(C2-b)', () => {
+  const invocation = {
+    callId: 'test-call',
+    toolId: 'bash',
+    input: {},
+    sessionId: 'test-session',
+    messageId: 'test-message',
+  } as Invocation
+
+  it('progress 从 default 里捞出来了 —— 它不再被静默丢弃', () => {
+    const seen: unknown[] = []
+    const projector = new IpcProjector({ onProgress: update => seen.push(update) })
+    projector.on(invocation, { type: 'progress', message: 'seq 1 20', outputTail: '18\n19\n20', ratio: 0.95 })
+    expect(seen).toEqual([{ message: 'seq 1 20', ratio: 0.95, outputTail: '18\n19\n20' }])
+  })
+
+  it('只搬三格,不补一格:metadata 不跟着出去,缺席的格子也不补默认值', () => {
+    expect(toolProgressFromEvent({ type: 'progress', message: 'x', metadata: { a: 1 } })).toEqual({
+      message: 'x',
+    })
+    expect(toolProgressFromEvent({ type: 'progress', ratio: 0 })).toEqual({ ratio: 0 })
+  })
+
+  it('不接 onProgress 的宿主照旧 —— 一条都不发,也不抛', () => {
+    const other: unknown[] = []
+    const projector = new IpcProjector({ onMetadata: update => other.push(update) })
+    expect(() => projector.on(invocation, { type: 'progress', message: 'x' })).not.toThrow()
+    expect(other).toEqual([])
+  })
+
+  it('progress 不走 partial / metadata 那两个出口(它不是结果)', () => {
+    const partial: unknown[] = []
+    const metadata: unknown[] = []
+    const projector = new IpcProjector({
+      onPartialResult: update => partial.push(update),
+      onMetadata: update => metadata.push(update),
+    })
+    projector.on(invocation, { type: 'progress', message: 'x', outputTail: 'y' })
+    expect(partial).toEqual([])
+    expect(metadata).toEqual([])
+  })
 })

@@ -156,13 +156,32 @@ export class BashTool extends ProcessTool<BashInput, BashPayload> {
       timeoutMs,
       maxBytes: MAX_OUTPUT_LENGTH,
       tempFilePrefix: 'bash',
-      onSnapshot: snapshot => ctx.emit({
-        type: 'partial',
-        result: {
-          content: [{ type: 'text', text: formatProcessOutput(snapshot, '') }],
-          details: this.snapshotDetails(snapshot),
-        },
-      }),
+      onSnapshot: snapshot => {
+        /*
+         * `partial` 照旧发 —— 它交的是「已经能给模型看的一份结果」,
+         * `runner.ts` 的取消兜底靠的正是它(半截结果好过没有结果)。
+         */
+        ctx.emit({
+          type: 'partial',
+          result: {
+            content: [{ type: 'text', text: formatProcessOutput(snapshot, '') }],
+            details: this.snapshotDetails(snapshot),
+          },
+        })
+        /*
+         * C2-b **追加**一条进度 —— 给屏幕上那一行工具卡看的读数,不是结果。
+         *
+         * `message` 是命令(执行中那一行的摘要在没有输出时退到它),`outputTail`
+         * 是此刻的**尾几行**:一条命令可能吐几万行,整段推上去等于把工具输出
+         * 再走一遍推屏管道。尾几行正是「它此刻在干什么」的答案。
+         * `ratio` 不给 —— 一条命令跑到哪儿了没人知道,编一个比例是说谎。
+         */
+        ctx.emit({
+          type: 'progress',
+          message: command,
+          outputTail: lastLines(snapshot.content, PROGRESS_TAIL_LINES),
+        })
+      },
     })
 
     let output = formatProcessOutput(run.snapshot)
@@ -190,6 +209,21 @@ export class BashTool extends ProcessTool<BashInput, BashPayload> {
     })
     return { content: [{ type: 'text', text: output }], details: metadata }
   }
+}
+
+/**
+ * 进度读数上摆几行输出(C2-b)。
+ *
+ * 三行是**一行工具卡摆得下的量**:卡上收起态只画最后一行,抽屉里画全部 ——
+ * 三行让抽屉在「看得到上下文」与「不把推屏管道当输出管道」之间落在中间。
+ */
+const PROGRESS_TAIL_LINES = 3
+
+/** 取末尾几行(末尾的空行不算一行 —— 那是行尾的换行,不是一行输出)。 */
+function lastLines(text: string, count: number): string {
+  if (!text) return ''
+  const lines = text.replace(/\n+$/, '').split('\n')
+  return lines.slice(-count).join('\n')
 }
 
 export function createBashTool(adapters: BashToolAdapters): BashTool {

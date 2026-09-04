@@ -346,6 +346,10 @@ export const en: Record<MessageKey, string> = {
   /* Executing steps can be expanded now (C2-a): they have not left a result yet —
    * saying "left no result" about a call still running would simply be wrong. */
   'chat.tool.noOutputYet': 'No output yet',
+  /* C2-b: the live output a still-running tool is reporting right now. It is a
+   * readout, not the result — it is replaced wholesale by each new snapshot and
+   * never lands in the ledger. */
+  'chat.tool.liveOutput': 'Live output',
   /* Liveness readouts (§6.6). The shell only ever states how long the silence has
    * lasted; "stuck" is never the shell's verdict — that is the engine's timeout. */
   'chat.tool.stallArgs': 'no new characters for {n}s',

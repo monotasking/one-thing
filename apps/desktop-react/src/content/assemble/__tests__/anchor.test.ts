@@ -241,3 +241,41 @@ describe('多轮工具:活尾巴那一段落在它那一轮的工具之后', () 
     expect(anchorMessage(midFlight()).map((node) => node.node)).toEqual(['text', 'tool'])
   })
 })
+
+
+/**
+ * **一次调用只有一张表**(C2-b 改的那一格)。
+ *
+ * `step.toolCall` 与 `message.toolCalls[i]` 是投影分两次物化出来的**两个对象**
+ * (`materializeStep` 自己又调了一次 `materializeToolCall`)。内容逐格相同,所以
+ * 从前读哪一份都一样 —— 直到有人往其中一份上写东西:C2-b 的活流进度按 id 盖在
+ * **表**那一份上,而这条链从前读的是 step 上那一份,于是屏幕上一条进度都看不到
+ * (真机读数:20 条 `tool-progress` 全部到达渲染层,而执行中那一行一帧没变)。
+ */
+describe('一次调用只有一张表(C2-b)', () => {
+  it('表里那一份**压过** step 上那一份 —— 活流盖上去的字段读得到', () => {
+    const withProgress = call('c1', { status: 'executing', progress: { outputTail: 'line 20' } })
+    const nodes = anchorMessage(
+      message({
+        contentParts: [{ type: 'text', content: '嗯', turnIndex: 0 }],
+        // step 上那一份是**没有 progress 的旧影子**(投影分两次物化的另一个对象)。
+        steps: [step('c1', 0)],
+        toolCalls: [withProgress],
+      } as Partial<ProjectedMessage>),
+    )
+    const tool = nodes.find((node) => node.node === 'tool')
+    expect(tool).toMatchObject({ node: 'tool', call: { id: 'c1' } })
+    expect((tool as { call: { progress?: unknown } }).call.progress).toEqual({ outputTail: 'line 20' })
+  })
+
+  it('表里没有它才退回 step 上那一份 —— 一张卡都不许少', () => {
+    const nodes = anchorMessage(
+      message({
+        contentParts: [{ type: 'text', content: '嗯', turnIndex: 0 }],
+        steps: [step('c1', 0)],
+        toolCalls: [],
+      } as Partial<ProjectedMessage>),
+    )
+    expect(nodes.flatMap((node) => (node.node === 'tool' ? [node.call.id] : []))).toEqual(['c1'])
+  })
+})

@@ -280,6 +280,16 @@ export class SessionStreamCoalescer {
       return
     }
 
+    /*
+     * 攒得起来的**只有追加语义**那几条:一批 delta 是同一段文字的连续几截,
+     * 并起来还是同一段文字。
+     *
+     * C2-b 的 `tool-progress` **故意不在这张表里**:它是**快照**不是追加,同一个
+     * `toolCallId` 后来的一条整条替换前一条。攒进缓冲会做两件错事 —— 把 N 条
+     * 快照当成 N 截内容一起送(消费者只用得上最后一条),以及让「此刻跑到哪」
+     * 慢 16ms 到屏。产地自己带节拍(bash 的输出快照 100ms 一次),不需要合批器
+     * 替它省流量。所以它走下面那条直送分支,并在那里盖上 messageId。
+     */
     const bufferable = chunk.type === 'text-delta'
       || chunk.type === 'reasoning-delta'
       || chunk.type === 'tool-input-delta'

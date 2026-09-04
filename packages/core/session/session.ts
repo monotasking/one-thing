@@ -164,6 +164,19 @@ export class Session {
       case 'tool-input-delta':
         // Phase 1: tool input deltas don't contribute to accumulated content
         break
+
+      /*
+       * C2-b 工具进度活流:**故意什么都不做**,这一条不是漏了。
+       *
+       * 进度是一次调用执行中的**过程读数**(输出尾行 / 比例 / 一句话),不是会话
+       * 的事实 —— 它不进 `events.jsonl`,也不该累进这里的任何一格。重开会话看到
+       * 的是结局,不是「当时跑到第 7 行」。三定律因此一格不动。
+       *
+       * 写成显式空 `case` 而不是让它落进 switch 外面:下一位读这段代码的人要能
+       * 一眼看出「这条 chunk 被想过、结论是不累加」,而不是怀疑少写了一支。
+       */
+      case 'tool-progress':
+        break
     }
   }
 }

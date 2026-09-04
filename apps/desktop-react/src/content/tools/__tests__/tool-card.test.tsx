@@ -621,3 +621,110 @@ describe('§6.2 参数生成中:命令逐字长,右端不写字', () => {
     expect(rowOf(container, 'c1').textContent).toContain('{"weird"')
   })
 })
+
+
+/* ═══ C2-b:执行中的过程读数上屏 ═══════════════════════════════════════ */
+
+describe('C2-b 工具进度活流:执行中那一行在动', () => {
+  const executing = (progress: Record<string, unknown> | undefined, patch: Record<string, unknown> = {}) =>
+    call('c1', 'bash', {
+      status: 'executing',
+      arguments: { command: 'seq 1 20' },
+      timestamp: T0,
+      startTime: T0,
+      liveAt: T0 + 50,
+      ...(progress ? { progress } : {}),
+      ...patch,
+    })
+
+  beforeEach(() => {
+    // 与上面那一组同一条:不钉时钟,活性读数会把这一行判成「静默了三十年」,
+    // 而静默那一级压过进度(有进度就不会静默 —— 这一条本身也值得钉,见末条)。
+    vi.useFakeTimers()
+    vi.setSystemTime(T0 + 120)
+  })
+
+  it('摘要 = outputTail 的**最后一行**', async () => {
+    const { container } = await draw([executing({ message: 'seq 1 20', outputTail: '18\n19\n20' })])
+    const row = rowOf(container, 'c1')
+    expect(row.textContent).toContain('20')
+    // 只摆最后一行,前面几行不上这一行(它们在抽屉里)。
+    expect(row.textContent).not.toContain('18')
+  })
+
+  it('没有输出就退到工具自述那一句', async () => {
+    const { container } = await draw([executing({ message: 'seq 1 20' })])
+    expect(rowOf(container, 'c1').textContent).toContain('seq 1 20')
+  })
+
+  it('一条进度都没有 = 今天的形(presenter 的参数摘要)—— 加性字段,不改旧行为', async () => {
+    const { container } = await draw([executing(undefined)])
+    expect(rowOf(container, 'c1').textContent).toContain('seq')
+  })
+
+  it('报了 ratio → 卡底缘那条进度条,width 跟着走;aria 读得出几成', async () => {
+    const { container } = await draw([executing({ outputTail: '10', ratio: 0.5 })])
+    const bar = container.querySelector('[data-tool-progress]') as HTMLElement
+    expect(bar).toBeTruthy()
+    expect(bar.getAttribute('aria-valuenow')).toBe('0.5')
+    // jsdom 把 `50.0%` 归一成 `50%` —— 归一前后是同一个值,断言按归一后写。
+    expect((bar.firstElementChild as HTMLElement).style.width).toBe('50%')
+  })
+
+  it('**没报 ratio 就没有那条条** —— 一条恒为 0 的条是造事实', async () => {
+    const { container } = await draw([executing({ outputTail: '10' })])
+    expect(container.querySelector('[data-tool-progress]')).toBeNull()
+  })
+
+  it('进度更新**不重挂那一行**,也不改卡高(§6.5 第 1 / 2 条)', async () => {
+    const view = await draw([executing({ outputTail: '1\n2' })])
+    const before = rowOf(view.container, 'c1')
+    const beforeHeight = (view.container.firstElementChild as HTMLElement).getAttribute('style')
+    view.rerender(
+      <ToolCard card={presentToolCard([executing({ outputTail: '19\n20' })])} ctx={ctx} />,
+    )
+    const after = rowOf(view.container, 'c1')
+    expect(after).toBe(before)
+    expect(after.textContent).toContain('20')
+    expect((view.container.firstElementChild as HTMLElement).getAttribute('style')).toBe(beforeHeight)
+  })
+
+  it('抽屉里摆 outputTail 的**全部行**(行上只摆最后一行)', async () => {
+    const { container } = await draw([executing({ outputTail: '18\n19\n20' })])
+    await open(rowOf(container, 'c1'))
+    const live = container.querySelector('[data-tool-live-output]') as HTMLElement
+    expect(live).toBeTruthy()
+    expect(live.textContent).toBe('18\n19\n20')
+  })
+
+  it('收场之后进度整节消失(结果那一节接手)', async () => {
+    // 命令里**不含**尾行那几个字,好让「行上不再有进度」这一条量得干净。
+    const { container } = await draw([
+      call('c1', 'bash', {
+        status: 'completed',
+        arguments: { command: 'echo hi' },
+        progress: { outputTail: 'ZZZ-tail-line' },
+        result: { output: 'hi' },
+      }),
+    ])
+    await open(rowOf(container, 'c1'))
+    expect(container.querySelector('[data-tool-live-output]')).toBeNull()
+    expect(rowOf(container, 'c1').textContent).not.toContain('ZZZ-tail-line')
+  })
+
+  it('静默那一级仍然压过进度(数据停了之后进度那句话就是假的)', async () => {
+    /*
+     * 静默是从「这台开始等它」算起的,所以要走一条真实时间线:先上屏,再推钟
+     * (直接把系统钟拨到未来再渲染,量到的是「刚开始看」= 零静默)。
+     */
+    vi.setSystemTime(T0)
+    const view = await draw([executing({ outputTail: 'ZZZ-tail-line' }, { liveAt: T0 })])
+    await act(async () => {
+      vi.advanceTimersByTime(6_000)
+    })
+    const row = rowOf(view.container, 'c1')
+    expect(row.getAttribute('data-tool-tone')).toBe('warn')
+    expect(row.textContent).toContain('没收到数据')
+    expect(row.textContent).not.toContain('ZZZ-tail-line')
+  })
+})

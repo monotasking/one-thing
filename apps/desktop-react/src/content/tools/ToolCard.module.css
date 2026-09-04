@@ -16,6 +16,9 @@
  */
 
 .toolCard {
+  /* 底缘那条进度条的定位基准(C2-b)。`overflow:hidden` 早就在了,所以它天然被
+   * 圆角裁住,不会在两个角上戳出来。 */
+  position: relative;
   border: 1px solid var(--line-1);
   border-radius: var(--r-2);
   background: var(--surface-2);
@@ -229,10 +232,37 @@ button.row:focus-visible {
 }
 
 /*
- * 进度条的位置(§6.2「工具报 ratio 时卡的底缘画一条 2px 进度条」)。
- * **C2-a 只留位置,不画**:今天没有任何工具报进度,画一条恒为 0 的条就是造事实。
- * 产地留在这里,C2-b 接上 tool-progress 活流时填这一格 + 一个 width 过渡。
+ * 底缘那条进度条(§6.2「工具报 ratio 时卡的底缘画一条 2px 进度条」,C2-b 填上)。
+ *
+ * ── 三条纪律 ──────────────────────────────────────────────────────────
+ *  · **绝对定位,不占布局**:画不画都不动卡高(§6.5 第 2 条几何锁)。ratio 从无
+ *    到有的那一帧,卡高一个像素都不变 —— 它不是第四处「换挡」。
+ *  · **只有 width 在动**:合成器上的一格,不触发排版。过渡用 `--dur`(不是自定
+ *    时长):进度条的走位与这台上别的「值在变」是同一种运动。
+ *  · **不画恒为 0 的条**:没有 ratio 时整个节点不存在(判在 `ToolCard.tsx`)。
+ *    底槽用 `--line-1` 而不是一个更显眼的面 —— 它是读数,不是组件。
  */
+.tbar {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: var(--tool-progress-h);
+  background: var(--line-1);
+}
+
+.tbarFill {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease-out);
+}
+
+/* 动效档 none / 系统降级:值当场就位,不走过去(与卡高 FLIP 同一条降级判)。 */
+@media (prefers-reduced-motion: reduce) {
+  .tbarFill {
+    transition: none;
+  }
+}
+
 
 /* ── 三态 + 一层活性覆盖:全部长在图标上 ─────────────────────────────── */
 

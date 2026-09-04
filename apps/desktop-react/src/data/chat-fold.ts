@@ -107,6 +107,20 @@ export interface TailToolCall {
   lastDeltaAt: number
 }
 
+/**
+ * 一次调用**执行中**的过程读数(C2-b)。快照:后一条整条替换前一条,不追加。
+ *
+ * 与账本那一份的关系写在 `packages/core/session/projection/types.ts` 的
+ * `ProjectedToolProgress` 上 —— 一句话:它不进账本,是壳把活流那一份盖上去的。
+ */
+export type ToolProgress = NonNullable<ProjectedCall['progress']>
+
+/** 尾巴手里那一条:摆给卡看的三格 + 收到它的**本机时刻**(§6.6 活性读数的写点)。 */
+export interface TailToolProgress {
+  value: ToolProgress
+  at: number
+}
+
 export interface Tail {
   messageId: string
   /** 按到达顺序的段(**只有文本**,段界来自流本身)。 */
@@ -115,6 +129,16 @@ export interface Tail {
   reasoningTop: string
   /** 参数还在流的调用,按到达序。账本一认领(`tool/call` 落账)就退役。 */
   tools: TailToolCall[]
+  /**
+   * 每次调用此刻的进度读数(键 = `toolCallId`,C2-b)。
+   *
+   * ── 为什么它**不挂在 `tools` 上** ────────────────────────────────────
+   * `tools` 是「参数还在流的调用」,账本一认领(`tool/call` 落账)就退役 ——
+   * 而进度恰恰在那之后才开始(参数收齐才轮到执行)。挂上去的那一格会在进度
+   * 到达前一刻被删掉,屏幕上一条都看不到。所以它是一张**与退役无关**的表,
+   * 随尾巴整条一起丢(这一轮收尾 = 账本是全的,过程读数按定义没用了)。
+   */
+  progress: Record<string, TailToolProgress>
 }
 
 /**
@@ -173,7 +197,7 @@ export function tailTextLength(tail: Tail | undefined): number {
 function openTail(current: Tail | undefined, messageId: string): Tail {
   return current?.messageId === messageId
     ? { ...current, segments: [...current.segments], tools: [...current.tools] }
-    : { messageId, segments: [], reasoningTop: '', tools: [] }
+    : { messageId, segments: [], reasoningTop: '', tools: [], progress: {} }
 }
 
 /**
@@ -226,6 +250,44 @@ export function feedTailToolArgs(
     lastDeltaAt: at,
   }
   return { ...current, tools }
+}
+
+/**
+ * 一条进度到了(`tool-progress`,C2-b)。
+ *
+ * 三条纪律,与 `feedTailToolArgs` 逐条对照着看:
+ *
+ *  · **替换不拼接**:进度是快照,后一条整条盖掉前一条(`outputTail` 是「此刻的
+ *    尾几行」,拼起来就成了整段输出的一份复制品,而那是结果不是读数);
+ *  · **不必先建过卡**:与参数流那条相反 —— 进度在**执行中**到达,那时账本早就
+ *    认领了这次调用、尾巴里那张卡已经退役。要求先建卡等于一条进度都收不到;
+ *  · **顺带推 `liveAt`**:活性读数的判据是「上一次收到这次调用的数据是什么时候」
+ *    (§6.6),而一条进度正是收到了数据。`card.ts` 的 `stepLiveAt` 因此一个字
+ *    都不用改 —— 它早就写着「会报进度的工具接进来之后由进度流继续往前推」。
+ *
+ * 尾巴不在场(账本已经收尾 / 换了消息)时**不新开一条**:开一条只装进度的尾巴
+ * 会让 `tailHostIndex` 把它认成「这条消息还在流」,那是说谎。
+ */
+export function applyToolProgress(
+  current: Tail | undefined,
+  messageId: string,
+  toolCallId: string,
+  progress: ToolProgress,
+  /** 收到这一条的**本机时刻**。默认此刻;测试传一个数就能钉住静默读数。 */
+  at: number = Date.now(),
+): Tail | undefined {
+  if (!messageId || !toolCallId) return current
+  const tail = openTail(current, messageId)
+  const index = tail.tools.findIndex((tool) => tool.id === toolCallId)
+  return {
+    ...tail,
+    progress: { ...tail.progress, [toolCallId]: { value: progress, at } },
+    // 参数还在流的那一段里也可能来进度(工具自己先报了一句),那时把这张卡的
+    // `lastDeltaAt` 一并推到此刻;卡已经退役就只剩上面那张表,由画的那一层盖。
+    tools: index < 0
+      ? tail.tools
+      : tail.tools.map((tool, i) => (i === index ? { ...tool, lastDeltaAt: at } : tool)),
+  }
 }
 
 /*
@@ -369,8 +431,19 @@ export function handOverToLedger(tail: Tail | undefined, covered: FoldLens, capa
   const ledgerIds = capacity.ledgerToolCallIds
   const tools = ledgerIds ? tail.tools.filter((tool) => !ledgerIds.has(tool.id)) : tail.tools
 
-  if (segments.length === 0 && !reasoningTop && tools.length === 0) return { tail: undefined, taken }
-  return { tail: { messageId: tail.messageId, segments, reasoningTop, tools }, taken }
+  /*
+   * 进度那张表**跟着尾巴走,不随交接退役**(C2-b):账本认领这次调用之后它才开始
+   * 报,`tools` 里那一格没了不代表进度该没。整条丢发生在这一轮收尾(chat-source
+   * 收到 stream-complete 就把尾巴丢掉)—— 那时账本是全的,过程读数按定义没用了。
+   *
+   * 三条车道都空、且**一条进度都没有**才算尾巴退场:剩一条进度就还有东西要画。
+   */
+  const progress = tail.progress
+  const hasProgress = Object.keys(progress).length > 0
+  if (segments.length === 0 && !reasoningTop && tools.length === 0 && !hasProgress) {
+    return { tail: undefined, taken }
+  }
+  return { tail: { messageId: tail.messageId, segments, reasoningTop, tools, progress }, taken }
 }
 
 type AnyPart = { type?: string; content?: string; turnIndex?: number }
@@ -551,9 +624,35 @@ export function appendTail(
     (tool) => !(message.toolCalls ?? []).some((call) => call.id === tool.id),
   )
 
+  /*
+   * ── ④ 进度那一层(C2-b)────────────────────────────────────────────
+   *
+   * 进度**盖在账本那份调用上**,不是另画一张卡:一次调用开始执行时账本早就
+   * 认领了它(`tool/call` 已落账),尾巴里那张卡也已退役 —— 屏幕上就是那一行。
+   * 所以这一层做的是「按 id 把三格盖上去」,`liveAt` 顺带推到收到进度的时刻
+   * (§6.6 静默读数因此在有进度的工具上永不误报)。
+   *
+   * 只盖**还在跑**的那几次:收场了的调用再挂一份过程读数是给屏幕留下一句
+   * 关于过去的现在时(而且那一行的摘要该是成果,不是最后一行输出)。
+   */
+  const progressMap = tail?.progress
+  const ledgerCalls = message.toolCalls ?? []
+  const paintedCalls = progressMap && Object.keys(progressMap).length > 0
+    ? applyProgressToCalls(ledgerCalls, progressMap)
+    : ledgerCalls
+
   // 什么都没多画 = 一个字段都别动:下游按**引用**判「这一帧变没变」(chat-materialize
   // 的 memo 与 assemble 的 WeakMap 都认它),换个长得一样的新对象等于全体重装配。
-  if (!pending && drawn.length === 0 && !tail?.reasoningTop && liveCalls.length === 0) return list
+  // 进度也算「多画了」—— 少了这一条,一行工具的摘要逐帧在变而屏幕一动不动。
+  if (
+    !pending
+    && drawn.length === 0
+    && !tail?.reasoningTop
+    && liveCalls.length === 0
+    && paintedCalls === ledgerCalls
+  ) return list
+
+  const tailCalls = liveCalls.map((tool) => liveToolCall(tool, progressMap?.[tool.id]))
 
   list[index] = {
     ...message,
@@ -562,12 +661,42 @@ export function appendTail(
       ? { reasoning: `${message.reasoning ?? ''}${tail.reasoningTop}` }
       : {}),
     contentParts: parts,
-    ...(liveCalls.length > 0
-      ? { toolCalls: [...(message.toolCalls ?? []), ...liveCalls.map(liveToolCall)] }
+    ...(tailCalls.length > 0 || paintedCalls !== ledgerCalls
+      ? { toolCalls: [...paintedCalls, ...tailCalls] }
       : {}),
   } as ProjectedMessage
   return list
 }
+
+/**
+ * 把进度盖到账本那几次调用上(C2-b)。
+ *
+ * **一格没盖就原样交回原数组**(引用相等):上面那句短路与下游的 memo 全靠它 ——
+ * 每帧造一个长得一样的新数组等于把整条消息重装配一遍。
+ */
+function applyProgressToCalls(
+  calls: readonly ProjectedCall[],
+  progress: Record<string, TailToolProgress>,
+): readonly ProjectedCall[] {
+  let next: ProjectedCall[] | undefined
+  for (let i = 0; i < calls.length; i += 1) {
+    const call = calls[i]
+    const found = progress[call.id]
+    // 只盖还在跑的那几次(执行中 / 参数还在流)。
+    if (!found || !LIVE_CALL_STATUSES.has(call.status)) continue
+    if (!next) next = [...calls]
+    next[i] = { ...call, progress: found.value, liveAt: Math.max(found.at, call.liveAt ?? 0) }
+  }
+  return next ?? calls
+}
+
+/**
+ * 「这次调用还在跑」的那两档。
+ *
+ * 与 `content/tools/status.ts` 的 `toolTone` busy 档同一张表,但**不 import 它** ——
+ * 数据层不吃渲染层(反过来才对)。两处各一行,变了要一起改。
+ */
+const LIVE_CALL_STATUSES: ReadonlySet<string> = new Set(['executing', 'input-streaming'])
 
 /**
  * 一次还在收参数的调用**长成账本那份调用的样子**。
@@ -594,7 +723,7 @@ function tailHostIndex(list: readonly ProjectedMessage[], tail: Tail | undefined
 
 type ProjectedCall = NonNullable<ProjectedMessage['toolCalls']>[number]
 
-function liveToolCall(tool: TailToolCall): ProjectedCall {
+function liveToolCall(tool: TailToolCall, progress?: TailToolProgress): ProjectedCall {
   return {
     id: tool.id,
     toolId: tool.toolName,
@@ -605,6 +734,8 @@ function liveToolCall(tool: TailToolCall): ProjectedCall {
     streamingArgs: tool.argsText,
     // 活性读数(§6.6):与 streamingArgs 同生共死,账本一认领两格一起没。
     liveAt: tool.lastDeltaAt,
+    // 参数还在流的那一段里工具就报了进度(少见但合法):照样摆出来。
+    ...(progress ? { progress: progress.value } : {}),
   } as ProjectedCall
 }
 

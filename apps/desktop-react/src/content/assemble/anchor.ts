@@ -156,15 +156,32 @@ function stepsForTurn(message: ProjectedMessage, turnIndex: number | undefined):
  * assistant 消息 1166 条,其中 1002 条是这种 imported 形,835 条的 step 缺
  * `toolCall`,**739 条(63%)的段序列因此是错的**。
  *
- * 修法只碰这一句:`toolCall` 有就用它(现役消息走这条,零变化),没有就拿
- * `toolCallId` 去 `message.toolCalls` 里认 —— 那份表是同一条消息自己带的,不是
- * 从别处猜来的,两格本来就一一对应。查不到就返回 undefined,那次调用照旧由末尾
- * 的兜底摆出来(**屏幕上少一张卡就是说谎**,这条纪律不变)。
+ * 修法只碰这一句:拿 `toolCallId` 去 `message.toolCalls` 里认 —— 那份表是同一条
+ * 消息自己带的,不是从别处猜来的,两格本来就一一对应。认不到才退回 `step.toolCall`
+ * (脱水形没有它,现役形有);两条都空就返回 undefined,那次调用照旧由末尾的兜底
+ * 摆出来(**屏幕上少一张卡就是说谎**,这条纪律不变)。
+ *
+ * ── 为什么表**排在前面**(C2-b 改的这一格)────────────────────────────
+ * `step.toolCall` 与 `toolCalls[i]` 是**两个对象**:投影的 `materializeStep` 自己
+ * 又调了一次 `materializeToolCall`,两份内容逐格相同但引用不同。上面那段注里
+ * 「存两份就会分叉」说的正是这件事 —— 它一直是真的,只是从前没有人往其中一份上
+ * 写东西,于是分叉不显形。
+ *
+ * C2-b 的活流进度写在**表**那一份上(`chat-materialize` / `chat-fold` 都按 id 盖),
+ * 而这张卡从前读的是 step 上那一份 —— 于是屏幕上一条进度都看不到(真机读数:
+ * 20 条 `tool-progress` 全部到达渲染层、水位表也收下了,而执行中那一行的摘要
+ * 一帧都没变)。**修法不是再往 step 上盖一份**(那就真有两份要维护了),
+ * 是让这一句只认一张表。
+ *
+ * 换过来对旧行为的影响:现役消息从「读 step 上那份」变成「读表里那份」,两份内容
+ * 逐格相同(同一个 `materializeToolCall` 的确定性产物),所以除了进度那一格,
+ * 屏幕上一个像素都不变;脱水形本来就走表,一个字没动。
  */
 function callOfStep(
   step: StepLike,
   callById: ReadonlyMap<string, ProjectedToolCall>,
 ): ProjectedToolCall | undefined {
-  if (step.toolCall) return step.toolCall as ProjectedToolCall
-  return step.toolCallId ? callById.get(step.toolCallId) : undefined
+  const fromTable = step.toolCallId ? callById.get(step.toolCallId) : undefined
+  if (fromTable) return fromTable
+  return (step.toolCall as ProjectedToolCall | undefined) ?? undefined
 }

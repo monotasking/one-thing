@@ -34,9 +34,9 @@ export function stepStartedAt(call: ProjectedToolCall): number | undefined {
  * 一步**上一次收到数据**是什么时候(§6.6 活性读数的唯一判据)。
  *
  * 参数流那一段:活尾巴每收到一片 `tool-input-delta` 就写一次 `liveAt`;
- * 执行中:今天的工具**一个字都不报**,所以静默从**步开始**算 —— 这是实话,
- * 不是误报。会报进度的工具接进来(C2-b)之后,`liveAt` 由进度流继续往前推,
- * 这个函数一个字都不用改。
+ * 执行中:会报进度的工具由 `tool-progress` 活流继续往前推那一格(C2-b 兑现了
+ * 这句预告 —— 这个函数一个字都没改)。一个字都不报的工具照旧从**步开始**算,
+ * 那是实话不是误报。
  */
 export function stepLiveAt(call: ProjectedToolCall): number | undefined {
   const source = call as { liveAt?: number }
@@ -174,4 +174,62 @@ export function headIcons(entries: readonly ToolCardEntry[]): string[] {
     if (icons.length === HEAD_MAX_ENTRIES) break
   }
   return icons
+}
+
+
+/* ── 进度(C2-b,§6.2「执行中」列)──────────────────────────────────────── */
+
+/**
+ * 一步此刻的进度读数。**只认还在跑的那几步** —— 收场了的行该说成果,不该挂着
+ * 一句关于过去的现在时。
+ */
+export function stepProgress(step: ToolStepModel): ToolProgress | undefined {
+  if (!isLiveStep(step)) return undefined
+  return (step.call as { progress?: ToolProgress }).progress
+}
+
+export type ToolProgress = NonNullable<ProjectedToolCall['progress']>
+
+/**
+ * 执行中那一行的摘要句(§6.2 表「执行中」列)。
+ *
+ * 三级回落,**每一级都是实话**:
+ *  1. `outputTail` 的**最后一行** —— 工具此刻真的吐出来的那一行,最贴近「它在
+ *     干什么」;
+ *  2. `message` —— 工具自述的一句话(bash 是命令,web_open 是「正在打开 …」);
+ *  3. `undefined` —— 交回去让调用方用今天那一份(presenter 算出来的参数摘要)。
+ *
+ * 取最后一行而不是整段:行是**一行**,塞进去的换行会被 `white-space: nowrap`
+ * 吃成一个空格,读出来是几行输出黏成的一句乱码。整段留给抽屉。
+ */
+export function progressSummary(progress: ToolProgress | undefined): string | undefined {
+  if (!progress) return undefined
+  const tail = lastLine(progress.outputTail)
+  if (tail) return tail
+  return progress.message || undefined
+}
+
+/** 末尾那一行(尾部空行不算 —— 那是行尾的换行,不是一行输出)。 */
+export function lastLine(text: string | undefined): string | undefined {
+  if (!text) return undefined
+  const lines = text.replace(/\n+$/, '').split('\n')
+  const last = lines[lines.length - 1]?.trim()
+  return last || undefined
+}
+
+/**
+ * 这张卡此刻该不该画底缘那条进度条,画到几成。
+ *
+ * 判据是**活槽位那一步报了 ratio 没有**:一张卡上同时只有一步在跑(工具是串行
+ * 执行的),而进度条说的正是「这一步跑到哪了」。没有活步、活步没报 ratio,
+ * 就没有这条 —— **不画一条恒为 0 的条**(那是造事实,§6.2 明写的禁令)。
+ */
+export function cardProgressRatio(steps: readonly ToolStepModel[]): number | undefined {
+  for (const step of steps) {
+    const ratio = stepProgress(step)?.ratio
+    if (typeof ratio === 'number' && Number.isFinite(ratio)) {
+      return Math.min(1, Math.max(0, ratio))
+    }
+  }
+  return undefined
 }

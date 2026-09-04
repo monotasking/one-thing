@@ -195,3 +195,51 @@ describe('前缀定律对账(审查条 13 的自愈 + 计数)', () => {
     expect(water.settle('a1', new Map([[0, 5]]), () => '另外一句话').diverged).toBe(1)
   })
 })
+
+
+/* ── C2-b:工具进度活流 ─────────────────────────────────────────────────── */
+
+describe('进度那张表(C2-b)', () => {
+  it('快照:后一条整条替换前一条,version 每条都推(下游 memo 认的就是它)', () => {
+    const water = new StreamWater()
+    water.feedToolProgress('a1', 'c1', { outputTail: '1\n2' })
+    const first = water.version('a1')
+    water.feedToolProgress('a1', 'c1', { outputTail: '19\n20', ratio: 0.95 })
+    expect(water.progress('a1').get('c1')).toMatchObject({ outputTail: '19\n20', ratio: 0.95 })
+    expect(water.version('a1')).toBeGreaterThan(first)
+  })
+
+  it('**不必先建过卡** —— 进度在执行中到达,那时 tools 里那张卡早被 settleTools 收走了', () => {
+    const water = new StreamWater()
+    water.openTool('a1', 'c1', 'bash', 1_000)
+    water.settleTools('a1', new Set(['c1']))
+    water.feedToolProgress('a1', 'c1', { message: 'seq 1 20' })
+    expect(water.progress('a1').get('c1')).toMatchObject({ message: 'seq 1 20' })
+  })
+
+  it('进度在场时这条消息**不被丢掉** —— 少了这一条,version 会从 0 重新起', () => {
+    const water = new StreamWater()
+    water.feedToolProgress('a1', 'c1', { outputTail: 'x' })
+    const before = water.version('a1')
+    // 账本认领了所有调用:tools 空、parts 空,但进度还在 → 这条消息留着。
+    water.settleTools('a1', new Set(['c1']))
+    water.feedToolProgress('a1', 'c1', { outputTail: 'y' })
+    expect(water.version('a1')).toBeGreaterThan(before)
+  })
+
+  it('这一轮收尾:clearMessage 整条丢 —— 过程读数按定义没用了', () => {
+    const water = new StreamWater()
+    water.feedToolProgress('a1', 'c1', { outputTail: 'x' })
+    water.clearMessage('a1')
+    expect(water.progress('a1').size).toBe(0)
+  })
+
+  it('参数还在流的那一段里来了进度:那张卡的 lastDeltaAt 一并推到此刻', async () => {
+    const water = new StreamWater()
+    water.openTool('a1', 'c1', 'bash', 1_000)
+    const before = water.tools('a1')[0].lastDeltaAt
+    await new Promise(resolve => setTimeout(resolve, 5))
+    water.feedToolProgress('a1', 'c1', { message: 'x' })
+    expect(water.tools('a1')[0].lastDeltaAt).toBeGreaterThanOrEqual(before)
+  })
+})

@@ -20,8 +20,15 @@ import type { Result } from './result.js'
 
 /** 工具自己发的。`RunContext.emit` 只接受这些。 */
 export type ToolEvent =
-  /** 干到哪儿了。`ratio` ∈ [0,1],不知道就别给(假进度条比没有更糟)。 */
-  | { type: 'progress'; message?: string; ratio?: number; metadata?: JsonObject }
+  /**
+   * 干到哪儿了。`ratio` ∈ [0,1],不知道就别给(假进度条比没有更糟)。
+   *
+   * `outputTail` 是**此刻最后那几行给人看的输出**(C2-b)。它与 `partial` 那条
+   * 不是一回事:`partial` 交的是「已经能给模型看的一份结果」(会进 step 的
+   * partialResult、参与后续投影),`outputTail` 只是一句读数 —— 谁都不许拿它
+   * 当结果用,它随这次调用收场一起没。
+   */
+  | { type: 'progress'; message?: string; ratio?: number; outputTail?: string; metadata?: JsonObject }
   /** 还没完,但已经有能给人看的东西了(流式命令输出、边搜边出的结果)。 */
   | { type: 'partial'; result: Result }
   /** 工具内部的一个可命名阶段。id 用来把 start/end 配对。 */

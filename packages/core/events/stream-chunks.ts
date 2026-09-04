@@ -155,8 +155,41 @@ export type UiStreamChunk =
   | UiAssistantChunksChunk
   | UiAssistantPartEndChunk
 
+/**
+ * **工具进度活流**(C2-b,`apps/desktop-react/docs/workbench-2026-09.md` §6.2 表
+ * 「执行中」列 / §6.3 / §6.6)。一次调用**执行中**的过程读数:输出尾行、比例、
+ * 一句话。
+ *
+ * ── 只走 StreamChannel,无账本投影 ──────────────────────────────────────
+ * 这条 chunk **不进 `events.jsonl`**,也不进 `session.messages`:账本记的是会话的
+ * **事实**(这次调用发生了、参数是什么、结局如何),而进度是**过程读数** ——
+ * 重开会话时只该看见结局,不该看见「当时跑到第 7 行」。三定律因此一格不动:
+ * 账本仍是唯一真相,投影从账本折出来,而这条 chunk 从不参与折叠
+ * (`Session.applyChunk` 里显式写着一条什么都不做的 `case`,不是漏了)。
+ *
+ * ── 快照,不是追加 ─────────────────────────────────────────────────────
+ * 同一个 `toolCallId` 后来的一条**整条替换**前一条(last-wins),所以它不进 16ms
+ * 合批器那个按追加语义攒的缓冲,走直送。产地自己带节拍(bash 的输出快照 100ms
+ * 一次),不靠合批器省流量。
+ *
+ * ── 字段 ───────────────────────────────────────────────────────────────
+ * 三格全是可选:工具报得出哪格就报哪格,一格都报不出就别发这条
+ * (`ratio` ∈ [0,1],不知道**别编** —— 假进度条比没有更糟)。
+ */
+export interface ToolProgressChunk extends StreamChunkBase {
+  type: 'tool-progress'
+  toolCallId: string
+  /** 一句话:此刻在干什么(bash 是命令、web_open 是「正在打开 …」)。 */
+  message?: string
+  /** 已完成比例 ∈ [0,1]。算不出就缺席。 */
+  ratio?: number
+  /** 此刻最后几行给人看的输出(整段替换,不追加)。 */
+  outputTail?: string
+}
+
 export type StreamChunk =
   | TextDeltaChunk
   | ReasoningDeltaChunk
   | ToolInputDeltaChunk
+  | ToolProgressChunk
   | UiStreamChunk

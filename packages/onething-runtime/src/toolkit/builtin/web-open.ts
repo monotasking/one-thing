@@ -115,6 +115,9 @@ export class WebOpenTool extends NetworkTool<WebOpenInput> {
       },
     })
     ctx.emit({ type: 'annotate', title: `Opening: ${title}`, details: toJsonObject(openingMetadata) })
+    // C2-b:一句读数。**不给 `ratio`** —— 抓一页要多久没人知道,一条从 0 爬到 1
+    // 的假进度条比没有进度条更误导人。
+    ctx.emit({ type: 'progress', message: `Opening ${input.url}...` })
 
     const page = await fetchSearchPage({
       id: OPEN_PAGE_ID,
@@ -146,6 +149,7 @@ export class WebOpenTool extends NetworkTool<WebOpenInput> {
       result: { content: [{ type: 'text', text: output }], details: toJsonObject(metadata) },
     })
     ctx.emit({ type: 'annotate', title: resultTitle, details: toJsonObject(metadata) })
+    ctx.emit({ type: 'progress', message: resultTitle })
 
     return { content: [{ type: 'text', text: output }], details: toJsonObject(metadata) }
   }

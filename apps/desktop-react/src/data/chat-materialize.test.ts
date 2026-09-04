@@ -247,3 +247,104 @@ describe('账本比 parts 长的那截照样画(中途入场)', () => {
     expect(texts).toHaveLength(1)
   })
 })
+
+
+/* ── C2-b:工具进度活流 ─────────────────────────────────────────────────── */
+
+/**
+ * 进度**盖在账本那次调用上**,不另画一张卡 —— 一次调用开始执行时账本早就认领了
+ * 它(`tool/call` 已落账),屏幕上就是那一行。这里钉的是那次「盖」,以及它对
+ * 引用契约的守法(一格没盖就原样交回,盖了就换引用)。
+ */
+describe('进度盖在账本那次调用上(C2-b)', () => {
+  /** 一次**已落账、还没有结局**的调用 —— 投影里它就是 `executing`。 */
+  function executingToolLedger(): Ev[] {
+    return [
+      { seq: 1, time: T0, type: 'session/created', data: { sessionId: 's1' } },
+      {
+        seq: 2,
+        time: T0,
+        type: 'user/message',
+        data: { message: { id: 'u1', role: 'user', content: '跑一下', timestamp: T0 } },
+      },
+      { seq: 3, time: T0, type: 'run/start', data: { runId: 'r1', kind: 'chat', assistantMessageId: 'a1', timestamp: T0 } },
+      { seq: 4, time: T0, type: 'request/start', data: { runId: 'r1', requestIndex: 0, time: T0 } },
+      // 参数先收齐(`assistant/part-end` 的 tool-input 那一格),`tool/call` 才落账
+      // —— 少了这一条,投影里这次调用停在 `input-streaming` 而不是 `executing`。
+      {
+        seq: 5,
+        time: T0,
+        type: 'assistant/part-end',
+        data: {
+          runId: 'r1',
+          requestIndex: 0,
+          messageId: 'a1',
+          partIndex: 0,
+          kind: 'tool-input',
+          toolCallId: 'c1',
+          toolName: 'bash',
+          len: 22,
+          hash: 'h',
+        },
+      },
+      {
+        seq: 6,
+        time: T0,
+        type: 'tool/call',
+        data: {
+          callId: 'c1',
+          name: 'bash',
+          argumentsRaw: '{"command":"seq 1 20"}',
+          messageId: 'a1',
+          runId: 'r1',
+        },
+      },
+    ]
+  }
+
+  const callOf = (messages: ReadonlyArray<{ id: string; toolCalls?: unknown }>) =>
+    (messages.find(m => m.id === 'a1')!.toolCalls as Array<{
+      id: string
+      status: string
+      progress?: { message?: string; ratio?: number; outputTail?: string }
+      liveAt?: number
+    }>)[0]
+
+  it('执行中的那一次拿到 progress 三格,liveAt 一并推到收到进度的时刻', () => {
+    const state = fold(executingToolLedger())
+    const water = new StreamWater()
+    water.feedToolProgress('a1', 'c1', { message: 'seq 1 20', outputTail: '19\n20', ratio: 0.95 })
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0, water)
+    const call = callOf(messages)
+    expect(call.status).toBe('executing')
+    expect(call.progress).toEqual({ message: 'seq 1 20', outputTail: '19\n20', ratio: 0.95 })
+    expect(call.liveAt).toBeGreaterThan(0)
+  })
+
+  it('别人的 id 一格都不盖 —— 整条消息按引用原样交回', () => {
+    const state = fold(executingToolLedger())
+    const water = new StreamWater()
+    const before = materializeChatMessagesCached(state, R2_OPTS, 0, water).messages.find(m => m.id === 'a1')
+    water.feedToolProgress('a1', 'c9', { outputTail: 'x' })
+    // blobEpoch 保持不变:换了它就是全量重算,那测的是另一件事。
+    const after = materializeChatMessagesCached(state, R2_OPTS, 0, water).messages.find(m => m.id === 'a1')
+    expect(after).toBe(before)
+  })
+
+  it('进度换了一份 = 换了引用(否则那一行的摘要逐帧在变而屏幕一动不动)', () => {
+    const state = fold(executingToolLedger())
+    const water = new StreamWater()
+    water.feedToolProgress('a1', 'c1', { outputTail: 'a' })
+    const first = materializeChatMessagesCached(state, R2_OPTS, 0, water).messages.find(m => m.id === 'a1')
+    water.feedToolProgress('a1', 'c1', { outputTail: 'b' })
+    const second = materializeChatMessagesCached(state, R2_OPTS, 0, water).messages.find(m => m.id === 'a1')
+    expect(second).not.toBe(first)
+    expect(callOf([second!] as never).progress?.outputTail).toBe('b')
+  })
+
+  it('水位不在场(旧路 / 冷加载)时一格不变 —— 进度是加性字段', () => {
+    const state = fold(executingToolLedger())
+    const { messages } = materializeChatMessagesCached(state, R2_OPTS, 0)
+    expect(callOf(messages).progress).toBeUndefined()
+  })
+})

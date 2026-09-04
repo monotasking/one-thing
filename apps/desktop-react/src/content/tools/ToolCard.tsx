@@ -16,14 +16,18 @@ import type {
   ToolStepModel,
 } from '../model/segments'
 import {
+  cardProgressRatio,
   isBusyRevealed,
   isLiveStep,
   pickSlotStep,
+  progressSummary,
   silentMsOf,
   stallLevel,
   stallSeconds,
+  stepProgress,
   stepStartedAt,
   type StallLevel,
+  type ToolProgress,
 } from './card'
 import { ToolDrawer } from './ToolDrawer'
 import { EXPANDABLE_STATUSES, toolStatusLabel, toolTone, type ToolTone } from './status'
@@ -117,6 +121,15 @@ export const ToolCard = memo(function ToolCard({
   const structure = `${multi}|${open}|${card.steps.length}|${[...visible].join(',')}|${[...openKeys].sort().join(',')}`
   useFlipHeight(cardRef, structure)
 
+  /*
+   * 底缘那条进度条(§6.2「执行中」列,C2-b)。
+   *
+   * **只有工具真报了 `ratio` 才有** —— 一条恒为 0 的条是造事实。它绝对定位在卡
+   * 的底缘,不占布局(§6.5 第 2 条几何锁:画不画都不动卡高,所以它也不进上面
+   * 那个 `structure` —— 它不是「结构变化」,量高会白白多一次强排版)。
+   */
+  const ratio = cardProgressRatio(card.steps)
+
   return (
     /*
      * 段只渲染一个元素、不加包裹层(SegmentView 的纪律),所以这个 `div` **自己**
@@ -155,6 +168,23 @@ export const ToolCard = memo(function ToolCard({
           />
         ))}
       </div>
+      {/*
+        * 进度条:`role="progressbar"` + 三个 aria 值,读屏因此读得出「几成」。
+        * 只改 `width`(合成器上的一格),不改任何参与布局的属性 —— §6.5 第 1 条
+        * 「零重挂」在这一格上的落点是:同一个节点从 12% 走到 87%,不换元素。
+        */}
+      {ratio !== undefined && (
+        <div
+          className={s.tbar}
+          data-tool-progress="true"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={1}
+          aria-valuenow={ratio}
+        >
+          <div className={s.tbarFill} style={{ width: `${(ratio * 100).toFixed(1)}%` }} />
+        </div>
+      )}
     </div>
   )
 })
@@ -372,6 +402,9 @@ const ToolStepRow = memo(function ToolStepRow({
   // 露出 busy 形的行淡入进场(§6.5 第 7 条);快步骤根本走不到这里。
   const reveal = live && isBusyRevealed(step, now) ? 'busy' : undefined
 
+  // 执行中的过程读数(C2-b)。收场了的步没有 —— `stepProgress` 自己判。
+  const progress = stepProgress(step)
+
   const face = (
     <ToolRowFace
       t={t}
@@ -383,6 +416,8 @@ const ToolStepRow = memo(function ToolStepRow({
       // 活耗时的起点是**调用**的事实(引擎记的执行起点),不是那一行的 ——
       // 所以它从这里传下去,不往 `ToolRowModel` 里塞一个只有渲染用得着的字段。
       startedAt={stepStartedAt(call)}
+      // 进度同理:它是**这次调用此刻**的读数,不是那一行的静态属性。
+      progress={progress}
     />
   )
 
@@ -419,7 +454,9 @@ const ToolStepRow = memo(function ToolStepRow({
           {face}
         </div>
       )}
-      {drawerOpen && !hidden && <ToolDrawer call={call} ctx={ctx} live={live} />}
+      {drawerOpen && !hidden && (
+        <ToolDrawer call={call} ctx={ctx} live={live} progress={progress} />
+      )}
     </>
   )
 })
@@ -433,6 +470,7 @@ function ToolRowFace({
   silentMs,
   now,
   startedAt,
+  progress,
 }: {
   t: TFn
   row: ToolRowModel
@@ -441,16 +479,24 @@ function ToolRowFace({
   silentMs: number
   now: number
   startedAt?: number
+  progress?: ToolProgress
 }) {
   const Icon = resolveIcon(row.icon)
   const streaming = row.status === 'input-streaming'
-  // 静默了就把摘要换成读数 —— 「命令逐字长」这句话在数据停了之后就是假的。
+  /*
+   * 摘要三级(§6.2「执行中」列,C2-b):
+   *
+   *  · **静默**了就换成读数 —— 「命令逐字长」这句话在数据停了之后就是假的
+   *    (这一级最先判,进度也压不过它:有进度就不会静默);
+   *  · 有**进度**就说进度(输出尾行 → 工具那一句),那是它此刻真的在干的事;
+   *  · 都没有就是今天那一份(presenter 算出来的参数摘要)。
+   */
   const summary =
-    stall === 'none'
-      ? row.summary
-      : t(streaming ? 'chat.tool.stallArgs' : 'chat.tool.stallData', {
+    stall !== 'none'
+      ? t(streaming ? 'chat.tool.stallArgs' : 'chat.tool.stallData', {
           n: stallSeconds(silentMs),
         })
+      : progressSummary(progress) ?? row.summary
 
   return (
     <>

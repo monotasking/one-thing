@@ -78,6 +78,8 @@ const { createDesktopCatalog } = await import('../catalog.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
 const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/runtime/toolkit/mcp-catalog.wiring')
 const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
+const { createEventSystem, getStreamChannel } = await import('../../../events/index.js')
+const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
 
 const SESSION_ID = 'wiring-session'
 const workspace = path.join(harness.root, 'workspace')
@@ -427,5 +429,86 @@ describe('R2b 缝 1:工具面由 Surface 解析', () => {
       allowlist: [],
     })
     expect(surface!.tools().length).toBeGreaterThan(0)
+  })
+})
+
+
+/* ── C2-b:工具进度活流 ────────────────────────────────────────────────── */
+
+describe('C2-b 工具进度:executeToolDirectly 是唯一接线点', () => {
+  /**
+   * 一个**分三次吐输出**的假执行体。
+   *
+   * 每次之间隔一拍,好让 `runForeground` 的 100ms 节流阀真的放出多条快照 ——
+   * 「一次调用只报一条进度」量不出「屏幕上那一行在动」。
+   */
+  function chattyOps(lines: string[], gapMs = 130): BashOperations {
+    return {
+      exec: async (_command: string, _cwd: string, options: { onData: (data: Buffer) => void }) => {
+        for (const line of lines) {
+          options.onData(Buffer.from(`${line}\n`))
+          await new Promise(resolve => setTimeout(resolve, gapMs))
+        }
+        return { exitCode: 0 }
+      },
+    }
+  }
+
+  let dispose: (() => void) | null = null
+  let seen: Array<{ type?: string; toolCallId?: string; outputTail?: string; message?: string }> = []
+
+  beforeEach(() => {
+    delete process.env.ONETHING_TOOL_PROGRESS
+    const { eventBus, streamChannel } = createEventSystem()
+    setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
+    dispose = () => {
+      eventBus.shutdown()
+      streamChannel.shutdown()
+    }
+    seen = []
+    getStreamChannel().subscribe(SESSION_ID, chunk => seen.push(chunk as typeof seen[number]))
+  })
+
+  afterEach(() => {
+    dispose?.()
+    dispose = null
+    setCurrentBackend(null)
+  })
+
+  it('bash 逐行吐输出 → 一路 tool-progress 上流管,尾行**逐条在变**', async () => {
+    installCatalog(chattyOps(['line 1', 'line 2', 'line 3', 'line 4']))
+    const { context } = contextFor()
+    const result = await executeToolDirectly('bash', { command: 'seq 1 4' }, context)
+    expect(result.success).toBe(true)
+
+    const progress = seen.filter(one => one.type === 'tool-progress')
+    expect(progress.length).toBeGreaterThanOrEqual(3)
+    // 身份对得上:每一条都盖着这次调用的 id(壳按它把读数盖到那一行上)。
+    for (const one of progress) expect(one.toolCallId).toBe((context as { toolCallId: string }).toolCallId)
+    // `message` 是命令 —— 没有输出时执行中那一行退到它。
+    expect(progress[0].message).toBe('seq 1 4')
+    // ★ 尾行**在变**:不同的读数至少 3 种(「屏幕上那一行在动」的机器判据)。
+    const tails = new Set(progress.map(one => one.outputTail))
+    expect(tails.size).toBeGreaterThanOrEqual(3)
+    // 尾行只摆最后三行,不是整段输出的复制品。
+    for (const one of progress) {
+      expect((one.outputTail ?? '').split('\n').length).toBeLessThanOrEqual(3)
+    }
+  })
+
+  it('ONETHING_TOOL_PROGRESS=0 —— 一条都不出生,而工具照常跑完', async () => {
+    process.env.ONETHING_TOOL_PROGRESS = '0'
+    installCatalog(chattyOps(['a', 'b', 'c']))
+    const result = await executeToolDirectly('bash', { command: 'echo abc' }, contextFor().context)
+    expect(result.success).toBe(true)
+    expect(seen.filter(one => one.type === 'tool-progress')).toEqual([])
+  })
+
+  it('没有 toolCallId 的直调不发进度(不经过工具卡的旁路)', async () => {
+    installCatalog(chattyOps(['x', 'y']))
+    const { context } = contextFor({ toolCallId: undefined })
+    const result = await executeToolDirectly('bash', { command: 'echo xy' }, context)
+    expect(result.success).toBe(true)
+    expect(seen.filter(one => one.type === 'tool-progress')).toEqual([])
   })
 })

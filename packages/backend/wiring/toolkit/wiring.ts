@@ -31,7 +31,7 @@ import type { Step, ToolPartialResult } from '@shared/ipc.js'
 import { configureToolkitCatalog, getToolkitCatalog } from '@onething/runtime/toolkit'
 import type { ToolExecutionResult as OnethingToolExecutionResult } from '@onething/runtime/toolkit/execution-types.wiring'
 import { createCatalogForTier, type ToolCatalogTier } from './catalog.js'
-import { IpcProjector, type LegacyMetadataUpdate } from '@onething/runtime/toolkit/ipc-observer.wiring'
+import { IpcProjector, type LegacyMetadataUpdate, type LegacyToolProgressUpdate } from '@onething/runtime/toolkit/ipc-observer.wiring'
 import { createPermissionAuthorizer } from './authorizer.js'
 import { createAppToolRunner } from './runner.js'
 import { toolkitAuditSink } from './audit-sink.js'
@@ -222,6 +222,11 @@ export interface ToolkitDirectContext {
   onPartialResult?: (update: ToolPartialResult) => void
   onStepStart?: (step: Step) => void
   onStepComplete?: (step: Step) => void
+  /**
+   * 执行中的过程读数(C2-b)。**缺席即从前**:不接这一格的调用方
+   * (`tools` RPC 域的直调、外部 agent 的本地工具执行)一条进度都不发。
+   */
+  onProgress?: (update: LegacyToolProgressUpdate) => void
   beforeSideEffect?: () => Promise<void>
 }
 
@@ -289,6 +294,7 @@ export async function runToolkitToolDirectly(
     onPartialResult: context.onPartialResult,
     onStepStart: context.onStepStart,
     onStepComplete: context.onStepComplete,
+    onProgress: context.onProgress,
   })
   const interceptor = new PluginInterceptor(projector, args)
   const isMcp = tool.spec.effects.includes('mcp')

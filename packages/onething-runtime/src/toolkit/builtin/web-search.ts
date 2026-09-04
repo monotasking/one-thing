@@ -153,7 +153,16 @@ export class WebSearchTool extends NetworkTool<WebSearchInput> {
     const allResults: WebSearchResultItem[] = []
     const pages: FetchedSearchPage[] = []
 
-    const emitProgress = (phase: WebSearchMetadata['phase'], text: string) => {
+    /**
+     * `ratio` 只在**抓页**那一段给得出来(分母是这次要抓几页,分子是抓完几页)。
+     * 搜索那一段没有分母 —— 一次 provider 请求要多久没人知道,编一个比例是说谎,
+     * 所以那几条进度只有 `message`(C2-b)。
+     */
+    const emitProgress = (
+      phase: WebSearchMetadata['phase'],
+      text: string,
+      ratio?: number,
+    ) => {
       const metadata = buildMetadata({
         phase,
         query,
@@ -166,6 +175,13 @@ export class WebSearchTool extends NetworkTool<WebSearchInput> {
       ctx.emit({
         type: 'partial',
         result: { content: [{ type: 'text', text }], details: toJsonObject(metadata) },
+      })
+      // C2-b:同一句话再走一次活流 —— `partial` 是给模型与账本投影的结果,
+      // 这一条是给屏幕上那一行工具卡的读数,两者不是一回事。
+      ctx.emit({
+        type: 'progress',
+        message: text,
+        ...(ratio !== undefined ? { ratio } : {}),
       })
     }
 
@@ -226,6 +242,7 @@ export class WebSearchTool extends NetworkTool<WebSearchInput> {
           emitProgress(
             'fetching_pages',
             `Fetched ${pages.filter(item => item.status === 'ready').length}/${pageRequests.length} readable result pages...`,
+            pageRequests.length > 0 ? pages.length / pageRequests.length : undefined,
           )
         },
       })

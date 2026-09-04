@@ -26,6 +26,7 @@ import {
   type ToolResultLike,
 } from '@onething/core'
 import { runToolkitToolDirectly } from '../../toolkit/wiring.js'
+import { pushSessionToolProgress } from '../../../events/tool-progress-stream.js'
 import { consolePort, getLogger } from '../../logging/index.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { LegacyDuckLogger } from '@onething/core/logging'
@@ -80,7 +81,27 @@ export async function executeToolDirectly(
    * 自己接 MCP 分支与两条拦截链的约 350 行)已随旧树删除。目录里没有这个名字
    * 时不再有第二条路,如实报一次 tool-not-found。
    */
-  const outcome = await runToolkitToolDirectly(toolName, args, context)
+  /*
+   * C2-b **工具进度活流**接在这一处,而不是在 core 的编排器里。
+   *
+   * 理由是这个函数的第一段注释说的那件事:它是**每一次工具直调的唯一必经点**。
+   * 三条链路(agent-loop 的 tool-call-done、orchestrator 的 start、sub-agent 的
+   * 递归入口)各有各的上游 —— 接在 `core/engine/tool-orchestration.ts` 上只盖得住
+   * 中间那一条,agent-loop 那条会整条漏掉。接在这里三条一次盖全,而且 core 一个
+   * 字都不用改(进度是 `ToolEvent` 已有的词汇,新 chunk 只是它的一次投影)。
+   *
+   * `sessionId` / `toolCallId` 都是这个上下文自带的事实,不用另外算。没有
+   * `toolCallId` 的调用(不经过工具卡的旁路)推不出去,`pushSessionToolProgress`
+   * 自己会挡掉。
+   */
+  const toolCallId = context.toolCallId
+  const sessionId = context.sessionId
+  const outcome = await runToolkitToolDirectly(toolName, args, {
+    ...context,
+    ...(toolCallId
+      ? { onProgress: (update) => pushSessionToolProgress(sessionId, toolCallId, update) }
+      : {}),
+  })
   if (outcome) return outcome as ToolExecutionResult
   return { success: false, error: `Tool not found: ${toolName}` }
 }

@@ -68,11 +68,28 @@ interface WaterTool {
   lastDeltaAt: number
 }
 
+/**
+ * 一次调用**执行中**的过程读数(C2-b)。
+ *
+ * 与 `WaterTool` 分开一张表,理由与折叠那条车道逐字相同:`tools` 里那一格
+ * 「账本一认领就退役」,而进度恰恰在那之后才开始(参数收齐才轮到执行)。
+ * 挂在 `WaterTool` 上的进度会在到达前一刻随 `settleTools` 被删掉。
+ */
+interface WaterToolProgress {
+  message?: string
+  ratio?: number
+  outputTail?: string
+  /** 收到这一条的**本机时刻**(§6.6 活性读数的写点)。 */
+  at: number
+}
+
 /** 一条消息的活水位:按 `partIndex` 分格。 */
 interface WaterMessage {
   parts: Map<number, WaterPart>
   /** 参数还在流的调用,按到达序(键 = toolCallId)。 */
   tools: Map<string, WaterTool>
+  /** 每次调用此刻的进度读数(键 = toolCallId,C2-b)。快照:后来的整条替换。 */
+  progress: Map<string, WaterToolProgress>
   /** 只增不减的版本号 —— 下游 memo 的键(有没有长新东西,一个数就答得出)。 */
   version: number
 }
@@ -90,6 +107,15 @@ export interface WaterToolView {
   argsText(): string
   /** 上一次收到数据的本机时刻(§6.6 活性读数)。 */
   lastDeltaAt: number
+}
+
+/** 一次调用此刻的进度读数(读者要的全部,C2-b)。 */
+export interface WaterProgressView {
+  message?: string
+  ratio?: number
+  outputTail?: string
+  /** 上一次收到进度的本机时刻(§6.6)。 */
+  at: number
 }
 
 /** 一段此刻的活水位读数(读者要的全部)。 */
@@ -211,6 +237,35 @@ export class StreamWater {
     return { outcome: 'accepted' }
   }
 
+  /**
+   * 一条进度到了(`tool-progress`,C2-b)。
+   *
+   * **不必先建过卡**:与参数流那条相反 —— 进度在执行中到达,那时 `tools` 里那张
+   * 卡早就被 `settleTools` 收走了。要求先建卡等于一条进度都收不到。
+   *
+   * 快照语义:后一条**整条替换**前一条(`outputTail` 是「此刻的尾几行」,拼起来
+   * 就成了整段输出的复制品,而那是结果不是读数)。version 每条都推 —— 下游的
+   * memo 认的就是它,不推就不重绘。
+   */
+  feedToolProgress(
+    messageId: string,
+    toolCallId: string,
+    progress: { message?: string; ratio?: number; outputTail?: string },
+  ): void {
+    if (!messageId || !toolCallId) return
+    const message = this.forMessage(messageId)
+    message.progress.set(toolCallId, { ...progress, at: Date.now() })
+    // 参数还在流的那一段里也可能来进度:顺带把那张卡的静默读数推到此刻。
+    const tool = message.tools.get(toolCallId)
+    if (tool) tool.lastDeltaAt = Date.now()
+    message.version += 1
+  }
+
+  /** 这条消息此刻每次调用的进度读数(键 = toolCallId;没有就是空表)。 */
+  progress(messageId: string): ReadonlyMap<string, WaterProgressView> {
+    return this.messages.get(messageId)?.progress ?? EMPTY_PROGRESS
+  }
+
   /** 这条消息此刻还在收参数的那几次调用(按到达序)。 */
   tools(messageId: string): WaterToolView[] {
     const message = this.messages.get(messageId)
@@ -239,7 +294,7 @@ export class StreamWater {
     for (const id of message.tools.keys()) {
       if (ledgerIds.has(id)) message.tools.delete(id)
     }
-    if (message.parts.size === 0 && message.tools.size === 0) this.messages.delete(messageId)
+    this.dropIfEmpty(messageId, message)
   }
 
   /** 下游 memo 的键:这条消息的水位长过没有(只增不减)。 */
@@ -299,7 +354,7 @@ export class StreamWater {
       const drawable = drawableByPart.get(partIndex)
       if (drawable !== undefined && drawable >= part.length) message.parts.delete(key)
     }
-    if (message.parts.size === 0 && message.tools.size === 0) this.messages.delete(messageId)
+    this.dropIfEmpty(messageId, message)
     // 清格不动 version:它答的是「长过新东西没有」,退役不是长新东西。
     return { diverged }
   }
@@ -327,11 +382,32 @@ export class StreamWater {
   private forMessage(messageId: string): WaterMessage {
     const found = this.messages.get(messageId)
     if (found) return found
-    const created: WaterMessage = { parts: new Map(), tools: new Map(), version: 0 }
+    const created: WaterMessage = {
+      parts: new Map(),
+      tools: new Map(),
+      progress: new Map(),
+      version: 0,
+    }
     this.messages.set(messageId, created)
     return created
   }
+
+  /**
+   * 三张表都空了才丢这条消息。
+   *
+   * **进度那张表也算一张**(C2-b):账本认领了调用之后 `tools` 会空,而进度正是
+   * 那之后才开始 —— 少了这一条,第一条进度到达前一刻整条消息的水位就被丢了,
+   * 下一条进度只好现开一条空的,而 `version` 从 0 重新起(下游 memo 因此不重绘)。
+   * 这一轮收尾时 `clearMessage` 整条丢,不会有残留。
+   */
+  private dropIfEmpty(messageId: string, message: WaterMessage): void {
+    if (message.parts.size === 0 && message.tools.size === 0 && message.progress.size === 0) {
+      this.messages.delete(messageId)
+    }
+  }
 }
+
+const EMPTY_PROGRESS: ReadonlyMap<string, WaterProgressView> = new Map()
 
 /**
  * 键 = `partIndex` 与 `gen` 合成的一个数。

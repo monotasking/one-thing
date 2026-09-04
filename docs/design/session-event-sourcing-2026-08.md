@@ -9309,6 +9309,16 @@ U0 的段边界状态机迁居编码器——它本来就该住那儿:"这条 de
 | `contentPart.plugin-status.unsettled` | 未结算的插件状态行 | `plugin/status`(带 `durationMs` / `cleared`) | substitute |
 | `codec.unflushed-delta` | 编码器写缓冲里还没刷出的 delta | `assistant/chunks` 打包行 | strip |
 
+**表外的另一类:根本不是"事实"的东西**(2026-09-05 C2-b 记一行)。`tool-progress`
+活流(一次调用**执行中**的输出尾行 / 比例 / 一句话,`packages/backend/events/tool-progress-stream.ts`)
+**不进这张表,也不进账本** —— 它不是"会被取代的短命事实",它压根不是会话的事实,
+是**过程读数**:账本记的是"这次调用发生了、参数是什么、结局如何",而"当时跑到第 7 行"
+在这次调用收场那一刻就没有任何人需要它了。重开会话看见结局,不是过程。所以它只走
+StreamChannel(`Session.applyChunk` 里那条什么都不做的 `case 'tool-progress'` 是这条
+判断的代码形),三定律一个字不动。守卫:
+`packages/backend/wiring/engine/stream/__tests__/tool-progress-not-in-ledger.test.ts`
+(spy 住账本唯一写口 `writeSessionEvent`)+ 真机门 `gate:tool-stream` 的 F 条。
+
 **终局的一句话**:`store = fold(事件流)`,**无活窗例外**。第一个字即事件,折叠
 当场前进;编码器的写缓冲是唯一"内存领先磁盘"的窗口,它归存储层(fsync 检查点
 原管),**不是语义例外**。磁盘格式 / 账本体积 / 渲染层 / IPC:零变化。

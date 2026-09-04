@@ -3,15 +3,19 @@ import { MIN_BUSY_MS, STALL_HARD_MS, STALL_SOFT_MS } from '../../../components/m
 import type { ProjectedToolCall, ToolCardEntry, ToolStepModel } from '../../model/segments'
 import { presentToolCard, presentToolStep } from '../../assemble/present'
 import {
+  cardProgressRatio,
   headIcons,
   headText,
   isBusyRevealed,
   isLiveStep,
+  lastLine,
   pickSlotStep,
+  progressSummary,
   silentMsOf,
   stallLevel,
   stallSeconds,
   stepLiveAt,
+  stepProgress,
   stepStartedAt,
 } from '../card'
 
@@ -240,5 +244,82 @@ describe('pickSlotStep:收起态的活槽位常驻(§6.5 第 6 条)', () => {
 
   it('一步都没有就是 undefined', () => {
     expect(pickSlotStep([], T0)).toBeUndefined()
+  })
+})
+
+
+/* ── C2-b:执行中的过程读数 ─────────────────────────────────────────────── */
+
+describe('progressSummary:三级回落,每一级都是实话', () => {
+  it('第一级:`outputTail` 的**最后一行**(工具此刻真的吐出来的那一行)', () => {
+    expect(progressSummary({ message: 'seq 1 20', outputTail: '18\n19\n20' })).toBe('20')
+  })
+
+  it('取最后一行而不是整段 —— 塞进单行行里的换行会黏成一句乱码', () => {
+    expect(progressSummary({ outputTail: 'a\nb\nc' })).not.toContain('\n')
+  })
+
+  it('尾部空行不算一行(那是行尾的换行,不是一行输出)', () => {
+    expect(progressSummary({ outputTail: 'last line\n\n' })).toBe('last line')
+  })
+
+  it('第二级:没有输出就说工具自述的那一句', () => {
+    expect(progressSummary({ message: 'seq 1 20', outputTail: '' })).toBe('seq 1 20')
+    expect(progressSummary({ message: 'seq 1 20' })).toBe('seq 1 20')
+  })
+
+  it('第三级:一格都没有就交回 undefined,让调用方用今天那一份参数摘要', () => {
+    expect(progressSummary(undefined)).toBeUndefined()
+    expect(progressSummary({})).toBeUndefined()
+    expect(progressSummary({ ratio: 0.5 })).toBeUndefined()
+  })
+
+  it('lastLine 空串 / 全空白都答 undefined(空摘要会让那一格凭空少一行)', () => {
+    expect(lastLine('')).toBeUndefined()
+    expect(lastLine('\n\n')).toBeUndefined()
+    expect(lastLine(undefined)).toBeUndefined()
+  })
+})
+
+describe('stepProgress:只认还在跑的那几步', () => {
+  it('执行中的步有读数', () => {
+    const live = step('c1', 'bash', { status: 'executing', progress: { message: 'x' } })
+    expect(stepProgress(live)).toEqual({ message: 'x' })
+  })
+
+  it('**收场了的步没有** —— 那一行该说成果,不该挂一句关于过去的现在时', () => {
+    const done = step('c1', 'bash', { status: 'completed', progress: { message: 'x' } })
+    expect(stepProgress(done)).toBeUndefined()
+  })
+})
+
+describe('cardProgressRatio:不画一条恒为 0 的条', () => {
+  it('活步报了 ratio 才有,按 [0,1] 夹紧', () => {
+    expect(cardProgressRatio([step('c1', 'bash', { status: 'executing', progress: { ratio: 0.4 } })])).toBe(0.4)
+    expect(cardProgressRatio([step('c1', 'bash', { status: 'executing', progress: { ratio: 9 } })])).toBe(1)
+    expect(cardProgressRatio([step('c1', 'bash', { status: 'executing', progress: { ratio: -3 } })])).toBe(0)
+  })
+
+  it('没有活步 / 活步没报 ratio → 没有这条(造事实的禁令)', () => {
+    expect(cardProgressRatio([step('c1', 'bash', { status: 'completed', progress: { ratio: 0.4 } })])).toBeUndefined()
+    expect(cardProgressRatio([step('c1', 'bash', { status: 'executing', progress: { message: 'x' } })])).toBeUndefined()
+    expect(cardProgressRatio([])).toBeUndefined()
+  })
+
+  it('ratio = 0 是一个**读数**,不是缺席', () => {
+    expect(cardProgressRatio([step('c1', 'bash', { status: 'executing', progress: { ratio: 0 } })])).toBe(0)
+  })
+})
+
+describe('stepLiveAt:进度流继续往前推那一格(C2-b 兑现 C2-a 的预告)', () => {
+  it('有 liveAt 就用它 —— 会报进度的工具在执行中不再误报静默', () => {
+    const executing = call('c1', 'bash', { status: 'executing', startTime: T0, liveAt: T0 + 9_000 })
+    expect(stepLiveAt(executing)).toBe(T0 + 9_000)
+    expect(silentMsOf(executing, T0, T0 + 9_100)).toBe(100)
+  })
+
+  it('一个字都不报的工具照旧从步开始算(那是实话,不是误报)', () => {
+    const executing = call('c1', 'bash', { status: 'executing', startTime: T0 })
+    expect(silentMsOf(executing, T0, T0 + 9_100)).toBe(9_100)
   })
 })

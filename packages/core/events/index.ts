@@ -26,6 +26,7 @@ export type {
   StreamDeltaStamp,
   TextDeltaChunk,
   ToolInputDeltaChunk,
+  ToolProgressChunk,
   UiAssistantChunksChunk,
   UiAssistantDeltaChunk,
   UiAssistantPartEndChunk,

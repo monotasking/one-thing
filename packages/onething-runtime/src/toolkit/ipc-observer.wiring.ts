@@ -52,12 +52,30 @@ export interface LegacyMetadataUpdate {
   metadata?: JsonObject
 }
 
+/**
+ * `progress` 那条的出口形状(C2-b)。
+ *
+ * 与 `ToolEvent` 里那条**同形去掉 metadata**:`metadata` 是给审计与结果投影的
+ * 结构化细节,而这个出口只服务一件事 —— 屏幕上那一行此刻显示什么。多带一格
+ * 就等于让进度这条旁路也变成一条结果通道。
+ */
+export interface LegacyToolProgressUpdate {
+  message?: string
+  ratio?: number
+  outputTail?: string
+}
+
 /** 旧执行上下文交给工具的那四个回调。装配层把它们包成一个 `Observer`。 */
 export interface LegacyToolCallbacks {
   onMetadata?(update: LegacyMetadataUpdate): void
   onPartialResult?(update: ToolPartialResult): void
   onStepStart?(step: Step): void
   onStepComplete?(step: Step): void
+  /**
+   * 进度(C2-b)。**缺席即从前**:没接这个回调的宿主(RPC 直调、外部 agent 的
+   * 本地工具执行)照旧一条进度都不发,行为逐字不变。
+   */
+  onProgress?(update: LegacyToolProgressUpdate): void
 }
 
 // ── 纯函数 ──────────────────────────────────────────────────────────────────
@@ -67,6 +85,20 @@ export function metadataUpdateFromAnnotate(
   event: Extract<ToolEvent, { type: 'annotate' }>,
 ): LegacyMetadataUpdate {
   return { title: event.title, metadata: event.details }
+}
+
+/**
+ * `progress` → 出口入参。**只搬三格,不补一格** —— 工具没报的就是没报,
+ * 这里给一个默认 `ratio` 或拿 `metadata` 凑一句 `message`,都是在编。
+ */
+export function toolProgressFromEvent(
+  event: Extract<ToolEvent, { type: 'progress' }>,
+): LegacyToolProgressUpdate {
+  return {
+    ...(event.message !== undefined ? { message: event.message } : {}),
+    ...(event.ratio !== undefined ? { ratio: event.ratio } : {}),
+    ...(event.outputTail !== undefined ? { outputTail: event.outputTail } : {}),
+  }
 }
 
 /** `partial` → `ToolPartialResult`。两个形状逐字相同,所以这是恒等映射。 */
@@ -254,9 +286,19 @@ export class IpcProjector implements Observer {
         else this.callbacks.onStepComplete?.(step)
         return
       }
-      // progress / spawned 在旧契约里没有对应的出口 —— 它们是新增的观察面
-      // (状态栏、后台 job 表),由别的投影器消费,这里静默略过而不是硬塞进
-      // metadata:塞进去等于给渲染器发明一个它没约定过的字段。
+      /*
+       * C2-b:progress 有了自己的出口。
+       *
+       * 它走的是**活流那根管**(StreamChannel 上的 `tool-progress` chunk),
+       * 不是旧契约里任何一个已有的回调 —— 所以这里只把三格摆出来,
+       * 发给谁、发不发得出去都是装配层的事。
+       */
+      case 'progress':
+        this.callbacks.onProgress?.(toolProgressFromEvent(event))
+        return
+      // spawned 在旧契约里没有对应的出口 —— 它是新增的观察面(后台 job 表),
+      // 由别的投影器消费,这里静默略过而不是硬塞进 metadata:塞进去等于给
+      // 渲染器发明一个它没约定过的字段。
       default:
         return
     }

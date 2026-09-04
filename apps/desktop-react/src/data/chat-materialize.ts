@@ -5,7 +5,7 @@ import {
   type SessionProjectionState,
 } from '@onething/core/session'
 import type { ProjectedMessage } from './chat-fold'
-import type { StreamWater, WaterPartView } from './stream-water'
+import type { StreamWater, WaterPartView, WaterProgressView } from './stream-water'
 
 /**
  * **增量物化**(09-01 P0,用户真机日志:60 万 token 长会话流式期间 chat-source 的
@@ -324,25 +324,45 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
   const liveTools = water.tools(message.id).filter(tool => !ledgerCallIds.has(tool.id))
   if (liveTools.length > 0) changed = true
 
+  /*
+   * ── 进度那一层(C2-b)──────────────────────────────────────────────
+   *
+   * 与折叠那条车道逐条同判(`chat-fold.ts` 的 `applyProgressToCalls`):进度
+   * **盖在账本那份调用上**,不另画一张卡 —— 一次调用开始执行时账本早就认领了它。
+   * 只盖还在跑的那几次;`liveAt` 顺带推到收到进度的时刻(§6.6)。
+   *
+   * 一格没盖就原样交回原数组(引用相等),`changed` 因此不会被一条与本消息无关的
+   * 进度推翻 —— 每帧造一个长得一样的新数组等于把整条消息重装配一遍。
+   */
+  const progress = water.progress(message.id)
+  const ledgerCalls = message.toolCalls ?? []
+  const paintedCalls = progress.size > 0 ? applyWaterProgress(ledgerCalls, progress) : ledgerCalls
+  if (paintedCalls !== ledgerCalls) changed = true
+
   if (!changed) return message
   return {
     ...message,
-    ...(liveTools.length > 0
+    ...(liveTools.length > 0 || paintedCalls !== ledgerCalls
       ? {
           toolCalls: [
-            ...(message.toolCalls ?? []),
-            ...liveTools.map(tool => ({
-              id: tool.id,
-              toolId: tool.toolName,
-              toolName: tool.toolName,
-              arguments: {},
-              // 后端自己那份占位调用写的正是这一档(`createCoreToolInputStartArtifacts`)。
-              status: 'input-streaming',
-              timestamp: tool.timestamp,
-              streamingArgs: tool.argsText(),
-              // 活性读数(§6.6):与 streamingArgs 同生共死,账本一认领两格一起没。
-              liveAt: tool.lastDeltaAt,
-            })),
+            ...paintedCalls,
+            ...liveTools.map(tool => {
+              const found = progress.get(tool.id)
+              return {
+                id: tool.id,
+                toolId: tool.toolName,
+                toolName: tool.toolName,
+                arguments: {},
+                // 后端自己那份占位调用写的正是这一档(`createCoreToolInputStartArtifacts`)。
+                status: 'input-streaming',
+                timestamp: tool.timestamp,
+                streamingArgs: tool.argsText(),
+                // 活性读数(§6.6):与 streamingArgs 同生共死,账本一认领两格一起没。
+                liveAt: tool.lastDeltaAt,
+                // 参数还在流的那一段里工具就报了进度(少见但合法):照样摆出来。
+                ...(found ? { progress: progressValue(found) } : {}),
+              }
+            }),
           ] as ProjectedMessage['toolCalls'],
         }
       : {}),
@@ -351,6 +371,44 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
     // `content` 是正文那几格拼起来的 —— 单一产地,不另存一份。
     content: parts.filter(part => part.type === 'text').map(part => part.content ?? '').join(''),
   } as ProjectedMessage
+}
+
+type MaterializedCall = NonNullable<ProjectedMessage['toolCalls']>[number]
+
+/** 「这次调用还在跑」的那两档(与 `chat-fold.ts` 的同名表逐字相同)。 */
+const LIVE_CALL_STATUSES: ReadonlySet<string> = new Set(['executing', 'input-streaming'])
+
+/** 读数那三格(`at` 是这台的写点,不进摆出去的那一份)。 */
+function progressValue(view: WaterProgressView): MaterializedCall['progress'] {
+  return {
+    ...(view.message !== undefined ? { message: view.message } : {}),
+    ...(view.ratio !== undefined ? { ratio: view.ratio } : {}),
+    ...(view.outputTail !== undefined ? { outputTail: view.outputTail } : {}),
+  }
+}
+
+/**
+ * 把进度盖到账本那几次调用上(C2-b)。
+ *
+ * **一格没盖就原样交回原数组**(引用相等):`changed` 与下游的 memo 全靠它。
+ */
+function applyWaterProgress(
+  calls: readonly MaterializedCall[],
+  progress: ReadonlyMap<string, WaterProgressView>,
+): readonly MaterializedCall[] {
+  let next: MaterializedCall[] | undefined
+  for (let i = 0; i < calls.length; i += 1) {
+    const call = calls[i]
+    const found = progress.get(call.id)
+    if (!found || !LIVE_CALL_STATUSES.has(call.status)) continue
+    if (!next) next = [...calls]
+    next[i] = {
+      ...call,
+      progress: progressValue(found),
+      liveAt: Math.max(found.at, call.liveAt ?? 0),
+    }
+  }
+  return next ?? calls
 }
 
 /**
