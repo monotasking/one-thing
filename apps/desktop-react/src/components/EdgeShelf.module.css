@@ -11,7 +11,6 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--surface-1);
-  --surface-host: var(--surface-1);
   border: 0 solid var(--line-1);
 }
 
@@ -178,6 +177,9 @@
   flex: 1;
   min-height: 0;
   background: var(--surface-2);
+  /* --surface-host 声明在**真正给内容铺底的那一格**上(.body 是 surface-2,壳 .shelf 是 surface-1):
+     内容面里读它的东西(粘顶节头)要的是脚下这块底,不是外壳的底。09-04 用户报「背景色很奇怪」即声明错层。 */
+  --surface-host: var(--surface-2);
   /* 同组 tab 全部挂着,一层一个:所以 body 是它们的包含块。 */
   position: relative;
 }

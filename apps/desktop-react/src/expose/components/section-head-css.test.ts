@@ -16,9 +16,16 @@ describe('粘顶节头不透明', () => {
     expect(block(read('SectionHead.module.css'), '.head {')).toMatch(/background:\s*var\(--surface-host\)/)
     expect(read('../../styles/tokens.css')).toMatch(/--surface-host:\s*var\(--surface-2\)/)
   })
-  it('四个 Placement 宿主根各自声明 --surface-host', () => {
+  it('四个 Placement 宿主各自声明 --surface-host,且声明在真正铺内容底的那一格上(同块同色)', () => {
     for (const host of ['FloatWindow', 'EdgeShelf', 'StageOverlay', 'CoverLayer']) {
-      expect(read(`../../components/${host}.module.css`), host).toMatch(/--surface-host:\s*var\(--surface-[12]\)/)
+      const css = read(`../../components/${host}.module.css`)
+      const blocks = css.split('}').filter((b) => b.includes('--surface-host:'))
+      expect(blocks.length, host).toBe(1)
+      const n = blocks[0].match(/--surface-host:\s*var\(--surface-([12])\)/)?.[1]
+      expect(n, host).toBeDefined()
+      // 声明所在的块自己就得铺着同一层面 —— 09-04「背景色很奇怪」:边架把它声明在
+      // surface-1 的外壳上,而内容底 .body 是 surface-2,节头就成了一块异色。
+      expect(blocks[0], host).toMatch(new RegExp(`background:\\s*var\\(--surface-${n}\\)`))
     }
   })
 })
