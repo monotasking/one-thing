@@ -643,6 +643,61 @@ describe('layer 的落点 = 第一个可交互子作用域(设计 §4.1 那张�
     expect(focusTree.current()?.scope).toBe('viewer')
   })
 
+  it('层**登记了落点闭包却答 null** → 照样回落到子作用域(09-04 修的 R2 偏离)', () => {
+    const shell = document.createElement('div')
+    const layerEl = document.createElement('div')
+    layerEl.tabIndex = -1
+    const pane = document.createElement('div')
+    pane.tabIndex = -1
+    layerEl.append(pane)
+    shell.append(layerEl)
+    document.body.append(shell)
+
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    /*
+     * **这就是 `FocusScope` 交给树的形**:那三个声明走 ref、不进依赖表,所以它给
+     * 每一格都无条件登记一个闭包,prop 缺席时那个闭包答 null。
+     *
+     * 反证:把 `entryOf` 的判据改回 `!at.restingTarget`(闭包在不在)→ 这一条
+     * 当场红,焦点停在 `layerEl` 上 —— 而那正是 R2 之后全壳每一次 `activate(layer)`
+     * 的实况(设计 §4.1 那行「进入落点 = 第一个可交互子作用域」整条是死码)。
+     */
+    const layer = focusTree.register('float-layer', root.instanceId, {
+      restingTarget: () => null,
+    })
+    layer.setRoot(layerEl)
+    focusTree.register('viewer', layer.instanceId).setRoot(pane)
+
+    layer.activate('placement')
+    expect(document.activeElement).toBe(pane)
+    expect(focusTree.current()?.scope).toBe('viewer')
+  })
+
+  it('层声明的落点**已经离开文档** → 也回落(答不出就是答不出)', () => {
+    const shell = document.createElement('div')
+    const layerEl = document.createElement('div')
+    layerEl.tabIndex = -1
+    const pane = document.createElement('div')
+    pane.tabIndex = -1
+    layerEl.append(pane)
+    shell.append(layerEl)
+    document.body.append(shell)
+    // 造出来但从不挂进文档 —— `isConnected` 是 false。
+    const orphan = document.createElement('input')
+
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const layer = focusTree.register('float-layer', root.instanceId, {
+      restingTarget: () => orphan,
+    })
+    layer.setRoot(layerEl)
+    focusTree.register('viewer', layer.instanceId).setRoot(pane)
+
+    layer.activate('placement')
+    expect(document.activeElement).toBe(pane)
+  })
+
   it('层自己声明了落点就听它的(宿主的显式意见优先于这条缺省规矩)', () => {
     const shell = document.createElement('div')
     const layerEl = document.createElement('div')
@@ -679,5 +734,110 @@ describe('layer 的落点 = 第一个可交互子作用域(设计 §4.1 那张�
     if (inertChild) inertChild.inert = true
     layer.activate('placement')
     expect(document.activeElement).toBe(layerEl)
+  })
+})
+
+/**
+ * **召唤三态的树侧两口**(S1,设计 §14)。
+ *
+ * `isOwnerActive` 回答第四态的判据(「焦点在不在它里面」),`returnFrom` 执行
+ * 那一态拍定的 (a) 回去。两者都**不动形态**:面留在原位,走的只有焦点。
+ */
+describe('召唤:isOwnerActive / returnFrom', () => {
+  /**
+   * 壳根 + 一扇替 `owner` 摆着的层 + 层里一块面(真正拿焦点、也真正记座位的那一格)
+   * + 壳根上一个输入框(召唤之前焦点所在,归还该回的地方)。
+   */
+  function mountOwned(owner: string) {
+    const shell = document.createElement('div')
+    shell.tabIndex = -1
+    document.body.append(shell)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+
+    const layerEl = document.createElement('div')
+    layerEl.tabIndex = -1
+    shell.append(layerEl)
+    const layer = focusTree.register('float-layer', root.instanceId, { owner })
+    layer.setRoot(layerEl)
+
+    // 层的落点 = 第一个可交互子作用域的根,所以这块面的根要自己可聚焦。
+    const paneEl = document.createElement('div')
+    paneEl.tabIndex = -1
+    layerEl.append(paneEl)
+    const pane = focusTree.register('viewer', layer.instanceId)
+    pane.setRoot(paneEl)
+
+    const composer = focusable('composer')
+    shell.append(composer)
+    const region = focusTree.register('composer', root.instanceId)
+    region.setRoot(composer)
+
+    return { shell, root, layer, layerEl, pane, paneEl, composer }
+  }
+
+  it('isOwnerActive:焦点进那一层才答 true;换到别处当场变 false', () => {
+    const { layer, composer } = mountOwned('files')
+    expect(focusTree.isOwnerActive('files')).toBe(false)
+    layer.activate('open')
+    expect(focusTree.isOwnerActive('files')).toBe(true)
+    // 问的是 owner 不是 scope id —— 没人替 'sessions' 摆着。
+    expect(focusTree.isOwnerActive('sessions')).toBe(false)
+    // 焦点真的走开(`root.activate` 走不动:第一响应者是它的后代,那一句会早退)。
+    composer.focus()
+    expect(focusTree.isOwnerActive('files')).toBe(false)
+  })
+
+  it('isOwnerActive:inert 的那一层不算(架子后台那一份)', () => {
+    const { layer } = mountOwned('files')
+    layer.activate('open')
+    expect(focusTree.isOwnerActive('files')).toBe(true)
+    layer.update({ inert: true })
+    // 反证:`activePath()` 那一句不缩路径 → 这里仍答 true,于是召唤一块藏在
+    // 后台 tab 里的面会被判成第四态「回去」,永远露不出来。
+    expect(focusTree.isOwnerActive('files')).toBe(false)
+  })
+
+  it('returnFrom:焦点回到召唤之前那个元素,而**面留在原位**', () => {
+    const { layer, paneEl, composer } = mountOwned('files')
+    composer.focus()
+    expect(document.activeElement).toBe(composer)
+
+    layer.activate('open')
+    expect(document.activeElement).toBe(paneEl)
+    expect(focusTree.isOwnerActive('files')).toBe(true)
+
+    const nodesBefore = focusTree.nodes().size
+    expect(focusTree.returnFrom('float-layer', { owner: 'files' })).toBe(true)
+    // 归还只搬焦点:一格作用域都没有卸载(「关面是 Esc 的活」)。
+    expect(focusTree.nodes().size).toBe(nodesBefore)
+    expect(document.activeElement).toBe(composer)
+    expect(focusTree.isOwnerActive('files')).toBe(false)
+  })
+
+  it('returnFrom:归还**不算换人**,所以来回按不会把座位互相记死', () => {
+    const { layer, paneEl, composer } = mountOwned('files')
+    composer.focus()
+
+    layer.activate('open')
+    expect(focusTree.returnFrom('float-layer', { owner: 'files' })).toBe(true)
+    expect(document.activeElement).toBe(composer)
+    /*
+     * 再召唤一次 → 还是进那块面;再还一次 → 还是回输入框。
+     * 反证:把 `withoutReturnSeat` 那一句拆掉 → 归还那一发 focusin 会给输入框
+     * 记下「上一任是查看器」,第二次归还就弹回查看器,来回按原地打转。
+     */
+    layer.activate('open')
+    expect(document.activeElement).toBe(paneEl)
+    expect(focusTree.returnFrom('float-layer', { owner: 'files' })).toBe(true)
+    expect(document.activeElement).toBe(composer)
+  })
+
+  it('returnFrom:那一层不在场 → false,什么都不做', () => {
+    const { composer } = mountOwned('files')
+    composer.focus()
+    expect(focusTree.returnFrom('float-layer', { owner: 'nobody' })).toBe(false)
+    expect(focusTree.returnFrom('shelf-layer', { owner: 'files' })).toBe(false)
+    expect(document.activeElement).toBe(composer)
   })
 })

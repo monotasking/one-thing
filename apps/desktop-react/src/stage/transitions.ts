@@ -300,6 +300,62 @@ export function coverIdOf(state: StageState): string | null {
 }
 
 /**
+ * **架子上的这一格此刻露不露脸**。收成一只函数是因为它有两个读者(Dock 点瓦的
+ * 「再点一次收起来 vs 先把它露出来」,与下面那只 `isItemVisible`),而两处抄
+ * 一遍迟早分叉 —— `activeId === id && !collapsed` 这句话只该有一个产地。
+ *
+ * 它只回答**架子内部**那一格,不问上面压着什么(盖 / 舞台由 `isItemVisible` 合并)。
+ */
+export function isShelfTabVisible(shelf: ShelfState, id: string): boolean {
+  return shelf.activeId === id && !shelf.collapsed
+}
+
+/**
+ * **谁压在这块面上面**(答 null = 没人压着)。判据是 tokens 里那张 z 序表,
+ * 不是猜的:`--z-cover 100 < --z-float 200 < --z-overlay(舞台 scrim)500`。
+ *
+ *  · **舞台**的 scrim 铺满视口,所以它开着时**除它自己以外**的一切内容形都被压住;
+ *  · **盖**铺满整扇窗(09-01 用户推翻「只接管中间那一栏」,含侧边的架子),
+ *    但它压不过浮窗 —— 所以被盖压住的只有架子那一档。
+ *
+ * 收在这里而不是各面自己判:「看不看得见」是形态机的事实,组件与召唤共用它。
+ */
+export function occluderOf(state: StageState, id: string): 'stage' | 'cover' | null {
+  const placement = placementOf(state, id)
+  if (placement.kind === 'dock') return null
+  const stage = stageIdOf(state)
+  if (stage !== null && stage !== id) return 'stage'
+  if (placement.kind === 'edge' && coverIdOf(state) !== null) return 'cover'
+  return null
+}
+
+/**
+ * **这块面此刻看不看得见** —— 全壳唯一那一句(设计 §14「看得见的判据只有一个产地」)。
+ *
+ * 四档逐条:
+ *  · `dock`   —— 根本没开,不是「看不见」而是「不在场」,一律 false;
+ *  · `stage`  —— 舞台至多一个、又压在最上面,所以它自己永远看得见;
+ *  · `cover`  —— 盖至多一个;只有舞台能压住它;
+ *  · `float`  —— **只有最上面那一扇算看得见**:`floatOrder` 末位最上,底下那几扇
+ *    被压着(这正是设计 §14 说的「浮窗被压在下面」)。两扇窗**几何上**叠不叠
+ *    这里不问 —— 纯函数不认识矩形交并,而「把它翻到最上面」对任何一扇被压的窗
+ *    都是对的动作(与 `clickDockIcon` 对浮窗那一支同一句话);
+ *  · `edge`   —— 架子内部露脸(`isShelfTabVisible`)且上面没压着盖 / 舞台。
+ */
+export function isItemVisible(state: StageState, id: string): boolean {
+  const placement = placementOf(state, id)
+  if (placement.kind === 'dock') return false
+  if (occluderOf(state, id) !== null) return false
+  if (placement.kind === 'float') {
+    return state.floatOrder[state.floatOrder.length - 1] === id
+  }
+  if (placement.kind === 'edge') {
+    return isShelfTabVisible(state.shelves[placement.side], id)
+  }
+  return true
+}
+
+/**
  * Esc 该退掉哪一块面 —— **唯一**回答这句话的地方(08-31 修「Esc 关不掉浮窗」)。
  *
  * 退层次序 = 视觉上压在最上面的那一块先退,与 z 序逐条对应:
@@ -783,8 +839,10 @@ export function clickDockIcon(
 
   if (current.kind === 'edge') {
     const shelf = state.shelves[current.side]
-    const visible = shelf.activeId === id && !shelf.collapsed
-    if (visible) return setShelfCollapsed(state, current.side, true)
+    // 判据读**那一只**共用的查询,不在这里再抄一句(见 isShelfTabVisible)。
+    // 这里问的是「架子内部露不露脸」而不是 isItemVisible ——「盖开着时点瓦」
+    // 的行为一个字都不改(那是指针那条路的裁定,不归本批)。
+    if (isShelfTabVisible(shelf, id)) return setShelfCollapsed(state, current.side, true)
     return {
       ...state,
       shelves: { ...state.shelves, [current.side]: { ...shelf, activeId: id, collapsed: false } },

@@ -362,15 +362,80 @@ export class FocusTree {
     scope: FocusScopeId,
     opts: { owner?: string; reason?: ActivateReason } = {},
   ): boolean {
-    let best: ScopeNode | null = null
-    for (const node of this.map.values()) {
-      if (node.scope !== scope || !isInteractive(node) || !node.root) continue
-      if (opts.owner !== undefined && node.owner !== opts.owner) continue
-      if (!best || node.lastActiveAt > best.lastActiveAt) best = node
-    }
+    const best = this.pickScope(scope, opts.owner)
     if (!best) return false
     this.activate(best.instanceId, opts.reason ?? 'programmatic')
     return true
+  }
+
+  /**
+   * **把焦点还回这一层的上一任**(S1 召唤三态第四格,设计 §14 拍定的 (a) 回去)。
+   *
+   * 「还回去」不是一套新逻辑 —— 它就是**卸载时那条结构归还**(§4.5)提前手动跑一遍:
+   * 同一只 `returnTargetOf`(先问树替那一格记下的 `returnTo` 座位,答不出退回父链),
+   * 同一条「归还不算换人」的纪律(`withoutReturnSeat`,免得把「回去」记成新的接管,
+   * 下一次召唤又被弹回来)。差别只有一条:**这一层不走**,面留在原位,走的只有焦点。
+   *
+   * 座位记在**接管焦点的那一格**上,不在层上(层只是它的父,`entryOf` 往里走了一层
+   * 才是真正拿到焦点的那块面)—— 所以这里问的是**此刻的第一响应者**,前提是它确实
+   * 落在这一层里面。第四态的判据(`isOwnerActive`)保证了这个前提;万一不成立
+   * (树在两次读之间变了),退而问层自己,答案由 `returnTargetOf` 的父链兜住。
+   *
+   * 回 false = 这一层不在场,或者归还答不出落点 —— 调用方什么都不做。**不抛**:
+   * 「刚好没有上一任」是常态(壳一起来就召唤第一块面),不是错误。
+   */
+  returnFrom(scope: FocusScopeId, opts: { owner?: string } = {}): boolean {
+    const host = this.pickScope(scope, opts.owner)
+    if (!host) return false
+    const inside =
+      this.focused && this.isDescendantOf(this.focused, host.instanceId)
+        ? this.map.get(this.focused)
+        : undefined
+    const back = returnTargetOf(this.map, inside ?? host)
+    if (!back) return false
+    // 与 `settle` 逐字同序:先把路径指过去,再搬焦点(合成一句会在「祖先还没铺根」
+    // 那个合法中间态上把整条路径清空 —— 那条判例记在 settle 上头)。
+    this.setFocused(back.instanceId, false)
+    /*
+     * `withoutReturnSeat` 在**这一条**路上今天是冗余的,留着是与 `settle` 同一条纪律:
+     * 上面那句 `setFocused` 已经把第一响应者指成了 `back.instanceId`,而 `returnTargetOf`
+     * 交回的元素结构上一定属于它所命名的那一格(`lastFocused` 只记最内层、`restingTarget`
+     * 与 `root` 本来就是那一格自己的),所以随后那一发 focusin 的「换人」判据不成立、
+     * 座位本来就写不进去。**这一句因此没有「拆掉即红」的反证**(09-04 S1 真跑过一次:
+     * 拆掉 45 例照绿),记在这里而不是靠一条造不出来的用例假装它被钉着。
+     * 它防的是「哪天 `returnTargetOf` 交回一个属于更深那一格的元素」——那时它是唯一的闸。
+     */
+    if (this.policy.moveFocus) {
+      this.withoutReturnSeat(() => back.element.focus({ preventScroll: true }))
+    }
+    this.lastReason = 'restore'
+    this.notify()
+    return true
+  }
+
+  /**
+   * **活动路径上有没有一格替 `owner` 摆着**(S1 召唤三态判「焦点在不在它里面」)。
+   *
+   * 问的是 `ScopeNode.owner`(宿主层报的住户 = `stage/items` 的 item id),不是
+   * scope id：同一种 layer 同时有好几份,而「焦点在文件树那块面里」问的正是
+   * **哪一块面**。路径已经缩过,所以 inert 的架子后台层不会答 true。
+   */
+  isOwnerActive(owner: string): boolean {
+    return this.activePath().some((id) => this.map.get(id)?.owner === owner)
+  }
+
+  /**
+   * 按声明 id(可选再按 `owner`)挑一份实例。`activateScope` 与 `returnFrom`
+   * **共用这一只** —— 「哪一份才是用户心里那块面」只该有一个判据。
+   */
+  private pickScope(scope: FocusScopeId, owner?: string): ScopeNode | null {
+    let best: ScopeNode | null = null
+    for (const node of this.map.values()) {
+      if (node.scope !== scope || !isInteractive(node) || !node.root) continue
+      if (owner !== undefined && node.owner !== owner) continue
+      if (!best || node.lastActiveAt > best.lastActiveAt) best = node
+    }
+    return best
   }
 
   /**
@@ -441,14 +506,26 @@ export class FocusTree {
    *
    * 三条判据:
    *  · 只对 `layer` 生效 —— region / float / modal 的落点是它们自己声明的事;
-   *  · 层**自己声明了落点**就听它的(那是宿主的显式意见,比这条缺省规矩优先);
+   *  · 层**自己此刻真答得出落点**就听它的(那是宿主的显式意见,比这条缺省规矩优先);
    *  · 孩子按**登记序**取第一个可交互且已经铺了根的(登记序 = 挂载序 = 屏幕上
    *    从上到下的次序);孩子还是层就再往里走一层(架子层里套内容层的形)。
+   *
+   * ── 第二条判的是**答案**,不是**闭包在不在**(09-04 S1 修的 R2 偏离)────────
+   * 从前这里写的是 `!at.restingTarget`,而 `FocusScope` 给**每一格**都无条件登记
+   * 一个 `restingTarget` 闭包(prop 缺席时它答 null,理由是那三个声明走 ref 不进
+   * 依赖表)—— 于是这一格对所有真组件恒为真,整条「进层先进它装着的那块面」的
+   * 规矩是死码:焦点一律停在层的根上(`<section>` / `<div>`)。设计 §4.1 那张表里
+   * `layer` 行写的是「进入落点 = 第一个可交互子作用域,否则根」,那是**已拍的规则**,
+   * 所以这不是一次裁定而是一次修正。改判返回值之后,「声明了但此刻答 null」
+   * (条件渲染、ref 还没挂上)与「根本没声明」是同一回事 —— 两者都该回落到子作用域,
+   * 这正是设计要的那一档。
    */
   private entryOf(node: ScopeNode): ScopeNode {
     const seen = new Set<FocusInstanceId>()
     let at: ScopeNode = node
-    while (at.kind === 'layer' && !at.restingTarget && !seen.has(at.instanceId)) {
+    while (at.kind === 'layer' && !seen.has(at.instanceId)) {
+      const declared = at.restingTarget?.() ?? null
+      if (declared && declared.isConnected) break
       seen.add(at.instanceId)
       let child: ScopeNode | undefined
       for (const candidate of this.map.values()) {

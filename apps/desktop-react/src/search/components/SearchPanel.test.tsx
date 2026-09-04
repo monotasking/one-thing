@@ -93,12 +93,20 @@ describe('⌘P = 开关检索面板', () => {
     expect(document.activeElement).toBe(input())
   })
 
-  it('再按一下:收回 Dock,总览那块面一直没被叫起来', async () => {
+  it('再按一下**不关它**(S1 召唤语义);Esc 才收回 Dock,总览那块面一直没被叫起来', async () => {
     render(<AppShell />)
     cmdP()
     cmdP()
-    expect('search' in useStageStore.getState().placements).toBe(false)
+    /*
+     * 09-04 S1(召唤三态,设计 §14,用户拍定第四格「回去」):`toggle:<面>` 那一族
+     * 键从「开 / 关」改成召唤 —— **关面是 Esc 的活**。所以第二下 ⌘P 只把键盘
+     * 还回去,面留在原位;这一行从前断言的是「收回 Dock」,随本批改判。
+     */
+    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
     expect('sessions' in useStageStore.getState().placements).toBe(false)
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect('search' in useStageStore.getState().placements).toBe(false)
     // 形态当场就变了,DOM 还要多活一帧走出场动画(StageOverlay 的 held),所以这条要等。
     await waitFor(() => expect(screen.queryByLabelText('搜索')).toBeNull())
   })

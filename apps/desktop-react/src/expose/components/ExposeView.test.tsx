@@ -69,7 +69,13 @@ describe('会话总览是一块普通的面', () => {
     render(<AppShell />)
     cmdE()
     act(() => useExposeStore.getState().openQuickLook(other.id))
-    cmdE()
+    /*
+     * 09-04 S1(召唤三态,设计 §14):`toggle:<面>` 那一族键**不再关面** ——
+     * 从前这里是「再按一下 ⌘E 收回去」,现在收面得走它自己的口(Esc / 关钮 /
+     * 这条 action)。这一格量的是**开场归位**,不是那个键的开关语义,所以
+     * 换一条关面的路,断言一个字没动。
+     */
+    act(() => useStageStore.getState().closeToDock(SESSIONS_ITEM_ID))
     cmdE()
     expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
   })

@@ -9,6 +9,7 @@ import { useKeymapStore, currentKeymapPlatform } from '../keymap/store'
 import { scopedCollisionsOf } from '../keymap/scopes'
 import {
   KEYMAP_COMMANDS,
+  commandVerbKeyOf,
   effectiveCombo,
   findCommand,
   formatCombo,
@@ -16,6 +17,7 @@ import {
   recordKey,
 } from '../keymap/transitions'
 import type { CommandId } from '../keymap/types'
+import type { MessageKey } from '../i18n'
 import s from './mocks.module.css'
 
 /**
@@ -55,6 +57,17 @@ export function KeymapSettings() {
   /** 一次只有一行在录 —— 所以录制态住在这一层,而不是每行各存各的。 */
   const [recording, setRecording] = useState<CommandId | null>(null)
   const [conflict, setConflict] = useState<CommandId | null>(null)
+
+  /**
+   * 一条命令在这块面上的名字。带动词壳的那一族(今天只有召唤)套一层,别的原样。
+   * 抽成一句是因为它有**两个**读者:行标签,与撞车提示里那个「与『X』冲突」——
+   * 两处各拼一遍迟早分叉(一处说「召唤『文件』」另一处说「文件」)。
+   */
+  const commandNameOf = (command: { id: CommandId; labelKey: MessageKey }): string => {
+    const bare = t(command.labelKey)
+    const verb = commandVerbKeyOf(command.id)
+    return verb ? t(verb, { name: bare }) : bare
+  }
 
   const platform = currentKeymapPlatform()
   const state = { overrides }
@@ -102,7 +115,7 @@ export function KeymapSettings() {
       <div className={s.sectionNote}>{t('keymap.hint')}</div>
 
       {KEYMAP_COMMANDS.map((command) => {
-        const name = t(command.labelKey)
+        const name = commandNameOf(command)
         const combo = effectiveCombo(state, command.id)
         const isRecording = recording === command.id
         const conflictWith = isRecording && conflict ? findCommand(conflict) : undefined
@@ -114,7 +127,7 @@ export function KeymapSettings() {
             <div className={s.keyRight}>
               {conflictWith && (
                 <span className={s.keyConflict}>
-                  {t('keymap.conflict', { name: t(conflictWith.labelKey) })}
+                  {t('keymap.conflict', { name: commandNameOf(conflictWith) })}
                 </span>
               )}
               {/* 面域局部键那种撞车:不拦写入,只说清是**哪一块面**里的**哪个动作**

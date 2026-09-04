@@ -176,6 +176,22 @@ export function findCommand(id: CommandId): KeymapCommand | undefined {
   return KEYMAP_COMMANDS.find((c) => c.id === id)
 }
 
+/**
+ * 一条命令的名字要不要套一层**动词壳**(S1,设计 §14 的文案那一句)。
+ *
+ * `KeymapCommand.labelKey` 存的是**这块面自己的名字**(「文件」「查看器」),
+ * 因为一条命令的名字与那块面的名字本来就该是同一个产地。可 `toggle:` 那一族
+ * 的语义在 S1 之后不再是「开 / 关」而是**召唤**(把它弄到眼前 + 把键盘交给它,
+ * 不关面),而「召唤」这个动作只有在设置页的键位表里说出来才有意义 —— 光写
+ * 「文件」的那一行没告诉用户这个键会做什么。
+ *
+ * 收在这里而不是各消费方自己判:「哪一族带动词」是命令表的事实,
+ * 设置页只是读它。回 null = 名字就是那块面的名字,不加壳。
+ */
+export function commandVerbKeyOf(id: CommandId): MessageKey | null {
+  return id.startsWith(TOGGLE_COMMAND_PREFIX) ? 'keymap.summonOf' : null
+}
+
 /* ── 键与组合(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
 
 /** KeyboardEvent.key → 规范形。全仓唯一一处规范化,别处不许再 toLowerCase 一次。 */

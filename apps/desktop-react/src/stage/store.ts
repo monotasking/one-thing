@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import { focusTree } from '../focus/registry'
 import { STAGE_ITEMS, findItem } from './items'
+import { requestFocusOnOpen, summonTransition } from './summon'
 import * as T from './transitions'
 import type { Locale } from '../i18n'
 import {
@@ -33,8 +35,21 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   clickDockIcon: (id: string) => void
   /** 显式手势那一层:点名放到哪儿。它既执行也写记忆(记忆在 transitions 的 openAs 里落)。 */
   openAs: (id: string, placement: Placement) => void
-  /** 快捷键用的开关语义:在 Dock 里就按打开方式开,在别处就收回 Dock。 */
+  /**
+   * 开关语义:在 Dock 里就按打开方式开,在别处就收回 Dock。
+   *
+   * **S1(09-04)之后它暂时没有消费者** —— 键盘那条 `toggle:<面>` 命令改走
+   * `summonItem`(召唤,设计 §14),而 Dock 瓦点击走的一直是 `clickDockIcon`。
+   * 本批不删它(派工令明写「toggleItem 不动」):删一个 store 的公开口是另一次
+   * 裁定。它背后的纯函数 `transitions.togglePlacement` 仍有自己的用例钉着。
+   */
   toggleItem: (id: string) => void
+  /**
+   * **召唤**一块面(S1,设计 §14)。键盘 `toggle:<面>` 命令的落点 —— 与
+   * `toggleItem` 的分歧只有一句:**它永远不关面**(关面是 Esc 的活)。
+   * 四态判据在纯函数 `summon.summonTransition` 里,这里只是它的分流器。
+   */
+  summonItem: (id: string) => void
   closeToDock: (id: string) => void
   closeStage: () => void
   closeCover: () => void
@@ -130,6 +145,51 @@ export const useStageStore = create<StageStore>()(
       clickDockIcon: (id) => set((s) => T.clickDockIcon(s, id, openMemoryFor(s, id), viewport())),
       openAs: (id, placement) => set((s) => T.openAs(s, id, placement, viewport())),
       toggleItem: (id) => set((s) => T.togglePlacement(s, id, openMemoryFor(s, id), viewport())),
+      /*
+       * ── 召唤(S1)是 store 唯一那种「先问再分流」的动作 ──────────────────
+       * 它不是一句 `set(纯函数)`,因为判据要同时读**两份**事实:形态机这一份
+       * (在哪儿 / 看不看得见)与响应链那一份(焦点在不在它里面)。判据本身仍然
+       * 是纯的(`summonTransition`),这里只做三件事:把树那一头的读数取成一个
+       * 布尔递进去、按动作分流到**既有**的动作上、给键盘那条路点名(跟焦仍由
+       * `focus-follow` 那唯一一处接线在提交之后送 —— 落定那一刻宿主层还没挂上来)。
+       */
+      summonItem: (id) => {
+        const action = summonTransition(get(), id, {
+          focusedOwner: focusTree.isOwnerActive(id) ? id : null,
+        })
+        switch (action.kind) {
+          case 'open':
+            requestFocusOnOpen(id)
+            set((s) => T.openFromMemory(s, id, openMemoryFor(s, id), viewport()))
+            return
+          case 'reveal':
+            requestFocusOnOpen(id)
+            if (action.how === 'float-front') {
+              set((s) => T.focusFloat(s, id))
+              return
+            }
+            {
+              // 取成局部量再判:闭包里读 `action.side` 拿不到收窄(TS 只对本地
+              // const 保得住),而这两句正好都在闭包里。
+              const side = action.side
+              if (side === null) return
+              // 先点名 tab(已经是活动的就是恒等变换,zustand 连订阅都不推),
+              // 收着的再展开 —— 细梁上一个 tab 的内容都不画,所以两件事都要做。
+              set((s) => T.activateShelfTab(s, side, id))
+              if (action.how === 'shelf-expand') set((s) => T.toggleShelfCollapsed(s, side))
+            }
+            return
+          case 'focus':
+            focusTree.activateScope(action.scope, { owner: id, reason: 'open' })
+            return
+          case 'return':
+            focusTree.returnFrom(action.scope, { owner: id })
+            return
+          case 'blocked':
+            // 不越过盖层(§14)。**诚实的空动作** —— 理由写在 summon.ts 的文件头。
+            return
+        }
+      },
       closeToDock: (id) => set((s) => T.closeToDock(s, id)),
       closeStage: () => set(T.closeStage),
       closeCover: () => set(T.closeCover),

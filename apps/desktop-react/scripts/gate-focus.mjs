@@ -7,7 +7,7 @@
  * 场景 1 就是用户报的那条(树行 Enter 开文件 → ⌘F 开检索条 → Esc 关掉 → ⌘F 再也
  * 开不出来)。先把红钉下来,R1 / R2 才有一个「改前 vs 改后」的机器读数。
  *
- * **R2 起它不再带 `--expect-red` 跑**:内容面全部接树之后,十二个场景应当全绿。
+ * **R2 起它不再带 `--expect-red` 跑**:内容面全部接树之后,所有场景应当全绿。
  * 那个档留着只为一件事 —— 下一次要先钉红再修的时候还用得上(有红也退 0,
  * 红绿逐条打表)。
  *
@@ -32,6 +32,11 @@
  * 10. 文件树单击开文件**焦点留树**,↵ 开文件**焦点进查看器**(§11 拍点 1 的 (a) 档)。
  * 11. ⌘F 在浮窗里的查看器与架子 tab 里的查看器**各开一次**(多实例:路由看实例)。
  * 12. ⌘P → Esc → 焦点回到开它之前**那个输入框**(§4.5 的 returnTo,兄弟之间的归还)。
+ * 13. 召唤三态(S1,§14):Dock 里 → 开 + 焦点进;焦点在面里 → 回输入框;看得见没聚焦
+ *     → 只聚焦;架子上切走了 tab → 露出来 + 焦点进。后三态每一步都同时量
+ *     「placements 一个字节没变」—— 召唤与旧那条 `toggleItem` 的分歧就是这一句。
+ *
+ * (打表时的编号比这里多一格:总览那条键盘交接是 8b,自成一个场景。)
  *
  *  每个场景**每一步**之后断言 I1(`activeElement` 不是 body)。
  *
@@ -341,7 +346,7 @@ async function main() {
     // 进那条会话(门要走用户真正走的那条路)。
     await enterGateSession(page, sessionId)
 
-    console.log('[3/3] 十二个场景')
+    console.log('[3/3] 逐个场景')
 
     /* ── 场景 1:⌘F → Esc → ⌘F(用户报的那条)──────────────────────────── */
     scenario('树行 ↵ 开文件 → ⌘F → Esc → ⌘F 再开(用户报的那条;R1 之前第二次开不出来)')
@@ -967,6 +972,199 @@ async function main() {
       `(此刻在 [${backTo.testid ?? '—'}],作用域 ${backTo.scope ?? '—'})`,
     )
     await assertNoOrphan(page, 'Esc 收检索面之后')
+
+
+    /* ── 场景 13:召唤三态(S1,设计 §14)────────────────────────────────── */
+    scenario('召唤三态:Dock 开 → 回去 → 只聚焦 → 架子上露出来(S1,设计 §14 四态)')
+    /*
+     * ── 为什么这一格要读 `placements`,而且是从**落盘的那份**读 ────────────────
+     * 召唤与旧那条 `toggleItem` 的分歧只有一句:**它永远不改形态**(除了第一态
+     * 「开出来」)。所以后三态每一步的判据都是同一句话 —— 「这一下之后 placements
+     * 一个字节都没变」。DOM 上看不出这件事(一块面被关掉与被藏起来在 DOM 上都是
+     * 「不在了」),而 store 没有挂在 window 上,所以读它落盘的那份:zustand persist
+     * 每一次状态写入都同步落一次盘,`placements` 就在家具账里。
+     *
+     * 走一遍**这一本账里所有的 placements**(每个工作区一格),不去猜当前空间那个
+     * id 是什么 —— 空间 id 是别处的事实,拿到这道门里来判等于把两件事拴在一起。
+     */
+    const placementsSig = () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem('onething.stage')
+        if (!raw) return null
+        const found = []
+        const walk = (value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return
+          if (value.placements && typeof value.placements === 'object') {
+            found.push(JSON.stringify(value.placements))
+          }
+          for (const key of Object.keys(value)) walk(value[key])
+        }
+        try {
+          walk(JSON.parse(raw))
+        } catch {
+          return null
+        }
+        return found.sort().join('||')
+      })
+    /** 焦点此刻落在哪一格作用域 / 哪一块面里。 */
+    const focusNow = () =>
+      page.evaluate(() => {
+        const el = document.activeElement
+        return {
+          testid: el?.getAttribute?.('data-testid') ?? null,
+          scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+          panel: el?.closest?.('[data-panel-layer]')?.getAttribute('data-panel-layer') ?? null,
+        }
+      })
+    const searchOnScreen = () =>
+      page.evaluate(() =>
+        Boolean(document.querySelector('[data-testid="search-panel"], [data-panel-layer="search"]')),
+      )
+
+    await page.goto(page.url().split('?')[0])
+    await waitFor('壳回来了', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+    )
+    await enterGateSession(page, sessionId)
+    // 前面几个场景可能留下浮窗 / 盖 / 舞台。Esc 逐层退到干净(架子按设计不在链里)。
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press('Escape')
+      await delay(150)
+    }
+    await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="composer-input"]')
+      if (box instanceof HTMLElement) box.focus()
+    })
+
+    /* ① 未打开 → 开出来 + 焦点进那块面。 */
+    if (await searchOnScreen()) {
+      skip('① Dock 里 → 召唤把它开出来并把焦点送进去', '检索面此刻还在场(Esc 没退干净)')
+    } else {
+      await page.keyboard.press('Meta+p')
+      await delay(500)
+      assert(await searchOnScreen(), '① 召唤把检索面开出来了')
+      const at = await focusNow()
+      /*
+       * 这一步的**焦点那一半不是判召唤的读数**:检索面自己声明了 `activateOnMount`
+       * (⌘P 敲出来就打字是它的产品语义),所以就算召唤一句焦点都不送它照样入焦。
+       * 留着它是因为设计 §14 的门要这一格产品行为在场;**分辨得出召唤**的是下面
+       * 三步(②③④ 全是「形态一个字节不变」),jsdom 那头另有一份用文件树量的。
+       */
+      assert(
+        at.scope === 'search',
+        '① 开出来之后焦点在检索面里',
+        `(此刻在 [${at.testid ?? '—'}],作用域 ${at.scope ?? '—'})`,
+      )
+      await assertNoOrphan(page, '① 召唤开面之后')
+    }
+
+    /* ④ 看得见、焦点在它里面 → 回去(用户 09-03 拍定的 (a)),形态零变化。 */
+    const sigBeforeReturn = await placementsSig()
+    await page.keyboard.press('Meta+p')
+    await delay(450)
+    const returned = await focusNow()
+    assert(
+      returned.testid === 'composer-input',
+      '④ 焦点在面里 → 再召唤一下**把键盘还回输入框**',
+      `(此刻在 [${returned.testid ?? '—'}],作用域 ${returned.scope ?? '—'})`,
+    )
+    assert(await searchOnScreen(), '④ 面**留在原位**(召唤不关面 —— 关面是 Esc 的活)')
+    const sigAfterReturn = await placementsSig()
+    assert(
+      sigBeforeReturn !== null && sigAfterReturn === sigBeforeReturn,
+      '④ placements 一个字节都没变',
+      `(前 ${sigBeforeReturn ?? '—'} / 后 ${sigAfterReturn ?? '—'})`,
+    )
+    await assertNoOrphan(page, '④ 召唤回去之后')
+
+    /* ③ 看得见、焦点不在它里面 → 只聚焦,形态零变化。 */
+    const sigBeforeFocus = await placementsSig()
+    await page.keyboard.press('Meta+p')
+    await delay(450)
+    /*
+     * 两条一起量:焦点**进了装着检索面的那一扇窗**(与场景 10 同一把尺),
+     * 而且**落在那块面自己那一格里**而不是停在层的根上 —— 后者是设计 §4.1
+     * 那张表 `layer` 行的原话(「进入落点 = 第一个可交互子作用域,否则根」),
+     * R2 的实现把它写成了死码(`entryOf` 判的是 `restingTarget` **闭包在不在**,
+     * 而 `FocusScope` 给每一格都无条件登记一个),09-04 S1 一并改判成判**返回值**。
+     */
+    const refocused = await page.evaluate(() => {
+      const el = document.activeElement
+      const layer = el?.closest?.('[data-focus-scope="float-layer"]') ?? null
+      return {
+        testid: el?.getAttribute?.('data-testid') ?? null,
+        scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+        inSearchWindow: Boolean(layer?.querySelector('[data-testid="search-panel"]')),
+      }
+    })
+    assert(
+      refocused.inSearchWindow && refocused.scope === 'search',
+      '③ 焦点在输入框、面看得见 → 召唤**只把键盘送进那扇窗里的那块面**',
+      `(此刻在 [${refocused.testid ?? '—'}],作用域 ${refocused.scope ?? '—'})`,
+    )
+    const sigAfterFocus = await placementsSig()
+    assert(
+      sigBeforeFocus !== null && sigAfterFocus === sigBeforeFocus,
+      '③ placements 一个字节都没变',
+      `(前 ${sigBeforeFocus ?? '—'} / 后 ${sigAfterFocus ?? '—'})`,
+    )
+    await assertNoOrphan(page, '③ 召唤只聚焦之后')
+
+    /* ② 钉在架子上、切走了 tab → 露出来 + 焦点进,形态零变化。 */
+    const shelved = await openAsFromDockMenu(page, 'search', /右侧栏|Right/)
+    if (!shelved) {
+      skip('② 架子上切走 tab → 召唤把它露出来并把焦点送进去', 'Dock 菜单里没有「右侧栏 / Right」那一项')
+    } else {
+      // 把活动 tab 切到别人身上(架子上此刻至少还有前面几个场景钉上去的那几块面)。
+      const switched = await page.evaluate(() => {
+        const tabs = Array.from(document.querySelectorAll('[data-shelf] [role="tab"]'))
+        const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
+        if (off instanceof HTMLElement) {
+          off.click()
+          return { count: tabs.length, ok: true }
+        }
+        return { count: tabs.length, ok: false }
+      })
+      await delay(450)
+      if (!switched.ok) {
+        skip(
+          '② 架子上切走 tab → 召唤把它露出来并把焦点送进去',
+          `夹具没搭起来 —— 那条架子上只有 ${switched.count} 个 tab,切不走`,
+        )
+      } else {
+        // 焦点摆回输入框(切 tab 那一下会把焦点送进新露脸的那一层)。
+        await page.evaluate(() => {
+          const box = document.querySelector('[data-testid="composer-input"]')
+          if (box instanceof HTMLElement) box.focus()
+        })
+        const sigBeforeReveal = await placementsSig()
+        await page.keyboard.press('Meta+p')
+        await delay(600)
+        const revealed = await page.evaluate(() => {
+          const layer = document.querySelector('[data-panel-layer="search"]')
+          const el = document.activeElement
+          return {
+            on: layer?.getAttribute('data-panel-on') === 'true' || layer?.hasAttribute('data-panel-on'),
+            inert: layer?.hasAttribute('inert') ?? null,
+            focusInside: Boolean(layer && el instanceof Node && layer.contains(el)),
+            scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+          }
+        })
+        assert(revealed.on === true && revealed.inert === false, '② 召唤把那一格 tab 露了出来')
+        assert(
+          revealed.focusInside,
+          '② 露出来之后焦点进了那块面',
+          `(作用域 ${revealed.scope ?? '—'})`,
+        )
+        const sigAfterReveal = await placementsSig()
+        assert(
+          sigBeforeReveal !== null && sigAfterReveal === sigBeforeReveal,
+          '② placements 一个字节都没变(变的是架子的活动 tab,不是落点)',
+          `(前 ${sigBeforeReveal ?? '—'} / 后 ${sigAfterReveal ?? '—'})`,
+        )
+        await assertNoOrphan(page, '② 召唤露出架子上那一格之后')
+      }
+    }
 
     await app.close()
     app = undefined

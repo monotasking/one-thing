@@ -316,6 +316,26 @@ R1 与 R2 各一批,不合并(R1 守的是"行为不变",R2 才带可感知变�
 | 4 | **`keymap.scopedNote` 是一条孤儿 i18n 键**(zh/en 成对存在,零消费者)。 | **开着** | 它是「面域局部键只在那块面里生效」的一句常驻说明。R3 只把**撞车提示**(`keymap.scopedConflict`,默认零撞车 = 默认不出现)接了出去,没有把这句常驻文案铺到设置页 —— 多一行常驻说明是**可感知变化**,按「行为裁定须先问」留给用户拍。 |
 | 5 | **`float-handwritten` 只退役了 Esc 半边**,点外关半边留着。 | **有意偏离,已记** | 设计 §8 原文是「现有 `float-handwritten` 规则退役(**被 I2 覆盖**)」,而括号里那句理由只对 keydown 那半边成立:I2 判的是 `keydown`,`pointerdown` 一个字没覆盖。整条退役 = 白丢「浮层点外关单产地」这一格执法,而那条禁令在 `apps/desktop-react/CLAUDE.md` 里仍然立着。判词写在 `scripts/ui-consume-check.mjs` 规则 ⑥ 的文件注释里。 |
 
+## 14. 召唤三态(S1,09-03 用户提出并拍定 (a))
+
+**问题**:响应链立起来之后,「这块面此刻接没接键盘」成了树上一句查询(活动路径里有没有装着它的层)。
+用户提议把键盘的 `toggle:<面>` 命令从「开 / 关」改成业界的**召唤(summon)**语义(VS Code ⌘⇧E 资源管理器一族)。
+
+**状态表**(纯函数 `stage/summon.ts` `summonTransition(state, itemId, focused) → SummonAction`):
+
+| 面此刻的状态 | 动作 |
+| --- | --- |
+| 未打开(在 Dock) | `openAs(记忆)` + 点名 `requestFocusOnOpen`(R2 已有的键盘开面路,零新增) |
+| 已打开但看不见:架子上非当前 tab / 架子收成细梁 / 浮窗被压在下面 / 被盖层盖住 | 露出来(设 activeId / 展开架子 / `focusFloat` z 序 / 不动盖层——盖层是模态语义,不越过它),**位置不变**;跟焦由 `focus-follow` 既有判据接(切 tab / 程序置顶两档已在),缺的档补 |
+| 看得见、焦点不在它里面 | `focusTree.activateScope(层, { owner: itemId })`,形态零变化 |
+| 看得见、焦点在它里面 | **(a) 回去**:`focusTree.returnFrom(层)`—— 用该层节点的 `returnTo` 一格(§4.5),无则父链;面留在原位。关面是 Esc 的活,不是聚焦键的 |
+
+**分工**:鼠标点 Dock 瓦仍是 `toggleItem`(开关;09-03 与拍点 2 同批裁定「指针操作不 activate」);键盘命令走 summon。
+命令 id `toggle:<面>` **不改**(改了会作废用户已存的改绑),只换落点与文案(zh「切换」→「召唤」,en "Toggle" → "Summon";i18n 成对)。
+「看得见」的判据只有一个产地:`stage/transitions` 已有的可见性查询(ExposeView 的 live / EdgeShelf 的 on 都从它读),summon 不另写第二份。
+
+**门**:`gate-focus` 加场景 13(四态各一步:Dock→召唤开+焦点进;钉架子切走 tab→召唤露出+焦点进;焦点在输入框→召唤只聚焦、placements 字节不变;焦点在面里→召唤回输入框、placements 字节不变)。
+
 ## 13. 证据索引(勘察 09-02)
 
 - 13 个 keydown 监听位置:`keymap/dispatch.ts:117` `ui/a11y/roving.ts:146` `ui/Tooltip.tsx:111` `ui/a11y/focus-trap.ts:137` `ui/float.ts:169` `components/useEscapeChain.ts:44` `expose/components/ExposeView.tsx:141` `workspace/components/WorkspacePalette.tsx:109` `composer/useComposerKeys.ts:82` `content/KeymapSettings.tsx:83` `content/FilesPanel.tsx:283` `content/viewer/useViewerKeymap.ts:108` `content/blocks/shell/ZoomOverlay.tsx:33`。

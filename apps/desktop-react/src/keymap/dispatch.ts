@@ -1,7 +1,6 @@
 import { useCallback } from 'react'
 import { useTocStore } from '../toc/store'
 import { useStageStore } from '../stage/store'
-import { requestFocusOnOpen } from '../stage/focus-follow'
 import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
 import { useWorkspacePalette } from '../workspace/components/palette-hub'
@@ -32,7 +31,6 @@ import type { CommandId } from './types'
  * 结构导航键(Esc / 方向键 / Enter / Space)不进这张表,理由见 types.ts 顶部。
  */
 export function useKeymapCommandRunner(): (id: CommandId) => void {
-  const toggleItem = useStageStore((st) => st.toggleItem)
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
   const toggleToc = useTocStore((st) => st.togglePanel)
   const toggleAgentMenu = useAgentMenu((st) => st.toggle)
@@ -41,34 +39,22 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
   return useCallback(
     (id: CommandId) => {
       if (id.startsWith(TOGGLE_COMMAND_PREFIX)) {
-        const item = id.slice(TOGGLE_COMMAND_PREFIX.length)
         /*
-         * ── §3.5 规则 2:**用键盘打开一块面,焦点进那块面** ────────────────
-         * 「从 Dock 开一块面」有两条路,答案不一样:指针点那块瓦时焦点已经落在
-         * 瓦上了(点击自己落焦),再送会把焦点从瓦上拽走 —— 连着按两下同一块瓦
-         * 就不再是「开、关」。所以那条路维持今天,**这条路**(键盘)才送:
-         * 按下 ⌘ 数字的人手在键盘上,他要的正是接着用键盘。
+         * ── `toggle:<面>` 的语义 = **召唤**,不是开关(S1,设计 §14;09-03 用户
+         *    提出并拍定第四格「回去」)────────────────────────────────────────
+         * 一个键按下去,先把这块面弄到眼前(没开就开、被挡着就露出来),再把键盘
+         * 交给它;已经在它里面了就把键盘**还回去**。**关面不在这条键上** ——
+         * 关面是 Esc 的活(退层链),一个「聚焦键」顺手关掉一块面是从前那条
+         * `toggleItem` 与业界(VS Code ⌘⇧E 一族)分歧最大的一格。
          *
-         * 这里**点名**而不是当场 `activate`:落定那一刻装着它的宿主层还没挂上来
-         * (React 要到下一次提交才渲染那一层),当场叫一律落空 —— 单测证伪过一版。
-         * 点完名之后由那唯一的接线处(`stage/focus-follow` 的 hook)在提交之后送。
-         * 收回 Dock 的那一下点名会被同一只纯函数当场丢掉(那时没有可送的面)。
+         * 命令 id 一个字没改(改了会作废用户已存的改绑),换的只有落点与文案。
+         * **鼠标点 Dock 瓦仍然是 `toggleItem`**(开关)—— 分工写在 §14:
+         * 指针那条路不 activate,那是 R2 与拍点 2 同批的裁定。
+         *
+         * 四态判据、点名(`requestFocusOnOpen`)与分流全在 store 的 `summonItem`
+         * 里,这里只剩「哪条命令走哪个动作」这一句 —— 这张表本来就只该有这一句。
          */
-        requestFocusOnOpen(item)
-        toggleItem(item)
-        /*
-         * ── §3.5 规则 2:**用键盘打开一块面,焦点进那块面** ────────────────
-         * 「从 Dock 开一块面」有两条路,而它们的答案不一样:指针点那块瓦时
-         * 焦点已经落在瓦上了(点击自己落焦),再 `activate` 会把焦点从瓦上拽走 ——
-         * 连着按两下同一块瓦就不再是「开、关」。所以那条路维持今天,**这条路**
-         * (键盘)才送:按下 ⌘ 数字的人手在键盘上,他要的正是接着用键盘。
-         *
-         * 这里是键盘这条路**唯一**的入口,所以这一句只此一处;形态之间的挪动
-         * (拼舞台 / 钉边 / 撕浮窗)是另一回事,收在 `stage/focus-follow` 那一处。
-         *
-         * 收回 Dock 的那一下不送(`toggleItem` 是开关语义):那时没有可送的面,
-         * 焦点该回哪儿是结构归还的事。
-         */
+        useStageStore.getState().summonItem(id.slice(TOGGLE_COMMAND_PREFIX.length))
         return
       }
       /*
@@ -118,6 +104,6 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
         void useExposeStore.getState().newSessionInCurrentProject()
       }
     },
-    [toggleItem, toggleShelfCollapsed, toggleToc, toggleAgentMenu, toggleWorkspacePalette],
+    [toggleShelfCollapsed, toggleToc, toggleAgentMenu, toggleWorkspacePalette],
   )
 }

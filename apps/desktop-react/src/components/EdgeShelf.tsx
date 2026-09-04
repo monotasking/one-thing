@@ -6,6 +6,7 @@ import {
   clampShelfThickness,
   defaultFloatRect,
   floatRectForGrab,
+  isShelfTabVisible,
   shelfViewportExtent,
   shouldTearOff,
   snapSideAt,
@@ -383,8 +384,10 @@ export function EdgeShelf({ side }: Props) {
             />
           </div>
           <div className={s.body} data-shelf-body={side} data-panel={active ?? ''}>
+            {/* 「露不露脸」读形态机那一只共用查询(stage/transitions.isShelfTabVisible),
+              * 不在这里再抄一句 `activeId === id && !collapsed` —— 召唤三态问的是同一句话。 */}
             {tabs.map((tab) => (
-              <ShelfTabLayer key={tab.id} id={tab.id} on={tab.id === active} />
+              <ShelfTabLayer key={tab.id} id={tab.id} on={isShelfTabVisible(shelf, tab.id)} />
             ))}
           </div>
         </>

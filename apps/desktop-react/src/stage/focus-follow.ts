@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { focusTree } from '../focus/registry'
+import { LAYER_SCOPE_OF, takeOpenRequest } from './summon'
 import { useStageStore } from './store'
 import type { FocusScopeId } from '../focus/types'
 import type { Placement, ShelfSide, StageState } from './types'
@@ -40,15 +41,6 @@ import type { Placement, ShelfSide, StageState } from './types'
  * 宿主层还没挂上来 / 旧层的 `inert` 还没翻,`activateScope` 一律答 false。
  */
 
-/** 形态 → 装着它的那一层作用域。收回 Dock 没有层可言。 */
-const LAYER_OF: Record<Placement['kind'], FocusScopeId | null> = {
-  dock: null,
-  stage: 'stage-layer',
-  float: 'float-layer',
-  edge: 'shelf-layer',
-  cover: 'cover-layer',
-}
-
 /** 两个落点算不算「同一个位置」。换边(左 → 右)算挪动,所以 side 也要比。 */
 function samePlace(a: Placement | undefined, b: Placement | undefined): boolean {
   if (!a || !b) return a === b
@@ -62,29 +54,6 @@ const SIDES: ShelfSide[] = ['left', 'right', 'top', 'bottom']
 export interface FocusFollowTarget {
   scope: FocusScopeId
   owner: string
-}
-
-/**
- * **「这一次打开是键盘点的名」**(§3.5 规则 2)。
- *
- * 一次性的:被下面那只纯函数读掉就作废。它存在的理由是**手势在 store 那一层
- * 看不出来** —— 指针点瓦与按 ⌘ 数字写进 `placements` 的是同一格事实,而两者的
- * 答案不一样。让键盘那条路自己点名,比让形态机去猜「这一下是谁按的」诚实。
- *
- * 为什么点名而不是当场 `activate`:落定那一刻宿主层还没挂上来(见下面那只 hook
- * 的文件头)。键盘那条路第一版就是当场叫,单测当场证伪 —— 焦点留在原处。
- */
-let openRequest: string | null = null
-
-export function requestFocusOnOpen(itemId: string): void {
-  openRequest = itemId
-}
-
-/** 读一次就作废。给下面那只 hook 用 —— 别处不该问它。 */
-function takeOpenRequest(): string | null {
-  const at = openRequest
-  openRequest = null
-  return at
 }
 
 /**
@@ -102,7 +71,7 @@ export function focusFollowTarget(
     // 从 dock 出来 = 打开,不是挪动(表里第一档):只有键盘点了名才跟。
     if (!prev && id !== openedByKeyboard) continue
     if (prev && samePlace(prev, next)) continue
-    const scope = LAYER_OF[next.kind]
+    const scope = LAYER_SCOPE_OF[next.kind]
     if (scope) return { scope, owner: id }
   }
   /*
@@ -119,6 +88,28 @@ export function focusFollowTarget(
     const was = before.placements[openedByKeyboard]
     if (now?.kind === 'float' && was?.kind === 'float') {
       return { scope: 'float-layer', owner: openedByKeyboard }
+    }
+    /*
+     * **架子从细梁展开**(S1 召唤三态那一档补的缺口,设计 §14 第二行)。
+     *
+     * 与上面那条浮窗置顶同型:这张表上**什么都没改**(还钉在同一条边、还是同一个
+     * 活动 tab),变的只有 `shelves[side].collapsed`。所以判据同样不是差值而是
+     * 「谁点的名」—— 指针点那颗收展钮不点名,于是走不到这儿(点击自己落焦,
+     * 而且「我顺手展开看一眼」不该把键盘从输入框里拽走)。
+     *
+     * 下面那条通用的「切 tab」只看 `activeId` 变没变,收着的架子展开时它一个字
+     * 都答不出 —— 「细梁 → 展开」正是它漏掉的那一格。
+     */
+    if (now?.kind === 'edge') {
+      const nextShelf = after.shelves[now.side]
+      const prevShelf = before.shelves[now.side]
+      if (
+        nextShelf.activeId === openedByKeyboard
+        && prevShelf?.collapsed === true
+        && nextShelf.collapsed === false
+      ) {
+        return { scope: 'shelf-layer', owner: openedByKeyboard }
+      }
     }
   }
   // 架子切 tab(§11 拍点 2)。四条边各看一格 —— 只有活动 tab 那一层是可交互的。

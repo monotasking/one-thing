@@ -23,14 +23,19 @@ beforeEach(() => {
 })
 
 describe('快捷键派发', () => {
-  it('⌘P 经注册表开检索面板,再按一下收回 Dock', () => {
+  it('⌘P 经注册表开检索面板;**再按一下不关它**(S1 召唤语义)', () => {
     render(<AppShell />)
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     // 打开统一是浮窗(08-30 拍板:档定形态)
     expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
 
+    /*
+     * S1(设计 §14,09-03 用户拍定)把 `toggle:<面>` 从「开 / 关」改成**召唤**:
+     * 这一族键再也不关面 —— 关面是 Esc 的活。R3 之前这里断言的是「收回 Dock」,
+     * 那一句随本批改判;判据本身在 `stage/summon.ts` 的四态表里。
+     */
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
-    expect(useStageStore.getState().placements.search).toBeUndefined()
+    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
   })
 
   it('⌘N 经注册表落到「新建会话」上 —— 派发器不判落在哪个项目,那是 action 的事', () => {
@@ -95,30 +100,33 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
      * 反证:把 `requestFocusOnOpen(item)` 那一句删掉 → 焦点留在 composer 上,
      * 「⌘K 敲出来键盘就在那块面里」当场不成立。
      *
-     * 断言落在**那一层**上而不是 `files` 那一格:这份夹具没有配文件端口,
-     * 面板挂不起来(错误边界接住),所以层里此刻一个可交互的孩子都没有 ——
-     * `entryOf` 于是退回层的根(那一条本身在 registry 那组用例里单独钉着)。
-     * 要紧的是焦点**进了装着这块面的那一层**,而不是留在原处。
+     * 断言落在 `files` **那一格**上(09-04 改判):从前这里断言的是层
+     * (`float-layer`),理由写成「夹具没配文件端口,层里没有可交互的孩子」——
+     * 那个理由是错的。真因是 `entryOf` 判「层自己声明了落点吗」看的是**闭包在不在**,
+     * 而 `FocusScope` 给每一格都无条件登记一个,于是设计 §4.1 那条「进层 = 进它
+     * 装着的那块面」对所有真组件都走不到。改判返回值之后焦点落到了它该落的地方。
      */
-    expect(firstResponder()).toBe('float-layer')
-    expect(focusTree.current()?.owner).toBe('files')
+    expect(firstResponder()).toBe('files')
+    // 那一格确实住在**装着这块面的那一扇**里(owner 记在层上,不在内容面上)。
+    const layerOf = (id: string | undefined) =>
+      id ? focusTree.nodes().get(focusTree.nodes().get(id)?.parent ?? '') : undefined
+    expect(layerOf(focusTree.current()?.instanceId)?.owner).toBe('files')
   })
 
-  it('同一个键把它收回 Dock 时**不送**焦点(没有可送的面)', () => {
+  it('同一个键**焦点已经在它里面**时把键盘还回去,面留在原位(S1 第四态)', () => {
     render(<AppShell />)
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
-    act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
-    expect(useStageStore.getState().placements.search).toBeUndefined()
-    /*
-     * **收回去不送焦点**:点名那一句照样发(键盘不知道这一下是开还是关),但
-     * 判据在纯函数那一头 —— 收回 Dock 之后 `placements[item]` 缺席,那张表里
-     * 根本没有它,于是这一次点名被当场丢掉。
-     * 这里不断言「第一响应者已经变回输入面板」:那扇窗此刻还挂着(浮窗有一段
-     * 出场动画,`FloatWindow` 会多留它一帧再卸载),归还要等它真的卸载。
-     * 反证:把 `focusFollowTarget` 里 `after.placements` 那条循环改成读
-     * `before.placements` → 收回去也会送一次,这里当场红。
-     */
+    // 检索面自己声明了 activateOnMount,所以第一下之后键盘已经在它里面。
     expect(firstResponder()).toBe('search')
+
+    act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
+    /*
+     * 用户 09-03 拍定的第四格是 **(a) 回去**:面留在原位,走的只有焦点。
+     * 反证:把 store 那条 `case 'return'` 换回 `toggleItem` → 这一句会红成
+     * 「面被关掉了」,而那正是 §14 说的「关面是 Esc 的活,不是聚焦键的」。
+     */
+    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
+    expect(firstResponder()).toBe('composer')
   })
 })
 
@@ -131,19 +139,19 @@ describe('设置页里的录制', () => {
 
   it('录制态吃掉这一下按键:录 ⌘P 的时候检索面板不会真的弹出来,而是报冲突', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「文件」设置快捷键')
+    const slot = screen.getByLabelText('为「召唤文件」设置快捷键')
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'p', metaKey: true }))
 
     // 撞了检索那条,所以既没绑上,也没有人替它开面板。
     expect(useKeymapStore.getState().overrides['toggle:files']).toBeUndefined()
     expect(useStageStore.getState().placements.search).toBeUndefined()
-    expect(screen.getByText('与「检索」冲突')).toBeTruthy()
+    expect(screen.getByText('与「召唤检索」冲突')).toBeTruthy()
   })
 
   it('按一个没人占的组合就绑上,行上随即出现「恢复默认」', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「文件」设置快捷键')
+    const slot = screen.getByLabelText('为「召唤文件」设置快捷键')
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'f', metaKey: true, shiftKey: true }))
 
@@ -152,6 +160,6 @@ describe('设置页里的录制', () => {
       meta: true,
       shift: true,
     })
-    expect(screen.getByLabelText('恢复「文件」的默认组合')).toBeTruthy()
+    expect(screen.getByLabelText('恢复「召唤文件」的默认组合')).toBeTruthy()
   })
 })

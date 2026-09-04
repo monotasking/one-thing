@@ -120,3 +120,45 @@ describe('架子切 tab(§11 拍点 2:用户已拍「进」)', () => {
     expect(focusFollowTarget(before, state(shelf('right', null)))).toBeNull()
   })
 })
+
+describe('架子从细梁展开(S1 召唤三态补的那一档,设计 §14 第二行)', () => {
+  const collapsed = (side: 'left' | 'right', activeId: string, on: boolean): Partial<StageState> => ({
+    placements: { [activeId]: { kind: 'edge', side } },
+    shelves: {
+      ...initialStageState.shelves,
+      [side]: { ...initialStageState.shelves[side], activeId, collapsed: on },
+    },
+  })
+
+  it('键盘点了名 + 收着 → 展开 = 焦点进那一层(placements 一格没变)', () => {
+    const before = state(collapsed('right', 'files', true))
+    const after = state(collapsed('right', 'files', false))
+    /*
+     * 反证:把 focus-follow 里那一段删掉 → 召唤一块收在细梁里的面,架子展开了
+     * 而键盘还在原处。下面那条通用的「切 tab」看的是 `activeId` 变没变,
+     * 这一形它一个字都答不出(活动 tab 从头到尾都是 files)。
+     */
+    expect(focusFollowTarget(before, after, 'files')).toEqual({
+      scope: 'shelf-layer',
+      owner: 'files',
+    })
+  })
+
+  it('**指针**点那颗收展钮不点名 → 不跟(顺手展开看一眼不该抢走键盘)', () => {
+    const before = state(collapsed('right', 'files', true))
+    const after = state(collapsed('right', 'files', false))
+    expect(focusFollowTarget(before, after)).toBeNull()
+  })
+
+  it('反向(展开 → 收起)不跟:那是把面藏起来,没有可跟的东西', () => {
+    const before = state(collapsed('left', 'files', false))
+    const after = state(collapsed('left', 'files', true))
+    expect(focusFollowTarget(before, after, 'files')).toBeNull()
+  })
+
+  it('点的是别人的名 → 与没点一样', () => {
+    const before = state(collapsed('right', 'files', true))
+    const after = state(collapsed('right', 'files', false))
+    expect(focusFollowTarget(before, after, 'sessions')).toBeNull()
+  })
+})
