@@ -364,6 +364,12 @@
    * 又不至于把列表拉成一串卡片的最小值。
    */
   --expose-row-gap: 2px;
+  /*
+   * --surface-host:「我此刻坐在哪一层面上」。由每个 Placement 宿主根声明
+   * (浮窗 / 舞台 / 盖层 = --surface-2,边架 = --surface-1),内容面里需要**与宿主同色**
+   * 的东西(粘顶节头,09-04 用户令「让它不透明」)读它,不各自猜宿主是谁。缺省 --surface-2。
+   */
+  --surface-host: var(--surface-2);
   --focus-ring-w: var(--bw-ring);
   --avatar-size: 20px;
   --avatar-overlap: -6px;

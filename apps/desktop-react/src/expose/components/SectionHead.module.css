@@ -1,5 +1,5 @@
 /*
- * 粘顶、无底、无计数(见 SectionHead.tsx 的三条禁令),09-04 起**可折叠**。
+ * 粘顶、无计数,09-04 起**可折叠**、**不透明**(底色 = 宿主面,见 .head 内注)。
  * 高度 = --list-row-h,与行同一个节拍;`scroll-padding-top` 在滚动容器那一侧
  * 取的是这个数加一格行距(否则键盘走到视口外的行会被停在节头**底下**:
  * 环在,行看不见)。
@@ -18,7 +18,9 @@
   margin: 0;
   padding-inline: var(--sp-2);
   border-radius: var(--r-1);
-  background: transparent;
+  /* 09-04 用户令「让它不透明」:粘顶时行从底下滚过不许透出来。颜色不是自己的,是
+     宿主那一层的(--surface-host),浮窗/舞台与边架各自声明,这里不猜。 */
+  background: var(--surface-host);
   font-size: var(--fs-meta);
   font-weight: 650;
   color: var(--text-3);

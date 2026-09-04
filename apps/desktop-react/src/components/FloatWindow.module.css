@@ -12,6 +12,7 @@
   border: 1px solid var(--line-1);
   border-radius: var(--r-3);
   background: var(--surface-2);
+  --surface-host: var(--surface-2);
   box-shadow: var(--sh-3);
   animation: var(--kf-float-in) var(--dur-enter) var(--ease-out);
 }

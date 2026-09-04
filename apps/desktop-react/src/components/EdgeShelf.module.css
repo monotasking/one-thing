@@ -11,6 +11,7 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--surface-1);
+  --surface-host: var(--surface-1);
   border: 0 solid var(--line-1);
 }
 
