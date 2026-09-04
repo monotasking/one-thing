@@ -10,6 +10,21 @@
   overscroll-behavior: contain;
   /* 滚动条进出不挤动居中内容:两侧各留恒定槽位(08-29 用户报折叠组时 UI 左右晃) */
   scrollbar-gutter: stable both-edges;
+  /*
+   * ── 悬浮输入框的让位(§5.6,09-05)────────────────────────────────────────
+   * 输入框从此绝对定位浮在这块滚动区**上面**,所以「不要贴着它」由这一格内衬
+   * 负责,而不是由滚动区少一截高度负责 —— 少一截高度就是修前那个样子:
+   * 正文到玻璃上缘就断了,永远不可能从它底下流过。
+   *
+   *   内衬 = 输入框实高(`--composer-h`,由 AppShell 的 ResizeObserver 写在 `.center` 上)
+   *        + 气口(`--composer-gap`,拍定 40px:「正文内容距离输入框要留有充足的空间」)
+   *
+   * `scroll-padding-block-end` **同值**:TOC 跳转与 `scrollIntoView` 都按这个内衬
+   * 收边,不然它们会把目标停在玻璃底下 —— 那是「跳过去了却看不见」。
+   * 它必须写在**滚动容器自己**身上(scroll-padding 不继承),所以这一格不能挪去 `.center`。
+   */
+  padding-block-end: calc(var(--composer-h) + var(--composer-gap));
+  scroll-padding-block-end: calc(var(--composer-h) + var(--composer-gap));
 }
 
 /*
@@ -23,7 +38,9 @@
   width: 100%;
   max-width: var(--pr-col);
   margin: 0 auto;
-  padding: var(--sp-6) var(--sp-4) var(--sp-5);
+  /* 底那一格从 --sp-5 归 0:让位改由滚动容器的 `padding-block-end` 一处给
+   * (§5.6)。两处都给等于气口被加了两次,最后一条消息会离玻璃 60px 远。 */
+  padding: var(--sp-6) var(--sp-4) 0;
   display: flex;
   flex-direction: column;
   gap: var(--sp-6);
@@ -182,6 +199,18 @@
  * 工具卡归 tools/ToolRow.module.css —— 逐字搬过去,一个值都没改。
  * 这里只留「消息怎么排」用得着的那些。
  */
+
+/* ── 流中态之前:第一个字还没到的那段空档 ───────────────────────────────
+ * 三颗点(`ui/Dots`)落在正文该出现的位置上,所以它按正文的行高占位 ——
+ * 第一个 delta 一到,点换成正文,那一行的高度不跳。
+ * 颜色由这一格给(点自己走 currentColor):最淡的一档墨,它是「还没有内容」
+ * 不是内容。 */
+.firstToken {
+  align-self: flex-start;
+  /* `--pr-lh` 是**无单位**的行高倍数(1.6),不是长度 —— 乘上字号才是一行的高。 */
+  height: calc(var(--pr-fs) * var(--pr-lh));
+  color: var(--text-3);
+}
 
 /* ── 流中态:一枚呼吸的光标 ───────────────────────────────────────────── */
 

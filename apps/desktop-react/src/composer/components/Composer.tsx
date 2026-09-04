@@ -262,6 +262,9 @@ export function Composer() {
         <div
           {...scopeProps}
           className={dragging ? `${s.panel} ${s.dragging}` : s.panel}
+          /* 玻璃那块面自己的把手 —— `gate:chat-follow` 要量它的矩形与它此刻
+           * 透不透明(§5.6)。`data-testid` 恒定,门按位置找它、不按状态找。 */
+          data-testid="composer-panel"
           onDragOver={(e) => {
             e.preventDefault()
             setDragging(true)

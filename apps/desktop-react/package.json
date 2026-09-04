@@ -17,6 +17,7 @@
     "gate:data": "node scripts/gate-data.mjs",
     "gate:theme": "node scripts/gate-theme.mjs",
     "gate:chat": "node scripts/gate-chat.mjs",
+    "gate:chat-follow": "node scripts/gate-chat-follow.mjs",
     "gate:files": "node scripts/gate-files.mjs",
     "gate:search": "node scripts/gate-search.mjs",
     "gate:search-messages": "node scripts/gate-search-messages.mjs",

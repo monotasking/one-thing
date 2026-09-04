@@ -250,12 +250,6 @@ describe('模型抽屉的过滤', () => {
 })
 
 describe('读数的格式', () => {
-  it('计数按千位收成 k,整数不留 .0', () => {
-    expect(T.formatCount(48_200)).toBe('48.2k')
-    expect(T.formatCount(200_000)).toBe('200k')
-    expect(T.formatCount(999)).toBe('999')
-  })
-
   it('百分比取整;圆环的 dash 第二个数给整圈周长,保证只画一段', () => {
     expect(T.percent(124_000, 200_000)).toBe(62)
     expect(T.ringDash(62, 7)).toBe('27.3 44.0')

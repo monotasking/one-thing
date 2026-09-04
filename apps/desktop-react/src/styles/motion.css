@@ -46,7 +46,7 @@
  * ① **装饰时长** = 一次形变 / 淡入淡出花多久。这类是「动效」,档位说了算。
  *    --dur --dur-enter --dur-exit --dur-release --dur-flash --dur-hover-fade
  *    --dur-toc-flash --dur-cursor-blink --dur-drawer
- *    --dur-mode --dur-att-move --dur-tool-pulse
+ *    --dur-mode --dur-att-move --dur-tool-pulse --dur-dots --dur-dots-step
  * ② **延迟** = 等多久才开始一件事。它不是动画,关掉它只会让悬停变得神经质。
  *    --dur-tooltip-delay --dur-toc-hover --dur-att-grace
  * ③ **寿命 / 进度读数** = 一件事本身要花多久。归 0 等于删掉这件事的信号。
@@ -118,6 +118,7 @@
   --kf-toast-life: toastLife;
   --kf-spin: spin;
   --kf-tool-pulse: toolPulse;
+  --kf-dots: dots;
 
   /* 一次性提示 */
   --kf-shelf-flash: shelfFlash;
@@ -320,6 +321,27 @@
   }
 }
 
+/*
+ * 三个点(`ui/Dots`)。三颗共用这一段,靠各自的 animation-delay 错峰,于是起伏
+ * 是**一道走过去的波**而不是三颗各闪各的。
+ *
+ * 一轮里只有前三分之一在动(30% 到顶,60% 已经回位),后面那段静止是**留白**:
+ * 打字指示器读起来该是「一下、一下」,连续不断的波会变成进度条那种焦躁。
+ * 位移用 % —— 它量的是点自己的身量,所以换尺寸不必改这段。
+ */
+@keyframes dots {
+  0%,
+  60%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-30%);
+  }
+}
+
 /* ── 一次性的提示:闪一下就过去 ────────────────────────────────────────── */
 
 @keyframes shelfFlash {
@@ -381,6 +403,11 @@
   --dur-mode: 0ms;
   --dur-att-move: 0ms;
   --dur-tool-pulse: 0ms;
+  /* 三个点:动效档「无」下**三颗静止的点**(§5.3 字面)。时长归 0 与
+   * Dots.module.css 里那条 `animation: none` 是同一件事的两半 —— 前者让
+   * 「档位只换 --dur 族」这条纪律成立,后者保证停在哪一帧有承诺。 */
+  --dur-dots: 0ms;
+  --dur-dots-step: 0ms;
   /* Dock 镜头**瞬到**,不是不放大 —— 放大是那块面的读法,不是装饰。 */
   --dur-dock-lens: 0ms;
 }

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 import { useStageStore } from '../stage/store'
 import { StageFocusFollow } from '../stage/focus-follow'
 import { useViewportReclamp } from '../stage/viewport-reclamp'
@@ -118,6 +119,15 @@ export function AppShell() {
   // 聊天滚动容器只有一个 ref,两个消费者:Dock 降淡 与 TOC 当前键。
   const chatRef = useRef<HTMLDivElement>(null)
   const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(chatRef)
+
+  /*
+   * 悬浮输入框那两个几何读数(§5.6)。两个 ref 一只观察者,产地在这里而不是
+   * Composer 里 —— **谁定的布局谁量**:是这一层决定了输入框绝对定位在 `.center`
+   * 底部,Composer 自己一行都不必知道它浮着。
+   */
+  const centerRef = useRef<HTMLDivElement>(null)
+  const composerDockRef = useRef<HTMLDivElement>(null)
+  useComposerGeometry(centerRef, composerDockRef)
 
   /*
    * 聊天滚动 → 目录当前键跟随。**这条监听如今只剩这一件事**。
@@ -467,8 +477,10 @@ export function AppShell() {
             {SHELF_SIDES.map((side) => (
               <EdgeShelf key={side} side={side} />
             ))}
-            <div className={s.center}>
-              {/* 键列钉在聊天区(不含输入框)的右缘,所以定位参考系是这一层 */}
+            <div className={s.center} ref={centerRef}>
+              {/* 键列与跟随丸都钉在聊天区上,所以定位参考系是这一层。
+                * 09-05(§5.6):这一层现在**铺满 `.center`** —— 输入框浮在它上面,
+                * 正文从玻璃底下流过。 */}
               <div className={s.chatArea}>
                 {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
                   * 合成一界的话这两件事会互相拖死,那正是分区边界要避免的。 */}
@@ -477,9 +489,17 @@ export function AppShell() {
                 </ErrorBoundary>
                 <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
               </div>
-              <ErrorBoundary where="composer">
-                <Composer />
-              </ErrorBoundary>
+              {/*
+                * 输入框仍然在 `.center` 的 DOM 里(错误边界、响应链作用域、
+                * `useFloatDismiss` 的点外关一字不动),只是外面多了一格**落位带**:
+                * 它绝对定位贴底,于是不再占一格 flex。量高的活儿也在这一格上
+                * (见 `useComposerHeight`)—— Composer 自己不必知道它浮着。
+                */}
+              <div className={s.composerDock} ref={composerDockRef} data-testid="composer-dock">
+                <ErrorBoundary where="composer">
+                  <Composer />
+                </ErrorBoundary>
+              </div>
             </div>
           </main>
 
@@ -541,4 +561,59 @@ export function AppShell() {
       )}
     </FocusScope>
   )
+}
+
+/**
+ * **悬浮输入框的两个几何读数**(§5.6)。
+ *
+ * 输入框绝对定位在 `.center` 底部之后,有两件事只有真实的排版说得出来:
+ *
+ *   `--composer-h`  输入框此刻多高。消息流的底部内衬、`scroll-padding-bottom`、
+ *                   跟随丸的落位全读它。它会变 —— 打字长高、抽屉开合、附件摞进出、
+ *                   状态条出现,每一样都改一次高度,所以它不能是一个魔法数。
+ *   `--center-h`    中央区多高。抽屉的高度上限要读它(§5.6:`min(既有上限,
+ *                   .center 高度的 40%)`)—— 「正文永远露出上半截」这句话
+ *                   只有知道一共有多高才成立。
+ *
+ * 两个数都写在 `.center` 上,于是聊天区、输入框、丸三棵子树**继承**它们,
+ * 谁都不必再拿一次 ref。
+ *
+ * ── 为什么不会打转 ────────────────────────────────────────────────────────
+ * 写 CSS 变量本身不改任何几何;它们的下游(滚动容器的内衬、抽屉的上限)也都
+ * 不反过来决定被观察那两件的高度 —— `.center` 的高度是三明治网格给的,输入框的
+ * 高度是它自己内容给的。所以这只观察者没有回路,不会触发 ResizeObserver 的
+ * 「循环」告警。
+ *
+ * ── 生命周期 ──────────────────────────────────────────────────────────────
+ * 挂载即观察、卸载即断开并**把两格变量抹掉**(留着等于让下一次挂载先读到一份
+ * 陈旧的高度)。它是组件级的,不是模块级的 —— 没有跨模块实例存活的东西,
+ * 所以不需要 HMR dispose。
+ */
+function useComposerGeometry(
+  centerRef: RefObject<HTMLDivElement | null>,
+  composerDockRef: RefObject<HTMLDivElement | null>,
+): void {
+  useLayoutEffect(() => {
+    const center = centerRef.current
+    const dock = composerDockRef.current
+    if (!center || !dock || typeof ResizeObserver !== 'function') return
+
+    const write = (name: string, px: number) => {
+      center.style.setProperty(name, `${Math.round(px)}px`)
+    }
+    const measure = () => {
+      write('--composer-h', dock.getBoundingClientRect().height)
+      write('--center-h', center.getBoundingClientRect().height)
+    }
+    measure()
+
+    const observer = new ResizeObserver(measure)
+    observer.observe(dock)
+    observer.observe(center)
+    return () => {
+      observer.disconnect()
+      center.style.removeProperty('--composer-h')
+      center.style.removeProperty('--center-h')
+    }
+  }, [centerRef, composerDockRef])
 }

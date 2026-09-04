@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useChatSource } from '../data/chat-source'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useExposeStore } from '../expose/store'
@@ -12,6 +12,15 @@ import { StreamReadout } from './message/StreamReadout'
 import { MessageSourceFoot } from './research/SourceFoot'
 import { SegmentView } from './SegmentView'
 import { FocusScope } from '../focus/FocusScope'
+import { Dots } from '../ui/Dots'
+import { FollowPill } from './FollowPill'
+import {
+  FOLLOW_PINNED,
+  followShouldStick,
+  reduceFollow,
+  type FollowEvent,
+  type FollowState,
+} from './follow'
 import s from './ChatStream.module.css'
 
 const ClipIcon = resolveIcon('Paperclip')
@@ -61,14 +70,35 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
   }, [sessionId, open])
 
   /*
-   * 进场落底盯的是**数据源自己报的会话**,不是外面那个 currentSessionId。
+   * 跟随盯的是**数据源自己报的会话**,不是外面那个 currentSessionId。
    * 两者差一拍:换会话时 `open()` 在 effect 里跑,所以「外面已经换了、树还是上一条
-   * 会话的」这一帧真实存在 —— 拿外面那个当判据会在这一帧落到旧树上,然后把新树
-   * 误判成「账本长出了新东西」而当场收手(结果就是换会话不落底)。
+   * 会话的」这一帧真实存在 —— 拿外面那个当判据会在这一帧对着旧树发一次 `enter`。
    * 数据源那一格与 `messages` 是**同一次 set** 写的,天然同步。
    */
   const foldedSessionId = useChatSource((st) => st.sessionId)
-  const onScrollWithLanding = useEnterAtBottom(scrollRef, foldedSessionId, messages, onScroll)
+  /*
+   * 「自己刚发了一条」的那一拍。**不靠 `messages.length` 的差去猜** —— 重折、
+   * 账本追上来、overlay 被认领,三条路都会让长度变,而它们一条都不是「我按了发送」。
+   * 号的产地在 `chat-source.send()`,与那条 overlay 同一次 `set`。
+   */
+  const sentTick = useChatSource((st) => st.sentTick)
+  const lastDeltaAt = useChatSource((st) => st.lastDeltaAt)
+  /*
+   * `lastDeltaAt` / `activeMessageId` 两格**传进 hook**,不在这一层派发。
+   * 理由是产地唯一:跟随事件今天六种,六种全在 `useFollowBottom` 里发 —— 那只
+   * hook 因此是「什么算一次跟随事件」的完整答案。把其中一种挪到组件里,读代码的人
+   * 就得同时看两处才知道状态机被谁推过,而 `dispatch` / `followRef` 那对镜像也得
+   * 跟着漏出去(它们是 hook 的内脏)。
+   */
+  const { follow, jumpToBottom, onScrollWithFollow } = useFollowBottom(
+    scrollRef,
+    foldedSessionId,
+    messages,
+    sentTick,
+    lastDeltaAt,
+    activeMessageId,
+    onScroll,
+  )
 
   /*
    * ── 消息流是响应链上的一格 `region`(09-03 R2)──────────────────────────────
@@ -83,7 +113,8 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
   return (
     <FocusScope scope="chat" rootRef={scrollRef}>
       {({ scopeProps }) => (
-        <div {...scopeProps} className={s.scroll} onScroll={onScrollWithLanding} data-testid="chat-stream">
+        <>
+        <div {...scopeProps} className={s.scroll} onScroll={onScrollWithFollow} data-testid="chat-stream">
           <div className={s.column}>
             {/* 三种空态各说各话,一种都不回退到假数据(与 D1 同一条纪律)。 */}
             {!sessionId && <p className={s.empty}>{t('chat.noSession')}</p>}
@@ -105,6 +136,12 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
                 message={message}
                 streaming={message.id === activeMessageId}
                 flash={message.id === flashMessageId}
+                /*
+                 * 活性读数只交给**正在跑的那一条**。其余每一行拿到的都是 `undefined`
+                 * —— 一个恒定的值,所以 `memo` 的浅比照旧短路(流式期间除活消息外
+                 * 全篇不重渲那条纪律一格没动)。
+                 */
+                lastDeltaAt={message.id === activeMessageId ? lastDeltaAt : undefined}
               />
             ))}
 
@@ -113,102 +150,175 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
             ))}
           </div>
         </div>
+        {/*
+          * 丸是**滚动容器的兄弟**,不是它的孩子 —— 装在滚动容器里的绝对定位件会
+          * 跟着内容一起滚走。它落在 `.chatArea` 里(那是 AppShell 给的定位参考系),
+          * 坐进输入框上方那段气口的正中(几何全在 FollowPill.module.css 里算)。
+          */}
+        <FollowPill
+          follow={follow}
+          streaming={activeMessageId !== undefined}
+          onJump={jumpToBottom}
+        />
+        </>
       )}
     </FocusScope>
   )
 }
 
 /**
- * 「已经在底了」的容差:一像素级的小数误差(缩放、亚像素行高)不该被当成
- * 「用户往上翻了」。
- */
-const AT_BOTTOM_EPS = 2
-
-/**
- * **进会话就落在最新那条**(08-31 真机回访 · 报障二)。
+ * **聊天跟随**(C1 §5.1–§5.5)。进场落底、流式跟底、上翻交还、发送与回复的
+ * 两张脸,四件事从此是同一个状态机的几格 —— 判据在纯函数 `content/follow.ts`,
+ * 这只 hook 只做三件它做不了的:量几何、赋 `scrollTop`、把事件喂进去
+ * (六种事件的产地全在这里,一个都没有漏到组件层去发)。
  *
- * 从前一条都没有:整个应用里没有任何一处写过 scrollTop,于是打开 / 切换会话永远
- * 停在第一条消息(真机读数 scrollTop=0,离底 2686px)。人打开一条会话是要接着往下
- * 说,不是从头读一遍。
+ * ── 它取代了什么 ──────────────────────────────────────────────────────────
+ * 08-31 的 `useEnterAtBottom`(进场落底)。那一版有一个**故意留的出口二**:
+ * 「消息树换了引用就结束盯底」—— 理由写着「跟底是另一件事,本批不做」。
+ * 本批做的正是那另一件事,所以出口二连同它的 `landedOnRef` 一起删了:
+ * 「盯到什么时候为止」这个问题现在有了正经答案 —— 盯到人自己往上翻为止。
  *
- * ── 三条纪律 ──────────────────────────────────────────────────────────────
- * ① **首帧就在底,不许先画顶部再跳**。所以用 `useLayoutEffect` 而不是 `useEffect`:
- *    前者在浏览器绘制**之前**跑完,人看到的第一帧就已经在底部;后者会先绘一帧顶部,
- *    再跳 —— 那一下闪动比停在顶部更难看。也因此是 `scrollTop = …` 直接赋值,
- *    不是 `scrollTo({behavior:'smooth'})`:定位不是动效(与动效档无关,「无」档下
- *    它照样得工作)。
- * ② **落底要熬过内容自己长高**。起底那一刻消息树已经全在 DOM 里了,但代码高亮
- *    (shiki)与图(mermaid)是异步渲染的,落完之后那些块会把页面撑高几百像素,
- *    只落一次就会停在半路。所以本批盯着容器的高度变化,长高一次就重新落一次。
- * ③ **盯到什么时候为止**:两个出口,谁先到算谁 ——
- *      · 用户往上翻(滚动事件读到「不在底」)→ 本次进场结束,交还给人;
- *      · **消息树换了引用**(账本长出新东西 / 活尾巴推进)→ 也结束。
- *    第二个出口是**故意**的:再盯下去就成了「流式跟底」,而跟底是另一件事
- *    (要判「人是不是正在往回看」、要与 TOC 的跳转互不打架),本批不做,记在
- *    汇报的留账里。异步高亮不换消息引用,所以 ② 与这条不冲突。
+ * ── 三条纪律,一条没变 ────────────────────────────────────────────────────
+ * ① **首帧就在底,不许先画顶部再跳**。所以是 `useLayoutEffect` 而不是 `useEffect`:
+ *    前者在浏览器绘制**之前**跑完;也因此是 `scrollTop = …` 直接赋值,不是
+ *    `scrollTo({behavior:'smooth'})` —— 定位不是动效(动效档「无」下它照样得工作)。
+ * ② **落底要熬过内容自己长高**。代码高亮(shiki)与图(mermaid)是异步渲染的,
+ *    落完之后那些块会把页面撑高几百像素。所以盯着**内容那一层**的高度变化
+ *    (ResizeObserver),长高一次就再落一次 —— 流式跟底吃的是同一只观察者。
+ * ③ **没有计时器、没有「这一下是我自己滚的」标志位**(判据的全文写在 follow.ts
+ *    的文件头)。我们自己落底那几下正正好在底,人往上翻才会离底。
  */
-function useEnterAtBottom(
+function useFollowBottom(
   scrollRef: RefObject<HTMLDivElement | null> | undefined,
   sessionId: string,
   messages: readonly ProjectedMessage[],
+  sentTick: number,
+  lastDeltaAt: number | undefined,
+  activeMessageId: string | undefined,
   onScroll: (() => void) | undefined,
-): () => void {
-  /** 本次进场还在盯底吗。两个出口(见上面 ③)任一到达就翻成 false。 */
-  const landingRef = useRef(false)
-  /** 落底那一刻的消息树引用 —— 它一换就是「账本长出了新东西」。 */
-  const landedOnRef = useRef<readonly ProjectedMessage[] | undefined>(undefined)
+): { follow: FollowState; jumpToBottom: () => void; onScrollWithFollow: () => void } {
+  const [follow, setFollow] = useState<FollowState>(FOLLOW_PINNED)
+  /*
+   * 状态的**镜像**。滚动回调与 ResizeObserver 都在 React 之外跑,它们要的是
+   * 「此刻是哪一格」而不是「上一次渲染时是哪一格」—— 读 state 会慢一帧,而
+   * 那一帧正好是流式期间每一帧都要判的那一次。写 ref 与写 state 在同一句里,
+   * 两者不会分叉(唯一的写点是下面那只 `dispatch`)。
+   */
+  const followRef = useRef<FollowState>(FOLLOW_PINNED)
 
-  // 换会话 = 一次新的进场。写在 layout 阶段,好让同一次提交里下面那个 effect 看到它。
-  useLayoutEffect(() => {
-    landingRef.current = true
-    landedOnRef.current = undefined
-  }, [sessionId])
+  const dispatch = useCallback((event: FollowEvent) => {
+    const next = reduceFollow(followRef.current, event)
+    // 纯函数在「什么都没改」时返回同一个对象 —— 流式每帧那一次 `grew` 于是白送。
+    if (next === followRef.current) return
+    followRef.current = next
+    setFollow(next)
+  }, [])
 
-  useLayoutEffect(() => {
-    if (!landingRef.current) return
+  /** 贴底。**唯一**一处写 `scrollTop`,三个调用点都经它。 */
+  const stick = useCallback(() => {
     const el = scrollRef?.current
     if (!el) return
-    // 还没起底(空树)时不落:此刻 scrollHeight 就是视口高,落了等于什么都没做,
-    // 而 `landedOnRef` 会被钉在那个空数组上,真内容一到就被判成「账本长出新东西」。
-    if (messages.length === 0) return
-    if (landedOnRef.current && landedOnRef.current !== messages) {
-      // 出口二:账本推进了。进场到此为止。
-      landingRef.current = false
-      return
-    }
-    landedOnRef.current = messages
     el.scrollTop = el.scrollHeight
+  }, [scrollRef])
+
+  // 换会话 = 一次新的进场。写在 layout 阶段,好让同一次提交里下面那些 effect 看到它。
+  useLayoutEffect(() => {
+    dispatch({ type: 'enter' })
+  }, [sessionId, dispatch])
+
+  /*
+   * 每一次提交:pinned 就贴底。
+   *
+   * **没有依赖数组**是有意的 —— 「内容变了」在 React 这一侧的全部表现就是「又提交了
+   * 一次」,列个依赖数组等于挑几样东西代表它,而挑漏的那一样就是一次跟不住。
+   * 空树时不落:此刻 `scrollHeight` 就是视口高,落了等于什么都没做。
+   */
+  useLayoutEffect(() => {
+    if (messages.length === 0) return
+    if (followShouldStick(followRef.current)) stick()
   })
 
-  // 纪律 ② 的落点:内容自己长高(异步高亮 / 图)不经过 React 的提交,所以盯 DOM。
+  /*
+   * 纪律 ② 的落点:内容自己长高(异步高亮 / 图 / 流式 delta 的重排)不一定经过
+   * React 的提交,所以盯 DOM。**只认长高**:收起一段思考、删一条消息都会让高度变小,
+   * 那不是「下面长出了没看见的东西」,不该点亮丸。
+   */
+  const lastHeightRef = useRef(0)
   useLayoutEffect(() => {
     const el = scrollRef?.current
     if (!el || typeof ResizeObserver !== 'function') return
-    const observer = new ResizeObserver(() => {
-      if (!landingRef.current) return
-      if (!landedOnRef.current) return
-      el.scrollTop = el.scrollHeight
-    })
     // 盯**内容那一层**:容器自己的高度是外壳给的,不随内容变。
     const column = el.firstElementChild
-    if (column) observer.observe(column)
+    if (!column) return
+    lastHeightRef.current = column.getBoundingClientRect().height
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height ?? column.getBoundingClientRect().height
+      const grew = height > lastHeightRef.current
+      lastHeightRef.current = height
+      if (!grew) return
+      dispatch({ type: 'grew' })
+      if (followShouldStick(followRef.current)) stick()
+    })
+    observer.observe(column)
     return () => observer.disconnect()
-  }, [scrollRef, sessionId])
+  }, [scrollRef, sessionId, dispatch, stick])
+
+  /*
+   * 「发送了一条」那一拍。号从 `chat-source` 来(产地在 `send()`),这里只比对它变没变。
+   * 首帧那一次不算:挂载时读到的号是这个进程此前发过的总数,不是刚刚发生的一次。
+   *
+   * **排在长高那只 effect 之后**是有意的,但正确性不靠它:`sent` 与 `grew` 谁先到
+   * 都得出同一个答案,因为纯函数里那条「`grew` 不覆盖 `sent`」的规则本身就是次序无关的
+   * (理由写在 follow.ts 的 `grew` 分支)。
+   */
+  const seenTick = useRef(sentTick)
+  useEffect(() => {
+    if (sentTick === seenTick.current) return
+    seenTick.current = sentTick
+    dispatch({ type: 'sent' })
+  }, [sentTick, dispatch])
+
+  /*
+   * 「回复到了」那一拍。判据是 `lastDeltaAt` 变了**且此刻有一轮在跑** ——
+   * 两个条件缺一不可:前者说「这一轮又收到一段」,后者把「收场时 `lastDeltaAt`
+   * 归 undefined」那一次变化挡在外面(那是一轮结束,不是一段回复到达)。
+   *
+   * **不用 `grew` 代劳**的理由写在 follow.ts 的 `reply` 分支里:自己刚发的那条
+   * 也是一次长高,几何分不出是谁长的;这一格拿的是数据源的事实,分得出来。
+   *
+   * 号的比对与 `sentTick` 同一手(ref 记上一次,不是每次渲染都派):流式期间
+   * 每一段 delta 都会让这只 effect 跑一遍,而其中除第一次外每一次
+   * `reduceFollow` 都返回同一个对象,`dispatch` 当场短路 —— 不推 state。
+   * 首帧那一次不算:挂载时读到的是这一轮此前已经收过的时刻,不是刚刚发生的一次。
+   */
+  const seenDeltaAt = useRef(lastDeltaAt)
+  useEffect(() => {
+    if (lastDeltaAt === seenDeltaAt.current) return
+    seenDeltaAt.current = lastDeltaAt
+    if (activeMessageId === undefined) return
+    dispatch({ type: 'reply' })
+  }, [lastDeltaAt, activeMessageId, dispatch])
+
+  /** 点丸 / 明确要求回底:先落、再翻状态(两句的次序无所谓,状态机不看几何)。 */
+  const jumpToBottom = useCallback(() => {
+    stick()
+    dispatch({ type: 'jumpToBottom' })
+  }, [stick, dispatch])
 
   /**
-   * 滚动事件是出口一的判据。**我们自己落底也会发滚动事件**,所以不能一见滚动就
-   * 收手 —— 判据写成「停的位置不在底」:自己落的那几下正正好在底(误差 < 2px),
-   * 人往上翻才会离底。这样就不必维护一个「这一下是我自己滚的」标志位,
-   * 而标志位正是这类代码最容易漏掉一条路径的地方。
+   * 滚动事件。判据就一句:**停下来的位置在不在底**。
+   * 我们自己落底也会发滚动事件,而那几下正正好在底(误差 < `AT_BOTTOM_EPS`),
+   * 所以不必维护一个「这一下是我自己滚的」标志位 —— 而标志位正是这类代码最容易
+   * 漏掉一条路径的地方(wheel / 触控板 / 键盘 / 拖滚动条 / TOC 跳转 / scrollIntoView,
+   * 每加一条来源就要多记一次)。
    */
-  return useCallback(() => {
+  const onScrollWithFollow = useCallback(() => {
     const el = scrollRef?.current
-    if (el && landingRef.current) {
-      const gap = el.scrollHeight - el.clientHeight - el.scrollTop
-      if (gap > AT_BOTTOM_EPS) landingRef.current = false
-    }
+    if (el) dispatch({ type: 'scrolled', gap: el.scrollHeight - el.clientHeight - el.scrollTop })
     onScroll?.()
-  }, [scrollRef, onScroll])
+  }, [scrollRef, onScroll, dispatch])
+
+  return { follow, jumpToBottom, onScrollWithFollow }
 }
 
 /** 不装配的那两种角色共用同一个空数组 —— 每次新造一个会让下游的浅比全部落空。 */
@@ -219,6 +329,8 @@ interface RowProps {
   message: ProjectedMessage
   streaming: boolean
   flash: boolean
+  /** 这一轮上一次收到 delta 的时刻;只有活消息拿得到(其余恒 undefined)。 */
+  lastDeltaAt?: number
 }
 
 /**
@@ -235,7 +347,7 @@ interface RowProps {
  * **别在这里加自定义比较函数** —— 那等于把「什么算变了」从上游搬一份到这儿,
  * 两处判据迟早分叉;要短路就让上游把引用稳住。
  */
-const MessageRow = memo(function MessageRow({ t, message, streaming, flash }: RowProps) {
+const MessageRow = memo(function MessageRow({ t, message, streaming, flash, lastDeltaAt }: RowProps) {
   const role = message.role
   const className = [s.row, flash && s.flash].filter(Boolean).join(' ')
 
@@ -266,6 +378,21 @@ const MessageRow = memo(function MessageRow({ t, message, streaming, flash }: Ro
 
       {prose && (
         <>
+          {/*
+            * ── 第一个字之前那段空档(§5.3 拍点 ⑫)────────────────────────────
+            * 回复的槽位已经开出来(`run/start` 到了、活消息立着),但**此刻一个字
+            * 都画不出来**:模型在思考、请求还在路上。今天那段是一片空白,与用户报的
+            * 「不知道它是不是卡住了」同源。
+            *
+            * 判据是 `segments.length === 0` —— 装配管线对这条消息**此刻画得出什么**
+            * 的完整答案。它不是拿 `content` 猜:一条只有工具活儿、正文还是空的消息
+            * 段序列非空,那时候槽位里有东西可看,不该再画点。换句话说,判据问的是
+            * 「屏幕上有没有东西」,而这正是这三颗点要回答的那个问题。
+            * 第一个 delta 到达 → 段序列非空 → 点当场换成正文与尾部那枚光标。
+            */}
+          {streaming && segments.length === 0 && (
+            <Dots className={s.firstToken} label={t('chat.streaming')} />
+          )}
           {segments.map((segment, index) => {
             const key = segmentKey(message.id, index, segment)
             return <SegmentView key={key} segment={segment} segmentKey={key} ctx={ctx} />
@@ -280,7 +407,7 @@ const MessageRow = memo(function MessageRow({ t, message, streaming, flash }: Ro
             光标是**数据源的事实**(activeMessageId),不是这条消息自己的事实,
             而装配管线只拿得到消息 —— 所以它留在这一层画,没有进段序列。
           */}
-          {streaming && (
+          {streaming && segments.length > 0 && (
             <span className={s.cursor} data-testid="chat-streaming" aria-label={t('chat.streaming')} />
           )}
           {/*
@@ -292,7 +419,7 @@ const MessageRow = memo(function MessageRow({ t, message, streaming, flash }: Ro
             只有 assistant 有动作:system(压缩卡)不是"一条回答",没有重跑一说;
             user 的动作是编辑重发,那是另一件事(留账)。
           */}
-          {streaming && <StreamReadout startedAt={message.timestamp} />}
+          {streaming && <StreamReadout startedAt={message.timestamp} lastDeltaAt={lastDeltaAt} />}
           {!streaming && role === 'assistant' && (
             <MessageActions messageId={message.id} text={message.content ?? ''} />
           )}

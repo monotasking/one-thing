@@ -40,7 +40,10 @@
   left: calc(-1px - var(--dock-amount, 0) * var(--dock-grow-before, 0) * 1px);
   right: calc(-1px - var(--dock-amount, 0) * var(--dock-grow-after, 0) * 1px);
   border-radius: var(--r-dock);
-  /* backdrop-filter 全系统只许出现在这里 */
+  /* backdrop-filter 全系统只有两处:这条 Dock,与悬浮输入框那块玻璃
+   * (`composer/components/Composer.module.css` 的 `.panel`,09-05 §5.6 拍点 ⑪ 磨砂)。
+   * 两处的语汇同源(底 --glass + 模糊),半径各有各的名:条窄用 20,面大用 14 ——
+   * 同样的半径在一大块面上会糊成一片奶油。 */
   background: var(--glass);
   backdrop-filter: blur(var(--dock-blur));
   -webkit-backdrop-filter: blur(var(--dock-blur));

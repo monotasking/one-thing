@@ -405,17 +405,6 @@ export function priceOf(model: OpenRouterModel): { input: number; output: number
   return { input, output }
 }
 
-/** 200000 → 「200K」;1_200_000 → 「1.2M」。null 由调用方决定画什么。 */
-export function formatTokens(value: number | null): string | null {
-  if (value === null) return null
-  if (value >= 1_000_000) {
-    const m = value / 1_000_000
-    return `${m >= 10 || Number.isInteger(m) ? Math.round(m) : m.toFixed(1)}M`
-  }
-  if (value >= 1000) return `${Math.round(value / 1000)}K`
-  return String(value)
-}
-
 /**
  * 3 → 「$3」;2.19 → 「$2.19」;0.3 → 「$0.3」;0.861 → 「$0.86」。
  *

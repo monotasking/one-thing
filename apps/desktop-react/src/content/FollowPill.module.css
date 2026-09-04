@@ -1,0 +1,64 @@
+/*
+ * 跟随丸的**落位与托底**。这份样式表只回答三个问题:它落在哪、它下面垫着什么、
+ * 它怎么进场。长什么样(高度 / 圆角 / 边线 / rest·hover·focus·active 四态)
+ * 全在 `ui/Button` 的 pill 档里 —— 这里一个像素都不画(基础件先行)。
+ */
+
+/*
+ * 落位:聊天区(`.chatArea`,它是定位参考系)底部**居中**,坐进气口的正中。
+ *
+ *   bottom = 输入框实高 + 气口的一半 − 丸自己的一半
+ *
+ * 三个数各有产地:`--composer-h` 由 AppShell 的 ResizeObserver 每次几何变化写进
+ * `.center`(输入框长高、抽屉开合都跟着变),`--composer-gap` 是拍定的 40px 气口,
+ * `--btn-sm` 是 `ui/Button` 那一档的身量。所以贴底时气口是空的、丸不盖字;
+ * 输入框一长高,丸自己跟着抬起来 —— 没有第二处要记得改的数。
+ *
+ * 整条是 `left/right: 0` 的一条带 + flex 居中,而不是 `left: 50%` 配
+ * `translateX(-50%)`:后者把丸自己的宽度算进变换里,换一张脸(三个点 ⇄ 一句话)
+ * 时中心点要重算一次 —— 那一下在真机上就是「换脸时丸横向抖一记」。
+ * 带 + 居中则由浏览器每帧自己摆,零抖动。
+ */
+.slot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--composer-h) + var(--composer-gap) / 2 - var(--btn-sm) / 2);
+  z-index: var(--z-sticky);
+  display: flex;
+  justify-content: center;
+  /*
+   * 这条带横跨整个聊天区,**它自己一个事件都不许接** —— 否则气口两侧那大片空白
+   * 会把底下正文的滚轮与点击全吃掉(与 AppShell 那条输入框浮层带同一笔账)。
+   * 只有丸本身收回事件(见 `.backing`)。
+   */
+  pointer-events: none;
+}
+
+/*
+ * **托底**是一层单独的皮,不是画在钮身上的。
+ *
+ * 它叫 `backing` 而不是 `chip` / `pill`:那两个词是这套壳的**视觉词汇**
+ * (`ui:consume` 的 `shared-vocab-css` 盯着它们,产地必须是 `src/ui/`),
+ * 而这一格根本不是一枚丸 —— 丸是它里面那颗 `ui/Button`。它只是一张纸。
+ *
+ * 丸浮在正文之上,所以底必须是实的 —— 半透明的底会让下面的字从它身上穿过去,
+ * 那正是「看不清它说什么」。但底**不能写在 `ui/Button` 的 className 上**:
+ * ghost 档的 hover 换的就是 `background`(`.ghost:hover` 特异性 0-3-0,
+ * 稳赢外面传进来的一格类),写在钮上等于让 hover 把实底换成半透明的叠色 ——
+ * 悬停一下丸就"透"了。
+ *
+ * 所以分层:这一格垫实底 + 影 + 圆角,钮照旧透明地坐在上面,
+ * 它的四态(hover 的 --st-hover 叠色、focus 的全局环、active)一格没动、
+ * 而且**叠在实底上才看得见**。这不是自绘皮肤,是给库件铺一张纸。
+ */
+.backing {
+  pointer-events: auto;
+  display: inline-flex;
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  /* 入场:与浮层同一副(淡入 + 微微上浮)。动效档 none 把 --dur-enter 归 0,
+   * 于是自动退化成直切 —— 组件一行都不必判档。 */
+  animation: var(--kf-float-in) var(--dur-enter) var(--ease-out);
+}

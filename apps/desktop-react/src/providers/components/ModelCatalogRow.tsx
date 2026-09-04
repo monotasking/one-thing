@@ -4,7 +4,8 @@ import { Tooltip } from '../../ui/Tooltip'
 import { Brain, Image, ImagePlus, Mic, Wrench } from '../../components/icons'
 import type { LucideIcon } from '../../components/icons'
 import type { MessageKey, TFn } from '../../i18n'
-import { formatPrice, formatTokens } from '../projection'
+import { formatQuantity } from '../../format/quantity'
+import { formatPrice } from '../projection'
 import { MODEL_CAPS } from '../types'
 import type { CatalogRow, ModelCap } from '../types'
 import s from './ModelCatalog.module.css'
@@ -55,6 +56,16 @@ const CAP_LABELS: Record<ModelCap, MessageKey> = {
  * 所以名字在两处都得有:`aria-label` 给读屏的人,`Tooltip` 给用眼睛的人。
  * 少任何一处,这一格就只对写它的人有意义。
  */
+/**
+ * 窗口 / 最大输出这两格的读数。数怎么进位由 `format/quantity` 那一个产地说
+ * (§5.7 收口:从前这里另有一份 `formatTokens`,大写 K、不带小数,与输入框
+ * 读数里的小写 k 各说各话);这里只剩本地那一条合同 —— **「没填」不是 0**,
+ * null 原样交回去,画什么由调用方决定(它画的是破折号,不是 `0`)。
+ */
+function formatCatalogTokens(value: number | null): string | null {
+  return value === null ? null : formatQuantity(value)
+}
+
 function CapIcon({ cap, label }: { cap: ModelCap; label: string }) {
   const Icon = CAP_ICONS[cap]
   return (
@@ -122,8 +133,8 @@ export function ModelCatalogRow({
           ))
         )}
       </span>
-      <span className={s.num}>{formatTokens(row.contextLength) ?? t('providers.unknownValue')}</span>
-      <span className={s.out}>{formatTokens(row.maxOutput) ?? t('providers.unknownValue')}</span>
+      <span className={s.num}>{formatCatalogTokens(row.contextLength) ?? t('providers.unknownValue')}</span>
+      <span className={s.out}>{formatCatalogTokens(row.maxOutput) ?? t('providers.unknownValue')}</span>
       <span className={s.price}>
         {included
           ? t('providers.priceIncluded')

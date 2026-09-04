@@ -1,0 +1,56 @@
+/*
+ * 三个点。整份配方只有几何 + 一段节奏 —— 没有任何着色出口:颜色走
+ * `currentColor`,由落点的字色说了算(丸里是钮的字色,消息体里是最淡的一档墨)。
+ * 想让它变红的人在这件上找不到把手,与 `ui/StatusDot` 的「只画一颗点」同一条。
+ */
+.dots {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dots-gap);
+  /* 行内对齐:与旁边那行字的中线对齐,而不是坐在基线上 —— 三颗圆点没有基线可言。 */
+  vertical-align: middle;
+  /* 一颗点的位移是 % of 自身,所以整组的高度必须由点自己撑,别让行高掺进来。 */
+  line-height: 0;
+}
+
+.dot {
+  display: block;
+  width: var(--dots-dot);
+  height: var(--dots-dot);
+  border-radius: var(--r-full);
+  background: currentColor;
+  /* 关键帧 dots 住在 styles/motion.css(全仓唯一的 @keyframes 产地)。 */
+  animation: var(--kf-dots) var(--dur-dots) var(--ease-soft) infinite;
+}
+
+/*
+ * 错峰:第二颗晚一步、第三颗晚两步。两条都是「基类 + 一格延迟」,
+ * 特异性相同、靠源码次序无歧义(它们改的是不同的选择器,不互相覆盖)。
+ * 第一颗不写 delay —— 缺省 0 就是它该有的值,写一条 `0s` 只会多一处要维护的数。
+ */
+.dot:nth-child(2) {
+  animation-delay: var(--dur-dots-step);
+}
+
+.dot:nth-child(3) {
+  animation-delay: calc(var(--dur-dots-step) * 2);
+}
+
+/*
+ * 不动的那两种情形,给的是同一份降级:**三颗静止的点**(§5.3 字面),
+ * 不是「不画」——「这件事在进行」仍然要说得出来。
+ * 系统偏好与用户显式选的「动效:无」是两个来源、一个结论,所以规则写两条、
+ * 内容一模一样(CSS 没法把媒体查询和属性选择器并进同一个条件里)——
+ * 与 `content/ChatStream.module.css` 里那枚呼吸光标同一手。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+    opacity: var(--dots-rest-opacity);
+  }
+}
+
+:root[data-motion-tier='none'] .dot {
+  animation: none;
+  opacity: var(--dots-rest-opacity);
+}

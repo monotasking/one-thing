@@ -35,16 +35,47 @@
   position: relative;
 }
 
+/*
+ * ── 一块悬浮的玻璃(§5.6,拍点 ⑪ 磨砂)────────────────────────────────────
+ * 09-05 之前这块面是实底的 `--surface-2`,长在聊天区下方,底下没有任何东西 ——
+ * 「透过它看到下面的文字」在那个布局里连问都不成立。改成绝对定位浮起来之后,
+ * 它底下真的有正文在流,于是底换成**磨砂玻璃**:
+ *   底 `--glass`(半透明) + `backdrop-filter: blur() saturate()`。
+ * 磨砂而不是清玻璃,是因为清玻璃底下的正文是**可读的**,会和正在打的字打架;
+ * 磨砂之后只剩形与色,「有东西在下面」这件事仍然看得见。
+ * 边线降一档透明度(`--composer-glass-line`)—— 它浮在正文上,边线太实会像
+ * 贴了一张卡片;影升到 `--sh-2`(浮层那一档),把它从纸面上托起来。
+ *
+ * `-webkit-` 前缀那一行不是冗余:Safari / 旧 WebKit 只认它。
+ */
 .panel {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--line-1);
+  border: 1px solid var(--composer-glass-line);
   border-radius: var(--r-3);
-  background: var(--surface-2);
-  box-shadow: var(--sh-1);
+  background: var(--glass);
+  backdrop-filter: blur(var(--composer-blur)) saturate(var(--composer-saturate));
+  -webkit-backdrop-filter: blur(var(--composer-blur)) saturate(var(--composer-saturate));
+  box-shadow: var(--sh-2);
   transition:
     border-color var(--dur) var(--ease),
     background var(--dur) var(--ease);
+}
+
+/*
+ * ── 抽屉开着 = 整块转不透明 ───────────────────────────────────────────────
+ * 命令 / @ 文件 / 模型 / 状态四张清单**是要读的**,不能叠在正文上(§5.6)。
+ * 所以抽屉一开,底从玻璃换回实底 `--surface-2`、磨砂一并撤掉(留着只是白烧
+ * 一层合成),边线也回到实的那一档;关掉自己回玻璃。
+ *
+ * 判据是 `:has(.drawerOpen)` —— **那格状态类本来就在**(抽屉的开合就是它),
+ * 不必为这条规则新造一个「玻璃/不透明」的状态位:两个位说同一件事迟早分叉。
+ */
+.panel:has(.drawerOpen) {
+  background: var(--surface-2);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--line-1);
 }
 
 /*
@@ -177,7 +208,14 @@
  * 只封顶不滚,比不封顶更糟(键盘还在动,屏幕上什么都不变)。
  */
 .pickScroll {
-  max-height: var(--composer-drawer-max);
+  /*
+   * 09-05(§5.6):上限从「一个固定值」改成 `min(既有上限, 中央区高度的 40%)`。
+   * 输入框浮起来之后抽屉是往上长的,它长到哪儿就盖住正文到哪儿 —— 固定 320px
+   * 在一扇矮窗上就能把正文吃掉大半。40% 是「正文永远露出上半截」这句话的落地。
+   * `--center-h` 由 AppShell 的 ResizeObserver 写在 `.center` 上;兜底 200vh 是
+   * 为了让「壳还没量出来」的第一帧退回既有上限(min 里那一项大到不参与)。
+   */
+  max-height: min(var(--composer-drawer-max), calc(var(--center-h, 200vh) * 0.4));
   overflow-y: auto;
   overscroll-behavior: contain;
 }

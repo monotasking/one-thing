@@ -299,14 +299,6 @@ export function ringUnknownDash(radius: number): string {
   return `${segment.toFixed(1)} ${segment.toFixed(1)}`
 }
 
-/** 48200 → '48.2k';200000 → '200k'(整数不留 .0)。 */
-export function formatCount(n: number): string {
-  if (Math.abs(n) < 1000) return String(n)
-  const k = n / 1000
-  const s = k.toFixed(1)
-  return `${s.endsWith('.0') ? s.slice(0, -2) : s}k`
-}
-
 /**
  * 金额。**不足一块钱留四位小数**(Vue 壳 `formatSessionCostUSD` 的同一条):
  * 两位小数会把 $0.0031 写成 $0.00 —— 那读起来是「免费」,而它不是。

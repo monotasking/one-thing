@@ -10,7 +10,6 @@ import {
   credentialFactsOf,
   filterRailRows,
   formatPrice,
-  formatTokens,
   cooldownFact,
   groupCatalog,
   isModeConfigured,
@@ -290,10 +289,7 @@ describe('capsOf / priceOf / format', () => {
     ).toBeNull()
   })
 
-  it('窗口:0 是「没填」不是「零」', () => {
-    expect(formatTokens(200_000)).toBe('200K')
-    expect(formatTokens(1_200_000)).toBe('1.2M')
-    expect(formatTokens(null)).toBeNull()
+  it('价:拖尾的零砍掉,有意义的分留住(窗口那两格的进位 09-05 收进 format/quantity)', () => {
     expect(formatPrice(3)).toBe('$3')
     expect(formatPrice(0.55)).toBe('$0.55')
     // 拖尾的零砍掉($0.30 里那个零没有意义),有意义的分留住。

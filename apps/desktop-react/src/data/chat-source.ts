@@ -93,6 +93,25 @@ export interface ChatSourceState {
   activeMessageId?: string
   /** overlay 车道:待送出 / 送不出去的消息,加本地提示。 */
   overlay: OverlayEntry[]
+  /**
+   * **「自己刚发出去一条」的那一拍**(C1 §5.1「发送」那一格的产地)。
+   *
+   * 一个只增不减的号,不是一条消息、不是一个布尔。跟随状态机要的是**事件**
+   * (「这一下是发送」),而 store 里能放的只有状态 —— 单调号是这两者之间那座
+   * 唯一不撒谎的桥:订阅方比对号变没变就知道「刚刚发生了一次」,不必去猜
+   * (拿 `messages.length` 的差当发送是猜:重折、账本追上来、overlay 认领,
+   * 三条路都会让长度变,而它们一条都不是「我按了发送」)。
+   */
+  sentTick: number
+  /**
+   * **正在生成的那条消息上一次收到 delta 的时刻**(§6.6 活性读数的产地)。
+   *
+   * 与 `messages` 同一次 `set` 写出去 —— 也就是说它跟着按帧合并的推屏走,
+   * 每条 delta 各推一次 store 那种事不会发生(那正是这个文件把活折留在模块级、
+   * 不塞进 store 的理由)。没有在跑的 run、或者这一轮一个 delta 都还没到时是
+   * `undefined`:调用方该退到 `run/start` 的时刻,而不是拿 0 当「刚刚」。
+   */
+  lastDeltaAt?: number
 
   /** 打开一条会话(幂等):起底 + 订上推送。 */
   open: (sessionId: string) => Promise<void>
@@ -196,6 +215,15 @@ let tailLens: { messageId: string; lens: FoldLens } | undefined
  * 账本那一格自然少画 —— 一条式子同时管住了重画与漏画。
  */
 let tailReceived: { messageId: string; chars: number } | undefined
+/**
+ * **上一次收到 delta 的时刻**(按消息记)。模块级而不是 store 字段,理由与
+ * `LiveFold` 逐字相同:每条 delta 各写一次 store = 每条 delta 触发一次全体订阅者
+ * 重算。它由 `compose()`(按帧合并的那一拍)搬进 store,于是一帧最多一次。
+ *
+ * 记 `messageId` 而不是只记时刻:换一条消息就是换一轮,上一轮的静默时长
+ * 对这一轮没有任何意义。
+ */
+let lastDelta: { messageId: string; at: number } | undefined
 
 /**
  * **活水位**(R2,`data/stream-water.ts`)。与 `fold` 同生共死:一条打开着的会话
@@ -300,12 +328,22 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       )
       const base = projected.messages
       const overlay = reconcileOverlay(get().overlay, base)
+      const activeMessageId = projected.activeRun?.messageId
       set({
         status: 'ready',
         error: undefined,
         // R2 新路:合并已经在物化里做完了(每 part 一条 max),这一层不再拼装。
         messages: STREAM_R2 ? base : appendTail(base, tail, tailCoverage()),
-        activeMessageId: projected.activeRun?.messageId,
+        activeMessageId,
+        /*
+         * 活性读数只对**此刻在跑的那一条**成立。上一轮的静默时刻留在模块级那一格
+         * 里没关系(下一条 delta 会覆盖它),但绝不许交给屏幕 —— 那会让新一轮
+         * 一开张就顶着上一轮的静默秒数。
+         */
+        lastDeltaAt:
+          activeMessageId !== undefined && lastDelta?.messageId === activeMessageId
+            ? lastDelta.at
+            : undefined,
         overlay,
       })
     })
@@ -668,6 +706,21 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     }
     const messageId = chunk?.messageId
     if (!messageId) return
+    /*
+     * **活性读数的唯一产地**(§6.6):三种裸 delta 就是「还在往外吐字」的全部证据。
+     * 记在这里而不是在下面两条岔路(R2 / 旧路)里各记一次 —— 岔路会长,产地不该
+     * 跟着长;判据也只有一句「这一条是不是那三种之一」,与它后面被谁怎么处理无关
+     * (没盖章被 R2 丢掉的那种也算 —— 引擎确实在吐字,读数问的正是这件事)。
+     * `Date.now()` 而不是 `performance.now()`:读数要和账本上的 `run/start`
+     * (墙钟毫秒)相减,两个时基不能混。
+     */
+    if (
+      chunk.type === 'text-delta' ||
+      chunk.type === 'reasoning-delta' ||
+      chunk.type === 'tool-input-delta'
+    ) {
+      lastDelta = { messageId, at: Date.now() }
+    }
     const hasContent = get().messages.some(
       (message) => message.id === messageId && Boolean(message.content),
     )
@@ -771,6 +824,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
     status: 'idle',
     messages: [],
     overlay: [],
+    sentTick: 0,
 
     open: async (sessionId) => {
       // 换会话 = 上一条会话那只「等收尾」的表过期了(它会自己判,但留着没意义)。
@@ -787,9 +841,17 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         tail = undefined
         tailLens = undefined
         tailReceived = undefined
+        lastDelta = undefined
         pendingLedger = []
         openSeq += 1
-        set({ sessionId: '', status: 'idle', error: undefined, messages: [], activeMessageId: undefined })
+        set({
+          sessionId: '',
+          status: 'idle',
+          error: undefined,
+          messages: [],
+          activeMessageId: undefined,
+          lastDeltaAt: undefined,
+        })
         return
       }
       if (get().sessionId === sessionId && fold) return
@@ -797,6 +859,8 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       fold = newFold()
       // 换会话 = 换一份水位(它是个值,不是模块里的那一个 —— 审查条 4)。
       water = new StreamWater()
+      // 上一条会话那一轮的静默时刻,对这一条一个字的意义都没有。
+      lastDelta = undefined
       tail = undefined
       tailLens = undefined
       tailReceived = undefined
@@ -828,7 +892,12 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         status: 'sending' as const,
         seenUserIds: userMessageIds(get().messages),
       }
-      set((prev) => ({ overlay: [...prev.overlay, entry] }))
+      /*
+       * 号与那条 overlay **同一次 `set`**:跟随状态机看到「多了一条」与「这是我发的」
+       * 是同一帧的事实,中间不会插进一次别的推屏(赛跑的窗口从来就是这么开的)。
+       * 只有真交出去的那一下才 +1 —— 空话与「还没有当前会话」上面已经 return 掉了。
+       */
+      set((prev) => ({ overlay: [...prev.overlay, entry], sentTick: prev.sentTick + 1 }))
       void dispatch(entry.id, sessionId, body)
       return true
     },
@@ -957,6 +1026,7 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
       tail = undefined
       tailLens = undefined
       tailReceived = undefined
+      lastDelta = undefined
       pendingLedger = []
       if (abortWatch) clearTimeout(abortWatch)
       abortWatch = undefined
@@ -972,7 +1042,14 @@ export const useChatSource = create<ChatSourceState>()((set, get) => {
         error: undefined,
         messages: [],
         activeMessageId: undefined,
+        lastDeltaAt: undefined,
         overlay: [],
+        /*
+         * `sentTick` **故意不归零**:它是「这个进程一共发出去过多少条」的单调号,
+         * 不是会话状态。归零等于往下游发一次「号变了」—— 而订阅方读号的方式正是
+         * 「变了就是发生了一次发送」,那会在每次 reset / 换会话时凭空多出一次
+         * 「刚发了一条」。单调这件事本身就是它的合同。
+         */
       })
     },
   }

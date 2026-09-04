@@ -14,7 +14,8 @@ import {
 } from '../../data/models-source'
 import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
-import { filterProviders, formatCount } from '../transitions'
+import { formatQuantity } from '../../format/quantity'
+import { filterProviders } from '../transitions'
 import { useComposerStore } from '../store'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { FocusScope } from '../../focus/FocusScope'
@@ -197,7 +198,7 @@ export function DrawerModelPicker() {
                       <span className={s.pickMono}>{m.model}</span>
                       {/* 窗口大小是**数据**不是文案(与 files-source.formatBytes 同判据):
                           换一门语言 '200k' 不该变。不知道就不画那一格,不写「未知」。 */}
-                      <span>{m.contextLength === null ? '' : formatCount(m.contextLength)}</span>
+                      <span>{m.contextLength === null ? '' : formatQuantity(m.contextLength)}</span>
                     </ButtonBase>
                   )
                 })}

@@ -42,6 +42,12 @@ const toolCall = (seq: number, runId: string, messageId: string): Ledger => ({
   type: 'tool/call',
   data: { runId, messageId, callId: 'c1', name: 'read', argumentsRaw: '{}' },
 })
+const runEnd = (seq: number, runId: string): Ledger => ({
+  seq,
+  time: T0,
+  type: 'run/end',
+  data: { runId, outcome: 'completed' },
+})
 const toolResult = (seq: number, runId: string): Ledger => ({
   seq,
   time: T0,
@@ -177,13 +183,30 @@ describe('消息树:画的就是折叠器的输出', () => {
     expect(card?.textContent).toBe('read0.0s')
   })
 
-  it('run 还开着 = 流中态指示在场;收了就没有', async () => {
-    await mount([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
+  it('run 还开着 + 已经有字 = 流中态指示在场;收了就没有', async () => {
+    await mount([
+      created(1),
+      userMessage(2, 'm1', '你好'),
+      runStart(3, 'r1', 'a1'),
+      chunks(4, 'r1', 'a1', ['好的']),
+    ])
     expect(screen.getByTestId('chat-streaming')).toBeTruthy()
 
     await act(async () => {
       useChatSource.setState({ activeMessageId: undefined })
     })
+    expect(screen.queryByTestId('chat-streaming')).toBeNull()
+  })
+
+  /**
+   * §5.3 拍点 ⑫:**回复槽位开出来到第一个字之间**画三个点。
+   * 从前那段是一片空白 —— 与用户报的「不知道它是不是卡住了」同源。
+   * 判据是「这条消息此刻画得出什么」(段序列空不空),不是拿 content 猜。
+   */
+  it('槽位开了、第一个字还没到 = 三个点在场,光标不在', async () => {
+    await mount([created(1), userMessage(2, 'm1', '你好'), runStart(3, 'r1', 'a1')])
+    expect(screen.getByLabelText('正在生成')).toBeTruthy()
+    // 两件都在场就是两个「还在跑」—— 第一个 delta 到达才换成正文与尾部光标。
     expect(screen.queryByTestId('chat-streaming')).toBeNull()
   })
 })
@@ -220,7 +243,8 @@ describe('overlay 车道', () => {
 })
 
 /**
- * 08-31 真机回访 · 报障二:**进会话就落在最新那条**。
+ * 08-31 真机回访 · 报障二:**进会话就落在最新那条**;09-05 C1 起它并入
+ * `content/follow.ts` 的状态机,成了「进场 = pinned」那一格,并且第一次真的**跟底**。
  *
  * 从前一条都没有:整个应用里没有任何一处写过 scrollTop,真机读数 scrollTop=0、
  * 离底 2686px —— 打开一条会话永远停在第一句话。
@@ -229,7 +253,7 @@ describe('overlay 车道', () => {
  * 只留 `scrollTop` 走真实赋值 —— 量的是**这段逻辑写了什么**,真机上是不是真的贴底
  * 由 gate 那边量(它有真的排版)。
  */
-describe('进场落底', () => {
+describe('进场落底与流式跟底', () => {
   const HEIGHT = 1000
   const VIEWPORT = 300
   let restore: (() => void)[] = []
@@ -291,22 +315,205 @@ describe('进场落底', () => {
     expect(el.scrollTop).toBe(0)
   })
 
-  it('账本长出新东西就结束进场 —— 跟底是另一件事,本批不做', async () => {
+  /**
+   * C1 §5.1 的换轨点。**这条用例的前身断言的正好相反** —— 它叫
+   * 「账本长出新东西就结束进场 —— 跟底是另一件事,本批不做」,守的是
+   * `useEnterAtBottom` 那个故意留的出口二。本批做的就是那另一件事,
+   * 所以那条断言连同它守的那行代码一起退役了。
+   */
+  it('贴底时账本长出新东西 = 继续跟底(这正是 08-31 留账里那件「另一件事」)', async () => {
     const ref = await mountWithRef(LEDGER)
     const el = ref.current!
     el.scrollTop = 0
-    // 换一份消息树引用 = 账本推进了。此后哪怕人没滚过,也不再自动落底。
+    // 换一份消息树引用 = 账本推进了。人没滚过,所以此刻仍是 pinned —— 要跟。
     await act(async () => {
       useChatSource.setState({ messages: [...useChatSource.getState().messages] })
     })
-    await act(async () => {
-      useChatSource.setState({ activeMessageId: undefined })
-    })
-    expect(el.scrollTop).toBe(0)
+    expect(el.scrollTop).toBe(HEIGHT)
   })
 
   it('空会话不落底(此刻没有底可言,落了会把进场判成已完成)', async () => {
     const ref = await mountWithRef([created(1)])
     expect(ref.current!.scrollTop).toBe(0)
+  })
+
+  it('人自己滚回底 = 回到跟随(不必点丸)', async () => {
+    const ref = await mountWithRef(LEDGER)
+    const el = ref.current!
+    el.scrollTop = 0
+    await act(async () => {
+      fireEvent.scroll(el)
+    })
+    // 滚回底:gap = 0 ≤ EPS。
+    el.scrollTop = HEIGHT - VIEWPORT
+    await act(async () => {
+      fireEvent.scroll(el)
+    })
+    await act(async () => {
+      useChatSource.setState({ messages: [...useChatSource.getState().messages] })
+    })
+    expect(el.scrollTop).toBe(HEIGHT)
+  })
+})
+
+/**
+ * 跟随丸(§5.3)。**挂载判据是状态,不是几何** —— 所以这一组不必按 scrollHeight,
+ * 只要把状态机推到「浏览中 + 有没看见的东西」那一格。
+ * 三张脸的文案与无障碍名由 `content/FollowPill` 自己的 props 决定,这里量的是
+ * 「它在不在场」与「点了之后回不回底」这两件跨组件的事。
+ */
+describe('跟随丸', () => {
+  const HEIGHT = 1000
+  const VIEWPORT = 300
+  let restore: (() => void)[] = []
+
+  beforeEach(() => {
+    for (const [name, value] of [
+      ['scrollHeight', HEIGHT],
+      ['clientHeight', VIEWPORT],
+    ] as const) {
+      const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value })
+      restore.push(() => {
+        if (original) Object.defineProperty(HTMLElement.prototype, name, original)
+      })
+    }
+  })
+
+  afterEach(() => {
+    for (const undo of restore) undo()
+    restore = []
+  })
+
+  async function mountWithRef(ledger: Ledger[]) {
+    const ref = { current: null as HTMLDivElement | null }
+    configureChatPort(port(ledger))
+    useExposeStore.setState({ currentSessionId: SESSION })
+    await act(async () => {
+      render(<ChatStream scrollRef={ref} />)
+    })
+    await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
+    return ref
+  }
+
+  /*
+   * 这一组用**收了场**的账本(有 run/end):三张脸里 `streaming` 排在最前,
+   * 所以只要还有一轮在跑,丸画的就是三个点 —— 「已发送」那张脸的前提正是
+   * 「自己发了一条,回复还没开始」。
+   */
+  const LEDGER = [
+    created(1),
+    userMessage(2, 'm1', '你好'),
+    runStart(3, 'r1', 'a1'),
+    chunks(4, 'r1', 'a1', ['好的']),
+    runEnd(5, 'r1'),
+  ]
+
+  /** 上翻一次 —— 之后状态机就在 browsing 上了。 */
+  async function scrollUp(el: HTMLDivElement) {
+    el.scrollTop = 0
+    await act(async () => {
+      fireEvent.scroll(el)
+    })
+  }
+
+  it('贴底时不画 —— 你就在底,没有「没看见」这回事', async () => {
+    await mountWithRef(LEDGER)
+    expect(screen.queryByTestId('chat-follow-pill')).toBeNull()
+  })
+
+  it('浏览中但下面什么都没长 —— 也不画', async () => {
+    const ref = await mountWithRef(LEDGER)
+    await scrollUp(ref.current!)
+    expect(screen.queryByTestId('chat-follow-pill')).toBeNull()
+  })
+
+  it('浏览中自己发了一条 = 丸说「已发送」,而且不滚', async () => {
+    const ref = await mountWithRef(LEDGER)
+    const el = ref.current!
+    await scrollUp(el)
+    await act(async () => {
+      useChatSource.getState().send('再问一句')
+    })
+    expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
+    expect(el.scrollTop).toBe(0)
+  })
+
+  /**
+   * 用户 09-05 定的那条序列:**浏览中发送 → 「已发送」→ 回复开始流 → 三个点 →
+   * 流完 → 「回到最新」**。这条用例走的是真链路的三跳,不是直接摆状态机:
+   * 发送经数据源的 `send()`,回复到达经 `lastDeltaAt` 变化 + 有活消息(那正是
+   * `chat-source` 收到一段 delta 时写出去的两格),收场经 `activeMessageId` 归空。
+   *
+   * 打回前这条会红在最后一步:`grew` 不覆盖 `sent`(它必须不覆盖 —— 自己发的那条
+   * 本身就是一次长高),于是流完之后丸仍写着「已发送」,而此刻明明有一条没看过的
+   * 回复。修法不是动 `grew`,是给「回复到达」一个自己的事件。
+   */
+  it('浏览中:发送 → 已发送 → 回复开始流 → 三个点 → 流完 → 回到最新', async () => {
+    const ref = await mountWithRef(LEDGER)
+    await scrollUp(ref.current!)
+    await act(async () => {
+      useChatSource.getState().send('再问一句')
+    })
+    expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
+
+    // 回复开张 + 第一段 delta 到 —— 数据源同一次 set 写出去的就是这两格。
+    await act(async () => {
+      useChatSource.setState({ activeMessageId: 'a2', lastDeltaAt: T0 + 1 })
+    })
+    const streaming = screen.getByTestId('chat-follow-pill')
+    // 生成中那张脸一个字都不写(三个点),名字改说「正在生成」。
+    expect(streaming.getAttribute('aria-label')).toBe('正在生成,回到最新')
+    expect(streaming.textContent).toBe('')
+
+    // 流收场:活消息没了,读数也跟着归空(见 chat-source 的 compose)。
+    await act(async () => {
+      useChatSource.setState({ activeMessageId: undefined, lastDeltaAt: undefined })
+    })
+    expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 回到最新')
+  })
+
+  /**
+   * 反面那一半:**收场那一次 `lastDeltaAt` 归空不算一次「回复到达」**。
+   * 判据里那句 `activeMessageId === undefined` 就是为它写的 —— 少了它,一轮结束
+   * 也会派一次 `reply`,「已发送」会因为一件根本没发生的事被解闩。
+   */
+  it('没有活消息时 lastDeltaAt 变化不算回复到达(「已发送」原样留着)', async () => {
+    const ref = await mountWithRef(LEDGER)
+    await scrollUp(ref.current!)
+    await act(async () => {
+      useChatSource.getState().send('再问一句')
+    })
+    await act(async () => {
+      useChatSource.setState({ activeMessageId: undefined, lastDeltaAt: T0 + 9 })
+    })
+    expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
+  })
+
+  it('点丸 = 回到底 + 丸当场卸载(不等滚动动画)', async () => {
+    const ref = await mountWithRef(LEDGER)
+    const el = ref.current!
+    await scrollUp(el)
+    await act(async () => {
+      useChatSource.getState().send('再问一句')
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('chat-follow-pill'))
+    })
+    expect(el.scrollTop).toBe(HEIGHT)
+    expect(screen.queryByTestId('chat-follow-pill')).toBeNull()
+  })
+
+  it('换会话 = 进场 = pinned,丸跟着卸载', async () => {
+    const ref = await mountWithRef(LEDGER)
+    await scrollUp(ref.current!)
+    await act(async () => {
+      useChatSource.getState().send('再问一句')
+    })
+    expect(screen.queryByTestId('chat-follow-pill')).toBeTruthy()
+    await act(async () => {
+      await useChatSource.getState().open('')
+    })
+    expect(screen.queryByTestId('chat-follow-pill')).toBeNull()
   })
 })

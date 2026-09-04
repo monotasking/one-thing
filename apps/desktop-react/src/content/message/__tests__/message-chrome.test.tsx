@@ -3,7 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { ChatStream } from '../../ChatStream'
-import { elapsedSeconds } from '../StreamReadout'
+import { elapsedMs, readoutTone } from '../StreamReadout'
+import { STALL_HARD_MS, STALL_SOFT_MS } from '../../../components/motion'
 import { configureChatPort, type ChatPort } from '../../../data/chat-port'
 import { useChatSource } from '../../../data/chat-source'
 import { configureComposerSink } from '../../../composer/sink'
@@ -133,9 +134,11 @@ describe('① / ② 同一个位置,永远只有一个在', () => {
     expect(screen.queryByTestId('chat-actions')).toBeNull()
   })
 
-  it('读数行说的那句话是「正在生成 · {耗时}s」', async () => {
+  it('读数行说的那句话是「正在生成 · {耗时}」(单位由 formatDuration 带出来)', async () => {
     await mount(streamingLedger(Date.now() - 2_000))
     expect(screen.getByTestId('chat-readout').textContent).toMatch(/^正在生成 · \d+\.\ds停止$/)
+    // 阈值以内 = 在流那一档,读数行不说静默也不说「可能卡住了」。
+    expect(screen.getByTestId('chat-readout').getAttribute('data-tone')).toBe('live')
   })
 
   it('完成后:读数行退场,动作行接位(复制 / 重试)', async () => {
@@ -217,12 +220,32 @@ describe('④⑤⑥ 三颗钮真的接在那三条线上', () => {
 })
 
 describe('⑦ 耗时的口径', () => {
-  it('从给定起点算,一位小数', () => {
-    expect(elapsedSeconds(T0, T0 + 2_345)).toBe('2.3')
-    expect(elapsedSeconds(T0, T0)).toBe('0.0')
+  /*
+   * 09-05:这里量的从此是**毫秒**,不是字符串 —— 怎么写出来收进了
+   * `format/quantity.formatDuration`(§5.7 一个产地),它自己那张表在
+   * `src/format/__tests__/quantity.test.ts`。这一格只守「量得对不对」。
+   */
+  it('从给定起点算', () => {
+    expect(elapsedMs(T0, T0 + 2_345)).toBe(2_345)
+    expect(elapsedMs(T0, T0)).toBe(0)
   })
 
   it('时钟回拨 / 未来时刻按 0 算,不显示负数', () => {
-    expect(elapsedSeconds(T0, T0 - 5_000)).toBe('0.0')
+    expect(elapsedMs(T0, T0 - 5_000)).toBe(0)
+  })
+})
+
+/**
+ * §6.6 活性读数。判据是**静默**不是总耗时:一轮跑十分钟但每秒都在吐字是正常的。
+ * 三档由两个阈值切开,阈值的产地是 `components/motion.ts`(拆掉哪一档都会让
+ * 「在流」与「卡住」重新长成同一副样子 —— 那正是这一格要治的病)。
+ */
+describe('§6.6 活性读数:三档', () => {
+  it('阈值以内 = 在流;软阈值起 = 静默;硬阈值起 = 可能卡住', () => {
+    expect(readoutTone(0)).toBe('live')
+    expect(readoutTone(STALL_SOFT_MS)).toBe('live')
+    expect(readoutTone(STALL_SOFT_MS + 1)).toBe('stalled')
+    expect(readoutTone(STALL_HARD_MS)).toBe('stalled')
+    expect(readoutTone(STALL_HARD_MS + 1)).toBe('stuck')
   })
 })

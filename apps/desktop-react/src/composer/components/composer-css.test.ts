@@ -69,8 +69,17 @@ describe('可编辑区的光标形状(08-31 报障的产地)', () => {
 describe('抽屉候选列表:封顶 + 自己滚 + 不把滚动传给身后', () => {
   const scroll = () => block('.pickScroll')
 
-  it('列表区有上限,而且上限走 token(不是拍在样式表里的一个像素数)', () => {
-    expect(scroll()).toMatch(/max-height:\s*var\(--composer-drawer-max\)/)
+  /*
+   * 09-05(§5.6):上限从「一个 token」变成「两个数取小」——
+   * `min(--composer-drawer-max, 中央区高度的 40%)`。加的那一项是因为输入框浮起来
+   * 之后抽屉往上长就会盖住正文,固定 320px 在矮窗上能把正文吃掉大半。
+   * 断言跟着改成**两项都在**:少了前一项就没了绝对上限,少了后一项矮窗上就复发。
+   * 「不是拍在样式表里的一个像素数」这条纪律一个字没松 —— 两项都是 var()。
+   */
+  it('列表区有上限:既有 token 与「中央区的 40%」取小,两项都不许拍成像素数', () => {
+    expect(scroll()).toMatch(/max-height:\s*min\(/)
+    expect(scroll()).toMatch(/var\(--composer-drawer-max\)/)
+    expect(scroll()).toMatch(/calc\(var\(--center-h, 200vh\) \* 0\.4\)/)
   })
 
   it('超出照常滚:纵向 auto', () => {

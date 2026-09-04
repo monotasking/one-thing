@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { composerSink } from '../../composer/sink'
+import { STALL_HARD_MS, STALL_SOFT_MS } from '../../components/motion'
+import { formatDuration } from '../../format/quantity'
 import { useT } from '../../i18n'
 import { ButtonBase } from '../../ui/ButtonBase'
 import s from './MessageChrome.module.css'
@@ -42,10 +44,35 @@ import s from './MessageChrome.module.css'
  */
 export const READOUT_TICK_MS = 100
 
-/** 从起点到此刻,一位小数的秒。倒着走(时钟回拨 / 未来时刻)按 0 算,不显示负数。 */
-export function elapsedSeconds(startedAt: number, now: number): string {
+/**
+ * 从起点到此刻**过了多少毫秒**。倒着走(时钟回拨 / 未来时刻)按 0 算。
+ *
+ * 09-05:它从前直接吐字符串(`(ms/1000).toFixed(1)`)—— 那是**第四个**写时间的地方。
+ * 进位收进 `format/quantity.formatDuration` 之后,这里只剩「量出多少毫秒」这一件事,
+ * 怎么写出来由那一个产地说(分钟档的 `1m 05s` 因此白送)。
+ */
+export function elapsedMs(startedAt: number, now: number): number {
   const ms = Number.isFinite(startedAt) ? now - startedAt : 0
-  return (Math.max(0, ms) / 1000).toFixed(1)
+  return Math.max(0, ms)
+}
+
+/**
+ * **活性读数**(§6.6,拍点 ⑩ 用户补的真需求:「不展开也行,反正我要分得清它是在
+ * 接收流式还是卡住了」)—— 一句话由静默时长说了算。
+ *
+ * 判据是**静默**(上一次收到 delta 到此刻),不是总耗时:一轮跑十分钟但每秒都在
+ * 吐字是正常的,跑三十秒一个字没来才是异常。`lastDeltaAt` 缺席(这一轮一个 delta
+ * 都还没到)时退到 `startedAt` —— 从开张那一刻起算,而不是当成「刚刚收到过」。
+ *
+ * 纯函数,不碰 DOM 也不碰 i18n:它只答「此刻该说哪一句、静默了多久」,
+ * 句子长什么样归字典。
+ */
+export type ReadoutTone = 'live' | 'stalled' | 'stuck'
+
+export function readoutTone(silentMs: number): ReadoutTone {
+  if (silentMs > STALL_HARD_MS) return 'stuck'
+  if (silentMs > STALL_SOFT_MS) return 'stalled'
+  return 'live'
 }
 
 function useNow(tickMs: number): number {
@@ -57,13 +84,27 @@ function useNow(tickMs: number): number {
   return now
 }
 
-export function StreamReadout({ startedAt }: { startedAt: number }) {
+export function StreamReadout({ startedAt, lastDeltaAt }: { startedAt: number; lastDeltaAt?: number }) {
   const t = useT()
   const now = useNow(READOUT_TICK_MS)
 
+  const elapsed = formatDuration(elapsedMs(startedAt, now))
+  const silentMs = elapsedMs(lastDeltaAt ?? startedAt, now)
+  const tone = readoutTone(silentMs)
+  /*
+   * 三句话共一行:活着时只说耗时;软阈值起**改说静默**(陈述事实,不下结论);
+   * 硬阈值再补一句判断。「可能」两个字不许去掉 —— 壳这一侧没有任何证据能说明
+   * 它真的卡死了,它只知道「这么久没收到东西」。
+   */
+  const line =
+    tone === 'live'
+      ? t('chat.streamReadout', { d: elapsed })
+      : t('chat.streamStalled', { silent: formatDuration(silentMs), d: elapsed })
+
   return (
-    <div className={s.readout} data-testid="chat-readout">
-      <span>{t('chat.streamReadout', { s: elapsedSeconds(startedAt, now) })}</span>
+    <div className={s.readout} data-testid="chat-readout" data-tone={tone}>
+      <span>{line}</span>
+      {tone === 'stuck' && <span className={s.stuck}>{t('chat.streamStuck')}</span>}
       {/*
         停止走 composer 那条 sink —— **同一条通道**,不新开。发送键在忙态下翻成的
         那颗停止键按的也是它,于是"停"这件事在这台上只有一个实现、一个失败处理

@@ -2,7 +2,8 @@ import { useT } from '../../i18n'
 import type { TFn } from '../../i18n'
 import { useMeterView } from '../../data/meter-source'
 import type { MeterView } from '../../data/meter-source'
-import { formatCount, formatUsd, percent, ringDash, ringUnknownDash } from '../transitions'
+import { formatQuantity } from '../../format/quantity'
+import { formatUsd, percent, ringDash, ringUnknownDash } from '../transitions'
 import s from './Composer.module.css'
 
 /** 圆环的几何:与 --ctx-ring / --ctx-ring-w 是同一份事实(SVG 的 r 算不了 var())。 */
@@ -104,14 +105,14 @@ export function meterRowsOf(view: MeterView, t: TFn): MeterRow[] {
       pct === null
         ? {
             key: t('meter.context'),
-            value: t('meter.contextNoWindow', { used: formatCount(view.contextUsed) }),
+            value: t('meter.contextNoWindow', { used: formatQuantity(view.contextUsed) }),
             dim: true,
           }
         : {
             key: t('meter.context'),
             value: t('meter.contextValue', {
-              used: formatCount(view.contextUsed),
-              max: formatCount(view.contextMax ?? 0),
+              used: formatQuantity(view.contextUsed),
+              max: formatQuantity(view.contextMax ?? 0),
               pct,
             }),
           },
@@ -122,8 +123,8 @@ export function meterRowsOf(view: MeterView, t: TFn): MeterRow[] {
     rows.push({
       key: t('meter.tokens'),
       value: t('meter.tokensValue', {
-        sent: formatCount(view.tokensIn ?? 0),
-        received: formatCount(view.tokensOut ?? 0),
+        sent: formatQuantity(view.tokensIn ?? 0),
+        received: formatQuantity(view.tokensOut ?? 0),
       }),
     })
   }
