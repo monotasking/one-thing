@@ -136,6 +136,8 @@ describe('IndexWorkerHost 崩溃与重起', () => {
 
     expect(await service.status()).toEqual({
       mode: 'error', docs: 0, pending: 0, refolds: 0, building: false, generation: 0, errors: [], feeds: [],
+      // Worker 没了,向量路当然也没了 —— 三格答的是「这台宿主没有语义召回」。
+      vector: 'off', vectorPending: 0, vectorExtension: 'missing',
     })
     await expect(service.search({
       capability: MESSAGE_CAPABILITY, fields: messageFields(), ast: askQuery, limit: 10, offset: 0,

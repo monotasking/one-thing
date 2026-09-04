@@ -245,7 +245,13 @@ describe('createAppSearchService:起停', () => {
     expect(data.notesDirs).toEqual([notesDir])
     // 字段表来自三份 manifest 的 schema —— 装配不认识任何一格字段名。
     expect(Object.keys(data.schemas ?? {}).sort()).toEqual(['chats', 'daily', 'messages'])
-    expect(data.schemas?.messages?.content).toEqual({ analyzer: 'composite', weight: 1 })
+    // `embed` 那一格也要搬过来 —— 少了它嵌入队列会永远空着(施工时踩过,
+    // `vec_docs` 零行而 `vectorPending` 一直是 0)。
+    expect(data.schemas?.messages?.content).toEqual({ analyzer: 'composite', weight: 1, embed: true })
+    expect(data.schemas?.messages?.attachments).toEqual({ analyzer: 'composite', weight: 1 })
+    // 语义召回:缺省关(拍点壬 a),模型目录由 store 派生。
+    expect(data.semantic?.enabled).toBe(false)
+    expect(data.semantic?.modelsDir).toBe(path.join(storeRoot, 'models', 'embeddings'))
     // 库文件真的建出来了(目录不存在时装配自己建)。
     expect(fs.existsSync(data.databasePath)).toBe(true)
   })

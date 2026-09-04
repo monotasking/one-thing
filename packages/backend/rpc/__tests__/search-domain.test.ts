@@ -54,6 +54,7 @@ const stubIndex: SearchIndexQueryFace = {
       generation: 3,
     }
     : { hits: [], total: 0, docs: [], generation: 3 }),
+  vectorSearch: async () => ({ hits: [], docs: [], generation: 0, unavailable: 'off' as const }),
   status: async () => ({
     mode: 'owner',
     docs: 12,
@@ -63,6 +64,9 @@ const stubIndex: SearchIndexQueryFace = {
     generation: 3,
     errors: [],
     feeds: ['ledger'],
+    vector: 'off',
+    vectorPending: 0,
+    vectorExtension: 'missing',
   }),
 }
 
@@ -202,8 +206,11 @@ describe('search RPC domain', () => {
     configureHostLocalTrust({ origin: 'desktop-embedded' })
     const response = unwrap(await dispatchRpc(
       { domain: 'search', method: 'status', payload: {} }, IPC))
-    // `docs` 是 S3c 加的第四格(单调,parity-B 用它判「追完了」);替身索引里种了 12 份。
-    expect(response).toEqual({ mode: 'owner', pending: 2, docs: 12, vector: 'off' })
+    expect(response).toEqual({
+      mode: 'owner', pending: 2, docs: 12,
+      // S7 起 status 多三格:开关的状态 / 欠嵌的份数 / 扩展装不装得上。
+      vector: 'off', vectorPending: 0, vectorExtension: 'missing',
+    })
   })
 
   /**

@@ -30,6 +30,16 @@
  * 枚举**这个仓今天真的装了 / 真的产出**的原生插件:
  *   - `node-pty`(终端)
  *   - `sherpa-onnx-node` + 当前平台的 `sherpa-onnx-<platform>-<arch>`(语音)
+ *   - `onnxruntime-node` 与 `@img/sharp-<platform>-<arch>`(S7 起随
+ *     `@huggingface/transformers` 进 node_modules;**产品不加载它们**——嵌入器写死
+ *     `device: 'wasm'`——但它们真的被打进 app,而法条判的是「真的装了 / 真的产出」)
+ *   - `sqlite-vec` 当前平台的 `vec0.dylib` / `.so` / `.dll`(语义召回,S7)——
+ *     它**不是 Node 插件**,是一个 SQLite 可加载扩展,所以两半判据都换了尺子:
+ *     动态半边不是 `process.dlopen`,而是
+ *     `new DatabaseSync(':memory:', { allowExtension: true }).loadExtension(path)`
+ *     再跑一句 `select vec_version()`(能装上还得真能用);静态半边不看 `napi_*`
+ *     ——SQLite 扩展靠 `sqlite3_api` 结构体调宿主,一个 sqlite3 符号都不必导入
+ *     ——只判「有没有 V8 / Node 内部符号」,那一条与别的目标逐字相同。
  * 没装 / 没构建的条目记 SKIP 并说明,不冒充绿也不误报红 —— 一块不存在的二进制没有 ABI
  * 可判。真正的红只有两种:**存在但装不上**,和**存在但绑了 V8 内部符号**。
  *
@@ -75,8 +85,59 @@ function targets() {
 		packageDir: platformDir,
 	})
 
+	// ── sqlite-vec(检索重建 S7):SQLite 可加载扩展,不是 Node 插件。见文件头。
+	const vecPkg = sqliteVecPlatformPackage()
+	const vecDir = join(repoRoot, 'node_modules', vecPkg)
+	list.push({
+		name: vecPkg,
+		kind: 'sqlite-extension',
+		binary: findSqliteExtension(vecDir),
+		packageDir: vecDir,
+		hint: '`bun install` 会按平台装 sqlite-vec-<os>-<arch>;这台机器上没装就没有 ABI 可判',
+	})
+
+	/*
+	 * ── `@huggingface/transformers` 拖进来的两个原生包(检索重建 S7)。
+	 *
+	 * 我们**不用**它们:拍点癸 a 选的是 wasm 后端,嵌入器里 `device: 'wasm'` 是写死的。
+	 * 但它们真的躺在 `node_modules` 里、也真的被 electron-builder 打进了 app
+	 * (`onnxruntime-node` 的 `bin/napi-v3/**` 与 `@img/sharp-<platform>`),
+	 * 而法条判的是「这个仓真的装了 / 真的产出」的每一块二进制 —— 用不用是另一回事。
+	 * 所以它们进这张表:是 N-API 就绿,不是就当场红。
+	 */
+	const ortNodeDir = join(repoRoot, 'node_modules', 'onnxruntime-node')
+	list.push({
+		name: 'onnxruntime-node',
+		kind: 'dlopen',
+		binary: join(ortNodeDir, 'bin', 'napi-v3', process.platform, process.arch, 'onnxruntime_binding.node'),
+		packageDir: ortNodeDir,
+		hint: 'onnxruntime-node 只对部分平台发 prebuild',
+	})
+	const sharpPkg = `sharp-${process.platform}-${process.arch}`
+	const sharpDir = join(repoRoot, 'node_modules', '@img', sharpPkg)
+	list.push({
+		name: `@img/${sharpPkg}`,
+		kind: 'dlopen',
+		binary: findNodeAddon(sharpDir),
+		packageDir: sharpDir,
+		hint: 'sharp 按平台发子包;这台机器上没装就没有 ABI 可判',
+	})
 
 	return list
+}
+
+/** `sqlite-vec` 自己那套平台包命名(win32 → windows,其余同 process.platform)。 */
+function sqliteVecPlatformPackage() {
+	const os = process.platform === 'win32' ? 'windows' : process.platform
+	return `sqlite-vec-${os}-${process.arch}`
+}
+
+/** 平台包里那一份 `vec0.<后缀>`。 */
+function findSqliteExtension(pkgDir) {
+	if (!existsSync(pkgDir)) return undefined
+	const suffix = process.platform === 'win32' ? 'dll' : process.platform === 'darwin' ? 'dylib' : 'so'
+	const file = join(pkgDir, `vec0.${suffix}`)
+	return existsSync(file) ? file : undefined
 }
 
 /**
@@ -125,6 +186,15 @@ try {
     const { createRequire } = require('node:module');
     const req = createRequire(${JSON.stringify(join(repoRoot, 'package.json'))});
     req(t.specifier);
+  } else if (t.kind === 'sqlite-extension') {
+    // SQLite 可加载扩展:装得上还不够,得真能用 —— 所以跑一句 vec_version()。
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(':memory:', { allowExtension: true });
+    if (typeof db.enableLoadExtension === 'function') db.enableLoadExtension(true);
+    db.loadExtension(t.binary);
+    const row = db.prepare('SELECT vec_version() AS v').get();
+    if (!row || typeof row.v !== 'string') throw new Error('loadExtension 过了,但 vec_version() 答不出来');
+    db.close();
   } else {
     const m = { exports: {} };
     process.dlopen(m, t.binary);
@@ -182,7 +252,17 @@ function runUnder(exe, target, extraEnv) {
 const V8_SYMBOL = /(_ZN2v8|_ZN4node|_ZNK2v8|_ZNK4node|node_module_register|^_+v8[A-Z])/
 const NAPI_SYMBOL = /napi_/
 
-function scanUndefinedSymbols(binary) {
+/**
+ * SQLite 扩展那一档的白名单(S7)。允许两类:`sqlite3_*`(直接调 sqlite 的口)与
+ * **libc**(前导下划线开头的 C 运行时符号,`___memcpy_chk` / `_strtod` 这些)。
+ * 本机 `vec0.dylib` 的读数是 21 条未定义符号、**全是 libc、零个 sqlite3_**
+ * —— 扩展靠 `sqlite3_api` 结构体调宿主,不必导入 sqlite3 符号。所以这条规则的
+ * 实际作用是**兜住第三类**:哪天有人拿一个偷偷链了 V8 的东西冒充「纯 C 扩展」,
+ * 它在这里当场露馅。
+ */
+const SQLITE_EXTENSION_ALLOWED = /^_{1,3}(sqlite3_|[a-z])/
+
+function scanUndefinedSymbols(binary, kind) {
 	if (process.platform !== 'darwin') {
 		return { checked: false, reason: `nm -u 判据只在 macOS 验过,${process.platform} 上跳过(不冒充绿)` }
 	}
@@ -193,7 +273,9 @@ function scanUndefinedSymbols(binary) {
 		return { checked: false, reason: `nm -u 跑不动:${err.message.split('\n')[0]}` }
 	}
 	const lines = out.split('\n').map(s => s.trim()).filter(Boolean)
-	const offenders = lines.filter(line => V8_SYMBOL.test(line))
+	const offenders = kind === 'sqlite-extension'
+		? lines.filter(line => V8_SYMBOL.test(line) || !SQLITE_EXTENSION_ALLOWED.test(line))
+		: lines.filter(line => V8_SYMBOL.test(line))
 	const napiCount = lines.filter(line => NAPI_SYMBOL.test(line)).length
 	return { checked: true, total: lines.length, napiCount, offenders: offenders.slice(0, 12) }
 }
@@ -217,7 +299,8 @@ function main() {
 		// 那一块由平台包那一行去 nm;这一行判的是「整条 require 链在两个运行时下通不通」)。
 		const packagePresent = existsSync(target.packageDir)
 		const binaryPresent = Boolean(target.binary) && existsSync(target.binary)
-		if (!packagePresent || (target.kind === 'dlopen' && !binaryPresent)) {
+		const needsBinary = target.kind === 'dlopen' || target.kind === 'sqlite-extension'
+		if (!packagePresent || (needsBinary && !binaryPresent)) {
 			row.status = 'skip'
 			row.notes.push(target.hint
 				? `没找到二进制 —— ${target.hint}`
@@ -244,12 +327,14 @@ function main() {
 
 		// ② 静态半边
 		const symbols = binaryPresent
-			? scanUndefinedSymbols(target.binary)
+			? scanUndefinedSymbols(target.binary, target.kind)
 			: { checked: false, reason: '这一行没有自己的 .node,静态半边不适用' }
 		row.symbols = symbols
 		if (symbols.checked && symbols.offenders.length > 0) {
 			row.status = 'fail'
-			row.notes.push(`未定义符号里有 V8/Node 内部符号(= 不是 N-API):${symbols.offenders.join(' | ')}`)
+			row.notes.push(target.kind === 'sqlite-extension'
+				? `未定义符号里有 sqlite3_* / libc 之外的东西(= 不是一份纯 C 的 SQLite 扩展):${symbols.offenders.join(' | ')}`
+				: `未定义符号里有 V8/Node 内部符号(= 不是 N-API):${symbols.offenders.join(' | ')}`)
 		} else if (!symbols.checked) {
 			row.notes.push(symbols.reason)
 		}

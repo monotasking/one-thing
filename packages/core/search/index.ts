@@ -44,6 +44,8 @@ export type {
   FacetDeclaration,
   FieldSchema,
   RankingDeclaration,
+  RetrieverPolicy,
+  RetrieverWhen,
   SearchCapability,
   VectorRetrieverWhen,
   VisibilityRule,

@@ -222,15 +222,23 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
     expect(chatsSearchManifest.schema).toEqual({
       title: { analyzer: 'composite', weight: 2 },
     })
+    // `embed`(S7)只在**正文**那一格上:附件名是文件名不是句子,推理段默认根本
+    // 不产(拍点乙 a),会话标题短到向量没意义(§15.4 里 chats 走 'explicit' 的
+    // 同一个理由)。这张表是「哪些字段进模型」的唯一产地。
     expect(messagesSearchManifest.schema).toEqual({
-      content: { analyzer: 'composite', weight: 1 },
+      content: { analyzer: 'composite', weight: 1, embed: true },
       attachments: { analyzer: 'composite', weight: 1 },
       reasoning: { analyzer: 'composite', weight: 0.6 },
     })
     expect(dailySearchManifest.schema).toEqual({
       title: { analyzer: 'composite', weight: 2 },
-      content: { analyzer: 'composite', weight: 1 },
+      content: { analyzer: 'composite', weight: 1, embed: true },
     })
+    // 向量路什么时候跑(§15.4):数据,不是 if。
+    expect(messagesSearchManifest.retrievers).toEqual({ vector: { when: 'relaxed' } })
+    expect(dailySearchManifest.retrievers).toEqual({ vector: { when: 'relaxed' } })
+    expect(chatsSearchManifest.retrievers)
+      .toEqual({ vector: { when: 'explicit', surfaces: ['agent-tool'] } })
     // §6.5:半衰 / 按 facet 值加权 —— 全是**数据**,`role` 这个词只出现在这份自述
     // 里,core 里一个都没有。**没有 `pinFieldHit`**:消息文档没有 `title` 字段,
     // 声明它是一句永不触发的假话(S3b 删)。

@@ -1,4 +1,4 @@
-export { indexedCapability, rrfFusion } from './indexed.js'
+export { SEMANTIC_FILTER_KEY, indexedCapability, retrieverRuns, rrfFusion } from './indexed.js'
 export type { Fusion, IndexedCapabilityOptions, RetrievedPage, Retriever } from './indexed.js'
 export {
   PIN_FIELD_HIT_OFFSET,
@@ -12,6 +12,14 @@ export type {
   LexicalRetrieverIndex,
   LexicalRetrieverOptions,
 } from './lexical-retriever.js'
+export {
+  VECTOR_RETRIEVER_ID,
+  createVectorRetriever,
+  nearestPerDoc,
+  queryTextOf,
+  scoreOfDistance,
+} from './vector-retriever.js'
+export type { VectorHitContext, VectorRetrieverOptions } from './vector-retriever.js'
 export { POSITION_CURSOR_KIND, scanCapability } from './scan.js'
 export type { ScanCapabilityOptions } from './scan.js'
 export { staticCapability } from './static.js'

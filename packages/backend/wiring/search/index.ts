@@ -60,9 +60,12 @@ import { configureSearchVisibilityPort } from '@onething/runtime/search/capabili
 import { configureOnethingSearchService } from '@onething/runtime/search/service-bound'
 import { configureSearchToolAdapters } from '@onething/runtime/toolkit'
 import { getOnethingSessionsDir, getOnethingStorePath } from '@onething/runtime/storage/paths'
+import { DEFAULT_SEMANTIC_MODEL_ID } from '@shared/ipc/settings.js'
+import type { AppSettings } from '@shared/ipc/settings.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { getEventBus } from '../../events/index.js'
+import { getSettings } from '../../stores/settings.js'
 import { registerSessionLogEventAppendObserver } from '../../session/event-log.js'
 import { getLogger } from '../logging/index.js'
 import { createAppSearchProvidersAdapters } from './adapters.js'
@@ -84,6 +87,38 @@ export const SEARCH_INDEX_FILENAME = 'search.v1.sqlite'
 /** `<store>/index/search.v1.sqlite`。经 `getOnethingStorePath()` 派生,不硬编码。 */
 export function getOnethingSearchIndexPath(): string {
   return path.join(getOnethingStorePath(), 'index', SEARCH_INDEX_FILENAME)
+}
+
+/**
+ * 嵌入模型落哪儿:`<store>/models/embeddings/`(§15.3)。
+ *
+ * 与 `resources/models/`(随包发的 kws 模型)是两回事 —— 那一份是产物,这一份是
+ * 用户开了开关之后下载的用户数据,所以住 store 里、与 `index/` 同级。
+ */
+export function getOnethingEmbeddingModelsDir(): string {
+  return path.join(getOnethingStorePath(), 'models', 'embeddings')
+}
+
+/**
+ * 设置 → Worker 的语义召回那一格(拍点壬 a:**默认关**)。
+ *
+ * **它只在装配时读一次**:`workerData` 在 `new Worker(...)` 那一刻就定死了,改开关
+ * 要换一条 Worker。今天的做法是「下次起 core 时生效」,而不是保存即热重启 ——
+ * 热重启一条索引 Worker 要一格装配级的可变状态,而 `assembly:gate` 正是立来禁这个的
+ * (§13 留账里记了这一条与它的治法)。开关本身是**默认关**,所以这个延迟只影响
+ * 「刚打开的那一次」。
+ */
+export function semanticWorkerConfig(settings: AppSettings): IndexWorkerData['semantic'] {
+  const semantic = settings.search?.semantic
+  // **门的口子**:`ONETHING_SEARCH_EMBEDDER=fake` 换掉 modelId。它只换「用哪个嵌入
+  // 器」,开关本身照旧读设置 —— 门要的是「不下载 110MB 也能把整条链跑一遍」
+  // (§15.5),不是一个能绕过默认关的后门。
+  const override = process.env.ONETHING_SEARCH_EMBEDDER
+  return {
+    enabled: semantic?.enabled === true,
+    modelId: override || semantic?.modelId || DEFAULT_SEMANTIC_MODEL_ID,
+    modelsDir: getOnethingEmbeddingModelsDir(),
+  }
 }
 
 export interface AppSearchServiceHandle {
@@ -108,9 +143,14 @@ function schemasOf(manifests: readonly CapabilityManifest[]): IndexWorkerData['s
   for (const manifest of manifests) {
     if (manifest.schema === undefined) continue
     schemas[manifest.id] = Object.fromEntries(
+      // **逐格搬,不 spread**:`workerData` 要过结构化克隆,而 manifest 里还有
+      // 函数(`visibility`)。加一格要在这里加一行 —— S7 的 `embed` 就是这么加的,
+      // 少了它嵌入队列会永远空着(施工时真踩过:`vec_docs` 零行,`vectorPending`
+      // 却一直是 0,因为「该嵌哪几个字段」答的是空表)。
       Object.entries(manifest.schema).map(([field, spec]) => [field, {
         analyzer: spec.analyzer,
         weight: spec.weight,
+        ...(spec.embed === true ? { embed: true } : {}),
       }]),
     )
   }
@@ -126,6 +166,8 @@ function schemasOf(manifests: readonly CapabilityManifest[]): IndexWorkerData['s
 export function unavailableIndexFace(): SearchIndexQueryFace {
   return {
     search: async () => ({ hits: [], total: 0, docs: [], generation: 0 }),
+    // 向量路同理:`'off'` 说的是「这台宿主没有语义召回」,不是「零条相似的」。
+    vectorSearch: async () => ({ hits: [], docs: [], generation: 0, unavailable: 'off' as const }),
     status: async () => ({
       mode: 'error',
       docs: 0,
@@ -135,6 +177,9 @@ export function unavailableIndexFace(): SearchIndexQueryFace {
       generation: 0,
       errors: [],
       feeds: [],
+      vector: 'off',
+      vectorPending: 0,
+      vectorExtension: 'missing',
     }),
   }
 }
@@ -231,6 +276,7 @@ async function startSearchIndexService(
     schemas: schemasOf(INDEXED_MANIFESTS),
     // 分析器换了实现就换这个串 —— 库头对不上就丢库重建(§5.4)。
     analyzerId: 'composite',
+    semantic: semanticWorkerConfig(getSettings()),
   }
 
   const override = overrides.createWorker

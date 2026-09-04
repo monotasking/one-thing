@@ -48,9 +48,11 @@ bun run boundary:gate      # zero-baseline hard gate: any `[boundary] failed:` l
 bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
 bun run log:check          # the full console.* call-site list behind that gate
 bun run gate:native        # every native .node loads under BOTH Node and Electron (N-API law)
-bun run gate:search-index  # real-machine gate: boots dist/server on a temp store behind a fake
-                           # provider, asserts the index worker is owner and that a just-sent
-                           # message is searchable (node only — bun has no node:sqlite)
+bun run gate:search-index  # real-machine gate (8 steps): boots dist/server on temp stores behind a
+                           # fake provider — index worker is owner, a just-sent message is searchable,
+                           # rename/archive/delete land through the feed, main-thread loop delay stays
+                           # under budget, and ⑧ semantic recall end to end with a deterministic fake
+                           # embedder (no 110MB download). node only — bun has no node:sqlite
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
@@ -221,12 +223,22 @@ Note: `backend.ts` carries static `import './tools/builtin/{index,headless,reado
 - `bun run log:gate` — `scripts/log-gate.mjs` ratchet over `scripts/log-check.mjs`: counts `console.*` call sites in non-test source, baseline `docs/audit/log-gate-baseline-2026-08-20.txt` (854 at L1; **822** after the L2/L3 gateway + crash-log migration; L4 消掉其余). Whitelist: `scripts/` and the CLI's product-output helper `apps/cli/src/stdout.ts` (**给人/管道看的 = `stdout()`;给排障看的 = `getLogger(ns)`**). New code must not add a `console.*` — use `getLogger`.
 - `bun run assembly:gate` — `scripts/assembly-gate.mjs` ratchet (组合根 A3, 2026-09-03): counts module-level `let` per non-test file under `packages/backend`, baseline `docs/audit/assembly-baseline-2026-09-02.txt` (99 across 63 files; `packages/backend/current.ts` is the one exempt slot). **Decrease-only**: a file above its baseline or a file not in the baseline is red. `bun run assembly:check` prints the full table; `--write-baseline` tightens it after a real drop. The intent is that new assembly-scoped state lives on the `OnethingBackend` instance and is `own()`'d, never in a fresh module slot.
 - `bun run gate:native` — `scripts/gate-native-abi.mjs`, the running half of the **原生模块只许 N-API** law
-  at the top of this file. It enumerates every native addon this repo actually ships
-  (`node-pty`, `sherpa-onnx-node` + the platform package for the current OS/arch) and, for each binary, (a) `require`s it under the **system Node**
+  at the top of this file. It enumerates every native binary this repo actually ships — six targets
+  since 检索重建 S7 (2026-09-05): `node-pty`, `sherpa-onnx-node` + its platform package,
+  the `sqlite-vec` platform package (`vec0.dylib`, semantic recall), and the two natives
+  `@huggingface/transformers` drags in (`onnxruntime-node`, `@img/sharp-<platform>-<arch>`) —
+  **the product never loads those last two** (the embedder pins `device: 'wasm'`) **but electron-builder
+  ships them, and the law judges what is actually installed/shipped, not what is used**. For each binary:
+  (a) `require`s it under the **system Node**
   and again under **`ELECTRON_RUN_AS_NODE=1` Electron** — a `NODE_MODULE_VERSION` mismatch prints the
   runtime's own words and turns the gate red — and (b) on macOS runs `nm -u` over it: any undefined
   `_v8…` / `node::…` / `_ZN2v8…` symbol is a V8-ABI-private binding and is red on the spot (the static
-  half; on non-macOS it is skipped with a printed reason). `--json` prints the machine-readable table.
+  half; on non-macOS it is skipped with a printed reason). **A SQLite loadable extension gets a different
+  ruler on both halves**: the dynamic one is `new DatabaseSync(':memory:', { allowExtension: true })
+  .loadExtension(path)` plus a real `select vec_version()` (loading is not enough, it has to work), and
+  the static one allows only `sqlite3_*` and libc symbols — an extension talks to its host through the
+  `sqlite3_api` struct, so it imports no `napi_*` at all (`vec0.dylib` reads: 21 undefined symbols, all
+  libc). `--json` prints the machine-readable table.
   Adding a native dependency means passing this gate — the ABI claim never lives in a comment again.
 - `packages/core/__tests__/architecture-boundaries.test.ts`: core has no electron/host imports and sits at the bottom (no `@onething/runtime`/`@onething/gateway`); runtime is Electron/host/gateway-free; **the runtime product layer must not import `@onething/backend`** (dependency points one way: product ← assembly); **I1 — `packages/backend`'s root directory names must not shadow a `packages/onething-runtime/src` domain name** (`wiring/` excluded; the thick-twin allowlist is **empty** since P3'c, and the assertion stays as a ratchet against a new root directory growing back); **I2 — inside a shared domain name, `packages/core/<d>/x.ts` and `packages/onething-runtime/src/<d>/x.ts` must not both exist** (`index.ts` / `types.ts` / `__tests__/**` and a built-in plugin's `plugins/<id>.ts` — whose name is pinned to the plugin id — are structurally exempt; 4 shrink-only allowlist entries: `mcp/manager.ts`, `storage/{file-storage,paths}.ts`, `tools/diff-hunks.ts`); gateway depends on core only; apps/server is Electron-free (the Vue renderer / apps/web rules died with them on 2026-09-04).
 
@@ -335,6 +347,29 @@ Notes:
   (`search-worker.cjs`, one per build recipe, always beside its host entry). `search.status`
   over `POST /api/rpc` reports `mode` / `pending`; `bun run gate:search-index` proves it on
   a real `dist/server`.
+- **Semantic recall is a second retriever on the same index, and it is OFF by default**
+  (检索重建 S7, 2026-09-05; `docs/design/search-index-2026-09.md` §15). The index base
+  holds a **list** of retrievers, not a function: `[lexical, vector]` fused by RRF (k=60),
+  and **which of them runs on a given call is data** — each capability declares
+  `manifest.retrievers[<retrieverId>] = { when: 'relaxed' | 'explicit' | 'always' }`, so
+  `packages/core/search` never names a retriever, a capability, or a surface. The vector
+  half is `sqlite-vec`'s `vec0` virtual table inside the **same** `search.v1.sqlite`, one row
+  per 512-token chunk, plus an `Embedder` registry (`runtime/search/embedding/`) whose real
+  entry is `@huggingface/transformers` on the **wasm** backend, dynamically imported inside
+  the worker so nothing loads until the user turns `settings.search.semantic.enabled` on
+  (that switch is read at assembly — changing it takes effect on the next core start).
+  Two rules carry over unchanged and are gate-enforced: **the lexical path is untouched**
+  (`search:parity-B` readings are byte-identical to S3c) and **authorization is a query
+  input** — the scope compiles into `docId IN (…)`, which vec0 pushes *into* the KNN scan
+  (a SQL `JOIN` would post-filter and is provably wrong here). `search.status` gained
+  `vector` / `vectorPending` / `vectorExtension`; `gate:packaged` asserts the default is
+  `vector: 'off'` **and** `vectorExtension: 'loadable'`, which is the only proof that the
+  `asarUnpack` line for `vec0.dylib` is still there. Three things are open and written down
+  in §13 留账 — the desktop packaging of the embedding runtime (拍点癸': today
+  `electron-builder.yml` excludes `@huggingface/transformers` and both onnxruntime
+  packages — route (c) — so a packaged app answers `vector: 'off'` and degrades cleanly;
+  semantic recall runs on dev / server / CLI), the missing distance floor on KNN, and the
+  settings switch not being hot-applied.
 - **Session event sourcing is the production write model, not a shadow** (F line landed
   F4-c, 2026-08-27; `docs/design/session-event-sourcing-2026-08.md` §17 系统宪法 is the
   three-law summary). Every fact — a user message, one streamed delta, a tool step,

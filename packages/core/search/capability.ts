@@ -48,8 +48,14 @@ export interface CapabilityManifest {
   relax?: boolean
   /** 缺省打分器读的那格数据(§6.5);core 里没有 role / title 这些词 */
   ranking?: RankingDeclaration
-  /** 召回路的开关(§15.4);数据,不是 if */
-  retrievers?: { vector?: { when: VectorRetrieverWhen } }
+  /**
+   * 召回路的开关(§15.4)。**键是召回器的 id,不是「向量」这个词** —— core 只知道
+   * 「这一路有没有一条什么时候跑的规矩」,不知道哪一路是向量路。加第三条召回路
+   * (符号 / 结构查)= 这张表里多一行,core 一个字不改。
+   *
+   * 缺席的召回器 = `'always'`(词法路从来不用声明)。
+   */
+  retrievers?: Record<string, RetrieverPolicy>
   /** 预览是随候选带还是选中再取(§4.5 ①) */
   preview?: { mode: 'inline' | 'lazy' }
   /**
@@ -68,7 +74,47 @@ export interface CapabilityManifest {
 
 export type CapabilityKind = 'indexed' | 'scan' | 'static' | 'remote'
 
-export type VectorRetrieverWhen = 'relaxed' | 'explicit' | 'always'
+export interface RetrieverPolicy {
+  when: RetrieverWhen
+  /**
+   * **距离上限**(向量路专用的一格数据;缺席 = 不设限)。
+   *
+   * 施工时量出来的一件事,写在这里免得下一个人再踩:**KNN 没有下限**。
+   * `WHERE embedding MATCH ? AND k = 5` 答的永远是「最近的 5 条」,哪怕它们跟查询
+   * 毫无关系 —— 在一间只有两条消息的 store 上,任何一句话都能把那两条都召回来
+   * (`gate:search-index` ⑧ 的第一版控制组就是被这一条打红的)。
+   *
+   * 今天**故意留空**:合适的阈值要拿真模型在真库上的读数定,而 e5 这类模型的余弦
+   * 相似度天生偏高、不相关的一对也常在 0.7 以上,凭空拍一个数会把该召回的也切掉。
+   * 机制先放在这里、由能力自述,定值是另一件事(§13 留账)。
+   *
+   * 单位是索引答的 `distance`(单位向量上的 L2:`sqrt(2 - 2cos)`,余弦 0.5 ↔ 距离 1.0)。
+   */
+  maxDistance?: number
+  /**
+   * `when: 'explicit'` 时,**哪些消费面算「明说要了」**。能力自己列(`['agent-tool']`),
+   * core 不认识任何一个消费面的名字。缺席 = 只认调用方显式打开的那个开关。
+   */
+  surfaces?: string[]
+}
+
+/**
+ * 一条召回路什么时候跑(§15.4)。**判据全是查询自己的事实**,core 里没有能力名、
+ * 也没有召回器名:
+ *
+ * | 值 | 判据 |
+ * | --- | --- |
+ * | `'always'` | 每次都跑 |
+ * | `'relaxed'` | 严格档零命中、走到放宽阶梯 ② 及以后才跑(`ladder.level >= 1`) |
+ * | `'explicit'` | 调用方明说要:`query.filters.semantic === true`,或 `ctx.surface` 在 `alwaysOnSurfaces` 里 |
+ *
+ * `'relaxed'` 那条的理由是预算:查询嵌入本身要 ~40ms,命令面板边打边出的 < 10ms
+ * 容不下它;而「词法严格档已经有答案」的时候本来也不需要它。
+ */
+export type RetrieverWhen = 'relaxed' | 'explicit' | 'always'
+
+/** 旧名。S1 定的时候这张表只有向量一行,S7 接上去才发现键该是召回器 id。 */
+export type VectorRetrieverWhen = RetrieverWhen
 
 export interface CapabilityBudget {
   default: number

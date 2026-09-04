@@ -32,7 +32,7 @@ import type { SearchIndexService } from '../index/service.js'
  * 它是 `SearchIndexService` 的一个 `Pick` 而不是一份新接口:形状要跟着服务走,
  * 而单测里塞一个字面量对象也照样过(两个方法各答一句)。
  */
-export type SearchIndexQueryFace = Pick<SearchIndexService, 'search' | 'status'>
+export type SearchIndexQueryFace = Pick<SearchIndexService, 'search' | 'status' | 'vectorSearch'>
 
 /** 与 `SqliteIndex` 索引时用的是同一条归一化链 —— 两边不许分家。 */
 const normalize = composeNormalizers(DEFAULT_NORMALIZERS)
@@ -80,6 +80,12 @@ export function trackIndexGeneration(index: SearchIndexQueryFace): {
       status: () => index.status(),
       search: async request => {
         const result = await index.search(request)
+        generation = result.generation
+        return result
+      },
+      // 向量路答回来的代次同样算数 —— 它读的是同一个库,索引变了它先知道也一样。
+      vectorSearch: async request => {
+        const result = await index.vectorSearch(request)
         generation = result.generation
         return result
       },

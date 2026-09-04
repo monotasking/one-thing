@@ -282,6 +282,37 @@ export interface DiagnosticsSettings {
 	enabled: boolean;
 }
 
+/**
+ * 检索的设置(S7,`docs/design/search-index-2026-09.md` §15;拍点壬 a)。
+ *
+ * **只有一格开关和一个模型 id** —— 「设置极简」那条:暴露必填项,技术参数走默认值。
+ * 索引本身没有开关(它是账本的投影,一直在建);这里说的只是**语义召回**那一半:
+ * 它要下载约 110MB 模型、冷嵌占几分钟 CPU,所以**默认关**,由用户一键打开。
+ *
+ * 关着的时候 Worker 连 sqlite-vec 扩展都不装,库与 S3 那时逐字一样。
+ */
+export interface SearchSettings {
+	semantic?: SemanticSearchSettings;
+}
+
+/**
+ * 缺省模型 id。**契约层记它**,因为 defaults 与设置页都要用同一个值,而 runtime 的
+ * 嵌入器模块不该被契约层 import(方向反了)。真正的模型知识住
+ * `runtime/src/search/embedding/transformers-wasm.ts`,那边的 `E5_SMALL_EMBEDDER_ID`
+ * 与这一行必须是同一个串——一处改了另一处不改,注册表就解析不到,开关会自己关回去。
+ */
+export const DEFAULT_SEMANTIC_MODEL_ID = "multilingual-e5-small";
+
+export interface SemanticSearchSettings {
+	/** 默认 false(拍点壬 a)。打开才下载模型、才开始嵌。 */
+	enabled: boolean;
+	/**
+	 * 嵌入器注册表里的 id(§15.3)。**是数据不是枚举**:换运行时 = 注册一条新的、
+	 * 把这一格换个值。缺省 `multilingual-e5-small`。
+	 */
+	modelId: string;
+}
+
 export interface AppSettings {
 	/**
 	 * **生效形状**:当前空间的 provider 设置 + 全局目录缓存(C2)。
@@ -307,6 +338,7 @@ export interface AppSettings {
 	evals?: EvalsSettings;
 	plugins?: PluginPreferences;
 	diagnostics?: DiagnosticsSettings;
+	search?: SearchSettings;
 }
 
 /**

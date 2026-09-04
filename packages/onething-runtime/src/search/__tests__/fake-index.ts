@@ -14,6 +14,11 @@ export interface FakeIndexOptions {
   /** 命中了哪些词(`LexicalHit.matched`);摘要开窗读它。 */
   matched?: string[]
   generation?: number
+  /**
+   * 向量路答哪几份文档(按给的顺序 = 按距离由近及远)。**缺席 = 向量路没开**,
+   * 于是它不参与融合 —— 「没开」与「零命中」在这一层是两件事。
+   */
+  vectorHits?: number[]
 }
 
 export function fakeIndexFace(
@@ -37,6 +42,25 @@ export function fakeIndexFace(
         generation,
       }
     },
+    /**
+     * 向量路的替身:按 `options.vectorHits` 给的 docId 顺序答,缺席就答「没开」
+     * —— 「没开」与「零命中」在这一层是两件事(前者不参与融合)。
+     */
+    async vectorSearch(request) {
+      const wanted = options.vectorHits
+      if (wanted === undefined) {
+        return { hits: [], docs: [], generation, unavailable: 'off' as const }
+      }
+      const picked = wanted
+        .map(docId => docs.find(doc => doc.docId === docId && doc.capability === request.capability))
+        .filter((doc): doc is IndexedDoc => doc !== undefined)
+        .slice(0, request.k)
+      return {
+        hits: picked.map((doc, index) => ({ docId: doc.docId, chunk: 0, distance: index * 0.1 })),
+        docs: picked,
+        generation,
+      }
+    },
     async status() {
       return {
         mode: 'owner',
@@ -47,6 +71,9 @@ export function fakeIndexFace(
         generation,
         errors: [],
         feeds: ['ledger'],
+        vector: 'off',
+        vectorPending: 0,
+        vectorExtension: 'missing',
       }
     },
   }

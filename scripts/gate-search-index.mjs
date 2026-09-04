@@ -27,6 +27,11 @@
  *   ⑦ **另一个进程写的账本**:门自己起一个 `node` 子进程往某间会话的 `events.jsonl`
  *      追加一条 `user/message` —— 进程内的 append 观察者对它一无所知,能把它折进去的
  *      只有 Worker 里的目录监视(§5.2 / §5.6)
+ *   ⑧ **语义召回整条链**(S7,§15):开关打开(设置里那一格,`modelId` 由
+ *      `ONETHING_SEARCH_EMBEDDER=fake` 换成确定性的假嵌入器 —— 门不下 110MB 模型)
+ *      → `status.vector` 走过 downloading / embedding 到 `'ready'` → 黄金复述集里
+ *      的一条**改写句**经 HTTP 命中那条消息。假嵌入器证的是**链路**不是模型
+ *      (`packages/core/search/__tests__/fixtures/paraphrase.json` 的头注写着这句)。
  *
  * ## ⑤ 的量法:`--require` 预加载探针 + SIGUSR2
  *
@@ -340,6 +345,7 @@ try {
  * 是在守什么。两条 server、两间临时 store,各守各的。
  */
 await runLoopDelayPhase()
+await runSemanticPhase()
 
 if (failures.length > 0) {
   console.error(`[gate:search-index] ${failures.length} check(s) failed`)
@@ -365,6 +371,27 @@ async function runLoopDelayPhase() {
     const offenders = (sqliteHits.stdout ?? '').trim()
     check(offenders.length === 0,
       `⑤d 主线程那一侧零 node:sqlite import${offenders ? `(见到 ${offenders.replace(/\n/g, ', ')})` : ''}`)
+
+    /*
+     * ⑤d(S7 补):**嵌入运行时也不许出现在主线程那一侧**。
+     *
+     * ⑤a–⑤c 三个窗口跑的是**开关关着**的默认档,所以它们量不到嵌入 —— 「嵌入搬回
+     * 主线程」这条反证在那三个窗口上照不出来。能照出来的是结构:
+     * `@huggingface/transformers` 只许出现在 `search/embedding/transformers-wasm.ts`
+     * 一个文件里(而且是**动态** import),`packages/backend/**` 与主线程那一侧的
+     * 检索代码里一次都不许出现。把它 import 到主线程 = 这一条当场红。
+     */
+    const wasmHits = spawnSync('grep', ['-rln', '@huggingface/transformers',
+      path.join(repoRoot, 'packages/backend'),
+      path.join(repoRoot, 'packages/core'),
+      path.join(repoRoot, 'packages/onething-runtime/src/search/service.ts'),
+      path.join(repoRoot, 'packages/onething-runtime/src/search/capabilities'),
+      path.join(repoRoot, 'apps/desktop-react/electron'),
+    ], { encoding: 'utf-8' })
+    const wasmOffenders = (wasmHits.stdout ?? '').trim()
+    check(wasmOffenders.length === 0,
+      `⑤d 主线程那一侧零 @huggingface/transformers import`
+      + `${wasmOffenders ? `(见到 ${wasmOffenders.replace(/\n/g, ', ')})` : ''}`)
 
     // ── 种账本:300 会话 × 30 条消息,含 10 条 > 64KB 的正文 ────────
     const corpus = JSON.parse(fs.readFileSync(
@@ -563,5 +590,167 @@ async function runLoopDelayPhase() {
     }
     if (provider) provider.close()
     fs.rmSync(storeB, { recursive: true, force: true })
+  }
+}
+
+
+/* ═══════════════════ ⑧ 语义召回(S7,§15;自己的一间 store、自己的一条 server)═══════
+ *
+ * **不下载真模型**:`ONETHING_SEARCH_EMBEDDER=fake` 把 `modelId` 换成 core 里那只
+ * 确定性的假嵌入器,同义表由 `ONETHING_SEARCH_EMBEDDER_FAKE_TABLE` 指向黄金复述集。
+ * 于是这一条证的是「切段 → 写 vec_docs → 查询嵌入 → KNN → 融合 → 出候选」这一整条链
+ * 在**真产物 + 真 Worker + 真 sqlite-vec 扩展**上是通的;模型本身的召回质量由真机冒烟
+ * 说话(§15.5)。
+ *
+ * **开关走的是设置那条真路**(`settings.json` 的 `search.semantic.enabled`),不是一个
+ * 门专用的后门 —— 拍点壬 a 的「默认关、设置里一键开」因此在这里被真的走了一遍。
+ */
+async function runSemanticPhase() {
+  const storeC = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-search-semantic-gate-'))
+  const paraphrasePath = path.join(repoRoot, 'packages/core/search/__tests__/fixtures/paraphrase.json')
+  let server
+  let provider
+  try {
+    console.log(`[gate:search-index] ⑧ temp store: ${storeC}`)
+    const paraphrase = JSON.parse(fs.readFileSync(paraphrasePath, 'utf-8'))
+    const corpus = JSON.parse(fs.readFileSync(
+      path.join(repoRoot, 'packages/core/search/__tests__/fixtures/corpus.json'), 'utf-8'))
+
+    /*
+     * 挑复述集的**两条**,各自的原文各进一间会话,再拿各自的改写句去查 ——
+     * 判据是「各回各家」。
+     *
+     * 为什么不是「一条命中 + 一条不命中」(第一版的写法,当场被打红):**KNN 没有
+     * 下限**。`k = 5` 答的永远是最近的五条,哪怕全都不相关 —— 一间只有两条消息的
+     * store 上,任何一句话都能把那两条召回来,所以「不相关的查询不该命中」在这个
+     * 现场根本不成立(机制层面留了 `manifest.retrievers.vector.maxDistance` 这一格,
+     * 但今天故意没有定值,理由见 `core/search/capability.ts` 那格注释与 §13)。
+     * **能判的是区分度**:两条各自的改写句要各把自己那条排在第一。
+     */
+    const sourceOf = item => {
+      const phrases = Object.entries(paraphrase.synonyms)
+        .filter(([, concept]) => concept === item.concept)
+        .map(([phrase]) => phrase)
+      const doc = corpus.docs.find(candidate => candidate.capability === 'messages'
+        && phrases.some(phrase => String(candidate.content ?? '').toLowerCase().includes(phrase)))
+      if (!doc) throw new Error(`⑧ 语料里找不到复述集 ${item.id} 的原文`)
+      return doc
+    }
+    const probe = paraphrase.cases[0]
+    const rival = paraphrase.cases.find(item => item.concept !== probe.concept)
+    const sourceDoc = sourceOf(probe)
+    const rivalDoc = sourceOf(rival)
+
+    provider = await startFakeProvider(MOCK_PORT + 2, REPLY_TEXT)
+    fs.writeFileSync(path.join(storeC, 'settings.json'), JSON.stringify({
+      ai: fakeProviderAiSettings(MOCK_PORT + 2),
+      tools: { enableToolCalls: false, permissionMode: 'dangerously-allow-all', tools: {} },
+      diagnostics: { enabled: false },
+      // 拍点壬 a 的那一格 —— 门把它打开,走的是产品的那条路。
+      search: { semantic: { enabled: true, modelId: 'fake' } },
+    }, null, 2))
+
+    server = spawn(process.execPath, [serverEntry], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        ...FAKE_PROVIDER_ENV,
+        ONETHING_STORE_PATH: storeC,
+        ONETHING_SERVER_DATA_ROOT: storeC,
+        ONETHING_SERVER_HOST: '127.0.0.1',
+        ONETHING_SERVER_PORT: '',
+        ONETHING_SEARCH_EMBEDDER: 'fake',
+        ONETHING_SEARCH_EMBEDDER_FAKE_TABLE: paraphrasePath,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    const out = []
+    server.stdout.on('data', chunk => out.push(chunk.toString()))
+    server.stderr.on('data', chunk => out.push(chunk.toString()))
+
+    const discovery = await waitForDiscovery(storeC)
+    const rpc = createRpc(discovery)
+
+    // 扩展装得上吗 —— 这一格与开关无关,`gate:packaged` 读的也是它。
+    const first = await rpc('search', 'status')
+    check(first?.vectorExtension === 'loadable',
+      `⑧ sqlite-vec 扩展可装载(读到 ${JSON.stringify(first?.vectorExtension)})`)
+    check(first?.vector !== 'off',
+      `⑧ 开关打开后 status.vector 离开 'off'(读到 ${JSON.stringify(first?.vector)})`)
+
+    // 两条原文,各进一间会话。助手那段由假 provider 答,与这一条无关。
+    const seed = async (name, content) => {
+      const made = await rpc('sessions', 'create', { name })
+      const id = made?.session?.id
+      if (!id) throw new Error(`⑧ sessions.create 没给出会话 id:${JSON.stringify(made)}`)
+      await rpc('session-command', 'emit', {
+        sessionId: id,
+        command: { type: 'command:send-message', content, suppressTitleGeneration: true },
+      })
+      return id
+    }
+    const sessionId = await seed(`语义门 ${MARKER} A`, sourceDoc.content)
+    const rivalSession = await seed(`语义门 ${MARKER} B`, rivalDoc.content)
+
+    // 状态走到 ready 且 vectorPending 归零。**把走过的每一格记下来** —— 只看终点
+    // 的话「一上来就是 ready」与「真嵌过」分不出来。
+    const seen = new Set()
+    let status = first
+    const readyStartedAt = Date.now()
+    while (Date.now() - readyStartedAt < 30_000) {
+      status = await rpc('search', 'status')
+      if (status?.vector) seen.add(status.vector)
+      if (status?.vector === 'ready' && (status?.vectorPending ?? 0) === 0 && (status?.pending ?? 1) === 0) break
+      await sleep(150)
+    }
+    check(status?.vector === 'ready',
+      `⑧ status.vector 走到 ready(${Date.now() - readyStartedAt}ms;走过 ${[...seen].join(' → ')})`)
+    check((status?.vectorPending ?? -1) === 0,
+      `⑧ vectorPending 归零(读到 ${JSON.stringify(status?.vectorPending)})`)
+    // **不判「走过 embedding」**:假嵌入器的 `ready()` 是空操作、两条消息一瞬间就
+    // 嵌完了,150ms 的轮询永远抓不到中间态 —— 那会是一条只在慢机器上绿的断言。
+    // 能判的是「开关没有自己关回去」:模型装载失败那一支就是把它钉回 `'off'`。
+    check(!seen.has('off'),
+      `⑧ 开关一路没有自己关回去(走过 ${[...seen].join(' → ')})`)
+
+    // 复述集那条**改写句**:与原文不共用词,词法严格档零命中,靠向量路捞回来。
+    const found = await (async () => {
+      const startedAt = Date.now()
+      while (Date.now() - startedAt < 10_000) {
+        const page = await rpc('search', 'query', { query: probe.query, category: 'messages', limit: 10 })
+        const hit = (page?.results ?? []).find(result => result.sessionId === sessionId)
+        if (hit) return { hit, ms: Date.now() - startedAt }
+        await sleep(150)
+      }
+      return { hit: undefined, ms: Date.now() - startedAt }
+    })()
+    check(found.hit !== undefined,
+      `⑧ 复述集 ${probe.id} 的改写句经 HTTP 命中(${found.ms}ms;查询「${probe.query}」)`)
+
+    // 区分度:另一条改写句要把**它自己那条**排在第一,而不是把上面那条排在第一。
+    const rivalPage = await rpc('search', 'query', { query: rival.query, category: 'messages', limit: 10 })
+    const rivalFirst = (rivalPage?.results ?? [])[0]
+    check(rivalFirst?.sessionId === rivalSession,
+      `⑧ 区分度:${rival.id} 的改写句把自己那条排第一`
+      + (rivalFirst?.sessionId === sessionId ? `(实际排第一的是 ${probe.id} 那条)` : ''))
+    const mineFirst = (await rpc('search', 'query', { query: probe.query, category: 'messages', limit: 10 }))
+      ?.results?.[0]
+    check(mineFirst?.sessionId === sessionId,
+      `⑧ 区分度:${probe.id} 的改写句把自己那条排第一`)
+
+    if (failures.length > 0) {
+      console.error(`[gate:search-index] ⑧ server 输出尾:\n${out.slice(-40).join('')}`)
+    }
+  } catch (error) {
+    failures.push(String(error?.stack || error))
+    console.error(`[gate:search-index] ⑧ ${error?.stack || error}`)
+  } finally {
+    if (server && server.exitCode === null && server.signalCode === null) {
+      server.kill('SIGTERM')
+      await sleep(1500)
+      try { server.kill('SIGKILL') } catch { /* 已经没了就算了 */ }
+    }
+    if (provider) provider.close()
+    fs.rmSync(storeC, { recursive: true, force: true })
   }
 }

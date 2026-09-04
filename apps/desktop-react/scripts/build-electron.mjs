@@ -25,11 +25,15 @@
  *     `createRequire(undefined)` 抛 ERR_INVALID_ARG_VALUE —— 而且是**模块求值期**
  *     抛,整只 bundle 一起死。banner 里现算一个 `file://` 的 __filename 顶上。
  *
- *  ③ 两个原生模块 external —— 打进 bundle 只会得到一个找不到 .node 的假副本。
+ *  ③ 四个模块 external —— 打进 bundle 只会得到一个找不到二进制的假副本。
  *     `node-pty` 是真触达的(终端工具);`sherpa-onnx-node`(语音)今天在导入图里
  *     不可达,列在这里是零成本的护栏:哪天有人把它接进来,得到的是「模块没装」的
  *     诚实报错,而不是一次静默的错误绑定。
  *     (2026-09-03:`better-sqlite3` 整体退役,这一行随之删掉 —— 护栏只护还存在的包。)
+ *     检索重建 S7 加了两个,各有各的理由:`sqlite-vec` 要在运行时按平台
+ *     `require.resolve` 出那份 `vec0.dylib`(打进 bundle 就找不着平台子包了);
+ *     `@huggingface/transformers` 是**动态 import** 的(开关不打开就不加载),
+ *     inline 进来会把 wasm 后端拖进每一份产物的启动路径,那正是要躲的事。
  *
  *  ④ `@shared` alias —— `@onething/*` 三个包都是真 workspace 包(走各自
  *     package.json 的 exports,node 原生解析得到),不需要 alias;`@shared` 不是
@@ -85,7 +89,7 @@ export function shellEsbuildOptions({ entryPoints, outdir, nodeShims = true }) {
     format: 'cjs',
     sourcemap: true,
     // ③ electron 本体由运行时提供;node: 内建同理;两个原生模块见文件头。
-    external: ['electron', 'node-pty', 'sherpa-onnx-node'],
+    external: ['electron', 'node-pty', 'sherpa-onnx-node', 'sqlite-vec', '@huggingface/transformers'],
     // ② 见文件头。banner 现算一次,define 把每个 import.meta.url 指过去。
     ...(nodeShims
       ? {

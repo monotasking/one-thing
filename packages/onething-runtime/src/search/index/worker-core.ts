@@ -26,6 +26,7 @@
 import type {
   DocPayload,
   DocumentFeed,
+  Embedder,
   DocumentFilter,
   FacetFilter,
   IndexedDoc,
@@ -34,6 +35,9 @@ import type {
   LexicalQuery,
   QueryNode,
   SearchQuery,
+  VectorHit,
+  VectorIndex,
+  VectorSearchScope,
 } from '@onething/core/search'
 import {
   buildLexicalQuery,
@@ -45,6 +49,8 @@ import type { AnalyzerRegistry, CapabilityManifest, ExpanderRegistry } from '@on
 
 import { getLogger } from '../../logging/index.js'
 import type { SqliteIndex } from './sqlite-index.js'
+import { VectorWriter } from './vector-writer.js'
+import type { VectorState } from './vector-writer.js'
 
 const log = getLogger('search.index.worker')
 
@@ -83,6 +89,27 @@ export interface IndexSearchResult {
   generation: number
 }
 
+/**
+ * 一次向量召回的请求。**递的是一句自然语言,不是一个向量** —— 查询嵌入 ~40ms,
+ * 而模型住在 Worker 这一侧;在主线程嵌就把 wasm 拖回了主线程,那正是 §15.2 要躲的事。
+ */
+export interface IndexVectorSearchRequest {
+  capability: string
+  /** 查询原串。前缀(e5 的 `query:`)由嵌入器自己贴,这一层不认识任何模型。 */
+  text: string
+  filters?: Record<string, FacetFilter>
+  /** KNN 取几条。融合那一侧要 `offset + limit` 条。 */
+  k: number
+}
+
+export interface IndexVectorSearchResult {
+  hits: VectorHit[]
+  docs: IndexedDoc[]
+  generation: number
+  /** 向量路答不了的时候说清楚是哪一种,壳与门据此画字,不当成「零命中」。 */
+  unavailable?: VectorState
+}
+
 export interface IndexKeyError {
   feedId: string
   key: string
@@ -117,11 +144,21 @@ export interface IndexStatus {
    * 一个字都不知道它的来源是懒的还是急的。
    */
   feeds: string[]
+  /**
+   * 语义召回此刻在干什么(§15;`'off'` = 没开 / 关掉了 / 装不上扩展)。
+   * 它与 `vectorExtension` 是两件事:一个是「开关与进度」,一个是「这份产物装得上
+   * 扩展吗」—— `gate:packaged` 在开关关着的时候读的正是后者。
+   */
+  vector: VectorState
+  /** 还有几份文档没嵌进去(与 `pending` 同一种诚实,只是另一条派生数据)。 */
+  vectorPending: number
+  vectorExtension: 'loadable' | 'missing'
 }
 
 export type IndexWorkerRequest =
   | { id: number; type: 'enqueue'; feedId: string; key: string; hint?: unknown }
   | { id: number; type: 'query'; request: IndexSearchRequest }
+  | { id: number; type: 'vector-query'; request: IndexVectorSearchRequest }
   | { id: number; type: 'status' }
   | { id: number; type: 'rebuild' }
   /** 队列排空再答 —— 单测与「刚发的消息搜得到吗」这类判定用。 */
@@ -143,7 +180,8 @@ export interface IndexEndpoint {
 export type IndexWriteFace = Pick<SqliteIndex,
   | 'replaceKey' | 'deleteKey' | 'tombstone' | 'search' | 'get' | 'size' | 'generation'
   | 'setSchema' | 'terms' | 'readCheckpoint' | 'writeCheckpoint' | 'dropCheckpoint'
-  | 'checkpointKeys' | 'readCheckpointOwnedKeys'
+  | 'checkpointKeys' | 'readCheckpointOwnedKeys' | 'byKey' | 'allDocIds'
+  | 'readMeta' | 'writeMeta'
 >
 
 export interface IndexWorkerCoreOptions {
@@ -153,9 +191,20 @@ export interface IndexWorkerCoreOptions {
   filters?: readonly DocumentFilter[]
   analyzers?: AnalyzerRegistry
   expanders?: ExpanderRegistry
-  /** 各能力的字段表(manifest.schema)。索引不认识能力,只认这张表。 */
-  schemas?: Record<string, Record<string, { analyzer: string; weight: number }>>
+  /**
+   * 各能力的字段表(manifest.schema)。索引不认识能力,只认这张表。
+   * `embed` 那一格决定这个字段进不进向量索引(§15.3)。
+   */
+  schemas?: Record<string, Record<string, { analyzer: string; weight: number; embed?: boolean }>>
   debounceMs?: number
+  /**
+   * 语义召回(S7)。**两件都在才算开**:嵌入器由设置里的 `modelId` 解析出来,
+   * 向量索引由 sqlite-vec 装载出来。缺一件 = `status.vector` 恒 `'off'`,词法路
+   * 一个字不受影响。
+   */
+  vector?: { index: VectorIndex; embedder: Embedder }
+  /** 这份产物装得上 sqlite-vec 扩展吗(开关关着也答得出;`gate:packaged` 读它)。 */
+  vectorExtension?: 'loadable' | 'missing'
 }
 
 /**
@@ -174,6 +223,7 @@ export class IndexWorkerCore {
   private readonly analyzers: AnalyzerRegistry
   private readonly expanders: ExpanderRegistry
   private readonly debounceMs: number
+  private readonly schemas: Record<string, Record<string, { analyzer: string; weight: number; embed?: boolean }>>
 
   private readonly pending = new Set<string>()
   /**
@@ -205,6 +255,11 @@ export class IndexWorkerCore {
   private started = false
   /** 真正折过几次(`status().refolds`)。 */
   private refolds = 0
+  /** 嵌入的写路。语义召回没开就是 `undefined`(§15)。 */
+  private readonly vectorWriter: VectorWriter | undefined
+  private readonly vectorIndex: VectorIndex | undefined
+  private readonly vectorExtension: 'loadable' | 'missing'
+  private vectorState: VectorState = 'off'
 
   constructor(options: IndexWorkerCoreOptions) {
     this.endpoint = options.endpoint
@@ -214,9 +269,27 @@ export class IndexWorkerCore {
     this.analyzers = options.analyzers ?? createDefaultAnalyzerRegistry()
     this.expanders = options.expanders ?? createDefaultExpanderRegistry()
     this.debounceMs = options.debounceMs ?? ENQUEUE_DEBOUNCE_MS
-    for (const [capability, schema] of Object.entries(options.schemas ?? {})) {
+    this.schemas = options.schemas ?? {}
+    for (const [capability, schema] of Object.entries(this.schemas)) {
       this.index.setSchema(capability, schema)
     }
+
+    this.vectorExtension = options.vectorExtension ?? 'missing'
+    this.vectorIndex = options.vector?.index
+    if (options.vector !== undefined) {
+      this.vectorWriter = new VectorWriter({
+        index: this.index,
+        vector: options.vector.index,
+        embedder: options.vector.embedder,
+        embedFields: capability => Object.entries(this.schemas[capability] ?? {})
+          .filter(([, spec]) => spec.embed === true)
+          .map(([field]) => field),
+        onState: state => { this.vectorState = state },
+      })
+      this.vectorState = 'downloading'
+      this.applyEmbeddingModelHeader(options.vector.embedder.id)
+    }
+
     this.endpoint.on('message', message => {
       void this.handle(message as IndexWorkerRequest)
     })
@@ -252,6 +325,7 @@ export class IndexWorkerCore {
     this.unsubscribes.length = 0
     if (this.timer !== undefined) clearTimeout(this.timer)
     this.timer = undefined
+    this.vectorWriter?.dispose()
   }
 
   // ---- 消息 -------------------------------------------------------------
@@ -276,6 +350,8 @@ export class IndexWorkerCore {
         return null
       case 'query':
         return this.search(message.request)
+      case 'vector-query':
+        return this.vectorSearch(message.request)
       case 'status':
         return this.status()
       case 'rebuild':
@@ -338,6 +414,62 @@ export class IndexWorkerCore {
       generation: this.index.generation(),
       errors: [...this.errors.values()],
       feeds: [...this.activeFeeds],
+      vector: this.vectorState,
+      vectorPending: this.vectorWriter?.pending() ?? 0,
+      vectorExtension: this.vectorExtension,
+    }
+  }
+
+  /**
+   * 库头 `meta.embeddingModelId` 与当前嵌入器不符 → 清空向量、全库排队重嵌
+   * (§5.4「换模型 = 后台全量重嵌,词法路照常」)。**词法路的库头三格里只有这一格
+   * 变了,所以只有向量那一半重建** —— `version` / `analyzerId` 不符才是丢整个库。
+   */
+  private applyEmbeddingModelHeader(embedderId: string): void {
+    const recorded = this.index.readMeta('embeddingModelId')
+    this.index.writeMeta('embeddingModelId', embedderId)
+    if (recorded === embedderId) return
+    log.info('embedding model changed; the vector half is rebuilt', {
+      fields: { from: recorded ?? null, to: embedderId },
+    })
+    this.vectorWriter?.reembedAll()
+  }
+
+  /**
+   * 向量召回。**范围与词法路走同一条编译**(`SqliteIndex.compileVectorScope`),
+   * 于是授权在 KNN 里就生效,而不是先取 k 条再筛(§6.4b / `sqlite-vec.ts` 的读数)。
+   */
+  async vectorSearch(request: IndexVectorSearchRequest): Promise<IndexVectorSearchResult> {
+    this.ensureFeedsFor(request.capability)
+    const writer = this.vectorWriter
+    const vector = this.vectorIndex
+    if (writer === undefined || vector === undefined) {
+      return { hits: [], docs: [], generation: this.index.generation(), unavailable: 'off' }
+    }
+    const embedding = await writer.embedQuery(request.text)
+    if (embedding === undefined) {
+      return { hits: [], docs: [], generation: this.index.generation(), unavailable: writer.currentState() }
+    }
+    const scope: VectorSearchScope = {
+      capability: request.capability,
+      ...(request.filters !== undefined ? { filters: request.filters } : {}),
+    }
+    const hits = vector.search(embedding, request.k, scope)
+    const docs: IndexedDoc[] = []
+    const seen = new Set<number>()
+    for (const hit of hits) {
+      if (seen.has(hit.docId)) continue
+      seen.add(hit.docId)
+      const doc = this.index.get(hit.docId)
+      if (doc !== undefined) docs.push(doc)
+    }
+    // 还在嵌的时候如实说 —— 壳画「语义索引建立中」,而不是把半个索引当成全部。
+    const state = writer.currentState()
+    return {
+      hits,
+      docs,
+      generation: this.index.generation(),
+      ...(state === 'ready' ? {} : { unavailable: state }),
     }
   }
 
@@ -385,7 +517,7 @@ export class IndexWorkerCore {
     this.timer.unref?.()
   }
 
-  /** 队列排空(含正在飞的那一批与校对)。 */
+  /** 队列排空(含正在飞的那一批、校对,以及嵌入的写路)。 */
   async drain(): Promise<void> {
     while (this.buildingCount > 0 || this.pending.size > 0 || this.flushing !== undefined) {
       if (this.flushing !== undefined) {
@@ -409,6 +541,8 @@ export class IndexWorkerCore {
         }, this.debounceMs).unref?.()
       })
     }
+    // 折完了不等于嵌完了。`drain()` 说的是「欠的活都干完了」,那就包括这一半。
+    await this.vectorWriter?.drain()
   }
 
   private async flush(): Promise<void> {
@@ -479,6 +613,8 @@ export class IndexWorkerCore {
 
       for (const entry of grouped.values()) {
         this.index.replaceKey(entry.capability, entry.key, entry.docs)
+        // 文档落库之后才排嵌入队 —— docId 是 `replaceKey` 插出来的(§15.3)。
+        this.vectorWriter?.enqueueKey(entry.capability, entry.key)
       }
       // 上一轮有、这一轮没有的那些 = 被删 / 被压缩 / 被清空的消息。**删掉,不打
       // 墓碑** —— 墓碑说的是「这把 feed 钥匙不存在了」,而这条会话还活着。

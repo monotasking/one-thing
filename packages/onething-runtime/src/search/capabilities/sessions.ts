@@ -76,6 +76,9 @@ export const chatsSearchManifest: CapabilityManifest = {
   kind: 'indexed',
   // 只有标题一格 —— 与投影器产的会话文档逐字对应。权重 2 是「标题命中比正文
   // 命中值钱」,而这一类里没有正文,所以它实际只影响跨字段无从比较时的绝对分。
+  // S7 **不给 `embed`**:会话标题短(真库中位数十来个字),向量在这个长度上意义
+  // 很小,而嵌它要付一整轮前向。这是 §15.4 那张表里 chats 走 `'explicit'` 的同一个
+  // 理由 —— 两处都写着,不许只改一处。
   schema: { title: { analyzer: 'composite', weight: 2 } },
   facets: [
     { key: 'sessionId', type: 'enum' },
@@ -86,6 +89,10 @@ export const chatsSearchManifest: CapabilityManifest = {
   budget: { default: 6, timeoutMs: 300 },
   order: 1,
   orderWhenIntent: { actions: 3 },
+  // **`'explicit'`**(§15.4):只在调用方明说要语义(壳的「语义」片 →
+  // `filters.semantic`)或消费面是 agent 工具时才跑。消费面的名字由**能力**列,
+  // core 里一个消费面的字面量都没有。
+  retrievers: { vector: { when: 'explicit', surfaces: ['agent-tool'] } },
   // 与 messages 同一条规则(§6.4b / 拍点辛 a):会话标题也是会话内容,一间 agent
   // 看不见的房,它的**房名**同样不该出现在结果里(`collab/visibility.ts` 的原话:
   // 不可见不是「看不到内容」,是「这间房不存在」)。

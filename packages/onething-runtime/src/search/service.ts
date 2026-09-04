@@ -86,7 +86,7 @@ export interface SearchServiceResponse {
  *
  * S3b 起这是**真读数**:`mode` 由 Worker 宿主答(连崩两次 → `'error'`),
  * `pending` 是队列里还欠着的钥匙数。`'reader'` 要等 §5.6(拍点庚,09-04 裁
- * 「先不做」),`vector` 要等 §15,两格今天分别不出现与恒 `'off'`。
+ * 「先不做」),今天不出现。**S7 起 `vector` 三格也是真读数**(§15)。
  */
 export interface SearchIndexStatus {
   mode: 'owner' | 'reader' | 'error'
@@ -102,7 +102,19 @@ export interface SearchIndexStatus {
    * 拿到的唯一诚实判据。契约层那一份的注释里有同一段话。
    */
   docs?: number
+  /**
+   * 语义召回此刻在干什么(§15;`'off'` = 开关关着 / 装不上扩展 / 自己关回去了)。
+   */
   vector?: 'off' | 'downloading' | 'embedding' | 'ready'
+  /** 还有几份文档没嵌进去(与 `pending` 同一种诚实,只是另一半派生数据)。 */
+  vectorPending?: number
+  /**
+   * **这份产物装得上 sqlite-vec 扩展吗** —— 与「开关开没开」是两件事。
+   *
+   * 它存在的理由只有一个:`gate:packaged` 要在**开关关着**的默认档上证明
+   * 「`asarUnpack` 那一行没漏」。等到用户去设置里打开才发现装不上,那就晚了。
+   */
+  vectorExtension?: 'loadable' | 'missing'
 }
 
 /**
@@ -207,7 +219,14 @@ export class OnethingSearchService {
   async status(): Promise<SearchIndexStatus> {
     if (this.index === undefined) return { mode: 'error', pending: 0, vector: 'off' }
     const status = await this.index.status()
-    return { mode: status.mode, pending: status.pending, docs: status.docs, vector: 'off' }
+    return {
+      mode: status.mode,
+      pending: status.pending,
+      docs: status.docs,
+      vector: status.vector,
+      vectorPending: status.vectorPending,
+      vectorExtension: status.vectorExtension,
+    }
   }
 
   /**

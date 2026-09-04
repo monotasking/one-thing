@@ -163,6 +163,38 @@ try {
   log('④-b 索引 pending 归零 ✓')
 
   /*
+   * ④-c 语义召回的扩展(检索重建 S7,`docs/design/search-index-2026-09.md` §15.2)。
+   *
+   * 两条断言,一起才成立:
+   *  ① **开关关着**(拍点壬 a 的默认档)所以 `vector === 'off'` —— 打包 app 不许自作
+   *     主张去下 110MB 模型,这一条守的正是「默认关」这件事本身;
+   *  ② 可**扩展装得上**(`vectorExtension === 'loadable'`)—— 这是
+   *     `electron-builder.yml` 里 `asarUnpack: sqlite-vec-*` 那几行的唯一证明:
+   *     没解包的话 `loadExtension` 打不开 asar 里的路径,macOS 硬化运行时下未签名的
+   *     dylib 也装不上,两种都会让这一格答 `'missing'`。
+   *
+   * 为什么不是「把开关打开再看 `vector === 'ready'`」(§15.5 原来写的那句):真 app 里
+   * 没有假嵌入器,打开开关就等于让这道门去下模型 —— 门从此依赖网络,而且第一次跑要
+   * 几分钟。**探针与开关分成两格**之后,漏解包这件事在默认档上就抓得到,比原来那句更早。
+   *
+   * 09-05 补一条**今天更强的理由**(拍点癸' (c),§13 留账一):打包桌面档**不带**
+   * `@huggingface/transformers` 及它拖来的 onnxruntime / sharp(`electron-builder.yml`
+   * 的 `files:` 排除了它们,app 因此从 498M 回到 146M),所以这台 app 上把开关打开也
+   * 下不了模型 —— 它会 `ERR_MODULE_NOT_FOUND` → 优雅降级回 `'off'`。**这两条断言因此
+   * 恰好就是 (c) 的现实**:运行时不在(`vector: 'off'`),而 sqlite-vec 这几百 KB 的
+   * 纯 C 扩展留着并解包(`vectorExtension: 'loadable'`)。用户改拍 (a) / (b) 之后,
+   * 这里要跟着升级成「真模型可装载」。
+   */
+  if (status?.vector !== 'off') {
+    fail(`search.status.vector 默认应为 off(拍点壬 a),读到 ${JSON.stringify(status?.vector)}`)
+  }
+  if (settled.vectorExtension !== 'loadable') {
+    fail(`search.status.vectorExtension 应为 loadable,读到 ${JSON.stringify(settled.vectorExtension)} —— `
+      + 'sqlite-vec 的 vec0 没被 asarUnpack 出来,或硬化运行时下未签名装不上')
+  }
+  log('④-c 语义召回:开关默认关 ✓,sqlite-vec 扩展可装载 ✓')
+
+  /*
    * ④-c 种一条消息,再从索引里搜出来 —— 「Worker 活着」与「Worker 真的在折账本」
    * 是两件事,前者由 ④-b 证,后者要有一条真消息走完 `user/message` → append 观察者
    * → enqueue → 折 → FTS 这条链。

@@ -1,0 +1,219 @@
+{
+  "note": "黄金复述集(S7,docs/design/search-index-2026-09.md §15.5)。20 条改写句 → 期望命中的文档键。改写句是人工写的:与原文说同一件事、但**尽量不共用词面**,所以词法路对它们大多零命中——那正是向量路存在的理由。",
+  "proves": [
+    "这份卷子证的是**链路**不是模型:门与单测跑的是确定性的假嵌入器(core 的 createFakeEmbedder),它靠下面的 synonyms 表把改写句与原文指到同一个概念上。",
+    "所以 synonyms 与 cases 是**同一份数据的两半**:表定义了「什么算同义」,卷子考的是「同义之后这条链能不能把它捞出来」。真模型的召回质量由真机冒烟说话,不由这份卷子说话。",
+    "expect 里不止一个键时,那是真库里逐字重复的同一段话落在了几间会话上(轮转抽样的结果);判据是**交集非空**:top-5 里出现其中任意一条即算命中。"
+  ],
+  "synonyms": {
+    "一瓶解药和一瓶毒药": "witch-potion",
+    "救人和毒人的两瓶药水": "witch-potion",
+    "今晚要查验的目标": "seer-inspect",
+    "挑一个人验身份": "seer-inspect",
+    "已交刀,刀口": "wolf-knife-dispute",
+    "报的刀口跟私信说的对不上": "wolf-knife-dispute",
+    "滚动条已经滚动到了最上面": "reader-scroll-cut",
+    "往上拉到顶了内容还是被截掉一块": "reader-scroll-cut",
+    "展示完单词后才会展示句子翻译": "reader-sentence-order",
+    "整句的译文非要等生词讲完才肯出来": "reader-sentence-order",
+    "light、dark在系统切换的时候": "swift-dark-mode",
+    "系统换深浅外观的时候有的地方没跟着变": "swift-dark-mode",
+    "placeholder和光标位置错位": "appkit-input-box",
+    "提示文字跟插入点没对齐": "appkit-input-box",
+    "convertandsend和这个是什么关系": "redis-listener-config",
+    "监听配置类跟发布消息的方法之间是什么关系": "redis-listener-config",
+    "转成一个一一对应的表格": "iva-dnis-table",
+    "两组号码整理成一份对照表": "iva-dnis-table",
+    "把idea产品判断去掉，都走ivarouter": "iva-router-switch",
+    "不再分产品统统交给同一个路由": "iva-router-switch",
+    "六角恐龙的形象": "axolotl-icon",
+    "画一只蝾螈当标志": "axolotl-icon",
+    "帮我看下siprec.lua的逻辑": "siprec-lua-flow",
+    "录音脚本那段流程涉及哪两个后端服务": "siprec-lua-flow",
+    "bot的目录是其余两个": "asr-tts-log-split",
+    "按目录前缀把语音识别和合成的日志分开统计": "asr-tts-log-split",
+    "为什么没有holiday校验": "holiday-check-missing",
+    "为什么跳过了节假日判断": "holiday-check-missing",
+    "增加数据权限校验": "cross-region-leak",
+    "能读到别的区域的数据": "cross-region-leak",
+    "429 是 deepl 的限流响应": "deepl-rate-limit",
+    "并发批量总被挡回来": "deepl-rate-limit",
+    "目录下共有 **18 个插件**": "plugin-package-list",
+    "一共放了多少个扩展": "plugin-package-list",
+    "没有live up stream": "nginx-upstream-down",
+    "网关说后端不可达": "nginx-upstream-down",
+    "屏幕使用时间存在系统数据库里": "screen-time-db",
+    "用机时长记在哪个库里": "screen-time-db",
+    "workorder不做加密，直接展示": "pii-comment-out",
+    "改成不脱敏原样显示": "pii-comment-out"
+  },
+  "cases": [
+    {
+      "id": "witch-role",
+      "concept": "witch-potion",
+      "query": "那局游戏里我抽到的角色带着救人和毒人的两瓶药水",
+      "expect": [
+        "messages:2b5a9c2f9b15:b2fe142d8bcf",
+        "messages:e70f764f15bd:37759a884977"
+      ]
+    },
+    {
+      "id": "seer-check",
+      "concept": "seer-inspect",
+      "query": "第四局我要挑一个人验身份",
+      "expect": [
+        "messages:586f85ce259e:12a59008b862"
+      ]
+    },
+    {
+      "id": "wolf-knife",
+      "concept": "wolf-knife-dispute",
+      "query": "狼那边报的刀口跟私信说的对不上",
+      "expect": [
+        "messages:2c1b684d795b:315fc702f3e2"
+      ]
+    },
+    {
+      "id": "reader-scroll",
+      "concept": "reader-scroll-cut",
+      "query": "阅读器往上拉到顶了内容还是被截掉一块",
+      "expect": [
+        "messages:b38ddc7a5b1e:00ca8da045cf"
+      ]
+    },
+    {
+      "id": "reader-order",
+      "concept": "reader-sentence-order",
+      "query": "整句的译文非要等生词讲完才肯出来",
+      "expect": [
+        "messages:063da929f4b3:fb61195ec802",
+        "messages:a2a45f2b54eb:c25025f9b74f"
+      ]
+    },
+    {
+      "id": "swift-theme",
+      "concept": "swift-dark-mode",
+      "query": "系统换深浅外观的时候有的地方没跟着变",
+      "expect": [
+        "messages:9c9721dcb6e6:5a90d6781e7a"
+      ]
+    },
+    {
+      "id": "input-box",
+      "concept": "appkit-input-box",
+      "query": "输入框的提示文字跟插入点没对齐",
+      "expect": [
+        "messages:ad4864625023:84f1a0fbaf8f"
+      ]
+    },
+    {
+      "id": "redis-listener",
+      "concept": "redis-listener-config",
+      "query": "那个监听配置类跟发布消息的方法之间是什么关系",
+      "expect": [
+        "messages:9585348d3bc9:7a25133ce23e"
+      ]
+    },
+    {
+      "id": "iva-table",
+      "concept": "iva-dnis-table",
+      "query": "把两组号码整理成一份对照表",
+      "expect": [
+        "messages:0c11075120b7:5af81e1896c0"
+      ]
+    },
+    {
+      "id": "iva-router",
+      "concept": "iva-router-switch",
+      "query": "这些号码不再分产品统统交给同一个路由",
+      "expect": [
+        "messages:4a30d075de77:97c9c6f1a714"
+      ]
+    },
+    {
+      "id": "app-icon",
+      "concept": "axolotl-icon",
+      "query": "给这个 agent 应用画一只蝾螈当标志",
+      "expect": [
+        "messages:172c14635e5d:544cb065f9b6"
+      ]
+    },
+    {
+      "id": "siprec-lua",
+      "concept": "siprec-lua-flow",
+      "query": "录音脚本那段流程涉及哪两个后端服务",
+      "expect": [
+        "messages:9c5162138ca5:f6d1c0b3ba39"
+      ]
+    },
+    {
+      "id": "asr-tts-logs",
+      "concept": "asr-tts-log-split",
+      "query": "按目录前缀把语音识别和合成的日志分开统计",
+      "expect": [
+        "messages:7c2b1ee717c1:c3520d598f71",
+        "messages:c66a3f669556:c3520d598f71",
+        "messages:892314648cdc:c3520d598f71",
+        "messages:f55243048f40:c3520d598f71",
+        "messages:0060bcecbf08:c3520d598f71",
+        "messages:661a6dcfc07b:c3520d598f71"
+      ]
+    },
+    {
+      "id": "holiday-check",
+      "concept": "holiday-check-missing",
+      "query": "这通电话为什么跳过了节假日判断",
+      "expect": [
+        "messages:095c0015be66:af76ce80a599"
+      ]
+    },
+    {
+      "id": "over-privilege",
+      "concept": "cross-region-leak",
+      "query": "这个接口能读到别的区域的数据,要补数据范围校验",
+      "expect": [
+        "messages:e82548a3fc53:54f763e583e6"
+      ]
+    },
+    {
+      "id": "deepl-429",
+      "concept": "deepl-rate-limit",
+      "query": "为什么命令行请求能过而并发批量总被挡回来",
+      "expect": [
+        "messages:dbba78a6b11d:be8fc9092dc7"
+      ]
+    },
+    {
+      "id": "plugin-count",
+      "concept": "plugin-package-list",
+      "query": "那个目录里一共放了多少个扩展",
+      "expect": [
+        "messages:8ad3fb455108:9801ec4591a3"
+      ]
+    },
+    {
+      "id": "nginx-upstream",
+      "concept": "nginx-upstream-down",
+      "query": "重启服务之后网关说后端不可达该怎么恢复",
+      "expect": [
+        "messages:9dd2e72e30e4:768b55147467"
+      ]
+    },
+    {
+      "id": "screen-time",
+      "concept": "screen-time-db",
+      "query": "系统把用机时长记在哪个库里",
+      "expect": [
+        "messages:339c1fd81a33:d2600d692e70"
+      ]
+    },
+    {
+      "id": "pii-comment",
+      "concept": "pii-comment-out",
+      "query": "工单那个字段改成不脱敏原样显示",
+      "expect": [
+        "messages:00f970400a68:27f0984bb0c6"
+      ]
+    }
+  ]
+}

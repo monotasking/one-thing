@@ -46,6 +46,7 @@
 | 辛 | AI 当调用者时缺省能看多远(§14) | **(a) 当前空间里的非协作会话 + 自己是成员的协作房**(与 collab `history` 工具今天的可见规则同一条);(b) 只见本会话;(c) 全部空间 |
 | 壬 | 语义召回缺省开关(§15;要下载约 110MB 模型、冷嵌入占 CPU 数分钟) | **(a) 默认关,设置里一键开,开了才下载**;(b) 默认开 |
 | 癸 | 嵌入模型运行时(§15) | **(a) `@huggingface/transformers` wasm 后端,零原生依赖**;(b) `onnxruntime-node`(N-API,过 gate:native,快约 2 倍,多 30MB 原生包) |
+| 癸' | 语义召回的**桌面打包档**运行时(癸 a 选定之后才冒出来的第二问:装 transformers 顺带拖进 onnxruntime-node 212M / onnxruntime-web 92M / @huggingface 48M / sharp+@img 17M。09-05 同机同一份构建产物、只换 `electron-builder.yml` 那几行的两趟 `du -sh` 读数:**全打进去 565M,全排除掉 309M**) | (a) 解包 `onnxruntime-web` 的 wasm(**约 +92M**,换来打包档能跑语义召回);(b) 改用 `onnxruntime-node`(拍点癸 b,**+212M**,是 N-API、已过 `gate:native`,但与癸 a 的「零原生」相反);**(c) 只在 server / CLI 供应,桌面档不带运行时 —— 09-05 编排者暂按 (c) 落地(保守缺省),待用户拍** |
 | 丙 | 归档会话 | **(a) 搜得到带徽**(v3 已认可) |
 | 丁 | 多词语义 | **(a) 全部命中优先,零命中按阶梯放宽并明说**(v3 已认可) |
 | 戊 | 跨空间 | **(a) 默认当前空间,一键全部并带徽**(v3 已认可) |
@@ -698,7 +699,7 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 | **S4 壳** | React 壳按 §9(目标渲染注册表 + 预览渲染注册表 + 范围片 / 枢轴 + 查询历史) | `gate:search-messages` 扩 7 断言(total / 放宽 / 分组 / 归档徽 / 跨空间 / tab 随注册表 / 读者模式提示);ui:consume 只减不增;a11y 零违例 |
 | **S5 退役** | 删 `searchMessages` 旧扫描、`iterateSessionMessages` 端口、`switch(category)`、写死配额表、`SearchCategory` 字面量;CLAUDE.md 改写(§12,含第 317 行「跨会话索引归 apps/server,主进程不许加库」那句)与 collab 文档 | 全仓绿;grep 零残留 |
 | **S6 AI 消费者**(**已落地 2026-09-05**,记录 §14.5) | `search` 工具(§14):`toolkit/builtin/search.ts` + 单槽适配器注入 + 场景恒可见 + `spec.prompt`;messages **与 chats** `visibility` 的 agent 支(拍点辛 a);三档目录各注册一行 | typecheck 零;`boundary:gate` / `transport:gate` / `assembly:gate` / `log:gate` / `session:gate` 五闸全绿;`bunx vitest run {runtime,backend}/{toolkit,search} + backend/rpc + core/search` **99 文件 1104 例**(其中新增 4 份 61 例);反证三条各自真红(§11);**battery 那一幕没做**,理由与替代见 §14.5 ③ |
-| **S7 语义召回** | sqlite-vec 扩展装载 + `Embedder` 注册表 + wasm 嵌入器 + `vectorRetriever` + RRF 融合 + 设置开关(拍点壬)+ 模型下载(§15);`gate:native` 扩到 sqlite 扩展;`gate:packaged` 断言 `status.vector === 'ready'` | 黄金复述集 20 条(改写句 top-5 必中);parity-B 仍绿(词法路一字不动);事件循环门在嵌入期间仍绿;`gate:native` 两运行时装载扩展绿;打包门绿 |
+| **S7 语义召回**(2026-09-05 落地) | sqlite-vec 装载(`runtime/search/index/sqlite-vec.ts`)+ `Embedder` 注册表(`runtime/search/embedding/`,wasm 真件 + 确定性假件)+ `vectorRetriever` 两份(core 的同步件 / runtime 的过 Worker 件)+ RRF 融合 + `manifest.retrievers` 按召回器 id 的策略表 + 设置开关 `search.semantic`(拍点壬 a,**默认关**)+ 嵌入写路 `VectorWriter`(Worker 里,每批让出);`gate:native` 6 目标(多了 sqlite-vec 与 transformers 拖来的两个原生包);`gate:packaged` 断言 `vector === 'off'` + `vectorExtension === 'loadable'`(改判见 §15.5) | 复述集 20/20 向量路 top-5 命中、词法严格档 0/20;`search:parity-B` 三趟与 S3c 逐字同(红 0);`gate:search-index` 八条绿(⑧ 新增:开关 → `embedding → ready` 196ms → 改写句 7ms 经 HTTP 命中 → 两条各排第一);⑤ 三窗口不劣化(1.356 / 5.583 / 1.79ms);`gate:native` 0 失败;`build:unpack` 后 `app.asar.unpacked/**/vec0.dylib` 在且已签名 |
 | S8(缓议) | 文件内容源(`rg --json` 作 scan 能力);`@` 文件抽屉 / `/` 命令抽屉改成同一引擎的两个 surface;collab `history` 工具并入 `search`(kind 过滤) | 另案 |
 
 ### S3b 落地记录(2026-09-05:索引服务接进宿主)
@@ -923,7 +924,20 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 - S3(v3.1 补):索引服务改回主线程 → 事件循环门红;授权改回结果过滤 → 「滤后 total 为真数」用例红;摘掉目录监视 → 「另一个进程写的消息搜得到」红;`Doc.capability` 改回字面量联合 → `checkCoreSearchNamesNoCapability` 红。(持有权那两条反证随 §5.6 缓议。)
 - S4:tab 写死 → 注销一个能力 tab 仍在红;`total` 缺席时画「加载更多」→ 红。
 - S6(**已跑,读数在 §14.5**):工具无视 `ctx.principal`(改成恒 user)→ **8 例红**,其中就有「agent 搜到别的空间」;`visibleIn` 那一条**换了写法** —— 它本来就该恒真(越权不靠场景门,靠 messages 的 agent 支),所以反证改成「messages 摘掉 agent 支」→ **7 例红**,含「协作房里 `search` 与 `history` 并存时,不是成员的房被排掉」那一条;工具 import backend → `architecture-boundaries` 红(**不是** `boundary:gate`:那道门不查 runtime→backend 这条边,查它的是 `packages/core/__tests__/architecture-boundaries.test.ts`)。
-- S7:词法路碰了一字 → parity-B 红;嵌入在主线程跑 → 事件循环门红;扩展只在 Node 下装载 → `gate:native` Electron 那一列红;模型 id 变了不重嵌 → 「换模型后复述集」红。
+- S7(**四条都真跑过,读数在括号里**):
+  - 词法路碰了一字 → parity-B 红。演示用的是「把 messages 的 `relax` 关掉」(**27 红**,
+    如 `holidayAfterhour` 旧 31 条 / 新 0 条)。**注意**:改字段权重**不红** —— parity-B
+    判的是命中**集**的 ⊇,权重只动次序;要红就得动「哪些文档算命中」。
+  - 扩展只在 Node 下装载(临时把 Electron 那一列跳过)→ `gate:native` **1 红**,
+    行 `sqlite-vec-darwin-arm64` / `electron FAIL`。
+  - 模型 id 变了不重嵌(把复述集用例里那次重嵌摘掉)→ 「换模型」那一条 **红**
+    (`expected false to be true`)。
+  - 授权改回「先 KNN 拿 k 条、回来再筛」→ 复述集 ③ **红**(`expected 1 to be 3`)——
+    范围外的候选把名额占掉了,这正是 §6.4b 那条法在向量路上的落点。
+  - **「嵌入搬主线程 → 事件循环门红」这条没法照原样跑**:`gate:search-index` ⑤ 那三个
+    窗口跑的是**开关关着**的默认档,压根没有嵌入。换成一条**结构判据**(⑤d 第二条):
+    `packages/backend/**`、`packages/core/**`、主线程侧的检索代码与壳的 electron 目录里
+    零 `@huggingface/transformers` import —— 把它 import 到主线程当场红。
 
 ---
 
@@ -972,6 +986,69 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
   今天由 daily 能力在 `search()` 里补进结果。将来要么归 `actions` 能力(它本来就是
   「动作」那一类),要么由 daily 自己声明一格 `actions?`(能力自述出「我这一类还能做什么」)。
   两条路都要先定契约;定了之后 `resolveDailyTodayShortcut` 与旧扫描器一起删。
+- **S7 留账(一)——桌面打包档不带语义召回的运行时。已按拍点癸' 的 (c) 落地(09-05,
+  编排者的保守缺省),三条路见 §0 拍点癸',待用户拍**。
+  病是这样的:装 `@huggingface/transformers` 顺带装进 `onnxruntime-node` 212M /
+  `onnxruntime-web` 92M / `@huggingface` 48M / `sharp` + `@img/*` 17M,全打进去
+  `onething.app` 是 **565M**(09-05 实测)。而 `electron-builder.yml` 的 `files:` 里原有
+  一句**早于 S7 的排除** `!node_modules/onnxruntime-web`(注释写的是「Electron 主进程
+  用不着」)—— 于是 S7 交卷那一刻打包 app 里躺着的是 `onnxruntime-node`(用不上,因为
+  嵌入器写死 `device: 'wasm'`)与 `onnxruntime-common`,**唯独缺了真正要用的 wasm 那
+  一份**:多背两百多兆,还是跑不起来。
+  **(c) 的落地**:那一句排除扩成六句(`@huggingface/transformers` / `onnxruntime-node` /
+  `-web` / `-common` / `sharp` / `@img`),打包档 **565M → 309M**(同机同一份构建产物、
+  只换这几行的两趟 `du -sh`;剩下的大头是 Electron Framework 自己的 260M)。
+  **读数更正**:这条留账原来写的「S7 前 146M / S7 后 498M」这一趟**没能复现** ——
+  Electron 41 的 Framework 单独就 260M,今天的 app 不可能是 146M;上面两个数是同一台机器、
+  同一份 `apps/desktop-react/dist{,-electron}` 产物上量出来的,只有 `files:` 那几行不同。
+  (c) 之后 S7 在打包档里的残留只剩 `sqlite-vec` 那几百 KB 与纯 JS 的
+  `@huggingface/jinja` 十几个文件;六个被排除的包在 `app.asar` 的成员表里**一条都搜不到**
+  (`asar list` 逐个 grep 计数全 0)。
+  `sqlite-vec` 与它的平台子包**保留**(几百 KB 的纯 C 扩展,`gate:packaged` ④-c 的
+  `vectorExtension === 'loadable'` 靠它)。**语义召回在 dev / server / CLI 上照旧是通的**
+  (`gate:search-index` ⑧ 证),桌面打包档上则**优雅降级**:开关就算被打开,
+  `import('@huggingface/transformers')` 抛 `ERR_MODULE_NOT_FOUND` →
+  `VectorWriter.markOff` 把 `status.vector` 钉成 `'off'`、记**一条** `warn`(不是 `error`),
+  词法路一个字不受影响。这条降级由 `search/embedding/__tests__/missing-runtime.test.ts`
+  四例钉死(查询路 / 写路两个入口各证一遍、查一百次仍只有一条 warn、`'off'` 是吸收态)。
+  施工时**顺手补了一个真漏**:`VectorWriter.embedQuery` 原来裸 `await this.ready()`,
+  「开关开着 + 库已建好 + 没有新文档排队」那一形下第一条查询会把装载失败原样抛给调用方
+  (而不是降级);现在它 catch → `markOff` → 答 `undefined`,且 `markOff` 改成幂等。
+  用户拍 (a) 或 (b) 之后要动的就是那六行加 `asarUnpack`,以及把 `gate:packaged` ④-c 从
+  「扩展可装载」升级成「真模型可装载」—— 别处一个字不用改(嵌入器是注册表里的一条)。
+- **S7 待拍(二)——KNN 没有下限**。`k = 5` 答的永远是最近的五条,哪怕全都不相关(施工时
+  在一间两条消息的 store 上量到:任何一句话都能把那两条召回)。机制留了
+  `manifest.retrievers.vector.maxDistance`,**今天故意不定值** —— 阈值要拿真模型在真库上的
+  读数定,而 e5 的余弦天生偏高、不相关的一对也常在 0.7 以上,凭空拍一个数会把该召回的切掉。
+  今天的默认行为因此是「向量路把最近的几条无条件答回来」;它只在词法严格档零命中之后才
+  加入(§15.4 的 `'relaxed'`),所以用户看到它时本来就在「没有字面命中」的处境里。
+- **S7 待拍(三)——开关保存后不热生效**。`workerData` 在起 Worker 那一刻定死,改
+  `search.semantic.enabled` 要下次起 core 才算数。热换要在装配层留一格可变状态去重启那条
+  Worker,而 `assembly:gate` 正是立来禁这个的(它是**减少型**棘轮,新文件带 `let` 直接红)。
+  治法有两条:把索引服务句柄挂到 `OnethingBackend` 的字段上并 `own()` 它(顺着组合根 A 的
+  方向,那时 `stores/settings.ts` 可以经 `current.ts` 拿到它),或者给 Worker 加一条
+  「换嵌入器」的消息(库不重开、只换 `VectorWriter`)。第二条便宜得多,但要先想清楚
+  `vec_docs` 的维度换了怎么办(vec0 的维度写在建表语句里)。
+- **S7:真模型冒烟没做成 —— 本机连不上 HuggingFace**。`huggingface.co` 的元数据是通的
+  (`config.json` 答 307),但 `cdn-lfs.huggingface.co` **连不上**(curl 读数 `000`),
+  `pipeline()` 在拉 tokenizer 时 `ECONNRESET`,两趟都一样。所以交卷用的是假嵌入器,
+  **真模型的这几个数至今没有**:冷嵌一条消息多久、查询嵌入多久、复述集在真模型上中几条、
+  110MB 下下来是几个文件。能证的只有半条:`import('@huggingface/transformers')` 本身
+  **179ms**、版本 3.8.1、`env` 上 `cacheDir` / `localModelPath` / `allowLocalModels` /
+  `remoteHost` 四格都在。**另外一件事实**:3.8.1 的 `env.backends.onnx.wasm` 上
+  `Object.keys` 只见到 `wasmPaths` / `proxy`,**没有 `numThreads`** —— 嵌入器里那句
+  「wasm 单线程」是尽力而为,不是保证。`wasmPaths` 这一格还提醒了上面待拍(一)的另一半:
+  ORT-web 按**文件路径**读 `.wasm`,asar 里的路径不是真路径。
+- **S7:设置页没有 UI**。`settings.search.semantic.{enabled,modelId}` 契约、默认值、归一化、
+  装配读取全落了,**壳的设置页一格都没画**(那是壳线的活)。今天开它的办法是改
+  `settings.json` 或走 `settings` 域的 RPC。
+- **S7:切段是按字符边界回退,没有按 CJK 语义切**。`chunkForEmbedding` 找最近的换行 / 句号 /
+  空格,回退超过一成就硬切。中文长段落里句号少的那种(代码块、日志)会切在词中间;真模型
+  的读数出来之前不动它。
+- **S7:`gate:search-index` ⑧ 判不了「走过 downloading」**。假嵌入器的 `ready()` 是空操作,
+  两条消息一瞬间嵌完,150ms 的轮询抓不到中间态 —— 那会是一条只在慢机器上绿的断言。⑧ 改判
+  「开关一路没有自己关回去」(模型装载失败那一支就是把它钉回 `'off'`)。真模型接上之后
+  这一条可以升级。
 - 三条法条的机械化只做了第一条(core 零能力名)。「能力不枚举语言」「语言不枚举后缀」等 symbol 能力真来了再各立一条检查。
 
 ---
@@ -1157,52 +1234,156 @@ SqliteIndex(同线程 `MessageChannel` Worker,与 `index-service.test.ts` 同一
 
 ---
 
-## 15. 语义召回:sqlite-vec + 本地嵌入(S7)
+## 15. 语义召回:sqlite-vec + 本地嵌入(S7,2026-09-05 落地)
+
+> 本节自 S7 落地起**按事实写**。原来的写法是方案,读数与出入逐条记在 §15.6。
 
 ### 15.1 一句话
 
-在 `SqliteIndex` 里多一张 `vec_docs(docId, embedding float[384])`(sqlite-vec 的 `vec0` 虚表),索引基座的 `retrievers` 从 `[lexical]` 变成 `[lexical, vector]`,RRF 融合(k = 60)。词法路一字不动,parity-B 继续守它。
+`SqliteIndex` 多一张 `vec_docs_384`(sqlite-vec 的 `vec0` 虚表,**一段一行**:
+`embedding float[384]` + 元数据列 `docId` / `chunk`),索引基座的 `retrievers` 从
+`[lexical]` 变成 `[lexical, vector]`,RRF 融合(k = 60)。**词法路一字不动** ——
+`search:parity-B` 三趟读数与 S3c 逐字相同(messages ⊇169 / 中段 21 / 需放宽 2 /
+截断 8 / 红 0),它继续守着这一条。
 
 ### 15.2 三件原生相关的事,按法条办
 
 | 件 | 是什么 | 法条怎么过 |
 | --- | --- | --- |
-| `sqlite-vec` | 纯 C 的 SQLite 可加载扩展,npm 包 `sqlite-vec` 带平台子包(`sqlite-vec-darwin-arm64` 等,各一个 `vec0.dylib/.so/.dll`) | 法条明文允许「SQLite 这类内建 / 纯 C 扩展」,但**只许门证明**:`gate:native` 扩一列——对当前平台那份扩展,分别在系统 Node 与 `ELECTRON_RUN_AS_NODE=1` 的 Electron 下 `new DatabaseSync(':memory:', { allowExtension: true }).loadExtension(path)` 并跑 `select vec_version()`;`nm -u` 只许出现 `sqlite3_*` 符号 |
-| 嵌入运行时 | 拍点癸 a:`@huggingface/transformers` wasm 后端,零原生;模型 `multilingual-e5-small` int8(384 维,约 110MB,中英日韩都行——真库中文 29%) | 零原生就零法条问题;wasm 在 Worker 里跑,主线程零 CPU |
-| 打包 | 扩展文件 `asarUnpack`;mac 硬化运行时下**未签名的 dylib 装载会失败**,electron-builder 对 Mach-O 一律签,但要由 `gate:packaged` 证:打包 app 起来后 `search.status().vector === 'ready'` | 门证,不写注释 |
+| `sqlite-vec` | 纯 C 的 SQLite 可加载扩展,npm 包 `sqlite-vec` 带平台子包(`sqlite-vec-darwin-arm64` 等,各一个 `vec0.dylib/.so/.dll`) | **门证,不是注释**:`gate:native` 多一列 `sqlite-vec-<platform>-<arch>`,在系统 Node 与 `ELECTRON_RUN_AS_NODE=1` 的 Electron 下各 `new DatabaseSync(':memory:', { allowExtension: true }).loadExtension(path)` 并跑 `select vec_version()`(装得上还得真能用);`nm -u` 只许 `sqlite3_*` 与 libc。**本机读数:未定义符号 21 条,全是 libc(`___memcpy_chk` / `_strtod` …),`sqlite3_*` 零条**(扩展靠 `sqlite3_api` 结构体调宿主,不必导入 sqlite3 符号),V8 / Node 内部符号 0 |
+| 嵌入运行时 | 拍点癸 a:`@huggingface/transformers` wasm 后端(实测版本 3.8.1),模型 `multilingual-e5-small`(q8,384 维);**动态 import**,开关不打开一行不加载 | 它自己零原生。但**它拖进来两个原生包**:`onnxruntime-node`(prebuild 是 `bin/napi-v3/**`)与 `sharp` / `@img/sharp-<platform>`。产品从不加载它们(嵌入器写死 `device: 'wasm'`),可它们真的被打进 app —— 所以两块二进制**都进了 `gate:native` 的表**,实测都是 N-API,绿 |
+| 打包 | 扩展文件 `asarUnpack`;mac 硬化运行时下未签名的 dylib 装载会失败 | `electron-builder.yml` 加了 `sqlite-vec*` 六行;实测 `app.asar.unpacked/node_modules/sqlite-vec-darwin-arm64/vec0.dylib` 在,且 `codesign -dvv` 读到 `flags=0x10002(adhoc,runtime)` —— electron-builder 真的签了它。`gate:packaged` 断言的是 `vectorExtension === 'loadable'`(见 §15.5 那条改判) |
+
+**gate:native 现在 6 个目标,0 失败**:node-pty / sherpa-onnx-node / sherpa-onnx-darwin-arm64 /
+**sqlite-vec-darwin-arm64** / **onnxruntime-node** / **@img/sharp-darwin-arm64**。
 
 ### 15.3 嵌入器是注册表,模型是数据
 
 ```ts
+// 接口住 core(packages/core/search/index/types.ts)—— 向量召回器要认它
 export interface Embedder {
-  readonly id: string                 // 'transformers-wasm:multilingual-e5-small-q8'
+  readonly id: string
   readonly dims: number
-  ready(): Promise<void>              // 下载 / 装载;幂等
-  embed(texts: string[], signal: AbortSignal): Promise<Float32Array[]>
+  readonly maxTokens: number
+  ready(signal?: AbortSignal): Promise<void>          // 下载 / 装载;幂等
+  embed(texts: readonly string[], kind: EmbedKind, signal?: AbortSignal): Promise<Float32Array[]>
+  countTokens(text: string): number                    // 切段判据
 }
-registerEmbedder(embedder)            // 换 onnxruntime-node(拍点癸 b)= 一个模块 + 一行
+export type EmbedKind = 'query' | 'passage'            // e5 的前缀由嵌入器自己贴
+registerEmbedder(factory)                              // runtime/search/embedding/registry.ts
 ```
 
-- 模型文件落 `<store>/models/embeddings/<modelId>/`(与 sherpa 的 `models/` 同一层,看门人不管它);首次开启时下载,进度进 `status.vector = 'downloading'`;失败 = 开关自动关回去并 `warn`,不重试到死。
-- `meta.embeddingModelId` 进库头(§5.4):换模型 = 后台全量重嵌,`vec_docs` 清空重灌,词法路照常;嵌完之前 vector 路不参与(`status.vector = 'embedding'`)。
-- 嵌什么:manifest `schema` 里标 `embed: true` 的字段(messages 的 `content`、sessions 的 `title`、daily 的正文);单文档超 512 token 切段,每段一行,`docId` 相同、`chunk` 序号不同;`DocumentFilter` 在嵌入前已跑过(脱敏后的文本才进模型)。
-- 成本(真库读数估算):9616 条消息 ≈ 1.4 万段,wasm 单段 ~40ms → 冷嵌 ≈ 9 分钟,Worker 后台、限速(每批 32 段后让出 50ms),`gate:search-index` 的事件循环门在嵌入期间照量;增量每条消息 ~40–120ms,在 Worker 里,用户无感。
+- **`kind` 这一格是为前缀留的**:e5 要求查询写 `query: `、正文写 `passage: `。这条知识住
+  `transformers-wasm.ts`,不许漏给调用方。
+- 模型文件落 `<store>/models/embeddings/<modelId>/`(`getOnethingEmbeddingModelsDir()`,经
+  `getOnethingStorePath()` 派生)。首次开启时下载,进度进 `status.vector = 'downloading'`;
+  失败 = `VectorWriter` 把状态钉成 `'off'` 并 `warn`,**不重试到死**。
+- **`meta.embeddingModelId` 进库头**:与当前嵌入器 id 不符 → `vec_docs` 清空 + 全库排队重嵌
+  (`VectorWriter.reembedAll`),**词法路一行不动** —— 同一个库里两套派生数据,各自重建。
+  (`version` / `analyzerId` 不符才是丢整个库。)
+- **嵌什么**:manifest `schema` 里 `embed: true` 的字段。今天只有两处:messages 的
+  `content`、daily 的 `content`。**chats 的 `title` 故意没有**(标题短,向量意义小,与
+  §15.4 让 chats 走 `'explicit'` 是同一个理由)。attachments 是文件名、reasoning 默认不产,
+  两样都没有「改写句能对上」的语义。
+- 单文档超 `embedder.maxTokens` 切段(`chunkForEmbedding`,按**嵌入器自己的 tokenizer** 数,
+  不按字数),`(docId, chunk)` 一段一行;一份文档最多 64 段(`MAX_CHUNKS_PER_DOC`,一道刹车)。
+- `DocumentFilter` 在嵌入前已跑过 —— 写路读的是 `IndexedDoc.fields`,**脱敏之后**的正文。
+- 后台限速:每段之间 `setImmediate` 让出一次,一段内每 32 条再让一次;
+  `status.vector = 'embedding'` 直到追平,`status.vectorPending` 是还欠几份文档。
+- **嵌入在 Worker 里**(`VectorWriter` 只由 `IndexWorkerCore` 构造),主线程零 CPU。
+  `gate:search-index` ⑤d 加了一条结构判据:`packages/backend/**`、`packages/core/**`、
+  主线程侧的检索代码与壳的 electron 目录里**零 `@huggingface/transformers` import**。
 
 ### 15.4 什么时候走向量路
 
-查询嵌入也要 ~40ms,命令面板边打边出的 < 10ms 预算容不下它。所以向量路**不是每次都跑**,由索引基座读 manifest 的 `retrievers.vector.when` 决定(数据,不是 if):
+查询嵌入也要时间,命令面板边打边出的预算容不下它。所以向量路**不是每次都跑**,由索引基座
+读 manifest 的那张表决定(**数据,不是 if**)。v3.1 写的是 `retrievers: { vector: { when } }`;
+落地时改成**按召回器 id 索引的表** —— core 因此连「向量」这个词都不认识,只认「这一路有没有
+一条什么时候跑的规矩」:
 
-| when | 含义 | 谁用 |
+```ts
+retrievers?: Record<string, RetrieverPolicy>          // 键 = 召回器 id
+interface RetrieverPolicy {
+  when: 'relaxed' | 'explicit' | 'always'
+  surfaces?: string[]                                  // 'explicit' 时,哪些消费面算「明说要了」
+  maxDistance?: number                                 // 距离上限;今天故意留空,见下
+}
+```
+
+| when | 判据(全读查询自己的事实) | 谁用 |
 | --- | --- | --- |
-| `'relaxed'`(缺省) | 词法严格档零命中、走到放宽阶梯 ② 及以后才加向量路 | messages / daily |
-| `'explicit'` | 只在 `filters.semantic === true`(壳的「语义」片)或 surface = `agent-tool` 时 | sessions(标题短,向量意义小) |
-| `'always'` | 每次都跑(接受 +40ms) | 将来的笔记 / 知识库类能力 |
+| `'relaxed'`(缺省) | `ladder.level >= 1` —— 词法严格档零命中、走到放宽阶梯 ② 及以后 | messages / daily |
+| `'explicit'` | `query.filters.semantic === true`,或 `ctx.surface` 在这条 policy 的 `surfaces` 里 | chats(`surfaces: ['agent-tool']`) |
+| `'always'` | 每次都跑 | 将来的笔记 / 知识库类能力 |
 
-融合:RRF,`score = Σ 1 / (60 + rank_i)`;`explain` 标出这条来自哪路。壳在结果上画一枚「语义」小徽(不是计数徽),让用户知道这条不是字面命中。
+**消费面的名字由能力列**(`surfaces: ['agent-tool']`),core 里一个消费面的字面量都没有;
+`filters.semantic` 是**查询级的一个开关**(`SEMANTIC_FILTER_KEY`),不是任何能力的 facet。
+
+融合:RRF,`score = Σ 1 / (60 + rank_i)`;`explain` 在 `ctx.debug` 时标 `retriever: 'vector'`
+与 `distance`。**`total` 的规矩收紧了一格**:两路都出了候选时答**不知道**(缺席)——
+KNN 数不出「一共有多少条相似的」,取词法那个数会在「词法零命中、向量出了五条」这一形上
+写出 `total: 0` 配五条结果,那是壳画分页时当场露馅的假话(§7.3「不知道就别给」)。
+
+**授权仍然是查询的输入**(§6.4b),而且是**在 KNN 里**生效的。实测的三种写法:
+
+| 写法(五条向量,只有最远的两条在范围内,`k = 2`) | 读数 |
+| --- | --- |
+| 无过滤 | docId 1, 2(最近的两条) |
+| `JOIN docs d ON d.docId = vd.docId WHERE d.cap = 'a'` | **`[]`** —— SQL 的 JOIN 是**后过滤**,两条全被筛掉 |
+| `docId IN (SELECT docId FROM docs WHERE cap = 'a')` | **docId 4, 5** —— vec0 把它**下推进 KNN 扫描** |
+
+所以实现走 `IN (子查询)`,范围的 SQL 由 `SqliteIndex.compileVectorScope` 编译 —— **与词法路
+的 `buildScope` 是同一条编译**,两条召回路问索引的是同一句话。这一条不是优化,是正确性:
+`k = limit × 4` 再回来筛的那种写法会让授权范围外的候选先占掉名额。
+
+**KNN 没有下限**(施工时量出来的,原方案没写):`k = 5` 答的永远是最近的五条,哪怕全都
+不相关 —— 一间只有两条消息的 store 上,任何一句话都能把那两条召回来。机制上留了
+`maxDistance` 这一格,**今天故意不定值**:合适的阈值要拿真模型在真库上的读数定,而 e5 这类
+模型的余弦天生偏高、不相关的一对也常在 0.7 以上,凭空拍一个数会把该召回的也切掉。
+§13 有这一条待拍。
 
 ### 15.5 门
 
-- `gate:native`:扩展两运行时装载绿(§15.2)。
-- 黄金复述集 20 条(`core/search/__tests__/fixtures/paraphrase.json`,从脱敏语料里人工写:「谁拿到了牌」→ 期望命中含「私发」「身份牌」那几条),向量路 top-5 必中;词法路对同一集合允许零命中(那正是它存在的理由)。
-- parity-B 绿(词法路未动);事件循环门在冷嵌期间绿;`gate:packaged` 断言 `vector === 'ready'`(开关打开、模型预置在测试 store 里,不真下载)。
+- **`gate:native`**:6 个目标 0 失败,`sqlite-vec` 那一列在两个运行时下真装真跑
+  (`vec_version()` = `v0.1.9`)。反证:把 Electron 那一列跳过 → 当场 1 红。
+- **黄金复述集 20 条**(`packages/core/search/__tests__/fixtures/paraphrase.json`):从脱敏
+  语料人工写的改写句 → 期望键。卷子在
+  `packages/onething-runtime/src/search/index/__tests__/semantic.test.ts`(隔壁就是
+  `corpus.test.ts`),跑的是**真 `SqliteIndex` + 真 sqlite-vec + 假嵌入器**:
+  - ① 向量路 top-5 **20/20 必中**;
+  - ② 同一批查询,**词法路严格档 0/20**(最松那一档 11/20,只记读数不断言 —— 中文改写句
+    与原文难免共用一两个二元词元,而 §15.4 让向量路从 ② 起才加入,判的本来就不是那一档);
+  - ③ 授权是查询的输入(范围外的候选不占名额;空范围 = 空集,不是全库);
+  - ④ 换 `embeddingModelId` → 向量清空、词法路命中数逐字不变、重嵌之后复述集又回来;
+  - ⑤ 召回器 id 只有一个产地。
+  - 现场读数:2000 份文档 → **4016 段**,重嵌一遍 7.2s(假嵌入器)。
+- **`paraphrase.json` 是一份数据两个读者**:`cases` 是卷子,`synonyms` 是**假嵌入器的映射
+  表**。所以这张卷子证的是**链路**(切段 → 写 `vec_docs` → 查询嵌入 → KNN → 授权 → 融合 →
+  出候选)**不是模型**;模型本身的召回质量由真机冒烟说话。
+- **`search:parity-B` 绿**(词法路未动),三趟读数与 S3c 逐字相同。反证:把 messages 的
+  `relax` 关掉 → **27 红**。
+- **`gate:search-index` 八条绿**(⑧ 是 S7 新加的):开关经 `settings.json` 打开、
+  `ONETHING_SEARCH_EMBEDDER=fake` 换掉 modelId、同义表由
+  `ONETHING_SEARCH_EMBEDDER_FAKE_TABLE` 指向复述集 → `status.vector` 走
+  `embedding → ready`(196ms)、`vectorPending` 归零、复述集那条改写句 **7ms 经 HTTP 命中**、
+  两条改写句**各把自己那条排第一**(区分度)。⑤ 三个窗口的事件循环读数不劣化
+  (⑤a p99 1.356ms / ⑤b 5.583ms / ⑤c 1.79ms)。
+- **`gate:packaged` 的断言改了**(相对方案原文):原来写「开关打开、模型预置在测试 store
+  里,断言 `vector === 'ready'`」。落地改成**两格分开**:①`vector === 'off'`(拍点壬 a 的
+  默认档 —— 打包 app 不许自作主张去下 110MB 模型,这一条守的正是「默认关」本身);
+  ②`vectorExtension === 'loadable'`(装配时用一个 `:memory:` 库探一次)。**理由**:真 app
+  里没有假嵌入器,打开开关就等于让这道门依赖网络、而且第一次跑要几分钟;探针与开关分成
+  两格之后,「asarUnpack 漏了」在**默认档**上就抓得到,比原来那句更早。
 - 反证见 §11 S7。
+
+### 15.6 与方案的出入(逐条)
+
+| 方案原文 | 落地 | 为什么 |
+| --- | --- | --- |
+| `vec_docs(docId INTEGER PRIMARY KEY, chunk, embedding)` | `vec_docs_384(embedding float[384], docId integer, chunk integer)`,docId **不是主键** | 一份文档多段,docId 不唯一;两列做 vec0 的**元数据列**才能进 `WHERE`。表名带维数是因为 vec0 的维度写死在建表语句里,换维度就得换表 |
+| `VectorIndex.search(embedding, k, filter?: (doc) => boolean)`(S1 定的形) | `search(embedding, k, scope?: { capability, filters })` | 谓词是**结果过滤**,而 §6.4b 立的法是「授权是查询的输入」——闭包过不了 SQL 的 WHERE。改成与词法路同形的 facet 表 |
+| `retrievers?: { vector?: { when } }` | `retrievers?: Record<string, RetrieverPolicy>` | 键写成「vector」就是在 core 里点名一条召回路。改成按召回器 id 索引之后,加第三条召回路是这张表多一行,core 一个字不改 |
+| `gate:packaged` 断言 `vector === 'ready'` | 断言 `vector === 'off'` + `vectorExtension === 'loadable'` | 见 §15.5 那条 |
+| 「开关保存后重读」 | **装配时读一次**,改开关下次起 core 才生效 | `workerData` 在 `new Worker(...)` 那一刻定死,热换开关要换一条 Worker,而那要一格装配级可变状态 —— `assembly:gate` 正是立来禁这个的。开关默认关,所以延迟只影响「刚打开的那一次」。§13 有这一条 |
+| (方案没提) | `RetrieverPolicy.maxDistance` | KNN 没有下限,见 §15.4 末段 |
+| (方案没提) | `status` 多两格:`vectorPending` / `vectorExtension` | 前者与 `pending` 同一种诚实(那一格数会话,这一格数文档);后者是 `gate:packaged` 在默认档上唯一能问的东西 |

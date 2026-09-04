@@ -358,6 +358,19 @@ export interface SearchStatusResponse {
    * 索引问不出来(没有索引 / 崩了)时缺席 —— 缺席 = 不知道,不是 0。
    */
   docs?: number
-  /** 语义召回(S7)的状态;`'off'` = 没开。 */
+  /** 语义召回(S7,§15)的状态;`'off'` = 开关关着 / 装不上扩展 / 自己关回去了。 */
   vector?: 'off' | 'downloading' | 'embedding' | 'ready'
+  /**
+   * 还有几份文档没嵌进去(S7)。与 `pending` 是同一种诚实的两半:那一格数的是
+   * 「还没折进倒排的会话」,这一格数的是「还没嵌进向量的文档」。
+   */
+  vectorPending?: number
+  /**
+   * **这份产物装得上 sqlite-vec 扩展吗**(S7)—— 与「开关开没开」是两件事。
+   *
+   * 它存在的理由只有一个:`gate:packaged` 要在**开关关着的默认档**上证明
+   * `electron-builder.yml` 里 `asarUnpack` 那一行没漏。等用户去设置里打开才发现
+   * 装不上就晚了。装配时探一次(一个 `:memory:` 库,不碰真库),此后是常量。
+   */
+  vectorExtension?: 'loadable' | 'missing'
 }

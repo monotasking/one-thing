@@ -40,7 +40,7 @@ import {
   type PreviewPayload,
   type SearchCapability,
 } from '@onething/core/search'
-import { createSqliteLexicalRetriever } from '../index/service.js'
+import { createSqliteLexicalRetriever, createSqliteVectorRetriever } from '../index/service.js'
 import type { OnethingSearchMessage, OnethingSearchProvidersAdapters } from '../providers.js'
 import {
   createSessionShellLookup,
@@ -71,7 +71,9 @@ export const messagesSearchManifest: CapabilityManifest = {
   icon: 'MessagesSquare',
   kind: 'indexed',
   schema: {
-    content: { analyzer: 'composite', weight: 1 },
+    // `embed: true`(S7)= 这一格进向量索引。**只有正文** —— 附件名是文件名不是
+    // 句子,推理段默认根本不产(拍点乙 a),两样都没有「改写句能对上」的语义。
+    content: { analyzer: 'composite', weight: 1, embed: true },
     attachments: { analyzer: 'composite', weight: 1 },
     reasoning: { analyzer: 'composite', weight: 0.6 },
   },
@@ -89,6 +91,11 @@ export const messagesSearchManifest: CapabilityManifest = {
   // `title` 这一格,声明它等于写一句永不触发的假话(S3b 删)。要「标题命中置顶」就
   // 得先让投影器把会话标题写进消息文档 —— 那是另一件事,没做就别在自述里说。
   ranking: { halfLifeDays: 30, boosts: { role: { user: 1.1 } } },
+  // **向量路什么时候跑**(§15.4,数据不是 if):词法严格档零命中、走到放宽阶梯 ②
+  // 及以后才加这一路 —— 查询嵌入本身 ~40ms,命令面板边打边出的预算容不下它,而
+  // 「词法严格档已经有答案」的时候本来也不需要它。
+  retrievers: { vector: { when: 'relaxed' } },
+  // 用户什么都看得见(§6.4b 的缺省);agent 那一支是 S6(拍点辛)。
   // 谁能看见哪几条会话(§6.4b):用户全可见,agent 走拍点辛 a(当前空间的非协作
   // 会话 + 自己是成员的房),插件只见自己产的(今天是零条)。判据在装配层注入的
   // 端口后面 —— **这份自述里没有「协作」这个词**,它只说「范围按 sessionId 收」。
@@ -171,6 +178,43 @@ export function createMessagesSearchCapability(
         const messageId = doc.key.slice(sessionId.length + 1)
         const role = typeof doc.facets.role === 'string' ? doc.facets.role : ''
         const snippet = snippetOf(doc.fields.content ?? '', hit.matched)
+        const session = sessionOf(sessionId)
+
+        const legacy: SearchServiceResult = {
+          id: `msg:${sessionId}:${messageId}`,
+          type: 'message',
+          title: snippet.text,
+          subtitle: session?.name || 'New Chat',
+          detail: role === 'user' ? 'User message' : 'Assistant message',
+          sessionId,
+          messageId,
+          timestamp: doc.time,
+          matchRanges: snippet.ranges,
+        }
+        const candidate: LegacyBackedCandidate = {
+          capability: messagesSearchManifest.id,
+          id: legacy.id,
+          title: legacy.title,
+          subtitle: legacy.subtitle,
+          ranges: snippet.ranges,
+          score,
+          time: doc.time,
+          target: { kind: 'message', payload: { sessionId, messageId } } satisfies MessageTarget,
+          facets: doc.facets,
+          legacy,
+        }
+        return candidate
+      },
+    }), createSqliteVectorRetriever({
+      manifest: messagesSearchManifest,
+      service: tracked.face,
+      // 向量路没有「命中词」,所以摘要开在正文开头那一扇窗上(`matched` 空 →
+      // `snippetOf` 退回开头那一段,那不是错,见它的注释)。
+      toCandidate({ doc, score }) {
+        const sessionId = typeof doc.facets.sessionId === 'string' ? doc.facets.sessionId : ''
+        const messageId = doc.key.slice(sessionId.length + 1)
+        const role = typeof doc.facets.role === 'string' ? doc.facets.role : ''
+        const snippet = snippetOf(doc.fields.content ?? '', [])
         const session = sessionOf(sessionId)
 
         const legacy: SearchServiceResult = {

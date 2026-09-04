@@ -56,6 +56,18 @@ export type { DailyNotesFeedOptions } from './daily-feed.js'
 export { defaultDocumentFilters, exclusionFilter, redactionFilter } from './filters.js'
 export type { ExclusionPredicate } from './filters.js'
 
+export {
+  SqliteVectorIndex,
+  attachVectorIndex,
+  probeSqliteVecExtension,
+  sqliteVecExtensionPath,
+  vecTableName,
+} from './sqlite-vec.js'
+export type { SqliteVecOpenOptions, SqliteVectorIndexOptions } from './sqlite-vec.js'
+
+export { EMBED_BATCH_SIZE, VectorWriter } from './vector-writer.js'
+export type { VectorState, VectorWriterIndexFace, VectorWriterOptions } from './vector-writer.js'
+
 export { ENQUEUE_DEBOUNCE_MS, IndexWorkerCore } from './worker-core.js'
 export type {
   IndexEndpoint,
@@ -63,6 +75,8 @@ export type {
   IndexSearchRequest,
   IndexSearchResult,
   IndexStatus,
+  IndexVectorSearchRequest,
+  IndexVectorSearchResult,
   IndexWorkerCoreOptions,
   IndexWorkerRequest,
   IndexWorkerResponse,
@@ -72,7 +86,15 @@ export type {
 export { IndexWorkerHost, IndexWorkerUnavailableError, MAX_CONSECUTIVE_CRASHES } from './worker-host.js'
 export type { IndexWorkerFactory, IndexWorkerHandle } from './worker-host.js'
 
-export { SearchIndexService, createSqliteLexicalRetriever } from './service.js'
-export type { SearchIndexServiceOptions, SqliteLexicalRetrieverOptions } from './service.js'
+export {
+  SearchIndexService,
+  createSqliteLexicalRetriever,
+  createSqliteVectorRetriever,
+} from './service.js'
+export type {
+  SearchIndexServiceOptions,
+  SqliteLexicalRetrieverOptions,
+  SqliteVectorRetrieverOptions,
+} from './service.js'
 
 export type { IndexWorkerData } from './worker-data.js'

@@ -22,6 +22,8 @@ import type {
   IndexEndpoint,
   IndexSearchRequest,
   IndexSearchResult,
+  IndexVectorSearchRequest,
+  IndexVectorSearchResult,
   IndexStatus,
   IndexWorkerRequest,
   IndexWorkerResponse,
@@ -100,6 +102,15 @@ export class IndexWorkerHost {
     return await this.send({ type: 'query', request }) as IndexSearchResult
   }
 
+  /**
+   * 向量召回(S7)。Worker 崩了那一支答「向量路不可用」而不是零命中 —— 与词法路
+   * 的 `mode: 'error'` 同一种诚实。
+   */
+  async vectorSearch(request: IndexVectorSearchRequest): Promise<IndexVectorSearchResult> {
+    if (this.dead) return { hits: [], docs: [], generation: 0, unavailable: 'off' }
+    return await this.send({ type: 'vector-query', request }) as IndexVectorSearchResult
+  }
+
   async enqueue(feedId: string, key: string, hint?: unknown): Promise<void> {
     await this.send({ type: 'enqueue', feedId, key, ...(hint !== undefined ? { hint } : {}) })
   }
@@ -118,7 +129,10 @@ export class IndexWorkerHost {
    */
   async status(): Promise<IndexStatus> {
     if (this.dead) {
-      return { mode: 'error', docs: 0, pending: 0, refolds: 0, building: false, generation: 0, errors: [], feeds: [] }
+      return {
+        mode: 'error', docs: 0, pending: 0, refolds: 0, building: false, generation: 0,
+        errors: [], feeds: [], vector: 'off', vectorPending: 0, vectorExtension: 'missing',
+      }
     }
     return await this.send({ type: 'status' }) as IndexStatus
   }

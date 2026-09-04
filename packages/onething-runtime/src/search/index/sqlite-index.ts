@@ -55,7 +55,7 @@
 import { createRequire } from 'node:module'
 import type { DatabaseSync, StatementSync } from 'node:sqlite'
 
-import type { FacetFilter, FacetValue, FieldSchema } from '@onething/core/search'
+import type { FacetFilter, FacetValue, FieldSchema, VectorSearchScope } from '@onething/core/search'
 import type {
   DocPayload,
   DocTable,
@@ -75,6 +75,8 @@ import {
   createDefaultAnalyzerRegistry,
 } from '@onething/core/search'
 import type { AnalyzerRegistry } from '@onething/core/search'
+
+import { SqliteVectorIndex, attachVectorIndex, probeSqliteVecExtension } from './sqlite-vec.js'
 
 /** §5.5:单文档字段上限,超出只索引前这么多字,文档标 truncated。 */
 export const DEFAULT_MAX_FIELD_CHARS = 200_000
@@ -153,6 +155,11 @@ export interface SqliteIndexOptions {
   normalize?: (text: string) => { text: string }
   /** 库头 `meta.analyzerId`;与库里记的不符 → 丢库重建。 */
   analyzerId?: string
+  /**
+   * 语义召回(S7)。**缺席 = 连扩展都不装**:开关关着的时候库就该跟 S3 那时逐字
+   * 一样,少一个默认打开的口子。`dims` 由嵌入器说,不写死。
+   */
+  vector?: { dims: number }
 }
 
 interface DocRow {
@@ -181,6 +188,10 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
   private readonly schemas = new Map<string, Record<string, FieldSchema>>()
   private readonly slots = new Map<string, number>()
   private readonly statements = new Map<string, StatementSync>()
+  /** 装上了就有,装不上就没有(`sqlite-vec.ts` 文件头第二节)。 */
+  readonly vector: SqliteVectorIndex | undefined
+  /** 扩展本身装不装得上 —— 与「开关开没开」是两件事(`gate:packaged` 读它)。 */
+  readonly vectorExtension: 'loadable' | 'missing'
   private writesSinceCheckpoint = 0
   private generationValue = 0
   private closed = false
@@ -190,7 +201,10 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
     this.analyzers = options.analyzers ?? createDefaultAnalyzerRegistry()
     this.maxFieldChars = options.maxFieldChars ?? DEFAULT_MAX_FIELD_CHARS
     this.normalize = options.normalize ?? composeNormalizers(DEFAULT_NORMALIZERS)
-    this.db = new DatabaseSyncCtor(options.path)
+    // `allowExtension` 只在真要装向量扩展时才开(见 `SqliteIndexOptions.vector`)。
+    this.db = options.vector === undefined
+      ? new DatabaseSyncCtor(options.path)
+      : new DatabaseSyncCtor(options.path, { allowExtension: true })
     // WAL:读者与写者互不阻塞(§5.4 / §5.6 那张表的前提)。内存库上是空操作。
     this.db.exec('PRAGMA journal_mode = WAL')
     this.db.exec('PRAGMA synchronous = NORMAL')
@@ -199,6 +213,29 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
     this.generationValue = Number(this.readMeta('generation') ?? '0')
     this.writeMeta('version', SQLITE_INDEX_SCHEMA_VERSION)
     if (options.analyzerId !== undefined) this.writeMeta('analyzerId', options.analyzerId)
+
+    if (options.vector === undefined) {
+      this.vector = undefined
+      // 开关关着也要答得出「装得上吗」:探针自己开一个内存库,不碰真库。
+      this.vectorExtension = probeSqliteVecExtension(
+        probeOptions => new DatabaseSyncCtor(':memory:', probeOptions),
+      )
+    } else {
+      this.vector = attachVectorIndex({
+        db: this.db,
+        dims: options.vector.dims,
+        compileScope: scope => this.compileVectorScope(scope),
+      })
+      this.vectorExtension = this.vector === undefined ? 'missing' : 'loadable'
+    }
+  }
+
+  /**
+   * 一个向量范围 → `docs` 表上的 WHERE 片段(别名 `d`)。与词法路的 `buildScope`
+   * **同一条编译**:两条召回路问索引的是同一句话,授权才不会在其中一条上漏掉。
+   */
+  compileVectorScope(scope: VectorSearchScope): { sql: string; params: SqlValue[] } | null {
+    return this.buildScope({ capability: scope.capability, filters: scope.filters } as LexicalQuery)
   }
 
   // ---- 库头 -------------------------------------------------------------
@@ -358,6 +395,12 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
     const rows = this.prepare('SELECT * FROM docs WHERE capability = ? AND key = ? ORDER BY docId')
       .all(capability, key) as unknown as DocRow[]
     return rows.map(toIndexedDoc)
+  }
+
+  /** 全库的 docId。**只有换模型全量重嵌那一条路读它**(§5.4),不是热路径。 */
+  allDocIds(): number[] {
+    return (this.prepare('SELECT docId FROM docs ORDER BY docId').all() as Array<{ docId: number }>)
+      .map(row => Number(row.docId))
   }
 
   size(): number {
@@ -673,6 +716,9 @@ export class SqliteIndex implements InvertedIndex, DocTable, LexicalSearcher, In
     for (const row of rows) {
       const base = row.docId * FIELD_SLOTS
       deleteFts.run(base, base + FIELD_SLOTS - 1)
+      // 文档没了,它的那几段向量也没了 —— 少这一句就会攒出一堆指向空文档的段,
+      // KNN 把它们当候选、`docs.get()` 又答不出来,于是名额被白白占掉。
+      this.vector?.remove(row.docId)
       deleteFacets.run(row.docId)
       deleteFields.run(row.docId)
       deleteEdges.run(row.docId)

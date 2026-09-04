@@ -74,7 +74,8 @@ export const dailySearchManifest: CapabilityManifest = {
   kind: 'indexed',
   schema: {
     title: { analyzer: 'composite', weight: 2 },
-    content: { analyzer: 'composite', weight: 1 },
+    // `embed: true`(S7):笔记正文是成段的话,改写句对得上(§15.3)。
+    content: { analyzer: 'composite', weight: 1, embed: true },
   },
   facets: [
     { key: 'path', type: 'enum' },
@@ -84,6 +85,8 @@ export const dailySearchManifest: CapabilityManifest = {
   order: 3,
   orderWhenIntent: { actions: 4 },
   ranking: { pinFieldHit: 'title' },
+  // 与 messages 同一条判据:词法严格档零命中、放宽到 ② 及以后才加向量路(§15.4)。
+  retrievers: { vector: { when: 'relaxed' } },
   visibility: () => ({}),
   // **lazy**:要读一次文件。随候选带就是一次 `all` 档读六个文件。
   preview: { mode: 'lazy' },

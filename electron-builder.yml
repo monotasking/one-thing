@@ -38,8 +38,36 @@ files:
   - "!**/*.{d.ts,map,ts.map}"
   - "!**/test{,s}/**"
   - "!**/.{eslint,prettier,github,vscode}*"
-  # onnxruntime-web is not needed in Electron main process
-  - "!node_modules/onnxruntime-web"
+  # 语义召回(检索重建 S7)的**运行时**不进桌面打包档 —— 09-05 编排者按
+  # `docs/design/search-index-2026-09.md` §0 拍点癸' 的 (c) 落地的**保守缺省,待用户拍**。
+  #
+  # 事实(09-05 同机同一份构建产物、只换这几行,两趟 `electron-builder --dir` 的
+  # `du -sh` 读数):`@huggingface/transformers` 48M,装它顺带把 `onnxruntime-node`
+  # 212M / `onnxruntime-web` 92M / `sharp` 0.9M + `@img/*` 16M 拖进 node_modules。
+  # **全打进去 `onething.app` 565M,按这几行排除掉是 309M**(差 256M;剩下的大头是
+  # Electron Framework 本身 260M,那一份谁也去不掉)。
+  # 而其中「不打反而更诚实」的一半是:嵌入器写死 `device: 'wasm'`,**只有
+  # onnxruntime-web 那一份有用**,而它早在 S7 之前就被这里的一行排除了(旧注释写
+  # 「主进程用不着」)—— 于是 S7 交卷那一刻打包档里躺着的是**用不上的 212M** 加
+  # **唯独缺的那一份**:多背两百多兆,还是跑不起来。
+  # `sharp` / `@img/*` 是 transformers 的图像分支,产品从不走(没有一处 `import 'sharp'`)。
+  # (`@huggingface/jinja` 是纯 JS 的模板件、十几个文件,留着无害,没排。)
+  #
+  # 三条路,选定之后改的就是下面这几行(**没有人拍板之前一条都不选**):
+  #  (a) 解包 onnxruntime-web 的 wasm(app 从 309M 涨到约 400M,换来打包档能跑语义召回);
+  #  (b) 改用 onnxruntime-node(拍点癸 b,+212M;它是 N-API、已过 `gate:native`,
+  #      但与癸 a 的「零原生」相反);
+  #  (c) **今天这条** —— 语义召回只在 dev / server / CLI 上供应,桌面档不带运行时。
+  # (c) 下打包 app 的行为由门钉死:`gate:packaged` ④-c 判 `search.status.vector === 'off'`
+  # 且 `vectorExtension === 'loadable'`。开关就算被打开,`import('@huggingface/transformers')`
+  # 抛 → `VectorWriter.markOff` 把 `status.vector` 钉成 `'off'` 并 **warn 一条**,
+  # 词法路一个字不受影响(用例:`search/embedding/__tests__/missing-runtime.test.ts`)。
+  - "!**/node_modules/@huggingface/transformers/**"
+  - "!**/node_modules/onnxruntime-node/**"
+  - "!**/node_modules/onnxruntime-web/**"
+  - "!**/node_modules/onnxruntime-common/**"
+  - "!**/node_modules/sharp/**"
+  - "!**/node_modules/@img/**"
 
 # Native sherpa-onnx addon and its dylibs must stay on disk (loaded via
 # process dlopen; the darwin package already carries an @loader_path rpath).
@@ -58,6 +86,19 @@ asarUnpack:
   # 这一句由 `gate:packaged` 证(打包后经 /api/rpc 问 search.status,mode 必须是
   # 'owner';worker 起不来那里会答 'error'),不靠这行注释成立。
   - "apps/desktop-react/dist-electron/search-worker.cjs"
+  # 语义召回的 SQLite 扩展(检索重建 S7)。两条理由都要解包:
+  #  ① `loadExtension` 走的是系统的 dlopen,asar 里那条路径它打不开;
+  #  ② macOS 硬化运行时下**未签名的 dylib 装载会失败**,而 electron-builder 只对
+  #     解包出来的 Mach-O 签名。
+  # 这两句由门证,不靠这段注释:`gate:native` 判它在两个运行时下装得上,
+  # `gate:packaged` 判打包 app 起来后 `search.status().vectorExtension === 'loadable'`
+  # (**开关关着也要答得出** —— 等用户去设置里打开才发现漏了解包就晚了)。
+  - "**/node_modules/sqlite-vec/**"
+  - "**/node_modules/sqlite-vec-darwin-arm64/**"
+  - "**/node_modules/sqlite-vec-darwin-x64/**"
+  - "**/node_modules/sqlite-vec-linux-x64/**"
+  - "**/node_modules/sqlite-vec-linux-arm64/**"
+  - "**/node_modules/sqlite-vec-windows-x64/**"
 
 # Extra resources to include (copied to resources/ in the app bundle)
 extraResources:

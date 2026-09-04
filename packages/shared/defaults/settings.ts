@@ -14,6 +14,7 @@ import type {
   NetworkSettings,
   PluginPreferences,
 } from '../ipc/settings.js'
+import { DEFAULT_SEMANTIC_MODEL_ID } from '../ipc/settings.js'
 import type { VoiceSettings } from '../ipc/voice.js'
 import type { MusicRadioSource, MusicSettings } from '../ipc/music.js'
 import type { ProviderConfig, EffectiveAISettings } from '../ipc/providers.js'
@@ -544,6 +545,8 @@ export function createDefaultSettings(): AppSettings {
     acp: JSON.parse(JSON.stringify(DEFAULT_ACP_SETTINGS)),
     plugins: JSON.parse(JSON.stringify(DEFAULT_PLUGIN_PREFERENCES)),
     diagnostics: { enabled: false },
+    // 语义召回:默认关(拍点壬 a)。打开才下载模型。
+    search: { semantic: { enabled: false, modelId: DEFAULT_SEMANTIC_MODEL_ID } },
   }
 }
 
@@ -659,6 +662,14 @@ export function mergeWithDefaults(settings: Partial<AppSettings>): AppSettings {
     // 诊断模式:默认关。显式归一而不是直接透传 —— 白名单式重建漏掉的键会被
     // 静默丢弃,而这一格的"丢弃"意味着用户打开的诊断模式下次启动就没了。
     diagnostics: { enabled: settings.diagnostics?.enabled === true },
+    // 与 diagnostics 同一条理由:白名单式重建漏掉的键会被静默丢弃,而这一格的
+    // 「丢弃」意味着用户打开的语义召回下次启动就没了。
+    search: {
+      semantic: {
+        enabled: settings.search?.semantic?.enabled === true,
+        modelId: settings.search?.semantic?.modelId || DEFAULT_SEMANTIC_MODEL_ID,
+      },
+    },
   }
 
   // 历史脏键 `localAddress`(剥在这里 + 剥在 `providers.json` 的写入归一里,

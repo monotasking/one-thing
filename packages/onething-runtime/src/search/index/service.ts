@@ -23,10 +23,24 @@ import type {
   SearchQuery,
   TextRange,
 } from '@onething/core/search'
-import type { IndexedDoc, LexicalHit } from '@onething/core/search'
-import { applyRanking, collectQueryTerms, fieldWeights } from '@onething/core/search'
+import type { IndexedDoc, LexicalHit, VectorHit } from '@onething/core/search'
+import {
+  VECTOR_RETRIEVER_ID,
+  applyRanking,
+  collectQueryTerms,
+  fieldWeights,
+  nearestPerDoc,
+  queryTextOf,
+  scoreOfDistance,
+} from '@onething/core/search'
 
-import type { IndexSearchRequest, IndexSearchResult, IndexStatus } from './worker-core.js'
+import type {
+  IndexSearchRequest,
+  IndexSearchResult,
+  IndexStatus,
+  IndexVectorSearchRequest,
+  IndexVectorSearchResult,
+} from './worker-core.js'
 import type { IndexWorkerFactory } from './worker-host.js'
 import { IndexWorkerHost } from './worker-host.js'
 
@@ -52,6 +66,11 @@ export class SearchIndexService {
 
   search(request: IndexSearchRequest): Promise<IndexSearchResult> {
     return this.host.search(request)
+  }
+
+  /** 向量召回(S7)。查询嵌入也在 Worker 里做 —— 主线程不碰 wasm(§15.2)。 */
+  vectorSearch(request: IndexVectorSearchRequest): Promise<IndexVectorSearchResult> {
+    return this.host.vectorSearch(request)
   }
 
   /** 观察者那一路的入口:一条事件喊一声 key(§5.3)。 */
@@ -149,4 +168,87 @@ function queryRangesFor(query: SearchQuery, hit: LexicalHit): TextRange[] {
   return [...terms, ...phrases]
     .filter(entry => [...matched].some(term => entry.text.includes(term)))
     .map(entry => entry.range)
+}
+
+
+export interface SqliteVectorRetrieverOptions {
+  manifest: CapabilityManifest
+  service: Pick<SearchIndexService, 'vectorSearch'>
+  /** 候选长什么样是**能力**的事;core 不发明任何 target kind。 */
+  toCandidate(context: {
+    doc: IndexedDoc
+    hit: VectorHit
+    score: number
+    ctx: SearchContext
+  }): Candidate
+  /**
+   * KNN 取几条。缺省 = `offset + limit`。**不放大** —— 授权是 `docId IN (子查询)`
+   * 下推进 KNN 的(见 `sqlite-vec.ts` 的读数表),范围外的候选根本不占名额,所以
+   * 不需要「多取几条再筛」那种补偿。
+   */
+  overfetch?: number
+  now?: () => number
+}
+
+/**
+ * 索引型能力的**向量召回路**(S7)—— 与 `createSqliteLexicalRetriever` 同一个位置的
+ * 第二条路,区别只有一处:它问的是 `vec_docs` 的 KNN,不是倒排。
+ *
+ * 与 core 的 `createVectorRetriever` 是同一份判据的两种装法(那一份认同步的
+ * `VectorIndex`,单测用;这一份走 postMessage,真宿主用),三件共用的算术
+ * ——`nearestPerDoc` / `scoreOfDistance` / `applyRanking`——都从 core 取,不在这边
+ * 抄第二遍。
+ *
+ * **跑不跑不由它决定**:`indexedCapability` 读 `manifest.retrievers.vector.when`
+ * 决定这一次要不要调它(§15.4)。它被调到了就老实答,答不了就答空 + 一句 explain。
+ */
+export function createSqliteVectorRetriever(options: SqliteVectorRetrieverOptions): Retriever {
+  const manifest = options.manifest
+  const now = options.now ?? (() => Date.now())
+
+  return {
+    id: VECTOR_RETRIEVER_ID,
+    async retrieve(query: SearchQuery, ctx: SearchContext, page): Promise<RetrievedPage> {
+      const text = queryTextOf(query)
+      if (text.length === 0) return { items: [] }
+
+      const request: IndexVectorSearchRequest = {
+        capability: manifest.id,
+        text,
+        ...(query.filters !== undefined ? { filters: query.filters } : {}),
+        k: options.overfetch ?? (page.limit + page.offset),
+      }
+      const result = await options.service.vectorSearch(request)
+      // 向量路没准备好 = 这一路没有话说,不是「零命中」。融合那边少一路而已。
+      if (result.unavailable !== undefined && result.hits.length === 0) return { items: [] }
+
+      const byDocId = new Map(result.docs.map(doc => [doc.docId, doc]))
+      const at = now()
+      const items: Candidate[] = []
+      // 距离上限由**能力自述**(`manifest.retrievers.vector.maxDistance`);缺席 =
+      // 不设限,那正是今天的默认档(理由见 core 那一格的注释与 §13 留账)。
+      const ceiling = manifest.retrievers?.[VECTOR_RETRIEVER_ID]?.maxDistance
+      const within = nearestPerDoc(result.hits)
+        .filter(hit => ceiling === undefined || hit.distance <= ceiling)
+      for (const hit of within.slice(page.offset, page.offset + page.limit)) {
+        const doc = byDocId.get(hit.docId)
+        if (doc === undefined) continue
+        const base = scoreOfDistance(hit.distance)
+        // 与词法路同一只打分器。`fields: []` —— 向量路不说命中落在哪个字段,
+        // 于是 `pinFieldHit` 天然不触发。
+        const score = applyRanking(
+          { docId: hit.docId, score: base, matched: [], fields: [] },
+          doc,
+          manifest.ranking,
+          at,
+        )
+        const candidate = options.toCandidate({ doc, hit, score, ctx })
+        items.push(ctx.debug === true
+          ? { ...candidate, explain: { retriever: VECTOR_RETRIEVER_ID, distance: hit.distance, base, score } }
+          : candidate)
+      }
+      // `total` 不给:KNN 数不出「一共有多少条相似的」(§7.3 不知道就别给)。
+      return { items }
+    },
+  }
 }
