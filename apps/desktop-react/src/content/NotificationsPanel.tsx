@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../ui/Button'
 import { ButtonBase } from '../ui/ButtonBase'
 import { Segmented } from '../ui/Segmented'
@@ -12,7 +12,7 @@ import { usePanelVisibility } from './visibility'
 import { COPY_FEEDBACK_MS } from '../components/motion'
 import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
-import type { MessageKey } from '../i18n'
+import type { MessageKey, TFn } from '../i18n'
 import s from './NotificationsPanel.module.css'
 
 /**
@@ -148,6 +148,14 @@ export function NotificationsPanel() {
     if (visible && interactive) act()
   }, [visible, interactive, act, items])
 
+  /*
+   * 点开 / 收起一行的**身份恒定**回调 —— 行是 memo 的(见文件末尾),就地闭包
+   * 每渲染一次换一个身份,memo 当场作废。id 由行自己交回来。
+   */
+  const toggleOpen = useCallback((id: string) => {
+    setOpenId((current) => (current === id ? null : id))
+  }, [])
+
   const shown = useMemo(() => filterRecords(items, filter), [items, filter])
   // 「今天」的边界在整个面板里取一次:同一屏里两行不该因为渲染差了几毫秒而落进不同的天。
   const groups = useMemo(() => groupByDay(shown, Date.now()), [shown])
@@ -158,7 +166,7 @@ export function NotificationsPanel() {
   }))
 
   return (
-    <div className={s.panel}>
+    <div className={s.panel} data-testid="notifications-panel">
       <div className={s.head}>
         <h2 className={s.title}>{t('item.notifications')}</h2>
         <Segmented
@@ -194,28 +202,14 @@ export function NotificationsPanel() {
                 */}
               <h3 className={s.bucketLabel}>{t(BUCKET_LABELS[group.bucket])}</h3>
               {group.items.map((record) => (
-                <div key={record.id} className={s.item}>
-                  <ButtonBase
-                    className={s.row}
-                    aria-expanded={record.detail ? openId === record.id : undefined}
-                    onClick={() => setOpenId((id) => (id === record.id ? null : record.id))}
-                  >
-                    {/* 点旁边就是标题那句话,所以不给 label —— 给了读屏会念两遍。 */}
-                    <StatusDot tone={DOT_TONE[record.level]} className={s.levelDot} />
-                    <span className={record.read ? s.rowTitle : `${s.rowTitle} ${s.unread}`}>
-                      {record.title}
-                    </span>
-                    {record.count > 1 && (
-                      <span className={s.repeat}>{t('notify.repeat', { count: record.count })}</span>
-                    )}
-                    {record.body ? <span className={s.rowBody}>{record.body}</span> : null}
-                    <span className={s.source}>{record.source}</span>
-                    <span className={s.time}>{timeOf(record.time)}</span>
-                  </ButtonBase>
-                  {openId === record.id && record.detail ? (
-                    <pre className={s.detail}>{record.detail}</pre>
-                  ) : null}
-                </div>
+                <NotificationRow
+                  key={record.id}
+                  record={record}
+                  open={openId === record.id}
+                  onToggle={toggleOpen}
+                  timeOf={timeOf}
+                  t={t}
+                />
               ))}
             </section>
           ))
@@ -238,3 +232,55 @@ export function NotificationsPanel() {
     </div>
   )
 }
+
+/**
+ * **一行 = 一个 memo 组件**(09-03,`probe-notify` 的读数)。
+ *
+ * 病历:行从前内联在 `groups.map` 里,于是 `items` 一动(每一条 perf 读数都会
+ * 进档)或 `openId` 一动(点开一行),200 行**全部**重渲。真机读数:面板开着时
+ * 点开一行的「处理器 + 同步 flush」头几次 40–51ms(用户报的 46–65ms 就是这个形),
+ * 面板开着时连推 16 条超预算 longFrame 中位 22.7ms。
+ *
+ * 拆出来之后 props 只剩四格,三格是原始值/稳定引用(`record` 来自存档环,
+ * 环是 COW 的:没变的那条记录引用不变;`onToggle` / `timeOf` / `t` 都是 memo 过的),
+ * 于是**点开一行只重渲翻面的那两行,新来一条只重渲新那一行**。
+ *
+ * 内容、次序、读屏语义一个字都没动 —— 这是一次纯粹的边界搬迁。
+ */
+const NotificationRow = memo(function NotificationRow({
+  record,
+  open,
+  onToggle,
+  timeOf,
+  t,
+}: {
+  record: NotifyRecord
+  open: boolean
+  onToggle: (id: string) => void
+  timeOf: (time: number) => string
+  t: TFn
+}) {
+  return (
+    <div className={s.item}>
+      <ButtonBase
+        className={s.row}
+        data-testid="notify-row"
+        aria-expanded={record.detail ? open : undefined}
+        onClick={() => onToggle(record.id)}
+      >
+        {/* 点旁边就是标题那句话,所以不给 label —— 给了读屏会念两遍。 */}
+        <StatusDot tone={DOT_TONE[record.level]} className={s.levelDot} />
+        <span className={record.read ? s.rowTitle : `${s.rowTitle} ${s.unread}`}>
+          {record.title}
+        </span>
+        {record.count > 1 && (
+          <span className={s.repeat}>{t('notify.repeat', { count: record.count })}</span>
+        )}
+        {record.body ? <span className={s.rowBody}>{record.body}</span> : null}
+        <span className={s.source}>{record.source}</span>
+        <span className={s.time}>{timeOf(record.time)}</span>
+      </ButtonBase>
+      {open && record.detail ? <pre className={s.detail}>{record.detail}</pre> : null}
+    </div>
+  )
+})

@@ -111,7 +111,34 @@ function cachedNode(
   if (hit && hit.rev === node.rev && hit.epoch === epoch) return hit.message
   const message = materializeNode(node, options) as ProjectedMessage
   memos.set(node, { rev: node.rev, epoch, message })
+  stamps.set(message, `${message.id}@${node.rev}@${epoch}`)
   return message
+}
+
+/**
+ * 这条成品消息的**跨会话身份章**:`<消息 id>@<节点 rev>@<blob 世代>`。
+ *
+ * 上面那张 memo 表的键是**节点对象**,所以换会话(整份 state 换掉)之后它整片作废
+ * —— 这是对的(节点没了,成品也该没),但它连带把**下游按对象引用做的 memo**
+ * 一起打穿:`content/assemble` 的装配缓存就是那样一张 `WeakMap<ProjectedMessage,…>`,
+ * 于是「切回刚才那条会话」要把整篇 markdown 重新解析一遍(dev profile 里
+ * `MessageRow2` 的 47ms 几乎全是这一条链)。
+ *
+ * 章是一个**字符串**,所以它能被一张按字符串索引的表拿去当键、活过换会话。
+ * 三段各有产地、缺一不可:
+ *  · `message.id` —— 全仓唯一(账本里的消息 id),不必再拼会话 id;
+ *  · `node.rev` —— 唯一产地是归约器的 `forWrite`,「这条节点变过没有」由它回答;
+ *  · `epoch` —— 壳比后端多出来的那一格(blob 落盘会改成品而账本没动,见文件头)。
+ * 重折之后同一条消息拿到的 rev 与内容是同一份账本的确定性重放,所以同章 = 同内容。
+ *
+ * `mergeWater` 会为**活消息**造一个新对象(那是它该干的:内容真的变了),
+ * 那个对象不在这张表里 —— 于是流式那一条永远拿不到章,也就永远不会误用旧成品。
+ */
+const stamps = new WeakMap<ProjectedMessage, string>()
+
+/** 这条成品消息的身份章;`undefined` = 它不是账本投影的原样成品(活消息)。 */
+export function messageStamp(message: ProjectedMessage): string | undefined {
+  return stamps.get(message)
 }
 
 /** 逐条**引用**相同才算同一份 —— 值相等不算数,下游短路靠的就是引用。 */

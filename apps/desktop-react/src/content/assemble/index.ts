@@ -1,5 +1,6 @@
 import { perfSpan } from '../../services/perf'
 import type { ProjectedMessage } from '../../data/chat-fold'
+import { messageStamp } from '../../data/chat-materialize'
 import type { SegmentModel } from '../model/segments'
 import { anchorMessage } from './anchor'
 import { groupNodes } from './group'
@@ -29,14 +30,64 @@ import { presentResearchEpisode } from '../research/episode'
 
 const CACHE = new WeakMap<ProjectedMessage, SegmentModel[]>()
 
+/**
+ * ── 第二层:按**身份章**索引的 LRU(09-03)────────────────────────────────
+ *
+ * 上面那张 WeakMap 的键是消息**对象**,而换一次会话折叠器整份换掉(新 state、
+ * 新节点、新成品对象),于是它整片 miss —— 「切回刚才那条会话」要把整篇 markdown
+ * 重新解析一遍。dev profile 读数:一次常规档切换里 `MessageRow2` total 47.9ms,
+ * 其中 47ms 是 `assembleMessage → markdownToFrame → fromMarkdown`。
+ *
+ * 章由 `data/chat-materialize` 打:`<消息 id>@<节点 rev>@<blob 世代>`,三段都有
+ * 唯一产地(见那个文件里 `messageStamp` 的注)。**同章 = 同内容**,所以复用是
+ * 判据不是启发式;活消息(经 `mergeWater` 造出的新对象)拿不到章,永远走全算。
+ *
+ * 为什么不能也用 WeakMap:那正是第一层,它按对象活;这一层要活过换会话,
+ * 所以键必须是字符串,也因此必须自己封顶 —— `LRU_CAPACITY` 条(≈ 几本会话的
+ * 消息数),插入序即淘汰序(Map 保证),满了从最旧那头丢。
+ */
+const LRU_CAPACITY = 2000
+const LRU = new Map<string, SegmentModel[]>()
+
 export function assembleMessage(message: ProjectedMessage): SegmentModel[] {
   const cached = CACHE.get(message)
   if (cached) return cached
+  const stamp = messageStamp(message)
+  if (stamp !== undefined) {
+    const reused = LRU.get(stamp)
+    if (reused) {
+      // 命中即**提到队尾**(删了再插):LRU 的「最近用过」只有这一种写法。
+      LRU.delete(stamp)
+      LRU.set(stamp, reused)
+      CACHE.set(message, reused)
+      return reused
+    }
+  }
   // 打点埋在 **memo miss 那一路**:命中缓存的那条路是一次 WeakMap 查表,量它没有意义,
   // 而且活跃消息每帧都走这里 —— 「装配到底花了多少」正是要问的那个数。
   const segments = perfSpan('assemble', () => runPipeline(message))
   CACHE.set(message, segments)
+  if (stamp !== undefined) {
+    LRU.set(stamp, segments)
+    if (LRU.size > LRU_CAPACITY) {
+      const oldest = LRU.keys().next()
+      if (!oldest.done) LRU.delete(oldest.value)
+    }
+  }
   return segments
+}
+
+/** 测试口:清掉那张按章索引的表(WeakMap 那层跟着消息对象自己走,不必清)。 */
+export function __resetAssembleCacheForTests(): void {
+  LRU.clear()
+}
+
+/*
+ * 模块级可变状态 = 配一段 HMR 退役(09-01 立法)。热更换掉的是**装配管线本身**,
+ * 旧成品还留在表里就等于「新代码 + 旧产物」同屏。复用上面那一口拆卸,不写第二套。
+ */
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => __resetAssembleCacheForTests())
 }
 
 function runPipeline(message: ProjectedMessage): SegmentModel[] {

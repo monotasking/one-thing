@@ -2,7 +2,7 @@
 /**
  * 性能门(工程卫生批 ⑤)—— **脚本级,拒人肉 QA**。
  *
- * 别的门问「对不对」,这条门问「卡不卡」。三个场景,同一套量法:
+ * 别的门问「对不对」,这条门问「卡不卡」。五个场景,同一套量法:
  *
  *  ① **冷开会话总览**(种子 400 会话)—— 一次点击要画出几百张卡,是这块壳最重的
  *     一次首屏。判据:那一次交互的端到端时长 ≤ 冷开预算(coldOpenMs,一次性重交互
@@ -14,6 +14,19 @@
  *     不是 node 侧轮询(轮询间隔会直接变成误差下限)。
  *  ③ **5k 字消息流式回放** —— 从 HTTP 注入一条长消息,量它上屏那一段的帧。
  *     判据:稳态里不出超过 33ms(30fps 一帧)的帧。
+ *  ⑤ **常规档 ↔ 常规档 切会话 ×8**(09-03 渲染批补)—— 用户报「切会话卡 300ms」。
+ *     门自己种 3 条**常规档**会话(各 12 回合、每回合 ~4k 字回答 + 2 次工具调用,
+ *     账本 ≈ 0.5MB —— 与用户报障那条会话的可见正文量级相当;重档不进门,它是另一档)
+ *     再在它们之间来回切 8 次。①量的是「几百张卡的首屏」、②量的是「面板换人」,
+ *     **都不含「整棵消息树换一份」**—— 那正是这一格补的现场(病根三条见
+ *     clamp-measurer.ts / useChatToc.ts / assemble/index.ts)。
+ *     **真判据是强制排版次数,不是时间**(09-03 二修):改前改后的「按下→上屏」
+ *     p95 落在同一段抖动带里(154–238ms vs 154–204ms),拿它当红绿会闪红闪绿;
+ *     `forcedLayouts()` 数的是 trace 里 `Layout` 事件带着非空 `args.beginData.stackTrace`
+ *     的那种(DevTools 标「Forced reflow」的判据,见该函数注释),每次切换各圈自己的
+ *     窗口(`performance.mark('perf5:switch:<n>:start'/'end')`),取 8 次里的最大值,
+ *     判据 ≤ `sessionSwitchForcedLayouts`——这是一个整数计数,没有抖动。
+ *     时间 p95 ≤ `sessionSwitchMs` 仍然断言,但只当参考,不再是唯一红绿线。
  *  ④ **大会话 + 真流**(09-03 批 A 补,`docs/design/event-subscription-audience-2026-09.md` §6)
  *     —— 门自己**种**一条与用户报障同量级的会话(≥3000 账本行、≥20 次工具调用),
  *     再让一只假 provider 吐 50KB 带 ```html 围栏的回答 + 2 次工具调用。判据两条:
@@ -69,6 +82,8 @@ function readBudget() {
   return {
     interactionP95Ms: pick('interactionP95Ms'),
     coldOpenMs: pick('coldOpenMs'),
+    sessionSwitchMs: pick('sessionSwitchMs'),
+    sessionSwitchForcedLayouts: pick('sessionSwitchForcedLayouts'),
     longFrameMs: pick('longFrameMs'),
     streamFrameMs: pick('streamFrameMs'),
     streamOverBudgetFrames: pick('streamOverBudgetFrames'),
@@ -108,6 +123,16 @@ const LONG_MESSAGE = `性能门·长消息 ${'流式回放的稳态帧率是这�
  */
 const PERF4_MARKER = '@@perf4@@'
 const PERF4_SEED_MARKER = '@@perf4seed@@'
+/**
+ * 场景⑤的种子记号。**与大会话那一支分开**:两档的答案长度差 30 倍,混用一个记号
+ * 就只剩一档了。数值(3 条 × 12 回合 × 4k 字 + 每回合 2 次工具调用)照抄
+ * `probe-hotspots` 的「常规档」——归因读数就是在那一档上取的,门要量的是同一个现场。
+ */
+const PERF5_SEED_MARKER = '@@perf5seed@@'
+const PERF5_SESSIONS = 3
+const PERF5_TURNS = 12
+/** 场景⑤来回切几次。8 次 = 与 probe 的对照组逐字相同。 */
+const PERF5_SWITCHES = 8
 const PERF4_SENTINEL = 'PERF4ENDMARK'
 /**
  * core 侧滞后预算(ms)—— **判据是 node 侧那条 SSE 上哨兵到达的时刻**,不是屏幕上的。
@@ -171,6 +196,8 @@ const PERF4_ANSWER = buildPerf4Answer(true)
  * 回合数直接变成门的墙钟。
  */
 const PERF4_SEED_ANSWER = buildPerf4Answer(false, 1200, 120_000)
+/** 场景⑤的种子答案:**常规档** —— 4k 字正文 + 20 行表格的 ```html 围栏。 */
+const PERF5_SEED_ANSWER = buildPerf4Answer(false, 20, 4000)
 
 /**
  * 场景④要的那份设置。`withProvider` 决定假 provider **在不在场**。
@@ -247,7 +274,9 @@ function startMockProvider(port, state) {
         ...(usage ? { usage } : {}),
       })
       const measured = flat.includes(PERF4_MARKER)
-      const seeding = flat.includes(PERF4_SEED_MARKER)
+      const seedingBig = flat.includes(PERF4_SEED_MARKER)
+      const seedingNormal = flat.includes(PERF5_SEED_MARKER)
+      const seeding = seedingBig || seedingNormal
       res.writeHead(200, {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
@@ -281,16 +310,24 @@ function startMockProvider(port, state) {
             // `JSON.parse` 是大头(用户报障那条会话 29 次工具调用 / 9MB blobs)。
             // 参数里多出来的键被 zod `strip` 掉,工具照跑 —— 但它们照样落进消息、
             // 照样在每次物化时被重新解析,那正是这一格要还原的代价。
-            const args = measured
+            // 常规档的工具参数**也小**:那一档要还原的是「一条正常会话」,
+            // 30k 字的参数是大会话那一支专门用来堆物化代价的。
+            const args = measured || seedingNormal
               ? '{}'
               : JSON.stringify({ note: 'x'.repeat(PERF4_SEED_TOOL_ARG_CHARS) })
             send(frame({ tool_calls: [{ index: 0, id, type: 'function', function: { name: 'time', arguments: '' } }] }))
             send(frame({ tool_calls: [{ index: 0, function: { arguments: args } }] }))
             send(frame({}, 'tool_calls', { prompt_tokens: 1000, completion_tokens: 10, total_tokens: 1010 }))
             if (measured) state.toolCalls += 1
+            // 两档种子各记各的:场景④「够大了」的判据只认它自己那一档的次数。
+            else if (seedingNormal) state.seedNormalToolCalls += 1
             else state.seedToolCalls += 1
           } else {
-            const answer = measured ? PERF4_ANSWER : PERF4_SEED_ANSWER
+            const answer = measured
+              ? PERF4_ANSWER
+              : seedingNormal
+                ? PERF5_SEED_ANSWER
+                : PERF4_SEED_ANSWER
             // 量的那一支节拍**故意密**(25 字 / 1ms):一条分片上的过滤代价只有比
             // 分片间隔大,才会在一条流里累出可量的滞后 —— 这正是用户报障的形状
             // (真机 2690 个分片 × 每片一次全量物化 = 49s)。
@@ -481,6 +518,13 @@ async function clickTestId(page, testId) {
  * `ReportEvents` 让 trace 事件经 `Tracing.dataCollected` 一批批推回来,
  * 不用先落到浏览器里的 stream 再读 —— 少一次搬运。
  * 分类里 `toplevel` 是关键:主线程每一段任务(RunTask)都在它里面。
+ *
+ * `disabled-by-default-devtools.timeline.stack`(09-03 场景⑤补)是 DevTools 面板
+ * 自己录制时用的同一张分类表里的一条(见 `playwright-core` 里内置的默认分类列表),
+ * 没有它,`Layout`/`Recalculate Style` 这类事件的 `args.beginData.stackTrace`
+ * 永远是空的 —— 也就永远判不出「是不是脚本同步读版逼出来的」。它只多让浏览器
+ * 在这几类事件上多记一段调用栈,不改变任何计时语义,所以挂在这里全局生效,
+ * 不必只给场景⑤开一份专属 trace。
  */
 async function recordTrace(cdp, label, body) {
   const events = []
@@ -490,7 +534,9 @@ async function recordTrace(cdp, label, body) {
 
   await cdp.send('Tracing.start', {
     transferMode: 'ReportEvents',
-    categories: 'devtools.timeline,disabled-by-default-devtools.timeline,toplevel,blink.user_timing',
+    categories:
+      'devtools.timeline,disabled-by-default-devtools.timeline,toplevel,blink.user_timing,'
+      + 'disabled-by-default-devtools.timeline.stack',
     options: 'sampling-frequency=10000',
   })
   // 录制刚起来时缓冲区还没铺开,先让一拍,免得把 start 自己的抖动算进场景里。
@@ -528,6 +574,39 @@ function mainThreadTaskDurations(events) {
     durations.push(e.dur / 1000)
   }
   return { durations: durations.sort((a, b) => b - a), scoped }
+}
+
+/**
+ * 场景⑤的真判据(09-03 补):**强制排版次数**,不是「按下→上屏」的时间抖动。
+ *
+ * 时间 p95 在改前改后(154–238ms vs 154–204ms)重叠在抖动带里,拿它当红绿会闪;
+ * DevTools 把这类卡顿标成「Forced reflow」的判据是确定性的:一个 `Layout`(`ph:'X'`)
+ * 事件如果带着非空的 `args.beginData.stackTrace`,就说明这次排版是**脚本还压在栈上**
+ * 时被同步逼出来的(布局本该等渲染管线自己排,不该被脚本插队问)——布局管线不会无中生有
+ * 地产出一段调用栈,只有「脚本读了一下会导致重排的属性」才会。
+ *
+ * `fromTs`/`toTs` 是同一条 trace 里其它事件(比如下面的 `blink.user_timing` 标记)
+ * 用的同一个时钟,直接拿来夹窗口不必换算。
+ */
+function forcedLayouts(events, fromTs, toTs) {
+  let count = 0
+  for (const e of events) {
+    if (e.ph !== 'X' || e.name !== 'Layout') continue
+    if (e.ts < fromTs || e.ts > toTs) continue
+    const stack = e.args?.beginData?.stackTrace
+    if (Array.isArray(stack) && stack.length > 0) count += 1
+  }
+  return count
+}
+
+/**
+ * 从 `blink.user_timing` 分类里取一枚 `performance.mark(name)` 打下的 ts。
+ * 找不到就是 `undefined`——调用方自己决定要不要把这当错误(场景⑤要:漏标等于
+ * 窗口圈不出来,不能悄悄当 0 次强制排版放过去)。
+ */
+function markTs(events, name) {
+  const hit = events.find(e => e.cat?.includes('user_timing') && e.name === name)
+  return hit ? hit.ts : undefined
 }
 
 function percentile(sorted, p) {
@@ -607,6 +686,86 @@ function assertScenario(scenario, ok, message, events) {
 
 /* ── 主流程 ──────────────────────────────────────────────────────────────── */
 
+/** 一条会话账本此刻多少行。读不到 = 0(还没落第一行)。 */
+function ledgerLinesOf(store, sessionId) {
+  try {
+    return readFileSync(path.join(store, 'sessions', sessionId, 'events.jsonl'), 'utf-8')
+      .split('\n')
+      .filter(Boolean).length
+  } catch {
+    return 0
+  }
+}
+
+/** 一条会话账本此刻多少字节。 */
+function ledgerBytesOf(store, sessionId) {
+  try {
+    return readFileSync(path.join(store, 'sessions', sessionId, 'events.jsonl')).length
+  } catch {
+    return 0
+  }
+}
+
+/**
+ * 等这一回合落完账 —— 判据是**行数不再涨**,不是一个猜出来的延迟。
+ * (与大会话那一段逐字同一手,场景⑤把它抽出来共用。)
+ */
+async function waitLedgerSettled(store, sessionId) {
+  let previous = -1
+  for (let i = 0; i < 200; i += 1) {
+    await delay(150)
+    const now = ledgerLinesOf(store, sessionId)
+    if (now === previous && now > 0) return
+    previous = now
+  }
+}
+
+/**
+ * 量一次**切会话**的「按下 → 上屏」。
+ *
+ * 与 `measureClickToPaint` 同一套配方(页内 `performance.now` 夹双 rAF),差别只在
+ * 「上屏了没有」的判据:切会话时 `chat-stream` 本来就在,所以不能拿它当出现判据,
+ * 要等**这条会话自己的记号**出现在聊天区最上面那几个节点里。
+ * (只看前 3 个孩子,不读整棵树的 `textContent` —— 后者会把量具自己变成负载。)
+ *
+ * `index` 是这是第几次切换(09-03 补):`performance.mark` 打下
+ * `perf5:switch:<index>:start`/`:end` 两枚记号,圈出这一次切换在 trace 时间轴上的
+ * 窗口 —— `forcedLayouts` 拿这个窗口去数强制排版,不能只看「按下→上屏」这一个数。
+ */
+async function measureSessionSwitch(page, sessionId, marker, index) {
+  await clickTestId(page, 'dock-tile-sessions')
+  await waitFor('总览画出那一行', () =>
+    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
+  )
+  return page.evaluate(
+    async ({ id, mark, i }) => {
+      const el = document.querySelector(`[data-testid="session-row-${id}"]`)
+      if (!el) throw new Error(`点不到卡:${id}`)
+      performance.mark(`perf5:switch:${i}:start`)
+      const started = performance.now()
+      el.click()
+      const landed = () => {
+        const stream = document.querySelector('[data-testid="chat-stream"]')
+        if (!stream) return false
+        return [...stream.children].slice(0, 3).some(k => (k.textContent ?? '').includes(mark))
+      }
+      await new Promise((resolve, reject) => {
+        const deadline = performance.now() + 60_000
+        const tick = () => {
+          if (landed()) resolve()
+          else if (performance.now() > deadline) reject(new Error(`切到 ${mark} 超时`))
+          else requestAnimationFrame(tick)
+        }
+        requestAnimationFrame(tick)
+      })
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      performance.mark(`perf5:switch:${i}:end`)
+      return Math.round(performance.now() - started)
+    },
+    { id: sessionId, mark: marker, i: index },
+  )
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(`[perf-gate] 找不到 ${path.relative(repoRoot, serverEntry)} —— 先在仓根跑 \`bun run server:build\``)
@@ -625,9 +784,14 @@ async function main() {
   let mock
   let mockPort
   let bigSessionId
-  const mockState = { sendStartAt: 0, sendDoneAt: 0, chunks: 0, toolCalls: 0, seedToolCalls: 0 }
+  /** 场景⑤的三条常规档会话与它们各自的正文记号。 */
+  const normalIds = []
+  const normalMarks = []
+  const mockState = {
+    sendStartAt: 0, sendDoneAt: 0, chunks: 0, toolCalls: 0, seedToolCalls: 0, seedNormalToolCalls: 0,
+  }
   try {
-    console.log(`\n[1/7] 起一台 core,种 ${SEED_SESSIONS} 条会话 + 一条大会话`)
+    console.log(`\n[1/8] 起一台 core,种 ${SEED_SESSIONS} 条会话 + 一条大会话`)
     // 假 provider 必须先于 core 起来:设置在 core 启动时读一次。
     mockPort = 44100 + Math.floor(Math.random() * 400)
     mock = await startMockProvider(mockPort, mockState)
@@ -660,6 +824,33 @@ async function main() {
       created.push(id)
     }
     console.log(`  ✓ 种了 ${created.length} 条会话`)
+
+    /*
+     * ── 场景⑤的种子:3 条**常规档**会话 ────────────────────────────────
+     * 排在大会话**之前**:两档共用同一台 mock,记号不同(见 PERF5_SEED_MARKER),
+     * 而大会话「够不够大」的判据只数它自己那一档的工具调用,先后不互相干扰。
+     */
+    for (let i = 0; i < PERF5_SESSIONS; i += 1) {
+      const id = (await rpc(rec, 'sessions', 'create', { name: `perf-normal-${i}` }))?.session?.id
+      if (!id) throw new Error('常规档会话没建出来')
+      normalIds.push(id)
+      // 记号进**用户消息正文**,所以它一定落在聊天区最上面那几个节点里
+      // —— 场景⑤的「上屏了没有」判的就是它(与 probe 的判据逐字相同)。
+      normalMarks.push(`PERF5SESS-${id.slice(0, 6)}`)
+      for (let turn = 0; turn < PERF5_TURNS; turn += 1) {
+        await rpc(rec, 'session-command', 'emit', {
+          sessionId: id,
+          command: {
+            type: 'command:send-message',
+            content: `${PERF5_SEED_MARKER} PERF5SESS-${id.slice(0, 6)} 第 ${turn + 1} 回合`,
+          },
+        })
+        await waitLedgerSettled(store, id)
+      }
+      const bytes = ledgerBytesOf(store, id)
+      console.log(`  · 常规档 ${i}:账本 ${(bytes / 1024).toFixed(0)}KB`)
+    }
+    console.log(`  ✓ 种了 ${normalIds.length} 条常规档会话(工具调用 ${mockState.seedNormalToolCalls} 次)`)
 
     // ── 种那条大会话。**在拉起应用之前**:此刻这台 core 上没有任何 SSE 订阅者,
     // 所以种的过程不受订阅侧过滤影响 —— 反证跑的时候种子也不会跟着慢下来。
@@ -718,7 +909,7 @@ async function main() {
     await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, false))
     console.log('  ✓ 假 provider 已摘(场景①②③ 在无 provider 下跑)')
 
-    console.log('\n[2/7] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
+    console.log('\n[2/8] 拉起应用(独立 --user-data-dir),等它连上同一台 core')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -745,7 +936,7 @@ async function main() {
     console.log('  ✓ window.__log / __crash / __perf 三个 dump 口都在')
 
     /* ── 场景 ①:冷开会话总览 ─────────────────────────────────────────── */
-    console.log(`\n[3/7] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
+    console.log(`\n[3/8] 场景① 冷开会话总览(${SEED_SESSIONS} 条会话)`)
     await waitFor('Dock 上的「会话总览」瓦就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
@@ -793,15 +984,77 @@ async function main() {
       )
     }
 
+    /* ── 场景 ⑤:常规档 ↔ 常规档 切会话 ×8 ────────────────────────────────
+     * 排在②之前是刻意的:②要先把默认打开档改成「钉栏」并重载,而这一格量的是
+     * **默认档(舞台)下从总览点一张卡进会话**——那正是用户报障时的手势。
+     */
+    console.log(`\n[4/8] 场景⑤ 常规档 ↔ 常规档 切会话 ×${PERF5_SWITCHES}`)
+    // 先进头一条(起底那一次不计时:它带着首开的一次性开销)。
+    await enterSession(page, normalIds[0])
+    await delay(1500)
+    const switchRun = await recordTrace(cdp, 'session-switch', async () => {
+      const each = []
+      for (let i = 1; i <= PERF5_SWITCHES; i += 1) {
+        const k = i % normalIds.length
+        each.push(await measureSessionSwitch(page, normalIds[k], normalMarks[k], i))
+        // 两次之间留一拍,免得连点被合并成一个任务(那就量不出单次代价了)。
+        await delay(500)
+      }
+      return { each }
+    })
+    keepTrace('session-switch', switchRun.events)
+    const switchEach = switchRun.result.each
+    const switchSorted = [...switchEach].sort((a, b) => a - b)
+    const sessionSwitchP95 =
+      switchSorted[Math.min(switchSorted.length - 1, Math.ceil(switchSorted.length * 0.95) - 1)]
+    const sessionSwitchStats = frameStats(switchRun.events, BUDGET.longFrameMs)
+    console.log(
+      `  · 每次切会话 按下→上屏(ms):${switchEach.join(' ')}`
+        + `\n  · p95 ${sessionSwitchP95}ms,最慢 ${switchSorted[switchSorted.length - 1]}ms,`
+        + `最快 ${switchSorted[0]}ms;主线程任务 ${sessionSwitchStats.tasks} 段,`
+        + `最长 ${sessionSwitchStats.longest}ms`,
+    )
+    record_('⑤常规档切会话 ×8', sessionSwitchStats, { ms: sessionSwitchP95 })
+    assertScenario(
+      'session-switch',
+      sessionSwitchP95 <= BUDGET.sessionSwitchMs,
+      `切会话 按下→上屏 p95 ${sessionSwitchP95}ms ≤ 预算 ${BUDGET.sessionSwitchMs}ms`,
+      switchRun.events,
+    )
+
+    /*
+     * 真判据(09-03 补):强制排版次数,每次切换各圈自己的窗口(靠上面打下的
+     * `perf5:switch:<i>:start`/`:end` 两枚 `performance.mark`),取 8 次里的最大值。
+     * 时间 p95 仍然断言(上面那条),但红绿判据是这一条 —— 理由见 `forcedLayouts` 注释。
+     */
+    const forcedPerSwitch = []
+    for (let i = 1; i <= PERF5_SWITCHES; i += 1) {
+      const from = markTs(switchRun.events, `perf5:switch:${i}:start`)
+      const to = markTs(switchRun.events, `perf5:switch:${i}:end`)
+      if (from === undefined || to === undefined) {
+        throw new Error(`第 ${i} 次切会话的 performance.mark 没落进 trace —— 量具本身坏了`)
+      }
+      forcedPerSwitch.push(forcedLayouts(switchRun.events, from, to))
+    }
+    const maxForcedLayouts = Math.max(...forcedPerSwitch)
+    console.log(`  · 每次切会话的强制排版次数:${forcedPerSwitch.join(' ')}(最大 ${maxForcedLayouts})`)
+    record_('⑤常规档切会话 ×8·强制排版', sessionSwitchStats, { ms: maxForcedLayouts })
+    assertScenario(
+      'session-switch',
+      maxForcedLayouts <= BUDGET.sessionSwitchForcedLayouts,
+      `切会话强制排版 最大 ${maxForcedLayouts} 次 ≤ 预算 ${BUDGET.sessionSwitchForcedLayouts} 次`,
+      switchRun.events,
+    )
+
     /* ── 场景②③ 共用的现场:钉栏默认档 + 进一条会话 ─────────────────── */
-    console.log('\n[4/7] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
+    console.log('\n[5/8] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
     await switchDefaultOpenToPinned(page)
     const targetId = created[0]
     await enterSession(page, targetId)
     console.log('  ✓ 已进入会话,聊天区起底完成')
 
     /* ── 场景 ②:架子 tab 连续切换 ×10 ────────────────────────────────── */
-    console.log(`\n[5/7] 场景② 右架子 tab 连续切换 ×10(真实负载:${SHELF_PANELS.join(' / ')} 同组)`)
+    console.log(`\n[6/8] 场景② 右架子 tab 连续切换 ×10(真实负载:${SHELF_PANELS.join(' / ')} 同组)`)
     const pinned = await pinPanels(page, SHELF_PANELS)
     console.log(`  · 右架子 tab 次序:${pinned.join(' / ') || '(空)'}`)
     // 现场对不上就红,不降级成「没量到」:场景②的全部意义是**重面板**在这条架子上。
@@ -888,7 +1141,7 @@ async function main() {
      * 「后台面板会不会因为数据源一动就跟着重渲,把流式那条链拖慢」。
      * 排在前面就量不到,因为那时架子还是空的。
      */
-    console.log('\n[6/7] 场景③ 5k 字长消息注入 → 上屏')
+    console.log('\n[7/8] 场景③ 5k 字长消息注入 → 上屏')
 
     const stream = await recordTrace(cdp, 'long-message', async () => {
       const started = Date.now()
@@ -926,7 +1179,7 @@ async function main() {
      * 场景③量的是「注入一条用户消息」;这一格量的是用户真正报障的那条链:
      * **大会话** + assistant 流 + 工具调用,而屏幕上那一头有一条活着的 SSE 订阅。
      */
-    console.log('\n[7/7] 场景④ 大会话 + 假 provider 吐 50KB 带围栏回答 + 2 次工具调用')
+    console.log('\n[8/8] 场景④ 大会话 + 假 provider 吐 50KB 带围栏回答 + 2 次工具调用')
     // 装回假 provider。目录键变了,`saveSettings` 之后 provider 缓存自己重拉。
     await rpc(rec, 'settings', 'saveSettings', perf4Settings(mockPort, true))
     await delay(500)
@@ -1013,7 +1266,7 @@ async function main() {
     console.error(`\n[perf-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[perf-gate] ok —— 四个场景都在预算内')
+  console.log('\n[perf-gate] ok —— 五个场景都在预算内')
 }
 
 /**
@@ -1211,7 +1464,7 @@ async function measureClickToPaint(page, testId, appearSelector) {
 }
 
 function printTable() {
-  console.log('\n── 四场景实测 ──')
+  console.log('\n── 五场景实测 ──')
   const pad = (s, n) => String(s).padEnd(n)
   console.log(
     `${pad('场景', 26)}${pad('耗时', 10)}${pad('任务数', 8)}${pad('最长', 8)}${pad('p95', 8)}超标段`,

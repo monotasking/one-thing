@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { NotificationsPanel, dayBucket, groupByDay } from '../NotificationsPanel'
 import { PanelVisibilityContext } from '../visibility'
@@ -180,5 +180,87 @@ describe('已读', () => {
     mount()
     const link = screen.getByRole('button', { name: /app\.jsonl/ })
     expect(link.hasAttribute('disabled')).toBe(true)
+  })
+})
+
+/**
+ * **一行 = 一个 memo 组件**(09-03,`probe-notify` 的读数)。
+ *
+ * 病历:行从前内联在 `groups.map` 里,于是 `items` 一动(每条 perf 读数都会进档)
+ * 或 `openId` 一动(点开一行),200 行**全部**重渲。真机读数:点开一行的
+ * 「处理器 + 同步 flush」头几次 40–51ms(用户报的 46–65ms 就是这个形),
+ * 面板开着时连推 16 条超预算 longFrame 中位 22.7ms。
+ *
+ * 渲染次数怎么数:`ui/StatusDot` 每行恰好画一枚,拿它当计数探针 ——
+ * 数「行画了几次」不必去猜 React 内部,只要数那一枚点被调了几次。
+ */
+vi.mock('../../ui/StatusDot', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../ui/StatusDot')>()
+  return {
+    ...real,
+    StatusDot: (props: Parameters<typeof real.StatusDot>[0]) => {
+      dotRenders.n += 1
+      return real.StatusDot(props)
+    },
+  }
+})
+
+const dotRenders = { n: 0 }
+
+describe('行是 memo 的:点开一行只重渲翻面的那两行', () => {
+  // 种成**已读**:面板到场会 `act()` 一次(那是它的本分),未读的话那一下会把
+  // 每条记录都换一份新对象 —— 那是真该重渲的,不是这一条要抓的东西。
+  const bulk = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({ title: `第 ${i} 条`, detail: `细节 ${i}`, read: true }))
+
+  it('200 条记录下点开一行,只有翻面的那一两行重画', () => {
+    seed(bulk(200))
+    mount()
+    const rows = screen.getAllByTestId('notify-row')
+    expect(rows).toHaveLength(200)
+
+    dotRenders.n = 0
+    fireEvent.click(rows[3])
+    // 翻面的只有它自己(收起 → 展开)。此前 openId 是 null,所以没有第二行要收。
+    expect(dotRenders.n).toBe(1)
+
+    dotRenders.n = 0
+    fireEvent.click(rows[7])
+    // 这一下有两行翻面:第 3 行收起、第 7 行展开。
+    expect(dotRenders.n).toBe(2)
+  })
+
+  it('连推 16 条(探针那一形):重画的只有新来的那几行,存量 200 行一次没动', () => {
+    seed(bulk(200))
+    mount()
+    dotRenders.n = 0
+    act(() => {
+      for (let i = 0; i < 16; i += 1) {
+        useNotifyStore.getState().push({ level: 'silent', title: `读数 ${i}`, source: 'perf' })
+      }
+    })
+    /*
+     * 16 条新行 × 最多两遍(到场 + 被标已读)= 32 是上界;存量那 200 行是零。
+     * 真机上这一形的**墙钟**读数在 dev 构建里反而略高(200 条 memo fiber 在
+     * `runWithFiberInDEV` 下各要走一趟),那是 dev 的插桩常数;**该抓的事实是
+     * 重画次数**,它在这里是机器守得住的。
+     */
+    expect(dotRenders.n).toBeLessThanOrEqual(32)
+  })
+
+  it('新来一条:重画的只有新那一行(存档环是 COW,没变的那几条引用不变)', () => {
+    seed(bulk(150))
+    mount()
+    dotRenders.n = 0
+    act(() => {
+      useNotifyStore.getState().push({ level: 'info', title: '新来的', source: 'test' })
+    })
+    expect(screen.getAllByTestId('notify-row')).toHaveLength(151)
+    /*
+     * 新那一行画两次是**如实的**:一次是它到场,一次是面板到场那条 effect 把它
+     * 标成已读(记录换了新对象)。要抓的是「另外 150 行一次都没动」——
+     * 没有 memo 的话这个数是 300 上下。
+     */
+    expect(dotRenders.n).toBeLessThanOrEqual(2)
   })
 })

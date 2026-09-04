@@ -226,3 +226,76 @@ describe('rootRef:一格 ref,两个读者', () => {
     expect(focusTree.nodes().size).toBe(0)
   })
 })
+
+/**
+ * **`<FocusScope>` 自己不许订阅焦点树**(09-03,读数背书)。
+ *
+ * 病历(`probe-hotspots`):它从前用 `useSyncExternalStore` 自己算 `isActive` 并经
+ * render-prop 交出去 —— 而全壳**没有一个消费者**读那一格(grep 只找得到它自己)。
+ * 代价却是实打实的:它包住的是一整块面,于是每次焦点换格,翻面的那两格 scope
+ * 各把整棵子树重渲一遍;文件树开着时单次 focusin 的同步 flush 0.94ms → **5.45ms**
+ * (5.8×),那一段里 `TreeEntryRow` total 37.3ms。
+ *
+ * 判据因此是一句话:**焦点换格不该让包着的面重渲**;要这个布尔的叶子自己去问。
+ */
+describe('订阅的粒度:面不订,叶子订', () => {
+  function Counting({ counts }: { counts: { n: number } }) {
+    counts.n += 1
+    return null
+  }
+
+  function AskingLeaf({ counts }: { counts: { n: number } }) {
+    const { isActive } = useFocusScope()
+    counts.n += 1
+    return <span data-testid="leaf">{isActive ? 'active' : 'rest'}</span>
+  }
+
+  function twoScopes(children: (which: 'viewer' | 'files') => React.ReactNode) {
+    return render(
+      <FocusScope scope="root">
+        {({ scopeProps }) => (
+          <div {...scopeProps}>
+            <FocusScope scope="viewer">
+              {(v) => <div {...v.scopeProps}>{children('viewer')}</div>}
+            </FocusScope>
+            <FocusScope scope="files">
+              {(f) => <div {...f.scopeProps}>{children('files')}</div>}
+            </FocusScope>
+          </div>
+        )}
+      </FocusScope>,
+    )
+  }
+
+  const idOf = (scope: string) =>
+    [...focusTree.nodes().values()].find((n) => n.scope === scope)!.instanceId
+
+  it('两格之间来回切 20 次,`<FocusScope>` 底下的探针一次都不重渲', () => {
+    const counts = { viewer: { n: 0 }, files: { n: 0 } }
+    twoScopes((which) => <Counting counts={counts[which]} />)
+    const before = { viewer: counts.viewer.n, files: counts.files.n }
+    expect(before.viewer).toBeGreaterThan(0)
+
+    const viewer = idOf('viewer')
+    const files = idOf('files')
+    for (let i = 0; i < 20; i += 1) {
+      act(() => focusTree.activate(i % 2 === 0 ? viewer : files, 'programmatic'))
+    }
+
+    expect(counts.viewer.n - before.viewer).toBe(0)
+    expect(counts.files.n - before.files).toBe(0)
+  })
+
+  it('自己问的那颗叶子:只在**自己**翻面时重渲', () => {
+    const counts = { viewer: { n: 0 }, files: { n: 0 } }
+    twoScopes((which) => <AskingLeaf counts={counts[which]} />)
+    const before = { viewer: counts.viewer.n, files: counts.files.n }
+
+    const viewer = idOf('viewer')
+    act(() => focusTree.activate(viewer, 'programmatic'))
+    // viewer 那颗翻了(rest → active);files 那颗从头到尾都是 rest,
+    // `useSyncExternalStore` 读到同一个值就地短路。
+    expect(counts.viewer.n).toBeGreaterThan(before.viewer)
+    expect(counts.files.n - before.files).toBe(0)
+  })
+})

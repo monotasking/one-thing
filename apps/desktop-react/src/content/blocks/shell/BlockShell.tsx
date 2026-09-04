@@ -13,6 +13,7 @@ import { ZoomOverlay } from './ZoomOverlay'
 import { COPY_FEEDBACK_MS } from '../../../components/motion'
 import { announce } from '../../../ui/a11y/live-region'
 import { blockActionLabelKey, isBlockActionRunnable, runBlockAction } from './actions'
+import { clampMeasurer } from './clamp-measurer'
 import { readBlockLoader } from './loader'
 import { blockSourceText } from './source'
 import s from './BlockShell.module.css'
@@ -305,6 +306,14 @@ function BlockActions({
  * 盯外面那层没用:它被 max-height 钳着,高度从头到尾就是那个数,永远不触发。
  * 内层是块级、宽度自动,与「内容直接当 body 的子节点」在排版上等价(长行照旧
  * 溢出到外层去横滚),所以它是纯观测用的一层,不改任何块的样子。
+ *
+ * ── 09-03:量尺搬进 `clamp-measurer`,这里只剩「登记 / 注销」 ────────────────
+ * 从前这条 effect 的依赖表里带着 `children`(ReactNode,父组件每渲一次就是新引用),
+ * 于是每一次提交、每一个块都在 commit 里同步读一次 `scrollHeight`(强制排版)
+ * 并重建一只 RO —— 切一次常规档会话 `measure` self **59.5ms**,是整份 profile 里
+ * `/src/` 的第一热点。现在:全壳一只观察者、一批只排一次版、**RO 的首次回调就是
+ * 初量**,所以依赖表只剩 `expanded`。内容后来才长高照旧管得住(内层盒子在长,
+ * 那正是它存在的理由),病历与代价逐条写在 `clamp-measurer.ts` 文件头。
  */
 function ClampedBody({ t, children }: { t: TFn; children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -316,14 +325,15 @@ function ClampedBody({ t, children }: { t: TFn; children: ReactNode }) {
     const el = ref.current
     const box = inner.current
     if (!el || !box || expanded) return
+    // 没有 ResizeObserver(jsdom)= 量一次就走。那里两个值都是 0,本来就永不折叠。
+    if (typeof ResizeObserver === 'undefined') {
+      setOverflows(el.scrollHeight > el.clientHeight + 1)
+      return
+    }
     // 量出同一个值时 setState 会自己短路,所以「每次内容变动都量一次」不会成环。
-    const measure = () => setOverflows(el.scrollHeight > el.clientHeight + 1)
-    measure()
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(measure)
-    observer.observe(box)
-    return () => observer.disconnect()
-  }, [expanded, children])
+    clampMeasurer.observe(box, el, setOverflows)
+    return () => clampMeasurer.unobserve(box)
+  }, [expanded])
 
   /*
    * 三档一处产地:展开(撤钳子)/ 裁断中(挂遮罩)/ 没裁到(什么都不挂)。

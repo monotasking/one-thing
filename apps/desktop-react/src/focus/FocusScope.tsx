@@ -5,7 +5,6 @@ import {
   useId,
   useLayoutEffect,
   useRef,
-  useSyncExternalStore,
 } from 'react'
 import { focusTree } from './registry'
 import './focus-scope.css'
@@ -33,7 +32,9 @@ import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
  * 只有这一种铺法(不再另开一条「从 hook 里取 scopeProps」的路):两种并存时,
  * 一个作用域会有两个地方能声称自己是根,I4「每个宿主层根元素都带
  * `data-focus-scope`」的判据当场变成「至少有一个地方带」。`useFocusScope()`
- * 因此只交出 `activate / isActive / instanceId`,没有 `scopeProps`。
+ * 因此只交出 `activate / isActive / instanceId`,没有 `scopeProps`;而
+ * `<FocusScope>` 这一侧的 render-prop **只交 `scopeProps / activate / instanceId`**
+ * —— 「我是不是当前」为什么不能从这里出,见下面那一节。
  *
  * ── 组件的 prop 叫 `scope` 不叫 `kind` ──────────────────────────────────
  * 设计文档里 `kind` 担了两份工(行为档 / 声明 id),拆名的理由写在 `types.ts`
@@ -56,6 +57,19 @@ import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
  * 调一次再用元素调一次 —— 根一摘一挂,树看到的是「根没了又回来了」。
  * 所以由这只组件一并写:传进来的 ref 与树的登记走**同一只回调**(身份恒定)。
  *
+ * ── **为什么 `FocusScope` 自己不许订阅焦点树**(09-03,读数背书)──────────
+ * 它是 render-prop 形、包住的是**一整块面**。一旦它自己
+ * `useSyncExternalStore(focusTree.subscribe, …)` 去算「我在不在活动路径上」,
+ * 那么每一次焦点换格,翻面的那两格 scope 就要把各自**整棵子树**重渲一遍 ——
+ * 代价与它包住的东西成正比,不是与「谁需要这个布尔」成正比。
+ * `probe-hotspots` 的读数:文件树开着时,单次 focusin 引出的同步 flush 从小树的
+ * 0.94ms 涨到大树的 **5.45ms**(5.8×),那一段里 `TreeEntryRow` total 37.3ms、
+ * `FocusScope` 自己 26.0ms —— 而当时全壳**没有一个消费者**读它交出去的 `isActive`
+ * (grep 只找得到它自己)。
+ *
+ * 所以这个问题只有一个问法:**需要它的那个叶子自己 `useFocusScope()`**。
+ * 订阅仍在(那只 hook 里),粒度却变成了那一颗叶子;包着的面纹丝不动。
+ *
  * ── `activateOnMount`:开出来就把焦点送进落点 ────────────────────────────
  * 浮层的「开启即入焦」从前长在 `useFocusTrap`(容器档)与各面自己那句
  * `input.focus()` 里。树里它是一句声明:`activateOnMount` + `restingTarget`,
@@ -76,8 +90,6 @@ export interface FocusScopeRender {
   }
   /** 把焦点送进这个作用域(§4.2 来源 2)。指针操作不要调:点击本身就落焦。 */
   activate: (reason?: ActivateReason) => void
-  /** 它在不在活动路径上。**别再去读 `document.activeElement` 判「我是不是当前」**。 */
-  isActive: boolean
   instanceId: FocusInstanceId
 }
 
@@ -227,12 +239,6 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
     })
   }, [hasEscape])
 
-  const isActive = useSyncExternalStore(
-    useCallback((listener: () => void) => focusTree.subscribe(listener), []),
-    useCallback(() => focusTree.activePath().includes(instanceId), [instanceId]),
-    () => false,
-  )
-
   const activate = useCallback(
     (reason: ActivateReason = 'programmatic') => focusTree.activate(instanceId, reason),
     [instanceId],
@@ -246,7 +252,7 @@ export function FocusScope(props: FocusScopeProps): ReactNode {
 
   return (
     <FocusScopeContext.Provider value={instanceId}>
-      {children({ scopeProps, activate, isActive, instanceId })}
+      {children({ scopeProps, activate, instanceId })}
     </FocusScopeContext.Provider>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 import { dumpPerf, perfReport, subscribePerf, type PerfEntry } from '../services/perf'
 import { overBudget } from '../perf-budget'
 import { Button } from '../ui/Button'
@@ -97,6 +97,10 @@ export function PerfHud() {
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => subscribePerf(() => setEntries(dumpPerf().slice(-VISIBLE))), [])
+  /* 行是 memo 的(见文件末尾),所以这一格必须身份恒定 —— 就地闭包会让 memo 白挂。 */
+  const toggle = useCallback((key: string) => {
+    setExpanded((current) => (current === key ? null : key))
+  }, [])
 
   if (!open) return null
 
@@ -140,46 +144,15 @@ export function PerfHud() {
         <ul className={s.list}>
           {entries.map((e) => {
             const key = entryKey(e)
-            const on = expanded === key
-            const summary = rowSummary(e)
-            const phases = phaseLine(e)
             return (
-              <li key={key} className={s.row}>
-                {/* 整行是一颗按钮,长得就是那一行本身 → 结构件,`ui/ButtonBase`。 */}
-                <ButtonBase
-                  className={s.rowBtn}
-                  aria-expanded={on}
-                  aria-label={t('perf.rowDetail')}
-                  onClick={() => setExpanded(on ? null : key)}
-                >
-                  <span className={overBudget(budgetKindOf(e), e.ms) ? s.over : s.ok}>
-                    {rowLabel(t, e)}
-                  </span>
-                  {/* 折叠态的一行小字。没有归因(跨域 / 浏览器没给)就不画。 */}
-                  {summary ? <span className={s.attr}>{summary}</span> : null}
-                </ButtonBase>
-                {on ? (
-                  <div className={s.detail}>
-                    {phases ? <p className={s.phase}>{phases}</p> : null}
-                    {e.scripts?.length ? (
-                      <ol className={s.scripts}>
-                        {e.scripts.map((script, i) => (
-                          <li key={`${script.invoker}-${script.at ?? ''}-${i}`} className={s.script}>
-                            <span className={s.scriptHead}>
-                              {script.invoker} {script.ms}ms
-                            </span>
-                            {script.fn ? <span className={s.scriptAt}>fn={script.fn}</span> : null}
-                            {script.at ? <span className={s.scriptAt}>{script.at}</span> : null}
-                          </li>
-                        ))}
-                      </ol>
-                    ) : null}
-                    {e.interactionId ? (
-                      <p className={s.phase}>interactionId {e.interactionId}</p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </li>
+              <PerfHudRow
+                key={key}
+                entry={e}
+                rowKey={key}
+                open={expanded === key}
+                onToggle={toggle}
+                t={t}
+              />
             )
           })}
         </ul>
@@ -187,3 +160,62 @@ export function PerfHud() {
     </aside>
   )
 }
+
+/**
+ * 一行 = 一个 memo 组件 —— 与通知中心那一行**同一个形**(09-03 一并处理)。
+ *
+ * HUD 只列 `VISIBLE` 条,所以这里省下的绝对值远小于通知中心;做它的理由是
+ * 「同一形只留一种写法」:探针每来一条读数就换一次 `entries`,没有 memo 的话
+ * 八行连同它们展开区里的脚本列表全部重造,而真正变的只有新来的那一行。
+ * 功能一个字没动:折叠态一行小字、展开区三段、key 的算法全部原样搬过来。
+ */
+const PerfHudRow = memo(function PerfHudRow({
+  entry: e,
+  rowKey,
+  open: on,
+  onToggle,
+  t,
+}: {
+  entry: PerfEntry
+  rowKey: string
+  open: boolean
+  onToggle: (key: string) => void
+  t: TFn
+}) {
+  const summary = rowSummary(e)
+  const phases = phaseLine(e)
+  return (
+    <li className={s.row}>
+      {/* 整行是一颗按钮,长得就是那一行本身 → 结构件,`ui/ButtonBase`。 */}
+      <ButtonBase
+        className={s.rowBtn}
+        aria-expanded={on}
+        aria-label={t('perf.rowDetail')}
+        onClick={() => onToggle(rowKey)}
+      >
+        <span className={overBudget(budgetKindOf(e), e.ms) ? s.over : s.ok}>{rowLabel(t, e)}</span>
+        {/* 折叠态的一行小字。没有归因(跨域 / 浏览器没给)就不画。 */}
+        {summary ? <span className={s.attr}>{summary}</span> : null}
+      </ButtonBase>
+      {on ? (
+        <div className={s.detail}>
+          {phases ? <p className={s.phase}>{phases}</p> : null}
+          {e.scripts?.length ? (
+            <ol className={s.scripts}>
+              {e.scripts.map((script, i) => (
+                <li key={`${script.invoker}-${script.at ?? ''}-${i}`} className={s.script}>
+                  <span className={s.scriptHead}>
+                    {script.invoker} {script.ms}ms
+                  </span>
+                  {script.fn ? <span className={s.scriptAt}>fn={script.fn}</span> : null}
+                  {script.at ? <span className={s.scriptAt}>{script.at}</span> : null}
+                </li>
+              ))}
+            </ol>
+          ) : null}
+          {e.interactionId ? <p className={s.phase}>interactionId {e.interactionId}</p> : null}
+        </div>
+      ) : null}
+    </li>
+  )
+})

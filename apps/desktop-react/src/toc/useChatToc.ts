@@ -131,9 +131,31 @@ export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc
     [markerSource],
   )
 
-  const syncFromScroll = useCallback(() => {
+  /**
+   * 真正的那一手量 —— **一次 commit 最多跑一次,并且合并到下一帧**(09-03)。
+   *
+   * 病历(`probe-hotspots` 的 dev profile):从前它直接挂在一条 passive effect 上
+   * (依赖 = `syncFromScroll`,而那只闭包随 `anchorIds` 换身份),换一次会话就在
+   * 那次巨型 commit 的收尾处同步跑一遍 —— 链是
+   * `flushPassiveEffects → useChatToc → measureAnchors`,`getBoundingClientRect`
+   * self **17.8ms**(刚改过 DOM ⇒ 第一发就是一次强制排版)。滚动那条路更密:
+   * 滚轮一秒几十上百发,每一发都是一次同步量。
+   *
+   * 现在只有两个时刻会量:滚动同步、锚点列变了(换会话 / 目录素材到货);两者都
+   * 经 `scheduleSync` 合并进**同一帧的一次** rAF。语义一格没动 ——
+   * `currentTurnIndex` 那个纯函数一个字未改,判据仍是「量出来的坐标」。
+   *
+   * **没有锚点就不量**:锚点列空 = 钢琴键那条 rail 整个不在场(TocPanel 的空态),
+   * 屏幕上没有任何东西消费这个下标。空表时 `currentTurnIndex` 本来就返回 -1,
+   * 所以这里直接给 -1 与从前逐字等价,只是不再白读一遍 DOM。
+   */
+  const runSync = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
+    if (anchorIds.length === 0) {
+      setCurrentIndex(-1)
+      return
+    }
     const found = measureAnchors(el, anchorIds)
     // 判定只吃「量出来的坐标」;缺席的锚点先摘掉,再把结果映回锚点列的下标。
     const hit = currentTurnIndex(
@@ -144,10 +166,38 @@ export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc
     setCurrentIndex(hit < 0 ? -1 : (found[hit]?.index ?? -1))
   }, [scrollRef, anchorIds])
 
+  /** 这一帧排下的那一次量(0 = 没排)。ref 而不是 state:它不是可渲染状态。 */
+  const scheduled = useRef(0)
+  const runSyncRef = useRef(runSync)
+  runSyncRef.current = runSync
+
+  const syncFromScroll = useCallback(() => {
+    if (scheduled.current) return
+    const raf =
+      typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame
+        : (fn: () => void) => setTimeout(fn, 0) as unknown as number
+    scheduled.current = raf(() => {
+      scheduled.current = 0
+      runSyncRef.current()
+    })
+  }, [])
+
+  // 卸载时把排着的那一下撤掉 —— 换会话 / 关掉聊天面时,没人再要这个读数了。
+  useEffect(
+    () => () => {
+      if (scheduled.current && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(scheduled.current)
+      }
+      scheduled.current = 0
+    },
+    [],
+  )
+
   // 首帧对一次,换会话 / 锚点变了也对一次:当前键该是算出来的,不是等用户滚一下。
   useEffect(() => {
     syncFromScroll()
-  }, [syncFromScroll])
+  }, [syncFromScroll, runSync])
 
   useEffect(() => () => void (flashTimer.current && clearTimeout(flashTimer.current)), [])
 
