@@ -76,7 +76,8 @@ import { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
 
 export { AGENT_TOOL_SURFACE, createAppSearchToolAdapters } from './tool-adapters.js'
 export { createAppSearchVisibilityPort, visibleSessionIdsFor, VISIBLE_SESSIONS_CAP } from './visibility.js'
-export { createDailyNote, executeSearch } from './providers.js'
+export { configureAppSearchProviders, createDailyNote } from './providers.js'
+export { invokePluginSearchAction, PLUGIN_SEARCH_ACTION_PREFIX } from './plugin-search-registry.js'
 export { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
 
 const log = getLogger('search')

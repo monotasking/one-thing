@@ -4,7 +4,7 @@
  * 它**不实现检索**:命中与打分是 `SqliteIndex` 的事,那一层有自己的用例
  * (`search/index/__tests__`)。这里要证的是能力这一层 —— 「索引答了一批文档,能力
  * 把它们投影成什么样的候选与旧字段」—— 所以替身按能力 id 把手上的文档原样交回去,
- * 分数取严格递减的逆序名次(与 `legacy.ts` 里那条同一个手法:排序恒等)。
+ * 分数取严格递减的逆序名次(与 `scan-adapter.ts` 里那条同一个手法:排序恒等)。
  */
 
 import type { IndexedDoc } from '@onething/core/search'

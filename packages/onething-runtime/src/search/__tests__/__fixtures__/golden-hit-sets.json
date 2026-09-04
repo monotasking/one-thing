@@ -1,0 +1,295 @@
+{
+  "note": "检索重建 S5 录制:S0 语料灌进 SqliteIndex 后,黄金查询 20 条 + 黄金复述句 20 条在严格档(阶梯 ①)下的命中集。keys 排过序 = 判召回不判名次。重录:ONETHING_SEARCH_GOLDEN_UPDATE=1,并在报告里写明为什么。",
+  "docs": 2473,
+  "cases": {
+    "golden:身份牌": {
+      "total": 5,
+      "keys": [
+        "2b5a9c2f9b15:34eb0343f6ed",
+        "2b5a9c2f9b15:b2fe142d8bcf",
+        "2e554b70a017:850a303e5473",
+        "566ac735a9a2:5be67ff3ef90",
+        "e70f764f15bd:37759a884977"
+      ]
+    },
+    "golden:私发": {
+      "total": 10,
+      "keys": [
+        "2b5a9c2f9b15:802c9cd0c281",
+        "2b5a9c2f9b15:b20f46d1f0e9",
+        "5d932d85248d:de7eda980ef9",
+        "cc36ebb95f90:0b0fb31c0999",
+        "cc36ebb95f90:b080c11d85db",
+        "e33669c81e51:3f91c85aa514",
+        "e33669c81e51:42f5db25bb6c",
+        "e33669c81e51:a09dddd42988",
+        "e70f764f15bd:37759a884977",
+        "e70f764f15bd:9cc68340ec33"
+      ]
+    },
+    "golden:\"天黑请闭眼\"": {
+      "total": 2,
+      "keys": [
+        "2b5a9c2f9b15:b2fe142d8bcf",
+        "e70f764f15bd:37759a884977"
+      ]
+    },
+    "golden:身份牌 -女巫": {
+      "total": 3,
+      "keys": [
+        "2b5a9c2f9b15:34eb0343f6ed",
+        "2e554b70a017:850a303e5473",
+        "566ac735a9a2:5be67ff3ef90"
+      ]
+    },
+    "golden:解药 毒药 -预言家": {
+      "total": 3,
+      "keys": [
+        "2b5a9c2f9b15:b2fe142d8bcf",
+        "9360b624ad90:4042427fa799",
+        "e70f764f15bd:6b9c3fe41004"
+      ]
+    },
+    "golden:/compact": {
+      "total": 9,
+      "keys": [
+        "172c14635e5d:63bdd4afce4f",
+        "172c14635e5d:808517522eb2",
+        "172c14635e5d:ebd437e5990b",
+        "3e9134249da6:0a4ac881a298",
+        "3e9134249da6:80a5bafb7595",
+        "8ad3fb455108:9801ec4591a3",
+        "9c9721dcb6e6:545bcd3ec413",
+        "d74673077d28:38e6efd97e01",
+        "d74673077d28:bfeaf0d11123"
+      ]
+    },
+    "golden:Ｗeread": {
+      "total": 14,
+      "keys": [
+        "4bd7598fed66",
+        "4bd7598fed66:0236e3005b2e",
+        "4bd7598fed66:3ad4684d805e",
+        "4bd7598fed66:58272359f93b",
+        "4bd7598fed66:7ff3d4def0a9",
+        "4bd7598fed66:e50177518cca",
+        "4bd7598fed66:ed599d239ce4",
+        "f2f01da8d7ba",
+        "f2f01da8d7ba:1447acbdf0d4",
+        "f2f01da8d7ba:18e8251bce9c",
+        "f2f01da8d7ba:a93c07ba2a68",
+        "f2f01da8d7ba:aa0c75a7220d",
+        "f2f01da8d7ba:ac5d5b1b5717",
+        "f2f01da8d7ba:cb3b8d2770f7"
+      ]
+    },
+    "golden:ＰｉｉMaskingUtil": {
+      "total": 8,
+      "keys": [
+        "00f970400a68:27f0984bb0c6",
+        "00f970400a68:634e0051fc90",
+        "00f970400a68:f29cdfc96901",
+        "08389f6891a5:4721f7f17e87",
+        "08389f6891a5:a8a176f01189",
+        "42cd0752fb55:2f8f4fc3d292",
+        "42cd0752fb55:42cac549b67e",
+        "42cd0752fb55:4dee1b846097"
+      ]
+    },
+    "golden:RedisMessageListenerConfig": {
+      "total": 3,
+      "keys": [
+        "9585348d3bc9:7a25133ce23e",
+        "9585348d3bc9:8deb0fec8978",
+        "9585348d3bc9:e8258e515aa4"
+      ]
+    },
+    "golden:PiiMaskingUtil": {
+      "total": 8,
+      "keys": [
+        "00f970400a68:27f0984bb0c6",
+        "00f970400a68:634e0051fc90",
+        "00f970400a68:f29cdfc96901",
+        "08389f6891a5:4721f7f17e87",
+        "08389f6891a5:a8a176f01189",
+        "42cd0752fb55:2f8f4fc3d292",
+        "42cd0752fb55:42cac549b67e",
+        "42cd0752fb55:4dee1b846097"
+      ]
+    },
+    "golden:\"live up stream\"": {
+      "total": 1,
+      "keys": [
+        "9dd2e72e30e4:768b55147467"
+      ]
+    },
+    "golden:\"holiday_afterhour_audio\"": {
+      "total": 2,
+      "keys": [
+        "684cb8e12cf8:7feab1e505ec",
+        "948fbad8f88b:52044ea38110"
+      ]
+    },
+    "golden:elcc_holiday_tranfer": {
+      "total": 4,
+      "keys": [
+        "7ad3912a3876:b41a34e4a8c3",
+        "7ad3912a3876:bf2a8a463f05",
+        "a12856f94e02:36d9857d8376",
+        "b1e4aa574e87:dbad5b5c5dec"
+      ]
+    },
+    "golden:夸克网盘": {
+      "total": 3,
+      "keys": [
+        "53f362d86c53:0dac8b4537a2",
+        "53f362d86c53:36c4e3e36f9a",
+        "53f362d86c53:f41d77f5fca2"
+      ]
+    },
+    "golden:屏幕使用时间": {
+      "total": 7,
+      "keys": [
+        "339c1fd81a33",
+        "339c1fd81a33:3c7907b9fc84",
+        "339c1fd81a33:4bf947748e4f",
+        "339c1fd81a33:65ae1a18bf90",
+        "339c1fd81a33:9cc450e011a3",
+        "339c1fd81a33:b088068f3005",
+        "339c1fd81a33:d2600d692e70"
+      ]
+    },
+    "golden:雨日慵懒": {
+      "total": 7,
+      "keys": [
+        "40c9061249e3",
+        "40c9061249e3:015553af2ff4",
+        "40c9061249e3:63b39dd5e800",
+        "40c9061249e3:9eefb15f6f61",
+        "40c9061249e3:d3ac8592f9c1",
+        "40c9061249e3:dc1ec54e775f",
+        "40c9061249e3:fce68e6fffc3"
+      ]
+    },
+    "golden:safeStorage": {
+      "total": 1,
+      "keys": [
+        "0899589aaae4:8a962fda92e5"
+      ]
+    },
+    "golden:会话列表": {
+      "total": 2,
+      "keys": [
+        "425dc8904963:06cbdd1bd3bd",
+        "425dc8904963:cd77599af87b"
+      ]
+    },
+    "golden:ＦＡＣ 888": {
+      "total": 8,
+      "keys": [
+        "283496b9b5cb:f139c1aa7efd",
+        "7ad3912a3876:5be09eb0ba99",
+        "7ad3912a3876:bf2a8a463f05",
+        "819798d6882f:940c929c6e67",
+        "a12856f94e02:36d9857d8376",
+        "cadd6516d794:152091444714",
+        "cadd6516d794:a36577bf124e",
+        "cadd6516d794:b7382519c2ec"
+      ]
+    },
+    "golden:spring boot -redis": {
+      "total": 9,
+      "keys": [
+        "312f9ca0c49d:47a1b732edcd",
+        "33f2e7f32755:e578b33a96b7",
+        "3aa51423f08a:7e347126792b",
+        "42cd0752fb55:42cac549b67e",
+        "4392f7f64706:2100a154903d",
+        "4392f7f64706:3d88f3dc1750",
+        "51b27d61a7d8:348a6f66fd89",
+        "5da0d81dfa78:b2c515bb9a7a",
+        "aa53eb31fcbf:7c02587a72b2"
+      ]
+    },
+    "paraphrase:witch-role": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:seer-check": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:wolf-knife": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:reader-scroll": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:reader-order": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:swift-theme": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:input-box": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:redis-listener": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:iva-table": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:iva-router": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:app-icon": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:siprec-lua": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:asr-tts-logs": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:holiday-check": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:over-privilege": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:deepl-429": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:plugin-count": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:nginx-upstream": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:screen-time": {
+      "total": 0,
+      "keys": []
+    },
+    "paraphrase:pii-comment": {
+      "total": 0,
+      "keys": []
+    }
+  }
+}

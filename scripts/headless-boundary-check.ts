@@ -2032,42 +2032,57 @@ const SHARED_VOICE_TEXT_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
   /return\s+chunk\.text\s*\|\|\s*chunk\.voiceSpeakText/,
 ]
 
-const MAIN_SEARCH_IPC_OPERATIONS_FORBIDDEN_PATTERNS: RegExp[] = [
-  /isSearchCategory/,
-  /const\s+category\s*=\s*isSearchCategory/,
-  /const\s+results\s*=\s*await\s+executeSearch/,
-  /return\s+\{\s*success:\s*true,\s*results\s*\}/,
-  /^\s*closeSearchWindow\(\)/,
-  /return\s+\{\s*success:\s*true\s*\}/,
-]
-
-const SHARED_SEARCH_CATEGORY_FORBIDDEN_PATTERNS: RegExp[] = [
-  /const\s+SEARCH_CATEGORIES\s*=\s*\[/,
-  /type\s+SearchCategory\s*=\s*typeof\s+SEARCH_CATEGORIES/,
-  /function\s+isSearchCategory/,
-  /SEARCH_CATEGORIES\.includes/,
-]
-
-const MAIN_SEARCH_PROVIDER_ORCHESTRATION_FORBIDDEN_PATTERNS: RegExp[] = [
+/**
+ * 旧扫描路的**尸检表**(检索重建 S5,`docs/design/search-index-2026-09.md` §10 S5)。
+ *
+ * S5 之前这里有三张表,守的是「旧路的编排别从 runtime 漏进装配层 / 契约层」。
+ * 旧路整条删掉之后,守的东西反过来:**它不许长回来**。所以这一张表列的是那条路
+ * 独有的形状与名字 —— 一个 `switch(category)`、一张写死的类别清单、六个扫描器的
+ * 函数名。命中任何一条,就是有人在能力注册表旁边又开了第二条查询路。
+ *
+ * `searchActions` / `searchPrompts` / `searchFiles` **不在这张表里**:它们是
+ * `capabilities/{actions,prompts,files}.ts` 各自的匹配器,是能力的实现,不是第二条路。
+ */
+const RETIRED_SCAN_PATH_PATTERNS: RegExp[] = [
   /switch\s*\(category\)/,
-  /case\s+['"]all['"]/,
-  /const\s+includeDaily\s*=\s*Boolean\(normalizeQuery\(query\)\)/,
-  /const\s+\[chats,\s*messages,\s*files,\s*daily,\s*prompts,\s*actions\]/,
-  /query\.trim\(\)\.startsWith\(['"]\/['"]\)/,
-  /\[\.\.\.actions,\s*\.\.\.prompts,\s*\.\.\.chats/,
-  /\[\.\.\.chats,\s*\.\.\.prompts,\s*\.\.\.daily/,
-  /function\s+normalizeQuery/,
+  /\bexecuteOnethingSearch\b/,
+  /\bexecuteOnethingSearchForIpc\b/,
+  /\bONETHING_SEARCH_CATEGORIES\b/,
+  /\bisOnethingSearchCategory\b/,
+  /\bnormalizeOnethingSearchCategory\b/,
+  /\bcreateOnethingSearchProviders\b/,
+  /\bcreateOnethingSearchRuntimeAdapters\b/,
   /function\s+searchChats/,
   /function\s+searchMessages/,
-  /function\s+searchPrompts/,
-  /function\s+getSearchDirs/,
-  /async\s+function\s+searchFiles/,
-  /async\s+function\s+getDailyNoteProfiles/,
-  /async\s+function\s+searchDailyNotes/,
-  /DEFAULT_DAILY_FORMAT/,
-  /readObsidianDailyProfile/,
-  /formatDailyDate/,
-  /parseDateFromPath/,
+  /function\s+searchDailyNotes/,
+  /\bparseDateFromPath\b/,
+]
+
+/** 那条路的三个模块 —— 存在即红。 */
+const RETIRED_SCAN_PATH_MODULES = [
+  'packages/onething-runtime/src/search/search-runtime.ts',
+  'packages/onething-runtime/src/search/ipc-operations.ts',
+  'packages/onething-runtime/src/search/protocol.ts',
+  'packages/backend/wiring/search/ipc.ts',
+  'scripts/search-parity-a.mjs',
+  'scripts/search-parity-b.mjs',
+]
+
+/**
+ * 一类 = 一个文件(§4.3「加一类 = 一个文件 + 一行注册」)。缺一个就是有人把某一类
+ * 的实现又搬回了公共文件里。
+ */
+const SEARCH_CAPABILITY_MODULES = [
+  'packages/onething-runtime/src/search/capabilities/index.ts',
+  'packages/onething-runtime/src/search/capabilities/actions.ts',
+  'packages/onething-runtime/src/search/capabilities/daily.ts',
+  'packages/onething-runtime/src/search/capabilities/daily-notes.ts',
+  'packages/onething-runtime/src/search/capabilities/files.ts',
+  'packages/onething-runtime/src/search/capabilities/messages.ts',
+  'packages/onething-runtime/src/search/capabilities/prompts.ts',
+  'packages/onething-runtime/src/search/capabilities/scan-adapter.ts',
+  'packages/onething-runtime/src/search/capabilities/sessions.ts',
+  'packages/onething-runtime/src/search/capabilities/text-match.ts',
 ]
 
 const MAIN_HEADLESS_CLI_PROJECTION_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -5726,77 +5741,60 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
   assertNoMatches('packages/onething-runtime owns voice text processing', lines)
 }
 
-function checkRuntimeOwnsSearchIpcOperations(): void {
-  const runtimeFiles = [
-    path.join(root, 'packages/onething-runtime/src/search/protocol.ts'),
-    path.join(root, 'packages/onething-runtime/src/search/ipc-operations.ts'),
-    path.join(root, 'packages/onething-runtime/src/search/providers.ts'),
-    path.join(root, 'packages/onething-runtime/src/search/search-runtime.ts'),
-  ]
-  const mainIpcFile = path.join(root, 'packages/backend/wiring/search/ipc.ts')
-  const mainProviderFile = path.join(root, 'packages/backend/wiring/search/providers.ts')
+/**
+ * **检索只有一条查询路**(检索重建 S5)。
+ *
+ * 一条 = `rpc/domains/search.ts` → 进程单槽里的 `SearchService` → 注册表 → 能力。
+ * 三条判据:
+ *
+ *  ① 旧扫描路的模块与它的形状(`switch(category)`、写死的类别清单、六个扫描器)
+ *     **一处都不许有** —— 全仓扫,不限目录:第二条路长在哪儿都是第二条路;
+ *  ② **契约层不许 import runtime** —— `@shared/ipc/search.ts` 是给壳吃的,
+ *     「能搜什么」由 `search.capabilities` 那条路由答,不由一张转发过来的常量表答;
+ *  ③ 装配层的取材面门面**保持极薄**(≤ 40 行,零编排):它只装单槽,不判档、
+ *     不并结果。
+ */
+function checkSearchHasOneQueryPath(): void {
   const sharedSearchFile = path.join(root, 'packages/shared/ipc/search.ts')
-  const sharedSearchTestFile = path.join(root, 'packages/shared/ipc/__tests__/search.test.ts')
-  const mainProviderContent = fs.existsSync(mainProviderFile) ? fs.readFileSync(mainProviderFile, 'utf-8') : ''
-  const mainProviderLines = mainProviderContent.split('\n').filter(line => line.trim().length > 0)
+  const facadeFile = path.join(root, 'packages/backend/wiring/search/providers.ts')
   const sharedSearchContent = fs.existsSync(sharedSearchFile) ? fs.readFileSync(sharedSearchFile, 'utf-8') : ''
-  const sharedSearchTestContent = fs.existsSync(sharedSearchTestFile) ? fs.readFileSync(sharedSearchTestFile, 'utf-8') : ''
-  const runtimeContent = runtimeFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
-  const requiredRuntimeSymbols = [
-    'ONETHING_SEARCH_CATEGORIES',
-    'isOnethingSearchCategory',
-    'normalizeOnethingSearchCategory',
-    'executeOnethingSearchForIpc',
-    'closeOnethingSearchWindowForIpc',
-    'executeOnethingSearch',
-    'OnethingSearchRuntimeAdapters',
-    'isOnethingCommandSearchQuery',
-    'OnethingSearchProvidersAdapters',
-    'createOnethingSearchProviders',
-    'configureOnethingSearchProviders',
-    'createDailyNote',
-    'searchDailyNotes',
-    'formatDailyDate',
-  ]
+  const facadeContent = fs.existsSync(facadeFile) ? fs.readFileSync(facadeFile, 'utf-8') : ''
+  const facadeLines = facadeContent.split('\n').filter(line => line.trim().length > 0)
+
+  // ① 旧路的形状:runtime 的检索树 + 装配层的检索接线 + 契约层那一份,全扫。
+  const searchTrees = [
+    path.join(root, 'packages/onething-runtime/src/search'),
+    path.join(root, 'packages/backend/wiring/search'),
+    path.join(root, 'packages/backend/rpc/domains'),
+  ].filter(dir => fs.existsSync(dir))
+
   const lines = [
-    ...runtimeFiles
-      .filter(file => !fs.existsSync(file))
-      .map(file => `${rel(file)}: missing runtime-owned search operation module`),
-    ...requiredRuntimeSymbols
-      .filter(symbol => !runtimeContent.includes(symbol))
-      .map(symbol => `packages/onething-runtime/src/search: missing runtime-owned search operation ${symbol}`),
-    ...(fs.existsSync(mainIpcFile)
-      ? [`${rel(mainIpcFile)}: remove legacy search IPC adapter; register @onething/electron-host/search/ipc directly`]
-      : []),
-    ...(fs.existsSync(mainProviderFile)
-      ? matchingLines(mainProviderFile, MAIN_SEARCH_PROVIDER_ORCHESTRATION_FORBIDDEN_PATTERNS)
-      : ['packages/backend/wiring/search/providers.ts: missing search provider adapter']),
-    ...(!mainProviderContent.includes('@onething/runtime/search')
-      ? [`${rel(mainProviderFile)}: search provider facade must delegate to @onething/runtime/search`]
-      : []),
-    ...(!mainProviderContent.includes('OnethingSearchCategory')
-      ? [`${rel(mainProviderFile)}: search provider facade must use runtime search category type`]
-      : []),
-    ...(mainProviderLines.length > 50
-      ? [`${rel(mainProviderFile)}: search provider facade must stay thin`]
-      : []),
-    ...(!sharedSearchContent.includes('@onething/runtime/search/protocol')
-      ? [`${rel(sharedSearchFile)}: shared search category protocol must re-export browser-safe runtime search protocol`]
-      : []),
-    ...(/from\s+['"]@onething\/runtime\/search['"]/.test(sharedSearchContent)
-      ? [`${rel(sharedSearchFile)}: renderer-facing search IPC facade must not import Node-only runtime search entrypoint`]
-      : []),
+    ...RETIRED_SCAN_PATH_MODULES
+      .filter(module => fs.existsSync(path.join(root, module)))
+      .map(module => `${module}: 旧扫描路的模块又回来了(S5 已退役)`),
+    ...SEARCH_CAPABILITY_MODULES
+      .filter(module => !fs.existsSync(path.join(root, module)))
+      .map(module => `${module}: 缺一个内置能力的文件(一类 = 一个文件)`),
+    ...searchTrees
+      .flatMap(dir => walkFiles(dir))
+      .flatMap(file => matchingCodeLines(file, RETIRED_SCAN_PATH_PATTERNS)),
     ...(fs.existsSync(sharedSearchFile)
-      ? matchingLines(sharedSearchFile, SHARED_SEARCH_CATEGORY_FORBIDDEN_PATTERNS)
-      : [`${rel(sharedSearchFile)}: missing legacy search IPC facade`]),
-    ...(!sharedSearchTestContent.includes('re-exports the runtime-owned search category protocol')
-      ? [`${rel(sharedSearchTestFile)}: missing shared search category facade coverage`]
+      ? matchingCodeLines(sharedSearchFile, RETIRED_SCAN_PATH_PATTERNS)
+      : [`packages/shared/ipc/search.ts: missing search IPC contract`]),
+    // ② 契约层不许从 runtime 拿值(类型也不行:那会把产品层拖进渲染层的包)。
+    ...(/from\s+['"]@onething\/runtime/.test(sharedSearchContent)
+      ? [`${rel(sharedSearchFile)}: 契约层不许 import runtime —— 「能搜什么」问 search.capabilities`]
+      : []),
+    // ③ 门面极薄。
+    ...(fs.existsSync(facadeFile)
+      ? []
+      : ['packages/backend/wiring/search/providers.ts: missing search adapters assembly point']),
+    ...(facadeLines.length > 40
+      ? [`${rel(facadeFile)}: 取材面门面必须保持极薄(现在 ${facadeLines.length} 行)`]
       : []),
   ]
 
-  assertNoMatches('packages/onething-runtime owns search IPC and provider orchestration', lines)
+  assertNoMatches('search has exactly one query path (registry + capabilities)', lines)
 }
 
 function checkRuntimeOwnsHeadlessCliProjections(): void {
@@ -6833,10 +6831,10 @@ const CORE_SEARCH_CAPABILITY_NAME_PATTERNS: RegExp[] = [
   // (模板串里出现这些名字的场景只可能是拼接,那本身就该红 —— 但今天零命中,
   //  不为一个不存在的形状加规则)。
   //
-  // **会话那一类有两个名字,两个都禁**:今天 `ONETHING_SEARCH_CATEGORIES`
-  // (`packages/onething-runtime/src/search/ipc-operations.ts`)里它叫 `chats`,
-  // 设计文档 §10 里叫 `sessions`。哪个名字最后活下来是**能力自己的事**,core 里
-  // 一个都不许出现 —— 只列文档那个名字,等于给真正在跑的那个 id 开了后门。
+  // **会话那一类有两个名字,两个都禁**:跑着的那个 id 是 `chats`
+  // (`capabilities/sessions.ts` 的 manifest),设计文档 §10 里叫 `sessions`。
+  // 哪个名字最后活下来是**能力自己的事**,core 里一个都不许出现 —— 只列文档那个
+  // 名字,等于给真正在跑的那个 id 开了后门。
   /(['"])(?:messages|chats|sessions|files|actions|prompts|daily)\1/,
   /(['"])plugin:/,
 ]
@@ -7079,7 +7077,7 @@ checkRuntimeOwnsVoiceIpcOperations()
 checkRuntimeOwnsVoiceProviderRuntime()
 checkRuntimeOwnsVoiceServicePolicy()
 checkRuntimeOwnsVoiceTextProcessing()
-checkRuntimeOwnsSearchIpcOperations()
+checkSearchHasOneQueryPath()
 checkRuntimeOwnsHeadlessCliProjections()
 checkRuntimeOwnsPromptsStore()
 checkRuntimeOwnsSystemPromptSnapshot()

@@ -449,8 +449,8 @@ async function runLoopDelayPhase() {
 
     /*
      * 冷建等它追上账本。判据是 `search.status` 的 `docs` 涨到不再涨 + `pending === 0`
-     * —— 与 `search:parity-B` 同一条,理由也同一条(光看 `pending` 会在校对还没入队的
-     * 那一瞬间抢答「追上了」,施工时真被咬过)。
+     * —— 判据与 S3c 那道已退役的 `search:parity-B` 同一条,理由也同一条(光看
+     * `pending` 会在校对还没入队的那一瞬间抢答「追上了」,施工时真被咬过)。
      */
     let docs = -1
     let stable = 0

@@ -1,9 +1,13 @@
 /**
  * 文件名检索能力(按名扫,不看内容 —— 文件内容源是 S8,§13)。
  *
- * 设计:docs/design/search-index-2026-09.md §4.2 第二行 / §10 S2 行。
+ * 设计:docs/design/search-index-2026-09.md §4.2 第二行。
+ *
+ * S5(2026-09-05)把匹配器与那张**搜索根列表**从 `providers.ts` 搬进来:
+ * 「这一档搜哪几个目录」是这一类自己的语义,别的能力一个都不问它。
  */
 
+import * as path from 'node:path'
 import type {
   CapabilityManifest,
   FacetFilter,
@@ -11,8 +15,8 @@ import type {
   SearchCapability,
 } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
-import { createOnethingSearchRuntimeAdapters } from '../providers.js'
-import { legacyScanCapability } from './legacy.js'
+import { scanBackedCapability, type SearchServiceResult } from './scan-adapter.js'
+import { expandPath, matchRangesOf, normalizeSearchQuery } from './text-match.js'
 import {
   firstCandidate,
   requireStringField,
@@ -46,6 +50,83 @@ export interface FileTarget {
  */
 const DIR_FACET = 'dir'
 
+/**
+ * 这一档默认搜哪几个根:当前会话的工作目录 + 两个笔记根 + 接入目录,去重后按序。
+ *
+ * 去重是 `add` 自带的,所以某个根与会话工作目录重合时不会搜两遍。
+ */
+function getSearchDirs(adapters: OnethingSearchProvidersAdapters): string[] {
+  const seen = new Set<string>()
+  const dirs: string[] = []
+
+  function add(p: string | undefined | null): void {
+    if (!p) return
+    const expanded = expandPath(p)
+    if (!seen.has(expanded)) {
+      seen.add(expanded)
+      dirs.push(expanded)
+    }
+  }
+
+  const sid = adapters.getCurrentSessionId()
+  if (sid) add(adapters.getSession(sid)?.workingDirectory)
+
+  const store = adapters.getVariablesStore()
+  add(store.getUserNoteDir())
+  add(store.getWorkNoteDir())
+
+  for (const dir of adapters.getConnectedDirectories?.() ?? []) add(dir)
+
+  return dirs
+}
+
+/**
+ * 按名扫盘。
+ *
+ * 第四格 `dir` 给了就**只扫那一个目录**,缺席就是 `getSearchDirs()` 那张根列表。
+ * **不与根列表求交**:调用方递这一格进来正是因为那张列表答不出它要的根(见上面
+ * `DIR_FACET` 的说明),求交等于把这一格变成一句空话。
+ */
+export async function searchFiles(
+  query: string,
+  limit: number,
+  adapters: OnethingSearchProvidersAdapters,
+  dir?: string,
+): Promise<SearchServiceResult[]> {
+  const dirs = dir ? [expandPath(dir)] : getSearchDirs(adapters)
+  if (dirs.length === 0) return []
+
+  const q = normalizeSearchQuery(query)
+  if (!q) return []
+  const results: SearchServiceResult[] = []
+
+  for (const cwd of dirs) {
+    if (results.length >= limit) break
+    try {
+      for await (const relPath of adapters.listFiles({ cwd, hidden: false, noIgnore: true })) {
+        if (results.length >= limit) break
+        // 相对路径整条参与匹配(文件名与目录名都算命中)。
+        if (!relPath.toLowerCase().includes(q)) continue
+
+        const absPath = path.join(cwd, relPath)
+        const dirLabel = path.basename(cwd)
+        results.push({
+          id: `file:${absPath}`,
+          type: 'file',
+          title: path.basename(relPath),
+          subtitle: `${dirLabel}/${relPath}`,
+          detail: cwd,
+          filePath: absPath,
+          matchRanges: matchRangesOf(path.basename(relPath), q),
+        })
+      }
+    } catch {
+      // 目录可以不存在。
+    }
+  }
+  return results
+}
+
 export const filesSearchManifest: CapabilityManifest = {
   id: 'files',
   labelKey: 'search.capability.files',
@@ -54,9 +135,9 @@ export const filesSearchManifest: CapabilityManifest = {
   // 扫描型唯一认的一格。声明它 = `fanout` 的 `narrowToDeclaredFacets` 才会把
   // 这个键递到这一路上(别的键与它无关,一格都收不到)。
   facets: [{ key: DIR_FACET, type: 'enum' }],
-  // 扫描型这一期不设超时(`0` = core `deriveSignal` 只在 `timeoutMs > 0` 时才装计时器):
-  // 旧扫描路一道刹车也没有,钉一个真预算会让慢盘 / 大店从「出结果」变成「没搜成」——
-  // S2 的判据是行为零变化,不许多一道刹车。S3 换成索引型之后再钉真预算。
+  // 扫描型不设超时(`0` = core `deriveSignal` 只在 `timeoutMs > 0` 时才装计时器):
+  // 这一路是真去扫盘的,钉一个预算会让慢盘 / 大目录从「出结果」变成「没搜成」。
+  // 文件那一路换成索引型(S8,§13)之后再钉真预算。
   budget: { default: 10, timeoutMs: 0 },
   order: 4,
   orderWhenIntent: { actions: 5 },
@@ -104,11 +185,10 @@ function scanDirOf(filters: Readonly<Record<string, FacetFilter>>): string | und
 export function createFilesSearchCapability(
   adapters: OnethingSearchProvidersAdapters,
 ): SearchCapability {
-  const legacy = createOnethingSearchRuntimeAdapters(adapters)
-  const scan = legacyScanCapability({
+  const scan = scanBackedCapability({
     manifest: filesSearchManifest,
-    run: (query, limit, filters) => legacy.searchFiles(query, limit, scanDirOf(filters)),
-    // 空词旧路答 `[]`;恒真是为了让 `all` 档的分组里有这一格(同 messages)。
+    run: (query, limit, filters) => searchFiles(query, limit, adapters, scanDirOf(filters)),
+    // 空词这一路答 `[]`;恒真是为了让 `all` 档的分组里有这一格。
     supports: () => true,
     target: result => ({ kind: 'file', payload: { filePath: result.filePath ?? '' } } satisfies FileTarget),
   })

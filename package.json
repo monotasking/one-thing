@@ -79,8 +79,6 @@
 		"fix:node-pty-perms": "node scripts/fix-node-pty-perms.mjs",
 		"evals": "bun evals/run.mjs",
 		"evals:diagnose": "bun scripts/diagnose-weekly.mjs",
-		"search:parity-A": "bun scripts/search-parity-a.mjs",
-		"search:parity-B": "bun scripts/search-parity-b.mjs",
 		"gate:search-index": "node scripts/gate-search-index.mjs",
 		"sessions:verify:gate": "node scripts/session-verify-gate.mjs"
 	},

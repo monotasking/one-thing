@@ -1,16 +1,14 @@
 /**
- * 六个内置能力(检索重建 S2 包装 + S3b 换索引,
- * `docs/design/search-index-2026-09.md` §4 / §10 S2·S3)。
+ * 六个内置能力(检索重建 S2 包装 + S3b 换索引 + S5 收回各自的匹配器,
+ * `docs/design/search-index-2026-09.md` §4 / §10 S2·S3·S5)。
  *
  * 两半:
  *
- *  - **还在旧路上的那三类**(prompts / actions / files)问的仍是 S2 那句话:
- *    「包装之后,答案与今天那条旧路一模一样」—— 同一份取材面跑两遍再比。这是
- *    `search:parity-A` 那道真库门在单测尺度上的同一个判据。
- *  - **换成索引型的那三类**(chats / messages / daily)问的是另一句话:
- *    「自述说对了没有」+「索引答了一批文档,能力把它们投影成什么」。旧路那条对账
- *    在这三类上**已经不成立、也不该成立**(索引是词与前缀,旧扫描是子串;§13 留账),
- *    差集由 S3c 的 `search:parity-B` 按 ⊇ 判。
+ *  - **静态 / 扫描那三类**(prompts / actions / files)问的是「自述完整」+「匹配器
+ *    答什么」。S5 之前这里拿旧扫描路跑第二遍来对账;旧路删了之后参照物换成
+ *    **期望值本身**——匹配器就是这三个文件里的那份代码,没有第二份可比。
+ *  - **索引型那三类**(chats / messages / daily)问的是「自述说对了没有」+
+ *    「索引答了一批文档,能力把它们投影成什么」。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -18,12 +16,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ALL_CAPABILITIES, createCapabilityRegistry } from '@onething/core/search'
 import type { IndexedDoc, SearchCapability, SearchQuery } from '@onething/core/search'
-import {
-  createOnethingSearchRuntimeAdapters,
-  type OnethingSearchProvidersAdapters,
-} from '../providers.js'
-import { executeOnethingSearch } from '../search-runtime.js'
-import type { OnethingSearchCategory } from '../ipc-operations.js'
+import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import {
   chatsSearchManifest,
   createBuiltinSearchCapabilities,
@@ -35,8 +28,8 @@ import {
   createPromptsSearchCapability,
   dailySearchManifest,
   filesSearchManifest,
-  legacyScanCapability,
   messagesSearchManifest,
+  scanBackedCapability,
   searchResultOf,
 } from '../capabilities/index.js'
 import { createSearchContext, OnethingSearchService } from '../service.js'
@@ -98,16 +91,6 @@ function makeDocs(): IndexedDoc[] {
   ]
 }
 
-/** 旧路那一档的答案(单类档 = `adapters.searchX(query, limit)` 那一刀)。 */
-function legacyAnswer(
-  adapters: OnethingSearchProvidersAdapters,
-  category: OnethingSearchCategory,
-  query: string,
-  limit: number,
-) {
-  return executeOnethingSearch(query, category, limit, createOnethingSearchRuntimeAdapters(adapters))
-}
-
 async function capabilityAnswer(capability: SearchCapability, query: string, limit: number) {
   const registry = createCapabilityRegistry()
   registry.register(capability)
@@ -123,6 +106,8 @@ async function capabilityAnswer(capability: SearchCapability, query: string, lim
   // parity 只守**旧形**,所以对账前一律剥掉。剥的是键而不是值:内联预览在与不在
   // 都不该让「新旧结果逐字同」这条判据说话。
   return page.items.map(searchResultOf).map(({ target, facets, preview, ...rest }) => {
+    // `target` / `facets` / `preview` 是能力多说的三格,与「这一条结果长什么样」
+    // 无关,所以断言前一律剥掉;它们各有自己的用例。
     void target
     void facets
     void preview
@@ -130,45 +115,81 @@ async function capabilityAnswer(capability: SearchCapability, query: string, lim
   })
 }
 
-/**
- * 仍走旧扫描 / 静态表的那三类。chats / messages / daily 换索引之后**不在这张表里**
- * —— 拿旧扫描去对账一条索引路,对的是两种不同的匹配语义。
- */
-const LEGACY_CASES: Array<{
-  category: OnethingSearchCategory
+/** 静态 / 扫描那三类。 */
+const SCAN_CASES: Array<{
+  id: string
   create(adapters: OnethingSearchProvidersAdapters): SearchCapability
   query: string
+  expected: Array<Record<string, unknown>>
 }> = [
-  { category: 'prompts', create: createPromptsSearchCapability, query: 'alpha' },
-  { category: 'actions', create: createActionsSearchCapability, query: 'chat' },
-  { category: 'files', create: createFilesSearchCapability, query: 'alpha' },
+  {
+    id: 'prompts',
+    create: createPromptsSearchCapability,
+    query: 'alpha',
+    expected: [{
+      id: 'prompt:p1',
+      type: 'prompt',
+      title: 'Alpha prompt',
+      subtitle: 'about alpha',
+      detail: 'Prompt',
+      actionId: 'insert-prompt:p1',
+      timestamp: 5,
+      matchRanges: [{ start: 0, end: 5 }],
+    }],
+  },
+  {
+    id: 'actions',
+    create: createActionsSearchCapability,
+    query: 'chat',
+    expected: [
+      {
+        id: 'action:new-chat',
+        type: 'action',
+        title: 'New Chat',
+        subtitle: 'chat · conversation · create',
+        actionId: 'new-chat',
+        shortcut: '⌘N',
+        matchRanges: [{ start: 4, end: 8 }],
+      },
+      {
+        id: 'action:close-chat',
+        type: 'action',
+        title: 'Close Chat',
+        subtitle: 'delete · remove',
+        actionId: 'close-chat',
+        matchRanges: [{ start: 6, end: 10 }],
+      },
+    ],
+  },
+  // `makeAdapters()` 的 `listFiles` 一个文件都不吐,所以这一类答空 —— 空词与
+  // 「扫得到但不命中」在结果上是同一件事,而扫盘那一半有它自己的用例(下面
+  // 「files 的扫描根 `dir`」那一组)。
+  { id: 'files', create: createFilesSearchCapability, query: 'alpha', expected: [] },
 ]
 
-describe('内置检索能力(S2 包装:仍在旧路上的三类)', () => {
-  for (const testCase of LEGACY_CASES) {
-    it(`${testCase.category}:manifest 自述完整,且答案与旧路逐字同`, async () => {
+describe('内置检索能力(静态 / 扫描那三类)', () => {
+  for (const testCase of SCAN_CASES) {
+    it(`${testCase.id}:manifest 自述完整,匹配器答的就是这几条`, async () => {
       const adapters = makeAdapters()
       const capability = testCase.create(adapters)
       const manifest = capability.manifest
 
-      // manifest 形:id 沿用今天的 category(S5 之前不改名),预算与次序都在自述里。
-      expect(manifest.id).toBe(testCase.category)
-      expect(manifest.labelKey).toBe(`search.capability.${testCase.category}`)
+      // manifest 形:id 就是壳与 CLI 认的那个名字,预算与次序都在自述里。
+      expect(manifest.id).toBe(testCase.id)
+      expect(manifest.labelKey).toBe(`search.capability.${testCase.id}`)
       expect(manifest.budget.default).toBeGreaterThan(0)
-      // 扫描型不设超时(旧扫描路一道刹车也没有,S2 行为零变化);静态型是内存表,
-      // 2000 这个数永远碰不到,留着当 S3 的形。
+      // 扫描型不设超时(真去扫盘,钉预算会把慢盘变成「没搜成」);静态型是内存表,
+      // 2000 这个数永远碰不到。
       expect(manifest.budget.timeoutMs).toBe(manifest.kind === 'scan' ? 0 : 2000)
       expect(manifest.order).toBeGreaterThan(0)
       // scan / static / remote 型不吃放宽阶梯(§6.2 末句)。
       expect(manifest.relax).toBe(false)
 
-      const legacy = await legacyAnswer(adapters, testCase.category, testCase.query, 20)
-      const wrapped = await capabilityAnswer(capability, testCase.query, 20)
-      expect(wrapped).toEqual(legacy)
+      expect(await capabilityAnswer(capability, testCase.query, 20)).toEqual(testCase.expected)
     })
   }
 
-  it('supports:五类无条件参与全部档(旧路对它们是无条件调用的)', () => {
+  it('supports:三类无条件参与全部档(`all` 档的分组里恒有它们那一格)', () => {
     const adapters = makeAdapters()
     const blank: SearchQuery = {
       raw: '   ',
@@ -366,28 +387,44 @@ describe('索引型能力(S3b:chats / messages / daily)', () => {
 })
 
 /**
- * S3b 补回来的两件「索引在结构上答不出」的事(设计 §10 S3b 落地记录的留账 1 / 2)。
+ * 两件「索引在结构上答不出」的事(设计 §10 S3b 落地记录的留账 1 / 2)。
  *
- * 判据不是「像旧路」而是**就是旧路**:chats 空词直接调 `searchChats`,daily 的
- * 「今天那一条」直接调从旧扫描器抽出来的 `resolveDailyTodayShortcut`。所以第一条
- * 用例拿旧路的答案逐字对。
+ *  - chats 的空词浏览态 —— 「按 `updatedAt` 取前 N 间」不是一次检索;
+ *  - daily 的「今天那一条」—— 不存在的文件没有文档。
+ *
+ * 「与旧路逐字同」这条判据在 S5 之后由 `chats-browse.test.ts` 拿**录下来的旧输出**
+ * 守(旧函数已删,参照物只能是快照);这里守的是能力这一层的形状与位置。
  */
 describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)', () => {
   function query(raw: string, capability: string): SearchQuery {
     return { raw, ast: { type: 'and', children: [] }, intent: 'content', filters: {}, capability }
   }
 
-  it('chats 空词:与旧路 `searchChats("")` 逐字同(最近几间会话,不走索引)', async () => {
+  it('chats 空词:最近几间会话(不走索引,按 updatedAt 降序)', async () => {
     const adapters = makeAdapters()
     // 索引里**有**一份 chats 文档;空词走的是另一条路,所以它不该出现在答案里。
     const capability = createChatsSearchCapability(adapters, fakeIndexFace(makeDocs()))
 
-    const legacy = await legacyAnswer(adapters, 'chats', '', 20)
     const wrapped = await capabilityAnswer(capability, '', 20)
-    expect(wrapped).toEqual(legacy)
     // 空词的答案是「最近几间」而不是「零条」——摘掉那个分支这一行当场红。
-    expect(wrapped.length).toBe(2)
-    expect(wrapped.map(result => result.id)).toEqual(['chat:s1', 'chat:s2'])
+    expect(wrapped).toEqual([
+      {
+        id: 'chat:s1',
+        type: 'chat',
+        title: 'Alpha notes',
+        subtitle: 'about alpha',
+        sessionId: 's1',
+        timestamp: 200,
+      },
+      {
+        id: 'chat:s2',
+        type: 'chat',
+        title: 'Beta log',
+        subtitle: 'nothing here',
+        sessionId: 's2',
+        timestamp: 100,
+      },
+    ])
   })
 
   it('chats 空词:`all` 档的分组里有这一组(命令面板的空态)', async () => {
@@ -546,12 +583,12 @@ describe('files 的扫描根 `dir`(S4b)', () => {
   })
 })
 
-describe('扫描型的预算(S2:不许多一道刹车)', () => {
+describe('扫描型的预算(不许多一道刹车)', () => {
   /** 慢到比「原本那个 2000ms 预算」还久的一路扫描。 */
   const SLOW_SCAN_MS = 2500
 
   function slowFilesCapability() {
-    return legacyScanCapability({
+    return scanBackedCapability({
       manifest: filesSearchManifest,
       run: async () => {
         await new Promise<void>(resolve => setTimeout(resolve, SLOW_SCAN_MS))
@@ -562,13 +599,13 @@ describe('扫描型的预算(S2:不许多一道刹车)', () => {
     })
   }
 
-  it('还在扫描型上的 files:timeoutMs 是 0 —— core 的 deriveSignal 于是一个计时器都不装', () => {
+  it('扫描型的 files:timeoutMs 是 0 —— core 的 deriveSignal 于是一个计时器都不装', () => {
     const manifest = createFilesSearchCapability(makeAdapters()).manifest
     expect(manifest.kind).toBe('scan')
     expect(manifest.budget.timeoutMs).toBe(0)
   })
 
-  it('files:扫 2.5s 也照样出结果,而不是 error: timeout(旧扫描路本来就没有超时)', async () => {
+  it('files:扫 2.5s 也照样出结果,而不是 error: timeout(这一路本来就没有超时)', async () => {
     vi.useFakeTimers()
     try {
       const service = new OnethingSearchService()

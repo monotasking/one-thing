@@ -10,8 +10,8 @@
  *  - 每一路给多少条 —— `budgetPolicy` 读各 manifest 的 `budget`(§7.1);
  *  - 组与组的先后 —— `createGroupMerge` 读各 manifest 的 `order` / `orderWhenIntent`(§7.2);
  *  - 这个 `category` 认不认 —— **问注册表**,不问一张字面量清单(§8「`isSearchCategory`
- *    改问 registry」)。不认识的归到「全部」,与旧路 `normalizeOnethingSearchCategory`
- *    同义。
+ *    改问 registry」)。不认识的归到「全部」。S5 起那张写死的清单已经不存在:
+ *    能搜的东西 = 注册表里的行。
  *
  * 两档的输出形(§7.2 / §8):
  *
@@ -45,9 +45,9 @@ import {
 import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createBuiltinSearchCapabilities } from './capabilities/index.js'
 import type { SearchIndexQueryFace } from './capabilities/indexed.js'
-import { searchResultOf, type SearchServiceResult } from './capabilities/legacy.js'
+import { searchResultOf, type SearchServiceResult } from './capabilities/scan-adapter.js'
 
-/** 旧路 `executeOnethingSearch` 的缺省页大小;换个名字,数没变。 */
+/** 命令面板一页给多少条(旧路那个缺省值,数没变)。 */
 export const DEFAULT_SEARCH_LIMIT = 20
 
 /** 没人说消费面时按命令面板算(今天唯一的消费面)。 */
@@ -281,7 +281,7 @@ export class OnethingSearchService {
 
   /**
    * 这个档认不认 —— **问注册表**(§8)。不认识的归到「全部」,与旧路
-   * `normalizeOnethingSearchCategory` 逐字同义(那时问的是一张写死的清单)。
+   * S5 之前那只 `normalizeOnethingSearchCategory` 逐字同义 —— 差别只是它问的是一张写死的清单,这里问注册表。
    */
   private resolveCategory(requested: string | undefined): string {
     if (requested === undefined || requested === ALL_CAPABILITIES) return ALL_CAPABILITIES

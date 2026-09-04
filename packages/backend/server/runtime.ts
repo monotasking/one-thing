@@ -147,12 +147,12 @@ import { isHostLocallyTrusted } from "./host-trust.js";
 import { hasShellHost } from "@onething/runtime/shell/host-ports";
 import { hasTerminalHost } from "@onething/runtime/terminal/service.wiring";
 import {
-	createOnethingSearchProviders,
 	createOnethingSearchService,
 	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
 } from "@onething/runtime/search";
 import { unavailableIndexFace } from "../wiring/search/index.js";
+import { createDailyNote as createDailyNoteWith } from "@onething/runtime/search/capabilities";
 import {
 	MediaLibraryService,
 	type OnethingMediaLibraryPaths,
@@ -1867,10 +1867,6 @@ async function createServerRuntimeOverServerBackend(
 		};
 	};
 
-	const createSearchProvidersForContext = async (
-		context = defaultRequestContext(),
-	) => createOnethingSearchProviders(await createSearchAdaptersForContext(context));
-
 	const resolveSearchActionForContext = async (
 		actionId: string,
 		context = defaultRequestContext(),
@@ -1896,8 +1892,13 @@ async function createServerRuntimeOverServerBackend(
 		}
 
 		try {
-			const providers = await createSearchProvidersForContext(context);
-			await providers.createDailyNote(filePath);
+			// 取材面按请求上下文现装一份(设置 / 变量仓都是 per-owner 的),交给
+			// 每日笔记那一类自己的 `createDailyNote` —— S5 之前这里绕的那个
+			// 从前这里绕的那个 providers 门面是旧扫描路的入口,S5 随它一起删了。
+			await createDailyNoteWith(
+				filePath,
+				await createSearchAdaptersForContext(context),
+			);
 			return { success: true, actionId: `open-file:${filePath}` };
 		} catch (error: any) {
 			return {

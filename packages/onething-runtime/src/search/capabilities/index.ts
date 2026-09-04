@@ -1,5 +1,5 @@
 /**
- * 六个内置检索能力(S2)。
+ * 六个内置检索能力。
  *
  * 设计:docs/design/search-index-2026-09.md §3 落位 / §4.3 注册表。
  *
@@ -14,6 +14,13 @@ export { createChatsSearchCapability, chatsSearchManifest } from './sessions.js'
 export type { ChatTarget } from './sessions.js'
 export { createDailySearchCapability, dailySearchManifest } from './daily.js'
 export type { DailyTarget } from './daily.js'
+export {
+  createDailyNote,
+  formatDailyDate,
+  resolveDailyNoteSearchDirs,
+  resolveDailyTodayShortcut,
+} from './daily-notes.js'
+export type { DailySearchResult } from './daily-notes.js'
 export { createFilesSearchCapability, filesSearchManifest } from './files.js'
 export type { FileTarget } from './files.js'
 export { createMessagesSearchCapability, messagesSearchManifest } from './messages.js'
@@ -21,15 +28,21 @@ export type { MessageTarget } from './messages.js'
 export { createPromptsSearchCapability, promptsSearchManifest } from './prompts.js'
 export type { PromptTarget } from './prompts.js'
 export {
-  legacyScanCapability,
-  legacyStaticCapability,
+  scanBackedCapability,
   searchResultOf,
-} from './legacy.js'
+  staticBackedCapability,
+} from './scan-adapter.js'
 export type {
-  LegacyBackedCandidate,
-  LegacyCapabilityOptions,
+  ResultBackedCandidate,
+  ResultBackedCapabilityOptions,
   SearchServiceResult,
-} from './legacy.js'
+} from './scan-adapter.js'
+export {
+  expandPath,
+  matchRangesOf,
+  normalizeSearchQuery,
+  scoreText,
+} from './text-match.js'
 export {
   configureSearchVisibilityPort,
   getSearchVisibilityPort,

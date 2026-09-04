@@ -1,0 +1,236 @@
+{
+  "sessions": [
+    {
+      "id": "s1",
+      "name": "Alpha notes",
+      "previewText": "about alpha",
+      "updatedAt": 200
+    },
+    {
+      "id": "s2",
+      "name": "Beta log",
+      "previewText": "nothing here",
+      "updatedAt": 100
+    },
+    {
+      "id": "s3",
+      "name": "",
+      "updatedAt": 300
+    },
+    {
+      "id": "s4",
+      "name": "Archived thing",
+      "previewText": "hidden",
+      "isArchived": true,
+      "updatedAt": 400
+    },
+    {
+      "id": "s5",
+      "name": "中文标题 · 排在中间",
+      "previewText": "中文预览",
+      "updatedAt": 250
+    }
+  ],
+  "cases": {
+    "\"\"@2": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      }
+    ],
+    "\"\"@20": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      },
+      {
+        "id": "chat:s1",
+        "type": "chat",
+        "title": "Alpha notes",
+        "subtitle": "about alpha",
+        "sessionId": "s1",
+        "timestamp": 200
+      },
+      {
+        "id": "chat:s2",
+        "type": "chat",
+        "title": "Beta log",
+        "subtitle": "nothing here",
+        "sessionId": "s2",
+        "timestamp": 100
+      }
+    ],
+    "\"   \"@2": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      }
+    ],
+    "\"   \"@20": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      },
+      {
+        "id": "chat:s1",
+        "type": "chat",
+        "title": "Alpha notes",
+        "subtitle": "about alpha",
+        "sessionId": "s1",
+        "timestamp": 200
+      },
+      {
+        "id": "chat:s2",
+        "type": "chat",
+        "title": "Beta log",
+        "subtitle": "nothing here",
+        "sessionId": "s2",
+        "timestamp": 100
+      }
+    ],
+    "\"/\"@2": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      }
+    ],
+    "\"/\"@20": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      },
+      {
+        "id": "chat:s1",
+        "type": "chat",
+        "title": "Alpha notes",
+        "subtitle": "about alpha",
+        "sessionId": "s1",
+        "timestamp": 200
+      },
+      {
+        "id": "chat:s2",
+        "type": "chat",
+        "title": "Beta log",
+        "subtitle": "nothing here",
+        "sessionId": "s2",
+        "timestamp": 100
+      }
+    ],
+    "\">\"@2": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      }
+    ],
+    "\">\"@20": [
+      {
+        "id": "chat:s3",
+        "type": "chat",
+        "title": "New Chat",
+        "sessionId": "s3",
+        "timestamp": 300
+      },
+      {
+        "id": "chat:s5",
+        "type": "chat",
+        "title": "中文标题 · 排在中间",
+        "subtitle": "中文预览",
+        "sessionId": "s5",
+        "timestamp": 250
+      },
+      {
+        "id": "chat:s1",
+        "type": "chat",
+        "title": "Alpha notes",
+        "subtitle": "about alpha",
+        "sessionId": "s1",
+        "timestamp": 200
+      },
+      {
+        "id": "chat:s2",
+        "type": "chat",
+        "title": "Beta log",
+        "subtitle": "nothing here",
+        "sessionId": "s2",
+        "timestamp": 100
+      }
+    ]
+  }
+}

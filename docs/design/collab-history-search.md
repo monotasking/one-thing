@@ -368,6 +368,17 @@ packages/onething-runtime/src/collab/{digest,projection,history-window}.ts   ←
 「确认一下你的身份」排到「身份牌」前面）；且 CLAUDE.md 明写跨会话搜索/索引
 归 apps/server，不进 Electron 主进程。
 
+> **2026-09-05 更正（检索重建 S3 / S5，`docs/design/search-index-2026-09.md`）**：
+> 上面这两条理由**都已被推翻**，留在这里是因为它们仍然解释着 `history` 工具今天的形状。
+> ① 「不进主进程」那条 CLAUDE.md 裁定 09-05 撤销（§12「拆掉的旧裁定」）：索引是账本的
+> **投影**，引擎是内建 `node:sqlite`、句柄只活在 `worker_threads` 里；当年那条裁定的真
+> 理由是 better-sqlite3 的 ABI 风险，不是「主进程不该有库」。② 「不要上分词」也被推翻：
+> 今天**跨会话消息检索走的是索引**，分词由 core 的 TS 分析器做（二元 + AND 优先 + 短语
+> 核验），`身份牌` / `私发` 这些双字三字词都命中 —— FTS5 只吃预切好的 token 串。
+> **`history` 这只协作工具本身一行没改**：它仍然是 `contains` 纯子串 + 范围兜底，服务的
+> 是「这一间房里最近发生了什么」；把它换到索引上是另一批。「同一句话在哪些会话里出现过」
+> 今天该问 `search` 工具（同一份索引，`surface: 'agent-tool'`，见那份设计的 §14）。
+
 ### 5.2 会话缓存只有 10 个槽 —— 这是"必须直接读盘"的原因
 
 ```

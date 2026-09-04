@@ -383,7 +383,20 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **窗子离屏起**(与 gate-search-messages / gate-focus / gate-a11y / gate-perf
+         * 同一手,09-04 判例:真机门不许抢用户的前台)。不 `show()`、不进 Dock ——
+         * 判据落在 `electron/main.ts` 的 `ONETHING_GATE_HEADLESS` 那一段上;隐藏窗
+         * 照样渲染与布局,所以下面那几发几何量测与截图一格不受影响。
+         * 这道门只用页面内 DOM 派发,不需要真焦点,连
+         * `Emulation.setFocusEmulationEnabled` 都不必补。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+      },
     })
     const page = await app.firstWindow()
     await waitFor('渲染层完成一次 RPC 往返', async () => {

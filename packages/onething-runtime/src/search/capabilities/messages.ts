@@ -48,7 +48,7 @@ import {
   trackIndexGeneration,
   type SearchIndexQueryFace,
 } from './indexed.js'
-import type { LegacyBackedCandidate, SearchServiceResult } from './legacy.js'
+import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
 import { sessionScopeVisibility } from './visibility.js'
 import {
   PreviewUnavailableError,
@@ -180,7 +180,7 @@ export function createMessagesSearchCapability(
         const snippet = snippetOf(doc.fields.content ?? '', hit.matched)
         const session = sessionOf(sessionId)
 
-        const legacy: SearchServiceResult = {
+        const result: SearchServiceResult = {
           id: `msg:${sessionId}:${messageId}`,
           type: 'message',
           title: snippet.text,
@@ -191,17 +191,17 @@ export function createMessagesSearchCapability(
           timestamp: doc.time,
           matchRanges: snippet.ranges,
         }
-        const candidate: LegacyBackedCandidate = {
+        const candidate: ResultBackedCandidate = {
           capability: messagesSearchManifest.id,
-          id: legacy.id,
-          title: legacy.title,
-          subtitle: legacy.subtitle,
+          id: result.id,
+          title: result.title,
+          subtitle: result.subtitle,
           ranges: snippet.ranges,
           score,
           time: doc.time,
           target: { kind: 'message', payload: { sessionId, messageId } } satisfies MessageTarget,
           facets: doc.facets,
-          legacy,
+          result,
         }
         return candidate
       },
@@ -217,7 +217,7 @@ export function createMessagesSearchCapability(
         const snippet = snippetOf(doc.fields.content ?? '', [])
         const session = sessionOf(sessionId)
 
-        const legacy: SearchServiceResult = {
+        const result: SearchServiceResult = {
           id: `msg:${sessionId}:${messageId}`,
           type: 'message',
           title: snippet.text,
@@ -228,17 +228,17 @@ export function createMessagesSearchCapability(
           timestamp: doc.time,
           matchRanges: snippet.ranges,
         }
-        const candidate: LegacyBackedCandidate = {
+        const candidate: ResultBackedCandidate = {
           capability: messagesSearchManifest.id,
-          id: legacy.id,
-          title: legacy.title,
-          subtitle: legacy.subtitle,
+          id: result.id,
+          title: result.title,
+          subtitle: result.subtitle,
           ranges: snippet.ranges,
           score,
           time: doc.time,
           target: { kind: 'message', payload: { sessionId, messageId } } satisfies MessageTarget,
           facets: doc.facets,
-          legacy,
+          result,
         }
         return candidate
       },

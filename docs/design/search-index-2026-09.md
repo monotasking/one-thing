@@ -694,12 +694,12 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 | --- | --- | --- |
 | **S0 契约 + 法条 + 语料** | `@shared/ipc/search.ts` 扩展 + `capabilities` / `status` 路由;边界检查器新规则 `checkCoreSearchNamesNoCapability`(`packages/core/search/**` 零能力 id 字面量、零 `switch` on kind,目录不存在时跳过并打印);从真库抽脱敏语料 2000 条进 `core/search/__tests__/fixtures/`(**不加账本事件**,拍点甲 b) | typecheck;`boundary:gate` 绿;语料脚本只读 |
 | **S1 内核** | `core/search/`:candidate / capability / registry / analyzer / index(接口 + MemoryIndex)/ pipeline / cursor 全部纯实现 | 单测:切分黄金表、编解码往返 ≡ id、语料 20 条查询期望集(含 `私发`(中文双字)与 `身份牌`(三字)必中、`"天黑请闭眼"` 短语必中、`身份牌 -女巫` 排除生效、全角必中、`/cmd` 不被吃)、放宽阶梯按能力逐级、前缀上限、cursor 稳定、授权范围进 filters 后 total 为真数;基准 2000 条查询 < 5ms;`boundary:gate` 绿(core 零依赖 + 零能力名) |
-| **S2 能力包装(行为零变化)** | 六个内置能力按三种基座包装,`plugin-search-registry` 并成 `remoteCapability`;`SearchService` 门面;**消息那一路暂仍是旧扫描**(scan 基座);**扫描型包装 `timeoutMs=0`**(旧扫描路一道刹车也没有,真店 `searchMessages` 全库扫实测 1.6s,钉一个真预算会让慢盘 / 大店从「出结果」变成「没搜成」—— 不许多一道刹车),S3 换索引后再钉真预算 | 对账门 `search:parity-A`:真库 200 随机查询 × 每类,新旧结果集逐字同(此期不许有差) |
-| **S3 索引 + 投影** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表,WAL)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省;messages / sessions / daily 换成 `indexedCapability`(持有权 §5.6 缓议,不建 ownership.ts)。**S3b:空词最近会话与日记快捷行保旧行为**——索引在结构上答不出这两件(零词元查询零命中;不存在的文件没有文档),所以 chats 空词绕开索引直接调旧 `searchChats`、daily 的「今天那一条」由从旧扫描器抽出的 `resolveDailyTodayShortcut` 补,位置与判定逐字沿用旧实现;**server 不可信端口不共用 store 级索引**(索引文档上没有 owner 这一格,共用即串 owner),那一支答「索引不可用」而不是共用一份库 | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐);`gate:search-index`:冷建事件循环 p99 < 20ms、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
+| **S2 能力包装(行为零变化)** | 六个内置能力按三种基座包装,`plugin-search-registry` 并成 `remoteCapability`;`SearchService` 门面;**消息那一路暂仍是旧扫描**(scan 基座);**扫描型包装 `timeoutMs=0`**(旧扫描路一道刹车也没有,真店 `searchMessages` 全库扫实测 1.6s,钉一个真预算会让慢盘 / 大店从「出结果」变成「没搜成」—— 不许多一道刹车),S3 换索引后再钉真预算 | 对账门 `search:parity-A`:真库 200 随机查询 × 每类,新旧结果集逐字同(此期不许有差)——**已由快照替代(S5)** |
+| **S3 索引 + 投影** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表,WAL)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省;messages / sessions / daily 换成 `indexedCapability`(持有权 §5.6 缓议,不建 ownership.ts)。**S3b:空词最近会话与日记快捷行保旧行为**——索引在结构上答不出这两件(零词元查询零命中;不存在的文件没有文档),所以 chats 空词绕开索引直接调旧 `searchChats`、daily 的「今天那一条」由从旧扫描器抽出的 `resolveDailyTodayShortcut` 补,位置与判定逐字沿用旧实现;**server 不可信端口不共用 store 级索引**(索引文档上没有 owner 这一格,共用即串 owner),那一支答「索引不可用」而不是共用一份库 | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐)——**已由快照替代(S5)**:参照物那条旧扫描路删了,判据换成 `runtime/src/search/__tests__/golden-snapshot.test.ts` 的严格档命中集快照;`gate:search-index`:冷建事件循环 p99 < 20ms、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
 | **S4 壳** | React 壳按 §9(目标渲染注册表 + 预览渲染注册表 + 范围片 / 枢轴 + 查询历史) | `gate:search-messages` 扩 7 断言(total / 放宽 / 分组 / 归档徽 / 跨空间 / tab 随注册表 / 读者模式提示);ui:consume 只减不增;a11y 零违例 |
-| **S5 退役** | 删 `searchMessages` 旧扫描、`iterateSessionMessages` 端口、`switch(category)`、写死配额表、`SearchCategory` 字面量;CLAUDE.md 改写(§12,含第 317 行「跨会话索引归 apps/server,主进程不许加库」那句)与 collab 文档 | 全仓绿;grep 零残留 |
+| **S5 退役**(**已落地 2026-09-05**,记录见下) | 删 `searchMessages` 旧扫描、`switch(category)`、写死配额表、`SearchCategory` 字面量清单;`iterateSessionMessages` 端口**留**(S4a 的消息预览用它读命中前后各两条);CLAUDE.md 改写(§12,含「跨会话索引归 apps/server,主进程不许加库」那句 —— S3 已改)与 collab 文档 | 全仓绿;grep 零残留;`gate:search` / `gate:search-messages` 离屏两条真机门仍绿(空词浏览态 = 删路不删行为的证词) |
 | **S6 AI 消费者**(**已落地 2026-09-05**,记录 §14.5) | `search` 工具(§14):`toolkit/builtin/search.ts` + 单槽适配器注入 + 场景恒可见 + `spec.prompt`;messages **与 chats** `visibility` 的 agent 支(拍点辛 a);三档目录各注册一行 | typecheck 零;`boundary:gate` / `transport:gate` / `assembly:gate` / `log:gate` / `session:gate` 五闸全绿;`bunx vitest run {runtime,backend}/{toolkit,search} + backend/rpc + core/search` **99 文件 1104 例**(其中新增 4 份 61 例);反证三条各自真红(§11);**battery 那一幕没做**,理由与替代见 §14.5 ③ |
-| **S7 语义召回**(2026-09-05 落地) | sqlite-vec 装载(`runtime/search/index/sqlite-vec.ts`)+ `Embedder` 注册表(`runtime/search/embedding/`,wasm 真件 + 确定性假件)+ `vectorRetriever` 两份(core 的同步件 / runtime 的过 Worker 件)+ RRF 融合 + `manifest.retrievers` 按召回器 id 的策略表 + 设置开关 `search.semantic`(拍点壬 a,**默认关**)+ 嵌入写路 `VectorWriter`(Worker 里,每批让出);`gate:native` 6 目标(多了 sqlite-vec 与 transformers 拖来的两个原生包);`gate:packaged` 断言 `vector === 'off'` + `vectorExtension === 'loadable'`(改判见 §15.5) | 复述集 20/20 向量路 top-5 命中、词法严格档 0/20;`search:parity-B` 三趟与 S3c 逐字同(红 0);`gate:search-index` 八条绿(⑧ 新增:开关 → `embedding → ready` 196ms → 改写句 7ms 经 HTTP 命中 → 两条各排第一);⑤ 三窗口不劣化(1.356 / 5.583 / 1.79ms);`gate:native` 0 失败;`build:unpack` 后 `app.asar.unpacked/**/vec0.dylib` 在且已签名 |
+| **S7 语义召回**(2026-09-05 落地) | sqlite-vec 装载(`runtime/search/index/sqlite-vec.ts`)+ `Embedder` 注册表(`runtime/search/embedding/`,wasm 真件 + 确定性假件)+ `vectorRetriever` 两份(core 的同步件 / runtime 的过 Worker 件)+ RRF 融合 + `manifest.retrievers` 按召回器 id 的策略表 + 设置开关 `search.semantic`(拍点壬 a,**默认关**)+ 嵌入写路 `VectorWriter`(Worker 里,每批让出);`gate:native` 6 目标(多了 sqlite-vec 与 transformers 拖来的两个原生包);`gate:packaged` 断言 `vector === 'off'` + `vectorExtension === 'loadable'`(改判见 §15.5) | 复述集 20/20 向量路 top-5 命中、词法严格档 0/20;`search:parity-B` 三趟与 S3c 逐字同(红 0;该门 S5 退役,**已由快照替代**);`gate:search-index` 八条绿(⑧ 新增:开关 → `embedding → ready` 196ms → 改写句 7ms 经 HTTP 命中 → 两条各排第一);⑤ 三窗口不劣化(1.356 / 5.583 / 1.79ms);`gate:native` 0 失败;`build:unpack` 后 `app.asar.unpacked/**/vec0.dylib` 在且已签名 |
 | S8(缓议) | 文件内容源(`rg --json` 作 scan 能力);`@` 文件抽屉 / `/` 命令抽屉改成同一引擎的两个 surface;collab `history` 工具并入 `search`(kind 过滤) | 另案 |
 
 ### S3b 落地记录(2026-09-05:索引服务接进宿主)
@@ -908,6 +908,147 @@ S4 拆成两批:**S4a** 目标 / 预览渲染注册表与四条口,**S4b** 壳�
 (`browse` / `facets: [{ key: 'dir' }]`),壳读表 —— 所以壳里仍然一个能力 id 都没有,
 而再来一个自报 `browse` 的能力,空词那一屏自己多一组(用例与 `gate:search` 各钉一条)。
 
+### S5 落地记录(2026-09-05:退役旧扫描路)
+
+一句话:**删的是「第二条路」,不是能力的实现。** 今天能搜到什么、看到什么一个字没变;
+删完之后仓里只剩一条查询路 —— `search` RPC 域 → 进程单槽里的 `SearchService` → 注册表
+→ 能力。
+
+#### 删了什么(净删,行数按删前计)
+
+| 删的 | 行数 | 它是什么 |
+| --- | --- | --- |
+| `runtime/src/search/search-runtime.ts` | 64 | `executeOnethingSearch` + `switch(category)` + `all` 档那张写死的配额 / 次序表 |
+| `runtime/src/search/ipc-operations.ts` | 44 | `ONETHING_SEARCH_CATEGORIES` / `isOnethingSearchCategory` / `normalizeOnethingSearchCategory` / `executeOnethingSearchForIpc` |
+| `runtime/src/search/protocol.ts` | 12 | 上面那张清单给契约层的转发口 |
+| `runtime/src/search/providers.ts` 里的六个扫描器 + `executeSearch` + 两个入口门面 | 936 → **125** | 旧路的实现;`searchChats` / `searchMessages` / `searchDailyNotes` 三个整删,另三个搬家(见下) |
+| `@shared/ipc/search.ts` 的 `SEARCH_CATEGORIES` / `isSearchCategory` 两条再导出(+ `shared/ipc/index.ts` 的转发 + `shared/ipc/__tests__/search.test.ts`) | 17 | 契约层转发的那张常量表 —— S2 起零生产消费者 |
+| `backend/wiring/search/providers.ts` 的 `executeSearch` + `plugin-search-registry.ts` 的 `appendPluginSearchResults`(零消费者) | 门面 36 → **31**(整文件) | 旧路的装配层门面与它的插件并入口(插件走 `syncPluginSearchCapabilities` 那条真路) |
+| `backend/server/runtime.ts` 的 `createSearchProvidersForContext` | 4 | 只为了拿 `createDailyNote` 而绕的那个门面;改成直接把 per-owner 取材面递给 `createDailyNote` |
+| `scripts/search-parity-a.mjs`(418)/ `search-parity-b.mjs`(720)+ `package.json` 两条脚本 | 1138 | 见下「两道门为什么退役」 |
+| 旧路的三个单测(`search-runtime` / `ipc-operations` / `providers`) | 327 | 被测对象没了 |
+
+#### 留了什么,为什么
+
+- **`iterateSessionMessages` 端口留着**。派工单原文要删它,但它今天有一个真消费者:
+  S4a 的消息预览要读命中那条**前后各两条**(`capabilities/messages.ts` 的
+  `messageContextPreview`)。它不是旧扫描路的遗物 —— 旧路用它做全库子串扫,那件事没了;
+  预览那件事还在。注释已改成事实。
+- **`server/search-providers.ts` 单槽留着**。`rpc/domains/search.ts` 的**不可信**那一支
+  (独立部署的 server)照旧问它;它不是为旧路存在的,而是为「per-owner 沙箱里的同一件事」
+  存在的。注释里两处「桌面走 `executeSearch`」改成了事实。
+- **`actions` / `prompts` / `files` 三条的匹配器留着** —— 它们是**能力的实现**,不是第二条路。
+  但从 `providers.ts` 那个 936 行的大文件搬进了各自的 `capabilities/<id>.ts`:
+  一类 = 一个文件。每日笔记的配置、「今天那一条」与 `createDailyNote` 同理搬进
+  `capabilities/daily-notes.ts`;`legacy.ts` 只剩「把一只
+  `(query, limit, filters) => SearchResult[]` 包成基座」这一件事,改名 `scan-adapter.ts`
+  (`legacyScanCapability` → `scanBackedCapability`、`LegacyBackedCandidate.legacy` →
+  `ResultBackedCandidate.result`),文件头那段「S2 过渡件」的措辞改成事实:名字说它做的事,
+  不说它的来历。三处共用的四件纯函数(查询归一化 / 子串打分 / 高亮区间 / `~` 展开)进
+  `capabilities/text-match.ts` —— S5 之前 `normalizeQuery` 与 `normalizeOnethingSearchQuery`
+  是**逐字相同的两份**,现在只有一份。
+
+#### 「最近会话」不再借旧函数
+
+`chats` 空词那一支(自述 `browse: true`)S3b 起是「绕开索引、逐字调旧 `searchChats('')`」。
+S5 把它换成 `capabilities/sessions.ts` 自己的纯函数 `recentSessions`:去掉归档的 → 按
+`updatedAt` 降序 → 切前 N 间 → 投影。这**就是**旧函数在空词下走过的路 —— 空查询时
+`scoreText` 恒答 1,于是「按分排序」整段退化成 `updatedAt` 降序、`matchRanges` 恒缺席。
+把退化形直接写出来,比留一只只在空词下才被调到的打分器诚实。
+
+**证词是一份录音**:删旧函数**之前**,拿一张五间会话的夹具(含一间归档、一间无名、一间
+中文标题)跑 `searchChats` 的 `('' | '   ' | '/' | '>') × (2 | 20)` 八种入参,把返回值原样
+录成 `runtime/src/search/__tests__/__fixtures__/chats-browse.json`;新用例
+`chats-browse.test.ts`(10 例)拿它逐条比,而且是**走能力那一层**问的(中间还隔着
+`supports` 的空词判据、扫描基座的现造与投影)。派工单说的「把参照从旧函数换成固定快照」
+就是这一份。
+
+#### 两道对账门为什么退役,换成了什么
+
+`search:parity-A`(S2)与 `search:parity-B`(S3c)的参照物都是那条旧扫描路。路删了,
+参照物就没了 —— 一道拿不到参照物的门不是「还能跑的门」,是一句谎。所以它们连同
+1138 行脚本一起退役。
+
+它们守过的东西换成 `runtime/src/search/__tests__/golden-snapshot.test.ts`:S0 那份冻在仓里的
+2473 份真语料灌进真 `SqliteIndex`,把 **20 条黄金查询 + 20 条黄金复述句**在**严格档**
+(阶梯 ①:全 AND + 短语相邻)下的命中集录成 `__fixtures__/golden-hit-sets.json`
+(7.4 KB,40 条,`{ total, keys }`,`keys` **排过序**)。三条判据:
+
+- **判集合不判名次** —— 与 parity-B 的 ⊇ 口径同源:改字段权重只动次序不动召回,不该让
+  回归网变红(§11 记过这条);召回变了一定是一件要解释的事。
+- **复述集那 20 条也钉**:它们是 S7 给向量路出的卷子,词法严格档下今天 **0/20 命中**
+  (与 S7 交卷读数逐字同)。钉住它,是为了让「向量路捞回来的到底是不是词法捞不到的」
+  这句话有底片。
+- 再问一句**独立于快照**的话:黄金表自己声明的期望键,严格档下只许差
+  `corpus.test.ts` 里逐条解释过的那两条(`elcc_holiday_tranfer` 整词不在文档里、
+  `ＦＡＣ 888` 是中段子串)。快照录错了,这一条会红。
+
+重录口令 `ONETHING_SEARCH_GOLDEN_UPDATE=1`,**改它要在报告里写明理由** —— 它变了就是
+「同一句话能搜到什么」变了。
+
+#### 边界检查器换了守的方向
+
+`checkRuntimeOwnsSearchIpcOperations` 守的是「旧路的编排别从 runtime 漏进装配层 / 契约层」,
+它列的必需符号里有 `executeOnethingSearch` / `ONETHING_SEARCH_CATEGORIES` /
+`createOnethingSearchProviders` / `searchDailyNotes` 这些**今天必须不存在**的名字 —— 原样留着
+就是一道要求旧路活着的门。改写成 `checkSearchHasOneQueryPath`,三条判据:
+
+1. 旧路的**形状与名字**(`switch(category)`、那张类别清单、三个已删扫描器的函数名、
+   `parseDateFromPath`)在 `runtime/src/search` / `backend/wiring/search` /
+   `backend/rpc/domains` / `@shared/ipc/search.ts` 里**一处都不许有**(只看代码行,注释随便写),
+   那三个模块与两个 parity 脚本**存在即红**;
+2. **契约层不许 import runtime**(`@shared/ipc/search.ts`):「能搜什么」由
+   `search.capabilities` 那条路由答,不由一张转发过来的常量表答;
+3. 装配层取材面门面 ≤ 40 行、十个能力文件一个都不许少(一类 = 一个文件)。
+
+`checkCoreSearchNamesNoCapability` 一字未动。
+
+#### 门与反证
+
+| 门 | 读数 |
+| --- | --- |
+| `typecheck`(node + desktop) | 零 |
+| `boundary:gate` | 0 failures;新规则 `search has exactly one query path` ok |
+| `transport:gate` / `assembly:gate` / `log:gate` / `session:gate` | 四闸绿(assembly 99 / 63 文件不变;log 4;session 0) |
+| vitest(core/search + runtime/search + runtime/toolkit + backend wiring/search · wiring/toolkit · rpc · server + cli) | **117 文件 1256 例**绿 |
+| `eslint`(改动面) | 0 error(0 新增 warning;`headless-boundary-check.ts` 78 → 77) |
+| `gate:search-index` | 八条绿(⑤ 冷建 p99 1.299ms / 增量 5.796ms / 只折 1.705ms;⑧ 语义 ready 318ms) |
+| `gate:search`(离屏) | 绿 —— **空词浏览态**:默认档 20 行 → 翻页 25 行 → 「25 results · all shown」,一档没切 |
+| `gate:search-messages`(离屏) | 绿 —— 八步全过 |
+| 顺手一条纪律 | `gate-search.mjs` 也改成**离屏起**(`ONETHING_GATE_HEADLESS: '1'`,09-04 判例「真机门不许抢用户前台」);`gate-search-messages` 早就是了,这一道漏了。隐藏窗照样渲染与布局,门里那几发几何量测与截图读数一格没变 |
+| 壳单测 `apps/desktop-react src/search` | 9 文件 188 例绿 |
+| 净变化 | 46 文件 +2155 / **−2899** |
+
+**反证**(逐条真跑过):
+
+- 把 `golden-hit-sets.json` 里 `golden:私发` 的一个键改一字
+  (`…37759a884977` → `…978`)→ 快照那一例红(`AssertionError: expected { …(40) } to
+  deeply equal { …(40) }`,另外三例照绿 —— 独立那条判据不吃快照);
+- 把 `chats` 空词那一支改成走索引(摘掉 `asksForRecentSessions` 那条 `search` 分叉)→
+  `chats-browse.test.ts` + `capabilities.test.ts` 合计 **12 例红**;真机 `gate:search` 第 4 步
+  红:`超时等待「浏览态第一页画出来」`,处境读数 `{rows: 0, more: null, empty: "No results"}`。
+  **施工时踩过一次**:第一趟只重跑 `app:build` 就去跑门,门照绿 —— 这道门第 2 步自己
+  `spawn('node', ['dist/server/main.js'])` 起一台 core,壳是**附着**上去的,所以答查询的是
+  `dist/server` 那一份;要证伪必须先 `bun run server:build`。这一条记下来,下次别再被它骗;
+- 把 `search-runtime.ts` 放回去 → `boundary` 的新规则红。
+
+#### 留账
+
+- **「最近几间会话」仍然挂在 `chats` 的自述下**(S3b 那条留账只做了一半)。S5 只做了
+  「不再借旧函数」;把它抽成一条自己的 static 能力(自己的 manifest / 配额 / 次序 / 图标)
+  仍未做 —— 那是一次**用户可感知**的改动(命令面板空态会多一组、次序会变),按判例得先问。
+  今天的形状对这件事是友好的:`recentSessions` 已经是一只不吃索引的纯函数。
+- **「新建今天的日记」那条快捷行的归属**照旧待定(见 §13),`resolveDailyTodayShortcut`
+  只是换了个家。
+- 真机门里**没有**一条断言日记快捷行 —— 它今天由 `capabilities.test.ts` 的三条用例守
+  (不存在时排最后 / 存在时排最前并去重 / 与今天对不上时一条不多给)。要真机守它得先有一台
+  配好日记目录的机器(§13 里 S3c 记过同一件事)。
+- `runtime/src/search/index.ts` 这个桶现在只剩四行导出;`providers.ts` 只剩接口 + 单槽。
+  下一次动这一片时可以考虑把 `configureOnethingSearchProviders` 那个进程单槽也收掉 ——
+  它今天只服务两个不带参数的口(`resolveDailyNoteSearchDirs()` / `createDailyNote()`),
+  两个口都能改成必须递取材面,那样 runtime 的检索这一片就零模块级状态。本批没做:
+  改签名会碰到 `backend.ts` 的装配序,超出「删第二条路」的范围。
+
 ---
 
 S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依赖 S3(要索引才有意义,壳无关);S7 依赖 S3;S6 与 S7 可并行。S1 / S2 / S3 / S6 / S7 各是一张 opus 派工单,附本文对应节 + 三张状态表要求。
@@ -948,6 +1089,7 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 | 「跨会话搜索 / 索引归 apps/server,不进 Electron 主进程」 | CLAUDE.md | 07-04 弃 sqlite 后怕主进程再长回一个库 | 索引是账本的投影、纯 TS、可丢可重放;「一个 core」之后主进程就是 core |
 | 「中文子串匹配几乎必空——但不要上分词」 | collab-history-search.md §5.1 | 小语料 OR 过召回 | 二元 + AND 优先 + 短语核验 |
 | 归档跳过 / 剥 `>` `/` / `all` 配额常量 / `SearchCategory` 字面量 | providers.ts, search-runtime.ts, shared/ipc | 无记录 | 拍点丙 / 意图路由 / `budgetPolicy` / registry |
+| **旧扫描路本身**(`search-runtime.ts` / `ipc-operations.ts` / `providers.ts` 三件 + 契约层那两条再导出 + `search:parity-A` / `search:parity-B` 两道门) | 同上 | S2 / S3 期间它是新路的**参照物**:「行为零变化」这句话得有个东西可比 | **S5(2026-09-05)删**。三条索引型能力早已不经它,三条静态 / 扫描型能力的匹配器搬回各自的 `capabilities/<id>.ts`;参照物没了,两道对账门也就不是「还能跑的门」而是一句谎,退役并换成严格档命中集快照 |
 
 `onething.sqlite`(260MB,06-30 起未动)是遗物,另案清。
 
@@ -958,7 +1100,7 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 - 归档今天没有总线事件,拍点甲 b 下靠 `metaRev` + 目录监视兜住(~1s);若将来要毫秒级,给归档写口补一条总线事件是一处改动,不进账本。
 - 跨类混排若将来要做:每路给 0–1 置信度 + 类别先验,在 `merge` 换一个实现即可,骨架不动。
 - 读者模式(§5.6)下自己写的消息要等写者的目录监视,延迟 ~1s;壳在 `status.mode === 'reader'` 时「索引更新中」那行改画「由 <host> 维护」,不装成实时。
-- Worker 崩两次即停(§5.3):停了之后 messages / sessions / daily 三路答 `{ error: 'index unavailable' }`,不回退到旧扫描(S5 已删),壳照 §9 画「没搜成」。
+- Worker 崩两次即停(§5.3):停了之后 messages / sessions / daily 三路答 `{ error: 'index unavailable' }`,不回退到旧扫描(S5 已删,回退在结构上不可能了),壳照 §9 画「没搜成」。
 - `@huggingface/transformers` 的 wasm 后端在 Electron Worker 与 Node Worker 里都跑,但**首次装载 ~300ms**,S7 的 Worker 在开关打开后才 import 它(动态 import,不进主 bundle 的关键路径)。
 - 文件内容检索是 S8 的第一件:`scanCapability` 包 `rg --json`,cursor = 文件位置。
 - **parity-B 的差集口径**(S3a 读数定的):旧扫描是子串匹配,索引是词与前缀,所以「查询是某个词元的**中段**」(`888` 打中 `00888`)旧路命中、索引永远不命中——那是 §2 拍定的语义,不是漏。parity-B 判 ⊇ 时允许**放宽到任一级**后再比,残差逐条打印并分类:能证明是「中段子串」的计入允许差,其余任何一条都红。**允许差就这一类**(S3c 一度有过第二类「被脱敏吃掉」,同批已删,见下条)。
@@ -978,14 +1120,19 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
   `alternatives`,是两个索引实现的契约改动,自成一批。
 - **bun 的运行时没有 `node:sqlite`**(实测 `No such built-in module`):vitest 走 node 所以用例是真的;任何起索引服务的门脚本必须用 node 或 Electron 起,不许 `bun xxx.mjs`。
 - `SqliteIndex` 的 fts rowid = `docId*32 + 字段槽`,全库字段名上限 32(今天 4 个),超了当场抛。`search()` 先算全部命中再切页(`total` 要真数),真库量级要不要两段式留 S3b 真机读数定。
-- **「最近几间会话」该是它自己的能力**(S3b 留):今天它是 `capabilities/sessions.ts` 里
-  一个「空词绕开索引、调旧 `searchChats`」的分支 —— 保旧行为最稳的写法,但它借着 chats 的
-  自述(配额 / 次序 / 图标)说了另一件事。S5 把它抽成一条 static 基座的能力(自己的
-  manifest、自己的次序),那时这个分支与旧 `searchChats` 一起删。
+- **「最近几间会话」该是它自己的能力**(S3b 留;**S5 做了一半**):旧 `searchChats` 已随
+  旧扫描路删掉,这一支改由 `capabilities/sessions.ts` 自己的纯函数 `recentSessions` 答
+  (与旧函数逐字同,证词是删它之前录下的 `__tests__/__fixtures__/chats-browse.json`)。
+  **没做的那一半**:它仍然借着 chats 的自述(配额 / 次序 / 图标)说另一件事。抽成一条
+  自己的 static 能力会让命令面板的空态多一组、次序变一次 —— 那是用户可感知的改动,
+  按判例得先问,所以没动。
 - **「新建今天的日记」那条快捷行的归属**(S3b 留):它是一条**动作**不是一条笔记,
   今天由 daily 能力在 `search()` 里补进结果。将来要么归 `actions` 能力(它本来就是
   「动作」那一类),要么由 daily 自己声明一格 `actions?`(能力自述出「我这一类还能做什么」)。
-  两条路都要先定契约;定了之后 `resolveDailyTodayShortcut` 与旧扫描器一起删。
+  两条路都要先定契约。**S5 更正**:旧扫描器已删,但 `resolveDailyTodayShortcut` **没跟着删** ——
+  它答的是「今天那个文件在不在」,索引在结构上答不出,所以它是 daily 这一类的实现而不是
+  旧路的遗物;S5 只是把它连同每日笔记的配置一起搬进 `capabilities/daily-notes.ts`。
+  归属这件事照旧待定。
 - **S7 留账(一)——桌面打包档不带语义召回的运行时。已按拍点癸' 的 (c) 落地(09-05,
   编排者的保守缺省),三条路见 §0 拍点癸',待用户拍**。
   病是这样的:装 `@huggingface/transformers` 顺带装进 `onnxruntime-node` 212M /

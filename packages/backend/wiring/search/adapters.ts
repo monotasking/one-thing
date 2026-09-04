@@ -3,11 +3,11 @@
  *
  * 从前它是 `providers.ts` 里 `configureOnethingSearchProviders({...})` 的那个内联
  * 字面量。S2(检索重建,`docs/design/search-index-2026-09.md` §10 S2)把它提成一个
- * 文件,理由有两条:
- *  ① 旧路(`executeSearch` 的进程单例)与新路(`SearchService` 的六个能力)必须吃
- *     **同一份**取材面 —— 对账门守的就是「两条路只差包装」;
- *  ② `providers.ts` 有一道「门面必须 ≤50 行」的边界规则(`checkRuntimeOwnsSearchIpcOperations`),
- *     它挡的是「编排逻辑长回门面里」。取材面不是编排,但它确实占行数,所以搬到隔壁。
+ * 文件,当时的理由是「新旧两条路必须吃**同一份**取材面」;S5 删掉旧路之后理由只
+ * 剩下一条,但它更硬:**取材面有两个装法** —— 桌面按整台机器装一份(下面这只
+ * 函数),server 按 owner 现装一份(`server/runtime.ts` 的
+ * `createSearchAdaptersForContext`)。两个装法各自成文件,`providers.ts` 只留那个
+ * 进程单槽。
  */
 import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
 import { listPrompts } from '@onething/runtime/prompts/store-bound'

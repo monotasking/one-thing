@@ -3,11 +3,6 @@
  */
 import { defineRouter } from './router.js'
 
-export {
-  ONETHING_SEARCH_CATEGORIES as SEARCH_CATEGORIES,
-  isOnethingSearchCategory as isSearchCategory,
-} from '@onething/runtime/search/protocol'
-
 /**
  * 能力 id 或 `'all'`(检索重建 S0,`docs/design/search-index-2026-09.md` §8)。
  *
@@ -15,16 +10,10 @@ export {
  * 东西」是注册表里的一行,契约层不该替它枚举:加一类不许改契约。所以类型放宽成
  * `string`,校验交给 registry(S2)。
  *
- * `SEARCH_CATEGORIES` / `isSearchCategory` 两个**值**照旧从 runtime 再导出,答的
- * 仍是今天那张写死的清单。
- *
- * S2(2026-09-04)之后**它们在产品代码里已经没有消费者**:「这个档认不认」由
- * `SearchService.query` 问注册表(`registry.has(id)`,不认识的归 `'all'`,与
- * `normalizeOnethingSearchCategory` 逐字同义),而那张清单只剩旧扫描路
- * (`executeOnethingSearchForIpc`)自己在读。两个再导出留到 S5 与旧路一起删 ——
- * 这一期不动它们,是因为契约层这条再导出正是边界检查器
- * (`checkRuntimeOwnsSearchIpcOperations`)钉住的那一条:清单必须由 runtime 拥有、
- * 由契约层原样转发,契约层不许自己长一份。
+ * **S5(2026-09-05)起契约层连那张清单都不再转发**:`SEARCH_CATEGORIES` /
+ * `isSearchCategory` 两个再导出随旧扫描路一起删了。「这个档认不认」的唯一产地是
+ * `SearchService.query` 问注册表(`registry.has(id)`,不认识的归 `'all'`);
+ * 壳要画哪几个 tab 问 `search.capabilities` 那条路由,不问一张常量表。
  */
 export type SearchCategory = string
 
@@ -150,11 +139,10 @@ export interface SearchWindowGuideState {
  * 结果动作」—— 最后这条看着像数据面,其实整件事都是窗口活:关掉搜索窗、找到主窗、
  * 把 actionId 送进去、再把主窗聚焦。
  *
- * 查询**不在这张表上**,是刻意的:它的处理者一行 electron 都不 import(桌面是
- * `wiring/search/providers` 的 `executeSearch`,server 是同一件事的 per-owner
- * 沙箱版),按判据它是**数据面**。A1-b(2026-08-23)把它迁进了 `rpc:invoke` 的
- * backend `search` 域(见本文件下方的 `searchRouter`),`SEARCH_QUERY` 那条常量
- * 随之删除。
+ * 查询**不在这张表上**,是刻意的:它的处理者一行 electron 都不 import(本机是
+ * 进程里那份 `SearchService`,server 是同一件事的 per-owner 沙箱版),按判据它是
+ * **数据面**。A1-b(2026-08-23)把它迁进了 `rpc:invoke` 的 backend `search` 域
+ * (见本文件下方的 `searchRouter`),`SEARCH_QUERY` 那条常量随之删除。
  */
 export interface SearchWindowResponse {
   success: boolean
@@ -192,14 +180,14 @@ export const searchWindowRouter = defineRouter<SearchWindowRoutes>('search-windo
 /**
  * Search Everywhere 的**数据面**(结构债 P4 终态批 A1-b,2026-08-23)。
  *
- * 只有一条 `query`,走的是**装配层**的 `rpc:invoke` 而不是上面那张宿主壳表 ——
- * 处理者一行 electron 都不碰。它是继 files / tools / mcp 之后又一个
- * **按 `context.transport` 分叉**的域:
- *  - `ipc`(桌面)= `wiring/search/providers` 的 `executeSearch`,整台机器的一份
- *    会话 / 文件 / 提示词表,逐字沿用迁移前 `apps/electron/src/search/ipc.ts` 那条
- *    手写 handler;
- *  - `http`(server)= per-owner 沙箱里的同一件事(`server/search-providers.ts`
- *    那个单槽端口,装的就是从前 `POST /api/search/query` 背后的同一个闭包)。
+ * 五条路由(S0 立形、S2·S3·S4a 接上真件),走的是**装配层**的 `rpc:invoke` 而不是
+ * 上面那张宿主壳表 —— 处理者一行 electron 都不碰。`query` 按**本机可信**分叉
+ * (B2;此前问的是 `context.transport`):
+ *  - 本机可信(桌面 IPC / 桌面内嵌 HTTP 面 / 回环 `server:start`)= 这台进程装配的
+ *    那份 `SearchService`,整台机器的一份会话 / 文件 / 提示词表 + store 级索引;
+ *  - 不可信(独立部署的 server)= per-owner 沙箱里的同一件事
+ *    (`server/search-providers.ts` 那个单槽端口,装的就是从前
+ *    `POST /api/search/query` 背后的同一个闭包)。
  *
  * `SEARCH_ACTION` 是推送、`executeAction` 是窗口活(在 `searchWindowRouter` 上),
  * 两者都不在这里。

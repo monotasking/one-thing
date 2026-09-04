@@ -9,10 +9,9 @@
  * ## 按**本机可信**分叉(B2;此前问的是 `context.transport`)
  *
  * 两个宿主查的是**同一件事的两个口径**,不是一件事的两份实现:
- *  - **本机可信**(桌面 IPC / 桌面内嵌 HTTP 面 / 回环 `server:start`)=
- *    `wiring/search/providers` 的 `executeSearch` —— 整台机器上那份会话 / 文件 /
- *    提示词表。逐字沿用迁移前 `apps/electron/src/search/ipc.ts` 那条 handler
- *    (连 `executeOnethingSearchForIpc` 这层归一化都是同一个)。
+ *  - **本机可信**(桌面 IPC / 桌面内嵌 HTTP 面 / 回环 `server:start`)= 这台进程
+ *    装配的那份 `SearchService`(注册表 + 流水线 + store 级索引)—— 整台机器上那份
+ *    会话 / 文件 / 提示词表。
  *  - **不可信**(独立部署的 server)= per-owner 沙箱里的同一件事。实现没搬家,
  *    还在 `server/runtime.ts` 的装配闭包里;这里经 `server/search-providers.ts`
  *    那个单槽端口调它 —— 装的就是从前 `POST /api/search/query` 背后的同一个闭包。
@@ -77,8 +76,10 @@ function runtimeContext(context: RpcDispatchContext) {
  *  - `capabilities` —— **问注册表**:`service.capabilities(surface)`。S0 那张手抄的
  *    六份 manifest(`S0_CAPABILITY_MANIFESTS`)整段删掉了 —— 它当时的作用就是先立形,
  *    形一接上真件就该消失,不然它会变成第二张写死的清单。
- *  - `query` —— 走 `SearchService`(注册表 + 流水线)。S2 的判据是**行为零变化**:
- *    `search:parity-A` 对每一类 + `all` 拿真库跑 200 条查询,新旧 `results` 逐字节同。
+ *  - `query` —— 走 `SearchService`(注册表 + 流水线 + S3 起的索引)。S2 换路时的判据
+ *    是**行为零变化**,由 `search:parity-A` 拿真库跑 200 条查询逐字节对过;那道门与
+ *    `search:parity-B` 在 S5 随旧扫描路一起退役(参照物没了),守过的东西改由
+ *    `runtime/src/search/__tests__/golden-snapshot.test.ts` 的严格档命中集快照守。
  *  - `preview` / `invoke` —— **S4a 起是真件**,走 `SearchService.preview / .invoke`。
  *    四个内置能力实现了 `preview`(messages / daily / files 是 lazy,chats 是 inline
  *    并随候选带在 `SearchResult.preview` 上);`invoke` 接通了但**本批没有任何能力
@@ -90,8 +91,8 @@ function runtimeContext(context: RpcDispatchContext) {
  *
  * ## 本机可信那条分叉一字未动(B2)
  *
- * 换的只是「可信这一支去调谁」:从前是 `wiring/search/providers` 的 `executeSearch`,
- * 现在是同一份取材面装起来的 `SearchService`。不可信那一支照旧走
+ * 换的只是「可信这一支去调谁」:S2 之前是旧扫描路那条 `switch(category)`,
+ * 现在是同一份取材面装起来的 `SearchService`(S5 已删旧路)。不可信那一支照旧走
  * `server/search-providers.ts` 的单槽端口(server 运行时在自己的闭包里按 owner
  * 装一份服务),端口不在场时**结构化拒绝**,不偷偷降级去查桌面那份。
  */

@@ -10,7 +10,7 @@
  *   3. **点击派发** —— 一条插件结果的点击回到它自己的 `onAction`,宿主不解释 actionId。
  *
  * 结果并入结果集但按 provider label 分组可辨(`group` 字段);类别归属只在 'all'
- * (装配层的 executeSearch 决定),不抢占内置类别(chats / files 等)的语义。
+ *(能力注册表决定),不抢占内置类别(chats / files 等)的语义。
  */
 import type { SearchResult } from '@shared/ipc/search.js'
 import {
@@ -332,24 +332,6 @@ export function syncPluginSearchCapabilities(service: OnethingSearchService): ()
       entry.unregisterCapability = undefined
     }
   }
-}
-
-/**
- * 把插件供给方的结果并到内置结果之后(装配层 executeSearch 的一行门面)。
- *
- * 门控在这里(而不是让门面自己判):插件结果**只在 'all' 且有查询串**时出现 ——
- * 不抢占内置类别(chats / files 等)的语义,也不在空查询下刷屏。内置在前、插件
- * 在后,分组可辨。这样搜索门面保持极薄(boundary 守卫:facade 必须 ≤50 行)。
- */
-export async function appendPluginSearchResults(
-  builtin: SearchResult[],
-  query: string,
-  category: string,
-  limit: number,
-): Promise<SearchResult[]> {
-  if (category !== 'all' || !query.trim()) return builtin
-  const pluginResults = await searchPluginProviders(query, { limit })
-  return pluginResults.length === 0 ? builtin : [...builtin, ...pluginResults]
 }
 
 /**

@@ -28,8 +28,9 @@
  *
  * 「打开今天 / 新建今天的日记」说的是「今天那个文件在不在」——**不存在的文件没有
  * 文档**,索引在结构上答不出它。判定与那一行的形状**逐字沿用旧实现**:
- * `providers.ts` 的 `resolveDailyTodayShortcut` 就是从旧扫描器循环体里抽出来的
- * 同一份代码,新旧两条路调的是它。位置也照旧扫描器那只 `sort`:
+ * `daily-notes.ts` 的 `resolveDailyTodayShortcut` 就是从旧扫描器循环体里抽出来的
+ * 同一份代码(S3b 抽出、S5 随每日笔记的配置一起搬到这一类自己的模块里)。位置
+ * 也照旧扫描器那只 `sort`:
  * **「新建」那条排最后、「打开今天」那条排最前**(它的 timestamp 是此刻,
  * 而笔记的 timestamp 是文件名那天)。今天的笔记已经存在时索引也会答出它,
  * 于是按 `filePath` 去重 —— 旧路那只 `seen` 的同一件事。
@@ -48,11 +49,11 @@ import {
   type SearchQuery,
 } from '@onething/core/search'
 import { createSqliteLexicalRetriever } from '../index/service.js'
-import { resolveDailyTodayShortcut } from '../providers.js'
-import type { DailySearchResult, OnethingSearchProvidersAdapters } from '../providers.js'
-import { normalizeOnethingSearchQuery } from '../search-runtime.js'
+import type { OnethingSearchProvidersAdapters } from '../providers.js'
+import { resolveDailyTodayShortcut, type DailySearchResult } from './daily-notes.js'
 import { snippetOf, trackIndexGeneration, type SearchIndexQueryFace } from './indexed.js'
-import type { LegacyBackedCandidate, SearchServiceResult } from './legacy.js'
+import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
+import { normalizeSearchQuery } from './text-match.js'
 import {
   PreviewUnavailableError,
   firstCandidate,
@@ -142,8 +143,8 @@ async function noteExcerptPreview(candidates: Candidate[]): Promise<PreviewPaylo
   return { kind: 'note-excerpt', payload: excerpt, title: candidate.title }
 }
 
-/** 「今天那一条」→ 一枚候选。`legacy` 一格原样驮着,投影出来的键序与旧路同。 */
-function shortcutCandidate(shortcut: DailySearchResult, score: number): LegacyBackedCandidate {
+/** 「今天那一条」→ 一枚候选。`result` 一格原样驮着,投影出来的键序不变。 */
+function shortcutCandidate(shortcut: DailySearchResult, score: number): ResultBackedCandidate {
   const filePath = shortcut.filePath ?? ''
   const target: DailyTarget = shortcut.actionId === undefined
     ? { kind: 'daily', payload: { filePath } }
@@ -156,7 +157,7 @@ function shortcutCandidate(shortcut: DailySearchResult, score: number): LegacyBa
     score,
     time: shortcut.timestamp,
     target,
-    legacy: shortcut,
+    result: shortcut,
   }
 }
 
@@ -182,7 +183,7 @@ export function createDailySearchCapability(
           ? snippetOf(doc.fields.content ?? '', hit.matched).text
           : undefined
 
-        const legacy: SearchServiceResult = {
+        const result: SearchServiceResult = {
           id: `daily:${filePath}`,
           type: 'daily',
           title,
@@ -192,17 +193,17 @@ export function createDailySearchCapability(
           timestamp: doc.time,
           matchRanges: titleSnippet.ranges,
         }
-        const candidate: LegacyBackedCandidate = {
+        const candidate: ResultBackedCandidate = {
           capability: dailySearchManifest.id,
-          id: legacy.id,
-          title: legacy.title,
-          subtitle: legacy.subtitle,
+          id: result.id,
+          title: result.title,
+          subtitle: result.subtitle,
           ranges: titleSnippet.ranges,
           score,
           time: doc.time,
           target: { kind: 'daily', payload: { filePath } } satisfies DailyTarget,
           facets: doc.facets,
-          legacy,
+          result,
         }
         return candidate
       },
@@ -246,10 +247,10 @@ export function createDailySearchCapability(
 
   return {
     manifest: dailySearchManifest,
-    // 旧路 `all` 档的 `includeDaily = Boolean(normalizeOnethingSearchQuery(query))`:
-    // 空词(以及裸 `/` `>`)时这一类整组不出现。单类档不问 `supports`,所以
-    // 「空词的 daily 档先给今天那一条」照旧成立。
-    supports: (query: SearchQuery) => normalizeOnethingSearchQuery(query.raw).length > 0,
+    // 空词(以及裸 `/` `>`)时这一类**整组不出现**——旧路 `all` 档那句
+    // `includeDaily = Boolean(normalizeQuery(query))` 的同一句话。单类档不问
+    // `supports`,所以「空词的 daily 档先给今天那一条」照旧成立。
+    supports: (query: SearchQuery) => normalizeSearchQuery(query.raw).length > 0,
     search,
     preview: noteExcerptPreview,
   }

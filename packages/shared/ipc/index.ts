@@ -852,11 +852,6 @@ export {
 } from "./ui-message.js";
 
 // Search types
-export {
-	SEARCH_CATEGORIES,
-	isSearchCategory,
-} from "./search.js";
-
 export type {
 	SearchCategory,
 	SearchRequest,

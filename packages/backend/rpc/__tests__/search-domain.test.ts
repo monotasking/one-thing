@@ -4,9 +4,9 @@
  * 接的是被删掉的两处的测试位:`apps/electron/src/search/ipc.ts` 里那条
  * `IPC_CHANNELS.SEARCH_QUERY` 手写 handler,与 `POST /api/search/query` 那条 REST
  * 路由背后的 facade adapter。值得钉的是:
- *  - **本机可信**这一支打的是桌面那份 `wiring/search/providers` 的 `executeSearch`,
- *    连非法 category 归一成 `'all'` 这条(旧 handler 借 `executeOnethingSearchForIpc`
- *    拿到的行为)都一字未变;
+ *  - **本机可信**这一支打的是这台进程装配的那份 `SearchService`,连非法 category
+ *    归一成 `'all'` 这条(旧 handler 那时借一张写死的清单拿到的行为)都一字未变 ——
+ *    S5 之后判据是「注册表里有没有这个 id」,答案相同;
  *  - **不可信**这一支打的是 `server/search-providers.ts` 那个单槽端口(装的就是
  *    从前那条 REST 背后的同一个闭包),并且**一次都不求值桌面那份** —— 否则一个
  *    网络调用者会读到宿主机器上别人的会话;
@@ -18,8 +18,8 @@
  * 分组:声明过 → 两种 transport 同一个答案;没声明 → http 与 B2 之前逐字相同。
  *
  * 检索重建 S2(`docs/design/search-index-2026-09.md` §10)之后,**可信这一支去调谁**
- * 换了:从前是 `wiring/search/providers` 的 `executeSearch`,现在是同一份取材面装起来
- * 的 `SearchService`(进程单槽)。所以下面的可信用例装的是一份**真服务**(六个内置
+ * 换了:从前是旧扫描路那条 `switch(category)`,现在是同一份取材面装起来的
+ * `SearchService`(进程单槽;旧路 S5 已删)。所以下面的可信用例装的是一份**真服务**(六个内置
  * 能力都在),不是一只 spy —— 「不可信那一支一次都不求值桌面那份」这条断言因此改由
  * 取材面上的 spy 来钉:适配器一次都不该被问到。
  */
