@@ -52,17 +52,83 @@ const ALL_TAB_ICON = 'Search'
  * 自己声明的位置上。壳这一侧一个字不改 —— 那正是 §4.0 的硬指标。
  */
 export function tabsOf(manifests: readonly SearchCapabilityManifestDto[]): SearchTab[] {
-  const rest = [...manifests]
+  const rest = orderedManifests(manifests).map(manifest => ({
+    id: manifest.id,
+    labelKey: manifest.labelKey,
+    icon: manifest.icon,
+  }))
+  return [{ id: ALL_TAB, labelKey: ALL_TAB_LABEL_KEY, icon: ALL_TAB_ICON }, ...rest]
+}
+
+/**
+ * 展示次序(`order` 升序,同 `order` 保注册序)。**一处算** —— tab 条与空词的
+ * 浏览态各排一遍就是两个产地,而它们说的是同一句话。
+ */
+function orderedManifests(
+  manifests: readonly SearchCapabilityManifestDto[],
+): SearchCapabilityManifestDto[] {
+  return [...manifests]
     .map((manifest, index) => ({ manifest, index }))
     // `sort` 在 V8 上已经是稳定的,但这里仍然显式带上下标:判据是「同 order 保注册序」,
     // 写出来的判据不会因为引擎换了实现而变成一句默认行为。
     .sort((a, b) => a.manifest.order - b.manifest.order || a.index - b.index)
-    .map(({ manifest }) => ({
-      id: manifest.id,
-      labelKey: manifest.labelKey,
-      icon: manifest.icon,
-    }))
-  return [{ id: ALL_TAB, labelKey: ALL_TAB_LABEL_KEY, icon: ALL_TAB_ICON }, ...rest]
+    .map(({ manifest }) => manifest)
+}
+
+/**
+ * **空词时「所有」档去问谁**(S4b 修;09-01 用户裁定:「我要能够在这里面看到
+ * 所有的条数,所有的记录,要能够翻页」)。
+ *
+ * ── 为什么空词的 `all` 档不能发 `category: 'all'` ─────────────────────────
+ * `'all'` 在后端是**分组总览**(§7.2:「总览的目的是『大概在哪一类』;要翻页去
+ * 单类」)—— 各能力按自己的配额各给几条、不分页、不报总数。那张总览在**有词**
+ * 时正是想要的;而空输入框那一屏用户要的是**浏览**:全部会话、看得见总条数、
+ * 翻得了页。两件事同一个档位,判据只能是「有没有词」。
+ *
+ * ── 为什么答案从自述里读,而不是写一个 `'chats'` ─────────────────────────
+ * 「空词的时候我有东西可列」是**能力自己**才知道的事(chats 有一条空词绕开索引
+ * 直接调旧 `searchChats` 的路;别的能力对零词元恒零命中)。写死一个 id 就是又一个
+ * 枚举点 —— §4.0 那条硬指标与 `__tests__/no-capability-literals.test.ts` 都不许。
+ * 所以能力在 manifest 上自报一格 `browse`,壳读表:声明了的各占一组,
+ * 今天恰好只有一个,于是屏幕上就是一张平铺的会话列表 —— 与旧行为逐字相同。
+ *
+ * 次序与 tab 条同一条(见 `orderedManifests`)。
+ */
+export function browseCapabilitiesOf(
+  manifests: readonly SearchCapabilityManifestDto[],
+): string[] {
+  return orderedManifests(manifests)
+    .filter(manifest => manifest.browse === true)
+    .map(manifest => manifest.id)
+}
+
+/**
+ * 这个能力的文案键(自述原样)。查不到 = `undefined`。
+ *
+ * 用处只有一个:空词浏览态那几组是**壳自己拼的**(一组一次查询),后端没给
+ * 组名 —— 名字于是从自述表读。后端给了名字的组(`all` 档的 `groups`)照旧用
+ * 后端那一份,这里不去覆盖它:两条路各有产地,不合并成「壳说了算」。
+ */
+export function labelKeyOf(
+  manifests: readonly SearchCapabilityManifestDto[],
+  capability: string,
+): string | undefined {
+  return manifests.find(manifest => manifest.id === capability)?.labelKey
+}
+
+/**
+ * 屏幕上那一格写什么。
+ *
+ * `labelKey` 是**自述原样**,而字典里不一定有它 —— 一个插件能力(或任何一个不在
+ * 壳这份字典里的能力)给的键翻不出来,`translate` 会答 `undefined`,渲染成一格
+ * **空白 tab**。空白比原文糟得多:原文至少说得出「这一档叫 zzz-unknown」,
+ * 而空白让人以为控件坏了。
+ *
+ * 所以判据是一句话:**翻得出就画译文,翻不出就画原文**。它是纯函数(译文由调用
+ * 方递进来),与这个文件里别的东西同一体例 —— 字典在 i18n,不在这里。
+ */
+export function labelTextOf(labelKey: string, translated: string | undefined): string {
+  return translated || labelKey
 }
 
 /** Tab / ⇧Tab 在 tab 条上轮转。到头回卷 —— 与从前那只 `nextScope` 逐字同义。 */

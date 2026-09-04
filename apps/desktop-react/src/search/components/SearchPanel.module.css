@@ -5,6 +5,10 @@
   display: flex;
   flex-direction: column;
   background: var(--surface-2);
+  /* 预览窗是「宽了就并排、窄了就行下展开」(§4.5 ⑥),而这块面在舞台 / 浮窗 /
+   * 架子三种宿主下宽度各不相同 —— **窗口宽度说明不了它此刻有多宽**,所以断点
+   * 只能问容器自己。名字取 searchPanel,与 catalog / composerDrawer 同一体例。 */
+  container: searchPanel / inline-size;
 }
 
 .head {
@@ -37,8 +41,8 @@
  * 边框内补收进最外侧的轨道,而每一行的这份内缩逐字相同 —— 所以各行对得齐,
  * 底部那条 item(同一份 padding + border)也对得齐。 */
 .body {
-  flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   padding: var(--sp-2);
   display: grid;
@@ -169,12 +173,6 @@
   white-space: nowrap;
 }
 
-.code {
-  font-family: var(--font-mono);
-  font-size: var(--fs-code);
-  color: var(--text-2);
-}
-
 .origin {
   min-width: 0;
   max-width: var(--search-origin-w);
@@ -186,8 +184,8 @@
   white-space: nowrap;
 }
 
-/* 文件检索失败的那一行(D5)。它不是空态 —— 空态在列表里,这一行在列表**上面**,
- * 因为会话侧可能照常有结果,而文件侧那一半确实塌了,两件事得同时看得见。
+/* 检索失败的那一行。它不是空态 —— 空态在列表里,这一行在列表**上面**,
+ * 因为**旧结果还留在屏上**(律②:错误不抹掉上一次的答案),两件事得同时看得见。
  * 一行两件:一句人话(不弯腰)+ 后端原话(唯一的弯腰件,缩了有省略号)。 */
 .failed {
   flex: none;
@@ -262,4 +260,122 @@
   color: var(--text-3);
   font-size: var(--fs-micro);
   white-space: nowrap;
+}
+
+
+/* ── 片条(§9 第五条 + §4.6 结论 1)────────────────────────────────────────
+ * 三段:历史的两颗方向钮 / 范围片 / 过滤片。
+ * **允许换行**(`flex-wrap`):片的数量由自述说了算,一个声明了七格 facet 的
+ * 能力会让这条比行还长 —— 结构行只截断不换行那条律管的是「一行里的字」,
+ * 而这里每一颗片本身是一个完整的可点目标,截掉一半等于把它藏起来。 */
+.filters {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line-1);
+}
+
+/* ── 左列表 · 右预览(§4.5 ⑥)──────────────────────────────────────────────
+ * 常态是**一列**(列表铺满);容器够宽时右边长出预览那一轨。
+ * 预览轨用 `minmax(0, …)`:面板被挤窄时它先让,不去顶掉列表。 */
+.main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* 预览窗。**自己滚** —— 「超量」那一格的答复就是它(见 SearchPreview 的状态表)。
+ * 窄档下它落在列表下面(一列布局),用上边线与列表分开。 */
+.preview {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--sp-3);
+  border-top: 1px solid var(--line-1);
+}
+
+/*
+ * 阈值只能写字面量(`@container` 的条件里写不了 var()),所以这个 640 与
+ * `--search-preview-min` 是**同一事实的两处** —— 由
+ * `./search-css.test.ts` 钉着它们相等(与 ModelCatalog / Composer 同一手)。
+ *
+ * 这一段**排在两条常态规则之后**:并排那一形是对一列那一形的覆盖,
+ * 而它们特异性相同 —— 谁在后面谁赢。次序在这里是判据,不是排版。
+ */
+@container searchPanel (min-width: 640px) {
+  .main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, var(--search-preview-w));
+  }
+
+  .preview {
+    border-left: 1px solid var(--line-1);
+    border-top: none;
+  }
+}
+
+.previewTitle {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+/* 「选一条看看」/「这一类还没有预览」那一句。 */
+.previewNote {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 后端的原话(§4.5 ⑤)。等宽 + 可折行:它是一句机器话,截断会把关键那半截藏掉。 */
+.previewDetail {
+  margin: var(--sp-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+/* 骨架。**120ms 之后才画**(判据在 SearchPreview.tsx,不在这里)——
+ * 这里只负责它长什么样:一块占位的浅色面,不闪、不转(Spinner 只许在按钮内或状态栏)。 */
+.previewSkeleton {
+  height: var(--search-preview-skeleton-h);
+  border-radius: var(--r-1);
+  background: var(--st-hover);
+}
+
+/* ── 组头右侧那一格(§9 第四条)────────────────────────────────────────────
+ * 三件都是**文字读数**,不是计数徽:「没搜成」/「共 N 条」/「查看全部」。 */
+.groupNote {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+}
+
+/* 这一组塌了。状态色只上字不换底(token 纪律)。 */
+.groupFailed {
+  flex: none;
+  color: var(--danger);
+}
+
+.groupTotal {
+  flex: none;
+  color: var(--text-3);
+}
+
+/* ── 多选(§4.5 ③)────────────────────────────────────────────────────────
+ * 挑出来的行与键盘位是**两种状态**:键盘位是 `.rowOn`(左缘 accent 线 + 选中膜),
+ * 挑出来的是一层更淡的膜。两者可以叠在同一行上 —— 那正是「我用键盘走到了一条
+ * 我已经挑中的行」,屏幕上必须分得出来。 */
+.rowPicked {
+  background-image: linear-gradient(var(--st-hover), var(--st-hover));
 }

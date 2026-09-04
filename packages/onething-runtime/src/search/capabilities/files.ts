@@ -4,7 +4,12 @@
  * 设计:docs/design/search-index-2026-09.md §4.2 第二行 / §10 S2 行。
  */
 
-import type { CapabilityManifest, PreviewPayload, SearchCapability } from '@onething/core/search'
+import type {
+  CapabilityManifest,
+  FacetFilter,
+  PreviewPayload,
+  SearchCapability,
+} from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { createOnethingSearchRuntimeAdapters } from '../providers.js'
 import { legacyScanCapability } from './legacy.js'
@@ -21,11 +26,34 @@ export interface FileTarget {
   payload: { filePath: string }
 }
 
+/**
+ * **扫描根**那一格过滤片(S4b)。
+ *
+ * 语义:「只扫这一个目录」。缺席 = 后端自己那张根列表(`getSearchDirs()`:当前
+ * 会话的工作目录 + 两个笔记根 + 接入目录)。
+ *
+ * 它存在的理由是一件**旧行为**:S4b 之前文件那一档搜的是**壳**的
+ * `useSessionCwd()` —— 渲染层那条活跃会话的工作目录。改读后端之后根变成了
+ * `getSearchDirs()`,而它认的是**后端** `getCurrentSessionId()` 的工作目录,
+ * 而 React 壳从不告诉后端当前会话是谁 —— 于是会话目录下的文件搜不到了。
+ * 把根做成一格 facet、由壳结构地递进来,旧行为就回来了,而且不必写
+ * `app-state.json`(那是一次会持久化的行为改动,按判例得先问用户)。
+ *
+ * **谁递得进来**:`search.query` 的本机可信那一支(`isHostLocallyTrusted()`,
+ * 见 `backend/rpc/domains/search.ts`)。不可信的那一支根本走不到这个能力 ——
+ * 它问的是 server 侧那个 per-owner 沙箱端口。所以这里不再自建一道信任判据:
+ * 判据只该有一个产地。
+ */
+const DIR_FACET = 'dir'
+
 export const filesSearchManifest: CapabilityManifest = {
   id: 'files',
   labelKey: 'search.capability.files',
   icon: 'FolderTree',
   kind: 'scan',
+  // 扫描型唯一认的一格。声明它 = `fanout` 的 `narrowToDeclaredFacets` 才会把
+  // 这个键递到这一路上(别的键与它无关,一格都收不到)。
+  facets: [{ key: DIR_FACET, type: 'enum' }],
   // 扫描型这一期不设超时(`0` = core `deriveSignal` 只在 `timeoutMs > 0` 时才装计时器):
   // 旧扫描路一道刹车也没有,钉一个真预算会让慢盘 / 大店从「出结果」变成「没搜成」——
   // S2 的判据是行为零变化,不许多一道刹车。S3 换成索引型之后再钉真预算。
@@ -60,13 +88,26 @@ function filePreview(candidates: Parameters<NonNullable<SearchCapability['previe
   return { kind: 'file-excerpt', payload: excerpt, title: candidate.title }
 }
 
+/**
+ * 这一次要扫哪个目录。
+ *
+ * `FacetFilter` 有四种形(标量 / 数组 / 区间 / 排除),而「扫描根」只有**一个
+ * 目录**说得通 —— 一次 `listFiles` 只吃一个 cwd。所以这里只收字符串标量,
+ * 别的形一律当缺席(退回后端自己的根列表),不去发明「多根扫描」这种没人递过
+ * 的语义。
+ */
+function scanDirOf(filters: Readonly<Record<string, FacetFilter>>): string | undefined {
+  const value = filters[DIR_FACET]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
 export function createFilesSearchCapability(
   adapters: OnethingSearchProvidersAdapters,
 ): SearchCapability {
   const legacy = createOnethingSearchRuntimeAdapters(adapters)
   const scan = legacyScanCapability({
     manifest: filesSearchManifest,
-    run: (query, limit) => legacy.searchFiles(query, limit),
+    run: (query, limit, filters) => legacy.searchFiles(query, limit, scanDirOf(filters)),
     // 空词旧路答 `[]`;恒真是为了让 `all` 档的分组里有这一格(同 messages)。
     supports: () => true,
     target: result => ({ kind: 'file', payload: { filePath: result.filePath ?? '' } } satisfies FileTarget),

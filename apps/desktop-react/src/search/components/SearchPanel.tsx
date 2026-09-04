@@ -1,50 +1,59 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
 import { useStageStore } from '../../stage/store'
-import { useChapterRecord, useSessionsSource } from '../../data/sessions-source'
-import { useFilesSource, useSessionCwd } from '../../data/files-source'
 import { useExposeStore } from '../../expose/store'
 import { Highlight } from '../../expose/components/Highlight'
-import { useSessionTime } from '../../expose/components/session-time'
 import { FocusScope } from '../../focus/FocusScope'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { FilterChip } from '../../ui/FilterChip'
 import { GroupHead } from '../../ui/GroupHead'
+import { IconButton } from '../../ui/IconButton'
 import { Input } from '../../ui/Input'
+import { Menu, MenuItem } from '../../ui/Menu'
 import { Segmented } from '../../ui/Segmented'
 import type { SegmentedOption } from '../../ui/Segmented'
 import { notify } from '../../services/notify'
-import { Search } from '../../components/icons'
+import { ChevronLeft, ChevronRight, Search } from '../../components/icons'
 import { plural, useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import {
-  browseRows,
-  groupHeadAt,
-  groupRowsByCapability,
+  flatRows,
+  itemRefOf,
   moreState,
   originText,
   pageWindow,
   remoteSide,
-  resultRows,
-  searchRows,
+  sectionsOf,
+  sectionsWindow,
   targetText,
 } from '../transitions'
-import type { SearchMaterial, SearchRemoteSide } from '../transitions'
-import type { MessageHit, SearchRow, SearchScope } from '../types'
-import { ALL_TAB, indexReadoutOf, nextTab, resolveTab, tabsOf } from '../capabilities'
+import type { SearchRemoteSide, SearchSection } from '../transitions'
+import type { SearchRow, SearchScope } from '../types'
 import {
-  CHATS_CAPABILITY,
-  FILES_CAPABILITY,
-  MESSAGES_CAPABILITY,
-  hasNativeSource,
-} from '../sources'
+  ALL_TAB,
+  browseCapabilitiesOf,
+  indexReadoutOf,
+  labelKeyOf,
+  labelTextOf,
+  nextTab,
+  resolveTab,
+  tabsOf,
+} from '../capabilities'
+import {
+  INITIAL_FILTERS,
+  facetKeysOf,
+  filterChipsOf,
+  filtersOf,
+  isOtherSpace,
+} from '../filters'
+import type { SearchFilterState } from '../filters'
+import { continuationEnabled } from '../continuations'
+import type { SearchContinuation } from '../continuations'
+import { EMPTY_HISTORY, canGoBack, canGoForward, goBack, goForward, pushHistory } from '../history'
+import type { SearchHistoryEntry } from '../history'
 import { resolveTargetRenderer } from '../targets'
 import type { SearchTargetContext } from '../targets'
-import {
-  ensureMessageSearch,
-  refetchMessageSearch,
-  useMessageSearch,
-} from '../../data/message-search-source'
 import {
   ensureCapabilitySearch,
   ensureSearchCatalog,
@@ -53,42 +62,74 @@ import {
   useSearchCapabilities,
   useSearchIndexStatus,
 } from '../../data/search-catalog-source'
+import type { SearchPreviewMode } from '../../data/search-catalog-source'
 import { useLocateMessage } from '../../content/locate-message'
+import { useSessionCwd } from '../../data/files-source'
 import { currentSpaceId } from '../../workspace/current'
+import { DEFAULT_SPACE_ID } from '../../workspace/types'
+import { SearchPreview } from './SearchPreview'
 import s from './SearchPanel.module.css'
 
 /**
  * 检索面板 = 一块普通的 Dock 内容(id 'search'),所以它能上舞台 / 变浮窗 / 钉到边,
  * 三种形态里长得一模一样 —— 这正是 renderContent 那张表存在的理由。
  *
- * 终稿的形状:**搜索行 + 一张平铺列表**,没有二次分组、没有分栏、没有分节标题。
- * 一行永远是三件东西:行首小徽 / 命中原文一行 / 行尾灰色出处。
- * 空词时那张列表换成**浏览全部会话**,行的解剖一格没变 —— 所以下面只有一套行渲染,
- * 也只有一套分页机件(09-01 裁定:空词是浏览态,一样有总数读数、一样能翻页)。
+ * ══════════════════════════════════════════════════════════════════════════
+ * S4b:**一条数据路,零能力 id**
+ * ══════════════════════════════════════════════════════════════════════════
+ * S4a 之前这块面同时吃四个产地(会话表 / 章节缓存 / `files.list` / 正文检索),
+ * `all` 档的分组是壳自己按 `row.capability` 归的堆。**本批全部收进一条路**:
+ * `search.query({ category, filters })` —— 单类档看 `results`,`all` 档看
+ * `groups`(次序 / 名字 / total / 「没搜成」全由后端说)。
  *
- * 它自己不写一行检索逻辑:命中、排序、轮转、走行全在 search/transitions 的纯函数里,
- * 组件只有「谁被选中」和「输入框里是什么」两个本地状态。
+ * 于是这个文件里**一个能力 id 的字面量都没有**了(`sources.ts` 随之删除),
+ * 由 `__tests__/no-capability-literals.test.ts` 那道闸执法 —— 它的范围本批从
+ * 「骨架」收紧到了整个 `src/search`,只留 `targets/`(一种目标形一个渲染模块,
+ * §4.0 允许动的两处之一)与用例。
+ *
+ * 终稿的形状:**搜索行 + 片条 + 左列表右预览**。窄档下预览换成行下展开
+ * (§4.5 ⑥;由 `.main` 上那条 `@container` 决定,不是第二棵树)。
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * 三张状态表(状态先行,09-01 用户令)
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * ── 一、生命周期 ─────────────────────────────────────────────────────────
+ * | 时机 | 这里发生什么 |
+ * | --- | --- |
+ * | 挂载 | `ensureSearchCatalog()` 问一次自述与索引状态;查询那一发要等去抖窗口 |
+ * | 首载 | tab 条只有 `all` 一格(自述还没回来),片条一颗都没有,列表空 |
+ * | 换宿主(舞台 / 浮窗 / 架子) | **不重挂**(架子 keep-alive);焦点由宿主 `activate()` 送进来,`activateOnMount` 只管首次 |
+ * | 换空间 | 空间片是「当前」时 `filters.spaceId` 跟着变 → 换一个 query 键 → 重问 |
+ * | 卸载 | 本地状态(词 / 档 / 片 / 历史 / 选中)全没了;查询缓存留着 |
+ *
+ * ── 二、UI 生命状态 ──────────────────────────────────────────────────────
+ * | 状态 | 判据 | 屏幕上 |
+ * | --- | --- | --- |
+ * | empty | `rows.length === 0` | 一句「无结果」;**列表不清屏**(律②:重拉期间旧行留着) |
+ * | loading | `answer.data === undefined && inflight` | 旧行留在屏上;底部读数走 `moreState` 的 pending 那一格 |
+ * | ready | 有 `data` | 按节画 |
+ * | error | `answer.error` 在 | 列表上面一行「没搜成」+ 后端原话,**与旧结果并陈** |
+ * | 超量 | 后端截断 / 组很多 | 底部那条 item(「加载更多」有 cursor 或给满了才画)+ 列表自己滚 |
+ *
+ * ── 三、UI 交互状态 ──────────────────────────────────────────────────────
+ * rest / hover / focus / active 全长在库件上(`ui/Segmented` / `ui/FilterChip` /
+ * `ui/ButtonBase` + `ui/a11y/list-selection`);pending 只在底部那条 item 上
+ * (「加载中…」);disabled 有两处,都是**禁灰而不消失**:摆不出 facet 键的片、
+ * 走到头的历史前进 / 后退。
  */
 
-/** 一次搜索最多为多少条命中会话补拉章节(取数上限,不是结果上限)。 */
-const CHAPTER_PREFETCH_LIMIT = 8
+/** 「正文那一路此刻一条都没有」的那**一个**空表(身份稳定,见消费处)。 */
+const NO_ROWS: readonly SearchRow[] = []
 
 /**
- * 远端检索的合并窗口(D5 立,09-02 起两路共用)。会话侧是本地滤(整张 listMeta
- * 在手,零延迟),文件侧与正文侧都是**一次真查询**(前者后端列目录再滤,后者
- * 后端逐会话读消息),所以每敲一个字母就发一次请求是不合适的。
- * 窗口按「打完一个词的停顿」取,不按「最快能有多快」取。
- *
- * **一个窗口、一条副作用管两路**,不是各自去抖:两路的主语里都有那个词,
- * 两个计时器只会让它们在不同的帧上落地,屏幕上多闪一次。
+ * 远端检索的合并窗口。每敲一个字母发一次请求是不合适的 —— 窗口按「打完一个词的
+ * 停顿」取,不按「最快能有多快」取。
  */
 const SEARCH_DEBOUNCE_MS = 220
 
-/** 「正文那一路此刻一条都没有」的那**一个**空表(身份稳定,见消费处)。 */
-const NO_HITS: readonly MessageHit[] = []
-
 /**
- * 徽上的字 —— **由这一行的目标渲染器答**(S4a),不再是面板自己 `switch` 一遍。
+ * 徽上的字 —— **由这一行的目标渲染器答**,不是面板自己 `switch` 一遍。
  *
  * 两种产地照旧分得清清楚楚:`labelKey` 那种是界面文案(走字典),`text` 那种是
  * 从数据推出来的(扩展名之类,换语言不该变)。缺渲染器时是空徽 —— 那一行仍然
@@ -101,20 +142,38 @@ function badgeText(row: SearchRow, t: TFn): string {
   return 'labelKey' in badge ? t(badge.labelKey as MessageKey) : badge.text
 }
 
+/** 行的右键菜单开在哪儿(点锚,§ 浮层两档:点锚不跟滚)。 */
+interface RowMenuState {
+  row: SearchRow
+  x: number
+  y: number
+}
+
 export function SearchPanel() {
   const t = useT()
   const [query, setQuery] = useState('')
   /*
-   * 此刻这一档。**它是一个能力 id(或 `all`),不是三个字面量之一**(S4a)——
+   * 此刻这一档。**它是一个能力 id(或 `all`),不是三个字面量之一** ——
    * 档位表由 `search.capabilities` 回来的自述算出来,所以这一格的取值面
    * 也随之开放。能力被注销时 `resolveTab` 把它退回 `all`(见下面)。
    */
   const [requestedScope, setScope] = useState<SearchScope>(ALL_TAB)
   const [cursor, setCursor] = useState(0)
-  /** 第几页,从 1 数。换词 / 换范围就回到第一页(那是另一张列表了)。 */
+  /** 第几页,从 1 数。换词 / 换范围 / 换片就回到第一页(那是另一张列表了)。 */
   const [page, setPage] = useState(1)
   /** 选中的是不是底部那条 item。**它不是 cursor 的一个值** —— 见 onKeyDown。 */
   const [onMore, setOnMore] = useState(false)
+  /** 过滤片(§9 第五条)。缺省那一份**等价于一格都不发**,理由见 `../filters.ts`。 */
+  const [filters, setFilters] = useState<SearchFilterState>(INITIAL_FILTERS)
+  /** 查询历史(§4.6)。**只在内存里**,面板卸载就没了 —— 本批不落盘。 */
+  const [history, setHistory] = useState(EMPTY_HISTORY)
+  /**
+   * 多选(§4.5 ③)。**按行 id 记,不按下标** —— 翻一页下标就全变了,而「我选中的
+   * 是这两条」这件事不该跟着页码漂。次序有意义:compare 的左右两格照它排。
+   */
+  const [picked, setPicked] = useState<readonly string[]>([])
+  const [rowMenu, setRowMenu] = useState<RowMenuState | null>(null)
+
   /*
    * ── 档位:从自述读,不是一张写死的表(§9 第一条)───────────────────────
    * 注销一个能力,它那一格 tab 自动消失;注册一个(包括插件能力)自动出现在它
@@ -126,205 +185,162 @@ export function SearchPanel() {
   const scope = resolveTab(tabs, requestedScope)
   const indexStatus = useSearchIndexStatus()
   const indexReadout = useMemo(() => indexReadoutOf(indexStatus), [indexStatus])
+
   /*
-   * 「全部空间」那一格过滤片是 **S4b**;今天恒假,所以跨空间徽画不出来。
-   * 留着这一格(而不是把徽整段删掉)是因为 §10 S4 行的第五条门断言守的正是
-   * 「画它的逻辑在不在」—— 过滤片落地那天这里只换一个产地,徽一个字不改。
+   * ── 过滤片:哪几颗画得出来由**自述**说(§4.0 那张清账表的「过滤片」一行)──
+   * 单类档 = 那一个能力声明的 facets;`all` 档 = 各组声明的并集。
    */
-  const allSpaces = false
   const spaceId = currentSpaceId()
+  /**
+   * 文件那一路的**扫描根**(S4b 修)。它落成 `filters.dir` 的缺省 ——
+   * S4b 之前文件档搜的就是这条根,改读后端之后要由壳结构地递回去,理由与
+   * 「为什么不写 app-state」都在 `../filters.ts` 的 `DIR_FACET` 上。
+   */
+  const cwd = useSessionCwd()
+  const available = useMemo(
+    () => facetKeysOf(manifests, scope, ALL_TAB),
+    [manifests, scope],
+  )
+  const chips = useMemo(() => filterChipsOf(filters, available), [filters, available])
+  /*
+   * 结构化的那一份。**`now` 只在片是时间档时才真的进键** —— `filtersOf` 对
+   * `time: 'any'` 恒答缺席,所以这只 memo 的依赖里带一个时钟不会让键每帧都变。
+   * (真选了时间档之后,键确实会随着「今天的零点」走,那是对的。)
+   */
+  const wire = useMemo(
+    () => filtersOf(filters, {
+      spaceId,
+      defaultSpaceId: DEFAULT_SPACE_ID,
+      now: Date.now(),
+      available,
+      ...(cwd === null ? {} : { cwd }),
+    }),
+    [filters, spaceId, available, cwd],
+  )
+  /** 跨空间徽**只在「全部空间」下画**(§9 原话)。 */
+  const allSpaces = filters.space === 'all'
+
   const enterSession = useExposeStore((st) => st.enterSession)
   const closeToDock = useStageStore((st) => st.closeToDock)
-  const sessions = useSessionsSource((st) => st.sessions)
-  /*
-   * 章节缓存是**一族 query**(键 = sessionId),而这块面要的是「凡是手上有章的
-   * 会话,章里也搜一遍」—— 键面由数据说了算,不是由屏幕点名。所以订整族,
-   * 摊成 `searchRows` 一直吃的那张 Record(判据与形状逐字不变,见那只 hook)。
-   */
-  const chapters = useChapterRecord()
-  const ensureChapters = useSessionsSource((st) => st.ensureChapters)
-  const cwd = useSessionCwd()
-  const fileHits = useFilesSource((st) => st.searchHits)
-  const fileQuery = useFilesSource((st) => st.searchQuery)
-  const fileStatus = useFilesSource((st) => st.searchStatus)
-  const fileError = useFilesSource((st) => st.searchError)
-  const fileLimit = useFilesSource((st) => st.searchLimit)
-  const searchFiles = useFilesSource((st) => st.searchFiles)
-  /** 点一条正文命中 = 进会话 + 留一格「落到那条消息」的待办(见 activate)。 */
   const locateMessage = useLocateMessage((st) => st.locateMessage)
-  const timeOf = useSessionTime()
   const listRef = useRef<HTMLDivElement>(null)
   /** 这块面的根。由 `<FocusScope rootRef>` 写进来(落点从它里面找那格输入框)。 */
   const panelRef = useRef<HTMLDivElement | null>(null)
 
   /*
-   * 换词 / 换范围 = 换了一张列表:选中回第一行、页码回第一页。
+   * 换词 / 换档 / 换片 = 换了一张列表:选中回第一行、页码回第一页、多选清空。
    *
    * 这一手写在**渲染里**而不是 useEffect 里,理由很具体:分页把 `page` 收进了
    * 取数副作用的依赖表,而在副作用里重置会先多跑一轮渲染 —— 那一轮带着「新词 +
    * 旧页码」,主语已经换了页码还没回来,于是那条「主语没变就当场发」的判据会把
-   * 它当成一次翻页,合并窗口就白设了。渲染中重置(React 官方那条「状态派生自
-   * 上一次输入」的写法)让副作用只看得见重置之后的那一份。
+   * 它当成一次翻页,合并窗口就白设了。
    */
-  const listKey = `${scope}:${query}`
+  const searching = query.trim().length > 0
+  /*
+   * ── 空词的「所有」档 = 浏览态,不发 `category: 'all'`(S4b 修)───────────
+   * 09-01 用户裁定:「我要能够在这里面看到所有的条数,所有的记录,要能够翻页」。
+   * 后端的 `'all'` 是**分组总览**(§7.2:各能力按配额各给几条、不分页),那是
+   * **有词**时要的东西;空输入框那一屏要的是浏览。判据只能是「有没有词」。
+   *
+   * 去问谁**从自述读**(`browseCapabilitiesOf`:声明了 `browse` 的那些能力),
+   * 所以这一行里没有任何能力的名字。今天只有一个能力声明它 —— 于是这一发与
+   * 单类档逐字相同(平铺、无组头、可翻页),正是旧行为;哪天有第二个,
+   * 屏幕上自己多一组,这个文件一个字不改。
+   *
+   * 「零词元」这里用的是 `query.trim()`。后端那只 `normalizeQuery` 还会剥掉开头
+   * 的 `>` 与 `/`,所以单打一个 `/` 在壳这边算**有词** → 走分组总览,而 chats
+   * 在那张总览里照旧答「最近几间会话」。两边不完全同源是**有意**的:壳不去复制
+   * 一份意图前缀的归一化(那是后端 + 各能力自述的事),而这一形的可见后果只是
+   * 版式,不是内容。
+   */
+  const browsePlan = useMemo(
+    () => (scope === ALL_TAB && !searching ? browseCapabilitiesOf(manifests) : []),
+    [scope, searching, manifests],
+  )
+  /** 这一次真正去问谁:一个能力 id / `'all'`,或者浏览态那张表。 */
+  const asked = browsePlan.length > 0 ? browsePlan : scope
+  /**
+   * 行归到哪个能力名下(`itemRefOf` 拿它去问预览 / 动作)。浏览态只有一个能力时
+   * 答案是**那个能力**,不是 `'all'` —— 一条 `capability: 'all'` 的 item 后端认不出。
+   */
+  const rowCapability = browsePlan.length === 1 ? browsePlan[0] : scope
+
+  const listKey = `${JSON.stringify(asked)}:${query}:${JSON.stringify(wire)}`
   const [lastKey, setLastKey] = useState(listKey)
   if (lastKey !== listKey) {
     setLastKey(listKey)
     setCursor(0)
     setOnMore(false)
     setPage(1)
+    setPicked([])
   }
 
-  const searching = query.trim().length > 0
-  /*
-   * 这一档要不要问壳自带的那两路。判据是「这一档是不是那个能力(或者不挑)」,
-   * id 从 `search/sources.ts` 那张记账表读 —— 面板里不写能力 id 的字面量。
-   */
-  const wantsNativeMessages = scope === ALL_TAB || scope === MESSAGES_CAPABILITY
-  const wantsNativeFiles = scope === ALL_TAB || scope === FILES_CAPABILITY
-  /** 会话侧(标题 / 预览 / 章节)。正文命中同样由它造,所以两个能力都算数。 */
-  const wantsNativeSessions = scope === ALL_TAB || scope === CHATS_CAPABILITY || scope === MESSAGES_CAPABILITY
-  /*
-   * 手上这批文件命中说的**是不是此刻这个词**。去抖窗口那 220ms 里词已经变了而
-   * 结果还没回来 —— 不问这一句,屏幕上就会闪一下上一个词的结果。对不上就当作
-   * 「还没有」(空),而不是拿旧的顶一会儿。
-   */
-  const fileAnswerIsCurrent = fileQuery === query.trim()
-  const files = useMemo(
-    () => (fileAnswerIsCurrent ? fileHits : []),
-    [fileAnswerIsCurrent, fileHits],
-  )
-  /*
-   * 正文那一路(09-02)。它是 kernel 的一格 query,键 = 「词 + 这一页要多少条」——
-   * 所以**不必再问一句「这批答案是不是此刻这个词」**:换词就是换了一格,
-   * 那一格自己的 `data` 天然只属于自己的词(文件侧要问那一句,是因为它把
-   * 「上一次的答案」存在一个跟着词走的公共格子里)。
-   */
-  const messageLimit = pageWindow(page)
-  /*
-   * 这一档要不要问正文那一路:`all` 与 `messages` 要,别的档不要。判据用的是
-   * `hasNativeSource` 那张记账表的同一个 id —— 面板这里不写 `'messages'`。
-   */
-  const messageAnswer = useMessageSearch(query, wantsNativeMessages ? messageLimit : 0)
-  // 缺席那一份用**同一个**空表:每次渲染现造一个 `[]` 会让下面那只 memo 的
-  // 依赖每帧都变,整张列表白重算一遍(律④那条身份纪律的同一件事)。
-  const messages = messageAnswer.data?.hits ?? NO_HITS
-  const material: SearchMaterial = useMemo(
-    () => ({
-      sessions,
-      chapters,
-      files,
-      messages,
-      timeOf: (session) => timeOf(session.updatedAt),
-    }),
-    [sessions, chapters, files, messages, timeOf],
-  )
-  /*
-   * ── 通用那一路(S4a)────────────────────────────────────────────────
-   * 壳没有自带产地的能力(`prompts` / `daily` / `actions`,以及任何一个插件能力)
-   * 走 `search.query` + 目标渲染注册表。**只在选中那一档时问** —— `all` 档不发:
-   * 那一档的配额由后端各能力自述说了算,壳这边再拼一次就是两套分组逻辑。
-   * (`all` 档带上它们是 S4b 的事,留账写在报告里。)
-   */
-  const genericCapability = scope !== ALL_TAB && !hasNativeSource(scope) ? scope : ''
-  const genericAnswer = useCapabilitySearch(genericCapability, query, pageWindow(page))
-  const genericRows = useMemo(
-    () => (genericAnswer.data === undefined
-      ? []
-      : resultRows(genericAnswer.data.results, genericCapability)),
-    [genericAnswer.data, genericCapability],
-  )
+  const limit = pageWindow(page)
+  /** **唯一那条数据路**(S4b)。`all` / 单类 / 浏览态走同一条口,差别只在问谁。 */
+  const answer = useCapabilitySearch(asked, query, limit, wire)
 
-  const tabOrder = useMemo(() => tabs.map(tab => tab.id), [tabs])
-  const rows = useMemo(() => {
-    if (genericCapability) return genericRows
-    const built = searching ? searchRows(query, scope, material) : browseRows(scope, material)
-    // 全部档按能力归堆(§7.2);单类档就是一张平铺列表,不归。
-    return scope === ALL_TAB ? groupRowsByCapability(built, tabOrder) : built
-  }, [query, scope, searching, material, genericCapability, genericRows, tabOrder])
+  const sections = useMemo(
+    () => sectionsOf(answer.data, rowCapability),
+    [answer.data, rowCapability],
+  )
+  const rows = useMemo(() => (sections.length === 0 ? NO_ROWS : flatRows(sections)), [sections])
 
   /**
-   * 文件侧此刻的处境。取尽判据是**回来的条数 < 要的条数** —— 后端这一条既没有
-   * 游标也不下发总数,这是唯一能判的一句(理由写在 transitions 的「分页」一节)。
-   * 这一档不看文件(会话 / 消息 / 通用那几档)时它恒定「取尽」——「没有人可问」
-   * 就是「后面没有了」,不是「还在等」。
+   * 远端此刻的处境。**取尽判据先问游标**:后端给得出 `cursor` 时「后面还有没有」
+   * 不用靠「回来的条数 == 要的条数」去猜(§9 第三条:「加载更多」有 cursor 才画)。
+   * 给不出游标的能力退回旧判据。
    */
-  const fileSide: SearchRemoteSide = useMemo(() => {
-    if (!wantsNativeFiles) return 'exhausted'
-    if (!fileAnswerIsCurrent || fileStatus === 'idle' || fileStatus === 'loading') return 'pending'
-    if (fileStatus === 'error') return 'failed'
-    return fileHits.length < fileLimit ? 'exhausted' : 'more'
-  }, [wantsNativeFiles, fileAnswerIsCurrent, fileStatus, fileHits.length, fileLimit])
-
-  /**
-   * 正文侧此刻的处境。**同一张四态表,判据逐条对应** —— 两路的形状一样,
-   * 只是读的是 kernel 的快照而不是手写的四件套:
-   *  · 这一档不看正文 / 没给词 → 恒定「取尽」(没有人可问);
-   *  · 在飞、或者这一格从来没有过答案 → pending;
-   *  · 上一发塌了(错误在,而且**没有旧答案**)→ failed;
-   *    有旧答案时错误只由列表上面那行说,底下照旧按旧答案判取尽 —— 律②。
-   *  · 落地了 → 回来的条数 < 要的条数 = 取尽。
-   */
-  const messageSide: SearchRemoteSide = useMemo(() => {
-    if (!wantsNativeMessages || !searching) return 'exhausted'
-    const answer = messageAnswer.data
-    if (messageAnswer.inflight || !answer) {
-      return messageAnswer.error && !answer ? 'failed' : 'pending'
-    }
-    return answer.hits.length < answer.limit ? 'exhausted' : 'more'
-  }, [wantsNativeMessages, searching, messageAnswer.data, messageAnswer.inflight, messageAnswer.error])
-
-  /**
-   * 通用那一路的处境。**同一张四态表**,只是取尽判据多了一格真游标:
-   * 后端这条口给得出 `cursor` 时,「后面还有没有」不用再靠「回来的条数 == 要的
-   * 条数」去猜 —— 有游标就是有,没有就是没有(§9 第三条:「加载更多」**有 cursor
-   * 才画**)。给不出游标的能力退回旧判据。
-   */
-  const genericSide: SearchRemoteSide = useMemo(() => {
-    if (!genericCapability) return 'exhausted'
-    const answer = genericAnswer.data
-    if (genericAnswer.inflight || !answer) {
-      return genericAnswer.error && !answer ? 'failed' : 'pending'
-    }
-    if (answer.cursor !== undefined) return 'more'
-    return answer.results.length < answer.limit ? 'exhausted' : 'more'
-  }, [genericCapability, genericAnswer.data, genericAnswer.inflight, genericAnswer.error])
-
-  const more = moreState({
-    searching,
-    page,
+  const remote: SearchRemoteSide = useMemo(() => {
+    const data = answer.data
+    if (answer.inflight || !data) return answer.error && !data ? 'failed' : 'pending'
+    if (data.cursor !== undefined) return 'more'
     /*
-     * 这里仍然是「**此刻造得出来的行数**」,一格没动 —— `moreState` 那张判据表
-     * 的入参口径就是它(`shown = min(total, pageWindow)`)。后端给的那个真 `total`
-     * (单类档能力知道才给)**不塞进这里**:它是「全集有多大」,而这一格是
-     * 「我手上有多少」,混成一个数会让 `shown` 超过真实行数。真 total 由底下
-     * 那一行状态自己说(§9 第三条第一项)。
+     * **浏览态的组是可以翻页的**(S4b 修):每一组各要了一整页,所以「后面还有
+     * 没有」逐组判,再按 `remoteSide` 那张次序表合成一路 —— 那只合成器留到今天
+     * 等的就是这个消费者(判据是次序,不是口味:failed > more > pending > exhausted)。
      */
-    total: rows.length,
-    remote: remoteSide(fileSide, messageSide, genericSide),
-  })
-  /** 屏幕上这一页。会话侧本来就全量在手,所以翻页在那一侧纯粹是把窗口拉大。 */
-  const visible = useMemo(() => rows.slice(0, pageWindow(page)), [rows, page])
+    if (data.browse === true) {
+      return remoteSide(...(data.groups ?? []).map((group): SearchRemoteSide => (
+        group.error !== undefined
+          ? 'failed'
+          : group.results.length < data.limit ? 'exhausted' : 'more'
+      )))
+    }
+    /*
+     * `all` 档不分页(§7.2「总览的目的是『大概在哪一类』;要翻页去单类」)——
+     * 它的 `results` 是各组拼接再切到 limit 的一刀,拿它去比 limit 会把
+     * 「组多到装满了」误读成「后面还有」。所以那一档恒定取尽。
+     */
+    if (data.groups !== undefined) return 'exhausted'
+    return data.results.length < data.limit ? 'exhausted' : 'more'
+  }, [answer.data, answer.inflight, answer.error])
+
+  const more = moreState({ page, total: rows.length, remote })
+  /*
+   * 屏幕上这一页。翻页只是把窗口拉大,不重排。
+   *
+   * 窗口切在**扁平下标**上,所以 n 组各要了一整页时它要放大 n 倍 —— 否则第二组
+   * 永远出不来(第一组先把配额吃光的那种病)。后端的分组总览不同:那一份的
+   * `results` 本来就只有一页那么多,窗口就是 limit。
+   */
+  const windowSize = answer.data?.browse === true
+    ? limit * Math.max(sections.length, 1)
+    : limit
+  const visible = useMemo(
+    () => sectionsWindow(sections, windowSize),
+    [sections, windowSize],
+  )
+  const visibleRows = useMemo(() => flatRows(visible), [visible])
   /** 底部那条 item 能不能按(加载中也留在轮转序列里,免得焦点在加载途中蒸发)。 */
   const moreIsItem = more.kind === 'more' || more.kind === 'loading' || more.kind === 'error'
 
   /*
-   * 走行归 `ui/a11y/list-selection`(09-01 批 4,从手写的 `moveRow` 迁进来)。
-   * 这块面正是那只原语管的那一族:**焦点恒在输入框**,列表只是屏幕上的候选,
-   * 所以它必须自己记一个下标 —— 也就必须防着 hover 去改那个下标。
-   *
-   * 受控档:`cursor` 还留在本地 state 里不动。它有两个原语管不着的读写方 ——
-   * 渲染中的「换词就归零」(见上面那段 listKey)与底部那条 item 的 `onMore`,
-   * 交出去反而要在两处各写一遍回写。
-   *
-   * 三个档位逐条对着**现状**填,不取原语的默认口味:
-   *  · `loop: false`   —— 到端点就停(既有 `moveRow` 就是一次夹,不回卷);
-   *  · `homeEnd: false` —— Home / End 留给输入框的行首行尾(既有 onKeyDown 也不接它);
-   *  · `scrollBlock: null` —— 滚入视野由下面那条本地 effect 统一管,理由写在那里。
-   * 轴向取默认的纵向:← → 既有实现同样不接(它们在编辑中的输入框里是移光标)。
+   * 走行归 `ui/a11y/list-selection`。这块面正是那只原语管的那一族:**焦点恒在
+   * 输入框**,列表只是屏幕上的候选,所以它必须自己记一个下标 —— 也就必须防着
+   * hover 去改那个下标。三个档位逐条对着现状填,不取原语的默认口味。
    */
   const selection = useListSelection({
-    count: visible.length,
+    count: visibleRows.length,
     active: cursor,
     onActiveChange: setCursor,
     loop: false,
@@ -333,72 +349,34 @@ export function SearchPanel() {
   })
 
   /*
-   * 章节是**按需**拉的:标题 / 预览命中的那几条先把章节补回来,下一轮渲染里
-   * 它们的章节行就一起出现。上限是刻意的 —— 一个字母就为几十条会话各发一次
-   * 请求,那不叫按需。会话侧另外两样(标题、预览)本来就在 listMeta 里,即时滤。
-   */
-  useEffect(() => {
-    if (!searching || !wantsNativeSessions) return
-    const q = query.trim().toLowerCase()
-    let asked = 0
-    for (const session of sessions) {
-      if (asked >= CHAPTER_PREFETCH_LIMIT) break
-      if (!session.title.toLowerCase().includes(q) && !session.preview.toLowerCase().includes(q)) {
-        continue
-      }
-      asked += 1
-      void ensureChapters(session.id)
-    }
-  }, [searching, query, wantsNativeSessions, sessions, ensureChapters])
-
-  /*
-   * 两路远端各是一次**真查询**,所以它们有自己的取数副作用(会话侧没有:整张表
-   * 在手)。合并窗口挡的是「每敲一个字母发一次请求」;各自的档位闸另判 ——
-   * 只发这一档要的那几路(`wantsNativeFiles` / `wantsNativeMessages` /
-   * `genericCapability` 三个闸):用户已经说了这一轮不看别的那几侧。
-   *
-   * 分页是**递增 limit 重查**:第 n 页带一个更大的 limit 从头再要一次(两条口都
-   * 只有 limit 没有游标 —— 代价与留账写在 transitions 的「分页」一节),
-   * 所以 `page` 也在依赖表里:翻一页就是重发一次。
-   *
-   * 合并窗口只挡**打字的余波**:主语(词 + 根)没变 —— 也就是这一次是翻页或者
-   * 「重试」—— 就当场发。让一次确定的点击等 220ms 是把它当成了打字。
-   *
-   * ── 09-02:一条副作用两路,不是两条各自去抖 ──────────────────────────────
-   * 主语里的 `cwd` 只与文件那一路有关:换工作目录会让这条重跑,于是正文那一路
-   * 也跟着 `ensure` 一次。**那一次是免费的** —— 正文侧是键控缓存,同一个
-   * 「词 + limit」问过就当场早退,一个字节都不出门。这正是把缓存做成键控换来的
-   * 那一格:两路可以共用一个主语,而不必为了省一次请求去拆第二个计时器。
+   * 取数副作用。合并窗口只挡**打字的余波**:主语(词 + 档 + 片)没变 —— 也就是
+   * 这一次是翻页或者「重试」—— 就当场发。让一次确定的点击等 220ms 是把它当成了打字。
    */
   const askedSubject = useRef<string | null>(null)
   useEffect(() => {
-    if (!wantsNativeFiles && !wantsNativeMessages && !genericCapability && !searching) return
-    // 主语里带上这一档:换档就是换了一次要问的东西(通用那一路尤其 —— 它的键
-    // 第一格就是能力 id),不带的话换档会被当成一次「主语没变」而当场发。
-    const subject = JSON.stringify([query.trim(), cwd, scope])
+    const subject = listKey
     const sameSubject = askedSubject.current === subject
     askedSubject.current = subject
     const run = () => {
-      if (wantsNativeFiles) void searchFiles(query, cwd, pageWindow(page))
-      if (wantsNativeMessages) void ensureMessageSearch(query, pageWindow(page))
-      if (genericCapability) void ensureCapabilitySearch(genericCapability, query, pageWindow(page))
+      void ensureCapabilitySearch(asked, query, pageWindow(page), wire)
     }
-    /*
-     * 主语没变、而且已经翻过页 —— 那这一次只能是「加载更多」或者「重试」,
-     * 两者都是一次**确定的点击**,当场发。第一页永远走合并窗口:换词换范围都
-     * 落在第一页,那才是打字的余波要挡的地方。
-     */
     if (sameSubject && page > 1) {
       run()
       return
     }
     const timer = setTimeout(run, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [query, scope, cwd, page, searching, searchFiles, wantsNativeFiles, wantsNativeMessages, genericCapability])
+    /*
+     * `listKey` 已经把「问谁 + 词 + 片」编成一个字符串了,后面三格是**同一件事的
+     * 另一种写法** —— 写全是因为它们真的在闭包里被读了,而且它们与 `listKey`
+     * 同时变(`wire` / `asked` 都是身份稳定的 memo,`query` 是 state),所以写全
+     * 不会多跑一轮。判据仍然只有 `listKey` 一个:`askedSubject` 比的就是它。
+     */
+  }, [listKey, page, asked, query, wire])
 
   /*
    * 自述与索引状态:面板挂上来问一次(幂等,`ensure` 的语义)。**只此一次** ——
-   * 它们不是跟着词走的东西,进不了下面那条带去抖的副作用。
+   * 它们不是跟着词走的东西,进不了上面那条带去抖的副作用。
    */
   useEffect(() => {
     void ensureSearchCatalog()
@@ -411,18 +389,16 @@ export function SearchPanel() {
 
   /*
    * 选中行滚进视野。block:'nearest' = 只在它真的出界时才滚,列表不会为了走一行整屏跳。
-   *
    * 这一条**没有交给原语**(所以上面传了 `scrollBlock: null`):底部那条 item 不是
    * 一个下标,进不了原语按下标认行的那张表,而「停在末位」与「从末位回到行上」
-   * 这两下同样要滚。一条 effect 同时覆盖 cursor 与 onMore 两个产地,
-   * 比「原语滚一半、本地再补一半」少一处会走形的接缝。
+   * 这两下同样要滚。
    */
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(
       onMore ? '[data-row="more"]' : `[data-row="${cursor}"]`,
     )
     el?.scrollIntoView?.({ block: 'nearest' })
-  }, [cursor, onMore, visible])
+  }, [cursor, onMore, visibleRows])
 
   /*
    * tab 条 = 自述表(§9 第一条)。文案键、图标名、次序全部来自 manifest ——
@@ -430,55 +406,38 @@ export function SearchPanel() {
    */
   const options: Array<SegmentedOption<SearchScope>> = tabs.map((tab) => ({
     value: tab.id,
-    label: t(tab.labelKey as MessageKey),
+    // 翻不出来就画原文 —— 一格空白的 tab 比一个陌生的 id 糟得多(判据在 labelTextOf)。
+    label: labelTextOf(tab.labelKey, t(tab.labelKey as MessageKey)),
   }))
 
-  /** 组头的名字 = 那个能力的自述文案键。查不到就画 id —— 不静默留白。 */
-  const groupLabel = (capability: string): string => {
-    const tab = tabs.find(item => item.id === capability)
-    return tab === undefined ? capability : t(tab.labelKey as MessageKey)
+  /**
+   * 节头的名字。**两个产地,先问后端**:
+   *  · `all` 档的组名是后端给的文案键(`groups[].label`);
+   *  · 浏览态那几组是壳自己拼的(一组一次查询),后端没给名字 —— 从自述表读
+   *    那个能力自己的 `labelKey`。
+   * 拿到键之后同一条判据:翻得出画译文,翻不出画原文(判据在 `labelTextOf`)。
+   */
+  const sectionLabel = (section: SearchSection): string => {
+    const key = section.labelKey || labelKeyOf(manifests, section.capability) || section.capability
+    return labelTextOf(key, t(key as MessageKey))
   }
 
-  /** 第 i 行前面要不要一条组头。**只在全部档**;单类档一张平铺列表就是它自己那一组。 */
-  const groupHeadOf = (index: number): string | undefined =>
-    (scope === ALL_TAB ? groupHeadAt(visible, index) : undefined)
+  /* ── 落点 ─────────────────────────────────────────────────────────────── */
 
-  /**
-   * 落点 = **目标渲染注册表**里那一格的 `activate`(S4a)。
-   *
-   * 从前这里是一个 `switch (row.target.kind)`,两支写死 —— 那正是 §4.0 要拆掉的
-   * 枚举点:加一种能搜的东西就得回来改这个 switch。今天面板给的是**能力**
-   * (进会话 / 打开文件 / 跑一条动作),去哪儿由那一类自己的渲染器说。
-   *
-   * 缺渲染器时**什么都不做但仍然收回 Dock**?不 —— 那会让人以为按下去生效了。
-   * 缺渲染器的行是「只有标题的一行」,按它如实说一句「这一类还打不开」,
-   * 与文件那一路 D5 的诚实缺口同一个体例。
-   */
   const targetContext: SearchTargetContext = {
     enterSession(sessionId, messageId) {
       enterSession(sessionId)
       /*
-       * 正文命中还带一个落点(09-02):进会话之后要滚到**那条消息**上。
-       *
-       * 这一下**只留一格待办**,不在这里去找 DOM:换会话之后聊天区要重开一次
-       * 折叠、折出来的消息还要渲染成节点,而这一帧那棵树还是上一条会话的。
-       * 待办由 `toc/useChatToc` 在锚点真的出现时消掉(判据是折叠落地,
-       * 不是猜一个延迟)—— 理由与整条链写在 `content/locate-message.ts` 头上。
-       *
-       * 缺席 messageId 的那几种(标题 / 预览 / 章节命中)一个字都不改:
-       * 它们的落点本来就是这条会话本身。
+       * 正文命中还带一个落点:进会话之后要滚到**那条消息**上。这一下**只留一格
+       * 待办**,不在这里去找 DOM —— 换会话之后聊天区要重开一次折叠、折出来的消息
+       * 还要渲染成节点,而这一帧那棵树还是上一条会话的。
        */
       if (messageId) locateMessage(sessionId, messageId)
     },
     openFile(path, line) {
       /*
        * 这是接真源的缝。壳里还没有「打开一个文件」这件能力(没有编辑器面、
-       * 没有主进程),所以这里只把落点如实报出来。接上真实打开器时,
-       * 换掉的就是这一行 —— 行模型、跳转目标、收回 Dock 的手感都不动。
-       *
-       * 走 notify 而不是从前那个散装 toast:级别 info(它既不是成功也不是错,
-       * 只是「这就是我能做到的」),于是它同样进通知中心存档 ——
-       * 用户过一会儿想不起刚才那行报的是哪个文件时,还翻得到。
+       * 没有主进程),所以这里只把落点如实报出来。
        */
       notify({
         level: 'info',
@@ -489,12 +448,6 @@ export function SearchPanel() {
       })
     },
     runAction(actionId) {
-      /*
-       * 动作类命中(命令 / 提示词 / 「新建今天的日记」)。壳今天**没有**执行它们的
-       * 落点 —— 旧搜索窗那条 `executeAction` 是窗口活,新壳没有对应的面。
-       * 所以这里如实说出来而不是静默吞掉:一次按下去什么都不发生的点击,
-       * 比一句「这个还没接上」更让人怀疑是不是自己按错了。留账在报告里。
-       */
       notify({
         level: 'info',
         source: 'search.open',
@@ -522,7 +475,6 @@ export function SearchPanel() {
    * 按底部那条 item。两件事共用它,因为它们在用户眼里是同一个动作(「再来一次」):
    *  - 'more' = 再要一页(页码 +1,取数副作用据此带更大的 limit 重发);
    *  - 'error' = 同一页重试(主语没变,所以当场发,不等合并窗口)。
-   * 'loading' / 'end' 按下去什么都不做 —— 它们不是动作,是读数。
    */
   const activateMore = () => {
     if (more.kind === 'more') {
@@ -530,20 +482,113 @@ export function SearchPanel() {
       return
     }
     if (more.kind !== 'error') return
-    /*
-     * 重试**两路一起重来**(09-02)。底下那条 item 只有一个 —— 用户按的是
-     * 「再来一次」,而不是「重试文件那一半」;哪一路塌了不是他要分辨的事。
-     * 正文那一路走 `refetch`(用户明确要求重来,不是 `ensure` 的「问过就算了」)。
-     */
-    if (wantsNativeFiles) void searchFiles(query, cwd, pageWindow(page))
-    if (wantsNativeMessages) void refetchMessageSearch(query, pageWindow(page))
-    if (genericCapability) void refetchCapabilitySearch(genericCapability, query, pageWindow(page))
+    void refetchCapabilitySearch(asked, query, pageWindow(page), wire)
   }
 
+  /* ── 续搜(§4.6)───────────────────────────────────────────────────────── */
+
+  /** 此刻这一步(记历史用)。 */
+  const entryNow = (): SearchHistoryEntry => ({ query, capability: scope, filters, selected: cursor })
+
+  /** 把一步落成屏幕上的状态。**替换**,不是 push 一帧 —— 退回去靠历史。 */
+  const applyEntry = (entry: SearchHistoryEntry): void => {
+    setQuery(entry.query)
+    setScope(entry.capability)
+    setFilters(entry.filters)
+    setCursor(entry.selected)
+    setOnMore(false)
+    setPicked([])
+  }
+
+  /**
+   * 走一条续搜。**先把当前这一步记进历史,再换状态** —— 顺序反过来的话记下的
+   * 就是新那一步,↑ / ⌘[ 回去会回到自己身上。
+   */
+  const runContinuation = (continuation: SearchContinuation): void => {
+    const next = pushHistory(history, entryNow())
+    if (continuation.kind === 'scope') {
+      const filtersNext = { ...filters, scope: continuation.chip }
+      setHistory(pushHistory(next, { query, capability: scope, filters: filtersNext, selected: 0 }))
+      setFilters(filtersNext)
+      setCursor(0)
+      setPicked([])
+      return
+    }
+    const filtersNext: SearchFilterState = continuation.chip === undefined
+      ? { ...filters, scope: undefined }
+      : { ...filters, scope: continuation.chip }
+    setHistory(pushHistory(next, {
+      query: continuation.query,
+      capability: continuation.capability,
+      filters: filtersNext,
+      selected: 0,
+    }))
+    applyEntry({
+      query: continuation.query,
+      capability: continuation.capability,
+      filters: filtersNext,
+      selected: 0,
+    })
+  }
+
+  const stepHistory = (direction: 'back' | 'forward'): void => {
+    const moved = direction === 'back' ? goBack(history) : goForward(history)
+    if (moved === undefined) return
+    setHistory(moved.history)
+    applyEntry(moved.entry)
+  }
+
+  /* ── 预览(§4.5)───────────────────────────────────────────────────────── */
+
+  /**
+   * 这一次预览哪几条。**多选优先,没多选就是键盘位那一行** —— 「选中」在这块面
+   * 有两层含义(键盘位 / 明确挑出来的几条),预览要的是后者在场时的后者。
+   */
+  const previewRows = useMemo(() => {
+    if (picked.length > 0) {
+      const byId = new Map(rows.map(row => [row.id, row]))
+      return picked.map(id => byId.get(id)).filter((row): row is SearchRow => row !== undefined)
+    }
+    const row = visibleRows[cursor]
+    return row === undefined ? [] : [row]
+  }, [picked, rows, visibleRows, cursor])
+
+  /**
+   * 基数(§4.5 ③)。**「可比」的判据是同 kind** —— diff 一条消息和一个文件没有
+   * 意义,所以两条不同 kind 的落 batch 而不是 compare。
+   */
+  const previewMode: SearchPreviewMode = useMemo(() => {
+    if (previewRows.length <= 1) return 'single'
+    if (previewRows.length === 2 && previewRows[0].target.kind === previewRows[1].target.kind) {
+      return 'compare'
+    }
+    return 'batch'
+  }, [previewRows])
+
+  const previewItems = useMemo(() => previewRows.map(itemRefOf), [previewRows])
+  /** 单选且这一条随候选带了预览(`mode: 'inline'`)时的那一份 —— 零请求。 */
+  const inlinePreview = previewRows.length === 1 ? previewRows[0].preview : undefined
+
+  /* ── 键盘 ─────────────────────────────────────────────────────────────── */
+
+  /**
+   * 面域局部键的落点(⌘[ / ⌘])。声明的正本在 `focus/scopes.ts`,
+   * 这里只给两只处理器 —— 键与动作在两处不可能分叉,由那边的比对表钉着。
+   *
+   * **这张表的身份必须稳**(所以是 `useMemo([])` + 一格 ref):作用域实例每次
+   * 拿到一份新的 `keyHandlers` 都要往树上重写一次,而这块面每敲一个字母都在
+   * 重渲染 —— 处理器本身不变,变的只是它闭包里的那份历史,那正是 ref 的用处。
+   */
+  const stepRef = useRef(stepHistory)
+  stepRef.current = stepHistory
+  const searchKeys = useMemo(() => ({
+    'history.back': () => stepRef.current('back'),
+    'history.forward': () => stepRef.current('forward'),
+  }), [])
+
   /*
-   * 键盘住在面板自己身上,**不是 keymap 里的命令**:它只在这块面有焦点时才成立,
-   * 而命令表管的是「面板关着时也要能触发」的那一类。Esc 这里一个字不写 ——
-   * 让位契约由宿主(舞台 / 浮窗 / 架子)执行,内容层不许把它吃掉。
+   * 键盘住在面板自己身上,**不是 keymap 里的命令**:它只在这块面有焦点时才成立。
+   * Esc 这里一个字不写 —— 让位契约由宿主(舞台 / 浮窗 / 架子)执行。
    */
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key === 'Tab') {
@@ -553,23 +598,34 @@ export function SearchPanel() {
       return
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault()
       const down = e.key === 'ArrowDown'
       /*
+       * ↑ **在「输入框空着、而且选中还停在第一行」时是「回上一条查询」**
+       * (§4.6 结论最后一段;终端里 ↑ 的那个手感)。判据是这两条合起来的:
+       *  · 输入框里有字的时候 ↑ 只能是走行 —— 那一刻用户在挑结果,不是在回忆;
+       *  · 停在第一行 = 已经走到头了,再往上就没有行可走了,那一下才轮得到历史。
+       * 走不动(历史空)时**什么都不做**,而不是掉回走行 —— 那会让同一下键
+       * 在两种时候干两件事。
+       */
+      if (!down && !searching && cursor === 0 && !onMore && canGoBack(history)) {
+        e.preventDefault()
+        stepHistory('back')
+        return
+      }
+      e.preventDefault()
+      /*
        * 底部那条 item 是轮转序列的**末位**,但它不是 cursor 的一个值:
-       * 按一次「加载更多」列表就长了,末位的下标随之变 —— 用下标记住它,
-       * 加载完选中就落到了一条真结果上,再按一次回车会把人送走。
-       * 一个布尔说的是「我停在末位」,列表怎么长它都还在末位。
+       * 按一次「加载更多」列表就长了,末位的下标随之变。一个布尔说的是
+       * 「我停在末位」,列表怎么长它都还在末位。
        */
       if (onMore) {
         if (!down) setOnMore(false)
         return
       }
-      if (down && moreIsItem && cursor >= visible.length - 1) {
+      if (down && moreIsItem && cursor >= visibleRows.length - 1) {
         setOnMore(true)
         return
       }
-      // 走行本身归原语(夹范围 / 不回卷的判据与 useRoving 同源,不再自己算一遍)。
       selection.handleKey(e.key)
       return
     }
@@ -579,43 +635,52 @@ export function SearchPanel() {
         activateMore()
         return
       }
-      const row = visible[cursor]
+      const row = visibleRows[cursor]
       if (!row) return
       e.preventDefault()
       activate(row)
     }
   }
 
-  /*
-   * ── 开出来就打字:一句**声明**,不是一个 `autoFocus`(09-03 R2)──────────
-   * 从前那格输入框挂着 DOM 的 `autoFocus`(带一条 jsx-a11y 豁免:「这块面板是
-   * 用户刚刚显式召唤出来的」)。R2 之后这块面是响应链上的一格 `region`:
-   * `restingTarget` 说落点是这格输入框,`activateOnMount` 说「挂上来就把焦点
-   * 送进去」—— 于是「焦点落在哪儿」与「什么时候送」变成两句可读的话,
-   * 而不是一个 DOM 属性 + 一条豁免注释。
+  /**
+   * 点一行。**⇧ / ⌘ 是多选**(§4.5 ③「多选是列表的能力,与预览基数解耦」),
+   * 素点是「打开」。
    *
-   * 顺带兑现的另一件:`autoFocus` 只在**首次挂载**那一帧有效,而这块面被架子
-   * keep-alive 着切来切去时并不重挂 —— 从此那件事由宿主的 `activate()` 答
-   * (§11 拍点 2),不再取决于「这一次是不是真的重新挂载」。
-   *
-   * **Esc 一个字不写**:让位契约由宿主(舞台 / 浮窗 / 架子)执行 —— 树里那就是
-   * 「这一格不声明 `onEscape`,于是根本不进 Esc 候选表」。
+   * 两者共用一次点击不是含糊:带修饰键的点击在这套形态语法里从来就是「挑」,
+   * 不带的是「做」—— 与文件树、会话总览同一条。
    */
+  const onRowClick = (row: SearchRow, index: number, e: ReactMouseEvent) => {
+    setOnMore(false)
+    // **显式点击**是原语允许改 active 的第二条产地(第一条是键盘)。
+    selection.select(index)
+    if (e.shiftKey || e.metaKey || e.ctrlKey) {
+      setPicked(current => (current.includes(row.id)
+        ? current.filter(id => id !== row.id)
+        : [...current, row.id]))
+      return
+    }
+    setPicked([])
+    activate(row)
+  }
+
+  const rowContinuations = (row: SearchRow): SearchContinuation[] =>
+    resolveTargetRenderer(row.target.kind)?.continuations?.(row) ?? []
+
+  /* ── 画 ───────────────────────────────────────────────────────────────── */
+
   return (
     <FocusScope
       scope="search"
       rootRef={panelRef}
       restingTarget={() => panelRef.current?.querySelector('input') ?? null}
+      keyHandlers={searchKeys}
       activateOnMount
     >
       {({ scopeProps }) => (
     /* eslint-disable-next-line jsx-a11y/no-static-element-interactions --
          * 这里挂 onKeyDown 是**事件委托**,不是把一个 div 变成控件:真正拿焦点的是里面那个
          * 输入框(落点声明),↑↓/⏎ 从它冒泡上来,由面板统一按当前 cursor 处理。
-         * 规则防的是「给死元素装交互却不给焦点」—— 焦点在,只是在子节点上。
-         *
-         * 面板内的 Tab / ⇧Tab 是**换搜索范围**,仍然是这一层的行内结构键(不进任何表):
-         * 派发器只在 `modal` 作用域里圈禁 Tab,这块面是 `region`,所以那一下原样到这儿。 */
+         * 面板内的 Tab / ⇧Tab 是**换搜索范围**,仍然是这一层的行内结构键(不进任何表)。 */
         <div {...scopeProps} className={s.panel} data-testid="search-panel" onKeyDown={onKeyDown}>
           <div className={s.head}>
             <Input
@@ -636,156 +701,205 @@ export function SearchPanel() {
           </div>
 
           {/*
-            * 文件检索失败不许静默:它与「没搜到」是两件事,合成一句「无结果」等于
-            * 把一次失败说成一次空结果。这一行在**有命中时也画**(会话侧照常有结果,
-            * 但文件侧那一半确实塌了),后端原话原样跟在后面。
+            * ── 片条(§9 第五条 + §4.6 结论 1)──────────────────────────────
+            * 三段,次序固定:历史的两颗方向钮 / 范围片 / 过滤片。
+            * 一颗片都摆不出、也没有范围片、历史也是空的时候整条不画 ——
+            * 一条恒空的横条只是在占地方。
             */}
-          {wantsNativeFiles && fileStatus === 'error' && fileAnswerIsCurrent && (
-            <p className={s.failed}>
-              {t('search.filesFailed')}
-              <span className={s.failedDetail}>{fileError}</span>
-            </p>
+          {(chips.length > 0 || filters.scope !== undefined
+            || canGoBack(history) || canGoForward(history)) && (
+            <div className={s.filters} data-testid="search-filters">
+              <IconButton
+                icon={ChevronLeft}
+                size="xs"
+                label={t('search.historyBack')}
+                disabled={!canGoBack(history)}
+                onClick={() => stepHistory('back')}
+                testId="search-history-back"
+              />
+              <IconButton
+                icon={ChevronRight}
+                size="xs"
+                label={t('search.historyForward')}
+                disabled={!canGoForward(history)}
+                onClick={() => stepHistory('forward')}
+                testId="search-history-forward"
+              />
+              {/* 范围片(续搜)。它就是 `filters` 的可视化,× 去掉它。 */}
+              {filters.scope !== undefined && (
+                <FilterChip
+                  name="scope"
+                  label={filters.scope.label}
+                  on
+                  disabled={!available.has(filters.scope.key)}
+                  onRemove={() => setFilters(current => ({ ...current, scope: undefined }))}
+                  removeLabel={t('search.scopeChipRemove')}
+                />
+              )}
+              {chips.map(chip => (
+                <FilterChip
+                  key={chip.id}
+                  name={chip.id}
+                  label={t(chip.labelKey)}
+                  on={chip.on}
+                  {...(chip.options === undefined
+                    ? {
+                        onToggle: () => setFilters(current => (chip.id === 'archived'
+                          ? { ...current, archived: !current.archived }
+                          : { ...current, reasoning: !current.reasoning })),
+                      }
+                    : {
+                        value: chip.value,
+                        options: chip.options.map(option => ({
+                          value: option.value,
+                          label: t(option.labelKey),
+                        })),
+                        onSelect: (value: string) => setFilters(current => (
+                          chip.id === 'space'
+                            ? { ...current, space: value as SearchFilterState['space'] }
+                            : chip.id === 'role'
+                              ? { ...current, role: value as SearchFilterState['role'] }
+                              : { ...current, time: value as SearchFilterState['time'] }
+                        )),
+                      })}
+                />
+              ))}
+            </div>
           )}
 
           {/*
-            * 正文检索失败(09-02):**同一条判据、同一个形制**,只是换一句话与另一个
-            * 产地的原话。两路各说各的 —— 合成一句「检索失败」会让人分不清是哪一半塌了,
-            * 而它们是两条独立的口(一条可能好着,另一条塌了)。
-            *
-            * 判据里没有「答案是不是当前这个词」那一句(文件侧要问):正文侧是键控的
-            * 一格 query,`messageAnswer` 本身就只属于当前这个词与这一页。
+            * 检索失败不许静默:它与「没搜到」是两件事,合成一句「无结果」等于把一次
+            * 失败说成一次空结果。这一行在**有命中时也画**(旧结果还在屏上,而这一发
+            * 确实塌了),后端原话原样跟在后面(律②:错误不抹掉旧答案)。
             */}
-          {wantsNativeMessages && searching && messageAnswer.error && (
+          {answer.error !== undefined && (
             <p className={s.failed}>
-              {t('search.messagesFailed')}
-              <span className={s.failedDetail}>{messageAnswer.error}</span>
+              {t('search.queryFailed')}
+              <span className={s.failedDetail}>{answer.error}</span>
             </p>
           )}
 
+          <div className={s.main}>
           <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
-            {rows.length === 0 ? (
-              <p className={s.none}>
-                {/* 空词 + 只看文件 = 不是「无结果」,是「还没给词」:文件侧在浏览态**没有
-                  * 产地**(`files.list` 只在带词时才有意义),见 search/transitions.ts
-                  * 文件头第 2 条。这句话如实说出那个缺口,不去伪造一张「最近打开」。
-                  * 会话侧的浏览态不落在这一支:它有产地(整张 listMeta),所以走列表。 */}
-                {scope === FILES_CAPABILITY && !searching
-                  ? t('search.filesNeedQuery')
-                  : t('search.noResults')}
-              </p>
+            {rows.length === 0 && visible.every(section => section.error === undefined) ? (
+              <p className={s.none}>{t('search.noResults')}</p>
             ) : (
-              visible.map((row, i) => (
-                <Fragment key={row.id}>
+              visible.map(section => (
+                <Fragment key={section.capability}>
                   {/*
-                    * 组头(§9 第四条)。**只在全部档画**,而且只在这一组的第一行前面 ——
-                    * 它不是一条 item(不进 role=listbox 的轮转序列,所以 `role="presentation"`),
-                    * 是一条把列表切开的分隔读数。组头带这一组的名字与「查看全部」:
-                    * 后者切到那一档的 tab、从第一页重来。
+                    * 节头(§9 第四条)。**只在 `all` 档画**(单类档那一节 `head` 为假)。
+                    * 它不是一条 item(不进 role=listbox 的轮转序列,所以
+                    * `role="presentation"`),是一条把列表切开的分隔读数。
+                    * 右侧那一格是**文字读数**,不是计数徽 —— 库件的计数禁令原文:
+                    * tab / 列表 / 组头不挂计数徽,文字读数可以。
                     */}
-                  {groupHeadOf(i) !== undefined && (
+                  {section.head && (
                     <GroupHead
                       className={s.groupBand}
                       role="presentation"
-                      data-group={groupHeadOf(i)}
-                      label={groupLabel(groupHeadOf(i) ?? '')}
+                      data-group={section.capability}
+                      label={sectionLabel(section)}
                       note={
-                        /*
-                         * 右侧那一格是**文字读数**,不是计数徽(库件的计数禁令原文:
-                         * tab / 列表 / 组头不挂计数徽,文字读数可以)。这里放的是
-                         * 「查看全部」那颗行内微型文字动作 —— 裸钮三类判的第③类,
-                         * 走 `ui/ButtonBase` 保本地皮肤。
-                         */
-                        <ButtonBase
-                          className={s.groupAll}
-                          onClick={() => setScope(groupHeadOf(i) ?? ALL_TAB)}
-                        >
-                          {t('search.viewAll')}
-                        </ButtonBase>
+                        <span className={s.groupNote}>
+                          {/* 这一组塌了 —— §9 第四条原话「某组 error 时组头一句『没搜成』」。 */}
+                          {section.error !== undefined && (
+                            <span className={s.groupFailed} data-group-error={section.capability}>
+                              {t('search.groupFailed')}
+                            </span>
+                          )}
+                          {section.total !== undefined && (
+                            <span className={s.groupTotal} data-group-total={section.capability}>
+                              {t('search.totalCount', { total: section.total })}
+                            </span>
+                          )}
+                          <ButtonBase
+                            className={s.groupAll}
+                            onClick={() => {
+                              setHistory(pushHistory(history, entryNow()))
+                              setScope(section.capability)
+                            }}
+                          >
+                            {t('search.viewAll')}
+                          </ButtonBase>
+                        </span>
                       }
                     />
                   )}
-                {/* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */}
-                <ButtonBase
-                  role="option"
-                  aria-selected={!onMore && i === cursor}
-                  data-row={i}
-                  data-target-kind={row.target.kind}
-                  data-capability={row.capability}
-                  className={!onMore && i === cursor ? `${s.row} ${s.rowOn}` : s.row}
-                  onClick={() => {
-                    setOnMore(false)
-                    // **显式点击**是原语允许改 active 的第二条产地(第一条是键盘)。
-                    // 与它对着的禁令:行上一个 mouseenter / mouseover 都不许挂。
-                    selection.select(i)
-                    activate(row)
-                  }}
-                >
-                  {/*
-                    * 徽是**两层**:外层那颗胶囊 hug 内容(宽度由内容定,不写死),
-                    * 内层负责弯腰 —— text-overflow 只在块容器上生效,而胶囊为了居中
-                    * 是 inline-flex,直接挂在它身上的省略号永远不会出现。
-                    * 09-01 报障:徽列按四字符(CHAT/MSG/MD)写死 34px,八字符的
-                    * NOTEBOOK 直接撑破边框 —— 词表是**数据**(扩展名 / 无扩展名的整个
-                    * 文件名都会进来),不是一张可以枚举完的表,所以修法只能是结构性的。
-                    */}
-                  <span className={s.chip}>
-                    <span className={s.chipText}>{badgeText(row, t)}</span>
-                  </span>
-                  <span className={row.code ? `${s.text} ${s.code}` : s.text}>
-                    {/* 高亮两条产地一条渲染:行自带 `highlight`(正文命中,后端判的)
-                      * 就用那一份,没有就照当前的词自己切 —— 判据写在 Highlight 上。 */}
-                    <Highlight
-                      text={row.text}
-                      query={searching ? query : ''}
-                      {...(row.highlight ? { ranges: row.highlight } : {})}
-                    />
-                  </span>
-                  <span className={s.origin}>{originText(row.origin)}</span>
-                  {/*
-                    * 徽(§9「徽」那一条)。两颗,都只在**事实成立**时画:
-                    *  · 归档 —— `facets.archived` 为真。索引照建归档会话的文档
-                    *    (S3b 治好的那条病),所以它们**搜得到**,但得让人一眼看出来。
-                    *  · 跨空间 —— `facets.spaceId` 与当前空间不同。**只在「全部空间」
-                    *    过滤下才画**(§9 原话):默认那一档里根本不会出现别的空间的行,
-                    *    画一颗恒不出现的徽等于骗自己。过滤片本身是 S4b,所以今天
-                    *    `allSpaces` 恒假 —— **画它的逻辑要在**,那正是第五条门断言守的。
-                    */}
-                  {row.facets?.archived === true && (
-                    <span className={s.tag} data-tag="archived">{t('search.badgeArchived')}</span>
-                  )}
-                  {allSpaces
-                    && typeof row.facets?.spaceId === 'string'
-                    && row.facets.spaceId !== spaceId && (
-                    <span className={s.tag} data-tag="space">{t('search.badgeOtherSpace')}</span>
-                  )}
-                </ButtonBase>
+                  {section.rows.map((row, i) => {
+                    const index = section.offset + i
+                    return (
+                    /* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */
+                    <ButtonBase
+                      key={row.id}
+                      role="option"
+                      aria-selected={!onMore && index === cursor}
+                      data-row={index}
+                      data-target-kind={row.target.kind}
+                      data-capability={row.capability}
+                      data-picked={picked.includes(row.id) ? 'true' : undefined}
+                      className={[
+                        s.row,
+                        !onMore && index === cursor ? s.rowOn : '',
+                        picked.includes(row.id) ? s.rowPicked : '',
+                      ].filter(Boolean).join(' ')}
+                      onClick={(e) => onRowClick(row, index, e)}
+                      onContextMenu={(e) => {
+                        /*
+                         * **动作单产地 = 右键上下文菜单**(09-01 判例)。这一行的全部
+                         * 动作(打开 + 续搜那几条)收进同一张表,不散在行尾挂几颗钮。
+                         */
+                        e.preventDefault()
+                        selection.select(index)
+                        setOnMore(false)
+                        setRowMenu({ row, x: e.clientX, y: e.clientY })
+                      }}
+                    >
+                      {/*
+                        * 徽是**两层**:外层那颗胶囊 hug 内容(宽度由内容定,不写死),
+                        * 内层负责弯腰 —— text-overflow 只在块容器上生效,而胶囊为了居中
+                        * 是 inline-flex,直接挂在它身上的省略号永远不会出现。
+                        */}
+                      <span className={s.chip}>
+                        <span className={s.chipText}>{badgeText(row, t)}</span>
+                      </span>
+                      <span className={s.text}>
+                        {/* 高亮两条产地一条渲染:行自带 `highlight`(后端判的)就用那一份,
+                          * 没有就照当前的词自己切 —— 判据写在 Highlight 上。 */}
+                        <Highlight
+                          text={row.text}
+                          query={searching ? query : ''}
+                          {...(row.highlight ? { ranges: row.highlight } : {})}
+                        />
+                      </span>
+                      <span className={s.origin}>{originText(row.origin)}</span>
+                      {/*
+                        * 徽(§9「徽」那一条)。两颗,都只在**事实成立**时画:
+                        *  · 归档 —— `facets.archived` 为真。索引照建归档会话的文档,
+                        *    所以它们**搜得到**,但得让人一眼看出来。
+                        *  · 跨空间 —— `facets.spaceId` 与当前空间不同,**且此刻是
+                        *    「全部空间」那一档**(§9 原话):默认那一档里根本不会出现
+                        *    别的空间的行,画一颗恒不出现的徽等于骗自己。
+                        */}
+                      {row.facets?.archived === true && (
+                        <span className={s.tag} data-tag="archived">{t('search.badgeArchived')}</span>
+                      )}
+                      {allSpaces && isOtherSpace(row.facets?.spaceId, spaceId, DEFAULT_SPACE_ID) && (
+                        <span className={s.tag} data-tag="space">{t('search.badgeOtherSpace')}</span>
+                      )}
+                    </ButtonBase>
+                    )
+                  })}
                 </Fragment>
               ))
             )}
 
             {/*
               * 「加载更多」是**列表最后一条 item**,不是一颗悬浮在角上的按钮:
-              * 它跟着列表滚、跟着列表排、跟着 ↑↓ 走(末位),形制照这张表既有的行语汇
-              * (同一个 .row 骨架,只是没有徽、没有出处),所以它读起来是这张列表的
-              * 一部分而不是一件外挂控件。
-              *
-              * 取尽那一刻它换成一条**读数**(不是按钮、不进轮转序列)—— 一条按不动的
-              * 按钮比一句话更让人犹豫。
-              *
-              * 08-31 拍板:搜索态下这一行**常驻**。读数与按钮之间怎么切由 moreState
-              * 那张判据表定,这里只负责画:能按的那三种走上面的 button,`end`/`count`
-              * 两种读数走下面的 p —— 所以「共 N 条」不再是翻过页的人才看得到。
-              *
-              * 09-01 拍板:**空词那张浏览列表也走这一行**(用户:「我要能够在这里面看到
-              * 所有的条数,所有的记录,要能够翻页」)。这里一个字都不用改 —— 判据表把
-              * 浏览态翻成了 'exhausted',于是它自动落在 more(带 total)/ end 两格上。
-              *
-              * 里面那句话裹了一层 span:底部这一行也是 subgrid,文字要落在**第二列**
-              * (与上面各行的正文同一条竖线起笔)。从前靠 padding-left 的 calc 对齐,
-              * 而徽列换成内容自适应之后那个 calc 已经算不出来了。
+              * 它跟着列表滚、跟着列表排、跟着 ↑↓ 走(末位),形制照这张表既有的行语汇。
+              * 取尽那一刻它换成一条**读数**(不是按钮、不进轮转序列)——
+              * 一条按不动的按钮比一句话更让人犹豫。
               */}
             {moreIsItem && (
-              /* 「加载更多」是列表的**最后一条 item**(同一套行语汇)→ `ui/ButtonBase`。 */
               <ButtonBase
                 role="option"
                 aria-selected={onMore}
@@ -809,8 +923,7 @@ export function SearchPanel() {
             )}
             {more.kind === 'end' && (
               <p className={s.end}>
-                {/* 英文里 result / results 是两句话(08-31 走查在屏幕上量到「1 results」)。
-                    选键走 i18n 的 `plural`,与 QuickLook 的消息数逐字同一手。 */}
+                {/* 英文里 result / results 是两句话。选键走 i18n 的 `plural`。 */}
                 <span className={s.moreText}>
                   {t(plural(more.total, 'search.allShownOne', 'search.allShown'), {
                     total: more.total,
@@ -826,28 +939,16 @@ export function SearchPanel() {
 
             {/*
               * ── 底部状态行(§9 第三条)────────────────────────────────────
-              * 四条读数,**各说各的一件事,一条都不合并**。它们排在「加载更多 /
-              * 已全部显示」那一行之后,因为那一行说的是「这张列表」,而这四条说的
-              * 是「这次检索是怎么答出来的」。
-              *
-              * 每一条都**只在事实成立时画**,判据逐条:
-              *  1. `total` —— 后端给了真数才画(单类档,能力知道就给)。壳自己数出来
-              *     的那个数已经由上面那一行说了,这里说的是「全集有多大」。
-              *  2. 「已放宽」—— `relaxed > 0`:严格档没中、放宽了才有命中(§6.2)。
-              *     不说出来的话,用户会以为自己那个词精确命中了这些行。
-              *  3. 「索引更新中(剩 n)」—— `pending > 0`:现在答的这一份还没追上账本。
-              *  4. 读者模式 —— `mode === 'reader'`:折账本的是另一台进程。**今天恒
-              *     `owner`**(§5.6 拍点庚 09-04 裁「先不做」),所以这一行画不出来 ——
-              *     画它的逻辑在这里,那正是 §10 S4 行第七条门断言守的东西。
+              * 四条读数,**各说各的一件事,一条都不合并**。每一条都只在事实成立时画。
               */}
-            {genericAnswer.data?.total !== undefined && (
+            {answer.data?.total !== undefined && (
               <p className={s.end} data-readout="total">
                 <span className={s.moreText}>
-                  {t('search.totalCount', { total: genericAnswer.data.total })}
+                  {t('search.totalCount', { total: answer.data.total })}
                 </span>
               </p>
             )}
-            {(genericAnswer.data?.relaxed ?? 0) > 0 && (
+            {(answer.data?.relaxed ?? 0) > 0 && (
               <p className={s.end} data-readout="relaxed">
                 <span className={s.moreText}>{t('search.relaxed')}</span>
               </p>
@@ -867,6 +968,42 @@ export function SearchPanel() {
               </p>
             )}
           </div>
+
+          {/*
+            * 预览窗(§4.5 ⑥「面板左列表右预览」)。窄档下它由 `.main` 上那条
+            * `@container` 收成「行下展开」那一形 —— 一棵树,两种版式。
+            */}
+          <SearchPreview
+            items={previewItems}
+            mode={previewMode}
+            {...(inlinePreview === undefined ? {} : { inline: inlinePreview })}
+            {...(previewRows.length === 1 ? { row: previewRows[0] } : {})}
+            query={searching ? query : ''}
+          />
+          </div>
+
+          {/* 行的动作表(右键)。「打开」+ 这一类自报的续搜(§4.6)。 */}
+          {rowMenu !== null && (
+            <Menu
+              x={rowMenu.x}
+              y={rowMenu.y}
+              label={t('search.rowActions')}
+              onClose={() => setRowMenu(null)}
+            >
+              <MenuItem onClick={() => { setRowMenu(null); activate(rowMenu.row) }}>
+                {t('search.rowOpen')}
+              </MenuItem>
+              {rowContinuations(rowMenu.row).map(continuation => (
+                <MenuItem
+                  key={`${continuation.kind}:${continuation.labelKey}`}
+                  disabled={!continuationEnabled(continuation, available)}
+                  onClick={() => { setRowMenu(null); runContinuation(continuation) }}
+                >
+                  {t(continuation.labelKey)}
+                </MenuItem>
+              ))}
+            </Menu>
+          )}
         </div>
       )}
     </FocusScope>

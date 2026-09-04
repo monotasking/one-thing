@@ -4,11 +4,22 @@
  *
  * 它证两件用户当天报过的事,两件都只有真排版才量得到:
  *
- *  ① **空词是浏览态,不是无态**。空输入框列的是**全部会话**(每页 20 条),底下
- *     常驻一行读数:装不下时是「加载更多 · 已显示 a / 共 b」,取尽时是
- *     「共 N 条 · 已全部显示」。报障原话:「我要能够在这里面看到所有的条数,
+ *  ① **空词是浏览态,不是无态**,而且它就在**默认那一档(「所有」)上**。空输入框
+ *     列的是**全部会话**(每页 20 条),底下常驻一行读数:装不下时是「加载更多」,
+ *     取尽时是「共 N 条 · 已全部显示」。报障原话:「我要能够在这里面看到所有的条数,
  *     所有的记录,要能够翻页」—— 从前那里恒定 8 条、没有读数、没有下一页。
  *     种子刻意超过一页(SEED_SESSIONS > 一页 20),否则「翻页」根本演不出来。
+ *
+ *     (S4b 中途曾把这几条断言搬到「会话」那一档上 —— 那是一次没被裁定过的行为
+ *     变化,**已修**:壳在**零词元**时不发 `category: 'all'`(后端的 `'all'` 是不
+ *     分页的分组总览),而是问自述里声明了 `browse` 的那些能力。所以这几条断言
+ *     搬回默认档,而且**门里不出现任何一个能力 id** —— 它证的正是「不用切档」。)
+ *
+ *  ②b **文件那一档的根跟着会话工作目录走**(S4b 修)。第 5 步进会话之后再搜,
+ *      种在那条会话工作目录下的文件必须搜得到 —— 后端的根列表认的是**它自己**那条
+ *      `getCurrentSessionId()`,而 React 壳从不告诉后端当前会话是谁,所以这条根由壳
+ *      作为 `filters.dir` 结构地递回去(设计 §9)。门里从前有一句显式的
+ *      `sessions.switch` 补偿,**已删** —— 有它就等于替壳把这件事做了,病照样在。
  *
  *  ② **行首那颗徽装得下它自己的字**。报障截图:徽列按四字符(CHAT / MSG / MD)
  *     写死 34px,八字符的 NOTEBOOK 直接把字顶到胶囊边框外面。
@@ -171,6 +182,30 @@ async function clickSelector(page, selector) {
   }, selector)
   if (!clicked) throw new Error(`点不到:${selector} 不在 DOM 里`)
 }
+
+/**
+ * 换一档:点那一格 radio。文案随语言变,所以收一张**候选表**逐个试。
+ */
+async function selectTab(page, labels) {
+  const ok = await page.evaluate(names => {
+    const tabs = [...document.querySelectorAll('[data-testid="search-panel"] [role="radio"]')]
+    for (const name of names) {
+      const el = tabs.find(node => (node.textContent ?? '').trim() === name)
+      if (el) {
+        el.click()
+        return true
+      }
+    }
+    return false
+  }, labels)
+  if (!ok) throw new Error(`tab 条上没有「${labels.join(' / ')}」这一格`)
+}
+
+/** 「不挑」那一档(它在壳自己的字典里,不在任何一份自述里)。 */
+const ALL_TAB_LABELS = ['所有', 'All']
+
+/** 文件那一档的两种写法(它的名字来自 `search.capability.files`)。 */
+const FILES_TAB = ['文件', 'Files']
 
 /**
  * 等这张列表画出至少一行。
@@ -373,20 +408,44 @@ async function main() {
       page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
     )
 
-    console.log('\n[4/5] 空词 = 浏览态:全部条数看得见、翻得了页')
+    console.log('\n[4/5] 空词 = 浏览态(默认那一档上):全部条数看得见、翻得了页')
+    /*
+     * ── 一档都不切 ──────────────────────────────────────────────────────
+     * 面板刚开出来就在「所有」上。**这里刻意不 selectTab** —— 报障那一形就是
+     * 「打开检索面,空输入框,我要看到全部记录并能翻页」,切一次档就把病绕过去了。
+     *
+     * 壳这一侧的做法(设计 §9):零词元时不发 `category: 'all'`(那是不分页的
+     * 分组总览),改问自述里声明了 `browse` 的那些能力 —— 今天只有一个,于是
+     * 屏幕上是一张平铺的会话列表。**门里不出现那个能力的名字**:它要证的正是
+     * 「用户不用知道去问谁」。
+     */
+    const activeTab = await page.evaluate(() => {
+      const on = document.querySelector('[data-testid="search-panel"] [role="radio"][aria-checked="true"]')
+      return (on?.textContent ?? '').trim()
+    })
+    assert(
+      ALL_TAB_LABELS.includes(activeTab),
+      `面板开出来就停在「不挑」那一档上(此刻是「${activeTab}」)—— 下面几条都不切档`,
+    )
     const first = await waitForRows(page, '浏览态第一页画出来')
     console.log('  · 第一页读数:', JSON.stringify(first))
     assert(
       first.rows === FIRST_PAGE,
       `空词只画一页(${first.rows} 行)—— 500 条会话不会一次铺满 DOM`,
     )
+    /*
+     * ── S4b:第一页那一行**不再报总数**,而这是更诚实的一版 ────────────────
+     * 从前壳手上有整张会话表,所以第一页就说得出「共 25 条」。今天这一档的行
+     * 来自 `search.query`,而它这一路(空词绕开索引调旧 `searchChats`,S3b)
+     * **不下发 total** —— 于是判据表(`transitions.moreState`)落在
+     * 「给满了、后面可能还有,但没人说过有」那一格:画「加载更多」,**不猜一个数**。
+     *
+     * 「看得到全部条数」这件事没有丢,它挪到了**取尽那一刻**(下面第二页那条
+     * 断言):真数只有在后端说完之后才是真的。
+     */
     assert(
-      first.more !== null && first.more.includes(String(SEED_SESSIONS)),
-      `底部常驻一行读数,而且报的是**全部**条数:「${first.more}」`,
-    )
-    assert(
-      first.more.includes(String(FIRST_PAGE)),
-      `读数同时报「已显示多少」:「${first.more}」`,
+      first.more !== null,
+      `底部常驻一条能按的 item(还没取尽,所以不许诺总数):「${first.more}」`,
     )
     /*
      * 底部那条 item 的**缩进**在这里量:它与上面各行的正文从同一条竖线起笔。
@@ -431,6 +490,7 @@ async function main() {
     await page.screenshot({ path: path.join(shotDir, 'search-browse-all-shown.png') })
 
     console.log('\n[5/5] 用检索面自己进那条会话(文件侧按活跃会话的工作目录取根),再量行首徽')
+    // 一直都在「所有」这一档上(第 4 步没切过档),直接打字。
     await typeQuery(page, FIRST_SESSION_NAME)
     await waitForRows(page, '那条会话在命中里')
     // 点一行 = enterSession + 收回 Dock(面板自己那条路,顺带真跑一遍)。
@@ -438,6 +498,18 @@ async function main() {
     await waitFor('面板收回 Dock 了', () =>
       page.evaluate(() => !document.querySelector('[data-testid="search-panel"]')),
     )
+    /*
+     * ── ②b:这里**没有任何补偿**,而这正是断言的一半 ──────────────────────
+     * 从前这一步有一句 `rpc(record, 'sessions', 'switch', …)`,把**后端**的当前会话
+     * 拨到那条带工作目录的会话上 —— 因为后端的根列表(`getSearchDirs()`)认的是
+     * 它自己那条 `getCurrentSessionId()`,而 React 壳从不告诉它当前会话是谁。
+     * 那一句是把病绕过去,不是治它。
+     *
+     * S4b 修之后根由**壳**结构地递回去(`filters.dir` = `useSessionCwd()`,
+     * files 在自述里声明了这一格),所以这一句删了:下面那几颗徽能被量到,
+     * 本身就证明「会话 cwd 下种的文件搜得到」。
+     * 反证:把壳的 `filters.dir` 摘掉 → 「文件命中画出来」当场超时红。
+     */
     await clickSelector(page, '[data-testid="dock-tile-search"]')
     await waitFor('检索面板又开出来', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
@@ -510,11 +582,31 @@ async function main() {
     }
     await page.screenshot({ path: path.join(shotDir, 'search-badges.png') })
 
+    /*
+     * ── ②b 的正面断言:**文件那一档**上,会话 cwd 下种的文件全都在 ──────────
+     * 上面量徽是在「所有」那一档(要同时看得见各类的徽)。这里切到文件档再问一次:
+     * 这一档的行只可能来自 `files` 能力,而它的扫描根就是壳递过去的那一格
+     * `filters.dir`(= 活跃会话的工作目录)。五个种子文件一个都不能少。
+     */
+    await selectTab(page, FILES_TAB)
+    const inFiles = await waitFor('文件档把会话工作目录下的种子文件全搜出来', async () => {
+      const state = await measureBadges(page)
+      if (state.error) return undefined
+      const words = new Set(state.chips.map(c => c.word))
+      return BADGE_FILES.every(f => words.has(f.badge)) ? state : undefined
+    })
+    assert(
+      BADGE_FILES.every(f => inFiles.chips.some(c => c.word === f.badge)),
+      `文件档搜的是**活跃会话的工作目录**(壳递的 filters.dir):`
+        + `${BADGE_FILES.map(f => f.name).join(' / ')} 全都在`,
+    )
+
     await app.close()
     app = undefined
     console.log(
-      `\n[search-gate] ok —— 空词浏览态(全量 / 读数 / 翻页)+ 行首徽零溢出`
-        + `(截图:${path.relative(appRoot, shotDir)}/)`,
+      `\n[search-gate] ok —— 默认档空词浏览态(全量 / 读数 / 翻页,一档没切)`
+        + ` + 文件档跟着会话工作目录走(壳递 filters.dir,门里没有补偿)`
+        + ` + 行首徽零溢出(截图:${path.relative(appRoot, shotDir)}/)`,
     )
   } finally {
     // 收尸:自己起的每一个进程都在这里逐个杀掉,临时目录一并删干净。

@@ -52,6 +52,18 @@ export interface CapabilityManifest {
   retrievers?: { vector?: { when: VectorRetrieverWhen } }
   /** 预览是随候选带还是选中再取(§4.5 ①) */
   preview?: { mode: 'inline' | 'lazy' }
+  /**
+   * **空词时我有浏览态**(S4b;09-01 用户裁定「所有档空词 = 全部会话列表、
+   * 看得到总条数、翻得了页」)。
+   *
+   * 零词元的查询对索引恒零命中,所以「空输入框里列什么」这件事只有能力自己
+   * 答得出:chats 有(旧 `searchChats('')` = 按 `updatedAt` 取前 N 间),
+   * 别的能力今天都没有。缺席 = 没有浏览态。
+   *
+   * 宿主(壳)因此**不必认识任何能力的名字**就画得出空词那一屏:读这一格,
+   * 声明了的各占一组。core 自己不读它 —— 它是一句**自述**,给壳读的。
+   */
+  browse?: boolean
 }
 
 export type CapabilityKind = 'indexed' | 'scan' | 'static' | 'remote'

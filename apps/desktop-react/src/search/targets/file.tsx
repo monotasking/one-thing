@@ -1,5 +1,7 @@
 import { registerTargetRenderer } from './registry'
-import { fileExt } from '../transitions'
+import { fileExt, fileName } from '../transitions'
+import type { SearchContinuation } from '../continuations'
+import type { SearchRow } from '../types'
 
 /**
  * `kind: 'file'` —— 一个文件(`runtime/src/search/capabilities/files.ts` 的
@@ -30,6 +32,49 @@ function payloadOf(payload: unknown): FileTargetPayload | undefined {
   return typeof line === 'number' ? { filePath, line } : { filePath }
 }
 
+/** 这条路径的目录段。没有分隔符 = 它就在根上,答空串(那时范围片没有意义)。 */
+function dirOf(filePath: string): string {
+  const at = filePath.lastIndexOf('/')
+  return at <= 0 ? '' : filePath.slice(0, at)
+}
+
+/**
+ * 续搜两条(S4b,§4.6 那张场景表第三行「搜到一个文件 → 想知道**哪些对话改过 /
+ * 讨论过它**」,以及结论 1 的「文件 → `dir`」)。
+ *
+ *  · **枢轴**「提到它的消息」= 换到消息那一档,种子词 = **文件名**(不是整条路径:
+ *    人在对话里说的是 `model-registry.ts`,不是 `/repo/packages/…/model-registry.ts`)。
+ *    §4.6 的真库读数说 10% 的用户消息提到一个文件路径,「上次让它改 X 是哪次」是
+ *    高频问句 —— 这一条就是那句话的入口。
+ *  · **范围片**「在此目录内搜」= 一格 `dir`。**S4b 修之后它按得动了**,而这个
+ *    文件一个字没改:files 在自述里声明了 `dir`(扫描根),于是
+ *    `continuationEnabled` 判它有效,面板照旧画成能按的。
+ *    从「灰的」到「活的」全靠那一格自述 —— 那正是「片可不可用由能力自述答」
+ *    这条规矩的正面用例(它当反面用例的那半年记在 git 里)。
+ *    × 掉它**回到缺省的当前会话工作目录**,不是回到「无 dir」——
+ *    理由(无 dir = 后端自己的根列表,那不是旧行为)在 `../filters.ts` 的
+ *    `DIR_FACET` 上。
+ */
+function continuationsOf(row: SearchRow): SearchContinuation[] {
+  const payload = payloadOf(row.target.payload)
+  if (payload === undefined) return []
+  const out: SearchContinuation[] = [{
+    kind: 'pivot',
+    labelKey: 'search.pivotFileMentions',
+    capability: 'messages',
+    query: fileName(payload.filePath),
+  }]
+  const dir = dirOf(payload.filePath)
+  if (dir) {
+    out.push({
+      kind: 'scope',
+      labelKey: 'search.continueInDir',
+      chip: { key: 'dir', value: dir, label: dir },
+    })
+  }
+  return out
+}
+
 export const fileTargetRenderer = {
   kind: 'file',
   badge(row) {
@@ -41,4 +86,5 @@ export const fileTargetRenderer = {
     if (payload === undefined) return
     context.openFile(payload.filePath, payload.line)
   },
+  continuations: continuationsOf,
 } as const satisfies Parameters<typeof registerTargetRenderer>[0]

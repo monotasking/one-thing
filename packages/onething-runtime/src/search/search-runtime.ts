@@ -7,7 +7,12 @@ export interface OnethingSearchRuntimeAdapters<TResult = unknown> {
   searchMessages(query: string, limit: number): MaybePromise<TResult[]>
   searchActions(query: string, limit: number): MaybePromise<TResult[]>
   searchPrompts(query: string, limit: number, includeCreateAction: boolean): MaybePromise<TResult[]>
-  searchFiles(query: string, limit: number): MaybePromise<TResult[]>
+  /**
+   * 第三格 `dir` 是 S4b 加的**扫描根**:给了就**只扫那一个目录**,缺席就是
+   * 今天那张根列表(`getSearchDirs()`)。旧路 `executeOnethingSearch` 不递它,
+   * 所以旧行为一字不动。
+   */
+  searchFiles(query: string, limit: number, dir?: string): MaybePromise<TResult[]>
   searchDailyNotes(query: string, limit: number): MaybePromise<TResult[]>
 }
 

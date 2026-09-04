@@ -56,6 +56,41 @@ const EXPOSE_KEYS: readonly ScopedKey[] = [
 ]
 
 /**
+ * 检索面两条:⌘[ / ⌘] = 查询历史的后退 / 前进(检索重建 S4b,设计
+ * `docs/design/search-index-2026-09.md` §4.6 结论最后一段:「返回靠检索框本来就该
+ * 有的**查询历史**(↑ 回上一条、⌘[ 后退),与浏览器地址栏同形」)。
+ *
+ * ── 为什么是**面域局部键**而不是全局命令 ────────────────────────────────
+ * 判据是那条法的原话:「一个键属于哪一层,由**它需不需要一个目标**决定」。
+ * 「回上一条查询」需要一个目标 —— 那块面自己的那条历史;检索面关着的时候它
+ * 无处可去。全局档管的是「焦点在哪儿都响」的那一类(呼出一块面 / 做一件全局的事)。
+ *
+ * ── ↑ 那一下**不在这张表上**,这也是判据不是省事 ────────────────────────
+ * §4.6 里 ↑ 与 ⌘[ 是同一条历史的两个入口,但它们属于**两层**:↑ 是行内结构键
+ * (方向键的 DOM 焦点语义),它在这块面里先是「走行」、只在「输入框空着且停在
+ * 第一行」那一形才轮到历史 —— 那是一句关于这套形态语法的话,而结构键**不进任何表**
+ * (`keymap/types.ts` 顶部:可配置就等于不一致)。落点因此在面板自己的 onKeyDown 里。
+ *
+ * ⌘[ / ⌘] 与既有键位不撞:全壳的全局命令表里没有这两个组合,另一格局部键
+ * (查看器 ⌘S/⌘L/⌘F、文件树 ⌘I/⌘↵、总览 ⌘⇧P)也没有 ——
+ * 撞了会由 `scopedCollisionsOf` 在设置页说出来(撞车不是错误,但不许静默)。
+ */
+const SEARCH_KEYS: readonly ScopedKey[] = [
+  {
+    scope: 'search',
+    combo: { meta: true, key: '[' },
+    labelKey: 'search.historyBack',
+    action: 'history.back',
+  },
+  {
+    scope: 'search',
+    combo: { meta: true, key: ']' },
+    labelKey: 'search.historyForward',
+    action: 'history.forward',
+  },
+]
+
+/**
  * 文件树两条键面同一个动作(⌘I 与 ⌘↵ 都是「详情」)。**两行,不是一行两键**:
  * 表要能逐条说出「⌘↵ 被谁占着」,一行装两个组合就说不出口了。
  */
@@ -90,7 +125,7 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   viewer: { id: 'viewer', kind: 'region', labelKey: 'viewer.label', keys: VIEWER_KEYS },
   files: { id: 'files', kind: 'region', labelKey: 'item.files', keys: FILES_KEYS },
   composer: { id: 'composer', kind: 'region', labelKey: 'focus.scope.composer' },
-  search: { id: 'search', kind: 'region', labelKey: 'item.search' },
+  search: { id: 'search', kind: 'region', labelKey: 'item.search', keys: SEARCH_KEYS },
   expose: { id: 'expose', kind: 'region', labelKey: 'item.sessions', keys: EXPOSE_KEYS },
   chat: { id: 'chat', kind: 'region', labelKey: 'focus.scope.chat' },
   settings: { id: 'settings', kind: 'region', labelKey: 'item.settings' },

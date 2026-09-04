@@ -1,7 +1,10 @@
 import {
   searchRouter,
   type SearchCapabilityManifestDto,
-  type SearchResult,
+  type SearchFilters,
+  type SearchItemRef,
+  type SearchPreviewPayload,
+  type SearchResponse,
   type SearchStatusResponse,
 } from '@shared/ipc/search'
 
@@ -11,65 +14,65 @@ import {
  * 「哪些命中画得出来、怎么去重、怎么翻页」全是纯逻辑,不该为了测它去起一台 core。
  * 真实现是下面那一个,测试用 `configureSearchPort` 换成假的。
  *
- * ── 面上有几条,以及为什么(S4a 之前只有一条)──────────────────────────
- * 后端契约(`@shared/ipc/search.ts` 的 `searchRouter`)有五条路由。这里开四条:
- * `queryMessages`(窄的那一条)/ `query`(通用)/ `capabilities` / `status`。
- * `preview` 与 `invoke` **本批不开** —— 预览窗是 S4b,没有消费者的口不该先开出来。
+ * ── 面上有几条,以及为什么(S4b:五条全开)──────────────────────────────
+ * 后端契约(`@shared/ipc/search.ts` 的 `searchRouter`)有五条路由,这里现在五条
+ * 全开:`query` / `capabilities` / `status` / `preview` / `invoke` 的前四条。
  *
- * S4a 之前这里**只有** `queryMessages`,判据写在下面那条口上:「要开第二档时,
- * 判据是**这一档有没有一个壳里能落地的目标**,不是『契约上有』」。今天那个落地口
- * 建成了 —— 目标渲染注册表(`search/targets/`),一种 `target.kind` 一个渲染器,
- * 点了去哪儿由它说。所以判据满足,`query` 才开。
+ * **`queryMessages` 那条窄口没了**(S4b)。它当年在的理由是「壳对消息那一路另有
+ * 一层当前空间投影与去重」—— 那层投影靠的是「拿屏幕上那张会话表去筛命中」,
+ * 而 S4b 之后壳这一侧**不再有自己的会话表参与检索**:空间由 `filters.spaceId`
+ * 这一格结构地说,由后端按 facet 筛。于是那条窄口与通用口问的是同一件事,
+ * 两条并存就是同一个问题两个产地。
  *
- * 三条**没有**被通用口吃掉的,理由逐条:
- *
- *  · `'chats'` 这一档壳里**已经有产地**(整张 `sessions.listMeta` 在手,即时滤),
- *    再从这条口要一次就是同一件事两个产地,迟早对不上(会话标题的高亮口径、
- *    空间投影、SSE 增量全在本地那一份上);
- *  · `'files'` 同理,文件侧走的是 `files.list`(`data/files-source.ts`);
- *  · `'messages'` 走的是上面那条**窄口**:壳这边另有一层当前空间投影与去重,
- *    换成通用路是一次可感知的行为变化(见 `search/sources.ts` 那张记账表)。
- *
- * 剩下的(`prompts` / `daily` / `actions`,以及任何一个插件能力)走通用口。
+ * `preview` 这一批才开,判据与当年 `query` 那条逐字同源:**有没有一个壳里能落地
+ * 的消费者**。今天有了 —— 预览渲染注册表(`search/preview/`),一种载荷 kind 一个
+ * 渲染器。`invoke` 仍然不开:没有一个能力声明动作,开一条恒答 `no such action`
+ * 的口只会让人以为壳这边漏接了什么。
  *
  * ── 签名口径:位置参数进来,信封出去 ─────────────────────────────────────
  * 与 files-port 逐字同一体例:router 收对象,端口这一层收位置参数(它是给判据层
  * 用的窄面,不是给网线用的信封),真实现负责那一次包装。
  *
  * ── 返回值:后端契约原样,不在旁边立第二份形状 ───────────────────────────
- * 交出去的就是 `SearchResult[]`。壳侧那一层收窄(哪些行**能落地**)在
- * `data/message-search-source.ts` 里做一次,理由写在那儿 —— 端口不替它判。
+ * 交出去的就是 `SearchResponse`(连 `groups` 一起)。壳侧那一层收窄(哪些行
+ * **画得出来**)在 `search/transitions.ts` 的 `resultRows` 里做一次 ——
+ * 端口不替它判。
  */
 export interface SearchPort {
   /** 传输面就绪(D0 的 whenConnected);浏览器直开时它也会 resolve。 */
   ready(): Promise<unknown>
   /**
-   * 跨会话搜消息正文。`limit` 是**这一次要多少条**:分页靠它递增
-   * (后端这一条没有游标、也不下发总数 —— 判据与代价写在
-   * `search/transitions.ts` 的「分页」一节)。
+   * **唯一的那一条查询**(S4b)。`category` 是能力 id 或 `'all'`;
+   * `'all'` 那一档的回执带 `groups`(§7.2 的分组总览),单类档带 `total` / `cursor`。
    *
-   * `success:false` 时 `results` 是空表 —— 端口不把它翻译成异常:失败与空是
-   * 两件事,而消费方要靠这一格把它们分开说(见 message-search-source 的 fetcher)。
+   * `limit` 是**这一次要多少条**;`filters` 是**结构**传的过滤条件(§9 第五条:
+   * 不拼进查询串),键由各能力的 `manifest.facets` 声明,壳与契约都不解释它们。
+   *
+   * 回执**原样交出去**(`SearchResponse`),不在契约旁边立第二份形状。
+   * `success:false` 不翻译成异常 —— 失败与「一条都没搜到」是两件事,消费方要靠
+   * 这一格把它们分开说(判据在 `search-catalog-source.ts` 的 fetcher 里)。
    */
-  queryMessages(query: string, limit: number): Promise<{ success: boolean; results: SearchResult[] }>
-  /**
-   * **通用的那一档**(S4a):壳没有自带产地的能力走它(`prompts` / `daily` /
-   * `actions`,以及将来任何一个插件能力)。
-   *
-   * 上面 `queryMessages` 那条口的注释说「只开 messages 那一档,要开第二档时判据是
-   * 『这一档有没有一个壳里能落地的目标』」—— **今天有了**:目标渲染注册表
-   * (`search/targets/`)就是那个落地口,一种 kind 一个渲染器,点了去哪儿由它说。
-   * 所以判据满足了,这条口才开;它不是绕过那条判据,是那条判据的结论。
-   *
-   * `queryMessages` 没有被它吃掉:那一路壳这边另有一层「当前空间投影」与去重
-   * (见 `message-search-source.ts` 的 `toHits` 与 `transitions.ts` 的 `coversPreview`),
-   * 换成通用路会是一次可感知的行为变化。两条口并存是**记账**,不是重复。
-   */
-  query(query: string, category: string, limit: number): Promise<{ success: boolean; results: SearchResult[]; total?: number; cursor?: string; relaxed?: number; index?: { pending: number; stale: boolean } }>
-  /** 有哪些能力(tab / 图标 / 次序全从它算)。 */
+  query(
+    query: string,
+    category: string,
+    limit: number,
+    filters?: SearchFilters,
+  ): Promise<SearchResponse>
+  /** 有哪些能力(tab / 图标 / 次序 / 有哪几颗过滤片全从它算)。 */
   capabilities(surface?: string): Promise<SearchCapabilityManifestDto[]>
   /** 索引在干什么(底部那两行读数)。 */
   status(): Promise<SearchStatusResponse>
+  /**
+   * 选中一条(或几条)时的富预览(§4.5)。**S4b 才开** —— 判据与 `query` 当年
+   * 那条逐字同源:壳里有了能落地的消费者(预览渲染注册表)才开这条口。
+   *
+   * `success:false` 时 `error` 是**后端的原话**(§4.5 ⑤「error(原话),列表不受
+   * 影响」),端口原样交出去,不换成一句通用的「预览失败」。
+   */
+  preview(
+    items: readonly SearchItemRef[],
+    mode: 'single' | 'compare' | 'batch',
+  ): Promise<{ success: boolean; preview?: SearchPreviewPayload; error?: string }>
 }
 
 let port: SearchPort | undefined
@@ -90,14 +93,18 @@ async function realPort(): Promise<SearchPort> {
   const searchApi = client.api(searchRouter)
   return {
     ready: () => whenConnected(),
-    queryMessages: async (query, limit) => {
-      const response = await searchApi.query({ query, category: 'messages', limit })
-      return { success: response.success, results: response.results ?? [] }
-    },
-    query: async (query, category, limit) => {
-      const response = await searchApi.query({ query, category, limit })
+    query: async (query, category, limit, filters) => {
+      const response = await searchApi.query({
+        query,
+        category,
+        limit,
+        // 缺席与空表是两回事:一格过滤都没有时**不发这个键**,而不是发一个 `{}`
+        // —— 后端那边 `filters: {}` 与缺席同义,但线上少一格总比多一格诚实。
+        ...(filters === undefined || Object.keys(filters).length === 0 ? {} : { filters }),
+      })
       return { ...response, results: response.results ?? [] }
     },
+    preview: (items, mode) => searchApi.preview({ items: [...items], mode }),
     capabilities: async surface => {
       const response = await searchApi.capabilities(surface === undefined ? {} : { surface })
       return response.capabilities ?? []

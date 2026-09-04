@@ -264,6 +264,15 @@ export interface SearchCapabilityManifestDto {
   surfaces?: string[]
   /** 预览怎么取(§4.5 ①):inline 随候选带,lazy 选中再走 `search.preview`;缺席 = 没有预览。 */
   preview?: { mode: 'inline' | 'lazy' }
+  /**
+   * **空词时这一类有浏览态**(S4b)。壳的「所有」档在**零词元**时不发
+   * `category: 'all'`(那是分组总览,按设计不分页),而是问**声明了这一格**的
+   * 那些能力,各一组、每组全量可翻页 —— 也就是 09-01 用户裁定的那张旧浏览态。
+   *
+   * 它是一格**自述**,所以壳里不必出现任何能力 id:今天只有 `chats` 声明它。
+   * 缺席 = 空词时这一类没有东西可列。
+   */
+  browse?: boolean
 }
 
 export interface SearchCapabilitiesRequest {

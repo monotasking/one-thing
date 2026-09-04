@@ -1,4 +1,7 @@
 import { registerTargetRenderer } from './registry'
+import { originText } from '../transitions'
+import type { SearchContinuation } from '../continuations'
+import type { SearchRow } from '../types'
 
 /**
  * `kind: 'message'` —— 一条消息正文命中(`runtime/src/search/capabilities/messages.ts`
@@ -26,6 +29,29 @@ function payloadOf(payload: unknown): MessageTargetPayload | undefined {
   return { sessionId, messageId }
 }
 
+/**
+ * 续搜(S4b,§4.6 那张场景表第一行:「搜到一条消息 → 想在**这个会话里**找那句话」)。
+ *
+ * 只有**范围片**一种:这一条已经在一间会话里了,「它的消息」对它没有意义
+ * (那就是它自己),「提到它的文件」也不是一次检索(消息里的文件引用本来就可点,
+ * 见 §4.6 第四行)。片上写的是**所属会话的名字** —— 行尾出处已经是它,
+ * 所以片与行说的是同一句话,不另取一个名字。
+ */
+function continuationsOf(row: SearchRow): SearchContinuation[] {
+  const payload = payloadOf(row.target.payload)
+  if (payload === undefined) return []
+  return [{
+    kind: 'scope',
+    labelKey: 'search.continueInSession',
+    chip: {
+      key: 'sessionId',
+      value: payload.sessionId,
+      // 出处给不出名字时退到 id —— 画一个 id 比画一颗没有字的片诚实。
+      label: originText(row.origin) || payload.sessionId,
+    },
+  }]
+}
+
 export const messageTargetRenderer = {
   kind: 'message',
   badge: () => ({ labelKey: 'search.badgeMessage' }),
@@ -34,4 +60,5 @@ export const messageTargetRenderer = {
     if (payload === undefined) return
     context.enterSession(payload.sessionId, payload.messageId)
   },
+  continuations: continuationsOf,
 } as const satisfies Parameters<typeof registerTargetRenderer>[0]

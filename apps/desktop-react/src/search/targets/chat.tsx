@@ -1,4 +1,6 @@
 import { registerTargetRenderer } from './registry'
+import type { SearchContinuation } from '../continuations'
+import type { SearchRow } from '../types'
 
 /**
  * `kind: 'chat'` —— 一间会话(`runtime/src/search/capabilities/sessions.ts` 的
@@ -29,6 +31,32 @@ function payloadOf(payload: unknown): ChatTargetPayload | undefined {
   return typeof messageId === 'string' ? { sessionId, messageId } : { sessionId }
 }
 
+/**
+ * 续搜两条(S4b,§4.6 那张场景表第一行与结论 2 的「会话 → 它的消息」)。
+ *
+ *  · **范围片**「在此会话内搜」= 加一格 `sessionId`,词留着 —— 「我刚才搜的那个词,
+ *    只在这间会话里再看一遍」;
+ *  · **枢轴**「它的消息」= 换到消息那一档 + 同一格 `sessionId` + **清词**。
+ *    §4.6 原话把它记成「等价于范围片 + 清词」,这里就是那句话的逐字落地。
+ *
+ * ── 这个文件为什么可以出现 `'messages'` 这个能力 id ──────────────────────
+ * 它是**这一类自己的渲染模块**(§4.0 允许动的两处之一),而「从一间会话跳到它的
+ * 消息」这件事只有会话这一类知道该跳到哪儿。骨架(面板 / tab 条 / 分组 / 分页 /
+ * 过滤片)仍然一个能力 id 都不认识,`__tests__/no-capability-literals.test.ts`
+ * 那道闸因此把 `targets/` 整个豁免、把别处钉死。
+ * 真正到位的形(后端自报一条 `kind:'continue'` 的动作)要先补契约两格 ——
+ * 那笔账记在 `../continuations.ts` 头上。
+ */
+function continuationsOf(row: SearchRow): SearchContinuation[] {
+  const payload = payloadOf(row.target.payload)
+  if (payload === undefined) return []
+  const chip = { key: 'sessionId', value: payload.sessionId, label: row.text }
+  return [
+    { kind: 'scope', labelKey: 'search.continueInSession', chip },
+    { kind: 'pivot', labelKey: 'search.pivotSessionMessages', capability: 'messages', query: '', chip },
+  ]
+}
+
 export const chatTargetRenderer = {
   kind: 'chat',
   badge: () => ({ labelKey: 'search.badgeSession' }),
@@ -37,4 +65,5 @@ export const chatTargetRenderer = {
     if (payload === undefined) return
     context.enterSession(payload.sessionId, payload.messageId)
   },
+  continuations: continuationsOf,
 } as const satisfies Parameters<typeof registerTargetRenderer>[0]

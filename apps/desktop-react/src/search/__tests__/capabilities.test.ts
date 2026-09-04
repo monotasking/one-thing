@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import type { SearchCapabilityManifestDto, SearchStatusResponse } from '@shared/ipc/search'
-import { ALL_TAB, indexReadoutOf, nextTab, resolveTab, tabsOf } from '../capabilities'
+import {
+  ALL_TAB,
+  browseCapabilitiesOf,
+  indexReadoutOf,
+  labelKeyOf,
+  labelTextOf,
+  nextTab,
+  resolveTab,
+  tabsOf,
+} from '../capabilities'
 
 /**
  * tab 条来自自述(检索重建 S4a,设计 §9 第一条 / §4.0)。
@@ -13,6 +22,47 @@ import { ALL_TAB, indexReadoutOf, nextTab, resolveTab, tabsOf } from '../capabil
 function manifest(id: string, order: number, labelKey = `search.capability.${id}`): SearchCapabilityManifestDto {
   return { id, labelKey, icon: 'Search', kind: 'indexed', budget: { default: 5, timeoutMs: 300 }, order }
 }
+
+/**
+ * 空词的「所有」档去问谁(S4b 修)。判据是**自述的一格 `browse`**,不是壳里的
+ * 一个名字 —— 所以这一族喂的全是造出来的 id,一个真能力都不认。
+ */
+describe('browseCapabilitiesOf(空词时谁有浏览态)', () => {
+  const browsable = (id: string, order: number): SearchCapabilityManifestDto =>
+    ({ ...manifest(id, order), browse: true })
+
+  it('只挑自报了 `browse` 的那些 —— 缺席 = 空词时没东西可列', () => {
+    expect(browseCapabilitiesOf([manifest('a', 1), browsable('b', 2), manifest('c', 3)]))
+      .toEqual(['b'])
+  })
+
+  it('次序与 tab 条同一条(order 升序,同 order 保注册序)', () => {
+    expect(browseCapabilitiesOf([browsable('late', 3), browsable('early', 1), browsable('mid', 2)]))
+      .toEqual(['early', 'mid', 'late'])
+  })
+
+  /** §4.0 的硬指标:再来一个自报浏览态的能力,空词那一屏自己多一组。 */
+  it('注册表多一个 `browse` 的陌生能力 → 多一格,壳一个字不改', () => {
+    const base = [manifest('a', 1), browsable('b', 2)]
+    expect(browseCapabilitiesOf(base)).toEqual(['b'])
+    expect(browseCapabilitiesOf([...base, browsable('zzz', 9)])).toEqual(['b', 'zzz'])
+  })
+
+  it('一个都没声明(或者自述还没回来)= 空表 —— 那时面板照旧发 `all`', () => {
+    expect(browseCapabilitiesOf([manifest('a', 1)])).toEqual([])
+    expect(browseCapabilitiesOf([])).toEqual([])
+  })
+})
+
+describe('labelKeyOf(组名从自述读)', () => {
+  it('答那个能力自述里的 labelKey', () => {
+    expect(labelKeyOf([manifest('a', 1), manifest('b', 2)], 'b')).toBe('search.capability.b')
+  })
+
+  it('表里没有它 = `undefined`(不编一个名字)', () => {
+    expect(labelKeyOf([manifest('a', 1)], 'zzz')).toBeUndefined()
+  })
+})
 
 describe('tabsOf', () => {
   it('`all` 固定第一,其余按 order 升序', () => {
@@ -93,5 +143,24 @@ describe('indexReadoutOf', () => {
 
   it('问不到状态 = 两行都不画(不是「一切正常」)', () => {
     expect(indexReadoutOf(undefined)).toBeUndefined()
+  })
+})
+
+/**
+ * 屏幕上那一格写什么(S4b)。
+ *
+ * 起因是一条真会上屏的形:插件能力(或任何一个不在壳这份字典里的能力)给的
+ * `labelKey` 翻不出来时,`translate` 答的是 `undefined` —— 渲染成一格**空白 tab**。
+ * 空白比原文糟得多:原文至少说得出「这一档叫什么」,而空白让人以为控件坏了。
+ */
+describe('labelTextOf(翻得出画译文,翻不出画原文)', () => {
+  it('翻得出来就画译文', () => {
+    expect(labelTextOf('search.capability.chats', '会话')).toBe('会话')
+  })
+
+  it('翻不出来(字典里没有这个键)就画**原文**,不是一格空白', () => {
+    expect(labelTextOf('search.capability.unknown', undefined)).toBe('search.capability.unknown')
+    // `translate` 对缺席的键实际答的是 undefined,渲染成空串 —— 空串同样要退到原文。
+    expect(labelTextOf('search.capability.unknown', '')).toBe('search.capability.unknown')
   })
 })

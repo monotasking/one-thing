@@ -127,6 +127,7 @@ function manifestDto(manifest: CapabilityManifest): SearchCapabilityManifestDto 
     orderWhenIntent: manifest.orderWhenIntent,
     surfaces: manifest.surfaces,
     preview: manifest.preview,
+    browse: manifest.browse,
   }
 }
 

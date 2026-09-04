@@ -18,12 +18,9 @@ function row(kind: string, payload: unknown): SearchRow {
   return {
     id: 'r1',
     capability: 'x',
-    domain: 'session',
     text: '一行',
-    code: false,
     origin: { kind: 'time', time: '刚刚' },
     target: { kind, payload },
-    tier: 'title',
   }
 }
 
@@ -131,5 +128,65 @@ describe('六种渲染器:徽与落点', () => {
       resolveTargetRenderer(kind)!.activate(row(kind, { 什么都没有: 1 }), ctx)
     }
     expect(ctx.calls).toEqual([])
+  })
+})
+
+/**
+ * 续搜(S4b,§4.6)。「以谁为词、落到哪个 facet 键、跳到哪一类」由**这一类自己的
+ * 渲染模块**答 —— 面板的骨架一个能力 id 都不认识,这几条用例守的正是那件事。
+ */
+describe('续搜:范围片与枢轴由渲染器自报', () => {
+  it('message:只有范围片(会话),片上的字取行尾出处', () => {
+    const renderer = resolveTargetRenderer('message')!
+    const hit: SearchRow = {
+      ...row('message', { sessionId: 's1', messageId: 'm9' }),
+      origin: { kind: 'path', path: '那间会话' },
+    }
+    expect(renderer.continuations?.(hit)).toEqual([
+      { kind: 'scope', labelKey: 'search.continueInSession', chip: { key: 'sessionId', value: 's1', label: '那间会话' } },
+    ])
+  })
+
+  it('message:出处给不出名字时片退到 sessionId —— 画一个 id 比画一颗没字的片诚实', () => {
+    const renderer = resolveTargetRenderer('message')!
+    const hit: SearchRow = {
+      ...row('message', { sessionId: 's1', messageId: 'm9' }),
+      origin: { kind: 'path', path: '' },
+    }
+    expect(renderer.continuations?.(hit)[0]).toMatchObject({ chip: { label: 's1' } })
+  })
+
+  it('chat:两条 —— 范围片(词留着)与枢轴「它的消息」(换档 + 清词)', () => {
+    const renderer = resolveTargetRenderer('chat')!
+    const hit: SearchRow = { ...row('chat', { sessionId: 's1' }), text: '一间会话' }
+    const out = renderer.continuations?.(hit) ?? []
+    expect(out.map(c => c.kind)).toEqual(['scope', 'pivot'])
+    // 枢轴 = capability + query + filters 三格一起换(§4.6 结论 2)。
+    expect(out[1]).toEqual({
+      kind: 'pivot',
+      labelKey: 'search.pivotSessionMessages',
+      capability: 'messages',
+      query: '',
+      chip: { key: 'sessionId', value: 's1', label: '一间会话' },
+    })
+  })
+
+  it('file:枢轴的种子词是**文件名**不是整条路径(人在对话里说的是文件名)', () => {
+    const renderer = resolveTargetRenderer('file')!
+    const out = renderer.continuations?.(row('file', { filePath: '/repo/a/model-registry.ts' })) ?? []
+    expect(out[0]).toMatchObject({ kind: 'pivot', query: 'model-registry.ts' })
+    expect(out[1]).toMatchObject({ kind: 'scope', chip: { key: 'dir', value: '/repo/a' } })
+  })
+
+  it('file:路径没有目录段时不给范围片 —— 「在根目录内搜」不是一句有意义的话', () => {
+    const renderer = resolveTargetRenderer('file')!
+    const out = renderer.continuations?.(row('file', { filePath: 'a.ts' })) ?? []
+    expect(out.map(c => c.kind)).toEqual(['pivot'])
+  })
+
+  it('prompt / action / daily 不提供续搜 —— 缺席就是「这一类没有下一步」', () => {
+    for (const kind of ['prompt', 'action', 'daily']) {
+      expect(resolveTargetRenderer(kind)!.continuations).toBeUndefined()
+    }
   })
 })

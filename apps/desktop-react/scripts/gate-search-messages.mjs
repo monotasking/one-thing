@@ -79,6 +79,25 @@ const LABELS = {
 const ALL_LABELS = ['所有', 'All']
 
 /**
+ * S4b 要点的那几句**壳自己的**文案(片的选项、行的动作)。
+ *
+ * 与 `LABELS` 同一条纪律:门跑的是打包产物、拿不到 `src/i18n/zh.ts`,所以这里
+ * 抄下来 —— 但只抄**这几句**,而且判据仍然是「点得着那一条」:文案改了这道门会红
+ * 在「菜单里没有一条能按的 X」上,那正是它该红的地方。
+ *
+ * 门跑起来是哪种语言由这台机器的设置决定,所以每一句都收两种写法,
+ * 由 `clickMenuItem` 逐个试(第一句点不着就试第二句)。
+ */
+const ROLE_USER_LABEL = ['用户', 'User']
+const ROLE_ANY_LABEL = ['不挑', 'Any']
+const SPACE_ALL_LABEL = ['全部', 'All']
+const SPACE_CURRENT_LABEL = ['当前', 'Current']
+const SCOPE_IN_SESSION_LABEL = ['在此会话内搜', 'Search in this session']
+
+/** 用户那句话里的记号 —— 角色片滤完之后靠它认出「剩下的是用户说的」。 */
+const USER_SENTENCE_MARK = '我这句话里说了'
+
+/**
  * 屏幕上那个字**认不认**这个 labelKey。
  *
  * 门跑起来是哪种语言由这台机器的设置决定(实测是 en),所以判据不能钉死一种 ——
@@ -88,16 +107,43 @@ function labelMatches(labelKey, shown) {
   return (LABELS[labelKey] ?? [labelKey]).includes(shown)
 }
 
-/** 两条会话的名字。都不含 NEEDLE —— 那正是反面对照要的。 */
+/**
+ * 两个 S4b 才用得上的判据词。
+ *
+ *  · `COMMON` —— **A 与 B 两条会话的助手回复里都有**。范围片那一条要它:
+ *    「在此会话内搜」按下去之前屏幕上必须有两间会话的行,否则「只剩这一间」
+ *    这句话是自动成立的,断言等于没写。
+ *  · `ROLE_WORD` —— **同一间会话里,用户消息与助手回复各出现一次**。角色片那一条
+ *    要它:滤成「用户」之后行数必须真的少一条,而且留下的那条是用户说的那句。
+ */
+const COMMON = 'gatecommonword'
+const ROLE_WORD = 'gaterolewordx'
+
+/** 三条会话的名字。都不含 NEEDLE —— 那正是反面对照要的。 */
 const SESSION_A = '正文门 · 没有那个词的会话'
 const SESSION_B = '正文门 · 埋了词的会话'
+/**
+ * **另一个工作区**里的第三条会话(S4b)。它的助手回复里同样埋了 NEEDLE ——
+ * 于是「空间片」那一条有真东西可判:默认(当前空间)它不该出现,
+ * 切到「全部空间」它出现,并且带一颗跨空间徽。
+ */
+const SESSION_C = '正文门 · 别的空间那条会话'
+const SPACE_C = 'gatespace'
 
-/** 助手回复的两段(B 那条里带 NEEDLE)。够长,好让后端真的截出一段片段来。 */
-const REPLY_A = '这一条回答里什么特别的词都没有,只是把上下文重复了一遍好占些长度。'
+/** 助手回复的三段(B / C 那两条里带 NEEDLE)。够长,好让后端真的截出一段片段来。 */
+const REPLY_A =
+  '这一条回答里什么特别的词都没有,只是把上下文重复了一遍好占些长度。'
+  + `不过它也说了 ${COMMON},那是两间会话都会提到的那个词。`
 const REPLY_B =
   '这一段先说点别的凑够前文,好让后端真的从中间截一段出来。'
   + `关键的判据词是 ${NEEDLE},它只出现在这一条助手回复里。`
+  + `顺带也说一句 ${COMMON}。`
   + '后面再补一段收尾,让片段两头都带上省略号。'
+const REPLY_C =
+  '这一条来自另一个工作区,内容与 B 那条无关,只是同样提到了那个判据词 '
+  + `${NEEDLE},好让「全部空间」那一档有东西可看。`
+/** 角色片那一条专用:助手也说一次 ROLE_WORD(用户那句里也有)。 */
+const REPLY_ROLE = `助手这一条同样说到了 ${ROLE_WORD},所以两条都命中,滤了才见分晓。`
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -168,8 +214,14 @@ async function rpc(record, domain, method, payload = {}) {
 /**
  * 假 provider —— 一个 OpenAI 兼容的 `/v1/chat/completions`,回一段 SSE。
  *
- * 回哪一段由**请求体自己**决定(最后一条 user 消息里带哪个记号),不数请求序号:
- * 同一个 store 上还有别的消费者(标题生成)会打到这里来。
+ * 回哪一段由**请求体自己**决定,不数请求序号:同一个 store 上还有别的消费者
+ * (标题生成)会打到这里来。
+ *
+ * ── 认的是**最后一条 user 消息**,不是整段历史(S4b 修)───────────────────
+ * 从前这里把 `messages` 全摊平再找记号。**同一间会话跑第二轮**的那一刻它就错了:
+ * 第二轮的请求体里带着第一轮那句话,于是 `find` 先撞上第一轮的记号,第二轮回的
+ * 是第一轮那一段。表现是「角色片那一条怎么滤都不对」,而病根在这里 ——
+ * 一次对话的**这一轮**说了什么,只有最后那条 user 消息说得准。
  */
 function startMockProvider(replies) {
   const server = createServer((req, res) => {
@@ -178,9 +230,10 @@ function startMockProvider(replies) {
     req.on('end', () => {
       let payload = {}
       try { payload = JSON.parse(body) } catch { /* ignore */ }
-      const flat = (payload.messages ?? [])
-        .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '')))
-        .join('\n')
+      const asked = [...(payload.messages ?? [])].reverse().find(m => m.role === 'user')
+      const flat = typeof asked?.content === 'string'
+        ? asked.content
+        : JSON.stringify(asked?.content ?? '')
       const key = Object.keys(replies).find(mark => flat.includes(mark))
       const text = key ? replies[key] : '收到。'
       res.writeHead(200, {
@@ -209,26 +262,51 @@ function startMockProvider(replies) {
   })
 }
 
-/** 一条会话跑一轮:发一句话,等账本上那条助手消息落定。 */
-async function runTurn(record, store, sessionId, mark) {
+/**
+ * 一条会话跑一轮:发一句话,等账本上那条助手消息落定。
+ *
+ * `content` 收的是**整句话**(S4b 起)——角色片那一条要用户消息里也埋一个词,
+ * 而从前这里把那句话写死成 `请随便说点什么 ${mark}`。假 provider 认的仍然是
+ * 那个 `mark`(它按请求体里出现哪个记号选回哪一段),所以调用方只要把 mark
+ * 包在句子里就行。
+ */
+async function runTurn(record, store, sessionId, mark, content = `请随便说点什么 ${mark}`) {
+  /*
+   * **先数一次**这间会话此刻有几条落定的助手消息(S4b 修)。
+   *
+   * 从前这里不数,等的是「页里第一条助手消息」—— 同一间会话跑第二轮时那一条
+   * **上一轮就在**,于是 waitFor 立刻返回,门带着一条旧消息往下走。数一次再等
+   * 「多出来一条」,判据才真的是「这一轮落账了」。
+   */
+  const settledAssistants = async () => {
+    const page = await rpc(record, 'sessions', 'getMessagesPage', {
+      sessionId,
+      limit: 50,
+      anchor: 'tail',
+    })
+    return (page.messages ?? []).filter(
+      m => m.role === 'assistant' && !m.isStreaming && (m.content ?? '').length > 0,
+    )
+  }
+  const before = (await settledAssistants()).length
+
   await rpc(record, 'session-command', 'emit', {
     sessionId,
     command: {
       type: 'command:send-message',
-      content: `请随便说点什么 ${mark}`,
+      content,
       suppressTitleGeneration: true,
     },
   })
-  return waitFor(`会话 ${sessionId} 的助手消息落账`, async () => {
-    const page = await rpc(record, 'sessions', 'getMessagesPage', {
-      sessionId,
-      limit: 20,
-      anchor: 'tail',
-    })
-    const done = (page.messages ?? []).find(
-      m => m.role === 'assistant' && !m.isStreaming && (m.content ?? '').length > 0,
-    )
-    return done ?? undefined
+  /*
+   * 等的是**这一轮**那条助手消息 —— 取的是最后一条,不是页里第一条(S4b 修)。
+   * 同一间会话跑第二轮时,「页里第一条助手消息」是**上一轮**那条:它当场就在,
+   * 于是这只 waitFor 立刻返回,门带着一条旧消息往下走(表现是后面那条
+   * 「落到那条消息上」永远等不到,因为它等的根本不是屏幕上那一条)。
+   */
+  return waitFor(`会话 ${sessionId} 的这一轮助手消息落账`, async () => {
+    const done = await settledAssistants()
+    return done.length > before ? done.at(-1) : undefined
   })
 }
 
@@ -270,6 +348,8 @@ function readRows(page) {
     for (const el of panel.querySelectorAll('[data-readout]')) {
       readouts[el.getAttribute('data-readout')] = (el.textContent ?? '').trim()
     }
+    // 预览窗(S4b):状态 + 媒介 kind + 正文。按属性读,不按文案读。
+    const previewEl = panel.querySelector('[data-preview]')
     return {
       panel: true,
       // tab 条:文案 + 选中态。「tab 随注册表」那一条读它。
@@ -279,6 +359,27 @@ function readRows(page) {
       })),
       // 组头:全部档才有,按能力 id 认(不按名字 —— 名字会随语言变)。
       groups: [...panel.querySelectorAll('[data-group]')].map(el => el.getAttribute('data-group')),
+      // 组头右边那两格读数(S4b:total 与「没搜成」都按能力 id 挂属性)。
+      groupTotals: Object.fromEntries(
+        [...panel.querySelectorAll('[data-group-total]')]
+          .map(el => [el.getAttribute('data-group-total'), (el.textContent ?? '').trim()]),
+      ),
+      groupErrors: [...panel.querySelectorAll('[data-group-error]')]
+        .map(el => el.getAttribute('data-group-error')),
+      // 片条(S4b):这一档摆得出哪几颗片、各自挑过了没有、片上写着什么。
+      filters: [...panel.querySelectorAll('[data-filter]')].map(el => ({
+        name: el.getAttribute('data-filter'),
+        on: el.getAttribute('data-on') === 'true',
+        text: (el.textContent ?? '').trim(),
+      })),
+      preview: previewEl === null ? null : {
+        state: previewEl.getAttribute('data-preview'),
+        kind: previewEl.getAttribute('data-preview-kind'),
+        text: (previewEl.textContent ?? '').trim(),
+        turns: [...previewEl.querySelectorAll('[data-preview-turn]')]
+          .map(el => el.getAttribute('data-preview-turn')),
+      },
+      query: panel.querySelector('input')?.value ?? '',
       readouts,
       rows: rows.map((row, index) => ({
         index,
@@ -292,6 +393,73 @@ function readRows(page) {
       })),
     }
   })
+}
+
+/**
+ * 开一颗过滤片的菜单(片身是那颗 `<button>`,菜单 portal 到 body)。
+ * 与整份脚本同一条纪律:页面内 DOM 派发,不动真光标、不抢前台焦点。
+ */
+async function clickChip(page, name) {
+  const ok = await page.evaluate(chip => {
+    const el = document.querySelector(`[data-filter="${chip}"] button`)
+    if (!el) return false
+    el.click()
+    return true
+  }, name)
+  if (!ok) throw new Error(`片条上没有「${name}」这一颗`)
+}
+
+/**
+ * 点一条菜单项(片的选项菜单与行的右键菜单共用它 —— 两者都是 `ui/Menu`)。
+ * 收的是一张**候选表**(中英各一句),逐个试 —— 门跑起来是哪种语言由这台机器定。
+ */
+async function clickMenuItem(page, labels) {
+  const candidates = Array.isArray(labels) ? labels : [labels]
+  const ok = await page.evaluate(names => {
+    const buttons = [...document.querySelectorAll('[role="menu"] button, [role="listbox"] button')]
+    for (const name of names) {
+      const el = buttons.find(node => (node.textContent ?? '').trim() === name)
+      if (el && !el.disabled) {
+        el.click()
+        return true
+      }
+    }
+    return false
+  }, candidates)
+  if (!ok) throw new Error(`菜单里没有一条能按的「${candidates.join(' / ')}」`)
+}
+
+/** 右键一行 —— 动作单产地是右键上下文菜单(09-01 判例)。 */
+async function rightClickRow(page, index) {
+  const ok = await page.evaluate(at => {
+    const el = document.querySelector(`[data-testid="search-panel"] [role="option"][data-row="${at}"]`)
+    if (!el) return false
+    el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }))
+    return true
+  }, index)
+  if (!ok) throw new Error(`右键不到第 ${index} 行`)
+}
+
+/** 往检索框上派一下方向键(↑ = 回上一条查询,判据见 SearchPanel 的 onKeyDown)。 */
+async function pressInInput(page, key) {
+  await page.evaluate(name => {
+    const input = document.querySelector('[data-testid="search-panel"] input')
+    if (!input) throw new Error('检索框不在 DOM 里')
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }))
+  }, key)
+}
+
+/**
+ * 屏幕上那条**正文命中**是哪一行。
+ *
+ * S4b 之前这里写的是「第一条含 NEEDLE 的行」,而那时 `all` 档只画壳自带的三类。
+ * 今天 `all` 档由后端的 `groups` 说了算 —— 提示词那一类会答一条「新建提示词
+ * 『zorbulax』」的快捷项,它排在消息那一组前面,于是「第一条含那个词的行」
+ * 是它而不是命中。判据因此改成**按能力认**:`data-capability` 是契约,
+ * 「第几行」不是。
+ */
+function messageHitOf(state) {
+  return state.rows.find(row => row.capability === 'messages' && row.text.includes(NEEDLE))
 }
 
 /** 换一档:点那一格 radio(不数 Tab —— tab 条现在是从自述算出来的)。 */
@@ -324,7 +492,12 @@ async function main() {
   let app
   try {
     console.log('\n[1/6] 起假 provider,写一份只指向它的 settings')
-    mock = await startMockProvider({ '@@a@@': REPLY_A, '@@b@@': REPLY_B })
+    mock = await startMockProvider({
+      '@@a@@': REPLY_A,
+      '@@b@@': REPLY_B,
+      '@@c@@': REPLY_C,
+      '@@role@@': REPLY_ROLE,
+    })
     writeFileSync(
       path.join(store, 'settings.json'),
       JSON.stringify({
@@ -362,12 +535,30 @@ async function main() {
 
     const madeA = await rpc(record, 'sessions', 'create', { name: SESSION_A })
     const madeB = await rpc(record, 'sessions', 'create', { name: SESSION_B })
+    /*
+     * 第三条建在**另一个工作区**里(S4b)。空间片与跨空间徽两条断言都要它:
+     * 后端投影器把 `meta.workspaceId` 写成文档的 `spaceId` facet,
+     * 而壳默认发的是「当前空间」那一格 —— 于是它默认搜不到,切「全部空间」才出现。
+     */
+    const madeC = await rpc(record, 'sessions', 'create', { name: SESSION_C, workspaceId: SPACE_C })
     const idA = madeA?.session?.id
     const idB = madeB?.session?.id
-    if (!idA || !idB) throw new Error('sessions.create 没给出会话 id')
+    const idC = madeC?.session?.id
+    if (!idA || !idB || !idC) throw new Error('sessions.create 没给出会话 id')
 
     const replyA = await runTurn(record, store, idA, '@@a@@')
+    /*
+     * B 跑两轮,**带 ROLE_WORD 的那一轮在前**:第二轮那条(埋着 NEEDLE)于是是 B 的
+     * 最后一条助手消息 —— 后面「点它能落到那条消息上」认的就是屏幕上那一条。
+     * 第一轮:用户那句里也埋一个词,助手回来那条同样说它 —— 角色片那一条要的
+     * 就是这一对(滤成「用户」之后行数必须真的少一条)。
+     */
+    await runTurn(
+      record, store, idB, '@@role@@',
+      `我这句话里说了 ${ROLE_WORD},看看滤角色之后还剩几条 @@role@@`,
+    )
     const replyB = await runTurn(record, store, idB, '@@b@@')
+    await runTurn(record, store, idC, '@@c@@')
     assert(!replyA.content.includes(NEEDLE), `A 那条助手回复里没有「${NEEDLE}」`)
     assert(replyB.content.includes(NEEDLE), `B 那条助手回复里有「${NEEDLE}」(消息 ${replyB.id})`)
 
@@ -437,9 +628,9 @@ async function main() {
     await typeQuery(page, NEEDLE)
     const shown = await waitFor('正文命中画出来', async () => {
       const state = await readRows(page)
-      const hit = state.rows.find(row => row.text.includes(NEEDLE))
+      const hit = messageHitOf(state)
       return hit ? { ...state, hit } : undefined
-    })
+    }, 20_000)
     console.log('  · 那一行:', JSON.stringify(shown.hit))
     // ① 徽是「消息」(zh)/ MSG(en)——按语言取,不背词表。
     assert(
@@ -449,8 +640,8 @@ async function main() {
     // 出处是**所属会话名**(与预览 / 章节同一形),不是后端回执里那份快照。
     assert(shown.hit.origin === SESSION_B, `出处是所属会话名:「${shown.hit.origin}」`)
     assert(
-      shown.rows.every(row => row.origin !== SESSION_A),
-      'A 那条会话一行都没有 —— 它既不叫这个名字,回复里也没有这个词',
+      shown.rows.filter(row => row.capability === 'messages').every(row => row.origin !== SESSION_A),
+      'A 那条会话一条正文命中都没有 —— 它既不叫这个名字,回复里也没有这个词',
     )
 
     console.log('\n[5/6] ④ 高亮画的是后端给的那一段')
@@ -469,9 +660,8 @@ async function main() {
     await typeQuery(page, `/${NEEDLE}`)
     const slashed = await waitFor('带斜杠的词照样搜得到', async () => {
       const state = await readRows(page)
-      const hit = state.rows.find(row => row.text.includes(NEEDLE))
-      return hit ?? undefined
-    })
+      return messageHitOf(state) ?? undefined
+    }, 20_000)
     console.log('  · 带斜杠那一行的高亮:', JSON.stringify(slashed.marks))
     assert(
       slashed.marks.length === 1 && slashed.marks[0] === NEEDLE,
@@ -479,15 +669,24 @@ async function main() {
     )
     // 回到那个词,后面几步接着用它。
     await typeQuery(page, NEEDLE)
-    await waitFor('回到不带斜杠的那一屏', async () => {
+    /*
+     * **重新读一次那一行的下标**(S4b)。从前这里复用的是上面 `shown.hit.index`,
+     * 而那时 `all` 档只画壳自带的三类、次序是壳自己拼的,所以下标稳。今天这一档
+     * 由后端的 `groups` 说了算 —— 各组是**谁先答完谁先到**(fanout §6.4 ④),
+     * 于是「消息那一组排第几」在两次查询之间不保证一样,一个隔了两屏的旧下标
+     * 会点到别的组的行上。下标是**这一屏的事实**,不是跨屏的常量。
+     */
+    const backOnNeedle = await waitFor('回到不带斜杠的那一屏', async () => {
       const state = await readRows(page)
-      return state.rows.some(row => row.text.includes(NEEDLE)) ? state : undefined
-    })
+      const hit = messageHitOf(state)
+      return hit ? { state, hit } : undefined
+    }, 20_000)
 
     console.log('\n[6/6] ③ 点它:进那条会话,并落到那条消息上')
+    console.log('  · 这一屏那一行的下标:', backOnNeedle.hit.index, '/ 全屏', backOnNeedle.state.rows.length, '行')
     await clickSelector(
       page,
-      `[data-testid="search-panel"] [role="option"][data-row="${shown.hit.index}"]`,
+      `[data-testid="search-panel"] [role="option"][data-row="${backOnNeedle.hit.index}"]`,
     )
     const landed = await waitFor('落到那条消息上', async () => {
       const state = await page.evaluate(id => {
@@ -555,7 +754,7 @@ async function main() {
     await typeQuery(page, NEEDLE)
     const grouped = await waitFor('全部档画出分组', async () => {
       const state = await readRows(page)
-      return state.groups.length > 0 && state.rows.some(r => r.text.includes(NEEDLE))
+      return state.groups.length > 0 && messageHitOf(state) !== undefined
         ? state
         : undefined
     })
@@ -624,7 +823,7 @@ async function main() {
     await typeQuery(page, NEEDLE)
     const archived = await waitFor('归档之后那一行还在,并且带上了归档徽', async () => {
       const state = await readRows(page)
-      const hit = state.rows.find(r => r.text.includes(NEEDLE))
+      const hit = messageHitOf(state)
       return hit && hit.tags.includes('archived') ? hit : undefined
     }, 15_000).catch(error => {
       throw new Error(`${error.message}\n最后一屏:${JSON.stringify(shown.rows?.slice(0, 3))}`)
@@ -718,6 +917,292 @@ async function main() {
       '「已放宽」那一行要么不画,要么画的是一句真话',
     )
 
+    /* ═══════════════════════════════════════════════════════════════════
+     * [8/8] 检索重建 S4b(设计 §9 第五条 / §4.5 / §4.6 / §7.2)
+     *
+     * 五件事,每一件都标了它靠什么证。前四件全是**真数据**(真索引、真会话、
+     * 真过滤);第五件(全部档的组来自后端 `groups`)靠**注入一个陌生能力** ——
+     * 这台上注册的六个能力壳全都认得,证不出「后端多答一组屏上就多一组」。
+     * ═══════════════════════════════════════════════════════════════════ */
+    console.log('\n[8/8] S4b:过滤片 / 预览窗 / 范围片 / 查询历史 / 后端 groups')
+
+    // 回到「所有」那一档,后面几步从这里起。
+    const allLabel = (await readRows(page)).tabs.map(t => t.label).find(l => ALL_LABELS.includes(l))
+    await selectTab(page, allLabel)
+
+    /* ── ①-b 角色片(真数据)────────────────────────────────────────
+     * 同一间会话里,`ROLE_WORD` 在**用户那句**与**助手那条**里各出现一次。
+     * 挑「角色 = 用户」之后行数必须真的少一条,而且留下的那条是用户说的。
+     * 反证:把 `filtersOf` 里角色那一格改成不发,这一条当场红(行数不变)。
+     */
+    const messagesLabel = (await readRows(page)).tabs
+      .map(t => t.label)
+      .find(label => labelMatches('search.capability.messages', label))
+    assert(Boolean(messagesLabel), `tab 条上找得到消息那一档:「${messagesLabel}」`)
+    await selectTab(page, messagesLabel)
+    await typeQuery(page, ROLE_WORD)
+    const bothRoles = await waitFor('用户那句与助手那条都搜得到', async () => {
+      const state = await readRows(page)
+      const hits = state.rows.filter(row => row.text.includes(ROLE_WORD))
+      return hits.length >= 2 ? { state, hits } : undefined
+    }, 20_000)
+    console.log('  · 滤之前:', JSON.stringify(bothRoles.hits.map(r => r.text)))
+    const roleChip = bothRoles.state.filters.find(f => f.name === 'role')
+    assert(Boolean(roleChip), `消息那一档摆得出角色片(它自述里声明了 role):${JSON.stringify(bothRoles.state.filters.map(f => f.name))}`)
+    await clickChip(page, 'role')
+    await clickMenuItem(page, ROLE_USER_LABEL)
+    const onlyUser = await waitFor('滤成「用户」之后只剩用户说的那条', async () => {
+      const state = await readRows(page)
+      const hits = state.rows.filter(row => row.text.includes(ROLE_WORD))
+      if (hits.length === 0 || hits.length >= bothRoles.hits.length) return undefined
+      return { state, hits }
+    }, 20_000)
+    console.log('  · 滤之后:', JSON.stringify(onlyUser.hits.map(r => r.text)))
+    assert(
+      onlyUser.hits.every(row => row.text.includes(USER_SENTENCE_MARK)),
+      `剩下的每一条都是**用户**说的那句:${JSON.stringify(onlyUser.hits.map(r => r.text))}`,
+    )
+    assert(
+      onlyUser.state.filters.find(f => f.name === 'role')?.on === true,
+      '角色那颗片显示成「挑过了」—— 挑过与缺省一眼分得开',
+    )
+    // 收回缺省,后面几步从「不挑」起。
+    await clickChip(page, 'role')
+    await clickMenuItem(page, ROLE_ANY_LABEL)
+
+    /* ── ②-b 空间片 + 跨空间徽(真数据)──────────────────────────────
+     * C 那条会话建在另一个工作区里。默认(当前空间)它不该出现;切到「全部空间」
+     * 它出现,并且带一颗跨空间徽 —— §9 原话「空间徽只在『全部空间』下画」。
+     * 反证:把空间那一格改成恒不发,第一条断言当场红(默认档里就看见它了)。
+     */
+    await typeQuery(page, NEEDLE)
+    const defaultSpace = await waitFor('默认档下 B 那条搜得到', async () => {
+      const state = await readRows(page)
+      return messageHitOf(state)?.origin === SESSION_B ? state : undefined
+    }, 20_000)
+    const messageRows = state => state.rows.filter(row => row.capability === 'messages')
+    console.log('  · 默认(当前空间)那一屏的出处:', JSON.stringify(messageRows(defaultSpace).map(r => r.origin)))
+    assert(
+      messageRows(defaultSpace).every(row => row.origin !== SESSION_C),
+      '默认(当前空间)那一档里**没有**别的空间那条会话的行',
+    )
+    assert(
+      defaultSpace.rows.every(row => !row.tags.includes('space')),
+      '默认档下一颗跨空间徽都没有(整屏,不只消息那一组)',
+    )
+    await clickChip(page, 'space')
+    await clickMenuItem(page, SPACE_ALL_LABEL)
+    const allSpaces = await waitFor('切到「全部空间」之后别的空间那条出现,并带一颗徽', async () => {
+      const state = await readRows(page)
+      const other = messageRows(state).find(row => row.origin === SESSION_C)
+      return other && other.tags.includes('space') ? { state, other } : undefined
+    }, 20_000)
+    console.log('  · 别的空间那一行:', JSON.stringify(allSpaces.other))
+    assert(allSpaces.other.tags.includes('space'), '别的空间那一行带「其它空间」徽')
+    assert(
+      messageRows(allSpaces.state).some(row => row.origin === SESSION_B),
+      '本空间那条照旧在 —— 「全部」是放宽,不是换一份',
+    )
+    // 收回缺省。
+    await clickChip(page, 'space')
+    await clickMenuItem(page, SPACE_CURRENT_LABEL)
+
+    /* ── ③-b 预览窗(真数据 + 零副作用)──────────────────────────────
+     * 选中一条正文命中(键盘位默认停在第一行),预览窗要出现 `message-context`
+     * 那种载荷,里面既有命中那条也有上下文那几条。
+     *
+     * **零副作用**是硬规矩(§4.5 ④):预览前后 `sessions.listMeta` 里那条会话
+     * 逐字节相同 —— 没进会话、没改已读、没动时间戳。
+     */
+    await typeQuery(page, NEEDLE)
+    const metaBefore = await rpc(record, 'sessions', 'listMeta', {})
+    const beforeB = JSON.stringify((metaBefore.sessions ?? []).find(x => x.id === idB))
+    const previewed = await waitFor('预览窗画出命中 ±2', async () => {
+      const state = await readRows(page)
+      return state.preview?.state === 'ready' && state.preview.kind === 'message-context'
+        ? state
+        : undefined
+    }, 20_000)
+    console.log('  · 预览窗:', JSON.stringify({
+      state: previewed.preview.state,
+      kind: previewed.preview.kind,
+      turns: previewed.preview.turns,
+    }))
+    assert(
+      previewed.preview.turns.includes('hit'),
+      `预览里认得出哪一条是命中:${JSON.stringify(previewed.preview.turns)}`,
+    )
+    assert(
+      previewed.preview.turns.length >= 2,
+      `命中那条前后还带着上下文(±2):一共 ${previewed.preview.turns.length} 条`,
+    )
+    assert(
+      previewed.preview.text.includes(NEEDLE),
+      '预览正文里就有那个词 —— 画的是命中那一条,不是随便一条',
+    )
+    const metaAfter = await rpc(record, 'sessions', 'listMeta', {})
+    const afterB = JSON.stringify((metaAfter.sessions ?? []).find(x => x.id === idB))
+    assert(
+      beforeB === afterB,
+      '**零副作用**:预览前后那条会话的 meta 逐字节相同(没进会话、没改已读、没动时间戳)',
+    )
+    assert(
+      await page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"]'))),
+      '而且面板还开着 —— 预览不是一次「打开」',
+    )
+
+    /* ── ④-b 范围片(真数据)────────────────────────────────────────
+     * `COMMON` 在 A 与 B 两条会话里都出现。右键一条 B 的命中 →「在此会话内搜」
+     * → 屏幕上必须**只剩那一间**。这一条同时证了两件事:片真的落成了一格
+     * `sessionId` 过滤,以及后端真的按它筛了。
+     */
+    await typeQuery(page, COMMON)
+    const twoSessions = await waitFor('两间会话都有命中', async () => {
+      const state = await readRows(page)
+      const origins = new Set(messageRows(state).map(r => r.origin))
+      return origins.has(SESSION_A) && origins.has(SESSION_B) ? state : undefined
+    }, 20_000)
+    console.log('  · 收范围之前的出处:', JSON.stringify(messageRows(twoSessions).map(r => r.origin)))
+    const bRow = messageRows(twoSessions).find(row => row.origin === SESSION_B)
+    await rightClickRow(page, bRow.index)
+    await waitFor('行的动作菜单开出来', () =>
+      page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
+    )
+    await clickMenuItem(page, SCOPE_IN_SESSION_LABEL)
+    const scoped = await waitFor('收进那一间之后只剩它', async () => {
+      const state = await readRows(page)
+      if (state.filters.find(f => f.name === 'scope') === undefined) return undefined
+      const origins = [...new Set(messageRows(state).map(r => r.origin))]
+      return origins.length > 0 && origins.every(o => o === SESSION_B) ? { state, origins } : undefined
+    }, 20_000)
+    console.log('  · 收范围之后的出处:', JSON.stringify(scoped.origins))
+    assert(
+      scoped.origins.every(origin => origin === SESSION_B),
+      `「在此会话内搜」之后屏幕上只剩那一间:${JSON.stringify(scoped.origins)}`,
+    )
+    assert(
+      scoped.state.query === COMMON,
+      `而且**词留着** —— 范围片是加一格过滤,不是换一次查询:「${scoped.state.query}」`,
+    )
+
+    /* ── ⑤-b 查询历史(真数据)──────────────────────────────────────
+     * ↑ 在「输入框空着且停在第一行」那一形回上一条查询。上一条正是按范围片
+     * **之前**那一步(词 = COMMON、不带范围片),所以按完之后词回来、片没了。
+     */
+    await typeQuery(page, '')
+    await waitFor('输入框空了', async () => (await readRows(page)).query === '')
+    await pressInInput(page, 'ArrowUp')
+    const recalled = await waitFor('↑ 把上一条查询捞回来了', async () => {
+      const state = await readRows(page)
+      return state.query === COMMON ? state : undefined
+    }, 8000)
+    console.log('  · ↑ 之后:', JSON.stringify({ query: recalled.query, filters: recalled.filters.map(f => f.name) }))
+    assert(recalled.query === COMMON, `↑ 回到了上一条查询的**词**:「${recalled.query}」`)
+    assert(
+      recalled.filters.find(f => f.name === 'scope') === undefined,
+      '**四格一起还原**:范围片跟着回去了,不是只把词填回来',
+    )
+
+    /* ── ⑥-b 全部档的组来自后端 `groups`(**注入一个陌生能力**)──────
+     * 这台上注册的六个能力壳全都认得,所以真数据证不出「后端多答一组屏上就
+     * 多一组」。这里在 `search.capabilities` 与 `search.query` 两条回执上各
+     * 补一格 —— 壳里**一个字都没改**,tab 条要多一格、`all` 档要多一组,
+     * 而那一组的行走「缺渲染器 = 画标题行」那条路(它的 target.kind 没人认得)。
+     */
+    await page.addInitScript(() => {
+      const real = window.fetch
+      const FAKE = {
+        id: 'gate-unknown',
+        labelKey: 'search.capability.gateUnknown',
+        icon: 'Sparkles',
+        kind: 'remote',
+        budget: { default: 3, timeoutMs: 300 },
+        order: 99,
+      }
+      window.fetch = async (input, init) => {
+        const body = typeof init?.body === 'string' ? init.body : ''
+        if (!body.includes('"domain":"search"')) return real(input, init)
+        const response = await real(input, init)
+        if (body.includes('"method":"capabilities"')) {
+          const json = await response.clone().json()
+          if (json?.ok && Array.isArray(json.data?.capabilities)) {
+            json.data.capabilities = [...json.data.capabilities, FAKE]
+            return new Response(JSON.stringify(json), {
+              status: 200, headers: { 'content-type': 'application/json' },
+            })
+          }
+          return response
+        }
+        if (body.includes('"method":"query"') && body.includes('"category":"all"')) {
+          const json = await response.clone().json()
+          if (json?.ok && Array.isArray(json.data?.groups)) {
+            json.data.groups = [...json.data.groups, {
+              capability: FAKE.id,
+              label: FAKE.labelKey,
+              total: 1,
+              results: [{
+                id: 'gate-unknown-1',
+                type: 'plugin',
+                title: '陌生能力答的那一行',
+                subtitle: '来自一个壳没见过的能力',
+                target: { kind: 'gate-unknown-target', payload: {} },
+              }],
+            }]
+            return new Response(JSON.stringify(json), {
+              status: 200, headers: { 'content-type': 'application/json' },
+            })
+          }
+          return response
+        }
+        return response
+      }
+    })
+    await page.reload()
+    await waitFor('reload 之后渲染层完成一次 RPC 往返', async () => {
+      const value = await page.evaluate(() => window.__d0 ?? null)
+      return value && value.rpcOk ? value : undefined
+    })
+    await waitFor('检索瓦回到位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-search"]'))),
+    )
+    await clickSelector(page, '[data-testid="dock-tile-search"]')
+    await waitFor('检索面板在注入之后开出来', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
+    )
+    const withFake = await waitFor('tab 条自己多了一格', async () => {
+      const state = await readRows(page)
+      // 文案键不在壳的字典里 → 画原文(判据在 capabilities.ts 的 labelTextOf)。
+      return state.tabs.some(t => t.label === 'search.capability.gateUnknown') ? state : undefined
+    }, 15_000)
+    console.log('  · 注入之后的 tab 条:', JSON.stringify(withFake.tabs.map(t => t.label)))
+    assert(
+      withFake.tabs.some(t => t.label === 'search.capability.gateUnknown'),
+      'tab 条按自述多了一格,而且翻不出来的文案键画的是原文(不是一格空白)',
+    )
+    await typeQuery(page, NEEDLE)
+    const grouped2 = await waitFor('`all` 档多了那一组,并且它的行画出来了', async () => {
+      const state = await readRows(page)
+      const row = state.rows.find(r => r.capability === 'gate-unknown')
+      return state.groups.includes('gate-unknown') && row ? { state, row } : undefined
+    }, 20_000)
+    console.log('  · 注入之后的组头:', JSON.stringify(grouped2.state.groups))
+    assert(
+      grouped2.state.groups.includes('gate-unknown'),
+      `全部档的组**来自后端的 groups** —— 后端多答一组,屏上就多一组:${JSON.stringify(grouped2.state.groups)}`,
+    )
+    assert(
+      grouped2.row.text.includes('陌生能力答的那一行'),
+      '那一组的行照样画出来了 —— §4.3「绝不因为壳没跟上而把结果吞掉」',
+    )
+    assert(
+      grouped2.row.badge === '',
+      '它没有渲染器,所以是**空徽 + 标题行**(而不是整行消失)',
+    )
+    assert(
+      grouped2.state.groupTotals['gate-unknown']?.includes('1'),
+      `组头右边那格 total 是**后端说的那个数**:「${grouped2.state.groupTotals['gate-unknown']}」`,
+    )
+
     /* ── ⑦ 读者模式行(**注入的假 status**)──────────────────────────
      * 真机上 `search.status.mode` 恒 `owner`(§5.6 拍点庚 09-04 裁「先不做」),
      * 所以这一行在真数据下永远画不出来。这里把渲染层那格 status 换成 reader,
@@ -775,12 +1260,13 @@ async function main() {
       `「索引更新中(剩 7)」画出来了:「${readerState.readouts['index-pending']}」`,
     )
 
-    await app.close()
-    app = undefined
     console.log(
       '\n[msg-search-gate] ok —— 助手回复里的词搜得到、徽与出处对、高亮来自后端、点了能落到那条消息;'
       + '\n                   S4a:tab 随注册表、全部档分组、每行按 target.kind 取渲染器、归档徽、'
-      + '空间徽按规矩不出现、total/放宽两行按事实画、读者模式行(注入证)',
+      + '空间徽按规矩不出现、total/放宽两行按事实画、读者模式行(注入证);'
+      + '\n                   S4b:全部档的组来自后端 groups(注入一个陌生能力 → 屏上多一组)、'
+      + '过滤片(角色 / 全部空间 + 跨空间徽)、预览窗(命中 ±2 且零副作用)、'
+      + '范围片(只剩那一间)、查询历史(↑ 回上一条)',
     )
   } finally {
     // 收尸:自己起的每一个进程都在这里逐个杀掉,临时目录一并删干净。

@@ -320,13 +320,12 @@ export const en: Record<MessageKey, string> = {
   /* D5: the file side now speaks to a real producer. Both lines state a fact
    * about that producer, not a temporary gap — there is no "recently opened
    * files" record, and a failed search is not an empty one. */
-  'search.filesNeedQuery': 'Type a keyword to search files',
-  'search.filesFailed': 'File search failed',
+  'search.queryFailed': 'Search failed',
+  'search.groupFailed': 'Failed',
   /* 09-02: message bodies are a second remote producer (search.query,
    * category 'messages'). Its failure gets its own line for the same reason the
    * file one does — one half can be fine while the other is down, and merging
    * them into "search failed" hides which. */
-  'search.messagesFailed': 'Message search failed',
   /* The session opened, the message did not turn up in its ledger (deleted, or
    * compacted away). Said out loud rather than swallowed: the click has to have
    * a visible outcome, and "scrolled somewhere near it" would be a lie. */
@@ -354,6 +353,50 @@ export const en: Record<MessageKey, string> = {
   'search.viewAll': 'View all',
   'search.actionUnavailable': "This action can't be run here: {action}",
   'search.targetUnavailable': "This kind of result can't be opened yet: {kind}",
+
+  /* Filter chips (S4b, design §9). A chip only shows up when some capability
+   * declares the matching facet key, so none of these ever reach the screen
+   * on a host where nothing can answer them. */
+  'search.filterSpace': 'Space',
+  'search.filterSpaceCurrent': 'Current',
+  'search.filterSpaceAll': 'All',
+  'search.filterRole': 'Role',
+  'search.filterRoleAny': 'Any',
+  'search.filterRoleUser': 'User',
+  'search.filterRoleAssistant': 'Assistant',
+  'search.filterTime': 'Time',
+  'search.filterTimeAny': 'Any',
+  'search.filterTimeToday': 'Today',
+  'search.filterTimeWeek': '7 days',
+  'search.filterTimeMonth': '30 days',
+  'search.filterTimeCustom': 'Custom',
+  'search.filterArchived': 'With archived',
+  'search.filterReasoning': 'With reasoning',
+  /* Continue-search (S4b, design §4.6): a scope chip adds one filter and keeps
+   * the query; a pivot replaces the whole query state. Two sentences, because
+   * they are two different moves. */
+  'search.continueInSession': 'Search in this session',
+  'search.continueInDir': 'Search in this folder',
+  'search.pivotSessionMessages': 'Its messages',
+  'search.pivotFileMentions': 'Messages mentioning it',
+  'search.scopeChipRemove': 'Drop this scope',
+  'search.historyBack': 'Previous query',
+  'search.historyForward': 'Next query',
+  'search.rowActions': 'Actions for this result',
+  'search.rowOpen': 'Open',
+  /* Preview pane (S4b, design §4.5): five states, one sentence each. */
+  'search.previewEmpty': 'Pick a result to preview',
+  'search.previewNone': 'No preview for this kind',
+  'search.previewFailed': "Preview couldn't be built",
+  'search.previewUnavailable': "This shell can't draw this preview yet: {kind}",
+  'search.previewMalformed': 'This preview payload has the wrong shape',
+  'search.previewLoading': 'Reading…',
+  'search.previewRoleUser': 'User',
+  'search.previewRoleAssistant': 'Assistant',
+  'search.previewMessageCount': 'Messages',
+  'search.previewUpdatedAt': 'Updated',
+  'search.previewUnknownTime': 'Unknown',
+  'search.previewBatchSummary': '{total} selected · {shown} shown',
 
   /* ── chat stream (D3: body text / tool names / error text are DATA) ─── */
   'chat.noSession': 'No session selected yet',

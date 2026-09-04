@@ -366,12 +366,15 @@ export const zh = {
   /* D5 文件侧接真数据之后新增的两句。两句说的都是**产地的实情**,不是暂时的空:
    * 「最近打开的文件」后端没有产地,所以空词时文件侧本来就没有东西可给;
    * 检索失败与「没搜到」是两件事,合成一句就等于把失败说成空结果。 */
-  'search.filesNeedQuery': '文件要先输入关键词',
-  'search.filesFailed': '文件没搜成',
-  /* 09-02:消息正文是第二个远端产地(`search.query` 的 `category:'messages'`)。
-   * 它的失败**单独一行**,理由与文件那一行逐字相同:两条口互相独立,
-   * 一条好着另一条塌了是常态,合成一句「检索失败」就分不清是哪一半。 */
-  'search.messagesFailed': '消息没搜成',
+  /* S4b:壳这一侧只剩**一条**查询路(`search.query`),所以失败也只剩一句。
+   * `search.filesNeedQuery` / `search.filesFailed` / `search.messagesFailed`
+   * 三条随那三个壳自带产地一起退役 —— 空词那一形今天由 chats 能力自己接住,
+   * 失败由后端一处说。 */
+  'search.queryFailed': '没搜成',
+  /* `all` 档里某一组塌了(§9 第四条:「某组 error 时组头一句『没搜成』」)。
+   * 它与上面那句是两件事:上面那句说的是「这一发整个塌了」,这一句说的是
+   * 「六组里有一组没答上来,别的照常」。 */
+  'search.groupFailed': '没搜成',
   /* 会话进去了,那条消息却不在它的账本里(被删 / 被压缩掉)。**说出来**而不是
    * 咽下去:用户按了一下总得知道结果,而「滚到附近」是在说谎。 */
   'search.messageGone': '已进入会话 —— 那条消息不在里面了',
@@ -408,6 +411,55 @@ export const zh = {
    * 点击,比一句「还没接上」更让人怀疑是不是自己按错了。 */
   'search.actionUnavailable': '这条动作在这里还打不开:{action}',
   'search.targetUnavailable': '这一类结果还打不开:{kind}',
+
+  /* ── 过滤片(S4b,§9 第五条)────────────────────────────────────────────
+   * 片名是**片自己叫什么**(空间 / 角色 / 时间),值是**此刻挑的是哪一格**。
+   * 两截分开,因为片名永不弯腰、值才是那个会长的东西(挤压纪律)。
+   * 一颗片画不画由能力自述说了算 —— 这些键在没有产地时一句都不上屏。 */
+  'search.filterSpace': '空间',
+  'search.filterSpaceCurrent': '当前',
+  'search.filterSpaceAll': '全部',
+  'search.filterRole': '角色',
+  'search.filterRoleAny': '不挑',
+  'search.filterRoleUser': '用户',
+  'search.filterRoleAssistant': '助手',
+  'search.filterTime': '时间',
+  'search.filterTimeAny': '不挑',
+  'search.filterTimeToday': '今天',
+  'search.filterTimeWeek': '7 天',
+  'search.filterTimeMonth': '30 天',
+  'search.filterTimeCustom': '自定',
+  /* 两颗两态片。**缺省是「含」**(等价于一格都不发)—— 关掉它才落成一格过滤。 */
+  'search.filterArchived': '含归档',
+  'search.filterReasoning': '含推理',
+  /* ── 续搜(S4b,§4.6)──────────────────────────────────────────────────
+   * 范围片是「加一格过滤,词留着」;枢轴是「换一次查询」。两句话说清这个区别,
+   * 所以不合并成一句「在这里搜」。 */
+  'search.continueInSession': '在此会话内搜',
+  'search.continueInDir': '在此目录内搜',
+  'search.pivotSessionMessages': '它的消息',
+  'search.pivotFileMentions': '提到它的消息',
+  'search.scopeChipRemove': '去掉这个范围',
+  'search.historyBack': '回上一条查询',
+  'search.historyForward': '再往前一条',
+  /* 行的右键动作表(动作单产地 = 右键上下文菜单,09-01 判例)。 */
+  'search.rowActions': '这一条能做什么',
+  'search.rowOpen': '打开',
+  /* ── 预览窗(S4b,§4.5)────────────────────────────────────────────────
+   * 五种状态各有一句,一句都不合并:没选中 / 这一类没有预览 / 算不出(后端原话
+   * 跟在下一行)/ 壳还画不出这种媒介 / 载荷不成形。 */
+  'search.previewEmpty': '选一条看看',
+  'search.previewNone': '这一类还没有预览',
+  'search.previewFailed': '预览算不出来',
+  'search.previewUnavailable': '这种预览还画不出来:{kind}',
+  'search.previewMalformed': '这份预览的形状不对',
+  'search.previewLoading': '正在读…',
+  'search.previewRoleUser': '用户',
+  'search.previewRoleAssistant': '助手',
+  'search.previewMessageCount': '消息',
+  'search.previewUpdatedAt': '更新于',
+  'search.previewUnknownTime': '不知道',
+  'search.previewBatchSummary': '共 {total} 条 · 画出来 {shown} 条',
 
   /* ── 聊天区(D3:正文/工具名/错误原文都是**数据**,不在这儿) ────────── */
   'chat.noSession': '还没有选中会话',

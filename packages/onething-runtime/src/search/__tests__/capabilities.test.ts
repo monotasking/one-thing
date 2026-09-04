@@ -473,6 +473,71 @@ describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)'
   })
 })
 
+/**
+ * **扫描根 `dir`**(S4b 修,设计 §9)。
+ *
+ * 旧行为:文件那一档搜的是壳 `useSessionCwd()` 那个目录。改读后端之后根变成
+ * `getSearchDirs()`(认的是后端 `getCurrentSessionId()` 的工作目录),而 React 壳
+ * 从不告诉后端当前会话是谁 —— 于是会话目录下的文件搜不到。把根做成一格 facet
+ * 由壳递进来,旧行为就回来了。
+ */
+describe('files 的扫描根 `dir`(S4b)', () => {
+  /** 两个目录各一个文件;`listFiles` 按 cwd 答。 */
+  function twoDirAdapters(): OnethingSearchProvidersAdapters {
+    return {
+      ...makeAdapters(),
+      getVariablesStore: () => ({
+        getUserNoteDir: () => '/roots/notes',
+        getWorkNoteDir: () => undefined,
+      }),
+      listFiles: ({ cwd }) => ({
+        async *[Symbol.asyncIterator]() {
+          if (cwd === '/roots/notes') yield 'alpha-note.md'
+          if (cwd === '/session/cwd') yield 'alpha-session.ts'
+        },
+      }),
+    }
+  }
+
+  const filesQuery = (filters: Record<string, unknown> = {}): SearchQuery => ({
+    raw: 'alpha',
+    ast: { type: 'and', children: [] },
+    intent: 'content',
+    capability: 'files',
+    filters: filters as SearchQuery['filters'],
+  })
+
+  it('自述里有 `dir` 那一格 —— 没有它,fanout 一个键都不会递到这一路上', () => {
+    expect(filesSearchManifest.facets).toEqual([{ key: 'dir', type: 'enum' }])
+  })
+
+  it('不带 `dir` = 后端自己那张根列表(笔记根),会话目录里那个文件搜不到', async () => {
+    const capability = createFilesSearchCapability(twoDirAdapters())
+    const page = await capability.search(filesQuery(), { limit: 10 }, createSearchContext())
+    expect(page.items.map(item => item.title)).toEqual(['alpha-note.md'])
+  })
+
+  it('带 `dir` = **只扫那一个目录**;不在它下面的文件一条都不出现', async () => {
+    const capability = createFilesSearchCapability(twoDirAdapters())
+    const page = await capability.search(
+      filesQuery({ dir: '/session/cwd' }),
+      { limit: 10 },
+      createSearchContext(),
+    )
+    expect(page.items.map(item => item.title)).toEqual(['alpha-session.ts'])
+  })
+
+  it('`dir` 不是一个字符串(数组 / 区间那几种形)= 当缺席 —— 一次扫只吃一个 cwd', async () => {
+    const capability = createFilesSearchCapability(twoDirAdapters())
+    const page = await capability.search(
+      filesQuery({ dir: ['/a', '/b'] }),
+      { limit: 10 },
+      createSearchContext(),
+    )
+    expect(page.items.map(item => item.title)).toEqual(['alpha-note.md'])
+  })
+})
+
 describe('扫描型的预算(S2:不许多一道刹车)', () => {
   /** 慢到比「原本那个 2000ms 预算」还久的一路扫描。 */
   const SLOW_SCAN_MS = 2500

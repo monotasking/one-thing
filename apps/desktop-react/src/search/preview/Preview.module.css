@@ -1,0 +1,142 @@
+/* 预览窗与五种预览体共用的这一份。**只画预览自己那一段** ——
+ * 窗的骨架(头 / 状态 / 边框)在 SearchPanel.module.css 里,与列表同一份产地。 */
+
+/* 一段素文本(note-excerpt / 缺渲染器那一支的正文)。等宽只在 code 那一档给。 */
+.text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--text-1);
+}
+
+/* 预览体的外壳:纵向排、留一格行距。 */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* 一行说明(标题 / 路径 / 计数):比正文小一号、灰一层。 */
+.meta {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+}
+
+/* ── message-context:命中那条 ± N 条 ──────────────────────────────────── */
+
+.turns {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* 一条消息 = 角色标 + 正文。命中那条描一条左缘线,别的不描 —— 「哪一条是命中」
+ * 是这块预览唯一要一眼说清的事。 */
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-left: var(--search-mark) solid transparent;
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+  min-width: 0;
+}
+
+.turnHit {
+  border-left-color: var(--accent);
+  background: var(--st-sel);
+}
+
+.role {
+  font-size: var(--fs-micro);
+  letter-spacing: var(--ls-section);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+/* 预览里的正文。**这里不限高、不渐隐** —— 「超量」那一格的答复是
+ * 「预览窗自己滚」(见 SearchPanel.module.css 的 .preview):在一条几千字的回复上
+ * 切一刀再画渐隐,等于让人看不出「下面还有多少」,而滚动条本来就会说这句话。 */
+.turnText {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--text-1);
+}
+
+/* ── session-overview:一间会话的四格 ──────────────────────────────────── */
+
+.facts {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--fs-meta);
+}
+
+.factKey {
+  color: var(--text-3);
+}
+
+.factValue {
+  margin: 0;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* ── composite:并排 / 网格 ────────────────────────────────────────────── */
+
+.composite {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.side {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+/* 网格按容器宽自适应:一列到多列由内容宽定,不写死断点
+ * (挤压纪律:声明最小宽度下零重叠)。 */
+.grid {
+  grid-template-columns: repeat(auto-fill, minmax(var(--search-preview-cell-w), 1fr));
+}
+
+.cell {
+  min-width: 0;
+  padding: var(--sp-2);
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+}
+
+/* ── file-excerpt:查看器的 peek 态 ────────────────────────────────────── */
+
+/* 查看器 Body 是为整块查看面写的,这里给它一个限高的框。
+ * `contain: layout` 挡住它内部的滚动锚定往外传(树/面常驻铁律的同一条理由)。 */
+.peek {
+  min-width: 0;
+  max-height: var(--search-preview-peek-h);
+  overflow: auto;
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-1);
+  background: var(--surface-1);
+  contain: layout;
+}

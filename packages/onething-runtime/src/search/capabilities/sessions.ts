@@ -94,6 +94,10 @@ export const chatsSearchManifest: CapabilityManifest = {
   // (`getSessionsList()`,一次搜索本来就要读它去补 subtitle)—— 一次 map,不读账本、
   // 不发请求。这么便宜的东西选中再取一次是白跑一趟网络,所以随候选带。
   preview: { mode: 'inline' },
+  // **空词时我有浏览态**(S4b):下面 `recent` 那条路就是它 —— 旧 `searchChats('')`
+  // 按 `updatedAt` 取前 N 间。壳读这一格决定空输入框里问谁,于是它那一侧不必
+  // 出现 `chats` 这个名字(09-01 裁定的「所有档空词 = 全部会话、能翻页」因此回来)。
+  browse: true,
 }
 
 /** 空词 = 「最近几间会话」那一形(旧路的 `normalizeQuery(query) === ''`)。 */

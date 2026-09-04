@@ -1,0 +1,71 @@
+/* 过滤片 —— 一颗**扁的、描边的、可按的小药丸**。
+ *
+ * 它与 `ui/Badge` 是两件事,不是一件事的两个 tone:Badge 是**读数**(不可按、
+ * 实心丸、说的是「这里有 3 条」);片是**控件**(可按、有开关态、说的是
+ * 「我此刻按这个条件在筛」)。硬把片塞成 Badge 的第四个 tone 会污染那三条配方
+ * ——「不可按」正是 Badge 的配方之一。
+ *
+ * 尺寸与描边跟着检索面板行首那颗徽走(--search-chip-h / --r-1),
+ * 于是一行片与一行行在同一套几何里。 */
+
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-full);
+  background: var(--surface-2);
+  min-width: 0;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+/* 挑过了:描边加重 + 一层极淡的选中膜。**不换底色**(四轴:状态色只上图标/点)。 */
+.on {
+  border-color: var(--accent);
+  background-image: linear-gradient(var(--st-sel), var(--st-sel));
+}
+
+.wrap:has(.chip:hover) {
+  background-image: linear-gradient(var(--st-hover), var(--st-hover));
+}
+
+/* 片身:结构性交互件(它有自己的形)→ `ui/ButtonBase` 只清 UA,配方画在这里。 */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  padding: 0 var(--sp-2);
+  height: var(--filter-chip-h);
+  font-size: var(--fs-micro);
+  color: var(--text-2);
+  border-radius: var(--r-full);
+}
+
+/* 失效:这一档摆不出它对应的 facet 键(见 search/filters.ts)。
+ * **禁灰而不消失** —— 与 Menu 那条判例同一个理由:一张片条的形状不该随档位变。 */
+.chip:disabled {
+  color: var(--text-3);
+  cursor: default;
+}
+
+/* 片名(「空间」「角色」)。挤压纪律:一行一个弯腰件 —— 弯腰的是值,不是名。 */
+.label {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* 选中的值(「当前」「用户」「本周」)。它是这一片里唯一会长的那一段,所以由它弯腰。 */
+.value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-1);
+}
+
+/* 范围片尾巴上那颗 ×。它是**另一颗按钮**(不能嵌在片身里 —— 嵌套 button 非法),
+ * 所以片身与它是兄弟,外面那层 .wrap 才是视觉上的一颗药丸。 */
+.remove {
+  flex: none;
+  margin-right: var(--sp-1);
+}

@@ -96,3 +96,40 @@ describe('token 侧:定宽那一格已经换成上下限', () => {
     expect(tokens).toMatch(/--search-chip-max:\s*\d/)
   })
 })
+
+
+/**
+ * 左列表右预览的**断点**(S4b,§4.5 ⑥「面板左列表右预览;窄窗行下展开」)。
+ *
+ * `@container` 的条件里写不了 `var()`,所以那个字面量与 `--search-preview-min`
+ * 是**同一事实的两处** —— 这一条就是把它们钉在一起(与 ModelCatalog 的
+ * `@container catalog` / Composer 的 `@container composerDrawer` 逐条同手)。
+ * 改一处忘了另一处,门当场红。
+ */
+describe('预览窗:并排 / 行下展开的断点(§4.5 ⑥)', () => {
+  const tokens = readFileSync(resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  )
+
+  it('断点由**容器**问,不由窗口问 —— 这块面在三种宿主下宽度各不相同', () => {
+    expect(css).toMatch(/container:\s*searchPanel\s*\/\s*inline-size/)
+  })
+
+  it('@container 里那个字面量 = --search-preview-min', () => {
+    const threshold = /@container searchPanel \(min-width:\s*(\d+)px\)/.exec(css)?.[1]
+    const token = /--search-preview-min:\s*(\d+)px/.exec(tokens)?.[1]
+    expect(threshold, '样式表里找不到那条 @container').toBeDefined()
+    expect(token, 'tokens.css 里找不到 --search-preview-min').toBeDefined()
+    expect(threshold).toBe(token)
+  })
+
+  it('宽档才长出预览那一轨 —— 常态是一列(列表铺满)', () => {
+    expect(block('.main')).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)/)
+    expect(css).toMatch(/@container searchPanel[\s\S]*?--search-preview-w/)
+  })
+
+  it('预览窗**自己滚**(「超量」那一格的答复就是它)', () => {
+    expect(block('.preview')).toMatch(/overflow:\s*auto/)
+  })
+})

@@ -575,6 +575,10 @@
   --switch-pad: 2px;
   --switch-knob: 16px;
 
+  /* 过滤片(`ui/FilterChip`)。**比 Switch 矮一格、比行首那颗徽高一格**:
+   * 它与检索面的行在同一屏上,片条比行矮才读得出「这是条件不是内容」。 */
+  --filter-chip-h: 22px;
+
   /* 选择族(Controls 板:面板超过这个高度就滚自己) */
   --select-menu-max-h: 280px;
   --select-menu-max-w: 320px; /* 选项名是数据(项目目录名),宽度必须封顶 */
@@ -784,6 +788,23 @@
   --search-chip-h: 16px;
   --search-mark: var(--bw-3);
   --search-origin-w: 220px;
+
+  /* 预览窗(S4b,§4.5 ⑥「面板左列表右预览;窄窗行下展开」)。
+   *  · --search-preview-w:右列的**理想宽**。列表与预览是 grid 的两轨,预览这一轨
+   *    取 `minmax(0, --search-preview-w)` —— 面板被挤窄时它先让,不去顶掉列表;
+   *    真到装不下(容器查询那一档)整轨消失,预览改在行下展开。
+   *  · --search-preview-min:两列并排的最小面板宽。它是**容器查询的断点**,
+   *    所以必须是一个数而不是一句 media 查询:这块面在舞台 / 浮窗 / 架子三种
+   *    宿主下宽度各不相同,窗口宽度说明不了它此刻有多宽。
+   *  · --search-preview-cell-w:batch 那张网格里一格的最小宽(auto-fill 用)。
+   *  · --search-preview-peek-h:文件预览那一格 peek 的限高。 */
+  --search-preview-w: 320px;
+  --search-preview-min: 640px;
+  --search-preview-cell-w: 180px;
+  --search-preview-peek-h: 320px;
+  /* 骨架那块占位面的高。一屏预览的**一小截** —— 骨架说的是「有东西要来」,
+   * 不是「来的东西有这么高」(画满一屏的骨架落地时会塌一大截)。 */
+  --search-preview-skeleton-h: 72px;
 
   /* ── 通知中心(content/NotificationsPanel)几何 ──────────────────────────
    * 一行四件:级别小点 / 标题 + 正文 / 产地 / 时间。产地与时间是**定宽右列**,

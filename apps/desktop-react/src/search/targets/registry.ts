@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import { getLogger } from '../../services/log'
+import type { SearchContinuation } from '../continuations'
 import type { SearchRow } from '../types'
 
 /**
@@ -58,11 +59,24 @@ export interface SearchTargetRenderer {
   /** 点它去哪儿。**落点只有这一处**,面板不再 `switch (target.kind)`。 */
   activate(row: SearchRow, context: SearchTargetContext): void
   /**
-   * 预览渲染器(§4.5 ②)。**S4a 一个都没有** —— 预览窗是 S4b。这一格现在就留着,
-   * 是因为它与 `Row` 是同一张表上的两列(设计 §4.3「`registerTargetRenderer(kind,
-   * { Row, Preview? })`」);S4b 加预览窗时这里一个字不改。
+   * 预览渲染器(§4.5 ②)。
+   *
+   * **今天仍然一个都没有,而且这是对的**:S4b 落地之后预览按**载荷的 `kind`**
+   * 从 `../preview/registry.ts` 那张表取组件,而不是按结果行的 `target.kind` ——
+   * 两者不是一一对应的(chats 的行是 `chat`,它的预览载荷是 `session-overview`;
+   * 一个 `composite` 载荷根本不属于任何一行)。这一格留着是因为它在设计 §4.3 的
+   * 原文里(`registerTargetRenderer(kind, { Row, Preview? })`),真有哪一类要
+   * 「这一行自己带一份预览」时它就是落点;今天没有人填,所以也没有人读。
    */
   Preview?: ComponentType<{ row: SearchRow; payload: unknown }>
+  /**
+   * **续搜**(§4.6;S4b 加):这一行能变成哪几种「下一步」。
+   *
+   * 缺席 = 这一类不提供续搜(`action` / `prompt` / `daily` 三类今天就是),
+   * 那一行的动作菜单里因此只有「打开」。「以谁为词、落到哪个 facet 键、跳到哪一
+   * 类」只有产这条结果的那一类知道 —— 理由与整条链写在 `../continuations.ts` 头上。
+   */
+  continuations?(row: SearchRow): SearchContinuation[]
 }
 
 const renderers = new Map<string, SearchTargetRenderer>()

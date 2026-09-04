@@ -539,3 +539,86 @@ describe('整条流水线', () => {
     expect(ratioOld).toBeCloseTo(0.25, 6)
   })
 })
+
+
+/**
+ * fanout ④:**一个能力只收它自述里声明过的过滤键**(检索重建 S4b)。
+ *
+ * 起因是一条真会上屏的病:`SearchQuery.filters` 是全场一份的(壳按各能力自述的
+ * **并集**画过滤片,§9 第五条;`extract` 还会往里塞抽到的时间窗,§6.1b),而
+ * `matchesFacetFilter` 对「文档上根本没有的 facet」判的是**不通过** —— 于是一格
+ * `spaceId` 会把不声明 `spaceId` 的那一路整组清零,屏幕上那一组凭空消失。
+ */
+describe('fanout:过滤键按自述收窄', () => {
+  function recorder(
+    id: string,
+    facets: Array<{ key: string; type: 'enum' }> | undefined,
+    seen: Record<string, SearchQuery['filters']>,
+  ): SearchCapability {
+    return {
+      manifest: makeManifest(facets === undefined ? { id } : { id, facets }),
+      supports: () => true,
+      async search(query) {
+        seen[id] = query.filters
+        return { items: [], total: 0, relaxed: 0, took: 0 }
+      },
+    }
+  }
+
+  async function run(
+    capabilities: SearchCapability[],
+    filters: SearchQuery['filters'],
+  ): Promise<void> {
+    const registry = createCapabilityRegistry()
+    for (const capability of capabilities) registry.register(capability)
+    const query: SearchQuery = { ...parse('词'), filters }
+    await collect(fanout(registry, budgetPolicy)(makeContext(), query))
+  }
+
+  it('声明了就收得到;没声明的那一格**根本不递过去**(不是「它不通过」)', async () => {
+    const seen: Record<string, SearchQuery['filters']> = {}
+    await run(
+      [
+        recorder('declares', [{ key: 'spaceId', type: 'enum' }], seen),
+        recorder('silent', [{ key: 'path', type: 'enum' }], seen),
+      ],
+      { spaceId: ['default', ''] },
+    )
+    expect(seen.declares).toEqual({ spaceId: ['default', ''] })
+    // ← 反证的落点:摘掉 narrowToDeclaredFacets,这一行会变成 `{ spaceId: [...] }`,
+    //   而那一路的索引查询会因此一条都不中(整组在屏幕上消失)。
+    expect(seen.silent).toEqual({})
+  })
+
+  it('`facets` 缺席 = 这一类不认过滤(scan / static 基座今天就是)→ 一格都不给', async () => {
+    const seen: Record<string, SearchQuery['filters']> = {}
+    await run([recorder('nofacets', undefined, seen)], { spaceId: 'w1', role: 'user' })
+    expect(seen.nofacets).toEqual({})
+  })
+
+  it('**授权那几格永远不被收窄掉**(§6.4b「范围赢」)', async () => {
+    const seen: Record<string, SearchQuery['filters']> = {}
+    const guarded: SearchCapability = {
+      manifest: makeManifest({
+        id: 'guarded',
+        facets: [{ key: 'path', type: 'enum' }],
+        // 自述里**没有** ownerId 这一格,而授权范围偏偏加的就是它。
+        visibility: () => ({ ownerId: 'u1' }),
+      }),
+      supports: () => true,
+      async search(query) {
+        seen.guarded = query.filters
+        return { items: [], total: 0, relaxed: 0, took: 0 }
+      },
+    }
+    await run([guarded], { spaceId: 'w1' })
+    expect(seen.guarded).toEqual({ ownerId: 'u1' })
+  })
+
+  it('一格都没被滤掉时**原样返回**同一个 query(下游的身份判据不白跑)', async () => {
+    const seen: Record<string, SearchQuery['filters']> = {}
+    const filters = { path: '/a' }
+    await run([recorder('same', [{ key: 'path', type: 'enum' }], seen)], filters)
+    expect(seen.same).toBe(filters)
+  })
+})

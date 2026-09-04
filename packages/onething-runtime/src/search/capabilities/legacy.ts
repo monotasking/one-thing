@@ -34,6 +34,7 @@ import {
   staticCapability,
   type Candidate,
   type CapabilityManifest,
+  type FacetFilter,
   type PreviewPayload,
   type SearchCapability,
   type SearchContext,
@@ -83,8 +84,19 @@ export type LegacyTargetOf = (result: SearchServiceResult) => { kind: string; pa
 
 export interface LegacyCapabilityOptions {
   manifest: CapabilityManifest
-  /** 今天那一路的扫描器,逐字调用,不在这里重写匹配或排序。 */
-  run(query: string, limit: number): Promise<readonly SearchServiceResult[]> | readonly SearchServiceResult[]
+  /**
+   * 今天那一路的扫描器,逐字调用,不在这里重写匹配或排序。
+   *
+   * 第三格 `filters` 是 S4b 加的,而且**只递不解释**:`fanout` 已经按
+   * `narrowToDeclaredFacets` 把这一份收窄成「这个能力自述里声明过的那几个键」,
+   * 所以旧扫描器拿到的键一定是它自己认的。不声明 facets 的能力恒收到 `{}` ——
+   * 它们的签名少一格参数,JS 直接忽略,行为零变化。
+   */
+  run(
+    query: string,
+    limit: number,
+    filters: Readonly<Record<string, FacetFilter>>,
+  ): Promise<readonly SearchServiceResult[]> | readonly SearchServiceResult[]
   target: LegacyTargetOf
   /** 缺省 = 恒真(旧路在 `all` 档里对这一类是无条件调用的)。 */
   supports?(query: SearchQuery): boolean
@@ -159,7 +171,7 @@ export function legacyScanCapability(options: LegacyCapabilityOptions): SearchCa
     manifest,
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
-      const rows = await options.run(query.raw, page.limit)
+      const rows = await options.run(query.raw, page.limit, query.filters)
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
       return scanCapability<LegacyBackedCandidate>({
         manifest,
@@ -183,7 +195,7 @@ export function legacyStaticCapability(options: LegacyCapabilityOptions): Search
     manifest,
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
-      const rows = await options.run(query.raw, page.limit)
+      const rows = await options.run(query.raw, page.limit, query.filters)
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
       return staticCapability<LegacyBackedCandidate>({
         manifest,

@@ -662,6 +662,12 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 // capabilities → CapabilityManifest[](注册顺序;壳的 tab / 图标 / 过滤片 / 分组次序全部从这里算)
 ```
 
+`CapabilityManifest` 的线上形(`SearchCapabilityManifestDto`)另有一格 `browse?: boolean`(S4b):
+「**空词时我有浏览态**」。零词元的查询对索引恒零命中,所以「空输入框里列什么」只有能力自己答得出
+(今天只有 `chats`:一条绕开索引直接调旧 `searchChats('')` 的路)。壳读这一格决定空词的「所有」档
+去问谁 —— 因此壳里不必出现任何能力 id。core 那份 manifest 同名同义,但 core 自己不读它:它是一句
+说给宿主听的自述。
+
 `SearchResult` 加 `target?: { kind: string; payload: unknown }` 与 `facets?: Record<string, unknown>`(旧字段 sessionId / messageId / filePath 照旧填,S4 之前的 React 壳与 CLI 不改也能用)。`SearchCategory` 类型保留为 `string` 别名,`isSearchCategory` 改问 registry。再加一条 `status` 路由 → `{ mode: 'owner' | 'reader' | 'error'; owner?: { host; pid }; pending: number; vector?: 'off' | 'downloading' | 'embedding' | 'ready' }`(§5.6 / §15;壳的「索引更新中」行与 gate 都读它)。
 
 ---
@@ -672,7 +678,9 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 - 结果行按 `target.kind` 从目标渲染注册表取组件(`src/search/targets/<kind>.tsx` 一种一文件);缺渲染器画标题行并 dev warn。
 - 单类:列表 + 底部 `total` / 「加载更多」(有 cursor 才画)/ 「已放宽」行 / 「索引更新中(剩 n)」行。
 - 全部:分组,组头带 `total` 与「查看全部」;某组 `error` 时组头一句「没搜成」。
+- **全部档的空词是浏览态,不是分组总览**(S4b 修;09-01 用户裁定「所有档空词 = 全部会话列表、看得到总条数、能翻页」):壳在**零词元**时不发 `category: 'all'`(后端的 `'all'` 按 §7.2 是不分页的总览),而是问自述里 `browse: true` 的那些能力,**各一组、每组全量可翻页**;今天只有一个,于是屏幕上是一张平铺的会话列表 —— 与旧行为逐字相同。去问谁**从 manifest 自述读**,壳里因此没有一个能力 id(`no-capability-literals` 那道闸继续零 id)。有词照旧走分组总览。
 - 过滤片:空间(当前 / 全部)、角色、时间、含归档、含推理;过滤片是结构传 `filters`,不拼字符串。
+- **文件那一档的扫描根由壳递,不写 app-state**(S4b 修):`files` 在自述里声明 facet `{ key: 'dir', type: 'enum' }`(语义 = 只扫这一个目录;缺席 = 后端自己那张根列表),壳把 `useSessionCwd()` 当作缺省的 `filters.dir` **结构地**传进来。理由是旧行为:S4b 之前文件档搜的就是壳那条活跃会话工作目录,而后端的 `getSearchDirs()` 认的是**它自己**那条 `getCurrentSessionId()` —— React 壳从不告诉后端当前会话是谁,不递这一格会话目录下的文件就搜不到。「在此目录内搜」那颗范围片**替换**这个缺省,× 掉**回到缺省 cwd**(不是回到「无 dir」= 后端的根列表,那不是旧行为)。递得进来的只有 `isHostLocallyTrusted()` 那一支 —— 不可信端口本来就问不到 `files`。
 - 徽:归档、空间(仅在「全部空间」下画)。
 - 点消息 → 既有 `locate-message` 落点。
 - 三张状态表(生命周期 / UI 生命状态 / 交互状态)随 S4 交卷;基础件先行,`ui:consume` 只减不增。
@@ -880,6 +888,24 @@ feed 造现场),**反证**:把 `pending` 改回只数队列 → 该例红(`condi
 2. `daily` 档在 parity-B 里是平凡真(见上),要真守住它得先有一台配好日记目录的机器。
 3. ⑤b 的 5ms → 20ms 是**读数支撑的改判**,不是放水;§5.3 原文那句「增量折期间 < 5ms」现在由
    ⑤c 守着,措辞该跟着改成「折的窗口里」——**未改正文,留给下一批**。
+
+### S4b 落地记录(2026-09-05:壳收进一条数据路)
+
+S4 拆成两批:**S4a** 目标 / 预览渲染注册表与四条口,**S4b** 壳这一侧的四个产地收进唯一那条
+`search.query`(会话表 / 章节缓存 / `files.list` / 正文检索四路全删,`sources.ts` 随之删除,
+`no-capability-literals` 那道闸从「骨架」收紧到整个 `src/search`)。
+
+交卷时如实记了三条**可感知的行为变化**;其中两条是「本该保旧行为」的,已修:
+
+| # | 出入 | 处置 |
+| --- | --- | --- |
+| 1 | 会话**预览文本**与**章节**不再可搜;命中从子串变成词与前缀 | **保留**(索引的语义,§2 拍定;要让章节可搜是给 chats 补一条 feed,后端另一批) |
+| 2 | 空词的浏览态从默认档搬到了「会话」档(要先切档才能翻完全部会话) | **已修**:壳在零词元时改问自述里 `browse: true` 的那些能力(§9),断言搬回默认档,门里一档不切 |
+| 3 | 文件档的根从壳 `useSessionCwd()` 变成后端 `getSearchDirs()`,会话目录下的文件搜不到(门里靠一句 `sessions.switch` 补偿) | **已修**:`files` 自述一格 `dir`,壳把 cwd 结构地递回去(§9);门里那句补偿删掉,改断言「会话 cwd 下种的文件在 files 档搜得到」 |
+
+两处修法的共同判据:**不新增枚举点**。「空词问谁」与「扫描根是什么」都做成能力自述里的一格
+(`browse` / `facets: [{ key: 'dir' }]`),壳读表 —— 所以壳里仍然一个能力 id 都没有,
+而再来一个自报 `browse` 的能力,空词那一屏自己多一组(用例与 `gate:search` 各钉一条)。
 
 ---
 

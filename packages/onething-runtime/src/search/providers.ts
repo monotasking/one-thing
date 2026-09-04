@@ -393,8 +393,18 @@ async function searchFiles(
   query: string,
   limit: number,
   adapters: OnethingSearchProvidersAdapters,
+  /**
+   * 只扫这一个目录(S4b 的 `dir` 过滤片)。缺席 = `getSearchDirs()` 那张根列表。
+   *
+   * **不与根列表求交**:调用方递这一格进来正是因为那张列表答不出它要的根
+   * (`getSearchDirs` 认的是**后端** `getCurrentSessionId()` 的工作目录,而 React
+   * 壳从不告诉后端当前会话是谁)。求交等于把这一格变成一句空话。
+   * 递得进来的只有本机可信那一支 —— 判据在 `capabilities/files.ts` 的 `DIR_FACET`
+   * 注释里,一处说完。
+   */
+  dir?: string,
 ): Promise<SearchResult[]> {
-  const dirs = getSearchDirs(adapters)
+  const dirs = dir ? [expandPath(dir)] : getSearchDirs(adapters)
   if (dirs.length === 0) return []
 
   const q = normalizeQuery(query)
@@ -904,7 +914,8 @@ export function createOnethingSearchRuntimeAdapters(
     searchActions,
     searchPrompts: (searchQuery, searchLimit, includeCreateShortcut) =>
       searchPrompts(searchQuery, searchLimit, adapters, includeCreateShortcut),
-    searchFiles: (searchQuery, searchLimit) => searchFiles(searchQuery, searchLimit, adapters),
+    searchFiles: (searchQuery, searchLimit, dir) =>
+      searchFiles(searchQuery, searchLimit, adapters, dir),
     searchDailyNotes: (searchQuery, searchLimit) => searchDailyNotes(searchQuery, searchLimit, adapters),
   }
 }

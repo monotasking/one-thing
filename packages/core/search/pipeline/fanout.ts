@@ -3,13 +3,14 @@
  *
  * 设计:docs/design/search-index-2026-09.md §6.4(v3.1 版)+ §6.5b
  *
- * 四条硬规矩,少一条这一段就白写:
+ * 五条硬规矩,少一条这一段就白写:
  * ① 按能力**各自**逐级试阶梯 —— messages 放宽到 ③ 不影响 sessions 停在 ①;
  *    manifest `relax:false` 的只跑第一级。
  * ② 超时经 `ctx.signal` 派生的 AbortSignal **传进** `search()` —— 不是外面包一层
  *    `withTimeout` 让它在里面继续白算。
  * ③ 授权在调 `search()` **之前**算好塞进 filters(§6.4b)。
- * ④ 谁先答完谁先 yield;失败 / 超时 = 该组 `{ error }`,不拖死别组。
+ * ④ **一个能力只收它自述里声明过的过滤键**(见 `narrowToDeclaredFacets`)。
+ * ⑤ 谁先答完谁先 yield;失败 / 超时 = 该组 `{ error }`,不拖死别组。
  */
 
 import type {
@@ -85,7 +86,11 @@ async function runLadder(
   const timeoutMs = budget?.timeoutMs ?? manifest.budget.timeoutMs
 
   const scope = visibilityScopeOf(manifest, ctx.principal)
-  const authorized = applyVisibility(query, scope)
+  /*
+   * 先按自述**收窄**用户那几格,再叠授权范围。次序是判据:
+   * 授权那几格是 core 替这一路加上的,**它永远不该被收窄掉**(§6.4b「范围赢」)。
+   */
+  const authorized = applyVisibility(narrowToDeclaredFacets(query, manifest), scope)
   const ladder = plan(authorized, { relax: manifest.relax })
 
   const now = options.now ?? (() => Date.now())
@@ -126,6 +131,35 @@ async function runLadder(
 
 function withLadder(query: SearchQuery, step: LadderStep): SearchQuery {
   return { ...query, ladder: step }
+}
+
+/**
+ * **一个能力只收它自述里声明过的过滤键**(硬规矩 ④)。
+ *
+ * `SearchQuery.filters` 是**全场一份**的:壳按各能力自述的并集画过滤片(§9 第五条
+ * 「`all` 档画各组声明的并集」),`extract` 还会往里塞抽到的时间窗(§6.1b)。
+ * 而 `matchesFacetFilter` 对一格**文档上根本没有的 facet** 判的是「不通过」——
+ * 于是一格 `spaceId` 会把不声明 `spaceId` 的那一路(daily)整组清零:
+ * 屏幕上那一组凭空消失,而没有任何一处说得出为什么。
+ *
+ * 判据只能是 manifest:**自述里没说认这个键 = 这个键与它无关**,不是「它不通过」。
+ * core 在这里**不认识任何一个键名**,它只做一次集合运算 —— 与 §4.0 那条
+ * 「凡按能力枚举的地方改成能力自述、别人读表」逐字同源。
+ *
+ * 两种缺省各有意思,不能混:
+ *  · `facets` **缺席** = 这一类不认过滤(scan / static 基座今天就是)→ 一格都不给;
+ *  · `facets: []` 同义。
+ * 真要「什么都收」的能力,自己把键声明出来 —— 那正是自述的用处。
+ */
+export function narrowToDeclaredFacets(
+  query: SearchQuery,
+  manifest: { facets?: readonly { key: string }[] },
+): SearchQuery {
+  const keys = new Set((manifest.facets ?? []).map(facet => facet.key))
+  const entries = Object.entries(query.filters).filter(([key]) => keys.has(key))
+  // 一格都没被滤掉时**原样返回**:换一个等值的新对象只会让下游的身份判据白跑。
+  if (entries.length === Object.keys(query.filters).length) return query
+  return { ...query, filters: Object.fromEntries(entries) }
 }
 
 interface DerivedSignal {
