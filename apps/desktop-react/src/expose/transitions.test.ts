@@ -14,9 +14,15 @@ import {
   openQuickLook,
   quickLookNeighbors,
   quickLookNext,
+  activateRow,
+  collapseSection,
+  expandSection,
+  isSectionCollapsed,
   quickLookPrev,
   relativeTime,
   rowIdsOf,
+  sessionRowIdsOf,
+  toggleSection,
   sessionMatchesQuery,
   sessionsRemoved,
   setQuery,
@@ -37,7 +43,13 @@ const CURRENT = SESSIONS[0].id
 
 const base: ExposeState = { ...initialExposeState, currentSessionId: CURRENT }
 const overview = open(base, FACTS)
+/** 焦点序列(**含节头**)—— 方向键 / Home / End 走的就是它。 */
 const seq = rowIdsOf(base, FACTS)
+/**
+ * 只有会话的那一半。09-04 分节可折叠之后节头进了 `seq`,而「翻下一条会话」
+ * (Quick Look)与「焦点没处落时落哪儿」问的都是这一条。
+ */
+const sseq = sessionRowIdsOf(base, FACTS)
 
 /** 名册换一份的那种用例:摘掉几条会话之后的那份事实。 */
 const without = (ids: string[]): ListFacts => ({
@@ -55,7 +67,8 @@ describe('open(开场归位)', () => {
   it('当前会话被范围滤掉时,焦点退到序列首', () => {
     const elsewhere: ExposeState = { ...base, scope: projectScope(TRANSREADER_DIR) }
     const next = open(elsewhere, FACTS)
-    expect(next.focusId).toBe(rowIdsOf(elsewhere, FACTS)[0])
+    // 锚点落**第一条会话**,不是序列首(那是节头)—— 理由见 transitions.anchorOf。
+    expect(next.focusId).toBe(sessionRowIdsOf(elsewhere, FACTS)[0])
     expect(next.focusId).not.toBe(CURRENT)
   })
 
@@ -171,10 +184,19 @@ describe('treeKey(树语义的 ←→ 与 Home / End)', () => {
     expect(isRoomExpanded(closed, 'rm-release')).toBe(false)
   })
 
-  it('非房间的行上 ←→ 都无动作(只点亮环,位置与展开态一格不动)', () => {
+  it('非房间的行上 → 无动作(只点亮环,位置与展开态一格不动)', () => {
     const onChat: ExposeState = { ...overview, focusId: CURRENT, focusVisible: true }
     expect(treeKey(onChat, 'expand', FACTS)).toBe(onChat)
-    expect(treeKey(onChat, 'collapse', FACTS)).toBe(onChat)
+  })
+
+  /*
+   * 09-04:顶层会话行上的 ← 从「什么都不做」变成「回到它的节头」——
+   * APG tree 的 ← 就是「没有可收的东西时回父项」,而在这之前一条顶层行**没有**父。
+   */
+  it('顶层会话行上的 ← = 回它的节头(节头就是这一层的父项)', () => {
+    const onChat: ExposeState = { ...overview, focusId: CURRENT, focusVisible: true }
+    // CURRENT(os-provider)落在「今天」那一节。
+    expect(treeKey(onChat, 'collapse', FACTS).focusId).toBe('section:today')
   })
 
   it('没有子行的房间:→ 也不展开(表上它 expandable 是 false)', () => {
@@ -190,7 +212,7 @@ describe('treeKey(树语义的 ←→ 与 Home / End)', () => {
 
   it('还没落焦时先落序列首;一行都没有时是恒等变换', () => {
     const nofocus: ExposeState = { ...overview, focusId: null }
-    expect(treeKey(nofocus, 'expand', FACTS).focusId).toBe(seq[0])
+    expect(treeKey(nofocus, 'expand', FACTS).focusId).toBe(sseq[0])
     expect(treeKey(overview, 'home', EMPTY)).toBe(overview)
   })
 })
@@ -219,16 +241,93 @@ describe('房间展开 / 收起', () => {
   })
 })
 
+/**
+ * ── 分节折叠(09-04 用户真机报「分组没法收」)────────────────────────────
+ * 与房间那一组是同一套语法的另一层:收 / 展、焦点往上退一层、搜索强制全开。
+ */
+describe('分节收 / 展', () => {
+  it('toggleSection 来回切;expandSection 对一个本来就开着的节是恒等变换', () => {
+    const folded = toggleSection(overview, 'today', FACTS)
+    expect(isSectionCollapsed(folded, 'today')).toBe(true)
+    expect(sessionRowIdsOf(folded, FACTS)).not.toContain('os-provider')
+    const back = toggleSection(folded, 'today', FACTS)
+    expect(isSectionCollapsed(back, 'today')).toBe(false)
+    expect(expandSection(back, 'today')).toBe(back)
+    expect(collapseSection(folded, 'today', FACTS)).toBe(folded)
+  })
+
+  it('收起时焦点正在这一节的行上 → **退到节头**,不是弹回列表开头', () => {
+    const onRow: ExposeState = { ...overview, focusId: CURRENT, focusVisible: true }
+    const folded = collapseSection(onRow, 'today', FACTS)
+    expect(folded.focusId).toBe('section:today')
+    expect(rowIdsOf(folded, FACTS)).toContain('section:today')
+  })
+
+  it('收起别的节不动焦点', () => {
+    const onRow: ExposeState = { ...overview, focusId: CURRENT, focusVisible: true }
+    expect(collapseSection(onRow, 'thisWeek', FACTS).focusId).toBe(CURRENT)
+  })
+
+  it('→ 在收着的节上 = 展开;再一下 = 进这一节第一行', () => {
+    const folded = collapseSection(overview, 'today', FACTS)
+    const onHead: ExposeState = { ...folded, focusId: 'section:today', focusVisible: true }
+    const opened = treeKey(onHead, 'expand', FACTS)
+    expect(isSectionCollapsed(opened, 'today')).toBe(false)
+    expect(opened.focusId).toBe('section:today')
+    expect(treeKey(opened, 'expand', FACTS).focusId).toBe('os-provider')
+  })
+
+  it('← 在展开的节头上 = 收起;已经收着了就没有更上一层可退', () => {
+    const onHead: ExposeState = { ...overview, focusId: 'section:today', focusVisible: true }
+    const folded = treeKey(onHead, 'collapse', FACTS)
+    expect(isSectionCollapsed(folded, 'today')).toBe(true)
+    // 收着的节头上再按一下 ← :位置与折叠态都不动(节头就是第一级)。
+    const again = treeKey(folded, 'collapse', FACTS)
+    expect(again.focusId).toBe('section:today')
+    expect(isSectionCollapsed(again, 'today')).toBe(true)
+  })
+
+  it('↵ 落在节头上 = 收 / 展这一节,**不是**进会话;落在行上才是进会话', () => {
+    const onHead: ExposeState = { ...overview, focusId: 'section:today', focusVisible: true }
+    const first = activateRow(onHead, FACTS)
+    expect(first.enterSessionId).toBeNull()
+    expect(isSectionCollapsed(first.state, 'today')).toBe(true)
+    // 再一下把它展回去(同一口,两态)。
+    expect(isSectionCollapsed(activateRow(first.state, FACTS).state, 'today')).toBe(false)
+
+    const onRow: ExposeState = { ...overview, focusId: CURRENT, focusVisible: true }
+    const entered = activateRow(onRow, FACTS)
+    expect(entered.enterSessionId).toBe(CURRENT)
+    expect(entered.state).toBe(onRow)
+    // 没有活动行时这一下什么都不是。
+    expect(activateRow({ ...overview, focusId: null }, FACTS).enterSessionId).toBeNull()
+  })
+
+  it('搜索时**强制全开**,清了词还收着(强制展开是派生态,不落库)', () => {
+    const folded = collapseSection(overview, 'thisWeek', FACTS)
+    const searched = setQuery(folded, '菜单栏', FACTS)
+    expect(sessionRowIdsOf(searched, FACTS)).toEqual(['tr-menubar'])
+    expect(isSectionCollapsed(searched, 'thisWeek')).toBe(true)
+    expect(sessionRowIdsOf(setQuery(searched, '', FACTS), FACTS)).not.toContain('tr-menubar')
+  })
+
+  it('收起的节 id 与会话无关,所以级联删会话不会把它清掉(无害的死键同房间)', () => {
+    const folded = collapseSection(overview, 'today', FACTS)
+    const next = sessionsRemoved(folded, ['os-provider'], without(['os-provider']))
+    expect(next.collapsedSections).toEqual(['today'])
+  })
+})
+
 describe('setScope(侧栏换范围)', () => {
   it('换过去只剩这一档的行;搜索词**留着**(换个范围继续用同一个词)', () => {
     const scoped = setScope({ ...overview, query: 'flask' }, projectScope(TRANSREADER_DIR), FACTS)
     expect(scoped.query).toBe('flask')
-    expect(rowIdsOf(scoped, FACTS)).toEqual(['tr-flask'])
+    expect(sessionRowIdsOf(scoped, FACTS)).toEqual(['tr-flask'])
   })
 
   it('焦点被换掉的范围滤掉时退到新序列首', () => {
     const scoped = setScope(overview, projectScope(TRANSREADER_DIR), FACTS)
-    expect(scoped.focusId).toBe(rowIdsOf(scoped, FACTS)[0])
+    expect(scoped.focusId).toBe(sessionRowIdsOf(scoped, FACTS)[0])
     expect(scoped.focusId).not.toBe(CURRENT)
   })
 })
@@ -251,9 +350,9 @@ describe('focusGrid', () => {
 
   it('锚点被过滤掉了就落到序列首', () => {
     const stale: ExposeState = { ...overview, focusId: 'not-on-screen', focusVisible: false }
-    expect(focusGrid(stale, FACTS).focusId).toBe(seq[0])
+    expect(focusGrid(stale, FACTS).focusId).toBe(sseq[0])
     const nofocus: ExposeState = { ...overview, focusId: null }
-    expect(focusGrid(nofocus, FACTS).focusId).toBe(seq[0])
+    expect(focusGrid(nofocus, FACTS).focusId).toBe(sseq[0])
   })
 
   it('一行都没有时是恒等变换', () => {
@@ -263,22 +362,41 @@ describe('focusGrid', () => {
 
 describe('quickLookPrev / Next', () => {
   it('← → 在 quicklook 内换会话,面板不关', () => {
-    const ql = openQuickLook(overview, seq[1])
+    const ql = openQuickLook(overview, sseq[1])
     const next = quickLookNext(ql, FACTS)
-    expect(next.view).toEqual({ mode: 'quicklook', sessionId: seq[2] })
-    expect(quickLookPrev(next, FACTS).view).toEqual({ mode: 'quicklook', sessionId: seq[1] })
+    expect(next.view).toEqual({ mode: 'quicklook', sessionId: sseq[2] })
+    expect(quickLookPrev(next, FACTS).view).toEqual({ mode: 'quicklook', sessionId: sseq[1] })
   })
 
   it('换会话时焦点跟着走', () => {
-    const ql = quickLookNext(openQuickLook(overview, seq[0]), FACTS)
-    expect(ql.focusId).toBe(seq[1])
+    const ql = quickLookNext(openQuickLook(overview, sseq[0]), FACTS)
+    expect(ql.focusId).toBe(sseq[1])
   })
 
   it('到头就停', () => {
-    const first = openQuickLook(overview, seq[0])
+    const first = openQuickLook(overview, sseq[0])
     expect(quickLookPrev(first, FACTS)).toBe(first)
-    const last = openQuickLook(overview, seq[seq.length - 1])
+    const last = openQuickLook(overview, sseq[sseq.length - 1])
     expect(quickLookNext(last, FACTS)).toBe(last)
+  })
+
+  /*
+   * 09-04:节头也在焦点序列里,但它**不是可以预览的东西**。
+   * 翻页只在会话之间走 —— 否则「下一条」会翻出一屏空白。
+   */
+  it('翻页跳过节头:两条会话之间隔着一个节头也照样一步翻过去', () => {
+    // sseq 里相邻、seq 里中间夹着节头的那一对(今天最后一条 → 昨天第一条)。
+    const from = 'dm-ying'
+    const to = 'os-expose'
+    expect(seq[seq.indexOf(from) + 1]).toBe('section:yesterday')
+    expect(quickLookNext(openQuickLook(overview, from), FACTS).view).toEqual({
+      mode: 'quicklook',
+      sessionId: to,
+    })
+  })
+
+  it('Space 落在节头上是恒等变换(一个分组没有可以预览的正文)', () => {
+    expect(openQuickLook(overview, 'section:today')).toBe(overview)
   })
 
   it('不在 quicklook 里时是恒等变换', () => {
@@ -289,7 +407,7 @@ describe('quickLookPrev / Next', () => {
 describe('搜索 = 过滤器,不是另一层视图', () => {
   it('焦点序列跟着过滤走:搜索之后方向键只在命中的行之间移动', () => {
     const searched = setQuery(overview, 'Exposé', FACTS)
-    expect(rowIdsOf(searched, FACTS)).toEqual(['os-expose'])
+    expect(sessionRowIdsOf(searched, FACTS)).toEqual(['os-expose'])
     expect(searched.focusId).toBe('os-expose')
   })
 
@@ -305,7 +423,7 @@ describe('搜索 = 过滤器,不是另一层视图', () => {
 
   it('子行命中:父作为通路进序列,子行跟在后面(展开是派生态,没落库)', () => {
     const searched = setQuery(overview, '全链路验收', FACTS)
-    expect(rowIdsOf(searched, FACTS)).toEqual(['rm-release', 'wk-verify'])
+    expect(sessionRowIdsOf(searched, FACTS)).toEqual(['rm-release', 'wk-verify'])
     expect(searched.expandedRooms).toEqual([])
   })
 
@@ -379,32 +497,32 @@ describe('splitHighlightRanges(区间由产地给定)', () => {
 
 describe('Quick Look 的换会话序列(‹ › 与 ← → 同一个判据)', () => {
   it('两头是 null,不回卷 —— 与 quickLookPrev / Next 的「到头就停」同一条口径', () => {
-    const first = openQuickLook(overview, seq[0])
+    const first = openQuickLook(overview, sseq[0])
     expect(quickLookNeighbors(first, FACTS).prev).toBeNull()
-    expect(quickLookNeighbors(first, FACTS).next).toBe(seq[1])
+    expect(quickLookNeighbors(first, FACTS).next).toBe(sseq[1])
 
-    const last = openQuickLook(overview, seq[seq.length - 1])
+    const last = openQuickLook(overview, sseq[sseq.length - 1])
     expect(quickLookNeighbors(last, FACTS).next).toBeNull()
-    expect(quickLookNeighbors(last, FACTS).prev).toBe(seq[seq.length - 2])
+    expect(quickLookNeighbors(last, FACTS).prev).toBe(sseq[sseq.length - 2])
   })
 
   it('中间两边都有邻居', () => {
-    const mid = openQuickLook(overview, seq[1])
-    expect(quickLookNeighbors(mid, FACTS)).toEqual({ prev: seq[0], next: seq[2] })
+    const mid = openQuickLook(overview, sseq[1])
+    expect(quickLookNeighbors(mid, FACTS)).toEqual({ prev: sseq[0], next: sseq[2] })
   })
 
   it('序列是**过滤之后**的那一条,不是全量', () => {
     // 「房」命中两条:发版房(标题)与孤儿派工(预览「房间已经没了」)——
     // 两条都**不是**全量序列的第一行,所以过滤没生效的话 prev 不会是 null。
     const searched = setQuery(overview, '房', FACTS)
-    const visible = rowIdsOf(searched, FACTS)
+    const visible = sessionRowIdsOf(searched, FACTS)
     expect(visible.length).toBeGreaterThan(1)
-    expect(seq.indexOf(visible[0])).toBeGreaterThan(0)
+    expect(sseq.indexOf(visible[0])).toBeGreaterThan(0)
 
     const st = openQuickLook(searched, visible[0])
     expect(quickLookNeighbors(st, FACTS)).toEqual({ prev: null, next: visible[1] })
     const unfiltered = openQuickLook(overview, visible[0])
-    expect(quickLookNeighbors(unfiltered, FACTS).prev).toBe(seq[seq.indexOf(visible[0]) - 1])
+    expect(quickLookNeighbors(unfiltered, FACTS).prev).toBe(sseq[sseq.indexOf(visible[0]) - 1])
   })
 
   it('不在 quicklook 层时两边都是 null', () => {
@@ -488,7 +606,7 @@ describe('sessionsRemoved —— 会话没了之后的形态夹持', () => {
     const st = { ...overview, focusId: 'os-expose' }
     const facts = without(['os-expose'])
     const next = sessionsRemoved(st, ['os-expose'], facts)
-    expect(next.focusId).toBe(rowIdsOf(next, facts)[0])
+    expect(next.focusId).toBe(sessionRowIdsOf(next, facts)[0])
     expect(next.focusId).not.toBe('os-expose')
   })
 
@@ -519,7 +637,10 @@ describe('sessionsRemoved —— 会话没了之后的形态夹持', () => {
 describe('listModelOf —— 画面与键盘吃的是同一份模型', () => {
   it('rowIds 与 sections 平铺出来的次序逐字相同', () => {
     const model = listModelOf(overview, FACTS)
-    expect(model.rowIds).toEqual(model.sections.flatMap((s) => s.rows.map((r) => r.id)))
+    expect(model.rowIds).toEqual(
+      model.sections.flatMap((s) => [s.head.id, ...s.rows.map((r) => r.id)]),
+    )
     expect(model.rowIds).toEqual(rowIdsOf(overview, FACTS))
+    expect(model.sessionRowIds).toEqual(sessionRowIdsOf(overview, FACTS))
   })
 })

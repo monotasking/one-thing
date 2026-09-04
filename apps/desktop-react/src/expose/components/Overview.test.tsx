@@ -26,8 +26,13 @@ beforeEach(() => {
 
 afterEach(() => vi.restoreAllMocks())
 
+/**
+ * 屏幕上的**会话行**。按 `[data-session-id]` 取而不是 `[role="treeitem"]`:
+ * 09-04 分节可折叠之后节头也是 treeitem(它没有这一格),而这一组问的一直是
+ * 「哪几条会话在屏幕上」。
+ */
 const rowIds = () =>
-  [...document.querySelectorAll('[role="treeitem"]')].map((el) =>
+  [...document.querySelectorAll('[data-session-id]')].map((el) =>
     el.getAttribute('data-session-id'),
   )
 
@@ -158,7 +163,9 @@ describe('总览搜索:过滤器,不是第四种形态', () => {
     render(<ExposeView />)
     type('Exposé')
     expect(rowIds()).toEqual(['os-expose'])
-    expect(document.querySelectorAll('h3').length).toBe(1)
+    // 节头 09-04 从 `<h3>` 变成 `role="treeitem"` 的一格(它现在可折叠);
+    // 「变空的节整个消失」因此按节头的 testid 数。
+    expect(document.querySelectorAll('[data-section-id]').length).toBe(1)
   })
 
   it('命中词在行上高亮', () => {
@@ -201,7 +208,7 @@ describe('范围是筛选器:换一档,树跟着换', () => {
     expect(rowIds()).toEqual(['tr-menubar', 'tr-flask'])
     // 侧栏 / 选择器仍叫 transreader,但**行上**没有项目名了。
     expect(
-      [...document.querySelectorAll('[role="treeitem"]')].map((el) => el.textContent),
+      [...document.querySelectorAll('[data-session-id]')].map((el) => el.textContent),
     ).toEqual(['菜单栏翻译窗周四', 'Flask 端口冲突8月9日'])
   })
 })

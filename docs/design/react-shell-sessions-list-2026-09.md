@@ -65,13 +65,19 @@ Quick Look 原样保留(叠层)。旧的 `ListView`(点组头钻进去的那层)
 `pinned`(有置顶才出现)→ `today` → `yesterday` → `thisWeek`(近 7 天内、且不是今天昨天)
 → `month:<yyyy-mm>`(逐月,最近的月在前)。
 桶表 `SECTION_BUCKETS` 是一张有序表 `{ id, labelKey | label(now), test(updatedAt, now) }`,
-月桶是最后一格的兜底生成器。**分节头不带计数、不画背景、`position: sticky`**,不可折叠。
+月桶是最后一格的兜底生成器。**分节头不带计数、不画背景、`position: sticky`**。
+**可折叠**(09-04 用户报「分组没法收」改判;首版定为不可折叠):分节头是树的**一级节点**
+(`role="treeitem" aria-level=1 aria-expanded`),会话行二级、房间子行三级;折叠状态
+`collapsedSections` 按工作区持久化(`onething.expose` v3);搜索有词时**强制展开**(派生态);
+Quick Look 的 ‹ › 只在会话行之间走(`sessionRowIds`),不落在分节头上。
+行与行之间留 `--expose-row-gap: 2px`(09-04:选中行与悬停行底色接壤成一块)。
 
 ### 1.3 侧栏(Rail)与范围(Scope)
 
 范围是一张表 `SCOPE_SPECS`,行 = `{ kind, labelKey, icon, predicate(session) }`:
 `all`(恒真)、`collab`(`room | dm | swap`)、`loose`(无项目且非协作)、
-`project`(`session.projectId === scope.projectId`)。侧栏 = 固定三项 + 分隔线 + 项目
+`project`(`!isRoomKind(kind) && session.projectId === scope.projectId` —— 房间即便带工作目录
+也只归协作,08-28 互斥裁决;09-04 首版漏了这一半,用户报「项目里没过滤 room 和私聊」)。侧栏 = 固定三项 + 分隔线 + 项目
 (`buildProjects` 的顺序:按组内最新活动倒序)。`collab` / `loose` 两项**只在非空时出现**,
 `all` 恒在。**侧栏项不带数字**。
 
@@ -161,8 +167,8 @@ pin 不推事件,靠对账;后端加固另批留账:`updateOnethingSessionPinFor
 | 新会话 | `ui/Button`;窄档 `ui/IconButton`(`label` 必填) | |
 | 项目选择器(窄档) | `ui/Select` | combobox + listbox 现成 |
 | 列表 | `role="tree" aria-label=t('item.sessions')`,`tabIndex=0`,`aria-activedescendant` | **一个 Tab 位**;焦点在容器上,活动行由 `focusId` 派生 |
-| 分节 | `role="group" aria-labelledby=<节头 id>`;节头 `<h3>` 文本 | |
-| 行 | `role="treeitem" id="expose-row-<id>" aria-level={1|2} aria-selected={current} aria-expanded`(仅房间) | 行是 `<div>`,不是 `<button>`:tree 的项由容器接键,不各占 Tab 位(三律一推论) |
+| 分节 | 节头 `role="treeitem" aria-level=1 aria-expanded`(`<div>`,不是 button:APG tree 的项不嵌按钮);其行在同级 `role="group" aria-labelledby` 里 | 09-04 改判,见 §1.2 |
+| 行 | `role="treeitem" id="expose-row-<id>" aria-level={2|3} aria-selected={current} aria-expanded`(仅房间) | 行是 `<div>`,不是 `<button>`:tree 的项由容器接键,不各占 Tab 位(三律一推论) |
 | 悬停动作 | `ui/IconButton`(眼睛 `card.preview`、图钉 `expose.pin` / `expose.unpin`),`tabIndex=-1` | 不进 Tab 序;键盘等价:Space / ⌘⇧P |
 
 `Kbd` 在本壳不带 aria;`Badge` 不用(无计数)。
@@ -172,10 +178,10 @@ pin 不推事件,靠对账;后端加固另批留账:`updateOnethingSessionPinFor
 | 键 | 焦点在搜索框 | 焦点在树 |
 | --- | --- | --- |
 | ↓ / ↑ | ↓ = `focusGrid()` + `activate('programmatic')`:**只点亮锚点不走步**(现有用例逐字钉着) | 活动行上下移,到头不回绕 |
-| → | 不接(留给光标) | 房间未展开 → 展开;已展开 → 进第一个子行;非房间 → 无动作 |
-| ← | 不接 | 子行 → 回父;展开的房间 → 收起;其余 → 无动作 |
+| → | 不接(留给光标) | 分节头/房间未展开 → 展开;已展开 → 进第一个子行;其余 → 无动作 |
+| ← | 不接 | 子行 → 回父房间;顶层会话行 → 回分节头;展开的分节头/房间 → 收起;其余 → 无动作 |
 | Home / End | 不接 | 首行 / 末行 |
-| ↵ | 进「第一节第一行」 | 进活动行的会话 |
+| ↵ | 进「第一节第一行」 | 会话行 → 进会话;分节头 → 收放 |
 | Space | (输入空格) | Quick Look 活动行(**与 APG tree 的 Space=选择有偏离,理由:选择即 aria-selected 由当前会话决定,不是键盘态**) |
 | ⌘⇧P | 置顶 / 取消置顶活动行(`FOCUS_SCOPES.expose.keys` 加 `pin.toggle`,今天 ⌘⇧P 空着) | 同左 |
 | Esc | 有词清词(返 true);无词让位宿主(返 false) | 同左;quicklook 退一层 |

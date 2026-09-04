@@ -2,7 +2,9 @@
  * 滚动容器。`scroll-padding-top` = 粘性节头的**滚动边界**:键盘走到视口外的行时
  * SessionRow 会 `scrollIntoView({block:'nearest'})`,而「最近」认的是 padding 边 ——
  * 不告诉它「上面那一行被节头占着」,它就会把行停在节头**底下**(环在,行看不见)。
- * 取值 = 节头行高(--list-row-h),与 SectionHead 粘附的高度是同一个事实。
+ * 取值 = 节头行高(--list-row-h)**加一格行距**:09-04 起行与行之间隔着
+ * `--expose-row-gap`(见 .tree),不把那一格算进来,滚过去的行会正好被节头
+ * 压掉那 2px。
  */
 .scroll {
   flex: 1;
@@ -10,7 +12,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable both-edges;
-  scroll-padding-top: var(--list-row-h);
+  scroll-padding-top: calc(var(--list-row-h) + var(--expose-row-gap));
   padding: 0 var(--expose-pad) var(--sp-4);
 }
 
@@ -21,12 +23,30 @@
 .tree {
   display: flex;
   flex-direction: column;
+  /*
+   * 行距 2px(09-04 用户报「相邻的 selected 和 hover 完全接壤」)。
+   * 两条相邻的行一旦各自上了薄膜(一条是当前会话的 accent 晕、一条是鼠标底下的
+   * hover 膜),零间距会把它们焊成**一整块**色带 —— 屏幕上读到的是「这两条是一
+   * 组」,而它们只是碰巧挨着。行高不动(仍是 --list-row-h),让开的是行与行之间。
+   *
+   * 摆在三层上(树 / 节 / 组)是因为它们是三段独立的 flex 流:节与节之间、
+   * 节头与它的组之间、行与行之间 —— 一格 token 三处引用,不是三份配方。
+   */
+  gap: var(--expose-row-gap);
   outline: none;
 }
 
 .section {
   display: flex;
   flex-direction: column;
+  gap: var(--expose-row-gap);
+}
+
+/* 一节里的会话行(role="group")。 */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--expose-row-gap);
 }
 
 /*

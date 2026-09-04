@@ -429,6 +429,11 @@ async function checkWidthBands(page, band) {
  *     不该把整棵树推出一条横向滚动条。
  *
  * 只量顶层行(`data-depth="0"`):子行按设计缩进 26px,拿它去比左缘是在量缩进。
+ * 而且只量**会话行**(`[data-session-id]`):09-04 分节可折叠之后节头也是
+ * `role="treeitem"`,但它的结构是 [caret][节名] —— 没有时间列、没有第二个 span。
+ * 拿 `[role="treeitem"]` 取件的话,①行结构那一条会对着节头报「少了一格」,
+ * ②右缘对齐会去比一个根本没有时间列的元素。所以下面顺带断言「树上确实有节头」:
+ * 哪天选择器被放宽成 treeitem,这一步的样本里就会混进它们而当场红。
  */
 async function checkRowGeometry(page) {
   return page.evaluate(() => {
@@ -437,9 +442,18 @@ async function checkRowGeometry(page) {
     if (!root || !tree) return { error: '会话总览或树容器不在 DOM 里' }
     const rows = [...tree.querySelectorAll('[data-session-id][data-depth="0"]')]
     if (rows.length < 2) return { error: `顶层行只有 ${rows.length} 条 —— 对齐要至少两行才量得出` }
+    const heads = [...tree.querySelectorAll('[data-section-id]')]
 
     const problems = []
     const seen = []
+    // 节头与会话行是树上两种项,行几何量的是后者 —— 这一条把「样本没混进节头」钉住。
+    if (heads.length === 0) {
+      problems.push('树上一个分节头都没有 —— 行几何量的是「行」,它必须能与节头区分开')
+    }
+    if (rows.some((row) => row.hasAttribute('data-section-id'))) {
+      problems.push('行几何的样本里混进了分节头(选择器被放宽成 role="treeitem" 了?)')
+    }
+    seen.push(`${heads.length} 个分节头(不进行几何样本)`)
     const lefts = []
     const rights = []
     for (const row of rows) {

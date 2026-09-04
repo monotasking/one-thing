@@ -1,7 +1,11 @@
 /*
- * 粘顶、无底、无计数、不可折叠(见 SectionHead.tsx 的三条禁令)。
+ * 粘顶、无底、无计数(见 SectionHead.tsx 的三条禁令),09-04 起**可折叠**。
  * 高度 = --list-row-h,与行同一个节拍;`scroll-padding-top` 在滚动容器那一侧
- * 取的也是这个数(否则键盘走到视口外的行会被停在节头**底下**:环在,行看不见)。
+ * 取的是这个数加一格行距(否则键盘走到视口外的行会被停在节头**底下**:
+ * 环在,行看不见)。
+ *
+ * caret 占的是 `--expose-glyph-w`,与行首那一列**同宽同位**:于是节名与行标题
+ * 从同一条竖线起笔(裁决 6 的左端,在节头这一层也成立)。
  */
 .head {
   position: sticky;
@@ -9,15 +13,52 @@
   z-index: var(--z-sticky);
   display: flex;
   align-items: center;
+  gap: var(--sp-2);
   height: var(--list-row-h);
   margin: 0;
-  padding: 0 var(--sp-2);
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-1);
   background: transparent;
   font-size: var(--fs-meta);
   font-weight: 650;
   color: var(--text-3);
   /* 节头是**结构线**不是主角:降一档字号与灰度,行的标题才是这屏的主角。 */
   letter-spacing: 0.02em;
+  /* 行与节头都不是文本,点它是「收 / 展这一节」——不出文本光标。 */
+  cursor: default;
+  transition: color var(--dur) var(--ease);
+}
+
+/*
+ * 悬停:**只提墨,不铺底**(「不画背景」那条禁令在交互态上的样子)。
+ * 一条会翻色的横带正是 08-30 拍掉的那种「颜色不同的带」;而完全没有反馈的
+ * 可点区又会让人以为点不动 —— 墨色提一档是这两条中间唯一站得住的做法。
+ */
+.head:hover {
+  color: var(--text-2);
+}
+
+/*
+ * 键盘活动项的柔光环,与 SessionRow 的 `[data-active]` 同一条配方(同一种
+ * 「键盘位」的语言不该在两块面里长成两个样)。环画在外(outline),不占布局。
+ */
+.head[data-active='true'] {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: 0;
+  color: var(--text-2);
+}
+
+/* caret 定宽:开合时节名不许左右跳(▾ 与 ▸ 的字宽本来就不同)。 */
+.caret {
+  flex: none;
+  width: var(--expose-glyph-w);
+  height: var(--expose-glyph-w);
+}
+
+/* 挤压纪律:结构行只截断不换行。 */
+.label {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

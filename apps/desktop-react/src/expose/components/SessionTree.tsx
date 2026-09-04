@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, type RefObject } from 'react'
 import { useT } from '../../i18n'
 import { useSessionsList, useSessionsSource } from '../../data/sessions-source'
-import { buildListModel } from '../list-model'
+import { buildListModel, treeNodeDomId } from '../list-model'
 import { projectNameOf } from '../projection'
 import { useExposeStore } from '../store'
 import { togglePinAndAnnounce } from './pin-announce'
@@ -22,8 +22,19 @@ import s from './SessionTree.module.css'
  * `aria-activedescendant` **只在 focusVisible 为真时**指人:焦点环只在键盘会话亮
  * (08-28 判例),没点亮的时候读屏也不该被拽到某一行上。
  *
- * ── 分节:`role="group" aria-labelledby=<节头 id>` ───────────────────────
- * 节头是 `<h3>`(SectionHead),粘顶、无底、无计数、不可折叠。
+ * ── 分节:节头是树的项,行装在 `role="group"` 里 ─────────────────────────
+ * 09-04 用户报「分组没法收」之后,节头(SectionHead)自己就是一个
+ * `role="treeitem" aria-level="1" aria-expanded`,它的会话行装在**紧跟其后的**
+ * 一只 `role="group" aria-labelledby=<节头 id>` 里 —— 顶层会话 `aria-level="2"`、
+ * 房间的子行 `aria-level="3"`(层级由模型给,行不自己 depth+1)。
+ *
+ * 那只 group 是**兄弟**不是孩子:名字要从节头取,而 accname 的 name-from-content
+ * 会把嵌进去的整片行文本都算进节头的名字(「今天 重构 provider 抽象 发版房 …」)。
+ * 外面那层 `div.section` 不带任何 role —— 它只为**粘顶**存在:`position: sticky`
+ * 认的是父元素的盒子,六个节头共用一个父的话它们会一起堆在顶上互相盖住。
+ *
+ * 收起 = **原地形变**:`div.section` 与它里面的 SectionHead 都由 key 钉住,
+ * 收展只是那只 group 在与不在,节头**不重挂**(四律第 4 条)。
  *
  * ── 模型只算一次 ────────────────────────────────────────────────────────
  * `buildListModel` 是纯函数,五步各有单测;这里按
@@ -41,6 +52,7 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
   const scope = useExposeStore((st) => st.scope)
   const query = useExposeStore((st) => st.query)
   const expandedRooms = useExposeStore((st) => st.expandedRooms)
+  const collapsedSections = useExposeStore((st) => st.collapsedSections)
   const focusId = useExposeStore((st) => st.focusId)
   const focusVisible = useExposeStore((st) => st.focusVisible)
   const currentSessionId = useExposeStore((st) => st.currentSessionId)
@@ -56,12 +68,13 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
   /*
    * `now` 在**记忆体里**取一次,不在渲染体里现取:后者每渲染一帧换一个数,
    * useMemo 当场作废,而且同一屏里两行会因为差了几毫秒落进不同的日子。
-   * 落桶随「会话表 / 范围 / 词 / 展开集」任何一格变化重算 —— 跨过午夜那一刻
+   * 落桶随「会话表 / 范围 / 词 / 展开集 / 收起的节」任何一格变化重算 —— 跨过午夜那一刻
    * 由下一次列表变动带过去(整点重排不是本批的事,没有定时器)。
    */
   const model = useMemo(
-    () => buildListModel({ sessions, scope, query, expandedRooms, now: Date.now() }),
-    [sessions, scope, query, expandedRooms],
+    () =>
+      buildListModel({ sessions, scope, query, expandedRooms, collapsedSections, now: Date.now() }),
+    [sessions, scope, query, expandedRooms, collapsedSections],
   )
 
   /*
@@ -82,6 +95,10 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
   )
   // 置顶两个入口(图钉 / ⌘⇧P)共用同一件,播报也就只有一个产地(见 pin-announce)。
   const onTogglePin = useCallback((sessionId: string) => togglePinAndAnnounce(sessionId), [])
+  const onToggleSection = useCallback(
+    (sectionId: string) => useExposeStore.getState().toggleSection(sectionId),
+    [],
+  )
 
   /*
    * 项目名按 `projectId` 记一份。`projectNameOf` 只是一次 `lastIndexOf` + `slice`,
@@ -117,43 +134,54 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
    */
   useEffect(() => {
     if (!activeId) return
-    document.getElementById(`expose-row-${activeId}`)?.scrollIntoView({ block: 'nearest' })
+    // 活动项可能是一个节头 —— 焦点 id → DOM id 的翻译只有 `treeNodeDomId` 一处。
+    document.getElementById(treeNodeDomId(activeId))?.scrollIntoView({ block: 'nearest' })
   }, [activeId])
 
   function renderBody() {
     if (model.sections.length > 0) {
       return model.sections.map((section) => (
-        <section
-          key={section.id}
-          className={s.section}
-          role="group"
-          aria-labelledby={`expose-section-${section.id}`}
-        >
-          <SectionHead id={section.id} label={section.label} />
-          {section.rows.map((row) => (
-            <SessionRow
-              key={row.id}
-              id={row.id}
-              title={row.session.title}
-              kind={row.session.kind}
-              isPinned={row.session.isPinned}
-              projectName={showProject ? projectNames(row.session.projectId) : null}
-              time={timeOf(row.session.updatedAt)}
-              query={query}
-              depth={row.depth}
-              expandable={row.expandable}
-              expanded={row.expanded}
-              current={row.id === currentSessionId}
-              active={row.id === activeId}
-              showProject={showProject}
-              t={t}
-              onEnter={onEnter}
-              onPeek={onPeek}
-              onTogglePin={onTogglePin}
-              onToggleRoom={onToggleRoom}
-            />
-          ))}
-        </section>
+        <div key={section.id} className={s.section}>
+          <SectionHead
+            id={section.id}
+            label={section.label}
+            expanded={section.head.expanded}
+            active={section.head.id === activeId}
+            onToggle={onToggleSection}
+          />
+          {section.head.expanded && (
+            <div
+              className={s.group}
+              role="group"
+              aria-labelledby={`expose-section-${section.id}`}
+            >
+              {section.rows.map((row) => (
+                <SessionRow
+                  key={row.id}
+                  id={row.id}
+                  title={row.session.title}
+                  kind={row.session.kind}
+                  isPinned={row.session.isPinned}
+                  projectName={showProject ? projectNames(row.session.projectId) : null}
+                  time={timeOf(row.session.updatedAt)}
+                  query={query}
+                  depth={row.depth}
+                  level={row.level}
+                  expandable={row.expandable}
+                  expanded={row.expanded}
+                  current={row.id === currentSessionId}
+                  active={row.id === activeId}
+                  showProject={showProject}
+                  t={t}
+                  onEnter={onEnter}
+                  onPeek={onPeek}
+                  onTogglePin={onTogglePin}
+                  onToggleRoom={onToggleRoom}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       ))
     }
 
@@ -203,7 +231,7 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
         role="tree"
         tabIndex={0}
         aria-label={t('item.sessions')}
-        aria-activedescendant={activeId ? `expose-row-${activeId}` : undefined}
+        aria-activedescendant={activeId ? treeNodeDomId(activeId) : undefined}
         data-testid="expose-tree"
       >
         {renderBody()}

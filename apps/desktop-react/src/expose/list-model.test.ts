@@ -6,12 +6,17 @@ import {
   bucketize,
   buildListModel,
   findRow,
+  findSectionOf,
   flatten,
+  isSectionRowId,
   rowIndexOf,
+  sectionIdOf,
+  sectionRowId,
   sessionMatchesQuery,
+  treeNodeDomId,
 } from './list-model'
 import { PINNED_SECTION_ID } from './sections'
-import { projectScope } from './scopes'
+import { projectScope, scopeMatches } from './scopes'
 import { toSessionSummary } from './projection'
 import { NOW, ONETHING_DIR, SESSIONS, TRANSREADER_DIR } from '../data/__fixtures__/sessions'
 import type { SessionMeta } from '@shared/ipc/chat'
@@ -61,13 +66,33 @@ describe('applyScope(第 1 步:范围过滤)', () => {
     expect(loose).not.toContain('rm-release')
   })
 
-  it('project:子行跟着父房间走,不看自己那一格工作目录', () => {
+  it('project:**房间不进项目档**,即便它带着这个工作目录(09-04 用户报障)', () => {
     const inProject = ids(applyScope(SESSIONS, projectScope(ONETHING_DIR)))
-    // wk-verify **带着** ONETHING_DIR,但它的父房间 rm-release 也带着 —— 两边同时
-    // 成立时看不出判据是谁,所以这一条钉的是反面:换成 transreader 那一档,
-    // wk-verify 一定不在(它父亲不在)。
-    expect(inProject).toContain('wk-verify')
+    // rm-release 的 workingDirectory 就是 ONETHING_DIR,但它归「协作」——
+    // 08-28 那条裁决的完整形:协作与项目互斥完备。
+    expect(inProject).not.toContain('rm-release')
+    expect(scopeMatches({ kind: 'collab' }, SESSIONS.find((s) => s.id === 'rm-release')!)).toBe(true)
+    // 私聊(dm)与 agent 私聊(swap)同理 —— 判据来自形态表,不是手抄的名单。
+    expect(inProject).not.toContain('dm-ying')
+    expect(inProject).not.toContain('sw-pair')
+    // 普通会话照旧在。
+    expect(inProject).toContain('os-provider')
+  })
+
+  it('project:房间的子行跟着父一起不在 —— 它自己那一格工作目录不算数', () => {
+    // wk-verify **带着** ONETHING_DIR,但归属由父房间说了算(第 1 步的判据),
+    // 而父房间已经被上一条挡在项目档之外。
+    const inProject = ids(applyScope(SESSIONS, projectScope(ONETHING_DIR)))
+    expect(inProject).not.toContain('wk-verify')
+    expect(inProject).not.toContain('ag-xiaoli')
     expect(ids(applyScope(SESSIONS, projectScope(TRANSREADER_DIR)))).not.toContain('wk-verify')
+  })
+
+  it('孤儿子行按**它自己**判,所以带目录的孤儿仍进项目档', () => {
+    // 反面守卫:上面两条不是「凡 work / agent 都不进项目」,而是「跟着父走」。
+    const orphan = { ...SESSIONS.find((s) => s.id === 'wk-orphan')!, projectId: ONETHING_DIR }
+    const list = SESSIONS.map((s) => (s.id === 'wk-orphan' ? orphan : s))
+    expect(ids(applyScope(list, projectScope(ONETHING_DIR)))).toContain('wk-orphan')
   })
 
   it('父被范围滤掉时子行跟着走 —— 不会留下一条无处安放的子行', () => {
@@ -233,17 +258,78 @@ describe('flatten(第 5 步:平铺)', () => {
     expect(findRow(open, 'sw-pair')).toMatchObject({ expandable: false, expanded: false })
   })
 
-  it('rowIds 就是把 sections 里的行按屏幕顺序抄一遍 —— 两份事实同一次产出', () => {
+  it('rowIds 就是把 sections 里的项按屏幕顺序抄一遍 —— 两份事实同一次产出', () => {
     const open = flatten(slices, tree.children, new Set(['rm-release']))
-    expect(open.rowIds).toEqual(open.sections.flatMap((s) => s.rows.map((r) => r.id)))
+    expect(open.rowIds).toEqual(
+      open.sections.flatMap((s) => [s.head.id, ...s.rows.map((r) => r.id)]),
+    )
+    // 会话那一半就是同一次遍历里去掉节头。
+    expect(open.sessionRowIds).toEqual(open.sections.flatMap((s) => s.rows.map((r) => r.id)))
+  })
+
+  it('**节头也是一格**:每节一个,排在这一节的行之前', () => {
+    const open = flatten(slices, tree.children, new Set())
+    for (const section of open.sections) {
+      expect(section.head).toMatchObject({
+        type: 'section',
+        sectionId: section.id,
+        expanded: true,
+        expandable: true,
+      })
+      expect(open.rowIds.indexOf(section.head.id)).toBeLessThan(
+        open.rowIds.indexOf(section.rows[0].id),
+      )
+    }
+    // 节头一格不进「会话」那条序列(Quick Look 翻不到它)。
+    expect(open.sessionRowIds.some(isSectionRowId)).toBe(false)
+  })
+
+  it('收起一节:那一节的行既不在 rows 里也不在两条序列里,**节头照旧在**', () => {
+    const closed = flatten(slices, tree.children, new Set(), new Set(['today']))
+    const today = closed.sections.find((s) => s.id === 'today')!
+    expect(today.head.expanded).toBe(false)
+    expect(today.rows).toEqual([])
+    expect(closed.rowIds).toContain(sectionRowId('today'))
+    expect(closed.rowIds).not.toContain('os-provider')
+    expect(closed.sessionRowIds).not.toContain('os-provider')
+    // 别的节一格没动。
+    expect(closed.sessionRowIds).toContain('os-toolkit')
+  })
+
+  it('层级:节头 1、顶层会话 2、房间的子行 3(模型给的,不是渲染层 depth+1)', () => {
+    const open = flatten(slices, tree.children, new Set(['rm-release']))
+    expect(open.sections[0].head.expandable).toBe(true)
+    expect(findRow(open, 'rm-release')).toMatchObject({ level: 2, depth: 0 })
+    expect(findRow(open, 'wk-verify')).toMatchObject({ level: 3, depth: 1 })
   })
 })
 
 /* ── 端到端 ──────────────────────────────────────────────────────────────── */
 
 describe('buildListModel(端到端)', () => {
-  it('rowIds 的次序 = 置顶 → 今天 → 昨天 → 本周 → 月桶,节内按时间倒序', () => {
+  it('rowIds 的次序 = 节头与行交替,置顶 → 今天 → 昨天 → 本周 → 月桶', () => {
     expect(model().rowIds).toEqual([
+      'section:pinned',
+      'os-toolkit',
+      'section:today',
+      'os-provider',
+      'rm-release',
+      'sw-pair',
+      'wk-orphan',
+      'os-compact',
+      'dm-ying',
+      'section:yesterday',
+      'os-expose',
+      'section:thisWeek',
+      'tr-menubar',
+      'section:month:2026-08',
+      'lo-notes',
+      'tr-flask',
+    ])
+  })
+
+  it('sessionRowIds = 同一条序列去掉节头(节内次序一格不变)', () => {
+    expect(model().sessionRowIds).toEqual([
       'os-toolkit',
       'os-provider',
       'rm-release',
@@ -258,6 +344,23 @@ describe('buildListModel(端到端)', () => {
     ])
   })
 
+  it('收起来的节:行不在序列里,节头在 —— 否则收了就再也展不开', () => {
+    const folded = model({ collapsedSections: ['today'] })
+    expect(folded.rowIds).toContain('section:today')
+    expect(folded.rowIds).not.toContain('os-provider')
+    expect(folded.sessionRowIds).not.toContain('os-provider')
+    expect(folded.sections.find((s) => s.id === 'today')!.rows).toEqual([])
+  })
+
+  it('**搜索强制全开**:收着的节里有命中,那一节照样张开(派生态,不落库)', () => {
+    const folded = model({ collapsedSections: ['thisWeek'], query: '菜单栏' })
+    expect(folded.rowIds).toEqual(['section:thisWeek', 'tr-menubar'])
+    expect(folded.sections[0].head.expanded).toBe(true)
+    // 清掉词,那一节仍然收着 —— 强制展开一格都没落进 collapsedSections。
+    expect(model({ collapsedSections: ['thisWeek'] }).sections.find((s) => s.id === 'thisWeek')!
+      .rows).toEqual([])
+  })
+
   it('两条子行默认不在序列里(房间收着);展开一间房它们才出现', () => {
     expect(model().rowIds).not.toContain('ag-xiaoli')
     expect(model({ expandedRooms: ['rm-release'] }).rowIds).toContain('ag-xiaoli')
@@ -265,13 +368,15 @@ describe('buildListModel(端到端)', () => {
 
   it('搜索命中子行:父自动展开,子行进序列(派生态,没落进 expandedRooms)', () => {
     const found = model({ query: '全链路验收' })
-    expect(found.rowIds).toEqual(['rm-release', 'wk-verify'])
+    expect(found.rowIds).toEqual(['section:today', 'rm-release', 'wk-verify'])
     expect(findRow(found, 'rm-release')?.expanded).toBe(true)
   })
 
   it('换范围:项目那一档只剩这个项目的行', () => {
     expect(model({ scope: projectScope(TRANSREADER_DIR) }).rowIds).toEqual([
+      'section:thisWeek',
       'tr-menubar',
+      'section:month:2026-08',
       'tr-flask',
     ])
   })
@@ -280,13 +385,36 @@ describe('buildListModel(端到端)', () => {
     const empty = model({ sessions: [] })
     expect(empty.sections).toEqual([])
     expect(empty.rowIds).toEqual([])
+    expect(empty.sessionRowIds).toEqual([])
   })
 
   it('rowIndexOf / findRow 认得空 id 与不在屏幕上的 id', () => {
     const m = model()
     expect(rowIndexOf(m, null)).toBe(-1)
     expect(rowIndexOf(m, 'wk-verify')).toBe(-1)
-    expect(rowIndexOf(m, 'os-toolkit')).toBe(0)
+    // 0 是「置顶」那个节头,第一条会话排在它后面。
+    expect(rowIndexOf(m, 'section:pinned')).toBe(0)
+    expect(rowIndexOf(m, 'os-toolkit')).toBe(1)
     expect(findRow(m, 'nope')).toBeUndefined()
+  })
+
+  it('findRow 两种项都认;findSectionOf 从一条行回到它的节', () => {
+    const m = model()
+    expect(findRow(m, 'section:today')).toMatchObject({ type: 'section', sectionId: 'today' })
+    expect(findRow(m, 'os-provider')).toMatchObject({ type: 'session' })
+    expect(findSectionOf(m, 'os-provider')?.id).toBe('today')
+    // 节头自己也算它那一节(← 落在节头上时不用再往上找一层)。
+    expect(findSectionOf(m, 'section:today')?.id).toBe('today')
+    expect(findSectionOf(m, 'nope')).toBeUndefined()
+  })
+
+  it('节头的身份与 DOM id:前缀只解析一处,月桶那种带冒号的 id 也解得开', () => {
+    expect(sectionRowId('month:2026-08')).toBe('section:month:2026-08')
+    expect(sectionIdOf('section:month:2026-08')).toBe('month:2026-08')
+    expect(sectionIdOf('os-provider')).toBeNull()
+    expect(isSectionRowId('section:today')).toBe(true)
+    expect(isSectionRowId('os-provider')).toBe(false)
+    expect(treeNodeDomId('section:month:2026-08')).toBe('expose-section-month:2026-08')
+    expect(treeNodeDomId('os-provider')).toBe('expose-row-os-provider')
   })
 })

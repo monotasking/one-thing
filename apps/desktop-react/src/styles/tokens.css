@@ -357,6 +357,13 @@
   --expose-indent: 26px;
   /* 时间列的定宽:四档相对时间里最长的是「12月31日」,56 装得下且右对齐不跳。 */
   --expose-time-w: 56px;
+  /*
+   * 行与行之间的空隙(09-04 用户真机报「相邻的 selected 和 hover 完全接壤」)。
+   * 行高不动(--list-row-h 40px),让开的是行**之间** —— 两条各自上了薄膜的行
+   * 零间距时会焊成一整块色带,读起来像「这两条是一组」。2px 是能把两块底分开、
+   * 又不至于把列表拉成一串卡片的最小值。
+   */
+  --expose-row-gap: 2px;
   --focus-ring-w: var(--bw-ring);
   --avatar-size: 20px;
   --avatar-overlap: -6px;

@@ -777,6 +777,41 @@ async function main() {
     await settle(page, '会话总览')
     await scanAxe(page, '会话总览', '[data-focus-scope="expose"]')
     await checkExposeTabOrder(page)
+    /*
+     * 09-04:分节可折叠(用户报「分组没法收」)。**收起来的那一态要单独扫一遍**
+     * —— 它换掉的正是 axe 最在意的那几格:节头的 `aria-expanded` 翻面,而它下面
+     * 那只 `role="group"` 整个从 DOM 里走了。少扫这一态,「收起后 tree 里只剩
+     * 光秃秃的 treeitem」这类结构错就没人看得见。
+     */
+    const headId = await page.evaluate(() => {
+      const head = document.querySelector('[data-focus-scope="expose"] [data-section-id]')
+      return head ? head.getAttribute('data-section-id') : null
+    })
+    assert(headId !== null, '会话总览上有分节头(它是树的一项,可折叠)')
+    const before = await page.evaluate((id) => {
+      const head = document.querySelector(`[data-section-id="${id}"]`)
+      return { role: head?.getAttribute('role') ?? null, level: head?.getAttribute('aria-level') ?? null }
+    }, headId)
+    assert(
+      before.role === 'treeitem' && before.level === '1',
+      `分节头是 aria-level=1 的 treeitem(实为 role=${before.role ?? '—'} level=${before.level ?? '—'})`,
+    )
+    await clickSelector(page, `[data-section-id="${headId}"]`)
+    // 收展是一次 React 提交 —— 同一个 evaluate 里点完就读会读到上一帧(实测)。
+    await settle(page, '会话总览(收起一节)')
+    const folded = await page.evaluate((id) => {
+      const head = document.querySelector(`[data-section-id="${id}"]`)
+      return {
+        expanded: head?.getAttribute('aria-expanded') ?? null,
+        // 收起来的那一节不再有自己的 group(不留空壳)。
+        group: Boolean(document.querySelector(`[aria-labelledby="expose-section-${id}"]`)),
+      }
+    }, headId)
+    assert(folded.expanded === 'false', `点一下节头它收起来了(aria-expanded=${folded.expanded ?? '—'})`)
+    assert(folded.group === false, '收起来的节不留一只空的 role="group"')
+    await scanAxe(page, '会话总览(收起一节)', '[data-focus-scope="expose"]')
+    // 展回去,别把这一态留给下一屏。
+    await clickSelector(page, '[data-focus-scope="expose"] [data-section-id]')
     // 收回它(Esc 走退层链,最上面那扇浮窗),免得它挡住下一屏。
     await page.keyboard.press('Escape')
     await waitFor('总览已收回', () =>

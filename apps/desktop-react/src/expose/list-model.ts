@@ -21,12 +21,42 @@ import type { ProjectScope, SessionSummary } from './types'
  * ──────────────────────────────────────────────────────────────────────
  */
 
-export interface ListRow {
+/**
+ * 树上的一格 —— **节头**。09-04 用户报「分组没法收」之前它不是一格:节头是一行
+ * 装饰性的 `<h3>`,不在 `rowIds` 里、按不动、也没有态。要让它能收,它就得成为
+ * 树的**项**(APG:tree 的项是 treeitem,不是按钮),于是这个联合多出这一档。
+ *
+ * `id` 带 `section:` 前缀而不是直接用 `sectionId`:焦点序列是一条**扁平的 id 串**,
+ * 而节头与会话在同一条串里 —— 不加前缀的话,一条名叫 `today` 的会话就能与
+ * 「今天」那一节撞车。前缀的解析只有 `sectionIdOf` 一处。
+ */
+export interface ListSectionRow {
+  type: 'section'
+  /** `section:<sectionId>`。焦点序列里的身份。 */
+  id: string
+  /** 分节自己的 id(`pinned` / `today` / `month:2026-08` …)。 */
+  sectionId: string
+  label: SectionLabel
+  /** 此刻展开着(没被收起,或**正在搜索**——搜索强制全开,见 buildListModel)。 */
+  expanded: boolean
+  /** 节头恒可折叠(一个收不动的分组头正是这一批要修的病)。 */
+  expandable: true
+}
+
+export interface ListSessionRow {
   /** = session.id。行的身份就是会话的身份,不另造一个坐标。 */
   id: string
+  type: 'session'
   session: SessionSummary
   /** 0 = 顶层,1 = 房间的子行。再深一层要放宽这里 + `attachChildren` 递归。 */
   depth: 0 | 1
+  /**
+   * `aria-level`。**由模型给,不由渲染层拿 `depth + 1` 现算**(09-04):
+   * 节头成为树的项之后,层级的第一级归它,会话行整体下沉一级 —— 那一格 +1
+   * 若留在组件里,「树深几层」就有了两个产地(模型一个、行一个),
+   * 而它们只在「节头恰好占一级」这个巧合下相等。
+   */
+  level: number
   parentId: string | null
   /** 有子行可展开(空房间不画箭头 —— 一个点开什么都没有的箭头是谎话)。 */
   expandable: boolean
@@ -34,21 +64,32 @@ export interface ListRow {
   expanded: boolean
 }
 
+/** 树上一格可聚焦的项:节头,或一条会话行。 */
+export type ListRow = ListSectionRow | ListSessionRow
+
 export interface ListSection {
   id: string
   label: SectionLabel
-  rows: ListRow[]
+  /** 这一节的**头**,它自己也是树的一项(可聚焦、可折叠)。 */
+  head: ListSectionRow
+  /** 这一节的会话行。**节被收起时是空表** —— 收起就是这一格空掉。 */
+  rows: ListSessionRow[]
 }
 
 export interface ListModel {
   sections: ListSection[]
   /**
-   * 平铺、按屏幕顺序、**只含可见行**(收起来的子行不在里面)。
+   * 平铺、按屏幕顺序、**含节头**、只含可见行(收起来的子行 / 收起来的节里的行
+   * 不在里面)。
    *
-   * **焦点序列的唯一产地**:`moveFocus` / `treeKey` / `quickLookPrev|Next` /
-   * `quickLookNeighbors` / 删除后的夹持全吃它。
+   * **焦点序列的唯一产地**:`moveFocus` / `treeKey` / 删除后的夹持全吃它。
    */
   rowIds: string[]
+  /**
+   * 同一条序列里**只有会话**的那一半。Quick Look 吃它 —— 「‹ › 翻下一条」翻的是
+   * 会话,一个节头不是可以预览的东西,翻到它上面只会是一屏空白。
+   */
+  sessionRowIds: string[]
 }
 
 export interface ListModelInput {
@@ -56,7 +97,37 @@ export interface ListModelInput {
   scope: ProjectScope
   query: string
   expandedRooms: readonly string[]
+  /** 收起来的分节 id(`pinned` / `today` / `month:2026-08` …)。 */
+  collapsedSections?: readonly string[]
   now: number
+}
+
+/* ── 节头的身份 ──────────────────────────────────────────────────────────── */
+
+const SECTION_ROW_PREFIX = 'section:'
+
+/** 分节 id → 它在焦点序列里的身份。 */
+export function sectionRowId(sectionId: string): string {
+  return `${SECTION_ROW_PREFIX}${sectionId}`
+}
+
+/** 这条焦点 id 指的是一个节头吗。**判据只此一处。** */
+export function isSectionRowId(id: string | null | undefined): boolean {
+  return !!id && id.startsWith(SECTION_ROW_PREFIX)
+}
+
+/** 反解:节头的焦点 id → 分节 id。不是节头就回 null。 */
+export function sectionIdOf(id: string | null | undefined): string | null {
+  return isSectionRowId(id) ? id!.slice(SECTION_ROW_PREFIX.length) : null
+}
+
+/**
+ * 焦点 id → 它在 DOM 上那个元素的 id(`aria-activedescendant` 与
+ * `scrollIntoView` 都按它取件)。两种前缀一处翻译,组件不许自己拼。
+ */
+export function treeNodeDomId(id: string): string {
+  const sectionId = sectionIdOf(id)
+  return sectionId === null ? `expose-row-${id}` : `expose-section-${sectionId}`
 }
 
 /* ── 判据:一条会话命不命中 ───────────────────────────────────────────────── */
@@ -202,6 +273,9 @@ export interface QueryResult {
 
 const NO_FORCED: ReadonlySet<string> = new Set()
 
+/** 「一节都没收起」的恒等引用(不搜、也没收过节的那条常路上零分配)。 */
+const NO_COLLAPSED: ReadonlySet<string> = new Set()
+
 /**
  * 判父与子(§2 步骤 4)。两种命中,与从前 `filterGroups` 的组名 / 卡两种命中
  * 同一条口径:
@@ -257,47 +331,70 @@ export function flatten(
   sections: readonly SectionSlice[],
   children: ReadonlyMap<string, SessionSummary[]>,
   expanded: ReadonlySet<string>,
+  collapsedSections: ReadonlySet<string> = NO_COLLAPSED,
 ): ListModel {
   const out: ListSection[] = []
   const rowIds: string[] = []
+  const sessionRowIds: string[] = []
 
   for (const slice of sections) {
-    const rows: ListRow[] = []
-    for (const session of slice.sessions) {
-      const kids = children.get(session.id) ?? []
-      const open = kids.length > 0 && expanded.has(session.id)
-      rows.push({
-        id: session.id,
-        session,
-        depth: 0,
-        parentId: null,
-        expandable: kids.length > 0,
-        expanded: open,
-      })
-      rowIds.push(session.id)
-      if (!open) continue
-      for (const kid of kids) {
+    const open = !collapsedSections.has(slice.id)
+    const head: ListSectionRow = {
+      type: 'section',
+      id: sectionRowId(slice.id),
+      sectionId: slice.id,
+      label: slice.label,
+      expanded: open,
+      expandable: true,
+    }
+    // 节头恒在序列里 —— 收起来的节仍然要走得到,否则收了就再也展不开(键盘)。
+    rowIds.push(head.id)
+
+    const rows: ListSessionRow[] = []
+    if (open) {
+      for (const session of slice.sessions) {
+        const kids = children.get(session.id) ?? []
+        const openRoom = kids.length > 0 && expanded.has(session.id)
         rows.push({
-          id: kid.id,
-          session: kid,
-          depth: 1,
-          parentId: session.id,
-          expandable: false,
-          expanded: false,
+          id: session.id,
+          type: 'session',
+          session,
+          depth: 0,
+          // 节头占了第一级,顶层会话从第二级起(渲染层不许再拿 depth+1 算一遍)。
+          level: 2,
+          parentId: null,
+          expandable: kids.length > 0,
+          expanded: openRoom,
         })
-        rowIds.push(kid.id)
+        rowIds.push(session.id)
+        sessionRowIds.push(session.id)
+        if (!openRoom) continue
+        for (const kid of kids) {
+          rows.push({
+            id: kid.id,
+            type: 'session',
+            session: kid,
+            depth: 1,
+            level: 3,
+            parentId: session.id,
+            expandable: false,
+            expanded: false,
+          })
+          rowIds.push(kid.id)
+          sessionRowIds.push(kid.id)
+        }
       }
     }
-    out.push({ id: slice.id, label: slice.label, rows })
+    out.push({ id: slice.id, label: slice.label, head, rows })
   }
 
-  return { sections: out, rowIds }
+  return { sections: out, rowIds, sessionRowIds }
 }
 
 /* ── 合成 ────────────────────────────────────────────────────────────────── */
 
 /** 一张空模型的恒等引用 —— 免得每次「一条会话都没有」都换一张新的空表(律④)。 */
-export const EMPTY_LIST_MODEL: ListModel = { sections: [], rowIds: [] }
+export const EMPTY_LIST_MODEL: ListModel = { sections: [], rowIds: [], sessionRowIds: [] }
 
 export function buildListModel(input: ListModelInput): ListModel {
   const scoped = applyScope(input.sessions, input.scope)
@@ -306,18 +403,36 @@ export function buildListModel(input: ListModelInput): ListModel {
   const filtered = applyQuery(buckets, tree.children, input.query)
   const expanded = new Set<string>(input.expandedRooms)
   for (const id of filtered.forcedExpanded) expanded.add(id)
-  return flatten(filtered.sections, filtered.children, expanded)
+  /*
+   * **搜索强制全开**(与「子行命中父强制展开」逐字同一条理由,派生态不落库):
+   * 一个词打下去,命中的行藏在一个收着的节里 = 屏幕上什么都没有,过滤器像是坏了。
+   * 清掉词之后收起的节照旧收着 —— 它记在 `collapsedSections` 里,这里一格没改。
+   */
+  const collapsed = input.query.trim()
+    ? NO_COLLAPSED
+    : new Set<string>(input.collapsedSections ?? [])
+  return flatten(filtered.sections, filtered.children, expanded, collapsed)
 }
 
 /* ── 取数(纯查表) ──────────────────────────────────────────────────────── */
 
+/** 树上那一格 —— **节头与会话行都认**(焦点序列里两种都在)。 */
 export function findRow(model: ListModel, id: string | null): ListRow | undefined {
   if (!id) return undefined
   for (const section of model.sections) {
+    if (section.head.id === id) return section.head
     const row = section.rows.find((r) => r.id === id)
     if (row) return row
   }
   return undefined
+}
+
+/** 这一行长在哪一节里(← 从会话行回到它的节头时要它)。节头自己也算它那一节。 */
+export function findSectionOf(model: ListModel, id: string | null): ListSection | undefined {
+  if (!id) return undefined
+  return model.sections.find(
+    (section) => section.head.id === id || section.rows.some((row) => row.id === id),
+  )
 }
 
 /** 这一行在焦点序列里的下标;不在屏幕上是 -1(与 `indexOf` 同一口径)。 */

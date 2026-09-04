@@ -25,6 +25,9 @@ function renderRow(over: Partial<React.ComponentProps<typeof SessionRow>> = {}) 
     time: '14:32',
     query: '',
     depth: 0,
+    // 09-04:层级由模型给(节头占第 1 级,顶层会话从第 2 级起)——
+    // 行不再拿 depth+1 现算,所以夹具要把它当一格真 prop 递进来。
+    level: 2,
     expandable: false,
     expanded: false,
     current: false,
@@ -83,9 +86,15 @@ describe('行的结构契约', () => {
   })
 
   it('子行缩进走 data-depth,别的一格不变(缩的是内边距,命中区仍铺满整行)', () => {
-    renderRow({ depth: 1 })
+    renderRow({ depth: 1, level: 3 })
     expect(row().getAttribute('data-depth')).toBe('1')
-    expect(row().getAttribute('aria-level')).toBe('2')
+    // 缩进(depth)与层级(level)是**两格**:前者是像素,后者是 aria。
+    expect(row().getAttribute('aria-level')).toBe('3')
+  })
+
+  it('层级照模型给的画,不由 depth 现算 —— 两格解耦(反证:depth 0 + level 3)', () => {
+    renderRow({ depth: 0, level: 3 })
+    expect(row().getAttribute('aria-level')).toBe('3')
   })
 })
 
@@ -93,7 +102,8 @@ describe('行的 aria 四格', () => {
   it('treeitem + level;当前会话报 aria-selected', () => {
     renderRow({ current: true })
     expect(row().getAttribute('role')).toBe('treeitem')
-    expect(row().getAttribute('aria-level')).toBe('1')
+    // 第 1 级归节头(09-04 分组可折叠之后),顶层会话是第 2 级。
+    expect(row().getAttribute('aria-level')).toBe('2')
     expect(row().getAttribute('aria-selected')).toBe('true')
     expect(row().id).toBe('expose-row-os-expose')
   })

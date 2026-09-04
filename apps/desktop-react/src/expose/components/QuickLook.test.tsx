@@ -11,7 +11,7 @@ import {
 import { messagesQuery } from '../../data/sessions-source'
 import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../store'
-import { initialExposeState, rowIdsOf } from '../transitions'
+import { initialExposeState, sessionRowIdsOf } from '../transitions'
 
 /**
  * D1:Quick Look 里画的是**真消息**(sessions.getMessagesPage 的首页),纯文本。
@@ -147,10 +147,11 @@ describe('Quick Look 头部的 meta', () => {
 describe('Quick Look 的 ‹ › 换会话', () => {
   /**
    * 屏幕上的行序(未搜索时)—— 邻居判据读的就是它。
-   * 09-04:产地从旧分组换成 `rowIdsOf`(方向 A 的列表模型),
+   * 09-04:产地从旧分组换成 `sessionRowIdsOf`(方向 A 的列表模型),
    * 与键盘的 ← → 是同一条序列(那正是这一组守的东西)。
    */
-  const seq = rowIdsOf(initialExposeState, FACTS)
+  // 09-04:节头进了 `rowIdsOf`,而 ‹ › 翻的是**会话** —— 换问会话那一条。
+  const seq = sessionRowIdsOf(initialExposeState, FACTS)
 
   const open = (id: string) => {
     useExposeStore.setState({ view: { mode: 'quicklook', sessionId: id }, focusId: id })

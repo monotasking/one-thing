@@ -1,22 +1,55 @@
+import { ChevronDown, ChevronRight } from '../../components/icons'
 import { MONTH_KEYS, type SectionLabel } from '../sections'
 import { useT } from '../../i18n'
 import s from './SectionHead.module.css'
 
 /**
- * 分节头 —— **一行字**,不是一条带(设计 §1.2 / 08-30 当晚二裁)。
+ * 分节头 —— **一行字,而且是树的一项**(设计 §1.2 + 09-04 用户报「分组没法收」)。
  *
- * 三条禁令一起写在这里,因为它们互相支撑:
+ * 三条禁令仍在,它们互相支撑:
  *  · **不带计数**(08-30 计数禁令:tab / 列表 / 组头不挂计数徽);
- *  · **不画背景**(任何状态都不画 —— 粘附态也不画。代价明知并接受:行从头底下
- *    滚过时字会短暂同框,换来的是列表里永远不出现一条颜色不同的横带);
- *  · **不可折叠**(一次分组,顺序即阅读顺序,没有第二层可以钻)。
+ *  · **不画背景**(任何状态都不画 —— 粘附态不画,悬停也不画。代价明知并接受:
+ *    行从头底下滚过时字会短暂同框,换来的是列表里永远不出现一条颜色不同的横带。
+ *    悬停的反馈因此走**墨色**:字与箭头提一档到 `--text-2`,一个像素都不铺底);
+ *  · **粘顶**(`position: sticky`,粘在它自己那一节的范围内)。
+ *
+ * 第四条 09-04 **翻面**:从「不可折叠」变成 **恒可折叠**。用户 09-04 真机报
+ * 「分组没法收」——一张 469 条会话的列表里,「八月」那一节占掉整屏而没有任何
+ * 收起它的办法。
+ *
+ * ── 为什么它是 `<div role="treeitem">` 而不是 `ui/GroupHead`(基础件先行的答卷)──
+ * `ui/GroupHead` 正是这套壳的「列表分组头」库件,它的可折叠形也确实带 caret 与
+ * `aria-expanded`;但那一形的根是 `ui/ButtonBase` —— 一个 `<button>`。而这一行
+ * 长在 `role="tree"` 里:**树的项是 treeitem,不是按钮**(APG:项由容器接键,
+ * 不各占一个 Tab 位;469 条会话 + 6 个节头不该是 475 个 Tab 位)。
+ * 一个 `role="treeitem"` 的 `<button>` 会同时说两句相反的话(可聚焦 vs 由
+ * activedescendant 指着),axe 的 `aria-required-children` 与 Tab 序走查各红一遍。
+ * 它的**静态形**是 `<div>`,但静态形按定义不画 caret(判据就是「给不给 onToggle」)。
+ * 皮肤也没有 `composes`:`GroupHead.module.css` 的 `.head` 带着自己的 padding 与
+ * `--fs-micro`,而这一行的高必须**恰好是 `--list-row-h`**(粘顶的高度与滚动容器
+ * 的 `scroll-padding-top` 是同一个数);两个单类选择器特异性相同,谁赢由样式表
+ * 先后决定 —— 那是一条会随 import 次序漂的规则,不值得为省几行 CSS 去冒。
+ * 所以这里保留自己的皮肤,并把这条出入记在这儿(施工纪律:出入记档回报)。
  *
  * 文案由 `SectionLabel` 这只**数据**说了算 —— 纯函数层(sections.ts)只产标识,
- * 界面字符串在这里拼(与 session-time 的 `formatRelativeTime` 同一条规矩:
- * 纯函数不产界面字符串)。本年的月份**就是** `time.month<N>` 自己,跨年才包一层
- * `expose.sectionMonthYear`。
+ * 界面字符串在这里拼(与 session-time 的 `formatRelativeTime` 同一条规矩)。
+ * 本年的月份**就是** `time.month<N>` 自己,跨年才包一层 `expose.sectionMonthYear`。
  */
-export function SectionHead({ id, label }: { id: string; label: SectionLabel }) {
+export function SectionHead({
+  id,
+  label,
+  expanded,
+  active,
+  onToggle,
+}: {
+  /** 分节 id(`pinned` / `today` / `month:2026-08` …)。DOM id 与 testid 都由它拼。 */
+  id: string
+  label: SectionLabel
+  expanded: boolean
+  /** 键盘活动项(`aria-activedescendant` 指着的那一个,柔光环)。 */
+  active: boolean
+  onToggle: (sectionId: string) => void
+}) {
   const t = useT()
   const text =
     label.kind === 'key'
@@ -25,25 +58,45 @@ export function SectionHead({ id, label }: { id: string; label: SectionLabel }) 
           year: label.year,
           month: t(MONTH_KEYS[label.month - 1] ?? MONTH_KEYS[0]),
         })
-  /*
-   * ── `aria-hidden` 不是「藏起来」,是「别在树里出现两遍」(09-04 gate:a11y 判例)──
-   * 这块字是**分节的名字**:它已经由 `role="group"` 的 `aria-labelledby` 指着,
-   * 读屏进这一节时会念一遍。而它同时是那只 `role="tree"` 的**后代** ——
-   * ARIA 说 tree 里的 group 只许拥有 treeitem,于是一个裸的 `<h3>` 是「不允许的孩子」
-   * (axe `aria-required-children` critical,真跑红过)。
-   * 两件事一个修法:把它从无障碍树里摘掉。名字一点没丢 —— accname 允许引用
-   * 隐藏内容,`aria-labelledby` 照样从这里取字;丢掉的只是「按标题跳转」那一层,
-   * 而列表本来就靠 tree 自己的结构导航,不靠标题。
-   * `<h3>` 这个标签留着:它是**视觉与文档结构**的实话(节头就是一行标题)。
-   */
+  const Caret = expanded ? ChevronDown : ChevronRight
   return (
-    <h3
+    /*
+     * ── 从前这里是一个 `aria-hidden` 的 `<h3>`,那一手 09-04 上午还是对的 ──────
+     * 那时它不是树的项,而一个裸的 `<h3>` 在 `role="tree"` 里是「不允许的孩子」
+     * (axe `aria-required-children` critical,真跑红过),于是把它从无障碍树里
+     * 摘掉、名字仍由 `aria-labelledby` 引用(accname 允许引用隐藏内容)。
+     * 现在它**是**树的项了,`aria-hidden` 必须去掉 —— 藏起来的项走不到、
+     * 也读不出 `aria-expanded`。`<h3>` 这个标签跟着退役:一个 `role="treeitem"`
+     * 的 h3 只是把「标题」这层语义换成了别的,留着标签徒增误解。
+     * 名字仍从这里取(下面那只 `role="group"` 的 `aria-labelledby` 指着这个 id)。
+     */
+    /* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/interactive-supports-focus --
+     * 两条都为 **APG 的 activedescendant 形**让路,与 SessionRow 上那两条逐字同因:
+     * 键盘等价物(→ / ← / ↵)由树容器接(事件委托,见 ExposeView),项本身
+     * 故意不可聚焦 —— 焦点停在 `role="tree"` 那**一个** Tab 位上。 */
+    <div
+      role="treeitem"
       id={`expose-section-${id}`}
       className={s.head}
       data-testid={`expose-section-${id}`}
-      aria-hidden="true"
+      data-section-id={id}
+      data-active={active ? 'true' : undefined}
+      aria-level={1}
+      /*
+       * 这棵树是**单选**的(选中 = 当前会话,行上由 `aria-selected` 报),而一个
+       * 分组永远不会是当前会话 —— 所以这里恒 `false`,不是省略。ARIA 1.1 把
+       * `aria-selected` 列为 treeitem 的必备格(jsx-a11y 的
+       * `role-has-required-aria-props` 照它判),而「省略」在读屏那头读作
+       * 「这一项不可选」;同一棵树里一半项可选一半项不可选,是比「没被选中」
+       * 更难解释的一句话。
+       */
+      aria-selected={false}
+      aria-expanded={expanded}
+      onClick={() => onToggle(id)}
     >
-      {text}
-    </h3>
+      {/* caret 不带名字:开合态由 `aria-expanded` 说,读屏念两遍是噪音。 */}
+      <Caret className={s.caret} strokeWidth={2} aria-hidden="true" />
+      <span className={s.label}>{text}</span>
+    </div>
   )
 }

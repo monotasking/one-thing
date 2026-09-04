@@ -12,7 +12,7 @@ import { useSessionsSource } from '../../data/sessions-source'
 import { FACTS, SESSIONS, seedSessionsSource } from '../../data/__fixtures__/sessions'
 import { useExposeStore } from '../store'
 import { findSession } from '../projection'
-import { initialExposeState, rowIdsOf } from '../transitions'
+import { initialExposeState, sessionRowIdsOf } from '../transitions'
 
 /**
  * 会话总览去接管化(08-29 拍板)之后要钉住的四件事:
@@ -39,8 +39,12 @@ const cmdE = () => act(() => void fireEvent.keyDown(document.body, { key: 'e', m
  * (置顶那条排在最前,所以它未必还是「第二张」)。
  */
 const CURRENT_ID = SESSIONS[0].id
+/*
+ * 09-04:序列的产地再挪一格 —— `rowIdsOf` 现在**含节头**(分节可折叠了),
+ * 而这里要的是「第一条不是当前会话的**会话**」,所以问 `sessionRowIdsOf`。
+ */
 const other = SESSIONS.find(
-  (s) => s.id === rowIdsOf(initialExposeState, FACTS).find((id) => id !== CURRENT_ID),
+  (s) => s.id === sessionRowIdsOf(initialExposeState, FACTS).find((id) => id !== CURRENT_ID),
 )!
 
 describe('会话总览是一块普通的面', () => {
@@ -68,6 +72,34 @@ describe('会话总览是一块普通的面', () => {
     cmdE()
     cmdE()
     expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
+  })
+
+  /*
+   * 09-04:↵ 不再直接 `enterSession` —— 活动项可能是一个节头,那时它是「收 / 展」。
+   * 这一条走的是**整块面**(键盘挂在作用域根上),所以它证的是路由那一段:
+   * ExposeView → store.activateRow → transitions.activateRow 的两档分岔。
+   */
+  it('↵ 落在节头上收 / 展这一节,当前会话一格不动;落在行上才进会话', () => {
+    render(<AppShell />)
+    cmdE()
+    // 这一组没钉「此刻」(夹具的 NOW 是过去的某天),所以节名不定 ——
+    // 拿屏幕上第一个节头,它是谁不重要,重要的是 ↵ 落在**节头**上是哪一档。
+    const firstHead = document.querySelector('[data-section-id]')!
+    const sectionId = firstHead.getAttribute('data-section-id')!
+    act(() => useExposeStore.setState({ focusId: `section:${sectionId}`, focusVisible: true }))
+    fireEvent.keyDown(screen.getByTestId('expose-tree'), { key: 'Enter' })
+    expect(firstHead.getAttribute('aria-expanded')).toBe('false')
+    expect(useExposeStore.getState().currentSessionId).toBe(CURRENT_ID)
+    // 面板一动不动(进会话才会把它收回 Dock)。
+    expect(placementOfSessions()).toEqual({ kind: 'float' })
+
+    // 再一下把它展回去(同一口两态),行才重新在屏上。
+    fireEvent.keyDown(screen.getByTestId('expose-tree'), { key: 'Enter' })
+    expect(firstHead.getAttribute('aria-expanded')).toBe('true')
+
+    act(() => useExposeStore.setState({ focusId: other.id, focusVisible: true }))
+    fireEvent.keyDown(screen.getByTestId('expose-tree'), { key: 'Enter' })
+    expect(useExposeStore.getState().currentSessionId).toBe(other.id)
   })
 
   it('进入会话 = 换当前会话,并顺手把这块面收回 Dock', () => {

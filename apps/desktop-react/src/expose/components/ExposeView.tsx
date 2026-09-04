@@ -209,12 +209,18 @@ export function ExposeView() {
     }
     if (intent === 'quicklook' && st.focusId) {
       e.preventDefault()
+      // 活动项是节头时这一口是恒等变换(判据在 transitions.openQuickLook 一处)。
       st.openQuickLook(st.focusId)
       return
     }
     if (intent === 'enter' && st.focusId) {
       e.preventDefault()
-      st.enterSession(st.focusId)
+      /*
+       * ↵ **不再直接 `enterSession`**(09-04):活动项可能是一个节头,那时这一下
+       * 的意思是「收 / 展这一节」。两档由 `transitions.activateRow` 判(纯函数、
+       * 有单测),这里只把这一下交出去 —— 分岔判据不留在组件里。
+       */
+      st.activateRow()
     }
   }, [])
 

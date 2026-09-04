@@ -49,11 +49,22 @@ export interface TogglePinOutcome {
 interface ExposeFurniture {
   scope: ProjectScope
   expandedRooms: string[]
+  /**
+   * 09-04 第三格:收起来的分节。它算家具的理由与另外两格**不同** ——
+   * 分节 id 不带任何空间里的东西(`today` / `month:2026-08` 到处一样),
+   * 所以它本可以是一张全局表。跟着工作区分格是因为**这块面的记忆是整片的**:
+   * 换个空间看见的是另一摞会话,「我在那边把八月收起来了」不该跟过来。
+   */
+  collapsedSections: string[]
 }
 
 export const EXPOSE_PER_SPACE: PerSpaceSpec<ExposeStore, ExposeFurniture> = {
-  pick: (s) => ({ scope: s.scope, expandedRooms: s.expandedRooms }),
-  factory: () => ({ scope: ALL_SCOPE, expandedRooms: [] }),
+  pick: (s) => ({
+    scope: s.scope,
+    expandedRooms: s.expandedRooms,
+    collapsedSections: s.collapsedSections,
+  }),
+  factory: () => ({ scope: ALL_SCOPE, expandedRooms: [], collapsedSections: [] }),
 }
 
 /**
@@ -84,6 +95,15 @@ interface ExposeStore extends ExposeState, PerSpaceState<ExposeFurniture> {
   toggleRoom: (sessionId: string) => void
   expandRoom: (sessionId: string) => void
   collapseRoom: (sessionId: string) => void
+  /** 分节收 / 展(09-04 用户报「分组没法收」)。 */
+  toggleSection: (sectionId: string) => void
+  expandSection: (sectionId: string) => void
+  collapseSection: (sectionId: string) => void
+  /**
+   * ↵ 落在活动行上。**两档由行的形态决定**(纯函数 `T.activateRow` 判),
+   * 会话那一档还要接着走 `enterSession` 的整套编排 —— 那一半只有壳做得了。
+   */
+  activateRow: () => void
   /**
    * 置顶 / 取消置顶。**它不是形态机的一格** —— `isPinned` 是账本上的事实
    * (`sessions.updatePin`),所以这一口直接走数据源的写路,列表由对账重拉带回来。
@@ -140,7 +160,15 @@ export const useExposeStore = create<ExposeStore>()(
       escape: () => set(T.escape),
       openQuickLook: (sessionId) => {
         set((s) => T.openQuickLook(s, sessionId))
-        void useSessionsSource.getState().ensureMessages(sessionId)
+        /*
+         * 去拉那条会话的首页消息 —— **前提是这一下真的开出了 Quick Look**。
+         * 活动行落在节头上时那口是恒等变换(节头没有正文可预览),这里跟着
+         * 什么都不做:判据只有纯函数一处,壳读的是它的**结果**而不是再判一遍。
+         */
+        const view = get().view
+        if (view.mode === 'quicklook' && view.sessionId === sessionId) {
+          void useSessionsSource.getState().ensureMessages(sessionId)
+        }
       },
       closeQuickLook: () => set(T.closeQuickLook),
       moveFocus: (dir) => set((s) => T.moveFocus(s, dir, facts())),
@@ -160,6 +188,15 @@ export const useExposeStore = create<ExposeStore>()(
       toggleRoom: (sessionId) => set((s) => T.toggleRoom(s, sessionId, facts())),
       expandRoom: (sessionId) => set((s) => T.expandRoom(s, sessionId)),
       collapseRoom: (sessionId) => set((s) => T.collapseRoom(s, sessionId, facts())),
+      toggleSection: (sectionId) => set((s) => T.toggleSection(s, sectionId, facts())),
+      expandSection: (sectionId) => set((s) => T.expandSection(s, sectionId)),
+      collapseSection: (sectionId) => set((s) => T.collapseSection(s, sectionId, facts())),
+      activateRow: () => {
+        // 判在纯函数里(有单测),壳只执行它交出来的那两半。
+        const { state, enterSessionId } = T.activateRow(get(), facts())
+        set(state)
+        if (enterSessionId) get().enterSession(enterSessionId)
+      },
       /*
        * 置顶走**写路**而不是形态机:屏幕上那一格 `isPinned` 的产地是账本,
        * 乐观地先改一份本地副本等于开第二份真相(而后端 pin 不推事件,只能靠
@@ -300,12 +337,14 @@ export const useExposeStore = create<ExposeStore>()(
        * v0(无版本号)= 一张平铺的折叠表;
        * v1 = 折叠态按工作区各持一份(T-W1);
        * v2 = **折叠组退役**(09-04 方向 A:项目组没了,分节不可折叠),换成
-       *      范围(scope)与展开的房间(expandedRooms)两格。
+       *      范围(scope)与展开的房间(expandedRooms)两格;
+       * v3 = 分节**可折叠了**(09-04 用户报「分组没法收」),加第三格
+       *      `collapsedSections`。v2 → v3 只补一格空表 —— 存量档案里没有它,
+       *      而缺席读作「一节都没收起」,正是新用户第一次打开时看见的样子。
        *
-       * 它们为什么算家具:两格的键都是**这个空间里的东西** —— 范围里带的是项目
-       * 目录,展开表里是房间会话 id。别的空间的键在这里连出现的机会都没有。
+       * 它们为什么算家具:见上面 `ExposeFurniture` 逐格的理由。
        */
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
       migrate: (persisted, version) => {
         if (!persisted || typeof persisted !== 'object') return persisted
@@ -339,6 +378,28 @@ export const useExposeStore = create<ExposeStore>()(
             migrated[spaceId] = {
               scope: scope ?? ALL_SCOPE,
               expandedRooms: Array.isArray(expandedRooms) ? expandedRooms : [],
+              collapsedSections: [],
+            }
+          }
+          next = { byWorkspace: migrated }
+        }
+        if (version < 3) {
+          /*
+           * v2 → v3:每个空间补一格 `collapsedSections: []`。
+           * 补而不是靠 `factory()` 兜:`spreadSpace` 摊开的是**这一格存在的**
+           * 那份家具,一格缺席的数组会原样摊成 `undefined`,而
+           * `T.isSectionCollapsed` 会当场对着它 `.includes`。
+           */
+          const byWorkspace = (next.byWorkspace ?? {}) as Record<string, Record<string, unknown>>
+          const migrated: Record<string, ExposeFurniture> = {}
+          for (const [spaceId, furniture] of Object.entries(byWorkspace)) {
+            const stored = (furniture ?? {}) as Partial<ExposeFurniture>
+            migrated[spaceId] = {
+              scope: stored.scope ?? ALL_SCOPE,
+              expandedRooms: Array.isArray(stored.expandedRooms) ? stored.expandedRooms : [],
+              collapsedSections: Array.isArray(stored.collapsedSections)
+                ? stored.collapsedSections
+                : [],
             }
           }
           next = { byWorkspace: migrated }

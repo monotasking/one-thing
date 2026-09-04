@@ -18,7 +18,7 @@ import { buildProjects } from '../projection'
 import { exposeIntentOf } from '../keys'
 import { projectScope, scopeId, scopeSpecOf, visibleScopes } from '../scopes'
 import { useExposeStore } from '../store'
-import { rowIdsOf } from '../transitions'
+import { sessionRowIdsOf } from '../transitions'
 import type { ProjectScope } from '../types'
 import s from './Toolbar.module.css'
 
@@ -106,7 +106,9 @@ export function Toolbar() {
     }
     if (intent !== 'enter') return
     const st = useExposeStore.getState()
-    const first = rowIdsOf(st, { sessions: currentSessions(), now: Date.now() })[0]
+    // **第一条会话**,不是序列首 —— 序列首是节头(09-04 分节可折叠之后),
+    // 而搜索条上的 ↵ 说的一直是「进屏幕上第一条会话」。
+    const first = sessionRowIdsOf(st, { sessions: currentSessions(), now: Date.now() })[0]
     if (!first) return
     e.preventDefault()
     st.enterSession(first)

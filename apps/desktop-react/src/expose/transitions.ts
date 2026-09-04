@@ -1,4 +1,11 @@
-import { buildListModel, rowIndexOf, type ListModel } from './list-model'
+import {
+  buildListModel,
+  findRow,
+  findSectionOf,
+  isSectionRowId,
+  rowIndexOf,
+  type ListModel,
+} from './list-model'
 import { exposeIntentOf, stepRowIndex, type ExposeIntent } from './keys'
 import { ALL_SCOPE, resolveScope } from './scopes'
 import type { ExposeState, FocusDir, HighlightPart, ProjectScope, SessionSummary } from './types'
@@ -38,13 +45,33 @@ export function listModelOf(state: ExposeState, facts: ListFacts): ListModel {
     scope: state.scope,
     query: state.query,
     expandedRooms: state.expandedRooms,
+    collapsedSections: state.collapsedSections,
     now: facts.now,
   })
 }
 
-/** 焦点序列(接替从前的 `visibleCardIds`)。 */
+/** 焦点序列(接替从前的 `visibleCardIds`)。**含节头** —— 节头也是树的一项。 */
 export function rowIdsOf(state: ExposeState, facts: ListFacts): string[] {
   return listModelOf(state, facts).rowIds
+}
+
+/**
+ * 同一条序列里只有会话的那一半。Quick Look(‹ › 与 ←→)吃它:
+ * 「翻下一条」翻的是会话,节头不是可以预览的东西。
+ */
+export function sessionRowIdsOf(state: ExposeState, facts: ListFacts): string[] {
+  return listModelOf(state, facts).sessionRowIds
+}
+
+/**
+ * 「焦点没处落时落哪儿」——**优先第一条会话行**,而不是序列首(那是个节头)。
+ *
+ * 理由是 ↵:开场归位之后用户按 ↓ 再按 ↵,期待的是进一条会话;锚点落在节头上时
+ * 那一下会变成「把今天收起来」。节头照旧在序列里(方向键走得到、← → 收得动),
+ * 只是不当那个**默认**落点。一节都没展开时才退回序列首(那时屏幕上只有节头)。
+ */
+function anchorOf(model: ListModel): string | null {
+  return model.sessionRowIds[0] ?? model.rowIds[0] ?? null
 }
 
 export const initialExposeState: ExposeState = {
@@ -55,6 +82,8 @@ export const initialExposeState: ExposeState = {
   scope: ALL_SCOPE,
   // 房间缺省收起 —— 展开永远是一次用户动作(或搜索命中子行时的派生态)。
   expandedRooms: [],
+  // 分节缺省**全开**,所以这一格记的是「我关掉了哪几节」(见 types.ts 那段)。
+  collapsedSections: [],
   query: '',
   // 空串 = 还没有当前会话。开场归位时它会落到序列首。
   currentSessionId: '',
@@ -75,9 +104,9 @@ function lit(state: ExposeState): ExposeState {
  */
 function clampFocus(next: ExposeState, facts: ListFacts): ExposeState {
   if (!next.focusId) return next
-  const rowIds = rowIdsOf(next, facts)
-  if (rowIds.includes(next.focusId)) return next
-  return { ...next, focusId: rowIds[0] ?? null }
+  const model = listModelOf(next, facts)
+  if (model.rowIds.includes(next.focusId)) return next
+  return { ...next, focusId: anchorOf(model) }
 }
 
 /* ── 开场 ──────────────────────────────────────────────────────────────── */
@@ -99,10 +128,10 @@ export function open(state: ExposeState, facts: ListFacts): ExposeState {
     query: '',
     scope: resolveScope(state.scope, facts.sessions),
   }
-  const rowIds = rowIdsOf(next, facts)
-  const focusId = rowIds.includes(state.currentSessionId)
+  const model = listModelOf(next, facts)
+  const focusId = model.rowIds.includes(state.currentSessionId)
     ? state.currentSessionId
-    : (rowIds[0] ?? null)
+    : anchorOf(model)
   return { ...next, focusId, focusVisible: false }
 }
 
@@ -118,7 +147,13 @@ export function escape(state: ExposeState): ExposeState {
 
 /* ── 层内迁移 ──────────────────────────────────────────────────────────── */
 
+/**
+ * Quick Look 一条会话。**节头上是恒等变换**(Space 落在节头上什么都不做):
+ * 一个分组没有可以预览的正文,开出来只会是一屏空白。判据(`isSectionRowId`)
+ * 只在这一处问 —— 壳那层按「view 有没有真的变」决定要不要去拉消息。
+ */
 export function openQuickLook(state: ExposeState, sessionId: string): ExposeState {
+  if (isSectionRowId(sessionId)) return state
   return { ...state, view: { mode: 'quicklook', sessionId }, focusId: sessionId }
 }
 
@@ -186,6 +221,49 @@ export function toggleRoom(
     : expandRoom(state, sessionId)
 }
 
+/* ── 分节折叠(09-04 用户报「分组没法收」)─────────────────────────────── */
+
+export function isSectionCollapsed(state: ExposeState, sectionId: string): boolean {
+  return state.collapsedSections.includes(sectionId)
+}
+
+export function expandSection(state: ExposeState, sectionId: string): ExposeState {
+  if (!isSectionCollapsed(state, sectionId)) return state
+  return { ...state, collapsedSections: state.collapsedSections.filter((id) => id !== sectionId) }
+}
+
+/**
+ * 收起一节。焦点正落在这一节的某条会话行上时**退到节头**——与 `collapseRoom`
+ * 逐字同一条:收起是一次「往上走一层」,焦点该跟到那一层,不该被弹回列表开头。
+ *
+ * 夹持照旧走 `clampFocus`(节头在序列里,所以这一手之后它一定站得住)。
+ */
+export function collapseSection(
+  state: ExposeState,
+  sectionId: string,
+  facts: ListFacts,
+): ExposeState {
+  if (isSectionCollapsed(state, sectionId)) return state
+  const section = listModelOf(state, facts).sections.find((s) => s.id === sectionId)
+  const onRow = !!state.focusId && !!section?.rows.some((row) => row.id === state.focusId)
+  const next: ExposeState = {
+    ...state,
+    collapsedSections: [...state.collapsedSections, sectionId],
+    ...(onRow && section ? { focusId: section.head.id } : {}),
+  }
+  return clampFocus(next, facts)
+}
+
+export function toggleSection(
+  state: ExposeState,
+  sectionId: string,
+  facts: ListFacts,
+): ExposeState {
+  return isSectionCollapsed(state, sectionId)
+    ? expandSection(state, sectionId)
+    : collapseSection(state, sectionId, facts)
+}
+
 /* ── 焦点 ──────────────────────────────────────────────────────────────── */
 
 /**
@@ -196,10 +274,10 @@ export function toggleRoom(
  * 锚点失效(被过滤掉了)时才落到序列首。
  */
 export function focusGrid(state: ExposeState, facts: ListFacts): ExposeState {
-  const rowIds = rowIdsOf(state, facts)
-  if (rowIds.length === 0) return state
-  if (state.focusId && rowIds.includes(state.focusId)) return lit(state)
-  return { ...state, focusId: rowIds[0], focusVisible: true }
+  const model = listModelOf(state, facts)
+  if (model.rowIds.length === 0) return state
+  if (state.focusId && model.rowIds.includes(state.focusId)) return lit(state)
+  return { ...state, focusId: anchorOf(model), focusVisible: true }
 }
 
 /**
@@ -251,9 +329,28 @@ export function treeKey(
   }
 
   const cur = rowIndexOf(model, state.focusId)
-  if (cur < 0) return { ...state, focusId: rowIds[0], focusVisible: true }
-  const row = model.sections.flatMap((section) => section.rows).find((r) => r.id === state.focusId)
+  if (cur < 0) return { ...state, focusId: anchorOf(model), focusVisible: true }
+  const row = findRow(model, state.focusId)
   if (!row) return lit(state)
+
+  /*
+   * ── 节头这一档(09-04)────────────────────────────────────────────────
+   * 与房间那一档**同一句话**(→ 展开 / 进第一个孩子,← 收起),只是收展的动作
+   * 换成分节那一对。写成两支而不是抽一个「可展开的项」的共同抽象:两支的
+   * 「孩子」不是同一种东西(节的孩子是顶层会话,房间的孩子是子会话),
+   * 硬合会逼出一个既要认节又要认房的参数,那才是真的两个产地。
+   */
+  if (row.type === 'section') {
+    if (intent === 'expand') {
+      if (!row.expanded) return lit(expandSection(state, row.sectionId))
+      // 已展开:进第一行 —— 它就是序列里紧跟着节头的那一个(flatten 的次序)。
+      const first = rowIds[cur + 1]
+      return first ? { ...state, focusId: first, focusVisible: true } : lit(state)
+    }
+    // collapse:展开着就收起来;已经收着了没有更上一层可退(节头就是第一级)。
+    if (row.expanded) return lit(collapseSection(state, row.sectionId, facts))
+    return lit(state)
+  }
 
   if (intent === 'expand') {
     if (!row.expandable) return lit(state)
@@ -266,7 +363,34 @@ export function treeKey(
   // collapse
   if (row.parentId) return { ...state, focusId: row.parentId, focusVisible: true }
   if (row.expandable && row.expanded) return lit(collapseRoom(state, row.id, facts))
+  /*
+   * 顶层会话行上的 ← :**回到它的节头**(APG tree:← 在没有可收的项上 = 回父项)。
+   * 从前这里是「什么都不做」,因为那时节头不是一格 —— 一条顶层行**没有**父。
+   */
+  const section = findSectionOf(model, row.id)
+  if (section) return { ...state, focusId: section.head.id, focusVisible: true }
   return lit(state)
+}
+
+/**
+ * ↵ 落在活动行上是什么意思 —— **两档,由行自己的形态说了算**:
+ *  · 节头 → 收 / 展这一节(它是这一格唯一的「激活」语义);
+ *  · 会话行 → 进这条会话。
+ *
+ * 它交出的是「状态 + 一件还没做的事」而不是直接进会话:`enterSession` 在 store
+ * 那层还要顺手开聊天面、把焦点交给输入框、按落点形态收面板 —— 纯函数不认识那些。
+ * 所以这里只答**这一下是哪一档**,由壳去执行第二半(与 `togglePin` 同一手)。
+ */
+export function activateRow(
+  state: ExposeState,
+  facts: ListFacts,
+): { state: ExposeState; enterSessionId: string | null } {
+  const row = findRow(listModelOf(state, facts), state.focusId)
+  if (!row) return { state, enterSessionId: null }
+  if (row.type === 'section') {
+    return { state: toggleSection(state, row.sectionId, facts), enterSessionId: null }
+  }
+  return { state, enterSessionId: row.id }
 }
 
 /** `KeyboardEvent.key` → 这块面的意图。键名判据的单产地在 `keys.ts`。 */
@@ -277,7 +401,8 @@ export type { ExposeIntent }
 
 function quickLookStep(state: ExposeState, delta: number, facts: ListFacts): ExposeState {
   if (state.view.mode !== 'quicklook') return state
-  const rowIds = rowIdsOf(state, facts)
+  // **只在会话之间翻**(09-04):节头也在焦点序列里,但它不是可以预览的东西。
+  const rowIds = sessionRowIdsOf(state, facts)
   const i = rowIds.indexOf(state.view.sessionId)
   if (i < 0) return state
   const j = clampIndex(i + delta, rowIds.length)
@@ -309,7 +434,7 @@ export function quickLookNeighbors(
   facts: ListFacts,
 ): { prev: string | null; next: string | null } {
   if (state.view.mode !== 'quicklook') return { prev: null, next: null }
-  const rowIds = rowIdsOf(state, facts)
+  const rowIds = sessionRowIdsOf(state, facts)
   const i = rowIds.indexOf(state.view.sessionId)
   if (i < 0) return { prev: null, next: null }
   return {
@@ -379,7 +504,7 @@ export function sessionsRemoved(
   }
 
   if (next.focusId && gone.has(next.focusId)) {
-    next = { ...next, focusId: rowIdsOf(next, facts)[0] ?? null }
+    next = { ...next, focusId: anchorOf(listModelOf(next, facts)) }
   }
 
   return next

@@ -59,11 +59,27 @@ export const SCOPE_SPECS: readonly ScopeSpec[] = [
     predicate: (session) => !session.projectId && !isCollabSession(session),
   },
   {
+    /*
+     * 「这个项目」= 工作目录撞在这一格上的会话,**而且不是房间**
+     * (09-04 用户真机报「项目里面没过滤 room 和私聊」)。
+     *
+     * 判据与 `loose` 那一格是同一句话的两端,08-28 那条裁决的完整形:
+     * **房间即便带着工作目录也归协作**,协作与项目互斥完备。房间的工作目录是
+     * 它派工时给子会话用的那一格,不是「这间房属于某个项目」——按它归档,
+     * 侧栏点进一个项目会看见一串房间,而房间该在的地方是「协作」。
+     * 子行不必在这里另判:`list-model.applyScope` 让它跟着父房间走,
+     * 所以房间被这一格滤掉时,它的 `[任务]` / `[执行]` 一并不在。
+     *
+     * 与侧栏那份项目名册同源:`projection.buildProjects` 早就跳过房间
+     * (它只按非房间会话的最新活动排项目),所以修的是这里对不上那里。
+     */
     kind: 'project',
     labelKey: 'expose.scopeLabel',
     icon: 'Folder',
     predicate: (session, scope) =>
-      scope.kind === 'project' && session.projectId === scope.projectId,
+      scope.kind === 'project' &&
+      session.projectId === scope.projectId &&
+      !isCollabSession(session),
   },
 ]
 

@@ -48,21 +48,23 @@ describe('enterSession × 形态:瞬态收、钉住留', () => {
 
 
 /**
- * ── 持久化 v2(09-04)────────────────────────────────────────────────────
- * 折叠组随项目组一起退役,家具换成范围与展开的房间。这一组钉两件事:
- * ①存量档案(v1)迁上来**不许带着旧键**,②两格家具按工作区各持一份。
+ * ── 持久化 v3(09-04)────────────────────────────────────────────────────
+ * v2:折叠组随项目组一起退役,家具换成范围与展开的房间;
+ * v3:分节**可折叠了**(用户报「分组没法收」),第三格 `collapsedSections`。
+ * 这一组钉三件事:①存量档案(v1 / v2)迁上来不许带旧键、也不许缺新键,
+ * ②三格家具按工作区各持一份。
  *
  * `migrate` 不是导出符号(它长在 persist 配置里),所以这里走**真路**:
- * 把一份 v1 档案写进 localStorage,再让 store 自己 rehydrate 一次。
+ * 把一份旧档案写进 localStorage,再让 store 自己 rehydrate 一次。
  */
-describe('onething.expose 持久化 v2', () => {
+describe('onething.expose 持久化 v3', () => {
   const STORE_KEY = 'onething.expose'
 
   beforeEach(() => {
     localStorage.clear()
   })
 
-  it('v1 → v2:丢掉 collapsedGroups,两格家具回出厂', () => {
+  it('v1 → v3:丢掉 collapsedGroups,三格家具回出厂', () => {
     localStorage.setItem(
       STORE_KEY,
       JSON.stringify({
@@ -74,7 +76,41 @@ describe('onething.expose 持久化 v2', () => {
     const state = useExposeStore.getState()
     expect(state.scope).toEqual(ALL_SCOPE)
     expect(state.expandedRooms).toEqual([])
+    expect(state.collapsedSections).toEqual([])
     expect(JSON.stringify(state.byWorkspace)).not.toContain('collapsedGroups')
+  })
+
+  /*
+   * v2 是**真的存量**(09-04 上午那一版已经发过一次),所以它这一跳单列一条:
+   * 记着的范围与展开的房间要原样活下来,只补一格空的 collapsedSections。
+   * 补而不是靠 factory 兜:`spreadSpace` 摊开的是这一格**存在的**那份家具,
+   * 缺席会原样摊成 undefined,而 `isSectionCollapsed` 会当场对着它 .includes。
+   */
+  it('v2 → v3:范围与展开表原样留着,只补一格空的 collapsedSections', () => {
+    const scope = projectScope('/Users/dev/code/start-electron')
+    localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({
+        version: 2,
+        state: { byWorkspace: { [DEFAULT_SPACE_ID]: { scope, expandedRooms: ['rm-1'] } } },
+      }),
+    )
+    useExposeStore.persist.rehydrate()
+    const state = useExposeStore.getState()
+    expect(state.scope).toEqual(scope)
+    expect(state.expandedRooms).toEqual(['rm-1'])
+    expect(state.collapsedSections).toEqual([])
+    /*
+     * 断在**账**上而不只是活状态上:`spreadSpace` 是 `ledger[id] ?? factory()`,
+     * 缺一格时它照样把那一格交出去 —— 活状态里的 `[]` 是 `initialExposeState`
+     * 留下的,证明不了迁移跑过。真正会出事的是**别的空间**那一格:摊开它时
+     * `collapsedSections` 缺席,于是上一个空间收起来的那几节会跟着过去。
+     */
+    expect(state.byWorkspace[DEFAULT_SPACE_ID]).toEqual({
+      scope,
+      expandedRooms: ['rm-1'],
+      collapsedSections: [],
+    })
   })
 
   it('v0(没有版本号的平铺档)照旧迁得动:先折进默认空间,再丢掉那一格', () => {
@@ -87,24 +123,33 @@ describe('onething.expose 持久化 v2', () => {
     expect(JSON.stringify(useExposeStore.getState().byWorkspace)).not.toContain('collapsedGroups')
   })
 
-  it('v2 档案原样摊开(范围与展开表都还在)', () => {
+  it('v3 档案原样摊开(三格家具都还在)', () => {
     const scope = projectScope('/Users/dev/code/start-electron')
     localStorage.setItem(
       STORE_KEY,
       JSON.stringify({
-        version: 2,
-        state: { byWorkspace: { [DEFAULT_SPACE_ID]: { scope, expandedRooms: ['rm-1'] } } },
+        version: 3,
+        state: {
+          byWorkspace: {
+            [DEFAULT_SPACE_ID]: { scope, expandedRooms: ['rm-1'], collapsedSections: ['today'] },
+          },
+        },
       }),
     )
     useExposeStore.persist.rehydrate()
     expect(useExposeStore.getState().scope).toEqual(scope)
     expect(useExposeStore.getState().expandedRooms).toEqual(['rm-1'])
+    expect(useExposeStore.getState().collapsedSections).toEqual(['today'])
   })
 
-  it('两格家具按工作区各持一份:换个空间摊开的是那个空间自己那一份', () => {
+  it('三格家具按工作区各持一份:换个空间摊开的是那个空间自己那一份', () => {
     const store = useExposeStore.getState()
-    const mine = { scope: projectScope('/p/a'), expandedRooms: ['rm-a'] }
-    const theirs = { scope: projectScope('/p/b'), expandedRooms: [] }
+    const mine = {
+      scope: projectScope('/p/a'),
+      expandedRooms: ['rm-a'],
+      collapsedSections: ['today'],
+    }
+    const theirs = { scope: projectScope('/p/b'), expandedRooms: [], collapsedSections: [] }
     const table = { a: mine, b: theirs }
     expect(spreadSpace({ ...table }, EXPOSE_PER_SPACE, 'a')).toEqual(mine)
     expect(spreadSpace({ ...table }, EXPOSE_PER_SPACE, 'b')).toEqual(theirs)
@@ -114,7 +159,11 @@ describe('onething.expose 持久化 v2', () => {
     )
     // pick 只挑那两格 —— 别的状态(焦点 / 搜索词 / 当前会话)不算家具。
     expect(EXPOSE_PER_SPACE.pick({ ...store, ...mine })).toEqual(mine)
-    expect(EXPOSE_PER_SPACE.factory()).toEqual({ scope: ALL_SCOPE, expandedRooms: [] })
+    expect(EXPOSE_PER_SPACE.factory()).toEqual({
+      scope: ALL_SCOPE,
+      expandedRooms: [],
+      collapsedSections: [],
+    })
     // 收进账:当前空间(默认那个)多出一格,别人的两格原样在。
     const stashed = stashSpace({ ...store, ...mine }, table, EXPOSE_PER_SPACE)
     expect(Object.keys(stashed).sort()).toEqual(['a', 'b', DEFAULT_SPACE_ID].sort())

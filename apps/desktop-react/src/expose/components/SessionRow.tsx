@@ -86,6 +86,12 @@ interface Props {
   /** 当前搜索词。空串 = 没在搜,`Highlight` 原样返回一片文本(零 `<mark>`)。 */
   query: string
   depth: 0 | 1
+  /**
+   * `aria-level` —— **由模型给**(`list-model.ListSessionRow.level`),不是这里
+   * 拿 `depth + 1` 现算的。09-04 节头成了树的第一级,会话整体下沉一级:
+   * 那一格 +1 若留在这只组件里,「树深几层」就有了两个产地。
+   */
+  level: number
   expandable: boolean
   expanded: boolean
   /** 当前会话(`aria-selected`,accent 晕)。 */
@@ -111,6 +117,7 @@ function SessionRowView({
   time,
   query,
   depth,
+  level,
   expandable,
   expanded,
   current,
@@ -152,7 +159,7 @@ function SessionRowView({
       data-session-id={id}
       data-depth={depth}
       data-active={active ? 'true' : undefined}
-      aria-level={depth + 1}
+      aria-level={level}
       aria-selected={current}
       aria-expanded={expandable ? expanded : undefined}
       onClick={() => onEnter(id)}

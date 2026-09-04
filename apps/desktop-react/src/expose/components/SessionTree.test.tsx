@@ -31,10 +31,17 @@ afterEach(() => {
 })
 
 const tree = () => screen.getByTestId('expose-tree')
+/**
+ * 屏幕上的**会话行**(不含节头)。09-04 分节可折叠之后节头也是 `treeitem`,
+ * 所以「有哪几条会话」这一问改按 `[data-session-id]` 取件。
+ */
 const rows = () =>
-  [...tree().querySelectorAll<HTMLElement>('[role="treeitem"]')].map((el) =>
+  [...tree().querySelectorAll<HTMLElement>('[data-session-id]')].map((el) =>
     el.getAttribute('data-session-id'),
   )
+/** 树上全部可聚焦的项(节头 + 会话行),按屏幕顺序 —— 焦点序列那一半。 */
+const nodes = () => [...tree().querySelectorAll<HTMLElement>('[role="treeitem"]')]
+const head = (id: string) => screen.getByTestId(`expose-section-${id}`)
 const key = (k: string) => fireEvent.keyDown(tree(), { key: k })
 const lightUp = (id: string) => act(() => useExposeStore.setState({ focusId: id, focusVisible: true }))
 
@@ -80,20 +87,26 @@ describe('树的角色与结构', () => {
     expect(focusable).toEqual([])
   })
 
-  it('分节是 role="group",由节头那个 <h3> 命名;节头不带计数', () => {
+  it('分节:节头是 aria-level=1 的 treeitem,行装在它后面那只 role="group" 里', () => {
     render(<ExposeView />)
     const groups = [...tree().querySelectorAll('[role="group"]')]
     expect(groups.length).toBeGreaterThan(1)
     for (const group of groups) {
       const id = group.getAttribute('aria-labelledby')!
-      expect(document.getElementById(id)!.tagName).toBe('H3')
+      const el = document.getElementById(id)!
+      // 名字从节头取,而节头**自己就是树的一项**(09-04 起可折叠)。
+      expect(el.getAttribute('role')).toBe('treeitem')
+      expect(el.getAttribute('aria-level')).toBe('1')
+      expect(el.hasAttribute('aria-expanded')).toBe(true)
+      // group 是**兄弟**不是孩子:嵌进去的话 accname 会把整片行文本算进节头的名字。
+      expect(el.contains(group)).toBe(false)
     }
     /*
      * **不带计数**(08-30 禁令):节头的文字就是那个桶的名字,一个字不多。
      * 逐条对表比「不许出现数字」硬 —— 月桶的名字本来就带数字(「8 月」),
      * 那条粗判据会把一条合法的标题判红。
      */
-    expect([...tree().querySelectorAll('h3')].map((el) => el.textContent)).toEqual([
+    expect([...tree().querySelectorAll('[data-section-id]')].map((el) => el.textContent)).toEqual([
       '置顶',
       '今天',
       '昨天',
@@ -104,24 +117,27 @@ describe('树的角色与结构', () => {
 
   it('置顶那一节排在最前,且置顶的会话**只在这一节出现一次**', () => {
     render(<ExposeView />)
-    const heads = [...tree().querySelectorAll('h3')].map((el) => el.textContent)
+    const heads = [...tree().querySelectorAll('[data-section-id]')].map((el) => el.textContent)
     expect(heads[0]).toBe('置顶')
     expect(rows().filter((id) => id === 'os-toolkit').length).toBe(1)
     expect(rows()[0]).toBe('os-toolkit')
+    // 焦点序列的第一格是那个节头,第二格才是那条会话。
+    expect(nodes()[0]).toBe(head('pinned'))
+    expect(nodes()[1].getAttribute('data-session-id')).toBe('os-toolkit')
   })
 
   it('房间的子行挂在房间下(展开才出),孤儿子会话**回顶层**不静默丢', () => {
     render(<ExposeView />)
     expect(rows()).not.toContain('wk-verify')
-    // 孤儿(父房间 rm-gone 不在集合里)在顶层、level 1。
+    // 孤儿(父房间 rm-gone 不在集合里)在顶层。09-04:节头占第 1 级,顶层会话是第 2 级。
     const orphan = screen.getByTestId('session-row-wk-orphan')
-    expect(orphan.getAttribute('aria-level')).toBe('1')
+    expect(orphan.getAttribute('aria-level')).toBe('2')
     expect(orphan.getAttribute('data-depth')).toBe('0')
 
     act(() => useExposeStore.getState().toggleRoom('rm-release'))
     const after = rows()
     expect(after.indexOf('wk-verify')).toBe(after.indexOf('rm-release') + 1)
-    expect(screen.getByTestId('session-row-wk-verify').getAttribute('aria-level')).toBe('2')
+    expect(screen.getByTestId('session-row-wk-verify').getAttribute('aria-level')).toBe('3')
   })
 })
 
@@ -138,6 +154,69 @@ describe('展开箭头:同一个 DOM 节点上翻,零重挂', () => {
     fireEvent.click(screen.getByTestId('session-row-caret-rm-release'))
     expect(screen.getByTestId('session-row-rm-release')).toBe(before)
     expect(before.getAttribute('aria-expanded')).toBe('false')
+  })
+})
+
+/**
+ * ── 分节折叠(09-04 用户真机报「分组没法收」)────────────────────────────
+ * 与展开箭头那一组同一条纪律:**原地形变**,节头是同一个 DOM 节点。
+ */
+describe('分节收 / 展:同一个节头节点上翻,零重挂', () => {
+  it('点节头 = 收起这一节:行消失、aria-expanded 翻面、**节点身份一格不变**', () => {
+    render(<ExposeView />)
+    const before = head('today')
+    expect(before.getAttribute('aria-expanded')).toBe('true')
+    expect(rows()).toContain('os-provider')
+
+    fireEvent.click(before)
+    expect(head('today')).toBe(before)
+    expect(before.getAttribute('aria-expanded')).toBe('false')
+    expect(rows()).not.toContain('os-provider')
+    // 别的节一格没动。
+    expect(rows()).toContain('os-toolkit')
+    // 收起来的节**没有** group(不留一只空壳),节头照旧在焦点序列里。
+    expect(tree().querySelector('[aria-labelledby="expose-section-today"]')).toBeNull()
+    expect(nodes()).toContain(before)
+
+    fireEvent.click(head('today'))
+    expect(head('today')).toBe(before)
+    expect(before.getAttribute('aria-expanded')).toBe('true')
+    expect(rows()).toContain('os-provider')
+  })
+
+  it('→ / ← 在节头上收展;收起时焦点正在这一节的行上就退到节头', () => {
+    render(<ExposeView />)
+    lightUp('os-provider')
+    // ← 从行回到节头,再一下 ← 把这一节收起来。
+    key('ArrowLeft')
+    expect(useExposeStore.getState().focusId).toBe('section:today')
+    key('ArrowLeft')
+    expect(head('today').getAttribute('aria-expanded')).toBe('false')
+    expect(rows()).not.toContain('os-provider')
+    // 活动项仍是那个节头(aria-activedescendant 指得着,不是指着空气)。
+    expect(tree().getAttribute('aria-activedescendant')).toBe('expose-section-today')
+    expect(document.getElementById('expose-section-today')).toBeTruthy()
+    // → 展回去。
+    key('ArrowRight')
+    expect(head('today').getAttribute('aria-expanded')).toBe('true')
+    expect(rows()).toContain('os-provider')
+  })
+
+  it('收起来的节里有命中时**搜索强制张开**,清了词又收回去', () => {
+    render(<ExposeView />)
+    fireEvent.click(head('thisWeek'))
+    expect(rows()).not.toContain('tr-menubar')
+    act(() => useExposeStore.getState().setQuery('菜单栏'))
+    expect(rows()).toContain('tr-menubar')
+    act(() => useExposeStore.getState().setQuery(''))
+    expect(rows()).not.toContain('tr-menubar')
+  })
+
+  it('节头有活动环(与行同一条 data-active 配方),而且不可聚焦', () => {
+    render(<ExposeView />)
+    act(() => useExposeStore.setState({ focusId: 'section:today', focusVisible: true }))
+    expect(head('today').getAttribute('data-active')).toBe('true')
+    expect(head('today').tabIndex).toBeLessThan(0)
   })
 })
 
@@ -199,24 +278,29 @@ describe('活动行:aria-activedescendant 只在键盘会话里指人', () => {
 })
 
 describe('树的结构键(设计 §3.2 那张表的右半列)', () => {
-  it('↓ / ↑ 走行,到头不回绕', () => {
+  /** 焦点序列 = 树上全部的项(节头 + 会话行),按屏幕顺序。 */
+  const order = () =>
+    nodes().map((el) => el.getAttribute('data-session-id') ?? `section:${el.getAttribute('data-section-id')}`)
+
+  it('↓ / ↑ 走行,到头不回绕;**节头也在序列里**(走得到才收得动)', () => {
     render(<ExposeView />)
-    const order = rows()
-    lightUp(order[0]!)
+    const seq = order()
+    expect(seq[0]).toBe('section:pinned')
+    lightUp(seq[0]!)
     key('ArrowUp')
-    expect(useExposeStore.getState().focusId).toBe(order[0])
+    expect(useExposeStore.getState().focusId).toBe(seq[0])
     key('ArrowDown')
-    expect(useExposeStore.getState().focusId).toBe(order[1])
+    expect(useExposeStore.getState().focusId).toBe(seq[1])
   })
 
-  it('Home / End 落首行 / 末行', () => {
+  it('Home / End 落首项 / 末项', () => {
     render(<ExposeView />)
-    const order = rows()
-    lightUp(order[2]!)
+    const seq = order()
+    lightUp(seq[2]!)
     key('End')
-    expect(useExposeStore.getState().focusId).toBe(order[order.length - 1])
+    expect(useExposeStore.getState().focusId).toBe(seq[seq.length - 1])
     key('Home')
-    expect(useExposeStore.getState().focusId).toBe(order[0])
+    expect(useExposeStore.getState().focusId).toBe(seq[0])
   })
 
   it('→ 未展开的房间 → 展开;再一下 → 进第一个子行', () => {
@@ -239,12 +323,13 @@ describe('树的结构键(设计 §3.2 那张表的右半列)', () => {
     expect(useExposeStore.getState().expandedRooms).not.toContain('rm-release')
   })
 
-  it('非房间行上的 →/← 什么都不做(不是「无声地走一步」)', () => {
+  it('非房间行上的 → 什么都不做;← 回它的节头(树的 ← = 回父项)', () => {
     render(<ExposeView />)
     lightUp('os-provider')
     key('ArrowRight')
-    key('ArrowLeft')
     expect(useExposeStore.getState().focusId).toBe('os-provider')
+    key('ArrowLeft')
+    expect(useExposeStore.getState().focusId).toBe('section:today')
     expect(useExposeStore.getState().expandedRooms).toEqual([])
   })
 
@@ -260,6 +345,24 @@ describe('树的结构键(设计 §3.2 那张表的右半列)', () => {
     lightUp('os-compact')
     key('Enter')
     expect(useExposeStore.getState().currentSessionId).toBe('os-compact')
+  })
+
+  it('↵ 落在**节头**上 = 收 / 展这一节,而不是进某条会话', () => {
+    render(<ExposeView />)
+    lightUp('section:today')
+    key('Enter')
+    expect(head('today').getAttribute('aria-expanded')).toBe('false')
+    expect(useExposeStore.getState().currentSessionId).toBe('')
+    key('Enter')
+    expect(head('today').getAttribute('aria-expanded')).toBe('true')
+    expect(useExposeStore.getState().currentSessionId).toBe('')
+  })
+
+  it('Space 落在节头上什么都不做(一个分组没有可以预览的正文)', () => {
+    render(<ExposeView />)
+    lightUp('section:today')
+    key(' ')
+    expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
   })
 })
 

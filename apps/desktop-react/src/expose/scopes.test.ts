@@ -54,9 +54,30 @@ describe('归属:互斥且完备(每条会话至少落在 all,协作与无项目
     const room = SESSIONS.find((s) => s.id === 'rm-release')!
     expect(scopeMatches({ kind: 'collab' }, room)).toBe(true)
     expect(scopeMatches({ kind: 'loose' }, room)).toBe(false)
-    // 房间带着工作目录,所以它同时也在那个项目里 —— 侧栏是**视角**不是分区,
-    // 一条会话出现在两个视角里是对的(它只在一次分组里出现一次:时间)。
-    expect(scopeMatches(projectScope(ONETHING_DIR), room)).toBe(true)
+  })
+
+  /*
+   * ── 09-04 这条**翻了面**,起因是用户真机报「项目里面没过滤 room 和私聊」──
+   * 原来这里断言的是 `true`,注释写着「侧栏是视角不是分区,一条会话出现在两个
+   * 视角里是对的」。用户看见的却是:点进 lenovo-scripts,列表里混着一串房间和
+   * 私聊 —— 而房间的工作目录是它派工时给子会话用的那一格,不是「这间房属于某个
+   * 项目」。08-28 那条裁决(房间即便带目录也归协作)本来就该管到 project 这一档:
+   * 协作与项目**互斥完备**。侧栏那份项目名册(`projection.buildProjects`)早就
+   * 跳过房间了 —— 修的是判据这一头对不上名册那一头。
+   */
+  it('房间**不在**项目档里,即便它带着那个工作目录(协作与项目互斥)', () => {
+    const room = SESSIONS.find((s) => s.id === 'rm-release')!
+    expect(room.projectId).toBe(ONETHING_DIR)
+    expect(scopeMatches(projectScope(ONETHING_DIR), room)).toBe(false)
+    // 私聊与 agent 私聊同理:判据来自形态表(isRoomKind),不是手抄名单。
+    for (const id of ['dm-ying', 'sw-pair']) {
+      const session = { ...SESSIONS.find((s) => s.id === id)!, projectId: ONETHING_DIR }
+      expect(scopeMatches(projectScope(ONETHING_DIR), session), id).toBe(false)
+      expect(scopeMatches({ kind: 'collab' }, session), id).toBe(true)
+    }
+    // 普通会话照旧进 —— 这一格不是把项目档关掉了。
+    const chat = SESSIONS.find((s) => s.id === 'os-provider')!
+    expect(scopeMatches(projectScope(ONETHING_DIR), chat)).toBe(true)
   })
 
   it('agent 私聊(swap)也是协作 —— 判据来自形态表,不是手抄的名单', () => {
