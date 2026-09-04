@@ -403,6 +403,16 @@ SqliteIndex 的表:`docs(docId, capability, key, time, facets json, fields json,
 | `tool/call` | 不建文档;从参数里抽 path(edit / write / read),给本 run 的助手文档加 `touched-file` 边 |
 | `session/workdir-changed` / `model-changed` / `agent-changed` | 无关,跳过 |
 
+**哪些事件触发重折,由投影器自述**(S3b 第二轮补):增量是**整键重折**,所以「这条事件
+值不值得折」这个问题必须有人答,而答它的只能是「事件 → 文档」那张表本身 ——
+`projector.ts` 的 `INDEX_DOCUMENT_EFFECTS` / `affectsIndexedDocuments(record)` 就是上面
+这张表的另一半。**观察者(装配层)与 `LedgerFeed` 的目录监视只读它**,自己一个事件名都
+不认识;加一种会改文档的事件 = 在那张表里改一行,两个读表的地方一字不动。表是
+`Record<SessionLogEventType, boolean>`,漏一种当场 tsc 红。判据只有一条:**这条事件会不会
+改变 `project()` 的产出** —— 所以 `session/compacted` 答 `true`(reducer 把那条占位消息
+`hidden` 掉,而占位那条已经建过文档),而 `assistant/chunks` 答 `false`(折出来的文档逐字
+相同)。不这么做的代价实测过:一轮回复几十次整键重折,每次读整份 `events.jsonl`。
+
 **改名 / 归档 / 删除不经账本**(拍点甲 b):这三件事是会话的元数据,不是它的历史。`LedgerFeed.fingerprint(sessionId) = lastSeq:metaRev`,metaRev 变了(改名、归档)就整键重折;目录没了指纹回 `undefined` 就是墓碑;活着的时候 `LedgerFeed.subscribe` 挂三样:进程内 append 观察者(§5.3,毫秒级)、总线 `session:renamed` / `session:deleted`(既有事件,`global-events.ts` / `session-events.ts`)、以及 `sessions/` 目录的 `fs.watch`(**递归**——账本住子目录里,macOS kqueue 的非递归 watch 对子目录文件写入一声不吭,S3a 用例当场抓到;去抖 500ms;`recursive` 抛出退回非递归、再抛降级 30s 轮询,每档记 warn;**为了另一个进程写的账本**,§5.6)。归档今天没有总线事件,靠 metaRev 兜住即可(下次查询前的目录监视会碰到 meta.json 的 mtime)。
 
 **空间归属**:`spaceId` 来自会话 meta(`workspaceId`),建文档时取,`session/moved` 今天不存在(会话不跨空间移动),不处理。
@@ -506,6 +516,35 @@ parse 之后、plan 之前多一段纯函数:从查询里抽**时间表达**(「
 ### 6.2 plan:放宽阶梯
 
 `①严格(AND + 短语相邻)→ ②去相邻约束 → ③AND→「至少命中一半的词」→ ④单词`。plan 只产出阶梯,fanout **对每个能力各自**按阶梯逐级试,该能力第一级有结果即停,结果标 `relaxed`;全部档里 messages 放宽到 ③ 不影响 sessions 停在 ①。scan / static / remote 型能力不吃阶梯(它们的匹配语义自带模糊),manifest 声明 `relax: false` 即只跑 ①。壳写「已放宽:按任一词匹配」。**不静默放宽**。
+
+**一个 AST 词摊成多词元 = 严格档的一条相邻短语**(S3b 第二轮修)。`minShouldMatch` 数的是
+**查询 AST 里的词**(`2026-09-05` 是一个词),而分析器把它切成 `2026` `09` `05` 三个词元 ——
+从前的翻译把三个词元摊成三个独立的词、再取 `min(1, 3) = 1`,于是「①严格 = 全 AND」在这一
+形上实际是 **OR**(`2026-09-05` 把 `2026-09-06` 也召回;`身份牌` 把 `身份证` 也召回)。旧的
+子串路不会这样,这是相对旧路的**过召回**,§2 的「找得到」不包括「多找到」。
+
+所以阶梯多一维,由 plan 一处定,`LadderStep.multiTokenTerms`:
+
+| 级 | `multiTokenTerms` | 这样一个词在这一级是什么 |
+| --- | --- | --- |
+| ① | `'phrase'` | 一条**相邻**短语(`"2026 09 05"`)—— 与用户手打 `"…"` 完全同一条翻译、同一个 `LexicalPhrase` |
+| ② | `'phrase'` | 同一条短语,去掉相邻约束 = 这几个词元**同在一个字段里**(不要求顺序) |
+| ③④ | `'split'` | 摊平成独立词元,由 `minShouldMatch` 说了算 —— 「至少一半的词」「任一词」这两句话到这里才数得着词元 |
+
+为什么要这一格而不是拿 `minShouldMatch` 推:单个查询词的查询在四级上 `minShouldMatch` **都是
+1**(`max(1, ceil(1/2))` 也是 1),推不出「这一级还认不认词的完整性」。
+
+翻译一处改完(`buildLexicalQuery`),**两个索引实现一字不动** —— 因为它翻出来的就是既有的
+`LexicalPhrase`,`MemoryIndex` 按分析器词位核相邻、`SqliteIndex` 按 FTS token 流核相邻,两边
+本来就各自答过这份卷子;契约用例加同一组三档读数(严格只中那一天 → ②分着写的也中 →
+③隔壁天才回来),两个实现各跑一遍。短语用的是**整份词元表**(含 camel 保留的那个整词),
+不是挑出来的一部分:挑掉整词能让 `get user profile` 这种分写形也在①中,但 `SqliteIndex` 的
+相邻判据走 token 流先后,只有「查询侧切法与文档侧逐字相同」两边才对得齐,挑一部分就会让两
+个实现在混排词(`检索v2`)上分家。分写形由 ③ 接住。
+
+代价一条(明说):成了短语的那个词不再吃前缀展开(`LexicalPhrase` 没有 `alternatives` 这一
+格),边打边搜的 `getUse…` 在①②落空、由③接住;CJK 不受影响(二元词元长度恒为 2,拿一个
+完整二元做前缀只展开出它自己)。
 
 ### 6.2b expander:查询词 → 候选词(注册表)
 
@@ -638,12 +677,102 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 | **S0 契约 + 法条 + 语料** | `@shared/ipc/search.ts` 扩展 + `capabilities` / `status` 路由;边界检查器新规则 `checkCoreSearchNamesNoCapability`(`packages/core/search/**` 零能力 id 字面量、零 `switch` on kind,目录不存在时跳过并打印);从真库抽脱敏语料 2000 条进 `core/search/__tests__/fixtures/`(**不加账本事件**,拍点甲 b) | typecheck;`boundary:gate` 绿;语料脚本只读 |
 | **S1 内核** | `core/search/`:candidate / capability / registry / analyzer / index(接口 + MemoryIndex)/ pipeline / cursor 全部纯实现 | 单测:切分黄金表、编解码往返 ≡ id、语料 20 条查询期望集(含 `私发`(中文双字)与 `身份牌`(三字)必中、`"天黑请闭眼"` 短语必中、`身份牌 -女巫` 排除生效、全角必中、`/cmd` 不被吃)、放宽阶梯按能力逐级、前缀上限、cursor 稳定、授权范围进 filters 后 total 为真数;基准 2000 条查询 < 5ms;`boundary:gate` 绿(core 零依赖 + 零能力名) |
 | **S2 能力包装(行为零变化)** | 六个内置能力按三种基座包装,`plugin-search-registry` 并成 `remoteCapability`;`SearchService` 门面;**消息那一路暂仍是旧扫描**(scan 基座);**扫描型包装 `timeoutMs=0`**(旧扫描路一道刹车也没有,真店 `searchMessages` 全库扫实测 1.6s,钉一个真预算会让慢盘 / 大店从「出结果」变成「没搜成」—— 不许多一道刹车),S3 换索引后再钉真预算 | 对账门 `search:parity-A`:真库 200 随机查询 × 每类,新旧结果集逐字同(此期不许有差) |
-| **S3 索引 + 投影** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表,WAL)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省;messages / sessions / daily 换成 `indexedCapability`(持有权 §5.6 缓议,不建 ownership.ts) | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐);`gate:search-index`:冷建事件循环 p99 < 20ms、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
+| **S3 索引 + 投影** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表,WAL)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省;messages / sessions / daily 换成 `indexedCapability`(持有权 §5.6 缓议,不建 ownership.ts)。**S3b:空词最近会话与日记快捷行保旧行为**——索引在结构上答不出这两件(零词元查询零命中;不存在的文件没有文档),所以 chats 空词绕开索引直接调旧 `searchChats`、daily 的「今天那一条」由从旧扫描器抽出的 `resolveDailyTodayShortcut` 补,位置与判定逐字沿用旧实现;**server 不可信端口不共用 store 级索引**(索引文档上没有 owner 这一格,共用即串 owner),那一支答「索引不可用」而不是共用一份库 | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐);`gate:search-index`:冷建事件循环 p99 < 20ms、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
 | **S4 壳** | React 壳按 §9(目标渲染注册表 + 预览渲染注册表 + 范围片 / 枢轴 + 查询历史) | `gate:search-messages` 扩 7 断言(total / 放宽 / 分组 / 归档徽 / 跨空间 / tab 随注册表 / 读者模式提示);ui:consume 只减不增;a11y 零违例 |
 | **S5 退役** | 删 `searchMessages` 旧扫描、`iterateSessionMessages` 端口、`switch(category)`、写死配额表、`SearchCategory` 字面量;CLAUDE.md 改写(§12,含第 317 行「跨会话索引归 apps/server,主进程不许加库」那句)与 collab 文档 | 全仓绿;grep 零残留 |
 | **S6 AI 消费者** | `search` 工具(§14):`toolkit/builtin/search.ts` + `SearchAdapter` 注入 + 场景可见 + 提示词片段;messages `visibility` 的 agent 支(拍点辛) | store 级测试:三种 principal 各得各的;`sessions:shadow-battery` 加一幕「助手用 search 找到上周那句并引用」(假 provider 脚本化调用);场景面快照更新;`transport:gate` 不动 |
 | **S7 语义召回** | sqlite-vec 扩展装载 + `Embedder` 注册表 + wasm 嵌入器 + `vectorRetriever` + RRF 融合 + 设置开关(拍点壬)+ 模型下载(§15);`gate:native` 扩到 sqlite 扩展;`gate:packaged` 断言 `status.vector === 'ready'` | 黄金复述集 20 条(改写句 top-5 必中);parity-B 仍绿(词法路一字不动);事件循环门在嵌入期间仍绿;`gate:native` 两运行时装载扩展绿;打包门绿 |
 | S8(缓议) | 文件内容源(`rg --json` 作 scan 能力);`@` 文件抽屉 / `/` 命令抽屉改成同一引擎的两个 surface;collab `history` 工具并入 `search`(kind 过滤) | 另案 |
+
+### S3b 落地记录(2026-09-05:索引服务接进宿主)
+
+S3 拆成三批跑:**S3a** 索引服务本体(`2579d480`)、**S3b** 接进宿主(本批)、**S3c** parity-B
+与事件循环门。S3b 交的是「三个宿主真的在跑索引」这一件:
+
+- **装配**(`backend/wiring/search/index.ts`):`createAppSearchService()` 起
+  `SearchIndexService`,库 `<store>/index/search.v1.sqlite`(经 `getOnethingStorePath()`
+  派生),接上**三条订阅**(`registerSessionLogEventAppendObserver` / 总线
+  `session:renamed` / `session:deleted`),全部收在同一个 disposer 里。
+  **与派工单的一处出入**:dispose 的次序是「先摘订阅、再停 Worker」而不是反过来 ——
+  先停 Worker 会让还挂着的观察者往一只已经没有的 Worker 上发 `enqueue`,那是一条没人接的
+  被拒 Promise。
+- **三路换索引型**:`capabilities/{messages,sessions,daily}.ts` 改成 `indexedCapability`
+  + 一路 `createSqliteLexicalRetriever`;自述里补齐 `schema` / `facets` / `ranking` /
+  `budget.timeoutMs: 300`(S2 那个 `0` 是给全库扫的临时豁免)。旧扫描函数与 `legacy.ts`
+  一字未删(S3c 的 parity-B 拿它当参照)。
+- **Worker 路径解析选了「跟着宿主产物走」**(`import.meta.url` 旁边找
+  `search-worker.cjs`),不是「三个宿主各传一次」:后者是一处按宿主枚举的地方,加第四个
+  宿主要改装配层签名与三处调用点。三份产物实测都解析得到 —— 两份 esbuild 产物走
+  `shellEsbuildOptions` 的 `import.meta.url` → `pathToFileURL(__filename)` 垫片,
+  server 那份是 vite SSR 的 ESM、`import.meta.url` 原生。
+- **server 的第二次 esbuild**:`apps/server/vite.config.ts` 钉着 `inlineDynamicImports`
+  (顶层 await 会让拆出去的 chunk 回环卡死模块求值),rollup 不允许「多入口 + inline」,
+  所以 `server:build` 变成 `scripts/build-server.mjs` 两段:vite SSR 出 `main.js`,
+  再一次 esbuild(与另外两个宿主同一份配方)出 `search-worker.cjs`。
+- **判据分家**:`search:parity-A` 收成 `files` / `actions` / `prompts` 三档 + `all` 档里
+  这三组 —— 换索引那三路与旧扫描**不该**逐字同(旧扫描是子串、索引是词与前缀),拿
+  「逐字同」卡它们等于禁止 S3 发生;它们由 S3c 的 parity-B 按 ⊇ 判。
+
+**读数**(2026-09-05,MacBook,隔离临时 store):
+
+| 项 | 读数 |
+| --- | --- |
+| `gate:search-index`(真 `dist/server` + 假 provider) | 四条全绿;`status.mode = owner` |
+| 用户消息落盘 → 可搜 | **81ms** / 135ms(两趟) |
+| 助手回答 `run/end` → 可搜 | **109ms** / 228ms |
+| 会话标题(chats 档)命中 | **4ms** |
+| 三份 `search-worker.cjs` | 159KB(desktop / cli / server 同一份配方) |
+| `search:parity-A`(135/483 会话 160MiB,200 查询 × 4 档) | 800 次对账逐字节相同,**76.7s** |
+| 单测 | runtime/search + backend/rpc + wiring/search 60 文件 **509** 例绿 |
+
+**留账**(S3c / S4 前要拍的):
+
+1. ~~**空词不再答**~~(**S3b 补已修**):messages 仍是「有词才答」(索引对零词元零命中),
+   但 chats 的空词**绕开索引**、逐字调旧 `searchChats` 答「最近几间会话」,命令面板的空态
+   与旧壳一致;daily 照旧路 `all` 档的 `includeDaily`,空词整组不出现。这一格是过渡 ——
+   「最近会话」该是它自己的 static 能力,见 §13。
+2. ~~**daily 换索引丢了两件**~~(**S3b 补已修**):「今天那一条」由
+   `resolveDailyTodayShortcut`(从旧扫描器循环体里原样抽出的同一份代码)补回,新旧两条路
+   调的是它;位置照旧扫描器那只 `sort`——「新建」排最后、「打开今天」排最前,并按
+   `filePath` 与索引答的那一份去重。按文件名日期匹配也仍然成立:`title` 是文件名主干,
+   索引与查询走同一只 `compositeAnalyzer`,`2026-09-05` 切成 `2026` `09` `05`,所以
+   `2026-09-05` 与 `09-05` 都命中(用例 `search/index/__tests__/daily-feed.test.ts`)。
+   换来的是**正文可搜**。且 `DailyNotesFeed.keys()` 不递归,只认笔记根目录那一层。
+3. ~~`messages` 的 `ranking.pinFieldHit: 'title'` 今天**永不触发**~~(**S3b 补已删这一格**):
+   拍点乙 a 定的消息字段是正文 / 附件名 / 推理,没有 `title`,自述里留一句永不触发的话就是
+   一句假话。§6.5 的原文暗示消息文档该带会话标题(那样副标题与置顶两件事一起成立),
+   要那样先给投影器加字段,不是先在自述里声明。`chats` / `daily` 的 `pinFieldHit` 照留
+   (它们真有 `title` 字段),用例钉死「声明了就必须在 `schema` 里」。
+4. 副标题(消息的会话名、会话的预览文)不在文档里,从会话列表取,**带 1 秒有效期**的小表
+   (`capabilities/indexed.ts`)。
+5. 索引代次是**上一次查询时**的值(`trackIndexGeneration`)—— 真代次在另一条线程上,只能
+   跟着回答捎回来,所以游标失效差一拍。
+6. `gate:packaged` 新加的三条断言(`status.mode = owner` / `pending` 归零 / 刚发的消息搜
+   得到)与 `asarUnpack: search-worker.cjs` 这一行,**本批没跑过** —— 起 .app 要人手点钥匙串。
+7. 一个 store 两个 core 的索引持有权(§5.6)仍未做,`status.mode` 恒 `'owner'` / `'error'`。
+
+#### S3b 第二轮(同日):两处白做工与过召回
+
+1. **流式期间整会话反复重折**(白做工)。观察者对**每条**追加事件都 `touch(sessionId)`,
+   而增量是整键重折 —— `assistant/chunks` 每 16ms 一批,一轮回复期间同一条会话被重读重折
+   几十遍,折出来的文档逐字相同。治法是 §5.2 那句新加的话:判据 `affectsIndexedDocuments`
+   **住投影器**,装配层的观察者与 `LedgerFeed` 的目录监视只读它(目录监视多一道尾读:从
+   上次判过的 seq 起把新记录解出来问一句;账本没了 / 第一次见这把钥匙 / 账本没长
+   (= meta 动了)/ 尾读窗口够不到,四种「问不出来」一律照喊)。读数是新加的
+   `status().refolds`(真正折过几次,指纹没变的提前返回不算)。**与派工单的一处出入**:
+   `session/compacted` 判 `true` 不判 `false` —— reducer 的这一支把那条占位消息 `hidden`
+   掉,而占位那条已经建过文档,判 `false` 就是「屏幕上没有了、搜索里还搜得到」
+   (`projector.test.ts` 里有折前折后的读数为证)。
+2. **一个查询词摊成多词元时严格档变成 OR**(过召回)。见 §6.2 那张 `multiTokenTerms` 表与
+   §13 的读数。翻译一处改完,`MemoryIndex` / `SqliteIndex` 一字未动,契约用例加同一组三档
+   读数两边各跑一遍。
+
+**第二轮读数**(同机同临时 store):`gate:search-index` 四条全绿,用户那句
+**131 / 134 / 142ms**、助手那段 **107 / 114 / 123ms**(第一轮 81 / 135 与 109 / 228,未劣化);
+`vitest` core/search + runtime/search + wiring/search + backend/rpc **69 文件 669 例**绿;
+黄金查询严格档命中数合计 947 → 109,期望键一条没丢。
+
+---
 
 S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依赖 S3(要索引才有意义,壳无关);S7 依赖 S3;S6 与 S7 可并行。S1 / S2 / S3 / S6 / S7 各是一张 opus 派工单,附本文对应节 + 三张状态表要求。
 
@@ -684,8 +813,28 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 - `@huggingface/transformers` 的 wasm 后端在 Electron Worker 与 Node Worker 里都跑,但**首次装载 ~300ms**,S7 的 Worker 在开关打开后才 import 它(动态 import,不进主 bundle 的关键路径)。
 - 文件内容检索是 S8 的第一件:`scanCapability` 包 `rg --json`,cursor = 文件位置。
 - **parity-B 的差集口径**(S3a 读数定的):旧扫描是子串匹配,索引是词与前缀,所以「查询是某个词元的**中段**」(`888` 打中 `00888`)旧路命中、索引永远不命中——那是 §2 拍定的语义,不是漏。parity-B 判 ⊇ 时允许**放宽到任一级**后再比,残差逐条打印并分类:能证明是「中段子串」的计入允许差,其余任何一条都红。黄金表 20 条里恰好这两条(`elcc_holiday_tranfer` 差整词、`888` 中段)在严格档不中,用例钉死「恰好这两条」。整词那条 S3b 顺手看:前缀展开应也作用于 camel / snake 的整词词元。
+- ~~**「严格档 = 全 AND」在「一个查询词分析成多个词元」那一形上实际是 OR**~~
+  (**S3b 第二轮已修**,§6.2 那张 `multiTokenTerms` 表):①② 把这样一个词当一条短语,
+  ③④ 才摊平。翻译一处改完,两个索引实现一字未动。真语料读数(20 条黄金查询,严格档命中
+  数 旧 → 新):`身份牌` 42→5、`会话列表` 179→2、`屏幕使用时间` 289→7、
+  `RedisMessageListenerConfig` 202→3、`PiiMaskingUtil` 27→8、`elcc_holiday_tranfer` 60→4,
+  合计 947→109,**期望键一条没丢**(`corpus.test.ts` 的「恰好两条不中」逐字照旧)。
+- **`elcc_holiday_tranfer` 那条期望键从此只在 ③ 回来**(S3b 第二轮留):它从前在生产的①里
+  出现过,靠的正是上面那条 OR —— 语料里只有 `elcc_holiday_tranfer_audio`,查询的**整词**
+  不在文档词表里,而当年 `min(1, 5) = 1` 让「命中 `elcc` 一个词元」就算数。收回过召回之后
+  它诚实地落到 ③(`corpus.test.ts` 的放宽用例钉着)。真要让它回到 ①,治法就是本节上面那条
+  「前缀展开应也作用于 camel / snake 的整词词元」—— 那要给 `LexicalPhrase.terms[]` 加
+  `alternatives`,是两个索引实现的契约改动,自成一批。
 - **bun 的运行时没有 `node:sqlite`**(实测 `No such built-in module`):vitest 走 node 所以用例是真的;任何起索引服务的门脚本必须用 node 或 Electron 起,不许 `bun xxx.mjs`。
 - `SqliteIndex` 的 fts rowid = `docId*32 + 字段槽`,全库字段名上限 32(今天 4 个),超了当场抛。`search()` 先算全部命中再切页(`total` 要真数),真库量级要不要两段式留 S3b 真机读数定。
+- **「最近几间会话」该是它自己的能力**(S3b 留):今天它是 `capabilities/sessions.ts` 里
+  一个「空词绕开索引、调旧 `searchChats`」的分支 —— 保旧行为最稳的写法,但它借着 chats 的
+  自述(配额 / 次序 / 图标)说了另一件事。S5 把它抽成一条 static 基座的能力(自己的
+  manifest、自己的次序),那时这个分支与旧 `searchChats` 一起删。
+- **「新建今天的日记」那条快捷行的归属**(S3b 留):它是一条**动作**不是一条笔记,
+  今天由 daily 能力在 `search()` 里补进结果。将来要么归 `actions` 能力(它本来就是
+  「动作」那一类),要么由 daily 自己声明一格 `actions?`(能力自述出「我这一类还能做什么」)。
+  两条路都要先定契约;定了之后 `resolveDailyTodayShortcut` 与旧扫描器一起删。
 - 三条法条的机械化只做了第一条(core 零能力名)。「能力不枚举语言」「语言不枚举后缀」等 symbol 能力真来了再各立一条检查。
 
 ---

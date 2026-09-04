@@ -12,7 +12,7 @@
 
 import { parentPort, workerData } from 'node:worker_threads'
 
-import { DailyNotesFeed } from './daily-feed.js'
+import { DAILY_FEED_ID, DailyNotesFeed } from './daily-feed.js'
 import { defaultDocumentFilters } from './filters.js'
 import { LedgerFeed } from './ledger-feed.js'
 import { IndexProjector } from './projector.js'
@@ -34,7 +34,11 @@ const feeds = [
     sessionsDir: data.sessionsDir,
     projector: new IndexProjector({ includeReasoning: data.includeReasoning ?? false }),
   }),
-  ...(data.notesDir === undefined ? [] : [new DailyNotesFeed({ notesDir: data.notesDir })]),
+  // 一个笔记目录一把 feed。第二把起要另给 id —— 索引服务按 id 找 feed。
+  ...(data.notesDirs ?? []).map((notesDir, at) => new DailyNotesFeed({
+    notesDir,
+    ...(at === 0 ? {} : { id: `${DAILY_FEED_ID}#${at}` }),
+  })),
 ]
 const core = new IndexWorkerCore({
   endpoint: parentPort as unknown as IndexEndpoint,

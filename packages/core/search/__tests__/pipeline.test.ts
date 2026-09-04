@@ -50,14 +50,27 @@ describe('plan:放宽阶梯', () => {
   it('四级,严格在最前', () => {
     const ladder = plan(query)
     expect(ladder.map(step => step.level)).toEqual([0, 1, 2, 3])
-    expect(ladder[0]).toEqual({ level: 0, minShouldMatch: 3, phraseAdjacent: true })
+    expect(ladder[0]).toEqual({
+      level: 0, minShouldMatch: 3, phraseAdjacent: true, multiTokenTerms: 'phrase',
+    })
     expect(ladder[1]!.phraseAdjacent).toBe(false)
     expect(ladder[2]!.minShouldMatch).toBe(2)
     expect(ladder[3]!.minShouldMatch).toBe(1)
   })
 
+  /**
+   * 「一个 AST 词摊成多词元」这一维是**分级**的:①② 词还是词,③④ 才摊开。
+   * `minShouldMatch` 推不出它 —— 单词查询在四级上都是 1(见 `LadderStep` 那段)。
+   */
+  it('①②把一个词当一体,③④才摊成词元', () => {
+    const ladder = plan(query)
+    expect(ladder.map(step => step.multiTokenTerms)).toEqual(['phrase', 'phrase', 'split', 'split'])
+  })
+
   it('relax:false 只跑第一级', () => {
-    expect(plan(query, { relax: false }).map(step => step.level)).toEqual([0])
+    const only = plan(query, { relax: false })
+    expect(only.map(step => step.level)).toEqual([0])
+    expect(only[0]!.multiTokenTerms).toBe('phrase')
   })
 })
 

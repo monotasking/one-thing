@@ -126,6 +126,78 @@ try {
   if (unauth.status !== 401 && unauth.status !== 403) fail(`无 token 应被拒,读到 ${unauth.status}`)
   log('④ 无 token 被拒 ✓')
 
+  /*
+   * ④-b 检索索引(检索重建 S3b)。
+   *
+   * 这两条断言是 `electron-builder.yml` 里 `asarUnpack: search-worker.cjs` 那一行
+   * **唯一**的证明:`worker_threads` 起的是 Node 的模块加载,不走 Electron 给 asar
+   * 打的那层 fs 补丁,从 asar 里起线程不可靠 —— 没解包的话 Worker 起不来,宿主连崩
+   * 两次之后 `status.mode` 就是 `'error'`。所以「打包了还能索引」这件事只有在这只
+   * 真 .app 上才证得出来,本机的 typecheck / vitest / gate:search-index 都照不出。
+   *
+   * 第二条(pending 归零)顺带证「启动校对跑完了」:门用的是一个空的临时 store,
+   * 账本零条,所以校对是一瞬间的事;10s 是给冷开的库建表留的余量。
+   */
+  const searchStatus = async () => {
+    const response = await fetch(`${base}/api/rpc`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ domain: 'search', method: 'status', payload: {} }),
+    })
+    if (!response.ok) fail(`/api/rpc search.status ${response.status}`)
+    const body = await response.json()
+    if (!body || body.ok !== true) fail(`search.status 未 ok:${JSON.stringify(body).slice(0, 200)}`)
+    return body.data
+  }
+  const status = await searchStatus()
+  if (status?.mode !== 'owner') {
+    fail(`search.status.mode 应为 owner,读到 ${JSON.stringify(status)} —— `
+      + 'Worker 起不来,多半是 search-worker.cjs 没被 asarUnpack 出来')
+  }
+  log(`④-b search.status.mode=owner ✓(pending=${status.pending})`)
+  let settled = status
+  for (let i = 0; i < 40 && settled.pending > 0; i++) {
+    await sleep(250)
+    settled = await searchStatus()
+  }
+  if (settled.pending !== 0) fail(`10s 内 search.status.pending 没归零(${settled.pending})`)
+  log('④-b 索引 pending 归零 ✓')
+
+  /*
+   * ④-c 种一条消息,再从索引里搜出来 —— 「Worker 活着」与「Worker 真的在折账本」
+   * 是两件事,前者由 ④-b 证,后者要有一条真消息走完 `user/message` → append 观察者
+   * → enqueue → 折 → FTS 这条链。
+   *
+   * 这个临时 store 没有配 provider,发出去的那一轮**会在模型那一步失败** —— 不要紧:
+   * 用户那条消息在派给 provider **之前**就已经落进 `events.jsonl` 了,而索引折的正是
+   * 账本。所以这里只等消息可搜,不等回答。
+   */
+  const marker = `gatepackaged${Date.now().toString(36)}`
+  const rpcCall = async (domain, method, payload) => {
+    const response = await fetch(`${base}/api/rpc`, {
+      method: 'POST', headers, body: JSON.stringify({ domain, method, payload }),
+    })
+    if (!response.ok) fail(`/api/rpc ${domain}.${method} ${response.status}`)
+    const body = await response.json()
+    if (!body || body.ok !== true) fail(`${domain}.${method} 未 ok:${JSON.stringify(body).slice(0, 200)}`)
+    return body.data
+  }
+  const made = await rpcCall('sessions', 'create', { name: `gate ${marker}` })
+  const sessionId = made?.session?.id
+  if (!sessionId) fail(`sessions.create 没给出会话 id:${JSON.stringify(made).slice(0, 200)}`)
+  await rpcCall('session-command', 'emit', {
+    sessionId,
+    command: { type: 'command:send-message', content: marker, suppressTitleGeneration: true },
+  })
+  let hits = []
+  for (let i = 0; i < 40; i++) {
+    await sleep(250)
+    const found = await rpcCall('search', 'query', { query: marker, category: 'messages', limit: 5 })
+    hits = found?.results ?? []
+    if (hits.length > 0) break
+  }
+  if (hits.length === 0) fail(`10s 内 search.query(messages, "${marker}") 一条都没命中 —— 索引没在折账本`)
+  log(`④-c 刚发的消息搜得到 ✓(${hits.length} 条)`)
+
   // ⑤ CDP 窗口
   let pages = []
   for (let i = 0; i < 40; i++) {

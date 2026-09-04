@@ -30,6 +30,8 @@ export type {
   LegacyCapabilityOptions,
   SearchServiceResult,
 } from './legacy.js'
+export { createSessionShellLookup, snippetOf, trackIndexGeneration } from './indexed.js'
+export type { FieldSnippet, SearchIndexQueryFace } from './indexed.js'
 
 import type { SearchCapability } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
@@ -37,18 +39,28 @@ import { createActionsSearchCapability } from './actions.js'
 import { createChatsSearchCapability } from './sessions.js'
 import { createDailySearchCapability } from './daily.js'
 import { createFilesSearchCapability } from './files.js'
+import type { SearchIndexQueryFace } from './indexed.js'
 import { createMessagesSearchCapability } from './messages.js'
 import { createPromptsSearchCapability } from './prompts.js'
 
+/**
+ * 六个内置能力。三条索引型的多收一件 —— **索引的问答面**;它是参数而不是这个
+ * 文件自己去取的单例,于是 server 每个 owner 装一份服务时仍然共用同一份索引
+ * (索引是 store 级的,不按 owner 分)。
+ *
+ * 六件都收 `adapters`:索引答不出的那两件事(chats 的「最近几间会话」、daily 的
+ * 「今天那一条」)要从取材面拿,S3b 起 daily 也收它。
+ */
 export function createBuiltinSearchCapabilities(
   adapters: OnethingSearchProvidersAdapters,
+  index: SearchIndexQueryFace,
 ): SearchCapability[] {
   return [
-    createChatsSearchCapability(adapters),
+    createChatsSearchCapability(adapters, index),
     createPromptsSearchCapability(adapters),
-    createDailySearchCapability(adapters),
+    createDailySearchCapability(adapters, index),
     createFilesSearchCapability(adapters),
-    createMessagesSearchCapability(adapters),
+    createMessagesSearchCapability(adapters, index),
     createActionsSearchCapability(adapters),
   ]
 }

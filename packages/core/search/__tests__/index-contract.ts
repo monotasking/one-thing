@@ -18,11 +18,15 @@
 
 import { describe, expect, it } from 'vitest'
 
-import type { FieldSchema } from '../capability.js'
+import type { CapabilityManifest, FieldSchema } from '../capability.js'
 import type { DocPayload } from '../feed.js'
 import type { IndexedDoc, LexicalQuery, LexicalResult } from '../index/types.js'
 import { matchesFacetFilter } from '../index/types.js'
 import { compositeAnalyzer } from '../analyzer/composite.js'
+import { createDefaultAnalyzerRegistry } from '../analyzer/registry.js'
+import { buildLexicalQuery } from '../bases/lexical-retriever.js'
+import { parse } from '../pipeline/parse.js'
+import { plan } from '../pipeline/plan.js'
 import { CAP_A, CORPUS_SIZE, corpusDocuments } from './unit-fixtures/corpus.js'
 import { DEFAULT_SCHEMA } from './unit-fixtures/harness.js'
 
@@ -137,6 +141,110 @@ export function describeIndexContract(name: string, createIndex: ContractIndexFa
 
     it('camel 拆出来的段与整词共位,短语判据一起答', () => {
       expect(keys(index.search(query({ phrases: [phraseOf('getUserProfile')] })))).toContain('a-05')
+    })
+  })
+
+  /**
+   * **一个查询词分析成多个词元时,严格档是一条相邻短语**(S3b 第二轮修,设计 §6.2)。
+   *
+   * `2026-09-05` 在查询 AST 里是**一个**词,分析器把它切成 `2026` `09` `05` 三个
+   * 词元。从前的翻译把三个词元摊成三个独立的 `terms[]`,而 `minShouldMatch` 数的是
+   * AST 里的词(1),`min(1, 3) = 1` —— 于是「①严格 = 全 AND」在这一形上实际是
+   * **OR**,查 `2026-09-05` 把 `2026-09-06` 也召回。旧的子串路不会这样,这是相对旧
+   * 路的过召回(§2「找得到」不包括「多找到」)。
+   *
+   * 这一组走的是**真流水线**(`parse` → `plan` → `buildLexicalQuery` → `search`):
+   * 手拼 `LexicalQuery` 会把「一个 AST 词摊成几个词元」这件事本身绕过去,而它正是
+   * 要考的东西。两个实现各答一遍,因为「短语」这一格在它们那里表示法不同
+   * (MemoryIndex 按分析器词位,SqliteIndex 按 FTS token 流),判据必须同一。
+   */
+  describe(`${name} 一个查询词摊成多词元`, () => {
+    const dated = (key: string, content: string): DocPayload => ({
+      capability: CAP_A,
+      key,
+      time: 0,
+      facets: {},
+      fields: { content },
+    })
+    const documents = [
+      dated('d-05', '会议纪要 2026-09-05 已经收尾'),
+      dated('d-06', '会议纪要 2026-09-06 才开工'),
+      dated('d-split', '排期表里写的是 05 09 2026 三个数分着写'),
+    ]
+    const manifest: CapabilityManifest = {
+      id: CAP_A,
+      labelKey: '',
+      icon: '',
+      kind: 'indexed',
+      budget: { default: 50, timeoutMs: 0 },
+      order: 0,
+      schema: { content: { analyzer: 'composite', weight: 1 } },
+    }
+    const analyzers = createDefaultAnalyzerRegistry()
+
+    /** 阶梯第 `level` 级下,这条查询在这个索引上命中哪几把钥匙。 */
+    const hitsAt = (local: ContractIndex, raw: string, level: number): string[] => {
+      const parsed = parse(raw)
+      const step = plan(parsed)[level]!
+      const lexical = buildLexicalQuery({ ...parsed, ladder: step }, {
+        manifest,
+        fields: { content: 1 },
+        analyzer: analyzers.resolve(undefined),
+        vocabulary: local,
+        limit: 50,
+        offset: 0,
+      })
+      return local.search(lexical).hits
+        .map(hit => local.get(hit.docId)!.key)
+        .sort()
+    }
+
+    it('分析器确实把它切成三个词元 —— 这一组的前提', () => {
+      expect(compositeAnalyzer.analyze('2026-09-05').map(token => token.text))
+        .toEqual(['2026', '09', '05'])
+    })
+
+    it('①严格:只中那一天(同月的隔壁天不进组)', () => {
+      withLocal({ documents }, local => {
+        expect(hitsAt(local, '2026-09-05', 0)).toEqual(['d-05'])
+      })
+    })
+
+    it('②去相邻:分着写的那条也中(AND 不要求顺序);缺 `05` 的隔壁天仍不中', () => {
+      withLocal({ documents }, local => {
+        expect(hitsAt(local, '2026-09-05', 1)).toEqual(['d-05', 'd-split'])
+      })
+    })
+
+    it('③摊成词元:隔壁天到这一级才回来(它有 2026 与 09)', () => {
+      withLocal({ documents }, local => {
+        expect(hitsAt(local, '2026-09-05', 2)).toEqual(['d-05', 'd-06', 'd-split'])
+      })
+    })
+
+    it('camel 同理:①要整词命中,`get` 单独出现不算', () => {
+      withLocal({
+        documents: [
+          dated('c-whole', '这里调用 getUserProfile 拿档案'),
+          dated('c-part', '这里只有 get 与 profile 两个词'),
+        ],
+      }, local => {
+        expect(hitsAt(local, 'getUserProfile', 0)).toEqual(['c-whole'])
+        // ③ 摊成词元之后 `get` 那条才回来 —— 放宽是明说的,不是默默发生的。
+        expect(hitsAt(local, 'getUserProfile', 2)).toEqual(['c-part', 'c-whole'])
+      })
+    })
+
+    it('CJK 同理:「身份牌」不再顺带召回「身份证」', () => {
+      withLocal({
+        documents: [
+          dated('k-pai', '身份牌已经私发四人了'),
+          dated('k-zheng', '身份证还没有交上来'),
+        ],
+      }, local => {
+        expect(hitsAt(local, '身份牌', 0)).toEqual(['k-pai'])
+        expect(hitsAt(local, '身份牌', 2)).toEqual(['k-pai', 'k-zheng'])
+      })
     })
   })
 

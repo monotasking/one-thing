@@ -20,7 +20,7 @@ import type {
 import type { CapabilityManifest, RankingDeclaration } from '../capability.js'
 import type { AnalyzerRegistry } from '../analyzer/registry.js'
 import type { Analyzer } from '../analyzer/types.js'
-import type { DocTable, IndexedDoc, LexicalHit, LexicalQuery, LexicalSearcher, Vocabulary } from '../index/types.js'
+import type { DocTable, IndexedDoc, LexicalHit, LexicalPhrase, LexicalQuery, LexicalSearcher, Vocabulary } from '../index/types.js'
 import { collectQueryTerms } from '../pipeline/parse.js'
 import type { ExpanderRegistry } from '../pipeline/expand.js'
 import { expandTerm } from '../pipeline/expand.js'
@@ -117,31 +117,78 @@ interface BuildOptions {
   offset: number
 }
 
+/**
+ * `SearchQuery` → `LexicalQuery`。**「一个 AST 词摊成多个词元」的翻译就在这里**。
+ *
+ * 分析器把一个查询词切成几个词元是常态(`2026-09-05` → `2026` `09` `05`;
+ * `身份牌` → `身份` `份牌`;`getUserProfile` → 整词 + 三段)。从前它们被摊成几个
+ * **独立**的 `terms[]`,而 `minShouldMatch` 数的是 AST 里的词(1),`min(1, 3) = 1`
+ * —— 严格档于是变成 OR:查 `2026-09-05` 把 `2026-09-06` 也召回,查 `身份牌` 把
+ * `身份证` 也召回。旧的子串路不会这样,这是相对旧路的**过召回**(§2「找得到」不
+ * 包括「多找到」)。
+ *
+ * 现在:`ladder.multiTokenTerms === 'phrase'`(①②)时,这样一个词翻成**一条短语**
+ * —— 与用户手打 `"…"` 完全同一条翻译、同一个 `LexicalPhrase` 形状,所以两个索引
+ * 实现(`MemoryIndex` / `SqliteIndex`)一个字都不用改:① `phraseAdjacent: true` 是
+ * 相邻核验,② 降级成「这些词元同在一个字段里」(不要求顺序)。③④(`'split'`)照旧
+ * 摊平,「至少一半的词」「任一词」这两句话到那时才数得着词元。
+ *
+ * 短语用的是**整份词元表**(含 camel 保留的那个整词),不是挑出来的一部分:
+ * `SqliteIndex` 的相邻判据走 FTS 的 token 流先后,只有「查询侧切法与文档侧逐字
+ * 相同」时两边才对得齐(见 `sqlite-index.ts` 文件头)。挑掉整词能让
+ * `get user profile` 这种分写形也在①中,但会让两个实现在混排词上分家 —— 契约用
+ * 例是同一份卷子,不许分家。分写形由 ③ 接住。
+ *
+ * 代价一条(明说):成了短语的那个词不再吃前缀展开(`LexicalPhrase` 没有
+ * `alternatives` 这一格),所以边打边搜的 `getUse…` 在①②落空、由③接住。CJK 不受
+ * 影响 —— 二元词元长度恒为 2,拿一个完整二元做前缀本来就只展开出它自己。
+ */
 export function buildLexicalQuery(query: SearchQuery, options: BuildOptions): LexicalQuery {
   const { terms, phrases, excluded } = collectQueryTerms(query.ast)
   const ladder = query.ladder
   const fieldNames = Object.keys(options.fields)
   const expanders = options.expanders?.list() ?? []
 
-  const analyzedTerms = terms.flatMap(term => options.analyzer.analyze(term.text))
-  const lastIndex = analyzedTerms.length - 1
+  const alternativesOf = (text: string, last: boolean): Array<{ term: string; weight: number }> =>
+    expanders.length === 0
+      ? [{ term: text, weight: 1 }]
+      : expandTerm({ text, last }, expanders, options.vocabulary, { fields: fieldNames })
 
-  const lexicalTerms = analyzedTerms.map((token, index) => ({
-    alternatives: expanders.length === 0
-      ? [{ term: token.text, weight: 1 }]
-      : expandTerm(
-        { text: token.text, last: index === lastIndex },
-        expanders,
-        options.vocabulary,
-        { fields: fieldNames },
-      ),
-  }))
-
-  const lexicalPhrases = phrases.map(phrase => {
-    const tokens = options.analyzer.analyze(phrase.text)
+  // 短语的相对词位:以第一个词元为基点。用户手打的 `"…"` 与这里摊出来的多词元词
+  // 共用它 —— 一处翻译,两个入口。
+  const phraseOf = (tokens: ReturnType<Analyzer['analyze']>): LexicalPhrase => {
     const base = tokens[0]?.position ?? 0
     return { terms: tokens.map(token => ({ term: token.text, offset: token.position - base })) }
-  }).filter(phrase => phrase.terms.length > 0)
+  }
+
+  const analyzedByTerm = terms.map(term => options.analyzer.analyze(term.text))
+  const keepWords = (ladder?.multiTokenTerms ?? 'phrase') === 'phrase'
+
+  const lexicalTerms: LexicalQuery['terms'] = []
+  const termPhrases: LexicalPhrase[] = []
+  if (keepWords) {
+    const lastIndex = analyzedByTerm.length - 1
+    analyzedByTerm.forEach((tokens, index) => {
+      if (tokens.length === 0) return
+      // 摊成一个词元的词照旧是词(前缀展开、按 minShouldMatch 计数都不变);
+      // 摊成两个以上的才成短语。
+      if (tokens.length > 1) {
+        termPhrases.push(phraseOf(tokens))
+        return
+      }
+      lexicalTerms.push({ alternatives: alternativesOf(tokens[0]!.text, index === lastIndex) })
+    })
+  } else {
+    const flat = analyzedByTerm.flat()
+    flat.forEach((token, index) => {
+      lexicalTerms.push({ alternatives: alternativesOf(token.text, index === flat.length - 1) })
+    })
+  }
+
+  const lexicalPhrases = [
+    ...phrases.map(phrase => phraseOf(options.analyzer.analyze(phrase.text))),
+    ...termPhrases,
+  ].filter(phrase => phrase.terms.length > 0)
 
   const minShouldMatch = ladder === undefined
     ? lexicalTerms.length

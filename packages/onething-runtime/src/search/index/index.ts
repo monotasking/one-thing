@@ -21,9 +21,11 @@ export {
   DEFAULT_MESSAGE_CAPABILITY,
   DEFAULT_SESSION_CAPABILITY,
   DEFAULT_TOUCHED_FILE_ARGS,
+  INDEX_DOCUMENT_EFFECTS,
   IndexProjector,
   REL_IN_SESSION,
   REL_TOUCHED_FILE,
+  affectsIndexedDocuments,
 } from './projector.js'
 export type {
   IndexProjectorOptions,
@@ -38,6 +40,7 @@ export {
   LEDGER_FEED_ID,
   LedgerFeed,
   readLastSeq,
+  readRecordsAfter,
   readSessionMeta,
 } from './ledger-feed.js'
 export type { LedgerFeedOptions, SubscribeAdapter } from './ledger-feed.js'

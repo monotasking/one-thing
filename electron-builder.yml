@@ -53,6 +53,11 @@ asarUnpack:
   # node-pty ships a native addon plus a `spawn-helper` binary it execs; neither
   # can be loaded or run from inside the asar archive.
   - "**/node_modules/node-pty/**"
+  # 检索索引 Worker(检索重建 S3b)。`new Worker(path)` 走的是 Node 的模块加载,
+  # 不是 Electron 的 asar 补丁过的那条 fs 路 —— 从 asar 里起一条 Worker 线程不可靠。
+  # 这一句由 `gate:packaged` 证(打包后经 /api/rpc 问 search.status,mode 必须是
+  # 'owner';worker 起不来那里会答 'error'),不靠这行注释成立。
+  - "apps/desktop-react/dist-electron/search-worker.cjs"
 
 # Extra resources to include (copied to resources/ in the app bundle)
 extraResources:

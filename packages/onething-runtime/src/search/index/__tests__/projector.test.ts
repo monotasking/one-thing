@@ -10,7 +10,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { parseSessionLogEventLog } from '@onething/core/session'
 
-import { IndexProjector, REL_IN_SESSION, REL_TOUCHED_FILE } from '../projector.js'
+import { SESSION_LOG_EVENT_TYPES } from '@onething/core/session'
+import {
+  INDEX_DOCUMENT_EFFECTS,
+  IndexProjector,
+  REL_IN_SESSION,
+  REL_TOUCHED_FILE,
+  affectsIndexedDocuments,
+} from '../projector.js'
 import {
   BASE_TIME,
   LedgerWriter,
@@ -256,5 +263,68 @@ describe('IndexProjector 投影表(§5.2)', () => {
     writeTypicalSession(store, { sessionId: 's1' })
     writeMeta(dir, 's1', { name: 'x', isArchived: true })
     for (const doc of project(dir, 's1')) expect(doc.facets.archived).toBe(true)
+  })
+})
+
+/**
+ * **「这条事件值不值得重折」也是这张表亲知的事实**(S3b 第二轮)。
+ *
+ * 起因是白做工:观察者对每条追加事件都喊一声 key,而增量是整键重折 ——
+ * `assistant/chunks` 每 16ms 一批,一轮回复期间同一条会话被重读重折几十遍,
+ * 折出来的文档逐字相同。判据因此住在投影器(它是「事件 → 文档」的产地),
+ * 装配层的观察者与 `LedgerFeed` 的目录监视只读它。
+ *
+ * 判据只有一条:**这条事件会不会改变 `project()` 的产出**。
+ */
+describe('affectsIndexedDocuments:哪些事件值得重折', () => {
+  it('表对每一种账本事件都表了态(漏一种 tsc 就红,这里再兜一次)', () => {
+    const missing = SESSION_LOG_EVENT_TYPES.filter(type => INDEX_DOCUMENT_EFFECTS[type] === undefined)
+    expect(missing).toEqual([])
+  })
+
+  it('流式那几种答 false,建 / 替换 / 墓碑 / 加边那几种答 true', () => {
+    for (const type of ['assistant/chunks', 'assistant/part-end', 'run/start', 'tool/result']) {
+      expect(affectsIndexedDocuments({ type })).toBe(false)
+    }
+    for (const type of ['user/message', 'run/end', 'message/deleted', 'session/cleared', 'tool/call']) {
+      expect(affectsIndexedDocuments({ type })).toBe(true)
+    }
+  })
+
+  it('没见过的类型按 true 答 —— 宁可白折一次,不肯漏一条', () => {
+    expect(affectsIndexedDocuments({ type: 'future/thing' })).toBe(true)
+  })
+
+  /**
+   * **与派工单给的表的一处出入,证据在这里**:派工单把 `session/compacted` 列进
+   * `false`(§5.2 的表给它的动作是「压缩卡自己不产文档」)。但 reducer 的这一支会
+   * 把那条**占位消息**(`context-compact.ts` 先写的 `system/message`)`hidden` 掉,
+   * 而占位那条**已经建过文档** —— 判 `false` 就是「屏幕上没有了、搜索里还搜得到」,
+   * 正是墓碑那一列该管的事。所以这里判 `true`,判据仍然是那一条:产出变没变。
+   */
+  it('session/compacted 判 true:它把占位那条消息的文档折没了', () => {
+    const store = newStore()
+    const dir = path.join(store.sessionsDir, 's1')
+    const writer = new LedgerWriter(dir)
+    writer.append({ type: 'user/message', surfaceOp: 'append', data: { message: { id: 'm1', role: 'user', content: '压之前的老消息', timestamp: BASE_TIME } } })
+    const first = writer.lastSeq
+    writer.append({ type: 'system/message', surfaceOp: 'append', data: { message: { id: 'c1', role: 'system', content: '压缩中', timestamp: BASE_TIME + 5 } } })
+    const placeholder = writer.lastSeq
+    writer.write()
+    writeMeta(dir, 's1', { name: 'x' })
+    const before = project(dir, 's1').filter(doc => doc.capability === MESSAGE_CAPABILITY)
+    expect(before.map(doc => doc.fields.content)).toEqual(['压之前的老消息', '压缩中'])
+
+    writer.append({
+      type: 'session/compacted',
+      surfaceOp: { op: 'replace', start: first, end: placeholder },
+      data: { summary: '这里是压缩摘要', messageId: 'c1', compactedMessageCount: 1, status: 'completed' },
+    })
+    writer.write()
+    const after = project(dir, 's1').filter(doc => doc.capability === MESSAGE_CAPABILITY)
+
+    // 产出真的变了(占位那份没了)—— 所以它必须值得重折。
+    expect(after.map(doc => doc.fields.content)).toEqual(['压之前的老消息'])
+    expect(affectsIndexedDocuments({ type: 'session/compacted' })).toBe(true)
   })
 })

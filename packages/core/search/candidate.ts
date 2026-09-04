@@ -79,10 +79,23 @@ export interface SearchQuery {
 /** 放宽阶梯的一级。plan 产它,fanout 逐级试,能力读它。 */
 export interface LadderStep {
   level: RelaxLevel
-  /** 这一级要求命中几个词 */
+  /** 这一级要求命中几个词。数的是**查询 AST 里的词**,不是分析器切出来的词元 */
   minShouldMatch: number
   /** 短语要不要相邻 */
   phraseAdjacent: boolean
+  /**
+   * **一个查询词分析成多个词元时,这一级把它看成什么**(§6.2)。
+   *
+   * `'phrase'` = 一体:`2026-09-05` 切成 `2026` `09` `05`,这一级要求三个词元**一起
+   * 出现**(①还要求相邻,②只要求同在一个字段里),与用户手打 `"…"` 短语走同一条
+   * 翻译。`'split'` = 摊平成三个独立词元,由 `minShouldMatch` 说了算。
+   *
+   * 为什么要这一格而不是拿 `minShouldMatch` 推:单个查询词的查询在四级上
+   * `minShouldMatch` 都是 1(`Math.max(1, ceil(1/2))` 也是 1),推不出「这一级还认
+   * 不认词的完整性」。少了它,`①严格 = 全 AND` 在「一个词摊成多词元」这一形上就是
+   * OR —— `2026-09-05` 把 `2026-09-06` 也召回来(S3b 读数,§13)。
+   */
+  multiTokenTerms: 'phrase' | 'split'
 }
 
 /** 缺省意图:没有任何能力的前缀命中时的意图名。 */

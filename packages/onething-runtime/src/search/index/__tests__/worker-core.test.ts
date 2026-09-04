@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import type { DocPayload, DocumentFeed, QueryNode } from '@onething/core/search'
 
-import { LedgerFeed } from '../ledger-feed.js'
+import { DIRECTORY_WATCH_DEBOUNCE_MS, LedgerFeed } from '../ledger-feed.js'
 import { IndexProjector } from '../projector.js'
 import { defaultDocumentFilters } from '../filters.js'
 import { SearchIndexService } from '../service.js'
@@ -202,6 +202,64 @@ describe('索引服务 端到端', () => {
     await waitFor(async () => (await harness.keys(MESSAGE_CAPABILITY, '别的进程')).length === 1, 4000)
     expect(await harness.keys(MESSAGE_CAPABILITY, '别的进程')).toEqual(['s1:other'])
   }, 15_000)
+
+  /**
+   * **⑤b 目录监视也过一遍「这一批值不值得折」**(S3b 第二轮修)。
+   *
+   * 监视器只知道「这条会话动了」,而动的绝大多数是流式回复的 `assistant/chunks`
+   * —— 折出来的文档逐字相同,重折一遍是纯白做工(与观察者那条路同一个病、同一张
+   * 表:`projector.ts` 的 `INDEX_DOCUMENT_EFFECTS`)。所以去抖之后还有一道尾读:
+   * 从上次判过的 seq 起把新记录解出来问一句,全是 `false` 就不喊。
+   *
+   * 读数是 `status().refolds`(真正折过几次)。**第一次见这把钥匙照喊** —— 基线
+   * 未知时宁可白折一次也不肯漏一条,所以下面先用一批 chunk 把基线立起来,再量
+   * 第二批。
+   */
+  it('⑤b 目录监视:只含 chunks 的一批不重折,来一条 user/message 才折', async () => {
+    const store = newStore()
+    const dir = path.join(store.sessionsDir, 's1')
+    const writer = writeTypicalSession(store, { sessionId: 's1' })
+    writeMeta(dir, 's1', { name: 'x' })
+
+    const harness = mount(store)
+    await harness.service.drain()
+
+    const chunk = (at: number) => ({
+      type: 'assistant/chunks' as const,
+      data: {
+        runId: 'r-later',
+        requestIndex: 0,
+        messageId: 'a-later',
+        partIndex: 0,
+        kind: 'text',
+        time0: BASE_TIME + 20_000,
+        dt: [0],
+        text: [`第 ${at} 片`],
+      },
+    })
+
+    // 第一批:把这把钥匙的基线立起来(第一次见 = 照喊,所以这一发**会**折)。
+    const beforeFirst = (await harness.service.status()).refolds
+    writer.appendToFile(chunk(0))
+    await waitFor(async () => (await harness.service.status()).refolds > beforeFirst, 4000)
+    await harness.service.drain()
+    const baseline = (await harness.service.status()).refolds
+
+    // 第二批:又是几片 delta —— 尾读认出「没有一条会改文档」,一次都不折。
+    for (let at = 1; at <= 5; at += 1) writer.appendToFile(chunk(at))
+    await new Promise(resolve => setTimeout(resolve, DIRECTORY_WATCH_DEBOUNCE_MS * 3))
+    await harness.service.drain()
+    expect((await harness.service.status()).refolds).toBe(baseline)
+
+    // 换一条会改文档的:同一条目录监视路,这一次折。
+    writer.appendToFile({
+      type: 'user/message',
+      surfaceOp: 'append',
+      data: { message: { id: 'other', role: 'user', content: '别的进程写下的一句话', timestamp: BASE_TIME + 21_000 } },
+    })
+    await waitFor(async () => (await harness.keys(MESSAGE_CAPABILITY, '别的进程')).length === 1, 4000)
+    expect((await harness.service.status()).refolds).toBeGreaterThan(baseline)
+  }, 20_000)
 
   it('⑥ 折坏隔离:一本坏账本记 error,其它两条照搜', async () => {
     const store = newStore()

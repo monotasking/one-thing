@@ -23,6 +23,10 @@
  * | `tool/call` | 不产文档;从参数里抽 path(edit / write / read)给本 run 的助手文档加 `touched-file` 边 |
  * | `session/workdir-changed` / `model-changed` / `agent-changed` | 无关,跳过(reducer 折进 `sessionMeta`,这里不读) |
  *
+ * **同一张表的另一半:谁值得重折**(S3b 第二轮)。「这条事件改不改文档」是这张
+ * 表亲知的事实,所以判据 `affectsIndexedDocuments` 也住这里 —— 观察者与目录监视
+ * 读它,自己不认识任何一个事件名。见下面 `INDEX_DOCUMENT_EFFECTS`。
+ *
  * **墓碑为什么是「不产出」而不是一条删除指令**:`documentsOf(key)` 交出的是「这把
  * 钥匙下的**全部**文档」,索引侧做的是**整键替换**(§5.2b)。于是删一条消息与
  * 改一条消息在这里是同一件事 —— 重折一遍,少了的就是没了。少一条指令,少一种
@@ -50,8 +54,90 @@ import type {
   ProjectionBlobResolver,
   ProjectionNode,
   SessionLogEventRecord,
+  SessionLogEventType,
 } from '@onething/core/session'
 import { foldSessionProjection, materializeNode } from '@onething/core/session'
+
+/**
+ * **哪些账本事件会改变这把钥匙折出来的文档集**(S3b 第二轮补,设计 §5.2 表下那一句)。
+ *
+ * 起因是一次白做工:观察者对**每条**追加事件都喊一声 key,而 worker 的增量是
+ * 「整键重折」(读整份 `events.jsonl` 再折一遍)。`assistant/chunks` 每 16ms 一批
+ * 就是一次 touch —— 一轮回复期间同一条会话被重读重折几十遍,折出来的文档**逐字
+ * 相同**(流式中不产助手文档,§5.2)。不卡主线程,但长会话上 Worker 会饱和。
+ *
+ * 治法是「能力自述、别人读表」:**判据住投影器**(它本来就是「事件 → 文档」那
+ * 张表的产地),观察者(`backend/wiring/search`)与目录监视(`ledger-feed.ts`)
+ * 只读它,自己一个事件名都不认识。加一种会改文档的事件 = 在这张表里把那一行改成
+ * `true`,两个读表的地方一字不动。
+ *
+ * 表是**双向穷尽**的(与 `SESSION_LOG_EVENT_TABLE_IS_EXHAUSTIVE` 同一套纪律):
+ * `Record<SessionLogEventType, boolean>` 让漏一行当场 tsc 红,写错一个名字也红。
+ * 新事件种因此不可能悄悄按 `false` 处理 —— 加事件的人必须回答「它改不改文档」。
+ *
+ * **`session/compacted` 是 `true`,与派工单给的表有一处出入**(施工时读 reducer
+ * 读出来的,不是推理):§5.2 的表给它的动作是「压缩卡自己不产文档」,听起来像
+ * 「不影响」;但 `reduceSessionProjection` 的这一支会把**那条占位消息**
+ * (`context-compact.ts` 先写的那条 `system/message`)`hidden = true`、再插一格
+ * `compacted` 节点顶掉它。占位那条**已经建过文档**,压缩之后它从投影里消失 ——
+ * 判 `false` 就等于「屏幕上没有了、搜索里还搜得到」,正是墓碑那一列该管的事。
+ * 判据只有一条:**这条事件会不会改变 `project()` 的产出**。
+ */
+export const INDEX_DOCUMENT_EFFECTS: Record<SessionLogEventType, boolean> = {
+  // ---- 建 / 替换 / 墓碑 / 加边 ----
+  'session/created': true,
+  'user/message': true,
+  'system/message': true,
+  'message/imported': true,
+  // 非助手节点的补丁能改正文(`sanitizePatch` 只对助手节点剥 content),所以算改。
+  'message/patched': true,
+  'user/message-edited': true,
+  'message/deleted': true,
+  // 助手节点 `ended` 翻真的那一刻 —— 助手文档只在这里产(§5.2「流式中不搜半条」)。
+  'run/end': true,
+  'session/cleared': true,
+  // 占位消息被顶掉(见上面那段);同时压缩卡自己不产文档。
+  'session/compacted': true,
+  // 不产文档,但给本 run 的助手文档加 `touched-file` 边(§5.2 最后一行)。
+  'tool/call': true,
+
+  // ---- 只折进投影,产出逐字不变 ----
+  'assistant/chunks': false,
+  'assistant/part-end': false,
+  'assistant/first-token': false,
+  'run/start': false,
+  'tool/result': false,
+  'tool/annotate': false,
+  'tool/audit': false,
+  'request/tools': false,
+  'request/header': false,
+  'request/start': false,
+  'request/end': false,
+  'request/recipe': false,
+  'request/response': false,
+  'request/error': false,
+  'skill/activated': false,
+  'permission/asked': false,
+  'permission/answered': false,
+  'interaction/asked': false,
+  'interaction/answered': false,
+  'context/turn-update': false,
+  'plugin/status': false,
+  // reducer 把它们折进 `sessionMeta`,`project()` 不读(§5.2「无关,跳过」)。
+  'session/workdir-changed': false,
+  'session/model-changed': false,
+  'session/agent-changed': false,
+}
+
+/**
+ * 这一条账本事件值不值得重折。**观察者与目录监视唯一该问的问题**。
+ *
+ * 表里没有的类型(老账本里的野类型 / 将来的新种但没走 tsc)按 `true` 答 ——
+ * 宁可白折一次,不肯漏一条(漏了是「搜不到」,那是产品可见的错;多折一次只是慢)。
+ */
+export function affectsIndexedDocuments(record: { type: string }): boolean {
+  return INDEX_DOCUMENT_EFFECTS[record.type as SessionLogEventType] ?? true
+}
 
 /**
  * 能力 id。S5 之前会话那一类叫 `chats`(壳与 CLI 都认它),消息那一类叫

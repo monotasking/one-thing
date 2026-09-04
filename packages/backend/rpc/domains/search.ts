@@ -79,7 +79,9 @@ function runtimeContext(context: RpcDispatchContext) {
  *    `search:parity-A` 对每一类 + `all` 拿真库跑 200 条查询,新旧 `results` 逐字节同。
  *  - `preview` / `invoke` —— 仍然结构化地说「S4 才有」。能力接口上那两格
  *    (`SearchCapability.preview` / `.invoke`)S2 一个实现都还没有。
- *  - `status` —— `service.status()`,S3 之前恒 `{ mode:'owner', pending:0, vector:'off' }`。
+ *  - `status` —— `service.status()`。**S3b 起是真读数**:`mode` 由索引 Worker 的
+ *    宿主答(连崩两次 → `'error'`,这台机器上根本没起索引也是 `'error'`),
+ *    `pending` 是队列里还欠着的钥匙数。`'reader'` 等 §5.6,`vector` 等 §15。
  *
  * ## 本机可信那条分叉一字未动(B2)
  *
@@ -160,6 +162,6 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
   },
 
   async status(): Promise<SearchStatusResponse> {
-    return requireSearchService().status()
+    return await requireSearchService().status()
   },
 }

@@ -135,7 +135,7 @@ describe('IndexWorkerHost 崩溃与重起', () => {
     expect(built).toBe(2)
 
     expect(await service.status()).toEqual({
-      mode: 'error', docs: 0, pending: 0, building: false, generation: 0, errors: [],
+      mode: 'error', docs: 0, pending: 0, refolds: 0, building: false, generation: 0, errors: [], feeds: [],
     })
     await expect(service.search({
       capability: MESSAGE_CAPABILITY, fields: messageFields(), ast: askQuery, limit: 10, offset: 0,

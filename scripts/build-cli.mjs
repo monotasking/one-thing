@@ -20,7 +20,10 @@
 import { build } from 'esbuild'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { shellEsbuildOptions } from '../apps/desktop-react/scripts/build-electron.mjs'
+import {
+  searchWorkerEsbuildOptions,
+  shellEsbuildOptions,
+} from '../apps/desktop-react/scripts/build-electron.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outdir = path.join(repoRoot, 'dist/cli')
@@ -29,3 +32,7 @@ await build(shellEsbuildOptions({
   entryPoints: { main: path.join(repoRoot, 'apps/cli/src/index.ts') },
   outdir,
 }))
+
+// 第二个入口:检索索引 Worker(检索重建 S3b,§3 末行)。产物 `dist/cli/search-worker.cjs`
+// 与 `main.cjs` 同目录 —— 装配层按宿主 bundle 的位置往旁边找,三个宿主同一条纪律。
+await build(searchWorkerEsbuildOptions({ outdir, repoRoot }))

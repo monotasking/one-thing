@@ -42,6 +42,7 @@ import {
 } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createBuiltinSearchCapabilities } from './capabilities/index.js'
+import type { SearchIndexQueryFace } from './capabilities/indexed.js'
 import { searchResultOf, type SearchServiceResult } from './capabilities/legacy.js'
 
 /** 旧路 `executeOnethingSearch` 的缺省页大小;换个名字,数没变。 */
@@ -73,13 +74,17 @@ export interface SearchServiceResponse {
   total?: number
   cursor?: string
   relaxed?: RelaxLevel
+  /** 索引还在追账本吗(§8);S3b 起是真读数,由 `index.status()` 填。 */
+  index?: { pending: number; stale: boolean }
   groups?: SearchServiceGroup[]
 }
 
 /**
- * 索引在干什么(§8 的 `status` 路由)。S3 之前没有索引,所以恒
- * `{ mode:'owner', pending:0, vector:'off' }` —— `mode` 那一格的另外两个取值要等
- * §5.6(拍点庚,09-04 裁「先不做」)与 §15。
+ * 索引在干什么(§8 的 `status` 路由)。
+ *
+ * S3b 起这是**真读数**:`mode` 由 Worker 宿主答(连崩两次 → `'error'`),
+ * `pending` 是队列里还欠着的钥匙数。`'reader'` 要等 §5.6(拍点庚,09-04 裁
+ * 「先不做」),`vector` 要等 §15,两格今天分别不出现与恒 `'off'`。
  */
 export interface SearchIndexStatus {
   mode: 'owner' | 'reader' | 'error'
@@ -113,16 +118,29 @@ export class OnethingSearchService {
   readonly registry: CapabilityRegistry
   private readonly warn: SearchServiceOptions['warn']
   private readonly now: () => number
+  private readonly index: SearchIndexQueryFace | undefined
 
-  constructor(options: SearchServiceOptions = {}) {
+  constructor(options: SearchServiceOptions & { index?: SearchIndexQueryFace } = {}) {
     this.registry = options.registry ?? createCapabilityRegistry()
     this.warn = options.warn
     this.now = options.now ?? (() => Date.now())
+    this.index = options.index
   }
 
   /** 一行注册,返回注销(§4.3)。插件能力用的就是它。 */
   register(capability: SearchCapability): () => void {
     return this.registry.register(capability)
+  }
+
+  /**
+   * 这份服务背后的索引问答面。
+   *
+   * server 那一侧按 owner 现装一份服务(取材面是 per-owner 的),但**索引是 store
+   * 级的** —— 每个 owner 各建一个库既是浪费也是错(同一份账本折两遍)。所以那一侧
+   * 从进程里已经装好的这份服务上取同一个面,而不是自己再起一条 Worker。
+   */
+  indexFace(): SearchIndexQueryFace | undefined {
+    return this.index
   }
 
   /** 壳的 tab / 图标 / 过滤片 / 分组次序全从这里算(§4.3 / §9)。 */
@@ -133,8 +151,29 @@ export class OnethingSearchService {
       : manifests.filter(manifest => capabilityServesSurface(manifest, surface))
   }
 
-  status(): SearchIndexStatus {
-    return { mode: 'owner', pending: 0, vector: 'off' }
+  /**
+   * §8 的 `status` 路由。没有索引面(单测里的裸服务)时如实答 `'error'` ——
+   * 「没有索引」不是「索引空闲」。
+   */
+  async status(): Promise<SearchIndexStatus> {
+    if (this.index === undefined) return { mode: 'error', pending: 0, vector: 'off' }
+    const status = await this.index.status()
+    return { mode: status.mode, pending: status.pending, vector: 'off' }
+  }
+
+  /**
+   * 一次查询要不要在响应上带 `index` 那一格。`stale` = 「现在答的这一份还没追上
+   * 账本」:队列里还欠着钥匙,或者启动校对还在跑。索引问不出来就**不带**这一格
+   * (契约上缺席 = 不知道,不是「不 stale」)。
+   */
+  private async indexReport(): Promise<{ pending: number; stale: boolean } | undefined> {
+    if (this.index === undefined) return undefined
+    try {
+      const status = await this.index.status()
+      return { pending: status.pending, stale: status.pending > 0 || status.building }
+    } catch {
+      return undefined
+    }
   }
 
   async query(
@@ -167,7 +206,9 @@ export class OnethingSearchService {
       { registry: this.registry, intent: query.intent, capability: category },
     )
 
-    return single ? this.singleResponse(groups) : this.allResponse(groups, limit)
+    const index = await this.indexReport()
+    const response = single ? this.singleResponse(groups) : this.allResponse(groups, limit)
+    return index === undefined ? response : { ...response, index }
   }
 
   /**
@@ -214,13 +255,20 @@ export class OnethingSearchService {
 /**
  * 装上六个内置能力的服务。桌面装一份(进程单例,见 `service-bound.ts`),
  * server 按请求上下文各装一份(它的会话 / 文件 / 提示词表是 per-owner 的)。
+ *
+ * **索引面是必填的**(S3b):messages / chats / daily 三路已经是索引型,没有索引
+ * 就没有这三类结果 —— 而不是「悄悄退回旧扫描」(§13 留账那一条:旧扫描 S5 会删,
+ * 这里不许再长出第二条路)。索引是 **store 级**的:桌面与回环 server 各装一份服务却传
+ * 同一份索引。**按 owner 沙箱化的那一支例外** —— 索引文档上没有 owner 这一格,共用即串
+ * owner,所以 `server/runtime.ts` 的不可信端口传的是 `unavailableIndexFace()`(如实答
+ * 「这台宿主没有索引」),而不是共用一份库再指望以后补过滤。
  */
 export function createOnethingSearchService(
   adapters: OnethingSearchProvidersAdapters,
-  options: SearchServiceOptions = {},
+  options: SearchServiceOptions & { index: SearchIndexQueryFace },
 ): OnethingSearchService {
   const service = new OnethingSearchService(options)
-  for (const capability of createBuiltinSearchCapabilities(adapters)) {
+  for (const capability of createBuiltinSearchCapabilities(adapters, options.index)) {
     service.register(capability)
   }
   return service

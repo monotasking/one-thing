@@ -29,8 +29,30 @@
  * ## 比什么
  *
  * 只比 `results`,而且把新路多出来的 `target` / `facets` 先剥掉 —— **parity 只守旧形**。
- * 新加的 `total` / `groups` / `cursor` / `relaxed` 是 §8「只加不改」的加法,不在
- * 这道门的判据里(它们由单测与 S4 的壳门守)。
+ * 新加的 `total` / `groups` / `cursor` / `relaxed` / `index` 是 §8「只加不改」的加法,
+ * 不在这道门的判据里(它们由单测与 S4 的壳门守)。
+ *
+ * ## S3b 之后这道门只剩三档(2026-09-05)
+ *
+ * S3b 把 **chats / messages / daily** 换成了索引型能力(FTS5 + 账本投影)。它们与旧
+ * 扫描**不该**逐字同,那正是 S3 要的改变:旧扫描是子串匹配、全库读盘、归档会话直接
+ * 跳过;索引是词与前缀、由投影建、归档照样收录(§13 留账「中段子串」那一条)。拿
+ * 「逐字同」去卡它们等于禁止 S3 发生。
+ *
+ * 所以判据在这里**分家**,与 §10 的分期一致:
+ *
+ *  - 这道门(parity-A)继续守**还在旧路上的三档** `files` / `actions` / `prompts`
+ *    —— 它们 S3b 一个字没动,任何差都是回归;
+ *  - 换索引那三档交给 **S3c 的 `search:parity-B`**,判据是 ⊇(索引严格档命中集包含
+ *    旧扫描命中集,残差逐条打印并分类)。
+ *
+ * `all` 档仍然比,但**只比这三组**(按 `type` 过滤),并且两边都用一个大 limit 跑:
+ * 旧路的 `all` 是「各类拼起来再切到 limit」,新路少了三类、切的位置就不一样,不放开
+ * limit 的话比的是「谁被截断了」而不是「这三组一样不一样」。
+ *
+ * **在 bun 下跑这道门时索引根本没起来**(bun 的运行时没有 `node:sqlite`,而且
+ * `search-worker.cjs` 不在 `scripts/` 旁边),`createAppSearchService` 于是如实降级成
+ * 「索引不可用」。这对本门无害 —— 被降级的正是已经不在判据里的那三档。
  */
 import fs from 'node:fs'
 import os from 'node:os'
@@ -54,8 +76,20 @@ const VERBOSE = flag('verbose')
 /** 复制封顶:再多就不是「取样」而是「搬家」了。 */
 const MAX_COPY_BYTES = 160 * 1024 * 1024
 
-/** 今天那张档表(旧路认的全部取值)。`all` 排最后,它最贵。 */
-const CATEGORIES = ['chats', 'messages', 'actions', 'files', 'daily', 'prompts', 'all']
+/**
+ * 还在旧扫描 / 静态表上的那三档 + `all`。chats / messages / daily 换索引之后不在这
+ * 道门里(见文件头「S3b 之后这道门只剩三档」)。`all` 排最后,它最贵。
+ */
+const CATEGORIES = ['actions', 'files', 'prompts', 'all']
+
+/** `all` 档里属于这三档的结果类型 —— 过滤用。 */
+const LEGACY_RESULT_TYPES = new Set(['action', 'file', 'prompt'])
+
+/**
+ * `all` 档两边都用这个 limit 跑。旧路的 `all` 是「各类拼起来再 `slice(0, limit)`」,
+ * 新路少了三类,同一个 20 切在不同的位置上 —— 放开到装不满为止,比的才是这三组本身。
+ */
+const ALL_PARITY_LIMIT = 500
 
 const sourceStore = process.env.ONETHING_PARITY_SOURCE_STORE
   ?? path.join(os.homedir(), '.onething')
@@ -273,7 +307,9 @@ async function main() {
 
     for (const query of queries) {
       for (const category of CATEGORIES) {
-        const request = { query: query.text, category }
+        const request = category === 'all'
+          ? { query: query.text, category, limit: ALL_PARITY_LIMIT }
+          : { query: query.text, category }
         /*
          * 挂钟冻一格再比。
          *
@@ -299,8 +335,12 @@ async function main() {
           Date.now = realNow
         }
         comparisons += 1
-        const left = legacy.results ?? []
-        const right = stripAdditions(wrapped.results)
+        // `all` 档只比还在旧路上的那三组(见文件头)。单类档本来就只有一组。
+        const keep = category === 'all'
+          ? rows => rows.filter(row => LEGACY_RESULT_TYPES.has(row?.type))
+          : rows => rows
+        const left = keep(legacy.results ?? [])
+        const right = keep(stripAdditions(wrapped.results))
         if (left.length > 0) nonEmpty += 1
         resultRows += left.length
         if (JSON.stringify(left) === JSON.stringify(right)) continue

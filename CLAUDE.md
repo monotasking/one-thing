@@ -24,7 +24,8 @@ bun run build:cli          # CLI only → dist/cli/main.cjs (esbuild, same recip
 bun run web:build          # React shell web build (`--mode web` → dist/web)
 bun run gate:web-shell:react  # real-machine gate for the React browser shell: server:build 产物 +
                            # web:dev:react + headless Chromium → 流式回复上屏,且 token 不进 URL
-bun run server:build       # headless server build (→ dist/server/main.js)
+bun run server:build       # headless server build (scripts/build-server.mjs: vite SSR → dist/server/main.js,
+                           # then esbuild → dist/server/search-worker.cjs)
 bun run build:check        # typecheck + build
 bun run build:unpack       # build + electron-builder --dir (React shell; `main` = apps/desktop-react/dist-electron/main.cjs)
 bun run gate:packaged      # the packaging gate: build:unpack → launch the .app on a temp store → run/http.json → /api → CDP window → clean exit
@@ -47,6 +48,9 @@ bun run boundary:gate      # zero-baseline hard gate: any `[boundary] failed:` l
 bun run log:gate           # console.* ratchet (baseline docs/audit/log-gate-baseline-2026-08-20.txt)
 bun run log:check          # the full console.* call-site list behind that gate
 bun run gate:native        # every native .node loads under BOTH Node and Electron (N-API law)
+bun run gate:search-index  # real-machine gate: boots dist/server on a temp store behind a fake
+                           # provider, asserts the index worker is owner and that a just-sent
+                           # message is searchable (node only — bun has no node:sqlite)
 
 # Logs
 bun run log:tail           # pretty-print + follow <store>/log/app.jsonl ([--ns engine.*] [--level warn] [--session id])
@@ -314,8 +318,23 @@ Notes:
   ('jsonl' default | 'legacy-json') only decides the format of *new* sessions. Hybrid
   driver: `packages/onething-runtime/src/sessions/storage-driver.ts`; pure jsonl
   codec/pager in `packages/core/session/storage/jsonl/`. See
-  `docs/design/session-storage-jsonl.md`. Cross-session search/indexing belongs in
-  apps/server — do not add a database to the Electron main process.
+  `docs/design/session-storage-jsonl.md`.
+- **Cross-session search runs off a derived index, in a Worker** (检索重建 S3,
+  `docs/design/search-index-2026-09.md`; the old line here said indexing belongs in
+  apps/server and that the Electron main process must not add a database — that ruling
+  was replaced on 2026-09-05, and the reason it stood was the ABI hazard, not the idea).
+  The index is a **projection of the ledger**, never a source of truth: `<store>/index/
+  search.v1.sqlite`, built by folding `sessions/<id>/events.jsonl` through
+  `IndexProjector`. Delete the file and it rebuilds itself; nothing else reads it.
+  Three facts make it legal where better-sqlite3 was not: the engine is the **built-in
+  `node:sqlite`** (zero native dependencies, so the N-API law at the top of this file has
+  nothing to bite on), the database handle lives **only inside a `worker_threads` worker**
+  (`node:sqlite` is synchronous — on the main thread a cold build would freeze the desktop
+  for seconds, exactly the 09-03 stream-freeze disease), and the main thread's whole share
+  is one `postMessage` per changed session. Every host runs the same worker
+  (`search-worker.cjs`, one per build recipe, always beside its host entry). `search.status`
+  over `POST /api/rpc` reports `mode` / `pending`; `bun run gate:search-index` proves it on
+  a real `dist/server`.
 - **Session event sourcing is the production write model, not a shadow** (F line landed
   F4-c, 2026-08-27; `docs/design/session-event-sourcing-2026-08.md` §17 系统宪法 is the
   three-law summary). Every fact — a user message, one streamed delta, a tool step,
@@ -862,13 +881,29 @@ store 交出去的消息**深冻结**(`ONETHING_SESSION_FREEZE`,`backend/session
 apps/desktop-react/    # THE desktop (packaged by electron-builder → release/; `main` in root package.json)
 ├── dist/              # Vite SPA output (index.html + assets; base './' so it loads from the asar)
 └── dist-electron/     # esbuild: main.cjs (own core + embedded HTTP/SSE face) + preload.cjs
+                       #        + search-worker.cjs (asarUnpack'd — see below)
 
 dist/
 ├── cli/main.cjs       # CLI daemon entry (bin/onething.mjs imports this; scripts/build-cli.mjs)
+├── cli/search-worker.cjs
 ├── server/main.js     # apps/server single-file SSR bundle (inlineDynamicImports —
 │                      # chunk-split + top-level await deadlocks module evaluation)
+├── server/search-worker.cjs
 └── web/               # React shell browser build (`web:build`, `--mode web`)
 ```
+
+**`search-worker.cjs` — three copies, one recipe** (检索重建 S3b): the search index worker
+(`packages/onething-runtime/src/search/index/worker.ts`) is a **second/third entry point in
+each host's own build recipe**, and its product always lands **beside that host's entry** —
+that adjacency is the contract the assembly reads (`packages/backend/wiring/search/worker.ts`
+resolves `search-worker.cjs` next to `import.meta.url`; no host passes a path, so adding a
+fourth host means adding a build entry, not a wiring line). React desktop:
+`apps/desktop-react/scripts/build-electron.mjs`, third esbuild call. CLI:
+`scripts/build-cli.mjs`, second call. Server: `scripts/build-server.mjs` runs the vite SSR
+build **and then a second esbuild** — `apps/server/vite.config.ts` pins
+`inlineDynamicImports`, and rollup rejects multiple inputs with it. It is `asarUnpack`'d
+because `worker_threads` loads through Node's own module resolution, not Electron's asar
+patch; `gate:packaged` proves that (`search.status.mode === 'owner'` on the packaged .app).
 
 ### Tech Stack
 

@@ -17,7 +17,9 @@
  * - **`subscribe`** 挂三样(§5.2 原文):进程内 append 观察者(毫秒级,由装配层
  *   注入 —— runtime 不许 import backend)、总线的 `session:renamed` / `deleted`
  *   (同样注入)、以及 `sessions/` 目录的 `fs.watch` 去抖 500ms,**为了另一个进程
- *   写的账本**。三样都只喊一声 key,不带内容。
+ *   写的账本**。三样都只喊一声 key,不带内容。目录监视那一样在去抖之后还过一道
+ *   尾读:这一批新记录里没有一条会改文档(`affectsIndexedDocuments`,判据住投影
+ *   器)就不喊 —— 流式回复的 delta 全在这一档里,重折一遍是纯白做工。
  *
  * **为什么注入而不是直接挂**:`registerSessionLogEventAppendObserver` 与总线都住
  * `packages/backend`,而 runtime 不许 import 装配层(边界检查器守)。所以这里收
@@ -33,7 +35,7 @@ import { parseSessionLogEventLog } from '@onething/core/session'
 
 import { getLogger } from '../../logging/index.js'
 import type { SessionMetaSnapshot } from './projector.js'
-import { IndexProjector } from './projector.js'
+import { IndexProjector, affectsIndexedDocuments } from './projector.js'
 
 const log = getLogger('search.index.ledger-feed')
 
@@ -168,15 +170,27 @@ export class LedgerFeed implements DocumentFeed<string> {
    * (真跑出来的读数,不是推理)。递归监视在三个平台上 Node ≥ 20 都有,而仓里的
    * 地板是 22.13,所以直接用它;抛出了退回非递归(至少还认得「会话目录被删了」),
    * 再抛就降级成每 30s 扫一遍 mtime。**每一档降级都记一条 warn** —— 不装成实时。
+   *
+   * **去抖之后还有一道尾读**(S3b 第二轮):监视器只知道「这条会话动了」,而
+   * 「动了」里绝大多数是流式回复的 `assistant/chunks` —— 折出来的文档逐字不变,
+   * 重折一遍是纯白做工(与观察者那条路同一个病,判据同一张表,见 `projector.ts`
+   * 的 `INDEX_DOCUMENT_EFFECTS`)。所以这里从上次判过的 `seq` 起**只读尾巴**,把
+   * 这一批新记录解出来问一句 `affectsIndexedDocuments`,全是 `false` 就不喊。
+   *
+   * 三种「问不出来」一律**照喊**(宁可白折一次,不肯漏一条):账本不在了(墓碑)、
+   * 这把钥匙第一次见(基线未知)、账本没长(那就是 `meta.json` 动了 = 改名 / 归档,
+   * 指纹的后半格)。尾读窗口够不到上次那一格时同理。
    */
   private watchDirectory(onChange: (key: string) => void): () => void {
     const pending = new Map<string, NodeJS.Timeout>()
+    /** 上一次判过的账本 `seq` —— 尾读的起点。 */
+    const judged = new Map<string, number>()
     const schedule = (key: string): void => {
       const existing = pending.get(key)
       if (existing !== undefined) clearTimeout(existing)
       pending.set(key, setTimeout(() => {
         pending.delete(key)
-        onChange(key)
+        if (this.batchAffectsDocuments(key, judged)) onChange(key)
       }, DIRECTORY_WATCH_DEBOUNCE_MS))
     }
 
@@ -223,7 +237,37 @@ export class LedgerFeed implements DocumentFeed<string> {
       if (poller !== undefined) clearInterval(poller)
       for (const timer of pending.values()) clearTimeout(timer)
       pending.clear()
+      judged.clear()
     }
+  }
+
+  /**
+   * 这一批(去抖窗口里攒下的)新记录里,有没有一条会改文档。
+   *
+   * 判据全在 `affectsIndexedDocuments`(住投影器)—— 这个方法只负责**把新记录拿
+   * 到手**:从上次判过的 `seq` 起尾读一段,解出来的行按 `seq` 筛。窗口够不到上次
+   * 那一格(一次去抖里涌进来的行超过 256KB)就答 `true`,不猜。
+   */
+  private batchAffectsDocuments(key: string, judged: Map<string, number>): boolean {
+    const logPath = path.join(this.sessionsDir, key, 'events.jsonl')
+    let size: number
+    try {
+      size = fs.statSync(logPath).size
+    } catch {
+      // 账本没了 = 墓碑那一路,必须喊(`fingerprint` 会答 undefined)。
+      judged.delete(key)
+      return true
+    }
+    const previous = judged.get(key)
+    const lastSeq = readLastSeq(logPath, size)
+    judged.set(key, lastSeq)
+    // 第一次见这把钥匙:基线未知,照喊。
+    if (previous === undefined) return true
+    // 账本没长 —— 动的是 `meta.json`(改名 / 归档),照喊。
+    if (lastSeq <= previous) return true
+    const tail = readRecordsAfter(logPath, size, previous)
+    if (!tail.complete) return true
+    return tail.records.some(record => affectsIndexedDocuments(record))
   }
 }
 
@@ -253,6 +297,41 @@ export function readLastSeq(filePath: string, size: number): number {
     return 0
   } catch {
     return 0
+  } finally {
+    if (handle !== undefined) fs.closeSync(handle)
+  }
+}
+
+/**
+ * 账本上 `seq > afterSeq` 的那些记录,**从尾巴上读**。
+ *
+ * `complete` 说的是「这一段真的盖住了 `afterSeq` 之后的全部行」:窗口里最早那条
+ * 的 `seq` 已经 ≤ `afterSeq`(或者干脆整份文件都读进来了)才算盖住。盖不住时调用
+ * 方按「不知道」办 —— 与 `readLastSeq` 同一条边界:绝不为了回答一个问题去读一份
+ * 480MB 的账本。
+ */
+export function readRecordsAfter(
+  filePath: string,
+  size: number,
+  afterSeq: number,
+): { records: SessionLogEventRecord[]; complete: boolean } {
+  if (size === 0) return { records: [], complete: true }
+  let handle: number | undefined
+  try {
+    handle = fs.openSync(filePath, 'r')
+    for (const window of [TAIL_READ_BYTES, TAIL_READ_BYTES * 4]) {
+      const length = Math.min(window, size)
+      const buffer = Buffer.alloc(length)
+      fs.readSync(handle, buffer, 0, length, size - length)
+      const parsed = parseSessionLogEventLog(buffer.toString('utf-8'))
+      const first = parsed[0]
+      // 整份文件都在手里,或者窗口第一条已经在 afterSeq 之前 —— 都算盖住了。
+      if (!(length === size || (first !== undefined && first.seq <= afterSeq))) continue
+      return { records: parsed.filter(record => record.seq > afterSeq), complete: true }
+    }
+    return { records: [], complete: false }
+  } catch {
+    return { records: [], complete: false }
   } finally {
     if (handle !== undefined) fs.closeSync(handle)
   }

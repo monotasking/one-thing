@@ -521,13 +521,14 @@ export class OnethingBackend implements BackendHandle {
     this.own(() => killTrackedDetachedChildren(), 'killTrackedDetachedChildren')
 
     /*
-     * 缝 4.5 —— 检索(检索重建 S2,`docs/design/search-index-2026-09.md` §3 / §10)。
+     * 缝 4.5 —— 检索(检索重建 S2/S3b,`docs/design/search-index-2026-09.md` §3 / §10)。
      *
-     * 排在 RPC 域**之前**:`search` 域从进程单槽里读这份服务。装配本身只是造对象 +
-     * 登记(六个内置能力 + 已在册的插件供给方),零 IO、零后台任务;真正会留尾巴的
-     * 索引 Worker 是 S3 的事,那时它也在这一行里起、在同一个 disposer 里收。
+     * 排在 RPC 域**之前**:`search` 域从进程单槽里读这份服务。S3b 起这一行会留下
+     * 三样尾巴 —— 一条索引 Worker、账本的 append 观察者、总线上两条会话订阅 ——
+     * 它们全部收在这**同一个** disposer 里(先摘订阅再停线程,见那个文件的头注)。
+     * 装配等的那一下是「笔记目录在哪」(读一次 Obsidian 配置),毫秒级。
      */
-    const searchService = createAppSearchService()
+    const searchService = await createAppSearchService()
     this.own(() => searchService.dispose(), 'searchService')
 
     // RPC domains go up BEFORE afterTools: that hook is where the Electron host

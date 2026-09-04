@@ -6,11 +6,33 @@
  *  - `budgetPolicy` 改回常量 → 「command 意图 actions 8 条」用例红。
  */
 import { describe, expect, it } from 'vitest'
+import type { IndexedDoc } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { OnethingSearchService, createOnethingSearchService } from '../service.js'
 import { actionsSearchManifest, createBuiltinSearchCapabilities } from '../capabilities/index.js'
+import { fakeIndexFace } from './fake-index.js'
 
 const ACTION_COUNT = 6
+
+/**
+ * S3b:chats / messages / daily 三路改问索引,所以这份文件也得给一份索引替身。
+ * 它按能力 id 把手上的文档原样交回去 —— 这里证的是**门面**(分组 / 次序 / 配额 /
+ * 注册表),不是命中语义。
+ */
+function makeDocs(): IndexedDoc[] {
+  return [{
+    docId: 1,
+    capability: 'chats',
+    key: 's1',
+    time: 200,
+    facets: { sessionId: 's1', spaceId: '', archived: false, time: 200 },
+    fields: { title: 'Alpha notes' },
+  }]
+}
+
+function makeService(adapters = makeAdapters()) {
+  return createOnethingSearchService(adapters, { index: fakeIndexFace(makeDocs()) })
+}
 
 function makeAdapters(): OnethingSearchProvidersAdapters {
   return {
@@ -36,13 +58,13 @@ function makeAdapters(): OnethingSearchProvidersAdapters {
 
 describe('SearchService(S2 门面)', () => {
   it('capabilities():注册序 = 缺省展示序,六类都在', () => {
-    const service = createOnethingSearchService(makeAdapters())
+    const service = makeService()
     expect(service.capabilities().map(manifest => manifest.id))
       .toEqual(['chats', 'prompts', 'daily', 'files', 'messages', 'actions'])
   })
 
   it('全部档:分组按 order,results 就是各组按那个次序拼起来的', async () => {
-    const service = createOnethingSearchService(makeAdapters())
+    const service = makeService()
     const response = await service.query({ query: 'alpha', category: 'all' })
 
     const groups = response.groups ?? []
@@ -55,14 +77,14 @@ describe('SearchService(S2 门面)', () => {
   })
 
   it('命令意图重排:`/` 一打,actions 跳到第一组 —— 判据在 manifest 的 orderWhenIntent', async () => {
-    const service = createOnethingSearchService(makeAdapters())
+    const service = makeService()
     const response = await service.query({ query: '/chat', category: 'all' })
     expect((response.groups ?? []).map(group => group.capability))
       .toEqual(['actions', 'prompts', 'chats', 'daily', 'files', 'messages'])
   })
 
   it('命令意图 actions 8 条 —— 预算读的是 manifest.budget.whenIntent(§7.1 反证点)', async () => {
-    const service = createOnethingSearchService(makeAdapters())
+    const service = makeService()
     // 空词的 actions 全表都命中,所以这一格量到的就是配额本身。
     const command = await service.query({ query: '>', category: 'all' })
     const plain = await service.query({ query: '', category: 'all' })
@@ -78,14 +100,14 @@ describe('SearchService(S2 门面)', () => {
   })
 
   it('单类档:results 是本页,不带分组总览', async () => {
-    const service = createOnethingSearchService(makeAdapters())
+    const service = makeService()
     const response = await service.query({ query: 'alpha', category: 'chats', limit: 5 })
     expect(response.groups).toBeUndefined()
     expect(response.results.map(result => result.id)).toEqual(['chat:s1'])
   })
 
   it('不认识的档归到「全部」—— 判据是注册表,不是一张字面量清单(§8)', async () => {
-    const service = createOnethingSearchService(makeAdapters())
+    const service = makeService()
     const response = await service.query({ query: 'alpha', category: 'nope' })
     expect(response.groups).toBeDefined()
   })
@@ -94,7 +116,7 @@ describe('SearchService(S2 门面)', () => {
     const adapters = makeAdapters()
     const service = new OnethingSearchService()
     const disposers = new Map<string, () => void>()
-    for (const capability of createBuiltinSearchCapabilities(adapters)) {
+    for (const capability of createBuiltinSearchCapabilities(adapters, fakeIndexFace(makeDocs()))) {
       disposers.set(capability.manifest.id, service.register(capability))
     }
 

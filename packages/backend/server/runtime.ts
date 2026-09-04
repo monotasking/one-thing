@@ -152,6 +152,7 @@ import {
 	type OnethingSearchProvidersAdapters,
 	type SearchServiceRequest,
 } from "@onething/runtime/search";
+import { unavailableIndexFace } from "../wiring/search/index.js";
 import {
 	MediaLibraryService,
 	type OnethingMediaLibraryPaths,
@@ -2091,8 +2092,26 @@ async function createServerRuntimeOverServerBackend(
 		) {
 			// S2:与桌面同一个门面、同一批能力,只是取材面按 owner 现装一份
 			// (它的会话 / 文件 / 提示词表本来就是 per-owner 的,组不出进程单例)。
+			//
+			/*
+			 * S3b:**这一条路上没有索引**,三条索引型能力(chats / messages / daily)
+			 * 在这里答空。
+			 *
+			 * 这个端口只在**不可信**那一支上被调到(`isHostLocallyTrusted()` 为假 =
+			 * 非回环部署的 server;桌面与回环 `server:start` 走的是进程单槽那份真服务,
+			 * 索引照常)。而进程里那一份索引是 **store 级**的:它折的是
+			 * `<store>/sessions` 那棵树,文档上只有 sessionId / spaceId / role /
+			 * archived / time 几格,**没有 owner**。把它交给一个按 owner 沙箱化的调用者
+			 * 等于让 bob 读到宿主机器上 alice 的会话 —— 那正是这个端口存在的理由的反面
+			 * (`server/__tests__/http.test.ts` 里「bob 看不见 alice 的会话」那条)。
+			 *
+			 * 所以这里选**如实答不可用**,而不是「共用一份库、以后再补过滤」:少一类
+			 * 结果是可见的缺口,串了 owner 是不可见的事故。给索引加 owner facet(或让
+			 * server 按 owner 各建一个库)是 §5.6 / S6 的事,那之前这一格就该是空的。
+			 */
 			const service = createOnethingSearchService(
 				await createSearchAdaptersForContext(context),
+				{ index: unavailableIndexFace() },
 			);
 			return service.query(request as SearchServiceRequest, {
 				principal: { kind: "user", id: context.userId ?? "local" },

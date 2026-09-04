@@ -105,8 +105,30 @@ export function shellEsbuildOptions({ entryPoints, outdir, nodeShims = true }) {
 const invokedDirectly = process.argv[1]
   && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 
+/**
+ * 检索索引 Worker 的入口(检索重建 S3b,`docs/design/search-index-2026-09.md` §3
+ * 末行:「每个宿主的构建配方各加一个 Worker 入口,产物与宿主入口同目录」)。
+ *
+ * 三个宿主(React 主进程 / CLI / server)各出一份 `search-worker.cjs`,**都与自己
+ * 的宿主入口同目录** —— 装配层就是靠这条纪律按 `import.meta.url` 往旁边找的
+ * (`packages/backend/wiring/search/worker.ts`)。所以这个常量在这里、被三份配方
+ * 共用,而不是三处各写一个字符串。
+ *
+ * 它与 main 同一份 `shellEsbuildOptions`:node 平台、CJS、原生模块 external。
+ * `node:sqlite` 是内建模块,esbuild 的 node 平台自动 external,不必列。
+ */
+export const SEARCH_WORKER_ENTRY = 'packages/onething-runtime/src/search/index/worker.ts'
+export const SEARCH_WORKER_NAME = 'search-worker'
+
+export function searchWorkerEsbuildOptions({ outdir, repoRoot: root }) {
+  return shellEsbuildOptions({
+    entryPoints: { [SEARCH_WORKER_NAME]: path.join(root, SEARCH_WORKER_ENTRY) },
+    outdir,
+  })
+}
+
 if (invokedDirectly) {
-  // 两次调用而不是一个 entryPoints 表:main 与 preload 跑在**两种不同的运行时**里
+  // 三次调用而不是一个 entryPoints 表:main 与 preload 跑在**两种不同的运行时**里
   // (node 上下文 vs Electron sandbox),而 banner/define 是整份配置级的开关,
   // 没法只对其中一个入口生效。见 `nodeShims` 的注释。
   const outdir = path.join(appRoot, 'dist-electron')
@@ -119,4 +141,6 @@ if (invokedDirectly) {
     outdir,
     nodeShims: false,
   }))
+  // 第三个入口:检索索引 Worker(见上面那段注释)。
+  await build(searchWorkerEsbuildOptions({ outdir, repoRoot }))
 }

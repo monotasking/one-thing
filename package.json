@@ -34,7 +34,7 @@
 		"web:dev": "vite --config apps/desktop-react/vite.config.ts --mode web",
 		"web:build": "vite build --config apps/desktop-react/vite.config.ts --mode web",
 		"gate:web-shell": "node scripts/gate-web-shell.mjs",
-		"server:build": "vite build --config apps/server/vite.config.ts",
+		"server:build": "node scripts/build-server.mjs",
 		"server:start": "node dist/server/main.js",
 		"sign:dev:mac": "node scripts/sign-dev-binaries.mjs",
 		"typecheck": "npm run typecheck:node && npm run typecheck:desktop",
@@ -80,6 +80,7 @@
 		"evals": "bun evals/run.mjs",
 		"evals:diagnose": "bun scripts/diagnose-weekly.mjs",
 		"search:parity-A": "bun scripts/search-parity-a.mjs",
+		"gate:search-index": "node scripts/gate-search-index.mjs",
 		"sessions:verify:gate": "node scripts/session-verify-gate.mjs"
 	},
 	"dependencies": {

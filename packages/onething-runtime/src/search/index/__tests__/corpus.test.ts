@@ -30,6 +30,7 @@ import {
   createDefaultAnalyzerRegistry,
   createDefaultExpanderRegistry,
   parse,
+  plan,
 } from '@onething/core/search'
 
 import { SqliteIndex } from '../sqlite-index.js'
@@ -118,10 +119,15 @@ const manifest: CapabilityManifest = {
   schema: SCHEMA,
 }
 
-/** 严格档:全 AND + 短语相邻(阶梯 ①)。 */
-function strictQuery(raw: string, limit = 2000): LexicalQuery {
+/**
+ * 阶梯第 `level` 级的查询。**级由 `plan` 给,不在这里手拼** —— S3b 第二轮之后
+ * 「一个 AST 词摊成多词元」是分级的(①② 一体、③④ 摊平),手改 `minShouldMatch`
+ * 改不出这一维,而那正是放宽用例要考的东西。
+ */
+function queryAt(raw: string, level: number, limit = 2000): LexicalQuery {
   const parsed = parse(raw)
-  const lexical = buildLexicalQuery(parsed, {
+  const step = plan(parsed)[level]!
+  const lexical = buildLexicalQuery({ ...parsed, ladder: step }, {
     manifest,
     fields: { title: 2, content: 1 },
     analyzer: analyzers.resolve(undefined),
@@ -130,9 +136,12 @@ function strictQuery(raw: string, limit = 2000): LexicalQuery {
     limit,
     offset: 0,
   })
-  // `parse` 不带阶梯时 `buildLexicalQuery` 已经给的是最严那一级(minShouldMatch =
-  // 全部词、phraseAdjacent = true),这里只是把这件事写明白。
-  return { ...lexical, capability: undefined, minShouldMatch: lexical.terms.length, phraseAdjacent: true }
+  return { ...lexical, capability: undefined }
+}
+
+/** 严格档:全 AND + 短语相邻(阶梯 ①)。 */
+function strictQuery(raw: string, limit = 2000): LexicalQuery {
+  return queryAt(raw, 0, limit)
 }
 
 function keysOf(raw: string): string[] {
@@ -190,8 +199,10 @@ describe('SqliteIndex 真语料(S0 夹具)', () => {
   })
 
   it('放宽到阶梯 ③(至少一半)那条 snake 例外就回来了', () => {
-    const relaxed = strictQuery('elcc_holiday_tranfer')
-    relaxed.minShouldMatch = Math.ceil(relaxed.terms.length / 2)
+    // ③ 才把 `elcc_holiday_tranfer` 摊成 `整词 / elcc / holiday / tranfer` 四个词元
+    // ——「至少一半」这句话到这一级才数得着词元(①② 它是一条相邻短语,整词不在
+    // 文档里就是不中)。
+    const relaxed = queryAt('elcc_holiday_tranfer', 2)
     const keys = index.search(relaxed).hits
       .map(hit => index.get(hit.docId)?.key)
       .filter((key): key is string => key !== undefined)

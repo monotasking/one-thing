@@ -35,13 +35,18 @@ export const DEFAULT_DAILY_EXTENSIONS: readonly string[] = ['.md', '.markdown', 
 export interface DailyNotesFeedOptions {
   /** 笔记根目录。不存在也不报错 —— 用户没配笔记目录是常态。 */
   notesDir: string
+  /**
+   * feed id。缺省 `DAILY_FEED_ID`;**同一个进程里装两个笔记目录时第二个起要另
+   * 给一个**(索引服务按 id 找 feed,重名的那个永远收不到自己的钥匙)。
+   */
+  id?: string
   capability?: string
   extensions?: readonly string[]
   policy?: FeedPolicy
 }
 
 export class DailyNotesFeed implements DocumentFeed<string> {
-  readonly id = DAILY_FEED_ID
+  readonly id: string
   readonly capabilities: string[]
   readonly policy: FeedPolicy
 
@@ -50,6 +55,7 @@ export class DailyNotesFeed implements DocumentFeed<string> {
   private readonly extensions: readonly string[]
 
   constructor(options: DailyNotesFeedOptions) {
+    this.id = options.id ?? DAILY_FEED_ID
     this.notesDir = options.notesDir
     this.capability = options.capability ?? DEFAULT_DAILY_CAPABILITY
     this.extensions = options.extensions ?? DEFAULT_DAILY_EXTENSIONS
@@ -94,7 +100,11 @@ export class DailyNotesFeed implements DocumentFeed<string> {
       capability: this.capability,
       key,
       time,
-      facets: { path: key, time },
+      // `path` 是**绝对路径**(S3b 改;S3a 放的是 key 那个相对名):壳拿到一条
+      // 笔记结果之后要去打开那个文件,而相对名相对的是这把 feed 自己的根目录 ——
+      // 一台机器上可以有两个笔记根,相对名就打不开了。key 仍是相对名(整键替换
+      // 的粒度),两者各司其职。
+      facets: { path: filePath, time },
       fields: { title: path.basename(key, path.extname(key)), content },
     }
   }

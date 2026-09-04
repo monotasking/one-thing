@@ -118,7 +118,7 @@ export class IndexWorkerHost {
    */
   async status(): Promise<IndexStatus> {
     if (this.dead) {
-      return { mode: 'error', docs: 0, pending: 0, building: false, generation: 0, errors: [] }
+      return { mode: 'error', docs: 0, pending: 0, refolds: 0, building: false, generation: 0, errors: [], feeds: [] }
     }
     return await this.send({ type: 'status' }) as IndexStatus
   }

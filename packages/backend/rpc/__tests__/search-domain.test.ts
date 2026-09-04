@@ -30,6 +30,41 @@ import {
   createOnethingSearchService,
   type OnethingSearchProvidersAdapters,
 } from '@onething/runtime/search'
+import type { SearchIndexQueryFace } from '@onething/runtime/search/capabilities'
+
+/**
+ * 索引替身(检索重建 S3b)。这份文件钉的是**域**的分叉与信封,不是命中语义,
+ * 所以它只需要说得出「我是个能答话的索引」——`status` 那条用例读的正是它。
+ */
+const CHAT_DOC = {
+  docId: 1,
+  capability: 'chats',
+  key: '1',
+  time: 1,
+  facets: { sessionId: '1', spaceId: '', archived: false, time: 1 },
+  fields: { title: 'Alpha' },
+}
+
+const stubIndex: SearchIndexQueryFace = {
+  search: async request => (request.capability === 'chats'
+    ? {
+      hits: [{ docId: 1, score: 1, matched: ['alpha'], fields: ['title'] }],
+      total: 1,
+      docs: [CHAT_DOC],
+      generation: 3,
+    }
+    : { hits: [], total: 0, docs: [], generation: 3 }),
+  status: async () => ({
+    mode: 'owner',
+    docs: 12,
+    pending: 2,
+    refolds: 0,
+    building: false,
+    generation: 3,
+    errors: [],
+    feeds: ['ledger'],
+  }),
+}
 
 const IPC: RpcDispatchContext = { transport: 'ipc' }
 const HTTP: RpcDispatchContext = {
@@ -91,7 +126,7 @@ describe('search RPC domain', () => {
     missingError = domain.SEARCH_SERVER_RUNTIME_MISSING_ERROR
     getSessionsList.mockClear()
     restoreService = bound.configureOnethingSearchService(
-      createOnethingSearchService(stubAdapters),
+      createOnethingSearchService(stubAdapters, { index: stubIndex }),
     )
   })
 
@@ -156,6 +191,25 @@ describe('search RPC domain', () => {
       .toEqual(['chats', 'prompts', 'daily', 'files', 'messages', 'actions'])
     // 意图前缀由能力自报(§6.1);core 与契约里都没有 `/` `>` 这两个字面量。
     expect(manifests.find(manifest => manifest.id === 'actions')?.intentPrefixes).toEqual(['/', '>'])
+  })
+
+  /**
+   * `status` —— S3b 起是**真读数**。S2 那时它是三个常量;换成索引之后它读的是索引
+   * 的状态,壳那条「索引更新中」于是说的是真话。反证:把 `status()` 改回常量,
+   * `pending` 这一格立刻红。
+   */
+  it('status: 真读数,不是 S2 那三个常量', async () => {
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const response = unwrap(await dispatchRpc(
+      { domain: 'search', method: 'status', payload: {} }, IPC))
+    expect(response).toEqual({ mode: 'owner', pending: 2, vector: 'off' })
+  })
+
+  it('query 的响应上带 index 那一格:壳读它画「索引还在追账本」', async () => {
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const response = unwrap(await query({ query: 'Alpha', category: 'chats', limit: 5 }, IPC))
+    // `stale` = 队列里还欠着钥匙 或 启动校对还在跑;替身答的 pending 是 2。
+    expect(response.index).toEqual({ pending: 2, stale: true })
   })
 
   it('untrusted http: goes to the server port with the owner context, never to the desktop providers', async () => {

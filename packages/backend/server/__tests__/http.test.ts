@@ -567,35 +567,34 @@ describe('createOnethingHttpServer', () => {
       const sessionId = created.session?.id
       expect(sessionId).toBeTruthy()
 
-      await expect(searchRpc(aliceHeaders, {
+      /*
+       * 检索重建 S3b:**这条路上 chats 是空的,alice 和 bob 都一样。**
+       *
+       * chats / messages / daily 三路换成了索引型,而这个端口(不可信 = 非回环部署的
+       * server,按 owner 沙箱化)拿到的是一份**故意不可用**的索引面:进程里那份索引是
+       * store 级的、折的是 `<store>/sessions`,文档上没有 owner 这一格。共用它就等于
+       * 让 bob 读到宿主机器上 alice 的会话 —— 那正是这条用例原本要挡的事。少一类结果
+       * 是可见的缺口,串了 owner 是不可见的事故,所以选前者(理由写在
+       * `server/runtime.ts` 那个端口闭包里)。
+       *
+       * 于是「bob 看不见 alice 的会话」这条护栏在 chats 上**由构造成立**(谁都看不见),
+       * 而它在 owner 沙箱那一层的真判据由下一条 files 用例守。给索引加 owner facet
+       * 之前,这一格就该是空的。
+       */
+      const aliceChats = await searchRpc(aliceHeaders, {
         query: 'Searchable',
         category: 'chats',
         limit: 5,
-      })).resolves.toEqual({
-        ok: true,
-        data: expect.objectContaining({
-          success: true,
-          results: expect.arrayContaining([
-            expect.objectContaining({
-              type: 'chat',
-              sessionId,
-              title: 'Searchable Alpha',
-            }),
-          ]),
-        }),
       })
-
-      await expect(searchRpc(bobHeaders, {
+      const bobChats = await searchRpc(bobHeaders, {
         query: 'Searchable',
         category: 'chats',
         limit: 5,
-      })).resolves.toEqual({
-        ok: true,
-        // `relaxed` 是 §8「只加不改」里新添的那一格(检索重建 S0 立形、S2 由
-        // `SearchService` 填):0 = 没放宽。S2 的六个能力都声明 `relax:false`,
-        // 所以这里恒 0 —— 判据仍是「Bob 一条都搜不到」。
-        data: { success: true, results: [], relaxed: 0 },
       })
+      expect((aliceChats as { data: { results: unknown[] } }).data.results).toEqual([])
+      expect(aliceChats).toEqual(bobChats)
+      // 会话确实建出来了(不是「没建成所以搜不到」)——这一格钉的是上面那段的前提。
+      expect(sessionId).toBeTruthy()
 
       const notePath = join(workspaceRoot, 'alice', 'search-dev-workspace', 'notes', 'today.md')
       await expect(fetchJson(`${baseUrlValue}/api/search/actions`, {

@@ -432,7 +432,12 @@ interface DailyNoteProfile {
   source: 'obsidian' | 'folder'
 }
 
-interface DailySearchResult extends SearchResult {
+/**
+ * 每日笔记那一路的结果。三格额外字段是**排序用的私料**(旧扫描器自己的按 mtime /
+ * ctime 兜底次序、以及「新建那一条排最后」的闩),不进契约层的 `SearchResult`。
+ * S3b 起 `resolveDailyTodayShortcut` 把它交给索引型的 daily 能力,所以导出。
+ */
+export interface DailySearchResult extends SearchResult {
   fileMtime?: number
   fileCtime?: number
   isCreateShortcut?: boolean
@@ -704,6 +709,24 @@ async function readDailyTemplate(profile: DailyNoteProfile): Promise<string | nu
   }
 }
 
+/**
+ * 每日笔记的搜索目录(S3b:索引侧的 `DailyNotesFeed` 从这里认路)。
+ *
+ * 它就是 `getDailyNoteProfiles` 那张表的 `searchDir` 一列去重之后的样子 —— **同一
+ * 个产地**:笔记目录怎么算(设置里的自定义目录 / 个人笔记变量 / Obsidian 的
+ * `daily-notes.json`)这件事只在那一个函数里说,索引不重新推一遍。同一个配置根
+ * 可以答出两个目录(vault 的 daily 子目录 + vault 根),所以返回的是**一张表**。
+ *
+ * 关掉每日笔记(`dailyNotes.enabled === false`)或没配目录 → 空表 = 索引不装
+ * 那一路 feed。
+ */
+export async function resolveDailyNoteSearchDirs(
+  adapters?: OnethingSearchProvidersAdapters,
+): Promise<string[]> {
+  const profiles = await getDailyNoteProfiles(getSearchAdapters(adapters))
+  return [...new Set(profiles.map(profile => profile.searchDir))]
+}
+
 export async function createDailyNote(
   filePath: string,
   adapters?: OnethingSearchProvidersAdapters,
@@ -724,6 +747,63 @@ export async function createDailyNote(
   return filePath
 }
 
+/**
+ * 「今天那一条」——「打开今天」或「新建今天的日记」。
+ *
+ * S3b 从 `searchDailyNotes` 的循环体里**原样抽出来**(一行没改),因为换成索引型之后
+ * `daily` 能力也要它:索引里只有盘上存在的文件,而这一条说的恰好是「今天那个文件在
+ * 不在」——**不存在的文件没有文档**,索引永远答不出它。抽出来是为了让新旧两条路落在
+ * 同一份实现上,而不是各写一份「什么时候出这一行」。
+ *
+ * 判定就是 `todayMatchesQuery`:空词恒真(所以空词的 daily 单类档照旧先给这一条),
+ * 有词时按今天的 ISO 日期或那几个词根匹配。
+ */
+async function buildDailyTodayShortcut(
+  profile: DailyNoteProfile,
+  query: string,
+  today: Date,
+): Promise<DailySearchResult | undefined> {
+  const todayIso = toIsoDate(today)
+  if (!todayMatchesQuery(query, todayIso)) return undefined
+
+  const todayRel = `${formatDailyDate(profile.format, today)}.md`
+  const todayPath = path.resolve(profile.searchDir, todayRel)
+  const todayExists = await pathExists(todayPath)
+  const todayTitle = todayExists ? `Today: ${todayIso}` : `Create today's daily note: ${todayIso}`
+  const todayResult: DailySearchResult = {
+    id: `${todayExists ? 'daily' : 'daily-create'}:${todayPath}`,
+    type: 'daily',
+    title: todayTitle,
+    subtitle: path.relative(profile.vaultRoot, todayPath) || path.basename(todayPath),
+    detail: todayExists ? 'Open today' : `Create in ${profile.label}`,
+    filePath: todayPath,
+    timestamp: todayExists ? today.getTime() : 0,
+    isCreateShortcut: !todayExists,
+  }
+  if (!todayExists) todayResult.actionId = `create-daily-note:${encodeURIComponent(todayPath)}`
+  return todayResult
+}
+
+/**
+ * 「今天那一条」的**唯一产地**,给索引型的 `daily` 能力用(S3b)。
+ *
+ * 与旧扫描路逐字同一条:同一个 `getDailyNoteProfiles`、同一个 `buildDailyTodayShortcut`、
+ * 同一条「第一把配置说了算」的规矩(旧路的 `hasTodayShortcut` 闩就是这个意思 ——
+ * 判定不看 profile,所以只有第一把 profile 出得来这一行)。
+ */
+export async function resolveDailyTodayShortcut(
+  query: string,
+  adapters?: OnethingSearchProvidersAdapters,
+  today: Date = new Date(),
+): Promise<DailySearchResult | undefined> {
+  const profiles = await getDailyNoteProfiles(getSearchAdapters(adapters))
+  for (const profile of profiles) {
+    const shortcut = await buildDailyTodayShortcut(profile, query, today)
+    if (shortcut !== undefined) return shortcut
+  }
+  return undefined
+}
+
 async function searchDailyNotes(
   query: string,
   limit: number,
@@ -734,29 +814,16 @@ async function searchDailyNotes(
   const results: DailySearchResult[] = []
   const seen = new Set<string>()
   const today = new Date()
-  const todayIso = toIsoDate(today)
   let hasTodayShortcut = false
 
   for (const profile of profiles) {
-    const todayRel = `${formatDailyDate(profile.format, today)}.md`
-    const todayPath = path.resolve(profile.searchDir, todayRel)
-    const todayExists = await pathExists(todayPath)
-    if (!hasTodayShortcut && todayMatchesQuery(query, todayIso)) {
-      const todayTitle = todayExists ? `Today: ${todayIso}` : `Create today's daily note: ${todayIso}`
-      const todayResult: DailySearchResult = {
-        id: `${todayExists ? 'daily' : 'daily-create'}:${todayPath}`,
-        type: 'daily',
-        title: todayTitle,
-        subtitle: path.relative(profile.vaultRoot, todayPath) || path.basename(todayPath),
-        detail: todayExists ? 'Open today' : `Create in ${profile.label}`,
-        filePath: todayPath,
-        timestamp: todayExists ? today.getTime() : 0,
-        isCreateShortcut: !todayExists,
+    if (!hasTodayShortcut) {
+      const todayResult = await buildDailyTodayShortcut(profile, query, today)
+      if (todayResult !== undefined) {
+        results.push(todayResult)
+        seen.add(todayResult.filePath ?? '')
+        hasTodayShortcut = true
       }
-      if (!todayExists) todayResult.actionId = `create-daily-note:${encodeURIComponent(todayPath)}`
-      results.push(todayResult)
-      seen.add(todayPath)
-      hasTodayShortcut = true
     }
 
     try {

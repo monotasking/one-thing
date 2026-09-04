@@ -99,10 +99,24 @@ export interface IndexStatus {
   docs: number
   /** 队列里还欠着几把钥匙。 */
   pending: number
+  /**
+   * **真正折过几次**(S3b 第二轮)。指纹没变那一支的提前返回不算 —— 它没读文件、
+   * 没跑投影。这一格是「白做工」唯一可观测的读数:流式回复期间它一动不动,
+   * `run/end` 之后加一,就是「观察者只对会改文档的事件喊」这条判据的活证据
+   * (判据本身住 `projector.ts` 的 `INDEX_DOCUMENT_EFFECTS`)。
+   */
+  refolds: number
   /** 启动校对还在跑吗。 */
   building: boolean
   generation: number
   errors: IndexKeyError[]
+  /**
+   * 已**纳入**的 feed(S3b)。`eager` 的在 `start()` 那一刻就进来;`lazy` 的要等
+   * 到第一次有人查它替之产文档的那个能力(§5.2b 那张表「文件树 lazy(首次查询才
+   * 建)」)。这一格是「首次查询才建」这条策略**唯一**可观测的地方 —— 能力自己
+   * 一个字都不知道它的来源是懒的还是急的。
+   */
+  feeds: string[]
 }
 
 export type IndexWorkerRequest =
@@ -167,8 +181,17 @@ export class IndexWorkerCore {
   private timer: NodeJS.Timeout | undefined
   private flushing: Promise<void> | undefined
   private readonly idleWaiters: Array<() => void> = []
-  private building = false
+  /** 已纳入的 feed id(S3b:`eager` 在 start 时进,`lazy` 在首次查询时进)。 */
+  private readonly activeFeeds = new Set<string>()
+  /**
+   * 正在跑校对的 feed 数。**是计数不是布尔** —— 懒 feed 的纳入与账本的启动校对
+   * 可以同时在跑,一个布尔会让先结束的那个把另一个的「还在建」抹掉,`drain()`
+   * 于是提前答「排空了」。
+   */
+  private buildingCount = 0
   private started = false
+  /** 真正折过几次(`status().refolds`)。 */
+  private refolds = 0
 
   constructor(options: IndexWorkerCoreOptions) {
     this.endpoint = options.endpoint
@@ -187,16 +210,22 @@ export class IndexWorkerCore {
   }
 
   /**
-   * 订阅各 feed + 跑一遍启动校对。**校对是后台的**:`start()` 立刻返回,库打开的
-   * 那一刻就能查(§5.4「打开库 → 立刻可查 → 后台对每个 feed 跑一遍校对」)。
+   * 纳入各 `eager` feed(订阅 + 跑一遍启动校对)。**校对是后台的**:`start()`
+   * 立刻返回,库打开的那一刻就能查(§5.4「打开库 → 立刻可查 → 后台对每个 feed
+   * 跑一遍校对」)。
+   *
+   * **`lazy` 的这里一个都不碰**(S3b):它们既不订阅也不校对,要等到第一次有人
+   * 查它替之产文档的那个能力(`search()` 里的 `ensureFeedsFor`)。「首次查询才
+   * 建」于是落在**纳入时机**上,而不是落在能力里 —— 能力问的还是同一句话,答它
+   * 的索引这一刻恰好刚开始建而已。
    */
   start(): void {
     if (this.started) return
     this.started = true
     for (const feed of this.feeds) {
-      this.unsubscribes.push(feed.subscribe(key => this.enqueue(feed.id, key)))
+      if ((feed.policy?.build ?? 'eager') !== 'eager') continue
+      void this.activate(feed)
     }
-    void this.reconcile()
   }
 
   dispose(): void {
@@ -248,6 +277,7 @@ export class IndexWorkerCore {
   // ---- 查询 -------------------------------------------------------------
 
   search(request: IndexSearchRequest): IndexSearchResult {
+    this.ensureFeedsFor(request.capability)
     const query: SearchQuery = {
       raw: '',
       ast: request.ast,
@@ -289,10 +319,44 @@ export class IndexWorkerCore {
       mode: 'owner',
       docs: this.index.size(),
       pending: this.pending.size,
-      building: this.building,
+      refolds: this.refolds,
+      building: this.buildingCount > 0,
       generation: this.index.generation(),
       errors: [...this.errors.values()],
+      feeds: [...this.activeFeeds],
     }
+  }
+
+  /**
+   * 这个能力的文档由哪些 feed 产 —— 还没纳入的当场纳入(S3b 的懒建时机)。
+   *
+   * 判据读的是 `feed.capabilities`(feed 自述它替谁产文档),这个文件里因此没有
+   * 任何能力名,也没有「daily 是懒的」这种知识。加一个懒来源 = 加一个 feed。
+   */
+  private ensureFeedsFor(capability: string): void {
+    for (const feed of this.feeds) {
+      if (this.activeFeeds.has(feed.id)) continue
+      if (!feed.capabilities.includes(capability)) continue
+      void this.activate(feed)
+    }
+  }
+
+  /**
+   * 纳入一把 feed:订阅 + 跑一遍它的校对。幂等。
+   *
+   * `buildingCount` 在**同步段**就加上去(`reconcileFeed` 的第一句),于是「查一下
+   * daily 然后 drain」拿得到「还在建」这个事实 —— 加在第一个 `await` 之后就是一次
+   * 竞态,drain 会在校对还没开始时答「排空了」。
+   */
+  private activate(feed: DocumentFeed<string>): Promise<void> {
+    if (this.activeFeeds.has(feed.id)) return Promise.resolve()
+    this.activeFeeds.add(feed.id)
+    try {
+      this.unsubscribes.push(feed.subscribe(key => this.enqueue(feed.id, key)))
+    } catch (error) {
+      log.error('feed subscribe failed; it will still be reconciled once', { feedId: feed.id, err: error })
+    }
+    return this.reconcileFeed(feed)
   }
 
   // ---- 队列 -------------------------------------------------------------
@@ -309,7 +373,7 @@ export class IndexWorkerCore {
 
   /** 队列排空(含正在飞的那一批与校对)。 */
   async drain(): Promise<void> {
-    while (this.building || this.pending.size > 0 || this.flushing !== undefined) {
+    while (this.buildingCount > 0 || this.pending.size > 0 || this.flushing !== undefined) {
       if (this.flushing !== undefined) {
         await this.flushing
         continue
@@ -381,6 +445,8 @@ export class IndexWorkerCore {
 
       if (this.index.readCheckpoint(feed.id, key) === fingerprint) return
 
+      // 从这一行起才是真的折(读整份账本 + 跑投影);读数进 `status().refolds`。
+      this.refolds += 1
       const grouped = new Map<string, { capability: string; key: string; docs: DocPayload[] }>()
       for await (const raw of feed.documentsOf(key)) {
         const doc = this.filter(raw, { feedId: feed.id, key })
@@ -418,39 +484,39 @@ export class IndexWorkerCore {
 
   // ---- 校对(§5.4)------------------------------------------------------
 
-  private async reconcile(): Promise<void> {
-    this.building = true
+  /** 一把 feed 的校对。**只对已纳入的 feed 调**(懒的没纳入就没有校对可言)。 */
+  private async reconcileFeed(feed: DocumentFeed<string>): Promise<void> {
+    this.buildingCount += 1
     try {
-      for (const feed of this.feeds) {
-        if ((feed.policy?.build ?? 'eager') !== 'eager') continue
-        const live = new Set<string>()
-        for await (const key of feed.keys()) {
-          live.add(key)
-          const fingerprint = await feed.fingerprint(key)
-          if (fingerprint === undefined) continue
-          if (this.index.readCheckpoint(feed.id, key) === fingerprint) continue
-          this.pending.add(`${feed.id}${KEY_SEPARATOR}${key}`)
-        }
-        // 库里记着、feed 说不存在的 —— 排队走一遍 refold,指纹 undefined 那一支
-        // 会给它打墓碑(§5.4「库里有、feed 说不存在的墓碑」)。
-        for (const key of this.index.checkpointKeys(feed.id)) {
-          if (!live.has(key)) this.pending.add(`${feed.id}${KEY_SEPARATOR}${key}`)
-        }
+      const live = new Set<string>()
+      for await (const key of feed.keys()) {
+        live.add(key)
+        const fingerprint = await feed.fingerprint(key)
+        if (fingerprint === undefined) continue
+        if (this.index.readCheckpoint(feed.id, key) === fingerprint) continue
+        this.pending.add(`${feed.id}${KEY_SEPARATOR}${key}`)
+      }
+      // 库里记着、feed 说不存在的 —— 排队走一遍 refold,指纹 undefined 那一支
+      // 会给它打墓碑(§5.4「库里有、feed 说不存在的墓碑」)。
+      for (const key of this.index.checkpointKeys(feed.id)) {
+        if (!live.has(key)) this.pending.add(`${feed.id}${KEY_SEPARATOR}${key}`)
       }
     } catch (error) {
-      log.error('index reconcile failed', { err: error })
+      log.error('index reconcile failed', { feedId: feed.id, err: error })
     } finally {
-      this.building = false
+      this.buildingCount -= 1
     }
     await this.flush()
   }
 
-  /** 全量重建:检查点全撤,所有钥匙重排队。 */
+  /** 全量重建:检查点全撤,**已纳入的**每把 feed 各校对一遍。 */
   async rebuild(): Promise<void> {
     for (const feed of this.feeds) {
       for (const key of this.index.checkpointKeys(feed.id)) this.index.dropCheckpoint(feed.id, key)
     }
     this.errors.clear()
-    await this.reconcile()
+    await Promise.all(this.feeds
+      .filter(feed => this.activeFeeds.has(feed.id))
+      .map(feed => this.reconcileFeed(feed)))
   }
 }
