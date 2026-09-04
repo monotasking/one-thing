@@ -202,7 +202,8 @@ describe('search RPC domain', () => {
     configureHostLocalTrust({ origin: 'desktop-embedded' })
     const response = unwrap(await dispatchRpc(
       { domain: 'search', method: 'status', payload: {} }, IPC))
-    expect(response).toEqual({ mode: 'owner', pending: 2, vector: 'off' })
+    // `docs` 是 S3c 加的第四格(单调,parity-B 用它判「追完了」);替身索引里种了 12 份。
+    expect(response).toEqual({ mode: 'owner', pending: 2, docs: 12, vector: 'off' })
   })
 
   /**
