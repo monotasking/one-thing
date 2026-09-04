@@ -164,6 +164,67 @@ describe('search corpus redaction', () => {
     })
   })
 
+  describe('long-token 的取舍(S3c:标识符不是密钥)', () => {
+    /**
+     * **必须放过**的正经标识符 —— 三条都 32 位以上,三条都被 S3c 之前的规则 7 整段
+     * 换成 `<redacted:token>`,于是它们的词元(`into` / `only` / `constraints` …)根本
+     * 没进倒排,用户搜 `Only`、`into` 就漏。前两条是 parity-B 在真库上跑出来的那两条
+     * 红的原文,第三条是 64 位的蛇形串(长度不是判据,这一条钉死这句话)。
+     */
+    const IDENTIFIERS = [
+      'translatesAutoresizingMaskIntoConstraints',
+      'elcc_bot_res_signal_buttonOnly_buttonNumber',
+      'session_transcript_projection_checkpoint_rebuild_background_task_runner',
+    ]
+
+    /**
+     * **必须照洗**的真密钥形 —— 32 位以上、无前缀的随机串。三种形各一条:数字散在
+     * 串里的混合随机串、带连字符与数字的 UUID、base64 样的一长条。
+     * (`sk-…` 有自己的规则 3,不在这里守。)
+     */
+    const SECRETS = [
+      'a8F3kL9qZx2mN7vB4tR1yU6wE0sD5gH8',
+      'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+      'bXlzZWNyZXQxMjM0NTY3ODkwYWJjZGVmZ2hpams',
+    ]
+
+    it('驼峰 / 蛇形的正经标识符一字不动,而且不算漏网', () => {
+      for (const name of IDENTIFIERS) {
+        expect(name.length, name).toBeGreaterThanOrEqual(32)
+        expect(redactText(`调用 ${name} 之前`), name).toBe(`调用 ${name} 之前`)
+        // 形状当然命中正则 —— 但 `accept` 摇头,所以「验」那一半也必须放过它,
+        // 否则成品语料上「每条规则零命中」永远红。
+        expect(findRedactionHits(name), name).toEqual([])
+      }
+    })
+
+    it('标识符的词元还在:洗过之后仍然搜得到 `Only` / `Into`', () => {
+      // 这一条守的是这次修的**病**本身,不是修法:词元进不进倒排。
+      const dirty = 'parseInt(elcc_bot_res_signal_buttonOnly_buttonNumber, 10)'
+        + ' 与 translatesAutoresizingMaskIntoConstraints = false'
+      const clean = redactText(dirty)
+      expect(clean).toBe(dirty)
+      for (const word of ['Only', 'Into', 'buttonNumber', 'Constraints']) {
+        expect(clean, word).toContain(word)
+      }
+    })
+
+    it('32 位以上的随机串照洗', () => {
+      for (const secret of SECRETS) {
+        expect(redactText(`key 是 ${secret} 完`), secret).toBe('key 是 <redacted:token> 完')
+        expect(findRedactionHits(secret), secret).toContain('long-token')
+        expect(findRedactionHits(redactText(secret)), secret).toEqual([])
+      }
+    })
+
+    it('判据是结构不是长度:同样 43 位,标识符留、随机串洗', () => {
+      const identifier = 'elcc_bot_res_signal_buttonOnly_buttonNumber'
+      const secret = 'x7Qm2Vp9Ld4Rt8Nb1Kw6Zc3Hf5Jy0Gs7Aq2Ue9Ir4T'
+      expect(redactText(identifier)).toBe(identifier)
+      expect(redactText(secret)).toBe('<redacted:token>')
+    })
+  })
+
   it('一句里多条规则一起命中,洗完全干净', () => {
     const dirty = '在 /Users/bob/app 跑,联系 bob@example.com 或 13800138000,'
       + ' token=abcdefgh12345678,key 是 sk-ant-api03-AbCdEfGhIjKlMnOpQr'

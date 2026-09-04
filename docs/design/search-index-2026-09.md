@@ -25,7 +25,16 @@
 | **账本投影索引**(建) | 消息 / 会话标题 / 笔记的索引是 `events.jsonl`(+ 会话 meta)的**确定性函数**,进程内同步观察者增量折,快照是检查点 | 索引 ≡ fold(账本, 检查点),坏了重放,不做迁移 |
 | **查询流水线**(查) | `parse → plan → sources → merge → rank → page → snippet`,每段纯函数,源是候选流 | 全部档的合并规则是**一段显式代码**,不是散在各处的常量 |
 
-**规模**(真库只读):441 会话 / 9616 条消息 / 正文 7.0MB(`messages.jsonl` 391MB、`events.jsonl` 480MB,大头是工具结果与推理)/ 中文 29%。引擎 `node:sqlite` FTS5(内建,零原生依赖;分词在 TS,FTS5 只吃预切 token 列;`InvertedIndex` 接口保留,纯 TS 实现为测试替身),**整个索引服务住一个 `worker_threads` Worker**(`node:sqlite` 只有同步 API,主线程碰它就是卡桌面),冷建从账本重放 ≈ 5s(Worker 里,期间主线程可查旧数据),增量折毫秒级,查询 < 10ms(含一次 postMessage 往返);脱敏后的正文存进文档表(7MB),摘要与短语核验都在库内;第二期 sqlite-vec 加向量列(§15)。
+**规模**(真库只读):441 会话 / 9616 条消息 / 正文 7.0MB(`messages.jsonl` 391MB、`events.jsonl` 480MB,大头是工具结果与推理)/ 中文 29%。引擎 `node:sqlite` FTS5(内建,零原生依赖;分词在 TS,FTS5 只吃预切 token 列;`InvertedIndex` 接口保留,纯 TS 实现为测试替身),**整个索引服务住一个 `worker_threads` Worker**(`node:sqlite` 只有同步 API,主线程碰它就是卡桌面),增量折毫秒级,查询 < 10ms(含一次 postMessage 往返);脱敏后的正文存进文档表(7MB),摘要与短语核验都在库内;第二期 sqlite-vec 加向量列(§15)。
+
+**冷建读数**(S3c 实测,`dist/server` + 真 Worker;原来这里写的 `≈ 5s` 是估的,现在是量的):
+
+| 现场 | 会话 / 文档 | 库 | 冷建耗时 |
+| --- | --- | --- | --- |
+| 真库副本(`search:parity-B` 的临时 store,按体积取样 135/483 间、160 MiB) | 135 间 → **2998** 份文档 | 15.0 MiB | **1.0s** |
+| 种出来的重现场(`gate:search-index` ⑤,300 间 × 30 条,含 10 条 > 64KB) | 300 间 → **9300** 份文档 | 44.5 MiB | **6.9 / 12.7s**(两趟;第二趟那台机器同时在跑别的活) |
+
+「冷建耗时」= 从 server 进程起到 `search.status.docs` 涨停且 `pending === 0`,**包含**进程启动与装配那几秒,不只是折。期间主线程一直可查(见 §5.3 的事件循环读数)。
 
 **拍点**(用户拍;粗体 = 推荐):
 
@@ -454,7 +463,7 @@ registerDocumentFilter(filter)     // 按注册序串行;任一返回 null 即�
 - **为什么是 Worker 不是「下一 tick」**(v3.1):`node:sqlite` 只提供 `DatabaseSync`,每条语句都阻塞事件循环;core 就是 Electron 主进程,HTTP/SSE 面、流式回复、权限往返全在这条线程上。冷建 5 秒 = 桌面卡 5 秒,`run/end` 折一条 30 万字的消息 = 几十毫秒的长帧,正是 09-03 流式卡死那种病。所以 Worker 是**唯一**持有 sqlite 句柄的地方;主线程侧 `worker-host.ts` 把 `enqueue` / `query` / `status` / `preview` 四种消息做成 Promise 往返(query 一次往返 < 1ms),Worker 崩了记一条 `error` 日志、重起、从检查点续;两次连续崩就报 `index.status() = { error }` 不再重起。
 - Worker 里的折:队列去抖 50ms 成批;若该会话的投影状态不在缓存(冷会话),按 `projection-cache` 的边界:**不在写路径上读整文件**;把该会话记进「待补」,由后台任务从检查点 seq 读尾巴补齐(`drainSessionLogEventTail`,`seq <= lastSeq` 幂等)。
 - 折坏了(reduce 抛)→ 该会话检查点作废,后台整会话重建;其它会话不受影响。
-- 门:`gate:search-index` 里量**主线程事件循环延迟**(`perf_hooks.monitorEventLoopDelay`)—— 冷建全程 p99 < 20ms、增量折期间 < 5ms;把索引服务改回主线程跑这条门必红。
+- 门:`gate:search-index` 里量**主线程事件循环延迟**(`perf_hooks.monitorEventLoopDelay`)—— 冷建全程 p99 < 20ms;增量折 **p99 < 5ms 只对「窗口里除了折没有别的事」成立**(门的 ⑤c:60 键整键重折,实测 p99 1.83–3.02ms),而**带真回合的窗口线是 20ms**(门的 ⑤b:20 条消息连发,实测 p99 5.61–9.86ms)—— 那个窗口的地板是**回合本身** 7ms 左右(把索引整个关掉跑同一段,p99 反而是 7.377ms),拿 5ms 卡它卡的是引擎不是折。把索引服务改回主线程跑这两条都必红。
 
 ### 5.4 检查点与快照
 
@@ -772,6 +781,106 @@ S3 拆成三批跑:**S3a** 索引服务本体(`2579d480`)、**S3b** 接进宿主
 `vitest` core/search + runtime/search + wiring/search + backend/rpc **69 文件 669 例**绿;
 黄金查询严格档命中数合计 947 → 109,期望键一条没丢。
 
+### S3c 落地记录(2026-09-05:两道门收口 S3)
+
+交两件:对账门 `search:parity-B`,与 `gate:search-index` 从四条扩到七条。
+
+#### parity-B:⊇ 成立,差集全部说得出理由
+
+`bun run search:parity-B`(脚本跑在 bun 下答**旧扫描**,`spawn('node', ['dist/server/main.js'])`
+答**索引** —— bun 没有 `node:sqlite`,而旧扫描要 TS 源码 + `?raw`,node 起不来;两条进程
+不同时活着)。真库副本 135/483 间 / 160 MiB,查询集 = parity-A 那份生成法(同种子)去掉
+`/` `>` 两类 + 13 条日期形,共 **183 条 × 3 档**,两侧 `limit` 都放到 500:
+
+| 档 | 查询 | 旧命中 | 新命中 | ⊇ 成立 | 中段子串 | 脱敏吃掉 | 需放宽 | 截断跳过 | **红** | 归档(仅新) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| messages | 183 | 606 | 16751 | 172 | 11 | 2 | 0 | 7 | **0** | 4110 |
+| chats | 183 | 74 | 198 | 183 | 0 | 0 | 0 | 0 | **0** | 14 |
+| daily | 183 | 0 | 0 | 183 | 0 | 0 | 0 | 0 | **0** | 0 |
+
+两趟读数逐字相同。三件要说清楚的:
+
+1. **「脱敏吃掉」是这一批新添的一类差集**,不是原来 §13 预见到的两类之一 —— 它是真机跑出来的
+   两条红,查了才知道:索引看得见的从来不是原文,是 `redactionFilter` 洗过的那一份(§5.2c),
+   而 `redactText` 会把长标识符整段换成 `<redacted:token>`。实测
+   `parseInt(elcc_bot_res_signal_buttonOnly_buttonNumber, 10)` → `parseInt(<redacted:token>, 10)`、
+   `translatesAutoresizingMaskIntoConstraints = false` → `<redacted:token> = false`,于是查
+   `Only` / `into` 旧扫描命中、索引结构上不可能命中。**这是设计定的语义,不是漏**,已进 §13。
+   门的分类因此改成「拿洗过的那份文本问分析器」,三类一次判完(`classifyMissing`)。
+2. **`daily` 两侧都是 0 条,⊇ 在这一档是平凡真** —— 这台机器上
+   `resolveDailyNoteSearchDirs()` 答 `[]`(设置里 `useObsidianConfig: true`,但解不出目录),
+   新旧两条路都没有笔记可搜。门会把这一行打出来,不装成守住了。
+3. **截断的 7 条不进判据**:旧 `searchMessages` 攒够 limit 整体 break(按会话表次序),
+   索引按分排序后切页 —— 同一个 500 切在不同位置,比的就成了「谁被截断」。
+
+#### 顺手修的一个索引 bug:`status().pending` 在 flush 期间说谎
+
+`flush()` 第一句是 `pending.clear()`,所以从出队到折完那一整段 `status()` 答 `pending: 0`,
+`stale`(= `pending > 0 || building`)于是在索引**还在追账本**时说「追上了」。parity-B 就是被它
+咬到的:等 `stale === false` 之后开始对账,跑到一半同一条查询多答出两条。`drain()` 早就认得
+这一形(它的三个条件里有 `flushing !== undefined`),错的只是 `status()` 少问一句。修法是
+`worker-core.ts` 加一格 `inFlight`,`pending = pending.size + inFlight.size`;用例
+`worker-core.test.ts`「status().pending 把正在折的那一批算进去」(拿一把 `documentsOf` 会卡住的
+feed 造现场),**反证**:把 `pending` 改回只数队列 → 该例红(`condition not met within 2000ms`)。
+
+#### 契约只加一格:`search.status.docs`
+
+修完 `pending` 之后 parity-B 仍然红 —— 第二次试错:改盯**一枚探针词的 `total`** 涨停,而探针词
+一旦集中在早早折完的那几间会话里,它的 `total` 会在整份索引才折了一小半时就不动了。两次都是同一个
+错:拿**局部**的量去判**整体**建完没有。所以给 `SearchStatusResponse` 加一格 `docs?: number`
+(索引里现在有多少份文档,单调;问不出来时缺席)。这是**只加不改**,而且不是为门而生的格子 ——
+壳的「索引更新中」那行要说「已收录 N 条」用的也是它。`search:parity-B` 与 `gate:search-index`
+的等待判据统一成「`docs` 涨停 ∧ `pending === 0`,连着五拍」。
+
+#### gate:search-index 扩到七条
+
+新的 ⑤⑥⑦(①–④ 一字未动),两趟全绿:
+
+- **⑤ 事件循环延迟**。量法是**第三条路**:`node --require scripts/lib/gate-loop-probe.cjs`
+  预加载一只真的 `monitorEventLoopDelay`,门发 `SIGUSR2` 让它把直方图落盘再 reset。派工单给的
+  两条各自的下场:(a) 在 `search.status` 上加 `loopDelay` = 契约里长出只有门会读的格子;
+  (b) `--inspect` + CDP **实测走不通** —— `Runtime.evaluate` 的上下文里没有 `require`,
+  `await import('node:perf_hooks')` 当场抛 `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`。预加载
+  这条路量的是真的 `monitorEventLoopDelay`,而产品代码一个字没动。
+  **`resolution: 1` 不是 10**:同一台机器上一条完全空闲的事件循环,`resolution: 10` 读出来
+  p50 **12.03** / p99 **12.06ms**,5 读 6.28 / 6.42,1 读 **1.27 / 1.33** —— 10 的底噪就已经越过了
+  §5.3 给增量段定的 5ms 线。一次 200ms 的同步阻塞在 1 这档如实读成 `max 201.2ms`。
+  现场是种出来的 300 间 × 30 条(含 10 条 > 64KB 的**内联**正文 —— 64KB 那条线管的是工具结果与
+  附件,普通消息正文再长也直接写进事件行,而工具结果按拍点乙 a 根本不进索引,让它走 blob 是空转)。
+  两趟读数:
+
+  | 窗口 | p50 | p99 | max | 采样 | 判据 |
+  | --- | --- | --- | --- | --- | --- |
+  | ⑤a 冷建全程(9300 份文档) | 1.32 / 1.27 | **3.35 / 1.36** | 50.7 / 23.7 | 8586 / 5245 | < 20ms ✅ |
+  | ⑤b 20 个真回合 | 1.34 / 1.27 | **9.86 / 5.61** | 67.8 / 38.9 | 2344 / 2615 | < 20ms ✅ |
+  | ⑤c 只有折(60 键整键重折,每 5 条一条 70KB) | 1.27 / 1.27 | **3.02 / 1.83** | 52.3 / 17.3 | 42623 / 38258 | < 5ms ✅ |
+
+  **⑤b 的线是 20ms 不是 5ms,理由是量出来的**:把索引整个关掉跑同一段(`ONETHING_SEARCH_WORKER`
+  指到一个存在但不是 Worker 的文件 → 起两次都崩 → `mode: 'error'`、`docs: 0`),20 条消息的窗口读
+  **p50 1.281 / p99 7.377 / max 27.4ms**;带索引是 **p50 1.270 / p99 5.9 / max 49.4**。**索引关掉
+  反而更高** —— 这个窗口的地板是「20 个真回合」本身(HTTP、引擎、SSE、会话落盘),拿 5ms 卡它
+  卡的是引擎不是索引。§5.3 那条 5ms 线因此搬去 ⑤c:那个窗口里除了折没有别的事,折一搬回主线程必红。
+  另加 **⑤d 结构判据**(grep):`packages/backend/**` 与 `runtime/src/search/{service.ts,capabilities/**}`
+  零 `node:sqlite` import —— 主线程碰不到 sqlite 是结构保证的,不是这次读数运气好。
+- **⑥ 改名 / 归档 / 删除**(走 `sessions.rename` / `.updateArchived` / `.delete` 的真写面):
+  改名后按新标题命中 **878 / 943ms**、旧标题不再命中;**归档后仍然搜得到且结果带 `archived`
+  facet**(拍点丙 a 的可感知变化,旧 `searchChats` 是直接跳过)**945 / 968ms**;删除后 messages
+  **631 / 644ms**、chats **1 / 2ms** 都不再命中。
+- **⑦ 另一个进程写的账本**:门起一个 `node` 子进程往会话账本尾巴上追加一条 `user/message`,
+  **5 / 634ms** 内搜得到(走的是目录监视那条路,不是进程内的 append 观察者)。
+
+#### S3c 留账
+
+1. **一次改一大批会话时,目录监视要等到 30 秒兜底扫描才看见**。⑤c 第一版用子进程批量追加 40 间
+   会话,读数是「等折开始 **32964ms**,折本身 **55ms**」—— `fs.watch` 那条快路在一次 40 间目录的
+   突发下没命中,落到了 `LedgerFeed` 每 30s 一轮的 mtime 兜底扫描。§5.6 说的是「~1s」,单间改动
+   (⑦)实测也确实是 5–634ms,**只有突发这一形是 30 秒**。⑤c 因此改走进程内观察者
+   (`sessions.addSystemMessage`),那条路毫秒级。这条延迟本身没修 —— 它只影响「另一个进程刚写完
+   一大批」这一形,今天没有产品路径会这么写。
+2. `daily` 档在 parity-B 里是平凡真(见上),要真守住它得先有一台配好日记目录的机器。
+3. ⑤b 的 5ms → 20ms 是**读数支撑的改判**,不是放水;§5.3 原文那句「增量折期间 < 5ms」现在由
+   ⑤c 守着,措辞该跟着改成「折的窗口里」——**未改正文,留给下一批**。
+
 ---
 
 S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依赖 S3(要索引才有意义,壳无关);S7 依赖 S3;S6 与 S7 可并行。S1 / S2 / S3 / S6 / S7 各是一张 opus 派工单,附本文对应节 + 三张状态表要求。
@@ -812,7 +921,9 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 - Worker 崩两次即停(§5.3):停了之后 messages / sessions / daily 三路答 `{ error: 'index unavailable' }`,不回退到旧扫描(S5 已删),壳照 §9 画「没搜成」。
 - `@huggingface/transformers` 的 wasm 后端在 Electron Worker 与 Node Worker 里都跑,但**首次装载 ~300ms**,S7 的 Worker 在开关打开后才 import 它(动态 import,不进主 bundle 的关键路径)。
 - 文件内容检索是 S8 的第一件:`scanCapability` 包 `rg --json`,cursor = 文件位置。
-- **parity-B 的差集口径**(S3a 读数定的):旧扫描是子串匹配,索引是词与前缀,所以「查询是某个词元的**中段**」(`888` 打中 `00888`)旧路命中、索引永远不命中——那是 §2 拍定的语义,不是漏。parity-B 判 ⊇ 时允许**放宽到任一级**后再比,残差逐条打印并分类:能证明是「中段子串」的计入允许差,其余任何一条都红。黄金表 20 条里恰好这两条(`elcc_holiday_tranfer` 差整词、`888` 中段)在严格档不中,用例钉死「恰好这两条」。整词那条 S3b 顺手看:前缀展开应也作用于 camel / snake 的整词词元。
+- **parity-B 的差集口径**(S3a 读数定的):旧扫描是子串匹配,索引是词与前缀,所以「查询是某个词元的**中段**」(`888` 打中 `00888`)旧路命中、索引永远不命中——那是 §2 拍定的语义,不是漏。parity-B 判 ⊇ 时允许**放宽到任一级**后再比,残差逐条打印并分类:能证明是「中段子串」的计入允许差,其余任何一条都红。**允许差就这一类**(S3c 一度有过第二类「被脱敏吃掉」,同批已删,见下条)。
+- **`long-token` 误伤标识符已收窄,parity-B 不再有此类**(S3c 内的自我推翻)。真机第一版把「被脱敏吃掉」记成第三类允许差,那是**把误伤合法化**:被吃掉的两条 `translatesAutoresizingMaskIntoConstraints`(41 位)与 `elcc_bot_res_signal_buttonOnly_buttonNumber`(43 位)根本不是密钥,是正经标识符;它们的词元(`into` / `only` / `constraints` …)因此一个都没进倒排,用户搜 `Only`、`into` 就漏。**分开密钥与标识符的不是长度,是结构** —— 真密钥是无结构的随机串、几乎必含数字且数字散在串里;标识符是驼峰 / 蛇形拼起来的自然词。于是规则 7 加了 `accept` 谓词(`packages/core/search/redact.ts` 的 `isLikelySecretToken`,与规则 8 的 `isPublicIpv4` 同形,「洗」与「验」共用一个答案),**判据原文**:①按蛇形 + 驼峰拆开后**每一段都是 ≥ 3 位纯字母**的,放过(密钥拆不出这样的段);②否则,**至少含 3 个数字**的,洗;③否则,**含 `-` / `_` 且含数字**的,洗;④其余放过。刻意留的口子:纯字母、又拆不出词段的随机串(`aBcDeFgHiJ…`)会被放过 —— 方向是**少洗**,宁可漏洗一种今天没见过的形,也不再误伤正经标识符(多洗一个词就是倒排里少一个词)。读数:真语料重抽后 `<redacted:token>` 占位 278 → **162**(19 份文档,116 处标识符回到倒排),黄金表命中集一条没变(`corpus.test.ts` 的「恰好两条不中」逐字照旧);parity-B 重跑 **0 红**,`classifyMissing` 的 `'redacted'` 那一格与表上「脱敏吃掉」那一列一起删了 —— 再出现就是红。用例在 `scripts/__tests__/search-corpus-redact.test.mjs` 的「long-token 的取舍」一节(三条标识符放过 / 三条随机串照洗 / 同样 43 位一留一洗)。
+- **一次改一大批会话时目录监视要等 30 秒**(S3c 读数):单间改动 ~0.5s 就折进去了(`gate:search-index` ⑦ 实测 5 / 634ms),但**一个子进程一次改 40 间**的突发下 `fs.watch` 那条快路没命中,落到 `LedgerFeed` 每 30s 一轮的 mtime 兜底扫描 —— 实测「等折开始 32964ms,折本身 55ms」。§5.6 写的「~1s」只对单间改动成立。今天没有产品路径会这么写(另一个 core 也是一条一条 append),所以没修。黄金表 20 条里恰好这两条(`elcc_holiday_tranfer` 差整词、`888` 中段)在严格档不中,用例钉死「恰好这两条」。整词那条 S3b 顺手看:前缀展开应也作用于 camel / snake 的整词词元。
 - ~~**「严格档 = 全 AND」在「一个查询词分析成多个词元」那一形上实际是 OR**~~
   (**S3b 第二轮已修**,§6.2 那张 `multiTokenTerms` 表):①② 把这样一个词当一条短语,
   ③④ 才摊平。翻译一处改完,两个索引实现一字未动。真语料读数(20 条黄金查询,严格档命中

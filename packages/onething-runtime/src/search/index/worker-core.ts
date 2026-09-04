@@ -176,6 +176,19 @@ export class IndexWorkerCore {
   private readonly debounceMs: number
 
   private readonly pending = new Set<string>()
+  /**
+   * **正在折的那一批**(S3c)。
+   *
+   * `flush()` 的第一句就是 `pending.clear()` —— 那些钥匙没有折完,只是换了个地方
+   * 待着。少了这一格,`status()` 会在整个 flush 期间答 `pending: 0`,于是
+   * `stale`(= `pending > 0 || building`)在**索引明明还在追账本**的时候说「追上了」。
+   *
+   * 这不是理论:S3c 的 parity-B 就是被它咬到的 —— 等 `stale === false` 之后开始
+   * 对账,跑到一半同一条查询多答出两条来(冷建的 flush 还在折)。`drain()` 早就
+   * 认得这一形(它的三个条件里有 `this.flushing !== undefined`),错的只是
+   * `status()` 少问了一句;这一批把两处对齐,判据仍然是「还欠着几把钥匙」。
+   */
+  private readonly inFlight = new Set<string>()
   private readonly errors = new Map<string, IndexKeyError>()
   private readonly unsubscribes: Array<() => void> = []
   private timer: NodeJS.Timeout | undefined
@@ -318,7 +331,8 @@ export class IndexWorkerCore {
     return {
       mode: 'owner',
       docs: this.index.size(),
-      pending: this.pending.size,
+      // 排着队的 + 正在折的都算「还欠着」(见 `inFlight` 的说明)。
+      pending: this.pending.size + this.inFlight.size,
       refolds: this.refolds,
       building: this.buildingCount > 0,
       generation: this.index.generation(),
@@ -403,13 +417,19 @@ export class IndexWorkerCore {
       while (this.pending.size > 0) {
         const batch = [...this.pending]
         this.pending.clear()
+        // 出了队不等于折完了 —— 交接给 `inFlight`,`status()` 才不会在这一段说谎。
+        for (const composite of batch) this.inFlight.add(composite)
         for (const composite of batch) {
-          const separator = composite.indexOf(KEY_SEPARATOR)
-          const feedId = composite.slice(0, separator)
-          const key = composite.slice(separator + 1)
-          const feed = this.feeds.find(candidate => candidate.id === feedId)
-          if (feed === undefined) continue
-          await this.refold(feed, key)
+          try {
+            const separator = composite.indexOf(KEY_SEPARATOR)
+            const feedId = composite.slice(0, separator)
+            const key = composite.slice(separator + 1)
+            const feed = this.feeds.find(candidate => candidate.id === feedId)
+            if (feed === undefined) continue
+            await this.refold(feed, key)
+          } finally {
+            this.inFlight.delete(composite)
+          }
         }
       }
     })()

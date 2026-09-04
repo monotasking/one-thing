@@ -92,6 +92,16 @@ export interface SearchIndexStatus {
   mode: 'owner' | 'reader' | 'error'
   owner?: { host: string; pid: number }
   pending: number
+  /**
+   * 索引里现在有多少份文档(S3c)。**没有索引就缺席** —— 「问不出来」与「零条」不是
+   * 一回事。
+   *
+   * 加它是因为「索引建完了没有」在外面**问不出来**:`pending` 只说此刻队列空不空,而
+   * 冷建那一段里队列会反复空掉又填上,盯着它会在一个只折了一半的索引上答「建完了」
+   * (`search:parity-B` 就是这么被咬到的)。文档数是**单调**的,「涨到不再涨」是外面能
+   * 拿到的唯一诚实判据。契约层那一份的注释里有同一段话。
+   */
+  docs?: number
   vector?: 'off' | 'downloading' | 'embedding' | 'ready'
 }
 
@@ -197,7 +207,7 @@ export class OnethingSearchService {
   async status(): Promise<SearchIndexStatus> {
     if (this.index === undefined) return { mode: 'error', pending: 0, vector: 'off' }
     const status = await this.index.status()
-    return { mode: status.mode, pending: status.pending, vector: 'off' }
+    return { mode: status.mode, pending: status.pending, docs: status.docs, vector: 'off' }
   }
 
   /**

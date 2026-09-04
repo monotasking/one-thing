@@ -438,6 +438,52 @@ describe('§11 S3 反证(拆掉即红)', () => {
     await harness.service.drain()
     expect(await harness.keys(MESSAGE_CAPABILITY, '身份牌')).toEqual([])
   })
+
+  /*
+   * S3c:`status().pending` 要把**正在折的那一批**算进去。
+   *
+   * `flush()` 的第一句是 `pending.clear()`,所以从出队到折完的那一整段里,少了
+   * `inFlight` 这一格的 `status()` 会答 `pending: 0` —— 而 `stale`(= `pending > 0
+   * || building`,`service.ts` 的 `indexReport`)于是在索引明明还在追账本的时候说
+   * 「追上了」。parity-B 就是被它咬到的:等 `stale === false` 之后开始对账,跑到
+   * 一半同一条查询多答出两条来。
+   *
+   * 现场用一把**折起来会卡住的 feed**造:`documentsOf` 先等一个由测试握着的闸。
+   * 闸没开的那段时间里,队列是空的、校对也结束了,只有「在飞的那一把钥匙」在。
+   */
+  it('status().pending 把正在折的那一批算进去', async () => {
+    const store = newStore()
+    const dir = path.join(store.sessionsDir, 's1')
+    writeTypicalSession(store, { sessionId: 's1' })
+    writeMeta(dir, 's1', { name: '开局' })
+
+    let release = (): void => {}
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const base = new LedgerFeed({ sessionsDir: store.sessionsDir })
+    const slow: DocumentFeed<string> = {
+      id: base.id,
+      capabilities: base.capabilities,
+      policy: base.policy,
+      keys: () => base.keys(),
+      fingerprint: key => base.fingerprint(key),
+      documentsOf: async function* (key) {
+        await gate
+        yield* base.documentsOf(key)
+      },
+      subscribe: () => () => {},
+    }
+
+    const harness = mount(store, { feeds: [slow] })
+    // 闸关着 = 这把钥匙出了队还没折完。`pending` 必须仍然认它。
+    expect(await waitFor(async () => (await harness.service.status()).pending > 0, 2000)).toBe(true)
+    const stuck = await harness.service.status()
+    expect(stuck.building).toBe(false)
+
+    release()
+    await harness.service.drain()
+    expect((await harness.service.status()).pending).toBe(0)
+    expect(await harness.keys(MESSAGE_CAPABILITY, '身份牌')).toEqual(['s1:u-s1'])
+  })
 })
 
 /** 轮询等一个条件成立;超时返回 `timeoutValue`(缺省抛)。 */

@@ -23,7 +23,7 @@
  * | 4 | `Bearer <token>` | `Bearer <redacted:token>` |
  * | 5 | `key=…` / `token: "…"` 一族的**赋值右边** | `<redacted:secret>`(键名留着) |
  * | 6 | 手机号(中国大陆 11 位,可带 `+86` 与分隔符) | `<redacted:phone>` |
- * | 7 | 32 位以上的 `[A-Za-z0-9_-]` 随机串 | `<redacted:token>` |
+ * | 7 | 32 位以上的 `[A-Za-z0-9_-]` 随机串(**得先过 `accept`:标识符不算**) | `<redacted:token>` |
  * | 8 | **公网** IPv4(点分四段) | `<ip>` |
  *
  * **顺序**:1 先跑(路径里的用户名就是 PII,且切成段之后不会再被 7 吃掉整条路径);
@@ -37,15 +37,28 @@
  *  · 规则 6 用 `(?<!\d)` / `(?!\d)` 夹住,所以 13 位的毫秒时间戳(`1785684318323`)
  *    不会被当成手机号 —— 真库里满地都是时间戳,这一条没夹住就会把语料洗烂。
  *
- * ## 规则 8 为什么不是「一个正则就完事」
+ * ## 形状之外的判据:`accept`(规则 7 与规则 8 各用一个)
  *
- * 点分四段这个**形状**认得出来,但「这一段是不是该洗」不是形状能回答的问题:
+ * 有两条规则,正则只答得出「长得像」,答不出「是不是真要换」。所以规则多了一格
+ * **`accept(match)`** —— 一个纯谓词。它是「洗」与「验」**共用**的判据:`redactText`
+ * 只换 `accept` 点头的那些,`findRedactionHits` 也只把 `accept` 点头的算命中。少了
+ * 这个共用,留下来的那些会被「验」那一半永远报成漏网,幂等那条恒等式当场不成立。
+ *
+ * ### 规则 8:点分四段不等于「一台机器的地址」
+ *
  * `10.62.172.242` 与 `42.193.111.28` 形状逐字一样,前者是内网门牌(洗掉等于把
  * 「他们在讨论内网拓扑」这条信号也洗没了),后者是一台真机的公网地址(必须洗)。
- * 所以规则多了一格 **`accept(match)`** —— 一个纯谓词,回答「这一条真要换吗」。
- * 它是「洗」与「验」**共用**的判据:`redactText` 只换 `accept` 点头的那些,
- * `findRedactionHits` 也只把 `accept` 点头的算命中。少了这个共用,私网地址会被
- * 「验」那一半永远报成漏网,幂等那条恒等式当场不成立。
+ *
+ * ### 规则 7:32 位以上不等于「一把密钥」
+ *
+ * S3c 的 parity-B 在真库上跑出两条红,病根都在这里:
+ * `translatesAutoresizingMaskIntoConstraints`(41 位)与
+ * `elcc_bot_res_signal_buttonOnly_buttonNumber`(43 位)是**正经标识符**,却被整段换成
+ * `<redacted:token>`,于是它们的词元(`into` / `only` / `constraints` …)根本没进倒排 ——
+ * 用户搜 `Only`、`into` 就漏。这不是「脱敏的必然代价」,是规则 7 的误伤。
+ *
+ * 分开它们的**不是长度,是结构**:真密钥是无结构的随机串,几乎必含数字,且数字散在
+ * 串里;标识符是驼峰 / 蛇形拼起来的自然词。于是 `isLikelySecretToken` 这样判(见函数)。
  */
 
 /**
@@ -83,11 +96,61 @@ function isPublicIpv4(text: string): boolean {
 }
 
 /**
+ * 把一个 `[A-Za-z0-9_-]` 串按**蛇形 + 驼峰**拆成词段;拆不动(有一段不是纯字母)就
+ * 返回 `undefined`。
+ *
+ * 驼峰那一层用 `[A-Z]+(?![a-z])|[A-Z]?[a-z]+`:前一支吃连续大写的缩写(`HTTPServer`
+ * → `HTTP` / `Server`),后一支吃普通的一段。
+ */
+function wordSegments(text: string): string[] | undefined {
+  const segments: string[] = []
+  for (const piece of text.split(/[-_]+/)) {
+    if (piece.length === 0) continue
+    if (!/^[A-Za-z]+$/.test(piece)) return undefined
+    for (const segment of piece.match(/[A-Z]+(?![a-z])|[A-Z]?[a-z]+/g) ?? []) {
+      segments.push(segment)
+    }
+  }
+  return segments.length > 0 ? segments : undefined
+}
+
+/**
+ * 「这一串 32 位以上的 `[A-Za-z0-9_-]`,是**一把密钥**还是**一个标识符**?」——
+ * 规则 7 的判据,`redactText` 与 `findRedactionHits` 共用同一个答案。
+ *
+ * 三句话,顺序有意义:
+ *
+ *  1. **标识符形放过**:按蛇形 + 驼峰拆开之后,每一段都是 ≥ 3 位的**纯字母**段
+ *     (`translates` / `Autoresizing` / `Mask` / `Into` / `Constraints`)。密钥拆不出
+ *     这样的段 —— 它没有词边界,拆出来全是一两位的碎片。
+ *  2. **至少 3 个数字**:随机串里数字是均匀撒开的,32 位以上几乎不可能一个数字都
+ *     没有,更不可能只有一两个。
+ *  3. **带分隔符又带数字**:`sk_live_51H8xKl…` 这种「前缀 + 随机段」的形,数字可能
+ *     不多,但 `-` / `_` 与数字同时出现,标识符里罕见。
+ *
+ * 第 1 句今天与「串里一个数字都没有」是同一个答案(纯字母段 ⇒ 无数字 ⇒ 2、3 都不
+ * 成立),写出来是因为**它才是判据本身**:2、3 是手段,「这是个标识符」是理由;哪天
+ * 阈值要动,拦住标识符的仍然是这一句。
+ *
+ * **刻意留的口子**:纯字母、又拆不出词段的随机串(`aBcDeFgHiJ…`,32 位无数字)
+ * 会被放过。收紧到「不是标识符形就洗」会把 `x_y_z_aaaa…` 这类也吃掉 —— 宁可漏洗
+ * 一种今天没见过的形,也不再误伤正经标识符,方向是**少洗**(多洗一个词就是倒排里
+ * 少一个词)。真密钥的一般形(含数字)照洗。
+ */
+function isLikelySecretToken(text: string): boolean {
+  if (wordSegments(text)?.every(segment => segment.length >= 3)) return false
+  let digits = 0
+  for (const ch of text) if (ch >= '0' && ch <= '9') digits += 1
+  if (digits >= 3) return true
+  return digits >= 1 && /[-_]/.test(text)
+}
+
+/**
  * 一条规则:`id` 进报告与单测,`pattern` 同时用于「洗」与「验」。
  *
- * 可选的 `accept(match)` 是**形状之外**的判据(今天只有规则 8 用):正则说「长得像」,
- * `accept` 说「是不是真要换」。两个消费者读同一个 `accept`,所以「洗过之后没有任何
- * 规则再命中」这条恒等式对带谓词的规则同样成立。
+ * 可选的 `accept(match)` 是**形状之外**的判据(规则 7 与规则 8 各一个):正则说
+ * 「长得像」,`accept` 说「是不是真要换」。两个消费者读同一个 `accept`,所以「洗过
+ * 之后没有任何规则再命中」这条恒等式对带谓词的规则同样成立。
  */
 interface RedactRule {
   id: string
@@ -137,9 +200,10 @@ const RULES: readonly RedactRule[] = [
   {
     id: 'long-token',
     // 32 位以上的 `[A-Za-z0-9_-]` 连续串。两侧用同字符集的断言夹住,免得从一个更长
-    // 的串中间切一刀。
+    // 的串中间切一刀。长度只是**候选**的条件 —— 是不是密钥交给 `accept`。
     pattern: /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g,
     replace: '<redacted:token>',
+    accept: isLikelySecretToken,
   },
   {
     id: 'public-ipv4',
