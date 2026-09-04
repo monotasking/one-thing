@@ -16,10 +16,20 @@
  * B2(`docs/design/backend-transport-forks-2026-09.md` §2.2)之前这两支钉的是
  * `transport`。判据换成 `isHostLocallyTrusted()` 之后,下面每条都按「声明了没有」
  * 分组:声明过 → 两种 transport 同一个答案;没声明 → http 与 B2 之前逐字相同。
+ *
+ * 检索重建 S2(`docs/design/search-index-2026-09.md` §10)之后,**可信这一支去调谁**
+ * 换了:从前是 `wiring/search/providers` 的 `executeSearch`,现在是同一份取材面装起来
+ * 的 `SearchService`(进程单槽)。所以下面的可信用例装的是一份**真服务**(六个内置
+ * 能力都在),不是一只 spy —— 「不可信那一支一次都不求值桌面那份」这条断言因此改由
+ * 取材面上的 spy 来钉:适配器一次都不该被问到。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { searchRouter } from '@shared/ipc/search.js'
+import {
+  createOnethingSearchService,
+  type OnethingSearchProvidersAdapters,
+} from '@onething/runtime/search'
 
 const IPC: RpcDispatchContext = { transport: 'ipc' }
 const HTTP: RpcDispatchContext = {
@@ -29,11 +39,22 @@ const HTTP: RpcDispatchContext = {
   sandboxRoot: '/sandbox/alice/w1',
 }
 
-const executeSearch = vi.fn(async () => [{ id: 'chat:1', type: 'chat', title: 'Alpha' }])
+/** 取材面上的唯一探针:桌面那份被问到过没有。 */
+const getSessionsList = vi.fn(() => [{ id: '1', name: 'Alpha', updatedAt: 1 }])
 
-vi.mock('../../wiring/search/providers.js', () => ({
-  executeSearch: (...args: unknown[]) => executeSearch(...(args as [])),
-}))
+const stubAdapters: OnethingSearchProvidersAdapters = {
+  getSessionsList,
+  iterateSessionMessages: () => [],
+  getSession: () => undefined,
+  getCurrentSessionId: () => undefined,
+  getSettings: () => ({ general: { dailyNotes: { enabled: false } } }),
+  getVariablesStore: () => ({
+    getUserNoteDir: () => undefined,
+    getWorkNoteDir: () => undefined,
+  }),
+  listFiles: () => ({ async *[Symbol.asyncIterator]() {} }),
+  listPrompts: () => [],
+}
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
   // 读 `data` 之前先看 `ok` —— 失败的信封里没有 `data`。
@@ -49,13 +70,15 @@ describe('search RPC domain', () => {
   let resetHostLocalTrustForTests: typeof import('../../server/host-trust.js')['resetHostLocalTrustForTests']
   let dispose: (() => void) | undefined
   let restorePort: (() => void) | undefined
+  let restoreService: (() => void) | undefined
 
   beforeEach(async () => {
-    const [registry, domain, port, trust] = await Promise.all([
+    const [registry, domain, port, trust, bound] = await Promise.all([
       import('../registry.js'),
       import('../domains/search.js'),
       import('../../server/search-providers.js'),
       import('../../server/host-trust.js'),
+      import('@onething/runtime/search/service-bound'),
     ])
     dispatchRpc = registry.dispatchRpc
     configureServerSearchPort = port.configureServerSearchPort
@@ -66,10 +89,15 @@ describe('search RPC domain', () => {
     registry.resetRpcRegistryForTests()
     dispose = registry.registerRouterHandlers(searchRouter, domain.searchRpcHandlers)
     missingError = domain.SEARCH_SERVER_RUNTIME_MISSING_ERROR
-    executeSearch.mockClear()
+    getSessionsList.mockClear()
+    restoreService = bound.configureOnethingSearchService(
+      createOnethingSearchService(stubAdapters),
+    )
   })
 
   afterEach(() => {
+    restoreService?.()
+    restoreService = undefined
     restorePort?.()
     restorePort = undefined
     dispose?.()
@@ -81,17 +109,30 @@ describe('search RPC domain', () => {
     return dispatchRpc({ domain: 'search', method: 'query', payload }, context)
   }
 
-  it('locally trusted: runs the desktop providers with the request verbatim', async () => {
+  it('locally trusted: runs the desktop capabilities and carries the target home', async () => {
     configureHostLocalTrust({ origin: 'desktop-embedded' })
-    await expect(query({ query: 'Alpha', category: 'chats', limit: 5 }, IPC).then(unwrap))
-      .resolves.toEqual({ success: true, results: [{ id: 'chat:1', type: 'chat', title: 'Alpha' }] })
-    expect(executeSearch).toHaveBeenCalledWith('Alpha', 'chats', 5)
+    const response = unwrap(await query({ query: 'Alpha', category: 'chats', limit: 5 }, IPC))
+    expect(response.success).toBe(true)
+    expect(response.results).toEqual([expect.objectContaining({
+      id: 'chat:1',
+      type: 'chat',
+      title: 'Alpha',
+      sessionId: '1',
+      // S0 加的那一格,S2 由能力自己填(§4.1):壳按 kind 取渲染器。
+      target: { kind: 'chat', payload: { sessionId: '1' } },
+    })])
+    // 单类档不带分组总览(§7.2)。
+    expect(response.groups).toBeUndefined()
+    expect(getSessionsList).toHaveBeenCalled()
   })
 
-  it('locally trusted: an unknown category still normalizes to "all" (旧 handler 的行为)', async () => {
+  it('locally trusted: an unknown category still falls back to "all" —— 但判据是注册表', async () => {
     configureHostLocalTrust({ origin: 'desktop-embedded' })
-    await query({ query: 'x', category: 'nope' }, IPC)
-    expect(executeSearch).toHaveBeenCalledWith('x', 'all', undefined)
+    const response = unwrap(await query({ query: 'x', category: 'nope' }, IPC))
+    // `groups` 只在全部档出现,所以它就是「归到了 all」的判据(§7.2 / §8)。
+    expect(Array.isArray(response.groups)).toBe(true)
+    expect((response.groups as Array<{ capability: string }>).map(group => group.capability))
+      .toContain('chats')
   })
 
   it('B2: a trusted http caller gets the very same answer as ipc, and the port is never asked', async () => {
@@ -103,7 +144,18 @@ describe('search RPC domain', () => {
     const overIpc = unwrap(await query({ query: 'Alpha', category: 'chats', limit: 5 }, IPC))
     expect(overHttp).toEqual(overIpc)
     expect(portQuery).not.toHaveBeenCalled()
-    expect(executeSearch).toHaveBeenCalledTimes(2)
+    expect(getSessionsList).toHaveBeenCalled()
+  })
+
+  it('capabilities: 问的是注册表,不是一张写死的清单(S0 那张手抄的 manifest 已删)', async () => {
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const response = unwrap(await dispatchRpc(
+      { domain: 'search', method: 'capabilities', payload: {} }, IPC))
+    const manifests = response.capabilities as Array<Record<string, unknown>>
+    expect(manifests.map(manifest => manifest.id))
+      .toEqual(['chats', 'prompts', 'daily', 'files', 'messages', 'actions'])
+    // 意图前缀由能力自报(§6.1);core 与契约里都没有 `/` `>` 这两个字面量。
+    expect(manifests.find(manifest => manifest.id === 'actions')?.intentPrefixes).toEqual(['/', '>'])
   })
 
   it('untrusted http: goes to the server port with the owner context, never to the desktop providers', async () => {
@@ -116,13 +168,13 @@ describe('search RPC domain', () => {
       { query: 'Alpha', category: 'chats', limit: 5 },
       { userId: 'alice', workspaceId: 'w1' },
     )
-    expect(executeSearch).not.toHaveBeenCalled()
+    expect(getSessionsList).not.toHaveBeenCalled()
   })
 
   it('untrusted http without a server runtime: structured failure, not a silent desktop search', async () => {
     const response = await query({ query: 'Alpha', category: 'chats' }, HTTP)
     expect(response.ok).toBe(false)
     expect(response.ok === false && response.error.message).toBe(missingError)
-    expect(executeSearch).not.toHaveBeenCalled()
+    expect(getSessionsList).not.toHaveBeenCalled()
   })
 })

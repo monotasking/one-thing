@@ -8,6 +8,7 @@ import * as fs from 'fs/promises'
 import {
   executeOnethingSearch,
 } from './search-runtime.js'
+import type { OnethingSearchRuntimeAdapters } from './search-runtime.js'
 import type { OnethingSearchCategory } from './ipc-operations.js'
 
 type SearchCategory = OnethingSearchCategory
@@ -809,6 +810,29 @@ async function searchDailyNotes(
 // Unified search
 // ---------------------------------------------------------------------------
 
+/**
+ * 六路扫描器的**唯一入口对象**。
+ *
+ * 从前它是 `executeSearch` 里的一个内联字面量;S2(检索重建,
+ * `docs/design/search-index-2026-09.md` §10 S2)把它提成命名产物,因为
+ * `search/capabilities/` 下那六个能力要**逐字调用同一批函数** —— 能力包装期
+ * 的判据是「行为零变化」,新旧两条路必须落到同一份实现上,而不是各自再写一遍
+ * 匹配与排序。旧路 `executeSearch` 与新路 `SearchService` 于是共用这一个对象。
+ */
+export function createOnethingSearchRuntimeAdapters(
+  adapters: OnethingSearchProvidersAdapters,
+): OnethingSearchRuntimeAdapters<SearchResult> {
+  return {
+    searchChats: (searchQuery, searchLimit) => searchChats(searchQuery, searchLimit, adapters),
+    searchMessages: (searchQuery, searchLimit) => searchMessages(searchQuery, searchLimit, adapters),
+    searchActions,
+    searchPrompts: (searchQuery, searchLimit, includeCreateShortcut) =>
+      searchPrompts(searchQuery, searchLimit, adapters, includeCreateShortcut),
+    searchFiles: (searchQuery, searchLimit) => searchFiles(searchQuery, searchLimit, adapters),
+    searchDailyNotes: (searchQuery, searchLimit) => searchDailyNotes(searchQuery, searchLimit, adapters),
+  }
+}
+
 export async function executeSearch(
   query: string,
   category: SearchCategory,
@@ -816,13 +840,10 @@ export async function executeSearch(
   adapters?: OnethingSearchProvidersAdapters,
 ): Promise<SearchResult[]> {
   const resolvedAdapters = getSearchAdapters(adapters)
-  return executeOnethingSearch<SearchResult>(query, category, limit, {
-    searchChats: (searchQuery, searchLimit) => searchChats(searchQuery, searchLimit, resolvedAdapters),
-    searchMessages: (searchQuery, searchLimit) => searchMessages(searchQuery, searchLimit, resolvedAdapters),
-    searchActions,
-    searchPrompts: (searchQuery, searchLimit, includeCreateShortcut) =>
-      searchPrompts(searchQuery, searchLimit, resolvedAdapters, includeCreateShortcut),
-    searchFiles: (searchQuery, searchLimit) => searchFiles(searchQuery, searchLimit, resolvedAdapters),
-    searchDailyNotes: (searchQuery, searchLimit) => searchDailyNotes(searchQuery, searchLimit, resolvedAdapters),
-  })
+  return executeOnethingSearch<SearchResult>(
+    query,
+    category,
+    limit,
+    createOnethingSearchRuntimeAdapters(resolvedAdapters),
+  )
 }

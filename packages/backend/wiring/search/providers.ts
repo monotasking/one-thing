@@ -5,14 +5,7 @@ import {
   type OnethingSearchCategory,
 } from '@onething/runtime/search'
 import type { SearchResult } from '@shared/ipc/search.js'
-import { listPrompts } from '@onething/runtime/prompts/store-bound'
-import { getCurrentSessionId } from '../../stores/app-state.js'
-import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
-import { getSession, getSessionsList } from '../../stores/sessions.js'
-import { sessionReads } from '../../session/reads.js'
-import { getSettings } from '../../stores/settings.js'
-import { listFiles } from '../../utils/ripgrep.js'
-import { getVariablesStore } from '@onething/runtime/variables/store-bound'
+import { createAppSearchProvidersAdapters } from './adapters.js'
 import { appendPluginSearchResults } from './plugin-search-registry.js'
 
 export { invokePluginSearchAction, PLUGIN_SEARCH_ACTION_PREFIX } from './plugin-search-registry.js'
@@ -23,19 +16,7 @@ let searchProvidersConfigured = false
 export function configureAppSearchProviders(): void {
   if (searchProvidersConfigured) return
   searchProvidersConfigured = true
-  configureOnethingSearchProviders({
-    getSessionsList,
-    // 全库消息搜索:raw 语义(不进 LRU、不 sanitize、不回写),P0.2 区 ②。
-    iterateSessionMessages: (sessionId: string) => sessionReads.iterateMessagesRaw(sessionId),
-    getSession,
-    getCurrentSessionId,
-    getSettings,
-    getVariablesStore,
-    // 搜索窗没有请求级会话号:当前会话是这里能拿到的最诚实的空间语境(批 B2)。
-    getConnectedDirectories: () => getConnectedDirectoriesForSession(getCurrentSessionId()),
-    listFiles,
-    listPrompts,
-  })
+  configureOnethingSearchProviders(createAppSearchProvidersAdapters())
 }
 
 export function createDailyNote(filePath: string): Promise<string> {

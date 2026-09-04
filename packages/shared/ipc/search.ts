@@ -16,7 +16,15 @@ export {
  * `string`,校验交给 registry(S2)。
  *
  * `SEARCH_CATEGORIES` / `isSearchCategory` 两个**值**照旧从 runtime 再导出,答的
- * 仍是今天那张写死的清单 —— S2 把 `isSearchCategory` 改成问注册表,S0 不动行为。
+ * 仍是今天那张写死的清单。
+ *
+ * S2(2026-09-04)之后**它们在产品代码里已经没有消费者**:「这个档认不认」由
+ * `SearchService.query` 问注册表(`registry.has(id)`,不认识的归 `'all'`,与
+ * `normalizeOnethingSearchCategory` 逐字同义),而那张清单只剩旧扫描路
+ * (`executeOnethingSearchForIpc`)自己在读。两个再导出留到 S5 与旧路一起删 ——
+ * 这一期不动它们,是因为契约层这条再导出正是边界检查器
+ * (`checkRuntimeOwnsSearchIpcOperations`)钉住的那一条:清单必须由 runtime 拥有、
+ * 由契约层原样转发,契约层不许自己长一份。
  */
 export type SearchCategory = string
 

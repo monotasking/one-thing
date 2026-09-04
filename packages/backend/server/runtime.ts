@@ -148,8 +148,9 @@ import { hasShellHost } from "@onething/runtime/shell/host-ports";
 import { hasTerminalHost } from "@onething/runtime/terminal/service.wiring";
 import {
 	createOnethingSearchProviders,
-	executeOnethingSearchForIpc,
-	type OnethingSearchRequest,
+	createOnethingSearchService,
+	type OnethingSearchProvidersAdapters,
+	type SearchServiceRequest,
 } from "@onething/runtime/search";
 import {
 	MediaLibraryService,
@@ -1822,16 +1823,23 @@ async function createServerRuntimeOverServerBackend(
 		return variableRuntime;
 	};
 
-	const createSearchProvidersForContext = async (
+	/**
+	 * 这个 owner 的取材面(会话 / 文件 / 提示词全按请求上下文取)。
+	 *
+	 * 提成命名函数是 S2 的需要(检索重建,`docs/design/search-index-2026-09.md` §10):
+	 * 「同一件事的两个口径」现在也是**同一个门面的两次装配** —— 桌面按整台机器装一份
+	 * `SearchService`,server 按 owner 各装一份,吃的是同一批能力。
+	 */
+	const createSearchAdaptersForContext = async (
 		context = defaultRequestContext(),
-	) => {
+	): Promise<OnethingSearchProvidersAdapters> => {
 		const settings = await getOwnerSettings(
 			settingsByOwner,
 			settingsStore,
 			context,
 		);
 
-		return createOnethingSearchProviders({
+		return {
 			getSessionsList: () => listSessionsForContext(context),
 			// P0.4:全库搜索按会话取消息走读口(`sessionStore.getMessages`),
 			// 不再借 `getSessionRaw` 端口整条会话地拿 —— 那个回落端口已删。
@@ -1855,8 +1863,12 @@ async function createServerRuntimeOverServerBackend(
 					: emptyServerFileSearchResults();
 			},
 			listPrompts: () => getPromptStoreForContext(context).list(),
-		});
+		};
 	};
+
+	const createSearchProvidersForContext = async (
+		context = defaultRequestContext(),
+	) => createOnethingSearchProviders(await createSearchAdaptersForContext(context));
 
 	const resolveSearchActionForContext = async (
 		actionId: string,
@@ -2077,11 +2089,14 @@ async function createServerRuntimeOverServerBackend(
 			request: unknown,
 			context = defaultRequestContext(),
 		) {
-			const providers = await createSearchProvidersForContext(context);
-			return executeOnethingSearchForIpc({
-				request: request as OnethingSearchRequest,
-				executeSearch: (query, category, limit) =>
-					providers.executeSearch(query, category, limit),
+			// S2:与桌面同一个门面、同一批能力,只是取材面按 owner 现装一份
+			// (它的会话 / 文件 / 提示词表本来就是 per-owner 的,组不出进程单例)。
+			const service = createOnethingSearchService(
+				await createSearchAdaptersForContext(context),
+			);
+			return service.query(request as SearchServiceRequest, {
+				principal: { kind: "user", id: context.userId ?? "local" },
+				spaceId: context.workspaceId ?? "",
 			});
 		},
 	});

@@ -591,7 +591,10 @@ describe('createOnethingHttpServer', () => {
         limit: 5,
       })).resolves.toEqual({
         ok: true,
-        data: { success: true, results: [] },
+        // `relaxed` 是 §8「只加不改」里新添的那一格(检索重建 S0 立形、S2 由
+        // `SearchService` 填):0 = 没放宽。S2 的六个能力都声明 `relax:false`,
+        // 所以这里恒 0 —— 判据仍是「Bob 一条都搜不到」。
+        data: { success: true, results: [], relaxed: 0 },
       })
 
       const notePath = join(workspaceRoot, 'alice', 'search-dev-workspace', 'notes', 'today.md')

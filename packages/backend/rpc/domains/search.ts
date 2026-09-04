@@ -29,11 +29,12 @@
  * actionId、聚焦),在 A1-a 的 `searchWindowRouter` 上;server 那侧的
  * `POST /api/search/actions` 也因此留着。`SEARCH_ACTION` 是推送,同理不在。
  */
+import type { CapabilityManifest } from '@onething/core/search'
 import {
-  executeOnethingSearchForIpc,
-  type OnethingSearchRequest,
+  getOnethingSearchServiceSafe,
+  type OnethingSearchService,
+  type SearchServiceRequest,
 } from '@onething/runtime/search'
-import { executeSearch } from '../../wiring/search/providers.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type {
@@ -46,7 +47,6 @@ import type {
   SearchPreviewResponse,
   SearchRequest,
   SearchResponse,
-  SearchResult,
   SearchRoutes,
   SearchStatusResponse,
 } from '@shared/ipc/search.js'
@@ -70,98 +70,61 @@ function runtimeContext(context: RpcDispatchContext) {
 }
 
 /**
- * ── S0 的四条新路由(检索重建,`docs/design/search-index-2026-09.md` §8/§10)────────
+ * ── 四条新路由(检索重建 S0 立形、S2 接上真件,`docs/design/search-index-2026-09.md` §8/§10)──
  *
- * 契约上先立形、后端**先给一个诚实的答复**:形立在 S0,是为了让 S2 起壳与索引都从
- * 这四条路由读,而不是各自再长一份写死的表。今天它们答的是:
+ *  - `capabilities` —— **问注册表**:`service.capabilities(surface)`。S0 那张手抄的
+ *    六份 manifest(`S0_CAPABILITY_MANIFESTS`)整段删掉了 —— 它当时的作用就是先立形,
+ *    形一接上真件就该消失,不然它会变成第二张写死的清单。
+ *  - `query` —— 走 `SearchService`(注册表 + 流水线)。S2 的判据是**行为零变化**:
+ *    `search:parity-A` 对每一类 + `all` 拿真库跑 200 条查询,新旧 `results` 逐字节同。
+ *  - `preview` / `invoke` —— 仍然结构化地说「S4 才有」。能力接口上那两格
+ *    (`SearchCapability.preview` / `.invoke`)S2 一个实现都还没有。
+ *  - `status` —— `service.status()`,S3 之前恒 `{ mode:'owner', pending:0, vector:'off' }`。
  *
- *  - `capabilities` —— 从**今天那张写死的清单**(`ONETHING_SEARCH_CATEGORIES` 减掉
- *    `'all'`)生成六份最小 manifest,配额与次序逐个抄自今天 `all` 档那段代码
- *    (`runtime/src/search/search-runtime.ts` 的 `case 'all'`)。**S2 换成注册表**:
- *    那时这个函数整段删掉,改成 `registry.list().map(cap => cap.manifest)`。
- *  - `preview` / `invoke` —— 结构化地说「S4 才有」。不抛异常:壳拿到的是一个
- *    `success:false` 的答复,而不是一条红色的传输错误。
- *  - `status` —— 恒 `{ mode:'owner', pending:0, vector:'off' }`。`mode` 那一格来自
- *    §5.6 的索引持有权,09-04 用户裁「先不做」,所以 S3 之前它只有一个取值;
- *    `pending` 要等 S3 的 `LedgerFeed` 才有真数;`vector` 要等 S7。
+ * ## 本机可信那条分叉一字未动(B2)
  *
- * `query` 一字不变 —— S2 的对账门要求新旧结果逐字同。
+ * 换的只是「可信这一支去调谁」:从前是 `wiring/search/providers` 的 `executeSearch`,
+ * 现在是同一份取材面装起来的 `SearchService`。不可信那一支照旧走
+ * `server/search-providers.ts` 的单槽端口(server 运行时在自己的闭包里按 owner
+ * 装一份服务),端口不在场时**结构化拒绝**,不偷偷降级去查桌面那份。
  */
-
-/**
- * 今天六类的最小自述。
- *
- * 每一格的出处:
- *  - `id` = 今天的 `OnethingSearchCategory`(减 `'all'`,`'all'` 不是能力、是档);
- *  - `budget.default` = 今天 `all` 档给这一类的条数;`actions` 的 `whenIntent.command`
- *    = 今天那句 `isOnethingCommandSearchQuery(query) ? 8 : 4`;
- *  - `order` / `orderWhenIntent.command` = 今天那两条拼接次序的下标;
- *  - `kind` 说的是**今天**:六类里没有一类走索引(病根就是这个),所以四类 `scan`、
- *    两类 `static`。S3 把 messages / chats / daily 翻成 `indexed`。
- *  - `budget.timeoutMs` 是 S2 起要执行的预算,**不是**对今天行为的描述 —— 今天这条
- *    路上一处超时都没有。
- *  - `icon` 取壳的图标注册表 `apps/desktop-react/src/components/icons.ts` 里已有的键。
- */
-const S0_CAPABILITY_MANIFESTS: readonly SearchCapabilityManifestDto[] = Object.freeze([
-  {
-    id: 'chats',
-    labelKey: 'search.capability.chats',
-    icon: 'MessageSquare',
-    kind: 'scan',
-    budget: { default: 6, timeoutMs: 2000 },
-    order: 1,
-    orderWhenIntent: { command: 3 },
-  },
-  {
-    id: 'prompts',
-    labelKey: 'search.capability.prompts',
-    icon: 'Pencil',
-    kind: 'static',
-    budget: { default: 6, timeoutMs: 2000 },
-    order: 2,
-    orderWhenIntent: { command: 2 },
-  },
-  {
-    id: 'daily',
-    labelKey: 'search.capability.daily',
-    icon: 'FileText',
-    kind: 'scan',
-    budget: { default: 6, timeoutMs: 2000 },
-    order: 3,
-    orderWhenIntent: { command: 4 },
-  },
-  {
-    id: 'files',
-    labelKey: 'search.capability.files',
-    icon: 'FolderTree',
-    kind: 'scan',
-    budget: { default: 10, timeoutMs: 2000 },
-    order: 4,
-    orderWhenIntent: { command: 5 },
-  },
-  {
-    id: 'messages',
-    labelKey: 'search.capability.messages',
-    icon: 'MessagesSquare',
-    kind: 'scan',
-    budget: { default: 5, timeoutMs: 2000 },
-    order: 5,
-    orderWhenIntent: { command: 6 },
-  },
-  {
-    id: 'actions',
-    labelKey: 'search.capability.actions',
-    icon: 'Zap',
-    kind: 'static',
-    intentPrefixes: ['/', '>'],
-    budget: { default: 4, timeoutMs: 2000, whenIntent: { command: 8 } },
-    order: 6,
-    orderWhenIntent: { command: 1 },
-  },
-] satisfies SearchCapabilityManifestDto[])
 
 /** S4 之前 `preview` / `invoke` 的那一句;两条路由同一份措辞。 */
 const SEARCH_NOT_IMPLEMENTED_UNTIL_S4 = 'not implemented until S4'
+
+/** 这台进程装配过 backend 就有;没有 = 调用方问错了地方,结构化拒绝而不是空结果。 */
+export const SEARCH_SERVICE_MISSING_ERROR = 'Search is not assembled on this host'
+
+function requireSearchService(): OnethingSearchService {
+  const service = getOnethingSearchServiceSafe()
+  if (service === null) throw new Error(SEARCH_SERVICE_MISSING_ERROR)
+  return service
+}
+
+/**
+ * core 的 manifest → 线上形(§8 那两份「同形不同命」的投影)。
+ * `visibility` / `schema` / `ranking` / `relax` / `retrievers` 是**不出进程**的格,
+ * 所以这里逐格挑,不 spread。
+ */
+function manifestDto(manifest: CapabilityManifest): SearchCapabilityManifestDto {
+  return {
+    id: manifest.id,
+    labelKey: manifest.labelKey,
+    icon: manifest.icon,
+    kind: manifest.kind,
+    intentPrefixes: manifest.intentPrefixes,
+    budget: {
+      default: manifest.budget.default,
+      timeoutMs: manifest.budget.timeoutMs,
+      whenIntent: manifest.budget.whenIntent,
+    },
+    facets: manifest.facets,
+    order: manifest.order,
+    orderWhenIntent: manifest.orderWhenIntent,
+    surfaces: manifest.surfaces,
+    preview: manifest.preview,
+  }
+}
 
 export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
   async query(request: SearchRequest, context = DESKTOP_RPC_CONTEXT): Promise<SearchResponse> {
@@ -170,18 +133,20 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
       if (!port) throw new Error(SEARCH_SERVER_RUNTIME_MISSING_ERROR)
       return await port.query(request, runtimeContext(context)) as SearchResponse
     }
-    return executeOnethingSearchForIpc<SearchResult>({
-      request: request as OnethingSearchRequest,
-      executeSearch,
-    })
+    const response = await requireSearchService().query(
+      request as SearchServiceRequest,
+      // 「谁在问」由宿主铸的 dispatch context 造,永远不从信封上读(§6.4b + RPC 判例)。
+      { principal: { kind: 'user', id: context.ownerUid ?? 'local' }, spaceId: context.workspaceId ?? '' },
+    )
+    return response as SearchResponse
   },
 
   async capabilities(request: SearchCapabilitiesRequest): Promise<SearchCapabilitiesResponse> {
-    // `surfaces` 今天一条都没声明,所以「只要这个面上的」= 全给(缺席 = 全部)。
-    // S2 起这里改成 `registry.list()` 再按 manifest.surfaces 过滤 —— 判据在 manifest 上,
-    // 不在这个 handler 里。
-    void request
-    return { success: true, capabilities: [...S0_CAPABILITY_MANIFESTS] }
+    // 「只要这个面上的」由 manifest 的 `surfaces` 说了算(缺席 = 全部),判据不在这里。
+    return {
+      success: true,
+      capabilities: requireSearchService().capabilities(request?.surface).map(manifestDto),
+    }
   },
 
   async preview(request: SearchPreviewRequest): Promise<SearchPreviewResponse> {
@@ -195,7 +160,6 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
   },
 
   async status(): Promise<SearchStatusResponse> {
-    return { mode: 'owner', pending: 0, vector: 'off' }
+    return requireSearchService().status()
   },
 }
-

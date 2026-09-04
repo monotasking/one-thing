@@ -196,6 +196,8 @@ export interface SearchCapability {
 }
 ```
 
+`budget.whenIntent` 的**键是意图名,而意图名就是能力 id**(`parse` 认 `intentPrefixes` 之后把意图记成那个能力的 id),所以命令意图那一格写的是 `whenIntent: { actions: 8 }` —— S0 那张表里的 `command` 是笔误,S2 已按 `actions` 落地。
+
 `parse` / `budgetPolicy` / 全部档排序 / 壳 tab / 壳过滤片 —— 全部是「读注册表里各 manifest 然后算」的纯函数,里面没有任何能力的名字。
 
 ### 4.2 能力接口与三种基座
@@ -634,7 +636,7 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 | --- | --- | --- |
 | **S0 契约 + 法条 + 语料** | `@shared/ipc/search.ts` 扩展 + `capabilities` / `status` 路由;边界检查器新规则 `checkCoreSearchNamesNoCapability`(`packages/core/search/**` 零能力 id 字面量、零 `switch` on kind,目录不存在时跳过并打印);从真库抽脱敏语料 2000 条进 `core/search/__tests__/fixtures/`(**不加账本事件**,拍点甲 b) | typecheck;`boundary:gate` 绿;语料脚本只读 |
 | **S1 内核** | `core/search/`:candidate / capability / registry / analyzer / index(接口 + MemoryIndex)/ pipeline / cursor 全部纯实现 | 单测:切分黄金表、编解码往返 ≡ id、语料 20 条查询期望集(含 `私发`(中文双字)与 `身份牌`(三字)必中、`"天黑请闭眼"` 短语必中、`身份牌 -女巫` 排除生效、全角必中、`/cmd` 不被吃)、放宽阶梯按能力逐级、前缀上限、cursor 稳定、授权范围进 filters 后 total 为真数;基准 2000 条查询 < 5ms;`boundary:gate` 绿(core 零依赖 + 零能力名) |
-| **S2 能力包装(行为零变化)** | 六个内置能力按三种基座包装,`plugin-search-registry` 并成 `remoteCapability`;`SearchService` 门面;**消息那一路暂仍是旧扫描**(scan 基座) | 对账门 `search:parity-A`:真库 200 随机查询 × 每类,新旧结果集逐字同(此期不许有差) |
+| **S2 能力包装(行为零变化)** | 六个内置能力按三种基座包装,`plugin-search-registry` 并成 `remoteCapability`;`SearchService` 门面;**消息那一路暂仍是旧扫描**(scan 基座);**扫描型包装 `timeoutMs=0`**(旧扫描路一道刹车也没有,真店 `searchMessages` 全库扫实测 1.6s,钉一个真预算会让慢盘 / 大店从「出结果」变成「没搜成」—— 不许多一道刹车),S3 换索引后再钉真预算 | 对账门 `search:parity-A`:真库 200 随机查询 × 每类,新旧结果集逐字同(此期不许有差) |
 | **S3 索引 + 投影** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表,WAL)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省;messages / sessions / daily 换成 `indexedCapability`(持有权 §5.6 缓议,不建 ownership.ts) | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐);`gate:search-index`:冷建事件循环 p99 < 20ms、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
 | **S4 壳** | React 壳按 §9(目标渲染注册表 + 预览渲染注册表 + 范围片 / 枢轴 + 查询历史) | `gate:search-messages` 扩 7 断言(total / 放宽 / 分组 / 归档徽 / 跨空间 / tab 随注册表 / 读者模式提示);ui:consume 只减不增;a11y 零违例 |
 | **S5 退役** | 删 `searchMessages` 旧扫描、`iterateSessionMessages` 端口、`switch(category)`、写死配额表、`SearchCategory` 字面量;CLAUDE.md 改写(§12,含第 317 行「跨会话索引归 apps/server,主进程不许加库」那句)与 collab 文档 | 全仓绿;grep 零残留 |

@@ -59,6 +59,7 @@ import { Interaction } from '@onething/core/interaction'
 import { bootstrapVariableSystem } from './wiring/variables/index.js'
 import { bootstrapGoalStreamBreakers } from './wiring/goals/runtime-hooks.js'
 import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
+import { createAppSearchService } from './wiring/search/index.js'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
 import { registerAppRpcDomains } from './rpc/index.js'
@@ -518,6 +519,16 @@ export class OnethingBackend implements BackendHandle {
      */
     this.own(() => killAllTerminals(), 'killAllTerminals')
     this.own(() => killTrackedDetachedChildren(), 'killTrackedDetachedChildren')
+
+    /*
+     * 缝 4.5 —— 检索(检索重建 S2,`docs/design/search-index-2026-09.md` §3 / §10)。
+     *
+     * 排在 RPC 域**之前**:`search` 域从进程单槽里读这份服务。装配本身只是造对象 +
+     * 登记(六个内置能力 + 已在册的插件供给方),零 IO、零后台任务;真正会留尾巴的
+     * 索引 Worker 是 S3 的事,那时它也在这一行里起、在同一个 disposer 里收。
+     */
+    const searchService = createAppSearchService()
+    this.own(() => searchService.dispose(), 'searchService')
 
     // RPC domains go up BEFORE afterTools: that hook is where the Electron host
     // runs initializeIPC() and mounts the `rpc:invoke` adapter, so the table it
