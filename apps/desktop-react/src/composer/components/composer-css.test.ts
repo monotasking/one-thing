@@ -137,4 +137,70 @@ describe('本体行两行布局 + 药丸永不折行(09-03 报障的产地)', ()
   ])('%s(%s)不弯腰:flex: none', (selector) => {
     expect(block(selector)).toMatch(/flex:\s*none/)
   })
+
+  /* 药丸里也是一行一个弯腰件:名字截断,档位那一两个字一直看得见。 */
+  it('.modelPillLevel 不弯腰、不换行 —— 窄下来先截名字,不先丢档位', () => {
+    expect(block('.modelPillLevel')).toMatch(/flex:\s*none/)
+    expect(block('.modelPillLevel')).toMatch(/white-space:\s*nowrap/)
+  })
+})
+
+/**
+ * 模型抽屉的两栏(09-05 庚,设计 §5.8;报障「列表独滚卡不滚」的 CSS 那一半)。
+ *
+ * 守在产地上的理由与本文件头部那一段逐字相同(CSS Modules 那份样式表没进过 jsdom)。
+ * 「选另一行时列表这棵 DOM 不重挂」是**行为**,在 `Composer.test.tsx` 里按一下验;
+ * 两件事必须都在 —— 这里守住有人把这几行删了,那里守住它们真的管用。
+ */
+describe('模型抽屉两栏:只有列表滚,卡不滚', () => {
+  it('滚动区仍然只有 .pickScroll 一个:两栏容器与卡都不滚', () => {
+    expect(block('.pickCols')).not.toMatch(/overflow/)
+    expect(block('.modelCard')).not.toMatch(/overflow-y/)
+  })
+
+  it('列表格是相对定位那一格,列表在里面 absolute 铺满 —— 行高由卡定', () => {
+    expect(block('.pickListCell')).toMatch(/position:\s*relative/)
+    expect(block('.pickListCell .pickScroll')).toMatch(/position:\s*absolute/)
+    expect(block('.pickListCell .pickScroll')).toMatch(/inset:\s*0/)
+  })
+
+  it('卡矮时列表有保底高,而且是一个 token 不是拍出来的像素数', () => {
+    expect(block('.pickListCell')).toMatch(/min-height:\s*var\(--composer-pick-min-h\)/)
+  })
+
+  it('列表与卡之间一根发丝线(它是分栏线,不是滚动槽)', () => {
+    expect(block('.pickListCol')).toMatch(/border-right:\s*1px solid var\(--line-1\)/)
+  })
+
+  it('滚动条走 token 皮肤、悬停才显形,而且留着槽位不横抖', () => {
+    expect(block('.pickScroll')).toMatch(/scrollbar-gutter:\s*stable/)
+    expect(block('.pickScroll::-webkit-scrollbar-thumb')).toMatch(/background:\s*transparent/)
+    expect(block('.pickScroll:hover::-webkit-scrollbar-thumb')).toMatch(
+      /background:\s*var\(--scrollbar-thumb\)/,
+    )
+    expect(block('.pickScroll:hover::-webkit-scrollbar-thumb:hover')).toMatch(
+      /background:\s*var\(--scrollbar-thumb-hover\)/,
+    )
+  })
+
+  /**
+   * 窄档塌成一栏,卡折到列表**上方**(order 1 / 2)。
+   *
+   * `@container` 条件里写不了 var(),所以那个字面量与 `--composer-pick-two-col`
+   * 是**同一事实的两处** —— 这一条把两处比一遍(与 ModelCatalog 那道门同一手法)。
+   */
+  it('两栏塌一栏的阈值与 token 对得上,而且卡折到列表上方', () => {
+    const threshold = /@container composerDrawer \(max-width:\s*(\d+)px\)/.exec(css)?.[1]
+    expect(threshold, '样式表里找不到那条容器查询').toBeTruthy()
+    const tokens = readFileSync(resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8')
+    const token = /--composer-pick-two-col:\s*(\d+)px/.exec(tokens)?.[1]
+    expect(token).toBe(threshold)
+    const narrow = css.slice(css.indexOf('@container composerDrawer'))
+    expect(narrow).toMatch(/\.modelCard\s*\{[^}]*order:\s*1/)
+    expect(narrow).toMatch(/\.pickListCol\s*\{[^}]*order:\s*2/)
+  })
+
+  it('容器是抽屉自己(不是窗口)—— 输入框在浮窗 / 窄舞台里各有各的宽', () => {
+    expect(block('.drawerBody')).toMatch(/container:\s*composerDrawer \/ inline-size/)
+  })
 })

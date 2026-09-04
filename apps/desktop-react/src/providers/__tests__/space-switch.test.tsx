@@ -14,6 +14,7 @@ import {
   splitSpaceProviderSettings,
 } from '../space-settings'
 import { resolveModelSelection } from '../../data/models-source'
+import { providerModelPrefs } from '../../data/__fixtures__/models'
 import { fakeProviderPort } from './fake-port'
 
 /**
@@ -345,7 +346,7 @@ describe('模型药丸的回落链(报障 ① 的另一半:它本来就是对的
     expect(
       resolveModelSelection({}, 's1', none, null, {
         defaultProvider: 'deepseek',
-        configs: { deepseek: { selectedModels: [], model: 'demo-model' } },
+        configs: { deepseek: providerModelPrefs({ model: 'demo-model' }) },
       }),
     ).toEqual({ provider: 'deepseek', model: 'demo-model' })
   })

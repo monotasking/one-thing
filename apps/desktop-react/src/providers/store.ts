@@ -5,6 +5,7 @@ import type {
   ProviderInfo,
   ProviderUsageResponse,
   SpaceProviderSettings,
+  ThinkingEffort,
 } from '@shared/ipc/providers'
 import type { OAuthStatusResponse } from '@shared/ipc/oauth'
 import type { AppSettings } from '@shared/ipc/settings'
@@ -13,6 +14,14 @@ import { providerSettingsPort } from '../data/provider-settings-port'
 import { createMutation } from '../data/kernel'
 // 聊天那边的名册读的是这一格;设置写完必须作废它(理由写在 `settle` 里)。
 import { prefsQuery } from '../data/models-source'
+import type { ProviderPrefsFacts } from '../data/models-source'
+
+/**
+ * 「思考阶梯上的一档」。`'off'` / `'on'` 不是 `ThinkingEffort` 的成员 ——
+ * 它们是**开关**这件事的两头,而档是开着之后的深浅。声明在这里(写口这一侧)
+ * 而不是 import 输入框那一层:设置的写口不该反过来认识某一块面。
+ */
+export type ThinkingRung = ThinkingEffort | 'on' | 'off'
 import { catalogQuery } from './catalog-query'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
@@ -168,6 +177,24 @@ export interface ProviderSettingsState {
   setFamilyEnabled: (family: ProviderFamilyView, enabled: boolean) => Promise<void>
   /** 勾选/取消一个模型(写 `selectedModels`)。 */
   toggleModel: (providerId: string, modelId: string, selected: boolean) => Promise<void>
+  /**
+   * 一个模型的思考档(09-05 庚,输入框的模型选择器是它的第一个消费者)。
+   *
+   * 三档,与屏幕上那条阶梯逐格对应:
+   *  · `'off'` —— 关掉(`thinkingByModel[m] = false`);
+   *  · `'on'`  —— 开着但**不钉档**。这一型没有档可挑(qwen3.5 / 智谱:
+   *               `efforts: []`),钉一个它根本不接受的档就是在盘上写假话;
+   *  · 某一档  —— 开着并钉在那一档。**两张表一起写** —— 只写档不写开关,
+   *               发送链那句 `enabled !== true` 会把它当没设过。
+   *
+   * **不在 composer 侧另起写路**:设置写口全仓只有 `writeProviders` 一处
+   * (乐观 / 写 / 对账 / 回滚四件事在 `settingsMutation` 里)。
+   */
+  setThinkingEffort: (
+    providerId: string,
+    modelId: string,
+    rung: ThinkingRung,
+  ) => Promise<void>
   /** 保存一把 API 密钥。走凭证域,**不**走 saveSettings(理由见端口文件头)。 */
   saveApiKey: (providerId: string, apiKey: string) => Promise<void>
 
@@ -239,6 +266,12 @@ interface CachedUsage {
 }
 
 /** 模块级启动闸 —— 「这一个进程启动过没有」不是可渲染状态。 */
+/**
+ * 输入框那条入口引出来的一发**设置自举**(09-05 庚)。并发折叠一格 ——
+ * 连点两下阶梯不该发两遍;`reset()` 收它,理由与 `started` 同一条。
+ */
+let settingsBoot: Promise<void> | undefined
+
 let started = false
 /** 换空间那条订阅的句柄。同理:它是这一个进程的事实,不是屏幕上的一格。 */
 let unsubscribeSpace: (() => void) | undefined
@@ -284,6 +317,50 @@ export interface SettingsCommit {
   spaceId: string
   /** 这一发打在哪一格上。产地只有下面那张表。 */
   key: string
+  /**
+   * 除了这块面自己那一份设置之外,这一发还要**就地改哪一格已经上屏的投影**
+   * (09-05 庚)。缺省不给 —— 绝大多数设置写只有这块面在看。
+   *
+   * 今天唯一的用法是思考档位:写它的人在输入框里,而画它的人(药丸)读的是
+   * `models-source` 的 `prefsQuery`。律①要的「写操作就地更新」因此得落在那一格上,
+   * 而**补丁与它的撤销必须出自同一处** —— 所以是这里递一个纯函数,由
+   * `optimistic` 调 `query.patch` 拿回滚,不是让调用方自己去 patch 一遍再自己撤。
+   * `settle` 里那句 `prefsQuery.invalidate` 照旧,后台补拉落地即接管。
+   */
+  prefsPatch?: (prev: ProviderPrefsFacts | undefined) => ProviderPrefsFacts | undefined
+}
+
+/**
+ * 「把这一档写进窄投影」—— `prefsPatch` 今天唯一的实现,与
+ * `setThinkingEffort` 拆的那份 delta **同一句话的两种形状**(一份给盘,
+ * 一份给屏)。没读过设置的那一格原样交回:凭空造一份投影会把
+ * 「这个空间还没配过」画成「配过而且只有这一格」。
+ */
+function patchThinkingPrefs(
+  prev: ProviderPrefsFacts | undefined,
+  providerId: string,
+  modelId: string,
+  rung: ThinkingRung,
+): ProviderPrefsFacts | undefined {
+  const config = prev?.prefs.configs[providerId]
+  if (!prev || !config) return prev
+  return {
+    ...prev,
+    prefs: {
+      ...prev.prefs,
+      configs: {
+        ...prev.prefs.configs,
+        [providerId]: {
+          ...config,
+          thinking: { ...config.thinking, [modelId]: rung !== 'off' },
+          thinkingEffort:
+            rung === 'off' || rung === 'on'
+              ? config.thinkingEffort
+              : { ...config.thinkingEffort, [modelId]: rung },
+        },
+      },
+    },
+  }
 }
 
 /**
@@ -313,9 +390,15 @@ export const settingsMutation = createMutation<SettingsCommit, SpaceProviderSett
     key: (input) => input.key,
     optimistic: (input) => {
       useProviderSettings.setState({ settings: input.next })
+      // 递了 `prefsPatch` 的那一发还要改一格别处已经上屏的投影(见 SettingsCommit)。
+      // `patch` 交回来的就是它自己的撤销 —— 补丁与撤销出自同一处,不会漂开。
+      const undoPrefs = input.prefsPatch
+        ? prefsQuery.get(input.spaceId).patch(input.prefsPatch)
+        : undefined
       // 回滚**两格一起**回底本 —— 理由见上面那段。
       return () => {
         useProviderSettings.setState({ settings: input.base, spaceAi: input.baseSpaceAi })
+        undoPrefs?.()
       }
     },
     run: async (input) => {
@@ -429,6 +512,31 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
   }
 
   /**
+   * 「设置得在手上」—— 输入框那条入口(`setThinkingEffort`)的自举。
+   *
+   * 这块面(设置页)可能一次都没被打开过,而 `writeProviders` 的第一句是
+   * `if (!base) return`:没读过就静静地什么都不发生。所以写之前先补一发。
+   *
+   * **不拉名册**(`skipRoster`):它是这一发里唯一会碰网的东西(后端顺手拉
+   * models.dev 的整份目录),而抽屉自己那一发(`models-source.providersQuery`)
+   * 走的是同一条路由 —— 再拉一次是白跑一趟往返。设置页真被打开时 `start()`
+   * 照旧走它自己那条完整的 `load()`(`started` 那时还是 false)。
+   *
+   * 并发折叠一格:连点两下阶梯只发一次。
+   */
+  async function ensureSettingsLoaded(): Promise<void> {
+    if (get().settings) return
+    settingsBoot ??= (async () => {
+      const port = await providerSettingsPort()
+      await port.ready()
+      await load({ skipRoster: true })
+    })().finally(() => {
+      settingsBoot = undefined
+    })
+    await settingsBoot
+  }
+
+  /**
    * 合并若干个 provider 的配置并整份写回。**唯一的设置写口**。
    *
    * `key` 是这一发打在哪一格上(词表 `settingsKey`)—— 逐调用点定,因为
@@ -438,6 +546,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
   async function writeProviders(
     patch: Readonly<Record<string, Partial<ProviderConfig>>>,
     key: string,
+    extra: Pick<SettingsCommit, 'prefsPatch'> = {},
   ): Promise<void> {
     const base = get().settings
     if (!base) return
@@ -446,7 +555,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       nextProviders[providerId] = { ...EMPTY_CONFIG, ...nextProviders[providerId], ...delta }
     }
     const next = { ...base, ai: { ...base.ai, providers: nextProviders } } as AppSettings
-    await commitSettings(base, next, key)
+    await commitSettings(base, next, key, extra)
   }
 
   /**
@@ -456,7 +565,12 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
    * `spaceAi` 在**这一刻**取一次,而不是在 `run` 里再读:写到一半再读会拿到
    * 另一发写完之后的那一份,拆出来的 delta 就带着一格没人认下过的事实。
    */
-  async function commitSettings(base: AppSettings, next: AppSettings, key: string): Promise<void> {
+  async function commitSettings(
+    base: AppSettings,
+    next: AppSettings,
+    key: string,
+    extra: Pick<SettingsCommit, 'prefsPatch'> = {},
+  ): Promise<void> {
     await settingsMutation.run({
       base,
       next,
@@ -464,6 +578,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
       // 与 `baseSpaceAi` 同一刻取:这一发要写去哪个空间,在发起的这一瞬就定死了。
       spaceId: currentSpaceId(),
       key,
+      ...extra,
     })
   }
 
@@ -718,6 +833,32 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
         { [providerId]: { selectedModels: next } },
         settingsKey.model(providerId, modelId),
       )
+    },
+
+    /**
+     * 逐字仿 `toggleModel`:读设置 → 拆 delta → `writeProviders` 打在这一行的格上。
+     * 两点不同,都是被形状逼出来的:
+     *
+     *  ① **先自举一发设置**(`ensureSettingsLoaded`,判据与不拉名册的理由都在它头上)。
+     *  ② **补一份 `prefsPatch`**。屏幕上写档位的是药丸,它读的是 `models-source`
+     *     的 `prefsQuery`(那一格全应用常驻订阅),不是这块面的 `settings`。
+     *     律①要的「写操作就地更新」因此得落在那一格上 —— 补丁与撤销由
+     *     `settingsMutation` 一处产出(见 `SettingsCommit.prefsPatch`)。
+     */
+    setThinkingEffort: async (providerId, modelId, rung) => {
+      await ensureSettingsLoaded()
+      const config = get().settings?.ai?.providers?.[providerId]
+      const thinkingByModel = { ...(config?.thinkingByModel ?? {}), [modelId]: rung !== 'off' }
+      const delta: Partial<ProviderConfig> = { thinkingByModel }
+      if (rung !== 'off' && rung !== 'on') {
+        delta.thinkingEffortByModel = {
+          ...(config?.thinkingEffortByModel ?? {}),
+          [modelId]: rung,
+        }
+      }
+      await writeProviders({ [providerId]: delta }, settingsKey.model(providerId, modelId), {
+        prefsPatch: (prev) => patchThinkingPrefs(prev, providerId, modelId, rung),
+      })
     },
 
     saveApiKey: async (providerId, apiKey) => {
@@ -1247,6 +1388,7 @@ export const useProviderSettings = create<ProviderSettingsState>()((set, get) =>
 
     reset: () => {
       started = false
+      settingsBoot = undefined
       unsubscribeSpace?.()
       unsubscribeSpace = undefined
       authEpoch.clear()

@@ -263,3 +263,115 @@ describe('models RPC domain — getModelCapabilities', () => {
     expect(response.error).toBeTruthy()
   })
 })
+
+/**
+ * 思考档位随目录行走(2026-09-05,输入框的模型选择器)。
+ *
+ * 读数一格都不是这条用例编的:全部照 `providers/model-capability.ts` 的
+ * `PROVIDER_MODEL_RULES` 常量抄。这一组要钉的是**投影本身**——
+ *  ① `'none'` 是线协议标记不是档,必须滤掉(gpt-5.5 的 efforts 里真有它);
+ *  ② `toggleable:false` 的型不许长出「关」;
+ *  ③ `efforts: []` 是「能开关但没有档」,不是「不思考」;
+ *  ④ 不思考的型四格全按不思考答(`thinkingLevels: null`),不编一个档出来。
+ *
+ * 反证:把 `projectOnethingThinkingLevels` 里那句 `effort !== 'none'` 摘掉 →
+ * gpt-5.5 那一行当场红。
+ */
+describe('models RPC domain — 目录行带上思考档位', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.settings = {
+      ai: { provider: 'openai', temperature: 0.7, providers: {} },
+    } as unknown as AppSettings
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function levelsOf(providerId: string, modelId: string) {
+    mocks.getModelsForProvider.mockResolvedValue([model(modelId)])
+    const response = await modelsRpcHandlers.getWithCapabilities({ providerId })
+    const row = response.models?.[0]
+    return {
+      thinkingLevels: row?.thinkingLevels,
+      thinkingToggleable: row?.thinkingToggleable,
+      thinkingDefaultOn: row?.thinkingDefaultOn,
+      thinkingDefaultLevel: row?.thinkingDefaultLevel,
+    }
+  }
+
+  it('claude:四档可选、可关,缺省不开', async () => {
+    expect(await levelsOf('claude', 'claude-opus-4-5')).toEqual({
+      thinkingLevels: ['low', 'medium', 'high', 'max'],
+      thinkingToggleable: true,
+      thinkingDefaultOn: false,
+      thinkingDefaultLevel: 'high',
+    })
+  })
+
+  it('gpt-5:四档、**不可关**(o 系 / gpt-5 系永远思考)', async () => {
+    expect(await levelsOf('openai', 'gpt-5')).toEqual({
+      thinkingLevels: ['minimal', 'low', 'medium', 'high'],
+      thinkingToggleable: false,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'medium',
+    })
+  })
+
+  it("gpt-5.5:efforts 里那个 `'none'` 是线协议标记,不上屏", async () => {
+    expect((await levelsOf('openai', 'gpt-5.5')).thinkingLevels).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+  })
+
+  it('deepseek v4:两档 + 可关 = 屏幕上「关 / 高 / 最大」', async () => {
+    expect(await levelsOf('deepseek', 'deepseek-v4-pro')).toEqual({
+      thinkingLevels: ['high', 'max'],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'high',
+    })
+  })
+
+  it('kimi k3:一档 + 可关 = 屏幕上「关 / 最大」', async () => {
+    expect(await levelsOf('kimi', 'kimi-k3')).toEqual({
+      thinkingLevels: ['max'],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'max',
+    })
+  })
+
+  it('qwen3.5:能开关但一档都没有 —— `[]` 不是 `null`', async () => {
+    expect(await levelsOf('qwen', 'qwen3.5-max')).toEqual({
+      thinkingLevels: [],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'high',
+    })
+  })
+
+  it('不思考的型:四格全按不思考答,不编档', async () => {
+    expect(await levelsOf('deepseek', 'deepseek-chat')).toEqual({
+      thinkingLevels: null,
+      thinkingToggleable: false,
+      thinkingDefaultOn: false,
+      thinkingDefaultLevel: null,
+    })
+  })
+
+  it('getModelCapabilities 那一口与目录口同一份投影', async () => {
+    const response = await modelsRpcHandlers.getModelCapabilities({
+      providerId: 'deepseek',
+      model: 'deepseek-v4-pro',
+    })
+    expect(response.capabilities).toMatchObject({
+      thinkingLevels: ['high', 'max'],
+      thinkingToggleable: true,
+    })
+  })
+})

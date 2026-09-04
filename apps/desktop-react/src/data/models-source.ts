@@ -1,7 +1,13 @@
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { create } from 'zustand'
 import { isProviderEnabledIn } from '@onething/client/model/provider-model'
-import type { OpenRouterModel, ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
+import type {
+  OpenRouterModel,
+  ProviderInfo,
+  SpaceProviderSettings,
+  ThinkingEffort,
+} from '@shared/ipc/providers'
+import { priceOf } from '../providers/projection'
 import { createMutation, createQuery, createQueryFamily, useQuery } from './kernel'
 import type { Mutation } from './kernel'
 import { modelsPort } from './models-port'
@@ -131,17 +137,33 @@ export interface ProviderOption {
   name: string
 }
 
-/** 目录里一条模型:屏幕只用得着 id 与窗口,其余(定价 / 模态 / 分词器)不投。 */
+/**
+ * 目录里一条模型 —— 屏幕真正用得着的那几格(模态 / 分词器 / 更新日期不投)。
+ *
+ * 09-05(庚)之前只有 id + 窗口。抽屉长出右栏那张卡之后,**价格与思考档位也上屏了**,
+ * 所以它们从「与屏幕无关」变成「这一层的事实」。两者都不再往返一次:
+ * 价格早就在目录行里(`pricing`,`priceOf` 是它的唯一读法),思考档位由
+ * `models.getWithCapabilities` 顺手带回(后端逐行投的那四格)。
+ */
 export interface CatalogModel {
   id: string
   /** context_length,缺席回落 top_provider.context_length;两处都没有 = **不知道**。 */
   contextLength: number | null
+  /** 每百万 token 的美元数(目录给的就是每百万,`priceOf` 一次换算都不做);null = 不知道。 */
+  pricing: { input: number; output: number } | null
+  /** 能选的思考档;`null` = 这一型不思考(也含「后端没投过」);`[]` = 只能开关。 */
+  thinkingLevels: ThinkingEffort[] | null
+  /** 能不能关掉思考。 */
+  thinkingToggleable: boolean
+  /** 什么参数都不发时服务端思不思考。 */
+  thinkingDefaultOn: boolean
+  /** 什么档都没设时的有效档;null = 不知道 / 不思考。 */
+  thinkingDefaultLevel: ThinkingEffort | null
 }
 
-/** 抽屉里的一行。`contextLength` 为 null = 这条不知道窗口,那一格不画。 */
-export interface ModelOption {
+/** 抽屉里的一行 = 目录那条的全部读数 + 它的 id。`contextLength` 为 null = 不画那一格。 */
+export interface ModelOption extends Omit<CatalogModel, 'id'> {
   model: string
-  contextLength: number | null
 }
 
 /** 抽屉里的一组。`id` 是 provider id(上行要它),`provider` 是显示名(组头写它)。 */
@@ -158,15 +180,28 @@ export interface ModelSelection {
 }
 
 /**
- * 设置里与模型选择有关的**窄投影**。整份 provider 设置不进这一层:
- * 这里要的只有三格,存整份等于把一堆与屏幕无关的事实(密钥、端点、档位)
- * 拖进一个会被订阅的地方。
+ * 一家 provider 里、与**这块屏幕**有关的那几格。整份 provider 设置不进这一层:
+ * 存整份等于把一堆与屏幕无关的事实(密钥、端点、采样温度)拖进一个会被订阅的地方。
+ *
+ * 09-05(庚)加了两格思考档位。它们从前正是被这句话挡在外面的「档位」——
+ * 挡的理由是「与屏幕无关」,而药丸从这一天起要写「GPT-5.5 · 高」,那句理由
+ * 对这两格不再成立。判据没换,成员换了。
  */
+export interface ProviderModelPrefs {
+  enabled?: boolean
+  selectedModels: string[]
+  model: string
+  /** 逐模型的思考开关(`thinkingByModel`)。缺席 = 没设过,读 profile 的 defaultOn。 */
+  thinking: Record<string, boolean>
+  /** 逐模型的思考档(`thinkingEffortByModel`)。缺席 = 没设过,读 profile 的 defaultEffort。 */
+  thinkingEffort: Record<string, ThinkingEffort>
+}
+
 export interface ProviderPrefs {
   /** 这个空间的默认那一家(`SpaceProviderSettings.provider`)。空串 = 还没选过。 */
   defaultProvider: string
-  /** providerId → 这一家的三格。 */
-  configs: Record<string, { enabled?: boolean; selectedModels: string[]; model: string }>
+  /** providerId → 这一家的那几格。 */
+  configs: Record<string, ProviderModelPrefs>
 }
 
 /**
@@ -202,8 +237,29 @@ export function contextLengthOf(model: OpenRouterModel): number | null {
   return null
 }
 
+/**
+ * 「后端投过思考档位没有」——`thinkingLevels` 缺席(旧缓存 / 测试夹具 / 别的产地)
+ * 与「这一型不思考」在屏幕上是同一件事:**不写档**。所以两者都折成 null,
+ * 而不是造一个「未知」第三态让每个消费者各判一次。
+ */
+function toThinking(model: OpenRouterModel): Omit<CatalogModel, 'id' | 'contextLength' | 'pricing'> {
+  return {
+    thinkingLevels: model.thinkingLevels ?? null,
+    thinkingToggleable: model.thinkingToggleable ?? false,
+    thinkingDefaultOn: model.thinkingDefaultOn ?? false,
+    thinkingDefaultLevel: model.thinkingDefaultLevel ?? null,
+  }
+}
+
 export function toCatalogModels(models: readonly OpenRouterModel[]): CatalogModel[] {
-  return models.map((model) => ({ id: model.id, contextLength: contextLengthOf(model) }))
+  return models.map((model) => ({
+    id: model.id,
+    contextLength: contextLengthOf(model),
+    // 价格的唯一读法在 `providers/projection.priceOf`(它连单位判例一起带着) ——
+    // 这一层不抄一份「Number(pricing.prompt)」出来。
+    pricing: priceOf(model),
+    ...toThinking(model),
+  }))
 }
 
 /**
@@ -222,6 +278,8 @@ export function toProviderPrefs(ai: SpaceProviderSettings | undefined): Provider
       enabled: config?.enabled,
       selectedModels: Array.isArray(config?.selectedModels) ? config.selectedModels : [],
       model: (config?.model ?? '').trim(),
+      thinking: config?.thinkingByModel ?? {},
+      thinkingEffort: config?.thinkingEffortByModel ?? {},
     }
   }
   for (const custom of ai?.customProviders ?? []) {
@@ -232,7 +290,13 @@ export function toProviderPrefs(ai: SpaceProviderSettings | undefined): Provider
       : model
         ? [model]
         : []
-    configs[custom.id] = { enabled: existing?.enabled, selectedModels, model }
+    configs[custom.id] = {
+      enabled: existing?.enabled,
+      selectedModels,
+      model,
+      thinking: custom.thinkingByModel ?? existing?.thinking ?? {},
+      thinkingEffort: custom.thinkingEffortByModel ?? existing?.thinkingEffort ?? {},
+    }
   }
   return { defaultProvider: (ai?.provider ?? '').trim(), configs }
 }
@@ -307,13 +371,38 @@ export function buildProviderGroups(
     groups.push({
       id: provider.id,
       provider: provider.name,
-      models: ids.map((id) => ({
-        model: id,
-        contextLength: models.find((entry) => entry.id === id)?.contextLength ?? null,
-      })),
+      models: ids.map((id) => {
+        // 目录还没到 / 这条不在目录里 = **一格读数都不知道**(窗口、价格、档位)。
+        // 不知道就不画,不编 —— 与 `contextLength` 从第一天起的口径逐字相同。
+        const entry = models.find((model) => model.id === id)
+        return { model: id, ...readingsOf(entry) }
+      }),
     })
   }
   return groups
+}
+
+/** 「这条不在目录里」的那一份读数:全体不知道。恒等常量,`readingsOf` 的缺席档。 */
+export const UNKNOWN_MODEL_READINGS: Omit<CatalogModel, 'id'> = {
+  contextLength: null,
+  pricing: null,
+  thinkingLevels: null,
+  thinkingToggleable: false,
+  thinkingDefaultOn: false,
+  thinkingDefaultLevel: null,
+}
+
+/** 目录条目 → 屏幕上那几格读数。`id` 不在读数里(它是身份,不是读数)。 */
+export function readingsOf(entry: CatalogModel | undefined): Omit<CatalogModel, 'id'> {
+  if (!entry) return UNKNOWN_MODEL_READINGS
+  return {
+    contextLength: entry.contextLength,
+    pricing: entry.pricing,
+    thinkingLevels: entry.thinkingLevels,
+    thinkingToggleable: entry.thinkingToggleable,
+    thinkingDefaultOn: entry.thinkingDefaultOn,
+    thinkingDefaultLevel: entry.thinkingDefaultLevel,
+  }
 }
 
 /**
@@ -345,6 +434,73 @@ export function resolveModelSelection(
   // 没有会话时,药丸上写的是「下一条新会话会用谁」——与 agent 徽同一条口径。
   if (!sessionId && pending) return pending
   return defaultSelectionOf(prefs)
+}
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ * 思考档位:**屏幕上写什么** 的唯一判据(09-05 庚)
+ * ══════════════════════════════════════════════════════════════════════════
+ * 它照抄的是**发送链**(`agent-loop/providers/thinking-options.ts` 的
+ * `getGenericThinkingOptions`)那三句,不是另立一套:
+ *   `thinkingByModel[m] === false` → 明确关掉,请求带 `thinking:'disabled'`;
+ *   `=== true`                     → 明确开着,档由 `thinkingEffortByModel[m]` 说,
+ *                                    没设就是**一个参数都不发**,服务端用它的缺省档;
+ *   缺席                            → 一个参数都不发,开不开与用哪一档全由服务端缺省
+ *                                    决定 —— 那正是 profile 的 `defaultOn` / `defaultEffort`。
+ * 所以「没设过」这一档屏幕上写的是 profile 的缺省,不是空白,也不是编的:
+ * 它是这一发真的会发生的事。
+ *
+ * 判据只有这一处 —— 药丸(写字)与右栏阶梯(哪一颗按下)读同一个它,
+ * 两处各判一次就是两处会漂。
+ */
+export interface ThinkingState {
+  /** 这一型思不思考。假 = 药丸不写档、右栏不画控件。 */
+  supported: boolean
+  /** 此刻(以及下一发)到底想不想。 */
+  on: boolean
+  /** 此刻的有效档;null = 这一型没有档可挑(只有开 / 关)。 */
+  level: ThinkingEffort | null
+  /** 能选的档。空 = 只有开 / 关。 */
+  levels: readonly ThinkingEffort[]
+  /** 允不允许「关」。 */
+  toggleable: boolean
+  /** 用户明确设过没有(阶梯要它区分「按下的是缺省」还是「按下的是我选的」)。 */
+  explicit: boolean
+}
+
+const NO_THINKING: ThinkingState = {
+  supported: false,
+  on: false,
+  level: null,
+  levels: [],
+  toggleable: false,
+  explicit: false,
+}
+
+export function thinkingStateOf(
+  readings: Pick<
+    CatalogModel,
+    'thinkingLevels' | 'thinkingToggleable' | 'thinkingDefaultOn' | 'thinkingDefaultLevel'
+  >,
+  config: Pick<ProviderModelPrefs, 'thinking' | 'thinkingEffort'> | undefined,
+  modelId: string,
+): ThinkingState {
+  const levels = readings.thinkingLevels
+  if (!levels) return NO_THINKING
+  const chosen = config?.thinking?.[modelId]
+  const on = chosen ?? readings.thinkingDefaultOn
+  const effort = chosen === true ? config?.thinkingEffort?.[modelId] : undefined
+  // 一档都没有的型(qwen3.5 / 智谱)只有开 / 关 —— 那时 `level` 恒为 null,
+  // 哪怕盘上莫名其妙存着一个档:屏幕不写一个这一型根本不接受的字。
+  const level = levels.length === 0 ? null : (effort ?? readings.thinkingDefaultLevel)
+  return {
+    supported: true,
+    on,
+    level: on ? level : null,
+    levels,
+    toggleable: readings.thinkingToggleable,
+    explicit: chosen !== undefined,
+  }
 }
 
 /** 这个选择的上下文窗口。目录没拉到 / 这条不在目录里 / 目录没填 = null = 不知道。 */
@@ -781,6 +937,39 @@ export function useModelWindow(selection: ModelSelection | null): number | null 
   const ids = useMemo(() => (providerId ? [providerId] : []), [providerId])
   const catalog = useCatalogRecord(ids)
   return useMemo(() => contextWindowOf(catalog, selection), [catalog, selection])
+}
+
+/**
+ * 这个选择的**读数一份**(窗口 / 价格 / 思考四格)。药丸与右栏那张卡共用。
+ *
+ * 与 `useModelWindow` 逐条同构:只订当前这一家那一格,不订整族。两只并存不是
+ * 重复 —— 环只要一个数,而卡要一整份;让环跟着卡的对象身份重渲是白重渲。
+ */
+export function useModelReadings(selection: ModelSelection | null): Omit<CatalogModel, 'id'> {
+  const providerId = selection?.provider ?? ''
+  const ids = useMemo(() => (providerId ? [providerId] : []), [providerId])
+  const catalog = useCatalogRecord(ids)
+  return useMemo(() => {
+    if (!selection?.provider || !selection.model) return UNKNOWN_MODEL_READINGS
+    return readingsOf(catalog[selection.provider]?.find((m) => m.id === selection.model))
+  }, [catalog, selection])
+}
+
+/**
+ * 此刻这个模型的思考态 —— 药丸与右栏阶梯的**唯一读法**。
+ * 判据仍然只有 `thinkingStateOf` 一处产地,这里只是把它接到两条订阅上
+ * (目录那一格 + 当前空间的设置那一格)。
+ */
+export function useThinkingState(selection: ModelSelection | null): ThinkingState {
+  const readings = useModelReadings(selection)
+  const prefs = useProviderPrefs()
+  return useMemo(
+    () =>
+      selection?.model
+        ? thinkingStateOf(readings, prefs.configs[selection.provider], selection.model)
+        : NO_THINKING,
+    [readings, prefs, selection],
+  )
 }
 
 /**

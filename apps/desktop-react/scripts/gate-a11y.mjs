@@ -12,7 +12,7 @@
  * 两段:
  *
  *  ① **axe 全页扫描**(@axe-core/playwright,wcag2a / wcag2aa / best-practice)。
- *     四屏各扫一遍:产品外壳、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
+ *     七屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
  *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(28 个展位一次
@@ -73,7 +73,7 @@
  * 治:`gate-a11y-settle.mjs` 的 `waitForScreenSettled` —— 等 `window.__d2.applied`
  * 与 `data-theme-bridge`(主题自己的探针,不是启发式)、等色值与可聚焦元素计数
  * 连续 3 帧逐字不变、等有终点的动画排空(排空后还会有新的起来,所以是循环)。
- * 六屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
+ * 七屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
  *
  * 读数(同一构建、同一台机器,每组连跑 5 次):
  *   · **修前 0 红 / 5**(这一轮没抖出来 —— 病历里的 1/4 是三批各自记的历史读数);
@@ -611,7 +611,7 @@ async function main() {
   let server
   let app
   try {
-    console.log('\n[1/9] 起一台 core')
+    console.log('\n[1/10] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
       env: { ...process.env, ONETHING_STORE_PATH: store },
@@ -643,7 +643,7 @@ async function main() {
     }
     console.log(`  ✓ core 起来了,种了 ${seeded.length} 条会话`)
 
-    console.log('\n[2/9] 拉起应用(独立 --user-data-dir)')
+    console.log('\n[2/10] 拉起应用(独立 --user-data-dir)')
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
@@ -673,11 +673,38 @@ async function main() {
     )
     console.log('  ✓ 外壳画出来了')
 
-    console.log('\n[3/9] 产品外壳:axe 全页扫描 + Tab 序走查')
+    console.log('\n[3/10] 产品外壳:axe 全页扫描 + Tab 序走查')
     // 这一屏从前是裸扫的 —— 而颜色恰恰是最后才到的那样东西(见 settle 的文件头)。
     await settle(page, '外壳')
     await scanAxe(page, '外壳')
     await checkComposerTabOrder(page)
+
+    /*
+     * 模型抽屉(09-05 庚 补的一屏)。它进这道门的理由与后面几屏逐字相同 ——
+     * **外壳那一屏看不见它**:抽屉是收着的,axe 扫的是已经排好的那棵树。
+     *
+     * 而它恰恰是这批新件最密的一块:一行搜索、一列 `ButtonBase` 的候选行、
+     * 右栏一张卡,和一组 `role="radiogroup"` 的思考阶梯 —— 一组 radio 得说得出
+     * 「什么的一组」(RadioGroup 的 `label`),每一颗得说得出自己是哪一档。
+     *
+     * **覆盖到哪儿为止**:这道门跑在一个全新的临时 store 上,那台机器一家
+     * provider 都没配,所以扫到的是搜索行 + 「无匹配」那一格空态 + 右栏不在场
+     * (三层事实都答不上来 → 整块不画,不画一张空卡)。阶梯本身的语义由单测守
+     * (`composer/components/Composer.test.tsx` 的「庚」那一族,按 role=radio 取的)。
+     * 反证:把 `RadioGroup` 的 `label` 拆掉 → 那一族单测当场红。
+     */
+    console.log('\n[4/10] 模型抽屉:开一格再扫一次')
+    await clickSelector(page, '[data-testid="composer-panel"] button[aria-expanded]')
+    await waitFor('模型抽屉就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-focus-scope="drawer"]'))),
+    )
+    await settle(page, '模型抽屉')
+    await scanAxe(page, '模型抽屉', '[data-focus-scope="drawer"]')
+    // 收回它(Esc 走的正是输入面板那三层次序的第②层),别把它留给下一屏。
+    await page.keyboard.press('Escape')
+    await waitFor('模型抽屉已收回', () =>
+      page.evaluate(() => !document.querySelector('[data-focus-scope="drawer"]')),
+    )
 
     /*
      * 模型服务面(批一)。它进这道门的理由与规格页一样:**外壳那一屏看不见它** ——
@@ -691,7 +718,7 @@ async function main() {
      * 反证:把家头那枚 Switch 的 `label` 拆掉 → 这一屏当场 critical button-name 红
      * (2026-08-31 真跑过一轮)。
      */
-    console.log('\n[4/9] 模型服务面:开一块面再扫一次')
+    console.log('\n[5/10] 模型服务面:开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-providers"]')
     await waitFor('模型服务面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="provider-row-"]'))),
@@ -712,7 +739,7 @@ async function main() {
      * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
      * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
      */
-    console.log('\n[5/9] 所有应用面(cover 形态):开一块面再扫一次')
+    console.log('\n[6/10] 所有应用面(cover 形态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-apps"]')
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
@@ -737,7 +764,7 @@ async function main() {
      * 由 gate:files 那道门验(它自己建了一棵真目录树)—— 两道门各扫各的那一半,
      * 不在这里再造一次目录树。
      */
-    console.log('\n[6/9] 文件查看器(空态):开一块面再扫一次')
+    console.log('\n[7/10] 文件查看器(空态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-viewer"]')
     await waitFor('查看器就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
@@ -783,7 +810,7 @@ async function main() {
      * 扫的范围钉在这块面自己的作用域根上(`[data-focus-scope="expose"]`),
      * 与前三屏同一条理由:外壳那一份别再报第二遍。
      */
-    console.log('\n[7/9] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
+    console.log('\n[8/10] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
     await clickSelector(page, '[data-testid="dock-tile-sessions"]')
     await waitFor('总览画出会话行', () =>
       page.evaluate(() => document.querySelectorAll('[data-session-id]').length > 0),
@@ -834,7 +861,7 @@ async function main() {
 
     // 28 = `src/dev/Gallery.tsx` 今天的 <Section> 展位数(25 件组件 +
     // useScrolledPast / useSettlePulse / useInlineEdit 三件 hook)。日志读数,不是断言。
-    console.log('\n[8/9] 组件规格页(?gallery):28 个展位一次全在场')
+    console.log('\n[9/10] 组件规格页(?gallery):28 个展位一次全在场')
     /*
      * 生产窗口是 loadFile 读本地文件,没有 router —— 换页靠改 location.search
      * 再等一次重载(App.tsx 读的就是这个查询参数)。
@@ -854,7 +881,7 @@ async function main() {
     await settle(page, '规格页')
     await scanAxe(page, '规格页')
 
-    console.log('\n[9/9] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
+    console.log('\n[10/10] 键盘走查:Dialog 圈禁与返还、Menu 方向键循环')
     await checkDialog(page)
     await checkMenu(page)
 
@@ -873,7 +900,7 @@ async function main() {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 六屏 axe 零违例;键盘走查全绿')
+  console.log('\n[a11y-gate] ok —— 七屏 axe 零违例;键盘走查全绿')
 }
 
 main().catch((error) => {

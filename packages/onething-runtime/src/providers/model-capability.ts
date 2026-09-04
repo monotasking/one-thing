@@ -91,6 +91,50 @@ export interface OnethingReasoningProfile {
   wire: OnethingReasoningWire
 }
 
+/**
+ * 「屏幕上这一型的思考能提供几档」—— profile 的**只读投影**,唯一产地。
+ *
+ * 立在这里(profile 隔壁)而不是装配层,理由只有一条:**滤掉 `'none'` 是一句
+ * 关于 profile 语义的话**,不是关于某条 RPC 路由的话。`'none'` 是 gpt-5.1+ 在
+ * `reasoning_effort` 上接受的那个「什么都别想」的线协议标记,它答的是
+ * `OpenAIEffortWire` 的问题(见 `OnethingReasoningEffortOption` 抬头),
+ * 不是一根用户能点的档。抄一份到别处,那句判据就有了第二个产地。
+ *
+ * `profile === undefined`(`resolveOnethingModelCapabilities` 在 `reasoning`
+ * 为假时给的就是它)= **这一型不思考**:四格全按「不思考」答,不编档。
+ */
+export interface OnethingThinkingLevelProjection {
+  /** 能选的档;`null` = 这一型不思考;`[]` = 能开关但没有档可挑。 */
+  thinkingLevels: OnethingReasoningEffortLevel[] | null
+  /** 用户能不能把它关掉。 */
+  thinkingToggleable: boolean
+  /** 什么参数都不发时服务端思不思考。 */
+  thinkingDefaultOn: boolean
+  /** 什么档都没设时的有效档;`null` = 这一型不思考。 */
+  thinkingDefaultLevel: OnethingReasoningEffortLevel | null
+}
+
+export function projectOnethingThinkingLevels(
+  profile: OnethingReasoningProfile | undefined,
+): OnethingThinkingLevelProjection {
+  if (!profile) {
+    return {
+      thinkingLevels: null,
+      thinkingToggleable: false,
+      thinkingDefaultOn: false,
+      thinkingDefaultLevel: null,
+    }
+  }
+  return {
+    thinkingLevels: profile.efforts.filter(
+      (effort): effort is OnethingReasoningEffortLevel => effort !== 'none',
+    ),
+    thinkingToggleable: profile.toggleable,
+    thinkingDefaultOn: profile.defaultOn,
+    thinkingDefaultLevel: profile.defaultEffort,
+  }
+}
+
 export type OnethingCapabilitySource = 'override' | 'registry' | 'pattern' | 'default'
 
 /**

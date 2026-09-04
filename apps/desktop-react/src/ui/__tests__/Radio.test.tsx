@@ -55,4 +55,34 @@ describe('RadioGroup:单选', () => {
     expect(all.length).toBe(2)
     expect(all.every((el) => el.disabled)).toBe(true)
   })
+
+  /**
+   * 09-05 补的两口(庚:输入框里的思考阶梯,库件先行)。它们开的都是
+   * **落点自己的身份 / 皮肤**,不是覆盖这件形态的口子 —— 判据写在
+   * `ui/Radio.tsx` 文件头 ①②。
+   */
+  it('组摊 HTMLAttributes:落点自己的 aria-busy / data-testid 到得了根上', () => {
+    render(
+      <RadioGroup value="a" onChange={() => {}} label="g3" aria-busy data-testid="ladder">
+        <Radio value="a" label="x" />
+      </RadioGroup>,
+    )
+    const group = screen.getByTestId('ladder')
+    expect(group.getAttribute('role')).toBe('radiogroup')
+    expect(group.getAttribute('aria-busy')).toBe('true')
+    // 透传不许把这件的形态覆盖掉:无障碍名仍然是 label 那一个。
+    expect(group.getAttribute('aria-label')).toBe('g3')
+  })
+
+  it('一颗收 className 皮肤,而且不吃掉库件自己那一串', () => {
+    render(
+      <RadioGroup value="a" onChange={() => {}} label="g4">
+        <Radio value="a" label="x" className="rung" />
+      </RadioGroup>,
+    )
+    const row = screen.getByLabelText('x').closest('label') as HTMLElement
+    expect(row.className).toContain('rung')
+    // 库件自己那一串还在(不是被替换掉):至少两个类名。
+    expect(row.className.trim().split(/\s+/).length).toBeGreaterThan(1)
+  })
 })

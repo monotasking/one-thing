@@ -16,11 +16,15 @@ import {
   useFileMentionsSource,
 } from '../../data/file-mentions-source'
 import { configureFilesPort } from '../../data/files-port'
+import { configureProviderSettingsPort } from '../../data/provider-settings-port'
+import { fakeProviderPort } from '../../providers/__tests__/fake-port'
+import { useProviderSettings } from '../../providers/store'
+import type { OpenRouterModel } from '@shared/ipc/providers'
 import { prefsQuery, providersQuery, useModelsSource } from '../../data/models-source'
 import { configureModelsPort } from '../../data/models-port'
 import { useExposeStore } from '../../expose/store'
 import { catalogQuery } from '../../providers/catalog-query'
-import { openRouterModel } from '../../data/__fixtures__/models'
+import { openRouterModel, providerModelPrefs } from '../../data/__fixtures__/models'
 
 /**
  * D3 起 composer 不再自己攒一条假队列 —— 它把话**交给 sink**(见 composer/sink.ts)。
@@ -116,7 +120,10 @@ beforeEach(() => {
   catalogQuery.reset()
   providersQuery.patch([{ id: 'xai', name: 'xAI' }])
   prefsQuery.get('default').patch({
-    prefs: { defaultProvider: '', configs: { xai: { selectedModels: ['grok-4'], model: '' } } },
+    prefs: {
+      defaultProvider: '',
+      configs: { xai: providerModelPrefs({ selectedModels: ['grok-4'] }) },
+    },
     custom: [],
   })
   catalogQuery.get('xai').patch([openRouterModel('grok-4', 500_000)])
@@ -239,11 +246,19 @@ describe('抽屉:一个槽,后来者顶替先来者', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('搜模型或 Provider…'))
   })
 
-  it('选一个模型:pill 换名,抽屉收起', () => {
+  /**
+   * 09-05(庚)改口:**点一行只做一件事 —— 选中它,抽屉不关**。
+   *
+   * 从前这一口是「一个手势,两件事」(选中 + 收抽屉)。设计 §5.8 之后右栏那张卡
+   * 讲的正是「刚选中的这一型」,选完当场关掉等于把刚翻开的那一页合上。
+   * 反证:把 `composer/store.chooseModel` 里那句 `set({drawerKind:null})` 加回去 →
+   * 这一条当场红。
+   */
+  it('选一个模型:pill 换名,抽屉**不关**(右栏立刻换成这一型)', () => {
     renderComposer()
     fireEvent.click(modelPill())
     fireEvent.mouseDown(screen.getByText('grok-4'))
-    expect(state().drawerKind).toBeNull()
+    expect(state().drawerKind).toBe('model')
     // 没有当前会话:这次选择是「下一条新会话用谁」,记在 pending 上,不发请求。
     expect(useModelsSource.getState().pending).toEqual({ provider: 'xai', model: 'grok-4' })
     expect(modelPill().textContent).toContain('grok-4')
@@ -1039,16 +1054,364 @@ describe('律③:切模型在飞时,药丸自报忙、抽屉不接第二下', ()
     expect(pill().getAttribute('aria-busy')).toBe('false')
   })
 
-  it('在飞时抽屉的第二下**不发**,而且连抽屉都不收(闸在 commit,不在 store)', async () => {
+  /**
+   * 09-05(庚)之后抽屉**两下都不关**(选中不再收抽屉),所以这一条守的东西
+   * 收窄成它真正要守的那一件:**在飞时第二下一个字都不发**(闸在 commit)。
+   */
+  it('在飞时抽屉的第二下**不发**(闸在 commit,不在 store)', async () => {
     renderComposer()
     fireEvent.click(pill())
     await act(async () => void fireEvent.mouseDown(row()))
-    expect(state().drawerKind).toBeNull()
+    expect(updates).toEqual(['grok-4'])
 
-    // 重新打开,再点同一行:commit 那道闸把它整下拦掉 —— 收抽屉这一步都没跑到。
-    fireEvent.click(pill())
+    // 再点同一行:commit 那道闸把它整下拦掉,不发第二发。
     await act(async () => void fireEvent.mouseDown(row()))
     expect(updates).toEqual(['grok-4'])
     expect(state().drawerKind).toBe('model')
+  })
+})
+
+/**
+ * ══════════════════════════════════════════════════════════════════════════
+ * 庚:模型药丸带档位 + 抽屉右栏那张卡与它的思考阶梯(09-05,设计 §5.8)
+ * ══════════════════════════════════════════════════════════════════════════
+ * 四件事各自钉死:
+ *  ① **只画这一型支持的档** —— 档表来自目录行上那四格(后端投影),不是这一层编的;
+ *  ② **点一档写的是什么** —— 两张表一起写(`thinkingByModel` + `thinkingEffortByModel`),
+ *     `writeProviderSettings` 收到的 patch 逐格断言;
+ *  ③ **只打补丁** —— 选另一行前后 `.pickScroll` 是**同一个 DOM 节点**且 scrollTop 不动;
+ *  ④ **药丸六形** —— 不思考 / 关 / 开 / 明确档 / 不可关的缺省档 / 可关但没设过。
+ *
+ * 目录那一格直接 `patch` 进 `catalogQuery`(与文件头 setup 同一手):这一层验的是
+ * 「谁在场、点了写什么」,投影本身归 `packages/backend/rpc/__tests__/models-domain`。
+ */
+describe('庚:模型选择器带思考档位', () => {
+  /** 药丸按 aria-expanded 认 —— 它的 aria-label 会跟着选中的模型改名。 */
+  const pill = () => screen.getAllByRole('button').find((b) => b.hasAttribute('aria-expanded'))!
+  const ladder = () => screen.queryByRole('radiogroup')
+  const rungs = () =>
+    screen.queryAllByRole('radio').map((r) => (r.closest('label')?.textContent ?? '').trim())
+
+  /**
+   * 摆一台「一家一型」的现场:名册一家、设置勾了这一型、目录里这一条带着
+   * 后端投过来的思考四格。`thinking` 那两格是**盘上已有的设置**。
+   */
+  function stage(
+    modelId: string,
+    caps: Partial<OpenRouterModel>,
+    stored: { thinking?: Record<string, boolean>; thinkingEffort?: Record<string, never> } = {},
+  ): void {
+    providersQuery.patch([{ id: 'xai', name: 'xAI' }])
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'xai',
+        configs: {
+          xai: providerModelPrefs({
+            selectedModels: [modelId],
+            model: modelId,
+            ...stored,
+          }),
+        },
+      },
+      custom: [],
+    })
+    catalogQuery.reset()
+    catalogQuery.get('xai').patch([openRouterModel(modelId, 200_000, caps)])
+  }
+
+  const THINKS_4 = {
+    thinkingLevels: ['low', 'medium', 'high', 'max'],
+    thinkingToggleable: true,
+    thinkingDefaultOn: false,
+    thinkingDefaultLevel: 'high',
+  } as Partial<OpenRouterModel>
+
+  afterEach(() => {
+    configureProviderSettingsPort(undefined)
+    act(() => {
+      useProviderSettings.getState().reset()
+    })
+  })
+
+  /* ── ① 阶梯只画这一型支持的档 ─────────────────────────────────────────── */
+
+  it('deepseek 那一形(两档 + 可关)→ 关 / 高 / 最大', () => {
+    stage('deepseek-v4-pro', {
+      thinkingLevels: ['high', 'max'],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'high',
+    })
+    renderComposer()
+    fireEvent.click(pill())
+    expect(rungs()).toEqual(['关不思考,最快', '高认真想', '最大想到底'])
+  })
+
+  it('gpt-5 那一形(不可关)→ 阶梯上**没有**「关」', () => {
+    stage('gpt-5', {
+      thinkingLevels: ['minimal', 'low', 'medium', 'high'],
+      thinkingToggleable: false,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'medium',
+    })
+    renderComposer()
+    fireEvent.click(pill())
+    expect(rungs().some((text) => text.startsWith('关'))).toBe(false)
+    expect(rungs()).toHaveLength(4)
+  })
+
+  it('kimi k3 那一形(一档 + 可关)→ 关 / 最大', () => {
+    stage('kimi-k3', {
+      thinkingLevels: ['max'],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'max',
+    })
+    renderComposer()
+    fireEvent.click(pill())
+    expect(rungs()).toEqual(['关不思考,最快', '最大想到底'])
+  })
+
+  it('qwen3.5 那一形(能开关但一档都没有)→ 只有开 / 关', () => {
+    stage('qwen3.5-max', {
+      thinkingLevels: [],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'high',
+    })
+    renderComposer()
+    fireEvent.click(pill())
+    expect(rungs()).toEqual(['关不思考,最快', '开按这一型的缺省想'])
+  })
+
+  it('不思考的型 → 一句实话,一个控件都不画', () => {
+    stage('deepseek-chat', { thinkingLevels: null })
+    renderComposer()
+    fireEvent.click(pill())
+    expect(ladder()).toBeNull()
+    expect(screen.getByText('这一型不思考')).toBeTruthy()
+  })
+
+  /* ── ② 点一档写进去的是什么 ───────────────────────────────────────────── */
+
+  it('点一档:两张表一起写(只写档不写开关,发送链会当没设过)', async () => {
+    const writes: { thinkingByModel?: unknown; thinkingEffortByModel?: unknown }[] = []
+    configureProviderSettingsPort(
+      fakeProviderPort({
+        readSettings: async () => ({
+          success: true,
+          settings: { ai: { providers: { xai: { model: 'grok-4', selectedModels: ['grok-4'] } } } } as never,
+        }),
+        readProviderSettings: async () => ({
+          success: true,
+          ai: {
+            provider: 'xai',
+            providers: { xai: { model: 'grok-4', selectedModels: ['grok-4'] } },
+            customProviders: [],
+          } as never,
+        }),
+        writeProviderSettings: async (request) => {
+          writes.push((request.ai?.providers?.xai ?? {}) as never)
+          return { success: true, ai: request.ai }
+        },
+      }),
+    )
+    stage('grok-4', THINKS_4)
+    renderComposer()
+    fireEvent.click(pill())
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('radio')[3])
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(writes).toHaveLength(1)
+    expect(writes[0].thinkingByModel).toEqual({ 'grok-4': true })
+    expect(writes[0].thinkingEffortByModel).toEqual({ 'grok-4': 'high' })
+  })
+
+  it('点「关」:只写开关那一张表,不给它钉一个档', async () => {
+    const writes: { thinkingByModel?: unknown; thinkingEffortByModel?: unknown }[] = []
+    configureProviderSettingsPort(
+      fakeProviderPort({
+        readSettings: async () => ({
+          success: true,
+          settings: { ai: { providers: { xai: { model: 'grok-4', selectedModels: ['grok-4'] } } } } as never,
+        }),
+        readProviderSettings: async () => ({
+          success: true,
+          ai: {
+            provider: 'xai',
+            providers: { xai: { model: 'grok-4', selectedModels: ['grok-4'] } },
+            customProviders: [],
+          } as never,
+        }),
+        writeProviderSettings: async (request) => {
+          writes.push((request.ai?.providers?.xai ?? {}) as never)
+          return { success: true, ai: request.ai }
+        },
+      }),
+    )
+    // 得先是开着的:原生 radio 点已经选中的那一颗**不发 change**(浏览器的行为,
+    // 不是我们的)—— 用 THINKS_4 的缺省(defaultOn:false)开场,「关」本来就按着。
+    stage('grok-4', THINKS_4, { thinking: { 'grok-4': true } })
+    renderComposer()
+    fireEvent.click(pill())
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('radio')[0])
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+
+    expect(writes[0].thinkingByModel).toEqual({ 'grok-4': false })
+    expect(writes[0].thinkingEffortByModel).toBeUndefined()
+  })
+
+  /* ── ③ 只打补丁:列表这棵 DOM 不重建 ──────────────────────────────────── */
+
+  /**
+   * 报障「列表独滚卡不滚」的两半,一条用例守两件事:
+   *
+   *  ① **卡是列表的兄弟,不是它的内容** —— 卡在滚动区里,滚列表就会把卡滚走,
+   *     而卡恰恰是「必须一直看得见」的那一半(设计 §5.8)。
+   *     反证:把 `<ModelDetailCard/>` 搬进 `.pickScroll` 里 → 这一条当场红。
+   *  ② **换选中之后列表不许重挂** —— 否则滚动位当场归零:用户滚到第 40 条
+   *     点了一下,列表跳回顶。
+   *     反证:给列表那棵子树加一个跟着选中变的 `key` → 这一条当场红。
+   */
+  it('右栏是兄弟不是内容;选另一行时 `.pickScroll` 是同一个节点、scrollTop 不动', () => {
+    providersQuery.patch([{ id: 'xai', name: 'xAI' }])
+    prefsQuery.get('default').patch({
+      prefs: {
+        defaultProvider: 'xai',
+        configs: {
+          xai: providerModelPrefs({ selectedModels: ['grok-4', 'grok-4-fast'], model: 'grok-4' }),
+        },
+      },
+      custom: [],
+    })
+    catalogQuery.reset()
+    catalogQuery
+      .get('xai')
+      .patch([
+        openRouterModel('grok-4', 200_000, THINKS_4),
+        openRouterModel('grok-4-fast', 128_000, THINKS_4),
+      ])
+
+    const { container } = renderComposer()
+    fireEvent.click(pill())
+    const scroll = container.querySelector('[class*="pickScroll"]') as HTMLElement
+    expect(scroll).toBeTruthy()
+    // ① 卡在滚动区**外面**。这是结构断言,不是样式断言 —— CSS 说不出「谁装着谁」。
+    expect(scroll.contains(screen.getByTestId('model-detail-card'))).toBe(false)
+    // ② jsdom 不排版,所以 scrollTop 只是一格可写的数 —— 这一条守的是
+    //    「这棵子树没被重建」,重建的话赋上去的值当然也就没了。
+    scroll.scrollTop = 120
+
+    fireEvent.mouseDown(screen.getByText('grok-4-fast'))
+
+    expect(container.querySelector('[class*="pickScroll"]')).toBe(scroll)
+    expect(scroll.scrollTop).toBe(120)
+  })
+
+  /* ── ④ 药丸六形 ──────────────────────────────────────────────────────── */
+
+  async function pillText(
+    caps: Partial<OpenRouterModel>,
+    stored: { thinking?: Record<string, boolean>; thinkingEffort?: Record<string, never> } = {},
+  ): Promise<string> {
+    stage('m-1', caps, stored)
+    renderComposer()
+    // 目录那几发 ensure 是异步的(缓存命中也要过一次微任务),放它们落地再读 ——
+    // 否则最后那一次落地会变成一次 act 之外的重渲。
+    await act(async () => {
+      await Promise.resolve()
+    })
+    return pill().textContent ?? ''
+  }
+
+  it('不思考的型:药丸只写名,不留一个孤零零的间隔点', async () => {
+    expect(await pillText({ thinkingLevels: null })).toBe('m-1')
+  })
+
+  it('明确关掉:写「关」', async () => {
+    expect(await pillText(THINKS_4, { thinking: { 'm-1': false } })).toContain('关')
+  })
+
+  it('明确开着并钉了档:写那一档', async () => {
+    expect(
+      await pillText(THINKS_4, {
+        thinking: { 'm-1': true },
+        thinkingEffort: { 'm-1': 'max' } as never,
+      }),
+    ).toContain('最大')
+  })
+
+  it('不可关、没设过:写 profile 的缺省档(那一发真的会这么跑)', async () => {
+    expect(
+      await pillText({
+        thinkingLevels: ['low', 'medium', 'high'],
+        thinkingToggleable: false,
+        thinkingDefaultOn: true,
+        thinkingDefaultLevel: 'medium',
+      }),
+    ).toContain('中')
+  })
+
+  it('可关、没设过、服务端缺省不想:写「关」', async () => {
+    // THINKS_4 的 defaultOn 是 false(claude 那一形):没设过 = 一个参数都不发 = 不想。
+    expect(await pillText(THINKS_4)).toContain('关')
+  })
+
+  it('能开关但一档都没有、开着:写「开」', async () => {
+    expect(
+      await pillText(
+        {
+          thinkingLevels: [],
+          thinkingToggleable: true,
+          thinkingDefaultOn: true,
+          thinkingDefaultLevel: 'high',
+        },
+        { thinking: { 'm-1': true } },
+      ),
+    ).toContain('开')
+  })
+
+  /* ── ⑤ 读屏听到的与眼睛看到的一样多 ───────────────────────────────────── */
+
+  /**
+   * 药丸右半那格档字是**画**出来的(`.modelPillLevel` 里一个 span)——
+   * aria-label 若只念模型名,读屏的人恰好丢掉这枚药丸新长出来的那半格意思。
+   * 所以这两条读的是**同一次渲染**的两面:嘴上念的与眼睛看的必须是同一个词。
+   * 反证:把 aria-label 换回 `t('composer.model', …)` 那一条 → 下面第一条当场红。
+   */
+  async function pillFaces(
+    caps: Partial<OpenRouterModel>,
+    stored: { thinking?: Record<string, boolean>; thinkingEffort?: Record<string, never> } = {},
+  ): Promise<{ label: string; text: string }> {
+    stage('m-1', caps, stored)
+    renderComposer()
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const el = pill()
+    return { label: el.getAttribute('aria-label') ?? '', text: el.textContent ?? '' }
+  }
+
+  it('有档的型:无障碍名把那一档也念出来,而且念的就是屏幕上那个词', async () => {
+    const { label, text } = await pillFaces(THINKS_4, {
+      thinking: { 'm-1': true },
+      thinkingEffort: { 'm-1': 'max' } as never,
+    })
+    expect(label).toBe('选择模型:m-1,思考 最大')
+    // 眼睛与耳朵同一份事实:药丸上画的那个词,label 里一字不差地又出现一次。
+    expect(text).toContain('最大')
+    expect(label).toContain('最大')
+  })
+
+  it('不思考的型:仍是旧名 —— 不念一个「思考 无」出来', async () => {
+    const { label, text } = await pillFaces({ thinkingLevels: null })
+    expect(label).toBe('选择模型:m-1')
+    expect(text).toBe('m-1')
   })
 })

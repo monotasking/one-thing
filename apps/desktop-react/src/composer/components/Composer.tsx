@@ -10,12 +10,13 @@ import {
   modelMutation,
   selectKey,
   useCurrentModelSelection,
+  useThinkingState,
 } from '../../data/models-source'
 import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
 import { composerSink, useComposerBusy } from '../sink'
 import { revokeAllAttachments, useComposerStore } from '../store'
-import { isTypingTarget } from '../transitions'
+import { isTypingTarget, THINKING_LABEL_KEY, thinkingRungOf } from '../transitions'
 import { useComposerSend } from '../useComposerSend'
 import { useEscStop } from '../useEscStop'
 import { usePickDrawer } from '../usePickDrawer'
@@ -124,6 +125,13 @@ export function Composer() {
   const selection = useCurrentModelSelection(sessionId)
   /* 律③:切模型这一发在飞时,药丸上 `aria-busy`(判据全文见文件头第③表)。 */
   const switchingModel = useAsyncPending(modelMutation, selectKey(sessionId))
+  /*
+   * 药丸右半那一格档位(09-05 庚)。判据在 `thinkingStateOf`(它照抄发送链),
+   * 落到「屏幕上是哪一根档」在 `thinkingRungOf` —— 这一层只把两者接起来。
+   * `null` = 这一型不思考 / 目录还没到 → 药丸只写名,不写「· 未知」。
+   */
+  const thinking = useThinkingState(selection)
+  const thinkingRung = thinkingRungOf(thinking)
   const openMeter = useMeterSource((st) => st.open)
   const refreshMeter = useMeterSource((st) => st.refresh)
 
@@ -368,9 +376,20 @@ export function Composer() {
                       * 所以只接 `ui/ButtonBase` 清 UA,`.modelPill` 皮肤一个像素不动。 */}
                     <ButtonBase
                       className={s.modelPill}
+                      /*
+                       * 无障碍名要**跟屏幕上一样多**:药丸右半画着档字,只念模型名
+                       * 等于让读屏的人听不到「此刻想得多深」。所以有档时换一条带
+                       * level 的话,那个词就是 `THINKING_LABEL_KEY` 里屏幕上那一个;
+                       * 不思考的型没有档可念,仍走原来那条(不念「思考 无」)。
+                       */
                       aria-label={
                         selection
-                          ? t('composer.model', { name: selection.model })
+                          ? thinkingRung
+                            ? t('composer.modelWithThinking', {
+                                name: selection.model,
+                                level: t(THINKING_LABEL_KEY[thinkingRung]),
+                              })
+                            : t('composer.model', { name: selection.model })
                           : t('composer.modelUnset')
                       }
                       aria-expanded={drawerKind === 'model'}
@@ -383,6 +402,17 @@ export function Composer() {
                       <span className={s.modelPillLabel}>
                         {selection ? selection.model : t('composer.modelUnset')}
                       </span>
+                      {/*
+                        * 「GPT-5.5 · 高」的后半截。它是**不弯腰的那一件**:名字长了截断
+                        * 名字(律一 —— 一行恰有一个弯腰件),档位这两个字一直看得见,
+                        * 否则「此刻想得多深」会先于模型名消失。这一型不思考就整块不画,
+                        * 不留一个孤零零的间隔点。
+                        */}
+                      {thinkingRung && (
+                        <span className={s.modelPillLevel}>
+                          {t(THINKING_LABEL_KEY[thinkingRung])}
+                        </span>
+                      )}
                       <ChevronDown className={s.pillChev} strokeWidth={2} aria-hidden="true" />
                     </ButtonBase>
                   </div>

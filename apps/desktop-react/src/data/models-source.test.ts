@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { OpenRouterModel, ProviderInfo, SpaceProviderSettings } from '@shared/ipc/providers'
+import type {
+  OpenRouterModel,
+  ProviderInfo,
+  SpaceProviderSettings,
+  ThinkingEffort,
+} from '@shared/ipc/providers'
 import { configureModelsPort } from './models-port'
 import { configureProviderSettingsPort } from './provider-settings-port'
 import { configureSpacesPort } from './spaces-port'
-import { openRouterModel as model } from './__fixtures__/models'
+import {
+  catalogModel,
+  modelOption,
+  openRouterModel as model,
+  providerModelPrefs,
+} from './__fixtures__/models'
 import { fakeProviderPort } from '../providers/__tests__/fake-port'
 import { catalogQuery } from '../providers/catalog-query'
 import { useNotifyStore } from '../services/notify-store'
@@ -24,8 +34,10 @@ import {
   providersQuery,
   resolveModelSelection,
   selectKey,
+  thinkingStateOf,
   toCatalogModels,
   toProviderPrefs,
+  UNKNOWN_MODEL_READINGS,
   useModelsSource,
 } from './models-source'
 import { useSessionsSource } from './sessions-source'
@@ -190,7 +202,7 @@ describe('设置的窄投影', () => {
     expect(prefs.configs['my-llm'].selectedModels).toEqual(['qwen-max'])
     expect(
       buildProviderGroups([{ id: 'my-llm', name: '自建' }], prefs, {}, null)[0].models,
-    ).toEqual([{ model: 'qwen-max', contextLength: null }])
+    ).toEqual([modelOption('qwen-max', null)])
   })
 })
 
@@ -249,12 +261,12 @@ describe('可见的家:两道闸', () => {
   it('目录没到照样出组,只是窗口那一格是 null', () => {
     const prefs = toProviderPrefs(settingsWith({ xai: { selectedModels: ['grok-4'] } }))
     expect(buildProviderGroups(providers, prefs, {}, null)[0].models).toEqual([
-      { model: 'grok-4', contextLength: null },
+      modelOption('grok-4', null),
     ])
     const withCatalog = buildProviderGroups(
       providers,
       prefs,
-      { xai: [{ id: 'grok-4', contextLength: 500_000 }] },
+      { xai: [catalogModel('grok-4', 500_000)] },
       null,
     )
     expect(withCatalog[0].models[0].contextLength).toBe(500_000)
@@ -302,7 +314,7 @@ describe('窗口大小', () => {
   })
 
   it('查不到的选择读作不知道(不知道是哪家 / 目录里没有这一条)', () => {
-    const catalog = { xai: [{ id: 'grok-4', contextLength: 500_000 }] }
+    const catalog = { xai: [catalogModel('grok-4', 500_000)] }
     expect(contextWindowOf(catalog, { provider: 'xai', model: 'grok-4' })).toBe(500_000)
     expect(contextWindowOf(catalog, { provider: '', model: 'grok-4' })).toBeNull()
     expect(contextWindowOf(catalog, { provider: 'xai', model: '别的' })).toBeNull()
@@ -367,7 +379,7 @@ describe('取数:设置热,名册与目录都冷', () => {
     await ensureCatalog('xai')
     expect(calls.models).toEqual(['xai'])
     expect(toCatalogModels(catalogQuery.get('xai').get().data ?? [])).toEqual([
-      { id: 'grok-4', contextLength: 500_000 },
+      catalogModel('grok-4', 500_000),
     ])
   })
 
@@ -409,6 +421,130 @@ describe('取数:设置热,名册与目录都冷', () => {
     installPort({ readProviderSettings: async () => ({ success: false, error: '答不上话' }) })
     await useModelsSource.getState().start()
     expect(prefsQuery.get('default').get().data?.prefs).toEqual({ defaultProvider: '', configs: {} })
+  })
+})
+
+/* ── 思考档位:投影 + 「屏幕上写什么」的判据(09-05 庚)────────────────────── */
+
+describe('目录投影:价格与思考四格', () => {
+  it('价格走 priceOf 的单位口径(目录给的就是每百万,一次换算都不做);两格缺一即 null', () => {
+    const paid = model('m', 1000, {
+      pricing: { prompt: '2.5', completion: '10', request: '0', image: '0' },
+    })
+    expect(toCatalogModels([paid])[0].pricing).toEqual({ input: 2.5, output: 10 })
+    expect(toCatalogModels([model('m', 1000)])[0].pricing).toBeNull()
+  })
+
+  it('后端投过的四格原样带上来', () => {
+    const row = model('deepseek-v4-pro', 128_000, {
+      thinkingLevels: ['high', 'max'],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'high',
+    })
+    expect(toCatalogModels([row])[0]).toMatchObject({
+      thinkingLevels: ['high', 'max'],
+      thinkingToggleable: true,
+      thinkingDefaultOn: true,
+      thinkingDefaultLevel: 'high',
+    })
+  })
+
+  it('**没投过**(旧缓存 / 别的产地)与「这一型不思考」在屏幕上是同一件事:不写档', () => {
+    expect(toCatalogModels([model('m', 1000)])[0]).toMatchObject({
+      thinkingLevels: null,
+      thinkingToggleable: false,
+      thinkingDefaultOn: false,
+      thinkingDefaultLevel: null,
+    })
+  })
+
+  it('设置的窄投影带上两张思考表(药丸要靠它答「此刻是哪一档」)', () => {
+    const ai = {
+      provider: 'xai',
+      providers: {
+        xai: {
+          model: 'grok-4',
+          selectedModels: ['grok-4'],
+          thinkingByModel: { 'grok-4': true },
+          thinkingEffortByModel: { 'grok-4': 'max' },
+        },
+      },
+      customProviders: [],
+    } as unknown as SpaceProviderSettings
+    const config = toProviderPrefs(ai).configs.xai
+    expect(config.thinking).toEqual({ 'grok-4': true })
+    expect(config.thinkingEffort).toEqual({ 'grok-4': 'max' })
+  })
+})
+
+/**
+ * 「屏幕上写什么」的判据。它**照抄发送链**
+ * (`agent-loop/providers/thinking-options.getGenericThinkingOptions`):
+ * 明确 false = 关;明确 true = 开 + 那一档(没设就是服务端缺省档);
+ * 缺席 = 一个参数都不发 = 开不开与用哪一档全由服务端缺省决定。
+ *
+ * 反证:把 `thinkingStateOf` 里那句 `chosen ?? readings.thinkingDefaultOn` 换成
+ * `chosen ?? true` → 「可关、没设过、缺省不想」那一条当场红。
+ */
+describe('思考态:屏幕与发送链是同一句话', () => {
+  const claude = {
+    thinkingLevels: ['low', 'medium', 'high', 'max'] as ThinkingEffort[],
+    thinkingToggleable: true,
+    thinkingDefaultOn: false,
+    thinkingDefaultLevel: 'high' as ThinkingEffort,
+  }
+  const gpt5 = {
+    thinkingLevels: ['minimal', 'low', 'medium', 'high'] as ThinkingEffort[],
+    thinkingToggleable: false,
+    thinkingDefaultOn: true,
+    thinkingDefaultLevel: 'medium' as ThinkingEffort,
+  }
+  const qwen = {
+    thinkingLevels: [] as ThinkingEffort[],
+    thinkingToggleable: true,
+    thinkingDefaultOn: true,
+    thinkingDefaultLevel: 'high' as ThinkingEffort,
+  }
+
+  it('不思考的型:四格全按不思考答,不编档', () => {
+    expect(thinkingStateOf(UNKNOWN_MODEL_READINGS, undefined, 'm')).toMatchObject({
+      supported: false,
+      on: false,
+      level: null,
+    })
+  })
+
+  it('明确关掉 → 关,而且**不写一个档**(关着的时候没有深浅)', () => {
+    const state = thinkingStateOf(
+      claude,
+      providerModelPrefs({ thinking: { m: false }, thinkingEffort: { m: 'max' } }),
+      'm',
+    )
+    expect(state).toMatchObject({ supported: true, on: false, level: null, explicit: true })
+  })
+
+  it('明确开着 + 明确档 → 那一档', () => {
+    const state = thinkingStateOf(
+      claude,
+      providerModelPrefs({ thinking: { m: true }, thinkingEffort: { m: 'max' } }),
+      'm',
+    )
+    expect(state).toMatchObject({ on: true, level: 'max', explicit: true })
+  })
+
+  it('没设过 → 读 profile 的缺省:claude 缺省不想,gpt-5 缺省想「中」', () => {
+    expect(thinkingStateOf(claude, undefined, 'm')).toMatchObject({ on: false, explicit: false })
+    expect(thinkingStateOf(gpt5, undefined, 'm')).toMatchObject({ on: true, level: 'medium' })
+  })
+
+  it('一档都没有的型:开着也没有档 —— 屏幕不写一个这一型根本不接受的字', () => {
+    const state = thinkingStateOf(
+      qwen,
+      providerModelPrefs({ thinking: { m: true }, thinkingEffort: { m: 'max' } }),
+      'm',
+    )
+    expect(state).toMatchObject({ on: true, level: null, levels: [] })
   })
 })
 

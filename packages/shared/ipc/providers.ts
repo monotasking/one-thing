@@ -81,6 +81,22 @@ export interface OpenRouterModel {
   // entries — those sort to the end.
   last_updated?: string
   providerMetadata?: JsonObject
+  // ── 思考档位的投影(2026-09-05,输入框的模型选择器)────────────────────────
+  // 真相在 `runtime/providers/model-capability.ts` 的 `OnethingReasoningProfile`,
+  // 这四格是它的**只读投影**,由 `models.getWithCapabilities` 一次一家地填。
+  // **可选**是因为这个信封有别的产地(测试夹具、旧缓存):缺席读作「这一发没投
+  // 影过」,屏幕上与「这一型不思考」同一个样子(不写档),而不是编一个档出来。
+  //
+  // `thinkingLevels`: 这一型能选的档(`efforts` 滤掉 `'none'` —— 那是线协议
+  // 标记不是档);`null` = 这一型不思考;`[]` = 能开关但没有档可挑。
+  thinkingLevels?: ThinkingEffort[] | null
+  // 用户能不能把思考关掉(o 系 / gpt-5 系 / grok / kimi code 永远思考)。
+  thinkingToggleable?: boolean
+  // 什么参数都不发时服务端到底思不思考(`profile.defaultOn`)。药丸要靠它
+  // 回答「没设过档的时候屏幕上该写什么」—— 发送链在这一档一个参数都不发。
+  thinkingDefaultOn?: boolean
+  // 什么档都没设时的有效档(`profile.defaultEffort`);`null` = 这一型不思考。
+  thinkingDefaultLevel?: ThinkingEffort | null
 }
 
 // Provider metadata for UI display
@@ -450,6 +466,16 @@ export interface RendererModelCapabilities {
   supportsVision: boolean
   supportsFiles: boolean
   supportsImageOutput: boolean
+  /**
+   * 思考档位那四格 —— 与 `OpenRouterModel` 上同名四格**逐字同义**
+   * (同一个 `OnethingReasoningProfile` 的同一份投影,产地是
+   * `projectOnethingThinkingLevels`)。一致性:同一件事实在两条口上不该有两种形状。
+   * 可选,理由与那边同一条:这一发没投影过 ≠ 这一型不思考。
+   */
+  thinkingLevels?: ThinkingEffort[] | null
+  thinkingToggleable?: boolean
+  thinkingDefaultOn?: boolean
+  thinkingDefaultLevel?: ThinkingEffort | null
 }
 
 export interface ModelCapabilitiesResponse {

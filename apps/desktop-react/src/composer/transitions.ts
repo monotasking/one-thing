@@ -8,7 +8,10 @@ import type {
   CommandSpec,
   TokenHit,
 } from './types'
+import type { ThinkingEffort } from '@shared/ipc/providers'
 import type { ProviderGroup } from '../data/models-source'
+import type { ThinkingRung } from '../providers/store'
+import type { MessageKey } from '../i18n'
 
 /**
  * Composer 的纯函数层。规矩同 stage/transitions.ts:
@@ -273,6 +276,51 @@ export function filterProviders(groups: readonly ProviderGroup[], query: string)
       ),
     }))
     .filter((g) => g.models.length > 0)
+}
+
+/**
+ * 思考档 → 字典键。**一张表,两个消费者**(药丸写字、右栏阶梯画档名与注)——
+ * 两处各拼一次 `'composer.think' + 首字母大写` 就是两处会漂,而漂开的表现是
+ * 「某一档在药丸上有名字、在阶梯上是一串键名」,没有任何一道门会发现。
+ *
+ * 键面就是写口那个联合(`providers/store.ThinkingRung`)—— 屏幕上有几根档,
+ * 写口就收几个值,不许有一根画得出来却写不进去的档。
+ */
+export const THINKING_LABEL_KEY: Record<ThinkingRung, MessageKey> = {
+  off: 'composer.thinkOff',
+  on: 'composer.thinkOn',
+  minimal: 'composer.thinkMinimal',
+  low: 'composer.thinkLow',
+  medium: 'composer.thinkMedium',
+  high: 'composer.thinkHigh',
+  xhigh: 'composer.thinkXhigh',
+  max: 'composer.thinkMax',
+}
+
+export const THINKING_NOTE_KEY: Record<ThinkingRung, MessageKey> = {
+  off: 'composer.thinkNoteOff',
+  on: 'composer.thinkNoteOn',
+  minimal: 'composer.thinkNoteMinimal',
+  low: 'composer.thinkNoteLow',
+  medium: 'composer.thinkNoteMedium',
+  high: 'composer.thinkNoteHigh',
+  xhigh: 'composer.thinkNoteXhigh',
+  max: 'composer.thinkNoteMax',
+}
+
+/**
+ * 药丸右半写哪一格 —— `null` = **什么都不写**(这一型不思考 / 目录还没到)。
+ * 判据全在 `models-source.thinkingStateOf`(它照抄发送链);这里只把那个结论
+ * 落到「屏幕上是哪一根档」上:关着写「关」、有档写档、能开关但没档写「开」。
+ */
+export function thinkingRungOf(state: {
+  supported: boolean
+  on: boolean
+  level: ThinkingEffort | null
+}): ThinkingRung | null {
+  if (!state.supported) return null
+  if (!state.on) return 'off'
+  return state.level ?? 'on'
 }
 
 /* ── 读数 ────────────────────────────────────────────────────────────────── */

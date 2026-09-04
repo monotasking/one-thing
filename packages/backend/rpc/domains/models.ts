@@ -24,7 +24,9 @@ import {
   getOnethingModelCapabilitiesForIpc,
   getOnethingModelRegistryDisplayNameForIpc,
   getOnethingModelRegistryNameAliasesForIpc,
+  projectOnethingThinkingLevels,
   refreshOnethingModelRegistryForIpc,
+  resolveOnethingModelCapabilities,
   searchOnethingModelRegistryForIpc,
   type OnethingConfiguredModelSelection,
 } from '@onething/runtime/providers'
@@ -61,6 +63,39 @@ async function fetchCodexModelsRaw(): Promise<OpenRouterModel[]> {
   return fetchCodexModels(token)
 }
 
+/**
+ * 「这一型的思考能提供几档」—— 目录行上那四格的**唯一填法**(2026-09-05)。
+ *
+ * 判据一格都不在这里:滤 `'none'`、缺席 profile 读作「不思考」全在
+ * `projectOnethingThinkingLevels`(产品层,profile 隔壁)。这一层只做装配层才知道
+ * 的那一件事 —— 把设置里的 override / 目录条目喂给能力裁定,与
+ * `getModelCapabilities` 下面那段「不解析凭据」同一手:**一次网络都不打**。
+ */
+function thinkingProjectionOf(providerId: string, modelId: string) {
+  const providerConfig = getSettings()?.ai?.providers?.[providerId] as
+    | (ProviderConfig & { apiType?: 'openai' | 'anthropic' })
+    | undefined
+  const apiType = providerConfig?.apiType
+  const caps = resolveOnethingModelCapabilities({
+    providerId,
+    modelId,
+    ...(apiType === 'openai' || apiType === 'anthropic' ? { customApiType: apiType } : {}),
+    ...(providerConfig?.modelCapabilitiesByModel?.[modelId]
+      ? { override: providerConfig.modelCapabilitiesByModel[modelId] }
+      : {}),
+    ...(providerConfig?.models?.[modelId] ? { registryEntry: providerConfig.models[modelId] } : {}),
+  })
+  return projectOnethingThinkingLevels(caps.reasoningProfile)
+}
+
+/** 目录一整家逐行盖上那四格。**加性**:原对象一格不改,只多四个键。 */
+function withThinkingLevels(
+  providerId: string,
+  models: readonly OpenRouterModel[],
+): OpenRouterModel[] {
+  return models.map((model) => ({ ...model, ...thinkingProjectionOf(providerId, model.id) }))
+}
+
 export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
   async getWithCapabilities(request) {
     const getOnethingModelsWithCapabilitiesAdapters: GetOnethingModelsWithCapabilitiesAdapters = {
@@ -81,10 +116,15 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       },
       logger: consoleLog,
     };
-    return getOnethingModelsWithCapabilities(
-      { providerId: request?.providerId ?? '', forceRefresh: request?.forceRefresh },
+    const providerId = request?.providerId ?? ''
+    const result = await getOnethingModelsWithCapabilities(
+      { providerId, forceRefresh: request?.forceRefresh },
       getOnethingModelsWithCapabilitiesAdapters,
     )
+    // 这一口是抽屉的目录口:思考档位随行走(逐 (provider, model) 再发一次
+    // `getModelCapabilities` 对一张几十上百行的表不成立)。失败那一支原样交回。
+    if (!result.success || !result.models) return result
+    return { ...result, models: withThinkingLevels(providerId, result.models) }
   },
   async getAll() {
     const getAllOnethingModelRegistryModelsOptions: GetAllOnethingModelRegistryModelsOptions<OpenRouterModel> & { logger?: OnethingModelQueryIpcLogger | undefined; } = {
@@ -129,9 +169,11 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
    * vision 别名兜底,而不是骗用户说"不能传文件"。
    */
   async getModelCapabilities(request) {
-    return getOnethingModelCapabilitiesForIpc({
-      providerId: request?.providerId ?? '',
-      model: request?.model ?? '',
+    const providerId = request?.providerId ?? ''
+    const model = request?.model ?? ''
+    const result = await getOnethingModelCapabilitiesForIpc({
+      providerId,
+      model,
       createProvider: (providerId, model) => {
         // `apiType` / `providerOptions` 只住在自建端点那几档上(ProviderConfig 是
         // 联合的窄边),按需放宽读一次 —— 与 system-prompt-snapshot 同一手法。
@@ -151,6 +193,13 @@ export const modelsRpcHandlers: RouteHandlers<ModelsRoutes> = {
       },
       logger: consoleLog,
     })
+    // 思考档位那四格与目录口**同一份投影**(一致性:同一件事实两条口一个形状)。
+    // 失败那一支不补 —— 那一档连 capabilities 都没有。
+    if (!('capabilities' in result) || !result.capabilities) return result
+    return {
+      ...result,
+      capabilities: { ...result.capabilities, ...thinkingProjectionOf(providerId, model) },
+    }
   },
   async getDisplayName(request) {
     return getOnethingModelRegistryDisplayNameForIpc({

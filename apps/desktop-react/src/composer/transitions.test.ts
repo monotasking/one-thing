@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import * as T from './transitions'
 import type { ProviderGroup } from '../data/models-source'
+import { modelOption } from '../data/__fixtures__/models'
 import type { AskSpec, Attachment } from './types'
 
 /**
@@ -13,18 +14,15 @@ const GROUPS: ProviderGroup[] = [
     id: 'anthropic',
     provider: 'Anthropic',
     models: [
-      { model: 'claude-opus-5', contextLength: 200_000 },
-      { model: 'claude-sonnet-5', contextLength: 200_000 },
-      { model: 'claude-haiku-4.5', contextLength: null },
+      modelOption('claude-opus-5', 200_000),
+      modelOption('claude-sonnet-5', 200_000),
+      modelOption('claude-haiku-4.5', null),
     ],
   },
   {
     id: 'xai',
     provider: 'xAI',
-    models: [
-      { model: 'grok-4', contextLength: 500_000 },
-      { model: 'grok-4-fast', contextLength: 500_000 },
-    ],
+    models: [modelOption('grok-4', 500_000), modelOption('grok-4-fast', 500_000)],
   },
 ]
 

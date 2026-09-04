@@ -104,20 +104,23 @@ export const useComposerStore = create<ComposerStore>()((set, get) => ({
   setModelQuery: (q) => set({ modelQuery: q }),
 
   /**
-   * 选中一个模型 —— **一个手势,两件事**,所以是一口而不是让组件调两下:
-   *  1. 抽屉收起(这块面板自己的形态,归这里);
-   *  2. 把选择交给 `models-source`(会话上的一格绑定,归那里):有会话就
-   *     `sessions.updateModel` 上行,没有会话就记成「下一条新会话用谁」。
+   * 选中一个模型 —— **一件事**:把选择交给 `models-source`(会话上的一格绑定,
+   * 归那里)。有会话就 `sessions.updateModel` 上行,没有会话就记成「下一条新会话用谁」。
    *
-   * 这里**不 await**:抽屉该在手指抬起的那一帧就收起来,而不是等一次往返。
+   * 这里**不 await**:药丸该在手指抬起的那一帧就换字,而不是等一次往返。
    * 上行失败由数据源自己撤牌 + notify(warn) —— 那时药丸会变回原来那个模型,
    * 屏幕上不留一块后端没认下的牌(与 agent 徽逐条同构)。
+   *
+   * ── 09-05(庚):这一口从前还顺手 `set({drawerKind: null})` ────────────────
+   * 抽屉从此**不因为选中而关**。理由是这块面板长出了第二件事:右栏那张卡与它的
+   * 思考阶梯讲的就是「刚选中的这一型」——选完当场关掉,等于把刚打开的那一页合上。
+   * 「点一行只做一件事:选中它」是设计稿(§5.8 庚)的原话。收起抽屉的手势还剩两个
+   * 且一个没变:点面板外面(`useFloatDismiss`)、Esc(`Composer.onEscape` 第②层)。
    *
    * `sessionId` 由组件递进来(与 `AgentChip` 同一手):输入面板不认识总览 store,
    * 「当前是哪条会话」是调用现场的事实,不是这块面板的状态。
    */
   chooseModel: (sessionId, provider, model) => {
-    set({ drawerKind: null })
     void useModelsSource.getState().selectModel(sessionId, provider, model)
   },
 

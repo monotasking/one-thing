@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import type { MouseEvent } from 'react'
 import { useT } from '../../i18n'
+import type { TFn } from '../../i18n'
 import { Search } from '../../components/icons'
 import {
   buildProviderGroups,
@@ -9,30 +10,53 @@ import {
   selectKey,
   useCatalogRecord,
   useCurrentModelSelection,
+  useModelReadings,
   useProviderOptions,
   useProviderPrefs,
+  useThinkingState,
 } from '../../data/models-source'
+import type { ModelSelection, ThinkingState } from '../../data/models-source'
 import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
 import { formatQuantity } from '../../format/quantity'
-import { filterProviders } from '../transitions'
+import { formatPrice } from '../../providers/projection'
+import { settingsKey, settingsMutation, useProviderSettings } from '../../providers/store'
+import type { ThinkingRung } from '../../providers/store'
+import { filterProviders, THINKING_LABEL_KEY, THINKING_NOTE_KEY } from '../transitions'
 import { useComposerStore } from '../store'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { FocusScope } from '../../focus/FocusScope'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { Card } from '../../ui/Card'
+import { Radio, RadioGroup } from '../../ui/Radio'
 import s from './Composer.module.css'
 
 /**
- * 模型抽屉:一行搜索 + 按 Provider 分组的表。**不混列** ——
- * 「哪家的」是模型最先要回答的问题,混在一张长表里等于把它藏起来。
+ * 模型抽屉:**两栏**(09-05 设计 §5.8「庚 = 甲的药丸 + 乙的面板」)。
+ * 左栏是一行搜索 + 按 Provider 分组的表,右栏是**选中那一型的卡**:名、窗口、
+ * 价格,和一条竖排的思考阶梯。
  *
+ * 三条判据钉在这个形上,每一条都对着一次真机报障:
+ *
+ *  ① **点一行只做一件事:选中它** —— 抽屉**不关**(`composer/store.chooseModel`
+ *     那句 `set({drawerKind:null})` 随本批删)。选完当场关掉,等于把刚翻开的那一页
+ *     合上:右栏讲的正是「刚选中的这一型」。收起还剩两个手势,一个没变:点面板
+ *     外面、Esc。
+ *  ② **只有列表滚,卡不滚** —— 滚动区仍然只有 `.pickScroll` 一个,右栏那张卡是它
+ *     的**兄弟**(不是它的内容)。面板高度因此由卡定:卡在流里撑出行高,列表
+ *     absolute 铺满自己那一格。
+ *  ③ **改档只打补丁** —— 右栏是按 selection 重渲的兄弟组件,列表这棵 DOM 一个节点
+ *     都不重建、滚动位一格不动(用例 `选另一行:.pickScroll 是同一个节点且
+ *     scrollTop 不变` 守着它)。
+ *
+ * ── 承下来一条没变的判例 ────────────────────────────────────────────────
  * D2 波一起数是真的:名册与设置来自 `data/models-source`(启动时各拉一次),
  * 每一家的**模型目录是抽屉打开时才拉的**(下面那个 effect)—— 十几家 × 上百条
  * 的东西不该为了一个也许永远不会被点开的抽屉在启动期全拉一遍。
  *
  * 目录还没到时这张表**照样是全的**:模型 id 来自设置里勾过的那些(已经在手上),
- * 少的只有行尾那一格窗口大小。所以这里没有转圈的加载态 —— 也没有骨架:
- * 骨架是给「整块内容还不存在」用的,而这里只有一格会晚到。
+ * 少的只有行尾那一格窗口大小与右栏那张卡上的读数。所以左栏没有转圈的加载态 ——
+ * 也没有骨架:骨架是给「整块内容还不存在」用的,而这里只有几格会晚到。
  *
  * ── 09-01 补:这张表从前**只能用鼠标点** ─────────────────────────────────
  * 一行搜索 + 一列候选,却没有 ↑↓ 也没有 ↵ —— 打完字必须把手挪回触控板。
@@ -154,59 +178,207 @@ export function DrawerModelPicker() {
     <FocusScope scope="drawer" activateOnMount restingTarget={() => ref.current}>
       {({ scopeProps }) => (
         <div {...scopeProps}>
-          <div className={s.modelSearch}>
-            <Search className={s.searchIcon} strokeWidth={2} aria-hidden="true" />
-            <input
-              ref={ref}
-              className={s.modelSearchInput}
-              value={query}
-              placeholder={t('composer.modelSearch')}
-              aria-label={t('composer.modelSearch')}
-              onChange={(e) => setQuery(e.target.value)}
-              /* ↑↓ 与 ↵ 是**这个输入框里的语法**(焦点恒在它身上,列表从不落焦),
-               * 与 composer 的 @ / 抽屉、工作区快切同一手。Home/End 不接:
-               * 它们在一个还在编辑的输入框里是到行首行尾(判据见 list-selection)。 */
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                  e.preventDefault()
-                  move(e.key === 'ArrowDown' ? 1 : -1)
-                  return
-                }
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  commit(active)
-                }
-              }}
-            />
-          </div>
-          {/* 限高与滚入视野是同一件事的两半(抽屉判例):十几家 × 上百条不封顶会把
-              聊天顶出屏外,封了顶就必须把键盘位滚回视野 —— 后者在 rowRef 里。 */}
-          <div className={s.pickScroll}>
-            {groups.length === 0 && <div className={s.pickEmpty}>{t('composer.noMatch')}</div>}
-            {groups.map((g) => (
-              <div key={g.id}>
-                <div className={s.provHead}>{g.provider}</div>
-                {g.models.map((m, index) => {
-                  const i = (offsets.get(g.id) ?? 0) + index
-                  return (
-                    <ButtonBase
-                      key={m.model}
-                      ref={rowRef(i)}
-                      className={i === active ? `${s.pickRow} ${s.pickSel}` : s.pickRow}
-                      onMouseDown={pick(i)}
-                    >
-                      <span className={s.pickMono}>{m.model}</span>
-                      {/* 窗口大小是**数据**不是文案(与 files-source.formatBytes 同判据):
-                          换一门语言 '200k' 不该变。不知道就不画那一格,不写「未知」。 */}
-                      <span>{m.contextLength === null ? '' : formatQuantity(m.contextLength)}</span>
-                    </ButtonBase>
-                  )
-                })}
+          <div className={s.pickCols}>
+            <div className={s.pickListCol}>
+              <div className={s.modelSearch}>
+                <Search className={s.searchIcon} strokeWidth={2} aria-hidden="true" />
+                <input
+                  ref={ref}
+                  className={s.modelSearchInput}
+                  value={query}
+                  placeholder={t('composer.modelSearch')}
+                  aria-label={t('composer.modelSearch')}
+                  onChange={(e) => setQuery(e.target.value)}
+                  /* ↑↓ 与 ↵ 是**这个输入框里的语法**(焦点恒在它身上,列表从不落焦),
+                   * 与 composer 的 @ / 抽屉、工作区快切同一手。Home/End 不接:
+                   * 它们在一个还在编辑的输入框里是到行首行尾(判据见 list-selection)。 */
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                      e.preventDefault()
+                      move(e.key === 'ArrowDown' ? 1 : -1)
+                      return
+                    }
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      commit(active)
+                    }
+                  }}
+                />
               </div>
-            ))}
+              {/* 列表格:**它**是相对定位的那一格,列表在里面 absolute 铺满 ——
+                  于是行高只由右栏那张卡定,而列表自己该滚就滚(判据 ②)。 */}
+              <div className={s.pickListCell}>
+                {/* 限高与滚入视野是同一件事的两半(抽屉判例):十几家 × 上百条不封顶会把
+                    聊天顶出屏外,封了顶就必须把键盘位滚回视野 —— 后者在 rowRef 里。 */}
+                <div className={s.pickScroll}>
+                  {groups.length === 0 && (
+                    <div className={s.pickEmpty}>{t('composer.noMatch')}</div>
+                  )}
+                  {groups.map((g) => (
+                    <div key={g.id}>
+                      <div className={s.provHead}>{g.provider}</div>
+                      {g.models.map((m, index) => {
+                        const i = (offsets.get(g.id) ?? 0) + index
+                        return (
+                          <ButtonBase
+                            key={m.model}
+                            ref={rowRef(i)}
+                            className={i === active ? `${s.pickRow} ${s.pickSel}` : s.pickRow}
+                            onMouseDown={pick(i)}
+                          >
+                            <span className={s.pickMono}>{m.model}</span>
+                            {/* 窗口大小是**数据**不是文案(与 files-source.formatBytes 同判据):
+                                换一门语言 '200k' 不该变。不知道就不画那一格,不写「未知」。 */}
+                            <span>
+                              {m.contextLength === null ? '' : formatQuantity(m.contextLength)}
+                            </span>
+                          </ButtonBase>
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <ModelDetailCard selection={current} />
           </div>
         </div>
       )}
     </FocusScope>
+  )
+}
+
+/**
+ * 右栏那张卡 —— **列表的兄弟**,不是它的内容(判据 ② / ③)。
+ *
+ * 它自己订两格事实(目录里这一型的读数、这一型此刻的思考态),所以选中换人时
+ * 重渲的只有它;左栏那棵 DOM 一个节点都不动。`memo` 不是优化,是**这条判据的
+ * 执法**:唯一那个 prop 是选中那一对,换人才重渲(换会话也走它 ——
+ * `useCurrentModelSelection` 那时交出的是另一个对象)。
+ */
+const ModelDetailCard = memo(function ModelDetailCard({
+  selection,
+}: {
+  selection: ModelSelection | null
+}) {
+  const t = useT()
+  const readings = useModelReadings(selection)
+  const thinking = useThinkingState(selection)
+  const setThinkingEffort = useProviderSettings((st) => st.setThinkingEffort)
+  /*
+   * 律③逐格:这一型的档位在写盘时,阶梯不可再点。格子与设置面勾选那一行是
+   * **同一格**(`settingsKey.model`)—— 同一份设置的同一行,忙态不该有两本账。
+   */
+  const saving = useAsyncPending(
+    settingsMutation,
+    selection ? settingsKey.model(selection.provider, selection.model) : '',
+  )
+
+  // 三层事实都答不上来:右栏没有「这一型」可讲,整块不画(不画一张空卡)。
+  if (!selection?.model) return null
+
+  const unknown =
+    readings.contextLength === null && readings.pricing === null && !thinking.supported
+
+  return (
+    <Card className={s.modelCard} pad="md" bordered={false} data-testid="model-detail-card">
+      {/*
+        * 模型名**不走 Card 的 `title` 槽**:那一槽会渲染一个真的 `<h2|h3|h4>`,
+        * 而这块面浮在输入框上、上文没有任何标题层级 —— 凭空长一个标题就是在
+        * 无障碍树里跳级(axe 的 heading-order)。卡的檐是给「面里的区块」用的,
+        * 这里要的只是一行字,所以它是卡身的第一行。
+        */}
+      <div className={s.modelCardName}>{selection.model}</div>
+      {readings.contextLength !== null && (
+        <div className={s.modelCardRow}>
+          <span>{t('composer.modelWindow')}</span>
+          <b>{formatQuantity(readings.contextLength)}</b>
+        </div>
+      )}
+      {readings.pricing !== null && (
+        <div className={s.modelCardRow}>
+          <span>{t('composer.modelPrice')}</span>
+          <b>
+            {t('composer.modelPriceValue', {
+              input: formatPrice(readings.pricing.input),
+              output: formatPrice(readings.pricing.output),
+            })}
+          </b>
+        </div>
+      )}
+      {/* 目录一条都还没到:说实话,不画骨架也不画零 —— 这里只有几格晚到,
+          而卡本身(名字)已经是真的了。 */}
+      {unknown && <div className={s.modelCardNote}>{t('composer.modelCardUnknown')}</div>}
+      <ThinkingLadder
+        t={t}
+        thinking={thinking}
+        saving={saving}
+        onPick={(rung) => {
+          void setThinkingEffort(selection.provider, selection.model, rung)
+        }}
+      />
+    </Card>
+  )
+})
+
+/**
+ * 竖排的思考阶梯。**只画这一型支持的档**:
+ *  · 不思考的型 → 一句实话,不画一个禁用的控件冒充;
+ *  · `toggleable` 才有「关」(o 系 / gpt-5 系 / grok 永远思考,画出一个点不动的
+ *    「关」是骗人);
+ *  · 一档都没有的型(qwen3.5 / 智谱)→ 只有「开 / 关」。
+ *
+ * 键盘一行不写:同名 `name` 的一组原生 radio,↑↓←→ 与 Space 全是浏览器白送的
+ * (`ui/Radio` 文件头那段)。
+ */
+function ThinkingLadder({
+  t,
+  thinking,
+  saving,
+  onPick,
+}: {
+  t: TFn
+  thinking: ThinkingState
+  saving: boolean
+  onPick: (rung: ThinkingRung) => void
+}) {
+  if (!thinking.supported) {
+    return (
+      <div className={s.thinkBlock}>
+        <div className={s.thinkHead}>{t('composer.thinkLabel')}</div>
+        <div className={s.modelCardNote}>{t('composer.thinkNone')}</div>
+      </div>
+    )
+  }
+
+  /*
+   * 屏幕上的那几根档。`'on'` 只在「能开关但一档都没有」那一形出现 ——
+   * 它不是一个档,它是「开着」这件事本身(见 transitions.ThinkingRung)。
+   */
+  const rungs: ThinkingRung[] = [
+    ...(thinking.toggleable ? (['off'] as ThinkingRung[]) : []),
+    ...(thinking.levels.length === 0 ? (['on'] as ThinkingRung[]) : thinking.levels),
+  ]
+  const value: ThinkingRung = thinking.on ? (thinking.level ?? 'on') : 'off'
+
+  return (
+    <div className={s.thinkBlock}>
+      <div className={s.thinkHead}>{t('composer.thinkLabel')}</div>
+      <RadioGroup
+        className={s.thinkLadder}
+        label={t('composer.thinkLabel')}
+        value={value}
+        onChange={(next) => onPick(next as ThinkingRung)}
+        disabled={saving}
+        aria-busy={saving}
+      >
+        {rungs.map((rung) => (
+          <Radio key={rung} value={rung} className={s.thinkRung}>
+            <span className={s.thinkRungName}>{t(THINKING_LABEL_KEY[rung])}</span>
+            <span className={s.thinkRungNote}>{t(THINKING_NOTE_KEY[rung])}</span>
+          </Radio>
+        ))}
+      </RadioGroup>
+    </div>
   )
 }

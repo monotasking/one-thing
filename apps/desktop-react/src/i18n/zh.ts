@@ -58,9 +58,47 @@ export const zh = {
   'composer.attachments': '附件',
   'composer.removeAttachment': '移除附件',
   'composer.model': '选择模型:{name}',
+  /*
+   * 药丸带着档字时的无障碍名(09-05 庚复审补)。屏幕上药丸右半画着「· 高」,
+   * 而 `composer.model` 只念模型名 —— 读屏的人因此听不到「此刻想得多深」,
+   * 那正是这枚药丸新长出来的那半格意思。`{level}` 用的就是屏幕上那一个词
+   * (`THINKING_LABEL_KEY` 那张表),眼睛看到的与耳朵听到的是同一份事实。
+   * 不思考的型仍走上面那条 —— 不念一个「思考 无」出来。
+   */
+  'composer.modelWithThinking': '选择模型:{name},思考 {level}',
   /* 三层事实都答不上来时药丸上那句话 —— 不拿一个默认模型名去顶。 */
   'composer.modelUnset': '选择模型',
   'composer.modelSearch': '搜模型或 Provider…',
+  /* ── 思考档位(09-05 庚:药丸右半 + 抽屉右栏那条竖排阶梯)──────────────
+   * 档名是**六档 + 关**,与 `ThinkingEffort` 一一对应;注是一句手感,不是参数说明。
+   * 它们是文案不是数据 —— 换一门语言这几个字当然要跟着变(与窗口 / 价格相反)。 */
+  'composer.thinkOff': '关',
+  'composer.thinkMinimal': '最少',
+  'composer.thinkLow': '低',
+  'composer.thinkMedium': '中',
+  'composer.thinkHigh': '高',
+  'composer.thinkXhigh': '极高',
+  'composer.thinkMax': '最大',
+  /* 只有开 / 关那一族(qwen3.5 / 智谱:能开关但一档都没有)药丸上写的字。 */
+  'composer.thinkOn': '开',
+  'composer.thinkNoteOff': '不思考,最快',
+  'composer.thinkNoteMinimal': '几乎不想',
+  'composer.thinkNoteLow': '略想',
+  'composer.thinkNoteMedium': '日常',
+  'composer.thinkNoteHigh': '认真想',
+  'composer.thinkNoteXhigh': '想很久',
+  'composer.thinkNoteMax': '想到底',
+  'composer.thinkNoteOn': '按这一型的缺省想',
+  /* 阶梯那一组的组头与无障碍名。 */
+  'composer.thinkLabel': '思考',
+  /* 这一型压根没有思考这回事 —— 说实话,不画一个禁用的控件冒充。 */
+  'composer.thinkNone': '这一型不思考',
+  /* 右栏那张卡上的两行读数。价格单位写死「每 1M token」,与目录的单位一致。 */
+  'composer.modelWindow': '窗口',
+  'composer.modelPrice': '价格 / 1M',
+  'composer.modelPriceValue': '{input} 进 / {output} 出',
+  /* 目录一条都读不到时右栏说的实话(不是空白,也不是骨架)。 */
+  'composer.modelCardUnknown': '这一型的读数还没拉到',
   'composer.headFiles': '引用文件',
   'composer.headCommands': '命令',
   'composer.hintFile': '⏎ 引用',
