@@ -1,6 +1,10 @@
 /**
  * `search-corpus-redact.mjs` 的类型面。
  *
+ * **S3a 之后规则表本体搬到了 `packages/core/search/redact.ts`**(索引写路也要跑同一
+ * 张表,而产品代码不许 import `scripts/`),`.mjs` 只剩一行再导出。这份声明因此**一个
+ * 字不用改** —— 它描述的是这条 import 路径交出来的三样东西,而那三样逐字未变。
+ *
  * 为什么要这一份:那个模块是 `scripts/` 下的 `.mjs`(脚本就该是脚本),而
  * `packages/core/search/__tests__/fixtures.test.ts` 要 import 它 —— 仓里
  * `allowJs` 是关的,没有这份声明 tsc 就答「找不到声明文件」。

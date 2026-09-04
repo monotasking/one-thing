@@ -398,11 +398,12 @@ SqliteIndex 的表:`docs(docId, capability, key, time, facets json, fields json,
 | `run/end` | 把本 run 的助手节点物化(`materializeNode`),建 / 替换 `message` 文档;附件名、推理(开关)一并 |
 | `user/message-edited` | 替换该 `message` 文档 |
 | `message/deleted` | 墓碑 |
-| `session/compacted` / `session/cleared` | 被压缩 / 清空的消息打墓碑(按投影状态里消失的节点) |
+| `session/cleared` | 全部消息打墓碑(reducer 把节点全部 `hidden`) |
+| `session/compacted` | **被压掉的消息照旧索引**,压缩卡自己不产文档(S3a 实测修正:reducer 的这一支只遮模型可见历史,屏幕上旧消息还在,打墓碑就是「看得见、搜不到」) |
 | `tool/call` | 不建文档;从参数里抽 path(edit / write / read),给本 run 的助手文档加 `touched-file` 边 |
 | `session/workdir-changed` / `model-changed` / `agent-changed` | 无关,跳过 |
 
-**改名 / 归档 / 删除不经账本**(拍点甲 b):这三件事是会话的元数据,不是它的历史。`LedgerFeed.fingerprint(sessionId) = lastSeq:metaRev`,metaRev 变了(改名、归档)就整键重折;目录没了指纹回 `undefined` 就是墓碑;活着的时候 `LedgerFeed.subscribe` 挂三样:进程内 append 观察者(§5.3,毫秒级)、总线 `session:renamed` / `session:deleted`(既有事件,`global-events.ts` / `session-events.ts`)、以及 `sessions/` 目录的 `fs.watch`(去抖 500ms,**为了另一个进程写的账本**,§5.6)。归档今天没有总线事件,靠 metaRev 兜住即可(下次查询前的目录监视会碰到 meta.json 的 mtime)。
+**改名 / 归档 / 删除不经账本**(拍点甲 b):这三件事是会话的元数据,不是它的历史。`LedgerFeed.fingerprint(sessionId) = lastSeq:metaRev`,metaRev 变了(改名、归档)就整键重折;目录没了指纹回 `undefined` 就是墓碑;活着的时候 `LedgerFeed.subscribe` 挂三样:进程内 append 观察者(§5.3,毫秒级)、总线 `session:renamed` / `session:deleted`(既有事件,`global-events.ts` / `session-events.ts`)、以及 `sessions/` 目录的 `fs.watch`(**递归**——账本住子目录里,macOS kqueue 的非递归 watch 对子目录文件写入一声不吭,S3a 用例当场抓到;去抖 500ms;`recursive` 抛出退回非递归、再抛降级 30s 轮询,每档记 warn;**为了另一个进程写的账本**,§5.6)。归档今天没有总线事件,靠 metaRev 兜住即可(下次查询前的目录监视会碰到 meta.json 的 mtime)。
 
 **空间归属**:`spaceId` 来自会话 meta(`workspaceId`),建文档时取,`session/moved` 今天不存在(会话不跨空间移动),不处理。
 
@@ -455,10 +456,10 @@ registerDocumentFilter(filter)     // 按注册序串行;任一返回 null 即�
   index-owner.json      { pid, host: 'desktop' | 'daemon' | 'server', startedAt }(0600;§5.6)
 ```
 
-- 检查点就是库里那张 `checkpoint(feedId, key, fingerprint)`,**按 feed 记,不按 feed 名枚举**(v3.1:原来写的 `{ sessions: …, daily: … }` 是枚举点)。库头 `meta(version, analyzerId, embeddingModelId)` 三格,任一不符 → 丢库全量重放(≈5s,Worker 里)。**不做迁移**。
+- 检查点就是库里那张 `checkpoint(feedId, key, fingerprint, keys_json)`,**按 feed 记,不按 feed 名枚举**(v3.1:原来写的 `{ sessions: …, daily: … }` 是枚举点)。`keys_json` 是 S3a 加的第四列:feed 的钥匙(sessionId)盖几十份文档(`sessionId:messageId`),整键重折后「上一轮有、这一轮没有」的那些要删,除了记下来没有别的问法(拿 facet 反查等于让索引认识 `sessionId` 这个键名)。库头 `meta(version, analyzerId, embeddingModelId)` 三格,任一不符 → 丢库全量重放(≈5s,Worker 里)。**不做迁移**。
 - 启动:打开库 → **立刻可查** → 后台对每个 feed 跑一遍校对:`feed.keys()` 逐键比 `fingerprint`,差的排队整键重折;库里有、feed 说不存在的墓碑。
 - 写:每条语句自己就是持久的,没有「写快照」这回事;每 200 次增量或 5 分钟 `PRAGMA wal_checkpoint(PASSIVE)`。
-- 墓碑超过 20% 后台 `VACUUM`(Worker 里,读者不受影响)。
+- 不做 `VACUUM`(要独占库,WAL 下挡读者,换来的只是磁盘占用,而派生数据删了即重建);写够 200 次做一次 `PRAGMA wal_checkpoint(PASSIVE)`。内容变了的文档直接删行重插(`deleteKey`),只有「钥匙不存在了」才进 `tombstones`。
 - `index/` 是派生数据,删掉即重建,与 `log/` 看门人无关。
 
 ### 5.6 一个 store 两个 core:索引持有权(拍点庚 a)
@@ -682,6 +683,9 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 - Worker 崩两次即停(§5.3):停了之后 messages / sessions / daily 三路答 `{ error: 'index unavailable' }`,不回退到旧扫描(S5 已删),壳照 §9 画「没搜成」。
 - `@huggingface/transformers` 的 wasm 后端在 Electron Worker 与 Node Worker 里都跑,但**首次装载 ~300ms**,S7 的 Worker 在开关打开后才 import 它(动态 import,不进主 bundle 的关键路径)。
 - 文件内容检索是 S8 的第一件:`scanCapability` 包 `rg --json`,cursor = 文件位置。
+- **parity-B 的差集口径**(S3a 读数定的):旧扫描是子串匹配,索引是词与前缀,所以「查询是某个词元的**中段**」(`888` 打中 `00888`)旧路命中、索引永远不命中——那是 §2 拍定的语义,不是漏。parity-B 判 ⊇ 时允许**放宽到任一级**后再比,残差逐条打印并分类:能证明是「中段子串」的计入允许差,其余任何一条都红。黄金表 20 条里恰好这两条(`elcc_holiday_tranfer` 差整词、`888` 中段)在严格档不中,用例钉死「恰好这两条」。整词那条 S3b 顺手看:前缀展开应也作用于 camel / snake 的整词词元。
+- **bun 的运行时没有 `node:sqlite`**(实测 `No such built-in module`):vitest 走 node 所以用例是真的;任何起索引服务的门脚本必须用 node 或 Electron 起,不许 `bun xxx.mjs`。
+- `SqliteIndex` 的 fts rowid = `docId*32 + 字段槽`,全库字段名上限 32(今天 4 个),超了当场抛。`search()` 先算全部命中再切页(`total` 要真数),真库量级要不要两段式留 S3b 真机读数定。
 - 三条法条的机械化只做了第一条(core 零能力名)。「能力不枚举语言」「语言不枚举后缀」等 symbol 能力真来了再各立一条检查。
 
 ---

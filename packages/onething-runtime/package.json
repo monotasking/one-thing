@@ -68,6 +68,8 @@
     "./settings/*": "./src/settings/*.ts",
     "./search": "./src/search/index.ts",
     "./search/capabilities": "./src/search/capabilities/index.ts",
+    "./search/index": "./src/search/index/index.ts",
+    "./search/index/*": "./src/search/index/*.ts",
     "./search/*": "./src/search/*.ts",
     "./sessions": "./src/sessions/index.ts",
     "./sessions/*": "./src/sessions/*.ts",
