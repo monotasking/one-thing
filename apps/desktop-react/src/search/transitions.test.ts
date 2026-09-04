@@ -5,7 +5,6 @@ import {
   fileExt,
   fileName,
   moreState,
-  nextScope,
   originText,
   pageWindow,
   remoteSide,
@@ -15,6 +14,8 @@ import {
 import type { SearchMaterial } from './transitions'
 import type { MessageHit } from './types'
 import type { FileSearchEntry } from '@shared/ipc/files'
+import { ALL_TAB } from './capabilities'
+import { CHATS_CAPABILITY, FILES_CAPABILITY, MESSAGES_CAPABILITY } from './sources'
 import { CHAPTERS, SESSIONS } from '../data/__fixtures__/sessions'
 
 /**
@@ -50,8 +51,8 @@ const material: SearchMaterial = {
 
 describe('searchRows(平铺 + 排序)', () => {
   it('空词一行不出 —— 空态是另一张列表,不是「搜了个空」', () => {
-    expect(searchRows('', 'all', material)).toEqual([])
-    expect(searchRows('   ', 'all', material)).toEqual([])
+    expect(searchRows('', ALL_TAB, material)).toEqual([])
+    expect(searchRows('   ', ALL_TAB, material)).toEqual([])
   })
 
   it('无结果就是空数组,不造占位行', () => {
@@ -60,20 +61,20 @@ describe('searchRows(平铺 + 排序)', () => {
 
   it('文件侧**不再滤第二遍** —— 后端已经按词滤过,壳再滤一遍就是两个产地各说一次', () => {
     // 词与素材刻意对不上(去抖窗口内会真的出现这一刻):素材照样原样转述。
-    const rows = searchRows('zzzzzz', 'files', material)
+    const rows = searchRows('zzzzzz', FILES_CAPABILITY, material)
     expect(rows.map((r) => r.origin)).toEqual(FILES.map((f) => ({ kind: 'path', path: f.path })))
   })
 
   it('文件侧只有 title 级的行 —— body 级(代码行)在真实产地上不存在', () => {
-    const rows = searchRows(Q, 'files', material)
+    const rows = searchRows(Q, FILES_CAPABILITY, material)
     expect(rows.length).toBe(FILES.length)
     expect(rows.every((r) => r.tier === 'title')).toBe(true)
     expect(rows.every((r) => r.code === false)).toBe(true)
   })
 
   it('文件落点不带行号 —— 不补一个 :1 去凑格式', () => {
-    const row = searchRows(Q, 'files', material)[0]
-    expect(row.target).toEqual({ kind: 'file', path: FILES[0].path })
+    const row = searchRows(Q, FILES_CAPABILITY, material)[0]
+    expect(row.target).toEqual({ kind: 'file', payload: { filePath: FILES[0].path } })
     expect(targetText(row.target)).toBe(FILES[0].path)
   })
 
@@ -85,7 +86,7 @@ describe('searchRows(平铺 + 排序)', () => {
   })
 
   it('标题 / 文件名 / 章节标题命中整段排在正文与代码行命中之前', () => {
-    const rows = searchRows(Q, 'all', material)
+    const rows = searchRows(Q, ALL_TAB, material)
     const lastTitle = rows.map((r) => r.tier).lastIndexOf('title')
     const firstBody = rows.map((r) => r.tier).indexOf('body')
     expect(lastTitle).toBeGreaterThanOrEqual(0)
@@ -94,20 +95,21 @@ describe('searchRows(平铺 + 排序)', () => {
   })
 
   it('同级里会话与文件交替出现,不按类型分堆', () => {
-    const titles = searchRows(Q, 'all', material).filter((r) => r.tier === 'title')
+    const titles = searchRows(Q, ALL_TAB, material).filter((r) => r.tier === 'title')
     expect(titles.map((r) => r.domain).slice(0, 2)).toEqual(['session', 'file'])
   })
 
   it('会话标题命中的出处是「项目名 · 时间」,徽是会话', () => {
-    const row = searchRows(SESSIONS[0].title, 'sessions', material)[0]
-    expect(row.badge).toEqual({ kind: 'session' })
+    const row = searchRows(SESSIONS[0].title, CHATS_CAPABILITY, material)[0]
+    expect(row.capability).toBe(CHATS_CAPABILITY)
     expect(row.tier).toBe('title')
     expect(originText(row.origin)).toBe(`start-electron · ${TIME}`)
   })
 
   it('文件命中的徽是扩展名、主文是文件名、出处是整条路径', () => {
-    const row = searchRows(Q, 'files', material)[1]
-    expect(row.badge).toEqual({ kind: 'file', ext: 'TS' })
+    const row = searchRows(Q, FILES_CAPABILITY, material)[1]
+    // 徽上的字由目标渲染器答(`targets/file.tsx`);这里守的是产地与落点。
+    expect(fileExt((row.target.payload as { filePath: string }).filePath)).toBe('TS')
     expect(row.text).toBe('model-registry.ts')
     expect(originText(row.origin)).toBe(FILES[1].path)
   })
@@ -115,20 +117,20 @@ describe('searchRows(平铺 + 排序)', () => {
 
 describe('scope 过滤', () => {
   it('会话档只出会话行', () => {
-    const rows = searchRows(Q, 'sessions', material)
+    const rows = searchRows(Q, CHATS_CAPABILITY, material)
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.every((r) => r.domain === 'session')).toBe(true)
   })
 
   it('文件档只出文件行', () => {
-    const rows = searchRows(Q, 'files', material)
+    const rows = searchRows(Q, FILES_CAPABILITY, material)
     expect(rows.length).toBeGreaterThan(0)
     expect(rows.every((r) => r.domain === 'file')).toBe(true)
   })
 
   it('所有档 = 两侧之和', () => {
-    expect(searchRows(Q, 'all', material).length).toBe(
-      searchRows(Q, 'sessions', material).length + searchRows(Q, 'files', material).length,
+    expect(searchRows(Q, ALL_TAB, material).length).toBe(
+      searchRows(Q, CHATS_CAPABILITY, material).length + searchRows(Q, FILES_CAPABILITY, material).length,
     )
   })
 })
@@ -152,29 +154,29 @@ describe('searchRows:消息正文这一路', () => {
   const withHits = (hits: MessageHit[]): SearchMaterial => ({ ...material, messages: hits })
 
   it('合流进同一张平铺列表:消息徽、正文级、出处是所属会话名', () => {
-    const rows = searchRows(Q, 'all', withHits([hit()]))
+    const rows = searchRows(Q, ALL_TAB, withHits([hit()]))
     const row = rows.find((r) => r.id === 'msg:os-provider:m9')
     expect(row).toBeTruthy()
     expect(row?.domain).toBe('session')
-    expect(row?.badge).toEqual({ kind: 'message' })
+    expect(row?.capability).toBe(MESSAGES_CAPABILITY)
     expect(row?.tier).toBe('body')
     expect(row?.code).toBe(false)
     expect(originText(row!.origin)).toBe(SESSIONS[0].title)
   })
 
   it('落点带 messageId —— 那正是「点了能滚到那条消息」的全部依据', () => {
-    const row = searchRows(Q, 'all', withHits([hit()])).find((r) => r.id === 'msg:os-provider:m9')
-    expect(row?.target).toEqual({ kind: 'session', sessionId: 'os-provider', messageId: 'm9' })
+    const row = searchRows(Q, ALL_TAB, withHits([hit()])).find((r) => r.id === 'msg:os-provider:m9')
+    expect(row?.target).toEqual({ kind: 'message', payload: { sessionId: 'os-provider', messageId: 'm9' } })
     // 别的几种命中一格都没多:它们的落点本来就是会话本身。
-    const title = searchRows(Q, 'all', material).find((r) => r.id === 'os-provider:title')
-    expect(title?.target).toEqual({ kind: 'session', sessionId: 'os-provider' })
+    const title = searchRows(Q, ALL_TAB, material).find((r) => r.id === 'os-provider:title')
+    expect(title?.target).toEqual({ kind: 'chat', payload: { sessionId: 'os-provider' } })
   })
 
   it('高亮用后端给的区间,不拿当前的词再 indexOf 一遍', () => {
-    const row = searchRows(Q, 'all', withHits([hit()])).find((r) => r.id === 'msg:os-provider:m9')
+    const row = searchRows(Q, ALL_TAB, withHits([hit()])).find((r) => r.id === 'msg:os-provider:m9')
     expect(row?.highlight).toEqual([{ start: 17, end: 25 }])
     // 本地滤出来的那几路没有这一格 —— 视图照当前的词自己切。
-    const title = searchRows(Q, 'all', material).find((r) => r.id === 'os-provider:title')
+    const title = searchRows(Q, ALL_TAB, material).find((r) => r.id === 'os-provider:title')
     expect(title?.highlight).toBeUndefined()
   })
 
@@ -189,12 +191,12 @@ describe('searchRows:消息正文这一路', () => {
    * 不需要第二套「哪些命中该丢」的名单。
    */
   it('会话不在屏幕那份表里 = 那条命中不出行(空间投影 / 会话已删)', () => {
-    const rows = searchRows(Q, 'all', withHits([hit({ sessionId: 'not-on-screen' })]))
+    const rows = searchRows(Q, ALL_TAB, withHits([hit({ sessionId: 'not-on-screen' })]))
     expect(rows.some((r) => r.id === 'msg:os-provider:m9')).toBe(false)
   })
 
   it('归到会话名下:同一条会话的四种命中连在一起,不散在列表四处', () => {
-    const rows = searchRows(Q, 'all', withHits([hit()]))
+    const rows = searchRows(Q, ALL_TAB, withHits([hit()]))
     const ids = rows.filter((r) => r.domain === 'session').map((r) => r.id)
     const mine = ids.filter((id) => id.startsWith('os-provider'))
     const at = ids.indexOf('msg:os-provider:m9')
@@ -202,17 +204,30 @@ describe('searchRows:消息正文这一路', () => {
     expect(at).toBe(ids.indexOf(mine[mine.length - 1]) + 1)
   })
 
-  it('这一档不看会话时(scope=files)一条正文行都不出', () => {
-    expect(searchRows(Q, 'files', withHits([hit()])).some((r) => r.badge.kind === 'message')).toBe(
-      false,
-    )
+  it('这一档不看会话时(文件档)一条正文行都不出', () => {
+    expect(
+      searchRows(Q, FILES_CAPABILITY, withHits([hit()])).some(
+        (r) => r.capability === MESSAGES_CAPABILITY,
+      ),
+    ).toBe(false)
+  })
+
+  /*
+   * S4a 可感知变化一条:`messages` 从此是**自己的一档**,所以单类会话档里不再
+   * 混着正文命中(全部档一格没动 —— 那才是用户日常看到的那一档)。
+   */
+  it('S4a:单类会话档只出会话那个能力产的行,正文命中归 messages 档', () => {
+    const inChats = searchRows(Q, CHATS_CAPABILITY, withHits([hit()]))
+    expect(inChats.every((r) => r.capability === CHATS_CAPABILITY)).toBe(true)
+    const inMessages = searchRows(Q, MESSAGES_CAPABILITY, withHits([hit()]))
+    expect(inMessages.map((r) => r.id)).toEqual(['msg:os-provider:m9'])
   })
 
   /* ── 去重:预览命中的正是第一条用户消息 ───────────────────────────────── */
 
   it('同一段话两路都命中时,预览行让位给带 messageId 的正文行', () => {
     const preview = SESSIONS[0].preview
-    const rows = searchRows(Q, 'all', withHits([hit({ text: `...${preview}...` })]))
+    const rows = searchRows(Q, ALL_TAB, withHits([hit({ text: `...${preview}...` })]))
     expect(rows.some((r) => r.id === 'os-provider:preview')).toBe(false)
     expect(rows.some((r) => r.id === 'msg:os-provider:m9')).toBe(true)
   })
@@ -227,7 +242,7 @@ describe('searchRows:消息正文这一路', () => {
   })
 
   it('是**别的**一条消息就两行都留 —— 判不出来时宁可多一行,不少一行', () => {
-    const rows = searchRows(Q, 'all', withHits([hit()]))
+    const rows = searchRows(Q, ALL_TAB, withHits([hit()]))
     expect(rows.some((r) => r.id === 'os-provider:preview')).toBe(true)
     expect(rows.some((r) => r.id === 'msg:os-provider:m9')).toBe(true)
   })
@@ -270,7 +285,7 @@ describe('remoteSide(两路远端合成一路)', () => {
  */
 describe('browseRows(空词的浏览列表)', () => {
   it('全部会话,一条不截 —— 截断只发生在渲染层的分页窗口里', () => {
-    const rows = browseRows('all', material)
+    const rows = browseRows(ALL_TAB, material)
     expect(rows.length).toBe(SESSIONS.length)
     expect(rows.every((r) => r.domain === 'session')).toBe(true)
   })
@@ -281,15 +296,15 @@ describe('browseRows(空词的浏览列表)', () => {
    */
   it('会话再多也全给 —— 超量(500 条)一条不少', () => {
     const many = Array.from({ length: 500 }, (_, i) => ({ ...SESSIONS[0], id: `bulk-${i}` }))
-    expect(browseRows('all', { ...material, sessions: many }).length).toBe(500)
+    expect(browseRows(ALL_TAB, { ...material, sessions: many }).length).toBe(500)
   })
 
   it('次序照现状:与入参那张表逐条同序,一次都不重排', () => {
-    expect(browseRows('all', material).map((r) => r.text)).toEqual(SESSIONS.map((s) => s.title))
+    expect(browseRows(ALL_TAB, material).map((r) => r.text)).toEqual(SESSIONS.map((s) => s.title))
   })
 
   it('行的解剖与命中行一样:徽 + 名称 + 出处(时间)', () => {
-    const [session] = browseRows('all', material)
+    const [session] = browseRows(ALL_TAB, material)
     expect(session.text).toBe(SESSIONS[0].title)
     expect(originText(session.origin)).toBe(TIME)
   })
@@ -301,24 +316,15 @@ describe('browseRows(空词的浏览列表)', () => {
    * 前 N 个文件。所以这一侧恒空,**哪怕素材里有东西**(第二条断言正是钉这一点)。
    */
   it('文件侧恒空 —— 素材里有东西也不出行(没有产地,不伪造)', () => {
-    expect(browseRows('files', material)).toEqual([])
-    expect(browseRows('all', material).some((r) => r.domain === 'file')).toBe(false)
+    expect(browseRows(FILES_CAPABILITY, material)).toEqual([])
+    expect(browseRows(ALL_TAB, material).some((r) => r.domain === 'file')).toBe(false)
   })
 })
 
-describe('scope 轮转', () => {
-  it('Tab 往前一圈回到原地', () => {
-    expect(nextScope('all', 1)).toBe('sessions')
-    expect(nextScope('sessions', 1)).toBe('files')
-    expect(nextScope('files', 1)).toBe('all')
-  })
-
-  it('⇧Tab 反向', () => {
-    expect(nextScope('all', -1)).toBe('files')
-    expect(nextScope('files', -1)).toBe('sessions')
-    expect(nextScope('sessions', -1)).toBe('all')
-  })
-})
+/*
+ * 档位轮转随 `SCOPES` / `nextScope` 一起搬去了 `./capabilities.ts`(S4a:档位由
+ * 自述算,这个文件不再知道一共有哪几档)。它的用例在 `__tests__/capabilities.test.ts`。
+ */
 
 describe('路径与出处的拼法', () => {
   it('文件名与扩展徽', () => {
@@ -338,8 +344,8 @@ describe('路径与出处的拼法', () => {
   })
 
   it('带行号的落点与 fileLine 出处同一个拼法;不带行号就是整条路径', () => {
-    expect(targetText({ kind: 'file', path: 'a/b/c.ts', line: 12 })).toBe('c.ts:12')
-    expect(targetText({ kind: 'file', path: 'a/b/c.ts' })).toBe('a/b/c.ts')
+    expect(targetText({ kind: 'file', payload: { filePath: 'a/b/c.ts', line: 12 } })).toBe('c.ts:12')
+    expect(targetText({ kind: 'file', payload: { filePath: 'a/b/c.ts' } })).toBe('a/b/c.ts')
   })
 })
 
@@ -349,27 +355,27 @@ describe('路径与出处的拼法', () => {
 describe('会话侧的素材(D1)', () => {
   it('章节只在**已经拉到手**的那份缓存里找 —— 没拉过的会话不会凭空多出行', () => {
     const q = '摸清三处读取点'
-    expect(searchRows(q, 'sessions', { ...material, chapters: {} })).toEqual([])
-    const rows = searchRows(q, 'sessions', material)
+    expect(searchRows(q, CHATS_CAPABILITY, { ...material, chapters: {} })).toEqual([])
+    const rows = searchRows(q, CHATS_CAPABILITY, material)
     expect(rows.length).toBe(1)
     expect(rows[0].id).toBe('os-provider:chapter:seg-1:title')
-    expect(rows[0].badge).toEqual({ kind: 'message' })
+    expect(rows[0].capability).toBe(CHATS_CAPABILITY)
   })
 
   it('预览(第一条用户消息)是正文级命中,不因为挂在会话头上就升级', () => {
-    const rows = searchRows('15487', 'sessions', material)
+    const rows = searchRows('15487', CHATS_CAPABILITY, material)
     expect(rows.map((r) => r.tier)).toEqual(['body'])
-    expect(rows[0].badge).toEqual({ kind: 'message' })
+    expect(rows[0].capability).toBe(CHATS_CAPABILITY)
   })
 
   it('不属于任何项目的会话,出处只剩时间', () => {
-    const rows = searchRows('随手记', 'sessions', material)
+    const rows = searchRows('随手记', CHATS_CAPABILITY, material)
     expect(originText(rows[0].origin)).toBe(TIME)
   })
 
   it('消息正文搜不到 —— D1 的诚实缺口(后端没有跨会话内容检索面)', () => {
     // 「记一下今天的三件事」是 previewText,搜得到;真正的第二条、第三条消息搜不到。
-    expect(searchRows('记一下今天', 'sessions', material).length).toBe(1)
+    expect(searchRows('记一下今天', CHATS_CAPABILITY, material).length).toBe(1)
   })
 })
 

@@ -5,44 +5,47 @@
  * 所以模型里也不能有「组」这一层 —— 一行就是 SearchRow,列表就是 SearchRow[]。
  * 会话命中和文件命中在同一条流水线上被造出来,靠 domain / badge 区分,不靠两棵树。
  */
-export type SearchScope = 'all' | 'sessions' | 'files'
+/**
+ * 此刻选中的那一档:**一个能力 id,或 `'all'`**(S4a)。
+ *
+ * 从前它是 `'all' | 'sessions' | 'files'` 三个字面量 —— 那正是 §4.0 那张枚举点
+ * 清账表要拆掉的东西:加一类能搜的东西就得改这个联合。今天档位由
+ * `search.capabilities` 回来的自述算出来(`../capabilities.ts` 的 `tabsOf`),
+ * 所以这里放宽成 `string`,「这个档认不认」由那张表答,不由一个联合答。
+ */
+export type SearchScope = string
 
-/** 素材来自哪一侧。scope 过滤只看这一个字段。 */
+/**
+ * 素材来自哪一侧。**这一格不再决定过滤** —— 过滤看 `SearchRow.capability`
+ * (哪个能力产的这一行),`domain` 只剩「排序时会话与文件交替」那一处消费
+ * (`transitions.ts` 的 `interleave`),那是**版式**不是分类。
+ */
 export type SearchDomain = 'session' | 'file'
 
 /**
- * 行首那颗空心小徽。**它是可辨识联合而不是一个字符串** ——
- * 前两种的字面文案归字典(换语言要变),第三种的 ext 是从路径推出来的**数据**
- * (`.ts` → `TS`,换语言不该变)。两者混成一个 string 就分不清谁该进字典了。
+ * 行首那颗空心小徽上的字。**两种产地,所以是可辨识联合而不是一个字符串**:
+ * `labelKey` 那种是界面文案(换语言要变,走字典),`text` 那种是从数据推出来的
+ * (`.ts` → `TS`,换语言不该变)。混成一个 string 就分不清谁该进字典了。
+ *
+ * S4a 起这一格**由目标渲染器答**(`targets/registry.ts` 的 `badge(row)`),
+ * 不再是行自己驮着的一个字段 —— 「这一类的徽写什么」是那一类自己的事。
  */
-export type SearchBadge =
-  | { kind: 'session' }
-  | { kind: 'message' }
-  | { kind: 'file'; ext: string }
+export type SearchBadge = { labelKey: string } | { text: string }
 
 /**
- * 跳转目标。同样是可辨识联合而不是裸字符串:
- * 「会话 id」和「文件路径」是两种不同的东西,拼成一个字符串就得再解析一次。
+ * 跳转目标 —— **开放形**(S4a;契约 `SearchResult.target` 与 `Candidate.target`
+ * 的同一个形)。
  *
- * `line` 是**可选**的(D5):真实产地 `files.list` 是按名字找文件,它给不出行号。
- * 缺席 = 落点就是这个文件本身。将来接上内容检索(rg --json)时那一格才有值,
- * 届时这里一个字不用改 —— 这正是把它写成可选而不是删掉的理由。
+ * 从前这里是 `{kind:'session'} | {kind:'file'}` 一个闭合联合。开放的理由是
+ * §4.0 的硬指标:加一种能搜的东西,壳里允许动的只有「它自己的渲染模块 + 一行注册」;
+ * 一个闭合联合意味着每加一类都要改这个类型、改 `activate` 那个 switch、改 badge 那个
+ * switch —— 三处枚举点。今天 `kind` 由能力自述,壳按它从**目标渲染注册表**取组件,
+ * `payload` 的形只有那个渲染器认识(它与能力模块是一对)。
  */
-export type SearchTarget =
-  | {
-      kind: 'session'
-      sessionId: string
-      /**
-       * 落到会话里**哪一条消息**上(09-02 正文检索)。缺席 = 落点就是这条会话本身
-       * (标题 / 预览 / 章节命中都给不出一个具体的消息 id —— 章节说的是一段,
-       * 预览说的是一段截断)。
-       *
-       * 与 `line` 那一格是同一条判据的两个例子:**产地给得出才有值**,
-       * 给不出就缺席,不去补一个「第一条」凑格式。
-       */
-      messageId?: string
-    }
-  | { kind: 'file'; path: string; line?: number }
+export interface SearchTarget {
+  kind: string
+  payload: unknown
+}
 
 /**
  * 行尾那行灰色小字的**素材**,不是成品字符串 —— 拼法(`:`、` · `)由
@@ -75,8 +78,13 @@ export interface HighlightRange {
 
 export interface SearchRow {
   id: string
+  /**
+   * **哪个能力产的这一行**(S4a)。单类档的过滤只看它 —— 从前看的是
+   * `domain`(session / file 两值),那张表装不下六个能力,更装不下插件能力。
+   * 取值与 `search.capabilities` 回来的 `manifest.id` 逐字同。
+   */
+  capability: string
   domain: SearchDomain
-  badge: SearchBadge
   /** 中间的主角:命中原文一行(视图负责高亮与省略号) */
   text: string
   /** 代码行用等宽字体 */
@@ -84,6 +92,12 @@ export interface SearchRow {
   origin: SearchOrigin
   target: SearchTarget
   tier: SearchTier
+  /**
+   * 键由产它的能力 `manifest.facets` 声明,**宿主不解释**(契约 `SearchResult.facets`
+   * 原样搬过来)。壳只按键读它认得的那两个来画徽(归档 / 空间,§9「徽」那一条),
+   * 别的键原样留着 —— 不认识不等于该丢掉。
+   */
+  facets?: Record<string, unknown>
   /**
    * 这一行的高亮**由产地给定**(09-02 正文检索)。缺席 = 视图照当前的词自己切
    * (会话 / 文件那两路本来就是本地滤出来的,词与文本都在手上)。
@@ -114,6 +128,15 @@ export interface MessageHit {
   text: string
   /** 后端判出来的命中区间,坐标落在 `text` 上。空表 = 这一行不高亮。 */
   ranges: readonly HighlightRange[]
+  /**
+   * 产它的能力 `manifest.facets` 声明的那几格,**宿主不解释**(S4a)。
+   *
+   * 壳只按键读它认得的两个来画徽(归档 / 空间,§9「徽」那一条)。归档那一格
+   * 尤其要紧:S3b 之后**归档会话里的消息搜得到了**(索引照建它们的文档),
+   * 所以屏幕上必须能一眼看出这一行来自一间已归档的会话 —— 否则「搜得到」
+   * 就成了「悄悄混进来」。缺席 = 后端没给这几格,一颗徽都不画。
+   */
+  facets?: Record<string, unknown>
 }
 
 /*

@@ -32,6 +32,19 @@ export type {
 } from './legacy.js'
 export { createSessionShellLookup, snippetOf, trackIndexGeneration } from './indexed.js'
 export type { FieldSnippet, SearchIndexQueryFace } from './indexed.js'
+export {
+  PreviewUnavailableError,
+  firstCandidate,
+  requireStringField,
+  targetPayloadOf,
+} from './preview.js'
+export type {
+  FileExcerptPreview,
+  MessageContextPreview,
+  NoteExcerptPreview,
+  PreviewMessage,
+  SessionOverviewPreview,
+} from './preview.js'
 
 import type { SearchCapability } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'

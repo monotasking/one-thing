@@ -159,6 +159,12 @@ function toHits(results: readonly SearchResult[]): MessageHit[] {
        * 后端没给就是空表 = 这一行不高亮,而不是退回本地再算一次。
        */
       ranges: raw.matchRanges ?? [],
+      /*
+       * `facets` 原样驮着(S4a):键由产它的能力声明,壳不解释,只按它认得的
+       * 两个键画徽。**不在这里挑键** —— 挑一遍就等于壳替能力决定了「哪几格有用」,
+       * 而那正是 §4.0 要拆掉的那种知识。
+       */
+      ...(raw.facets === undefined ? {} : { facets: raw.facets }),
     })
   }
   return hits

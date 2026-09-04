@@ -36,6 +36,15 @@ export interface OnethingSearchSessionMeta {
   previewText?: string
   isArchived?: boolean
   updatedAt: number
+  /**
+   * 这间会话有多少条消息(`session-overview` 预览那一格,S4a 加)。
+   *
+   * 它**不是新读数**:会话列表投影本来就维护 `SessionMeta.messageCount`
+   * (`core/session/store-helpers.ts`),宿主交下来的对象上一直有这一格,
+   * 只是从前这份收窄的形没有声明它。缺席 = 那台宿主的会话表不带这一格
+   * (单测里的假 adapters 就是),预览按 0 画,**不去数账本补**。
+   */
+  messageCount?: number
 }
 
 export interface OnethingSearchMessage {

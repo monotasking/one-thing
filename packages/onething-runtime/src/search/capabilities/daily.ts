@@ -35,10 +35,13 @@
  * 于是按 `filePath` 去重 —— 旧路那只 `seen` 的同一件事。
  */
 
+import { readFile } from 'node:fs/promises'
 import {
   indexedCapability,
+  type Candidate,
   type CapabilityManifest,
   type PageRequest,
+  type PreviewPayload,
   type SearchCapability,
   type SearchContext,
   type SearchPage,
@@ -50,6 +53,13 @@ import type { DailySearchResult, OnethingSearchProvidersAdapters } from '../prov
 import { normalizeOnethingSearchQuery } from '../search-runtime.js'
 import { snippetOf, trackIndexGeneration, type SearchIndexQueryFace } from './indexed.js'
 import type { LegacyBackedCandidate, SearchServiceResult } from './legacy.js'
+import {
+  PreviewUnavailableError,
+  firstCandidate,
+  requireStringField,
+  targetPayloadOf,
+  type NoteExcerptPreview,
+} from './preview.js'
 
 /** 这一类的目标形:一篇笔记文件;`actionId` 在「今天还没建」那条上才有。 */
 export interface DailyTarget {
@@ -75,6 +85,58 @@ export const dailySearchManifest: CapabilityManifest = {
   orderWhenIntent: { actions: 4 },
   ranking: { pinFieldHit: 'title' },
   visibility: () => ({}),
+  // **lazy**:要读一次文件。随候选带就是一次 `all` 档读六个文件。
+  preview: { mode: 'lazy' },
+}
+
+/** 命中行前后各留几行。§4.5 那张表的 `note-excerpt` 说的是「命中行 ±3 行」。 */
+const NOTE_EXCERPT_RADIUS = 3
+
+/**
+ * 一篇笔记 → 命中行 ±N 行。
+ *
+ * **命中行怎么判**:用候选自己那句 `subtitle` —— 那正是 `toCandidate` 里从正文
+ * 切出来的那一段(`snippetOf(doc.fields.content …)`)。所以这里不重新跑一遍
+ * 匹配器:分析器 / 放宽阶梯判出来的命中是**索引那一侧**的事,在预览里再判一遍
+ * 就是第二个「什么算命中」的产地(与壳不许再 indexOf 一遍高亮是同一条判例)。
+ * 判不出来(标题命中那种,`subtitle` 是文件名)就给**开头那几行** —— 诚实地退到
+ * 「这篇笔记长这样」,不去伪造一个命中位置。
+ */
+function noteExcerptOf(text: string, title: string, hint: string | undefined): string {
+  const lines = text.split('\n')
+  const needle = (hint ?? '').replace(/^(\.{3}|…)+/, '').replace(/(\.{3}|…)+$/, '').trim()
+  const at = needle.length === 0 ? -1 : lines.findIndex(line => line.includes(needle))
+  if (at < 0) {
+    void title
+    return lines.slice(0, NOTE_EXCERPT_RADIUS * 2 + 1).join('\n')
+  }
+  return lines.slice(Math.max(0, at - NOTE_EXCERPT_RADIUS), at + NOTE_EXCERPT_RADIUS + 1).join('\n')
+}
+
+/**
+ * 读一篇笔记做预览。**零副作用**:只 `readFile`,不写、不 touch、不建目录 ——
+ * 「今天还没建」那条快捷项(`actionId` 在 payload 上)在这里**不许**顺手把文件建出来,
+ * 那是 `invoke` 的活,不是看一眼的活。所以那一条直接抛原话。
+ */
+async function noteExcerptPreview(candidates: Candidate[]): Promise<PreviewPayload> {
+  const candidate = firstCandidate(candidates)
+  const payload = targetPayloadOf(candidate, 'daily')
+  if (typeof payload?.actionId === 'string') {
+    throw new PreviewUnavailableError('这一条是「新建今天的日记」,还没有文件可看')
+  }
+  const path = requireStringField(payload, 'filePath', '这条笔记命中')
+  let text: string
+  try {
+    text = await readFile(path, 'utf-8')
+  } catch (error) {
+    throw new PreviewUnavailableError(`读不到 ${path}:${(error as Error).message}`)
+  }
+  const excerpt: NoteExcerptPreview = {
+    path,
+    title: candidate.title,
+    excerpt: noteExcerptOf(text, candidate.title, candidate.subtitle),
+  }
+  return { kind: 'note-excerpt', payload: excerpt, title: candidate.title }
 }
 
 /** 「今天那一条」→ 一枚候选。`legacy` 一格原样驮着,投影出来的键序与旧路同。 */
@@ -186,5 +248,6 @@ export function createDailySearchCapability(
     // 「空词的 daily 档先给今天那一条」照旧成立。
     supports: (query: SearchQuery) => normalizeOnethingSearchQuery(query.raw).length > 0,
     search,
+    preview: noteExcerptPreview,
   }
 }

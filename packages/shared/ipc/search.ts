@@ -79,6 +79,15 @@ export interface SearchResult {
   target?: { kind: string; payload: unknown }
   /** 键由产它的能力 `manifest.facets` 声明;宿主不解释(S0 加)。 */
   facets?: Record<string, unknown>
+  /**
+   * **随候选带的预览**(S4a 加;§4.5 ①的 `mode: 'inline'`)。
+   *
+   * 只有自述里说了 `preview: { mode: 'inline' }` 的能力才会填这一格(今天是 `chats`)。
+   * `lazy` 的能力这一格恒缺席 —— 壳选中之后走 `search.preview` 路由取。
+   * 形与 `SearchPreviewPayload` 同,`kind` 一样是**开放**的:壳按它从预览渲染
+   * 注册表取组件,契约层不解释。
+   */
+  preview?: SearchPreviewPayload
 }
 
 export interface SearchResponse {

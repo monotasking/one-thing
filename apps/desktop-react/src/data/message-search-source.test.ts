@@ -8,6 +8,7 @@ import {
   resetMessageSearch,
 } from './message-search-source'
 import { configureSearchPort } from './search-port'
+import { fakeSearchPort } from '../test/fake-search-port'
 
 /**
  * 正文检索数据源。验的是**取数那一半**:问了几次、缓存按什么键、失败怎么落、
@@ -34,13 +35,13 @@ function seedPort(answer: (query: string, limit: number) => {
   success: boolean
   results: SearchResult[]
 }): void {
-  configureSearchPort({
+  configureSearchPort(fakeSearchPort({
     ready: async () => undefined,
     queryMessages: async (query, limit) => {
       asks.push({ query, limit })
       return answer(query, limit)
     },
-  })
+  }))
 }
 
 beforeEach(() => {
@@ -52,10 +53,10 @@ beforeEach(() => {
 afterEach(() => {
   resetMessageSearch()
   // 恢复 setup.ts 里那份默认假端口(空表)。
-  configureSearchPort({
+  configureSearchPort(fakeSearchPort({
     ready: async () => undefined,
     queryMessages: async () => ({ success: true, results: [] }),
-  })
+  }))
 })
 
 const snapshot = (query: string, limit: number) =>

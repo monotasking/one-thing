@@ -34,6 +34,7 @@ import {
   staticCapability,
   type Candidate,
   type CapabilityManifest,
+  type PreviewPayload,
   type SearchCapability,
   type SearchContext,
   type SearchQuery,
@@ -65,6 +66,11 @@ export interface SearchServiceResult {
   target?: { kind: string; payload: unknown }
   /** 键由产它的能力 `manifest.facets` 声明;宿主不解释。 */
   facets?: Record<string, string | number | boolean>
+  /**
+   * 随候选带的预览(§4.5 ①`mode: 'inline'`;S4a 加)。
+   * 只有自述里说了 `preview: { mode: 'inline' }` 的能力才会有这一格。
+   */
+  preview?: { kind: string; payload: unknown; title?: string }
 }
 
 /** 驮着旧结果的候选。`legacy` 这一格是 S2 专有的,S5 随旧扫描器一起删。 */
@@ -82,47 +88,66 @@ export interface LegacyCapabilityOptions {
   target: LegacyTargetOf
   /** 缺省 = 恒真(旧路在 `all` 档里对这一类是无条件调用的)。 */
   supports?(query: SearchQuery): boolean
+  /**
+   * 随候选带的**内联预览**(§4.5 ①的 `mode: 'inline'`;S4a 加)。
+   *
+   * 缺席 = 这条路不带预览 —— 与 manifest 上 `preview` 缺席是同一句话的两半:
+   * 自述说「我有 inline 预览」,这一格就是它兑现的地方。算不出来时返回
+   * `undefined`(一条候选没有预览,不是整页失败)。
+   */
+  preview?(result: SearchServiceResult): PreviewPayload | undefined
 }
 
 /**
- * 候选 → 结果:原样 + `target` + `facets`。
+ * 候选 → 结果:原样 + `target` + `facets` + (有的话)`preview`。
  *
- * 键序 = 旧记录的键序,新加的两格在最后;所以 parity 门把这两格剥掉之后与旧路
+ * 键序 = 旧记录的键序,新加的几格在最后;所以 parity 门把它们剥掉之后与旧路
  * **逐字节相同**。没驮旧记录的候选(不该发生,但绝不吞结果)按候选自己的话给一行。
+ *
+ * `preview` **没有就不加这一格**(不是 `preview: undefined`)—— 与 `toCandidates`
+ * 里那条判据同源:契约上「缺席 = 这条没有预览」,而一个 undefined 值过 JSON 之后
+ * 也会消失,两种写法在线上不可区分、在 parity 的键比对上却是两件事。
  */
 export function searchResultOf(candidate: Candidate): SearchServiceResult {
   const legacy = (candidate as Partial<LegacyBackedCandidate>).legacy
-  if (legacy === undefined) {
-    return {
-      id: candidate.id,
-      type: candidate.target.kind as SearchServiceResult['type'],
-      title: candidate.title,
-      subtitle: candidate.subtitle,
-      timestamp: candidate.time,
-      target: candidate.target,
-      facets: candidate.facets,
-    }
-  }
-  return { ...legacy, target: candidate.target, facets: candidate.facets }
+  const base: SearchServiceResult = legacy === undefined
+    ? {
+        id: candidate.id,
+        type: candidate.target.kind as SearchServiceResult['type'],
+        title: candidate.title,
+        subtitle: candidate.subtitle,
+        timestamp: candidate.time,
+        target: candidate.target,
+        facets: candidate.facets,
+      }
+    : { ...legacy, target: candidate.target, facets: candidate.facets }
+  return candidate.preview === undefined ? base : { ...base, preview: candidate.preview }
 }
 
 function toCandidates(
   capability: string,
   rows: readonly SearchServiceResult[],
   target: LegacyTargetOf,
+  preview?: LegacyCapabilityOptions['preview'],
 ): LegacyBackedCandidate[] {
-  return rows.map((legacy, index) => ({
-    capability,
-    id: legacy.id,
-    title: legacy.title,
-    subtitle: legacy.subtitle,
-    // 逆序名次:严格递减且唯一 → `defaultRanker` 的排序恒等,旧次序原样保留。
-    score: rows.length - index,
-    time: legacy.timestamp,
-    target: target(legacy),
-    ranges: legacy.matchRanges,
-    legacy,
-  }))
+  return rows.map((legacy, index) => {
+    const candidate: LegacyBackedCandidate = {
+      capability,
+      id: legacy.id,
+      title: legacy.title,
+      subtitle: legacy.subtitle,
+      // 逆序名次:严格递减且唯一 → `defaultRanker` 的排序恒等,旧次序原样保留。
+      score: rows.length - index,
+      time: legacy.timestamp,
+      target: target(legacy),
+      ranges: legacy.matchRanges,
+      legacy,
+    }
+    // 缺席的 `preview` **一格都不加**:parity 门比的是键的在与不在,
+    // 一个 `preview: undefined` 与「没有这一格」在 JSON 上是两件事。
+    const inline = preview?.(legacy)
+    return inline === undefined ? candidate : { ...candidate, preview: inline }
+  })
 }
 
 /** 扫描型(§4.2 第二行):`total` 不给 —— 扫描器不知道全集有多大,不知道就别编。 */
@@ -135,7 +160,7 @@ export function legacyScanCapability(options: LegacyCapabilityOptions): SearchCa
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
       const rows = await options.run(query.raw, page.limit)
-      const candidates = toCandidates(manifest.id, rows, options.target)
+      const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
       return scanCapability<LegacyBackedCandidate>({
         manifest,
         supports,
@@ -159,7 +184,7 @@ export function legacyStaticCapability(options: LegacyCapabilityOptions): Search
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
       const rows = await options.run(query.raw, page.limit)
-      const candidates = toCandidates(manifest.id, rows, options.target)
+      const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
       return staticCapability<LegacyBackedCandidate>({
         manifest,
         supports,

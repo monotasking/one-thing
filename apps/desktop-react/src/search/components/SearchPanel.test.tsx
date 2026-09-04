@@ -11,7 +11,6 @@ import { CHAPTERS, NOW, SESSIONS, seedSessionsSource } from '../../data/__fixtur
 import { toSessionSummary } from '../../expose/projection'
 import type { SessionSummary } from '../../expose/types'
 import { configureFilesPort } from '../../data/files-port'
-import { configureSearchPort } from '../../data/search-port'
 import { useLocateMessage } from '../../content/locate-message'
 import type { FilesPort } from '../../data/files-port'
 import { useFilesSource } from '../../data/files-source'
@@ -21,6 +20,9 @@ import {
   messageSearchQuery,
   resetMessageSearch,
 } from '../../data/message-search-source'
+import { ensureSearchCatalog, resetSearchCatalog } from '../../data/search-catalog-source'
+import { configureSearchPort } from '../../data/search-port'
+import { FAKE_CAPABILITY_MANIFESTS, fakeSearchPort } from '../../test/fake-search-port'
 import type { MessageHit } from '../types'
 import { SEARCH_FIRST_PAGE, SEARCH_PAGE_SIZE, pageWindow } from '../transitions'
 
@@ -53,9 +55,20 @@ const FILE_HITS = [
  * 面板的键盘住在面板自己身上,所以这里全部走真组件、真按键 ——
  * 不去戳 keymap 注册表(那是「面板关着时也要能触发」的那一类,与这里无关)。
  */
-beforeEach(() => {
+beforeEach(async () => {
   // 模块级的一族 query:用例之间必须归零,否则上一条用例种下的那一格会答下一条。
   resetMessageSearch()
+  /*
+   * 自述 / 索引状态 / 通用查询三条口同理(S4a)。**归零之后先问一次再渲染**:
+   * tab 条是从自述算出来的,那条 query 是异步的 —— 不先喂饱它,第一帧的 tab 条
+   * 上只有「所有」一格,而这一族用例几乎都要按 Tab 换档。
+   *
+   * 这不是把异步藏起来:面板自己那条 `ensureSearchCatalog` 副作用照样跑
+   * (幂等),这里只是让用例从「自述已经到手」那一帧开始 —— 与真机上第二帧起
+   * 的处境一致。「自述还没回来时 tab 条只有所有一格」另有它自己的用例。
+   */
+  resetSearchCatalog()
+  await ensureSearchCatalog()
   // 「落到某条消息」那格待办同理 —— 它跨组件活着,上一条用例留下的会漏进下一条。
   useLocateMessage.getState().reset()
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
@@ -78,6 +91,11 @@ const input = () => screen.getByLabelText('搜索')
 const type = (value: string) => fireEvent.change(input(), { target: { value } })
 const press = (key: string, init: Record<string, unknown> = {}) =>
   fireEvent.keyDown(input(), { key, ...init })
+/**
+ * 换一档。**点那一格 radio**,不数 Tab —— tab 条现在是从自述算出来的
+ * (S4a),一共几格由能力表说了算,数 Tab 的用例每加一个能力就要改一次。
+ */
+const selectTab = (label: string) => fireEvent.click(screen.getByRole('radio', { name: label }))
 const options = () => screen.getAllByRole('option')
 const selected = () => options().find((el) => el.getAttribute('aria-selected') === 'true')
 
@@ -110,32 +128,54 @@ describe('⌘P = 开关检索面板', () => {
 })
 
 describe('搜索行:scope 分段器', () => {
-  it('Tab 轮转:所有 → 会话 → 文件 → 所有', () => {
+  /*
+   * ── S4a:tab 条来自自述,所以这一组守的是「表怎么来的」而不是「一共三格」──
+   * 从前这里数 Tab(所有 → 会话 → 文件 → 所有),那张表是写死的三格。今天档位由
+   * `search.capabilities` 回来的六份自述 + 固定第一的 `all` 算出来,所以判据换成:
+   * 次序对不对(`all` 第一,其余按 order)、轮转到不到头、注销一格会不会少一格。
+   */
+  it('tab 条 = 自述表:`all` 固定第一,其余按 order', () => {
     render(<SearchPanel />)
-    expect(screen.getByRole('radio', { name: '所有' }).getAttribute('aria-checked')).toBe('true')
-    press('Tab')
-    expect(screen.getByRole('radio', { name: '会话' }).getAttribute('aria-checked')).toBe('true')
-    press('Tab')
-    expect(screen.getByRole('radio', { name: '文件' }).getAttribute('aria-checked')).toBe('true')
-    press('Tab')
-    expect(screen.getByRole('radio', { name: '所有' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getAllByRole('radio').map((el) => el.textContent)).toEqual([
+      '所有', '会话', '提示词', '笔记', '文件', '消息', '命令',
+    ])
   })
 
-  it('⇧Tab 反向轮转', () => {
+  it('注销一个能力,它那一格 tab 自动少一格 —— 面板一个字不用改(§4.0)', async () => {
+    configureSearchPort(fakeSearchPort({
+      capabilities: async () => FAKE_CAPABILITY_MANIFESTS.filter((m) => m.id !== 'daily'),
+    }))
+    resetSearchCatalog()
+    await ensureSearchCatalog()
     render(<SearchPanel />)
-    press('Tab', { shiftKey: true })
-    expect(screen.getByRole('radio', { name: '文件' }).getAttribute('aria-checked')).toBe('true')
-    press('Tab', { shiftKey: true })
+    expect(screen.getAllByRole('radio').map((el) => el.textContent)).toEqual([
+      '所有', '会话', '提示词', '文件', '消息', '命令',
+    ])
+  })
+
+  it('Tab 往前一格、⇧Tab 往后一格,到头回卷', () => {
+    render(<SearchPanel />)
+    expect(screen.getByRole('radio', { name: '所有' }).getAttribute('aria-checked')).toBe('true')
+    press('Tab')
     expect(screen.getByRole('radio', { name: '会话' }).getAttribute('aria-checked')).toBe('true')
+    press('Tab', { shiftKey: true })
+    expect(screen.getByRole('radio', { name: '所有' }).getAttribute('aria-checked')).toBe('true')
+    // 从第一格往后 = 回卷到最后一格。
+    press('Tab', { shiftKey: true })
+    expect(screen.getByRole('radio', { name: '命令' }).getAttribute('aria-checked')).toBe('true')
   })
 
   it('换范围会换掉这张列表:文件档一行会话都没有', () => {
     render(<SearchPanel />)
     type(FILE_QUERY)
-    press('Tab')
-    press('Tab')
-    // 徽上只剩文件类型,「会话」「消息」两种徽一颗不剩。
-    expect(screen.queryByText('消息')).toBeNull()
+    selectTab('文件')
+    /*
+     * 徽上只剩文件类型,「会话」「消息」两种徽一颗不剩。
+     *
+     * **查的是行里的徽,不是整块面**(S4a):「消息」现在也是 tab 条上一格的名字,
+     * 在整块面上查它永远查得到 —— 那会让这条断言从此再也红不了。
+     */
+    expect(options().some((el) => /会话|消息/.test(el.textContent ?? ''))).toBe(false)
     expect(options().length).toBeGreaterThan(0)
   })
 })
@@ -226,8 +266,7 @@ describe('命中列表:走行与跳转', () => {
     useStageStore.setState({ placements: { search: { kind: 'stage' } } })
     render(<SearchPanel />)
     type(FILE_QUERY)
-    press('Tab')
-    press('Tab')
+    selectTab('文件')
     press('Enter')
     /*
      * D5:落点是**整条路径**,不再是「文件名:行号」—— 真实产地
@@ -332,13 +371,13 @@ describe('消息正文命中', () => {
 
   it('打字期间不发请求,停下来才发一次(两路共用同一个窗口)', async () => {
     const asked: Array<{ query: string; limit: number }> = []
-    configureSearchPort({
+    configureSearchPort(fakeSearchPort({
       ready: async () => undefined,
       queryMessages: async (query, limit) => {
         asked.push({ query, limit })
         return { success: true, results: [] }
       },
-    })
+    }))
     try {
       render(<SearchPanel />)
       type('读')
@@ -349,18 +388,18 @@ describe('消息正文命中', () => {
       await waitFor(() => expect(asked.length).toBe(1))
       expect(asked[0]).toEqual({ query: '读取点', limit: SEARCH_FIRST_PAGE })
     } finally {
-      configureSearchPort({
+      configureSearchPort(fakeSearchPort({
         ready: async () => undefined,
         queryMessages: async () => ({ success: true, results: [] }),
-      })
+      }))
     }
   })
 
   it('正文没搜成:单独一行说出来,与文件那一行各说各的', async () => {
-    configureSearchPort({
+    configureSearchPort(fakeSearchPort({
       ready: async () => undefined,
       queryMessages: async () => ({ success: false, results: [] }),
-    })
+    }))
     try {
       render(<SearchPanel />)
       type(BODY_QUERY)
@@ -368,10 +407,10 @@ describe('消息正文命中', () => {
       // 会话侧那几行照旧在屏幕上 —— 一路塌了不清另一路的屏。
       expect(screen.queryByText('文件没搜成')).toBeNull()
     } finally {
-      configureSearchPort({
+      configureSearchPort(fakeSearchPort({
         ready: async () => undefined,
         queryMessages: async () => ({ success: true, results: [] }),
-      })
+      }))
     }
   })
 })
@@ -411,8 +450,7 @@ describe('两种空', () => {
 
   it('空词 + 只看文件 = 「要先输入关键词」,不是「无结果」', () => {
     render(<SearchPanel />)
-    press('Tab')
-    press('Tab')
+    selectTab('文件')
     expect(screen.getByText('文件要先输入关键词')).toBeTruthy()
     expect(screen.queryByText('无结果')).toBeNull()
   })
@@ -499,7 +537,7 @@ describe('分页:底部那条 item', () => {
   it('首屏给 SEARCH_FIRST_PAGE 条,点一下底部那条 item 就追加下一页', () => {
     render(<SearchPanel />)
     type('alpha')
-    press('Tab') // 只看会话:文件侧不参与,总数当场就是知道的
+    selectTab('会话') // 只看会话:文件侧不参与,总数当场就是知道的
     expect(rows().length).toBe(SEARCH_FIRST_PAGE)
     expect(moreItem()?.textContent).toBe(
       zh('search.loadMoreCount', { shown: SEARCH_FIRST_PAGE, total: TOTAL }),
@@ -706,7 +744,7 @@ describe('浏览态(空词):看得到全部、看得到总数、翻得了页', (
     expect(all.length).toBe(SEARCH_FIRST_PAGE)
     const allTail = moreItem()?.textContent
 
-    press('Tab') // 所有 → 会话
+    selectTab('会话')
     expect(rows().map((el) => el.textContent)).toEqual(all)
     expect(moreItem()?.textContent).toBe(allTail)
     expect(allTail).toBe(zh('search.loadMoreCount', { shown: SEARCH_FIRST_PAGE, total: BULK }))
@@ -726,8 +764,7 @@ describe('浏览态(空词):看得到全部、看得到总数、翻得了页', (
    */
   it('文件档的空词仍然说「要先输入关键词」—— 没有产地就不伪造一张表', () => {
     render(<SearchPanel />)
-    press('Tab')
-    press('Tab')
+    selectTab('文件')
     expect(screen.getByText('文件要先输入关键词')).toBeTruthy()
     expect(screen.queryByTestId('search-more')).toBeNull()
   })
@@ -762,8 +799,7 @@ describe('行首徽:长词不许被切', () => {
     })
     render(<SearchPanel />)
     type('a')
-    press('Tab')
-    press('Tab')
+    selectTab('文件')
     for (const { word } of BADGE_CASES) {
       expect(screen.getByText(word), `徽「${word}」不在屏幕上`).toBeTruthy()
     }
@@ -773,5 +809,126 @@ describe('行首徽:长词不许被切', () => {
     render(<SearchPanel />)
     // 浏览态全是会话行,徽上就是「会话」两个字。
     expect(screen.getAllByText('会话').length).toBeGreaterThan(0)
+  })
+})
+
+
+/**
+ * ── 底部状态行(S4a,设计 §9 第三条)────────────────────────────────────
+ *
+ * 四条读数各说各的一件事,而且**只在事实成立时画**。这一组是 §11 S4 那条反证
+ * (「`total` 缺席时画「加载更多」→ 红」)的可重复版:把任何一条从「按事实」
+ * 改成「总是画」,下面对应那一条当场红。
+ *
+ * 走的是**通用那一路**(壳没有自带产地的能力):它的结果直接来自 `search.query`,
+ * 所以 total / cursor / relaxed 三格都是后端给的真读数,不是壳算出来的。
+ */
+describe('底部状态行(通用档)', () => {
+  const t = (key: Parameters<typeof translate>[1], vars?: Record<string, string | number>) =>
+    translate('zh', key, vars)
+
+  /** 换一份端口,让通用那一档答一批指定的结果。 */
+  async function seedGeneric(answer: { total?: number; cursor?: string; relaxed?: number }) {
+    configureSearchPort(fakeSearchPort({
+      query: async () => ({
+        success: true,
+        results: [{
+          id: 'p1',
+          type: 'prompt' as const,
+          title: '一条提示词',
+          target: { kind: 'prompt', payload: { promptId: 'p1' } },
+        }],
+        ...(answer.total === undefined ? {} : { total: answer.total }),
+        ...(answer.cursor === undefined ? {} : { cursor: answer.cursor }),
+        ...(answer.relaxed === undefined ? {} : { relaxed: answer.relaxed }),
+      }),
+    }))
+    resetSearchCatalog()
+    await ensureSearchCatalog()
+  }
+
+  const readout = (name: string) => document.querySelector(`[data-readout="${name}"]`)
+
+  /** 换到通用那一档、打一个词、等这一发落地。 */
+  async function searchGeneric() {
+    render(<SearchPanel />)
+    selectTab(t('search.capability.prompts'))
+    type('a')
+    await waitFor(() => expect(screen.getAllByRole('option').length).toBeGreaterThan(0))
+  }
+
+  it('后端给了 total 就画「共 N 条」', async () => {
+    await seedGeneric({ total: 137 })
+    await searchGeneric()
+    expect(readout('total')?.textContent).toBe(t('search.totalCount', { total: 137 }))
+  })
+
+  it('后端答不出 total 就**一行都不画** —— 缺席 = 不知道,不是 0', async () => {
+    await seedGeneric({})
+    await searchGeneric()
+    expect(readout('total')).toBeNull()
+  })
+
+  it('`relaxed > 0` 才画「已放宽」—— 严格档就中了的那次不许画', async () => {
+    await seedGeneric({ relaxed: 2 })
+    await searchGeneric()
+    expect(readout('relaxed')?.textContent).toBe(t('search.relaxed'))
+  })
+
+  it('`relaxed` 是 0:那一行不画', async () => {
+    await seedGeneric({ relaxed: 0 })
+    await searchGeneric()
+    expect(readout('relaxed')).toBeNull()
+  })
+
+  /**
+   * §9 第三条的原话:「加载更多」**有 cursor 才画**。
+   *
+   * 判据换掉的是「回来的条数 == 要的条数」那句猜测 —— 那是给答不出游标的口用的
+   * 兜底。给得出游标的能力说了「后面还有」,就不必再猜;说了没有,也不该因为
+   * 「恰好给满了」被误判成还有。
+   */
+  it('有 cursor 就画「加载更多」', async () => {
+    await seedGeneric({ cursor: 'next-page' })
+    await searchGeneric()
+    expect(screen.queryByTestId('search-more')).toBeTruthy()
+  })
+
+  it('没有 cursor:一条命中 < 要的那么多 = 取尽,底下换成读数', async () => {
+    await seedGeneric({})
+    await searchGeneric()
+    expect(screen.queryByTestId('search-more')).toBeNull()
+  })
+
+  /**
+   * 索引状态那两行走的是 `search.status`(与查询那一发无关),所以单独喂。
+   * 读者模式今天真机上恒 `owner`(§5.6 拍点庚裁「先不做」),这条用例是它
+   * **唯一**能被反复证的地方 —— 真机门那一条靠注入。
+   */
+  it('索引更新中 / 由 … 维护:两行各说各的,按 status 的事实画', async () => {
+    configureSearchPort(fakeSearchPort({
+      status: async () => ({
+        mode: 'reader' as const,
+        pending: 7,
+        vector: 'off' as const,
+        owner: { host: 'mac-mini', pid: 3 },
+      }),
+    }))
+    resetSearchCatalog()
+    await ensureSearchCatalog()
+    render(<SearchPanel />)
+    await waitFor(() => expect(readout('index-reader')).toBeTruthy())
+    expect(readout('index-pending')?.textContent).toBe(t('search.indexPending', { pending: 7 }))
+    expect(readout('index-reader')?.textContent).toBe(t('search.indexReader', { host: 'mac-mini' }))
+  })
+
+  it('owner + 没积压:两行一条都不画(今天真机上的常态)', async () => {
+    configureSearchPort(fakeSearchPort())
+    resetSearchCatalog()
+    await ensureSearchCatalog()
+    render(<SearchPanel />)
+    await waitFor(() => expect(screen.getByLabelText('搜索')).toBeTruthy())
+    expect(readout('index-pending')).toBeNull()
+    expect(readout('index-reader')).toBeNull()
   })
 })

@@ -205,6 +205,50 @@ describe('search RPC domain', () => {
     expect(response).toEqual({ mode: 'owner', pending: 2, vector: 'off' })
   })
 
+  /**
+   * `preview` —— S4a 起是**真件**(设计 §4.5)。这里钉的是**域**这一层:信封对不对、
+   * 载荷有没有原样过去、算不出那次说的是不是原话。载荷长什么样是能力的事,由
+   * `runtime/src/search/__tests__/preview.test.ts` 逐格守着。
+   *
+   * 反证:把 handler 改回「S4 才有」那句常量,这三条当场红。
+   */
+  it('preview: 真件,载荷原样过信封', async () => {
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const response = unwrap(await dispatchRpc({
+      domain: 'search',
+      method: 'preview',
+      payload: { items: [{ capability: 'chats', id: 'chat:1', target: { kind: 'chat', payload: { sessionId: '1' } } }] },
+    }, IPC))
+
+    expect(response.success).toBe(true)
+    const preview = response.preview as { kind: string; payload: { sessionId: string } }
+    expect(preview.kind).toBe('session-overview')
+    // `payload` 是**开放**的:域这一层不解释它,原样搬过来。
+    expect(preview.payload.sessionId).toBe('1')
+  })
+
+  it('preview: 算不出说原话,不是一句通用的「预览失败」', async () => {
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const response = unwrap(await dispatchRpc({
+      domain: 'search',
+      method: 'preview',
+      payload: { items: [{ capability: '并不存在', id: 'x' }] },
+    }, IPC))
+
+    expect(response).toEqual({ success: false, error: 'no such capability: 并不存在' })
+  })
+
+  it('invoke: 接通了,但本批没有能力声明动作 —— 恒答 no such action', async () => {
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    const response = unwrap(await dispatchRpc({
+      domain: 'search',
+      method: 'invoke',
+      payload: { capability: 'chats', actionId: 'archive', items: [] },
+    }, IPC))
+
+    expect(response).toEqual({ success: false, error: 'no such action' })
+  })
+
   it('query 的响应上带 index 那一格:壳读它画「索引还在追账本」', async () => {
     configureHostLocalTrust({ origin: 'desktop-embedded' })
     const response = unwrap(await query({ query: 'Alpha', category: 'chats', limit: 5 }, IPC))

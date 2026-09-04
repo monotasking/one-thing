@@ -244,12 +244,16 @@ function buildQueries(corpus, sessionTitles) {
 
 /* ───────────────────────────── 比对 ───────────────────────────── */
 
-/** 剥掉新路多出来的两格 —— parity 只守旧形(§8 是「只加不改」)。 */
+/**
+ * 剥掉新路多出来的那几格 —— parity 只守旧形(§8 是「只加不改」)。
+ * `target` / `facets` 是 S0 加的,`preview`(内联预览,§4.5 ①)是 S4a 加的。
+ */
 function stripAdditions(results) {
   return (results ?? []).map(result => {
     const copy = { ...result }
     delete copy.target
     delete copy.facets
+    delete copy.preview
     return copy
   })
 }

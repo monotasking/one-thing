@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { useStageStore } from '../../stage/store'
 import { useChapterRecord, useSessionsSource } from '../../data/sessions-source'
@@ -9,6 +9,7 @@ import { useSessionTime } from '../../expose/components/session-time'
 import { FocusScope } from '../../focus/FocusScope'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { GroupHead } from '../../ui/GroupHead'
 import { Input } from '../../ui/Input'
 import { Segmented } from '../../ui/Segmented'
 import type { SegmentedOption } from '../../ui/Segmented'
@@ -17,24 +18,43 @@ import { Search } from '../../components/icons'
 import { plural, useT } from '../../i18n'
 import type { MessageKey, TFn } from '../../i18n'
 import {
-  SCOPES,
   browseRows,
+  groupHeadAt,
+  groupRowsByCapability,
   moreState,
-  nextScope,
   originText,
   pageWindow,
   remoteSide,
+  resultRows,
   searchRows,
   targetText,
 } from '../transitions'
 import type { SearchMaterial, SearchRemoteSide } from '../transitions'
-import type { MessageHit, SearchBadge, SearchRow, SearchScope } from '../types'
+import type { MessageHit, SearchRow, SearchScope } from '../types'
+import { ALL_TAB, indexReadoutOf, nextTab, resolveTab, tabsOf } from '../capabilities'
+import {
+  CHATS_CAPABILITY,
+  FILES_CAPABILITY,
+  MESSAGES_CAPABILITY,
+  hasNativeSource,
+} from '../sources'
+import { resolveTargetRenderer } from '../targets'
+import type { SearchTargetContext } from '../targets'
 import {
   ensureMessageSearch,
   refetchMessageSearch,
   useMessageSearch,
 } from '../../data/message-search-source'
+import {
+  ensureCapabilitySearch,
+  ensureSearchCatalog,
+  refetchCapabilitySearch,
+  useCapabilitySearch,
+  useSearchCapabilities,
+  useSearchIndexStatus,
+} from '../../data/search-catalog-source'
 import { useLocateMessage } from '../../content/locate-message'
+import { currentSpaceId } from '../../workspace/current'
 import s from './SearchPanel.module.css'
 
 /**
@@ -67,27 +87,52 @@ const SEARCH_DEBOUNCE_MS = 220
 /** 「正文那一路此刻一条都没有」的那**一个**空表(身份稳定,见消费处)。 */
 const NO_HITS: readonly MessageHit[] = []
 
-const SCOPE_LABELS: Record<SearchScope, MessageKey> = {
-  all: 'search.scopeAll',
-  sessions: 'search.scopeSessions',
-  files: 'search.scopeFiles',
-}
-
-/** 徽上的字:前两种是界面文案(走字典),文件那种是从扩展名推出来的数据。 */
-function badgeText(badge: SearchBadge, t: TFn): string {
-  if (badge.kind === 'file') return badge.ext
-  return t(badge.kind === 'session' ? 'search.badgeSession' : 'search.badgeMessage')
+/**
+ * 徽上的字 —— **由这一行的目标渲染器答**(S4a),不再是面板自己 `switch` 一遍。
+ *
+ * 两种产地照旧分得清清楚楚:`labelKey` 那种是界面文案(走字典),`text` 那种是
+ * 从数据推出来的(扩展名之类,换语言不该变)。缺渲染器时是空徽 —— 那一行仍然
+ * 画出来(标题行),只是没有徽可写:§4.3「绝不因为壳没跟上而把结果吞掉」。
+ */
+function badgeText(row: SearchRow, t: TFn): string {
+  const renderer = resolveTargetRenderer(row.target.kind)
+  if (renderer === undefined) return ''
+  const badge = renderer.badge(row)
+  return 'labelKey' in badge ? t(badge.labelKey as MessageKey) : badge.text
 }
 
 export function SearchPanel() {
   const t = useT()
   const [query, setQuery] = useState('')
-  const [scope, setScope] = useState<SearchScope>('all')
+  /*
+   * 此刻这一档。**它是一个能力 id(或 `all`),不是三个字面量之一**(S4a)——
+   * 档位表由 `search.capabilities` 回来的自述算出来,所以这一格的取值面
+   * 也随之开放。能力被注销时 `resolveTab` 把它退回 `all`(见下面)。
+   */
+  const [requestedScope, setScope] = useState<SearchScope>(ALL_TAB)
   const [cursor, setCursor] = useState(0)
   /** 第几页,从 1 数。换词 / 换范围就回到第一页(那是另一张列表了)。 */
   const [page, setPage] = useState(1)
   /** 选中的是不是底部那条 item。**它不是 cursor 的一个值** —— 见 onKeyDown。 */
   const [onMore, setOnMore] = useState(false)
+  /*
+   * ── 档位:从自述读,不是一张写死的表(§9 第一条)───────────────────────
+   * 注销一个能力,它那一格 tab 自动消失;注册一个(包括插件能力)自动出现在它
+   * 自己声明的位置上 —— 面板这一侧一个字不改。
+   */
+  const manifests = useSearchCapabilities()
+  const tabs = useMemo(() => tabsOf(manifests), [manifests])
+  /** 这一档还在不在。刚被注销的档退回 `all` —— 停在一个不存在的档上等于给死路。 */
+  const scope = resolveTab(tabs, requestedScope)
+  const indexStatus = useSearchIndexStatus()
+  const indexReadout = useMemo(() => indexReadoutOf(indexStatus), [indexStatus])
+  /*
+   * 「全部空间」那一格过滤片是 **S4b**;今天恒假,所以跨空间徽画不出来。
+   * 留着这一格(而不是把徽整段删掉)是因为 §10 S4 行的第五条门断言守的正是
+   * 「画它的逻辑在不在」—— 过滤片落地那天这里只换一个产地,徽一个字不改。
+   */
+  const allSpaces = false
+  const spaceId = currentSpaceId()
   const enterSession = useExposeStore((st) => st.enterSession)
   const closeToDock = useStageStore((st) => st.closeToDock)
   const sessions = useSessionsSource((st) => st.sessions)
@@ -132,6 +177,14 @@ export function SearchPanel() {
 
   const searching = query.trim().length > 0
   /*
+   * 这一档要不要问壳自带的那两路。判据是「这一档是不是那个能力(或者不挑)」,
+   * id 从 `search/sources.ts` 那张记账表读 —— 面板里不写能力 id 的字面量。
+   */
+  const wantsNativeMessages = scope === ALL_TAB || scope === MESSAGES_CAPABILITY
+  const wantsNativeFiles = scope === ALL_TAB || scope === FILES_CAPABILITY
+  /** 会话侧(标题 / 预览 / 章节)。正文命中同样由它造,所以两个能力都算数。 */
+  const wantsNativeSessions = scope === ALL_TAB || scope === CHATS_CAPABILITY || scope === MESSAGES_CAPABILITY
+  /*
    * 手上这批文件命中说的**是不是此刻这个词**。去抖窗口那 220ms 里词已经变了而
    * 结果还没回来 —— 不问这一句,屏幕上就会闪一下上一个词的结果。对不上就当作
    * 「还没有」(空),而不是拿旧的顶一会儿。
@@ -148,7 +201,11 @@ export function SearchPanel() {
    * 「上一次的答案」存在一个跟着词走的公共格子里)。
    */
   const messageLimit = pageWindow(page)
-  const messageAnswer = useMessageSearch(query, scope === 'files' ? 0 : messageLimit)
+  /*
+   * 这一档要不要问正文那一路:`all` 与 `messages` 要,别的档不要。判据用的是
+   * `hasNativeSource` 那张记账表的同一个 id —— 面板这里不写 `'messages'`。
+   */
+  const messageAnswer = useMessageSearch(query, wantsNativeMessages ? messageLimit : 0)
   // 缺席那一份用**同一个**空表:每次渲染现造一个 `[]` 会让下面那只 memo 的
   // 依赖每帧都变,整张列表白重算一遍(律④那条身份纪律的同一件事)。
   const messages = messageAnswer.data?.hits ?? NO_HITS
@@ -162,46 +219,89 @@ export function SearchPanel() {
     }),
     [sessions, chapters, files, messages, timeOf],
   )
-  const rows = useMemo(
-    () => (searching ? searchRows(query, scope, material) : browseRows(scope, material)),
-    [query, scope, searching, material],
+  /*
+   * ── 通用那一路(S4a)────────────────────────────────────────────────
+   * 壳没有自带产地的能力(`prompts` / `daily` / `actions`,以及任何一个插件能力)
+   * 走 `search.query` + 目标渲染注册表。**只在选中那一档时问** —— `all` 档不发:
+   * 那一档的配额由后端各能力自述说了算,壳这边再拼一次就是两套分组逻辑。
+   * (`all` 档带上它们是 S4b 的事,留账写在报告里。)
+   */
+  const genericCapability = scope !== ALL_TAB && !hasNativeSource(scope) ? scope : ''
+  const genericAnswer = useCapabilitySearch(genericCapability, query, pageWindow(page))
+  const genericRows = useMemo(
+    () => (genericAnswer.data === undefined
+      ? []
+      : resultRows(genericAnswer.data.results, genericCapability)),
+    [genericAnswer.data, genericCapability],
   )
+
+  const tabOrder = useMemo(() => tabs.map(tab => tab.id), [tabs])
+  const rows = useMemo(() => {
+    if (genericCapability) return genericRows
+    const built = searching ? searchRows(query, scope, material) : browseRows(scope, material)
+    // 全部档按能力归堆(§7.2);单类档就是一张平铺列表,不归。
+    return scope === ALL_TAB ? groupRowsByCapability(built, tabOrder) : built
+  }, [query, scope, searching, material, genericCapability, genericRows, tabOrder])
 
   /**
    * 文件侧此刻的处境。取尽判据是**回来的条数 < 要的条数** —— 后端这一条既没有
    * 游标也不下发总数,这是唯一能判的一句(理由写在 transitions 的「分页」一节)。
-   * `scope === 'sessions'` 时这一档根本不看文件,所以它恒定「取尽」。
+   * 这一档不看文件(会话 / 消息 / 通用那几档)时它恒定「取尽」——「没有人可问」
+   * 就是「后面没有了」,不是「还在等」。
    */
   const fileSide: SearchRemoteSide = useMemo(() => {
-    if (scope === 'sessions') return 'exhausted'
+    if (!wantsNativeFiles) return 'exhausted'
     if (!fileAnswerIsCurrent || fileStatus === 'idle' || fileStatus === 'loading') return 'pending'
     if (fileStatus === 'error') return 'failed'
     return fileHits.length < fileLimit ? 'exhausted' : 'more'
-  }, [scope, fileAnswerIsCurrent, fileStatus, fileHits.length, fileLimit])
+  }, [wantsNativeFiles, fileAnswerIsCurrent, fileStatus, fileHits.length, fileLimit])
 
   /**
    * 正文侧此刻的处境。**同一张四态表,判据逐条对应** —— 两路的形状一样,
    * 只是读的是 kernel 的快照而不是手写的四件套:
-   *  · 这一档不看正文(`scope === 'files'`)/ 没给词 → 恒定「取尽」(没有人可问);
+   *  · 这一档不看正文 / 没给词 → 恒定「取尽」(没有人可问);
    *  · 在飞、或者这一格从来没有过答案 → pending;
    *  · 上一发塌了(错误在,而且**没有旧答案**)→ failed;
    *    有旧答案时错误只由列表上面那行说,底下照旧按旧答案判取尽 —— 律②。
    *  · 落地了 → 回来的条数 < 要的条数 = 取尽。
    */
   const messageSide: SearchRemoteSide = useMemo(() => {
-    if (scope === 'files' || !searching) return 'exhausted'
+    if (!wantsNativeMessages || !searching) return 'exhausted'
     const answer = messageAnswer.data
     if (messageAnswer.inflight || !answer) {
       return messageAnswer.error && !answer ? 'failed' : 'pending'
     }
     return answer.hits.length < answer.limit ? 'exhausted' : 'more'
-  }, [scope, searching, messageAnswer.data, messageAnswer.inflight, messageAnswer.error])
+  }, [wantsNativeMessages, searching, messageAnswer.data, messageAnswer.inflight, messageAnswer.error])
+
+  /**
+   * 通用那一路的处境。**同一张四态表**,只是取尽判据多了一格真游标:
+   * 后端这条口给得出 `cursor` 时,「后面还有没有」不用再靠「回来的条数 == 要的
+   * 条数」去猜 —— 有游标就是有,没有就是没有(§9 第三条:「加载更多」**有 cursor
+   * 才画**)。给不出游标的能力退回旧判据。
+   */
+  const genericSide: SearchRemoteSide = useMemo(() => {
+    if (!genericCapability) return 'exhausted'
+    const answer = genericAnswer.data
+    if (genericAnswer.inflight || !answer) {
+      return genericAnswer.error && !answer ? 'failed' : 'pending'
+    }
+    if (answer.cursor !== undefined) return 'more'
+    return answer.results.length < answer.limit ? 'exhausted' : 'more'
+  }, [genericCapability, genericAnswer.data, genericAnswer.inflight, genericAnswer.error])
 
   const more = moreState({
     searching,
     page,
+    /*
+     * 这里仍然是「**此刻造得出来的行数**」,一格没动 —— `moreState` 那张判据表
+     * 的入参口径就是它(`shown = min(total, pageWindow)`)。后端给的那个真 `total`
+     * (单类档能力知道才给)**不塞进这里**:它是「全集有多大」,而这一格是
+     * 「我手上有多少」,混成一个数会让 `shown` 超过真实行数。真 total 由底下
+     * 那一行状态自己说(§9 第三条第一项)。
+     */
     total: rows.length,
-    remote: remoteSide(fileSide, messageSide),
+    remote: remoteSide(fileSide, messageSide, genericSide),
   })
   /** 屏幕上这一页。会话侧本来就全量在手,所以翻页在那一侧纯粹是把窗口拉大。 */
   const visible = useMemo(() => rows.slice(0, pageWindow(page)), [rows, page])
@@ -238,7 +338,7 @@ export function SearchPanel() {
    * 请求,那不叫按需。会话侧另外两样(标题、预览)本来就在 listMeta 里,即时滤。
    */
   useEffect(() => {
-    if (!searching || scope === 'files') return
+    if (!searching || !wantsNativeSessions) return
     const q = query.trim().toLowerCase()
     let asked = 0
     for (const session of sessions) {
@@ -249,13 +349,13 @@ export function SearchPanel() {
       asked += 1
       void ensureChapters(session.id)
     }
-  }, [searching, query, scope, sessions, ensureChapters])
+  }, [searching, query, wantsNativeSessions, sessions, ensureChapters])
 
   /*
    * 两路远端各是一次**真查询**,所以它们有自己的取数副作用(会话侧没有:整张表
    * 在手)。合并窗口挡的是「每敲一个字母发一次请求」;各自的档位闸另判 ——
-   * `scope === 'sessions'` 连文件都不发,`scope === 'files'` 连正文都不发:
-   * 用户已经说了这一轮不看那一侧。
+   * 只发这一档要的那几路(`wantsNativeFiles` / `wantsNativeMessages` /
+   * `genericCapability` 三个闸):用户已经说了这一轮不看别的那几侧。
    *
    * 分页是**递增 limit 重查**:第 n 页带一个更大的 limit 从头再要一次(两条口都
    * 只有 limit 没有游标 —— 代价与留账写在 transitions 的「分页」一节),
@@ -272,13 +372,16 @@ export function SearchPanel() {
    */
   const askedSubject = useRef<string | null>(null)
   useEffect(() => {
-    if (scope === 'sessions' && !searching) return
-    const subject = JSON.stringify([query.trim(), cwd])
+    if (!wantsNativeFiles && !wantsNativeMessages && !genericCapability && !searching) return
+    // 主语里带上这一档:换档就是换了一次要问的东西(通用那一路尤其 —— 它的键
+    // 第一格就是能力 id),不带的话换档会被当成一次「主语没变」而当场发。
+    const subject = JSON.stringify([query.trim(), cwd, scope])
     const sameSubject = askedSubject.current === subject
     askedSubject.current = subject
     const run = () => {
-      if (scope !== 'sessions') void searchFiles(query, cwd, pageWindow(page))
-      if (scope !== 'files') void ensureMessageSearch(query, pageWindow(page))
+      if (wantsNativeFiles) void searchFiles(query, cwd, pageWindow(page))
+      if (wantsNativeMessages) void ensureMessageSearch(query, pageWindow(page))
+      if (genericCapability) void ensureCapabilitySearch(genericCapability, query, pageWindow(page))
     }
     /*
      * 主语没变、而且已经翻过页 —— 那这一次只能是「加载更多」或者「重试」,
@@ -291,7 +394,15 @@ export function SearchPanel() {
     }
     const timer = setTimeout(run, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
-  }, [query, scope, cwd, page, searching, searchFiles])
+  }, [query, scope, cwd, page, searching, searchFiles, wantsNativeFiles, wantsNativeMessages, genericCapability])
+
+  /*
+   * 自述与索引状态:面板挂上来问一次(幂等,`ensure` 的语义)。**只此一次** ——
+   * 它们不是跟着词走的东西,进不了下面那条带去抖的副作用。
+   */
+  useEffect(() => {
+    void ensureSearchCatalog()
+  }, [])
 
   // 底部那条 item 没了(取尽 / 列表空了)就不能再让选中停在它上面。
   useEffect(() => {
@@ -313,47 +424,96 @@ export function SearchPanel() {
     el?.scrollIntoView?.({ block: 'nearest' })
   }, [cursor, onMore, visible])
 
-  const options: Array<SegmentedOption<SearchScope>> = SCOPES.map((value) => ({
-    value,
-    label: t(SCOPE_LABELS[value]),
+  /*
+   * tab 条 = 自述表(§9 第一条)。文案键、图标名、次序全部来自 manifest ——
+   * 这里一个能力 id、一句文案、一个图标名都没有。
+   */
+  const options: Array<SegmentedOption<SearchScope>> = tabs.map((tab) => ({
+    value: tab.id,
+    label: t(tab.labelKey as MessageKey),
   }))
 
+  /** 组头的名字 = 那个能力的自述文案键。查不到就画 id —— 不静默留白。 */
+  const groupLabel = (capability: string): string => {
+    const tab = tabs.find(item => item.id === capability)
+    return tab === undefined ? capability : t(tab.labelKey as MessageKey)
+  }
+
+  /** 第 i 行前面要不要一条组头。**只在全部档**;单类档一张平铺列表就是它自己那一组。 */
+  const groupHeadOf = (index: number): string | undefined =>
+    (scope === ALL_TAB ? groupHeadAt(visible, index) : undefined)
+
+  /**
+   * 落点 = **目标渲染注册表**里那一格的 `activate`(S4a)。
+   *
+   * 从前这里是一个 `switch (row.target.kind)`,两支写死 —— 那正是 §4.0 要拆掉的
+   * 枚举点:加一种能搜的东西就得回来改这个 switch。今天面板给的是**能力**
+   * (进会话 / 打开文件 / 跑一条动作),去哪儿由那一类自己的渲染器说。
+   *
+   * 缺渲染器时**什么都不做但仍然收回 Dock**?不 —— 那会让人以为按下去生效了。
+   * 缺渲染器的行是「只有标题的一行」,按它如实说一句「这一类还打不开」,
+   * 与文件那一路 D5 的诚实缺口同一个体例。
+   */
+  const targetContext: SearchTargetContext = {
+    enterSession(sessionId, messageId) {
+      enterSession(sessionId)
+      /*
+       * 正文命中还带一个落点(09-02):进会话之后要滚到**那条消息**上。
+       *
+       * 这一下**只留一格待办**,不在这里去找 DOM:换会话之后聊天区要重开一次
+       * 折叠、折出来的消息还要渲染成节点,而这一帧那棵树还是上一条会话的。
+       * 待办由 `toc/useChatToc` 在锚点真的出现时消掉(判据是折叠落地,
+       * 不是猜一个延迟)—— 理由与整条链写在 `content/locate-message.ts` 头上。
+       *
+       * 缺席 messageId 的那几种(标题 / 预览 / 章节命中)一个字都不改:
+       * 它们的落点本来就是这条会话本身。
+       */
+      if (messageId) locateMessage(sessionId, messageId)
+    },
+    openFile(path, line) {
+      /*
+       * 这是接真源的缝。壳里还没有「打开一个文件」这件能力(没有编辑器面、
+       * 没有主进程),所以这里只把落点如实报出来。接上真实打开器时,
+       * 换掉的就是这一行 —— 行模型、跳转目标、收回 Dock 的手感都不动。
+       *
+       * 走 notify 而不是从前那个散装 toast:级别 info(它既不是成功也不是错,
+       * 只是「这就是我能做到的」),于是它同样进通知中心存档 ——
+       * 用户过一会儿想不起刚才那行报的是哪个文件时,还翻得到。
+       */
+      notify({
+        level: 'info',
+        source: 'search.open',
+        title: t('search.openedFile', {
+          file: targetText({ kind: 'file', payload: { filePath: path, line } }),
+        }),
+      })
+    },
+    runAction(actionId) {
+      /*
+       * 动作类命中(命令 / 提示词 / 「新建今天的日记」)。壳今天**没有**执行它们的
+       * 落点 —— 旧搜索窗那条 `executeAction` 是窗口活,新壳没有对应的面。
+       * 所以这里如实说出来而不是静默吞掉:一次按下去什么都不发生的点击,
+       * 比一句「这个还没接上」更让人怀疑是不是自己按错了。留账在报告里。
+       */
+      notify({
+        level: 'info',
+        source: 'search.open',
+        title: t('search.actionUnavailable', { action: actionId }),
+      })
+    },
+  }
+
   const activate = (row: SearchRow) => {
-    switch (row.target.kind) {
-      case 'session':
-        enterSession(row.target.sessionId)
-        /*
-         * 正文命中还带一个落点(09-02):进会话之后要滚到**那条消息**上。
-         *
-         * 这一下**只留一格待办**,不在这里去找 DOM:换会话之后聊天区要重开一次
-         * 折叠、折出来的消息还要渲染成节点,而这一帧那棵树还是上一条会话的。
-         * 待办由 `toc/useChatToc` 在锚点真的出现时消掉(判据是折叠落地,
-         * 不是猜一个延迟)—— 理由与整条链写在 `content/locate-message.ts` 头上。
-         *
-         * 缺席 messageId 的那几种(标题 / 预览 / 章节命中)一个字都不改:
-         * 它们的落点本来就是这条会话本身。
-         */
-        if (row.target.messageId) {
-          locateMessage(row.target.sessionId, row.target.messageId)
-        }
-        break
-      case 'file':
-        /*
-         * 这是接真源的缝。壳里还没有「打开一个文件」这件能力(没有编辑器面、
-         * 没有主进程),所以这里只把落点如实报出来。接上真实打开器时,
-         * 换掉的就是这一行 —— 行模型、跳转目标、收回 Dock 的手感都不动。
-         *
-         * 走 notify 而不是从前那个散装 toast:级别 info(它既不是成功也不是错,
-         * 只是「这就是我能做到的」),于是它同样进通知中心存档 ——
-         * 用户过一会儿想不起刚才那行报的是哪个文件时,还翻得到。
-         */
-        notify({
-          level: 'info',
-          source: 'search.open',
-          title: t('search.openedFile', { file: targetText(row.target) }),
-        })
-        break
+    const renderer = resolveTargetRenderer(row.target.kind)
+    if (renderer === undefined) {
+      notify({
+        level: 'info',
+        source: 'search.open',
+        title: t('search.targetUnavailable', { kind: row.target.kind }),
+      })
+      return
     }
+    renderer.activate(row, targetContext)
     // 选中就是这块面板的活干完了,收回 Dock —— 与 Quick Look 进会话同一个手感。
     closeToDock('search')
   }
@@ -375,8 +535,9 @@ export function SearchPanel() {
      * 「再来一次」,而不是「重试文件那一半」;哪一路塌了不是他要分辨的事。
      * 正文那一路走 `refetch`(用户明确要求重来,不是 `ensure` 的「问过就算了」)。
      */
-    if (scope !== 'sessions') void searchFiles(query, cwd, pageWindow(page))
-    if (scope !== 'files') void refetchMessageSearch(query, pageWindow(page))
+    if (wantsNativeFiles) void searchFiles(query, cwd, pageWindow(page))
+    if (wantsNativeMessages) void refetchMessageSearch(query, pageWindow(page))
+    if (genericCapability) void refetchCapabilitySearch(genericCapability, query, pageWindow(page))
   }
 
   /*
@@ -388,7 +549,7 @@ export function SearchPanel() {
     if (e.key === 'Tab') {
       // 拦下默认行为:这块面里 Tab 是「换搜索范围」,不是「把焦点交出去」。
       e.preventDefault()
-      setScope((sc) => nextScope(sc, e.shiftKey ? -1 : 1))
+      setScope(nextTab(tabs, scope, e.shiftKey ? -1 : 1))
       return
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -479,7 +640,7 @@ export function SearchPanel() {
             * 把一次失败说成一次空结果。这一行在**有命中时也画**(会话侧照常有结果,
             * 但文件侧那一半确实塌了),后端原话原样跟在后面。
             */}
-          {scope !== 'sessions' && fileStatus === 'error' && fileAnswerIsCurrent && (
+          {wantsNativeFiles && fileStatus === 'error' && fileAnswerIsCurrent && (
             <p className={s.failed}>
               {t('search.filesFailed')}
               <span className={s.failedDetail}>{fileError}</span>
@@ -494,7 +655,7 @@ export function SearchPanel() {
             * 判据里没有「答案是不是当前这个词」那一句(文件侧要问):正文侧是键控的
             * 一格 query,`messageAnswer` 本身就只属于当前这个词与这一页。
             */}
-          {scope !== 'files' && searching && messageAnswer.error && (
+          {wantsNativeMessages && searching && messageAnswer.error && (
             <p className={s.failed}>
               {t('search.messagesFailed')}
               <span className={s.failedDetail}>{messageAnswer.error}</span>
@@ -508,16 +669,48 @@ export function SearchPanel() {
                   * 产地**(`files.list` 只在带词时才有意义),见 search/transitions.ts
                   * 文件头第 2 条。这句话如实说出那个缺口,不去伪造一张「最近打开」。
                   * 会话侧的浏览态不落在这一支:它有产地(整张 listMeta),所以走列表。 */}
-                {scope === 'files' && !searching ? t('search.filesNeedQuery') : t('search.noResults')}
+                {scope === FILES_CAPABILITY && !searching
+                  ? t('search.filesNeedQuery')
+                  : t('search.noResults')}
               </p>
             ) : (
               visible.map((row, i) => (
-                /* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */
+                <Fragment key={row.id}>
+                  {/*
+                    * 组头(§9 第四条)。**只在全部档画**,而且只在这一组的第一行前面 ——
+                    * 它不是一条 item(不进 role=listbox 的轮转序列,所以 `role="presentation"`),
+                    * 是一条把列表切开的分隔读数。组头带这一组的名字与「查看全部」:
+                    * 后者切到那一档的 tab、从第一页重来。
+                    */}
+                  {groupHeadOf(i) !== undefined && (
+                    <GroupHead
+                      className={s.groupBand}
+                      role="presentation"
+                      data-group={groupHeadOf(i)}
+                      label={groupLabel(groupHeadOf(i) ?? '')}
+                      note={
+                        /*
+                         * 右侧那一格是**文字读数**,不是计数徽(库件的计数禁令原文:
+                         * tab / 列表 / 组头不挂计数徽,文字读数可以)。这里放的是
+                         * 「查看全部」那颗行内微型文字动作 —— 裸钮三类判的第③类,
+                         * 走 `ui/ButtonBase` 保本地皮肤。
+                         */
+                        <ButtonBase
+                          className={s.groupAll}
+                          onClick={() => setScope(groupHeadOf(i) ?? ALL_TAB)}
+                        >
+                          {t('search.viewAll')}
+                        </ButtonBase>
+                      }
+                    />
+                  )}
+                {/* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */}
                 <ButtonBase
-                  key={row.id}
                   role="option"
                   aria-selected={!onMore && i === cursor}
                   data-row={i}
+                  data-target-kind={row.target.kind}
+                  data-capability={row.capability}
                   className={!onMore && i === cursor ? `${s.row} ${s.rowOn}` : s.row}
                   onClick={() => {
                     setOnMore(false)
@@ -536,7 +729,7 @@ export function SearchPanel() {
                     * 文件名都会进来),不是一张可以枚举完的表,所以修法只能是结构性的。
                     */}
                   <span className={s.chip}>
-                    <span className={s.chipText}>{badgeText(row.badge, t)}</span>
+                    <span className={s.chipText}>{badgeText(row, t)}</span>
                   </span>
                   <span className={row.code ? `${s.text} ${s.code}` : s.text}>
                     {/* 高亮两条产地一条渲染:行自带 `highlight`(正文命中,后端判的)
@@ -548,7 +741,25 @@ export function SearchPanel() {
                     />
                   </span>
                   <span className={s.origin}>{originText(row.origin)}</span>
+                  {/*
+                    * 徽(§9「徽」那一条)。两颗,都只在**事实成立**时画:
+                    *  · 归档 —— `facets.archived` 为真。索引照建归档会话的文档
+                    *    (S3b 治好的那条病),所以它们**搜得到**,但得让人一眼看出来。
+                    *  · 跨空间 —— `facets.spaceId` 与当前空间不同。**只在「全部空间」
+                    *    过滤下才画**(§9 原话):默认那一档里根本不会出现别的空间的行,
+                    *    画一颗恒不出现的徽等于骗自己。过滤片本身是 S4b,所以今天
+                    *    `allSpaces` 恒假 —— **画它的逻辑要在**,那正是第五条门断言守的。
+                    */}
+                  {row.facets?.archived === true && (
+                    <span className={s.tag} data-tag="archived">{t('search.badgeArchived')}</span>
+                  )}
+                  {allSpaces
+                    && typeof row.facets?.spaceId === 'string'
+                    && row.facets.spaceId !== spaceId && (
+                    <span className={s.tag} data-tag="space">{t('search.badgeOtherSpace')}</span>
+                  )}
                 </ButtonBase>
+                </Fragment>
               ))
             )}
 
@@ -610,6 +821,49 @@ export function SearchPanel() {
             {more.kind === 'count' && (
               <p className={s.end}>
                 <span className={s.moreText}>{t('search.shownCount', { shown: more.shown })}</span>
+              </p>
+            )}
+
+            {/*
+              * ── 底部状态行(§9 第三条)────────────────────────────────────
+              * 四条读数,**各说各的一件事,一条都不合并**。它们排在「加载更多 /
+              * 已全部显示」那一行之后,因为那一行说的是「这张列表」,而这四条说的
+              * 是「这次检索是怎么答出来的」。
+              *
+              * 每一条都**只在事实成立时画**,判据逐条:
+              *  1. `total` —— 后端给了真数才画(单类档,能力知道就给)。壳自己数出来
+              *     的那个数已经由上面那一行说了,这里说的是「全集有多大」。
+              *  2. 「已放宽」—— `relaxed > 0`:严格档没中、放宽了才有命中(§6.2)。
+              *     不说出来的话,用户会以为自己那个词精确命中了这些行。
+              *  3. 「索引更新中(剩 n)」—— `pending > 0`:现在答的这一份还没追上账本。
+              *  4. 读者模式 —— `mode === 'reader'`:折账本的是另一台进程。**今天恒
+              *     `owner`**(§5.6 拍点庚 09-04 裁「先不做」),所以这一行画不出来 ——
+              *     画它的逻辑在这里,那正是 §10 S4 行第七条门断言守的东西。
+              */}
+            {genericAnswer.data?.total !== undefined && (
+              <p className={s.end} data-readout="total">
+                <span className={s.moreText}>
+                  {t('search.totalCount', { total: genericAnswer.data.total })}
+                </span>
+              </p>
+            )}
+            {(genericAnswer.data?.relaxed ?? 0) > 0 && (
+              <p className={s.end} data-readout="relaxed">
+                <span className={s.moreText}>{t('search.relaxed')}</span>
+              </p>
+            )}
+            {indexReadout !== undefined && indexReadout.pending > 0 && (
+              <p className={s.end} data-readout="index-pending">
+                <span className={s.moreText}>
+                  {t('search.indexPending', { pending: indexReadout.pending })}
+                </span>
+              </p>
+            )}
+            {indexReadout?.readerHost !== undefined && (
+              <p className={s.end} data-readout="index-reader">
+                <span className={s.moreText}>
+                  {t('search.indexReader', { host: indexReadout.readerHost })}
+                </span>
               </p>
             )}
           </div>

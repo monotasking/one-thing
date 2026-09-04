@@ -29,10 +29,11 @@
  * actionId、聚焦),在 A1-a 的 `searchWindowRouter` 上;server 那侧的
  * `POST /api/search/actions` 也因此留着。`SEARCH_ACTION` 是推送,同理不在。
  */
-import type { CapabilityManifest } from '@onething/core/search'
+import type { CapabilityManifest, PreviewPayload } from '@onething/core/search'
 import {
   getOnethingSearchServiceSafe,
   type OnethingSearchService,
+  type SearchPreviewItem,
   type SearchServiceRequest,
 } from '@onething/runtime/search'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
@@ -43,6 +44,7 @@ import type {
   SearchCapabilityManifestDto,
   SearchInvokeRequest,
   SearchInvokeResponse,
+  SearchPreviewPayload,
   SearchPreviewRequest,
   SearchPreviewResponse,
   SearchRequest,
@@ -77,8 +79,11 @@ function runtimeContext(context: RpcDispatchContext) {
  *    形一接上真件就该消失,不然它会变成第二张写死的清单。
  *  - `query` —— 走 `SearchService`(注册表 + 流水线)。S2 的判据是**行为零变化**:
  *    `search:parity-A` 对每一类 + `all` 拿真库跑 200 条查询,新旧 `results` 逐字节同。
- *  - `preview` / `invoke` —— 仍然结构化地说「S4 才有」。能力接口上那两格
- *    (`SearchCapability.preview` / `.invoke`)S2 一个实现都还没有。
+ *  - `preview` / `invoke` —— **S4a 起是真件**,走 `SearchService.preview / .invoke`。
+ *    四个内置能力实现了 `preview`(messages / daily / files 是 lazy,chats 是 inline
+ *    并随候选带在 `SearchResult.preview` 上);`invoke` 接通了但**本批没有任何能力
+ *    声明动作**,所以它恒答 `no such action` —— 接通的理由是动作的落点从此在能力
+ *    自己身上,加一个动作不用改这里,也不用改壳。
  *  - `status` —— `service.status()`。**S3b 起是真读数**:`mode` 由索引 Worker 的
  *    宿主答(连崩两次 → `'error'`,这台机器上根本没起索引也是 `'error'`),
  *    `pending` 是队列里还欠着的钥匙数。`'reader'` 等 §5.6,`vector` 等 §15。
@@ -90,9 +95,6 @@ function runtimeContext(context: RpcDispatchContext) {
  * `server/search-providers.ts` 的单槽端口(server 运行时在自己的闭包里按 owner
  * 装一份服务),端口不在场时**结构化拒绝**,不偷偷降级去查桌面那份。
  */
-
-/** S4 之前 `preview` / `invoke` 的那一句;两条路由同一份措辞。 */
-const SEARCH_NOT_IMPLEMENTED_UNTIL_S4 = 'not implemented until S4'
 
 /** 这台进程装配过 backend 就有;没有 = 调用方问错了地方,结构化拒绝而不是空结果。 */
 export const SEARCH_SERVICE_MISSING_ERROR = 'Search is not assembled on this host'
@@ -128,6 +130,37 @@ function manifestDto(manifest: CapabilityManifest): SearchCapabilityManifestDto 
   }
 }
 
+/**
+ * core 的 `PreviewPayload` → 线上形(与 `manifestDto` 同一条判例:两份同形不同命,
+ * 由这里一个纯函数投影)。
+ *
+ * `payload` 原样过 —— 它是**开放**的,契约层与这里都不解释它。要投影的只有
+ * `actions` 那一格,因为两份的动作描述**真的不同形**:core 那份是
+ * `{ id, kind, label?, danger?, payload? }`(`kind` 是「这是开还是拷还是续搜」,
+ * `payload` 是续搜的那个 SearchScope),契约那份是 `{ id, labelKey, icon?, danger? }`
+ * (壳要的是「拿什么键去查字典、画哪个图标」)。
+ *
+ * **留账(S4b 要接的口)**:`kind` 与 `payload` 这一趟**过不去** —— 契约上没有那两格。
+ * 今天不可观测(本批没有任何能力声明动作,`actions` 恒缺席),但真要做「结果上的
+ * 动作」时,契约得先补这两格,否则壳收到一个动作却不知道按下去该干什么。
+ * 这里不偷偷把 `kind` 塞进 `id` 里凑合。
+ */
+function previewDto(preview: PreviewPayload): SearchPreviewPayload {
+  const actions = preview.actions?.map(action => ({
+    id: action.id,
+    // core 那份的 `label` 是**成品文案**(能力自己写的字);契约那格叫 `labelKey`
+    // 是因为壳要查字典。缺席时退到 id —— 画一个 id 比画一个空按钮诚实。
+    labelKey: action.label ?? action.id,
+    ...(action.danger === undefined ? {} : { danger: action.danger }),
+  }))
+  return {
+    kind: preview.kind,
+    payload: preview.payload,
+    ...(preview.title === undefined ? {} : { title: preview.title }),
+    ...(actions === undefined ? {} : { actions }),
+  }
+}
+
 export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
   async query(request: SearchRequest, context = DESKTOP_RPC_CONTEXT): Promise<SearchResponse> {
     if (!isHostLocallyTrusted()) {
@@ -151,14 +184,50 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
     }
   },
 
+  /**
+   * 选中一条(或几条)时的富预览(§4.5)。S4a 起是真件。
+   *
+   * 这个 handler 的全部工作是**翻译 + 兜错**:请求里的 `items` 与服务层的
+   * `SearchPreviewItem` 同形(两份同形不同命,与 manifest 那两份是同一条判例),
+   * 基数原样交给服务层判。这里**不认识任何一个 `kind`** —— 载荷是什么形状由能力说,
+   * 壳按 `kind` 从预览渲染注册表取组件。
+   *
+   * 算不出的那次**说原话**(§4.5 ⑤:「error(原话),列表不受影响」)。所以这里
+   * 捞的是 message 而不是换一句通用的「预览失败」:用户要能看出是「账本里没这条了」
+   * 还是「读不到那个文件」。
+   *
+   * 本机可信那条分叉这里**没有** —— 与 `capabilities` / `status` 一样,`preview`
+   * 问的是这台进程装配的那份服务。不可信那一支(独立 server)今天没有服务可问,
+   * `requireSearchService()` 会结构化拒绝;给它接上是 server 端口的事(同 `query`),
+   * 不是在这里偷偷去查桌面那一份。
+   */
   async preview(request: SearchPreviewRequest): Promise<SearchPreviewResponse> {
-    void request
-    return { success: false, error: SEARCH_NOT_IMPLEMENTED_UNTIL_S4 }
+    try {
+      const preview = await requireSearchService().preview(
+        request.items as readonly SearchPreviewItem[],
+        request.mode,
+      )
+      return { success: true, preview: previewDto(preview) }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
   },
 
+  /**
+   * 结果上的后端动作(§8)。S4a **接通**,但本批没有任何一个内置能力声明动作 ——
+   * 所以今天它恒答 `no such action`,而那句话来自服务层的常量,不是这里编的。
+   */
   async invoke(request: SearchInvokeRequest): Promise<SearchInvokeResponse> {
-    void request
-    return { success: false, error: SEARCH_NOT_IMPLEMENTED_UNTIL_S4 }
+    try {
+      await requireSearchService().invoke(
+        request.capability,
+        request.actionId,
+        request.items as readonly SearchPreviewItem[],
+      )
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: (error as Error).message }
+    }
   },
 
   async status(): Promise<SearchStatusResponse> {

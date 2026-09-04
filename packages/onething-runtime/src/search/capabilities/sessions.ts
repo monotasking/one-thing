@@ -34,15 +34,17 @@
 
 import {
   indexedCapability,
+  type Candidate,
   type CapabilityManifest,
   type PageRequest,
+  type PreviewPayload,
   type SearchCapability,
   type SearchContext,
   type SearchQuery,
 } from '@onething/core/search'
 import { createSqliteLexicalRetriever } from '../index/service.js'
 import { createOnethingSearchRuntimeAdapters } from '../providers.js'
-import type { OnethingSearchProvidersAdapters } from '../providers.js'
+import type { OnethingSearchProvidersAdapters, OnethingSearchSessionMeta } from '../providers.js'
 import { normalizeOnethingSearchQuery } from '../search-runtime.js'
 import {
   createSessionShellLookup,
@@ -52,6 +54,13 @@ import {
 } from './indexed.js'
 import { legacyScanCapability } from './legacy.js'
 import type { LegacyBackedCandidate, SearchServiceResult } from './legacy.js'
+import {
+  PreviewUnavailableError,
+  firstCandidate,
+  requireStringField,
+  targetPayloadOf,
+  type SessionOverviewPreview,
+} from './preview.js'
 
 /** 这一类的目标形。壳按 `kind` 从目标渲染注册表取组件(§4.1)。 */
 export interface ChatTarget {
@@ -77,11 +86,37 @@ export const chatsSearchManifest: CapabilityManifest = {
   order: 1,
   orderWhenIntent: { actions: 3 },
   visibility: () => ({}),
+  // **inline**(§4.5 ①):概览的四格全部来自**已经在手的那张会话表**
+  // (`getSessionsList()`,一次搜索本来就要读它去补 subtitle)—— 一次 map,不读账本、
+  // 不发请求。这么便宜的东西选中再取一次是白跑一趟网络,所以随候选带。
+  preview: { mode: 'inline' },
 }
 
 /** 空词 = 「最近几间会话」那一形(旧路的 `normalizeQuery(query) === ''`)。 */
 function asksForRecentSessions(query: SearchQuery): boolean {
   return normalizeOnethingSearchQuery(query.raw).length === 0
+}
+
+/**
+ * 一间会话 → `session-overview` 载荷。
+ *
+ * `messageCount` 这一格从**会话列表元数据**上读(`SessionMeta.messageCount`,会话
+ * 列表投影本来就维护它)。会话表上没有这一格时给 `0` 而不是去数账本:数一遍要把
+ * 那间会话的 `events.jsonl` 折一遍,而这是 inline 路 —— 一次 `all` 档六条候选就是
+ * 六次折账本,预览再便宜也不能便宜到这个价钱上。
+ */
+function sessionOverviewOf(session: OnethingSearchSessionMeta, title: string): SessionOverviewPreview {
+  return {
+    sessionId: session.id,
+    title,
+    messageCount: session.messageCount ?? 0,
+    updatedAt: session.updatedAt,
+    preview: session.previewText ?? '',
+  }
+}
+
+function sessionOverviewPreview(session: OnethingSearchSessionMeta, title: string): PreviewPayload {
+  return { kind: 'session-overview', payload: sessionOverviewOf(session, title), title }
 }
 
 export function createChatsSearchCapability(
@@ -98,6 +133,12 @@ export function createChatsSearchCapability(
     run: (raw, limit) => createOnethingSearchRuntimeAdapters(adapters).searchChats(raw, limit),
     supports: asksForRecentSessions,
     target: result => ({ kind: 'chat', payload: { sessionId: result.sessionId ?? '' } } satisfies ChatTarget),
+    // 空词那一路也带内联预览:自述说的是「这个能力的候选带 inline 预览」,
+    // 不是「有词的时候才带」—— 两条路一句话,否则壳会看见半张表。
+    preview: result => {
+      const session = sessionOf(result.sessionId ?? '')
+      return session === undefined ? undefined : sessionOverviewPreview(session, result.title)
+    },
   })
 
   const indexed = indexedCapability({
@@ -134,10 +175,33 @@ export function createChatsSearchCapability(
           facets: doc.facets,
           legacy,
         }
-        return candidate
+        // 索引里没有这间会话的元数据(刚删掉、或索引比会话表新一步)时**不带**
+        // 预览这一格 —— 候选照出,只是没有概览可画;吞掉整条结果才是错的。
+        return session === undefined
+          ? candidate
+          : { ...candidate, preview: sessionOverviewPreview(session, legacy.title) }
       },
     })],
   })
+
+  /**
+   * `search.preview` 路由问到这一类时的答复。
+   *
+   * inline 的能力照理不会被 lazy 地问一次(壳读自述就知道预览已经在候选身上),
+   * 但**基数**这件事只有请求知道:`compare` / `batch` 会把两条、N 条候选交上来,
+   * 服务层要能对同一个能力各要一份。所以这一格照实现,判据与 inline 那两处
+   * 逐字同源(同一个 `sessionOverviewPreview`),不是第二套投影。
+   */
+  const preview = async (candidates: Candidate[]): Promise<PreviewPayload> => {
+    const candidate = firstCandidate(candidates)
+    const payload = targetPayloadOf(candidate, 'chat')
+    const sessionId = requireStringField(payload, 'sessionId', '这条会话命中')
+    const session = sessionOf(sessionId)
+    if (session === undefined) {
+      throw new PreviewUnavailableError(`会话表里已经没有 ${sessionId} 了`)
+    }
+    return sessionOverviewPreview(session, candidate.title)
+  }
 
   return {
     manifest: chatsSearchManifest,
@@ -145,5 +209,6 @@ export function createChatsSearchCapability(
     supports: (query: SearchQuery) => asksForRecentSessions(query) || indexed.supports(query),
     search: (query: SearchQuery, page: PageRequest, ctx: SearchContext) =>
       (asksForRecentSessions(query) ? recent : indexed).search(query, page, ctx),
+    preview,
   }
 }

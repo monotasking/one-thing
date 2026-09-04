@@ -31,10 +31,12 @@ import {
   compose,
   createCapabilityRegistry,
   singleCapabilityBudgetPolicy,
+  type Candidate,
   type CapabilityManifest,
   type CapabilityRegistry,
   type FacetFilter,
   type GroupResult,
+  type PreviewPayload,
   type RelaxLevel,
   type SearchCapability,
   type SearchContext,
@@ -91,6 +93,43 @@ export interface SearchIndexStatus {
   owner?: { host: string; pid: number }
   pending: number
   vector?: 'off' | 'downloading' | 'embedding' | 'ready'
+}
+
+/**
+ * 预览 / 动作请求里指一条结果(§4.5 ③;契约层 `SearchItemRef` 的同形件)。
+ *
+ * **`target` 是可选的**,但缺席时预览基本画不出来 —— 目标载荷才是「去哪儿取内容」
+ * 的那一格。这里不替调用方补:壳手上一定有它(结果就是从 `search.query` 回来的),
+ * 补一个空的只会让错误从「你没给 target」变成「那条消息不在账本里」。
+ */
+export interface SearchPreviewItem {
+  capability: string
+  id: string
+  target?: { kind: string; payload: unknown }
+}
+
+/** 基数是请求的一部分(§4.5 ③)。 */
+export type SearchPreviewMode = 'single' | 'compare' | 'batch'
+
+/** 能力没有这个动作时的那句话;`invoke` 路由把它照抄给调用方。 */
+export const NO_SUCH_ACTION = 'no such action'
+
+/**
+ * 一条 item → 一枚**只够用来定位**的候选。
+ *
+ * 预览与动作要的只有 `capability` / `id` / `target` 三格;`title` / `score` 这些是
+ * 搜索那一趟的产物,请求里没有也不该由这一层去猜(补一个假 title 会顺着
+ * `PreviewPayload.title` 显示到屏幕上)。所以这里给空串与 0 —— 空得**显眼**,
+ * 而不是编一个像真的。
+ */
+function itemCandidate(item: SearchPreviewItem): Candidate {
+  return {
+    capability: item.capability,
+    id: item.id,
+    title: '',
+    score: 0,
+    target: item.target ?? { kind: '', payload: undefined },
+  }
 }
 
 export interface SearchServiceOptions {
@@ -218,6 +257,100 @@ export class OnethingSearchService {
   private resolveCategory(requested: string | undefined): string {
     if (requested === undefined || requested === ALL_CAPABILITIES) return ALL_CAPABILITIES
     return this.registry.has(requested) ? requested : ALL_CAPABILITIES
+  }
+
+  /**
+   * §8 的 `preview` 路由(S4a 起是真件)。
+   *
+   * **服务这一层不认识任何一种预览的形** —— 它只做三件事:把 item 翻回候选、
+   * 问能力、按基数(§4.5 ③)组装。三种基数逐条:
+   *
+   *  | mode | 谁答 | 组装 |
+   *  | --- | --- | --- |
+   *  | `single`(缺省) | 该能力 `preview(候选)` | 原样 |
+   *  | `compare` | 同 kind 且能力有 `compare?` → 它;否则两条各 `preview` | `composite{layout:'side-by-side'}` |
+   *  | `batch` | 各条 `preview`(能失败,失败的那条不出) | `composite{layout:'grid'}` + 一行汇总 |
+   *
+   * `compare` 的「同 kind」判据在这一层,不在能力里 —— 能力不知道「多选」这回事
+   * (§4.5 ③末句),它只被问「给我这一条(或这两条)的预览」。
+   *
+   * 能力没有 `preview` = **结构化拒绝**,不是空预览:自述里没说有预览的能力被问到,
+   * 那是调用方问错了地方,不是「这一条恰好没有内容」。
+   */
+  async preview(items: readonly SearchPreviewItem[], mode: SearchPreviewMode = 'single'): Promise<PreviewPayload> {
+    if (items.length === 0) throw new Error('没有指定要预览哪一条')
+    if (mode === 'compare') return await this.comparePreview(items)
+    if (mode === 'batch') return await this.batchPreview(items)
+    return await this.previewOne(items[0])
+  }
+
+  /**
+   * §8 的 `invoke` 路由(S4a 接通)。
+   *
+   * **本批没有任何一个能力声明动作**,所以这条路今天恒走「没有这个动作」那一支 ——
+   * 接通它的理由与 S0 立形同源:动作的落点从此在服务层,加一个动作是能力自己多写
+   * 一格 `invoke`,不是壳里多一条 if。
+   *
+   * 一次 `invoke` 只问**一个**能力(`SearchInvokeRequest.capability`):动作是能力
+   * 自己的词汇表,跨能力的「同一个动作」并不存在。
+   */
+  async invoke(
+    capabilityId: string,
+    actionId: string,
+    items: readonly SearchPreviewItem[],
+    context: Partial<SearchContext> = {},
+  ): Promise<void> {
+    const capability = this.registry.get(capabilityId)
+    if (capability === undefined) throw new Error(`no such capability: ${capabilityId}`)
+    if (capability.invoke === undefined) throw new Error(NO_SUCH_ACTION)
+    await capability.invoke(actionId, items.map(itemCandidate), createSearchContext(context))
+  }
+
+  /** 一条 item → 它那个能力的预览。 */
+  private async previewOne(item: SearchPreviewItem): Promise<PreviewPayload> {
+    const capability = this.registry.get(item.capability)
+    if (capability === undefined) throw new Error(`no such capability: ${item.capability}`)
+    if (capability.preview === undefined) {
+      throw new Error(`capability ${item.capability} has no preview`)
+    }
+    return await capability.preview([itemCandidate(item)], createSearchContext())
+  }
+
+  private async comparePreview(items: readonly SearchPreviewItem[]): Promise<PreviewPayload> {
+    const [a, b] = items
+    if (b === undefined) return await this.previewOne(a)
+    // 能力自己给的 `compare` 只在**同一个能力、同一种 kind**时才问得着:diff 一条
+    // 消息和一个文件没有意义,而「可比」的判据(§4.5 ③)是壳与这一层的事。
+    if (a.capability === b.capability && a.target?.kind === b.target?.kind) {
+      const capability = this.registry.get(a.capability)
+      if (capability?.compare !== undefined) {
+        return await capability.compare(itemCandidate(a), itemCandidate(b), createSearchContext())
+      }
+    }
+    const both = await Promise.all([this.previewOne(a), this.previewOne(b)])
+    return { kind: 'composite', payload: { layout: 'side-by-side', items: both } }
+  }
+
+  /**
+   * N > 2 条:各自预览 + 一段汇总(§4.5 ③ batch 那一行)。
+   *
+   * 算不出的那几条**不让整批塌掉** —— batch 的语义是「这一堆大概是些什么」,
+   * 一条读不到文件不该把另外九条也吞了。汇总里如实报「几条没画出来」。
+   */
+  private async batchPreview(items: readonly SearchPreviewItem[]): Promise<PreviewPayload> {
+    const settled = await Promise.all(
+      items.map(item => this.previewOne(item).then(payload => payload, () => undefined)),
+    )
+    const previews = settled.filter((payload): payload is PreviewPayload => payload !== undefined)
+    const kinds = [...new Set(previews.map(payload => payload.kind))]
+    return {
+      kind: 'composite',
+      payload: {
+        layout: 'grid',
+        items: previews,
+        summary: { total: items.length, shown: previews.length, kinds },
+      },
+    }
   }
 
   private singleResponse(groups: readonly GroupResult[]): SearchServiceResponse {

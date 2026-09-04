@@ -158,11 +158,10 @@ configureFilesPort({
  * 要验取数或失败态的用例自己 `configureSearchPort` 换一个。
  */
 import { configureSearchPort } from '../data/search-port'
+import { fakeSearchPort } from './fake-search-port'
 
-configureSearchPort({
-  ready: async () => undefined,
-  queryMessages: async () => ({ success: true, results: [] }),
-})
+// 全形的默认件(S4a 起端口有四条口);用例只覆盖它要的那一格。
+configureSearchPort(fakeSearchPort())
 
 import { configureModelsPort } from '../data/models-port'
 

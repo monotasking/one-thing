@@ -290,14 +290,31 @@ export const en: Record<MessageKey, string> = {
   'search.label': 'Search',
   'search.scopeLabel': 'Search scope',
   'search.scopeAll': 'All',
-  'search.scopeSessions': 'Sessions',
-  'search.scopeFiles': 'Files',
+  /* ── Capability label keys (S4a) ──────────────────────────────────
+   * A tab's name is named by the manifest that `search.capabilities` returns
+   * (`manifest.labelKey`); the shell only looks that key up. So adding a new
+   * kind of searchable thing = two lines here (zh/en) and nothing in the panel.
+   * `search.scopeSessions` / `.scopeFiles` retired with the old three scopes. */
+  'search.capability.chats': 'Sessions',
+  'search.capability.messages': 'Messages',
+  'search.capability.files': 'Files',
+  'search.capability.daily': 'Notes',
+  'search.capability.prompts': 'Prompts',
+  'search.capability.actions': 'Commands',
   'search.resultsLabel': 'Results',
   'search.noResults': 'No results',
   /* Badge text rides the same fixed-width mono chip as file-type codes (TS/MD),
    * so English uses code-style caps that fit the chip; zh uses 会话/消息. */
   'search.badgeSession': 'CHAT',
   'search.badgeMessage': 'MSG',
+  'search.badgeDaily': 'NOTE',
+  'search.badgePrompt': 'PROMPT',
+  'search.badgeAction': 'CMD',
+  /* Two factual tags (§9). Archived sessions ARE searchable (the bug S3b fixed),
+   * so a row from one has to say so; the cross-space tag only draws under the
+   * "all spaces" filter — that filter chip is S4b, so today it never appears. */
+  'search.badgeArchived': 'Archived',
+  'search.badgeOtherSpace': 'Other space',
   'search.openedFile': 'Opened {file}',
   /* D5: the file side now speaks to a real producer. Both lines state a fact
    * about that producer, not a temporary gap — there is no "recently opened
@@ -328,6 +345,14 @@ export const en: Record<MessageKey, string> = {
   /* Readout while the file side is still in flight: "showing", not "all" — the
    * latter is a claim about the total that nobody may make yet (see moreState). */
   'search.shownCount': 'Showing {shown}',
+  /* ── Bottom status lines (§9). Four readouts; none of them merge. ── */
+  'search.totalCount': '{total} in total',
+  'search.relaxed': 'Relaxed: matching any word',
+  'search.indexPending': 'Index catching up ({pending} left)',
+  'search.indexReader': 'Maintained by {host}',
+  'search.viewAll': 'View all',
+  'search.actionUnavailable': "This action can't be run here: {action}",
+  'search.targetUnavailable': "This kind of result can't be opened yet: {kind}",
 
   /* ── chat stream (D3: body text / tool names / error text are DATA) ─── */
   'chat.noSession': 'No session selected yet',

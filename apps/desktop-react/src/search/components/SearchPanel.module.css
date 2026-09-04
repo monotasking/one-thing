@@ -211,3 +211,55 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* ── 组头的**皮肤**(全部档,§9 第四条)──────────────────────────────────
+ * 组头这件东西本身是 `ui/GroupHead`(视觉词汇立件,09-01 批 2a) —— 名字、
+ * 右侧读数槽、caret、三类状态全在那件里,这里**只给落点自己的皮肤**:
+ * 让它认领这张列表的 subgrid,以及把两组隔开的那条上线。库件的文件头写明
+ * 「sticky、底色、边线归消费方给」,这一段就是那句话的兑现。
+ *
+ * 认领 subgrid 的理由与 `.more` / `.end` 逐字相同:名字要从**第二列**起笔,
+ * 与上面每一行的正文同一条竖线(徽列换成内容自适应之后,对齐只能靠 subgrid)。 */
+.groupBand {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: var(--search-mark) solid transparent;
+}
+
+/* 第一组的组头不画上线 —— 列表顶上不该先来一条横杠。 */
+.row + .groupBand {
+  border-top: var(--bw-1) solid var(--line-2);
+}
+
+/* 「查看全部」:行内微型文字动作(判例:③ 类,走 ButtonBase 保本地皮肤,
+ * 不换成 28px 描边的 ui/Button —— 那是改版不是等价迁移)。 */
+.groupAll {
+  justify-self: end;
+  grid-column: -2 / -1;
+  color: var(--text-3);
+  font-size: var(--fs-meta);
+  transition: color var(--dur) var(--ease);
+}
+
+.groupAll:hover {
+  color: var(--text-1);
+}
+
+/* ── 事实徽(归档 / 跨空间)────────────────────────────────────────────
+ * 与行首那颗空心徽是**两种东西**:那一颗说「这是什么」(每行必有),这一颗说
+ * 「关于这一行的一件事实」(成立才画)。所以它不占网格轨道 —— 跟在出处后面,
+ * 出处长了它先被挤,而不是把出处挤没。
+ *
+ * 状态色只上字不换底(token 纪律):归档与跨空间都不是错误,不该让整行变色。 */
+.tag {
+  justify-self: end;
+  padding: 0 var(--sp-1);
+  border: var(--bw-1) solid var(--line-2);
+  border-radius: var(--r-1);
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}

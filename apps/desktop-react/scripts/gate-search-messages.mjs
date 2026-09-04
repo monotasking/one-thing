@@ -57,6 +57,37 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
  */
 const NEEDLE = 'zorbulax'
 
+/**
+ * 六个能力自述的 `labelKey` → 中文字面(S4a)。
+ *
+ * 门里**不该另存一份字典**,但它要判「tab 条上写的是不是自述那个键翻出来的字」,
+ * 而门跑的是打包产物、拿不到 `src/i18n/zh.ts`。所以这里只抄**这一族键**,并且
+ * 判的是「后端说的 labelKey → 这张表 → 屏幕上那个字」这条链对不对 ——
+ * 后端换一个 labelKey 而这里没跟上,门会红在「tab 条逐格 = 自述表」那一条上,
+ * 那正是它该红的地方。
+ */
+const LABELS = {
+  'search.capability.chats': ['会话', 'Sessions'],
+  'search.capability.messages': ['消息', 'Messages'],
+  'search.capability.files': ['文件', 'Files'],
+  'search.capability.daily': ['笔记', 'Notes'],
+  'search.capability.prompts': ['提示词', 'Prompts'],
+  'search.capability.actions': ['命令', 'Commands'],
+}
+
+/** `all` 那一格的两种写法(它在壳自己的字典里,不在任何一份自述里)。 */
+const ALL_LABELS = ['所有', 'All']
+
+/**
+ * 屏幕上那个字**认不认**这个 labelKey。
+ *
+ * 门跑起来是哪种语言由这台机器的设置决定(实测是 en),所以判据不能钉死一种 ——
+ * 钉死的话这道门在中文机器上会红,而红的原因与它要守的东西无关。
+ */
+function labelMatches(labelKey, shown) {
+  return (LABELS[labelKey] ?? [labelKey]).includes(shown)
+}
+
 /** 两条会话的名字。都不含 NEEDLE —— 那正是反面对照要的。 */
 const SESSION_A = '正文门 · 没有那个词的会话'
 const SESSION_B = '正文门 · 埋了词的会话'
@@ -221,25 +252,58 @@ async function typeQuery(page, value) {
   }, value)
 }
 
-/** 屏幕上那几行:徽 / 原文 / 出处 三列按位置取,外加这一行高亮起来的那几段。 */
+/**
+ * 屏幕上那几行:徽 / 原文 / 出处 三列按位置取,外加这一行高亮起来的那几段。
+ *
+ * S4a 起多读四样(§10 S4 行那七条断言要的读数):这一行的 `target.kind` 与
+ * 产它的能力(两个 data-* 属性)、行上那几颗事实徽、组头、以及底部那几条读数。
+ * 全部按**属性**读而不是按文案读 —— 文案会随语言变,属性是契约。
+ */
 function readRows(page) {
   return page.evaluate(() => {
     const panel = document.querySelector('[data-testid="search-panel"]')
-    if (!panel) return { panel: false, rows: [] }
+    if (!panel) return { panel: false, rows: [], tabs: [], groups: [], readouts: {} }
     const rows = [...panel.querySelectorAll('[role="option"]')].filter(
       el => el.getAttribute('data-row') !== 'more',
     )
+    const readouts = {}
+    for (const el of panel.querySelectorAll('[data-readout]')) {
+      readouts[el.getAttribute('data-readout')] = (el.textContent ?? '').trim()
+    }
     return {
       panel: true,
+      // tab 条:文案 + 选中态。「tab 随注册表」那一条读它。
+      tabs: [...panel.querySelectorAll('[role="radio"]')].map(el => ({
+        label: (el.textContent ?? '').trim(),
+        on: el.getAttribute('aria-checked') === 'true',
+      })),
+      // 组头:全部档才有,按能力 id 认(不按名字 —— 名字会随语言变)。
+      groups: [...panel.querySelectorAll('[data-group]')].map(el => el.getAttribute('data-group')),
+      readouts,
       rows: rows.map((row, index) => ({
         index,
         badge: (row.children[0]?.textContent ?? '').trim(),
         text: (row.children[1]?.textContent ?? '').trim(),
         origin: (row.children[2]?.textContent ?? '').trim(),
         marks: [...row.querySelectorAll('mark')].map(m => m.textContent ?? ''),
+        kind: row.getAttribute('data-target-kind'),
+        capability: row.getAttribute('data-capability'),
+        tags: [...row.querySelectorAll('[data-tag]')].map(el => el.getAttribute('data-tag')),
       })),
     }
   })
+}
+
+/** 换一档:点那一格 radio(不数 Tab —— tab 条现在是从自述算出来的)。 */
+async function selectTab(page, label) {
+  const ok = await page.evaluate(text => {
+    const el = [...document.querySelectorAll('[data-testid="search-panel"] [role="radio"]')]
+      .find(node => (node.textContent ?? '').trim() === text)
+    if (!el) return false
+    el.click()
+    return true
+  }, label)
+  if (!ok) throw new Error(`tab 条上没有「${label}」这一格`)
 }
 
 async function main() {
@@ -342,7 +406,19 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **窗子离屏起**(与 gate-focus / gate-a11y / gate-perf 同一手,09-04 判例:
+         * 真机门不许抢用户的前台)。不 `show()`、不进 Dock —— 判据落在
+         * `electron/main.ts` 的 `ONETHING_GATE_HEADLESS` 那一段上。
+         * 这道门从头到尾只用页面内 DOM 派发,不需要真焦点,所以连
+         * `Emulation.setFocusEmulationEnabled` 都不必补。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+      },
     })
     const page = await app.firstWindow()
     await waitFor('渲染层完成一次 RPC 往返', async () => {
@@ -434,10 +510,277 @@ async function main() {
       page.evaluate(() => !document.querySelector('[data-testid="search-panel"]')),
     )
 
+    /* ═══════════════════════════════════════════════════════════════════
+     * [7/7] 检索重建 S4a 的七条(设计 §10 S4 行 / §9)
+     *
+     * 每一条都标了它**靠什么证**:真数据、还是注入的假读数。第七条(读者模式)
+     * 只能注入 —— 索引持有权(§5.6)拍点庚 09-04 裁「先不做」,真机上 `mode`
+     * 恒 `owner`,所以那一行在真数据下**永远画不出来**。注入证的是「画它的逻辑在」。
+     * ═══════════════════════════════════════════════════════════════════ */
+    console.log('\n[7/7] S4a:tab 随注册表 / 分组 / total / 放宽 / 两颗徽 / 读者模式行')
+    await clickSelector(page, '[data-testid="dock-tile-search"]')
+    await waitFor('检索面板重新开出来', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
+    )
+
+    /* ── ① tab 随注册表(真数据)──────────────────────────────────────
+     * tab 条上那几格 = `search.capabilities` 回来的六份自述 + 固定第一的 `all`。
+     * 判据不是「有六格」而是**逐格对上后端此刻真的注册着的那几个** —— 所以先问
+     * 后端要一份,再拿它算出期望的次序(`all` 第一,其余按 order)。
+     * 反证:把 `tabsOf` 换成写死的表,后端注销一个能力时这一条当场红。
+     */
+    const catalog = await rpc(record, 'search', 'capabilities', {})
+    const manifests = catalog.capabilities ?? []
+    assert(manifests.length > 0, `后端注册着 ${manifests.length} 个能力`)
+    const expectedKeys = [...manifests].sort((a, b) => a.order - b.order).map(m => m.labelKey)
+    const withTabs = await readRows(page)
+    const shownLabels = withTabs.tabs.map(t => t.label)
+    console.log('  · tab 条:', JSON.stringify(shownLabels))
+    console.log('  · 自述按 order:', JSON.stringify(expectedKeys))
+    assert(
+      shownLabels.length === expectedKeys.length + 1,
+      `tab 条一共 ${shownLabels.length} 格 = 自述 ${expectedKeys.length} 个 + 固定第一的 all`,
+    )
+    assert(ALL_LABELS.includes(shownLabels[0]), `第一格是「不挑」那一档:「${shownLabels[0]}」`)
+    assert(
+      expectedKeys.every((key, i) => labelMatches(key, shownLabels[i + 1])),
+      `其余逐格 = 自述的 labelKey 按 order 翻出来的字:${JSON.stringify(expectedKeys)} → ${JSON.stringify(shownLabels.slice(1))}`,
+    )
+    assert(withTabs.tabs[0].on, '开出来停在 `all` 那一档')
+
+    /* ── ② 分组(真数据)────────────────────────────────────────────
+     * 全部档按能力归堆,每一组的第一行前面一条组头。判据是**组头的 data-group
+     * 逐字等于能力 id**,而且组内的行确实都是那个能力产的。
+     */
+    await typeQuery(page, NEEDLE)
+    const grouped = await waitFor('全部档画出分组', async () => {
+      const state = await readRows(page)
+      return state.groups.length > 0 && state.rows.some(r => r.text.includes(NEEDLE))
+        ? state
+        : undefined
+    })
+    console.log('  · 组头:', JSON.stringify(grouped.groups))
+    assert(
+      grouped.groups.every(id => manifests.some(m => m.id === id)),
+      `每一条组头都是一个真能力:${JSON.stringify(grouped.groups)}`,
+    )
+    assert(
+      grouped.groups.length === new Set(grouped.groups).size,
+      '同一个能力只有一条组头 —— 归堆是稳定的,不是每行前面来一条',
+    )
+    // 目标渲染注册表真的在分发:每一行都带 `data-target-kind`,而且有渲染器认它。
+    assert(
+      grouped.rows.every(r => typeof r.kind === 'string' && r.kind.length > 0),
+      '每一行都报了自己的 target.kind —— 行是按 kind 从渲染注册表取的',
+    )
+    assert(
+      grouped.rows.every(r => r.badge.length > 0),
+      '每一行都画出了徽 —— 徽是那一类的渲染器答的,缺渲染器就是空徽',
+    )
+
+    /* ── ③ 归档徽(真数据)──────────────────────────────────────────
+     * S3b 之后**归档会话里的消息搜得到了**(索引照建它们的文档)。那是一次
+     * 行为变化,所以屏幕上必须能一眼看出这一行来自一间已归档的会话。
+     * 归档 B 那条会话,再搜同一个词 —— 那一行还在,而且多了一颗「已归档」徽。
+     */
+    await rpc(record, 'sessions', 'updateArchived', { sessionId: idB, isArchived: true })
+    /*
+     * 索引是**账本的投影**,归档改的是 `meta.json` —— 所以要等投影器把这间会话
+     * 重折一遍(检查点比 `metaRev`,S3 的判据)。先问后端要一次,拿到带
+     * `archived: true` 的那一份再去看屏幕:这样门红的时候能一眼分清是
+     * 「索引还没跟上」还是「壳没画」。
+     */
+    const archivedFromBackend = await waitFor('后端的命中上 archived 翻成 true', async () => {
+      const answer = await rpc(record, 'search', 'query', {
+        query: NEEDLE, category: 'messages', limit: 20,
+      })
+      const hit = (answer.results ?? []).find(r => r.messageId === replyB.id)
+      return hit?.facets?.archived === true ? hit : undefined
+    }, 20_000)
+    console.log('  · 后端那一条的 facets:', JSON.stringify(archivedFromBackend.facets))
+    assert(
+      archivedFromBackend.facets.archived === true,
+      '后端把 archived 这一格如实带回来了 —— 归档会话的消息**搜得到**(S3b 治好的病)',
+    )
+    /*
+     * **reload 一次再看**。理由是缓存的语义,不是不信任它:正文那一路是键控的
+     * 一格 query(键 = 词 + 这一页要多少条),刚才那一发是**归档之前**问到的 ——
+     * 同一个键再问一次是 `ensure` 的「问过就算了」,不会重发。清掉词再打一遍
+     * 也回到同一个键。让渲染层重开一次是这里最诚实的一手:它不去戳缓存的内部,
+     * 也不靠一个「换个词绕开键」的小聪明(那会让门在验一件别的事)。
+     */
+    await page.reload()
+    await waitFor('reload 之后渲染层完成一次 RPC 往返', async () => {
+      const value = await page.evaluate(() => window.__d0 ?? null)
+      return value && value.rpcOk ? value : undefined
+    })
+    await waitFor('检索瓦回到位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-search"]'))),
+    )
+    await clickSelector(page, '[data-testid="dock-tile-search"]')
+    await waitFor('检索面板重开', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
+    )
+    await typeQuery(page, NEEDLE)
+    const archived = await waitFor('归档之后那一行还在,并且带上了归档徽', async () => {
+      const state = await readRows(page)
+      const hit = state.rows.find(r => r.text.includes(NEEDLE))
+      return hit && hit.tags.includes('archived') ? hit : undefined
+    }, 15_000).catch(error => {
+      throw new Error(`${error.message}\n最后一屏:${JSON.stringify(shown.rows?.slice(0, 3))}`)
+    })
+    assert(archived.tags.includes('archived'), `归档会话的命中带「已归档」徽:${JSON.stringify(archived.tags)}`)
+
+    /* ── ④ 跨空间徽(**今天画不出来,这一条证的是它不该出现**)────────
+     * §9 的原话:空间徽**只在「全部空间」过滤下画**。那格过滤片是 S4b,今天
+     * 恒关,所以默认这一档里一颗都不该有 —— 画一颗恒不出现的徽等于骗自己,
+     * 而如果它此刻出现了,说明判据写反了(把「不同空间」画成了「所有行」)。
+     */
+    const spaceTags = archived.tags.filter(tag => tag === 'space')
+    assert(
+      spaceTags.length === 0,
+      '默认档下一颗空间徽都没有 —— 过滤片(S4b)开出来之前它本来就不该出现',
+    )
+
+    /* ── ⑤ total(真数据)────────────────────────────────────────────
+     * 后端给了真数才画。走一个**通用档**(壳没有自带产地的那几类,它们的结果
+     * 直接来自 `search.query`)—— 单类档的能力知道 total 就给。
+     */
+    /*
+     * **先问后端哪一档给得出 total**,再去屏幕上找那一行 —— 判据因此是
+     * 「后端说了多少,壳就画多少」,而不是「屏幕上恰好有一行数字」。
+     * 一档都给不出 total 时这一条**如实跳过并喊出来**(不是悄悄绿):
+     * 那说明今天没有一个走通用路的能力答得出全集大小,那是一条读数,不是一次通过。
+     */
+    const genericIds = manifests
+      .map(m => m.id)
+      .filter(id => !['chats', 'messages', 'files'].includes(id))
+    let genericTab
+    let backendTotal
+    for (const id of genericIds) {
+      const probe = await rpc(record, 'search', 'query', { query: 'a', category: id, limit: 20 })
+      console.log(`  · 后端 ${id} 档:total=${probe.total} relaxed=${probe.relaxed} 条数=${(probe.results ?? []).length}`)
+      if (typeof probe.total === 'number') {
+        genericTab = manifests.find(m => m.id === id)
+        backendTotal = probe.total
+        break
+      }
+    }
+    if (genericTab === undefined) {
+      genericTab = manifests.find(m => m.id === genericIds[0])
+      console.log('  ! 今天没有一个走通用路的能力答得出 total —— 那一行因此画不出来(如实记账)')
+    }
+    assert(Boolean(genericTab), `有一个走通用路的档可以试:${genericTab?.id}`)
+    // 点那一格 —— 名字按当前语言取(两种写法都认)。
+    const genericLabel = (await readRows(page)).tabs
+      .map(t => t.label)
+      .find(label => labelMatches(genericTab.labelKey, label))
+    assert(Boolean(genericLabel), `tab 条上找得到 ${genericTab.id} 那一格:「${genericLabel}」`)
+    await selectTab(page, genericLabel)
+    await typeQuery(page, 'a')
+    /*
+     * 等的是**答复落地**,不是「tab 变了」—— 换档是同步的,而这一档的结果要走
+     * 一次真查询(还带 220ms 的合并窗口)。等 tab 就等于在结果回来之前读屏,
+     * 那一读永远是空的,而断言会因此**红得没有信息量**(或者更糟:绿得没有意义)。
+     */
+    const generic = await waitFor('通用档的答复落地', async () => {
+      const state = await readRows(page)
+      const onGeneric = state.tabs.some(t => t.on && !ALL_LABELS.includes(t.label))
+      if (!onGeneric) return undefined
+      // 有行、或者有底部读数 —— 两者任一说明这一发已经回来了。
+      return state.rows.length > 0 || Object.keys(state.readouts).length > 0 ? state : undefined
+    }, 15_000)
+    console.log('  · 通用档的底部读数:', JSON.stringify(generic.readouts))
+    if (backendTotal !== undefined) {
+      // 后端说了全集有多大 → 屏幕上必须有那一行,而且写的是**那个数**。
+      assert(
+        generic.readouts.total !== undefined
+          && generic.readouts.total.includes(String(backendTotal)),
+        `后端说 total=${backendTotal},屏幕上就画了它:「${generic.readouts.total}」`,
+      )
+    } else {
+      /*
+       * 后端答不出 total → 那一行**不许画**。缺席 = 不知道,不是 0;
+       * 画一个 0 就是替能力下了一句它没下过的断言。这一条是真断言不是跳过:
+       * 把「不知道就画 0」写进壳里,它当场红。
+       */
+      assert(
+        generic.readouts.total === undefined,
+        `${genericTab.id} 这一档答不出 total,那一行就没画 —— 不知道就不说`,
+      )
+    }
+
+    /* ── ⑥ 放宽(真数据 or 结构)────────────────────────────────────
+     * `relaxed > 0` 才画。严格档就中了的查询上它本来就不该出现。
+     */
+    assert(
+      generic.readouts.relaxed === undefined || generic.readouts.relaxed.length > 0,
+      '「已放宽」那一行要么不画,要么画的是一句真话',
+    )
+
+    /* ── ⑦ 读者模式行(**注入的假 status**)──────────────────────────
+     * 真机上 `search.status.mode` 恒 `owner`(§5.6 拍点庚 09-04 裁「先不做」),
+     * 所以这一行在真数据下永远画不出来。这里把渲染层那格 status 换成 reader,
+     * 证「画它的逻辑在」—— 持有权落地那天壳一个字都不用改。
+     * 「索引更新中」那一行同一手一起证(pending 真机上通常已经追平)。
+     */
+    /*
+     * 注入走**页面加载前**那一手(`addInitScript`)+ 一次 reload,理由是链路:
+     * 面板挂载时 `ensureSearchCatalog()` 问一次状态,而 `ensure` 是**幂等**的 ——
+     * 问过就不会再问。所以只把 `window.fetch` 换掉再开一次面板是没用的:那一格
+     * 早就有答案了。reload 把渲染层的模块状态整个清掉,注入的答复才轮得到。
+     *
+     * 换掉的是 `search.status` **那一发**,别的 RPC 原样放行 —— 这道门后面还要
+     * 读屏,不能把整台 core 断掉。
+     */
+    await page.addInitScript(() => {
+      const real = window.fetch
+      window.fetch = async (input, init) => {
+        const body = typeof init?.body === 'string' ? init.body : ''
+        if (body.includes('"domain":"search"') && body.includes('"method":"status"')) {
+          return new Response(
+            JSON.stringify({
+              ok: true,
+              data: { mode: 'reader', pending: 7, vector: 'off', owner: { host: 'gate-host', pid: 1 } },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          )
+        }
+        return real(input, init)
+      }
+    })
+    await page.reload()
+    await waitFor('reload 之后渲染层又完成一次 RPC 往返', async () => {
+      const value = await page.evaluate(() => window.__d0 ?? null)
+      return value && value.rpcOk ? value : undefined
+    })
+    await waitFor('检索瓦回到位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-search"]'))),
+    )
+    await clickSelector(page, '[data-testid="dock-tile-search"]')
+    await waitFor('检索面板在注入之后开出来', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="search-panel"] input'))),
+    )
+    const readerState = await waitFor('读者模式那两行画出来', async () => {
+      const state = await readRows(page)
+      return state.readouts['index-reader'] !== undefined ? state : undefined
+    }, 8000)
+    console.log('  · 注入 reader 之后的底部读数:', JSON.stringify(readerState.readouts))
+    assert(
+      readerState.readouts['index-reader'].includes('gate-host'),
+      `「由 <host> 维护」画出来了:「${readerState.readouts['index-reader']}」`,
+    )
+    assert(
+      /7/.test(readerState.readouts['index-pending'] ?? ''),
+      `「索引更新中(剩 7)」画出来了:「${readerState.readouts['index-pending']}」`,
+    )
+
     await app.close()
     app = undefined
     console.log(
-      '\n[msg-search-gate] ok —— 助手回复里的词搜得到、徽与出处对、高亮来自后端、点了能落到那条消息',
+      '\n[msg-search-gate] ok —— 助手回复里的词搜得到、徽与出处对、高亮来自后端、点了能落到那条消息;'
+      + '\n                   S4a:tab 随注册表、全部档分组、每行按 target.kind 取渲染器、归档徽、'
+      + '空间徽按规矩不出现、total/放宽两行按事实画、读者模式行(注入证)',
     )
   } finally {
     // 收尸:自己起的每一个进程都在这里逐个杀掉,临时目录一并删干净。

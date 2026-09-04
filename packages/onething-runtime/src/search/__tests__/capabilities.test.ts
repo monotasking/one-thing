@@ -119,9 +119,13 @@ async function capabilityAnswer(capability: SearchCapability, query: string, lim
     capability: capability.manifest.id,
   }
   const page = await capability.search(parsed, { limit }, createSearchContext())
-  return page.items.map(searchResultOf).map(({ target, facets, ...rest }) => {
+  // `target` / `facets` / `preview` 是新路多出来的三格(S0 加前两格,S4a 加 `preview`)——
+  // parity 只守**旧形**,所以对账前一律剥掉。剥的是键而不是值:内联预览在与不在
+  // 都不该让「新旧结果逐字同」这条判据说话。
+  return page.items.map(searchResultOf).map(({ target, facets, preview, ...rest }) => {
     void target
     void facets
+    void preview
     return rest
   })
 }

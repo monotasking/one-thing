@@ -1,7 +1,10 @@
 import type { FileSearchEntry } from '@shared/ipc/files'
+import type { SearchResult } from '@shared/ipc/search'
 import { projectNameOf } from '../expose/projection'
 import { splitHighlight } from '../expose/transitions'
 import type { SessionChapter, SessionSummary } from '../expose/types'
+import { ALL_TAB } from './capabilities'
+import { CHATS_CAPABILITY, FILES_CAPABILITY, MESSAGES_CAPABILITY } from './sources'
 import type {
   MessageHit,
   SearchOrigin,
@@ -45,7 +48,7 @@ import type {
  * | 还搜不到 | 为什么 |
  * | --- | --- |
  * | 文件**内容**的那一行 | `files.list` 是按名字找文件,给不出行号与行文(见下面 D5 那一节) |
- * | 归档会话里的消息 | 后端 `searchMessages` 一句 `if (meta.isArchived) continue` —— 判据在那一侧,壳这边不去绕过它 |
+ * | ~~归档会话里的消息~~ | **S3b 起搜得到了**(索引照建归档会话的文档,那正是 S3b 治好的病)。壳这边按命中带回来的 `facets.archived` 画一颗「已归档」徽 —— 搜得到但要看得出来 |
  * | 别的工作区的消息 | 后端搜的是整台机器,而这块面画的是**当前空间**那一份;命中按会话表投影(见 `messageRows`) |
  * | 消息里的工具调用 / 思考 / 附件文本 | 后端只看消息的 `content` 那一格 |
  * | 正文命中的**总数** | 后端不下发 total,也没有游标(见下面「分页」一节) |
@@ -101,15 +104,19 @@ export interface SearchMaterial {
   timeOf: (session: SessionSummary) => string
 }
 
-/* ── scope ────────────────────────────────────────────────────────────── */
+/* ── 档位 ──────────────────────────────────────────────────────────────── */
 
-/** 轮转次序 = 分段器上的次序,只此一处。 */
-export const SCOPES: SearchScope[] = ['all', 'sessions', 'files']
+/*
+ * 从前这里有一张 `SCOPES = ['all','sessions','files']` 与一只 `nextScope`。
+ * **S4a 两个都搬走了**:档位由 `search.capabilities` 回来的自述算出来
+ * (`./capabilities.ts` 的 `tabsOf` / `nextTab`),这个文件因此不再知道
+ * 「一共有哪几档」—— 它只知道「这一行是哪个能力产的」(`SearchRow.capability`),
+ * 过滤就是拿它和当前档比一下。§4.0 那张枚举点清账表的最后一行。
+ */
 
-/** Tab 往前、⇧Tab 往后,到头回卷。 */
-export function nextScope(scope: SearchScope, step: 1 | -1): SearchScope {
-  const at = SCOPES.indexOf(scope)
-  return SCOPES[(at + step + SCOPES.length) % SCOPES.length]
+/** 这一行在当前档里出不出。`all` 不挑,单类档只要那一个能力产的行。 */
+function inScope(scope: SearchScope, capability: string): boolean {
+  return scope === ALL_TAB || scope === capability
 }
 
 /*
@@ -162,10 +169,11 @@ export function originText(origin: SearchOrigin): string {
  * 就是整条路径 —— **不补一个 `:1` 去凑格式**,那会让人以为后端说了它在第一行。
  */
 export function targetText(target: SearchTarget): string {
-  if (target.kind !== 'file') return target.sessionId
-  return target.line === undefined
-    ? target.path
-    : originText({ kind: 'fileLine', file: fileName(target.path), line: target.line })
+  const payload = (target.payload ?? {}) as { filePath?: string; line?: number; sessionId?: string }
+  if (typeof payload.filePath !== 'string') return payload.sessionId ?? ''
+  return payload.line === undefined
+    ? payload.filePath
+    : originText({ kind: 'fileLine', file: fileName(payload.filePath), line: payload.line })
 }
 
 /* ── 造行 ──────────────────────────────────────────────────────────────── */
@@ -250,7 +258,7 @@ function sessionRows(
   const rows: SearchRow[] = []
   const bySession = hitsBySession(messages)
   for (const session of sessions) {
-    const target: SearchTarget = { kind: 'session', sessionId: session.id }
+    const target: SearchTarget = { kind: 'chat', payload: { sessionId: session.id } }
     const inSession: SearchOrigin = { kind: 'session', session: session.title }
     /*
      * 正文命中**按会话归到这里**,而不是另起一路再和会话侧交替。
@@ -269,8 +277,8 @@ function sessionRows(
     if (has(session.title, q)) {
       rows.push({
         id: `${session.id}:title`,
+        capability: CHATS_CAPABILITY,
         domain: 'session',
-        badge: { kind: 'session' },
         text: session.title,
         code: false,
         origin: sessionHead(session, timeOf(session)),
@@ -290,8 +298,8 @@ function sessionRows(
     ) {
       rows.push({
         id: `${session.id}:preview`,
+        capability: CHATS_CAPABILITY,
         domain: 'session',
-        badge: { kind: 'message' },
         text: session.preview,
         code: false,
         origin: inSession,
@@ -303,8 +311,8 @@ function sessionRows(
       if (has(chapter.title, q)) {
         rows.push({
           id: `${session.id}:chapter:${chapter.id}:title`,
+          capability: CHATS_CAPABILITY,
           domain: 'session',
-          badge: { kind: 'message' },
           text: chapter.title,
           code: false,
           origin: inSession,
@@ -315,8 +323,8 @@ function sessionRows(
       if (has(chapter.detail, q)) {
         rows.push({
           id: `${session.id}:chapter:${chapter.id}:detail`,
+          capability: CHATS_CAPABILITY,
           domain: 'session',
-          badge: { kind: 'message' },
           text: chapter.detail,
           code: false,
           origin: inSession,
@@ -338,15 +346,19 @@ function sessionRows(
     for (const hit of hits) {
       rows.push({
         id: hit.id,
+        // 正文命中是 **messages** 那个能力产的 —— 它归到会话下面是**版式**
+        // (一间会话的东西连着好扫),不是分类:单类档 `messages` 要的正是这一批。
+        capability: MESSAGES_CAPABILITY,
         domain: 'session',
-        badge: { kind: 'message' },
         text: hit.text,
         // 消息正文是散文不是代码行,不上等宽 —— 与预览 / 章节同一档。
         code: false,
         origin: inSession,
-        target: { kind: 'session', sessionId: session.id, messageId: hit.messageId },
+        target: { kind: 'message', payload: { sessionId: session.id, messageId: hit.messageId } },
         tier: 'body',
         highlight: hit.ranges,
+        // 后端给的那几格原样驮着;壳按它认得的两个键画徽(§9「徽」)。
+        ...(hit.facets === undefined ? {} : { facets: hit.facets }),
       })
     }
   }
@@ -365,16 +377,58 @@ function sessionRows(
 function fileRows(files: readonly FileSearchEntry[]): SearchRow[] {
   return files.map((entry) => ({
     id: `file:${entry.path}`,
+    capability: FILES_CAPABILITY,
     domain: 'file',
-    badge: { kind: 'file', ext: fileExt(entry.path) },
     // `label` 是接入目录那类命中自带的显示名(后端给的数据);没有就用文件名。
     text: entry.label ?? fileName(entry.path),
     // 文件**名**不是代码行,不上等宽 —— 等宽留给真的来自文件正文的那一行。
     code: false,
     origin: { kind: 'path', path: entry.path },
-    target: { kind: 'file', path: entry.path },
+    target: { kind: 'file', payload: { filePath: entry.path } },
     tier: 'title',
   }))
+}
+
+/**
+ * **通用一档的结果 → 行**(S4a)。
+ *
+ * 壳没有自带产地的那几类(`prompts` / `daily` / `actions`,以及任何一个插件能力)
+ * 走的是 `search.query` 那条通用口,回来的是契约上的 `SearchResult`。这只函数是
+ * 那条口**唯一**的一次投影,判据三条:
+ *
+ *  1. **`target` 缺席的行不出**。开放形的落点是这一整套的地基:没有它,点了就是
+ *     一行按不动的东西。丢掉一行比画一行死的诚实(与正文那一路 `toHits` 里
+ *     「缺 sessionId 就丢」是同一条判据)。
+ *  2. **一律 title 级**。这些命中说的都是「这个东西叫什么」(一条命令、一条提示词、
+ *     一篇笔记),与会话标题命中同级;body 级留给真的来自正文的那一行。
+ *  3. **`domain` 取 `'file'`**。这一格今天只有一处消费 —— 排序时会话与文件交替
+ *     (`interleave`),那是**版式**不是分类。归到文件那一侧是因为它们与文件行
+ *     一样是「一个东西」而不是「一句话」;真要按能力分组是 `all` 档的事(§7.2),
+ *     不在这一层。
+ *
+ * 高亮用后端给的 `matchRanges`,不在壳里再 indexOf 一遍 —— 与另外两路逐字同源。
+ */
+export function resultRows(
+  results: readonly SearchResult[],
+  capability: string,
+): SearchRow[] {
+  const rows: SearchRow[] = []
+  for (const result of results) {
+    if (result.target === undefined) continue
+    rows.push({
+      id: result.id,
+      capability,
+      domain: 'file',
+      text: result.title,
+      code: false,
+      origin: { kind: 'path', path: result.subtitle ?? result.detail ?? '' },
+      target: result.target,
+      tier: 'title',
+      ...(result.matchRanges === undefined ? {} : { highlight: result.matchRanges }),
+      ...(result.facets === undefined ? {} : { facets: result.facets }),
+    })
+  }
+  return rows
 }
 
 /**
@@ -408,20 +462,71 @@ export function searchRows(
   if (!q) return []
   const { sessions, chapters = {}, files = [], messages = [], timeOf } = material
   /*
-   * 正文命中跟着**会话档**走(scope 'files' 那一档一条都不出):它说的是
-   * 「这条会话里的一句话」,不是一个文件。
+   * ── S4a:过滤从「哪一侧」换成「哪个能力」 ────────────────────────────
+   * 从前这里判的是 `scope === 'files'` / `=== 'sessions'` —— 两个字面量,而且把
+   * 「消息正文」和「会话标题」绑成了同一档(它们在屏幕上都挂在会话下面)。
+   * 今天档位是能力,于是判据变成一句话:**这一行是这一档要的那个能力产的吗**。
    *
-   * 命中在这里**没有被单独过滤一遍**:`sessionRows` 逐条会话去 `bySession` 里取,
+   * 可感知的一处变化(报告里列了):`messages` 从此是自己的一档,单类 `chats` 档
+   * 里**不再混着正文命中**。全部档一格没动 —— 那正是用户日常看到的那一档。
+   *
+   * 命中在这里仍然**没有被单独过滤一遍**:`sessionRows` 逐条会话去 `bySession` 里取,
    * 而它遍历的是**屏幕那份会话表**(当前空间的投影)—— 于是「别的空间的会话」
    * 与「刚被删掉的会话」的命中天然不出行,不需要第二套名单去追。
    */
-  const fromSessions =
-    scope === 'files' ? [] : sessionRows(q, sessions, chapters, messages, timeOf)
-  const fromFiles = scope === 'sessions' ? [] : fileRows(files)
+  const wantsSessionSide = inScope(scope, CHATS_CAPABILITY) || inScope(scope, MESSAGES_CAPABILITY)
+  const fromSessions = wantsSessionSide
+    ? sessionRows(q, sessions, chapters, messages, timeOf).filter(row => inScope(scope, row.capability))
+    : []
+  const fromFiles = inScope(scope, FILES_CAPABILITY) ? fileRows(files) : []
   return [
     ...interleave(fromSessions.filter(isTitle), fromFiles.filter(isTitle)),
     ...interleave(fromSessions.filter(isBody), fromFiles.filter(isBody)),
   ]
+}
+
+/* ── 全部档的分组(§7.2 / §9 第四条)────────────────────────────────────── */
+
+/**
+ * 全部档按**能力**归堆,组与组的先后由自述的 `order` 说(`tabsOf` 已经排好,
+ * 这里收的就是那张表的 id 次序)。
+ *
+ * **只归堆,不重排组内** —— 组内那一刀(title 级在前、body 级在后、两侧交替)
+ * 是 `searchRows` 的事,这里一个字不动它。所以这只函数是一次**稳定**的分桶:
+ * 同一个能力的行按它们本来的先后连着出现。
+ *
+ * 单类档不调它(一张平铺列表就是它自己那一组)。
+ */
+export function groupRowsByCapability(
+  rows: readonly SearchRow[],
+  order: readonly string[],
+): SearchRow[] {
+  const buckets = new Map<string, SearchRow[]>()
+  for (const row of rows) {
+    const bucket = buckets.get(row.capability)
+    if (bucket) bucket.push(row)
+    else buckets.set(row.capability, [row])
+  }
+  const out: SearchRow[] = []
+  // 先按自述次序放已知的那几组……
+  for (const capability of order) {
+    const bucket = buckets.get(capability)
+    if (bucket === undefined) continue
+    out.push(...bucket)
+    buckets.delete(capability)
+  }
+  // ……剩下的(自述表还没回来、或者一个刚注销的能力还有行在屏上)按出现次序殿后。
+  // **不丢**:壳没跟上不该把结果吞掉(§4.3 的同一条纪律)。
+  for (const bucket of buckets.values()) out.push(...bucket)
+  return out
+}
+
+/** 相邻两行之间要不要画一条组头(全部档)。首行永远要。 */
+export function groupHeadAt(rows: readonly SearchRow[], index: number): string | undefined {
+  const row = rows[index]
+  if (row === undefined) return undefined
+  const previous = rows[index - 1]
+  return previous === undefined || previous.capability !== row.capability ? row.capability : undefined
 }
 
 /* ── 分页 ──────────────────────────────────────────────────────────────────
@@ -664,15 +769,16 @@ export function moreState({ searching, page, total, remote }: SearchMoreInput): 
  */
 export function browseRows(scope: SearchScope, material: SearchMaterial): SearchRow[] {
   const { sessions, timeOf } = material
-  if (scope === 'files') return []
+  // 浏览态的行**全部来自会话侧**,所以只有 `chats`(与 `all`)那两档有东西可画。
+  if (!inScope(scope, CHATS_CAPABILITY)) return []
   return sessions.map<SearchRow>((session) => ({
     id: `${session.id}:browse`,
+    capability: CHATS_CAPABILITY,
     domain: 'session',
-    badge: { kind: 'session' },
     text: session.title,
     code: false,
     origin: { kind: 'time', time: timeOf(session) },
-    target: { kind: 'session', sessionId: session.id },
+    target: { kind: 'chat', payload: { sessionId: session.id } },
     tier: 'title',
   }))
 }

@@ -335,12 +335,32 @@ export const zh = {
   'search.label': '搜索',
   'search.scopeLabel': '搜索范围',
   'search.scopeAll': '所有',
-  'search.scopeSessions': '会话',
-  'search.scopeFiles': '文件',
+  /* ── 能力自述的文案键(S4a)────────────────────────────────────────
+   * tab 上的名字由 `search.capabilities` 回来的 `manifest.labelKey` 点名,
+   * 壳只负责按那个键查字典。所以**加一类能搜的东西 = 这里加两行(zh/en)**,
+   * 面板一个字不改;插件能力自带成品文案(它的 `labelKey` 查不到就画原文)。
+   * `search.scopeSessions` / `search.scopeFiles` 两条随旧那三档一起退役 ——
+   * 今天会话那一档的名字来自 `search.capability.chats`。 */
+  'search.capability.chats': '会话',
+  'search.capability.messages': '消息',
+  'search.capability.files': '文件',
+  'search.capability.daily': '笔记',
+  'search.capability.prompts': '提示词',
+  'search.capability.actions': '命令',
   'search.resultsLabel': '结果',
   'search.noResults': '无结果',
+  /* 徽上的字。**由目标渲染器点名**(`search/targets/<kind>.tsx` 的 `badge()`),
+   * 一种 `target.kind` 一句;文件那一种的徽是**数据**(扩展名),不在这张表里。 */
   'search.badgeSession': '会话',
   'search.badgeMessage': '消息',
+  'search.badgeDaily': '笔记',
+  'search.badgePrompt': '提示',
+  'search.badgeAction': '命令',
+  /* 两颗事实徽(§9「徽」那一条)。归档会话**搜得到**(S3b 治好的那条病),
+   * 所以要让人一眼看出这一行来自一间已归档的会话;跨空间徽只在「全部空间」
+   * 过滤下才画 —— 那格过滤片是 S4b,今天这一颗画不出来。 */
+  'search.badgeArchived': '已归档',
+  'search.badgeOtherSpace': '其它空间',
   'search.openedFile': '已打开 {file}',
   /* D5 文件侧接真数据之后新增的两句。两句说的都是**产地的实情**,不是暂时的空:
    * 「最近打开的文件」后端没有产地,所以空词时文件侧本来就没有东西可给;
@@ -369,6 +389,24 @@ export const zh = {
   /* 文件侧还没落定时的读数:「已显示」而不是「共」—— 后者是一句关于总数的断言,
    * 这一刻还没人有资格下(判据表见 search/transitions.ts 的 moreState)。 */
   'search.shownCount': '已显示 {shown} 条',
+  /* ── 底部状态行(§9 第三条)。四条读数各说各的一件事,一条都不合并。 ── */
+  /* 后端给的**真总数**(单类档,能力知道才给)。上面那一行说的是「我手上有多少」,
+   * 这一行说的是「全集有多大」—— 两个数,两句话。 */
+  'search.totalCount': '共 {total} 条',
+  /* 严格档没中、放宽之后才有的命中(§6.2)。不说出来,用户会以为自己那个词
+   * 精确命中了这些行。 */
+  'search.relaxed': '已放宽:按任一词匹配',
+  /* 现在答的这一份还没追上账本。数是**真读数**(`search.status` 的 pending)。 */
+  'search.indexPending': '索引更新中(剩 {pending})',
+  /* 折账本的是另一台进程(§5.6)。今天恒 owner,所以这一行画不出来 ——
+   * 键先备着,持有权落地那天壳一个字不改。 */
+  'search.indexReader': '由 {host} 维护',
+  /* 全部档的组头右边那颗:切到这一档、从第一页重来。 */
+  'search.viewAll': '查看全部',
+  /* 两句「这一下没接上」。**说出来而不是静默吞掉** —— 一次按下去什么都不发生的
+   * 点击,比一句「还没接上」更让人怀疑是不是自己按错了。 */
+  'search.actionUnavailable': '这条动作在这里还打不开:{action}',
+  'search.targetUnavailable': '这一类结果还打不开:{kind}',
 
   /* ── 聊天区(D3:正文/工具名/错误原文都是**数据**,不在这儿) ────────── */
   'chat.noSession': '还没有选中会话',
