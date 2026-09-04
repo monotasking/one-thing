@@ -788,6 +788,7 @@ export const zh = {
   'workbench.splitDown': '在下方',
   'workbench.splitUp': '在上方',
   'workbench.splitterLabel': '分隔杆',
+  'workbench.topbarTabs': '中央区标签',
   'files.detailAction': '详情',
   'files.copiedPath': '已复制路径',
   'files.retry': '重试',

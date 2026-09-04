@@ -22,6 +22,11 @@ import s from './LeafStrip.module.css'
  * 看到的正是这一档。修法不是「给分栏再画一条」:**面板内也是一「格」,它该有
  * 同一条身份带**。所以这条檐成了一件基础件,两处消费同一件、同一份样式表。
  *
+ * W1-b 又添了**第三个宿主**,而且是最重要的那个:中央叶那一条搬进了**窗口顶栏**
+ * (`workbench/TopBarTabs.tsx`,设计 §2.2 的 D 稿 —— 聊天区里一个像素的檐都不画)。
+ * 那一次搬家一个字都没改到这只文件:变的只是「这条檐画在哪儿」,它交出去的数据表
+ * 与它认的那几个动作原样不动。这正是当初出文件时预言的那件事。
+ *
  * ── 分工 ────────────────────────────────────────────────────────────────
  *   `tabSpecOf`     一格 tab 的**数据表**:身份两半合一(种类自述的静态半 +
  *                   `stage/live-title` 的活半,活的盖静的)。两个宿主同一张表。
@@ -120,7 +125,7 @@ export function LeafStrip({
 export function tabSpecOf(
   ref: ContentRef,
   titles: Record<string, LiveTitle>,
-  opts: { preview?: boolean; closable?: boolean } = {},
+  opts: { preview?: boolean; closable?: boolean; home?: boolean } = {},
 ): TabSpec {
   const id = refId(ref)
   const kind = contentKindOf(ref.kind)
@@ -135,6 +140,8 @@ export function tabSpecOf(
     tip: live?.tip ?? still?.tip,
     preview: opts.preview ?? false,
     closable: opts.closable ?? true,
+    // 「这一组的家」(W1-b):判据由宿主从种类自述里取,这只函数只搬运。
+    home: opts.home ?? false,
   }
 }
 

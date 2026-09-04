@@ -489,6 +489,29 @@
   --tab-indicator: var(--bw-3);
   --tab-max-w: 160px;
 
+  /* ── 顶栏标签(W1-b,设计 workbench-2026-09.md §2.2「中央区的檐就是窗口顶栏」)──
+   * 「连体」这件事只有一种兑现方式:**活动标签与它下面那片叶读同一格颜色**。
+   * 分开写两个值,它们迟早分叉 —— 而分叉的第一处就是「像浏览器 tab 长在页面上」
+   * 那句话失效的地方。所以先给这块面一个名字,再让两边都读它。
+   *
+   *   --pane-face            中央区一片叶的脸。今天等于外壳底色(`.shell` 画的就是
+   *                          它),写出来是为了**让连体这条契约有一个产地**。
+   *   --topbar-tab-face      焦点组里活动标签的底色 = 那片叶的脸。
+   *   --topbar-tab-face-dim  非焦点组里活动标签的底色,**降一档**(设计原话)——
+   *                          往顶栏的底色里兑,于是它在两种主题下都自动落在
+   *                          「比顶栏亮一点、比那片叶暗一点」之间。 */
+  --pane-face: var(--surface-0);
+  --topbar-tab-face: var(--pane-face);
+  --topbar-tab-face-dim: color-mix(in srgb, var(--pane-face) 55%, var(--surface-1));
+
+  /* ── 拼贴树的跨度读数(运行期写入,**不是设计 token**)──────────────────────
+   * `--leaf-x-<节点 id>` / `--leaf-w-<节点 id>` 这一族在这里**只做登记**,不给值:
+   * 它们是 `workbench/leaf-geometry.ts` 在真实排版之后量出来、写在**顶栏那条带子
+   * 自己身上**的两格像素读数(名字的唯一产地是 `workbench/layout.ts` 的
+   * `spanXVar` / `spanWVar`)。写在元素上而不是 `:root`,是因为它们相对的正是
+   * 那个元素的左缘,而且随树的形状增减 —— 放进这里会变成一张永远对不上的表。
+   * 消费方只有一个:`workbench/TopBarTabs.module.css` 的 `.group`。 */
+
   /* 分段器族 */
   --seg-pad-y: 4px;
   --seg-pad-x: 12px;

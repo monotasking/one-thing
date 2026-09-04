@@ -662,6 +662,7 @@ export const en: Record<MessageKey, string> = {
   'workbench.splitDown': 'Below',
   'workbench.splitUp': 'Above',
   'workbench.splitterLabel': 'Split handle',
+  'workbench.topbarTabs': 'Main area tabs',
   'files.detailAction': 'Details',
   'files.copiedPath': 'Path copied',
   'files.retry': 'Retry',

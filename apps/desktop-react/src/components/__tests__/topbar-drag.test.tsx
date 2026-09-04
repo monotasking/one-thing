@@ -56,9 +56,42 @@ describe('顶栏兼顶带:拖拽区', () => {
   it('带是 drag,带上每一件可点的都是 no-drag(漏一件=点它变拖窗,且静默)', () => {
     const css = cssCode('TopBar.module.css')
     expect(block(css, '.bar')).toMatch(/-webkit-app-region:\s*drag/)
-    for (const sel of ['.traffic', '.titleBtn', '.trailing']) {
+    for (const sel of ['.traffic', '.trailing']) {
       expect(block(css, sel), `${sel} 少了 no-drag`).toMatch(/-webkit-app-region:\s*no-drag/)
     }
+    /*
+     * W1-b:会话名钮退役,它的位子换成了**中央区各片叶的标签组**(设计 §2.2 D 稿)。
+     * 那一组住在另一份样式表里(`workbench/TopBarTabs.module.css`),但它是这条
+     * 拖拽带的子孙,所以那一句 no-drag 归这条判例管 —— 少了它,点标签 = 拖窗。
+     *
+     * **落点是 tab 自己,不是那一组**:组铺满整段跨度,tab 只占左边一小截;
+     * 写在组上等于把「组里剩下的空白仍是拖窗区」整条抹掉(真机门当场抓到过)。
+     */
+    const tabsCss = readFileSync(
+      path.resolve(componentsDir, '../workbench/TopBarTabs.module.css'),
+      'utf-8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(
+      block(tabsCss, ".group [data-pane-chrome] [role='tab']"),
+      'tab 少了 no-drag',
+    ).toMatch(/-webkit-app-region:\s*no-drag/)
+    /*
+     * 而**带子与那一组都不许**声明 no-drag:红绿灯那 80px 与右端动作组之外的空白
+     * 仍然要能拖窗(设计 §2.2 原话)。顺手在这两层写一句,这条带就再也拖不动了
+     * —— 而且屏幕上一个像素都看不出来。
+     */
+    expect(block(tabsCss, '.band')).not.toMatch(/-webkit-app-region/)
+    expect(block(tabsCss, '.group')).not.toMatch(/-webkit-app-region/)
+  })
+
+  it('标签组的 DOM 留在带子里 —— portal 出去 = 静默破拖拽区(坑 ①)', () => {
+    render(<TopBar />)
+    const bar = screen.getByTestId('topbar')
+    const band = screen.getByTestId('topbar-tabs')
+    // `no-drag` 只在 drag 元素**同一分支的子孙**上才生效。portal 到 body 之后
+    // 那句声明还在、屏幕上一模一样,拖拽却当场破 —— 静态查得到的只有这一句。
+    expect(bar.contains(band)).toBe(true)
+    expect(bar.contains(screen.getByTestId('topbar-trailing'))).toBe(true)
   })
 
   it('带没有左内衬:让位靠真元素,不靠 padding(app-region 只算内容盒)', () => {
@@ -75,6 +108,34 @@ describe('顶栏兼顶带:拖拽区', () => {
     expect(block(css, '.traffic')).toMatch(/width:\s*var\(--topbar-lead\)/)
     expect(block(css, '.bar')).toMatch(/--topbar-lead:\s*var\(--titlebar-traffic-w\)/)
     expect(block(css, ".bar[data-fullscreen='true']")).toMatch(/--topbar-lead:\s*var\(--sp-4\)/)
+  })
+
+  it('这台上没有灯(Windows / Linux / 浏览器壳)→ 让位归 0(W1-b,设计 §2.2)', () => {
+    const css = cssCode('TopBar.module.css')
+    expect(block(css, ".bar[data-traffic='none']")).toMatch(/--topbar-lead:\s*0px/)
+    // jsdom 里没有 `onethingHost` = 浏览器壳那一形:判据答「没有灯」。
+    render(<TopBar />)
+    expect(screen.getByTestId('topbar').getAttribute('data-traffic')).toBe('none')
+  })
+
+  it('宿主报 darwin → 有灯,让位是 80 那一档(判据问宿主,不猜 UA)', () => {
+    ;(window as unknown as { onethingHost?: unknown }).onethingHost = { platform: 'darwin' }
+    try {
+      render(<TopBar />)
+      expect(screen.getByTestId('topbar').hasAttribute('data-traffic')).toBe(false)
+    } finally {
+      delete (window as unknown as { onethingHost?: unknown }).onethingHost
+    }
+  })
+
+  it('宿主报 win32 → 系统边框,壳里没有灯', () => {
+    ;(window as unknown as { onethingHost?: unknown }).onethingHost = { platform: 'win32' }
+    try {
+      render(<TopBar />)
+      expect(screen.getByTestId('topbar').getAttribute('data-traffic')).toBe('none')
+    } finally {
+      delete (window as unknown as { onethingHost?: unknown }).onethingHost
+    }
   })
 
   it('让位块 flex: none —— 被压缩就等于标题盖到灯上', () => {

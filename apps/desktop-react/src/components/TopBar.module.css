@@ -6,7 +6,8 @@
   /*
    * 带首那一截的**唯一产地**。它是「让位」而不是「内衬」,所以量在这里、由
    * `.traffic` 那块真元素落地(padding 不算进拖拽区,也挡不住原生的红绿灯)。
-   * 两档:有灯 = 灯的宽度;没灯(全屏)= 一档普通边距,标题不至于贴死窗口左缘。
+   * 三档,判据在 TopBar.tsx:有灯 = 灯的宽度;有灯但进了原生全屏 = 一档普通边距;
+   * **这台机器上根本没有灯**(Windows / Linux / 浏览器壳)= 0。
    */
   --topbar-lead: var(--titlebar-traffic-w);
   height: var(--topbar-h);
@@ -17,13 +18,27 @@
   border-bottom: 1px solid var(--line-1);
   background: var(--surface-1);
   -webkit-app-region: drag;
+  /* 标签组是绝对定位的(`workbench/TopBarTabs.module.css` 的 `.group`),
+   * 它们的定位参考系是带子里那格 `.band` —— 而 `.band` 自己是这条带的 flex 项。
+   * 这一句在这里是**防御**:带子里将来若有人写绝对定位又忘了自己找参考系,
+   * 至少落在顶栏上而不是穿到窗口去。 */
+  position: relative;
 }
 
 /* 全屏:三颗灯由系统收起,让位跟着收(09-01 自查走查:灯没了那 80px 还空着)。
- * 收到 --sp-4 而不是 0 —— 0 会让标题贴死窗口左缘,那不是「还原成普通带」而是
+ * 收到 --sp-4 而不是 0 —— 0 会让内容贴死窗口左缘,那不是「还原成普通带」而是
  * 另一种难看。这一档下那 16px 不可拖也无所谓:macOS 全屏窗本来就拖不动。 */
 .bar[data-fullscreen='true'] {
   --topbar-lead: var(--sp-4);
+}
+
+/* **这台机器上没有红绿灯**(Windows / Linux / 浏览器壳):让位归 0,标签从最左开始
+ * (设计 §2.2 最后一节的原话)。与全屏那一档分开写,是因为两者的理由不一样:
+ * 全屏是「灯暂时收起来了,布局别横跳」,这一档是「这台上压根没有那三颗灯」——
+ * 前者留一档边距是为了让内容不贴边,后者第一件东西就是一格 tab,tab 自带内衬,
+ * 贴到最左正是浏览器的样子。判据由宿主给(`useHostTrafficLights`),不猜 UA。 */
+.bar[data-traffic='none'] {
+  --topbar-lead: 0px;
 }
 
 /* 红绿灯让位:定宽 = trafficLightPosition.x(16)+ 三颗灯 52 + 一档呼吸 12。
@@ -47,23 +62,16 @@
   -webkit-app-region: no-drag;
 }
 
-/* L2:会话名变成总览入口,加内衬底 + hover 态;字号字重和原来逐字相同。
- * 09-01:`margin-inline-end: auto` 顶替了 `.bar` 上退役的 `space-between`
- * —— 这条带现在有三件(让位 / 标题 / 尾),space-between 会把标题推到中间去。
- * 左侧那记 `-sp-2` 的负外边距也一并退役:左内衬现在由 `.traffic` 给。 */
-.titleBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
-  height: var(--row-h);
-  padding: 0 var(--sp-2);
-  margin-inline-end: auto;
-  border-radius: var(--r-2);
-  transition: background var(--dur) var(--ease);
-  -webkit-app-region: no-drag;
-}
+/* ── 会话名钮(`.titleBtn` / `.title` / `.titleIcon`)W1-b 退役 ──────────────
+ * 它变成了中央区那片会话叶的**标签**(设计 §2.2 D 稿:「只有一片会话叶时,顶栏
+ * 画的就是那一个标签 = 今天的会话标题,左对齐,零视觉回退」)。画法随
+ * `LeafStrip` → `ui/Tabs` 走,所以这里三条规则一起没有了消费者。
+ * 那记 `margin-inline-end: auto` 的活由 `.band` 的 `flex: 1` 接下 ——
+ * 它吃掉让位与尾格之间的全部剩余宽度,尾格照旧贴右。 */
 
-/* 尾格:AgentChip 的外套。它只做一件事 —— 替里面那件声明 no-drag。
+/* 尾格:焦点叶的动作组 + AgentChip 的外套。它做两件事 —— 替里面那些件声明
+ * no-drag(判例见下),以及**永不被压缩**(`flex: none`):挤压纪律那条
+ * 「永不挤掉右端动作组」在布局上就是这一句加上「标签组是绝对定位的」。
  * 判例:no-drag 必须落在 drag 元素同一分支的**子孙**上,所以这一层不能省成
  * 「去 AgentChip.module.css 里加一句」之外的任何写法……其实两种都成立,
  * 选套一层是因为**责任在这一侧**:是顶栏把它放进了拖拽区,不该让它自己知道。 */
@@ -71,23 +79,8 @@
   flex: none;
   display: flex;
   align-items: center;
+  gap: var(--sp-2);
   -webkit-app-region: no-drag;
-}
-
-.titleBtn:hover {
-  background: var(--st-hover);
-}
-
-.title {
-  font-size: var(--fs-label);
-  font-weight: 500;
-  color: var(--text-1);
-}
-
-.titleIcon {
-  width: var(--fs-meta);
-  height: var(--fs-meta);
-  color: var(--text-3);
 }
 
 /* 原来这里还有一枚 .chip / .chipIcon —— 顶栏的模型章。08-30 退役(模型选择在

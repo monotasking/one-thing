@@ -1345,8 +1345,9 @@ async function checkComposerToolRow(page) {
 }
 
 /**
- * 叶檐的挤压读数(W1)。夹具走**用户真走的那条路**:文件树行菜单选「主区域」,
- * 再逐行单击把几份文件开进中央叶 —— 不去改 store(那样量的是自己写进去的状态)。
+ * 中央区那条檐的挤压读数(W1;**W1-b 起它画在窗口顶栏上**,设计 §2.2 D 稿)。
+ * 夹具走**用户真走的那条路**:文件树行菜单选「主区域」,再逐行 ↵ 把几份文件开进
+ * 中央叶 —— 不去改 store(那样量的是自己写进去的状态)。
  */
 async function checkLeafChrome(page) {
   const problems = []
@@ -1432,28 +1433,49 @@ async function checkLeafChrome(page) {
     await delay(250)
   }
 
+  /*
+   * **W1-b:那条檐搬进了窗口顶栏**(设计 §2.2 D 稿)。所以这一段量的盒换了地方:
+   * 从叶顶那条带换成顶栏那条带(`[data-testid="topbar-tabs"]`),动作组换成顶栏
+   * 尾格(`[data-testid="topbar-trailing"]`)。三条判据一个字没变 —— 变的只是
+   * 「哪一条线上不许换行、谁不许被挤掉」的那个盒。
+   */
   const shot = await page.evaluate(() => {
-    const chrome = document.querySelector('[data-pane-chrome]')
-    if (!chrome) return { error: '叶檐不在场' }
-    const box = chrome.getBoundingClientRect()
-    const tabs = Array.from(chrome.querySelectorAll('[role="tab"]')).map((el) => {
+    const band = document.querySelector('[data-testid="topbar-tabs"]')
+    if (!band) return { error: '顶栏标签带不在场' }
+    const box = band.getBoundingClientRect()
+    const tabs = Array.from(band.querySelectorAll('[role="tab"]')).map((el) => {
       const r = el.getBoundingClientRect()
       return { top: Math.round(r.top), height: Math.round(r.height), width: Math.round(r.width) }
     })
-    const strip = chrome.querySelector('[role="tablist"]')?.getBoundingClientRect() ?? null
-    const split = chrome.querySelector('[data-testid^="pane-split:"]')
-    const actions = split?.parentElement?.getBoundingClientRect() ?? null
+    const strip = band.querySelector('[role="tablist"]')?.getBoundingClientRect() ?? null
+    const trailing = document.querySelector('[data-testid="topbar-trailing"]')
+    const actions = trailing?.getBoundingClientRect() ?? null
+    const bar = document.querySelector('[data-testid="topbar"]')?.getBoundingClientRect() ?? null
     return {
       tabs,
-      chrome: { left: Math.round(box.left), right: Math.round(box.right), height: Math.round(box.height) },
+      // 「檐的盒」在 D 稿里就是**整条顶栏**:动作组坐在它的尾格里,不在带子里。
+      chrome: bar
+        ? { left: Math.round(bar.left), right: Math.round(bar.right), height: Math.round(bar.height) }
+        : { left: Math.round(box.left), right: Math.round(box.right), height: Math.round(box.height) },
+      band: { left: Math.round(box.left), right: Math.round(box.right) },
       strip: strip ? { left: Math.round(strip.left), right: Math.round(strip.right) } : null,
       actions: actions
         ? { left: Math.round(actions.left), right: Math.round(actions.right), width: Math.round(actions.width) }
         : null,
+      hasSplitButton: Boolean(document.querySelector('[data-testid^="pane-split:"]')),
     }
   })
   if (shot.error) return { skipped: shot.error }
-  if (shot.tabs.length < 2) return { skipped: `叶檐上只有 ${shot.tabs.length} 格 tab` }
+  if (shot.tabs.length < 2) return { skipped: `顶栏标签组上只有 ${shot.tabs.length} 格 tab` }
+  /*
+   * D 稿多一条判据:**标签带自己越不过尾格的左缘**。「永不挤掉右端动作组」在
+   * 布局上就是这一句 —— 带子是 flex 项、组是它的绝对定位子孙,所以组再宽也出不去。
+   * 少了这一条,组直接压到 AgentChip 上而 tab 条的三条判据仍然全绿。
+   */
+  if (shot.actions && shot.band.right > shot.actions.left + 1) {
+    problems.push(`标签带越过了尾格左缘(带右缘 ${shot.band.right} > 尾格 ${shot.actions.left})`)
+  }
+  if (!shot.hasSplitButton) problems.push('顶栏尾格里没有那颗分屏钮(焦点叶的动作组不在场)')
 
   seen.push(`${shot.tabs.length} 格 tab`)
   const tops = [...new Set(shot.tabs.map((t) => t.top))]
@@ -1783,14 +1805,16 @@ async function main() {
       console.log(`  ✓ ${toast.rows} 条 toast:盒子没被撑宽,墨一件都没顶穿 padding`)
     }
 
-    console.log('\n[10b/11] 叶檐:多 tab 永不换行 · 右端动作组不被挤掉 · 分隔杆在场')
+    console.log('\n[10b/11] 顶栏标签组:多 tab 永不换行 · 右端动作组不被挤掉 · 分隔杆在场')
     /*
-     * ── 挤压纪律在拼贴台上的落点(W1)────────────────────────────────────
-     * 三条,逐条对应设计 §10 `PaneLeaf` 那张「超量」状态:
+     * ── 挤压纪律在拼贴台上的落点(W1;W1-b 起檐画在窗口顶栏上)──────────────
+     * 四条,逐条对应设计 §10 那张「超量」状态与 §2.2 D 稿:
      *  ① **永不换行** —— 所有 tab 的 top 逐个相同(换行了就会有两种 top);
-     *  ② **右端动作组永不被挤掉** —— 它的右缘必须落在叶檐盒里,而且与 tab 条零重叠
+     *  ② **右端动作组永不被挤掉** —— 顶栏尾格的右缘必须落在顶栏盒里、与 tab 条零重叠
      *    (「一行一个弯腰件」:弯腰的是 tab 条,靠它自己横滚);
-     *  ③ **分隔杆**:分屏之后它在场、报得出 role 与比例(可调的 separator 是控件)。
+     *  ③ **标签带越不过尾格的左缘** —— D 稿把「挤不掉」从「算得准」换成了「结构上
+     *    出不去」:带子是 flex 项、组是它的绝对定位子孙。这一条守的就是那个结构;
+     *  ④ **分隔杆**:分屏之后它在场、报得出 role 与比例(可调的 separator 是控件)。
      */
     const leaf = await checkLeafChrome(page)
     if (leaf.skipped) {
@@ -1798,10 +1822,10 @@ async function main() {
     } else {
       console.log(`    ${leaf.seen.join(' | ')}`)
       if (leaf.problems.length) {
-        for (const problem of leaf.problems) console.log(`  ✗ 叶檐:${problem}`)
-        failures.push(`叶檐:${leaf.problems.length} 条`)
+        for (const problem of leaf.problems) console.log(`  ✗ 顶栏标签组:${problem}`)
+        failures.push(`顶栏标签组:${leaf.problems.length} 条`)
       } else {
-        console.log('  ✓ 叶檐:tab 条一条线 · 动作组在框里且零重叠 · 分隔杆报得出比例')
+        console.log('  ✓ 顶栏标签组:tab 条一条线 · 动作组在框里且零重叠 · 分隔杆报得出比例')
       }
     }
 

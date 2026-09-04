@@ -242,6 +242,43 @@ async function enterGateSession(page, sessionId) {
   await delay(400)
 }
 
+/**
+ * **把文件面板切到前台**(09-05 W1-b 施工时真机抓出来的一格夹具脆弱)。
+ *
+ * 病历:场景 3b 的 ② 是「树行 focus() → ↵ 开文件」。`document.querySelector` 找得到
+ * 那一行,`row.focus()` 却**静默不生效** —— 探针读数
+ * `{landed:false, rowFound:true, tree:true, inert:true, active:composer-input}`:
+ * 那棵树此刻坐在架子上一个**不活动的 tab 层**里(keep-alive,DOM 在、`inert` 也在),
+ * 而 inert 子树里的元素不可聚焦。产品这一格是**对的**(后台那一层本来就不该能摸到);
+ * 错的是夹具:它假设「树在 DOM 里」等于「树能用」。
+ *
+ * 那一层是不是活动 tab,取决于场景 3 切完 tab 之后 `shelves[side].activeId` 有没有
+ * 在整页重载之前落盘 —— 一格与本批无关的持久化时序。所以这里不去赌它:
+ * **看见 inert 就把那条 tab 点回来**,点不动就如实说。
+ */
+async function ensureFilesInteractive(page) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const state = await page.evaluate(() => {
+      const tree = document.querySelector('[data-testid="files-tree"]')
+      if (!tree) return { ok: false, why: '文件树不在 DOM 里' }
+      if (!tree.closest('[inert]')) return { ok: true }
+      // 架子上那条 tab:按**文案**认(tab 上没有 id 属性,而这一格只是夹具)。
+      const tab = Array.from(document.querySelectorAll('[data-shelf] [role="tab"]')).find((el) =>
+        /文件|Files/.test(el.textContent ?? ''),
+      )
+      if (tab instanceof HTMLElement) {
+        tab.click()
+        return { ok: false, why: '点了架子上那条「文件」tab' }
+      }
+      return { ok: false, why: '树在 inert 层里,而架子上找不到它那条 tab' }
+    })
+    if (state.ok) return { ok: true }
+    if (attempt === 2) return state
+    await delay(400)
+  }
+  return { ok: false, why: '重试三次仍然是 inert' }
+}
+
 /** 树上此刻有没有一行**文件**(目录行不算:目录的 ↵ 是展开,不是打开)。 */
 function hasFileRow(page) {
   return page.evaluate(() =>
@@ -597,9 +634,15 @@ async function main() {
           skip('中央叶两 tab 切换', '行菜单里没有「主区域 / Main stage」那一档')
         } else {
           // ② ↵ 开一个文件 —— 它成为中央叶的第二格 tab,而且是活动那一格。
-          await page.evaluate((css) => {
+          /*
+           * 树可能坐在架子上一个**不活动的 tab 层**里(DOM 在、`inert` 也在),
+           * 那时 `row.focus()` 静默不生效 —— 病历与判据写在 `ensureFilesInteractive` 上。
+           */
+          const live = await ensureFilesInteractive(page)
+          const landed = await page.evaluate((css) => {
             const row = document.querySelector(css)
             if (row instanceof HTMLElement) row.focus()
+            return document.activeElement === row
           }, rowCss)
           await page.keyboard.press('Enter')
           await delay(700)
@@ -607,7 +650,11 @@ async function main() {
             () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
           )
           if (twoTabs < 2) {
-            skip('中央叶两 tab 切换', `叶檐上只有 ${twoTabs} 格 tab —— 夹具没搭起来`)
+            skip(
+              '中央叶两 tab 切换',
+              `顶栏那一组只有 ${twoTabs} 格 tab —— 夹具没搭起来`
+                + `(树可交互:${live.ok}${live.why ? `/${live.why}` : ''};焦点落在行上:${landed})`,
+            )
           } else {
             const leafState = await page.evaluate(() => {
               const layers = Array.from(document.querySelectorAll('[data-pane-tab]'))
@@ -1147,7 +1194,7 @@ async function main() {
         () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
       )
       if (!openedA || !openedB || tabs < 3) {
-        skip('⌘F 在两份查看器上各开一次', `夹具没搭起来(叶檐上 ${tabs} 格 tab)`)
+        skip('⌘F 在两份查看器上各开一次', `夹具没搭起来(顶栏那一组 ${tabs} 格 tab)`)
       } else {
         const findOpens = async (where) => {
           // 焦点摆进**活着的**那一份查看器(非活动那一层是 inert 的,进不去)。

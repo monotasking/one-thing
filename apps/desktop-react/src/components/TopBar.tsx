@@ -1,24 +1,26 @@
-import { ChevronDown } from './icons'
-import { ButtonBase } from '../ui/ButtonBase'
 import { AgentChip } from './AgentChip'
-import { useSessionsSource } from '../data/sessions-source'
-import { findSession } from '../expose/projection'
-import { useExposeStore } from '../expose/store'
-import { useStageStore } from '../stage/store'
-import { SESSIONS_ITEM_ID } from '../stage/items'
-import { useT } from '../i18n'
+import { TopBarLeafActions, TopBarLeafTabs } from '../workbench/TopBarTabs'
 import { useHostFullScreen } from './useHostFullScreen'
+import { useHostTrafficLights } from './useHostTrafficLights'
 import s from './TopBar.module.css'
 
 /**
- * 会话名是总览的入口:点一下 = 点 Dock 上那块「会话总览」瓦(08-29 去接管化拍板),
- * 所以它按用户给那块瓦设的打开方式开 —— 两个入口一条路,不是两套语义。
- * 标题本身仍然只是投影。
+ * **顶栏就是中央区的标签条**(W1-b,设计 `docs/design/workbench-2026-09.md` §2.2
+ * 「中央区的檐就是窗口顶栏(D 稿)」)。
  *
- * 右侧那一格是 **agent 切换器**。原来站在这里的模型章(一枚写死的
- * `claude-opus-5`)08-30 退役:模型选择已经在 composer 上,顶栏再放一枚
- * 是同一件事说两遍。它当时连 i18n 键都没有(组件里一个字面量),
- * 所以这次退役没有留下任何孤儿键。
+ * 用户原话:标签不要占聊天区域,聊天区现在多宽以后就多宽,把标签放到红绿灯那一栏上。
+ * 于是这条带从左到右恰好三件:
+ *   红绿灯让位 → 中央区各片叶的标签组(各坐各叶的正上方)→ 尾格(焦点叶的动作组 + AgentChip)
+ *
+ * 从前站在中间那一格的**会话名钮**因此退役 —— 它变成了中央区那片会话叶的标签
+ * (单叶时 tab 条退化成一条身份带,左对齐,与修前逐像素同位)。会话标题不再由这只
+ * 组件取:它是**内容自己的身份**,由聊天那一种内容发布到 `stage/live-title`
+ * (`content/kinds/chat.tsx` 的 `ChatIdentity`),标签读表时活的盖静的。
+ *
+ * **可感知的行为变化(交卷时点名给用户)**:那颗钮从前点一下 = 点 Dock 上「会话总览」
+ * 那块瓦(08-29 去接管化拍板)。标签是标签,点它只能是「切到这一格」——一个点下去
+ * 开出另一块面的 tab 是在说谎。总览的入口今天只剩 Dock 那块瓦与它的快捷键。
+ * 要不要把它补回来(补成动作组里的一颗、还是会话标签的右键菜单一行),是用户的拍点。
  *
  * ── 09-01:它同时**就是窗口的顶带**(用户看真机后的裁定)────────────────
  * 上一版给红绿灯单开了一条 28px 空带,顶栏排在它下面 —— 用户一眼看出那是
@@ -28,45 +30,51 @@ import s from './TopBar.module.css'
  * 窗口本身没有系统标题栏(electron/main.ts 的 `titleBarStyle: 'hiddenInset'`),
  * 所以这一条**是**这扇窗唯一能拖动的地方。
  *
- * 拖拽判例(仓里踩过的坑,改这个文件前先读):
+ * 拖拽判例(仓里踩过的坑,改这个文件前先读;真机门 `npm run gate:drag-region`):
  *  ① `-webkit-app-region` 只按**内容盒**算 —— 让位不能写成 `padding-left`,
- *     那样让出来的地方仍然可拖。必须是一个**真元素**占住它(`.traffic`)。
- *  ② `no-drag` 只在 drag 元素**同一分支的子孙**上才生效。这条带上每一件
- *     可点的东西(标题下拉、右端的 AgentChip)都得自己声明 no-drag,
- *     否则点它们等于按住窗口拖 —— 而且是**静默**失效,没有任何报错。
+ *     那样让出来的地方仍然可拖。必须是一个**真元素**占住它(`.traffic`),
+ *     而且那个元素要有**面积**(`align-self: stretch`,80×0 血案见 CSS 里那段)。
+ *  ② `no-drag` 只在 drag 元素**同一分支的子孙**上才生效。这条带上每一件可点的
+ *     东西都得自己声明 no-drag,否则点它们等于按住窗口拖 —— 而且是**静默**失效,
+ *     没有任何报错。**标签组因此绝不许 portal 出去**:portal 之后那句声明还在,
+ *     人眼看不出任何异样,拖拽却当场破。几何靠 CSS 变量、DOM 留在带子里,
+ *     判词写在 `workbench/TopBarTabs.tsx` 上。
  *     AgentChip 是别人的组件,所以由这里套一层 `.trailing` 来声明,
  *     不去改它的样式表(职责在顶栏这一侧:是我把它放进了拖拽区)。
  */
 export function TopBar() {
-  const t = useT()
-  const currentSessionId = useExposeStore((st) => st.currentSessionId)
-  const sessions = useSessionsSource((st) => st.sessions)
-  const click = useStageStore((st) => st.clickDockIcon)
-  // 会话标题是**数据**(用户或后端给这条会话起的名),不翻译;
-  // 只有「还没有当前会话」时的兜底名才是界面文案。
-  const title = findSession(sessions, currentSessionId)?.title ?? t('topbar.newSession')
   /*
-   * 让位是**跟着灯走**的,不是一个常量(09-01 自查走查抓到:全屏下三颗灯已经
-   * 由系统收起,左边那 80px 却还空着)。判据只能问宿主 —— 渲染层看不见 macOS
-   * 的原生全屏,理由与实测读数写在 useHostFullScreen 里。
+   * 让位是**跟着灯走**的,不是一个常量。两条判据,都必须问宿主 —— 渲染层既看不见
+   * macOS 的原生全屏,也不该拿 UA 去猜自己跑在哪儿:
+   *  · 进了原生全屏,那三颗灯由系统收起(09-01 自查走查抓到:灯没了那 80px 还空着);
+   *  · Windows / Linux / 浏览器壳**根本没有灯**(设计 §2.2 最后一节:让位为 0,
+   *    标签从最左开始)。`useHostFullScreen` 在没有宿主时答 false,那是「有灯且没
+   *    全屏」的形 —— 拿它当「有没有灯」用会把浏览器壳判成有灯,所以另问一格。
    */
   const fullScreen = useHostFullScreen()
+  const trafficLights = useHostTrafficLights()
 
   return (
-    <header className={s.bar} data-testid="topbar" data-fullscreen={fullScreen ? 'true' : undefined}>
+    <header
+      className={s.bar}
+      data-testid="topbar"
+      data-fullscreen={fullScreen ? 'true' : undefined}
+      data-traffic={trafficLights ? undefined : 'none'}
+    >
       {/* 红绿灯让位区:一块什么都不画的定宽空元素。它不"画"那三颗灯(灯是原生的,
-        * 由系统画在网页之上、不受 z-index 管),只负责两件事 —— 把标题推到灯的
+        * 由系统画在网页之上、不受 z-index 管),只负责两件事 —— 把标签推到灯的
         * 右边去,以及把这一段从拖拽把手里摘出来(拖到灯上应当是按灯,不是拖窗)。
         * 全屏时灯没了,这一块也跟着归 0(宽度过渡吃 --dur,动效档 none 直切)。 */}
       <div className={s.traffic} data-testid="topbar-traffic" aria-hidden="true" />
-      {/* 会话名这一格是**结构件**(顶带上的身份 + 下拉记号),视觉本该定制 ——
-        * 所以走裸钮三类判的第③类 `ui/ButtonBase`(只清 UA、一个像素都不画),
-        * 不是 `ui/Button`:套一颗 ghost 钮上来会在拖拽带上画出一圈边框。 */}
-      <ButtonBase className={s.titleBtn} onClick={() => click(SESSIONS_ITEM_ID)}>
-        <span className={s.title}>{title}</span>
-        <ChevronDown className={s.titleIcon} strokeWidth={1.75} aria-hidden="true" />
-      </ButtonBase>
-      <div className={s.trailing}>
+      {/* 中央区那几片叶的标签组。它是一格 flex 项,吃掉让位与尾格之间的全部剩余
+        * 宽度;组本身是它的绝对定位子孙,所以**永不挤掉右端那一组动作**。 */}
+      <TopBarLeafTabs />
+      {/* 尾格不给 `aria-label`:它没有 role,一个只有名字没有角色的容器在无障碍树上
+        * 是噪音(axe 的 `aria-*` 那一族会说话)。里面每一件自己都说得出自己是谁。 */}
+      <div className={s.trailing} data-testid="topbar-trailing">
+        {/* 焦点叶的动作组(分屏 ▸ / 隐藏的标签 ⋯ / 型工具条)。设计 §2.2:
+          * 「右端是焦点叶的动作组」——分屏出来的叶自己不画檐,也不画动作。 */}
+        <TopBarLeafActions />
         <AgentChip />
       </div>
     </header>

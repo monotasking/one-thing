@@ -508,17 +508,28 @@ async function main() {
       * 翻个面继续钉同一件事:①查看器身上零檐;②**叶檐说得出文件名**;
       * ③体拿得到确定高度(修前 clientHeight == scrollHeight,内容被齐边剪掉)。
       */
+     /*
+      * **W1-b:那条檐搬进了窗口顶栏**(设计 §2.2 D 稿:「中央区的檐就是窗口顶栏」)。
+      * 于是「一格一檐」翻了个更狠的面:**中央叶身上一条 tablist 都没有**,那一条整条
+      * 在顶栏上,而且认得出它是哪片叶的(组的取件口 = 叶 id)。判据本身一个字没变:
+      * 一块内容只有一条檐,而且那条檐说得出它是谁。
+      */
      const merged = await page.evaluate(() => {
        const leaf = document.querySelector('[data-pane-leaf]')
+       const leafId = leaf?.getAttribute('data-pane-leaf') ?? ''
        const viewer = leaf?.querySelector('[data-testid="file-viewer"]')
        const body = viewer?.querySelector('[data-testid="viewer-body"]')
-       const chrome = leaf?.querySelector('[data-pane-chrome]')
-       const activeTab = chrome?.querySelector('[role="tab"][aria-selected="true"]')
+       const bar = document.querySelector('[data-testid="topbar"]')
+       const group = bar?.querySelector(`[data-topbar-leaf="${leafId}"]`)
+       const activeTab = group?.querySelector('[role="tab"][aria-selected="true"]')
        return {
          ownChrome: Boolean(viewer?.querySelector('[data-viewer-chrome]')),
          ownName: Boolean(viewer?.querySelector('[data-testid="viewer-name"]')),
-         leafChrome: Boolean(chrome),
-         tablists: leaf ? leaf.querySelectorAll('[role="tablist"]').length : 0,
+         topbarChrome: Boolean(group?.querySelector('[data-pane-chrome]')),
+         // 叶身上零檐 —— 聊天区里一个像素的檐都不画。
+         tablistsInLeaf: leaf ? leaf.querySelectorAll('[role="tablist"]').length : 0,
+         // 顶栏上这一片叶恰好一条。
+         tablistsInGroup: group ? group.querySelectorAll('[role="tablist"]').length : 0,
          activeTabText: (activeTab?.textContent ?? '').trim(),
          clientH: body?.clientHeight ?? 0,
          scrollH: body?.scrollHeight ?? 0,
@@ -526,13 +537,20 @@ async function main() {
        }
      })
      assert(
-       merged.leafChrome && !merged.ownChrome && !merged.ownName,
-       '一格一檐:叶檐在场,查看器身上零檐(修前两条叠着)',
+       merged.topbarChrome && !merged.ownChrome && !merged.ownName,
+       '一格一檐:檐在顶栏上,查看器身上零檐(修前两条叠着)',
      )
-     assert(merged.tablists === 1, `这片叶上只有一条檐(实测 ${merged.tablists} 条 tablist)`)
+     assert(
+       merged.tablistsInLeaf === 0,
+       `中央叶身上零檐(W1-b:实测 ${merged.tablistsInLeaf} 条 tablist,应为 0)`,
+     )
+     assert(
+       merged.tablistsInGroup === 1,
+       `顶栏上这片叶只有一条檐(实测 ${merged.tablistsInGroup} 条 tablist)`,
+     )
      assert(
        merged.activeTabText.includes('engine.ts'),
-       `叶檐说得出文件名:${merged.activeTabText || '—'}`,
+       `顶栏那条檐说得出文件名:${merged.activeTabText || '—'}`,
      )
      /*
       * 「滚得动」的**根判据是高度有没有被宿主夹住**,不是「这一份内容够不够长」——

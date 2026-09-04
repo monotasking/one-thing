@@ -1,0 +1,55 @@
+/* ── 焦点叶的动作组(W1-b:顶栏右端)────────────────────────────────────────
+ * 它坐在顶栏的**尾格**里(`TopBar` 的 `.trailing`),与 AgentChip 并排。
+ * `flex: none` 是这一组的命根子:挤压纪律那条「永不挤掉右端动作组」在布局上
+ * 只有这一种兑现方式 —— 它不吸剩余宽度,也不许被压缩,于是标签组那一侧再宽
+ * 也顶不动它(标签组自己是绝对定位,连参与挤压的资格都没有)。
+ *
+ * 那条底线**不画**:A 稿里它补一条与 tab 条同色的 border-bottom,是因为它跟
+ * tab 条同处一条檐;D 稿里顶栏自己那条 border-bottom 已经把整条线画满了,
+ * 再补一条就是两条叠着(合檐那条判例的同型)。 */
+.actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  -webkit-app-region: no-drag;
+}
+
+/* 型工具条:种类自述的那一格。没有就整格不画 —— 一格空 span 会多出一段 gap。 */
+.tool {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding-inline-end: var(--sp-2);
+}
+
+/* ── 两张菜单里的行(W1-b 从 PaneLeaf.module.css 随动作组一起搬来)───────── */
+.menuLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+}
+
+.menuMain {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuTrail {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+}
+
+.menuIcon {
+  flex: none;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  color: var(--text-3);
+}

@@ -1,0 +1,108 @@
+/* ── 顶栏那条标签带(W1-b,设计 §2.2 D 稿)────────────────────────────────
+ *
+ * 带子是顶栏里的一格 flex 项,吃掉「红绿灯让位」与「尾格(动作组 + AgentChip)」
+ * 之间的全部剩余宽度。标签组是它的**绝对定位子孙**,所以:
+ *  · 组越不过带子的右缘 = **永不挤掉右端动作组**(挤压纪律,靠结构不靠算);
+ *  · 组不参与 flex 挤压,带子的高度不受组里有多少 tab 影响 = **永不换行**;
+ *  · DOM 一步都没离开 `.bar`,`-webkit-app-region: no-drag` 因此在同一分支上生效
+ *    (坑 ①:portal 出去当场静默破,判例写在 `TopBar.module.css` 与本组件头上)。
+ *
+ * `position: relative` 是组的定位参考系,于是 `leaf-geometry.ts` 写进来的
+ * `--leaf-x-*` 只需要是**相对带子左缘**的偏移 —— 组不必知道让位有多宽。 */
+.band {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  position: relative;
+}
+
+/* ── 一组标签 ────────────────────────────────────────────────────────────
+ * 左右界由两格算式给(`--tabgrp-x` / `--tabgrp-w`,行内 style;它们已经把
+ * 「上下切分横向重叠时按序平分」算进去了),这里只做**夹紧**:
+ *  · 左边夹到带子的左缘 —— 中央区在窗口左侧没有架子时是从 x=0 起的,而带子从
+ *    让位之后才起,不夹的话第一格 tab 会缩到红绿灯底下去(那 80px 是原生视图,
+ *    画在网页之上,谁也盖不住它);
+ *  · 右边夹到带子的右缘(`100%`)—— 尾格那一组动作在带子外面,结构上就挤不掉,
+ *    这一句管的是**组自己别画出去**,好让 `ui/Tabs` 在正确的宽度里决定收窄还是横滚。
+ *
+ * `bottom: -1px` 是**连体**那一句:顶栏自己那条 border-bottom 在带子的下面一像素,
+ * 组探出去一格,活动标签的底色因此**盖住那条线** —— 像浏览器的 tab 长在页面上。 */
+.group {
+  --tabgrp-l: max(0px, var(--tabgrp-x));
+  --tabgrp-r: min(calc(var(--tabgrp-x) + var(--tabgrp-w)), 100%);
+  position: absolute;
+  top: 0;
+  bottom: calc(var(--bw-1) * -1);
+  left: var(--tabgrp-l);
+  width: max(0px, calc(var(--tabgrp-r) - var(--tabgrp-l)));
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  /*
+   * **这一层刻意不声明 `-webkit-app-region`**(施工时先写错过一次,真机门当场
+   * 抓出来,记在这里):组是**满宽**的 —— 它铺满那片叶的整段跨度,而 tab 只占
+   * 左边一小截。在组上写 no-drag = 把「红绿灯与动作组之外的空白仍是拖窗区」
+   * (设计 §2.2 原话)整条抹掉:单叶那一形下,顶栏从灯到 AgentChip 之间**没有
+   * 一处拖得动**,而屏幕上一个像素都看不出来。
+   *
+   * 所以 no-drag 只落在**真正可点的那几件**上(下面那条 `[role='tab']`,
+   * 以及尾格自己那一句)。它们仍然是拖拽带同一分支的子孙 —— 判例 ② 满足;
+   * 组里剩下的空白继续把顶栏那句 drag 透下来。
+   */
+}
+
+/* 真正可点的那一件:一条 tab。`-webkit-app-region` **不继承**,但 Chromium 算
+ * 拖拽区是按祖先声明来的(声明 drag 的把边框盒加进去,声明 no-drag 的减出去),
+ * 所以写在这一层就够 —— tab 里面的名字、未保存丸、✕ 全在它的盒子里。 */
+.group [data-pane-chrome] [role='tab'] {
+  -webkit-app-region: no-drag;
+}
+
+/* 檐本身(`LeafStrip` 的 `.chrome`)在这一档里贴底、吃满组宽。
+ * 它在 A 稿里是 `flex: none` 的一条带 —— 那时它上面还有内容;这里它就是全部。 */
+.group [data-pane-chrome] {
+  flex: 1;
+  min-width: 0;
+  align-self: flex-end;
+  align-items: flex-end;
+  background: transparent;
+}
+
+/* tab 条那条底线**不画**:顶栏自己的 border-bottom 已经把整条线画满了,
+ * 再画一条就是两条叠着(合檐那条判例的同型)。而且留着它会把活动标签的底色
+ * 顶上去一像素,连体当场断开。 */
+.group [data-pane-chrome] [role='tablist'] {
+  border-bottom: none;
+}
+
+/* ── 连体:活动标签与它下面那片叶是同一块 ─────────────────────────────────
+ * 同一底色(`--pane-face`,叶也读它)、上两角圆、三面细边、**无下边**。
+ *
+ * 特异性写到 `.band .group …[aria-selected]`(0,5,1) 是必须的,不是洁癖:
+ * `LeafStrip.module.css` 里「单 tab 身份带」那条 `.chrome[data-single]
+ * [role='tab']:hover { background: transparent }` 是 (0,4,1) —— 而单叶恰恰是
+ * 最常见的一形(只有一片会话叶)。少这一级,鼠标一划过顶栏,连体的底色就没了。 */
+.band .group [data-pane-chrome] [role='tab'][aria-selected='true'] {
+  background: var(--topbar-tab-face);
+  color: var(--text-1);
+  border: var(--bw-1) solid var(--line-1);
+  border-bottom: none;
+  border-radius: var(--r-2) var(--r-2) 0 0;
+  /* 底缘那条 accent 指示条在这一档里没有消费者:活动态已经由「连成一块」说清楚了,
+   * 再画一条线是同一件事说两遍,而且它正好落在要被盖住的那一像素上。 */
+  box-shadow: none;
+}
+
+/* **焦点组之外的那些组:活动标签底色降一档**(设计 §2.2 原话)。
+ * 「哪一组是活的」于是看得出来,而不必靠文字说。 */
+.band .group:not([data-pane-focus]) [data-pane-chrome] [role='tab'][aria-selected='true'] {
+  background: var(--topbar-tab-face-dim);
+  color: var(--text-2);
+}
+
+/* 非活动标签:透明底,顶栏的底色透出来。hover 仍由 `ui/Tabs` 自己那条画。 */
+.band .group [data-pane-chrome] [role='tab']:not([aria-selected='true']) {
+  border: var(--bw-1) solid transparent;
+  border-bottom: none;
+  border-radius: var(--r-2) var(--r-2) 0 0;
+}

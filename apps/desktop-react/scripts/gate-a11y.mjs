@@ -868,12 +868,16 @@ async function main() {
     }
 
     /*
-     * 叶檐(W1 新 surface)。它挂在中央区那棵拼贴树的每一片叶顶上;外壳那一屏
-     * 虽然看得见它,但**那时它只有一格 tab**(身份带那一形)。要扫到 tab 条真正
-     * 的样子得先让它有两格 —— 走行菜单把落点改成「主区域」,**开着的那份当场搬
-     * 进中央叶**(选档即生效),于是叶上是「聊天 + 文件」两格。
+     * 中央区的檐(W1 新 surface)。**W1-b 起它画在窗口顶栏上**(设计 §2.2 D 稿:
+     * 「中央区的檐就是窗口顶栏」),不再挂在叶顶。所以这一屏扫的范围从
+     * `[data-pane-chrome]`(叶上那条带)换成了 `[data-testid="topbar"]` ——
+     * 顶栏上现在坐着一批新东西:每片叶一条 `role="tablist"`、一组 `role="tab"`、
+     * 尾格里焦点叶的动作组。它们在外壳那一屏虽然看得见,但**那时只有一格 tab**
+     * (身份带那一形);要扫到 tab 条真正的样子得先让它有两格 —— 走行菜单把落点
+     * 改成「主区域」,**开着的那份当场搬进中央叶**(选档即生效),于是那一组是
+     * 「聊天 + 文件」两格。
      */
-    console.log('\n[7b/10] 叶檐(tab 条 + 动作组):开进中央区再扫一次')
+    console.log('\n[7b/10] 顶栏标签组(tab 条 + 动作组):开进中央区再扫一次')
     if (!fileRow) {
       console.log('  · 跳过:上一屏没开出文件')
     } else {
@@ -892,15 +896,47 @@ async function main() {
       if (!picked.hit) {
         console.log(`  · 跳过:行菜单里没有「主区域 / Main stage」(现有:${picked.texts.join(' / ') || '—'})`)
       } else {
-        const tabs = await page.evaluate(
-          () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
-        )
-        if (tabs < 2) {
-          console.log(`  · 跳过:叶檐上只有 ${tabs} 格 tab(夹具没搭起来)`)
+        const shot = await page.evaluate(() => {
+          const bar = document.querySelector('[data-testid="topbar"]')
+          return {
+            tabs: bar ? bar.querySelectorAll('[role="tab"]').length : 0,
+            // 一片叶一条 tablist —— APG 的 tabs 模式:两片叶是两组**互不相干**的
+            // tab(方向键不许在两组之间游走),所以它们不是一条 tablist,
+            // 也不该用 `aria-owns` 假装成一条。
+            tablists: bar ? bar.querySelectorAll('[role="tablist"]').length : 0,
+            // 带子自己是一格有名字的 group(读屏软件按地标/组浏览时说得出这是什么)。
+            band: bar?.querySelector('[data-testid="topbar-tabs"]')?.getAttribute('aria-label') ?? null,
+            // 叶身上零檐 —— W1-b 之后中央区里一条 tablist 都不该有。
+            inLeaf: document.querySelectorAll('[data-pane-leaf] [role="tablist"]').length,
+          }
+        })
+        if (shot.tabs < 2) {
+          console.log(`  · 跳过:顶栏上只有 ${shot.tabs} 格 tab(夹具没搭起来)`)
         } else {
-          await settle(page, '叶檐')
-          await scanAxe(page, '叶檐', '[data-pane-chrome]')
-          console.log(`  ✓ 叶檐上 ${tabs} 格 tab`)
+          await settle(page, '顶栏标签组')
+          /*
+           * ── 扫的是**带子与尾格两块**,不是整条 `<header>` ────────────────────
+           * W1-b 往顶栏上添的东西全在这两块里(每片叶一条 tablist + 一组 tab;
+           * 尾格里焦点叶的动作组),所以两块合起来就是这一批的新 surface 全集。
+           *
+           * 不把 `include` 写成整条 `[data-testid="topbar"]`,是因为那样会把顶栏那个
+           * `<header>` 元素本身交给 axe,而它会在这一屏上报一条**与本批无关的**
+           * `landmark-no-duplicate-banner`:`FloatWindow.tsx:169` 的
+           * `<header>` 坐在 `<section role="dialog">` 里,axe 认为 role 一旦被显式
+           * 覆盖,那个 `section` 就不再是「分节内容」,于是里面的 `<header>` 升格成
+           * 第二个 banner —— 这一屏开着两扇浮窗,于是文档里有三个。
+           * **实测是存量**:同一段 include 打在 W1-a 基线(7347cb52)上,读数逐字相同
+           * (`._bar_6p1qn_5` / Document has more than one banner landmark)。
+           * 修法仓里已经有判例(`ProviderDetail.tsx:60`「头这一行不用 `<header>`」),
+           * 但 `FloatWindow.tsx` 这一批不许碰(W4 并行在改),所以**记一格留账**,
+           * 不在这里顺手改、也不把它塞进哪个基线里假装没有。
+           */
+          await scanAxe(page, '顶栏标签组', '[data-testid="topbar-tabs"]')
+          await scanAxe(page, '顶栏尾格(焦点叶的动作组)', '[data-testid="topbar-trailing"]')
+          assert(shot.tablists >= 1, `顶栏上一片叶一条 tablist(实测 ${shot.tablists} 条)`)
+          assert(Boolean(shot.band), `标签带自己有无障碍名(实测「${shot.band ?? '—'}」)`)
+          assert(shot.inLeaf === 0, `叶身上零檐(实测 ${shot.inLeaf} 条 tablist)`)
+          console.log(`  ✓ 顶栏上 ${shot.tabs} 格 tab / ${shot.tablists} 条 tablist`)
         }
       }
     }

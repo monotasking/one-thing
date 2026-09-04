@@ -55,14 +55,33 @@ describe('会话总览是一块普通的面', () => {
     expect(screen.getByLabelText('搜索会话')).toBeTruthy()
   })
 
-  it('顶栏标题与 Dock 那块瓦是同一条路:点它 = 按它的打开方式开', () => {
+  /*
+   * ── W1-b:顶栏那一格从「总览入口」变成了「中央区的标签」──────────────────
+   *
+   * 08-29 去接管化拍板让顶栏的会话名钮 = 点 Dock 上那块「会话总览」瓦。W1-b 按
+   * 设计 §2.2 的 D 稿把中央区的檐整条搬进顶栏,那颗钮的位子换成了**会话叶的标签**
+   * ——「只有一片会话叶时,顶栏画的就是那一个标签 = 今天的会话标题」。
+   *
+   * 于是那条路**没了**:标签是标签,点它只能是「切到这一格」;一个点下去开出另一
+   * 块面的 tab 是在说谎。总览今天的入口是 Dock 那块瓦与 ⌘E。
+   *
+   * **这是一处可感知的行为变化,交卷时点名给用户**(要不要补回来、补成动作组里的
+   * 一颗还是会话标签右键菜单的一行,是用户的拍点)。这一条从「点它会开总览」翻成
+   * 「点它不开总览」,是为了让那次翻面**有人看着** —— 哪天有人顺手把入口接回标签
+   * 的 onSelect 上,这里会红。
+   */
+  it('顶栏那一格是中央区的标签,不是总览入口(W1-b 可感知变化)', () => {
     render(<AppShell />)
     const current = findSession(
       useSessionsSource.getState().sessions,
       useExposeStore.getState().currentSessionId,
     )!
-    fireEvent.click(screen.getByText(current.title))
-    expect(placementOfSessions()).toEqual({ kind: 'float' })
+    // 会话标题活在顶栏那条标签上(内容自己发布进 live-title,活的盖静的)。
+    const tab = screen.getByRole('tab', { name: new RegExp(current.title) })
+    expect(screen.getByTestId('topbar').contains(tab)).toBe(true)
+    fireEvent.click(tab)
+    // 总览一格没动:它没被摆出来过,点标签也不会把它摆出来。
+    expect(placementOfSessions()).toBeUndefined()
   })
 
   it('开场归位:上次停在 Quick Look,再开还是从总览起步', () => {

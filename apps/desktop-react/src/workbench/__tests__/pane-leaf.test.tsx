@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { CenterRegion } from '../CenterRegion'
+import { TopBarLeafActions, TopBarLeafTabs } from '../TopBarTabs'
 import { CENTER_REGION } from '../regions'
 import { registerContentKind, refId, resetContentKinds } from '../kinds'
 import { startWorkbench, useWorkbenchStore } from '../store'
@@ -65,10 +66,22 @@ afterEach(() => {
   focusTree.reset()
 })
 
+/**
+ * **檐与身分居两处了**(W1-b,设计 §2.2 D 稿):tab 条画在窗口顶栏上
+ * (`TopBarLeafTabs`),身留在中央区那棵树里(`CenterRegion`)。所以夹具要把
+ * 两半都摆上台 —— 只挂一半的话,量的就不是用户看见的那台机器。
+ *
+ * 摆的**顺序照真机**(顶栏在前、中央区在后):`leaf-geometry` 的取件口是
+ * `document.querySelector`,而 DOM 插入发生在 React 提交的 mutation 相位、早于
+ * 任何 layout effect —— 顺序在这里不该有影响,把它摆成真机的样子正是为了让
+ * 「哪天它有影响了」这件事在用例里也现形。
+ */
 function renderCenter() {
   return render(
     <>
       <FocusDispatchHarness />
+      <TopBarLeafActions />
+      <TopBarLeafTabs />
       <CenterRegion />
     </>,
   )
@@ -85,6 +98,60 @@ describe('一格一檐:叶檐就是 tab 条', () => {
     renderCenter()
     expect(screen.getAllByRole('tablist')).toHaveLength(1)
     expect(screen.getByTestId('home-body')).toBeTruthy()
+  })
+
+  it('W1-b:那条檐画在顶栏那条带上,**叶身上零檐**(设计 §2.2 D 稿)', () => {
+    act(() => store().openRef(doc('a')))
+    renderCenter()
+    const leaf = document.querySelector('[data-pane-leaf]')!
+    const band = screen.getByTestId('topbar-tabs')
+    // 叶身上一条 tablist 都没有 —— 聊天区里一个像素的檐都不画。
+    expect(leaf.querySelectorAll('[role="tablist"]')).toHaveLength(0)
+    expect(leaf.querySelectorAll('[data-pane-chrome]')).toHaveLength(0)
+    // 那一条整条在带子里,而且**认得出它是哪片叶的**(组的取件口 = 叶 id)。
+    const group = band.querySelector(`[data-topbar-leaf="${leaf.getAttribute('data-pane-leaf')}"]`)!
+    expect(group.querySelectorAll('[role="tablist"]')).toHaveLength(1)
+    expect(group.getAttribute('data-focus-scope')).toBe('leaf')
+  })
+
+  it('W1-b:分屏 → 一片叶一组标签,组的 key = 叶 id(留下来那一组不重挂)', () => {
+    act(() => {
+      store().openRef(doc('a'))
+      store().openRef(doc('b'))
+    })
+    renderCenter()
+    const before = document.querySelector('[data-topbar-leaf]')!
+    const keptId = before.getAttribute('data-topbar-leaf')
+    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
+    const groups = Array.from(document.querySelectorAll('[data-topbar-leaf]'))
+    expect(groups).toHaveLength(2)
+    // 同一个 DOM 节点 —— 分屏没把留下来那一组重挂一遍。
+    expect(groups.find((el) => el.getAttribute('data-topbar-leaf') === keptId)).toBe(before)
+  })
+
+  it('W1-b:动作组只画焦点叶那一份(设计 §2.2「右端是焦点叶的动作组」)', () => {
+    act(() => {
+      store().openRef(doc('a'))
+      store().openRef(doc('b'))
+    })
+    renderCenter()
+    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
+    const leaves = centerLeaves()
+    expect(document.querySelectorAll('[data-pane-actions]')).toHaveLength(1)
+    act(() => store().setFocusLeaf(leaves[0].id))
+    expect(document.querySelector('[data-pane-actions]')?.getAttribute('data-pane-actions'))
+      .toBe(leaves[0].id)
+    act(() => store().setFocusLeaf(leaves[1].id))
+    expect(document.querySelector('[data-pane-actions]')?.getAttribute('data-pane-actions'))
+      .toBe(leaves[1].id)
+  })
+
+  it('W1-b:「这一组的家」= 种类自述自己常驻(图标上主题色那一格数据)', () => {
+    act(() => store().openRef(doc('a')))
+    renderCenter()
+    // `home` 那一种(注册时声明了 resident)拿到 home 那一格,别的没有。
+    expect(tabRow('家').className).toMatch(/tabHome/)
+    expect(tabRow('a').className).not.toMatch(/tabHome/)
   })
 
   it('型工具条由种类自述,叶檐把它挂进动作组(活动那一格的)', () => {

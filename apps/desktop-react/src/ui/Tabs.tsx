@@ -66,6 +66,15 @@ export interface TabSpec {
    * `dirty` / `preview` 同族:**数据表驱动的一格事实**,不是混进来的 children。
    */
   closable?: boolean
+  /**
+   * **这一组的「家」**(W1-b,设计 §2.2:「会话标签的图标用主题色,它是这一组的家」)。
+   * 只换**图标**的颜色 —— 底与字色是「活动 / 悬停」那两件事的语汇,与「谁是家」正交
+   * (一条 tab 可以同时是家、是活动的、是被悬停的)。
+   *
+   * 它与 `dirty` / `preview` / `closable` 同族:**数据表驱动的一格事实**。判据由宿主
+   * 从内容种类的自述里取(`ContentKind.resident`),`ui/Tabs` 不认识任何一种内容。
+   */
+  home?: boolean
 }
 
 interface TabsProps {
@@ -109,7 +118,9 @@ export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, lab
            */
           <div
             key={tab.id}
-            className={[s.tab, on && s.tabOn, tab.preview && s.tabPreview].filter(Boolean).join(' ')}
+            className={[s.tab, on && s.tabOn, tab.preview && s.tabPreview, tab.home && s.tabHome]
+              .filter(Boolean)
+              .join(' ')}
             role="tab"
             aria-selected={on}
             // roving 入组标记 + 初值。选中的那一条由 useRoving 改回 0 ——

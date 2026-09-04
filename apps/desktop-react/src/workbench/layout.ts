@@ -150,3 +150,78 @@ function collectRatios(node: PaneNode, out: Record<string, string>): void {
 
 /** 这棵树里有几片叶(焦点边画不画的判据)。 */
 export const leafCount = (node: PaneNode): number => leavesOf(node).length
+
+/* ── 顶栏标签组的落位(W1-b,设计 §2.2「中央区的檐就是窗口顶栏」)────────────
+ *
+ * 顶栏上**一片叶一组标签,各坐各叶的正上方**。这里只回答两件纯结构的事:
+ * 「这一组跟着哪个节点的盒走」与「同一段宽度里第几个 / 一共几个」——一次
+ * `getBoundingClientRect()` 都不做。真正的像素由 `leaf-geometry.ts` 量出来写进
+ * 两格 CSS 变量,组用 `calc()` 读;于是**拖分隔杆的那几十帧一帧都不经过 React**
+ * (与本文件头上那条 `liveVar` 判据同源)。
+ *
+ * ── 为什么「跟着谁的盒」不总是叶自己 ──────────────────────────────────────
+ * 上下切分的两片叶**横向重叠**:它们的正上方是同一段宽度。设计原话是「就把那一段
+ * 宽度按序平分」。所以这里按「共用同一段横向跨度」把叶分组:
+ *   · 叶        一组一片,跨度就是它自己;
+ *   · row 切分  左右分家 —— 两边各自成组,拼接,序 = 左到右;
+ *   · col 切分  上下重叠 —— 两边并成**一组**,跨度是这次切分自己那块地,
+ *               组里按阅读序(上、下)平分。
+ *
+ * `col` 那一并只在**两边各自恰好一组**时是精确的。一旦某一边自己还含着一次
+ * `row` 切分(`col(叶1, row(叶2, 叶3))`),三片叶的横向区间两两不等,「精确坐在
+ * 正上方」在一条直线上无解 —— 那时退成「这次切分整块地,按阅读序平分」:
+ * **宁可几组都略偏,也不许两组在顶栏上叠在一起**(叠上去 = 标签互相盖住,
+ * 比偏一点严重得多)。留账:W4 若真出现三层嵌套的常用形,再谈。
+ */
+
+/** 一片叶在顶栏上的那一组标签。 */
+export interface TopStripSlot {
+  leafId: string
+  /** 这一组的横向跨度由哪个节点的盒说了算(叶 id 或切分 id)。 */
+  spanId: string
+  /** 这一段宽度里的第几个(0 起)。 */
+  index: number
+  /** 这一段宽度一共分给几组。 */
+  count: number
+}
+
+/** 一段横向跨度,以及共用它的那几片叶(阅读序)。 */
+interface SpanGroup {
+  spanId: string
+  leafIds: string[]
+}
+
+/** 顶栏上从左到右的那几组标签。**纯函数**,所以平分那条规则钉得住。 */
+export function topStrips(node: PaneNode): TopStripSlot[] {
+  const out: TopStripSlot[] = []
+  for (const group of spanGroups(node)) {
+    group.leafIds.forEach((leafId, index) => {
+      out.push({ leafId, spanId: group.spanId, index, count: group.leafIds.length })
+    })
+  }
+  return out
+}
+
+function spanGroups(node: PaneNode): SpanGroup[] {
+  if (node.kind === 'leaf') return [{ spanId: node.id, leafIds: [node.id] }]
+  const a = spanGroups(node.a)
+  const b = spanGroups(node.b)
+  // 左右分家:两边各自成组,序就是左到右。
+  if (node.dir === 'row') return [...a, ...b]
+  // 上下重叠:两边并成一组,跨度是这次切分自己那块地。
+  if (a.length === 1 && b.length === 1) {
+    return [{ spanId: node.id, leafIds: [...a[0].leafIds, ...b[0].leafIds] }]
+  }
+  // 退化形(某一边自己还含着一次左右切分):整块地按序平分,宁偏勿叠。
+  return [{ spanId: node.id, leafIds: leavesOf(node).map((leaf) => leaf.id) }]
+}
+
+/* ── 跨度那两格 CSS 变量的**唯一产地** ─────────────────────────────────────
+ * 它们不是设计 token,是**运行期量出来的读数**,所以住在写它们的那个元素身上
+ * (顶栏那条带),不在 `:root`。名字登记在 `styles/tokens.css` 的
+ * 「拼贴树的跨度读数(运行期写入,不是设计 token)」一节。 */
+
+/** 这个节点的左缘(相对写变量的那个宿主元素)。 */
+export const spanXVar = (nodeId: string): string => `--leaf-x-${nodeId}`
+/** 这个节点的宽度。 */
+export const spanWVar = (nodeId: string): string => `--leaf-w-${nodeId}`

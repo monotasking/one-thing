@@ -1,11 +1,16 @@
-import { useCallback, useRef } from 'react'
-import { registerContentKind } from '../../workbench/kinds'
+import { useCallback, useEffect, useRef } from 'react'
+import { refId, registerContentKind } from '../../workbench/kinds'
 import { CENTER_REGION } from '../../workbench/regions'
 import { ErrorBoundary } from '../../components/ErrorBoundary'
 import { ChatStream } from '../ChatStream'
 import { TocPanel } from '../../toc/TocPanel'
 import { useChatToc } from '../../toc/useChatToc'
-import { t } from '../../i18n'
+import { useSessionsSource } from '../../data/sessions-source'
+import { findSession } from '../../expose/projection'
+import { useExposeStore } from '../../expose/store'
+import { useLiveTitleStore } from '../../stage/live-title'
+import { t, useT } from '../../i18n'
+import type { ContentRef } from '../../workbench/kinds'
 import s from './ChatLeaf.module.css'
 
 /**
@@ -39,7 +44,7 @@ import s from './ChatLeaf.module.css'
  *     (它有自己的空态与错误行);目录 rail 在没有锚点时整条不在场。
  *  ③ UI 交互状态:这一层不画任何控件,交互状态全在它包着的两件上。
  */
-function ChatLeaf() {
+function ChatLeaf({ contentRef }: { contentRef: ContentRef }) {
   // 聊天滚动容器只有一个 ref,两个消费者:TOC 当前键 与 目录跳转。
   const chatRef = useRef<HTMLDivElement>(null)
   const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(chatRef)
@@ -53,6 +58,7 @@ function ChatLeaf() {
 
   return (
     <div className={s.chatArea}>
+      <ChatIdentity contentRef={contentRef} />
       {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
         * (输入框不在这片叶里 —— 它是 `.center` 上那一格落位带,W5 才归属焦点叶。) */}
       <ErrorBoundary where="chat">
@@ -63,17 +69,52 @@ function ChatLeaf() {
   )
 }
 
+/**
+ * **这一格此刻在显示哪条会话**(W1-b)。一个**零 DOM 的叶子组件**。
+ *
+ * 设计 §2.2 的 D 稿:「只有一片会话叶时,顶栏画的就是那一个标签 = 今天的会话标题」。
+ * 从前那句标题由 `TopBar` 自己取(它订着整张会话表);现在它是**内容自己的身份**,
+ * 由这一种内容发布到 `stage/live-title`(键 = refId),檐读表时**活的盖静的** ——
+ * 这正是 `ContentKind.title` 只答静态那一半时留下的那条缝。
+ *
+ * 为什么单独占一个零 DOM 的组件,而不是几行写进 `ChatLeaf`:那样 `ChatLeaf` 就订上了
+ * 整张会话表,**会话列表一动整条聊天流重渲一遍**(09-03 流式卡死那一批的同型病:
+ * 订阅按「谁真的读那个值」算,不按「谁方便挂」算)。这样一来重渲的只有它自己,
+ * 而它渲染 `null`。
+ *
+ * 生命周期:随这片叶挂载 / 卸载;卸载时**收回**那格活标题(留着等于让下一次挂载
+ * 先读到一份陈旧的名字)。组件级,不是模块级 —— 不需要 HMR dispose。
+ */
+function ChatIdentity({ contentRef }: { contentRef: ContentRef }): null {
+  const tr = useT()
+  const currentSessionId = useExposeStore((st) => st.currentSessionId)
+  const sessions = useSessionsSource((st) => st.sessions)
+  // 会话标题是**数据**(用户或后端给这条会话起的名),不翻译;
+  // 只有「还没有当前会话」时的兜底名才是界面文案。
+  const text = findSession(sessions, currentSessionId)?.title ?? tr('topbar.newSession')
+  const id = refId(contentRef)
+  useEffect(() => {
+    useLiveTitleStore.getState().setLiveTitle(id, { text })
+    return () => useLiveTitleStore.getState().setLiveTitle(id, null)
+  }, [id, text])
+  return null
+}
+
 registerContentKind(
   {
     id: 'chat',
     singleton: true,
     resident: { region: CENTER_REGION, key: 'main' },
     regions: [CENTER_REGION],
-    // 标题读的是当下语言 —— `PaneLeaf` 自己 `useT()` 订着 locale,所以切语言
-    // 会重渲那条 tab 条,这一句于是重跑一次(非组件上下文的 `t()` 用法)。
+    /*
+     * **静态那一半**:还不知道是哪条会话时的名字(冷启动的头几帧、以及没有当前
+     * 会话时)。活的那一半由 `ChatIdentity` 发布进 `stage/live-title`,活的盖静的。
+     * 读的是当下语言 —— 檐自己 `useT()` 订着 locale,切语言会重渲 tab 条,
+     * 这一句于是重跑一次(非组件上下文的 `t()` 用法)。
+     */
     title: () => ({ text: t('focus.scope.chat') }),
     icon: () => 'MessagesSquare',
-    render: () => <ChatLeaf />,
+    render: (ref) => <ChatLeaf contentRef={ref} />,
   },
   import.meta.hot,
 )
