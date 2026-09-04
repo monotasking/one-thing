@@ -53,6 +53,7 @@ import {
   type SearchIndexQueryFace,
 } from './indexed.js'
 import { legacyScanCapability } from './legacy.js'
+import { sessionScopeVisibility } from './visibility.js'
 import type { LegacyBackedCandidate, SearchServiceResult } from './legacy.js'
 import {
   PreviewUnavailableError,
@@ -85,7 +86,10 @@ export const chatsSearchManifest: CapabilityManifest = {
   budget: { default: 6, timeoutMs: 300 },
   order: 1,
   orderWhenIntent: { actions: 3 },
-  visibility: () => ({}),
+  // 与 messages 同一条规则(§6.4b / 拍点辛 a):会话标题也是会话内容,一间 agent
+  // 看不见的房,它的**房名**同样不该出现在结果里(`collab/visibility.ts` 的原话:
+  // 不可见不是「看不到内容」,是「这间房不存在」)。
+  visibility: sessionScopeVisibility,
   // **inline**(§4.5 ①):概览的四格全部来自**已经在手的那张会话表**
   // (`getSessionsList()`,一次搜索本来就要读它去补 subtitle)—— 一次 map,不读账本、
   // 不发请求。这么便宜的东西选中再取一次是白跑一趟网络,所以随候选带。

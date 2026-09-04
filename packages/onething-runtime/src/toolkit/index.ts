@@ -89,6 +89,27 @@ export { createEditTool, EditTool, EDIT_DESCRIPTION, EDIT_TOOL_PROMPT, EditInput
 export type { EditInput, EditToolAdapters } from './builtin/edit.js'
 export { createReadTool, READ_DESCRIPTION, ReadInputSchema, ReadTool } from './builtin/read.js'
 export type { ReadInput, ReadToolAdapters } from './builtin/read.js'
+export {
+  configureSearchToolAdapters,
+  createSearchTool,
+  getSearchToolAdapters,
+  parseSearchTime,
+  renderPreview,
+  searchDescription,
+  SEARCH_DEFAULT_LIMIT,
+  SEARCH_MAX_LIMIT,
+  SEARCH_TOOL_PROMPT,
+  SearchInputSchema,
+  SearchTool,
+} from './builtin/search.js'
+export type {
+  SearchInput,
+  SearchToolAdapters,
+  SearchToolHit,
+  SearchToolPage,
+  SearchToolPrincipal,
+  SearchToolQuery,
+} from './builtin/search.js'
 export { createTimeTool, TIME_DESCRIPTION, TimeInputSchema, TimeTool } from './builtin/time.js'
 export type { TimeInput } from './builtin/time.js'
 export {

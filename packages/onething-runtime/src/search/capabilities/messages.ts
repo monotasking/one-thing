@@ -49,6 +49,7 @@ import {
   type SearchIndexQueryFace,
 } from './indexed.js'
 import type { LegacyBackedCandidate, SearchServiceResult } from './legacy.js'
+import { sessionScopeVisibility } from './visibility.js'
 import {
   PreviewUnavailableError,
   firstCandidate,
@@ -88,8 +89,10 @@ export const messagesSearchManifest: CapabilityManifest = {
   // `title` 这一格,声明它等于写一句永不触发的假话(S3b 删)。要「标题命中置顶」就
   // 得先让投影器把会话标题写进消息文档 —— 那是另一件事,没做就别在自述里说。
   ranking: { halfLifeDays: 30, boosts: { role: { user: 1.1 } } },
-  // 用户什么都看得见(§6.4b 的缺省);agent 那一支是 S6(拍点辛)。
-  visibility: () => ({}),
+  // 谁能看见哪几条会话(§6.4b):用户全可见,agent 走拍点辛 a(当前空间的非协作
+  // 会话 + 自己是成员的房),插件只见自己产的(今天是零条)。判据在装配层注入的
+  // 端口后面 —— **这份自述里没有「协作」这个词**,它只说「范围按 sessionId 收」。
+  visibility: sessionScopeVisibility,
   // **lazy**(§4.5 ①):上下文要把那间会话的账本翻一遍,不是随候选带得起的东西 ——
   // 一次 `all` 档五条命中就是五次翻账本。选中再取,↑↓ 换行由壳 abort 上一条。
   preview: { mode: 'lazy' },

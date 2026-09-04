@@ -126,6 +126,30 @@ describe('授权:范围进 filters,total 是真数', () => {
     expect(query.filters.space).toBe('s1')
   })
 
+  it('允许清单 ∩ 调用方的收窄 —— 「赢」是取交集,不是抹掉(S6)', () => {
+    const allowlist = () => ({ sessionId: ['s1', 's2'] })
+    const scope = visibilityScopeOf(makeManifest({ id: CAP_A, visibility: allowlist }), { kind: 'agent', id: 'a1' })
+
+    // 收窄到清单里的一条 → 照做(覆盖会把这次收窄整个抹掉,那不是越权,是没照做)。
+    expect(applyVisibility({ ...parse('身份牌'), filters: { sessionId: 's1' } }, scope).filters.sessionId)
+      .toBe('s1')
+    // 收窄到清单外的一条 → 空集(恒不命中),而不是「按它说的给」。
+    expect(applyVisibility({ ...parse('身份牌'), filters: { sessionId: 's9' } }, scope).filters.sessionId)
+      .toEqual([])
+    // 两个清单 → 交集。
+    expect(applyVisibility({ ...parse('身份牌'), filters: { sessionId: ['s2', 's9'] } }, scope).filters.sessionId)
+      .toEqual(['s2'])
+    // 没说收窄 → 就是允许清单。
+    expect(applyVisibility(parse('身份牌'), scope).filters.sessionId).toEqual(['s1', 's2'])
+  })
+
+  it('交集表达不出来时退回允许范围 —— 仍然不放宽', () => {
+    const allowlist = () => ({ time: { gte: 100 } })
+    const scope = visibilityScopeOf(makeManifest({ id: CAP_A, visibility: allowlist }), { kind: 'agent', id: 'a1' })
+    expect(applyVisibility({ ...parse('身份牌'), filters: { time: { gte: 0 } } }, scope).filters.time)
+      .toEqual({ gte: 100 })
+  })
+
   it('没声明 visibility = 全可见,filters 一字不动', () => {
     const query = parse('身份牌')
     expect(applyVisibility(query, visibilityScopeOf(makeManifest({ id: CAP_A }), { kind: 'user', id: 'u1' })))

@@ -57,27 +57,27 @@ function invocationFor(toolId: string, input: unknown, dir: string): Invocation 
 }
 
 describe('三档目录', () => {
-  it('桌面 / headless / readonly 各装得起来(R3a:二十只已全部移植)', () => {
+  it('桌面 / headless / readonly 各装得起来(R3a 二十只 + S6 的 search)', () => {
     expect(createDesktopCatalog().all().map(tool => tool.spec.id).sort())
       .toEqual([
         'ask_user', 'bash', 'board', 'edit', 'goal', 'history', 'notebook', 'practice',
-        'radio', 'read', 'send_message', 'task', 'time', 'variable', 'web_open',
+        'radio', 'read', 'search', 'send_message', 'task', 'time', 'variable', 'web_open',
         'web_search', 'write',
       ])
     expect(createHeadlessCatalog().all().map(tool => tool.spec.id).sort())
       .toEqual([
-        'bash', 'board', 'edit', 'history', 'read', 'send_message', 'time',
+        'bash', 'board', 'edit', 'history', 'read', 'search', 'send_message', 'time',
         'variable', 'web_open', 'web_search', 'write',
       ])
     // 降级档:对本机零副作用。没有 bash / write / edit,也没有能重指工作目录的 variable。
     expect(createReadonlyCatalog().all().map(tool => tool.spec.id).sort())
-      .toEqual(['read', 'time', 'web_open', 'web_search'])
+      .toEqual(['read', 'search', 'time', 'web_open', 'web_search'])
   })
 
   it('createCatalogForTier 三个档位都对得上,未知档位退回 headless', () => {
-    expect(createCatalogForTier('full').size).toBe(17)
-    expect(createCatalogForTier('headless').size).toBe(11)
-    expect(createCatalogForTier('readonly').size).toBe(4)
+    expect(createCatalogForTier('full').size).toBe(18)
+    expect(createCatalogForTier('headless').size).toBe(12)
+    expect(createCatalogForTier('readonly').size).toBe(5)
   })
 
   it('成品适配器造得出来(不调它们就没读过 store —— 这几个是 lazy 的闭包)', () => {

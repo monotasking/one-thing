@@ -56,7 +56,9 @@ import {
 import { LEDGER_FEED_ID, SearchIndexService, affectsIndexedDocuments } from '@onething/runtime/search/index'
 import type { IndexWorkerData } from '@onething/runtime/search/index/worker-data'
 import type { IndexWorkerHandle } from '@onething/runtime/search/index/worker-host'
+import { configureSearchVisibilityPort } from '@onething/runtime/search/capabilities'
 import { configureOnethingSearchService } from '@onething/runtime/search/service-bound'
+import { configureSearchToolAdapters } from '@onething/runtime/toolkit'
 import { getOnethingSessionsDir, getOnethingStorePath } from '@onething/runtime/storage/paths'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -65,8 +67,12 @@ import { registerSessionLogEventAppendObserver } from '../../session/event-log.j
 import { getLogger } from '../logging/index.js'
 import { createAppSearchProvidersAdapters } from './adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'
+import { createAppSearchToolAdapters } from './tool-adapters.js'
+import { createAppSearchVisibilityPort } from './visibility.js'
 import { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
 
+export { AGENT_TOOL_SURFACE, createAppSearchToolAdapters } from './tool-adapters.js'
+export { createAppSearchVisibilityPort, visibleSessionIdsFor, VISIBLE_SESSIONS_CAP } from './visibility.js'
 export { createDailyNote, executeSearch } from './providers.js'
 export { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
 
@@ -161,11 +167,20 @@ export async function createAppSearchService(
   })
   const unsyncPlugins = syncPluginSearchCapabilities(service)
   const restoreSlot = configureOnethingSearchService(service)
+  // 拍点辛 a 的判据产地(`visibility.ts`)—— 装在**造服务的同一处**:两件事的
+  // 生命周期必须一致,否则会出现「能力问得出范围、但问的是上一份宿主的会话表」。
+  const restoreVisibility = configureSearchVisibilityPort(createAppSearchVisibilityPort())
+  // §14.3:`search` 工具的适配器。工具住 runtime、从单槽里拿这一份;没装 = 那台
+  // 宿主的 `search` 结构化答「不可用」,而不是抛。
+  const restoreToolAdapters = configureSearchToolAdapters(createAppSearchToolAdapters(service))
 
   return {
     service,
     index: indexService,
     async dispose() {
+      // 还原次序与装配次序相反(工具面 → 授权面 → 服务槽)。
+      restoreToolAdapters()
+      restoreVisibility()
       restoreSlot()
       unsyncPlugins()
       // 先摘订阅(见文件头「dispose 的次序」),再停 Worker。

@@ -689,7 +689,7 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 | **S3 索引 + 投影** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表,WAL)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省;messages / sessions / daily 换成 `indexedCapability`(持有权 §5.6 缓议,不建 ownership.ts)。**S3b:空词最近会话与日记快捷行保旧行为**——索引在结构上答不出这两件(零词元查询零命中;不存在的文件没有文档),所以 chats 空词绕开索引直接调旧 `searchChats`、daily 的「今天那一条」由从旧扫描器抽出的 `resolveDailyTodayShortcut` 补,位置与判定逐字沿用旧实现;**server 不可信端口不共用 store 级索引**(索引文档上没有 owner 这一格,共用即串 owner),那一支答「索引不可用」而不是共用一份库 | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐);`gate:search-index`:冷建事件循环 p99 < 20ms、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
 | **S4 壳** | React 壳按 §9(目标渲染注册表 + 预览渲染注册表 + 范围片 / 枢轴 + 查询历史) | `gate:search-messages` 扩 7 断言(total / 放宽 / 分组 / 归档徽 / 跨空间 / tab 随注册表 / 读者模式提示);ui:consume 只减不增;a11y 零违例 |
 | **S5 退役** | 删 `searchMessages` 旧扫描、`iterateSessionMessages` 端口、`switch(category)`、写死配额表、`SearchCategory` 字面量;CLAUDE.md 改写(§12,含第 317 行「跨会话索引归 apps/server,主进程不许加库」那句)与 collab 文档 | 全仓绿;grep 零残留 |
-| **S6 AI 消费者** | `search` 工具(§14):`toolkit/builtin/search.ts` + `SearchAdapter` 注入 + 场景可见 + 提示词片段;messages `visibility` 的 agent 支(拍点辛) | store 级测试:三种 principal 各得各的;`sessions:shadow-battery` 加一幕「助手用 search 找到上周那句并引用」(假 provider 脚本化调用);场景面快照更新;`transport:gate` 不动 |
+| **S6 AI 消费者**(**已落地 2026-09-05**,记录 §14.5) | `search` 工具(§14):`toolkit/builtin/search.ts` + 单槽适配器注入 + 场景恒可见 + `spec.prompt`;messages **与 chats** `visibility` 的 agent 支(拍点辛 a);三档目录各注册一行 | typecheck 零;`boundary:gate` / `transport:gate` / `assembly:gate` / `log:gate` / `session:gate` 五闸全绿;`bunx vitest run {runtime,backend}/{toolkit,search} + backend/rpc + core/search` **99 文件 1104 例**(其中新增 4 份 61 例);反证三条各自真红(§11);**battery 那一幕没做**,理由与替代见 §14.5 ③ |
 | **S7 语义召回** | sqlite-vec 扩展装载 + `Embedder` 注册表 + wasm 嵌入器 + `vectorRetriever` + RRF 融合 + 设置开关(拍点壬)+ 模型下载(§15);`gate:native` 扩到 sqlite 扩展;`gate:packaged` 断言 `status.vector === 'ready'` | 黄金复述集 20 条(改写句 top-5 必中);parity-B 仍绿(词法路一字不动);事件循环门在嵌入期间仍绿;`gate:native` 两运行时装载扩展绿;打包门绿 |
 | S8(缓议) | 文件内容源(`rg --json` 作 scan 能力);`@` 文件抽屉 / `/` 命令抽屉改成同一引擎的两个 surface;collab `history` 工具并入 `search`(kind 过滤) | 另案 |
 
@@ -896,7 +896,7 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 - S3:观察者不 enqueue → 「发一条消息立刻可搜」真机红;`run/end` 前建文档 → 「流式中不出半条」红;折坏不隔离 → 「一会话坏其它照搜」红;检查点不比 `metaRev` → 改名后标题搜不到红。
 - S3(v3.1 补):索引服务改回主线程 → 事件循环门红;授权改回结果过滤 → 「滤后 total 为真数」用例红;摘掉目录监视 → 「另一个进程写的消息搜得到」红;`Doc.capability` 改回字面量联合 → `checkCoreSearchNamesNoCapability` 红。(持有权那两条反证随 §5.6 缓议。)
 - S4:tab 写死 → 注销一个能力 tab 仍在红;`total` 缺席时画「加载更多」→ 红。
-- S6:工具无视 `ctx.principal` → agent 搜到别的空间红;`visibleIn` 改成恒真 → 协作房里同时出现 `history` 与 `search` 的场景面快照红;工具 import backend → 边界红。
+- S6(**已跑,读数在 §14.5**):工具无视 `ctx.principal`(改成恒 user)→ **8 例红**,其中就有「agent 搜到别的空间」;`visibleIn` 那一条**换了写法** —— 它本来就该恒真(越权不靠场景门,靠 messages 的 agent 支),所以反证改成「messages 摘掉 agent 支」→ **7 例红**,含「协作房里 `search` 与 `history` 并存时,不是成员的房被排掉」那一条;工具 import backend → `architecture-boundaries` 红(**不是** `boundary:gate`:那道门不查 runtime→backend 这条边,查它的是 `packages/core/__tests__/architecture-boundaries.test.ts`)。
 - S7:词法路碰了一字 → parity-B 红;嵌入在主线程跑 → 事件循环门红;扩展只在 Node 下装载 → `gate:native` Electron 那一列红;模型 id 变了不重嵌 → 「换模型后复述集」红。
 
 ---
@@ -979,13 +979,155 @@ export const SearchInputSchema = z.object({
 - **预算**:`limit` 上限 20、`timeoutMs` 由各能力 manifest 的 `budget` 给;工具调用不走推送适配器,收齐再回(RPC 适配器那一路)。
 - **审计**:同其它工具,`tool/audit` 事件照记;`ctx.debug` 不开,`explain` 不进工具输出。
 
-### 14.3 装配
+落地时这一节有三处小出入(2026-09-05):
 
-`backend/wiring/search/index.ts` 在注册完能力后 `registerSearchToolAdapter({ search: (input, principal) => service.search(...) , preview: … })`,工具在 `full` 与 `headless` 两个目录里(server / CLI daemon 也能用),`readonly` 目录也有(它零副作用)。principal 从 `RunContext.invocation.principal` 来(toolkit 已有 `Principal`,agent 主体化那条线的产物),`sessionId` 从 `invocation.sessionId`,`spaceId` 从 `session.metadata.workspaceId`。
+1. **末行只印发生过的那几格**。设计写的是「`total N · relaxed? · index pending?`」;实现里
+   `relaxed` 与 `index pending` **为 0 时不印** —— 恒印一句 `relaxed 0` 是把常态说成一件
+   需要注意的事。`total` 恒印。
+2. **描述的第一句不枚举内容类型**。初稿写的是「past conversations, their titles, notes,
+   files, and more」,而 `files` / `notes` 就是能力名 —— 那正是「工具源码里没有能力名」要挡的
+   东西(写的时候没察觉,是新加的那条断言当场照出来的)。现在第一句只说「你能访问的一切」,
+   类型清单只在 `Available kinds:` 那一行,由注册表生成。
+3. **`limit` 超上限由契约挡在 `plan` 之前**,所以那次调用根本到不了适配器(`Outcome.kind`
+   是 `invalid`,不是一次失败的搜索)。
+
+### 14.3 装配(落地版)
+
+`backend/wiring/search/index.ts` 在造完服务之后**装两个单槽**,两件都返回还原函数、
+都收在 `createAppSearchService` 的同一个 disposer 里(还原次序与装配次序相反):
+
+| 槽 | 装什么 | 住哪儿 |
+| --- | --- | --- |
+| `configureSearchToolAdapters` | `listKinds` / `search` / `preview` —— 工具的三件事 | 形在 `runtime/toolkit/builtin/search.ts`,实现 `backend/wiring/search/tool-adapters.ts` |
+| `configureSearchVisibilityPort` | 「这个主体能看见哪几条会话」 | 形在 `runtime/search/capabilities/visibility.ts`,判据 `backend/wiring/search/visibility.ts` |
+
+**与派工单的出入①:两个槽而不是一个。** 派工单写的是一次
+`configureSearchToolAdapters({ …, visibilityPort })`。拆开的理由是**服务面不同**:
+可见范围服务的是**能力的 manifest**(命令面板、CLI、将来任何消费面都走它),把它塞进
+一个叫「工具适配器」的口里,名字就在说谎。两件仍然在同一行装配里装上、同一个 disposer
+里落地,所以「生命周期一致」这件事一格没丢。
+
+工具在 `full` / `headless` / `readonly` **三档目录**里各注册一行。`readonly` 也给 ——
+那一档的判据是「对本机零副作用」(`effects: []`),不是「不读本机数据」(`read` 也在)。
+
+**装配次序有一格是载荷承重的**:目录建在缝 4(`buildToolkitCatalog`),检索服务起在
+缝 4.5(`createAppSearchService`)—— 目录建好的那一刻适配器**还没装**。所以工具的
+`spec` 是一个 **getter**、描述里的 kind 清单每次现算;构造期抓一份就会永远印一张空清单。
+这也顺带让「注销一个能力 → 描述少一项」成为一条真断言,而不是一句注释。
+
+principal 从 `RunContext.invocation.principal` 来,`sessionId` 从 `invocation.sessionId`,
+`spaceId` 从 `ctx.session?.metadata?.workspaceId`。**出入②:`metadata` 这一格此前没人填。**
+`SessionSnapshot.metadata` 一直在类型上,但 `backend/wiring/toolkit/runner.ts` 的
+`sessionSnapshotFor` 从来没写过它 —— 于是任何读它的工具拿到的都是 `undefined`,而那读起来
+和「这条会话没有 space」一模一样。`search` 是第一个要问这件事的工具,所以那一行补上了
+`workspaceId`(缺席仍是缺席:旧会话零迁移,读取端自己缺省成 default space)。
+
+core 的 `Principal` 有 `system` 这一支而 `SearchPrincipal` 没有:**映射成 `agent`,不是
+`user`** —— `systemPrincipal` 是最小权限的那一个,把它读成用户就是把兜底变成绕过。
+
+### 14.3b 可见范围(拍点辛 a 的落地)
+
+`messages` 与 `chats` **两份**自述都挂同一条规则 `sessionScopeVisibility`(派工单只点了
+messages;chats 一起挂的理由是 `collab/visibility.ts` 的原话:一间看不见的房,不可见不是
+「看不到内容」而是「这间房不存在」—— 连**房名**都不该出现在结果里)。
+
+规则三支:`user` → `{}`(全可见);`plugin` → `{ sessionId: [] }`(只见自己产的,而今天没有
+插件产会话文档,所以真值就是零条);`agent` → 端口给的允许清单。**端口没装时 agent 也是
+空集** —— 一个答不出授权的宿主放行,那不是降级,是绕过。
+
+判据在装配层(`backend/wiring/search/visibility.ts`),两条都不是那个文件自己写的:
+「是不是协作」= `resolveCollabVenue(kind) !== 'chat'`(协作域那张唯一的门),「我是不是
+成员」= `collabRoomVisibleUntil(room, agentId)`(`history` 工具今天用的同一个纯函数)。
+core 与 runtime 的检索目录里没有 `collab` / `room` / `workspace` 这三个词。
+
+**出入③:比 `history` 严一格。** `collabRoomVisibleUntil` 有三态(当前成员 `+∞` / 曾经
+在场的一个时间戳 / 从不可见);而 `VisibilityScope` 是**逐键的合取**,表达不了「这间房
+只到那一刻为止」(那要 sessionId 与 time 两格的联合约束,而合取会把这个时间窗施加到所有
+别的会话上)。两条出路里取严的:**只收当前成员的房**。于是被移出的房在 `search` 里整间
+不可见,`history` 仍然照旧给到移出那一刻 —— 已知取舍,不是漏。拍点辛 a 的原话是「自己是
+**成员**的协作房」,严的那条正是它的字面意思。
+
+**出入④:上限选了 (a) 截断 + warn,而且这不是二选一,是唯一选。** 派工单给的另一条
+(`spaceId` + `kind != collab` 两片 + 房清单)在今天的契约下**表达不出来**:范围是
+`Record<key, FacetFilter>` 的合取,写不了「(空间 X 且非协作)**或** 房在清单里」;而且
+消息文档上根本没有 `kind` 这一格 facet(facets 是 sessionId / spaceId / role / archived /
+time),要加就得动投影器 —— 那是 S3c 的地盘。所以走截断:上限
+`VISIBLE_SESSIONS_CAP = 2000`(**不是派工单写的 500**:真库今天 469 条会话,500 只留 31 条
+余量,再开三十来条会话就会开始静默丢;2000 在 SQLite 的绑定参数上限 32766 之下一个数量级,
+又在真库之上四倍),到顶按 `updatedAt` 倒序留最近的那些并**记一条 warn**。
+
+**第三条路没走,记在这里**:`{ spaceId: X, sessionId: { not: [空间里我不在的房] } }` 也是
+合取可表达的,而且那份排除清单天然很短(只有「我不在的房」),不会有截断问题;代价是
+**别的空间里我在的房看不见**。没选它是因为拍点辛 a 的第二半没有空间限定词。哪天截断
+真的开始报警,这是第一个该考虑的替代。
 
 ### 14.4 陌生能力演练(本节自己也要过一遍)
 
-加 symbol 能力之后,`search` 工具**一字不改**就能搜符号:kind 清单从 registry 生成,结果行的 `<kind>` 与 snippet 由候选自带,`expand` 走同一条 preview 路。这是「AI 消费者」不另立一套的证据。
+加 symbol 能力之后,`search` 工具**一字不改**就能搜符号:kind 清单从 registry 生成,结果行
+的 `<kind>` 与 snippet 由候选自带,`expand` 走同一条 preview 路。**这条已经是一条断言**
+(`search-tool-store.test.ts`:注册一条 `symbol` 能力 → 描述当场多一项,注销 → 少一项),
+不再只是一句话。
+
+`expand` 的文本化是这只工具里**唯一**按 kind 分支的地方,而它分的是**预览载荷的形**
+(`message-context` / `session-overview` / `note-excerpt` / `file-excerpt`),不是能力;
+认不出的形走 JSON 缩排兜底 —— 一个新能力带来一种新预览形是设计允许的常态,不该让
+`expand` 塌掉,而缩排的 JSON 至少是**真的内容**。
+
+### 14.5 落地记录(2026-09-05)
+
+**① 一处 core 改动:`applyVisibility` 从「覆盖」改成「取交集」。**
+
+`scope: 'session'` 落成 `{ sessionId: '<本会话>' }`,而 agent 的可见范围也落在**同一个键**
+上(`{ sessionId: [...] }`)。原实现 `{ ...query.filters, ...scope }` 会把那次收窄整个抹掉 ——
+结果不是越权(仍在允许清单里),而是**它没照做**:模型说「只看这一条」,回来的是「你能看
+的全部」。§6.4b 那句「范围赢」的忠实实现是交集,不是替换:交集两件事一起满足,而且永远
+不会比 scope 宽。交集只在表达得出来的两形上做(允许清单 × 标量、允许清单 × 允许清单),
+其余组合(区间、`not`)退回覆盖 —— 那是今天的行为,也仍然不放宽。四条新断言在
+`core/search/__tests__/pipeline.test.ts`。
+
+**② `scope` 只能收窄,而且模型点不了名。** 输入 schema 里没有 `sessionId` 这一格:
+`scope: 'session'` 拿的是**调用坐标上**那条会话。所以「模型手打一条它看不见的会话」在契约上
+就不可达 —— 这比「能提但会被挡」更强。`'space'`(缺省)与 `'all'` 都不加会话过滤,上限由
+visibility 定;描述里写明了 `'all'` 不等于「每一个空间」。
+
+**③ battery 那一幕没做,改在 store 级跑。**
+
+派工单要我先看 `scripts/lib/gate-fake-provider.mjs` 能不能脚本化一次工具调用。**答案是不能**:
+那只最小假 provider 只吐文本帧,`modelCapabilitiesByModel` 里写死 `tools: false`,它自己的
+文件头也说「完整版本(带场景矩阵、工具调用)在 `scripts/shadow-battery.mjs`」。
+**`shadow-battery.mjs` 那一只能**(`F.tool(id, name, args)` / `F.callTools()` 是现成的 DSL,
+矩阵里已经有 `tool-loop` / `bash-step` 这些幕)。
+
+没在那里加的理由是**那道门守的是别的东西**:`sessions:shadow-battery` 判的是账本重折的
+确定性,把一条索引 Worker + sqlite + 一次**异步**追账本(索引 enqueue 是毫秒级但不同步,
+下一轮要先等 `pending` 归零)塞进去,红了说不清是账本坏了还是索引没追上 —— 一道会闪红的
+门比没有门更糟。
+
+替代是 `backend/wiring/search/__tests__/search-tool-store.test.ts`:临时 store、**真**
+SqliteIndex(同线程 `MessageChannel` Worker,与 `index-service.test.ts` 同一份夹具)、真
+`SearchService`、真三档目录、经**成品** `createAppToolRunner` 跑完整条
+(校验 → plan → 授权 → apply),连 `tool/audit` 都断言了。跑不到的只有「一个模型把这次调用
+发出来」那一段,而那是 provider 接线,不是这只工具的事。
+
+**④ 测试**(4 份新文件 61 例):
+
+| 文件 | 考什么 |
+| --- | --- |
+| `runtime/toolkit/__tests__/search-tool.test.ts`(26) | 参数 → 查询、主体映射(含 system→agent)、四种预览载荷的文本化、时间解析、输出三格的诚实、适配器没装时结构化拒绝、场景恒可见 |
+| `runtime/search/__tests__/visibility.test.ts`(9) | 三支规则的形、端口缺省是关、空集在两侧都是恒不命中、两份自述挂的是同一条 |
+| `backend/wiring/search/__tests__/visibility.test.ts`(11) | 拍点辛 a 逐字拆开 + 反例(别的空间 / 我不在的房 / 我被移出的房 / agent·work 场子 / kind 认不出)+ 截断 |
+| `backend/wiring/search/__tests__/search-tool-store.test.ts`(15) | store 级端到端(见 ③) |
+
+**⑤ 留账**:
+
+- 上限 2000 的截断路今天在真库上跑不到(469 条会话),所以那条 warn 从没在真机上出现过。
+- `chats` 那一路的 inline 预览(`session-overview`)与 `expand` 走的是同一条 `service.preview`,
+  但工具侧的 target 记忆是**每份适配器实例一份**的有界表(512 条,插入序淘汰):`expand`
+  一个从没搜出来过的 ref 会拿不到 target,由 `service.preview` 如实答「画不出预览」。这与
+  描述里那句「A result id from a previous call」一致,但它意味着**跨进程重启后旧 ref 展不开**。
+- 适配器没装的宿主上,`search` 仍然注册在目录里,描述会如实说「this host has no search
+  index」、调用会答「search unavailable」。没有做「装不上就不注册」,因为那要把工具注册与
+  检索装配的次序绑死(见 §14.3 那一格)。
 
 ---
 

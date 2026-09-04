@@ -30,6 +30,12 @@ export type {
   LegacyCapabilityOptions,
   SearchServiceResult,
 } from './legacy.js'
+export {
+  configureSearchVisibilityPort,
+  getSearchVisibilityPort,
+  sessionScopeVisibility,
+} from './visibility.js'
+export type { SearchVisibilityPort } from './visibility.js'
 export { createSessionShellLookup, snippetOf, trackIndexGeneration } from './indexed.js'
 export type { FieldSnippet, SearchIndexQueryFace } from './indexed.js'
 export {

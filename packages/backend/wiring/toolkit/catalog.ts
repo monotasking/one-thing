@@ -31,6 +31,7 @@ import {
   createPracticeTool,
   createRadioTool,
   createReadTool,
+  createSearchTool,
   createSendMessageTool,
   createTaskTool,
   createTimeTool,
@@ -197,6 +198,15 @@ export function createDesktopCatalog(adapters: CatalogAdapters = {}): Catalog {
     .register(createTaskTool(resolved.task))
     .register(createAskUserTool(resolved.askUser))
     .register(createTimeTool())
+    /*
+     * S6 `search`(检索重建 §14.3)。**它不收适配器** —— 从进程单槽里现拿。
+     *
+     * 这一格是必须的,不是偷懒:装配里目录建在缝 4(`buildToolkitCatalog`),而检索
+     * 服务起在缝 4.5(`createAppSearchService`)—— 目录建好的那一刻适配器还没装。
+     * 工具的 `spec` 是个 getter、描述里的 kind 清单每次现算,所以回合真正取面时
+     * 拿到的是**那时**的注册表。构造期抓一份就会永远印一张空清单。
+     */
+    .register(createSearchTool())
     .register(createWebSearchTool(resolved.webSearch))
     .register(createWebOpenTool(resolved.webOpen))
     .register(createGoalTool(resolved.goal))
@@ -219,6 +229,7 @@ export function createHeadlessCatalog(adapters: CatalogAdapters = {}): Catalog {
     .register(createHistoryTool(resolved.history))
     .register(createSendMessageTool(resolved.sendMessage))
     .register(createTimeTool())
+    .register(createSearchTool())
     .register(createWebSearchTool(resolved.webSearch))
     .register(createWebOpenTool(resolved.webOpen))
 }
@@ -233,6 +244,9 @@ export function createReadonlyCatalog(adapters: CatalogAdapters = {}): Catalog {
   return new Catalog()
     .register(createReadTool(resolved.read))
     .register(createTimeTool())
+    // 零副作用 —— 降级档也给(§14.3)。它读的是本机索引,而这一档的判据是「对本机
+    // 零副作用」,不是「不碰本机数据」(`read` 也在这一档里)。
+    .register(createSearchTool())
     .register(createWebSearchTool(resolved.webSearch))
     .register(createWebOpenTool(resolved.webOpen))
 }

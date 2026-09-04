@@ -19,21 +19,26 @@ import {
   registerFeatureTools,
 } from '../catalog.js'
 
-/** 桌面档(full):二十只全在。 */
+/** 桌面档(full)。S6 起多一只 `search`(检索重建 §14.3:三档都给)。 */
 const FULL_IDS = [
   'ask_user', 'bash', 'board', 'edit', 'goal', 'history', 'notebook', 'practice',
-  'radio', 'read', 'send_message', 'task', 'time', 'variable', 'web_open',
+  'radio', 'read', 'search', 'send_message', 'task', 'time', 'variable', 'web_open',
   'web_search', 'write',
 ].sort()
 
 /** 无头档:去掉要人在场 / 要桌面外设的那几只(协作三件套仍在)。 */
 const HEADLESS_IDS = [
-  'bash', 'board', 'edit', 'history', 'read', 'send_message', 'time', 'variable',
+  'bash', 'board', 'edit', 'history', 'read', 'search', 'send_message', 'time', 'variable',
   'web_open', 'web_search', 'write',
 ].sort()
 
-/** 只读档(联网 server 的降级形态):零本地副作用。 */
-const READONLY_IDS = ['read', 'time', 'web_open', 'web_search'].sort()
+/**
+ * 只读档(联网 server 的降级形态):零本地副作用。
+ *
+ * `search` 在这一档里 —— 判据是「对本机零副作用」(`ReadOnlyTool`,`effects: []`),
+ * 不是「不读本机数据」;`read` 也在这一档。
+ */
+const READONLY_IDS = ['read', 'search', 'time', 'web_open', 'web_search'].sort()
 
 describe('三档目录的清单', () => {
   it('full', () => {

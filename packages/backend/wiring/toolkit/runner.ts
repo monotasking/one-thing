@@ -67,10 +67,18 @@ export function createSandboxPolicy(cwd?: () => string | undefined): SandboxPoli
   }
 }
 
-/** 会话快照:只读、只带工具看得见的那几样。 */
+/**
+ * 会话快照:只读、只带工具看得见的那几样。
+ *
+ * `metadata.workspaceId`(S6 加):这条会话归哪个 space。`SessionSnapshot.metadata`
+ * 这一格一直在类型上,但从来没人填 —— 于是任何读它的工具拿到的都是 `undefined`,
+ * 而那读起来和「这条会话没有 space」一模一样。`search` 是第一个要问这件事的工具
+ * (`SearchContext.spaceId`),所以在这里把它填**真**:缺席仍然是缺席(旧会话零迁移,
+ * 读取端自己缺省成 default space),但存在的时候不再被这一层吞掉。
+ */
 export function sessionSnapshotFor(invocation: Invocation): SessionSnapshot | undefined {
   const session = store.getSession(invocation.sessionId) as
-    | { id: string; title?: string; kind?: string; workingDirectory?: string }
+    | { id: string; title?: string; kind?: string; workingDirectory?: string; workspaceId?: string }
     | undefined
   if (!session) return undefined
   return {
@@ -78,6 +86,7 @@ export function sessionSnapshotFor(invocation: Invocation): SessionSnapshot | un
     title: session.title,
     kind: session.kind,
     workspaceRoot: session.workingDirectory ?? invocation.workspaceRoot,
+    ...(typeof session.workspaceId === 'string' ? { metadata: { workspaceId: session.workspaceId } } : {}),
   }
 }
 

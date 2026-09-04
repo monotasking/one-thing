@@ -15,7 +15,7 @@
  * 经注入的 `warn` 报出来。它**不承担正确性** —— 它是「能力实现有 bug」的证据。
  */
 
-import type { Candidate, SearchPage, SearchPrincipal, SearchQuery } from '../candidate.js'
+import type { Candidate, FacetFilter, SearchPage, SearchPrincipal, SearchQuery } from '../candidate.js'
 import type { CapabilityManifest, VisibilityScope } from '../capability.js'
 import { matchesFacetFilter } from '../index/types.js'
 
@@ -30,12 +30,42 @@ export function visibilityScopeOf(
 }
 
 /**
- * 范围进 filters。**范围赢** —— 用户在检索框里手打的过滤片不许把授权放宽,
- * 所以是范围覆盖用户的那一格,不是反过来。
+ * 范围进 filters。**范围赢** —— 调用方手打的过滤片不许把授权放宽。
+ *
+ * 「赢」的实现是**取交集**,不是覆盖(S6 改)。两者在「调用方想放宽」那一形上同解,
+ * 但在「调用方想再收窄一点」那一形上不同,而后者是真实存在的:`search` 工具的
+ * `scope: 'session'` 落成 `{ sessionId: '<本会话>' }`,而 agent 的可见范围也落在
+ * **同一个键**上(`{ sessionId: [...允许的...] }`)。覆盖会把那次收窄整个抹掉 ——
+ * 结果不是越权(仍在允许清单里),而是**它没照做**:模型说「只看这一条」,回来的是
+ * 「你能看的全部」。交集两件事一起满足,而且永远不会比 scope 宽。
+ *
+ * 交集只在**表达得出来**的两形上做(允许清单 × 标量、允许清单 × 允许清单);其余
+ * 组合(区间、`not`)退回覆盖 —— 那是今天的行为,也仍然不放宽。
  */
 export function applyVisibility(query: SearchQuery, scope: VisibilityScope): SearchQuery {
   if (Object.keys(scope).length === 0) return query
-  return { ...query, filters: { ...query.filters, ...scope } }
+  const filters = { ...query.filters }
+  for (const [key, allowed] of Object.entries(scope)) {
+    filters[key] = intersectFilter(query.filters[key], allowed)
+  }
+  return { ...query, filters }
+}
+
+/**
+ * 允许范围 ∩ 调用方要求。答不出交集时给允许范围(不放宽)。
+ *
+ * 空数组是一个**能被表达**的答案:「一条都不符合」。两侧(core 的
+ * `matchesFacetFilter` 与 SqliteIndex 的 `facetClause`)对空数组都是恒不命中。
+ */
+function intersectFilter(requested: FacetFilter | undefined, allowed: FacetFilter): FacetFilter {
+  if (requested === undefined) return allowed
+  if (!Array.isArray(allowed)) return allowed
+
+  if (Array.isArray(requested)) {
+    return requested.filter(value => allowed.includes(value))
+  }
+  if (typeof requested === 'object' && requested !== null) return allowed
+  return allowed.includes(requested) ? requested : []
 }
 
 export interface AuthorizationResult {
