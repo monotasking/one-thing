@@ -44,6 +44,9 @@
 
 /* 板上唯一为选择族单列的那条:选项多过这个高度,滚的是面板自己。 */
 .list {
+  /* 宽也封顶:选项名是数据(项目目录名),不是文案,没有上限 —— 09-04 用户报
+     「项目下拉框随名字无限增长」。超出的名字由 Menu 的 .itemLabel 省略号收场。 */
+  max-width: var(--select-menu-max-w);
   max-height: var(--select-menu-max-h);
   overflow-y: auto;
   overscroll-behavior: contain;

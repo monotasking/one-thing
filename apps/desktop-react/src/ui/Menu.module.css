@@ -92,6 +92,8 @@
 }
 
 .itemLabel {
+  /* 09-04:min-width:0 才让 flex 子项真的缩得下去,否则省略号永不触发。 */
+  min-width: 0;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;

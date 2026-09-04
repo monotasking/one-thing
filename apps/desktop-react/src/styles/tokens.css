@@ -520,6 +520,7 @@
 
   /* 选择族(Controls 板:面板超过这个高度就滚自己) */
   --select-menu-max-h: 280px;
+  --select-menu-max-w: 320px; /* 选项名是数据(项目目录名),宽度必须封顶 */
 
   /* 对话框(Elevation 板:宽 400 / 480 / 600 三档,本批只落最小档) */
   --dialog-w: 400px;

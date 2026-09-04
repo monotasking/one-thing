@@ -6,7 +6,7 @@ import { configureSessionsPort } from './sessions-port'
 import type { SessionsPort } from './sessions-port'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
-import { scopeSpecOf } from '../expose/scopes'
+import { applyScope } from '../expose/list-model'
 import type { ProjectScope } from '../expose/types'
 import {
   chaptersQuery,
@@ -802,19 +802,18 @@ describe('会话删除(onSessionLifecycle)', () => {
   it('屏幕那一份跟着重投影:删光「无项目」那一档之后它一条都不剩', async () => {
     const LOOSE_SCOPE: ProjectScope = { kind: 'loose' }
     await start()
-    // 无项目会话现在有三条:随手记、孤儿派工、执行会话 —— 09-04 起后两档也进
-    // 列表了,所以要删满才空得掉。判据从「组消失」改成「屏幕那一份里没有了」:
-    // P2 之后分组不在数据源这一层(它是 `expose/list-model` 的事)。
-    // 判据读**那张表**(`SCOPE_SPECS` 的 loose 一行),不在测试里手抄一份
-    // 「没目录且不是协作」—— 两份判据必然分叉(旧 COLLAB_KINDS 那一案的形状)。
-    const isLoose = scopeSpecOf(LOOSE_SCOPE).predicate
+    // 无项目会话有两条:随手记、孤儿派工(父房间不在,按自己判)。执行会话
+    // `ag-xiaoli` 的父 `rm-release` 在场,归协作那一档,**不是**无项目。
+    // 判据从「组消失」改成「屏幕那一份里没有了」:P2 之后分组不在数据源这一层
+    // (它是 `expose/list-model` 的事),所以判据也走模型的第一步 `applyScope`,
+    // 不在测试里手抄一份「没目录且不是协作」—— 两份判据必然分叉。
+    // 09-04 补一句:判据走 `applyScope`(模型第一步)而不是裸 predicate ——
+    // 房间的子会话按**父房间**的归属判(`wk-verify` 的父 `rm-release` 在场,所以它
+    // 不是无项目;它自己的 projectId 是 null,裸 predicate 会把它误判成无项目)。
     const loose = () =>
-      useSessionsSource
-        .getState()
-        .sessions.filter((s) => isLoose(s, LOOSE_SCOPE))
-        .map((s) => s.id)
-    expect(loose()).toEqual(expect.arrayContaining(['lo-notes', 'wk-orphan', 'ag-xiaoli']))
-    emitLifecycle!(deleted(['lo-notes', 'wk-orphan', 'ag-xiaoli']))
+      applyScope(useSessionsSource.getState().sessions, LOOSE_SCOPE).map((s) => s.id)
+    expect(loose().sort()).toEqual(['lo-notes', 'wk-orphan'])
+    emitLifecycle!(deleted(['lo-notes', 'wk-orphan']))
     expect(loose()).toEqual([])
   })
 

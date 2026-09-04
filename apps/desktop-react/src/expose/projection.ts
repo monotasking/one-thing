@@ -4,7 +4,7 @@ import type { SessionMeta } from '@shared/ipc/chat'
 import type { SessionSegment } from '@shared/ipc/toc'
 import type { UserMessageMarker } from '@shared/ipc/chat'
 import type { ChatMessage } from '@shared/ipc/chat'
-import { isRoomKind } from './row-kinds'
+import { isRoomChildKind, isRoomKind } from './row-kinds'
 import type {
   ProjectSummary,
   SessionChapter,
@@ -145,11 +145,22 @@ export function sessionBelongsToSpace(session: SessionSummary, spaceId: string):
 
 /** 一条 SessionMeta → 一条列表事实。缺席的格一律给出诚实的空值,不编。 */
 export function toSessionSummary(meta: SessionMeta): SessionSummary {
+  const kind = sessionKindOf(meta)
+  const roomId = meta.collab?.roomSessionId ?? null
   return {
     id: meta.id,
     title: meta.name,
-    kind: sessionKindOf(meta),
-    projectId: normalizeWorkingDirectory(meta.workingDirectory),
+    kind,
+    /*
+     * 房间的子会话(`[任务]` / `[执行]`,以及任何带 `collab.roomSessionId` 的会话)
+     * **没有自己的项目**:它们的 workingDirectory 是房间的私有目录
+     * (`~/.onething/rooms/<uuid>`),不是用户的工程。09-04 用户报「项目下拉框
+     * 随名字无限增长」—— 真店 41 条「项目」里 20 条是这种 36–100 字的 uuid /
+     * agent-dm-room-… 目录名,全来自子会话;它们的归属由父房间说了算
+     * (`list-model.applyScope`),摘掉之后只剩 21 条真项目、最长 20 字。
+     */
+    projectId:
+      isRoomChildKind(kind) || roomId ? null : normalizeWorkingDirectory(meta.workingDirectory),
     preview: meta.previewText ?? '',
     digest: sessionDigestOf(meta),
     messageCount: sessionMessageCountOf(meta),
@@ -169,7 +180,7 @@ export function toSessionSummary(meta: SessionMeta): SessionSummary {
      * 带着这一格也照样搬 —— 判「谁能当子行」是 `row-kinds` 那张表的事,
      * 投影只如实转述后端写了什么(少一处判据就少一处会与那张表分叉的地方)。
      */
-    roomId: meta.collab?.roomSessionId ?? null,
+    roomId,
   }
 }
 

@@ -236,3 +236,40 @@ describe('摘要 / 消息数两格的产地', () => {
  * 层级铺开之后没有一档需要被藏。谁站顶层、谁当子行由 `list-model.ts` 说了算,
  * 它自己那一组用例(`list-model.test.ts` 的 attachChildren 四条)守着这件事。
  */
+
+describe('房间的子会话没有自己的项目(09-04 用户报「项目下拉框随名字无限增长」)', () => {
+  const room = SESSION_META.find((m) => m.kind === 'room')!
+  const base = SESSION_META.find((m) => m.id === 'os-provider')!
+  const roomDir = '/Users/x/.onething/rooms/agent-dm-room-agent-0739d3ab-dc03-4161-ae47-beb0bf9b98c3--agent-eba0c4b7-46b7-46a3-a495-671c94cc340c'
+
+  it('[任务] / [执行] 带着房间私有目录,也不算项目成员', () => {
+    for (const kind of ['work', 'agent'] as const) {
+      const summary = toSessionSummary({
+        ...base,
+        id: `child-${kind}`,
+        kind,
+        workingDirectory: roomDir,
+        collab: { roomSessionId: room.id },
+      })
+      expect(summary.projectId).toBeNull()
+      expect(summary.roomId).toBe(room.id)
+    }
+  })
+
+  it('任何带 collab.roomSessionId 的会话同样不算,哪怕 kind 是 chat', () => {
+    const summary = toSessionSummary({ ...base, id: 'odd', workingDirectory: roomDir, collab: { roomSessionId: room.id } })
+    expect(summary.projectId).toBeNull()
+  })
+
+  it('于是项目名册里不会长出 uuid / agent-dm-room-… 那种目录名', () => {
+    const child = toSessionSummary({ ...base, id: 'child', kind: 'work', workingDirectory: roomDir, collab: { roomSessionId: room.id } })
+    const names = buildProjects([...SESSIONS, child]).map((p) => p.name)
+    expect(names.some((n) => n.startsWith('agent-dm-room'))).toBe(false)
+    expect(Math.max(...names.map((n) => n.length))).toBeLessThan(36)
+  })
+
+  it('普通聊天的工作目录照旧是项目(反证:规则没有误伤)', () => {
+    const summary = toSessionSummary({ ...base, id: 'plain', kind: 'chat', workingDirectory: '/Users/x/data/code/start-electron', collab: undefined })
+    expect(summary.projectId).toBe('/Users/x/data/code/start-electron')
+  })
+})
