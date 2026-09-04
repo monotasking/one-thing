@@ -150,6 +150,31 @@ export type FocusTransientEscapeHandler = () => boolean
 
 type Listener = () => void
 
+/**
+ * 一格「摘掉了、还没结算完」的账(S4)。判词写在 `FocusTree.pendingUnregister` 头上。
+ *
+ * 三格各有各的用处,缺一格就答不出话:
+ *  · `node` —— 那个节点对象**原样**。复活时整只放回表里,于是 `root` / `lastFocused` /
+ *    `returnTo` / `lastActiveAt` 全都活过这一次重挂;
+ *  · `departing` —— 摘掉那一刻**离场的那一任**(`focusedNode`)。归还要从它问起,而
+ *    路径一缩它就问不到了,所以必须在缩之前存下来;
+ *  · `focusedBefore` —— 摘掉那一刻的第一响应者,**只在这一摘真的把路径缩了时才记**。
+ *    复活时把它还回去(焦点从头到尾没搬过,路径也该回原样);`null` = 这一格根本不在
+ *    活动路径上,摘不摘都不影响谁在接键盘,复活时无事可做、真走了也不必归还;
+ *  · `shrunkTo` —— 同步那一步**缩到了哪一格**。微任务醒来时第一响应者还是它,归还才
+ *    轮得到;不是了 = 这一拍里**别人接管了键盘**,归还这个问题当场作废。
+ *    这一格不是保险丝,是判据:文件树右键菜单里点「详情」走的正是这一形 —— 菜单卸载
+ *    (排下归还)与详情面挂载(`activateOnMount` 入焦)在同一拍里,少了这一格,归还
+ *    醒来会把键盘从刚开出来的详情面里抢回树行上,随后那一下 Esc 就关不掉详情了
+ *    (施工时 `files-panel.test` 的两条当场红,读数即此)。
+ */
+interface PendingUnregister {
+  node: ScopeNode
+  departing: ScopeNode
+  focusedBefore: FocusInstanceId | null
+  shrunkTo: FocusInstanceId | null
+}
+
 let seq = 0
 
 export class FocusTree {
@@ -190,7 +215,15 @@ export class FocusTree {
   ): FocusScopeHandle {
     seq += 1
     const instanceId = explicitId ?? `${scope}#${seq}`
-    const node: ScopeNode = {
+    /*
+     * **同一格实例刚被摘掉、这一发又把它登记回来 = 它没走**(S4;判词写在
+     * `pendingUnregister` 头上)。原样复用那个节点对象 —— `root` / `lastFocused` /
+     * `returnTo` / `lastActiveAt` 全留着,于是「关掉什么焦点回打开它的地方」
+     * (§3.5 规则 5)与 MRU 都活过这一次重挂;声明那几格按新的这一发覆写
+     * (重挂之后 `restingTarget` / `keyHandlers` 都是新闭包)。
+     */
+    const revived = this.pendingUnregister.get(instanceId)
+    const node: ScopeNode = revived?.node ?? {
       instanceId,
       scope,
       kind: FOCUS_SCOPES[scope].kind,
@@ -204,7 +237,25 @@ export class FocusTree {
       owner: opts.owner,
       lastActiveAt: 0,
     }
+    if (revived) {
+      this.pendingUnregister.delete(instanceId)
+      node.parent = parent
+      node.inert = opts.inert ?? false
+      node.restingTarget = opts.restingTarget
+      node.onEscape = opts.onEscape ?? undefined
+      node.keyHandlers = opts.keyHandlers
+      node.owner = opts.owner
+    }
     this.map.set(instanceId, node)
+    /*
+     * 路径还回去。**直接写这两格,不走 `setFocused`** —— 后者是「换人」那一口
+     * (要写 `returnTo`、要盖 MRU 戳),而这里根本没换过人:焦点从头到尾没搬过,
+     * 这一句只是把摘掉那一刻同步缩掉的那一段接回来。
+     */
+    if (revived?.focusedBefore) {
+      this.focused = revived.focusedBefore
+      this.focusedNode = this.map.get(revived.focusedBefore) ?? this.focusedNode
+    }
     this.attach()
     this.notify()
     return {
@@ -239,15 +290,86 @@ export class FocusTree {
   }
 
   /**
-   * 摘掉一格。摘完**当场结算**:第一响应者要是它(或它的后代),路径缩到最近
-   * 仍可交互的祖先,焦点按 `returnTargetOf` 回落 —— 这就是「归还是结构性的」
-   * (§4.5):写跳转条的人不需要知道有归还这回事。
+   * **刚摘掉、还没结算的那些格**(S4,09-04)。键是实例 id,值是那个节点对象原样。
+   *
+   * ── 为什么归还要晚一个微任务 ────────────────────────────────────────────────
+   * 「摘掉一格」与「这一层真的走了」是两件事,而树从前把它们当成一件:`unregister`
+   * 当场 `settle()`,焦点按 `returnTargetOf` 回落。**一次重挂**(同一个实例 id 先注销
+   * 再登记)于是被读成了「它走了」——归还把键盘送回按键之前的输入框,而随后挂回来的
+   * 那一份没有人再叫它。这不是开发期才有的假象:React StrictMode 的模拟卸载→再挂载、
+   * 错误边界重试、换宿主、热更,发出的是**同一串**树操作。
+   *
+   * 真机时间线(09-04,离屏 StrictMode 实例,files 记忆钉左架子、那条架子上另有一个
+   * tab,按召唤键之后 1s 内的全部树操作;判据就是从这份读数上读出来的):
+   * ```
+   * +30.8ms activateScope(shelf-layer) → activate → 焦点进 files-panel   ✔ 送成功
+   * +31.4ms unregister shelf-layer@_r_s_   ← **隔壁那一格 tab** 的模拟卸载先到
+   * +31.5ms unregister expose@_r_t_
+   * +31.5ms unregister shelf-layer@_r_10_  ← 装着 files 的那一层 → settle → 焦点回 composer-input
+   * +31.8ms unregister files@_r_11_
+   * +31.9ms register ×4(同一批实例 id 原样回来)
+   * ```
+   * 用户数的三下正是这个:出现(焦点没进)/ 没反应(第二下补一次聚焦,那些层不画环
+   * 所以无声)/ 隐藏。
+   *
+   * 所以判据改成:**摘掉 → 排一个微任务 → 那时同一个实例 id 还没回来,才算它真的走了**。
+   * React 的一次重挂(卸载 effect 与再挂载 effect)全部落在同一个宏任务里,微任务
+   * 一定排在它后面 —— 这不是一个时间窗口(没有毫秒数可调),是一个**次序**。
+   *
+   * ── 延后的**只有焦点搬家**,路径当场就缩 ────────────────────────────────────
+   * 结算本来是两件事:①路径缩到最近仍可交互的祖先;②焦点按 `returnTargetOf` 回落。
+   * 只有②会把键盘从刚开出来的那块面里拽走,所以只延后②。①必须当场做 —— 这棵树
+   * 对读的人许过「`activePath()` 拿到的永远是可交互的那一段」,而节点已经出表了,
+   * 不缩的话 `current()` 在那个微任务里答 undefined。施工时用**同步连按两下 Esc**
+   * 那条既有用例证过:全部延后的话第二下 Esc 找不到对话框(两下之间没有微任务)。
+   *
+   * 于是这一格记的是「摘掉那一刻的第一响应者」:复活时把它还回去(焦点根本没搬过,
+   * 所以路径也该回到原样),真走了就在微任务里让焦点回落。
+   *
+   * ── 与 I1 收回的次序,不会打架 ──────────────────────────────────────────────
+   * 真卸载时:React 先跑卸载 effect(这里排下微任务)、**再**把 DOM 摘掉;摘掉那一刻
+   * 焦点掉到 body,`focusout` 那一路也排一个微任务去 `recoverOrphanFocus`。两者都在
+   * 微任务队列上,而**这一个先排**,所以归还先跑、`activeElement` 已经不是 body,
+   * 随后那一发收回自己判掉(它只在「此刻真的在 body 上」时动手)。没有「先收回到
+   * root 落点、归还再搬一次」的双跳 —— `registry.test.ts` 里有一条用例钉着次序。
+   */
+  private readonly pendingUnregister = new Map<FocusInstanceId, PendingUnregister>()
+
+  /**
+   * 摘掉一格。**路径当场缩,焦点回落晚一个微任务**(判词见 `pendingUnregister`):
+   * 同一个实例 id 要是在那之前又登记回来,这一次就根本不是「走了」——归还一句都不发,
+   * 第一响应者也还回原位。
+   *
+   * 真的走了的话,焦点按 `returnTargetOf` 回落,这就是「归还是结构性的」(§4.5):
+   * 写跳转条的人不需要知道有归还这回事。
    */
   unregister(instanceId: FocusInstanceId): void {
     const node = this.map.get(instanceId)
     if (!node) return
+    // 「焦点原来在谁身上」要在缩之前问 —— 缩完再问拿到的是缩到的那个祖先。
+    const departing = this.focusedNode ?? node
+    const focusedBefore = this.focused
     this.map.delete(instanceId)
-    this.settle(node)
+    const wasFirstResponder = this.shrinkPathAfter(node)
+    this.pendingUnregister.set(instanceId, {
+      node,
+      departing,
+      // 没缩过就没什么可还的(它不在活动路径上,摘不摘都不影响谁在接键盘)。
+      focusedBefore: wasFirstResponder ? focusedBefore : null,
+      shrunkTo: this.focused,
+    })
+    this.notify()
+    queueMicrotask(() => {
+      const pending = this.pendingUnregister.get(instanceId)
+      // 被 `register` 领回去了 = 那是一次重挂,不是一次卸载。什么都不做。
+      if (!pending) return
+      this.pendingUnregister.delete(instanceId)
+      if (!pending.focusedBefore) return
+      // 这一拍里别人接管了键盘(新开的那一层自己入了焦)→ 归还作废,不去抢。
+      if (this.focused !== pending.shrunkTo) return
+      this.returnFocusAfter(pending.node, pending.departing)
+      this.notify()
+    })
   }
 
   /* ── 查询 ────────────────────────────────────────────────────────────── */
@@ -556,40 +678,53 @@ export class FocusTree {
   }
 
   /**
-   * 结构变化之后的结算:路径缩、焦点回落。
+   * 结构变化之后的结算:路径缩、焦点回落。**同步**的那一条路 —— 今天只剩
+   * 「宿主打 `inert`」走它(架子切 tab)。卸载那条路把这两半拆开了,判词见
+   * `pendingUnregister`:那里路径当场缩,焦点回落晚一个微任务。
+   *
    * `gone` 是刚消失 / 刚变 inert 的那一格 —— 焦点回哪儿从**它**往上问。
    */
   private settle(gone: ScopeNode): void {
     const departing = this.focusedNode ?? gone
-    const stillHere = this.focused ? this.map.get(this.focused) : undefined
-    const focusedGone =
-      !stillHere || !isInteractive(stillHere) || this.isDescendantOf(this.focused, gone.instanceId)
-    if (!focusedGone) {
+    if (!this.shrinkPathAfter(gone)) {
       this.notify()
       return
     }
-    /*
-     * **路径缩到哪儿**与**焦点落到哪个元素**是两件事,分两句问。
-     * 合成一句的后果被单测逮住过:祖先此刻还没铺上根元素(合法中间态)时,
-     * 「焦点落哪儿」答不出来,于是整条路径被清空、第一响应者凭空消失。
-     */
-    this.setFocused(nearestInteractiveAncestorOf(this.map, gone)?.instanceId ?? null, false)
-    if (this.policy.moveFocus) {
-      /*
-       * 结构归还:焦点落到 `returnTargetOf` 答的那个元素上,随后那一发 `focusin`
-       * 把第一响应者指到它所在的那一格 —— **不算换人**(这是归还,不是新的接管),
-       * 所以 `returnTo` 不在这条路上写。
-       */
-      /*
-       * 从**离场的那一任**问起,答不出再问刚消失的这一格:一整层塌下去时,
-       * `returnTo` 记在拿过焦点的那一格上(检索面),而先触发结算的可能是
-       * 装着它的层。两问一句 `??`,不是两套判据 —— 同一只 `returnTargetOf`。
-       */
-      const back =
-        returnTargetOf(this.map, departing) ?? (departing === gone ? null : returnTargetOf(this.map, gone))
-      if (back) this.withoutReturnSeat(() => back.element.focus({ preventScroll: true }))
-    }
+    this.returnFocusAfter(gone, departing)
     this.notify()
+  }
+
+  /**
+   * 结算的**前半**:路径缩到最近仍可交互的祖先。
+   * 回 true = 第一响应者真的没了(所以焦点也该回落),false = 它还在,什么都没动。
+   *
+   * **路径缩到哪儿**与**焦点落到哪个元素**是两件事,所以它们是两只函数。
+   * 合成一句的后果被单测逮住过:祖先此刻还没铺上根元素(合法中间态)时,
+   * 「焦点落哪儿」答不出来,于是整条路径被清空、第一响应者凭空消失。
+   */
+  private shrinkPathAfter(gone: ScopeNode): boolean {
+    const stillHere = this.focused ? this.map.get(this.focused) : undefined
+    const focusedGone =
+      !stillHere || !isInteractive(stillHere) || this.isDescendantOf(this.focused, gone.instanceId)
+    if (!focusedGone) return false
+    this.setFocused(nearestInteractiveAncestorOf(this.map, gone)?.instanceId ?? null, false)
+    return true
+  }
+
+  /**
+   * 结算的**后半**:结构归还 —— 焦点落到 `returnTargetOf` 答的那个元素上,随后那一发
+   * `focusin` 把第一响应者指到它所在的那一格。**不算换人**(这是归还,不是新的接管),
+   * 所以 `returnTo` 不在这条路上写。
+   *
+   * 从**离场的那一任**(`departing`)问起,答不出再问刚消失的这一格:一整层塌下去时,
+   * `returnTo` 记在拿过焦点的那一格上(检索面),而先触发结算的可能是装着它的层。
+   * 两问一句 `??`,不是两套判据 —— 同一只 `returnTargetOf`。
+   */
+  private returnFocusAfter(gone: ScopeNode, departing: ScopeNode): void {
+    if (!this.policy.moveFocus) return
+    const back =
+      returnTargetOf(this.map, departing) ?? (departing === gone ? null : returnTargetOf(this.map, gone))
+    if (back) this.withoutReturnSeat(() => back.element.focus({ preventScroll: true }))
   }
 
   private isDescendantOf(
@@ -689,6 +824,9 @@ export class FocusTree {
     }
     this.attached = false
     this.map.clear()
+    // 挂着的那几格「等一个微任务再结算」一并作废:它们的微任务醒来时会发现自己
+    // 不在表上,于是什么都不做(见 `pendingUnregister`)。
+    this.pendingUnregister.clear()
     this.listeners.clear()
     this.transients.clear()
     this.focused = null

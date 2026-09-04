@@ -334,6 +334,41 @@ const FRAMELESS_ON_MAC =
     ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 16 } }
     : {}
 
+/**
+ * ── 门专用的两个开关(09-04 S4)────────────────────────────────────────────────
+ *
+ * 两个都**只有真机门会传**,产品路径上一个字都读不到它们(未设 = 今天的行为逐字不变)。
+ * 立它们的直接起因是一条纪律:真机门不许抢用户的机器 —— 用户正在这台机器上干活,
+ * 而门每跑一趟就要拉起一扇窗、抢一次前台、在 Dock 里冒一个图标。
+ *
+ * · `ONETHING_GATE_HEADLESS=1` —— **窗子起在离屏**:不 `show()`、不进 Dock。
+ *   页面照样渲染、照样跑 rAF 与布局(Electron 的隐藏窗只是不合成到屏幕上),
+ *   焦点由门自己用 CDP `Emulation.setFocusEmulationEnabled(true)` 补 ——
+ *   于是 `:focus-visible`、`document.activeElement`、`focusin/focusout` 全部照常,
+ *   而**这正是响应链那几道门唯一要量的东西**。离屏档与前台档的读数一致性由
+ *   `gate:focus` 自己证(S4 拿 HEAD 在两档各跑一趟,118 断言逐条对上)。
+ *
+ * · `ONETHING_GATE_DIST=<目录>` —— **换一份渲染层产物**(相对 appRoot 或绝对路径;
+ *   缺省 `dist`)。两个门吃它:
+ *
+ *   ① `gate:focus --strict` 传 `dist-strict`。S3 结案时留了一笔账:「gate:focus 跑
+ *      生产构建照不出此病,只有 dev 壳真机读数照得出,让门起 dev 壳待拍」。起 dev 壳
+ *      是错的路(要多一台 vite、还要占 5175 这个用户自己在用的口)。**09-04 S4 施工时
+ *      先走错过一次,记在这里**:第一版想在同一份 dist 上挂一个查询串开关,让
+ *      `src/main.tsx` 据此决定包不包 `<StrictMode>`。它办不到 —— `<StrictMode>` 在
+ *      **production 版的 react-dom 里是空操作**,模拟卸载→再挂载那一串检查整个长在
+ *      development 版里。所以这件事不是「加一个开关」,是**换一份 react-dom**,而那
+ *      只有构建产物这一条路:`npm run app:build:strict` 出一份 `dist-strict/`
+ *      (`vite build --mode development`,**仍然是构建产物、不是 dev server**)。
+ *      缺省那份 `dist/` 一个字节不动,所以 `gate:focus` 的 118 断言基线没有变。
+ *
+ *   ② **跨版本性能对照**:把某个历史提交的 `dist/` 指过来,用**今天这份主进程**
+ *      (也就是带离屏开关的这一份)去装它。少了这一格,量历史基线就得起历史版本的
+ *      主进程 —— 那些版本没有离屏开关,窗子会弹到用户脸上。
+ */
+const GATE_HEADLESS = process.env.ONETHING_GATE_HEADLESS === '1'
+const GATE_DIST = process.env.ONETHING_GATE_DIST || 'dist'
+
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
@@ -349,7 +384,8 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
     },
   })
-  window.once('ready-to-show', () => window.show())
+  // 离屏档**什么都不做**:窗子本来就是 `show: false` 起的,不接这一发就永远不上屏。
+  if (!GATE_HEADLESS) window.once('ready-to-show', () => window.show())
 
   /*
    * ── 全屏态要推给渲染层(09-01 自查走查:全屏下红绿灯没了,顶栏左边那 80px
@@ -373,7 +409,7 @@ function createWindow(): BrowserWindow {
 
   const devServerUrl = process.env.ONETHING_REACT_DEV_SERVER_URL
   if (devServerUrl) void window.loadURL(devServerUrl)
-  else void window.loadFile(path.join(appRoot, 'dist/index.html'))
+  else void window.loadFile(path.resolve(appRoot, GATE_DIST, 'index.html'))
   return window
 }
 
@@ -383,6 +419,8 @@ ipcMain.handle('host:connection', async (): Promise<HostConnectionResult> => (
 ))
 
 void app.whenReady().then(async () => {
+  // 离屏档连 Dock 图标都不冒(macOS 上 `app.dock` 才有;别的平台是 undefined)。
+  if (GATE_HEADLESS) app.dock?.hide()
   const existing = readDiscovery()
   if (existing && (await isAlive(existing))) {
     /*

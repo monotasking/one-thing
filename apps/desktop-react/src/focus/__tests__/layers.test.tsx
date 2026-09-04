@@ -195,7 +195,7 @@ describe('modal:Tab 圈禁与结构性归还', () => {
     expect(document.activeElement).toBe(one)
   })
 
-  it('关掉之后焦点回到开它的那个元素 —— **没有锚点簿记**,是路径缩回父的结果', () => {
+  it('关掉之后焦点回到开它的那个元素 —— **没有锚点簿记**,是路径缩回父的结果', async () => {
     render(<Harness />)
     const opener = screen.getByTestId('opener')
     act(() => opener.focus())
@@ -204,6 +204,8 @@ describe('modal:Tab 圈禁与结构性归还', () => {
 
     act(() => void window.dispatchEvent(escape()))
     expect(screen.queryByTestId('panel')).toBeNull()
+    // 归还晚一个微任务(S4,判词在 `FocusTree.pendingUnregister`)。
+    await act(async () => { await Promise.resolve() })
     expect(document.activeElement).toBe(opener)
   })
 

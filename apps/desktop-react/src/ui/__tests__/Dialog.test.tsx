@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { ConfirmHost, Dialog, useConfirm, useConfirmHub } from '../Dialog'
 import { useStageStore } from '../../stage/store'
 import { FocusScope } from '../../focus/FocusScope'
@@ -167,7 +167,7 @@ describe('useConfirm:promise 化的一问一答', () => {
  * 以及标题真的被指为名字。
  */
 describe('Dialog:焦点与名字', () => {
-  it('打开时焦点进面板,关闭时还给开它的那个元素', () => {
+  it('打开时焦点进面板,关闭时还给开它的那个元素', async () => {
     function Harness() {
       const [open, setOpen] = useState(false)
       return (
@@ -188,6 +188,8 @@ describe('Dialog:焦点与名字', () => {
     expect(document.activeElement).toBe(screen.getByRole('dialog'))
 
     fireEvent.keyDown(window, { key: 'Escape' })
+    // 结构归还晚一个微任务(09-04 S4,判词在 `FocusTree.pendingUnregister`)。
+    await act(async () => { await Promise.resolve() })
     expect(document.activeElement).toBe(opener)
   })
 

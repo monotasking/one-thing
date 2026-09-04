@@ -647,9 +647,23 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **窗子离屏起**(09-04 S4,纪律「真机门不许抢用户的机器」)。不 show()、
+         * 不进 Dock;页面照样渲染、照样跑布局与 rAF。焦点由下面那一句 CDP
+         * `Emulation.setFocusEmulationEnabled` 补 —— 判词与一致性证据写在
+         * `electron/main.ts` 的 `ONETHING_GATE_HEADLESS` 那一段上。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+      },
     })
     const page = await app.firstWindow()
+    // 离屏窗要自己补「我有焦点」,否则 `:focus-visible` / Tab 序走查量的是一台失焦的页。
+    const cdp = await app.context().newCDPSession(page)
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined

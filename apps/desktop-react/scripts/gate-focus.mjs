@@ -52,8 +52,10 @@
  *    **只进目标窗口,不动真光标、不抢用户的机器**(09-01 判例);
  *  · `finally` 里逐个收尸,结尾自查残留。
  *
- * 跑法:`npm run gate:focus`(判红)/ `npm run gate:focus -- --expect-red`(只打表)。
- * 前置:仓根 `bun run server:build`,本目录 `npm run app:build`。
+ * 跑法:`npm run gate:focus`(判红)/ `-- --expect-red`(只打表)/ `-- --strict`(StrictMode 档)。
+ * 前置:仓根 `bun run server:build`,本目录 `npm run app:build`(strict 档另加 `app:build:strict`)。
+ * **窗子一律离屏起**(`ONETHING_GATE_HEADLESS=1`):不上屏、不进 Dock,焦点由
+ * CDP `Emulation.setFocusEmulationEnabled` 补 —— 门不许抢用户的机器。
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
@@ -71,6 +73,26 @@ const serverEntry = path.join(repoRoot, 'dist/server/main.js')
 const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 
 const EXPECT_RED = process.argv.includes('--expect-red')
+
+/**
+ * **`--strict`:换一份带 React StrictMode 的产物,把同样这些场景再跑一遍**(09-04 S4)。
+ *
+ * S3 结案时留的账原话:「gate:focus 跑生产构建照不出此病(改前改后都绿),只有
+ * jsdom 用例与 dev 壳真机读数照得出,让门起 dev 壳待拍」。这一批把它结了 ——
+ * 不是让门去起一台 vite dev 壳(那要多占 5175 这个用户自己在用的口)。
+ *
+ * **它是换一份产物,不是加一个开关**(施工时先走错过一次,记在这里):
+ * `<StrictMode>` 在 **production 版的 react-dom 里是空操作**,模拟卸载→再挂载
+ * 那一串检查整个长在 development 版里。所以 strict 档跑的是
+ * `npm run app:build:strict` 出的 `dist-strict/`(`vite build --mode development`
+ * —— **仍然是构建产物,不是 dev server**),由 `electron/main.ts` 的
+ * `ONETHING_GATE_DIST` 指过去;缺省档那份 `dist/` 一个字节都不动,于是
+ * 「118 断言」这个基线与三基线性能读数的对照面没有变。
+ *
+ * strict 档跑的场景与缺省档**逐条相同**(不是子集:一层重挂一次要是能踩坏别的
+ * 场景,那也是本批该知道的),只在 ①-c 多一形(钉左边 —— 用户报的正是那一形)。
+ */
+const STRICT = process.argv.includes('--strict')
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -285,6 +307,12 @@ async function main() {
     console.error('[focus-gate] 找不到构建产物 —— 先跑 `npm run app:build`')
     process.exit(1)
   }
+  if (STRICT && !existsSync(path.join(appRoot, 'dist-strict/index.html'))) {
+    console.error(
+      '[focus-gate] --strict 要的是带 StrictMode 的那份产物 —— 先跑 `npm run app:build:strict`',
+    )
+    process.exit(1)
+  }
 
   const store = await mkdtemp(path.join(tmpdir(), 'focus-gate-store-'))
   const userDataDir = await mkdtemp(path.join(tmpdir(), 'focus-gate-userdata-'))
@@ -335,13 +363,38 @@ async function main() {
       workingDirectory: workspaceRoot,
     })
 
-    console.log('[2/3] 拉起应用(独立 --user-data-dir)')
+    console.log(`[2/3] 拉起应用(离屏 · 独立 --user-data-dir${STRICT ? ' · StrictMode' : ''})`)
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **离屏起窗**(09-04 S4,纪律「真机门不许抢用户的机器」的落地)。
+         * 窗子不 show()、不进 Dock;页面照样渲染、照样跑布局与 rAF。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+        ...(STRICT ? { ONETHING_GATE_DIST: 'dist-strict' } : {}),
+      },
     })
     const page = await app.firstWindow()
+    /*
+     * **离屏窗要自己把「我有焦点」这件事补上**(CDP `Emulation.setFocusEmulationEnabled`)。
+     *
+     * 不补的话:窗口没上屏 → 页面处于 blurred 状态 → `document.hasFocus()` 为假,
+     * `:focus-visible` 不画,而这道门**量的正是焦点**。补上之后 `activeElement` /
+     * `focusin` / `focusout` / `Tab` 走位全部与前台档逐字相同 —— 一致性由 S4 拿
+     * HEAD 在两档各跑一趟证过(118 断言逐条对上)。
+     *
+     * 这是**只进这个窗口**的 CDP 调用,一根手指都不碰真光标与用户的前台
+     * (09-01 那条「禁系统级合成输入」判例的同一条纪律)。
+     */
+    const cdp = await app.context().newCDPSession(page)
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    /** 壳的地址(重载都走它;`?gallery` 那一格是场景 4 用的组件库页)。 */
+    const shellUrl = (extra = '') => `${page.url().split('?')[0]}${extra ? `?${extra}` : ''}`
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined
@@ -499,7 +552,7 @@ async function main() {
 
     /* ── 场景 4:对话框里开菜单 ──────────────────────────────────────── */
     scenario('对话框里开菜单 → Esc 只关菜单 → 再 Esc 关对话框 → 焦点回触发钮')
-    await page.goto(`${page.url().split('?')[0]}?gallery`)
+    await page.goto(shellUrl('gallery'))
     await waitFor('规格页就位', () =>
       page.evaluate(() =>
         Boolean(
@@ -551,7 +604,7 @@ async function main() {
      * 只有 ① 的话,「树根本没把这一下往外传」也能过;只有 ② 的话,「浮窗那一路
      * 抢先并顺手改了焦点」也能过。
      */
-    await page.goto(page.url().split('?')[0])
+    await page.goto(shellUrl())
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
     )
@@ -666,7 +719,7 @@ async function main() {
      * 整页重载一次:这一条问的是**刚起来那一刻**的事实,而前面六个场景已经把
      * 焦点摆到别处去了。重载之后照样要等那一次 RPC 往返(与开场同一条等待)。
      */
-    await page.goto(page.url().split('?')[0])
+    await page.goto(shellUrl())
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
     )
@@ -873,7 +926,7 @@ async function main() {
         }),
       )
     })
-    await page.goto(page.url().split('?')[0])
+    await page.goto(shellUrl())
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
     )
@@ -975,7 +1028,7 @@ async function main() {
 
     /* ── 场景 12:⌘P → Esc → 回到开它之前那个输入框(returnTo)────────── */
     scenario('⌘P → Esc → 焦点回到**开它之前那个元素**(§4.5 的 returnTo)')
-    await page.goto(page.url().split('?')[0])
+    await page.goto(shellUrl())
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
     )
@@ -1097,7 +1150,7 @@ async function main() {
         Boolean(document.querySelector('[data-testid="search-panel"], [data-panel-layer="search"]')),
       )
 
-    await page.goto(page.url().split('?')[0])
+    await page.goto(shellUrl())
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
     )
@@ -1457,6 +1510,14 @@ async function main() {
       { key: 'float', label: '浮窗', menu: /^(Float|浮窗)$/ },
       { key: 'cover', label: '盖满', menu: /^(Cover|盖满)$/ },
       { key: 'edge', label: '钉右边', menu: /^(Right|右边)$/ },
+      /*
+       * **钉左边只在 strict 档量**(09-04 S4)。用户 09-04 报的那一形原话是
+       * 「files 记忆钉**左**架子」—— 而 09-04 S3 补的 ①-c 只种了右边。两条边在
+       * 产品代码里走的是同一条支路(`edge` 只差一个 `side`),所以缺省档不必多跑
+       * 一形(那会动 118 这个基线数);strict 档是**照用户报的那一形**跑的,
+       * 左右都要在场。
+       */
+      ...(STRICT ? [{ key: 'edge-left', label: '钉左边', menu: /^(Left|左边)$/ }] : []),
     ]
     for (const form of MEMORY_FORMS) {
       await filesBackToDock()

@@ -12,6 +12,7 @@
     "electron:build": "node scripts/build-electron.mjs",
     "app:dev": "node scripts/dev-app.mjs",
     "app:build": "npm run build && npm run electron:build",
+    "app:build:strict": "NODE_ENV=development vite build --mode development --outDir dist-strict",
     "gate:connect": "node scripts/gate-connect.mjs",
     "gate:data": "node scripts/gate-data.mjs",
     "gate:theme": "node scripts/gate-theme.mjs",

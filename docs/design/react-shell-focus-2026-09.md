@@ -391,6 +391,14 @@ R1 与 R2 各一批,不合并(R1 守的是"行为不变",R2 才带可感知变�
 ② / ④-b 的夹具一起收掉。**这道门跑的是生产构建,所以它照不出上面那条 StrictMode 的病**
 (改前改后都绿);照得出它的是那组 jsdom 用例与 dev 壳的真机读数。
 
+**S3/S4 结案(09-04)——dev 壳 StrictMode 双挂载与「toggle files 卡顿」**:
+
+- 病:React `<StrictMode>`(dev 壳恒开)对每个新挂载组件模拟一次卸载→再挂载;树把那次模拟卸载读成「它走了」,`unregister` 当场结构归还,把刚送进面里的焦点搬回输入框,再挂载无人再叫。左架子上另有一格 tab 时,隔壁那格的注销通知先到,S3 的 250ms 窄口因 `isOwnerActive` 仍真而提前收手,于是三连按=出现/无反应/隐藏。
+- 修(S4b,结构性,一处修全树):`FocusTree.unregister` 把节点存进 `pendingUnregister`,`queueMicrotask` 后同一 `instanceId` 没重新登记才真归还;`register` 命中 pending 即原样复用节点。判据是**次序**不是时间窗:一次重挂的卸载与再挂载 effect 在同一个宏任务里,而 `useId` 在 StrictMode 双调用里逐字相同(`key` 换值则是新号 = 真卸载,归还是规则 5 的正确答案)。两处收窄:只延后「焦点搬家」,路径当场缩(同步连按两下 Esc 那条用例逼出);归还前问 `shrunkTo`「这一拍里别人接管键盘了吗」(树行右键→详情:菜单卸载排下归还、详情面 `activateOnMount` 同一拍)。S3 的窄口整段删,不留两套。
+- 卡顿三基线(files 钉左架子 toggle ×10,离屏):S3 前最长帧 18–23ms / AppShell 重渲 10;S3 窄口 **45ms**(间歇)/ 5;S4b 15–17ms / **0**。候选①窄口证实、候选② AppShell `useState(pending)` 证实(挪进零 DOM 叶子 `<StageFocusFollow/>`);残余 15–17ms 是 FilesPanel 首挂+架子收展的存量成本,不在本线。强制排版 10→15(归还那一发 `.focus` 挪到微任务后成为独立一次),可感知量反降,记账。
+- 第二个「形态落定→键盘归谁」产地被收掉:`Overview.tsx` 的 `AutoFocusSearch` 按 `placed × interactive` 抢焦,`interactive` 会因隔壁的事翻真(撕走架子上隔壁那块面时本面顺位成活动 tab,+0.2ms 顶掉刚送进浮窗的焦点);改为只认「这块面自己被摆出来」,`interactive` 那半交回 focus-follow。**可感知变化一条**:撕走隔壁那块面时焦点不再跳进总览搜索条 —— 恢复规则 3。
+- 门:`ONETHING_GATE_HEADLESS=1`(主进程不 show、不 focus、`dock.hide`,CDP `Emulation.setFocusEmulationEnabled`)三道真机门一律离屏;StrictMode 在 production react-dom 里是空操作,故 `app:build:strict`(`vite build --mode development` → `dist-strict/`)供 `gate:focus --strict` 起离屏实例,HEAD 4 红 → 0 红/124 断言。**判例**:真机门不许抢用户前台;修后读数必须覆盖报障那一形与用户的运行环境。
+
 ## 13. 证据索引(勘察 09-02)
 
 - 13 个 keydown 监听位置:`keymap/dispatch.ts:117` `ui/a11y/roving.ts:146` `ui/Tooltip.tsx:111` `ui/a11y/focus-trap.ts:137` `ui/float.ts:169` `components/useEscapeChain.ts:44` `expose/components/ExposeView.tsx:141` `workspace/components/WorkspacePalette.tsx:109` `composer/useComposerKeys.ts:82` `content/KeymapSettings.tsx:83` `content/FilesPanel.tsx:283` `content/viewer/useViewerKeymap.ts:108` `content/blocks/shell/ZoomOverlay.tsx:33`。

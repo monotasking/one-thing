@@ -1,8 +1,11 @@
-import { useEffect, type RefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import { TriangleAlert } from '../../components/icons'
 import { useT } from '../../i18n'
 import { useSessionsList, useSessionsSource } from '../../data/sessions-source'
 import { useFocusScope } from '../../focus/useFocusScope'
+import { SESSIONS_ITEM_ID } from '../../stage/items'
+import { useStageStore } from '../../stage/store'
+import { formOf } from '../../stage/transitions'
 import { useExposeLive } from './use-live'
 import { Rail } from './Rail'
 import { SessionTree } from './SessionTree'
@@ -24,8 +27,10 @@ import s from './Overview.module.css'
  * 在此之前它归 Dock 上那块瓦(点开面板的那个按钮),于是「刚开完面板按一下空格」
  * 会再次触发那颗按钮、把面板关掉:那是 08-30 用户报的键盘死区的另一半。
  *
- * 判据是 live(placed × interactive,见 use-live.ts)升起,而不是挂载:
- * 舞台 ⇄ 浮窗 ⇄ 架子搬家时它不变,不会重复抢焦点;架子后台 keep-alive 层
+ * 判据是**这块面自己被摆出来了**(`placed` 由假翻真,且此刻 live),而不是挂载,
+ * 也不是 live 升起 —— 后两者各错各的,理由逐条写在下面那只 effect 上头:
+ * 挂载那一刻会被出场动画与搬家骗到;live 那一半会因为隔壁的事翻真。
+ * 舞台 ⇄ 浮窗 ⇄ 架子搬家时 `placed` 不变,不会重复抢焦点;架子后台 keep-alive 层
  * interactive 恒为假 —— 看不见的一份不该把光标从别处夺走。
  *
  * 装在渲染 null 的叶子里而不是长在 Overview 身上,是因为 live 随切 tab 翻转:
@@ -33,12 +38,34 @@ import s from './Overview.module.css'
  */
 function AutoFocusSearch() {
   const live = useExposeLive()
+  const placed = useStageStore((st) => formOf(st, SESSIONS_ITEM_ID) !== 'dock')
   const { activate } = useFocusScope()
+  /*
+   * **判据是「它自己被摆出来了」,不是「它此刻算数了」**(09-04 S4)。
+   *
+   * `live = placed × interactive`,而 `interactive` 那一半会因为**隔壁**的事翻真:
+   * 右架子上钉着 files 与本面,把 files 撕成浮窗之后本面顺位成了活动 tab —— 那一刻
+   * live 升起,但这块面自己一步没动。旧判据在那一形里会把键盘从刚撕出去的那扇窗里
+   * 抢回本面的搜索条(真机读数:`activateScope(float-layer, owner=files)` 成功之后
+   * **+0.2ms** 就被这一句 `activate('placement')` 顶掉,gate:focus 场景 10 第三步红)。
+   *
+   * 病根是**两个产地**:「形态落定 → 键盘归谁」全壳只该有一处判(`stage/focus-follow.ts`
+   * 那只纯函数,它连「架子切 tab」那一格都算了),这里再算一遍就是重复实现,
+   * 而重复的两份在同一次提交里谁赢只看 effect 次序。所以这里只留**它管不着**的那一半:
+   * 「这块面被摆出来了」(`placed` 由假翻真 —— 指针从 Dock 点开它的那条路,
+   * focus-follow 按设计不跟)。`interactive` 那一半交回 focus-follow 的架子分支。
+   *
+   * 初值取 `false`:壳一起来时若这块面就是摆出来的,那仍然算一次「被摆出来」,
+   * 与改判之前逐字相同。
+   */
+  const wasPlaced = useRef(false)
   useEffect(() => {
+    const justPlaced = placed && !wasPlaced.current
+    wasPlaced.current = placed
     // 落焦是 `activate()`,**焦点具体落在哪儿**由这一格作用域的 `restingTarget` 答
     // (还没交接给树就是搜索条 —— 见 ExposeView)。
-    if (live) activate('placement')
-  }, [live, activate])
+    if (live && justPlaced) activate('placement')
+  }, [live, placed, activate])
   return null
 }
 

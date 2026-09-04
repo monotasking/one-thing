@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
-import { useStageFocusFollow } from '../stage/focus-follow'
+import { StageFocusFollow } from '../stage/focus-follow'
 import { useViewportReclamp } from '../stage/viewport-reclamp'
 import { useKeymapCommandRunner } from '../keymap/dispatch'
 import { FocusScope } from '../focus/FocusScope'
@@ -73,12 +73,6 @@ export function AppShell() {
    * 常驻挂在这一层的理由没变:它得能在面板关着时把面叫起来,而面板此刻并不挂载。
    */
   useFocusDispatch({ runCommand: useKeymapCommandRunner() })
-
-  /**
-   * **规则 3:挪到哪,焦点跟到哪**(设计 §3.5 / §11 拍点 2)。判据与执行整件在
-   * `stage/focus-follow.ts`(一只纯函数 + 一只 hook)—— 这里只挂一次。
-   */
-  useStageFocusFollow()
 
   /**
    * **窗子改了尺寸 → 浮窗回到视口里**(09-04 §4)。与上面那一条同一个形:判据在
@@ -440,6 +434,16 @@ export function AppShell() {
     <FocusScope scope="root" onEscape={escapeTopmost}>
       {({ scopeProps }) => (
         <div {...scopeProps} className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
+          {/*
+            **规则 3:挪到哪,焦点跟到哪**(设计 §3.5 / §11 拍点 2)。判据与执行整件在
+            `stage/focus-follow.ts`(一只纯函数 + 一只 hook)—— 这里只挂一次。
+
+            它是一个**零 DOM 的叶子组件**而不是外壳直接调的一只 hook(09-04 S4):
+            那只 hook 里有一格 `useState`,挂在外壳身上等于「每一次形态落定整棵壳重渲
+            一遍」。判词与 09-03「面自己不许订阅焦点树、交给叶子」同型,写在那只
+            组件头上。
+          */}
+          <StageFocusFollow />
           {/* 顶栏**就是**这扇窗的顶带(09-01 用户看真机后的裁定:红绿灯与 header 同一行)。
             * 系统标题栏已摘,所以壳里的第一件必须从 y=0 起 —— 顶栏自己承载拖拽区与
             * 红绿灯让位,判例写在 TopBar.tsx 的文件头。上一版那条独立的 28px 空带

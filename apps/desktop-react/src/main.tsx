@@ -68,6 +68,14 @@ void whenConnected().finally(() => {
   // **当前是哪个工作区**不在这一步:它读的是 localStorage,上面 startWorkspaceApply()
   // 早就贴好了 —— 后端没有「当前空间」这个概念(契约见 data/spaces-port.ts)。
   void useWorkspaceStore.getState().load()
+  /*
+   * `<StrictMode>` 是**开发构建里才有身体的东西**:模拟卸载 → 再挂载、effect 跑两遍
+   * 这些检查全部由 react-dom 的 development 版实现,production 版里它是空操作
+   * (S3 结案的反证读数逐字如此)。所以「让门也吃到那一串重挂」不是在这里加一个
+   * 开关能办到的事 —— 它是**换一份 react-dom**。那条路走的是构建产物:
+   * `npm run app:build:strict` 出一份 `dist-strict/`(development 模式的 `vite build`,
+   * 不是 dev server),由 `electron/main.ts` 的 `ONETHING_GATE_DIST` 指过去。
+   */
   log.info('mounting shell')
   createRoot(root).render(
     <StrictMode>

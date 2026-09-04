@@ -913,7 +913,18 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **窗子离屏起**(09-04 S4,纪律「真机门不许抢用户的机器」)。不 show()、
+         * 不进 Dock;页面照样渲染、照样跑布局与 rAF。焦点由下面那一句 CDP
+         * `Emulation.setFocusEmulationEnabled` 补 —— 判词与一致性证据写在
+         * `electron/main.ts` 的 `ONETHING_GATE_HEADLESS` 那一段上。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+      },
     })
     const page = await app.firstWindow()
     await waitFor('渲染层完成一次 RPC 往返', async () => {
@@ -921,7 +932,9 @@ async function main() {
       return value && value.rpcOk ? value : undefined
     })
     const cdp = await app.context().newCDPSession(page)
-    console.log('  ✓ 连上了,CDP 会话已开')
+    // 离屏窗要自己补「我有焦点」(见上面那段 env 的判词)。
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    console.log('  ✓ 连上了,CDP 会话已开(窗子离屏,焦点由 CDP 模拟)')
 
     // 三个排障口在**打包后的真应用**里也得在。单元测试只能证 jsdom 里装得上,
     // 证不了它们活过了构建与 Electron 的加载 —— 那正是「dump 不出来」最常发生的地方。

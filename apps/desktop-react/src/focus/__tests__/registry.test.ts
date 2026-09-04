@@ -142,7 +142,7 @@ describe('DOM 焦点(focusin)', () => {
 })
 
 describe('结构变化后的结算', () => {
-  it('第一响应者卸载 → 路径缩回父,焦点回父的 lastFocused', () => {
+  it('第一响应者卸载 → 路径**当场**缩回父,焦点**晚一个微任务**回父的 lastFocused', async () => {
     const row = focusable('row')
     const input = document.createElement('input')
     const barEl = subPane('bar', input)
@@ -157,7 +157,14 @@ describe('结构变化后的结算', () => {
     input.focus()
 
     jump.unregister()
+    /*
+     * 结算拆成了两半(S4,判词在 `FocusTree.pendingUnregister`):**路径当场缩**
+     * (读的人永远拿得到一段可交互的路径),**焦点回落晚一个微任务**(那一个微任务
+     * 里同一个实例 id 要是又登记回来,这一摘就根本不算「走了」)。
+     */
     expect(focusTree.current()?.instanceId).toBe(viewer.instanceId)
+    expect(document.activeElement).not.toBe(row)
+    await Promise.resolve()
     expect(document.activeElement).toBe(row)
   })
 
@@ -207,6 +214,107 @@ describe('结构变化后的结算', () => {
     viewer.setRoot(floatEl)
     expect(focusTree.nodes().get(viewer.instanceId)?.lastFocused).toBe(a)
     expect(focusTree.nodes().get(viewer.instanceId)?.root).toBe(floatEl)
+  })
+
+  /*
+   * ── 「一次重挂」不是「它走了」(S4,09-04)────────────────────────────────────
+   * 判词与真机时间线写在 `FocusTree.pendingUnregister` 头上。这四条钉的是那条规矩
+   * 的四个面:同 id 回来 = 没走过 / 真走了仍归还 / 归还与 I1 收回不双跳 /
+   * 节点身上那几格活过重挂。
+   */
+  it('**同一个实例 id 在同一拍里注销再登记 = 它没走**:焦点一步不动,归还一句不发', async () => {
+    const input = document.createElement('input')
+    const paneEl = subPane('pane', input)
+    const { shell } = mount(focusable('row'), paneEl)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const files = focusTree.register('files', root.instanceId, {}, 'files@same')
+    files.setRoot(paneEl)
+    input.focus()
+    expect(focusTree.current()?.instanceId).toBe('files@same')
+
+    // React 的模拟卸载 → 再挂载:同一拍里注销、再用**同一个 instanceId** 登记回来。
+    files.unregister()
+    const again = focusTree.register('files', root.instanceId, {}, 'files@same')
+    again.setRoot(paneEl)
+    // 路径当场就还回去了(焦点根本没搬过,所以路径也该回原样)。
+    expect(focusTree.current()?.instanceId).toBe('files@same')
+    await Promise.resolve()
+    /*
+     * 反证:把 `unregister` 里那段「延后 + 复活取消」换回当场 `settle()` → 这里红,
+     * 读数是 `document.activeElement` = `#row`(结构归还把焦点送去了 root 的 lastFocused)。
+     */
+    expect(document.activeElement).toBe(input)
+    expect(focusTree.current()?.instanceId).toBe('files@same')
+  })
+
+  it('复活的那一格**是原来那个节点**:lastFocused / root 都活过这次重挂', async () => {
+    const input = document.createElement('input')
+    const paneEl = subPane('pane', input)
+    const { shell } = mount(paneEl)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const files = focusTree.register('files', root.instanceId, {}, 'files@keep')
+    files.setRoot(paneEl)
+    input.focus()
+
+    files.unregister()
+    focusTree.register('files', root.instanceId, {}, 'files@keep')
+    await Promise.resolve()
+    const node = focusTree.nodes().get('files@keep')
+    expect(node?.lastFocused).toBe(input)
+    expect(node?.root).toBe(paneEl)
+  })
+
+  it('**真的走了就照旧归还** —— 只是晚一个微任务(少了这一条,把归还整只删掉也能绿)', async () => {
+    const row = focusable('row')
+    const input = document.createElement('input')
+    const paneEl = subPane('pane', input)
+    const { shell } = mount(row, paneEl)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const files = focusTree.register('files', root.instanceId, {}, 'files@gone')
+    files.setRoot(paneEl)
+    row.focus()
+    input.focus()
+
+    files.unregister()
+    await Promise.resolve()
+    expect(document.activeElement).toBe(row)
+  })
+
+  /*
+   * **归还与 I1 收回的次序**(任务点名要钉的那一条)。真卸载时 React 先跑卸载 effect
+   * (`unregister` 在这里排下微任务)、**再**把 DOM 摘掉;摘掉那一刻焦点掉到 body,
+   * `focusout`(`relatedTarget === null`)那一路也排一个微任务去 `recoverOrphanFocus`。
+   * 两者都在微任务队列上,而归还**先排**,所以焦点只搬**一次**、落点是 `returnTargetOf`
+   * 答的那个元素 —— 不是「先被收回到 root 的落点、归还再搬一次」的双跳。
+   */
+  it('归还排在 I1 收回**前面**:焦点只搬一次,落点是归还的那个元素(不双跳)', async () => {
+    const row = focusable('row')
+    const input = document.createElement('input')
+    const paneEl = subPane('pane', input)
+    const { shell } = mount(row, paneEl)
+    shell.tabIndex = -1
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const files = focusTree.register('files', root.instanceId, {}, 'files@order')
+    files.setRoot(paneEl)
+    row.focus()
+    input.focus()
+
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus')
+    // ① 卸载 effect;② DOM 摘掉 + 那一发 relatedTarget 为空的 focusout。次序照 React 的。
+    files.unregister()
+    paneEl.remove()
+    input.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(document.activeElement).toBe(row)
+    // 只搬了一次 —— 双跳的话这里是 2(先 root 的落点,再归还)。
+    expect(spy).toHaveBeenCalledTimes(1)
+    spy.mockRestore()
   })
 
   it('摘掉 onEscape 是**摘得掉**的(`undefined` 不等于「这次不改」)', () => {
@@ -448,7 +556,7 @@ describe('returnTo —— 换人那一刻记下上一任(§4.5 R1 裁定,R2 落�
     return box
   }
 
-  it('兄弟归还:检索面关掉,焦点回它开出来之前那个输入框', () => {
+  it('兄弟归还:检索面关掉,焦点回它开出来之前那个输入框', async () => {
     const shell = document.createElement('div')
     const composerRoot = document.createElement('div')
     const searchRoot = document.createElement('div')
@@ -471,6 +579,8 @@ describe('returnTo —— 换人那一刻记下上一任(§4.5 R1 裁定,R2 落�
     field.focus()
 
     search.unregister()
+    // 归还晚一个微任务(S4);路径那一半是同步的。
+    await Promise.resolve()
     expect(document.activeElement).toBe(box)
   })
 

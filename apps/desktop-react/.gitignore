@@ -3,3 +3,6 @@ dist
 *.local
 
 dist-electron
+
+# 门专用的 StrictMode 产物(`npm run app:build:strict` → `gate:focus --strict`)。
+dist-strict

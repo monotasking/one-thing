@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../Menu'
 import { FocusScope } from '../../focus/FocusScope'
 import { focusTree } from '../../focus/registry'
@@ -72,7 +72,7 @@ describe('Menu:键盘路', () => {
     expect(document.activeElement).toBe(items[0])
   })
 
-  it('Esc 关,焦点还给开它的那个元素', () => {
+  it('Esc 关,焦点还给开它的那个元素', async () => {
     render(<Harness />)
     const opener = screen.getByTestId('opener')
     opener.focus()
@@ -81,6 +81,8 @@ describe('Menu:键盘路', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(screen.queryByRole('menu')).toBe(null)
+    // 结构归还晚一个微任务(09-04 S4,判词在 `FocusTree.pendingUnregister`)。
+    await act(async () => { await Promise.resolve() })
     expect(document.activeElement).toBe(opener)
   })
 

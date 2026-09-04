@@ -33,6 +33,8 @@ export default tseslint.config(
      */
     ignores: [
       'dist/**',
+      // 门专用的 StrictMode 产物(`app:build:strict` → `gate:focus --strict`),与 dist 同类。
+      'dist-strict/**',
       'dist-electron/**',
       'node_modules/**',
       'src/assets/**',
