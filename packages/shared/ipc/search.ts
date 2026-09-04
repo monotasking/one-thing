@@ -7,16 +7,38 @@ export {
   ONETHING_SEARCH_CATEGORIES as SEARCH_CATEGORIES,
   isOnethingSearchCategory as isSearchCategory,
 } from '@onething/runtime/search/protocol'
-export type {
-  OnethingSearchCategory as SearchCategory,
-} from '@onething/runtime/search/protocol'
 
-import type { OnethingSearchCategory } from '@onething/runtime/search/protocol'
+/**
+ * 能力 id 或 `'all'`(检索重建 S0,`docs/design/search-index-2026-09.md` §8)。
+ *
+ * 从前这里是 `OnethingSearchCategory` 那个**字面量联合** —— 联邦骨架下「能搜的
+ * 东西」是注册表里的一行,契约层不该替它枚举:加一类不许改契约。所以类型放宽成
+ * `string`,校验交给 registry(S2)。
+ *
+ * `SEARCH_CATEGORIES` / `isSearchCategory` 两个**值**照旧从 runtime 再导出,答的
+ * 仍是今天那张写死的清单 —— S2 把 `isSearchCategory` 改成问注册表,S0 不动行为。
+ */
+export type SearchCategory = string
+
+/**
+ * 过滤片是**结构**传的,不是拼进查询串的(§9)。
+ *
+ * 键**开放**:每个键由某个能力的 `manifest.facets` 声明(spaceId / role / archived /
+ * includeReasoning / touchedFile …),core 与契约都不解释它们,只按键透传。今天一个
+ * 结构字段都还没有,所以这里只有索引签名 —— S2 起各能力自己声明。
+ */
+export interface SearchFilters {
+  [key: string]: unknown
+}
 
 export interface SearchRequest {
   query: string
-  category: OnethingSearchCategory
+  /** 能力 id 或 `'all'`;不再是字面量联合(S0)。 */
+  category: string
   limit?: number
+  /** 不透明分页游标:上一页 `SearchResponse.cursor` 原样回传(S3 起有值)。 */
+  cursor?: string
+  filters?: SearchFilters
 }
 
 export interface SearchResult {
@@ -41,11 +63,36 @@ export interface SearchResult {
   group?: string
   /** 宿主枚举图标名(M2 插件结果),不是 URL/SVG。 */
   icon?: string
+  /**
+   * 去哪儿(S0 加,§4.1 的 `Candidate.target`)——**开放**:形由能力定义,壳按
+   * `kind` 从目标渲染注册表取组件。旧的 `sessionId` / `messageId` / `filePath`
+   * 照旧填,所以 S4 之前的壳与 CLI 不改也能用。
+   */
+  target?: { kind: string; payload: unknown }
+  /** 键由产它的能力 `manifest.facets` 声明;宿主不解释(S0 加)。 */
+  facets?: Record<string, unknown>
 }
 
 export interface SearchResponse {
   success: boolean
+  /** 既有形一字不动:单类 = 本页;全部 = 各组拼接(保旧壳)。 */
   results: SearchResult[]
+  /** 这一档一共多少条(不是本页条数)。缺席 = 不知道,壳就不许画「加载更多」。 */
+  total?: number
+  /** 有下一页时的不透明游标;缺席 = 到底了。 */
+  cursor?: string
+  /** 零命中后放宽了几级(0 = 没放宽);壳据此画「已放宽」行。 */
+  relaxed?: 0 | 1 | 2 | 3
+  /** 索引还在追账本吗(§5)。 */
+  index?: { pending: number; stale: boolean }
+  /** `category: 'all'` 时的分组总览(§7.2);单类档缺席。 */
+  groups?: Array<{
+    capability: string
+    label: string
+    total?: number
+    results: SearchResult[]
+    error?: string
+  }>
 }
 
 export interface SearchWindowSplitIntent {
@@ -142,6 +189,137 @@ export const searchWindowRouter = defineRouter<SearchWindowRoutes>('search-windo
  */
 export type SearchRoutes = {
   query: { input: SearchRequest; output: SearchResponse }
+  capabilities: { input: SearchCapabilitiesRequest; output: SearchCapabilitiesResponse }
+  preview: { input: SearchPreviewRequest; output: SearchPreviewResponse }
+  invoke: { input: SearchInvokeRequest; output: SearchInvokeResponse }
+  status: { input: SearchStatusRequest; output: SearchStatusResponse }
 }
 
-export const searchRouter = defineRouter<SearchRoutes>('search', ['query'])
+export const searchRouter = defineRouter<SearchRoutes>('search', [
+  'query',
+  'capabilities',
+  'preview',
+  'invoke',
+  'status',
+])
+
+/* ───────────────────────── 能力自述 · 预览 · 动作 · 索引状态(S0)─────────────────────────
+ *
+ * 检索重建 S0(`docs/design/search-index-2026-09.md` §8):契约**只加不改**,四条新
+ * 路由此刻都还是骨架——`capabilities` 从今天那张写死的清单答,`preview` / `invoke`
+ * 结构化地说「S4 才有」,`status` 说「我是写者、没积压、向量关着」。加它们的理由是
+ * **形先定死**:壳的 tab / 图标 / 分组次序、预览窗、后端动作、「索引更新中」那一行
+ * 从 S2 起就该从这四条路由读,而不是各自再长一份写死的表。
+ */
+
+/**
+ * 一个能力对外说的全部话(§4.1b 的 `CapabilityManifest` 的**线上形**)。
+ *
+ * 这里刻意**不 import core** —— S1 会在 `packages/core/search/capability.ts` 建一份
+ * 同形的 `CapabilityManifest`,契约层与内核层各持一份是故意的:contract 是 wire 的
+ * 形(要能过 JSON),core 那份还带 `visibility` / `schema` 这些**不出进程**的格。
+ * 两份同形不同命,S1 落地时由能力侧一个纯函数投影过来。
+ */
+export interface SearchCapabilityManifestDto {
+  /** 能力 id;也是 `SearchRequest.category` 的取值。 */
+  id: string
+  /** 文案键(壳翻译);不是已翻好的字面量。 */
+  labelKey: string
+  /** 宿主枚举图标名,不是 URL / SVG(同 `SearchResult.icon` 口径)。 */
+  icon: string
+  kind: 'indexed' | 'scan' | 'static' | 'remote'
+  /** 意图前缀:`actions` 是 `['/', '>']`,将来的 symbols 是 `['#', '@']`。 */
+  intentPrefixes?: string[]
+  budget: {
+    /** `all` 档给这一类的缺省配额。 */
+    default: number
+    timeoutMs: number
+    /** 按意图改配额:`{ command: 8 }`。 */
+    whenIntent?: Record<string, number>
+  }
+  /** 这一类认哪些过滤键(`SearchFilters` 的键就从这里来)。 */
+  facets?: Array<{ key: string; type: 'enum' | 'range' | 'boolean'; values?: string[] }>
+  /** `all` 档分组的缺省次序(小的在前)。 */
+  order: number
+  /** 按意图重排:`{ command: 0 }`。 */
+  orderWhenIntent?: Record<string, number>
+  /** 只在哪些消费面参与('palette' / 'composer-mention' / 'cli' / 'agent-tool' …);缺席 = 全部。 */
+  surfaces?: string[]
+  /** 预览怎么取(§4.5 ①):inline 随候选带,lazy 选中再走 `search.preview`;缺席 = 没有预览。 */
+  preview?: { mode: 'inline' | 'lazy' }
+}
+
+export interface SearchCapabilitiesRequest {
+  /** 只要这个消费面上参与的能力;缺席 = 全部。 */
+  surface?: string
+}
+
+export interface SearchCapabilitiesResponse {
+  success: boolean
+  /** 注册顺序 = 缺省展示顺序(§4.3)。 */
+  capabilities: SearchCapabilityManifestDto[]
+  error?: string
+}
+
+/** 预览 / 动作请求里指一条结果:能力 + 它自己那套 id(§4.5 ③)。 */
+export interface SearchItemRef {
+  capability: string
+  id: string
+  target?: { kind: string; payload: unknown }
+}
+
+/** 预览的载荷:媒介**开放**,壳按 `kind` 从预览渲染注册表取组件(§4.5 ②)。 */
+export interface SearchPreviewPayload {
+  kind: string
+  payload: unknown
+  title?: string
+  actions?: SearchActionDescriptor[]
+}
+
+/** 能力自报的一个后端动作;`danger` 的壳先二段确认(§8 `invoke`)。 */
+export interface SearchActionDescriptor {
+  id: string
+  labelKey: string
+  icon?: string
+  danger?: boolean
+}
+
+export interface SearchPreviewRequest {
+  items: SearchItemRef[]
+  /** 基数是请求的一部分(§4.5 ③);缺席按 `single`。 */
+  mode?: 'single' | 'compare' | 'batch'
+}
+
+export interface SearchPreviewResponse {
+  success: boolean
+  preview?: SearchPreviewPayload
+  error?: string
+}
+
+export interface SearchInvokeRequest {
+  capability: string
+  actionId: string
+  items: SearchItemRef[]
+}
+
+export interface SearchInvokeResponse {
+  success: boolean
+  error?: string
+}
+
+export type SearchStatusRequest = Record<string, never>
+
+/**
+ * 索引在干什么(§15.5 的形;壳的「索引更新中」行与 gate 都读它)。
+ *
+ * `mode` 是**索引持有权**那一格(§5.6):`owner` = 这台进程在折账本,`reader` = 别人
+ * 在折、我开只读句柄。拍点庚 09-04 裁「先不做」,所以 S3 之前它恒 `'owner'`。
+ */
+export interface SearchStatusResponse {
+  mode: 'owner' | 'reader' | 'error'
+  owner?: { host: string; pid: number }
+  /** 还有多少条没折进索引。 */
+  pending: number
+  /** 语义召回(S7)的状态;`'off'` = 没开。 */
+  vector?: 'off' | 'downloading' | 'embedding' | 'ready'
+}

@@ -12,7 +12,11 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     setupFiles: [path.resolve(__dirname, 'vitest.setup.ts')],
-    include: ['packages/**/*.test.ts', 'apps/**/*.test.ts'],
+    // `scripts/**/*.test.mjs`(检索重建 S0 加):脚本自己的纯函数也该有用例。仓里
+    // 从前没有「脚本测试」这一形,所以这里是第一条 —— 只收 `.mjs`,因为 scripts/
+    // 下的可执行文件本来就是 `.mjs`(`headless-boundary-check.ts` 那几个 `.ts` 由
+    // bun 直接跑,不进 vitest)。
+    include: ['packages/**/*.test.ts', 'apps/**/*.test.ts', 'scripts/**/*.test.mjs'],
     alias: {
       '@shared': path.resolve(__dirname, 'packages/shared'),
     },

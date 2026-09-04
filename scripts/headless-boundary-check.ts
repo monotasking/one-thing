@@ -6812,6 +6812,57 @@ function isClientTestFile(file: string): boolean {
 }
 
 /**
+ * **core 里不出现任何能力的名字**(CLAUDE.md 顶部「加功能不许改骨架」那条法的
+ * 机械化;检索重建 S0,`docs/design/search-index-2026-09.md` §10 / §11 S3)。
+ *
+ * 起因写在法条里:检索方案 v2 被用户拿 symbol 能力一问,就露出 `Doc.kind` 的
+ * `'message' | 'session' | 'daily'` 字面量联合与一处 `switch(category)` —— 两个
+ * **按能力枚举**的点,加一类就得回来改骨架。v3.1 把它们改成「能力自述、别人读表」
+ * (manifest + 注册表),这条规则守的就是它们别长回来。
+ *
+ * 两条判据,都只看**代码**(注释里写 `'messages'` 当然可以 —— 上一段就在写):
+ *  ① 出现某个具体能力 id 的字符串字面量;
+ *  ② 在 `.kind` / `.capability` 上 `switch` —— 联邦骨架里这两个字段的取值由能力
+ *     自己定义,core 对它们一无所知,能 switch 就说明 core 认识那些取值。
+ *
+ * 目录还不存在(S1 之前)时打印一行「跳过」并返回,不红:S0 与 S1 是并行的两张
+ * 派工单,S0 先把门立起来。
+ */
+const CORE_SEARCH_CAPABILITY_NAME_PATTERNS: RegExp[] = [
+  // 今天六类的 id + 将来插件能力的命名空间前缀。单双引号都算,反引号不算
+  // (模板串里出现这些名字的场景只可能是拼接,那本身就该红 —— 但今天零命中,
+  //  不为一个不存在的形状加规则)。
+  //
+  // **会话那一类有两个名字,两个都禁**:今天 `ONETHING_SEARCH_CATEGORIES`
+  // (`packages/onething-runtime/src/search/ipc-operations.ts`)里它叫 `chats`,
+  // 设计文档 §10 里叫 `sessions`。哪个名字最后活下来是**能力自己的事**,core 里
+  // 一个都不许出现 —— 只列文档那个名字,等于给真正在跑的那个 id 开了后门。
+  /(['"])(?:messages|chats|sessions|files|actions|prompts|daily)\1/,
+  /(['"])plugin:/,
+]
+
+const CORE_SEARCH_KIND_SWITCH_PATTERN = /\bswitch\s*\([^)]*\.(?:kind|capability)\b/
+
+function checkCoreSearchNamesNoCapability(): void {
+  const searchRoot = path.join(root, 'packages/core/search')
+  if (!fs.existsSync(searchRoot)) {
+    console.log('[boundary] ok: core/search absent (S1 pending)')
+    return
+  }
+  // `__tests__` 不在射程内(`walkFiles` 缺省就跳过):夹具与用例当然要拿真能力
+  // 名字当证词,那正是它们的工作。
+  const files = walkFiles(searchRoot)
+  const lines = files.flatMap(file => matchingCodeLines(file, [
+    ...CORE_SEARCH_CAPABILITY_NAME_PATTERNS,
+    CORE_SEARCH_KIND_SWITCH_PATTERN,
+  ]))
+  assertNoMatches(
+    'packages/core/search names no capability (no capability-id literals, no switch on .kind/.capability)',
+    lines,
+  )
+}
+
+/**
  * **壳不许 import 别的壳**(§3)。
  *
  * `apps/desktop-react`(React 壳)今天还向 `packages/renderer`(Vue 渲染层)伸手 ——
@@ -6923,6 +6974,7 @@ checkCoreForbiddenImports()
 checkVueHostStaysRetired()
 checkRuntimeHostBoundary()
 checkClientPackageBoundary()
+checkCoreSearchNamesNoCapability()
 checkShellsDoNotImportOtherShells()
 checkRuntimeWiringModulesStayAtTheEdge()
 checkSessionVocabularyUsesTheRegistry()
