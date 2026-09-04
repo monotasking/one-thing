@@ -41,6 +41,16 @@
 /* 窄档(< 760)侧栏收起那一条住在 Rail.module.css —— 「我什么时候不在场」
    是那一件自己的事,不是装配层伸手把它藏掉(否则改一件要动两个文件)。 */
 
+/*
+ * 危险色只上图标与字(状态色纪律),尺寸走图标梯 —— 组件文件里不写字面 px
+ * (验收四轴第 1 条)。14 = --icon-sm,与从前那个 `size={14}` 逐像素相同。
+ */
+.errorIcon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
 @container expose (max-width: 480px) {
   .error {
     padding-inline: var(--sp-4);

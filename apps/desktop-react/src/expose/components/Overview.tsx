@@ -63,7 +63,7 @@ export function Overview({ treeRef }: { treeRef: RefObject<HTMLDivElement | null
         */}
         {error && sessions.length > 0 && (
           <p className={s.error} role="status">
-            <TriangleAlert size={14} aria-hidden="true" />
+            <TriangleAlert className={s.errorIcon} aria-hidden="true" />
             <span>
               {t('expose.disconnectedTitle')}
               {' · '}

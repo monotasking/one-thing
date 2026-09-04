@@ -16,6 +16,19 @@ describe('粘顶节头不透明', () => {
     expect(block(read('SectionHead.module.css'), '.head {')).toMatch(/background:\s*var\(--surface-host\)/)
     expect(read('../../styles/tokens.css')).toMatch(/--surface-host:\s*var\(--surface-2\)/)
   })
+  /*
+   * 09-04 用户报「group 的 hover 看不到几乎」:那时悬停只提一档墨色。膜必须是
+   * **叠上去的一层图层**而不是换底色 —— --st-hover 是半透明的墨,拿它当 background
+   * 会把上面那条「不透明」当场顶掉(行又透出来)。两句断言正是这一对约束。
+   */
+  it('悬停有标准薄膜,而且底仍然不透明(膜是叠的图层,不是换掉的底色)', () => {
+    const css = read('SectionHead.module.css')
+    const hover = block(css, '.head:hover {')
+    expect(hover).toMatch(/background-image:\s*linear-gradient\(var\(--st-hover\),\s*var\(--st-hover\)\)/)
+    // 膜不许写成 `background:` / `background-color:` —— 那会顶掉 .head 的宿主底色。
+    expect(hover).not.toMatch(/background(-color)?:/)
+  })
+
   it('四个 Placement 宿主各自声明 --surface-host,且声明在真正铺内容底的那一格上(同块同色)', () => {
     for (const host of ['FloatWindow', 'EdgeShelf', 'StageOverlay', 'CoverLayer']) {
       const css = read(`../../components/${host}.module.css`)
