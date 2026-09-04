@@ -231,9 +231,6 @@ export const zh = {
   'keymap.structuralNote': 'Esc 逐层退出、总览的方向键与回车、浮窗拖拽是形态语法的一部分,不参与改键',
   'keymap.scopedNote': '面域局部键(查看器 ⌘S/⌘L/⌘F、文件行 ⌘I)只在焦点落在那块面里时生效,局部先接、没接住才轮到全局',
   'keymap.scopedConflict': '「{scope}」里被「{action}」占着',
-  /* 召唤(S1):`toggle:<面>` 那一族的动词壳 —— 这条键把面弄到眼前并把键盘交给它,
-   * 已经在里面了就把键盘还回去;它**不关面**(关面是 Esc 的活)。 */
-  'keymap.summonOf': '召唤{name}',
 
   /* ── 响应链的作用域名(focus/scopes.ts 的 labelKey)──────────────────
    *    只补**真缺**的那几格:根 / 查看器 / 文件 / 检索 / 会话总览 / 设置 / Dock

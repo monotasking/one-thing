@@ -738,16 +738,14 @@ describe('layer 的落点 = 第一个可交互子作用域(设计 §4.1 那张�
 })
 
 /**
- * **召唤三态的树侧两口**(S1,设计 §14)。
+ * **召唤问树的那一口**(S1,设计 §14)。
  *
- * `isOwnerActive` 回答第四态的判据(「焦点在不在它里面」),`returnFrom` 执行
- * 那一态拍定的 (a) 回去。两者都**不动形态**:面留在原位,走的只有焦点。
+ * `isOwnerActive` 回答第四态的判据:「焦点此刻在不在这块面里」。第四态本身
+ * (09-04 改判成**隐藏**)不再需要树上的第二口 —— 面一收,层就卸载,焦点由
+ * 既有的结构归还(`settle` → `returnTargetOf`)自己回去。
  */
-describe('召唤:isOwnerActive / returnFrom', () => {
-  /**
-   * 壳根 + 一扇替 `owner` 摆着的层 + 层里一块面(真正拿焦点、也真正记座位的那一格)
-   * + 壳根上一个输入框(召唤之前焦点所在,归还该回的地方)。
-   */
+describe('召唤:isOwnerActive', () => {
+  /** 壳根 + 一扇替 `owner` 摆着的层 + 层里一块面 + 壳根上一个输入框。 */
   function mountOwned(owner: string) {
     const shell = document.createElement('div')
     shell.tabIndex = -1
@@ -794,50 +792,8 @@ describe('召唤:isOwnerActive / returnFrom', () => {
     expect(focusTree.isOwnerActive('files')).toBe(true)
     layer.update({ inert: true })
     // 反证:`activePath()` 那一句不缩路径 → 这里仍答 true,于是召唤一块藏在
-    // 后台 tab 里的面会被判成第四态「回去」,永远露不出来。
+    // 后台 tab 里的面会被判成第四态「隐藏」—— 一按就把它收回 Dock,永远露不出来。
     expect(focusTree.isOwnerActive('files')).toBe(false)
   })
 
-  it('returnFrom:焦点回到召唤之前那个元素,而**面留在原位**', () => {
-    const { layer, paneEl, composer } = mountOwned('files')
-    composer.focus()
-    expect(document.activeElement).toBe(composer)
-
-    layer.activate('open')
-    expect(document.activeElement).toBe(paneEl)
-    expect(focusTree.isOwnerActive('files')).toBe(true)
-
-    const nodesBefore = focusTree.nodes().size
-    expect(focusTree.returnFrom('float-layer', { owner: 'files' })).toBe(true)
-    // 归还只搬焦点:一格作用域都没有卸载(「关面是 Esc 的活」)。
-    expect(focusTree.nodes().size).toBe(nodesBefore)
-    expect(document.activeElement).toBe(composer)
-    expect(focusTree.isOwnerActive('files')).toBe(false)
-  })
-
-  it('returnFrom:归还**不算换人**,所以来回按不会把座位互相记死', () => {
-    const { layer, paneEl, composer } = mountOwned('files')
-    composer.focus()
-
-    layer.activate('open')
-    expect(focusTree.returnFrom('float-layer', { owner: 'files' })).toBe(true)
-    expect(document.activeElement).toBe(composer)
-    /*
-     * 再召唤一次 → 还是进那块面;再还一次 → 还是回输入框。
-     * 反证:把 `withoutReturnSeat` 那一句拆掉 → 归还那一发 focusin 会给输入框
-     * 记下「上一任是查看器」,第二次归还就弹回查看器,来回按原地打转。
-     */
-    layer.activate('open')
-    expect(document.activeElement).toBe(paneEl)
-    expect(focusTree.returnFrom('float-layer', { owner: 'files' })).toBe(true)
-    expect(document.activeElement).toBe(composer)
-  })
-
-  it('returnFrom:那一层不在场 → false,什么都不做', () => {
-    const { composer } = mountOwned('files')
-    composer.focus()
-    expect(focusTree.returnFrom('float-layer', { owner: 'nobody' })).toBe(false)
-    expect(focusTree.returnFrom('shelf-layer', { owner: 'files' })).toBe(false)
-    expect(document.activeElement).toBe(composer)
-  })
 })

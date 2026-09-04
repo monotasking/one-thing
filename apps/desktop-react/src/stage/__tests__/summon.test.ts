@@ -205,26 +205,61 @@ describe('③ 看得见、焦点不在它里面 —— 只聚焦,形态零变化
   })
 })
 
-describe('④ 看得见、焦点在它里面 —— (a) 回去(09-03 用户拍定)', () => {
-  it('回去,而不是关面', () => {
+describe('④ 看得见、焦点在它里面 —— 隐藏(09-04 用户改判,推翻 09-03 的「回去」)', () => {
+  it('浮窗:收回 Dock(没有「收起」这一档)', () => {
     const s = state({ ...at('files', { kind: 'float' }), floatOrder: ['files'] })
-    // 反证:把这一格改回旧的 togglePlacement(收回 Dock)→ 期望值会变成一次关面,
-    // 而 §14 的原话是「关面是 Esc 的活,不是聚焦键的」。
+    /*
+     * 反证:把这一格改回 09-03 那版的 `{ kind: 'return', scope }` → 这里当场红。
+     * 用户 09-04 的原话是 VS Code 终端 ⌃` 那一族:同一个键叫出来、再按一下收走。
+     */
     expect(summonTransition(s, 'files', { focusedOwner: 'files' })).toEqual({
-      kind: 'return',
-      scope: 'float-layer',
+      kind: 'hide',
+      how: 'close',
+      side: null,
     })
   })
 
-  it('架子上露着脸的那一格同理', () => {
+  it('舞台 / 盖同理(它们都不是家具,是开着的面)', () => {
+    for (const placement of [{ kind: 'stage' } as const, { kind: 'cover' } as const]) {
+      const s = state(at('files', placement))
+      expect(summonTransition(s, 'files', { focusedOwner: 'files' })).toEqual({
+        kind: 'hide',
+        how: 'close',
+        side: null,
+      })
+    }
+  })
+
+  it('**钉在架子上:收起整条架子**,不是关掉这块面(09-04 用户裁定)', () => {
     const s = state({
       ...at('files', { kind: 'edge', side: 'bottom' }),
       ...shelfWith('bottom', ['files'], 'files'),
     })
+    /*
+     * 反证:把这一格也判成 `close` → 这里红。用户否决的正是那一版:关掉这块面之后
+     * 架子会露出隔壁那个 tab,焦点跟着掉到隔壁面上 —— 按的是「收走」,拿回来的是
+     * 「换了一块面」。收整条架子才与 `reveal` 的 `shelf-expand` 成一对(收起 →
+     * 再召唤 = 展开回原样)。
+     */
     expect(summonTransition(s, 'files', { focusedOwner: 'files' })).toEqual({
-      kind: 'return',
-      scope: 'shelf-layer',
+      kind: 'hide',
+      how: 'shelf-collapse',
+      side: 'bottom',
     })
+  })
+
+  it('钉边那一形交出的 side 是**它自己那条边**(四条边各判各的)', () => {
+    for (const side of ['left', 'right', 'top', 'bottom'] as const) {
+      const s = state({
+        ...at('files', { kind: 'edge', side }),
+        ...shelfWith(side, ['files'], 'files'),
+      })
+      expect(summonTransition(s, 'files', { focusedOwner: 'files' })).toEqual({
+        kind: 'hide',
+        how: 'shelf-collapse',
+        side,
+      })
+    }
   })
 })
 

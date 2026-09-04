@@ -975,7 +975,7 @@ async function main() {
 
 
     /* ── 场景 13:召唤三态(S1,设计 §14)────────────────────────────────── */
-    scenario('召唤三态:Dock 开 → 回去 → 只聚焦 → 架子上露出来(S1,设计 §14 四态)')
+    scenario('召唤三态:Dock 开 → 只聚焦 → 隐藏(浮窗形)→ 架子上露出来 → 隐藏(钉边形)(S1/S1b,§14)')
     /*
      * ── 为什么这一格要读 `placements`,而且是从**落盘的那份**读 ────────────────
      * 召唤与旧那条 `toggleItem` 的分歧只有一句:**它永远不改形态**(除了第一态
@@ -1005,6 +1005,42 @@ async function main() {
           return null
         }
         return found.sort().join('||')
+      })
+    /** 家具账里那格 `shelves`(钉边那一形的第四格要读 collapsed / activeId)。 */
+    const shelvesRaw = () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem('onething.stage')
+        if (!raw) return null
+        const found = []
+        const walk = (value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return
+          if (value.placements && value.shelves) found.push(value.shelves)
+          for (const key of Object.keys(value)) walk(value[key])
+        }
+        try {
+          walk(JSON.parse(raw))
+        } catch {
+          return null
+        }
+        return found
+      })
+    /** 同一本账,原样交回(第四格要逐键比对「少的只有它」)。 */
+    const placementsRaw = () =>
+      page.evaluate(() => {
+        const raw = localStorage.getItem('onething.stage')
+        if (!raw) return null
+        const found = []
+        const walk = (value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return
+          if (value.placements && typeof value.placements === 'object') found.push(value.placements)
+          for (const key of Object.keys(value)) walk(value[key])
+        }
+        try {
+          walk(JSON.parse(raw))
+        } catch {
+          return null
+        }
+        return found
       })
     /** 焦点此刻落在哪一格作用域 / 哪一块面里。 */
     const focusNow = () =>
@@ -1058,26 +1094,14 @@ async function main() {
       await assertNoOrphan(page, '① 召唤开面之后')
     }
 
-    /* ④ 看得见、焦点在它里面 → 回去(用户 09-03 拍定的 (a)),形态零变化。 */
-    const sigBeforeReturn = await placementsSig()
-    await page.keyboard.press('Meta+p')
-    await delay(450)
-    const returned = await focusNow()
-    assert(
-      returned.testid === 'composer-input',
-      '④ 焦点在面里 → 再召唤一下**把键盘还回输入框**',
-      `(此刻在 [${returned.testid ?? '—'}],作用域 ${returned.scope ?? '—'})`,
-    )
-    assert(await searchOnScreen(), '④ 面**留在原位**(召唤不关面 —— 关面是 Esc 的活)')
-    const sigAfterReturn = await placementsSig()
-    assert(
-      sigBeforeReturn !== null && sigAfterReturn === sigBeforeReturn,
-      '④ placements 一个字节都没变',
-      `(前 ${sigBeforeReturn ?? '—'} / 后 ${sigAfterReturn ?? '—'})`,
-    )
-    await assertNoOrphan(page, '④ 召唤回去之后')
-
-    /* ③ 看得见、焦点不在它里面 → 只聚焦,形态零变化。 */
+    /*
+     * ③ 看得见、焦点不在它里面 → 只聚焦,形态零变化。
+     * **排在 ④ 前面**:09-04 改判之后 ④ 会把面收走,收完就没有「看得见」可言了。
+     */
+    await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="composer-input"]')
+      if (box instanceof HTMLElement) box.focus()
+    })
     const sigBeforeFocus = await placementsSig()
     await page.keyboard.press('Meta+p')
     await delay(450)
@@ -1109,6 +1133,54 @@ async function main() {
       `(前 ${sigBeforeFocus ?? '—'} / 后 ${sigAfterFocus ?? '—'})`,
     )
     await assertNoOrphan(page, '③ 召唤只聚焦之后')
+
+    /*
+     * ④-a 看得见、焦点在它里面、而它是一扇**浮窗** → **收回 Dock**
+     *     (09-04 用户改判,推翻 09-03 的「回去」)。钉边那一形在下面 ④-b 单量 ——
+     *     用户 09-04 裁定收的对象按形态定:架子收整条,浮窗 / 舞台 / 盖收回 Dock。
+     *
+     * 三条读数:面回了 Dock(账上少的**只有**它这一条)、焦点回到按键之前那个
+     * 输入框、I1。中间那条是这一格真正要证的东西 —— `summonItem` 的 `case 'hide'`
+     * 一个 `.focus()` 都不发,焦点是**层卸载之后**由树的结构归还(§4.5 的
+     * `returnTo` → 父链)自己送回来的。jsdom 量不到它(浮窗要多活一帧走出场动画,
+     * 那时作用域还没卸载),所以这一条只有真机门说得清。
+     */
+    const rawBeforeHide = await placementsRaw()
+    await page.keyboard.press('Meta+p')
+    await delay(700)
+    const hidden = await focusNow()
+    assert(!(await searchOnScreen()), '④-a 浮窗:焦点在面里 → 再按一下**把它收回 Dock**')
+    const rawAfterHide = await placementsRaw()
+    const diff = (() => {
+      if (!rawBeforeHide || !rawAfterHide || rawBeforeHide.length !== rawAfterHide.length) {
+        return { ok: false, why: '两次读到的账本格数对不上' }
+      }
+      const gone = []
+      for (let i = 0; i < rawBeforeHide.length; i += 1) {
+        const before = rawBeforeHide[i]
+        const after = rawAfterHide[i]
+        for (const key of Object.keys(before)) {
+          if (!(key in after)) {
+            gone.push(key)
+            continue
+          }
+          if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) {
+            return { ok: false, why: `「${key}」那条落点变了` }
+          }
+        }
+        for (const key of Object.keys(after)) {
+          if (!(key in before)) return { ok: false, why: `凭空多了「${key}」` }
+        }
+      }
+      return { ok: gone.length === 1 && gone[0] === 'search', why: `少掉的是 ${JSON.stringify(gone)}` }
+    })()
+    assert(diff.ok, '④-a placements 里**少的只有它这一条**,其余逐字节不变', `(${diff.why})`)
+    assert(
+      hidden.testid === 'composer-input',
+      '④-a 焦点回到按键之前那个输入框(**没人手动搬** —— 层卸载后的结构归还)',
+      `(此刻在 [${hidden.testid ?? '—'}],作用域 ${hidden.scope ?? '—'})`,
+    )
+    await assertNoOrphan(page, '④-a 召唤收掉浮窗之后')
 
     /* ② 钉在架子上、切走了 tab → 露出来 + 焦点进,形态零变化。 */
     const shelved = await openAsFromDockMenu(page, 'search', /右侧栏|Right/)
@@ -1163,6 +1235,53 @@ async function main() {
           `(前 ${sigBeforeReveal ?? '—'} / 后 ${sigAfterReveal ?? '—'})`,
         )
         await assertNoOrphan(page, '② 召唤露出架子上那一格之后')
+
+        /*
+         * ④-b 同一格,但它此刻**钉在架子上** → 收的是**整条架子**,不是这块面
+         *     (09-04 用户裁定)。上一步刚把焦点送进这块面,所以这一下正落在第四格。
+         *
+         * 用户否决的那一版是 `closeToDock`:关掉之后架子会露出隔壁那个 tab、焦点
+         * 跟着掉到隔壁面上 —— 所以这里三条一起量:架子收了、这块面**仍是活动 tab**、
+         * placements 一个字节没变(它没被关掉)。焦点仍然没人手动搬:架子收成细梁
+         * 那一刻这一层就不在了,结构归还把键盘送回输入框。
+         */
+        const sigBeforeCollapse = await placementsSig()
+        const shelvesBefore = await shelvesRaw()
+        await page.keyboard.press('Meta+p')
+        await delay(700)
+        const shelvesAfter = await shelvesRaw()
+        const collapsedNow = await page.evaluate(() =>
+          Boolean(document.querySelector('[data-shelf]'))
+            && document.querySelectorAll('[data-shelf] [role="tab"]').length === 0,
+        )
+        // 这道门把 search 钉在**右边**(上一步走的就是菜单里那一项),所以直接读那一格。
+        const readShelf = (list) =>
+          list?.find?.((sh) => (sh.right?.tabs ?? []).includes('search'))?.right ?? null
+        const shelfBefore = readShelf(shelvesBefore)
+        const shelfAfter = readShelf(shelvesAfter)
+        assert(
+          shelfBefore?.collapsed === false && shelfAfter?.collapsed === true,
+          '④-b 钉边:焦点在面里 → 再按一下**收起整条架子**',
+          `(collapsed ${String(shelfBefore?.collapsed)} → ${String(shelfAfter?.collapsed)};DOM 上 tab 条没了:${collapsedNow})`,
+        )
+        assert(
+          shelfAfter?.activeId === 'search' && shelfBefore?.activeId === 'search',
+          '④-b **这块面仍是那条架子的活动 tab**(隔壁 tab 没被顶上来)',
+          `(activeId ${shelfBefore?.activeId ?? '—'} → ${shelfAfter?.activeId ?? '—'})`,
+        )
+        const sigAfterCollapse = await placementsSig()
+        assert(
+          sigBeforeCollapse !== null && sigAfterCollapse === sigBeforeCollapse,
+          '④-b placements 一个字节都没变(收的是架子,这块面没被关掉)',
+          `(前 ${sigBeforeCollapse ?? '—'} / 后 ${sigAfterCollapse ?? '—'})`,
+        )
+        const backAfterCollapse = await focusNow()
+        assert(
+          backAfterCollapse.testid === 'composer-input',
+          '④-b 焦点回到按键之前那个输入框(**没人手动搬** —— 架子收起即结构变化)',
+          `(此刻在 [${backAfterCollapse.testid ?? '—'}],作用域 ${backAfterCollapse.scope ?? '—'})`,
+        )
+        await assertNoOrphan(page, '④-b 召唤收起架子之后')
       }
     }
 

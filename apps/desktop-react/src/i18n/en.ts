@@ -205,7 +205,6 @@ export const en: Record<MessageKey, string> = {
   'keymap.structuralNote': 'Esc stepping back, the overview arrow keys and Enter, and float-window dragging are part of the layout grammar and are not rebindable',
   'keymap.scopedNote': 'Pane-local keys (viewer ⌘S/⌘L/⌘F, file row ⌘I) only fire while focus is inside that pane; local takes it first, global gets whatever local did not consume',
   'keymap.scopedConflict': 'Taken by “{action}” inside “{scope}”',
-  'keymap.summonOf': 'Summon {name}',
 
   /* ── responder-chain scope names (labelKey in focus/scopes.ts) ──────
    *    Only the ones that were genuinely missing: root / viewer / files /

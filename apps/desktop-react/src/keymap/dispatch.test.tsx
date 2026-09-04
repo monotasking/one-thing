@@ -23,19 +23,14 @@ beforeEach(() => {
 })
 
 describe('快捷键派发', () => {
-  it('⌘P 经注册表开检索面板;**再按一下不关它**(S1 召唤语义)', () => {
+  it('⌘P 经注册表开检索面板,再按一下收回 Dock', () => {
     render(<AppShell />)
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     // 打开统一是浮窗(08-30 拍板:档定形态)
     expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
 
-    /*
-     * S1(设计 §14,09-03 用户拍定)把 `toggle:<面>` 从「开 / 关」改成**召唤**:
-     * 这一族键再也不关面 —— 关面是 Esc 的活。R3 之前这里断言的是「收回 Dock」,
-     * 那一句随本批改判;判据本身在 `stage/summon.ts` 的四态表里。
-     */
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
-    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
+    expect(useStageStore.getState().placements.search).toBeUndefined()
   })
 
   it('⌘N 经注册表落到「新建会话」上 —— 派发器不判落在哪个项目,那是 action 的事', () => {
@@ -113,7 +108,7 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
     expect(layerOf(focusTree.current()?.instanceId)?.owner).toBe('files')
   })
 
-  it('同一个键**焦点已经在它里面**时把键盘还回去,面留在原位(S1 第四态)', () => {
+  it('同一个键**焦点已经在它里面**时把它收起来,焦点由结构归还自己回去(S1b 第四格)', () => {
     render(<AppShell />)
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     // 检索面自己声明了 activateOnMount,所以第一下之后键盘已经在它里面。
@@ -121,12 +116,21 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
 
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))
     /*
-     * 用户 09-03 拍定的第四格是 **(a) 回去**:面留在原位,走的只有焦点。
-     * 反证:把 store 那条 `case 'return'` 换回 `toggleItem` → 这一句会红成
-     * 「面被关掉了」,而那正是 §14 说的「关面是 Esc 的活,不是聚焦键的」。
+     * 用户 09-04 改判的第四格是**隐藏**(推翻 09-03 的「回去」;VS Code 终端 ⌃`
+     * 那一族)。反证:把 store 那条 `case 'hide'` 改回 09-03 的 `returnFrom` →
+     * 第一句红(面还在)。
      */
-    expect(useStageStore.getState().placements.search).toEqual({ kind: 'float' })
-    expect(firstResponder()).toBe('composer')
+    expect(useStageStore.getState().placements.search).toBeUndefined()
+    /*
+     * **这一句量的是「焦点没人手动搬」**:形态当场就变了,而那扇窗还挂着一帧走
+     * 出场动画(`FloatWindow` 的 `held`),所以此刻第一响应者**仍然**是检索面 ——
+     * 归还要等那一层真的卸载。换句话说 `summonItem` 一个 `.focus()` 都没发,
+     * 焦点回哪儿从头到尾是树的事(§4.5 的结构归还)。
+     * 真机上「收完之后焦点回到按键之前那个输入框」由 `gate:focus` 场景 14 步④量,
+     * 那是这条链唯一量得准的地方(jsdom 没有那一帧)。
+     * 反证:在 `case 'hide'` 里补一句手动 `activateScope('composer')` → 这里红。
+     */
+    expect(firstResponder()).toBe('search')
   })
 })
 
@@ -139,19 +143,19 @@ describe('设置页里的录制', () => {
 
   it('录制态吃掉这一下按键:录 ⌘P 的时候检索面板不会真的弹出来,而是报冲突', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「召唤文件」设置快捷键')
+    const slot = screen.getByLabelText('为「文件」设置快捷键')
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'p', metaKey: true }))
 
     // 撞了检索那条,所以既没绑上,也没有人替它开面板。
     expect(useKeymapStore.getState().overrides['toggle:files']).toBeUndefined()
     expect(useStageStore.getState().placements.search).toBeUndefined()
-    expect(screen.getByText('与「召唤检索」冲突')).toBeTruthy()
+    expect(screen.getByText('与「检索」冲突')).toBeTruthy()
   })
 
   it('按一个没人占的组合就绑上,行上随即出现「恢复默认」', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「召唤文件」设置快捷键')
+    const slot = screen.getByLabelText('为「文件」设置快捷键')
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'f', metaKey: true, shiftKey: true }))
 
@@ -160,6 +164,6 @@ describe('设置页里的录制', () => {
       meta: true,
       shift: true,
     })
-    expect(screen.getByLabelText('恢复「召唤文件」的默认组合')).toBeTruthy()
+    expect(screen.getByLabelText('恢复「文件」的默认组合')).toBeTruthy()
   })
 })

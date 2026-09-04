@@ -182,8 +182,21 @@ export const useStageStore = create<StageStore>()(
           case 'focus':
             focusTree.activateScope(action.scope, { owner: id, reason: 'open' })
             return
-          case 'return':
-            focusTree.returnFrom(action.scope, { owner: id })
+          case 'hide':
+            /*
+             * 09-04 改判的第四格:**收起来**(推翻 09-03 的「回去」)。收的**对象
+             * 按形态定**(判词写在 summon.ts 的文件头):钉在架子上收整条架子,
+             * 别的形态收回 Dock。两条走的都是 store 已有的那一口,不新写落点。
+             *
+             * **焦点一个字都不搬**:面一收,装着它的那一层要么卸载要么变 inert,
+             * 两条都是结构变化,树的结构归还(§4.5)把焦点送回按键之前的地方。
+             * 手动搬会与那条归还打架(两个产地),门里那一步量的正是「不搬也回得去」。
+             */
+            if (action.how === 'shelf-collapse' && action.side !== null) {
+              get().toggleShelfCollapsed(action.side)
+              return
+            }
+            get().closeToDock(id)
             return
           case 'blocked':
             // 不越过盖层(§14)。**诚实的空动作** —— 理由写在 summon.ts 的文件头。

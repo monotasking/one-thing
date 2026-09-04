@@ -7,8 +7,26 @@ import type { Placement, ShelfSide, StageState } from './types'
  * 09-03 用户提出并拍定第四格 = (a) 回去)。
  *
  * 键盘的 `toggle:<面>` 命令从「开 / 关」改成业界的**召唤**语义(VS Code ⌘⇧E 那一族):
- * 同一个键按下去,先把这块面弄到眼前,再把键盘交给它,已经在它里面了就把键盘还回去。
- * **关面是 Esc 的活,不是聚焦键的** —— 这条是本批与旧 `toggleItem` 唯一的语义分歧。
+ * 同一个键按下去,先把这块面弄到眼前,再把键盘交给它,**已经在它里面了就把它收起来**。
+ *
+ * ── 第四格 09-04 改判:回去 → 隐藏 ────────────────────────────────────────────
+ * 09-03 拍的是 (a)「回去」(面留在原位,只把键盘还给上一任);09-04 用户推翻,
+ * 改判**隐藏**(VS Code 终端 ⌃` 那一族:同一个键把它叫出来、再按一下把它收走)。
+ * 于是这套语义与旧 `toggleItem` 的分歧收窄成**前三格**:没打开就开、看不见就露出来、
+ * 看得见没聚焦就只聚焦 —— 而「按到底会关掉」这一格回来了,所以命令的名字仍然叫
+ * 「切换 / Toggle」(S1 那一版改成的「召唤 / Summon」随本次改判一起撤回)。
+ *
+ * ── 「收起来」收的是**谁**,按形态定(09-04 用户裁定)────────────────────────
+ * 钉在架子上的那一形收的是**整条架子**(`toggleShelfCollapsed`),这块面仍旧是那条
+ * 架子的 `activeId`。不是 `closeToDock` —— 那会把这块面关掉,架子于是露出隔壁那个
+ * tab,焦点跟着掉到隔壁面上:用户按的是「把它收走」,拿回来的却是「换了一块面」。
+ * 这一形因此与 `reveal` 的 `shelf-expand` 正好成一对:**收起 → 再召唤 = 展开回原样**。
+ * 舞台 / 浮窗 / 盖没有「收起」这一档(它们不是家具,是开着的面),所以照旧 `closeToDock`。
+ *
+ * **焦点不在这里手动搬**:面一收,装着它的那一层要么卸载(关掉)要么变 inert
+ * (架子收成细梁),两条都是**结构变化**,树的结构归还(§4.5 的 `returnTo` → 父链)
+ * 自然把焦点送回按键之前的地方。写跳转条的人不需要知道有归还这回事,收面的人
+ * 同样不需要 —— 少写的那一句正是这条设计要的东西。
  *
  * ── 状态表(判据顺序就是下面这四行的顺序,不许换)──────────────────────────
  *
@@ -18,7 +36,7 @@ import type { Placement, ShelfSide, StageState } from './types'
  * | **打开了但看不见**:架子上非当前 tab / 架子收成细梁 / 浮窗被压在下面 | `reveal` | 露出来,**位置不变**;跟焦由 `focus-follow` 既有判据接 |
  * | **打开了但被盖 / 舞台压着** | `blocked` | **什么都不做**(下面单列一段说明) |
  * | **看得见、焦点不在它里面** | `focus` | `focusTree.activateScope(层, { owner })`,形态零变化 |
- * | **看得见、焦点在它里面** | `return` | `focusTree.returnFrom(层, { owner })` —— 用该层节点的 `returnTo` 一格(§4.5),面留在原位 |
+ * | **看得见、焦点在它里面** | `hide` | **收起来**(09-04 用户改判,推翻 (a) 回去)。收的**对象按形态定**:钉在架子上 = `toggleShelfCollapsed` 收起整条架子;舞台 / 浮窗 / 盖 = `closeToDock` |
  *
  * ── 被盖住那一形为什么是 `blocked` 而不是第二格或第三格 ───────────────────────
  * 设计 §14 把「被盖层盖住」列在「打开了但看不见」那一行里,同时写死了这一形的
@@ -87,6 +105,13 @@ export type SummonRevealHow =
   /** 浮窗被压在别的窗下面 —— 翻到最上面。 */
   | 'float-front'
 
+/** 收起一块面的两条路。哪一条由**形态**说了算(见文件头那段判词)。 */
+export type SummonHideHow =
+  /** 钉在架子上 —— 收起整条架子,这块面仍是它的活动 tab。 */
+  | 'shelf-collapse'
+  /** 舞台 / 浮窗 / 盖 —— 没有「收起」档,收回 Dock。 */
+  | 'close'
+
 /**
  * 召唤这一下该做什么。**可辨识联合**:每一格自带它那条路要的参数,
  * 落点(store)据此分流,不必再问一遍状态。
@@ -95,7 +120,7 @@ export type SummonAction =
   | { kind: 'open' }
   | { kind: 'reveal'; how: SummonRevealHow; side: ShelfSide | null }
   | { kind: 'focus'; scope: FocusScopeId }
-  | { kind: 'return'; scope: FocusScopeId }
+  | { kind: 'hide'; how: SummonHideHow; side: ShelfSide | null }
   | { kind: 'blocked'; by: 'stage' | 'cover' }
 
 /** 召唤时树那一头的读数。只要一句话:**焦点此刻在谁的层里**(没有就是 null)。 */
@@ -148,8 +173,13 @@ export function summonTransition(
   // 非 dock 的四种形态都有层,所以这一句恒不触发;留着是为了不把 null 咽下去。
   if (!scope) return { kind: 'blocked', by: 'stage' }
 
-  // ③ / ④ 看得见:焦点在它里面就还回去,不在就送进去。
-  return focus.focusedOwner === itemId ? { kind: 'return', scope } : { kind: 'focus', scope }
+  // ③ 看得见、焦点不在它里面:只把键盘送进去,形态零变化。
+  if (focus.focusedOwner !== itemId) return { kind: 'focus', scope }
+
+  // ④ 看得见、焦点在它里面:收起来 —— 收的对象按形态定(见文件头)。
+  return placement.kind === 'edge'
+    ? { kind: 'hide', how: 'shelf-collapse', side: placement.side }
+    : { kind: 'hide', how: 'close', side: null }
 }
 
 

@@ -36,14 +36,16 @@ describe('toggle:<面> = 召唤,不是开关', () => {
     expect(placementOf(useStageStore.getState(), 'files').kind).not.toBe('dock')
   })
 
-  it('**再按一下不关它**(与旧 toggleItem 唯一的语义分歧)', () => {
+  it('**开出来那一下不会顺手把它收掉**(第一格是开,不是开关)', () => {
     const run = runner()
     act(() => run.current(toggleCommandId('files')))
-    const opened = placementOf(useStageStore.getState(), 'files')
     /*
-     * 反证:把这条分支改回 `toggleItem` → 第二下把它收回 Dock,这里当场红。
-     * §14 的原话:「关面是 Esc 的活,不是聚焦键的」。
+     * 这份夹具里没有响应链的树(纯 store 层),所以 `isOwnerActive` 恒答 false ——
+     * 于是第二下走的是第三格「只聚焦」,形态一格不动。第四格(焦点真在面里 →
+     * 隐藏)由下面那条带树的用例量。
+     * 反证:把 `summonItem` 的第一格改回 `toggleItem` → 第二下把它收回 Dock,这里红。
      */
+    const opened = placementOf(useStageStore.getState(), 'files')
     act(() => run.current(toggleCommandId('files')))
     expect(placementOf(useStageStore.getState(), 'files')).toEqual(opened)
   })
@@ -94,7 +96,54 @@ describe('toggle:<面> = 召唤,不是开关', () => {
     expect(after.placements).toEqual(before)
   })
 
-  it('看得见、焦点在它里面 → 把键盘还回去,而形态一格不动', () => {
+  it('**钉在架子上、焦点在它里面 → 收起整条架子**,隔壁 tab 不许被顶上来(09-04 裁定)', () => {
+    /*
+     * 用户否决的那一版是 `closeToDock`:关掉 sessions 之后架子会把 projects 顶成
+     * 活动 tab,焦点跟着掉到隔壁面上。这一条把那个后果直接写成断言。
+     */
+    const shell = document.createElement('div')
+    shell.tabIndex = -1
+    document.body.append(shell)
+    const root = focusTree.register('root', null)
+    root.setRoot(shell)
+    const layerEl = document.createElement('div')
+    layerEl.tabIndex = -1
+    shell.append(layerEl)
+    focusTree.register('shelf-layer', root.instanceId, { owner: 'sessions' }).setRoot(layerEl)
+
+    useStageStore.setState({
+      placements: {
+        sessions: { kind: 'edge', side: 'right' },
+        projects: { kind: 'edge', side: 'right' },
+      },
+      shelves: {
+        ...initialStageState.shelves,
+        right: {
+          tabs: ['sessions', 'projects'],
+          activeId: 'sessions',
+          thickness: 400,
+          collapsed: false,
+        },
+      },
+    })
+    const before = useStageStore.getState().placements
+    layerEl.focus()
+    expect(focusTree.isOwnerActive('sessions')).toBe(true)
+
+    const run = runner()
+    act(() => run.current(toggleCommandId('sessions')))
+
+    const after = useStageStore.getState()
+    expect(after.shelves.right.collapsed).toBe(true)
+    // 这块面仍是那条架子的活动 tab —— 再召唤一下就展开回原样(与 shelf-expand 成一对)。
+    expect(after.shelves.right.activeId).toBe('sessions')
+    // 反证:把 `case 'hide'` 的钉边支删掉(一律 closeToDock)→ 下面两句红:
+    // sessions 从账上消失,activeId 被顶成 projects。
+    expect(after.placements).toEqual(before)
+    expect(after.shelves.right.tabs).toEqual(['sessions', 'projects'])
+  })
+
+  it('看得见、焦点在它里面 → **把它收回 Dock**(09-04 改判),焦点由结构归还自己回去', () => {
     // 一棵最小的树:壳根 + 输入框 + 一扇替 files 摆着的浮窗层。
     const shell = document.createElement('div')
     shell.tabIndex = -1
@@ -111,6 +160,11 @@ describe('toggle:<面> = 召唤,不是开关', () => {
     shell.append(layerEl)
     const layer = focusTree.register('float-layer', root.instanceId, { owner: 'files' })
     layer.setRoot(layerEl)
+    // 层里那块面 —— `entryOf` 会走进它,所以焦点落在这儿而不是层根上。
+    const paneEl = document.createElement('div')
+    paneEl.tabIndex = -1
+    layerEl.append(paneEl)
+    focusTree.register('viewer', layer.instanceId).setRoot(paneEl)
 
     useStageStore.setState({ placements: { files: { kind: 'float' } }, floatOrder: ['files'] })
     const before = useStageStore.getState().placements
@@ -121,8 +175,18 @@ describe('toggle:<面> = 召唤,不是开关', () => {
 
     const run = runner()
     act(() => run.current(toggleCommandId('files')))
-    expect(document.activeElement).toBe(composer)
-    // 面留在原位 —— 召唤永远不改形态的第四态。
-    expect(useStageStore.getState().placements).toEqual(before)
+    /*
+     * 面收回 Dock:`placements` 里少了这一条(别的一条不动)。
+     * 反证:把 store 那条 `case 'hide'` 改回 09-03 的 `returnFrom` → 这里红,
+     * 因为那一版面留在原位。
+     */
+    expect('files' in useStageStore.getState().placements).toBe(false)
+    expect(before).toEqual({ files: { kind: 'float' } })
+    /*
+     * **焦点没人手动搬**:这份夹具里那一扇层是手写登记的,不会随 placements 卸载,
+     * 所以这里量的是「store 那条分支自己一个 `.focus()` 都不发」——
+     * 真机上「面一收焦点回到按键之前的地方」由 gate:focus 场景 14 步④ 量。
+     */
+    expect(document.activeElement).toBe(paneEl)
   })
 })
