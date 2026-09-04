@@ -1,5 +1,5 @@
 import type { ToolPresenter } from '../presenter'
-import { baseToolRow, truncate } from '../row'
+import { baseToolRow, partialArgString, truncate } from '../row'
 import { argString, detailNumber, toolOutputText } from '../result'
 
 /**
@@ -28,7 +28,10 @@ export const bashPresenter: ToolPresenter = {
     const exit = detailNumber(call, 'exitCode')
     return baseToolRow(call, {
       icon: 'Terminal',
-      ...(head ? { name: head, title: flat } : {}),
+      // 头行里这一步就叫首词:`bash` 的行名**本身是动词**,回落规则会把它念成
+      // 「bash rg」。自述掉这一格,card.ts 里就不必认得 bash 是谁(§6.1)。
+      // 没有命令(参数还没到 / 拿不到)时不设 —— 那时头行念「bash」才是实话。
+      ...(head ? { name: head, headLabel: head, title: flat } : {}),
       ...(rest.length > 0 ? { summary: truncate(rest.join(' '), 72) } : {}),
       ...(exit !== undefined && call.status === 'completed'
         ? {
@@ -39,6 +42,27 @@ export const bashPresenter: ToolPresenter = {
           }
         : {}),
     })
+  },
+
+  /**
+   * 参数流中的形:**首词一到就是首词**,后面那截逐字长。
+   *
+   * 与 `row` 走同一条切法(首词 + 其余),所以参数收齐那一帧行上的字**不跳** ——
+   * 半截的 `rg -n "foo` 变成完整的 `rg -n "foo" src`,只是那一格文字变长。
+   *
+   * `headLabel` 同理要在这里也报一次:这一刻 `row()` 的 `arguments` 还是 `{}`,
+   * 它报不出首词,补丁不带这一格的话头行会先念「bash rg」、等参数收齐再变成
+   * 「rg」—— 那正是「参数收齐那一帧字不跳」这条要挡的形,只是发生在头行上。
+   */
+  partial: (call) => {
+    const flat = partialArgString(call, 'command', 'CommandLine')?.replace(/\s*\n\s*/g, ' ')
+    if (!flat) return {}
+    const [head, ...rest] = flat.trimStart().split(/\s+/)
+    return {
+      icon: 'Terminal',
+      ...(head ? { name: head, headLabel: head, title: flat } : {}),
+      ...(rest.length > 0 ? { summary: truncate(rest.join(' '), 72) } : {}),
+    }
   },
 
   detail: (call) => {

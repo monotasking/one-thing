@@ -41,6 +41,18 @@ export interface ProjectedToolCall {
   /** 参数还在流式生成时的原始 JSON 片段;`tool/call` 一到就撤下。 */
   streamingArgs?: string
   /**
+   * **上一次收到这次调用的数据是什么时候**(纪元毫秒),活性读数的判据(§6.6)。
+   *
+   * 它只活在**活尾巴**上,与 `streamingArgs` 同生共死:壳每收到一片
+   * `tool-input-delta` 就把它推到此刻,`tool/call` 落账那一刻两格一起撤下。
+   * **不进账本** —— 「上一次收到数据是多久之前」是这一台此刻的读数,不是会话的
+   * 事实;重开会话看到的是结局,那时它按定义没有意义。
+   *
+   * 时刻由**收到那一端**盖(`Date.now()`),不抄事件里的时刻:要与它相减的是
+   * 本机的「此刻」,拿对端的钟去减会在时钟有偏差时读出负数或一分钟的静默。
+   */
+  liveAt?: number
+  /**
    * edit/write 的结构化 diff(`CoreToolCallChangesLike`,§13.17)。工具卡的 diff
    * 视图读它;`tool/result.changes` 物化出来的那一份。不透明,不含 originalContent。
    */

@@ -329,19 +329,23 @@ export const en: Record<MessageKey, string> = {
   'chat.tool.cancelled': 'cancelled',
   'chat.tool.inputStreaming': 'streaming args',
 
-  /* ── tool trio (P2: A1 row / B2 count line / C1 drawer) ─────────────── */
+  /* ── tool card (C2-a: one card, head row, three streaming stages) ───── */
   'chat.tool.lines': '{n} lines',
   'chat.tool.diffStat': '+{add} −{del}',
   'chat.tool.exitOk': 'exit 0',
   'chat.tool.exitCode': 'exit {code}',
   'chat.tool.results': '{n} results',
-  'chat.tool.durationMs': '{n}ms',
-  'chat.tool.durationS': '{n}s',
   'chat.tool.arguments': 'Arguments',
   'chat.tool.result': 'Result',
   'chat.tool.noResult': 'This call left no result',
-  'chat.toolGroup.count': 'Ran {n} steps',
-  'chat.toolGroup.moreKinds': 'and {n} kinds',
+  /* Executing steps can be expanded now (C2-a): they have not left a result yet —
+   * saying "left no result" about a call still running would simply be wrong. */
+  'chat.tool.noOutputYet': 'No output yet',
+  /* Liveness readouts (§6.6). The shell only ever states how long the silence has
+   * lasted; "stuck" is never the shell's verdict — that is the engine's timeout. */
+  'chat.tool.stallArgs': 'no new characters for {n}s',
+  'chat.tool.stallData': 'no data for {n}s',
+  'chat.tool.stallStuck': 'may be stuck',
   'chat.toolGroup.failed': '{n} failed',
   'chat.toolGroup.times': '×{n}',
 

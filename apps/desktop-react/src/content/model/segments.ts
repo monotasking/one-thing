@@ -59,6 +59,21 @@ export interface ToolRowModel {
   icon: string
   /** 行首那个词:read 是文件名、bash 是命令首词 —— presenter 说了算。 */
   name: string
+  /**
+   * **头行里这一步叫什么** —— presenter 自述(§6.1)。
+   *
+   * 缺席是常态,回落规则是「工具名 + 行名(两者相同就只说一次)」:read 的行名是
+   * 文件名,读作「read a.ts」,正是人要的那句。
+   *
+   * 有它的只有一种工具:行名**本身就是动词**的那种。`bash` 的行名是命令首词
+   * (`rg`),按回落规则头行会读成「bash rg」—— 把首词念了两遍。
+   *
+   * 为什么是一格自述而不是 card.ts 里的一个 if:那个 if 里必须出现 `'bash'` 这个
+   * 字面量,于是「头行怎么念」就成了**按能力枚举** —— 下一个「行名即动词」的工具
+   * (`git` / `docker` / 一个插件工具)接进来,要么头行说错,要么再加一行 if。
+   * 能力自述、card.ts 只读表,是这条纪律唯一的解法。
+   */
+  headLabel?: string
   /** 悬停才看得到的全称(全路径 / 整条命令)。拿不到就缺席,不编。 */
   title?: string
   /** 参数摘要(V2):文件名之后那一小段灰字。 */
@@ -83,13 +98,13 @@ export interface ToolStepModel {
 }
 
 /**
- * 组里的一格(B2 清单的一行)。
+ * 卡里的一格(展开时的一行)。
  *
  * **同名连续调用聚合在数据层**,不在渲染层:`children` 是逐条,`count` 是几条。
  * 聚合键是**工具名**而不是行名 —— 连读两个文件时行名是两个文件名,但它们仍然
  * 是「read ×2」;按行名聚合会把它们当成两种东西。
  */
-export interface ToolGroupEntry {
+export interface ToolCardEntry {
   /** 聚合键 = 工具名。 */
   tool: string
   /** 代表行:`count === 1` 时就是它本身,聚合时取首条(图标从它来)。 */
@@ -101,17 +116,48 @@ export interface ToolGroupEntry {
   failed: number
 }
 
-/** 连续调用折成的一组(B2)。 */
-export interface ToolGroupModel {
-  entries: ToolGroupEntry[]
-  /** 计数句里那个 N —— 是调用数,不是格数(聚合之后两者不再相等)。 */
-  total: number
-  /** 用到哪几种工具,按首次出现序去重(计数句里那串名字)。 */
-  names: string[]
-  /** 失败条数。 */
+/**
+ * 多步卡的**头行**(§6.1)。
+ *
+ * 它不是一句旁白(「执行了 7 步」那种计数句 C2-a 退役了),而是**这几步本身**:
+ * 一叠最多三枚工具图标 + 由各步的名拼成的摘要句 + 右端总耗时与失败点。
+ * 计数只在「×N」聚合上出现 —— 那是事实,不是徽。
+ */
+export interface ToolCardHead {
+  /** 图标名叠(最多三枚),按工具**种类**首次出现序去重 —— 种类没变就不重画。 */
+  icons: string[]
+  /** 摘要句「rg · read ×3 · edit ChatStream.tsx」。 */
+  text: string
+  /** 失败条数(0 = 右端不画那一格)。 */
   failed: number
   /** 总耗时(ms);一条都算不出就缺席。 */
   durationMs?: number
+  /** 还有步没收场 —— 头行的色调按它走。 */
+  live: boolean
+}
+
+/**
+ * 一张工具卡(§6.1「一件事一张脸」)。
+ *
+ * 一次调用是一步的卡,连续多次调用是多步的卡 —— **同一个模型、同一张壳**,
+ * 没有第二种画法。所以这里没有「单发」那一支:`steps.length === 1` 时 `head`
+ * 缺席,如此而已。
+ *
+ * `steps` 是**时间序,不重排**(拍点 ⑨:失败不置顶)——顺序是这张卡唯一的结构,
+ * 把出事的那条提上来等于把「先做了什么」抹掉。`entries` 是同一批 step 的聚合视图
+ * (同名连发折成一格),两者指向**同一批对象**,不是两份拷贝。
+ */
+export interface ToolCardModel {
+  /** 逐步,时间序。 */
+  steps: ToolStepModel[]
+  /** 展开时按格画;`entries` 里的 children 就是 `steps` 里的那些对象。 */
+  entries: ToolCardEntry[]
+  /** 多步才有;一步的卡里只有那一行,没有头。 */
+  head?: ToolCardHead
+  /** 调用数(= steps.length,聚合之后与 entries.length 不再相等)。 */
+  total: number
+  /** 失败条数。 */
+  failed: number
 }
 
 /**
@@ -211,14 +257,15 @@ export type SegmentModel =
    */
   | { kind: 'rich-text'; blocks: BlockModel[]; offsets: readonly number[]; ids?: readonly string[] }
   /**
-   * 挨着做的那几件事(B2)。**一次调用也是一组** —— 组里一行画成从前那张单发卡
-   * (`ToolGroup` 的 `total === 1`)。
+   * 挨着做的那几件事。**一次调用也是一张卡** —— C2-a 起单发与连发是同一个组件、
+   * 同一张壳(§6.1),一步的卡里只是没有头行。
    *
    * 从前这里还有一格 `{kind:'tool'}`,09-01 P2 撤掉:段种带进 key,第二次调用一
    * 到达同一位置就换段种,React 把整段卸载重挂(真机 t=6614 那一帧整行替换)。
-   * 「画成卡还是画成计数句」是呈现的事,不该决定「这是不是同一件东西」。
+   * 「画成一行还是画成头行 + 一列」是呈现的事,不该决定「这是不是同一件东西」。
+   * 段种名 `tool-group` 一字不改,理由同上:改名就是换 key 就是重挂。
    */
-  | { kind: 'tool-group'; group: ToolGroupModel }
+  | { kind: 'tool-group'; card: ToolCardModel }
   | { kind: 'research'; episode: ResearchEpisodeModel }
   | { kind: 'image'; blob: BlobRef }
   | { kind: 'stream-cursor' }

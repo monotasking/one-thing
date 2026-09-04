@@ -59,6 +59,13 @@ interface WaterTool {
   length: number
   joined?: string
   joinedChunks?: number
+  /**
+   * **上一次收到这次调用的数据是什么时候**(本机纪元毫秒),活性读数的判据(§6.6)。
+   *
+   * 建卡起表,每收下一片推到此刻。用收到那一端的钟而不是事件里那个 `timestamp`:
+   * 要与它相减的是本机的「此刻」,两个钟相减会在有偏差时读出凭空的静默。
+   */
+  lastDeltaAt: number
 }
 
 /** 一条消息的活水位:按 `partIndex` 分格。 */
@@ -81,6 +88,8 @@ export interface WaterToolView {
   toolName: string
   timestamp: number
   argsText(): string
+  /** 上一次收到数据的本机时刻(§6.6 活性读数)。 */
+  lastDeltaAt: number
 }
 
 /** 一段此刻的活水位读数(读者要的全部)。 */
@@ -171,7 +180,13 @@ export class StreamWater {
     if (!messageId || !toolCallId) return
     const message = this.forMessage(messageId)
     if (message.tools.has(toolCallId)) return
-    message.tools.set(toolCallId, { toolName, timestamp, chunks: [], length: 0 })
+    message.tools.set(toolCallId, {
+      toolName,
+      timestamp,
+      chunks: [],
+      length: 0,
+      lastDeltaAt: Date.now(),
+    })
     message.version += 1
   }
 
@@ -189,6 +204,9 @@ export class StreamWater {
     }
     tool.chunks.push(text)
     tool.length += text.length
+    // 收下就推:活性读数(§6.6)在这条车道上唯一的写点。回声与缺段**不算**收到数据
+    // —— 它们上面两行已经 return 了,这一句只在真的前进时跑。
+    tool.lastDeltaAt = Date.now()
     this.forMessage(messageId).version += 1
     return { outcome: 'accepted' }
   }
@@ -199,7 +217,13 @@ export class StreamWater {
     if (!message) return []
     const out: WaterToolView[] = []
     for (const [id, tool] of message.tools) {
-      out.push({ id, toolName: tool.toolName, timestamp: tool.timestamp, argsText: () => joinTool(tool) })
+      out.push({
+        id,
+        toolName: tool.toolName,
+        timestamp: tool.timestamp,
+        argsText: () => joinTool(tool),
+        lastDeltaAt: tool.lastDeltaAt,
+      })
     }
     return out
   }

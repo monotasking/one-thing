@@ -120,7 +120,7 @@ const MIXED: Ledger[] = [
  * 刻意不含 class(CSS Modules 的 hash 每次构建都可能变,那不是结构)。
  */
 function identify(el: Element): string {
-  const marks = ['data-block-kind', 'data-tool-status', 'data-tool-group', 'data-research-id', 'data-testid']
+  const marks = ['data-block-kind', 'data-tool-card', 'data-research-id', 'data-testid']
   const bits = marks.flatMap((name) => {
     const value = el.getAttribute(name)
     return value === null ? [] : [value === '' ? name : `${name}=${value}`]
@@ -210,7 +210,7 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
       'ul',
       'section[data-block-kind=code]',
       'p',
-      'div[data-tool-group=true]',
+      'div[data-tool-card=true]',
       'span[data-testid=chat-streaming]',
       'div[data-testid=chat-readout]',
     ])
@@ -221,7 +221,10 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
     const row = container.querySelector('[data-message-id="a1"]')!
     expect(Array.from(row.children).map(identify)).toEqual([
       'p',
-      'div[data-tool-status=completed]',
+      // C2-a:单发与连发是**同一张卡**(§6.1),所以它们在这张身份表里长得一样。
+      // 从前单发那张卡自己带着 data-tool-status —— 色调现在长在**行**上,
+      // 卡上不留(一张卡里可以同时有 busy / ok / bad 三行,挂在卡上会一起染色)。
+      'div[data-tool-card=true]',
       'span[data-testid=chat-streaming]',
       // 见上一条的「基线动过一次」:这条素材同样停在 run 里,所以读数行在场。
       'div[data-testid=chat-readout]',
@@ -245,16 +248,16 @@ describe('节奏换轨:只许间距变,不许次序变', () => {
   it('工具卡 / 工具组都是消息框的**直接**子项 —— 没有被套进任何包裹层', async () => {
     const mixed = await mountLedger(MIXED)
     const mixedRow = mixed.container.querySelector('[data-message-id="a1"]')!
-    const group = mixed.container.querySelector('[data-tool-group]')
+    const group = mixed.container.querySelector('[data-tool-card]')
     expect(group).toBeTruthy()
-    expect(group!.parentElement, '工具组的父节点应当就是消息框').toBe(mixedRow)
+    expect(group!.parentElement, '多步工具卡的父节点应当就是消息框').toBe(mixedRow)
 
     await act(async () => {
       useChatSource.getState().reset()
     })
     const simple = await mountLedger(SIMPLE)
     const simpleRow = simple.container.querySelectorAll('[data-message-id="a1"]')
-    const card = simple.container.querySelectorAll('[data-tool-status]')
+    const card = simple.container.querySelectorAll('[data-tool-card]')
     const lastRow = simpleRow[simpleRow.length - 1]
     const lastCard = card[card.length - 1]
     expect(lastCard, '单卡形里应当有一张工具卡').toBeTruthy()

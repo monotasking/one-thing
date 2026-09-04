@@ -2,7 +2,7 @@ import type { BlockModel } from '../../model/blocks'
 import type { ProjectedToolCall } from '../../model/segments'
 import type { ToolPresenter } from '../presenter'
 import { parseUnifiedDiff } from '../../blocks/kinds/diff/parse'
-import { baseToolRow } from '../row'
+import { baseToolRow, partialArgString } from '../row'
 import {
   argString,
   basename,
@@ -55,6 +55,17 @@ export const editPresenter: ToolPresenter = {
         ? { outcome: { key: 'chat.tool.diffStat', vars: { add, del } } as const }
         : {}),
     })
+  },
+
+  /**
+   * 参数流中的形:**文件名逐字长出来**(与 read 同判)。
+   *
+   * 只说文件名不说改动内容:`oldText` / `newText` 半截摆在行上既读不出意思、
+   * 又会把这一行撑成一段代码。「它在改哪个文件」是这一刻唯一说得准的事。
+   */
+  partial: (call) => {
+    const path = partialArgString(call, 'path', 'filePath', 'file_path')
+    return path ? { icon: 'Pencil', name: basename(path), title: path } : { icon: 'Pencil' }
   },
 
   detail: (call) => {

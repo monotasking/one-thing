@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { AnchoredNode } from '../anchor'
 import type { ProjectedToolCall } from '../../model/segments'
 import { groupNodes } from '../group'
-import { presentToolGroup } from '../present'
+import { presentToolCard } from '../present'
 
 /**
  * ② **归组**与组内**同名聚合**的单测(§2 ②/③)。
@@ -120,48 +120,92 @@ describe('检索段:web 族连着来的折成 research(P4)', () => {
   })
 })
 
-describe('组内同名连续聚合:数据层折,渲染层只画', () => {
+describe('卡内同名连续聚合:数据层折,渲染层只画', () => {
   it('同名连着三次 = 一格,count 3、children 逐条', () => {
-    const group = presentToolGroup([call('c1'), call('c2'), call('c3')])
-    expect(group.entries).toHaveLength(1)
-    expect(group.entries[0]).toMatchObject({ tool: 'read', count: 3 })
-    expect(group.entries[0].children.map((child) => child.call.id)).toEqual(['c1', 'c2', 'c3'])
+    const card = presentToolCard([call('c1'), call('c2'), call('c3')])
+    expect(card.entries).toHaveLength(1)
+    expect(card.entries[0]).toMatchObject({ tool: 'read', count: 3 })
+    expect(card.entries[0].children.map((child) => child.call.id)).toEqual(['c1', 'c2', 'c3'])
   })
 
-  it('不相邻的同名不聚合 —— 顺序是这一组唯一的结构', () => {
-    const group = presentToolGroup([call('c1'), call('c2', 'bash'), call('c3')])
-    expect(group.entries.map((entry) => `${entry.tool}×${entry.count}`)).toEqual([
+  it('不相邻的同名不聚合 —— 顺序是这一卡唯一的结构', () => {
+    const card = presentToolCard([call('c1'), call('c2', 'bash'), call('c3')])
+    expect(card.entries.map((entry) => `${entry.tool}×${entry.count}`)).toEqual([
       'read×1',
       'bash×1',
       'read×1',
     ])
   })
 
-  it('计数句要的三个数:总次数、去重的名字序、失败数', () => {
-    const group = presentToolGroup([
+  /*
+   * C2-a 拍点 ⑨:**时间序,不重排**。`steps` 与 `entries` 指向同一批对象,
+   * 前者逐条、后者按同名连发折过 —— 两条路读出来的先后必须逐条相同。
+   */
+  it('steps 是时间序,与 entries 摊平之后逐条相同(失败不置顶)', () => {
+    const card = presentToolCard([
+      call('c1'),
+      call('c2', 'read', { status: 'failed', error: '炸了' }),
+      call('c3'),
+    ])
+    expect(card.steps.map((step) => step.call.id)).toEqual(['c1', 'c2', 'c3'])
+    expect(card.entries.flatMap((entry) => entry.children).map((step) => step.call.id)).toEqual([
+      'c1',
+      'c2',
+      'c3',
+    ])
+    // 同一批**对象**,不是两份拷贝 —— 分叉了就会出现「展开与收起说的不是一回事」。
+    expect(card.entries[0].children[0]).toBe(card.steps[0])
+  })
+
+  it('卡上那两个数:总次数、失败数', () => {
+    const card = presentToolCard([
       call('c1'),
       call('c2', 'bash', { status: 'failed', error: '炸了' }),
       call('c3', 'read'),
     ])
-    expect(group.total).toBe(3)
-    expect(group.names).toEqual(['read', 'bash'])
-    expect(group.failed).toBe(1)
+    expect(card.total).toBe(3)
+    expect(card.failed).toBe(1)
   })
 
   it('聚合格自己也记失败数(那点红长在「read ×3」那一行上)', () => {
-    const group = presentToolGroup([
+    const card = presentToolCard([
       call('c1'),
       call('c2', 'read', { status: 'failed', error: '炸了' }),
     ])
-    expect(group.entries[0]).toMatchObject({ count: 2, failed: 1 })
+    expect(card.entries[0]).toMatchObject({ count: 2, failed: 1 })
   })
 
-  it('总耗时是各次之和;一次都算不出就缺席,不写 0', () => {
-    expect(presentToolGroup([call('c1', 'read', { durationMs: 120 }), call('c2', 'read', { durationMs: 30 })]).durationMs).toBe(150)
-    expect(presentToolGroup([call('c1')]).durationMs).toBeUndefined()
+  it('头行的总耗时是各次之和;一次都算不出就缺席,不写 0', () => {
+    expect(
+      presentToolCard([
+        call('c1', 'read', { durationMs: 120 }),
+        call('c2', 'read', { durationMs: 30 }),
+      ]).head?.durationMs,
+    ).toBe(150)
+    expect(presentToolCard([call('c1'), call('c2')]).head?.durationMs).toBeUndefined()
   })
 
   it('cancelled 也计一笔失败账 —— 从人的角度「这一步没做成」是同一件事', () => {
-    expect(presentToolGroup([call('c1', 'read', { status: 'cancelled' })]).failed).toBe(1)
+    expect(presentToolCard([call('c1', 'read', { status: 'cancelled' })]).failed).toBe(1)
+  })
+
+  /*
+   * §6.1:一步的卡里只有那一行 —— 一个人做了一件事,上面再压一句概括它的话
+   * 只是把那件事推远。多步才有头行。
+   */
+  it('一步的卡没有头行,多步才有', () => {
+    expect(presentToolCard([call('c1')]).head).toBeUndefined()
+    // 这批夹具没有参数,所以 presenter 说不出行名,行名 = 工具名 —— 摘要句
+    // 于是只说工具名一次(`entryText` 那条「名与工具名相同就不说两遍」)。
+    expect(presentToolCard([call('c1'), call('c2', 'bash')]).head).toMatchObject({
+      text: 'read · bash',
+      failed: 0,
+      live: false,
+    })
+  })
+
+  it('头行的 live 是「还有步没收场」', () => {
+    const card = presentToolCard([call('c1'), call('c2', 'bash', { status: 'executing' })])
+    expect(card.head?.live).toBe(true)
   })
 })

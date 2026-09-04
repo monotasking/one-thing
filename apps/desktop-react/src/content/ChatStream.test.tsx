@@ -138,7 +138,7 @@ describe('消息树:画的就是折叠器的输出', () => {
     expect(bubble.textContent).toBe('第一行\n第二行')
   })
 
-  it('工具调用折成一行摘要:工具名 + 状态(参数流还开着就照实说)', async () => {
+  it('工具调用折成一行摘要:工具名 + 参数流(右端不写字)', async () => {
     const { container } = await mount([
       created(1),
       userMessage(2, 'm1', '读一下'),
@@ -147,8 +147,13 @@ describe('消息树:画的就是折叠器的输出', () => {
     ])
     const card = container.querySelector('[data-tool-status]')
     expect(card?.getAttribute('data-tool-status')).toBe('input-streaming')
-    // 状态是后端枚举,查字典换成人话。
-    expect(card?.textContent).toBe('read参数生成中')
+    /*
+     * C2-a(§6.2 第一段):**「参数生成中」那句话退役**。右端不写字 —— 摘要位
+     * 那截逐字长出来的参数与尾巴上那枚打字光标已经把「还在长」说完了,再补一个
+     * 不变的词只会在参数收齐那一帧凭空消失一次(平添一次跳)。
+     * 这条素材的参数是空的,所以摘要位也没得说,行上只剩工具名。
+     */
+    expect(card?.textContent).toBe('read')
   })
 
   it('结果回来了 = 已完成 —— 状态照折叠说的走,渲染层不自己判', async () => {
@@ -164,9 +169,12 @@ describe('消息树:画的就是折叠器的输出', () => {
     // V2 定稿(P2):**成功没有打卡词**。「已完成」那一格从此长在图标上(常灰,
     // 见 data-tool-tone),右端只放成果词或耗时。这条素材里参数是空的、结果里没有
     // lineCount,所以成果词无从说起 —— 右端剩下的就是账本上那个耗时(调用与结果
-    // 同一毫秒,所以是 0ms)。空着也不许拿一句「已完成」去填。
+    // 同一毫秒,所以耗时是 0)。空着也不许拿一句「已完成」去填。
+    //
+    // C2-a:耗时改走 §5.7 的唯一产地 —— 只到 0.1s、永不写毫秒,所以从前那个
+    // 「0ms」现在读作「0.0s」(一张卡上不再有 ms 与 s 两种单位换来换去)。
     expect(card?.getAttribute('data-tool-tone')).toBe('ok')
-    expect(card?.textContent).toBe('read0ms')
+    expect(card?.textContent).toBe('read0.0s')
   })
 
   it('run 还开着 = 流中态指示在场;收了就没有', async () => {

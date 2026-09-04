@@ -358,21 +358,30 @@ export const zh = {
   'chat.tool.cancelled': '已取消',
   'chat.tool.inputStreaming': '参数生成中',
 
-  /* ── 工具三件套(P2:A1 卡行 / B2 计数句 / C1 抽屉)────────────────────
+  /* ── 工具卡(C2-a:一种卡 / 头行 / 三段流中态)──────────────────────────
    * 成果词是**事实的复述**,不是打卡词:「N 行」「+a −d」「退出 0」都在说这次
-   * 调用做出了什么。上面那八档状态从此只在「还没有成果词可说」时才露面。 */
+   * 调用做出了什么。上面那八档状态从此只在「还没有成果词可说」时才露面。
+   *
+   * C2-a 退役三键:`durationMs` / `durationS`(耗时改走 §5.7 的唯一产地
+   * `format/quantity.ts`,只到 0.1s、永不写毫秒 —— 一个数的写法本来就没有译文)、
+   * `toolGroup.count`(「执行了 N 步」那句计数旁白随头行退役)、
+   * `toolGroup.moreKinds`(头行的溢出改写「+N」,是数不是话)。 */
   'chat.tool.lines': '{n} 行',
   'chat.tool.diffStat': '+{add} −{del}',
   'chat.tool.exitOk': '退出 0',
   'chat.tool.exitCode': '退出 {code}',
   'chat.tool.results': '{n} 条结果',
-  'chat.tool.durationMs': '{n}ms',
-  'chat.tool.durationS': '{n}s',
   'chat.tool.arguments': '参数',
   'chat.tool.result': '结果',
   'chat.tool.noResult': '这次调用没有留下结果',
-  'chat.toolGroup.count': '执行了 {n} 步',
-  'chat.toolGroup.moreKinds': '等 {n} 种',
+  /* 执行中的行现在也能展开(C2-a 拍点 ⑩):它还没到留下结果的时候,
+   * 对一条正在跑的调用说「没有留下结果」是说错,不是说少。 */
+  'chat.tool.noOutputYet': '还没有输出',
+  /* 活性读数(§6.6)。壳**只会说「多久没收到数据」**,「卡住了」永远不是壳的判断
+   * —— 真正的收场是引擎那一侧的超时与重试,这一行只是让那段等待看得见。 */
+  'chat.tool.stallArgs': '参数已 {n} 秒没有新字符',
+  'chat.tool.stallData': '已 {n} 秒没收到数据',
+  'chat.tool.stallStuck': '可能卡住了',
   'chat.toolGroup.failed': '{n} 失败',
   'chat.toolGroup.times': '×{n}',
 

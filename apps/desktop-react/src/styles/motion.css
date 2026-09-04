@@ -108,6 +108,8 @@
   --kf-block-zoom-canvas-in: blockZoomCanvasIn;
   --kf-ql-panel-in: qlPanelIn;
   --kf-dialog-panel-in: dialogPanelIn;
+  /* 工具卡上一行**露出 busy 形**时的进场(§6.5 第 7 条:不突现)。 */
+  --kf-tool-row-in: toolRowIn;
 
   /* 位移入场(唯一一处) */
   --kf-toast-in: toastIn;
@@ -294,6 +296,20 @@
   }
 }
 
+/*
+ * 工具卡上一行露出 busy 形时的进场(§6.5 第 7 条)。
+ * 只有真的要忙一会儿的那一行走它 —— MIN_BUSY_MS 内就收场的步直接以收场形出现,
+ * 一帧 busy 都不露,所以这段动画在快步骤上根本不播。
+ */
+@keyframes toolRowIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* 工具行「运行中」那枚呼吸图标(V2 三态)。 */
 @keyframes toolPulse {
   from {
@@ -360,6 +376,7 @@
   --dur-hover-fade: 0ms;
   --dur-toc-flash: 0ms;
   --dur-cursor-blink: 0ms;
+  --dur-card-flip: 0ms;
   --dur-drawer: 0ms;
   --dur-mode: 0ms;
   --dur-att-move: 0ms;

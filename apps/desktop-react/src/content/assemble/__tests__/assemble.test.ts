@@ -78,14 +78,14 @@ describe('段序列:一条消息算成哪几段', () => {
     // P0 时这条断言的是「两次调用 = 两张卡,都排在正文后面」。P2 起归组把相邻的
     // 两次折成一组(可感知变化,B2 定稿),所以这里只留单发那一格。
     // 09-01 再改一次:**单发也是一组** —— 段种不再随条数改判(改判 = React 整段
-    // 重挂,真机 t=6614),「画成卡」挪去 `ToolGroup` 的 total===1 那一支。
+    // 重挂,真机 t=6614),「画成卡」挪去 `ToolCard`(C2-a 起单发与连发是同一张卡,一步的卡没有头行)。
     const segments = assembleMessage(
       message({ content: '读一下', toolCalls: [toolCall()] as never }),
     )
     expect(segments.map((s) => s.kind)).toEqual(['rich-text', 'tool-group'])
     expect(segments[1]).toMatchObject({
       kind: 'tool-group',
-      group: {
+      card: {
         total: 1,
         entries: [
           {
@@ -110,7 +110,9 @@ describe('段序列:一条消息算成哪几段', () => {
     )
     expect(segments.map((s) => s.kind)).toEqual(['rich-text', 'tool-group'])
     expect(segments[1]).toMatchObject({
-      group: { total: 2, failed: 1, names: ['read'] },
+      // `names`(计数句里那串工具名)随计数句一起退役 —— 「用到了哪几种」
+      // 现在由头行那句摘要说,同名连发在那里读作「read ×2」。
+      card: { total: 2, failed: 1, head: { text: 'read ×2' } },
     })
   })
 
@@ -120,7 +122,7 @@ describe('段序列:一条消息算成哪几段', () => {
       message({ toolCalls: [toolCall({ toolName: '', toolId: 'mystery' })] as never }),
     )
     expect(segments[0]).toMatchObject({
-      group: { entries: [{ children: [{ row: { name: 'mystery' } }] }] },
+      card: { entries: [{ children: [{ row: { name: 'mystery' } }] }] },
     })
   })
 
@@ -129,7 +131,7 @@ describe('段序列:一条消息算成哪几段', () => {
       message({ toolCalls: [toolCall({ status: 'teleported' })] as never }),
     )
     expect(segments[0]).toMatchObject({
-      group: { entries: [{ children: [{ row: { status: 'teleported' } }] }] },
+      card: { entries: [{ children: [{ row: { status: 'teleported' } }] }] },
     })
   })
 })

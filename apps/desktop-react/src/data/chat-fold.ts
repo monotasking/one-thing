@@ -94,6 +94,17 @@ export interface TailToolCall {
   timestamp: number
   /** 已经到达的参数原文(半截的 JSON 就是半截的 —— 那是事实)。 */
   argsText: string
+  /**
+   * **上一次收到这次调用的数据是什么时候**(纪元毫秒),活性读数的判据(§6.6)。
+   *
+   * 建卡那一刻起表,之后每收到一片参数就推到此刻。用的是**收到那一端**的钟
+   * (`Date.now()`),不是事件里那个 `timestamp`:要与它相减的是本机的「此刻」,
+   * 两个钟相减会在有偏差时读出负数或凭空一分钟的静默。
+   *
+   * 它随尾巴一起退役,不进账本 —— 「多久没收到数据」是这一台此刻的读数,
+   * 不是会话的事实。
+   */
+  lastDeltaAt: number
 }
 
 export interface Tail {
@@ -180,11 +191,13 @@ export function startTailTool(
   toolCallId: string,
   toolName: string,
   timestamp: number,
+  /** 建卡的**本机时刻**(活性读数的起表点)。默认此刻;测试传一个数就能钉住。 */
+  at: number = Date.now(),
 ): Tail | undefined {
   if (!messageId || !toolCallId) return current
   const tail = openTail(current, messageId)
   if (tail.tools.some((tool) => tool.id === toolCallId)) return tail
-  tail.tools.push({ id: toolCallId, toolName, timestamp, argsText: '' })
+  tail.tools.push({ id: toolCallId, toolName, timestamp, argsText: '', lastDeltaAt: at })
   return tail
 }
 
@@ -199,12 +212,19 @@ export function feedTailToolArgs(
   messageId: string,
   toolCallId: string,
   argsTextDelta: string,
+  /** 收到这一片的**本机时刻**。默认此刻;测试传一个数就能钉住静默读数。 */
+  at: number = Date.now(),
 ): Tail | undefined {
   if (!current || current.messageId !== messageId || !argsTextDelta) return current
   const index = current.tools.findIndex((tool) => tool.id === toolCallId)
   if (index < 0) return current
   const tools = [...current.tools]
-  tools[index] = { ...tools[index], argsText: tools[index].argsText + argsTextDelta }
+  // 收到就推:活性读数的整条链子就这一句写点(§6.6)。
+  tools[index] = {
+    ...tools[index],
+    argsText: tools[index].argsText + argsTextDelta,
+    lastDeltaAt: at,
+  }
   return { ...current, tools }
 }
 
@@ -583,6 +603,8 @@ function liveToolCall(tool: TailToolCall): ProjectedCall {
     status: 'input-streaming',
     timestamp: tool.timestamp,
     streamingArgs: tool.argsText,
+    // 活性读数(§6.6):与 streamingArgs 同生共死,账本一认领两格一起没。
+    liveAt: tool.lastDeltaAt,
   } as ProjectedCall
 }
 

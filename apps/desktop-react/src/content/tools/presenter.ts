@@ -35,6 +35,20 @@ export interface ToolPresenter {
   /** 卡行数据(A1 + V2)。 */
   row(call: ProjectedToolCall): ToolRowModel
   /**
+   * **参数还在流的那一刻**这一行长什么样(§6.2 第一段,C2-a)。
+   *
+   * `row()` 那时什么都说不出:`arguments` 还是 `{}`。而这一行**正在等** ——
+   * 本稿要它画成「最终那一行的形」,只是内容逐字长出来:bash 是命令首词 +
+   * 后面逐字长的命令、read/edit/write 是逐字长的文件名、web_search 是查询词。
+   *
+   * 数据是 `call.streamingArgs`(半截 JSON),解析走 `partial-json.ts` 的容错前缀。
+   * **缺席不是错**:没实现的工具退回今天那截原始 JSON 尾巴(`presentToolRow` 兜底)
+   * —— 与 `detail` 的兜底同一条,presenter 是渐进增强不是准入门槛。
+   *
+   * 返回的是**补丁**:只说这一刻说得出的那几格,其余继承 `row()`。
+   */
+  partial?(call: ProjectedToolCall): Partial<ToolRowModel>
+  /**
    * 抽屉内容(C1)。**惰性**:只有抽屉真被拉开时才调 —— 所以它不进段模型
    * (段模型必须可序列化、不持有函数),由消费方拿着 call 现算。
    */

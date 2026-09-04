@@ -110,3 +110,28 @@ export function currentMotionTier(): MotionTier {
 export function exitMs(): number {
   return EXIT_MS_BY_TIER[currentMotionTier()]
 }
+
+/** 活性读数(§6.6):静默超过它换成「已 N 秒没收到数据」。 */
+export const STALL_SOFT_MS = 5_000
+/** 活性读数:静默超过它补「可能卡住了」并把停止摆到手边。 */
+export const STALL_HARD_MS = 30_000
+
+/**
+ * 快步骤不闪(§6.5 第 7 条):一步开始后这么久内就收场的(read / 瞬时工具都是),
+ * **不经过 busy 形**,直接以收场形出现;真要露出 busy 形的行才用 --dur 淡入进场。
+ *
+ * 它是**门槛**不是动画:动效档(none)不清零它 —— 关掉动效之后,一闪而过的
+ * busy 形只会更刺眼,不会更少。所以它没有 CSS token,与 ESC_STOP 一族同处。
+ */
+export const MIN_BUSY_MS = 250
+
+/**
+ * --dur-card-flip:工具卡结构变化(一行 → 头行 + 一行、开合抽屉、并入聚合行)时,
+ * 卡高用前后两次量高做的过渡(§6.5 第 8 条 FLIP)。
+ *
+ * JS 侧要这个数是因为**收尾有个定时器**(过渡跑完把内联 height 摘掉)——
+ * 与 --dur-exit 进 EXIT_MS_BY_TIER 同一条理由。动效档 `none` 下整段 FLIP 直接跳过
+ * (`currentMotionTier()` 判),所以这里不再镜像三档,只镜像标准档那一个数;
+ * 相等由 __tests__/motion-tokens.test.ts 与 tokens.css 逐条比对。
+ */
+export const CARD_FLIP_MS = 180

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import {
   ATT_GRACE_MS,
+  CARD_FLIP_MS,
   DOCK_HIDE_DELAY_MS,
   DOCK_WAKE_DWELL_MS,
   DUR_MS,
@@ -74,6 +75,9 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     /* 09-03 新增的同类:唤醒停留门槛(碰到 → 停留)。它与收回宽限是一对
      * ——一个说「多久才叫得出来」,一个说「多久才收得回去」,两个都是手势窗口。 */
     ['--dur-dock-wake', DOCK_WAKE_DWELL_MS],
+    /* 工具卡的 FLIP(C2-a):JS 侧那个数只服务收尾定时器(过渡跑完摘掉内联 height),
+     * 产地仍是 tokens.css —— 与 --dur-exit 同一条理由。 */
+    ['--dur-card-flip', CARD_FLIP_MS],
   ])('%s', (name, js) => {
     expect(tokenMs(tokensCss, name), `tokens.css 里找不到 ${name}`).toBe(js)
   })

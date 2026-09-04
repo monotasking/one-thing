@@ -1,5 +1,5 @@
 import type { ToolPresenter } from '../presenter'
-import { baseToolRow } from '../row'
+import { baseToolRow, partialArgString } from '../row'
 import { argString, basename, detailNumber, langFromPath, toolOutputText } from '../result'
 
 /**
@@ -27,6 +27,18 @@ export const readPresenter: ToolPresenter = {
         ? { outcome: { key: 'chat.tool.lines', vars: { n: lines } } as const }
         : {}),
     })
+  },
+
+  /**
+   * 参数流中的形:**文件名逐字长出来**。
+   *
+   * 与 `row` 同一条切法(行上 basename、全路径进 title),所以参数收齐那一帧
+   * 只是那截字停止生长,行的形一个像素都不换。路径还没长到有 `/` 的时候
+   * `basename` 就是它自己 —— 那也是事实。
+   */
+  partial: (call) => {
+    const path = partialArgString(call, 'path', 'filePath', 'file_path')
+    return path ? { icon: 'FileText', name: basename(path), title: path } : { icon: 'FileText' }
   },
 
   detail: (call) => {

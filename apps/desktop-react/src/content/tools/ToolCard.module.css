@@ -1,0 +1,298 @@
+/*
+ * 工具卡(§6.1 一种卡 + §6.2 三段流中态 + §6.5 稳定性纪律)。
+ *
+ * ── 颜色纪律 ──────────────────────────────────────────────────────────
+ * 全文只用四个既有语义色:text-2(常态图标)· accent(运行中)· warn(静默)·
+ * danger(失败)。**成功不上绿**:V2 的意思正是「成功是常态,常态不该有颜色」。
+ *
+ * ── 左竖线禁令 ────────────────────────────────────────────────────────
+ * 卡与抽屉的从属靠面(surface)和圆角说,不画引线。步与步之间是一根 --line-1
+ * 发丝线,不是缩进也不是引线。
+ *
+ * ── 几何锁定(§6.5 第 2 / 9 条)────────────────────────────────────────
+ * 这份样式表存在的头号理由不是好看,是**不让一条 delta 推动任何一格**:
+ * 行高固定、摘要单行截断、耗时与计数定宽右对齐 + tabular-nums。
+ * 屏幕上没有任何一格因为收到一片参数而跳。
+ */
+
+.toolCard {
+  border: 1px solid var(--line-1);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * 一行的壳(步 / 聚合 / 头共用这一层的几何)。
+ *
+ * `width:100%` + `text-align:start` 是把 button 拉回块级排版的两句(浏览器默认
+ * 让它居中且按内容宽)。button 与 div 两种标签共用 —— 能不能展开决定标签,
+ * 不决定长相。
+ */
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  /* 行高固定:换挡(参数 → 执行 → 收场)时右端那一格从空变成读数,行不许长高。 */
+  min-height: var(--tool-row-h);
+  text-align: start;
+  color: inherit;
+  transition: background var(--dur) var(--ease);
+}
+
+/*
+ * 藏起来的行**仍然挂在树上**(§6.5 第 1 条:一次调用一行,从第一个参数 delta 到
+ * 收场是同一个 DOM 节点)。收起态只画活槽位那一行,靠的是这一条,不是卸载。
+ * UA 那条 `[hidden]{display:none}` 特异性 0-0-1,压不过 `.row` 的 display:flex,
+ * 所以必须在这里再说一次。
+ */
+.row[hidden] {
+  display: none;
+}
+
+button.row {
+  cursor: pointer;
+}
+
+button.row:hover {
+  background: var(--st-hover);
+}
+
+button.row:focus-visible {
+  outline: var(--focus-ring-w) solid var(--accent-ring);
+  outline-offset: -2px;
+}
+
+/* 步与步之间一条发丝线,不留 gap;一步的卡里只有一行,所以线只在多步卡上画。 */
+.toolCard[data-multi] .list > .row {
+  border-top: 1px solid var(--line-1);
+}
+
+/* 头行是卡的第一件,它上面没有东西可分隔。 */
+.head {
+  border-top: none;
+}
+
+/* 聚合行点开的逐条:缩进一档,靠位置说从属(不画线)。 */
+.row[data-child] {
+  padding-inline-start: var(--sp-6);
+}
+
+/* ── 一行的四格:图标 · 名 · 摘要 · 右端 ──────────────────────────────── */
+
+.toolIcon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-2);
+  flex: none;
+  transition: color var(--dur) var(--ease);
+}
+
+/* 头行那一叠图标(最多三枚),叠着放:它说的是「用到了这几种」,不是一份清单。 */
+.stack {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  /* 负间距让后一枚压在前一枚上 —— 一叠,不是一排。 */
+  gap: calc(var(--sp-1) * -1);
+}
+
+.caret {
+  width: var(--fs-meta);
+  height: var(--fs-meta);
+  flex: none;
+  color: var(--text-4);
+  transition: transform var(--dur) var(--ease);
+}
+
+.toolCard[data-open] .caret {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    transition: none;
+  }
+}
+
+.toolName {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text-1);
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 参数摘要:让位的那一格 —— 挤起来先截它,名字与右端都不该被挤掉。 */
+.toolSummary {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 头行的摘要句读的是「这几步是什么」,不是参数 —— 按正文字号,不按 mono 微字。 */
+.headText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.times {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-3);
+  flex: none;
+}
+
+.toolRight {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-inline-start: auto;
+  flex: none;
+}
+
+.toolOutcome {
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/*
+ * 耗时(§6.5 第 9 条**读数定宽**)。
+ *
+ * `tabular-nums` 让每个数字等宽,`min-width` 按最宽读数 `00.0s` 预留,右对齐 ——
+ * 活耗时 10Hz 在走,`9.9s → 10.0s` 这一下不许推邻格,更不许推整行。
+ */
+.toolDuration {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+  min-width: var(--tool-dur-w);
+  text-align: end;
+}
+
+.failed {
+  font-size: var(--fs-micro);
+  color: var(--danger);
+  flex: none;
+}
+
+/* 静默超过硬阈值时那一句。它是**读数**不是警报,所以只是一句 warn 色的小字。 */
+.stallHard {
+  font-size: var(--fs-micro);
+  color: var(--warn);
+  flex: none;
+}
+
+/*
+ * 参数流那枚打字光标(§6.2:右端不写字,光标已经说了「还在长」)。
+ * 与聊天正文那枚同一段关键帧、同一个时长与几何 token(tokens.css「流中态光标」
+ * 一节)—— 「还在打字」在这台上只有一种形,所以这里一个字面值都不出现。
+ * 高度是唯一按本地字号说的一格:光标是一行字的最后一格,这一行的字号是 --fs-micro。
+ */
+.cursor {
+  display: inline-block;
+  width: var(--cursor-w);
+  height: var(--fs-micro);
+  margin-inline-start: var(--cursor-gap);
+  border-radius: var(--cursor-r);
+  background: var(--text-3);
+  vertical-align: text-bottom;
+  animation: var(--kf-chat-cursor) var(--dur-cursor-blink) var(--ease-out) infinite alternate;
+}
+
+/* 静默了就**停闪**:光标还在动却半分钟没有新字,是这一行最误导人的一种画法。 */
+[data-tool-tone='warn'] .cursor {
+  animation: none;
+  opacity: 0.35;
+}
+
+/*
+ * 进度条的位置(§6.2「工具报 ratio 时卡的底缘画一条 2px 进度条」)。
+ * **C2-a 只留位置,不画**:今天没有任何工具报进度,画一条恒为 0 的条就是造事实。
+ * 产地留在这里,C2-b 接上 tool-progress 活流时填这一格 + 一个 width 过渡。
+ */
+
+/* ── 三态 + 一层活性覆盖:全部长在图标上 ─────────────────────────────── */
+
+/*
+ * 色调**只作用于持有它的那一行**(`> *` 的直接子选择器)。
+ * 一张卡里可以同时有一行 busy、一行 ok、一行 bad —— 用后代选择器的话,
+ * 头行的 busy 会把底下每一行的图标都染成 accent 并让它们一起呼吸。
+ */
+[data-tool-tone='bad'] > .toolIcon,
+[data-tool-tone='bad'] > .toolRight > .toolOutcome {
+  color: var(--danger);
+}
+
+[data-tool-tone='busy'] > .toolIcon,
+/* 头行那一叠图标是**孙**不是子(它们住在 .stack 里),所以要单说一句。
+ * **只说 busy,不说 bad**:一叠图标说的是「用到了这几种工具」,把整叠染红等于
+ * 宣称每一种都失败了 —— 失败几条由右端那句红字说,它数得清。 */
+[data-tool-tone='busy'] > .stack > .toolIcon {
+  color: var(--accent);
+  /* 呼吸只作用 opacity(§6.5 第 4 条):它不参与布局,所以不会因为一条 delta 重排。 */
+  animation: var(--kf-tool-pulse) var(--dur-tool-pulse) var(--ease) infinite alternate;
+}
+
+/* 静默(§6.6):图标转 warn 并**停止呼吸** —— 呼吸说的是「在动」,而它没有在动。 */
+[data-tool-tone='warn'] > .toolIcon {
+  color: var(--warn);
+  animation: none;
+}
+
+[data-tool-tone='warn'] > .toolSummary {
+  color: var(--warn);
+}
+
+/*
+ * 露出 busy 形的那一行 `--dur` 淡入进场(§6.5 第 7 条)—— 不突现。
+ * 快步骤(MIN_BUSY_MS 内收场的)根本走不到这里:它直接以收场形出现,
+ * 所以这段动画在 read 那种瞬时工具上一帧都不播。
+ * 动效档 `none` 下 `--dur` 是 0ms —— 关掉动效就是当场出现,不留半截淡入。
+ */
+.row[data-reveal] {
+  animation: var(--kf-tool-row-in) var(--dur) var(--ease-out);
+}
+
+/*
+ * 降级不是「关掉反馈」:图标仍然是 accent(还在忙这件事看得出来),只是不呼吸。
+ * 与 Spinner 那一条同款;光标同理,进场淡入同理。
+ */
+@media (prefers-reduced-motion: reduce) {
+  [data-tool-tone='busy'] > .toolIcon,
+  [data-tool-tone='busy'] > .stack > .toolIcon {
+    animation: none;
+    opacity: 1;
+  }
+
+  .cursor {
+    animation: none;
+    opacity: 0.9;
+  }
+
+  .row[data-reveal] {
+    animation: none;
+  }
+}

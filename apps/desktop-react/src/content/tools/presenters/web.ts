@@ -1,6 +1,7 @@
 import type { ProjectedToolCall } from '../../model/segments'
 import type { ToolPresenter } from '../presenter'
-import { baseToolRow, truncate } from '../row'
+import { partialString } from '../partial-json'
+import { baseToolRow, partialToolArgs, truncate } from '../row'
 import { argString, toolDetails, toolOutputText } from '../result'
 import { domainOf, isWebCall } from '../web-family'
 
@@ -33,6 +34,23 @@ export const webPresenter: ToolPresenter = {
         ? { outcome: { key: 'chat.tool.results', vars: { n: count } } as const }
         : {}),
     })
+  },
+
+  /**
+   * 参数流中的形:**查询词逐字长出来**(open 那一支是域名)。
+   *
+   * 与 `row` 同一条选法(open 优先标题、退到域名),差别只在这一刻还没有标题
+   * —— 标题是结果里的东西,现在只有 URL。
+   */
+  partial: (call) => {
+    const args = partialToolArgs(call)
+    const query = partialString(args, 'query')
+    const url = partialString(args, 'url')
+    const label = query ?? hostOf(url)
+    return {
+      icon: 'Globe',
+      ...(label ? { name: truncate(label, 64), title: url ?? query } : {}),
+    }
   },
 
   detail: (call) => {

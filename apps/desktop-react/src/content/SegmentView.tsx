@@ -5,7 +5,7 @@ import type { BlockCtx } from './blocks/registry'
 import type { SegmentModel } from './model/segments'
 import { ResearchSegment } from './research/ResearchSegment'
 import { ThinkingSegment } from './ThinkingSegment'
-import { ToolGroup } from './tools/ToolGroup'
+import { ToolCard } from './tools/ToolCard'
 
 /**
  * 段渲染 —— **段 → React** 的那一层,一个穷尽 switch。
@@ -54,7 +54,7 @@ export const SegmentView = memo(function SegmentView({
       )
 
     case 'tool-group':
-      return <ToolGroup group={segment.group} ctx={ctx} />
+      return <ToolCard card={segment.card} ctx={ctx} />
 
     case 'research':
       // 段 key 兼作检索段的身份:消息尾来源条按同一个字符串点名(research/reveal.ts),

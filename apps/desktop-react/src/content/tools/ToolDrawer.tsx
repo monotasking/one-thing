@@ -24,7 +24,22 @@ import s from './ToolDrawer.module.css'
  * 抽屉与行的从属关系靠**衬面**(surface-1 + 圆角)说,不靠在左边画一条引线。
  * 引线在全仓被禁(六轮比稿的横切规范),嵌套结构也不例外。
  */
-export function ToolDrawer({ call, ctx }: { call: ProjectedToolCall; ctx: BlockCtx }) {
+export function ToolDrawer({
+  call,
+  ctx,
+  live = false,
+}: {
+  call: ProjectedToolCall
+  ctx: BlockCtx
+  /**
+   * 这一步还在跑(C2-a:执行中的行也能展开了,拍点 ⑩)。
+   *
+   * 它只改**空态那句话**:「这次调用没有留下结果」是给收场了的调用说的,
+   * 对一条正在跑的调用说这句话是**说错**(它还没到留下结果的时候)。
+   * 正在长的输出要等 C2-b 的 tool-progress 活流,那之前这里诚实地说「还没有输出」。
+   */
+  live?: boolean
+}) {
   const t = useT()
 
   // 详情按 call 引用缓存:折叠器保证消息不可变、变则换引用,所以同一次调用在抽屉
@@ -55,7 +70,7 @@ export function ToolDrawer({ call, ctx }: { call: ProjectedToolCall; ctx: BlockC
         <h4 className={s.label}>{t('chat.tool.result')}</h4>
         {blocks.length === 0 ? (
           // 没有结果**也要说出来**:空白会被读成「还没加载完」。
-          <p className={s.empty}>{t('chat.tool.noResult')}</p>
+          <p className={s.empty}>{t(live ? 'chat.tool.noOutputYet' : 'chat.tool.noResult')}</p>
         ) : (
           blocks.map((block, index) => (
             <BlockView key={blockKey(keyBase, index, block)} block={block} ctx={ctx} />

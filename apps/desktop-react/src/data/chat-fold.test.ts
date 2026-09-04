@@ -452,9 +452,9 @@ describe('接尾巴:账本 parts 画不到的那一截照样画,而且带轮次�
  */
 describe('活调用:参数还在流的那一次,由尾巴顶着', () => {
   it('开卡 + 参数逐片进来,挂进 toolCalls 且状态是 input-streaming', () => {
-    let tail = startTailTool(undefined, 'a1', 'call_a', 'time', 111)
-    tail = feedTailToolArgs(tail, 'a1', 'call_a', '{"timezone":')
-    tail = feedTailToolArgs(tail, 'a1', 'call_a', '"Asia/Shanghai"}')
+    let tail = startTailTool(undefined, 'a1', 'call_a', 'time', 111, 900)
+    tail = feedTailToolArgs(tail, 'a1', 'call_a', '{"timezone":', 950)
+    tail = feedTailToolArgs(tail, 'a1', 'call_a', '"Asia/Shanghai"}', 1000)
     const out = appendTail([message({ id: 'a1', content: '我查一下' })], tail)
     expect(out[0].toolCalls).toEqual([
       {
@@ -465,6 +465,9 @@ describe('活调用:参数还在流的那一次,由尾巴顶着', () => {
         status: 'input-streaming',
         timestamp: 111,
         streamingArgs: '{"timezone":"Asia/Shanghai"}',
+        // 活性读数(§6.6):**上一次收到数据**的本机时刻,每收一片就往前推 ——
+        // 不是建卡那一刻(900),也不是事件里那个 timestamp(111)。
+        liveAt: 1000,
       },
     ])
   })

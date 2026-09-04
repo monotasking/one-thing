@@ -100,7 +100,7 @@ export function ResearchSegment({
             </span>
           )}
           {episode.durationMs !== undefined && (
-            <span className={s.duration}>{formatDuration(t, episode.durationMs)}</span>
+            <span className={s.duration}>{formatDuration(episode.durationMs)}</span>
           )}
         </span>
       </ButtonBase>

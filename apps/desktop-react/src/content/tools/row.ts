@@ -1,4 +1,5 @@
 import type { ProjectedToolCall, ToolRowModel } from '../model/segments'
+import { parsePartialJson, partialString, type PartialJson } from './partial-json'
 
 /**
  * 每个 presenter 都要的那几格,算一次。
@@ -58,4 +59,19 @@ function failureOutcome(call: ProjectedToolCall): Pick<ToolRowModel, 'outcome'> 
 /** 一行放得下的长度。截断加省略号 —— 被截过这件事本身要看得出来。 */
 export function truncate(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`
+}
+
+/**
+ * 参数流那半截 JSON,解析过一遍(§6.2)。
+ *
+ * 每个 presenter 的 `partial()` 都从这一格取字,所以「半截参数从哪来」只有这一个
+ * 产地 —— 哪天流的形状换了(比如带上偏移),改这一处。
+ */
+export function partialToolArgs(call: ProjectedToolCall): PartialJson {
+  return parsePartialJson((call as { streamingArgs?: string }).streamingArgs ?? '')
+}
+
+/** `partialToolArgs` + 取一格字符串:presenter 里最常见的那一步,省得各写一遍。 */
+export function partialArgString(call: ProjectedToolCall, ...keys: string[]): string | undefined {
+  return partialString(partialToolArgs(call), ...keys)
 }

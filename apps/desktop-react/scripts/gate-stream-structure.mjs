@@ -63,7 +63,7 @@
  *  1. 非前缀率若拿整条消息的 textContent 量会是 22–24%,其中 98% 是消息尾那行
  *     `Generating · N.Ns` **在跳秒**。所以可见文本只由采到的那几件东西拼,读数行
  *     根本不在采样口径里。
- *  2. 只挡 `chat-thought / data-block-kind / data-tool-group` 三种祖先会把 flow 块
+ *  2. 只挡 `chat-thought / data-block-kind / data-tool-card` 三种祖先会把 flow 块
  *     **自己带的** `data-prose` 重复计一遍(`<blockquote data-prose>` 里的 `<p>`),
  *     凭空多出几百次「换型」。判据必须是「身上有任何 `data-prose` 祖先的都不算一件
  *     东西」。
@@ -721,13 +721,13 @@ function installSampler(page, tokens, geometry = false, countExisting = false) {
     const shapeOf = el => {
       const out = []
       const base = geometry ? el.getBoundingClientRect().top : 0
-      for (const node of el.querySelectorAll('[data-prose],[data-tool-status],[data-tool-group]')) {
+      for (const node of el.querySelectorAll('[data-prose],[data-tool-status],[data-tool-card]')) {
         if (node.parentElement?.closest('[data-prose]')) continue
         if (node.parentElement?.closest('[data-testid="chat-thought"]')) continue
         if (node.parentElement?.closest('[data-block-kind]')) continue
-        if (node.parentElement?.closest('[data-tool-group]')) continue
+        if (node.parentElement?.closest('[data-tool-card]')) continue
         const toolStatus = node.getAttribute('data-tool-status')
-        const isTool = Boolean(toolStatus) || node.hasAttribute('data-tool-group')
+        const isTool = Boolean(toolStatus) || node.hasAttribute('data-tool-card')
         if (!node.__structId) node.__structId = ++nodeSeq
         const text = node.textContent ?? ''
         out.push({
@@ -739,7 +739,7 @@ function installSampler(page, tokens, geometry = false, countExisting = false) {
           // 思考块此刻是展开还是收起 —— R3 浸泡首单量的就是这一格(读数,不进断言)。
           ex: node.getAttribute('aria-expanded') ?? undefined,
           d: node.getAttribute('data-block-kind')
-            ?? (node.hasAttribute('data-tool-group') ? 'tool-group' : undefined)
+            ?? (node.hasAttribute('data-tool-card') ? 'tool-card' : undefined)
             ?? toolStatus
             ?? node.tagName.toLowerCase(),
           // 组里那几行各自的状态 —— G 条(参数流式期有呈现)读它。
@@ -805,18 +805,18 @@ function readShape(page) {
     const art = rows[rows.length - 1]
     if (!art) return '(没有 assistant 消息)'
     const out = []
-    for (const node of art.querySelectorAll('[data-prose],[data-tool-status],[data-tool-group]')) {
+    for (const node of art.querySelectorAll('[data-prose],[data-tool-status],[data-tool-card]')) {
       if (node.parentElement?.closest('[data-prose]')) continue
       if (node.parentElement?.closest('[data-testid="chat-thought"]')) continue
       if (node.parentElement?.closest('[data-block-kind]')) continue
-      if (node.parentElement?.closest('[data-tool-group]')) continue
+      if (node.parentElement?.closest('[data-tool-card]')) continue
       const status = node.getAttribute('data-tool-status')
-      const isTool = Boolean(status) || node.hasAttribute('data-tool-group')
+      const isTool = Boolean(status) || node.hasAttribute('data-tool-card')
       const k = isTool
         ? 'tool'
         : (node.getAttribute('data-testid') === 'chat-thought' ? 'think' : node.getAttribute('data-prose'))
       const d = node.getAttribute('data-block-kind')
-        ?? (node.hasAttribute('data-tool-group') ? 'tool-group' : undefined)
+        ?? (node.hasAttribute('data-tool-card') ? 'tool-card' : undefined)
         ?? status
         ?? node.tagName.toLowerCase()
       out.push(`${k}:${d}`)

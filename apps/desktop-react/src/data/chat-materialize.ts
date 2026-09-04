@@ -340,6 +340,8 @@ function mergeWater(message: ProjectedMessage, water?: StreamWater): ProjectedMe
               status: 'input-streaming',
               timestamp: tool.timestamp,
               streamingArgs: tool.argsText(),
+              // 活性读数(§6.6):与 streamingArgs 同生共死,账本一认领两格一起没。
+              liveAt: tool.lastDeltaAt,
             })),
           ] as ProjectedMessage['toolCalls'],
         }
