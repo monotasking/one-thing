@@ -265,9 +265,21 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **离屏起窗**(09-04 S4 立的纪律「真机门不许抢用户的机器」)。窗子不 show()、
+         * 不进 Dock;页面照样渲染、照样跑布局与 rAF,焦点由 CDP
+         * `Emulation.setFocusEmulationEnabled` 补上(只进这个窗口,不动真光标)。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+      },
     })
     const page = await app.firstWindow()
+    const cdp = await app.context().newCDPSession(page)
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined
@@ -346,15 +358,88 @@ async function main() {
     for (const line of FILE_TEXT.trim().split('\n')) {
       assert(viewerText.includes(line), `查看器里逐行对上:${line}`)
     }
+    /*
+     * W1:查看器身上那条檐没有了(一格一檐),所以「它此刻在看谁」改问**它自己
+     * 那格稳定的取件口**(`data-viewer-path`,长在查看器根上)。
+     * 「檐上说得出文件名」那件事换了地方 —— 见下面第 6 步末尾那条(叶檐)。
+     */
     const viewerPath = await page.evaluate(
-      () => document.querySelector('[data-testid="viewer-name"]')?.getAttribute('data-viewer-path') ?? null,
+      () => document.querySelector('[data-testid="file-viewer"]')?.getAttribute('data-viewer-path') ?? null,
     )
-    assert(viewerPath === enginePath, `查看器头上说的就是刚点的那条路径:${viewerPath}`)
+    assert(viewerPath === enginePath, `查看器此刻在看的就是刚点的那条路径:${viewerPath}`)
     assert(
       await page.evaluate(() => Boolean(document.querySelector('[data-testid="files-tree"] [data-file-path]'))),
       '树没有被盖掉 —— 分栏是并排,不是覆盖(树常驻铁律的真机面)',
     )
     await page.screenshot({ path: path.join(shotDir, 'viewer.png') })
+
+    /*
+     * ── W1-a 修批:**面板内这一档也有一条身份带** ────────────────────────────
+     * 这一步跑在「打开方式 = 面板内」那一档(`file-open-mode` 的**出厂缺省**),
+     * 而 W1-a 交卷时那一档一条檐都没有 —— 关一个文件只剩右键与 Esc,却正是多数
+     * 用户第一眼看到的那一屏。所以「檐说得出文件名」这条断言不能只钉中央叶
+     * (第 6 步末尾那一条),两档各钉一次。
+     *
+     * 问的是同一件事,只是取件口从叶换成了查看器盒子 —— 因为那条分栏里**不许插
+     * 包裹层**(树与查看器的相邻兄弟是上面那条判据),所以檐只能长在盒子里面。
+     * 三句话:①恰一条 tablist(修前 0 条);②它说得出文件名;③✕ 在场**而且按得动**。
+     */
+    const panelStrip = await page.evaluate(() => {
+      const viewer = document.querySelector('[data-testid="file-viewer"]')
+      const tab = viewer?.querySelector('[role="tab"]')
+      const close = tab?.querySelector('[class*="close"]')
+      const box = close instanceof HTMLElement ? close.getBoundingClientRect() : null
+      return {
+        tablists: viewer ? viewer.querySelectorAll('[role="tablist"]').length : 0,
+        first: viewer?.firstElementChild?.getAttribute('data-testid') ?? null,
+        tabText: (tab?.textContent ?? '').trim(),
+        selected: tab?.getAttribute('aria-selected') ?? null,
+        closeW: box ? Math.round(box.width) : 0,
+        closeH: box ? Math.round(box.height) : 0,
+        // 树的两件动作在这一档**不该在**:面板内不是树,分不了屏也没有「隐藏的标签」。
+        treeActions: Boolean(
+          viewer?.querySelector('[data-testid^="pane-split"], [data-testid^="pane-hidden"]'),
+        ),
+      }
+    })
+    assert(
+      panelStrip.tablists === 1,
+      `面板内这一格恰有一条檐(实测 ${panelStrip.tablists} 条 tablist;修前 0 条)`,
+    )
+    assert(
+      panelStrip.first === 'viewer-strip',
+      `那条檐是查看器盒子里的第一个孩子(实测 ${panelStrip.first});树与查看器仍是相邻兄弟`,
+    )
+    assert(
+      panelStrip.tabText.includes('engine.ts'),
+      `面板内那条檐说得出文件名:${panelStrip.tabText || '—'}`,
+    )
+    assert(panelStrip.selected === 'true', '那一格报 aria-selected=true(单 tab 也是选中的那一格)')
+    assert(
+      panelStrip.closeW > 0 && panelStrip.closeH > 0,
+      `✕ 在场且量得到命中区:${panelStrip.closeW}×${panelStrip.closeH}`,
+    )
+    assert(!panelStrip.treeActions, '不画「分屏」「隐藏的标签」—— 那两件是树的动作,这一档不在树里')
+    await page.screenshot({ path: path.join(shotDir, 'viewer-strip.png') })
+    // **按得动**:点那颗 ✕,分栏当场收起来(修前这一档根本没有这条路)。
+    await page.evaluate(() => {
+      const close = document.querySelector('[data-testid="file-viewer"] [role="tab"] [class*="close"]')
+      if (close instanceof HTMLElement) close.click()
+    })
+    await waitFor('✕ 把这一格关掉了', () =>
+      page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
+    )
+    assert(true, '面板内那条檐上的 ✕ 按得动(修前:这一档一颗关闭钮都没有)')
+    // 关完再开回来 —— 下面几步照旧要一份开着的查看器。
+    await clickSelector(page, `[data-file-path="${enginePath}"]`)
+    await waitFor('查看器又回来了', async () => {
+      const now = await page.evaluate(
+        () =>
+          document.querySelector('[data-testid="file-viewer"]')?.getAttribute('data-viewer-path') ??
+          null,
+      )
+      return now === enginePath
+    })
 
     /*
       * ── F2 真机取证(09-01)──────────────────────────────────────────────
@@ -398,71 +483,88 @@ async function main() {
      assert(narrowed < splitter.now, `← 一下宽度真的变了:${splitter.now} → ${narrowed}`)
      await page.screenshot({ path: path.join(shotDir, 'splitter.png') })
 
-     // ② 落点:右键 → 「主区域」。修前这一步只记档,查看器纹丝不动。
+     // ② 落点:右键 → 「主区域」。W1 起它是「插进中央区那棵树」,不是「摆一块瓦上舞台」。
      const beforeText = await page.evaluate(
        () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
      )
      await switchModeTo(page, enginePath, /主区域|Main stage/)
-     await waitFor('查看器搬到了舞台上', () =>
+     await waitFor('查看器搬到了中央叶里', () =>
        page.evaluate(() => {
-         const viewer = document.querySelector('[data-testid="file-viewer"]')
-         return Boolean(viewer && viewer.getAttribute('data-placement') === 'stage')
+         const leaf = document.querySelector('[data-pane-leaf]')
+         const viewer = leaf?.querySelector('[data-testid="file-viewer"]')
+         return Boolean(viewer)
        }),
      )
-     assert(true, '选「主区域」之后查看器真的落在舞台上(修前:只记档,一动不动)')
+     assert(true, '选「主区域」之后查看器真的进了中央区那棵树(修前:只记档,一动不动)')
      assert(
        await page.evaluate(() => !document.querySelector('[data-testid="files-tree"] + [data-testid="file-viewer"]')),
        '面板内那条分栏收起来了 —— 一份内容只有一个落点(不重影)',
      )
      /*
-      * ③ 状态留存 + **合檐**(09-01 回炉:浮窗/舞台里双檐叠加、无滚动条)。
+      * ③ 状态留存 + **一格一檐**(W1 把 09-01 那次「合檐」回炉推到终点)。
       *
-      * 合檐之后查看器自己那条檐整条不画,所以身份改问**宿主檐**那一格
-      * (`[data-host-title]`,三个宿主共用 components/HostTitle)。
-      * 这三条断言就是那次回炉的永久化:①檐只剩一条;②宿主檐说得出文件名;
-      * ③体拿得到确定高度、长文真的滚得动(修前 clientHeight == scrollHeight)。
+      * 修前这里问的是「宿主檐在场、查看器自己那条不画」;W1 之后规则只有一条:
+      * **一片叶只有一条檐,那条檐就是 tab 条;内容自己一条都不画**。所以这三条
+      * 翻个面继续钉同一件事:①查看器身上零檐;②**叶檐说得出文件名**;
+      * ③体拿得到确定高度(修前 clientHeight == scrollHeight,内容被齐边剪掉)。
       */
      const merged = await page.evaluate(() => {
-       const viewer = document.querySelector('[data-testid="file-viewer"]')
-       const host = viewer?.closest('[role="dialog"]')
+       const leaf = document.querySelector('[data-pane-leaf]')
+       const viewer = leaf?.querySelector('[data-testid="file-viewer"]')
        const body = viewer?.querySelector('[data-testid="viewer-body"]')
+       const chrome = leaf?.querySelector('[data-pane-chrome]')
+       const activeTab = chrome?.querySelector('[role="tab"][aria-selected="true"]')
        return {
          ownChrome: Boolean(viewer?.querySelector('[data-viewer-chrome]')),
-         hostHeader: Boolean(host?.querySelector('header')),
-         hostTitle: host?.querySelector('[data-host-title]')?.textContent ?? null,
+         ownName: Boolean(viewer?.querySelector('[data-testid="viewer-name"]')),
+         leafChrome: Boolean(chrome),
+         tablists: leaf ? leaf.querySelectorAll('[role="tablist"]').length : 0,
+         activeTabText: (activeTab?.textContent ?? '').trim(),
          clientH: body?.clientHeight ?? 0,
          scrollH: body?.scrollHeight ?? 0,
-         hostH: host ? Math.round(host.getBoundingClientRect().height) : 0,
+         leafH: leaf ? Math.round(leaf.getBoundingClientRect().height) : 0,
        }
      })
-     assert(merged.hostHeader && !merged.ownChrome, '合檐:宿主檐在场,查看器自己那条整条不画(修前两条叠着)')
-     assert(merged.hostTitle === 'engine.ts', `宿主檐说得出文件名:${merged.hostTitle}`)
+     assert(
+       merged.leafChrome && !merged.ownChrome && !merged.ownName,
+       '一格一檐:叶檐在场,查看器身上零檐(修前两条叠着)',
+     )
+     assert(merged.tablists === 1, `这片叶上只有一条檐(实测 ${merged.tablists} 条 tablist)`)
+     assert(
+       merged.activeTabText.includes('engine.ts'),
+       `叶檐说得出文件名:${merged.activeTabText || '—'}`,
+     )
      /*
       * 「滚得动」的**根判据是高度有没有被宿主夹住**,不是「这一份内容够不够长」——
       * 这道门那个夹具文件只有两行,再长的判据它也满足不了。修前查看器没有
       * height,在宿主那个块级内容盒里高度被内容撑开(真机探针量到 52016px),
-      * 于是 clientHeight == scrollHeight、浏览器不给滚动条;修后它被夹在宿主
-      * 里面,**必然 ≤ 宿主自己那么高**。长文真的滚得动那一半由五落点探针量
-      * (2500 行 × 五种宿主全部 scrollable),读数写在提交说明里。
+      * 于是 clientHeight == scrollHeight、浏览器不给滚动条。
       */
      assert(
-       merged.clientH > 0 && merged.clientH <= merged.hostH,
-       `体的高度被宿主夹住(可视 ${merged.clientH} ≤ 宿主 ${merged.hostH};修前是内容撑的 52016)`,
+       merged.clientH > 0 && merged.clientH <= merged.leafH,
+       `体的高度被叶夹住(可视 ${merged.clientH} ≤ 叶 ${merged.leafH};修前是内容撑的 52016)`,
      )
      const afterText = await page.evaluate(
        () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
      )
      assert(afterText === beforeText, '换落点之后内容逐字相同(状态住 store,换的只是外框)')
      await page.screenshot({ path: path.join(shotDir, 'viewer-stage.png') })
-     // 收拾干净:把它放回面板内(合檐之后关闭钮在宿主檐上,所以先搬回来再关)。
-     await switchModeTo(page, enginePath, /面板内|This panel/)
+     /*
+      * 收拾干净:**关掉那一格**。W1 之后关一个文件的路是 tab 上那颗唯一的 ✕
+      * (从前那两颗语义不同的 ✕ 正是用户报的「有误导」)。
+      */
      await page.evaluate(() => {
-       const close = document.querySelector('[data-testid="viewer-close"]')
-       if (close) close.click()
+       const tab = Array.from(document.querySelectorAll('[data-pane-chrome] [role="tab"]')).find(
+         (el) => (el.textContent ?? '').includes('engine.ts'),
+       )
+       const close = tab?.querySelector('[class*="close"]')
+       if (close instanceof HTMLElement) close.click()
      })
      await waitFor('查看器收回', () =>
        page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
      )
+     // 落点放回「面板内」,后面几步照旧走分栏那一档。
+     await switchModeTo(page, enginePath, /面板内|This panel/)
 
      console.log('\n[7/7] 详情(⌘I / 右键)→ reveal 的诚实性 + 检索面文件侧')
     /*

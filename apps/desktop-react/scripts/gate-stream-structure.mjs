@@ -1791,6 +1791,11 @@ async function runCell({ record, page, kind, piece, index }) {
 async function runCase(kind) {
   const spec = CASES[kind]
   const store = await mkdtemp(path.join(tmpdir(), `structure-gate-${kind}-`))
+  /*
+   * **独立的 `--user-data-dir`**(与别的真机门同一条纪律):不带它的话这道门会
+   * 写进用户自己那份 Electron profile —— 「验证不改用户状态」那条法管的不只是 store。
+   */
+  const userDataDir = await mkdtemp(path.join(tmpdir(), `structure-gate-${kind}-userdata-`))
   const mockPort = 18800 + Math.floor(Math.random() * 200)
   let mock
   let server
@@ -1841,10 +1846,22 @@ async function runCase(kind) {
 
     app = await electron.launch({
       executablePath: electronBinary,
-      args: [mainEntry],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      args: [mainEntry, `--user-data-dir=${userDataDir}`],
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **离屏起窗**(09-04 S4 立的纪律「真机门不许抢用户的机器」)。窗子不 show()、
+         * 不进 Dock;页面照样渲染、照样跑布局与 rAF,焦点由 CDP
+         * `Emulation.setFocusEmulationEnabled` 补上(只进这个窗口,不动真光标)。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+      },
     })
     const page = await app.firstWindow()
+    const cdp = await app.context().newCDPSession(page)
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     /*
      * `--r2=off` 把壳切回**拼装机器**那条旧路(R3 之前一直留着的回滚口)。
      * 档位在模块初始化时读一次,所以要先写 localStorage 再重载。
@@ -1894,6 +1911,7 @@ async function runCase(kind) {
     if (mock) mock.close()
     await delay(600)
     await rm(store, { recursive: true, force: true })
+    await rm(userDataDir, { recursive: true, force: true })
   }
 }
 

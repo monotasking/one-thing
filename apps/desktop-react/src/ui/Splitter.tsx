@@ -40,6 +40,7 @@ export function Splitter({
   label,
   controls,
   liveVar,
+  liveTarget,
   testId,
   onCommit,
 }: {
@@ -58,8 +59,17 @@ export function Splitter({
   label: string
   /** 它调的是哪一块的尺寸(那块面的 DOM id)。 */
   controls?: string
-  /** 拖拽期间把实时值写进容器的这个 CSS 变量(如 `--files-split`)。 */
+  /** 拖拽期间把实时值写进这个 CSS 变量(如 `--files-split`)。 */
   liveVar?: string
+  /**
+   * 活值写在**哪个元素**上。缺省就是 `containerRef` —— 一格分栏里那两件是同一个盒。
+   *
+   * 分家的场合是**嵌套切分**(拼贴树,W1):比例是相对**这一次切分那块地**算的
+   * (所以量的是它),而活值要写在**整棵树的根**上 —— 依赖它的那些格子是根的
+   * 后代、是这次切分那块地的兄弟,自定义属性只向下继承,写在量的那个盒上它们
+   * 一格都收不到。两件事本来就是两个问题:「相对谁算」与「谁看得见」。
+   */
+  liveTarget?: RefObject<HTMLElement | null>
   testId?: string
   onCommit: (value: number) => void
 }) {
@@ -75,11 +85,11 @@ export function Splitter({
   /** 把值写进容器那个变量。**拖拽期间唯一的输出口** —— 不 setState。 */
   const paint = useCallback(
     (next: number) => {
-      const el = containerRef.current
+      const el = (liveTarget ?? containerRef).current
       if (!el || !liveVar) return
       el.style.setProperty(liveVar, `${next}`)
     },
-    [containerRef, liveVar],
+    [containerRef, liveTarget, liveVar],
   )
 
   const commit = useCallback(

@@ -69,6 +69,19 @@ const FILES_KEYS: readonly ScopedKey[] = [
   },
 ]
 
+/**
+ * 一片叶一条:⌘W = 关当前 tab(设计 §2.3 / 拍点 ④,09-04 用户已拍)。
+ *
+ * 它是**面域局部键**而不是全局命令:它需要一个目标(哪一片叶的哪一格),
+ * 而「需不需要一个目标」正是三层立法的判据。全表零冲突 —— ⌘⇧W 是工作区命令面板,
+ * shift 那一格就是两者的分界(`keymap-scopes.test` 的比对表钉着)。
+ *
+ * labelKey 复用 `common.close`,不新开一句(i18n 纪律:同一句话只该有一个键)。
+ */
+const LEAF_KEYS: readonly ScopedKey[] = [
+  { scope: 'leaf', combo: { meta: true, key: 'w' }, labelKey: 'common.close', action: 'closeTab' },
+]
+
 export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   /* ── root:整台壳,只有一个 ──────────────────────────────────────────── */
   root: { id: 'root', kind: 'root', labelKey: 'a11y.appTitle' },
@@ -82,6 +95,12 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   chat: { id: 'chat', kind: 'region', labelKey: 'focus.scope.chat' },
   settings: { id: 'settings', kind: 'region', labelKey: 'item.settings' },
   dock: { id: 'dock', kind: 'region', labelKey: 'dock.label' },
+  /*
+   * 拼贴树里的一片叶(W1)。行为档 `region` —— 它是一块能接键盘的面,不是一层
+   * Placement 宿主:Tab 走得出去、Esc 不缺省认领(叶没有「关自己」这回事,
+   * 关一格 tab 是 ⌘W 那条**显式**的键)。
+   */
+  leaf: { id: 'leaf', kind: 'region', labelKey: 'focus.scope.leaf', keys: LEAF_KEYS },
 
   /* ── layer:四个 Placement 宿主(§4.1 第二行)────────────────────────── */
   'stage-layer': { id: 'stage-layer', kind: 'layer', labelKey: 'focus.scope.stageLayer' },

@@ -14,6 +14,11 @@ import { startThemeSource } from './theme/theme-source'
 import { startReadingAxes } from './reading/apply'
 import { startWorkspaceApply } from './workspace/apply'
 import { startPerSpaceLayout } from './workspace/layout-scope'
+// 内容种类的注册 barrel。**必须排在 startWorkbench() 之前** —— 播种(出厂那片
+// 聊天叶)与「未知种类剔除」两件事都要读这张表。它不在 workbench/store 里 import,
+// 理由是那会造一条 import 环(病历在那只文件头上)。
+import './content/kinds'
+import { startWorkbench } from './workbench/store'
 import { installCrashHandlers } from './services/crash'
 import { startPerfProbe } from './services/perf'
 import { getLogger } from './services/log'
@@ -43,6 +48,12 @@ startWorkspaceApply()
 // 既有的 import 环(stage/store → stage/items → stage/types → i18n → stage/store),
 // 真机上表现为启动即 TDZ 崩溃。病历与判据写在 workspace/layout-scope.ts 文件头。
 startPerSpaceLayout()
+
+// 拼贴台播种 + 洗一遍存量档案(W1)。同样在 createRoot 之前、同样一个字节的网都
+// 不碰:树在 localStorage 里,它的**首帧**已经由 persist 的 merge 摊开了;
+// 这一步补的是「种类表此刻才装好」那一半 —— 出厂那片聊天叶、以及存量档案里
+// 认不得的种类的剔除。幂等。
+startWorkbench()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')

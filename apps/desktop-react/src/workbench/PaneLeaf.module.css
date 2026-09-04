@@ -1,0 +1,88 @@
+/* ── 一片叶(W1)──────────────────────────────────────────────────────────
+ * 定高的 flex 列:檐一条 + 身占满。**height:100%** 是查看器 `.body` 能滚的前提
+ * (F2 那条判例:`.viewer` 没有确定高度时 clientHeight == scrollHeight,
+ * 浏览器不给滚动条,内容被宿主的 overflow:hidden 齐边剪掉)。 */
+.leaf {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 焦点叶的一圈内描边 —— 「新标签开在哪一片」这句话的**视觉答案**。
+ * **只有一片叶时不画**(没有第二片可比,一圈边只是噪音):判据由区域宿主报
+ * (`data-pane-multi`,`CenterRegion` 数了一次叶),不由 CSS 去猜结构 ——
+ * `:only-child` 那种写法在「一次切分」那一层就已经不成立了。 */
+[data-pane-multi] .leaf[data-pane-focus]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 var(--bw-1) var(--accent-ring);
+}
+
+/* 叶檐那条带子的画法**搬去了 `./LeafStrip.module.css`**(W1-a 修批):它有了
+ * 第二个宿主(面板内那条分栏里的查看器),而「两处逐像素相同」在样式上只有一种
+ * 兑现方式 —— 同一份样式表。这只文件从此只管叶自己的三层:檐的位子由那件自带
+ * (`flex:none`),下面是身。 */
+
+/* ── 身:每一格 tab 各一层,keep-alive ──────────────────────────────────── */
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* 每一层铺满身。绝对定位而不是「只画活动那一层」——keep-alive 的全部意思就是
+ * 后台那几层还挂着(滚动位、草稿、已展开的目录都在 DOM 上)。 */
+.layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 看不见的那几层:`content-visibility` 管**渲染开销**,`inert` 管**可交互性**
+ * (在 JSX 上,而且树上还说一遍)。两个都要,少哪一个都会留下一个能摸到却看不见
+ * 的面 —— 逐字照 `EdgeShelf.module.css` 的 `.layerHidden`。 */
+.layerHidden {
+  content-visibility: hidden;
+  pointer-events: none;
+}
+
+/* ── 两张菜单里的行 ───────────────────────────────────────────────────── */
+.menuLine {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  width: 100%;
+}
+
+.menuMain {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuTrail {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+}
+
+.menuIcon {
+  flex: none;
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  color: var(--text-3);
+}

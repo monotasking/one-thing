@@ -136,7 +136,7 @@ function RowFloatsHarness({ detailFromMenu = false }: { detailFromMenu?: boolean
         row={ROW}
         t={t}
         selected={false}
-        opened={false}
+        openState={null}
         onActivate={() => undefined}
         onCurrent={(_row, el) => setCurrent(el)}
         onMenu={openMenuAt}
@@ -187,7 +187,7 @@ describe('切线 C · TreeEntryRow:搬了家,三条回调一格不少', () => {
           row={ROW}
           t={t}
           selected={false}
-          opened={false}
+          openState={null}
           onActivate={onActivate}
           onCurrent={onCurrent}
           onMenu={onMenu}
@@ -443,7 +443,7 @@ describe('切线 C · 打开手势:单击与 ↵ 的差别只有「焦点去哪�
           row={ROW}
           t={t}
           selected={false}
-          opened={false}
+          openState={null}
           onActivate={onActivate}
           onCurrent={() => undefined}
           onMenu={() => undefined}

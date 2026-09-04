@@ -75,7 +75,9 @@ export function depthVar(depth: number): CSSProperties {
  *     hover     —— `.rowWrap:hover` 换底;⋯ 露面
  *     focus     —— 全局 `:focus-visible` 环(行按钮 / ⋯ 各自一圈,不自绘)
  *     selected  —— `.rowSel` 底色(此刻手指头点在哪一行)
- *     opened    —— 行尾一颗 accent 圆点(**与选中是两件事**:可以选中 A 而开着 B)
+ *     openState —— 行尾一颗点,**两态**(实心 = 显示中 / 空心 = 已隐藏,W1);
+ *                  与选中是两件事(可以选中 A 而开着 B)。空心那一颗可点(请回来),
+ *                  实心那一颗是纯装饰
  *     hidden    —— `.rowHidden` 整行淡显(判据在 `data/file-icons` 的 isHiddenName)
  *     disabled  —— 无。一行永远可点。
  */
@@ -83,15 +85,24 @@ export function TreeEntryRow({
   row,
   t,
   selected,
-  opened,
+  openState,
   onActivate,
   onCurrent,
   onMenu,
+  onRestore,
 }: {
   row: EntryRow
   t: TFn
   selected: boolean
-  opened: boolean
+  /**
+   * **三态**(W1,设计 §2.3):`'shown'` = 打开着并显示,`'hidden'` = 打开着但
+   * 隐藏,`null` = 没开。判据整件是纯函数 `workbench/store` 的 `openStateOf`,
+   * 这一行只画。
+   *
+   * T0 拍点甲把「树行带标记」细化成两态:撤掉 Viewer 瓦之后,**回访一个打开着
+   * 的文件的入口就是这一列点** —— 点空心那一颗 = 请回来(回它藏起来时那个位置)。
+   */
+  openState: 'shown' | 'hidden' | null
   /**
    * 打开 / 展开这一项。`viaKeyboard` = 这一下是**↵ 按出来的**,不是鼠标点的 ——
    * 「导航器里浏览不抢焦点,确认才抢」(§3.5 规则 4 / §11 拍点 1 的 (a) 档)
@@ -104,6 +115,8 @@ export function TreeEntryRow({
    */
   onCurrent: (row: EntryRow, el: HTMLElement | null) => void
   onMenu: (origin: FloatOrigin) => void
+  /** 点空心那颗点 = 把这一份请回它藏起来时那个位置。没开 / 显示中时用不着。 */
+  onRestore?: () => void
 }) {
   const Caret = row.expanded ? ChevronDown : ChevronRight
   const glyph = glyphOf(row.name, row.type, row.expanded)
@@ -157,7 +170,7 @@ export function TreeEntryRow({
         data-file-tone={glyph.kind === 'icon' ? glyph.tone : undefined}
         data-file-brand={glyph.kind === 'brand' ? glyph.brand : undefined}
         data-file-hidden={hidden ? 'true' : undefined}
-        data-file-open={opened ? 'true' : undefined}
+        data-file-open={openState ?? undefined}
         data-file-selected={selected ? 'true' : undefined}
         onClick={() => onActivate(false)}
         /*
@@ -190,8 +203,32 @@ export function TreeEntryRow({
        * **不迁 `ui/StatusDot`**(9b 记的判,9d 复核后维持):那件画的是三档
        * 语义状态色(ok / warn / danger),而这一颗画的是 `--accent`,说的是
        * 「正开着」——它是一处**指认**,不是一格状态。
+       *
+       * ── W1:两态(设计 §2.3)──────────────────────────────────────────
+       * 实心 = 显示中,空心 = 打开着但隐藏。**空心档只换 CSS**(同一颗点、
+       * 同一个位子,底色换成透明 + 一圈内描边)—— 不是第二个组件,也不迁库件:
+       * 它仍然是那一处指认,只是这处指认现在能说出两句话。
+       *
+       * 空心那一颗**可点**(把它请回来),所以它是一颗 `ui/ButtonBase`
+       * (③ 类结构性交互件:视觉本该定制,只清 UA、焦点环仍走全局);
+       * 实心那一颗不可点,是一枚纯装饰的 `<span>` —— 「显示中的东西再点一下」
+       * 没有语义,而一颗按下去什么都不发生的钮正是「按了没反应」那一族。
        */}
-      {opened && <span className={s.openDot} data-testid="files-open-dot" aria-hidden="true" />}
+      {openState === 'shown' && (
+        <span className={s.openDot} data-testid="files-open-dot" data-open-state="shown" aria-hidden="true" />
+      )}
+      {openState === 'hidden' && (
+        <ButtonBase
+          className={`${s.openDot} ${s.openDotHidden}`}
+          data-testid="files-open-dot"
+          data-open-state="hidden"
+          aria-label={t('files.openStateHidden')}
+          onClick={(e) => {
+            e.stopPropagation()
+            onRestore?.()
+          }}
+        />
+      )}
       {/*
        * 行尾的 ⋯。**消费 ui/IconButton**(09-01 立法:图标钮必须用库件)——
        * 从前它是一颗自绘的 `.more`,hover 配方与别处各写各的,正是那条法的判例。

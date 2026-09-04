@@ -6,6 +6,7 @@ import { configureFilesPort } from '../../data/files-port'
 import type { FilesPort } from '../../data/files-port'
 import { FILES_ROW_H, useFilesSource } from '../../data/files-source'
 import { useViewerSource } from '../../data/viewer-source'
+import { ViewerCloseHost } from '../viewer/close-hub'
 import { useFileOpenMode } from '../../data/file-open-mode'
 import { sessionMutation, useSessionsSource } from '../../data/sessions-source'
 import { configureSessionsPort } from '../../data/sessions-port'
@@ -16,6 +17,9 @@ import { ONETHING_DIR, seedSessionsSource } from '../../data/__fixtures__/sessio
 import { FOCUS_SCOPES } from '../../focus/scopes'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
+import { useWorkbenchStore } from '../../workbench/store'
+import { refIdsOf } from '../../workbench/tree'
+import '../kinds'
 
 /**
  * 文件面板。这一批验的是**面板长在真数据上** + **定稿那六处改判**:
@@ -88,6 +92,9 @@ beforeEach(() => {
   useExposeStore.setState({ currentSessionId: SESSION_WITH_DIR })
   useFilesSource.getState().reset()
   useViewerSource.getState().reset()
+  // 拼贴台也是模块级单例:一份用例开着的那一格不该被下一份看见(分栏那一格
+  // `panelPath` 尤其 —— 它是「此刻在看谁」,泄漏过去下一条用例的第一帧就是脏的)。
+  useWorkbenchStore.getState().reset()
   useNotifyStore.setState({ items: [] })
   useFileOpenMode.setState({ mode: 'panel' })
 })
@@ -128,6 +135,36 @@ function row(path: string): HTMLElement {
   const el = document.querySelector<HTMLElement>(`[data-file-path="${path}"]`)
   if (!el) throw new Error(`树上没有这一行:${path}`)
   return el
+}
+
+/**
+ * 分栏里那台查看器在看哪个文件。
+ *
+ * W1:身份从檐上那格 `viewer-name` 搬去了 `stage/live-title`(檐没有了),
+ * 但查看器身上仍然有一格**稳定的取件口** `data-viewer-path` —— 门与用例要的
+ * 一直是「它此刻在看谁」,那一格就是答案。
+ */
+function viewerPath(): string | null {
+  return (
+    document.querySelector('[data-testid="file-viewer"]')?.getAttribute('data-viewer-path') ?? null
+  )
+}
+
+/**
+ * 关掉一个文件。**走右键菜单里那一行**(W1;动作单产地)——
+ * 查看器身上那颗 ✕ 随「一格一檐」退役了,分栏那一档也走这条路。
+ */
+/** 开一行的右键菜单(顶层那份;describe 里那只 `openMenu` 只在它自己那一组里)。 */
+async function rowMenu(path: string): Promise<void> {
+  fireEvent.contextMenu(row(path))
+  await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
+}
+
+async function closeViaMenu(path: string): Promise<void> {
+  fireEvent.contextMenu(row(path))
+  await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
+  fireEvent.click(screen.getByText('关闭'))
+  await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
 }
 
 /** 内容表那一格换人了没有 —— 这条在 FilesMock 还挂着时必红。 */
@@ -321,12 +358,12 @@ describe('打开 ≠ 选中', () => {
 
     // 点文件:它既被选中,也被打开 —— 两格各说各的。
     fireEvent.click(screen.getByText('README.md'))
-    await waitFor(() => expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBe('true'))
+    await waitFor(() => expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBe('shown'))
     expect(row(`${ROOT}/README.md`).getAttribute('data-file-selected')).toBe('true')
     // 选中挪到别处,「打开」不跟着走 —— 这正是两件事的分水岭。
     fireEvent.click(screen.getByText('packages'))
     await waitFor(() => expect(row(`${ROOT}/packages`).getAttribute('data-file-selected')).toBe('true'))
-    expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBe('true')
+    expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBe('shown')
     expect(row(`${ROOT}/README.md`).getAttribute('data-file-selected')).toBeNull()
   })
 })
@@ -399,7 +436,12 @@ describe('树不卸载:零重挂', () => {
     await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
     expect(row(`${ROOT}/packages`)).toBe(before)
 
-    fireEvent.click(screen.getByLabelText('关闭查看器'))
+    /*
+     * W1:查看器身上那颗 ✕ 没有了(一格一檐)。**关一个文件的路是右键菜单里
+     * 那一行**(动作单产地),分栏那一档也走它 —— 于是这一条走的仍然是用户
+     * 真会走的那条路,而不是一个只有测试知道的后门。
+     */
+    await closeViaMenu(`${ROOT}/README.md`)
     await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
     expect(row(`${ROOT}/packages`)).toBe(before)
   })
@@ -416,9 +458,7 @@ describe('树不卸载:零重挂', () => {
     // ① 开
     fireEvent.click(screen.getByText('README.md'))
     await waitFor(() =>
-      expect(screen.getByTestId('viewer-name').getAttribute('data-viewer-path')).toBe(
-        `${ROOT}/README.md`,
-      ),
+      expect(viewerPath()).toBe(`${ROOT}/README.md`),
     )
     expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
       kept,
@@ -429,16 +469,14 @@ describe('树不卸载:零重挂', () => {
     await waitFor(() => expect(screen.getByText('engine.ts')).toBeTruthy())
     fireEvent.click(screen.getByText('engine.ts'))
     await waitFor(() =>
-      expect(screen.getByTestId('viewer-name').getAttribute('data-viewer-path')).toBe(
-        `${ROOT}/packages/core/engine.ts`,
-      ),
+      expect(viewerPath()).toBe(`${ROOT}/packages/core/engine.ts`),
     )
     expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
       kept,
     )
 
     // ③ 关
-    fireEvent.click(screen.getByLabelText('关闭查看器'))
+    await closeViaMenu(`${ROOT}/packages/core/engine.ts`)
     await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
     expect([row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]).toEqual(
       kept,
@@ -742,8 +780,12 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
       'false',
     ])
 
-    fireEvent.click(screen.getByText('浮窗'))
-    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('float'))
+    /*
+     * W1:能选的两档是「面板内」与「主区域」;架子与浮窗那五档禁灰 + 注脚
+     * (临时退化,交付报告点名)。所以这一条选的是真接得通的那一档。
+     */
+    fireEvent.click(screen.getByText('主区域'))
+    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
   })
 
   /*
@@ -752,16 +794,17 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
    * 普通的瓦,那六档就是壳里已经有的 `openAs(id, placement)`。这一条把新事实
    * 钉死 —— 一句「还没接上」都不该再有。
    */
-  it('七档全真接上了:一句「还没接上」都没有,注脚也跟着退役', async () => {
+  it('W1:五档禁灰 + 注脚「架子与浮窗的标签下一批」,两档真接通', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
 
+    const options = screen.getAllByRole('menuitemradio')
+    expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(5)
+    expect(screen.getAllByText('架子与浮窗的标签下一批')).toHaveLength(5)
+    // 旧那句注脚(F1 时代的诚实降级)不该再出现 —— 它说的是另一件事。
     expect(screen.queryAllByText('还没接上')).toHaveLength(0)
-    expect(
-      screen.queryByText('目前只有「面板内」真能打开;其余几档先把你的选择记下来。'),
-    ).toBeNull()
   })
 
   it('选一档非面板落点 = 那块瓦当场被摆过去(选档即生效)', async () => {
@@ -770,11 +813,20 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     // 先打开一个文件,再换档 —— 「调整后没有生效」报的正是这一步。
     fireEvent.click(row(`${ROOT}/README.md`))
-    await waitFor(() => expect(useViewerSource.getState().pending ?? useViewerSource.getState().file).toBeTruthy())
-    await openMenu(`${ROOT}/README.md`)
+    await waitFor(() => expect(useViewerSource.getState().instances[`${ROOT}/README.md`]).toBeTruthy())
+    await rowMenu(`${ROOT}/README.md`)
     fireEvent.click(screen.getByText('主区域'))
     await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
-    expect(useStageStore.getState().placements['viewer']).toEqual({ kind: 'stage' })
+    /*
+     * W1:「主区域」不再是把一块瓦摆上舞台,而是**把这个 ref 插进中央区那棵树**
+     * (`stage` 那一档翻出来的就是 `center`)。落点的证据因此从形态机那张
+     * `placements` 换成拼贴台那棵树。
+     */
+    await waitFor(() =>
+      expect(
+        refIdsOf(useWorkbenchStore.getState().regions.center).includes(`file:${ROOT}/README.md`),
+      ).toBe(true),
+    )
     // 面板内那条分栏跟着收起来 —— 一份内容只该有一个落点(两处同时画就是重影)。
     await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
   })
@@ -842,7 +894,7 @@ describe('底部提示行:分栏开着时让位给正文', () => {
     await waitFor(() => expect(screen.getByTestId('file-viewer')).toBeTruthy())
     expect(document.querySelector('[data-panel-hint]')).toBeNull()
 
-    fireEvent.click(screen.getByTestId('viewer-close'))
+    await closeViaMenu(`${ROOT}/README.md`)
     await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
     expect(document.querySelector('[data-panel-hint]')).toBeTruthy()
   })
@@ -854,7 +906,7 @@ describe('底部提示行:分栏开着时让位给正文', () => {
     act(() => useFileOpenMode.setState({ mode: 'float' }))
     fireEvent.click(row(`${ROOT}/README.md`))
     await waitFor(() =>
-      expect(useViewerSource.getState().pending ?? useViewerSource.getState().file).toBeTruthy(),
+      expect(useViewerSource.getState().instances[`${ROOT}/README.md`]).toBeTruthy(),
     )
     expect(document.querySelector('[data-panel-hint]')).toBeTruthy()
   })
@@ -1235,15 +1287,43 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
     await waitFor(() => expect(screen.getByText('engine.ts')).toBeTruthy())
     fireEvent.click(screen.getByText('engine.ts'))
 
-    await waitFor(() =>
-      expect(screen.getByTestId('viewer-name').getAttribute('data-viewer-path')).toBe(
-        `${ROOT}/packages/core/engine.ts`,
-      ),
-    )
+    await waitFor(() => expect(viewerPath()).toBe(`${ROOT}/packages/core/engine.ts`))
     expect(screen.getAllByTestId('file-viewer')).toHaveLength(1)
     // 打开点跟着走:一次只有一个文件开着。
-    expect(row(`${ROOT}/packages/core/engine.ts`).getAttribute('data-file-open')).toBe('true')
+    expect(row(`${ROOT}/packages/core/engine.ts`).getAttribute('data-file-open')).toBe('shown')
     expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBeNull()
+  })
+
+  it('把一份**藏着的**文件关掉 = 它从隐藏表里也一起走(树行那颗空心点当场灭)', async () => {
+    installPort()
+    renderFiles()
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    // 开进中央区(分栏那一档不进树,谈不上「隐藏」)。
+    await rowMenu(`${ROOT}/README.md`)
+    fireEvent.click(screen.getByText('主区域'))
+    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
+    fireEvent.click(row(`${ROOT}/README.md`))
+    await waitFor(() =>
+      expect(refIdsOf(useWorkbenchStore.getState().regions.center)).toContain(
+        `file:${ROOT}/README.md`,
+      ),
+    )
+    // 藏起来:树行那颗点翻成空心。
+    await rowMenu(`${ROOT}/README.md`)
+    fireEvent.click(screen.getByText('隐藏'))
+    await waitFor(() =>
+      expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBe('hidden'),
+    )
+    /*
+     * 关掉它。**判据是「这份内容还在不在」** —— 藏着的那一份也是「打开着」,
+     * 所以关闭要把隐藏表那一条一起收掉。不收的话空心点会继续亮着,
+     * 而点它请回来的是一份已经被 dispose 的实例。
+     */
+    await rowMenu(`${ROOT}/README.md`)
+    fireEvent.click(screen.getByText('关闭'))
+    await waitFor(() => expect(useWorkbenchStore.getState().hidden).toEqual([]))
+    expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBeNull()
+    expect(useViewerSource.getState().instances[`${ROOT}/README.md`]).toBeUndefined()
   })
 
   it('Esc 收起查看区回全树', async () => {
@@ -1261,6 +1341,119 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
     expect(document.querySelector('[data-viewer="open"]')).toBeNull()
     // 关掉之后那颗打开点也跟着灭。
     expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBeNull()
+  })
+
+  /*
+   * ── W1-a 修批:面板内那一档也有一条身份带 ────────────────────────────────
+   *
+   * 病历:W1-a 交卷时这一档的查看器**一条檐都没有**(「一格一檐」那条规则只在树
+   * 里落地了),于是关一个文件只剩右键菜单与 Esc —— 而「面板内」是 `file-open-mode`
+   * 的**出厂缺省档**,多数用户第一眼看到的正是它。
+   *
+   * 裁定:面板内这一格也是一「格」,它该有**同一条**身份带,不是没有 ——
+   * 与中央叶单 tab 时同一件(`workbench/LeafStrip`),所以两处逐像素相同。
+   *
+   * 「那条带子上的每一格 UI 状态」由 `workbench/__tests__/pane-leaf.test.tsx` 与
+   * `ui/__tests__` 验(件本身);这一组验的是**这个宿主接上了没有**:
+   * 檐在盒子里、说得出文件名、✕ 关得掉、关闭语义与中央叶一致、树不重挂。
+   */
+  describe('身份带:面板内那一格也有檐', () => {
+    /** 檐里那颗 ✕。取件口与 `gate:files` 逐字相同(一处判据,不是两处)。 */
+    function stripClose(): HTMLElement {
+      const el = document.querySelector<HTMLElement>(
+        '[data-testid="file-viewer"] [role="tab"] [class*="close"]',
+      )
+      if (!el) throw new Error('身份带上没有那颗 ✕')
+      return el
+    }
+
+    async function openReadme(): Promise<void> {
+      await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+      fireEvent.click(screen.getByText('README.md'))
+      await waitFor(() => expect(viewerPath()).toBe(`${ROOT}/README.md`))
+    }
+
+    it('查看器盒子里**恰有一条** tablist,它说得出文件名,✕ 在场', async () => {
+      installPort()
+      renderFiles()
+      await openReadme()
+
+      const box = screen.getByTestId('file-viewer')
+      // 「一格一檐」在这一档的机器化:一条,不是零条(修前)也不是两条。
+      expect(box.querySelectorAll('[role="tablist"]')).toHaveLength(1)
+      // 檐是盒子里的**第一个孩子**(身份带在顶,与中央叶同形)。
+      expect(box.firstElementChild).toBe(screen.getByTestId('viewer-strip'))
+
+      const tab = box.querySelector('[role="tab"]')!
+      expect(tab.getAttribute('aria-selected')).toBe('true')
+      expect(tab.textContent).toContain('README.md')
+      expect(stripClose()).toBeTruthy()
+      /*
+       * **不画「隐藏」「分屏」**:那两件是树的动作,面板内这一档不在树里。
+       * (中央叶那两颗的 testId 是 `pane-hidden:` / `pane-split:`。)
+       */
+      expect(box.querySelector('[data-testid^="pane-split"]')).toBeNull()
+      expect(box.querySelector('[data-testid^="pane-hidden"]')).toBeNull()
+    })
+
+    it('单击 ✕ = 关掉这一格;树上那些行**一个都没有重挂**', async () => {
+      installPort()
+      renderFiles()
+      await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+      fireEvent.click(screen.getByText('packages'))
+      await waitFor(() => expect(screen.getByText('core')).toBeTruthy())
+      const kept = [row(`${ROOT}/packages`), row(`${ROOT}/packages/core`), row(`${ROOT}/README.md`)]
+
+      await openReadme()
+      fireEvent.click(stripClose())
+
+      await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
+      // 分栏收起来了,而那棵树的 DOM 节点逐个还是原来那几个(树常驻铁律)。
+      expect(document.querySelector('[data-viewer="open"]')).toBeNull()
+      expect([
+        row(`${ROOT}/packages`),
+        row(`${ROOT}/packages/core`),
+        row(`${ROOT}/README.md`),
+      ]).toEqual(kept)
+      // 关闭 = 丢实例(不是隐藏),树行那颗打开点当场灭。
+      expect(useViewerSource.getState().instances[`${ROOT}/README.md`]).toBeUndefined()
+      expect(row(`${ROOT}/README.md`).getAttribute('data-file-open')).toBeNull()
+    })
+
+    /**
+     * **关闭语义与中央叶逐字相同**:先问种类(`ContentKind.beforeClose` → 脏文件
+     * 那一问),答「关」才真关。判据整件在 `workbench/kinds.mayCloseContent`,
+     * 两条檐共用 —— 所以这一条同时是「面板内没有走第二套关闭」的证据。
+     */
+    it('脏文件先问一句:「取消」不关,「不保存」才关', async () => {
+      installPort()
+      render(
+        <>
+          <FocusDispatchHarness />
+          {renderContent('files')}
+          <ViewerCloseHost />
+        </>,
+      )
+      await openReadme()
+
+      // 弄脏它:进编辑 + 改一个字(走 store 那两口,与真机同一条路)。
+      act(() => {
+        useViewerSource.getState().setEditing(`${ROOT}/README.md`, true)
+        useViewerSource.getState().setDraft(`${ROOT}/README.md`, 'changed')
+      })
+
+      fireEvent.click(stripClose())
+      await waitFor(() => expect(screen.getByText('还有没保存的改动')).toBeTruthy())
+      fireEvent.click(screen.getByText('取消'))
+      await waitFor(() => expect(screen.queryByText('还有没保存的改动')).toBeNull())
+      // 取消 = 这一次关闭作废,面还在。
+      expect(viewerPath()).toBe(`${ROOT}/README.md`)
+
+      fireEvent.click(stripClose())
+      await waitFor(() => expect(screen.getByText('还有没保存的改动')).toBeTruthy())
+      fireEvent.click(screen.getByText('不保存'))
+      await waitFor(() => expect(screen.queryByTestId('file-viewer')).toBeNull())
+    })
   })
 
   it('查看区没开时 Esc **不接** —— 让它原样往上冒(外壳还有自己的 Esc 分层)', async () => {

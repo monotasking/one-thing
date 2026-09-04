@@ -1,6 +1,8 @@
 import { useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, X } from '../components/icons'
+import { StatusDot } from './StatusDot'
+import { Tooltip } from './Tooltip'
 import { useRoving } from './a11y/roving'
 import s from './Tabs.module.css'
 
@@ -30,6 +32,40 @@ export interface TabSpec {
   label: string
   /** lucide 图标名,与 items 表同一套字符串 */
   icon?: string
+  /**
+   * **有没存的改动**(W1)。画一枚 `ui/StatusDot`(warn 档,`size="sm"`)——
+   * 与查看器檐上从前那一颗**逐像素相同**(值就取自那一颗)。
+   * 它**不是控件**:不进 Tab 序、没有 hover/active,只是一枚状态点,
+   * 而且**不给 label** —— tab 自己的名字已经在旁边,再给一个无障碍名会念两遍。
+   */
+  dirty?: boolean
+  /**
+   * 悬停时说的**全名**。给了就把名字那一段包进 `ui/Tooltip`(截断的标题必须配
+   * Tooltip 全名 —— 禁令区那条:`--tab-max-w` 是 160,`engine.ts` 与另一个目录里
+   * 的 `engine.ts` 在屏幕上长得一模一样)。
+   *
+   * **缺席就一件都不挂**:没有 `tip` 的那些 tab(架子、别处的分段条)渲染出来
+   * 的 DOM 与从前逐字相同 —— 这一格是加法,不是给所有消费方换一套行为。
+   * 锚在名字那一段而不是整条 tab:说的是「这句被截断的话的全文」,
+   * 而 ✕ 与未保存丸各有各的说法。
+   */
+  tip?: string
+  /**
+   * **预览 tab**(W1,设计 §2.1 拍点 ①)。斜体,一片叶至多一个,
+   * 下一次单击就地替换它。判据在树那一层(`preview` 记的是 refId),
+   * 这里只是把那一格事实画出来。
+   */
+  preview?: boolean
+  /**
+   * 关不关得掉。缺省 `true`(给了 `onClose` 就画 ✕)。
+   *
+   * **为什么 TabSpec 多这第三格**(裁定原文只说加 `dirty` / `preview` 两布尔):
+   * 「最后一片 chat 叶不可关」(T0 拍点 2)是**逐 tab** 的事实,而 `onClose`
+   * 是整条 tab 条一个。判据若留在宿主里就得写成「点了才发现关不掉」——
+   * 那时 ✕ 已经画出来了,而用户报的正是「按了没反应」这一族。所以它与
+   * `dirty` / `preview` 同族:**数据表驱动的一格事实**,不是混进来的 children。
+   */
+  closable?: boolean
 }
 
 interface TabsProps {
@@ -54,6 +90,9 @@ export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, lab
       {items.map((tab) => {
         const Icon = tab.icon ? resolveIcon(tab.icon) : null
         const on = tab.id === activeId
+        // 关不掉的那一条**不画 ✕**(不是画出来再禁灰:一颗按不动的 ✕ 与
+        // 「按了没反应」在屏幕上是同一件事)。
+        const closable = onClose && tab.closable !== false
         return (
           /*
            * **tab 就是这一层**,不是里面那个按钮(A11y 线 · A2 的一处结构改动)。
@@ -70,7 +109,7 @@ export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, lab
            */
           <div
             key={tab.id}
-            className={on ? `${s.tab} ${s.tabOn}` : s.tab}
+            className={[s.tab, on && s.tabOn, tab.preview && s.tabPreview].filter(Boolean).join(' ')}
             role="tab"
             aria-selected={on}
             // roving 入组标记 + 初值。选中的那一条由 useRoving 改回 0 ——
@@ -87,7 +126,7 @@ export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, lab
               }
               // 关这条 tab 的**键盘路**(APG 可删除 tab 的做法)。× 是鼠标的顺手路,
               // 它不进 Tab 序(理由见下面那颗按钮上的注释),所以键盘要有自己这一下。
-              if (onClose && (e.key === 'Delete' || e.key === 'Backspace')) {
+              if (closable && (e.key === 'Delete' || e.key === 'Backspace')) {
                 e.preventDefault()
                 onClose(tab.id)
               }
@@ -96,9 +135,24 @@ export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, lab
           >
             <span className={s.main}>
               {Icon && <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
-              <span className={s.label}>{tab.label}</span>
+              {tab.tip ? (
+                <Tooltip content={tab.tip}>
+                  <span className={s.label}>{tab.label}</span>
+                </Tooltip>
+              ) : (
+                <span className={s.label}>{tab.label}</span>
+              )}
+              {/*
+               * 未保存丸**消费 `ui/StatusDot`**(与查看器檐上从前那一颗同一件、
+               * 同一档)。不给 `label`:tab 的名字就在左边,读屏软件念两遍是噪音。
+               */}
+              {tab.dirty && (
+                <span className={s.dirty} data-tab-dirty="" aria-hidden="true">
+                  <StatusDot tone="warn" size="sm" />
+                </span>
+              )}
             </span>
-            {onClose && (
+            {closable && (
               /*
                * × 是**鼠标的顺手路**,不是键盘的路 —— 所以它 `aria-hidden` 且不进
                * Tab 序,键盘那一路是上面 onKeyDown 里的 Delete / Backspace。

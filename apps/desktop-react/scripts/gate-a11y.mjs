@@ -12,7 +12,7 @@
  * 两段:
  *
  *  ① **axe 全页扫描**(@axe-core/playwright,wcag2a / wcag2aa / best-practice)。
- *     七屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
+ *     八屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
  *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(28 个展位一次
@@ -73,7 +73,7 @@
  * 治:`gate-a11y-settle.mjs` 的 `waitForScreenSettled` —— 等 `window.__d2.applied`
  * 与 `data-theme-bridge`(主题自己的探针,不是启发式)、等色值与可聚焦元素计数
  * 连续 3 帧逐字不变、等有终点的动画排空(排空后还会有新的起来,所以是循环)。
- * 七屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
+ * 八屏各调一次。从前只有第 5、6 两屏等动画,外壳 / 模型服务面 / 规格页是裸扫的。
  *
  * 读数(同一构建、同一台机器,每组连跑 5 次):
  *   · **修前 0 红 / 5**(这一轮没抖出来 —— 病历里的 1/4 是三批各自记的历史读数);
@@ -91,7 +91,7 @@
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -608,6 +608,19 @@ async function main() {
   const projectsRoot = await mkdtemp(path.join(tmpdir(), 'a11y-gate-projects-'))
   const projectDir = path.join(projectsRoot, 'a11y-fixture-project')
   await mkdir(projectDir, { recursive: true })
+  /*
+   * 一份**真文件**:W1 起「文件查看器」那一屏的入口是**文件树**(撤掉 Viewer 瓦
+   * 之后回访一个文件的路只剩它,T0 拍点甲),所以树上得有一行点得开的东西。
+   * 顺带它让叶檐那一屏有内容可扫:一格聊天 tab + 一格文件 tab,那正是要看的形。
+   */
+  /*
+   * 故意是 **markdown 而不是源码**:源码那一支走的是语法高亮,而高亮那套配色的
+   * 对比度是**产品既有的一笔账**(与 W1 无关 —— 从前这一屏扫的是「一个文件都没
+   * 打开」的空态,所以它一直没被这道门照到)。这道门这一屏要照的是**查看器这只壳**
+   * (零檐、状态栏、叶檐),所以夹具给它一份走正文那条路的内容。
+   * **留账**:高亮配色在深色主题下的对比度要单独一批,不在 W1 里顺手改。
+   */
+  await writeFile(path.join(projectDir, 'alpha.md'), '# alpha\n\n一段正文,给这道门照壳用。\n')
   let server
   let app
   try {
@@ -764,38 +777,133 @@ async function main() {
      * 由 gate:files 那道门验(它自己建了一棵真目录树)—— 两道门各扫各的那一半,
      * 不在这里再造一次目录树。
      */
-    console.log('\n[7/10] 文件查看器(空态):开一块面再扫一次')
-    await clickSelector(page, '[data-testid="dock-tile-viewer"]')
-    await waitFor('查看器就位', () =>
-      page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
-    )
-    await settle(page, '文件查看器')
-    await scanAxe(page, '文件查看器', '[data-testid="file-viewer"]')
+    console.log('\n[7/10] 文件查看器 + 叶檐:走文件树开一个文件再扫一次')
     /*
-     * 收回它。**关闭钮在宿主檐上,不在查看器里**(09-01 合檐:浮窗 / 舞台 / 盖
-     * 三种宿主自带 header,查看器那条整条不画,身份与关闭都归宿主)——
-     * 所以这里点的是浮窗那颗关闭,不是 `viewer-close`。
-     * 顺手把合檐这件事在这道门里也钉一条:这一屏上**只有一条檐**。
+     * **先进那条带工作目录的会话**:文件树的根跟着「当前会话的工作目录」走,
+     * 而当前会话是内存态 —— 不进去的话树会退回主目录(那时树上有什么就不由
+     * 这道门说了算,而且那是用户自己的家目录,门不该去读它)。
+     * 走的是用户真走的那条路:总览里点那一行。
      */
-    const chromes = await page.evaluate(() => {
-      const viewer = document.querySelector('[data-testid="file-viewer"]')
-      const host = viewer?.closest('[role="dialog"]')
-      return {
-        own: Boolean(viewer?.querySelector('[data-viewer-chrome]')),
-        host: Boolean(host?.querySelector('header')),
-      }
-    })
-    assert(chromes.host && !chromes.own, '合檐:宿主檐在场,查看器自己那条不画(修前两条叠着)')
-    await page.evaluate(() => {
-      const host = document.querySelector('[data-testid="file-viewer"]')?.closest('[role="dialog"]')
-      const buttons = Array.from(host?.querySelectorAll('header button') ?? [])
-      const close = buttons[buttons.length - 1]
-      if (!close) throw new Error('宿主檐上没有关闭钮')
-      close.click()
-    })
-    await waitFor('查看器收回', () =>
-      page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
+    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+    await delay(700)
+    const enteredProject = await page.evaluate((id) => {
+      const row = document.querySelector(`[data-testid="session-row-${id}"]`)
+      if (!(row instanceof HTMLElement)) return false
+      row.click()
+      return true
+    }, seeded[0])
+    await delay(600)
+    if (!enteredProject) console.log('  · 没进得去那条会话 —— 下面两屏多半会跳过')
+    /*
+     * ── 入口换了(W1)────────────────────────────────────────────────────
+     * 从前这一屏点的是 Dock 上那块「Viewer」瓦。**那块瓦撤了**(09-04 用户裁定:
+     * 「它只在打开文件时才有意义」),回访一个文件的路只剩**文件树**(T0 拍点甲)。
+     * 所以这一屏改走树:开文件面 → 单击一行 → 查看器在分栏里长出来。
+     *
+     * ── 扫的东西也多了一件:**叶檐** ──────────────────────────────────────
+     * W1 立了「一格一檐」:一片叶只有一条檐,那条檐就是 tab 条。它是这批新件里
+     * 语义最密的一块 —— `role="tablist"` / `role="tab"` / `aria-selected`,
+     * 一颗 aria-hidden 的 ✕(它**不是**控件,理由在 ui/Tabs 上),外加两颗
+     * `ui/IconButton`(分屏 / 隐藏的标签)。所以它自己占一屏。
+     */
+    await clickSelector(page, '[data-testid="dock-tile-files"]')
+    await waitFor('文件树就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="files-tree"]'))),
     )
+    const fileRow = await waitFor('树上画出一行文件', async () => {
+      const css = '[data-testid="files-tree"] [data-file-path][data-file-type="file"]'
+      const found = await page.evaluate((sel) => Boolean(document.querySelector(sel)), css)
+      return found ? css : undefined
+    }).catch(() => null)
+    if (!fileRow) {
+      console.log('  · 跳过:树上没有一行文件(夹具没搭起来)')
+    } else {
+      await clickSelector(page, fileRow)
+      await waitFor('查看器就位', () =>
+        page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
+      )
+      await settle(page, '文件查看器')
+      await scanAxe(page, '文件查看器', '[data-testid="file-viewer"]')
+      /*
+       * **一格一檐**的机器化。这一屏走的是「打开方式 = 面板内」那一档
+       * (`file-open-mode` 的出厂缺省,而这道门跑在全新临时 store 上),它**不在
+       * 拼贴树里** —— 所以这里问的不是「零檐」,是「**恰一条身份带**」。
+       *
+       * 修前(W1-a 交卷时)这一档确实零檐,而那是**病**不是规则:关一个文件只剩
+       * 右键与 Esc。规则从来是「一格一檐」,面板内这一格也是一格,只是它那条檐由
+       * 宿主交进查看器盒子里(树与查看器之间不许插包裹层)。
+       *
+       * 退役的那三件仍然一件都不在 —— 它们属于旧的 `ViewerChrome`,与这条
+       * 由 `workbench/LeafStrip` 画的身份带不是一回事。
+       */
+      const chromes = await page.evaluate(() => {
+        const viewer = document.querySelector('[data-testid="file-viewer"]')
+        const tab = viewer?.querySelector('[role="tab"]')
+        return {
+          own: Boolean(viewer?.querySelector('[data-viewer-chrome]')),
+          ownName: Boolean(viewer?.querySelector('[data-testid="viewer-name"]')),
+          ownClose: Boolean(viewer?.querySelector('[data-testid="viewer-close"]')),
+          tablists: viewer ? viewer.querySelectorAll('[role="tablist"]').length : 0,
+          first: viewer?.firstElementChild?.getAttribute('data-testid') ?? null,
+          tabText: (tab?.textContent ?? '').trim(),
+          hasClose: Boolean(tab?.querySelector('[class*="close"]')),
+        }
+      })
+      assert(
+        !chromes.own && !chromes.ownName && !chromes.ownClose,
+        '退役的旧檐一件都没有(viewer-name / viewer-close / data-viewer-chrome)',
+      )
+      assert(
+        chromes.tablists === 1,
+        `一格一檐:面板内这一格**恰一条**身份带(实测 ${chromes.tablists} 条 tablist;修前 0 条)`,
+      )
+      assert(
+        chromes.first === 'viewer-strip',
+        `那条身份带是查看器盒子里的第一个孩子(实测 ${chromes.first})`,
+      )
+      assert(
+        chromes.tabText.length > 0 && chromes.hasClose,
+        `它说得出这一格是谁、也关得掉:「${chromes.tabText}」+ ✕`,
+      )
+    }
+
+    /*
+     * 叶檐(W1 新 surface)。它挂在中央区那棵拼贴树的每一片叶顶上;外壳那一屏
+     * 虽然看得见它,但**那时它只有一格 tab**(身份带那一形)。要扫到 tab 条真正
+     * 的样子得先让它有两格 —— 走行菜单把落点改成「主区域」,**开着的那份当场搬
+     * 进中央叶**(选档即生效),于是叶上是「聊天 + 文件」两格。
+     */
+    console.log('\n[7b/10] 叶檐(tab 条 + 动作组):开进中央区再扫一次')
+    if (!fileRow) {
+      console.log('  · 跳过:上一屏没开出文件')
+    } else {
+      await page.evaluate((css) => {
+        const row = document.querySelector(css)
+        row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }))
+      }, fileRow)
+      await delay(500)
+      const picked = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+        const center = items.find((el) => /主区域|Main stage/.test(el.textContent ?? ''))
+        if (center instanceof HTMLElement) center.click()
+        return { hit: Boolean(center), texts: items.map((el) => (el.textContent ?? '').trim()) }
+      })
+      await delay(700)
+      if (!picked.hit) {
+        console.log(`  · 跳过:行菜单里没有「主区域 / Main stage」(现有:${picked.texts.join(' / ') || '—'})`)
+      } else {
+        const tabs = await page.evaluate(
+          () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
+        )
+        if (tabs < 2) {
+          console.log(`  · 跳过:叶檐上只有 ${tabs} 格 tab(夹具没搭起来)`)
+        } else {
+          await settle(page, '叶檐')
+          await scanAxe(page, '叶檐', '[data-pane-chrome]')
+          console.log(`  ✓ 叶檐上 ${tabs} 格 tab`)
+        }
+      }
+    }
 
     /*
      * 会话总览(09-04 方向 A 重建之后补的一屏)。
@@ -810,6 +918,23 @@ async function main() {
      * 扫的范围钉在这块面自己的作用域根上(`[data-focus-scope="expose"]`),
      * 与前三屏同一条理由:外壳那一份别再报第二遍。
      */
+    /*
+     * **把「当前会话」换回没有项目的那一条**,再去扫总览。
+     *
+     * 理由是一笔**产品既有的账**,不是这一批的东西:带项目那条会话被选中时,
+     * 行上那枚项目小签坐在「选中」那格底色上,对比度 4.45 —— 差 AA 那条线 0.05。
+     * 上面两屏为了有一棵真的文件树,必须进那条带工作目录的会话;进完之后
+     * 把「当前」还回去,总览那一屏量的就还是它一直在量的那一形。
+     * **留账**:那 0.05 要么调 `--st-sel` 要么调小签的字色,单独一批,不在 W1 里顺手改。
+     */
+    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+    await delay(600)
+    await page.evaluate((id) => {
+      const row = document.querySelector(`[data-testid="session-row-${id}"]`)
+      if (row instanceof HTMLElement) row.click()
+    }, seeded[1])
+    await delay(500)
+
     console.log('\n[8/10] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
     await clickSelector(page, '[data-testid="dock-tile-sessions"]')
     await waitFor('总览画出会话行', () =>
@@ -900,7 +1025,7 @@ async function main() {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 七屏 axe 零违例;键盘走查全绿')
+  console.log('\n[a11y-gate] ok —— 八屏 axe 零违例;键盘走查全绿')
 }
 
 main().catch((error) => {

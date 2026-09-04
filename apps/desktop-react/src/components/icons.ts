@@ -62,6 +62,8 @@ import {
   SquareCheck,
   Zap,
   PinOff,
+  Columns2,
+  Rows2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -137,6 +139,10 @@ const REGISTRY: Record<string, LucideIcon> = {
   SquareCheck,
   Zap,
   PinOff,
+  /* 分屏两向(W1 叶檐的动作组):竖切成两列 / 横切成两行。形说的是**切完的样子**,
+     不是「往哪边推」—— 与架子那族的方向箭头分得开。 */
+  Columns2,
+  Rows2,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -185,5 +191,7 @@ export {
   SquareCheck,
   Zap,
   PinOff,
+  Columns2,
+  Rows2,
 }
 export type { LucideIcon }

@@ -14,6 +14,12 @@ import type {
   Viewport,
 } from './types'
 import { DOCK_WAKE_DWELL_MS } from '../components/motion'
+/*
+ * v8 迁移要清掉存量档案里那块退役的「查看器」瓦。名字从 `stage/items` 取 ——
+ * 那只文件运行期**不 import 任何东西**(它对 `./types` 是 `import type`,编译后
+ * 整条边消失),所以这条边不会碰到 stage 那圈已知的 import 环。
+ */
+import { VIEWER_ITEM_ID } from './items'
 import { foldFlatIntoDefaultSpace } from '../workspace/per-space'
 import type { PerSpaceState, SpaceLedger } from '../workspace/per-space'
 import { DEFAULT_SPACE_ID } from '../workspace/types'
@@ -159,7 +165,7 @@ export const DOCK_HOLD_PAD = 24
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 7
+export const STAGE_PERSIST_VERSION = 8
 
 const DOCK: Placement = { kind: 'dock' }
 
@@ -1383,5 +1389,97 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
       ...out,
     }
   }
+  if (version < 8) {
+    /*
+     * W1:查看器不再是一块瓦(`stage/items.ts` 的 VIEWER_ITEM_ID 上写着理由)。
+     * 存量档案里可能到处都是它的条目 —— 一格 placement、一条架子 tab、一扇浮窗、
+     * 一格位置记忆、一行「Dock 上藏起来的瓦」。留着它们**不是无害的**:
+     * placements 里留一格就等于开机恢复出一块查不到内容的瓦(`renderContent`
+     * 答 null,屏幕上是一扇空浮窗)。所以逐格清掉。
+     *
+     * 这一段走**每一个空间那一格**(家具账 `byWorkspace`)加扁平层那一份 ——
+     * 只清当前那一格的话,切到别的空间才露出同一个病。
+     *
+     * `cover → full` 那一格**不在这一批**(它是 W2 的事,拍点 ② 已拍但没实现)。
+     */
+    /*
+     * **一格都没碰到就原样交回**(引用恒等)。迁移是幂等的,而「幂等」在这一族
+     * 档案上的机器化判据就是**同一个对象** —— 存量用例(v6 折叠那一条)钉的正是它。
+     */
+    const nextHidden = withoutViewerId(out.hiddenItems)
+    if (nextHidden !== out.hiddenItems) out = { ...out, hiddenItems: nextHidden }
+    const ledger = out.byWorkspace
+    if (ledger && typeof ledger === 'object') {
+      let changed = false
+      const next: Record<string, unknown> = {}
+      for (const [spaceId, furniture] of Object.entries(ledger as Record<string, unknown>)) {
+        const stripped = stripViewerFurniture(furniture)
+        if (stripped !== furniture) changed = true
+        next[spaceId] = stripped
+      }
+      if (changed) out = { ...out, byWorkspace: next }
+    }
+    out = stripViewerFurniture(out) as Record<string, unknown>
+  }
   return out
+}
+
+/**
+ * 一份家具里所有 `viewer` 的痕迹(v8 迁移用)。**逐格清**,不是整份丢:
+ * 用户摆了半年的别的瓦一格都不能动。
+ */
+function stripViewerFurniture(furniture: unknown): unknown {
+  if (!furniture || typeof furniture !== 'object') return furniture
+  const source = furniture as Record<string, unknown>
+  const f: Record<string, unknown> = { ...source }
+  let touched = false
+  for (const key of ['placements', 'floats', 'memory'] as const) {
+    const table = f[key]
+    if (table && typeof table === 'object' && VIEWER_ITEM_ID in (table as object)) {
+      const next = { ...(table as Record<string, unknown>) }
+      delete next[VIEWER_ITEM_ID]
+      f[key] = next
+      touched = true
+    }
+  }
+  const nextOrder = withoutViewerId(f.floatOrder)
+  if (nextOrder !== f.floatOrder) {
+    f.floatOrder = nextOrder
+    touched = true
+  }
+  const shelves = f.shelves
+  if (shelves && typeof shelves === 'object') {
+    let shelvesTouched = false
+    const nextShelves: Record<string, unknown> = {}
+    for (const [side, shelf] of Object.entries(shelves as Record<string, unknown>)) {
+      if (!shelf || typeof shelf !== 'object') {
+        nextShelves[side] = shelf
+        continue
+      }
+      const one = { ...(shelf as Record<string, unknown>) }
+      const nextTabs = withoutViewerId(one.tabs)
+      if (nextTabs !== one.tabs) {
+        one.tabs = nextTabs
+        shelvesTouched = true
+      }
+      if (one.activeId === VIEWER_ITEM_ID) {
+        const tabs = Array.isArray(one.tabs) ? (one.tabs as string[]) : []
+        one.activeId = tabs[tabs.length - 1] ?? null
+        shelvesTouched = true
+      }
+      nextShelves[side] = shelvesTouched ? one : shelf
+    }
+    if (shelvesTouched) {
+      f.shelves = nextShelves
+      touched = true
+    }
+  }
+  return touched ? f : source
+}
+
+/** 摘掉那个 id。**一格都没摘到就原样交回**(引用恒等 —— 幂等的机器化判据)。 */
+function withoutViewerId(list: unknown): unknown {
+  if (!Array.isArray(list)) return list
+  if (!list.includes(VIEWER_ITEM_ID)) return list
+  return list.filter((id) => id !== VIEWER_ITEM_ID)
 }

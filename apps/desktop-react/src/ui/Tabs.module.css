@@ -95,6 +95,21 @@
   color: var(--text-1);
 }
 
+/* ── 预览 tab(W1,设计 §2.1 拍点 ①)────────────────────────────────────────
+ * 斜体,与 VS Code 同一个约定:这一条是「我正在浏览」,下一次单击就把它换掉。
+ * **只换字形,不换底也不换色** —— 底与色是「活动 / 悬停」那两件事的语汇,
+ * 预览与它们正交(一条 tab 可以同时是活动的和预览的)。 */
+.tabPreview .label {
+  font-style: italic;
+}
+
+/* 未保存丸的位子。它不是控件(理由在 Tabs.tsx 上),所以只占一格 flex,不接事件。 */
+.dirty {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
 .closeIcon {
   width: var(--tab-close);
   height: var(--tab-close);

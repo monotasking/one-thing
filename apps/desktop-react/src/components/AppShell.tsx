@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { useStageStore } from '../stage/store'
 import { StageFocusFollow } from '../stage/focus-follow'
@@ -9,7 +9,6 @@ import { useFocusDispatch } from '../focus/dispatch'
 import { focusTree } from '../focus/registry'
 import { TopBar } from './TopBar'
 import { ErrorBoundary } from './ErrorBoundary'
-import { ChatStream } from '../content/ChatStream'
 import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
@@ -20,8 +19,8 @@ import { FloatLayer } from './FloatWindow'
 import { ToastHost } from '../ui/Toast'
 import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
-import { TocPanel } from '../toc/TocPanel'
-import { useChatToc } from '../toc/useChatToc'
+import { CenterRegion } from '../workbench/CenterRegion'
+import { ViewerCloseHost } from '../content/viewer/close-hub'
 import { DOCK_HIDE_DELAY_MS, DOCK_WAKE_DWELL_MS } from './motion'
 import { useT } from '../i18n'
 import { NOTIFICATIONS_ITEM_ID } from '../stage/items'
@@ -116,9 +115,14 @@ export function AppShell() {
    */
   const escapeTopmost = useStageStore((st) => st.escapeTopmost)
 
-  // 聊天滚动容器只有一个 ref,两个消费者:Dock 降淡 与 TOC 当前键。
-  const chatRef = useRef<HTMLDivElement>(null)
-  const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(chatRef)
+  /*
+   * ── 聊天区不再长在外壳身上(W1)────────────────────────────────────────
+   * 中央区从「一块写死的内容」变成**一棵拼贴树**(`workbench/CenterRegion`),
+   * 聊天区是那棵树里的一片叶(`content/kinds/chat.tsx`)。于是从前挂在这儿的
+   * `chatRef` / `useChatToc` / 那条 `onScroll` **跟着叶走了** —— 判据是「谁真的
+   * 用它」:那条 ref 只被聊天叶里的两件用(TOC 当前键与目录跳转),挂在外壳上
+   * 等于让每一次目录高亮重渲整台壳。
+   */
 
   /*
    * 悬浮输入框那两个几何读数(§5.6)。两个 ref 一只观察者,产地在这里而不是
@@ -128,20 +132,6 @@ export function AppShell() {
   const centerRef = useRef<HTMLDivElement>(null)
   const composerDockRef = useRef<HTMLDivElement>(null)
   useComposerGeometry(centerRef, composerDockRef)
-
-  /*
-   * 聊天滚动 → 目录当前键跟随。**这条监听如今只剩这一件事**。
-   *
-   * 09-01 用户裁定退役了「滚动降淡」(滚动时把 Dock 调到 --dock-dim,停下再复原):
-   * 「滚动的时候 Dock 会变透明,等一会又恢复——不要这个变化」。连根拔:状态、
-   * 收尾计时器、`--dock-dim` / `--dur-scroll-settle` 两个 token、Dock 的 dimmed
-   * 入口与 .dimmed 规则、动效档里那两行与它的两道门,一起清干净,不留半关的开关。
-   * 顺带白赚一笔:它原来**每一发 scroll 都要 clearTimeout + setTimeout 一对**
-   * (滚动事件一秒几十上百发),现在这条路上一个计时器都不排。
-   */
-  const onScroll = useCallback(() => {
-    syncFromScroll()
-  }, [syncFromScroll])
 
   const [peeking, setPeeking] = useState(false)
   const autohide = dockDisplay === 'autohide'
@@ -481,14 +471,10 @@ export function AppShell() {
               {/* 键列与跟随丸都钉在聊天区上,所以定位参考系是这一层。
                 * 09-05(§5.6):这一层现在**铺满 `.center`** —— 输入框浮在它上面,
                 * 正文从玻璃底下流过。 */}
-              <div className={s.chatArea}>
-                {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
-                  * 合成一界的话这两件事会互相拖死,那正是分区边界要避免的。 */}
-                <ErrorBoundary where="chat">
-                  <ChatStream scrollRef={chatRef} onScroll={onScroll} flashMessageId={flashMessageId} />
-                </ErrorBoundary>
-                <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
-              </div>
+              {/* 中央区 = 一棵拼贴树(W1)。第一片叶就是聊天区 —— 它是 `chat` 那一种
+                * 内容自述的常驻格(`ContentKind.resident`),外壳这一层因此**不认识
+                * 聊天**:它只知道「这儿摆着中央区那棵树」。 */}
+              <CenterRegion />
               {/*
                 * 输入框仍然在 `.center` 的 DOM 里(错误边界、响应链作用域、
                 * `useFloatDismiss` 的点外关一字不动),只是外面多了一格**落位带**:
@@ -545,6 +531,13 @@ export function AppShell() {
             「问一句 yes/no」不该由每块业务面各摆一个自己的对话框。
           */}
           <ConfirmHost />
+
+          {/*
+            关掉一格有未保存改动的文件时那一问(W1)。它与 ConfirmHost / ToastHost
+            同层同理由:关闭这件事发生在**叶檐**上,而被关掉的那棵树自己问不了自己,
+            所以那一问要有一个活过它的落点。单槽,产地在 content/viewer/close-hub。
+          */}
+          <ViewerCloseHost />
 
           {/*
             Toast 的落点。挂在壳的根上一次,notify 才有地方渲染(它自己 portal 到 body)。

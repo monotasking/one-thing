@@ -1,0 +1,54 @@
+/* ── 一条檐 = tab 条 + 型工具条 + 动作组(W1-a 修批从 PaneLeaf.module.css 搬出)──
+ * 搬出来的理由只有一个:**这条檐有第二个宿主了**。中央叶(`PaneLeaf`)与面板内
+ * 分栏里那份查看器(`FilesPanel` → `FileViewer` 的 `strip`)画的必须是同一条带子,
+ * 而「同一条」在样式上只有一种兑现方式:同一份样式表、同一组类名。留在 PaneLeaf
+ * 里再抄一份 = 两条会分叉,而分叉的第一处必然是高度或底线(合檐那条判例的同型)。
+ *
+ * 高度由 `ui/Tabs` 自己的 --tab-h 决定,这一层只排版:tab 条吃掉剩余宽度,
+ * 型工具条与动作组贴右。底线归 `ui/Tabs` 自己那条 border-bottom —— 这里再画一条
+ * 就是两条叠着。 */
+.chrome {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  background: var(--surface-1);
+}
+
+.tabs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.tabs > * {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 型工具条与动作组都长在**檐的底线之上**,所以它们各自补一条同色的底线 ——
+ * 不补的话 tab 条那条线会在中途断掉一截。 */
+.tool,
+.actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding-inline: var(--sp-2);
+  border-bottom: var(--bw-1) solid var(--line-1);
+}
+
+/* ── 单 tab = 身份带 ─────────────────────────────────────────────────────
+ * 「这条檐只有一格」时那条 tab 条读起来该是**这块内容的名字**,不是一个可选的
+ * 选项卡。所以收掉两样:活动指示条(只有一格,指给谁看)与 hover 底
+ * (没有第二格可切,hover 反馈是在骗人可以点)。字色照旧是活动那一档。
+ * **不换组件** —— 换组件会在开出第二个 tab 那一刻整条重挂(零重挂断言盯的正是它)。
+ * 面板内那一档恒定落在这一形:它永远只有一格。 */
+.chrome[data-single] [role='tab'] {
+  box-shadow: none;
+  cursor: default;
+}
+
+.chrome[data-single] [role='tab']:hover {
+  background: transparent;
+}

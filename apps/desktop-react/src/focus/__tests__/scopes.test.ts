@@ -23,6 +23,8 @@ const ALL_IDS: readonly FocusScopeId[] = [
   'chat',
   'settings',
   'dock',
+  // 拼贴树里的一片叶(W1)。
+  'leaf',
   'stage-layer',
   'float-layer',
   'shelf-layer',
@@ -38,7 +40,7 @@ const ALL_IDS: readonly FocusScopeId[] = [
 ]
 
 describe('FOCUS_SCOPES 封闭表', () => {
-  it('首批 21 格,一格不多一格不少', () => {
+  it('22 格(W1 加了 leaf),一格不多一格不少', () => {
     expect(FOCUS_SCOPE_LIST.map((s) => s.id).sort()).toEqual([...ALL_IDS].sort())
   })
 
@@ -78,13 +80,16 @@ describe('FOCUS_SCOPES 封闭表', () => {
 })
 
 describe('局部键:查看器 / 文件树 / 会话总览三格', () => {
-  it('查看器三条、文件树两条、总览一条,别的作用域一条都没有', () => {
+  it('查看器三条、文件树两条、总览一条、叶一条,别的作用域一条都没有', () => {
     expect(focusScopeKeysOf('viewer').map((k) => k.action)).toEqual(['save', 'jump', 'find'])
     expect(focusScopeKeysOf('files').map((k) => k.action)).toEqual(['detail', 'detail'])
     // 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行。
     expect(focusScopeKeysOf('expose').map((k) => k.action)).toEqual(['pin.toggle'])
+    // W1 拍点 ④:⌘W 关当前 tab(叶内局部键 —— 它需要一个目标)。
+    expect(focusScopeKeysOf('leaf').map((k) => k.action)).toEqual(['closeTab'])
     const withKeys = FOCUS_SCOPE_LIST.filter((s) => (s.keys?.length ?? 0) > 0).map((s) => s.id)
-    expect(withKeys).toEqual(['viewer', 'files', 'expose'])
+    // 次序 = 表里的声明序(`leaf` 排在 region 那一族的末尾)。
+    expect(withKeys).toEqual(['viewer', 'files', 'expose', 'leaf'])
   })
 
   /*

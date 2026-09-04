@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { FileViewer } from '../viewer/FileViewer'
+import { ViewerCloseHost, askViewerClose } from '../viewer/close-hub'
 import {
   keymapById,
   listKeymaps,
@@ -21,6 +23,7 @@ import { useViewerSource, viewerSaveKey, viewerSaveMutation } from '../../data/v
 import type { ViewerFile } from '../../data/viewer-source'
 import { useFileOpenMode } from '../../data/file-open-mode'
 import { useStageStore } from '../../stage/store'
+import { useLiveTitleStore } from '../../stage/live-title'
 import { FOCUS_SCOPES } from '../../focus/scopes'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
@@ -62,16 +65,38 @@ async function toggleEditViaMenu(): Promise<void> {
   await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
 }
 
+/**
+ * 这一组用例最后一次 `open()` 打开的那条路径。
+ *
+ * W1 之后 `FileViewer` 收 `path`(一个文件一份实例),而这一族用例的写法是
+ * 「先 open 一个文件,再渲染那台查看器」—— 那条路径已经说过一次了,不该在
+ * 每个 `render` 里再抄一遍(抄错一处就是一台在看别的文件的查看器,而用例会
+ * 以「空态」的形式红,读起来完全不像根因)。
+ */
+let opened = '/repo/a.ts'
+
 async function open(path: string): Promise<void> {
+  opened = path
   await act(async () => {
     await useViewerSource.getState().openFile(path)
   })
 }
 
+/** 用例里那台查看器:`path` 缺省 = 最后一次 `open()` 打开的那条。 */
+function Viewer(props: { path?: string; onReveal?: (p: string) => void; strip?: ReactNode }) {
+  const { path = opened, ...rest } = props
+  return <FileViewer path={path} {...rest} />
+}
+
+/** 那一份实例。多实例之后「屏幕上那一份」这句话不成立了 —— 要问哪一个。 */
+const inst = (path: string = opened) => useViewerSource.getState().instances[path]
+
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   useViewerSource.getState().reset()
   useFileOpenMode.setState({ mode: 'panel' })
+  useLiveTitleStore.setState({ titles: {} })
+  opened = '/repo/a.ts'
 })
 
 // 响应链是模块级单例(同 store):一份用例留下的作用域不该被下一份看见。
@@ -90,7 +115,7 @@ afterEach(() => {
  * 「这一下按键经不经过它的根」(用户报的 ⌘F 死的正是后一条判据)。
  * 第②样走 `activateScope('viewer')`,与真机上「点开一个文件」落的是同一口。
  */
-function renderViewer(node: React.ReactElement = <FileViewer />) {
+function renderViewer(node: React.ReactElement = <Viewer />) {
   const view = render(
     <>
       <FocusDispatchHarness />
@@ -227,36 +252,37 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
    * 下面这一条正是那条裁定的机器化:**它们不在头上**,而且不是「藏起来了」——
    * 它们在菜单里(由 files-panel / 本文件的菜单那一组验)。
    */
-  it('只剩类型徽 + 名 + 关闭;复制 / 编辑 / Finder / 打开方式都不在头上', async () => {
+  /*
+   * ── W1:整条头没有了(一格一檐)───────────────────────────────────────
+   * 09-01 那条裁定(檐上只剩身份)在 W1 走到终点:**内容自己不画檐**。
+   * 撤下去的那四件仍然一件都不在(它们在右键菜单里,由下面那条验),
+   * 而身份与关闭去了叶檐:名字经 `stage/live-title` 发布(键 = refId,
+   * `viewer-host-title.test.tsx` 钉),✕ 是 tab 上那唯一的一颗
+   * (`workbench/__tests__/pane-leaf.test.tsx` 钉)。
+   */
+  it('查看器身上一件檐上的东西都没有(名 / 关闭 / 撤下去那四件)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
-    expect(screen.getByTestId('viewer-name').textContent).toBe('a.ts')
-    expect(screen.getByTestId('viewer-name').getAttribute('data-viewer-path')).toBe('/repo/a.ts')
-    expect(screen.getByTestId('viewer-close')).toBeTruthy()
-    // 撤下去的那四件,一件都不在。
+    renderViewer(<Viewer />)
+    expect(screen.queryByTestId('viewer-name')).toBeNull()
+    expect(screen.queryByTestId('viewer-close')).toBeNull()
     expect(screen.queryByTestId('viewer-copy-path')).toBeNull()
     expect(screen.queryByTestId('viewer-open-mode')).toBeNull()
     expect(screen.queryByTestId('viewer-edit-toggle')).toBeNull()
     expect(screen.queryByRole('button', { name: '在文件管理器中显示' })).toBeNull()
-    // 大小与时间是详情面的事:这块头上一个数都没有。
+    // 大小与时间是详情面的事:这块面上一个数都没有。
     expect(screen.queryByText(/KB|MB|B$/)).toBeNull()
-  })
-
-  it('名字截断配 Tooltip 全名 —— 悬停说得出整条路径(禁令区那条)', async () => {
-    installPort()
-    await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
-    fireEvent.focus(screen.getByTestId('viewer-name'))
-    await waitFor(() => expect(screen.getByRole('tooltip').textContent).toBe('/repo/a.ts'), {
-      timeout: 2000,
+    // 身份仍然说得出来 —— 只是它现在说给檐听(整条路径进 tip,禁令区那条)。
+    expect(useLiveTitleStore.getState().titles['file:/repo/a.ts']).toMatchObject({
+      text: 'a.ts',
+      tip: '/repo/a.ts',
     })
   })
 
   it('身上右键 = 那张动作菜单(与树行同一件);编辑 / 复制 / Finder / 七档都在里面', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.contextMenu(screen.getByTestId('viewer-body'))
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
     const menu = screen.getByRole('menu')
@@ -267,22 +293,31 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
     expect(within(menu).getAllByRole('menuitemradio')).toHaveLength(7)
   })
 
-  it('菜单里选一档打开方式 = 当场生效(记忆 + 落点一起走)', async () => {
+  /**
+   * W1 的**临时退化**,这一条把它钉住(交付报告点名):架子与浮窗那五档要等 W4
+   * 才有树可插,所以它们在菜单里**禁灰 + 注脚**,不是「点了没反应」。
+   * 真接通的两档是「面板内」与「主区域」。
+   */
+  it('没接上的五档禁灰 + 注脚;接上的两档能选', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.contextMenu(screen.getByTestId('viewer-body'))
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
-    fireEvent.click(screen.getByText('浮窗'))
-    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('float'))
-    // 「当场生效」的机器化:那块瓦真的被摆到了浮窗上(修前只记档不搬)。
-    expect(useStageStore.getState().placements['viewer']).toEqual({ kind: 'float' })
+    const menu = screen.getByRole('menu')
+    const disabled = within(menu)
+      .getAllByRole('menuitemradio')
+      .filter((el) => el.hasAttribute('disabled'))
+    expect(disabled).toHaveLength(5)
+    expect(within(menu).getAllByText('架子与浮窗的标签下一批')).toHaveLength(5)
+    fireEvent.click(within(menu).getByText('主区域'))
+    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
   })
 
   it('菜单里的 Finder 走 files 端口那条唯一的写口', async () => {
     const port = installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.contextMenu(screen.getByTestId('viewer-body'))
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
     fireEvent.click(screen.getByText('在文件管理器中显示'))
@@ -301,73 +336,74 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
  * 「整条不画」而不是「把里面几件藏掉」:后者会剩一条 40px 空带子,而那正是
  * 报障里「空间利用度很低」的那 40px。
  */
-describe('落点:宿主自带檐时合一', () => {
-  const HOST_OWNS = ['float', 'stage', 'cover']
-  const SELF_OWNS = ['panel', 'edge-left', 'edge-right', 'edge-top', 'edge-bottom']
-
-  for (const placement of HOST_OWNS) {
-    it(`${placement}:查看器那条檐整条不画(宿主檐替它说身份)`, async () => {
-      installPort()
-      await open('/repo/a.ts')
-      renderViewer(<FileViewer placement={placement} />)
-      expect(screen.queryByTestId('viewer-name')).toBeNull()
-      expect(screen.queryByTestId('viewer-close')).toBeNull()
-      expect(document.querySelector('[data-viewer-chrome]')).toBeNull()
-      // 体与脚照画 —— 合的是檐,不是把查看器变成半个。
-      expect(screen.getByTestId('viewer-body')).toBeTruthy()
-      expect(screen.getByTestId('viewer-status')).toBeTruthy()
-    })
-  }
-
-  for (const placement of SELF_OWNS) {
-    it(`${placement}:查看器自己那条檐照画(宿主没有能说文件名的檐)`, async () => {
-      installPort()
-      await open('/repo/a.ts')
-      renderViewer(<FileViewer placement={placement} />)
-      expect(screen.getByTestId('viewer-name').textContent).toBe('a.ts')
-      expect(screen.getByTestId('viewer-close')).toBeTruthy()
-    })
-  }
-
-  /*
-   * ── 型工具条的归属(09-01 自查走查:panel 一屏五条横带)──────────────────
-   * 走查读数(面板高 478):面包屑 45 + 名条 40 + **型工具条 51** + 正文 291
-   * + 状态条 26 + 提示行 25。工具条那 51px 是能省的 —— 40 高的名条右边空着
-   * 一大片,一排放得下就不该占两排。
-   * 合檐的落点里名条整条不画,那时它才自己成一条(宿主那条 header 是通用的,
-   * 塞不进一个这一型专用的分段器)。
+describe('一格一檐:查看器自己不画檐(W1)', () => {
+  /**
+   * 09-01 那条「合檐」判例的**终态**。从前这里有一张表(`HOST_OWNS_CHROME`):
+   * 三种宿主自带檐 → 查看器整条不画,另外五档自己画。W1 把那张表整个删了 ——
+   * 规则现在只有一条:**一片叶只有一条檐,那条檐就是 tab 条;内容自己不画檐。**
+   *
+   * 于是这一组从「按落点分两支」变成一条:**任何时候都不画**。少的那两颗
+   * (名 / 关闭)各有新家:名字发布进 `stage/live-title`(键 = refId,
+   * 由 `viewer-host-title.test.tsx` 钉),关闭是 tab 上那颗唯一的 ✕
+   * (由 `workbench/__tests__/pane-leaf.test.tsx` 钉)。
    */
-  it('有名条的落点:型工具条并进名条右端,不再自成一条', async () => {
-    installPort({
-      readContent: vi.fn(async () => ({ success: true, content: '# md\n', size: 5 })),
-    })
-    await open('/repo/a.md')
-    renderViewer(<FileViewer placement="panel" />)
-    // 那一格还在(渲染 ⇄ 源码切得动),但它长在名条里,不再是一条独立的带子。
-    expect(screen.getByRole('radio', { name: '渲染' })).toBeTruthy()
-    expect(screen.queryByTestId('viewer-toolbar')).toBeNull()
-    const chrome = document.querySelector('[data-viewer-chrome]')
-    expect(chrome?.contains(screen.getByRole('radio', { name: '渲染' }))).toBe(true)
-  })
-
-  it('合檐的落点:名条不画,型工具条自己成一条(宿主檐塞不进它)', async () => {
-    installPort({
-      readContent: vi.fn(async () => ({ success: true, content: '# md\n', size: 5 })),
-    })
-    await open('/repo/a.md')
-    renderViewer(<FileViewer placement="float" />)
-    expect(document.querySelector('[data-viewer-chrome]')).toBeNull()
-    expect(screen.getByTestId('viewer-toolbar')).toBeTruthy()
-    expect(screen.getByRole('radio', { name: '渲染' })).toBeTruthy()
-  })
-
-  it('没有工具条的型:两种落点都不留一条空带子', async () => {
+  it('查看器身上没有檐:没有名、没有关闭、没有那条 data-viewer-chrome', async () => {
     installPort()
     await open('/repo/a.ts')
-    const view = renderViewer(<FileViewer placement="panel" />)
+    renderViewer()
+    expect(screen.queryByTestId('viewer-name')).toBeNull()
+    expect(screen.queryByTestId('viewer-close')).toBeNull()
+    expect(document.querySelector('[data-viewer-chrome]')).toBeNull()
+    // 体与脚照画 —— 撤掉的是檐,不是把查看器变成半个。
+    expect(screen.getByTestId('viewer-body')).toBeTruthy()
+    expect(screen.getByTestId('viewer-status')).toBeTruthy()
+  })
+
+  /*
+   * ── 型工具条的归属(W1;W1-a 修批走到终点)────────────────────────────
+   * 判据从「我在哪一档落点」换成**「檐在哪儿」**,而修批之后连这个分支都收窄成
+   * 一句话:**型工具条永远长在那条檐上**(`ContentKind.toolbar` → `FileViewerToolbar`
+   * → `workbench/LeafStrip` 的工具位)。查看器身上**再也没有**第二条工具带子 ——
+   * 面板内那一档从前有一条(`toolbarInline`),那是因为它当时一条檐都没有。
+   */
+  it('查看器身上永远没有那条工具带子 —— 型工具条长在檐上', async () => {
+    installPort({
+      readContent: vi.fn(async () => ({ success: true, content: '# md\n', size: 5 })),
+    })
+    await open('/repo/a.md')
+    renderViewer()
     expect(screen.queryByTestId('viewer-toolbar')).toBeNull()
-    view.rerender(<FileViewer placement="float" />)
+    expect(screen.queryByRole('radio', { name: '渲染' })).toBeNull()
+  })
+
+  /**
+   * **`strip`:宿主的檐画在盒子里面**(W1-a 修批)。
+   *
+   * 面板内那条分栏不在拼贴树里,又不许在树与查看器之间插包裹层
+   * (`[data-testid="files-tree"] + [data-testid="file-viewer"]` 是 gate:files 的
+   * 相邻兄弟判据),所以它把自己那条身份带交进来。查看器只做两件事:
+   * **挂在盒子里**、**挂在最顶上**(身份带在顶、身在中、脚在底,与中央叶同形)。
+   * 「那条带子上写着什么」由 `files-panel.test.tsx` 从真面板验 —— 这里验的是
+   * 查看器这一侧的契约,它对内容一无所知。
+   */
+  it('`strip`:宿主那条檐挂在查看器**盒子里**、而且是第一个孩子', async () => {
+    installPort()
+    await open('/repo/a.ts')
+    renderViewer(<Viewer strip={<div data-testid="host-strip" />} />)
+    const box = screen.getByTestId('file-viewer')
+    const band = screen.getByTestId('host-strip')
+    expect(box.contains(band)).toBe(true)
+    expect(box.firstElementChild).toBe(band)
+    // 挂了檐也不多长一条工具带子(那一条随修批删了)。
     expect(screen.queryByTestId('viewer-toolbar')).toBeNull()
+  })
+
+  it('不给 `strip`(有叶的宿主):盒子的第一个孩子就是身,不留一条空带子', async () => {
+    installPort()
+    await open('/repo/a.ts')
+    renderViewer()
+    const box = screen.getByTestId('file-viewer')
+    expect(box.firstElementChild).toBe(screen.getByTestId('viewer-body'))
   })
 
   /*
@@ -393,7 +429,7 @@ describe('体:code 型', () => {
   it('行由我们自己切(不等高亮器),每一行一个块级盒 —— 行号靠 counter,不进选区', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     const pre = screen.getByTestId('viewer-code')
     // 尾随换行切出来那个空段被丢掉:三行内容就是三行。
     expect(pre.getAttribute('data-viewer-lines')).toBe('3')
@@ -412,13 +448,13 @@ describe('体:code 型', () => {
   it('当前行由 ⌘L 落点(**行本身不挂交互** —— 一行代码不是控件)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     // 点一行什么都不发生:落到某一行只有跳转条这一条路(定稿的唯一入口)。
     fireEvent.click(document.querySelector('[data-line="2"]')!)
-    expect(useViewerSource.getState().view.currentLine).toBe(0)
+    expect(inst().view.currentLine).toBe(0)
 
     act(() => {
-      useViewerSource.getState().setView({ currentLine: 2 })
+      useViewerSource.getState().setView(opened, { currentLine: 2 })
     })
     await waitFor(() =>
       expect(document.querySelector('[data-line="2"]')?.getAttribute('data-current')).toBe('true'),
@@ -429,11 +465,11 @@ describe('体:code 型', () => {
   it('折行开关长在状态栏(它是这一型自己声明的那一格)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     const wrap = within(screen.getByTestId('viewer-status')).getByRole('button', { name: '折行' })
     expect(wrap.getAttribute('aria-pressed')).toBe('false')
     fireEvent.click(wrap)
-    await waitFor(() => expect(useViewerSource.getState().view.wrap).toBe(true))
+    await waitFor(() => expect(inst().view.wrap).toBe(true))
   })
 })
 
@@ -441,11 +477,17 @@ describe('体:markdown 型', () => {
   it('渲染面走块系统(与聊天同一条路),源码面走 code 本体', async () => {
     installPort({ readContent: vi.fn(async () => ({ success: true, content: '# 标题\n\n一段话', size: 12 })) })
     await open('/repo/README.md')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     expect(screen.getByTestId('viewer-markdown')).toBeTruthy()
     expect(screen.getByRole('heading', { name: '标题' })).toBeTruthy()
 
-    fireEvent.click(screen.getByRole('radio', { name: '源码' }))
+    /*
+     * W1:「渲染 ⇄ 源码」那一格搬去了**叶檐的动作组**(`ContentKind.toolbar`),
+     * 所以在这台只渲染查看器本体的夹具里按不到它 —— 它的在场由
+     * `workbench/__tests__/pane-leaf.test.tsx` 验。这里改从 store 那一侧翻,
+     * 验的仍是本条要验的那件事:**源码面走 code 本体**。
+     */
+    act(() => useViewerSource.getState().setView('/repo/README.md', { showSource: true }))
     await waitFor(() => expect(screen.getByTestId('viewer-code')).toBeTruthy())
     expect(screen.queryByTestId('viewer-markdown')).toBeNull()
   })
@@ -457,7 +499,7 @@ describe('体:诚实态', () => {
       readContent: vi.fn(async () => ({ success: true, content: '', isBinary: true, size: 2048 })),
     })
     await open('/repo/blob.dat')
-    renderViewer(<FileViewer onReveal={vi.fn()} />)
+    renderViewer(<Viewer onReveal={vi.fn()} />)
     expect(screen.getByTestId('viewer-honest')).toBeTruthy()
     expect(screen.getByText('这是二进制文件,没法按文本查看')).toBeTruthy()
     expect(screen.getByText('2.0 KB')).toBeTruthy()
@@ -468,7 +510,7 @@ describe('体:诚实态', () => {
       readContent: vi.fn(async () => ({ success: false, error: 'EACCES: permission denied' })),
     })
     await open('/repo/secret.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     expect(screen.getByText('没有权限读这个文件')).toBeTruthy()
     expect(screen.getByText('EACCES: permission denied')).toBeTruthy()
   })
@@ -477,27 +519,35 @@ describe('体:诚实态', () => {
 /* ── UI 状态四律 ───────────────────────────────────────────────────────── */
 
 describe('四律:切文件不闪 / 骨架只首载 / 异步钮有 pending', () => {
-  it('① 读新文件期间旧内容留在屏上,头上那格读数说「正在读取…」', async () => {
+  it('① 重读期间旧内容留在屏上,脚上那格读数说「正在读取…」', async () => {
     let release: ((v: { success: true; content: string; size: number }) => void) | undefined
     const slow = new Promise<{ success: true; content: string; size: number }>((resolve) => {
       release = resolve
     })
+    let call = 0
     installPort({
-      readContent: vi.fn((path: string) =>
-        path === '/repo/a.ts'
+      readContent: vi.fn(() => {
+        call += 1
+        return call === 1
           ? Promise.resolve({ success: true as const, content: CODE, size: CODE.length })
-          : slow,
-      ),
+          : slow
+      }),
     })
+    /*
+     * W1 改了这一条的**夹具**,没改它验的那件事。从前「切文件」是同一份查看器
+     * 换内容,所以「旧内容留到新内容到场」拿两条路径就能演;多实例之后那两条
+     * 路径是**两份实例**(各自互不相干,由 viewer-source.test 的多实例组验),
+     * 而这一条要验的一直是**同一份实例在等回执时不空屏** —— 那就是重读。
+     */
     await open('/repo/a.ts')
-    const { rerender } = renderViewer(<FileViewer />)
+    const { rerender } = renderViewer(<Viewer />)
     expect(screen.getByTestId('viewer-code')).toBeTruthy()
 
     let opening: Promise<void> | undefined
     await act(async () => {
-      opening = useViewerSource.getState().openFile('/repo/b.ts')
+      opening = useViewerSource.getState().reload('/repo/a.ts')
     })
-    rerender(<FileViewer />)
+    rerender(<Viewer />)
     // 旧内容还在,读数在飞 —— 屏幕上没有任何一帧是空的。
     expect(screen.getByTestId('viewer-code')).toBeTruthy()
     expect(screen.getByTestId('viewer-inflight')).toBeTruthy()
@@ -523,7 +573,7 @@ describe('四律:切文件不闪 / 骨架只首载 / 异步钮有 pending', () =
     await act(async () => {
       opening = useViewerSource.getState().openFile('/repo/a.ts')
     })
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     expect(screen.getByTestId('viewer-first-load')).toBeTruthy()
     await act(async () => {
       release?.({ success: true, content: CODE, size: CODE.length })
@@ -539,7 +589,7 @@ describe('四律:切文件不闪 / 骨架只首载 / 异步钮有 pending', () =
    */
   it('空态:一个文件都没打开时说实话,不转圈', () => {
     installPort()
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     expect(screen.getByTestId('viewer-empty')).toBeTruthy()
     expect(screen.queryByTestId('viewer-first-load')).toBeNull()
   })
@@ -555,7 +605,7 @@ describe('四律:切文件不闪 / 骨架只首载 / 异步钮有 pending', () =
       ),
     })
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     await toggleEditViaMenu()
     fireEvent.change(screen.getByTestId('viewer-editor'), { target: { value: 'changed' } })
     fireEvent.click(screen.getByTestId('viewer-save'))
@@ -584,7 +634,7 @@ describe('四律:切文件不闪 / 骨架只首载 / 异步钮有 pending', () =
       ),
     })
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     await toggleEditViaMenu()
     fireEvent.change(screen.getByTestId('viewer-editor'), { target: { value: 'changed' } })
     fireEvent.click(screen.getByTestId('viewer-save'))
@@ -609,31 +659,40 @@ describe('轻编辑:右键「编辑」→ 等宽文本 → ⌘S', () => {
   it('进编辑:一块等宽可写文本(无高亮),改了就挂「未保存」丸', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
-    expect(screen.queryByTestId('viewer-dirty')).toBeNull()
+    renderViewer(<Viewer />)
+    /*
+     * W1:**未保存丸不在查看器身上了** —— 它是 tab 上那一枚(`TabSpec.dirty`)。
+     * 「脏没脏」这件事查看器仍然说得出来,只是它说给檐听:发布进 `live-title`
+     * 的那一格 `dirty`。所以这一条读那一格,而不是屏幕上某个 testid。
+     * 丸画得对不对由 `workbench/__tests__/pane-leaf.test.tsx` 验。
+     */
+    const dirty = () => useLiveTitleStore.getState().titles['file:/repo/a.ts']?.dirty
+    expect(dirty()).toBe(false)
 
     await toggleEditViaMenu()
     const editor = screen.getByTestId('viewer-editor')
     expect((editor as HTMLTextAreaElement).value).toBe(CODE)
     // 没改之前不算脏 —— 判据是「草稿与内容不逐字相同」,不是「进过编辑」。
-    expect(screen.queryByTestId('viewer-dirty')).toBeNull()
+    expect(dirty()).toBe(false)
 
     fireEvent.change(editor, { target: { value: `${CODE}// more\n` } })
-    await waitFor(() => expect(screen.getByTestId('viewer-dirty')).toBeTruthy())
+    await waitFor(() => expect(dirty()).toBe(true))
   })
 
   it('⌘S 走端口那条唯一的写口,并把手上这份内容就地换成草稿', async () => {
     const port = installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     await toggleEditViaMenu()
     fireEvent.change(screen.getByTestId('viewer-editor'), { target: { value: 'next' } })
     fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 's', metaKey: true })
 
     await waitFor(() => expect(port.saveContent).toHaveBeenCalledWith('/repo/a.ts', 'next', undefined))
-    await waitFor(() => expect(screen.queryByTestId('viewer-dirty')).toBeNull())
+    await waitFor(() =>
+      expect(useLiveTitleStore.getState().titles['file:/repo/a.ts']?.dirty).toBe(false),
+    )
     expect(screen.getByTestId('viewer-saved')).toBeTruthy()
-    expect(useViewerSource.getState().file).toMatchObject({ content: 'next', mtimeMs: 42 })
+    expect(inst()?.file).toMatchObject({ content: 'next', mtimeMs: 42 })
   })
 
   it('盘上被别人改过:如实说,**不覆盖**(乐观锁的回执自成一句话)', async () => {
@@ -642,7 +701,7 @@ describe('轻编辑:右键「编辑」→ 等宽文本 → ⌘S', () => {
       saveContent: vi.fn(async () => ({ success: false, conflict: true, error: 'stale' })),
     })
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     await toggleEditViaMenu()
     fireEvent.change(screen.getByTestId('viewer-editor'), { target: { value: 'mine' } })
     fireEvent.click(screen.getByTestId('viewer-save'))
@@ -650,34 +709,76 @@ describe('轻编辑:右键「编辑」→ 等宽文本 → ⌘S', () => {
       expect(screen.getByText('这个文件在你打开之后被改过 —— 没有覆盖')).toBeTruthy(),
     )
     // 改动还在手上,一个字都没丢。
-    expect(useViewerSource.getState().edit.draft).toBe('mine')
+    expect(inst().edit.draft).toBe('mine')
   })
 
-  it('未保存时关闭 = 三按钮确认(取消 / 不保存 / 保存并关闭)', async () => {
+  /*
+   * ── W1:那一问搬去了 `ContentKind.beforeClose`,落点是叶檐 ─────────────────
+   * 关闭一格 tab 的路现在只有 tab 上那颗 ✕(与 ⌘W / 右键「关闭」),而它们都在
+   * **叶檐**上;被关掉的那棵树自己问不了自己,所以这一问由 `file` 那一种自己
+   * 发起(`askViewerClose`),画在单槽 hub `<ViewerCloseHost/>` 上。
+   *
+   * 于是这两条从「点查看器檐上那颗 ✕」改成「按种类那条路问一次」——
+   * **验的是同一件事**:三条出路在、答案对、没有改动时不问。
+   */
+  it('未保存时问一句 = 三按钮确认(取消 / 不保存 / 保存并关闭)', async () => {
     const port = installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(
+      <>
+        <Viewer />
+        <ViewerCloseHost />
+      </>,
+    )
     await toggleEditViaMenu()
     fireEvent.change(screen.getByTestId('viewer-editor'), { target: { value: 'dirty' } })
-    fireEvent.click(screen.getByLabelText('关闭查看器'))
 
+    let answer: Promise<'close' | 'cancel'> | undefined
+    await act(async () => {
+      answer = askViewerClose('/repo/a.ts')
+    })
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByRole('button', { name: '取消' })).toBeTruthy()
     expect(within(dialog).getByRole('button', { name: '不保存' })).toBeTruthy()
-    // 还没关掉 —— 确认之前它一定还在。
-    expect(useViewerSource.getState().file).toBeTruthy()
+    // 还没答 —— 确认之前那一格一定还在。
+    expect(inst()?.file).toBeTruthy()
 
     fireEvent.click(within(dialog).getByRole('button', { name: '保存并关闭' }))
     await waitFor(() => expect(port.saveContent).toHaveBeenCalled())
-    await waitFor(() => expect(useViewerSource.getState().file).toBeNull())
+    await expect(answer).resolves.toBe('close')
   })
 
-  it('没有未保存的改动就直接关,不问', async () => {
+  it('「取消」= 这一次关闭作废(树一个字不动)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
-    fireEvent.click(screen.getByLabelText('关闭查看器'))
-    await waitFor(() => expect(useViewerSource.getState().file).toBeNull())
+    renderViewer(
+      <>
+        <Viewer />
+        <ViewerCloseHost />
+      </>,
+    )
+    await toggleEditViaMenu()
+    fireEvent.change(screen.getByTestId('viewer-editor'), { target: { value: 'dirty' } })
+    let answer: Promise<'close' | 'cancel'> | undefined
+    await act(async () => {
+      answer = askViewerClose('/repo/a.ts')
+    })
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '取消' }))
+    await expect(answer).resolves.toBe('cancel')
+    expect(inst()?.file).toBeTruthy()
+  })
+
+  it('没有未保存的改动就直接答「关」,不问', async () => {
+    installPort()
+    await open('/repo/a.ts')
+    renderViewer(
+      <>
+        <Viewer />
+        <ViewerCloseHost />
+      </>,
+    )
+    await expect(askViewerClose('/repo/a.ts')).resolves.toBe('close')
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -694,7 +795,7 @@ describe('轻编辑:右键「编辑」→ 等宽文本 → ⌘S', () => {
   it('进编辑走右键菜单,出编辑走状态栏那颗「完成编辑」', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     await toggleEditViaMenu()
     expect(screen.getByTestId('viewer-editor')).toBeTruthy()
     fireEvent.click(screen.getByTestId('viewer-edit-done'))
@@ -709,7 +810,7 @@ describe('轻编辑:右键「编辑」→ 等宽文本 → ⌘S', () => {
   it('编辑框里的右键让给文本域,不弹我们这张菜单', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     await toggleEditViaMenu()
     fireEvent.contextMenu(screen.getByTestId('viewer-editor'))
     expect(screen.queryByRole('menu')).toBeNull()
@@ -722,20 +823,20 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
   it('⌘L 开条;输入行号回车 → 落当前行', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'l', metaKey: true })
     const bar = await screen.findByTestId('viewer-jump-bar')
 
     fireEvent.change(within(bar).getByLabelText('跳转到'), { target: { value: '3' } })
     fireEvent.keyDown(within(bar).getByLabelText('跳转到'), { key: 'Enter' })
-    await waitFor(() => expect(useViewerSource.getState().view.currentLine).toBe(3))
+    await waitFor(() => expect(inst().view.currentLine).toBe(3))
     expect(screen.queryByTestId('viewer-jump-bar')).toBeNull()
   })
 
   it('状态栏那格「行 n:1 ⌘L」是它的第二个入口', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.click(screen.getByTestId('viewer-jump'))
     expect(await screen.findByTestId('viewer-jump-bar')).toBeTruthy()
   })
@@ -743,7 +844,7 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
   it('没接上的那两档**画出来**,写着「还没接上」,不藏起来(F2:检索已接真)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.click(screen.getByTestId('viewer-jump'))
     const bar = await screen.findByTestId('viewer-jump-bar')
     // 空输入时把四档全列出来当提示;F2 起「检索命中」也真接上了,
@@ -761,7 +862,7 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
   it('⌘F 开的是同一条跳转条,而且把 `/` 前缀先打上', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'f', metaKey: true })
     const bar = await screen.findByTestId('viewer-jump-bar')
     expect((within(bar).getByRole('textbox') as HTMLInputElement).value).toBe('/')
@@ -770,7 +871,7 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
   it('检索:一行一条命中,↵ 走一个、到底绕回第一个,当前行跟着走', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'f', metaKey: true })
     const bar = await screen.findByTestId('viewer-jump-bar')
     const input = within(bar).getByRole('textbox')
@@ -780,22 +881,22 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
       expect(screen.getByTestId('viewer-jump-count').textContent).toBe('第 1 个 · 共 3 个'),
     )
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(useViewerSource.getState().view.currentLine).toBe(1)
+    expect(inst().view.currentLine).toBe(1)
     // 落点之后**条不关**(cycle 档),↵ 再按走下一个。
     expect(screen.getByTestId('viewer-jump-bar')).toBeTruthy()
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(useViewerSource.getState().view.currentLine).toBe(2)
+    expect(inst().view.currentLine).toBe(2)
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(useViewerSource.getState().view.currentLine).toBe(3)
+    expect(inst().view.currentLine).toBe(3)
     // 到底绕回第一个。
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(useViewerSource.getState().view.currentLine).toBe(1)
+    expect(inst().view.currentLine).toBe(1)
   })
 
   it('检索没有命中时如实说一句,不给一张空表', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'f', metaKey: true })
     const bar = await screen.findByTestId('viewer-jump-bar')
     fireEvent.change(within(bar).getByRole('textbox'), { target: { value: '/zzz' } })
@@ -805,7 +906,7 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
   it('不按行寻址的体没有那一格(markdown 的渲染面)', async () => {
     installPort({ readContent: vi.fn(async () => ({ success: true, content: '# x', size: 3 })) })
     await open('/repo/README.md')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     expect(screen.queryByTestId('viewer-jump')).toBeNull()
   })
 
@@ -838,7 +939,7 @@ describe('⌘L 跳转条:跳转的唯一入口', () => {
   it('点条外面**不**关它(原语默认是关的,这一档是显式关掉的)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     fireEvent.keyDown(screen.getByTestId('file-viewer'), { key: 'l', metaKey: true })
     await screen.findByTestId('viewer-jump-bar')
 
@@ -853,7 +954,7 @@ describe('脚:26 的状态栏', () => {
   it('左段是这一型报的事实(语言 · 编码 · 换行符)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     expect(within(screen.getByTestId('viewer-status')).getByText('typescript · UTF-8 · LF')).toBeTruthy()
   })
 
@@ -864,7 +965,7 @@ describe('脚:26 的状态栏', () => {
       readContent: vi.fn(async () => ({ success: true, content: CODE, size: 10 * 1024 * 1024 })),
     })
     await open('/repo/big.log')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     expect(screen.getByText(/已载入/)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: '继续加载' }))
     await waitFor(() => expect(port.readContent).toHaveBeenCalledTimes(2))
@@ -873,11 +974,11 @@ describe('脚:26 的状态栏', () => {
   it('Vim 开关就地换档:模式标出现,而且**不重挂**查看器(体还是同一个节点)', async () => {
     installPort()
     await open('/repo/a.ts')
-    renderViewer(<FileViewer />)
+    renderViewer(<Viewer />)
     const before = screen.getByTestId('viewer-code')
     fireEvent.click(screen.getByTestId('viewer-vim-toggle'))
     await waitFor(() => expect(screen.getByTestId('viewer-vim-mode').textContent).toBe('NORMAL'))
     expect(screen.getByTestId('viewer-code')).toBe(before)
-    expect(useViewerSource.getState().view.keymap).toBe('vim')
+    expect(inst().view.keymap).toBe('vim')
   })
 })

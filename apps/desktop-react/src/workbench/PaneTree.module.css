@@ -1,0 +1,52 @@
+/* ── 一棵树 = 一层绝对定位的格子 ─────────────────────────────────────────
+ * 每一片叶都是这个容器的直接孩子(理由在 PaneTree.tsx 与 layout.ts 的文件头:
+ * 递归画会让分屏把兄弟叶整棵重挂)。所以这一层是定位参考系,别的什么都不管。 */
+.panes {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* 一片叶的格子。四个边由 `layout.ts` 算出来的 calc() 串给(行内 style),
+ * 这里只说「它是绝对定位的、里面的东西不许溢出」。 */
+.slot {
+  position: absolute;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * 量比例用的那个盒:铺在这一次切分自己那块地上,**什么都不画、什么都不接**。
+ * 它存在的唯一理由是 `getBoundingClientRect()` —— 一条 6px 宽的杆量不出
+ * 「这一段一共多宽」。
+ */
+.seamBox {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* 杆坐的那条细带子。它在 DOM 里排在所有叶之后,所以天然盖在缝上接指针 ——
+ * 不动 z-index(层序由 DOM 序给,那是最不容易漂的一种)。 */
+.seam {
+  position: absolute;
+  display: flex;
+}
+
+/* 竖杆:宽度是抓手,高度由这条缝的长度给(行内 style)。
+ * `align-items: stretch` 让 `ui/Splitter` 那条 `align-self: stretch` 拿得到高度。 */
+.seamV {
+  width: var(--splitter-hit);
+  transform: translateX(-50%);
+  flex-direction: row;
+  align-items: stretch;
+}
+
+/* 横杆:反过来 —— 交叉轴换成水平,杆才拿得到宽度。 */
+.seamH {
+  height: var(--splitter-hit);
+  transform: translateY(-50%);
+  flex-direction: column;
+  align-items: stretch;
+}

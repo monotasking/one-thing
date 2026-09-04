@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { useRef } from 'react'
 import { act, fireEvent, render, screen } from '@testing-library/react'
-import { ViewerChrome, hostOwnsChrome } from '../ViewerChrome'
 import { useViewerScroll } from '../useViewerScroll'
 import { anchorAtPointer, anchorBelow, useFileFloats } from '../../file-floats'
 import type { FileFloats } from '../../file-floats'
@@ -49,16 +48,14 @@ const scrollTops = new WeakMap<Element, number>()
 let originalScrollTop: PropertyDescriptor | undefined
 
 function ScrollHarness({
-  placement,
   currentLine,
   path,
 }: {
-  placement: string
   currentLine: number | undefined
-  path: string | undefined
+  path: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
-  const { onScroll } = useViewerScroll(ref, { currentLine, path, placement })
+  const { onScroll } = useViewerScroll(ref, { currentLine, path })
   return (
     <div data-testid="body" ref={ref} onScroll={onScroll}>
       <span data-line="3">third</span>
@@ -78,45 +75,56 @@ describe('useViewerScroll —— 抄进去 / 贴回来 / 跳过去', () => {
         scrollTops.set(this, v)
       },
     })
-    useViewerSource.setState({ scrollTop: 0 })
+    useViewerSource.getState().reset()
   })
   afterEach(() => {
     if (originalScrollTop) Object.defineProperty(Element.prototype, 'scrollTop', originalScrollTop)
   })
 
   it('③ 每一帧滚动抄进 store —— 没有它,②就没有数可贴', () => {
-    render(<ScrollHarness placement="panel" currentLine={0} path="/repo/a.ts" />)
+    render(<ScrollHarness currentLine={0} path="/repo/a.ts" />)
     const body = screen.getByTestId('body')
     body.scrollTop = 260
     fireEvent.scroll(body)
-    expect(useViewerSource.getState().scrollTop).toBe(260)
+    expect(useViewerSource.getState().scrolls['/repo/a.ts']).toBe(260)
   })
 
-  it('② 换宿主(placement 变)挂上来第一帧就把滚动位贴回去,不弹回顶上', () => {
-    useViewerSource.setState({ scrollTop: 120 })
-    const { rerender } = render(<ScrollHarness placement="panel" currentLine={0} path="/repo/a.ts" />)
+  it('② 换宿主(这棵树真重挂)挂上来第一帧就把滚动位贴回去,不弹回顶上', () => {
+    useViewerSource.setState({ scrolls: { '/repo/a.ts': 120 } })
+    const { unmount } = render(<ScrollHarness currentLine={0} path="/repo/a.ts" />)
     expect(screen.getByTestId('body').scrollTop).toBe(120)
-
-    useViewerSource.setState({ scrollTop: 340 })
-    rerender(<ScrollHarness placement="float" currentLine={0} path="/repo/a.ts" />)
+    /*
+     * W1:`placement` 那个 prop 没有了 —— 查看器不再知道自己被摆在哪儿。
+     * 「换宿主」这件事本来就是一次**真重挂**(新的组件实例,layout effect 自然重跑),
+     * 不需要一个字符串来提醒它。所以这里换成真的卸载再挂一次。
+     */
+    unmount()
+    useViewerSource.setState({ scrolls: { '/repo/a.ts': 340 } })
+    render(<ScrollHarness currentLine={0} path="/repo/a.ts" />)
     expect(screen.getByTestId('body').scrollTop).toBe(340)
   })
 
+  it('②b 两份实例各贴各的数(多实例不串)', () => {
+    useViewerSource.setState({ scrolls: { '/repo/a.ts': 120, '/repo/b.ts': 340 } })
+    render(<ScrollHarness currentLine={0} path="/repo/a.ts" />)
+    expect(screen.getByTestId('body').scrollTop).toBe(120)
+
+  })
+
   it('② 换文件也重贴一次:同一个宿主里 .body 不重挂,内容却全换了', () => {
-    useViewerSource.setState({ scrollTop: 12 })
-    const { rerender } = render(<ScrollHarness placement="panel" currentLine={0} path="/repo/a.ts" />)
-    useViewerSource.setState({ scrollTop: 88 })
-    rerender(<ScrollHarness placement="panel" currentLine={0} path="/repo/b.ts" />)
+    useViewerSource.setState({ scrolls: { '/repo/a.ts': 12, '/repo/b.ts': 88 } })
+    const { rerender } = render(<ScrollHarness currentLine={0} path="/repo/a.ts" />)
+    rerender(<ScrollHarness currentLine={0} path="/repo/b.ts" />)
     expect(screen.getByTestId('body').scrollTop).toBe(88)
   })
 
   it('① 律④ 跳行:落点之后把那一行滚到视野中间,不重挂 body', () => {
     const spy = vi.spyOn(Element.prototype, 'scrollIntoView')
-    const { rerender } = render(<ScrollHarness placement="panel" currentLine={0} path="/repo/a.ts" />)
+    const { rerender } = render(<ScrollHarness currentLine={0} path="/repo/a.ts" />)
     const before = screen.getByTestId('body')
     expect(spy).not.toHaveBeenCalled()
 
-    rerender(<ScrollHarness placement="panel" currentLine={3} path="/repo/a.ts" />)
+    rerender(<ScrollHarness currentLine={3} path="/repo/a.ts" />)
     expect(spy).toHaveBeenCalledWith({ block: 'center' })
     // 零重挂:滚过去不许换掉那个 DOM 节点(四律④ 的另一半)。
     expect(screen.getByTestId('body')).toBe(before)
@@ -166,38 +174,38 @@ describe('file-floats —— 两档锚各是一条算式', () => {
   })
 })
 
-/* ── 檐(切线 A 的另一半)与未保存丸的收编 ────────────────────────────── */
+/* ── 檐退役(W1:一格一檐)───────────────────────────────────────────────── */
 
-describe('ViewerChrome —— 身份、关闭,以及那颗迁进库件的未保存丸', () => {
-  it('哪些宿主自带檐:三档合一,panel 与架子自己画', () => {
-    expect(['float', 'stage', 'cover'].map(hostOwnsChrome)).toEqual([true, true, true])
-    expect(['panel', 'edge-left', 'edge-right'].map(hostOwnsChrome)).toEqual([false, false, false])
+describe('ViewerChrome / HOST_OWNS_CHROME —— 整件退役', () => {
+  /**
+   * 规则现在只有一条:**一片叶只有一条檐,那条檐就是 tab 条;内容自己不画檐。**
+   * 于是 `ViewerChrome.tsx` 与那张 `HOST_OWNS_CHROME` 表一起删了 —— 后者本来就是
+   * 「谁画檐」这个问题没有唯一答案时的补丁。
+   *
+   * 这一组用**文件在不在**与**源文本里有没有那两个词**钉它,而不是 import 它
+   * (import 一个已经删掉的模块是编译期错误,写不出这条用例)。
+   */
+  const here = path.dirname(fileURLToPath(import.meta.url))
+  const viewerDir = path.join(here, '..')
+
+  it('那两件源文件真的不在了', () => {
+    expect(existsSync(path.join(viewerDir, 'ViewerChrome.tsx'))).toBe(false)
+    expect(existsSync(path.join(viewerDir, 'ViewerPanel.tsx'))).toBe(false)
   })
 
-  it('没有身份就只剩关闭 —— 不画一枚不存在的文件的徽(axe 2.68 那条判例)', () => {
-    render(<ViewerChrome t={((k: string) => k) as never} path="" name="" dirty={false} toolbar={null} onClose={() => {}} />)
-    expect(screen.queryByTestId('viewer-name')).toBeNull()
-    expect(screen.getByTestId('viewer-close')).toBeTruthy()
+  it('查看器身上不再有 placement / chromeless / HOST_OWNS_CHROME 这三格', () => {
+    // 读源文本的门**先剥注释**(CLAUDE.md:病历文本会让断言自红 —— 文件头那段
+    // 判例里就逐字写着这三个词)。
+    const src = readFileSync(path.join(viewerDir, 'FileViewer.tsx'), 'utf-8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+    expect(src).not.toMatch(/HOST_OWNS_CHROME/)
+    expect(src).not.toMatch(/chromeless/)
+    expect(src).not.toMatch(/placement/)
   })
 
-  it('未保存丸消费 ui/StatusDot(不再是本地自绘的 .dirtyDot)', () => {
-    render(<ViewerChrome t={((k: string) => k) as never} path="/repo/a.ts" name="a.ts" dirty toolbar={null} onClose={() => {}} />)
-    const pill = screen.getByTestId('viewer-dirty')
-    const dot = pill.firstElementChild as HTMLElement
-    // CSS Modules 出来的是 `_dot_hash _warn_hash _sm_hash` —— 判据是「有这三段词」,
-    // 三段少一段就说明它又变回了本地那颗(或者档位掉了)。
-    expect(dot.className).toMatch(/_dot_/)
-    expect(dot.className).toMatch(/_warn_/)
-    expect(dot.className).toMatch(/_sm_/)
-    // 旁边已经写着「未保存」,所以这颗点是装饰,不该再念一遍(StatusDot 的判据)。
-    expect(dot.getAttribute('aria-hidden')).toBe('true')
-  })
-
-  it('本地那条 .dirtyDot 真的退役了 —— 留一条死配方等于留一个第二产地', () => {
-    // 读样式表源文本的门先剥注释(CLAUDE.md:病历文本会让断言自红 ——
-    // 下面那块墓碑注释里就写着 `.dirtyDot` 这个词)。
-    const here = path.dirname(fileURLToPath(import.meta.url))
-    const css = readFileSync(path.join(here, '../FileViewer.module.css'), 'utf-8').replace(
+  it('本地那条 .dirtyDot 仍然是退役的 —— 留一条死配方等于留一个第二产地', () => {
+    const css = readFileSync(path.join(viewerDir, 'FileViewer.module.css'), 'utf-8').replace(
       /\/\*[\s\S]*?\*\//g,
       '',
     )

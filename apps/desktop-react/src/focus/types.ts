@@ -28,8 +28,8 @@ import type { MessageKey } from '../i18n'
 export type FocusScopeKind = 'root' | 'layer' | 'region' | 'float' | 'modal'
 
 /**
- * 声明 id。首批 21 格 —— 加一格是**声明变更**,要同时改 `FOCUS_SCOPES` 那张表
- * 与它的 labelKey,`focus/__tests__/scopes.test.ts` 逐条钉着。
+ * 声明 id。22 格(W1 加了 `leaf`)—— 加一格是**声明变更**,要同时改 `FOCUS_SCOPES`
+ * 那张表与它的 labelKey,`focus/__tests__/scopes.test.ts` 逐条钉着。
  */
 export type FocusScopeId =
   // root:整台壳,只有一个
@@ -43,6 +43,10 @@ export type FocusScopeId =
   | 'chat'
   | 'settings'
   | 'dock'
+  // 拼贴树里的一片叶(W1)。同一个 id 会有**好几份实例**:叶根一份(owner = 叶 id,
+  // 它拿 ⌘W、也是跟焦的落点),每一格 tab 的内容层各一份(owner = refId,
+  // 只为「看不见的那一格从活动路径上摘掉」而存在)。
+  | 'leaf'
   // layer:Placement 宿主层
   | 'stage-layer'
   | 'float-layer'

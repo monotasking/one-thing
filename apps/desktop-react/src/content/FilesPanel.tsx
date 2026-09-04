@@ -25,7 +25,6 @@ import {
   useSplitPrefs,
   useSplitRatio,
 } from '../data/split-prefs'
-import { useViewerSource } from '../data/viewer-source'
 import { FileActionsMenu } from './FileActionsMenu'
 import { FileDetailPopover } from './FileDetailPopover'
 import { FocusScope } from '../focus/FocusScope'
@@ -38,7 +37,10 @@ import { TreeEntryRow, depthVar } from './files/TreeEntryRow'
 import type { EntryRow } from './files/TreeEntryRow'
 import { useRowWindow } from './files/useRowWindow'
 import { FileViewer } from './viewer/FileViewer'
-import { closeViewerEverywhere, openFileInCurrentTarget } from './viewer/open-target'
+import { closeFileEverywhere, fileRef, openFileInCurrentTarget } from './viewer/open-target'
+import { openStateOf, useWorkbenchStore } from '../workbench/store'
+import { refId } from '../workbench/kinds'
+import { SoloLeafStrip } from '../workbench/LeafStrip'
 import s from './FilesPanel.module.css'
 
 /**
@@ -209,14 +211,33 @@ export function FilesPanel() {
    * 「此刻开着的是哪个文件」(树上那颗打开点要知道)与那两口开 / 关。
    * 文件内容一个字节都不经过这里 —— 那正是两个 store 分家的意思。
    */
-  const viewerFile = useViewerSource((st) => st.file)
-  const viewerPending = useViewerSource((st) => st.pending)
+  /*
+   * W1:这条分栏此刻在看哪个文件,由**拼贴台**说(`panelPath`)。它是那一格
+   * 「不进树」的落点(设计 §2.1 明写保留:面板内仍是 FilesPanel 自己的分栏)。
+   * 从前它读的是「全应用那一份查看器手上是哪个文件」—— 查看器多实例之后
+   * 那句话不成立了:同时可能有五份,而这条分栏问的是**它自己**这一份。
+   */
+  const panelPath = useWorkbenchStore((st) => st.panelPath)
+  /*
+   * 树行那颗点的**三态**(实心 = 显示中,空心 = 隐藏,无 = 没开,设计 §2.3)。
+   * 判据整件是纯函数 `openStateOf` —— 渲染层不自己判一次,而这块面订的正是
+   * 那三格事实(树 / 隐藏表 / 分栏路径),所以任一格变了这一列点当场跟着翻。
+   */
+  const regions = useWorkbenchStore((st) => st.regions)
+  const hiddenTabs = useWorkbenchStore((st) => st.hidden)
+  const restoreHidden = useWorkbenchStore((st) => st.restoreHidden)
+  const openStateOfPath = useCallback(
+    (path: string) => openStateOf({ regions, hidden: hiddenTabs, panelPath }, fileRef(path)),
+    [regions, hiddenTabs, panelPath],
+  )
   /*
    * 「打开一个文件」的编排在 content/viewer/open-target 那一处(读它 + 按当下
    * 这一档摆好落点),三个入口共用 —— 面板这里只是调用方,不判落点。
    */
   const openFile = openFileInCurrentTarget
-  const closeViewer = closeViewerEverywhere
+  const closeViewer = useCallback(() => {
+    if (panelPath) closeFileEverywhere(panelPath)
+  }, [panelPath])
   /**
    * 当下这一档打开方式。面板只用它判**一件事**:这条分栏画不画查看器
    * (`panel` 档才画;别的六档查看器住在舞台 / 浮窗 / 钉栏里,那时这条分栏
@@ -228,7 +249,7 @@ export function FilesPanel() {
    * 点下去的一瞬间打开点就跟着走(手感),而内容要等读回来 —— 两者不同步是
    * 事实,不是缺陷:檐上那格读数正是为了说出这件事。
    */
-  const openPath = viewerPending ?? viewerFile?.path ?? null
+  const openPath = panelPath
   const viewerOpen = openPath !== null
   /** 这条分栏此刻长不长出来。**落点是 `panel` 才算**(理由见上面 openMode)。 */
   const splitOpen = viewerOpen && openMode === 'panel'
@@ -509,7 +530,8 @@ export function FilesPanel() {
                   row={row}
                   t={t}
                   selected={selected === row.path}
-                  opened={openPath === row.path}
+                  openState={openStateOfPath(row.path)}
+                  onRestore={() => restoreHidden(refId(fileRef(row.path)))}
                   onActivate={(viaKeyboard) => {
                     setSelected(row.path)
                     if (row.type === 'directory') {
@@ -519,7 +541,12 @@ export function FilesPanel() {
                     // ↵ 才把焦点送进查看器(§11 拍点 1);鼠标那一下焦点留在树上。
                     wantViewer.current = viaKeyboard
                     if (viaKeyboard) setOpenTick((n) => n + 1)
-                    openFile(row.path)
+                    /*
+                     * **单击 = 预览,↵ = 固定**(§2.1 拍点 ①)。判据现成:
+                     * `viaKeyboard` 已经是这一行区分两条路的那一格(它从前只用来
+                     * 决定送不送焦点)。浏览一棵树时单击十个文件不该留下十个 tab。
+                     */
+                    openFile(row.path, { preview: !viaKeyboard })
                   }}
                   onCurrent={onCurrent}
                   onMenu={(origin) => openMenuFor(row, origin)}
@@ -554,7 +581,36 @@ export function FilesPanel() {
               * 隔着两层组件去猜它此刻的样子是把闸装错了地方。记档:那颗钮的
               * aria-busy 与二次闸属于 viewer/ 那一面,不在本批的可动面里。
               */}
-            {splitOpen && <FileViewer onReveal={(path) => void revealMutation.run(path)} />}
+            {splitOpen && openPath && (
+              /*
+               * 分栏里那一份查看器。**它也有一条檐**(W1-a 修批)——
+               * 与中央叶单 tab 时**同一件**(`workbench/LeafStrip` 的 `SoloLeafStrip`:
+               * 图标 + 文件名 + 未保存丸 + ✕,右端是这一型自己的工具条)。
+               *
+               * 修前这一档一条檐都没有:关一个文件只剩右键与 Esc,而「面板内」正是
+               * 出厂缺省档 —— 多数用户第一眼看到的就是它。设计 §2.2 的规则是「一片叶
+               * 只有一条檐」,而**面板内这一格也是一「格」**,所以它该有同一条,
+               * 不是没有。
+               *
+               * ✕ 交给下面那口 `closeViewer`;「先问一句脏文件」由那条檐按种类问
+               * (`ContentKind.beforeClose`),与中央叶逐字相同。**不画「隐藏」
+               * 「分屏」** —— 那两件是树的动作,这一档不在树里。
+               *
+               * 它经 `strip` 交进查看器**盒子里面**,不是包在外面:上面那条相邻兄弟
+               * (树 + 查看器)是 `gate:files` 的判据,插一层包裹会当场断掉它。
+               */
+              <FileViewer
+                path={openPath}
+                strip={
+                  <SoloLeafStrip
+                    contentRef={fileRef(openPath)}
+                    onClose={closeViewer}
+                    testId="viewer-strip"
+                  />
+                }
+                onReveal={(path) => void revealMutation.run(path)}
+              />
+            )}
           </div>
 
           {footNote && <p className={s.foot}>{footNote}</p>}

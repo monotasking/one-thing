@@ -37,11 +37,18 @@ function key(combo: Combo): string {
 }
 
 describe('面域局部键:声明这一头', () => {
-  it('今天有局部键的三格:查看器三条、文件树两条、会话总览一条', () => {
+  it('今天有局部键的四格:查看器三条、文件树两条、会话总览一条、叶一条', () => {
     const withKeys = Object.values(FOCUS_SCOPES)
       .filter((spec) => (spec.keys?.length ?? 0) > 0)
       .map((spec) => spec.id)
-    expect(withKeys).toEqual(['viewer', 'files', 'expose'])
+    // 次序 = 表里的声明序(`leaf` 排在 region 那一族的末尾)。
+    expect(withKeys).toEqual(['viewer', 'files', 'expose', 'leaf'])
+    /*
+     * W1 拍点 ④:**⌘W 关当前 tab**。它是面域局部键而不是全局命令 —— 判据是
+     * 「它需不需要一个目标」(哪一片叶的哪一格)。⌘⇧W 是工作区命令面板,
+     * shift 那一格就是两者的分界,下面那条全表零冲突的用例钉着它。
+     */
+    expect(focusScopeKeysOf('leaf').map((k) => key(k.combo))).toEqual(['mod+w'])
     // 09-04 方向 A:⌘⇧P = 置顶 / 取消置顶活动行(⌘P 是全局的 toggle:search,
     // shift 那一格正是两者的分界 —— 撞键表读的就是这一行)。
     expect(focusScopeKeysOf('expose').map((k) => key(k.combo))).toEqual(['mod+shift+p'])

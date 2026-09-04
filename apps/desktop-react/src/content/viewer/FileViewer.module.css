@@ -316,15 +316,9 @@
   height: var(--fs-meta);
 }
 
-/* ── 工具条:这一型自己的那一格 ───────────────────────────────────────── */
-.toolbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: var(--bw-1) solid var(--line-1);
-}
+/* 型工具条从前在这儿自成一条带子(面板内那一档没有叶檐时)。**W1-a 修批删掉**:
+ * 面板内现在也有一条身份带,型工具条与中央叶一样长在那条檐的工具位上
+ * (`workbench/LeafStrip` 的 `.tool`)—— 一件东西两个宿主各画一遍必然分叉。 */
 
 /* ── 身 ─────────────────────────────────────────────────────────────── */
 .body {

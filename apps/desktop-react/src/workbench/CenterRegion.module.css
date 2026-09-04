@@ -1,0 +1,10 @@
+/* 中央区那棵树的容器。它接下了从前 `.chatArea` 在 `.center` 里占的那一格 flex ——
+ * 于是聊天叶量到的高度与修前**逐像素相同**(`.center` 是定高 flex 列,这一层
+ * `flex: 1`,叶 `height: 100%`)。 */
+.panes {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}

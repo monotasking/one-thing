@@ -334,6 +334,11 @@ async function main() {
       path.join(workspaceRoot, 'a.ts'),
       "export const gate = 'focus'\nconst second = 2\nconst third = 3\n",
     )
+    // 第二份按行寻址的内容:场景 11(多实例)要在同一片叶里开两格查看器。
+    await writeFile(
+      path.join(workspaceRoot, 'b.ts'),
+      "export const other = 'focus'\nconst two = 2\n",
+    )
 
     console.log('[1/3] 起一台 core')
     server = spawn(process.execPath, [serverEntry], {
@@ -550,6 +555,111 @@ async function main() {
       await assertNoOrphan(page, '切 tab 之后')
     }
 
+    /* ── 场景 3b:中央叶两 tab 切换(W1)────────────────────────────────
+     *
+     * 与场景 3 **同型**(那一条量的是架子的 tab 层),这一条量中央区那棵拼贴树里
+     * 一片叶的 tab 层。判据逐字相同:**非活动那一格 inert 说两遍**(DOM 一遍、
+     * 树一遍),而焦点落在活的那一层里。
+     *
+     * 夹具走用户真走的那条路:文件树行右键 →「主区域」把落点改成中央区,
+     * 再 ↵ 开一个文件 —— 于是那片叶上有两格 tab(聊天 + 文件)。
+     */
+    scenario('中央叶两 tab 切换 → 焦点在活的那一层内;非活动那一层 inert')
+    {
+      await page.goto(shellUrl())
+      await waitFor('壳回来了', () =>
+        page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+      )
+      await enterGateSession(page, sessionId)
+      if (!(await hasFileRow(page))) {
+        await clickSelector(page, '[data-testid="dock-tile-files"]')
+        await delay(500)
+      }
+      const rowCss = '[data-testid="files-tree"] [data-file-path][data-file-type="file"]'
+      const haveRow = await page.evaluate((css) => Boolean(document.querySelector(css)), rowCss)
+      if (!haveRow) {
+        skip('中央叶两 tab 切换', '文件树没画出一行文件 —— 夹具没搭起来')
+      } else {
+        // ① 落点改「主区域」(= 中央区那棵树)。走行菜单,不改 store。
+        await page.evaluate((css) => {
+          const row = document.querySelector(css)
+          row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }))
+        }, rowCss)
+        await delay(400)
+        const toCenter = await page.evaluate(() => {
+          const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+          const center = items.find((el) => /主区域|Main stage/.test(el.textContent ?? ''))
+          if (center instanceof HTMLElement) center.click()
+          return Boolean(center)
+        })
+        await delay(400)
+        if (!toCenter) {
+          skip('中央叶两 tab 切换', '行菜单里没有「主区域 / Main stage」那一档')
+        } else {
+          // ② ↵ 开一个文件 —— 它成为中央叶的第二格 tab,而且是活动那一格。
+          await page.evaluate((css) => {
+            const row = document.querySelector(css)
+            if (row instanceof HTMLElement) row.focus()
+          }, rowCss)
+          await page.keyboard.press('Enter')
+          await delay(700)
+          const twoTabs = await page.evaluate(
+            () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
+          )
+          if (twoTabs < 2) {
+            skip('中央叶两 tab 切换', `叶檐上只有 ${twoTabs} 格 tab —— 夹具没搭起来`)
+          } else {
+            const leafState = await page.evaluate(() => {
+              const layers = Array.from(document.querySelectorAll('[data-pane-tab]'))
+              const active = document.activeElement
+              return {
+                layers: layers.length,
+                inertOff: layers.filter((l) => l.hasAttribute('inert')).length,
+                focusInLive: layers.some(
+                  (l) => !l.hasAttribute('inert') && active instanceof Node && l.contains(active),
+                ),
+                scopes: layers.map((l) => l.getAttribute('data-focus-scope')),
+              }
+            })
+            assert(leafState.layers >= 2, '叶里两格 tab 各挂一层', `(${leafState.layers} 层)`)
+            assert(
+              leafState.inertOff === leafState.layers - 1,
+              '非活动那些层**都**打上了 inert(DOM 那一遍)',
+              `(${leafState.inertOff}/${leafState.layers - 1})`,
+            )
+            assert(
+              leafState.scopes.every((v) => v === 'leaf'),
+              '每一层的根都带 data-focus-scope="leaf"',
+              `(${[...new Set(leafState.scopes)].join(' / ') || '—'})`,
+            )
+            assert(leafState.focusInLive, '焦点落在活的那一层内')
+            await assertNoOrphan(page, '中央叶开出第二格 tab 之后')
+
+            // ③ 切回第一格(聊天),再问一次同一句话 —— inert 跟着翻,不是只翻一次。
+            await page.evaluate(() => {
+              const tabs = Array.from(document.querySelectorAll('[data-pane-chrome] [role="tab"]'))
+              const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
+              if (off instanceof HTMLElement) off.click()
+            })
+            await delay(400)
+            const flipped = await page.evaluate(() => {
+              const layers = Array.from(document.querySelectorAll('[data-pane-tab]'))
+              return {
+                inertOff: layers.filter((l) => l.hasAttribute('inert')).length,
+                live: layers.filter((l) => !l.hasAttribute('inert')).map((l) => l.getAttribute('data-pane-tab')),
+              }
+            })
+            assert(
+              flipped.inertOff === leafState.layers - 1 && flipped.live.length === 1,
+              '切一次 tab:inert 跟着翻,活的永远只有一层',
+              `(活的:${flipped.live.join(' / ') || '—'})`,
+            )
+            await assertNoOrphan(page, '中央叶切 tab 之后')
+          }
+        }
+      }
+    }
+
     /* ── 场景 4:对话框里开菜单 ──────────────────────────────────────── */
     scenario('对话框里开菜单 → Esc 只关菜单 → 再 Esc 关对话框 → 焦点回触发钮')
     await page.goto(shellUrl('gallery'))
@@ -711,6 +821,20 @@ async function main() {
 
     // shelf-layer 那一格在场景 3 里验(层是按需挂载的,只能在它在场的那一刻问)。
     console.log('  · shelf-layer:见场景 3 最后一条')
+
+    /*
+     * **叶**(W1)。它不是 Placement 宿主层,是一格 `region` —— 但它与那四层同样
+     * 是「按需挂载 + 带 data-focus-scope」的一格,而且中央区永远至少有一片叶,
+     * 所以它**任何时候都该在场**。这一条因此不必先摆什么形态。
+     */
+    {
+      const scopes = await scopesNow()
+      assert(
+        scopes.includes('leaf'),
+        '中央叶的根带 data-focus-scope="leaf"(中央区永远至少一片叶)',
+        `(在场:${[...new Set(scopes)].join(' / ')})`,
+      )
+    }
 
 
     /* ── 场景 7:启动第一响应者 ──────────────────────────────────────── */
@@ -989,40 +1113,88 @@ async function main() {
     )
     await assertNoOrphan(page, '↵ 开文件之后')
 
-    /* ── 场景 11:多实例 —— 浮窗里的查看器与架子里的查看器各开一次 ⌘F ── */
-    scenario('⌘F 在**浮窗里的查看器**与**架子 tab 里的查看器**各开一次(多实例)')
-    for (const [labelRe, where] of [
-      [/浮窗|Float/, '浮窗'],
-      [/右侧栏|Right/, '架子'],
-    ]) {
-      const moved = await openAsFromDockMenu(page, 'viewer', labelRe)
-      if (!moved) {
-        skip(`⌘F 在${where}里的查看器上开得出检索条`, `Dock 菜单里没有 ${labelRe} 那一项`)
-        continue
+    /* ── 场景 11:多实例 —— 同一片叶里两份查看器各开一次 ⌘F(W1 改)──── */
+    /*
+     * **这一条的夹具换了,验的事没换。** W1 之前查看器是 Dock 上一块瓦,
+     * 「多实例」只能靠把那一块瓦摆去两种形态来演(浮窗一份、架子一份);
+     * W1 之后它是一种**内容**,一个文件一份实例 —— 于是「多实例」是它的常态:
+     * 同一片叶里开两个文件就是两份。验的仍然是那一句:
+     * **⌘F 落在活动的那一份上**,而且切一次 tab 之后落在另一份上。
+     */
+    scenario('⌘F 在同一片叶里的**两份**查看器上各开一次(多实例)')
+    {
+      const rowsCss = '[data-testid="files-tree"] [data-file-path][data-file-type="file"]'
+      const openByEnter = async (name) => {
+        const hit = await page.evaluate(
+          ({ css, want }) => {
+            const row = Array.from(document.querySelectorAll(css)).find((el) =>
+              (el.getAttribute('data-file-path') ?? '').endsWith(want),
+            )
+            if (!(row instanceof HTMLElement)) return false
+            row.focus()
+            return true
+          },
+          { css: rowsCss, want: name },
+        )
+        if (!hit) return false
+        await page.keyboard.press('Enter')
+        await delay(700)
+        return true
       }
-      await delay(400)
-      const there = await page.evaluate(() =>
-        Boolean(document.querySelector('[data-testid="file-viewer"]')),
+      const openedA = await openByEnter('/a.ts')
+      const openedB = await openByEnter('/b.ts')
+      const tabs = await page.evaluate(
+        () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
       )
-      if (!there) {
-        skip(`⌘F 在${where}里的查看器上开得出检索条`, '那一档里查看器没画出来')
-        continue
-      }
-      // 焦点摆进那一份查看器(真机上把它摆过去时宿主已经送过一次,这里补稳)。
-      await page.evaluate(() => {
-        const viewer = document.querySelector('[data-focus-scope="viewer"]')
-        if (viewer instanceof HTMLElement) viewer.focus()
-      })
-      await page.keyboard.press('Meta+f')
-      await delay(300)
-      const opened = await page.evaluate(() =>
-        Boolean(document.querySelector('[data-testid="viewer-jump-bar"]')),
-      )
-      assert(opened, `⌘F 在${where}里的那一份查看器上开得出检索条`)
-      if (opened) {
-        await page.keyboard.press('Escape')
-        await delay(250)
-        await assertNoOrphan(page, `${where}:Esc 关掉检索条之后`)
+      if (!openedA || !openedB || tabs < 3) {
+        skip('⌘F 在两份查看器上各开一次', `夹具没搭起来(叶檐上 ${tabs} 格 tab)`)
+      } else {
+        const findOpens = async (where) => {
+          // 焦点摆进**活着的**那一份查看器(非活动那一层是 inert 的,进不去)。
+          await page.evaluate(() => {
+            const live = Array.from(document.querySelectorAll('[data-pane-tab]')).find(
+              (l) => !l.hasAttribute('inert'),
+            )
+            const viewer = live?.querySelector('[data-focus-scope="viewer"]')
+            if (viewer instanceof HTMLElement) viewer.focus()
+          })
+          await page.keyboard.press('Meta+f')
+          await delay(300)
+          const opened = await page.evaluate(() =>
+            Boolean(document.querySelector('[data-testid="viewer-jump-bar"]')),
+          )
+          assert(opened, `⌘F 在${where}那一份查看器上开得出检索条`)
+          if (opened) {
+            await page.keyboard.press('Escape')
+            await delay(250)
+            await assertNoOrphan(page, `${where}:Esc 关掉检索条之后`)
+          }
+        }
+        const liveNow = () =>
+          page.evaluate(
+            () =>
+              Array.from(document.querySelectorAll('[data-pane-tab]'))
+                .find((l) => !l.hasAttribute('inert'))
+                ?.getAttribute('data-pane-tab') ?? null,
+          )
+        const firstLive = await liveNow()
+        await findOpens('活动的')
+        // 切到另一格 —— 那是**另一份实例**(它有自己的滚动位、草稿、检索条)。
+        await page.evaluate(() => {
+          const tabRow = Array.from(document.querySelectorAll('[data-pane-chrome] [role="tab"]'))
+          const off = tabRow.find(
+            (t) => t.getAttribute('aria-selected') !== 'true' && /\.ts$/.test(t.textContent ?? ''),
+          )
+          if (off instanceof HTMLElement) off.click()
+        })
+        await delay(500)
+        const secondLive = await liveNow()
+        assert(
+          firstLive !== null && secondLive !== null && firstLive !== secondLive,
+          '切一次 tab 之后活着的是**另一份**实例',
+          `(${firstLive ?? '—'} → ${secondLive ?? '—'})`,
+        )
+        await findOpens('切过去那')
       }
     }
 

@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import type { MessageKey } from '../i18n'
-import type { Placement } from '../stage/types'
+import type { RegionId } from '../workbench/regions'
 import {
   foldFlatIntoDefaultSpace,
   spreadSpace,
@@ -53,40 +53,60 @@ export const FILE_OPEN_MODES: readonly FileOpenMode[] = [
  * **今天真能兑现的那些**。菜单据此决定给哪些项画注脚 —— 判据在这里定一次,
  * 不散在渲染层的条件里。
  *
- * F2 起它等于全表:七档全接上了。这一格**不删**,理由是它是一条纪律的落点 ——
- * 将来再加一档(比如「在系统默认应用里打开」),没接上的那段日子里菜单仍然
+ * F2 起它曾等于全表;**W1-a 退回两档**,那是一次可感知的退化,理由见下。
+ * 这一格**不删**,理由是它是一条纪律的落点 —— 没接上的那段日子里菜单仍然
  * 说得出实话,而不是又去渲染层里现写一个条件。
+ *
+ * ── W1-a:七档退回两档(交付报告点名的临时退化)────────────────────────
+ * 查看器从「一块瓦」降格为一种内容之后,「摆到哪儿」不再是 `openAs(id, placement)`
+ * 那一句形态机调用,而是「把这个 ref 插进哪个**区域**的活动叶」。中央区那棵树
+ * 在 W1-a 落地,架子与浮窗的树要等 W4(设计 §8 那张分期表)。所以这一批里
+ * 只有 `panel`(文件面板那条分栏,不进树)与 `stage`(= 中央区)真接通;
+ * 四条边与浮窗那五档在菜单里**禁灰 + 注脚**,选择器读到它们时回落中央区。
  */
-export const WIRED_FILE_OPEN_MODES: readonly FileOpenMode[] = FILE_OPEN_MODES
+export const WIRED_FILE_OPEN_MODES: readonly FileOpenMode[] = ['panel', 'stage']
 
 export function isWiredFileOpenMode(mode: FileOpenMode): boolean {
   return WIRED_FILE_OPEN_MODES.includes(mode)
 }
 
 /**
- * 档 → 壳里的落点。**唯一一份翻译**(树行菜单与查看器檐上那颗钮共用它)。
+ * 档 → **区域**(W1;从前是档 → `Placement`)。**唯一一份翻译**。
  *
- * `panel` 回 null:它不是「摆到某处」,是「不摆出去」—— 拿 `{kind:'dock'}` 顶
- * 会读成「收进坞里」,而那是关掉,不是「在文件面板里就地看」。
+ * `panel` 回 `'panel'` 而不是一个 RegionId:它不是「插进某个区域的树」,是
+ * 「不进树,就住在文件面板那条分栏里」(设计 §2.1 明写保留)。拿 `'center'` 顶
+ * 会读成「开在中央区」,而那是另一件事。
+ *
+ * `stage` 这一档的**值域与 i18n 键都没改**(它的文案本来就是「主区域 / Main stage」),
+ * 改的只有它翻出来的东西:从「摆一块瓦上舞台」变成「插进中央区那棵树」——
+ * 那正是设计 §2.1 把七档改名成「新标签开在哪」时说的那一档「中央区」。
  */
-export function placementOfFileOpenMode(mode: FileOpenMode): Placement | null {
+export function regionOfFileOpenMode(mode: FileOpenMode): RegionId | 'panel' {
   switch (mode) {
     case 'panel':
-      return null
+      return 'panel'
     case 'stage':
-      return { kind: 'stage' }
+      return 'center'
     case 'float':
-      return { kind: 'float' }
+      return 'float:new'
     case 'edge-top':
-      return { kind: 'edge', side: 'top' }
+      return 'edge:top'
     case 'edge-bottom':
-      return { kind: 'edge', side: 'bottom' }
+      return 'edge:bottom'
     case 'edge-left':
-      return { kind: 'edge', side: 'left' }
+      return 'edge:left'
     case 'edge-right':
-      return { kind: 'edge', side: 'right' }
+      return 'edge:right'
   }
 }
+
+/**
+ * 旧名留的一格别名。派工规格点名要 `placementOfFileOpenMode` 返回
+ * `RegionId | 'panel'`,而这个名字在 W4 之后名不副实(它回的不是 Placement)。
+ * 所以真名叫 `regionOfFileOpenMode`,这一行是给规格里那个名字留的门。
+ * **留账:W4 收掉这一行。**
+ */
+export const placementOfFileOpenMode = regionOfFileOpenMode
 
 /** 每一档的名字是**界面文案**,所以这里只持有 key(同 StageItemSpec.titleKey 的判例)。 */
 export const FILE_OPEN_MODE_LABELS: Record<FileOpenMode, MessageKey> = {

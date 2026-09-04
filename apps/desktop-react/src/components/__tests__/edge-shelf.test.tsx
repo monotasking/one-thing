@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
 import { useStageStore } from '../../stage/store'
 import { initialStageState } from '../../stage/transitions'
@@ -54,9 +54,15 @@ describe('四边架子', () => {
   it('收起后只剩细梁:tab 条与内容都不在了,展开键还在', () => {
     render(<AppShell />)
     openOnEdge('files', 'bottom')
+    const shelf = screen.getByRole('complementary', { name: NAME.bottom })
     fireEvent.click(screen.getByLabelText('收起底栏'))
     expect(useStageStore.getState().shelves.bottom.collapsed).toBe(true)
-    expect(screen.queryByRole('tablist')).toBeNull()
+    /*
+     * **在这条架子里面**问(W1):中央区从今天起也有一条 tab 条(叶檐 —— 单 tab 时
+     * 它是那块内容的身份带),所以「整扇窗里没有 tablist」不再等于「这条架子收起来了」。
+     * 这一条要验的一直是后者。
+     */
+    expect(within(shelf).queryByRole('tablist')).toBeNull()
     expect(screen.getByLabelText('展开底栏')).toBeTruthy()
   })
 

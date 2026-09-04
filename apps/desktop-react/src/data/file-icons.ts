@@ -276,6 +276,24 @@ export function glyphOf(
   return fileGlyphOf(name)
 }
 
+/**
+ * 一个文件在 **tab 条上**那枚图标的名字(W1)。
+ *
+ * tab 条今天只吃一个 lucide 名字(`TabSpec.icon`),而文件类型徽有两形:
+ * `icon` 那一形的值**就是**一个 lucide 名字,直接用;`brand` 那一形是一块带
+ * 官方色的方章(`.ts` / `.py` …),它根本不是 lucide 图标 —— 退到 `FileText`。
+ *
+ * **它住在这里而不是调用点**:那个联合只许在这只文件里拆(判据在
+ * `content/__tests__/file-glyph-single-source.test.ts`:拿到 glyph 的地方要么
+ * 转手给 `FileGlyphMark`,要么根本不该拿到它)。
+ *
+ * 留账:tab 上画彩色品牌章要给 `ui/Tabs` 加一格图标节点,那是库件的一批。
+ */
+export function tabIconOf(name: string): string {
+  const glyph = fileGlyphOf(name)
+  return glyph.kind === 'icon' ? glyph.icon : 'FileText'
+}
+
 /** tone → CSS 变量引用。色值一个都不在 JS 里。 */
 export function toneVar(tone: FileTone): string {
   return `var(--ft-${tone})`

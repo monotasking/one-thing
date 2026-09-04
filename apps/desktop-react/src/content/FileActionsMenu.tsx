@@ -16,7 +16,16 @@ import {
   isWiredFileOpenMode,
   useFileOpenMode,
 } from '../data/file-open-mode'
-import { openFileInCurrentTarget, setFileOpenMode } from './viewer/open-target'
+import {
+  closeFileEverywhere,
+  fileRef,
+  openFileInCurrentTarget,
+  setFileOpenMode,
+} from './viewer/open-target'
+import { refId } from '../workbench/kinds'
+import { CENTER_REGION } from '../workbench/regions'
+import { openStateOf, useWorkbenchStore } from '../workbench/store'
+import { findLeaf, leavesOf } from '../workbench/tree'
 import s from './FilesPanel.module.css'
 
 /**
@@ -107,9 +116,23 @@ export function FileActionsMenu({
    * 判据是「查看器手上那份 + 它在编辑态」两条同时成立 —— 光看 editing 会让
    * 树上另一个文件的菜单也说「完成编辑」,那是在替别人说话。
    */
-  const editingThis = useViewerSource(
-    (st) => st.edit.editing && st.file?.path === target.path,
-  )
+  const editingThis = useViewerSource((st) => st.instances[target.path]?.edit.editing === true)
+  /*
+   * 这一份此刻的三态(设计 §2.3)。菜单据此决定「保留 / 隐藏 / 关闭」三行画不画:
+   * 没开的文件谈不上隐藏与关闭,而「保留」只对**预览 tab** 有意义。
+   * 判据整件是纯函数 `openStateOf` —— 与树行那颗点读的是同一句话。
+   */
+  const regions = useWorkbenchStore((st) => st.regions)
+  const hiddenTabs = useWorkbenchStore((st) => st.hidden)
+  const panelPath = useWorkbenchStore((st) => st.panelPath)
+  const openState = file
+    ? openStateOf({ regions, hidden: hiddenTabs, panelPath }, fileRef(target.path))
+    : null
+  /** 这一份在树里的坐标(叶 + 下标)。答不出 = 它不在树里(没开 / 在分栏里 / 藏着)。 */
+  const seat = file ? seatOf(regions, target.path) : null
+  const isPreview = seat
+    ? findLeaf(regions[seat.region], seat.leafId)?.preview === refId(fileRef(target.path))
+    : false
   const openLabel = file
     ? t('files.menuOpen')
     : t(target.expanded ? 'files.menuCollapse' : 'files.menuExpand')
@@ -149,10 +172,14 @@ export function FileActionsMenu({
         <MenuItem
           onClick={() => {
             if (editingThis) {
-              useViewerSource.getState().setEditing(false)
+              useViewerSource.getState().setEditing(target.path, false)
             } else {
+              /*
+               * 「开始编辑」是**固定**那一格的三条手势之一(§2.1 拍点 ①),
+               * 所以这条路开出来的不是预览 tab。
+               */
               openFileInCurrentTarget(target.path)
-              useViewerSource.getState().setEditing(true)
+              useViewerSource.getState().setEditing(target.path, true)
             }
             onClose()
           }}
@@ -163,6 +190,80 @@ export function FileActionsMenu({
         </MenuItem>
       )}
 
+      {/*
+        * ── 标签的一生:保留 / 隐藏 / 关闭 + 两向分屏(W1,设计 §2.3 / §2.4)──────
+        * 五行都落在这一张表里,不散在叶檐上 —— **动作单产地 = 右键上下文菜单**
+        * (09-01 判例)。叶檐上只有「✕ = 关闭」那一颗顺手路与「⋯ = 隐藏的标签」
+        * 那一格收纳处,它们是同一批动作的快捷入口,不是第二张表。
+        *
+        * 三行的在场判据各不相同,写在各自的条件里:
+        *  · 保留 —— 只有**预览 tab** 才谈得上「留下来」;
+        *  · 隐藏 / 关闭 —— 它得先在树里(没开的文件谈不上);
+        *  · 两向分屏 —— 打开一份**新的**到旁边,所以任何文件都可以。
+        */}
+      {file && isPreview && seat && (
+        <MenuItem
+          onClick={() => {
+            useWorkbenchStore.getState().pinTab(seat.leafId, seat.index)
+            onClose()
+          }}
+        >
+          <span className={s.menuLine}>
+            <span className={s.menuMain}>{t('files.menuKeep')}</span>
+          </span>
+        </MenuItem>
+      )}
+      {file && seat && (
+        <MenuItem
+          onClick={() => {
+            useWorkbenchStore.getState().hideTab(seat.leafId, seat.index)
+            onClose()
+          }}
+        >
+          <span className={s.menuLine}>
+            <span className={s.menuMain}>{t('files.menuHide')}</span>
+          </span>
+        </MenuItem>
+      )}
+      {file && openState !== null && (
+        <MenuItem
+          onClick={() => {
+            onClose()
+            // 关掉 = 从所有落点摘掉 + 丢实例。脏文件那一问由种类自己发起
+            // (`ContentKind.beforeClose`),菜单不重复问一遍。
+            closeFileEverywhere(target.path)
+          }}
+        >
+          <span className={s.menuLine}>
+            <span className={s.menuMain}>{t('files.menuClose')}</span>
+          </span>
+        </MenuItem>
+      )}
+      {file && (
+        <>
+          <MenuItem
+            onClick={() => {
+              openBeside(target.path, 'row')
+              onClose()
+            }}
+          >
+            <span className={s.menuLine}>
+              <span className={s.menuMain}>{t('files.menuOpenRight')}</span>
+            </span>
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              openBeside(target.path, 'col')
+              onClose()
+            }}
+          >
+            <span className={s.menuLine}>
+              <span className={s.menuMain}>{t('files.menuOpenBelow')}</span>
+            </span>
+          </MenuItem>
+        </>
+      )}
+
       {file && (
         <>
           <MenuSeparator />
@@ -171,8 +272,14 @@ export function FileActionsMenu({
             <MenuItem
               key={option}
               checked={option === mode}
+              /*
+               * **禁灰而不消失**(W1 的临时退化,交付报告点名):架子与浮窗那五档
+               * 要等 W4 才有树可插。禁灰说的是「这一档此刻做不了」,那是同一张表的
+               * 一个状态,不是另一张表 —— 一张菜单的形状不该随批次变。
+               */
+              disabled={!isWiredFileOpenMode(option)}
               onClick={() => {
-                // **选档即生效**:开着的那份查看器当场搬过去(编排在 open-target)。
+                // **选档即生效**:手上那一份当场搬过去(编排在 open-target)。
                 setFileOpenMode(option)
                 onClose()
               }}
@@ -180,7 +287,7 @@ export function FileActionsMenu({
               <span className={s.menuLine}>
                 <span className={s.menuMain}>{t(FILE_OPEN_MODE_LABELS[option])}</span>
                 {!isWiredFileOpenMode(option) && (
-                  <span className={s.menuTrail}>{t('files.openModeSoon')}</span>
+                  <span className={s.menuTrail}>{t('files.openModeNextBatch')}</span>
                 )}
               </span>
             </MenuItem>
@@ -238,4 +345,33 @@ export function FileActionsMenu({
       </MenuItem>
     </Menu>
   )
+}
+
+/** 这一份在树里的坐标。答不出 = 它不在任何一棵树上。 */
+function seatOf(
+  regions: Record<string, import('../workbench/tree').PaneNode>,
+  path: string,
+): { region: string; leafId: string; index: number } | null {
+  const id = refId(fileRef(path))
+  for (const [region, tree] of Object.entries(regions)) {
+    for (const leaf of leavesOf(tree)) {
+      const at = leaf.tabs.findIndex((tab) => refId(tab) === id)
+      if (at >= 0) return { region, leafId: leaf.id, index: at }
+    }
+  }
+  return null
+}
+
+/**
+ * 「在右侧 / 在下方打开」。**先切叶再插**:切出来的新叶带走原叶的活动 tab,
+ * 然后把这一份插进那片新叶 —— 于是「在旁边打开这个文件」是两步既有的树操作,
+ * 不是一条新路径。原叶只有一格时切不动(切出去它就空了),那时退成「就地打开」。
+ */
+function openBeside(path: string, dir: 'row' | 'col'): void {
+  const state = useWorkbenchStore.getState()
+  const tree = state.regions[CENTER_REGION]
+  const leaves = tree ? leavesOf(tree) : []
+  const leaf = leaves.find((l) => l.id === state.focusLeafId) ?? leaves[0]
+  if (leaf && leaf.tabs.length > 1) state.splitLeaf(leaf.id, dir)
+  openFileInCurrentTarget(path)
 }

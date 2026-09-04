@@ -45,7 +45,7 @@
  */
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -134,6 +134,19 @@ const WIDE_WINDOW = { width: 1600, height: 900 }
  * ——32 位无断点十六进制 / uuid / 长英文串 / 短名 —— 逐字照旧。
  */
 const PROJECT_DIR_NAMES = SEED_PROJECTS.flatMap((g) => (g.dir ? [g.dir] : []))
+
+/**
+ * 叶檐那一步要开的几份文件(W1)。**一长一短各几个** —— 挤压量的是
+ * 「tab 条会不会换行 / 右端动作组会不会被顶出去」,长名对那两件最敏感。
+ */
+const LEAF_TAB_FILES = [
+  'a.ts',
+  'b.ts',
+  'engine.ts',
+  'a-very-long-file-name-that-should-truncate-not-wrap.ts',
+  'another-extremely-long-module-name-for-squeeze.ts',
+  'z.ts',
+]
 
 /**
  * 允许的覆盖。每条 = 一对选择器片段(按 CSS 类名 / data 属性的子串匹配),
@@ -1331,6 +1344,169 @@ async function checkComposerToolRow(page) {
   })
 }
 
+/**
+ * 叶檐的挤压读数(W1)。夹具走**用户真走的那条路**:文件树行菜单选「主区域」,
+ * 再逐行单击把几份文件开进中央叶 —— 不去改 store(那样量的是自己写进去的状态)。
+ */
+async function checkLeafChrome(page) {
+  const problems = []
+  const seen = []
+  /*
+   * ⓪ **先进一条带工作目录的会话**:文件树的根跟着「当前会话的工作目录」走,
+   * 不进去的话树会退回主目录(那时树上有什么就不由这道门说了算,而且那是用户
+   * 自己的家目录 —— 门不该去读它)。逐条试,进得去哪条算哪条。
+   *
+   * 这一步会把总览那块瓦从架子上收回 Dock(「进入会话就把它收回」是壳的既有行为),
+   * 所以**这一整步排在最后**:前面几步量的架子几何不会被它动到。
+   */
+  const rows = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-session-id]'))
+      .map((el) => el.getAttribute('data-session-id'))
+      .filter(Boolean),
+  )
+  for (const id of rows.slice(0, 6)) {
+    await page.evaluate((sid) => {
+      const row = document.querySelector(`[data-testid="session-row-${sid}"]`)
+      if (row instanceof HTMLElement) row.click()
+    }, id)
+    await delay(500)
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-files"]')
+      if (tile instanceof HTMLElement) tile.click()
+    })
+    await delay(600)
+    const got = await page.evaluate(() =>
+      Boolean(
+        document.querySelector('[data-testid="files-tree"] [data-file-path][data-file-type="file"]'),
+      ),
+    )
+    if (got) break
+    // 没进对:把文件面收回去再试下一条(点两下就是开 / 关)。
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-files"]')
+      if (tile instanceof HTMLElement) tile.click()
+    })
+    await delay(300)
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-sessions"]')
+      if (tile instanceof HTMLElement) tile.click()
+    })
+    await delay(500)
+  }
+  // ① 把文件面开出来。
+  await page.evaluate(() => {
+    const tile = document.querySelector('[data-testid="dock-tile-files"]')
+    if (tile instanceof HTMLElement) tile.click()
+  })
+  await delay(600)
+  const rowsCss = '[data-testid="files-tree"] [data-file-path][data-file-type="file"]'
+  const rowCount = await page.evaluate((css) => document.querySelectorAll(css).length, rowsCss)
+  if (rowCount === 0) return { skipped: '文件树上一行文件都没有(夹具没搭起来)' }
+
+  // ② 落点改「主区域」= 中央区那棵树。
+  await page.evaluate((css) => {
+    const row = document.querySelector(css)
+    row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }))
+  }, rowsCss)
+  await delay(400)
+  const picked = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+    const center = items.find((el) => /主区域|Main stage/.test(el.textContent ?? ''))
+    if (center instanceof HTMLElement) center.click()
+    return Boolean(center)
+  })
+  if (!picked) return { skipped: '行菜单里没有「主区域 / Main stage」那一档' }
+  await delay(400)
+
+  // ③ 逐行 ↵ 开进去(↵ = 固定 tab;单击是预览,一片叶至多一个,攒不出多格)。
+  const wanted = Math.min(rowCount, 6)
+  for (let i = 0; i < wanted; i += 1) {
+    await page.evaluate(
+      ({ css, at }) => {
+        const row = document.querySelectorAll(css)[at]
+        if (row instanceof HTMLElement) row.focus()
+      },
+      { css: rowsCss, at: i },
+    )
+    await page.keyboard.press('Enter')
+    await delay(250)
+  }
+
+  const shot = await page.evaluate(() => {
+    const chrome = document.querySelector('[data-pane-chrome]')
+    if (!chrome) return { error: '叶檐不在场' }
+    const box = chrome.getBoundingClientRect()
+    const tabs = Array.from(chrome.querySelectorAll('[role="tab"]')).map((el) => {
+      const r = el.getBoundingClientRect()
+      return { top: Math.round(r.top), height: Math.round(r.height), width: Math.round(r.width) }
+    })
+    const strip = chrome.querySelector('[role="tablist"]')?.getBoundingClientRect() ?? null
+    const split = chrome.querySelector('[data-testid^="pane-split:"]')
+    const actions = split?.parentElement?.getBoundingClientRect() ?? null
+    return {
+      tabs,
+      chrome: { left: Math.round(box.left), right: Math.round(box.right), height: Math.round(box.height) },
+      strip: strip ? { left: Math.round(strip.left), right: Math.round(strip.right) } : null,
+      actions: actions
+        ? { left: Math.round(actions.left), right: Math.round(actions.right), width: Math.round(actions.width) }
+        : null,
+    }
+  })
+  if (shot.error) return { skipped: shot.error }
+  if (shot.tabs.length < 2) return { skipped: `叶檐上只有 ${shot.tabs.length} 格 tab` }
+
+  seen.push(`${shot.tabs.length} 格 tab`)
+  const tops = [...new Set(shot.tabs.map((t) => t.top))]
+  seen.push(`top 取值 ${tops.length} 种`)
+  if (tops.length !== 1) problems.push(`tab 条换行了(top 有 ${tops.length} 种:${tops.join(' / ')})`)
+
+  if (!shot.actions) {
+    problems.push('右端动作组不在场(分屏那颗钮应当恒在)')
+  } else {
+    seen.push(`动作组 ${shot.actions.left}–${shot.actions.right}(檐右缘 ${shot.chrome.right})`)
+    if (shot.actions.right > shot.chrome.right + 1) {
+      problems.push(`动作组被挤出檐外(右缘 ${shot.actions.right} > ${shot.chrome.right})`)
+    }
+    if (shot.actions.width <= 0) problems.push('动作组宽度塌成 0')
+    if (shot.strip && shot.strip.right > shot.actions.left + 1) {
+      problems.push(`tab 条与动作组重叠(${shot.strip.right} > ${shot.actions.left})`)
+    }
+  }
+
+  // ④ 分屏一次,量分隔杆。
+  await page.evaluate(() => {
+    const split = document.querySelector('[data-testid^="pane-split:"]')
+    if (split instanceof HTMLElement) split.click()
+  })
+  await delay(350)
+  await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+    const right = items.find((el) => /在右侧|To the right/.test(el.textContent ?? ''))
+    if (right instanceof HTMLElement) right.click()
+  })
+  await delay(500)
+  const bar = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid^="pane-splitter:"]')
+    if (!el) return null
+    const r = el.getBoundingClientRect()
+    return {
+      role: el.getAttribute('role'),
+      now: Number(el.getAttribute('aria-valuenow')),
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+    }
+  })
+  if (!bar) {
+    problems.push('分屏之后分隔杆不在场')
+  } else {
+    seen.push(`杆 ${bar.width}×${bar.height} @${bar.now}`)
+    if (bar.role !== 'separator') problems.push(`杆的 role 是 ${bar.role},不是 separator`)
+    if (!(bar.width > 0 && bar.height > 0)) problems.push(`杆没有排出盒(${bar.width}×${bar.height})`)
+    if (!Number.isFinite(bar.now)) problems.push('杆报不出 aria-valuenow')
+  }
+  return { problems, seen }
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(
@@ -1355,6 +1531,15 @@ async function main() {
   for (const name of PROJECT_DIR_NAMES) {
     const full = path.join(projectsRoot, name)
     await mkdir(full, { recursive: true })
+    /*
+     * 每个项目目录里种几份**真文件**:W1 那一步(叶檐)要在中央区开出好几格 tab,
+     * 而开 tab 的路只有一条 —— 文件树(撤掉 Viewer 瓦之后,T0 拍点甲)。
+     * 名字故意一长一短:挤压量的是「这一条会不会换行 / 会不会把右端动作组顶出去」,
+     * 而那件事对长名最敏感。
+     */
+    for (const file of LEAF_TAB_FILES) {
+      await writeFile(path.join(full, file), `export const squeeze = '${file}'\n`)
+    }
     projectDirs.set(name, full)
   }
   let server
@@ -1420,9 +1605,21 @@ async function main() {
     app = await electron.launch({
       executablePath: electronBinary,
       args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: { ...process.env, ONETHING_STORE_PATH: store, ONETHING_REACT_DEV_SERVER_URL: '' },
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        /*
+         * **离屏起窗**(09-04 S4 立的纪律「真机门不许抢用户的机器」)。窗子不 show()、
+         * 不进 Dock;页面照样渲染、照样跑布局与 rAF,焦点由 CDP
+         * `Emulation.setFocusEmulationEnabled` 补上(只进这个窗口,不动真光标)。
+         */
+        ONETHING_GATE_HEADLESS: '1',
+      },
     })
     const page = await app.firstWindow()
+    const cdp = await app.context().newCDPSession(page)
+    await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
     await waitFor('渲染层完成一次 RPC 往返', async () => {
       const value = await page.evaluate(() => window.__d0 ?? null)
       return value && value.rpcOk ? value : undefined
@@ -1584,6 +1781,28 @@ async function main() {
       failures.push(`toast 挤压:${toast.problems.length} 条`)
     } else {
       console.log(`  ✓ ${toast.rows} 条 toast:盒子没被撑宽,墨一件都没顶穿 padding`)
+    }
+
+    console.log('\n[10b/11] 叶檐:多 tab 永不换行 · 右端动作组不被挤掉 · 分隔杆在场')
+    /*
+     * ── 挤压纪律在拼贴台上的落点(W1)────────────────────────────────────
+     * 三条,逐条对应设计 §10 `PaneLeaf` 那张「超量」状态:
+     *  ① **永不换行** —— 所有 tab 的 top 逐个相同(换行了就会有两种 top);
+     *  ② **右端动作组永不被挤掉** —— 它的右缘必须落在叶檐盒里,而且与 tab 条零重叠
+     *    (「一行一个弯腰件」:弯腰的是 tab 条,靠它自己横滚);
+     *  ③ **分隔杆**:分屏之后它在场、报得出 role 与比例(可调的 separator 是控件)。
+     */
+    const leaf = await checkLeafChrome(page)
+    if (leaf.skipped) {
+      console.log(`  · 跳过:${leaf.skipped}`)
+    } else {
+      console.log(`    ${leaf.seen.join(' | ')}`)
+      if (leaf.problems.length) {
+        for (const problem of leaf.problems) console.log(`  ✗ 叶檐:${problem}`)
+        failures.push(`叶檐:${leaf.problems.length} 条`)
+      } else {
+        console.log('  ✓ 叶檐:tab 条一条线 · 动作组在框里且零重叠 · 分隔杆报得出比例')
+      }
     }
 
     console.log('\n[11/11] 收工')

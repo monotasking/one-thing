@@ -46,19 +46,19 @@ export const WORKSPACE_ITEM_ID = 'workspace'
 export const APPS_ITEM_ID = 'apps'
 
 /**
- * 文件查看器这块瓦的 id(F2)。与上面几个同一条理由不许各写各的字面量:
- * 它被内容表、「打开方式」那张档→落点的翻译、以及查看器自己的开关三处引用。
+ * 从前那块「查看器」瓦的 id。**它已经不在 `STAGE_ITEMS` 里了**(W1)。
  *
- * ── 它为什么必须是一块**普通的瓦** ────────────────────────────────────────
- * 09-01 报障「open 位置,调整后也没有生效」:七档打开方式里只有「面板内」真接上。
- * 要让「主区域 / 浮窗 / 四条边」真生效,只有两条路 ——
- *  · 给查看器再造一套自己的浮窗 / 钉栏 / 舞台(那是把形态机抄第二遍);
- *  · 或者让它变成一块**有内容、有落点、有打开方式**的普通瓦,于是那六档
- *    就是壳里已经有的那一句 `openAs(id, placement)`。
- * 选后者,一行新的形态机代码都没有。代价说清楚:Dock 上因此多一块瓦、
- * 「所有应用」里多一行 —— 那正是「它是一块普通的瓦」的字面后果,不是副作用。
+ * ── 为什么撤掉 ──────────────────────────────────────────────────────────
+ * 09-04 用户原话:「Dock 上那块叫 Viewer 的瓦没有必要,它只在打开文件时才有意义」。
+ * F2 时把查看器做成一块普通的瓦,是为了让「打开方式」那六档白拿形态机;代价
+ * (Dock 上多一块瓦、「所有应用」里多一行)当时就写在这里。W1 把查看器降格为
+ * **一种内容**(`content/kinds/file.tsx`),那六档改由拼贴树接,这块瓦于是没有
+ * 任何理由继续存在 —— 一个文件的回访入口是**文件树**(T0 拍点甲)。
  *
- * 它是 `session` 域的:一份文件是从会话的工作目录里点开的,换会话就该跟着换。
+ * ── 这个常量为什么留着 ──────────────────────────────────────────────────
+ * 两个消费者:①stage persist v8 的迁移(把存量档案里所有 `viewer` 条目清掉);
+ * ②`item.viewer` 那个 i18n 键仍在(它是 `file` 这一种内容的兜底名)。
+ * 字面量散在两处会让「改一处漏一处」重演,所以名字留在这里。
  */
 export const VIEWER_ITEM_ID = 'viewer'
 
@@ -100,10 +100,10 @@ export const STAGE_ITEMS: StageItemSpec[] = [
    * 那条路,而不是先在表里塞一个假的等着someone替换。
    */
   /*
-   * 查看器 FileText:面里就是**一份打开着的文件**。与 files 的 FolderTree 分得开
-   * (一棵树 vs 一张纸),与 diff 的 GitCompare 也分得开(一份 vs 两版对照)。
+   * 「查看器」那一行**撤了**(W1,09-04 用户裁定)。文件不再是一块瓦,它是
+   * `file` 那一种内容 —— 回访入口是文件树,落点是拼贴树的叶。
+   * 理由与两个残留消费者写在 VIEWER_ITEM_ID 上。
    */
-  { id: VIEWER_ITEM_ID, titleKey: 'item.viewer', scope: 'session', icon: 'FileText' },
   { id: 'diff', titleKey: 'item.diff', scope: 'session', icon: 'GitCompare' },
   { id: 'terminal', titleKey: 'item.terminal', scope: 'session', icon: 'Terminal' },
   { id: 'browser', titleKey: 'item.browser', scope: 'global', icon: 'Globe' },

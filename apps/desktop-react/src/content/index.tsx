@@ -14,13 +14,11 @@ import { ExposeView } from '../expose/components/ExposeView'
 import { ProviderSettingsPanel } from '../providers/components/ProviderSettingsPanel'
 import { WorkspaceOverview } from '../workspace/components/WorkspaceOverview'
 import { AppsPanel } from './AppsPanel'
-import { ViewerPanel } from './viewer/ViewerPanel'
 import {
   APPS_ITEM_ID,
   NOTIFICATIONS_ITEM_ID,
   PROVIDERS_ITEM_ID,
   SESSIONS_ITEM_ID,
-  VIEWER_ITEM_ID,
   WORKSPACE_ITEM_ID,
 } from '../stage/items'
 
@@ -48,10 +46,11 @@ const RENDERERS: Record<string, () => ReactNode> = {
   // 「所有应用」也在这张表里,理由与上面那条逐字相同:它是一块普通的瓦,
   // 不是 Dock 自己长出来的一个管理浮层。所以它能被钉、能上舞台、能盖满内容栏。
   [APPS_ITEM_ID]: AppsPanel,
-  // 文件查看器(F2)。它进这张表,「打开方式」那七档里的六档就全接上了 ——
-  // 主区域 / 浮窗 / 四条边都是壳里已经有的 `openAs(id, placement)`,
-  // 查看器本体一个字没改(理由写在 stage/items.ts 的 VIEWER_ITEM_ID 上)。
-  [VIEWER_ITEM_ID]: ViewerPanel,
+  /*
+   * **查看器不在这张表里了**(W1)。它从「一块瓦」降格为 `file` 这一种内容
+   * (`content/kinds/file.tsx`):一个文件一个实例、一个 tab,住在拼贴树的叶里。
+   * 于是 Dock 上那块 Viewer 瓦、这张表里那一行、`ViewerPanel` 那件壳,三样一起退役。
+   */
 }
 
 /**
@@ -92,6 +91,12 @@ function PanelInstance({ id, visible, interactive }: { id: string; visible: bool
   const visibility = useMemo<PanelVisibility>(() => ({ visible, interactive }), [visible, interactive])
   // 可见性挂在**边界外面**:错误卡也是这一份实例的一部分,后台那一份的错误卡
   // 同样不该抢键盘。边界在里面,所以「重试」重挂的仍然只有面板自己。
+  /*
+   * memo 的 key 是这块内容的 **refId**(W1):瓦这一种的 refId 就是 `panel:<瓦 id>`
+   * (`workbench/kinds.ts` 的 `refId`)。值上与从前那个裸 id 一一对应,所以这一格
+   * 的行为一个字没变;换成 refId 是为了让「memo 按 refId」这句话在**两只**渲染
+   * 出口上是同一句(另一只是 `workbench/render.tsx`),而不是两套各说各的。
+   */
   const tree = useMemo(() => {
     const R = RENDERERS[id]
     return (
