@@ -33,7 +33,7 @@
 | --- | --- | --- |
 | 甲 | 会话改名 / 归档 / 删除今天**不在账本里**(走 meta.json + 总线) | (a) 补三条账本事件 `session/renamed` `session/archived` `session/deleted`;**(b) 索引不加账本事件:`LedgerFeed` 的指纹 `lastSeq:metaRev` 认改名与归档,指纹 `undefined` 即墓碑,活着时订总线既有的 `session:renamed` / `session:deleted`**(v3.1 改推荐:删会话是 `rmSync` 整个目录,`session/deleted` 要写进的账本自己已经没了;而且改名归档不是「这条会话的历史」,塞进 events.jsonl 是借账本当总线) |
 | 乙 | 默认索引字段 | **(a) 正文 + 会话标题 + 附件名;推理做「含推理」开关;工具结果不索引**;(b) 推理默认含 |
-| 庚 | 一个 store 两个 core(桌面持 `desktop` 锁、daemon 持 `daemon` 锁,daemon 从不看 `run/http.json`,两者同时装配是常态)谁建索引 | **(a) 发现文件式单写者:先来的写 `run/index-owner.json` 当写者,后来的开只读句柄当读者(WAL 允许),写者 pid 死了读者接管**(§5.6;与 08-24「store 不要锁」同一条路);(b) 两个写者都折、靠按键整体替换幂等;(c) 只有 HTTP 面持有者建索引,其它进程没有搜索 |
+| 庚 | 一个 store 两个 core(桌面持 `desktop` 锁、daemon 持 `daemon` 锁,daemon 从不看 `run/http.json`,两者同时装配是常态)谁建索引 | (a) 发现文件式单写者:先来的写 `run/index-owner.json` 当写者,后来的开只读句柄当读者(WAL 允许),写者 pid 死了读者接管(§5.6;与 08-24「store 不要锁」同一条路);(b) 两个写者都折、靠按键整体替换幂等;(c) 只有 HTTP 面持有者建索引,其它进程没有搜索。**09-04 用户裁:先不做**——S3 不含 §5.6,`ownership.ts` 不建;库开 WAL,两个进程同时当写者时靠按键整体替换幂等兜底(即事实上的 (b)),`status` 路由的 `mode` 一格暂恒 `'owner'`,§5.6 留作方案 |
 | 辛 | AI 当调用者时缺省能看多远(§14) | **(a) 当前空间里的非协作会话 + 自己是成员的协作房**(与 collab `history` 工具今天的可见规则同一条);(b) 只见本会话;(c) 全部空间 |
 | 壬 | 语义召回缺省开关(§15;要下载约 110MB 模型、冷嵌入占 CPU 数分钟) | **(a) 默认关,设置里一键开,开了才下载**;(b) 默认开 |
 | 癸 | 嵌入模型运行时(§15) | **(a) `@huggingface/transformers` wasm 后端,零原生依赖**;(b) `onnxruntime-node`(N-API,过 gate:native,快约 2 倍,多 30MB 原生包) |
@@ -635,7 +635,7 @@ export const searchRouter = defineRouter<SearchRoutes>('search', ['query', 'capa
 | **S0 契约 + 法条 + 语料** | `@shared/ipc/search.ts` 扩展 + `capabilities` / `status` 路由;边界检查器新规则 `checkCoreSearchNamesNoCapability`(`packages/core/search/**` 零能力 id 字面量、零 `switch` on kind,目录不存在时跳过并打印);从真库抽脱敏语料 2000 条进 `core/search/__tests__/fixtures/`(**不加账本事件**,拍点甲 b) | typecheck;`boundary:gate` 绿;语料脚本只读 |
 | **S1 内核** | `core/search/`:candidate / capability / registry / analyzer / index(接口 + MemoryIndex)/ pipeline / cursor 全部纯实现 | 单测:切分黄金表、编解码往返 ≡ id、语料 20 条查询期望集(含「身份牌已私发四人」必中、全角必中、`/cmd` 不被吃)、放宽阶梯按能力逐级、前缀上限、cursor 稳定、授权范围进 filters 后 total 为真数;基准 2000 条查询 < 5ms;`boundary:gate` 绿(core 零依赖 + 零能力名) |
 | **S2 能力包装(行为零变化)** | 六个内置能力按三种基座包装,`plugin-search-registry` 并成 `remoteCapability`;`SearchService` 门面;**消息那一路暂仍是旧扫描**(scan 基座) | 对账门 `search:parity-A`:真库 200 随机查询 × 每类,新旧结果集逐字同(此期不许有差) |
-| **S3 索引 + 投影 + 持有权** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省 / **ownership.ts(§5.6)**;messages / sessions / daily 换成 `indexedCapability` | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐);`gate:search-index`:冷建事件循环 p99 < 20ms、双进程读者 / 接管场景(§5.6 门)、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
+| **S3 索引 + 投影** | `runtime/search/index/`:**Worker**(worker.ts / worker-host.ts,三个宿主各加一个构建入口)/ SqliteIndex(FTS5 unicode61 吃 TS 预切 token 列 + 文档表存正文 + 边表 + 检查点表,WAL)/ IndexProjector / LedgerFeed(观察者 + 总线 + 目录监视)/ DocumentFilter 两个缺省;messages / sessions / daily 换成 `indexedCapability`(持有权 §5.6 缓议,不建 ownership.ts) | 对账门 `search:parity-B`:索引严格档命中集 ⊇ 旧扫描命中集(差集逐条打印,按 filters 对齐);`gate:search-index`:冷建事件循环 p99 < 20ms、改名归档删除各一例经 feed 生效;折坏隔离用例;`sessions:shadow-battery` 绿;冷建 / 库大小 / 内存读数记回 §0 |
 | **S4 壳** | React 壳按 §9(目标渲染注册表 + 预览渲染注册表 + 范围片 / 枢轴 + 查询历史) | `gate:search-messages` 扩 7 断言(total / 放宽 / 分组 / 归档徽 / 跨空间 / tab 随注册表 / 读者模式提示);ui:consume 只减不增;a11y 零违例 |
 | **S5 退役** | 删 `searchMessages` 旧扫描、`iterateSessionMessages` 端口、`switch(category)`、写死配额表、`SearchCategory` 字面量;CLAUDE.md 改写(§12,含第 317 行「跨会话索引归 apps/server,主进程不许加库」那句)与 collab 文档 | 全仓绿;grep 零残留 |
 | **S6 AI 消费者** | `search` 工具(§14):`toolkit/builtin/search.ts` + `SearchAdapter` 注入 + 场景可见 + 提示词片段;messages `visibility` 的 agent 支(拍点辛) | store 级测试:三种 principal 各得各的;`sessions:shadow-battery` 加一幕「助手用 search 找到上周那句并引用」(假 provider 脚本化调用);场景面快照更新;`transport:gate` 不动 |
@@ -653,7 +653,7 @@ S1 与 S0 并行;S2 依赖 S1;S3 依赖 S0 + S2;S4 依赖 S3;S5 依赖 S4;S6 依
 - S1:拆 `PhraseVerifier` → 「身份 … 牌」假阳性红;拆 NFKC → 全角红;拆前缀上限 → `a` 展开红;改 cursor 不带 queryHash → 索引变后翻页错位红。
 - S2:任一能力从注册表摘掉 → parity-A 该类红 + `capabilities` 路由少一项红;`budgetPolicy` 改回常量 → 「command 意图 actions 8 条」用例红。
 - S3:观察者不 enqueue → 「发一条消息立刻可搜」真机红;`run/end` 前建文档 → 「流式中不出半条」红;折坏不隔离 → 「一会话坏其它照搜」红;检查点不比 `metaRev` → 改名后标题搜不到红。
-- S3(v3.1 补):索引服务改回主线程 → 事件循环门红;授权改回结果过滤 → 「滤后 total 为真数」用例红;第二个进程也当写者 → 双进程用例红(两份记录);读者不做目录监视 → 「读者写的消息写者搜得到」红;`Doc.capability` 改回字面量联合 → `checkCoreSearchNamesNoCapability` 红。
+- S3(v3.1 补):索引服务改回主线程 → 事件循环门红;授权改回结果过滤 → 「滤后 total 为真数」用例红;摘掉目录监视 → 「另一个进程写的消息搜得到」红;`Doc.capability` 改回字面量联合 → `checkCoreSearchNamesNoCapability` 红。(持有权那两条反证随 §5.6 缓议。)
 - S4:tab 写死 → 注销一个能力 tab 仍在红;`total` 缺席时画「加载更多」→ 红。
 - S6:工具无视 `ctx.principal` → agent 搜到别的空间红;`visibleIn` 改成恒真 → 协作房里同时出现 `history` 与 `search` 的场景面快照红;工具 import backend → 边界红。
 - S7:词法路碰了一字 → parity-B 红;嵌入在主线程跑 → 事件循环门红;扩展只在 Node 下装载 → `gate:native` Electron 那一列红;模型 id 变了不重嵌 → 「换模型后复述集」红。
