@@ -4,6 +4,8 @@
  * 挤压律一:这一行里吸剩余空间的只有标题,别的一律 flex: none。
  */
 .row {
+  /* relative:悬停动作是**浮在行尾之上**的(见 .actions),不占行内空间。 */
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -101,11 +103,17 @@
 }
 
 /*
- * 悬停动作:**常驻占位、只动 opacity**(无位移原则)。看不见的时候
- * `pointer-events: none`,所以也点不到;但它一直在原位,出现时零位移。
+ * 悬停动作**浮在行尾之上**,不进 flex 流(09-04 用户报:钉在边架 320px 宽时
+ * 标题只剩「屏幕使…」三个字 —— 两颗动作钮常驻在流里就常驻吃掉 ~56px,
+ * 无位移原则守住了「显形时不挤别人」,却把「静息时也占位」这笔账记在标题头上)。
+ * 改法:绝对定位贴右缘,显形时盖住时间列(与 chip);时间那一格同帧淡出,
+ * 于是静息态标题拿到整行、显形态一个像素都不位移 —— 两条纪律都保住。
  */
 .actions {
-  flex: none;
+  position: absolute;
+  inset-inline-end: var(--sp-2);
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: var(--sp-1);
@@ -120,6 +128,14 @@
 .actions:focus-within {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* 动作显形那一刻,被盖住的时间与 chip 淡出 —— 只动 opacity,位置一格不动。 */
+.row:hover .time,
+.row[data-active='true'] .time,
+.row:hover .project,
+.row[data-active='true'] .project {
+  opacity: 0;
 }
 
 /*
@@ -150,6 +166,7 @@
 
 /* 时间:定宽右对齐 + 等宽数字,所以一列数字上下对齐、行与行之间不跳。 */
 .time {
+  transition: opacity var(--dur-hover-fade) var(--ease);
   flex: none;
   width: var(--expose-time-w);
   text-align: end;
