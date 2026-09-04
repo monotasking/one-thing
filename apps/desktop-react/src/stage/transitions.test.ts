@@ -54,7 +54,6 @@ import {
   stageToFloat,
   tearOffDistance,
   thicknessFromPointer,
-  togglePlacement,
   toggleShelfCollapsed,
   withinDockWakeBand,
   withinDockHoldZone,
@@ -324,25 +323,6 @@ describe('clickDockIcon', () => {
     const before = JSON.parse(JSON.stringify(base))
     clickDockIcon(base, 'files', atEnd(base))
     expect(base).toEqual(before)
-  })
-})
-
-describe('togglePlacement(⌘P 那种开关语义)', () => {
-  it('收着 → 按打开方式开(不问架子看不看得见)', () => {
-    const next = togglePlacement(base, 'search', STAGE, VP)
-    expect(stageIdOf(next)).toBe('search')
-  })
-
-  it('开着(任一形态)→ 再按一次收回 Dock', () => {
-    const onStage = togglePlacement(base, 'search', STAGE, VP)
-    expect(formOf(togglePlacement(onStage, 'search', STAGE, VP), 'search')).toBe('dock')
-
-    const onShelf = togglePlacement(base, 'search', atEnd(base), VP)
-    expect(formOf(togglePlacement(onShelf, 'search', atEnd(onShelf), VP), 'search')).toBe('dock')
-    expect(rightShelf(togglePlacement(onShelf, 'search', atEnd(onShelf), VP)).tabs).toEqual([])
-
-    const onFloat = togglePlacement(base, 'search', M_FLOAT, VP)
-    expect(formOf(togglePlacement(onFloat, 'search', M_FLOAT, VP), 'search')).toBe('dock')
   })
 })
 

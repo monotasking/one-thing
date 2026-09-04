@@ -856,21 +856,6 @@ export function clickDockIcon(
   return openFromMemory(state, id, open, viewport)
 }
 
-/**
- * ⌘P 那种「开关一块面」的语义:在 Dock 里就按打开方式开,在别处(舞台/浮窗/架子)
- * 就收回 Dock。它与 clickDockIcon 的区别只有一条 —— 快捷键没有"收起整栏"这个中间态,
- * 按第二下就是关掉,所以它不判架子看不看得见。
- */
-export function togglePlacement(
-  state: StageState,
-  id: string,
-  open: PlacementMemory,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-): StageState {
-  if (placementOf(state, id).kind === 'dock') return openFromMemory(state, id, open, viewport)
-  return closeToDock(state, id)
-}
-
 /* ── 舞台 ──────────────────────────────────────────────────────────────────── */
 
 export function closeStage(state: StageState): StageState {

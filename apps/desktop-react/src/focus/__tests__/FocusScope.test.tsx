@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { act, render } from '@testing-library/react'
 import { createPortal } from 'react-dom'
 import { FocusScope } from '../FocusScope'
-import { useFocusScope } from '../useFocusScope'
+import { useFocusScope, useFocusScopeActive } from '../useFocusScope'
 import { focusTree } from '../registry'
 
 /**
@@ -106,7 +106,7 @@ describe('树 = 逻辑嵌套', () => {
 
 describe('isActive:别再去问 document.activeElement', () => {
   function Probe() {
-    const { isActive } = useFocusScope()
+    const isActive = useFocusScopeActive()
     return <span data-testid="probe">{isActive ? 'active' : 'rest'}</span>
   }
 
@@ -228,7 +228,8 @@ describe('rootRef:一格 ref,两个读者', () => {
 })
 
 /**
- * **`<FocusScope>` 自己不许订阅焦点树**(09-03,读数背书)。
+ * **`<FocusScope>` 自己不许订阅焦点树**(09-03,读数背书);
+ * **`useFocusScope()` 也不许**(09-04 S2,同一条法的第二半)。
  *
  * 病历(`probe-hotspots`):它从前用 `useSyncExternalStore` 自己算 `isActive` 并经
  * render-prop 交出去 —— 而全壳**没有一个消费者**读那一格(grep 只找得到它自己)。
@@ -237,6 +238,13 @@ describe('rootRef:一格 ref,两个读者', () => {
  * (5.8×),那一段里 `TreeEntryRow` total 37.3ms。
  *
  * 判据因此是一句话:**焦点换格不该让包着的面重渲**;要这个布尔的叶子自己去问。
+ *
+ * 09-04 S2 补的第二半:那时「叶子自己去问」还是同一只 `useFocusScope()`,而它
+ * 无条件挂着那格 `useSyncExternalStore` —— 于是**只要 `activate`** 的人也照样订阅。
+ * 真机读数(焦点在输入框与总览的树之间来回换 80 次,每次让一帧):
+ * `render.Overview` = 80(整块总览连它的树重渲 80 次),而总览从头到尾没读过
+ * 那个布尔。所以订阅搬进了独立的 `useFocusScopeActive()`,`useFocusScope()`
+ * 只剩 `instanceId` / `activate` 两格纯值。
  */
 describe('订阅的粒度:面不订,叶子订', () => {
   function Counting({ counts }: { counts: { n: number } }) {
@@ -244,8 +252,16 @@ describe('订阅的粒度:面不订,叶子订', () => {
     return null
   }
 
+  /** 只要 `activate`(壳里四个生产消费者全是这一形)—— 它不该订阅任何东西。 */
+  function ActivateOnlyLeaf({ counts }: { counts: { n: number } }) {
+    const { activate } = useFocusScope()
+    counts.n += 1
+    // 「拿到」那一格就够了 —— 这一条量的是订阅,不是点击(所以不画一颗真按钮)。
+    return <span data-testid="only">{typeof activate}</span>
+  }
+
   function AskingLeaf({ counts }: { counts: { n: number } }) {
-    const { isActive } = useFocusScope()
+    const isActive = useFocusScopeActive()
     counts.n += 1
     return <span data-testid="leaf">{isActive ? 'active' : 'rest'}</span>
   }
@@ -282,6 +298,26 @@ describe('订阅的粒度:面不订,叶子订', () => {
       act(() => focusTree.activate(i % 2 === 0 ? viewer : files, 'programmatic'))
     }
 
+    expect(counts.viewer.n - before.viewer).toBe(0)
+    expect(counts.files.n - before.files).toBe(0)
+  })
+
+  it('**只取 `activate` 的叶子一次都不重渲**(09-04 S2:订阅按需,不按调用)', () => {
+    const counts = { viewer: { n: 0 }, files: { n: 0 } }
+    twoScopes((which) => <ActivateOnlyLeaf counts={counts[which]} />)
+    const before = { viewer: counts.viewer.n, files: counts.files.n }
+    expect(before.viewer).toBeGreaterThan(0)
+
+    const viewer = idOf('viewer')
+    const files = idOf('files')
+    for (let i = 0; i < 20; i += 1) {
+      act(() => focusTree.activate(i % 2 === 0 ? viewer : files, 'programmatic'))
+    }
+
+    /*
+     * 反证:把 `useFocusScopeActive` 那格订阅搬回 `useFocusScope()` → 这两句当场红
+     * (各 20 次重渲),而那正是真机上「焦点一进出总览,整块总览重渲一遍」的病根。
+     */
     expect(counts.viewer.n - before.viewer).toBe(0)
     expect(counts.files.n - before.files).toBe(0)
   })

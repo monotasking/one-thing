@@ -32,7 +32,8 @@ import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
  * 只有这一种铺法(不再另开一条「从 hook 里取 scopeProps」的路):两种并存时,
  * 一个作用域会有两个地方能声称自己是根,I4「每个宿主层根元素都带
  * `data-focus-scope`」的判据当场变成「至少有一个地方带」。`useFocusScope()`
- * 因此只交出 `activate / isActive / instanceId`,没有 `scopeProps`;而
+ * 因此只交出 `activate / instanceId`,没有 `scopeProps`(「我是不是当前」那一格
+ * 09-04 S2 分了家,住进 `useFocusScopeActive()` —— 理由见那只文件的头);而
  * `<FocusScope>` 这一侧的 render-prop **只交 `scopeProps / activate / instanceId`**
  * —— 「我是不是当前」为什么不能从这里出,见下面那一节。
  *
@@ -67,8 +68,12 @@ import type { ActivateReason, FocusInstanceId, FocusScopeId } from './types'
  * `FocusScope` 自己 26.0ms —— 而当时全壳**没有一个消费者**读它交出去的 `isActive`
  * (grep 只找得到它自己)。
  *
- * 所以这个问题只有一个问法:**需要它的那个叶子自己 `useFocusScope()`**。
+ * 所以这个问题只有一个问法:**需要它的那个叶子自己 `useFocusScopeActive()`**。
  * 订阅仍在(那只 hook 里),粒度却变成了那一颗叶子;包着的面纹丝不动。
+ *
+ * 09-04 S2 把这条法推到底:订阅按**谁真的读那个布尔**算,不按**谁调过这只
+ * hook**算 —— 从前 `useFocusScope()` 无条件挂着那格订阅,而壳里四个消费者
+ * 一个都没读过 `isActive`,代价是焦点每换一次人整块总览重渲一遍(读数 80/80)。
  *
  * ── `activateOnMount`:开出来就把焦点送进落点 ────────────────────────────
  * 浮层的「开启即入焦」从前长在 `useFocusTrap`(容器档)与各面自己那句

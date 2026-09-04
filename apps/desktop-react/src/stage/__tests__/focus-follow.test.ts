@@ -75,7 +75,7 @@ describe('程序置顶一扇已经开着的浮窗(设计 §5 最后一行)', () 
     const after = state(at('files', { kind: 'float' }))
     /*
      * 反证:把那一段删掉 → 按 ⌘ 键把一扇开着的浮窗提到最上面之后键盘还在原处
-     * (`togglePlacement` 对开着的浮窗走的正是 `focusFloat` 那一支)。
+     * (`summonItem` 的 `reveal / float-front` 走的正是 `focusFloat` 那一支)。
      */
     expect(focusFollowTarget(before, after, 'files')).toEqual({
       scope: 'float-layer',

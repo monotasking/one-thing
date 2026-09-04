@@ -51,7 +51,7 @@ import type { CommandId } from '../keymap/types'
  * ═══════════════════════════════════════════════════════════════════════
  *
  * ── 为什么 `runCommand` 是注入的 ─────────────────────────────────────────
- * 全局命令的落点(`toggleItem` / `switchTo` / `newSessionInCurrentProject` …)
+ * 全局命令的落点(`summonItem` / `switchTo` / `newSessionInCurrentProject` …)
  * 长在 `keymap/` 那只 `useKeymapCommandRunner()` 里,它订阅着五个 store。
  * 抄一份进来的话那张动作表就有了两个产地,而它们迟早分叉 —— 所以是**共用一份**,
  * 由 `AppShell` 把 runner 递进来(R0 留账 4 的结清)。

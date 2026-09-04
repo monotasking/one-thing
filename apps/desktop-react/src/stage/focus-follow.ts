@@ -10,7 +10,7 @@ import type { Placement, ShelfSide, StageState } from './types'
  *
  * ── 为什么是一处,不是六处 ──────────────────────────────────────────────────
  * 「形态落定」在 store 上有六七个动作各能促成一次(`openAs` / `clickDockIcon` /
- * `toggleItem` / `stageToFloat` / `stageToEdge` / `floatToEdge` / `edgeToFloat`),
+ * `summonItem` / `stageToFloat` / `stageToEdge` / `floatToEdge` / `edgeToFloat`),
  * 而它们最后都汇进**同一个纯函数**(`transitions.openAs`)、写**同一格事实**
  * (`placements[id]`)。焦点该不该跟过去,判据只与那格事实的**前后差**有关,
  * 与「是哪一句 action 促成的」无关 —— 所以这件事只该有一处判,而且判的是差值。
@@ -80,8 +80,9 @@ export function focusFollowTarget(
    *
    * 它在这张表上**什么都没改**:同一块面、同一种形态,变的只有 `floatOrder`。
    * 所以判据不是差值,而是「谁点的名」—— 今天 `focusFloat` 唯一的非指针调用方
-   * 就是键盘那条 toggle 路(`togglePlacement` 对一扇开着的浮窗走 focusFloat 那一支,
-   * 按 ⌘ 键把它提到最上面)。指针置顶不点名,所以走不到这儿(点击本身落焦)。
+   * 就是键盘那条 toggle 路(`summonItem` 的 `reveal / float-front` 那一支,
+   * 按 ⌘ 键把压在下面的那扇窗提到最上面)。指针置顶不点名,所以走不到这儿
+   * (点击本身落焦)。
    */
   if (openedByKeyboard) {
     const now = after.placements[openedByKeyboard]

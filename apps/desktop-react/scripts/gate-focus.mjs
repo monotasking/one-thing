@@ -32,9 +32,11 @@
  * 10. 文件树单击开文件**焦点留树**,↵ 开文件**焦点进查看器**(§11 拍点 1 的 (a) 档)。
  * 11. ⌘F 在浮窗里的查看器与架子 tab 里的查看器**各开一次**(多实例:路由看实例)。
  * 12. ⌘P → Esc → 焦点回到开它之前**那个输入框**(§4.5 的 returnTo,兄弟之间的归还)。
- * 13. 召唤三态(S1,§14):Dock 里 → 开 + 焦点进;焦点在面里 → 回输入框;看得见没聚焦
+ * 13. 召唤三态(S1,§14):Dock 里 → 开 + 焦点进(**①-a 用一块自己不入焦、也没有
+ *     region 的面**——工作区;自入焦的面会把「键盘开面焦点跟过去」整条盖住,
+ *     09-04 S2 用户报障时这道门正是这么一声不吭的);焦点在面里 → 回输入框;看得见没聚焦
  *     → 只聚焦;架子上切走了 tab → 露出来 + 焦点进。后三态每一步都同时量
- *     「placements 一个字节没变」—— 召唤与旧那条 `toggleItem` 的分歧就是这一句。
+ *     「placements 一个字节没变」—— 召唤与旧那条纯开关的分歧就是这一句。
  *
  * (打表时的编号比这里多一格:总览那条键盘交接是 8b,自成一个场景。)
  *
@@ -834,6 +836,29 @@ async function main() {
 
     /* ── 场景 10:树行单击不抢焦点,↵ 抢 ─────────────────────────────── */
     scenario('文件树:单击开文件但焦点留树,↵ 开文件并把焦点送进查看器(§11 拍点 1)')
+    /*
+     * ── 步①为什么**必须**用一块自己不入焦的面(09-04 S2 改)──────────────────
+     * 这一步从前按 ⌘P 量检索面,而 `SearchPanel` 自己声明了 `activateOnMount`
+     * (⌘P 敲出来就打字是它的产品语义)—— 于是**就算召唤那条路一句焦点都不送,
+     * 这一步照样绿**:它把「键盘开面 → 焦点跟过去」(§3.5 规则 2)整条盖住了。
+     * R2 派工时踩过同款(那次改用文件树才量出真读数),S2 用户报「触发一块面之后
+     * 焦点还在输入框里」时,这道门也是一声不吭。
+     *
+     * 所以①改用**工作区**那块面:它既没有 `activateOnMount`,`focus/scopes.ts` 里
+     * 也没有它自己的 region —— 焦点能进去,只可能是召唤那条路(点名
+     * `requestFocusOnOpen` → `focus-follow` 在提交之后 `activateScope`)送进去的。
+     * 判据因此是「焦点落在**装着工作区总览的那一层**里」,而不是某个 scope id
+     * (它没有自己的 scope)。**这一步禁止换回任何自入焦的面**。
+     *
+     * 出厂键位表里只有检索(⌘P)与总览(⌘E)有键,所以这里先给
+     * `toggle:workspace` 种一个 ⌘⇧U(全表未占用),再整页重载让键位 store 吃进去。
+     */
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'onething.keymap',
+        JSON.stringify({ state: { overrides: { 'toggle:workspace': { meta: true, shift: true, key: 'u' } } }, version: 2 }),
+      )
+    })
     await page.goto(page.url().split('?')[0])
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
@@ -978,7 +1003,8 @@ async function main() {
     scenario('召唤三态:Dock 开 → 只聚焦 → 隐藏(浮窗形)→ 架子上露出来 → 隐藏(钉边形)(S1/S1b,§14)')
     /*
      * ── 为什么这一格要读 `placements`,而且是从**落盘的那份**读 ────────────────
-     * 召唤与旧那条 `toggleItem` 的分歧只有一句:**它永远不改形态**(除了第一态
+     * 召唤与旧那条纯开关(`toggleItem`,已随 S2/09-04 删)的分歧只有一句:
+     * **它永远不改形态**(除了第一态
      * 「开出来」)。所以后三态每一步的判据都是同一句话 —— 「这一下之后 placements
      * 一个字节都没变」。DOM 上看不出这件事(一块面被关掉与被藏起来在 DOM 上都是
      * 「不在了」),而 store 没有挂在 window 上,所以读它落盘的那份:zustand persist
@@ -1072,26 +1098,70 @@ async function main() {
       if (box instanceof HTMLElement) box.focus()
     })
 
-    /* ① 未打开 → 开出来 + 焦点进那块面。 */
+    /* ①-a 未打开 → 开出来 + 焦点进那块面。**用一块自己不入焦的面**(见上面那段)。 */
+    const workspaceOnScreen = () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="workspace-overview"]')))
+    if (await workspaceOnScreen()) {
+      skip('①-a Dock 里 → 召唤把工作区开出来并把焦点送进去', '工作区面此刻还在场(Esc 没退干净)')
+    } else {
+      await page.keyboard.press('Meta+Shift+u')
+      await delay(600)
+      assert(await workspaceOnScreen(), '①-a 召唤把工作区面开出来了')
+      const landed = await page.evaluate(() => {
+        const el = document.activeElement
+        const layer = el?.closest?.('[data-focus-scope$="-layer"]') ?? null
+        return {
+          testid: el?.getAttribute?.('data-testid') ?? el?.tagName ?? null,
+          scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+          inWorkspacePane: Boolean(layer?.querySelector('[data-testid="workspace-overview"]')),
+        }
+      })
+      /*
+       * 两条一起量,缺一条这一步就又变成盖住病的那种绿:
+       *  · 焦点**进了装着工作区总览的那一层**(这块面没有自己的 region,所以判的是层);
+       *  · 焦点**离开了输入框** —— 用户 09-04 报的正是这一句(「触发一块面,焦点
+       *    为什么还在 inputbox」)。
+       */
+      assert(
+        landed.inWorkspacePane,
+        '①-a 开出来之后焦点进了装着这块面的那一层(它自己没有 activateOnMount,也没有 region)',
+        `(此刻在 [${landed.testid ?? '—'}],作用域 ${landed.scope ?? '—'})`,
+      )
+      assert(
+        landed.testid !== 'composer-input',
+        '①-a 焦点离开了输入框(§3.5 规则 2:键盘开面,焦点进那块面)',
+        `(此刻在 [${landed.testid ?? '—'}])`,
+      )
+      await assertNoOrphan(page, '①-a 召唤开面之后')
+      // 再按一下把它收走(第四态),别让它挡住后面几步。
+      await page.keyboard.press('Meta+Shift+u')
+      await delay(600)
+    }
+
+    /* ①-b 检索面开出来 —— 后面 ②③④ 都在它身上量,所以这一步只管把它摆上台。 */
+    await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="composer-input"]')
+      if (box instanceof HTMLElement) box.focus()
+    })
     if (await searchOnScreen()) {
-      skip('① Dock 里 → 召唤把它开出来并把焦点送进去', '检索面此刻还在场(Esc 没退干净)')
+      skip('①-b Dock 里 → 召唤把检索面开出来', '检索面此刻还在场(Esc 没退干净)')
     } else {
       await page.keyboard.press('Meta+p')
       await delay(500)
-      assert(await searchOnScreen(), '① 召唤把检索面开出来了')
+      assert(await searchOnScreen(), '①-b 召唤把检索面开出来了')
       const at = await focusNow()
       /*
        * 这一步的**焦点那一半不是判召唤的读数**:检索面自己声明了 `activateOnMount`
        * (⌘P 敲出来就打字是它的产品语义),所以就算召唤一句焦点都不送它照样入焦。
-       * 留着它是因为设计 §14 的门要这一格产品行为在场;**分辨得出召唤**的是下面
-       * 三步(②③④ 全是「形态一个字节不变」),jsdom 那头另有一份用文件树量的。
+       * 留着它是因为设计 §14 的门要这一格产品行为在场;**分辨得出召唤**的是
+       * ①-a(自己不入焦的那块面)与下面三步(②③④ 全是「形态一个字节不变」)。
        */
       assert(
         at.scope === 'search',
-        '① 开出来之后焦点在检索面里',
+        '①-b 开出来之后焦点在检索面里(它自己声明了 activateOnMount)',
         `(此刻在 [${at.testid ?? '—'}],作用域 ${at.scope ?? '—'})`,
       )
-      await assertNoOrphan(page, '① 召唤开面之后')
+      await assertNoOrphan(page, '①-b 召唤开面之后')
     }
 
     /*

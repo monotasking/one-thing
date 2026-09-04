@@ -86,7 +86,7 @@ if (added.length) {
       + '\n    keydown-outside-focus / focus-outside-focus / active-element-read'
       + '\n                  → src/focus/(响应链;设计 react-shell-focus-2026-09.md §3 的 I2/I3)'
       + '\n                    键盘监听收进 focus/dispatch;跨作用域搬焦点改 activate();'
-      + '\n                    「我是不是当前」改问 useFocusScope().isActive'
+      + '\n                    「我是不是当前」改问 useFocusScopeActive()'
       + '\n  确实不该改的,在命中处上方 8 行内写 `ui-consume-allow: <规则> — <理由>`(理由必填)。',
   )
   process.exit(1)

@@ -108,6 +108,28 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
     expect(layerOf(focusTree.current()?.instanceId)?.owner).toBe('files')
   })
 
+  /*
+   * 09-04 S2 补的第二格:一块**自己没有 region** 的面(工作区总览 —— 它在
+   * `focus/scopes.ts` 里没有自己那一行,内容里也没有 `<FocusScope>`)。
+   * 上面那条用文件树量的是「层 → 它装着的那块面」那条路(`entryOf` 往里走一层),
+   * 这一条量的是它的**另一支**:层里一个可交互的子作用域都没有,焦点就停在层根上。
+   * 两支都得有人钉着 —— 用户 09-04 报的正是这一形(`workspace` / `apps` /
+   * `notifications` / `providers` / `diff` / `terminal` / `browser` 七块面都在这一支上)。
+   */
+  it('**用键盘**开一块自己没有 region 的面 → 焦点落在装着它的那一层上(不是留在输入框里)', () => {
+    render(<AppShell />)
+    act(() => useKeymapStore.setState({ overrides: { 'toggle:workspace': { meta: true, key: 'k' } } }))
+    act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
+    expect(useStageStore.getState().placements.workspace).toBeTruthy()
+    /*
+     * 反证:把 `requestFocusOnOpen` 那一句删掉(或把 `focus-follow` 那条 effect
+     * 改回「在 store 的 set 里当场 activate」)→ 焦点留在 composer 上,这两句红。
+     * 这正是用户报的那一句:「触发一块面,焦点为什么还在 inputbox」。
+     */
+    expect(firstResponder()).toBe('float-layer')
+    expect(focusTree.current()?.owner).toBe('workspace')
+  })
+
   it('同一个键**焦点已经在它里面**时把它收起来,焦点由结构归还自己回去(S1b 第四格)', () => {
     render(<AppShell />)
     act(() => void fireEvent.keyDown(document.body, { key: 'p', metaKey: true }))

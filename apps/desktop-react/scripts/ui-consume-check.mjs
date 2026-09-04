@@ -464,7 +464,7 @@ function ruleSharedVocabCss(file, css) {
  * 立法在响应链设计的三条不变量上(`docs/design/react-shell-focus-2026-09.md` §3):
  *  · I2 —— `keydown` 监听只许出现在 `src/focus/`;
  *  · I3 —— `.focus()` 只许出现在 `src/focus/` 与三处**作用域内部**的焦点移动;
- *  · 「我是不是当前」不许靠读 `document.activeElement`(改问 `useFocusScope().isActive`)。
+ *  · 「我是不是当前」不许靠读 `document.activeElement`(改问 `useFocusScopeActive()`)。
  *
  * 三条走过的路:R0 立成 `report` 档只打表(12 / 22 / 2),因为那时树**零消费者**,
  * 八套旧机制一格没动,判红等于要求一批干完三批的活;R1 拆到 5 / 15 / 2;
@@ -542,7 +542,7 @@ function ruleFocusDomain(file, text) {
         rule: 'active-element-read',
         file,
         line: lineOf(text, m.index),
-        note: '读 activeElement 判「我是不是当前」,该问 useFocusScope().isActive',
+        note: '读 activeElement 判「我是不是当前」,该问 useFocusScopeActive()',
       })
     }
   }

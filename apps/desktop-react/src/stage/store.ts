@@ -36,18 +36,14 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   /** 显式手势那一层:点名放到哪儿。它既执行也写记忆(记忆在 transitions 的 openAs 里落)。 */
   openAs: (id: string, placement: Placement) => void
   /**
-   * 开关语义:在 Dock 里就按打开方式开,在别处就收回 Dock。
-   *
-   * **S1(09-04)之后它暂时没有消费者** —— 键盘那条 `toggle:<面>` 命令改走
-   * `summonItem`(召唤,设计 §14),而 Dock 瓦点击走的一直是 `clickDockIcon`。
-   * 本批不删它(派工令明写「toggleItem 不动」):删一个 store 的公开口是另一次
-   * 裁定。它背后的纯函数 `transitions.togglePlacement` 仍有自己的用例钉着。
-   */
-  toggleItem: (id: string) => void
-  /**
-   * **召唤**一块面(S1,设计 §14)。键盘 `toggle:<面>` 命令的落点 —— 与
-   * `toggleItem` 的分歧只有一句:**它永远不关面**(关面是 Esc 的活)。
+   * **召唤**一块面(S1,设计 §14)。键盘 `toggle:<面>` 命令的**唯一**落点:
+   * 没开就开、看不见就露出来、看得见没聚焦就只聚焦、焦点已在里面就收起来。
    * 四态判据在纯函数 `summon.summonTransition` 里,这里只是它的分流器。
+   *
+   * 从前旁边还站着一口 `toggleItem`(纯开关,`transitions.togglePlacement`)——
+   * S1 把键盘那条路改走召唤之后它就零消费者了(Dock 瓦点击走的一直是
+   * `clickDockIcon`),09-04 S2 用户裁定删掉:一个没人叫的开口迟早被下一个人
+   * 当成「另一种打开方式」叫起来,那时这台壳就有两种打开语义了。
    */
   summonItem: (id: string) => void
   closeToDock: (id: string) => void
@@ -124,7 +120,7 @@ function openMemoryFor(s: StageState & StageSettings, id: string) {
 /**
  * store 只是 transitions 的一层壳:每个 action 都是 set(transitions.f)。
  * 逻辑不许写在这里 —— 写在这里就测不到了。
- * 唯一的「组合」是 clickDockIcon / toggleItem 里先 resolveOpen 再落形态,两边都仍是纯函数。
+ * 唯一的「组合」是 clickDockIcon / summonItem 里先 resolveOpen 再落形态,判据仍是纯函数。
  */
 export const useStageStore = create<StageStore>()(
   persist(
@@ -144,7 +140,6 @@ export const useStageStore = create<StageStore>()(
 
       clickDockIcon: (id) => set((s) => T.clickDockIcon(s, id, openMemoryFor(s, id), viewport())),
       openAs: (id, placement) => set((s) => T.openAs(s, id, placement, viewport())),
-      toggleItem: (id) => set((s) => T.togglePlacement(s, id, openMemoryFor(s, id), viewport())),
       /*
        * ── 召唤(S1)是 store 唯一那种「先问再分流」的动作 ──────────────────
        * 它不是一句 `set(纯函数)`,因为判据要同时读**两份**事实:形态机这一份

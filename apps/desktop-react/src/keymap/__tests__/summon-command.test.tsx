@@ -43,7 +43,8 @@ describe('toggle:<面> = 召唤,不是开关', () => {
      * 这份夹具里没有响应链的树(纯 store 层),所以 `isOwnerActive` 恒答 false ——
      * 于是第二下走的是第三格「只聚焦」,形态一格不动。第四格(焦点真在面里 →
      * 隐藏)由下面那条带树的用例量。
-     * 反证:把 `summonItem` 的第一格改回 `toggleItem` → 第二下把它收回 Dock,这里红。
+     * 反证:把 `summonItem` 的第一格改回纯开关(在 Dock 里就开、在别处就
+     * `closeToDock`)→ 第二下把它收回 Dock,这里红。
      */
     const opened = placementOf(useStageStore.getState(), 'files')
     act(() => run.current(toggleCommandId('files')))
