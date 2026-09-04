@@ -3,6 +3,7 @@ import type { CSSProperties, RefObject } from 'react'
 import { Splitter } from '../ui/Splitter'
 import { useT } from '../i18n'
 import { PaneLeaf } from './PaneLeaf'
+import type { PaneHostChrome } from './PaneLeaf'
 import { useWorkbenchStore } from './store'
 import { layoutTree, ratioVar, ratioVars } from './layout'
 import { DEFAULT_SPLIT_RATIO } from './tree'
@@ -33,7 +34,19 @@ import s from './PaneTree.module.css'
  * 等于同一棵树的形状有两个产地 —— 而它们会在「换空间」那一刻分叉。
  * **留账**:W4 若要让浮窗的比例跨树复用,再谈。
  */
-export const PaneTree = memo(function PaneTree({ node }: { node: PaneNode }) {
+export const PaneTree = memo(function PaneTree({
+  node,
+  host,
+}: {
+  node: PaneNode
+  /**
+   * 宿主自己那一份檐(W4:架子的收/关三颗、浮窗的钉/放大/✕ 与拖窗)。
+   * `actions` 与 `onChromePointerDown` **只挂在根叶上**(阅读序第一片) ——
+   * 「这扇窗的标题栏」只有一条;`onTabPointerDown` 每片叶都接(架子上任何一格
+   * 都撕得出去)。缺席 = 中央区那一路,一个字没动。
+   */
+  host?: PaneHostChrome
+}) {
   const rootRef = useRef<HTMLDivElement>(null)
   /*
    * 表达式只在**树的形状**变了之后才需要重算;比例每动一格都变。两件事的寿命
@@ -41,6 +54,17 @@ export const PaneTree = memo(function PaneTree({ node }: { node: PaneNode }) {
    */
   const layout = useMemo(() => layoutTree(node), [node])
   const vars = useMemo(() => ratioVars(node), [node])
+  const rootLeafId = layout.leaves[0]?.leaf.id ?? null
+  /*
+   * 两份宿主檐:根叶那一份带整组钮与拖窗,别的叶只带「按住一格 tab」。
+   * memo 在 `[host, rootLeafId]` 上 —— 不 memo 的话每次重渲都是新对象,
+   * `PaneLeaf` 那层 memo 当场失效(切一次 tab 会把兄弟叶全重渲一遍)。
+   */
+  const rootHost = useMemo<PaneHostChrome | undefined>(() => host, [host])
+  const leafHost = useMemo<PaneHostChrome | undefined>(
+    () => (host?.onTabPointerDown ? { onTabPointerDown: host.onTabPointerDown } : undefined),
+    [host?.onTabPointerDown],
+  )
 
   return (
     <div ref={rootRef} className={s.panes} style={vars as CSSProperties} data-pane-tree="">
@@ -60,7 +84,7 @@ export const PaneTree = memo(function PaneTree({ node }: { node: PaneNode }) {
            */
           data-pane-span={leaf.id}
         >
-          <PaneLeaf leaf={leaf} />
+          <PaneLeaf leaf={leaf} host={leaf.id === rootLeafId ? rootHost : leafHost} />
         </div>
       ))}
       {layout.seams.map((seam) => (

@@ -53,7 +53,7 @@ function furnish(mark: string): void {
 function readFurniture() {
   const stage = useStageStore.getState()
   return {
-    shelfTabs: [...stage.shelves.right.tabs],
+    shelfTabs: [...(stage.shelves.right.tabs ?? [])],
     placements: { ...stage.placements },
     floatIds: Object.keys(stage.floats).sort(),
     floatOrder: [...stage.floatOrder],

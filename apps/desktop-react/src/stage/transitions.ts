@@ -165,12 +165,16 @@ export const DOCK_HOLD_PAD = 24
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 8
+export const STAGE_PERSIST_VERSION = 9
 
 const DOCK: Placement = { kind: 'dock' }
 
 function emptyShelf(): ShelfState {
-  return { tabs: [], activeId: null, thickness: SHELF_DEFAULT_THICKNESS, collapsed: false }
+  /*
+   * `tabs` / `activeId` / `visible` **不在这里造**(W4):它们是树的投影,
+   * 产地是 `stage/residency.ts`。出厂那一份只说几何 —— 一条空架子多厚、收没收起来。
+   */
+  return { thickness: SHELF_DEFAULT_THICKNESS, collapsed: false }
 }
 
 export function emptyShelves(): Record<ShelfSide, ShelfState> {
@@ -179,6 +183,8 @@ export function emptyShelves(): Record<ShelfSide, ShelfState> {
 
 export const initialStageState: StageState = {
   placements: {},
+  stageId: null,
+  coverId: null,
   floats: {},
   floatOrder: [],
   shelves: emptyShelves(),
@@ -200,8 +206,15 @@ export const initialStageState: StageState = {
  * `flashPinned` / `flashSide` 也不在表里:它们是**一次动画的瞬时值**,本来就不
  * 落盘,换装时跟着新空间从零开始正是对的。
  */
+/**
+ * **v6 那一刻**「什么算家具」的五格。它是一条**历史记录**,不许跟着今天那张表走:
+ * v6 迁移要把当年扁平档案里的这五格原样折进默认空间,而 W4 之后 `placements`
+ * 已经不是家具了(它降格成树的投影)—— 拿今天的表去折,存量档案里那一格
+ * 就会留在扁平层,再也没人捡它。
+ */
+const V6_FURNITURE_KEYS = ['placements', 'floats', 'floatOrder', 'shelves', 'memory'] as const
+
 export const STAGE_FURNITURE_KEYS = [
-  'placements',
   'floats',
   'floatOrder',
   'shelves',
@@ -210,7 +223,6 @@ export const STAGE_FURNITURE_KEYS = [
 
 /** stage 那一份家具的形。 */
 export interface StageFurniture {
-  placements: StageState['placements']
   floats: StageState['floats']
   floatOrder: StageState['floatOrder']
   shelves: StageState['shelves']
@@ -220,7 +232,6 @@ export interface StageFurniture {
 /** 出厂布局 —— 首次进入某个空间摊开的就是它。 */
 export function factoryStageFurniture(): StageFurniture {
   return {
-    placements: {},
     floats: {},
     floatOrder: [],
     shelves: emptyShelves(),
@@ -235,12 +246,29 @@ export function factoryStageFurniture(): StageFurniture {
  */
 export function pickStageFurniture(state: StageState): StageFurniture {
   return {
-    placements: withoutTransientPlacements(state.placements),
     floats: state.floats,
     floatOrder: state.floatOrder,
-    shelves: state.shelves,
+    /*
+     * 只带**几何**那一半走(W4):`tabs` / `activeId` / `visible` 是树的投影,
+     * 事实已经跟着 `onething.workbench` 那本账按空间各存一份了 —— 这里再带一份
+     * 就是第二个产地,而它们会在「换空间之后再刷新」那一刻对不上。
+     */
+    shelves: mapShelves(state.shelves, (shelf) => ({
+      thickness: shelf.thickness,
+      collapsed: shelf.collapsed,
+    })),
     memory: state.memory,
   }
+}
+
+/** 四条边逐条过一遍同一个函数。**唯一一处**「按边循环」的写法。 */
+function mapShelves(
+  shelves: Record<ShelfSide, ShelfState>,
+  fn: (shelf: ShelfState, side: ShelfSide) => ShelfState,
+): Record<ShelfSide, ShelfState> {
+  const out = {} as Record<ShelfSide, ShelfState>
+  for (const side of SHELF_SIDES) out[side] = fn(shelves[side] ?? emptyShelf(), side)
+  return out
 }
 
 export const initialStageSettings: StageSettings = {
@@ -261,10 +289,14 @@ export const initialStageSettings: StageSettings = {
  * 同一处,下面那块永远见不到光,所以它们各自只许有一个。
  *
  * 写成一张表而不是两段 if:再多一种独占形态时,这里加一个字面量就够了,
- * openAs 里那段不变式一个字都不用改(08-31 加 'cover' 时正是这么加的)。
- * 浮窗与架子不在表里 —— 它们生来就是可以有好几个的。
+ * 落点那一族(`stage/placement.ts`)里那段不变式一个字都不用改
+ * (08-31 加 'cover' 时正是这么加的)。浮窗与架子不在表里 —— 它们生来就是
+ * 可以有好几个的。
+ *
+ * **W4 起它同时是「哪几种形态不住在树里」那张表**:这两种是瞬态(设计 §1.3),
+ * 它们各占 stage 自己一格(`stageId` / `coverId`),不进 `workbench.regions`。
  */
-const EXCLUSIVE_FORMS: StageForm[] = ['stage', 'cover']
+export const EXCLUSIVE_FORMS: StageForm[] = ['stage', 'cover']
 
 /* ── 派生 ──────────────────────────────────────────────────────────────────── */
 
@@ -313,7 +345,13 @@ export function coverIdOf(state: StageState): string | null {
  * 它只回答**架子内部**那一格,不问上面压着什么(盖 / 舞台由 `isItemVisible` 合并)。
  */
 export function isShelfTabVisible(shelf: ShelfState, id: string): boolean {
-  return shelf.activeId === id && !shelf.collapsed
+  if (shelf.collapsed) return false
+  /*
+   * W4 起一条架子可以分屏,于是「露脸的那一个」不再只有一个 —— 每片叶各有一格
+   * 活动 tab。`visible` 是投影出来的那张名单;**缺席读作 `[activeId]`**,
+   * 也就是 W4 之前那条判据逐字保留(单叶架子上两者恒等)。
+   */
+  return shelf.visible ? shelf.visible.includes(id) : shelf.activeId === id
 }
 
 /**
@@ -411,8 +449,9 @@ export function memoryOf(
   if (p.kind === 'float') {
     return { kind: 'float', rect: state.floats[id] ?? defaultFloatRect(viewport) }
   }
-  const at = state.shelves[p.side].tabs.indexOf(id)
-  return { kind: 'edge', side: p.side, index: at < 0 ? state.shelves[p.side].tabs.length : at }
+  const tabs = state.shelves[p.side].tabs ?? []
+  const at = tabs.indexOf(id)
+  return { kind: 'edge', side: p.side, index: at < 0 ? tabs.length : at }
 }
 
 /** 写一条记忆。null = 无可记(在 Dock 里),此时是恒等变换 —— 归档不擦旧记忆。 */
@@ -429,25 +468,6 @@ export function memoryIsAt(m: PlacementMemory | undefined, placement: MemorableP
   if (!m || m.kind !== placement.kind) return false
   if (m.kind === 'edge' && placement.kind === 'edge') return m.side === placement.side
   return true
-}
-
-/**
- * 按一条记忆把 id 放回去。三种形态各自需要补的那一件事都在这里:
- *  - edge:插回 min(记忆次序, 组长) —— 两块瓦记着同一条边,各自钳一下就都坐得下,不需要仲裁;
- *  - float:矩形先过**与拖拽落定同一把**视口钳制 —— 显示器变小了不能把窗开到屏外;
- *  - stage:什么都不用补(舞台没有第二个参数)。
- */
-export function openFromMemory(
-  state: StageState,
-  id: string,
-  m: PlacementMemory,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-): StageState {
-  if (m.kind === 'stage') return openAs(state, id, { kind: 'stage' }, viewport)
-  if (m.kind === 'cover') return openAs(state, id, { kind: 'cover' }, viewport)
-  if (m.kind === 'edge') return openAs(state, id, { kind: 'edge', side: m.side }, viewport, m.index)
-  const seeded = { ...state, floats: { ...state.floats, [id]: clampFloatRect(m.rect, viewport) } }
-  return openAs(seeded, id, { kind: 'float' }, viewport)
 }
 
 /* ── 打开方式 → 落点 ───────────────────────────────────────────────────────── */
@@ -482,7 +502,7 @@ export function completeMemory(
 ): PlacementMemory {
   if (placement.kind === 'float') return { kind: 'float', rect: defaultFloatRect(viewport) }
   if (placement.kind === 'edge') {
-    return { kind: 'edge', side: placement.side, index: state.shelves[placement.side].tabs.length }
+    return { kind: 'edge', side: placement.side, index: (state.shelves[placement.side].tabs ?? []).length }
   }
   return placement
 }
@@ -726,180 +746,24 @@ export function resizeFrom(rect: FloatRect, dir: ResizeDir, dx: number, dy: numb
   return { x, y, w, h }
 }
 
-/* ── 落点变更(唯一的写入口,不变式都在这里维护) ──────────────────────────── */
-
-/** 把 id 从它当下待的地方摘出来:架子 tab 与浮窗序。摘架子的活动 tab 时焦点先右后左。 */
-function detach(state: StageState, id: string): StageState {
-  let shelves = state.shelves
-  let touched = false
-  for (const side of SHELF_SIDES) {
-    const shelf = shelves[side]
-    const at = shelf.tabs.indexOf(id)
-    if (at < 0) continue
-    const tabs = shelf.tabs.filter((x) => x !== id)
-    const activeId = shelf.activeId === id ? (tabs[at] ?? tabs[at - 1] ?? null) : shelf.activeId
-    shelves = { ...shelves, [side]: { ...shelf, tabs, activeId } }
-    touched = true
-  }
-  const inFloat = state.floatOrder.includes(id)
-  if (!touched && !inFloat) return state
-  return {
-    ...state,
-    shelves,
-    floatOrder: inFloat ? state.floatOrder.filter((x) => x !== id) : state.floatOrder,
-  }
-}
-
-/**
- * 把 id 放到某个落点。**全系统唯一改 placements 的函数** —— 三条不变式都在这里:
- *  1. 一个 id 只在一处:先从旧落点摘干净(架子 tab / 浮窗序),再登记新的;
- *  2. 舞台至多一个:新的上台,旧的落回 dock;
- *  3. dock 是缺席态:落回 dock 就是把它从表里删掉,不留一条 {kind:'dock'}。
- * 浮窗矩形不在这里擦 —— 那是记忆,收回 Dock 再开还要用。
+/* ── 住处的写口整段搬走了(W4)────────────────────────────────────────────
  *
- * G 批起它还多做一件事:**落定即写记忆**。这是全系统唯一改 placements 的函数,
- * 所以把记忆挂在这里,「菜单点名 / 拖拽吸附 / tab 撕出 / 舞台转边」四条路一次全接上,
- * 不必每个组件在松手时另外记得写一次(散在组件里的记忆,迟早有一条忘了写)。
+ * 从前这里有一族纯函数 —— `detach` / `openAs` / `closeToDock` / `clickDockIcon` /
+ * `closeStage` / `closeCover` / `escapeTopmost` / `stageToFloat` / `stageToEdge` /
+ * `floatToEdge` / `edgeToFloat` / `closeShelf` / `activateShelfTab` /
+ * `openFromMemory` / `withoutTransientPlacements` —— 它们改的是 `placements` 与
+ * `shelves[side].tabs`,也就是**一块瓦此刻住在哪儿**。
  *
- * edgeIndex 只在 placement 是 edge 时有意义:缺省 = 排到末尾(新来的排最后),
- * 给了 = 按记忆插回去,并钳进 [0, 组长] —— 它记着第 5 个,那条边现在只有 2 个,就坐第 3 个位子。
+ * W4 把架子与浮窗的身子换成了拼贴树之后,那两格降格成投影(见 `./residency.ts`
+ * 与 `types.ts` 上的判词),真相住在 `workbench.regions` 里。于是这些函数写的
+ * 已经不是事实,而是事实的影子 —— 留着就是第二个产地。
+ *
+ * 它们整族搬进了 **`stage/placement.ts`**:同样的判据、同样的次序、同样的
+ * 「落定即写记忆」,只是落笔处从 `StageState` 换成了那棵树。
+ * 这只文件从此只剩两件事:**读**(形态查询)与**几何**(矩形 / 厚度 / 吸附 /
+ * Dock 唤醒 / 退层链的判据),它们一个字都没动。
  */
-export function openAs(
-  state: StageState,
-  id: string,
-  placement: Placement,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-  edgeIndex?: number,
-): StageState {
-  let next = detach(state, id)
 
-  const placements = { ...next.placements }
-  // 独占形态(舞台 / 盖):新的上来,同形态的旧的落回 dock。表在 EXCLUSIVE_FORMS。
-  if (EXCLUSIVE_FORMS.includes(placement.kind)) {
-    for (const [other, p] of Object.entries(placements)) {
-      if (p.kind === placement.kind && other !== id) delete placements[other]
-    }
-  }
-  if (placement.kind === 'dock') delete placements[id]
-  else placements[id] = placement
-  next = { ...next, placements }
-
-  if (placement.kind === 'edge') {
-    const shelf = next.shelves[placement.side]
-    const at =
-      edgeIndex === undefined ? shelf.tabs.length : clamp(Math.round(edgeIndex), 0, shelf.tabs.length)
-    const tabs = [...shelf.tabs]
-    tabs.splice(at, 0, id)
-    // 新入架子顺手展开:用户的动作意图是「让它看得见」。
-    next = {
-      ...next,
-      shelves: {
-        ...next.shelves,
-        [placement.side]: { ...shelf, tabs, activeId: id, collapsed: false },
-      },
-    }
-  }
-
-  if (placement.kind === 'float') {
-    const rect = clampFloatRect(next.floats[id] ?? defaultFloatRect(viewport), viewport)
-    next = {
-      ...next,
-      floats: { ...next.floats, [id]: rect },
-      floatOrder: [...next.floatOrder, id],
-    }
-  }
-
-  // 落定即写:折的是 next(已经落好的那一份),所以 edge 记下的是真实插入位、
-  // float 记下的是钳制过的矩形 —— 记忆里没有一个「本来想放但没放成」的数。
-  return remember(next, id, memoryOf(next, id, viewport))
-}
-
-/**
- * 收回 Dock。**关闭是归档,不是删除**:先把当下的落点折成记忆,再摘活表 ——
- * 顺序反了就什么都记不到(摘完之后 placements / shelves 里已经没有它了)。
- * 已经在 Dock 里的是恒等变换(它的记忆是上次归档时留下的,这一下不该动它)。
- */
-export function closeToDock(state: StageState, id: string): StageState {
-  if (placementOf(state, id).kind === 'dock') return state
-  return remember(openAs(state, id, DOCK), id, memoryOf(state, id))
-}
-
-/**
- * 点 Dock 图标。先问「它现在在哪」,再决定这一下是什么意思:
- *  - 在舞台 / 盖着内容栏 → 关掉(再点一次收回去)
- *  - 在架子上 → 不新开。判据是「它现在看得见吗」:
- *      看不见(不是活动 tab,或整栏收着)→ 激活 + 展开 + 闪一下,告诉用户"它在那儿";
- *      看得见(是活动 tab 且栏展开着)  → 再点一次是"收回去",与舞台那条同一个手感。
- *  - 已是浮窗 → 置顶它(浮窗可以有好几个,所以这一下是"把它翻到最上面")
- *  - 在 Dock 里 → 按解析出的记忆开(见 resolveOpen 的三层序)。
- */
-export function clickDockIcon(
-  state: StageState,
-  id: string,
-  open: PlacementMemory,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-): StageState {
-  const current = placementOf(state, id)
-
-  if (EXCLUSIVE_FORMS.includes(current.kind)) return closeToDock(state, id)
-
-  if (current.kind === 'edge') {
-    const shelf = state.shelves[current.side]
-    // 判据读**那一只**共用的查询,不在这里再抄一句(见 isShelfTabVisible)。
-    // 这里问的是「架子内部露不露脸」而不是 isItemVisible ——「盖开着时点瓦」
-    // 的行为一个字都不改(那是指针那条路的裁定,不归本批)。
-    if (isShelfTabVisible(shelf, id)) return setShelfCollapsed(state, current.side, true)
-    return {
-      ...state,
-      shelves: { ...state.shelves, [current.side]: { ...shelf, activeId: id, collapsed: false } },
-      flashPinned: state.flashPinned + 1,
-      flashSide: current.side,
-    }
-  }
-
-  if (current.kind === 'float') return focusFloat(state, id)
-
-  return openFromMemory(state, id, open, viewport)
-}
-
-/* ── 舞台 ──────────────────────────────────────────────────────────────────── */
-
-export function closeStage(state: StageState): StageState {
-  const id = stageIdOf(state)
-  if (id === null) return state
-  return openAs(state, id, DOCK)
-}
-
-/** 关掉盖。没有盖时是恒等变换。 */
-export function closeCover(state: StageState): StageState {
-  const id = coverIdOf(state)
-  if (id === null) return state
-  return openAs(state, id, DOCK)
-}
-
-/**
- * Esc 退一层:按 escapeTargetOf 的次序收掉最上面那一块面。
- * 没有面可退时是恒等变换 —— 宿主据此判断「这一下 Esc 我没接住」。
- */
-export function escapeTopmost(state: StageState): StageState {
-  const id = escapeTargetOf(state)
-  if (id === null) return state
-  return closeToDock(state, id)
-}
-
-/** 舞台 → 浮窗。没有舞台时是恒等变换。 */
-export function stageToFloat(state: StageState, viewport: Viewport = FALLBACK_VIEWPORT): StageState {
-  const id = stageIdOf(state)
-  if (id === null) return state
-  return openAs(state, id, { kind: 'float' }, viewport)
-}
-
-/** 舞台 → 某条边的架子。没有舞台时是恒等变换。 */
-export function stageToEdge(state: StageState, side: ShelfSide): StageState {
-  const id = stageIdOf(state)
-  if (id === null) return state
-  return openAs(state, id, { kind: 'edge', side })
-}
 
 /* ── 浮窗 ──────────────────────────────────────────────────────────────────── */
 
@@ -946,49 +810,7 @@ export function resizeFloat(
   return withFloatRect(state, id, clampFloatRect(rect, viewport))
 }
 
-/** 浮窗 → 架子。不是浮窗时是恒等变换。 */
-export function floatToEdge(state: StageState, id: string, side: ShelfSide): StageState {
-  if (placementOf(state, id).kind !== 'float') return state
-  return openAs(state, id, { kind: 'edge', side })
-}
-
-/** 架子 → 浮窗。不在架子上时是恒等变换;有旧矩形就回到旧位置。 */
-export function edgeToFloat(
-  state: StageState,
-  id: string,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-): StageState {
-  if (placementOf(state, id).kind !== 'edge') return state
-  return openAs(state, id, { kind: 'float' }, viewport)
-}
-
 /* ── 架子 ──────────────────────────────────────────────────────────────────── */
-
-/**
- * 整栏关闭:这条边上的 tab 全部收回 Dock(逐个走 closeToDock,复用它的全部清理)。
- *
- * 次序要在**动手之前**整条拓下来:逐个收会让后面的 tab 次序一路往前塌,
- * 那样记下的就是塌过的次序 —— 整栏关掉再一个个开回来,三块瓦会挤成一摞。
- * 所以先按原状折一遍记忆,收完再把这一份盖回去(只覆盖这条边上的 id,别人一条不碰)。
- */
-export function closeShelf(state: StageState, side: ShelfSide): StageState {
-  const tabs = state.shelves[side].tabs
-  if (tabs.length === 0) return state
-  const memory = { ...state.memory }
-  for (const id of tabs) {
-    const m = memoryOf(state, id)
-    if (m) memory[id] = m
-  }
-  return { ...tabs.reduce((st, id) => closeToDock(st, id), state), memory }
-}
-
-/** 激活一条边上的某个 tab。不在这条边上、或已经是活动的,都是恒等变换。 */
-export function activateShelfTab(state: StageState, side: ShelfSide, id: string): StageState {
-  const shelf = state.shelves[side]
-  if (!shelf.tabs.includes(id)) return state
-  if (shelf.activeId === id) return state
-  return { ...state, shelves: { ...state.shelves, [side]: { ...shelf, activeId: id } } }
-}
 
 function setShelfCollapsed(state: StageState, side: ShelfSide, collapsed: boolean): StageState {
   const shelf = state.shelves[side]
@@ -1268,23 +1090,6 @@ export function setItemHidden(
 /* ── persist ───────────────────────────────────────────────────────────────── */
 
 /**
- * 存盘前把**瞬态形**(舞台 / 盖)那几条摘掉:架子和浮窗是用户摆好的工作台,
- * 理应留着;舞台与盖是「当下正在看的那一眼」,重开该从收拢态开始
- * (与 W1 之前同一条判例)。摘的判据与 EXCLUSIVE_FORMS 是同一张表 ——
- * 「至多一个」与「不存盘」在这套形态里恰好说的是同一批形态:两者都源于
- * 「它接管了一整片地方,所以它是一眼而不是一件家具」。
- */
-export function withoutTransientPlacements(
-  placements: Record<string, Placement>,
-): Record<string, Placement> {
-  const out: Record<string, Placement> = {}
-  for (const [id, p] of Object.entries(placements)) {
-    if (!EXCLUSIVE_FORMS.includes(p.kind)) out[id] = p
-  }
-  return out
-}
-
-/**
  * persist 迁移。逐版顺着往上补,不跳级 —— v0 的档案要连过三段。
  *  v0 → v1:存的是单值 `pinnedId`,v1 起是 tab 数组。
  *  v1 → v2:多了 Dock 四边/沿边位置/大小与钉栏收起态,旧档案缺哪条补哪条。
@@ -1294,7 +1099,20 @@ export function withoutTransientPlacements(
  *           用户配过的一条都不丢,只是换了一种存在方式:配置变成初始记忆。
  * 放在这里(而不是 store 里)是为了它能被当成纯函数测 —— 迁移只有一次机会跑对。
  */
-export function migrateStagePersisted(persisted: unknown, version: number): unknown {
+export function migrateStagePersisted(
+  persisted: unknown,
+  version: number,
+  /**
+   * **v9 那一段的交接口**(W4)。它在把住处摘掉**之前**被调一次(每个空间一格,
+   * 扁平层那一份的空间 id 是 `null`)。
+   *
+   * 为什么是回调而不是「事后再读一遍档案」:一份 v0 的档案里根本没有 `shelves`
+   * ——那时的钉栏是一格 `pinnedId`,v3 那段才把它翻成 `shelves.right.tabs`。
+   * 走到 v9 时手上这一份已经逐版补齐过,交出去的才是完整的。病历全文写在
+   * `stage/legacy-furniture.ts` 的文件头。**缺席 = 只摘不交**(纯函数用例那一路)。
+   */
+  onResidency?: (spaceId: string | null, furniture: Record<string, unknown>) => void,
+): unknown {
   if (version >= STAGE_PERSIST_VERSION) return persisted
   if (!persisted || typeof persisted !== 'object') return persisted
   let out = persisted as Record<string, unknown>
@@ -1374,7 +1192,7 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
      * 界面语言、藏了哪些瓦是这台机器的偏好,换个空间不该跟着变(判据写在
      * `workspace/per-space.ts` 文件头)。它们留在扁平层,一个字不动。
      */
-    out = foldFlatIntoDefaultSpace(out, STAGE_FURNITURE_KEYS, DEFAULT_SPACE_ID) as Record<string, unknown>
+    out = foldFlatIntoDefaultSpace(out, V6_FURNITURE_KEYS, DEFAULT_SPACE_ID) as Record<string, unknown>
   }
   if (version < 7) {
     /*
@@ -1421,7 +1239,78 @@ export function migrateStagePersisted(persisted: unknown, version: number): unkn
     }
     out = stripViewerFurniture(out) as Record<string, unknown>
   }
+  if (version < 9) {
+    /*
+     * W4:**住处搬家**。`placements` 与 `shelves[side].{tabs,activeId}` 从今天起是
+     * 拼贴树的投影(判词在 `./residency.ts`),事实归 `onething.workbench` 那本账。
+     * 所以这一段做的是**搬走**,不是删掉:
+     *  · 接的那一头是 `stage/legacy-furniture.ts` —— 它在这只迁移跑之前先把
+     *    **原件**拍下来(`captureLegacyStageSnapshot`,`stage/store.ts` 的 migrate
+     *    第一行就调它),`startWorkbench()` 再把那份原件折进树里;
+     *  · 这一头只负责把这三格从 stage 的档案里摘干净,免得留下第二份说法。
+     *
+     * 顺序是可靠的,不是碰运气:zustand 的 persist 要等 `migrate` **返回之后**
+     * 才把新档案写回去,所以「先拍照、后摘除」在同一次水合里必然成立。
+     *
+     * **一格都没碰到就原样交回**(引用恒等 —— 幂等的机器化判据,同 v8)。
+     */
+    const ledger = out.byWorkspace
+    if (ledger && typeof ledger === 'object') {
+      let changed = false
+      const next: Record<string, unknown> = {}
+      for (const [spaceId, furniture] of Object.entries(ledger as Record<string, unknown>)) {
+        if (furniture && typeof furniture === 'object') {
+          onResidency?.(spaceId, furniture as Record<string, unknown>)
+        }
+        const stripped = stripResidencyFurniture(furniture)
+        if (stripped !== furniture) changed = true
+        next[spaceId] = stripped
+      }
+      if (changed) out = { ...out, byWorkspace: next }
+    }
+    onResidency?.(null, out)
+    out = stripResidencyFurniture(out) as Record<string, unknown>
+  }
   return out
+}
+
+/**
+ * 一份家具里所有**住处**的痕迹(v9 迁移用):整格 `placements`,以及每条架子上的
+ * `tabs` / `activeId`。厚度与收起态**一个字不动** —— 那是几何,归 stage。
+ *
+ * **一格都没碰到就原样交回**(引用恒等),与 `stripViewerFurniture` 同一条口径。
+ */
+export function stripResidencyFurniture(furniture: unknown): unknown {
+  if (!furniture || typeof furniture !== 'object') return furniture
+  const source = furniture as Record<string, unknown>
+  let touched = false
+  const f: Record<string, unknown> = { ...source }
+  if ('placements' in f) {
+    delete f.placements
+    touched = true
+  }
+  const shelves = f.shelves
+  if (shelves && typeof shelves === 'object') {
+    let shelvesTouched = false
+    const nextShelves: Record<string, unknown> = {}
+    for (const [side, shelf] of Object.entries(shelves as Record<string, unknown>)) {
+      if (!shelf || typeof shelf !== 'object') {
+        nextShelves[side] = shelf
+        continue
+      }
+      const one = { ...(shelf as Record<string, unknown>) }
+      const had = 'tabs' in one || 'activeId' in one
+      delete one.tabs
+      delete one.activeId
+      nextShelves[side] = had ? one : shelf
+      if (had) shelvesTouched = true
+    }
+    if (shelvesTouched) {
+      f.shelves = nextShelves
+      touched = true
+    }
+  }
+  return touched ? f : source
 }
 
 /**

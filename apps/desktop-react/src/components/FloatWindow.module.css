@@ -66,6 +66,15 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  /* 这扇窗这块地的脸(判词与 `EdgeShelf.module.css` 的 `.body` 逐字同一条):
+     `--pane-face` 的全局值是中央区那片叶的脸,浮窗的是 surface-2。 */
+  --pane-face: var(--surface-2);
+  /* 身子是一棵拼贴树(W4):`PaneTree` 那层 `.panes` 是 `flex:1` 的定位参考系,
+     所以这一格要是一条定高的 flex 列(与 `CenterRegion` / `EdgeShelf` 的同一条)。
+     **标题栏就是根叶那条檐**,由树自己画 —— 这扇窗没有第二条 40px 的带子。 */
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 /* 把手是不可见热区:自己不画一个像素,只提供光标与指针命中。 */

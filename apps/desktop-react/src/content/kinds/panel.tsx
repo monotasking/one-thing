@@ -1,4 +1,5 @@
 import { registerContentKind } from '../../workbench/kinds'
+import { PANEL_KIND } from '../../stage/panel-ref'
 import { findItem } from '../../stage/items'
 import { renderContent } from '../index'
 import { t } from '../../i18n'
@@ -11,8 +12,9 @@ import type { ContentRef } from '../../workbench/kinds'
  * 与形态机从第一天起就成立的约定(`placements` 是按 id 记的一张表)。
  *
  * ── 这一种今天**没有消费者在树里** ──────────────────────────────────────
- * 瓦仍然走形态机那条老路(Dock / 架子 / 浮窗 / 舞台),W4 才把架子与浮窗换成树。
- * 它现在就登记,是为了三件事今天就成立:
+ * **W4 起它有了真消费者**:架子与浮窗的身子换成了拼贴树,一块瓦就是树里的一格
+ * tab(`{kind:'panel', key:<瓦 id>}`,产地 `stage/panel-ref.ts`)。下面那三条
+ * 「今天就成立」的理由是 W1-a 写的,它们照旧成立:
  *  ① `renderContent(ref, visibility)` 的 memo key 换成 `refId`(派工规格第 5 条);
  *  ② 存量档案里若有 `panel:` 的 tab(手改 / 未来回退),`sanitize` 认得它,
  *    不会当未知种类剔掉;
@@ -21,7 +23,9 @@ import type { ContentRef } from '../../workbench/kinds'
  */
 registerContentKind(
   {
-    id: 'panel',
+    // 种类名的**唯一产地**在 `stage/panel-ref.ts`(那只文件是「瓦 id ⇄ 内容引用」
+    // 那条缝;两处各写一个 `'panel'` 字面量迟早分叉)。
+    id: PANEL_KIND,
     singleton: true,
     // 标题读的是瓦表上那个静态名;活标题(浏览器瓦的当前网页名之类)由
     // `stage/live-title` 盖在上面 —— 两半的分工写在 `ContentKind.title` 上。

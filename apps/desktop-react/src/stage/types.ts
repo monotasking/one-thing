@@ -121,21 +121,49 @@ export interface Point {
  * thickness 是「厚度」而不是宽度 —— 竖边量宽、横边量高,同一个数换个轴读。
  */
 export interface ShelfState {
-  tabs: string[]
-  activeId: string | null
+  /**
+   * **投影,不是存下来的**(W4)。这条边那棵树(`workbench.regions['edge:<side>']`)
+   * 里的瓦 id,按阅读序。真相在树上,这一格由 `stage/residency.ts` 的投影器算、
+   * 由 `stage/store.ts` 那**唯一**一条订阅写,**不落盘**(v9 迁移把它搬走了)。
+   * 缺席读作空 —— 换工作区那一拍,几何先摊开、投影随后补上。
+   */
+  tabs?: string[]
+  /** 投影:第一片叶此刻活动的那块瓦(单叶架子上这就是全部真相)。 */
+  activeId?: string | null
+  /**
+   * 投影:此刻**显形**的那些瓦 —— 每片叶各一格活动 tab。
+   * W4 起一条架子可以分屏,「露脸的那一个」于是不再只有一个;
+   * 缺席读作 `[activeId]`(单叶那一形,与 W4 之前逐字相同)。
+   */
+  visible?: string[]
   thickness: number
   collapsed: boolean
 }
 
 export interface StageState {
   /**
-   * 唯一事实源:id → 它当下在哪。缺席 = dock(所以初始表是空的,不是全量表)。
-   * 「舞台至多一个」是 transitions 维护的不变式,不是类型能表达的。
+   * id → 它当下在哪。缺席 = dock(所以初始表是空的,不是全量表)。
+   *
+   * ── W4 起它是**投影** ────────────────────────────────────────────────
+   * 事实住在拼贴树里(`workbench.regions`):一块瓦在哪棵树里,它就在哪个区域。
+   * 这一格由 `stage/residency.ts` 的 `projectResidency` 算出来,**唯一的写者**
+   * 是 `stage/store.ts` 里那条订阅。理由写在 `residency.ts` 的文件头:
+   * 一条架子上装的已经不只是瓦了(文件也能钉到边上),两份事实必然分叉。
+   *
+   * 两个瞬态(舞台 / 盖)不在树里,它们由下面 `stageId` / `coverId` 两格供,
+   * 投影时盖在树那一份上面。「至多一个」于是由**类型**保证,不再靠不变式。
    */
   placements: Record<string, Placement>
-  /** 浮窗矩形按 item 记忆 —— 收回 Dock 不擦,再开还在老位置。 */
+  /** 舞台上那一块(至多一个)。**瞬态**,不落盘。 */
+  stageId: string | null
+  /** 盖着内容栏那一块(至多一个)。**瞬态**,不落盘。 */
+  coverId: string | null
+  /** 浮窗矩形按窗 id 记忆 —— 收回 Dock 不擦,再开还在老位置。 */
   floats: Record<string, FloatRect>
-  /** 浮窗置顶序,末位最上。只登记当下是 float 的 id。 */
+  /**
+   * 浮窗置顶序,末位最上。**投影**(W4):只留还有树的那些窗,新长出来的排末位。
+   * 「翻到最上面」(`focusFloat`)仍然是直接写它 —— 那是次序,不是住处。
+   */
   floatOrder: string[]
   shelves: Record<ShelfSide, ShelfState>
   /**

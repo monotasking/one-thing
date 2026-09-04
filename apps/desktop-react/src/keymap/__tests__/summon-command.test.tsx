@@ -6,6 +6,7 @@ import { toggleCommandId } from '../transitions'
 import { focusTree } from '../../focus/registry'
 import { useStageStore } from '../../stage/store'
 import { initialStageState, placementOf } from '../../stage/transitions'
+import { seedStage } from '../../test/stage-fixture'
 
 /**
  * **`toggle:<面>` 那条命令的落点**(S1,设计 §14)。
@@ -52,7 +53,7 @@ describe('toggle:<面> = 召唤,不是开关', () => {
   })
 
   it('架子上藏在后台 tab 里 → 露出来,而**位置一格不动**', () => {
-    useStageStore.setState({
+    seedStage({
       placements: {
         files: { kind: 'edge', side: 'right' },
         sessions: { kind: 'edge', side: 'right' },
@@ -72,7 +73,7 @@ describe('toggle:<面> = 召唤,不是开关', () => {
   })
 
   it('架子收成细梁 → 展开,tab 次序与活动 tab 都不动', () => {
-    useStageStore.setState({
+    seedStage({
       placements: { files: { kind: 'edge', side: 'left' } },
       shelves: {
         ...initialStageState.shelves,
@@ -85,7 +86,7 @@ describe('toggle:<面> = 召唤,不是开关', () => {
   })
 
   it('浮窗被压在下面 → 翻到最上面(placements 一个字节不变)', () => {
-    useStageStore.setState({
+    seedStage({
       placements: { files: { kind: 'float' }, search: { kind: 'float' } },
       floatOrder: ['files', 'search'],
     })
@@ -112,7 +113,7 @@ describe('toggle:<面> = 召唤,不是开关', () => {
     shell.append(layerEl)
     focusTree.register('shelf-layer', root.instanceId, { owner: 'sessions' }).setRoot(layerEl)
 
-    useStageStore.setState({
+    seedStage({
       placements: {
         sessions: { kind: 'edge', side: 'right' },
         projects: { kind: 'edge', side: 'right' },
@@ -167,7 +168,7 @@ describe('toggle:<面> = 召唤,不是开关', () => {
     layerEl.append(paneEl)
     focusTree.register('viewer', layer.instanceId).setRoot(paneEl)
 
-    useStageStore.setState({ placements: { files: { kind: 'float' } }, floatOrder: ['files'] })
+    seedStage({ placements: { files: { kind: 'float' } }, floatOrder: ['files'] })
     const before = useStageStore.getState().placements
 
     composer.focus()

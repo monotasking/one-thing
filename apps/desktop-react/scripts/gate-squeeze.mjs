@@ -1394,14 +1394,24 @@ async function checkLeafChrome(page) {
     })
     await delay(500)
   }
-  // ① 把文件面开出来。
-  await page.evaluate(() => {
-    const tile = document.querySelector('[data-testid="dock-tile-files"]')
-    if (tile instanceof HTMLElement) tile.click()
-  })
-  await delay(600)
+  /*
+   * ① 把文件面开出来 —— **只在它此刻没露脸时才点**(09-05 合树时抓出来的夹具病)。
+   *
+   * Dock 那块瓦是**三态召唤**(S1:开 / 只聚焦 / 隐藏)。上面那个循环成功的那一轮
+   * 已经把文件面开出来、而且焦点跟进去了,所以这里再无条件点一下正好是「隐藏」——
+   * 修前这一整档因此**必跳过**(循环成功 → 收起来 → 数到 0 行 → skip),
+   * 「10b 从来没真的跑过」这件事就这么藏了一批。判据换成读屏幕:有行就不点。
+   */
   const rowsCss = '[data-testid="files-tree"] [data-file-path][data-file-type="file"]'
-  const rowCount = await page.evaluate((css) => document.querySelectorAll(css).length, rowsCss)
+  const countRows = () => page.evaluate((css) => document.querySelectorAll(css).length, rowsCss)
+  if ((await countRows()) === 0) {
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-files"]')
+      if (tile instanceof HTMLElement) tile.click()
+    })
+    await delay(600)
+  }
+  const rowCount = await countRows()
   if (rowCount === 0) return { skipped: '文件树上一行文件都没有(夹具没搭起来)' }
 
   // ② 落点改「主区域」= 中央区那棵树。

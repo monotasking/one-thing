@@ -180,32 +180,26 @@
   /* --surface-host 声明在**真正给内容铺底的那一格**上(.body 是 surface-2,壳 .shelf 是 surface-1):
      内容面里读它的东西(粘顶节头)要的是脚下这块底,不是外壳的底。09-04 用户报「背景色很奇怪」即声明错层。 */
   --surface-host: var(--surface-2);
-  /* 同组 tab 全部挂着,一层一个:所以 body 是它们的包含块。 */
+  /* 同一条判例的第二格(W1-b × W4 接缝):`PaneLeaf` 的 `.leaf` 读 `--pane-face`
+     ——那格 token 的全局值是**中央区**那片叶的脸(surface-0,与顶栏活动标签连体)。
+     架子这块地的脸是 surface-2,所以在这儿就地声明,而不是让叶去判自己在哪儿。 */
+  --pane-face: var(--surface-2);
+  /* 身子是一棵拼贴树(W4):`PaneTree` 那层 `.panes` 是 `flex:1` 的定位参考系,
+     所以这一格要是一条定高的 flex 列 —— 与 `CenterRegion.module.css` 的 `.panes`
+     逐字同一条,两个区域的叶因此量到同一种高度。 */
   position: relative;
-}
-
-/* 一个 tab 一层,互相盖住。绝对定位是为了让后台那几层**不占布局**——
- * 若还留在文档流里,即便内容被跳过,盒子本身仍会把活动那一层挤扁。 */
-.layer {
-  position: absolute;
-  inset: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /*
- * 后台层:跳过后代的渲染,但**保留渲染状态**(滚动位置、已完成的布局)。
- *
- * 为什么不是 `display: none` —— 它销毁盒子,滚动位置当场归零,那正好抵消掉
- * keep-alive 的用户可感知收益(「切回来还在原处」)。为什么不是
- * `visibility: hidden` —— 它照样参与布局,省不下这一批面板真正贵的那部分。
- *
- * `contain-intrinsic-size: 0` 是显式声明:这一层被跳过时不许拿后代的尺寸说事
- * (它的身量本来就由 inset: 0 给定,这一行只是把默认值写出来,防止将来有人
- * 给 .layer 加 auto 尺寸时出现「隐藏后自己撑开」的怪相)。
+ * ── `.layer` / `.layerHidden` 随 `ShelfTabLayer` 一起退役了(W4)──────────
+ * 从前这条架子自己挂一串 keep-alive 层(每个 tab 一层,`content-visibility:
+ * hidden` + `inert`)。现在架子的身子是一棵拼贴树,那件事整份归 `PaneLeaf` 的
+ * `PaneTabLayer`(`PaneLeaf.module.css` 的 `.layer` / `.layerHidden`)——
+ * **同一条判据只留一个产地**:两份写法迟早在「用 display:none 还是
+ * content-visibility」这一格上分叉,而那一格正是「切回来滚动位没了」的病根。
  */
-.layerHidden {
-  content-visibility: hidden;
-  contain-intrinsic-size: 0;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .sideLeft,

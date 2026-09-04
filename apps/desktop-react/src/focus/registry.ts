@@ -591,7 +591,15 @@ export class FocusTree {
   private entryOf(node: ScopeNode): ScopeNode {
     const seen = new Set<FocusInstanceId>()
     let at: ScopeNode = node
-    while (at.kind === 'layer' && !seen.has(at.instanceId)) {
+    /*
+     * ── W4:`passThrough` 那一格也穿 ──────────────────────────────────────
+     * 从前只穿 `layer`。W4 把架子与浮窗的身子换成了拼贴树,于是宿主层与那块面
+     * 之间多了两级「叶」(叶根 + 那一格 tab 的层)—— 不穿过去的话键盘会落在
+     * tab 条旁边那片空白上,而不是那块面里(真机门 `gate:focus` 场景 15 ③)。
+     * 哪一格该穿由**那一格自己在表上说**(`FOCUS_SCOPES[...].passThrough`),
+     * 内核不认识任何一个 scope 的名字。
+     */
+    while ((at.kind === 'layer' || FOCUS_SCOPES[at.scope]?.passThrough) && !seen.has(at.instanceId)) {
       const declared = at.restingTarget?.() ?? null
       if (declared && declared.isConnected) break
       seen.add(at.instanceId)

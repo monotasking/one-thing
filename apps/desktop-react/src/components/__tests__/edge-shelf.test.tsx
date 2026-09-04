@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
 import { useStageStore } from '../../stage/store'
 import { initialStageState } from '../../stage/transitions'
+import { useWorkbenchStore } from '../../workbench/store'
 import type { ShelfSide } from '../../stage/types'
 import { focusTree } from '../../focus/registry'
 
@@ -13,6 +14,13 @@ import { focusTree } from '../../focus/registry'
  */
 beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
+  /*
+   * **两台 store 都要归零**(W4):架子上有什么从今天起住在拼贴树里
+   * (`workbench.regions['edge:<side>']`),`placements` 只是它的投影。
+   * 只归零 stage 的话,上一例摆的那条架子会跟着走进这一例 ——
+   * 「空架子不渲染」那条当场读到两条 aside。
+   */
+  useWorkbenchStore.getState().reset()
 })
 
 afterEach(() => {
@@ -76,7 +84,6 @@ describe('四边架子', () => {
     expect(shelf.collapsed).toBe(false)
     expect(shelf.tabs).toEqual(['files', 'diff'])
     expect(shelf.activeId).toBe('diff')
-    expect(screen.getByRole('tablist', { name: NAME.left })).toBeTruthy()
   })
 })
 
@@ -85,7 +92,16 @@ describe('四边架子', () => {
  * 这里钉的是它的三条边界 —— 别的都在门里量(gate-perf 场景②:延迟、长帧、滚动位置)。
  */
 describe('同组 tab 是 keep-alive 的', () => {
-  const layer = (id: string) => document.querySelector(`[data-panel-layer="${id}"]`)
+  /*
+   * W4:一格 tab 的那一层从架子自己那份 `ShelfTabLayer` 换成了树的
+   * `PaneLeaf` → `PaneTabLayer`(判词在 `EdgeShelf.module.css` 里那段退役注)。
+   * 取件口因此从 `data-panel-layer=<瓦 id>` 换成 `data-pane-tab=<refId>`;
+   * **这一组要守的三条边界一个字没改**(不卸载 / inert 说两遍 / 同一个 DOM 节点)。
+   */
+  const layer = (id: string) => document.querySelector(`[data-pane-tab="panel:${id}"]`)
+  /** 这一格此刻在不在**这条架子**里(浮窗也画 `data-pane-tab`,所以要限定容器)。 */
+  const layerInShelf = (side: ShelfSide, id: string) =>
+    document.querySelector(`[data-shelf-body="${side}"] [data-pane-tab="panel:${id}"]`)
 
   it('切走的那一块不卸载:两层都在,非活动那层 inert', () => {
     render(<AppShell />)
@@ -112,13 +128,21 @@ describe('同组 tab 是 keep-alive 的', () => {
     openOnEdge('terminal', 'right')
 
     for (const id of ['files', 'terminal']) {
-      expect(layer(id)!.getAttribute('data-focus-scope')).toBe('shelf-layer')
+      expect(layer(id)!.getAttribute('data-focus-scope')).toBe('leaf')
     }
-    // 树上两格 shelf-layer:活动那格可交互,切走那格 inert。
+    /*
+     * W4 起层次是**两级**:整条架子一格 `shelf-layer`(住户 = 它露脸的那格瓦 ——
+     * 召唤与跟焦按 `owner` 精确取它),里面每一格 tab 一格 `leaf`。
+     * 「后台那格不可当第一响应者」这条判据一个字没改,只是落在 `leaf` 上了。
+     */
     const shelves = focusTree.dump().nodes.filter((n) => n.scope === 'shelf-layer')
-    expect(shelves.length).toBe(2)
-    expect(shelves.filter((n) => n.inert).length).toBe(1)
-    expect(shelves.filter((n) => !n.inert).length).toBe(1)
+    expect(shelves.length).toBe(1)
+    expect(shelves[0].owner).toBe('terminal')
+    // 一格叶根 + 两格 tab 层:活动那格可交互,切走那格 inert。
+    const tabs = focusTree.dump().nodes.filter((n) => n.scope === 'leaf' && n.owner?.startsWith('panel:'))
+    expect(tabs.length).toBe(2)
+    expect(tabs.filter((n) => n.inert).length).toBe(1)
+    expect(tabs.filter((n) => !n.inert).length).toBe(1)
   })
 
   it('切回来是**同一个 DOM 节点** —— 这就是「内部状态与滚动位置不丢」的机械含义', () => {
@@ -131,7 +155,7 @@ describe('同组 tab 是 keep-alive 的', () => {
     expect(layer('files')!.hasAttribute('inert')).toBe(false)
   })
 
-  it('边界只画到这一组:离开 shelf.tabs 的那一块当场卸载', () => {
+  it('边界只画到这一组:离开这条架子的那一块当场卸载', () => {
     render(<AppShell />)
     openOnEdge('files', 'right')
     openOnEdge('terminal', 'right')
@@ -139,6 +163,13 @@ describe('同组 tab 是 keep-alive 的', () => {
     expect(layer('terminal')).toBeNull()
     expect(layer('files')).toBeTruthy()
     act(() => useStageStore.getState().edgeToFloat('files'))
-    expect(layer('files')).toBeNull()
+    /*
+     * W4:撕成浮窗之后这一格**并没有消失** —— 它换了个宿主(浮窗的身子也是一棵树,
+     * 画的也是 `data-pane-tab`)。这一条守的一直是「**这条架子**上不再有它」,
+     * 所以按容器限定;整条架子随之空掉、整个 `<aside>` 卸载,那是同一件事的另一面。
+     */
+    expect(layerInShelf('right', 'files')).toBeNull()
+    expect(document.querySelector('[data-shelf="right"]')).toBeNull()
+    expect(layer('files')).toBeTruthy()
   })
 })

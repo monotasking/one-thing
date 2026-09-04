@@ -1,9 +1,11 @@
 import { useViewerSource } from '../../data/viewer-source'
-import { regionOfFileOpenMode, isWiredFileOpenMode, useFileOpenMode } from '../../data/file-open-mode'
-import { useWorkbenchStore } from '../../workbench/store'
-import { CENTER_REGION } from '../../workbench/regions'
+import { NEW_FLOAT_REGION, regionOfFileOpenMode, useFileOpenMode } from '../../data/file-open-mode'
+import { useWorkbenchStore, regionOfRefIn } from '../../workbench/store'
+import { floatRegion } from '../../workbench/regions'
 import { refId } from '../../workbench/kinds'
 import { leavesOf } from '../../workbench/tree'
+import { useStageStore } from '../../stage/store'
+import { nextFloatId } from '../../stage/placement'
 import type { FileOpenMode } from '../../data/file-open-mode'
 import type { ContentRef } from '../../workbench/kinds'
 import type { RegionId } from '../../workbench/regions'
@@ -32,15 +34,26 @@ import type { RegionId } from '../../workbench/regions'
 export const fileRef = (path: string): ContentRef => ({ kind: 'file', key: path })
 
 /**
- * 当下这一档要把新标签开在哪个区域。
+ * 当下这一档要把新标签开在哪个区域。**七档全通**(W4;W1-a 那次「五档回落
+ * 中央区」的临时退化到此结清 —— 架子与浮窗的身子都是树了)。
  *
- * **没接上的那五档回落中央区**(W1-a 的临时退化,见 `file-open-mode` 那段):
- * 判据在这里定一次 —— 菜单那边照 `isWiredFileOpenMode` 禁灰,而档值本身
- * 可能来自存量档案(用户在 F2 时代选过「浮窗」),那时得有一个诚实的落点。
+ * 「浮窗」那一档多一步:那张表交回的是哨位 `float:new`,这里把它翻成一扇
+ * **真窗**。翻法有两档,判据是「这份内容此刻有没有一扇自己的窗」:
+ *  · 有 —— 交回那一扇(同一档连点两次不该开出两扇装着同一个文件的窗);
+ *  · 没有 —— 铸一个新窗号,并给它一份默认矩形(不给的话 `FloatWindow` 那句
+ *    `if (!rect) return null` 会让这扇窗一帧都不画,而树已经建好了 —— 屏幕上
+ *    的表现是「点了没反应」)。
  */
-function regionForMode(mode: FileOpenMode): RegionId | 'panel' {
-  if (!isWiredFileOpenMode(mode)) return CENTER_REGION
-  return regionOfFileOpenMode(mode)
+function regionForMode(mode: FileOpenMode, ref: ContentRef): RegionId | 'panel' {
+  const region = regionOfFileOpenMode(mode)
+  if (region !== NEW_FLOAT_REGION) return region
+  const already = regionOfRefIn(useWorkbenchStore.getState().regions, refId(ref))
+  if (already?.startsWith('float:')) return already
+  const winId = nextFloatId()
+  // 身量归形态机补(默认档 + 视口钳制两件事的产地都在那儿);不补的话
+  // `FloatWindow` 那句 `if (!rect) return null` 会让这扇窗一帧都不画。
+  useStageStore.getState().ensureFloatRect(winId)
+  return floatRegion(winId)
 }
 
 /**
@@ -54,14 +67,15 @@ function regionForMode(mode: FileOpenMode): RegionId | 'panel' {
  */
 export function openFileInCurrentTarget(path: string, opts: { preview?: boolean } = {}): void {
   if (!path) return
-  const region = regionForMode(useFileOpenMode.getState().mode)
+  const ref = fileRef(path)
+  const region = regionForMode(useFileOpenMode.getState().mode, ref)
   const workbench = useWorkbenchStore.getState()
   if (region === 'panel') {
     workbench.openInPanel(path)
   } else {
     // 两档互斥:开进树里就把分栏收起来(一份内容只该有一个落点)。
     workbench.closePanel()
-    workbench.openRef(fileRef(path), { region, preview: opts.preview === true })
+    workbench.openRef(ref, { region, preview: opts.preview === true })
   }
   void useViewerSource.getState().openFile(path)
 }
@@ -75,10 +89,10 @@ export function openFileInCurrentTarget(path: string, opts: { preview?: boolean 
  */
 export function setFileOpenMode(mode: FileOpenMode): void {
   useFileOpenMode.getState().setMode(mode)
-  const region = regionForMode(mode)
   const workbench = useWorkbenchStore.getState()
   const moving = focusedFilePath(workbench) ?? workbench.panelPath
   if (!moving) return
+  const region = regionForMode(mode, fileRef(moving))
   if (region === 'panel') {
     // 树里那一格摘掉(实例留着 —— 它马上要在分栏里继续用),再交给分栏。
     closeFileEverywhere(moving, { keepInstance: true })
@@ -86,7 +100,14 @@ export function setFileOpenMode(mode: FileOpenMode): void {
     return
   }
   workbench.closePanel()
-  workbench.openRef(fileRef(moving), { region })
+  /*
+   * **搬**,不是再开一份(W4)。`openRef` 只往目标区域里插一格 —— 文件不是单例
+   * (同一份文件可以在两片叶里各开一个,那正是 W3「拖一份到旁边对照着看」要的),
+   * 所以它插完之后原来那一格还在:屏幕上就是「换了档,旧的那一份没走」。
+   * 而这一口说的是**换落点**,所以走 `moveRef`(从每棵树里摘干净再插进去,
+   * 实例一路留着)。
+   */
+  workbench.moveRef(fileRef(moving), region)
 }
 
 /** 焦点叶里那一格如果是个文件,回它的路径。 */

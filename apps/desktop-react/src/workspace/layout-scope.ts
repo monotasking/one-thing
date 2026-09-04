@@ -1,4 +1,4 @@
-import { STAGE_PER_SPACE, useStageStore } from '../stage/store'
+import { STAGE_PER_SPACE, syncStageResidency, useStageStore } from '../stage/store'
 import { SPLIT_PER_SPACE, useSplitPrefs } from '../data/split-prefs'
 import { OPEN_MODE_PER_SPACE, useFileOpenMode } from '../data/file-open-mode'
 import { EXPOSE_PER_SPACE, useExposeStore } from '../expose/store'
@@ -56,6 +56,17 @@ export function startPerSpaceLayout(): () => void {
      */
     bindPerSpace(useWorkbenchStore, WORKBENCH_PER_SPACE),
     subscribeCurrentSpace(swapFilesForSpace),
+    /*
+     * **换完两份家具之后把投影重算一遍**(W4)。`placements` /
+     * `shelves[side].tabs` 是树的投影(产地 `stage/residency.ts`),而换空间
+     * 那一拍两台 store 各换各的:stage 先摊开新空间的**几何**(那一份里没有
+     * tabs —— v9 起它不落盘),workbench 随后摊开新空间的**树**。
+     *
+     * 那条订阅本来就会响(它订的是 workbench),这一句是**次序的保险**:
+     * 它排在最后,所以无论上面两条怎么重排,投影都在两份家具都换完之后再跑
+     * 一次。重复跑是恒等变换(`sameProjection` 一样就不 set)。
+     */
+    subscribeCurrentSpace(syncStageResidency),
   ]
   return stopPerSpaceLayout
 }

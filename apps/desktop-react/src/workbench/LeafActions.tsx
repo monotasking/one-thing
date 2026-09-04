@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Columns2, Ellipsis, Rows2 } from '../components/icons'
 import { IconButton } from '../ui/IconButton'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
 import { useT } from '../i18n'
 import { contentKindOf, refId } from './kinds'
-import { useWorkbenchStore } from './store'
+import { hiddenInRegion, regionOfLeafIn, useWorkbenchStore } from './store'
 import type { PaneLeafNode } from './tree'
 import s from './LeafActions.module.css'
 
@@ -13,7 +13,17 @@ import s from './LeafActions.module.css'
  *
  * 设计 §2.2 的 D 稿把它摆在**顶栏右端**,而且只画**焦点叶**那一组:
  * 「顶栏从左到右:红绿灯让位 → 中央区各片叶的标签组 → 右端是焦点叶的动作组」。
- * 所以它不再是每片叶各画一份 —— 分屏出来的叶自己不画檐,也不画动作。
+ * 所以在**中央区**它不再是每片叶各画一份 —— 分屏出来的叶自己不画檐,也不画动作。
+ *
+ * ── 第二个宿主:架子 / 浮窗那片叶的檐(W4)──────────────────────────────
+ * 那两处没有第二条顶栏可借,檐就画在叶顶(`PaneLeaf` 的 `PaneLeafStrip`),
+ * 这一组因此挂在那条檐的右端、宿主自己那几颗之前。**同一件**,不是第二份实现。
+ *
+ * ── 「隐藏的标签 ⋯」只列**本区域**藏起来的那些(W4;W1-a 的留账)─────────
+ * 修前这格菜单列的是**全部**隐藏项,于是右架子的檐上会列出中央区藏起来的文件 ——
+ * 点回去,它出现在你看不见的另一块地方。「回哪儿去」这件事本来就记在
+ * `returnTo.region` 上,按它分组是它自己的读法(`store.hiddenInRegion`)。
+ * 于是顶栏尾格(中央区)与架子叶檐两处各列各的,而判据只有这一句。
  *
  * ── 三张状态表 ──────────────────────────────────────────────────────────
  * ① 生命周期:挂载 = 中央区有叶(恒有);**换住户**(焦点叶换人)不重挂,只换
@@ -26,9 +36,15 @@ import s from './LeafActions.module.css'
  */
 export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   const t = useT()
-  const hidden = useWorkbenchStore((st) => st.hidden)
+  const allHidden = useWorkbenchStore((st) => st.hidden)
+  /*
+   * 选出来的是一个**字符串**,不是整张 `regions` —— 订整张表的话,别处任何一棵树
+   * 动一下这一组都要重渲(判词与 `PaneLeaf` 那一格逐字同源)。
+   */
+  const region = useWorkbenchStore((st) => regionOfLeafIn(st.regions, leaf.id))
   const splitLeaf = useWorkbenchStore((st) => st.splitLeaf)
   const restoreHidden = useWorkbenchStore((st) => st.restoreHidden)
+  const hidden = useMemo(() => hiddenInRegion(allHidden, region), [allHidden, region])
 
   /** ⋯ / 分屏两张菜单开在哪一点(null = 没开)。两张各一格,不共用一个布尔。 */
   const [hiddenAt, setHiddenAt] = useState<{ x: number; y: number } | null>(null)

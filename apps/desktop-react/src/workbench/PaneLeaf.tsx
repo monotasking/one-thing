@@ -1,45 +1,58 @@
-import { memo, useMemo, useRef } from 'react'
+import { memo, useCallback, useMemo, useRef } from 'react'
+import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { FocusScope } from '../focus/FocusScope'
+import { useT } from '../i18n'
 import { refId } from './kinds'
-import { useCloseLeafTab } from './leaf-tabs'
+import { LeafActions } from './LeafActions'
+import { LeafStrip } from './LeafStrip'
+import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
+import { CENTER_REGION } from './regions'
 import { renderRef } from './render'
-import { useWorkbenchStore } from './store'
+import { regionOfLeafIn, useWorkbenchStore } from './store'
 import type { ContentRef } from './kinds'
 import type { PaneLeafNode } from './tree'
 import s from './PaneLeaf.module.css'
 
 /**
- * **一片叶 = 一组 tab 的身体**(W1,设计 §2.2「一格一檐」)。
+ * **一片叶 = 一组 tab 的身体,檐画在哪儿由它住在哪个区域决定**(W1 / W1-b / W4)。
  *
- * 规则只有一条:**一片叶只有一条檐,那条檐就是 tab 条;内容自己不画檐。**
+ * 规则仍旧只有一条:**一片叶只有一条檐,那条檐就是 tab 条;内容自己不画檐。**
  * 于是从前那两颗语义不同的 ✕(查看器自己那颗 = 关文件 / 宿主檐那颗 = 收回 Dock)
  * 塌成一颗:**tab 上那颗 ✕ = 关闭这一格**。
  *
- * ── W1-b:那条檐搬进了窗口顶栏,这只文件因此只剩身体 ──────────────────────
- * 设计 §2.2 的 D 稿(用户原话:「标签不要占聊天区域,聊天区现在多宽以后就多宽,
- * 把标签放到红绿灯那一栏上」)把中央叶的檐整条搬到了顶栏
- * (`workbench/TopBarTabs.tsx`):一片叶一组标签,**各坐各叶的正上方**,活动标签
- * 与它下面这片叶连成一块。所以这里去掉的是「画檐」那一段 —— 檐的**件**
- * (`LeafStrip`)、它的**数据表**(`leaf-tabs.ts`)、它的**动作组**(`LeafActions`)
- * 一件都没重写,只是换了挂载点。这片叶自己留下的只有:
- *  · 身体(每一格 tab 各一层,keep-alive);
- *  · 焦点作用域与「点哪片哪片就是焦点叶」;
- *  · 焦点边那一圈(下面那张状态表的最后一格)。
- * 顶边与顶圆角本来就没画过,所以「中央叶去顶边直接接在顶栏底下」在这只文件里
- * 是一句**已经成立**的话;要补的只有一格底色(见 `.leaf`,连体那条契约的另一半)。
+ * ── 那条檐坐在哪儿:一格判据,不是四处各写一遍(W1-b × W4 的接缝)────────
+ * 设计 §2.2 的 D 稿把**中央区**那条檐整条搬进了窗口顶栏(`workbench/TopBarTabs.tsx`,
+ * 用户原话:「标签不要占聊天区域,把标签放到红绿灯那一栏上」);W4 又把**架子与
+ * 浮窗**的身子换成了同一棵拼贴树,而那两处没有第二条顶栏可借 —— 浮窗那一形更是
+ * 「标题栏**就是**它里面那棵树根叶的 tab 条」。
+ *
+ * 两件事合起来只有一句话:**檐的位置由区域决定**。
+ *
+ *   `region === CENTER_REGION`   叶身上零檐(顶栏画,`TopBarTabs`)
+ *   其余区域(edge:* / float:*)  檐画在叶顶(下面那一格 `PaneLeafStrip`)
+ *
+ * 判据落在**这一处**,取的是叶自己住在哪儿(`store.regionOfLeafIn`)——
+ * 不是「宿主给没给 host」:host 缺席只意味着这一片不是根叶,不意味着它在中央区
+ * (架子上分屏出来的第二片叶没有 host,但它照样要有自己的檐)。
+ *
+ * 檐的**件**(`LeafStrip`)、它的**数据表**(`leaf-tabs.ts`)、它的**动作组**
+ * (`LeafActions`)三件东西四个宿主共用同一份 —— 中央顶栏、两条架子叶、浮窗根叶
+ * 画的是同一件,这只文件里一行都不重抄。
  *
  * ── 状态表 ①:生命周期 ──────────────────────────────────────────────────
  *   挂载      树里出现这片叶(出厂那一片、或一次分屏)
  *   首载      第一个 tab 的内容异步到达 —— 由内容自己说(查看器的「正在读取…」)
  *   换宿主    整棵树随区域搬(center → edge → float,W4):**叶不重挂,只换外框** ——
- *             结构共享保证的(`tree.mapLeaf` 没改到的支原样带过),不是靠自觉
+ *             结构共享保证的(`tree.mapLeaf` 没改到的支原样带过),不是靠自觉。
+ *             换过去之后檐的位置跟着 `region` 翻面,那是**渲染**的事,不是重挂
  *   卸载      最后一个 tab 关掉 / 藏起来,叶被 `prune` 剪掉
  *
  * ── 状态表 ②:UI 生命状态 ───────────────────────────────────────────────
  *   (檐的那几格 —— 单 tab / 多 tab / 预览 / 超量 —— 写在 `LeafStrip` 上,
- *    它有三个宿主,那张表不该跟着某一个宿主走)
- *   这一层自己只有一格:**空叶**(没有一格 tab)——`prune` 会当场把它剪掉,
- *   所以它在屏幕上停留不到一帧,不画任何空态。
+ *    它有四个宿主,那张表不该跟着某一个宿主走)
+ *   这一层自己只有两格:**空叶**(没有一格 tab)——`prune` 会当场把它剪掉,
+ *   所以它在屏幕上停留不到一帧,不画任何空态;以及**檐在不在这片叶身上**(上面
+ *   那张区域表)。
  *
  * ── 状态表 ③:UI 交互状态 ───────────────────────────────────────────────
  *   焦点叶     一圈内描边(只有多于一片叶时画)
@@ -47,19 +60,53 @@ import s from './PaneLeaf.module.css'
  *              (判据由顶栏那一侧写进 `data-pane-hint`,理由写在那只组件上)
  *   分隔杆     随 `ui/Splitter`(在 `PaneTree` 上,不在这里)
  */
-export const PaneLeaf = memo(function PaneLeaf({ leaf }: { leaf: PaneLeafNode }) {
+
+/**
+ * **宿主自己那一份檐**(W4)。架子与浮窗把它们的钮(弹出 / 收起 / 关整栏、
+ * 钉边 / 放大 / ✕)挂在**根叶**那条檐的右端,而不是另画一条 40px 的带子 ——
+ * 设计 §2.2 的原话:「一片叶只有一条檐,那条檐就是 tab 条」。
+ *
+ * 三格各管一件事,都缺席时这只叶与中央区那一路逐字相同。
+ */
+export interface PaneHostChrome {
+  /** 挂在檐右端、叶自己那一组动作之后的那一组。**只挂在根叶上**。 */
+  actions?: ReactNode
+  /** 按住一格 tab 意味着什么(架子:撕成浮窗)。**每片叶都接**。 */
+  onTabPointerDown?: (id: string, e: ReactPointerEvent<HTMLElement>) => void
+  /** 按在檐的空白处意味着什么(浮窗:拖窗)。**只在根叶上**。 */
+  onChromePointerDown?: (e: ReactPointerEvent<HTMLElement>) => void
+}
+
+export const PaneLeaf = memo(function PaneLeaf({
+  leaf,
+  host,
+}: {
+  leaf: PaneLeafNode
+  /** 宿主自己那一份檐(架子 / 浮窗给;中央区不给)。 */
+  host?: PaneHostChrome
+}) {
   const rootRef = useRef<HTMLDivElement>(null)
   const focusLeafId = useWorkbenchStore((st) => st.focusLeafId)
   const setFocusLeaf = useWorkbenchStore((st) => st.setFocusLeaf)
+  /*
+   * **选出来的是一个字符串,不是整张 `regions`**。订整张表的话,别处任何一棵树
+   * 动一下(隔壁架子切个 tab)全场每一片叶都要重渲一遍 —— `PaneLeaf` 那层 memo
+   * 挡不住 store 订阅(09-03「面自己不许订阅焦点树」同型)。区域名只在这片叶
+   * 真的搬家时才变。
+   */
+  const region = useWorkbenchStore((st) => regionOfLeafIn(st.regions, leaf.id))
   const closeAt = useCloseLeafTab(leaf)
   const active = leaf.tabs[leaf.active] ?? null
+
+  /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
+  const stripInLeaf = region !== CENTER_REGION
 
   /**
    * ⌘W:关当前 tab。表在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.keys`。
    *
-   * 顶栏上那一组也注入同名的一口(同一个 `owner`,两份实例)—— 于是焦点在**叶的
-   * 身体里**还是在**它的标签上**,⌘W 都关得掉这一格。少了这一边,「在查看器里
-   * 按 ⌘W」就没人接。
+   * 中央区那一组标签在顶栏上也注入同名的一口(同一个 `owner`,两份实例)—— 于是
+   * 焦点在**叶的身体里**还是在**它的标签上**,⌘W 都关得掉这一格。少了这一边,
+   * 「在查看器里按 ⌘W」就没人接。
    */
   const leafKeys = useMemo(
     () => ({ closeTab: active ? () => void closeAt(leaf.active) : undefined }),
@@ -67,6 +114,12 @@ export const PaneLeaf = memo(function PaneLeaf({ leaf }: { leaf: PaneLeafNode })
   )
 
   return (
+    /*
+     * **叶不声明落点** —— 它是家具,进它就是进它装着的那块内容。那一句自述写在
+     * `focus/scopes.ts` 的 `leaf` 行上(`passThrough: true`),内核据此穿过叶根与
+     * 那一格 tab 的层,一直走到内容自己那一格。判词全文在
+     * `FocusScopeSpec.passThrough` 上。
+     */
     <FocusScope scope="leaf" owner={leaf.id} rootRef={rootRef} keyHandlers={leafKeys}>
       {({ scopeProps }) => (
         <div
@@ -81,6 +134,8 @@ export const PaneLeaf = memo(function PaneLeaf({ leaf }: { leaf: PaneLeafNode })
            */
           onPointerDownCapture={() => setFocusLeaf(leaf.id)}
         >
+          {stripInLeaf && <PaneLeafStrip leaf={leaf} host={host} />}
+
           {/*
             身 = 这片叶里**每一个** tab 的内容(keep-alive,与架子同一条判据):
             切 tab 只换哪一层显形,不卸载谁 —— 重面板(会话总览那 400 张卡)
@@ -98,6 +153,67 @@ export const PaneLeaf = memo(function PaneLeaf({ leaf }: { leaf: PaneLeafNode })
 })
 
 /**
+ * **非中央区那片叶头上那条檐**(架子 / 浮窗)。
+ *
+ * 它自己是一只组件而不是 `PaneLeaf` 里的一段 JSX,理由是**订阅**:这条檐要读
+ * `live-title` 那整张表(未保存丸 / 会话改名要跟着动),而中央区的叶不该为此
+ * 付一次订阅 —— 那张表一变,全中央区的叶就会跟着重渲一遍。分成两只之后:
+ * 中央叶根本不挂这只组件,架子叶也只有**这条檐**重渲,身一动不动。
+ *
+ * 交出去的只有叶自己知道的那几样:哪几格(树)、切/关这两口(`leaf-tabs.ts`,
+ * 与顶栏那一组共用同一份)、叶自己的动作组(`LeafActions`),以及**宿主的**
+ * 那一组钮 —— 次序是**叶的在前、宿主的在后**,于是四条边与浮窗上那一排处处相同。
+ */
+const PaneLeafStrip = memo(function PaneLeafStrip({
+  leaf,
+  host,
+}: {
+  leaf: PaneLeafNode
+  host?: PaneHostChrome
+}) {
+  const t = useT()
+  const activateTab = useWorkbenchStore((st) => st.activateTab)
+  const tabs = useLeafTabSpecs(leaf)
+  const closeAt = useCloseLeafTab(leaf)
+  const active = leaf.tabs[leaf.active] ?? null
+
+  const onSelect = useCallback(
+    (id: string) => {
+      const at = leaf.tabs.findIndex((ref) => refId(ref) === id)
+      if (at >= 0) activateTab(leaf.id, at)
+    },
+    [activateTab, leaf.id, leaf.tabs],
+  )
+  const onClose = useCallback(
+    (id: string) => {
+      const at = leaf.tabs.findIndex((ref) => refId(ref) === id)
+      if (at >= 0) void closeAt(at)
+    },
+    [closeAt, leaf.tabs],
+  )
+
+  return (
+    <LeafStrip
+      tabs={tabs}
+      activeId={active ? refId(active) : null}
+      label={t('workbench.leafTabs')}
+      chromeId={leaf.id}
+      onSelect={onSelect}
+      onClose={onClose}
+      onTabPointerDown={host?.onTabPointerDown}
+      onChromePointerDown={host?.onChromePointerDown}
+      actions={
+        <>
+          <LeafActions leaf={leaf} />
+          {/* 宿主自己那几颗排在最后 —— 叶的动作在前、宿主的在后。 */}
+          {host?.actions}
+        </>
+      }
+    />
+  )
+})
+
+/**
  * 一格 tab 的内容层。**`inert` 说两遍,而且是同一个判据**(逐字照 `EdgeShelf`):
  * 一遍给 DOM(浏览器据此把这一层移出焦点序与辅助树),一遍给树
  * (`<FocusScope inert>` —— 注册表据此不选它当第一响应者,而且**路径经过它就在
@@ -108,7 +224,9 @@ export const PaneLeaf = memo(function PaneLeaf({ leaf }: { leaf: PaneLeafNode })
  * 树上同一个 scope id 可以有好几份实例(`ScopeNode.instanceId`),取哪一份靠
  * `owner`。这里的 owner 是**这一格的 refId**,而叶根那一格的 owner 是**叶 id** ——
  * 于是 `activateScope('leaf', { owner: leafId })`(跟焦那条路)精确取到叶根,
- * 而这一层只做一件事:**把看不见的那一格从活动路径上摘掉**。
+ * 而 `activateScope('leaf', { owner: refId })`(**切 tab 进内容**那条裁定,产地在
+ * `LeafStrip`)精确取到这一格;这一层自己只做一件事:**把看不见的那一格从活动
+ * 路径上摘掉**。
  *
  * `memo` 不许省:切一次 tab 只有翻了 `on` 的那两层该重渲,别的 tab 一动不动
  * (与 `ShelfTabLayer` 同一条读数背书)。

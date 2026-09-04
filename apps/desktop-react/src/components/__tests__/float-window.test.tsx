@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { AppShell } from '../AppShell'
 import { useStageStore } from '../../stage/store'
+import { useWorkbenchStore } from '../../workbench/store'
+import { refId } from '../../workbench/kinds'
 import { initialStageState } from '../../stage/transitions'
 
 /**
@@ -45,15 +47,43 @@ describe('浮窗层', () => {
     expect(useStageStore.getState().placements.files).toEqual({ kind: 'stage' })
   })
 
-  it('头上的「收回 Dock」把它收回去,矩形留着当记忆', () => {
+  /**
+   * **W4 改判:那颗 ✕ 关的是「这扇窗」,里面的标签转为隐藏,不是关闭**
+   * (设计 §2.2:「窗子没了,内容还在 hidden 里」)。
+   *
+   * 为什么不能仍旧叫「收回 Dock」:一扇窗里从 W4 起可能装着**文件**,而文件没有
+   * Dock 可回 —— 「收回 Dock」这句话只对瓦说得通。隐藏对两者都说得通,而且它
+   * 与「收回 Dock 不丢状态」是同一条判据(实例留着)。
+   *
+   * 反证:把 `closeFloat` 换回 `closeToDock` → 最后那两句红(那一份不进隐藏表,
+   * 「隐藏的标签 ⋯」里点不回来)。
+   */
+  it('头上那颗 ✕ 关的是这扇窗:里面的标签转为隐藏,矩形留着当记忆', () => {
     render(<AppShell />)
     openFloat('files')
     const win = screen.getByRole('dialog', { name: '文件' })
-    fireEvent.click(within(win).getByLabelText('收回 Dock'))
+    fireEvent.click(within(win).getByLabelText('关闭这扇窗'))
     const st = useStageStore.getState()
     expect('files' in st.placements).toBe(false)
     expect(st.floatOrder).toEqual([])
     expect(st.floats.files).toBeTruthy()
+    // 隐藏 ≠ 关闭:那一格还在隐藏表里,记着它该回哪儿。
+    const hidden = useWorkbenchStore.getState().hidden
+    expect(hidden.map((entry) => refId(entry.ref))).toEqual(['panel:files'])
+    expect(hidden[0].returnTo.region).toBe('float:files')
+  })
+
+  it('隐藏之后请得回来:同一份实例回到它原来那扇窗', () => {
+    render(<AppShell />)
+    openFloat('files')
+    fireEvent.click(within(screen.getByRole('dialog', { name: '文件' })).getByLabelText('关闭这扇窗'))
+    // 窗没了(屏幕上那一份是离场副本,`FloatLayer` 留它一帧播出场动画)。
+    expect(useStageStore.getState().floatOrder).toEqual([])
+    expect(screen.getByRole('dialog', { name: '文件' }).className).toContain('leaving')
+    act(() => useWorkbenchStore.getState().restoreHidden('panel:files'))
+    expect(useStageStore.getState().floatOrder).toEqual(['files'])
+    expect(screen.getByRole('dialog', { name: '文件' }).className).not.toContain('leaving')
+    expect(useWorkbenchStore.getState().hidden).toEqual([])
   })
 })
 
@@ -86,7 +116,14 @@ describe('浮窗檐:钉边钮直接消费 ui/IconButton 的 ref', () => {
     openFloat('files')
     const win = screen.getByRole('dialog', { name: '文件' })
     const pin = within(win).getByLabelText('钉到边')
-    expect(pin.parentElement?.tagName).toBe('HEADER')
+    /*
+     * W4:浮窗的标题栏**就是**它根叶那条檐(设计 §2.2),所以这颗钮的爹从
+     * `<header>` 换成了檐右端那格动作组(`LeafStrip` 的 `.actions` span)。
+     * 这一条守的一直是「**不再裹一层贴身 span**」—— 判据因此改成:
+     * 它是动作组的**直接**孩子,而动作组就在那条檐里。
+     */
+    expect(pin.parentElement?.querySelectorAll(':scope > button').length).toBeGreaterThan(1)
+    expect(pin.closest('[data-pane-chrome]')).toBeTruthy()
   })
 
   it('点它开出钉边菜单 —— 坐标是从钮自己的 ref 上量的', () => {

@@ -49,26 +49,18 @@ export const FILE_OPEN_MODES: readonly FileOpenMode[] = [
   'float',
 ]
 
-/**
- * **今天真能兑现的那些**。菜单据此决定给哪些项画注脚 —— 判据在这里定一次,
- * 不散在渲染层的条件里。
+/*
+ * ── 七档全部接通(W4)────────────────────────────────────────────────────
+ * W1-a 时这里有一格 `WIRED_FILE_OPEN_MODES`,只列 `panel` 与 `stage` 两档 ——
+ * 那时架子与浮窗的身子还不是树,一个文件插不进去,菜单里另外五档只能禁灰
+ * 加注脚。W4 把两处都换成了树(`workbench.regions['edge:<side>']` /
+ * `['float:<id>']`),那五档于是**自然解灰**:插一个文件进架子与插一个文件进
+ * 中央区走的是同一句 `workbench.openRef(ref, { region })`。
  *
- * F2 起它曾等于全表;**W1-a 退回两档**,那是一次可感知的退化,理由见下。
- * 这一格**不删**,理由是它是一条纪律的落点 —— 没接上的那段日子里菜单仍然
- * 说得出实话,而不是又去渲染层里现写一个条件。
- *
- * ── W1-a:七档退回两档(交付报告点名的临时退化)────────────────────────
- * 查看器从「一块瓦」降格为一种内容之后,「摆到哪儿」不再是 `openAs(id, placement)`
- * 那一句形态机调用,而是「把这个 ref 插进哪个**区域**的活动叶」。中央区那棵树
- * 在 W1-a 落地,架子与浮窗的树要等 W4(设计 §8 那张分期表)。所以这一批里
- * 只有 `panel`(文件面板那条分栏,不进树)与 `stage`(= 中央区)真接通;
- * 四条边与浮窗那五档在菜单里**禁灰 + 注脚**,选择器读到它们时回落中央区。
+ * 那一格连同 `isWiredFileOpenMode` 一起删掉,不留一个恒为 true 的谓词 ——
+ * 一个永远答「是」的判据是下一个人的陷阱(他会以为那里还有一档要判)。
+ * 菜单里那句「下一批」的注脚(连同它的 i18n 键)同批退役。
  */
-export const WIRED_FILE_OPEN_MODES: readonly FileOpenMode[] = ['panel', 'stage']
-
-export function isWiredFileOpenMode(mode: FileOpenMode): boolean {
-  return WIRED_FILE_OPEN_MODES.includes(mode)
-}
 
 /**
  * 档 → **区域**(W1;从前是档 → `Placement`)。**唯一一份翻译**。
@@ -81,6 +73,13 @@ export function isWiredFileOpenMode(mode: FileOpenMode): boolean {
  * 改的只有它翻出来的东西:从「摆一块瓦上舞台」变成「插进中央区那棵树」——
  * 那正是设计 §2.1 把七档改名成「新标签开在哪」时说的那一档「中央区」。
  */
+/**
+ * 「开一扇新窗」那个哨位。它是一个**合法的 RegionId 形状**(所以这张表的返回
+ * 类型不必为它开一格联合),但没有任何一棵树叫这个名字 —— 读到它的人负责
+ * 铸一个真窗号(唯一的读者是 `content/viewer/open-target.ts`)。
+ */
+export const NEW_FLOAT_REGION = 'float:new' as const satisfies RegionId
+
 export function regionOfFileOpenMode(mode: FileOpenMode): RegionId | 'panel' {
   switch (mode) {
     case 'panel':
@@ -88,7 +87,13 @@ export function regionOfFileOpenMode(mode: FileOpenMode): RegionId | 'panel' {
     case 'stage':
       return 'center'
     case 'float':
-      return 'float:new'
+      /*
+       * **一扇新窗**。区域 id 要到落点那一刻才铸得出来(`stage/placement.nextFloatId`)
+       * —— 这张表是纯翻译,它铸不出 id,也不该铸:同一档连点两次该开两扇窗还是
+       * 一扇,是**落点**的语义,不是「档 → 区域」的语义。所以这里给的是一个
+       * **哨位**,由 `content/viewer/open-target.ts` 那一处翻成真的窗号。
+       */
+      return NEW_FLOAT_REGION
     case 'edge-top':
       return 'edge:top'
     case 'edge-bottom':
@@ -99,14 +104,6 @@ export function regionOfFileOpenMode(mode: FileOpenMode): RegionId | 'panel' {
       return 'edge:right'
   }
 }
-
-/**
- * 旧名留的一格别名。派工规格点名要 `placementOfFileOpenMode` 返回
- * `RegionId | 'panel'`,而这个名字在 W4 之后名不副实(它回的不是 Placement)。
- * 所以真名叫 `regionOfFileOpenMode`,这一行是给规格里那个名字留的门。
- * **留账:W4 收掉这一行。**
- */
-export const placementOfFileOpenMode = regionOfFileOpenMode
 
 /** 每一档的名字是**界面文案**,所以这里只持有 key(同 StageItemSpec.titleKey 的判例)。 */
 export const FILE_OPEN_MODE_LABELS: Record<FileOpenMode, MessageKey> = {

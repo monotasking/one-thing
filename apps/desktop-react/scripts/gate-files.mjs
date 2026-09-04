@@ -488,12 +488,14 @@ async function main() {
        () => document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
      )
      await switchModeTo(page, enginePath, /主区域|Main stage/)
+     /*
+      * **限定在中央区**(W4:架子与浮窗的身子也是拼贴树,`[data-pane-leaf]` 不再
+      * 是中央区专属 —— 不限定的话 `querySelector` 取到的可能是架子上那片叶)。
+      */
      await waitFor('查看器搬到了中央叶里', () =>
-       page.evaluate(() => {
-         const leaf = document.querySelector('[data-pane-leaf]')
-         const viewer = leaf?.querySelector('[data-testid="file-viewer"]')
-         return Boolean(viewer)
-       }),
+       page.evaluate(() =>
+         Boolean(document.querySelector('[data-pane-region="center"] [data-testid="file-viewer"]')),
+       ),
      )
      assert(true, '选「主区域」之后查看器真的进了中央区那棵树(修前:只记档,一动不动)')
      assert(
@@ -515,9 +517,10 @@ async function main() {
       * 一块内容只有一条檐,而且那条檐说得出它是谁。
       */
      const merged = await page.evaluate(() => {
-       const leaf = document.querySelector('[data-pane-leaf]')
+       // 认「装着这份查看器的那片叶」,而且**限定在中央区**(判词同上一步)。
+       const viewer = document.querySelector('[data-pane-region="center"] [data-testid="file-viewer"]')
+       const leaf = viewer?.closest('[data-pane-leaf]') ?? null
        const leafId = leaf?.getAttribute('data-pane-leaf') ?? ''
-       const viewer = leaf?.querySelector('[data-testid="file-viewer"]')
        const body = viewer?.querySelector('[data-testid="viewer-body"]')
        const bar = document.querySelector('[data-testid="topbar"]')
        const group = bar?.querySelector(`[data-topbar-leaf="${leafId}"]`)
@@ -581,6 +584,106 @@ async function main() {
      await waitFor('查看器收回', () =>
        page.evaluate(() => !document.querySelector('[data-testid="file-viewer"]')),
      )
+     /*
+      * ── 6b:「打开方式」**七档全通**(W4)────────────────────────────────
+      * W1-a 时架子与浮窗还没有树,那五档在菜单里禁灰 + 一句「下一批」。W4 把两处
+      * 的身子都换成了拼贴树,于是插一个文件进架子与插进中央区走的是同一句
+      * `openRef(ref, { region })`。这一步在**真机**上逐档走一遍,判三件事:
+      *  ① 菜单里一格禁灰、一句注脚都没有了;
+      *  ② 每一档**真的落到那儿**(边 → 那条 `<aside>` 里;浮窗 → 一扇真窗里);
+      *  ③ 换落点之后**内容逐字相同** —— 状态住 store,换的只是外框。
+      */
+     const modeText = await page.evaluate(selector => {
+       document
+         .querySelector(selector)
+         .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+       return null
+     }, `[data-file-path="${enginePath}"]`)
+     void modeText
+     await waitFor('行菜单出来了', () =>
+       page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
+     )
+     const modeMenu = await page.evaluate(() => {
+       const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+       return {
+         count: items.length,
+         disabled: items.filter(el => el.hasAttribute('disabled')).length,
+         nextBatch: Array.from(document.querySelectorAll('[role="menu"] *')).filter(el =>
+           /下一批|land next/.test(el.textContent ?? ''),
+         ).length,
+       }
+     })
+     await page.keyboard.press('Escape')
+     await delay(250)
+     assert(modeMenu.count === 7, `「打开方式」七档全在(实测 ${modeMenu.count} 档)`)
+     assert(modeMenu.disabled === 0, `一格禁灰都没有了(实测 ${modeMenu.disabled} 格)`)
+     assert(modeMenu.nextBatch === 0, '那句「架子与浮窗的标签下一批」的注脚已经退役')
+
+     /**
+      * 这一档之后,那份内容此刻画在哪个宿主里、正文是什么、**那条檐说得出它的名字吗**。
+      *
+      * 「一格一檐」在四个区域是**同一句话、两个落点**(W1-b × W4 的接缝):
+      *  · 中央区 —— 叶身上零檐,檐在**窗口顶栏**那条带子上(上一步 `merged` 量的
+      *    就是这一形);
+      *  · 架子 / 浮窗 —— 没有第二条顶栏可借,檐画在**叶顶**(`LeafStrip` 同一件)。
+      * 所以这里就地取「装着它的那片叶头上那条檐」:在中央区它恒为空(正确),
+      * 在别的区域它必须说得出文件名。
+      */
+     const whereViewer = () =>
+       page.evaluate(() => {
+         const viewer = document.querySelector('[data-testid="file-viewer"]')
+         if (!viewer) return { host: null, text: '', leafChromeTab: '' }
+         const shelf = viewer.closest('[data-shelf]')
+         const float = viewer.closest('[role="dialog"][data-focus-scope="float-layer"]')
+         const center = viewer.closest('[data-pane-region="center"]')
+         const leaf = viewer.closest('[data-pane-leaf]')
+         const chrome = leaf?.querySelector('[data-pane-chrome]')
+         return {
+           host: shelf
+             ? `edge:${shelf.getAttribute('data-shelf')}`
+             : float
+               ? 'float'
+               : center
+                 ? 'center'
+                 : 'panel',
+           text: viewer.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
+           leafChromeTab: (
+             chrome?.querySelector('[role="tab"][aria-selected="true"]')?.textContent ?? ''
+           ).trim(),
+         }
+       })
+
+     /*
+      * 上一步把那一格关掉了(它验的是「tab 上那颗唯一的 ✕ 按得动」),所以这一步
+      * 先把文件重新打开一次 —— **换落点搬的是「手上开着的那一份」**,手上一个都
+      * 没开时它只记档不搬(那是 `setFileOpenMode` 的既定语义,不是这一步要验的)。
+      */
+     await clickSelector(page, `[data-file-path="${enginePath}"]`)
+     await waitFor('文件重新开出来了', () =>
+       page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
+     )
+     const sameText = (await whereViewer()).text
+     for (const [label, pattern, expect] of [
+       ['右侧钉', /右侧钉|Pinned right/, 'edge:right'],
+       ['左侧钉', /左侧钉|Pinned left/, 'edge:left'],
+       ['上侧钉', /上侧钉|Pinned top/, 'edge:top'],
+       ['下侧钉', /下侧钉|Pinned bottom/, 'edge:bottom'],
+       ['浮窗', /浮窗|Floating window/, 'float'],
+     ]) {
+       await switchModeTo(page, enginePath, pattern)
+       await waitFor(`查看器搬到了${label}`, async () => (await whereViewer()).host === expect)
+       const at = await whereViewer()
+       assert(at.host === expect, `「${label}」真的把它摆到了 ${expect}(实测 ${at.host})`)
+       assert(at.text === sameText, `「${label}」换落点之后内容逐字相同(状态住 store)`)
+       // 一格一檐的另一半:**架子 / 浮窗那片叶自己头上**那条檐说得出文件名
+       //(中央区那一形上一步已经在顶栏那条带子上量过了)。
+       assert(
+         at.leafChromeTab.includes('engine.ts'),
+         `「${label}」那片叶的檐说得出文件名:${at.leafChromeTab || '—'}`,
+       )
+     }
+     await page.screenshot({ path: path.join(shotDir, 'open-modes.png') })
+
      // 落点放回「面板内」,后面几步照旧走分栏那一档。
      await switchModeTo(page, enginePath, /面板内|This panel/)
 

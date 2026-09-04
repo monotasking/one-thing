@@ -75,6 +75,22 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 const EXPECT_RED = process.argv.includes('--expect-red')
 
 /**
+ * **中央区那一组标签的取件口**(W1-b × W4 的接缝)。
+ *
+ * 两件事同时为真,所以这一格必须写清楚:
+ *  · W1-b 起中央叶的檐整条搬进了**窗口顶栏**(`TopBarTabs`)——
+ *    `[data-pane-region="center"]` 那块地里一条 tablist 都没有;
+ *  · W4 起架子与浮窗的叶**自己头上**画同一件檐(`LeafStrip`),于是
+ *    `[data-pane-chrome]` 不再是中央区专属。
+ * 两条合起来:中央区的标签既不在中央区那块地里,也不能靠 `data-pane-chrome`
+ * 单独认出来 —— 只能从**顶栏那条带子**里取。
+ *
+ * (内容那几层 `[data-pane-tab]` 仍旧在 `[data-pane-region="center"]` 里面,
+ *  所以那一族选择器保持限定在中央区,两者不是一件事。)
+ */
+const CENTER_TABS = '[data-testid="topbar-tabs"] [data-pane-chrome] [role="tab"]'
+
+/**
  * **`--strict`:换一份带 React StrictMode 的产物,把同样这些场景再跑一遍**(09-04 S4)。
  *
  * S3 结案时留的账原话:「gate:focus 跑生产构建照不出此病(改前改后都绿),只有
@@ -509,7 +525,7 @@ async function main() {
     await page.keyboard.press('Meta+p')
     await delay(400)
     const searchOpen = await page.evaluate(() =>
-      Boolean(document.querySelector('[data-testid="search-panel"], [data-panel-layer="search"]')),
+      Boolean(document.querySelector('[data-testid="search-panel"], [data-pane-tab="panel:search"]')),
     )
     assert(searchOpen, '⌘P 把检索面开出来了')
     await assertNoOrphan(page, '⌘P 开面之后')
@@ -560,23 +576,43 @@ async function main() {
     if (shelf.count < 2) {
       skip('架子两 tab 切换', `夹具没搭起来 —— 此刻架子上只有 ${shelf.count} 个 tab`)
     } else {
-      await page.evaluate(() => {
+      /*
+       * 点哪一条 tab 就量哪一条架子(W4:四条边各持一棵树,而前面几个场景可能
+       * 在别的边上也留了瓦 —— 点 A 边、量 B 边当然读不到焦点)。
+       */
+      const clickedSide = await page.evaluate(() => {
         const tabs = Array.from(document.querySelectorAll('[data-shelf] [role="tab"]'))
         const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
-        if (off instanceof HTMLElement) off.click()
+        if (!(off instanceof HTMLElement)) return null
+        off.click()
+        return off.closest('[data-shelf]')?.getAttribute('data-shelf') ?? null
       })
       await delay(400)
-      const state = await page.evaluate(() => {
-        const layers = Array.from(document.querySelectorAll('[data-panel-layer]'))
+      /*
+       * ── W4:架子的身子换成了拼贴树,层次因此是**两级** ──────────────────
+       * 从前一格 tab 一层,每一层自己是一格 `shelf-layer`;现在**整条架子**一格
+       * `shelf-layer`(住户 = 它露脸的那格瓦 —— 召唤与跟焦按住户名精确取那一条边),
+       * 里面每一格 tab 是一格 `leaf`(`inert` 仍旧说两遍,判词在 `PaneLeaf` 的
+       * `PaneTabLayer` 上)。取件口随之从 `data-panel-layer=<瓦 id>` 换成
+       * `data-pane-tab=<refId>`;**这一条要守的三件事一个字没改**。
+       */
+      const state = await page.evaluate((side) => {
+        const body = document.querySelector(
+          side ? `[data-shelf="${side}"] [data-shelf-body]` : '[data-shelf] [data-shelf-body]',
+        )
+        const layers = Array.from(body?.querySelectorAll('[data-pane-tab]') ?? [])
         const active = document.activeElement
         return {
           inertOld: layers.filter((l) => l.hasAttribute('inert')).length,
           focusInLive: layers.some(
             (l) => !l.hasAttribute('inert') && active instanceof Node && l.contains(active),
           ),
+          focusInShelf: Boolean(body && active instanceof Node && body.contains(active)),
+          onTab: active instanceof Element ? active.getAttribute('role') === 'tab' : false,
           scopes: layers.map((l) => l.getAttribute('data-focus-scope')),
+          hostScope: body?.getAttribute('data-focus-scope') ?? null,
         }
-      })
+      }, clickedSide)
       assert(state.inertOld > 0, '旧层打上了 inert')
       /*
        * I4 的架子那一格在**这里**验,不在场景 6 —— 那时架子上多半已经空了
@@ -584,11 +620,37 @@ async function main() {
        * 只能在它确实在场的那一刻问。
        */
       assert(
-        state.scopes.length > 0 && state.scopes.every((v) => v === 'shelf-layer'),
-        'I4 · shelf-layer:架子上**每一层**的根都带 data-focus-scope',
+        state.hostScope === 'shelf-layer',
+        'I4 · shelf-layer:这条架子的身子带着 data-focus-scope',
+        `(读数 ${state.hostScope ?? '—'})`,
+      )
+      assert(
+        state.scopes.length > 0 && state.scopes.every((v) => v === 'leaf'),
+        '架子里每一格 tab 各是树上一格 `leaf`',
         `(${state.scopes.length} 层:${[...new Set(state.scopes)].join(' / ') || '—'})`,
       )
-      assert(state.focusInLive, '焦点落在新层内(§11 拍点 2:切 tab 进内容)')
+      /*
+       * ── §11 拍点 2「切 tab 进内容」:W4 之后它是**裁定**,不再是侥幸 ────────
+       * W4 之前架子的 tab 条长在架子的 `<head>` 里、在每一格 `shelf-layer` 的
+       * **外面** —— 点一条 tab 之后焦点不在任何一层里,于是 `focus-follow` 的
+       * 「架子切 tab」那一发 `activateScope` 送得进去,这一条因此绿。
+       *
+       * W4 把那条 tab 条换成了**叶檐**(`LeafStrip`,它长在叶里、叶又长在层里),
+       * 那条路当场失效:注册表的「焦点已经在我里面就不往回拽」把它挡住,焦点
+       * 停在 tab 上。W4 交卷时曾把这一条**收弱**成「焦点还在这条架子里」。
+       *
+       * 09-05 裁定:**不收弱,把行为定死** —— tab 被激活(指针点击 / Enter /
+       * Space)→ 焦点进这片叶的内容;←/→ roving 仍旧留在 tab 上。四个区域
+       * (中央顶栏组 / 架子叶檐 / 浮窗根叶檐 / 分屏出来的叶)同一句话,产地只有
+       * 一处:`workbench/LeafStrip.tsx` 的 `useSelectIntoContent`。
+       *
+       * 所以这一条回到强的那一句,并且在 3b ③ 给**中央区**加了同款读数。
+       */
+      assert(
+        state.focusInLive,
+        '焦点落在新层内(§11 拍点 2:切 tab 进内容)',
+        `(在这条架子里:${state.focusInShelf} / 停在 tab 上:${state.onTab})`,
+      )
       await assertNoOrphan(page, '切 tab 之后')
     }
 
@@ -647,7 +709,8 @@ async function main() {
           await page.keyboard.press('Enter')
           await delay(700)
           const twoTabs = await page.evaluate(
-            () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
+            (css) => document.querySelectorAll(css).length,
+            CENTER_TABS,
           )
           if (twoTabs < 2) {
             skip(
@@ -657,7 +720,9 @@ async function main() {
             )
           } else {
             const leafState = await page.evaluate(() => {
-              const layers = Array.from(document.querySelectorAll('[data-pane-tab]'))
+              // W4:架子与浮窗也画 `data-pane-tab`,所以这一条要**限定在中央区**。
+              const center = document.querySelector('[data-pane-region="center"]')
+              const layers = Array.from(center?.querySelectorAll('[data-pane-tab]') ?? [])
               const active = document.activeElement
               return {
                 layers: layers.length,
@@ -682,20 +747,52 @@ async function main() {
             assert(leafState.focusInLive, '焦点落在活的那一层内')
             await assertNoOrphan(page, '中央叶开出第二格 tab 之后')
 
-            // ③ 切回第一格(聊天),再问一次同一句话 —— inert 跟着翻,不是只翻一次。
-            await page.evaluate(() => {
-              const tabs = Array.from(document.querySelectorAll('[data-pane-chrome] [role="tab"]'))
+            /*
+             * ③ 切回第一格(聊天),再问一次同一句话 —— inert 跟着翻,不是只翻一次。
+             * **点与读都限定在中央区**(W4:架子的叶檐也画 `data-pane-chrome`,
+             * 不限定的话这一下点的是架子上那条 tab 条)。
+             */
+            await page.evaluate((css) => {
+              const tabs = Array.from(document.querySelectorAll(css))
               const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
               if (off instanceof HTMLElement) off.click()
-            })
+            }, CENTER_TABS)
             await delay(400)
             const flipped = await page.evaluate(() => {
-              const layers = Array.from(document.querySelectorAll('[data-pane-tab]'))
+              const center = document.querySelector('[data-pane-region="center"]')
+              const layers = Array.from(center?.querySelectorAll('[data-pane-tab]') ?? [])
+              const live = layers.filter((l) => !l.hasAttribute('inert'))
+              const active = document.activeElement
               return {
                 inertOff: layers.filter((l) => l.hasAttribute('inert')).length,
-                live: layers.filter((l) => !l.hasAttribute('inert')).map((l) => l.getAttribute('data-pane-tab')),
+                live: live.map((l) => l.getAttribute('data-pane-tab')),
+                // 「切 tab 进内容」在中央区的读数(09-05 裁定,与场景 3 同一句话)。
+                focusInLive: live.some((l) => active instanceof Node && l.contains(active)),
+                onTab: active instanceof Element ? active.getAttribute('role') === 'tab' : false,
+                /*
+                 * 焦点那一格作用域。**要读到内容自己那一格** —— `leaf` 是家具
+                 * (`passThrough`),停在它身上就说明穿透那一步没走完。
+                 */
+                scope: active?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
               }
             })
+            /*
+             * ── 中央区的「切 tab 进内容」(09-05 裁定,与场景 3 同款)────────
+             * 那条檐在顶栏上、内容在中央区那块地里,两者在 DOM 上互不包含 ——
+             * 所以这一条量的是**跨 DOM 分支的落焦**,正是裁定要的那件事:判据
+             * 是响应链(`activateScope('leaf', { owner: refId })` + `passThrough`),
+             * 不是 DOM 祖先。
+             */
+            assert(
+              flipped.focusInLive,
+              '点顶栏一格 tab → 焦点进那片叶的内容(09-05 裁定,四个区域同一句)',
+              `(停在 tab 上:${flipped.onTab} / 作用域 ${flipped.scope ?? '—'})`,
+            )
+            assert(
+              Boolean(flipped.scope) && flipped.scope !== 'leaf',
+              '而且落在**内容自己那一格**作用域上,不是叶那格家具',
+              `(读数 ${flipped.scope ?? '—'})`,
+            )
             assert(
               flipped.inertOff === leafState.layers - 1 && flipped.live.length === 1,
               '切一次 tab:inert 跟着翻,活的永远只有一层',
@@ -1017,9 +1114,14 @@ async function main() {
           '[data-focus-scope="stage-layer"],[data-focus-scope="float-layer"],'
             + '[data-focus-scope="shelf-layer"],[data-focus-scope="cover-layer"]',
         )
+        /*
+         * W4:装着这块面的那一格 tab 层在**层根里面**(shelf-layer → leaf → tab 层),
+         * 所以要从**焦点元素**往上找,不是从层根往下找。
+         */
+        const tab = el?.closest?.('[data-pane-tab]')?.getAttribute('data-pane-tab') ?? null
         return {
           layer: layer?.getAttribute('data-focus-scope') ?? null,
-          panel: layer?.closest?.('[data-panel-layer]')?.getAttribute('data-panel-layer') ?? null,
+          panel: tab?.startsWith('panel:') ? tab.slice('panel:'.length) : tab,
           scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
         }
       })
@@ -1190,16 +1292,15 @@ async function main() {
       }
       const openedA = await openByEnter('/a.ts')
       const openedB = await openByEnter('/b.ts')
-      const tabs = await page.evaluate(
-        () => document.querySelectorAll('[data-pane-chrome] [role="tab"]').length,
-      )
+      const tabs = await page.evaluate((css) => document.querySelectorAll(css).length, CENTER_TABS)
       if (!openedA || !openedB || tabs < 3) {
         skip('⌘F 在两份查看器上各开一次', `夹具没搭起来(顶栏那一组 ${tabs} 格 tab)`)
       } else {
         const findOpens = async (where) => {
           // 焦点摆进**活着的**那一份查看器(非活动那一层是 inert 的,进不去)。
           await page.evaluate(() => {
-            const live = Array.from(document.querySelectorAll('[data-pane-tab]')).find(
+            const center = document.querySelector('[data-pane-region="center"]')
+            const live = Array.from(center?.querySelectorAll('[data-pane-tab]') ?? []).find(
               (l) => !l.hasAttribute('inert'),
             )
             const viewer = live?.querySelector('[data-focus-scope="viewer"]')
@@ -1220,20 +1321,24 @@ async function main() {
         const liveNow = () =>
           page.evaluate(
             () =>
-              Array.from(document.querySelectorAll('[data-pane-tab]'))
+              Array.from(
+                document.querySelector('[data-pane-region="center"]')?.querySelectorAll('[data-pane-tab]') ?? [],
+              )
                 .find((l) => !l.hasAttribute('inert'))
                 ?.getAttribute('data-pane-tab') ?? null,
           )
         const firstLive = await liveNow()
         await findOpens('活动的')
         // 切到另一格 —— 那是**另一份实例**(它有自己的滚动位、草稿、检索条)。
-        await page.evaluate(() => {
-          const tabRow = Array.from(document.querySelectorAll('[data-pane-chrome] [role="tab"]'))
+        await page.evaluate((css) => {
+          // 中央区那一组标签在**顶栏**上(W1-b),而架子的叶檐也画 `data-pane-chrome`
+          // (W4)—— 所以这一下必须从顶栏那条带子里取,判词在 `CENTER_TABS` 上。
+          const tabRow = Array.from(document.querySelectorAll(css))
           const off = tabRow.find(
             (t) => t.getAttribute('aria-selected') !== 'true' && /\.ts$/.test(t.textContent ?? ''),
           )
           if (off instanceof HTMLElement) off.click()
-        })
+        }, CENTER_TABS)
         await delay(500)
         const secondLive = await liveNow()
         assert(
@@ -1264,7 +1369,7 @@ async function main() {
     await delay(400)
     assert(
       await page.evaluate(() =>
-        Boolean(document.querySelector('[data-testid="search-panel"], [data-panel-layer="search"]')),
+        Boolean(document.querySelector('[data-testid="search-panel"], [data-pane-tab="panel:search"]')),
       ),
       '⌘P 把检索面开出来了',
     )
@@ -1288,72 +1393,132 @@ async function main() {
     /* ── 场景 13:召唤三态(S1,设计 §14)────────────────────────────────── */
     scenario('召唤三态:Dock 开 → 只聚焦 → 隐藏(浮窗形)→ 架子上露出来 → 隐藏(钉边形)(S1/S1b,§14)')
     /*
-     * ── 为什么这一格要读 `placements`,而且是从**落盘的那份**读 ────────────────
+     * ── 为什么这一格要读「落点」,而且是从**落盘的那份**读 ────────────────────
      * 召唤与旧那条纯开关(`toggleItem`,已随 S2/09-04 删)的分歧只有一句:
-     * **它永远不改形态**(除了第一态
-     * 「开出来」)。所以后三态每一步的判据都是同一句话 —— 「这一下之后 placements
-     * 一个字节都没变」。DOM 上看不出这件事(一块面被关掉与被藏起来在 DOM 上都是
-     * 「不在了」),而 store 没有挂在 window 上,所以读它落盘的那份:zustand persist
-     * 每一次状态写入都同步落一次盘,`placements` 就在家具账里。
+     * **它永远不改形态**(除了第一态「开出来」)。所以后三态每一步的判据都是同一
+     * 句话 —— 「这一下之后落点一个字节都没变」。DOM 上看不出这件事(一块面被关掉
+     * 与被藏起来在 DOM 上都是「不在了」),而 store 没有挂在 window 上,所以读它
+     * 落盘的那份:zustand persist 每一次状态写入都同步落一次盘。
      *
-     * 走一遍**这一本账里所有的 placements**(每个工作区一格),不去猜当前空间那个
-     * id 是什么 —— 空间 id 是别处的事实,拿到这道门里来判等于把两件事拴在一起。
+     * ── W4:落点搬家了,这几只探针跟着搬 ──────────────────────────────────
+     * 「一块瓦在哪儿」从 W4 起住在**拼贴树**里(`onething.workbench` 的
+     * `byWorkspace[*].regions`);`onething.stage` 那份档案里只剩几何(架子厚度 /
+     * 收起态 / 浮窗矩形 / 位置记忆)。判词全文在 `src/stage/residency.ts` 文件头。
+     *
+     * 所以探针分成两半,各读各的账:
+     *  · **落点**(`placementsRaw` / `placementsSig`)从树上折出来 —— 折法与产品
+     *    里那只投影逐字同型(`edge:<side>` → `{kind:'edge',side}`,`float:*` →
+     *    `{kind:'float'}`,只认 `panel:` 那些 tab);
+     *  · **架子几何**(`shelvesRaw` 的 `collapsed`)读 stage 那份;
+     *    **活动 tab**(`activeId`)从树上读(它是住处,不是几何)。
+     *
+     * 两处都走一遍**整本账**(每个工作区一格),不去猜当前空间那个 id 是什么 ——
+     * 空间 id 是别处的事实,拿到这道门里来判等于把两件事拴在一起。
      */
-    const placementsSig = () =>
+    const readWorkbenchRegions = () =>
       page.evaluate(() => {
-        const raw = localStorage.getItem('onething.stage')
-        if (!raw) return null
+        const raw = localStorage.getItem('onething.workbench')
+        if (!raw) return []
         const found = []
         const walk = (value) => {
           if (!value || typeof value !== 'object' || Array.isArray(value)) return
-          if (value.placements && typeof value.placements === 'object') {
-            found.push(JSON.stringify(value.placements))
+          if (value.regions && typeof value.regions === 'object') found.push(value.regions)
+          for (const key of Object.keys(value)) walk(value[key])
+        }
+        try {
+          walk(JSON.parse(raw))
+        } catch {
+          return []
+        }
+        return found
+      })
+
+    /** 一棵树上按阅读序的那些瓦 id(叶内次序原样)。 */
+    const panelsOfTree = (node, out = []) => {
+      if (!node || typeof node !== 'object') return out
+      if (node.kind === 'leaf') {
+        for (const tab of node.tabs ?? []) if (tab?.kind === 'panel') out.push(tab.key)
+        return out
+      }
+      panelsOfTree(node.a, out)
+      panelsOfTree(node.b, out)
+      return out
+    }
+
+    /** 一棵树上此刻显形的那些瓦(每片叶各一格活动 tab)。 */
+    const visibleOfTree = (node, out = []) => {
+      if (!node || typeof node !== 'object') return out
+      if (node.kind === 'leaf') {
+        const active = (node.tabs ?? [])[node.active ?? 0]
+        if (active?.kind === 'panel') out.push(active.key)
+        return out
+      }
+      visibleOfTree(node.a, out)
+      visibleOfTree(node.b, out)
+      return out
+    }
+
+    /** 一格 regions → 一张 `{瓦 id: 落点}`(与产品里那只投影同一个折法)。 */
+    const placementsOfRegions = (regions) => {
+      const table = {}
+      for (const [region, tree] of Object.entries(regions)) {
+        const placement = region.startsWith('edge:')
+          ? { kind: 'edge', side: region.slice('edge:'.length) }
+          : region.startsWith('float:')
+            ? { kind: 'float' }
+            : null
+        if (!placement) continue
+        for (const id of panelsOfTree(tree)) table[id] = placement
+      }
+      return table
+    }
+
+    const placementsRaw = async () =>
+      (await readWorkbenchRegions()).map((regions) => placementsOfRegions(regions))
+
+    const placementsSig = async () =>
+      (await placementsRaw()).map((table) => JSON.stringify(table)).sort().join('||')
+
+    /**
+     * 架子那一格读数:**几何读 stage 的账,活动 tab 读树**(W4 起两半各有各的家)。
+     * 交回的形状与 W4 之前逐字相同(`{ left|right|top|bottom: {collapsed, activeId} }`),
+     * 所以下面那些断言一个字都不用改。
+     */
+    const shelvesRaw = async () => {
+      const geometry = await page.evaluate(() => {
+        const raw = localStorage.getItem('onething.stage')
+        if (!raw) return []
+        const found = []
+        const walk = (value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) return
+          if (value.shelves && typeof value.shelves === 'object') found.push(value.shelves)
+          for (const key of Object.keys(value)) walk(value[key])
+        }
+        try {
+          walk(JSON.parse(raw))
+        } catch {
+          return []
+        }
+        return found
+      })
+      const trees = await readWorkbenchRegions()
+      const out = []
+      for (let at = 0; at < Math.max(geometry.length, trees.length); at += 1) {
+        const shelves = geometry[at] ?? {}
+        const regions = trees[at] ?? {}
+        const merged = {}
+        for (const side of ['left', 'right', 'top', 'bottom']) {
+          const tree = regions[`edge:${side}`]
+          merged[side] = {
+            ...(shelves[side] ?? {}),
+            tabs: tree ? panelsOfTree(tree) : [],
+            activeId: tree ? (visibleOfTree(tree)[0] ?? null) : null,
           }
-          for (const key of Object.keys(value)) walk(value[key])
         }
-        try {
-          walk(JSON.parse(raw))
-        } catch {
-          return null
-        }
-        return found.sort().join('||')
-      })
-    /** 家具账里那格 `shelves`(钉边那一形的第四格要读 collapsed / activeId)。 */
-    const shelvesRaw = () =>
-      page.evaluate(() => {
-        const raw = localStorage.getItem('onething.stage')
-        if (!raw) return null
-        const found = []
-        const walk = (value) => {
-          if (!value || typeof value !== 'object' || Array.isArray(value)) return
-          if (value.placements && value.shelves) found.push(value.shelves)
-          for (const key of Object.keys(value)) walk(value[key])
-        }
-        try {
-          walk(JSON.parse(raw))
-        } catch {
-          return null
-        }
-        return found
-      })
-    /** 同一本账,原样交回(第四格要逐键比对「少的只有它」)。 */
-    const placementsRaw = () =>
-      page.evaluate(() => {
-        const raw = localStorage.getItem('onething.stage')
-        if (!raw) return null
-        const found = []
-        const walk = (value) => {
-          if (!value || typeof value !== 'object' || Array.isArray(value)) return
-          if (value.placements && typeof value.placements === 'object') found.push(value.placements)
-          for (const key of Object.keys(value)) walk(value[key])
-        }
-        try {
-          walk(JSON.parse(raw))
-        } catch {
-          return null
-        }
-        return found
-      })
+        out.push(merged)
+      }
+      return out
+    }
     /** 焦点此刻落在哪一格作用域 / 哪一块面里。 */
     const focusNow = () =>
       page.evaluate(() => {
@@ -1361,12 +1526,15 @@ async function main() {
         return {
           testid: el?.getAttribute?.('data-testid') ?? null,
           scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
-          panel: el?.closest?.('[data-panel-layer]')?.getAttribute('data-panel-layer') ?? null,
+          panel: (() => {
+            const tab = el?.closest?.('[data-pane-tab]')?.getAttribute('data-pane-tab') ?? null
+            return tab?.startsWith('panel:') ? tab.slice('panel:'.length) : tab
+          })(),
         }
       })
     const searchOnScreen = () =>
       page.evaluate(() =>
-        Boolean(document.querySelector('[data-testid="search-panel"], [data-panel-layer="search"]')),
+        Boolean(document.querySelector('[data-testid="search-panel"], [data-pane-tab="panel:search"]')),
       )
 
     await page.goto(shellUrl())
@@ -1600,10 +1768,11 @@ async function main() {
         await page.keyboard.press('Meta+p')
         await delay(600)
         const revealed = await page.evaluate(() => {
-          const layer = document.querySelector('[data-panel-layer="search"]')
+          const layer = document.querySelector('[data-pane-tab="panel:search"]')
           const el = document.activeElement
           return {
-            on: layer?.getAttribute('data-panel-on') === 'true' || layer?.hasAttribute('data-panel-on'),
+            // W4:那一格事实的属性名随树换成了 `data-pane-on`。
+            on: layer?.getAttribute('data-pane-on') === 'true' || layer?.hasAttribute('data-pane-on'),
             inert: layer?.hasAttribute('inert') ?? null,
             focusInside: Boolean(layer && el instanceof Node && layer.contains(el)),
             scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,

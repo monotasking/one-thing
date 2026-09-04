@@ -276,8 +276,15 @@ describe('哪一份实例算数', () => {
   const exposeRootIn = (layer: Element) =>
     layer.querySelector('[data-focus-scope="expose"]') as HTMLElement
 
+  /*
+   * W4:一格 tab 的那一层从架子自己那份 `ShelfTabLayer` 换成了树的
+   * `PaneLeaf` → `PaneTabLayer`(架子的身子现在是一棵拼贴树)。取件口因此换成
+   * `data-pane-tab=<refId>`,树上那一格的 scope 也从 `shelf-layer` 变成 `leaf`
+   * ——**这一条要守的两件事一个字没改**:后台那一份还挂着,而且 DOM 与树
+   * 两遍 `inert` 同源。
+   */
   const layerOf = (id: string) =>
-    document.querySelector(`[data-panel-layer="${id}"]`) as HTMLElement
+    document.querySelector(`[data-pane-tab="panel:${id}"]`) as HTMLElement
 
   it('架子上被切到后台的那一份:还挂着(keep-alive),但整层 inert —— 键盘够不着', () => {
     render(<AppShell />)
@@ -296,7 +303,7 @@ describe('哪一份实例算数', () => {
     expect(background.hasAttribute('inert')).toBe(true)
     const dumped = focusTree
       .dump()
-      .nodes.filter((n) => n.scope === 'shelf-layer' && n.owner === SESSIONS_ITEM_ID)
+      .nodes.filter((n) => n.scope === 'leaf' && n.owner === `panel:${SESSIONS_ITEM_ID}`)
     expect(dumped.some((n) => n.inert)).toBe(true)
     expect(focusTree.activePath()).not.toContain(
       focusTree.dump().nodes.find((n) => n.scope === 'expose' && dumped.some((d) => d.instanceId === n.parent))

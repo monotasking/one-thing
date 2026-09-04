@@ -906,8 +906,16 @@ async function main() {
             tablists: bar ? bar.querySelectorAll('[role="tablist"]').length : 0,
             // 带子自己是一格有名字的 group(读屏软件按地标/组浏览时说得出这是什么)。
             band: bar?.querySelector('[data-testid="topbar-tabs"]')?.getAttribute('aria-label') ?? null,
-            // 叶身上零檐 —— W1-b 之后中央区里一条 tablist 都不该有。
-            inLeaf: document.querySelectorAll('[data-pane-leaf] [role="tablist"]').length,
+            /*
+             * **中央叶身上零檐** —— W1-b 之后中央区里一条 tablist 都不该有。
+             * **限定在中央区**(W4:架子与浮窗的身子也是拼贴树,它们那片叶头上
+             * 画的正是同一条檐 —— 那两处没有第二条顶栏可借,判词在
+             * `workbench/PaneLeaf.tsx` 文件头那张区域表上)。不限定的话这一条会
+             * 把「檐的位置由区域决定」误判成回归。
+             */
+            inLeaf: document.querySelectorAll(
+              '[data-pane-region="center"] [data-pane-leaf] [role="tablist"]',
+            ).length,
           }
         })
         if (shot.tabs < 2) {
@@ -927,15 +935,16 @@ async function main() {
            * 第二个 banner —— 这一屏开着两扇浮窗,于是文档里有三个。
            * **实测是存量**:同一段 include 打在 W1-a 基线(7347cb52)上,读数逐字相同
            * (`._bar_6p1qn_5` / Document has more than one banner landmark)。
-           * 修法仓里已经有判例(`ProviderDetail.tsx:60`「头这一行不用 `<header>`」),
-           * 但 `FloatWindow.tsx` 这一批不许碰(W4 并行在改),所以**记一格留账**,
-           * 不在这里顺手改、也不把它塞进哪个基线里假装没有。
+           * 修法仓里已经有判例(`ProviderDetail.tsx:60`「头这一行不用 `<header>`」)。
+           * **W4 把那条 `<header>` 整条退役了**(浮窗的标题栏 = 它根叶那条檐),
+           * 所以这一格留账随合树自然消了 —— include 仍旧只打这两块:理由从
+           * 「躲一条存量红」变成「扫的就该是本批新添的那两块 surface」。
            */
           await scanAxe(page, '顶栏标签组', '[data-testid="topbar-tabs"]')
           await scanAxe(page, '顶栏尾格(焦点叶的动作组)', '[data-testid="topbar-trailing"]')
           assert(shot.tablists >= 1, `顶栏上一片叶一条 tablist(实测 ${shot.tablists} 条)`)
           assert(Boolean(shot.band), `标签带自己有无障碍名(实测「${shot.band ?? '—'}」)`)
-          assert(shot.inLeaf === 0, `叶身上零檐(实测 ${shot.inLeaf} 条 tablist)`)
+          assert(shot.inLeaf === 0, `中央叶身上零檐(实测 ${shot.inLeaf} 条 tablist)`)
           console.log(`  ✓ 顶栏上 ${shot.tabs} 格 tab / ${shot.tablists} 条 tablist`)
         }
       }

@@ -13,7 +13,6 @@ import { useViewerSource } from '../data/viewer-source'
 import {
   FILE_OPEN_MODES,
   FILE_OPEN_MODE_LABELS,
-  isWiredFileOpenMode,
   useFileOpenMode,
 } from '../data/file-open-mode'
 import {
@@ -273,11 +272,11 @@ export function FileActionsMenu({
               key={option}
               checked={option === mode}
               /*
-               * **禁灰而不消失**(W1 的临时退化,交付报告点名):架子与浮窗那五档
-               * 要等 W4 才有树可插。禁灰说的是「这一档此刻做不了」,那是同一张表的
-               * 一个状态,不是另一张表 —— 一张菜单的形状不该随批次变。
+               * **七档全通**(W4):架子与浮窗的身子换成拼贴树之后,插一个文件进
+               * 架子与插进中央区走的是同一句 `openRef(ref, { region })`。
+               * W1-a 那格 `disabled={!isWiredFileOpenMode(option)}` 与它旁边那句
+               * 「下一批」的注脚随之整段退役。
                */
-              disabled={!isWiredFileOpenMode(option)}
               onClick={() => {
                 // **选档即生效**:手上那一份当场搬过去(编排在 open-target)。
                 setFileOpenMode(option)
@@ -286,9 +285,6 @@ export function FileActionsMenu({
             >
               <span className={s.menuLine}>
                 <span className={s.menuMain}>{t(FILE_OPEN_MODE_LABELS[option])}</span>
-                {!isWiredFileOpenMode(option) && (
-                  <span className={s.menuTrail}>{t('files.openModeNextBatch')}</span>
-                )}
               </span>
             </MenuItem>
           ))}

@@ -74,7 +74,7 @@ function Shell({ layerKey = 0 }: { layerKey?: number }) {
 function summonOpen(): void {
   act(() => {
     requestFocusOnOpen('files')
-    useStageStore.setState((s) => T.openAs(s, 'files', { kind: 'float' }))
+    useStageStore.getState().openAs('files', { kind: 'float' })
   })
 }
 
@@ -153,7 +153,7 @@ describe('键盘开面 → 焦点进那块面', () => {
     summonOpen()
     expect(layer()?.contains(document.activeElement)).toBe(true)
     act(() => {
-      useStageStore.setState((s) => T.closeToDock(s, 'files'))
+      useStageStore.getState().closeToDock('files')
     })
     await flushMicrotasks()
     expect(layer()).toBeNull()
@@ -174,7 +174,7 @@ describe('键盘开面 → 焦点进那块面', () => {
     render(<Shell />)
     act(() => composerInput()?.focus())
     act(() => {
-      useStageStore.setState((s) => T.openAs(s, 'files', { kind: 'float' }))
+      useStageStore.getState().openAs('files', { kind: 'float' })
     })
     await flushMicrotasks()
     expect(document.activeElement).toBe(composerInput())

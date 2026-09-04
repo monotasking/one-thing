@@ -204,6 +204,11 @@ export const zh = {
   'stage.toFloat': '变浮窗',
   'float.toStage': '上舞台',
   'float.toDock': '收回 Dock',
+  /* W4:浮窗那颗 ✕ 关的是**这扇窗**,里面的标签全部转为隐藏(设计 §2.2)——
+     所以它不叫「收回 Dock」:那句话只对瓦说得通,而一扇窗里可能装着文件。 */
+  'float.close': '关闭这扇窗',
+  /* 一扇窗还什么都没显示时的兜底无障碍名(树刚建、内容未定的那一帧)。 */
+  'float.window': '浮窗',
   'cover.close': '关闭',
   /* ── 四边架子(W2:钉栏泛化成四条边,名字按边给) ─────────────────── */
   'shelf.labelLeft': '左侧栏',
@@ -771,7 +776,6 @@ export const zh = {
   'files.openIn.edgeRight': '右侧钉',
   'files.openIn.float': '浮窗',
   'files.openModeSoon': '还没接上',
-  'files.openModeNextBatch': '架子与浮窗的标签下一批',
   'files.menuKeep': '保留',
   'files.menuHide': '隐藏',
   'files.menuClose': '关闭',

@@ -135,7 +135,18 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
    * Placement 宿主:Tab 走得出去、Esc 不缺省认领(叶没有「关自己」这回事,
    * 关一格 tab 是 ⌘W 那条**显式**的键)。
    */
-  leaf: { id: 'leaf', kind: 'region', labelKey: 'focus.scope.leaf', keys: LEAF_KEYS },
+  /*
+   * 叶是**家具**:进它就是进它装着的那块内容(`passThrough`,判词写在
+   * `FocusScopeSpec.passThrough` 上)。它仍旧是 `region` —— 它有自己的局部键
+   * (⌘W 关这一格),而那正是 `region` 与 `layer` 在快捷键三层里的分野。
+   */
+  leaf: {
+    id: 'leaf',
+    kind: 'region',
+    labelKey: 'focus.scope.leaf',
+    keys: LEAF_KEYS,
+    passThrough: true,
+  },
 
   /* ── layer:四个 Placement 宿主(§4.1 第二行)────────────────────────── */
   'stage-layer': { id: 'stage-layer', kind: 'layer', labelKey: 'focus.scope.stageLayer' },

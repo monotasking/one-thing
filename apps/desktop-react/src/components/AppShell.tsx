@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
-import { useStageStore } from '../stage/store'
+import { startStage, useStageStore } from '../stage/store'
 import { StageFocusFollow } from '../stage/focus-follow'
 import { useViewportReclamp } from '../stage/viewport-reclamp'
 import { useKeymapCommandRunner } from '../keymap/dispatch'
@@ -53,6 +53,17 @@ const RESERVE_SIZE_CLASS: Partial<Record<DockSize, string>> = {
 
 export function AppShell() {
   const t = useT()
+
+  /*
+   * **形态机接线一次**(W4)。与 `CenterRegion` 里那句 `seed()` 逐字同一个体例:
+   * 生产那条路由 `main.tsx` 早就接过了(那一句管的是**第一帧** —— 它排在
+   * `createRoot` 之前),这里这一句管的是「不经过 main.tsx 的宿主」(用例、
+   * 将来的第二个壳)。**幂等**:`startStage()` 自己先把上一次退役掉。
+   *
+   * 用 layout effect 而不是 effect:投影(`placements` / 架子 tab)该在**第一次
+   * 绘制之前**就位,不然会先画一帧没有架子的壳。
+   */
+  useLayoutEffect(() => startStage(), [])
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
   const dockAlign = useStageStore((st) => st.dockAlign)

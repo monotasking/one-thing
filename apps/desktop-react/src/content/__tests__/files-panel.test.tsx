@@ -780,30 +780,28 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
       'false',
     ])
 
-    /*
-     * W1:能选的两档是「面板内」与「主区域」;架子与浮窗那五档禁灰 + 注脚
-     * (临时退化,交付报告点名)。所以这一条选的是真接得通的那一档。
-     */
+    // W4 起七档全通;这一条仍旧选「主区域」,它验的是「选档即生效」那条链。
     fireEvent.click(screen.getByText('主区域'))
     await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
   })
 
   /*
-   * ── F2:七档全接上了 ────────────────────────────────────────────────
-   * F1 的诚实降级(六档「记住但不假装」+ 一句注脚)到此结清:查看器成了一块
-   * 普通的瓦,那六档就是壳里已经有的 `openAs(id, placement)`。这一条把新事实
-   * 钉死 —— 一句「还没接上」都不该再有。
+   * ── W4:七档全接上了 ────────────────────────────────────────────────
+   * F1 的诚实降级(六档「记住但不假装」)在 F2 结清过一次;W1-a 因为架子与浮窗
+   * 还没有树,又退回过两档(五档禁灰 + 一句「下一批」)。W4 把两处都换成了树,
+   * 于是这一条把**终态**钉死:七档全能选,一格禁灰、一句注脚都不该再有。
    */
-  it('W1:五档禁灰 + 注脚「架子与浮窗的标签下一批」,两档真接通', async () => {
+  it('W4:七档全通,禁灰与「下一批」那句注脚一并退役', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
 
     const options = screen.getAllByRole('menuitemradio')
-    expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(5)
-    expect(screen.getAllByText('架子与浮窗的标签下一批')).toHaveLength(5)
-    // 旧那句注脚(F1 时代的诚实降级)不该再出现 —— 它说的是另一件事。
+    expect(options).toHaveLength(7)
+    expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(0)
+    expect(screen.queryAllByText('架子与浮窗的标签下一批')).toHaveLength(0)
+    // 旧那句注脚(F1 时代的诚实降级)同样不该出现 —— 它说的是另一件事。
     expect(screen.queryAllByText('还没接上')).toHaveLength(0)
   })
 

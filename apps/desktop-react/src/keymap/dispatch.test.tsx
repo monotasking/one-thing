@@ -101,11 +101,25 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
      * 而 `FocusScope` 给每一格都无条件登记一个,于是设计 §4.1 那条「进层 = 进它
      * 装着的那块面」对所有真组件都走不到。改判返回值之后焦点落到了它该落的地方。
      */
-    expect(firstResponder()).toBe('files')
-    // 那一格确实住在**装着这块面的那一扇**里(owner 记在层上,不在内容面上)。
-    const layerOf = (id: string | undefined) =>
-      id ? focusTree.nodes().get(focusTree.nodes().get(id)?.parent ?? '') : undefined
-    expect(layerOf(focusTree.current()?.instanceId)?.owner).toBe('files')
+    /*
+     * **W4 改判:落点是那块面所在的那片叶,不是内容自己那一格。**
+     *
+     * 浮窗与架子的身子从 W4 起是一棵拼贴树,于是宿主层与内容之间多了两格
+     * `leaf`(叶根 + 那一格 tab 的层;设计 §2.4:「每片叶是响应链上的一格
+     * `region`,叶 id 就是 scope 的 owner」)。而 `entryOf` 只穿 `layer` 那一种,
+     * 走到第一格 `region` 就停 —— 中央区从 W1-a 起就是这个样子,W4 只是让
+     * 架子与浮窗与它一致。
+     *
+     * 所以这一条的断言改成问**契约本身**而不是问 scope 的名字:
+     *  · `isOwnerActive('files')` —— 这正是召唤三态用来判「焦点在不在它里面」
+     *    的那一句(`summon.summonTransition` 的第四格读它);
+     *  · 焦点真的落在装着这块面的那一格 tab 层里(DOM 事实)。
+     * 反证不变:把 `requestFocusOnOpen(item)` 删掉 → 焦点留在 composer 上,两句都红。
+     */
+    expect(focusTree.isOwnerActive('files')).toBe(true)
+    expect(
+      document.querySelector('[data-pane-tab="panel:files"]')?.contains(document.activeElement),
+    ).toBe(true)
   })
 
   /*
@@ -126,8 +140,11 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
      * 改回「在 store 的 set 里当场 activate」)→ 焦点留在 composer 上,这两句红。
      * 这正是用户报的那一句:「触发一块面,焦点为什么还在 inputbox」。
      */
-    expect(firstResponder()).toBe('float-layer')
-    expect(focusTree.current()?.owner).toBe('workspace')
+    // 判据同上一条(W4):问契约(`isOwnerActive`)与 DOM 事实,不问 scope 的名字。
+    expect(focusTree.isOwnerActive('workspace')).toBe(true)
+    expect(
+      document.querySelector('[data-pane-tab="panel:workspace"]')?.contains(document.activeElement),
+    ).toBe(true)
   })
 
   it('同一个键**焦点已经在它里面**时把它收起来,焦点由结构归还自己回去(S1b 第四格)', () => {

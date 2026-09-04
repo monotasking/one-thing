@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { focusTree } from '../focus/registry'
-import { LAYER_SCOPE_OF, takeOpenRequest } from './summon'
+import { LAYER_SCOPE_OF, peekOpenRequest, takeOpenRequest } from './summon'
 import { useStageStore } from './store'
 import type { FocusScopeId } from '../focus/types'
 import type { Placement, ShelfSide, StageState } from './types'
@@ -166,8 +166,15 @@ function useStageFocusFollow(): void {
   useEffect(
     () =>
       useStageStore.subscribe((after, before) => {
-        const target = focusFollowTarget(before, after, takeOpenRequest())
-        if (target) setPending((prev) => ({ target, seq: (prev?.seq ?? 0) + 1 }))
+        /*
+         * 点名**看一眼再决定烧不烧**(W4):一次落定在形态机这一侧会连响好几次
+         * (住处已经搬进树里,`placements` 是投影),而只有其中一次的差值里有
+         * 那块面。判词全文在 `summon.peekOpenRequest` 上。
+         */
+        const target = focusFollowTarget(before, after, peekOpenRequest())
+        if (!target) return
+        takeOpenRequest()
+        setPending((prev) => ({ target, seq: (prev?.seq ?? 0) + 1 }))
       }),
     [],
   )

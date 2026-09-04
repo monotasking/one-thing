@@ -56,7 +56,12 @@ export interface HiddenEntry {
 
 /** 跟着工作区走的那一份(T0 拍点 3:树按 Workspace 记)。 */
 export interface WorkbenchFurniture {
-  /** 每个区域一棵树。W1-a 只有 `center` 有人建。 */
+  /**
+   * 每个区域一棵树。W1-a 只点亮 `center` 一格;**W4 起四条边与每一扇浮窗也各一棵**
+   * (`edge:<side>` / `float:<id>`,见 `./regions.ts`)。于是「一条架子上有什么」
+   * 与「一扇浮窗里有什么」在这里是**唯一**的事实,形态机那边的 `placements` /
+   * `shelves[side].tabs` 降格成它的投影(产地在 `stage/residency.ts`)。
+   */
   regions: Record<string, PaneNode>
   hidden: HiddenEntry[]
 }
@@ -89,6 +94,26 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   closeTab(leafId: string, index: number): void
   /** 藏起来一格:从叶里摘掉、记 `returnTo`,实例留着。 */
   hideTab(leafId: string, index: number): void
+  /**
+   * **把一格搬到另一个区域**(W4)。从它此刻在的那棵树里摘掉,插进目标区域;
+   * 目标区域还没有树就当场建一棵单叶的。**实例一路留着** —— 搬家不是关闭,
+   * 所以既不问 `beforeClose` 也不 `dispose`(判据与 `hideTab` 同一条)。
+   *
+   * `at` 是**叶内下标**(位置记忆放回原位那一路要它);缺席 = 排到末尾。
+   */
+  moveRef(ref: ContentRef, region: RegionId, opts?: { at?: number }): void
+  /**
+   * **把一格从所有树里摘掉,什么都不留**(W4)。既不记隐藏也不 dispose ——
+   * 它是「收回 Dock」那条路的树侧动作:瓦的家在 Dock 上,离开树就是回家了,
+   * 它的位置由**位置记忆**(`stage`)接着记,不需要隐藏表再记一遍。
+   */
+  detachRef(id: ContentRefId): void
+  /**
+   * **把一个区域里的每一格都藏起来**(W4;浮窗那颗 ✕ 走的就是它,设计 §2.2:
+   * 「浮窗 ✕ = 把里面的 tab 全部**隐藏**,不是关闭 —— 窗子没了,内容还在」)。
+   * 每一格各记自己的 `returnTo`,所以「隐藏的标签 ⋯」里点回来的是原来那个位置。
+   */
+  hideRegion(region: RegionId): void
   /** 从隐藏表里请回来。回不去(那片叶没了)就落在焦点叶上。 */
   restoreHidden(id: ContentRefId): void
   /** 把一格隐藏的真的关掉(叶檐「隐藏的标签 ⋯」里那颗 ✕)。 */
@@ -186,6 +211,43 @@ export function focusLeafOf(tree: PaneNode, focusLeafId: string | null): PaneLea
   return named ?? T.leavesOf(tree)[0] ?? T.makeLeaf(nextLeafId())
 }
 
+/** 这片叶住在哪个区域。答不出 = 这个 id 不在任何一棵树上。 */
+export function regionOfLeafIn(
+  regions: Record<string, PaneNode>,
+  leafId: string,
+): RegionId | null {
+  for (const [region, tree] of Object.entries(regions)) {
+    if (T.findLeaf(tree, leafId)) return region as RegionId
+  }
+  return null
+}
+
+/** 这个 refId 此刻在哪个区域(哪棵树都不在 = null)。 */
+export function regionOfRefIn(
+  regions: Record<string, PaneNode>,
+  id: ContentRefId,
+): RegionId | null {
+  for (const [region, tree] of Object.entries(regions)) {
+    if (T.locateRef(tree, region as RegionId, id)) return region as RegionId
+  }
+  return null
+}
+
+/**
+ * **这个区域里藏着的那些**(W4;叶檐那格「隐藏的标签 ⋯」只列本区域的)。
+ *
+ * W1-a 留的账正是这一条:那格菜单当时列的是**全部**隐藏项,于是右架子的檐上
+ * 会列出中央区藏起来的文件 —— 点回去,它出现在你看不见的另一块地方。
+ * 「回哪儿去」这件事本来就记在 `returnTo.region` 上,按它分组是它自己的读法。
+ */
+export function hiddenInRegion(
+  hidden: readonly HiddenEntry[],
+  region: RegionId | null,
+): HiddenEntry[] {
+  if (!region) return []
+  return hidden.filter((entry) => entry.returnTo.region === region)
+}
+
 /**
  * 一条路径此刻的**三态**(设计 §2.3:实心 = 显示中,空心 = 隐藏,无 = 没开)。
  * 文件树行那颗点的**唯一产地** —— 渲染层不再自己判一次。
@@ -231,8 +293,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         openRef: (ref, opts = {}) => {
           const region = opts.region ?? CENTER_REGION
           const s = get()
-          const tree = s.regions[region]
-          if (!tree) return
+          /*
+           * **区域还没有树就当场建一棵**(W4)。W1-a 时这里是 `if (!tree) return`
+           * —— 那时只有中央区那一棵,而它出厂就在。W4 起边与浮窗也是区域,而
+           * 「这条边此刻空着」正是最常见的一种情况:第一格插进去的同时把树建起来,
+           * 空区域于是不必先有一个「空树」占着(空树会让架子画出一条空带子)。
+           */
+          const tree = s.regions[region] ?? T.makeLeaf(nextLeafId())
           const kind = contentKindOf(ref.kind)
           if (kind?.regions && !kind.regions.includes(region)) return
           const id = refId(ref)
@@ -242,17 +309,71 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             set({ regions: { ...s.regions, [region]: T.activate(tree, at.leafId, at.index) }, focusLeafId: at.leafId })
             return
           }
+          /*
+           * **单例住在别的区域**(W4 起才可能:边与浮窗也是区域了)。
+           * 「全应用一份」这句话是跨区域的 —— 不先摘掉,一块瓦就会在右架子和
+           * 一扇浮窗里各活一份,而它们背后是同一个实例。
+           */
+          const elsewhere = kind?.singleton ? regionOfRefIn(s.regions, id) : null
+          const regions = elsewhere && elsewhere !== region
+            ? withoutRef(s.regions, id)
+            : s.regions
+          const base = regions[region] ?? tree
           // 藏着的那一份被重新打开 = 请回来(实例还在,草稿与滚动位不该丢)。
           const hidden = s.hidden.filter((entry) => refId(entry.ref) !== id)
-          const leaf = opts.leafId ? T.findLeaf(tree, opts.leafId) : focusLeafOf(tree, s.focusLeafId)
+          const leaf = opts.leafId ? T.findLeaf(base, opts.leafId) : focusLeafOf(base, s.focusLeafId)
           if (!leaf) return
           set({
-            regions: {
-              ...s.regions,
-              [region]: T.insertTab(tree, leaf.id, ref, { preview: opts.preview === true }),
-            },
+            regions: { ...regions, [region]: T.insertTab(base, leaf.id, ref, { preview: opts.preview === true }) },
             hidden: hidden.length === s.hidden.length ? s.hidden : hidden,
             focusLeafId: leaf.id,
+          })
+        },
+
+        moveRef: (ref, region, opts = {}) => {
+          const s = get()
+          const id = refId(ref)
+          const kind = contentKindOf(ref.kind)
+          if (kind?.regions && !kind.regions.includes(region)) return
+          const regions = withoutRef(s.regions, id)
+          const tree = regions[region] ?? T.makeLeaf(nextLeafId())
+          const leaf = focusLeafOf(tree, null)
+          set({
+            regions: { ...regions, [region]: T.insertTab(tree, leaf.id, ref, { at: opts.at }) },
+            // 藏着的那一份被搬出来 = 它不再是「藏着的」(实例一路留着)。
+            hidden: s.hidden.filter((entry) => refId(entry.ref) !== id),
+            focusLeafId: leaf.id,
+          })
+        },
+
+        detachRef: (id) => {
+          const s = get()
+          if (!regionOfRefIn(s.regions, id)) return
+          set({ regions: withoutRef(s.regions, id) })
+        },
+
+        hideRegion: (region) => {
+          const s = get()
+          const tree = s.regions[region]
+          if (!tree) return
+          /*
+           * **先按原状把每一格的位置折下来,再一次性摘掉**。次序即语义:
+           * 逐格摘会让后面那些的下标一路往前塌,记下的就是塌过的位置 ——
+           * 藏起来再一个个请回来,三格会挤成一摞(与 `closeShelf` 那条判例同型)。
+           */
+          const entries: HiddenEntry[] = []
+          for (const leaf of T.leavesOf(tree)) {
+            leaf.tabs.forEach((ref, index) => {
+              entries.push({ ref, returnTo: { region, leafId: leaf.id, index } })
+            })
+          }
+          if (entries.length === 0) return
+          const fresh = new Set(entries.map((entry) => refId(entry.ref)))
+          const regions = { ...s.regions }
+          delete regions[region]
+          set({
+            hidden: [...s.hidden.filter((entry) => !fresh.has(refId(entry.ref))), ...entries],
+            regions: pruneRegions(regions),
           })
         },
 
@@ -308,16 +429,24 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const entry = s.hidden.find((row) => refId(row.ref) === id)
           if (!entry) return
           const region = entry.returnTo.region
-          const tree = s.regions[region] ?? s.regions[CENTER_REGION]
-          if (!tree) return
-          const homeRegion = s.regions[region] ? region : CENTER_REGION
-          // 回原来那片叶;那片叶已经没了就落在焦点叶上(结构归还的同一条口径)。
+          /*
+           * **区域没了就把它建回来**(W4)。W1-a 时这里回落中央区,理由是那时
+           * 只有中央区一棵树 —— 别的区域根本不存在。W4 之后「区域没了」恰恰是
+           * 最常见的一种回程:关一扇浮窗 = 把里面的标签全藏起来,那扇窗当场
+           * 就没了(树空了整格删掉)。回落中央区等于「点『隐藏的标签 ⋯』里那一行,
+           * 它出现在另一块地方」——而 `returnTo.region` 记的就是它该回哪儿。
+           *
+           * 浮窗那一路白拿几何:`floats[id]` 那张矩形表从来不擦(它是记忆),
+           * 所以窗建回来还在老位置;`floatOrder` 由投影自己补上末位。
+           */
+          const tree = s.regions[region] ?? T.makeLeaf(nextLeafId())
+          // 回原来那片叶;那片叶已经没了就落在这个区域的焦点叶上(结构归还同一条口径)。
           const leaf = T.findLeaf(tree, entry.returnTo.leafId) ?? focusLeafOf(tree, s.focusLeafId)
           set({
             hidden: s.hidden.filter((row) => refId(row.ref) !== id),
             regions: {
               ...s.regions,
-              [homeRegion]: T.insertTab(tree, leaf.id, entry.ref, { at: entry.returnTo.index }),
+              [region]: T.insertTab(tree, leaf.id, entry.ref, { at: entry.returnTo.index }),
             },
             focusLeafId: leaf.id,
           })
@@ -399,11 +528,41 @@ export const useWorkbenchStore = create<WorkbenchState>()(
 )
 
 /** 这片叶住在哪个区域。 */
-function regionOfLeaf(regions: Record<string, PaneNode>, leafId: string): RegionId | null {
+const regionOfLeaf = regionOfLeafIn
+
+/**
+ * 剪一遍每棵树:空叶剪掉、空区域整格删掉,中央区**永远留一棵**(设计 §1.3)。
+ *
+ * 它与 `normalizeRegions` 的分工是一句话:**这只不问种类表**。搬家 / 摘掉 / 整区
+ * 隐藏这三条路只动结构,而 `sanitize` 要读种类注册表 —— 在还没 `import
+ * './content/kinds'` 的宿主(用例)里,那一遍会把每一格都当未知种类剔掉。
+ * 洗存量档案是入口那一次的事(merge / seed),不是每一次动作的事。
+ */
+function pruneRegions(regions: Record<string, PaneNode>): Record<string, PaneNode> {
+  const out: Record<string, PaneNode> = {}
   for (const [region, tree] of Object.entries(regions)) {
-    if (T.findLeaf(tree, leafId)) return region as RegionId
+    const pruned = T.prune(tree)
+    if (pruned) out[region] = pruned
   }
-  return null
+  if (!out[CENTER_REGION]) out[CENTER_REGION] = T.makeLeaf(nextLeafId())
+  return out
+}
+
+/** 把一个 refId 从**每一棵**树里摘掉,然后剪一遍。 */
+function withoutRef(
+  regions: Record<string, PaneNode>,
+  id: ContentRefId,
+): Record<string, PaneNode> {
+  const next: Record<string, PaneNode> = {}
+  for (const [region, tree] of Object.entries(regions)) {
+    let cleaned = tree
+    for (const leaf of T.leavesOf(tree)) {
+      const at = leaf.tabs.findIndex((tab) => refId(tab) === id)
+      if (at >= 0) cleaned = T.removeTab(cleaned, leaf.id, at)
+    }
+    next[region] = cleaned
+  }
+  return pruneRegions(next)
 }
 
 /**

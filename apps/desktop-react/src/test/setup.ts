@@ -274,3 +274,26 @@ configureSpacesPort({
 import { configure } from '@testing-library/react'
 
 configure({ defaultIgnore: 'script, style, [data-live-region], [data-live-region] *' })
+
+/**
+ * **每一例之前把拼贴台那本账归零**(W4)。
+ *
+ * 从 W4 起「一块面在哪儿」这件事实住在拼贴树里(`workbench.regions`),
+ * 形态机那边的 `placements` / `shelves[side].tabs` 只是它的投影(判词在
+ * `stage/residency.ts` 文件头)。于是既有那十九个用例文件里的
+ * `useStageStore.setState({ ...initialStageState })` **不再是一次完整的归零** ——
+ * 它擦掉的是投影,树还在,下一次投影跑完又长回来。
+ *
+ * 修法不是去那十九个文件里各补一句(那正是「一件事有十九个产地」),
+ * 而是把它放进这一处环境补丁:**两台 store 一起归零**,与上面那些假端口
+ * 同一个身份 —— 它们都是「用例开始之前,这台机器该是什么样」。
+ *
+ * 用例文件自己的 `beforeEach` 排在这一条之后(vitest 的根级钩子先跑),
+ * 所以谁要先摆好一份家具,照旧摆得上。
+ */
+import { beforeEach } from 'vitest'
+import { useWorkbenchStore } from '../workbench/store'
+
+beforeEach(() => {
+  useWorkbenchStore.getState().reset()
+})

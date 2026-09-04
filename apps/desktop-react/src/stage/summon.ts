@@ -90,7 +90,25 @@ export function requestFocusOnOpen(itemId: string): void {
   openRequest = itemId
 }
 
-/** 读一次就作废。只有 `focus-follow` 那只 hook 该问它。 */
+/**
+ * **看一眼**(不作废)。只有 `focus-follow` 那只 hook 该问它。
+ *
+ * ── 为什么「读一次就作废」改成了「**用掉才作废**」(W4)────────────────────
+ * 从前一次形态落定 = 一次 `set`,所以「订阅响一次 = 一次落定」,读到就用得上。
+ * W4 之后住处住在拼贴树里,一次落定要写**两台** store,于是形态机那一侧会连响
+ * 好几次(先补浮窗矩形、再由投影把 `placements` 对上、最后写记忆)。
+ * 「读一次就作废」在第一次响的时候就把点名烧掉了 —— 而那一次 `placements` 还没变,
+ * 真正该跟焦的是第二次。表现:键盘开面,面开出来了、焦点没进去
+ * (`focus-follow-settle` 那四条当场红)。
+ *
+ * 所以判据从「响了就作废」改成「**接住了才作废**」:`focusFollowTarget` 答得出
+ * 目标才 `takeOpenRequest()`。点名因此正好活到它被用上的那一次,不多不少。
+ */
+export function peekOpenRequest(): string | null {
+  return openRequest
+}
+
+/** 用掉了才作废。 */
 export function takeOpenRequest(): string | null {
   const at = openRequest
   openRequest = null

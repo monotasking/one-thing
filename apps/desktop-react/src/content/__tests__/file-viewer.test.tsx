@@ -294,24 +294,23 @@ describe('头:身份与去向(大小与时间不在这里)', () => {
   })
 
   /**
-   * W1 的**临时退化**,这一条把它钉住(交付报告点名):架子与浮窗那五档要等 W4
-   * 才有树可插,所以它们在菜单里**禁灰 + 注脚**,不是「点了没反应」。
-   * 真接通的两档是「面板内」与「主区域」。
+   * **W4:七档全通**。W1-a 那次临时退化(架子与浮窗五档禁灰 + 一句「下一批」)
+   * 到此结清 —— 两处的身子都换成了拼贴树,插一个文件进架子与插进中央区走的是
+   * 同一句 `openRef(ref, { region })`。一格禁灰、一句注脚都不该再有。
    */
-  it('没接上的五档禁灰 + 注脚;接上的两档能选', async () => {
+  it('七档全能选,一格禁灰与那句「下一批」都不该再有', async () => {
     installPort()
     await open('/repo/a.ts')
     renderViewer(<Viewer />)
     fireEvent.contextMenu(screen.getByTestId('viewer-body'))
     await waitFor(() => expect(screen.getByRole('menu')).toBeTruthy())
     const menu = screen.getByRole('menu')
-    const disabled = within(menu)
-      .getAllByRole('menuitemradio')
-      .filter((el) => el.hasAttribute('disabled'))
-    expect(disabled).toHaveLength(5)
-    expect(within(menu).getAllByText('架子与浮窗的标签下一批')).toHaveLength(5)
-    fireEvent.click(within(menu).getByText('主区域'))
-    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('stage'))
+    const options = within(menu).getAllByRole('menuitemradio')
+    expect(options).toHaveLength(7)
+    expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(0)
+    expect(within(menu).queryAllByText('架子与浮窗的标签下一批')).toHaveLength(0)
+    fireEvent.click(within(menu).getByText('右侧钉'))
+    await waitFor(() => expect(useFileOpenMode.getState().mode).toBe('edge-right'))
   })
 
   it('菜单里的 Finder 走 files 端口那条唯一的写口', async () => {

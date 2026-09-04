@@ -1,18 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useStageStore } from '../stage/store'
-import { findItem } from '../stage/items'
-import { HostTitle, useHostTitleText } from './HostTitle'
 import { clampFloatRect, resizeFrom, snapSideAt } from '../stage/transitions'
+import { panelIdOf } from '../stage/panel-ref'
 import { setSnapSide } from './snap-hint'
-import { renderContent } from '../content'
+import { useWorkbenchStore } from '../workbench/store'
+import { floatRegion } from '../workbench/regions'
+import { PaneTree } from '../workbench/PaneTree'
+import { contentKindOf, refId } from '../workbench/kinds'
+import { leafCount } from '../workbench/layout'
+import { leavesOf } from '../workbench/tree'
+import { useLiveTitleStore } from '../stage/live-title'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { Menu, MenuItem, MenuSection } from '../ui/Menu'
 import { IconButton } from '../ui/IconButton'
-import { resolveIcon, Maximize2, Pin, X } from './icons'
+import { Maximize2, Pin, X } from './icons'
 import { exitMs } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
+import type { PaneHostChrome } from '../workbench/PaneLeaf'
+import type { PaneNode } from '../workbench/tree'
 import type { FloatRect, ShelfSide } from '../stage/types'
 import type { ResizeDir } from '../stage/transitions'
 import s from './FloatWindow.module.css'
@@ -42,16 +49,51 @@ interface WindowProps {
  *
  * 拖移与缩放遵守跟手定律:过程中零过渡、逐帧写**本地** state,松手才落 store。
  * 钳制两处共用 transitions 里的同一个纯函数,所以「拖着看到的」与「存下来的」逐像素相同。
+ *
+ * ── W4:身子是一棵树,**标题栏就是它根叶的 tab 条** ────────────────────────
+ * 设计 §2.2 的原话:「浮窗的标题栏**就是**它里面那棵树根叶的 tab 条(与浏览器
+ * 一致:tab 长在窗口檐上)」。所以这只文件里**没有第二条 40px 的檐** —— 从前那条
+ * `<header>`(图标 + `HostTitle` + 三颗钮)整件退役,它的三颗钮改挂进根叶那条檐的
+ * 右端(`PaneHostChrome.actions`),拖窗那一下改由那条檐的空白处发起
+ * (`onChromePointerDown`)。
+ *
+ * 于是从前那条判例(09-01「浮窗双檐」:查看器自带一条檐与浮窗檐上下叠着,
+ * 两条 40px 白占掉 520 高窗口的 15%)在**结构上**不可能再发生:这扇窗一共只有
+ * 一条带子,而它是树自己那条。
+ *
+ * **那颗 ✕ 的语义也随之定死**:关这扇窗 = 把里面的 tab **全部隐藏**(设计 §2.2),
+ * 不是关闭 —— 窗子没了,内容还在隐藏表里,「隐藏的标签 ⋯」点得回来。
+ *
+ * ── 状态表 ①:生命周期 ──────────────────────────────────────────────────
+ *   挂载    `float:<id>` 那棵树长出来(`placeAs(id, {kind:'float'})` / 撕出来)
+ *   首载    **不画载入态**(树同步已知);内容自己说
+ *   换宿主  吸到边上:树整棵搬进 `edge:<side>`,这扇窗随之卸载
+ *   卸载    树空了(全部隐藏 / 全部关掉 / 搬走);离场动画多留一帧(见 `FloatLayer`)
+ *
+ * ── 状态表 ②:UI 生命状态 ───────────────────────────────────────────────
+ *   单 tab / 多 tab / 有预览 / 有隐藏 —— **全归那条檐**(`LeafStrip` / `PaneLeaf`)
+ *   分屏     树自己的事(`PaneTree` 画杆)
+ *   拖移 / 缩放  逐帧本地 state,零过渡
+ *   吸附预示 拖到边缘热带时 `setSnapSide`
+ *   离场     `leaving` 那一帧(`--kf-float-in` 的反向)
+ *
+ * ── 状态表 ③:UI 交互状态 ───────────────────────────────────────────────
+ *   八个把手  不可见热区(只给光标与命中)
+ *   三颗钮    随 `ui/IconButton`(md 档)
+ *   檐空白    按下 = 拖窗;按在 tab / 钮上让开(判据在 `isDragBlank`)
  */
 function FloatWindow({ id, order, leaving }: WindowProps) {
   const t = useT()
+  const region = floatRegion(id)
+  const tree = useWorkbenchStore((st) => st.regions[region])
   const stored = useStageStore((st) => st.floats[id])
   const focusFloat = useStageStore((st) => st.focusFloat)
   const moveFloat = useStageStore((st) => st.moveFloat)
   const resizeFloat = useStageStore((st) => st.resizeFloat)
   const openAs = useStageStore((st) => st.openAs)
   const floatToEdge = useStageStore((st) => st.floatToEdge)
-  const closeToDock = useStageStore((st) => st.closeToDock)
+  const closeFloat = useStageStore((st) => st.closeFloat)
+  const titles = useLiveTitleStore((st) => st.titles)
 
   // 拖拽过程中的实时矩形。松手清空,渲染就自动回到 store 那份(两者此刻相等)。
   const [live, setLive] = useState<FloatRect | null>(null)
@@ -61,24 +103,29 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
    * 钉边菜单贴着**那颗钮**的下缘开,所以要能**在任意时刻**量到那颗钮的矩形。
    * 刻意不改成「在 onPointerDown 里记一次」:那条路键盘按 ↵ 走不到,
    * 菜单会开在 0,0。
-   *
-   * 09-02 批 8b:ref 直接落在 `ui/IconButton` 上(批 8a 给它补了 `ref` 那一格
-   * 类型 —— React 19 里 ref 对函数组件是普通 prop,经 rest 摊到
-   * `ui/ButtonBase` 那件 forwardRef,最后落在真的 `<button>` 上)。
-   * 从前外面包的那格贴身 `span`(`.actionSlot`,inline-flex + flex:none,
-   * 逐像素等于钮自己)因此退役 —— 它存在的唯一理由就是库件递不进 ref。
    */
   const pinRef = useRef<HTMLButtonElement>(null)
 
-  const rect = live ?? stored
-  const item = findItem(id)
   /*
-   * 檐上那句话:**有活标题就说活标题**(09-01 合檐)。查看器摆进浮窗时自己那条
-   * 檐整条不画,文件名与未保存丸改由这一条说 —— 判据与画法在 HostTitle 一处,
-   * 三个宿主(浮窗 / 舞台 / 盖)共用,免得那颗丸只在其中一处被记得。
-   * 取在**早退之前**:它是 hook,不许排在 `if (!item) return null` 后面。
+   * **离场那一帧画的是它最后那一份内容**(W4)。关一扇窗 = 树整棵没了
+   * (`hideRegion` 把区域删掉),而出场动画要这扇窗在 DOM 里再活 `exitMs()`;
+   * 不留这一份的话,`FloatLayer` 手上那个「离场副本」会画成空 —— 屏幕上就是
+   * 「窗子瞬间消失,再挂一个空壳」,正是 08-30 那条「消失→闪现→再消失」的同型。
+   *
+   * 渲染期写 ref 与 `FloatLayer` 里那句 `prev.current = order` 同一条:
+   * 它只是「把上一帧记住」,不参与本次渲染的判据。
    */
-  const liveTitle = useHostTitleText(id, '')
+  const lastTree = useRef<PaneNode | undefined>(undefined)
+  if (tree) lastTree.current = tree
+  const shownTree = tree ?? (leaving ? lastTree.current : undefined)
+  const rect = live ?? stored
+  /**
+   * 这扇窗此刻在显示什么 —— **无障碍名**用它。身份两半合一的判据整件在
+   * `LeafStrip.tabSpecOf`(活的盖静的),这里只取根叶活动那一格的那句话。
+   */
+  const title = useMemo(() => activeTitleOf(shownTree, titles) ?? t('float.window'), [shownTree, titles, t])
+  /** 「钉到边 / 放大」那两颗只对**瓦**说得通(见 `placement.ts` 的判词)。 */
+  const activeItemId = useMemo(() => activeItemOf(shownTree), [shownTree])
 
   const begin = useCallback(
     (e: ReactPointerEvent<HTMLElement>, dir: ResizeDir | null) => {
@@ -134,9 +181,60 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
     [rect, id, focusFloat, moveFloat, resizeFloat, floatToEdge],
   )
 
-  if (!item || !rect) return null
-  const title = liveTitle || t(item.titleKey)
-  const Icon = resolveIcon(item.icon)
+  /**
+   * 按在檐上 = 拖这扇窗 —— 但**按在 tab 或钮上让开**。
+   * 判据写成一句话在这里,而不是散在两个处理器里:那两类都是「这一下有别的意思」。
+   */
+  const onChromePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      if (!isDragBlank(e.target)) return
+      begin(e, null)
+    },
+    [begin],
+  )
+
+  const host = useMemo<PaneHostChrome>(
+    () => ({
+      onChromePointerDown,
+      actions: (
+        <>
+          {/* 三颗全部消费 `ui/IconButton`(md 档 = 28×28)。`onPointerDown` 那一下
+            * 仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */}
+          <IconButton
+            ref={pinRef}
+            icon={Pin}
+            size="md"
+            label={t('stage.pinToEdge')}
+            disabled={activeItemId === null}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => {
+              const r = pinRef.current?.getBoundingClientRect()
+              if (r) setMenu({ x: r.left, y: r.bottom })
+            }}
+          />
+          <IconButton
+            icon={Maximize2}
+            size="md"
+            label={t('float.toStage')}
+            disabled={activeItemId === null}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => activeItemId && openAs(activeItemId, { kind: 'stage' })}
+          />
+          <IconButton
+            icon={X}
+            size="md"
+            label={t('float.close')}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => closeFloat(id)}
+          />
+        </>
+      ),
+    }),
+    [onChromePointerDown, t, activeItemId, openAs, closeFloat, id],
+  )
+
+  if (!shownTree || !rect) return null
+  const multi = leafCount(shownTree) > 1
 
   /*
    * **每扇窗一格 `layer`**(09-02 R1)。它自己不认 Esc —— 收窗那件事在退层链里
@@ -144,10 +242,6 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
    * 是响应链**根**的 `onEscape`。这一格回答的是「焦点此刻在哪扇窗里」,于是
    * 窗里开出来的菜单在树上是这扇窗的孩子(一下 Esc 先关菜单),窗关掉时焦点
    * 结构性地回到它的父。
-   *
-   * `focusFloat` 的 z 序纯函数**一个字没动**,这里也没有补 `activate()`:
-   * 「程序置顶浮窗时把焦点也送过去」是 R2 的事(拍点 3 那一族),指针置顶本来
-   * 就不需要 —— 点击自己会落焦。
    */
   return (
     <FocusScope scope="float-layer" owner={id}>
@@ -166,49 +260,19 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
           aria-label={title}
           onPointerDown={() => focusFloat(id)}
         >
-          <header
-            className={s.head}
-            onPointerDown={(e) => {
-              // 头上的三个控件自己吃掉 pointerdown 才不会一按就开始拖。
-              if ((e.target as HTMLElement).closest('button')) return
-              begin(e, null)
-            }}
-            onDoubleClick={() => openAs(id, { kind: 'stage' })}
+          {/*
+            身 = 这扇窗那棵树。**标题栏就是它根叶那条檐**(设计 §2.2)——
+            所以这里没有 `<header>`:那条带子由 `PaneLeaf` 画,窗自己那三颗钮
+            与拖窗手势经 `host` 挂上去。
+          */}
+          <div
+            className={s.body}
+            data-float-body={id}
+            data-pane-region={region}
+            data-pane-multi={multi || undefined}
           >
-            <Icon className={s.headIcon} strokeWidth={1.75} aria-hidden="true" />
-            <HostTitle id={id} fallback={t(item.titleKey)} className={s.title} />
-
-            {/* 檐上三颗全部消费 `ui/IconButton`;本地那份 `.action` 皮肤已删 ——
-              * 28×28 正是库件的 md 档,hover / active / 焦点环从此随件走。
-              * `onPointerDown` 那一下仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */}
-            <IconButton
-              ref={pinRef}
-              icon={Pin}
-              size="md"
-              label={t('stage.pinToEdge')}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => {
-                const r = pinRef.current?.getBoundingClientRect()
-                if (r) setMenu({ x: r.left, y: r.bottom })
-              }}
-            />
-            <IconButton
-              icon={Maximize2}
-              size="md"
-              label={t('float.toStage')}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => openAs(id, { kind: 'stage' })}
-            />
-            <IconButton
-              icon={X}
-              size="md"
-              label={t('float.toDock')}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => closeToDock(id)}
-            />
-          </header>
-
-          <div className={s.body}>{renderContent(id)}</div>
+            <PaneTree node={shownTree} host={host} />
+          </div>
 
           {HANDLES.map((h) => (
             <div
@@ -219,14 +283,14 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
             />
           ))}
 
-          {menu && (
+          {menu && activeItemId && (
             <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={t('stage.pinToEdge')}>
               <MenuSection>{t('stage.pinToEdge')}</MenuSection>
               {SHELF_SIDE_CHOICES.map((c) => (
                 <MenuItem
                   key={c.value}
                   onClick={() => {
-                    floatToEdge(id, c.value)
+                    floatToEdge(activeItemId, c.value)
                     setMenu(null)
                   }}
                 >
@@ -239,6 +303,35 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
       )}
     </FocusScope>
   )
+}
+
+/**
+ * 这一下按在檐的**空白**上吗。tab(`role="tab"`)与钮各有各的意思,按在它们上面
+ * 不该顺手把窗拖走 —— 这正是从前 `<header>` 上那句 `closest('button')` 的同一条
+ * 判据,只是 tab 在 `ui/Tabs` 里不是 `<button>`(ARIA 逼出来的:tablist 的合法
+ * 子成员只有 tab),所以要多问一句 `[role="tab"]`。
+ */
+function isDragBlank(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return true
+  return target.closest('button,[role="tab"]') === null
+}
+
+/** 根叶此刻活动那一格的标题(活的盖静的)。答不出就交回 null。 */
+function activeTitleOf(
+  tree: PaneNode | undefined,
+  titles: Record<string, { text: string }>,
+): string | null {
+  const leaf = tree ? leavesOf(tree)[0] : null
+  const ref = leaf?.tabs[leaf.active]
+  if (!ref) return null
+  return titles[refId(ref)]?.text ?? contentKindOf(ref.kind)?.title(ref).text ?? ref.key
+}
+
+/** 根叶此刻活动那一格如果是块瓦,答它的瓦 id。 */
+function activeItemOf(tree: PaneNode | undefined): string | null {
+  const leaf = tree ? leavesOf(tree)[0] : null
+  const ref = leaf?.tabs[leaf.active]
+  return ref ? panelIdOf(ref) : null
 }
 
 /**

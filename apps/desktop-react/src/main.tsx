@@ -19,6 +19,7 @@ import { startPerSpaceLayout } from './workspace/layout-scope'
 // 理由是那会造一条 import 环(病历在那只文件头上)。
 import './content/kinds'
 import { startWorkbench } from './workbench/store'
+import { startStage } from './stage/store'
 import { installCrashHandlers } from './services/crash'
 import { startPerfProbe } from './services/perf'
 import { getLogger } from './services/log'
@@ -53,6 +54,13 @@ startPerSpaceLayout()
 // 不碰:树在 localStorage 里,它的**首帧**已经由 persist 的 merge 摊开了;
 // 这一步补的是「种类表此刻才装好」那一半 —— 出厂那片聊天叶、以及存量档案里
 // 认不得的种类的剔除。幂等。
+// 形态机接线(W4)。**排在 startWorkbench 之前**:它先把存量家具(架子 tab /
+// 浮窗)折进树,`startWorkbench()` 那一遍洗存量才洗得到它们;再接上「树 → 形态机
+// 那三格」的投影(判词在 stage/residency.ts 文件头)。同样一个字节的网都不碰。
+// 为什么是显式一句而不是模块副作用:这只文件里那条存量 import 环会让模块作用域
+// 里的接线读到 TDZ(病历写在 stage/store.ts 末尾那段与 workspace/layout-scope.ts)。
+startStage()
+
 startWorkbench()
 
 const root = document.getElementById('root')

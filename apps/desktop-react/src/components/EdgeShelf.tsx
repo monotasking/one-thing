@@ -1,25 +1,27 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useStageStore } from '../stage/store'
-import { findItem } from '../stage/items'
 import {
   clampShelfThickness,
   defaultFloatRect,
   floatRectForGrab,
-  isShelfTabVisible,
   shelfViewportExtent,
   shouldTearOff,
   snapSideAt,
   thicknessFromPointer,
 } from '../stage/transitions'
+import { panelIdOf } from '../stage/panel-ref'
 import { setSnapSide } from './snap-hint'
-import { renderContent } from '../content'
+import { useWorkbenchStore } from '../workbench/store'
+import { edgeRegion } from '../workbench/regions'
+import { PaneTree } from '../workbench/PaneTree'
+import { parseRefId } from '../workbench/kinds'
+import { leafCount } from '../workbench/layout'
 import { FocusScope } from '../focus/FocusScope'
 import { perfMark } from '../services/perf'
 import { useT } from '../i18n'
 import type { MessageKey } from '../i18n'
-import { Tabs } from '../ui/Tabs'
-import type { TabSpec } from '../ui/Tabs'
+import type { PaneHostChrome } from '../workbench/PaneLeaf'
 import { ButtonBase } from '../ui/ButtonBase'
 import { IconButton } from '../ui/IconButton'
 import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, PictureInPicture2, X } from './icons'
@@ -88,84 +90,55 @@ interface Props {
 }
 
 /**
- * 架子 body 里的一层 = 一个 tab 的内容,**始终挂着**(keep-alive),只有显不显形在变。
- *
- * `memo` 不是优化点缀,是这套 keep-alive 的**前提**:EdgeShelf 每重渲染一次
- * (拖厚度那一路是逐帧重渲的),没有 memo 的话每一层的元素树都会重造,React 就要
- * 把后台那块 400 张卡的面板整棵对一遍 —— 于是「拖架子边」会比「切 tab」更卡。
- * 有了 memo,只有 `on` 真的翻了的那两层才重渲。
- *
- * `inert` 与 `content-visibility: hidden` 分工不同,两个都要:前者管**可交互性**
- * (焦点序、指针、辅助树),后者管**渲染开销**。少哪一个都会留下一个能摸到却看不见的面板。
- *
- * ── 每一层是响应链上的一格 `layer`(09-02 R1)────────────────────────────────
- * `inert` 因此要说**两遍**,而且必须是同一个判据:一遍给 DOM(浏览器据此把这一层
- * 移出焦点序与辅助树),一遍给树(`<FocusScope inert>` —— 注册表据此不选它当第一
- * 响应者,而且**路径经过它就在那儿截断**)。
- * 少了给树的那一遍,后台那层照样能被算成第一响应者,它的局部键会在看不见的地方响;
- * 少了给 DOM 的那一遍,焦点能 Tab 进一块看不见的面。
- *
- * 这一格治的正是设计 §2 记的那条:切 tab 之后旧层打上 `inert`,而焦点还留在里面 ——
- * 浏览器当场把它扔给 `<body>`,于是键盘从此没有主人(I1 的那条孤儿焦点)。
- * 现在它是一次**结构变化**:路径缩到最近仍可交互的祖先,焦点跟着回落。
- * 「切 tab 之后焦点进不进新层」是另一件事(§11 拍点 2),那一格由 R2 补 `activate()`。
- */
-const ShelfTabLayer = memo(function ShelfTabLayer({ id, on }: { id: string; on: boolean }) {
-  const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
-  return (
-    <FocusScope scope="shelf-layer" inert={!on} owner={id}>
-      {({ scopeProps }) => (
-        <div
-          {...scopeProps}
-          className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
-          data-panel-layer={id}
-          data-panel-on={on || undefined}
-          inert={!on || undefined}
-        >
-          {renderContent(id, visibility)}
-        </div>
-      )}
-    </FocusScope>
-  )
-})
-
-/**
  * 一条边上的架子。W1 只有右边有 UI(那时它叫 PinnedPanel),W2 起四条边共用这一个组件 ——
- * 边是 prop,不是组件身份:同一套 tab 条 / 同一套收展 / 同一套拖厚度,换个轴读而已。
+ * 边是 prop,不是组件身份:同一套收展 / 同一套拖厚度,换个轴读而已。
  *
- * 它做五件事:把 shelf.tabs 翻成 TabSpec、渲染活动 tab 的内容、拖厚度、收/展、
- * 以及把 tab 从架子上**撕成浮窗**(拖离内缘超过阈值)。判定全在 transitions 的纯函数里。
+ * ── W4:身子换成一棵拼贴树 ───────────────────────────────────────────────
+ * 从前这里自己画一条 tab 条(`ui/Tabs` + 一串 `ShelfTabLayer`),tab 的内容是
+ * **一串瓦 id**(`ShelfState.tabs: string[]`)。那张表装不下别的东西 —— 于是
+ * 「把一个文件钉到右边」在 W1-a 里只能禁灰。
+ *
+ * 现在这条边的身子就是 `workbench.regions['edge:<side>']` 那棵树,画法与中央区
+ * **逐字同一件**(`PaneTree` → `PaneLeaf` → `LeafStrip`)。三件事因此白拿:
+ * 瓦与文件在同一条 tab 条上、架子里能分屏、keep-alive 与 `inert` 那两遍话由
+ * `PaneLeaf` 统一说(从前这只文件里有一份自己的 `ShelfTabLayer`,两份迟早分叉)。
+ *
+ * 这只文件因此只剩**外壳**:厚度(拖 / 钳 / 写进哪个轴)、收展、闪烁、
+ * 以及把一格 tab **撕成浮窗**那条手势。判定全在 transitions 的纯函数里。
  *
  * 收起态是「同一个 <aside> 变薄」,不是换一个组件:aside 在 React 树里位置不变,
- * DOM 节点复用,所以厚度那一次过渡真的会跑;里面的内容当场换掉,不叠第二段动画。
+ * DOM 节点复用,所以厚度那一次过渡真的会跑。
  *
- * ── 同组 tab 是 keep-alive 的(08-30) ────────────────────────────────────
- * body 里挂的是**这条架子上的每一个 tab**,不是「活动那一个」。切 tab 只换
- * 哪一层显形,不卸载谁 —— 于是重面板(会话总览那 400 张卡)不必每次切回都重建。
+ * ── 状态表 ①:生命周期 ──────────────────────────────────────────────────
+ *   挂载    这条边那棵树长出来(第一格插进来)
+ *   首载    **不画载入态** —— 树是同步已知的;内容的载入由内容自己说
+ *   换宿主  一格从这条边搬到别处:树里摘掉,这条架子的叶随之剪掉
+ *   卸载    这条边那棵树空了(`regions['edge:<side>']` 没了)
  *
- * 修之前:切到会话总览一次 65–130ms(点击回调里 React 重渲 ~36ms + Layout ~21ms,
- * 随后一次 ~31ms 的 Commit),十次切换里出 2–4 帧 >50ms 的长帧;
- * 轻面板 13–24ms。这就是用户报的「切 tab 感觉很卡」。
+ * ── 状态表 ②:UI 生命状态 ───────────────────────────────────────────────
+ *   空       整条不渲染(不占一丝布局)
+ *   展开     厚度 = `shelf.thickness`,身子是那棵树
+ *   收起     折成一条细梁(`--shelf-rail`),里面一个 tab 的内容都不画
+ *   拖厚度   零过渡、逐帧写本地 state,松手才落 store
+ *   闪烁     `flashSide` 指到自己时闪两下
+ *   分屏     树自己的事(`PaneTree` 画杆),这一层不知道
  *
- * 隐藏用 `content-visibility: hidden` 而不是 `display: none`,理由只有一条且可验证:
- * **`display:none` 会销毁盒子,滚动位置当场归零**;`content-visibility: hidden` 跳过
- * 后代的渲染却**保留渲染状态**,所以「切走再切回,滚回原处」成立 —— 门里有一条
- * 断言逐帧钉着它(gate-perf 场景②的滚动位置检查)。代价写在门的「脚印」那两行里。
- *
- * 边界只画到**这一条架子这一组**:撕成浮窗 / 收回 Dock / 关掉都会让 tab 离开
- * `shelf.tabs`,这一层随之卸载。舞台与浮窗各自只有一份内容,一行都不改。
- * ──────────────────────────────────────────────────────────────────────
+ * ── 状态表 ③:UI 交互状态 ───────────────────────────────────────────────
+ *   厚度把手   不可见热区,hover 一层薄膜(`--st-hover`)
+ *   细梁       整条可点,hover 一层薄膜 + 箭头转正色
+ *   三颗钮     随 `ui/IconButton`(本地只剩落点几何:与 tab 同高、直角、下轨)
+ *   tab / ✕ / 分屏 / ⋯   随 `LeafStrip` 与 `PaneLeaf`(这一层不重画)
  */
 export function EdgeShelf({ side }: Props) {
   const t = useT()
+  const region = edgeRegion(side)
+  const tree = useWorkbenchStore((st) => st.regions[region])
   const shelf = useStageStore((st) => st.shelves[side])
   const flashPinned = useStageStore((st) => st.flashPinned)
   const flashSide = useStageStore((st) => st.flashSide)
   const setShelfThickness = useStageStore((st) => st.setShelfThickness)
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
   const closeShelf = useStageStore((st) => st.closeShelf)
-  const closeToDock = useStageStore((st) => st.closeToDock)
-  const activateShelfTab = useStageStore((st) => st.activateShelfTab)
   const edgeToFloat = useStageStore((st) => st.edgeToFloat)
   const floatToEdge = useStageStore((st) => st.floatToEdge)
   const moveFloat = useStageStore((st) => st.moveFloat)
@@ -191,20 +164,6 @@ export function EdgeShelf({ side }: Props) {
   }, [flashPinned, flashSide, side])
 
   const toggleCollapsed = useCallback(() => toggleShelfCollapsed(side), [toggleShelfCollapsed, side])
-  /**
-   * 切 tab。埋的是 `perfMark` 而不是 `perfSpan`,理由是**开销不在这一刻发生**:
-   * 这里只派发一次 store 更新,真正的代价(React 重渲 + 布局 + 提交)落在随后那一帧里。
-   * perfSpan 在这儿只会量到一个 0.1ms 的假读数;一个时间点标记才有用 ——
-   * dump 里「这条长帧发生在 shelf.activate 之后」,以及 gate-perf 的 trace 里
-   * (它录着 blink.user_timing)时间轴上直接看到这一竖线。
-   */
-  const activate = useCallback(
-    (id: string) => {
-      perfMark(`shelf.activate:${side}`)
-      activateShelfTab(side, id)
-    },
-    [activateShelfTab, side],
-  )
 
   /**
    * 厚度把手。跟手定律:过程中零过渡、逐帧写**本地** state,松手才落 store,
@@ -248,14 +207,21 @@ export function EdgeShelf({ side }: Props) {
 
   /**
    * tab 拖出去 = 变浮窗。两段:
-   *  1) 还没过阈值 —— 什么都不做,所以一次没拖动的按下松开仍然是普通点击(Tabs 的 onClick);
-   *  2) 过了阈值 —— edgeToFloat 之后这一帧起它已经是浮窗,后续每一帧直接写 moveFloat
-   *     (浮窗自己没有过渡,所以逐帧写 store 依旧跟手),顺带算吸附预示,
-   *     于是「撕下来顺势再吸去别的边」不需要第二套代码。
+   *  1) 还没过阈值 —— 什么都不做,所以一次没拖动的按下松开仍然是普通点击;
+   *  2) 过了阈值 —— `edgeToFloat` 之后这一帧起它已经是浮窗,后续每一帧直接写
+   *     `moveFloat`,顺带算吸附预示,于是「撕下来顺势再吸去别的边」不需要第二套代码。
+   *
+   * **只有瓦撕得出去**(W4 的诚实降级):浮窗的矩形、置顶序与位置记忆三张表都按
+   * **瓦 id** 记,而一个文件没有瓦 id。把文件也撕出去是 W3 拖拽那一批的事
+   * (那时落点与来源统一走 `DragSession`);在那之前,按住一个文件 tab 与从前
+   * 按住一个不可撕的 tab 逐字相同:什么都不发生,松手就是普通点击。
    */
   const onTabPointerDown = useCallback(
-    (id: string, e: ReactPointerEvent<HTMLElement>) => {
+    (refIdValue: string, e: ReactPointerEvent<HTMLElement>) => {
       if (e.button !== 0) return
+      const ref = parseRefId(refIdValue)
+      const id = ref ? panelIdOf(ref) : null
+      if (id === null) return
       const box = asideRef.current?.getBoundingClientRect()
       if (!box) return
       const inner = innerEdgeOf(side, box)
@@ -295,21 +261,66 @@ export function EdgeShelf({ side }: Props) {
     [side, edgeToFloat, resizeFloat, moveFloat, floatToEdge],
   )
 
-  // 持久化过的 id 可能已经不在 items 表里(将来 items 换来源时),查不到就当它不存在。
-  const tabs = useMemo<TabSpec[]>(
-    () =>
-      shelf.tabs.flatMap((id) => {
-        const item = findItem(id)
-        return item ? [{ id: item.id, label: t(item.titleKey), icon: item.icon }] : []
-      }),
-    [shelf.tabs, t],
+  const name = t(LABEL_KEY[side])
+  /**
+   * **这条架子此刻的住户**(响应链上那一格 `shelf-layer` 的 `owner`)。
+   *
+   * 不变量 I4 说的是「每个 Placement 宿主层的根元素都带 `data-focus-scope`」,
+   * 而召唤那条路(`summon` 的 `focus` 档)与跟焦那条路(`focus-follow` 的
+   * 「架子切 tab」档)都按 `activateScope('shelf-layer', { owner: 瓦 id })` 精确取 ——
+   * 同一种 layer 同时有四条(四条边),取哪一条只能靠住户名。
+   *
+   * W4 之前这一格挂在**每一个 tab 层**上(一层一格 `shelf-layer`,后台那些 inert);
+   * 现在架子的身子是一棵树,一格 tab 的可交互性由 `PaneLeaf` 的 `PaneTabLayer`
+   * (`leaf` 作用域 + `inert` 说两遍)管,所以这一层收敛成**整条架子一格** ——
+   * 它回答的是「键盘此刻在不在这条架子里」,住户则是它露脸的那一格。
+   */
+  const activeItemId = useMemo(() => {
+    const leaf = tree ? firstLeafOf(tree) : null
+    const ref = leaf?.tabs[leaf.active]
+    return ref ? panelIdOf(ref) : null
+  }, [tree])
+  /*
+   * 住户名答不出时(根叶此刻露的是个文件)退回**这条边自己**:`owner` 只是
+   * 「同一种 layer 有好几份时取哪一份」的选择键,它必须答得出一个稳定的名字。
+   */
+  const ownerId = activeItemId ?? side
+
+  const host = useMemo<PaneHostChrome>(
+    () => ({
+      onTabPointerDown,
+      actions: (
+        <>
+          {/* 檐上三颗图标钮全部消费 `ui/IconButton`(09-01 立法)。本地只剩
+            * **落点几何**:与 tab 同高的 36×36 与下轨(`.collapse`)。 */}
+          <IconButton
+            icon={PictureInPicture2}
+            className={s.collapse}
+            onClick={() => activeItemId && edgeToFloat(activeItemId)}
+            label={t('shelf.popOut', { name })}
+          />
+          <IconButton
+            icon={COLLAPSE_ICON[side]}
+            className={s.collapse}
+            onClick={toggleCollapsed}
+            label={t('shelf.collapse', { name })}
+          />
+          <IconButton
+            icon={X}
+            className={s.collapse}
+            onClick={() => closeShelf(side)}
+            label={t('shelf.closeAll', { name })}
+          />
+        </>
+      ),
+    }),
+    [onTabPointerDown, activeItemId, edgeToFloat, t, name, side, toggleCollapsed, closeShelf],
   )
 
-  if (tabs.length === 0) return null
-  const active = tabs.some((tab) => tab.id === shelf.activeId) ? shelf.activeId : null
-  const name = t(LABEL_KEY[side])
-  const CollapseIcon = COLLAPSE_ICON[side]
+  // 空架子不渲染 —— 也就不占一丝布局。
+  if (!tree) return null
   const thickness = liveThickness ?? shelf.thickness
+  const multi = leafCount(tree) > 1
 
   return (
     <aside
@@ -350,48 +361,40 @@ export function EdgeShelf({ side }: Props) {
             aria-label={t('shelf.resize', { name })}
             aria-orientation={side === 'left' || side === 'right' ? 'vertical' : 'horizontal'}
           />
-          <div className={s.head}>
-            <div className={s.tabsWrap}>
-              <Tabs
-                items={tabs}
-                activeId={active}
-                onSelect={activate}
-                onClose={closeToDock}
-                onTabPointerDown={onTabPointerDown}
-                label={name}
-              />
-            </div>
-            {/* 檐上三颗图标钮全部消费 `ui/IconButton`(09-01 立法)。本地只剩
-              * **落点几何**:tab 条那一行的 36×36 与下轨(`.collapse`)——
-              * 库件的三档尺寸说的是「檐上/行内/与 Button 同高」,说不出「与 tab 同高」。 */}
-            <IconButton
-              icon={PictureInPicture2}
-              className={s.collapse}
-              onClick={() => active && edgeToFloat(active)}
-              label={t('shelf.popOut', { name })}
-            />
-            <IconButton
-              icon={CollapseIcon}
-              className={s.collapse}
-              onClick={toggleCollapsed}
-              label={t('shelf.collapse', { name })}
-            />
-            <IconButton
-              icon={X}
-              className={s.collapse}
-              onClick={() => closeShelf(side)}
-              label={t('shelf.closeAll', { name })}
-            />
-          </div>
-          <div className={s.body} data-shelf-body={side} data-panel={active ?? ''}>
-            {/* 「露不露脸」读形态机那一只共用查询(stage/transitions.isShelfTabVisible),
-              * 不在这里再抄一句 `activeId === id && !collapsed` —— 召唤三态问的是同一句话。 */}
-            {tabs.map((tab) => (
-              <ShelfTabLayer key={tab.id} id={tab.id} on={isShelfTabVisible(shelf, tab.id)} />
-            ))}
-          </div>
+          {/*
+            身 = 这条边那棵树。檐(tab 条 + ⋯ / 分屏 + 上面那三颗)由 `PaneLeaf`
+            统一画 —— 这一层不再自绘一条 tab 条,keep-alive 与 `inert` 那两遍话
+            也随之只剩一个产地(判词写在 `PaneLeaf` 的 `PaneTabLayer` 上)。
+          */}
+          <FocusScope scope="shelf-layer" owner={ownerId}>
+            {({ scopeProps }) => (
+              <div
+                {...scopeProps}
+                className={s.body}
+                data-shelf-body={side}
+                /*
+                 * **这条架子此刻露脸的那格瓦**(门与用例的取件口;`gate:squeeze` /
+                 * `gate:perf` 按它认「总览钉上来了没有」)。树是真相,这一格是它的
+                 * 一格投影 —— 与 `shelves[side].activeId` 同一个读法、同一处产地。
+                 * 露的是文件时它是空串:那是诚实的「此刻没有瓦露脸」。
+                 */
+                data-panel={activeItemId ?? ''}
+                data-pane-region={region}
+                data-pane-multi={multi || undefined}
+                onPointerDownCapture={() => perfMark(`shelf.activate:${side}`)}
+              >
+                <PaneTree node={tree} host={host} />
+              </div>
+            )}
+          </FocusScope>
         </>
       )}
     </aside>
   )
+}
+
+/** 阅读序第一片叶。`workbench/tree` 的 `leavesOf` 那一句的窄用法。 */
+function firstLeafOf(node: import('../workbench/tree').PaneNode): import('../workbench/tree').PaneLeafNode | null {
+  if (node.kind === 'leaf') return node
+  return firstLeafOf(node.a) ?? firstLeafOf(node.b)
 }
