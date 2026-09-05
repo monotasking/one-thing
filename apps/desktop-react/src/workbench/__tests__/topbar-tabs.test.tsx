@@ -153,38 +153,24 @@ describe('几何:量出来的两格变量写在带子自己身上', () => {
     expect(band.style.getPropertyValue(spanXVar(leafId))).toBe('')
   })
 
-  it('上下切分:两组共用**同一个** spanId(= 那次切分),只量一次', () => {
+  /*
+   * **中央区永远一组**(W6-a 单叶政策,设计 §2.1)。从前这里有两条上下 / 左右
+   * 切分的几何断言 —— 中央区收成一条标签条之后那两形在这里不可能出现了
+   * (`splitLeaf` 在中央区不受理)。`topStrips` / `spanGroups` 那两只**纯函数没删**
+   * (架子与浮窗仍可分屏),它们的多组算式由 `layout.test.ts` 直接对着树测。
+   */
+  it('取件口在中央区那棵树里(单叶:只有那一片叶自己那一格)', () => {
     act(() => {
       store().openRef(doc('a'))
       store().openRef(doc('b'))
     })
     renderBand()
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'col'))
-    const tree = store().regions[CENTER_REGION]
-    expect(tree.kind).toBe('split')
-    const splitId = tree.kind === 'split' ? tree.id : ''
-    const band = screen.getByTestId('topbar-tabs') as HTMLElement
-    expect(band.style.getPropertyValue(spanXVar(splitId))).toBe('0px')
-    // 叶自己那两格不必写 —— 组读的是切分那一段。
-    for (const leaf of centerLeaves()) {
-      expect(band.style.getPropertyValue(spanXVar(leaf.id))).toBe('')
-    }
-  })
-
-  it('取件口在中央区那棵树里(切分那个盒也带 data-pane-span)', () => {
-    act(() => {
-      store().openRef(doc('a'))
-      store().openRef(doc('b'))
-    })
-    renderBand()
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
     const spans = Array.from(
       document.querySelectorAll(`[data-pane-region="${CENTER_REGION}"] [data-pane-span]`),
     ).map((el) => el.getAttribute('data-pane-span'))
-    const tree = store().regions[CENTER_REGION]
-    const splitId = tree.kind === 'split' ? tree.id : ''
-    expect(spans).toContain(splitId)
-    for (const leaf of centerLeaves()) expect(spans).toContain(leaf.id)
+    const leaves = centerLeaves()
+    expect(leaves).toHaveLength(1)
+    for (const leaf of leaves) expect(spans).toContain(leaf.id)
   })
 })
 
@@ -201,22 +187,24 @@ describe('组的算式:平分折进 calc()', () => {
     )
   })
 
-  it('上下切分:第二组的左缘 = 那一段的一半,宽 = 一半(按序平分)', () => {
+  /**
+   * **中央区永远一组**(W6-a 的核心断言之一)。从前这里演的是「上下切分之后两组
+   * 按序平分那一段宽度」;单叶政策之下那一形在中央区不可能出现,而这一条守的是
+   * 它的反面:开多少格标签,顶栏都只有**一条**标签条。
+   * 反证:把 `splitLeaf` 里那句单叶闸拿掉,这一条当场红。
+   */
+  it('开几格标签都只有一组(单叶政策)', () => {
     act(() => {
       store().openRef(doc('a'))
       store().openRef(doc('b'))
     })
     renderBand()
     act(() => store().splitLeaf(centerLeaves()[0].id, 'col'))
-    const tree = store().regions[CENTER_REGION]
-    const splitId = tree.kind === 'split' ? tree.id : ''
     const groups = Array.from(document.querySelectorAll('[data-topbar-leaf]')) as HTMLElement[]
-    expect(groups).toHaveLength(2)
-    expect(groups[1].style.getPropertyValue('--tabgrp-x')).toBe(
-      `calc(var(${spanXVar(splitId)}, 0px) + var(${spanWVar(splitId)}, 0px) * 1 / 2)`,
-    )
-    expect(groups[1].style.getPropertyValue('--tabgrp-w')).toBe(
-      `calc(var(${spanWVar(splitId)}, 0px) / 2)`,
+    expect(groups).toHaveLength(1)
+    const leafId = centerLeaves()[0].id
+    expect(groups[0].style.getPropertyValue('--tabgrp-x')).toBe(
+      `calc(var(${spanXVar(leafId)}, 0px) + var(${spanWVar(leafId)}, 0px) * 0 / 1)`,
     )
   })
 })
@@ -257,14 +245,14 @@ describe('焦点归属靠 owner,不靠 DOM 位置', () => {
       store().openRef(doc('b'))
     })
     renderBand()
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
-    const [first, second] = centerLeaves()
-    act(() => store().setFocusLeaf(first.id))
-    const group = document.querySelector(`[data-topbar-leaf="${second.id}"]`) as HTMLElement
+    const leafId = centerLeaves()[0].id
+    // 焦点叶先指到一个**不存在**的叶上,再点这一组 —— 它把指针拉回来。
+    act(() => store().setFocusLeaf('nobody'))
+    const group = document.querySelector(`[data-topbar-leaf="${leafId}"]`) as HTMLElement
     act(() => {
       group.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }))
     })
-    expect(store().focusLeafId).toBe(second.id)
+    expect(store().focusLeafId).toBe(leafId)
   })
 
   it('悬停一组 → 它下面那片叶亮一圈(data-pane-hint;离开就摘)', () => {
@@ -285,17 +273,16 @@ describe('焦点归属靠 owner,不靠 DOM 位置', () => {
 })
 
 describe('结构:带子是一个 group,组是它的子孙', () => {
-  it('每一组一条 tablist(APG:两片叶是两组互不相干的 tab,不是一组)', () => {
+  it('一组一条 tablist(W6-a:中央区永远一组,所以恒是一条)', () => {
     act(() => {
       store().openRef(doc('a'))
       store().openRef(doc('b'))
     })
     renderBand()
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
     const band = screen.getByTestId('topbar-tabs')
     expect(band.getAttribute('role')).toBe('group')
     expect(band.getAttribute('aria-label')).toBe('中央区标签')
-    expect(band.querySelectorAll('[role="tablist"]')).toHaveLength(2)
+    expect(band.querySelectorAll('[role="tablist"]')).toHaveLength(1)
     // 组都在带子里 —— portal 出去当场静默破拖拽区(坑 ①)。
     for (const group of document.querySelectorAll('[data-topbar-leaf]')) {
       expect(band.contains(group)).toBe(true)

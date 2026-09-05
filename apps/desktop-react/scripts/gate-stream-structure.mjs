@@ -1087,16 +1087,22 @@ function findTableDowngrades(frames) {
  */
 
 /** 第 `index` 片中央叶里那条 assistant 消息此刻的块序(与 `readShape` 同一套判据)。 */
+/**
+ * 中央区第 `index` 条会话那一格里的块序(阅读序)。
+ *
+ * **W6-a 起它按「内容层」取,不按「叶」取**:中央区收成一条标签条(单叶政策,
+ * 设计 §2.1),两条会话是同一条条上的两格 —— 而 keep-alive 让**后台那一格照样
+ * 挂着**(只是 `content-visibility: hidden`),所以这里也不再要求
+ * `[data-pane-on]`:被测的那件事是「两台折叠器各画各的」,与谁在前台无关。
+ */
 function readShapeInLeaf(page, index) {
   return page.evaluate((at) => {
     const slots = Array.from(
-      document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]'),
-    )
+      document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]'),
+    ).filter((el) => (el.getAttribute('data-pane-tab') ?? '').startsWith('session:'))
     const slot = slots[at]
-    if (!slot) return '(没有这一片叶)'
-    const rows = slot.querySelectorAll(
-      '[data-pane-tab][data-pane-on] [data-message-id][data-role="assistant"]',
-    )
+    if (!slot) return '(没有这一格会话)'
+    const rows = slot.querySelectorAll('[data-message-id][data-role="assistant"]')
     const art = rows[rows.length - 1]
     if (!art) return '(没有 assistant 消息)'
     const out = []
@@ -1136,11 +1142,22 @@ async function runTwoLeafCell({ record, page, kind }) {
   const b = madeB?.session?.id
   if (!a || !b) throw new Error('并排那一格的两条会话没建出来')
 
+  /*
+   * **点瓦是开关,所以最多点三下、每下之后各问一次**(W6-a:会话总览的出厂摆法
+   * 改成了左架子,而架子上那一块「看得见时点一下 = 收起整条架子」——一下点过去
+   * 可能恰好把它关掉。与 `gate-focus` 的 `ensureOverviewRow` 同源)。
+   */
+  const rowShown = (id) =>
+    page.evaluate((sid) => Boolean(document.querySelector(`[data-testid="session-row-${sid}"]`)), id)
+  const showOverview = async (id) => {
+    for (let attempt = 0; attempt < 3 && !(await rowShown(id)); attempt += 1) {
+      await clickTestId(page, 'dock-tile-sessions')
+      await delay(500)
+    }
+    await waitFor('总览画出那一行', () => rowShown(id))
+  }
   const enter = async (id) => {
-    await clickTestId(page, 'dock-tile-sessions')
-    await waitFor('总览画出那一行', () =>
-      page.evaluate((sid) => Boolean(document.querySelector(`[data-testid="session-row-${sid}"]`)), id),
-    )
+    await showOverview(id)
     await clickTestId(page, `session-row-${id}`)
     await waitFor('聊天区就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
@@ -1149,10 +1166,7 @@ async function runTwoLeafCell({ record, page, kind }) {
 
   // ① 进 A,再从会话行右键把 B 开到右边(菜单与拖拽同一只 dropRef)。
   await enter(a)
-  await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('总览画出 B 那一行', () =>
-    page.evaluate((sid) => Boolean(document.querySelector(`[data-testid="session-row-${sid}"]`)), b),
-  )
+  await showOverview(b)
   await page.evaluate((sid) => {
     const row = document.querySelector(`[data-testid="session-row-${sid}"]`)
     row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
@@ -1168,10 +1182,18 @@ async function runTwoLeafCell({ record, page, kind }) {
   await delay(700)
   await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
   await delay(400)
+  /*
+   * **W6-a:两条会话落在同一条标签条上**(单叶政策,设计 §2.1)。被测的那件事
+   * 一个字没改 —— 「两条同时流,各自的结构互不串味」问的是每条会话一台折叠器,
+   * 与它们住在几片叶里无关。判据从数叶改成数**内容层**。
+   */
   const slots = await page.evaluate(
-    () => document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
+    () =>
+      Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]')).filter(
+        (el) => (el.getAttribute('data-pane-tab') ?? '').startsWith('session:'),
+      ).length,
   )
-  assert(slots === 2, `中央区两片会话叶并排(slots=${slots})`)
+  assert(slots === 2, `中央区那条标签条上两条会话(tabs=${slots})`)
 
   // ② 两条**同时**开流(一发接一发,不等对方收场)。
   const ask = (id) => rpc(record, 'session-command', 'emit', {
@@ -1195,18 +1217,20 @@ async function runTwoLeafCell({ record, page, kind }) {
    * 会话的消息**,所以量两边的 `data-message-id` 集合有没有交集。
    */
   const ids = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]')).map((slot) =>
-      Array.from(
-        slot.querySelectorAll('[data-pane-tab][data-pane-on] [data-message-id]'),
-      ).map((el) => el.getAttribute('data-message-id')),
-    ),
+    Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]'))
+      .filter((el) => (el.getAttribute('data-pane-tab') ?? '').startsWith('session:'))
+      .map((layer) =>
+        Array.from(layer.querySelectorAll('[data-message-id]')).map((el) =>
+          el.getAttribute('data-message-id'),
+        ),
+      ),
   )
   const overlap = (ids[0] ?? []).filter((id) => (ids[1] ?? []).includes(id))
   assert(
     (ids[0] ?? []).length > 0 && (ids[1] ?? []).length > 0,
-    `两片叶各自都画出了消息(${(ids[0] ?? []).length} / ${(ids[1] ?? []).length} 条)`,
+    `两格会话各自都画出了消息(${(ids[0] ?? []).length} / ${(ids[1] ?? []).length} 条)`,
   )
-  assert(overlap.length === 0, `两片叶没有一条共用的消息(交集 ${overlap.length} 条)`)
+  assert(overlap.length === 0, `两格会话没有一条共用的消息(交集 ${overlap.length} 条)`)
 
   // ③ 刷新 → 树回到出厂一片叶 → 各自冷加载一遍。
   await page.reload()
@@ -1253,7 +1277,20 @@ async function runCell({ record, page, kind, piece, index }) {
     await sendTrigger()
     await delay(LATE_OPEN_MS)
   }
-  await clickTestId(page, 'dock-tile-sessions')
+  /*
+   * **点瓦是开关,最多点三下、每下之后各问一次**(W6-a:会话总览出厂钉左架子,
+   * 而架子上那一块「看得见时点一下 = 收起整条架子」)。判词与 `runTwoLeafCell`
+   * 里那只 `showOverview` 逐字同源。
+   */
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const there = await page.evaluate(
+      id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)),
+      sessionId,
+    )
+    if (there) break
+    await clickTestId(page, 'dock-tile-sessions')
+    await delay(500)
+  }
   await waitFor('总览画出那一行', () =>
     page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
   )

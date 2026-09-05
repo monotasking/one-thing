@@ -557,13 +557,26 @@ async function main() {
     console.log('\n[6/6] ⑧ 两片会话叶并排:隔壁在流,这一片不动')
     const otherId = (await rpc(record, 'sessions', 'create', { name: `${SESSION_NAME}-2` }))?.session?.id
     if (!otherId) throw new Error('第二条会话没建出来')
-    await clickTestId(page, 'dock-tile-sessions')
-    await waitFor('总览画出第二行', () =>
+    /*
+     * **先看它在不在,再决定点不点**(W6-a):会话总览的出厂摆法改成了左架子
+     * (设计 §8),而架子是常驻家具 —— 它多半已经开着,再点一下那块瓦是把整条
+     * 架子收起来。判据因此从「点开它」改成「让它开着」。
+     */
+    const rowShown = () =>
       page.evaluate(
         (id) => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)),
         otherId,
-      ),
-    )
+      )
+    /*
+     * **点瓦是开关,所以最多点两下、每下之后各问一次**(与 `gate-focus` 的
+     * `ensureOverviewRow` 同源)。W6-a 之后总览钉在架子上,而架子上那一块的
+     * 「点一下」在**看得见**时是「收起整条架子」——一下点过去可能恰好把它关掉。
+     */
+    for (let attempt = 0; attempt < 3 && !(await rowShown()); attempt += 1) {
+      await clickTestId(page, 'dock-tile-sessions')
+      await delay(600)
+    }
+    await waitFor('总览画出第二行', rowShown)
     await page.evaluate((id) => {
       const row = document.querySelector(`[data-testid="session-row-${id}"]`)
       row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
@@ -577,13 +590,22 @@ async function main() {
     })
     assert(splitRight, '会话行右键菜单里有「在右侧」那一项')
     await delay(700)
-    // 总览收回去,别盖着两片叶。
+    // 总览收回去,别盖着中央区。
     await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
     await delay(400)
-    const twoLeaves = await page.evaluate(
-      () => document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
+    /*
+     * **W6-a:两条会话落在同一条标签条上**(单叶政策,设计 §2.1)。被测的那件事
+     * 一个字没改 —— 「隔壁那条在流,这一条不动」问的是**两台跟随状态机各管各的**,
+     * 而它们从 W5-a 起就是按会话分实例的,与那两条住在几片叶里无关。
+     * 判据因此从数叶(`data-pane-slot`)改成数**内容层**(`data-pane-tab`)。
+     */
+    const twoSessions = await page.evaluate(
+      () =>
+        Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]')).filter(
+          (el) => (el.getAttribute('data-pane-tab') ?? '').startsWith('session:'),
+        ).length,
     )
-    assert(twoLeaves === 2, `中央区两片会话叶并排(slots=${twoLeaves})`)
+    assert(twoSessions === 2, `中央区那条标签条上两条会话(tabs=${twoSessions})`)
 
     // 把这一片(第一片 = 原来那条会话)滚到顶,并把键盘放在输入面板上。
     await scrollTo(page, 'top')

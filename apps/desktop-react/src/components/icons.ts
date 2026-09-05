@@ -64,6 +64,7 @@ import {
   PinOff,
   Columns2,
   Rows2,
+  Unlink,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -143,6 +144,9 @@ const REGISTRY: Record<string, LucideIcon> = {
      不是「往哪边推」—— 与架子那族的方向箭头分得开。 */
   Columns2,
   Rows2,
+  /* 「拆开」(W6-a 两格标签的格头):一条断开的链 —— 说的是「这两格不再连在
+     一起」,与分屏那两枚「切完的样子」正交。 */
+  Unlink,
 }
 
 export function resolveIcon(name: string): LucideIcon {
@@ -193,5 +197,6 @@ export {
   PinOff,
   Columns2,
   Rows2,
+  Unlink,
 }
 export type { LucideIcon }

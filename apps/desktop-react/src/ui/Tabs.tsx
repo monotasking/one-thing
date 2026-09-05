@@ -51,19 +51,13 @@ export interface TabSpec {
    */
   tip?: string
   /**
-   * **预览 tab**(W1,设计 §2.1 拍点 ①)。斜体,一片叶至多一个,
-   * 下一次单击就地替换它。判据在树那一层(`preview` 记的是 refId),
-   * 这里只是把那一格事实画出来。
-   */
-  preview?: boolean
-  /**
    * 关不关得掉。缺省 `true`(给了 `onClose` 就画 ✕)。
    *
-   * **为什么 TabSpec 多这第三格**(裁定原文只说加 `dirty` / `preview` 两布尔):
+   * **为什么 TabSpec 多这一格**(裁定原文只说加 `dirty` 一个布尔):
    * 「最后一片 chat 叶不可关」(T0 拍点 2)是**逐 tab** 的事实,而 `onClose`
    * 是整条 tab 条一个。判据若留在宿主里就得写成「点了才发现关不掉」——
    * 那时 ✕ 已经画出来了,而用户报的正是「按了没反应」这一族。所以它与
-   * `dirty` / `preview` 同族:**数据表驱动的一格事实**,不是混进来的 children。
+   * `dirty` 同族:**数据表驱动的一格事实**,不是混进来的 children。
    */
   closable?: boolean
   /**
@@ -71,7 +65,7 @@ export interface TabSpec {
    * 只换**图标**的颜色 —— 底与字色是「活动 / 悬停」那两件事的语汇,与「谁是家」正交
    * (一条 tab 可以同时是家、是活动的、是被悬停的)。
    *
-   * 它与 `dirty` / `preview` / `closable` 同族:**数据表驱动的一格事实**。判据由宿主
+   * 它与 `dirty` / `closable` 同族:**数据表驱动的一格事实**。判据由宿主
    * 从内容种类的自述里取(`ContentKind.resident`),`ui/Tabs` 不认识任何一种内容。
    */
   home?: boolean
@@ -158,7 +152,7 @@ export function Tabs({
            */
           <div
             key={tab.id}
-            className={[s.tab, on && s.tabOn, tab.preview && s.tabPreview, tab.home && s.tabHome]
+            className={[s.tab, on && s.tabOn, tab.home && s.tabHome]
               .filter(Boolean)
               .join(' ')}
             role="tab"

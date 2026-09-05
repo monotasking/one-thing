@@ -170,6 +170,18 @@ export function classifyFileFailure(error: string | undefined): FileFailure {
 }
 
 /** 路径末段。根自己也走它,所以根行显示的是目录名而不是整条路径。 */
+/**
+ * 这条路径在不在那棵树底下(W6-a)。**根自己算在里面**。
+ *
+ * 判据是**路径分段**而不是裸前缀:`/a/bc` 不在 `/a/b` 底下,而
+ * `path.startsWith('/a/b')` 会说在。加不加尾斜杠都认(根可能是 `/`)。
+ */
+export function isUnder(path: string, root: string): boolean {
+  if (path === root) return true
+  const base = root.endsWith('/') ? root : `${root}/`
+  return path.startsWith(base)
+}
+
 export function baseNameOf(path: string): string {
   const trimmed = path.endsWith('/') && path.length > 1 ? path.slice(0, -1) : path
   const at = trimmed.lastIndexOf('/')
@@ -700,15 +712,23 @@ export interface FilesSourceState {
   /**
    * 一层不留地收起来。**只动展开态,不碰缓存** —— 收起是「我不想看它们了」,
    * 不是「刚才读到的都作废」;再展开时不该又问一遍后端。
+   *
+   * `root` 给了就**只收这一支**(W6-a:文件面板按目录多开之后,一块面上的
+   * 「全部收起」说的是**它自己那棵树**,不是屏幕上另外那两个目录也一起收)。
+   * 展开态是一张按**绝对路径**记的平表(两棵树各读各的前缀),所以按前缀收
+   * 就是精确的那一句话;缺席 = 全收(换空间那条路仍旧要它)。
    */
-  collapseAll(): void
+  collapseAll(root?: string): void
   /**
    * 重拉**一个**目录(读失败那一行上的「重试」)。与 refresh 的差别是范围:
    * 那一条是整棵树重来,这一条只重来出错的那一层 —— 别的层没坏,不该跟着重读。
    */
   retryDir(path: string): Promise<void>
-  /** 重新读取:清缓存,重拉根与所有仍然展开的目录。 */
-  refresh(): Promise<void>
+  /**
+   * 重新读取:重拉这棵树的根与它所有仍然展开的目录,别的层标脏。
+   * `root` 给了就只重拉这一支(理由与 `collapseAll` 逐字同源);缺席 = 会话那一棵。
+   */
+  refresh(root?: string): Promise<void>
   /**
    * 打开一行的详情(双击那条路)。名字与类型是**树上已经知道的事实**,原样带进来;
    * 大小与时间要现问 —— 那正是 stat 在这个端口上的第二个用处。
@@ -861,16 +881,28 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
       await dirsQuery.get(path).ensure()
     },
 
-    collapseAll: () => {
-      set({ expanded: {} })
+    collapseAll: (root) => {
+      if (!root) {
+        set({ expanded: {} })
+        return
+      }
+      set((st) => {
+        const next: Record<string, true> = {}
+        for (const path of Object.keys(st.expanded)) {
+          if (!isUnder(path, root)) next[path] = true
+        }
+        // 一格都没收掉 = 引用恒等(不惊动订阅者)。
+        return Object.keys(next).length === Object.keys(st.expanded).length ? st : { expanded: next }
+      })
     },
 
     retryDir: async (path) => {
       await dirsQuery.get(path).refetch()
     },
 
-    refresh: async () => {
-      const { root, expanded } = get()
+    refresh: async (only) => {
+      const { root: sessionRoot, expanded } = get()
+      const root = only ?? sessionRoot
       if (!root) return
       /*
        * ── 病型 A 的根治点(拍板一)────────────────────────────────────────
@@ -878,7 +910,7 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
        * 屏上这几层各自 `refetch()`,旧 entries 留着(keep-previous 是原语的性质),
        * 答案没变时 `sameEntries` 让 kernel 连引用都不换。
        */
-      const onScreen = [root, ...Object.keys(expanded)]
+      const onScreen = [root, ...Object.keys(expanded).filter((path) => isUnder(path, root))]
       const shown = new Set(onScreen)
       /*
        * 收起来的那些格**标脏而不是重拉**:没人看着它们,`invalidate()` 只留一个
@@ -886,8 +918,13 @@ export const useFilesSource = create<FilesSourceState>()((set, get) => {
        * 靠「整族清空」附带做到的事 —— 少了它,刷新之后再展开一个收着的目录
        * 会拿到刷新之前的旧内容。
        */
+      /*
+       * **只标这一棵树底下的**(W6-a):屏幕上另外那两个目录面板此刻正看着它们
+       * 自己那几层,把它们一起标脏等于让别人的树在下一次展开时凭空重读一遍。
+       * 判据与上面那句 `onScreen` 同一条前缀。
+       */
       for (const key of dirsQuery.keys()) {
-        if (!shown.has(key)) dirsQuery.invalidate(key)
+        if (!shown.has(key) && isUnder(key, root)) dirsQuery.invalidate(key)
       }
       await Promise.all(onScreen.map((path) => dirsQuery.get(path).refetch()))
     },

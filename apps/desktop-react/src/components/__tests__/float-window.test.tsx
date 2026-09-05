@@ -26,14 +26,14 @@ describe('浮窗层', () => {
   it('placements 里是 float 就画出一扇窗,标题是那块瓦的名字', () => {
     render(<AppShell />)
     openFloat('files')
-    expect(screen.getByRole('dialog', { name: '文件' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: '目录' })).toBeTruthy()
   })
 
   it('叠序按 floatOrder 递增:后开的在上面', () => {
     render(<AppShell />)
     openFloat('files')
     openFloat('diff')
-    const first = screen.getByRole('dialog', { name: '文件' }) as HTMLElement
+    const first = screen.getByRole('dialog', { name: '目录' }) as HTMLElement
     const second = screen.getByRole('dialog', { name: '改动' }) as HTMLElement
     expect(first.style.zIndex).toBe('calc(var(--z-float) + 0)')
     expect(second.style.zIndex).toBe('calc(var(--z-float) + 1)')
@@ -42,7 +42,7 @@ describe('浮窗层', () => {
   it('头上的「上舞台」把这一扇换成舞台', () => {
     render(<AppShell />)
     openFloat('files')
-    const win = screen.getByRole('dialog', { name: '文件' })
+    const win = screen.getByRole('dialog', { name: '目录' })
     fireEvent.click(within(win).getByLabelText('上舞台'))
     expect(useStageStore.getState().placements.files).toEqual({ kind: 'stage' })
   })
@@ -61,7 +61,7 @@ describe('浮窗层', () => {
   it('头上那颗 ✕ 关的是这扇窗:里面的标签转为隐藏,矩形留着当记忆', () => {
     render(<AppShell />)
     openFloat('files')
-    const win = screen.getByRole('dialog', { name: '文件' })
+    const win = screen.getByRole('dialog', { name: '目录' })
     fireEvent.click(within(win).getByLabelText('关闭这扇窗'))
     const st = useStageStore.getState()
     expect('files' in st.placements).toBe(false)
@@ -76,13 +76,13 @@ describe('浮窗层', () => {
   it('隐藏之后请得回来:同一份实例回到它原来那扇窗', () => {
     render(<AppShell />)
     openFloat('files')
-    fireEvent.click(within(screen.getByRole('dialog', { name: '文件' })).getByLabelText('关闭这扇窗'))
+    fireEvent.click(within(screen.getByRole('dialog', { name: '目录' })).getByLabelText('关闭这扇窗'))
     // 窗没了(屏幕上那一份是离场副本,`FloatLayer` 留它一帧播出场动画)。
     expect(useStageStore.getState().floatOrder).toEqual([])
-    expect(screen.getByRole('dialog', { name: '文件' }).className).toContain('leaving')
+    expect(screen.getByRole('dialog', { name: '目录' }).className).toContain('leaving')
     act(() => useWorkbenchStore.getState().restoreHidden('panel:files'))
     expect(useStageStore.getState().floatOrder).toEqual(['files'])
-    expect(screen.getByRole('dialog', { name: '文件' }).className).not.toContain('leaving')
+    expect(screen.getByRole('dialog', { name: '目录' }).className).not.toContain('leaving')
     expect(useWorkbenchStore.getState().hidden).toEqual([])
   })
 })
@@ -114,7 +114,7 @@ describe('浮窗檐:钉边钮直接消费 ui/IconButton 的 ref', () => {
   it('钉边钮是檐的直接孩子,不再裹一层 span', () => {
     render(<AppShell />)
     openFloat('files')
-    const win = screen.getByRole('dialog', { name: '文件' })
+    const win = screen.getByRole('dialog', { name: '目录' })
     const pin = within(win).getByLabelText('钉到边')
     /*
      * W4:浮窗的标题栏**就是**它根叶那条檐(设计 §2.2),所以这颗钮的爹从
@@ -129,7 +129,7 @@ describe('浮窗檐:钉边钮直接消费 ui/IconButton 的 ref', () => {
   it('点它开出钉边菜单 —— 坐标是从钮自己的 ref 上量的', () => {
     render(<AppShell />)
     openFloat('files')
-    const win = screen.getByRole('dialog', { name: '文件' })
+    const win = screen.getByRole('dialog', { name: '目录' })
     fireEvent.click(within(win).getByLabelText('钉到边'))
     expect(screen.getByRole('menu', { name: '钉到边' })).toBeTruthy()
   })

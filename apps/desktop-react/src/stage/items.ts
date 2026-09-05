@@ -89,7 +89,26 @@ export const VIEWER_ITEM_ID = 'viewer'
  *                               它接手的正是 sessions 让出来的那枚图标
  * ────────────────────────────────────────────────────────────────────────── */
 export const STAGE_ITEMS: StageItemSpec[] = [
-  { id: 'files', titleKey: 'item.files', scope: 'session', icon: 'FolderTree' },
+  /*
+   * **「目录」**(W6-a,设计 `workbench-tabs-2026-09.md` §3)。id 一个字没改 ——
+   * 位置记忆、隐藏配置、Dock 顺序全按 id 记,改 id 等于把用户摆了半年的东西弄丢。
+   * 变的是两件:①名字从「文件」改成「目录」(它开的不再是一块面,是**一个目录**);
+   * ②它是一块**启动瓦**(`stage/launchers.ts`,登记在 `content/files-launcher.tsx`)
+   * —— 点它 = 开当前会话那个目录,右键 = 最近开过的 + 「打开目录…」,拖它 = 拖出
+   * `files-root:<那个目录>`。这一行本身照旧只是静态声明。
+   *
+   * `defaultPlacement: 左架子`(W6-a):真机复现出来的「拖不到聊天区」不是拖拽判据
+   * 的错 —— 文件面板出厂摆法是一扇浮窗(201,171,878,518),正好停在聊天区中间,
+   * 往那一放落进的是浮窗自己。**存量记忆压过它**(用户自己摆过的算数),所以这一格
+   * 只改出厂档。
+   */
+  {
+    id: 'files',
+    titleKey: 'item.dirs',
+    scope: 'session',
+    icon: 'FolderTree',
+    defaultPlacement: { kind: 'edge', side: 'left' },
+  },
   /*
    * 「改动」与「终端」这两块瓦上原本各写死一枚徽(一个 2、一个 ✓)。08-31 删掉:
    * 那与本表下面那条自我要求正面打架 —— **表是静态声明,徽说的是当下的事实**。
@@ -112,7 +131,15 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   { id: 'search', titleKey: 'item.search', scope: 'global', icon: 'Search' },
   // 会话总览同样是一块普通的瓦(08-29 拍板去接管化):它有内容、有落点、有打开方式,
   // 和别的瓦逐字走同一条路 —— 「换一整屏」那种特权形态已经退役。
-  { id: SESSIONS_ITEM_ID, titleKey: 'item.sessions', scope: 'global', icon: 'MessagesSquare' },
+  /* 出厂摆法 = 左架子(W6-a,设计 §8:浮窗仍是合法落点,但不再是任何面板的出厂档
+   * —— 一块出厂就停在聊天区正中的浮窗会把那块地整个接管掉)。存量记忆压过它。 */
+  {
+    id: SESSIONS_ITEM_ID,
+    titleKey: 'item.sessions',
+    scope: 'global',
+    icon: 'MessagesSquare',
+    defaultPlacement: { kind: 'edge', side: 'left' },
+  },
   // 未读**不在这张表里**:表是静态声明,未读是当下的事实(住在 services/notify-store)。
   // Dock 渲染时才把两者对上 —— 表里写死一个 dot 就等于让声明冒充状态。
   { id: NOTIFICATIONS_ITEM_ID, titleKey: 'item.notifications', scope: 'global', icon: 'Bell' },

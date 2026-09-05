@@ -15,6 +15,8 @@ import sw from '../workspace/swatch.module.css'
 import { FocusScope } from '../focus/FocusScope'
 import { DockTile } from './DockTile'
 import { panelRef } from '../stage/panel-ref'
+import { stageLauncherOf } from '../stage/launchers'
+import { openStageItem } from '../stage/open-item'
 import { useContentDrag } from '../workbench/useContentDrag'
 import { useDockLens } from './useDockLens'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
@@ -136,13 +138,26 @@ export function Dock() {
    */
   const dragTileId = useRef<string | null>(null)
   const startTileDrag = useContentDrag({
-    ref: () => (dragTileId.current ? panelRef(dragTileId.current) : null),
+    /*
+     * **启动瓦拖出去的不是它自己**(W6-a):「目录」那块瓦拖出来的是
+     * `files-root:<当前会话的工作目录>`,不是 `panel:files`(那块面已经不存在了)。
+     * 判据**读表不写 if**(`stage/launchers.ts`):表上没有这块瓦就照旧 `panelRef`。
+     */
+    ref: () => {
+      const id = dragTileId.current
+      if (!id) return null
+      const launcher = stageLauncherOf(id)
+      return launcher?.dragRef ? launcher.dragRef() : panelRef(id)
+    },
   })
 
   const [menu, setMenu] = useState<{ item: StageItemSpec; title: string; x: number; y: number } | null>(
     null,
   )
   const closeMenu = () => setMenu(null)
+  /** 这块瓦是不是启动瓦、它自己那几行菜单是什么(W6-a,读表)。 */
+  const MenuRows = menu ? stageLauncherOf(menu.item.id)?.MenuRows : undefined
+  const menuLauncherRows = MenuRows ? <MenuRows onDone={closeMenu} /> : null
 
   const axis = DOCK_AXIS[dockEdge]
   const { tiles, sepAfter } = tilesFor(hiddenItems)
@@ -243,7 +258,8 @@ export function Dock() {
                   }
                   running={dockRunningDot && tile.item.id in placements}
                   labelSide={LABEL_SIDE[dockEdge]}
-                  onClick={() => click(tile.item.id)}
+                  /* **启动瓦自己说点它意味着什么**(W6-a,读表不写 if)。 */
+                  onClick={() => openStageItem(tile.item.id)}
                   /* **一块瓦就是一个拖拽来源**(W3 裁定 10)。W4 之后瓦是
                    * `panel:<id>`,与文件在拼贴台里是同一条路,所以这里递的只是
                    * 「按下了哪一块」——拖成什么、能落到哪儿全在统一那条路上。 */
@@ -290,6 +306,14 @@ export function Dock() {
                   onCreate={() => openWorkspacePalette(true)}
                   onDone={closeMenu}
                 />
+              ) : menuLauncherRows ? (
+                /*
+                 * **启动瓦自己那几行**(W6-a,`stage/launchers.ts`)。它**替掉**
+                 * 那一排落点单选:「目录」那块瓦开的不是一块面,选「浮窗 / 钉到右边」
+                 * 说不出它要开哪一个目录。落点仍旧改得了 —— 目录面板开出来之后,
+                 * 它那条檐与右键菜单里的「移到 ▸」是同一件事的另一处入口。
+                 */
+                menuLauncherRows
               ) : (
                 <>
                   {/* 每块瓦都有落点可选 —— 去接管化之后不再有「只有一种打开法」的例外。 */}

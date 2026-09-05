@@ -54,27 +54,21 @@ const onlyLeaf = () => leavesOf(center())[0]
 
 describe('tree.replaceRef:原位换一格', () => {
   it('同叶同下标同活动格 —— 换的只是「这一格代表谁」', () => {
-    const leaf = makeLeaf('L1', [doc('a'), doc('b'), doc('c')], 1, null)
+    const leaf = makeLeaf('L1', [doc('a'), doc('b'), doc('c')], 1)
     const next = replaceRef(leaf, 'L1', doc('b'), doc('B'))
     expect(refIdsOf(next)).toEqual(['doc:a', 'doc:B', 'doc:c'])
     expect(leavesOf(next)[0].active).toBe(1)
   })
 
-  it('换的那一格是预览 tab → 预览跟着改名(不留一个指不到 tab 的 refId)', () => {
-    const leaf = makeLeaf('L1', [doc('a'), doc('b')], 0, 'doc:b')
-    const next = replaceRef(leaf, 'L1', doc('b'), doc('B'))
-    expect(leavesOf(next)[0].preview).toBe('doc:B')
-  })
-
   it('要换上去的那一格这片叶里已经有了 → 合并:摘掉旧的,活动落到它身上', () => {
-    const leaf = makeLeaf('L1', [doc('a'), doc('b')], 0, null)
+    const leaf = makeLeaf('L1', [doc('a'), doc('b')], 0)
     const next = replaceRef(leaf, 'L1', doc('a'), doc('b'))
     expect(refIdsOf(next)).toEqual(['doc:b'])
     expect(leavesOf(next)[0].active).toBe(0)
   })
 
   it('换成它自己 / 那一格不在这片叶 → 恒等(引用都不变)', () => {
-    const leaf = makeLeaf('L1', [doc('a')], 0, null)
+    const leaf = makeLeaf('L1', [doc('a')], 0)
     expect(replaceRef(leaf, 'L1', doc('a'), doc('a'))).toBe(leaf)
     expect(replaceRef(leaf, 'L1', doc('zz'), doc('b'))).toBe(leaf)
     expect(replaceRef(leaf, 'L9', doc('a'), doc('b'))).toBe(leaf)
@@ -86,8 +80,8 @@ describe('tree.replaceRef:原位换一格', () => {
       id: 'S1',
       dir: 'row',
       ratio: 50,
-      a: makeLeaf('L1', [doc('a')], 0, null),
-      b: makeLeaf('L2', [doc('b')], 0, null),
+      a: makeLeaf('L1', [doc('a')], 0),
+      b: makeLeaf('L2', [doc('b')], 0),
     }
     const next = replaceRef(tree, 'L1', doc('a'), doc('A'))
     expect(next).not.toBe(tree)
@@ -115,13 +109,15 @@ describe('store.replaceRef:叶不被剪掉重建(零重挂的结构前提)', () 
 
   it('要换上去的那一格开在别处 → 先摘干净,树上不会有两格同名', () => {
     const first = onlyLeaf().id
-    useWorkbenchStore.getState().splitLeaf(first, 'row', home('s-2'))
-    const second = useWorkbenchStore.getState().focusLeafId!
-    expect(refIdsOf(center()).sort()).toEqual(['home:main', 'home:s-2'])
+    // W6-a:中央区收成一条标签条,所以「别处」演成**另一个区域**(架子)。
+    useWorkbenchStore.getState().openRef(home('s-2'), { region: 'edge:right' })
+    expect(refIdsOf(center())).toEqual(['home:main'])
+    expect(refIdsOf(useWorkbenchStore.getState().regions['edge:right'])).toEqual(['home:s-2'])
 
     useWorkbenchStore.getState().replaceRef(first, home('main'), home('s-2'))
     expect(refIdsOf(center())).toEqual(['home:s-2'])
-    expect(second).not.toBe(first)
+    // 摘干净 = 架子那棵树上不再有它(空树整格删掉)。
+    expect(useWorkbenchStore.getState().regions['edge:right']).toBeUndefined()
   })
 })
 
@@ -203,7 +199,7 @@ describe('alive():死格清洗的三形', () => {
   })
 
   it('**反证**:`alive` 缺席时 `sanitize` 一格都不扫', () => {
-    const tree = makeLeaf('L1', [home('dead'), doc('a')], 0, null)
+    const tree = makeLeaf('L1', [home('dead'), doc('a')], 0)
     const kept = sanitize(tree, { known: () => true, singleton: () => false })
     expect(refIdsOf(kept!)).toEqual(['home:dead', 'doc:a'])
     const swept = sanitize(tree, {
@@ -235,11 +231,10 @@ describe('persist v1 → v2:存量档案的翻译', () => {
     },
   })
 
-  it('`chat:main` → `session:new`,下标与预览都跟着走', () => {
+  it('`chat:main` → `session:new`,下标跟着走', () => {
     const next = rewriteRefsInPersisted(v1(), rewriteLegacyContentRef) as never as ReturnType<typeof v1>
     const leaf = next.byWorkspace.default.regions.center
     expect(leaf.tabs).toEqual([{ kind: 'session', key: 'new' }, { kind: 'file', key: '/a.ts' }])
-    expect(leaf.preview).toBe('session:new')
     expect(next.byWorkspace.default.hidden[0].ref).toEqual({ kind: 'session', key: 'new' })
   })
 

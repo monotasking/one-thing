@@ -24,7 +24,7 @@ import {
 import { refId } from '../workbench/kinds'
 import { CENTER_REGION } from '../workbench/regions'
 import { openStateOf, useWorkbenchStore } from '../workbench/store'
-import { findLeaf, leavesOf } from '../workbench/tree'
+import { leavesOf } from '../workbench/tree'
 import s from './FilesPanel.module.css'
 
 /**
@@ -117,9 +117,9 @@ export function FileActionsMenu({
    */
   const editingThis = useViewerSource((st) => st.instances[target.path]?.edit.editing === true)
   /*
-   * 这一份此刻的三态(设计 §2.3)。菜单据此决定「保留 / 隐藏 / 关闭」三行画不画:
-   * 没开的文件谈不上隐藏与关闭,而「保留」只对**预览 tab** 有意义。
-   * 判据整件是纯函数 `openStateOf` —— 与树行那颗点读的是同一句话。
+   * 这一份此刻的三态(设计 §2.3)。菜单据此决定「隐藏 / 关闭」两行画不画:
+   * 没开的文件谈不上隐藏与关闭。判据整件是纯函数 `openStateOf` —— 与树行那颗
+   * 点读的是同一句话。(「保留」那一行随预览 tab 一起退役,W6-a。)
    */
   const regions = useWorkbenchStore((st) => st.regions)
   const hiddenTabs = useWorkbenchStore((st) => st.hidden)
@@ -129,9 +129,6 @@ export function FileActionsMenu({
     : null
   /** 这一份在树里的坐标(叶 + 下标)。答不出 = 它不在树里(没开 / 在分栏里 / 藏着)。 */
   const seat = file ? seatOf(regions, target.path) : null
-  const isPreview = seat
-    ? findLeaf(regions[seat.region], seat.leafId)?.preview === refId(fileRef(target.path))
-    : false
   const openLabel = file
     ? t('files.menuOpen')
     : t(target.expanded ? 'files.menuCollapse' : 'files.menuExpand')
@@ -173,10 +170,6 @@ export function FileActionsMenu({
             if (editingThis) {
               useViewerSource.getState().setEditing(target.path, false)
             } else {
-              /*
-               * 「开始编辑」是**固定**那一格的三条手势之一(§2.1 拍点 ①),
-               * 所以这条路开出来的不是预览 tab。
-               */
               openFileInCurrentTarget(target.path)
               useViewerSource.getState().setEditing(target.path, true)
             }
@@ -190,28 +183,18 @@ export function FileActionsMenu({
       )}
 
       {/*
-        * ── 标签的一生:保留 / 隐藏 / 关闭 + 两向分屏(W1,设计 §2.3 / §2.4)──────
-        * 五行都落在这一张表里,不散在叶檐上 —— **动作单产地 = 右键上下文菜单**
+        * ── 标签的一生:隐藏 / 关闭 + 两向分屏(W1,设计 §2.3 / §2.4)────────────
+        * 四行都落在这一张表里,不散在叶檐上 —— **动作单产地 = 右键上下文菜单**
         * (09-01 判例)。叶檐上只有「✕ = 关闭」那一颗顺手路与「⋯ = 隐藏的标签」
         * 那一格收纳处,它们是同一批动作的快捷入口,不是第二张表。
         *
-        * 三行的在场判据各不相同,写在各自的条件里:
-        *  · 保留 —— 只有**预览 tab** 才谈得上「留下来」;
+        * 「保留」那一行**W6-a 随预览 tab 一起退役**:单击开的就是一格正式标签,
+        * 「留下来」这句话没有对象了。
+        *
+        * 两行的在场判据各不相同,写在各自的条件里:
         *  · 隐藏 / 关闭 —— 它得先在树里(没开的文件谈不上);
         *  · 两向分屏 —— 打开一份**新的**到旁边,所以任何文件都可以。
         */}
-      {file && isPreview && seat && (
-        <MenuItem
-          onClick={() => {
-            useWorkbenchStore.getState().pinTab(seat.leafId, seat.index)
-            onClose()
-          }}
-        >
-          <span className={s.menuLine}>
-            <span className={s.menuMain}>{t('files.menuKeep')}</span>
-          </span>
-        </MenuItem>
-      )}
       {file && seat && (
         <MenuItem
           onClick={() => {

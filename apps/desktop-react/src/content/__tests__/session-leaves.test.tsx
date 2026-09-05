@@ -104,9 +104,17 @@ async function push(emit: () => void): Promise<void> {
 
 const center = () => useWorkbenchStore.getState().regions[CENTER_REGION]
 const leaves = () => leavesOf(center())
-const bodyOf = (leafId: string) => document.querySelector(`[data-pane-body="${leafId}"]`)
+/** 一格**内容**的那一层(W6-a:内容按 refId 分格,不再按标签分格)。 */
+const layerOf = (id: string) => document.querySelector(`[data-pane-tab="${id}"]`)
 
-/** 摆好「两片会话叶并排」,并把两台机器都拉起来。 */
+/**
+ * 摆好「两条会话同时在屏」,并把两台机器都拉起来。
+ *
+ * W6-a:中央区收成**一条标签条**(单叶政策),所以「两条会话并排」在这里演成
+ * **同一条标签条上的两格**。被测的三件一个字没变 —— 两条各画各的正文、
+ * 流式互不串味、原位换会话不重挂别的那一格 —— 因为 keep-alive 一直是按
+ * **内容**算的:后台那一格照样挂着(只是看不见)。
+ */
 async function mountTwoLeaves() {
   configureChatPort(
     port({
@@ -116,7 +124,7 @@ async function mountTwoLeaves() {
   )
   const first = leaves()[0].id
   useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
-  useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+  useWorkbenchStore.getState().openRef(sessionRefOf(B))
   startSessionProjection()
 
   let view!: ReturnType<typeof render>
@@ -147,10 +155,12 @@ afterEach(async () => {
   configureChatPort(undefined)
 })
 
-describe('两片会话叶并排:各画各的,各收各的流', () => {
-  it('两片叶同时在屏,各自画的是自己那条会话的正文', async () => {
+describe('两条会话同时在屏:各画各的,各收各的流', () => {
+  it('两格同时挂着,各自画的是自己那条会话的正文', async () => {
     await mountTwoLeaves()
-    expect(leaves()).toHaveLength(2)
+    // W6-a:中央区一条标签条,所以两条会话是**同一片叶里的两格**。
+    expect(leaves()).toHaveLength(1)
+    expect(leaves()[0].tabs).toHaveLength(2)
     expect(screen.getByText('甲问')).toBeTruthy()
     expect(screen.getByText('乙问')).toBeTruthy()
   })
@@ -169,20 +179,19 @@ describe('两片会话叶并排:各画各的,各收各的流', () => {
     expect(chatSources.get(B)!.getState().messages.map((m) => m.id)).toEqual(['ub', 'b1'])
   })
 
-  it('**零重挂**:焦点叶原位换会话,兄弟叶的 DOM 节点前后是同一个', async () => {
+  it('**零重挂**:原位换会话,另一格的 DOM 节点前后是同一个', async () => {
     await mountTwoLeaves()
-    const [first, second] = leaves()
-    const siblingBefore = bodyOf(second.id)
+    const leaf = leaves()[0]
+    const siblingBefore = layerOf(`session:${B}`)
     expect(siblingBefore).toBeTruthy()
 
     await act(async () => {
-      useWorkbenchStore.getState().replaceRef(first.id, sessionRefOf(A), sessionRefOf('another'))
+      useWorkbenchStore.getState().replaceRef(leaf.id, sessionRefOf(A), sessionRefOf('another'))
     })
 
-    // 这一片换了内容,而**那一片**连同它的身子一格没动(同一个 DOM 节点)。
-    expect(leaves()[0].id).toBe(first.id)
-    expect(leaves()[1].id).toBe(second.id)
-    expect(bodyOf(second.id)).toBe(siblingBefore)
+    // 这一格换了内容,而**另一格**连同它的身子一格没动(同一个 DOM 节点)。
+    expect(leaves()[0].id).toBe(leaf.id)
+    expect(layerOf(`session:${B}`)).toBe(siblingBefore)
     expect(screen.getByText('乙问')).toBeTruthy()
   })
 })

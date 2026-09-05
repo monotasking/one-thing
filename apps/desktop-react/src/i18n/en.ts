@@ -141,6 +141,8 @@ export const en: Record<MessageKey, string> = {
 
   /* ── dock tiles ───────────────────────────────────────────────────── */
   'item.files': 'Files',
+  /* W6-a: that tile is now a launcher for **directories** (one panel per directory). */
+  'item.dirs': 'Directories',
   'item.viewer': 'Viewer',
   'item.diff': 'Changes',
   'item.terminal': 'Terminal',
@@ -661,6 +663,11 @@ export const en: Record<MessageKey, string> = {
   'files.menuOpenBelow': 'Open below',
   'files.openStateShown': 'Open',
   'files.openStateHidden': 'Open (hidden)',
+  /* Directory panels (W6-a). */
+  'files.recentDirs': 'Recent directories',
+  'files.openDirTitle': 'Open a directory…',
+  'files.openDirConfirm': 'Open',
+  'files.openDirPlaceholder': 'Absolute path, e.g. /Users/me/notes',
   'workbench.leafTabs': 'Tabs',
   'workbench.hiddenTabs': 'Hidden tabs',
   'workbench.hiddenNote': 'hidden',
@@ -671,6 +678,15 @@ export const en: Record<MessageKey, string> = {
   'workbench.splitUp': 'Above',
   'workbench.splitterLabel': 'Split handle',
   'workbench.topbarTabs': 'Main area tabs',
+  /* Two panes in one tab (W6-a). */
+  'workbench.pair': 'Two panes',
+  'workbench.pairRight': 'Join with the tab on the right',
+  'workbench.pairLeft': 'Join with the tab on the left',
+  'workbench.unpair': 'Split apart',
+  'workbench.unpaired': 'Split apart',
+  'workbench.pairedWith': 'Now side by side with {name}',
+  'workbench.pairSplitter': 'Pane split handle',
+  'workbench.pairBroken': "This tab's two panes can't be read",
   /* Drag (W3) — the ghost's line and the drop band's line share this family. */
   'drag.toFloat': 'Tear off into a window',
   'drag.toEdgeLeft': 'Move to the left',

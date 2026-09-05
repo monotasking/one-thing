@@ -86,29 +86,27 @@ describe('出厂布局:问表,不写死', () => {
   })
 })
 
-describe('打开:预览 / 固定', () => {
-  it('单击(预览)开出来的是预览 tab,再单击**就地替换**', () => {
-    const store = useWorkbenchStore.getState()
-    store.openRef(doc('a'), { preview: true })
-    store.openRef(doc('b'), { preview: true })
-    expect(refIdsOf(center())).toEqual(['home:main', 'doc:b'])
-    expect(onlyLeaf().preview).toBe('doc:b')
-  })
-
-  it('↵ / 菜单那条路(固定)开出来的是固定 tab,一格一格攒', () => {
+/*
+ * **预览 tab 已退役**(W6-a,设计 `workbench-tabs-2026-09.md` §3):单击与 ↵ 走
+ * 同一条路,连点三个文件就是三个标签。这一组从前是「预览 / 固定」三条,
+ * 现在是它的反面 —— 留下 preview 那条支路的话第一条当场红。
+ */
+describe('打开:一次一格,已开着的只切过去', () => {
+  it('连着开三格 = 三格标签', () => {
     const store = useWorkbenchStore.getState()
     store.openRef(doc('a'))
-    store.openRef(doc('b'))
-    expect(refIdsOf(center())).toEqual(['home:main', 'doc:a', 'doc:b'])
-    expect(onlyLeaf().preview).toBeNull()
+    useWorkbenchStore.getState().openRef(doc('b'))
+    useWorkbenchStore.getState().openRef(doc('c'))
+    expect(refIdsOf(center())).toEqual(['home:main', 'doc:a', 'doc:b', 'doc:c'])
   })
 
-  it('「保留」把预览那一格固定下来 —— 下一次单击不再替换它', () => {
+  it('第四次开一格**已经开着的** = 切过去,不再插一格', () => {
     const store = useWorkbenchStore.getState()
-    store.openRef(doc('a'), { preview: true })
-    useWorkbenchStore.getState().pinTab(onlyLeaf().id, 1)
-    useWorkbenchStore.getState().openRef(doc('b'), { preview: true })
+    store.openRef(doc('a'))
+    useWorkbenchStore.getState().openRef(doc('b'))
+    useWorkbenchStore.getState().openRef(doc('a'))
     expect(refIdsOf(center())).toEqual(['home:main', 'doc:a', 'doc:b'])
+    expect(onlyLeaf().active).toBe(1)
   })
 
   it('单例已经开着 = 激活它,不插第二格', () => {
@@ -218,25 +216,58 @@ describe('常驻那一种的最后一格关不掉(T0 拍点 2)', () => {
   })
 })
 
-describe('分屏', () => {
-  it('把活动 tab 拉到新的那一片,焦点叶指向新的那一片', () => {
+/**
+ * **单叶政策**(W6-a,设计 `workbench-tabs-2026-09.md` §2.1 / §10)。
+ *
+ * 中央区收成**一条标签条**:那里不再有第二片叶,而「两块东西并排看」由
+ * `pairRefs` 说。架子与浮窗照旧(设计 §12 明写不删那条能力)。
+ * 反证:把 `splitLeaf` 里那句 `SINGLE_LEAF_REGIONS.includes(region)` 拿掉,
+ * 第一条当场红。
+ */
+describe('单叶政策:中央区一条标签条', () => {
+  it('中央区不受理分屏(引用恒等 —— 连订阅都不该推)', () => {
     const store = useWorkbenchStore.getState()
     store.openRef(doc('a'))
+    const before = center()
     useWorkbenchStore.getState().splitLeaf(onlyLeaf().id, 'row')
-    const leaves = leavesOf(center())
-    expect(leaves).toHaveLength(2)
-    expect(leaves[1].tabs.map(refId)).toEqual(['doc:a'])
-    expect(useWorkbenchStore.getState().focusLeafId).toBe(leaves[1].id)
+    expect(center()).toBe(before)
+    expect(leavesOf(center())).toHaveLength(1)
   })
 
-  it('关掉新叶里最后一格 → 剪枝,树回到一片叶', () => {
-    const store = useWorkbenchStore.getState()
-    store.openRef(doc('a'))
-    useWorkbenchStore.getState().splitLeaf(onlyLeaf().id, 'row')
-    const fresh = leavesOf(center())[1]
-    useWorkbenchStore.getState().closeTab(fresh.id, 0)
-    expect(leavesOf(center())).toHaveLength(1)
-    expect(refIdsOf(center())).toEqual(['home:main'])
+  it('架子照旧分得开(那两处的树不收)', () => {
+    useWorkbenchStore.setState({
+      regions: {
+        ...useWorkbenchStore.getState().regions,
+        'edge:right': makeLeaf('R1', [doc('a'), doc('b')], 1),
+      },
+    })
+    useWorkbenchStore.getState().splitLeaf('R1', 'row')
+    const leaves = leavesOf(useWorkbenchStore.getState().regions['edge:right'])
+    expect(leaves).toHaveLength(2)
+    expect(leaves[1].tabs.map(refId)).toEqual(['doc:b'])
+  })
+
+  it('存量档案里的多叶中央树,洗一遍就折成一条(按阅读序)', () => {
+    const folded = normalizeRegions({
+      [CENTER_REGION]: {
+        kind: 'split',
+        id: 'S1',
+        dir: 'row',
+        ratio: 50,
+        a: makeLeaf('L1', [{ kind: 'home', key: 'main' }, doc('a')], 1),
+        b: makeLeaf('L2', [doc('b'), doc('c')], 0),
+      },
+    })[CENTER_REGION]
+    expect(leavesOf(folded)).toHaveLength(1)
+    expect(refIdsOf(folded)).toEqual(['home:main', 'doc:a', 'doc:b', 'doc:c'])
+    // 叶 id 取第一片的 —— 「留下来的那一片不重挂」照旧成立。
+    expect(leavesOf(folded)[0].id).toBe('L1')
+    expect(leavesOf(folded)[0].active).toBe(1)
+  })
+
+  it('折过一遍再洗一遍 = 同一个对象(幂等 + 引用恒等)', () => {
+    const once = normalizeRegions({ [CENTER_REGION]: makeLeaf('L1', [{ kind: 'home', key: 'main' }]) })
+    expect(normalizeRegions(once)[CENTER_REGION]).toBe(once[CENTER_REGION])
   })
 })
 
@@ -279,7 +310,7 @@ describe('per-space:换装的次序即语义', () => {
     useWorkbenchStore.getState().openInPanel('/repo/a.ts')
     useWorkbenchStore.getState().setFocusLeaf('L-whatever')
     const picked = WORKBENCH_PER_SPACE.pick(useWorkbenchStore.getState())
-    expect(Object.keys(picked).sort()).toEqual(['hidden', 'regions'])
+    expect(Object.keys(picked).sort()).toEqual(['hidden', 'pairRatios', 'recentRoots', 'regions'])
   })
 })
 

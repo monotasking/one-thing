@@ -55,6 +55,28 @@ export function sameRef(a: ContentRef, b: ContentRef): boolean {
 }
 
 /**
+ * **一种内容由别的内容拼起来**(W6-a,设计 `workbench-tabs-2026-09.md` §2.1)。
+ *
+ * 「一个标签装两格」在核心层里**不是一种特例**,而是一种普通内容的自述:树上它
+ * 仍旧是一格 tab,标签条画它的标题,关它就是关它。核心层因此照旧不认识 `pair`
+ * 这四个字母 —— 它问的是这张表:
+ *  · `parts(ref)`   这一格由哪几格组成(拆开、逐格问 `beforeClose`、引用账要
+ *                   看进去、`countKind` 要数进去,靠的都是它);
+ *  · `compose(a,b)` 这两格并得起来吗、并出来是哪一格。答 `null` = 并不了
+ *                   (今天唯一的实现拒绝两条:任一格自己就是复合的、两格是同一格)。
+ *
+ * 判据与 `resident` / `fullable` / `singleton` 同族:**能力自述、别人读表**。
+ * `workbench/store.ts` 里因此一个 `'pair'` 都没有 —— 它只会问
+ * `composeContent(a, b)` 与 `partsOfContent(ref)`。
+ */
+export interface ContentComposite {
+  /** 这一格由哪几格组成。**顺序即左右**(两格时 `[左, 右]`)。 */
+  parts(ref: ContentRef): readonly ContentRef[]
+  /** 把两格并成这一种。并不了(规则不允许)答 `null`。 */
+  compose(a: ContentRef, b: ContentRef): ContentRef | null
+}
+
+/**
  * 一种内容的**自述**。每一种在自己的模块里 register 一次,核心层只读表。
  */
 export interface ContentKind {
@@ -127,6 +149,11 @@ export interface ContentKind {
    * 所以这一格照旧说 false;要撤它得等路线 A(composer 真的进叶,W5-c 可选加期)。
    */
   fullable?: boolean
+  /**
+   * **这一种是由别的内容拼起来的**(W6-a)。缺席 = 它是一格原子内容。
+   * 判词与两只口的分工写在 `ContentComposite` 上。
+   */
+  composite?: ContentComposite
 }
 
 /** Vite 的 `import.meta.hot` 里这一批只用得到 `dispose` 一口(照 `content/blocks/registry` 的形)。 */
@@ -177,6 +204,53 @@ export function contentKindOf(id: string): ContentKind | undefined {
 export async function mayCloseContent(ref: ContentRef): Promise<boolean> {
   const answer = await REGISTRY.get(ref.kind)?.beforeClose?.(ref)
   return answer !== 'cancel'
+}
+
+/* ── 复合那三只读法(W6-a)。核心层只经这三只说话,一个种类名都不出现。 ──── */
+
+/**
+ * 这一格由哪几格组成。**不是复合的答 `null`**(「它是一格原子内容」)——
+ * 与「是复合但恰好零格」在调用方那里从来不是一件事。
+ */
+export function partsOfContent(ref: ContentRef): readonly ContentRef[] | null {
+  const parts = REGISTRY.get(ref.kind)?.composite?.parts(ref)
+  return parts ?? null
+}
+
+/** 这一格是不是复合的。 */
+export function isCompositeContent(ref: ContentRef): boolean {
+  return REGISTRY.get(ref.kind)?.composite !== undefined
+}
+
+/**
+ * **把两格并成一格**(二合一)。
+ *
+ * 核心层不知道并出来的是哪一种,所以它**问整张表**:哪一种自述得出
+ * `composite.compose` 且对这两格答得出东西,就是它。今天只有一种自述了
+ * (`content/kinds/pair.tsx`),而「将来有第二种(三格?自定义拼版?)」这件事
+ * 因此不必惊动这只文件 —— 那正是「能力自述、别人读表」的意思。
+ *
+ * 按**登记序**取第一个答得出的。谁都答不出 = 这两格并不了。
+ */
+export function composeContent(a: ContentRef, b: ContentRef): ContentRef | null {
+  for (const kind of REGISTRY.values()) {
+    const made = kind.composite?.compose(a, b)
+    if (made) return made
+  }
+  return null
+}
+
+/**
+ * **把一格摊成它真正装着的那几格**(复合的摊开,原子的就是它自己)。
+ *
+ * 「这个区域里这一种还剩几个」「全壳摆着哪些会话」这类问句问的都是**内容**,
+ * 不是**标签** —— 一格 `pair` 标签里装着的那条会话当然算在场。递归展开,
+ * 深度封顶只是防一份手改档案里自己指着自己的复合(今天并不出这种形)。
+ */
+export function flattenContent(ref: ContentRef, depth = 4): ContentRef[] {
+  const parts = depth > 0 ? partsOfContent(ref) : null
+  if (!parts || parts.length === 0) return [ref]
+  return parts.flatMap((part) => flattenContent(part, depth - 1))
 }
 
 /** 认不认得这个种类名。`tree.sanitize` 拿它剔存量档案里的未知种类。 */

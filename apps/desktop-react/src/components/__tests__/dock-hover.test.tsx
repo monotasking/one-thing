@@ -50,25 +50,25 @@ function hover(name: string, ms: number) {
 describe('Dock 悬停', () => {
   it('① 怎么悬停都不再长出预览泡', () => {
     render(<AppShell />)
-    hover('文件', LONG_HOVER_MS)
+    hover('目录', LONG_HOVER_MS)
     expect(document.querySelector('[data-preview]')).toBeNull()
   })
 
   it('② 名字标签仍然照出(300ms 那一级留着)', () => {
     render(<AppShell />)
     const strip = document.querySelector('[data-dock="strip"]') as HTMLElement
-    hover('文件', TOOLTIP_DELAY_MS)
+    hover('目录', TOOLTIP_DELAY_MS)
     // 标签是一段纯文本 span;瓦本身的名字在 aria-label 上,不在文本里。
-    const labels = Array.from(strip.querySelectorAll('span')).filter((el) => el.textContent === '文件')
+    const labels = Array.from(strip.querySelectorAll('span')).filter((el) => el.textContent === '目录')
     expect(labels).toHaveLength(1)
   })
 
   it('②b 移开即散', () => {
     render(<AppShell />)
     const strip = document.querySelector('[data-dock="strip"]') as HTMLElement
-    hover('文件', TOOLTIP_DELAY_MS)
-    fireEvent.mouseLeave(tileOf('文件').parentElement as HTMLElement)
-    expect(Array.from(strip.querySelectorAll('span')).filter((el) => el.textContent === '文件')).toHaveLength(0)
+    hover('目录', TOOLTIP_DELAY_MS)
+    fireEvent.mouseLeave(tileOf('目录').parentElement as HTMLElement)
+    expect(Array.from(strip.querySelectorAll('span')).filter((el) => el.textContent === '目录')).toHaveLength(0)
   })
 
   /**

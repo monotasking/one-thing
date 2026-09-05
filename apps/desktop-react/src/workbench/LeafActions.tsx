@@ -10,14 +10,21 @@ import {
   Ellipsis,
   PictureInPicture2,
   Rows2,
+  Unlink,
 } from '../components/icons'
 import { IconButton } from '../ui/IconButton'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
 import { dropRef, reorderTab } from './drop-commit'
-import { contentKindOf, refId } from './kinds'
-import { hiddenInRegion, regionOfLeafIn, useWorkbenchStore } from './store'
+import { contentKindOf, partsOfContent, refId } from './kinds'
+import {
+  hiddenInRegion,
+  regionOfLeafIn,
+  SINGLE_LEAF_REGIONS,
+  useWorkbenchStore,
+} from './store'
+import type { ContentRef } from './kinds'
 import type { MessageKey } from '../i18n'
 import type { ShelfSide } from '../stage/types'
 import type { PaneLeafNode } from './tree'
@@ -78,10 +85,35 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   const [hiddenAt, setHiddenAt] = useState<{ x: number; y: number } | null>(null)
   const [splitAt, setSplitAt] = useState<{ x: number; y: number } | null>(null)
 
+  const pairRefs = useWorkbenchStore((st) => st.pairRefs)
+  const unpairAt = useWorkbenchStore((st) => st.unpairAt)
   const active = leaf.tabs[leaf.active] ?? null
   // 型工具条走**种类自述**那条唯一的口 —— 动作组不认识「markdown 有个渲染⇄源码开关」。
   const toolbar = active ? contentKindOf(active.kind)?.toolbar?.(active) : null
+  /*
+   * **单叶政策**(W6-a,设计 §2.1 / §9):中央区不画「分屏 ▸」那四项 ——
+   * 那里一条标签条,一个标签最多两格,而那件事由下面「二合一 / 拆开」三项说。
+   * 架子与浮窗照旧(设计 §12:那两处的分屏能力不删)。
+   *
+   * 判据问的是**这个区域收不收成一条标签条**(`SINGLE_LEAF_REGIONS`),不是
+   * 「它是不是中央区」—— 政策只有一个产地,菜单与 store 读同一张表。
+   */
+  const singleLeaf = region !== null && SINGLE_LEAF_REGIONS.includes(region)
   const canSplit = leaf.tabs.length > 1
+  /*
+   * ── 二合一 / 拆开的键盘等价(W6-a,设计 §7 那张表)────────────────────────
+   * 与「左移 / 右移」「移到架子 ▸」逐字同一条纪律:菜单项调的是**拖拽落定同一只
+   * 动作**(`store.pairRefs` / `store.unpairAt`),两条路走两个动作迟早分叉。
+   *
+   * 判据一个种类名都不点:「这一格是不是已经两格了」问的是**种类自述**
+   * (`partsOfContent`),不是 `active.kind === 'pair'`。
+   */
+  const isPair = active !== null && partsOfContent(active) !== null
+  const canPairLeft = !isPair && leaf.active > 0 && partsOfContent(leaf.tabs[leaf.active - 1]) === null
+  const canPairRight
+    = !isPair
+      && leaf.active < leaf.tabs.length - 1
+      && partsOfContent(leaf.tabs[leaf.active + 1]) === null
   /*
    * 换序的两端:第一格没有「左移」、末格没有「右移」。**禁灰而不消失**
    * (与分屏四项同一条):这张菜单的形状不该随上下文变。
@@ -145,26 +177,84 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
 
       {splitAt && (
         <Menu x={splitAt.x} y={splitAt.y} onClose={() => setSplitAt(null)} label={t('workbench.split')}>
-          <MenuSection>{t('workbench.split')}</MenuSection>
-          {SPLIT_CHOICES.map((choice) => (
-            <MenuItem
-              key={choice.id}
-              /*
-               * **禁灰而不消失**:只有一格 tab 时切不动(切出去原叶就空了),
-               * 但这张菜单的形状不该随上下文变。
-               */
-              disabled={!canSplit}
-              onClick={() => {
-                splitLeaf(leaf.id, choice.dir, undefined, choice.before)
-                setSplitAt(null)
-              }}
-            >
-              <span className={s.menuLine}>
-                <choice.Icon className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
-                <span className={s.menuMain}>{t(choice.labelKey)}</span>
-              </span>
-            </MenuItem>
-          ))}
+          {/*
+            **分屏四项只在多叶区域画**(W6-a):中央区收成一条标签条之后,
+            那四项在那里根本没有落点 —— 一颗永远做不成的动作比禁灰更糟
+            (禁灰说的是「此刻不行」,而这里是「这个区域里不存在这件事」)。
+          */}
+          {!singleLeaf && (
+            <>
+              <MenuSection>{t('workbench.split')}</MenuSection>
+              {SPLIT_CHOICES.map((choice) => (
+                <MenuItem
+                  key={choice.id}
+                  /*
+                   * **禁灰而不消失**:只有一格 tab 时切不动(切出去原叶就空了),
+                   * 但这张菜单的形状不该随上下文变。
+                   */
+                  disabled={!canSplit}
+                  onClick={() => {
+                    splitLeaf(leaf.id, choice.dir, undefined, choice.before)
+                    setSplitAt(null)
+                  }}
+                >
+                  <span className={s.menuLine}>
+                    <choice.Icon className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+                    <span className={s.menuMain}>{t(choice.labelKey)}</span>
+                  </span>
+                </MenuItem>
+              ))}
+            </>
+          )}
+
+          {/*
+            **二合一 / 拆开**(W6-a,设计 §7)。三项作用在**这一格活动 tab** 上,
+            调的是拖拽落定同一只动作。播报一句(与换序那一句同一条纪律:
+            播报是**落定**的一部分)。
+          */}
+          <MenuSection>{t('workbench.pair')}</MenuSection>
+          <MenuItem
+            disabled={!canPairRight}
+            onClick={() => {
+              if (!canPairRight || !active) return
+              pairRefs(leaf.id, leaf.active, leaf.tabs[leaf.active + 1], 'right')
+              announce(t('workbench.pairedWith', { name: nameOf(leaf.tabs[leaf.active + 1]) }))
+              setSplitAt(null)
+            }}
+          >
+            <span className={s.menuLine}>
+              <Columns2 className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+              <span className={s.menuMain}>{t('workbench.pairRight')}</span>
+            </span>
+          </MenuItem>
+          <MenuItem
+            disabled={!canPairLeft}
+            onClick={() => {
+              if (!canPairLeft || !active) return
+              pairRefs(leaf.id, leaf.active, leaf.tabs[leaf.active - 1], 'left')
+              announce(t('workbench.pairedWith', { name: nameOf(leaf.tabs[leaf.active - 1]) }))
+              setSplitAt(null)
+            }}
+          >
+            <span className={s.menuLine}>
+              <Columns2 className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+              <span className={s.menuMain}>{t('workbench.pairLeft')}</span>
+            </span>
+          </MenuItem>
+          <MenuItem
+            disabled={!isPair}
+            onClick={() => {
+              if (!isPair) return
+              unpairAt(leaf.id, leaf.active)
+              announce(t('workbench.unpaired'))
+              setSplitAt(null)
+            }}
+          >
+            <span className={s.menuLine}>
+              <Unlink className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+              <span className={s.menuMain}>{t('workbench.unpair')}</span>
+            </span>
+          </MenuItem>
 
           {/*
             **拖拽的键盘等价**(W3 裁定 9)。两组都作用在**这一格活动 tab** 上,
@@ -245,6 +335,15 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
       )}
     </div>
   )
+}
+
+/**
+ * 播报里那句「与谁并排」用的名字。**问种类自述**(`kind.title`),不点种类名 ——
+ * 与叶檐画标题读的是同一句话(静态那一半;活的那一半是檐的事,播报不必等它)。
+ */
+function nameOf(ref: ContentRef | undefined): string {
+  if (!ref) return ''
+  return contentKindOf(ref.kind)?.title(ref).text ?? ref.key
 }
 
 /**

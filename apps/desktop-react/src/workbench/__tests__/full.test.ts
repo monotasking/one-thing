@@ -10,7 +10,7 @@ import {
 } from '../store'
 import { registerContentKind, resetContentKinds } from '../kinds'
 import { CENTER_REGION, edgeRegion } from '../regions'
-import { leavesOf } from '../tree'
+import { leavesOf, makeLeaf } from '../tree'
 import type { ContentRef } from '../kinds'
 
 /**
@@ -87,14 +87,24 @@ describe('① toggleFull:焦点叶的活动 tab 进 / 出', () => {
     expect(st().full).toBeNull()
   })
 
+  /*
+   * W6-a:中央区收成一条标签条,所以「另一片叶」这个场景搬到**架子上**演
+   * (那两处的树不收,设计 §12)。判据本身一个字没变:铺的是**焦点叶的活动 tab**。
+   */
   it('**焦点叶**说了算:焦点指到另一片,铺的就是另一片的活动 tab', () => {
     st().openRef(doc('a'))
     const first = onlyLeaf()
-    st().splitLeaf(first.id, 'row', doc('b'))
+    useWorkbenchStore.setState({
+      regions: {
+        ...st().regions,
+        'edge:right': makeLeaf('R1', [doc('b'), doc('c')], 1),
+      },
+    })
+    st().splitLeaf('R1', 'row')
     const second = st().focusLeafId
     expect(second).not.toBe(first.id)
     expect(st().toggleFull()).toBe('entered')
-    expect(st().full?.ref).toEqual(doc('b'))
+    expect(st().full?.ref).toEqual(doc('c'))
 
     st().exitFull()
     st().setFocusLeaf(first.id)
@@ -133,7 +143,7 @@ describe('③ 它是瞬态:不进家具账、不落盘、reset 归零', () => {
     st().openRef(doc('a'))
     st().toggleFull()
     const furniture = WORKBENCH_PER_SPACE.pick(st())
-    expect(Object.keys(furniture).sort()).toEqual(['hidden', 'regions'])
+    expect(Object.keys(furniture).sort()).toEqual(['hidden', 'pairRatios', 'recentRoots', 'regions'])
     expect('full' in furniture).toBe(false)
   })
 

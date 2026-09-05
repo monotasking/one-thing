@@ -1,4 +1,5 @@
 import { useStageStore } from '../stage/store'
+import { openStageItem } from '../stage/open-item'
 import { STAGE_ITEMS } from '../stage/items'
 import { isItemHidden } from '../stage/transitions'
 import { resolveIcon } from '../components/icons'
@@ -33,8 +34,6 @@ export function AppsPanel() {
   const t = useT()
   const hiddenItems = useStageStore((st) => st.hiddenItems)
   const setItemHidden = useStageStore((st) => st.setItemHidden)
-  const click = useStageStore((st) => st.clickDockIcon)
-
   const hiddenCount = STAGE_ITEMS.filter((item) => isItemHidden(hiddenItems, item.id)).length
 
   return (
@@ -66,7 +65,7 @@ export function AppsPanel() {
                 * 所以藏起来的面照样打得开)。 */}
               <ButtonBase
                 className={s.open}
-                onClick={() => click(item.id)}
+                onClick={() => openStageItem(item.id)}
                 aria-label={t('apps.open', { name })}
               >
                 <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />

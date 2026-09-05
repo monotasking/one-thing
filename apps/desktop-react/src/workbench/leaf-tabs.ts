@@ -55,7 +55,6 @@ export function useLeafTabSpecs(leaf: PaneLeafNode): TabSpec[] {
     () =>
       leaf.tabs.map((ref) =>
         tabSpecOf(ref, titles, {
-          preview: leaf.preview === refId(ref),
           closable: canDetachTabIn(leaf, ref),
           // 「这一组的家」= 这一种自述自己是**常驻**的(设计 §2.2:会话标签的图标
           // 用主题色)。判据问的是种类的自述,不是种类名 —— W5 会话多开之后

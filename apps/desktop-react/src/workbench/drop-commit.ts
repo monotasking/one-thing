@@ -11,7 +11,7 @@ import { focusIntoRefAfterCommit } from './focus-into'
 import { refId } from './kinds'
 import { ZONE_SPLIT } from './drop'
 import { edgeRegion, floatRegion } from './regions'
-import { regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from './store'
+import { regionOfLeafIn, regionOfRefIn, SINGLE_LEAF_REGIONS, useWorkbenchStore } from './store'
 import { findLeaf, leavesOf } from './tree'
 import type { DropTarget } from './drop'
 import type { ContentRef } from './kinds'
@@ -199,7 +199,20 @@ function dropIntoLeaf(
   const id = refId(ref)
   if (leaf.tabs.length === 1 && refId(leaf.tabs[0]) === id) return
 
-  if (zone === 'center') {
+  /*
+   * **单叶区域里四带落成一格标签**(W6-a)。
+   *
+   * 中央区收成一条标签条之后 `store.splitLeaf` 在那里不受理,而下面那一支是
+   * 「先从每棵树里摘干净、再切」—— 切不成的话那一格**就此从树上消失**,而用户
+   * 只是把它拖到了内容区右边。所以在那些区域里,四带退成「开成新标签」:
+   * 内容一定落得下去,而不是掉在地上。
+   *
+   * 设计 §5 那张表要的是「左右 28% = 与它二合一」,而二合一的落点判定是 **W6-b**
+   * 的地(拖拽引擎重做)。这一句是那之前的**安全底**,不是终态;留账在交卷报里。
+   */
+  const asTab = zone !== 'center' && SINGLE_LEAF_REGIONS.includes(region)
+
+  if (zone === 'center' || asTab) {
     store.moveRefIntoLeaf(ref, leafId)
   } else {
     /*

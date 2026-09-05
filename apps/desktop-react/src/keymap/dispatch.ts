@@ -1,6 +1,7 @@
 import { useCallback } from 'react'
 import { useTocStore } from '../toc/store'
 import { useStageStore } from '../stage/store'
+import { summonStageItem } from '../stage/open-item'
 import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
 import { useWorkspacePalette } from '../workspace/components/palette-hub'
@@ -59,7 +60,8 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
          * 四态判据、点名(`requestFocusOnOpen`)与分流全在 store 的 `summonItem`
          * 里,这里只剩「哪条命令走哪个动作」这一句 —— 这张表本来就只该有这一句。
          */
-        useStageStore.getState().summonItem(id.slice(TOGGLE_COMMAND_PREFIX.length))
+        /* 启动瓦(「目录」)自述它自己那一下 —— 判词在 `stage/open-item.ts`。 */
+        summonStageItem(id.slice(TOGGLE_COMMAND_PREFIX.length))
         return
       }
       /*

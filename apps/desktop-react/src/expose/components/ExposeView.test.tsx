@@ -48,10 +48,16 @@ const other = SESSIONS.find(
 )!
 
 describe('会话总览是一块普通的面', () => {
-  it('⌘E 按打开方式把它开出来 —— 打开统一是浮窗(08-30 拍板),内容住在面里', () => {
+  /*
+   * **出厂摆法从浮窗改成左架子**(W6-a,设计 `workbench-tabs-2026-09.md` §8)。
+   * 08-30 那条「打开统一浮窗」说的是**无记忆时的默认形**;W6-a 给这块瓦补了一格
+   * `defaultPlacement`(解析序:记忆 > 天生 > 全局默认档),理由是真机上一扇出厂就
+   * 停在聊天区正中的浮窗会把那块地整个接管掉。用户自己摆过的照旧压过它。
+   */
+  it('⌘E 按打开方式把它开出来 —— 出厂落左架子(W6-a §8),内容住在面里', () => {
     render(<AppShell />)
     cmdE()
-    expect(placementOfSessions()).toEqual({ kind: 'float' })
+    expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
     expect(screen.getByLabelText('搜索会话')).toBeTruthy()
   })
 
@@ -110,7 +116,7 @@ describe('会话总览是一块普通的面', () => {
     expect(firstHead.getAttribute('aria-expanded')).toBe('false')
     expect(useExposeStore.getState().currentSessionId).toBe(CURRENT_ID)
     // 面板一动不动(进会话才会把它收回 Dock)。
-    expect(placementOfSessions()).toEqual({ kind: 'float' })
+    expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
 
     // 再一下把它展回去(同一口两态),行才重新在屏上。
     fireEvent.keyDown(screen.getByTestId('expose-tree'), { key: 'Enter' })
@@ -121,12 +127,27 @@ describe('会话总览是一块普通的面', () => {
     expect(useExposeStore.getState().currentSessionId).toBe(other.id)
   })
 
-  it('进入会话 = 换当前会话,并顺手把这块面收回 Dock', () => {
+  it('进入会话 = 换当前会话,并顺手把这块面收回 Dock(**钉在架子上的不收**)', () => {
     render(<AppShell />)
-    cmdE()
+    // 浮窗那一形:进会话顺手收回 Dock。
+    act(() => useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'float' }))
     fireEvent.click(screen.getByText(other.title))
     expect(useExposeStore.getState().currentSessionId).toBe(other.id)
     expect(SESSIONS_ITEM_ID in useStageStore.getState().placements).toBe(false)
+  })
+
+  /*
+   * W6-a:出厂摆法改成左架子之后,`cmdE()` 开出来的是**钉在架子上**的那一形 ——
+   * 而「钉着的不收」是 `expose/store` 里早就有的判据(架子是常驻家具,进一条会话
+   * 不该把用户钉好的东西拆掉)。这一条把那句话补成明文。
+   */
+  it('钉在架子上时进入会话:换当前会话,而那块面**留在架子上**', () => {
+    render(<AppShell />)
+    cmdE()
+    expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
+    fireEvent.click(screen.getByText(other.title))
+    expect(useExposeStore.getState().currentSessionId).toBe(other.id)
+    expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
   })
 })
 
@@ -247,7 +268,7 @@ describe('Esc 的让位契约', () => {
     fireEvent.change(screen.getByLabelText('搜索会话'), { target: { value: 'provider' } })
     esc()
     expect(useExposeStore.getState().query).toBe('')
-    expect(placementOfSessions()).toEqual({ kind: 'float' })
+    expect(placementOfSessions()).toEqual({ kind: 'edge', side: 'left' })
   })
 })
 

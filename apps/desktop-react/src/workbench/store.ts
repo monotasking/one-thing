@@ -1,14 +1,19 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import {
+  composeContent,
   contentKindList,
   contentKindOf,
+  flattenContent,
+  isCompositeContent,
   isKnownContentKind,
   isSingletonContentKind,
+  partsOfContent,
   refId,
+  sameRef,
 } from './kinds'
 import { nextLeafId, nextSplitId } from './ids'
-import { rewriteRefsInPersisted } from './persist-migrate'
+import { foldRegionsInPersisted, rewriteRefsInPersisted } from './persist-migrate'
 import { CENTER_REGION } from './regions'
 /*
  * **这一句是这只文件里唯一一条指向内容层的边,而且它一个种类名都读不到**:
@@ -98,11 +103,31 @@ export interface WorkbenchFurniture {
    */
   regions: Record<string, PaneNode>
   hidden: HiddenEntry[]
+  /**
+   * **两格标签里那条分隔杆停在哪**(W6-a,设计 `workbench-tabs-2026-09.md` §6)。
+   * 键 = 那一格复合内容的 refId,值 = 左格占的百分比(与 `ui/Splitter` 同一个
+   * 量纲,不是 0–1 的小数)。
+   *
+   * 它是**家具**(用户摆出来的比例应该活过一次重启),但它不住在树上:树上那一格
+   * 只是一个普通的 ref,而「这一格宽多少」是它自己的一件事。随家具落盘、随家具
+   * 换空间;`sanitize` 那一遍把已经不在任何一棵树上的键清掉(不清的话,一个
+   * 关掉又重开的两格标签会读到上一次的比例 —— 那反而是对的;真正要清的是
+   * **再也不会回来**的那些,否则这张表只涨不落)。
+   */
+  pairRatios: Record<ContentRefId, number>
+  /**
+   * **最近打开过的目录**(W6-a,设计 §3)。绝对路径,**最近的在前**,最多 20 条。
+   * 「目录」那块启动瓦的右键菜单读它;按工作区各持一份(与树同一条:一个空间
+   * 里翻过哪些目录是这个空间的事)。
+   */
+  recentRoots: string[]
 }
 
 export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   regions: Record<string, PaneNode>
   hidden: HiddenEntry[]
+  pairRatios: Record<ContentRefId, number>
+  recentRoots: string[]
   /**
    * 焦点叶 —— 「新标签开在哪一片」的答案。**瞬态**(不落盘):它是「此刻在哪」,
    * 不是「摆好的东西」,与 stage 摘掉舞台那条 placement 同一条判据。
@@ -137,13 +162,11 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   /** 出厂播种 + 洗一遍存量。幂等,由 `startWorkbench()` 调。 */
   seed(): void
   /**
-   * 打开一块内容。`preview` = 预览 tab(单击那条路,§2.1 拍点 ①);
-   * 缺省固定。已经开着的话只激活并把焦点叶指过去 —— 不重复插。
+   * 打开一块内容。已经开着的话只激活并把焦点叶指过去 —— 不重复插。
+   * (W6-a:`preview` 那一档退役,判词写在 `tree.insertTab` 上。)
    */
-  openRef(ref: ContentRef, opts?: { region?: RegionId; leafId?: string; preview?: boolean }): void
+  openRef(ref: ContentRef, opts?: { region?: RegionId; leafId?: string }): void
   activateTab(leafId: string, index: number): void
-  /** 「保留」:把预览 tab 固定下来。 */
-  pinTab(leafId: string, index: number): void
   /**
    * 关掉一格(**不问 `beforeClose`** —— 那一问是界面那一层的事,见 `PaneLeaf`)。
    * 关不掉(常驻那一种的最后一格)时什么都不做。
@@ -175,9 +198,44 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   restoreHidden(id: ContentRefId): void
   /** 把一格隐藏的真的关掉(叶檐「隐藏的标签 ⋯」里那颗 ✕)。 */
   dropHidden(id: ContentRefId): void
-  /** 分屏:把这片叶切成两片。`ref` 缺席 = 把活动 tab 拉到新的那一片去。 */
+  /**
+   * 分屏:把这片叶切成两片。`ref` 缺席 = 把活动 tab 拉到新的那一片去。
+   *
+   * **中央区不受理**(W6-a 的单叶政策):那里一格标签最多两格,而那件事由
+   * `pairRefs` 说 —— 一条 tab 条上再长出第二片叶正是这次要收掉的东西。
+   * 架子与浮窗照旧(设计 §12:那两处的「分屏 ▸」不删)。
+   */
   splitLeaf(leafId: string, dir: 'row' | 'col', ref?: ContentRef, before?: boolean): void
   setSplitRatio(splitId: string, ratio: number): void
+  /**
+   * **二合一**(W6-a,设计 §2.1 / §6):把 `ref` 并进 `leafId` 里第 `hostIndex`
+   * 格的 `side` 侧,换出一格**复合内容**顶在原位。
+   *
+   * 签名钉死(W6-b 的拖拽落定要照这个形调):收的是**叶 + 下标 + ref + 哪一侧**,
+   * 不收「哪两个 refId」—— 同一格内容可能在别处也开着,而这一下说的是
+   * 「屏幕上这一格」。
+   *
+   * 四条判据,一条都不在这里点种类的名:
+   *  · `ref` 与 host 是同一格 → 空动作(拖回自己身上不是一次并);
+   *  · `ref` 自己就是复合的 → **拒绝**(设计 §6「不允许」:两格的标签不能再并);
+   *  · host 已经是复合的 → 换掉那一侧,**被换下来的那一格落在它后面成为一格
+   *    普通标签**(见下面实现处的判词);
+   *  · 并不出来(`composeContent` 答 null)→ 什么都不做。
+   *
+   * `ref` 本来在别处开着 = **搬**,不是复制(不变量 1:一个内容在一个区域里
+   * 只出现一次)。
+   */
+  pairRefs(leafId: string, hostIndex: number, ref: ContentRef, side: 'left' | 'right'): void
+  /**
+   * **拆开**(设计 §6):第 `index` 格若是复合的,右格拆成**紧邻其后**的一格
+   * 新标签,左格留在原位,活动格仍旧停在原位那一格。
+   * 不是复合的 = 空动作(引用恒等)。
+   */
+  unpairAt(leafId: string, index: number): void
+  /** 两格标签里那条分隔杆落定。`ratio` = 左格占的百分比,钳在 20–80。 */
+  setPairRatio(id: ContentRefId, ratio: number): void
+  /** 记一条「最近打开过的目录」。已经在表上的提到最前;最多留 20 条。 */
+  rememberRoot(path: string): void
   setFocusLeaf(leafId: string): void
   /** 起拖 / 落定:开合上面那道闸。 */
   setDragging(on: boolean): void
@@ -270,13 +328,41 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
 
 /** 出厂:一棵空的中央树。播种(`seed`)会把常驻那些摆进去。 */
 function factoryFurniture(): WorkbenchFurniture {
-  return { regions: { [CENTER_REGION]: T.makeLeaf(nextLeafId()) }, hidden: [] }
+  return {
+    regions: { [CENTER_REGION]: T.makeLeaf(nextLeafId()) },
+    hidden: [],
+    pairRatios: {},
+    recentRoots: [],
+  }
 }
 
 export const WORKBENCH_PER_SPACE: PerSpaceSpec<WorkbenchState, WorkbenchFurniture> = {
-  pick: (s) => ({ regions: s.regions, hidden: s.hidden }),
+  pick: (s) => ({
+    regions: s.regions,
+    hidden: s.hidden,
+    pairRatios: s.pairRatios,
+    recentRoots: s.recentRoots,
+  }),
   factory: factoryFurniture,
 }
+
+/**
+ * **单叶政策**(W6-a,设计 §2.1):这些区域里的树永远只有一片叶。
+ *
+ * 今天只有中央区。架子与浮窗**不在表上** —— 设计 §12 明写那两处仍可经右键
+ * 「分屏 ▸」得到多叶(W4 的能力不删)。它是一张表而不是一句 `=== CENTER_REGION`,
+ * 是因为「哪些区域收成一条标签条」是一件会变的**政策**,而它只该有一个产地:
+ * 运行期那一遍(`normalizeRegions`)与存量档案那一遍(persist v3)读同一张表。
+ */
+export const SINGLE_LEAF_REGIONS: readonly string[] = [CENTER_REGION]
+
+/** 两格标签那条分隔杆的量纲与钳制(与 `ui/Splitter` 的 value 同一个:百分比)。 */
+export const PAIR_RATIO_DEFAULT = 50
+export const PAIR_RATIO_MIN = 20
+export const PAIR_RATIO_MAX = 80
+
+/** 最近目录表留多少条(设计 §3)。 */
+export const RECENT_ROOTS_MAX = 20
 
 /* ── 纯函数半边:每一条判据都可以脱开 React 测 ─────────────────────────── */
 
@@ -295,7 +381,7 @@ export function normalizeRegions(regions: Record<string, PaneNode>): Record<stri
   const out: Record<string, PaneNode> = {}
   for (const [region, tree] of Object.entries(regions ?? {})) {
     const clean = T.sanitize(tree, SANITIZE_OPTIONS)
-    if (clean) out[region] = clean
+    if (clean) out[region] = foldIfSingleLeafRegion(region, clean)
   }
   for (const kind of contentKindList()) {
     const resident = kind.resident
@@ -314,20 +400,95 @@ export function normalizeRegions(regions: Record<string, PaneNode>): Record<stri
      * 少了这一条,一棵已经装着 `session:abc` 的树会在每次播种时再补一格
      * `session:new` 进去。
      */
-    if (tree && T.countKind(tree, kind.id) > 0) continue
+    if (tree && countKindDeep(tree, kind.id) > 0) continue
     const ref: ContentRef = { kind: kind.id, key: resident.seed() }
     if (!tree) {
-      out[resident.region] = T.makeLeaf(nextLeafId(), [ref], 0, null)
+      out[resident.region] = T.makeLeaf(nextLeafId(), [ref], 0)
       continue
     }
     // 常驻那一格补在**第一片叶的最前面**:它是这个区域的家,不是后来加的一格。
     const first = T.leavesOf(tree)[0]
     out[resident.region] = first
       ? T.insertTab(tree, first.id, ref, { at: 0, activate: first.tabs.length === 0 })
-      : T.makeLeaf(nextLeafId(), [ref], 0, null)
+      : T.makeLeaf(nextLeafId(), [ref], 0)
   }
   // 中央区永远在(设计 §1.3)。
   if (!out[CENTER_REGION]) out[CENTER_REGION] = T.makeLeaf(nextLeafId())
+  return out
+}
+
+/**
+ * 单叶政策那一句(见 `SINGLE_LEAF_REGIONS`)。不在表上的区域原样交回,
+ * 已经是一片叶的也原样交回(引用恒等 —— 这一句每次 normalize 都会跑)。
+ */
+function foldIfSingleLeafRegion(region: string, tree: PaneNode): PaneNode {
+  return SINGLE_LEAF_REGIONS.includes(region) ? T.foldLeaves(tree) : tree
+}
+
+/**
+ * **这个区域里这一种还剩几个 —— 看进复合标签里**(W6-a)。
+ *
+ * `tree.countKind` 数的是**标签**,而这句话问的是**内容**:一格 `pair` 标签里
+ * 装着的那条会话当然算在场。少了这一句,把最后一条会话与一个文件并成两格之后,
+ * 播种会认为「这个区域里没有会话了」,当场再补一格空会话进来。
+ *
+ * 摊开那一句是**种类自述**(`flattenContent` → `ContentKind.composite.parts`),
+ * 所以这只文件照旧一个种类名都不认识。
+ */
+function countKindDeep(tree: PaneNode, kind: string): number {
+  let n = 0
+  for (const leaf of T.leavesOf(tree)) {
+    for (const tab of leaf.tabs) {
+      for (const part of flattenContent(tab)) if (part.kind === kind) n += 1
+    }
+  }
+  return n
+}
+
+/**
+ * 洗一遍两格标签的比例表:**已经不在任何一棵树上的键清掉**。
+ * 一格都没清掉时**引用恒等**(不惊动订阅者)。
+ */
+export function normalizePairRatios(
+  regions: Record<string, PaneNode>,
+  pairRatios: Record<ContentRefId, number>,
+): Record<ContentRefId, number> {
+  const live = new Set<ContentRefId>()
+  for (const tree of Object.values(regions)) {
+    for (const leaf of T.leavesOf(tree)) for (const tab of leaf.tabs) live.add(refId(tab))
+  }
+  const out: Record<ContentRefId, number> = {}
+  let dropped = false
+  for (const [id, ratio] of Object.entries(pairRatios ?? {})) {
+    if (!live.has(id)) {
+      dropped = true
+      continue
+    }
+    out[id] = clampPairRatio(ratio)
+  }
+  if (!dropped && Object.keys(out).length === Object.keys(pairRatios ?? {}).length) {
+    // 值也一格没钳到才算恒等 —— 钳到了就得交新的(存量档案里可能有 0 或 NaN)。
+    if (Object.entries(out).every(([id, v]) => pairRatios[id] === v)) return pairRatios
+  }
+  return out
+}
+
+export function clampPairRatio(raw: unknown): number {
+  const n = typeof raw === 'number' && Number.isFinite(raw) ? raw : PAIR_RATIO_DEFAULT
+  return Math.min(PAIR_RATIO_MAX, Math.max(PAIR_RATIO_MIN, Math.round(n)))
+}
+
+/** 洗一遍最近目录表:非字符串 / 空串剔掉、去重、封顶。 */
+export function normalizeRecentRoots(roots: unknown): string[] {
+  if (!Array.isArray(roots)) return []
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const row of roots) {
+    if (typeof row !== 'string' || row.length === 0 || seen.has(row)) continue
+    seen.add(row)
+    out.push(row)
+    if (out.length >= RECENT_ROOTS_MAX) break
+  }
   return out
 }
 
@@ -354,8 +515,14 @@ export function canDetachTab(tree: PaneNode, leafId: string, index: number): boo
   const leaf = T.findLeaf(tree, leafId)
   const ref = leaf?.tabs[index]
   if (!ref) return false
-  if (!contentKindOf(ref.kind)?.resident) return true
-  return T.countKind(tree, ref.kind) > 1
+  /*
+   * 复合那一格问的是**它装着的那几格**:`pair(会话, 文件)` 里的会话同样受
+   * 「这个区域里最后一格常驻的关不掉」那条保护(判词与 `countKindDeep` 同源)。
+   */
+  const kinds = new Set(flattenContent(ref).map((part) => part.kind))
+  const guarded = [...kinds].filter((id) => contentKindOf(id)?.resident)
+  if (guarded.length === 0) return true
+  return guarded.every((id) => countKindDeep(tree, id) > 1)
 }
 
 /** 焦点叶:指名的那一片还在就用它,否则用这个区域的第一片。 */
@@ -497,7 +664,11 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           if (pruned) regions[region] = pruned
           else delete regions[region]
           const clean = normalizeRegions(regions)
-          return { regions: clean, ...fullPatch(s, clean) }
+          return {
+            regions: clean,
+            pairRatios: normalizePairRatios(clean, s.pairRatios),
+            ...fullPatch(s, clean),
+          }
         })
       }
 
@@ -510,7 +681,15 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         full: null,
 
         seed: () =>
-          set((s) => ({ regions: normalizeRegions(s.regions), hidden: normalizeHidden(s.hidden) })),
+          set((s) => {
+            const regions = normalizeRegions(s.regions)
+            return {
+              regions,
+              hidden: normalizeHidden(s.hidden),
+              pairRatios: normalizePairRatios(regions, s.pairRatios),
+              recentRoots: normalizeRecentRoots(s.recentRoots),
+            }
+          }),
 
         openRef: (ref, opts = {}) => {
           if (frozen()) return
@@ -547,7 +726,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const leaf = opts.leafId ? T.findLeaf(base, opts.leafId) : focusLeafOf(base, s.focusLeafId)
           if (!leaf) return
           set({
-            regions: { ...regions, [region]: T.insertTab(base, leaf.id, ref, { preview: opts.preview === true }) },
+            regions: { ...regions, [region]: T.insertTab(base, leaf.id, ref) },
             hidden: hidden.length === s.hidden.length ? s.hidden : hidden,
             focusLeafId: leaf.id,
           })
@@ -614,13 +793,6 @@ export const useWorkbenchStore = create<WorkbenchState>()(
               regions: { ...s.regions, [region]: T.activate(s.regions[region], leafId, index) },
               focusLeafId: leafId,
             }
-          }),
-
-        pinTab: (leafId, index) =>
-          set((s) => {
-            const region = regionOfLeaf(s.regions, leafId)
-            if (!region) return s
-            return { regions: { ...s.regions, [region]: T.pinTab(s.regions[region], leafId, index) } }
           }),
 
         closeTab: (leafId, index) => {
@@ -697,6 +869,14 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const s = get()
           const region = regionOfLeaf(s.regions, leafId)
           if (!region) return
+          /*
+           * **单叶政策**(W6-a):中央区不受理分屏。这一句挡在这里而不是只挡在
+           * 菜单上,是因为分屏有第二个发起方 —— 拖到内容区四带那条落定
+           * (`drop-commit.dropIntoLeaf`)。少了它,`normalizeRegions` 会在下一次
+           * 写树时把那一刀折回去,而中间那一帧屏幕上真的分了屏:用户看见的是
+           * 一次「闪了一下又弹回来」。判词与那张政策表写在 `SINGLE_LEAF_REGIONS` 上。
+           */
+          if (SINGLE_LEAF_REGIONS.includes(region)) return
           const fresh = nextLeafId()
           const next = T.splitLeaf(
             s.regions[region],
@@ -760,6 +940,108 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           set({ regions: { ...s.regions, [region]: next }, focusLeafId: leafId })
         },
 
+        pairRefs: (leafId, hostIndex, ref, side) => {
+          if (frozen()) return
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const kind = contentKindOf(ref.kind)
+          if (kind?.regions && !kind.regions.includes(region)) return
+          const host = T.findLeaf(s.regions[region], leafId)?.tabs[hostIndex]
+          if (!host) return
+          // 拖回自己身上不是一次并(不变量 3 的前半句)。
+          if (sameRef(host, ref)) return
+          // 两格的标签不能再并(设计 §6「不允许」)。
+          if (isCompositeContent(ref)) return
+
+          const hostParts = partsOfContent(host)
+          /*
+           * host 已经是两格 → 换掉那一侧。**被换下来的那一格不丢**:它落在这一格
+           * 后面成为一格普通标签。
+           *
+           * 设计 §5 那张表写的是「替换『X 的右格』」—— 说的是这一格标签此后画谁,
+           * 没说被换下来的那份内容该消失。真让它消失,一次拖拽就能把一个没保存的
+           * 文件从屏幕上抹掉,而用户只是想换一边看看。所以「替换」在这里的落地是
+           * **换出去**,不是**关掉**:实例一路留着,既不问 `beforeClose` 也不
+           * `dispose`(判据与 `moveRef` / `hideTab` 同一条)。记档在交卷报里。
+           */
+          const evicted = hostParts ? (side === 'left' ? hostParts[0] : hostParts[1]) ?? null : null
+          const left = side === 'left' ? ref : hostParts?.[0] ?? host
+          const right = side === 'left' ? hostParts?.[1] ?? host : ref
+          if (sameRef(left, right)) return
+          const made = composeContent(left, right)
+          if (!made) return
+
+          /*
+           * **搬,不是复制**(不变量 1):`ref` 本来在别处开着就先摘干净。
+           * `withoutRef` 自带剪枝,所以摘完这片叶可能已经不在了(它只装着那一格),
+           * 那时这一下是空动作 —— 与 `moveRefIntoLeaf` 同一句判。
+           */
+          const stripped = withoutRef(s.regions, refId(ref))
+          const base = stripped[region]
+          const leaf = base ? T.findLeaf(base, leafId) : null
+          if (!base || !leaf) return
+          const at = T.indexOfRef(leaf, host)
+          if (at < 0) return
+          let next = T.replaceRef(base, leafId, host, made)
+          // 换下来的那一格排在它后面(不激活 —— 屏幕上活动的仍是刚并好的那一格)。
+          if (evicted && !sameRef(evicted, ref)) {
+            next = T.insertTab(next, leafId, evicted, { at: at + 1, activate: false })
+          }
+          const regions = { ...stripped, [region]: next }
+          set({
+            regions,
+            // 并进来的那一份不再是「藏着的」(与 `moveRef` 同一句)。
+            hidden: s.hidden.filter((entry) => refId(entry.ref) !== refId(ref)),
+            pairRatios: normalizePairRatios(regions, s.pairRatios),
+            focusLeafId: leafId,
+            ...fullPatch(s, regions),
+          })
+        },
+
+        unpairAt: (leafId, index) => {
+          if (frozen()) return
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const tree = s.regions[region]
+          const tab = T.findLeaf(tree, leafId)?.tabs[index]
+          if (!tab) return
+          const parts = partsOfContent(tab)
+          if (!parts || parts.length < 2) return
+          /*
+           * 左格顶回原位、右格插在它后面、**活动格不动**(设计 §6:「焦点留在
+           * 原标签」)。两步在**一次 `set`** 里:分两次写的话中间那一拍屏幕上
+           * 少一格,而订阅者(投影 / 焦点跟随)会把它读成「关掉了一格」。
+           */
+        const swapped = T.replaceRef(tree, leafId, tab, parts[0])
+          const next = T.insertTab(swapped, leafId, parts[1], { at: index + 1, activate: false })
+          const regions = { ...s.regions, [region]: next }
+          const ratios = { ...s.pairRatios }
+          delete ratios[refId(tab)]
+          set({
+            regions,
+            pairRatios: normalizePairRatios(regions, ratios),
+            focusLeafId: leafId,
+            ...fullPatch(s, regions),
+          })
+        },
+
+        setPairRatio: (id, ratio) =>
+          set((s) => {
+            const next = clampPairRatio(ratio)
+            if (s.pairRatios[id] === next) return s
+            return { pairRatios: { ...s.pairRatios, [id]: next } }
+          }),
+
+        rememberRoot: (path) =>
+          set((s) => {
+            if (!path) return s
+            if (s.recentRoots[0] === path) return s
+            const next = [path, ...s.recentRoots.filter((row) => row !== path)]
+            return { recentRoots: next.slice(0, RECENT_ROOTS_MAX) }
+          }),
+
         replaceRef: (leafId, from, to) => {
           const s = get()
           const region = regionOfLeaf(s.regions, leafId)
@@ -767,6 +1049,18 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const kind = contentKindOf(to.kind)
           if (kind?.regions && !kind.regions.includes(region)) return
           const tree = s.regions[region]
+          /*
+           * **`from` 可能住在一格复合标签里**(W6-a):两格标签里那格会话被列表
+           * 里点一行换掉时,树上根本没有一格 tab 叫这个名字。那时换的是**那格
+           * 复合内容自己** —— 重新拼一格出来顶在原位,叶与下标一个字不动
+           * (零重挂那条铁律在这里与原位换 ref 是同一句话)。
+           */
+          const inside = composedReplacement(tree, leafId, from, to)
+          if (inside) {
+            const regions = { ...s.regions, [region]: inside }
+            set({ regions, pairRatios: normalizePairRatios(regions, s.pairRatios), focusLeafId: leafId })
+            return
+          }
           const next = T.replaceRef(tree, leafId, from, to)
           if (next === tree) return
           /*
@@ -813,7 +1107,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
                  * 也能补出来,但那是**另一片叶**:原叶被剪掉、新叶换了 id,
                  * 整台聊天区连兄弟一起重挂,而用户只是删了一条会话。
                  */
-                const last = kind?.resident && T.countKind(next, ref.kind) <= 1
+                const last = kind?.resident && countKindDeep(next, ref.kind) <= 1
                 const fresh = last && kind?.resident ? { kind: ref.kind, key: kind.resident.seed() } : null
                 if (fresh && !alive(fresh)) {
                   // 新播的那一格自己也是死的 = 这一种此刻播不出活的来,整格摘掉。
@@ -920,18 +1214,23 @@ export const useWorkbenchStore = create<WorkbenchState>()(
        *      换成会话 id。存量档案里那一格由 `migrateChatToSession` 翻成
        *      `session:<seed>` —— 而 `seed` 此刻恒是保留键,因为「当前会话」
        *      **不跨启动持久化**(理由写在 expose 那一槽的 partialize 上:
-       *      记一个可能已被删掉的 id,换来的是一个指向空气的标题)。
+       *      记一个可能已被删掉的 id,换来的是一个指向空气的标题);
+       * v3 = **W6-a 单叶 + 预览退役**:中央区那棵树按阅读序折成一片叶(比例随
+       *      split 节点一起丢掉),每一片叶身上那格 `preview` 抹掉。两件事一起
+       *      走一遍,判词与幂等 / 引用恒等两条要求写在 `persist-migrate.ts` 上。
+       *
+       * **两级迁移串着跑**(v1 的档案要先翻名字再折叶):`migrate` 里按版本从低
+       * 到高逐级过,不是 `if/else` 二选一 —— 一份 v1 档案跳过 v3 那一遍的话,
+       * 它的中央区会带着一棵多叶树进 merge,而那时 `sanitize` 洗不掉它
+       * (洗形状不是折叶,判词在 `normalizeRegions`)。
        */
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
         if (!persisted || typeof persisted !== 'object') return persisted
-        if (version < 2) {
-          return rewriteRefsInPersisted(
-            persisted as Record<string, unknown>,
-            rewriteLegacyContentRef,
-          )
-        }
-        return persisted
+        let out = persisted as Record<string, unknown>
+        if (version < 2) out = rewriteRefsInPersisted(out, rewriteLegacyContentRef)
+        if (version < 3) out = foldRegionsInPersisted(out, SINGLE_LEAF_REGIONS)
+        return out
       },
       storage: createJSONStorage(() => localStorage),
       /*
@@ -950,6 +1249,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         Object.assign(merged, spreadSpace(merged.byWorkspace, WORKBENCH_PER_SPACE))
         merged.regions = normalizeRegions(merged.regions ?? {})
         merged.hidden = normalizeHidden(merged.hidden ?? [])
+        merged.pairRatios = normalizePairRatios(merged.regions, merged.pairRatios ?? {})
+        merged.recentRoots = normalizeRecentRoots(merged.recentRoots)
         // 瞬态那几格永远从零开始(它们不落盘,但 merge 收到的 current 里有)。
         merged.focusLeafId = null
         merged.panelPath = null
@@ -1007,6 +1308,38 @@ function pruneRegions(regions: Record<string, PaneNode>): Record<string, PaneNod
   }
   if (!out[CENTER_REGION]) out[CENTER_REGION] = T.makeLeaf(nextLeafId())
   return out
+}
+
+/**
+ * **`from` 住在这片叶的某一格复合标签里时,把那一格重新拼出来**(W6-a)。
+ *
+ * 答 `null` = 「它不在任何一格复合标签里」,调用方照旧走普通那条 `tree.replaceRef`。
+ * 拼不出来(`composeContent` 说这两格并不了)也答 `null` —— 那时什么都不做
+ * 比拆掉一格标签更诚实。
+ *
+ * 一个种类名都不出现:摊开与重拼两句都是**种类自述**(`partsOfContent` /
+ * `composeContent`)。
+ */
+function composedReplacement(
+  tree: PaneNode,
+  leafId: string,
+  from: ContentRef,
+  to: ContentRef,
+): PaneNode | null {
+  const leaf = T.findLeaf(tree, leafId)
+  if (!leaf) return null
+  for (const tab of leaf.tabs) {
+    const parts = partsOfContent(tab)
+    if (!parts || parts.length < 2) continue
+    const at = parts.findIndex((part) => sameRef(part, from))
+    if (at < 0) continue
+    const next = [...parts]
+    next[at] = to
+    const made = composeContent(next[0], next[1])
+    if (!made) return null
+    return T.replaceRef(tree, leafId, tab, made)
+  }
+  return null
 }
 
 /** 把一个 refId 从**一棵**树里摘掉(不剪枝 —— 剪不剪由调用方决定)。 */

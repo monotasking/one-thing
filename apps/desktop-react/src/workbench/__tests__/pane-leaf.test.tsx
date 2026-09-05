@@ -5,7 +5,7 @@ import { TopBarLeafActions, TopBarLeafTabs } from '../TopBarTabs'
 import { CENTER_REGION } from '../regions'
 import { registerContentKind, refId, resetContentKinds } from '../kinds'
 import { startWorkbench, useWorkbenchStore } from '../store'
-import { leavesOf } from '../tree'
+import { leavesOf, refIdsOf } from '../tree'
 import { useLiveTitleStore } from '../../stage/live-title'
 import { useStageStore } from '../../stage/store'
 import { focusTree } from '../../focus/registry'
@@ -114,19 +114,23 @@ describe('一格一檐:叶檐就是 tab 条', () => {
     expect(group.getAttribute('data-focus-scope')).toBe('leaf')
   })
 
-  it('W1-b:分屏 → 一片叶一组标签,组的 key = 叶 id(留下来那一组不重挂)', () => {
-    act(() => {
-      store().openRef(doc('a'))
-      store().openRef(doc('b'))
-    })
+  /**
+   * **中央区永远一组标签条**(W6-a 单叶政策,设计 §2.1)。从前这里是
+   * 「分屏 → 一片叶一组标签,留下来那一组不重挂」;单叶之下那一形在中央区不存在了,
+   * 而这一条守它的反面 —— 开多少格、分屏喊多少次,顶栏都只有一组,
+   * 而且**那一组的 DOM 节点自始至终是同一个**(它不该因为标签增减而重挂)。
+   */
+  it('W6-a:中央区永远一组标签条,而且那一组不重挂', () => {
+    act(() => store().openRef(doc('a')))
     renderCenter()
     const before = document.querySelector('[data-topbar-leaf]')!
-    const keptId = before.getAttribute('data-topbar-leaf')
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
+    act(() => {
+      store().openRef(doc('b'))
+      store().splitLeaf(centerLeaves()[0].id, 'row')
+    })
     const groups = Array.from(document.querySelectorAll('[data-topbar-leaf]'))
-    expect(groups).toHaveLength(2)
-    // 同一个 DOM 节点 —— 分屏没把留下来那一组重挂一遍。
-    expect(groups.find((el) => el.getAttribute('data-topbar-leaf') === keptId)).toBe(before)
+    expect(groups).toHaveLength(1)
+    expect(groups[0]).toBe(before)
   })
 
   it('W1-b:动作组只画焦点叶那一份(设计 §2.2「右端是焦点叶的动作组」)', () => {
@@ -135,15 +139,15 @@ describe('一格一檐:叶檐就是 tab 条', () => {
       store().openRef(doc('b'))
     })
     renderCenter()
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
-    const leaves = centerLeaves()
+    const leaf = centerLeaves()[0]
     expect(document.querySelectorAll('[data-pane-actions]')).toHaveLength(1)
-    act(() => store().setFocusLeaf(leaves[0].id))
+    act(() => store().setFocusLeaf(leaf.id))
     expect(document.querySelector('[data-pane-actions]')?.getAttribute('data-pane-actions'))
-      .toBe(leaves[0].id)
-    act(() => store().setFocusLeaf(leaves[1].id))
+      .toBe(leaf.id)
+    // 焦点指到一片**不存在**的叶上时回落到这个区域的第一片 —— 动作组照旧只有一份。
+    act(() => store().setFocusLeaf('nobody'))
     expect(document.querySelector('[data-pane-actions]')?.getAttribute('data-pane-actions'))
-      .toBe(leaves[1].id)
+      .toBe(leaf.id)
   })
 
   it('W1-b:「这一组的家」= 种类自述自己常驻(图标上主题色那一格数据)', () => {
@@ -174,17 +178,13 @@ describe('一格一檐:叶檐就是 tab 条', () => {
   })
 })
 
-describe('tab 上那三格数据', () => {
-  it('预览那一条走 `TabSpec.preview`(斜体那一格由 CSS 画)', () => {
-    act(() => store().openRef(doc('a'), { preview: true }))
-    renderCenter()
-    const leaf = centerLeaves()[0]
-    expect(leaf.preview).toBe('doc:a')
-    // 数据表里那一格翻了,画法归 `ui/Tabs` 的 `.tabPreview`。
-    expect(tabRow('a').className).toMatch(/tabPreview/)
-    act(() => store().pinTab(leaf.id, 1))
-    expect(tabRow('a').className).not.toMatch(/tabPreview/)
-  })
+describe('tab 上那几格数据', () => {
+  /*
+   * **预览那一格已退役**(W6-a):从前这里断言「单击开出来的那条是斜体的
+   * `TabSpec.preview`,按『保留』之后不再是」。单击与 ↵ 走同一条路之后,屏幕上
+   * 再没有「我只是浏览一下」这一态可画 —— 那条断言连同 `.tabPreview` 一起删。
+   * 它的反面(连点三次 = 三格)由 `tree.test` 与 `store.test` 各钉一条。
+   */
 
   it('未保存丸读 `live-title` 那一格(内容自己发布,活的盖静的)', () => {
     act(() => store().openRef(doc('a')))
@@ -276,29 +276,25 @@ describe('零重挂:分屏 / 并 tab / 关叶不重挂兄弟叶', () => {
     expect(screen.getByTestId('doc-body:a')).toBe(before)
   })
 
-  it('分屏:留在原叶的那些内容不重挂', () => {
-    act(() => {
-      store().openRef(doc('a'))
-      store().openRef(doc('b'))
-    })
+  it('开一格新标签:别的标签的内容不重挂', () => {
+    act(() => store().openRef(doc('a')))
     renderCenter()
     const kept = screen.getByTestId('doc-body:a')
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
-    expect(leavesOf(store().regions[CENTER_REGION])).toHaveLength(2)
+    act(() => store().openRef(doc('b')))
+    expect(leavesOf(store().regions[CENTER_REGION])).toHaveLength(1)
     expect(screen.getByTestId('doc-body:a')).toBe(kept)
   })
 
-  it('关掉一整片叶:兄弟叶里的内容不重挂', async () => {
+  it('关掉一格标签:别的标签的内容不重挂', async () => {
     act(() => {
       store().openRef(doc('a'))
       store().openRef(doc('b'))
     })
     renderCenter()
-    act(() => store().splitLeaf(centerLeaves()[0].id, 'row'))
     const sibling = screen.getByTestId('doc-body:a')
-    const fresh = centerLeaves()[1]
-    act(() => store().closeTab(fresh.id, 0))
-    await waitFor(() => expect(leavesOf(store().regions[CENTER_REGION])).toHaveLength(1))
+    const leaf = centerLeaves()[0]
+    act(() => store().closeTab(leaf.id, leaf.tabs.length - 1))
+    await waitFor(() => expect(refIdsOf(store().regions[CENTER_REGION])).not.toContain('doc:b'))
     expect(screen.getByTestId('doc-body:a')).toBe(sibling)
   })
 })

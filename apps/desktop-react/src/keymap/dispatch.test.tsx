@@ -84,13 +84,19 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
    * 量这一句要挑一块**自己不抢焦点**的面。检索面不行:它自己声明了
    * `activateOnMount`(⌘P 敲出来就打字是它的产品语义),所以就算把规则 2 那一句
    * 删掉它照样入焦 —— 用它当判据等于量了个寂寞(第一版就栽在这儿,反证不红)。
-   * 文件树没有那一格,所以它能分辨「是谁把焦点送进去的」。
+   * 改动面(`diff`)没有那一格,所以它能分辨「是谁把焦点送进去的」。
+   *
+   * **W6-a 换了主角**:从前这里用的是文件树(`toggle:files`)。「目录」那块瓦
+   * 改成**启动瓦**之后,那条命令开出来的不是一块面而是一格内容
+   * (`files-root:<路径>`,住在拼贴树里),形态机那张 `placements` 表上根本没有
+   * 它的名字 —— 判据因此换到另一块同样「自己不抢焦点」的普通瓦上。
+   * 被测的那句话一个字没改:**键盘开一块面 → 焦点进那块面**。
    */
   it('**用键盘**从 Dock 开一块面 → 焦点进那块面(规则 2)', () => {
     render(<AppShell />)
-    act(() => useKeymapStore.setState({ overrides: { 'toggle:files': { meta: true, key: 'k' } } }))
+    act(() => useKeymapStore.setState({ overrides: { 'toggle:diff': { meta: true, key: 'k' } } }))
     act(() => void fireEvent.keyDown(document.body, { key: 'k', metaKey: true }))
-    expect(useStageStore.getState().placements.files).toBeTruthy()
+    expect(useStageStore.getState().placements.diff).toBeTruthy()
     /*
      * 反证:把 `requestFocusOnOpen(item)` 那一句删掉 → 焦点留在 composer 上,
      * 「⌘K 敲出来键盘就在那块面里」当场不成立。
@@ -116,9 +122,9 @@ describe('规则 1 / 2:焦点跟着「打开」走(09-03 R2)', () => {
      *  · 焦点真的落在装着这块面的那一格 tab 层里(DOM 事实)。
      * 反证不变:把 `requestFocusOnOpen(item)` 删掉 → 焦点留在 composer 上,两句都红。
      */
-    expect(focusTree.isOwnerActive('files')).toBe(true)
+    expect(focusTree.isOwnerActive('diff')).toBe(true)
     expect(
-      document.querySelector('[data-pane-tab="panel:files"]')?.contains(document.activeElement),
+      document.querySelector('[data-pane-tab="panel:diff"]')?.contains(document.activeElement),
     ).toBe(true)
   })
 
@@ -182,7 +188,7 @@ describe('设置页里的录制', () => {
 
   it('录制态吃掉这一下按键:录 ⌘P 的时候检索面板不会真的弹出来,而是报冲突', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「文件」设置快捷键')
+    const slot = screen.getByLabelText('为「目录」设置快捷键')
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'p', metaKey: true }))
 
@@ -194,7 +200,7 @@ describe('设置页里的录制', () => {
 
   it('按一个没人占的组合就绑上,行上随即出现「恢复默认」', () => {
     openSettings()
-    const slot = screen.getByLabelText('为「文件」设置快捷键')
+    const slot = screen.getByLabelText('为「目录」设置快捷键')
     fireEvent.click(slot)
     act(() => void fireEvent.keyDown(slot, { key: 'f', metaKey: true, shiftKey: true }))
 
@@ -203,6 +209,6 @@ describe('设置页里的录制', () => {
       meta: true,
       shift: true,
     })
-    expect(screen.getByLabelText('恢复「文件」的默认组合')).toBeTruthy()
+    expect(screen.getByLabelText('恢复「目录」的默认组合')).toBeTruthy()
   })
 })

@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import { ErrorBoundary } from '../components/ErrorBoundary'
 import { DEFAULT_PANEL_VISIBILITY, PanelVisibilityContext } from './visibility'
 import type { PanelVisibility } from './visibility'
-import { FilesPanel } from './FilesPanel'
 import { DiffMock } from './DiffMock'
 import { BrowserMock } from './BrowserMock'
 import { TerminalMock } from './TerminalMock'
@@ -31,7 +30,13 @@ import {
  * `src/content/` 只是因为它们都是「内容」,不是因为它们同一种东西。
  */
 const RENDERERS: Record<string, () => ReactNode> = {
-  files: FilesPanel,
+  /*
+   * **`files` 那一行撤了**(W6-a,设计 `workbench-tabs-2026-09.md` §3)。
+   * 文件面板不再是「一块面」,而是**一族**面:一个目录一份
+   * `files-root:<绝对路径>`(`content/kinds/files-root.tsx`)。Dock 上那块瓦
+   * 因此从「一块面」降格成**启动瓦**(`stage/launchers.ts` + `content/files-launcher.tsx`):
+   * 点它 = 开当前会话那个目录,右键 = 最近开过的那几个 + 「打开目录…」。
+   */
   diff: DiffMock,
   browser: BrowserMock,
   terminal: TerminalMock,

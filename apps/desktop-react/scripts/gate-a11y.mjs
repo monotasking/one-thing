@@ -826,6 +826,26 @@ async function main() {
       await waitFor('查看器就位', () =>
         page.evaluate(() => Boolean(document.querySelector('[data-testid="file-viewer"]'))),
       )
+      /*
+       * **切到「面板内」那一档**(W6-a):出厂档从 `panel` 改成了 `stage`
+       * (设计 `workbench-tabs-2026-09.md` §9)。下面那一组扫的正是**面板内那一格
+       * 的身份带**,所以要显式切过去 —— 那一档没有退役,它只是不再是出厂那一格。
+       */
+      await page.evaluate((sel) => {
+        const row = document.querySelector(sel)
+        row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
+      }, fileRow)
+      await delay(400)
+      await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+        const inPanel = items.find((el) => /面板内|This panel/.test(el.textContent ?? ''))
+        if (inPanel instanceof HTMLElement) inPanel.click()
+      })
+      await waitFor('分栏里那份查看器就位', () =>
+        page.evaluate(() =>
+          Boolean(document.querySelector('[data-testid="files-panel"] [data-testid="file-viewer"]')),
+        ),
+      )
       await settle(page, '文件查看器')
       await scanAxe(page, '文件查看器', '[data-testid="file-viewer"]')
       /*
@@ -962,6 +982,74 @@ async function main() {
            *    空串丢掉,所以这一条同时也钉住了「传进去的不是空串」)。
            * `aria-grabbed` 已废弃,这一屏一个字都不问它(裁定 9 末句)。
            */
+          /*
+           * ── [7d/10] **两格并排那一屏**(W6-a,设计 §6 / §7)────────────────
+           *
+           * 它进这道门的理由与叶檐那一屏逐字相同:**外壳那一屏看不见它**,
+           * 而它自带三件新语义 —— 两格各是一格**有名字的 region**(格头那条不是
+           * tablist,所以那块地必须自己说得出是什么)、格头上一颗 `ui/IconButton`
+           * 「拆开」、中间一条 `ui/Splitter`(APG 的 window splitter:
+           * role=separator + aria-valuenow/min/max + 可聚焦)。
+           */
+          console.log('\n[7d/10] 两格并排:格头 region 有名 + 拆开钮有 label + 分隔杆报 APG')
+          const paired = await page.evaluate(() => {
+            const btn = document.querySelector('[data-testid^="pane-split:"]')
+            if (btn instanceof HTMLElement) btn.click()
+            return true
+          })
+          await delay(400)
+          const joined = await page.evaluate(() => {
+            const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+            const joins = items.filter((el) => /二合一|Join with the tab/.test(el.textContent ?? ''))
+            /*
+             * **挑一条按得动的**:两条里至少有一条在场(活动格在两端时另一条禁灰)。
+             * `ui/Menu` 走的是**原生 `disabled`**(判词在那只文件的 `MenuItem` 上),
+             * 所以判据是那一格属性,不是 `aria-disabled`。
+             */
+            const join = joins.find((el) => !(el instanceof HTMLButtonElement && el.disabled))
+            if (!(join instanceof HTMLElement)) {
+              return { ok: false, seen: joins.map((el) => (el.textContent ?? '').trim()) }
+            }
+            join.click()
+            return { ok: true }
+          })
+          await delay(500)
+          if (!paired || !joined.ok) {
+            console.log(`  · 跳过两格并排那一屏:菜单里没有可用的二合一项 ${JSON.stringify(joined)}`)
+          } else {
+            const pane = await page.evaluate(() => {
+              const sides = Array.from(document.querySelectorAll('[data-pair-side]'))
+              const splitter = document.querySelector('[data-testid^="pair-splitter:"]')
+              const unpair = document.querySelector('[data-testid^="pair-unpair:"]')
+              return {
+                count: sides.length,
+                named: sides.every((el) => (el.getAttribute('aria-label') ?? '').trim().length > 0),
+                names: sides.map((el) => el.getAttribute('aria-label') ?? ''),
+                role: splitter?.getAttribute('role') ?? null,
+                valuenow: Number(splitter?.getAttribute('aria-valuenow')),
+                tabIndex: splitter instanceof HTMLElement ? splitter.tabIndex : -2,
+                unpairLabel: unpair?.getAttribute('aria-label') ?? '',
+              }
+            })
+            assert(pane.count === 2, `屏幕上恰有两格(实测 ${pane.count})`)
+            assert(pane.named, `每一格都是一格**有名字**的 region(实测 ${pane.names.join(' / ')})`)
+            assert(pane.role === 'separator', `分隔杆报 role=separator(实测 ${pane.role})`)
+            assert(Number.isFinite(pane.valuenow), `它报得出当下比例(${pane.valuenow})`)
+            assert(pane.tabIndex === 0, '它可聚焦(APG:可调的 separator 进 Tab 序)')
+            assert(
+              pane.unpairLabel.trim().length > 0,
+              `格头上那颗「拆开」说得出自己是什么(实测「${pane.unpairLabel}」)`,
+            )
+            await settle(page, '两格并排')
+            await scanAxe(page, '两格并排', '[data-pane-region="center"]')
+            // 收尾:拆回去,别把这一态留给下一屏。
+            await page.evaluate(() => {
+              const btn = document.querySelector('[data-testid^="pair-unpair:"]')
+              if (btn instanceof HTMLElement) btn.click()
+            })
+            await delay(400)
+          }
+
           console.log('\n[7c/10] 拖拽的键盘等价:叶动作组那张菜单 + 落定播报')
           const splitBtn = await page.evaluate(() => {
             const btn = document.querySelector('[data-testid^="pane-split:"]')
@@ -983,9 +1071,16 @@ async function main() {
             })
             assert(menu.open, '叶动作组那张菜单开得出来')
             assert(menu.named, '菜单里每一项都说得出名字(零空项)')
+            /*
+             * **W6-a:中央区那张表是十档,不是十一档**(设计
+             * `workbench-tabs-2026-09.md` §7 那张键盘等价表)。中央区收成一条标签条
+             * 之后「分屏 ▸」四向在那里不再出现(它们没有落点),换上来的是
+             * **二合一 / 拆开**三项:3 + 左移右移 2 + 移到架子四边 4 + 撕成浮窗 1 = 10。
+             * 架子与浮窗那两处照旧有分屏(设计 §12),它们的菜单是十四档。
+             */
             assert(
-              menu.texts.length >= 11,
-              `十一档全在:分屏四向 + 左移 / 右移 + 移到架子四边 + 撕成浮窗(实测 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
+              menu.texts.length >= 10,
+              `十档全在:二合一三项 + 左移 / 右移 + 移到架子四边 + 撕成浮窗(实测 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
             )
             /*
              * **条内换序的键盘等价**(W3-b 裁定 8)。它与前面九档同一条判据:
@@ -1021,6 +1116,7 @@ async function main() {
               )
               assert(spoken.trim().length > 0, `落定之后播报口里有话(实测「${spoken.trim()}」)`)
             }
+
           }
         }
       }
@@ -1057,10 +1153,37 @@ async function main() {
     await delay(500)
 
     console.log('\n[8/10] 会话总览(树形列表):开一块面再扫一次 + Tab 序走查')
-    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
-    await waitFor('总览画出会话行', () =>
-      page.evaluate(() => document.querySelectorAll('[data-session-id]').length > 0),
-    )
+    /*
+     * **先看它在不在,再决定点不点**(W6-a)。会话总览的出厂摆法从浮窗改成了
+     * 左架子(设计 §8),而钉在架子上的面进一条会话**不会收回 Dock**
+     * (`expose/store` 那条「钉着的不收」)—— 于是它此刻多半还开着,再点一下
+     * 那块瓦反而是把整条架子收起来。判据因此从「点开它」改成「让它开着」。
+     */
+    const rowsShown = () =>
+      page.evaluate(() => document.querySelectorAll('[data-session-id]').length > 0)
+    /*
+     * **这一屏要它是一扇浮窗**:下面三条走查(摆出来时焦点落在搜索条上、Tab 序、
+     * 「Esc 收回它」)量的是**一块面被打开**时的形,而钉在架子上的面既不抢焦点、
+     * Esc 也收不掉它(架子是常驻家具)。W6-a 把它的出厂摆法改成了左架子(§8),
+     * 所以这里显式选一次「浮窗」——用户真走的那条路(右键 → 打开方式)。
+     */
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-sessions"]')
+      if (tile instanceof HTMLElement) {
+        tile.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
+      }
+    })
+    await delay(400)
+    await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+      const float = items.find((el) => /^(Float|浮窗)$/.test((el.textContent ?? '').trim()))
+      if (float instanceof HTMLElement) float.click()
+    })
+    await delay(600)
+    if (!(await rowsShown())) {
+      await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+    }
+    await waitFor('总览画出会话行', rowsShown)
     await settle(page, '会话总览')
     await scanAxe(page, '会话总览', '[data-focus-scope="expose"]')
     await checkExposeTabOrder(page)

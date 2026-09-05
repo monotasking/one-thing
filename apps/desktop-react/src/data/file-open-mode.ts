@@ -126,22 +126,36 @@ interface OpenModeFurniture {
   mode: FileOpenMode
 }
 
+/**
+ * **出厂档 = 主区域新标签**(W6-a,设计 `workbench-tabs-2026-09.md` §9 那张落差表)。
+ *
+ * W1 起它是 `panel`(文件面板自己那条分栏)。真机复现抓到的第一条读数就是它:
+ * 出厂 `panel` 档**根本不进树** —— 用户单击一个文件,标签条上什么都不出现,
+ * 而他要的是「files 可以打开多个」。`panel` 这一档保留(它仍是一种合法摆法,
+ * 设计 §2.1 明写),只是不再是出厂那一格。
+ */
+export const FACTORY_FILE_OPEN_MODE: FileOpenMode = 'stage'
+
 export const OPEN_MODE_PER_SPACE: PerSpaceSpec<FileOpenModeStore, OpenModeFurniture> = {
   pick: (s) => ({ mode: s.mode }),
-  factory: () => ({ mode: 'panel' }),
+  factory: () => ({ mode: FACTORY_FILE_OPEN_MODE }),
 }
 
-/** 认不出的档一律落回 panel(唯一一定兑现得了的一档)。账上每一格都过它。 */
+/**
+ * 认不出的档一律落回出厂那一格。账上每一格都过它。
+ * (W6-a:从前它落回 `panel` —— 「唯一一定兑现得了的一档」那句话在七档全通之后
+ * 早就不成立了,而落回一个**不进树**的档正是那条真机读数的第二个来源。)
+ */
 function clampMode(value: unknown): FileOpenMode {
   return typeof value === 'string' && (FILE_OPEN_MODES as readonly string[]).includes(value)
     ? (value as FileOpenMode)
-    : 'panel'
+    : FACTORY_FILE_OPEN_MODE
 }
 
 export const useFileOpenMode = create<FileOpenModeStore>()(
   persist(
     (set) => ({
-      mode: 'panel',
+      mode: FACTORY_FILE_OPEN_MODE,
       byWorkspace: {},
       setMode: (mode) => set({ mode }),
     }),

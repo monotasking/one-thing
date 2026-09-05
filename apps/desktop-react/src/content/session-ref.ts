@@ -1,5 +1,5 @@
 import { CENTER_REGION } from '../workbench/regions'
-import { refId } from '../workbench/kinds'
+import { flattenContent, refId } from '../workbench/kinds'
 import { findLeaf, leavesOf } from '../workbench/tree'
 import type { ContentRef } from '../workbench/kinds'
 import type { PaneLeafNode, PaneNode } from '../workbench/tree'
@@ -58,9 +58,24 @@ export function sessionIdOfRef(ref: ContentRef): string | null {
  * `session-open`(答那一格 ref,原位换要用它)读的是同一句话。
  */
 export function leafSessionTabOf(leaf: PaneLeafNode): ContentRef | null {
+  /*
+   * **看进两格标签里**(W6-a):一格 `pair(会话, 文件)` 标签装着的那条会话当然是
+   * 「这片叶此刻代表哪条会话」的答案 —— 输入框跟着有会话的那一格(设计 §6)。
+   * 摊开那一句是**种类自述**(`flattenContent`),所以这只文件照旧只认识「会话」
+   * 这一种,不认识「两格」这个概念。
+   *
+   * 答的是**那一格会话本身**(不是装着它的那格标签):调用方拿它去
+   * `store.replaceRef` 换会话,而那一口自己会认出「它住在一格复合标签里」并
+   * 重新拼一格出来(判词在 `workbench/store.composedReplacement` 上)。
+   */
   const active = leaf.tabs[leaf.active]
-  if (active && sessionIdOfRef(active) !== null) return active
-  return leaf.tabs.find((tab) => sessionIdOfRef(tab) !== null) ?? null
+  const inActive = active ? flattenContent(active).find((r) => sessionIdOfRef(r) !== null) : undefined
+  if (inActive) return inActive
+  for (const tab of leaf.tabs) {
+    const found = flattenContent(tab).find((r) => sessionIdOfRef(r) !== null)
+    if (found) return found
+  }
+  return null
 }
 
 /** 这片叶此刻代表哪条会话(同上那条梯子,答的是 id)。 */
@@ -125,18 +140,18 @@ export function openSessionIdsIn(
   hidden: readonly { ref: ContentRef }[],
 ): string[] {
   const out = new Set<string>()
-  for (const tree of Object.values(regions)) {
-    for (const leaf of leavesOf(tree)) {
-      for (const tab of leaf.tabs) {
-        const id = sessionIdOfRef(tab)
-        if (id) out.add(id)
-      }
+  const take = (ref: ContentRef) => {
+    // **摊开复合的那一格**(W6-a):两格标签里那条会话照样在场,照样该收流。
+    // 少了这一句,把一条会话并进两格标签 = 它的数据机器当场被松手。
+    for (const part of flattenContent(ref)) {
+      const id = sessionIdOfRef(part)
+      if (id) out.add(id)
     }
   }
-  for (const entry of hidden) {
-    const id = sessionIdOfRef(entry.ref)
-    if (id) out.add(id)
+  for (const tree of Object.values(regions)) {
+    for (const leaf of leavesOf(tree)) for (const tab of leaf.tabs) take(tab)
   }
+  for (const entry of hidden) take(entry.ref)
   return [...out]
 }
 
@@ -147,6 +162,14 @@ export function openSessionIdsIn(
  * 保留键恒活(它不是一条会话,是「还没绑」)。
  */
 export function sessionRefAlive(ref: ContentRef, liveIds: ReadonlySet<string>): boolean {
+  /*
+   * **复合那一格:装着的每一格都活着才算活**(W6-a)。一格 `pair` 里的会话被删掉
+   * 之后整格标签摘掉 —— 另一半跟着走,而那是**留账**:更好的做法是把死掉的那半
+   * 拆出去、留下活的那半,但拆开这件事发生在清洗那一拍里,而清洗此刻是一次
+   * 「摘 / 原位换」的纯集合动作。W6-c 再谈(交卷报的留账里有这一条)。
+   */
+  const parts = flattenContent(ref)
+  if (parts.length > 1) return parts.every((part) => sessionRefAlive(part, liveIds))
   const id = sessionIdOfRef(ref)
   if (id === null) return true
   if (id === '') return true

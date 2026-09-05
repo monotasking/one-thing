@@ -26,8 +26,6 @@ export interface PaneLeafNode {
   tabs: ContentRef[]
   /** 活动 tab 的下标。空叶时是 0(没有意义,但不留 `null` 让每个读者判一次)。 */
   active: number
-  /** 这片叶里那个**预览 tab** 的 refId(§2.1);null = 没有预览 tab。 */
-  preview: ContentRefId | null
 }
 
 export interface PaneSplitNode {
@@ -52,13 +50,8 @@ export interface PaneLocation {
 
 export const DEFAULT_SPLIT_RATIO = 50
 
-export function makeLeaf(
-  id: string,
-  tabs: ContentRef[] = [],
-  active = 0,
-  preview: ContentRefId | null = null,
-): PaneLeafNode {
-  return { kind: 'leaf', id, tabs, active, preview }
+export function makeLeaf(id: string, tabs: ContentRef[] = [], active = 0): PaneLeafNode {
+  return { kind: 'leaf', id, tabs, active }
 }
 
 /* ── 查询 ─────────────────────────────────────────────────────────────── */
@@ -141,31 +134,27 @@ function clampActive(tabs: readonly ContentRef[], active: number): number {
 /**
  * 插一个 tab 进某片叶。
  *
- * `preview: true` = **预览 tab**(§2.1 拍点 ①):一片叶至多一个 —— 已经有一个的话
- * **就地替换**它(不是再插一个),这就是「浏览一棵树时单击十个文件不该留下十个 tab」
- * 那条判据的全部实现。已经开着同一个 ref 时不重复插,只激活。
+ * ── 预览 tab 已退役(W6-a,设计 `workbench-tabs-2026-09.md` §3)────────────
+ * W1 这里有第三条支路:`preview: true` 时**就地替换**那片叶里既有的预览格。
+ * 用户 09-05 在真机上明确否决了这条语义(「files 本身应该是一个可以打开多个的
+ * 存在」),而真机复现同时抓到它带着一个 bug:已经在这片叶里的 ref 提前返回,
+ * `preview` 那一格于是**永远清不掉** —— ↵ 想把一个预览格固定下来时什么都没发生。
+ * 整条支路连同 `PaneLeafNode.preview` / `pinTab` 一起删掉,那个 bug 随之消失,
+ * 而下面这句「已经在这片叶里 = 只激活」剩下来的正是它本来该有的语义。
  */
 export function insertTab(
   node: PaneNode,
   leafId: string,
   ref: ContentRef,
-  opts: { preview?: boolean; at?: number; activate?: boolean } = {},
+  opts: { at?: number; activate?: boolean } = {},
 ): PaneNode {
-  const { preview = false, at, activate = true } = opts
+  const { at, activate = true } = opts
   return mapLeaf(node, leafId, (leaf) => {
     const already = indexOfRef(leaf, ref)
     if (already >= 0) {
-      // 已经在这片叶里 —— 只激活。**预览格不动**:再点一次同一个预览 tab
-      // 不该把它固定下来(固定要靠 ↵ / 编辑 / 「保留」那三条明确的手势)。
+      // 已经在这片叶里 —— 只激活(不重复插:一个内容在一个区域里只出现一次)。
       if (leaf.active === already) return leaf
       return { ...leaf, active: already }
-    }
-    const previewAt = leaf.preview === null ? -1 : leaf.tabs.findIndex((t) => refId(t) === leaf.preview)
-    if (preview && previewAt >= 0) {
-      // 替换既有的预览 tab —— 位置不变,于是屏幕上那一格不跳。
-      const tabs = [...leaf.tabs]
-      tabs[previewAt] = ref
-      return { ...leaf, tabs, preview: refId(ref), active: activate ? previewAt : clampActive(tabs, leaf.active) }
     }
     const index = at === undefined ? leaf.tabs.length : Math.min(Math.max(0, at), leaf.tabs.length)
     const tabs = [...leaf.tabs]
@@ -177,10 +166,7 @@ export function insertTab(
     const active = activate
       ? index
       : clampActive(tabs, leaf.active >= index ? leaf.active + 1 : leaf.active)
-    const nextPreview = preview
-      ? refId(ref)
-      : leaf.preview
-    return { ...leaf, tabs, active, preview: nextPreview }
+    return { ...leaf, tabs, active }
   })
 }
 
@@ -188,7 +174,6 @@ export function insertTab(
 export function removeTab(node: PaneNode, leafId: string, index: number): PaneNode {
   return mapLeaf(node, leafId, (leaf) => {
     if (index < 0 || index >= leaf.tabs.length) return leaf
-    const gone = leaf.tabs[index]
     const tabs = leaf.tabs.filter((_, i) => i !== index)
     /*
      * 关掉活动那一条之后停在**同一个下标**(也就是右边那一条顶上来),
@@ -196,14 +181,13 @@ export function removeTab(node: PaneNode, leafId: string, index: number): PaneNo
      * 活动跟着往前挪一格,屏幕上不换内容。
      */
     const active = clampActive(tabs, leaf.active > index ? leaf.active - 1 : leaf.active)
-    const preview = leaf.preview !== null && leaf.preview === refId(gone) ? null : leaf.preview
-    return { ...leaf, tabs, active, preview }
+    return { ...leaf, tabs, active }
   })
 }
 
 /**
- * **原位换一格 ref**(W5-b 裁定 1)。同一片叶、同一个下标、活动格不动、
- * 预览那一格跟着改名 —— 换的只是「这一格代表谁」。
+ * **原位换一格 ref**(W5-b 裁定 1)。同一片叶、同一个下标、活动格不动 ——
+ * 换的只是「这一格代表谁」。
  *
  * ── 它为什么不是「摘一格 + 插一格」的语法糖 ──────────────────────────────
  * 两条,都可见:
@@ -228,25 +212,14 @@ export function replaceRef(
     if (at < 0) return leaf
     if (sameRef(from, to)) return leaf
     const already = indexOfRef(leaf, to)
-    const wasPreview = leaf.preview !== null && leaf.preview === refId(from)
     if (already >= 0) {
       const tabs = leaf.tabs.filter((_, i) => i !== at)
       const active = clampActive(tabs, already > at ? already - 1 : already)
-      const preview = wasPreview ? null : leaf.preview
-      return { ...leaf, tabs, active, preview }
+      return { ...leaf, tabs, active }
     }
     const tabs = [...leaf.tabs]
     tabs[at] = to
-    return { ...leaf, tabs, preview: wasPreview ? refId(to) : leaf.preview }
-  })
-}
-
-/** 固定预览 tab(§2.1 的「保留」)。不是预览的就是恒等变换。 */
-export function pinTab(node: PaneNode, leafId: string, index: number): PaneNode {
-  return mapLeaf(node, leafId, (leaf) => {
-    const tab = leaf.tabs[index]
-    if (!tab || leaf.preview === null || leaf.preview !== refId(tab)) return leaf
-    return { ...leaf, preview: null }
+    return { ...leaf, tabs }
   })
 }
 
@@ -267,14 +240,13 @@ export function moveTab(
   const source = findLeaf(node, from.leafId)
   const ref = source?.tabs[from.index]
   if (!ref) return node
-  const pinned = source.preview !== null && source.preview === refId(ref)
   const lifted = removeTab(node, from.leafId, from.index)
   /*
    * 同一片叶里搬:摘掉之后目标下标要跟着往前收一格(经典的 splice 双动作坑)。
    */
   const at =
     to.at !== undefined && from.leafId === to.leafId && to.at > from.index ? to.at - 1 : to.at
-  return insertTab(lifted, to.leafId, ref, { at, preview: pinned, activate: true })
+  return insertTab(lifted, to.leafId, ref, { at, activate: true })
 }
 
 /**
@@ -301,7 +273,7 @@ export function splitLeaf(
   const kept = findLeaf(trimmed, leafId)
   // 搬走之后原叶空了 = 这一次分屏没有意义(等于什么都没做)。
   if (!kept || kept.tabs.length === 0) return node
-  const fresh = makeLeaf(newLeafId, [moved], 0, null)
+  const fresh = makeLeaf(newLeafId, [moved], 0)
   const split: PaneSplitNode = {
     kind: 'split',
     id: newSplitId,
@@ -311,6 +283,30 @@ export function splitLeaf(
     b: opts.before ? kept : fresh,
   }
   return replaceLeaf(trimmed, leafId, split)
+}
+
+/**
+ * **把一棵树折成一片叶**(W6-a,设计 `workbench-tabs-2026-09.md` §2.1 / §10)。
+ *
+ * 中央区不再是任意深度的拼贴树,而是**一条标签列表**;这只纯函数就是那条政策
+ * 的全部算术:所有叶按**阅读序**(`leavesOf` 的序)把标签接成一条,叶 id 取
+ * 第一片的(于是「留下来的那一片不重挂」照旧成立),活动格取第一片的活动格,
+ * **比例整个丢掉**(树上不再有 split 节点,`--pr-*` 那几格变量自然无人再读)。
+ *
+ * ── 它为什么在这里,而不是在 store 里 ────────────────────────────────────
+ * 「折成一片」是一句关于**树形**的话,与区域无关;哪个区域要执行这条政策是
+ * store 的事(今天只有中央区)。放在这里,迁移那一遍(`persist-migrate`)与
+ * 运行期那一遍(`normalizeRegions`)读的是同一句算术 —— 两处各写一遍的下场
+ * 是存量档案折出来的顺序与运行期折出来的不一样。
+ *
+ * **引用恒等**:本来就是一片叶时原样交回(它是每一次 normalize 都要跑的一句)。
+ */
+export function foldLeaves(node: PaneNode): PaneLeafNode {
+  if (node.kind === 'leaf') return node
+  const leaves = leavesOf(node)
+  const first = leaves[0]
+  const tabs = leaves.flatMap((leaf) => leaf.tabs)
+  return { kind: 'leaf', id: first.id, tabs, active: clampActive(tabs, first.active) }
 }
 
 export function setRatio(node: PaneNode, splitId: string, ratio: number): PaneNode {
@@ -369,8 +365,7 @@ export interface SanitizeOptions {
  *    点不开的标签。剔掉整格是唯一诚实的处理。
  *  ② **单例重复**:两片叶里各有一个 `panel:files` —— 单例的定义就是不许这样,
  *    留第一格。
- *  ③ **结构烂了**:活动下标越界、预览指着一个已经不在的 refId、空叶、
- *    只剩一支的 split、ratio 是 NaN。
+ *  ③ **结构烂了**:活动下标越界、空叶、只剩一支的 split、ratio 是 NaN。
  *  ④ **背后那个东西没了**(W5-b):一条被删掉的会话在树上留着一格 tab ——
  *    只有递了 `alive` 的那一拍问这一句(判词写在 `SanitizeOptions.alive` 上)。
  *
@@ -396,12 +391,8 @@ function scrub(node: PaneNode, opts: SanitizeOptions, seen: Set<ContentRefId>): 
       return true
     })
     const active = clampActive(tabs, node.active)
-    const preview =
-      node.preview !== null && tabs.some((tab) => refId(tab) === node.preview) ? node.preview : null
-    if (tabs.length === node.tabs.length && active === node.active && preview === node.preview) {
-      return node
-    }
-    return { ...node, tabs, active, preview }
+    if (tabs.length === node.tabs.length && active === node.active) return node
+    return { ...node, tabs, active }
   }
   const a = scrub(node.a, opts, seen)
   const b = scrub(node.b, opts, seen)
@@ -418,12 +409,17 @@ function isPaneNode(value: unknown): value is PaneNode {
   const node = value as Partial<PaneNode>
   if (node.kind === 'leaf') {
     const leaf = value as Partial<PaneLeafNode>
+    /*
+     * 存量档案里那一格 `preview` **不判也不留**:形状闸只问「今天这只类型要的
+     * 那几格在不在」,多出来的键由 persist v3 的迁移抹掉(判词在
+     * `persist-migrate.ts`)。在这里判它等于让一份 v2 档案在迁移之前就被判非法,
+     * 而 merge 里这一遍恰恰跑在迁移之后 —— 那时它已经不在了。
+     */
     return (
       typeof leaf.id === 'string'
       && Array.isArray(leaf.tabs)
       && leaf.tabs.every(isContentRef)
       && typeof leaf.active === 'number'
-      && (leaf.preview === null || typeof leaf.preview === 'string')
     )
   }
   if (node.kind === 'split') {

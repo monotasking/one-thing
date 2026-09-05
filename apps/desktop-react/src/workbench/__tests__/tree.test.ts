@@ -24,8 +24,8 @@ const C = ref('k', 'c')
 /** 认得所有种类、都不是单例 —— 大部分用例不关心这两格。 */
 const OPEN: T.SanitizeOptions = { known: () => true, singleton: () => false }
 
-function leaf(tabs: ContentRef[] = [], active = 0, preview: string | null = null) {
-  return T.makeLeaf('L1', tabs, active, preview)
+function leaf(tabs: ContentRef[] = [], active = 0) {
+  return T.makeLeaf('L1', tabs, active)
 }
 
 describe('插一格', () => {
@@ -48,15 +48,27 @@ describe('插一格', () => {
     expect(T.insertTab(before, 'L1', B)).toBe(before)
   })
 
-  it('预览:一片叶至多一个 —— 第二次单击**就地替换**,位置不变', () => {
-    const first = T.insertTab(leaf([A]), 'L1', B, { preview: true })
-    expect(T.findLeaf(first, 'L1')!.preview).toBe('k:b')
-    const second = T.insertTab(first, 'L1', C, { preview: true })
-    const l = T.findLeaf(second, 'L1')!
-    // 十个文件十个 tab 那条病的反面:仍然只有两格,预览那一格换了内容。
-    expect(l.tabs.map(refId)).toEqual(['k:a', 'k:c'])
-    expect(l.preview).toBe('k:c')
-    expect(l.active).toBe(1)
+  /*
+   * **预览 tab 退役之后:连点三次 = 三格**(W6-a,设计 §3;用户 09-05 的原话
+   * 「files 本身应该是一个可以打开多个的存在」)。这一条正是从前那条
+   * 「一片叶至多一个预览格」的反面 —— 它是那一档退役的反证:preview 分支若被
+   * 留下来,这一条当场红(三格会塌成两格)。
+   */
+  it('连着插三格 = 三格标签,活动格是最后那一个', () => {
+    const one = T.insertTab(leaf(), 'L1', A)
+    const two = T.insertTab(one, 'L1', B)
+    const three = T.insertTab(two, 'L1', C)
+    const l = T.findLeaf(three, 'L1')!
+    expect(l.tabs.map(refId)).toEqual(['k:a', 'k:b', 'k:c'])
+    expect(l.active).toBe(2)
+  })
+
+  it('第四次插一格**已经开着的** = 只切过去,不再插', () => {
+    const three = T.insertTab(T.insertTab(T.insertTab(leaf(), 'L1', A), 'L1', B), 'L1', C)
+    const again = T.insertTab(three, 'L1', A)
+    const l = T.findLeaf(again, 'L1')!
+    expect(l.tabs.map(refId)).toEqual(['k:a', 'k:b', 'k:c'])
+    expect(l.active).toBe(0)
   })
 
   it('插在活动 tab **之前**时活动下标跟着挪(下标制 tab 条最容易漏的一格)', () => {
@@ -85,21 +97,6 @@ describe('摘一格', () => {
     expect(refId(l.tabs[l.active])).toBe('k:c')
   })
 
-  it('摘掉的正好是预览那一格 → 预览位清空', () => {
-    const before = leaf([A, B], 1, 'k:b')
-    expect(T.findLeaf(T.removeTab(before, 'L1', 1), 'L1')!.preview).toBeNull()
-  })
-})
-
-describe('固定预览(「保留」)', () => {
-  it('是预览的那一格 → 预览位清空', () => {
-    expect(T.findLeaf(T.pinTab(leaf([A, B], 1, 'k:b'), 'L1', 1), 'L1')!.preview).toBeNull()
-  })
-
-  it('不是预览的那一格 → 恒等变换', () => {
-    const before = leaf([A, B], 0, 'k:b')
-    expect(T.pinTab(before, 'L1', 0)).toBe(before)
-  })
 })
 
 describe('分屏', () => {
@@ -195,9 +192,10 @@ describe('sanitize:存量档案的入口闸', () => {
     expect(T.refIdsOf(clean)).toEqual(['solo:one', 'k:b'])
   })
 
-  it('预览指着一个已经不在的 refId → 清掉', () => {
-    const clean = T.sanitize(T.makeLeaf('L1', [A], 0, 'k:zzz'), OPEN)!
-    expect(T.leavesOf(clean)[0].preview).toBeNull()
+  it('存量档案里那一格 `preview` 不挡路(形状闸不判它,迁移抹掉它)', () => {
+    const legacy = { kind: 'leaf', id: 'L1', tabs: [A], active: 0, preview: 'k:zzz' }
+    const clean = T.sanitize(legacy as unknown as PaneNode, OPEN)!
+    expect(T.refIdsOf(clean)).toEqual(['k:a'])
   })
 
   it('形状烂了(不是一棵树 / ratio 是 NaN)照样交出能渲染的东西', () => {

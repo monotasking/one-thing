@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useMemo } from 'react'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { FilesDirectoryEntry } from '@shared/ipc/files'
-import { renderContent } from '../index'
+import { FilesPanel, retargetFilesRoot } from '../FilesPanel'
+import { filesRootRef, FILES_ROOT_KIND } from '../kinds/files-root-ref'
+import { openSessionDirectory } from '../files-launcher'
 import { configureFilesPort } from '../../data/files-port'
 import type { FilesPort } from '../../data/files-port'
 import { FILES_ROW_H, useFilesSource } from '../../data/files-source'
@@ -18,7 +21,7 @@ import { FOCUS_SCOPES } from '../../focus/scopes'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { useWorkbenchStore } from '../../workbench/store'
-import { refIdsOf } from '../../workbench/tree'
+import { leavesOf, refIdsOf } from '../../workbench/tree'
 import '../kinds'
 
 /**
@@ -115,13 +118,55 @@ afterEach(() => {
  * 认领这一下的是唯一那个 window keydown。单独渲染一块面去按 Esc,等于在一台
  * 没有外壳的机器上按键;`FocusDispatchHarness` 补的就是那一格,它零 DOM。
  */
-function renderFiles() {
+/**
+ * **这块面的根由树说**(W6-a):文件面板不再是一块面(`panel:files` 退役),
+ * 而是**一族**面 —— 一个目录一份 `files-root:<绝对路径>`。所以夹具先在中央区
+ * 摆一格那样的 tab,再照真机那样**从树上读根**渲染它:面包屑回跳换的是那一格
+ * tab 的 ref,而屏幕跟着换 —— 那条链在夹具里也得是真的,不然回跳那两条用例
+ * 量的是一台不存在的机器。
+ */
+function FilesHarness() {
+  const regions = useWorkbenchStore((st) => st.regions)
+  const root = useMemo(() => {
+    // 哪个区域都认(启动瓦出厂落**左架子**,而 `renderFiles` 落中央区)。
+    for (const tree of Object.values(regions)) {
+      for (const leaf of leavesOf(tree)) {
+        for (const tab of leaf.tabs) if (tab.kind === FILES_ROOT_KIND) return tab.key
+      }
+    }
+    return null
+  }, [regions])
+  return root === null ? null : <FilesPanel root={root} />
+}
+
+function renderFiles(root: string = ROOT) {
+  act(() => {
+    useWorkbenchStore.getState().openRef(filesRootRef(root))
+  })
   return render(
     <>
       <FocusDispatchHarness />
-      {renderContent('files')}
+      <FilesHarness />
     </>,
   )
+}
+
+/**
+ * 走**那块启动瓦**那条路开出来的一份(W6-a):它先问「这条会话的工作目录是哪儿」
+ * (会话没绑就展 `~`),再开一格 `files-root:<那个目录>`。告知条(没绑工作目录)
+ * 的在场判据要它 —— 那句话只在**会话自己那一棵**上说。
+ */
+async function renderSessionFiles() {
+  const view = render(
+    <>
+      <FocusDispatchHarness />
+      <FilesHarness />
+    </>,
+  )
+  await act(async () => {
+    await openSessionDirectory()
+  })
+  return view
 }
 
 /**
@@ -173,7 +218,7 @@ async function closeViaMenu(path: string): Promise<void> {
 
 /** 内容表那一格换人了没有 —— 这条在 FilesMock 还挂着时必红。 */
 describe('内容表:files 这一格是真面板', () => {
-  it('renderContent(\'files\') 画的是真树,不是写死的三行', async () => {
+  it('`files-root` 那一种画的是真树,不是写死的三行', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('packages')).toBeTruthy())
@@ -192,12 +237,25 @@ describe('内容表:files 这一格是真面板', () => {
   })
 })
 
-describe('根:跟着活跃会话走', () => {
-  it('根 = 活跃会话的工作目录,并且如实显示在面板头上', async () => {
+/**
+ * **根不再跟着会话走 —— 它是这一格内容的身份**(W6-a,设计 §3)。
+ *
+ * 「会话的工作目录是哪儿」这件事只问一次,而且是**那块启动瓦**问的
+ * (`content/files-launcher.openSessionDirectory`):问完开一格
+ * `files-root:<那个目录>`。这一组因此从「面板会不会跟着会话换根」改成
+ * 「那块瓦开出来的是不是那个目录」。
+ */
+describe('根:目录那块启动瓦开出来的那一格', () => {
+  it('点瓦 = 开一格 `files-root:<活跃会话的工作目录>`,面板头上如实显示', async () => {
     const port = installPort()
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() => expect(shownRoot()).toBe(ROOT))
+    // 出厂摆法是**左架子**(W6-a §8),所以那一格落在 `edge:left` 那棵树上。
+    const allRefs = Object.values(useWorkbenchStore.getState().regions)
+      .flatMap((tree) => refIdsOf(tree))
+    expect(allRefs).toContain(`${FILES_ROOT_KIND}:${ROOT}`)
     expect(port.listDirectory).toHaveBeenCalledWith(ROOT)
+    // 会话带着工作目录 = 不必问后端展 `~`。
     expect(port.stat).not.toHaveBeenCalled()
   })
 
@@ -206,12 +264,24 @@ describe('根:跟着活跃会话走', () => {
     installPort({
       listDirectory: vi.fn(async () => ({ success: true, entries: [] })),
     })
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() =>
       expect(screen.getByText('这条会话没有工作目录,显示的是主目录')).toBeTruthy(),
     )
     expect(screen.getByTestId('files-no-workdir')).toBeTruthy()
     expect(shownRoot()).toBe('/home/me')
+  })
+
+  it('用户自己打开的**别的**目录不说那句话(它与这条会话无关)', async () => {
+    useExposeStore.setState({ envSessionId: SESSION_WITHOUT_DIR })
+    installPort()
+    // 先把会话那一棵解析出来(告知条的在场判据要它),再另开一个目录。
+    await act(async () => {
+      await openSessionDirectory()
+    })
+    renderFiles(`${ROOT}/packages`)
+    await waitFor(() => expect(shownRoot()).toBe(`${ROOT}/packages`))
+    expect(screen.queryByTestId('files-no-workdir')).toBeNull()
   })
 })
 
@@ -236,8 +306,9 @@ describe('面包屑:各段可点回跳', () => {
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
     renderFiles()
     await waitFor(() => expect(shownRoot()).toBe(ROOT))
+    // W6-a:回跳 = 把这一格 tab 换成那个目录(`navigateRoot` 那条老路退役)。
     await act(async () => {
-      await useFilesSource.getState().navigateRoot(deep)
+      retargetFilesRoot(ROOT, deep)
     })
     await waitFor(() => expect(shownRoot()).toBe(deep))
     const crumbs = screen.getByTestId('files-root')
@@ -580,7 +651,7 @@ describe('三种「还没有内容」各说各的', () => {
       error: 'EACCES: permission denied, scandir',
     }))
     installPort({ listDirectory })
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() => expect(screen.getByText('没有权限读这个目录')).toBeTruthy())
     expect(screen.getByText('EACCES: permission denied, scandir')).toBeTruthy()
 
@@ -591,7 +662,7 @@ describe('三种「还没有内容」各说各的', () => {
 
   it('别的失败说读不到 —— 与「空」「没权限」三句不同的话', async () => {
     installPort({ listDirectory: vi.fn(async () => ({ success: false, error: 'boom' })) })
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() => expect(screen.getByText('读不到这个目录')).toBeTruthy())
   })
 })
@@ -602,7 +673,7 @@ describe('无工作目录:告知条 + 绑定', () => {
     const setWorkingDirectory = vi.fn(async () => ({ ok: true as const }))
     useSessionsSource.setState({ setWorkingDirectory })
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
 
     fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
@@ -620,7 +691,7 @@ describe('无工作目录:告知条 + 绑定', () => {
       setWorkingDirectory: vi.fn(async () => ({ ok: false as const, error: 'sandbox root' })),
     })
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
 
     fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
@@ -660,7 +731,7 @@ describe('无工作目录:告知条 + 绑定', () => {
       onSessionLifecycle: () => () => undefined,
     })
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
 
     fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
@@ -711,7 +782,7 @@ describe('无工作目录:告知条 + 绑定', () => {
       onSessionLifecycle: () => () => undefined,
     })
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
-    renderFiles()
+    await renderSessionFiles()
     await waitFor(() => expect(screen.getByTestId('files-no-workdir')).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '绑定…' }))
     const confirm = screen.getByRole('button', { name: '确定' })
@@ -1429,10 +1500,13 @@ describe('面板内分栏:单击文件 = 在此打开', () => {
      */
     it('脏文件先问一句:「取消」不关,「不保存」才关', async () => {
       installPort()
+      act(() => {
+        useWorkbenchStore.getState().openRef(filesRootRef(ROOT))
+      })
       render(
         <>
           <FocusDispatchHarness />
-          {renderContent('files')}
+          <FilesHarness />
           <ViewerCloseHost />
         </>,
       )

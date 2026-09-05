@@ -34,6 +34,23 @@ const B = 'os-compact'
 const center = (): PaneNode => useWorkbenchStore.getState().regions[CENTER_REGION]
 const leaves = () => leavesOf(center())
 
+/**
+ * **「并排开第二片叶」在 W6-a 之后演成「开在架子上」**。
+ *
+ * 中央区收成一条标签条(单叶政策,设计 `workbench-tabs-2026-09.md` §2.1),
+ * 所以这一组从前那句 `splitLeaf(first, 'row', X)` 在那里不再受理。被测的判据
+ * **一个字没变** —— 那三格问的都是「屏幕上有两片叶,焦点在哪一片」,而两片叶
+ * 在哪个区域从来不是判据的一部分(`currentSessionOf` 的梯子按区域阅读序问)。
+ */
+const ASIDE = 'edge:right' as const
+function openAside(ref: Parameters<ReturnType<typeof useWorkbenchStore.getState>['openRef']>[0]): string {
+  useWorkbenchStore.getState().openRef(ref, { region: ASIDE })
+  return useWorkbenchStore.getState().focusLeafId!
+}
+/** 全壳(中央 + 架子)此刻摆着哪些 refId。 */
+const allRefIds = (): string[] =>
+  Object.values(useWorkbenchStore.getState().regions).flatMap((tree) => refIdsOf(tree))
+
 beforeEach(() => {
   seedSessionsSource()
   useExposeStore.setState({ ...initialExposeState })
@@ -65,7 +82,7 @@ describe('currentSessionOf:那条从窄到宽的梯子(纯函数)', () => {
   it('③ 焦点叶根本不装会话 → 回落到阅读序第一片装着会话的叶', () => {
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
-    useWorkbenchStore.getState().splitLeaf(first, 'row', { kind: 'file', key: '/a.ts' })
+    openAside({ kind: 'file', key: '/a.ts' })
     const fileLeaf = useWorkbenchStore.getState().focusLeafId!
     expect(fileLeaf).not.toBe(first)
     expect(currentSessionOf(useWorkbenchStore.getState().regions, fileLeaf)).toBe(A)
@@ -90,7 +107,7 @@ describe('投影:树是事实,`currentSessionId` 是它的影子', () => {
     expect(useExposeStore.getState().currentSessionId).toBe(A)
 
     // 并排开第二片会话叶,焦点落在它上面。
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+    openAside(sessionRefOf(B))
     expect(useExposeStore.getState().currentSessionId).toBe(B)
 
     // 点回第一片 = 焦点叶换人 → 投影跟着换回去。
@@ -105,7 +122,7 @@ describe('投影:树是事实,`currentSessionId` 是它的影子', () => {
     expect(useExposeStore.getState().currentSessionId).toBe(A)
 
     stopSessionProjection()
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+    openAside(sessionRefOf(B))
     // 树已经换人了,而没有写者的那一格停在原地 —— 这正是「独立写一格」的病。
     expect(useExposeStore.getState().currentSessionId).toBe(A)
     syncSessionProjection()
@@ -129,11 +146,11 @@ describe('投影:树是事实,`currentSessionId` 是它的影子', () => {
     startSessionProjection()
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+    openAside(sessionRefOf(B))
     useWorkbenchStore.getState().setFocusLeaf(first)
 
     enterSessionInWorkbench(B)
-    expect(refIdsOf(center()).sort()).toEqual([`session:${A}`, `session:${B}`].sort())
+    expect(allRefIds().sort()).toEqual([`session:${A}`, `session:${B}`].sort())
     expect(useExposeStore.getState().currentSessionId).toBe(B)
   })
 })
@@ -143,7 +160,7 @@ describe('envSessionId:环境会话带粘性', () => {
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
     startSessionProjection()
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+    openAside(sessionRefOf(B))
     expect(useExposeStore.getState().envSessionId).toBe(B)
 
     // 再切一刀开一片文件叶,焦点落在它上面。
@@ -159,7 +176,7 @@ describe('envSessionId:环境会话带粘性', () => {
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
     startSessionProjection()
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+    openAside(sessionRefOf(B))
     const secondLeaf = useWorkbenchStore.getState().focusLeafId!
     useWorkbenchStore.getState().splitLeaf(secondLeaf, 'col', { kind: 'file', key: '/a.ts' })
     const env = useExposeStore.getState().envSessionId
@@ -172,7 +189,7 @@ describe('envSessionId:环境会话带粘性', () => {
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
     startSessionProjection()
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+    openAside(sessionRefOf(B))
     const secondLeaf = useWorkbenchStore.getState().focusLeafId!
     useWorkbenchStore.getState().splitLeaf(secondLeaf, 'col', { kind: 'file', key: '/a.ts' })
     expect(useExposeStore.getState().envSessionId).toBe(B)
@@ -189,7 +206,7 @@ describe('引用账:树里 ∪ 隐藏表里的那些机器活着', () => {
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
     startSessionProjection()
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
+    openAside(sessionRefOf(B))
     expect(chatSources.ownedIds().sort()).toEqual([A, B].sort())
   })
 
@@ -197,9 +214,11 @@ describe('引用账:树里 ∪ 隐藏表里的那些机器活着', () => {
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
     startSessionProjection()
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
-    const secondLeaf = useWorkbenchStore.getState().focusLeafId!
-    useWorkbenchStore.getState().hideTab(secondLeaf, 0)
+    // W6-a:两条会话开在**同一条标签条**上(中央区单叶)—— 「藏起来的那一格
+    // 照样收流」问的是引用账,与它住在哪片叶无关。
+    useWorkbenchStore.getState().openRef(sessionRefOf(B))
+    const leaf = leaves()[0]
+    useWorkbenchStore.getState().hideTab(leaf.id, leaf.tabs.length - 1)
 
     expect(useWorkbenchStore.getState().hidden.map((e) => e.ref.key)).toEqual([B])
     await Promise.resolve()
@@ -210,9 +229,9 @@ describe('引用账:树里 ∪ 隐藏表里的那些机器活着', () => {
     const first = leaves()[0].id
     useWorkbenchStore.getState().replaceRef(first, sessionRefOf(''), sessionRefOf(A))
     startSessionProjection()
-    useWorkbenchStore.getState().splitLeaf(first, 'row', sessionRefOf(B))
-    const secondLeaf = useWorkbenchStore.getState().focusLeafId!
-    useWorkbenchStore.getState().closeTab(secondLeaf, 0)
+    useWorkbenchStore.getState().openRef(sessionRefOf(B))
+    const leaf = leaves()[0]
+    useWorkbenchStore.getState().closeTab(leaf.id, leaf.tabs.length - 1)
 
     // release 归零之后那一拍(微任务)才真拆 —— 判词在 chatSources.release 上。
     await Promise.resolve()

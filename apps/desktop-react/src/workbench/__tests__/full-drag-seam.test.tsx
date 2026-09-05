@@ -45,7 +45,7 @@ function seedKinds(): void {
 /** 中央区一片叶,装着 A 与 B 两格。 */
 function seedTree(): void {
   useWorkbenchStore.setState({
-    regions: { [CENTER_REGION]: makeLeaf('leaf-seam', [A, B], 0, null) },
+    regions: { [CENTER_REGION]: makeLeaf('leaf-seam', [A, B], 0) },
     hidden: [],
     focusLeafId: 'leaf-seam',
     dragging: false,

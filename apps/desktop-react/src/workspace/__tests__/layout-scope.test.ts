@@ -101,7 +101,8 @@ describe('五个面一起换装', () => {
     expect(inB.floatOrder).toEqual([])
     expect(inB.memoryIds).toEqual([])
     expect(inB.ratio).toBeUndefined()
-    expect(inB.openMode).toBe('panel')
+    // W6-a:出厂档从 `panel` 改成 `stage`(主区域新标签,设计 §9 那张落差表)。
+    expect(inB.openMode).toBe('stage')
     expect(inB.expandedRooms).toEqual([])
     expect(inB.expanded).toEqual([])
   })

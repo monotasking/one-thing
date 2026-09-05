@@ -18,6 +18,13 @@ import { startPerSpaceLayout } from './workspace/layout-scope'
 // 聊天叶)与「未知种类剔除」两件事都要读这张表。它不在 workbench/store 里 import,
 // 理由是那会造一条 import 环(病历在那只文件头上)。
 import './content/kinds'
+/*
+ * **启动瓦的注册**(W6-a,`stage/launchers.ts`)。与上面那张表逐字同一个体例:
+ * import 它**就是**「这台上哪几块瓦是启动瓦」。今天只有一块(「目录」)。
+ * 它排在这里而不是 `stage/store` 里,理由与内容种类那一句相同 —— 那会造一条
+ * import 环(`stage/store` → 这只 → `workbench/store` → …)。
+ */
+import './content/files-launcher'
 import { startWorkbench } from './workbench/store'
 import { startStage } from './stage/store'
 import { startSessionProjection } from './content/session-projection'

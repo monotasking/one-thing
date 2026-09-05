@@ -82,6 +82,19 @@
   min-height: 0;
 }
 
+/* ── 一格内容的槽(W6-a)────────────────────────────────────────────────────
+ * 空盒子一个:身子由 `workbench/content-slots` 挂进来(判词在那只文件头)。
+ * 它铺满自己那块地,而**那块地是谁**由宿主决定 —— 普通 tab 是整层,
+ * 两格标签里的一格是那一半。 */
+.slot {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
 /* 看不见的那几层:`content-visibility` 管**渲染开销**,`inert` 管**可交互性**
  * (在 JSX 上,而且树上还说一遍)。两个都要,少哪一个都会留下一个能摸到却看不见
  * 的面 —— 逐字照 `EdgeShelf.module.css` 的 `.layerHidden`。 */

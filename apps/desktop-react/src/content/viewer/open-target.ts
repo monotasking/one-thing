@@ -59,13 +59,16 @@ function regionForMode(mode: FileOpenMode, ref: ContentRef): RegionId | 'panel' 
 /**
  * 打开一份文件 —— 读它,并按当下这一档摆好。
  *
- * `preview` = 这一下是**浏览**(树行单击),开出来的是预览 tab(§2.1 拍点 ①);
- * 缺省是固定 tab(↵ / 菜单「打开」/ 详情面那条路)。
+ * ── 单击与 ↵ 是**同一条路**(W6-a,设计 `workbench-tabs-2026-09.md` §3)────
+ * W1 这里收一格 `preview`:树行单击开的是**预览 tab**(下一次单击就地顶替它),
+ * ↵ 才固定。用户 09-05 在真机上明确要的是多个标签,预览整档退役 —— 于是这一口
+ * 不再有第二种打开法,`viaKeyboard` 那一格在调用方那里也只剩它本来的用处
+ * (**焦点送不送进查看器**)。
  *
  * 落点**先摆**再等内容:读是异步的,先插好那一格,屏幕上当场就有一个
  * 「正在读取…」的查看器,而不是等一秒钟之后凭空跳出一块面(四律之一)。
  */
-export function openFileInCurrentTarget(path: string, opts: { preview?: boolean } = {}): void {
+export function openFileInCurrentTarget(path: string): void {
   if (!path) return
   const ref = fileRef(path)
   const region = regionForMode(useFileOpenMode.getState().mode, ref)
@@ -75,7 +78,7 @@ export function openFileInCurrentTarget(path: string, opts: { preview?: boolean 
   } else {
     // 两档互斥:开进树里就把分栏收起来(一份内容只该有一个落点)。
     workbench.closePanel()
-    workbench.openRef(ref, { region, preview: opts.preview === true })
+    workbench.openRef(ref, { region })
   }
   void useViewerSource.getState().openFile(path)
 }

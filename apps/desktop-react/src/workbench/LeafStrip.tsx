@@ -54,8 +54,7 @@ import s from './LeafStrip.module.css'
  *   单 tab    退化成身份带(`data-single` 一格属性,CSS 收掉指示条与 hover 底)
  *             —— **同一条 tab 条,不是第二个组件**
  *   多 tab    正常 tab 条 + 溢出横滚(`ui/Tabs` 自带 `overflow-x:auto`)
- *   有预览    那一条斜体(`TabSpec.preview`)
- *   有动作组  宿主给了才画(中央叶:⋯ / 分屏;**面板内:不画** —— 它不是树,
+ *   有动作组  宿主给了才画(中央叶:⋯ / 二合一;**面板内:不画** —— 它不是树,
  *             既没有「隐藏的标签」也分不了屏)
  *   超量      `--tab-max-w` 160 封顶 + 横滚,**永不换行**(挤压纪律)
  *
@@ -232,7 +231,7 @@ function useSelectIntoContent(
 export function tabSpecOf(
   ref: ContentRef,
   titles: Record<string, LiveTitle>,
-  opts: { preview?: boolean; closable?: boolean; home?: boolean } = {},
+  opts: { closable?: boolean; home?: boolean } = {},
 ): TabSpec {
   const id = refId(ref)
   const kind = contentKindOf(ref.kind)
@@ -245,7 +244,6 @@ export function tabSpecOf(
     dirty: live?.dirty ?? still?.dirty ?? false,
     // 截断的名字必须说得出全名(禁令区那条)。文件那一种给的是整条路径。
     tip: live?.tip ?? still?.tip,
-    preview: opts.preview ?? false,
     closable: opts.closable ?? true,
     // 「这一组的家」(W1-b):判据由宿主从种类自述里取,这只函数只搬运。
     home: opts.home ?? false,

@@ -374,8 +374,21 @@ async function main() {
     await page.screenshot({ path: path.join(shotDir, 'viewer.png') })
 
     /*
+     * **先把打开方式切到「面板内」**(W6-a):出厂档从 `panel` 改成了 `stage`
+     * (设计 `workbench-tabs-2026-09.md` §9 那张落差表 —— 真机上出厂 `panel` 档
+     * 根本不进标签条,而用户要的正是「files 可以打开多个」)。`panel` 那一档**没有
+     * 退役**,它仍是一种合法摆法,所以下面这一组仍旧钉它,只是要显式切过去。
+     */
+    await switchModeTo(page, enginePath, /面板内|This panel/)
+    await waitFor('分栏里那份查看器就位', () =>
+      page.evaluate(() =>
+        Boolean(document.querySelector('[data-testid="files-panel"] [data-testid="file-viewer"]')),
+      ),
+    )
+
+    /*
      * ── W1-a 修批:**面板内这一档也有一条身份带** ────────────────────────────
-     * 这一步跑在「打开方式 = 面板内」那一档(`file-open-mode` 的**出厂缺省**),
+     * 这一步跑在「打开方式 = 面板内」那一档(W6-a 之前是出厂缺省),
      * 而 W1-a 交卷时那一档一条檐都没有 —— 关一个文件只剩右键与 Esc,却正是多数
      * 用户第一眼看到的那一屏。所以「檐说得出文件名」这条断言不能只钉中央叶
      * (第 6 步末尾那一条),两档各钉一次。
@@ -866,6 +879,230 @@ async function main() {
     })
     assert(hit.includes('engine.ts'), `检索面文件侧命中了真文件:${hit.trim()}`)
     await page.screenshot({ path: path.join(shotDir, 'search.png') })
+
+    /*
+     * ══ [8/8] W6-a:一条标签条、单击开标签、目录多开、两格并排 ══════════════
+     *
+     * 设计 `apps/desktop-react/docs/workbench-tabs-2026-09.md` §3 / §2.1 / §11。
+     * 三件真机读数,每一件都对应用户 09-05 报的一句话:
+     *  ① 「files 本身应该是一个可以打开多个的存在」→ 连点三个文件 = 三个标签,
+     *    第四次点已经开着的那个 = 切过去(不再多一格);
+     *  ② 「拖不到聊天区」的病根是出厂摆法 → 目录那块瓦点开落**左架子**,
+     *    而且标签上写的是**目录名**;
+     *  ③ 「往一个 tab 有两个的方向设计」→ 二合一 / 拆开 / 换比例三步,
+     *    两格内容的根节点**同一个 DOM**(零重挂)。
+     */
+    console.log('\n[8/8] W6-a:单击开标签 · 目录多开 · 两格并排(零重挂)')
+
+    /*
+     * **回到真正的出厂档**(而不是「手动选一次主区域」)。
+     *
+     * 这一段要证的正是 W6-a 那条改判:出厂档 = 主区域新标签(设计 §9 落差表)。
+     * 手动选一次等于把被测的那件事自己填上了 —— 所以这里把那一格偏好从
+     * localStorage 抹掉再整页重载,让它按**出厂值**重新长出来。
+     * 反证:把 `FACTORY_FILE_OPEN_MODE` 改回 `'panel'`,下面「三个标签」当场红。
+     */
+    await page.evaluate(() => {
+      localStorage.removeItem('onething.files.openMode')
+    })
+    await page.reload()
+    await waitFor('重载之后壳回来了', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
+    )
+    /*
+     * 重载把「当前会话」清了(它不跨启动持久化 —— 判词在 expose 那一槽的
+     * partialize 上),而目录面板的根跟着环境会话走。所以照第 3 步那条路**再进
+     * 一次那条会话**,再让目录面板露出来 —— 门要走用户真走的那条路。
+     */
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const there = await page.evaluate(
+        (id) => Boolean(document.querySelector(`[data-session-row="${id}"], [data-testid="session-row-${id}"]`)),
+        sessionId,
+      )
+      if (there) break
+      await clickSelector(page, '[data-testid="dock-tile-sessions"]').catch(() => undefined)
+      await delay(500)
+    }
+    await clickSelector(page, `[data-testid="session-row-${sessionId}"]`)
+    await delay(500)
+    await waitFor('重载之后文件树回到那个目录', async () => {
+      const at = await page.evaluate(
+        () => document.querySelector('[data-testid="files-root"]')?.getAttribute('data-root') ?? null,
+      )
+      if (at === cwd) return true
+      await clickSelector(page, '[data-testid="dock-tile-files"]').catch(() => undefined)
+      await delay(500)
+      return false
+    })
+    await delay(400)
+
+    const centerTabs = () =>
+      page.evaluate(() =>
+        Array.from(
+          document.querySelectorAll('[data-testid="topbar"] [data-topbar-leaf] [role="tab"]'),
+        ).map(el => (el.textContent ?? '').trim()),
+      )
+    const centerGroups = () =>
+      page.evaluate(
+        () => document.querySelectorAll('[data-testid="topbar"] [data-topbar-leaf]').length,
+      )
+
+    // ① 连点三个文件 = 三个标签。
+    const three = [`${cwd}/README.md`, `${cwd}/docs/note.md`, enginePath]
+    /*
+     * 那两支要先展开才点得到里面那一行 —— 重载把展开态清了(它是「我此刻正看着
+     * 树的哪一段」,本来就不进 localStorage)。逐层展开,每层等它真的画出来。
+     */
+    for (const [dir, child] of [
+      [`${cwd}/docs`, `${cwd}/docs/note.md`],
+      [`${cwd}/packages`, `${cwd}/packages/core`],
+      [`${cwd}/packages/core`, enginePath],
+    ]) {
+      await clickSelector(page, `[data-file-path="${dir}"]`)
+      await waitFor(`${dir} 展开了`, () =>
+        page.evaluate(p => Boolean(document.querySelector(`[data-file-path="${p}"]`)), child),
+      )
+    }
+    for (const file of three) {
+      await clickSelector(page, `[data-file-path="${file}"]`)
+      await delay(250)
+    }
+    const afterThree = await centerTabs()
+    assert(
+      three.every(file => afterThree.some(text => text.includes(file.split('/').pop()))),
+      `连点三个文件 = 三个标签都在条上:${afterThree.join(' | ')}`,
+    )
+    assert(await centerGroups() === 1, '中央区只有**一条**标签条(单叶政策)')
+
+    // ② 第四次点**已经开着的**那个 = 切过去,不再多一格。
+    const countBefore = afterThree.length
+    await clickSelector(page, `[data-file-path="${three[0]}"]`)
+    await delay(300)
+    const afterFourth = await centerTabs()
+    assert(
+      afterFourth.length === countBefore,
+      `第四次点已开的那个只是切过去(${countBefore} → ${afterFourth.length} 格)`,
+    )
+    const activeText = await page.evaluate(
+      () =>
+        (
+          document.querySelector(
+            '[data-testid="topbar"] [role="tab"][aria-selected="true"]',
+          )?.textContent ?? ''
+        ).trim(),
+    )
+    assert(activeText.includes('README.md'), `切过去的那一格成了活动格:${activeText}`)
+    await page.screenshot({ path: path.join(shotDir, 'w6a-tabs.png') })
+
+    // ③ 目录那块瓦:点它 = 在**左架子**开一格,标签上写的是目录名。
+    await clickSelector(page, '[data-testid="dock-tile-files"]')
+    await delay(600)
+    const dirTab = await waitFor('目录面板落在左架子上', async () => {
+      const read = await page.evaluate(() => {
+        const shelf = document.querySelector('[data-pane-region="edge:left"]')
+        if (!shelf) return null
+        const tab = shelf.querySelector('[role="tab"][aria-selected="true"]')
+        return { text: (tab?.textContent ?? '').trim(), hasPanel: Boolean(shelf.querySelector('[data-testid="files-panel"]')) }
+      })
+      return read && read.hasPanel && read.text ? read : undefined
+    })
+    assert(
+      dirTab.text.includes(path.basename(cwd)),
+      `左架子那一格标签写的是目录名:${dirTab.text}(目录名 ${path.basename(cwd)})`,
+    )
+    await page.screenshot({ path: path.join(shotDir, 'w6a-dir-tile.png') })
+
+    /*
+     * ④ 二合一 / 拆开 / 换比例:两格内容的根节点自始至终是同一个 DOM。
+     *
+     * **走用户真正走的那条路**:顶栏尾格那组动作里的三项(设计 §7 那张键盘等价表),
+     * 不去调任何一个暴露给门的后门 —— 那样量的是另一台机器。
+     *
+     * 判据用**打记号**(与上面全屏那一段同一手):重挂会造出新节点,新节点身上
+     * 没有这个记号。反证:把 `PaneContentLayer` 那格 holder 去掉、让内容直接渲染
+     * 在画法层里,三条一起红。
+     */
+    const markCenterLayers = () =>
+      page.evaluate(() => {
+        const layers = Array.from(
+          document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]'),
+        )
+        for (const el of layers) if (el instanceof HTMLElement) el.dataset.w6Mark = 'kept'
+        return layers.length
+      })
+    const marksNow = () =>
+      page.evaluate(
+        () =>
+          document.querySelectorAll('[data-pane-region="center"] [data-w6-mark="kept"]').length,
+      )
+    /** 顶栏尾格那组动作里点一项(按正则取,与 `switchModeTo` 同一条理由)。 */
+    const clickLeafAction = async pattern => {
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-testid^="pane-split:"]')
+        if (btn instanceof HTMLElement) btn.click()
+      })
+      await waitFor('动作菜单出来了', () =>
+        page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),
+      )
+      return page.evaluate(source => {
+        const re = new RegExp(source)
+        const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+        const target = items.find(el => re.test(el.textContent ?? ''))
+        if (!target) {
+          return { ok: false, items: items.map(e => (e.textContent ?? '').trim()) }
+        }
+        if (target.getAttribute('aria-disabled') === 'true') return { ok: false, disabled: true }
+        target.click()
+        return { ok: true }
+      }, pattern.source)
+    }
+
+    const marked = await markCenterLayers()
+    assert(marked >= 2, `中央区此刻至少两格内容层可打记号(实测 ${marked})`)
+    const paired = await clickLeafAction(/与右边的标签二合一|与左边的标签二合一|Join with the tab/)
+    if (!paired.ok) {
+      console.log(`  · 跳过两格并排那一段:菜单里没有可用的二合一项 ${JSON.stringify(paired)}`)
+    } else {
+      await delay(400)
+      assert(
+        await page.evaluate(() => document.querySelectorAll('[data-pair-side]').length) === 2,
+        '屏幕上真的画出了左右两格',
+      )
+      assert(
+        await marksNow() === marked,
+        `二合一之后每一格内容的记号都还在(${marked} 格 → 零重挂)`,
+      )
+      await page.screenshot({ path: path.join(shotDir, 'w6a-pair.png') })
+
+      // 换比例:走那条分隔杆的键盘路(它是 `ui/Splitter` 的 APG 档)。
+      const ratioBefore = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid^="pair-splitter:"]')
+        if (!(el instanceof HTMLElement)) return null
+        el.focus()
+        return Number(el.getAttribute('aria-valuenow'))
+      })
+      assert(ratioBefore !== null, `两格之间那条分隔杆在场(比例 ${ratioBefore})`)
+      await page.keyboard.press('ArrowLeft')
+      await delay(300)
+      const ratioAfter = await page.evaluate(() =>
+        Number(document.querySelector('[data-testid^="pair-splitter:"]')?.getAttribute('aria-valuenow')),
+      )
+      assert(ratioAfter < ratioBefore, `← 一下比例真的变了:${ratioBefore} → ${ratioAfter}`)
+      assert(await marksNow() === marked, `换比例之后记号还在(${marked} 格 → 零重挂)`)
+
+      // 拆开(格头上那颗)。
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-testid^="pair-unpair:"]')
+        if (btn instanceof HTMLElement) btn.click()
+      })
+      await delay(400)
+      assert(
+        await page.evaluate(() => document.querySelectorAll('[data-pair-side]').length) === 0,
+        '拆开之后两格的格头都收了',
+      )
+      assert(await marksNow() === marked, `拆开之后记号还在(${marked} 格 → 零重挂)`)
+      await page.screenshot({ path: path.join(shotDir, 'w6a-unpair.png') })
+    }
 
     await app.close()
     app = undefined

@@ -41,7 +41,7 @@ function seedKinds(): void {
 
 /** 出厂:中央区一片叶,活动那一格是 A。 */
 function seed(): PaneLeafNode {
-  const leaf = makeLeaf('leaf-parity', [A, B], 0, null)
+  const leaf = makeLeaf('leaf-parity', [A, B], 0)
   useWorkbenchStore.setState({
     regions: { [CENTER_REGION]: leaf },
     hidden: [],
@@ -144,9 +144,9 @@ describe('叶动作组菜单 = 拖拽落定,同一个事务', () => {
   })
 })
 
-/** 出厂:一片叶两格,活动 = 第二格,而且**那一格是预览 tab**(单击开出来的那种)。 */
-function seedPreview(): PaneLeafNode {
-  const leaf = makeLeaf('leaf-preview', [A, B], 1, refId(B))
+/** 出厂:一片叶两格,活动 = 第二格。 */
+function seedTwo(): PaneLeafNode {
+  const leaf = makeLeaf('leaf-reorder', [A, B], 1)
   useWorkbenchStore.setState({
     regions: { [CENTER_REGION]: leaf },
     hidden: [],
@@ -163,29 +163,26 @@ function leafNow(id: string): PaneLeafNode {
 }
 
 /**
- * **换个位子不等于「保留」**(W5-b 合树接缝 a;了结 W3-b 写在
- * `drop-commit.reorderTab` 上的那笔留账)。
+ * **条内换序:拖着走完与按菜单走完是同一个动作**(W3-b 裁定 8)。
  *
- * W3-b 落地时 `workbench/store.ts` 是并行批的改动面,所以条内换序借道
- * `moveRefIntoLeaf`(摘干净再插)——而 `removeTab` 会把 `preview` 清成 null,
- * 于是**拖一格预览 tab 换个位子就等于顺手把它固定下来**,用户没按过「保留」。
- * 合树之后那一支改走新开的 `store.moveTab`(包纯函数 `tree.moveTab`,预览那一格
- * 的身份跟着搬)。反证:把 `reorderTab` 里那一句换回 `moveRefIntoLeaf`,
- * 下面第二条断言当场红(`preview` 读出 null)。
+ * W6-a 之前这一组断言的是「预览那一格的身份跟着搬」(W5-b 合树接缝 a 的了结)。
+ * 预览 tab 整档退役之后那句话没有对象了,而它守的那件事**还在**:两条路必须调
+ * 同一只 `reorderTab`。所以这一组保留、断言换成序本身。
+ * 反证:把 `LeafActions` 的「左移」改成自己拼一次 `moveRefIntoLeaf`,
+ * 第二条断言当场红(那条路会把它插到末位)。
  */
-describe('条内换序:预览那一格的身份跟着搬', () => {
-  it('拖着换序之后它仍然是预览,而且菜单「左移」换出同一棵树', () => {
-    // ① 拖拽那条路:把预览那一格(第 2 位)拖到第 1 位。
-    seedPreview()
+describe('条内换序:菜单与拖拽是同一个动作', () => {
+  it('拖着换序与菜单「左移」换出同一棵树', () => {
+    // ① 拖拽那条路:把第 2 格拖到第 1 位。
+    seedTwo()
     act(() => {
-      dropRef(B, { kind: 'strip', leafId: 'leaf-preview', at: 0 })
+      dropRef(B, { kind: 'strip', leafId: 'leaf-reorder', at: 0 })
     })
-    const viaDrag = leafNow('leaf-preview')
+    const viaDrag = leafNow('leaf-reorder')
     expect(viaDrag.tabs.map(refId), '序真的换了').toEqual([refId(B), refId(A)])
-    expect(viaDrag.preview, '换个位子不等于「保留」——预览那一格的身份跟着搬').toBe(refId(B))
 
     // ② 菜单那条路(左移),同一份出厂树 —— 两条路必须是同一个动作。
-    const leaf = seedPreview()
+    const leaf = seedTwo()
     render(<LeafActions leaf={leaf} />)
     act(() => {
       fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
@@ -197,8 +194,8 @@ describe('条内换序:预览那一格的身份跟着搬', () => {
     act(() => {
       fireEvent.click(item as HTMLElement)
     })
-    const viaMenu = leafNow('leaf-preview')
+    const viaMenu = leafNow('leaf-reorder')
     expect(viaMenu.tabs.map(refId)).toEqual(viaDrag.tabs.map(refId))
-    expect(viaMenu.preview).toBe(viaDrag.preview)
+    expect(viaMenu.active).toBe(viaDrag.active)
   })
 })

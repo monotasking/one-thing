@@ -1,0 +1,78 @@
+/* ── 两格标签的身子(W6-a,设计 `workbench-tabs-2026-09.md` §6)────────────────
+ * 左右两格 + 中间一条缝。比例走一格**无单位**自定义属性(`--pair-split`),
+ * 列宽由样式表按它算 —— 与 `FilesPanel` 那条分栏、拼贴树那几格比例逐字同一手:
+ * 拖杆那几十帧一帧都不经过 React(`ui/Splitter` 的 `liveVar` 直接写这一格)。 */
+.pair {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns:
+    calc(var(--pair-split) * 1%)
+    var(--pair-seam-w)
+    calc((100 - var(--pair-split)) * 1%);
+  overflow: hidden;
+}
+
+/* 一格。**定高的 flex 列**:格头一条 + 身占满 —— 与一片叶同一个形,
+ * 所以装在两格里的内容(查看器 / 聊天流)的滚动前提逐字不变。 */
+.pane {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pane-face);
+}
+
+/* ── 缝:那条杆住的那一列 ────────────────────────────────────────────────
+ * **必须是 flex**:`ui/Splitter` 的抓手写的是 `flex: none; align-self: stretch`
+ * —— 它是为 flex 父设计的,放进一个普通块级盒里 `align-self` 一个字都不生效,
+ * 高度当场塌成 0(`gate:squeeze` 的读数是「杆 6×0」:摸得到一条线,却抓不住)。
+ *
+ * 线由杆自己那条 `::before` 画(与文件面板那条分栏逐字同一件),所以这一列
+ * **不再自己铺底色** —— 两条线叠在一起是同一道界画了两遍。
+ * 抓手比列宽(6 > 1):它有意溢出到两边,那正是「线是视觉、抓手是手感」。 */
+.seam {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+/* ── 格头:这一格的名字 + 一颗「拆开」───────────────────────────────────────
+ * 它**不是标签条**:一格里只有一格内容,没有可切的东西。所以它是一条身份带,
+ * 与 `LeafStrip` 的单 tab 那一形说的是同一句话,只是更窄(28)。 */
+.head {
+  flex: none;
+  height: var(--pair-head-h);
+  display: flex;
+  align-items: center;
+  gap: var(--tab-gap);
+  padding-inline: var(--pair-head-pad-x);
+  border-bottom: var(--bw-1) solid var(--border-1);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+}
+
+/* 名字:**一行一个弯腰件,只截断不换行**(挤压纪律)。截断配 Tooltip 全名。 */
+.name {
+  flex: 1;
+  min-width: 0;
+  max-width: var(--pair-title-max);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 身:一格槽,身子由 `workbench/content-slots` 挂进来。 */
+.body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}

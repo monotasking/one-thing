@@ -75,13 +75,12 @@ export function regionsFromLegacyFurniture(
       newLeafId(),
       tabs.map(panelRef),
       at < 0 ? tabs.length - 1 : at,
-      null,
     )
   }
 
   for (const [id, placement] of Object.entries(furniture.placements ?? {})) {
     if (!placement || placement.kind !== 'float') continue
-    out[floatRegion(id)] = makeLeaf(newLeafId(), [panelRef(id)], 0, null)
+    out[floatRegion(id)] = makeLeaf(newLeafId(), [panelRef(id)], 0)
   }
 
   return out
@@ -145,6 +144,8 @@ export function foldLegacyStageFurniture(newLeafId: () => string): void {
     nextLedger[space] = {
       regions: { ...grown, ...(now?.regions ?? {}) },
       hidden: now?.hidden ?? [],
+      pairRatios: now?.pairRatios ?? {},
+      recentRoots: now?.recentRoots ?? [],
     }
     if (space === here) liveRegions = { ...grown, ...liveRegions }
     touched = true

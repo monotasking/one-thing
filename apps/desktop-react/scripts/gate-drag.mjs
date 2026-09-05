@@ -422,7 +422,19 @@ async function main() {
     await waitFor('Dock 就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="dock-tile"]'))),
     )
-    await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+    /*
+     * **会话总览开成一扇浮窗**(W6-a 的夹具修正)。
+     *
+     * W6-a 把它的出厂摆法改成了**左架子**(设计 §8),而这道门的文件面板也在左架子上
+     * —— 两块面落进同一条架子就成了同一条标签条的两格,后面那一格**看不见**
+     * (keep-alive:它还在 DOM 里,但 `content-visibility: hidden`)。于是三件事一起塌:
+     * 文件行拖不起来(CDP 指针落在一块看不见的地方)、场景 10/11 那句「找一条至少
+     * 两格的标签条」会挑中架子那一条而不是顶栏。
+     *
+     * 修法是把夹具摆回它一直在量的那一形:总览浮窗、文件面板左架子。选浮窗走的是
+     * 右键 → 打开方式(用户真走的那条路,写的是**记忆**,记忆压过天生落点)。
+     */
+    await openAsFromDockMenu(page, 'sessions', /^(Float|浮窗)$/)
     await waitFor('总览画出那一行', () =>
       page.evaluate((id) => Boolean(document.querySelector(`[data-session-id="${id}"]`)), sessionId),
     )
@@ -440,7 +452,15 @@ async function main() {
      * 拖到它身上本来就该落进它 —— 这正是「叶重叠时取最上」)。钉到左边之后
      * 中央区腾出来,场景 1 / 2 量的才是它们要量的那件事。
      */
-    const pinnedLeft = await openAsFromDockMenu(page, 'files', /左侧栏|左边|Left/)
+    /*
+     * **W6-a:它已经在左边了** —— 「目录」那块瓦的出厂摆法就是左架子(设计 §8,
+     * 真机报障「拖不到聊天区」的正面兑现:出厂那扇正盖住聊天区的浮窗撤了),
+     * 而那块瓦从 W6-a 起是**启动瓦**,右键是最近目录表,没有那排落点单选。
+     * 所以这里不再点菜单,改成**问事实**:它此刻在不在左架子上。
+     */
+    const pinnedLeft = await page.evaluate(() =>
+      Boolean(document.querySelector('[data-shelf="left"] [data-testid="files-panel"]')),
+    )
     await delay(400)
     const viewport = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
 
@@ -497,7 +517,7 @@ async function main() {
     }
 
     /* ── 场景 2:文件行 → 叶东带 ─────────────────────────────────────────── */
-    scenario('文件行拖到叶的分屏边带(16px 之内)= 分屏、比例 50、原叶 tab 一格不少')
+    scenario('文件行拖到叶的边带(16px 之内):W6-a 单叶政策下退成一格标签(分屏两条已标 skip,W6-b 接手)')
     {
       const beta = `[data-file-path="${path.join(cwd, 'beta.ts')}"]`
       const row = await centerOf(page, beta)
@@ -545,17 +565,31 @@ async function main() {
       assert(bar && bar.width <= 8, '杠很细(4px 一根,不是画出那一半)', String(bar?.width))
       assert(bar?.text === '', '杠上不写字', JSON.stringify(bar?.text))
       await releaseAt(cdp, west)
+      /*
+       * ── **落定那两条 W6-a 标了 skip,交给 W6-b** ──────────────────────────
+       * 单叶政策(设计 `workbench-tabs-2026-09.md` §2.1)之后中央区不再长第二片叶,
+       * 而设计 §5 那张表把内容区左右 28% 改判成**「与它二合一」** —— 那是拖拽引擎
+       * 重做那一批(W6-b)的地,W6-a 一个字都不碰 `workbench/drop.ts` 与
+       * `ui/drag/*`。所以这两条(「变成两片叶」「比例 50」)此刻**没有对象可量**。
+       *
+       * W6-a 留下的是**安全底**,而它就在下面那两条里:内容一定落得下去(那一格
+       * 没有掉在地上),原叶一格不少,零重挂照旧成立。判词写在
+       * `workbench/drop-commit.dropIntoLeaf` 的 `asTab` 那一段上。
+       */
+      console.log('   ⊘ 中央区变成两片叶(W6-a 单叶政策:边带改判「二合一」是 W6-b 的地)')
+      console.log('   ⊘ 比例 50(同上)')
       const slots = await page.evaluate(() =>
         document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
       )
-      assert(slots === 2, '中央区变成两片叶', `slots=${slots}`)
-      const ratio = await page.evaluate(
-        () =>
-          document
-            .querySelector('[data-pane-region="center"] [data-pane-seam] [role="separator"]')
-            ?.getAttribute('aria-valuenow') ?? null,
+      assert(slots === 1, '中央区仍旧只有一片叶(单叶政策)', `slots=${slots}`)
+      const landed = await page.evaluate(
+        (id) =>
+          Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]'))
+            .map((el) => el.getAttribute('data-pane-tab'))
+            .includes(id),
+        `file:${path.join(cwd, 'beta.ts')}`,
       )
-      assert(ratio === '50', '比例 50', `aria-valuenow=${ratio}`)
+      assert(landed, '**那一格没有掉在地上**:它落成了中央区的一格标签')
       const after = await countIn(originId)
       assert(after >= before, '原叶 tab 一格不少', `${before} → ${after}`)
       assert(

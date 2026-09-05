@@ -22,6 +22,7 @@ import { DragLayer, DropOverlay } from '../ui/drag'
 import { ToastHost } from '../ui/Toast'
 import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
+import { OpenDirDialog } from '../content/files/OpenDirDialog'
 import { CenterRegion } from '../workbench/CenterRegion'
 import { useWorkbenchStore } from '../workbench/store'
 import { useHostFullScreen } from './useHostFullScreen'
@@ -618,6 +619,12 @@ export function AppShell() {
             * 开关住在 workspace/components/palette-hub(与 agent 菜单同一手:
             * 两个产地共一个布尔)。 */}
           <WorkspacePalette />
+
+          {/* 「打开目录…」那扇小窗(W6-a)。与上面那一句同一条理由:它由 Dock 上
+            * 「目录」那块瓦的右键菜单按开,而菜单一关就卸载 —— 挂在壳上才收得住字。
+            * 判词与「今天为什么是输入框不是系统对话框」写在
+            * `content/files/open-dir-hub.ts` 上。 */}
+          <OpenDirDialog />
 
           {/*
             useConfirm 的落点。挂一次,`ui/Dialog` 的那个单槽 hub 才有地方渲染 ——

@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
+import { claimContentSlot, registerContentHolder, unregisterContentHolder } from './content-slots'
 import { useFullSlot } from './full-slot'
-import { refId } from './kinds'
+import { flattenContent, partsOfContent, refId } from './kinds'
 import { LeafActions } from './LeafActions'
 import { LeafStrip } from './LeafStrip'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
@@ -125,6 +126,20 @@ export const PaneLeaf = memo(function PaneLeaf({
   const closeAt = useCloseLeafTab(leaf)
   const active = leaf.tabs[leaf.active] ?? null
 
+  /**
+   * 这片叶里那几格**内容**(复合的摊开)。判词在 `./content-slots.ts`:
+   * 二合一改的是标签的身份,内容那一格的身份一个字都不该跟着变。
+   */
+  const contents = useMemo(
+    () => leaf.tabs.flatMap((ref) => flattenContent(ref)),
+    [leaf.tabs],
+  )
+  /** 此刻活着(= 属于活动那一格标签)的那几格内容。 */
+  const liveIds = useMemo(
+    () => new Set((active ? flattenContent(active) : []).map(refId)),
+    [active],
+  )
+
   /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
   const stripInLeaf = region !== CENTER_REGION
 
@@ -243,9 +258,33 @@ export const PaneLeaf = memo(function PaneLeaf({
           */}
           <div className={s.body} data-pane-body={leaf.id} ref={mountBody} />
           {createPortal(
-            leaf.tabs.map((ref, index) => (
-              <PaneTabLayer key={refId(ref)} tabRef={ref} on={index === leaf.active} />
-            )),
+            <>
+              {/*
+                **画法那一半:一格 tab 一层**(key = 那一格 tab 的 refId)。
+                普通 tab 画的是一个空槽;两格标签画的是它那一种自述的身子
+                (分隔杆 + 两个格头 + 两个空槽)—— 这一层因此随标签的身份变,
+                二合一那一下它确实重挂,而它是**檐**,不是内容。
+              */}
+              {leaf.tabs.map((ref, index) => (
+                <PaneTabFrame key={refId(ref)} tabRef={ref} on={index === leaf.active} />
+              ))}
+              {/*
+                **内容那一半:一格内容一层**(key = 那一格**内容**的 refId,复合的
+                摊开)。二合一 / 拆开改的是上面那一半,这一半的 key 一个都没变 ——
+                于是两块内容的 DOM 与 React 状态全程不动(判词与那张配对表在
+                `./content-slots.ts`)。
+                **排在画法之后**:同一次提交里槽的 ref 回调按树序跑,槽先到位,
+                身子当场就能挂进去。
+              */}
+              {contents.map((ref) => (
+                <PaneContentLayer
+                  key={refId(ref)}
+                  refKind={ref.kind}
+                  refKey={ref.key}
+                  on={liveIds.has(refId(ref))}
+                />
+              ))}
+            </>,
             holder,
           )}
         </div>
@@ -346,21 +385,119 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
  * `memo` 不许省:切一次 tab 只有翻了 `on` 的那两层该重渲,别的 tab 一动不动
  * (与 `ShelfTabLayer` 同一条读数背书)。
  */
-const PaneTabLayer = memo(function PaneTabLayer({ tabRef, on }: { tabRef: ContentRef; on: boolean }) {
+const PaneContentLayer = memo(function PaneContentLayer({
+  refKind,
+  refKey,
+  on,
+}: {
+  refKind: string
+  refKey: string
+  on: boolean
+}) {
+  const id = `${refKind}:${refKey}`
+  const contentRef = useMemo<ContentRef>(() => ({ kind: refKind, key: refKey }), [refKind, refKey])
   const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
+  /*
+   * **身份恒定的 holder**(`display: contents`,零盒子)。它是这一格内容在
+   * 屏幕上的那个节点,由 `content-slots` 那张表挂进当下该去的槽里 —— 换序、
+   * 二合一、拆开、换比例四步之后它都是同一个 DOM 节点。
+   */
+  const [holder] = useState(() => {
+    const el = document.createElement('div')
+    el.className = s.holder
+    el.setAttribute('data-pane-content', '')
+    return el
+  })
+  /**
+   * **holder 在一个 ref 回调里登记,不在 layout effect 里**(与 `PaneLeaf.mountBody`
+   * 逐字同一条判例,而且是同一个坑的第二次)。
+   *
+   * 次序:提交阶段按子树顺序走,**孩子先于父亲**。内容自己那些 layout effect
+   * (`SearchPanel` 的 `activateOnMount`、查看器量高度)是这只组件 portal 出去的
+   * **孩子**,所以它们排在这只组件自己的 layout effect **之前** —— 在那里登记的话,
+   * 内容首挂那一帧量到的是一个**游离节点**:高度恒 0,而 `.focus()` 对不在文档里的
+   * 元素**静默无效**。真机上它的样子是「⌘P 开出检索面,焦点还留在输入框里」——
+   * `gate:focus` 场景 16 的 ①-b / ③ / ④-a 五条一起红,而屏幕上什么都看不出来。
+   *
+   * 下面那格锚点 `<div>` 排在 portal **前面**,于是它的 ref 回调先跑;holder 因此
+   * 在内容挂载之前就已经进了文档。锚点自己 `display: contents`,零盒子。
+   */
+  const anchor = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (el) registerContentHolder(id, holder)
+    },
+    [id, holder],
+  )
+  useLayoutEffect(() => () => void unregisterContentHolder(id, holder), [id, holder])
   return (
-    <FocusScope scope="leaf" inert={!on} owner={refId(tabRef)}>
-      {({ scopeProps }) => (
-        <div
-          {...scopeProps}
-          className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
-          data-pane-tab={refId(tabRef)}
-          data-pane-on={on || undefined}
-          inert={!on || undefined}
-        >
-          {renderRef(tabRef, visibility)}
-        </div>
+    <>
+      {/* 锚点:零盒子(`display: contents`),只为让 holder 在内容挂载**之前**
+        * 就进文档 —— 判词整段在上面 `anchor` 那一格上。 */}
+      <div ref={anchor} className={s.holder} />
+      {createPortal(
+        <FocusScope scope="leaf" inert={!on} owner={id}>
+          {({ scopeProps }) => (
+            <div
+              {...scopeProps}
+              className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
+              data-pane-tab={id}
+              data-pane-on={on || undefined}
+              inert={!on || undefined}
+            >
+              {renderRef(contentRef, visibility)}
+            </div>
+          )}
+        </FocusScope>,
+        holder,
       )}
-    </FocusScope>
+    </>
   )
 })
+
+/**
+ * **一格 tab 的画法层**(W6-a)。它只管「这一格标签占的那块地长什么样」,
+ * 内容的身子由 `PaneContentLayer` 交、由 `content-slots` 挂进来。
+ *
+ * 两形,判据是**种类自述**(`ContentKind.composite`),不是核心层按名字点人:
+ *  · 原子内容 —— 整块地就是它自己的一个槽;
+ *  · 复合内容 —— 那一种自己画(分隔杆 + 两个格头 + 两个槽),这一层只把它
+ *    的 `render` 交出去。于是「一个标签装两格」在这只文件里连一句 if 都不占。
+ *
+ * `memo` 不许省:切一次 tab 只有翻了 `on` 的那两层该重渲。
+ */
+const PaneTabFrame = memo(function PaneTabFrame({ tabRef, on }: { tabRef: ContentRef; on: boolean }) {
+  const id = refId(tabRef)
+  const parts = partsOfContent(tabRef)
+  const visibility = useMemo(() => ({ visible: on, interactive: on }), [on])
+  return (
+    <div
+      className={on ? s.layer : `${s.layer} ${s.layerHidden}`}
+      data-pane-frame={id}
+      data-pane-on={on || undefined}
+    >
+      {parts
+        ? renderRef(tabRef, visibility)
+        : <ContentSlot id={id} />}
+    </div>
+  )
+})
+
+/**
+ * **一格内容的槽**(W6-a)。它是一个空盒子,身子由 `content-slots` 那张表挂进来。
+ *
+ * 它是导出的:两格标签那一种(`content/kinds/pair.tsx`)画的左右两格就是它 ——
+ * 「槽长什么样」只有这一处产地,普通 tab 与两格标签里的一格逐像素相同。
+ */
+export function ContentSlot({ id, className }: { id: string; className?: string }) {
+  const mount = useCallback(
+    (el: HTMLDivElement | null) => claimContentSlot(id, el),
+    [id],
+  )
+  /*
+   * **取件口叫 `data-content-slot`,不叫 `data-pane-slot`** —— 后者早就有主:
+   * `PaneTree` 用它标「一片叶的格子」,而 `workbench/drop-geometry.ts` 与三条真机门
+   * 都按那个名字量叶的矩形。两件事同名会让落点几何把「一格内容」读成「一片叶」,
+   * 而屏幕上什么都看不出来(它只是把矩形算错)。
+   */
+  return <div ref={mount} className={className ?? s.slot} data-content-slot={id} />
+}

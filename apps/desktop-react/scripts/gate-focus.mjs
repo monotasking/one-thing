@@ -552,7 +552,7 @@ async function main() {
     scenario('架子两 tab 切换 → 焦点在新层内;旧层 inert')
     // 夹具:右键两块瓦,各自选「右侧栏」——「钉到边」是菜单里那一组的语义,
     // 走的是用户真走的那条路(不去改 store)。
-    for (const tile of ['files', 'sessions']) {
+    for (const tile of ['diff', 'sessions']) {
       const pinned = await page.evaluate((id) => {
         const el = document.querySelector(`[data-testid="dock-tile-${id}"]`)
         if (!(el instanceof HTMLElement)) return false
@@ -1061,7 +1061,7 @@ async function main() {
     await waitFor('壳回来了', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
     )
-    const floatPrepared = await openAsFromDockMenu(page, 'files', /浮窗|Float/)
+    const floatPrepared = await openAsFromDockMenu(page, 'diff', /浮窗|Float/)
     const floatOpen = await page.evaluate(
       () => document.querySelectorAll('section[role="dialog"]').length,
     )
@@ -1153,7 +1153,7 @@ async function main() {
       // W2:「盖」退役,`full-layer` 顶上(菜单那一行也从「盖满」改成「全屏」)。
       ['full-layer', /^(全屏|Full screen)$/],
     ]) {
-      const picked = await openAsFromDockMenu(page, 'files', labelRe)
+      const picked = await openAsFromDockMenu(page, 'diff', labelRe)
       if (!picked) {
         skip(`${key} 的根带 data-focus-scope`, `Dock 菜单里没有 ${labelRe} 那一项`)
         continue
@@ -1339,10 +1339,10 @@ async function main() {
      * 行为),后者才是规则 3 说的「焦点跟着那块面走」。所以这一步只做准备,
      * 不断言 —— 三条读数量的是它开出来**之后**的三次挪动。
      */
-    const prepared = await openAsFromDockMenu(page, 'files', /浮窗|Float/)
-    if (!prepared) skip('准备:先把文件树开成浮窗', 'Dock 菜单里没有「浮窗 / Float」那一项')
+    const prepared = await openAsFromDockMenu(page, 'diff', /浮窗|Float/)
+    if (!prepared) skip('准备:先把改动面开成浮窗', 'Dock 菜单里没有「浮窗 / Float」那一项')
     // 拼上舞台(菜单那条路 = 用户真走的路)。
-    const staged = await openAsFromDockMenu(page, 'files', /弹出|Popup/)
+    const staged = await openAsFromDockMenu(page, 'diff', /弹出|Popup/)
     if (!staged) {
       skip('拼舞台之后焦点在舞台那一层里', 'Dock 菜单里没有「弹出 / Popup」那一项')
     } else {
@@ -1350,19 +1350,19 @@ async function main() {
       assert(at.layer === 'stage-layer', '拼舞台之后焦点在舞台那一层里', `(读数 ${JSON.stringify(at)})`)
       await assertNoOrphan(page, '拼舞台之后')
     }
-    const pinned = await openAsFromDockMenu(page, 'files', /右侧栏|Right/)
+    const pinned = await openAsFromDockMenu(page, 'diff', /右侧栏|Right/)
     if (!pinned) {
       skip('钉右边之后焦点在那条架子的层里', 'Dock 菜单里没有「右侧栏 / Right」那一项')
     } else {
       const at = await layerNow()
       assert(
-        at.layer === 'shelf-layer' && at.panel === 'files',
+        at.layer === 'shelf-layer' && at.panel === 'diff',
         '钉右边之后焦点在**装着这块面**的那一层里',
         `(读数 ${JSON.stringify(at)})`,
       )
       await assertNoOrphan(page, '钉右边之后')
     }
-    const floated = await openAsFromDockMenu(page, 'files', /浮窗|Float/)
+    const floated = await openAsFromDockMenu(page, 'diff', /浮窗|Float/)
     if (!floated) {
       skip('撕成浮窗之后焦点在那扇窗里', 'Dock 菜单里没有「浮窗 / Float」那一项')
     } else {
@@ -1397,9 +1397,10 @@ async function main() {
           state: {
             overrides: {
               'toggle:workspace': { meta: true, shift: true, key: 'u' },
-              // ①-c 那一步要按它:工作区那块瓦的右键是**快切表**,没有「打开方式」,
-              // 所以四种位置记忆只能种在一块有那张菜单的瓦上 —— files。
-              'toggle:files': { meta: true, shift: true, key: 'k' },
+              // ①-c 那一步要按它:那一步要一块**有「打开方式」菜单**的普通瓦。
+              // W6-a 之前是 files;「目录」那块瓦改成启动瓦之后它的右键是最近目录表,
+              // 所以这一步换成「改动」(diff)——判据一个字没变:记忆 → 召唤第一下按记忆开。
+              'toggle:diff': { meta: true, shift: true, key: 'k' },
             },
           },
           version: 2,
@@ -2079,11 +2080,11 @@ async function main() {
      * `edge` 那一条 —— 差别只在 `shelves[side].collapsed`,那一格由 ②(露出来)
      * 与 ④-b(收起整条)两步各量了一遍。09-04 的真机读数也单独走过它。
      */
-    const filesOnScreen = () =>
-      page.evaluate(() => Boolean(document.querySelector('[data-testid="files-tree"]')))
+    const subjectOnScreen = () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="diff-panel"]')))
     /** 把 files 送回 Dock,**不动它的记忆**:架子走栏头那颗 X(closeShelf 自己留记忆),别的形态走退层链。 */
-    const filesBackToDock = async () => {
-      for (let i = 0; i < 6 && (await filesOnScreen()); i += 1) {
+    const subjectBackToDock = async () => {
+      for (let i = 0; i < 6 && (await subjectOnScreen()); i += 1) {
         const closedShelf = await page.evaluate(() => {
           const shelf = document.querySelector('[data-shelf]')
           if (!shelf) return false
@@ -2116,16 +2117,16 @@ async function main() {
       ...(STRICT ? [{ key: 'edge-left', label: '钉左边', menu: /^(Left|左边)$/ }] : []),
     ]
     for (const form of MEMORY_FORMS) {
-      await filesBackToDock()
-      const seeded = await openAsFromDockMenu(page, 'files', form.menu)
+      await subjectBackToDock()
+      const seeded = await openAsFromDockMenu(page, 'diff', form.menu)
       if (!seeded) {
         skip(`①-c 记忆=${form.label}`, `Dock 菜单里没有「${form.menu.source}」那一项`)
         continue
       }
       await delay(300)
-      await filesBackToDock()
-      if (await filesOnScreen()) {
-        skip(`①-c 记忆=${form.label}`, 'files 送不回 Dock(夹具没搭起来)')
+      await subjectBackToDock()
+      if (await subjectOnScreen()) {
+        skip(`①-c 记忆=${form.label}`, '这块面送不回 Dock(夹具没搭起来)')
         continue
       }
       await page.evaluate(() => {
@@ -2137,14 +2138,14 @@ async function main() {
       // 第一下:按记忆开出来 + 焦点进去(files 有自己的 region,所以判得到 scope)。
       await page.keyboard.press('Meta+Shift+k')
       await delay(700)
-      assert(await filesOnScreen(), `①-c 记忆=${form.label}:第一下把它开出来了`)
+      assert(await subjectOnScreen(), `①-c 记忆=${form.label}:第一下把它开出来了`)
       const landedOnce = await page.evaluate(() => {
         const el = document.activeElement
         const layer = el?.closest?.('[data-focus-scope$="-layer"]') ?? null
         return {
           testid: el?.getAttribute?.('data-testid') ?? el?.tagName ?? null,
           scope: el?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
-          inPane: Boolean(layer?.querySelector('[data-testid="files-tree"]')),
+          inPane: Boolean(layer?.querySelector('[data-testid="diff-panel"]')),
         }
       })
       assert(
@@ -2158,7 +2159,7 @@ async function main() {
       await page.keyboard.press('Meta+Shift+k')
       await delay(700)
       assert(
-        !(await filesOnScreen()),
+        !(await subjectOnScreen()),
         `①-c 记忆=${form.label}:第二下 = **隐藏**(不是补一次聚焦)`,
       )
 
@@ -2170,29 +2171,34 @@ async function main() {
         const layer = el?.closest?.('[data-focus-scope$="-layer"]') ?? null
         return {
           testid: el?.getAttribute?.('data-testid') ?? el?.tagName ?? null,
-          inPane: Boolean(layer?.querySelector('[data-testid="files-tree"]')),
+          inPane: Boolean(layer?.querySelector('[data-testid="diff-panel"]')),
         }
       })
       assert(
-        (await filesOnScreen()) && landedAgain.inPane && landedAgain.testid !== 'composer-input',
+        (await subjectOnScreen()) && landedAgain.inPane && landedAgain.testid !== 'composer-input',
         `①-c 记忆=${form.label}:第三下又出来了,焦点仍然进得去`,
         `(此刻在 [${landedAgain.testid ?? '—'}])`,
       )
       await assertNoOrphan(page, `①-c 记忆=${form.label} 三连按之后`)
     }
-    await filesBackToDock()
+    await subjectBackToDock()
 
-    /* ── 场景 15:两片会话叶并排(W5-b)────────────────────────────────────
+    /* ── 场景 15:两条会话同时在中央区(W5-b;W6-a 收成一条标签条)──────────
      *
-     * 会话多开之后「焦点叶」第一次有了**两个候选**,于是四件事各要一句读数:
-     *  ① 并排:两片中央叶各装一条会话;
-     *  ② 点列表 = **只换焦点叶那一格**(另一片一个字不动);
-     *  ③ ⌘N = 在焦点叶原位开一条新的(另一片仍旧不动);
-     *  ④ ⌘W 关的是焦点叶那一格,而**最后一片会话叶关不掉**(T0 拍点 2 —— 判据
-     *    是「这个区域里同种还剩几个」,会话多开之后它第一次真的被数了)。
+     * 会话多开之后「当前会话」第一次有了**两个候选**,于是四件事各要一句读数:
+     *  ① 两条会话同时在中央区那条标签条上;
+     *  ② 点列表 = **只换活动那一格**(另一格一个字不动);
+     *  ③ ⌘N = 在活动那一格原位开一条新的(另一格仍旧不动);
+     *  ④ ⌘W 关的是活动那一格,而**最后一格会话关不掉**(T0 拍点 2 —— 判据是
+     *    「这个区域里同种还剩几个」,会话多开之后它第一次真的被数了)。
      * 收尾再量一次启动回落(composer → chat(焦点叶的)→ root)。
+     *
+     * **W6-a 改的只有「并排」那两个字的落地形**:中央区收成一条标签条(单叶政策,
+     * 设计 `workbench-tabs-2026-09.md` §2.1),所以第二条会话落成**同一条条上
+     * 的第二格**而不是第二片叶。上面那四条判据一个字没改 —— 它们问的从来是
+     * 「两条会话各说各的、动一格不碰另一格」,而不是「它们住在几片叶里」。
      */
-    scenario('两片会话叶并排:点列表只换焦点叶那一格;⌘N 落焦点叶;⌘W 关焦点叶且最后一片关不掉')
+    scenario('两条会话同屏:点列表只换活动那一格;⌘N 落活动格;⌘W 关活动格且最后一格关不掉')
     {
       await page.goto(shellUrl())
       await waitFor('壳回来了', () =>
@@ -2200,16 +2206,18 @@ async function main() {
       )
       await enterGateSession(page, sessionId)
 
-      /** 中央区每一片叶此刻装着哪一格会话(按阅读序)。 */
+      /**
+       * 中央区此刻摆着哪几条会话(按阅读序)。
+       *
+       * W6-a:一格内容一层(`[data-pane-tab]`),而中央区只有一片叶 —— 所以这里
+       * 直接数**内容层**,不再按叶分组。判据因此比从前更细:它数的是会话本身,
+       * 而不是「装着它们的那几片叶」。
+       */
       const centerSessions = () =>
         page.evaluate(() =>
-          Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]')).map(
-            (slot) =>
-              Array.from(slot.querySelectorAll('[data-pane-tab]'))
-                .map((el) => el.getAttribute('data-pane-tab') ?? '')
-                .filter((id) => id.startsWith('session:'))
-                .join(','),
-          ),
+          Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]'))
+            .map((el) => el.getAttribute('data-pane-tab') ?? '')
+            .filter((id) => id.startsWith('session:')),
         )
 
       // ① 会话行右键 →「在右侧」= 切一刀,新叶放右边(菜单与拖拽同一只 dropRef)。
@@ -2227,14 +2235,16 @@ async function main() {
       })
       await delay(700)
       if (!openedRight) {
-        skip('两片会话叶并排', '会话行右键菜单里没有「在右侧 / Open to the right」那一项')
+        skip('两条会话同屏', '会话行右键菜单里没有「在右侧 / Open to the right」那一项')
       } else {
         const two = await centerSessions()
-        assert(two.length === 2, '中央区变成两片叶', `slots=${two.length}`)
+        assert(two.length === 2, '中央区此刻摆着两条会话', `tabs=${two.length}`)
         assert(
-          two.every((ids) => ids.startsWith('session:')),
-          '两片叶各装一条会话',
-          JSON.stringify(two),
+          await page.evaluate(
+            () =>
+              document.querySelectorAll('[data-testid="topbar"] [data-topbar-leaf]').length,
+          ) === 1,
+          '而且它们在**同一条标签条**上(单叶政策)',
         )
         await assertNoOrphan(page, '并排之后')
 
@@ -2244,23 +2254,20 @@ async function main() {
         await clickSelector(page, `[data-testid="session-row-${thirdId}"]`)
         await delay(600)
         const after = await centerSessions()
-        assert(after.length === 2, '还是两片叶(点列表不多开一片)', `slots=${after.length}`)
-        const changed = after.filter((ids, i) => ids !== before[i])
-        assert(changed.length === 1, '只有一片叶换了内容', JSON.stringify({ before, after }))
-        assert(
-          changed[0] === `session:${thirdId}`,
-          '换的那一片装上了刚点的那一条',
-          changed[0] ?? '—',
-        )
+        assert(after.length === 2, '还是两条(点列表不多开一格)', `tabs=${after.length}`)
+        const gone = before.filter((id) => !after.includes(id))
+        const fresh = after.filter((id) => !before.includes(id))
+        assert(gone.length === 1 && fresh.length === 1, '只有一格换了内容', JSON.stringify({ before, after }))
+        assert(fresh[0] === `session:${thirdId}`, '换上去的正是刚点的那一条', fresh[0] ?? '—')
 
         // ③ ⌘N = 在焦点叶原位开一条新的;另一片仍旧不动。
         const beforeNew = await centerSessions()
         await page.keyboard.press('Meta+n')
         await delay(1200)
         const afterNew = await centerSessions()
-        assert(afterNew.length === 2, '⌘N 之后还是两片叶(不多开一片)', `slots=${afterNew.length}`)
-        const movedByNew = afterNew.filter((ids, i) => ids !== beforeNew[i])
-        assert(movedByNew.length === 1, '⌘N 只动了焦点叶那一格', JSON.stringify({ beforeNew, afterNew }))
+        assert(afterNew.length === 2, '⌘N 之后还是两条(不多开一格)', `tabs=${afterNew.length}`)
+        const movedByNew = afterNew.filter((id) => !beforeNew.includes(id))
+        assert(movedByNew.length === 1, '⌘N 只动了活动那一格', JSON.stringify({ beforeNew, afterNew }))
         await assertNoOrphan(page, '⌘N 之后')
 
         /*
@@ -2273,11 +2280,14 @@ async function main() {
          * 门要按用户真做的那一步走(点回那片会话再按 ⌘W)。
          */
         await page.evaluate(() => {
-          const slots = Array.from(
-            document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]'),
+          /*
+           * W6-a:一格内容一层,而**看得见的那一层**才是活动格 —— 后台那几层是
+           * `inert`,把焦点扔进去等于扔进一个不可交互的角落。
+           */
+          const layer = document.querySelector(
+            '[data-pane-region="center"] [data-pane-tab][data-pane-on]',
           )
-          const last = slots[slots.length - 1]
-          const stream = last?.querySelector('[data-testid="chat-stream"]')
+          const stream = layer?.querySelector('[data-testid="chat-stream"]')
           if (stream instanceof HTMLElement) stream.focus()
         })
         await delay(400)
@@ -2286,17 +2296,17 @@ async function main() {
             document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
             ?? null,
         )
-        assert(armed === 'chat', '键盘先回到那片会话叶里(⌘W 是叶的局部键)', String(armed))
+        assert(armed === 'chat', '键盘先回到活动那一格会话里(⌘W 是叶的局部键)', String(armed))
         await page.keyboard.press('Meta+w')
         await delay(700)
         const afterClose = await centerSessions()
-        assert(afterClose.length === 1, '⌘W 关掉了焦点叶那一格,只剩一片', `slots=${afterClose.length}`)
+        assert(afterClose.length === 1, '⌘W 关掉了活动那一格,只剩一条', `tabs=${afterClose.length}`)
         await page.keyboard.press('Meta+w')
         await delay(700)
         const afterLast = await centerSessions()
         assert(
           afterLast.length === 1 && afterLast[0].startsWith('session:'),
-          '最后一片会话叶**关不掉**(T0 拍点 2)',
+          '最后一格会话**关不掉**(T0 拍点 2)',
           JSON.stringify(afterLast),
         )
         await assertNoOrphan(page, '⌘W 两下之后')

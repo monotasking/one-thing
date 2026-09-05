@@ -5,17 +5,18 @@ import { ButtonBase } from '../ui/ButtonBase'
 import { IconButton } from '../ui/IconButton'
 import { Splitter } from '../ui/Splitter'
 import { useT } from '../i18n'
-import type { MessageKey, TFn } from '../i18n'
+import type { MessageKey } from '../i18n'
 import { useExposeStore } from '../expose/store'
 import {
+  dirsQuery,
   flattenTree,
+  isUnder,
   revealMutation,
   useDirStates,
   useFileDetail,
   useFilesSource,
-  useSessionCwd,
 } from '../data/files-source'
-import type { FileFailure, RootStatus } from '../data/files-source'
+import type { FileFailure } from '../data/files-source'
 import { useFileOpenMode } from '../data/file-open-mode'
 import {
   DEFAULT_SPLIT_RATIOS,
@@ -41,6 +42,7 @@ import { useRowWindow } from './files/useRowWindow'
 import { FileViewer } from './viewer/FileViewer'
 import { closeFileEverywhere, fileRef, openFileInCurrentTarget } from './viewer/open-target'
 import { openStateOf, useWorkbenchStore } from '../workbench/store'
+import { leavesOf } from '../workbench/tree'
 import { refId } from '../workbench/kinds'
 import { SoloLeafStrip } from '../workbench/LeafStrip'
 import s from './FilesPanel.module.css'
@@ -179,30 +181,44 @@ const NOTE_LABELS: Record<'empty' | FileFailure, MessageKey> = {
   failed: 'files.dirFailed',
 }
 
-export function FilesPanel() {
+/**
+ * **一块以某个目录为根的文件面板**(W6-a:`root` 从「全应用一格」变成一格 prop)。
+ *
+ * 它是 `files-root:<绝对路径>` 那一种内容的身子(`content/kinds/files-root.tsx`
+ * 只是它的登记)。**不复制第二份**:面包屑 / 全部收起 / 重新读取 / 行菜单 /
+ * 打开点列 / 分栏查看器全部原样,变的只有「根是谁说了算」这一句 —— 从前是
+ * `useFilesSource.root`(全应用一份,跟着活跃会话走),现在是这一格 prop。
+ */
+export function FilesPanel({ root }: { root: string }) {
   const t = useT()
-  // 「哪种语言」这件事跟着详情浮层一起搬走了(它是那块内容自己的事,不是面板的)。
-  const cwd = useSessionCwd()
-  // 环境会话(W5-b):与上面那句 `useSessionCwd()` 读同一格 —— 一块面里
-  // 「跟着哪条会话」只该有一个答案。
+  /*
+   * 环境会话(W5-b):告知条那一行「给这条会话绑一个工作目录」打的是它。
+   * W6-a 之前这里还读一格 `useSessionCwd()` —— 那是「根跟着会话走」时代的入参,
+   * 而根现在是 prop(判词在组件头)。
+   */
   const sessionId = useExposeStore((st) => st.envSessionId)
-  const root = useFilesSource((st) => st.root)
-  const rootStatus = useFilesSource((st) => st.rootStatus)
+  /*
+   * **会话那一棵的根**(`useFilesSource.root`)在这里只剩一个用处:判断
+   * 「这一块面画的是不是会话自己那个目录」。它是那条告知条(没绑工作目录)
+   * 的在场判据 —— 那句话说的是**这条会话**的事,只该在会话那一棵上说一次,
+   * 而不是屏幕上每一个目录面板各说一遍。
+   */
+  const sessionRoot = useFilesSource((st) => st.root)
   const rootOrigin = useFilesSource((st) => st.rootOrigin)
-  const rootError = useFilesSource((st) => st.rootError)
   const expanded = useFilesSource((st) => st.expanded)
   /*
    * 目录内容住在 `dirsQuery` 那一族里(7d)。**键面由屏幕给定** —— 根 + 此刻展着的
    * 那几支,一个不多:没展开的目录一格都不订(也就不会为它们建格)。
+   *
+   * W6-a:展开态是一张按**绝对路径**记的平表,两块面各读各的前缀 —— 于是
+   * 「同时开着两个目录」不必给它分家,而「另一棵展开了什么」也到不了这一棵。
    */
   const dirPaths = useMemo(
-    () => (root ? [root, ...Object.keys(expanded)] : []),
+    () => [root, ...Object.keys(expanded).filter((path) => isUnder(path, root))],
     [root, expanded],
   )
   const dirs = useDirStates(dirPaths)
   const detail = useFileDetail()
-  const setRoot = useFilesSource((st) => st.setRoot)
-  const navigateRoot = useFilesSource((st) => st.navigateRoot)
   const toggleDir = useFilesSource((st) => st.toggleDir)
   const collapseAll = useFilesSource((st) => st.collapseAll)
   const retryDir = useFilesSource((st) => st.retryDir)
@@ -248,12 +264,18 @@ export function FilesPanel() {
    * 收起来 —— 一份内容只该有一个落点,两处同时画就是重影)。
    */
   const openMode = useFileOpenMode((st) => st.mode)
+  /**
+   * 这一份的**打开点三态**要不要在这块面里说 —— 分栏那一份只属于**装着它的
+   * 那一棵**(W6-a):同时开着两个目录时,`panelPath` 那一格全应用一份的路径
+   * 只在它真的落在这棵树底下时才是这块面的事。
+   */
+  const panelPathHere = panelPath !== null && isUnder(panelPath, root) ? panelPath : null
   /*
    * 「这个文件正开着」的判据:**正在读的那条压过已经画出来的那条**。
    * 点下去的一瞬间打开点就跟着走(手感),而内容要等读回来 —— 两者不同步是
    * 事实,不是缺陷:檐上那格读数正是为了说出这件事。
    */
-  const openPath = panelPath
+  const openPath = panelPathHere
   const viewerOpen = openPath !== null
   /** 这条分栏此刻长不长出来。**落点是 `panel` 才算**(理由见上面 openMode)。 */
   const splitOpen = viewerOpen && openMode === 'panel'
@@ -306,11 +328,19 @@ export function FilesPanel() {
     return true
   }, [menuAt, detail, splitOpen, closeViewer])
 
-  // 根跟着活跃会话走。判据不在这里 —— useSessionCwd 是它唯一的产地,
-  // 这里只负责把结果交给数据源(setRoot 自己幂等)。
+  /*
+   * **根不再跟着会话走**(W6-a):它是这一格内容的身份(`files-root:<路径>`),
+   * 由 prop 给定。从前这里有一发 `setRoot(cwd)` —— 那是「全应用一棵树」时代的
+   * 接线,而「会话的工作目录是哪儿」这件事现在由**目录那块启动瓦**问一次
+   * (`content/files-launcher.tsx`),问完开一格 `files-root:<那个目录>`。
+   *
+   * 剩下的那半件仍旧要做:**把根那一层拉回来**。从前它顺带在 `setRoot` 里
+   * (那一句末尾的 `dirsQuery.get(root).ensure()`);现在由这块面自己发 ——
+   * `ensure` 是幂等的(拉过就不再拉),所以同一个目录开两块面只会问一次后端。
+   */
   useEffect(() => {
-    void setRoot(cwd)
-  }, [cwd, setRoot])
+    void dirsQuery.get(root).ensure()
+  }, [root])
 
   const rows = useMemo(() => flattenTree(root, dirs, expanded), [root, dirs, expanded])
   /* 窗口化:量视口 + 跟卷轴那一半在 `files/useRowWindow`,算术在 `rowWindow`。 */
@@ -369,8 +399,12 @@ export function FilesPanel() {
     [openDetailAt, openDetail],
   )
 
-  const footNote = footNoteOf(rootStatus, rootError, t)
-  const noWorkdir = rootStatus === 'ready' && rootOrigin === 'home'
+  /*
+   * 「这条会话没绑工作目录」那条告知条(W6-a 收窄了它的在场判据):它说的是
+   * **这条会话**的事,而且带着一个可做的动作 —— 所以只在**会话自己那一棵**
+   * 上说一次。用户自己打开的另外几个目录与那句话无关。
+   */
+  const noWorkdir = rootOrigin === 'home' && sessionRoot === root
 
   /*
    * ── ⌘I / ⌘↵ 作用在**哪一行**(09-03 R2)────────────────────────────────
@@ -454,7 +488,19 @@ export function FilesPanel() {
               data-testid="files-root"
               data-root={root ?? ''}
             >
-              <RootCrumbs root={root} status={rootStatus} t={t} onJump={(at) => void navigateRoot(at)} />
+              {/*
+                面包屑回跳 = **把这一格 tab 换成那个祖先目录**(W6-a)。从前它调
+                `files-source.navigateRoot`(全应用那一棵换根);目录面板按目录
+                多开之后,「我要看上一层」说的是**这一块面**,而这块面的身份就是
+                它的根 —— 所以回跳是一次原位换 ref(叶与下标不动,标签跟着改名)。
+                根永远是解析好的绝对路径,所以这里不再有「正在定 / 定不下来」两档。
+              */}
+              <RootCrumbs
+                root={root}
+                status="ready"
+                t={t}
+                onJump={(at) => retargetFilesRoot(root, at)}
+              />
             </nav>
             {/*
              * 头上这两颗从 `Button iconOnly` 迁成 `ui/IconButton`(09-01 立法:图标钮
@@ -468,8 +514,9 @@ export function FilesPanel() {
               icon={ChevronsUp}
               size="md"
               label={t('files.collapseAll')}
-              disabled={Object.keys(expanded).length === 0}
-              onClick={collapseAll}
+              // **这一棵**展开了几支(W6-a:别的目录面板展着的与这颗钮无关)。
+              disabled={dirPaths.length <= 1}
+              onClick={() => collapseAll(root)}
             />
             {/*
              * 「重新读取」按下去转一圈。**是一次过渡,不是一段循环动画**:它说的是
@@ -485,10 +532,9 @@ export function FilesPanel() {
               className={s.headSpin}
               style={{ '--files-spin': spins } as CSSProperties}
               label={t('files.refresh')}
-              disabled={rootStatus !== 'ready'}
               onClick={() => {
                 setSpins((n) => n + 1)
-                void refresh()
+                void refresh(root)
               }}
             />
           </div>
@@ -566,11 +612,11 @@ export function FilesPanel() {
                     wantViewer.current = viaKeyboard
                     if (viaKeyboard) setOpenTick((n) => n + 1)
                     /*
-                     * **单击 = 预览,↵ = 固定**(§2.1 拍点 ①)。判据现成:
-                     * `viaKeyboard` 已经是这一行区分两条路的那一格(它从前只用来
-                     * 决定送不送焦点)。浏览一棵树时单击十个文件不该留下十个 tab。
+                     * **单击与 ↵ 走同一条路**(W6-a,设计 §3:预览 tab 整档退役)。
+                     * `viaKeyboard` 从此只决定一件事 —— 焦点送不送进查看器,
+                     * 也就是它本来的那一件(上面那两行)。
                      */
-                    openFile(row.path, { preview: !viaKeyboard })
+                    openFile(row.path)
                   }}
                   onCurrent={onCurrent}
                   onMenu={(origin) => openMenuFor(row, origin)}
@@ -641,7 +687,6 @@ export function FilesPanel() {
             )}
           </div>
 
-          {footNote && <p className={s.foot}>{footNote}</p>}
 
           {/*
            * 底部提示条:一句**用法**(怎么打开一个文件、菜单在哪儿)。
@@ -703,10 +748,26 @@ export function FilesPanel() {
 }
 
 /**
- * 底注。**「显示的是主目录」那一句已经搬去告知条了**(定稿:它带着一个可做的
- * 动作,一句躺在底部的灰字承不住)。这里只剩下真·失败那一档。
+ * **面包屑回跳:把这一格 tab 换成那个祖先目录**(W6-a)。
+ *
+ * 它是一次**动作**(事件处理器里的一下),不是要渲染的值 —— 所以走 `getState()`。
+ * 找哪一格:整棵树上那一格 `files-root:<from>`;找不到(这块面此刻不在任何一棵
+ * 树上 —— 它是被别的宿主直接渲染的)就什么都不做。
+ *
+ * 换的是 ref 而不是「关一格再开一格」:后者会把叶剪掉重建,整块面连同兄弟一起
+ * 重挂(判词在 `tree.replaceRef` 上,与会话换 id 逐字同一条)。
  */
-function footNoteOf(status: RootStatus, error: string | undefined, t: TFn): string | null {
-  if (status === 'error') return error ?? t('files.rootFailed')
-  return null
+export function retargetFilesRoot(from: string, to: string): void {
+  if (!to || to === from) return
+  const store = useWorkbenchStore.getState()
+  const fromRef = filesRootRef(from)
+  const id = refId(fromRef)
+  for (const tree of Object.values(store.regions)) {
+    for (const leaf of leavesOf(tree)) {
+      if (!leaf.tabs.some((tab) => refId(tab) === id)) continue
+      store.replaceRef(leaf.id, fromRef, filesRootRef(to))
+      store.rememberRoot(to)
+      return
+    }
+  }
 }

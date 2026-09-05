@@ -36,7 +36,7 @@ function seedKinds(): void {
 
 /** 中央区一片叶,装着 A 与 B 两格。 */
 function seedTree(): string {
-  const leaf = makeLeaf('leaf-1', [A, B], 0, null)
+  const leaf = makeLeaf('leaf-1', [A, B], 0)
   useWorkbenchStore.setState({ regions: { [CENTER_REGION]: leaf }, hidden: [], focusLeafId: 'leaf-1' })
   return 'leaf-1'
 }
@@ -61,7 +61,7 @@ describe('落到一片叶', () => {
      * 目标叶**装着东西**(C):树上不存在空叶 —— `prune` 当场把它剪掉,所以
      * 「往一片空叶里落」这一形在屏幕上不可能出现,用例也不该假造它。
      */
-    const leaf = makeLeaf('leaf-2', [C], 0, null)
+    const leaf = makeLeaf('leaf-2', [C], 0)
     useWorkbenchStore.setState({
       regions: { [CENTER_REGION]: centerTree(), [edgeRegion('right')]: leaf },
     })
@@ -74,14 +74,41 @@ describe('落到一片叶', () => {
     ])
   })
 
-  it('四带 = 切一刀,原叶一格都不少', () => {
-    dropRef(B, { kind: 'leaf', region: CENTER_REGION, leafId: 'leaf-1', zone: 'e' })
-    const leaves = leavesOf(centerTree())
+  it('四带 = 切一刀,原叶一格都不少(**架子上**:中央区那条路 W6-a 收了)', () => {
+    useWorkbenchStore.setState({
+      regions: { [CENTER_REGION]: centerTree(), [edgeRegion('right')]: makeLeaf('leaf-2', [C], 0) },
+    })
+    dropRef(A, { kind: 'leaf', region: edgeRegion('right'), leafId: 'leaf-2', zone: 'e' })
+    const leaves = leavesOf(useWorkbenchStore.getState().regions[edgeRegion('right')])
     expect(leaves).toHaveLength(2)
-    // 原叶留着 A,新叶装 B —— 而且 B 只有一份(先摘干净再切)。
+    // 原叶留着 C,新叶装 A —— 而且 A 只有一份(先摘干净再切)。
+    expect(leaves[0].tabs.map(refId)).toEqual([refId(C)])
+    expect(leaves[1].tabs.map(refId)).toEqual([refId(A)])
+    expect(refIdsOf(centerTree())).toEqual([refId(B)])
+  })
+
+  /**
+   * **中央区的四带此刻落不下去**(W6-a 单叶政策)。
+   *
+   * 设计 §5 那张表把内容区左右带改判成「与它二合一」,而那件事是 **W6-b** 的地
+   * (拖拽引擎)。W6-a 只保证一件事:**中央区不会因为一次落定长出第二片叶** ——
+   * 那一下静默无事,而不是「闪一下分屏又被 normalize 折回去」。
+   * 留账见交卷报:`gate:drag` 的分屏落点场景为此标了 skip。
+   */
+  it('中央区四带 = 退成一格标签(内容一定落得下去,不长第二片叶)', () => {
+    dropRef(B, { kind: 'leaf', region: CENTER_REGION, leafId: 'leaf-1', zone: 'e' })
+    expect(leavesOf(centerTree())).toHaveLength(1)
+    // **它没有掉在地上**:那一格仍旧在树上,而且只有一份。
     expect(refIdsOf(centerTree()).filter((id) => id === refId(B))).toHaveLength(1)
-    expect(leaves[0].tabs.map(refId)).toEqual([refId(A)])
-    expect(leaves[1].tabs.map(refId)).toEqual([refId(B)])
+  })
+
+  it('从**别的区域**拖进中央区的四带,同样落成一格标签', () => {
+    useWorkbenchStore.setState({
+      regions: { [CENTER_REGION]: centerTree(), [edgeRegion('right')]: makeLeaf('leaf-2', [C], 0) },
+    })
+    dropRef(C, { kind: 'leaf', region: CENTER_REGION, leafId: 'leaf-1', zone: 'w' })
+    expect(leavesOf(centerTree())).toHaveLength(1)
+    expect(refIdsOf(centerTree())).toContain(refId(C))
   })
 
   /*
@@ -89,7 +116,7 @@ describe('落到一片叶', () => {
    * (叶随之被剪)、`splitLeaf` 再答「没有这片叶」—— 那一格就此从树上消失。
    */
   it('唯一那一格拖回自己身上 = 什么都不发生', () => {
-    const only = makeLeaf('leaf-solo', [A], 0, null)
+    const only = makeLeaf('leaf-solo', [A], 0)
     useWorkbenchStore.setState({ regions: { [CENTER_REGION]: only }, focusLeafId: 'leaf-solo' })
     dropRef(A, { kind: 'leaf', region: CENTER_REGION, leafId: 'leaf-solo', zone: 'e' })
     expect(refIdsOf(centerTree())).toEqual([refId(A)])

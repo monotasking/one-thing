@@ -2,7 +2,7 @@ import s from './mocks.module.css'
 
 export function DiffMock() {
   return (
-    <div className={s.demo}>
+    <div className={s.demo} data-testid="diff-panel">
       <div className={s.diffHead}>packages/onething-runtime/src/providers/model-capability.ts</div>
       <div className={s.diffBody}>
         <div className={s.diffLine}>{'  export function supportsImageOutput(m: ModelEntry) {'}</div>

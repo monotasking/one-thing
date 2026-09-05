@@ -1828,37 +1828,104 @@ async function checkLeafChrome(page) {
     }
   }
 
-  // ④ 分屏一次,量分隔杆。
+  /*
+   * ④ **二合一一次,量那条分隔杆 + 两格标签的标题 + 格头**(W6-a,设计 §6)。
+   *
+   * W6-a 之前这里量的是「分屏之后中央区那条分隔杆」。中央区收成一条标签条之后
+   * 那一形在那里不存在了(单叶政策,§2.1),而它要守的挤压纪律**原样搬到了两格
+   * 标签上**,而且多了两件只有两格标签才有的:
+   *  · 标签上那个 `A ⫽ B` 最大宽 260(`--tab-pair-max`),长了**只截断不换行**;
+   *  · 每格顶上那条 28px 的格头:一行,名字截断,「拆开」那颗钮不被挤出去。
+   */
   await page.evaluate(() => {
     const split = document.querySelector('[data-testid^="pane-split:"]')
     if (split instanceof HTMLElement) split.click()
   })
   await delay(350)
-  await page.evaluate(() => {
-    const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
-    const right = items.find((el) => /在右侧|To the right/.test(el.textContent ?? ''))
-    if (right instanceof HTMLElement) right.click()
+  const joined = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+    const joins = items.filter((el) => /二合一|Join with the tab/.test(el.textContent ?? ''))
+    // `ui/Menu` 走原生 `disabled`;活动格在两端时另一条禁灰,挑按得动的那一条。
+    const join = joins.find((el) => !(el instanceof HTMLButtonElement && el.disabled))
+    if (!(join instanceof HTMLElement)) return false
+    join.click()
+    return true
   })
   await delay(500)
-  const bar = await page.evaluate(() => {
-    const el = document.querySelector('[data-testid^="pane-splitter:"]')
-    if (!el) return null
-    const r = el.getBoundingClientRect()
+  if (!joined) {
+    problems.push('菜单里没有一条按得动的「二合一」')
+    return { problems, seen }
+  }
+  const pair = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid^="pair-splitter:"]')
+    const r = el?.getBoundingClientRect() ?? null
+    const heads = Array.from(document.querySelectorAll('[data-pair-head]'))
+    const tab = document.querySelector('[data-testid="topbar"] [role="tab"][aria-selected="true"]')
+    const label = tab?.querySelector('[class*="label"]')
+    const max = Number.parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--tab-pair-max'),
+    )
     return {
-      role: el.getAttribute('role'),
-      now: Number(el.getAttribute('aria-valuenow')),
-      width: Math.round(r.width),
-      height: Math.round(r.height),
+      bar: el
+        ? {
+            role: el.getAttribute('role'),
+            now: Number(el.getAttribute('aria-valuenow')),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+          }
+        : null,
+      // 标签上那个 `A ⫽ B`:**只截断不换行**(一行高 + 不超过那格最大宽)。
+      tabW: tab ? Math.round(tab.getBoundingClientRect().width) : 0,
+      tabMax: Number.isFinite(max) ? max : 260,
+      labelOneLine: label
+        ? label.getBoundingClientRect().height < 1.6 * Number.parseFloat(getComputedStyle(label).fontSize)
+        : false,
+      // 格头:一行、名字截断得动、「拆开」在框里。
+      heads: heads.map((head) => {
+        const box = head.getBoundingClientRect()
+        const name = head.querySelector('[class*="name"]')
+        const btn = head.querySelector('button')
+        const nb = btn?.getBoundingClientRect() ?? null
+        return {
+          h: Math.round(box.height),
+          nameClipped: name ? getComputedStyle(name).textOverflow === 'ellipsis' : false,
+          btnInside: nb ? nb.right <= box.right + 1 && nb.left >= box.left - 1 : false,
+        }
+      }),
     }
   })
+  const bar = pair.bar
   if (!bar) {
-    problems.push('分屏之后分隔杆不在场')
+    problems.push('二合一之后那条分隔杆不在场')
   } else {
     seen.push(`杆 ${bar.width}×${bar.height} @${bar.now}`)
     if (bar.role !== 'separator') problems.push(`杆的 role 是 ${bar.role},不是 separator`)
     if (!(bar.width > 0 && bar.height > 0)) problems.push(`杆没有排出盒(${bar.width}×${bar.height})`)
     if (!Number.isFinite(bar.now)) problems.push('杆报不出 aria-valuenow')
   }
+  seen.push(`两格标签 ${pair.tabW}px(上限 ${pair.tabMax})| 格头 ${pair.heads.map((h) => h.h).join('/')}`)
+  if (pair.tabW > pair.tabMax + 1) {
+    problems.push(`两格标签超过最大宽:${pair.tabW} > ${pair.tabMax}`)
+  }
+  if (!pair.labelOneLine) problems.push('两格标签的标题换行了(挤压纪律:结构行只截断不换行)')
+  if (pair.heads.length !== 2) {
+    problems.push(`格头不是两条(实测 ${pair.heads.length})`)
+  } else {
+    for (const [i, head] of pair.heads.entries()) {
+      if (!head.nameClipped) problems.push(`格头 ${i} 的名字不截断`)
+      if (!head.btnInside) problems.push(`格头 ${i} 的「拆开」被挤出框`)
+    }
+  }
+  /*
+   * **收尾:拆回去**。两格那一种自述 `fullable: false`(与会话那一种同一条理由),
+   * 留着它当活动格的话,下一步(10d 全屏檐带)按 ⌘⇧↩ 会被结构化拒绝 —— 那一步
+   * 量的是檐带的几何,不该被上一步留下的形态挡住。
+   */
+  await page.evaluate(() => {
+    const btn = document.querySelector('[data-testid^="pair-unpair:"]')
+    if (btn instanceof HTMLElement) btn.click()
+  })
+  await delay(400)
   return { problems, seen }
 }
 
@@ -1983,7 +2050,26 @@ async function main() {
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
     await switchDefaultOpenToPinned(page)
-    await clickTestId(page, 'dock-tile-sessions')
+    /*
+     * **显式选一次「右侧栏」**(W6-a)。这道门后面每一步问的都是
+     * `[data-shelf-body="right"]`,而 W6-a 给会话总览那块瓦补了一格
+     * `defaultPlacement: 左架子`(设计 §8);解析序是**记忆 > 天生 > 全局默认档**,
+     * 所以「全局默认档 = 钉右边」压不过那一格天生落点 —— 它会落到左边去。
+     * 用户亲手选一次(右键 → 打开方式)写的是**记忆**,记忆压过天生:这既是
+     * 用户真走的那条路,也让这道门量的仍旧是右架子那一形。
+     */
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-sessions"]')
+      if (tile instanceof HTMLElement) {
+        tile.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 40 }))
+      }
+    })
+    await new Promise((r) => setTimeout(r, 400))
+    await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('[role="menuitemradio"]'))
+      const right = items.find((el) => /^(Right|右侧栏|右边)$/.test((el.textContent ?? '').trim()))
+      if (right instanceof HTMLElement) right.click()
+    })
     await waitFor('架子上出现会话总览', () =>
       page.evaluate(
         () => document.querySelector('[data-shelf-body="right"]')?.dataset.panel === 'sessions',

@@ -1,3 +1,4 @@
+import { foldLeaves } from './tree'
 import type { ContentRef } from './kinds'
 import type { PaneNode } from './tree'
 
@@ -72,11 +73,10 @@ function rewriteNode(node: unknown, rewrite: RefRewrite): unknown {
     return { ...split, a, b }
   }
   if (shape.kind !== 'leaf') return node
-  const leaf = node as { tabs?: unknown; preview?: unknown }
+  const leaf = node as { tabs?: unknown }
   if (!Array.isArray(leaf.tabs)) return node
   let changed = false
   const tabs: ContentRef[] = []
-  const renamed = new Map<string, string | null>()
   for (const tab of leaf.tabs) {
     if (!isRef(tab)) {
       tabs.push(tab as ContentRef)
@@ -88,19 +88,10 @@ function rewriteNode(node: unknown, rewrite: RefRewrite): unknown {
       continue
     }
     changed = true
-    renamed.set(idOf(tab), to ? idOf(to) : null)
     if (to) tabs.push(to)
   }
   if (!changed) return node
-  /*
-   * 预览那一格记的是 **refId 字符串**:被翻译掉的那一个要跟着改名,
-   * 被丢掉的那一个要清成 null —— 留着一个指不到任何 tab 的 refId,
-   * 屏幕上那片叶就永远认为「有一个预览格」。
-   */
-  const preview = typeof leaf.preview === 'string' && renamed.has(leaf.preview)
-    ? renamed.get(leaf.preview) ?? null
-    : leaf.preview ?? null
-  return { ...leaf, tabs, preview }
+  return { ...leaf, tabs }
 }
 
 function rewriteHidden(hidden: unknown, rewrite: RefRewrite): unknown {
@@ -130,4 +121,95 @@ function isRef(value: unknown): value is ContentRef {
   return typeof ref.kind === 'string' && typeof ref.key === 'string'
 }
 
-const idOf = (ref: ContentRef): string => `${ref.kind}:${ref.key}`
+/* ── v3(W6-a):一个区域折成一片叶 + 预览那一格退役 ─────────────────────────
+ *
+ * 两件事一起走一遍,因为它们**走的是同一棵树**,而这只文件的两条硬要求
+ * (幂等、引用恒等)是逐层比对出来的 —— 分两遍就得比两次,而第一遍造出来的
+ * 新对象会让第二遍永远认为「变了」。
+ *
+ *  ① **折叶**:`foldRegions` 里点名的那些区域(今天只有中央区),多叶存档按
+ *     阅读序并成一条标签列表,比例(split 节点)整个丢掉。算术不在这里 ——
+ *     它与运行期那一遍共用 `tree.foldLeaves`,不许两处各写一份;
+ *  ② **删 `preview`**:每一片叶身上那一格字段抹掉。留着不会让今天的形状闸
+ *     报错(它已经不判这一格了),但它会在下一次写盘时原样落回去 ——
+ *     一份档案里永远躺着一个谁都不读的字段是下一个人的陷阱。
+ *
+ * 与 v2 那只改写器同一个体例:**每一层都比对了才重建**,一格都没改到时原样
+ * 交回同一个对象;跑过一遍的档案再跑一遍逐字相同(用例钉着两条)。
+ */
+export function foldRegionsInPersisted(
+  persisted: Record<string, unknown>,
+  foldRegions: readonly string[],
+): Record<string, unknown> {
+  const spaces = persisted.byWorkspace
+  if (!spaces || typeof spaces !== 'object') return persisted
+  const fold = new Set(foldRegions)
+  let changed = false
+  const next: Record<string, unknown> = {}
+  for (const [spaceId, furniture] of Object.entries(spaces as Record<string, unknown>)) {
+    const migrated = foldFurniture(furniture, fold)
+    if (migrated !== furniture) changed = true
+    next[spaceId] = migrated
+  }
+  return changed ? { ...persisted, byWorkspace: next } : persisted
+}
+
+function foldFurniture(furniture: unknown, fold: ReadonlySet<string>): unknown {
+  if (!furniture || typeof furniture !== 'object') return furniture
+  const row = furniture as { regions?: unknown }
+  const regions = row.regions
+  if (!regions || typeof regions !== 'object') return furniture
+  let changed = false
+  const next: Record<string, unknown> = {}
+  for (const [region, tree] of Object.entries(regions as Record<string, unknown>)) {
+    // 折叶只作用在点名的那些区域;`preview` 那一格**每一棵树都抹**。
+    const stripped = stripPreview(tree)
+    const migrated = fold.has(region) ? foldNode(stripped) : stripped
+    if (migrated !== tree) changed = true
+    next[region] = migrated
+  }
+  return changed ? { ...row, regions: next } : furniture
+}
+
+/** 把一格 `preview` 从每一片叶身上抹掉。没有那一格时原样交回。 */
+function stripPreview(node: unknown): unknown {
+  if (!node || typeof node !== 'object') return node
+  const shape = node as Partial<PaneNode>
+  if (shape.kind === 'split') {
+    const split = node as { a: unknown; b: unknown }
+    const a = stripPreview(split.a)
+    const b = stripPreview(split.b)
+    if (a === split.a && b === split.b) return node
+    return { ...split, a, b }
+  }
+  if (shape.kind !== 'leaf') return node
+  if (!('preview' in (node as object))) return node
+  const { preview: _drop, ...rest } = node as Record<string, unknown>
+  void _drop
+  return rest
+}
+
+/**
+ * 一棵存档里的树折成一片叶。**判据本体是 `tree.foldLeaves`** —— 这里只负责
+ * 「档案里那坨 JSON 是不是一棵认得出的树」这一句形状闸(落盘的东西可能是任何
+ * 东西:手改过、被截断、版本对不上),认不出就原样带过。
+ */
+function foldNode(node: unknown): unknown {
+  if (!isPersistedNode(node)) return node
+  const folded = foldLeaves(node)
+  return folded === node ? node : folded
+}
+
+function isPersistedNode(value: unknown): value is PaneNode {
+  if (!value || typeof value !== 'object') return false
+  const node = value as Partial<PaneNode>
+  if (node.kind === 'leaf') {
+    const leaf = value as Partial<{ id: string; tabs: unknown; active: unknown }>
+    return typeof leaf.id === 'string' && Array.isArray(leaf.tabs) && typeof leaf.active === 'number'
+  }
+  if (node.kind === 'split') {
+    const split = value as Partial<{ a: unknown; b: unknown }>
+    return isPersistedNode(split.a) && isPersistedNode(split.b)
+  }
+  return false
+}

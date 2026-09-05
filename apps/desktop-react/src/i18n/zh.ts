@@ -179,6 +179,8 @@ export const zh = {
 
   /* ── Dock 上那几块瓷砖的名字(是界面标签,不是内容) ───────────────── */
   'item.files': '文件',
+  /* W6-a:那块瓦现在是**目录**的启动瓦(一个目录一份面板)。 */
+  'item.dirs': '目录',
   'item.viewer': '查看器',
   'item.diff': '改动',
   'item.terminal': '终端',
@@ -792,6 +794,11 @@ export const zh = {
   'files.menuOpenBelow': '在下方打开',
   'files.openStateShown': '打开着',
   'files.openStateHidden': '打开着(已隐藏)',
+  /* 目录面板(W6-a)。 */
+  'files.recentDirs': '最近打开的目录',
+  'files.openDirTitle': '打开目录…',
+  'files.openDirConfirm': '打开',
+  'files.openDirPlaceholder': '绝对路径,例如 /Users/me/notes',
   'workbench.leafTabs': '标签',
   'workbench.hiddenTabs': '隐藏的标签',
   'workbench.hiddenNote': '已隐藏',
@@ -802,6 +809,15 @@ export const zh = {
   'workbench.splitUp': '在上方',
   'workbench.splitterLabel': '分隔杆',
   'workbench.topbarTabs': '中央区标签',
+  /* 一个标签装两格(W6-a)。 */
+  'workbench.pair': '二合一',
+  'workbench.pairRight': '与右边的标签二合一',
+  'workbench.pairLeft': '与左边的标签二合一',
+  'workbench.unpair': '拆开',
+  'workbench.unpaired': '已拆开',
+  'workbench.pairedWith': '已与{name}并排',
+  'workbench.pairSplitter': '两格分隔杆',
+  'workbench.pairBroken': '这一格的两格读不出来',
   /* ── 拖拽(W3)—— 浮影上那句话与落区上那句话共用这一族 ─────────────── */
   'drag.toFloat': '撕成浮窗',
   'drag.toEdgeLeft': '移到左侧',
