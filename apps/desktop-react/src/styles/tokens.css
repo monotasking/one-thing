@@ -161,8 +161,34 @@
   --z-modal: 600;
   /* Dock 保留区在舞台之上、在 tooltip 之下 */
   --z-dock: 650;
+  /* 拖拽的两层(W3):浮影与落区高亮共用这一档。
+   * 在 dropdown(680)**之上** —— 拖起一格 tab 时右键菜单可能还开着,浮影被它盖住
+   * 是荒谬的(浮影是此刻手上唯一在动的东西);在 tooltip(700)**之下** ——
+   * 提示是系统的旁白,拖拽不该压住它。
+   * 一个数管两件事:`DropOverlay` 与 `DragLayer` 同层,谁在上由 AppShell 里的
+   * DOM 序决定(高亮先挂、浮影后挂),不再多开一格 z。 */
+  --z-drag: 690;
   --z-tooltip: 700;
   --z-toast: 800;
+
+  /* ── 拖拽(W3)────────────────────────────────────────────────────────
+   * 浮影:一行高 28、封顶 240 宽,从手指底下那一点往右下 12/12 长出来
+   * (与 macOS 的拖影同向;正下方长会被手指自己挡住)。
+   * 落区高亮的**色**在这里,**形不在** —— 那块矩形由纯函数
+   * `workbench/drop.ts` 的 `zoneRectOf` 算好(高亮盖的就是判据用的那一块),
+   * 所以这一节没有「内缩 25%」那个数:它是判据不是画法,而一格没人读的
+   * CSS 变量迟早与判据分叉。25% 的产地是 `DROP_CENTER_INSET`,只此一处。 */
+  --drag-ghost-h: 28px;
+  --drag-ghost-max-w: 240px;
+  --drag-ghost-pad-x: 10px;
+  --drag-ghost-dx: 12px;
+  --drag-ghost-dy: 12px;
+  --drag-refuse-opacity: 0.5;
+  --drop-band-face: var(--accent-soft);
+  --drop-band-line: var(--accent);
+  --drop-refuse-face: transparent;
+  --drop-refuse-line: var(--line-2);
+  --drop-band-r: var(--r-2);
 
   /* 外壳几何 */
   --pin-min: 320px; /* Quick Look 列宽用(expose/ListView);架子的下界见 --shelf-min */

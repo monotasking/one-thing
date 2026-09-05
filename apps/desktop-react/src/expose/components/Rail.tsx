@@ -1,4 +1,5 @@
-import { useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon } from '../../components/icons'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { useRoving } from '../../ui/a11y/roving'
@@ -13,6 +14,8 @@ import {
   visibleScopes,
 } from '../scopes'
 import { useExposeStore } from '../store'
+import { useContentDrag } from '../../workbench/useContentDrag'
+import { filesRootRef } from '../../content/kinds/files-root-ref'
 import type { ProjectScope } from '../types'
 import s from './Rail.module.css'
 
@@ -44,6 +47,12 @@ interface RailItem {
   scope: ProjectScope
   label: string
   icon: string
+  /**
+   * 这一档拖出去是什么(W3 裁定 6:项目一行 → `files-root:<path>`)。
+   * **固定那几档没有**(「全部」「协作」「无项目」不是一个目录,拖不出东西),
+   * 所以这一格是可选的 —— 它同时就是「这一行能不能拖」的判据,没有第二个布尔。
+   */
+  dragPath?: string
 }
 
 export function Rail() {
@@ -68,9 +77,30 @@ export function Rail() {
     const icon = scopeSpecOf({ kind: 'project', projectId: '' }).icon
     return buildProjects(sessions).map((project) => {
       const item = projectScope(project.id)
-      return { key: scopeId(item), scope: item, label: project.name, icon }
+      return { key: scopeId(item), scope: item, label: project.name, icon, dragPath: project.path }
     })
   }, [sessions])
+
+  /*
+   * **一个项目拖出去 = 以它的目录为根的一棵文件树**(W3,设计 §3.1 第三行)。
+   *
+   * 与文件树行逐字同型:按下时记一格路径、起拖时读它(`useContentDrag` 的
+   * `ref()` 无参 —— 它不认识侧栏)。**行不离开侧栏**(树 / 面常驻铁律的拖拽版),
+   * 而没过阈值的一次按下松开仍旧是一次普通点击(切范围),所以这一格不改
+   * 侧栏原有的任何行为。
+   */
+  const dragPath = useRef<string | null>(null)
+  const startDrag = useContentDrag({
+    ref: () => (dragPath.current ? filesRootRef(dragPath.current) : null),
+  })
+  const onItemPointerDown = useCallback(
+    (item: RailItem, e: ReactPointerEvent<HTMLElement>) => {
+      if (!item.dragPath) return
+      dragPath.current = item.dragPath
+      startDrag(e)
+    },
+    [startDrag],
+  )
 
   const renderItem = (item: RailItem) => {
     const selected = sameScope(scope, item.scope)
@@ -86,6 +116,7 @@ export function Rail() {
         data-testid={`expose-scope-${item.key}`}
         className={selected ? `${s.item} ${s.on}` : s.item}
         onClick={() => useExposeStore.getState().setScope(item.scope)}
+        onPointerDown={(e) => onItemPointerDown(item, e)}
       >
         <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />
         <span className={s.label}>{item.label}</span>

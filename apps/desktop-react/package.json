@@ -44,7 +44,8 @@
     "gate:dock": "node scripts/gate-dock.mjs",
     "gate:dock-wake": "node scripts/gate-dock-wake.mjs",
     "gate:focus": "node scripts/gate-focus.mjs",
-    "gate:drag-region": "node scripts/gate-drag-region.mjs"
+    "gate:drag-region": "node scripts/gate-drag-region.mjs",
+    "gate:drag": "node scripts/gate-drag.mjs"
   },
   "dependencies": {
     "lucide-react": "latest",

@@ -9,6 +9,7 @@ import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { CENTER_REGION } from './regions'
 import { renderRef } from './render'
 import { regionOfLeafIn, useWorkbenchStore } from './store'
+import { useTabDrag } from './useTabDrag'
 import type { ContentRef } from './kinds'
 import type { PaneLeafNode } from './tree'
 import s from './PaneLeaf.module.css'
@@ -71,7 +72,12 @@ import s from './PaneLeaf.module.css'
 export interface PaneHostChrome {
   /** 挂在檐右端、叶自己那一组动作之后的那一组。**只挂在根叶上**。 */
   actions?: ReactNode
-  /** 按住一格 tab 意味着什么(架子:撕成浮窗)。**每片叶都接**。 */
+  /**
+   * 按住一格 tab 意味着什么。**W3 起没有宿主再给这一格** —— 拖拽是全壳统一的
+   * 一件事(`workbench/useTabDrag`),不是每个宿主自己的手势。这一格留着是因为
+   * `PaneHostChrome` 是宿主与檐之间的契约,而将来可能有宿主要在按下时插一句
+   * 自己的话(比如浮窗置顶)。给了就在统一拖拽**之前**先叫它。
+   */
   onTabPointerDown?: (id: string, e: ReactPointerEvent<HTMLElement>) => void
   /** 按在檐的空白处意味着什么(浮窗:拖窗)。**只在根叶上**。 */
   onChromePointerDown?: (e: ReactPointerEvent<HTMLElement>) => void
@@ -176,6 +182,19 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
   const tabs = useLeafTabSpecs(leaf)
   const closeAt = useCloseLeafTab(leaf)
   const active = leaf.tabs[leaf.active] ?? null
+  /*
+   * **拖一格 tab**(W3)。宿主自己那一句(若有)先叫,再起统一拖拽 ——
+   * 架子从前在这一格里手写的「撕成浮窗」整段退役了(它只对瓦成立,而且是
+   * 第二套拖拽实现);现在架子、浮窗、分屏出来的每一片叶走的是同一条路。
+   */
+  const dragTab = useTabDrag(leaf)
+  const onTabPointerDown = useCallback(
+    (id: string, e: ReactPointerEvent<HTMLElement>) => {
+      host?.onTabPointerDown?.(id, e)
+      dragTab(id, e)
+    },
+    [host, dragTab],
+  )
 
   const onSelect = useCallback(
     (id: string) => {
@@ -200,7 +219,7 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
       chromeId={leaf.id}
       onSelect={onSelect}
       onClose={onClose}
-      onTabPointerDown={host?.onTabPointerDown}
+      onTabPointerDown={onTabPointerDown}
       onChromePointerDown={host?.onChromePointerDown}
       actions={
         <>

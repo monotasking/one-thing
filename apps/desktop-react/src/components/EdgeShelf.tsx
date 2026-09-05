@@ -3,19 +3,13 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useStageStore } from '../stage/store'
 import {
   clampShelfThickness,
-  defaultFloatRect,
-  floatRectForGrab,
   shelfViewportExtent,
-  shouldTearOff,
-  snapSideAt,
   thicknessFromPointer,
 } from '../stage/transitions'
 import { panelIdOf } from '../stage/panel-ref'
-import { setSnapSide } from './snap-hint'
 import { useWorkbenchStore } from '../workbench/store'
 import { edgeRegion } from '../workbench/regions'
 import { PaneTree } from '../workbench/PaneTree'
-import { parseRefId } from '../workbench/kinds'
 import { leafCount } from '../workbench/layout'
 import { FocusScope } from '../focus/FocusScope'
 import { perfMark } from '../services/perf'
@@ -27,7 +21,7 @@ import { IconButton } from '../ui/IconButton'
 import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, PictureInPicture2, X } from './icons'
 import type { LucideIcon } from './icons'
 import { FLASH_MS } from './motion'
-import type { FloatRect, Point, ShelfSide, Viewport } from '../stage/types'
+import type { ShelfSide, Viewport } from '../stage/types'
 import s from './EdgeShelf.module.css'
 
 /** 边 → 它自己的名字。四条边各一句,所以「收起{name}」这类句子只需要一个 key。 */
@@ -66,19 +60,18 @@ function thicknessStyle(side: ShelfSide, px: string): { width?: string; height?:
   return side === 'left' || side === 'right' ? { width: px } : { height: px }
 }
 
-/** 架子贴着视口的那一侧(拖厚度时量它)与朝主区的那一侧(撕 tab 时量它)。 */
+/**
+ * 架子贴着视口的那一侧 —— 拖厚度时量它。
+ *
+ * 它从前有一只对称的兄弟 `innerEdgeOf`(朝主区那一侧,「撕 tab 撕出去多远」的
+ * 基准)。撕 tab 那一整段随 W3 退役了,它跟着走 —— 而「离窗口边多近算吸」
+ * 那件事仍旧由形态机的 `snapSideAt` 统一回答,不需要架子自己量一个内缘。
+ */
 function outerEdgeOf(side: ShelfSide, rect: DOMRect): number {
   if (side === 'left') return rect.left
   if (side === 'right') return rect.right
   if (side === 'top') return rect.top
   return rect.bottom
-}
-
-function innerEdgeOf(side: ShelfSide, rect: DOMRect): number {
-  if (side === 'left') return rect.right
-  if (side === 'right') return rect.left
-  if (side === 'top') return rect.bottom
-  return rect.top
 }
 
 function readViewport(): Viewport {
@@ -140,9 +133,6 @@ export function EdgeShelf({ side }: Props) {
   const toggleShelfCollapsed = useStageStore((st) => st.toggleShelfCollapsed)
   const closeShelf = useStageStore((st) => st.closeShelf)
   const edgeToFloat = useStageStore((st) => st.edgeToFloat)
-  const floatToEdge = useStageStore((st) => st.floatToEdge)
-  const moveFloat = useStageStore((st) => st.moveFloat)
-  const resizeFloat = useStageStore((st) => st.resizeFloat)
 
   const asideRef = useRef<HTMLElement>(null)
 
@@ -205,61 +195,22 @@ export function EdgeShelf({ side }: Props) {
     [side, shelf.thickness, setShelfThickness],
   )
 
-  /**
-   * tab 拖出去 = 变浮窗。两段:
-   *  1) 还没过阈值 —— 什么都不做,所以一次没拖动的按下松开仍然是普通点击;
-   *  2) 过了阈值 —— `edgeToFloat` 之后这一帧起它已经是浮窗,后续每一帧直接写
-   *     `moveFloat`,顺带算吸附预示,于是「撕下来顺势再吸去别的边」不需要第二套代码。
+  /*
+   * ── 「tab 撕成浮窗」那一整段退役了(W3)────────────────────────────────
+   * W4 交卷时这里有一段自己的拖拽:过阈值 → `edgeToFloat` → 每帧 `moveFloat`,
+   * 而它**只对瓦成立**(浮窗的矩形 / 置顶序 / 位置记忆三张表都按瓦 id 记,
+   * 一个文件没有瓦 id),留账写着「把文件也撕出去是 W3 拖拽那一批的事」。
    *
-   * **只有瓦撕得出去**(W4 的诚实降级):浮窗的矩形、置顶序与位置记忆三张表都按
-   * **瓦 id** 记,而一个文件没有瓦 id。把文件也撕出去是 W3 拖拽那一批的事
-   * (那时落点与来源统一走 `DragSession`);在那之前,按住一个文件 tab 与从前
-   * 按住一个不可撕的 tab 逐字相同:什么都不发生,松手就是普通点击。
+   * W3 到了:拖拽是全壳统一的一件事(`workbench/useTabDrag` → `ui/drag` +
+   * 纯判据 `workbench/drop`),接线落在**檐**上(`PaneLeaf.PaneLeafStrip`),
+   * 四个宿主共用。所以这条架子不再有自己的那一套 —— 它连 `onTabPointerDown`
+   * 都不必给了(留账 2 顺带结清:任何一种 ref 都撕得出浮窗,窗号由
+   * `nextFloatId` 铸)。
+   *
+   * **可感知的变化一条**,记在交卷报告里:从架子上撕一格 tab 从前是「过阈值
+   * 当场变浮窗、之后每帧跟手」,现在是「浮影跟指针 + 一圈窗子轮廓预示,松手
+   * 成窗」——设计 §3 定的统一模型,五种来源同一套。
    */
-  const onTabPointerDown = useCallback(
-    (refIdValue: string, e: ReactPointerEvent<HTMLElement>) => {
-      if (e.button !== 0) return
-      const ref = parseRefId(refIdValue)
-      const id = ref ? panelIdOf(ref) : null
-      if (id === null) return
-      const box = asideRef.current?.getBoundingClientRect()
-      if (!box) return
-      const inner = innerEdgeOf(side, box)
-      const viewport = readViewport()
-      let grabbed: FloatRect | null = null
-
-      const move = (ev: PointerEvent) => {
-        const pointer: Point = { x: ev.clientX, y: ev.clientY }
-        if (!grabbed) {
-          if (!shouldTearOff(side, pointer, inner)) return
-          // 有记忆就用记忆身量,没有就用新浮窗的默认身量 —— 位置一律以指针为标题栏中心。
-          // 就地取一次而不是订阅 floats:订阅了,别处每拖一帧浮窗这条架子都要重渲一次。
-          const remembered = useStageStore.getState().floats[id] ?? defaultFloatRect(viewport)
-          grabbed = floatRectForGrab(pointer, remembered, viewport)
-          edgeToFloat(id)
-          resizeFloat(id, grabbed)
-          return
-        }
-        // 每一帧都问同一个纯函数,所以「指针 = 标题栏中心」这条约定撕下来那一刻与之后逐字相同。
-        const next = floatRectForGrab(pointer, grabbed, viewport)
-        moveFloat(id, next.x, next.y)
-        setSnapSide(snapSideAt(pointer, viewport))
-      }
-      const up = (ev: PointerEvent) => {
-        window.removeEventListener('pointermove', move)
-        window.removeEventListener('pointerup', up)
-        window.removeEventListener('pointercancel', up)
-        if (!grabbed) return
-        const landing = snapSideAt({ x: ev.clientX, y: ev.clientY }, viewport)
-        setSnapSide(null)
-        if (landing) floatToEdge(id, landing)
-      }
-      window.addEventListener('pointermove', move)
-      window.addEventListener('pointerup', up)
-      window.addEventListener('pointercancel', up)
-    },
-    [side, edgeToFloat, resizeFloat, moveFloat, floatToEdge],
-  )
 
   const name = t(LABEL_KEY[side])
   /**
@@ -288,7 +239,6 @@ export function EdgeShelf({ side }: Props) {
 
   const host = useMemo<PaneHostChrome>(
     () => ({
-      onTabPointerDown,
       actions: (
         <>
           {/* 檐上三颗图标钮全部消费 `ui/IconButton`(09-01 立法)。本地只剩
@@ -314,7 +264,7 @@ export function EdgeShelf({ side }: Props) {
         </>
       ),
     }),
-    [onTabPointerDown, activeItemId, edgeToFloat, t, name, side, toggleCollapsed, closeShelf],
+    [activeItemId, edgeToFloat, t, name, side, toggleCollapsed, closeShelf],
   )
 
   // 空架子不渲染 —— 也就不占一丝布局。

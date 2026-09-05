@@ -16,6 +16,7 @@ import { CoverLayer } from './CoverLayer'
 import { EdgeShelf } from './EdgeShelf'
 import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
+import { DragLayer, DropOverlay } from '../ui/drag'
 import { ToastHost } from '../ui/Toast'
 import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
@@ -528,6 +529,20 @@ export function AppShell() {
 
           {/* 吸附预示:拖窗进热带时那条边浮出的薄膜。两个拖拽起点共用这一个消费者。 */}
           <SnapHint />
+
+          {/*
+            内容拖拽的两层(W3)。**次序即层序**:两层同一档 z(`--z-drag`),
+            高亮先挂、浮影后挂 —— 于是浮影永远盖在高亮上,不必再开第二格 z。
+
+            两层都是**零 DOM 的叶子**:不拖的时候各自 `return null`,一个节点都不画。
+            订阅住在它们自己里面(那格状态每一发 pointermove 都变),挂在外壳身上
+            等于「拖一次整棵壳重渲上百遍」—— 与 `StageFocusFollow` 同一条判例。
+
+            它们排在 `FloatLayer` 之后:落区高亮要盖得住浮窗,而浮影要盖得住一切
+            (右键菜单可能还开着,`--z-drag` 690 > `--z-dropdown` 680)。
+          */}
+          <DropOverlay />
+          <DragLayer />
 
           <StageOverlay />
 

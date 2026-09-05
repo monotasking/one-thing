@@ -364,6 +364,54 @@ function ruleHandwrittenFloat(file, text) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────
+ * 规则 ⑥·b  内容拖拽的手写 —— 该消费 ui/drag 的 useDragSource(W3)
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * 「按住一样东西、拖过整台壳、松手落在别处」这件事的**唯一产地**是
+ * `ui/drag`(`useDragSource` + `DragLayer` + `DropOverlay`,判词在
+ * `DragSession.ts` 的文件头)。这条规则是「基础件先行」那条法在拖拽上的执法。
+ *
+ * ── 判据:**window 级的 move 与 up 成对**,不是「凡是 pointermove」──────────
+ * 这台壳里有两种指针手势,它们不是一件事:
+ *  · **控件内部的**(`ui/Splitter` 的拖杆、架子的厚度把手、浮窗标题栏的移动与
+ *    八个 resize 角)—— 它们抢 pointer capture 之后把监听挂在**那个元素**上,
+ *    语义始终没离开那一件控件:拖出去多远都只是在改它自己的一个数;
+ *  · **跨整台壳的**(W3 的内容拖拽)—— 落点由「松手时指针在屏幕上的哪一块」
+ *    决定,所以它必然要一路听到 window。
+ * 后者正是 `ui/drag` 的职责,前者不是。所以探针问的是 **window 上 move 与
+ * up / cancel 成对出现**这一形 —— 那是「我在拖一样东西走遍全屏」的签名。
+ *
+ * 只有 `pointermove`(没有配对的 up)不算:`AppShell` 的 Dock 悬停唤醒就是那一形,
+ * 它跟踪的是指针位置,不是一次拖拽。
+ *
+ * ── 基线为零,而且是**结构性**的零 ────────────────────────────────────────
+ * W3 交卷时这条规则在业务面上零命中:唯一那处(`EdgeShelf` 的「tab 撕成浮窗」)
+ * 随本批退役,它的活儿归了统一那条路。`src/ui/**` 不进这条规则的扫描面
+ * (见 `findViolations` 里那句 —— 组件库自己正是要被收编的一头),所以
+ * `ui/drag/DragSession.ts` 自己不会红。
+ */
+const WINDOW_POINTER_MOVE = /window\.addEventListener\(\s*['"]pointermove['"]/g
+const WINDOW_POINTER_END = /window\.addEventListener\(\s*['"]pointer(?:up|cancel)['"]/
+
+function ruleHandwrittenDrag(file, text) {
+  if (isTest(file)) return []
+  if (!WINDOW_POINTER_END.test(text)) return []
+  const hits = []
+  WINDOW_POINTER_MOVE.lastIndex = 0
+  let m
+  while ((m = WINDOW_POINTER_MOVE.exec(text)) !== null) {
+    hits.push({
+      rule: 'drag-handwritten',
+      file,
+      line: lineOf(text, m.index),
+      note: '手写跨壳拖拽(window pointermove + up),该消费 ui/drag useDragSource',
+    })
+  }
+  return hits
+}
+
+/* ────────────────────────────────────────────────────────────────────────
  * 规则 ⑦  Spinner 的落点 —— 只许在按钮内或状态栏
  * ──────────────────────────────────────────────────────────────────────── */
 
@@ -569,6 +617,8 @@ export const RULE_SEVERITY = {
   'bare-button-structural': 'debt',
   'async-busy-boolean': 'debt',
   'float-handwritten': 'violation',
+  // W3 起硬闸,基线零(不进 baseline 文件):新写一套跨壳拖拽直接红。
+  'drag-handwritten': 'violation',
   'spinner-placement': 'violation',
   'shared-vocab-css': 'debt',
   // 响应链三条(R3 起硬闸,基线零,不进 baseline 文件)。
@@ -611,6 +661,7 @@ export function findViolations() {
       found.push(...ruleBareButton(rel, tags))
       found.push(...ruleAsyncBusyBoolean(rel, text))
       found.push(...ruleHandwrittenFloat(rel, text))
+      found.push(...ruleHandwrittenDrag(rel, text))
       found.push(...ruleSpinnerPlacement(rel, text))
       found.push(...ruleFocusDomain(rel, text))
     }

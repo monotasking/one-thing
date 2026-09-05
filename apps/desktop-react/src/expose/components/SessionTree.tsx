@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useT } from '../../i18n'
 import { useSessionsList, useSessionsSource } from '../../data/sessions-source'
 import { buildListModel, treeNodeDomId } from '../list-model'
@@ -8,7 +9,19 @@ import { togglePinAndAnnounce } from './pin-announce'
 import { SectionHead } from './SectionHead'
 import { SessionRow } from './SessionRow'
 import { useSessionTime } from './session-time'
+import { useContentDrag } from '../../workbench/useContentDrag'
+import { CENTER_REGION } from '../../workbench/regions'
 import s from './SessionTree.module.css'
+
+/**
+ * **一条会话在拖拽里的名字**(W3 裁定 7)。
+ *
+ * 它**不是**一种登记过的内容 —— 会话成为内容是 W5 的事(`session:<id>` 那一格)。
+ * 今天它只活在一次拖拽的载荷里:落中央 = 切一条会话,落别处 = 结构化拒绝,
+ * 两条路都不往树里插一格。所以它没有 `registerContentKind`,也不该有:
+ * 登记一种画不出东西的内容,只会让它在树上留下一格空白 tab。
+ */
+const SESSION_DRAG_KIND = 'session'
 
 /**
  * 会话列表 —— **一张树**(设计 §1)。总览与「钻进某个组」那第二屏 09-04 合并成
@@ -95,6 +108,50 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
   )
   // 置顶两个入口(图钉 / ⌘⇧P)共用同一件,播报也就只有一个产地(见 pin-announce)。
   const onTogglePin = useCallback((sessionId: string) => togglePinAndAnnounce(sessionId), [])
+  /*
+   * **一行会话是一个拖拽来源,但它只许落中央**(W3 裁定 7;设计 §3.1 第二行:
+   * 「T4 之前:落到中央 = 切换当前会话;落到别处 = 结构化拒绝」)。
+   *
+   * 三件事各归各位,都不在这只组件里判:
+   *  · **落得下吗** —— `rules.accepts`:中央区那片叶收,别的一律答一句 key,
+   *    浮影当场变灰并把那句话写出来(不静默);
+   *  · **分不分屏** —— `rules.split: false`:会话落中央只是「切一条会话」,
+   *    切一刀出来放什么都没有,所以叶上不开四带,整片都是中心区;
+   *  · **落定做什么** —— `onDrop` 自己接住:它**不往树里插一格**(会话还不是
+   *    一种内容,W5 才是),而是走既有那口 `enterSession` —— 与点一行逐字相同。
+   * W5 之后这三格一起消失:那时 `session:<id>` 是真的一种内容,走缺省那条路。
+   */
+  const dragSessionId = useRef<string | null>(null)
+  const startSessionDrag = useContentDrag({
+    ref: () => (dragSessionId.current ? { kind: SESSION_DRAG_KIND, key: dragSessionId.current } : null),
+    /*
+     * 浮影上那个名字**问不到种类表**(会话不是一种登记过的内容),所以就地从
+     * 列表里取 —— `sessions` 本来就订着,这里不多订一份。
+     */
+    ghost: (ref) => ({
+      label: sessions.find((row) => row.id === ref.key)?.title ?? ref.key,
+      icon: 'MessageSquare',
+    }),
+    rules: {
+      split: false,
+      accepts: (target) =>
+        target.kind === 'leaf' && target.region === CENTER_REGION ? null : 'drag.sessionOnlyCenter',
+    },
+    onDrop: (target, ref) => {
+      if (target.kind === 'leaf' && target.region === CENTER_REGION) {
+        useExposeStore.getState().enterSession(ref.key)
+      }
+      // 恒答 true:会话这一种**永远**不往树里插一格(拒绝那一路也是空动作)。
+      return true
+    },
+  })
+  const onDragPointerDown = useCallback(
+    (sessionId: string, e: ReactPointerEvent<HTMLElement>) => {
+      dragSessionId.current = sessionId
+      startSessionDrag(e)
+    },
+    [startSessionDrag],
+  )
   const onToggleSection = useCallback(
     (sectionId: string) => useExposeStore.getState().toggleSection(sectionId),
     [],
@@ -177,6 +234,7 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
                   onPeek={onPeek}
                   onTogglePin={onTogglePin}
                   onToggleRoom={onToggleRoom}
+                  onDragPointerDown={onDragPointerDown}
                 />
               ))}
             </div>

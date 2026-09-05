@@ -9,6 +9,8 @@ import * as P from './placement'
 import { foldLegacyStageFurniture, stashLegacyStageResidency } from './legacy-furniture'
 import { nextLeafId } from '../workbench/ids'
 import { projectResidency, sameProjection } from './residency'
+import type { ContentRef } from '../workbench/kinds'
+import type { RegionId } from '../workbench/regions'
 import type { Locale } from '../i18n'
 import {
   spreadSpace,
@@ -40,6 +42,20 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   clickDockIcon: (id: string) => void
   /** 显式手势那一层:点名放到哪儿。它既执行也写记忆(记忆在 transitions 的 openAs 里落)。 */
   openAs: (id: string, placement: Placement) => void
+  /**
+   * **把任意一块内容摆到某个区域**(W4 立的 `placement.placeRefIn`,W3 起有了
+   * 第一个消费者:拖拽落定)。
+   *
+   * 与 `openAs` 的分工:那一口说的是**瓦**的形态语言(`Placement`,连带位置
+   * 记忆与闪烁),这一口说的是**内容**的区域语言(`RegionId`)—— 而它按
+   * `panelIdOf(ref) !== null` 自己分派,所以拖拽那一头不必枚举内容种类。
+   *
+   * 它必须是一格 store 动作而不是直接调那只纯编排:一次落定要同时改**树**与
+   * **形态机**,而 `orchestrate` 那格缓冲(判词在它自己头上)保证订阅者看到的
+   * 是一次干净的 A → B。绕开它,`stage/focus-follow` 的差分判据会把一次落定
+   * 读成好几拍(真机门 `gate:focus` 场景 11 / 15 的病历)。
+   */
+  placeRef: (ref: ContentRef, region: RegionId, opts?: { rect?: FloatRect }) => void
   /**
    * **召唤**一块面(S1,设计 §14)。键盘 `toggle:<面>` 命令的**唯一**落点:
    * 没开就开、看不见就露出来、看得见没聚焦就只聚焦、焦点已在里面就收起来。
@@ -234,6 +250,8 @@ export const useStageStore = create<StageStore>()(
 
       clickDockIcon: (id) => orchestrate(() => P.clickDockIcon(stagePlacementDeps, id, openMemoryFor(get(), id))),
       openAs: (id, placement) => orchestrate(() => P.placeAs(stagePlacementDeps, id, placement)),
+      placeRef: (ref, region, opts) =>
+        orchestrate(() => P.placeRefIn(stagePlacementDeps, ref, region, opts ?? {})),
       /*
        * ── 召唤(S1)是 store 唯一那种「先问再分流」的动作 ──────────────────
        * 它不是一句 `set(纯函数)`,因为判据要同时读**两份**事实:形态机这一份

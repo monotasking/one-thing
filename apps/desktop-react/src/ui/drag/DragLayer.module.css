@@ -1,0 +1,13 @@
+/*
+ * 浮影的落位带:一个零身量的定位点,坐标由两格 CSS 变量给(每帧只改这两个数,
+ * 一帧都不经过 React 之外的布局)。浮影本身是它的孩子,偏移在 DragGhost 里做。
+ */
+.layer {
+  position: fixed;
+  left: var(--drag-x, 0px);
+  top: var(--drag-y, 0px);
+  width: 0;
+  height: 0;
+  z-index: var(--z-drag);
+  pointer-events: none;
+}

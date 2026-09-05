@@ -1,0 +1,53 @@
+/*
+ * 浮影。一行:图标 + 名(+ 拒绝时那一句理由)。
+ *
+ * **永不换行、永不撑破**(挤压纪律):`max-width` 封顶 + 名字截断。一条 200 字的
+ * 会话标题拖起来不该长成半屏宽的一条带子。
+ */
+.ghost {
+  position: fixed;
+  z-index: var(--z-drag);
+  /* 指针穿过去 —— 落点判定要的是「指针底下那块面」,不是浮影自己(见组件头)。 */
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: var(--gap-1);
+  max-width: var(--drag-ghost-max-w);
+  height: var(--drag-ghost-h);
+  padding: 0 var(--drag-ghost-pad-x);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  background: var(--surface-2);
+  box-shadow: var(--sh-2);
+  color: var(--text-1);
+  font-size: var(--fs-sm);
+  /* 手指底下那一点是「抓着的地方」,浮影从它右下方长出来(与 macOS 同形)。 */
+  transform: translate(var(--drag-ghost-dx), var(--drag-ghost-dy));
+}
+
+.ghost[data-refuse] {
+  opacity: var(--drag-refuse-opacity);
+  border-style: dashed;
+}
+
+.icon {
+  flex: none;
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--text-3);
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 拒绝理由:与名字同一行,压一档字号与墨色 —— 它是注解不是标题。 */
+.reason {
+  flex: none;
+  color: var(--text-3);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+}

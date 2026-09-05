@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useRef, useState } from 'react'
 import { useStageStore } from '../stage/store'
 import {
   GLOBAL_ITEMS,
@@ -14,6 +14,8 @@ import { useWorkspaceViews } from '../workspace/store'
 import sw from '../workspace/swatch.module.css'
 import { FocusScope } from '../focus/FocusScope'
 import { DockTile } from './DockTile'
+import { panelRef } from '../stage/panel-ref'
+import { useContentDrag } from '../workbench/useContentDrag'
 import { useDockLens } from './useDockLens'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { useT } from '../i18n'
@@ -126,6 +128,17 @@ export function Dock() {
   const workspace = currentWorkspace(useWorkspaceViews())
   const openWorkspacePalette = useWorkspacePalette((st) => st.setOpen)
 
+  /*
+   * **拖一块瓦**(W3 裁定 10)。按下时记一格瓦 id、起拖时读它 —— 与文件树行、
+   * 项目行逐字同型(`useContentDrag` 的 `ref()` 无参:它不认识 Dock)。
+   * `panelRef` 是形态机与拼贴台之间那条缝上唯一的一句翻译(判词在
+   * `stage/panel-ref.ts`),所以这里既不拼字面量也不认识 `'panel'` 这三个字。
+   */
+  const dragTileId = useRef<string | null>(null)
+  const startTileDrag = useContentDrag({
+    ref: () => (dragTileId.current ? panelRef(dragTileId.current) : null),
+  })
+
   const [menu, setMenu] = useState<{ item: StageItemSpec; title: string; x: number; y: number } | null>(
     null,
   )
@@ -231,6 +244,13 @@ export function Dock() {
                   running={dockRunningDot && tile.item.id in placements}
                   labelSide={LABEL_SIDE[dockEdge]}
                   onClick={() => click(tile.item.id)}
+                  /* **一块瓦就是一个拖拽来源**(W3 裁定 10)。W4 之后瓦是
+                   * `panel:<id>`,与文件在拼贴台里是同一条路,所以这里递的只是
+                   * 「按下了哪一块」——拖成什么、能落到哪儿全在统一那条路上。 */
+                  onDragPointerDown={(e) => {
+                    dragTileId.current = tile.item.id
+                    startTileDrag(e)
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     setMenu({

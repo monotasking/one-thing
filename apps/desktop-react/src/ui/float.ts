@@ -91,7 +91,20 @@ export function useFloatDismiss(
  * 探出面板右缘一大截,只靠视口 clamp 兜着)。左对齐与右对齐不是口味问题 ——
  * 它是「锚点在这一行的哪一头」的函数,所以是一格 prop,不是各面自己算坐标。
  */
-export type FloatPlace = 'below-start' | 'below-end' | 'above-center'
+/**
+ * `cover` 是第四档,W3 补的(裁定 2 的字面兑现:`DropOverlay` 不许在自己身上
+ * 手写几何)。它与前三档**不是同一类问题**:那三档回答「贴着锚点的哪一边」,
+ * 这一档回答「**盖住锚点整个矩形**」—— 落区高亮、撕浮窗的轮廓预示都是这一形。
+ *
+ * 所以它是唯一一档会交出**身量**的:`FloatPosition.width / height` 只在这一档
+ * 非 null(见那只接口)。别的三档浮层的身量由内容自己决定,这一档的身量**就是
+ * 锚**,消费方直接把两个数写进 style,一句 `getBoundingClientRect` 都不必自己调。
+ *
+ * 它**不夹视口**:落区的锚本来就是屏幕上一块真实存在的矩形(一片叶、一条边带),
+ * 夹一次只会把高亮从它该盖的地方挪开。前三档夹视口是因为浮层要被看全,
+ * 而这一档的「看全」就是「与锚重合」。
+ */
+export type FloatPlace = 'below-start' | 'below-end' | 'above-center' | 'cover'
 
 /**
  * 锚 —— 两档,差别是**它会不会动**。
@@ -110,6 +123,12 @@ export interface FloatPosition {
   top: number
   /** 只有 `above-center` 会翻:上方摆不下就翻到锚点下缘。 */
   flipped: boolean
+  /**
+   * 身量。**只有 `cover` 档答得出**(它的身量就是锚);别的三档恒 null ——
+   * 那三档的身量由浮层的内容决定,原语无从知道也不该猜。
+   */
+  width: number | null
+  height: number | null
 }
 
 export interface FloatPositionOptions {
@@ -131,10 +150,16 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
       left: Math.max(0, Math.min(anchor.x, vw - w)),
       top: Math.max(0, Math.min(anchor.y, vh - h)),
       flipped: false,
+      width: null,
+      height: null,
     }
   }
   const r = anchor.get()
   if (!r) return null
+  // 盖住锚:位置与身量都是锚自己的,不夹视口(理由写在 `FloatPlace` 上)。
+  if (anchor.place === 'cover') {
+    return { left: r.left, top: r.top, flipped: false, width: r.width, height: r.height }
+  }
   if (anchor.place === 'below-start' || anchor.place === 'below-end') {
     // `below-end` 对的是锚点的**右缘**:左缘 = 右缘 − 身量。首帧 w=0 时它退化成
     // 「贴着锚点右缘」,量到真身量之后在同一个 layout 相位里修正(纪律①)。
@@ -143,6 +168,8 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
       left: Math.max(0, Math.min(ideal, vw - w)),
       top: Math.max(0, Math.min(r.bottom, vh - h)),
       flipped: false,
+      width: null,
+      height: null,
     }
   }
   /*
@@ -157,7 +184,14 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
     left: Math.max(half, Math.min(r.left + r.width / 2, vw - half)),
     top: flipped ? r.bottom : r.top,
     flipped,
+    width: null,
+    height: null,
   }
+}
+
+/** `cover` 档的重算键:锚矩形的四个数。答不出矩形时是空串(位置原地不动)。 */
+function coverKeyOf(r: DOMRect | null): string {
+  return r ? `${r.left}:${r.top}:${r.width}:${r.height}` : ''
 }
 
 /**
@@ -189,12 +223,24 @@ export function useFloatPosition(
         left: opts.fallback?.left ?? 0,
         top: opts.fallback?.top ?? 0,
         flipped: false,
+        width: null,
+        height: null,
       },
   )
 
   // 「什么变了才要重算」:point 档是那对坐标,rect 档是摆法(矩形自己会变,
   // 但那是 scroll/resize 负责发现的事,不是 render 负责发现的)。
-  const key = anchor.kind === 'point' ? `point:${anchor.x}:${anchor.y}` : `rect:${anchor.place}`
+  /*
+   * `cover` 档的锚是一块**随拖拽每帧换值**的矩形(落区),它既不是页面上某个元素
+   * 的活矩形、也不是一次性的光标坐标 —— 所以它的重算判据必须是那块矩形本身,
+   * 而不是「摆法没变就不重算」。四个数进 key,拖到隔壁那片叶时当场重摆。
+   */
+  const key =
+    anchor.kind === 'point'
+      ? `point:${anchor.x}:${anchor.y}`
+      : anchor.place === 'cover'
+        ? `cover:${coverKeyOf(anchor.get())}`
+        : `rect:${anchor.place}`
 
   const measure = useCallback(() => {
     const el = floatRef.current
@@ -203,7 +249,11 @@ export function useFloatPosition(
     if (!next) return
     // 同一个位置就交出同一个对象:scroll 一路上百次,位置没动就不该重渲染一次。
     setPos((prev) =>
-      prev.left === next.left && prev.top === next.top && prev.flipped === next.flipped
+      prev.left === next.left
+      && prev.top === next.top
+      && prev.flipped === next.flipped
+      && prev.width === next.width
+      && prev.height === next.height
         ? prev
         : next,
     )

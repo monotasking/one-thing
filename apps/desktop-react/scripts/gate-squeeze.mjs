@@ -1349,6 +1349,85 @@ async function checkComposerToolRow(page) {
  * 夹具走**用户真走的那条路**:文件树行菜单选「主区域」,再逐行 ↵ 把几份文件开进
  * 中央叶 —— 不去改 store(那样量的是自己写进去的状态)。
  */
+/**
+ * **落区高亮不撑破叶**(W3;`ui/drag/DropOverlay` 的挤压读数)。
+ *
+ * 手势走 CDP `Input.dispatchMouseEvent`(纪律「真机门不许抢用户的机器」——
+ * 只进这个窗口,不动真光标),拖到半路**停住不松手**再量;量完 Esc 取消,
+ * 于是这一格跑完之后屏幕上的形态与跑之前逐字相同(门不该留下改动)。
+ */
+async function checkDropOverlay(page, cdp) {
+  const problems = []
+  const seen = []
+  const start = await page.evaluate(() => {
+    const tab = document.querySelector('[data-testid="topbar-tabs"] [role="tab"]')
+    const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
+    if (!tab || !slot) return null
+    const t = tab.getBoundingClientRect()
+    const s = slot.getBoundingClientRect()
+    return {
+      from: { x: Math.round(t.left + t.width / 2), y: Math.round(t.top + t.height / 2) },
+      leaf: {
+        left: Math.round(s.left), top: Math.round(s.top),
+        width: Math.round(s.width), height: Math.round(s.height),
+      },
+    }
+  })
+  if (!start) return { skipped: '顶栏上没有 tab,或中央区没有叶', problems, seen }
+
+  // 落点:叶的正中(中心区)—— 高亮此时盖的是整片叶,「撑不破」最难的那一形。
+  const to = {
+    x: start.leaf.left + Math.round(start.leaf.width / 2),
+    y: start.leaf.top + Math.round(start.leaf.height / 2),
+  }
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mousePressed', x: start.from.x, y: start.from.y, button: 'left', buttons: 1, clickCount: 1,
+  })
+  for (let i = 1; i <= 6; i += 1) {
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: Math.round(start.from.x + ((to.x - start.from.x) * i) / 6),
+      y: Math.round(start.from.y + ((to.y - start.from.y) * i) / 6),
+      button: 'left', buttons: 1,
+    })
+    await delay(16)
+  }
+  const shot = await page.evaluate(() => {
+    const band = document.querySelector('[data-testid="drop-overlay"]')
+    const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
+    if (!band || !slot) return null
+    const b = band.getBoundingClientRect()
+    const s = slot.getBoundingClientRect()
+    return {
+      band: { left: b.left, top: b.top, right: b.right, bottom: b.bottom },
+      leaf: { left: s.left, top: s.top, right: s.right, bottom: s.bottom },
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+    }
+  })
+  // 收场:Esc 取消 + 补一发松手(不留下任何形态改动)。
+  await page.keyboard.press('Escape')
+  await delay(120)
+  await cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseReleased', x: to.x, y: to.y, button: 'left', buttons: 1, clickCount: 1,
+  })
+  await delay(200)
+
+  if (!shot) return { skipped: '拖到半路没量到落区高亮(拖拽没起来?)', problems, seen }
+  const slack = 1 // 半像素的排版舍入
+  if (shot.band.left < shot.leaf.left - slack) problems.push(`左缘探出叶 ${(shot.leaf.left - shot.band.left).toFixed(1)}px`)
+  if (shot.band.top < shot.leaf.top - slack) problems.push(`上缘探出叶 ${(shot.leaf.top - shot.band.top).toFixed(1)}px`)
+  if (shot.band.right > shot.leaf.right + slack) problems.push(`右缘探出叶 ${(shot.band.right - shot.leaf.right).toFixed(1)}px`)
+  if (shot.band.bottom > shot.leaf.bottom + slack) problems.push(`下缘探出叶 ${(shot.band.bottom - shot.leaf.bottom).toFixed(1)}px`)
+  if (shot.band.right > shot.viewport.w + slack || shot.band.bottom > shot.viewport.h + slack) {
+    problems.push('高亮探出视口')
+  }
+  seen.push(
+    `高亮 ${Math.round(shot.band.left)},${Math.round(shot.band.top)}–${Math.round(shot.band.right)},${Math.round(shot.band.bottom)}`,
+    `叶 ${Math.round(shot.leaf.left)},${Math.round(shot.leaf.top)}–${Math.round(shot.leaf.right)},${Math.round(shot.leaf.bottom)}`,
+  )
+  return { problems, seen }
+}
+
 async function checkLeafChrome(page) {
   const problems = []
   const seen = []
@@ -1836,6 +1915,27 @@ async function main() {
         failures.push(`顶栏标签组:${leaf.problems.length} 条`)
       } else {
         console.log('  ✓ 顶栏标签组:tab 条一条线 · 动作组在框里且零重叠 · 分隔杆报得出比例')
+      }
+    }
+
+    console.log('\n[10c/11] 落区高亮:盖住那块矩形,永不撑破叶(W3)')
+    /*
+     * ── 挤压纪律在拖拽上的落点(W3)───────────────────────────────────────
+     * `DropOverlay` 的身量**就是**锚矩形(`ui/float` 的 `cover` 档交回来的两个数),
+     * 而锚矩形是那片叶自己的矩形或它的一块子矩形 —— 所以「撑不破」在结构上成立。
+     * 这一格是那句话的**真机读数**:拖到半路停住(不松手),量高亮的四条边是不是
+     * 都落在叶的四条边之内,再 Esc 取消 —— 门不留下任何形态改动。
+     */
+    const overlay = await checkDropOverlay(page, cdp)
+    if (overlay.skipped) {
+      console.log(`  · 跳过:${overlay.skipped}`)
+    } else {
+      console.log(`    ${overlay.seen.join(' | ')}`)
+      if (overlay.problems.length) {
+        for (const problem of overlay.problems) console.log(`  ✗ 落区高亮:${problem}`)
+        failures.push(`落区高亮:${overlay.problems.length} 条`)
+      } else {
+        console.log('  ✓ 落区高亮:四条边都在叶里,没有撑破')
       }
     }
 

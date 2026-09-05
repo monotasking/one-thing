@@ -76,6 +76,20 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   focusLeafId: string | null
   /** 文件面板那条分栏此刻在看哪个文件。**不在树里**(见文件头)。瞬态。 */
   panelPath: string | null
+  /**
+   * **此刻正在拖**(W3 的两个坑之一)。瞬态,不落盘。
+   *
+   * 它是一道**闸**:拖拽的落点判据吃的是「起拖时量的那一份几何」(裁定 4),
+   * 而几何只在树不变的前提下成立。拖拽期间用户自己动不了树(指针被 capture 住),
+   * 但**异步**的那些动得了 —— 一份文件读完了要插一格 tab、一条会话切换了要
+   * 换常驻格。那一格插进去,屏幕上的叶全部重排,而手上那份几何还是旧的:
+   * 高亮画在 A,松手落在 B。
+   *
+   * 所以起拖时把改**树形**的那几口闸上(落定 / 取消解)。被闸掉的那一下就是
+   * 真的没发生 —— 这是诚实的代价,写在这里而不是靠自觉:一次拖拽通常不到两秒,
+   * 而「高亮说的和松手做的不是一件事」是不可接受的。
+   */
+  dragging: boolean
 
   /** 出厂播种 + 洗一遍存量。幂等,由 `startWorkbench()` 调。 */
   seed(): void
@@ -122,6 +136,20 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
   splitLeaf(leafId: string, dir: 'row' | 'col', ref?: ContentRef, before?: boolean): void
   setSplitRatio(splitId: string, ratio: number): void
   setFocusLeaf(leafId: string): void
+  /** 起拖 / 落定:开合上面那道闸。 */
+  setDragging(on: boolean): void
+  /**
+   * **把一格搬进指定的那一片叶**(W3 落定那条路)。
+   *
+   * 与 `moveRef` 的分工是一句话:那一只说的是「搬到哪个**区域**」(落在那个
+   * 区域的焦点叶上),这一只说的是「搬到哪**一片叶**」—— 一个区域里可能有好
+   * 几片(分屏之后),而拖拽的落点恰恰是「屏幕上这一块」。
+   *
+   * 摘干净再插,**一次 `set`**(同一事务):先 `removeTab` 再 `insertTab` 分两
+   * 次写的话,中间那一拍屏幕上会少一格,而订阅者(顶栏标签组 / 焦点跟随)
+   * 会把它读成「关掉了一格」。
+   */
+  moveRefIntoLeaf(ref: ContentRef, leafId: string, opts?: { at?: number }): void
   openInPanel(path: string): void
   closePanel(): void
   /** 只给测试:用例之间归零。 */
@@ -270,6 +298,17 @@ export function openStateOf(
 export const useWorkbenchStore = create<WorkbenchState>()(
   persist(
     (set, get) => {
+      /**
+       * **拖拽期间树形冻住**(W3;判词整段写在 `WorkbenchState.dragging` 上)。
+       *
+       * 只闸**改树形**的那几口 —— 切 tab(`activateTab`)、固定预览(`pinTab`)、
+       * 拖分隔杆(`setSplitRatio`)、指焦点叶不改叶的**存在与位置**,它们在拖拽
+       * 中发生也不会让起拖时量的那份几何过期。`moveRefIntoLeaf` 不在闸内:
+       * 它**就是**落定那条路,落定前那一句 `setDragging(false)` 已经把闸开了,
+       * 再闸它一次只会让「松手没反应」变成一种可能。
+       */
+      const frozen = (): boolean => get().dragging
+
       /** 改一个区域的树。剪空了就重新播种(中央区永远至少有一片叶)。 */
       const writeRegion = (region: RegionId, next: PaneNode | null): void => {
         set((s) => {
@@ -286,11 +325,13 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         byWorkspace: {},
         focusLeafId: null,
         panelPath: null,
+        dragging: false,
 
         seed: () =>
           set((s) => ({ regions: normalizeRegions(s.regions), hidden: normalizeHidden(s.hidden) })),
 
         openRef: (ref, opts = {}) => {
+          if (frozen()) return
           const region = opts.region ?? CENTER_REGION
           const s = get()
           /*
@@ -331,6 +372,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         },
 
         moveRef: (ref, region, opts = {}) => {
+          if (frozen()) return
           const s = get()
           const id = refId(ref)
           const kind = contentKindOf(ref.kind)
@@ -347,12 +389,14 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         },
 
         detachRef: (id) => {
+          if (frozen()) return
           const s = get()
           if (!regionOfRefIn(s.regions, id)) return
           set({ regions: withoutRef(s.regions, id) })
         },
 
         hideRegion: (region) => {
+          if (frozen()) return
           const s = get()
           const tree = s.regions[region]
           if (!tree) return
@@ -395,6 +439,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           }),
 
         closeTab: (leafId, index) => {
+          if (frozen()) return
           const s = get()
           const region = regionOfLeaf(s.regions, leafId)
           if (!region) return
@@ -407,6 +452,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         },
 
         hideTab: (leafId, index) => {
+          if (frozen()) return
           const s = get()
           const region = regionOfLeaf(s.regions, leafId)
           if (!region) return
@@ -425,6 +471,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         },
 
         restoreHidden: (id) => {
+          if (frozen()) return
           const s = get()
           const entry = s.hidden.find((row) => refId(row.ref) === id)
           if (!entry) return
@@ -461,6 +508,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         },
 
         splitLeaf: (leafId, dir, ref, before) => {
+          if (frozen()) return
           const s = get()
           const region = regionOfLeaf(s.regions, leafId)
           if (!region) return
@@ -490,11 +538,42 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         setFocusLeaf: (leafId) =>
           set((s) => (s.focusLeafId === leafId ? s : { focusLeafId: leafId })),
 
+        setDragging: (on) => set((s) => (s.dragging === on ? s : { dragging: on })),
+
+        moveRefIntoLeaf: (ref, leafId, opts = {}) => {
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const kind = contentKindOf(ref.kind)
+          if (kind?.regions && !kind.regions.includes(region)) return
+          const id = refId(ref)
+          /*
+           * **一次 set**:先从每棵树里摘干净(`withoutRef` 自带剪枝),再插进目标
+           * 叶。摘完之后那片叶有可能已经不在了(它只装着被搬的这一格,摘完被剪掉)
+           * —— 那时这一下就是空动作,原样交回,而不是往一棵没有它的树里插。
+           */
+          const regions = withoutRef(s.regions, id)
+          const tree = regions[region]
+          if (!tree || !T.findLeaf(tree, leafId)) return
+          set({
+            regions: { ...regions, [region]: T.insertTab(tree, leafId, ref, { at: opts.at }) },
+            // 搬出来的那一份不再是「藏着的」(实例一路留着,与 `moveRef` 同一句)。
+            hidden: s.hidden.filter((entry) => refId(entry.ref) !== id),
+            focusLeafId: leafId,
+          })
+        },
+
         openInPanel: (path) => set({ panelPath: path }),
         closePanel: () => set({ panelPath: null }),
 
         reset: () =>
-          set({ ...factoryFurniture(), byWorkspace: {}, focusLeafId: null, panelPath: null }),
+          set({
+            ...factoryFurniture(),
+            byWorkspace: {},
+            focusLeafId: null,
+            panelPath: null,
+            dragging: false,
+          }),
       }
     },
     {
@@ -517,9 +596,10 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         Object.assign(merged, spreadSpace(merged.byWorkspace, WORKBENCH_PER_SPACE))
         merged.regions = normalizeRegions(merged.regions ?? {})
         merged.hidden = normalizeHidden(merged.hidden ?? [])
-        // 瞬态那三格永远从零开始(它们不落盘,但 merge 收到的 current 里有)。
+        // 瞬态那几格永远从零开始(它们不落盘,但 merge 收到的 current 里有)。
         merged.focusLeafId = null
         merged.panelPath = null
+        merged.dragging = false
         return merged
       },
       partialize: (s) => ({ byWorkspace: stashSpace(s, s.byWorkspace, WORKBENCH_PER_SPACE) }),

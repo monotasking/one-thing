@@ -15,7 +15,9 @@
  *     八屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
- *     唯一一屏 **cover 形态**的面),和 `?gallery` 那张组件规格页(28 个展位一次
+ *     唯一一屏 **cover 形态**的面),**拖拽落点菜单**(W3 裁定 9:拖拽的键盘等价 ——
+ *     每个落点都能从既有 tab 菜单到达,落定后 `announce()` 播报),
+ *     和 `?gallery` 那张组件规格页(28 个展位一次
  *     全在场,这是唯一能把每一件都摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
  *     这个数是**日志里的一句话,不是断言**:规格页加一件展位不该让这条门变红,
  *     所以它跟着 `src/dev/Gallery.tsx` 的 `<Section>` 数走,由改那张页的人顺手改。
@@ -946,6 +948,64 @@ async function main() {
           assert(Boolean(shot.band), `标签带自己有无障碍名(实测「${shot.band ?? '—'}」)`)
           assert(shot.inLeaf === 0, `中央叶身上零檐(实测 ${shot.inLeaf} 条 tablist)`)
           console.log(`  ✓ 顶栏上 ${shot.tabs} 格 tab / ${shot.tablists} 条 tablist`)
+
+          /*
+           * ── [7c] **拖拽的键盘等价**(W3 裁定 9)────────────────────────────
+           * 原话:「不加新键位组合;**每个落点都能从既有 tab 菜单到达**;落定后
+           * `announce()` 播报」。所以这一屏问三件事,一件都不能少:
+           *  ① 那张菜单里**九档全在**(分屏四向 + 移到架子四边 + 撕成浮窗)——
+           *    「能到达」是可数的,不是感觉;
+           *  ② 菜单本身过 axe(它是本批新添的一块 surface);
+           *  ③ 点一档之后**播报口里有话**(空播报等于没播报,`announce` 自己会把
+           *    空串丢掉,所以这一条同时也钉住了「传进去的不是空串」)。
+           * `aria-grabbed` 已废弃,这一屏一个字都不问它(裁定 9 末句)。
+           */
+          console.log('\n[7c/10] 拖拽的键盘等价:叶动作组那张菜单 + 落定播报')
+          const splitBtn = await page.evaluate(() => {
+            const btn = document.querySelector('[data-testid^="pane-split:"]')
+            if (!(btn instanceof HTMLElement)) return null
+            btn.click()
+            return btn.getAttribute('data-testid')
+          })
+          if (!splitBtn) {
+            console.log('  · 跳过:叶动作组里没有分屏那颗钮')
+          } else {
+            await delay(400)
+            const menu = await page.evaluate(() => {
+              const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+              return {
+                open: Boolean(document.querySelector('[role="menu"]')),
+                texts: items.map((el) => (el.textContent ?? '').trim()),
+                named: items.every((el) => (el.textContent ?? '').trim().length > 0),
+              }
+            })
+            assert(menu.open, '叶动作组那张菜单开得出来')
+            assert(menu.named, '菜单里每一项都说得出名字(零空项)')
+            assert(
+              menu.texts.length >= 9,
+              `九档全在:分屏四向 + 移到架子四边 + 撕成浮窗(实测 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
+            )
+            await settle(page, '叶动作组菜单')
+            await scanAxe(page, '拖拽落点菜单', '[role="menu"]')
+            // 点「移到右侧」——它与拖到窗口右边带调的是**同一只** `dropRef`。
+            const moved = await page.evaluate(() => {
+              const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+              const hit = items.find((el) => /移到右侧|Move to the right/.test(el.textContent ?? ''))
+              if (!(hit instanceof HTMLElement)) return false
+              hit.click()
+              return true
+            })
+            if (!moved) {
+              console.log('  · 跳过:菜单里没有「移到右侧 / Move to the right」')
+            } else {
+              // `announce` 走一拍 setTimeout(先清空再写,读屏才会重念)。
+              await delay(400)
+              const spoken = await page.evaluate(
+                () => document.querySelector('[data-live="polite"]')?.textContent ?? '',
+              )
+              assert(spoken.trim().length > 0, `落定之后播报口里有话(实测「${spoken.trim()}」)`)
+            }
+          }
         }
       }
     }
@@ -1070,7 +1130,7 @@ async function main() {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 八屏 axe 零违例;键盘走查全绿')
+  console.log('\n[a11y-gate] ok —— 九屏 axe 零违例(W3 添的是拖拽落点菜单那一屏);键盘走查全绿')
 }
 
 main().catch((error) => {

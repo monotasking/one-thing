@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { MouseEvent } from 'react'
+import type { MouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, Plus } from './icons'
 import { Badge } from '../ui/Badge'
 import { ButtonBase } from '../ui/ButtonBase'
@@ -64,6 +64,18 @@ interface Props {
   labelSide?: LabelSide
   onClick?: () => void
   onContextMenu?: (e: MouseEvent) => void
+  /**
+   * **按住这块瓦 = 拖它**(W3 裁定 10:W4 之后 `panel:<id>` 与文件同一条路)。
+   *
+   * 瓦自己**不认识拖拽**,也不认识 `ContentRef` —— 它只把「按下了」递出去,
+   * 拖成什么由摆它的那一条 Dock 说了算(与 `title` 已经翻译好了递进来同一条
+   * 分工:瓦不认识 i18n,也不该认识拼贴台)。缺席 = 这块瓦不能拖:
+   * 工作区切换器那几块走的正是这一档,它们不是内容。
+   *
+   * **拖起来的瓦不离开 Dock**(裁定 10 末句 + 树 / 面常驻铁律),Dock 自身的
+   * hover 唤醒与点瓦三态一个字不动 —— 没过阈值的一次按下松开仍旧是一次点击。
+   */
+  onDragPointerDown?: (e: ReactPointerEvent<HTMLElement>) => void
 }
 
 export function DockTile({
@@ -78,6 +90,7 @@ export function DockTile({
   labelSide = 'top',
   onClick,
   onContextMenu,
+  onDragPointerDown,
 }: Props) {
   const [labelVisible, setLabelVisible] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -129,6 +142,7 @@ export function DockTile({
         }
         onClick={onClick}
         onContextMenu={onContextMenu}
+        onPointerDown={onDragPointerDown}
         aria-label={title}
         data-testid={testId}
       >

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Tabs } from '../ui/Tabs'
-import { focusTree } from '../focus/registry'
+import { focusIntoRef } from './focus-into'
 import { useLiveTitleStore } from '../stage/live-title'
 import { useT } from '../i18n'
 import { contentKindOf, mayCloseContent, refId } from './kinds'
@@ -164,6 +164,12 @@ export function LeafStrip({
  * `LeafStrip` 是那条檐**唯一**的画法,四个宿主消费的是同一件。判据放在这里,
  * 「切 tab 进内容」就不可能在某一个宿主上悄悄分叉 —— 而分叉正是这次接缝要治的病。
  *
+ * ── 那一句 `activateScope` 的产地在 `workbench/focus-into.ts`(W3 抽出去)────
+ * W3 的拖拽落定给这句话添了第五个调用点(裁定 8:「落定后焦点跟到新叶,与
+ * 『tab 激活 → 焦点进内容』**同一句**」)。同一句话有五个调用点还各写各的,
+ * 迟早在某一条路上分叉 —— 而分叉正是这次接缝要治的病。这只 hook 保留的是
+ * **等一拍**那半件(它有 `activeId` 这个现成的信号);送那半件在产地。
+ *
  * ── 落点怎么找:问的是**那一格 tab 的层**,不是叶,也不是宿主层 ────────────
  * 每一格 tab 的内容层自己是一格 `leaf` 作用域,`owner` = 这一格的 refId
  * (判词在 `PaneLeaf.PaneTabLayer` 上),而 `leaf` 在表上自述 `passThrough` ——
@@ -190,7 +196,7 @@ function useSelectIntoContent(
       onSelect(id)
       if (id === activeId) {
         // 已经是活动那一格:这一下不会有重渲,当场送。
-        focusTree.activateScope('leaf', { owner: id, reason: 'switch-tab' })
+        focusIntoRef(id)
         return
       }
       wanted.current = id
@@ -200,7 +206,7 @@ function useSelectIntoContent(
   useEffect(() => {
     if (wanted.current === null || wanted.current !== activeId) return
     wanted.current = null
-    focusTree.activateScope('leaf', { owner: activeId, reason: 'switch-tab' })
+    focusIntoRef(activeId)
   }, [activeId])
   return select
 }

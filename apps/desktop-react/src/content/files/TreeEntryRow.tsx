@@ -1,5 +1,9 @@
 import { useRef } from 'react'
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
+import type {
+  CSSProperties,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react'
 import { ChevronDown, ChevronRight, Ellipsis } from '../../components/icons'
 import { ButtonBase } from '../../ui/ButtonBase'
 import { IconButton } from '../../ui/IconButton'
@@ -90,6 +94,7 @@ export function TreeEntryRow({
   onCurrent,
   onMenu,
   onRestore,
+  onDragPointerDown,
 }: {
   row: EntryRow
   t: TFn
@@ -117,6 +122,23 @@ export function TreeEntryRow({
   onMenu: (origin: FloatOrigin) => void
   /** 点空心那颗点 = 把这一份请回它藏起来时那个位置。没开 / 显示中时用不着。 */
   onRestore?: () => void
+  /**
+   * **按住这一行 = 拖它**(W3,设计 §3.1 第一行:文件树一行 → `file:<path>`,
+   * 目录 → `files-root:<path>`)。
+   *
+   * 这一行自己**不认识拖拽**:它只把「按下了」连同事件递出去,拖成什么、能落到
+   * 哪儿由面板那一层说了算(`content/FilesPanel` 的 `useContentDrag`)——与
+   * 「焦点送到哪儿由面板那一层用 `activateScope` 去问树」是同一条分工。
+   *
+   * 递给的是**行的外框**(不是那颗按钮):行尾那颗 ⋯ 与打开点也在框里,而按在
+   * 它们身上时不该起拖 —— 那两件各自 `stopPropagation`(⋯ 是 `ui/IconButton`
+   * 的 onClick,打开点自己已经 stop 了),而 `pointerdown` 从它们身上冒上来时
+   * 起拖阈值会把「按一下就松」滤掉,所以点它们仍旧是点它们。
+   *
+   * **行不离开树**(树 / 面常驻铁律的拖拽版,设计 §3.1 末句):这一格只递事件,
+   * 一个字都不改这一行的存在与位置。
+   */
+  onDragPointerDown?: (e: ReactPointerEvent<HTMLElement>) => void
 }) {
   const Caret = row.expanded ? ChevronDown : ChevronRight
   const glyph = glyphOf(row.name, row.type, row.expanded)
@@ -150,6 +172,7 @@ export function TreeEntryRow({
        */
       onFocus={() => onCurrent(row, wrapRef.current)}
       onBlur={() => onCurrent(row, null)}
+      onPointerDown={onDragPointerDown}
     >
       {/*
        * 一行是**结构件**(视觉本该定制:缩进、标识槽、名字),所以它消费

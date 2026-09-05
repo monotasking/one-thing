@@ -1,5 +1,8 @@
 import { memo } from 'react'
-import type { MouseEvent as ReactMouseEvent } from 'react'
+import type {
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react'
 import {
   ArrowLeftRight,
   ChevronDown,
@@ -106,6 +109,15 @@ interface Props {
   onPeek: (sessionId: string) => void
   onTogglePin: (sessionId: string) => void
   onToggleRoom: (sessionId: string) => void
+  /**
+   * **按住这一行 = 拖它**(W3 裁定 6 / 7)。**入参带 id**,与旁边四只回调同一条
+   * 纪律(文件头病历:就地闭包每渲染换一个身份,memo 当场作废)。
+   *
+   * 拖成什么、落到哪儿由树那一层说了算 —— T4/W5 之前会话**只许落中央**
+   * (= 切换当前会话),落别处是结构化拒绝(浮影变灰 + 一句「会话多开在下一期」)。
+   * 这一行只递事件,行本身一个字都不动(树 / 面常驻铁律)。
+   */
+  onDragPointerDown: (sessionId: string, e: ReactPointerEvent<HTMLElement>) => void
 }
 
 function SessionRowView({
@@ -128,6 +140,7 @@ function SessionRowView({
   onPeek,
   onTogglePin,
   onToggleRoom,
+  onDragPointerDown,
 }: Props) {
   // 「键盘走到视口外的行时把它带回来」那条 effect 在 `SessionTree` 上,按
   // `activeId` 一条(文件头病历第 ③ 笔)—— 它本来就只关心**一行**,长在行上
@@ -163,6 +176,7 @@ function SessionRowView({
       aria-selected={current}
       aria-expanded={expandable ? expanded : undefined}
       onClick={() => onEnter(id)}
+      onPointerDown={(e) => onDragPointerDown(id, e)}
     >
       {/*
        * 形态图标列:**全行预留**(裁决 6),普通聊天留空 —— 标题永远从同一条

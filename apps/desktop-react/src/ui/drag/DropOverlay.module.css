@@ -1,0 +1,42 @@
+/*
+ * 落区高亮。身量由 `cover` 档交回来(= 锚矩形),所以它在结构上撑不破那片叶。
+ */
+.band {
+  position: fixed;
+  z-index: var(--z-drag);
+  pointer-events: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--bw-3) solid var(--drop-band-line);
+  border-radius: var(--drop-band-r);
+  background: var(--drop-band-face);
+  transition: opacity var(--dur) var(--ease);
+}
+
+/* 拒绝:不换底(换底等于说「这里可以」),只留一圈虚线灰边。 */
+.band[data-tone='refuse'] {
+  border-style: dashed;
+  border-color: var(--drop-refuse-line);
+  background: var(--drop-refuse-face);
+}
+
+/* 撕成浮窗的预示:只画一圈边,里面是空的 —— 那扇窗还不存在。 */
+.band[data-outline] {
+  background: transparent;
+}
+
+/*
+ * 落区里那一句话(「移到右侧」/「会话多开在下一期」)。
+ * **一行、截断、永不换行**(挤压纪律):落区可能只有 40px 高。
+ */
+.label {
+  max-width: 100%;
+  padding: 0 var(--sp-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-2);
+  font-size: var(--fs-meta);
+}

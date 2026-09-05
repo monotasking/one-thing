@@ -1,10 +1,23 @@
 import { useMemo, useState } from 'react'
-import { Columns2, Ellipsis, Rows2 } from '../components/icons'
+import {
+  ChevronsDown,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronsUp,
+  Columns2,
+  Ellipsis,
+  PictureInPicture2,
+  Rows2,
+} from '../components/icons'
 import { IconButton } from '../ui/IconButton'
-import { Menu, MenuItem, MenuSection } from '../ui/Menu'
+import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
+import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
+import { dropRef } from './drop-commit'
 import { contentKindOf, refId } from './kinds'
 import { hiddenInRegion, regionOfLeafIn, useWorkbenchStore } from './store'
+import type { MessageKey } from '../i18n'
+import type { ShelfSide } from '../stage/types'
 import type { PaneLeafNode } from './tree'
 import s from './LeafActions.module.css'
 
@@ -24,6 +37,16 @@ import s from './LeafActions.module.css'
  * 点回去,它出现在你看不见的另一块地方。「回哪儿去」这件事本来就记在
  * `returnTo.region` 上,按它分组是它自己的读法(`store.hiddenInRegion`)。
  * 于是顶栏尾格(中央区)与架子叶檐两处各列各的,而判据只有这一句。
+ *
+ * ── 拖拽的键盘等价:**同一个动作,不是第二条路**(W3 裁定 9)────────────
+ * 「不加新键位组合;每个落点都能从既有 tab 菜单到达」。分屏 ▸ 四向本来就在,
+ * W3 补上另外两组:**移到架子 ▸ 四边** 与 **撕成浮窗**。三组菜单项与拖拽落定
+ * 调的是**同一只** `dropRef(ref, target)` —— 两条路走两个动作,迟早在某一条上
+ * 悄悄分叉(那正是「菜单里搬过去和拖过去结果不一样」这类 bug 的全部来源)。
+ * 落定后 `announce()` 播报一句(「已移到右侧」/「已并入 X」/「已撕成浮窗」),
+ * 与拖拽那条路共用同一句话 —— 播报是**落定**的一部分,不是菜单的装饰。
+ *
+ * `aria-grabbed` 已废弃,不用(裁定 9 末句)。
  *
  * ── 三张状态表 ──────────────────────────────────────────────────────────
  * ① 生命周期:挂载 = 中央区有叶(恒有);**换住户**(焦点叶换人)不重挂,只换
@@ -131,11 +154,70 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
               </span>
             </MenuItem>
           ))}
+
+          {/*
+            **拖拽的键盘等价**(W3 裁定 9)。两组都作用在**这一格活动 tab** 上,
+            调的是拖拽落定那同一只 `dropRef` —— 所以「移到右侧」在菜单里与拖过去
+            结果逐字相同,包括架子展开、位置记忆与落定后的焦点跟随。
+            没有活动 tab(空叶,屏幕上停不到一帧)时整组禁灰而不消失。
+          */}
+          <MenuSeparator />
+          <MenuSection>{t('drag.menuMoveTo')}</MenuSection>
+          {EDGE_CHOICES.map((choice) => (
+            <MenuItem
+              key={choice.side}
+              disabled={!active}
+              onClick={() => {
+                if (!active) return
+                dropRef(active, { kind: 'edge', side: choice.side })
+                announce(t('drag.movedToEdge', { side: t(choice.sideKey) }))
+                setSplitAt(null)
+              }}
+            >
+              <span className={s.menuLine}>
+                <choice.Icon className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+                <span className={s.menuMain}>{t(choice.labelKey)}</span>
+              </span>
+            </MenuItem>
+          ))}
+          <MenuItem
+            disabled={!active}
+            onClick={() => {
+              if (!active) return
+              dropRef(active, { kind: 'float' })
+              announce(t('drag.movedToFloat'))
+              setSplitAt(null)
+            }}
+          >
+            <span className={s.menuLine}>
+              <PictureInPicture2 className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+              <span className={s.menuMain}>{t('drag.menuTearOff')}</span>
+            </span>
+          </MenuItem>
         </Menu>
       )}
     </div>
   )
 }
+
+/**
+ * 「移到架子」四边。**一张表**,与 `SPLIT_CHOICES` 同一条纪律 —— 四条边不是
+ * 四段 onClick。`sideKey` 单列一格是因为播报那句话要的是「右侧」这个名词,
+ * 而菜单项上写的是「移到右侧」这个动词短语:同一件事的两种说法,各有各的键。
+ */
+const EDGE_CHOICES: readonly {
+  side: ShelfSide
+  Icon: typeof ChevronsLeft
+  labelKey: MessageKey
+  sideKey: MessageKey
+}[] = [
+  /* 图标复用**架子那一族**的四向双箭头(`EdgeShelf` 的收 / 展用的就是它们):
+   * 同一个方向词汇在两处说的是同一件事,不新造一套。 */
+  { side: 'left', Icon: ChevronsLeft, labelKey: 'drag.toEdgeLeft', sideKey: 'drag.sideLeft' },
+  { side: 'right', Icon: ChevronsRight, labelKey: 'drag.toEdgeRight', sideKey: 'drag.sideRight' },
+  { side: 'top', Icon: ChevronsUp, labelKey: 'drag.toEdgeTop', sideKey: 'drag.sideTop' },
+  { side: 'bottom', Icon: ChevronsDown, labelKey: 'drag.toEdgeBottom', sideKey: 'drag.sideBottom' },
+]
 
 /** 分屏四向。**一张表**,不是四个 onClick 各写一遍。 */
 const SPLIT_CHOICES = [

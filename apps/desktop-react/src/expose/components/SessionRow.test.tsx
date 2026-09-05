@@ -40,6 +40,7 @@ function renderRow(over: Partial<React.ComponentProps<typeof SessionRow>> = {}) 
     onPeek: noop,
     onTogglePin: noop,
     onToggleRoom: noop,
+    onDragPointerDown: noop,
     ...over,
   }
   return { ...render(<SessionRow {...props} />), props }

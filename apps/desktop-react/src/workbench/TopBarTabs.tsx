@@ -10,6 +10,7 @@ import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { spanWVar, spanXVar, topStrips } from './layout'
 import { CENTER_REGION } from './regions'
 import { focusLeafOf, useWorkbenchStore } from './store'
+import { useTabDrag } from './useTabDrag'
 import { findLeaf } from './tree'
 import type { TopStripSlot } from './layout'
 import type { PaneLeafNode } from './tree'
@@ -148,6 +149,17 @@ const LeafTabGroup = memo(function LeafTabGroup({
     },
     [closeAt, leaf.tabs],
   )
+  /*
+   * **顶栏上的标签也是拖拽来源**(W3 的 W4 修正那一条)。
+   *
+   * 拖拽区判例在这里恰好白拿:浮影是 `DragLayer` 的一个 fixed 元素,**不在
+   * `.bar` 里**,而且 `pointer-events: none` —— 所以它一个像素都碰不到
+   * `-webkit-app-region: drag` 那件事(那条法说的是 `no-drag` 只在同分支子孙上
+   * 生效,而浮影压根不在那条分支上)。标签本身仍旧留在这一组里不离开
+   * (设计 §3.1 末句),所以顶栏的 `no-drag` 覆盖面一格没变 —— `gate:drag-region`
+   * 因此照旧绿。
+   */
+  const onTabPointerDown = useTabDrag(leaf)
 
   /*
    * **联动靠空间与光,不靠文字**(设计 §2.2:用户看过第一版后指出「跟 Chat 的联动
@@ -205,6 +217,7 @@ const LeafTabGroup = memo(function LeafTabGroup({
             chromeId={leaf.id}
             onSelect={onSelect}
             onClose={onClose}
+            onTabPointerDown={onTabPointerDown}
           />
         </div>
       )}

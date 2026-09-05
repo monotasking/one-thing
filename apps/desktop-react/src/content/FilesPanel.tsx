@@ -34,6 +34,8 @@ import type { FloatOrigin, OpenDetailOptions } from './file-floats'
 import { NoWorkdirNotice } from './files/NoWorkdirNotice'
 import { RootCrumbs } from './files/RootCrumbs'
 import { TreeEntryRow, depthVar } from './files/TreeEntryRow'
+import { useContentDrag } from '../workbench/useContentDrag'
+import { filesRootRef } from './kinds/files-root-ref'
 import type { EntryRow } from './files/TreeEntryRow'
 import { useRowWindow } from './files/useRowWindow'
 import { FileViewer } from './viewer/FileViewer'
@@ -317,6 +319,26 @@ export function FilesPanel() {
    * 坐标都不算:锚点算式只有一处产地(`content/file-floats`)。批 9d 的真机
    * 前后对照量出过这条 —— 行上先算一遍、这里再算一遍,浮层就多隔了一条缝。
    */
+  /**
+   * **树行拖拽**(W3 裁定 6 的第一条来源)。
+   *
+   * 「拖的是哪一行」这件事按下时才知道,而 `useContentDrag` 的 `ref()` 是无参的
+   * (它不认识文件树)—— 所以按下时先记一格路径,起拖时读它。判词与
+   * `workbench/useTabDrag` 那一格逐字同型。
+   *
+   * **目录拖出去的是 `files-root:<path>`**(设计 §3.1 第一行的括号):一个目录
+   * 摆进区域里,要的是「以它为根的一棵文件树」,不是一份内容。这一句是这块面
+   * 的知识,不是拖拽的知识,所以它写在这里。
+   */
+  const dragRow = useRef<EntryRow | null>(null)
+  const startRowDrag = useContentDrag({
+    ref: () => {
+      const row = dragRow.current
+      if (!row) return null
+      return row.type === 'directory' ? filesRootRef(row.path) : fileRef(row.path)
+    },
+  })
+
   const openMenuFor = useCallback(
     (row: EntryRow, origin: FloatOrigin) => {
       setSelected(row.path)
@@ -550,6 +572,10 @@ export function FilesPanel() {
                   }}
                   onCurrent={onCurrent}
                   onMenu={(origin) => openMenuFor(row, origin)}
+                  onDragPointerDown={(e) => {
+                    dragRow.current = row
+                    startRowDrag(e)
+                  }}
                 />
               ),
             )}
