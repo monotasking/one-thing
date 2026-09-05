@@ -738,7 +738,15 @@ async function main() {
        ['浮窗', /浮窗|Floating window/, 'float'],
      ]) {
        await switchModeTo(page, enginePath, pattern)
-       await waitFor(`查看器搬到了${label}`, async () => (await whereViewer()).host === expect)
+       /*
+        * 跨区域换落点必然换 React 宿主(W4 留账 3),查看器在新宿主里**重挂再重读**:
+        * 落点对了的那一帧正文可能还是空的。等「落点对 ∧ 正文非空」再比对 —— 否则
+        * 这一步是一颗时序色子(W3-b 交卷重验时红过一次,重跑即绿)。
+        */
+       await waitFor(`查看器搬到了${label}`, async () => {
+         const w = await whereViewer()
+         return w.host === expect && w.text.length > 0
+       })
        const at = await whereViewer()
        assert(at.host === expect, `「${label}」真的把它摆到了 ${expect}(实测 ${at.host})`)
        assert(at.text === sameText, `「${label}」换落点之后内容逐字相同(状态住 store)`)
