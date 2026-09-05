@@ -16,7 +16,8 @@ import { IconButton } from '../ui/IconButton'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
-import { dropRef, pairIntoIndex, reorderTab } from './drop-commit'
+import { dropRef, pairIntoIndex, reorderTab, unpairTab } from './drop-commit'
+import { useLeafMenuAt, useLeafMenuStore } from './leaf-menu'
 import { contentKindOf, partsOfContent, refId } from './kinds'
 import {
   hiddenInRegion,
@@ -80,11 +81,20 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   const restoreHidden = useWorkbenchStore((st) => st.restoreHidden)
   const hidden = useMemo(() => hiddenInRegion(allHidden, region), [allHidden, region])
 
-  /** ⋯ / 分屏两张菜单开在哪一点(null = 没开)。两张各一格,不共用一个布尔。 */
+  /** 「隐藏的标签 ⋯」那张开在哪一点(null = 没开)。它只有这一个开口,所以留在本地。 */
   const [hiddenAt, setHiddenAt] = useState<{ x: number; y: number } | null>(null)
-  const [splitAt, setSplitAt] = useState<{ x: number; y: number } | null>(null)
-
-  const unpairAt = useWorkbenchStore((st) => st.unpairAt)
+  /*
+   * **动作表开在哪一点,住在 `workbench/leaf-menu` 里**(W6-c,设计 v3 §7)。
+   *
+   * 它从一格本地 `useState` 搬出去,是因为这张表从此有**两个开口**:檐右端那颗钮
+   * (还在这只组件里)与**右键一格标签**(在标签条上 —— 顶栏那一档里它与这只组件
+   * 是 `TopBar` 的两兄弟,够不着彼此的 setState)。两个开口开的必须是**同一张表**,
+   * 所以「开不开、开在哪」这一格事实只能有一个产地。
+   * 判据、项目、动作一格都没搬 —— 它们仍旧整件在这只组件里。
+   */
+  const menuAt = useLeafMenuAt(leaf.id)
+  const closeMenu = useLeafMenuStore((st) => st.closeLeafMenu)
+  const openMenu = useLeafMenuStore((st) => st.openLeafMenu)
   const active = leaf.tabs[leaf.active] ?? null
   // 型工具条走**种类自述**那条唯一的口 —— 动作组不认识「markdown 有个渲染⇄源码开关」。
   const toolbar = active ? contentKindOf(active.kind)?.toolbar?.(active) : null
@@ -145,7 +155,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
         testId={`pane-split:${leaf.id}`}
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect()
-          setSplitAt({ x: rect.left, y: rect.bottom })
+          openMenu(leaf.id, rect.left, rect.bottom)
         }}
       />
 
@@ -173,8 +183,14 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
         </Menu>
       )}
 
-      {splitAt && (
-        <Menu x={splitAt.x} y={splitAt.y} onClose={() => setSplitAt(null)} label={t('workbench.split')}>
+      {menuAt && (
+        /*
+         * **无障碍名是「标签动作」,不是「分屏」**(W6-c):这张表里今天装着二合一 /
+         * 拆开 / 左移右移 / 移到架子 / 撕成浮窗,中央区连分屏四项都不画了。
+         * 读屏软件念出来的那个名字必须说得出这张表**是什么**,而不是它最早那一项
+         * 叫什么 —— 屏幕上那颗钮的提示不动(它仍旧只是这张表的一个开口)。
+         */
+        <Menu x={menuAt.x} y={menuAt.y} onClose={closeMenu} label={t('workbench.tabActions')}>
           {/*
             **分屏四项只在多叶区域画**(W6-a):中央区收成一条标签条之后,
             那四项在那里根本没有落点 —— 一颗永远做不成的动作比禁灰更糟
@@ -193,7 +209,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
                   disabled={!canSplit}
                   onClick={() => {
                     splitLeaf(leaf.id, choice.dir, undefined, choice.before)
-                    setSplitAt(null)
+                    closeMenu()
                   }}
                 >
                   <span className={s.menuLine}>
@@ -218,7 +234,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
               /* **同一只落定动作**(W6-b):拖拽落定 /「放到标签上」松手 / 这一项走的都是它,
                * 播报那一句也在它里面 —— 三处各写一遍,迟早说岔。 */
               pairIntoIndex(leaf.tabs[leaf.active + 1], leaf.id, leaf.active, 'right')
-              setSplitAt(null)
+              closeMenu()
             }}
           >
             <span className={s.menuLine}>
@@ -231,7 +247,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             onClick={() => {
               if (!canPairLeft || !active) return
               pairIntoIndex(leaf.tabs[leaf.active - 1], leaf.id, leaf.active, 'left')
-              setSplitAt(null)
+              closeMenu()
             }}
           >
             <span className={s.menuLine}>
@@ -243,9 +259,10 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             disabled={!isPair}
             onClick={() => {
               if (!isPair) return
-              unpairAt(leaf.id, leaf.active)
-              announce(t('workbench.unpaired'))
-              setSplitAt(null)
+              /* **同一只拆开动作**(W6-c):格头上那颗「拆开」走的也是它,播报那一句
+               * 在它里面 —— 修前这里自己念一句,而格头那颗一声不吭。 */
+              unpairTab(leaf.id, leaf.active)
+              closeMenu()
             }}
           >
             <span className={s.menuLine}>
@@ -274,7 +291,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             onClick={() => {
               if (!canMoveLeft) return
               reorderTab(leaf.id, leaf.active, leaf.active - 1)
-              setSplitAt(null)
+              closeMenu()
             }}
           >
             <span className={s.menuLine}>
@@ -287,7 +304,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             onClick={() => {
               if (!canMoveRight) return
               reorderTab(leaf.id, leaf.active, leaf.active + 2)
-              setSplitAt(null)
+              closeMenu()
             }}
           >
             <span className={s.menuLine}>
@@ -306,7 +323,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
                 if (!active) return
                 dropRef(active, { kind: 'edge', side: choice.side })
                 announce(t('drag.movedToEdge', { side: t(choice.sideKey) }))
-                setSplitAt(null)
+                closeMenu()
               }}
             >
               <span className={s.menuLine}>
@@ -321,7 +338,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
               if (!active) return
               dropRef(active, { kind: 'float' })
               announce(t('drag.movedToFloat'))
-              setSplitAt(null)
+              closeMenu()
             }}
           >
             <span className={s.menuLine}>

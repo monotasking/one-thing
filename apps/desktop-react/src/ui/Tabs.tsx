@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { PointerEvent as ReactPointerEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, X } from '../components/icons'
 import { StatusDot } from './StatusDot'
 import { Tooltip } from './Tooltip'
@@ -111,6 +111,16 @@ interface TabsProps {
    * 不接就是不接:没给这个 prop 时 tab 的行为与从前逐字相同(按下 → 松开 → onSelect)。
    */
   onTabPointerDown?: (id: string, e: ReactPointerEvent<HTMLElement>) => void
+  /**
+   * **右键一格 tab 意味着什么**(W6-c)。与 `onTabPointerDown` 逐字同一条纪律:
+   * Tabs 自己不认识「动作菜单」这回事,它只把右键这一下连同 id 递出去,开什么表
+   * 是宿主的语法。不接就是不接 —— 没给这个 prop 时右键落到浏览器 / 宿主的缺省
+   * 上下文菜单上,与从前逐字相同。
+   *
+   * 它与 `useDragSource` 那句 `if (e.button !== 0) return`「右键要留给上下文菜单」
+   * 是同一条判例的两半:那边让开,这边接住。
+   */
+  onTabContextMenu?: (id: string, e: ReactMouseEvent<HTMLElement>) => void
   label?: string
 }
 
@@ -120,6 +130,7 @@ export function Tabs({
   onSelect,
   onClose,
   onTabPointerDown,
+  onTabContextMenu,
   look = 'line',
   label,
 }: TabsProps) {
@@ -199,6 +210,7 @@ export function Tabs({
               }
             }}
             onPointerDown={onTabPointerDown ? (e) => onTabPointerDown(tab.id, e) : undefined}
+            onContextMenu={onTabContextMenu ? (e) => onTabContextMenu(tab.id, e) : undefined}
           >
             <span className={s.main}>
               {Icon && <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />}

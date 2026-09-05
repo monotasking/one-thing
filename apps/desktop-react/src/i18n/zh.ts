@@ -802,6 +802,9 @@ export const zh = {
   'workbench.leafTabs': '标签',
   'workbench.hiddenTabs': '隐藏的标签',
   'workbench.hiddenNote': '已隐藏',
+  /* 动作表自己的无障碍名(W6-c)。开它那颗钮上仍旧写着「分屏」;
+   * 表自己按它**是什么**起名,不按它第一项叫什么起名。 */
+  'workbench.tabActions': '标签动作',
   'workbench.split': '分屏',
   'workbench.splitRight': '在右侧',
   'workbench.splitLeft': '在左侧',

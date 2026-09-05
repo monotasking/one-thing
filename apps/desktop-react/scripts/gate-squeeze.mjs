@@ -1880,7 +1880,15 @@ async function checkLeafChrome(page) {
       labelOneLine: label
         ? label.getBoundingClientRect().height < 1.6 * Number.parseFloat(getComputedStyle(label).fontSize)
         : false,
-      // 格头:一行、名字截断得动、「拆开」在框里。
+      /*
+       * 格头:一行、名字截断得动、「拆开」在框里。
+       * **`headH` 是声明值,不是猜的**(W6-c):设计 §6 写的 28 住在
+       * `--pair-head-h` 里,门读那一格再与实测比 —— 把 28 抄进门里,哪天 token
+       * 改了门会替一份过期的规格说话。
+       */
+      headH: Math.round(
+        parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--pair-head-h')) || 0,
+      ),
       heads: heads.map((head) => {
         const box = head.getBoundingClientRect()
         const name = head.querySelector('[class*="name"]')
@@ -1890,6 +1898,19 @@ async function checkLeafChrome(page) {
           h: Math.round(box.height),
           nameClipped: name ? getComputedStyle(name).textOverflow === 'ellipsis' : false,
           btnInside: nb ? nb.right <= box.right + 1 && nb.left >= box.left - 1 : false,
+          /*
+           * **一行**(W6-c):两件缺一不可 —— 这一行不许换行(`flex-wrap`),
+           * 而且里面每一件都得**竖着落在这条 28px 的带子里**。只量高度是不够的:
+           * 高度是 `height:` 钉死的,内容换行只会溢出到带子外面,那一格高度读数
+           * 逐字不变 —— 门会当场说绿。
+           */
+          noWrap: getComputedStyle(head).flexWrap !== 'wrap',
+          inside: [name, btn]
+            .filter(Boolean)
+            .every((el) => {
+              const r = el.getBoundingClientRect()
+              return r.top >= box.top - 1 && r.bottom <= box.bottom + 1
+            }),
         }
       }),
     }
@@ -1914,8 +1935,89 @@ async function checkLeafChrome(page) {
     for (const [i, head] of pair.heads.entries()) {
       if (!head.nameClipped) problems.push(`格头 ${i} 的名字不截断`)
       if (!head.btnInside) problems.push(`格头 ${i} 的「拆开」被挤出框`)
+      /* ── W6-c:格头 28px 一行不换行 ───────────────────────────────── */
+      if (pair.headH > 0 && Math.abs(head.h - pair.headH) > 1) {
+        problems.push(`格头 ${i} 的高不是声明的 ${pair.headH}(实测 ${head.h})`)
+      }
+      if (!head.noWrap) problems.push(`格头 ${i} 声明了 flex-wrap: wrap(结构行只截断不换行)`)
+      if (!head.inside) problems.push(`格头 ${i} 里有件竖着掉出了这条 ${head.h}px 的带子(换行了)`)
     }
   }
+  seen.push(`格头声明高 ${pair.headH}`)
+  /*
+   * ── ⑤ **分隔杆推到两头,窄的那一格仍旧有最小格宽**(W6-c,律四)────────────
+   *
+   * 前面④量的是**缺省比例**下的两格。挤压纪律说的是「每个组件在自己声明的最小
+   * 宽度下零重叠」,而两格标签**声明得出**那个最小宽:比例钳在 `PAIR_RATIO_MIN`
+   * 20 与 `MAX` 80(`workbench/store.ts`),也就是窄的那一格**永远不少于容器的
+   * 20%**。所以这一条走那条杆自己的键盘路(APG 档:Home / End 到两头)把比例
+   * 推到极限,再问三件:
+   *  · 两格都还排得出盒(谁都没塌成 0);
+   *  · 窄的那一格 ≥ 20% 容器宽(钳制真的在);
+   *  · **那一档下格头里的件仍旧不重叠、「拆开」仍旧在框里** —— 20% 正是那颗钮与
+   *    名字最挤的一档,而 ④ 在 50/50 上永远量不到它。
+   * 量完按 ↵ 回缺省(杆自己那一格键盘行为),不给下一步留下一个歪掉的比例。
+   *
+   * 反证:把 `PAIR_RATIO_MIN` 调成 2,「窄格 ≥ 20%」当场红。
+   */
+  const clampSeen = []
+  for (const key of ['Home', 'End']) {
+    await page.evaluate(() => {
+      const el = document.querySelector('[data-testid^="pair-splitter:"]')
+      if (el instanceof HTMLElement) el.focus()
+    })
+    await page.keyboard.press(key)
+    await delay(350)
+    const band = await page.evaluate(() => {
+      const box = document.querySelector('[data-testid^="pair:"]')
+      const panes = Array.from(document.querySelectorAll('[data-pair-side]'))
+      if (!box || panes.length !== 2) return null
+      const total = box.getBoundingClientRect().width
+      const widths = panes.map((el) => el.getBoundingClientRect().width)
+      const heads = Array.from(document.querySelectorAll('[data-pair-head]')).map((head) => {
+        const hb = head.getBoundingClientRect()
+        const name = head.querySelector('[class*="name"]')
+        const btn = head.querySelector('button')
+        const nb = btn?.getBoundingClientRect() ?? null
+        const rb = name?.getBoundingClientRect() ?? null
+        return {
+          btnInside: nb ? nb.right <= hb.right + 1 && nb.left >= hb.left - 1 : false,
+          // 名字与钮**零重叠**(律四的原话)—— 最窄那一档才量得到。
+          clear: nb && rb ? rb.right <= nb.left + 1 : true,
+        }
+      })
+      const now = Number(
+        document.querySelector('[data-testid^="pair-splitter:"]')?.getAttribute('aria-valuenow'),
+      )
+      return { total: Math.round(total), widths: widths.map((w) => Math.round(w)), heads, now }
+    })
+    if (!band) {
+      problems.push(`杆推到 ${key} 之后两格读不出来`)
+      continue
+    }
+    clampSeen.push(`${key}→${band.now}% ${band.widths.join('/')} of ${band.total}`)
+    const min = Math.min(...band.widths)
+    if (min <= 0) problems.push(`杆推到 ${key}:有一格塌成了 0(${band.widths.join('/')})`)
+    // 20% 的下界,留 2px 给缝与亚像素。
+    if (band.total > 0 && min < band.total * 0.2 - 2) {
+      problems.push(
+        `杆推到 ${key}:窄的那一格 ${min} < 最小格宽 ${Math.round(band.total * 0.2)}(比例 ${band.now}%)`,
+      )
+    }
+    for (const [i, head] of band.heads.entries()) {
+      if (!head.btnInside) problems.push(`杆推到 ${key}:格头 ${i} 的「拆开」被挤出框`)
+      if (!head.clear) problems.push(`杆推到 ${key}:格头 ${i} 的名字与「拆开」重叠`)
+    }
+  }
+  seen.push(`杆到两头 ${clampSeen.join(' · ')}`)
+  // ↵ 回缺省 —— 杆自己那一格键盘行为,不给下一步留下歪比例。
+  await page.evaluate(() => {
+    const el = document.querySelector('[data-testid^="pair-splitter:"]')
+    if (el instanceof HTMLElement) el.focus()
+  })
+  await page.keyboard.press('Enter')
+  await delay(300)
+
   /*
    * **收尾:拆回去**。两格那一种自述 `fullable: false`(与会话那一种同一条理由),
    * 留着它当活动格的话,下一步(10d 全屏檐带)按 ⌘⇧↩ 会被结构化拒绝 —— 那一步
@@ -2304,7 +2406,10 @@ async function main() {
     console.error(`\n[squeeze-gate] FAILED(${failures.length} 档):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[squeeze-gate] ok —— 五档零重叠 · 三档在场表与行几何全对 · 浮窗重钳回框')
+  console.log(
+    '\n[squeeze-gate] ok —— 五档零重叠 · 三档在场表与行几何全对 · 浮窗重钳回框'
+      + ' · 两格标签 260 截断 / 格头 28 一行 / 杆到两头仍有最小格宽(W6-c)',
+  )
 }
 
 main().catch((error) => {

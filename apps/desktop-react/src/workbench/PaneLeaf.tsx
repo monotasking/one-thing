@@ -1,12 +1,13 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { claimContentSlot, registerContentHolder, unregisterContentHolder } from './content-slots'
 import { useFullSlot } from './full-slot'
 import { flattenContent, partsOfContent, refId } from './kinds'
 import { LeafActions } from './LeafActions'
+import { openLeafMenuAtPointer } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { CENTER_REGION } from './regions'
@@ -345,6 +346,20 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
     },
     [closeAt, leaf.tabs],
   )
+  /*
+   * **右键一格标签 = 这片叶的动作表**(W6-c,设计 v3 §7)。开的是 `LeafActions`
+   * 那**同一张**表(判词在 `workbench/leaf-menu.ts`),不是第二张;所以「右键搬过去」
+   * 与「按钮搬过去」与「拖过去」三条路调的仍旧是同一只动作。
+   *
+   * `preventDefault` 挡掉宿主自己的上下文菜单 —— 两张菜单同时开是这类接管的经典漏法。
+   */
+  const onTabContextMenu = useCallback(
+    (_id: string, e: ReactMouseEvent<HTMLElement>) => {
+      e.preventDefault()
+      openLeafMenuAtPointer(leaf.id, e)
+    },
+    [leaf.id],
+  )
 
   return (
     <LeafStrip
@@ -355,6 +370,7 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
       onSelect={onSelect}
       onClose={onClose}
       onTabPointerDown={onTabPointerDown}
+      onTabContextMenu={onTabContextMenu}
       onChromePointerDown={host?.onChromePointerDown}
       actions={
         <>

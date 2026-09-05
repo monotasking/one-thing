@@ -1,6 +1,7 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { focusTree } from '../../focus/registry'
+import { announce } from '../a11y/live-region'
 import { LAND_MS } from '../../components/motion'
 import { DRAG_START_PX } from './constants'
 
@@ -561,11 +562,30 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       }
       const held = payload as T
       const pointer = { x: ev.clientX, y: ev.clientY }
+      /*
+       * **松在拒绝态上要说出口**(W6-c,设计 v3 §7 播报表的第四句「这里不能放」)。
+       *
+       * 产地在这里,而**不在**落定那一头:落定(`workbench/drop-commit.dropRef`)的
+       * `refuse` 是一次空动作,而且它压根到不齐 —— 条内换序那一形的拒绝
+       * (被拖的自己是两格)由 `useTabDrag` 的 `inline.drop` 当场吃掉,一步都不经过
+       * `dropRef`。这一句必须站在**所有来源、两条落定路的上游**,而那只有一个地方:
+       * 这一场自己松手的那一帧。
+       *
+       * 念的是**那句理由**(`drop.hint` —— 拒绝时它就是结构化拒绝的那句话,判词在
+       * `DropFeedback.hint` 上),不是一句写死的「不行」:屏幕上写着「两格的标签不能
+       * 再并」,读屏软件却念「这里不能放」,等于两套说法。
+       *
+       * **在 `teardown` 之前取**:那一句拆完就没了(`current` 被清成 null)。
+       */
+      const refused = current?.drop?.tone === 'refuse' ? current.drop.hint : null
       // 次序即语义:先把这一格拖拽态拆干净,再落定 —— 落定会改树,
       // 那一刻不该还有一个活着的会话在别人的订阅里晃。
       teardown(true)
       swallowNextClick()
       if (was === 'dragging') specRef.current.onDrop?.(pointer, held)
+      // 排在落定之后:落定那一头也可能播报(换序 / 二合一),
+      // 而这两件事互斥 —— 拒绝那一下落定什么都不会说。
+      if (was === 'dragging' && refused) announce(refused)
     }
 
     /** 指针没了(pointercancel / 窗口失焦):不会再有 click,整个拆干净。 */

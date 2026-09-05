@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Tabs } from '../ui/Tabs'
 import { focusIntoRef } from './focus-into'
 import { useLiveTitleStore } from '../stage/live-title'
@@ -91,6 +91,12 @@ interface LeafStripProps {
    */
   onTabPointerDown?: (id: string, e: ReactPointerEvent<HTMLElement>) => void
   /**
+   * **右键一格 tab 意味着什么**(W6-c,设计 v3 §7「动作单产地是标签的右键菜单」)。
+   * 与上面那一口同一条纪律:这条檐只把右键连同 id 递出去,开哪张表是宿主的语法
+   * —— 面板内那一档(不在树里)不接它,于是那一档的右键行为一个字没变。
+   */
+  onTabContextMenu?: (id: string, e: ReactMouseEvent<HTMLElement>) => void
+  /**
    * **按在檐的空白处意味着什么**(W4:浮窗的标题栏就是它根叶的这条檐,
    * 设计 §2.2)。按在 tab / 钮上时宿主自己判要不要让开 —— 这一层只负责把
    * 事件递出去,不替宿主决定「什么算空白」。
@@ -111,6 +117,7 @@ export function LeafStrip({
   onSelect,
   onClose,
   onTabPointerDown,
+  onTabContextMenu,
   onChromePointerDown,
   chromeId,
   testId,
@@ -166,6 +173,7 @@ export function LeafStrip({
           onSelect={select}
           onClose={onClose}
           onTabPointerDown={onTabDown}
+          onTabContextMenu={onTabContextMenu}
         />
       </div>
       {/* 型工具条由**种类自述**(`ContentKind.toolbar`),檐只负责挂。

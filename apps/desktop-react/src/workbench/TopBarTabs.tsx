@@ -1,9 +1,10 @@
 import { memo, useCallback, useMemo, useRef } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { refId } from './kinds'
 import { LeafActions } from './LeafActions'
+import { openLeafMenuAtPointer } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
 import { useLeafGeometry } from './leaf-geometry'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
@@ -163,6 +164,23 @@ const LeafTabGroup = memo(function LeafTabGroup({
   const onTabPointerDown = useTabDrag(leaf)
 
   /*
+   * **右键一格标签 = 这片叶的动作表**(W6-c,设计 v3 §7)。
+   *
+   * 中央区这一档是这条路非有不可的理由:标签条(这只组件)与那张表
+   * (`TopBarLeafActions`,顶栏尾格)在 `TopBar` 里是**两兄弟**,谁也够不着谁的
+   * 状态 —— 「开不开、开在哪」因此住在 `workbench/leaf-menu` 那一格里,两个开口读同一格。
+   * 上面那句 `onPointerDownCapture` 已经把焦点叶指过来了(右键的 pointerdown 一样派得出),
+   * 所以尾格此刻画的正是这片叶的表。
+   */
+  const onTabContextMenu = useCallback(
+    (_id: string, e: ReactMouseEvent<HTMLElement>) => {
+      e.preventDefault()
+      openLeafMenuAtPointer(leaf.id, e)
+    },
+    [leaf.id],
+  )
+
+  /*
    * **联动靠空间与光,不靠文字**(设计 §2.2:用户看过第一版后指出「跟 Chat 的联动
    * 很少,不知道这一排是这个 Chat 的」)。悬停这一组 → 它下面那片叶亮一圈。
    *
@@ -219,6 +237,7 @@ const LeafTabGroup = memo(function LeafTabGroup({
             onSelect={onSelect}
             onClose={onClose}
             onTabPointerDown={onTabPointerDown}
+            onTabContextMenu={onTabContextMenu}
           />
         </div>
       )}

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { DragLayer, DropOverlay, resetDragSession, setDropFeedback, useDragSource } from '../drag'
 import { focusTree } from '../../focus/registry'
@@ -230,5 +230,61 @@ describe('来源答 null = 这一下不许拖', () => {
     })
     expect(screen.queryByTestId('drag-ghost')).toBeNull()
     expect(onDrop).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * **松在拒绝态上要说出口**(W6-c,设计 v3 §7 播报表的第四句)。
+ *
+ * 守的是那一句的**产地**:它住在这一场自己松手的那一帧,而不是落定那一头 ——
+ * 条内换序那一形的拒绝由消费方的 `inline.drop` 当场吃掉,一步都不经过
+ * `workbench/drop-commit.dropRef`,所以站在落定那儿的话有一整族拒绝念不到。
+ * 念的是 `drop.hint`(**那句结构化拒绝的理由本身**),不是一句写死的「不行」。
+ *
+ * 反证:把 `DragSession` 的 `up` 里那句 `if (was === 'dragging' && refused) announce(refused)`
+ * 注释掉 → 第一条当场红(播报口里一个字都没有)。
+ */
+describe('拒绝态松手:播报那句理由', () => {
+  /* 播报口是模块级的一个 DOM 节点,活过整个文件 —— 每条用例各读各的那一句。 */
+  beforeEach(() => {
+    const live = document.querySelector('[data-live="polite"]')
+    if (live) live.textContent = ''
+  })
+
+  it('念的是 drop.hint 本身', () => {
+    vi.useFakeTimers()
+    render(<Source spec={{}} />)
+    const src = screen.getByTestId('src')
+    act(() => {
+      down(src, 100, 100)
+      move(src, 300, 100)
+      setDropFeedback({ rect: null, tone: 'refuse', hint: '两格的标签不能再并' })
+    })
+    act(() => {
+      up(src, 300, 100)
+      // `announce` 是先清空再写的那一拍 setTimeout,推完再读。
+      vi.advanceTimersByTime(50)
+    })
+    expect(document.querySelector('[data-live="polite"]')?.textContent?.trim()).toBe(
+      '两格的标签不能再并',
+    )
+    vi.useRealTimers()
+  })
+
+  it('接受态松手不念 —— 那一下该说话的是落定,不是这里', () => {
+    vi.useFakeTimers()
+    render(<Source spec={{}} />)
+    const src = screen.getByTestId('src')
+    act(() => {
+      down(src, 100, 100)
+      move(src, 300, 100)
+      setDropFeedback({ rect: null, tone: 'accept', hint: '松手放回' })
+    })
+    act(() => {
+      up(src, 300, 100)
+      vi.advanceTimersByTime(50)
+    })
+    expect(document.querySelector('[data-live="polite"]')?.textContent?.trim() ?? '').toBe('')
+    vi.useRealTimers()
   })
 })

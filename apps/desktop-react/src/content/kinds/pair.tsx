@@ -6,6 +6,7 @@ import { IconButton } from '../../ui/IconButton'
 import { Splitter } from '../../ui/Splitter'
 import { Tooltip } from '../../ui/Tooltip'
 import { ContentSlot } from '../../workbench/PaneLeaf'
+import { unpairTab } from '../../workbench/drop-commit'
 import { contentKindOf, refId, registerContentKind } from '../../workbench/kinds'
 import {
   PAIR_RATIO_DEFAULT,
@@ -111,11 +112,15 @@ function PairPane({ contentRef }: { contentRef: ContentRef }) {
   /**
    * 拆开。**它在这里是一次动作**(不是渲染要读的值),所以现查一次坐标 ——
    * 判据本体是 `store.unpairAt`(右格拆成紧邻其后的新标签,焦点留原位)。
+   *
+   * **走 `drop-commit.unpairTab`,不直接调 store**(W6-c,设计 v3 §7 那张表的
+   * 第三行「菜单『拆开』;格头上的按钮」):两条路必须是同一件事、说同一句话。
+   * 修前这颗钮直接调 store,于是按下去屏幕变了、**播报口一个字都没有** ——
+   * 而右键菜单那一项自己念了一句。播报是**落定**的一部分,它只能有一个产地。
    */
   const unpair = useCallback(() => {
-    const store = useWorkbenchStore.getState()
-    const seat = seatOfPair(store.regions, id)
-    if (seat) store.unpairAt(seat.leafId, seat.index)
+    const seat = seatOfPair(useWorkbenchStore.getState().regions, id)
+    if (seat) unpairTab(seat.leafId, seat.index)
   }, [id])
 
   if (!parts) {

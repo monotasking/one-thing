@@ -245,6 +245,31 @@ export function pairIntoIndex(
   announce(t('workbench.pairedWith', { name: titleOfRef(host) }))
 }
 
+/**
+ * **拆开**(W6-c,设计 v3 §7 那张表的第三行)——「菜单『拆开』;格头上的按钮」
+ * 两条路的**唯一产地**。
+ *
+ * 判据整件仍在 `store.unpairAt`(右格拆成紧邻其后的新标签,焦点留原位);这一只
+ * 只多做一件事:**把那句播报收进来**。它非收不可 —— W6-a 落地时播报写在
+ * `LeafActions` 的那颗菜单项上,于是**格头上那颗「拆开」按下去一声不吭**:
+ * 同一件事,两条路,一条说话一条不说,正是「两条路走两个动作迟早分叉」这条判例
+ * 在播报上的长相(与 `reorderTab` / `pairIntoIndex` 逐字同源:播报是**落定**的
+ * 一部分,不是菜单的装饰)。
+ *
+ * **引用恒等 = 什么都没换就不播报**:`unpairAt` 自己拦「这一格本来就不是两格」,
+ * 那时读屏软件念一句「已拆开」而屏幕上什么都没发生是撒谎(与 `pairIntoIndex`
+ * 末尾那一句同一条判词)。
+ */
+export function unpairTab(leafId: string, index: number): void {
+  const store = useWorkbenchStore.getState()
+  const region = regionOfLeafIn(store.regions, leafId)
+  if (!region) return
+  const before = store.regions[region]
+  store.unpairAt(leafId, index)
+  if (useWorkbenchStore.getState().regions[region] === before) return
+  announce(t('workbench.unpaired'))
+}
+
 /** 一格内容此刻的名字(活的盖静的 —— 与标签条读的是同一份)。 */
 function titleOfRef(ref: ContentRef): string {
   const id = refId(ref)

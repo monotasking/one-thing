@@ -1098,6 +1098,89 @@ async function main() {
             )
             await settle(page, '叶动作组菜单')
             await scanAxe(page, '拖拽落点菜单', '[role="menu"]')
+
+            /*
+             * ── [7e] **标签右键菜单全档可达**(W6-c,设计 v3 §7 首句)────────────
+             *
+             * §7 的原话是「动作单产地是标签的**右键菜单**」,而这张表在 W6-c 之前
+             * 只有檐右端那颗钮一个开口 —— 右键一格标签什么都不会发生。本仓判例
+             * (CLAUDE.md「动作单产地=右键上下文菜单」)与 `ui/drag` 里那句
+             * `if (e.button !== 0) return`「右键要留给上下文菜单」说的是同一件事:
+             * 那一格一直留着,只是没人接。
+             *
+             * 这一屏问三件,一件都不能少:
+             *  ① 右键一格标签**开得出**那张表(不是浏览器 / 宿主的缺省菜单);
+             *  ② 开出来的是**同一张**表 —— 逐项文本与钮那条路**逐字相同**。
+             *    「全档可达」是可数的:少一项就是那条路上有一档到不了;
+             *    两张不同的表(哪怕内容看着差不多)正是「菜单里搬过去和拖过去
+             *    结果不一样」那族 bug 的下一个产地;
+             *  ③ 这张表**键盘走得动** —— 整组只占一个 Tab 位(恰一项 tabIndex=0),
+             *    那是 `ui/Menu` 的 roving 档,而「可达」少了这一条只是「画得出来」。
+             *
+             * 反证:把 `LeafStrip` 的 `onTabContextMenu` 那一格摘掉 → ① 当场红
+             * (右键之后 `[role="menu"]` 一个都没有)。
+             */
+            console.log('\n[7e/10] 标签右键菜单:右键开得出、与钮开出同一张表、键盘走得动')
+            // 先把钮开的那张关掉 —— 两张同时开会让下面的查询读到上一张。
+            await page.keyboard.press('Escape')
+            await delay(250)
+            const viaContext = await page.evaluate(() => {
+              const tab = document.querySelector('[data-topbar-leaf] [data-tab-id]')
+              if (!(tab instanceof HTMLElement)) return { ok: false, why: '顶栏上没有标签' }
+              const box = tab.getBoundingClientRect()
+              tab.dispatchEvent(
+                new MouseEvent('contextmenu', {
+                  bubbles: true,
+                  cancelable: true,
+                  clientX: Math.round(box.left + box.width / 2),
+                  clientY: Math.round(box.top + box.height / 2),
+                }),
+              )
+              return { ok: true }
+            })
+            if (!viaContext.ok) {
+              console.log(`  · 跳过标签右键菜单那一屏:${viaContext.why}`)
+            } else {
+              await delay(400)
+              const ctxMenu = await page.evaluate(() => {
+                const menu = document.querySelector('[role="menu"]')
+                const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+                return {
+                  open: Boolean(menu),
+                  // 表自己的无障碍名(W6-c 起是「标签动作」,不再是「分屏」)。
+                  name: menu?.getAttribute('aria-label') ?? '',
+                  texts: items.map((el) => (el.textContent ?? '').trim()),
+                  // roving:整组只占一个 Tab 位 —— 恰一项 tabIndex 0,其余 -1。
+                  zeroes: items.filter((el) => el instanceof HTMLElement && el.tabIndex === 0).length,
+                }
+              })
+              assert(ctxMenu.open, '右键一格标签开得出动作表')
+              assert(
+                ctxMenu.name.trim().length > 0,
+                `那张表说得出自己是什么(实测「${ctxMenu.name}」)`,
+              )
+              assert(
+                JSON.stringify(ctxMenu.texts) === JSON.stringify(menu.texts),
+                '右键与钮开出的是同一张表,逐项逐字相同'
+                  + `(右键 ${ctxMenu.texts.length} 项:${ctxMenu.texts.join(' / ')};`
+                  + ` 钮 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
+              )
+              assert(
+                ctxMenu.zeroes === 1,
+                `整组只占一个 Tab 位(实测 ${ctxMenu.zeroes} 项 tabIndex=0)`,
+              )
+              // 读数,不是断言 —— 上面那四条才是判据(打 ✓ 会在它们全红时也说一句好话)。
+              console.log(`  · 右键开出 ${ctxMenu.texts.length} 档表「${ctxMenu.name}」`)
+            }
+            // 把菜单交回钮那条路 —— 后面「移到右侧」那一步照旧从它走。
+            await page.keyboard.press('Escape')
+            await delay(250)
+            await page.evaluate(() => {
+              const btn = document.querySelector('[data-testid^="pane-split:"]')
+              if (btn instanceof HTMLElement) btn.click()
+            })
+            await delay(400)
+
             // 点「移到右侧」——它与拖到窗口右边带调的是**同一只** `dropRef`。
             const moved = await page.evaluate(() => {
               const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
@@ -1269,7 +1352,10 @@ async function main() {
     console.error(`\n[a11y-gate] FAILED(${failures.length} 条):\n  ${failures.join('\n  ')}`)
     process.exit(1)
   }
-  console.log('\n[a11y-gate] ok —— 九屏 axe 零违例(W3 添的是拖拽落点菜单那一屏);键盘走查全绿')
+  console.log(
+    '\n[a11y-gate] ok —— 九屏 axe 零违例(W3 添的是拖拽落点菜单那一屏,W6-a 添的是两格并排);'
+      + '键盘走查全绿(W6-c 添的是标签右键菜单那一档:右键与钮开出同一张表)',
+  )
 }
 
 main().catch((error) => {

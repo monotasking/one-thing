@@ -36,6 +36,8 @@ export default tseslint.config(
       // 门专用的 StrictMode 产物(`app:build:strict` → `gate:focus --strict`),与 dist 同类。
       'dist-strict/**',
       'dist-electron/**',
+      // 主进程 bundle 的另一个落点(与 dist-electron 同类:esbuild 打出来的 .cjs)。
+      'dist-main/**',
       'node_modules/**',
       'src/assets/**',
       '.ds-sync/**',

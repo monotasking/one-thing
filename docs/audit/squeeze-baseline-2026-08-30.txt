@@ -7,7 +7,10 @@
 # 那样的基线每改一行 CSS 就要重刷一次,很快就没人认真看它了。
 # `npm run squeeze-check` 打的全表里带行号,是给人定位用的。
 #
-# 棘轮:只减不增。这 7 条是本批开工时的存量,逐条都是既有代码,本批没有新增。
+# 棘轮:只减不增。开工时(2026-08-30)是 7 条存量,逐条都是既有代码,那一批没有新增。
+# 2026-09-05 W6-c 收紧一行:`src/ui/Menu.module.css .itemLabel` 已经补上收缩下界,
+# 棘轮自己打出「基线里这 1 条已经不在了」,照它的话删掉 —— 基线留着一条不存在的
+# 违例,等于给那个文件预留了一格再犯的额度。今天 5 条。
 # 想减一条就把那个块补上 min-width: 0(或 column flex 里的 min-height: 0),
 # 然后把这一行删掉。
 src/components/StageOverlay.module.css .title
@@ -15,4 +18,3 @@ src/content/NotificationsPanel.module.css .spacer
 src/content/blocks/kinds/diff/Diff.module.css .text
 src/content/mocks.module.css .addr
 src/content/mocks.module.css .stub
-src/ui/Menu.module.css .itemLabel

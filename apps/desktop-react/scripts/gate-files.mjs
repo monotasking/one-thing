@@ -892,7 +892,7 @@ async function main() {
      *  ③ 「往一个 tab 有两个的方向设计」→ 二合一 / 拆开 / 换比例三步,
      *    两格内容的根节点**同一个 DOM**(零重挂)。
      */
-    console.log('\n[8/8] W6-a:单击开标签 · 目录多开 · 两格并排(零重挂)')
+    console.log('\n[8/8] W6-a:单击开标签 · 目录多开 · 两格并排(零重挂);W6-c:「打开目录…」那一档')
 
     /*
      * **回到真正的出厂档**(而不是「手动选一次主区域」)。
@@ -1011,6 +1011,98 @@ async function main() {
       `左架子那一格标签写的是目录名:${dirTab.text}(目录名 ${path.basename(cwd)})`,
     )
     await page.screenshot({ path: path.join(shotDir, 'w6a-dir-tile.png') })
+
+    /*
+     * ③b **「打开目录…」那一档:一个路径输入框**(W6-c,设计 §3 + W6-a 的结构化降级)。
+     *
+     * 设计写的是「目录选择走宿主对话框」,而这台 React 壳今天注入的是 `shell: null`
+     * —— 补那一格是**用户可感知的行为改动**(`hasShellHost()` 一翻,`/api/capabilities`
+     * 的 `shellTools` 与 oauth 域的 `openExternal` 两处判据跟着变),按「行为裁定须
+     * 先问」它在留账里等拍板。所以今天那一档是设计里那句**结构化降级**:一个路径
+     * 输入框,每一台宿主上都一样(判词整段在 `content/files/open-dir-hub.ts` 上)。
+     *
+     * 门要问的正是这一句降级**真的按得动**——降级最容易变成「画出来了、按下去没反应」:
+     *  ① 右键那块瓦,菜单里有「打开目录…」;
+     *  ② 点它开出那扇窗,里面有那格输入框(`open-dir-input`);
+     *  ③ 敲一条**磁盘上真在的**路径(夹具里的 `docs/`)按 ↵ —— 架子上真的多出一格,
+     *    标签写的是那个目录名,而且它与前一格**是两格**(目录多开:名字 = 目录名)。
+     * 反证:把 `OpenDirDialog` 的 `submit` 里那句 `openDirectoryPanel(next)` 注释掉,
+     * ③ 当场红(窗关了,架子上还是一格)。
+     */
+    const dirsDir = path.join(cwd, 'docs')
+    await page.evaluate(() => {
+      const tile = document.querySelector('[data-testid="dock-tile-files"]')
+      if (tile instanceof HTMLElement) {
+        const box = tile.getBoundingClientRect()
+        tile.dispatchEvent(
+          new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: Math.round(box.left + box.width / 2),
+            clientY: Math.round(box.top + box.height / 2),
+          }),
+        )
+      }
+    })
+    await delay(400)
+    const openDirItem = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+        .map(el => ({ el, text: (el.textContent ?? '').trim() }))
+      const hit = items.find(row => /打开目录|Open a directory/i.test(row.text))
+      // 菜单的全表**两条路都带上**:绿的时候它是读数,红的时候它就是现场。
+      const seen = items.map(row => row.text)
+      if (!(hit?.el instanceof HTMLElement)) return { ok: false, seen }
+      hit.el.click()
+      return { ok: true, seen }
+    })
+    assert(
+      openDirItem.ok,
+      `目录瓦的右键菜单里有「打开目录…」(菜单全表:${openDirItem.seen.join(' / ') || '空'})`,
+    )
+    await waitFor('「打开目录…」那扇窗开出来了', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="open-dir-input"]'))),
+    )
+    assert(true, '那一档是**一个路径输入框**(结构化降级,原生对话框待拍板)')
+    await page.evaluate(dir => {
+      const input = document.querySelector('[data-testid="open-dir-input"]')
+      if (!(input instanceof HTMLInputElement)) return
+      /*
+       * 受控 input:直接写 `.value` React 看不见 —— 用原型上那只 setter 写,
+       * 再派一发 `input` 事件(React 的合成事件系统在根上听它)。
+       */
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      setter?.call(input, dir)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+    }, dirsDir)
+    await delay(250)
+    await page.evaluate(() => {
+      const input = document.querySelector('[data-testid="open-dir-input"]')
+      if (input instanceof HTMLElement) input.focus()
+    })
+    await page.keyboard.press('Enter')
+    await delay(700)
+    const twoDirs = await waitFor('左架子上开出了第二个目录', async () => {
+      const read = await page.evaluate(() => {
+        const shelf = document.querySelector('[data-pane-region="edge:left"]')
+        if (!shelf) return null
+        return {
+          tabs: Array.from(shelf.querySelectorAll('[role="tab"]')).map(el =>
+            (el.textContent ?? '').trim(),
+          ),
+          dialogGone: !document.querySelector('[data-testid="open-dir-input"]'),
+        }
+      })
+      return read && read.dialogGone && read.tabs.length >= 2 ? read : undefined
+    })
+    assert(
+      twoDirs.tabs.some(text => text.includes(path.basename(dirsDir))),
+      `新开的那一格标签写的是目录名 ${path.basename(dirsDir)}(实测 ${twoDirs.tabs.join(' / ')})`,
+    )
+    assert(
+      twoDirs.tabs.length >= 2,
+      `目录按目录多开:架子上此刻 ${twoDirs.tabs.length} 格(前一格是 ${path.basename(cwd)})`,
+    )
+    await page.screenshot({ path: path.join(shotDir, 'w6c-open-dir.png') })
 
     /*
      * ④ 二合一 / 拆开 / 换比例:两格内容的根节点自始至终是同一个 DOM。

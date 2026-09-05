@@ -671,6 +671,9 @@ export const en: Record<MessageKey, string> = {
   'workbench.leafTabs': 'Tabs',
   'workbench.hiddenTabs': 'Hidden tabs',
   'workbench.hiddenNote': 'hidden',
+  /* The tab action menu's accessible name (W6-c). The button that opens it still says
+   * "Split"; the menu itself is named for what it is, not for its first entry. */
+  'workbench.tabActions': 'Tab actions',
   'workbench.split': 'Split',
   'workbench.splitRight': 'To the right',
   'workbench.splitLeft': 'To the left',
