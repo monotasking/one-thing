@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
-import { useChatSource } from '../data/chat-source'
+import { chatSources, useChatSourceOf } from '../data/chat-source'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
-import { useExposeStore } from '../expose/store'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
 import { ButtonBase } from '../ui/ButtonBase'
@@ -27,6 +26,15 @@ const ClipIcon = resolveIcon('Paperclip')
 const RetryIcon = resolveIcon('RotateCcw')
 
 interface Props {
+  /**
+   * **这一片聊天画的是哪条会话**(W5-a)。
+   *
+   * 从前它自己去 `expose` 里取「当前会话」—— 那是「全应用只有一条会话在屏上」
+   * 那个前提在组件里的形状。会话多开之后「看哪一条」是**这一片叶的事实**,
+   * 由摆它的那一层给(`content/kinds/chat.tsx`;W5-b 换成叶自己的 `ref.key`),
+   * 于是同一个组件可以并排开两片,各看各的。空串 = 还没有会话(空态)。
+   */
+  sessionId: string
   /** 滚动容器的 ref:TOC 要靠它量坐标、滚过去 */
   scrollRef?: RefObject<HTMLDivElement | null>
   onScroll?: () => void
@@ -54,35 +62,49 @@ interface Props {
  * 今天画出来的东西与从前逐字相同(纯文本正文 + 思考块 + 一行工具摘要):
  * P0 交付的是结构,markdown / 高亮 / diff / 工具三件套是后批(§9)。
  */
-export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
+export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: Props) {
   const t = useT()
-  const sessionId = useExposeStore((st) => st.currentSessionId)
-  const status = useChatSource((st) => st.status)
-  const error = useChatSource((st) => st.error)
-  const messages = useChatSource((st) => st.messages)
-  const activeMessageId = useChatSource((st) => st.activeMessageId)
-  const overlay = useChatSource((st) => st.overlay)
-  const open = useChatSource((st) => st.open)
-
-  // 会话是「此刻要看的东西」—— 换一条就重开一次(open 自己幂等)。
-  useEffect(() => {
-    void open(sessionId)
-  }, [sessionId, open])
+  /*
+   * 七格全部经 `useChatSourceOf(sessionId, …)`:读的是**这条会话自己那台机器**,
+   * 而不是「模块里的那一个」。租约也在那只 hook 里(渲染期保证有东西可读、挂载期
+   * 持有一份引用),所以这一层不再有 `open()` 那只 effect —— 「换会话」这件事在
+   * 组件这一端已经退化成「换一个 prop」。
+   */
+  const status = useChatSourceOf(sessionId, (st) => st.status)
+  const error = useChatSourceOf(sessionId, (st) => st.error)
+  const messages = useChatSourceOf(sessionId, (st) => st.messages)
+  const activeMessageId = useChatSourceOf(sessionId, (st) => st.activeMessageId)
+  const overlay = useChatSourceOf(sessionId, (st) => st.overlay)
 
   /*
-   * 跟随盯的是**数据源自己报的会话**,不是外面那个 currentSessionId。
-   * 两者差一拍:换会话时 `open()` 在 effect 里跑,所以「外面已经换了、树还是上一条
-   * 会话的」这一帧真实存在 —— 拿外面那个当判据会在这一帧对着旧树发一次 `enter`。
-   * 数据源那一格与 `messages` 是**同一次 set** 写的,天然同步。
+   * **这一片叶要看这条会话**:起底(幂等)+ 宣布「当前会话」。
+   *
+   * ① `acquire` 取代了从前那句 `void open(sessionId)` —— 语义一格没动(「换一条就
+   *    重开一次,open 自己幂等」),换的只是掉头的是**注册表**而不是那台单例;
+   * ② 「当前会话」那一格由这片叶宣布(W5-a 的过渡口,设计 §8 W5 裁定 3)。全局面
+   *    还有几处在说「当前会话」(输入面板的忙态、`expose` 建完会话紧接着那一手
+   *    `open`);单叶期唯一在场的那片会话叶就是答案。W5-b 把这一格换成「焦点叶的
+   *    活动 session tab」那条投影,②跟着退役,①留下。
    */
-  const foldedSessionId = useChatSource((st) => st.sessionId)
+  useEffect(() => {
+    chatSources.acquire(sessionId)
+    chatSources.setCurrent(sessionId)
+    return () => chatSources.release(sessionId)
+  }, [sessionId])
+
+  /*
+   * 跟随盯的是**数据源自己报的会话**。W5-a 之前这两者会差一拍(那台单例要等
+   * effect 里的 `open()` 才掉头),现在一条会话一台机器,数据源那一格与 `messages`
+   * 仍是**同一次 set** 写的 —— 判据一个字没改,只是不再有那一拍的差。
+   */
+  const foldedSessionId = useChatSourceOf(sessionId, (st) => st.sessionId)
   /*
    * 「自己刚发了一条」的那一拍。**不靠 `messages.length` 的差去猜** —— 重折、
    * 账本追上来、overlay 被认领,三条路都会让长度变,而它们一条都不是「我按了发送」。
    * 号的产地在 `chat-source.send()`,与那条 overlay 同一次 `set`。
    */
-  const sentTick = useChatSource((st) => st.sentTick)
-  const lastDeltaAt = useChatSource((st) => st.lastDeltaAt)
+  const sentTick = useChatSourceOf(sessionId, (st) => st.sentTick)
+  const lastDeltaAt = useChatSourceOf(sessionId, (st) => st.lastDeltaAt)
   /*
    * `lastDeltaAt` / `activeMessageId` 两格**传进 hook**,不在这一层派发。
    * 理由是产地唯一:跟随事件今天六种,六种全在 `useFollowBottom` 里发 —— 那只
@@ -146,7 +168,7 @@ export function ChatStream({ scrollRef, onScroll, flashMessageId }: Props) {
             ))}
 
             {overlay.map((entry) => (
-              <OverlayRow key={entry.id} t={t} entry={entry} />
+              <OverlayRow key={entry.id} t={t} entry={entry} sessionId={sessionId} />
             ))}
           </div>
         </div>
@@ -429,9 +451,10 @@ const MessageRow = memo(function MessageRow({ t, message, streaming, flash, last
   )
 })
 
-function OverlayRow({ t, entry }: { t: TFn; entry: OverlayEntry }) {
-  const retry = useChatSource((st) => st.retry)
-  const dismiss = useChatSource((st) => st.dismiss)
+function OverlayRow({ t, entry, sessionId }: { t: TFn; entry: OverlayEntry; sessionId: string }) {
+  // 两口动作也跟着这条会话走 —— overlay 是「这条会话的屏幕」上的车道。
+  const retry = useChatSourceOf(sessionId, (st) => st.retry)
+  const dismiss = useChatSourceOf(sessionId, (st) => st.dismiss)
 
   // 拒绝也进流:一次没回答**也是一次回答**,不该在记录里消失,只是说得轻一点。
   if (entry.kind === 'notice') {

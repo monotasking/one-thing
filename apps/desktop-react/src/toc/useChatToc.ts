@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { TOC_FLASH_MS } from '../components/motion'
-import { useChatSource } from '../data/chat-source'
+import { useChatSourceOf } from '../data/chat-source'
 import { useSessionMarkers } from '../data/sessions-source'
 import { useLocateMessage } from '../content/locate-message'
-import { useExposeStore } from '../expose/store'
 import { useT } from '../i18n'
 import { notify } from '../services/notify'
 import { currentTurnIndex } from './transitions'
@@ -116,7 +115,14 @@ function useScrollToMessage(
   )
 }
 
-export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc {
+/**
+ * @param sessionId 这一片聊天看的那条会话(W5-a:由摆它的那片叶给,不再自己去
+ *   `expose` 里取「当前会话」—— 目录与消息流必须说同一条会话,而「哪一条」是叶的事实)。
+ */
+export function useChatToc(
+  sessionId: string,
+  scrollRef: RefObject<HTMLDivElement | null>,
+): ChatToc {
   const t = useT()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null)
@@ -124,7 +130,6 @@ export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc
   const scrollToMessage = useScrollToMessage(scrollRef, setFlashMessageId, flashTimer)
 
   // 键与锚点同源:两边都是这条会话的用户消息锚点列(TocPanel 读的是同一份)。
-  const sessionId = useExposeStore((st) => st.currentSessionId)
   const markerSource = useSessionMarkers(sessionId).data
   const anchorIds = useMemo(
     () => (markerSource ?? []).map((marker) => marker.id),
@@ -234,9 +239,9 @@ export function useChatToc(scrollRef: RefObject<HTMLDivElement | null>): ChatToc
    */
   const locate = useLocateMessage((st) => st.request)
   const settleLocate = useLocateMessage((st) => st.settleLocate)
-  const foldSessionId = useChatSource((st) => st.sessionId)
-  const foldStatus = useChatSource((st) => st.status)
-  const foldMessages = useChatSource((st) => st.messages)
+  const foldSessionId = useChatSourceOf(sessionId, (st) => st.sessionId)
+  const foldStatus = useChatSourceOf(sessionId, (st) => st.status)
+  const foldMessages = useChatSourceOf(sessionId, (st) => st.messages)
   useEffect(() => {
     if (!locate) return
     if (sessionId !== locate.sessionId) return

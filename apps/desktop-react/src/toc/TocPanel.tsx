@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { TOC_HOVER_MS } from '../components/motion'
 import { useSessionChapters, useSessionMarkers, useSessionsSource } from '../data/sessions-source'
-import { useExposeStore } from '../expose/store'
 import { useT } from '../i18n'
 import { PianoKeys } from './PianoKeys'
-import { useTocStore } from './store'
+import { selectToc, useTocStore } from './store'
 import { tocChapters, tocKeys } from './transitions'
 import s from './TocPanel.module.css'
 
 interface Props {
+  /**
+   * 这条 rail 说的是哪条会话的目录(W5-a:由摆它的那片叶给)。
+   * 展开态也按它记(见 `toc/store.ts`)—— 两片会话叶各展各的。
+   */
+  sessionId: string
   /** 视口内最近一条用户消息的下标 —— 由 useChatToc 从滚动位置投影出来 */
   currentIndex: number
   /** 点行 / 点键 = 跳到那条消息(滚动 + 落点高亮),动作归渲染层 */
@@ -35,15 +39,13 @@ interface Props {
  * 就是这条会话的用户消息锚点(`getUserMarkers` 的 id)。D1 那条「键的下标与
  * 页面上的锚点不同源」的尾巴就此收掉:两边说的是同一个 id。
  */
-export function TocPanel({ currentIndex, onPick }: Props) {
+export function TocPanel({ sessionId, currentIndex, onPick }: Props) {
   const t = useT()
-  const open = useTocStore((st) => st.open)
-  const hoverIndex = useTocStore((st) => st.hoverIndex)
+  const { open, hoverIndex } = useTocStore(selectToc(sessionId))
   const openPanel = useTocStore((st) => st.openPanel)
   const closePanel = useTocStore((st) => st.closePanel)
   const hoverKey = useTocStore((st) => st.hoverKey)
 
-  const sessionId = useExposeStore((st) => st.currentSessionId)
   /*
    * 两族各订一格(键 = 这条会话)。这里只用得着 `data` —— 目录的空态是
    * 「rail 整个不在场」,没有骨架也没有错误行,所以 `phase` / `inflight`
@@ -78,13 +80,13 @@ export function TocPanel({ currentIndex, onPick }: Props) {
 
   const armOpen = () => {
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => openPanel(), TOC_HOVER_MS)
+    timer.current = setTimeout(() => openPanel(sessionId), TOC_HOVER_MS)
   }
 
   const cancel = () => {
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
-    closePanel()
+    closePanel(sessionId)
   }
 
   const pick = (index: number) => {
@@ -111,7 +113,7 @@ export function TocPanel({ currentIndex, onPick }: Props) {
         open={open}
         currentIndex={currentIndex}
         hoverIndex={hoverIndex}
-        onHover={hoverKey}
+        onHover={(index) => hoverKey(sessionId, index)}
         onPick={pick}
       />
     </nav>

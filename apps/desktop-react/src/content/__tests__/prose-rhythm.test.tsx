@@ -158,7 +158,7 @@ async function mountLedger(ledger: Ledger[]) {
   useExposeStore.setState({ currentSessionId: SESSION })
   let view!: ReturnType<typeof render>
   await act(async () => {
-    view = render(<ChatStream />)
+    view = render(<ChatStream sessionId={SESSION} />)
   })
   await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
   return view

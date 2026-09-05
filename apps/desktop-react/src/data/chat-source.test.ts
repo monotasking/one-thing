@@ -1,10 +1,18 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@shared/events/session-events'
 import type { SessionEventEnvelope } from '@shared/events/envelope'
 import type { SessionStreamPayload } from '@shared/events/envelope'
 import { configureChatPort, type ChatPort } from './chat-port'
 import { useNotifyStore } from '../services/notify-store'
-import { ABORT_SETTLE_MS, REFOLD_THROTTLE_MS, selectEngineBusy, useChatSource } from './chat-source'
+import {
+  ABORT_SETTLE_MS,
+  chatSources,
+  REFOLD_THROTTLE_MS,
+  selectEngineBusy,
+  useChatSource,
+} from './chat-source'
 
 /**
  * 聊天数据源的判据 —— 全是纯逻辑,所以这里一台 core 都不起:端口换成假的,
@@ -701,5 +709,225 @@ describe('工具进度活流(C2-b)', () => {
     })
     await settle()
     expect(callOf('a1')?.progress).toBeUndefined()
+  })
+})
+
+/**
+ * **W5-a:一条会话一台机器 + 一张注册表。**
+ *
+ * 上面那一整篇钉的是「一台机器折得对不对」;这一组钉的是**多台同时活着**时那三件
+ * 从前不存在的事:分发给谁、活多久、哪些数是各数各的。
+ *
+ * 为什么它们值得单独一组:W5-a 之前这只文件是模块级单例,两处
+ * `envelope.sessionId !== get().sessionId` 的过滤就是「只能有一条」这件事在代码里的
+ * 形状 —— 把过滤删掉而分发没接上,屏幕上就是 A 的字画到 B 的回复里。
+ */
+describe('多开:一条会话一台机器,注册表按会话分发', () => {
+  const A = 'multi-a'
+  const B = 'multi-b'
+
+  const createdIn = (seq: number, sessionId: string): Ledger => ({
+    seq,
+    time: T0,
+    type: 'session/created',
+    data: { sessionId },
+  })
+
+  interface MultiHarness {
+    port: ChatPort
+    /** 此刻挂着几对推送订阅 —— 「全进程只有一对」与「退订退干净了」都靠它。 */
+    subs: () => number
+    emitLedger(sessionId: string, record: Ledger): void
+    emitStream(payload: SessionStreamPayload): void
+  }
+
+  /** 两条会话共用**一条**推送面(真机上就是同一条 SSE),分发归注册表。 */
+  function multiHarness(ledgers: Record<string, Ledger[]>): MultiHarness {
+    const eventSubs: ((envelope: SessionEventEnvelope) => void)[] = []
+    const streamSubs: ((payload: SessionStreamPayload) => void)[] = []
+    return {
+      subs: () => eventSubs.length + streamSubs.length,
+      port: {
+        ready: async () => undefined,
+        listRaw: async (sessionId) => ({ events: [...(ledgers[sessionId] ?? [])] as never }),
+        readBlob: async () => ({}),
+        onSessionEvent: (callback) => {
+          eventSubs.push(callback)
+          return () => void eventSubs.splice(eventSubs.indexOf(callback), 1)
+        },
+        onSessionStream: (callback) => {
+          streamSubs.push(callback)
+          return () => void streamSubs.splice(streamSubs.indexOf(callback), 1)
+        },
+        sendMessage: async () => ({ success: true }),
+        abort: async () => ({ success: true }),
+        retryMessage: async () => ({ success: true }),
+      },
+      emitLedger: (sessionId, record) =>
+        eventSubs.forEach((fn) =>
+          fn({
+            sessionId,
+            sequence: record.seq,
+            timestamp: T0,
+            event: { type: SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT, record } as never,
+          }),
+        ),
+      emitStream: (payload) => streamSubs.forEach((fn) => fn(payload)),
+    }
+  }
+
+  const bothOpen = async (h: MultiHarness) => {
+    configureChatPort(h.port)
+    chatSources.acquire(A)
+    chatSources.acquire(B)
+    await settle()
+  }
+
+  const contentOf = (sessionId: string, messageId: string) =>
+    chatSources.get(sessionId)?.getState().messages.find((message) => message.id === messageId)
+      ?.content
+
+  it('两台同时收流:A 的 delta 只进 A 的折,B 那棵树一个字都不动', async () => {
+    const h = multiHarness({
+      [A]: [createdIn(1, A), userMessage(2, 'ua', '甲问'), runStart(3, 'r1', 'a1')],
+      [B]: [createdIn(1, B), userMessage(2, 'ub', '乙问'), runStart(3, 'r1', 'b1')],
+    })
+    await bothOpen(h)
+    expect(chatSources.get(A)!.getState().status).toBe('ready')
+    expect(chatSources.get(B)!.getState().status).toBe('ready')
+
+    h.emitStream({ sessionId: A, chunk: stamped('a1', 0, '甲答') as never })
+    h.emitStream({ sessionId: B, chunk: stamped('b1', 0, '乙答') as never })
+    // 账本活事件同理:两条会话共用一条推送面,seq 各数各的。
+    h.emitLedger(A, userMessage(4, 'ua2', '甲再问'))
+    await settle()
+
+    expect(contentOf(A, 'a1')).toBe('甲答')
+    expect(contentOf(B, 'b1')).toBe('乙答')
+    // 反面:任何一边都没有对面的字(过滤删掉而分发没接上就是这里红)。
+    expect(contentOf(A, 'b1')).toBeUndefined()
+    expect(contentOf(B, 'a1')).toBeUndefined()
+    const idsOf = (sessionId: string) =>
+      chatSources.get(sessionId)!.getState().messages.map((message) => message.id)
+    expect(idsOf(A)).toEqual(['ua', 'a1', 'ua2'])
+    expect(idsOf(B)).toEqual(['ub', 'b1'])
+  })
+
+  it('推送订阅全进程只有一对 —— 第二台机器不再退订重订', async () => {
+    const h = multiHarness({ [A]: [createdIn(1, A)], [B]: [createdIn(1, B)] })
+    await bothOpen(h)
+    // 事件一条、流一条,不多不少;从前每次 open 都退一对订一对。
+    expect(h.subs()).toBe(2)
+  })
+
+  it('归还到零:那台机器拆掉,注册表不再把事件分发给它', async () => {
+    const h = multiHarness({
+      [A]: [createdIn(1, A), userMessage(2, 'ua', '甲问'), runStart(3, 'r1', 'a1')],
+      [B]: [createdIn(1, B), userMessage(2, 'ub', '乙问'), runStart(3, 'r1', 'b1')],
+    })
+    await bothOpen(h)
+    expect(chatSources.ownedIds()).toContain(A)
+
+    chatSources.release(A)
+    // 拆卸排在下一拍(微任务)——「同一次提交里先卸后挂」在那之前就把引用加回来了。
+    expect(chatSources.get(A)).toBeDefined()
+    await Promise.resolve()
+    expect(chatSources.get(A)).toBeUndefined()
+    expect(chatSources.ownedIds()).not.toContain(A)
+
+    // 分发照旧对 B 成立,对 A 是**没有收件人**(而不是"发给了一台已经拆了的机器")。
+    h.emitStream({ sessionId: A, chunk: stamped('a1', 0, '甲答') as never })
+    h.emitStream({ sessionId: B, chunk: stamped('b1', 0, '乙答') as never })
+    await settle()
+    expect(chatSources.get(A)).toBeUndefined()
+    expect(contentOf(B, 'b1')).toBe('乙答')
+  })
+
+  it('归还之后同一拍又被取走:机器原样留着,不拆了重建', async () => {
+    const h = multiHarness({ [A]: [createdIn(1, A), userMessage(2, 'ua', '甲问')] })
+    configureChatPort(h.port)
+    const first = chatSources.acquire(A)
+    await settle()
+
+    chatSources.release(A)
+    const again = chatSources.acquire(A)
+    await Promise.resolve()
+    expect(again).toBe(first)
+    expect(chatSources.get(A)).toBe(first)
+    // 起底也没有重来一次(状态还是那一份)。
+    expect(chatSources.get(A)!.getState().messages.map((message) => message.id)).toEqual(['ua'])
+  })
+
+  /**
+   * 幂等 ≠ 「第二个人立刻拿到一个 resolved 的 promise」。第二个调用者 `await` 的
+   * 语义仍然是「等这一次起底办完」—— `expose.newSession` 那条路(建完会话紧接着发
+   * 第一句话)就吃这一条:它等的是订阅与起底都落地。
+   */
+  it('第二个 open 等的是同一次起底,不是一个已经 resolved 的空 promise', async () => {
+    const h = multiHarness({ [A]: [createdIn(1, A), userMessage(2, 'ua', '甲问')] })
+    configureChatPort(h.port)
+    // 第一次(不等它)—— 与 `acquire` 里那一句 `void source.open()` 同形。
+    const source = chatSources.acquire(A)
+    expect(source.getState().status).toBe('loading')
+
+    await source.open()
+    expect(source.getState().status).toBe('ready')
+    expect(source.getState().messages.map((message) => message.id)).toEqual(['ua'])
+  })
+
+  it('sentTick 按实例各数各的 —— A 发一条不推 B 的跟随状态机', async () => {
+    const h = multiHarness({ [A]: [createdIn(1, A)], [B]: [createdIn(1, B)] })
+    await bothOpen(h)
+
+    expect(chatSources.get(A)!.getState().sentTick).toBe(0)
+    expect(chatSources.get(B)!.getState().sentTick).toBe(0)
+
+    chatSources.get(A)!.getState().send('甲说一句')
+    expect(chatSources.get(A)!.getState().sentTick).toBe(1)
+    expect(chatSources.get(B)!.getState().sentTick).toBe(0)
+
+    chatSources.get(B)!.getState().send('乙说一句')
+    chatSources.get(B)!.getState().send('乙再说一句')
+    expect(chatSources.get(A)!.getState().sentTick).toBe(1)
+    expect(chatSources.get(B)!.getState().sentTick).toBe(2)
+  })
+
+  it('「当前会话」是一格指针,不是第二台机器', async () => {
+    const h = multiHarness({ [A]: [createdIn(1, A)], [B]: [createdIn(1, B)] })
+    await bothOpen(h)
+
+    chatSources.setCurrent(A)
+    expect(chatSources.currentSessionId()).toBe(A)
+    expect(useChatSource.getState().sessionId).toBe(A)
+    expect(chatSources.currentSource()).toBe(chatSources.get(A))
+
+    chatSources.setCurrent(B)
+    expect(useChatSource.getState().sessionId).toBe(B)
+    // 换指针不拆机器:A 还有那片叶的那一份引用。
+    expect(chatSources.get(A)).toBeDefined()
+  })
+
+  /**
+   * **HMR 退役**(CLAUDE.md 施工纪律,09-01 立法 —— 起因正是这只文件:热更之后
+   * 旧模块的订阅与推屏环没死,两台折叠器同时活着各自推屏)。
+   *
+   * 两件事一起钉:①静态 —— 退役那一段确实复用注册表已有的那一口拆卸(不许写第二套);
+   * ②语义 —— 那一口真的把表清空并退订(退订退不干净 = 热更后旧模块照收事件)。
+   */
+  it('HMR 退役复用 resetAll,并且它真的清表 + 退订', async () => {
+    const source = readFileSync(resolve(__dirname, 'chat-source.ts'), 'utf8')
+    // 读源文本的门先剥注释(同一条纪律:病历文本会让断言自红)。
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    expect(code).toMatch(/import\.meta\.hot\.dispose\(\(\) => \{\s*chatSources\.resetAll\(\)/)
+
+    const h = multiHarness({ [A]: [createdIn(1, A)], [B]: [createdIn(1, B)] })
+    await bothOpen(h)
+    expect(chatSources.ownedIds().length).toBeGreaterThanOrEqual(2)
+    expect(h.subs()).toBe(2)
+
+    chatSources.resetAll()
+    expect(chatSources.ownedIds()).toEqual([])
+    expect(h.subs()).toBe(0)
+    expect(chatSources.currentSessionId()).toBe('')
   })
 })

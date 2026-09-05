@@ -3,7 +3,7 @@ import { act, render, waitFor } from '@testing-library/react'
 import { useRef } from 'react'
 import { useChatToc } from './useChatToc'
 import { useLocateMessage } from '../content/locate-message'
-import { useChatSource } from '../data/chat-source'
+import { chatSources, useChatSourceOf } from '../data/chat-source'
 import { useExposeStore } from '../expose/store'
 import { useNotifyStore } from '../services/notify-store'
 import { useStageStore } from '../stage/store'
@@ -30,10 +30,10 @@ const SESSION = 'os-provider'
  * 是同一次提交里的两件事,而这条判据要验的正是那一刻的时序。用 prop 递的话
  * 状态与 DOM 会落在两次提交里,测出来的是一个真机上不存在的中间态。
  */
-function Harness() {
+function Harness({ sessionId = SESSION }: { sessionId?: string }) {
   const ref = useRef<HTMLDivElement>(null)
-  const { flashMessageId } = useChatToc(ref)
-  const messages = useChatSource((st) => st.messages)
+  const { flashMessageId } = useChatToc(sessionId, ref)
+  const messages = useChatSourceOf(sessionId, (st) => st.messages)
   return (
     <div ref={ref} data-testid="scroller">
       <span data-testid="flash">{flashMessageId ?? ''}</span>
@@ -51,17 +51,26 @@ const folded = (...ids: string[]) => ids.map((id) => ({ id })) as never
 
 const flashOf = (el: HTMLElement) => el.querySelector('[data-testid="flash"]')?.textContent ?? ''
 
+/**
+ * 直接摆这条会话那台机器的状态。W5-a 之前它是 `useChatSource.setState`(全应用
+ * 一台);现在一条会话一台,所以说清楚是**哪一条**的 —— `ensure` 只造不起底,
+ * 摆好的状态不会被一次 `listRaw` 冲掉。
+ */
+const seedFold = (sessionId: string, patch: Record<string, unknown>) =>
+  chatSources.ensure(sessionId).setState(patch as never)
+
 beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   useLocateMessage.getState().reset()
   useNotifyStore.setState({ items: [] })
   useExposeStore.setState({ currentSessionId: SESSION })
-  useChatSource.setState({ sessionId: SESSION, status: 'ready', messages: folded() })
+  chatSources.resetAll()
+  seedFold(SESSION, { sessionId: SESSION, status: 'ready', messages: folded() })
 })
 
 describe('落到某条消息', () => {
   it('锚点在树上:滚过去并点亮,待办随之消掉', async () => {
-    useChatSource.setState({ messages: folded('m1', 'm2') })
+    seedFold(SESSION, { messages: folded('m1', 'm2') })
     const { container } = render(<Harness />)
     act(() => useLocateMessage.getState().locateMessage(SESSION, 'm2'))
     await waitFor(() => expect(flashOf(container)).toBe('m2'))
@@ -76,22 +85,22 @@ describe('落到某条消息', () => {
    * 表现为「点了没反应,再点一次才跳」。
    */
   it('折叠还没落地:待办等着,不误判成找不到', async () => {
-    useChatSource.setState({ sessionId: SESSION, status: 'loading', messages: folded() })
+    seedFold(SESSION, { sessionId: SESSION, status: 'loading', messages: folded() })
     const { container } = render(<Harness />)
     act(() => useLocateMessage.getState().locateMessage(SESSION, 'm2'))
     expect(useLocateMessage.getState().request).not.toBeNull()
     expect(useNotifyStore.getState().items.length).toBe(0)
 
     // 折叠落地 = 状态与消息**同一次提交**落下来,这一刻它才该动。
-    act(() => useChatSource.setState({ status: 'ready', messages: folded('m1', 'm2') }))
+    act(() => seedFold(SESSION, { status: 'ready', messages: folded('m1', 'm2') }))
     await waitFor(() => expect(flashOf(container)).toBe('m2'))
     expect(useLocateMessage.getState().request).toBeNull()
   })
 
   it('当前会话还没换过去:一格都不动(enterSession 还在路上)', () => {
     useExposeStore.setState({ currentSessionId: 'another' })
-    useChatSource.setState({ sessionId: 'another', status: 'ready', messages: folded('m1') })
-    render(<Harness />)
+    seedFold('another', { sessionId: 'another', status: 'ready', messages: folded('m1') })
+    render(<Harness sessionId="another" />)
     act(() => useLocateMessage.getState().locateMessage(SESSION, 'm1'))
     expect(useLocateMessage.getState().request).not.toBeNull()
     expect(useNotifyStore.getState().items.length).toBe(0)
@@ -102,7 +111,7 @@ describe('落到某条消息', () => {
    * (被删 / 被压缩掉)。**说出来**,不滚到一个「最近的位置」去假装办成了。
    */
   it('折叠落地了锚点还是没有:如实报一句,不伪造一次跳转', async () => {
-    useChatSource.setState({ messages: folded('m1') })
+    seedFold(SESSION, { messages: folded('m1') })
     const { container } = render(<Harness />)
     act(() => useLocateMessage.getState().locateMessage(SESSION, 'gone'))
     await waitFor(() => expect(useNotifyStore.getState().items.length).toBe(1))
@@ -114,7 +123,7 @@ describe('落到某条消息', () => {
   })
 
   it('连点同一条:token 换了,于是高亮会重放一次', async () => {
-    useChatSource.setState({ messages: folded('m1') })
+    seedFold(SESSION, { messages: folded('m1') })
     const { container } = render(<Harness />)
     act(() => useLocateMessage.getState().locateMessage(SESSION, 'm1'))
     await waitFor(() => expect(flashOf(container)).toBe('m1'))
@@ -128,7 +137,7 @@ describe('落到某条消息', () => {
   })
 
   it('办的过程里又点了另一行:后来那件不会被前一件的收尾抹掉', () => {
-    useChatSource.setState({ status: 'loading', messages: folded() })
+    seedFold(SESSION, { status: 'loading', messages: folded() })
     render(<Harness />)
     act(() => useLocateMessage.getState().locateMessage(SESSION, 'm1'))
     const first = useLocateMessage.getState().request!.token

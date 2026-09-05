@@ -45,9 +45,16 @@ import s from './ChatLeaf.module.css'
  *  ③ UI 交互状态:这一层不画任何控件,交互状态全在它包着的两件上。
  */
 function ChatLeaf({ contentRef }: { contentRef: ContentRef }) {
+  /*
+   * **这一片叶看哪条会话**(W5-a)。今天仍然是「当前会话」那一格,读在这一层、
+   * 往下传 —— 换句话说,底下三件(消息流 / 目录接缝 / 目录 rail)从此**不认识
+   * `expose`**,它们只认收到的那个 id。W5-b 把这一句换成 `ref.key`(叶自己就是
+   * 「哪条会话」的产地),下面三行一个字都不用改。
+   */
+  const sessionId = useExposeStore((st) => st.currentSessionId)
   // 聊天滚动容器只有一个 ref,两个消费者:TOC 当前键 与 目录跳转。
   const chatRef = useRef<HTMLDivElement>(null)
-  const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(chatRef)
+  const { currentIndex, flashMessageId, syncFromScroll, pickTurn } = useChatToc(sessionId, chatRef)
   /*
    * 09-01 用户裁定退役了「滚动降淡」之后,这条监听只剩这一件事。
    * 它仍然套一层 `useCallback`:`ChatStream` 把它挂在滚动容器上,身份一变就重挂一次监听。
@@ -62,9 +69,14 @@ function ChatLeaf({ contentRef }: { contentRef: ContentRef }) {
       {/* 聊天区与输入框**各一界**:消息流炸了还能打字,输入框炸了还能读历史。
         * (输入框不在这片叶里 —— 它是 `.center` 上那一格落位带,W5 才归属焦点叶。) */}
       <ErrorBoundary where="chat">
-        <ChatStream scrollRef={chatRef} onScroll={onScroll} flashMessageId={flashMessageId} />
+        <ChatStream
+          sessionId={sessionId}
+          scrollRef={chatRef}
+          onScroll={onScroll}
+          flashMessageId={flashMessageId}
+        />
       </ErrorBoundary>
-      <TocPanel currentIndex={currentIndex} onPick={pickTurn} />
+      <TocPanel sessionId={sessionId} currentIndex={currentIndex} onPick={pickTurn} />
     </div>
   )
 }

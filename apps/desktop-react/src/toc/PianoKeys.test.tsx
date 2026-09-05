@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { PianoKeys } from './PianoKeys'
 import { TocPanel } from './TocPanel'
-import { useTocStore } from './store'
+import { selectToc, useTocStore } from './store'
 import { initialTocState, tocChapters, tocKeys } from './transitions'
 import { seedSessionsSource, SESSIONS } from '../data/__fixtures__/sessions'
 import { useExposeStore } from '../expose/store'
@@ -130,7 +130,7 @@ describe('目录面板:展开、收起、落点', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     seedToc()
-    useTocStore.setState({ ...initialTocState })
+    useTocStore.setState({ bySession: { [SESSION_ID]: { ...initialTocState } } })
   })
 
   afterEach(() => {
@@ -138,66 +138,66 @@ describe('目录面板:展开、收起、落点', () => {
   })
 
   it('悬停要停够 150ms 才长出来 —— 路过不算意图', () => {
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     const rail = screen.getByTestId('toc-rail')
 
     fireEvent.mouseEnter(rail)
     tick(100)
-    expect(useTocStore.getState().open).toBe(false)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(false)
 
     tick(60)
-    expect(useTocStore.getState().open).toBe(true)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(true)
     expect(rail.getAttribute('data-open')).toBe('true')
   })
 
   it('停不够就移出去 = 不展开(定时器被掐掉,不是展开后再收)', () => {
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     const rail = screen.getByTestId('toc-rail')
 
     fireEvent.mouseEnter(rail)
     tick(100)
     fireEvent.mouseLeave(rail)
     tick(500)
-    expect(useTocStore.getState().open).toBe(false)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(false)
   })
 
   it('移出 panel 即收', () => {
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     const rail = screen.getByTestId('toc-rail')
     fireEvent.mouseEnter(rail)
     tick(200)
-    expect(useTocStore.getState().open).toBe(true)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(true)
 
     fireEvent.mouseLeave(rail)
-    expect(useTocStore.getState().open).toBe(false)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(false)
   })
 
   it('⌘⇧O 已收编 keymap 注册表:本组件不再挂键盘监听,快捷键照常经派发器开合', () => {
     // 端到端派发在 keymap/dispatch.test;这里钉两件事:组件自身零监听、store 开关语义仍在。
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     fireEvent.keyDown(window, { key: 'O', metaKey: true, shiftKey: true })
-    expect(useTocStore.getState().open).toBe(false) // 没有派发器在场,组件不私自应答
-    useTocStore.getState().togglePanel()
-    expect(useTocStore.getState().open).toBe(true)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(false) // 没有派发器在场,组件不私自应答
+    useTocStore.getState().togglePanel(SESSION_ID)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(true)
   })
 
   it('点一行 = 抛出那条消息的 index 并把 panel 收起来', () => {
     const onPick = vi.fn()
-    render(<TocPanel currentIndex={0} onPick={onPick} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={onPick} />)
     const rail = screen.getByTestId('toc-rail')
     fireEvent.mouseEnter(rail)
     tick(200)
-    expect(useTocStore.getState().open).toBe(true)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(true)
 
     fireEvent.click(screen.getByTestId('toc-key-4'))
     expect(onPick).toHaveBeenCalledWith(4)
-    expect(useTocStore.getState().open).toBe(false)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).open).toBe(false)
   })
 
   it('悬停某一行会记进状态(明暗斑与键变深都读它)', () => {
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     fireEvent.mouseEnter(screen.getByTestId('toc-key-2'))
-    expect(useTocStore.getState().hoverIndex).toBe(2)
+    expect(selectToc(SESSION_ID)(useTocStore.getState()).hoverIndex).toBe(2)
   })
 })
 
@@ -208,7 +208,7 @@ describe('目录面板:展开、收起、落点', () => {
 describe('目录面板:空态 = rail 不在场', () => {
   beforeEach(() => {
     vi.useFakeTimers()
-    useTocStore.setState({ ...initialTocState })
+    useTocStore.setState({ bySession: { [SESSION_ID]: { ...initialTocState } } })
   })
 
   afterEach(() => {
@@ -217,19 +217,19 @@ describe('目录面板:空态 = rail 不在场', () => {
 
   it('后端还没推导出章节时不出 rail', () => {
     seedToc([], MARKERS)
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     expect(screen.queryByTestId('toc-rail')).toBeNull()
   })
 
   it('一条用户消息都没有时不出 rail', () => {
     seedToc(SEGMENTS, [])
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     expect(screen.queryByTestId('toc-rail')).toBeNull()
   })
 
   it('两样都在场才出 rail,键上写的是用户消息的预览', () => {
     seedToc()
-    render(<TocPanel currentIndex={0} onPick={vi.fn()} />)
+    render(<TocPanel sessionId={SESSION_ID} currentIndex={0} onPick={vi.fn()} />)
     expect(screen.getByTestId('toc-rail')).toBeTruthy()
     expect(screen.getByText(LABELS[0])).toBeTruthy()
   })

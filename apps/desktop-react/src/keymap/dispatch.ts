@@ -83,7 +83,12 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
         return
       }
       if (id === 'toc.toggle') {
-        toggleToc()
+        /*
+         * 目录的展开态按会话记(W5-a),所以这条全局键得说清楚是**哪一条**的目录。
+         * **取动作而不是订阅**(同 `session.new` 那条的口径):当前会话由投影当场读,
+         * 派发器不缓存一份 —— 缓存了就会在换会话之后开错那一条的目录。
+         */
+        toggleToc(useExposeStore.getState().currentSessionId)
         return
       }
       // 只开菜单,不替用户选人 —— 理由写在 keymap/types.ts 的命令族那一段。

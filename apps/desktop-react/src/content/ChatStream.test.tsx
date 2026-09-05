@@ -76,7 +76,7 @@ async function mount(ledger: Ledger[], sessionId = SESSION) {
   // 起底是异步的(effect → open → listRaw → 按帧推屏),整段包进 act 里等它落定。
   let view!: ReturnType<typeof render>
   await act(async () => {
-    view = render(<ChatStream />)
+    view = render(<ChatStream sessionId={sessionId} />)
   })
   if (sessionId) await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
   return view
@@ -117,7 +117,7 @@ describe('空态:三种各说各话,一种都不回退到假数据', () => {
       },
     })
     useExposeStore.setState({ currentSessionId: SESSION })
-    render(<ChatStream />)
+    render(<ChatStream sessionId={SESSION} />)
     await waitFor(() => expect(screen.getByText('读不到这条会话')).toBeTruthy())
     expect(screen.getByText('listRaw 炸了')).toBeTruthy()
   })
@@ -282,7 +282,7 @@ describe('进场落底与流式跟底', () => {
     configureChatPort(port(ledger))
     useExposeStore.setState({ currentSessionId: SESSION })
     await act(async () => {
-      render(<ChatStream scrollRef={ref} />)
+      render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
     })
     await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
     return ref
@@ -390,7 +390,7 @@ describe('跟随丸', () => {
     configureChatPort(port(ledger))
     useExposeStore.setState({ currentSessionId: SESSION })
     await act(async () => {
-      render(<ChatStream scrollRef={ref} />)
+      render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
     })
     await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
     return ref
@@ -504,15 +504,27 @@ describe('跟随丸', () => {
     expect(screen.queryByTestId('chat-follow-pill')).toBeNull()
   })
 
+  /**
+   * W5-a 起「换会话」在组件这一端就是**换一个 prop**(掉头的是注册表,不是那台
+   * 单例),所以这里 rerender 而不是去推数据源 —— 验的仍然是同一件事:
+   * 换一条会话 = 一次进场 = pinned,丸跟着卸载。
+   */
   it('换会话 = 进场 = pinned,丸跟着卸载', async () => {
-    const ref = await mountWithRef(LEDGER)
+    const ref = { current: null as HTMLDivElement | null }
+    configureChatPort(port(LEDGER))
+    useExposeStore.setState({ currentSessionId: SESSION })
+    let view!: ReturnType<typeof render>
+    await act(async () => {
+      view = render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
+    })
+    await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
     await scrollUp(ref.current!)
     await act(async () => {
       useChatSource.getState().send('再问一句')
     })
     expect(screen.queryByTestId('chat-follow-pill')).toBeTruthy()
     await act(async () => {
-      await useChatSource.getState().open('')
+      view.rerender(<ChatStream sessionId="" scrollRef={ref} />)
     })
     expect(screen.queryByTestId('chat-follow-pill')).toBeNull()
   })
