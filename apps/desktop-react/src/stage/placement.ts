@@ -17,7 +17,7 @@ import type { RegionId } from '../workbench/regions'
 import type { ContentRef } from '../workbench/kinds'
 import type {
   FloatRect,
-  Placement,
+  PlacementTarget,
   PlacementMemory,
   ShelfSide,
   StageState,
@@ -37,8 +37,9 @@ import type {
  * `isShelfTabVisible` / `leafIndexForPanelIndex`),这里只把它们按次序接起来。
  * 不变式因此一条都没搬家,只是落笔处换了:
  *  1. **一个 id 只在一处** —— 由 `workbench.moveRef` 保证(它先从每棵树里摘干净);
- *  2. **独占形态至多一个** —— 由类型保证:`stageId` / `coverId` 各是一格,
- *     不再是「在表里扫一遍看有没有第二个」(W4 之前那条不变式的机器化);
+ *  2. **独占形态至多一个** —— 由类型保证:`stageId` 是一格,不再是「在表里扫一遍
+ *     看有没有第二个」(W4 之前那条不变式的机器化);全屏同理,它是拼贴台那本账上
+ *     的 `full` 一格(W2);
  *  3. **dock 是缺席** —— 哪棵树都不在 = 收在 Dock 里,不留一条 `{kind:'dock'}`;
  *  4. **落定即写记忆** —— 每一条路的最后一句都是 `remember`,与从前逐字相同
  *     (记忆是**折过之后**的那一份:edge 记真实插入位、float 记钳过的矩形)。
@@ -51,7 +52,7 @@ import type {
 export type StagePatch = Partial<
   Pick<
     StageState,
-    'stageId' | 'coverId' | 'floats' | 'floatOrder' | 'memory' | 'shelves' | 'flashPinned' | 'flashSide'
+    'stageId' | 'floats' | 'floatOrder' | 'memory' | 'shelves' | 'flashPinned' | 'flashSide'
   >
 >
 
@@ -114,9 +115,8 @@ function rememberLanding(deps: PlacementDeps, id: string): void {
   const region = regionOfItem(id)
   const state = deps.stage()
   if (region === null) {
-    // 舞台 / 盖不在树里,它们的记忆由自己那一路写。
+    // 舞台不在树里,它的记忆由自己那一路写;全屏同理(记忆由 `placeAs` 当场写)。
     if (state.stageId === id) remember(deps, id, { kind: 'stage' })
-    else if (state.coverId === id) remember(deps, id, { kind: 'cover' })
     return
   }
   if (region.startsWith('float:')) {
@@ -153,33 +153,62 @@ function panelIndexOf(region: RegionId, id: string): number {
 /* ── 落点变更 ───────────────────────────────────────────────────────────── */
 
 /**
+ * 一次落定的**外溢结果**(W2)。
+ *
+ * 除了全屏那一档,落定的全部效果都写在这两台 store 上,调用方什么都不必接。
+ * 全屏是例外:它不是一个住处,落地要**另一台机器**动手
+ * (`workbench.enterFull`)—— 而这一层不许 import 那台 store 的 action
+ * (`PlacementDeps` 只交出形态机那两口,判词在文件头)。所以它把这件事**说出去**,
+ * 由 store 那一层派工。写成可辨识联合而不是一个布尔:下一个「落定之后还要别人
+ * 做一件事」的档位加一格 kind 就行。
+ */
+export type PlacementOutcome = { kind: 'full' } | null
+
+/**
  * 把一块瓦放到某个落点。**全系统唯一改住处的入口**(W4 之前叫 `transitions.openAs`)。
  *
  * `edgeIndex` 只在 `edge` 那一支有意义:缺省 = 排到末尾(新来的排最后),
  * 给了 = 按记忆插回去(树自己会把越界的钳进 [0, 叶长])。
+ *
+ * 返回 `PlacementOutcome`:今天只有全屏那一档会说话(见上)。
  */
 export function placeAs(
   deps: PlacementDeps,
   id: string,
-  placement: Placement,
+  placement: PlacementTarget,
   edgeIndex?: number,
-): void {
+): PlacementOutcome {
   const viewport = deps.viewport()
 
   if (placement.kind === 'dock') {
     closeToDock(deps, id)
-    return
+    return null
+  }
+
+  if (placement.kind === 'full') {
+    /*
+     * **全屏**(W2,拍点 ② 接替「盖」那一档)。三步,与「上舞台」同型:
+     *  ① 从每棵树里摘干净 —— 这块瓦此刻不住在任何区域里(它铺满窗子);
+     *  ② 记忆当场写下(落定即写,与别的档逐字同一条纪律);
+     *  ③ 把「谁去铺」这件事说给 store 听 —— 真正的那一格瞬态住在拼贴台那本账上。
+     * 「至多一个」由那一格字段本身保证:后来的那块把前一块顶掉,前一块回 Dock
+     * (它已经不在树里 = 缺席 = dock,与舞台那一路逐字同义)。
+     */
+    clearTransientOf(deps, id)
+    detachItem(id)
+    remember(deps, id, { kind: 'full' })
+    return { kind: 'full' }
   }
 
   if (EXCLUSIVE_FORMS.includes(placement.kind)) {
     /*
-     * 两个瞬态**不在树里**(设计 §1.3),所以上台的第一件事是从树上摘干净;
+     * 瞬态**不在树里**(设计 §1.3),所以上台的第一件事是从树上摘干净;
      * 「至多一个」由那一格字段本身保证 —— 旧的那块自动落回 Dock。
      */
     detachItem(id)
-    deps.patchStage(placement.kind === 'stage' ? { stageId: id } : { coverId: id })
-    remember(deps, id, placement.kind === 'stage' ? { kind: 'stage' } : { kind: 'cover' })
-    return
+    deps.patchStage({ stageId: id })
+    remember(deps, id, { kind: 'stage' })
+    return null
   }
 
   // 离开瞬态那一格(它可能正在舞台上)。
@@ -191,7 +220,7 @@ export function placeAs(
     setShelfCollapsed(deps, placement.side, false)
     activateInLeaf(edgeRegion(placement.side), id)
     rememberLanding(deps, id)
-    return
+    return null
   }
 
   /*
@@ -203,13 +232,13 @@ export function placeAs(
   deps.patchStage({ floats: { ...deps.stage().floats, [id]: rect } })
   placeItemIn(id, floatRegion(id))
   rememberLanding(deps, id)
+  return null
 }
 
 /** 这块瓦如果正占着某个瞬态格,把那一格清掉。 */
 function clearTransientOf(deps: PlacementDeps, id: string): void {
   const state = deps.stage()
   if (state.stageId === id) deps.patchStage({ stageId: null })
-  if (state.coverId === id) deps.patchStage({ coverId: null })
 }
 
 /** 把这块瓦在它那片叶里点成活动的(新来的一格该看得见)。 */
@@ -244,15 +273,19 @@ export function closeToDock(deps: PlacementDeps, id: string): void {
  * `openFromMemory` 逐字同义):
  *  · edge:插回记忆里那一格次序(越界由树自己钳);
  *  · float:矩形先过**与拖拽落定同一把**视口钳制;
- *  · stage / cover:没有第二个参数。
+ *  · stage / full:没有第二个参数(全屏那一档把落地说给 store 听,见 `PlacementOutcome`)。
  */
-export function openFromMemory(deps: PlacementDeps, id: string, m: PlacementMemory): void {
+export function openFromMemory(
+  deps: PlacementDeps,
+  id: string,
+  m: PlacementMemory,
+): PlacementOutcome {
   if (m.kind === 'stage') return placeAs(deps, id, { kind: 'stage' })
-  if (m.kind === 'cover') return placeAs(deps, id, { kind: 'cover' })
+  if (m.kind === 'full') return placeAs(deps, id, { kind: 'full' })
   if (m.kind === 'edge') return placeAs(deps, id, { kind: 'edge', side: m.side }, m.index)
   const rect = clampFloatRect(m.rect, deps.viewport())
   deps.patchStage({ floats: { ...deps.stage().floats, [id]: rect } })
-  placeAs(deps, id, { kind: 'float' })
+  return placeAs(deps, id, { kind: 'float' })
 }
 
 /* ── 手势 ──────────────────────────────────────────────────────────────── */
@@ -260,18 +293,23 @@ export function openFromMemory(deps: PlacementDeps, id: string, m: PlacementMemo
 /**
  * 点 Dock 图标。先问「它现在在哪」,再决定这一下是什么意思(判据表与 W4 之前
  * 逐字相同,只是读的是投影、写的是树):
- *  - 在舞台 / 盖着内容栏 → 关掉(再点一次收回去)
+ *  - 在舞台上 → 关掉(再点一次收回去)。**「正在全屏」那一形不在这里判** ——
+ *    它不是一种 Placement,判据在 store 那一层(它同时看得见拼贴台那本账)
  *  - 在架子上 → 不新开:看不见就点名 + 展开 + 闪一下;看得见就收起整栏
  *  - 已是浮窗 → 置顶它
  *  - 在 Dock 里 → 按解析出的记忆开
  */
-export function clickDockIcon(deps: PlacementDeps, id: string, open: PlacementMemory): void {
+export function clickDockIcon(
+  deps: PlacementDeps,
+  id: string,
+  open: PlacementMemory,
+): PlacementOutcome {
   const state = deps.stage()
   const current = placementOf(state, id)
 
   if (EXCLUSIVE_FORMS.includes(current.kind)) {
     closeToDock(deps, id)
-    return
+    return null
   }
 
   if (current.kind === 'edge') {
@@ -279,21 +317,21 @@ export function clickDockIcon(deps: PlacementDeps, id: string, open: PlacementMe
     // 判据读**那一只**共用的查询,不在这里再抄一句(见 `isShelfTabVisible`)。
     if (!shelf.collapsed && (shelf.visible ?? []).includes(id)) {
       setShelfCollapsed(deps, current.side, true)
-      return
+      return null
     }
     activateInLeaf(edgeRegion(current.side), id)
     setShelfCollapsed(deps, current.side, false)
     // 闪一下告诉用户「你要的东西已经在这儿了」。
     deps.patchStage({ flashPinned: state.flashPinned + 1, flashSide: current.side })
-    return
+    return null
   }
 
   if (current.kind === 'float') {
     focusFloatIn(deps, id)
-    return
+    return null
   }
 
-  openFromMemory(deps, id, open)
+  return openFromMemory(deps, id, open)
 }
 
 /** 置顶:挪到 `floatOrder` 末位。不是浮窗、或已经在末位,都是空动作。 */
@@ -392,12 +430,6 @@ export function closeStage(deps: PlacementDeps): void {
   closeToDock(deps, id)
 }
 
-export function closeCover(deps: PlacementDeps): void {
-  const id = deps.stage().coverId
-  if (id === null) return
-  closeToDock(deps, id)
-}
-
 /* ── 内容级的搬家(不只是瓦)──────────────────────────────────────────────── */
 
 /**
@@ -417,8 +449,15 @@ export function placeRefIn(
   if (id !== null) {
     // 瓦仍旧走形态机那条路 —— 记忆、闪烁、独占都在那儿。
     const side = sideOfRegion(region)
-    if (side) return placeAs(deps, id, { kind: 'edge', side })
-    if (region.startsWith('float:')) return placeAs(deps, id, { kind: 'float' })
+    // 这两档 `placeAs` 恒答 null(只有全屏那一档会说话),所以这里不接结果。
+    if (side) {
+      placeAs(deps, id, { kind: 'edge', side })
+      return
+    }
+    if (region.startsWith('float:')) {
+      placeAs(deps, id, { kind: 'float' })
+      return
+    }
   }
   workbench().moveRef(ref, region)
   const side = sideOfRegion(region)

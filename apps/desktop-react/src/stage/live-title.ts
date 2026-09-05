@@ -12,7 +12,7 @@ import { create } from 'zustand'
  * 修法不是「让查看器把自己的檐藏起来就完了」——那会把文件名一起藏掉。
  * 而是让**内容告诉宿主它在显示什么**,宿主那条檐替它说。这一格就是那条缝:
  *   · 内容侧:`ViewerPanel` 在 effect 里发布 / 卸载时收回;
- *   · 宿主侧:`FloatWindow` / `StageOverlay` / `CoverLayer` 读它,有就用它当标题。
+ *   · 宿主侧:`FloatWindow` / `StageOverlay` / `FullLayer` 读它,有就用它当标题。
  *
  * ── 为什么是一张按 id 的表,而不是查看器专用的一个字段 ────────────────────
  * 「这块面此刻在显示什么」不会只有查看器一个用户(浏览器瓦该写当前网页标题、

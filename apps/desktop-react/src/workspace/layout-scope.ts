@@ -51,10 +51,19 @@ export function startPerSpaceLayout(): () => void {
     /*
      * 拼贴树(W1,T0 拍点 3「树按 Workspace 记」)。它是第六条 —— 与前四条同型:
      * 一棵树、一张隐藏表,都是「用户在这个空间里摆好的东西」。
-     * 瞬态那三格(焦点叶 / 分栏路径 / 舞台)不进 `pick`,与 stage 摘掉舞台那条
+     * 瞬态那几格(焦点叶 / 分栏路径 / 全屏)不进 `pick`,与 stage 摘掉舞台那条
      * placement 同一条判据。
      */
     bindPerSpace(useWorkbenchStore, WORKBENCH_PER_SPACE),
+    /*
+     * **换空间时全屏那一格清零**(W2)。它是瞬态,不在 `pick` 里,所以换装那一句
+     * 不会碰它 —— 而不清零的下场是:在 A 空间把一个文件铺满,切到 B,全屏层还在,
+     * 里面装的却是一格 B 空间根本没有的内容(那棵树刚被整个换掉了)。
+     *
+     * 它单独一条订阅而不是塞进 `bindPerSpace`:那只原语管的是**家具的换装**
+     * (收进账、摊开新的),而这一句说的是「此刻在看什么」——两件事,两条判据。
+     */
+    subscribeCurrentSpace(() => useWorkbenchStore.getState().exitFull()),
     subscribeCurrentSpace(swapFilesForSpace),
     /*
      * **换完两份家具之后把投影重算一遍**(W4)。`placements` /

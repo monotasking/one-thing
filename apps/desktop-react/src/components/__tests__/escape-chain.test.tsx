@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render } from '@testing-library/react'
 import { useStageStore } from '../../stage/store'
+import { useWorkbenchStore } from '../../workbench/store'
 import { initialStageState } from '../../stage/transitions'
 import { useKeymapStore } from '../../keymap/store'
 import { initialKeymapState } from '../../keymap/transitions'
@@ -23,7 +24,7 @@ import { AppShell } from '../AppShell'
  * 拆掉 `AppShell` 里那一句 `onEscape={escapeTopmost}`,下面每一条都红。
  *
  * 三条契约一条不少:
- *  ① 浮窗 / 舞台 / 盖按 Esc 真的关得掉 —— 08-31 报障、真机复现的那一下
+ *  ① 浮窗 / 舞台 / 全屏按 Esc 真的关得掉 —— 08-31 报障、真机复现的那一下
  *     (那时全仓只有 StageOverlay 挂 Esc,而它只在有舞台时才挂载);
  *  ② 内层已经消费过(defaultPrevented)时**不接**;
  *  ③ 没有面可退时**不 preventDefault** —— 一个「什么都没做却把事件吃掉」的
@@ -35,6 +36,8 @@ const VIEWPORT = { w: 1440, h: 900 }
 
 beforeEach(() => {
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
+  // 全屏那一格瞬态住在拼贴台那本账上(W2),所以它要在这里归零。
+  useWorkbenchStore.setState({ full: null })
   useKeymapStore.setState({ ...initialKeymapState })
   useAgentMenu.setState({ open: false })
   window.innerWidth = VIEWPORT.w
@@ -57,6 +60,11 @@ function pressEscape(): boolean {
 }
 
 const formOf = (id: string) => useStageStore.getState().placements[id]?.kind ?? 'dock'
+/** 此刻铺满窗子的是哪一格(没有就是 null)。全屏不是一种 Placement,所以另问一处。 */
+const fullRefId = () => {
+  const full = useWorkbenchStore.getState().full
+  return full ? `${full.ref.kind}:${full.ref.key}` : null
+}
 
 describe('Esc 退层链(root 作用域的 onEscape)', () => {
   it('**浮窗关得掉** —— 修前这一下掉进空里(真机复现:placements 一个字节不变)', () => {
@@ -75,10 +83,13 @@ describe('Esc 退层链(root 作用域的 onEscape)', () => {
     expect(formOf('files')).toBe('dock')
   })
 
-  it('盖也关得掉', () => {
+  it('**全屏也退得掉**(W2:接替「盖」的那一层,它排在链的第一站)', () => {
     render(<AppShell />)
-    act(() => useStageStore.getState().openAs('apps', { kind: 'cover' }))
+    act(() => useStageStore.getState().openAs('apps', { kind: 'full' }))
+    expect(fullRefId()).toBe('panel:apps')
     expect(pressEscape()).toBe(true)
+    expect(fullRefId()).toBe(null)
+    // 退出 = 回 Dock:那一支落定时已经把它从每棵树里摘干净了(投影缺席即 dock)。
     expect(formOf('apps')).toBe('dock')
   })
 
@@ -120,16 +131,24 @@ describe('Esc 退层链(root 作用域的 onEscape)', () => {
     expect(pressEscape()).toBe(false)
   })
 
-  it('退一层就是一层:两块面要按两下,次序照 z 序', () => {
+  it('退一层就是一层:三级链按 z 序 —— 全屏 → 舞台 → 最上面那扇浮窗', () => {
     render(<AppShell />)
     act(() => {
       useStageStore.getState().openAs('files', { kind: 'float' })
-      useStageStore.getState().openAs('apps', { kind: 'cover' })
+      useStageStore.getState().openAs('sessions', { kind: 'stage' })
+      useStageStore.getState().openAs('apps', { kind: 'full' })
     })
-    pressEscape()
-    expect(formOf('apps')).toBe('dock')
+    // ① 全屏最先退(--z-full 550 压得过 overlay 500 与 float 200)。
+    expect(pressEscape()).toBe(true)
+    expect(fullRefId()).toBe(null)
+    expect(formOf('sessions')).toBe('stage')
     expect(formOf('files')).toBe('float')
-    pressEscape()
+    // ② 然后是舞台。
+    expect(pressEscape()).toBe(true)
+    expect(formOf('sessions')).toBe('dock')
+    expect(formOf('files')).toBe('float')
+    // ③ 最后才轮到浮窗。
+    expect(pressEscape()).toBe(true)
     expect(formOf('files')).toBe('dock')
   })
 

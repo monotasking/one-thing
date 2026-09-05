@@ -47,7 +47,7 @@ import {
   toggleShelfCollapsed,
   withinDockWakeBand,
   withinDockHoldZone,
-  coverIdOf,
+  coverMemoryToFull,
   escapeTargetOf,
   isItemHidden,
   setItemHidden,
@@ -65,7 +65,14 @@ import * as P from './placement'
 import { regionsFromLegacyFurniture } from './legacy-furniture'
 import { seedStage } from '../test/stage-fixture'
 import type { PaneNode } from '../workbench/tree'
-import type { Placement, PlacementMemory, ShelfSide, StageState, Viewport } from './types'
+import type {
+  Placement,
+  PlacementMemory,
+  PlacementTarget,
+  ShelfSide,
+  StageState,
+  Viewport,
+} from './types'
 import type { Rect } from './transitions'
 
 const base: StageState = initialStageState
@@ -143,11 +150,28 @@ const D = stagePlacementDeps
 function openAs(
   st: StageState,
   id: string,
-  placement: Placement,
+  placement: PlacementTarget,
   vp: Viewport = FALLBACK_VIEWPORT,
   edgeIndex?: number,
 ): StageState {
   return run(st, vp, () => P.placeAs(D, id, placement, edgeIndex))
+}
+
+/**
+ * 一次落定的**外溢结果**(W2)。全屏那一档不写在形态机上 —— 它把「谁去铺」
+ * 说给 store 听,由 store 派给拼贴台(判词在 `stage/placement.PlacementOutcome`)。
+ * 这一层测不到那一步,能测的是**它有没有把这句话说出口**。
+ */
+function outcomeOf(
+  st: StageState,
+  vp: Viewport,
+  act: () => P.PlacementOutcome,
+): P.PlacementOutcome {
+  let out: P.PlacementOutcome = null
+  run(st, vp, () => {
+    out = act()
+  })
+  return out
 }
 
 function closeToDock(st: StageState, id: string): StageState {
@@ -176,14 +200,14 @@ function closeStage(st: StageState): StageState {
   return run(st, FALLBACK_VIEWPORT, () => P.closeStage(D))
 }
 
-function closeCover(st: StageState): StageState {
-  return run(st, FALLBACK_VIEWPORT, () => P.closeCover(D))
-}
-
-function escapeTopmost(st: StageState): StageState {
+/**
+ * 宿主那一句的纯函数替身。`fullOpen` 是**参数**(W2):全屏那一格瞬态住在拼贴台
+ * 那本账上,形态机的纯函数半边不认识它 —— 判词写在 `escapeTargetOf` 上。
+ */
+function escapeTopmost(st: StageState, fullOpen = false): StageState {
   return run(st, FALLBACK_VIEWPORT, () => {
-    const target = escapeTargetOf(useStageStore.getState())
-    if (target !== null) P.closeToDock(D, target)
+    const target = escapeTargetOf(useStageStore.getState(), fullOpen)
+    if (target?.kind === 'item') P.closeToDock(D, target.id)
   })
 }
 
@@ -225,7 +249,8 @@ function activateShelfTab(st: StageState, side: ShelfSide, id: string): StageSta
 
 const STAGE: Placement = { kind: 'stage' }
 const FLOAT: Placement = { kind: 'float' }
-const COVER: Placement = { kind: 'cover' }
+/** 全屏不是一种 Placement(W2)—— 它是「打开方式」那张表上的一档。 */
+const FULL: PlacementTarget = { kind: 'full' }
 const RIGHT: Placement = { kind: 'edge', side: 'right' }
 const DOCK: Placement = { kind: 'dock' }
 
@@ -1047,7 +1072,7 @@ describe('migrateStagePersisted', () => {
 
 describe('pickStageFurniture(存盘只带几何走)', () => {
   /*
-   * W4 之前这里测的是 `withoutTransientPlacements`:存盘前把舞台 / 盖那两条
+   * W4 之前这里测的是 `withoutTransientPlacements`:存盘前把舞台那条
    * placement 摘掉。W4 之后**整张 `placements` 都不存了**(它是树的投影,
    * 事实跟着 `onething.workbench` 那本账走),所以这条判据升级成:
    * 摘出来的那一份里**一格住处都没有** —— 既没有 placements,架子上也只剩几何。
@@ -1056,7 +1081,6 @@ describe('pickStageFurniture(存盘只带几何走)', () => {
     let st = openAs(base, 'diff', RIGHT)
     st = openAs(st, 'browser', FLOAT, VP)
     st = openAs(st, 'files', STAGE)
-    st = openAs(st, 'terminal', COVER)
     const saved = pickStageFurniture(st)
     expect('placements' in saved).toBe(false)
     expect(saved.shelves.right.tabs).toBeUndefined()
@@ -1568,104 +1592,120 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
 
 /* ══ 08-31 Dock/形态批:盖 · Esc 退层链 · 露面管理 · 自动隐藏留驻区 ══════════ */
 
-describe('盖(cover):第三种形态', () => {
-  it('至多一个 —— 新的盖上来,旧的落回 Dock', () => {
-    let st = openAs(base, 'files', COVER)
-    st = openAs(st, 'diff', COVER)
-    expect(coverIdOf(st)).toBe('diff')
+/* ══ W2:「盖」退役,真全屏接替它 ═══════════════════════════════════════════ */
+
+describe('全屏(full):形态机这一侧只做三件事', () => {
+  /*
+   * 全屏**不是一种 Placement**(判词在 `stage/types.ts`):树一个字不动、
+   * `placements` 里没有它的位子,真正那一格瞬态住在拼贴台那本账上。所以形态机
+   * 这一层能做也只做三件事,这一组逐条钉它们:
+   *  ① 把这块瓦从每棵树里摘干净(它铺满窗子,不住在任何区域里);
+   *  ② 落定即写记忆(与别的档同一条纪律);
+   *  ③ 把「谁去铺」**说出口**(`PlacementOutcome`)——落地那一步在 store 那一层,
+   *     由 `workbench/__tests__/full.test.ts` 那一组守。
+   */
+  it('① 摘干净:落定之后它哪棵树都不在(投影缺席即 dock)', () => {
+    let st = openAs(base, 'files', RIGHT)
+    expect(formOf(st, 'files')).toBe('edge')
+    st = openAs(st, 'files', FULL)
     expect(formOf(st, 'files')).toBe('dock')
   })
 
-  it('与舞台各占各的:它们是两种独占形态,不互相挤掉', () => {
+  it('② 落定即记忆;`openFromMemory` 拿着那条记忆再走一遍是同一条路', () => {
+    const st = openAs(base, 'files', FULL)
+    expect(st.memory.files).toEqual({ kind: 'full' })
+    expect(outcomeOf(st, VP, () => P.openFromMemory(D, 'files', st.memory.files!))).toEqual({
+      kind: 'full',
+    })
+  })
+
+  it('③ 说出口:`placeAs` 与 `clickDockIcon` 都把这一档交回给调用方', () => {
+    expect(outcomeOf(base, VP, () => P.placeAs(D, 'files', FULL))).toEqual({ kind: 'full' })
+    // 在 Dock 里 + 记忆 = 全屏 → 点一下 Dock 图标走的是 `openFromMemory` 那一支。
+    expect(
+      outcomeOf(base, VP, () => P.clickDockIcon(D, 'apps', { kind: 'full' })),
+    ).toEqual({ kind: 'full' })
+    // 别的档一律不说话 —— 它们的效果全写在这两台 store 上了。
+    expect(outcomeOf(base, VP, () => P.placeAs(D, 'files', RIGHT))).toBe(null)
+    expect(outcomeOf(base, VP, () => P.placeAs(D, 'files', STAGE))).toBe(null)
+  })
+
+  it('顶掉舞台:它先从瞬态那一格离开,再被摘出树', () => {
     let st = openAs(base, 'files', STAGE)
-    st = openAs(st, 'diff', COVER)
     expect(stageIdOf(st)).toBe('files')
-    expect(coverIdOf(st)).toBe('diff')
-  })
-
-  it('落定即记忆,关掉再开还回盖上(记忆没有第二个参数要补)', () => {
-    let st = openAs(base, 'files', COVER)
-    expect(st.memory.files).toEqual({ kind: 'cover' })
-    st = closeToDock(st, 'files')
-    st = openFromMemory(st, 'files', st.memory.files!, VP)
-    expect(formOf(st, 'files')).toBe('cover')
-  })
-
-  it('closeCover 收掉那一块;没有盖时是恒等变换', () => {
-    const st = openAs(base, 'files', COVER)
-    expect(formOf(closeCover(st), 'files')).toBe('dock')
-    expect(closeCover(base)).toBe(base)
-  })
-
-  it('点 Dock 图标 = 再点一次收回去(与舞台同一个手感)', () => {
-    const st = openAs(base, 'files', COVER)
-    const after = clickDockIcon(st, 'files', { kind: 'cover' }, VP)
-    expect(formOf(after, 'files')).toBe('dock')
+    st = openAs(st, 'files', FULL)
+    expect(stageIdOf(st)).toBeNull()
+    expect(st.memory.files).toEqual({ kind: 'full' })
   })
 })
 
 describe('item 天生落点:解析序的第三层', () => {
   it('没记忆时听 item 的天生落点,而不是全局默认档', () => {
-    expect(resolveOpen(base, 'apps', 'float', VP, { kind: 'cover' })).toEqual({ kind: 'cover' })
+    expect(resolveOpen(base, 'apps', 'float', VP, { kind: 'full' })).toEqual({ kind: 'full' })
   })
 
   it('有记忆时记忆压过天生落点 —— 「我亲手放过」永远赢', () => {
     const st = openAs(base, 'apps', RIGHT)
     const closed = closeToDock(st, 'apps')
-    expect(resolveOpen(closed, 'apps', 'float', VP, { kind: 'cover' }).kind).toBe('edge')
+    expect(resolveOpen(closed, 'apps', 'float', VP, { kind: 'full' }).kind).toBe('edge')
   })
 
   it('没有天生落点就落回全局默认档(与加这一层之前逐字相同)', () => {
     expect(resolveOpen(base, 'files', 'pinned', VP)).toEqual(defaultOpenMemory(base, 'pinned', VP))
   })
 
-  it('「所有应用」在 items 表上确实声明了 cover 与「藏不掉」', () => {
+  it('「所有应用」在 items 表上确实声明了 full 与「藏不掉」(W2 拍点 ②)', () => {
     const apps = findItem('apps')
-    expect(apps?.defaultPlacement).toEqual({ kind: 'cover' })
+    expect(apps?.defaultPlacement).toEqual({ kind: 'full' })
     expect(apps?.alwaysInDock).toBe(true)
   })
 })
 
 describe('Esc 退层链(08-31 修「浮窗按 Esc 没反应」)', () => {
   it('什么都没开时没有目标 —— 宿主据此不拦这一下', () => {
-    expect(escapeTargetOf(base)).toBeNull()
+    expect(escapeTargetOf(base, false)).toBeNull()
     expect(escapeTopmost(base)).toBe(base)
   })
 
   it('**浮窗退得掉**:这正是修前掉进空里的那一下', () => {
     const st = openAs(base, 'sessions', FLOAT, VP)
-    expect(escapeTargetOf(st)).toBe('sessions')
+    expect(escapeTargetOf(st, false)).toEqual({ kind: 'item', id: 'sessions' })
     expect(formOf(escapeTopmost(st), 'sessions')).toBe('dock')
   })
 
   it('多扇浮窗时退最上面那一扇(floatOrder 末位最上)', () => {
     let st = openAs(base, 'files', FLOAT, VP)
     st = openAs(st, 'diff', FLOAT, VP)
-    expect(escapeTargetOf(st)).toBe('diff')
+    expect(escapeTargetOf(st, false)).toEqual({ kind: 'item', id: 'diff' })
   })
 
-  it('次序 = z 序:盖 > 舞台 > 最上面那扇浮窗', () => {
+  it('次序 = z 序:**全屏 > 舞台 > 最上面那扇浮窗**(W2 三级链)', () => {
     let st = openAs(base, 'files', FLOAT, VP)
+    expect(escapeTargetOf(st, false)).toEqual({ kind: 'item', id: 'files' })
     st = openAs(st, 'diff', STAGE)
-    expect(escapeTargetOf(st)).toBe('diff')
-    st = openAs(st, 'terminal', COVER)
-    expect(escapeTargetOf(st)).toBe('terminal')
+    expect(escapeTargetOf(st, false)).toEqual({ kind: 'item', id: 'diff' })
+    /*
+     * 反证:把 `fullOpen` 这个输入摘掉(函数体第一句 `if (fullOpen)` 删掉)→
+     * 这两条当场红,退层链会先去收舞台,而全屏在它上面盖着。
+     */
+    expect(escapeTargetOf(st, true)).toEqual({ kind: 'full' })
+    expect(escapeTargetOf(base, true)).toEqual({ kind: 'full' })
   })
 
   it('架子**不在链里** —— 钉在边上是常驻家具,Esc 不该拆家具', () => {
     const st = openAs(base, 'files', RIGHT)
-    expect(escapeTargetOf(st)).toBeNull()
+    expect(escapeTargetOf(st, false)).toBeNull()
     expect(escapeTopmost(st)).toBe(st)
   })
 
-  it('退一层就是一层:盖退掉之后下一下才轮到舞台', () => {
-    let st = openAs(base, 'files', STAGE)
-    st = openAs(st, 'diff', COVER)
-    st = escapeTopmost(st)
-    expect(formOf(st, 'diff')).toBe('dock')
-    expect(stageIdOf(st)).toBe('files')
-    st = escapeTopmost(st)
-    expect(stageIdOf(st)).toBeNull()
+  it('退一层就是一层:全屏退掉之后下一下才轮到舞台', () => {
+    const st = openAs(base, 'files', STAGE)
+    // 全屏开着那一拍:目标是全屏,舞台一个字不动(收全屏的动作不在形态机这一侧)。
+    expect(escapeTargetOf(st, true)).toEqual({ kind: 'full' })
+    expect(stageIdOf(escapeTopmost(st, true))).toBe('files')
+    // 退掉之后才轮到舞台。
+    const after = escapeTopmost(st, false)
+    expect(stageIdOf(after)).toBeNull()
   })
 })
 
@@ -2037,5 +2077,78 @@ describe('migrateStagePersisted v5 → v6(家具按工作区各持一份)', () =
     // 几何落在账里;tab 那一格走交接单(v9)。零丢失说的是两半都在。
     expect(shelves.right.thickness).toBe(420)
     expect(tabsOf(handedRegions({ pinnedId: 'diff', pinnedWidth: 420 }, 0)['edge:right'])).toEqual(['diff'])
+  })
+})
+
+describe('migrateStagePersisted v9 → v10(「盖」的位置记忆迁成全屏)', () => {
+  /*
+   * W2 拍点 ②:`cover` 这一档退役,它想成为的东西就是真全屏。要迁的**只有位置
+   * 记忆一格** —— `placements` 从 v9 起是树的投影(档案里根本没有它),而盖本来
+   * 就是瞬态、从来不落盘。
+   *
+   * 两条路都要走:**扁平层**与 `byWorkspace` 里**每一个空间那一格**。只迁当前
+   * 那一格的话,切到别的空间就会露出同一个病(与 v8 / v9 逐字同一条判据)。
+   */
+  const legacy = () => ({
+    // 两条架子的几何(v10 一个字不碰它们 —— 这一条同时守「别的格别乱动」)。
+    shelves: {
+      ...emptyShelves(),
+      right: { ...emptyShelves().right, thickness: 420 },
+      left: { ...emptyShelves().left, collapsed: true },
+    },
+    memory: { apps: { kind: 'cover' }, files: { kind: 'edge', side: 'right', index: 1 } },
+    byWorkspace: {
+      'ws-b': {
+        memory: { diff: { kind: 'cover' }, browser: { kind: 'stage' } },
+        floatOrder: ['browser'],
+      },
+    },
+    dockEdge: 'left',
+  })
+
+  it('扁平层与每个空间那一格**两处都成 full**,别的记忆一个字不动', () => {
+    const out = migrateStagePersisted(legacy(), 9) as Record<string, unknown>
+    const flat = out.memory as Record<string, unknown>
+    expect(flat.apps).toEqual({ kind: 'full' })
+    expect(flat.files).toEqual({ kind: 'edge', side: 'right', index: 1 })
+
+    const ledger = out.byWorkspace as Record<string, Record<string, unknown>>
+    const spaced = ledger['ws-b'].memory as Record<string, unknown>
+    expect(spaced.diff).toEqual({ kind: 'full' })
+    expect(spaced.browser).toEqual({ kind: 'stage' })
+    expect(ledger['ws-b'].floatOrder).toEqual(['browser'])
+
+    // 几何与偏好一格没动(这一段只翻记忆)。
+    const shelves = out.shelves as Record<string, { thickness: number; collapsed: boolean }>
+    expect(shelves.right.thickness).toBe(420)
+    expect(shelves.left.collapsed).toBe(true)
+    expect(out.dockEdge).toBe('left')
+  })
+
+  it('**幂等**:再迁一次交回同一个对象(引用恒等 —— 一格都没碰到)', () => {
+    const once = migrateStagePersisted(legacy(), 9)
+    // 已经是当前版本 → 原样放行(存量实例带着新版本号写盘的那条路)。
+    expect(migrateStagePersisted(once, STAGE_PERSIST_VERSION)).toBe(once)
+    /*
+     * 直接对着**产物**再跑一遍 v10 那一段:一条 cover 都没有了,所以每一层都该
+     * 交回同一个对象。这是「幂等」在这一族档案上的机器化判据(同 v8 / v9)。
+     */
+    const furniture = once as Record<string, unknown>
+    expect(coverMemoryToFull(furniture)).toBe(furniture)
+    const ledger = furniture.byWorkspace as Record<string, unknown>
+    expect(coverMemoryToFull(ledger['ws-b'])).toBe(ledger['ws-b'])
+  })
+
+  it('**漏掉 byWorkspace 那一路即红**:反证靠的就是这一条', () => {
+    const out = migrateStagePersisted(legacy(), 9) as Record<string, unknown>
+    const ledger = out.byWorkspace as Record<string, Record<string, unknown>>
+    const spaced = ledger['ws-b'].memory as Record<string, { kind: string }>
+    // 摘掉迁移里那段 `byWorkspace` 循环 → 这里读到的仍是 'cover'。
+    expect(spaced.diff.kind).toBe('full')
+  })
+
+  it('没有记忆表的档案原样交回(缺席不是错)', () => {
+    const bare = { dockEdge: 'top' }
+    expect(coverMemoryToFull(bare)).toBe(bare)
   })
 })

@@ -14,19 +14,15 @@ export type Placement =
   | { kind: 'dock' }
   | { kind: 'stage' }
   | { kind: 'float' }
-  | { kind: 'cover' }
   | { kind: 'edge'; side: ShelfSide }
 
-/**
- * 「盖」是第三种**瞬态形**(08-31 拍板):盖满内容面板,不盖架子、不盖 Dock。
- *
- * 它与舞台的分工是一句话:**舞台盖住整个视口(scrim 铺满、居中一块画布),
- * 盖只接管中间那一栏**——用户摆在边上的架子还看得见,「我在哪」不会因为
- * 开一块面而消失。所以它适合「看一眼就走」的整屏内容(所有应用、总览一类),
- * 而不适合需要与旁边对照着看的东西。
- *
- * 与舞台同为**至多一个**:两块盖叠在同一栏上,下面那块永远见不到光。
- * 不变式与舞台那条走同一段代码(transitions.openAs 的 EXCLUSIVE_FORMS)。
+/*
+ * ── 「盖」(`{ kind: 'cover' }`)W2 退役 ──────────────────────────────────
+ * 拍点 ②(09-04 用户已拍):**扔掉** —— 盖想成为的东西就是真全屏(设计 §4)。
+ * 全屏因此**不是**一种 Placement:它是拼贴台的一格瞬态
+ * (`workbench.full = { ref, from }`,设计 §1.3),树一个字不动、只把那片叶的
+ * 活动 tab 投影到最上面那一层。所以这条联合里没有它,而下面的
+ * `PlacementMemory` 里有 —— 记忆记的是「上次是怎么打开的」,不是「它住在哪」。
  */
 
 /** 形态的名字 = Placement 的 kind。组件想分支时读它,别自己拼条件。 */
@@ -37,6 +33,22 @@ export type StageForm = Placement['kind']
  * 所以「把它放到 dock」和「记得它在 dock」这两句话都没有意义。
  */
 export type MemorablePlacement = Exclude<Placement, { kind: 'dock' }>
+
+/**
+ * **一次落定说得出口的全部去处**(W2)= 四种住处(含「回 Dock」)+ 全屏那格瞬态。
+ * 它是 `stage/store.openAs` 与 `stage/placement.placeAs` 收的那个参数。
+ *
+ * 全屏在这里而不在 `Placement` 里:它不是一个住处(树里没有它的位子),但它**是**
+ * 一种「我想怎么打开这块面」的表态。落地时由 `stage/placement.placeAs` 的 full 那一支
+ * 把这件事说给 store 听,再由 store 派给拼贴台的 `enterFull` —— 形态机自己一格都不写。
+ */
+export type PlacementTarget = Placement | { kind: 'full' }
+
+/**
+ * **「打开方式」那张菜单说得出口的那几档** = 上面那张表去掉「回 Dock」。
+ * 与 `MemorablePlacement` 的关系一句话:多一个 `full`。
+ */
+export type OpenPlacement = Exclude<PlacementTarget, { kind: 'dock' }>
 
 /**
  * 一块瓦的**位置记忆**:你把它放在哪,它就记得哪。
@@ -53,7 +65,13 @@ export type MemorablePlacement = Exclude<Placement, { kind: 'dock' }>
 export type PlacementMemory =
   | { kind: 'stage' }
   | { kind: 'float'; rect: FloatRect }
-  | { kind: 'cover' }
+  /*
+   * **全屏**(W2)。它在这条联合里而不在 `Placement` 里,是这一批最容易读错的
+   * 一格:记忆说的是「上次我是怎么把它打开的」,而 `Placement` 说的是「它此刻
+   * 住在哪棵树里」—— 全屏不占住处(树没动过),所以它只能出现在这一头。
+   * 存量档案里的 `{ kind: 'cover' }` 由 persist v10 原地翻成这一档。
+   */
+  | { kind: 'full' }
   | { kind: 'edge'; side: ShelfSide; index: number }
 
 export type BadgeTone = 'danger' | 'ok'
@@ -80,10 +98,10 @@ export interface StageItemSpec {
    * 也不是记忆:用户亲手放过一次,记忆就永远压过它 —— 「这块面适合怎么开」
    * 是它自己的性质,而「我想怎么开」永远是用户说了算。
    *
-   * 今天唯一的用户是「所有应用」(cover):一张铺满的应用清单塞进 880×520 的
+   * 今天唯一的用户是「所有应用」(full):一张铺满的应用清单塞进 880×520 的
    * 浮窗里就得滚动,而它恰恰是那种「看一眼、点一下、就走」的整屏内容。
    */
-  defaultPlacement?: MemorablePlacement
+  defaultPlacement?: OpenPlacement
   /**
    * 这块瓦允不允许从 Dock 上藏起来。缺席 = 允许。
    *
@@ -150,14 +168,15 @@ export interface StageState {
    * 是 `stage/store.ts` 里那条订阅。理由写在 `residency.ts` 的文件头:
    * 一条架子上装的已经不只是瓦了(文件也能钉到边上),两份事实必然分叉。
    *
-   * 两个瞬态(舞台 / 盖)不在树里,它们由下面 `stageId` / `coverId` 两格供,
-   * 投影时盖在树那一份上面。「至多一个」于是由**类型**保证,不再靠不变式。
+   * 舞台那个瞬态不在树里,它由下面 `stageId` 一格供,投影时盖在树那一份上面。
+   * 「至多一个」于是由**类型**保证,不再靠不变式。
+   *
+   * **全屏不在这张表里**(W2):它不是一个住处,树一个字没动 ——
+   * 那一格瞬态住在拼贴台自己那本账上(`workbench.full`)。
    */
   placements: Record<string, Placement>
   /** 舞台上那一块(至多一个)。**瞬态**,不落盘。 */
   stageId: string | null
-  /** 盖着内容栏那一块(至多一个)。**瞬态**,不落盘。 */
-  coverId: string | null
   /** 浮窗矩形按窗 id 记忆 —— 收回 Dock 不擦,再开还在老位置。 */
   floats: Record<string, FloatRect>
   /**
@@ -287,13 +306,14 @@ export const SHELF_SIDE_CHOICES: Array<{ value: ShelfSide; labelKey: MessageKey 
  */
 export const OPEN_PLACEMENT_CHOICES: Array<{
   key: string
-  placement: MemorablePlacement
+  placement: OpenPlacement
   labelKey: MessageKey
   pin?: boolean
 }> = [
   { key: 'stage', placement: { kind: 'stage' }, labelKey: 'dock.openStage' },
   { key: 'float', placement: { kind: 'float' }, labelKey: 'dock.openFloat' },
-  { key: 'cover', placement: { kind: 'cover' }, labelKey: 'dock.openCover' },
+  // 第三行从「盖满」改成「全屏」(W2 拍点 ②):同一个位子,换的是它真正做到的事。
+  { key: 'full', placement: { kind: 'full' }, labelKey: 'dock.openFull' },
   ...SHELF_SIDE_CHOICES.map((c) => ({
     key: `edge:${c.value}`,
     placement: { kind: 'edge' as const, side: c.value },

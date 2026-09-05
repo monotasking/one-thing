@@ -1,7 +1,5 @@
 import { AgentChip } from './AgentChip'
 import { TopBarLeafActions, TopBarLeafTabs } from '../workbench/TopBarTabs'
-import { useHostFullScreen } from './useHostFullScreen'
-import { useHostTrafficLights } from './useHostTrafficLights'
 import s from './TopBar.module.css'
 
 /**
@@ -43,24 +41,16 @@ import s from './TopBar.module.css'
  *     不去改它的样式表(职责在顶栏这一侧:是我把它放进了拖拽区)。
  */
 export function TopBar() {
-  /*
-   * 让位是**跟着灯走**的,不是一个常量。两条判据,都必须问宿主 —— 渲染层既看不见
-   * macOS 的原生全屏,也不该拿 UA 去猜自己跑在哪儿:
-   *  · 进了原生全屏,那三颗灯由系统收起(09-01 自查走查抓到:灯没了那 80px 还空着);
-   *  · Windows / Linux / 浏览器壳**根本没有灯**(设计 §2.2 最后一节:让位为 0,
-   *    标签从最左开始)。`useHostFullScreen` 在没有宿主时答 false,那是「有灯且没
-   *    全屏」的形 —— 拿它当「有没有灯」用会把浏览器壳判成有灯,所以另问一格。
-   */
-  const fullScreen = useHostFullScreen()
-  const trafficLights = useHostTrafficLights()
-
   return (
-    <header
-      className={s.bar}
-      data-testid="topbar"
-      data-fullscreen={fullScreen ? 'true' : undefined}
-      data-traffic={trafficLights ? undefined : 'none'}
-    >
+    /*
+     * ── 让位那两格属性**不在这里了**(W2)────────────────────────────────
+     * 「有没有灯 / 是不是原生全屏」照旧只由宿主答(`useHostFullScreen` /
+     * `useHostTrafficLights`,渲染层不拿 UA 猜),但那一问搬到了 `AppShell`:
+     * 它现在有**两个**消费者(这条带子与全屏层那条檐带),而两者在 DOM 上是兄弟。
+     * 判据问一次、属性写在共同的祖先(壳根)上,两条带子读同一个 `--topbar-lead`
+     * —— 左缘因此永远对齐,也不会有第二处去问同一件事。
+     */
+    <header className={s.bar} data-testid="topbar">
       {/* 红绿灯让位区:一块什么都不画的定宽空元素。它不"画"那三颗灯(灯是原生的,
         * 由系统画在网页之上、不受 z-index 管),只负责两件事 —— 把标签推到灯的
         * 右边去,以及把这一段从拖拽把手里摘出来(拖到灯上应当是按灯,不是拖窗)。

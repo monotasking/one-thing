@@ -570,6 +570,73 @@ async function main() {
      )
      assert(afterText === beforeText, '换落点之后内容逐字相同(状态住 store,换的只是外框)')
      await page.screenshot({ path: path.join(shotDir, 'viewer-stage.png') })
+
+     /*
+      * ── 6a2:**进出真全屏,内容根节点是同一个 DOM 节点**(W2,零重挂)────────
+      *
+      * 这是 W2 最重要的一条读数。全屏是**投影**不是搬家:那一格 tab 仍旧住在它
+      * 原来那片叶里,只是身子暂时挂到全屏层那格 `[data-full-slot]` 去。做法是
+      * 「叶自己持有一格身份恒定的 holder,永远 portal 进它,搬家搬的是 holder
+      * 这个 DOM 节点」——判词与三种写法的实测读数写在 `workbench/PaneLeaf.tsx`
+      * 文件头(切 portal 容器会重挂,只有这一种不会)。
+      *
+      * 判据用**打记号**:重挂会造出一个新节点,新节点身上没有这个记号。
+      * 反证:把 portal 改成「全屏层自己 renderContent」→ 叶那一份要卸载,记号
+      * 当场丢,这三条一起红。
+      */
+     const fullTrip = await (async () => {
+       const marked = await page.evaluate(() => {
+         const viewer = document.querySelector('[data-pane-region="center"] [data-testid="file-viewer"]')
+         const layer = viewer?.closest('[data-pane-tab]')
+         if (!(layer instanceof HTMLElement)) return null
+         layer.dataset.w2Mark = 'kept'
+         return layer.getAttribute('data-pane-tab')
+       })
+       if (!marked) return { skipped: '中央区那一格查看器不在场' }
+       await page.keyboard.press('Meta+Shift+Enter')
+       await delay(700)
+       const during = await page.evaluate(() => {
+         const slot = document.querySelector('[data-full-slot]')
+         const marked = document.querySelector('[data-w2-mark="kept"]')
+         const body = document.querySelector('[data-pane-region="center"] [data-pane-body]')
+         return {
+           layerUp: Boolean(document.querySelector('[data-testid="full-layer"]')),
+           inSlot: Boolean(slot && marked && slot.contains(marked)),
+           bodyEmpty: body ? body.querySelectorAll('[data-pane-tab]').length === 0 : null,
+           text: document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
+         }
+       })
+       await page.keyboard.press('Escape')
+       await delay(700)
+       const after = await page.evaluate(() => {
+         const body = document.querySelector('[data-pane-region="center"] [data-pane-body]')
+         const marked = document.querySelector('[data-w2-mark="kept"]')
+         return {
+           layerGone: !document.querySelector('[data-testid="full-layer"]'),
+           backInBody: Boolean(body && marked && body.contains(marked)),
+           text: document.querySelector('[data-testid="viewer-body"]')?.textContent ?? '',
+         }
+       })
+       return { marked, during, after }
+     })()
+     if (fullTrip.skipped) {
+       console.log(`  · 全屏那三条跳过:${fullTrip.skipped}`)
+     } else {
+       assert(fullTrip.during.layerUp, '⌘⇧↩ 把全屏层开出来了')
+       assert(
+         fullTrip.during.inSlot && fullTrip.during.bodyEmpty === true,
+         `全屏期间那一格搬进了 [data-full-slot],叶身子留空(记号还在:${fullTrip.during.inSlot})`,
+       )
+       assert(
+         fullTrip.after.layerGone && fullTrip.after.backInBody,
+         '**Esc 退出之后它回到原叶原位,而且带着记号 = 同一个 DOM 节点**(零重挂)',
+       )
+       assert(
+         fullTrip.after.text === beforeText && fullTrip.during.text === beforeText,
+         '进出全屏全程内容逐字相同(实例一次都没重建)',
+       )
+     }
+
      /*
       * 收拾干净:**关掉那一格**。W1 之后关一个文件的路是 tab 上那颗唯一的 ✕
       * (从前那两颗语义不同的 ✕ 正是用户报的「有误导」)。

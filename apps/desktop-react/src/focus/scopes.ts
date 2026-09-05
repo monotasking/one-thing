@@ -148,11 +148,13 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
     passThrough: true,
   },
 
-  /* ── layer:四个 Placement 宿主(§4.1 第二行)────────────────────────── */
+  /* ── layer:三个 Placement 宿主 + 全屏那一层(§4.1 第二行;W2 起 `full-layer`
+   *    顶掉了 `cover-layer` —— 全屏不是一种 Placement,但它同样是「装着一块面的
+   *    一层」,行为档与那三个逐字相同)────────────────────────────────── */
   'stage-layer': { id: 'stage-layer', kind: 'layer', labelKey: 'focus.scope.stageLayer' },
   'float-layer': { id: 'float-layer', kind: 'layer', labelKey: 'focus.scope.floatLayer' },
   'shelf-layer': { id: 'shelf-layer', kind: 'layer', labelKey: 'focus.scope.shelfLayer' },
-  'cover-layer': { id: 'cover-layer', kind: 'layer', labelKey: 'focus.scope.coverLayer' },
+  'full-layer': { id: 'full-layer', kind: 'layer', labelKey: 'focus.scope.fullLayer' },
 
   /* ── float:非模态临时面,Esc 缺省关自己 ─────────────────────────────── */
   jumpbar: { id: 'jumpbar', kind: 'float', labelKey: 'focus.scope.jumpbar' },

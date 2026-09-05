@@ -69,6 +69,19 @@ export interface DropCommitOptions {
 export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOptions = {}): void {
   if (target.kind === 'refuse') return
 
+  /*
+   * **落定之前先把全屏收掉**(W2×W3 合树接缝 b)。排在 `refuse` 之后:被拒绝的
+   * 那一下什么都没发生,不该顺手改形态。
+   *
+   * 理由与拖拽起手那道闸是同一句话的另一半:落定会改树(插一格 / 切一刀 / 撕一扇
+   * 窗),而全屏层正盖着整棵树。不收,用户做完这一下看见的还是那块铺满的面,
+   * 而且 `land()` 的焦点会送进一片被 `inert` 盖着的叶里 —— 那是「按了没反应」。
+   *
+   * 收这个动作只此一份(`workbench/store.exitFullIfOpen`),Dock 那两处 toggle
+   * 调的是同一只。这里**不问是哪一块**在全屏:任何一块盖着,树都看不见。
+   */
+  useWorkbenchStore.getState().exitFullIfOpen()
+
   if (target.kind === 'leaf') {
     dropIntoLeaf(ref, target.region, target.leafId, target.zone)
     return

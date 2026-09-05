@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useStageStore } from '../stage/store'
+import { occludedByFull, useWorkbenchStore } from '../workbench/store'
 import { stageIdOf } from '../stage/transitions'
 import { findItem } from '../stage/items'
 import { HostTitle, useHostTitleText } from './HostTitle'
@@ -24,6 +25,12 @@ import s from './StageOverlay.module.css'
 export function StageOverlay() {
   const t = useT()
   const stageId = useStageStore(stageIdOf)
+  /*
+   * **被全屏盖住了吗**(W2)。舞台不是一个区域(它是形态机自己那格瞬态),所以
+   * 这里问的是 `region: null` —— `occludedByFull` 那一句的读法是「全屏开着而这不是
+   * 装着它的那个区域」,null 于是恒被盖住,而这正是对的:全屏 550 > overlay 500。
+   */
+  const occluded = useWorkbenchStore((st) => occludedByFull(st, null))
   const closeStage = useStageStore((st) => st.closeStage)
   const stageToEdge = useStageStore((st) => st.stageToEdge)
   const stageToFloat = useStageStore((st) => st.stageToFloat)
@@ -90,11 +97,12 @@ export function StageOverlay() {
         if (e.target === e.currentTarget) closeStage()
       }}
     >
-      <FocusScope scope="stage-layer" owner={shown.id}>
+      <FocusScope scope="stage-layer" owner={shown.id} inert={occluded}>
         {({ scopeProps }) => (
           <>
             <section
               {...scopeProps}
+              inert={occluded || undefined}
               className={leaving ? `${s.panel} ${s.leaving}` : s.panel}
               role="dialog"
               aria-label={title}

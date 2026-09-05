@@ -30,7 +30,8 @@ describe('粘顶节头不透明', () => {
   })
 
   it('四个 Placement 宿主各自声明 --surface-host,且声明在真正铺内容底的那一格上(同块同色)', () => {
-    for (const host of ['FloatWindow', 'EdgeShelf', 'StageOverlay', 'CoverLayer']) {
+    // W2:`CoverLayer` 退役,`FullLayer` 顶上 —— 同一条判据,同一个位置。
+    for (const host of ['FloatWindow', 'EdgeShelf', 'StageOverlay', 'FullLayer']) {
       const css = read(`../../components/${host}.module.css`)
       const blocks = css.split('}').filter((b) => b.includes('--surface-host:'))
       expect(blocks.length, host).toBe(1)

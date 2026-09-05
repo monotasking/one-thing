@@ -1428,6 +1428,128 @@ async function checkDropOverlay(page, cdp) {
   return { problems, seen }
 }
 
+/**
+ * **全屏檐带的挤压纪律**(W2,设计 §4.3)。
+ *
+ * 它是这道门里第二条「一行结构件」——与顶栏那一条同族,三条判据逐字相同:
+ *  ① **永不换行**:檐带里每一件的**竖直中线**只有一种取值。量中线而不是量 top ——
+ *     这一行里三件身量各不相同(让位是拉满的空块、图标 14、退出钮 22),
+ *     `align-items: center` 之下它们的 top 本来就该不一样,而中线必须重合;
+ *  ② **退出钮不许被挤出框**:它的右缘落在檐带盒里,而且与身份那一格零重叠
+ *     ——「一行一个弯腰件」,弯腰的是身份(它截断),不是钮;
+ *  ③ **让位与顶栏同值**:两条带子读的是壳根上同一个 `--topbar-lead`
+ *     (W2 把三档的定义从 `.bar` 提到了 `.shell`),所以左缘必须逐像素对齐。
+ *
+ * 夹具接着 `[10b/11]` 用:那一步已经在中央叶上开出好几格文件 tab,活动那一格
+ * 就是文件(聊天那一种自述 `fullable: false`,⌘⇧↩ 落在它身上是结构化拒绝)。
+ */
+async function checkFullStrip(page) {
+  const problems = []
+  const seen = []
+
+  // ① 先把活动 tab 切成**文件**那一格(10b 最后停在哪一格不由这一步说了算)。
+  const live = await page.evaluate(() => {
+    const center = document.querySelector('[data-pane-region="center"]')
+    const layers = Array.from(center?.querySelectorAll('[data-pane-tab]') ?? [])
+    const on = layers.find((l) => !l.hasAttribute('inert'))
+    return on?.getAttribute('data-pane-tab') ?? null
+  })
+  if (!live) return { skipped: '中央区没有活着的那一格 tab(夹具没搭起来)' }
+  if (live.startsWith('chat:')) {
+    await page.evaluate(() => {
+      const tabs = Array.from(
+        document.querySelectorAll('[data-testid="topbar-tabs"] [role="tab"]'),
+      )
+      const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
+      if (off instanceof HTMLElement) off.click()
+    })
+    await delay(400)
+  }
+
+  // ② ⌘⇧↩ 进全屏(全局档命令,`keymap/transitions.ts` 的出厂绑定)。
+  await page.keyboard.press('Meta+Shift+Enter')
+  await delay(600)
+
+  const shot = await page.evaluate(() => {
+    const strip = document.querySelector('[data-testid="full-strip"]')
+    if (!strip) return { error: '全屏檐带不在场(⌘⇧↩ 没进去)' }
+    const box = strip.getBoundingClientRect()
+    const rowOf = (el) => {
+      const r = el.getBoundingClientRect()
+      return {
+        mid: Math.round(r.top + r.height / 2),
+        top: Math.round(r.top),
+        bottom: Math.round(r.bottom),
+        left: Math.round(r.left),
+        right: Math.round(r.right),
+      }
+    }
+    const kids = Array.from(strip.children).filter((el) => el.getBoundingClientRect().width > 0)
+    const exit = strip.querySelector('button')
+    const title = strip.querySelector('[data-host-title]')
+    const lead = strip.firstElementChild
+    const bar = document.querySelector('[data-testid="topbar"]')
+    // 顶栏那块让位是 `.traffic`(顶栏的第一格),两条带子读同一个变量。
+    const traffic = bar?.querySelector('[data-testid="topbar-traffic"]') ?? null
+    return {
+      strip: {
+        top: Math.round(box.top),
+        left: Math.round(box.left),
+        right: Math.round(box.right),
+        height: Math.round(box.height),
+      },
+      kids: kids.map(rowOf),
+      exit: exit ? rowOf(exit) : null,
+      exitName: exit?.getAttribute('aria-label') ?? null,
+      title: title ? rowOf(title) : null,
+      leadWidth: lead ? Math.round(lead.getBoundingClientRect().width) : null,
+      trafficWidth: traffic ? Math.round(traffic.getBoundingClientRect().width) : null,
+    }
+  })
+  if (shot.error) return { skipped: shot.error }
+
+  seen.push(`檐带 ${shot.strip.left}–${shot.strip.right}(高 ${shot.strip.height})`)
+  const mids = [...new Set(shot.kids.map((k) => k.mid))]
+  seen.push(`中线取值 ${mids.length} 种`)
+  if (mids.length !== 1) problems.push(`檐带换行了(中线有 ${mids.length} 种:${mids.join(' / ')})`)
+  // 每一件都得**待在带子里**:换行的另一种形是「溢出到带子外面」。
+  const spilled = shot.kids.filter(
+    (k) => k.top < shot.strip.top - 1 || k.bottom > shot.strip.top + shot.strip.height + 1,
+  )
+  if (spilled.length) problems.push(`有 ${spilled.length} 件溢出了檐带的上下缘`)
+
+  if (!shot.exit) {
+    problems.push('退出钮不在场')
+  } else {
+    seen.push(`退出钮 ${shot.exit.left}–${shot.exit.right}`)
+    if (shot.exit.right > shot.strip.right + 1) {
+      problems.push(`退出钮被挤出框外(右缘 ${shot.exit.right} > ${shot.strip.right})`)
+    }
+    if (!shot.exitName) problems.push('退出钮没有无障碍名(iconOnly 的钮必须说得出自己是谁)')
+    if (shot.title && shot.title.right > shot.exit.left + 1) {
+      problems.push(`身份压到了退出钮上(身份右缘 ${shot.title.right} > 钮 ${shot.exit.left})`)
+    }
+  }
+
+  seen.push(`让位 ${shot.leadWidth} / 顶栏 ${shot.trafficWidth}`)
+  if (shot.leadWidth === null || shot.trafficWidth === null) {
+    problems.push('量不到让位那一格(檐带或顶栏的第一格不在场)')
+  } else if (shot.leadWidth !== shot.trafficWidth) {
+    problems.push(
+      `让位与顶栏不同值(檐带 ${shot.leadWidth} ≠ 顶栏 ${shot.trafficWidth})`
+        + ' —— 两条带子该读壳根上同一个 --topbar-lead',
+    )
+  }
+
+  // ③ 收工:Esc 退出全屏(退层链第一站),别让它挡住后面的步骤。
+  await page.keyboard.press('Escape')
+  await delay(500)
+  const gone = await page.evaluate(() => !document.querySelector('[data-testid="full-strip"]'))
+  if (!gone) problems.push('Esc 退不出全屏')
+
+  return { problems, seen }
+}
+
 async function checkLeafChrome(page) {
   const problems = []
   const seen = []
@@ -1936,6 +2058,25 @@ async function main() {
         failures.push(`落区高亮:${overlay.problems.length} 条`)
       } else {
         console.log('  ✓ 落区高亮:四条边都在叶里,没有撑破')
+      }
+    }
+
+    /*
+     * W2 与 W3 合树时这两格都想当 `10c`,按「两边意图都留」重排:拖拽那格在前
+     * (它 Esc 取消,跑完屏幕形态与跑前逐字相同),全屏这格排在它后面 —— 于是
+     * 下面这句「夹具接着 10b 用」依旧成立。
+     */
+    console.log('\n[10d/11] 全屏檐带:一行不换行 · 退出钮在框内 · 让位与顶栏同值(W2 §4.3)')
+    const fullStrip = await checkFullStrip(page)
+    if (fullStrip.skipped) {
+      console.log(`  · 跳过:${fullStrip.skipped}`)
+    } else {
+      console.log(`    ${fullStrip.seen.join(' | ')}`)
+      if (fullStrip.problems.length) {
+        for (const problem of fullStrip.problems) console.log(`  ✗ 全屏檐带:${problem}`)
+        failures.push(`全屏檐带:${fullStrip.problems.length} 条`)
+      } else {
+        console.log('  ✓ 全屏檐带:一条线 · 退出钮在框里且不被身份压 · 让位与顶栏逐像素同值')
       }
     }
 

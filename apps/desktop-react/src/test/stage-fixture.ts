@@ -23,7 +23,7 @@ import type { StageState } from '../stage/types'
  * ── 它摆的是什么 ────────────────────────────────────────────────────────
  *  · `shelves[side].tabs` / `activeId` → `edge:<side>` 那棵单叶树;
  *  · `placements` 里的 `float` → `float:<瓦 id>` 那棵单叶树;
- *  · `placements` 里的 `stage` / `cover` → stage 自己那两格瞬态;
+ *  · `placements` 里的 `stage` → stage 自己那一格瞬态;
  *  · 别的字段(`floats` / `floatOrder` / `memory` / Dock 偏好)原样写进 stage。
  * 摆完立刻投影一次,所以 `useStageStore.getState().placements` 当场就是对的。
  */
@@ -40,7 +40,6 @@ export function seedStage(partial: Partial<StageState> = {}): void {
     panelPath: null,
   })
   const stageId = Object.entries(st.placements).find(([, p]) => p.kind === 'stage')?.[0] ?? null
-  const coverId = Object.entries(st.placements).find(([, p]) => p.kind === 'cover')?.[0] ?? null
-  useStageStore.setState({ ...st, stageId, coverId })
+  useStageStore.setState({ ...st, stageId })
   syncStageResidency()
 }

@@ -65,7 +65,6 @@ export const LAYER_SCOPE_OF: Record<Placement['kind'], FocusScopeId | null> = {
   stage: 'stage-layer',
   float: 'float-layer',
   edge: 'shelf-layer',
-  cover: 'cover-layer',
 }
 
 /**
@@ -140,7 +139,7 @@ export type SummonAction =
   | { kind: 'reveal'; how: SummonRevealHow; side: ShelfSide | null }
   | { kind: 'focus'; scope: FocusScopeId }
   | { kind: 'hide'; how: SummonHideHow; side: ShelfSide | null }
-  | { kind: 'blocked'; by: 'stage' | 'cover' }
+  | { kind: 'blocked'; by: 'stage' }
 
 /** 召唤时树那一头的读数。只要一句话:**焦点此刻在谁的层里**(没有就是 null)。 */
 export interface SummonFocus {
@@ -181,7 +180,7 @@ export function summonTransition(
       return { kind: 'reveal', how, side: placement.side }
     }
     /*
-     * `stage` / `cover` 看不见只可能是被压着,而那一支上面已经答完了。
+     * `stage` 看不见只可能是被压着,而那一支上面已经答完了。
      * 走到这里说明 `isItemVisible` 与 `occluderOf` 对不上口径 —— 那是自相矛盾,
      * 不是一种状态,所以这里当「没人压着但也露不出来」处理:什么都不做。
      */

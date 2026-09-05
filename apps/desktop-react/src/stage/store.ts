@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { focusTree } from '../focus/registry'
 import { useWorkbenchStore } from '../workbench/store'
 import { STAGE_ITEMS, findItem } from './items'
+import { panelRef } from './panel-ref'
+import { refId } from '../workbench/kinds'
 import { requestFocusOnOpen, summonTransition } from './summon'
 import * as T from './transitions'
 import * as P from './placement'
@@ -25,7 +27,7 @@ import type {
   DockMagnifyLevel,
   DockSize,
   FloatRect,
-  Placement,
+  PlacementTarget,
   ResolvedOpen,
   ShelfSide,
   StageItemSpec,
@@ -40,8 +42,11 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
 
   /** 落点由 resolveOpen 解析(记忆 > 全局默认档);要点名落点的走 openAs。 */
   clickDockIcon: (id: string) => void
-  /** 显式手势那一层:点名放到哪儿。它既执行也写记忆(记忆在 transitions 的 openAs 里落)。 */
-  openAs: (id: string, placement: Placement) => void
+  /**
+   * 显式手势那一层:点名放到哪儿。它既执行也写记忆(记忆在 `placement.placeAs` 里落)。
+   * **收得下全屏那一档**(W2):那一支落定后由这里派给拼贴台的 `enterFull`。
+   */
+  openAs: (id: string, placement: PlacementTarget) => void
   /**
    * **把任意一块内容摆到某个区域**(W4 立的 `placement.placeRefIn`,W3 起有了
    * 第一个消费者:拖拽落定)。
@@ -69,7 +74,6 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
   summonItem: (id: string) => void
   closeToDock: (id: string) => void
   closeStage: () => void
-  closeCover: () => void
   /**
    * Esc 退一层。返回**这一下有没有接住** —— 宿主要据此决定要不要
    * preventDefault(没接住就不该拦,后面还有别的层在等这一下)。
@@ -181,14 +185,18 @@ export function viewport(): Viewport {
  */
 let buffer: P.StagePatch | null = null
 
-function orchestrate(fn: () => void): void {
+/**
+ * 编排交回 `fn` 的返回值(W2)—— 那是**落定的外溢结果**
+ * (`P.PlacementOutcome`:今天只有「去铺全屏」这一档)。落地必须排在收笔**之后**:
+ * 全屏那一格住在拼贴台那本账上,而这一句编排还没把投影写下去。
+ */
+function orchestrate<T>(fn: () => T): T {
   if (buffer) {
-    fn()
-    return
+    return fn()
   }
   buffer = {}
   try {
-    fn()
+    return fn()
   } finally {
     const patch = buffer
     buffer = null
@@ -226,6 +234,29 @@ function openMemoryFor(s: StageState & StageSettings, id: string) {
   return T.resolveOpen(s, id, s.defaultOpen, viewport(), findItem(id)?.defaultPlacement)
 }
 
+/* ── 全屏那一档的两句接线(W2)──────────────────────────────────────────────
+ *
+ * 全屏不是一个住处,所以它落在**另一台 store** 上(`workbench.full`)。形态机这一侧
+ * 只有两件事要做,而两件都必须住在 store 这一层:纯函数不认识拼贴台,
+ * `stage/placement.ts` 那一层也只拿得到形态机那两口(判词写在它的 `PlacementDeps` 上)。
+ */
+
+/** 这块瓦此刻正铺着全屏吗。 */
+function isItemFull(id: string): boolean {
+  const full = useWorkbenchStore.getState().full
+  return full !== null && refId(full.ref) === refId(panelRef(id))
+}
+
+/**
+ * 把一次落定的外溢结果落地:`{kind:'full'}` = 去铺全屏。
+ * `from: null` —— 那一支已经把这块瓦从每棵树里摘干净了,所以「退出全屏 = 回 Dock」
+ * (投影缺席即 dock),判词写在 `workbench/store.ts` 的 `FullState` 上。
+ */
+function landFull(id: string, outcome: P.PlacementOutcome): void {
+  if (outcome?.kind !== 'full') return
+  useWorkbenchStore.getState().enterFull(panelRef(id), null)
+}
+
 /**
  * store 只是 transitions 的一层壳:每个 action 都是 set(transitions.f)。
  * 逻辑不许写在这里 —— 写在这里就测不到了。
@@ -248,8 +279,21 @@ export const useStageStore = create<StageStore>()(
       items: STAGE_ITEMS,
       dockDisplay: 'always',
 
-      clickDockIcon: (id) => orchestrate(() => P.clickDockIcon(stagePlacementDeps, id, openMemoryFor(get(), id))),
-      openAs: (id, placement) => orchestrate(() => P.placeAs(stagePlacementDeps, id, placement)),
+      clickDockIcon: (id) => {
+        /*
+         * **正铺着全屏的那块瓦,再点一下收回去**(W2)。这一格判据在 store 而不在
+         * 纯函数里,理由与 `summonItem` 逐字相同:它要同时读**两台机器**——形态机
+         * 说不出「谁在全屏」(那不是一种 Placement,判词在 `stage/types.ts`)。
+         * 它排在最前面,与「在舞台上 → 关掉」在 `clickDockIcon` 里排第一同型。
+         */
+        if (isItemFull(id)) {
+          useWorkbenchStore.getState().exitFullIfOpen()
+          return
+        }
+        landFull(id, orchestrate(() => P.clickDockIcon(stagePlacementDeps, id, openMemoryFor(get(), id))))
+      },
+      openAs: (id, placement) =>
+        landFull(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, placement))),
       placeRef: (ref, region, opts) =>
         orchestrate(() => P.placeRefIn(stagePlacementDeps, ref, region, opts ?? {})),
       /*
@@ -261,13 +305,22 @@ export const useStageStore = create<StageStore>()(
        * `focus-follow` 那唯一一处接线在提交之后送 —— 落定那一刻宿主层还没挂上来)。
        */
       summonItem: (id) => {
+        /*
+         * **它正铺着全屏 → 收起来**(W2;召唤四态的第四格「看得见、焦点在里面 →
+         * 收起来」在全屏这一形上的样子)。与 `clickDockIcon` 同一格判据、同一个理由:
+         * 「谁在全屏」只有拼贴台那本账知道,纯函数 `summonTransition` 问不出来。
+         */
+        if (isItemFull(id)) {
+          useWorkbenchStore.getState().exitFullIfOpen()
+          return
+        }
         const action = summonTransition(get(), id, {
           focusedOwner: focusTree.isOwnerActive(id) ? id : null,
         })
         switch (action.kind) {
           case 'open':
             requestFocusOnOpen(id)
-            orchestrate(() => P.openFromMemory(stagePlacementDeps, id, openMemoryFor(get(), id)))
+            landFull(id, orchestrate(() => P.openFromMemory(stagePlacementDeps, id, openMemoryFor(get(), id))))
             return
           case 'reveal':
             requestFocusOnOpen(id)
@@ -312,7 +365,6 @@ export const useStageStore = create<StageStore>()(
       },
       closeToDock: (id) => orchestrate(() => P.closeToDock(stagePlacementDeps, id)),
       closeStage: () => orchestrate(() => P.closeStage(stagePlacementDeps)),
-      closeCover: () => orchestrate(() => P.closeCover(stagePlacementDeps)),
       /*
        * 「接住了没有」由**形态机**回答,不由宿主再判一次:问它有没有目标、
        * 再让它去收,两句话中间的那一格状态永远有可能不一致。所以这里先取一次
@@ -321,9 +373,17 @@ export const useStageStore = create<StageStore>()(
       escapeTopmost: (): boolean => {
         // 取当下状态用创建器给的 `get`,不用模块级的 useStageStore ——
         // 那会让这个初始化器**引用它自己**,整个 store 的类型当场塌成 any。
-        const target = T.escapeTargetOf(get())
-        if (target !== null) orchestrate(() => P.closeToDock(stagePlacementDeps, target))
-        return target !== null
+        //
+        // 「全屏开着没有」由拼贴台那本账答(W2)——次序判据仍旧只在那个纯函数里,
+        // 这里只把它要的那个布尔递进去。
+        const target = T.escapeTargetOf(get(), useWorkbenchStore.getState().full !== null)
+        if (target === null) return false
+        if (target.kind === 'full') {
+          useWorkbenchStore.getState().exitFull()
+          return true
+        }
+        orchestrate(() => P.closeToDock(stagePlacementDeps, target.id))
+        return true
       },
       stageToFloat: () => {
         const id = get().stageId
@@ -481,7 +541,6 @@ export const useStageStore = create<StageStore>()(
 function projectionOf(base: StageState) {
   return projectResidency(useWorkbenchStore.getState().regions, base, {
     stageId: base.stageId,
-    coverId: base.coverId,
   })
 }
 

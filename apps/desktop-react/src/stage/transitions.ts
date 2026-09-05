@@ -2,6 +2,7 @@ import type {
   DockEdge,
   FloatRect,
   MemorablePlacement,
+  OpenPlacement,
   Placement,
   PlacementMemory,
   Point,
@@ -165,7 +166,7 @@ export const DOCK_HOLD_PAD = 24
 export const FLOAT_HEADER_H = 40
 
 /** persist 档案版本。改这个数就必须在 migrateStagePersisted 里加一段,两者同生共死。 */
-export const STAGE_PERSIST_VERSION = 9
+export const STAGE_PERSIST_VERSION = 10
 
 const DOCK: Placement = { kind: 'dock' }
 
@@ -184,7 +185,6 @@ export function emptyShelves(): Record<ShelfSide, ShelfState> {
 export const initialStageState: StageState = {
   placements: {},
   stageId: null,
-  coverId: null,
   floats: {},
   floatOrder: [],
   shelves: emptyShelves(),
@@ -285,18 +285,21 @@ export const initialStageSettings: StageSettings = {
 }
 
 /**
- * **至多一个**的那几种形态。舞台盖住整个视口、盖接管整条内容栏 —— 两块叠在
- * 同一处,下面那块永远见不到光,所以它们各自只许有一个。
+ * **至多一个**的那几种形态。舞台盖住整个视口 —— 两块叠在同一处,下面那块永远
+ * 见不到光,所以它只许有一个。
  *
- * 写成一张表而不是两段 if:再多一种独占形态时,这里加一个字面量就够了,
- * 落点那一族(`stage/placement.ts`)里那段不变式一个字都不用改
- * (08-31 加 'cover' 时正是这么加的)。浮窗与架子不在表里 —— 它们生来就是
- * 可以有好几个的。
+ * 写成一张表而不是一段 if:再多一种独占形态时,这里加一个字面量就够了,
+ * 落点那一族(`stage/placement.ts`)里那段不变式一个字都不用改。
+ * 浮窗与架子不在表里 —— 它们生来就是可以有好几个的。
  *
- * **W4 起它同时是「哪几种形态不住在树里」那张表**:这两种是瞬态(设计 §1.3),
- * 它们各占 stage 自己一格(`stageId` / `coverId`),不进 `workbench.regions`。
+ * **W4 起它同时是「哪几种形态不住在树里」那张表**:舞台是瞬态(设计 §1.3),
+ * 它占 stage 自己一格(`stageId`),不进 `workbench.regions`。
+ *
+ * **W2 起表里只剩一格**:「盖」退役,而接替它的全屏根本不是一种 Placement ——
+ * 它是拼贴台的一格瞬态(`workbench.full`),树一个字不动,所以它既不进这张表,
+ * 也不进 `placements`。
  */
-export const EXCLUSIVE_FORMS: StageForm[] = ['stage', 'cover']
+export const EXCLUSIVE_FORMS: StageForm[] = ['stage']
 
 /* ── 派生 ──────────────────────────────────────────────────────────────────── */
 
@@ -321,7 +324,7 @@ export function formIn(placements: Record<string, Placement>, id: string): Stage
   return (placements[id] ?? DOCK).kind
 }
 
-/** 独占形态至多一个,所以「谁在舞台上 / 谁盖着内容栏」是查询而不是字段。 */
+/** 独占形态至多一个,所以「谁在舞台上」是查询而不是字段。 */
 function idInForm(state: StageState, form: StageForm): string | null {
   for (const [id, p] of Object.entries(state.placements)) {
     if (p.kind === form) return id
@@ -331,10 +334,6 @@ function idInForm(state: StageState, form: StageForm): string | null {
 
 export function stageIdOf(state: StageState): string | null {
   return idInForm(state, 'stage')
-}
-
-export function coverIdOf(state: StageState): string | null {
-  return idInForm(state, 'cover')
 }
 
 /**
@@ -356,20 +355,25 @@ export function isShelfTabVisible(shelf: ShelfState, id: string): boolean {
 
 /**
  * **谁压在这块面上面**(答 null = 没人压着)。判据是 tokens 里那张 z 序表,
- * 不是猜的:`--z-cover 100 < --z-float 200 < --z-overlay(舞台 scrim)500`。
+ * 不是猜的:`--z-float 200 < --z-overlay(舞台 scrim)500 < --z-full 550`。
  *
- *  · **舞台**的 scrim 铺满视口,所以它开着时**除它自己以外**的一切内容形都被压住;
- *  · **盖**铺满整扇窗(09-01 用户推翻「只接管中间那一栏」,含侧边的架子),
- *    但它压不过浮窗 —— 所以被盖压住的只有架子那一档。
+ *  · **舞台**的 scrim 铺满视口,所以它开着时**除它自己以外**的一切内容形都被压住。
+ *
+ * ── 全屏(550)为什么不在这张表里(W2)────────────────────────────────────
+ * 「盖」那一行随 `--z-cover` 一起退役了,而接替它的全屏**在层序上压得过一切内容形**
+ * (浮窗 200 与 overlay 500 都在它之下)—— 可它不是一种 Placement:被它盖住的那些面
+ * 在形态机眼里一格都没变。这张表回答的是「形态机里谁压着谁」,所以它照旧只认舞台;
+ * 「全屏盖住了什么」由拼贴台那一格瞬态自己说(`workbench.occludedByFull`),
+ * 两处各答各的那一句,不混成一句。**留账**:因此 `summonItem` 在全屏期间不会报
+ * `blocked` —— 召唤一块被全屏盖住的面会照常把它露出来(在看不见的地方)。
  *
  * 收在这里而不是各面自己判:「看不看得见」是形态机的事实,组件与召唤共用它。
  */
-export function occluderOf(state: StageState, id: string): 'stage' | 'cover' | null {
+export function occluderOf(state: StageState, id: string): 'stage' | null {
   const placement = placementOf(state, id)
   if (placement.kind === 'dock') return null
   const stage = stageIdOf(state)
   if (stage !== null && stage !== id) return 'stage'
-  if (placement.kind === 'edge' && coverIdOf(state) !== null) return 'cover'
   return null
 }
 
@@ -379,7 +383,6 @@ export function occluderOf(state: StageState, id: string): 'stage' | 'cover' | n
  * 四档逐条:
  *  · `dock`   —— 根本没开,不是「看不见」而是「不在场」,一律 false;
  *  · `stage`  —— 舞台至多一个、又压在最上面,所以它自己永远看得见;
- *  · `cover`  —— 盖至多一个;只有舞台能压住它;
  *  · `float`  —— **只有最上面那一扇算看得见**:`floatOrder` 末位最上,底下那几扇
  *    被压着(这正是设计 §14 说的「浮窗被压在下面」)。两扇窗**几何上**叠不叠
  *    这里不问 —— 纯函数不认识矩形交并,而「把它翻到最上面」对任何一扇被压的窗
@@ -400,12 +403,26 @@ export function isItemVisible(state: StageState, id: string): boolean {
 }
 
 /**
- * Esc 该退掉哪一块面 —— **唯一**回答这句话的地方(08-31 修「Esc 关不掉浮窗」)。
+ * 退层链上那一站的**目标**。两种:退出全屏,或收掉某一块面。
+ *
+ * 它是可辨识联合而不是一个 `string | 'full'`:全屏不是一块「面」,它没有 item id
+ * —— 它是拼贴台的一格瞬态,收它的动作也是另一台 store 的
+ * (`workbench.exitFull()`)。用一个魔法字符串混在 id 里,第一个踩的人就是
+ * `closeToDock('full')`。
+ */
+export type EscapeTarget = { kind: 'full' } | { kind: 'item'; id: string }
+
+/**
+ * Esc 该退掉哪一层 —— **唯一**回答这句话的地方(08-31 修「Esc 关不掉浮窗」)。
  *
  * 退层次序 = 视觉上压在最上面的那一块先退,与 z 序逐条对应:
- *   ① 盖(--z-cover,盖满整扇窗;09-01 用户推翻「只接管内容栏」)
- *   ② 舞台(--z-overlay,scrim 铺满视口)
- *   ③ 最上面那扇浮窗(floatOrder 末位最上)
+ *   ① 全屏(--z-full 550,W2;它压得过浮窗与 overlay,所以排第一)
+ *   ② 舞台(--z-overlay 500,scrim 铺满视口)
+ *   ③ 最上面那扇浮窗(--z-float 200,floatOrder 末位最上)
+ *
+ * **`fullOpen` 是参数而不是从 `state` 里读的**:全屏那一格瞬态住在拼贴台那本账上
+ * (`workbench.full`),而这只文件是形态机的纯函数半边 —— 它不认识另一台 store。
+ * 递一个布尔进来,判据仍然全在这里,次序也仍然只有一个产地。
  *
  * **架子不在链里,这是有意的**:钉在边上是**常驻形**——用户把它当家具摆好了,
  * 一下 Esc 就把家具搬走不是「退一层」而是「拆一件」。同一条判据在
@@ -421,8 +438,10 @@ export function isItemVisible(state: StageState, id: string): boolean {
  * 一条的话,三处就会各写一遍「谁该先退」——所以链收在这一个纯函数里,
  * 宿主只剩一条 window 监听(components/useEscapeChain)。
  */
-export function escapeTargetOf(state: StageState): string | null {
-  return coverIdOf(state) ?? stageIdOf(state) ?? (state.floatOrder[state.floatOrder.length - 1] ?? null)
+export function escapeTargetOf(state: StageState, fullOpen: boolean): EscapeTarget | null {
+  if (fullOpen) return { kind: 'full' }
+  const id = stageIdOf(state) ?? (state.floatOrder[state.floatOrder.length - 1] ?? null)
+  return id === null ? null : { kind: 'item', id }
 }
 
 export function clamp(value: number, min: number, max: number): number {
@@ -444,8 +463,6 @@ export function memoryOf(
   const p = placementOf(state, id)
   if (p.kind === 'dock') return null
   if (p.kind === 'stage') return { kind: 'stage' }
-  // 盖没有第二个参数(它的几何由内容栏说了算),所以折出来的记忆就是它自己。
-  if (p.kind === 'cover') return { kind: 'cover' }
   if (p.kind === 'float') {
     return { kind: 'float', rect: state.floats[id] ?? defaultFloatRect(viewport) }
   }
@@ -464,7 +481,7 @@ function remember(state: StageState, id: string, m: PlacementMemory | null): Sta
  * 记忆与菜单里那一行说的是不是同一个落点。
  * 浮窗矩形与边内次序**不参与**比对:菜单问的是「放在哪」,不是「放在哪儿的第几个」。
  */
-export function memoryIsAt(m: PlacementMemory | undefined, placement: MemorablePlacement): boolean {
+export function memoryIsAt(m: PlacementMemory | undefined, placement: OpenPlacement): boolean {
   if (!m || m.kind !== placement.kind) return false
   if (m.kind === 'edge' && placement.kind === 'edge') return m.side === placement.side
   return true
@@ -491,13 +508,13 @@ export function placementForOpen(open: ResolvedOpen): Exclude<MemorablePlacement
 
 /**
  * 把一个「说得出去哪儿」的落点补成一条完整记忆 —— 缺的那件事按「就当它没来过」补:
- * 浮窗取新窗默认矩形,钉边排到那条边的末尾,舞台与盖本来就没有第二个参数。
+ * 浮窗取新窗默认矩形,钉边排到那条边的末尾,舞台与全屏本来就没有第二个参数。
  *
  * 两个调用方共用它(全局默认档 / item 天生落点),所以「补什么」只写一次。
  */
 export function completeMemory(
   state: StageState,
-  placement: MemorablePlacement,
+  placement: OpenPlacement,
   viewport: Viewport = FALLBACK_VIEWPORT,
 ): PlacementMemory {
   if (placement.kind === 'float') return { kind: 'float', rect: defaultFloatRect(viewport) }
@@ -531,7 +548,7 @@ export function resolveOpen(
   id: string,
   defaultOpen: ResolvedOpen,
   viewport: Viewport = FALLBACK_VIEWPORT,
-  itemDefault?: MemorablePlacement,
+  itemDefault?: OpenPlacement,
 ): PlacementMemory {
   /*
    * ── 记忆语义的定案(08-30 晚,用户逐字给出流程后第三版,前两版是误解)──────
@@ -1271,7 +1288,56 @@ export function migrateStagePersisted(
     onResidency?.(null, out)
     out = stripResidencyFurniture(out) as Record<string, unknown>
   }
+  if (version < 10) {
+    /*
+     * W2:**「盖」并入真全屏**(拍点 ②)。要迁的只有**位置记忆**一格 ——
+     * `memory[id].kind === 'cover'` 原地翻成 `'full'`,于是「所有应用上次是盖着
+     * 打开的」这条事实一字不丢地变成「上次是全屏打开的」。
+     *
+     * `placements` 一个字都不用迁:W4 起它是树的投影(v9 已经把它从档案里摘走了),
+     * 而盖本来就是瞬态、从来不落盘。
+     *
+     * **扁平层与 `byWorkspace` 每个空间那一格,两条路都要走** —— 只迁当前那一格的话,
+     * 切到别的空间就会露出同一个病(与 v8 / v9 逐字同一条判据)。
+     *
+     * **一格都没碰到就原样交回**(引用恒等 —— 幂等的机器化判据,同 v8 / v9)。
+     */
+    const ledger = out.byWorkspace
+    if (ledger && typeof ledger === 'object') {
+      let changed = false
+      const next: Record<string, unknown> = {}
+      for (const [spaceId, furniture] of Object.entries(ledger as Record<string, unknown>)) {
+        const swapped = coverMemoryToFull(furniture)
+        if (swapped !== furniture) changed = true
+        next[spaceId] = swapped
+      }
+      if (changed) out = { ...out, byWorkspace: next }
+    }
+    out = coverMemoryToFull(out) as Record<string, unknown>
+  }
   return out
+}
+
+/**
+ * 一份家具里那张位置记忆表:`{ kind: 'cover' }` → `{ kind: 'full' }`(v10 迁移用)。
+ * **逐格换**,别的记忆一格不动;**一格都没换到就原样交回**(引用恒等)。
+ */
+export function coverMemoryToFull(furniture: unknown): unknown {
+  if (!furniture || typeof furniture !== 'object') return furniture
+  const source = furniture as Record<string, unknown>
+  const memory = source.memory
+  if (!memory || typeof memory !== 'object') return source
+  let touched = false
+  const next: Record<string, unknown> = {}
+  for (const [id, value] of Object.entries(memory as Record<string, unknown>)) {
+    if (value && typeof value === 'object' && (value as { kind?: unknown }).kind === 'cover') {
+      next[id] = { kind: 'full' }
+      touched = true
+      continue
+    }
+    next[id] = value
+  }
+  return touched ? { ...source, memory: next } : source
 }
 
 /**

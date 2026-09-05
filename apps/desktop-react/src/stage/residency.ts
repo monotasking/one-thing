@@ -28,11 +28,15 @@ import type { Placement, ShelfSide, ShelfState, StageState } from './types'
  *  · `shelves[side].tabs / activeId / visible` —— 那条边那棵树里的瓦,按阅读序;
  *  · `floatOrder` —— 只留还有树的那些浮窗,新长出来的排到末位(末位最上)。
  *
- * ── 两个瞬态**不是**投影 ────────────────────────────────────────────────
- * 舞台与盖装的是「此刻在看的那一眼」,它们不在任何一棵树里(设计 §1.3 把
- * `stage` / `full` 单列成两格瞬态)。所以它们是 stage 自己存的两格
- * (`stageId` / `coverId`),投影时**盖在**树那一份上面 —— 一块瓦上了舞台,
- * 它就不在架子上了(`openAs` 会先把它从树里摘干净)。
+ * ── 瞬态**不是**投影 ────────────────────────────────────────────────────
+ * 舞台装的是「此刻在看的那一眼」,它不在任何一棵树里(设计 §1.3 把 `stage` /
+ * `full` 单列成两格瞬态)。所以它是 stage 自己存的一格(`stageId`),投影时
+ * **盖在**树那一份上面 —— 一块瓦上了舞台,它就不在架子上了
+ * (`openAs` 会先把它从树里摘干净)。
+ *
+ * **另一格瞬态(全屏)根本不经过这里**(W2):它住在拼贴台那本账上
+ * (`workbench.full`),而且树一个字没动 —— 一块内容进全屏,它在哪棵树里是不变的。
+ * 所以投影表里没有它,「被全屏盖住了吗」由 `workbench.occludedByFull` 自己答。
  *
  * 整只文件是**纯函数**:没有 React、没有 store、没有 DOM。
  */
@@ -144,7 +148,6 @@ export interface ResidencyProjection {
 /** 投影的输入里属于「瞬态」的那一半(它们不在树里,见文件头)。 */
 export interface TransientForms {
   stageId: string | null
-  coverId: string | null
 }
 
 /**
@@ -163,11 +166,10 @@ export function projectResidency(
     for (const id of panelIdsOf(tree)) placements[id] = placement
   }
   /*
-   * 两个瞬态**盖在**树那一份上面。理论上盖不到东西(上舞台之前会先从树里摘掉),
+   * 瞬态**盖在**树那一份上面。理论上盖不到东西(上舞台之前会先从树里摘掉),
    * 写成「后写赢」是为了让不变式只有一个方向:**瞬态说了算**。
    */
   if (transient.stageId) placements[transient.stageId] = { kind: 'stage' }
-  if (transient.coverId) placements[transient.coverId] = { kind: 'cover' }
 
   const shelves = {} as Record<ShelfSide, ShelfState>
   for (const side of SHELF_SIDES) {

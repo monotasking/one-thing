@@ -152,7 +152,7 @@ export const zh = {
   'dock.openWith': '打开方式',
   'dock.openStage': '弹窗',
   'dock.openFloat': '浮窗',
-  'dock.openCover': '盖满',
+  'dock.openFull': '全屏',
   'dock.openPinned': '钉在右侧',
   'dock.edge': '停靠边',
   'dock.edgeBottom': '下边',
@@ -209,7 +209,11 @@ export const zh = {
   'float.close': '关闭这扇窗',
   /* 一扇窗还什么都没显示时的兜底无障碍名(树刚建、内容未定的那一帧)。 */
   'float.window': '浮窗',
-  'cover.close': '关闭',
+  /* ── 真全屏(W2,设计 §4)────────────────────────────────────────────── */
+  'full.region': '全屏',
+  'full.exit': '退出全屏',
+  /* 这一种进不了全屏时的结构化拒绝(今天只有聊天;W5 撤)。 */
+  'full.refuseChat': '聊天区暂时不能全屏 —— 输入框会被盖住',
   /* ── 四边架子(W2:钉栏泛化成四条边,名字按边给) ─────────────────── */
   'shelf.labelLeft': '左侧栏',
   'shelf.labelRight': '右侧栏',
@@ -264,6 +268,7 @@ export const zh = {
   'settings.motionNone': '无',
 
   /* ── 快捷键设置区 ─────────────────────────────────────────────────── */
+  'keymap.toggleFull': '全屏',
   'keymap.hint': '点一行的键位再按下组合;Esc 取消,Backspace 解绑',
   'keymap.recording': '按下组合…',
   'keymap.unbound': '未绑定',
@@ -285,7 +290,7 @@ export const zh = {
   'focus.scope.stageLayer': '舞台',
   'focus.scope.floatLayer': '浮窗',
   'focus.scope.shelfLayer': '边栏',
-  'focus.scope.coverLayer': '盖层',
+  'focus.scope.fullLayer': '全屏层',
   'focus.scope.jumpbar': '跳转条',
   'focus.scope.drawer': '抽屉',
   'focus.scope.zoom': '缩放层',

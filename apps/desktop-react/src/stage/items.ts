@@ -41,7 +41,8 @@ export const WORKSPACE_ITEM_ID = 'workspace'
  * 它同样是一块**普通的瓦** —— 有内容、有落点、有打开方式。唯一的两条特殊
  * 都写在 items 表那一行上,而不是散在代码里:
  *  - `alwaysInDock`:它是把别的瓦放回来的**唯一入口**,自己藏掉就没有回家的门了;
- *  - `defaultPlacement: cover`:一张铺满的清单塞进 880×520 的浮窗里就得滚动。
+ *  - `defaultPlacement: full`(W2 起;从前是 `cover`):一张铺满的清单塞进
+ *    880×520 的浮窗里就得滚动,而它恰恰是「看一眼、点一下、就走」的整屏内容。
  */
 export const APPS_ITEM_ID = 'apps'
 
@@ -133,7 +134,7 @@ export const STAGE_ITEMS: StageItemSpec[] = [
     scope: 'global',
     icon: 'LayoutGrid',
     alwaysInDock: true,
-    defaultPlacement: { kind: 'cover' },
+    defaultPlacement: { kind: 'full' },
   },
 ]
 

@@ -804,6 +804,198 @@ async function main() {
       }
     }
 
+
+    /* ── 场景 3c:文件叶 ⌘⇧↩ 进真全屏(W2,设计 §4)──────────────────────
+     *
+     * 四条读数,一条都不能少:
+     *  ① `full-layer` 拿到键盘(§3.5 规则 2「打开什么,焦点进什么」);
+     *  ② 那一格内容**真的搬进了全屏层**,叶自己的身子留空 —— 而且它是**同一个
+     *     DOM 节点**(零重挂;判词与三种写法的实测读数写在 `PaneLeaf` 文件头);
+     *  ③ 其余的叶与架子 `inert`(路径截断,DOM 与树各说一遍),而且它**真的压得过
+     *     浮窗**(`--z-full: 550` > `--z-float: 200`)—— 判据是
+     *     `elementFromPoint` 落在全屏层里,不是读一个 z 数字:那正是「盖」当年
+     *     被用户说成「不是全屏的那个全屏」的那一格;
+     *  ④ Esc 退出 → 内容回原叶原 tab,键盘也回原处(§3.5 规则 5)。
+     *
+     * 夹具接着 3b 用:那一步已经把「文件开在哪」的记忆改成了主区域,而且中央叶上
+     * 此刻恰有两格 tab(聊天 + 文件)。这一步先把**文件**那一格点成活动的 ——
+     * 聊天那一种自述 `fullable: false`(输入框会被盖掉,W5 撤),⌘⇧↩ 落在它身上
+     * 是结构化拒绝,不是进全屏。
+     */
+    scenario('文件叶 ⌘⇧↩ → 全屏层拿焦点、其余叶与架子 inert、Esc 回原叶原 tab')
+    {
+      /*
+       * 先在旁边**真开一扇浮窗**(③ 的层序那一半要它):全屏得压得过它。
+       * 顺序不能反 —— 开浮窗会把焦点叶指到那扇窗那片叶上,而下面那一下 ⌘⇧↩
+       * 取的正是焦点叶的活动 tab。
+       *
+       * **拿 `diff` 那块瓦开,不拿 `sessions` / `search`**:后两块是场景 16 的夹具
+       * (右架子上那两格 tab),而「打开方式」这一下会**改它的位置记忆** ——
+       * 第一版用了 sessions,场景 16 的 ② 当场变成「那条架子上只有 1 个 tab」的跳过,
+       * 门还是绿的,少的那几条读数一声不吭。这正是这只文件里已经立过的那条判例。
+       */
+      const floatUp = await openAsFromDockMenu(page, 'diff', /^(Float|浮窗)$/)
+      await delay(400)
+      const floatBox = floatUp
+        ? await page.evaluate(() => {
+          const win = document.querySelector('[data-float-body]')?.closest('section')
+          if (!win) return null
+          const r = win.getBoundingClientRect()
+          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
+        })
+        : null
+
+      // 把中央区那一组标签里**不是当前选中**的那一格点亮 = 切回文件那一格。
+      const picked = await page.evaluate((css) => {
+        const tabs = Array.from(document.querySelectorAll(css))
+        const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
+        if (off instanceof HTMLElement) {
+          off.click()
+          return true
+        }
+        return false
+      }, CENTER_TABS)
+      await delay(400)
+      const liveTab = await page.evaluate(() => {
+        const center = document.querySelector('[data-pane-region="center"]')
+        const live = Array.from(center?.querySelectorAll('[data-pane-tab]') ?? []).find(
+          (l) => !l.hasAttribute('inert'),
+        )
+        return live?.getAttribute('data-pane-tab') ?? null
+      })
+      if (!picked || !liveTab || liveTab.startsWith('chat:')) {
+        skip('文件叶 ⌘⇧↩ 进全屏', `中央叶此刻活的是 ${liveTab ?? '—'} —— 夹具没搭起来`)
+      } else {
+        await page.keyboard.press('Meta+Shift+Enter')
+        await delay(600)
+
+        const inFull = await page.evaluate((tabId) => {
+          const layer = document.querySelector('[data-testid="full-layer"]')
+          const slot = document.querySelector('[data-full-slot]')
+          const tab = document.querySelector(`[data-pane-tab="${tabId}"]`)
+          const centerBody = document.querySelector('[data-pane-region="center"] [data-pane-body]')
+          const active = document.activeElement
+          const leaves = Array.from(document.querySelectorAll('[data-pane-leaf]'))
+          const shelves = Array.from(document.querySelectorAll('[data-focus-scope="shelf-layer"]'))
+          return {
+            layer: Boolean(layer),
+            // ① 键盘进了全屏层。
+            focusInLayer: Boolean(layer && active instanceof Node && layer.contains(active)),
+            // ② 内容搬进了 slot,叶自己的身子里一格 tab 层都没有。
+            tabInSlot: Boolean(slot && tab && slot.contains(tab)),
+            bodyEmpty: centerBody ? centerBody.querySelectorAll('[data-pane-tab]').length === 0 : null,
+            /*
+             * ③ 其余的叶与架子 inert(**装着它的那一片留活口**)。
+             *
+             * 「哪一片是持有者」不能靠 `tab.closest('[data-pane-leaf]')` 反查 ——
+             * 全屏期间那一格的 DOM 已经搬进全屏层了,它在叶的**外面**。
+             * 判据换成读结果:非 inert 的叶**恰好一片**,那一片就是持有者。
+             */
+            leaves: leaves.length,
+            inertLeaves: leaves.filter((l) => l.hasAttribute('inert')).length,
+            shelvesInert: shelves.every((el) => el.hasAttribute('inert')),
+            shelfCount: shelves.length,
+          }
+        }, liveTab)
+
+        /*
+         * ③ 之二:**层序**。两条读数,量的是两件不同的事:
+         *
+         *  · `z` —— 读的是**排出来的 computed style**(不是样式表源文本):全屏那一层
+         *    必须严格大于最上面那扇浮窗。反证:把 `--z-full` 改回「盖」那一档
+         *    (100 < --z-float 200)→ 这一条当场红,而上面那几条(焦点 / inert /
+         *    搬家)一条都不会红 —— 它是层序唯一的守卫;
+         *  · `hit` —— 在那扇浮窗的正中取一点问「这一点上是谁」。它量的**不是 z**
+         *    (第一版以为是,拿它当层序的判据,把 `--z-full` 改成 100 照样绿):
+         *    被盖住的浮窗此刻带着 `inert`,而 Chromium 的 inert 子树不参与命中测试,
+         *    所以这一条真正守住的是「看不见的那一层连指针都摸不到」。两条都要。
+         */
+        const onTop = floatBox
+          ? await page.evaluate((pt) => {
+            const el = document.elementFromPoint(pt.x, pt.y)
+            const layer = document.querySelector('[data-testid="full-layer"]')
+            const win = document.querySelector('[data-float-body]')?.closest('section') ?? null
+            const zOf = (node) => {
+              const raw = node ? getComputedStyle(node).zIndex : 'auto'
+              const n = Number.parseInt(raw, 10)
+              return Number.isFinite(n) ? n : null
+            }
+            return {
+              inLayer: Boolean(layer && el instanceof Node && layer.contains(el)),
+              who: el?.getAttribute?.('data-testid')
+                ?? el?.closest?.('[data-testid]')?.getAttribute('data-testid')
+                ?? el?.tagName
+                ?? null,
+              fullZ: zOf(layer),
+              floatZ: zOf(win),
+            }
+          }, floatBox)
+          : null
+
+        assert(inFull.layer, '① ⌘⇧↩ 把全屏层开出来了')
+        assert(inFull.focusInLayer, '① 键盘进了全屏层(§3.5 规则 2)')
+        assert(
+          inFull.tabInSlot && inFull.bodyEmpty === true,
+          '② 那一格内容搬进了 [data-full-slot],叶自己的身子留空',
+          `(在 slot 里:${inFull.tabInSlot} / 身子空了:${inFull.bodyEmpty})`,
+        )
+        assert(
+          inFull.leaves >= 1 && inFull.inertLeaves === inFull.leaves - 1,
+          '③ 其余的叶 inert,装着它的那一片留活口(非 inert 的恰好一片)',
+          `(${inFull.inertLeaves}/${inFull.leaves} 片 inert)`,
+        )
+        assert(
+          inFull.shelvesInert,
+          '③ 架子也 inert(键盘不会漏进看不见的面)',
+          `(在场 ${inFull.shelfCount} 条)`,
+        )
+        if (!onTop) {
+          skip('③ 全屏压得过浮窗', floatUp ? '量不到那扇浮窗的矩形' : 'Dock 菜单里没有「浮窗」那一项')
+        } else {
+          assert(
+            onTop.fullZ !== null && onTop.floatZ !== null && onTop.fullZ > onTop.floatZ,
+            '③ **它压得过浮窗**:全屏层排出来的 z 严格大于最上面那扇浮窗的 z',
+            `(全屏 ${onTop.fullZ ?? '—'} vs 浮窗 ${onTop.floatZ ?? '—'})`,
+          )
+          assert(
+            onTop.inLayer,
+            '③ 被盖住的浮窗连指针都摸不到(inert 子树不参与命中测试)',
+            `(浮窗正中那一点上是 ${onTop.who ?? '—'})`,
+          )
+        }
+        await assertNoOrphan(page, '进全屏之后')
+
+        // ④ Esc 退出 —— 退层链第一站就是它。
+        await page.keyboard.press('Escape')
+        await delay(600)
+        const back = await page.evaluate((tabId) => {
+          const tab = document.querySelector(`[data-pane-tab="${tabId}"]`)
+          const centerBody = document.querySelector('[data-pane-region="center"] [data-pane-body]')
+          const active = document.activeElement
+          return {
+            layerGone: !document.querySelector('[data-testid="full-layer"]'),
+            backInBody: Boolean(centerBody && tab && centerBody.contains(tab)),
+            focusBack: Boolean(tab && active instanceof Node && tab.contains(active)),
+            where: active?.getAttribute?.('data-testid') ?? active?.tagName ?? null,
+          }
+        }, liveTab)
+        assert(back.layerGone, '④ Esc 退出全屏')
+        assert(back.backInBody, '④ 内容回到原叶那一格身子里(同一个 DOM 节点搬回去)')
+        assert(
+          back.focusBack,
+          '④ 键盘回到原叶原 tab(§3.5 规则 5)',
+          `(此刻在 [${back.where ?? '—'}])`,
+        )
+        await assertNoOrphan(page, '退出全屏之后')
+
+        // 收拾:那扇浮窗是这一步自己开的,退层链再按一下把它收回去。
+        if (floatUp) {
+          await page.keyboard.press('Escape')
+          await delay(400)
+        }
+      }
+    }
+
     /* ── 场景 4:对话框里开菜单 ──────────────────────────────────────── */
     scenario('对话框里开菜单 → Esc 只关菜单 → 再 Esc 关对话框 → 焦点回触发钮')
     await page.goto(shellUrl('gallery'))
@@ -951,7 +1143,8 @@ async function main() {
     for (const [key, labelRe] of [
       ['float-layer', /浮窗|Float/],
       ['stage-layer', /弹出|Popup/],
-      ['cover-layer', /盖|Cover/],
+      // W2:「盖」退役,`full-layer` 顶上(菜单那一行也从「盖满」改成「全屏」)。
+      ['full-layer', /^(全屏|Full screen)$/],
     ]) {
       const picked = await openAsFromDockMenu(page, 'files', labelRe)
       if (!picked) {
@@ -965,6 +1158,13 @@ async function main() {
 
     // shelf-layer 那一格在场景 3 里验(层是按需挂载的,只能在它在场的那一刻问)。
     console.log('  · shelf-layer:见场景 3 最后一条')
+
+    /*
+     * 上面那一轮最后停在**全屏**上(W2)。它铺满整扇窗,后面每一条都要先把它退掉
+     * —— 不退的话下一步点什么都点在盖住的那一层上。退层链第一站就是它。
+     */
+    await page.keyboard.press('Escape')
+    await delay(400)
 
     /*
      * **叶**(W1)。它不是 Placement 宿主层,是一格 `region` —— 但它与那四层同样
@@ -1112,7 +1312,7 @@ async function main() {
         const el = document.activeElement
         const layer = el?.closest?.(
           '[data-focus-scope="stage-layer"],[data-focus-scope="float-layer"],'
-            + '[data-focus-scope="shelf-layer"],[data-focus-scope="cover-layer"]',
+            + '[data-focus-scope="shelf-layer"],[data-focus-scope="full-layer"]',
         )
         /*
          * W4:装着这块面的那一格 tab 层在**层根里面**(shelf-layer → leaf → tab 层),
@@ -1896,7 +2096,8 @@ async function main() {
     const MEMORY_FORMS = [
       { key: 'stage', label: '弹窗(舞台)', menu: /^(Popup|弹窗)$/ },
       { key: 'float', label: '浮窗', menu: /^(Float|浮窗)$/ },
-      { key: 'cover', label: '盖满', menu: /^(Cover|盖满)$/ },
+      // W2:「盖满」那一行改成「全屏」——记忆里那一档同步换名(persist v10 迁的就是它)。
+      { key: 'full', label: '全屏', menu: /^(Full screen|全屏)$/ },
       { key: 'edge', label: '钉右边', menu: /^(Right|右边)$/ },
       /*
        * **钉左边只在 strict 档量**(09-04 S4)。用户 09-04 报的那一形原话是

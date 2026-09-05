@@ -117,6 +117,12 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
   'toc.toggle': { meta: true, shift: true, key: 'o' },
   'agent.menu': { meta: true, key: 'j' },
   'session.new': { meta: true, key: 'n' },
+  /*
+   * 真全屏(W2 / 拍点 ④,09-04 用户已拍 `⌘⇧↩`)。**全表零冲突**:出厂表里带 shift
+   * 的只有 `⌘⇧O`(目录)与 `⌘⇧W`(工作区面板),回车这个位子没有第二个人占。
+   * 不取 `⌘⇧F` 的理由写在设计 §4.5 上:它与「在文件中查找」的通用习惯撞。
+   */
+  'workbench.toggleFull': { meta: true, shift: true, key: 'enter' },
   'workspace.palette': { meta: true, shift: true, key: 'w' },
   [workspaceSlotCommandId(1)]: { meta: true, key: '1' },
   [workspaceSlotCommandId(2)]: { meta: true, key: '2' },
@@ -168,6 +174,13 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
   { id: 'agent.menu', labelKey: 'agent.menuLabel', defaultCombo: DEFAULT_COMBOS['agent.menu'] ?? null },
   // 新建会话(D1 开工批)。它不开面,它**做一件事** —— 这一族里的第一条。
   { id: 'session.new', labelKey: 'session.new', defaultCombo: DEFAULT_COMBOS['session.new'] ?? null },
+  /*
+   * 真全屏(W2)。它是**全局档**而不是叶的局部键:按下去时焦点可能在任何地方
+   * (侧栏、输入框、总览),而它要的目标是「焦点叶的活动 tab」—— 那是 store 答得出
+   * 的一句话,不需要键盘落在那片叶里。判据即三层立法那一条:需不需要一个**由焦点
+   * 决定的目标**,而不是「有没有目标」。
+   */
+  { id: 'workbench.toggleFull', labelKey: 'keymap.toggleFull', defaultCombo: DEFAULT_COMBOS['workbench.toggleFull'] ?? null },
 ]
 
 export const initialKeymapState: KeymapState = { overrides: {} }

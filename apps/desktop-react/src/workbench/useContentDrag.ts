@@ -66,6 +66,18 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
 
   const onStart = useCallback(
     () => {
+      /*
+       * **全屏铺着的时候一下都不许起拖**(W2×W3 合树接缝 a)。
+       *
+       * 判据不是「好看」而是结构:落点的那份几何量的是**底下那棵树**
+       * (`measureDropGeometry`),而全屏层此刻正盖着它 —— 被盖的叶带 `inert`、
+       * 顶栏与四条架子全在层底下。真让它起拖,高亮会画在一块用户根本看不见的
+       * 矩形上,而 FullLayer 的檐带上也没有任何一件是可拖的。所以这一下当场
+       * 作废,与「`ref()` 答 null」逐字同一条路(整场不成立,不是中途取消)。
+       *
+       * 读 store 一格、不订阅:起拖是个事件,不是渲染。
+       */
+      if (useWorkbenchStore.getState().full !== null) return null
       const ref = specRef.current.ref()
       if (!ref) return null
       const held: DragHeld = {

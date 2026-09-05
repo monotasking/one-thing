@@ -119,6 +119,13 @@ registerContentKind(
     resident: { region: CENTER_REGION, key: 'main' },
     regions: [CENTER_REGION],
     /*
+     * **本批(W2)聊天进不了全屏**,而且这是一条会被撤掉的临时限制:
+     * 输入框(`.composerDock`)今天挂在外壳的 `.center` 上、不在这棵树里,
+     * 聊天叶铺满窗子会把它整条盖掉 —— 人就没法打字了。W5 把 composer 归给
+     * 焦点所在的 chat 叶之后删掉这一行。判词全文写在 `ContentKind.fullable` 上。
+     */
+    fullable: false,
+    /*
      * **静态那一半**:还不知道是哪条会话时的名字(冷启动的头几帧、以及没有当前
      * 会话时)。活的那一半由 `ChatIdentity` 发布进 `stage/live-title`,活的盖静的。
      * 读的是当下语言 —— 檐自己 `useT()` 订着 locale,切语言会重渲 tab 条,

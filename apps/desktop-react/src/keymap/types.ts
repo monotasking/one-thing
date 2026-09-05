@@ -79,6 +79,9 @@ export type CommandId =
   | 'session.new'
   | 'workspace.palette'
   | `workspace.slot:${number}`
+  /* 真全屏(W2)。它不呼出任何一块面,它**对焦点叶的活动 tab 做一件事** ——
+   * 与 `session.new` 同一族。落点在 `workbench.toggleFull`。 */
+  | 'workbench.toggleFull'
 
 export interface KeymapCommand {
   id: CommandId

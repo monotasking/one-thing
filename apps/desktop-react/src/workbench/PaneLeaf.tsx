@@ -1,7 +1,9 @@
-import { memo, useCallback, useMemo, useRef } from 'react'
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
+import { useFullSlot } from './full-slot'
 import { refId } from './kinds'
 import { LeafActions } from './LeafActions'
 import { LeafStrip } from './LeafStrip'
@@ -60,6 +62,25 @@ import s from './PaneLeaf.module.css'
  *   被悬停     顶栏上它那一组标签被悬停时,亮一圈 `--accent-soft`
  *              (判据由顶栏那一侧写进 `data-pane-hint`,理由写在那只组件上)
  *   分隔杆     随 `ui/Splitter`(在 `PaneTree` 上,不在这里)
+ *   被全屏盖住  `inert`(DOM 与树各说一遍;判据 `store.occludedByFull`)——
+ *              全屏开着时,除了**装着那一格的这一片**,别的叶都不接键盘
+ *
+ * ── 真全屏:身子搬家,内容一次都不重挂(W2,设计 §4.1)───────────────────
+ * 全屏是**投影**不是搬家:树一个字不动,只是这片叶的身子暂时挂到全屏层那格
+ * `data-full-slot` 里去。要做到「零重挂」只有一条路,而它有实测背书:
+ *
+ *   · 把身子在「本地 JSX」与「portal」之间切 —— **重挂**(fiber 类型换了);
+ *   · 换 `createPortal` 的第二个参数 —— **也重挂**(React 19 `updatePortal` 比对
+ *     `containerInfo`,不同就新建 fiber);
+ *   · 叶自己持有一格**身份恒定的 holder**(一个 `<div>`,`display: contents`),
+ *     永远 portal 进它,搬家搬的是 holder 这个 DOM 节点 —— **同一个节点**,
+ *     React 那一侧一格都没动。三种写法在 React 19.2 上各跑过一次,读数依次是
+ *     重挂 / 重挂 / **不重挂**。
+ *
+ * holder **首次挂进身子那一格是在 ref 回调里**,而不是 layout effect:
+ * 内容的 layout effect 排在这只组件之前(子先父后),layout effect 里挂的话
+ * 首挂那一帧内容量到的是一个游离节点(高度恒 0)。ref 回调排在渲染 portal 之前
+ * 那一次提交里,于是内容永远在**已经进文档**的容器里挂载。
  */
 
 /**
@@ -107,6 +128,70 @@ export const PaneLeaf = memo(function PaneLeaf({
   /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
   const stripInLeaf = region !== CENTER_REGION
 
+  /*
+   * ── 全屏那三个读数(W2)──────────────────────────────────────────────
+   * 订的都是**标量**,不是整张表:全屏开合是全局事件,而它只该让「装着它的那一片」
+   * 与「被盖住的那些片」各重渲一次,不该把每一片叶都拴上一个对象订阅
+   * (与上面那句 `regionOfLeafIn` 只选一个字符串同一条判据)。
+   */
+  const fullId = useWorkbenchStore((st) => (st.full ? refId(st.full.ref) : null))
+  /** 这一片就是持有全屏那一格的那一片(它的活动 tab 正是那一格)。 */
+  const mine = fullId !== null && active !== null && refId(active) === fullId
+  /** 全屏开着,而不是我 → 被盖住:`inert`(DOM 与树各说一遍,判词在 `PaneTabLayer` 上)。 */
+  const occluded = fullId !== null && !mine
+  const slot = useFullSlot((st) => st.slot)
+
+  /*
+   * 身份恒定的 holder(见文件头那一段)。`useState` 的惰性初始化只跑一次,
+   * 造一个游离的 `<div>` 是纯分配 —— 它此刻还不在任何文档里。
+   */
+  const [holder] = useState(() => {
+    const el = document.createElement('div')
+    el.className = s.holder
+    el.setAttribute('data-pane-holder', '')
+    return el
+  })
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * 身子那一格的 ref。**holder 在这里就挂进去**(而不是等 layout effect)。
+   *
+   * 这一句能成立,靠的是**次序**:React 的提交阶段按子树顺序走,而下面那棵 JSX 里
+   * `.body` 排在 portal **前面** —— 于是 `.body` 的 ref 回调先跑(它没有孩子),
+   * portal 里那些内容的 layout effect 后跑。内容因此永远在一个**已经进了文档**的
+   * 容器里挂载,不会量到一个游离节点的 0 高度。
+   *
+   * (第一版把 portal 写在 `.body` **里面**、并用一格 state 等 ref 到位才渲染 ——
+   *  那样内容晚一次提交才挂,而跟焦那条 effect 排在两次提交之间:
+   *  `keymap/dispatch.test` 的两条「从 Dock 开一块面 → 焦点进那块面」当场红。
+   *  次序是判据,不是巧合。)
+   */
+  const mountBody = useCallback(
+    (el: HTMLDivElement | null) => {
+      bodyRef.current = el
+      if (el && holder.parentNode === null) el.appendChild(holder)
+    },
+    [holder],
+  )
+
+  /**
+   * 搬家:全屏开着且是我 → 挂进全屏层那格空容器;否则回自己身上。
+   * `appendChild` 是**移动**不是复制,所以前后是同一个 DOM 节点(`gate:files` 钉着)。
+   */
+  const toSlot = mine && slot !== null
+  useLayoutEffect(() => {
+    const target = toSlot ? slot : bodyRef.current
+    if (!target) return
+    if (holder.parentNode !== target) target.appendChild(holder)
+  }, [holder, slot, toSlot])
+
+  /*
+   * 卸载时把 holder 摘掉。**只有搬去全屏层那一路真的需要它**:留在自己身上那一路
+   * 由 React 拆掉身子时一并带走。不写这一口的话,叶在全屏期间被剪掉(整栏关闭)
+   * 会在全屏层里留下一个谁都够不着的空容器。
+   */
+  useLayoutEffect(() => () => holder.remove(), [holder])
+
   /**
    * ⌘W:关当前 tab。表在 `focus/scopes.ts` 的 `FOCUS_SCOPES.leaf.keys`。
    *
@@ -126,13 +211,15 @@ export const PaneLeaf = memo(function PaneLeaf({
      * 那一格 tab 的层,一直走到内容自己那一格。判词全文在
      * `FocusScopeSpec.passThrough` 上。
      */
-    <FocusScope scope="leaf" owner={leaf.id} rootRef={rootRef} keyHandlers={leafKeys}>
+    <FocusScope scope="leaf" owner={leaf.id} rootRef={rootRef} keyHandlers={leafKeys} inert={occluded}>
       {({ scopeProps }) => (
         <div
           {...scopeProps}
           className={s.leaf}
           data-pane-leaf={leaf.id}
           data-pane-focus={focusLeafId === leaf.id || undefined}
+          /* 被全屏盖住的那些片:`inert` 说两遍(这一遍给 DOM,树那一遍在上面)。 */
+          inert={occluded || undefined}
           /*
            * 点这片叶的任何地方 = 它成为焦点叶(「新标签开在哪一片」的答案)。
            * 用 `onPointerDownCapture` 而不是 click:分屏菜单那颗钮按下去时就该
@@ -146,12 +233,21 @@ export const PaneLeaf = memo(function PaneLeaf({
             身 = 这片叶里**每一个** tab 的内容(keep-alive,与架子同一条判据):
             切 tab 只换哪一层显形,不卸载谁 —— 重面板(会话总览那 400 张卡)
             不必每次切回都重建,查看器的滚动位与草稿也不会因为切走一格就没了。
+
+            那几层住在 holder 里(`display: contents`,零盒子),holder 挂在这一格
+            身子里;全屏期间它整块搬去全屏层 —— 判词与三条实测读数写在文件头。
+
+            **portal 写在 `.body` 的后面而不是里面**:提交阶段按子树顺序走,
+            `.body` 的 ref 回调(它把 holder 挂进文档)因此排在内容的 layout effect
+            之前。次序是判据,不是巧合 —— 理由写在 `mountBody` 上。
           */}
-          <div className={s.body} data-pane-body={leaf.id}>
-            {leaf.tabs.map((ref, index) => (
+          <div className={s.body} data-pane-body={leaf.id} ref={mountBody} />
+          {createPortal(
+            leaf.tabs.map((ref, index) => (
               <PaneTabLayer key={refId(ref)} tabRef={ref} on={index === leaf.active} />
-            ))}
-          </div>
+            )),
+            holder,
+          )}
         </div>
       )}
     </FocusScope>

@@ -54,6 +54,30 @@ export interface HiddenEntry {
   returnTo: PaneLocation
 }
 
+/**
+ * **真全屏那一格瞬态**(W2,设计 §1.3 / §4.1)。
+ *
+ * 「这一块内容铺满整扇窗口」。它**不是一种落点**:树一个字没动,那一格 tab 仍旧
+ * 住在它原来那片叶里,全屏只是把它**投影**到最上面那一层(`components/FullLayer`)。
+ * 所以退出是零成本的 —— 没有「搬回去」这回事,只是不再投影。
+ *
+ * `from` 是**这一次是从哪儿进来的**:
+ *  · 那一格住在某棵树里(文件 / 钉在架子上的瓦…)→ 它当时的位置。退出即回原位,
+ *    而「回原位」本身不需要动作:它从来没离开过。这一格是给**焦点归还**用的
+ *    (退出时把键盘送回原叶原 tab),不是给搬家用的;
+ *  · **哪棵树都不在** → `null`。今天唯一的产地是「打开方式 = 全屏」的那些瓦
+ *    (`stage/placement.placeAs` 的 full 那一支先把它从每棵树里摘干净),
+ *    于是退出全屏 = 它回到 Dock(投影缺席即 dock)。这一路 `FullLayer` 自己画内容
+ *    ——没有任何一片叶持有它,判词写在那只组件上。
+ */
+export interface FullState {
+  ref: ContentRef
+  from: PaneLocation | null
+}
+
+/** `toggleFull` 这一下做了什么。UI 那一层据此决定要不要说话(拒绝那一档要出提示)。 */
+export type ToggleFullResult = 'entered' | 'exited' | 'refused' | 'none'
+
 /** 跟着工作区走的那一份(T0 拍点 3:树按 Workspace 记)。 */
 export interface WorkbenchFurniture {
   /**
@@ -90,6 +114,15 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    * 而「高亮说的和松手做的不是一件事」是不可接受的。
    */
   dragging: boolean
+  /**
+   * 铺满整扇窗的那一格(W2)。**瞬态**:不落盘、不进 per-space 的 `pick`、
+   * 换空间清零(接线在 `workspace/layout-scope.ts`)。
+   *
+   * 它与 `focusLeafId` / `panelPath` 同一条判据 —— 它是「此刻在看什么」,
+   * 不是「用户摆好的东西」。全屏跨重启不恢复是有意的:一台重开的机器该先给你
+   * 看见它的全貌。
+   */
+  full: FullState | null
 
   /** 出厂播种 + 洗一遍存量。幂等,由 `startWorkbench()` 调。 */
   seed(): void
@@ -150,6 +183,32 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    * 会把它读成「关掉了一格」。
    */
   moveRefIntoLeaf(ref: ContentRef, leafId: string, opts?: { at?: number }): void
+  /**
+   * **进全屏**(W2)。`from` 缺席读作「问树」—— 它此刻在哪棵树的哪一格,
+   * 就记哪一格;哪棵树都不在就是 `null`(那一路由 `FullLayer` 自己画)。
+   *
+   * 这一种自述 `fullable: false`(今天只有 chat)时是**空动作**:拒绝那一句话
+   * 由 `toggleFull` 说,因为只有它是用户按键的落点 —— 而这一口还有别的调用方
+   * (Dock 的「打开方式 = 全屏」),对它们「静默不做」才是对的。
+   */
+  enterFull(ref: ContentRef, from?: PaneLocation | null): void
+  /** 退全屏。没开着是空动作(引用恒等,不惊动订阅者)。 */
+  exitFull(): void
+  /**
+   * **正铺着全屏就收起来**(W2×W3 合树接缝 b)。答「刚才真收了没有」。
+   *
+   * 它是「收全屏」这句话的**唯一产地**:三处调用方各有各的判据,但收这个动作
+   * 只此一份 —— Dock 上再点一下那块正铺满的瓦(`stage/store.clickDockIcon`)、
+   * 召唤四态的第四格(`summonItem`),以及**拖拽落定**(`drop-commit.dropRef`)。
+   * 前两处先问「是不是这一块」再收(那是 toggle);落定不问是哪一块 —— 树在
+   * 全屏底下变了形,再让那层盖着就是「用户看不见自己刚做的事」。
+   */
+  exitFullIfOpen(): boolean
+  /**
+   * ⌘⇧↩ 的落点:**焦点叶的活动 tab** 进 / 出全屏。
+   * 已经开着 = 退出(同一个键再按一次收回去);那一格不许全屏 = `'refused'`。
+   */
+  toggleFull(): ToggleFullResult
   openInPanel(path: string): void
   closePanel(): void
   /** 只给测试:用例之间归零。 */
@@ -293,6 +352,61 @@ export function openStateOf(
   return null
 }
 
+/* ── 全屏那一格的三条纯判据(W2)────────────────────────────────────────── */
+
+/**
+ * 这一格**进不进得了全屏**。判据是**种类自述**(`ContentKind.fullable`),
+ * 不是核心层按名字点人 —— 与 `canDetachTab` 问 `resident` 同一条法。
+ * 认不得的种类当**进不了**:说不出自己是谁的东西不该铺满整扇窗。
+ */
+export function canGoFull(ref: ContentRef): boolean {
+  const kind = contentKindOf(ref.kind)
+  return kind !== undefined && kind.fullable !== false
+}
+
+/**
+ * 全屏那一格**此刻在哪个区域**(哪棵树都不在 = null,那是「从 Dock 进来的」那一路)。
+ * 三个消费者共用它:哪片叶去投影、哪些宿主层该 `inert`、以及下面那条站得住判据。
+ */
+export function fullRegionOf(
+  state: Pick<WorkbenchState, 'regions' | 'full'>,
+): RegionId | null {
+  if (!state.full) return null
+  return regionOfRefIn(state.regions, refId(state.full.ref))
+}
+
+/**
+ * **这一层此刻被全屏盖住了吗**(W2)。宿主层(架子 / 浮窗 / 舞台)与每一片叶
+ * 都问这一句,答 true 就 `inert`(DOM 与树各说一遍)。
+ *
+ * 判据一句话:**全屏开着,而装着它的不是这个区域**。装着它的那个区域要留活口
+ * —— 它那片叶正是把内容投影上去的那一片,内容的 DOM 就住在全屏层里。
+ * `region === null`(问的是舞台这种没有区域的宿主)在全屏期间一律盖住。
+ */
+export function occludedByFull(
+  state: Pick<WorkbenchState, 'regions' | 'full'>,
+  region: RegionId | null,
+): boolean {
+  if (!state.full) return false
+  return region === null || fullRegionOf(state) !== region
+}
+
+/**
+ * 全屏那一格**还站不站得住**:它原来住在树里(`from !== null`),而那一格已经
+ * 被关掉 / 藏起来 / 整区收掉了 —— 此刻没有任何一片叶能把它投影上去,全屏层就会
+ * 变成一块空白。所以那一刻当场退出。
+ *
+ * `from === null` 那一路天生站得住:它本来就不在任何树里,由全屏层自己画。
+ */
+export function fullStillStands(
+  full: FullState | null,
+  regions: Record<string, PaneNode>,
+): boolean {
+  if (!full) return true
+  if (full.from === null) return true
+  return regionOfRefIn(regions, refId(full.ref)) !== null
+}
+
 /* ── store ────────────────────────────────────────────────────────────── */
 
 export const useWorkbenchStore = create<WorkbenchState>()(
@@ -316,7 +430,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const regions = { ...s.regions }
           if (pruned) regions[region] = pruned
           else delete regions[region]
-          return { regions: normalizeRegions(regions) }
+          const clean = normalizeRegions(regions)
+          return { regions: clean, ...fullPatch(s, clean) }
         })
       }
 
@@ -326,6 +441,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         focusLeafId: null,
         panelPath: null,
         dragging: false,
+        full: null,
 
         seed: () =>
           set((s) => ({ regions: normalizeRegions(s.regions), hidden: normalizeHidden(s.hidden) })),
@@ -392,7 +508,8 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           if (frozen()) return
           const s = get()
           if (!regionOfRefIn(s.regions, id)) return
-          set({ regions: withoutRef(s.regions, id) })
+          const regions = withoutRef(s.regions, id)
+          set({ regions, ...fullPatch(s, regions) })
         },
 
         hideRegion: (region) => {
@@ -415,9 +532,11 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const fresh = new Set(entries.map((entry) => refId(entry.ref)))
           const regions = { ...s.regions }
           delete regions[region]
+          const pruned = pruneRegions(regions)
           set({
             hidden: [...s.hidden.filter((entry) => !fresh.has(refId(entry.ref))), ...entries],
-            regions: pruneRegions(regions),
+            regions: pruned,
+            ...fullPatch(s, pruned),
           })
         },
 
@@ -563,6 +682,56 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           })
         },
 
+        enterFull: (ref, from) => {
+          const s = get()
+          if (!canGoFull(ref)) return
+          /*
+           * `from` 缺席 = **问树**:它此刻在哪一格,退出时焦点就送回哪一格。
+           * 递了 `null` 进来 = 调用方明说「它不在任何树里」(Dock 那条路)。
+           */
+          const at = from === undefined ? locateRefIn(s.regions, refId(ref)) : from
+          if (s.full && refId(s.full.ref) === refId(ref) && s.full.from === at) return
+          set({ full: { ref, from: at } })
+        },
+
+        exitFull: () => set((s) => (s.full === null ? s : { full: null })),
+
+        exitFullIfOpen: () => {
+          if (get().full === null) return false
+          set({ full: null })
+          return true
+        },
+
+        toggleFull: () => {
+          const s = get()
+          // 开着就退 —— **同一个键再按一次收回去**(设计 §4.1 那张表最后一行)。
+          if (s.full) {
+            set({ full: null })
+            return 'exited'
+          }
+          /*
+           * 进:取**焦点叶的活动 tab**。焦点叶就是「新标签开在哪一片」的那一格,
+           * 所以「⌘⇧↩ 把哪一块铺满」与「⌘T 在哪儿开新的」问的是同一个答案 ——
+           * 用户不必学两套心智。焦点叶所在的区域由 `regionOfLeafIn` 反查(它可能
+           * 在中央、在架子、在浮窗里,三处一视同仁)。
+           */
+          const region = s.focusLeafId ? regionOfLeafIn(s.regions, s.focusLeafId) : CENTER_REGION
+          const tree = s.regions[region ?? CENTER_REGION]
+          if (!tree) return 'none'
+          const leaf = focusLeafOf(tree, s.focusLeafId)
+          const ref = leaf.tabs[leaf.active]
+          if (!ref) return 'none'
+          // 这一种自述进不了全屏(今天只有 chat)→ **结构化拒绝**,不静默。
+          if (!canGoFull(ref)) return 'refused'
+          set({
+            full: {
+              ref,
+              from: { region: region ?? CENTER_REGION, leafId: leaf.id, index: leaf.active },
+            },
+          })
+          return 'entered'
+        },
+
         openInPanel: (path) => set({ panelPath: path }),
         closePanel: () => set({ panelPath: null }),
 
@@ -573,6 +742,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
             focusLeafId: null,
             panelPath: null,
             dragging: false,
+            full: null,
           }),
       }
     },
@@ -600,6 +770,7 @@ export const useWorkbenchStore = create<WorkbenchState>()(
         merged.focusLeafId = null
         merged.panelPath = null
         merged.dragging = false
+        merged.full = null
         return merged
       },
       partialize: (s) => ({ byWorkspace: stashSpace(s, s.byWorkspace, WORKBENCH_PER_SPACE) }),
@@ -609,6 +780,32 @@ export const useWorkbenchStore = create<WorkbenchState>()(
 
 /** 这片叶住在哪个区域。 */
 const regionOfLeaf = regionOfLeafIn
+
+/** 这个 refId 此刻在哪一格(区域 + 叶 + 叶内下标)。哪棵树都不在 = null。 */
+function locateRefIn(
+  regions: Record<string, PaneNode>,
+  id: ContentRefId,
+): PaneLocation | null {
+  for (const [region, tree] of Object.entries(regions)) {
+    const at = T.locateRef(tree, region as RegionId, id)
+    if (at) return at
+  }
+  return null
+}
+
+/**
+ * **树动过之后,全屏那一格还站得住吗**(W2)。站得住就交回空补丁(一格不写,
+ * 引用恒等照旧);站不住就当场清零。
+ *
+ * 它套在**每一条会让内容离开树的路**上(关 / 藏 / 整区隐藏 / 摘掉),而不是让
+ * 全屏层自己去发现「我要投影的那一格没了」——那时屏幕上已经是一块空白了。
+ */
+function fullPatch(
+  s: Pick<WorkbenchState, 'full'>,
+  regions: Record<string, PaneNode>,
+): { full?: null } {
+  return fullStillStands(s.full, regions) ? {} : { full: null }
+}
 
 /**
  * 剪一遍每棵树:空叶剪掉、空区域整格删掉,中央区**永远留一棵**(设计 §1.3)。

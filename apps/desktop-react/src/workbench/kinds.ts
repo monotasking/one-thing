@@ -99,6 +99,19 @@ export interface ContentKind {
   dispose?(ref: ContentRef): void
   /** 这一种可以开在哪些区域。缺席 = 都可以。 */
   regions?: readonly RegionId[]
+  /**
+   * 这一种**进不进得了全屏**(W2)。缺席 = 进得了。
+   *
+   * 判据照旧是**种类自述**,不是核心层按名字点人:`workbench/store` 的
+   * `toggleFull` 只问这一格,`full.*` 那条拒绝提示也只说「这一种不支持」。
+   *
+   * ── 今天唯一说 false 的是 `chat`,而且是**临时的**(W5 撤)────────────
+   * 输入框(`.composerDock`)此刻挂在外壳的 `.center` 上、**不在树里**
+   * (判词写在 `AppShell` 那一段上):聊天叶进全屏会把它盖掉,人就没法打字了。
+   * 这是一条**可感知的限制**,不是设计终态 —— W5「会话多开」把 composer 归给
+   * 焦点所在的那片 chat 叶之后,这一格就该删。
+   */
+  fullable?: boolean
 }
 
 /** Vite 的 `import.meta.hot` 里这一批只用得到 `dispose` 一口(照 `content/blocks/registry` 的形)。 */

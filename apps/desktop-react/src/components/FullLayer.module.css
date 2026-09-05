@@ -1,0 +1,84 @@
+/* ── 真全屏(W2,设计 §4)───────────────────────────────────────────────────
+ * 铺满**整扇窗**,所以是 fixed(参考系 = 视口)而不是 absolute —— 挂载点也在壳的
+ * 根上,两者是同一件事的两半(只改一半会得到「fixed 但被祖先的 transform 困住」
+ * 这类最难查的一格)。
+ *
+ * 层序判词全文在 `styles/tokens.css` 的 `--z-full` 上:550 压得过浮窗(200)与
+ * overlay(500),压不过 modal(600);Dock(650)不靠 z 压,靠**状态**
+ * (`AppShell` 的 `effectiveDockDisplay` 在全屏期间把它换成自动隐藏档)。
+ *
+ * 底**不透明**:全屏的意思是「窗内只剩它」,透出后面那些面来就等于没全屏。
+ * Dock 的让位条(`data-dock-reserve`)因此也看不见 —— 那一格属性在全屏期间
+ * **一个字不动**(底下那棵树零重排),白边由这一层盖住。
+ *
+ * 两层面照 `EdgeShelf` 那一份:壳是 `--surface-1`(檐带坐在上面),内容底是
+ * `--surface-2`(下面 `.body`)—— 与浮窗 / 舞台 / 架子三个宿主同一个语汇,
+ * 于是粘顶节头那条 `--surface-host` 在这里也只有一个正确的声明处。 */
+.full {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-full);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1);
+}
+
+/* ── 檐带:让位 + 身份 + 一颗退出钮(设计 §4.3)────────────────────────────
+ * `flex: none` + `--full-strip-h` 定高;**永不换行**(挤压纪律:结构行只截断
+ * 不换行 —— `flex-wrap` 缺省就是 nowrap,写出来是为了让这条纪律有个产地)。
+ * 一行里唯一吸剩余空间的件是 `.title`,所以只有它需要 min-width: 0 + 截断。 */
+.strip {
+  height: var(--full-strip-h);
+  flex: none;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-right: var(--sp-2);
+  border-bottom: 1px solid var(--line-1);
+  background: var(--surface-1);
+}
+
+/* 红绿灯让位。三档的定义在壳根(`AppShell.module.css`),这里**只消费** ——
+ * 与 `TopBar` 读的是同一个变量,所以两条带子的左缘永远对齐。
+ * `align-self: stretch` 与顶栏那块 `.traffic` 同一个理由:让位是一块**面积**。 */
+.lead {
+  width: var(--topbar-lead);
+  flex: none;
+  align-self: stretch;
+}
+
+.icon {
+  width: var(--fs-body);
+  height: var(--fs-body);
+  color: var(--text-2);
+  flex: none;
+}
+
+/* 律一:一行里唯一吸剩余空间的件 → min-width: 0 + 截断策略两句都要有。
+ * 少了它,长文件名会撑着不缩、把右端那颗退出钮挤出框外(gate:squeeze 钉着)。 */
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-1);
+}
+
+/* 身 = 那一格内容的落点。`position: relative` 是**投影进来的那几层的参考系**:
+ * 叶的 holder 是 `display: contents`(零盒子),所以里面那些 `.layer`
+ * (absolute / inset: 0)量的是这一格 —— 与它们待在叶的 `.body` 里时逐字同型。
+ *
+ * `--surface-host` 声明在**真正给内容铺底的这一格**上(09-04 判例:边架把它
+ * 声明在 surface-1 的外壳上,而内容底是 surface-2,粘顶节头就成了一块异色)。 */
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface-2);
+  --surface-host: var(--surface-2);
+}

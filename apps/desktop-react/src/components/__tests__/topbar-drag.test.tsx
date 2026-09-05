@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { render, screen } from '@testing-library/react'
 import { TopBar } from '../TopBar'
+import { AppShell } from '../AppShell'
 
 /**
  * 顶栏**兼作窗口顶带**(09-01 用户看真机后的裁定:「header 与红绿灯放同一行,
@@ -20,10 +21,21 @@ import { TopBar } from '../TopBar'
  *  ③ **逐件 no-drag**:这条带上每一件可点的东西都要自己声明,漏一件的表现是
  *     「点它变成拖窗」,且**静默**——没有报错、没有 lint、只有用户来报。
  *
- * 顺带钉住盖的两句:fixed + 让开一条顶栏(红绿灯不受 z-index 管,会压在面头上)。
+ * 顺带钉住全屏层那几句(W2:它顶替了「盖」)——fixed、不让顶栏(它自己有一条
+ * 28px 檐带)、以及 `--topbar-lead` 三档提到壳根之后「两条带子读同一个变量」。
  */
 
 const componentsDir = path.resolve(__dirname, '..')
+
+/**
+ * 壳根那一格(W2:红绿灯让位的两条判据从 `.bar` 提到了这里)。
+ * 取的是 `data-focus-scope="root"` —— 那是响应链的根,也就是 `.shell` 本身。
+ */
+const shellRoot = (): HTMLElement => {
+  const el = document.querySelector('[data-focus-scope="root"]')
+  if (!(el instanceof HTMLElement)) throw new Error('壳根没挂出来')
+  return el
+}
 /** 病历文本会让断言自红(本仓 CSS 注释里常引用写法),读源文本的门先剥注释。 */
 const cssCode = (name: string) =>
   readFileSync(path.join(componentsDir, name), 'utf-8').replace(/\/\*[\s\S]*?\*\//g, '')
@@ -103,39 +115,29 @@ describe('顶栏兼顶带:拖拽区', () => {
   })
 
   it('让位宽吃 token,不写字面 px(四轴·token 纪律)', () => {
-    const css = cssCode('TopBar.module.css')
-    // 宽度读的是带首那个单产地变量,而它的两档都由 token 给。
-    expect(block(css, '.traffic')).toMatch(/width:\s*var\(--topbar-lead\)/)
-    expect(block(css, '.bar')).toMatch(/--topbar-lead:\s*var\(--titlebar-traffic-w\)/)
-    expect(block(css, ".bar[data-fullscreen='true']")).toMatch(/--topbar-lead:\s*var\(--sp-4\)/)
+    /*
+     * ── W2:`--topbar-lead` 三档的产地提到了**壳根** ────────────────────────
+     * 它有了第二个消费者(全屏层那条 28px 檐带),而那一层挂在壳的根上、
+     * 根本不是 `.bar` 的后代 —— 定义留在 `.bar` 上它就读不到(宽度塌成 0)。
+     * 所以这一条从此**两头各问一句**:壳根定义、两条带子只消费。
+     */
+    expect(block(cssCode('TopBar.module.css'), '.traffic')).toMatch(
+      /width:\s*var\(--topbar-lead\)/,
+    )
+    expect(block(cssCode('FullLayer.module.css'), '.lead')).toMatch(
+      /width:\s*var\(--topbar-lead\)/,
+    )
+    const shellCss = cssCode('AppShell.module.css')
+    expect(block(shellCss, '.shell')).toMatch(/--topbar-lead:\s*var\(--titlebar-traffic-w\)/)
+    expect(block(shellCss, ".shell[data-host-fullscreen='true']")).toMatch(
+      /--topbar-lead:\s*var\(--sp-4\)/,
+    )
   })
 
   it('这台上没有灯(Windows / Linux / 浏览器壳)→ 让位归 0(W1-b,设计 §2.2)', () => {
-    const css = cssCode('TopBar.module.css')
-    expect(block(css, ".bar[data-traffic='none']")).toMatch(/--topbar-lead:\s*0px/)
-    // jsdom 里没有 `onethingHost` = 浏览器壳那一形:判据答「没有灯」。
-    render(<TopBar />)
-    expect(screen.getByTestId('topbar').getAttribute('data-traffic')).toBe('none')
-  })
-
-  it('宿主报 darwin → 有灯,让位是 80 那一档(判据问宿主,不猜 UA)', () => {
-    ;(window as unknown as { onethingHost?: unknown }).onethingHost = { platform: 'darwin' }
-    try {
-      render(<TopBar />)
-      expect(screen.getByTestId('topbar').hasAttribute('data-traffic')).toBe(false)
-    } finally {
-      delete (window as unknown as { onethingHost?: unknown }).onethingHost
-    }
-  })
-
-  it('宿主报 win32 → 系统边框,壳里没有灯', () => {
-    ;(window as unknown as { onethingHost?: unknown }).onethingHost = { platform: 'win32' }
-    try {
-      render(<TopBar />)
-      expect(screen.getByTestId('topbar').getAttribute('data-traffic')).toBe('none')
-    } finally {
-      delete (window as unknown as { onethingHost?: unknown }).onethingHost
-    }
+    expect(block(cssCode('AppShell.module.css'), ".shell[data-host-traffic='none']")).toMatch(
+      /--topbar-lead:\s*0px/,
+    )
   })
 
   it('让位块 flex: none —— 被压缩就等于标题盖到灯上', () => {
@@ -149,15 +151,37 @@ describe('顶栏兼顶带:拖拽区', () => {
   })
 })
 
-describe('让位跟着红绿灯走', () => {
-  it('宿主说不在全屏 → 不挂 data-fullscreen(让位是 80 那一档)', () => {
-    render(<TopBar />)
+describe('让位跟着红绿灯走(W2:那两格属性搬到了壳根)', () => {
+  it('宿主说不在全屏 → 壳根不挂 data-host-fullscreen(让位是 80 那一档)', () => {
+    render(<AppShell />)
     // jsdom 里没有 onethingHost,useHostFullScreen 诚实答 false —— 这正是
     // 「浏览器里没有原生全屏,也就没有会消失的灯」那一格。
-    expect(screen.getByTestId('topbar').hasAttribute('data-fullscreen')).toBe(false)
+    expect(shellRoot().hasAttribute('data-host-fullscreen')).toBe(false)
+    // 同一台上「有没有灯」是**另一格**判据:没有宿主 = 浏览器壳 = 没有灯。
+    expect(shellRoot().getAttribute('data-host-traffic')).toBe('none')
   })
 
-  it('宿主推来全屏 → 挂上 data-fullscreen(让位收到 --sp-4)', async () => {
+  it('宿主报 darwin → 有灯,让位是 80 那一档(判据问宿主,不猜 UA)', () => {
+    ;(window as unknown as { onethingHost?: unknown }).onethingHost = { platform: 'darwin' }
+    try {
+      render(<AppShell />)
+      expect(shellRoot().hasAttribute('data-host-traffic')).toBe(false)
+    } finally {
+      delete (window as unknown as { onethingHost?: unknown }).onethingHost
+    }
+  })
+
+  it('宿主报 win32 → 系统边框,壳里没有灯', () => {
+    ;(window as unknown as { onethingHost?: unknown }).onethingHost = { platform: 'win32' }
+    try {
+      render(<AppShell />)
+      expect(shellRoot().getAttribute('data-host-traffic')).toBe('none')
+    } finally {
+      delete (window as unknown as { onethingHost?: unknown }).onethingHost
+    }
+  })
+
+  it('宿主推来全屏 → 壳根挂上 data-host-fullscreen(让位收到 --sp-4)', async () => {
     const handlers: ((v: boolean) => void)[] = []
     ;(window as unknown as { onethingHost?: unknown }).onethingHost = {
       onFullScreenChange: (h: (v: boolean) => void) => {
@@ -166,13 +190,13 @@ describe('让位跟着红绿灯走', () => {
       },
     }
     try {
-      const { findByTestId } = render(<TopBar />)
+      render(<AppShell />)
       expect(handlers).toHaveLength(1)
       const { act } = await import('@testing-library/react')
       act(() => handlers[0](true))
-      expect((await findByTestId('topbar')).getAttribute('data-fullscreen')).toBe('true')
+      expect(shellRoot().getAttribute('data-host-fullscreen')).toBe('true')
       act(() => handlers[0](false))
-      expect((await findByTestId('topbar')).hasAttribute('data-fullscreen')).toBe(false)
+      expect(shellRoot().hasAttribute('data-host-fullscreen')).toBe(false)
     } finally {
       delete (window as unknown as { onethingHost?: unknown }).onethingHost
     }
@@ -185,24 +209,40 @@ describe('让位跟着红绿灯走', () => {
   })
 })
 
-describe('盖满整扇窗', () => {
-  it('盖是 fixed —— 参考系是视口,不是内容栏', () => {
-    expect(block(cssCode('CoverLayer.module.css'), '.cover')).toMatch(/position:\s*fixed/)
+describe('铺满整扇窗:真全屏(W2 —— 「盖」这一档已退役)', () => {
+  it('全屏层是 fixed —— 参考系是视口,不是内容栏', () => {
+    expect(block(cssCode('FullLayer.module.css'), '.full')).toMatch(/position:\s*fixed/)
   })
 
-  it('盖的底铺满,但面让开一条顶栏 —— 红绿灯不受 z-index 管,会压在面头上', () => {
-    const cover = block(cssCode('CoverLayer.module.css'), '.cover')
-    expect(cover).toMatch(/padding:\s*var\(--topbar-h\)/)
-    // 底本身不许跟着让:让位是 padding(里面那块面的事),inset 仍然是整扇窗。
-    expect(cover).toMatch(/inset:\s*0/)
+  it('它铺满整扇窗、**不让顶栏**:顶上那 28px 是它自己的檐带,不是让位', () => {
+    const full = block(cssCode('FullLayer.module.css'), '.full')
+    expect(full).toMatch(/inset:\s*0/)
+    // 「盖」当年让出 `--topbar-h` 是因为它压不过原生红绿灯;全屏自己画一条檐带,
+    // 灯落在那条带子上(让位由 `--topbar-lead` 那一格给),所以整层不让。
+    expect(full).not.toMatch(/padding/)
+    expect(block(cssCode('FullLayer.module.css'), '.strip')).toMatch(
+      /height:\s*var\(--full-strip-h\)/,
+    )
   })
 
-  it('盖挂在壳的根上(在 </main> 之后),不再挂在 .center 里', () => {
+  it('**层序推翻了「盖」那一档**:z 读 --z-full,而 --z-cover 全仓已无产地', () => {
+    expect(block(cssCode('FullLayer.module.css'), '.full')).toMatch(/z-index:\s*var\(--z-full\)/)
+    // 读样式表源文本的门**先剥注释**(本仓那条法):病历文本里满是 `--z-cover`
+    // 这样的旧名字,不剥的话这一条会以「它还在」的面目假红。
+    const tokens = readFileSync(
+      path.join(componentsDir, '..', 'styles', 'tokens.css'),
+      'utf-8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(tokens).toMatch(/--z-full:\s*550/)
+    expect(tokens).not.toMatch(/--z-cover/)
+  })
+
+  it('全屏层挂在壳的根上(在 </main> 之后)', () => {
     const shell = readFileSync(path.join(componentsDir, 'AppShell.tsx'), 'utf-8')
     const mainEnd = shell.indexOf('</main>')
-    const cover = shell.indexOf('<CoverLayer />')
+    const full = shell.indexOf('<FullLayer />')
     expect(mainEnd).toBeGreaterThan(0)
-    expect(cover).toBeGreaterThan(mainEnd)
+    expect(full).toBeGreaterThan(mainEnd)
   })
 })
 

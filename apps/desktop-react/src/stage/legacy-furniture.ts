@@ -51,7 +51,7 @@ export interface LegacyStageResidency {
  *    一个字都不用改(见 `residency.regionOfPlacement` 上的判词);
  *  · `placements` 里的 `edge` **不单独看**:它与 `shelves[side].tabs` 说的是同一件事,
  *    而后者还带次序 —— 两处都读会把同一块瓦插两遍;
- *  · `stage` / `cover` 是瞬态,存盘时本来就被摘掉了(v8 的 `pickStageFurniture`),
+ *  · `stage` 是瞬态,存盘时本来就被摘掉了(v8 的 `pickStageFurniture`),
  *    真有残值也不折 —— 它们不该活过一次刷新。
  *
  * `newLeafId` 由调用方给(树的 id 要由 `workbench/ids` 铸,纯函数不去够那个模块)。

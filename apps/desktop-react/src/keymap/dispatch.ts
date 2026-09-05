@@ -5,7 +5,10 @@ import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
 import { useWorkspacePalette } from '../workspace/components/palette-hub'
 import { useWorkspaceStore } from '../workspace/store'
+import { useWorkbenchStore } from '../workbench/store'
 import { projectWorkspaces, workspaceAtSlot } from '../workspace/projection'
+import { notify } from '../services/notify'
+import { t } from '../i18n'
 import {
   TOGGLE_COMMAND_PREFIX,
   WORKSPACE_SLOT_COMMAND_PREFIX,
@@ -109,6 +112,20 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
        */
       if (id === 'session.new') {
         void useExposeStore.getState().newSessionInCurrentProject()
+        return
+      }
+      /*
+       * 真全屏(W2)。**取动作而不是订阅**(同上两条的口径)。
+       *
+       * 拒绝那一档要**说出来**:一个按下去什么都不发生的键,用户读不出是「坏了」
+       * 还是「这里不支持」。今天唯一说 false 的是聊天(`ContentKind.fullable`,
+       * 判词写在那格上),所以这一句文案就是那一句;将来第二种拒绝进来时,
+       * 这里要按种类取话,不是再加一条 if。
+       */
+      if (id === 'workbench.toggleFull') {
+        if (useWorkbenchStore.getState().toggleFull() === 'refused') {
+          notify({ level: 'info', source: 'workbench.full', title: t('full.refuseChat') })
+        }
       }
     },
     [toggleShelfCollapsed, toggleToc, toggleAgentMenu, toggleWorkspacePalette],

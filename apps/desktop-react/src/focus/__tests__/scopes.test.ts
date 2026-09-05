@@ -28,7 +28,8 @@ const ALL_IDS: readonly FocusScopeId[] = [
   'stage-layer',
   'float-layer',
   'shelf-layer',
-  'cover-layer',
+  // W2:`full-layer` 顶掉 `cover-layer`(「盖」退役,接替它的是真全屏)。
+  'full-layer',
   'jumpbar',
   'drawer',
   'zoom',
@@ -61,8 +62,8 @@ describe('FOCUS_SCOPES 封闭表', () => {
     expect(FOCUS_SCOPE_LIST.filter((s) => s.kind === 'root').map((s) => s.id)).toEqual(['root'])
   })
 
-  it('四个 Placement 宿主都是 layer,三种临时面各归其档', () => {
-    for (const id of ['stage-layer', 'float-layer', 'shelf-layer', 'cover-layer'] as const) {
+  it('四个宿主层都是 layer,三种临时面各归其档', () => {
+    for (const id of ['stage-layer', 'float-layer', 'shelf-layer', 'full-layer'] as const) {
       expect(FOCUS_SCOPES[id].kind).toBe('layer')
     }
     /*

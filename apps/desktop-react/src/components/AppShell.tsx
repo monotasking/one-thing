@@ -12,7 +12,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { Composer } from '../composer/components/Composer'
 import { Dock } from './Dock'
 import { StageOverlay } from './StageOverlay'
-import { CoverLayer } from './CoverLayer'
+import { FullLayer } from './FullLayer'
 import { EdgeShelf } from './EdgeShelf'
 import { SnapHint } from './SnapHint'
 import { FloatLayer } from './FloatWindow'
@@ -21,6 +21,9 @@ import { ToastHost } from '../ui/Toast'
 import { ConfirmHost } from '../ui/Dialog'
 import { WorkspacePalette } from '../workspace/components/WorkspacePalette'
 import { CenterRegion } from '../workbench/CenterRegion'
+import { useWorkbenchStore } from '../workbench/store'
+import { useHostFullScreen } from './useHostFullScreen'
+import { useHostTrafficLights } from './useHostTrafficLights'
 import { ViewerCloseHost } from '../content/viewer/close-hub'
 import { DOCK_HIDE_DELAY_MS, DOCK_WAKE_DWELL_MS } from './motion'
 import { useT } from '../i18n'
@@ -29,7 +32,7 @@ import { SHELF_SIDES, settledDockRect, shouldShowDock, withinDockWakeBand } from
 import type { Rect } from '../stage/transitions'
 import type { Point } from '../stage/types'
 import { DOCK_AXIS } from '../stage/types'
-import type { DockAlign, DockEdge, DockSize } from '../stage/types'
+import type { DockAlign, DockDisplay, DockEdge, DockSize } from '../stage/types'
 import s from './AppShell.module.css'
 
 /** 贴边类:边 → 那条边的物理坐标。 */
@@ -67,6 +70,33 @@ export function AppShell() {
   useLayoutEffect(() => startStage(), [])
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
+
+  /*
+   * ── 全屏期间 Dock 转「自动隐藏」(W2,设计 §4.2)────────────────────────
+   *
+   * Dock 在 650,全屏层在 550 —— 它**压不过 Dock**,而这正是设计要的:
+   * 「独占的是内容,不是整台机器」,总得留一条切走的路。所以全屏不靠 z 序赶走
+   * Dock,靠**换一档显示模式**:`autohide` 那一档的唤醒 / 留驻两条语义一个字不动
+   * (贴边停留 `DOCK_WAKE_DWELL_MS` 照样唤得出),只是平时不占着屏幕。
+   *
+   * **用户那一格档位一个字都不改**(`dockDisplay` 本身没动),所以退出全屏就是
+   * 恢复用户档 —— 不需要「记住原来是什么」那种账,也就不会有对不上的那一天。
+   * 让位属性(`data-dock-reserve`)同理**不动**:底下那棵树在全屏期间零重排,
+   * 那条白边由全屏层自己盖住(它是不透明的 fixed inset:0)。
+   */
+  const fullOpen = useWorkbenchStore((st) => st.full !== null)
+  const effectiveDockDisplay: DockDisplay = fullOpen ? 'autohide' : dockDisplay
+
+  /*
+   * 红绿灯让位的两条判据(W2 从 `TopBar` 提上来)。**问一次、写在壳根上** ——
+   * 它有两个消费者(顶栏与全屏层那条檐带),而两者在 DOM 上是兄弟:变量只有
+   * 定义在共同的祖先上,两条带子的左缘才对得齐。判据本身一个字没改:渲染层
+   * 既看不见 macOS 的原生全屏,也不该拿 UA 去猜自己跑在哪儿,所以两格都问宿主。
+   * `useHostFullScreen` 在没有宿主时答 false(那是「有灯且没全屏」的形),
+   * 拿它当「有没有灯」用会把浏览器壳判成有灯 —— 所以是两格,不是一格。
+   */
+  const hostFullScreen = useHostFullScreen()
+  const trafficLights = useHostTrafficLights()
   const dockAlign = useStageStore((st) => st.dockAlign)
   // 预留那一截随大小档走,所以外壳也得订阅它(Dock 条自己另有一份)。
   const dockSize = useStageStore((st) => st.dockSize)
@@ -121,7 +151,9 @@ export function AppShell() {
 
   /**
    * 退层链本体仍是 `stage/transitions.escapeTargetOf` 那个纯函数(次序 = z 序:
-   * 盖 → 舞台 → 最上面那扇浮窗;架子是常驻家具,不在链里),这里只把它交给树。
+   * **全屏 → 舞台 → 最上面那扇浮窗**;架子是常驻家具,不在链里),这里只把它交给树。
+   * W2 把第一站从「盖」换成了全屏:全屏 550 压得过浮窗 200 与 overlay 500,
+   * 所以它就是最上面那一层 —— 次序判据仍旧只有那一个纯函数说得算。
    * 「接住了才拦」照旧:`escapeTopmost()` 没收掉任何面时答 false,这一下 Esc
    * 继续往后传(输入法组字、Composer 的两段式停止都在后面等它)。
    */
@@ -146,7 +178,16 @@ export function AppShell() {
   useComposerGeometry(centerRef, composerDockRef)
 
   const [peeking, setPeeking] = useState(false)
-  const autohide = dockDisplay === 'autohide'
+  /*
+   * **两个「自动隐藏」,判据不同,故意分成两格**(W2):
+   *  · `autohide` 读**有效档** —— 它管的是「条此刻藏不藏 / 唤不唤得出」,
+   *    全屏期间要跟着变;
+   *  · `reserveOff` 读**用户档** —— 它管的是「让不让位」,而让位在全屏期间
+   *    **一个字不动**(裁定 2:底下那棵树零重排,白边由全屏层盖住)。
+   * 合成一格的话,进出全屏会让整棵树重排一次 —— 那是可感知的抖动。
+   */
+  const autohide = effectiveDockDisplay === 'autohide'
+  const reserveOff = dockDisplay === 'autohide'
   const hidden = autohide && !peeking
   const dockRef = useRef<HTMLElement>(null)
   /*
@@ -426,7 +467,7 @@ export function AppShell() {
    * AppShell.module.css 那一段里写一次 —— 让位不再打在外壳身上(那会把面整体顶掉、
    * 露出外壳自己的底色,正是用户报的那条异色带),而是打在吃到那条边的面自己身上。
    */
-  const shellClass = [s.shell, autohide ? null : RESERVE_SIZE_CLASS[dockSize]]
+  const shellClass = [s.shell, reserveOff ? null : RESERVE_SIZE_CLASS[dockSize]]
     .filter(Boolean)
     .join(' ')
 
@@ -445,7 +486,15 @@ export function AppShell() {
   return (
     <FocusScope scope="root" onEscape={escapeTopmost}>
       {({ scopeProps }) => (
-        <div {...scopeProps} className={shellClass} data-dock-reserve={autohide ? undefined : dockEdge}>
+        <div
+          {...scopeProps}
+          className={shellClass}
+          data-dock-reserve={reserveOff ? undefined : dockEdge}
+          /* 红绿灯让位那两格判据(W2):写在**壳根**上,顶栏与全屏檐带两处只消费
+           * (`--topbar-lead` 三档的定义在 AppShell.module.css)。 */
+          data-host-fullscreen={hostFullScreen ? 'true' : undefined}
+          data-host-traffic={trafficLights ? undefined : 'none'}
+        >
           {/*
             **规则 3:挪到哪,焦点跟到哪**(设计 §3.5 / §11 拍点 2)。判据与执行整件在
             `stage/focus-follow.ts`(一只纯函数 + 一只 hook)—— 这里只挂一次。
@@ -501,16 +550,19 @@ export function AppShell() {
             </div>
           </main>
 
-          {/* 盖:第三种形态。09-01 用户推翻了「只接管内容栏」——盖要**盖满整扇窗**
-            * (含顶带 / 顶栏 / 四条边上的架子),所以它从 .center 里搬到壳的根上,
-            * 定位也从 absolute 换成 fixed(参考系换成视口)。
+          {/* **真全屏**(W2,拍点 ② 接替「盖」)。一块内容铺满整扇窗口。
             *
-            * 它与舞台的差别因此**不再是盖住多少**,而是那两件一直就在的事:
-            * 盖是一块铺满的面(舞台是定尺画布 + scrim),而且它压不过浮窗
-            * (--z-cover 100 < --z-float 200)。层级一格没动:Dock 仍在 650,
-            * 所以盖开着时 Dock 照样唤得出、切得走 —— 那正是「盖=独占形态」该有的
-            * 出口(独占的是内容,不是整台机器)。 */}
-          <CoverLayer />
+            * 层序判词(推翻「盖」那四处旧话):`--z-full: 550` **压得过浮窗(200)
+            * 与 overlay(500)**;`--z-modal: 600` 以上照常在全屏之上(全屏里弹出的
+            * 确认框、菜单 680、Tooltip 700、Toast 800 都还看得见);**Dock(650)
+            * 不靠 z 压,靠状态** —— 上面那句 `effectiveDockDisplay` 在全屏期间把它
+            * 换成自动隐藏档,贴边停留照样唤得出。「独占的是内容,不是整台机器」
+            * 这句话在全屏这一档仍然成立,只是出口从「它压不过 Dock」换成了
+            * 「Dock 暂时让开、随手叫得回来」。
+            *
+            * 挂在哪一格**无所谓**(z 决定谁在上面),摆在这儿只是为了与它盖住的
+            * 那几层做邻居,读代码的人一眼看得见次序。 */}
+          <FullLayer />
 
           {/* 两种显示模式共用这一个浮层容器:always 从不加 .hidden,autohide 平时藏着。
             *

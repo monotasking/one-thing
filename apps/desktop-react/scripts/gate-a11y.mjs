@@ -15,7 +15,7 @@
  *     八屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
- *     唯一一屏 **cover 形态**的面),**拖拽落点菜单**(W3 裁定 9:拖拽的键盘等价 ——
+ *     唯一一屏 **真全屏**的面),**拖拽落点菜单**(W3 裁定 9:拖拽的键盘等价 ——
  *     每个落点都能从既有 tab 菜单到达,落定后 `announce()` 播报),
  *     和 `?gallery` 那张组件规格页(28 个展位一次
  *     全在场,这是唯一能把每一件都摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
@@ -747,21 +747,22 @@ async function main() {
      * 每一枚开关都得说得出「什么的开关」(Switch 的 `label`),每一颗打开钮都得
      * 说得出「打开什么」;漏一个,读屏软件就只能念「开关,开」。
      *
-     * 它同时是这道门里唯一一屏 **cover 形态**的面:盖挂在壳的根上、fixed 铺满
-     * 整扇窗(09-01 用户推翻「只接管内容栏」之后如此),所以「盖开着的时候这一屏
-     * 的无障碍树长什么样」只有在这里才扫得到。盖满整扇窗之后这一屏更值钱了 ——
-     * 顶带 / 顶栏 / 四条边上的架子此刻全在盖底下,axe 扫的是整棵活树。
+     * 它同时是这道门里唯一一屏 **真全屏**(W2:「所有应用」的打开方式从「盖满」
+     * 改成了全屏,拍点 ②)。全屏层挂在壳的根上、fixed 铺满整扇窗、`role="region"`
+     * 而不是对话框(后面那些面还在,只是被盖住),所以「全屏开着的时候这一屏的
+     * 无障碍树长什么样」只有在这里才扫得到 —— 顶栏、四条边上的架子、每一片别的
+     * 叶此刻都在它底下且带 `inert`,axe 扫的正是那棵活树。
      * 反证:把 AppsPanel 里 Switch 的 `label` 拆掉 → 这一屏当场 critical
      * button-name 红(每一行都是,因为那颗 <button role="switch"> 只有一个空 span)。
      */
-    console.log('\n[6/10] 所有应用面(cover 形态):开一块面再扫一次')
+    console.log('\n[6/10] 所有应用面(全屏形态):开一块面再扫一次')
     await clickSelector(page, '[data-testid="dock-tile-apps"]')
     await waitFor('所有应用面就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="apps-row-"]'))),
     )
     await settle(page, '所有应用面')
     await scanAxe(page, '所有应用面', '[data-testid="apps-panel"]')
-    // 扫完把它关掉(Esc 走的正是本批新立的退层链),免得盖着的那一层挡住下一屏。
+    // 扫完把它关掉(Esc 走的正是退层链的第一站:全屏),免得它挡住下一屏。
     await page.keyboard.press('Escape')
     await waitFor('所有应用面已收回', () =>
       page.evaluate(() => !document.querySelector('[data-testid="apps-panel"]')),

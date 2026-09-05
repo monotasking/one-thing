@@ -4,7 +4,7 @@ import { useStageStore } from '../stage/store'
 import { clampFloatRect, resizeFrom, snapSideAt } from '../stage/transitions'
 import { panelIdOf } from '../stage/panel-ref'
 import { setSnapSide } from './snap-hint'
-import { useWorkbenchStore } from '../workbench/store'
+import { occludedByFull, useWorkbenchStore } from '../workbench/store'
 import { floatRegion } from '../workbench/regions'
 import { PaneTree } from '../workbench/PaneTree'
 import { contentKindOf, refId } from '../workbench/kinds'
@@ -86,6 +86,8 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
   const t = useT()
   const region = floatRegion(id)
   const tree = useWorkbenchStore((st) => st.regions[region])
+  /* 被全屏盖住 = `inert`(DOM 与树各说一遍)。判词与架子那一格逐字相同。 */
+  const occluded = useWorkbenchStore((st) => occludedByFull(st, region))
   const stored = useStageStore((st) => st.floats[id])
   const focusFloat = useStageStore((st) => st.focusFloat)
   const moveFloat = useStageStore((st) => st.moveFloat)
@@ -244,10 +246,11 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
    * 结构性地回到它的父。
    */
   return (
-    <FocusScope scope="float-layer" owner={id}>
+    <FocusScope scope="float-layer" owner={id} inert={occluded}>
       {({ scopeProps }) => (
         <section
           {...scopeProps}
+          inert={occluded || undefined}
           className={leaving ? `${s.win} ${s.leaving}` : s.win}
           style={{
             left: `${rect.x}px`,

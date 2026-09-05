@@ -44,11 +44,12 @@ describe('命令表', () => {
     expect(toggles).toContain(toggleCommandId(SESSIONS_ITEM_ID))
   })
 
-  it('出厂绑这十三条,别的一律未绑定;次序即注册表次序(它是撞键的裁决,见下)', () => {
+  it('出厂绑这十四条,别的一律未绑定;次序即注册表次序(它是撞键的裁决,见下)', () => {
     const bound = KEYMAP_COMMANDS.filter((c) => c.defaultCombo !== null).map((c) => c.id)
     /*
      * 检索 ⌘P、总览 ⌘E、四条架子 ⌘⌥←/→/↓/↑(09-01 用户放权后新绑)、
-     * 工作区面板 ⌘⇧W、工作区序号 ⌘1/2/3、目录 ⌘⇧O、agent 切换器 ⌘J、新建会话 ⌘N。
+     * 工作区面板 ⌘⇧W、工作区序号 ⌘1/2/3、目录 ⌘⇧O、agent 切换器 ⌘J、新建会话 ⌘N、
+     * 真全屏 ⌘⇧↩(W2 / 拍点 ④)。
      *
      * 架子那四条排在瓦之后、工作区之前 **只是排版** —— 出厂表里没有两条命令
      * 共用一个组合(下面那条「全表两两不同」的断言钉着这件事),所以次序不决定
@@ -68,7 +69,14 @@ describe('命令表', () => {
       'toc.toggle',
       'agent.menu',
       'session.new',
+      'workbench.toggleFull',
     ])
+    // ⌘⇧↩(W2)。全表零冲突由下面那条「两两不同」的断言钉着。
+    expect(findCommand('workbench.toggleFull')?.defaultCombo).toEqual({
+      meta: true,
+      shift: true,
+      key: 'enter',
+    })
     expect(findCommand('agent.menu')?.defaultCombo).toEqual({ meta: true, key: 'j' })
     expect(findCommand('session.new')?.defaultCombo).toEqual({ meta: true, key: 'n' })
     expect(findCommand('toggle:search')?.defaultCombo).toEqual({ meta: true, key: 'p' })

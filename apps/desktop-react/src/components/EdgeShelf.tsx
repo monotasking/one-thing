@@ -7,7 +7,7 @@ import {
   thicknessFromPointer,
 } from '../stage/transitions'
 import { panelIdOf } from '../stage/panel-ref'
-import { useWorkbenchStore } from '../workbench/store'
+import { occludedByFull, useWorkbenchStore } from '../workbench/store'
 import { edgeRegion } from '../workbench/regions'
 import { PaneTree } from '../workbench/PaneTree'
 import { leafCount } from '../workbench/layout'
@@ -126,6 +126,14 @@ export function EdgeShelf({ side }: Props) {
   const t = useT()
   const region = edgeRegion(side)
   const tree = useWorkbenchStore((st) => st.regions[region])
+  /*
+   * **被全屏盖住了吗**(W2)。盖住 = `inert`,DOM 与树各说一遍(与下面那格 tab 层
+   * 的 keep-alive 同一条判据):少了给树的那一遍,这条架子的局部键会在看不见的
+   * 地方响;少了给 DOM 的那一遍,焦点能 Tab 进一块被盖住的面。
+   * **装着全屏那一格的这条边不算被盖住** —— 那一格内容的 DOM 就住在全屏层里,
+   * 它照旧要接键盘(判据整件在 `store.occludedByFull`)。
+   */
+  const occluded = useWorkbenchStore((st) => occludedByFull(st, region))
   const shelf = useStageStore((st) => st.shelves[side])
   const flashPinned = useStageStore((st) => st.flashPinned)
   const flashSide = useStageStore((st) => st.flashSide)
@@ -316,12 +324,13 @@ export function EdgeShelf({ side }: Props) {
             统一画 —— 这一层不再自绘一条 tab 条,keep-alive 与 `inert` 那两遍话
             也随之只剩一个产地(判词写在 `PaneLeaf` 的 `PaneTabLayer` 上)。
           */}
-          <FocusScope scope="shelf-layer" owner={ownerId}>
+          <FocusScope scope="shelf-layer" owner={ownerId} inert={occluded}>
             {({ scopeProps }) => (
               <div
                 {...scopeProps}
                 className={s.body}
                 data-shelf-body={side}
+                inert={occluded || undefined}
                 /*
                  * **这条架子此刻露脸的那格瓦**(门与用例的取件口;`gate:squeeze` /
                  * `gate:perf` 按它认「总览钉上来了没有」)。树是真相,这一格是它的

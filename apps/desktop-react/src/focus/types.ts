@@ -47,11 +47,12 @@ export type FocusScopeId =
   // 它拿 ⌘W、也是跟焦的落点),每一格 tab 的内容层各一份(owner = refId,
   // 只为「看不见的那一格从活动路径上摘掉」而存在)。
   | 'leaf'
-  // layer:Placement 宿主层
+  // layer:三个 Placement 宿主层 + 全屏那一层(W2:`full-layer` 顶掉 `cover-layer`;
+  // 全屏不是一种 Placement,但它与那三个一样是「装着一块面的一层」)。
   | 'stage-layer'
   | 'float-layer'
   | 'shelf-layer'
-  | 'cover-layer'
+  | 'full-layer'
   // float:非模态临时面
   | 'jumpbar'
   | 'drawer'

@@ -128,34 +128,15 @@ describe('② 打开了但看不见 —— 露出来,位置不变', () => {
   })
 })
 
-describe('② 之二:被盖 / 舞台压着 —— 不越过盖层(§14)', () => {
-  it('盖开着时,架子上的那块面是 blocked 而不是 reveal', () => {
-    const s = state({
-      placements: {
-        apps: { kind: 'cover' } as Placement,
-        files: { kind: 'edge', side: 'right' } as Placement,
-      },
-      ...shelfWith('right', ['files'], 'files'),
-    })
-    // 反证:把 occluderOf 那一闸删掉 → 这里答 reveal,而「露出来」在盖底下
-    // 只能靠先把盖收掉 —— 那正是 §14 明令不做的「越过盖层」。
-    expect(summonTransition(s, 'files', nobodyFocused)).toEqual({ kind: 'blocked', by: 'cover' })
-  })
-
-  it('盖压不过浮窗(--z-cover 100 < --z-float 200):浮窗照旧可召唤', () => {
-    const s = state({
-      placements: {
-        apps: { kind: 'cover' } as Placement,
-        files: { kind: 'float' } as Placement,
-      },
-      floatOrder: ['files'],
-    })
-    expect(summonTransition(s, 'files', nobodyFocused)).toEqual({
-      kind: 'focus',
-      scope: 'float-layer',
-    })
-  })
-
+describe('② 之二:被舞台压着 —— 不越过压着它的那一层(§14)', () => {
+  /*
+   * ── 「盖」那两条随 W2 一起退役 ──────────────────────────────────────────
+   * 它们量的是 `occluderOf` 的 cover 分支(盖压架子、盖压不过浮窗)。W2 把「盖」
+   * 整档扔掉之后那个分支不存在了,而接替它的**全屏不是一种 Placement** ——
+   * 形态机眼里被全屏盖住的那些面一格都没变,所以 `occluderOf` 照旧只认舞台
+   * (判词写在它自己身上,连同那条留账:全屏期间召唤不会答 blocked)。
+   * 剩下的舞台那一条一个字没动 —— 它才是这一族真正要守的东西。
+   */
   it('舞台的 scrim 压住一切:它开着时别人一律 blocked,它自己照旧', () => {
     const s = state({
       placements: {
@@ -176,10 +157,9 @@ describe('② 之二:被盖 / 舞台压着 —— 不越过盖层(§14)', () => 
 })
 
 describe('③ 看得见、焦点不在它里面 —— 只聚焦,形态零变化', () => {
-  it('四种形态各给出装着它的那一层', () => {
+  it('三种形态各给出装着它的那一层(浮窗在下面单量)', () => {
     const cases: Array<[Placement, string]> = [
       [{ kind: 'stage' }, 'stage-layer'],
-      [{ kind: 'cover' }, 'cover-layer'],
       [{ kind: 'edge', side: 'right' }, 'shelf-layer'],
     ]
     for (const [placement, scope] of cases) {
@@ -219,15 +199,13 @@ describe('④ 看得见、焦点在它里面 —— 隐藏(09-04 用户改判,�
     })
   })
 
-  it('舞台 / 盖同理(它们都不是家具,是开着的面)', () => {
-    for (const placement of [{ kind: 'stage' } as const, { kind: 'cover' } as const]) {
-      const s = state(at('files', placement))
-      expect(summonTransition(s, 'files', { focusedOwner: 'files' })).toEqual({
-        kind: 'hide',
-        how: 'close',
-        side: null,
-      })
-    }
+  it('舞台同理(它不是家具,是开着的面)', () => {
+    const s = state(at('files', { kind: 'stage' }))
+    expect(summonTransition(s, 'files', { focusedOwner: 'files' })).toEqual({
+      kind: 'hide',
+      how: 'close',
+      side: null,
+    })
   })
 
   it('**钉在架子上:收起整条架子**,不是关掉这块面(09-04 用户裁定)', () => {
