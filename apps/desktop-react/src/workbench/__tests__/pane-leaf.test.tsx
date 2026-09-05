@@ -40,7 +40,7 @@ beforeEach(() => {
   registerContentKind({
     id: 'home',
     singleton: true,
-    resident: { region: CENTER_REGION, key: 'main' },
+    resident: { region: CENTER_REGION, seed: () => 'main' },
     regions: [CENTER_REGION],
     title: () => ({ text: '家' }),
     icon: () => 'Layers',

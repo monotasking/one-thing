@@ -17,7 +17,12 @@
  *     原叶 tab 一格不少;预示是**一根 4px 的杠**
  *  3. tab → 窗口右边带:进右架子,架子是展开的
  *  4. tab → 空处:撕成浮窗,矩形 = `floatRectForGrab`(指针 = 标题栏中心)
- *  5. 会话行 → 架子:**拒绝**,浮影变灰带理由,树前后逐字相同
+ *  5. 会话行 → 右架子:**真落**(W5-b 裁定 8 解禁 —— 会话那一种不再自述
+ *     `regions`,于是它开到哪个区域都行)。W3 时这一条是「结构化拒绝」,
+ *     判词写在那一版的 §3.1 第二行「T4 之前:落到中央 = 切换当前会话;
+ *     落到别处 = 结构化拒绝」;会话多开落地即撤。
+ *     **编号一格没重排**:W5-b 顶掉的是第 5 条的**内容**,不是往表里加一条 ——
+ *     11 条还是 11 条,`场景 N` 与真机日志里的序号从此不必对照两份表读
  *  6. 拖到一半 Esc:树前后相同、浮影消失、行仍在、**折起来那一格展回来**
  *  7. 零重挂:同区域内并 tab / 分屏,来源行节点与目标叶 `[data-pane-body]` 的
  *     内容根节点**前后是同一个 DOM 对象**
@@ -635,8 +640,8 @@ async function main() {
       assert(win.top <= drop.y, '窗顶不在指针下方(抓着的是标题栏)', `top=${win.top} drop.y=${drop.y}`)
     }
 
-    /* ── 场景 5:会话行 → 架子 = 拒绝 ────────────────────────────────────── */
-    scenario('会话行拖到架子 = 结构化拒绝,树前后逐字相同')
+    /* ── 场景 5:会话行 → 右架子 = **真落成一片会话叶**(W5-b 裁定 8)────── */
+    scenario('会话行拖到右架子 = 真落(W3 那条「拒绝」随会话多开撤掉)')
     {
       await clickSelector(page, '[data-testid="dock-tile-sessions"]')
       await waitFor('总览就位', () =>
@@ -645,37 +650,67 @@ async function main() {
       const rowSel = '[data-session-id]:not([aria-selected="true"])'
       const row = await centerOf(page, rowSel)
       assert(Boolean(row), '总览里有一条别的会话可拖', JSON.stringify(row?.rect))
-      const before = await treeShape(page)
-      // 走到右边带上停住(不松手)—— 先量拒绝态,再松手量「什么都没发生」。
+      const dragged = await page.evaluate(
+        (css) => document.querySelector(css)?.getAttribute('data-session-id') ?? '',
+        rowSel,
+      )
+      // 走到右边带上停住(不松手)—— 先量「收」,再松手量真的落进去了。
       const at = { x: viewport.w - 6, y: Math.round(viewport.h / 2) }
       await drag(cdp, row, at, { release: false })
-      const refuse = await page.evaluate(() => {
+      const hover = await page.evaluate(() => {
         const ghost = document.querySelector('[data-testid="drag-ghost"]')
         return {
           ghost: Boolean(ghost),
           refused: ghost?.hasAttribute('data-refuse') ?? false,
-          reason: document.querySelector('[data-testid="drag-refuse"]')?.textContent ?? '',
-          overlayTone: document.querySelector('[data-testid="drop-overlay"]')?.getAttribute('data-tone') ?? null,
+          overlayTone:
+            document.querySelector('[data-testid="drop-overlay"]')?.getAttribute('data-tone') ?? null,
         }
       })
-      assert(refuse.ghost, '浮影在屏幕上')
-      assert(refuse.refused, '浮影是拒绝态(变灰)')
-      assert(refuse.reason.length > 0, '而且说得出理由(不静默)', refuse.reason)
-      assert(refuse.overlayTone === null, '拒绝时不画一块接受色的高亮', String(refuse.overlayTone))
+      assert(hover.ghost, '浮影在屏幕上')
+      assert(!hover.refused, '浮影**不是**拒绝态(会话那一种不再限定区域)')
+      assert(hover.overlayTone === 'accept', '边带画的是接受色的高亮', String(hover.overlayTone))
       await releaseAt(cdp, at)
-      const afterShape = await treeShape(page)
-      assert(afterShape === before, '松手之后树前后逐字相同', afterShape === before ? '' : `\n     前:${before}\n     后:${afterShape}`)
+      await delay(240)
+      const landed = await page.evaluate(
+        (id) => Boolean(document.querySelector(`[data-pane-tab="session:${id}"]`)),
+        dragged,
+      )
+      assert(landed, '松手之后右架子上真有这一格会话叶', `session:${dragged}`)
+      const inShelf = await page.evaluate(
+        (id) =>
+          Boolean(
+            document.querySelector(
+              `[data-pane-region="edge:right"] [data-pane-tab="session:${id}"]`,
+            ),
+          ),
+        dragged,
+      )
+      assert(inShelf, '而且它落在**右架子**那棵树里,不是中央区')
     }
 
     /* ── 场景 6:拖到一半 Esc ────────────────────────────────────────────── */
     scenario('拖到一半按 Esc = 取消:树不变、浮影消失、行仍在')
     {
       const gamma = `[data-file-path="${path.join(cwd, 'gamma.ts')}"]`
-      const treeThere = await page.evaluate((css) => Boolean(document.querySelector(css)), gamma)
-      if (!treeThere) {
-        // 总览此刻盖着文件面板 —— 把文件面板点回前台(点瓦 = 露出来)。
+      /*
+       * **先把环境会话拨回带工作目录的那一条**(W5-b 裁定 3 的可感知后果)。
+       *
+       * 场景 5 之前那一下是**被拒绝**的拖拽,什么都没发生;W5-b 之后它真把
+       * 另一条会话(`drag-gate-2`,没有工作目录)落成了右架子上的一片会话叶,
+       * 而落定会把焦点送进去 —— 于是环境会话换了人,文件树的根跟着变成 null,
+       * 整棵树一行都不画。这不是回归,是「文件树跟着环境会话走」那条既有规则
+       * 在会话多开之后的第一次显形。
+       *
+       * 所以这里点一下带目录的那条会话把根拨回来;顺带**点瓦是开关**那条判例
+       * (与 `gate-focus` 的 `ensureOverviewRow` 同源):最多两下,每一下之后各问一次。
+       */
+      await clickSelector(page, `[data-testid="session-row-${sessionId}"]`)
+      await delay(500)
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const there = await page.evaluate((css) => Boolean(document.querySelector(css)), gamma)
+        if (there) break
         await clickSelector(page, '[data-testid="dock-tile-files"]')
-        await delay(500)
+        await delay(600)
       }
       await waitFor('文件树在场', () =>
         page.evaluate((css) => Boolean(document.querySelector(css)), gamma),

@@ -40,6 +40,8 @@ export type FocusScopeId =
   | 'composer'
   | 'search'
   | 'expose'
+  // 消息流。**同一个 id 会有好几份实例**(W5-b 会话多开):一片会话叶一份,
+  // owner = 那一格的 refId —— 与 `leaf` 那一格同一个样板(见下)。
   | 'chat'
   | 'settings'
   | 'dock'
@@ -156,13 +158,18 @@ export interface ScopeNode {
   /** 局部键的落点。键是 `ScopedKey.action`。 */
   keyHandlers?: Readonly<Record<string, (() => void) | undefined>>
   /**
-   * 这一格**替谁摆着**(R2)。宿主层填它装着的那块面的 id(`stage/items` 的 item id)。
+   * 这一格**替谁摆着**(R2)。宿主层填它装着的那块面的 id(`stage/items` 的 item id);
+   * 内容面这一族填**它自己那一格的 refId**(W5-b:`chat` 的每一片会话叶各一份)。
    *
    * 它存在的唯一理由是 §3.5 规则 3:「把面拼到舞台 / 钉到边 / 撕成浮窗,焦点跟着
    * **那块面**走」—— 落定那一刻要激活的不是「某个 float-layer」,而是**装着这块面
    * 的那一扇**。同一种 layer 同时有好几份(四条边的架子 / 几扇浮窗),按 scope id
    * 选 MRU 会选错人,所以宿主把自己此刻的住户名报上来,`activateScope(scope,
-   * { owner })` 据此精确取那一格。内容面不填(它们一种只有一份可交互的)。
+   * { owner })` 据此精确取那一格。
+   *
+   * **内容面从前不填**(「它们一种只有一份可交互的」)—— 会话多开之后这句话对
+   * `chat` 不成立了:两片会话叶各有一份消息流,而「启动时焦点该进哪一片」
+   * 只有 owner 说得清。所以 `ChatStream` 也报住户名,判据与宿主层逐字同源。
    */
   owner?: string
   /**

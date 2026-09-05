@@ -241,8 +241,31 @@ export interface ExposeState {
   collapsedSections: string[]
   /** 搜索条内容;非空时列表只留命中的行与还剩行的节(形状不变,§1.4) */
   query: string
-  /** 「当前会话」= TopBar 显示的那个。空串 = 还没有(数据未到 / 一条都没有)。 */
+  /**
+   * 「当前会话」= 焦点那片会话叶在看的那条。空串 = 还没有(数据未到 / 一条都没有)。
+   *
+   * **W5-b 起它是投影,不是被写的状态**(裁定 3):唯一的写者是
+   * `content/session-projection.ts`,判据整件是纯函数
+   * `content/session-ref.currentSessionOf(regions, focusLeafId)`。字段名与
+   * 11 处读点一个字没改 —— 变的是「谁说了算」:从前是 `enterSession` 写它,
+   * 现在是树说了算,而 `enterSession` 去改树。
+   *
+   * 因此 `transitions.ts` 里**没有任何一条**再写这一格:形态机管的是这块面
+   * (焦点行 / Quick Look / 搜索词),「屏幕上在看哪条会话」不是它的事。
+   */
   currentSessionId: string
+  /**
+   * **环境会话**(裁定 3 的第三义):文件树的根、检索的 cwd、⌘N 继承哪个项目,
+   * 读的都是它。空串 = 还没有。
+   *
+   * 它与 `currentSessionId` 的差别只有一条,而那一条就是它存在的全部理由:
+   * **粘性** —— 焦点落到一片文件叶(或者架子上某块面)时它一格不动
+   * (「焦点落到文件叶不换根」)。两片会话叶并排时它们真的会分家,
+   * 例子写在 `content/session-projection.ts` 的文件头上。
+   *
+   * 同一个写者(那条投影),同样不落盘。
+   */
+  envSessionId: string
 }
 
 /**

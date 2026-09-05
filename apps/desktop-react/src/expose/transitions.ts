@@ -86,7 +86,10 @@ export const initialExposeState: ExposeState = {
   collapsedSections: [],
   query: '',
   // 空串 = 还没有当前会话。开场归位时它会落到序列首。
+  // **W5-b 起这两格是投影**(唯一写者 `content/session-projection.ts`);
+  // 这里只是出厂值,形态机的每一条都不写它们。
   currentSessionId: '',
+  envSessionId: '',
 }
 
 function clampIndex(i: number, len: number): number {
@@ -456,11 +459,18 @@ export function setQuery(state: ExposeState, query: string, facts: ListFacts): E
 }
 
 /**
- * 「进入」= 换当前会话 + 内容回到起点(退出 quicklook、清掉搜索词)。
- * 「顺手把这块面收回 Dock」是 Placement 的事,纯函数不认识落点 —— 那一步在 store 壳里。
+ * 「进入」= 内容回到起点(退出 quicklook、清掉搜索词)。
+ *
+ * **它不再写 `currentSessionId`**(W5-b 裁定 3):那一格成了树的投影,而
+ * 「换哪片叶看哪条会话」是拼贴台的事 —— 那一步在 store 壳里
+ * (`content/session-open.enterSessionInWorkbench`),与「顺手把这块面收回 Dock」
+ * 落在同一处、出于同一条理由:纯函数不认识落点,也不认识树。
+ *
+ * 入参 `sessionId` 保留在签名上是**故意的**:这条状态迁移属于「进入某条会话」
+ * 这件事,将来这块面要按它做别的(比如把那一行滚进视野)时不必再改签名。
  */
-export function enterSession(state: ExposeState, sessionId: string): ExposeState {
-  return { ...state, currentSessionId: sessionId, view: { mode: 'overview' }, query: '' }
+export function enterSession(state: ExposeState, _sessionId: string): ExposeState {
+  return { ...state, view: { mode: 'overview' }, query: '' }
 }
 
 /* ── 会话没了 ──────────────────────────────────────────────────────────── */
@@ -470,13 +480,16 @@ export function enterSession(state: ExposeState, sessionId: string): ExposeState
  * 数据源先改列表再叫这个函数,所以这里算出来的序列已经不含被删的行。
  *
  * 它只做**夹持**,不做导航:被删的那条会话在屏幕上留下的每一个指针都得收回来,
- * 但一个还站得住的指针一格都不动。三条,各有各的理由:
+ * 但一个还站得住的指针一格都不动。两条,各有各的理由:
  *
  *  1. Quick Look 正开着被删的那条 → 退回总览。不退的话状态机停在 quicklook 档
  *     而面板画不出任何东西,键盘语义与屏幕对不上。
- *  2. 当前会话被删 → 回**空态**(空串),而不是自动挑一条顶上:
- *     替用户选下一条会话是替他做决定。
- *  3. 焦点落在一行已经不在的行上 → 退到新序列首。与改搜索词逐字同一句话。
+ *  2. 焦点落在一行已经不在的行上 → 退到新序列首。与改搜索词逐字同一句话。
+ *
+ * **「当前会话被删 → 回空态」那一条 W5-b 删掉了**:它成了树的投影,而清洗
+ * 那一格死 tab 是拼贴台的事(`workbench.sweepRefs`,发起点在
+ * `content/session-projection.ts`)。留在这里就是第二个写者 —— 两处各清一遍,
+ * 而屏幕上那片会话叶只听树的。
  *
  * 「组列表停在一个空掉的组」那一条随 list 视图一起退役(方向 A 没有那一层)。
  * 展开表里留着一个已被删的房间 id **不清** —— 它是一格无害的死键(那一行都不在了,
@@ -497,10 +510,6 @@ export function sessionsRemoved(
   const view = next.view
   if (view.mode === 'quicklook' && gone.has(view.sessionId)) {
     next = { ...next, view: { mode: 'overview' } }
-  }
-
-  if (next.currentSessionId && gone.has(next.currentSessionId)) {
-    next = { ...next, currentSessionId: '' }
   }
 
   if (next.focusId && gone.has(next.focusId)) {

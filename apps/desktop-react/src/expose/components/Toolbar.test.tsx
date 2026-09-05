@@ -5,6 +5,8 @@ import { NOW, SESSION_META, seedSessionsSource } from '../../data/__fixtures__/s
 import { configureSessionsPort } from '../../data/sessions-port'
 import { sessionMutation } from '../../data/sessions-source'
 import { useExposeStore } from '../store'
+import { openSessionIds } from './__fixtures__/open-sessions'
+import { useWorkbenchStore } from '../../workbench/store'
 import { initialExposeState } from '../transitions'
 import { ExposeView } from './ExposeView'
 
@@ -17,6 +19,8 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh', placements: {} })
   seedSessionsSource()
   useExposeStore.setState({ ...initialExposeState, view: { mode: 'overview' } })
+  // W5-b:「进了哪条会话」落在树上,所以每条用例都从一棵干净的树起步。
+  useWorkbenchStore.getState().reset()
 })
 
 afterEach(() => {
@@ -89,7 +93,9 @@ describe('搜索条的键盘交接(四条,逐字沿用卡片时代的口径)', (
      */
     fireEvent.change(search(), { target: { value: '菜单栏' } })
     fireEvent.keyDown(search(), { key: 'Enter' })
-    expect(useExposeStore.getState().currentSessionId).toBe('tr-menubar')
+    // W5-b:「进了哪条会话」看的是树(`currentSessionId` 成了投影,写者是
+    // `content/session-projection.ts` —— 这组用例不接那条订阅)。
+    expect(openSessionIds()).toContain('tr-menubar')
   })
 
   it('←→ 不接:焦点留在输入框里给光标用,状态机一格不动', () => {

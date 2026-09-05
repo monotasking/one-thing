@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from '../../components/icons'
 import { IconButton } from '../../ui/IconButton'
+import { OpenDot } from '../../ui/OpenDot'
 import type { TFn } from '../../i18n'
 import { rowKindOf, type RowGlyph } from '../row-kinds'
 import type { SessionKind } from '../types'
@@ -53,10 +54,13 @@ import s from './SessionRow.module.css'
  */
 
 /*
- * ── 留账:右键上下文菜单不在本批 ─────────────────────────────────────────
- * 「动作单产地 = 右键上下文菜单」(09-01 判例)对这一行同样成立,但本批**没有**
- * 那张表(重命名 / 删除 / 移到项目 …… 在 React 壳都还没有产地)。所以这里只有
- * 悬停动作那两颗,没有 `onContextMenu` —— 挂一个弹空菜单的右键比不挂更糟。
+ * ── W5-b:右键上下文菜单来了 ──────────────────────────────────────────────
+ * W1 时这里记着一格留账:「本批没有那张表(重命名 / 删除 / 移到项目在 React 壳
+ * 都还没有产地),挂一个弹空菜单的右键比不挂更糟」。会话多开把它填上了第一批
+ * 真动作 —— **这一条要在哪儿打开**(打开 / 在右侧 / 在下方),表在
+ * `SessionActionsMenu.tsx`,与文件树那一组复用同一句话、同一组 i18n 键。
+ * 这一行只负责把「在哪儿右键的」交出去,菜单由面板那一层弹(锚点算式与
+ * 文件树行那条逐字同源)。
  */
 
 /**
@@ -97,8 +101,22 @@ interface Props {
   level: number
   expandable: boolean
   expanded: boolean
-  /** 当前会话(`aria-selected`,accent 晕)。 */
+  /** 当前会话(`aria-selected`,accent 晕)= **焦点那片会话叶在看的那条**。 */
   current: boolean
+  /**
+   * **这一条此刻开着没有**(W5-b 裁定 7:一套判据两处消费)。
+   *   `'shown'`  开在某片叶里并显示中 —— 实心点;
+   *   `'hidden'` 打开着但被藏起来了 —— 空心点,点它请回来;
+   *   `null`     没开 —— 不画。
+   *
+   * 判据整件是纯函数 `workbench/store.openStateOf`,与文件树行那颗点**同一句话**;
+   * 画法整件是库件 `ui/OpenDot`,与那颗点**同一件**。
+   *
+   * 它与 `current` 是两件事:`current` 说的是「输入框此刻对着谁」(至多一条),
+   * 这一格说的是「它在不在屏幕上摆着」(可以有好几条)。会话多开之前两者恒等,
+   * 所以从前只需要前者。
+   */
+  openState: 'shown' | 'hidden' | null
   /** 键盘活动行(`aria-activedescendant` 指着的那一条,柔光环)。 */
   active: boolean
   /** 「全部」范围才显项目 chip(设计 §1.1);窄档再由容器查询降掉。 */
@@ -118,6 +136,10 @@ interface Props {
    * 这一行只递事件,行本身一个字都不动(树 / 面常驻铁律)。
    */
   onDragPointerDown: (sessionId: string, e: ReactPointerEvent<HTMLElement>) => void
+  /** 点空心那颗点 = 把这一份请回它藏起来时那个位置。 */
+  onRestore: (sessionId: string) => void
+  /** 右键:把「哪一条 + 在哪儿」交出去,菜单由面板那一层弹。 */
+  onMenu: (sessionId: string, point: { x: number; y: number }) => void
 }
 
 function SessionRowView({
@@ -133,6 +155,7 @@ function SessionRowView({
   expandable,
   expanded,
   current,
+  openState,
   active,
   showProject,
   t,
@@ -141,6 +164,8 @@ function SessionRowView({
   onTogglePin,
   onToggleRoom,
   onDragPointerDown,
+  onRestore,
+  onMenu,
 }: Props) {
   // 「键盘走到视口外的行时把它带回来」那条 effect 在 `SessionTree` 上,按
   // `activeId` 一条(文件头病历第 ③ 笔)—— 它本来就只关心**一行**,长在行上
@@ -177,6 +202,11 @@ function SessionRowView({
       aria-expanded={expandable ? expanded : undefined}
       onClick={() => onEnter(id)}
       onPointerDown={(e) => onDragPointerDown(id, e)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        // 点锚(光标坐标)——「点锚不跟滚」那一档,与文件树行的右键同一条裁定。
+        onMenu(id, { x: e.clientX, y: e.clientY })
+      }}
     >
       {/*
        * 形态图标列:**全行预留**(裁决 6),普通聊天留空 —— 标题永远从同一条
@@ -270,6 +300,22 @@ function SessionRowView({
        * `shared-vocab-css` 那条盯的是「同一个视觉词汇有几个产地」,新面不该再往
        * 那张待收编清单上加一行。
        */}
+      {/*
+       * **这一条开着没有**(三态)。它坐在标题之后、悬停动作之前 —— 与文件树行
+       * 那颗点同一个相对位置(名字右边、行尾动作左边),一套判据两处消费。
+       * 没开时整格不在场:那一格 `margin-left` 是位置,没有点就不该占位。
+       */}
+      {openState !== null && (
+        <span className={s.openDot}>
+          <OpenDot
+            state={openState}
+            label={t('expose.openStateHidden')}
+            testId={`session-row-open-${id}`}
+            onRestore={() => onRestore(id)}
+          />
+        </span>
+      )}
+
       {showProject && projectName && <span className={s.project}>{projectName}</span>}
 
       <span className={s.time}>{time}</span>

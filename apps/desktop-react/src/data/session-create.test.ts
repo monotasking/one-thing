@@ -4,7 +4,9 @@ import { configureSessionsPort, type SessionsPort } from './sessions-port'
 import { configureAgentsPort, type AgentsPort } from './agents-port'
 import { useAgentsSource } from './agents-source'
 import { useSessionsSource } from './sessions-source'
-import { useChatSource } from './chat-source'
+import { chatSources, useChatSource } from './chat-source'
+import { openSessionIds } from '../expose/components/__fixtures__/open-sessions'
+import { useWorkbenchStore } from '../workbench/store'
 import { focusTree } from '../focus/registry'
 import { useExposeStore } from '../expose/store'
 import { initialExposeState } from '../expose/transitions'
@@ -87,6 +89,8 @@ beforeEach(() => {
   useChatSource.getState().reset()
   useNotifyStore.getState().clear()
   useExposeStore.setState({ ...initialExposeState })
+  // W5-b:「进了哪条会话」落在树上,所以每条用例都从一棵干净的树起步。
+  useWorkbenchStore.getState().reset()
 })
 
 afterEach(() => {
@@ -213,7 +217,9 @@ describe('expose.newSession:唯一的建会话入口', () => {
     await Promise.resolve()
     await Promise.resolve()
 
-    expect(useExposeStore.getState().currentSessionId).toBe(NEW_ID)
+    // W5-b:「进了新会话」= 焦点那片会话叶原位绑上了它(`currentSessionId`
+    // 成了树的投影,写者是 `content/session-projection.ts` —— 这只文件不接那条订阅)。
+    expect(openSessionIds()).toContain(NEW_ID)
     expect(focused).toBe(1)
     expect(updateSessionAgent).toHaveBeenCalledWith(NEW_ID, 'reviewer')
   })
@@ -224,6 +230,7 @@ describe('expose.newSession:唯一的建会话入口', () => {
 
     await useExposeStore.getState().newSession(null)
 
+    // 失败那一路:占位那一格**换回去**,树上原来那条一格不动(W5-b)。
     expect(useExposeStore.getState().currentSessionId).toBe('os-provider')
     expect(focused).toBe(0)
     const record = useNotifyStore.getState().items.find((r) => r.source === 'session.create')
@@ -243,9 +250,11 @@ describe('expose.newSession:唯一的建会话入口', () => {
     expect(create).toHaveBeenCalledTimes(1)
   })
 
-  it('⌘N 那一条落在**当前会话的项目**下', async () => {
+  it('⌘N 那一条落在**环境会话的项目**下', async () => {
     await useSessionsSource.getState().start()
-    useExposeStore.setState({ currentSessionId: 'os-provider' })
+    // W5-b 裁定 3:⌘N 继承的是**环境会话**那一格(粘性 —— 焦点落到文件叶不换根),
+    // 与文件树的根、检索的 cwd 读同一格。
+    useExposeStore.setState({ envSessionId: 'os-provider' })
     landOnServer(ONETHING_DIR)
 
     await useExposeStore.getState().newSessionInCurrentProject()
@@ -274,7 +283,8 @@ describe('expose.newSession:唯一的建会话入口', () => {
     const sessionId = await useExposeStore.getState().newSession(null)
 
     expect(sessionId).toBe(NEW_ID)
-    expect(useChatSource.getState().sessionId).toBe(NEW_ID)
+    // W5-b:那台机器由注册表按会话各持一份,编排点开的是**这一条**那台。
+    expect(chatSources.get(NEW_ID)?.getState().sessionId).toBe(NEW_ID)
   })
 
   it('失败 / 被单飞闸挡下时交出 undefined —— 调用方据此什么都不做', async () => {

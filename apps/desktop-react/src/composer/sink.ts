@@ -3,7 +3,7 @@ import {
   pushChatNotice,
   selectEngineBusy,
   sendChatMessage,
-  useChatSource,
+  useChatSourceOf,
 } from '../data/chat-source'
 import { useExposeStore } from '../expose/store'
 
@@ -53,10 +53,24 @@ export interface ComposerSink {
   startSession(): Promise<string | undefined>
 }
 
+/**
+ * **输入框此刻对着哪条会话**(W5-b 裁定 4,路线 B)。
+ *
+ * 路线 B 的全部工作量就是这一句:输入框仍旧留在 `.center` 上(几何、
+ * `[data-dock-reserve]`、`--composer-gap`、三道门的采样点一字未动),
+ * 只是它交出去的那句话有了明确的收件人 —— **焦点那片会话叶在看的那条**
+ * (`currentSessionId`,W5-b 起是树的投影)。
+ *
+ * 从前这里省略了这个参数,读作「当前会话那台机器」;那时全应用只有一台。
+ * 会话多开之后「缺省」不再是一个说得清的东西:两片叶各有一台,不点名就是
+ * 让注册表替用户猜。
+ */
+const targetSession = (): string => useExposeStore.getState().currentSessionId
+
 const realSink: ComposerSink = {
-  send: (text, attachments) => sendChatMessage(text, attachments),
-  notice: (kind) => pushChatNotice(kind),
-  abort: () => abortChatRun(),
+  send: (text, attachments) => sendChatMessage(text, attachments, targetSession()),
+  notice: (kind) => pushChatNotice(kind, targetSession()),
+  abort: () => abortChatRun(targetSession()),
   // 惰性建会话时没有「当前会话」,所以当前项目必然是 null —— 与 ⌘N 首开同义。
   startSession: () => useExposeStore.getState().newSessionInCurrentProject(),
 }
@@ -85,5 +99,8 @@ export function composerSink(): ComposerSink {
  * 不需要为它再发明一个假的。
  */
 export function useComposerBusy(): boolean {
-  return useChatSource(selectEngineBusy)
+  // 与 `realSink` 同一个收件人:忙态问的必须是**它要发给谁**那一条,
+  // 不然停止键会画着另一条会话的状态(W5-b 裁定 4)。
+  const sessionId = useExposeStore((st) => st.currentSessionId)
+  return useChatSourceOf(sessionId, selectEngineBusy)
 }

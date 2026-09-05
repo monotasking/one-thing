@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useT } from '../../i18n'
 import { useSessionsList, useSessionsSource } from '../../data/sessions-source'
@@ -10,18 +10,11 @@ import { SectionHead } from './SectionHead'
 import { SessionRow } from './SessionRow'
 import { useSessionTime } from './session-time'
 import { useContentDrag } from '../../workbench/useContentDrag'
-import { CENTER_REGION } from '../../workbench/regions'
+import { openStateOf, useWorkbenchStore } from '../../workbench/store'
+import { sessionRefOf } from '../../content/session-ref'
+import { SessionActionsMenu } from './SessionActionsMenu'
 import s from './SessionTree.module.css'
 
-/**
- * **一条会话在拖拽里的名字**(W3 裁定 7)。
- *
- * 它**不是**一种登记过的内容 —— 会话成为内容是 W5 的事(`session:<id>` 那一格)。
- * 今天它只活在一次拖拽的载荷里:落中央 = 切一条会话,落别处 = 结构化拒绝,
- * 两条路都不往树里插一格。所以它没有 `registerContentKind`,也不该有:
- * 登记一种画不出东西的内容,只会让它在树上留下一格空白 tab。
- */
-const SESSION_DRAG_KIND = 'session'
 
 /**
  * 会话列表 —— **一张树**(设计 §1)。总览与「钻进某个组」那第二屏 09-04 合并成
@@ -79,6 +72,26 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
   const { phase, error } = useSessionsList()
 
   /*
+   * **这一条开着没有**(W5-b 裁定 7)。三格订阅,与 `FilesPanel` 那一处逐字同源
+   * —— 判据是纯函数 `openStateOf`,渲染层不自己判一次;订的是这三格而不是整仓,
+   * 理由与上面那段一样(树一动这里就整棵重渲)。
+   */
+  const regions = useWorkbenchStore((st) => st.regions)
+  const hiddenTabs = useWorkbenchStore((st) => st.hidden)
+  const panelPath = useWorkbenchStore((st) => st.panelPath)
+  const openStateOfSession = useCallback(
+    (sessionId: string) =>
+      openStateOf({ regions, hidden: hiddenTabs, panelPath }, sessionRefOf(sessionId)),
+    [regions, hiddenTabs, panelPath],
+  )
+
+  /**
+   * 右键菜单那一格(点锚:光标坐标开出来,滚动时维持原位)。
+   * 它是**这块面**的状态而不是行的:一屏至多一张菜单,长在行上就是 400 份。
+   */
+  const [menu, setMenu] = useState<{ id: string; title: string; x: number; y: number } | null>(null)
+
+  /*
    * `now` 在**记忆体里**取一次,不在渲染体里现取:后者每渲染一帧换一个数,
    * useMemo 当场作废,而且同一屏里两行会因为差了几毫秒落进不同的日子。
    * 落桶随「会话表 / 范围 / 词 / 展开集 / 收起的节」任何一格变化重算 —— 跨过午夜那一刻
@@ -109,41 +122,20 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
   // 置顶两个入口(图钉 / ⌘⇧P)共用同一件,播报也就只有一个产地(见 pin-announce)。
   const onTogglePin = useCallback((sessionId: string) => togglePinAndAnnounce(sessionId), [])
   /*
-   * **一行会话是一个拖拽来源,但它只许落中央**(W3 裁定 7;设计 §3.1 第二行:
-   * 「T4 之前:落到中央 = 切换当前会话;落到别处 = 结构化拒绝」)。
+   * **一行会话是一个拖拽来源,而且它落哪儿都行**(W5-b 裁定 8)。
    *
-   * 三件事各归各位,都不在这只组件里判:
-   *  · **落得下吗** —— `rules.accepts`:中央区那片叶收,别的一律答一句 key,
-   *    浮影当场变灰并把那句话写出来(不静默);
-   *  · **分不分屏** —— `rules.split: false`:会话落中央只是「切一条会话」,
-   *    切一刀出来放什么都没有,所以叶上不开四带,整片都是中心区;
-   *  · **落定做什么** —— `onDrop` 自己接住:它**不往树里插一格**(会话还不是
-   *    一种内容,W5 才是),而是走既有那口 `enterSession` —— 与点一行逐字相同。
-   * W5 之后这三格一起消失:那时 `session:<id>` 是真的一种内容,走缺省那条路。
+   * W3 时这里有三格自述:`rules.accepts`(只许落中央)、`rules.split: false`、
+   * 以及一口 `onDrop`(不插树,改走 `enterSession`)。会话成为一种真内容之后
+   * **三格一起消失**,正是 W3 那段注脚里写的预言:
+   *  · 落得下吗 —— 由 `ContentKind.regions` 生成(会话那一种没有声明,于是
+   *    哪儿都行);拒绝那句话的产地也跟着搬进了 `useContentDrag`;
+   *  · 分不分屏 —— 开着:会话可以切一刀放到旁边,那正是「会话并排」;
+   *  · 落定做什么 —— 走缺省那条 `dropRef`:真往树里插一格。
+   * 浮影也不必再手写:名字与图标问种类表(`title` 会答这条会话的真名)。
    */
   const dragSessionId = useRef<string | null>(null)
   const startSessionDrag = useContentDrag({
-    ref: () => (dragSessionId.current ? { kind: SESSION_DRAG_KIND, key: dragSessionId.current } : null),
-    /*
-     * 浮影上那个名字**问不到种类表**(会话不是一种登记过的内容),所以就地从
-     * 列表里取 —— `sessions` 本来就订着,这里不多订一份。
-     */
-    ghost: (ref) => ({
-      label: sessions.find((row) => row.id === ref.key)?.title ?? ref.key,
-      icon: 'MessageSquare',
-    }),
-    rules: {
-      split: false,
-      accepts: (target) =>
-        target.kind === 'leaf' && target.region === CENTER_REGION ? null : 'drag.sessionOnlyCenter',
-    },
-    onDrop: (target, ref) => {
-      if (target.kind === 'leaf' && target.region === CENTER_REGION) {
-        useExposeStore.getState().enterSession(ref.key)
-      }
-      // 恒答 true:会话这一种**永远**不往树里插一格(拒绝那一路也是空动作)。
-      return true
-    },
+    ref: () => (dragSessionId.current ? sessionRefOf(dragSessionId.current) : null),
   })
   const onDragPointerDown = useCallback(
     (sessionId: string, e: ReactPointerEvent<HTMLElement>) => {
@@ -156,6 +148,20 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
     (sectionId: string) => useExposeStore.getState().toggleSection(sectionId),
     [],
   )
+  /** 点空心那颗点 = 把这一份请回它藏起来时那个位置(与文件树行同一口)。 */
+  const onRestore = useCallback(
+    (sessionId: string) =>
+      useWorkbenchStore.getState().restoreHidden(`session:${sessionId}`),
+    [],
+  )
+  const onMenu = useCallback(
+    (sessionId: string, point: { x: number; y: number }) => {
+      const title = currentSessionsTitle(sessionId)
+      setMenu({ id: sessionId, title, x: point.x, y: point.y })
+    },
+    [],
+  )
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   /*
    * 项目名按 `projectId` 记一份。`projectNameOf` 只是一次 `lastIndexOf` + `slice`,
@@ -227,6 +233,7 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
                   expandable={row.expandable}
                   expanded={row.expanded}
                   current={row.id === currentSessionId}
+                  openState={openStateOfSession(row.id)}
                   active={row.id === activeId}
                   showProject={showProject}
                   t={t}
@@ -235,6 +242,8 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
                   onTogglePin={onTogglePin}
                   onToggleRoom={onToggleRoom}
                   onDragPointerDown={onDragPointerDown}
+                  onRestore={onRestore}
+                  onMenu={onMenu}
                 />
               ))}
             </div>
@@ -294,6 +303,20 @@ export function SessionTree({ treeRef }: { treeRef: RefObject<HTMLDivElement | n
       >
         {renderBody()}
       </div>
+      {menu && (
+        <SessionActionsMenu
+          sessionId={menu.id}
+          title={menu.title}
+          x={menu.x}
+          y={menu.y}
+          onClose={closeMenu}
+        />
+      )}
     </div>
   )
+}
+
+/** 菜单头上那一行名字。**取一次**,不订阅 —— 它是弹出那一刻的一张快照。 */
+function currentSessionsTitle(sessionId: string): string {
+  return useSessionsSource.getState().sessions.find((row) => row.id === sessionId)?.title ?? sessionId
 }

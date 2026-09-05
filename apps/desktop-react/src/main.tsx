@@ -20,6 +20,7 @@ import { startPerSpaceLayout } from './workspace/layout-scope'
 import './content/kinds'
 import { startWorkbench } from './workbench/store'
 import { startStage } from './stage/store'
+import { startSessionProjection } from './content/session-projection'
 import { installCrashHandlers } from './services/crash'
 import { startPerfProbe } from './services/perf'
 import { getLogger } from './services/log'
@@ -62,6 +63,12 @@ startPerSpaceLayout()
 startStage()
 
 startWorkbench()
+
+// 「当前会话」那条投影(W5-b):树 → `expose.currentSessionId` / `envSessionId`
+// + 聊天数据机器那本引用账。**排在 `startWorkbench()` 之后**:它开工那一刻要读
+// 一棵已经播过种的树。同样一个字节的网都不碰;幂等。判词在
+// `content/session-projection.ts`(接线为什么不在模块作用域里,那儿也写着)。
+startSessionProjection()
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root not found')

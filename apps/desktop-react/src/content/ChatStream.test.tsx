@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { ChatStream } from './ChatStream'
 import { configureChatPort, type ChatPort } from '../data/chat-port'
-import { useChatSource } from '../data/chat-source'
+import { chatSources } from '../data/chat-source'
+
 import { useExposeStore } from '../expose/store'
 import { useStageStore } from '../stage/store'
 
@@ -14,6 +15,15 @@ import { useStageStore } from '../stage/store'
 
 const T0 = 1_700_000_000_000
 const SESSION = 's1'
+
+/**
+ * **这条会话那台机器**(W5-b)。从前这里写的是 `useChatSource`(= 注册表
+ * `current` 槽指着的那一台)—— 那一格现在由**焦点叶投影**宣布
+ * (`content/session-projection.ts`),而这只文件只渲染一片 `ChatStream`、
+ * 不接那条订阅。所以用例直接点名它要摆弄的那一条:与产品里
+ * `useChatSourceOf(sessionId, …)` 读的是同一台。
+ */
+const sessionSource = () => chatSources.ensure(SESSION)
 
 type Ledger = { seq: number; time: number; type: string; data: unknown }
 
@@ -78,13 +88,13 @@ async function mount(ledger: Ledger[], sessionId = SESSION) {
   await act(async () => {
     view = render(<ChatStream sessionId={sessionId} />)
   })
-  if (sessionId) await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
+  if (sessionId) await waitFor(() => expect(sessionSource().getState().status).not.toBe('loading'))
   return view
 }
 
 beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
-  useChatSource.getState().reset()
+  sessionSource().getState().reset()
   useExposeStore.setState({ currentSessionId: '' })
   sendResult = async () => ({ success: true })
 })
@@ -93,7 +103,7 @@ afterEach(async () => {
   // RTL 的自动 cleanup 注册得比这条早,而 afterEach 是后进先出 —— 所以这一句
   // 跑的时候组件还挂着。归零会推一次 state,包进 act 里才不吵 React。
   await act(async () => {
-    useChatSource.getState().reset()
+    sessionSource().getState().reset()
   })
   configureChatPort(undefined)
 })
@@ -193,7 +203,7 @@ describe('消息树:画的就是折叠器的输出', () => {
     expect(screen.getByTestId('chat-streaming')).toBeTruthy()
 
     await act(async () => {
-      useChatSource.setState({ activeMessageId: undefined })
+      sessionSource().setState({ activeMessageId: undefined })
     })
     expect(screen.queryByTestId('chat-streaming')).toBeNull()
   })
@@ -215,7 +225,7 @@ describe('overlay 车道', () => {
   it('发出去的那条立刻上屏(还没落账,所以是 pending)', async () => {
     await mount([created(1)])
     await act(async () => {
-      useChatSource.getState().send('刚发的一条')
+      sessionSource().getState().send('刚发的一条')
     })
     expect(screen.getByTestId('chat-pending-sending').textContent).toContain('刚发的一条')
   })
@@ -224,7 +234,7 @@ describe('overlay 车道', () => {
     sendResult = async () => ({ success: false, error: '引擎没接住' })
     await mount([created(1)])
     await act(async () => {
-      useChatSource.getState().send('会失败的一条')
+      sessionSource().getState().send('会失败的一条')
     })
     await waitFor(() => expect(screen.getByTestId('chat-pending-failed')).toBeTruthy())
     expect(screen.getByText('引擎没接住')).toBeTruthy()
@@ -236,7 +246,7 @@ describe('overlay 车道', () => {
   it('拒绝一组问题:进流,但说得轻一点', async () => {
     await mount([created(1)])
     await act(async () => {
-      useChatSource.getState().notice('ask-rejected')
+      sessionSource().getState().notice('ask-rejected')
     })
     expect(screen.getByText('(拒绝了这组问题)')).toBeTruthy()
   })
@@ -284,7 +294,7 @@ describe('进场落底与流式跟底', () => {
     await act(async () => {
       render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
     })
-    await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
+    await waitFor(() => expect(sessionSource().getState().status).not.toBe('loading'))
     return ref
   }
 
@@ -310,7 +320,7 @@ describe('进场落底与流式跟底', () => {
     })
     // 再推一次屏(任何重渲染都行)—— 位置必须原样留着。
     await act(async () => {
-      useChatSource.setState({ activeMessageId: undefined })
+      sessionSource().setState({ activeMessageId: undefined })
     })
     expect(el.scrollTop).toBe(0)
   })
@@ -327,7 +337,7 @@ describe('进场落底与流式跟底', () => {
     el.scrollTop = 0
     // 换一份消息树引用 = 账本推进了。人没滚过,所以此刻仍是 pinned —— 要跟。
     await act(async () => {
-      useChatSource.setState({ messages: [...useChatSource.getState().messages] })
+      sessionSource().setState({ messages: [...sessionSource().getState().messages] })
     })
     expect(el.scrollTop).toBe(HEIGHT)
   })
@@ -350,7 +360,7 @@ describe('进场落底与流式跟底', () => {
       fireEvent.scroll(el)
     })
     await act(async () => {
-      useChatSource.setState({ messages: [...useChatSource.getState().messages] })
+      sessionSource().setState({ messages: [...sessionSource().getState().messages] })
     })
     expect(el.scrollTop).toBe(HEIGHT)
   })
@@ -392,7 +402,7 @@ describe('跟随丸', () => {
     await act(async () => {
       render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
     })
-    await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
+    await waitFor(() => expect(sessionSource().getState().status).not.toBe('loading'))
     return ref
   }
 
@@ -433,7 +443,7 @@ describe('跟随丸', () => {
     const el = ref.current!
     await scrollUp(el)
     await act(async () => {
-      useChatSource.getState().send('再问一句')
+      sessionSource().getState().send('再问一句')
     })
     expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
     expect(el.scrollTop).toBe(0)
@@ -453,13 +463,13 @@ describe('跟随丸', () => {
     const ref = await mountWithRef(LEDGER)
     await scrollUp(ref.current!)
     await act(async () => {
-      useChatSource.getState().send('再问一句')
+      sessionSource().getState().send('再问一句')
     })
     expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
 
     // 回复开张 + 第一段 delta 到 —— 数据源同一次 set 写出去的就是这两格。
     await act(async () => {
-      useChatSource.setState({ activeMessageId: 'a2', lastDeltaAt: T0 + 1 })
+      sessionSource().setState({ activeMessageId: 'a2', lastDeltaAt: T0 + 1 })
     })
     const streaming = screen.getByTestId('chat-follow-pill')
     // 生成中那张脸一个字都不写(三个点),名字改说「正在生成」。
@@ -468,7 +478,7 @@ describe('跟随丸', () => {
 
     // 流收场:活消息没了,读数也跟着归空(见 chat-source 的 compose)。
     await act(async () => {
-      useChatSource.setState({ activeMessageId: undefined, lastDeltaAt: undefined })
+      sessionSource().setState({ activeMessageId: undefined, lastDeltaAt: undefined })
     })
     expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 回到最新')
   })
@@ -482,10 +492,10 @@ describe('跟随丸', () => {
     const ref = await mountWithRef(LEDGER)
     await scrollUp(ref.current!)
     await act(async () => {
-      useChatSource.getState().send('再问一句')
+      sessionSource().getState().send('再问一句')
     })
     await act(async () => {
-      useChatSource.setState({ activeMessageId: undefined, lastDeltaAt: T0 + 9 })
+      sessionSource().setState({ activeMessageId: undefined, lastDeltaAt: T0 + 9 })
     })
     expect(screen.getByTestId('chat-follow-pill').textContent).toBe('↓ 已发送')
   })
@@ -495,7 +505,7 @@ describe('跟随丸', () => {
     const el = ref.current!
     await scrollUp(el)
     await act(async () => {
-      useChatSource.getState().send('再问一句')
+      sessionSource().getState().send('再问一句')
     })
     await act(async () => {
       fireEvent.click(screen.getByTestId('chat-follow-pill'))
@@ -517,10 +527,10 @@ describe('跟随丸', () => {
     await act(async () => {
       view = render(<ChatStream sessionId={SESSION} scrollRef={ref} />)
     })
-    await waitFor(() => expect(useChatSource.getState().status).not.toBe('loading'))
+    await waitFor(() => expect(sessionSource().getState().status).not.toBe('loading'))
     await scrollUp(ref.current!)
     await act(async () => {
-      useChatSource.getState().send('再问一句')
+      sessionSource().getState().send('再问一句')
     })
     expect(screen.queryByTestId('chat-follow-pill')).toBeTruthy()
     await act(async () => {

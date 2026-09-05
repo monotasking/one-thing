@@ -127,6 +127,14 @@ export const FOCUS_SCOPES: Readonly<Record<FocusScopeId, FocusScopeSpec>> = {
   composer: { id: 'composer', kind: 'region', labelKey: 'focus.scope.composer' },
   search: { id: 'search', kind: 'region', labelKey: 'item.search', keys: SEARCH_KEYS },
   expose: { id: 'expose', kind: 'region', labelKey: 'item.sessions', keys: EXPOSE_KEYS },
+  /*
+   * 消息流。**W5-b 起它是一族带 owner 的实例**(裁定 6,照下面 `leaf` 那一格
+   * 的样板):会话多开之后同一个 scope id 会有好几份 —— 一片会话叶一份,
+   * owner = 那一格的 refId(`content/session-ref.sessionRefIdOf`)。
+   * `activateScope('chat', { owner })` 据此精确取到**那一条会话**的消息流,
+   * 而壳启动那条三级回落(composer → chat(焦点叶的)→ root)问的正是它。
+   * 声明这一头一个字没改:owner 是**实例**的事,不是声明的事(§4.8)。
+   */
   chat: { id: 'chat', kind: 'region', labelKey: 'focus.scope.chat' },
   settings: { id: 'settings', kind: 'region', labelKey: 'item.settings' },
   dock: { id: 'dock', kind: 'region', labelKey: 'dock.label' },

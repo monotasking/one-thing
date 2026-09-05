@@ -6,7 +6,7 @@ import { CENTER_REGION, edgeRegion } from '../regions'
 import { registerContentKind, refId, resetContentKinds } from '../kinds'
 import { useWorkbenchStore } from '../store'
 import { useStageStore } from '../../stage/store'
-import { makeLeaf, refIdsOf } from '../tree'
+import { findLeaf, makeLeaf, refIdsOf } from '../tree'
 import type { ContentRef } from '../kinds'
 import type { PaneLeafNode } from '../tree'
 
@@ -141,5 +141,64 @@ describe('叶动作组菜单 = 拖拽落定,同一个事务', () => {
     expect(dragFloats).toHaveLength(1)
     expect(menuTabs).toEqual(dragTabs)
     expect(menuTabs).toEqual([refId(A)])
+  })
+})
+
+/** 出厂:一片叶两格,活动 = 第二格,而且**那一格是预览 tab**(单击开出来的那种)。 */
+function seedPreview(): PaneLeafNode {
+  const leaf = makeLeaf('leaf-preview', [A, B], 1, refId(B))
+  useWorkbenchStore.setState({
+    regions: { [CENTER_REGION]: leaf },
+    hidden: [],
+    focusLeafId: leaf.id,
+    dragging: false,
+  })
+  return leaf
+}
+
+function leafNow(id: string): PaneLeafNode {
+  const found = findLeaf(useWorkbenchStore.getState().regions[CENTER_REGION], id)
+  if (!found) throw new Error(`没有这片叶:${id}`)
+  return found
+}
+
+/**
+ * **换个位子不等于「保留」**(W5-b 合树接缝 a;了结 W3-b 写在
+ * `drop-commit.reorderTab` 上的那笔留账)。
+ *
+ * W3-b 落地时 `workbench/store.ts` 是并行批的改动面,所以条内换序借道
+ * `moveRefIntoLeaf`(摘干净再插)——而 `removeTab` 会把 `preview` 清成 null,
+ * 于是**拖一格预览 tab 换个位子就等于顺手把它固定下来**,用户没按过「保留」。
+ * 合树之后那一支改走新开的 `store.moveTab`(包纯函数 `tree.moveTab`,预览那一格
+ * 的身份跟着搬)。反证:把 `reorderTab` 里那一句换回 `moveRefIntoLeaf`,
+ * 下面第二条断言当场红(`preview` 读出 null)。
+ */
+describe('条内换序:预览那一格的身份跟着搬', () => {
+  it('拖着换序之后它仍然是预览,而且菜单「左移」换出同一棵树', () => {
+    // ① 拖拽那条路:把预览那一格(第 2 位)拖到第 1 位。
+    seedPreview()
+    act(() => {
+      dropRef(B, { kind: 'strip', leafId: 'leaf-preview', at: 0 })
+    })
+    const viaDrag = leafNow('leaf-preview')
+    expect(viaDrag.tabs.map(refId), '序真的换了').toEqual([refId(B), refId(A)])
+    expect(viaDrag.preview, '换个位子不等于「保留」——预览那一格的身份跟着搬').toBe(refId(B))
+
+    // ② 菜单那条路(左移),同一份出厂树 —— 两条路必须是同一个动作。
+    const leaf = seedPreview()
+    render(<LeafActions leaf={leaf} />)
+    act(() => {
+      fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
+    })
+    const item = screen
+      .getAllByRole('menuitem')
+      .find((el) => /左移一位|Move left/.test(el.textContent ?? ''))
+    expect(item, '菜单里有「左移」那一项').toBeTruthy()
+    act(() => {
+      fireEvent.click(item as HTMLElement)
+    })
+    const viaMenu = leafNow('leaf-preview')
+    expect(viaMenu.tabs.map(refId)).toEqual(viaDrag.tabs.map(refId))
+    expect(viaMenu.preview).toBe(viaDrag.preview)
   })
 })

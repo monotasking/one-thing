@@ -145,7 +145,7 @@ describe('接缝 b:落定之前先收全屏', () => {
 
   it('被拒绝的那一下什么都不改 —— 全屏照旧铺着', () => {
     useWorkbenchStore.getState().enterFull(B)
-    dropRef(A, { kind: 'refuse', reasonKey: 'drag.sessionOnlyCenter' })
+    dropRef(A, { kind: 'refuse', reasonKey: 'drag.regionRefused' })
     expect(useWorkbenchStore.getState().full).not.toBeNull()
     expect(refIdsOf(useWorkbenchStore.getState().regions[CENTER_REGION])).toEqual([
       refId(A),

@@ -8,7 +8,17 @@ import {
   refId,
 } from './kinds'
 import { nextLeafId, nextSplitId } from './ids'
+import { rewriteRefsInPersisted } from './persist-migrate'
 import { CENTER_REGION } from './regions'
+/*
+ * **这一句是这只文件里唯一一条指向内容层的边,而且它一个种类名都读不到**:
+ * 翻译表住在内容层(`content/legacy-refs.ts` —— 种类名的地盘),走档案那一遍
+ * 住在 `./persist-migrate.ts`(它知道档案长什么形、却不知道种类)。两半合起来
+ * 才是「存量档案里那一格 `chat:main` 怎么变成今天的会话叶」,而这里只是把它们
+ * 接上。`content/legacy-refs.ts` 的 import 闭包只到 `content/session-ref.ts` →
+ * `workbench/{kinds,tree,regions}`,一条环都不成。
+ */
+import { rewriteLegacyContentRef } from '../content/legacy-refs'
 import * as T from './tree'
 import {
   spreadSpace,
@@ -31,7 +41,7 @@ import type { PaneLeafNode, PaneLocation, PaneNode } from './tree'
  *
  * ── 这只文件里一个内容种类名都没有 ──────────────────────────────────────
  * 出厂布局不是写死的「中央区第一片叶装聊天」,而是**问表**:哪一种自述了
- * `resident: { region, key }`,就在那个区域里摆一格(`seedResidents`)。
+ * `resident: { region, seed() }`,就在那个区域里摆一格(key 由那一种现铸)。
  * 「最后一片不可关」同理:问的是「这个区域里这一种还剩几个」。
  * 于是加一种内容 = 它自己的模块 + 一行登记,这只文件一个字不改。
  *
@@ -184,6 +194,49 @@ export interface WorkbenchState extends PerSpaceState<WorkbenchFurniture> {
    */
   moveRefIntoLeaf(ref: ContentRef, leafId: string, opts?: { at?: number }): void
   /**
+   * **同一片叶里换个位子**(W3-b 裁定 4 的落定 + 裁定 8 的「左移 / 右移」;
+   * W5-b 合树接缝 a 把它接上)。`from` / `to` 都是对着**换之前那张表**量的下标。
+   *
+   * ── 它为什么是一口新的口,而不是 `moveRefIntoLeaf` 的一种用法 ────────────
+   * 因为「搬进这片叶」与「在这片叶里换位子」有一处**看得见**的分叉:
+   * **预览那一格的身份**。W3-b 落地时 `workbench/store.ts` 正在并行批 W5-b 的
+   * 改动面上,所以 `drop-commit.reorderTab` 借道 `moveRefIntoLeaf`(摘干净再插),
+   * 而摘的那一下 `removeTab` 会把 `preview` 清成 null —— 换一格预览 tab 的位子
+   * 等于**顺手把它固定下来**,那是用户没要过的一次「保留」。留账写在
+   * `reorderTab` 的判词里,这一口就是那笔账的了结。
+   *
+   * 判据本体是纯函数 `tree.moveTab`(它自己收 splice 的下标偏移,并且把
+   * `preview` 随那一格搬过去)。这里只负责**一次 `set`**:同叶换序不跨区域,
+   * 所以不必再问 `kind.regions` —— 区域一个字都没变。
+   */
+  moveTab(leafId: string, from: number, to: number): void
+  /**
+   * **原位换一格 ref**(W5-b 裁定 1)。同一片叶、同一个下标、活动格不动 ——
+   * 换的只是「这一格代表谁」。判据本体是纯函数 `tree.replaceRef`(判词在那儿)。
+   *
+   * 两个调用方,都是「这片叶换一条会话」的两种说法:列表里点一行(切换)、
+   * 首开草稿态发出第一句话之后把 `session:new` 绑成真 id。两者都**不许**走
+   * 「关一格再开一格」——那条路会把叶剪掉重建,整台聊天区连同兄弟叶一起重挂。
+   *
+   * 这一种自述了 `regions` 而目标区域不在里面时是空动作(与 `openRef` 同一句闸)。
+   */
+  replaceRef(leafId: string, from: ContentRef, to: ContentRef): void
+  /**
+   * **把「背后那个东西已经没了」的格子扫掉**(W5-b 裁定 5)。
+   *
+   * `alive(ref)` 由发起那一拍注入(会话列表首达 / `onSessionsRemoved`)——
+   * 判词写在 `tree.SanitizeOptions.alive` 上:这一口问的是**这一个**,而
+   * 那本账住在数据源那一侧,树自己答不出。
+   *
+   * 死格的下场分两档,判据仍旧是**种类自述**、不是核心层点名:
+   *  · 它是常驻那一种在这个区域里的**最后一格** → 原位换成种类新播的那一格
+   *    (`resident.seed()` —— 会话那一种会答保留键,因为死掉的那条不在名册上了);
+   *  · 其余 → 整格摘掉(隐藏表里的那些同理)。
+   *
+   * 一格都没扫掉时**引用恒等**(不惊动任何订阅者)。
+   */
+  sweepRefs(alive: (ref: ContentRef) => boolean): void
+  /**
    * **进全屏**(W2)。`from` 缺席读作「问树」—— 它此刻在哪棵树的哪一格,
    * 就记哪一格;哪棵树都不在就是 `null`(那一路由 `FullLayer` 自己画)。
    *
@@ -247,9 +300,22 @@ export function normalizeRegions(regions: Record<string, PaneNode>): Record<stri
   for (const kind of contentKindList()) {
     const resident = kind.resident
     if (!resident) continue
-    const ref: ContentRef = { kind: kind.id, key: resident.key }
+    /*
+     * **key 由那一种自己现铸**(W5-b 裁定 2)。W1 这里读的是一格死的
+     * `resident.key`;会话多开之后「出厂那一片摆哪条会话」只有那一种答得出,
+     * 而且答案随时刻变(冷启动 = 保留键,换空间 = 那个空间的当前会话)。
+     * 核心层照旧不知道这个字符串是什么 —— 它只是把答案放进树。
+     */
     const tree = out[resident.region]
-    if (tree && T.locateRef(tree, resident.region, refId(ref))) continue
+    /*
+     * 「已经有了」问的是**这个区域里还有没有同种的**,不是「有没有这一个」
+     * (W5-b:`key` 不再是死的 `main`,同一种的两格 key 各不相同)。判据与
+     * `canDetachTab` 那句「关掉之后这个区域里还剩不剩同种的」逐字同源 ——
+     * 少了这一条,一棵已经装着 `session:abc` 的树会在每次播种时再补一格
+     * `session:new` 进去。
+     */
+    if (tree && T.countKind(tree, kind.id) > 0) continue
+    const ref: ContentRef = { kind: kind.id, key: resident.seed() }
     if (!tree) {
       out[resident.region] = T.makeLeaf(nextLeafId(), [ref], 0, null)
       continue
@@ -682,6 +748,105 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           })
         },
 
+        moveTab: (leafId, from, to) => {
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const tree = s.regions[region]
+          if (!tree) return
+          const next = T.moveTab(tree, { leafId, index: from }, { leafId, at: to })
+          // 引用恒等 = 这一下什么都没换(夹到两端 / 落点前后就是自己)——不惊动订阅者。
+          if (next === tree) return
+          set({ regions: { ...s.regions, [region]: next }, focusLeafId: leafId })
+        },
+
+        replaceRef: (leafId, from, to) => {
+          const s = get()
+          const region = regionOfLeaf(s.regions, leafId)
+          if (!region) return
+          const kind = contentKindOf(to.kind)
+          if (kind?.regions && !kind.regions.includes(region)) return
+          const tree = s.regions[region]
+          const next = T.replaceRef(tree, leafId, from, to)
+          if (next === tree) return
+          /*
+           * 换进来的那一格可能**别处还开着一份**(在另一片叶里,或者藏着)。
+           * 先摘干净再换是唯一能同时守住两条的次序:树上不许有两格同 refId,
+           * 而这片叶自己那一格是**换**不是插 —— 反过来先换再摘会把刚换上去的
+           * 那一格自己摘掉。
+           *
+           * `withoutRef` 自带剪枝,所以摘完这片叶可能已经不在了(它只装着那一格
+           * 被摘的)—— 那时这一下是空动作,原样交回。
+           */
+          const elsewhere = { ...s.regions }
+          const stripped = withoutRef(elsewhere, refId(to))
+          const base = stripped[region]
+          if (!base || !T.findLeaf(base, leafId)) {
+            set({ regions: { ...s.regions, [region]: next }, focusLeafId: leafId })
+            return
+          }
+          const merged = T.replaceRef(base, leafId, from, to)
+          const regions = { ...stripped, [region]: merged }
+          set({
+            regions,
+            // 换进来的那一份不再是「藏着的」(与 `moveRef` 同一句)。
+            hidden: s.hidden.filter((entry) => refId(entry.ref) !== refId(to)),
+            focusLeafId: leafId,
+            ...fullPatch(s, regions),
+          })
+        },
+
+        sweepRefs: (alive) => {
+          const s = get()
+          const regions: Record<string, PaneNode> = {}
+          let changed = false
+          for (const [region, tree] of Object.entries(s.regions)) {
+            let next = tree
+            for (const leaf of T.leavesOf(tree)) {
+              for (const ref of leaf.tabs) {
+                if (alive(ref)) continue
+                const kind = contentKindOf(ref.kind)
+                /*
+                 * 常驻那一种在这个区域里的**最后一格**:原位换成它自己新播的
+                 * 那一格(判据与 `canDetachTab` 同源 —— 问的是「还剩不剩同种的」,
+                 * 不是「它是不是会话」)。摘掉再让 `normalizeRegions` 补一格
+                 * 也能补出来,但那是**另一片叶**:原叶被剪掉、新叶换了 id,
+                 * 整台聊天区连兄弟一起重挂,而用户只是删了一条会话。
+                 */
+                const last = kind?.resident && T.countKind(next, ref.kind) <= 1
+                const fresh = last && kind?.resident ? { kind: ref.kind, key: kind.resident.seed() } : null
+                if (fresh && !alive(fresh)) {
+                  // 新播的那一格自己也是死的 = 这一种此刻播不出活的来,整格摘掉。
+                  next = removeRefFrom(next, refId(ref))
+                } else if (fresh) {
+                  next = T.replaceRef(next, leaf.id, ref, fresh)
+                } else {
+                  next = removeRefFrom(next, refId(ref))
+                }
+              }
+            }
+            if (next !== tree) changed = true
+            regions[region] = next
+          }
+          const hidden = s.hidden.filter((entry) => alive(entry.ref))
+          if (!changed && hidden.length === s.hidden.length) return
+          // 摘掉的那些实例由种类自己清(与 `closeTab` / `dropHidden` 同一句)。
+          for (const entry of s.hidden) {
+            if (!alive(entry.ref)) contentKindOf(entry.ref.kind)?.dispose?.(entry.ref)
+          }
+          /*
+           * 只剪枝、**不重新播种**:该补的那一格上面已经原位换好了,而
+           * `normalizeRegions` 要读种类表 —— 清洗这条路是「动作」不是「入口」,
+           * 与 `pruneRegions` 文件末尾那段分工判词逐字同源。
+           */
+          const clean = pruneRegions(regions)
+          set({
+            regions: clean,
+            hidden: hidden.length === s.hidden.length ? s.hidden : hidden,
+            ...fullPatch(s, clean),
+          })
+        },
+
         enterFull: (ref, from) => {
           const s = get()
           if (!canGoFull(ref)) return
@@ -748,7 +913,26 @@ export const useWorkbenchStore = create<WorkbenchState>()(
     },
     {
       name: 'onething.workbench',
-      version: 1,
+      /*
+       * ── 版本账 ──────────────────────────────────────────────────────────
+       * v1 = W1 的形(树按 Workspace 记,常驻那一格是 `chat:main`);
+       * v2 = **W5-b 会话多开**:`chat` 这一种改名 `session`,`key` 从死的 `main`
+       *      换成会话 id。存量档案里那一格由 `migrateChatToSession` 翻成
+       *      `session:<seed>` —— 而 `seed` 此刻恒是保留键,因为「当前会话」
+       *      **不跨启动持久化**(理由写在 expose 那一槽的 partialize 上:
+       *      记一个可能已被删掉的 id,换来的是一个指向空气的标题)。
+       */
+      version: 2,
+      migrate: (persisted, version) => {
+        if (!persisted || typeof persisted !== 'object') return persisted
+        if (version < 2) {
+          return rewriteRefsInPersisted(
+            persisted as Record<string, unknown>,
+            rewriteLegacyContentRef,
+          )
+        }
+        return persisted
+      },
       storage: createJSONStorage(() => localStorage),
       /*
        * merge 是**同步**的、发生在 store 建出来那一刻,所以第一帧画的就是这个空间
@@ -825,6 +1009,16 @@ function pruneRegions(regions: Record<string, PaneNode>): Record<string, PaneNod
   return out
 }
 
+/** 把一个 refId 从**一棵**树里摘掉(不剪枝 —— 剪不剪由调用方决定)。 */
+function removeRefFrom(tree: PaneNode, id: ContentRefId): PaneNode {
+  let cleaned = tree
+  for (const leaf of T.leavesOf(tree)) {
+    const at = leaf.tabs.findIndex((tab) => refId(tab) === id)
+    if (at >= 0) cleaned = T.removeTab(cleaned, leaf.id, at)
+  }
+  return cleaned
+}
+
 /** 把一个 refId 从**每一棵**树里摘掉,然后剪一遍。 */
 function withoutRef(
   regions: Record<string, PaneNode>,
@@ -832,12 +1026,7 @@ function withoutRef(
 ): Record<string, PaneNode> {
   const next: Record<string, PaneNode> = {}
   for (const [region, tree] of Object.entries(regions)) {
-    let cleaned = tree
-    for (const leaf of T.leavesOf(tree)) {
-      const at = leaf.tabs.findIndex((tab) => refId(tab) === id)
-      if (at >= 0) cleaned = T.removeTab(cleaned, leaf.id, at)
-    }
-    next[region] = cleaned
+    next[region] = removeRefFrom(tree, id)
   }
   return pruneRegions(next)
 }

@@ -20,6 +20,6 @@
  */
 import './panel'
 import './file'
-import './chat'
+import './session'
 /* W3:项目行拖进区域时变成的那一种 —— 以某个目录为根的一棵文件树(设计 §3.1)。 */
 import './files-root'

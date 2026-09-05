@@ -7,6 +7,8 @@ import { sessionMutation } from '../../data/sessions-source'
 import { focusTree } from '../../focus/registry'
 import { liveRegionText, resetLiveRegions } from '../../ui/a11y/live-region'
 import { useExposeStore } from '../store'
+import { openSessionIds } from './__fixtures__/open-sessions'
+import { useWorkbenchStore } from '../../workbench/store'
 import { initialExposeState } from '../transitions'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { ExposeView } from './ExposeView'
@@ -22,6 +24,8 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh', placements: {} })
   seedSessionsSource()
   useExposeStore.setState({ ...initialExposeState, view: { mode: 'overview' } })
+  // W5-b:「进了哪条会话」落在树上,所以每条用例都从一棵干净的树起步。
+  useWorkbenchStore.getState().reset()
 })
 
 afterEach(() => {
@@ -344,7 +348,8 @@ describe('树的结构键(设计 §3.2 那张表的右半列)', () => {
     render(<ExposeView />)
     lightUp('os-compact')
     key('Enter')
-    expect(useExposeStore.getState().currentSessionId).toBe('os-compact')
+    // W5-b:「进了哪条会话」看的是树(判词与夹具在 `__fixtures__/open-sessions`)。
+    expect(openSessionIds()).toContain('os-compact')
   })
 
   it('↵ 落在**节头**上 = 收 / 展这一节,而不是进某条会话', () => {
@@ -352,10 +357,10 @@ describe('树的结构键(设计 §3.2 那张表的右半列)', () => {
     lightUp('section:today')
     key('Enter')
     expect(head('today').getAttribute('aria-expanded')).toBe('false')
-    expect(useExposeStore.getState().currentSessionId).toBe('')
+    expect(openSessionIds()).toEqual([])
     key('Enter')
     expect(head('today').getAttribute('aria-expanded')).toBe('true')
-    expect(useExposeStore.getState().currentSessionId).toBe('')
+    expect(openSessionIds()).toEqual([])
   })
 
   it('Space 落在节头上什么都不做(一个分组没有可以预览的正文)', () => {

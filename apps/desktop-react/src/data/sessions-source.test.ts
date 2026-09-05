@@ -5,6 +5,10 @@ import type { SessionLifecycleEvent } from '@onething/client/events/session-life
 import { configureSessionsPort } from './sessions-port'
 import type { SessionsPort } from './sessions-port'
 import { useExposeStore } from '../expose/store'
+import { openSessionIds } from '../expose/components/__fixtures__/open-sessions'
+import { sessionAlive } from '../content/session-projection'
+import { sessionRefOf } from '../content/session-ref'
+import { useWorkbenchStore } from '../workbench/store'
 import { initialExposeState } from '../expose/transitions'
 import { applyScope } from '../expose/list-model'
 import type { ProjectScope } from '../expose/types'
@@ -117,6 +121,8 @@ beforeEach(() => {
   configureSessionsPort(port)
   useSessionsSource.getState().reset()
   useExposeStore.setState({ ...initialExposeState })
+  // W5-b:「进了哪条会话」落在树上,所以每条用例都从一棵干净的树起步。
+  useWorkbenchStore.getState().reset()
 })
 
 afterEach(() => {
@@ -923,20 +929,35 @@ describe('删除 → 形态夹持(接缝)', () => {
     expect(useExposeStore.getState().view).toEqual({ mode: 'overview' })
   })
 
-  it('当前会话被删 → 回空态(不自动挑一条顶上)', async () => {
+  /*
+   * ── W5-b:「当前会话被删」的落点搬家了(裁定 3 + 裁定 5)────────────────
+   * 那一格从**被写的字段**变成了**树的投影**,所以「被删之后屏幕上还剩什么」
+   * 问的是树:清洗(`workbench.sweepRefs`)把死掉的那一格摘掉 / 原位换成
+   * 保留键,投影随后跟上。这两条用例因此改成钉**判据 + 动作**那一对:
+   * 名册摘掉之后 `sessionAlive` 当场说这一格死了,清洗照它办。
+   *
+   * (真机上那一发清洗由 `startSessionProjection` 的 `onSessionsRemoved` 订阅
+   * 在微任务里发起 —— 这只文件不接那条订阅:接上等于让每一条数据源用例顺手
+   * 起一台聊天数据机器。整条链由 `session-projection.test.ts` 单独钉。)
+   */
+  it('当前会话被删 → 清洗判据当场说这一格死了,树上那一格被摘掉', async () => {
     await start()
     useExposeStore.getState().enterSession('os-compact')
-    expect(useExposeStore.getState().currentSessionId).toBe('os-compact')
+    expect(openSessionIds()).toContain('os-compact')
+    expect(sessionAlive(sessionRefOf('os-compact'))).toBe(true)
 
     emitLifecycle!({ type: 'deleted', sessionId: 'os-compact', cascadedSessionIds: ['os-compact'] })
 
-    expect(useExposeStore.getState().currentSessionId).toBe('')
+    expect(sessionAlive(sessionRefOf('os-compact'))).toBe(false)
+    useWorkbenchStore.getState().sweepRefs(sessionAlive)
+    expect(openSessionIds()).not.toContain('os-compact')
   })
 
   it('删的是别的会话时当前会话一格不动', async () => {
     await start()
     useExposeStore.getState().enterSession('os-compact')
     emitLifecycle!({ type: 'deleted', sessionId: 'lo-notes', cascadedSessionIds: ['lo-notes'] })
-    expect(useExposeStore.getState().currentSessionId).toBe('os-compact')
+    useWorkbenchStore.getState().sweepRefs(sessionAlive)
+    expect(openSessionIds()).toContain('os-compact')
   })
 })

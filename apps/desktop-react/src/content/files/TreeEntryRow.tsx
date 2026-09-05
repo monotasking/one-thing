@@ -6,6 +6,7 @@ import type {
 } from 'react'
 import { ChevronDown, ChevronRight, Ellipsis } from '../../components/icons'
 import { ButtonBase } from '../../ui/ButtonBase'
+import { OpenDot } from '../../ui/OpenDot'
 import { IconButton } from '../../ui/IconButton'
 import type { TFn } from '../../i18n'
 import { glyphOf, isHiddenName } from '../../data/file-icons'
@@ -227,30 +228,23 @@ export function TreeEntryRow({
        * 语义状态色(ok / warn / danger),而这一颗画的是 `--accent`,说的是
        * 「正开着」——它是一处**指认**,不是一格状态。
        *
-       * ── W1:两态(设计 §2.3)──────────────────────────────────────────
-       * 实心 = 显示中,空心 = 打开着但隐藏。**空心档只换 CSS**(同一颗点、
-       * 同一个位子,底色换成透明 + 一圈内描边)—— 不是第二个组件,也不迁库件:
-       * 它仍然是那一处指认,只是这处指认现在能说出两句话。
+       * ── W1:两态(设计 §2.3);W5-b:整件入库 ──────────────────────────
+       * 实心 = 显示中,空心 = 打开着但隐藏。W1 时这两档就地写在这块面的样式表里
+       * (那时只有这一个消费者);W5-b 会话行要画**同一句话**的同一颗点,于是
+       * 整件搬进 `ui/OpenDot`(样式逐字搬,一个像素没改)。这里只剩它的**位置**。
        *
-       * 空心那一颗**可点**(把它请回来),所以它是一颗 `ui/ButtonBase`
-       * (③ 类结构性交互件:视觉本该定制,只清 UA、焦点环仍走全局);
-       * 实心那一颗不可点,是一枚纯装饰的 `<span>` —— 「显示中的东西再点一下」
-       * 没有语义,而一颗按下去什么都不发生的钮正是「按了没反应」那一族。
+       * `openState === null` 时**整格不在场** —— 那一格 `margin-left` 是位置,
+       * 没有点就不该占位。
        */}
-      {openState === 'shown' && (
-        <span className={s.openDot} data-testid="files-open-dot" data-open-state="shown" aria-hidden="true" />
-      )}
-      {openState === 'hidden' && (
-        <ButtonBase
-          className={`${s.openDot} ${s.openDotHidden}`}
-          data-testid="files-open-dot"
-          data-open-state="hidden"
-          aria-label={t('files.openStateHidden')}
-          onClick={(e) => {
-            e.stopPropagation()
-            onRestore?.()
-          }}
-        />
+      {openState !== null && (
+        <span className={s.openDot}>
+          <OpenDot
+            state={openState}
+            label={t('files.openStateHidden')}
+            testId="files-open-dot"
+            onRestore={onRestore}
+          />
+        </span>
       )}
       {/*
        * 行尾的 ⋯。**消费 ui/IconButton**(09-01 立法:图标钮必须用库件)——

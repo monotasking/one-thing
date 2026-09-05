@@ -286,6 +286,10 @@ export const en: Record<MessageKey, string> = {
   'expose.unpin': 'Unpin',
   'expose.pinnedAnnounce': 'Pinned {name}',
   'expose.unpinnedAnnounce': 'Unpinned {name}',
+  /* W5-b: the session row's context menu, plus the accname of the hollow
+   * "open but hidden" dot. The three menu items reuse `files.menuOpen*`. */
+  'expose.rowMenu': 'More actions',
+  'expose.openStateHidden': 'Open (hidden)',
   'expose.expandRoom': 'Expand {name}',
   'expose.collapseRoom': 'Collapse {name}',
 
@@ -673,7 +677,8 @@ export const en: Record<MessageKey, string> = {
   'drag.toEdgeRight': 'Move to the right',
   'drag.toEdgeTop': 'Move above',
   'drag.toEdgeBottom': 'Move below',
-  'drag.sessionOnlyCenter': 'Multiple open sessions come later',
+  /* Refused because that kind declared `ContentKind.regions` (W5-b ruling 8). */
+  'drag.regionRefused': "This can't open here",
   'drag.movedToEdge': 'Moved to {side}',
   'drag.movedIntoLeaf': 'Merged into {name}',
   'drag.movedToFloat': 'Torn off into a window',

@@ -7,10 +7,12 @@ import { dropRef } from './drop-commit'
 import { dropTargetAt, targetRectOf } from './drop'
 import { measureDropGeometry } from './drop-geometry'
 import { contentKindOf } from './kinds'
+import { edgeRegion, floatRegion } from './regions'
 import { useWorkbenchStore } from './store'
 import type { DragBandState, DragGhostSpec } from '../ui/drag'
 import type { DropGeometry, DropRules, DropTarget } from './drop'
 import type { ContentRef } from './kinds'
+import type { RegionId } from './regions'
 import type { MessageKey } from '../i18n'
 
 /**
@@ -180,7 +182,13 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
         inline.leave()
       }
       setDragPresentation('ghost')
-      const target = dropTargetAt(pointer, held.geometry, specRef.current.rules)
+      /*
+       * 规矩过一道 `rulesFor`:来源自己那一口 `accepts` 之外,再加上**那一种
+       * 内容自述的 `regions`**(W5-b 裁定 8)。带内那一形不经过这里 —— 换序
+       * 压根不换区域,没有区域可判。
+       */
+      const rules = rulesFor(held.ref, specRef.current.rules, held.geometry)
+      const target = dropTargetAt(pointer, held.geometry, rules)
       held.target = target
       setDropFeedback(feedbackOf(target, held.geometry, pointer, t))
       specRef.current.onTarget?.(target)
@@ -233,6 +241,66 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
     band: () => specRef.current.band?.() ?? null,
     bandSlack: specRef.current.bandSlack,
   })
+}
+
+/**
+ * **「这一种开不到这里」那句拒绝,由 `ContentKind.regions` 生成**(W5-b 裁定 8)。
+ *
+ * W3 时这句话是**手写**的:会话行自己在 `rules.accepts` 里判「不是中央区就拒」,
+ * 连理由文案(`drag.sessionOnlyCenter`,「会话多开在下一期」)都是那一处专用的。
+ * 那是一处「按内容枚举」的判据 —— 而每一种内容能开在哪些区域**本来就写在它自己
+ * 的自述上**(`ContentKind.regions`,`workbench/store.openRef` / `moveRef` /
+ * `moveRefIntoLeaf` 三处早就在读它)。
+ *
+ * 于是这里把它接上:拖拽期间那句拒绝与落定时那道闸从此是同一条判据的两次读取,
+ * 不可能分叉。会话那一种删掉 `regions` 之后自然全域解禁,而**将来任何一种**
+ * 自述了 `regions` 的内容都白拿这句诚实的拒绝 —— 一行代码都不用写。
+ *
+ * 来源自己那一口 `accepts` **先问**(它可能有比区域更细的规矩),它放行才轮到这一条。
+ */
+function rulesFor(
+  ref: ContentRef,
+  rules: DropRules | undefined,
+  geometry: DropGeometry,
+): DropRules {
+  const allowed = contentKindOf(ref.kind)?.regions
+  if (!allowed) return rules ?? {}
+  return {
+    ...rules,
+    accepts: (target) => rules?.accepts?.(target) ?? regionRefusal(target, allowed, geometry),
+  }
+}
+
+function regionRefusal(
+  target: DropTarget,
+  allowed: readonly RegionId[],
+  geometry: DropGeometry,
+): MessageKey | null {
+  const region = regionOfTarget(target, geometry)
+  if (region === null) return null
+  return allowed.includes(region) ? null : 'drag.regionRefused'
+}
+
+/**
+ * 一个落点最终会把内容放进哪个区域。`refuse` 已经是拒绝,不必再问一次。
+ *
+ * **标签条那一支是 W3-b×W5-b 的合树接缝**:`strip` 这一种落点是 W3-b 才有的,
+ * 它只带 `leafId` 不带区域 —— 而「插到那条条的第 n 格」最终就是把这一格放进
+ * 那片叶所在的区域(`drop-commit.dropIntoStrip` → `store.moveRefIntoLeaf`,
+ * 那一只自己也读 `kind.regions`,不合格就**一声不响地什么都不做**)。
+ * 不在这里补上,拖拽期间那句诚实的拒绝就会漏掉一整类落点,而漏掉的下场正是
+ * 「松手了,没反应,也没人说为什么」—— 裁定 8 要杀的就是这个。
+ * 叶的区域从起拖时量好的那份几何里查(`leaves` 每一格都自带 `region`)。
+ */
+function regionOfTarget(target: DropTarget, geometry: DropGeometry): RegionId | null {
+  if (target.kind === 'leaf') return target.region
+  if (target.kind === 'strip') {
+    return geometry.leaves.find((leaf) => leaf.leafId === target.leafId)?.region ?? null
+  }
+  if (target.kind === 'edge') return edgeRegion(target.side)
+  // 撕成浮窗:窗号是落定那一刻才铸的,所以这里问的是「浮窗**这一类**收不收」。
+  if (target.kind === 'float') return floatRegion('*')
+  return null
 }
 
 /** 浮影的缺省:名字与图标都问种类表(拖拽因此不认识任何一种内容)。 */

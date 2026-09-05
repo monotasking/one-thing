@@ -31,6 +31,8 @@ function renderRow(over: Partial<React.ComponentProps<typeof SessionRow>> = {}) 
     expandable: false,
     expanded: false,
     current: false,
+    // W5-b:三态标记。缺省「没开」= 与 W1 那版行的形逐字相同(不画那颗点)。
+    openState: null,
     active: false,
     showProject: true,
     // 行不再自己 `useT()`(冷开预算,见组件文件头病历第 ② 笔):`t` 由父层递进来。
@@ -41,6 +43,8 @@ function renderRow(over: Partial<React.ComponentProps<typeof SessionRow>> = {}) 
     onTogglePin: noop,
     onToggleRoom: noop,
     onDragPointerDown: noop,
+    onRestore: noop,
+    onMenu: noop,
     ...over,
   }
   return { ...render(<SessionRow {...props} />), props }

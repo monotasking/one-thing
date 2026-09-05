@@ -183,7 +183,9 @@ export function FilesPanel() {
   const t = useT()
   // 「哪种语言」这件事跟着详情浮层一起搬走了(它是那块内容自己的事,不是面板的)。
   const cwd = useSessionCwd()
-  const sessionId = useExposeStore((st) => st.currentSessionId)
+  // 环境会话(W5-b):与上面那句 `useSessionCwd()` 读同一格 —— 一块面里
+  // 「跟着哪条会话」只该有一个答案。
+  const sessionId = useExposeStore((st) => st.envSessionId)
   const root = useFilesSource((st) => st.root)
   const rootStatus = useFilesSource((st) => st.rootStatus)
   const rootOrigin = useFilesSource((st) => st.rootOrigin)

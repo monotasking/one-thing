@@ -330,6 +330,10 @@ export const zh = {
   'expose.unpinnedAnnounce': '已取消置顶 {name}',
   'expose.expandRoom': '展开 {name}',
   'expose.collapseRoom': '收起 {name}',
+  /* W5-b:会话行的右键菜单,以及那颗空心「已打开·隐藏」点的 accname。
+   * 三行菜单项本身复用 `files.menuOpen*`(同一句话只该有一个键)。 */
+  'expose.rowMenu': '更多操作',
+  'expose.openStateHidden': '打开着(已隐藏)',
   /* 空态 / 载入态:数据源说了算,不留 mock 兜底 —— 假数据比空更糟。 */
   'expose.loading': '正在读会话…',
   'expose.emptyTitle': '这里还没有会话',
@@ -804,8 +808,10 @@ export const zh = {
   'drag.toEdgeRight': '移到右侧',
   'drag.toEdgeTop': '移到上方',
   'drag.toEdgeBottom': '移到下方',
-  /* 会话行只许落中央(裁定 7;W5 会话多开之后这一条撤)。 */
-  'drag.sessionOnlyCenter': '会话多开在下一期',
+  /* 那一种自述了 `ContentKind.regions`,而这个落点不在里面(W5-b 裁定 8)。
+   * 它顶掉了 W3 那句专供会话行的 `drag.sessionOnlyCenter`:拒绝从此由种类自述
+   * 生成,不再是某一处手写的判据。 */
+  'drag.regionRefused': '这一种开不到这里',
   'drag.movedToEdge': '已移到{side}',
   'drag.movedIntoLeaf': '已并入{name}',
   'drag.movedToFloat': '已撕成浮窗',

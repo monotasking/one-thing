@@ -1,0 +1,28 @@
+/*
+ * **三态打开标记**(W5-b;规格与判词在 `OpenDot.tsx` 上)。
+ *
+ * 这两格是从 `content/FilesPanel.module.css` 的 `.openDot` / `.openDotHidden`
+ * **逐字搬**过来的(W1 的原件),一个像素都没改 —— 迁移 = 等价替换。
+ * 身量走同一格 token `--open-dot`(原名 `--files-open-dot`,随这次入库改成
+ * 不带面名的名字:它现在有两个消费面)。
+ */
+.dot {
+  flex: none;
+  width: var(--open-dot);
+  height: var(--open-dot);
+  border-radius: var(--r-full);
+  background: var(--accent);
+}
+
+/*
+ * 空心档 = **打开着但隐藏**(设计 §2.3)。同一颗点、同一个位子,只换画法:
+ * 底色抹掉,换一圈内描边。它是可点的(把那一份请回来),所以宿主那一档走
+ * `ui/ButtonBase`(清 UA、零像素、焦点环仍走全局 `:focus-visible`)。
+ * 命中区靠 padding 撑不得(位子是固定的),所以那 5px 就是它的命中区 ——
+ * 鼠标那条路之外还有右键菜单。
+ */
+.hidden {
+  background: transparent;
+  box-shadow: inset 0 0 0 var(--bw-1) var(--accent);
+  cursor: pointer;
+}

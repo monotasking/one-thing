@@ -544,6 +544,86 @@ async function main() {
     const jumped = await readGeometry(page)
     assert(jumped.gap <= 2, `点丸回到底(离底 ${jumped.gap?.toFixed(1)}px)`)
     assert(jumped.pillLabel === null, '丸当场卸载(不等滚动动画)')
+
+    /* ── ⑧ 会话多开(W5-b):**非焦点叶在流式,不抢滚动、不抢焦点** ────────
+     *
+     * 会话多开之后「屏幕上正在流的那一条」不一定是人正在看的那一条。跟随状态机
+     * 是**每条会话一台**(W5-a 把 chat-source 拆成了实例),所以隔壁那片叶收流
+     * 不该动这一片的 scrollTop,更不该把键盘抢过去。
+     *
+     * 判据取「什么都没发生」那一头:另一条会话真的流完了(它那片叶画出了正文),
+     * 而这一片的 scrollTop 与 `document.activeElement` 一个字没变。
+     */
+    console.log('\n[6/6] ⑧ 两片会话叶并排:隔壁在流,这一片不动')
+    const otherId = (await rpc(record, 'sessions', 'create', { name: `${SESSION_NAME}-2` }))?.session?.id
+    if (!otherId) throw new Error('第二条会话没建出来')
+    await clickTestId(page, 'dock-tile-sessions')
+    await waitFor('总览画出第二行', () =>
+      page.evaluate(
+        (id) => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)),
+        otherId,
+      ),
+    )
+    await page.evaluate((id) => {
+      const row = document.querySelector(`[data-testid="session-row-${id}"]`)
+      row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
+    }, otherId)
+    await delay(400)
+    const splitRight = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+      const right = items.find((el) => /在右侧|Open to the right/.test(el.textContent ?? ''))
+      if (right instanceof HTMLElement) right.click()
+      return Boolean(right)
+    })
+    assert(splitRight, '会话行右键菜单里有「在右侧」那一项')
+    await delay(700)
+    // 总览收回去,别盖着两片叶。
+    await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
+    await delay(400)
+    const twoLeaves = await page.evaluate(
+      () => document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
+    )
+    assert(twoLeaves === 2, `中央区两片会话叶并排(slots=${twoLeaves})`)
+
+    // 把这一片(第一片 = 原来那条会话)滚到顶,并把键盘放在输入面板上。
+    await scrollTo(page, 'top')
+    await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="composer-input"]')
+      if (box instanceof HTMLElement) box.focus()
+    })
+    await delay(200)
+    const quiet = await page.evaluate(() => {
+      const streams = Array.from(document.querySelectorAll('[data-testid="chat-stream"]'))
+      return {
+        scrollTop: streams[0]?.scrollTop ?? null,
+        active: document.activeElement?.getAttribute?.('data-testid') ?? null,
+        rows: streams[1]?.querySelectorAll('[data-message-id]').length ?? 0,
+      }
+    })
+
+    await rpc(record, 'session-command', 'emit', {
+      sessionId: otherId,
+      command: { type: 'command:send-message', content: 'C1 门:隔壁那条会话说的话' },
+    })
+    await waitForLedger(record, otherId, 2)
+    await delay(800)
+    const after = await page.evaluate(() => {
+      const streams = Array.from(document.querySelectorAll('[data-testid="chat-stream"]'))
+      return {
+        scrollTop: streams[0]?.scrollTop ?? null,
+        active: document.activeElement?.getAttribute?.('data-testid') ?? null,
+        rows: streams[1]?.querySelectorAll('[data-message-id]').length ?? 0,
+      }
+    })
+    assert(after.rows > quiet.rows, `隔壁那片叶真的收到了流(${quiet.rows} → ${after.rows} 行)`)
+    assert(
+      Math.abs((after.scrollTop ?? 0) - (quiet.scrollTop ?? 0)) < 1,
+      `隔壁在流时这一片**一像素不动**(${quiet.scrollTop} → ${after.scrollTop})`,
+    )
+    assert(
+      after.active === quiet.active,
+      `隔壁在流时键盘不被抢走(${quiet.active} → ${after.active})`,
+    )
   } finally {
     if (app) await app.close().catch(() => undefined)
     if (server) server.kill('SIGTERM')

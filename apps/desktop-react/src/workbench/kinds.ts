@@ -22,7 +22,8 @@ import type { RegionId } from './regions'
  * `STAGE_ITEMS` 是 Dock 上那 12 块瓦的**静态声明**,它整体登记成 `panel` 这一种
  * (`content/kinds/panel.tsx`,`key` = 瓦 id,`singleton: true`)。查看器从「一块瓦」
  * 降格为 `file` 这一种(`key` = 绝对路径,不是单例:两个文件两份实例),
- * 聊天区登记成 `chat`(单例、`required`)。三种各在自己的模块里,谁都不认识谁。
+ * 聊天区登记成 `session`(W5-b:`key` = 会话 id,**不是单例** —— 两条会话可以
+ * 并排各占一片叶)。三种各在自己的模块里,谁都不认识谁。
  */
 
 /**
@@ -59,9 +60,10 @@ export function sameRef(a: ContentRef, b: ContentRef): boolean {
 export interface ContentKind {
   id: string
   /**
-   * 单例种类(今天的 12 块瓦、聊天区):同一个 `key` 全应用只许一个实例,
-   * 再打开一次 = 激活既有的那一份。`file` 不是单例(同一份文件可以在两片叶里
-   * 各开一个 —— 那正是 W3「拖一份到旁边对照着看」要的)。
+   * 单例种类(今天的 12 块瓦):同一个 `key` 全应用只许一个实例,再打开一次 =
+   * 激活既有的那一份。`file` 与 `session` 都**不是**单例 —— 同一份文件可以在两片
+   * 叶里各开一个(W3「拖一份到旁边对照着看」),两条会话可以并排各占一片叶
+   * (W5-b「会话多开」)。
    */
   singleton: boolean
   /**
@@ -71,11 +73,24 @@ export interface ContentKind {
    *  · 出厂布局:`workbench/store` 播种时按这一格摆(核心层于是不必知道
    *    「中央区第一片叶里装的是聊天」——它只是照着表摆);
    *  · T0 拍点 2「最后一片 chat 叶不可关」:核心层问的是**「关掉之后这个区域里
-   *    还剩不剩同种的」**,而不是「它是不是 chat」。于是 W5 会话多开(chat 不再
-   *    单例、可以并排两条)时,这条判据一个字都不用改 —— 关到只剩一条时它自己
-   *    就变回「不可关」。
+   *    还剩不剩同种的」**,而不是「它是不是 chat」。**W5-b 兑现了这句话**:
+   *    `chat` 改名 `session`、`singleton` 翻成 false、`key` 换成会话 id,
+   *    而 `canDetachTab` 一个字都没改 —— 关到只剩一条时它自己就变回「不可关」。
    */
-  resident?: { region: RegionId; key: string }
+  resident?: {
+    region: RegionId
+    /**
+     * **播种时摆哪一个**(W5-b 裁定 2)。W1 这里是一格死的 `key: string`,
+     * 因为那时常驻那一种是单例(`chat:main`,全应用一份)。会话多开之后
+     * `key` 是**会话 id**,而「出厂那一片摆哪条会话」这件事只有这一种内容
+     * 自己答得出(它要问当前那条会话在不在、还活着没有)。
+     *
+     * 于是这一格从**值**变成**问句**:核心层照旧不知道 key 是什么
+     * (它只是把答案原样放进树),而「延迟到播种那一刻才铸」这件事
+     * 让 merge / seed / 换装三处入口各自拿到当下正确的那一格。
+     */
+    seed(): string
+  }
   /**
    * 身份由内容自答。这是**静态那一半**(文件名、瓦名);会跟着内容变的那一半
    * (未保存丸、正在读取)由内容自己发布到 `stage/live-title`(键 = `refId`),
@@ -105,11 +120,11 @@ export interface ContentKind {
    * 判据照旧是**种类自述**,不是核心层按名字点人:`workbench/store` 的
    * `toggleFull` 只问这一格,`full.*` 那条拒绝提示也只说「这一种不支持」。
    *
-   * ── 今天唯一说 false 的是 `chat`,而且是**临时的**(W5 撤)────────────
+   * ── 今天唯一说 false 的是 `session`,而且它**还是临时的**(W5-c 撤)──────
    * 输入框(`.composerDock`)此刻挂在外壳的 `.center` 上、**不在树里**
-   * (判词写在 `AppShell` 那一段上):聊天叶进全屏会把它盖掉,人就没法打字了。
-   * 这是一条**可感知的限制**,不是设计终态 —— W5「会话多开」把 composer 归给
-   * 焦点所在的那片 chat 叶之后,这一格就该删。
+   * (判词写在 `AppShell` 那一段上):会话叶进全屏会把它盖掉,人就没法打字了。
+   * W5-b 走的是**路线 B**(裁定 4:composer 留在 `.center`,只把目标换成投影值),
+   * 所以这一格照旧说 false;要撤它得等路线 A(composer 真的进叶,W5-c 可选加期)。
    */
   fullable?: boolean
 }

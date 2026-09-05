@@ -89,7 +89,11 @@ beforeEach(() => {
   useStageStore.setState({ locale: 'zh' })
   useSessionsSource.setState(REAL_SESSION_ACTIONS)
   seedSessionsSource()
-  useExposeStore.setState({ currentSessionId: SESSION_WITH_DIR })
+  /*
+   * W5-b 裁定 3:文件树的根跟的是**环境会话**那一格(粘性 —— 焦点落到文件叶
+   * 不换根),不是「当前会话」。判词在 `data/files-source.useSessionCwd` 上。
+   */
+  useExposeStore.setState({ envSessionId: SESSION_WITH_DIR })
   useFilesSource.getState().reset()
   useViewerSource.getState().reset()
   // 拼贴台也是模块级单例:一份用例开着的那一格不该被下一份看见(分栏那一格
@@ -198,7 +202,7 @@ describe('根:跟着活跃会话走', () => {
   })
 
   it('会话没有工作目录时退主目录,并**说出来**(那句话现在长在告知条上)', async () => {
-    useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
+    useExposeStore.setState({ envSessionId: SESSION_WITHOUT_DIR })
     installPort({
       listDirectory: vi.fn(async () => ({ success: true, entries: [] })),
     })
@@ -228,7 +232,7 @@ describe('面包屑:各段可点回跳', () => {
 
   it('深路径把**中段**折成 `…`;那条完整路径仍然原样挂在 data-root 上', async () => {
     const deep = '/a/b/c/d/e/f'
-    useExposeStore.setState({ currentSessionId: SESSION_WITH_DIR })
+    useExposeStore.setState({ envSessionId: SESSION_WITH_DIR })
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
     renderFiles()
     await waitFor(() => expect(shownRoot()).toBe(ROOT))
@@ -594,7 +598,7 @@ describe('三种「还没有内容」各说各的', () => {
 
 describe('无工作目录:告知条 + 绑定', () => {
   it('「绑定…」是一行输入(壳里没有 dialog 桥),打的是 updateWorkingDirectory', async () => {
-    useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
+    useExposeStore.setState({ envSessionId: SESSION_WITHOUT_DIR })
     const setWorkingDirectory = vi.fn(async () => ({ ok: true as const }))
     useSessionsSource.setState({ setWorkingDirectory })
     installPort({ listDirectory: vi.fn(async () => ({ success: true, entries: [] })) })
@@ -611,7 +615,7 @@ describe('无工作目录:告知条 + 绑定', () => {
   })
 
   it('绑不上就**留在原地说**:输入行不收,后端原话跟在后面', async () => {
-    useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
+    useExposeStore.setState({ envSessionId: SESSION_WITHOUT_DIR })
     useSessionsSource.setState({
       setWorkingDirectory: vi.fn(async () => ({ ok: false as const, error: 'sandbox root' })),
     })
@@ -638,7 +642,7 @@ describe('无工作目录:告知条 + 绑定', () => {
    * 而这里断言的是**发起它的那一格**在飞)。
    */
   it('绑定在飞时:确认钮 aria-busy,而且连点不发第二发(律③逐格)', async () => {
-    useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
+    useExposeStore.setState({ envSessionId: SESSION_WITHOUT_DIR })
     let release: ((value: { success: true }) => void) | undefined
     const updateWorkingDirectory = vi.fn(
       () => new Promise<{ success: true }>((resolve) => { release = resolve }),
@@ -691,7 +695,7 @@ describe('无工作目录:告知条 + 绑定', () => {
    * 把 `useAsyncPending` 换回 `useState` 必红。
    */
   it('忙态是**那一条会话**那一格的账:别处发起也照说,别的会话在飞则不动', async () => {
-    useExposeStore.setState({ currentSessionId: SESSION_WITHOUT_DIR })
+    useExposeStore.setState({ envSessionId: SESSION_WITHOUT_DIR })
     let release: ((value: { success: true }) => void) | undefined
     configureSessionsPort({
       ready: async () => undefined,

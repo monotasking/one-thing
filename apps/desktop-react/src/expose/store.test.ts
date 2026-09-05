@@ -8,6 +8,9 @@ import { initialStageState } from '../stage/transitions'
 import { initialExposeState } from './transitions'
 import { SESSIONS_ITEM_ID } from '../stage/items'
 import { seedSessionsSource } from '../data/__fixtures__/sessions'
+import { CENTER_REGION } from '../workbench/regions'
+import { useWorkbenchStore } from '../workbench/store'
+import { refIdsOf } from '../workbench/tree'
 
 /**
  * ── 08-30 用户报障:钉到左边的会话面,选一条会话它整个消失了 ────────────────
@@ -23,6 +26,7 @@ describe('enterSession × 形态:瞬态收、钉住留', () => {
   beforeEach(() => {
     useStageStore.setState({ ...initialStageState })
     useExposeStore.setState({ ...initialExposeState, view: { mode: 'overview' } })
+    useWorkbenchStore.getState().reset()
     seedSessionsSource()
   })
 
@@ -30,7 +34,15 @@ describe('enterSession × 形态:瞬态收、钉住留', () => {
     useStageStore.getState().openAs(SESSIONS_ITEM_ID, { kind: 'edge', side: 'left' })
     useExposeStore.getState().enterSession('os-expose')
     expect(useStageStore.getState().placements[SESSIONS_ITEM_ID]).toEqual({ kind: 'edge', side: 'left' })
-    expect(useExposeStore.getState().currentSessionId).toBe('os-expose')
+    /*
+     * **W5-b:「进了哪条会话」看的是树,不是那一格字段**(裁定 3)。
+     * `currentSessionId` 成了投影,它的写者是 `content/session-projection.ts`
+     * (这组用例不接那条订阅);而 `enterSession` 真正做的事是让焦点会话叶
+     * 装上这一条 —— 所以断言搬到树上。
+     */
+    expect(refIdsOf(useWorkbenchStore.getState().regions[CENTER_REGION])).toContain(
+      'session:os-expose',
+    )
   })
 
   it('舞台(stage):进会话后照旧收回 Dock —— 瞬态形的旧语义一字不变', () => {

@@ -84,6 +84,8 @@ function readBudget() {
     coldOpenMs: pick('coldOpenMs'),
     sessionSwitchMs: pick('sessionSwitchMs'),
     sessionSwitchForcedLayouts: pick('sessionSwitchForcedLayouts'),
+    focusLeafSwitchMs: pick('focusLeafSwitchMs'),
+    focusLeafSwitchForcedLayouts: pick('focusLeafSwitchForcedLayouts'),
     longFrameMs: pick('longFrameMs'),
     streamFrameMs: pick('streamFrameMs'),
     streamOverBudgetFrames: pick('streamOverBudgetFrames'),
@@ -766,6 +768,68 @@ async function measureSessionSwitch(page, sessionId, marker, index) {
   )
 }
 
+/**
+ * **把第二条会话开成右边那片叶**(场景⑤b 的夹具,W5-b)。
+ *
+ * 走的是用户真走的那条路:会话行右键 →「在右侧」——它与拖拽落定共用同一只
+ * `dropRef`,所以这道门量的是产品那条路,不是一句 store 直写。
+ */
+async function openSecondSessionLeaf(page, sessionId) {
+  await clickTestId(page, 'dock-tile-sessions')
+  await waitFor('总览画出那一行', () =>
+    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
+  )
+  await page.evaluate(id => {
+    const row = document.querySelector(`[data-testid="session-row-${id}"]`)
+    row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
+  }, sessionId)
+  await delay(400)
+  const opened = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+    const right = items.find(el => /在右侧|Open to the right/.test(el.textContent ?? ''))
+    if (right instanceof HTMLElement) right.click()
+    return Boolean(right)
+  })
+  if (!opened) return false
+  await delay(800)
+  // 总览收回去,别盖着两片叶。
+  await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
+  await delay(400)
+  const slots = await page.evaluate(
+    () => document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
+  )
+  return slots === 2
+}
+
+/**
+ * 量一次**切焦点叶**:点第 `at` 片叶的身子,等两帧稳定。
+ *
+ * 与 `measureSessionSwitch` 的差别就是这一格要证的那句话:两片叶的内容**都已经
+ * 在屏上**,所以没有「等这条会话的记号出现」这回事 —— 判据是双 rAF 之后的稳定,
+ * 而红绿看的是窗口里的强制排版次数(整数计数,理由与 ⑤a 同)。
+ */
+async function measureFocusLeafSwitch(page, at, index) {
+  return page.evaluate(
+    async ({ slot, i }) => {
+      const slots = Array.from(
+        document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]'),
+      )
+      const target = slots[slot]
+      if (!(target instanceof HTMLElement)) throw new Error(`点不到第 ${slot} 片叶`)
+      performance.mark(`perf5b:leaf:${i}:start`)
+      const started = performance.now()
+      const body = target.querySelector('[data-pane-body]') ?? target
+      body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+      body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      performance.mark(`perf5b:leaf:${i}:end`)
+      return Math.round(performance.now() - started)
+    },
+    { slot: at, i: index },
+  )
+}
+
 async function main() {
   if (!existsSync(serverEntry)) {
     console.error(`[perf-gate] 找不到 ${path.relative(repoRoot, serverEntry)} —— 先在仓根跑 \`bun run server:build\``)
@@ -1051,13 +1115,93 @@ async function main() {
     }
     const maxForcedLayouts = Math.max(...forcedPerSwitch)
     console.log(`  · 每次切会话的强制排版次数:${forcedPerSwitch.join(' ')}(最大 ${maxForcedLayouts})`)
-    record_('⑤常规档切会话 ×8·强制排版', sessionSwitchStats, { ms: maxForcedLayouts })
+    record_('⑤a 同叶换 ref ×8·强制排版', sessionSwitchStats, { ms: maxForcedLayouts })
     assertScenario(
       'session-switch',
       maxForcedLayouts <= BUDGET.sessionSwitchForcedLayouts,
       `切会话强制排版 最大 ${maxForcedLayouts} 次 ≤ 预算 ${BUDGET.sessionSwitchForcedLayouts} 次`,
       switchRun.events,
     )
+
+    /* ── 场景 ⑤b:两片会话叶并排,**切焦点叶** ×8(W5-b 裁定 9)────────────
+     *
+     * ⑤ 分裂成两半,因为会话多开之后「换一条会话看」有了**两种**手势,而它们的
+     * 代价完全不是一回事:
+     *  · ⑤a(上面那一段,手法一个字没改)= **同叶换 ref**:那片叶的内容整份换人,
+     *    折叠、装配、排版全要重来 —— 预算 393ms / 3 次强制排版;
+     *  · ⑤b = **切焦点叶**:两片叶的内容**都已经在屏上**,这一下只是把焦点(与
+     *    「当前会话」那条投影)指向另一片。它理应几乎不花钱 —— 而「理应」正是
+     *    要量的东西:投影那条订阅要是把整棵中央树重渲一遍,这一格当场变贵。
+     *
+     * 判据**两条,与 ⑤a 同形**:时间 p95(按下 → 稳定)与强制排版次数。后者是红绿的
+     * 主判据(整数计数,不随机器噪声抖),前者一起断言 —— 理由与 ⑤a 逐字相同。
+     */
+    console.log(`\n[4b/8] 场景⑤b 两片会话叶并排 · 切焦点叶 ×${PERF5_SWITCHES}`)
+    /*
+     * 夹具搭不起来 = **红**,不是跳过。这一格量的是 W5-b 自己交付的那条路
+     * (会话行右键 →「在右侧」),它不在 = 交付缺了一块,而一道会自己跳过新场景的门
+     * 等于没有这道门(与 `boundary:gate` 那两条「没有 ok 行也算红」的反脚枪守卫同源)。
+     */
+    const paired = await openSecondSessionLeaf(page, normalIds[1])
+    assertScenario(
+      'focus-leaf-switch',
+      paired,
+      '会话行右键菜单开得出「在右侧」,中央区真成两片叶(⑤b 的夹具)',
+      [],
+    )
+    if (paired) {
+      const leafRun = await recordTrace(cdp, 'focus-leaf-switch', async () => {
+        const each = []
+        for (let i = 1; i <= PERF5_SWITCHES; i += 1) {
+          each.push(await measureFocusLeafSwitch(page, i % 2, i))
+          await delay(500)
+        }
+        return { each }
+      })
+      keepTrace('focus-leaf-switch', leafRun.events)
+      const leafEach = leafRun.result.each
+      const leafSorted = [...leafEach].sort((a, b) => a - b)
+      const leafP95 =
+        leafSorted[Math.min(leafSorted.length - 1, Math.ceil(leafSorted.length * 0.95) - 1)]
+      const leafStats = frameStats(leafRun.events, BUDGET.longFrameMs)
+      const forcedPerLeaf = []
+      for (let i = 1; i <= PERF5_SWITCHES; i += 1) {
+        const from = markTs(leafRun.events, `perf5b:leaf:${i}:start`)
+        const to = markTs(leafRun.events, `perf5b:leaf:${i}:end`)
+        if (from === undefined || to === undefined) {
+          throw new Error(`第 ${i} 次切焦点叶的 performance.mark 没落进 trace —— 量具本身坏了`)
+        }
+        forcedPerLeaf.push(forcedLayouts(leafRun.events, from, to))
+      }
+      const maxLeafForced = Math.max(...forcedPerLeaf)
+      console.log(
+        `  · 每次切焦点叶 按下→稳定(ms):${leafEach.join(' ')}`
+          + `\n  · p95 ${leafP95}ms,最慢 ${leafSorted[leafSorted.length - 1]}ms,`
+          + `最快 ${leafSorted[0]}ms`
+          + `\n  · 强制排版:${forcedPerLeaf.join(' ')}(最大 ${maxLeafForced});`
+          + `主线程任务 ${leafStats.tasks} 段,最长 ${leafStats.longest}ms`,
+      )
+      record_('⑤b 切焦点叶 ×8', leafStats, { ms: leafP95 })
+      record_('⑤b 切焦点叶 ×8·强制排版', leafStats, { ms: maxLeafForced })
+      assertScenario(
+        'focus-leaf-switch',
+        leafP95 <= BUDGET.focusLeafSwitchMs,
+        `切焦点叶 按下→稳定 p95 ${leafP95}ms ≤ 预算 ${BUDGET.focusLeafSwitchMs}ms`,
+        leafRun.events,
+      )
+      assertScenario(
+        'focus-leaf-switch',
+        maxLeafForced <= BUDGET.focusLeafSwitchForcedLayouts,
+        `切焦点叶强制排版 最大 ${maxLeafForced} 次 ≤ 预算 ${BUDGET.focusLeafSwitchForcedLayouts} 次`,
+        leafRun.events,
+      )
+      assertScenario(
+        'focus-leaf-switch',
+        leafStats.longest <= BUDGET.sessionSwitchMs,
+        `切焦点叶最长主线程任务 ${leafStats.longest}ms ≤ 预算 ${BUDGET.sessionSwitchMs}ms`,
+        leafRun.events,
+      )
+    }
 
     /* ── 场景②③ 共用的现场:钉栏默认档 + 进一条会话 ─────────────────── */
     console.log('\n[5/8] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')

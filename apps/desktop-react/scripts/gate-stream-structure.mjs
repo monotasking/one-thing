@@ -506,6 +506,9 @@ const CASES = {
 }
 
 const TRIGGER = 'STREAM_STRUCTURE_GATE'
+
+/** 会话多开那一格跑哪条素材(见 `runCase` 里那段判词)。 */
+const TWO_LEAF_KIND = 'think'
 const PIECE_DELAY_MS = 45 // 默认节奏;`delayMs` 的素材各自覆盖(mixed 用真机的 7ms)
 
 /* ── 假慢流 provider ──────────────────────────────────────────────────── */
@@ -1071,6 +1074,161 @@ function findTableDowngrades(frames) {
     }
   }
   return out
+}
+
+/* ── 会话多开那一格(W5-b)────────────────────────────────────────────────
+ *
+ * **两片会话叶同时流式,末帧与各自冷加载逐格相同**。
+ *
+ * 它与上面那条「流式末帧 == 冷加载」是同一句话,只是把「一片叶」换成了两片:
+ * 会话多开之后每条会话各有一台折叠器(W5-a),而屏幕上并排着两条流。真要分叉,
+ * 分叉的第一处就是「两台机器共用了一份状态」——那时其中一片的末帧会带上另一片
+ * 的块。所以判据必须**逐叶**取,而不是像 `readShape` 那样取「文档里最后一条」。
+ */
+
+/** 第 `index` 片中央叶里那条 assistant 消息此刻的块序(与 `readShape` 同一套判据)。 */
+function readShapeInLeaf(page, index) {
+  return page.evaluate((at) => {
+    const slots = Array.from(
+      document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]'),
+    )
+    const slot = slots[at]
+    if (!slot) return '(没有这一片叶)'
+    const rows = slot.querySelectorAll(
+      '[data-pane-tab][data-pane-on] [data-message-id][data-role="assistant"]',
+    )
+    const art = rows[rows.length - 1]
+    if (!art) return '(没有 assistant 消息)'
+    const out = []
+    for (const node of art.querySelectorAll('[data-prose],[data-tool-status],[data-tool-card]')) {
+      if (node.parentElement?.closest('[data-prose]')) continue
+      if (node.parentElement?.closest('[data-testid="chat-thought"]')) continue
+      if (node.parentElement?.closest('[data-block-kind]')) continue
+      if (node.parentElement?.closest('[data-tool-card]')) continue
+      const status = node.getAttribute('data-tool-status')
+      const isTool = Boolean(status) || node.hasAttribute('data-tool-card')
+      const k = isTool
+        ? 'tool'
+        : (node.getAttribute('data-testid') === 'chat-thought' ? 'think' : node.getAttribute('data-prose'))
+      const d = node.getAttribute('data-block-kind')
+        ?? (node.hasAttribute('data-tool-card') ? 'tool-card' : undefined)
+        ?? status
+        ?? node.tagName.toLowerCase()
+      out.push(`${k}:${d}`)
+    }
+    return out.join(' | ')
+  }, index)
+}
+
+/** 那条会话的账本上落了几行(一问一答收场 = `assistant/chunks` 之后有 `run/end`)。 */
+async function ledgerSettled(record, sessionId) {
+  const raw = await rpc(record, 'sessionEvents', 'listRaw', { sessionId })
+  const events = raw?.events ?? []
+  return events.some((event) => event.type === 'run/end')
+}
+
+async function runTwoLeafCell({ record, page, kind }) {
+  mockState.piece = CASES[kind].pieces[0]
+  console.log(`\n── ${kind} @ 会话多开:两片叶同时流 ──────────────────────────`)
+  const madeA = await rpc(record, 'sessions', 'create', { name: `结构门 ${kind}-并排A` })
+  const madeB = await rpc(record, 'sessions', 'create', { name: `结构门 ${kind}-并排B` })
+  const a = madeA?.session?.id
+  const b = madeB?.session?.id
+  if (!a || !b) throw new Error('并排那一格的两条会话没建出来')
+
+  const enter = async (id) => {
+    await clickTestId(page, 'dock-tile-sessions')
+    await waitFor('总览画出那一行', () =>
+      page.evaluate((sid) => Boolean(document.querySelector(`[data-testid="session-row-${sid}"]`)), id),
+    )
+    await clickTestId(page, `session-row-${id}`)
+    await waitFor('聊天区就位', () =>
+      page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
+    )
+  }
+
+  // ① 进 A,再从会话行右键把 B 开到右边(菜单与拖拽同一只 dropRef)。
+  await enter(a)
+  await clickTestId(page, 'dock-tile-sessions')
+  await waitFor('总览画出 B 那一行', () =>
+    page.evaluate((sid) => Boolean(document.querySelector(`[data-testid="session-row-${sid}"]`)), b),
+  )
+  await page.evaluate((sid) => {
+    const row = document.querySelector(`[data-testid="session-row-${sid}"]`)
+    row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
+  }, b)
+  await delay(400)
+  const split = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+    const right = items.find((el) => /在右侧|Open to the right/.test(el.textContent ?? ''))
+    if (right instanceof HTMLElement) right.click()
+    return Boolean(right)
+  })
+  if (!split) throw new Error('会话行右键菜单里没有「在右侧」那一项')
+  await delay(700)
+  await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
+  await delay(400)
+  const slots = await page.evaluate(
+    () => document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
+  )
+  assert(slots === 2, `中央区两片会话叶并排(slots=${slots})`)
+
+  // ② 两条**同时**开流(一发接一发,不等对方收场)。
+  const ask = (id) => rpc(record, 'session-command', 'emit', {
+    sessionId: id,
+    command: { type: 'command:send-message', content: `${TRIGGER} 请开始`, suppressTitleGeneration: true },
+  })
+  await Promise.all([ask(a), ask(b)])
+  await waitFor('两条都收场了', async () => {
+    const [doneA, doneB] = await Promise.all([ledgerSettled(record, a), ledgerSettled(record, b)])
+    return doneA && doneB ? true : undefined
+  })
+  await delay(2500)
+  const liveA = await readShapeInLeaf(page, 0)
+  const liveB = await readShapeInLeaf(page, 1)
+  console.log(`  左叶末帧 : ${liveA}`)
+  console.log(`  右叶末帧 : ${liveB}`)
+  /*
+   * **串味的判据是消息 id 的交集,不是块序**:两条会话喂的是同一份素材,
+   * 所以块序本来就该逐字相同(第一版拿「两边不一样」当判据,当场红在这儿 ——
+   * 那是把「素材相同」误当成「机器串了」)。真串味的形是**一片叶里出现了另一条
+   * 会话的消息**,所以量两边的 `data-message-id` 集合有没有交集。
+   */
+  const ids = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]')).map((slot) =>
+      Array.from(
+        slot.querySelectorAll('[data-pane-tab][data-pane-on] [data-message-id]'),
+      ).map((el) => el.getAttribute('data-message-id')),
+    ),
+  )
+  const overlap = (ids[0] ?? []).filter((id) => (ids[1] ?? []).includes(id))
+  assert(
+    (ids[0] ?? []).length > 0 && (ids[1] ?? []).length > 0,
+    `两片叶各自都画出了消息(${(ids[0] ?? []).length} / ${(ids[1] ?? []).length} 条)`,
+  )
+  assert(overlap.length === 0, `两片叶没有一条共用的消息(交集 ${overlap.length} 条)`)
+
+  // ③ 刷新 → 树回到出厂一片叶 → 各自冷加载一遍。
+  await page.reload()
+  await waitFor('刷新后 Dock 就位', () =>
+    page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
+  )
+  await enter(a)
+  await waitFor('刷新后 A 的 assistant 消息回来', () =>
+    page.evaluate(() => document.querySelectorAll('[data-message-id][data-role="assistant"]').length > 0),
+  )
+  await delay(2000)
+  const coldA = await readShapeInLeaf(page, 0)
+  await enter(b)
+  await waitFor('刷新后 B 的 assistant 消息回来', () =>
+    page.evaluate(() => document.querySelectorAll('[data-message-id][data-role="assistant"]').length > 0),
+  )
+  await delay(2000)
+  const coldB = await readShapeInLeaf(page, 0)
+  console.log(`  左叶冷载 : ${coldA}`)
+  console.log(`  右叶冷载 : ${coldB}`)
+  assert(liveA === coldA, '左叶:流式末帧与冷加载逐格相同')
+  assert(liveB === coldB, '右叶:流式末帧与冷加载逐格相同')
 }
 
 /* ── 一格 ──────────────────────────────────────────────────────────────── */
@@ -1902,6 +2060,13 @@ async function runCase(kind) {
     for (const [index, piece] of spec.pieces.entries()) {
       await runCell({ record, page, kind, piece, index })
     }
+
+    /*
+     * **会话多开那一格只跑一条素材**(W5-b)。它问的不是「这条素材怎么画」——
+     * 那是上面整个矩阵的事;它问的是「并排的两片叶会不会互相串味」,而那件事
+     * 与素材无关。跑满矩阵只会让这道门多花几分钟证同一句话。
+     */
+    if (kind === TWO_LEAF_KIND) await runTwoLeafCell({ record, page, kind })
 
     await app.close()
     app = undefined

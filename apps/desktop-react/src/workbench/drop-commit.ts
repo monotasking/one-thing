@@ -114,8 +114,9 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
  * **落到一条标签条上,插到第 `at` 格**(W3-b 裁定 6)。
  *
  * 一支两路,判据是「这一格本来在不在这条条上」:
- *   在  → `moveTab`,一次同叶换序(`at` 是对着**本来那张表**量的下标,
- *         那一只自己会收掉 splice 的那一格偏移)
+ *   在  → `store.moveTab`,一次同叶换序(`at` 是对着**本来那张表**量的下标,
+ *         `tree.moveTab` 自己会收掉 splice 的那一格偏移,并且预览那一格的身份
+ *         跟着搬 —— 换位子不等于「保留」)
  *   不在 → `moveRefIntoLeaf`,从别处搬进来插在第 `at` 格(那一只先摘干净再插,
  *         而摘的是**另一片叶**里的那一格,所以本叶的下标不受影响)
  *
@@ -154,14 +155,14 @@ function dropIntoStrip(ref: ContentRef, leafId: string, at: number): void {
  * 一份内容相同、身份不同的树,订阅者照样重渲一遍,而条内换序里「手抖了一下又放
  * 回去」是最常发生的一下。
  *
- * ── 为什么走 `moveRefIntoLeaf` 而不是给 store 加一口 `moveTab` ──────────────
- * 因为 `workbench/store.ts` 此刻是**并行批 W5-b 的改动面**,派工令点名不碰。
- * 而这一支不需要新口:`moveRefIntoLeaf` 就是「摘干净再插进这片叶的第 n 格」,
- * 一次 `set`、同一事务 —— 同叶换序与它的差别只有一个下标偏移(摘掉自己之后,
- * 原表里 `from` 右边的落点都往前收一格,也就是下面那句 `at > from ? at - 1 : at`,
- * 与 `tree.moveTab` 里那句注释说的是同一个 splice 双动作坑)。
- * **留账**:`tree.moveTab` 会把「预览」那一格身份跟着搬过去,这条路不会 ——
- * 换序一格预览 tab 会把它固定下来。W5-b 合树之后可以换回 `T.moveTab`。
+ * ── 它走 `store.moveTab`(W5-b 合树接缝 a:W3-b 那笔留账的了结)──────────────
+ * W3-b 落地时 `workbench/store.ts` 是并行批 W5-b 的改动面,派工令点名不碰,
+ * 所以这一支借道 `moveRefIntoLeaf`(摘干净再插)。它换出来的树**少一样东西**:
+ * `removeTab` 会把 `preview` 清成 null,于是**换一格预览 tab 的位子等于顺手把它
+ * 固定下来** —— 用户没要过的一次「保留」。W5-b 合树之后 `store.ts` 解禁,那一口
+ * `store.moveTab` 补上了(判据本体照旧是纯函数 `tree.moveTab`,它自己收 splice
+ * 的下标偏移、并且把预览那一格的身份随着搬过去),这条路改走它。
+ * 用例 `leaf-actions-drag-parity` 的「预览 tab 换序之后仍然是预览」钉住这一条。
  */
 export function reorderTab(leafId: string, from: number, at: number): void {
   if (at === from || at === from + 1) return
@@ -171,7 +172,7 @@ export function reorderTab(leafId: string, from: number, at: number): void {
   const leaf = findLeaf(store.regions[region], leafId)
   const ref = leaf?.tabs[from]
   if (!leaf || !ref || leaf.tabs.length < 2) return
-  store.moveRefIntoLeaf(ref, leafId, { at: at > from ? at - 1 : at })
+  store.moveTab(leafId, from, at)
   const landed = findLeaf(useWorkbenchStore.getState().regions[region] ?? leaf, leafId)
   const now = landed?.tabs.findIndex((tab) => refId(tab) === refId(ref)) ?? -1
   // 一格都没挪(夹到了两端)= 不播报:读屏软件念一句「还在第 2 位」是噪音。

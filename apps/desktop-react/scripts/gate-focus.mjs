@@ -420,6 +420,13 @@ async function main() {
       sessionId,
       workingDirectory: workspaceRoot,
     })
+    /*
+     * **另外两条会话**(W5-b 场景 15「两片会话叶并排」的夹具):
+     * 一条用来切出第二片叶,一条用来验「点列表只换焦点叶那一格」。
+     */
+    const secondId = (await rpc(record, 'sessions', 'create', { name: 'focus-gate-2' }))?.session?.id
+    const thirdId = (await rpc(record, 'sessions', 'create', { name: 'focus-gate-3' }))?.session?.id
+    if (!secondId || !thirdId) throw new Error('夹具会话没建够三条')
 
     console.log(`[2/3] 拉起应用(离屏 · 独立 --user-data-dir${STRICT ? ' · StrictMode' : ''})`)
     app = await electron.launch({
@@ -2174,6 +2181,141 @@ async function main() {
       await assertNoOrphan(page, `①-c 记忆=${form.label} 三连按之后`)
     }
     await filesBackToDock()
+
+    /* ── 场景 15:两片会话叶并排(W5-b)────────────────────────────────────
+     *
+     * 会话多开之后「焦点叶」第一次有了**两个候选**,于是四件事各要一句读数:
+     *  ① 并排:两片中央叶各装一条会话;
+     *  ② 点列表 = **只换焦点叶那一格**(另一片一个字不动);
+     *  ③ ⌘N = 在焦点叶原位开一条新的(另一片仍旧不动);
+     *  ④ ⌘W 关的是焦点叶那一格,而**最后一片会话叶关不掉**(T0 拍点 2 —— 判据
+     *    是「这个区域里同种还剩几个」,会话多开之后它第一次真的被数了)。
+     * 收尾再量一次启动回落(composer → chat(焦点叶的)→ root)。
+     */
+    scenario('两片会话叶并排:点列表只换焦点叶那一格;⌘N 落焦点叶;⌘W 关焦点叶且最后一片关不掉')
+    {
+      await page.goto(shellUrl())
+      await waitFor('壳回来了', () =>
+        page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+      )
+      await enterGateSession(page, sessionId)
+
+      /** 中央区每一片叶此刻装着哪一格会话(按阅读序)。 */
+      const centerSessions = () =>
+        page.evaluate(() =>
+          Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]')).map(
+            (slot) =>
+              Array.from(slot.querySelectorAll('[data-pane-tab]'))
+                .map((el) => el.getAttribute('data-pane-tab') ?? '')
+                .filter((id) => id.startsWith('session:'))
+                .join(','),
+          ),
+        )
+
+      // ① 会话行右键 →「在右侧」= 切一刀,新叶放右边(菜单与拖拽同一只 dropRef)。
+      await ensureOverviewRow(page, secondId)
+      await page.evaluate((id) => {
+        const row = document.querySelector(`[data-testid="session-row-${id}"]`)
+        row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
+      }, secondId)
+      await delay(400)
+      const openedRight = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+        const right = items.find((el) => /在右侧|Open to the right/.test(el.textContent ?? ''))
+        if (right instanceof HTMLElement) right.click()
+        return Boolean(right)
+      })
+      await delay(700)
+      if (!openedRight) {
+        skip('两片会话叶并排', '会话行右键菜单里没有「在右侧 / Open to the right」那一项')
+      } else {
+        const two = await centerSessions()
+        assert(two.length === 2, '中央区变成两片叶', `slots=${two.length}`)
+        assert(
+          two.every((ids) => ids.startsWith('session:')),
+          '两片叶各装一条会话',
+          JSON.stringify(two),
+        )
+        await assertNoOrphan(page, '并排之后')
+
+        // ② 点列表里第三条 = 只换**焦点叶**那一格(另一片一个字不动)。
+        const before = await centerSessions()
+        await ensureOverviewRow(page, thirdId)
+        await clickSelector(page, `[data-testid="session-row-${thirdId}"]`)
+        await delay(600)
+        const after = await centerSessions()
+        assert(after.length === 2, '还是两片叶(点列表不多开一片)', `slots=${after.length}`)
+        const changed = after.filter((ids, i) => ids !== before[i])
+        assert(changed.length === 1, '只有一片叶换了内容', JSON.stringify({ before, after }))
+        assert(
+          changed[0] === `session:${thirdId}`,
+          '换的那一片装上了刚点的那一条',
+          changed[0] ?? '—',
+        )
+
+        // ③ ⌘N = 在焦点叶原位开一条新的;另一片仍旧不动。
+        const beforeNew = await centerSessions()
+        await page.keyboard.press('Meta+n')
+        await delay(1200)
+        const afterNew = await centerSessions()
+        assert(afterNew.length === 2, '⌘N 之后还是两片叶(不多开一片)', `slots=${afterNew.length}`)
+        const movedByNew = afterNew.filter((ids, i) => ids !== beforeNew[i])
+        assert(movedByNew.length === 1, '⌘N 只动了焦点叶那一格', JSON.stringify({ beforeNew, afterNew }))
+        await assertNoOrphan(page, '⌘N 之后')
+
+        /*
+         * ④ ⌘W 关焦点叶那一格 → 只剩一片;再按一次关不掉(最后一片常驻)。
+         *
+         * **先把键盘交回那片叶**:⌘N 之后焦点在输入面板上,而输入面板是**叶外面**
+         * 的一格作用域(路线 B:composer 留在 `.center`,不在树里)。⌘W 是叶的
+         * **面域局部键** —— 活动路径不经过那片叶,它当然轮不到。这不是回归,
+         * 正是「局部键需要一个目标」那条三层立法在会话多开之后的第一次显形:
+         * 门要按用户真做的那一步走(点回那片会话再按 ⌘W)。
+         */
+        await page.evaluate(() => {
+          const slots = Array.from(
+            document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]'),
+          )
+          const last = slots[slots.length - 1]
+          const stream = last?.querySelector('[data-testid="chat-stream"]')
+          if (stream instanceof HTMLElement) stream.focus()
+        })
+        await delay(400)
+        const armed = await page.evaluate(
+          () =>
+            document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+            ?? null,
+        )
+        assert(armed === 'chat', '键盘先回到那片会话叶里(⌘W 是叶的局部键)', String(armed))
+        await page.keyboard.press('Meta+w')
+        await delay(700)
+        const afterClose = await centerSessions()
+        assert(afterClose.length === 1, '⌘W 关掉了焦点叶那一格,只剩一片', `slots=${afterClose.length}`)
+        await page.keyboard.press('Meta+w')
+        await delay(700)
+        const afterLast = await centerSessions()
+        assert(
+          afterLast.length === 1 && afterLast[0].startsWith('session:'),
+          '最后一片会话叶**关不掉**(T0 拍点 2)',
+          JSON.stringify(afterLast),
+        )
+        await assertNoOrphan(page, '⌘W 两下之后')
+      }
+
+      // 收尾:重载一次,启动回落照旧落在输入面板上(第 ② 级换成带 owner 的 chat)。
+      await page.goto(shellUrl())
+      await waitFor('壳回来了', () =>
+        page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+      )
+      await delay(500)
+      const rebooted = await page.evaluate(() => ({
+        scope:
+          document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+          ?? null,
+      }))
+      assert(rebooted.scope === 'composer', '重载之后第一响应者仍是输入面板', String(rebooted.scope))
+      await assertNoOrphan(page, '并排场景收尾重载之后')
+    }
 
     await app.close()
     app = undefined

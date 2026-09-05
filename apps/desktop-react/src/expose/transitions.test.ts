@@ -531,15 +531,23 @@ describe('Quick Look 的换会话序列(‹ › 与 ← → 同一个判据)', (
 })
 
 describe('enterSession / 时间', () => {
-  it('进入 = 换当前会话 + 内容回到起点(收回 Dock 是 store 壳的事,不在纯函数里)', () => {
-    const next = enterSession(setQuery(overview, 'x', FACTS), 'tr-menubar')
-    expect(next.currentSessionId).toBe('tr-menubar')
+  /*
+   * **W5-b:这条迁移不再写 `currentSessionId`**(裁定 3)。那一格成了树的投影,
+   * 「换哪片叶看哪条会话」由 store 壳走 `content/session-open` 去改树 ——
+   * 与「收回 Dock」落在同一处、出于同一条理由(纯函数不认识落点,也不认识树)。
+   * 于是这里断言的是它**剩下**的那两件事,外加一句「它一个字都不碰那一格」。
+   */
+  it('进入 = 内容回到起点(换哪片叶看哪条会话是 store 壳的事,不在纯函数里)', () => {
+    const st = setQuery(overview, 'x', FACTS)
+    const next = enterSession(st, 'tr-menubar')
     expect(next.view).toEqual({ mode: 'overview' })
     expect(next.query).toBe('')
+    // 投影那一格原样带过 —— 形态机不是它的写者。
+    expect(next.currentSessionId).toBe(st.currentSessionId)
   })
 
   it('再开场不动那两格家具与当前会话', () => {
-    const st = expandRoom(enterSession(overview, 'lo-notes'), 'rm-release')
+    const st = expandRoom({ ...overview, currentSessionId: 'lo-notes' }, 'rm-release')
     expect(open(st, FACTS).currentSessionId).toBe('lo-notes')
     expect(open(st, FACTS).expandedRooms).toEqual(['rm-release'])
   })
@@ -595,11 +603,16 @@ describe('sessionsRemoved —— 会话没了之后的形态夹持', () => {
     })
   })
 
-  it('当前会话被删 → 回空态,而不是自动挑一条顶上', () => {
-    const st = enterSession(overview, 'os-compact')
+  /*
+   * **W5-b:「当前会话被删 → 回空态」从这里搬走了**(裁定 5)。那一格是树的投影,
+   * 而清掉那一格死 tab 是拼贴台的事(`workbench.sweepRefs`,发起点在
+   * `content/session-projection.ts`)。留在这里就是第二个写者。
+   * 这里改守它的**反面**:形态机对那一格一个字都不写。
+   */
+  it('当前会话被删 → 形态机不碰那一格投影(清洗归拼贴台)', () => {
+    const st = { ...overview, currentSessionId: 'os-compact' }
     const next = sessionsRemoved(st, ['os-compact'], without(['os-compact']))
-    expect(next.currentSessionId).toBe('')
-    expect(next.currentSessionId).not.toBe('os-provider')
+    expect(next.currentSessionId).toBe('os-compact')
   })
 
   it('焦点落在已经不在的行上 → 退到新序列首', () => {
@@ -617,11 +630,11 @@ describe('sessionsRemoved —— 会话没了之后的形态夹持', () => {
 
   it('级联删除:名单里的每一条都算数(删一间房连着删掉它的子会话)', () => {
     const st = {
-      ...enterSession(overview, 'rm-release'),
+      ...overview,
+      currentSessionId: 'rm-release',
       view: { mode: 'quicklook' as const, sessionId: 'wk-verify' },
     }
     const next = sessionsRemoved(st, ['rm-release', 'wk-verify'], without(['rm-release', 'wk-verify']))
-    expect(next.currentSessionId).toBe('')
     expect(next.view).toEqual({ mode: 'overview' })
   })
 

@@ -201,6 +201,46 @@ export function removeTab(node: PaneNode, leafId: string, index: number): PaneNo
   })
 }
 
+/**
+ * **原位换一格 ref**(W5-b 裁定 1)。同一片叶、同一个下标、活动格不动、
+ * 预览那一格跟着改名 —— 换的只是「这一格代表谁」。
+ *
+ * ── 它为什么不是「摘一格 + 插一格」的语法糖 ──────────────────────────────
+ * 两条,都可见:
+ *  · **下标**:`removeTab` + `insertTab` 会把它插到**末位**,屏幕上那一格当场
+ *    换位子;换会话这件事不该让标签跳到最右边;
+ *  · **叶的身份**:那一格是这片叶里唯一一格时,`removeTab` 之后 store 那条路
+ *    会把空叶 `prune` 掉,再插进来就是**另一片叶**(新的 leaf id)——
+ *    整片叶连同它的兄弟一起重挂,「第一条消息发出去,整台聊天区闪一下」正是
+ *    这么来的。零重挂断言(用例 `replaceRef 不重挂`)守的就是这一条。
+ *
+ * `to` 已经在这片叶的别处 = **合并**:摘掉 `from` 那一格,活动落到 `to` 上
+ * (两格同名的 tab 是 `refId` 撞车,树上不许有)。`from` 不在这片叶 = 恒等。
+ */
+export function replaceRef(
+  node: PaneNode,
+  leafId: string,
+  from: ContentRef,
+  to: ContentRef,
+): PaneNode {
+  return mapLeaf(node, leafId, (leaf) => {
+    const at = indexOfRef(leaf, from)
+    if (at < 0) return leaf
+    if (sameRef(from, to)) return leaf
+    const already = indexOfRef(leaf, to)
+    const wasPreview = leaf.preview !== null && leaf.preview === refId(from)
+    if (already >= 0) {
+      const tabs = leaf.tabs.filter((_, i) => i !== at)
+      const active = clampActive(tabs, already > at ? already - 1 : already)
+      const preview = wasPreview ? null : leaf.preview
+      return { ...leaf, tabs, active, preview }
+    }
+    const tabs = [...leaf.tabs]
+    tabs[at] = to
+    return { ...leaf, tabs, preview: wasPreview ? refId(to) : leaf.preview }
+  })
+}
+
 /** 固定预览 tab(§2.1 的「保留」)。不是预览的就是恒等变换。 */
 export function pinTab(node: PaneNode, leafId: string, index: number): PaneNode {
   return mapLeaf(node, leafId, (leaf) => {
@@ -303,6 +343,20 @@ export interface SanitizeOptions {
   known(kind: string): boolean
   /** 这个种类是不是单例。单例的同一个 refId 在整棵树上只留第一格。 */
   singleton(kind: string): boolean
+  /**
+   * **这一格背后那个东西还在吗**(第三口,W5-b 裁定 5)。缺席 = 一律当还在。
+   *
+   * ── 它为什么是**宿主注入**,不是种类自述 ─────────────────────────────
+   * `known` / `singleton` 问的是**这一种**(注册表答得出,与时间无关);
+   * 这一口问的是**这一个**——「`session:abc` 那条会话被删了没有」,而答案住在
+   * 会话列表那本账上,列表到了才有判据。种类自己去问数据源 = 树的入口闸依赖
+   * 一次网络往返,那正是「merge 是同步的、第一帧画的就是这个布局」要避开的。
+   *
+   * 所以它由**发起清洗的那一拍**递进来(列表首达 / `onSessionsRemoved`),
+   * 平时那三处入口(merge / seed / 换装)一律不给 —— 那时列表还没到,
+   * 给了就会把整棵树洗空。判词与两个发起点写在 `content/session-projection.ts`。
+   */
+  alive?(ref: ContentRef): boolean
 }
 
 /**
@@ -317,6 +371,8 @@ export interface SanitizeOptions {
  *    留第一格。
  *  ③ **结构烂了**:活动下标越界、预览指着一个已经不在的 refId、空叶、
  *    只剩一支的 split、ratio 是 NaN。
+ *  ④ **背后那个东西没了**(W5-b):一条被删掉的会话在树上留着一格 tab ——
+ *    只有递了 `alive` 的那一拍问这一句(判词写在 `SanitizeOptions.alive` 上)。
  *
  * **幂等**:洗过一遍的树再洗一遍交回同一个对象(用例钉着)。
  */
@@ -331,6 +387,8 @@ function scrub(node: PaneNode, opts: SanitizeOptions, seen: Set<ContentRefId>): 
   if (node.kind === 'leaf') {
     const tabs = node.tabs.filter((tab) => {
       if (!opts.known(tab.kind)) return false
+      // 背后那个东西没了(被删掉的会话)= 这一格整个丢掉。缺席 = 不问。
+      if (opts.alive && !opts.alive(tab)) return false
       if (!opts.singleton(tab.kind)) return true
       const id = refId(tab)
       if (seen.has(id)) return false

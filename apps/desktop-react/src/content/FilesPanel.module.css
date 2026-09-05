@@ -360,28 +360,13 @@
 
 /* 「这个文件正开着」。5px 一颗 accent 圆点 —— 它不占一整个图标位,因为它说的是
  * 一件比图标轻得多的事。 */
-.openDot {
-  flex: none;
-  width: var(--files-open-dot);
-  height: var(--files-open-dot);
-  margin-left: var(--sp-1);
-  border-radius: var(--r-full);
-  background: var(--accent);
-}
-
 /*
- * 空心档 = **打开着但隐藏**(W1,设计 §2.3)。同一颗点、同一个位子,
- * 只换画法:底色抹掉,换一圈内描边。**只换 CSS**(裁定原文),不迁 `ui/StatusDot`
- * ——它仍然是那一处指认,只是这处指认现在能说出两句话。
- *
- * 它是可点的(把那一份请回来),所以走 `ui/ButtonBase`:清 UA、零像素、
- * 焦点环仍走全局 `:focus-visible`。命中区靠 padding 撑不得(位子是固定的),
- * 所以那 5px 就是它的命中区 —— 与它旁边的 ⋯ 一样,鼠标那条路之外还有右键菜单。
+ * **那颗打开标记整件进了 `ui/OpenDot`**(W5-b:会话行要画同一句话,一套判据
+ * 两处消费)。样式逐字搬走,一个像素没改;这里只剩它在这一行里的**位置**
+ * —— 「它长什么样」归库件,「它坐在哪儿」归这块面。
  */
-.openDotHidden {
-  background: transparent;
-  box-shadow: inset 0 0 0 var(--bw-1) var(--accent);
-  cursor: pointer;
+.openDot {
+  margin-left: var(--sp-1);
 }
 
 /*

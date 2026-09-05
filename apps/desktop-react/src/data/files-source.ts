@@ -139,7 +139,11 @@ export function sessionCwdOf(
  * 两块面板(文件树、检索)各自调它,而不是各自去拼一遍。
  */
 export function useSessionCwd(): string | null {
-  const sessionId = useExposeStore((st) => st.currentSessionId)
+  /*
+   * 读的是**环境会话**(W5-b 裁定 3 第三义),不是「当前会话」:焦点落到一片
+   * 文件叶上时根不该换 —— 那正是「焦点落到文件叶不换根」那条粘性存在的理由。
+   */
+  const sessionId = useExposeStore((st) => st.envSessionId)
   const sessions = useSessionsSource((st) => st.sessions)
   return useMemo(() => sessionCwdOf(sessions, sessionId), [sessions, sessionId])
 }

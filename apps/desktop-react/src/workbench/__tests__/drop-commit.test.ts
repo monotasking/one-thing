@@ -177,7 +177,7 @@ describe('拖拽期间树形冻住(W3 两个坑之一)', () => {
 describe('拒绝是空动作', () => {
   it('树前后逐字相同', () => {
     const before = centerTree()
-    dropRef(A, { kind: 'refuse', reasonKey: 'drag.sessionOnlyCenter' })
+    dropRef(A, { kind: 'refuse', reasonKey: 'drag.regionRefused' })
     // **同一个对象**,不只是「长得一样」——结构共享是零重挂的结构前提。
     expect(centerTree()).toBe(before)
   })

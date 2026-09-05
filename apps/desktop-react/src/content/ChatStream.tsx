@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { chatSources, useChatSourceOf } from '../data/chat-source'
+import { sessionRefIdOf } from './session-ref'
 import type { OverlayEntry, ProjectedMessage } from '../data/chat-fold'
 import { useT, type TFn } from '../i18n'
 import { resolveIcon } from '../components/icons'
@@ -77,18 +78,16 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
   const overlay = useChatSourceOf(sessionId, (st) => st.overlay)
 
   /*
-   * **这一片叶要看这条会话**:起底(幂等)+ 宣布「当前会话」。
+   * **起底这条会话**(幂等)。W5-a 时这条 effect 还顺手宣布了一句「当前会话」——
+   * **W5-b 把那一句撤了**:「当前」由焦点叶投影说了算(`content/session-projection.ts`),
+   * 一片没获得焦点的会话叶不该替全局改那一格。
    *
-   * ① `acquire` 取代了从前那句 `void open(sessionId)` —— 语义一格没动(「换一条就
-   *    重开一次,open 自己幂等」),换的只是掉头的是**注册表**而不是那台单例;
-   * ② 「当前会话」那一格由这片叶宣布(W5-a 的过渡口,设计 §8 W5 裁定 3)。全局面
-   *    还有几处在说「当前会话」(输入面板的忙态、`expose` 建完会话紧接着那一手
-   *    `open`);单叶期唯一在场的那片会话叶就是答案。W5-b 把这一格换成「焦点叶的
-   *    活动 session tab」那条投影,②跟着退役,①留下。
+   * 机器的**寿命**同样不再挂在这条 effect 上:它由那条投影按「树里 ∪ 隐藏表里
+   * 还有没有这条会话」持有,所以隐藏起来的会话叶照样收流(裁定:hidden 的实例
+   * 留着)。这里留下的只有一句「把它拉起来」—— 起底幂等,重复调不会再拉一次。
    */
   useEffect(() => {
     chatSources.acquire(sessionId)
-    chatSources.setCurrent(sessionId)
     return () => chatSources.release(sessionId)
   }, [sessionId])
 
@@ -133,7 +132,14 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
    * 一个「该落在这儿」的控件,落在这块面上正是「我在读这一段」的意思。
    */
   return (
-    <FocusScope scope="chat" rootRef={scrollRef}>
+    /*
+     * **`chat` 是一族带 owner 的作用域**(W5-b 裁定 6,照 `scopes.ts` 的 `leaf`
+     * 样板):会话多开之后同一个 scope id 会有好几份实例,而
+     * `activateScope('chat', { owner })` 要精确取到**这一条会话**那一份 ——
+     * 壳启动那条三级回落(`AppShell`:composer → chat(焦点叶的)→ root)问的
+     * 正是它。owner 是这一格的 refId,翻译只有 `sessionRefIdOf` 一处。
+     */
+    <FocusScope scope="chat" owner={sessionRefIdOf(sessionId)} rootRef={scrollRef}>
       {({ scopeProps }) => (
         <>
         <div {...scopeProps} className={s.scroll} onScroll={onScrollWithFollow} data-testid="chat-stream">
@@ -155,6 +161,7 @@ export function ChatStream({ sessionId, scrollRef, onScroll, flashMessageId }: P
               <MessageRow
                 key={message.id}
                 t={t}
+                sessionId={sessionId}
                 message={message}
                 streaming={message.id === activeMessageId}
                 flash={message.id === flashMessageId}
@@ -348,6 +355,13 @@ const EMPTY_SEGMENTS: SegmentModel[] = []
 
 interface RowProps {
   t: TFn
+  /**
+   * **这一行属于哪条会话**(W5-b)。它一路传到动作行上,因为「重跑这一条」
+   * 要说得出发给谁 —— 会话多开之后「当前那台机器」不再是一个说得清的东西:
+   * 一片没获得焦点的会话叶里那颗重试钮,发的必须是**它自己**那条会话。
+   * 它是一个原始值、逐行恒定,所以 `memo` 的浅比照旧短路。
+   */
+  sessionId: string
   message: ProjectedMessage
   streaming: boolean
   flash: boolean
@@ -369,7 +383,14 @@ interface RowProps {
  * **别在这里加自定义比较函数** —— 那等于把「什么算变了」从上游搬一份到这儿,
  * 两处判据迟早分叉;要短路就让上游把引用稳住。
  */
-const MessageRow = memo(function MessageRow({ t, message, streaming, flash, lastDeltaAt }: RowProps) {
+const MessageRow = memo(function MessageRow({
+  t,
+  sessionId,
+  message,
+  streaming,
+  flash,
+  lastDeltaAt,
+}: RowProps) {
   const role = message.role
   const className = [s.row, flash && s.flash].filter(Boolean).join(' ')
 
@@ -443,7 +464,11 @@ const MessageRow = memo(function MessageRow({ t, message, streaming, flash, last
           */}
           {streaming && <StreamReadout startedAt={message.timestamp} lastDeltaAt={lastDeltaAt} />}
           {!streaming && role === 'assistant' && (
-            <MessageActions messageId={message.id} text={message.content ?? ''} />
+            <MessageActions
+              sessionId={sessionId}
+              messageId={message.id}
+              text={message.content ?? ''}
+            />
           )}
         </>
       )}

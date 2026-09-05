@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Copy, RotateCcw } from '../../components/icons'
 import { COPY_FEEDBACK_MS } from '../../components/motion'
-import { useChatSource } from '../../data/chat-source'
+import { useChatSourceOf } from '../../data/chat-source'
 import { useT } from '../../i18n'
 import { announce } from '../../ui/a11y/live-region'
 import { ButtonBase } from '../../ui/ButtonBase'
@@ -44,9 +44,22 @@ export async function copyMessageText(text: string): Promise<boolean> {
   return clipboard.writeText(text).then(() => true, () => false)
 }
 
-export function MessageActions({ messageId, text }: { messageId: string; text: string }) {
+export function MessageActions({
+  sessionId,
+  messageId,
+  text,
+}: {
+  /**
+   * **这一条属于哪条会话**(W5-b)。从前这里读的是「当前会话那台机器」,
+   * 而会话多开之后那句话说不清了:一片没获得焦点的会话叶里那颗重试钮,
+   * 按下去必须重跑**它自己**那条会话的那一条 —— 不是焦点那条。
+   */
+  sessionId: string
+  messageId: string
+  text: string
+}) {
   const t = useT()
-  const regenerate = useChatSource((st) => st.regenerate)
+  const regenerate = useChatSourceOf(sessionId, (st) => st.regenerate)
   /**
    * 复制的就地反馈(08-31 拍板:复制不走通知 —— 高频小动作,每按一下飞一条
    * toast 是噪音)。按下的这颗钮换字说「已复制 / 没能复制」一拍,同时进播报口

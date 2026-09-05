@@ -7,7 +7,12 @@ import {
 } from '../data/sessions-source'
 import { useAgentsSource } from '../data/agents-source'
 import { useModelsSource } from '../data/models-source'
-import { useChatSource } from '../data/chat-source'
+import { chatSources } from '../data/chat-source'
+import {
+  bindNewSessionRef,
+  enterSessionInWorkbench,
+  openNewSessionPlaceholder,
+} from '../content/session-open'
 import { focusTree } from '../focus/registry'
 import { findSession } from './projection'
 import { notify } from '../services/notify'
@@ -223,6 +228,13 @@ export const useExposeStore = create<ExposeStore>()(
       enterSession: (sessionId) => {
         set((s) => T.enterSession(s, sessionId))
         /*
+         * **换的是树,不是一格字段**(W5-b 裁定 3)。「进一条会话」= 让
+         * **焦点那片会话叶**看它(原位换 ref,叶不重挂);它已经开在别处就
+         * 点亮那一格并把焦点叶指过去。`currentSessionId` 随后由投影跟上 ——
+         * 这层壳一个字都不写它。三档的判词在 `content/session-open.ts`。
+         */
+        enterSessionInWorkbench(sessionId)
+        /*
          * 「开会话 → 焦点进它的输入面板」(§3.5 规则 2)。落在这一层而不是各个
          * 入口上,理由与这个函数头上那句话逐字相同:**进会话的唯一编排点**——
          * 卡上单击、Quick Look 里的 ↵、检索面里的一行、建完一条新会话,四条路
@@ -267,6 +279,15 @@ export const useExposeStore = create<ExposeStore>()(
       newSession: async (projectId) => {
         if (creating) return undefined
         creating = true
+        /*
+         * **先在焦点会话叶原位开一片空会话,再去建**(W5-b 交付 3)。
+         * 屏幕当场就是那片空会话,人可以立刻打字;建成之后由 `bindNewSessionRef`
+         * 把那一格原位绑成真 id(叶不重挂)。建不成就换回去 —— 判词与那口
+         * 「换回去」写在 `openNewSessionPlaceholder` 上。
+         *
+         * 首开草稿态那条路(焦点叶已经是保留键)整件是恒等变换。
+         */
+        const undoPlaceholder = openNewSessionPlaceholder()
         let outcome
         try {
           outcome = await useSessionsSource.getState().create(projectId)
@@ -274,6 +295,7 @@ export const useExposeStore = create<ExposeStore>()(
           creating = false
         }
         if (!outcome.ok) {
+          undoPlaceholder?.()
           notify({
             level: 'error',
             source: 'session.create',
@@ -283,6 +305,8 @@ export const useExposeStore = create<ExposeStore>()(
           })
           return undefined
         }
+        // 那一格保留键当场绑成真 id(原位,叶不重挂)。
+        bindNewSessionRef(outcome.sessionId)
         if (outcome.workdirError) {
           // 会话建成但没归进项目(第二步落目录被后端拒了)。warn 不拦路:
           // 人还能聊,只是外部 agent 这类要目录的活会拒启 —— 后端原话给全。
@@ -319,14 +343,20 @@ export const useExposeStore = create<ExposeStore>()(
          *  - open 对同一条会话是**幂等**的(已经开着就当场返回),
          *    所以后来那次 effect 里的 open 是恒等变换,不是第二次起底。
          */
-        await useChatSource.getState().open(outcome.sessionId)
+        await chatSources.acquire(outcome.sessionId).open()
         return outcome.sessionId
       },
 
       newSessionInCurrentProject: async () => {
-        // 「当前项目」= 当前会话的那个。没有当前会话(刚启动 / 上一条被删)就是
-        // null —— 不去猜一个「最近用过的项目」,那是编。
-        const current = findSession(currentSessions(), get().currentSessionId)
+        /*
+         * 「当前项目」= **环境会话**的那个(W5-b 裁定 3 的第三义)。没有环境会话
+         * (刚启动 / 上一条被删)就是 null —— 不去猜一个「最近用过的项目」,那是编。
+         *
+         * 读 `envSessionId` 而不是 `currentSessionId`:焦点此刻可能停在一片文件叶
+         * 上,而「我上一次在哪条会话里干活」才是 ⌘N 该继承的那个项目 —— 与文件树
+         * 的根、检索的 cwd 是同一句话,所以读同一格。
+         */
+        const current = findSession(currentSessions(), get().envSessionId)
         return get().newSession(current?.projectId ?? null)
       },
     }),
@@ -413,8 +443,9 @@ export const useExposeStore = create<ExposeStore>()(
         return { ...current, byWorkspace, ...spreadSpace(byWorkspace, EXPOSE_PER_SPACE) }
       },
       // 只持久化那两格家具:视图层每次开场都归位,不该被上次的停留点污染。
-      // 当前会话也不持久化 —— 它现在是**真会话 id**,把一个可能已被删掉的 id
-      // 记到下次启动,换来的是一个指向空气的标题。
+      // 当前会话与环境会话也不持久化 —— 它们现在是**树的投影**(W5-b),
+      // 而树自己按 Workspace 落盘;把投影再存一份就是第二份真相,
+      // 何况那个 id 到下次启动可能已经被删掉,换来的是一个指向空气的标题。
       partialize: (s) => ({ byWorkspace: stashSpace(s, s.byWorkspace, EXPOSE_PER_SPACE) }),
     },
   ),

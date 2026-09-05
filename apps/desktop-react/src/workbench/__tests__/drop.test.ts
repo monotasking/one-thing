@@ -129,13 +129,13 @@ describe('dropTargetAt —— 五问按序', () => {
   it('accepts 说不收 = 结构化拒绝,带得出理由', () => {
     const rules = {
       accepts: (t: DropTarget) =>
-        t.kind === 'leaf' && t.region === 'center' ? null : ('drag.sessionOnlyCenter' as const),
+        t.kind === 'leaf' && t.region === 'center' ? null : ('drag.regionRefused' as const),
     }
     expect(dropTargetAt(center, geometry, rules)).toMatchObject({ kind: 'leaf' })
     const outside: DropGeometry = { window: WINDOW, leaves: [] }
     expect(dropTargetAt({ x: 500, y: 400 }, outside, rules)).toEqual({
       kind: 'refuse',
-      reasonKey: 'drag.sessionOnlyCenter',
+      reasonKey: 'drag.regionRefused',
     })
   })
 

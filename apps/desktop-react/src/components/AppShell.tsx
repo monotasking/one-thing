@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 import { startStage, useStageStore } from '../stage/store'
+import { startSessionProjection } from '../content/session-projection'
+import { currentSessionOf, sessionRefIdOf } from '../content/session-ref'
 import { StageFocusFollow } from '../stage/focus-follow'
 import { useViewportReclamp } from '../stage/viewport-reclamp'
 import { useKeymapCommandRunner } from '../keymap/dispatch'
@@ -68,6 +70,13 @@ export function AppShell() {
    * 绘制之前**就位,不然会先画一帧没有架子的壳。
    */
   useLayoutEffect(() => startStage(), [])
+
+  /**
+   * **「当前会话」那条投影**(W5-b 裁定 3)。与上面那一句同一条理由:
+   * 不经过 `main.tsx` 的宿主(用例)也得有人把它接上,而它自己是幂等的。
+   * 判词、三格状态与 HMR 退役全在 `content/session-projection.ts`。
+   */
+  useLayoutEffect(() => startSessionProjection(), [])
   const dockDisplay = useStageStore((st) => st.dockDisplay)
   const dockEdge = useStageStore((st) => st.dockEdge)
 
@@ -141,9 +150,16 @@ export function AppShell() {
    * 这一句不该在任何重渲染里再抢一次。
    */
   useEffect(() => {
+    /*
+     * ② 那一格问的是**焦点叶那条会话**的消息流(W5-b 裁定 6):会话多开之后
+     * `chat` 是一族带 owner 的作用域,不点名就是让 MRU 替用户猜一片。
+     * 焦点叶此刻没有会话(或者树还没播种)时 `owner` 是 undefined —— 那时
+     * `activateScope` 退回 MRU,与 W5-b 之前逐字相同。
+     */
+    const chatOwner = focusLeafSessionOwner()
     const landed =
       focusTree.activateScope('composer', { reason: 'restore' })
-      || focusTree.activateScope('chat', { reason: 'restore' })
+      || focusTree.activateScope('chat', { reason: 'restore', owner: chatOwner })
       || focusTree.activateScope('root', { reason: 'restore' })
     // 三格都答不出 = 树还一格都没登记完(理论上到不了这儿,因为根就在这一层)。
     if (!landed) focusTree.recoverOrphanFocus()
@@ -687,4 +703,20 @@ function useComposerGeometry(
       center.style.removeProperty('--center-h')
     }
   }, [centerRef, composerDockRef])
+}
+
+/**
+ * **焦点叶那条会话的 `chat` 作用域 owner**(启动回落第 ② 级,W5-b 裁定 6)。
+ *
+ * 取的是「当前会话」那条投影的判据本体(纯函数 `currentSessionOf`),而不是
+ * 读 `expose.currentSessionId` —— 壳挂载那一瞬投影可能还没跑第一遍
+ * (`startSessionProjection` 与这条 effect 排在同一次提交里),而树此刻已经就位。
+ * 「还没绑会话」那一格答的是保留键那份 owner(`session:new`)—— 它就是那片叶
+ * 此刻挂在树上的名字,与 `ChatStream` 那一句 `sessionRefIdOf(sessionId)` 逐字同源。
+ * 树上一片会话叶都没有时那份 owner 谁都不匹配,`activateScope` 答 false,
+ * 回落到第 ③ 级(壳根)—— 那正是「主内容区此刻没有可接键盘的面」该有的结果。
+ */
+function focusLeafSessionOwner(): string {
+  const { regions, focusLeafId } = useWorkbenchStore.getState()
+  return sessionRefIdOf(currentSessionOf(regions, focusLeafId))
 }
