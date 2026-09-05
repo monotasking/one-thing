@@ -4,7 +4,7 @@ import { Tabs } from '../ui/Tabs'
 import { focusIntoRef } from './focus-into'
 import { useLiveTitleStore } from '../stage/live-title'
 import { useT } from '../i18n'
-import { contentKindOf, mayCloseContent, refId } from './kinds'
+import { contentKindOf, mayCloseContent, partsOfContent, refId } from './kinds'
 import type { LiveTitle } from '../stage/live-title'
 import type { TabSpec } from '../ui/Tabs'
 import type { ContentRef } from './kinds'
@@ -116,6 +116,32 @@ export function LeafStrip({
   testId,
 }: LeafStripProps) {
   const select = useSelectIntoContent(activeId, onSelect)
+  /*
+   * **按下即激活**(W6-b,设计 v3 §4.2 第一行:「idle ──按下──▶ pressed(当场
+   * 激活这个标签)」;§9 那张落差表的最后一行「按下不激活,click 才激活 → 按下
+   * 即激活」)。
+   *
+   * 它是用户那句「点击和拖拽分不清」的解药:按下那一刻反馈已经给了(内容切过去
+   * 了),后面要么松手结束,要么拖走。产地在这里而不在 `useTabDrag`,理由与
+   * `useSelectIntoContent` 长在这只文件里同一条 —— 「切一格标签」是**四个宿主
+   * 同一句话**的语义(它还要把焦点送进内容),而那只 hook 只管手势。
+   *
+   * **次序:先激活,再起手势**。反过来的话手势会在一棵还没翻面的树上算落点。
+   * 激活走的是既有那条 `select`(= `useSelectIntoContent`),所以「切 tab 焦点进
+   * 内容」这句话仍旧只有一个产地;点当前活动那一格时它是幂等的。
+   *
+   * **它不重建这条条**:`ui/Tabs` 的 key 是 `tab.id`,激活只换 `aria-selected`
+   * 与内容区 —— 被按住的那个元素必须还在手里,不然后面每一发 pointermove 都
+   * 落在一个已经不存在的节点上(样例第一版就是在这里失手的)。
+   * `gate:drag` 场景 ② 断言「按下前后是同一个 DOM 节点」钉着这一条。
+   */
+  const onTabDown = useCallback(
+    (id: string, e: ReactPointerEvent<HTMLElement>) => {
+      select(id)
+      onTabPointerDown?.(id, e)
+    },
+    [onTabPointerDown, select],
+  )
   return (
     <div
       className={s.chrome}
@@ -139,7 +165,7 @@ export function LeafStrip({
           look="joined"
           onSelect={select}
           onClose={onClose}
-          onTabPointerDown={onTabPointerDown}
+          onTabPointerDown={onTabDown}
         />
       </div>
       {/* 型工具条由**种类自述**(`ContentKind.toolbar`),檐只负责挂。
@@ -247,6 +273,14 @@ export function tabSpecOf(
     closable: opts.closable ?? true,
     // 「这一组的家」(W1-b):判据由宿主从种类自述里取,这只函数只搬运。
     home: opts.home ?? false,
+    /*
+     * **这一格装了几份**(W6-b)。问的是**种类自述的复合表**
+     * (`ContentKind.composite.parts`),所以这只函数照旧不认识 `pair` 这四个
+     * 字母,而下一种复合内容出现时它一个字都不用改。
+     * 落点判据从 DOM 上读它(`[data-tab-slots]`),用来答「两格的标签不能再并」
+     * 与「内容区左带仅 host 单格」两条 —— 判词在 `workbench/drop.TabBox` 上。
+     */
+    slots: partsOfContent(ref)?.length ?? 1,
   }
 }
 

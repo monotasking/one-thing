@@ -157,8 +157,8 @@ describe('取消', () => {
 })
 
 describe('落点反馈', () => {
-  it('接受:高亮盖住那块矩形', () => {
-    render(<Source spec={{ onMove: () => setDropFeedback({ rect: { left: 10, top: 20, width: 100, height: 50 }, tone: 'accept', label: '移到右侧' }) }} />)
+  it('接受:高亮盖住那块矩形,**字在浮影下那一行**(W6-b:落区上不写字)', () => {
+    render(<Source spec={{ onMove: () => setDropFeedback({ rect: { left: 10, top: 20, width: 100, height: 50 }, tone: 'accept', hint: '钉到右侧架子' }) }} />)
     const src = screen.getByTestId('src')
     act(() => {
       down(src, 100, 100)
@@ -166,17 +166,20 @@ describe('落点反馈', () => {
     })
     const band = screen.getByTestId('drop-overlay')
     expect(band.getAttribute('data-tone')).toBe('accept')
-    expect(band.textContent).toContain('移到右侧')
+    // 落区上一个字都没有(设计 v3 §5 贯穿规则 2:唯一出现文字的地方是提示行)。
+    expect(band.textContent).toBe('')
+    expect(screen.getByTestId('drag-hint').textContent).toBe('钉到右侧架子')
   })
 
   /*
-   * **拒绝不静默**(裁定 7):浮影变灰(`data-refuse`)+ 那一句理由写在浮影上。
+   * **拒绝不静默**(裁定 7):浮影变灰(`data-refuse`)+ 那一句理由写在提示行上,
+   * 加一格根属性把整扇窗的光标换成 not-allowed(W6-b)。
    * 这一条同时钉住「拒绝时不画一块接受色的高亮」——`rect: null`,整块不出现。
    */
-  it('拒绝:浮影变灰 + 一句理由,不画接受色的高亮', () => {
+  it('拒绝:浮影变灰 + 一句理由 + not-allowed 光标,不画接受色的高亮', () => {
     render(
       <Source
-        spec={{ onMove: () => setDropFeedback({ rect: null, tone: 'refuse', label: '会话多开在下一期' }) }}
+        spec={{ onMove: () => setDropFeedback({ rect: null, tone: 'refuse', hint: '这里不能放' }) }}
       />,
     )
     const src = screen.getByTestId('src')
@@ -185,14 +188,20 @@ describe('落点反馈', () => {
       move(src, 200, 100)
     })
     expect(screen.getByTestId('drag-ghost').hasAttribute('data-refuse')).toBe(true)
-    expect(screen.getByTestId('drag-refuse').textContent).toBe('会话多开在下一期')
+    expect(screen.getByTestId('drag-hint').textContent).toContain('这里不能放')
+    expect(document.documentElement.hasAttribute('data-drag-refuse')).toBe(true)
     expect(screen.queryByTestId('drop-overlay')).toBeNull()
+    act(() => {
+      up(src, 200, 100)
+    })
+    // 每条结束路径都摘掉 —— 留着的话整扇窗从此都是禁止光标。
+    expect(document.documentElement.hasAttribute('data-drag-refuse')).toBe(false)
   })
 
   it('松手之后来的那一发反馈什么都不做(不凭空造一格拖拽态)', () => {
     render(<Source spec={{}} />)
     act(() => {
-      setDropFeedback({ rect: { left: 0, top: 0, width: 10, height: 10 }, tone: 'accept' })
+      setDropFeedback({ rect: { left: 0, top: 0, width: 10, height: 10 }, tone: 'accept', hint: '' })
     })
     expect(screen.queryByTestId('drop-overlay')).toBeNull()
   })

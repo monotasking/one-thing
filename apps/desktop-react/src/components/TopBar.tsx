@@ -55,13 +55,19 @@ export function TopBar() {
         * 由系统画在网页之上、不受 z-index 管),只负责两件事 —— 把标签推到灯的
         * 右边去,以及把这一段从拖拽把手里摘出来(拖到灯上应当是按灯,不是拖窗)。
         * 全屏时灯没了,这一块也跟着归 0(宽度过渡吃 --dur,动效档 none 直切)。 */}
-      <div className={s.traffic} data-testid="topbar-traffic" aria-hidden="true" />
+      {/* `data-nodrop`(W6-b,设计 v3 §5 第一行「拒绝区:指针在红绿灯、顶栏尾格、
+        * Dock 上」):**这块地方自述「一律不收」**,落点判据因此不认识红绿灯这回事
+        * ——它只扫 `[data-nodrop]` 的矩形。再多一处不能放的地方 = 在那个元素上加
+        * 一格属性,`workbench/drop.ts` 一个字都不改。 */}
+      <div className={s.traffic} data-testid="topbar-traffic" data-nodrop="" aria-hidden="true" />
       {/* 中央区那几片叶的标签组。它是一格 flex 项,吃掉让位与尾格之间的全部剩余
         * 宽度;组本身是它的绝对定位子孙,所以**永不挤掉右端那一组动作**。 */}
       <TopBarLeafTabs />
       {/* 尾格不给 `aria-label`:它没有 role,一个只有名字没有角色的容器在无障碍树上
         * 是噪音(axe 的 `aria-*` 那一族会说话)。里面每一件自己都说得出自己是谁。 */}
-      <div className={s.trailing} data-testid="topbar-trailing">
+      {/* 尾格同理:那儿坐着焦点叶的动作组与 AgentChip,拖一格标签到「分屏 ▸」上
+        * 应当是「这里不能放」,不是「插到最后一格」。 */}
+      <div className={s.trailing} data-testid="topbar-trailing" data-nodrop="">
         {/* 焦点叶的动作组(分屏 ▸ / 隐藏的标签 ⋯ / 型工具条)。设计 §2.2:
           * 「右端是焦点叶的动作组」——分屏出来的叶自己不画檐,也不画动作。 */}
         <TopBarLeafActions />

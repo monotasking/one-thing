@@ -1,10 +1,13 @@
 import { useCallback, useRef, useSyncExternalStore } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { focusTree } from '../../focus/registry'
+import { LAND_MS } from '../../components/motion'
 import { DRAG_START_PX } from './constants'
 
 /** 拖拽进行中挂在根上的那一格属性;消费者只有 `styles/global.css` 那条 `user-select` 规则。 */
 const DRAG_ACTIVE_ATTR = 'data-drag-active'
+/** 这一帧落不下去:整扇窗的光标换成 `not-allowed`(规则同在 `styles/global.css`)。 */
+const DRAG_REFUSE_ATTR = 'data-drag-refuse'
 
 /**
  * **一次拖拽的会话**(W3,设计 `apps/desktop-react/docs/workbench-2026-09.md` §3)。
@@ -77,10 +80,15 @@ export interface DragGhostSpec {
  *   `film`     一层薄膜 + 一圈实线(窗口边带那一档,W3 的原样)
  *   `ring`     只在那块矩形里描一圈细环,里面什么都不画 —— **并入一片叶**
  *              (用户原话:色块 + 边框 + 文字盖在内容上太重)
- *   `bar`      那块矩形本身就是一根 4px 的实心杠 —— **在这一侧分屏**
+ *   `half`     **落下后占的那一半**亮出来(W6-b,设计 v3 §5 的「内容区右带 28%」)。
+ *              它是唯一一档要铺面的:ring 与 half 说的是两件不同的事(整格并进去 /
+ *              与它并排占一半),只描边的话两者在屏幕上长得一模一样。
  *   `outline`  一圈虚线轮廓、里面是空的 —— 撕成浮窗时那扇窗的预示
+ *
+ * `bar`(贴边那根 4px 的杠)随**边带分屏**一起退役(W6-b:单叶政策之下叶的四带
+ * 不再切一刀,左右两带改判「二合一」,画的是 half)。
  */
-export type DropShape = 'film' | 'ring' | 'bar' | 'outline'
+export type DropShape = 'film' | 'ring' | 'half' | 'outline'
 
 /** 落点反馈:消费方每一帧算出来交回来的那一句结论。 */
 export interface DropFeedback {
@@ -89,16 +97,28 @@ export interface DropFeedback {
    * 标签条上 —— 那一档的预示是**条自己腾出来的空位**,不是盖一块高亮),
    * 此时只有浮影在动。
    */
-  rect: { left: number; top: number; width: number; height: number } | null
+  rect: DragRect | null
   /** `accept` = 松手会发生点什么;`refuse` = 松手什么都不会发生。 */
   tone: 'accept' | 'refuse'
   /**
-   * 一句人话。拒绝时**必须**给(裁定 7:结构化拒绝,不静默);接受时**只有
-   * 窗口边带与撕浮窗给** —— 叶身上不再写字(W3-b 裁定 7:那句话盖在内容上)。
+   * **浮影下那行字,永不空**(W6-b,设计 v3 §5 贯穿规则 2:「落点变了字就变,
+   * 没有落点写『松手放回』。这是唯一一处在拖拽期间出现文字的地方」)。
+   *
+   * 它顶掉了 W3-b 的 `label`(那一格画在**落区**上,而落区盖的是正在读的内容)。
+   * 一句话只出现在一处:高亮说「落在哪儿」,这一行说「松手会怎样」。
+   * 拒绝时它就是那句理由(裁定 7:结构化拒绝,不静默)。
    */
-  label?: string
+  hint: string
   /** 画法。缺席 = `film`(W3 的那一档,窗口边带还在用)。 */
   shape?: DropShape
+}
+
+/** 一块矩形(视口坐标)。落区、氛围、落定的落点用的是同一个形。 */
+export interface DragRect {
+  left: number
+  top: number
+  width: number
+  height: number
 }
 
 /**
@@ -109,9 +129,15 @@ export interface DropFeedback {
  *             此时浮影**一个节点都不画** —— 屏幕上同时有两个「拖着的东西」
  *             正是用户报的那句「手按着 tab,动的却是旁边一枚芯片」
  *
+ *   `hint`    来源自己在动(仍是那一格 tab 在跟手),**但这一帧有话要说** ——
+ *             指针压到标签条底缘下、要落到某个标签上那一形:卡片不画,只留下面
+ *             那一行「与「X」二合一」(W6-b,设计 v3 §4.2 的 onto 带)。
+ *             它不是第三种「拖着的东西」,
+ *             是 `inline` 加一行字 —— 屏幕上仍旧只有那一格标签在动。
+ *
  * 它是一格**画法**,不是一格业务事实:`ui/drag` 仍旧不认识 tab、不认识条。
  */
-export type DragPresentation = 'ghost' | 'inline'
+export type DragPresentation = 'ghost' | 'inline' | 'hint'
 
 export interface DragSessionState {
   payload: unknown
@@ -119,6 +145,24 @@ export interface DragSessionState {
   pointer: { x: number; y: number }
   drop: DropFeedback | null
   presentation: DragPresentation
+  /**
+   * **氛围**(W6-b,设计 v3 §5 贯穿规则 1:「从外面拖东西进来时,起拖那一刻所有
+   * 能放的地方先淡淡亮一层……悬到的那一处再亮到实」)。
+   *
+   * 它是一**组**矩形而不是一个布尔或一格属性,理由是这一层仍旧不认识拼贴台:
+   * 「哪些地方能放」只有消费方知道,它把那几块矩形交回来,这一层照画。
+   * 空数组 = 不铺 —— **条内换序恒为空**(§4.5 第 2 条:换序时屏幕上只有那一格
+   * 标签在动),从外面拖进来才由来源交进来。
+   */
+  ambient: readonly DragRect[]
+  /**
+   * **落定/弹回时那张卡片飞去哪儿**(W6-b,§5「落定卡片飞入空位」)。
+   *
+   * 非 null = 这一场已经结束,浮影正在飞完最后 `--dur-land` 那一程:它从松手那一点
+   * 滑到这块矩形上、去掉倾斜、淡出。这段时间里 `payload` 已经不该被人读了 ——
+   * 落定动作在这之前就跑完了(见 `up()` 的次序判词),这一格纯粹是**收笔**。
+   */
+  landing: DragRect | null
 }
 
 /*
@@ -129,6 +173,12 @@ export interface DragSessionState {
  */
 let current: DragSessionState | null = null
 const subscribers = new Set<() => void>()
+/**
+ * 收笔那一程的计时器(见 `DragSessionState.landing`)。**模块级,所以配 HMR 退役**
+ * —— 它与订阅表同寿,由 `resetDragSession()` 那一口唯一的拆卸收(CLAUDE.md 那条法:
+ * 退役必须复用已有的拆卸,不许写第二套)。
+ */
+let landingTimer: ReturnType<typeof setTimeout> | null = null
 
 function emit(next: DragSessionState | null): void {
   current = next
@@ -158,7 +208,40 @@ export function useDragState(): DragSessionState | null {
 export function setDropFeedback(drop: DropFeedback | null): void {
   if (!current) return
   if (sameFeedback(current.drop, drop)) return
+  /*
+   * **拒绝态的光标由根属性驱动**(W6-b,§5「光标 not-allowed」)。规则在
+   * `styles/global.css` 的 `:root[data-drag-refuse]` 上,和 `data-drag-active`
+   * 那条 `user-select` 一样 —— 光标要盖住**整扇窗**里的每一个元素(拖到 Dock 上
+   * 时指针底下那块瓦自己声明着 `cursor: pointer`),这件事只有根属性做得到,
+   * 给浮影加一格类是够不着的。teardown 里一并摘掉。
+   */
+  toggleRefuseCursor(drop?.tone === 'refuse')
   emit({ ...current, drop })
+}
+
+/** 这一帧「能放的地方」有哪几块(见 `DragSessionState.ambient` 的判词)。 */
+export function setDropAmbient(rects: readonly DragRect[]): void {
+  if (!current) return
+  if (sameRects(current.ambient, rects)) return
+  emit({ ...current, ambient: rects })
+}
+
+function toggleRefuseCursor(on: boolean): void {
+  if (typeof document === 'undefined') return
+  if (on) document.documentElement.setAttribute(DRAG_REFUSE_ATTR, '')
+  else document.documentElement.removeAttribute(DRAG_REFUSE_ATTR)
+}
+
+function sameRects(a: readonly DragRect[], b: readonly DragRect[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  return a.every((rect, i) => sameRect(rect, b[i]))
+}
+
+function sameRect(a: DragRect | null, b: DragRect | null): boolean {
+  if (a === b) return true
+  if (!a || !b) return false
+  return a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
 }
 
 /**
@@ -174,15 +257,8 @@ export function setDragPresentation(presentation: DragPresentation): void {
 function sameFeedback(a: DropFeedback | null, b: DropFeedback | null): boolean {
   if (a === b) return true
   if (!a || !b) return false
-  if (a.tone !== b.tone || a.label !== b.label || a.shape !== b.shape) return false
-  if (a.rect === b.rect) return true
-  if (!a.rect || !b.rect) return false
-  return (
-    a.rect.left === b.rect.left
-    && a.rect.top === b.rect.top
-    && a.rect.width === b.rect.width
-    && a.rect.height === b.rect.height
-  )
+  if (a.tone !== b.tone || a.hint !== b.hint || a.shape !== b.shape) return false
+  return sameRect(a.rect, b.rect)
 }
 
 /**
@@ -211,8 +287,13 @@ export interface DragSourceSpec<T> {
   /**
    * 走过阈值的那一帧问一次:这一下拖的是什么、浮影画什么。
    * **答 null = 这一下不许拖**(整场作废,与一次普通点击逐字相同)。
+   *
+   * `source` 是**这一下按在哪个元素上**(挂 `onPointerDown` 的那一个)。它答的是
+   * 「这东西是从哪儿拿出来的」——与 `e.target` 不同:后者是指针此刻底下的那个
+   * 节点,过了阈值之后它早就不是来源了。消费方拿它回答「它是从哪扇浮窗里出来的」
+   * 这一类问题(设计 v3 §8:浮窗不接住自己)。
    */
-  onStart(e: PointerEvent): { payload: T; ghost: DragGhostSpec } | null
+  onStart(e: PointerEvent, source: HTMLElement): { payload: T; ghost: DragGhostSpec } | null
   /**
    * 这次拖拽的「带」此刻在哪儿(视口坐标)。缺席 / 答 null = 这一下没有带,
    * `onMove` 收到的 `band.phase` 恒为 `outside`。
@@ -230,8 +311,28 @@ export interface DragSourceSpec<T> {
   onDrop?(pointer: { x: number; y: number }, payload: T): void
   /** Esc / pointercancel / 窗口失焦。同样在拆干净之后叫。 */
   onCancel?(payload: T): void
-  /** 起拖阈值。缺省 `DRAG_START_PX`;给 0 = 按下即拖(单测反证用)。 */
-  threshold?: number
+  /**
+   * **松手 / 取消之后那张卡片飞去哪儿**(W6-b,§5「落定卡片飞入空位」/「弹回」)。
+   *
+   * 每条结束路径各问一次,**在拆干净之前**(那时几何还没被落定动作改掉):
+   *  · 落定:答那格空位 / 那块落区的矩形 —— 卡片飞进去,用户看见「它去了这里」;
+   *  · 拒绝 / 取消:答**来源自己**的矩形 —— 卡片弹回来,「这一下没发生」。
+   * 答 null = 不飞,浮影当场消失(条内换序走的正是这条:那一形压根没有卡片,
+   * 收笔由 `ui/tab-reorder` 的 FLIP 滑入负责)。
+   *
+   * `source` 是按下那一刻那个元素此刻的矩形,由这一层量好递进来 —— 消费方不必
+   * 自己记住来源是谁,也就不会有第二份「来源在哪儿」的账。
+   */
+  landingRect?(payload: T, source: DragRect | null): DragRect | null
+  /**
+   * 起拖阈值。缺省 `DRAG_START_PX`;给 0 = 按下即拖(单测反证用)。
+   *
+   * **两轴可以各给一个数**(W6-b):一格标签横向 `DRAG_START_X` 6 起换序、竖向
+   * `TEAR_OFF_DISTANCE` 24 才撕下(设计 v3 §4.2 的第一条分叉)。给一个数 = 两轴同值,
+   * 与从前逐字相同。判据仍旧是「任一轴走过它自己那个数」——**不是**欧氏距离:
+   * 两轴量的是两件事,合成一个距离就等于把它们又并回了一个数。
+   */
+  threshold?: number | { x: number; y: number }
 }
 
 /**
@@ -252,7 +353,8 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
     if (!(el instanceof HTMLElement)) return
     const startX = e.clientX
     const startY = e.clientY
-    const threshold = specRef.current.threshold ?? DRAG_START_PX
+    const declared = specRef.current.threshold ?? DRAG_START_PX
+    const gate = typeof declared === 'number' ? { x: declared, y: declared } : declared
     let payload: T | null = null
     /**
      * 三态,不是一个布尔(`cancelled` 那一格是 09-05 真机门量出来的,见
@@ -280,21 +382,40 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       )
     }
 
-    /** 拆干净。幂等 —— 每条结束路径都先走它。 */
-    const teardown = (): void => {
+    /** 按下那个元素此刻的矩形 —— 卡片弹回 / 飞走的起点与终点都从它算。 */
+    const sourceRect = (): DragRect | null => {
+      if (!el.isConnected) return null
+      const box = el.getBoundingClientRect()
+      if (box.width <= 0 || box.height <= 0) return null
+      return { left: box.left, top: box.top, width: box.width, height: box.height }
+    }
+
+    /**
+     * 拆干净。幂等 —— 每条结束路径都先走它。
+     *
+     * `fly` = 这条路径要不要让卡片飞完最后一程(见 `landingRect` 的判词)。
+     * 它必须在**拆卸之前**问,而不是让调用方先问好再传进来:那样每条路径都要
+     * 记得问一次,而「Esc 那条忘了问」正是这类多出口拆卸的典型漏法。
+     */
+    const teardown = (fly = false): void => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
       window.removeEventListener('pointercancel', abort)
       window.removeEventListener('blur', abort)
       offEscape?.()
       offEscape = null
+      const landing =
+        fly && phase === 'dragging'
+          ? (specRef.current.landingRect?.(payload as T, sourceRect()) ?? null)
+          : null
       try {
         el.releasePointerCapture(e.pointerId)
       } catch {
         /* 已经丢了就算了 —— 拆卸不该因为一次无害的失败中断 */
       }
-      if (phase === 'dragging') emit(null)
+      if (phase === 'dragging') settleGhost(landing)
       document.documentElement.removeAttribute(DRAG_ACTIVE_ATTR)
+      toggleRefuseCursor(false)
       phase = 'idle'
     }
 
@@ -339,8 +460,11 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         return
       }
       const held = payload as T
+      // 弹回:卡片飞回来源(§4.2「Esc……滑回原位」)。条内换序答 null —— 那一形
+      // 的滑回由 `ui/tab-reorder` 自己做(它动的是那格 tab,不是一张卡片)。
+      settleGhost(specRef.current.landingRect?.(held, sourceRect()) ?? null)
       phase = 'cancelled'
-      emit(null)
+      toggleRefuseCursor(false)
       offEscape?.()
       offEscape = null
       specRef.current.onCancel?.(held)
@@ -350,10 +474,10 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       if (phase === 'cancelled') return
       const pointer = { x: ev.clientX, y: ev.clientY }
       if (phase === 'idle') {
-        if (Math.abs(pointer.x - startX) < threshold && Math.abs(pointer.y - startY) < threshold) {
+        if (Math.abs(pointer.x - startX) < gate.x && Math.abs(pointer.y - startY) < gate.y) {
           return
         }
-        const opened = specRef.current.onStart(ev)
+        const opened = specRef.current.onStart(ev, el)
         if (!opened) {
           // 来源自己说「这一下不许拖」:整场作废,后面与普通点击逐字相同。
           teardown()
@@ -396,7 +520,15 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
           escapeCancel()
           return true
         })
-        emit({ payload: opened.payload, ghost: opened.ghost, pointer, drop: null, presentation: 'ghost' })
+        emit({
+          payload: opened.payload,
+          ghost: opened.ghost,
+          pointer,
+          drop: null,
+          presentation: 'ghost',
+          ambient: [],
+          landing: null,
+        })
         /*
          * 起拖那一帧的带态:`entered` 恒 false —— 「刚进来」说的是一次跃迁,
          * 而这一帧之前压根没有「上一帧」。一格 tab 起拖时通常已经在自己的条里,
@@ -431,7 +563,7 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       const pointer = { x: ev.clientX, y: ev.clientY }
       // 次序即语义:先把这一格拖拽态拆干净,再落定 —— 落定会改树,
       // 那一刻不该还有一个活着的会话在别人的订阅里晃。
-      teardown()
+      teardown(true)
       swallowNextClick()
       if (was === 'dragging') specRef.current.onDrop?.(pointer, held)
     }
@@ -443,7 +575,7 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         return
       }
       const held = payload as T
-      teardown()
+      teardown(true)
       specRef.current.onCancel?.(held)
     }
 
@@ -465,8 +597,37 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
   }, [])
 }
 
+/**
+ * **收笔**:这一场结束了,浮影要么当场消失,要么飞完最后一程再消失。
+ *
+ * `landing` 为 null,或这一形压根没有卡片(`inline` / `hint` 两档:拖的是来源
+ * 自己),都是**当场归零** —— 让一格看不见的东西「飞」180ms 只会让下一次起拖
+ * 撞上一个还没退干净的会话。
+ */
+function settleGhost(landing: DragRect | null): void {
+  clearLandingTimer()
+  if (!current || !landing || current.presentation !== 'ghost') {
+    emit(null)
+    return
+  }
+  // 落定动作马上要改树,那一刻不该还有人在读这一格的落区与氛围 —— 只留卡片。
+  emit({ ...current, drop: null, ambient: [], landing })
+  landingTimer = setTimeout(() => {
+    landingTimer = null
+    if (current?.landing === landing) emit(null)
+  }, LAND_MS)
+}
+
+function clearLandingTimer(): void {
+  if (landingTimer === null) return
+  clearTimeout(landingTimer)
+  landingTimer = null
+}
+
 /** 只给单测与真机门:把这一格瞬态归零。产品代码不该调它。 */
 export function resetDragSession(): void {
+  clearLandingTimer()
+  toggleRefuseCursor(false)
   emit(null)
 }
 

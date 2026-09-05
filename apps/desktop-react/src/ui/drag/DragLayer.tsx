@@ -11,7 +11,7 @@ import s from './DragLayer.module.css'
  * 它订阅拖拽会话,而那格状态**每一发 pointermove 都变**。挂在外壳身上等于
  * 「拖一次整棵壳重渲上百遍」——09-03「面自己不许订阅焦点树、交给叶子」那条判例
  * 的同型(`StageFocusFollow` 就是照这条抽出去的)。这里再走一遍:订阅住在这只
- * 组件里,它自己只画一枚 28px 的浮影,重渲一次的代价就是那一枚。
+ * 组件里,它自己只画一枚浮影,重渲一次的代价就是那一枚。
  *
  * ── 不拖的时候一个节点都不画 ────────────────────────────────────────────
  * 不是「画一个 opacity: 0 的」:一个常驻的 fixed 元素会一直参与合成,而且
@@ -22,6 +22,12 @@ import s from './DragLayer.module.css'
  * 坐标写进 `left/top`(fixed,视口坐标),偏移在 CSS 里用 `transform` 做 ——
  * 于是浏览器每帧只需要重合成这一层。它 `pointer-events: none`,所以不参与命中
  * 测试,也就不会把落点判定的答案变成「浮影自己」。
+ *
+ * ── 收笔那一程(W6-b,§5「落定卡片飞入空位」/「弹回」)────────────────────
+ * 会话结束时如果消费方给了一块落点矩形,状态里会多出一格 `landing`:这一层把
+ * 坐标一次性写到那块矩形的中心并挂上 `data-landing`,于是 `left/top` 的过渡
+ * (`--dur-land`)自己把卡片送过去。**同一个节点在挪**,不是新造一枚飞行卡片
+ * ——§4.5 第 3 条的字面兑现。飞完由会话那一头把状态归零(它有计时器)。
  */
 export function DragLayer() {
   const drag = useDragState()
@@ -30,16 +36,42 @@ export function DragLayer() {
    * 「手按着 tab,动的却是旁边一枚芯片」—— 那一形的根因不是浮影长得不对,
    * 而是屏幕上**同时有两个**「拖着的东西」。所以这一档不是「浮影跟着 tab 走」,
    * 是浮影**不存在**:拖着的那个东西就是那格 tab 自己。
+   *
+   * `hint` 是它的**一格例外而不是第三种形**:仍旧只有那格 tab 在动,只是下面
+   * 多一行「与「X」二合一」—— 卡片照旧不画(`card={false}`)。
    */
   if (!drag || drag.presentation === 'inline') return null
-  const refuse = drag.drop?.tone === 'refuse' ? (drag.drop.label ?? '') : undefined
+  const landing = drag.landing
+  const refused = drag.drop?.tone === 'refuse'
+  /*
+   * 靠视口右缘那一档翻面(§5)。判据在这里而不在 CSS 里,理由是 CSS 问不到
+   * 「视口有多宽」这件事的**结论**(容器查询问的是容器,而这一层是 fixed 的
+   * 零身量点)。`GHOST_FLIP_PX` 与 `--drag-flip-edge` 由单测钉成相等。
+   */
+  const flip = typeof window !== 'undefined' && drag.pointer.x > window.innerWidth - GHOST_FLIP_PX
+  const x = landing ? landing.left + landing.width / 2 : drag.pointer.x
+  const y = landing ? landing.top + landing.height / 2 : drag.pointer.y
   return (
     <div
       className={s.layer}
-      style={{ '--drag-x': `${drag.pointer.x}px`, '--drag-y': `${drag.pointer.y}px` } as CSSProperties}
+      data-landing={landing ? '' : undefined}
+      style={{ '--drag-x': `${x}px`, '--drag-y': `${y}px` } as CSSProperties}
       aria-hidden="true"
     >
-      <DragGhost ghost={drag.ghost} refuseLabel={refuse || undefined} />
+      <DragGhost
+        ghost={drag.ghost}
+        hint={landing ? undefined : drag.drop?.hint}
+        refused={refused}
+        card={drag.presentation !== 'hint'}
+        flip={flip && !landing}
+        landing={Boolean(landing)}
+      />
     </div>
   )
 }
+
+/**
+ * 浮影靠视口右缘多近开始翻面(`--drag-flip-edge` 的判据镜像)。
+ * 它必须在 JS 这一头有一份:翻面是一格**属性**,而属性只有 JS 写得动。
+ */
+export const GHOST_FLIP_PX = 260

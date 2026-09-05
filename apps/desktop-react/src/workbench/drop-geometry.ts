@@ -1,4 +1,4 @@
-import type { DropGeometry, LeafBox, Rect, StripBox } from './drop'
+import type { DropGeometry, LeafBox, Rect, StripBox, TabBox } from './drop'
 import type { RegionId } from './regions'
 
 /**
@@ -19,6 +19,10 @@ import type { RegionId } from './regions'
  *   `[data-pane-slot]`    一片叶的格子(`PaneTree` 画的)
  *   `[data-pane-chrome]`  一片叶的檐(`LeafStrip` 画的,值 = 叶 id;W1 就有)
  *   `[data-tab-id]`       檐里那几格各自的 id(W3-b 给 `ui/Tabs` 加的取件口)
+ *   `[data-tab-slots]`    那一格里装了几份(W6-b;只在 > 1 时写)
+ *   `[aria-selected]`     哪一格是活动的(`ui/Tabs` 本来就有的 ARIA 语义)
+ *   `[data-nodrop]`       **这块地方一律不收**(W6-b:红绿灯 / 顶栏尾格 / Dock
+ *                         各自在自己身上写一格 —— 判据因此不认识这三样东西)
  * 于是「有哪些区域」这件事仍旧只有一个产地,拖拽不必再开一份名册。
  *
  * ── 条**不在**叶的子树里,所以它单独量一遍(W3-b)────────────────────────
@@ -35,6 +39,7 @@ import type { RegionId } from './regions'
 export function measureDropGeometry(): DropGeometry {
   const leaves: LeafBox[] = []
   const strips: StripBox[] = []
+  const nodrop: Rect[] = []
   if (typeof document !== 'undefined') {
     for (const host of Array.from(document.querySelectorAll('[data-pane-region]'))) {
       const region = host.getAttribute('data-pane-region')
@@ -53,20 +58,50 @@ export function measureDropGeometry(): DropGeometry {
       if (!leafId) continue
       /*
        * 量的是 **tablist 那一格**,不是整条檐:檐右端还挂着型工具条与动作组,
-       * 把它们算进条里等于「拖到分屏钮上 = 插一格 tab」。
+       * 把它们算进条里等于「拖到某颗钮上 = 插一格 tab」。
        */
       const list = chrome.querySelector('[role="tablist"]')
       if (!list) continue
       const rect = rectOf(list)
       if (rect.width <= 0 || rect.height <= 0) continue
+      const cells = Array.from(list.querySelectorAll('[data-tab-id]'))
       strips.push({
+        /*
+         * 条的**区域**从它往上最近的那格 `[data-pane-region]` 读。中央区那几组
+         * 标签住在窗口顶栏,而顶栏在 DOM 上不在任何一棵树里 —— 所以查不到时
+         * 拿同名那片叶的区域兜底(条与叶按 leafId 一一对应,这是四个宿主共有的
+         * 唯一一条身份线)。
+         */
+        region: (chrome.closest('[data-pane-region]')?.getAttribute('data-pane-region')
+          ?? leaves.find((leaf) => leaf.leafId === leafId)?.region
+          ?? '') as RegionId,
         leafId,
         rect,
-        tabs: Array.from(list.querySelectorAll('[data-tab-id]')).map(rectOf),
+        tabs: cells.map(tabBoxOf),
+        activeAt: cells.findIndex((el) => el.getAttribute('aria-selected') === 'true'),
       })
     }
+    for (const el of Array.from(document.querySelectorAll('[data-nodrop]'))) {
+      const rect = rectOf(el)
+      if (rect.width <= 0 || rect.height <= 0) continue
+      nodrop.push(rect)
+    }
   }
-  return { window: windowRect(), leaves, strips }
+  return { window: windowRect(), leaves, strips, nodrop }
+}
+
+/**
+ * 一格标签的矩形 + 它的 id + 它装了几份。
+ *
+ * `slots` 缺席 = 1(`ui/Tabs` 只在 > 1 时写那格属性,所以一格标签的 DOM 与
+ * W6-b 之前逐字相同)。判据要的是个**数**,不是种类名 —— 判词在 `drop.TabBox`。
+ */
+function tabBoxOf(el: Element): TabBox {
+  return {
+    ...rectOf(el),
+    id: el.getAttribute('data-tab-id') ?? '',
+    slots: Number.parseInt(el.getAttribute('data-tab-slots') ?? '1', 10) || 1,
+  }
 }
 
 function rectOf(el: Element): Rect {

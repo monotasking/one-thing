@@ -11,3 +11,13 @@
   z-index: var(--z-drag);
   pointer-events: none;
 }
+
+/*
+ * **收笔那一程**(W6-b,§5「落定卡片飞入空位」):坐标一次性写到落点矩形的中心,
+ * `left/top` 的过渡把卡片送过去。跟手期这两格**必须没有过渡** —— 加了就是
+ * 「浮影粘在指针后面」,与 `ui/Tabs` 里抬起那格关掉过渡是同一条判词(§4.5 第 1 条)。
+ * 所以过渡只在这一格属性在场时存在,而它只在会话结束那一刻才挂上。
+ */
+.layer[data-landing] {
+  transition: left var(--dur-land) var(--ease), top var(--dur-land) var(--ease);
+}

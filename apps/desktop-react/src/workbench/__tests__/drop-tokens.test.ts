@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { DROP_BAR_PX, DROP_EDGE_PX } from '../drop'
+import { PAIR_BAND } from '../drop'
+import { GHOST_FLIP_PX } from '../../ui/drag/DragLayer'
+import { TAB_MIDDLE } from '../../ui/drag/constants'
 
 /**
  * **两处各一份同一个数,由这只文件钉成相等**(W3-b)。
@@ -11,13 +13,20 @@ import { DROP_BAR_PX, DROP_EDGE_PX } from '../drop'
  * **没有读者**(高亮的矩形是纯函数算好之后整块递过去的),而一格没人读的 CSS
  * 变量迟早与判据分叉,所以那一格没有落地。
  *
- * W3-b 的两个数不一样:`--drop-edge` / `--drop-bar-w` 是**设计册上的登记**
- * (设计系统要答得出「分屏带多宽、预示杠多厚」),而 `DROP_EDGE_PX` /
- * `DROP_BAR_PX` 是判据非有不可的那个数 —— 杠的厚度必须进几何,否则用 CSS
- * `min-width` 撑出来的那 4px 会从叶的右缘往**外**长(违反「高亮不撑破叶」)。
+ * W6-b 换了名单。**退役两条**:`--drop-edge` / `--drop-bar-w` 的判据镜像
+ * (`DROP_EDGE_PX` / `DROP_BAR_PX`)随**边带分屏**一起没了 —— 单叶政策之后叶的
+ * 四带不再切一刀,那两格 token 只剩设计册上的登记,判据这一头零读者。一个没人读
+ * 的数不该有一条「两边必须相等」的断言:那条断言守的是一个不存在的分叉。
  *
- * 两处都要,那就把「迟早分叉」这句话变成一条会红的断言:**改一边当场红**。
- * 这比删掉登记更诚实 —— 它把 W3 那条判词从「所以不登记」升级成「所以钉住」。
+ * **新进来一条**:`--drag-flip-edge` / `GHOST_FLIP_PX`(浮影靠视口右缘多近开始
+ * 翻面)。它与从前那两条同一条理由 —— CSS 那一头要它当登记,JS 那一头非有不可
+ * (翻面是一格属性,只有 JS 写得动)。
+ *
+ * **两条比例不进这张表**:`TAB_MIDDLE` 44% 与 `PAIR_BAND` 28% 在 CSS 里没有对应
+ * 的 token,因为**没有一条 CSS 规则读得到它们** —— 它们是判据里的分界线,屏幕上
+ * 画出来的是判完之后那块矩形。给它们造一格 token 就是造一个没有读者的变量
+ * (W3 那条「不登记」判词说的正是这一形)。这里只钉住它们**互相自洽**:
+ * 两侧各 28% + 正中 44% = 100%,标签上与内容区上是同一张比例表。
  */
 
 const tokens = readFileSync(
@@ -33,21 +42,31 @@ function pxOf(name: string): number | null {
 }
 
 describe('落点几何:token 登记与判据镜像必须相等', () => {
-  it('--drop-edge === DROP_EDGE_PX', () => {
-    expect(pxOf('drop-edge')).toBe(DROP_EDGE_PX)
-  })
-
-  it('--drop-bar-w === DROP_BAR_PX', () => {
-    expect(pxOf('drop-bar-w')).toBe(DROP_BAR_PX)
+  it('--drag-flip-edge === GHOST_FLIP_PX', () => {
+    expect(pxOf('drag-flip-edge')).toBe(GHOST_FLIP_PX)
   })
 
   /*
-   * 16 与 24 刻意**不相等**(裁定 3「三处三个名字」的同一条纪律):它们量的是
-   * 两条不同的边,而且窗口边带优先。两个数相等会让「这一格是被哪条带接住的」
-   * 在读代码时不再看得出来。
+   * 标签上「正中 44% / 两侧各 28%」与内容区上「中间 44% / 左右各 28%」是**同一张
+   * 比例表**:用户在两处学的是同一件事。这条等式一旦不成立,两处的手感就分家了。
    */
-  it('叶边带与窗口边带不是同一个数', () => {
-    expect(DROP_EDGE_PX).not.toBe(24)
+  it('正中与两侧凑满一整格(标签与内容区读同一张比例表)', () => {
+    expect(TAB_MIDDLE + PAIR_BAND * 2).toBeCloseTo(1, 10)
+  })
+
+  /**
+   * **边带分屏退役了,但登记留着**(W6-b)。留着的理由是设计册要答得出这两个数;
+   * 判据那一头**必须零读者** —— 这条断言守的正是「有人把边带分屏偷偷种回来」。
+   */
+  it('--drop-edge / --drop-bar-w 只剩登记,判据里没有读者', async () => {
+    expect(pxOf('drop-edge')).toBeGreaterThan(0)
+    expect(pxOf('drop-bar-w')).toBeGreaterThan(0)
+    const drop = (await import('../drop')) as Record<string, unknown>
+    expect(drop.DROP_EDGE_PX).toBeUndefined()
+    expect(drop.DROP_BAR_PX).toBeUndefined()
+    expect(drop.zoneAt).toBeUndefined()
+    expect(drop.zoneRectOf).toBeUndefined()
+    expect(drop.ZONE_SPLIT).toBeUndefined()
   })
 
   /** `joined` 档那几格也在册上(缺一格 = 那一档在真机上塌成 line 档)。 */

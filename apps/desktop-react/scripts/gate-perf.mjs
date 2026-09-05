@@ -86,6 +86,8 @@ function readBudget() {
     sessionSwitchForcedLayouts: pick('sessionSwitchForcedLayouts'),
     focusLeafSwitchMs: pick('focusLeafSwitchMs'),
     focusLeafSwitchForcedLayouts: pick('focusLeafSwitchForcedLayouts'),
+    tabReorderMs: pick('tabReorderMs'),
+    tabReorderForcedLayouts: pick('tabReorderForcedLayouts'),
     longFrameMs: pick('longFrameMs'),
     streamFrameMs: pick('streamFrameMs'),
     streamOverBudgetFrames: pick('streamOverBudgetFrames'),
@@ -135,6 +137,8 @@ const PERF5_SESSIONS = 3
 const PERF5_TURNS = 12
 /** 场景⑤来回切几次。8 次 = 与 probe 的对照组逐字相同。 */
 const PERF5_SWITCHES = 8
+/** ⑤c 跑多少趟换序(派工令:「换序 20 次」不劣化)。 */
+const PERF5C_REORDERS = 20
 const PERF4_SENTINEL = 'PERF4ENDMARK'
 /**
  * core 侧滞后预算(ms)—— **判据是 node 侧那条 SSE 上哨兵到达的时刻**,不是屏幕上的。
@@ -735,10 +739,8 @@ async function waitLedgerSettled(store, sessionId) {
  * 窗口 —— `forcedLayouts` 拿这个窗口去数强制排版,不能只看「按下→上屏」这一个数。
  */
 async function measureSessionSwitch(page, sessionId, marker, index) {
-  await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('总览画出那一行', () =>
-    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
-  )
+  // **点瓦是开关**(同 `enterSession` 的判词):先问事实再决定点不点,最多两下。
+  await ensureOverviewRow(page, sessionId)
   return page.evaluate(
     async ({ id, mark, i }) => {
       const el = document.querySelector(`[data-testid="session-row-${id}"]`)
@@ -775,10 +777,8 @@ async function measureSessionSwitch(page, sessionId, marker, index) {
  * `dropRef`,所以这道门量的是产品那条路,不是一句 store 直写。
  */
 async function openSecondSessionLeaf(page, sessionId) {
-  await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('总览画出那一行', () =>
-    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
-  )
+  // **点瓦是开关**(同 `ensureOverviewRow` 的判词):这是第三处会被它咬到的地方。
+  await ensureOverviewRow(page, sessionId)
   await page.evaluate(id => {
     const row = document.querySelector(`[data-testid="session-row-${id}"]`)
     row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
@@ -828,6 +828,83 @@ async function measureFocusLeafSwitch(page, at, index) {
     },
     { slot: at, i: index },
   )
+}
+
+/**
+ * **一整趟条内换序**(W6-b,场景⑤c):按下 → 12 发 `pointermove` → 松手 → 稳定。
+ *
+ * 整段跑在**页内**而不是从 node 侧派 CDP 鼠标:这一格量的是「跟手一趟花了多少」,
+ * 而 CDP 每一发的往返(1–3ms)会直接加进读数里,把要量的东西淹掉。产品那一头
+ * 收的是 `pointerdown` / `pointermove` / `pointerup` 三种真事件,页内派出来的与
+ * 输入管线合成的在它眼里是同一种(它不读 `isTrusted`)。
+ *
+ * 每一发 move 各让出一帧(`requestAnimationFrame`)—— 不让的话 12 发会被合成一个
+ * 任务,量出来的是「一次批处理」而不是「跟手 12 帧」。
+ */
+async function measureTabReorder(page, index) {
+  return page.evaluate(async (i) => {
+    const list = Array.from(document.querySelectorAll('[role="tablist"]')).find(
+      (el) => el.querySelectorAll('[data-tab-id]').length >= 2,
+    )
+    if (!list) throw new Error('屏幕上没有一条至少两格的标签条 —— ⑤c 的现场没搭起来')
+    const tabs = Array.from(list.querySelectorAll('[role="tab"]'))
+    /*
+     * **拖的永远是「此刻活动的那一格」**(09-05 A/B 当场量出来的一条量法修正)。
+     *
+     * 第一版按奇偶轮流拖第一格 / 末格,读数是 `343 190 508 246 …` ——一半的趟数
+     * 贵一倍。真因不是拖拽:W6-b 起**按下即激活**(设计 §4.2 第一行),而这个夹具里
+     * 两格标签是**两条会话**,于是「按下另一格」= 一次整份内容换人 —— 那正是场景⑤a
+     * 单独在量的东西(179–376ms),它把 ⑤c 要量的「跟手贵不贵」整个淹掉了。
+     * (main 上没有这一项开销:那一版按下不激活,而这道门只派 pointer 三件套、
+     * 不派 click。所以第一版的 A/B 是在比两件不同的事。)
+     *
+     * 拖活动那一格之后 `select()` 是幂等的,读数里就只剩这一批交付的那条链:
+     * 12 帧 `transform` + 一次 `moveTab` + 收笔那一段 FLIP。它也正是真人最常做的
+     * 那一下 —— 拖的是自己正在看的那一格。
+     */
+    const activeAt = Math.max(0, tabs.findIndex((el) => el.getAttribute('aria-selected') === 'true'))
+    const orderBefore = tabs.map((el) => el.getAttribute('data-tab-id')).join('|')
+    const from = tabs[activeAt]
+    const to = activeAt === 0 ? tabs[tabs.length - 1] : tabs[0]
+    const a = from.getBoundingClientRect()
+    const b = to.getBoundingClientRect()
+    const y = a.top + a.height / 2
+    const x0 = a.left + a.width / 2
+    const x1 = b.left + b.width / 2
+    const fire = (target, type, x, buttons) =>
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true, cancelable: true, composed: true,
+          pointerId: 1, pointerType: 'mouse', isPrimary: true,
+          button: 0, buttons, clientX: Math.round(x), clientY: Math.round(y),
+        }),
+      )
+    performance.mark(`perf5c:reorder:${i}:start`)
+    const started = performance.now()
+    fire(from, 'pointerdown', x0, 1)
+    const steps = 12
+    for (let s = 1; s <= steps; s += 1) {
+      fire(window, 'pointermove', x0 + ((x1 - x0) * s) / steps, 1)
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    }
+    fire(window, 'pointerup', x1, 0)
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    performance.mark(`perf5c:reorder:${i}:end`)
+    /*
+     * 顺带答一句「**序真的换了吗**」——一个从不真换序的读数再快也不算数
+     * (09-05 的 A/B 当场用上了这一句:main 上 20 趟只有 1 趟真换了序,
+     * 它的「快」是因为什么都没做)。
+     * 比的是**那串 id**,不是节点身份:React 换序时复用同一批节点,拿 `indexOf`
+     * 去问「它挪了没有」在节点被复用时答得对、被重建时答得反,是个会骗人的量具。
+     */
+    const orderAfter = Array.from(list.querySelectorAll('[role="tab"]'))
+      .map((el) => el.getAttribute('data-tab-id'))
+      .join('|')
+    return {
+      ms: Math.round(performance.now() - started),
+      moved: orderAfter !== orderBefore,
+    }
+  }, index)
 }
 
 async function main() {
@@ -1203,6 +1280,107 @@ async function main() {
       )
     }
 
+    /* ── 场景 ⑤c:条内换序 ×20(W6-b)────────────────────────────────────
+     *
+     * ⑤a 量的是「那片叶的内容整份换人」、⑤b 量的是「焦点叶换人」,两者都**改了
+     * 屏幕上装着什么**。⑤c 是第三种:**什么都没改** —— 换序期间树是冻住的
+     * (`store.dragging` 那道闸),动的只有一格 `transform`。所以它是这三格里唯一
+     * 能把「跟手贵不贵」单独量出来的那一格:读数一旦长起来,长的必定是**每帧那条
+     * 链**(接回 React / 读活矩形 / 每帧重建空位),而不是内容装配。
+     *
+     * 判据与 ⑤a/⑤b 同形:强制排版次数是红绿主判据(整数、不抖),时间 p95 一起
+     * 断言当参考。
+     */
+    console.log(`\n[4c/8] 场景⑤c 条内换序 ×${PERF5C_REORDERS}`)
+    /*
+     * **⑤c 自己搭夹具,不借 ⑤b 留下的**(09-05 A/B 当场量出来的一条):
+     * 从前它靠「⑤b 开出来的第二片叶恰好在同一条条上多出一格」白拿两格标签,
+     * 而那是 W6-a 那句止血(中央区四带退成一格标签)的副产品 —— W6-b 把「在右侧」
+     * 改判成二合一之后,两条会话并成**一格** `pair`,条上只剩一格,⑤c 当场没有对象。
+     * 借来的前置状态会随任何一个前置场景的改动一起塌(gate:drag 也踩过同一条),
+     * 所以这里点名走「在下方打开」——它在**两边**都是「末尾开一格新标签」,
+     * A/B 于是量的是同一个现场。
+     */
+    await openSessionAsSecondTab(page, normalIds[2] ?? normalIds[0])
+    const reorderReady = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[role="tablist"]')).some(
+        (el) => el.querySelectorAll('[data-tab-id]').length >= 2,
+      ),
+    )
+    assertScenario(
+      'tab-reorder',
+      reorderReady,
+      '屏幕上有一条至少两格的标签条(⑤c 的夹具)',
+      [],
+    )
+    if (reorderReady) {
+      const reorderRun = await recordTrace(cdp, 'tab-reorder', async () => {
+        const each = []
+        const moved = []
+        for (let i = 1; i <= PERF5C_REORDERS; i += 1) {
+          const row = await measureTabReorder(page, i)
+          each.push(row.ms)
+          moved.push(row.moved)
+          // 每趟之间留一拍,让收笔那 150ms 的 FLIP 跑完再开下一趟。
+          await delay(220)
+        }
+        return { each, moved }
+      })
+      keepTrace('tab-reorder', reorderRun.events)
+      const reorderEach = reorderRun.result.each
+      /*
+       * **「序真的换了吗」在这里只打印,不当红绿**(09-05 A/B 之后的裁定)。
+       *
+       * 这一格的判据产地是 `gate:drag` 场景③ —— 那里在一条三格的真条上从三个方向
+       * 各拖一次,逐条断言次序与活动位。这道门的夹具是「两格会话标签」,而两格那一形
+       * 上「拖到另一头」会落进 `reorderTab` 的「原地不动」闸(`at === from + 1`),
+       * 所以这一句在**两边都读作 1/20**:它量不出两个版本的差别,当红绿线只会把
+       * 一件与本场景无关的事变成噪声。
+       *
+       * 留着打印是因为它仍旧是**读数的上下文**:没有它,「main 更快」这句话会被
+       * 读成手感退步,而事实是那 20 趟里两边都几乎没有真的换序发生 ——
+       * 时间与强制排版的对照必须带着这一行一起读。
+       */
+      const reorderMoved = reorderRun.result.moved.filter(Boolean).length
+      const reorderSorted = [...reorderEach].sort((a, b) => a - b)
+      const reorderP95 =
+        reorderSorted[Math.min(reorderSorted.length - 1, Math.ceil(reorderSorted.length * 0.95) - 1)]
+      const reorderStats = frameStats(reorderRun.events, BUDGET.longFrameMs)
+      const forcedPerReorder = []
+      for (let i = 1; i <= PERF5C_REORDERS; i += 1) {
+        const from = markTs(reorderRun.events, `perf5c:reorder:${i}:start`)
+        const to = markTs(reorderRun.events, `perf5c:reorder:${i}:end`)
+        if (from === undefined || to === undefined) {
+          throw new Error(`第 ${i} 趟换序的 performance.mark 没落进 trace —— 量具本身坏了`)
+        }
+        forcedPerReorder.push(forcedLayouts(reorderRun.events, from, to))
+      }
+      const maxReorderForced = Math.max(...forcedPerReorder)
+      console.log(
+        `  · 序真的换了的趟数:${reorderMoved}/${PERF5C_REORDERS}`
+          + `(判据产地是 gate:drag 场景③,这里只作读数的上下文)`
+          + `\n  · 每趟换序 按下→稳定(ms):${reorderEach.join(' ')}`
+          + `\n  · p95 ${reorderP95}ms,最慢 ${reorderSorted[reorderSorted.length - 1]}ms,`
+          + `最快 ${reorderSorted[0]}ms`
+          + `\n  · 强制排版:${forcedPerReorder.join(' ')}(最大 ${maxReorderForced});`
+          + `主线程任务 ${reorderStats.tasks} 段,最长 ${reorderStats.longest}ms`,
+      )
+      record_(`⑤c 条内换序 ×${PERF5C_REORDERS}`, reorderStats, { ms: reorderP95 })
+      record_(`⑤c 条内换序 ×${PERF5C_REORDERS}·强制排版`, reorderStats, { ms: maxReorderForced })
+      assertScenario(
+        'tab-reorder',
+        reorderP95 <= BUDGET.tabReorderMs,
+        `换序一趟 按下→稳定 p95 ${reorderP95}ms ≤ 预算 ${BUDGET.tabReorderMs}ms`,
+        reorderRun.events,
+      )
+      assertScenario(
+        'tab-reorder',
+        maxReorderForced <= BUDGET.tabReorderForcedLayouts,
+        `换序强制排版 最大 ${maxReorderForced} 次 ≤ 预算 ${BUDGET.tabReorderForcedLayouts} 次`,
+        reorderRun.events,
+      )
+    }
+
     /* ── 场景②③ 共用的现场:钉栏默认档 + 进一条会话 ─────────────────── */
     console.log('\n[5/8] 切成「钉栏」默认档并进一条会话(场景②③ 共用这个现场)')
     await switchDefaultOpenToPinned(page)
@@ -1573,12 +1751,72 @@ async function measureTabSwitch(page, index, expectedPanel) {
   )
 }
 
-/** 从总览进一条会话 —— 与 gate-chat 逐字同一条路:开总览 → 点那张卡。 */
+/**
+ * **在中央那条条的末尾再开一格标签**(⑤c 的夹具)。
+ *
+ * 走的是用户真走的那条路:会话行右键 →「在下方打开」。挑这一项而不是「在右侧」
+ * 是因为它在 main 与 W6-b 上是**同一个结果**(末尾开一格新标签)——「在右侧」
+ * 在 W6-b 之后是二合一,两边不同形,A/B 就不是同一个现场了。
+ */
+async function openSessionAsSecondTab(page, sessionId) {
+  await ensureOverviewRow(page, sessionId)
+  await page.evaluate((id) => {
+    const row = document.querySelector(`[data-testid="session-row-${id}"]`)
+    row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
+  }, sessionId)
+  await delay(400)
+  const opened = await page.evaluate(() => {
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+    const below = items.find((el) => /在下方|Open below/.test(el.textContent ?? ''))
+    if (below instanceof HTMLElement) below.click()
+    else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    return Boolean(below)
+  })
+  await delay(800)
+  // 总览收回去,别盖着那条条(点瓦是开关,所以先问再点)。
+  for (let i = 0; i < 2; i += 1) {
+    const there = await page.evaluate(() => Boolean(document.querySelector('[data-float-body], [data-testid="overview-root"]')))
+    if (!there) break
+    await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
+    await delay(400)
+  }
+  return opened
+}
+
+/**
+ * **把总览摆出来,直到那一行在场**(W6-b 修:这道门在 `[4/8]` 上卡死的那一格)。
+ *
+ * **点瓦是开关**(既有判例,`gate-focus.ensureOverviewRow` / `gate-drag` 同源):
+ * 场景①「冷开会话总览」已经把它开着了,后面每一处再点一下等于**关掉** ——
+ * 那一行于是永远等不到,门在 `[4/8]` 超时。这条卡死是**确定的**而不是抖动:
+ * 09-05 在 main(a8e76ae2)与本批上各跑一趟,读数逐字相同(同一行 `waitFor` 超时,
+ * 先在 `enterSession`、修完一处之后挪到 `measureSessionSwitch`)。所以它是这道门
+ * 自己的存量伤,不是哪一批的产品回归 —— 但 ⑤/⑤b/⑤c 三个场景都被它挡在门外,
+ * 而 ⑤c 正是本批要交的读数,所以在这里一并修掉。
+ */
+async function ensureOverviewRow(page, sessionId) {
+  const there = () =>
+    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId)
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (await there()) break
+    await clickTestId(page, 'dock-tile-sessions')
+    await delay(600)
+  }
+  await waitFor('总览画出那一行', there)
+}
+
+/**
+ * 从总览进一条会话 —— 与 gate-chat 逐字同一条路:开总览 → 点那张卡。
+ *
+ * **点瓦是开关**(既有判例,`gate-focus.ensureOverviewRow` / `gate-drag` 同源):
+ * 场景①「冷开会话总览」已经把它开着了,这里再点一下等于**关掉** —— 那一行于是
+ * 永远等不到,门在 `[4/8]` 上超时。W6-a 之后这条卡死是**确定的**,而不是抖动:
+ * 09-05 在 main(a8e76ae2)与本批上各跑一趟,读数逐字相同(同一行 `waitFor` 超时),
+ * 所以它是这道门自己的存量伤,不是哪一批的产品回归。
+ * 修法与别的门一样:**先问事实,再决定点不点**,最多两下。
+ */
 async function enterSession(page, sessionId) {
-  await clickTestId(page, 'dock-tile-sessions')
-  await waitFor('总览画出那一行', () =>
-    page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
-  )
+  await ensureOverviewRow(page, sessionId)
   await clickTestId(page, `session-row-${sessionId}`)
   await waitFor('聊天区起底完成', () =>
     page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),

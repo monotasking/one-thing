@@ -69,6 +69,16 @@ export interface TabSpec {
    * 从内容种类的自述里取(`ContentKind.resident`),`ui/Tabs` 不认识任何一种内容。
    */
   home?: boolean
+  /**
+   * **这一格装了几份内容**(W6-b)。1 = 普通标签,2 = 两格并排的那一种。
+   *
+   * 它是**一个数**,不是「是不是 pair」—— `ui/Tabs` 认识的只有「这一格里有几份」,
+   * 认不得任何一种内容(全目录 grep `pair` 在 `ui/` 下零命中)。落点判据要它:
+   * 「两格的标签不能再并」(设计 v3 §6「不允许」)与「内容区左带仅 host 单格」
+   * 两条各要读一次,而它们读的是 DOM 上这一格属性 —— 判据因此不必再开一份名册。
+   * 缺省 1;与 `dirty` / `home` 同族:**数据表驱动的一格事实**。
+   */
+  slots?: number
 }
 
 /**
@@ -163,6 +173,12 @@ export function Tabs({
              * 它是一格事实的投影,不是一件新功能 —— `id` 本来就在 props 里。
              */
             data-tab-id={tab.id}
+            /*
+             * **这一格装了几份**(W6-b,见 `TabSpec.slots`)。落点判据从 DOM 上读它,
+             * 于是「两格的标签不能再并」这条规矩不必在判据那一头再开一份名册。
+             * 只在 > 1 时写:一格标签的 DOM 与从前逐字相同。
+             */
+            data-tab-slots={tab.slots && tab.slots > 1 ? String(tab.slots) : undefined}
             // roving 入组标记 + 初值。选中的那一条由 useRoving 改回 0 ——
             // 不给初值的话,一条八页的 tab 条要按八下 Tab 才走得出去。
             data-roving-item

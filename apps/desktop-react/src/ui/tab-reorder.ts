@@ -1,19 +1,22 @@
+import { FLASH_MS, SETTLE_MS } from '../components/motion'
 import s from './Tabs.module.css'
 
 /**
- * **一条标签条在一次拖拽里的编舞**(W3-b 裁定 4/5)。
+ * **一条标签条在一次拖拽里的编舞**(W3-b 裁定 4/5;W6-b 按设计
+ * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §4 重做)。
  *
  * ── 它为什么住在 `ui/` 而不是 `workbench/` ───────────────────────────────
- * 「抬起一格 tab、邻居让位、把它折起来、在别的条上腾一个空位」这四件事全部是
- * **tab 条自己的形**:它们要的是 `.tab` 的圆角、`--tab-joined-h` 的高、`.ph` 的
- * 底色 —— 也就是 `Tabs.module.css` 里那一段。放到业务面去写等于「基础件先行」
- * 那条法的第 N 次犯:占位块会长成和 tab 对不齐的一条,而对不齐要等真机才看得见。
- * 所以它与 `Tabs` 同一个文件家族,读同一份样式表;`workbench` 只是**消费者**。
+ * 「抬起一格 tab、邻居让位、把它折起来、在别的条上腾一个空位、松手滑进新槽」
+ * 这五件事全部是 **tab 条自己的形**:它们要的是 `.tab` 的圆角、`--tab-joined-h`
+ * 的高、`.ph` 的底色 —— 也就是 `Tabs.module.css` 里那一段。放到业务面去写等于
+ * 「基础件先行」那条法的第 N 次犯:占位块会长成和 tab 对不齐的一条,而对不齐要
+ * 等真机才看得见。所以它与 `Tabs` 同一个文件家族,读同一份样式表;
+ * `workbench` 只是**消费者**。
  *
  * 它不是 React:整段是**直接写 DOM**。判据与 `ui/Splitter` 的 liveVar、
  * `TopBarTabs` 的 `hint()` 逐字同一条 —— **不改语义的东西不必经过 React**。
  * 一次换序里指针每一帧都在动,让它经过 setState 就是「拖一格 tab 重渲一整棵树
- * 上百遍」;而这里改的只是几格 `transform` 与两格属性,语义(树)一个字都没变,
+ * 上百遍」;而这里改的只是几格 `transform` 与几格属性,语义(树)一个字都没变,
  * 落定那一刻才有一次真的 `moveTab`。
  *
  * ── 为什么可以往 React 管着的容器里插一个 DOM 节点(那格 `.ph`)────────────
@@ -24,32 +27,114 @@ import s from './Tabs.module.css'
  * 集合与它自己记得的逐字相同。这不是「React 允许」,是**这一段时间里没有第二个
  * 写者**;闸一旦没了,这条就不再成立 —— 所以两者写在一起。
  *
+ * ── 三条硬规矩(设计 v3 §4.5)在这只文件里的落点 ─────────────────────────
+ * ① **1:1 跟手**:`track()` 每帧直接写 `transform`,不节流、不缓动;抬起那格的
+ *    过渡在 CSS 里被关掉(`[data-lift]`),`will-change: transform` 提前声明。
+ * ② **只有该动的在动**:邻居用 `--dur-neighbor` 过渡让位;条上挂 `data-reorder`,
+ *    CSS 把整条的 hover 底关掉 —— 换序全程标签条、内容区、其它标签一律不变色。
+ *    (这一句不是靠「指针恰好压在被拖那格上」侥幸成立的:抬起那格横扫时指针
+ *    一格一格经过邻居的上方,而 pointer capture 不冻结 `:hover` 的命中测试。)
+ * ③ **同一个节点在挪**:空位只有一个,落点变了只是 `insertBefore` 到别处;
+ *    描圈的目标换人只是把属性从一格挪到另一格。任何按帧拆掉重建的东西都会
+ *    被看成闪烁。
+ *
  * ── 三张状态表 ①:生命周期 ───────────────────────────────────────────────
  *   造      一次拖拽起手,消费方拿到这条条的 tablist 元素
- *   抬起    `lift(tabId, grabX)`:那一格挂 `data-lift`,记下它此刻的矩形与抓点
- *   跟随    `track(x)` 每帧一次:抬起那格写 `transform`,邻居写各自的让位量,
- *           **答此刻的落点下标**
+ *   抬起    `lift(tabId, grabX)`:那一格挂 `data-lift`,**量下这一刻所有格的基准
+ *           矩形**(整场只量这一次 —— 见 `track()` 的判词),条上挂 `data-reorder`
+ *   换序    `track(x)` 每帧一次:抬起那格写 `transform`(**夹在条的两端之内**),
+ *           邻居按「被拖的那条边越过谁的中心」写各自的让位量,答此刻的落点下标
+ *   压下去  `hover(x)` 每帧一次:指针压到条底缘下 6–24px 那一形 —— 抬起那格
+ *           照旧跟手,但**邻居的让位全部清零**,答「指针 x 底下是哪一格」
+ *   描圈    `markPair(tabId | null)`:那一格描一圈(消费方在压下去那一形叫)
  *   撕下    `tear(id)`:抬起清掉,那一格挂 `data-torn` 折成 0 宽(元素不卸载)
- *   腾位    `gapAt(index, width)`:在**别的**一条条上插一格 `.ph`
+ *   腾位    `gapAt(index, width)`:在**任何**一条条上插一格 `.ph`
+ *   收笔    `settle(tabId, fromLeft)`:树已经改完,让那一格从抬起时的位置
+ *           FLIP 滑进新槽(`--dur-settle`),到位闪一圈
  *   收       `reset()`:属性、transform、空位一并清干净。**幂等**,每条结束路径
  *           (落定 / Esc / pointercancel / 窗口失焦)都先走它
  *
  * ── ②:UI 生命状态 ───────────────────────────────────────────────────────
  *   闲      什么都没写过(刚造出来 / reset 之后)
- *   抬起中  条内换序:一格浮着、邻居让位
+ *   抬起中  条内换序:一格浮着、邻居让位、条不变色
+ *   压下去  抬起中 + 邻居的让位全清零 + 某一格描着圈(它是二合一的目标)
  *   折起    已经撕出去:原位是一道 0 宽的缝
- *   有空位  别的条上撑开了一格
+ *   有空位  某条条上撑开了一格
+ *   收笔中  `data-settle`:一格正在滑向新槽(150ms),随后闪一圈(`data-land`)
  *
  * ── ③:UI 交互状态 ───────────────────────────────────────────────────────
  * 空位 `pointer-events: none`、折起那一格也是 —— 它们都不该接指针(落点判定问的
- * 是「指针底下是什么」,而这两样都是这次拖拽自己造出来的东西)。
+ * 是「指针底下是什么」,而这两样都是这次拖拽自己造出来的东西)。抬起那一格接不接
+ * 指针无所谓:它盖在最上面,而落点判据读的是**起拖时量好的几何**,不问 DOM。
  */
 
-/** 一格 tab 此刻在条里的位置(视口坐标)。 */
+/**
+ * **落定闪一圈**(设计 v3 §5:「落定卡片飞入空位 + **新标签闪圈**」)。
+ *
+ * 换序那一趟的闪圈由编舞自己收笔时放(`settle()` 末尾);这一只是给**别处落进来**
+ * 的那一格用的 —— 那一下没有编舞(树刚改完,来源那条会话已经拆干净了),而
+ * 「它落到了哪儿」这句话仍旧要说出口。
+ *
+ * 它满屏找那一格,不问哪条条:落定之后那一格在哪条条上,只有树知道。
+ * 排一帧再写,理由与 `settle()` 逐字相同 —— React 的提交排在这一拍之前。
+ *
+ * ── 为什么是**扫一遍属性**而不是一句选择器 ──────────────────────────────
+ * tabId 就是 refId(`kind:key`,key 里还带路径分隔符),塞进属性选择器必须先
+ * `CSS.escape`。而 `CSS` 这个全局**不是到处都有** —— jsdom 里它压根不存在,于是
+ * 这一句在单测里是一颗延时雷:它排在 rAF 里,文件跑得够久那一帧就到,当场
+ * `Cannot read properties of undefined (reading 'escape')`(整个 `src/ui` +
+ * `src/workbench` + `src/components` 一趟 13 声,退出码 1,而每一条用例都是绿的
+ * —— 最难查的那种红)。`[data-tab-id]` 全屏也就十来个,扫一遍比一句选择器更便宜,
+ * 也不必再养一份转义。同一条判词也是 `tabById()` 不用选择器的理由。
+ */
+export function flashLandedTab(tabId: string): void {
+  if (typeof document === 'undefined' || typeof requestAnimationFrame !== 'function') return
+  requestAnimationFrame(() => {
+    const el = Array.from(document.querySelectorAll<HTMLElement>('[data-tab-id]')).find(
+      (node) => node.dataset.tabId === tabId,
+    )
+    if (!el) return
+    el.dataset.land = ''
+    const id = setTimeout(() => {
+      landTimers.delete(id)
+      delete el.dataset.land
+    }, FLASH_MS)
+    landTimers.add(id)
+  })
+}
+
+/**
+ * 上面那一只留下的计时器。**模块级,所以配 HMR 退役**(CLAUDE.md 那条法):
+ * 它的寿命是这个模块实例,热更之后旧的那批还挂着就会在新模块的节点上摘属性。
+ */
+const landTimers = new Set<ReturnType<typeof setTimeout>>()
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    for (const id of landTimers) clearTimeout(id)
+    landTimers.clear()
+  })
+}
+
+/** 一格 tab 此刻在条里的位置(视口坐标)+ 它的 id。 */
 interface TabBox {
   el: HTMLElement
+  id: string
   left: number
   width: number
+}
+
+/**
+ * 抬起那一格,以及起手时量下来的那一份几何。**整场只量一次** —— 判词在 `track()`。
+ */
+interface LiftedState {
+  el: HTMLElement
+  index: number
+  boxes: TabBox[]
+  /** 手指按在这一格的哪儿(偏移量,不是坐标 —— 判词在 `lift()`)。 */
+  grabDx: number
+  /** 条自己的两端(抬起那一刻量的)。夹紧读它,**不是**每帧问 DOM —— 见 `track`。 */
+  bounds: { left: number; right: number }
 }
 
 export interface TabStripChoreo {
@@ -58,22 +143,68 @@ export interface TabStripChoreo {
   /** 抬起某一格。`grabX` = 按下那一刻指针的横坐标(抓在这格的哪儿)。幂等。 */
   lift(tabId: string, grabX: number): void
   /**
-   * 跟随一帧,答**落点下标**(松手插到第几格)。没抬起过就答 null。
+   * **换序**那一形的一帧:抬起那格跟手、邻居让位,答**落点下标**。没抬起过答 null。
+   *
+   * ── 夹在条的两端之内(设计 v3 §4.2)──────────────────────────────────────
+   * `left` 钳在 `[条左缘, 条右缘 - 这一格的宽]`。不钳的话把标签往条外一甩,那一格
+   * 会飞出条去而槽位早就到头了 —— 屏幕上是「它跑了但什么都没发生」。
+   *
+   * ── 判据:**被拖标签朝运动方向的那条边越过邻居中心**(§4.2,Chrome 的规则)──
+   * 往右拖看被拖那格的**右边缘**:右边某个邻居的中心被它越过,那个邻居就滑到左边
+   * 去;往左拖看**左边缘**。写出来是一句话:
+   *
+   *   左边的邻居(i < index)  被拖的**左缘**仍在它中心右侧 → 它仍排在左边,计入
+   *   右边的邻居(i > index)  被拖的**右缘**越过了它中心   → 它滑到左边,计入
+   *   最终下标 = 计入的个数,**不再另外加减**
+   *
+   * 三条被这一句一起解决,而它们全是前几版真机上量出来的病:
+   *  · **不是中心对中心**。那一版比的是被拖那格的中线与邻居中线 —— 宽标签要整个
+   *    越过窄邻居才换位,手感发黏;而且条被填满时钳位让中线最多只能**等于**末格
+   *    中线,「拖到最后一位」在结构上到不了。当时的补法是两句两端特例
+   *    (`want <= min` 判 0、`want >= max` 判 last),那是**错判据的症状,不是设计
+   *    的一部分** —— 现在判据自己在两端就对,两句一起删掉了:
+   *      顶到左端 `left = bounds.left` < 首个邻居中心 → 一个都不计入 → 0;
+   *      顶到右端 `left + w = bounds.right` > 每个右邻居中心 → 全计入 → last。
+   *  · **不是「拿走被拖那格之后」的位置**。上一版把右边的邻居整体左移一格宽再算
+   *    中心 —— 那样宽标签一抬起来,右邻居就先跳一下(手还没动,屏幕已经变了)。
+   *  · **邻居中心一律读抬起那一刻的基准矩形,不读活矩形**。邻居此刻正走在 120ms
+   *    的让位过渡里,读它等于让判据自己晃:让一次位 → 中心变了 → 落点变了 →
+   *    让位反向,一帧一次来回,拖快了槽位会漂。
+   *
+   * 让位与落点是**同一句话**算出来的,不是两处:每个邻居的让位量就是「它在落点
+   * 之后就挪一格宽,否则不挪」。两处分开算 = 屏幕上的空档与松手的结果对不上。
    *
    * ── 坐标系:与 `workbench/drop.ts` 的 `stripIndexAt` **同一个** ──────────
    * 答的是「插到第 at 格**之前**」,而且对着**没摘掉任何东西**的那张原始表算。
    * 这不是随便挑的:同叶换序与跨条落进来最终走的是同一只
    * `workbench/drop-commit.reorderTab` / `store.moveRefIntoLeaf`,而它们收的都是
-   * 这个坐标系;编舞里另用一套「最终排第几位」的说法,差的那一格只在「往右挪」
-   * 那一半里出现 —— 真机门当场量到过:两格 tab 里把第一格拖到末尾,答 1 恰好命中
+   * 这个坐标系;上面那个「最终排第几位」与它差的那一格只在「往右挪」那一半里
+   * 出现 —— 真机门当场量到过:两格 tab 里把第一格拖到末尾,答 1 恰好命中
    * 「原地不动」那道闸,序一格不变(屏幕上让位让得好好的,松手什么都没发生 ——
    * 也就是用户报的那句「换序做不到」的第二种长相)。
-   *
-   * 让位的算法与它是同一句话算出来的,不是两处:落点由抬起那格的**中线**越过了
-   * 几个邻居的中线决定,而每个邻居的让位量就是「它在落点之后就挪一格宽,否则
-   * 不挪」。两处分开算 = 屏幕上的空档与松手的结果对不上。
    */
   track(x: number): number | null
+  /**
+   * **「放到标签上」**那一形的一帧(§4.2 的 onto 带):指针压到标签条底缘下
+   * `ONTO_FROM_PX`–`TEAR_OFF_DISTANCE` 之间时每帧叫。答「**指针 x** 底下是哪一格」,
+   * 没有就 null。没抬起过也答 null。
+   *
+   * 它与 `track()` 只差两件事,其余(跟手、夹紧、读基准矩形)逐字相同:
+   *  ① **邻居的让位全部清零** —— 这一形不是换序,条上一格都不该让开(§4.2
+   *     「邻居不再让位」)。清零走的是同一批节点的同一格属性,**不重建任何东西**
+   *     (§4.5 第 3 条);已经是零的那几格一个字都不写,免得白白惊动样式表。
+   *  ② 答的是**指针**底下那一格,而不是抬起那格的中心停在谁头上;而且按标签
+   *     **整宽**判,不是 `TAB_MIDDLE` 44% 的正中。理由:手这时已经压到条的下面,
+   *     再要求它同时对准 44% 是让人在空中描准头。44% 那一档留给
+   *     `workbench/drop.ts` 的 `tabMiddleAt` —— 那是**外来来源**落到标签上的判据,
+   *     那一形指针就在条里,对得准。
+   */
+  hover(x: number): string | null
+  /**
+   * 给某一格描一圈(二合一的目标)。传 null = 谁都不描。**幂等**,而且
+   * **同一个节点在挪**:换目标只是把属性从一格摘到另一格,不重建任何东西。
+   */
+  markPair(tabId: string | null): void
   /**
    * 撕下:抬起清掉,**那一格折成 0 宽**。幂等。
    *
@@ -92,13 +223,26 @@ export interface TabStripChoreo {
    * 「高亮说的和松手做的不是一件事」。
    */
   gapAt(index: number, width: number): void
+  /** 那格空位此刻的矩形(卡片飞进去的落点)。没有空位就答 null。 */
+  gapRect(): DOMRect | null
   /** 收掉空位(只收空位,不动抬起 / 折起)。幂等。 */
   clearGap(): void
+  /**
+   * **收笔**:树已经改完,让 `tabId` 那一格从 `fromLeft`(它在手上时的左缘)
+   * FLIP 滑进新槽,到位闪一圈。
+   *
+   * 它排在 `reset()` **之后**叫:reset 摘掉抬起与 transform,React 随后把那一格
+   * 挪到新位置 —— 这只函数要量的正是「新位置」。所以它自己等一帧
+   * (`requestAnimationFrame`):React 对一次 discrete 事件的提交排在当前任务与
+   * 微任务里,而 rAF 回调排在那之后、**在这一帧绘制之前** —— 于是屏幕上不会先
+   * 看见它跳到新位置再滑回来。
+   */
+  settle(tabId: string, fromLeft: number): void
   /** 全部清干净。幂等 —— 每条结束路径都先走它。 */
   reset(): void
 }
 
-/** 这条条里此刻画着的那几格(不含空位与折起的那一格)。 */
+/** 这条条里此刻画着的那几格(不含空位)。 */
 function tabsOf(list: HTMLElement): HTMLElement[] {
   return Array.from(list.querySelectorAll<HTMLElement>('[role="tab"]'))
 }
@@ -106,8 +250,12 @@ function tabsOf(list: HTMLElement): HTMLElement[] {
 function boxesOf(tabs: readonly HTMLElement[]): TabBox[] {
   return tabs.map((el) => {
     const r = el.getBoundingClientRect()
-    return { el, left: r.left, width: r.width }
+    return { el, id: el.dataset.tabId ?? '', left: r.left, width: r.width }
   })
+}
+
+function tabById(list: HTMLElement, tabId: string): HTMLElement | null {
+  return tabsOf(list).find((el) => el.dataset.tabId === tabId) ?? null
 }
 
 /**
@@ -116,15 +264,57 @@ function boxesOf(tabs: readonly HTMLElement[]): TabBox[] {
  */
 export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
   /** 抬起那一格,以及起手时量下来的那一份几何(条内的格在拖拽期间不增不减)。 */
-  let lifted: { el: HTMLElement; index: number; boxes: TabBox[]; grabDx: number } | null = null
+  let lifted: LiftedState | null = null
   let torn: HTMLElement | null = null
   let ph: HTMLElement | null = null
+  let phAt: number | null = null
+  let paired: HTMLElement | null = null
+  /** 收笔那两拍的计时器(滑入跑完摘属性、闪圈跑完摘属性)。`reset()` 收。 */
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+
+  const after = (ms: number, run: () => void): void => {
+    const id = setTimeout(() => {
+      timers.delete(id)
+      run()
+    }, ms)
+    timers.add(id)
+  }
 
   const clearShifts = (): void => {
     for (const el of tabsOf(list)) {
       el.style.transform = ''
       delete el.dataset.shift
     }
+  }
+
+  /**
+   * **抬起那一格的横向跟手**,答夹紧之后的左缘。换序(`track`)与「放到标签上」
+   * (`hover`)两形共用它 —— 两形里那一格的跟手是**同一件事**,差别全在后面那一半
+   * (让位还是清零)。抽出来是为了它只有一处:两份跟手迟早会在夹紧上说岔,而
+   * 「拖到头那一格的落位差几个像素」在屏幕上就是抖。
+   *
+   * ── 1:1 跟手(§4.5 第 1 条)────────────────────────────────────────────
+   * 每帧直接写 `transform`,不节流、不缓动;那一格的过渡在 CSS 里被关掉。
+   *
+   * ── 夹在条的两端之内,两端读**抬起那一刻量的**那一份(§4.2)──────────────
+   * 不钳的话把标签往条外一甩,那一格会飞出条去而槽位早就到头了 —— 屏幕上是
+   * 「它跑了但什么都没发生」。而两端**不每帧问 DOM**,这一格是真机量出来的:
+   * 第一版在这里每帧 `list.getBoundingClientRect()`,那一句紧跟在「刚给几格写完
+   * transform」之后,于是**每一发 pointermove 各逼一次排版** —— `gate:perf` 场景
+   * ⑤c 的 A/B 当场读出来:一趟 20 次换序,p95 316 → **508ms**、强制排版 4 → **5**。
+   * 改读基准之后那一句从热路径上整个消失。
+   *
+   * 换序期间条本身不重排(格数不变、transform 不影响它自己的盒子);它**会**横滚,
+   * 但那一形下 `DragSession` 的「带」判据每帧问的还是活矩形,所以「出没出条」照旧
+   * 准 —— 这里夹的只是那一格的落位,差几个像素不改变任何语义。
+   */
+  const follow = (held: LiftedState, x: number): number => {
+    const self = held.boxes[held.index]
+    const min = held.bounds.left
+    const max = held.bounds.right - self.width
+    const left = Math.max(min, Math.min(x - held.grabDx, max))
+    held.el.style.transform = `translateX(${left - self.left}px)`
+    return left
   }
 
   const choreo: TabStripChoreo = {
@@ -141,26 +331,41 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
        * 抓点记的是**偏移量**而不是坐标:整条条会横滚、会因为窗口变化而挪,
        * 而「手指按在这一格的哪儿」是这次手势里唯一不变的那个数。
        */
-      lifted = { el, index, boxes, grabDx: grabX - boxes[index].left }
+      const strip = list.getBoundingClientRect()
+      lifted = {
+        el,
+        index,
+        boxes,
+        grabDx: grabX - boxes[index].left,
+        bounds: { left: strip.left, right: strip.right },
+      }
       el.dataset.lift = ''
+      // 整条进入换序态 —— CSS 据此把 hover 底关掉(§4.5 第 2 条)。
+      list.dataset.reorder = ''
     },
 
     track(x) {
       if (!lifted) return null
-      const { el, index, boxes, grabDx } = lifted
+      const { index, boxes } = lifted
       const self = boxes[index]
-      const left = x - grabDx
-      el.style.transform = `translateX(${left - self.left}px)`
+      const left = follow(lifted, x)
+      const w = self.width
+
       /*
-       * 落点 = 抬起那格的中线越过了几个**别人**的中线。用起手时量的那份几何算,
-       * 不用邻居此刻(已经让过位)的矩形 —— 后者会让判据自己晃:让一次位 → 中线
-       * 变了 → 落点变了 → 让位反向,一帧一次来回,屏幕上是抖动。
+       * **被拖标签朝运动方向的那条边越过邻居中心**(§4.2;完整判词与三条前科写在
+       * 接口上 `track` 的那一段)。往右拖看右缘、往左拖看左缘,合成一句:
+       *   i < index → 被拖的左缘还在它中心右侧,它仍排在左边,计入;
+       *   i > index → 被拖的右缘越过了它中心,它滑到左边,计入。
+       *
+       * 这条判据静止时答 `next === index`(一个邻居都不动),两端也各自到得了 ——
+       * 所以这里**一句两端特例都没有**。上一版那两句(`want <= min` 判 0、
+       * `want >= max` 判 last)是「中心对中心」那个错判据的症状,随它一起删掉。
        */
-      const mid = left + self.width / 2
       let next = 0
       boxes.forEach((box, i) => {
         if (i === index) return
-        if (mid > box.left + box.width / 2) next += 1
+        const c = box.left + box.width / 2
+        if (i < index ? left >= c : left + w > c) next += 1
       })
       /*
        * 让位:把每个邻居在「摘掉抬起那格之后」的下标 `j` 算出来,`j >= next` 的
@@ -168,7 +373,6 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
        * 两句合成一句:`i < index` 的挪 +w 当且仅当它排到了落点之后,`i > index`
        * 的挪 -w 当且仅当它没排到落点之后。
        */
-      const w = self.width
       boxes.forEach((box, i) => {
         if (i === index) return
         const j = i < index ? i : i - 1
@@ -189,6 +393,40 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
       return next <= index ? next : next + 1
     },
 
+    hover(x) {
+      if (!lifted) return null
+      const { index, boxes } = lifted
+      follow(lifted, x)
+      /*
+       * **邻居的让位全部清零**(§4.2「onto:邻居不再让位」)。已经是零的那几格
+       * 一个字都不写:这一形每帧都走这里,而给一格空着的 `transform` 再写一次空
+       * 字符串,屏幕上什么都不会变、样式表却白挨一次 —— 这是 §4.5 第 3 条
+       * (「同一个节点在挪」)的另一半:不重建,也不空写。
+       */
+      boxes.forEach((box, i) => {
+        if (i === index || box.el.dataset.shift === undefined) return
+        box.el.style.transform = ''
+        delete box.el.dataset.shift
+      })
+      /*
+       * **指针 x 底下是哪一格**:读抬起那一刻的基准矩形(理由与落点同一条 ——
+       * 邻居的活矩形正走在收回让位的过渡里),按标签**整宽**判,自己除外
+       * (拖回自己身上不是一次并 —— 设计 §2.3 不变量 3)。
+       */
+      return (
+        boxes.find((box, i) => i !== index && x >= box.left && x < box.left + box.width)?.id
+        ?? null
+      )
+    },
+
+    markPair(tabId) {
+      const want = tabId ? tabById(list, tabId) : null
+      if (paired === want) return
+      if (paired) delete paired.dataset.pairHot
+      paired = want
+      if (paired) paired.dataset.pairHot = ''
+    },
+
     tear(tabId) {
       if (lifted) {
         lifted.el.style.transform = ''
@@ -196,7 +434,9 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
         clearShifts()
         lifted = null
       }
-      torn ??= tabsOf(list).find((el) => el.dataset.tabId === tabId) ?? null
+      choreo.markPair(null)
+      delete list.dataset.reorder
+      torn ??= tabById(list, tabId)
       if (torn) torn.dataset.torn = ''
     },
 
@@ -211,18 +451,59 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
         ph.setAttribute('aria-hidden', 'true')
         ph.dataset.tabPlaceholder = ''
       }
-      ph.style.width = `${Math.max(0, Math.round(width))}px`
       const tabs = tabsOf(list)
       const before = tabs[index] ?? null
-      // 已经在正确的位子上就不动它 —— 每帧重插会把 CSS 过渡从头再放一遍。
-      if (ph.parentElement !== list || ph.nextElementSibling !== before) {
-        list.insertBefore(ph, before)
+      // 已经在正确的位子上就**一个字都不改** —— 每帧重插会把 CSS 过渡从头再放
+      // 一遍(§4.5 第 3 条,也是样例第二版「条上没手感」的病根)。
+      if (phAt === index && ph.parentElement === list) return
+      const fresh = ph.parentElement !== list
+      list.insertBefore(ph, before)
+      phAt = index
+      if (fresh) {
+        /*
+         * 头一次插进来时先让它以 0 宽落地、**强制一次回流**,再写真宽度 ——
+         * 不这样的话浏览器会把「插入 + 设宽」合成一帧,`width` 的过渡没有起点,
+         * 空位是瞬间跳出来的。这一句是那个「宽度动画永远从 0 起」的正解。
+         */
+        ph.style.width = '0px'
+        void ph.getBoundingClientRect()
       }
+      ph.style.width = `${Math.max(0, Math.round(width))}px`
     },
+
+    gapRect: () => (ph && ph.isConnected ? ph.getBoundingClientRect() : null),
 
     clearGap() {
       ph?.remove()
       ph = null
+      phAt = null
+    },
+
+    settle(tabId, fromLeft) {
+      if (typeof requestAnimationFrame !== 'function') return
+      requestAnimationFrame(() => {
+        const el = tabById(list, tabId)
+        if (!el) return
+        const to = el.getBoundingClientRect()
+        const delta = fromLeft - to.left
+        // 一格都没挪:不放这段过渡,直接闪一圈说「到位了」。
+        if (Math.abs(delta) < 1) {
+          flash(el)
+          return
+        }
+        el.style.transition = 'none'
+        el.style.transform = `translateX(${delta}px)`
+        // 强制回流,让上面那一句成为过渡的**起点**而不是被合帧吃掉。
+        void el.getBoundingClientRect()
+        el.style.transition = ''
+        el.dataset.settle = ''
+        el.style.transform = ''
+        after(SETTLE_MS, () => {
+          delete el.dataset.settle
+          el.style.transform = ''
+          flash(el)
+        })
+      })
     },
 
     reset() {
@@ -235,9 +516,31 @@ export function tabStripChoreo(list: HTMLElement): TabStripChoreo {
         delete torn.dataset.torn
         torn = null
       }
+      choreo.markPair(null)
+      delete list.dataset.reorder
       clearShifts()
       choreo.clearGap()
+      for (const id of timers) clearTimeout(id)
+      timers.clear()
+      // 收笔那两格属性也一并摘掉 —— `reset()` 是「回到什么都没发生过」。
+      for (const el of tabsOf(list)) {
+        delete el.dataset.settle
+        delete el.dataset.land
+      }
     },
   }
+
+  /**
+   * 落定闪一圈。计时读的是 `FLASH_MS`(= `--dur-flash`,那段动画自己的时长),
+   * **不是** `LAND_MS` —— 后者是卡片飞行的那一程,两者恰好都在收笔那一刻发生,
+   * 但它们是两件事;拿错一个的表现是闪圈被提前掐掉半截。
+   */
+  function flash(el: HTMLElement): void {
+    el.dataset.land = ''
+    after(FLASH_MS, () => {
+      delete el.dataset.land
+    })
+  }
+
   return choreo
 }

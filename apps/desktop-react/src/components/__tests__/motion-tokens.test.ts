@@ -7,6 +7,9 @@ import {
   DOCK_HIDE_DELAY_MS,
   DOCK_WAKE_DWELL_MS,
   DUR_MS,
+  LAND_MS,
+  NEIGHBOR_MS,
+  SETTLE_MS,
   EXIT_MS,
   EXIT_MS_BY_TIER,
   FLASH_MS,
@@ -78,6 +81,13 @@ describe('JS 侧的时长常量与 tokens.css 逐条相等', () => {
     /* 工具卡的 FLIP(C2-a):JS 侧那个数只服务收尾定时器(过渡跑完摘掉内联 height),
      * 产地仍是 tokens.css —— 与 --dur-exit 同一条理由。 */
     ['--dur-card-flip', CARD_FLIP_MS],
+    /* 拖拽的三拍(W6-b,设计 `docs/workbench-tabs-2026-09.md` §4.1)。三个都是动画
+     * (让位 / 滑入新槽 / 卡片飞入),各有一个 JS 收尾定时器跟着走。
+     * 从前还有第四行,镜像那个「停多久算我要二合一」的时长 —— 二合一改成位置
+     * 判据(ONTO_FROM_PX,`ui/drag/constants.ts`)之后,token 与 JS 常量一起没了。 */
+    ['--dur-neighbor', NEIGHBOR_MS],
+    ['--dur-settle', SETTLE_MS],
+    ['--dur-land', LAND_MS],
   ])('%s', (name, js) => {
     expect(tokenMs(tokensCss, name), `tokens.css 里找不到 ${name}`).toBe(js)
   })

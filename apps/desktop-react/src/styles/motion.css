@@ -123,6 +123,7 @@
   /* 一次性提示 */
   --kf-shelf-flash: shelfFlash;
   --kf-turn-flash: turnFlash;
+  --kf-tab-land: tabLand;
   --kf-chat-cursor: chatCursor;
 }
 
@@ -364,6 +365,23 @@
   }
 }
 
+/*
+ * **落定闪一圈**(W6-b,§4.2 末句「被拖标签……150ms 滑进新槽,落定闪一圈」)。
+ *
+ * 它是这次手势的句号:换序滑到位、卡片飞进空位之后,那一格标签自己亮一下说
+ * 「就是我」。走 `outline-color` 而不是 border / background —— 前者不占布局
+ * (换底色会当场违反 §4.5 那条「别的什么都不许变色」的同族纪律:落定之后
+ * 标签条恢复原样,闪的那一下不能留下任何几何痕迹)。
+ */
+@keyframes tabLand {
+  from {
+    outline-color: var(--accent);
+  }
+  to {
+    outline-color: transparent;
+  }
+}
+
 /* 流中态那枚呼吸的光标。 */
 @keyframes chatCursor {
   from {
@@ -387,6 +405,11 @@
   --dur-exit: 60ms;
   --dur-hover-fade: 150ms;
   --dur-flash: 120ms;
+  /* 拖拽三拍各收一档(W6-b 二修之后这三个就是全部:二合一改成位置判据,
+   * 那个时间门槛连同它的 token 一起没了)。 */
+  --dur-neighbor: 70ms;
+  --dur-settle: 90ms;
+  --dur-land: 110ms;
 }
 
 :root[data-motion-tier='none'] {
@@ -410,4 +433,10 @@
   --dur-dots-step: 0ms;
   /* Dock 镜头**瞬到**,不是不放大 —— 放大是那块面的读法,不是装饰。 */
   --dur-dock-lens: 0ms;
+  /* 拖拽三拍瞬到:让位、滑入、飞入都当场完成。二合一那一下**不在这张表里也不该在**
+   * ——「压到条底缘下 6–24px」是一段距离不是一段时长,动效档管不着它(与
+   * --dur-dock-wake / --dur-tooltip-delay 同一条:手势的数不吃档)。 */
+  --dur-neighbor: 0ms;
+  --dur-settle: 0ms;
+  --dur-land: 0ms;
 }

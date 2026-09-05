@@ -33,6 +33,16 @@
   background: var(--st-hover);
 }
 
+/*
+ * **按下即 `grabbing`**(W6-b,设计 v3 §4.2:「idle ──按下──▶ pressed(……光标
+ * grabbing)」)。它是纯 CSS 的一句,不是 JS 写属性:那一刻还没人知道这一下是
+ * 点击还是拖拽(阈值没过),而两者按下时的手感该是同一个 —— 「我按住了这格东西」。
+ * 真起拖之后由根上那格 `data-drag-active` 接管整扇窗(规则在 `styles/global.css`)。
+ */
+.tab:active {
+  cursor: grabbing;
+}
+
 /* 活动态:只换字色 + 底缘指示条。inset 阴影不占布局,所以切 tab 不产生位移。 */
 .tabOn {
   color: var(--text-1);
@@ -226,25 +236,51 @@
   opacity: 0;
 }
 
-/* ── 条内换序:抬起、让位、折起(W3-b 裁定 4/5)──────────────────────────
- * 这三格属性由 `ui/tab-reorder.ts` 直接写在 DOM 上(**一帧不经过 React**,与
+/* ── 条内换序:抬起、让位、折起、滑入、落定(W3-b 裁定 4/5;W6-b 按设计 v3 §4 重做)
+ * 这几格属性由 `ui/tab-reorder.ts` 直接写在 DOM 上(**一帧不经过 React**,与
  * `ui/Splitter` 的 liveVar 同一条纪律),这里只给它们各自的样子。 */
 
 /*
- * `data-lift` = 这一格被拎起来了:浮起来、盖住邻居、**关掉过渡**。
+ * `data-lift` = 这一格被拎起来了。**只做三件事**:浮到邻居上面、加一层很轻的
+ * 投影、**关掉过渡**。不放大、不改形、不换底色 —— 设计 v3 §4.5 第 2 条的字面
+ * 兑现,也是用户那句「不知道为什么 tab 背景颜色变了」的解药。
+ *
  * 关过渡不是省事:横向位移由每帧写 `transform` 给,留着过渡等于让它追着指针跑
- * 一段固定的滞后 —— 手感上就是「tab 粘在后面」。让位的邻居**要**过渡(它们一帧
- * 只跳一次,一步到位反而看不出发生了什么),两者因此不能共用一句 transition。
+ * 一段固定的滞后 —— 手感上就是「tab 粘在后面」(§4.5 第 1 条:1:1 跟手)。
+ * `will-change` 提前声明,让合成层在抬起那一刻就备好,而不是第一帧现建。
+ * 让位的邻居**要**过渡(它们一帧只跳一次,一步到位反而看不出发生了什么),
+ * 两者因此不能共用一句 transition。
  */
 .bar[data-look='joined'] .tab[data-lift] {
   z-index: 2;
   transition: none;
-  box-shadow: var(--sh-1);
+  will-change: transform;
+  box-shadow: var(--drag-lift-shadow);
 }
 
-/* 让位的邻居:只动 transform,过渡一档。 */
+/* 让位的邻居:只动 transform,过渡吃 `--dur-neighbor`(120ms,§4.1)。 */
 .bar[data-look='joined'] .tab[data-shift] {
-  transition: transform var(--dur) var(--ease);
+  transition: transform var(--dur-neighbor) var(--ease);
+}
+
+/*
+ * **换序全程,条上一律不变色**(§4.5 第 2 条:「标签条、内容区、其它标签的颜色
+ * 一律不变……浏览器换序时屏幕上只有那一格标签在动」)。
+ *
+ * 这一句是**结构保证**,不是靠「指针恰好压在被拖那一格上所以邻居没有 hover」——
+ * 抬起那一格跟着指针横扫时,指针会一格一格地经过邻居的上方,而 pointer capture
+ * 并不冻结 `:hover` 的命中测试。所以换序期间由 `tab-reorder` 在条上挂
+ * `data-reorder`,这里把**非活动格的 hover 底**关掉。
+ *
+ * ── 它只许写 `:not(.tabOn)`(W6-b 真机门当场量出来的一条自伤)────────────
+ * 第一版写的是两条,其中一条是光秃秃的 `.bar[data-reorder] .tab:hover`。它与
+ * `.bar[data-look='joined'] .tabOn` **特异性相等**、位置靠后 —— 于是被拖那一格
+ * (它按下即激活,而且指针正压在它身上)的底色当场被抹成透明:门读到的漂移是
+ * `rgb(40,39,38) → rgba(0,0,0,0)`。**一条防止变色的规则自己造了一次变色**。
+ * 所以这里只留一条,而且只管非活动格:活动格的脸是它的身份,不是一格 hover 态。
+ */
+.bar[data-reorder] .tab:not(.tabOn):hover {
+  background: none;
 }
 
 /*
@@ -258,14 +294,42 @@
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
-  transition: max-width var(--dur) var(--ease), padding var(--dur) var(--ease),
-    opacity var(--dur) var(--ease);
+  transition: max-width var(--dur-neighbor) var(--ease), padding var(--dur-neighbor) var(--ease),
+    opacity var(--dur-neighbor) var(--ease);
 }
 
 /*
- * 空位:落到**别的**一条条上时,那条条腾出来的那一格(`ui/tab-reorder.ts` 造,
+ * `data-settle` = 松手了,正从手上那个位置滑进新槽(FLIP,`--dur-settle` 150ms,
+ * §4.2 末句)。位移的两端由 `tab-reorder.settle()` 写:先用 `transition: none`
+ * 把它按回抬起时的位置,强制一次回流,再挂上这一格让过渡把它送回 0。
+ *
+ * 它与 `data-lift` **互斥**(一个是跟手期、一个是收笔),所以两句 transition
+ * 不会打架 —— 抬起那一格在 settle 之前已经被 `reset()` 摘干净。
+ */
+.bar[data-look='joined'] .tab[data-settle] {
+  z-index: 2;
+  transition: transform var(--dur-settle) var(--ease);
+}
+
+/*
+ * `data-land` = 落定了,闪一圈(§4.2「落定闪一圈」)。走 outline 不占布局 ——
+ * 换底或加边会在收笔那一刻把条重排一次,而这一格属性存在的全部意义就是
+ * 「它到位了」这一眼。关键帧的产地照旧是 `styles/motion.css`。
+ */
+.bar[data-look='joined'] .tab[data-land] {
+  outline: var(--bw-3) solid var(--accent);
+  outline-offset: calc(var(--bw-1) * -1);
+  animation: var(--kf-tab-land) var(--dur-flash) var(--ease) forwards;
+}
+
+/*
+ * 空位:任何一种来源落到这条条上时,条腾出来的那一格(`ui/tab-reorder.ts` 造,
  * 类名从这份样式表里取 —— 「占位由 Tabs 自己画」)。宽度由 JS 每次写,
  * 过渡让它「撑开 / 收拢」而不是瞬间跳出来。
+ *
+ * **同一个节点在挪**(§4.5 第 3 条):落点变了只是把它 `insertBefore` 到别处,
+ * 宽度这一句因此只在第一次写,过渡也就只从 0 撑开那一次 —— W6-a 之前那个
+ * 「宽度动画永远从 0 起」的病根是每帧重建,不是这条过渡。
  */
 .ph {
   flex: none;
@@ -273,6 +337,25 @@
   height: var(--tab-joined-h);
   border-radius: var(--tab-joined-r) var(--tab-joined-r) 0 0;
   background: var(--st-hover);
-  transition: width var(--dur) var(--ease);
+  transition: width var(--dur-neighbor) var(--ease);
   pointer-events: none;
+}
+
+/*
+ * **二合一的目标**(§4.2 的 onto 带 / §5 的「标签正中」那一行:
+ * 「那个标签**描圈、底色亮**」)。
+ *
+ * 圈读的是落区那一档 `ring` 的同一格色(`--drop-ring-line`),于是「并进它」这件事
+ * 在标签上和在叶身上说的是同一种话;底是 `--drop-half-face`(与内容区那半边同色)
+ * —— 一格标签只有 34px 高,只描一圈在满条标签里认不出来是哪一格。
+ *
+ * **它不违反 §4.5 第 2 条**(换序全程不变色):那一条管的是**换序**,而这一格是
+ * 明确的落点预示 —— 设计 §4.2 自己写着「onto(指针底下那个标签描圈亮起)」。
+ * 两者的分界是**位置**(W6-b 二修):指针压到条底缘下 6–24px 才亮,在条里横着走
+ * 一格都不亮。从前分界是「停够 300ms」,而换序途中稍一停顿就误并 —— 那正是
+ * 用户报的那一下。
+ */
+.bar[data-look='joined'] .tab[data-pair-hot] {
+  background: var(--drop-half-face);
+  box-shadow: inset 0 0 0 var(--bw-3) var(--drop-ring-line);
 }

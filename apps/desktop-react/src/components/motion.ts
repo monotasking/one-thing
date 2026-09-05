@@ -57,6 +57,28 @@ export const COPY_FEEDBACK_MS = 1500
  */
 export const DOCK_LENS_MS = 140
 
+/* ── 拖拽的三拍(W6-b,设计 `docs/workbench-tabs-2026-09.md` §4.1)────────────
+ *
+ * 三个都在这里而不是只镜像一个,判据与 --dur-exit 那一条逐字相同:**JS 侧有一个
+ * 计时器跟着走的才进这张表**。这三个各有一个:
+ *   NEIGHBOR_MS 让位过渡跑完之后要不要再量一次基准矩形(答案是不要 —— 见
+ *               `ui/tab-reorder` 的判词),但**撤销让位**那一下要等它跑完再摘属性,
+ *               否则邻居会从半路瞬移回去;
+ *   SETTLE_MS   FLIP 跑完摘掉内联 transition / transform(与 CARD_FLIP_MS 同型);
+ *   LAND_MS     卡片飞完把浮影这一格瞬态归零。
+ * 产地都是 tokens.css,相等由 __tests__/motion-tokens.test.ts 逐条钉死,
+ * 三个**都吃**动效档(styles/motion.css 的 calm / none 块里各有一行)。
+ *
+ * ── 第四拍已退役(W6-b 二修)─────────────────────────────────────────────
+ * 从前这里还有一个 300ms 的门槛(它自己那格 token 也一起没了):停住多久算
+ * 「我要二合一」。二合一
+ * 现在由**位置**判 —— 指针压到标签条底缘下 6–24px(`ONTO_FROM_PX`,产地
+ * `ui/drag/constants.ts`)。位置判据身后没有计时器,所以它既不在这张表里,也不再
+ * 需要一个 token。`DOCK_WAKE_DWELL_MS` 是 Dock 那件事,与它无关,照旧在上面。 */
+export const NEIGHBOR_MS = 120 // --dur-neighbor
+export const SETTLE_MS = 150 // --dur-settle
+export const LAND_MS = 180 // --dur-land
+
 export const TOC_FLASH_MS = 1200 // --dur-toc-flash:跳过去之后落点消息高亮多久
 /**
  * 一条 toast 自动消失前活多久 —— 按级别分档(--dur-toast-success / -info / -warn)。

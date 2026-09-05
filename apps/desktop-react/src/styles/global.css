@@ -43,6 +43,26 @@ body,
   -webkit-user-select: none;
 }
 
+/*
+ * **拖拽期间的光标是这一场的,不是脚底下那个元素的**(W6-b,设计 v3 §4.2 / §5)。
+ *
+ * 两档:拖着 = `grabbing`,这一帧落不下去 = `not-allowed`。两条都必须**盖住整扇
+ * 窗里的每一个元素** —— 指针底下随时是一颗按钮(`cursor: pointer`)、一段正文
+ * (`cursor: text`)、一根分隔杆(`col-resize`),而这一场手势期间它们说的都不算。
+ * 那正是 `!important` 在这两条上成立的理由:它不是压过谁的样式没写对,是
+ * **一次手势暂时接管了整扇窗的光标**,与 `user-select: none` 那条同源。
+ * 属性由 `ui/drag/DragSession` 在起拖 / 落点变化时写,每条结束路径都摘掉。
+ */
+:root[data-drag-active],
+:root[data-drag-active] * {
+  cursor: grabbing !important;
+}
+
+:root[data-drag-refuse],
+:root[data-drag-refuse] * {
+  cursor: not-allowed !important;
+}
+
 body {
   margin: 0;
   background: var(--surface-0);

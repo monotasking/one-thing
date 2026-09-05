@@ -1,34 +1,56 @@
 import { SHELF_SIDES, SNAP_BAND, TEAR_OFF_DISTANCE } from '../stage/transitions'
+import { TAB_MIDDLE } from '../ui/drag/constants'
 import type { ShelfSide } from '../stage/types'
 import type { MessageKey } from '../i18n'
 import type { RegionId } from './regions'
 
 /**
- * **落点判据**(W3,设计 `apps/desktop-react/docs/workbench-2026-09.md` §3.1)。
+ * **落点判据**(W6-b,设计 `apps/desktop-react/docs/workbench-tabs-2026-09.md` §5
+ * 那张表;W3 的五区版被推翻)。
  *
  * 整只文件是**纯函数**:没有 React、没有 DOM、没有 store,而且**一个内容种类名
- * 都不出现**(grep `'file'` / `'panel'` / `'session'` 在这只文件里零命中)。
- * 它只认三样:指针在哪、屏幕上有哪几块矩形、这次拖拽自己声明的两条规矩。
+ * 都不出现**(grep `'file'` / `'panel'` / `'session'` / `'pair'` 在这只文件里零命中)。
+ * 它只认四样:指针在哪、屏幕上有哪几块矩形、这次拖的东西**装了几份**、
+ * 这次拖拽自己声明的那几条规矩。
+ *
+ * 「装了几份」是一个**数**(`slots`),不是「是不是两格标签」—— 判据认得出
+ * 「这一格里有两份东西,所以它不能再并」,认不得 `pair` 这四个字母。同一条纪律
+ * 让这只文件在下一种复合内容出现时一个字都不用改。
  *
  * ── 几何是「起拖时量一次」,不是逐帧量(裁定 4)────────────────────────────
  * 拖拽期间树不变(落定才改,`store.dragging` 那道闸保证),所以叶的矩形在整场
  * 拖拽里是常数。逐帧 `getBoundingClientRect()` 一次拖拽就是上百次强制排版 ——
  * 而它们答的是同一个数。宿主起拖时量一次、`resize` 时重量,判据这一头只读。
  *
- * ── 次序即语义(W3-b 裁定 6 起是**四问**)────────────────────────────────
- *   ① **标签条**优先于一切。它是这套形态里唯一「指着一个下标」的落点,而条本身
- *      只有 34px 高 —— 谁也不会不小心把东西丢到一条 34px 的带子上。反过来判
- *      (先问叶)会让条永远吸不到东西:条压在叶的上边带里。
- *   ② **窗口边带**优先于叶的四带。一片叶贴着窗口右缘时,右缘那 24px 同时落在
- *      「这片叶的东带」与「窗口的右边带」里。用户把东西拖到屏幕最边上,想的是
- *      「钉到那条边去」,不是「在最右边那片叶里再切一刀」。反过来判会让右架子
- *      永远吸不到东西。
- *   ③ 叶的四条**边带**(`DROP_EDGE_PX` 16)= 在那一侧分屏。
- *   ④ 叶身其余部分 = **并入这片叶**。
+ * ── 次序即语义(设计 v3 §5:「判定次序从上到下,先命中先赢」)────────────────
+ *   ① **拒绝区**(红绿灯 / 顶栏尾格 / Dock)。它排第一,因为「这里不能放」是一句
+ *      比任何落点都硬的话:红绿灯压在顶栏那条标签条的带里,先问条的话拖到关窗
+ *      按钮上会变成「插到第 0 格」。
+ *   ② **标签正中 44%** = 与它二合一。它优先于「标签之间」,两者共用同一条条 ——
+ *      正中是它的中间那 44%,两侧各 28% 才是「落到它旁边」。
+ *   ③ **标签之间** = 插到第 n 格。条只有 34px 高,谁也不会不小心把东西丢上去;
+ *      反过来判(先问叶)会让条永远吸不到东西:条压在叶的上边带里。
+ *   ④ **窗口边带**(`SNAP_BAND` 24)优先于叶。一片叶贴着窗口右缘时,右缘那 24px
+ *      同时落在两者里;用户把东西拖到屏幕最边上,想的是「钉到那条边去」。
+ *   ⑤ **内容区右带 28%** = 与活动标签并排(放右);
+ *   ⑥ **左带 28%** = 并排(放左),**仅当活动标签还是一格**;
+ *   ⑦ **内容区中间** = 末尾开成一格新标签;
+ *   ⑧ **自己的内容区**(拖的就是这片叶的活动标签)= 放回,空动作;
+ *   ⑨ 什么都没碰到 / 出了窗 = 撕成浮窗。
+ *
+ * ⑧ 在表上排在 ⑤⑥⑦ 后面(设计 §5 那张表的**阅读**顺序),但**判据里它必须先问**:
+ * 「拖的是这片叶自己的活动标签」是对整片叶说的一句话,一旦成立,右带左带中间三格
+ * 都是它 —— 排在后面就永远轮不到。出入记在交卷报里。
  *
  * ── 叶重叠时取最上 ──────────────────────────────────────────────────────
  * 浮窗会盖住中央区的叶。宿主按 DOM 序把矩形交进来(浮窗层排在主区之后),
  * 这里**从后往前**找第一个命中的 —— 屏幕上盖在最上面的那一片就是它。
+ *
+ * ── 退役(W6-b)──────────────────────────────────────────────────────────
+ * `DropZone` / `zoneAt` / `zoneRectOf` / `ZONE_SPLIT` / `DROP_EDGE_PX` /
+ * `DROP_BAR_PX` 与 `{kind:'leaf'}` 那一支整件删掉:**边带分屏没有了**
+ * (单叶政策,设计 §2.1),叶的四带改判「二合一」与「开新标签」。设计册上
+ * `--drop-edge` / `--drop-bar-w` 两格 token 留着当登记,判据这一头不再有读者。
  */
 
 export interface Rect {
@@ -46,17 +68,34 @@ export interface LeafBox {
 }
 
 /**
- * 一条**标签条**此刻占的地方,连同它此刻那几格各自的矩形(W3-b 裁定 6)。
+ * 一条条上的一格标签。
+ *
+ * `slots` = 这一格里装了**几份**内容(1 或 2)。判据用它答两个问题:
+ * 「拖着的这一格能不能再并」(`slots > 1` = 不能,设计 §6「不允许」)与
+ * 「这片叶的活动标签还是不是一格」(左带只在它是一格时开,设计 §5)。
+ * 它是个数不是种类名 —— 见文件头。
+ */
+export interface TabBox extends Rect {
+  id: string
+  slots: number
+}
+
+/**
+ * 一条**标签条**此刻占的地方,连同它此刻那几格各自的矩形。
  *
  * 每一格的矩形都要带上,因为「插到第几格」问的是**指针越过了几条 tab 的中线**,
- * 而那件事没有条自己的矩形回答得了。它们与叶的矩形一样是**起拖时量一次**的常数
- * (拖拽期间树冻住),所以判据这一头照旧只读、不量。
+ * 而「落到哪一格头上」问的是它在不在某一格的正中 44% 里 —— 两件事都没有条自己的
+ * 矩形回答得了。它们与叶的矩形一样是**起拖时量一次**的常数(拖拽期间树冻住),
+ * 所以判据这一头照旧只读、不量。
  */
 export interface StripBox {
+  region: RegionId
   leafId: string
   rect: Rect
   /** 这条条里那几格,**按次序**。 */
-  tabs: readonly Rect[]
+  tabs: readonly TabBox[]
+  /** 哪一格是活动的(`aria-selected`)。-1 = 一格都没有。 */
+  activeAt: number
 }
 
 export interface DropGeometry {
@@ -66,74 +105,76 @@ export interface DropGeometry {
   leaves: readonly LeafBox[]
   /** 每一条标签条。缺席 = 这次拖拽不认标签条(与 W3 的行为逐字相同)。 */
   strips?: readonly StripBox[]
+  /**
+   * **这几块地方一律不收**(设计 v3 §5 第一行:红绿灯 / 顶栏尾格 / Dock)。
+   *
+   * 它是**一组矩形**而不是判据里的三个 if:那三处各自在 DOM 上自述一格
+   * `data-nodrop`,量法照着扫一遍。于是「再多一处不能放的地方」= 在那个元素上
+   * 加一格属性,这只文件一个字都不改(CLAUDE.md 那条「按能力枚举 → 能力自述」)。
+   */
+  nodrop?: readonly Rect[]
 }
 
-export type DropZone = 'center' | 'n' | 's' | 'e' | 'w'
-
 export type DropTarget =
-  /** 落到某片叶身上:`center` = 并入,四带 = 在那一侧分屏。 */
-  | { kind: 'leaf'; region: RegionId; leafId: string; zone: DropZone }
+  /** 落到某条条的第 `at` 格标签**正中** = 与那一格二合一。 */
+  | { kind: 'pairTab'; region: RegionId; leafId: string; at: number }
   /** 落到某条标签条上,插到第 `at` 格(同叶 = 换序,异叶 = 搬过去)。 */
   | { kind: 'strip'; leafId: string; at: number }
   | { kind: 'edge'; side: ShelfSide }
+  /** 与这片叶的活动标签并排,放在这一侧。 */
+  | { kind: 'pair'; region: RegionId; leafId: string; side: 'left' | 'right' }
+  /** 在这片叶的标签条**末尾**开成一格新标签。 */
+  | { kind: 'open'; region: RegionId; leafId: string }
+  /** 拖的就是这片叶的活动标签,松手 = 放回,空动作。 */
+  | { kind: 'back' }
   | { kind: 'float' }
   | { kind: 'refuse'; reasonKey: MessageKey }
 
 /**
- * **叶的四条边带有多宽**(W3-b 裁定 6;09-05 用户选甲)。
+ * **内容区左右各多宽算「与它并排」**(设计 v3 §4.1 `PAIR_BAND` 28%)。
  *
- * W3 那时是反过来的:中心区**内缩 25%**,其余全是分屏 —— 于是一片叶上有一多半
- * 面积会切一刀。用户的原话:「中心区只有内缩后的一小块,大半面积都是分屏」。
- * 甲把它倒过来:**整个叶身都是并入**,只有贴边那 16px 是分屏。误分屏因此从
- * 「一多半概率」变成「必须故意去够那条边」,而分屏本来就是低频动作。
- *
- * 16 与 `SNAP_BAND`(24,窗口边带)刻意**不相等**:它们量的是两条不同的边
- * (叶的边 / 窗口的边),而且窗口边带优先 —— 两个数相等会让「这一格是被哪条带
- * 接住的」在读代码时不再看得出来(裁定 3「三处三个名字」的同一条纪律)。
- *
- * 设计册上的登记是 `--drop-edge`,两边由 `__tests__/drop-tokens.test.ts` 钉成相等。
+ * 它是**比例**不是像素,与 `TAB_MIDDLE` 同一条理由:内容区的宽从一扇 320px 的
+ * 浮窗到一整块 1600px 的中央区都有,固定像素在两头各错一次。28 + 44 + 28 = 100
+ * 也不是巧合 —— 标签上的「正中 / 两侧」与内容区的「中间 / 左右带」是同一张比例表,
+ * 用户在两处学的是同一件事。
  */
-export const DROP_EDGE_PX = 16
+export const PAIR_BAND = 0.28
 
-/**
- * 分屏预示那根杠有多厚(`--drop-bar-w` 的判据镜像)。
- *
- * 它必须住在判据这一头而不是只在 CSS 里,因为**高亮盖的就是判据算的那块矩形**
- * (`zoneRectOf`)—— 让 CSS 用 `min-width` 去撑那 4px 的话,东带那根杠会从叶的
- * 右缘往**外**长 4px,当场违反「高亮不撑破叶」(`gate:squeeze` 真机量着这一条)。
- */
-export const DROP_BAR_PX = 4
-
-/** 这次拖拽自己的两条规矩。都缺席 = 「什么都能落,四带都开」。 */
+/** 这次拖拽自己的规矩。全缺席 = 「什么都能落」。 */
 export interface DropRules {
   /**
-   * 分不分屏。`false` = 叶上只有中心区一格(四带不开)—— 会话行走的正是这一档:
-   * 它落到中央只是「切换当前会话」,切一刀出来放什么都没有(裁定 7)。
+   * 拖的是**哪一格、装了几份**。判据只用它答两件事:
+   * 「这一格是不是就是脚底下那一格」(是 = `back` / 不算 `pairTab` 的目标)、
+   * 「它能不能再并」(`slots > 1` = 不能)。缺席 = 两条都不问。
    */
-  split?: boolean
+  dragged?: { id: string; slots: number }
+  /**
+   * **这几片叶这次不接**(设计 v3 §8:「从浮窗里拖东西出去时,浮窗自身矩形不再是
+   * 落点 —— 拖的东西来自它,它不该接住自己;指针在窗内时按窗底下的那片叶判」)。
+   *
+   * 只挡**叶**,不挡它的**条**:条那一头是「插到第几格」,把一格标签在自己那扇
+   * 浮窗的条上换个位子是天天要做的事,连它一起挡掉等于把换序也挡了。
+   */
+  excludeLeaves?: readonly string[]
   /**
    * 这个落点这次拖拽收不收。答一句 `MessageKey` = 拒绝的理由,答 null = 收。
-   * **判据由来源自述**,这只文件因此不必认识任何一种内容(裁定 7 的机械化)。
+   * **判据由来源自述**,这只文件因此不必认识任何一种内容。
    */
   accepts?(target: DropTarget): MessageKey | null
 }
 
-/**
- * 指针在这儿,松手会发生什么。
- *
- * 五问,按序(见文件头「次序即语义」):
- *  ① 哪一条**标签条**接得住(条的上下各外扩 `TEAR_OFF_DISTANCE`)→ 插到第几格;
- *  ② 窗口四条**边带**(`SNAP_BAND` 24,判据复用形态机既有的 `snapSideAt`);
- *  ③ 指针底下**最上面**那一片叶 → 四条 16px 的边带 / 其余全是叶身;
- *  ④ 什么都没碰到 → 撕成浮窗;
- *  ⑤ 上面得到的那个落点交给 `rules.accepts` 复核,被拒就换成 `refuse`。
- */
+/** 「这里不能放」——拒绝区那一句。 */
+const REFUSE_HERE: MessageKey = 'drag.refuseHere'
+/** 「两格的标签不能再并」(设计 §6「不允许」)。 */
+const REFUSE_PAIR_NEST: MessageKey = 'drag.refusePairNest'
+
+/** 指针在这儿,松手会发生什么(次序见文件头)。 */
 export function dropTargetAt(
   pointer: { x: number; y: number },
   geometry: DropGeometry,
   rules: DropRules = {},
 ): DropTarget {
-  return judge(rawTargetAt(pointer, geometry, rules.split !== false), rules)
+  return judge(rawTargetAt(pointer, geometry, rules), rules)
 }
 
 function judge(target: DropTarget, rules: DropRules): DropTarget {
@@ -145,30 +186,68 @@ function judge(target: DropTarget, rules: DropRules): DropTarget {
 function rawTargetAt(
   pointer: { x: number; y: number },
   geometry: DropGeometry,
-  split: boolean,
+  rules: DropRules,
 ): DropTarget {
-  const strip = stripAt(pointer, geometry.strips)
+  // ① 拒绝区:先命中先赢,而且赢得最硬。
+  for (const rect of geometry.nodrop ?? []) {
+    if (within(pointer, rect)) return { kind: 'refuse', reasonKey: REFUSE_HERE }
+  }
+  // ②③ 标签条(正中 = 二合一,其余 = 插到第几格)。
+  const strip = stripAt(pointer, geometry.strips, rules)
   if (strip) return strip
+  // ④ 窗口边带。
   const side = snapSideIn(pointer, geometry.window)
   if (side) return { kind: 'edge', side }
-  /*
-   * 从后往前 —— 宿主按 DOM 序交进来,靠后的盖在上面(见文件头)。
-   */
+  // ⑤⑥⑦⑧ 内容区。从后往前 —— 宿主按 DOM 序交进来,靠后的盖在上面(见文件头)。
   for (let i = geometry.leaves.length - 1; i >= 0; i -= 1) {
     const box = geometry.leaves[i]
+    if (rules.excludeLeaves?.includes(box.leafId)) continue
     if (!within(pointer, box.rect)) continue
-    return {
-      kind: 'leaf',
-      region: box.region,
-      leafId: box.leafId,
-      zone: split ? zoneAt(pointer, box.rect) : 'center',
-    }
+    return leafTargetAt(pointer, box, geometry, rules)
   }
+  // ⑨ 什么都没碰到 / 出了窗。
   return { kind: 'float' }
 }
 
 /**
- * 哪一条标签条接得住这一点。
+ * 一片叶身上的四种落点(设计 v3 §5 的后四行)。
+ *
+ * 「这片叶的活动标签是谁」从**它那条条**上查(`activeAt`),不是从叶上 —— 中央区
+ * 那条条住在窗口顶栏,DOM 上根本不在叶里(设计 v2 §2.2 的 D 稿),所以叶自己
+ * 答不出这个问题。查不到条(比如一片还没画出檐的叶)= 只剩「开成新标签」那一档:
+ * 没有 host 就没有「与谁并排」可言。
+ */
+function leafTargetAt(
+  pointer: { x: number; y: number },
+  box: LeafBox,
+  geometry: DropGeometry,
+  rules: DropRules,
+): DropTarget {
+  const strip = geometry.strips?.find((s) => s.leafId === box.leafId) ?? null
+  const host = strip && strip.activeAt >= 0 ? (strip.tabs[strip.activeAt] ?? null) : null
+  const open: DropTarget = { kind: 'open', region: box.region, leafId: box.leafId }
+  if (!host) return open
+  // ⑧ 拖的就是这片叶的活动标签 —— 整片叶都是「放回」(判据里它必须先问,见文件头)。
+  if (rules.dragged && rules.dragged.id === host.id) return { kind: 'back' }
+  const fx = box.rect.width > 0 ? (pointer.x - box.rect.left) / box.rect.width : 0.5
+  const inBand = fx >= 1 - PAIR_BAND || (fx <= PAIR_BAND && host.slots === 1)
+  // 两格的标签不能再并:两条并排带对它是拒绝,**中间那一格照旧收**
+  // (把它整片叶都拒掉的话,一格两格标签就再也搬不进别的叶了)。
+  if (inBand && (rules.dragged?.slots ?? 1) > 1) {
+    return { kind: 'refuse', reasonKey: REFUSE_PAIR_NEST }
+  }
+  // ⑤ 右带。
+  if (fx >= 1 - PAIR_BAND) return { kind: 'pair', region: box.region, leafId: box.leafId, side: 'right' }
+  // ⑥ 左带,**仅当活动标签还是一格**(两格的话它已经满了,左边没地方放)。
+  if (fx <= PAIR_BAND && host.slots === 1) {
+    return { kind: 'pair', region: box.region, leafId: box.leafId, side: 'left' }
+  }
+  // ⑦ 中间。
+  return open
+}
+
+/**
+ * 哪一条标签条接得住这一点,以及落在它的哪儿。
  *
  * **带**的口径与「条内换序」那一头逐字相同(`TEAR_OFF_DISTANCE` 24 的上下外扩,
  * 判词在 `DragSession.DragBandState` 上):拖到自己那条条的带里是换序,拖到别人
@@ -181,6 +260,7 @@ function rawTargetAt(
 function stripAt(
   pointer: { x: number; y: number },
   strips: readonly StripBox[] | undefined,
+  rules: DropRules,
 ): DropTarget | null {
   if (!strips) return null
   for (let i = strips.length - 1; i >= 0; i -= 1) {
@@ -190,9 +270,32 @@ function stripAt(
     if (pointer.y < r.top - TEAR_OFF_DISTANCE || pointer.y > r.top + r.height + TEAR_OFF_DISTANCE) {
       continue
     }
+    const at = tabMiddleAt(pointer.x, box, rules.dragged?.id)
+    if (at >= 0) {
+      // 两格的标签不能再并(设计 §6「不允许」)—— 这里说得出理由,不是静默改判。
+      if ((rules.dragged?.slots ?? 1) > 1) return { kind: 'refuse', reasonKey: REFUSE_PAIR_NEST }
+      return { kind: 'pairTab', region: box.region, leafId: box.leafId, at }
+    }
     return { kind: 'strip', leafId: box.leafId, at: stripIndexAt(pointer.x, box) }
   }
   return null
+}
+
+/**
+ * 指针落在**哪一格的正中**(中间 `TAB_MIDDLE` 44%)。答 -1 = 没落在谁的正中。
+ *
+ * `skipId` 是被拖的那一格自己 —— 把一格标签拖到它自己头上不是一次并(设计 §2.3
+ * 不变量 3 的前半句),它该落回「标签之间」那一档去。
+ */
+export function tabMiddleAt(x: number, box: StripBox, skipId?: string): number {
+  const side = (1 - TAB_MIDDLE) / 2
+  for (let i = 0; i < box.tabs.length; i += 1) {
+    const tab = box.tabs[i]
+    if (tab.width <= 0) continue
+    if (skipId !== undefined && tab.id === skipId) continue
+    if (x >= tab.left + tab.width * side && x <= tab.left + tab.width * (1 - side)) return i
+  }
+  return -1
 }
 
 /**
@@ -245,43 +348,16 @@ function within(p: { x: number; y: number }, r: Rect): boolean {
 }
 
 /**
- * 指针落在这片叶的哪一区(W3-b 裁定 6:**整个叶身都是并入,只有贴边那 16px 分屏**)。
+ * **落下后占的那一半**(`pair` 那一档的高亮矩形)。
  *
- * 边带是**开区间**、中心是闭的:指针正好压在离边 16px 那条线上算 `center` ——
- * 判据得有一头是闭的,否则线上那一像素谁都不认领。这与 W3 的口径一字不差,
- * 换的只是「哪一边是『其余』」。
- *
- * 四条带在小叶上会互相重叠(一片 20px 高的叶上下带撞在一起),所以次序即答案:
- * 西 → 东 → 北 → 南,**平手优先左右**(与 `snapSideAt` 那条判例同向:竖着切是主力)。
+ * 它按**当前分隔位**切吗?不 —— 切在正中。理由:并进去之后那条分隔杆落在缺省的
+ * 50%(`PAIR_RATIO_DEFAULT`),所以「一半」说的就是它将来真的会占的地方;
+ * 按 host 此刻的比例切会预示一个不会发生的布局。
  */
-export function zoneAt(pointer: { x: number; y: number }, rect: Rect): DropZone {
-  if (pointer.x - rect.left < DROP_EDGE_PX) return 'w'
-  if (rect.left + rect.width - pointer.x < DROP_EDGE_PX) return 'e'
-  if (pointer.y - rect.top < DROP_EDGE_PX) return 'n'
-  if (rect.top + rect.height - pointer.y < DROP_EDGE_PX) return 's'
-  return 'center'
-}
-
-/**
- * 一片叶里某一区的**高亮矩形** —— 高亮画的就是它(裁定 7)。
- *
- * `center` → 整片叶(`ring` 档在它里面描一圈细环);四带 → **贴着那条边的一根
- * `DROP_BAR_PX` 厚的杠**(`bar` 档),不再是「落下后占的那一半」。
- *
- * 改这一句的理由是用户看真机后的原话:落点反馈太重。画出那一半等于提前把屏幕
- * 改了一遍,而分屏这件事本来只需要说清楚「往哪边切」——一根杠说得完。
- * **杠永远在叶里**(左/上贴内缘、右/下往里收一个杠厚),所以「高亮不撑破叶」
- * 这句话在几何上成立,不靠 CSS 兜。
- */
-export function zoneRectOf(rect: Rect, zone: DropZone): Rect {
-  if (zone === 'center') return rect
-  const bar = Math.min(DROP_BAR_PX, rect.width, rect.height)
-  if (zone === 'w') return { ...rect, width: bar }
-  if (zone === 'e') {
-    return { left: rect.left + rect.width - bar, top: rect.top, width: bar, height: rect.height }
-  }
-  if (zone === 'n') return { ...rect, height: bar }
-  return { left: rect.left, top: rect.top + rect.height - bar, width: rect.width, height: bar }
+export function pairRectOf(rect: Rect, side: 'left' | 'right'): Rect {
+  const half = rect.width / 2
+  if (side === 'left') return { ...rect, width: half }
+  return { left: rect.left + half, top: rect.top, width: half, height: rect.height }
 }
 
 /** 一条边带在窗口上的矩形(架子会长在这条带子那一侧,所以带子就是它的预示)。 */
@@ -293,33 +369,45 @@ export function edgeRectOf(win: Rect, side: ShelfSide, band: number = SNAP_BAND)
 }
 
 /**
- * 一个落点该把高亮画在哪儿。答 null = 这一帧没有可指的地方(撕浮窗那一形由
- * 宿主自己给一块窗子轮廓 —— 那块矩形要问形态机的 `floatRectForGrab`,不属于
- * 这只纯函数的知识范围)。
+ * 一个落点该把高亮画在哪儿。答 null = 这一帧没有可指的地方。
+ *
+ * 三处**故意不答矩形**:标签条那两档(`strip` / `pairTab`)的预示是条自己腾出来的
+ * 一格空位与那一格上的一圈(`ui/tab-reorder`),`back` 什么都不画(设计 §5:
+ * 「不画」),`float` 那扇窗的轮廓要问形态机的 `floatRectForGrab`(不属于这只纯
+ * 函数的知识范围)。两样一起画就是同一件事说两遍,而这一批治的正是「说三遍」。
  */
 export function targetRectOf(target: DropTarget, geometry: DropGeometry): Rect | null {
   if (target.kind === 'edge') return edgeRectOf(geometry.window, target.side)
-  /*
-   * 标签条那一档**故意不答矩形**:它的预示是那条条自己腾出来的一格空位
-   * (`ui/tab-reorder.gap()`),不是盖一块高亮。两样一起画就是同一件事说两遍,
-   * 而这一批治的正是「说三遍」。
-   */
-  if (target.kind === 'strip') return null
-  if (target.kind === 'leaf') {
-    const box = geometry.leaves.find(
-      (leaf) => leaf.leafId === target.leafId && leaf.region === target.region,
-    )
-    return box ? zoneRectOf(box.rect, target.zone) : null
+  if (target.kind === 'open') return leafRectOf(target.leafId, target.region, geometry)
+  if (target.kind === 'pair') {
+    const rect = leafRectOf(target.leafId, target.region, geometry)
+    return rect ? pairRectOf(rect, target.side) : null
   }
   return null
 }
 
-/** 四带各自切出来的方向。**一张表**,不是四处 if(与 `SPLIT_CHOICES` 同一条纪律)。 */
-export const ZONE_SPLIT: Readonly<
-  Record<Exclude<DropZone, 'center'>, { dir: 'row' | 'col'; before: boolean }>
-> = {
-  w: { dir: 'row', before: true },
-  e: { dir: 'row', before: false },
-  n: { dir: 'col', before: true },
-  s: { dir: 'col', before: false },
+function leafRectOf(leafId: string, region: RegionId, geometry: DropGeometry): Rect | null {
+  return (
+    geometry.leaves.find((leaf) => leaf.leafId === leafId && leaf.region === region)?.rect ?? null
+  )
+}
+
+/**
+ * **能放的地方有哪几块**(设计 v3 §5 贯穿规则 1 的氛围层)。
+ *
+ * 三类,一张表:每片叶的身子、每条标签条、窗口四条边带。它**不问指针在哪**
+ * —— 氛围是「起拖那一刻」铺一次的底,整场不变(所以宿主也只算一次);
+ * 「悬到的那一处亮到实」由 `targetRectOf` 那一块盖在上面完成。
+ *
+ * 被 `excludeLeaves` 挡掉的叶不进这张表:说「这里能放」而松手落不进去,比不说更糟。
+ */
+export function ambientRectsOf(geometry: DropGeometry, rules: DropRules = {}): Rect[] {
+  const out: Rect[] = []
+  for (const leaf of geometry.leaves) {
+    if (rules.excludeLeaves?.includes(leaf.leafId)) continue
+    out.push(leaf.rect)
+  }
+  for (const strip of geometry.strips ?? []) out.push(strip.rect)
+  for (const side of SHELF_SIDES) out.push(edgeRectOf(geometry.window, side))
+  return out
 }

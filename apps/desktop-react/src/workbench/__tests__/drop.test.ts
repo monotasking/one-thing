@@ -1,234 +1,318 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DROP_BAR_PX,
-  DROP_EDGE_PX,
+  ambientRectsOf,
   dropTargetAt,
   edgeRectOf,
+  pairRectOf,
+  PAIR_BAND,
   stripIndexAt,
+  tabMiddleAt,
   targetRectOf,
-  zoneAt,
-  zoneRectOf,
-  ZONE_SPLIT,
 } from '../drop'
-import type { DropGeometry, DropTarget, StripBox } from '../drop'
+import type { DropGeometry, DropRules, DropTarget, StripBox } from '../drop'
 
 /**
- * **落点判据的表驱动守卫**(W3 交付 2;W3-b 改甲「浏览器式」后重写)。
+ * **落点判据的表驱动守卫**(W3 交付 2;W6-b 按设计
+ * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §5 那张表重写)。
  *
  * 这只文件里一个 DOM、一个 store、一个 React 都没有 —— 判据本来就该这样测:
- * 「指针在这儿、屏幕上有这几块矩形,松手会发生什么」是一句纯粹的算术。
+ * 「指针在这儿、屏幕上有这几块矩形、拖的这一格装了几份,松手会发生什么」是一句
+ * 纯粹的算术。
  *
- * W3-b 换掉的是**哪一边是「其余」**:W3 时中心区内缩 25%、其余全是分屏;甲把它
- * 倒过来 —— 整个叶身都是并入,只有贴边那 `DROP_EDGE_PX` 16 是分屏。边界四条
- * (线上归谁、叶重叠取最上、窗口边带优先、拒绝那一档)照旧,外加两条新的:
- * **标签条优先于一切**、**插到第几格**。
+ * W6-b 换掉的是**表本身**:W3-b 的「叶身并入 + 贴边 16px 分屏」整段退役
+ * (单叶政策),换成 §5 那九行 —— 拒绝区 / 标签正中 / 标签之间 / 窗口边带 /
+ * 内容区右带 / 左带 / 中间 / 自己 / 窗外。每一行在这里各有一条,外加四条边界:
+ * **次序即语义**(先命中先赢)、**叶重叠取最上**、**两格的不能再并**、
+ * **浮窗不接住自己**。
  */
 
 /** 一块 1000×800 的窗口,中间摆一片 900×700 的叶(四周各留 50 —— 出了边带)。 */
 const WINDOW = { left: 0, top: 0, width: 1000, height: 800 }
 const LEAF = { left: 50, top: 50, width: 900, height: 700 }
 
-const geometry: DropGeometry = {
-  window: WINDOW,
-  leaves: [{ region: 'center', leafId: 'leaf-a', rect: LEAF }],
-}
-
-/** 叶的中心那一点。 */
-const center = { x: LEAF.left + LEAF.width / 2, y: LEAF.top + LEAF.height / 2 }
-
-/** 一条标签条:贴在叶的顶上,三格各 120 宽。 */
+/** 一条标签条:贴在叶的顶上,三格各 120 宽,第 1 格是活动的。 */
 const STRIP: StripBox = {
+  region: 'center',
   leafId: 'leaf-a',
   rect: { left: LEAF.left, top: LEAF.top, width: LEAF.width, height: 34 },
   tabs: [
-    { left: 50, top: 50, width: 120, height: 34 },
-    { left: 170, top: 50, width: 120, height: 34 },
-    { left: 290, top: 50, width: 120, height: 34 },
+    { left: 50, top: 50, width: 120, height: 34, id: 'a', slots: 1 },
+    { left: 170, top: 50, width: 120, height: 34, id: 'b', slots: 1 },
+    { left: 290, top: 50, width: 120, height: 34, id: 'c', slots: 1 },
   ],
+  activeAt: 1,
 }
 
-describe('zoneAt —— 叶身是并入,只有贴边 16px 分屏(W3-b 裁定 6)', () => {
-  it('叶身随便哪儿都是并入', () => {
-    expect(zoneAt(center, LEAF)).toBe('center')
-    // W3 时这一点(离左缘 1/5 宽)是「西带」,今天是叶身。
-    expect(zoneAt({ x: LEAF.left + LEAF.width * 0.2, y: center.y }, LEAF)).toBe('center')
+const geometry: DropGeometry = {
+  window: WINDOW,
+  leaves: [{ region: 'center', leafId: 'leaf-a', rect: LEAF }],
+  strips: [STRIP],
+}
+
+/** 叶的中心那一点(条只有 34 高,中心离它远得很)。 */
+const center = { x: LEAF.left + LEAF.width / 2, y: LEAF.top + LEAF.height / 2 }
+/** 拖的是一格普通内容,不是这条条上的任何一格。 */
+const OUTSIDER: DropRules = { dragged: { id: 'x', slots: 1 } }
+
+/** 一格 tab 的正中那一点(第 i 格)。 */
+const middleOf = (i: number) => ({
+  x: STRIP.tabs[i].left + STRIP.tabs[i].width / 2,
+  y: STRIP.rect.top + STRIP.rect.height / 2,
+})
+
+describe('①拒绝区 —— 先命中先赢,而且赢得最硬', () => {
+  const withNodrop: DropGeometry = {
+    ...geometry,
+    nodrop: [{ left: 0, top: 0, width: 80, height: 80 }],
+  }
+
+  it('红绿灯那一块压在标签条的带里,判的仍是拒绝', () => {
+    // 这一点同时落在 nodrop 与条的带内 —— 次序决定它归谁。
+    const target = dropTargetAt({ x: 60, y: 60 }, withNodrop, OUTSIDER)
+    expect(target.kind).toBe('refuse')
+    expect(target.kind === 'refuse' && target.reasonKey).toBe('drag.refuseHere')
   })
 
-  /*
-   * **判据得有一头是闭的**,否则 16px 那条线上的那一像素谁都不认领。
-   * 这一条钉的就是那句裁定:线上算叶身。
-   */
-  it('指针正好压在 16px 那条线上 = 叶身(闭区间)', () => {
-    expect(zoneAt({ x: LEAF.left + DROP_EDGE_PX, y: center.y }, LEAF)).toBe('center')
-    // 往外挪一个像素就进带了 —— 边界不是「附近」,是一条线。
-    expect(zoneAt({ x: LEAF.left + DROP_EDGE_PX - 1, y: center.y }, LEAF)).toBe('w')
-  })
-
-  it('四条边带各在各的一侧', () => {
-    expect(zoneAt({ x: LEAF.left + 5, y: center.y }, LEAF)).toBe('w')
-    expect(zoneAt({ x: LEAF.left + LEAF.width - 5, y: center.y }, LEAF)).toBe('e')
-    expect(zoneAt({ x: center.x, y: LEAF.top + 5 }, LEAF)).toBe('n')
-    expect(zoneAt({ x: center.x, y: LEAF.top + LEAF.height - 5 }, LEAF)).toBe('s')
-  })
-
-  /* 角上平手时优先左右 —— 与 `snapSideAt` 那条判例同向(竖着切是主力形态)。 */
-  it('角落平手优先左右', () => {
-    expect(zoneAt({ x: LEAF.left, y: LEAF.top }, LEAF)).toBe('w')
+  it('拒绝区之外照旧', () => {
+    expect(dropTargetAt({ x: 200, y: 60 }, withNodrop, OUTSIDER).kind).not.toBe('refuse')
   })
 })
 
-describe('dropTargetAt —— 五问按序', () => {
-  it('落在叶身 = 并入这片叶', () => {
-    expect(dropTargetAt(center, geometry)).toEqual({
-      kind: 'leaf',
-      region: 'center',
-      leafId: 'leaf-a',
-      zone: 'center',
-    })
+describe('②标签正中 44% = 与它二合一', () => {
+  it('落在某一格的正中 = pairTab,带着那一格的下标', () => {
+    const target = dropTargetAt(middleOf(2), geometry, OUTSIDER)
+    expect(target).toEqual({ kind: 'pairTab', region: 'center', leafId: 'leaf-a', at: 2 })
   })
 
-  it('落在叶东带 = 往那一侧切一刀', () => {
-    const target = dropTargetAt({ x: LEAF.left + LEAF.width - 5, y: center.y }, geometry)
-    expect(target).toMatchObject({ kind: 'leaf', zone: 'e' })
-    expect(ZONE_SPLIT.e).toEqual({ dir: 'row', before: false })
+  it('落在两侧 28% = 落到它旁边,不是并进它', () => {
+    // 第 2 格左缘 +10px:在它的左侧 28% 里。
+    const target = dropTargetAt({ x: 180, y: 60 }, geometry, OUTSIDER)
+    expect(target.kind).toBe('strip')
   })
 
-  /*
-   * **窗口边带优先于叶的四带**(文件头那条「次序即语义」)。这里让叶一直铺到
-   * 窗口右缘,于是右缘那 24px 同时落在两者里 —— 答案必须是边带。
-   */
-  it('窗口边带优先于叶四带', () => {
-    const flush: DropGeometry = {
-      window: WINDOW,
-      leaves: [{ region: 'center', leafId: 'leaf-a', rect: { left: 0, top: 0, width: 1000, height: 800 } }],
-    }
-    expect(dropTargetAt({ x: 995, y: 400 }, flush)).toEqual({ kind: 'edge', side: 'right' })
+  it('**被拖的自己除外**:拖到自己头上是换序,不是并', () => {
+    const target = dropTargetAt(middleOf(1), geometry, { dragged: { id: 'b', slots: 1 } })
+    expect(target.kind).toBe('strip')
   })
 
-  it('叶重叠时取最上(= 交进来的最后一片)', () => {
-    const stacked: DropGeometry = {
-      window: WINDOW,
-      leaves: [
-        { region: 'center', leafId: 'below', rect: LEAF },
-        { region: 'float:win-1', leafId: 'above', rect: { left: 300, top: 300, width: 200, height: 200 } },
-      ],
-    }
-    expect(dropTargetAt({ x: 400, y: 400 }, stacked)).toMatchObject({
-      kind: 'leaf',
-      leafId: 'above',
-      region: 'float:win-1',
-    })
+  it('**两格的标签不能再并**:说得出理由,不是静默改判', () => {
+    const target = dropTargetAt(middleOf(2), geometry, { dragged: { id: 'x', slots: 2 } })
+    expect(target).toEqual({ kind: 'refuse', reasonKey: 'drag.refusePairNest' })
   })
 
-  it('什么都没碰到 = 撕成浮窗', () => {
-    const empty: DropGeometry = { window: WINDOW, leaves: [] }
-    expect(dropTargetAt({ x: 500, y: 400 }, empty)).toEqual({ kind: 'float' })
-  })
-
-  /* 会话行走的正是这一档:落中央收、别处一律一句 key(裁定 7)。 */
-  it('accepts 说不收 = 结构化拒绝,带得出理由', () => {
-    const rules = {
-      accepts: (t: DropTarget) =>
-        t.kind === 'leaf' && t.region === 'center' ? null : ('drag.regionRefused' as const),
-    }
-    expect(dropTargetAt(center, geometry, rules)).toMatchObject({ kind: 'leaf' })
-    const outside: DropGeometry = { window: WINDOW, leaves: [] }
-    expect(dropTargetAt({ x: 500, y: 400 }, outside, rules)).toEqual({
-      kind: 'refuse',
-      reasonKey: 'drag.regionRefused',
-    })
-  })
-
-  /* `split: false` = 整片叶都是叶身(会话切一刀出来放什么都没有)。 */
-  it('split: false 时四带不开', () => {
-    const east = { x: LEAF.left + LEAF.width - 5, y: center.y }
-    expect(dropTargetAt(east, geometry, { split: false })).toMatchObject({ zone: 'center' })
+  it('tabMiddleAt:正中的边界两头都算,两侧不算', () => {
+    const side = (1 - 0.44) / 2
+    const tab = STRIP.tabs[0]
+    expect(tabMiddleAt(tab.left + tab.width * side, STRIP)).toBe(0)
+    expect(tabMiddleAt(tab.left + tab.width * (1 - side), STRIP)).toBe(0)
+    expect(tabMiddleAt(tab.left + tab.width * side - 1, STRIP)).toBe(-1)
   })
 })
 
-describe('标签条(W3-b 裁定 6)', () => {
-  const withStrip: DropGeometry = { ...geometry, strips: [STRIP] }
-
-  it('落在条上 = 插到某一格,而不是并入那片叶', () => {
-    // 第一格与第二格之间(x = 170 恰是第二格左缘,第一格中线 110 已越过)。
-    expect(dropTargetAt({ x: 175, y: 60 }, withStrip)).toEqual({
-      kind: 'strip',
-      leafId: 'leaf-a',
-      at: 1,
-    })
+describe('③标签之间 = 插到第几格', () => {
+  it('条优先于叶 —— 条压在叶身里,先问叶的话它永远吸不到东西', () => {
+    const target = dropTargetAt({ x: 600, y: 60 }, geometry, OUTSIDER)
+    expect(target).toEqual({ kind: 'strip', leafId: 'leaf-a', at: 3 })
   })
 
-  /*
-   * **条优先于一切**:条压在叶的北带(16px)里,也压在叶身里。反过来判的话条
-   * 永远吸不到东西 —— 那正是「换序做不到」的第二种写法。
-   */
-  it('条优先于叶的北带与叶身', () => {
-    expect(dropTargetAt({ x: 175, y: LEAF.top + 2 }, withStrip)).toMatchObject({ kind: 'strip' })
-    expect(dropTargetAt({ x: 175, y: LEAF.top + 30 }, withStrip)).toMatchObject({ kind: 'strip' })
+  it('带上下各外扩 24(与条内换序同一个口径)', () => {
+    expect(dropTargetAt({ x: 600, y: STRIP.rect.top - 20 }, geometry, OUTSIDER).kind).toBe('strip')
+    expect(dropTargetAt({ x: 600, y: STRIP.rect.top - 30 }, geometry, OUTSIDER).kind).not.toBe('strip')
   })
 
-  /* 带 = 条的上下各外扩 24(`TEAR_OFF_DISTANCE`,与条内换序同一个口径)。 */
-  it('带的上下各外扩 24,出了就归叶', () => {
-    expect(dropTargetAt({ x: 175, y: LEAF.top + 34 + 20 }, withStrip)).toMatchObject({ kind: 'strip' })
-    expect(dropTargetAt({ x: 175, y: LEAF.top + 34 + 30 }, withStrip)).toMatchObject({ kind: 'leaf' })
-  })
-
-  it('横向不外扩:条右边之外归叶', () => {
-    expect(dropTargetAt({ x: LEAF.left + LEAF.width + 5, y: 60 }, withStrip)).not.toMatchObject({
-      kind: 'strip',
-    })
-  })
-
-  /** 下标 = 指针越过了几条 tab 的中线。末格右边那一大片空白 = 排到最后。 */
   it('stripIndexAt:越过几条中线就是第几格', () => {
     expect(stripIndexAt(60, STRIP)).toBe(0)
     expect(stripIndexAt(109, STRIP)).toBe(0)
     expect(stripIndexAt(111, STRIP)).toBe(1)
     expect(stripIndexAt(800, STRIP)).toBe(3)
   })
+})
 
-  it('条不画高亮 —— 预示是条自己腾出来的那格空位', () => {
-    expect(targetRectOf({ kind: 'strip', leafId: 'leaf-a', at: 1 }, withStrip)).toBeNull()
+describe('④窗口边带优先于叶', () => {
+  it('贴着窗口左缘 = 钉到左架子,不是落进那片叶', () => {
+    expect(dropTargetAt({ x: 6, y: 400 }, geometry, OUTSIDER)).toEqual({ kind: 'edge', side: 'left' })
   })
 
-  it('没交 strips 进来 = 这次拖拽不认条(与 W3 逐字相同)', () => {
-    expect(dropTargetAt({ x: 175, y: 60 }, geometry)).toMatchObject({ kind: 'leaf' })
+  it('离边 24 以外就轮到叶了', () => {
+    expect(dropTargetAt({ x: 60, y: 400 }, geometry, OUTSIDER).kind).toBe('pair')
   })
 })
 
-describe('高亮画的就是判据用的那块矩形(W3-b 裁定 7:环与杠)', () => {
-  it('叶身 = 整片叶(ring 在它里面描一圈)', () => {
-    expect(zoneRectOf(LEAF, 'center')).toEqual(LEAF)
+describe('⑤⑥⑦内容区三档', () => {
+  it('右带 28% = 与活动标签并排,放右', () => {
+    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
+    expect(dropTargetAt({ x, y: center.y }, geometry, OUTSIDER)).toEqual({
+      kind: 'pair',
+      region: 'center',
+      leafId: 'leaf-a',
+      side: 'right',
+    })
   })
 
-  it('四带 = 贴那条边的一根 4px 杠,**永远在叶里**', () => {
-    expect(zoneRectOf(LEAF, 'w')).toEqual({ left: 50, top: 50, width: DROP_BAR_PX, height: 700 })
-    expect(zoneRectOf(LEAF, 'e')).toEqual({ left: 946, top: 50, width: DROP_BAR_PX, height: 700 })
-    expect(zoneRectOf(LEAF, 'n')).toEqual({ left: 50, top: 50, width: 900, height: DROP_BAR_PX })
-    expect(zoneRectOf(LEAF, 's')).toEqual({ left: 50, top: 746, width: 900, height: DROP_BAR_PX })
-    for (const zone of ['w', 'e', 'n', 's'] as const) {
-      const bar = zoneRectOf(LEAF, zone)
-      expect(bar.left).toBeGreaterThanOrEqual(LEAF.left)
-      expect(bar.top).toBeGreaterThanOrEqual(LEAF.top)
-      expect(bar.left + bar.width).toBeLessThanOrEqual(LEAF.left + LEAF.width)
-      expect(bar.top + bar.height).toBeLessThanOrEqual(LEAF.top + LEAF.height)
+  it('左带 28% = 放左', () => {
+    const x = LEAF.left + LEAF.width * (PAIR_BAND / 2)
+    expect(dropTargetAt({ x, y: center.y }, geometry, OUTSIDER)).toEqual({
+      kind: 'pair',
+      region: 'center',
+      leafId: 'leaf-a',
+      side: 'left',
+    })
+  })
+
+  it('**左带仅 host 单格**:活动那一格已经是两格时,左带退成「开新标签」', () => {
+    const paired: DropGeometry = {
+      ...geometry,
+      strips: [{ ...STRIP, tabs: [...STRIP.tabs.slice(0, 1), { ...STRIP.tabs[1], slots: 2 }, STRIP.tabs[2]] }],
     }
+    const x = LEAF.left + LEAF.width * (PAIR_BAND / 2)
+    expect(dropTargetAt({ x, y: center.y }, paired, OUTSIDER)).toEqual({
+      kind: 'open',
+      region: 'center',
+      leafId: 'leaf-a',
+    })
+    // 右带照旧收(它是「替换右格」)。
+    const rx = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
+    expect(dropTargetAt({ x: rx, y: center.y }, paired, OUTSIDER).kind).toBe('pair')
   })
 
-  it('边带贴着窗口那一侧', () => {
-    expect(edgeRectOf(WINDOW, 'right', 24)).toEqual({ left: 976, top: 0, width: 24, height: 800 })
+  it('中间 = 末尾开一格新标签', () => {
+    expect(dropTargetAt(center, geometry, OUTSIDER)).toEqual({
+      kind: 'open',
+      region: 'center',
+      leafId: 'leaf-a',
+    })
   })
 
-  /*
-   * **同一块矩形**:`targetRectOf` 交出来的必须与判据自己算的一样 —— 这是
-   * 「高亮说的和松手做的是一件事」那句话的机器化。
-   */
-  it('targetRectOf 与判据同源', () => {
-    const target = dropTargetAt({ x: LEAF.left + LEAF.width - 5, y: center.y }, geometry)
-    expect(targetRectOf(target, geometry)).toEqual(zoneRectOf(LEAF, 'e'))
+  it('两格的标签落到左右带 = 拒绝,**落到中间照旧收**', () => {
+    const pair: DropRules = { dragged: { id: 'x', slots: 2 } }
+    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
+    expect(dropTargetAt({ x, y: center.y }, geometry, pair)).toEqual({
+      kind: 'refuse',
+      reasonKey: 'drag.refusePairNest',
+    })
+    expect(dropTargetAt(center, geometry, pair).kind).toBe('open')
   })
 
-  it('撕浮窗答不出矩形(那块由宿主问形态机)', () => {
+  it('没有条 = 没有 host = 只剩「开成新标签」', () => {
+    const bare: DropGeometry = { window: WINDOW, leaves: geometry.leaves }
+    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
+    expect(dropTargetAt({ x, y: center.y }, bare, OUTSIDER).kind).toBe('open')
+  })
+})
+
+describe('⑧自己的内容区 = 放回', () => {
+  it('拖的就是这片叶的活动标签 —— 整片叶都是 back,左右带也不例外', () => {
+    const self: DropRules = { dragged: { id: 'b', slots: 1 } }
+    expect(dropTargetAt(center, geometry, self)).toEqual({ kind: 'back' })
+    const x = LEAF.left + LEAF.width * (1 - PAIR_BAND / 2)
+    expect(dropTargetAt({ x, y: center.y }, geometry, self)).toEqual({ kind: 'back' })
+  })
+})
+
+describe('⑨窗外 / 什么都没碰到 = 撕成浮窗', () => {
+  it('出了窗', () => {
+    expect(dropTargetAt({ x: 500, y: 900 }, geometry, OUTSIDER)).toEqual({ kind: 'float' })
+  })
+})
+
+describe('边界:叶重叠取最上、浮窗不接住自己', () => {
+  const FLOAT = { left: 300, top: 300, width: 300, height: 200 }
+  const stacked: DropGeometry = {
+    ...geometry,
+    leaves: [
+      { region: 'center', leafId: 'leaf-a', rect: LEAF },
+      { region: 'float:w1', leafId: 'leaf-f', rect: FLOAT },
+    ],
+  }
+  const at = { x: 450, y: 400 }
+
+  it('浮窗盖在中央叶上,落进的是浮窗', () => {
+    const target = dropTargetAt(at, stacked, OUTSIDER)
+    expect(target.kind === 'open' && target.leafId).toBe('leaf-f')
+  })
+
+  it('**从那扇浮窗里拖出来时它不接住自己**,按窗底下那片叶判(设计 §8)', () => {
+    const target = dropTargetAt(at, stacked, { ...OUTSIDER, excludeLeaves: ['leaf-f'] })
+    expect(target.kind === 'open' && target.leafId).toBe('leaf-a')
+  })
+
+  it('挡住的只有叶,**它的条照旧收**(不然自己那扇窗上换序也没了)', () => {
+    const withStrip: DropGeometry = {
+      ...stacked,
+      strips: [
+        STRIP,
+        { region: 'float:w1', leafId: 'leaf-f', rect: { ...FLOAT, height: 34 }, tabs: [], activeAt: -1 },
+      ],
+    }
+    const onStrip = { x: 450, y: FLOAT.top + 10 }
+    const target = dropTargetAt(onStrip, withStrip, { ...OUTSIDER, excludeLeaves: ['leaf-f'] })
+    expect(target).toEqual({ kind: 'strip', leafId: 'leaf-f', at: 0 })
+  })
+})
+
+describe('rules.accepts —— 来源自述的复核,它说了算', () => {
+  it('被拒的落点换成 refuse,理由是它给的那一句', () => {
+    const target = dropTargetAt(center, geometry, {
+      ...OUTSIDER,
+      accepts: () => 'drag.regionRefused',
+    })
+    expect(target).toEqual({ kind: 'refuse', reasonKey: 'drag.regionRefused' })
+  })
+
+  it('已经是 refuse 的不再问一遍', () => {
+    let asked = 0
+    dropTargetAt({ x: 60, y: 60 }, { ...geometry, nodrop: [{ left: 0, top: 0, width: 80, height: 80 }] }, {
+      ...OUTSIDER,
+      accepts: () => {
+        asked += 1
+        return null
+      },
+    })
+    expect(asked).toBe(0)
+  })
+})
+
+describe('高亮矩形:与判据同源', () => {
+  it('open = 整片叶(ring 在它里面描一圈)', () => {
+    const target: DropTarget = { kind: 'open', region: 'center', leafId: 'leaf-a' }
+    expect(targetRectOf(target, geometry)).toEqual(LEAF)
+  })
+
+  it('pair = 落下后占的那一半', () => {
+    const right: DropTarget = { kind: 'pair', region: 'center', leafId: 'leaf-a', side: 'right' }
+    expect(targetRectOf(right, geometry)).toEqual(pairRectOf(LEAF, 'right'))
+    expect(pairRectOf(LEAF, 'right')).toEqual({ left: 500, top: 50, width: 450, height: 700 })
+    expect(pairRectOf(LEAF, 'left')).toEqual({ left: 50, top: 50, width: 450, height: 700 })
+  })
+
+  it('条上那三档故意不答矩形(预示是条自己腾出来的空位 / 那一格上的圈)', () => {
+    expect(targetRectOf({ kind: 'strip', leafId: 'leaf-a', at: 1 }, geometry)).toBeNull()
+    expect(
+      targetRectOf({ kind: 'pairTab', region: 'center', leafId: 'leaf-a', at: 1 }, geometry),
+    ).toBeNull()
+    expect(targetRectOf({ kind: 'back' }, geometry)).toBeNull()
     expect(targetRectOf({ kind: 'float' }, geometry)).toBeNull()
+  })
+
+  it('edge = 贴那条边的一条 24 宽的带', () => {
+    expect(targetRectOf({ kind: 'edge', side: 'left' }, geometry)).toEqual(
+      edgeRectOf(WINDOW, 'left'),
+    )
+    expect(edgeRectOf(WINDOW, 'right')).toEqual({ left: 976, top: 0, width: 24, height: 800 })
+  })
+})
+
+describe('氛围:能放的地方有哪几块(§5 贯穿规则 1)', () => {
+  it('叶 + 条 + 四条边带', () => {
+    const rects = ambientRectsOf(geometry)
+    expect(rects).toContainEqual(LEAF)
+    expect(rects).toContainEqual(STRIP.rect)
+    expect(rects).toContainEqual(edgeRectOf(WINDOW, 'left'))
+    expect(rects).toHaveLength(1 + 1 + 4)
+  })
+
+  it('挡掉的叶不进这张表 —— 说「这里能放」而落不进去比不说更糟', () => {
+    const rects = ambientRectsOf(geometry, { excludeLeaves: ['leaf-a'] })
+    expect(rects).not.toContainEqual(LEAF)
   })
 })

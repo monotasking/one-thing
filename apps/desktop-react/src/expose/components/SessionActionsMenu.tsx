@@ -57,7 +57,7 @@ export function SessionActionsMenu({
       <MenuItem
         onClick={() => {
           onClose()
-          openBesideFocusLeaf(sessionId, 'e')
+          openBesideFocusLeaf(sessionId, 'right')
         }}
       >
         {t('files.menuOpenRight')}
@@ -65,7 +65,7 @@ export function SessionActionsMenu({
       <MenuItem
         onClick={() => {
           onClose()
-          openBesideFocusLeaf(sessionId, 's')
+          openBesideFocusLeaf(sessionId, 'below')
         }}
       >
         {t('files.menuOpenBelow')}
@@ -75,13 +75,25 @@ export function SessionActionsMenu({
 }
 
 /**
- * 「在右侧 / 在下方打开」= 一次**落在焦点叶那一带上**的落定。
+ * 「在右侧 / 在下方打开」= 一次**落在焦点会话叶上**的落定。
  *
- * 走 `dropRef` 而不是 `splitLeaf` + `openRef`:落点的语义(切哪一刀、新叶放哪
- * 一侧、落完点亮它、焦点跟过去)整件住在那一只事务动作里,拖拽与菜单读同一份。
+ * 走 `dropRef` 而不是自己拼动作:落点的语义(并成两格 / 开成新标签、落完点亮它、
+ * 焦点跟过去)整件住在那一只事务动作里,拖拽与菜单读同一份。
  * 焦点叶不在(树还没播种)时什么都不做 —— 那一刻没有「旁边」可言。
+ *
+ * ── W6-b:两项各自换了落点,**行为一项不变一项变好** ──────────────────────
+ * 单叶政策(设计 v3 §2)之后中央区不再切第二片叶,所以从前那两句
+ * `{kind:'leaf', zone:'e'|'s'}` 已经没有对象:W6-a 的止血把它们都退成了
+ * 「开成一格新标签」。现在:
+ *  · **在右侧** → `pair right` —— 「开在右边」在两格模型里的字面意思就是
+ *    「与你正在看的那个并排,放右边」(设计 v3 §5 的内容区右带,同一只
+ *    `store.pairRefs`,菜单与拖拽共用);
+ *  · **在下方** → `open` —— 竖着并排这件事**不存在**(§12「三格及以上并排不做」,
+ *    两格只有左右)。所以它保持 W6-a 之后的实际行为(末尾开一格新标签),
+ *    一个像素都不变。**这一项在新模型里名不副实,删不删是用户的拍点**,
+ *    本批不擅自动它(判例:行为裁定须先问)。留账写在交卷报里。
  */
-function openBesideFocusLeaf(sessionId: string, zone: 'e' | 's'): void {
+function openBesideFocusLeaf(sessionId: string, side: 'right' | 'below'): void {
   /*
    * 落点是**焦点会话叶**,不是「此刻的焦点叶」——「开在右边」的意思是开在
    * **会话**旁边,而焦点此刻很可能正在会话总览那块面上(用户就是在那儿右键的)。
@@ -89,10 +101,11 @@ function openBesideFocusLeaf(sessionId: string, zone: 'e' | 's'): void {
    */
   const seat = focusSessionSeat()
   if (!seat) return
-  dropRef(sessionRefOf(sessionId), {
-    kind: 'leaf',
-    region: seat.region as RegionId,
-    leafId: seat.leafId,
-    zone,
-  })
+  const ref = sessionRefOf(sessionId)
+  const region = seat.region as RegionId
+  if (side === 'right') {
+    dropRef(ref, { kind: 'pair', region, leafId: seat.leafId, side: 'right' })
+    return
+  }
+  dropRef(ref, { kind: 'open', region, leafId: seat.leafId })
 }

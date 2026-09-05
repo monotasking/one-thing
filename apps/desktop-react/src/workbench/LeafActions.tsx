@@ -16,7 +16,7 @@ import { IconButton } from '../ui/IconButton'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
-import { dropRef, reorderTab } from './drop-commit'
+import { dropRef, pairIntoIndex, reorderTab } from './drop-commit'
 import { contentKindOf, partsOfContent, refId } from './kinds'
 import {
   hiddenInRegion,
@@ -24,7 +24,6 @@ import {
   SINGLE_LEAF_REGIONS,
   useWorkbenchStore,
 } from './store'
-import type { ContentRef } from './kinds'
 import type { MessageKey } from '../i18n'
 import type { ShelfSide } from '../stage/types'
 import type { PaneLeafNode } from './tree'
@@ -85,7 +84,6 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   const [hiddenAt, setHiddenAt] = useState<{ x: number; y: number } | null>(null)
   const [splitAt, setSplitAt] = useState<{ x: number; y: number } | null>(null)
 
-  const pairRefs = useWorkbenchStore((st) => st.pairRefs)
   const unpairAt = useWorkbenchStore((st) => st.unpairAt)
   const active = leaf.tabs[leaf.active] ?? null
   // 型工具条走**种类自述**那条唯一的口 —— 动作组不认识「markdown 有个渲染⇄源码开关」。
@@ -217,8 +215,9 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             disabled={!canPairRight}
             onClick={() => {
               if (!canPairRight || !active) return
-              pairRefs(leaf.id, leaf.active, leaf.tabs[leaf.active + 1], 'right')
-              announce(t('workbench.pairedWith', { name: nameOf(leaf.tabs[leaf.active + 1]) }))
+              /* **同一只落定动作**(W6-b):拖拽落定 /「放到标签上」松手 / 这一项走的都是它,
+               * 播报那一句也在它里面 —— 三处各写一遍,迟早说岔。 */
+              pairIntoIndex(leaf.tabs[leaf.active + 1], leaf.id, leaf.active, 'right')
               setSplitAt(null)
             }}
           >
@@ -231,8 +230,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             disabled={!canPairLeft}
             onClick={() => {
               if (!canPairLeft || !active) return
-              pairRefs(leaf.id, leaf.active, leaf.tabs[leaf.active - 1], 'left')
-              announce(t('workbench.pairedWith', { name: nameOf(leaf.tabs[leaf.active - 1]) }))
+              pairIntoIndex(leaf.tabs[leaf.active - 1], leaf.id, leaf.active, 'left')
               setSplitAt(null)
             }}
           >
@@ -337,14 +335,9 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   )
 }
 
-/**
- * 播报里那句「与谁并排」用的名字。**问种类自述**(`kind.title`),不点种类名 ——
- * 与叶檐画标题读的是同一句话(静态那一半;活的那一半是檐的事,播报不必等它)。
- */
-function nameOf(ref: ContentRef | undefined): string {
-  if (!ref) return ''
-  return contentKindOf(ref.kind)?.title(ref).text ?? ref.key
-}
+/* W6-b:`nameOf` 退役 —— 「与谁并排」那句话随播报一起搬进了
+ * `drop-commit.pairIntoIndex`(拖拽 /「放到标签上」/ 菜单三条路的唯一产地),
+ * 而它在那儿读的是**活的**标题(`live-title` 盖静的),比这里更准。 */
 
 /**
  * 「移到架子」四边。**一张表**,与 `SPLIT_CHOICES` 同一条纪律 —— 四条边不是

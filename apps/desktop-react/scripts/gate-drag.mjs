@@ -1,39 +1,39 @@
 #!/usr/bin/env node
 /**
- * **拖拽的真机门**(W3,设计 `apps/desktop-react/docs/workbench-2026-09.md` §3;
- * 派工令交付 5 的七条 + 零重挂)。
+ * **拖拽手感的真机门**(W6-b,设计 `apps/desktop-react/docs/workbench-tabs-2026-09.md`
+ * §4 §5 §11;W3 那七条 + W3-b 那十一条整套重写)。
  *
  * ── 它为什么必须是真机门 ────────────────────────────────────────────────
  * 这一批交付的东西**全部**是「指针走到哪儿 → 屏幕上哪一块矩形亮起来 → 松手之后
  * 树变成什么样」。前两件在 jsdom 里根本不存在(它不排版,`getBoundingClientRect`
- * 一律答零),所以判据可以脱开浏览器测(`workbench/__tests__/drop.test.ts` 15 条),
+ * 一律答零),所以判据可以脱开浏览器测(`workbench/__tests__/drop.test.ts` 31 条),
  * **而链路不行**。08-30 那条判例的原话:交互时序类改动必须真机对照,jsdom 的绿
  * 不算数。
  *
- * ── 场景(W3 七条 + W3-b 改甲之后重写)────────────────────────────────────
- *  1. 文件行 → 叶身:并入、成活动 tab、**行仍在树里**;并入**画一圈环不铺色块、
- *     不写字**(W3-b 裁定 7)
- *  2. 文件行 → 叶的分屏边带(**贴边 `DROP_EDGE_PX` 16 之内**):分屏、比例 50、
- *     原叶 tab 一格不少;预示是**一根 4px 的杠**
- *  3. tab → 窗口右边带:进右架子,架子是展开的
- *  4. tab → 空处:撕成浮窗,矩形 = `floatRectForGrab`(指针 = 标题栏中心)
- *  5. 会话行 → 右架子:**真落**(W5-b 裁定 8 解禁 —— 会话那一种不再自述
- *     `regions`,于是它开到哪个区域都行)。W3 时这一条是「结构化拒绝」,
- *     判词写在那一版的 §3.1 第二行「T4 之前:落到中央 = 切换当前会话;
- *     落到别处 = 结构化拒绝」;会话多开落地即撤。
- *     **编号一格没重排**:W5-b 顶掉的是第 5 条的**内容**,不是往表里加一条 ——
- *     11 条还是 11 条,`场景 N` 与真机日志里的序号从此不必对照两份表读
- *  6. 拖到一半 Esc:树前后相同、浮影消失、行仍在、**折起来那一格展回来**
- *  7. 零重挂:同区域内并 tab / 分屏,来源行节点与目标叶 `[data-pane-body]` 的
- *     内容根节点**前后是同一个 DOM 对象**
- *     (跨区域搬家必然换 React 宿主,那一条只写「内容逐字相同」——
- *      W4 留账 3,与 gate:files 五档断言同口径)
- *  8. **条内换序**(W3-b 裁定 4):在顶栏那条条里把第一格拖到末尾 —— 次序真的变了、
- *     拖的**就是那一格**(同一个 DOM 节点,而且拖拽中它带着 `data-lift`)、
- *     让位的 `transform` 落定后**清零**、**浮影一个节点都不画**
- *  9. **6px 的移动 = 点击,不起拖**(阈值 4 → 8):浮影不出现,树不变
- * 10. **撕下 → 另一条条腾出空位 → 落到那个下标**:折起、空位、落点三件事逐个量
- * 11. **拖到自己那条 = 换序,不是并入**:落点不是 `leaf`,树里那片叶的 tab 数不变
+ * ── 这一版的方法论:**连续不停顿的指针序列**(§10 W6-b 的原话)────────────
+ * 上一版每一条都是「走到落点 → 停下 → 量」。停下之后屏幕是静止的,于是
+ * 「**一直在动就没反应**」这一整类病(跟手掉帧、槽位漂、空位每帧重建、hover 底
+ * 在指针经过邻居时闪一下)一条都抓不到 —— 而那正是用户报的那句「拖拽没有浏览器
+ * 的丝滑、流畅和交互感」。
+ *
+ * 所以这一版的量法是 `stroke()`:**一边继续派 `mouseMoved` 一边采样**。
+ * 微动幅度 1px、**只动横向**(竖向一动就可能跨进「放到标签上」那条带,那是另一形),
+ * 采样在两发 move 之间,于是读到的每一格都是「手还在动的那一刻屏幕上真有的东西」。
+ *
+ * ── 七个场景(派工令 §11 那七条)─────────────────────────────────────────
+ *  ① 三种来源(会话行 / 文件行 / 标签)到标签条**每一个位置**:空位或描圈,
+ *     而且浮影下那行字非空
+ *  ② 按下即切换、松手不动无事、横向 6px 才浮起、竖向出带才撕下
+ *  ③ 换序最左 / 最右 / 中间三处:顺序与活动位正确;松手有 150ms 的位移过渡
+ *     (读 `transition` 与非零起始位移);Esc 顺序不变、无残留;
+ *     **全程标签条 / 内容区 / 其它标签三处底色逐字不变**;
+ *     **刚抬起那一帧邻居一个都不动**;**最宽的那一格拖得到末位**;
+ *     **右邻居恰在「被拖右缘 = 它中心」那一刻让位**(中心对中心在这里当场红)
+ *  ④ 「放到标签上」带:横着拖停 1s **不误并**;压到条底缘下 6–24px 才描圈;
+ *     回到条内回到换序;松手并成两格;压在空白上是空动作;两格标签压下去是拒绝态
+ *  ⑤ 从架子拖文件到聊天区中间 = 新标签,右带 = 二合一;浮窗不接住自己
+ *  ⑥ 零重挂:换序 / 二合一 / 拆开 / 换比例四步,内容根节点同一个 DOM
+ *  ⑦ 拒绝态:光标 not-allowed + 一句理由;松手弹回,树一个字不变
  *
  * ── 手势怎么派:CDP `Input.dispatchMouseEvent`,一根手指都不碰用户的机器 ───
  * 09-01 判例(系统级合成输入干扰用户用电脑,用户被迫杀掉全部任务)立的法:
@@ -70,6 +70,26 @@ const mainEntry = path.join(appRoot, 'dist-electron/main.cjs')
 
 const OWNER_UID = 'local-user'
 const OWNER_WID = 'default'
+
+/** 判据这一头的几个数,与产品源码里的常量同源(改一边这道门当场说话)。 */
+const DRAG_START_X = 6
+const SETTLE_MS = 150
+/**
+ * 「放到标签上」那条带:条底缘 + 6(`ONTO_FROM_PX`)到 + 24(`TEAR_OFF_DISTANCE`)。
+ * 门站在带的**正中**(+12)上量:贴着任一沿量的话,一次舍入就能把这一站推到
+ * 邻居那一形去,而那种红是门自己的抖,不是产品的。
+ */
+const ONTO_FROM_PX = 6
+const TEAR_OFF_DISTANCE = 24
+const ONTO_Y_OFFSET = (ONTO_FROM_PX + TEAR_OFF_DISTANCE) / 2
+/**
+ * 「边越过中心」那一条断言两侧各让 3px。
+ *
+ * 舍入预算:CDP 把指针 x 取整,`topStrip` 把每一格矩形也取整,两处加起来天然有
+ * ±1.5px 的松动 —— 2 恰好压在那条线上,3 让开它。而它仍旧咬得死:中心对中心那一版
+ * 的门槛比这一版晚**半格标签宽**(60~80px),3px 的两侧各一站分得清清楚楚。
+ */
+const EDGE_EPS = 3
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -147,52 +167,90 @@ function assert(ok, message, detail) {
 
 /* ── 手势:CDP 鼠标(见文件头)──────────────────────────────────────────── */
 
-/**
- * 一次完整的拖拽。**中间那几发 move 不是装饰**:起拖阈值(`DRAG_START_PX`,W3-b
- * 起是 **8**)要至少一发真的走过 8px 才开始,而落点判据每一帧都在算 —— 一步跳到
- * 终点与真人拖过去在链路上不是一件事(那样只会证明「一发 move 也能落」)。
- */
-async function drag(cdp, from, to, { steps = 8, release = true } = {}) {
-  await cdp.send('Input.dispatchMouseEvent', {
+const press = (cdp, at) =>
+  cdp.send('Input.dispatchMouseEvent', {
     type: 'mousePressed',
-    x: from.x,
-    y: from.y,
+    x: Math.round(at.x),
+    y: Math.round(at.y),
     button: 'left',
     buttons: 1,
     clickCount: 1,
   })
-  for (let i = 1; i <= steps; i += 1) {
-    await cdp.send('Input.dispatchMouseEvent', {
-      type: 'mouseMoved',
-      x: Math.round(from.x + ((to.x - from.x) * i) / steps),
-      y: Math.round(from.y + ((to.y - from.y) * i) / steps),
-      button: 'left',
-      buttons: 1,
-    })
-    await delay(12)
-  }
-  if (!release) return
-  await cdp.send('Input.dispatchMouseEvent', {
+
+const moveTo = (cdp, at) =>
+  cdp.send('Input.dispatchMouseEvent', {
+    type: 'mouseMoved',
+    x: Math.round(at.x),
+    y: Math.round(at.y),
+    button: 'left',
+    buttons: 1,
+  })
+
+const release = (cdp, at) =>
+  cdp.send('Input.dispatchMouseEvent', {
     type: 'mouseReleased',
-    x: to.x,
-    y: to.y,
+    x: Math.round(at.x),
+    y: Math.round(at.y),
     button: 'left',
     buttons: 1,
     clickCount: 1,
   })
-  await delay(220)
+
+/** 松手 + 等一拍让落定跑完(要量收笔那 150ms 的用例**不用**这一只)。 */
+async function releaseAt(cdp, at) {
+  await release(cdp, at)
+  await delay(240)
 }
 
-async function releaseAt(cdp, at) {
-  await cdp.send('Input.dispatchMouseEvent', {
-    type: 'mouseReleased',
-    x: at.x,
-    y: at.y,
-    button: 'left',
-    buttons: 1,
-    clickCount: 1,
-  })
-  await delay(220)
+/**
+ * **一段不停顿的指针路径**(这道门的核心量法,见文件头)。
+ *
+ * 从 `from` 走到 `to`,途中每一步都真的到达 blink;`sample` 给了的话,**在两发
+ * move 之间**跑一次 —— 手还在动,读到的就是「一直在动的时候屏幕上真有的东西」。
+ * 走完之后**不停**:继续以 1px 的幅度**横向**来回微动(竖向一动就可能跨带),
+ * 一边微动一边再采几次,直到 `holdMs` 走完。
+ *
+ * 答的是采样表(按次序)。`release: false` 时手指还按着,由调用方自己收。
+ */
+async function stroke(cdp, from, to, opts = {}) {
+  const { steps = 10, sample, holdMs = 0, release: shouldRelease = false, stepDelay = 12 } = opts
+  const seen = []
+  const take = async () => {
+    if (!sample) return
+    seen.push(await sample())
+  }
+  await press(cdp, from)
+  for (let i = 1; i <= steps; i += 1) {
+    await moveTo(cdp, {
+      x: from.x + ((to.x - from.x) * i) / steps,
+      y: from.y + ((to.y - from.y) * i) / steps,
+    })
+    await delay(stepDelay)
+    if (i >= steps - 1) await take()
+  }
+  // **一直在动**:1px 的来回,采样夹在两发 move 之间。
+  const deadline = Date.now() + holdMs
+  let flip = 0
+  while (Date.now() < deadline) {
+    flip = 1 - flip
+    await moveTo(cdp, { x: to.x + flip, y: to.y })
+    await delay(16)
+    await take()
+  }
+  if (shouldRelease) await releaseAt(cdp, to)
+  return seen
+}
+
+/** 已经按着了,再走一段(同样不停顿)。 */
+async function strokeOn(cdp, from, to, opts = {}) {
+  const { steps = 8, stepDelay = 12 } = opts
+  for (let i = 1; i <= steps; i += 1) {
+    await moveTo(cdp, {
+      x: from.x + ((to.x - from.x) * i) / steps,
+      y: from.y + ((to.y - from.y) * i) / steps,
+    })
+    await delay(stepDelay)
+  }
 }
 
 /**
@@ -239,9 +297,14 @@ function centerOf(page, selector) {
     const el = document.querySelector(css)
     if (!el) return null
     const r = el.getBoundingClientRect()
-    return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2), rect: {
-      left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height),
-    } }
+    return {
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+      rect: {
+        left: Math.round(r.left), top: Math.round(r.top),
+        width: Math.round(r.width), height: Math.round(r.height),
+      },
+    }
   }, selector)
 }
 
@@ -289,68 +352,133 @@ function stampSurvives(page, selector, mark) {
   )
 }
 
-/**
- * 找一条**至少两格**的标签条,答它的叶 id 与那几格的 id。
- *
- * 换序那几个场景问的是「同一条条里的两格」,而顶栏上可能有好几组(分屏之后每片叶
- * 一组)。把 `[data-testid="topbar-tabs"] [role="tab"]` 一把抓下来按次序取前两个,
- * 拿到的很可能是**两条不同条上的两格** —— 那一下走的是跨条落点而不是条内换序,
- * 门会在一个它根本没打算量的形上红。
- */
-function stripWithTwoTabs(page) {
-  return page.evaluate(() => {
-    for (const chrome of Array.from(document.querySelectorAll('[data-pane-chrome]'))) {
-      const list = chrome.querySelector('[role="tablist"]')
-      if (!list) continue
-      const ids = Array.from(list.querySelectorAll('[data-tab-id]')).map((el) =>
-        el.getAttribute('data-tab-id'),
-      )
-      if (ids.length >= 2) return { leafId: chrome.getAttribute('data-pane-chrome'), ids }
-    }
-    return null
-  })
-}
-
-/** 顶栏那条条此刻的 tab 次序(**看得见的那几格**,不含折起来的)。 */
-function topbarOrder(page, leafId) {
-  return page.evaluate(
-    (want) => {
-      const root = want
-        ? document.querySelector(`[data-pane-chrome="${want.replace(/["\\]/g, '\\$&')}"] [role="tablist"]`)
-        : document.querySelector('[data-testid="topbar-tabs"]')
-      return Array.from(root?.querySelectorAll('[role="tab"]') ?? []).map((el) => ({
-        id: el.getAttribute('data-tab-id'),
-        lift: el.hasAttribute('data-lift'),
-        torn: el.hasAttribute('data-torn'),
-        shift: el.style.transform || '',
-      }))
-    },
-    leafId ?? null,
-  )
-}
-
-/** 落区高亮此刻是什么形、里面写没写字。 */
-function overlayShape(page) {
-  return page.evaluate(() => {
-    const el = document.querySelector('[data-testid="drop-overlay"]')
-    if (!el) return null
-    const style = getComputedStyle(el)
-    return {
-      shape: el.getAttribute('data-shape'),
-      tone: el.getAttribute('data-tone'),
-      text: (el.textContent ?? '').trim(),
-      background: style.backgroundColor,
-      width: Math.round(el.getBoundingClientRect().width),
-      boxShadow: style.boxShadow,
-    }
-  })
-}
-
-const isTransparent = (color) =>
-  color === 'transparent' || color === 'rgba(0, 0, 0, 0)' || /,\s*0\)$/.test(color)
-
 /** refId 里有 `:` 与路径分隔符,直接塞进选择器会当场语法错。 */
 const cssEscape = (value) => String(value).replace(/["\\]/g, '\\$&')
+
+/**
+ * **这一帧屏幕上的拖拽反馈是什么**(这道门的主读数)。
+ *
+ * 一次 `evaluate` 把七样一起取回来:提示行的字、空位的宽、描圈在哪一格、
+ * 落区的形与矩形、氛围有几块、根上那格拒绝光标。分七次取的话它们来自七个不同的
+ * 时刻 —— 而这道门量的正是「同一帧里这几样对不对得上」。
+ */
+function feedbackNow(page) {
+  return page.evaluate(() => {
+    const hint = document.querySelector('[data-testid="drag-hint"]')
+    const ph = document.querySelector('[data-tab-placeholder]')
+    const hot = document.querySelector('[data-pair-hot]')
+    const band = document.querySelector('[data-testid="drop-overlay"]')
+    const ghost = document.querySelector('[data-testid="drag-ghost"]')
+    const bandRect = band?.getBoundingClientRect()
+    return {
+      hint: (hint?.textContent ?? '').trim(),
+      ghost: Boolean(ghost),
+      card: Boolean(document.querySelector('[data-testid="drag-ghost-card"]')),
+      refused: ghost?.hasAttribute('data-refuse') ?? false,
+      cursorRefuse: document.documentElement.hasAttribute('data-drag-refuse'),
+      gapWidth: ph ? Math.round(ph.getBoundingClientRect().width) : null,
+      pairHot: hot?.getAttribute('data-tab-id') ?? null,
+      shape: band?.getAttribute('data-shape') ?? null,
+      bandRect: bandRect
+        ? { left: Math.round(bandRect.left), width: Math.round(bandRect.width) }
+        : null,
+      ambient: document.querySelectorAll('[data-testid="drop-ambient"]').length,
+    }
+  })
+}
+
+/** 一条条此刻的次序 + 那几格拖拽属性。 */
+function stripOrder(page, leafId) {
+  return page.evaluate((want) => {
+    const root = document.querySelector(
+      `[data-pane-chrome="${want.replace(/["\\]/g, '\\$&')}"] [role="tablist"]`,
+    )
+    return Array.from(root?.querySelectorAll('[role="tab"]') ?? []).map((el) => ({
+      id: el.getAttribute('data-tab-id'),
+      on: el.getAttribute('aria-selected') === 'true',
+      lift: el.hasAttribute('data-lift'),
+      torn: el.hasAttribute('data-torn'),
+      settle: el.hasAttribute('data-settle'),
+      shift: el.style.transform || '',
+    }))
+  }, leafId)
+}
+
+/**
+ * **同一帧里的「反馈 + 让位」**(场景 ④ 那条「停 1s 不误并」读的就是它)。
+ *
+ * 分两次 `evaluate` 取的话,提示行来自一刻、让位来自另一刻 —— 而这一条断言的
+ * 正是「这两样在同一帧里同时是什么」(仍在换序 ∧ 没有描圈 ∧ 没有提示行)。
+ */
+function stripProbe(page, leafId) {
+  return page.evaluate((want) => {
+    const root = document.querySelector(
+      `[data-pane-chrome="${want.replace(/["\\]/g, '\\$&')}"] [role="tablist"]`,
+    )
+    const hint = document.querySelector('[data-testid="drag-hint"]')
+    const hot = document.querySelector('[data-pair-hot]')
+    return {
+      hint: (hint?.textContent ?? '').trim(),
+      pairHot: hot?.getAttribute('data-tab-id') ?? null,
+      card: Boolean(document.querySelector('[data-testid="drag-ghost-card"]')),
+      cursorRefuse: document.documentElement.hasAttribute('data-drag-refuse'),
+      shifts: Object.fromEntries(
+        Array.from(root?.querySelectorAll('[role="tab"]') ?? []).map((el) => [
+          el.getAttribute('data-tab-id'),
+          el.hasAttribute('data-lift') ? 'LIFTED' : el.style.transform || '',
+        ]),
+      ),
+    }
+  }, leafId)
+}
+
+/**
+ * **三处底色**(§4.5 第 2 条那条断言读的就是它):标签条自己、每一格标签、
+ * 内容区。答的是一串字符串 —— 「逐字不变」这句话只有逐字比较才算数。
+ */
+function palette(page, leafId) {
+  return page.evaluate((want) => {
+    const chrome = document.querySelector(
+      `[data-pane-chrome="${want.replace(/["\\]/g, '\\$&')}"]`,
+    )
+    const list = chrome?.querySelector('[role="tablist"]')
+    const body = document.querySelector('[data-pane-region="center"] [data-pane-body]')
+    return {
+      strip: list ? getComputedStyle(list).backgroundColor : null,
+      body: body ? getComputedStyle(body).backgroundColor : null,
+      tabs: Array.from(list?.querySelectorAll('[role="tab"]') ?? []).map((el) => ({
+        id: el.getAttribute('data-tab-id'),
+        bg: getComputedStyle(el).backgroundColor,
+      })),
+    }
+  }, leafId)
+}
+
+/** 顶栏那条条(中央区那片叶)。这一串场景几乎都在它身上量。 */
+function topStrip(page) {
+  return page.evaluate(() => {
+    const chrome = document.querySelector('[data-testid="topbar-tabs"] [data-pane-chrome]')
+      ?? document.querySelector('[data-pane-chrome]')
+    const list = chrome?.querySelector('[role="tablist"]')
+    if (!chrome || !list) return null
+    return {
+      leafId: chrome.getAttribute('data-pane-chrome'),
+      rect: (() => {
+        const r = list.getBoundingClientRect()
+        return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
+      })(),
+      tabs: Array.from(list.querySelectorAll('[data-tab-id]')).map((el) => {
+        const r = el.getBoundingClientRect()
+        return {
+          id: el.getAttribute('data-tab-id'),
+          left: Math.round(r.left), width: Math.round(r.width),
+          cx: Math.round(r.left + r.width / 2),
+          cy: Math.round(r.top + r.height / 2),
+        }
+      }),
+    }
+  })
+}
 
 async function main() {
   if (!existsSync(serverEntry)) {
@@ -371,9 +499,17 @@ async function main() {
   try {
     console.log('[1/3] 造一棵真目录树 + 一台 core')
     await mkdir(cwd, { recursive: true })
-    await writeFile(path.join(cwd, 'alpha.ts'), "export const alpha = 1\n")
-    await writeFile(path.join(cwd, 'beta.ts'), "export const beta = 2\n")
-    await writeFile(path.join(cwd, 'gamma.ts'), "export const gamma = 3\n")
+    await writeFile(path.join(cwd, 'alpha.ts'), 'export const alpha = 1\n')
+    await writeFile(path.join(cwd, 'beta.ts'), 'export const beta = 2\n')
+    await writeFile(path.join(cwd, 'gamma.ts'), 'export const gamma = 3\n')
+    /*
+     * 第四份**故意不开**:场景 ① 扫条时拖的就是它。
+     * 拖一格**已经开着**的内容时,它自己那一格标签的正中会落进「被拖的自己除外」
+     * 那条判据(设计 §2.3 不变量 3:拖回自己身上不是一次并)—— 门第一版拖的是
+     * alpha.ts 而条上恰好开着 alpha.ts,读数是那一站答 `strip` 而不是 `pairTab`,
+     * **判据是对的,门的预期是错的**。换一格没开着的就没有这个交叉。
+     */
+    await writeFile(path.join(cwd, 'delta.ts'), 'export const delta = 4\n')
 
     server = spawn(process.execPath, [serverEntry], {
       cwd: repoRoot,
@@ -398,7 +534,7 @@ async function main() {
     const sessionId = created?.session?.id
     if (!sessionId) throw new Error(`sessions.create 没给出会话 id:${JSON.stringify(created)}`)
     await rpc(record, 'sessions', 'updateWorkingDirectory', { sessionId, workingDirectory: cwd })
-    // 第二条会话:场景 5 拖的就是它(拖当前那一条落中央等于什么都没换)。
+    // 场景 ① 的第三种来源:另一条会话(拖当前那一条等于什么都没换)。
     await rpc(record, 'sessions', 'create', { name: 'drag-gate-2' })
 
     console.log('[2/3] 拉起应用(离屏 · 独立 --user-data-dir)')
@@ -422,17 +558,11 @@ async function main() {
     await waitFor('Dock 就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid^="dock-tile"]'))),
     )
+
     /*
-     * **会话总览开成一扇浮窗**(W6-a 的夹具修正)。
-     *
-     * W6-a 把它的出厂摆法改成了**左架子**(设计 §8),而这道门的文件面板也在左架子上
-     * —— 两块面落进同一条架子就成了同一条标签条的两格,后面那一格**看不见**
-     * (keep-alive:它还在 DOM 里,但 `content-visibility: hidden`)。于是三件事一起塌:
-     * 文件行拖不起来(CDP 指针落在一块看不见的地方)、场景 10/11 那句「找一条至少
-     * 两格的标签条」会挑中架子那一条而不是顶栏。
-     *
-     * 修法是把夹具摆回它一直在量的那一形:总览浮窗、文件面板左架子。选浮窗走的是
-     * 右键 → 打开方式(用户真走的那条路,写的是**记忆**,记忆压过天生落点)。
+     * **夹具**:总览开成一扇浮窗(场景 ⑤ 要它来验「浮窗不接住自己」),文件面板
+     * 留在它的出厂摆法左架子(W6-a §8)。两块面落进同一条架子就会成为同一条标签
+     * 条的两格,后面那一格 `content-visibility: hidden` —— 行拖不起来。
      */
     await openAsFromDockMenu(page, 'sessions', /^(Float|浮窗)$/)
     await waitFor('总览画出那一行', () =>
@@ -443,637 +573,804 @@ async function main() {
     await waitFor('文件树画出行', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-file-path]'))),
     )
-    /*
-     * **文件面板先钉到左边**(走 Dock 瓦的右键菜单 = 用户真走的那条路)。
-     *
-     * 理由是这道门第一版当场量出来的一件事:文件面板的出厂落点是**浮窗**,
-     * 而浮窗默认 880×520 居中 —— 它把中央叶的整个中心区盖住了。于是「拖到中央叶
-     * 的中心」那一下落进的是那扇浮窗自己的叶(**判据没错**:那扇窗盖在最上面,
-     * 拖到它身上本来就该落进它 —— 这正是「叶重叠时取最上」)。钉到左边之后
-     * 中央区腾出来,场景 1 / 2 量的才是它们要量的那件事。
-     */
-    /*
-     * **W6-a:它已经在左边了** —— 「目录」那块瓦的出厂摆法就是左架子(设计 §8,
-     * 真机报障「拖不到聊天区」的正面兑现:出厂那扇正盖住聊天区的浮窗撤了),
-     * 而那块瓦从 W6-a 起是**启动瓦**,右键是最近目录表,没有那排落点单选。
-     * 所以这里不再点菜单,改成**问事实**:它此刻在不在左架子上。
-     */
     const pinnedLeft = await page.evaluate(() =>
       Boolean(document.querySelector('[data-shelf="left"] [data-testid="files-panel"]')),
     )
     await delay(400)
-    const viewport = await page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight }))
+
+    /**
+     * 把中央那条条补到 n 格(用户真走的路:单击文件行 = 开一格标签)。
+     *
+     * `singles` 数的是**普通标签**:前面的场景会并出两格的那一种,而
+     * 「找两格来并」「找一格来换序」问的都是普通标签 —— 拿总数当条件的话,
+     * 一条全是两格标签的条会被当成够用的(真机门第一版就是这样红的)。
+     */
+    const fillStrip = async (n, { singles = false } = {}) => {
+      const count = (strip) =>
+        singles ? strip.tabs.filter((t) => !t.id.startsWith('pair:')).length : strip.tabs.length
+      for (const name of ['alpha.ts', 'beta.ts', 'gamma.ts']) {
+        const strip = await topStrip(page)
+        if (strip && count(strip) >= n) break
+        const row = `[data-file-path="${path.join(cwd, name)}"]`
+        if (!(await page.evaluate((css) => Boolean(document.querySelector(css)), row))) continue
+        await clickSelector(page, row)
+        await delay(320)
+      }
+      await delay(200)
+      return topStrip(page)
+    }
 
     console.log('[3/3] 逐个场景')
 
-    /* ── 场景 1:文件行 → 中央叶中心 ─────────────────────────────────────── */
-    scenario('文件行拖到中央叶的中心区 = 并入、成活动 tab、行仍在树里,零重挂')
+    /* ══ 场景 ①:三种来源 × 标签条上每一个位置 ══════════════════════════ */
+    scenario('三种来源拖到标签条的每个位置:都有空位或描圈,提示行都非空')
     {
-      assert(pinnedLeft, '文件面板钉到了左边(中央区腾出来)')
-      const alpha = `[data-file-path="${path.join(cwd, 'alpha.ts')}"]`
-      const row = await centerOf(page, alpha)
-      const leaf = await centerOf(page, '[data-pane-region="center"] [data-pane-slot]')
-      assert(Boolean(row && leaf), '起点与落点都量得到', JSON.stringify({ row: row?.rect, leaf: leaf?.rect }))
-      // 零重挂:给来源行与目标叶的身体各打一格戳。
-      await stamp(page, alpha, 'src-row')
-      await stamp(page, '[data-pane-region="center"] [data-pane-body]', 'leaf-body')
-      /*
-       * 先停在叶身上量**预示**(W3-b 裁定 7),再松手量结果。
-       * 用户报的是「色块 + 边框 + 一句文字盖在内容上」—— 三样这里逐条断言掉。
-       */
-      await drag(cdp, row, { x: leaf.x, y: leaf.y }, { release: false })
-      const ring = await overlayShape(page)
-      assert(ring?.shape === 'ring', '并入的预示是一圈环', JSON.stringify(ring))
-      assert(ring && isTransparent(ring.background), '环里不铺色块', ring?.background)
-      assert(ring?.text === '', '环里不写字', JSON.stringify(ring?.text))
-      assert(
-        ring && /inset/.test(ring.boxShadow),
-        '环画在内侧(不往外撑破那片叶)',
-        ring?.boxShadow,
-      )
-      await releaseAt(cdp, { x: leaf.x, y: leaf.y })
-      const tabs = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]')).map((el) =>
-          el.getAttribute('data-pane-tab'),
-        ),
-      )
-      assert(
-        tabs.includes(`file:${path.join(cwd, 'alpha.ts')}`),
-        '这一格并进了中央叶',
-        tabs.join(' | '),
-      )
-      const on = await page.evaluate(() =>
-        document
-          .querySelector('[data-pane-region="center"] [data-pane-tab][data-pane-on]')
-          ?.getAttribute('data-pane-tab'),
-      )
-      assert(on === `file:${path.join(cwd, 'alpha.ts')}`, '而且成了活动 tab', on)
-      assert(await page.evaluate((css) => Boolean(document.querySelector(css)), alpha), '来源那一行仍在树里')
-      assert(await stampSurvives(page, alpha, 'src-row'), '零重挂:来源行是同一个 DOM 节点')
-      assert(
-        await stampSurvives(page, '[data-pane-region="center"] [data-pane-body]', 'leaf-body'),
-        '零重挂:目标叶的内容根是同一个 DOM 节点',
-      )
-    }
+      assert(pinnedLeft, '文件面板在左架子上(出厂摆法,W6-a §8)')
+      const strip = await fillStrip(3)
+      assert(strip && strip.tabs.length >= 3, '中央那条条上有三格', JSON.stringify(strip?.tabs.map((t) => t.id)))
 
-    /* ── 场景 2:文件行 → 叶东带 ─────────────────────────────────────────── */
-    scenario('文件行拖到叶的边带(16px 之内):W6-a 单叶政策下退成一格标签(分屏两条已标 skip,W6-b 接手)')
-    {
-      const beta = `[data-file-path="${path.join(cwd, 'beta.ts')}"]`
-      const row = await centerOf(page, beta)
-      const leaf = await centerOf(page, '[data-pane-region="center"] [data-pane-slot]')
-      /*
-       * 「原叶 tab 一格不少」问的是**那一片叶**,所以先记下它的 id ——
-       * `:first-of-type` 在分屏之后指的可能是新长出来的那一片。
-       */
-      const originId = await page.evaluate(
-        () =>
-          document
-            .querySelector('[data-pane-region="center"] [data-pane-slot]')
-            ?.getAttribute('data-pane-slot') ?? '',
-      )
-      const countIn = (id) =>
-        page.evaluate(
-          (leafId) =>
-            document.querySelectorAll(`[data-pane-slot="${CSS.escape(leafId)}"] [data-pane-tab]`).length,
-          id,
-        )
-      const before = await countIn(originId)
-      /*
-       * 戳打在**那一片叶**身上,不是「中央区第一块 body」。
-       * W3 那一版量的是东带 —— 新叶排在原叶右边,所以「第一块」恰好还是原叶;
-       * 本批改量西带之后新叶排在**前面**,再按 DOM 序取就取到了刚长出来的那一片
-       * (读数:戳没了)。那不是重挂,是选择器指错了人。
-       */
-      const originBody = `[data-pane-slot="${cssEscape(originId)}"] [data-pane-body]`
-      await stamp(page, originBody, 'leaf-body-2')
-      /*
-       * 量的是**西带**,不是东带(W3 那一版量的是东)。
-       *
-       * 理由是两条带子会打架:窗口边带(`SNAP_BAND` 24)**优先于**叶的四带
-       * (`drop.ts` 文件头那条「次序即语义」),而中央叶贴着窗口右缘 —— 甲把叶的
-       * 边带收窄到 `DROP_EDGE_PX` **16** 之后,东带整条被窗口边带盖住了,站在那儿
-       * 量到的是「钉进右架子」(判据在按设计工作,不是 bug)。西边不一样:文件面板
-       * 钉在左边,中央叶的左缘离窗口左缘隔着一整条架子,两条带子不重叠。
-       *
-       * 站位:离叶左缘 8px —— 16 之内(在带里)、离窗口左缘远得多(边带够不着)。
-       */
-      const west = { x: leaf.rect.left + 8, y: leaf.y }
-      await drag(cdp, row, west, { release: false })
-      const bar = await overlayShape(page)
-      assert(bar?.shape === 'bar', '分屏的预示是一根杠', JSON.stringify(bar))
-      assert(bar && bar.width <= 8, '杠很细(4px 一根,不是画出那一半)', String(bar?.width))
-      assert(bar?.text === '', '杠上不写字', JSON.stringify(bar?.text))
-      await releaseAt(cdp, west)
-      /*
-       * ── **落定那两条 W6-a 标了 skip,交给 W6-b** ──────────────────────────
-       * 单叶政策(设计 `workbench-tabs-2026-09.md` §2.1)之后中央区不再长第二片叶,
-       * 而设计 §5 那张表把内容区左右 28% 改判成**「与它二合一」** —— 那是拖拽引擎
-       * 重做那一批(W6-b)的地,W6-a 一个字都不碰 `workbench/drop.ts` 与
-       * `ui/drag/*`。所以这两条(「变成两片叶」「比例 50」)此刻**没有对象可量**。
-       *
-       * W6-a 留下的是**安全底**,而它就在下面那两条里:内容一定落得下去(那一格
-       * 没有掉在地上),原叶一格不少,零重挂照旧成立。判词写在
-       * `workbench/drop-commit.dropIntoLeaf` 的 `asTab` 那一段上。
-       */
-      console.log('   ⊘ 中央区变成两片叶(W6-a 单叶政策:边带改判「二合一」是 W6-b 的地)')
-      console.log('   ⊘ 比例 50(同上)')
-      const slots = await page.evaluate(() =>
-        document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
-      )
-      assert(slots === 1, '中央区仍旧只有一片叶(单叶政策)', `slots=${slots}`)
-      const landed = await page.evaluate(
-        (id) =>
-          Array.from(document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]'))
-            .map((el) => el.getAttribute('data-pane-tab'))
-            .includes(id),
-        `file:${path.join(cwd, 'beta.ts')}`,
-      )
-      assert(landed, '**那一格没有掉在地上**:它落成了中央区的一格标签')
-      const after = await countIn(originId)
-      assert(after >= before, '原叶 tab 一格不少', `${before} → ${after}`)
-      assert(
-        await stampSurvives(page, originBody, 'leaf-body-2'),
-        '零重挂:分屏之后留下来那片叶的内容根还是同一个节点',
-      )
-    }
-
-    /* ── 场景 3:tab → 窗口右边带 ────────────────────────────────────────── */
-    scenario('把一格 tab 拖到窗口右边带 = 进右架子,架子展开')
-    {
-      /*
-       * **点名 alpha.ts**,不用 `:last-of-type`。后者指的是「文档序里第一条 tablist
-       * 的最后一格」,而这一形有两条(两片叶各一组)—— 分屏方向一改它就换了人,
-       * 后面几个场景(7 要 beta 还在中央区)会跟着一起塌。点名是唯一稳的取法。
-       */
-      const alphaId = `file:${path.join(cwd, 'alpha.ts')}`
-      const tab = await centerOf(page, `[data-testid="topbar-tabs"] [data-tab-id="${cssEscape(alphaId)}"]`)
-      assert(Boolean(tab), '顶栏上有可拖的标签(alpha.ts)', JSON.stringify(tab?.rect))
-      await drag(cdp, tab, { x: viewport.w - 6, y: Math.round(viewport.h / 2) })
-      const shelf = await page.evaluate(() => {
-        const el = document.querySelector('[data-shelf="right"]')
-        if (!el) return null
-        return {
-          collapsed: /collapsed/i.test(el.className),
-          tabs: Array.from(el.querySelectorAll('[data-pane-tab]')).map((t) => t.getAttribute('data-pane-tab')),
-        }
-      })
-      assert(Boolean(shelf), '右架子出现了', JSON.stringify(shelf))
-      assert(shelf && shelf.tabs.length > 0, '那一格落进了右架子', JSON.stringify(shelf?.tabs))
-      assert(shelf && !shelf.collapsed, '而且架子是展开的')
-    }
-
-    /* ── 场景 4:tab → 空处 = 撕成浮窗 ───────────────────────────────────── */
-    scenario('把一格 tab 拖出这扇窗 = 撕成浮窗,矩形按 floatRectForGrab')
-    {
-      const countFloats = () =>
-        page.evaluate(() => document.querySelectorAll('[data-float-body]').length)
-      const before = await countFloats()
-      const tab = await centerOf(page, '[data-shelf="right"] [role="tab"]')
-      assert(Boolean(tab), '架子上有可拖的标签', JSON.stringify(tab?.rect))
-      /*
-       * **「什么都没碰到」今天等于「拖出这扇窗」**(本批真机量出来的一条事实,
-       * 记在交卷报告的留账里):中央区那棵树是**满铺**的 —— 窗子里任何一点都落在
-       * 某一片叶上,所以窗内根本不存在设计 §3.1 说的那个「空处」。拖到窗外
-       * (这里是下缘之外 30px)才是真的什么都没碰到,而那也正是每个编辑器里
-       * 「拖出去 = 开一扇新窗」的手势。
-       */
-      const drop = { x: Math.round(viewport.w * 0.4), y: viewport.h + 30 }
-      await drag(cdp, tab, drop)
-      const floats = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('[data-float-body]')).map((el) => {
-          const win = el.closest('[role="dialog"]') ?? el
-          const r = win.getBoundingClientRect()
-          return {
-            left: Math.round(r.left), top: Math.round(r.top),
-            width: Math.round(r.width), height: Math.round(r.height),
+      /** 一种来源走一趟:落在每一格的正中、每两格之间,各采一次读数。 */
+      const sweep = async (label, from) => {
+        const now = await topStrip(page)
+        const stops = []
+        now.tabs.forEach((tab, i) => {
+          stops.push({ where: `第 ${i} 格正中`, at: { x: tab.cx, y: tab.cy }, want: 'ring' })
+          stops.push({ where: `第 ${i} 格左缘`, at: { x: tab.left + 3, y: tab.cy }, want: 'gap' })
+        })
+        stops.push({
+          where: '末格之后的空白',
+          at: { x: now.rect.left + now.rect.width - 8, y: now.tabs[0].cy },
+          want: 'gap',
+        })
+        // **一趟走完,中间一次都不松手**:按下之后一路扫过去,每一站采一次。
+        await press(cdp, from)
+        await strokeOn(cdp, from, stops[0].at, { steps: 6 })
+        const seen = []
+        let stampedGap = false
+        let gapIdentity = null
+        for (const stop of stops) {
+          await strokeOn(cdp, seen.length ? stops[seen.length - 1].at : stops[0].at, stop.at, { steps: 4 })
+          // 微动一下再读 —— 手停住的那一帧不算数(见文件头的量法)。
+          await moveTo(cdp, { x: stop.at.x + 1, y: stop.at.y })
+          await delay(24)
+          seen.push({ ...stop, read: await feedbackNow(page) })
+          /*
+           * **同一个节点在挪**(§4.5 第 3 条)。头一次见到空位就给它打一格戳,
+           * 后面每次落点变了再问一遍「戳还在吗」—— 属性跟着重建一起没,所以
+           * 戳还在 = 那格空位从头到尾就是它。这是反证三(「空位改每帧重建」)
+           * 咬得住的那一条。
+           */
+          /*
+           * 答的是 `{present, mark}` 两格,**不是**一个可空的 mark(反证 A 第一版
+           * 就栽在这儿):空位被重建时那格戳跟着没,返回 null;而 null 同时也是
+           * 「屏幕上压根没有空位」的答案 —— 两件事挤在一个值里,断言于是把
+           * 「重建了」读成「这一站没有空位」,当场绿了。分成两格之后,
+           * **有空位但戳没了 = 重建了**,那正是这一条要抓的。
+           */
+          const gap = await page.evaluate((first) => {
+            const ph = document.querySelector('[data-tab-placeholder]')
+            if (!ph) return { present: false, mark: null }
+            if (first) ph.setAttribute('data-gate-gap', 'gap-node')
+            return { present: true, mark: ph.getAttribute('data-gate-gap') }
+          }, !stampedGap)
+          /*
+           * 判的是「**空位一直在,却换了个节点**」——§4.5 第 3 条的字面:
+           * 「空位是同一格只在落点变化时换位置」。空位**消失**不算违例:落点从
+           * 「标签之间」变成「标签正中」时该画的是那一格上的圈,空位本就该收掉
+           * (第一版没分这两件事,于是在描圈那几站上自己红了一次)。
+           * 所以空位一没,戳就跟着作废,下一次出现重新打。
+           */
+          if (!gap.present) {
+            stampedGap = false
+          } else if (!stampedGap) {
+            stampedGap = true
+          } else if (gap.mark !== 'gap-node') {
+            gapIdentity = false
+          } else if (gapIdentity === null) {
+            gapIdentity = true
           }
-        }),
-      )
-      assert(floats.length === before + 1, '多出一扇浮窗', `${before} → ${floats.length}`)
-      const win = floats[floats.length - 1]
-      /*
-       * `floatRectForGrab` 的约定:**指针 = 标题栏中心**(横向居中、纵向落在标题栏
-       * 一半高处),再过一次 `clampFloatRect`。
-       *
-       * 横向中线该落在松手那一点上(这一点离左右边都够远,钳不动它)。
-       * 纵向那一头**不断言「整扇窗在视口里」**(第一版写错过一次,读数
-       * `top=820 h=520`):`clampFloatRect` 是**手势那把尺**,它的原话是
-       * 「允许出界,只保证至少 `FLOAT_KEEP`=40 那么一截留在视口里,纵向下界 0」
-       * —— 标题栏被推出屏顶就再也拖不回来了,而底下探出去一截是拖窗时天天发生
-       * 的正常事。所以这里断言的正是那把尺:**窗顶在视口内,而且不在指针下方**
-       * (= 用户抓着的是标题栏)。
-       */
-      const cx = win.left + win.width / 2
-      assert(Math.abs(cx - drop.x) <= 4, '窗的横向中线落在松手那一点上', `cx=${cx} drop.x=${drop.x}`)
-      assert(
-        win.top >= 0 && win.top <= viewport.h - 40,
-        '窗顶落在视口里(clampFloatRect 的 FLOAT_KEEP=40 那条)',
-        `top=${win.top} viewport.h=${viewport.h}`,
-      )
-      assert(win.top <= drop.y, '窗顶不在指针下方(抓着的是标题栏)', `top=${win.top} drop.y=${drop.y}`)
-    }
+        }
+        /*
+         * **走完一趟一律 Esc 取消**:这一条量的是「过程里屏幕上有没有东西」,
+         * 落定与它无关 —— 而真落一次会把夹具改掉(总览那扇浮窗盖在中央区上,
+         * 松手在那儿等于把这一格丢进总览),后面几条当场没有对象可量。
+         */
+        await page.keyboard.press('Escape')
+        await releaseAt(cdp, stops[stops.length - 1].at)
+        const missing = seen.filter((row) => {
+          const ok = row.want === 'ring' ? row.read.pairHot !== null : (row.read.gapWidth ?? 0) > 0
+          return !ok
+        })
+        const blank = seen.filter((row) => row.read.hint === '')
+        assert(
+          missing.length === 0,
+          `${label}:每一站都有空位或描圈`,
+          missing.length ? missing.map((r) => `${r.where}=${JSON.stringify(r.read)}`).join(' | ') : `${seen.length} 站`,
+        )
+        assert(
+          blank.length === 0,
+          `${label}:每一站浮影下那行字都非空`,
+          blank.length ? blank.map((r) => r.where).join(' | ') : seen.map((r) => r.read.hint).join(' / '),
+        )
+        assert(
+          gapIdentity !== false,
+          `${label}:落点换来换去,那格空位**始终是同一个 DOM 节点**(不是每帧重建)`,
+          String(gapIdentity),
+        )
+      }
 
-    /* ── 场景 5:会话行 → 右架子 = **真落成一片会话叶**(W5-b 裁定 8)────── */
-    scenario('会话行拖到右架子 = 真落(W3 那条「拒绝」随会话多开撤掉)')
-    {
+      const fileRow = await centerOf(page, `[data-file-path="${path.join(cwd, 'delta.ts')}"]`)
+      if (fileRow) await sweep('文件行', fileRow)
+      else assert(false, '文件行量得到')
+
+      // 总览是一扇浮窗,前面那一趟可能把它挤到了后面 —— 点一下瓦把它叫回前台。
       await clickSelector(page, '[data-testid="dock-tile-sessions"]')
+      await delay(500)
       await waitFor('总览就位', () =>
         page.evaluate(() => Boolean(document.querySelector('[data-session-id]'))),
-      )
-      const rowSel = '[data-session-id]:not([aria-selected="true"])'
-      const row = await centerOf(page, rowSel)
-      assert(Boolean(row), '总览里有一条别的会话可拖', JSON.stringify(row?.rect))
-      const dragged = await page.evaluate(
-        (css) => document.querySelector(css)?.getAttribute('data-session-id') ?? '',
-        rowSel,
-      )
-      // 走到右边带上停住(不松手)—— 先量「收」,再松手量真的落进去了。
-      const at = { x: viewport.w - 6, y: Math.round(viewport.h / 2) }
-      await drag(cdp, row, at, { release: false })
-      const hover = await page.evaluate(() => {
-        const ghost = document.querySelector('[data-testid="drag-ghost"]')
-        return {
-          ghost: Boolean(ghost),
-          refused: ghost?.hasAttribute('data-refuse') ?? false,
-          overlayTone:
-            document.querySelector('[data-testid="drop-overlay"]')?.getAttribute('data-tone') ?? null,
+      ).catch(() => {})
+      const sessionRow = await centerOf(page, '[data-session-id]:not([aria-selected="true"])')
+      if (sessionRow) await sweep('会话行', sessionRow)
+      else assert(false, '总览里有另一条会话可拖')
+
+      /*
+       * **标签这一种来源扫的是「别人那条条」**(设计 §4.2 / §5)。
+       *
+       * 回到**自己**那条条的带里是**换序** —— 那一形的预示是那几格 tab 自己在动,
+       * 浮影与空位一个节点都不画(裁定 4)。门第一版把它当成「没反应」红了一次:
+       * 读数 `ghost:false, gapWidth:null` 恰恰是那条裁定在正确工作。
+       * 所以这里挑一条**不含被拖那一格**的条(架子上文件面板那条)去扫。
+       */
+      const now = await topStrip(page)
+      const tabFrom = now?.tabs[0]
+      const foreign = await page.evaluate((mine) => {
+        for (const chrome of Array.from(document.querySelectorAll('[data-pane-chrome]'))) {
+          const id = chrome.getAttribute('data-pane-chrome')
+          if (id === mine) continue
+          const list = chrome.querySelector('[role="tablist"]')
+          const r = list?.getBoundingClientRect()
+          if (!r || r.width <= 0 || r.height <= 0) continue
+          return { leafId: id, x: Math.round(r.left + 6), y: Math.round(r.top + r.height / 2) }
         }
-      })
-      assert(hover.ghost, '浮影在屏幕上')
-      assert(!hover.refused, '浮影**不是**拒绝态(会话那一种不再限定区域)')
-      assert(hover.overlayTone === 'accept', '边带画的是接受色的高亮', String(hover.overlayTone))
-      await releaseAt(cdp, at)
-      await delay(240)
-      const landed = await page.evaluate(
-        (id) => Boolean(document.querySelector(`[data-pane-tab="session:${id}"]`)),
-        dragged,
-      )
-      assert(landed, '松手之后右架子上真有这一格会话叶', `session:${dragged}`)
-      const inShelf = await page.evaluate(
-        (id) =>
-          Boolean(
-            document.querySelector(
-              `[data-pane-region="edge:right"] [data-pane-tab="session:${id}"]`,
-            ),
-          ),
-        dragged,
-      )
-      assert(inShelf, '而且它落在**右架子**那棵树里,不是中央区')
+        return null
+      }, now?.leafId ?? '')
+      assert(Boolean(foreign), '屏幕上有第二条标签条(架子 / 浮窗那一条)', JSON.stringify(foreign))
+      if (tabFrom && foreign) {
+        await press(cdp, { x: tabFrom.cx, y: tabFrom.cy })
+        // 先往下拉出带(撕下),再走到别人那条条上。
+        await strokeOn(cdp, { x: tabFrom.cx, y: tabFrom.cy }, { x: tabFrom.cx, y: tabFrom.cy + 200 }, { steps: 8 })
+        const torn = (await stripOrder(page, now.leafId)).some((t) => t.torn)
+        assert(torn, '标签:出带之后源那一格折成 0 宽')
+        await strokeOn(cdp, { x: tabFrom.cx, y: tabFrom.cy + 200 }, { x: foreign.x, y: foreign.y }, { steps: 10 })
+        await moveTo(cdp, { x: foreign.x + 1, y: foreign.y })
+        await delay(40)
+        const read = await feedbackNow(page)
+        assert((read.gapWidth ?? 0) > 0 || read.pairHot !== null, '标签:落到别人那条条上有空位或描圈', JSON.stringify(read))
+        assert(read.hint !== '', '标签:提示行非空', read.hint)
+        await page.keyboard.press('Escape')
+        await releaseAt(cdp, { x: foreign.x, y: foreign.y })
+      }
     }
 
-    /* ── 场景 6:拖到一半 Esc ────────────────────────────────────────────── */
-    scenario('拖到一半按 Esc = 取消:树不变、浮影消失、行仍在')
+    /* ══ 场景 ②:按下即切换 / 松手不动无事 / 6px / 出带才撕 ═══════════ */
+    scenario('按下即切换、松手不动无事、横向 6px 才浮起、出带才撕下')
     {
-      const gamma = `[data-file-path="${path.join(cwd, 'gamma.ts')}"]`
-      /*
-       * **先把环境会话拨回带工作目录的那一条**(W5-b 裁定 3 的可感知后果)。
-       *
-       * 场景 5 之前那一下是**被拒绝**的拖拽,什么都没发生;W5-b 之后它真把
-       * 另一条会话(`drag-gate-2`,没有工作目录)落成了右架子上的一片会话叶,
-       * 而落定会把焦点送进去 —— 于是环境会话换了人,文件树的根跟着变成 null,
-       * 整棵树一行都不画。这不是回归,是「文件树跟着环境会话走」那条既有规则
-       * 在会话多开之后的第一次显形。
-       *
-       * 所以这里点一下带目录的那条会话把根拨回来;顺带**点瓦是开关**那条判例
-       * (与 `gate-focus` 的 `ensureOverviewRow` 同源):最多两下,每一下之后各问一次。
-       */
-      await clickSelector(page, `[data-testid="session-row-${sessionId}"]`)
-      await delay(500)
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const there = await page.evaluate((css) => Boolean(document.querySelector(css)), gamma)
-        if (there) break
-        await clickSelector(page, '[data-testid="dock-tile-files"]')
-        await delay(600)
-      }
-      await waitFor('文件树在场', () =>
-        page.evaluate((css) => Boolean(document.querySelector(css)), gamma),
-      )
-      const row = await centerOf(page, gamma)
-      const leaf = await centerOf(page, '[data-pane-region="center"] [data-pane-slot]')
+      const strip = await fillStrip(3)
+      const active = strip.tabs.find((_, i) => i === 0)
+      const other = strip.tabs.find((t) => t.id !== active.id)
+      const wasOn = (await stripOrder(page, strip.leafId)).find((t) => t.on)?.id
+      const target = strip.tabs.find((t) => t.id !== wasOn) ?? other
+      await stamp(page, `[data-tab-id="${cssEscape(target.id)}"]`, 'press-node')
       const before = await treeShape(page)
-      await drag(cdp, row, { x: leaf.x, y: leaf.y }, { release: false })
+
+      await press(cdp, { x: target.cx, y: target.cy })
+      await delay(60)
+      const afterPress = await stripOrder(page, strip.leafId)
       assert(
-        await page.evaluate(() => Boolean(document.querySelector('[data-testid="drag-ghost"]'))),
-        '拖起来了(浮影在场)',
+        afterPress.find((t) => t.on)?.id === target.id,
+        '按下那一刻内容就切过去了(不等松手)',
+        `${wasOn} → ${afterPress.find((t) => t.on)?.id}`,
       )
+      assert(
+        await stampSurvives(page, `[data-tab-id="${cssEscape(target.id)}"]`, 'press-node'),
+        '**按下前后是同一个 DOM 节点**(条没重建,手里那格还在)',
+      )
+
+      // 走 4px:还不是拖(横向门槛 6)。
+      await moveTo(cdp, { x: target.cx + 4, y: target.cy })
+      await delay(40)
+      let read = await stripOrder(page, strip.leafId)
+      assert(!read.some((t) => t.lift), `横向 4px 还没浮起(DRAG_START_X=${DRAG_START_X})`, JSON.stringify(read.map((t) => t.lift)))
+      // 走到 8px:过了门槛。
+      await moveTo(cdp, { x: target.cx + 8, y: target.cy })
+      await delay(40)
+      read = await stripOrder(page, strip.leafId)
+      assert(read.some((t) => t.lift), '横向过 6px 之后那一格浮起来了', JSON.stringify(read.map((t) => `${t.id}:${t.lift}`)))
+      assert(
+        !(await feedbackNow(page)).ghost,
+        '条内换序时**浮影一个节点都不画**(拖的就是标签本身)',
+      )
+
+      // 竖向:带内仍是换序,出了带才折。
+      await moveTo(cdp, { x: target.cx, y: target.cy + 20 })
+      await delay(40)
+      read = await stripOrder(page, strip.leafId)
+      assert(!read.some((t) => t.torn), '竖向 20px 还在带里,是换序不是撕下', JSON.stringify(read.map((t) => t.torn)))
+      await strokeOn(cdp, { x: target.cx, y: target.cy + 20 }, { x: target.cx, y: target.cy + 120 }, { steps: 6 })
+      read = await stripOrder(page, strip.leafId)
+      assert(read.some((t) => t.torn), '出了带那一格折成 0 宽(元素还在)', JSON.stringify(read.map((t) => `${t.id}:${t.torn}`)))
+      assert((await feedbackNow(page)).card, '撕下之后浮影卡片接手')
       await page.keyboard.press('Escape')
-      await delay(160)
-      assert(
-        !(await page.evaluate(() => Boolean(document.querySelector('[data-testid="drag-ghost"]')))),
-        'Esc 之后浮影消失',
-      )
-      // 松手补齐这一次手势(取消之后这一发不该再落定任何东西)。
-      await releaseAt(cdp, { x: leaf.x, y: leaf.y })
-      assert((await treeShape(page)) === before, '树前后逐字相同')
-      assert(await page.evaluate((css) => Boolean(document.querySelector(css)), gamma), '来源那一行仍在树里')
+      await releaseAt(cdp, { x: target.cx, y: target.cy + 120 })
+      assert((await treeShape(page)) === before, 'Esc 之后树逐字不变')
+
+      // 一次纯点击:按下松开,位移 0。
+      const t2 = (await topStrip(page)).tabs[0]
+      const beforeClick = await treeShape(page)
+      await press(cdp, { x: t2.cx, y: t2.cy })
+      await delay(40)
+      await releaseAt(cdp, { x: t2.cx, y: t2.cy })
+      assert((await treeShape(page)) === beforeClick, '按下松开不动 = 一次点击,树一个字不变')
+    }
+
+    /* ══ 场景 ③:换序三处 + 150ms 滑入 + Esc + 底色逐字不变 ═══════════ */
+    scenario('换序:最左/最右/中间三处正确;松手 150ms 滑入;Esc 无残留;全程三处底色不变')
+    {
+      const strip = await fillStrip(3)
+      const order0 = (await stripOrder(page, strip.leafId)).map((t) => t.id)
+      const first = strip.tabs[0]
+      const last = strip.tabs[strip.tabs.length - 1]
 
       /*
-       * ── 第二半:拖的是**一格已经开着的 tab**(这一半才咬得住那条反证)────
-       * 上面拖的是文件树的一行 —— 它本来就不在树上,所以「摘原位提前到起拖」
-       * 那种写法在它身上是空动作,量不出来。一格 tab 不一样:提前摘的话
-       * Esc 取消之后它就再也回不来了。派工令反证第四条要的正是这一格。
+       * **底色基线在「按下之后」量**:按下即激活会把活动那一格的底换成叶的脸
+       * (那是 §4.2 第一行在工作,不是换序变色)。§4.5 管的是**换序全程** ——
+       * 所以基线取激活之后那一帧,再拿它比整段拖拽里的每一帧。
        */
-      const tabBefore = await treeShape(page)
-      const tabAt = await centerOf(page, '[data-testid="topbar-tabs"] [role="tab"]:last-of-type')
-      if (!tabAt) {
-        assert(false, '顶栏上有一格开着的 tab 可拖')
-      } else {
-        await drag(cdp, tabAt, { x: Math.round(viewport.w * 0.5), y: Math.round(viewport.h * 0.5) }, {
-          release: false,
+      await press(cdp, { x: first.cx, y: first.cy })
+      await delay(80)
+      const base = JSON.stringify(await palette(page, strip.leafId))
+
+      /*
+       * **(a) 刚抬起那一帧,邻居一个都不动**(§11 第 3 条的字面)。
+       *
+       * 它守的是「不把邻居按『拿走被拖那格之后』的位置算」那条裁定:那一版把右边
+       * 的邻居整体左移一格宽再比中心,于是**手才走过 6px 的起拖阈值**、屏幕上就先
+       * 跳了一下。判据换成「被拖那格朝运动方向的那条边越过邻居中心」之后,静止时
+       * 落点恒等于原位,一格 transform 都不写。
+       */
+      await moveTo(cdp, { x: first.cx + DRAG_START_X + 1, y: first.cy })
+      await delay(40)
+      const liftFrame = await stripProbe(page, strip.leafId)
+      const jumped = Object.entries(liftFrame.shifts).filter(([, v]) => v !== '' && v !== 'LIFTED')
+      assert(
+        jumped.length === 0,
+        `抬起后横向刚走过 ${DRAG_START_X + 1}px:邻居的 transform 一个都不非空`,
+        JSON.stringify(liftFrame.shifts),
+      )
+
+      const shots = []
+      await strokeOn(cdp, { x: first.cx + DRAG_START_X + 1, y: first.cy }, { x: last.cx + last.width / 2 - 4, y: first.cy }, { steps: 12 })
+      for (let i = 0; i < 4; i += 1) {
+        await moveTo(cdp, { x: last.cx + last.width / 2 - 4 - i, y: first.cy })
+        await delay(20)
+        shots.push(JSON.stringify(await palette(page, strip.leafId)))
+      }
+      /*
+       * **抬起那一格不放大、不改形**(§4.2 / §4.5 第 2 条)。与底色那一条一起,
+       * 它们是反证二(「lift 加回 scale / 换底色」)咬得住的两条。
+       * 量的是**合成矩阵的两个缩放分量**与那一格的身量:横向位移随手走,
+       * 缩放与宽高一个像素都不许动。
+       */
+      const shape = await page.evaluate(() => {
+        const el = document.querySelector('[data-lift]')
+        if (!el) return null
+        const m = new DOMMatrixReadOnly(getComputedStyle(el).transform)
+        const r = el.getBoundingClientRect()
+        return { a: m.a, d: m.d, w: Math.round(r.width), h: Math.round(r.height),
+          radius: getComputedStyle(el).borderTopLeftRadius }
+      })
+      assert(Boolean(shape), '抬起那一格在场', JSON.stringify(shape))
+      assert(
+        shape && shape.a === 1 && shape.d === 1,
+        '抬起那一格**不放大**(合成矩阵的两个缩放分量恒为 1)',
+        JSON.stringify(shape && { a: shape.a, d: shape.d }),
+      )
+      assert(
+        shape && shape.w === Math.round(first.width) && shape.h > 0,
+        '抬起那一格**身量一个像素不变**',
+        JSON.stringify({ now: shape?.w, was: Math.round(first.width) }),
+      )
+
+      const drift = shots.filter((shot) => shot !== base)
+      assert(
+        drift.length === 0,
+        '换序全程标签条 / 内容区 / 其它标签三处底色**逐字不变**',
+        drift.length ? `基线 ${base}\n     漂了 ${drift[0]}` : `${shots.length} 帧全同`,
+      )
+
+      // 松手,**不等** —— 收笔那 150ms 要当场量。
+      await release(cdp, { x: last.cx + last.width / 2 - 4, y: first.cy })
+      let settleRead = null
+      const deadline = Date.now() + SETTLE_MS + 120
+      while (Date.now() < deadline) {
+        const row = await page.evaluate(() => {
+          const el = document.querySelector('[data-settle]')
+          if (!el) return null
+          const style = getComputedStyle(el)
+          return {
+            id: el.getAttribute('data-tab-id'),
+            transition: style.transitionProperty + ' ' + style.transitionDuration,
+            transform: style.transform,
+          }
         })
-        assert(
-          await page.evaluate(() => Boolean(document.querySelector('[data-testid="drag-ghost"]'))),
-          '一格 tab 也拖得起来(浮影在场)',
+        if (row) {
+          settleRead = row
+          break
+        }
+        await delay(12)
+      }
+      assert(Boolean(settleRead), '松手之后那一格挂上了收笔态(data-settle)', JSON.stringify(settleRead))
+      assert(
+        settleRead && /transform/.test(settleRead.transition) && /0\.15s|150ms/.test(settleRead.transition),
+        `收笔是一段 ${SETTLE_MS}ms 的位移过渡`,
+        settleRead?.transition,
+      )
+      assert(
+        settleRead && settleRead.transform !== 'none' && !/matrix\(1, 0, 0, 1, 0, 0\)/.test(settleRead.transform),
+        '而且起始位移非零(它真的从手上那个位置滑过来)',
+        settleRead?.transform,
+      )
+      await delay(SETTLE_MS + 240)
+
+      const order1 = (await stripOrder(page, strip.leafId)).map((t) => t.id)
+      assert(order1[order1.length - 1] === order0[0], '拖到最右:它排到了末尾', `${order0.join(' | ')} → ${order1.join(' | ')}`)
+      assert(
+        (await stripOrder(page, strip.leafId)).find((t) => t.on)?.id === order0[0],
+        '而且活动位跟着它走',
+      )
+
+      // 最左。
+      const nowStrip = await topStrip(page)
+      const src = nowStrip.tabs[nowStrip.tabs.length - 1]
+      await stroke(cdp, { x: src.cx, y: src.cy }, { x: nowStrip.tabs[0].left + 3, y: src.cy }, { steps: 12, release: true })
+      await delay(SETTLE_MS + 200)
+      const order2 = (await stripOrder(page, strip.leafId)).map((t) => t.id)
+      assert(order2[0] === order1[order1.length - 1], '拖到最左:它排到了第一位', `${order1.join(' | ')} → ${order2.join(' | ')}`)
+
+      // 中间。
+      const s3 = await topStrip(page)
+      const mover = s3.tabs[0]
+      await stroke(cdp, { x: mover.cx, y: mover.cy }, { x: s3.tabs[1].cx + s3.tabs[1].width / 2 - 2, y: mover.cy }, { steps: 12, release: true })
+      await delay(SETTLE_MS + 200)
+      const order3 = (await stripOrder(page, strip.leafId)).map((t) => t.id)
+      assert(order3[1] === order2[0], '拖到中间:它排到了第二位', `${order2.join(' | ')} → ${order3.join(' | ')}`)
+
+      // Esc:顺序不变、无残留。
+      const s4 = await topStrip(page)
+      const escSrc = s4.tabs[0]
+      await press(cdp, { x: escSrc.cx, y: escSrc.cy })
+      await strokeOn(cdp, { x: escSrc.cx, y: escSrc.cy }, { x: s4.tabs[2].cx, y: escSrc.cy }, { steps: 10 })
+      await page.keyboard.press('Escape')
+      await delay(120)
+      await releaseAt(cdp, { x: s4.tabs[2].cx, y: escSrc.cy })
+      const order4 = await stripOrder(page, strip.leafId)
+      assert(order4.map((t) => t.id).join('|') === order3.join('|'), 'Esc 之后顺序一个字不变', order4.map((t) => t.id).join(' | '))
+      assert(
+        order4.every((t) => !t.lift && !t.torn && t.shift === ''),
+        'Esc 之后抬起 / 折起 / 让位三样都清干净',
+        JSON.stringify(order4),
+      )
+      assert(!(await feedbackNow(page)).ghost, 'Esc 之后浮影没了')
+
+      /*
+       * **(b) 最宽的那一格也拖得到末位**(§4.2:「中心对中心时宽标签要整个越过窄
+       * 邻居才换位……而且永远够不到末位」)。中心对中心那一版在这里靠两句钳位特例
+       * 救场;判据换成「边越过中心」之后,末位是判据自己算出来的。
+       */
+      const s5 = await topStrip(page)
+      const widest = s5.tabs.reduce((a, b) => (b.width > a.width ? b : a), s5.tabs[0])
+      const order5 = (await stripOrder(page, s5.leafId)).map((t) => t.id)
+      await stroke(
+        cdp,
+        { x: widest.cx, y: widest.cy },
+        { x: s5.rect.left + s5.rect.width - 4, y: widest.cy },
+        { steps: 14, release: true },
+      )
+      await delay(SETTLE_MS + 240)
+      const order6 = (await stripOrder(page, s5.leafId)).map((t) => t.id)
+      assert(
+        order6[order6.length - 1] === widest.id,
+        `最宽的那一格(${widest.width}px)拖到最右 = 它排到了末尾`,
+        `${order5.join(' | ')} → ${order6.join(' | ')}`,
+      )
+
+      /*
+       * **(c) 让位发生在「被拖的右缘 = 邻居中心」那一刻,不是「中心 = 中心」**
+       * (§4.2 的判据本体)。
+       *
+       * 抓的是被拖那格的中心,所以 grabDx = 半格宽,右缘 = 指针 x + 半格宽。
+       * 「右缘 = 邻居中心」那一刻的指针 x 因此是 `邻居中心 - 半格宽`。两侧各让
+       * `EDGE_EPS`px 各读一次:未越过时那个邻居的 transform 必须是空的,越过之后
+       * 必须非空。**中心对中心那一版的门槛比这里晚半格宽**,于是「已越过」那一站
+       * 读到的是空 —— 当场红。整段是一次不松手的连续路径。
+       */
+      const s7 = await topStrip(page)
+      const src7 = s7.tabs[0]
+      const half = src7.width / 2
+      await press(cdp, { x: src7.cx, y: src7.cy })
+      let from7 = { x: src7.cx + DRAG_START_X + 1, y: src7.cy }
+      await strokeOn(cdp, { x: src7.cx, y: src7.cy }, from7, { steps: 3 })
+      for (const nb of s7.tabs.slice(1)) {
+        const cross = Math.round(nb.cx - half)
+        for (const side of ['未越过', '已越过']) {
+          const at = side === '未越过' ? cross - EDGE_EPS : cross + EDGE_EPS
+          await strokeOn(cdp, from7, { x: at, y: src7.cy }, { steps: 4 })
+          // 微动一格,而且**朝着背离门槛的方向** —— 手还在动才算数(见文件头的量法)。
+          await moveTo(cdp, { x: at + (side === '未越过' ? -1 : 1), y: src7.cy })
+          await delay(28)
+          const shift = (await stripProbe(page, s7.leafId)).shifts[nb.id] ?? ''
+          assert(
+            side === '未越过' ? shift === '' : shift !== '',
+            `右缘${side}「${nb.id}」的中心(指针 x=${at},门槛 ${cross})→ 它${side === '未越过' ? '不让位' : '让位'}`,
+            JSON.stringify({ shift }),
+          )
+          from7 = { x: at, y: src7.cy }
+        }
+      }
+      await page.keyboard.press('Escape')
+      await releaseAt(cdp, from7)
+    }
+
+    /* ══ 场景 ④:「放到标签上」那条带 ═══════════════════════════════════ */
+    scenario('放到标签上:横拖停 1s 不误并;压到条底缘下才描圈;回条内回换序;并 / 空白 / 拒绝')
+    {
+      const strip = await fillStrip(3, { singles: true })
+      const src = strip.tabs[0]
+      const host = strip.tabs[1]
+      /*
+       * 这一整场的坐标全部取自**按下之前**那一次 `topStrip`:拖拽期间那几格带着
+       * transform,活矩形早就不是它们的槽位了(编舞读的也正是抬起那一刻的基准)。
+       */
+      const ontoY = Math.round(strip.rect.top + strip.rect.height + ONTO_Y_OFFSET)
+      const order0 = (await stripOrder(page, strip.leafId)).map((t) => t.id)
+
+      /*
+       * **(a) 换序途中停住 1s,一个字都不许发生。**
+       *
+       * 这一条就是用户报的那句「换序途中稍一停顿就误并」的反证 —— 按时间判的那一版
+       * (在邻居正中停够 300ms 就并)在这里必红。停的是**横向**:1px 的抖动只走 x,
+       * 竖向一动就跨进带里去了,那是下一条要量的另一形。
+       */
+      await press(cdp, { x: src.cx, y: src.cy })
+      await strokeOn(cdp, { x: src.cx, y: src.cy }, { x: host.cx, y: src.cy }, { steps: 10 })
+      const held = []
+      const until = Date.now() + 1000
+      let flip = 0
+      while (Date.now() < until) {
+        flip = 1 - flip
+        await moveTo(cdp, { x: host.cx + flip, y: src.cy })
+        await delay(24)
+        held.push(await stripProbe(page, strip.leafId))
+      }
+      const misfired = held.filter((r) => r.pairHot !== null || r.hint !== '')
+      assert(
+        misfired.length === 0,
+        `横着拖到邻居正中停住 1s:全程没有描圈、没有提示行(${held.length} 帧)`,
+        misfired.length ? JSON.stringify(misfired[0]) : `${held.length} 帧全空`,
+      )
+      const droppedShift = held.filter((r) => (r.shifts[host.id] ?? '') === '')
+      assert(
+        droppedShift.length === 0,
+        '而且全程仍旧是换序 —— 那个邻居一直让着位',
+        droppedShift.length ? JSON.stringify(droppedShift[0].shifts) : JSON.stringify(held[0].shifts),
+      )
+
+      /*
+       * **(b) 压到条底缘下 6–24px:描圈 + 提示行,卡片不画,让位全清零。**
+       */
+      await strokeOn(cdp, { x: host.cx, y: src.cy }, { x: host.cx, y: ontoY }, { steps: 6 })
+      await moveTo(cdp, { x: host.cx + 1, y: ontoY })
+      await delay(60)
+      const onto = await stripProbe(page, strip.leafId)
+      assert(
+        onto.pairHot === host.id,
+        `压到条底缘下 ${ONTO_Y_OFFSET}px:指针底下那一格描了圈`,
+        `${onto.pairHot} vs ${host.id}`,
+      )
+      assert(onto.hint !== '', '提示行说得出「与谁二合一」', onto.hint)
+      assert(!onto.card, '**卡片仍旧不画**:屏幕上动的还是只有那一格标签', JSON.stringify(onto.card))
+      const stillShifted = Object.entries(onto.shifts).filter(([, v]) => v !== '' && v !== 'LIFTED')
+      assert(
+        stillShifted.length === 0,
+        'onto 态里邻居的让位**全部清零**(§4.2:邻居不再让位)',
+        JSON.stringify(onto.shifts),
+      )
+
+      /* **(c) 回到条内:圈灭,让位恢复。** */
+      await strokeOn(cdp, { x: host.cx + 1, y: ontoY }, { x: host.cx, y: src.cy }, { steps: 6 })
+      await moveTo(cdp, { x: host.cx + 1, y: src.cy })
+      await delay(60)
+      const back = await stripProbe(page, strip.leafId)
+      assert(back.pairHot === null, '回到条内(y ≤ 底缘 + 6):圈没了', JSON.stringify(back.pairHot))
+      assert(
+        (back.shifts[host.id] ?? '') !== '',
+        '而且让位恢复了 —— 又是换序',
+        JSON.stringify(back.shifts),
+      )
+
+      /* **(d) 再压下去松手 = 二合一。** */
+      await strokeOn(cdp, { x: host.cx + 1, y: src.cy }, { x: host.cx, y: ontoY }, { steps: 6 })
+      await releaseAt(cdp, { x: host.cx, y: ontoY })
+      const after = await stripOrder(page, strip.leafId)
+      assert(
+        after.length === order0.length - 1,
+        '松手之后条上少了一格(两格并成了一格)',
+        `${order0.length} → ${after.length}`,
+      )
+      const slotsNow = await page.evaluate((want) => {
+        const root = document.querySelector(
+          `[data-pane-chrome="${want.replace(/["\\]/g, '\\$&')}"] [role="tablist"]`,
         )
-        /*
-         * **拖到叶中央 = 已经出了条的带**,所以此刻源那一格应该是折起来的
-         * (W3-b 裁定 4:撕下 = 原位折成 0 宽,元素不卸载)。Esc 之后它得原样展回。
-         */
-        const folded = await topbarOrder(page)
+        return Array.from(root?.querySelectorAll('[role="tab"]') ?? []).map((el) =>
+          el.getAttribute('data-tab-slots'),
+        )
+      }, strip.leafId)
+      assert(
+        slotsNow.includes('2'),
+        '并出来的那一格自述装着两份(data-tab-slots = 2)',
+        JSON.stringify(slotsNow),
+      )
+
+      /*
+       * **(e) 压下去,但 x 落在所有标签右侧的空白上 = 空动作。**
+       * 那一行字仍旧不空(§5 贯穿规则 2:没有落点就写「松手放回」)。
+       */
+      const s2 = await topStrip(page)
+      const lastTab = s2.tabs[s2.tabs.length - 1]
+      const blankX = lastTab.left + lastTab.width + 8
+      const ontoY2 = Math.round(s2.rect.top + s2.rect.height + ONTO_Y_OFFSET)
+      const hasBlank = blankX < s2.rect.left + s2.rect.width - 2
+      assert(hasBlank, '条上末格之后还有空白可压', JSON.stringify({ blankX, right: s2.rect.left + s2.rect.width }))
+      const mover = s2.tabs.find((t) => !String(t.id).startsWith('pair:')) ?? s2.tabs[0]
+      const before2 = (await stripOrder(page, s2.leafId)).map((t) => t.id)
+      if (hasBlank) {
+        await press(cdp, { x: mover.cx, y: mover.cy })
+        await strokeOn(cdp, { x: mover.cx, y: mover.cy }, { x: blankX, y: ontoY2 }, { steps: 10 })
+        await moveTo(cdp, { x: blankX + 1, y: ontoY2 })
+        await delay(60)
+        const blank = await stripProbe(page, s2.leafId)
+        assert(blank.pairHot === null, '压在末格之后的空白上:谁都不描圈', JSON.stringify(blank.pairHot))
+        assert(blank.hint !== '', '但浮影下那行字仍旧不空(「松手放回」)', blank.hint)
+        await releaseAt(cdp, { x: blankX, y: ontoY2 })
         assert(
-          folded.some((t) => t.torn),
-          '拖出条之后源那一格折成了 0 宽(元素还在)',
-          JSON.stringify(folded),
+          (await stripOrder(page, s2.leafId)).map((t) => t.id).join('|') === before2.join('|'),
+          '松手之后次序一个字不变(空动作)',
+          before2.join(' | '),
+        )
+      }
+
+      /*
+       * **(f) 拖一格已经是两格的标签压下去 = 拒绝态**(§6 末行:两格的标签不能再并)。
+       * 结构化拒绝,不静默(裁定 7):光标 not-allowed + 一句理由,谁都不描圈。
+       */
+      const s3 = await topStrip(page)
+      const pairTab = s3.tabs.find((t) => String(t.id).startsWith('pair:'))
+      const other = s3.tabs.find((t) => t.id !== pairTab?.id)
+      const ontoY3 = Math.round(s3.rect.top + s3.rect.height + ONTO_Y_OFFSET)
+      assert(Boolean(pairTab && other), '条上有一格两格标签、还有另一格可以压上去', JSON.stringify(s3.tabs.map((t) => t.id)))
+      if (pairTab && other) {
+        const treeBefore = await treeShape(page)
+        await press(cdp, { x: pairTab.cx, y: pairTab.cy })
+        await strokeOn(cdp, { x: pairTab.cx, y: pairTab.cy }, { x: other.cx, y: ontoY3 }, { steps: 10 })
+        await moveTo(cdp, { x: other.cx + 1, y: ontoY3 })
+        await delay(60)
+        const refused = await stripProbe(page, s3.leafId)
+        assert(refused.cursorRefuse, '两格标签压下去:光标 not-allowed', JSON.stringify(refused.cursorRefuse))
+        assert(refused.hint !== '', '而且给得出一句理由', refused.hint)
+        assert(refused.pairHot === null, '谁都不描圈(它并不进去)', JSON.stringify(refused.pairHot))
+        await releaseAt(cdp, { x: other.cx, y: ontoY3 })
+        assert((await treeShape(page)) === treeBefore, '松手之后树一个字不变')
+      }
+    }
+
+    /* ══ 场景 ⑤:架子 → 聊天区中间 / 右带;浮窗不接住自己 ═════════════ */
+    scenario('从架子拖文件到聊天区:中间 = 新标签,右带 = 二合一;浮窗不接住自己')
+    {
+      /*
+       * **绕开那扇浮窗,而不是把它收起来**(门第三版的修法)。
+       *
+       * 总览是一扇 880×520 的居中浮窗,正盖住聊天区的中段;点 Dock 那块瓦是**开关**,
+       * 但它此刻是焦点面,连点两下只会「收起 → 再开」,读数是浮窗还在。
+       * 而这一条要量的是「落到**聊天区**的中间 / 右带会怎样」,不是「浮窗能不能收」
+       * —— 后者是 gate:focus 的地。所以这里改成:在中央叶里挑一个**不被任何浮窗
+       * 盖住**的点。判据本身一个字都不用绕:「叶重叠时取最上」照旧成立,只是探针
+       * 站到了没有第二片叶的地方。
+       */
+      const pointIn = (fx) =>
+        page.evaluate((wantFx) => {
+          const slot = document.querySelector('[data-pane-region="center"] [data-pane-slot]')
+          if (!slot) return null
+          const r = slot.getBoundingClientRect()
+          const floats = Array.from(document.querySelectorAll('[data-float-body]')).map((el) => {
+            const win = el.closest('[role="dialog"]') ?? el
+            return win.getBoundingClientRect()
+          })
+          const x = r.left + r.width * wantFx
+          // 从叶的竖向中线往下找,直到落在所有浮窗之外(叶比浮窗高,总找得到)。
+          for (const t of [0.5, 0.72, 0.86, 0.94, 0.2, 0.08]) {
+            const y = r.top + r.height * t
+            if (!floats.some((f) => x >= f.left && x <= f.right && y >= f.top && y <= f.bottom)) {
+              return { x: Math.round(x), y: Math.round(y), leaf: {
+                left: Math.round(r.left), top: Math.round(r.top),
+                width: Math.round(r.width), height: Math.round(r.height),
+              } }
+            }
+          }
+          return null
+        }, fx)
+      const midPoint = await pointIn(0.5)
+      const rightPoint = await pointIn(1 - 0.28 / 2)
+      const leaf = midPoint ? { rect: midPoint.leaf, y: midPoint.y } : null
+      const row = await centerOf(page, `[data-file-path="${path.join(cwd, 'gamma.ts')}"]`)
+      assert(
+        Boolean(leaf && row && rightPoint),
+        '中央叶里找得到不被浮窗盖住的中点与右带点',
+        JSON.stringify({ mid: midPoint, right: rightPoint }),
+      )
+      if (leaf && row && midPoint && rightPoint) {
+        const gammaId = `file:${path.join(cwd, 'gamma.ts')}`
+        const before = (await stripOrder(page, (await topStrip(page)).leafId)).length
+        // 中间:一路走过去、不停顿,途中量氛围与提示。
+        const mid = { x: midPoint.x, y: midPoint.y }
+        const seen = await stroke(cdp, row, mid, { steps: 12, holdMs: 200, sample: () => feedbackNow(page) })
+        const last = seen[seen.length - 1]
+        assert(last.shape === 'ring', '中间那一档画的是一圈环', JSON.stringify(last))
+        assert(last.ambient > 0, '**从外面拖进来时能放的地方先淡亮一层**(氛围)', String(last.ambient))
+        assert(last.hint !== '', '提示行说的是「开成新标签」这一档', last.hint)
+        await releaseAt(cdp, mid)
+        const strip2 = await topStrip(page)
+        assert(
+          strip2.tabs.some((t) => t.id === gammaId),
+          '松手之后它成了中央那条条上的一格新标签',
+          strip2.tabs.map((t) => t.id).join(' | '),
+        )
+        assert(strip2.tabs.length === before + 1, '条上多了一格,不是替换', `${before} → ${strip2.tabs.length}`)
+
+        // 右带 28%:二合一。
+        const row2 = await centerOf(page, `[data-file-path="${path.join(cwd, 'alpha.ts')}"]`)
+        const rightBand = { x: rightPoint.x, y: rightPoint.y }
+        if (row2) {
+          const seen2 = await stroke(cdp, row2, rightBand, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
+          const r2 = seen2[seen2.length - 1]
+          assert(r2.shape === 'half', '右带那一档画的是「落下后占的那一半」', JSON.stringify(r2))
+          assert(
+            r2.bandRect && Math.abs(r2.bandRect.width - Math.round(leaf.rect.width / 2)) <= 2,
+            '而且那一半就是叶的一半宽',
+            JSON.stringify({ band: r2.bandRect?.width, half: Math.round(leaf.rect.width / 2) }),
+          )
+          assert(r2.hint !== '', '提示行说的是「与 X 二合一」', r2.hint)
+          const tabsBefore = (await topStrip(page)).tabs.length
+          await releaseAt(cdp, rightBand)
+          const strip3 = await topStrip(page)
+          const paired = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('[data-tab-slots]')).map((el) => el.getAttribute('data-tab-id')),
+          )
+          assert(paired.length > 0, '松手之后条上有一格装着两份', JSON.stringify(paired))
+          assert(strip3.tabs.length <= tabsBefore + 1, '而且没有多长出一片叶(单叶政策)', `${tabsBefore} → ${strip3.tabs.length}`)
+        }
+      }
+
+      /*
+       * **浮窗不接住自己**(§8):从总览那扇浮窗里拖一条会话行出来,指针停在
+       * **那扇窗自己身上** —— 落点该是窗底下那片叶,不是它自己。
+       */
+      const float = await centerOf(page, '[data-float-body]')
+      const sessionRow = await centerOf(page, '[data-session-id]:not([aria-selected="true"])')
+      if (float && sessionRow) {
+        await press(cdp, sessionRow)
+        await strokeOn(cdp, sessionRow, { x: float.x, y: float.y }, { steps: 10 })
+        await moveTo(cdp, { x: float.x + 1, y: float.y })
+        await delay(40)
+        const read = await page.evaluate(() => {
+          const band = document.querySelector('[data-testid="drop-overlay"]')
+          if (!band) return null
+          const r = band.getBoundingClientRect()
+          return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }
+        })
+        assert(Boolean(read), '停在那扇浮窗身上时有落区', JSON.stringify(read))
+        assert(
+          read && (read.width > float.rect.width + 8 || read.height > float.rect.height + 8),
+          '**落区不是那扇窗自己** —— 它比窗大得多(判的是窗底下那片叶)',
+          JSON.stringify({ band: read, float: float.rect }),
         )
         await page.keyboard.press('Escape')
-        await delay(240)
-        await releaseAt(cdp, { x: Math.round(viewport.w * 0.5), y: Math.round(viewport.h * 0.5) })
-        const tabAfter = await treeShape(page)
-        assert(
-          tabAfter === tabBefore,
-          'Esc 之后那一格 tab **仍在原位**(摘原位提前到起拖的话这里会红)',
-          tabAfter === tabBefore ? '' : `\n     前:${tabBefore}\n     后:${tabAfter}`,
-        )
-        const restored = await topbarOrder(page)
-        assert(
-          restored.every((t) => !t.torn && !t.lift && t.shift === ''),
-          'Esc 之后折的展回来了、让位与抬起也都清干净',
-          JSON.stringify(restored),
-        )
-      }
-    }
-
-    /* ── 场景 7:跨区域搬家 —— 内容逐字相同(W4 留账 3 的口径)──────────── */
-    scenario('跨区域搬家:必然换 React 宿主,所以只断言「内容逐字相同」')
-    {
-      /*
-       * 搬的是 **beta.ts 那一格**,不是「中央区此刻活动的那一格」——
-       * 后者是聊天,而 `chat` 这一种自述了 `regions: ['center']`(设计 §1.1:
-       * 「今天只有 chat 在 T4 之前限定 center」)。第一版取的是活动那一格,
-       * 读数是「region 还是 center」——那不是拖拽没生效,是**种类自述把它拦下了**,
-       * 判据在按设计工作。要量跨区域,就得拿一格搬得动的内容。
-       */
-      const name = 'beta.ts'
-      const tab = await page.evaluate((n) => {
-        const el = Array.from(
-          document.querySelectorAll('[data-pane-region="center"] [data-pane-tab]'),
-        ).find((t) => (t.getAttribute('data-pane-tab') ?? '').endsWith(n))
-        return el ? { id: el.getAttribute('data-pane-tab'), text: (el.textContent ?? '').slice(0, 200) } : null
-      }, name)
-      if (!tab) {
-        assert(false, `中央区有一格 ${name} 可搬`)
+        await releaseAt(cdp, { x: float.x, y: float.y })
       } else {
-        const handle = await page.evaluate((n) => {
-          const el = Array.from(
-            document.querySelectorAll('[data-testid="topbar-tabs"] [role="tab"]'),
-          ).find((t) => (t.textContent ?? '').includes(n))
-          if (!el) return null
-          const r = el.getBoundingClientRect()
-          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }
-        }, name)
-        assert(Boolean(handle), `顶栏上 ${name} 那一格标签量得到`, JSON.stringify(handle))
-        await drag(cdp, handle, { x: 6, y: Math.round(viewport.h / 2) })
-        const after = await page.evaluate((id) => {
-          const el = document.querySelector(`[data-pane-tab="${CSS.escape(id)}"]`)
-          if (!el) return null
-          const host = el.closest('[data-pane-region]')
-          return { region: host?.getAttribute('data-pane-region') ?? null, text: (el.textContent ?? '').slice(0, 200) }
-        }, tab.id)
-        assert(Boolean(after), '那一格还在屏幕上', JSON.stringify(after))
-        assert(after && after.region !== 'center', '而且换了区域', after?.region)
-        assert(after && after.text === tab.text, '内容逐字相同(跨区域不保 DOM 身份 —— W4 留账 3)')
+        assert(false, '总览浮窗与一条会话行都在场', JSON.stringify({ float: Boolean(float), row: Boolean(sessionRow) }))
       }
     }
 
-
-    /*
-     * ── 备料:把条上补到两格 ────────────────────────────────────────────
-     * 场景 8 / 10 / 11 量的都是「条上至少有两格」那一形,而前面七个场景把 tab
-     * 搬得到处都是(那正是它们在量的东西)。所以这里**不假设**前面留下了什么:
-     * 缺几格就从文件树里补几格 —— 走的还是用户真走的那条路(拖一行进来)。
-     */
+    /* ══ 场景 ⑥:零重挂(换序 / 二合一 / 拆开 / 换比例)══════════════ */
+    scenario('零重挂:换序、二合一、拆开、换比例四步,内容根节点同一个 DOM')
     {
-      await clickSelector(page, '[data-testid="dock-tile-files"]')
-      await delay(500)
-      for (const name of ['alpha.ts', 'beta.ts', 'gamma.ts']) {
-        const count = await page.evaluate(
-          () => document.querySelectorAll('[data-testid="topbar-tabs"] [role="tab"]').length,
-        )
-        if (count >= 2) break
-        const rowSel = `[data-file-path="${path.join(cwd, name)}"]`
-        const row = await centerOf(page, rowSel)
-        const leafAt = await centerOf(page, '[data-pane-region="center"] [data-pane-slot]')
-        if (!row || !leafAt) continue
-        await drag(cdp, row, { x: leafAt.x, y: leafAt.y })
+      const bodySel = '[data-pane-region="center"] [data-pane-body]'
+      await stamp(page, bodySel, 'body-node')
+      const strip = await fillStrip(2, { singles: true })
+
+      // ① 换序。
+      const a = strip.tabs[0]
+      const b = strip.tabs[1]
+      await stroke(cdp, { x: a.cx, y: a.cy }, { x: b.cx + b.width / 2 - 2, y: a.cy }, { steps: 10, release: true })
+      await delay(SETTLE_MS + 200)
+      assert(await stampSurvives(page, bodySel, 'body-node'), '换序之后内容根还是同一个节点')
+
+      // ② 二合一(走「放到标签上」那条路:压到条底缘下 6–24px 再松手)。
+      const s2 = await fillStrip(2, { singles: true })
+      const single = s2.tabs.filter((t) => !t.id.startsWith('pair:'))
+      if (single.length >= 2) {
+        const ontoY = Math.round(s2.rect.top + s2.rect.height + ONTO_Y_OFFSET)
+        await press(cdp, { x: single[0].cx, y: single[0].cy })
+        await strokeOn(cdp, { x: single[0].cx, y: single[0].cy }, { x: single[1].cx, y: ontoY }, { steps: 10 })
+        await moveTo(cdp, { x: single[1].cx + 1, y: ontoY })
+        await delay(60)
+        await releaseAt(cdp, { x: single[1].cx, y: ontoY })
+        assert(await stampSurvives(page, bodySel, 'body-node'), '二合一之后内容根还是同一个节点')
+      } else {
+        assert(false, '条上有两格普通标签可以并', JSON.stringify(s2.tabs.map((t) => t.id)))
+      }
+
+      // ③ 换比例(拖那根分隔杆)+ ④ 拆开(格头上那颗)。
+      const seam = await centerOf(page, '[data-testid^="pair-splitter"]')
+      if (seam) {
+        await stroke(cdp, seam, { x: seam.x - 60, y: seam.y }, { steps: 8, release: true })
+        assert(await stampSurvives(page, bodySel, 'body-node'), '换比例之后内容根还是同一个节点')
+      } else {
+        assert(false, '两格标签里有一根分隔杆', 'pair-splitter 不在 DOM 里')
+      }
+      const unpaired = await page.evaluate(() => {
+        const btn = document.querySelector('[data-testid^="pair-unpair"]')
+        if (!(btn instanceof HTMLElement)) return false
+        btn.click()
+        return true
+      })
+      await delay(320)
+      assert(unpaired, '格头上那颗「拆开」按得到')
+      if (unpaired) {
+        assert(await stampSurvives(page, bodySel, 'body-node'), '拆开之后内容根还是同一个节点')
       }
     }
 
-    /* ── 场景 8:条内换序(W3-b 裁定 4)──────────────────────────────────── */
-    scenario('顶栏条内换序:序真的变了、拖的就是那一格、让位落定后清零、浮影不画')
+    /* ══ 场景 ⑦:拒绝态 —— 光标、理由、弹回 ═══════════════════════════ */
+    scenario('拒绝区:not-allowed 光标 + 一句理由;松手弹回,树一个字不变')
     {
-      /*
-       * 这一段量的是用户报的第一条病(「换序做不到」)与第二条病(「手和东西是
-       * 分开的」)。所以三件事要一起量:**结果**(序变了)、**过程**(拖的那一格
-       * 自己带着 `data-lift` 在动,而浮影一个节点都没有)、**收尾**(让位的
-       * transform 清零 —— 留着的话下一次渲染那几格会长在错位上)。
-       */
-      const strip = await stripWithTwoTabs(page)
-      assert(Boolean(strip), '找得到一条至少两格的标签条', JSON.stringify(strip?.ids))
-      if (strip) {
-        const before = await topbarOrder(page, strip.leafId)
-        const first = before[0].id
-        const last = before[before.length - 1].id
-        const firstAt = await centerOf(page, `[data-tab-id="${cssEscape(first)}"]`)
-        const lastAt = await centerOf(page, `[data-tab-id="${cssEscape(last)}"]`)
-        await stamp(page, `[data-tab-id="${cssEscape(first)}"]`, 'reorder-node')
-        // 在**条内**横着走(y 不动 = 一直在带里 = 换序模式)。
-        const to = { x: lastAt.rect.left + lastAt.rect.width - 4, y: firstAt.y }
-        await drag(cdp, firstAt, to, { release: false })
-        const mid = await topbarOrder(page, strip.leafId)
-        assert(
-          !(await page.evaluate(() => Boolean(document.querySelector('[data-testid="drag-ghost"]')))),
-          '条内换序时**浮影一个节点都不画**(拖的就是 tab 本身)',
-        )
-        assert(mid.some((t) => t.lift), '被拖那一格带着 data-lift(它自己被抬起来了)', JSON.stringify(mid))
-        assert(
-          mid.some((t) => !t.lift && t.shift.includes('translateX')),
-          '邻居在用 transform 让位',
-          JSON.stringify(mid.map((t) => t.shift)),
-        )
-        await releaseAt(cdp, to)
-        const after = await topbarOrder(page, strip.leafId)
-        assert(
-          after[after.length - 1].id === first,
-          '松手之后它排到了末尾(次序真的变了)',
-          `${before.map((t) => t.id).join(' | ')}  →  ${after.map((t) => t.id).join(' | ')}`,
-        )
-        assert(
-          after.every((t) => t.shift === '' && !t.lift && !t.torn),
-          '落定之后让位 transform 清零、抬起 / 折起两格属性都摘掉',
-          JSON.stringify(after),
-        )
-        assert(
-          await stampSurvives(page, `[data-tab-id="${cssEscape(first)}"]`, 'reorder-node'),
-          '零重挂:换序前后是同一个 DOM 节点',
-        )
-      }
-    }
-
-    /* ── 场景 9:6px 的移动 = 点击,不起拖(阈值 4 → 8)────────────────────── */
-    scenario('走 6px 松手 = 一次点击,不起拖(DRAG_START_PX 从 4 调到 8)')
-    {
-      const order = await topbarOrder(page)
-      const id = order[0]?.id
-      const at = id ? await centerOf(page, `[data-testid="topbar-tabs"] [data-tab-id="${cssEscape(id)}"]`) : null
-      assert(Boolean(at), '顶栏上有一格可按', JSON.stringify(at?.rect))
-      if (at) {
+      const dock = await centerOf(page, '[data-dock="strip"]')
+      const row = await centerOf(page, `[data-file-path="${path.join(cwd, 'beta.ts')}"]`)
+      assert(Boolean(dock && row), 'Dock 与文件行都量得到', JSON.stringify(dock?.rect))
+      if (dock && row) {
         const before = await treeShape(page)
-        /*
-         * 六步各走 1px —— 每一发都真的到达 blink,总位移 6 < 8。W3 那时(阈值 4)
-         * 这一串会在第 5 发起拖并画出浮影,也就是用户报的「轻轻一碰浮影就出来」。
-         */
-        await drag(cdp, at, { x: at.x + 6, y: at.y }, { steps: 6, release: false })
+        const seen = await stroke(cdp, row, dock, { steps: 12, holdMs: 160, sample: () => feedbackNow(page) })
+        const read = seen[seen.length - 1]
+        assert(read.refused, 'Dock 上是拒绝态(浮影变灰虚线)', JSON.stringify(read))
+        assert(read.cursorRefuse, '而且整扇窗的光标换成了 not-allowed(根属性驱动)')
+        assert(read.hint !== '', '拒绝也说得出理由,不静默', read.hint)
+        assert(read.shape === null, '拒绝时不画一块接受色的高亮')
+        await releaseAt(cdp, dock)
+        assert((await treeShape(page)) === before, '松手之后树逐字不变(弹回,空动作)')
         assert(
-          !(await page.evaluate(() => Boolean(document.querySelector('[data-testid="drag-ghost"]')))),
-          '走 6px 时浮影不出现',
+          !(await page.evaluate(() => document.documentElement.hasAttribute('data-drag-refuse'))),
+          '拒绝光标在结束路径上摘掉了(留着的话整扇窗从此都是禁止光标)',
         )
-        assert(
-          (await topbarOrder(page)).every((t) => !t.lift),
-          '也没有哪一格被抬起来',
-        )
-        await releaseAt(cdp, { x: at.x + 6, y: at.y })
-        assert((await treeShape(page)) === before, '松手之后树逐字相同(这一下就是一次点击)')
       }
-    }
 
-    /* ── 场景 10:撕下 → 另一条条腾出空位 → 落到那个下标 ─────────────────── */
-    scenario('撕下一格 → 拖到另一条标签条的带里 → 那条条腾出空位 → 落到那个下标')
-    {
-      /*
-       * 「另一条条」这里**自己造**:找一条至少两格的条,把它的一格拖到**它自己那片
-       * 叶**的西带切一刀,于是屏幕上有了两条条。不去借前面场景留下的右架子 ——
-       * 那条架子在场景 4 里已经被撕成浮窗、连架子一起没了(门第一版就是这样红的:
-       * 借来的前置状态会随任何一个前置场景的改动一起塌)。
-       *
-       * 也不假设那条条在**顶栏**:这一串场景跑到这里时,最热闹的那片叶很可能在一扇
-       * 浮窗里(总览是浮窗形态,而它盖住中央区 —— 「叶重叠时取最上」是判据在按设计
-       * 工作)。所以一律走 `stripWithTwoTabs` 问「此刻哪条条有两格」。
-       */
-      const strip = await stripWithTwoTabs(page)
-      assert(Boolean(strip), '找得到一条至少两格的条,可以切一刀', JSON.stringify(strip?.ids))
-      if (strip) {
-        const movable = strip.ids.find((id) => id !== 'chat:main') ?? strip.ids[0]
-        const leafRect = await centerOf(page, `[data-pane-slot="${cssEscape(strip.leafId)}"]`)
-        const from0 = await centerOf(page, `[data-tab-id="${cssEscape(movable)}"]`)
-        assert(Boolean(leafRect && from0), '那片叶与那一格都量得到', JSON.stringify(leafRect?.rect))
-        await drag(cdp, from0, { x: leafRect.rect.left + 8, y: leafRect.y })
-        const strips = await page.evaluate(() =>
-          Array.from(document.querySelectorAll('[data-pane-chrome]')).map((el) =>
-            el.getAttribute('data-pane-chrome'),
-          ),
-        )
-        assert(strips.length >= 2, '现在屏幕上有两条以上标签条', JSON.stringify(strips))
-
-        // 抓一格,拖到**不含它**的那条条的带里。
-        const source = await stripWithTwoTabs(page)
-        const grab = source?.ids.find((id) => id !== 'chat:main') ?? source?.ids[0]
-        assert(Boolean(grab), '找得到一格可以撕下来的 tab', String(grab))
-        if (grab) {
-          const grabAt = await centerOf(page, `[data-tab-id="${cssEscape(grab)}"]`)
-          const targetStrip = await page.evaluate((want) => {
-            for (const chrome of Array.from(document.querySelectorAll('[data-pane-chrome]'))) {
-              const list = chrome.querySelector('[role="tablist"]')
-              if (!list) continue
-              const ids = Array.from(list.querySelectorAll('[data-tab-id]')).map((el) =>
-                el.getAttribute('data-tab-id'),
-              )
-              if (ids.length > 0 && !ids.includes(want)) return chrome.getAttribute('data-pane-chrome')
-            }
-            return null
-          }, grab)
-          assert(Boolean(targetStrip), '找得到另一条条(不含被拖那一格)', String(targetStrip))
-          if (targetStrip) {
-            const listSel = `[data-pane-chrome="${cssEscape(targetStrip)}"] [role="tablist"]`
-            const target = await centerOf(page, listSel)
-            // 落在那条条**最左边**一点点 = 第 0 格之前。
-            const drop = { x: target.rect.left + 4, y: target.y }
-            await drag(cdp, grabAt, drop, { release: false })
-            const torn = await page.evaluate(
-              (want) => document.querySelector(`[data-tab-id="${want.replace(/["\\]/g, '\\$&')}"]`)?.hasAttribute('data-torn') ?? false,
-              grab,
-            )
-            assert(torn, '源那一格折成了 0 宽(元素还在,没卸载)')
-            assert(
-              await page.evaluate(() => Boolean(document.querySelector('[data-testid="drag-ghost"]'))),
-              '浮影(tab 形卡片)在屏幕上',
-            )
-            assert(
-              (await overlayShape(page)) === null,
-              '落在条上时**不画高亮** —— 预示是那条条腾出来的空位',
-            )
-            assert(
-              await page.evaluate(
-                (css) => Boolean(document.querySelector(css)?.querySelector('[data-tab-placeholder]')),
-                listSel,
-              ),
-              '目标那条条腾出了一个空位',
-            )
-            await releaseAt(cdp, drop)
-            const landed = await page.evaluate(
-              ([css, want]) =>
-                Array.from(document.querySelector(css)?.querySelectorAll('[data-tab-id]') ?? []).findIndex(
-                  (el) => el.getAttribute('data-tab-id') === want,
-                ),
-              [listSel, grab],
-            )
-            assert(landed === 0, '它落在了第 0 格(空位在哪儿它就落在哪儿)', `at=${landed}`)
-            assert(
-              !(await page.evaluate(() => Boolean(document.querySelector('[data-tab-placeholder]')))),
-              '空位收干净了',
-            )
-          }
-        }
-      }
-    }
-
-    /* ── 场景 11:拖到自己那条 = 换序,不是并入 ──────────────────────────── */
-    scenario('把一格 tab 拖到它自己那条标签条上 = 换序,而不是并入那片叶')
-    {
-      /*
-       * 这一条守的是「次序即语义」的第一问:条**优先于**叶。条压在叶的北带与叶身
-       * 里,先问叶的话这一下会变成「并入自己那片叶」(空动作)或者更糟的「在自己
-       * 的北带上切一刀」。判据这一头没有第二种写法,所以门量的是**结果**:
-       * 那片叶的 tab 数一格不变,而且屏幕上没有一块并入的环。
-       */
-      const strip = await stripWithTwoTabs(page)
-      assert(Boolean(strip), '找得到一条至少两格的标签条', JSON.stringify(strip?.ids))
-      if (strip) {
-        const order = await topbarOrder(page, strip.leafId)
-        const before = order.length
-        const at = await centerOf(page, `[data-tab-id="${cssEscape(order[1].id)}"]`)
-        const target = await centerOf(page, `[data-tab-id="${cssEscape(order[0].id)}"]`)
-        const to = { x: target.rect.left + 4, y: target.y }
-        await drag(cdp, at, to, { release: false })
-        assert((await overlayShape(page)) === null, '拖到自己那条时不画并入的环')
-        assert(
-          !(await page.evaluate(() => Boolean(document.querySelector('[data-testid="drag-ghost"]')))),
-          '也不画浮影(它是换序模式)',
-        )
-        await releaseAt(cdp, to)
-        const after = await topbarOrder(page, strip.leafId)
-        assert(after.length === before, '那片叶的 tab 数一格不变(不是并入)', `${before} → ${after.length}`)
-        assert(after[0].id === order[1].id, '它换到了第一位', after.map((t) => t.id).join(' | '))
+      // 顶栏尾格同理。
+      const trailing = await centerOf(page, '[data-testid="topbar-trailing"]')
+      const row2 = await centerOf(page, `[data-file-path="${path.join(cwd, 'beta.ts')}"]`)
+      if (trailing && row2 && trailing.rect.width > 0) {
+        const seen = await stroke(cdp, row2, trailing, { steps: 10, holdMs: 120, sample: () => feedbackNow(page) })
+        assert(seen[seen.length - 1].refused, '顶栏尾格也是拒绝区', JSON.stringify(seen[seen.length - 1]))
+        await releaseAt(cdp, trailing)
+      } else {
+        assert(false, '顶栏尾格量得到', JSON.stringify(trailing?.rect))
       }
     }
 

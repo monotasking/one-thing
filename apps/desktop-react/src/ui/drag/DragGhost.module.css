@@ -1,13 +1,13 @@
 /*
- * 浮影 = **一张 tab 形的卡片**(W3-b 裁定 4:一枚浮影一种形)。
+ * 浮影 = **一张 tab 形的卡片 + 一行「松手会发生什么」**(W3-b 裁定 4「一枚浮影
+ * 一种形」;W6-b 加了提示行,设计 v3 §5 贯穿规则 2)。
  *
- * 图标 + 名(+ 拒绝时那一句理由),36 高、圆角、阴影、轻微倾斜,底色读
- * `--pane-face` —— 它就是一格被抬离条的 tab,而 tab 的脸就是那片叶的脸。
- * W3 那枚 28 高、`--surface-2` 底、带实线描边的「芯片」退役:文件行 / 会话行 /
- * Dock 瓦 / tab 四种来源从此拖出同一枚东西,用户不必学两种形。
+ * 卡片:图标 + 名,36 高、圆角、阴影、轻微倾斜,底色读 `--pane-face` —— 它就是
+ * 一格被抬离条的 tab,而 tab 的脸就是那片叶的脸。W3 那枚 28 高、`--surface-2` 底、
+ * 带实线描边的「芯片」退役:文件行 / 会话行 / Dock 瓦 / tab 四种来源从此拖出同一枚东西。
  *
  * **永不换行、永不撑破**(挤压纪律):`max-width` 封顶 + 名字截断。一条 200 字的
- * 会话标题拖起来不该长成半屏宽的一条带子。
+ * 会话标题拖起来不该长成半屏宽的一条带子。提示行同理:一行、截断。
  */
 .ghost {
   position: fixed;
@@ -15,9 +15,24 @@
   /* 指针穿过去 —— 落点判定要的是「指针底下那块面」,不是浮影自己(见组件头)。 */
   pointer-events: none;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  max-width: var(--drag-ghost-max-w);
+  /*
+   * 卡片**横向居中在指针上**、纵向抬到指针上方 —— 指针因此落在卡片偏上那一点,
+   * 与「抓着一格 tab 的上半截」同形。轻微倾斜是「它被拎起来了」这句话的全部,
+   * 不加缩放不加透明度:那两样会让人以为它是个预览。
+   * 倾斜挂在**卡片**上而不是这一层:提示行是一句话,歪着的字读起来更慢。
+   */
+  transform: translate(var(--drag-ghost-dx), var(--drag-ghost-dy));
+}
+
+.card {
+  display: flex;
   align-items: center;
   gap: var(--tab-gap);
-  max-width: var(--drag-ghost-max-w);
+  max-width: 100%;
   height: var(--drag-ghost-h);
   padding: 0 var(--drag-ghost-pad-x);
   /*
@@ -31,18 +46,56 @@
   box-shadow: var(--sh-2);
   color: var(--text-1);
   font-size: var(--fs-meta);
-  /*
-   * 卡片**横向居中在指针上**、纵向抬到指针上方 —— 指针因此落在卡片偏上那一点,
-   * 与「抓着一格 tab 的上半截」同形。轻微倾斜是「它被拎起来了」这句话的全部,
-   * 不加缩放不加透明度:那两样会让人以为它是个预览。
-   */
-  transform: translate(var(--drag-ghost-dx), var(--drag-ghost-dy)) rotate(var(--drag-ghost-tilt));
+  transform: rotate(var(--drag-ghost-tilt));
 }
 
-.ghost[data-refuse] {
+/*
+ * **提示行**(§5:「浮影下那行字永远不空」)。它是这套形态里唯一一处在拖拽期间
+ * 出现的文字 —— 落区上不再写字,所以这一行必须自己站得住:一块有底有边的小签,
+ * 不是浮在内容上的一段裸字(裸字在深色代码块上直接读不出来)。
+ */
+.hint {
+  max-width: 100%;
+  padding: var(--drag-hint-pad-y) var(--sp-2);
+  border-radius: var(--r-1);
+  background: var(--surface-2);
+  box-shadow: var(--sh-1);
+  color: var(--text-2);
+  font-size: var(--fs-micro);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * **靠近视口右缘时提示行挂到卡片左侧**(§5)。整枚浮影右对齐,提示行因此从
+ * 卡片的右缘往左长 —— 否则一句「与「很长的名字」二合一」会被视口裁掉半句,
+ * 而那句话正是这一帧唯一说得出「松手会怎样」的东西。
+ * 卡片的横向偏移一并翻面:指针从「卡片中线」换到「卡片右缘偏内」。
+ */
+.ghost[data-flip] {
+  align-items: flex-end;
+  transform: translate(var(--drag-ghost-dx-flip), var(--drag-ghost-dy));
+}
+
+/*
+ * **飞完最后一程**(§5):卡片摆正、缩一点、淡出 —— 三样一起说完「它到位了,
+ * 这枚替身的事完了」。位移那一半由 `.layer` 的 `left/top` 过渡负责(见那边)。
+ */
+.ghost[data-landing] .card {
+  transition: transform var(--dur-land) var(--ease), opacity var(--dur-land) var(--ease);
+  transform: rotate(0deg) scale(var(--drag-land-scale));
+  opacity: 0;
+}
+
+.ghost[data-refuse] .card {
   opacity: var(--drag-refuse-opacity);
   border-color: var(--line-2);
   border-style: dashed;
+}
+
+.hint[data-refuse] {
+  color: var(--text-3);
 }
 
 .icon {
@@ -56,13 +109,5 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 拒绝理由:与名字同一行,压一档字号与墨色 —— 它是注解不是标题。 */
-.reason {
-  flex: none;
-  color: var(--text-3);
-  font-size: var(--fs-micro);
   white-space: nowrap;
 }

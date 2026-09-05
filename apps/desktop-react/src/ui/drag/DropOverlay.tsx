@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { useFloatPosition } from '../float'
 import { useDragState } from './DragSession'
-import type { DropFeedback } from './DragSession'
+import type { DragRect, DropFeedback } from './DragSession'
 import s from './DropOverlay.module.css'
 
 /**
@@ -45,7 +45,38 @@ import s from './DropOverlay.module.css'
  */
 export function DropOverlay() {
   const drag = useDragState()
-  return drag?.drop?.rect ? <DropBand feedback={drag.drop} /> : null
+  if (!drag) return null
+  return (
+    <>
+      {/*
+        **氛围**(W6-b,设计 v3 §5 贯穿规则 1)。它排在实亮那一块**之前** ——
+        两者同一档 z(`--z-drag`),谁在上由 DOM 序决定,而「悬到的那一处亮到实」
+        这句话要求实亮的那块盖在淡亮之上。
+        它们是**同一批节点在挪**而不是每帧重建:`key` 取那块矩形的四个数
+        (氛围只在起拖那一刻算一次,整场不变),所以 React 一次都不会拆掉重建。
+      */}
+      {drag.ambient.map((rect) => (
+        <AmbientBand key={`${rect.left},${rect.top},${rect.width},${rect.height}`} rect={rect} />
+      ))}
+      {drag.drop?.rect ? <DropBand feedback={drag.drop} /> : null}
+    </>
+  )
+}
+
+/**
+ * 一块**淡亮**(§5:「所有能放的地方先淡淡亮一层」)。它与 `DropBand` 是两只
+ * 组件而不是一格 `tone`,理由与那边分家同源:这一块**不跟随、不换矩形**
+ * (起拖时算一次),所以它不必每帧跑一次 `useFloatPosition`。
+ */
+function AmbientBand({ rect }: { rect: DragRect }) {
+  return (
+    <div
+      className={s.ambient}
+      data-testid="drop-ambient"
+      style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+      aria-hidden="true"
+    />
+  )
 }
 
 /**
@@ -81,8 +112,6 @@ function DropBand({ feedback }: { feedback: DropFeedback }) {
         height: pos.height ?? rect.height,
       }}
       aria-hidden="true"
-    >
-      {feedback.label && <span className={s.label}>{feedback.label}</span>}
-    </div>
+    />
   )
 }

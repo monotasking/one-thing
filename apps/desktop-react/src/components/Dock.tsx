@@ -204,6 +204,11 @@ export function Dock() {
            * 所以「这一块是坞里的那一块」得有个不靠文案的说法。 */
           {...scopeProps}
           data-dock="strip"
+          /* `data-nodrop`(W6-b,设计 v3 §5 第一行):**Dock 自述「一律不收」**。
+           * 它本身是一排**入口**而不是落点 —— 把一格标签丢在瓦上没有任何语义,
+           * 而没有这一句时它落进的是条底下那片叶(判据在按几何工作,但那不是
+           * 用户瞄准的地方)。判据不认识 Dock,只扫 `[data-nodrop]`。 */
+          data-nodrop=""
           className={[
             s.strip,
             SIZE_CLASS[dockSize],

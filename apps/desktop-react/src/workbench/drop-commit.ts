@@ -5,17 +5,17 @@ import {
   floatRectForGrab,
   FALLBACK_VIEWPORT,
 } from '../stage/transitions'
+import { flashLandedTab } from '../ui/tab-reorder'
 import { announce } from '../ui/a11y/live-region'
 import { t } from '../i18n'
 import { focusIntoRefAfterCommit } from './focus-into'
-import { refId } from './kinds'
-import { ZONE_SPLIT } from './drop'
+import { contentKindOf, refId } from './kinds'
+import { useLiveTitleStore } from '../stage/live-title'
 import { edgeRegion, floatRegion } from './regions'
-import { regionOfLeafIn, regionOfRefIn, SINGLE_LEAF_REGIONS, useWorkbenchStore } from './store'
+import { regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from './store'
 import { findLeaf, leavesOf } from './tree'
 import type { DropTarget } from './drop'
 import type { ContentRef } from './kinds'
-import type { RegionId } from './regions'
 import type { FloatRect, ShelfSide, Viewport } from '../stage/types'
 
 /**
@@ -89,8 +89,29 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
     return
   }
 
-  if (target.kind === 'leaf') {
-    dropIntoLeaf(ref, target.region, target.leafId, target.zone)
+  /*
+   * **落回自己那片叶 = 空动作**(设计 v3 §5 最后一行「自己的内容区……松手放回
+   * 标签条」)。与 `refuse` 同一条判词:这一下什么都没发生,连全屏都不该顺手收
+   * —— 但它排在 `exitFullIfOpen` 之后,因为「拖到自己身上」这一下用户确实做过
+   * 一次拖拽,而拒绝那一下连拖都不成立。
+   */
+  if (target.kind === 'back') return
+
+  /** **与这片叶的活动标签并排**(§5 的内容区左右带)。 */
+  if (target.kind === 'pair') {
+    pairIntoActive(ref, target.leafId, target.side)
+    return
+  }
+
+  /** **落到某一格标签正中 = 与它二合一**(§5 的「标签正中 44%」)。 */
+  if (target.kind === 'pairTab') {
+    pairIntoIndex(ref, target.leafId, target.at, 'right')
+    return
+  }
+
+  /** **内容区中间 = 在那条条的末尾开成一格新标签**(§5)。 */
+  if (target.kind === 'open') {
+    dropIntoStrip(ref, target.leafId, Number.POSITIVE_INFINITY)
     return
   }
 
@@ -111,7 +132,12 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
 }
 
 /**
- * **落到一条标签条上,插到第 `at` 格**(W3-b 裁定 6)。
+ * **落到一条标签条上,插到第 `at` 格**(W3-b 裁定 6;W6-b 添了「末尾」这一档)。
+ *
+ * `at` 传 `Infinity` = **末尾**(内容区中间那一档:「开成新标签」,设计 v3 §5)。
+ * 它在这里就地夹到 `leaf.tabs.length`,而不是让判据那一头去数格数 —— 「这条条
+ * 此刻有几格」是 store 的事实,判据读的是起拖时量的那份几何,两者在拖拽期间
+ * 恰好相同、在菜单那条路上未必。
  *
  * 一支两路,判据是「这一格本来在不在这条条上」:
  *   在  → `store.moveTab`,一次同叶换序(`at` 是对着**本来那张表**量的下标,
@@ -128,13 +154,14 @@ function dropIntoStrip(ref: ContentRef, leafId: string, at: number): void {
   if (!region) return
   const leaf = findLeaf(store.regions[region], leafId)
   if (!leaf) return
+  const to = Number.isFinite(at) ? at : leaf.tabs.length
   const id = refId(ref)
   const from = leaf.tabs.findIndex((tab) => refId(tab) === id)
   if (from >= 0) {
-    reorderTab(leafId, from, at)
+    reorderTab(leafId, from, to)
     return
   }
-  store.moveRefIntoLeaf(ref, leafId, { at })
+  store.moveRefIntoLeaf(ref, leafId, { at: to })
   const side = sideOfRegion(region)
   if (side) expandShelf(side)
   land(ref)
@@ -180,60 +207,62 @@ export function reorderTab(leafId: string, from: number, at: number): void {
   announce(t('drag.reordered', { at: now + 1, total: landed?.tabs.length ?? 0 }))
 }
 
-function dropIntoLeaf(
+/**
+ * **二合一**(W6-b,设计 v3 §5 / §6):把 `ref` 并进这片叶第 `at` 格的 `side` 侧。
+ *
+ * 判据整件在 `store.pairRefs`(它自己拦「拖回自己身上」「两格的不能再并」「并不
+ * 出来」三条),这里只做两件事:**把落点翻译成它的签名**(叶 + 下标 + ref + 哪一侧)
+ * 与**收笔**(架子展开 + 点成活动 + 焦点跟过去)。
+ *
+ * 「一格都没并成」也走 `land()`:那一下要么是空动作(拖回自己身上),要么被
+ * `pairRefs` 拦了 —— 两种都不该顺手把焦点丢在别处,而 `land()` 对一格没搬动的
+ * ref 是幂等的(它只是把它在**它此刻那片叶**里点成活动的)。
+ */
+export function pairIntoIndex(
   ref: ContentRef,
-  region: RegionId,
   leafId: string,
-  zone: 'center' | 'n' | 's' | 'e' | 'w',
+  at: number,
+  side: 'left' | 'right',
 ): void {
   const store = useWorkbenchStore.getState()
-  const tree = store.regions[region]
-  const leaf = tree ? findLeaf(tree, leafId) : null
-  if (!leaf) return
-  /*
-   * **一片叶里唯一那一格拖到它自己身上 = 空动作**(不管落中心还是落四带)。
-   * 树那一头自己也有这句判(`tree.splitLeaf`:「搬走之后原叶空了 = 这一次分屏
-   * 没有意义」),但那一句救不了这里:走到那儿之前这一格已经被摘掉、这片叶已经
-   * 被剪掉了,`splitLeaf` 只会答「没有这片叶」,而那一格就此从树上消失。
-   */
-  const id = refId(ref)
-  if (leaf.tabs.length === 1 && refId(leaf.tabs[0]) === id) return
-
-  /*
-   * **单叶区域里四带落成一格标签**(W6-a)。
-   *
-   * 中央区收成一条标签条之后 `store.splitLeaf` 在那里不受理,而下面那一支是
-   * 「先从每棵树里摘干净、再切」—— 切不成的话那一格**就此从树上消失**,而用户
-   * 只是把它拖到了内容区右边。所以在那些区域里,四带退成「开成新标签」:
-   * 内容一定落得下去,而不是掉在地上。
-   *
-   * 设计 §5 那张表要的是「左右 28% = 与它二合一」,而二合一的落点判定是 **W6-b**
-   * 的地(拖拽引擎重做)。这一句是那之前的**安全底**,不是终态;留账在交卷报里。
-   */
-  const asTab = zone !== 'center' && SINGLE_LEAF_REGIONS.includes(region)
-
-  if (zone === 'center' || asTab) {
-    store.moveRefIntoLeaf(ref, leafId)
-  } else {
-    /*
-     * 四带 = 切一刀,新叶放那一侧,比例 50(`DEFAULT_SPLIT_RATIO`)。
-     *
-     * 次序:**先从每棵树里摘干净,再切**。`splitLeaf` 走的是「点名 ref」那条
-     * 支路(`tree.ts` 的原话:「点名了 ref 是开新的不搬」),它不会替你摘 ——
-     * 不先摘,拖一格 tab 到隔壁那片叶的东带会留下两份:原位一份、新叶一份。
-     *
-     * 也**不复用菜单那格 `canSplit = leaf.tabs.length > 1` 的闸**(裁定 5):
-     * 那句闸说的是「把本叶的活动 tab 拉出去,原叶会不会空掉」;这里放进去的是
-     * **另一格**,原叶一格都不会少。
-     */
-    const { dir, before } = ZONE_SPLIT[zone]
-    store.detachRef(id)
-    useWorkbenchStore.getState().splitLeaf(leafId, dir, ref, before)
-  }
-  // 落进架子里的那一片叶 = 那条架子该展开(与「新入架子顺手展开」同一句话)。
-  const side = sideOfRegion(region)
-  if (side) expandShelf(side)
+  const region = regionOfLeafIn(store.regions, leafId)
+  if (!region) return
+  const leaf = findLeaf(store.regions[region], leafId)
+  const host = leaf?.tabs[at]
+  if (!leaf || !host || at < 0 || at >= leaf.tabs.length) return
+  const before = store.regions[region]
+  store.pairRefs(leafId, at, ref, side)
+  const shelfSide = sideOfRegion(region)
+  if (shelfSide) expandShelf(shelfSide)
   land(ref)
+  /*
+   * **播报是落定的一部分**(设计 §7,与 `reorderTab` 那一只逐字同源):三条路
+   * (拖拽落定 /「放到标签上」松手 / 右键菜单「与右边的标签二合一」)走完必须说同一句话。
+   * 引用恒等 = 那一下什么都没换(拖回自己身上 / 被 `pairRefs` 的三条判据拦了)
+   * —— 读屏软件念一句「已与 X 并排」而屏幕上什么都没发生是撒谎。
+   */
+  if (useWorkbenchStore.getState().regions[region] === before) return
+  announce(t('workbench.pairedWith', { name: titleOfRef(host) }))
+}
+
+/** 一格内容此刻的名字(活的盖静的 —— 与标签条读的是同一份)。 */
+function titleOfRef(ref: ContentRef): string {
+  const id = refId(ref)
+  return (
+    useLiveTitleStore.getState().titles[id]?.text
+    ?? contentKindOf(ref.kind)?.title(ref).text
+    ?? ref.key
+  )
+}
+
+/** 与这片叶**活动那一格**并排(内容区左右带说的就是「与你正在看的那个并排」)。 */
+function pairIntoActive(ref: ContentRef, leafId: string, side: 'left' | 'right'): void {
+  const store = useWorkbenchStore.getState()
+  const region = regionOfLeafIn(store.regions, leafId)
+  if (!region) return
+  const leaf = findLeaf(store.regions[region], leafId)
+  if (!leaf) return
+  pairIntoIndex(ref, leafId, leaf.active, side)
 }
 
 function sideOfRegion(region: string): ShelfSide | null {
@@ -258,6 +287,12 @@ function expandShelf(side: ShelfSide): void {
 function land(ref: ContentRef): void {
   activateRefInItsLeaf(ref)
   focusIntoRefAfterCommit(refId(ref))
+  /*
+   * **落定闪一圈**(W6-b,设计 v3 §5「落定卡片飞入空位 + 新标签闪圈」)。
+   * 卡片飞进空位那一半由 `ui/drag` 做(它有那格瞬态);这一句是它的下半句 ——
+   * 卡片消失在哪儿,那一格标签就在哪儿亮一下。两者接在同一条时间线上。
+   */
+  flashLandedTab(refId(ref))
 }
 
 /** 把这一格在它此刻那片叶里点成活动的(搬过去的东西该看得见)。 */

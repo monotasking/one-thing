@@ -114,6 +114,28 @@
    * JS 侧镜像见 components/motion.ts,由 __tests__/motion-tokens.test.ts 逐条比对。 */
   --dur-dock-wake: 180ms;
 
+  /* ── 拖拽的三拍(W6-b,设计 `apps/desktop-react/docs/workbench-tabs-2026-09.md`
+   * §4.1 那张阈值表)。三个数是**三件事**,合并任何两个都会让调其中一件时连带
+   * 改掉另一件 —— 与 `ui/drag/constants.ts` 顶上那条「三个阈值三个名字」同一纪律。
+   *
+   *   --dur-neighbor  邻居让位的过渡。120 与 --dur 同值却不复用它:让位是「一步
+   *                   到位的位移」,--dur 是全局那句「手势的基本节拍」;哪天想让
+   *                   让位更跟手(比如 90),不该被迫把整台壳的 hover 一起改快。
+   *   --dur-settle    松手之后那一格从手上的位置滑进新槽(FLIP)。比让位慢一档 ——
+   *                   它是这次手势的**收笔**,读得出「它落到了这里」才算数。
+   *   --dur-land      浮影卡片飞进空位。比 settle 再慢一档:卡片要跨过大半个屏幕,
+   *                   与 --dur-card-flip 同值(两者都是「一块东西换了地方」)。
+   * JS 镜像见 components/motion.ts(三个各有一个收尾定时器跟着走),三条都由
+   * __tests__/motion-tokens.test.ts 钉着。
+   *
+   * **第四个(300ms,二合一的时间门槛)已退役**(W6-b 二修):二合一不再由
+   * 「停住多久」判,改由「指针压到条底缘下 6–24px」判(ONTO_FROM_PX,产地
+   * ui/drag/constants.ts)。位置判据不是时长,没有 token 可言;删它同时删掉了
+   * 「动效档要不要清零它」那一整个问题。 */
+  --dur-neighbor: 120ms;
+  --dur-settle: 150ms;
+  --dur-land: 180ms;
+
   /* ── 流中态光标(正文尾那枚 / 工具卡参数流那枚)────────────────────────
    * 「还在打字」在这台上只有一种形:同一段关键帧(--kf-chat-cursor,产地
    * styles/motion.css)、同一个时长(--dur-cursor-blink,上面那一梯)、同一份几何。
@@ -197,6 +219,18 @@
   --drag-ghost-r: var(--r-2);
   --drag-ghost-tilt: -1.5deg;
   --drag-refuse-opacity: 0.5;
+  /* 靠近视口右缘时整枚浮影右对齐,横向偏移跟着翻面(§5「提示行挂在卡片左侧」)。
+   * -100% + 一格内边距 = 指针落在卡片右缘偏内一点,与不翻面时「偏左一点」对称。 */
+  --drag-ghost-dx-flip: calc(-100% + var(--drag-ghost-pad-x));
+  /* 提示行的上下内边距。它比 --sp-1 还小半档 —— 一行 --fs-micro 的字外面套 4px
+   * 会长成一块方签,而它要读起来像「贴在卡片下沿的一句注」。 */
+  --drag-hint-pad-y: 2px;
+  /* 飞完最后一程时卡片收到多小(§5)。0.9 而不是 0:整枚缩没了会读成「它被吃掉了」,
+   * 收一点点 + 淡出读成「它落进去了」。 */
+  --drag-land-scale: 0.9;
+  /* 浮影靠视口右缘多近开始翻面。一整枚浮影的最大宽 + 一点余量 —— 判据镜像
+   * `GHOST_FLIP_PX`(`ui/drag/DragLayer.tsx`),两边由 drop-tokens.test.ts 钉着。 */
+  --drag-flip-edge: 260px;
   /* 窗口边带那一档薄膜(叶身不再画色块 —— 它换成了一圈细环与一根杠)。 */
   --drop-band-face: var(--accent-soft);
   --drop-band-line: var(--accent);
@@ -207,10 +241,32 @@
   --drop-refuse-face: transparent;
   --drop-refuse-line: var(--line-2);
   --drop-band-r: var(--r-2);
-  /* 叶的四条**分屏边带**有多宽(判据镜像 `DROP_EDGE_PX`)。 */
+  /*
+   * **半边**(W6-b,设计 `workbench-tabs-2026-09.md` §5「内容区右带 28%」):
+   * 「落下后占的那一半」亮出来。它与 `ring` 的分工是一句话 —— ring 说
+   * 「整格并进去」,half 说「与它并排,占这一半」,后者非画出面积不可
+   * (只描一圈的话两个落点在屏幕上长得一样)。铺的是最淡那一档,盖在内容上
+   * 仍看得清底下的字。 */
+  --drop-half-face: color-mix(in srgb, var(--accent) 14%, transparent);
+  --drop-half-line: color-mix(in srgb, var(--accent) 55%, transparent);
+  /*
+   * **氛围**(§5 贯穿规则 1:「从外面拖东西进来时,起拖那一刻所有能放的地方先
+   * 淡淡亮一层……悬到的那一处再亮到实」)。6% 是「看得见但不抢眼」那一档 ——
+   * 它铺在整块内容区与四条边带上,同时有五块在屏幕上,再浓一点就成了一层雾。
+   * **换序不铺**(§4.5 第 2 条:换序时屏幕上只有那一格标签在动)。 */
+  --drop-ambient: color-mix(in srgb, var(--accent) 6%, transparent);
+  /* 叶的四条**分屏边带**有多宽(判据镜像 `DROP_EDGE_PX`)。
+   * W6-b:边带分屏退役(单叶政策),这一格只剩设计册上的登记 —— 判据那一头
+   * 已经没有读者,所以 `drop-tokens.test.ts` 里那条比对也跟着退役。 */
   --drop-edge: 16px;
-  /* 分屏预示那根杠有多厚(判据镜像 `DROP_BAR_PX`)。 */
+  /* 分屏预示那根杠有多厚(判据镜像 `DROP_BAR_PX`;同上,W6-b 起无判据读者)。 */
   --drop-bar-w: 4px;
+  /*
+   * **抬起的那一格标签**(W6-b,§4.2「只加一层很轻的投影,不放大、不改形、
+   * 不换底色」)。它刻意**不是** `--sh-1` 也不是 `--sh-2`:前者太轻(抬起来
+   * 看不出它浮在邻居上面),后者是浮层那一档(一格 tab 抬起 4px 不该长得像
+   * 一扇窗)。这是这套形态里唯一一处「东西被拎起来了」的投影,所以它自己一格。 */
+  --drag-lift-shadow: 0 4px 10px rgba(43, 42, 38, 0.16);
 
   /* 外壳几何 */
   --pin-min: 320px; /* Quick Look 列宽用(expose/ListView);架子的下界见 --shelf-min */
