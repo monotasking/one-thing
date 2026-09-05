@@ -1,4 +1,4 @@
-import { SHELF_SIDES, SNAP_BAND } from '../stage/transitions'
+import { SHELF_SIDES, SNAP_BAND, TEAR_OFF_DISTANCE } from '../stage/transitions'
 import type { ShelfSide } from '../stage/types'
 import type { MessageKey } from '../i18n'
 import type { RegionId } from './regions'
@@ -15,10 +15,16 @@ import type { RegionId } from './regions'
  * 拖拽里是常数。逐帧 `getBoundingClientRect()` 一次拖拽就是上百次强制排版 ——
  * 而它们答的是同一个数。宿主起拖时量一次、`resize` 时重量,判据这一头只读。
  *
- * ── 次序即语义:窗口边带**优先于**叶的四带 ───────────────────────────────
- * 一片叶贴着窗口右缘时,右缘那 24px 同时落在「这片叶的东带」与「窗口的右边带」
- * 里。先问边带:用户把东西拖到屏幕最边上,想的是「钉到那条边去」,不是
- * 「在最右边那片叶里再切一刀」。反过来判会让右架子永远吸不到东西。
+ * ── 次序即语义(W3-b 裁定 6 起是**四问**)────────────────────────────────
+ *   ① **标签条**优先于一切。它是这套形态里唯一「指着一个下标」的落点,而条本身
+ *      只有 34px 高 —— 谁也不会不小心把东西丢到一条 34px 的带子上。反过来判
+ *      (先问叶)会让条永远吸不到东西:条压在叶的上边带里。
+ *   ② **窗口边带**优先于叶的四带。一片叶贴着窗口右缘时,右缘那 24px 同时落在
+ *      「这片叶的东带」与「窗口的右边带」里。用户把东西拖到屏幕最边上,想的是
+ *      「钉到那条边去」,不是「在最右边那片叶里再切一刀」。反过来判会让右架子
+ *      永远吸不到东西。
+ *   ③ 叶的四条**边带**(`DROP_EDGE_PX` 16)= 在那一侧分屏。
+ *   ④ 叶身其余部分 = **并入这片叶**。
  *
  * ── 叶重叠时取最上 ──────────────────────────────────────────────────────
  * 浮窗会盖住中央区的叶。宿主按 DOM 序把矩形交进来(浮窗层排在主区之后),
@@ -39,32 +45,64 @@ export interface LeafBox {
   rect: Rect
 }
 
+/**
+ * 一条**标签条**此刻占的地方,连同它此刻那几格各自的矩形(W3-b 裁定 6)。
+ *
+ * 每一格的矩形都要带上,因为「插到第几格」问的是**指针越过了几条 tab 的中线**,
+ * 而那件事没有条自己的矩形回答得了。它们与叶的矩形一样是**起拖时量一次**的常数
+ * (拖拽期间树冻住),所以判据这一头照旧只读、不量。
+ */
+export interface StripBox {
+  leafId: string
+  rect: Rect
+  /** 这条条里那几格,**按次序**。 */
+  tabs: readonly Rect[]
+}
+
 export interface DropGeometry {
   /** 窗口(视口)矩形。边带贴着它的四条边算。 */
   window: Rect
   /** 每一片叶,**按 DOM 序**(靠后 = 盖在上面)。 */
   leaves: readonly LeafBox[]
+  /** 每一条标签条。缺席 = 这次拖拽不认标签条(与 W3 的行为逐字相同)。 */
+  strips?: readonly StripBox[]
 }
 
 export type DropZone = 'center' | 'n' | 's' | 'e' | 'w'
 
 export type DropTarget =
+  /** 落到某片叶身上:`center` = 并入,四带 = 在那一侧分屏。 */
   | { kind: 'leaf'; region: RegionId; leafId: string; zone: DropZone }
+  /** 落到某条标签条上,插到第 `at` 格(同叶 = 换序,异叶 = 搬过去)。 */
+  | { kind: 'strip'; leafId: string; at: number }
   | { kind: 'edge'; side: ShelfSide }
   | { kind: 'float' }
   | { kind: 'refuse'; reasonKey: MessageKey }
 
 /**
- * 中心区是**内缩这么多的矩形**(设计 §3.1)。
+ * **叶的四条边带有多宽**(W3-b 裁定 6;09-05 用户选甲)。
  *
- * **只有这一个产地**,CSS 那边没有对应的变量 —— 派工令的 token 清单里列过一格
- * `--drop-inset: 25%`,施工时发现它**没有读者**:高亮的矩形不是 CSS 算的,是
- * `zoneRectOf` 算好之后由宿主整块递过去的(`ui/drag/DropOverlay` 消费
- * `ui/float` 的 `cover` 档,身量就是那块矩形)。两处各存一份同一个数,迟早分叉;
- * 而「高亮盖的就是判据用的那一块」这句话正是本批要保证的东西。所以那一格变量
- * 没有落地,出入记在交卷报告里。
+ * W3 那时是反过来的:中心区**内缩 25%**,其余全是分屏 —— 于是一片叶上有一多半
+ * 面积会切一刀。用户的原话:「中心区只有内缩后的一小块,大半面积都是分屏」。
+ * 甲把它倒过来:**整个叶身都是并入**,只有贴边那 16px 是分屏。误分屏因此从
+ * 「一多半概率」变成「必须故意去够那条边」,而分屏本来就是低频动作。
+ *
+ * 16 与 `SNAP_BAND`(24,窗口边带)刻意**不相等**:它们量的是两条不同的边
+ * (叶的边 / 窗口的边),而且窗口边带优先 —— 两个数相等会让「这一格是被哪条带
+ * 接住的」在读代码时不再看得出来(裁定 3「三处三个名字」的同一条纪律)。
+ *
+ * 设计册上的登记是 `--drop-edge`,两边由 `__tests__/drop-tokens.test.ts` 钉成相等。
  */
-export const DROP_CENTER_INSET = 0.25
+export const DROP_EDGE_PX = 16
+
+/**
+ * 分屏预示那根杠有多厚(`--drop-bar-w` 的判据镜像)。
+ *
+ * 它必须住在判据这一头而不是只在 CSS 里,因为**高亮盖的就是判据算的那块矩形**
+ * (`zoneRectOf`)—— 让 CSS 用 `min-width` 去撑那 4px 的话,东带那根杠会从叶的
+ * 右缘往**外**长 4px,当场违反「高亮不撑破叶」(`gate:squeeze` 真机量着这一条)。
+ */
+export const DROP_BAR_PX = 4
 
 /** 这次拖拽自己的两条规矩。都缺席 = 「什么都能落,四带都开」。 */
 export interface DropRules {
@@ -83,11 +121,12 @@ export interface DropRules {
 /**
  * 指针在这儿,松手会发生什么。
  *
- * 四问,按序:
- *  ① 窗口四条**边带**(`SNAP_BAND` 24,判据复用形态机既有的 `snapSideAt`);
- *  ② 指针底下**最上面**那一片叶 → 中心区 / 四带;
- *  ③ 什么都没碰到 → 撕成浮窗;
- *  ④ 上面得到的那个落点交给 `rules.accepts` 复核,被拒就换成 `refuse`。
+ * 五问,按序(见文件头「次序即语义」):
+ *  ① 哪一条**标签条**接得住(条的上下各外扩 `TEAR_OFF_DISTANCE`)→ 插到第几格;
+ *  ② 窗口四条**边带**(`SNAP_BAND` 24,判据复用形态机既有的 `snapSideAt`);
+ *  ③ 指针底下**最上面**那一片叶 → 四条 16px 的边带 / 其余全是叶身;
+ *  ④ 什么都没碰到 → 撕成浮窗;
+ *  ⑤ 上面得到的那个落点交给 `rules.accepts` 复核,被拒就换成 `refuse`。
  */
 export function dropTargetAt(
   pointer: { x: number; y: number },
@@ -108,6 +147,8 @@ function rawTargetAt(
   geometry: DropGeometry,
   split: boolean,
 ): DropTarget {
+  const strip = stripAt(pointer, geometry.strips)
+  if (strip) return strip
   const side = snapSideIn(pointer, geometry.window)
   if (side) return { kind: 'edge', side }
   /*
@@ -124,6 +165,50 @@ function rawTargetAt(
     }
   }
   return { kind: 'float' }
+}
+
+/**
+ * 哪一条标签条接得住这一点。
+ *
+ * **带**的口径与「条内换序」那一头逐字相同(`TEAR_OFF_DISTANCE` 24 的上下外扩,
+ * 判词在 `DragSession.DragBandState` 上):拖到自己那条条的带里是换序,拖到别人
+ * 那条条的带里就该是「插到那条条的第几格」—— 同一句话,两个方向。横向**不外扩**:
+ * 条的矩形本来就铺满那片叶的整段跨度,末格右边那一大片空白已经在条里了。
+ *
+ * 条重叠时(浮窗盖着中央叶)取**最后交进来的那一条** —— 与叶那一头同一条纪律:
+ * 宿主按 DOM 序交,靠后 = 盖在上面。
+ */
+function stripAt(
+  pointer: { x: number; y: number },
+  strips: readonly StripBox[] | undefined,
+): DropTarget | null {
+  if (!strips) return null
+  for (let i = strips.length - 1; i >= 0; i -= 1) {
+    const box = strips[i]
+    const r = box.rect
+    if (pointer.x < r.left || pointer.x > r.left + r.width) continue
+    if (pointer.y < r.top - TEAR_OFF_DISTANCE || pointer.y > r.top + r.height + TEAR_OFF_DISTANCE) {
+      continue
+    }
+    return { kind: 'strip', leafId: box.leafId, at: stripIndexAt(pointer.x, box) }
+  }
+  return null
+}
+
+/**
+ * 插到第几格 = 指针越过了几条 tab 的**中线**。
+ *
+ * 量的是**起拖时**那份几何,不是此刻的 DOM —— 落一个空位进去会把后面那几格往右
+ * 推,而用推完之后的矩形再判一次,下标就会自己晃回来(空位收掉 → 下标变回去 →
+ * 空位又插到别处),一帧一次来回。这是同一条判例在条上的第二格:
+ * `ui/tab-reorder.track()` 用的也是起手量的那份。
+ */
+export function stripIndexAt(x: number, box: StripBox): number {
+  let at = 0
+  for (const tab of box.tabs) {
+    if (x > tab.left + tab.width / 2) at += 1
+  }
+  return at
 }
 
 /**
@@ -160,40 +245,43 @@ function within(p: { x: number; y: number }, r: Rect): boolean {
 }
 
 /**
- * 指针落在这片叶的哪一区。
+ * 指针落在这片叶的哪一区(W3-b 裁定 6:**整个叶身都是并入,只有贴边那 16px 分屏**)。
  *
- * 中心 = 内缩 25% 的矩形(**闭区间**:指针正好压在 25% 那条线上算中心 ——
- * 四带是「其余」,而「其余」不含边界。判据得有一头是闭的,否则线上那一像素
- * 谁都不认领)。四带按指针离哪条边最近判,平手时**优先左右**(与 `snapSideAt`
- * 那条判例同向:竖着切是主力)。
+ * 边带是**开区间**、中心是闭的:指针正好压在离边 16px 那条线上算 `center` ——
+ * 判据得有一头是闭的,否则线上那一像素谁都不认领。这与 W3 的口径一字不差,
+ * 换的只是「哪一边是『其余』」。
+ *
+ * 四条带在小叶上会互相重叠(一片 20px 高的叶上下带撞在一起),所以次序即答案:
+ * 西 → 东 → 北 → 南,**平手优先左右**(与 `snapSideAt` 那条判例同向:竖着切是主力)。
  */
 export function zoneAt(pointer: { x: number; y: number }, rect: Rect): DropZone {
-  const inset = DROP_CENTER_INSET
-  const dx = rect.width * inset
-  const dy = rect.height * inset
-  const inCenterX = pointer.x >= rect.left + dx && pointer.x <= rect.left + rect.width - dx
-  const inCenterY = pointer.y >= rect.top + dy && pointer.y <= rect.top + rect.height - dy
-  if (inCenterX && inCenterY) return 'center'
-  const west = pointer.x - rect.left
-  const east = rect.left + rect.width - pointer.x
-  const north = pointer.y - rect.top
-  const south = rect.top + rect.height - pointer.y
-  const min = Math.min(west, east, north, south)
-  if (west === min) return 'w'
-  if (east === min) return 'e'
-  if (north === min) return 'n'
-  return 's'
+  if (pointer.x - rect.left < DROP_EDGE_PX) return 'w'
+  if (rect.left + rect.width - pointer.x < DROP_EDGE_PX) return 'e'
+  if (pointer.y - rect.top < DROP_EDGE_PX) return 'n'
+  if (rect.top + rect.height - pointer.y < DROP_EDGE_PX) return 's'
+  return 'center'
 }
 
-/** 一片叶里某一区的矩形 —— **高亮画的就是它**(见 `DROP_CENTER_INSET` 的判词)。 */
+/**
+ * 一片叶里某一区的**高亮矩形** —— 高亮画的就是它(裁定 7)。
+ *
+ * `center` → 整片叶(`ring` 档在它里面描一圈细环);四带 → **贴着那条边的一根
+ * `DROP_BAR_PX` 厚的杠**(`bar` 档),不再是「落下后占的那一半」。
+ *
+ * 改这一句的理由是用户看真机后的原话:落点反馈太重。画出那一半等于提前把屏幕
+ * 改了一遍,而分屏这件事本来只需要说清楚「往哪边切」——一根杠说得完。
+ * **杠永远在叶里**(左/上贴内缘、右/下往里收一个杠厚),所以「高亮不撑破叶」
+ * 这句话在几何上成立,不靠 CSS 兜。
+ */
 export function zoneRectOf(rect: Rect, zone: DropZone): Rect {
   if (zone === 'center') return rect
-  const halfW = rect.width / 2
-  const halfH = rect.height / 2
-  if (zone === 'w') return { ...rect, width: halfW }
-  if (zone === 'e') return { left: rect.left + halfW, top: rect.top, width: halfW, height: rect.height }
-  if (zone === 'n') return { ...rect, height: halfH }
-  return { left: rect.left, top: rect.top + halfH, width: rect.width, height: halfH }
+  const bar = Math.min(DROP_BAR_PX, rect.width, rect.height)
+  if (zone === 'w') return { ...rect, width: bar }
+  if (zone === 'e') {
+    return { left: rect.left + rect.width - bar, top: rect.top, width: bar, height: rect.height }
+  }
+  if (zone === 'n') return { ...rect, height: bar }
+  return { left: rect.left, top: rect.top + rect.height - bar, width: rect.width, height: bar }
 }
 
 /** 一条边带在窗口上的矩形(架子会长在这条带子那一侧,所以带子就是它的预示)。 */
@@ -211,6 +299,12 @@ export function edgeRectOf(win: Rect, side: ShelfSide, band: number = SNAP_BAND)
  */
 export function targetRectOf(target: DropTarget, geometry: DropGeometry): Rect | null {
   if (target.kind === 'edge') return edgeRectOf(geometry.window, target.side)
+  /*
+   * 标签条那一档**故意不答矩形**:它的预示是那条条自己腾出来的一格空位
+   * (`ui/tab-reorder.gap()`),不是盖一块高亮。两样一起画就是同一件事说两遍,
+   * 而这一批治的正是「说三遍」。
+   */
+  if (target.kind === 'strip') return null
   if (target.kind === 'leaf') {
     const box = geometry.leaves.find(
       (leaf) => leaf.leafId === target.leafId && leaf.region === target.region,

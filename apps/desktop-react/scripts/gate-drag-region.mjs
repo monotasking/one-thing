@@ -412,6 +412,50 @@ async function main() {
         )
       }
     }
+    /*
+     * **肩不改变盒**(W3-b:`joined` 档的活动 tab 底部两侧那两只反向圆角)。
+     *
+     * 它们是伪元素,长在 tab 盒子**之外**各 `--tab-shoulder` —— 而 Chromium 算
+     * 拖拽区读的是**边框盒**(判例 ①:`app-region` 只算 content box)。所以这一格
+     * 量两件事:肩**真的在**(`::before` 有 content),而 tab 之间**依然严丝合缝**
+     * (相邻两格 right ≡ next.left,±1)。后者是「肩没占布局」的唯一诚实读法 ——
+     * 肩一旦真的占了宽,no-drag 的覆盖面就会与屏幕上看到的对不上。
+     */
+    const shoulders = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="topbar-tabs"] [role="tablist"]')
+      if (!list) return null
+      const on = list.querySelector('[role="tab"][aria-selected="true"]')
+      const tabs = Array.from(list.querySelectorAll('[role="tab"]')).map((el) => {
+        const r = el.getBoundingClientRect()
+        return { left: Math.round(r.left), right: Math.round(r.right) }
+      })
+      let gaps = 0
+      for (let i = 1; i < tabs.length; i += 1) {
+        if (Math.abs(tabs[i].left - tabs[i - 1].right) > 1) gaps += 1
+      }
+      return {
+        look: list.getAttribute('data-look'),
+        before: on ? getComputedStyle(on, '::before').content : 'none',
+        after: on ? getComputedStyle(on, '::after').content : 'none',
+        count: tabs.length,
+        gaps,
+      }
+    })
+    if (!shoulders) {
+      skip('肩不改变盒', '顶栏那条 tablist 不在场')
+    } else {
+      assert(
+        shoulders.look === 'joined' && shoulders.before !== 'none' && shoulders.after !== 'none',
+        '活动 tab 的两只肩真的在(joined 档的伪元素)',
+        `(look ${shoulders.look} / ::before ${shoulders.before} / ::after ${shoulders.after})`,
+      )
+      assert(
+        shoulders.gaps === 0,
+        '肩不占布局:相邻两格依然严丝合缝(拖拽区读的是边框盒)',
+        `(${shoulders.count} 格,缝 ${shoulders.gaps} 处)`,
+      )
+    }
+
     if (!shot.trailing) {
       skip('尾格动作组 no-drag', '尾格不在场')
     } else {

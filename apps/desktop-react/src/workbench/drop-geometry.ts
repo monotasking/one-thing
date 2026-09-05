@@ -1,4 +1,4 @@
-import type { DropGeometry, LeafBox, Rect } from './drop'
+import type { DropGeometry, LeafBox, Rect, StripBox } from './drop'
 import type { RegionId } from './regions'
 
 /**
@@ -13,11 +13,19 @@ import type { RegionId } from './regions'
  * 拖拽就是上百次强制排版,而它们答的是同一个数。`resize` 时重量 —— 那是唯一
  * 会在拖拽中改变几何的事(窗口被系统缩放 / 外接屏拔掉)。
  *
- * ── 取件口:两格既有的 data 属性,一个新的都不加 ────────────────────────
+ * ── 取件口:既有的 data 属性,一个新的都不加 ────────────────────────────
  *   `[data-pane-region]`  一棵树的容器(中央区 / 每条架子 / 每扇浮窗各一格,
  *                         三处产地都是 W1/W4 就有的)
  *   `[data-pane-slot]`    一片叶的格子(`PaneTree` 画的)
+ *   `[data-pane-chrome]`  一片叶的檐(`LeafStrip` 画的,值 = 叶 id;W1 就有)
+ *   `[data-tab-id]`       檐里那几格各自的 id(W3-b 给 `ui/Tabs` 加的取件口)
  * 于是「有哪些区域」这件事仍旧只有一个产地,拖拽不必再开一份名册。
+ *
+ * ── 条**不在**叶的子树里,所以它单独量一遍(W3-b)────────────────────────
+ * 中央区那几组标签住在**窗口顶栏**(设计 §2.2 的 D 稿),DOM 上根本不在
+ * `[data-pane-slot]` 底下;架子与浮窗那两处才在。所以条这一头从
+ * **整份文档**扫 `[data-pane-chrome]`,不从叶里往下找 —— 后者会漏掉最常用的
+ * 那一组(中央顶栏),而漏掉的表现是「拖到顶栏没反应」。
  *
  * ── DOM 序 = 层序 ───────────────────────────────────────────────────────
  * `querySelectorAll` 交回的是**文档序**,而浮窗层(`FloatLayer`)排在主区之后
@@ -26,6 +34,7 @@ import type { RegionId } from './regions'
  */
 export function measureDropGeometry(): DropGeometry {
   const leaves: LeafBox[] = []
+  const strips: StripBox[] = []
   if (typeof document !== 'undefined') {
     for (const host of Array.from(document.querySelectorAll('[data-pane-region]'))) {
       const region = host.getAttribute('data-pane-region')
@@ -39,8 +48,25 @@ export function measureDropGeometry(): DropGeometry {
         leaves.push({ region: region as RegionId, leafId, rect })
       }
     }
+    for (const chrome of Array.from(document.querySelectorAll('[data-pane-chrome]'))) {
+      const leafId = chrome.getAttribute('data-pane-chrome')
+      if (!leafId) continue
+      /*
+       * 量的是 **tablist 那一格**,不是整条檐:檐右端还挂着型工具条与动作组,
+       * 把它们算进条里等于「拖到分屏钮上 = 插一格 tab」。
+       */
+      const list = chrome.querySelector('[role="tablist"]')
+      if (!list) continue
+      const rect = rectOf(list)
+      if (rect.width <= 0 || rect.height <= 0) continue
+      strips.push({
+        leafId,
+        rect,
+        tabs: Array.from(list.querySelectorAll('[data-tab-id]')).map(rectOf),
+      })
+    }
   }
-  return { window: windowRect(), leaves }
+  return { window: windowRect(), leaves, strips }
 }
 
 function rectOf(el: Element): Rect {

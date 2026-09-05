@@ -1,5 +1,15 @@
 /*
  * 落区高亮。身量由 `cover` 档交回来(= 锚矩形),所以它在结构上撑不破那片叶。
+ *
+ * **四种画法,一格 `data-shape`**(W3-b 裁定 7)。W3 那时只有一种(薄膜 + 描边 +
+ * 一句话),用户的原话是「色块 + 边框 + 一句文字盖在内容上」—— 它把「这里能落」
+ * 说了三遍,而三遍里有两遍盖住了正在读的内容。今天每一档只说一遍:
+ *
+ *   film     窗口边带:一层薄膜 + 一圈实线。它盖的是**窗口边缘那 24px**,
+ *            那儿本来就没有内容,而且架子会长在那里 —— 薄膜正是它的预示。
+ *   ring     并入一片叶:只在叶的四边描一圈细环,**里面一个像素都不画**。
+ *   bar      在这一侧分屏:那块矩形本身就是一根 4px 的实心杠(几何在 `drop.ts`)。
+ *   outline  撕成浮窗:一圈虚线轮廓,里面是空的 —— 那扇窗还不存在。
  */
 .band {
   position: fixed;
@@ -15,21 +25,43 @@
   transition: opacity var(--dur) var(--ease);
 }
 
-/* 拒绝:不换底(换底等于说「这里可以」),只留一圈虚线灰边。 */
-.band[data-tone='refuse'] {
-  border-style: dashed;
-  border-color: var(--drop-refuse-line);
-  background: var(--drop-refuse-face);
+/* ── ring:并入一片叶 ────────────────────────────────────────────────────
+ * 环画在**内侧**(`inset` 阴影),不是边框 —— 边框会把 `cover` 交回来的身量往外
+ * 撑 2px,而那 2px 正好落在隔壁那片叶上(挤压纪律:高亮不许撑破叶)。 */
+.band[data-shape='ring'] {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: inset 0 0 0 var(--bw-3) var(--drop-ring-line);
 }
 
-/* 撕成浮窗的预示:只画一圈边,里面是空的 —— 那扇窗还不存在。 */
-.band[data-outline] {
+/* ── bar:在这一侧分屏 ───────────────────────────────────────────────────
+ * 整块矩形就是那根杠(4px 厚,由 `zoneRectOf` 算),所以这一档只上色不描边。 */
+.band[data-shape='bar'] {
+  border: none;
+  border-radius: var(--r-1);
+  background: var(--accent);
+}
+
+/* ── outline:撕成浮窗的预示 —— 只画一圈虚线边,里面是空的。 */
+.band[data-shape='outline'] {
+  border-style: dashed;
   background: transparent;
 }
 
+/* 拒绝:不换底(换底等于说「这里可以」),只留一圈虚线灰边。
+ * 它压在 shape 之后 —— 「落不下去」比「会落成什么样」更要紧。 */
+.band[data-tone='refuse'] {
+  border: var(--bw-3) dashed var(--drop-refuse-line);
+  background: var(--drop-refuse-face);
+  box-shadow: none;
+}
+
 /*
- * 落区里那一句话(「移到右侧」/「会话多开在下一期」)。
+ * 落区里那一句话(「移到右侧」/「撕成浮窗」)。
  * **一行、截断、永不换行**(挤压纪律):落区可能只有 40px 高。
+ * 叶身上那两档(ring / bar)**不给 label**(裁定 7:叶内不再写字),所以这一条
+ * 今天只服务窗口边带与撕浮窗 —— 那两处盖的都不是正在读的内容。
  */
 .label {
   max-width: 100%;

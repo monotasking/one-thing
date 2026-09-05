@@ -5,11 +5,13 @@ import {
   floatRectForGrab,
   FALLBACK_VIEWPORT,
 } from '../stage/transitions'
+import { announce } from '../ui/a11y/live-region'
+import { t } from '../i18n'
 import { focusIntoRefAfterCommit } from './focus-into'
 import { refId } from './kinds'
 import { ZONE_SPLIT } from './drop'
 import { edgeRegion, floatRegion } from './regions'
-import { regionOfRefIn, useWorkbenchStore } from './store'
+import { regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from './store'
 import { findLeaf, leavesOf } from './tree'
 import type { DropTarget } from './drop'
 import type { ContentRef } from './kinds'
@@ -82,6 +84,11 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
    */
   useWorkbenchStore.getState().exitFullIfOpen()
 
+  if (target.kind === 'strip') {
+    dropIntoStrip(ref, target.leafId, target.at)
+    return
+  }
+
   if (target.kind === 'leaf') {
     dropIntoLeaf(ref, target.region, target.leafId, target.zone)
     return
@@ -101,6 +108,75 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
   const rect: FloatRect = opts.pointer ? floatRectForGrab(opts.pointer, size, viewport()) : size
   useStageStore.getState().placeRef(ref, floatRegion(winId), { rect })
   land(ref)
+}
+
+/**
+ * **落到一条标签条上,插到第 `at` 格**(W3-b 裁定 6)。
+ *
+ * 一支两路,判据是「这一格本来在不在这条条上」:
+ *   在  → `moveTab`,一次同叶换序(`at` 是对着**本来那张表**量的下标,
+ *         那一只自己会收掉 splice 的那一格偏移)
+ *   不在 → `moveRefIntoLeaf`,从别处搬进来插在第 `at` 格(那一只先摘干净再插,
+ *         而摘的是**另一片叶**里的那一格,所以本叶的下标不受影响)
+ *
+ * 两路各自都是**一次 `set`**,中间没有「屏幕上少一格」的那一拍。
+ */
+function dropIntoStrip(ref: ContentRef, leafId: string, at: number): void {
+  const store = useWorkbenchStore.getState()
+  const region = regionOfLeafIn(store.regions, leafId)
+  if (!region) return
+  const leaf = findLeaf(store.regions[region], leafId)
+  if (!leaf) return
+  const id = refId(ref)
+  const from = leaf.tabs.findIndex((tab) => refId(tab) === id)
+  if (from >= 0) {
+    reorderTab(leafId, from, at)
+    return
+  }
+  store.moveRefIntoLeaf(ref, leafId, { at })
+  const side = sideOfRegion(region)
+  if (side) expandShelf(side)
+  land(ref)
+}
+
+/**
+ * **换序这一下的唯一产地**(裁定 4 的落定 + 裁定 8 的「左移 / 右移」)。
+ *
+ * 拖着走完与按菜单里那两项走完,做的必须是同一件事、说的必须是同一句话 ——
+ * 播报是**落定**的一部分,不是菜单的装饰(与 `dropRef` 那三组的判词逐字同源)。
+ * 报的是**第几位**而不是「左移了」:键盘用户听完要知道自己此刻在哪儿,而
+ * 「左移」在第一格上是一句空话。
+ *
+ * ── `at` 的坐标系:**插到第 at 格之前**,对着**没摘掉任何东西**的那张原始表 ──
+ * 与 `workbench/drop.ts` 的 `stripIndexAt` / `ui/tab-reorder` 的 `track()` 同一个。
+ * 所以「原地不动」有两种写法(`at === from` 与 `at === from + 1`)—— 它们说的是
+ * 同一件事:落点前后就是自己。两种都当场返回,理由是**引用恒等**:走下去会得到
+ * 一份内容相同、身份不同的树,订阅者照样重渲一遍,而条内换序里「手抖了一下又放
+ * 回去」是最常发生的一下。
+ *
+ * ── 为什么走 `moveRefIntoLeaf` 而不是给 store 加一口 `moveTab` ──────────────
+ * 因为 `workbench/store.ts` 此刻是**并行批 W5-b 的改动面**,派工令点名不碰。
+ * 而这一支不需要新口:`moveRefIntoLeaf` 就是「摘干净再插进这片叶的第 n 格」,
+ * 一次 `set`、同一事务 —— 同叶换序与它的差别只有一个下标偏移(摘掉自己之后,
+ * 原表里 `from` 右边的落点都往前收一格,也就是下面那句 `at > from ? at - 1 : at`,
+ * 与 `tree.moveTab` 里那句注释说的是同一个 splice 双动作坑)。
+ * **留账**:`tree.moveTab` 会把「预览」那一格身份跟着搬过去,这条路不会 ——
+ * 换序一格预览 tab 会把它固定下来。W5-b 合树之后可以换回 `T.moveTab`。
+ */
+export function reorderTab(leafId: string, from: number, at: number): void {
+  if (at === from || at === from + 1) return
+  const store = useWorkbenchStore.getState()
+  const region = regionOfLeafIn(store.regions, leafId)
+  if (!region) return
+  const leaf = findLeaf(store.regions[region], leafId)
+  const ref = leaf?.tabs[from]
+  if (!leaf || !ref || leaf.tabs.length < 2) return
+  store.moveRefIntoLeaf(ref, leafId, { at: at > from ? at - 1 : at })
+  const landed = findLeaf(useWorkbenchStore.getState().regions[region] ?? leaf, leafId)
+  const now = landed?.tabs.findIndex((tab) => refId(tab) === refId(ref)) ?? -1
+  // 一格都没挪(夹到了两端)= 不播报:读屏软件念一句「还在第 2 位」是噪音。
+  if (now < 0 || now === from) return
+  announce(t('drag.reordered', { at: now + 1, total: landed?.tabs.length ?? 0 }))
 }
 
 function dropIntoLeaf(

@@ -25,7 +25,13 @@ import s from './DragLayer.module.css'
  */
 export function DragLayer() {
   const drag = useDragState()
-  if (!drag) return null
+  /*
+   * **条内换序时一个节点都不画**(W3-b 裁定 4)。用户报的第一句话是
+   * 「手按着 tab,动的却是旁边一枚芯片」—— 那一形的根因不是浮影长得不对,
+   * 而是屏幕上**同时有两个**「拖着的东西」。所以这一档不是「浮影跟着 tab 走」,
+   * 是浮影**不存在**:拖着的那个东西就是那格 tab 自己。
+   */
+  if (!drag || drag.presentation === 'inline') return null
   const refuse = drag.drop?.tone === 'refuse' ? (drag.drop.label ?? '') : undefined
   return (
     <div

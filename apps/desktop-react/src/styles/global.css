@@ -30,6 +30,19 @@ body,
   height: 100%;
 }
 
+/*
+ * **拖拽进行中,整页不许选中文字**(W3-b 交卷截图当场量到:拖一格 tab 横穿窗口,
+ * 文件树、顶栏、右端 AgentChip 的字全被刷成选区色)。指针按住横扫在浏览器里的
+ * 缺省动作就是拉选区,而拖拽起手那一刻已经过了 pointerdown,`preventDefault`
+ * 来不及。所以 `ui/drag/DragSession` 在**真起拖**那一帧给根挂这一格属性、清掉
+ * 已有选区,每条结束路径(落定 / Esc / pointercancel / 失焦)都摘掉。
+ * 没过阈值的一次点击**不挂** —— 点一下还是点一下,双击选词照旧。
+ */
+:root[data-drag-active] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 body {
   margin: 0;
   background: var(--surface-0);

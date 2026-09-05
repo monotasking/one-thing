@@ -174,24 +174,43 @@
   --z-tooltip: 700;
   --z-toast: 800;
 
-  /* ── 拖拽(W3)────────────────────────────────────────────────────────
-   * 浮影:一行高 28、封顶 240 宽,从手指底下那一点往右下 12/12 长出来
-   * (与 macOS 的拖影同向;正下方长会被手指自己挡住)。
-   * 落区高亮的**色**在这里,**形不在** —— 那块矩形由纯函数
-   * `workbench/drop.ts` 的 `zoneRectOf` 算好(高亮盖的就是判据用的那一块),
-   * 所以这一节没有「内缩 25%」那个数:它是判据不是画法,而一格没人读的
-   * CSS 变量迟早与判据分叉。25% 的产地是 `DROP_CENTER_INSET`,只此一处。 */
-  --drag-ghost-h: 28px;
+  /* ── 拖拽(W3;W3-b 改甲「浏览器式」)───────────────────────────────────
+   * **一枚浮影一种形**(W3-b 裁定 4):它是一张 **tab 形的卡片** —— 图标 + 名、
+   * 36 高、圆角、阴影、轻微倾斜,底色读 `--pane-face`(它就是一格被抬起来的
+   * tab,而 tab 的脸就是那片叶的脸)。W3 那枚 28 高、带描边的「芯片」退役:
+   * 文件行 / 会话行 / Dock 瓦 / tab 四种来源从此拖出同一枚东西。
+   * 卡片**横向居中在指针上**(dx = -50%),纵向抬到指针上方 16 —— 指针因此落在
+   * 卡片里偏上那一点,与「抓着一格 tab 的上半截」同形,手指不挡住名字。
+   *
+   * 落区高亮的**色与厚薄**在这里,**位置不在** —— 那块矩形由纯函数
+   * `workbench/drop.ts` 的 `zoneRectOf` 算好(高亮盖的就是判据用的那一块)。
+   * 两个几何数在**两处**各有一份,但它们不会分叉:`--drop-edge` / `--drop-bar-w`
+   * 是设计册上的登记,`DROP_EDGE_PX` / `DROP_BAR_PX` 是判据要用的那个数,
+   * 而 `workbench/__tests__/drop-tokens.test.ts` 把两边钉成相等 —— 一改一边当场红。
+   * (W3 那时的 `--drop-inset` 没有落地,理由是「没有读者的变量迟早与判据分叉」;
+   * 本批把那条理由兑现成一条断言,于是登记与判据可以同时存在。) */
+  --drag-ghost-h: 36px;
   --drag-ghost-max-w: 240px;
-  --drag-ghost-pad-x: 10px;
-  --drag-ghost-dx: 12px;
-  --drag-ghost-dy: 12px;
+  --drag-ghost-pad-x: 12px;
+  --drag-ghost-dx: -50%;
+  --drag-ghost-dy: -16px;
+  --drag-ghost-r: var(--r-2);
+  --drag-ghost-tilt: -1.5deg;
   --drag-refuse-opacity: 0.5;
+  /* 窗口边带那一档薄膜(叶身不再画色块 —— 它换成了一圈细环与一根杠)。 */
   --drop-band-face: var(--accent-soft);
   --drop-band-line: var(--accent);
+  /* 并入环:`--accent-ring` 是焦点环那一档(0.18α),画在叶内一圈几乎看不见
+   * (W3-b 真机读数:暗色下环 (67,75,82) vs 底 (63,62,60));落区反馈要一眼可辨,
+   * 走 accent 本色兑 30% 透明,与分屏那根杠同一族色。 */
+  --drop-ring-line: color-mix(in srgb, var(--accent) 70%, transparent);
   --drop-refuse-face: transparent;
   --drop-refuse-line: var(--line-2);
   --drop-band-r: var(--r-2);
+  /* 叶的四条**分屏边带**有多宽(判据镜像 `DROP_EDGE_PX`)。 */
+  --drop-edge: 16px;
+  /* 分屏预示那根杠有多厚(判据镜像 `DROP_BAR_PX`)。 */
+  --drop-bar-w: 4px;
 
   /* 外壳几何 */
   --pin-min: 320px; /* Quick Look 列宽用(expose/ListView);架子的下界见 --shelf-min */
@@ -522,20 +541,51 @@
   --tab-indicator: var(--bw-3);
   --tab-max-w: 160px;
 
-  /* ── 顶栏标签(W1-b,设计 workbench-2026-09.md §2.2「中央区的檐就是窗口顶栏」)──
+  /* ── `joined` 档(W3-b:09-05 用户看真机后选甲「浏览器式」)──────────────
+   * 一套标签语言,四个区域(顶栏组 / 架子叶 / 浮窗叶 / 分屏叶)读同一份:
+   * 活动 tab 顶两角圆、**无描边**、底色 = 那片叶的脸,底部两侧各长一只反向圆角的
+   * 「肩」把它和条底接成一整块;非活动 tab 透明底,相邻两条非活动之间一根细线。
+   *
+   *   --tab-joined-h    条与 tab 的高。44 的顶栏里贴底 —— 上面那 10 是窗口拖拽区。
+   *   --tab-joined-r    顶两角。比 `--r-1` 大一档:圆顶是这一档的身份。
+   *   --tab-shoulder    肩的边长。它同时是条的左右内边距,所以**肩永远在组内**
+   *                     (挤压纪律:肩不许撑出组的跨度)——这一句由几何保证,不靠算。
+   *   --tab-sep-inset   非活动之间那根细线上下各内缩多少。
+   *   --tab-joined-ink  活动 tab 的字色。**宿主就地声明**:焦点组 `--text-1`
+   *                     (缺省),非焦点组由顶栏那一层改写成 `--text-2` ——
+   *                     「哪一组是活的」从此只由字色与叶的焦点圈说,不再降底色。 */
+  --tab-joined-h: 34px;
+  --tab-joined-r: 9px;
+  --tab-shoulder: 9px;
+  --tab-sep-inset: 10px;
+  --tab-joined-ink: var(--text-1);
+
+  /* ── 一片叶的脸(W1-b;W3-b 收成一格)──────────────────────────────────
    * 「连体」这件事只有一种兑现方式:**活动标签与它下面那片叶读同一格颜色**。
    * 分开写两个值,它们迟早分叉 —— 而分叉的第一处就是「像浏览器 tab 长在页面上」
-   * 那句话失效的地方。所以先给这块面一个名字,再让两边都读它。
+   * 那句话失效的地方。所以只给这块面一个名字,让两边都读它。
    *
-   *   --pane-face            中央区一片叶的脸。今天等于外壳底色(`.shell` 画的就是
-   *                          它),写出来是为了**让连体这条契约有一个产地**。
-   *   --topbar-tab-face      焦点组里活动标签的底色 = 那片叶的脸。
-   *   --topbar-tab-face-dim  非焦点组里活动标签的底色,**降一档**(设计原话)——
-   *                          往顶栏的底色里兑,于是它在两种主题下都自动落在
-   *                          「比顶栏亮一点、比那片叶暗一点」之间。 */
+   *   --pane-face  这片叶的脸。全局值 = 外壳底色(中央区那片叶);浮窗与架子
+   *                各自就地改写成 `--surface-2`(判词在它们自己的样式表里)。
+   *                `ui/Tabs` 的 `joined` 档直接读它 —— 于是四个区域的活动标签
+   *                各自与**自己那片叶**同色,一格转发变量都不需要。
+   *
+   * W3-b 退役两格:`--topbar-tab-face`(它只是 `--pane-face` 的一层转发,joined
+   * 档直接读源头)与 `--topbar-tab-face-dim`(裁定 2:**非焦点组不再降底色** ——
+   * 「哪一组是活的」改由叶的焦点圈与活动标签的字色说)。 */
   --pane-face: var(--surface-0);
-  --topbar-tab-face: var(--pane-face);
-  --topbar-tab-face-dim: color-mix(in srgb, var(--pane-face) 55%, var(--surface-1));
+  /*
+   *   --strip-face  标签**后面**那块面:窗口顶栏与架子 / 浮窗叶檐的底。joined 档的
+   *                 活动标签读 `--pane-face`,它要从这块面上「长出来」,所以这块面
+   *                 必须在**两种主题下都比叶的脸退后一档**(Chrome / VS Code 都是
+   *                 条比页暗)。真机读数(W3-b 交卷截图):暗色主题里 surface-0 与
+   *                 surface-1 逐字相同 (40,39,38),连体标签整颗看不见 —— 所以不能
+   *                 拿现成的 surface 台阶,要从叶的脸往黑里兑;明暗各兑一个量,
+   *                 `light-dark()` 由主题桥写的 `color-scheme` 选边。 */
+  --strip-face: light-dark(
+    color-mix(in srgb, var(--surface-0) 93%, black),
+    color-mix(in srgb, var(--surface-0) 70%, black)
+  );
 
   /* ── 拼贴树的跨度读数(运行期写入,**不是设计 token**)──────────────────────
    * `--leaf-x-<节点 id>` / `--leaf-w-<节点 id>` 这一族在这里**只做登记**,不给值:

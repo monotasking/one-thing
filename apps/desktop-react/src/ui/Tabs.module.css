@@ -122,3 +122,161 @@
   width: var(--tab-close);
   height: var(--tab-close);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * `joined` 档 —— 浏览器式(W3-b 裁定 1/2/3;09-05 用户看真机后选甲)
+ *
+ * 拼贴台四个区域(顶栏组 / 架子叶 / 浮窗叶 / 分屏叶)读的是**这一段**,不是四份
+ * 各自的皮肤。W3-b 之前顶栏那一组在 `TopBarTabs.module.css` 里自绘了一套三面描边
+ * 的 tab,而架子与浮窗用的是上面那套扁平下划线 —— 用户的原话是「像塞进来的一段
+ * 浏览器」。皮肤归件、几何归宿主:这一句是「基础件先行」在 tab 上的兑现。
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/*
+ * 条:tab 贴底、**左右各留一只肩的宽度**。
+ *
+ * 那句 `padding-inline` 不是留白,是**挤压纪律的结构保证**:活动 tab 的两只肩
+ * 长在它盒子之外各 `--tab-shoulder`,首格与末格是活动态时肩会探出条外 —— 而条是
+ * `overflow-x: auto` 的滚动容器,探出去就是被裁掉半只肩(屏幕上是一个缺角)。
+ * 留出一只肩的内边距之后,肩在任何一格上都落在条里,**不靠算**。
+ *
+ * `margin-bottom: -1px` 是**连体**那一句(裁定 3):活动 tab 的底色因此盖住宿主
+ * 那条底线,像浏览器的 tab 长在页面上。W1-b 时这一句写在顶栏的 `.group{bottom:-1px}`
+ * 上 —— 那意味着「连体」这条契约由**宿主**兑现,四个宿主就有四次机会写错;
+ * 现在它归这一档自己,谁用 joined 谁自动连体。
+ */
+.bar[data-look='joined'] {
+  height: var(--tab-joined-h);
+  align-items: flex-end;
+  padding-inline: var(--tab-shoulder);
+  border-bottom: none;
+  margin-bottom: calc(var(--bw-1) * -1);
+}
+
+.bar[data-look='joined'] .tab {
+  height: var(--tab-joined-h);
+  border-radius: var(--tab-joined-r) var(--tab-joined-r) 0 0;
+}
+
+/*
+ * 活动 tab:**无描边**,底色 = 那片叶的脸(`--pane-face`,宿主就地声明 ——
+ * 中央区读外壳底色、浮窗与架子各自改写成 surface-2,于是每一组标签都与
+ * **自己那片叶**同色,一格转发变量都不需要)。
+ * 字色读 `--tab-joined-ink`:焦点组是 `--text-1`(缺省),非焦点组由顶栏那一层
+ * 改写成 `--text-2` —— 裁定 2:**非焦点组不再降底色**。
+ * 底缘那条 accent 指示条在这一档里没有消费者:活动态已经由「连成一块」说清楚了。
+ */
+.bar[data-look='joined'] .tabOn {
+  background: var(--pane-face);
+  color: var(--tab-joined-ink);
+  box-shadow: none;
+}
+
+/*
+ * 两只**肩**(Chrome 那种反向圆角):活动 tab 底部两侧各一块 `--tab-shoulder`
+ * 见方的面,用一发径向渐变把「圆角之外」填成叶的脸、圆角之内留空 —— 于是 tab 的
+ * 圆顶与条底之间没有缺口,两者是一整块。
+ *
+ * 半像素那一手(`calc(… + 0.5px)`)是抗锯齿:渐变的两个 stop 落在同一个半径上时
+ * 边缘会出现一圈硬台阶,错开半像素让浏览器自己去补那一档灰。
+ */
+.bar[data-look='joined'] .tabOn::before,
+.bar[data-look='joined'] .tabOn::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: var(--tab-shoulder);
+  height: var(--tab-shoulder);
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 0 0,
+    transparent var(--tab-shoulder),
+    var(--pane-face) calc(var(--tab-shoulder) + 0.5px)
+  );
+}
+
+.bar[data-look='joined'] .tabOn::before {
+  left: calc(var(--tab-shoulder) * -1);
+}
+
+.bar[data-look='joined'] .tabOn::after {
+  right: calc(var(--tab-shoulder) * -1);
+  transform: scaleX(-1);
+}
+
+/*
+ * 相邻两条**非活动**之间那根细线。画在后一条的左缘,所以「挨着活动 tab 的那一侧
+ * 不画」这句话由选择器自己保证(`:not(.tabOn) + :not(.tabOn)`),不必再判一次。
+ */
+.bar[data-look='joined'] .tab:not(.tabOn) + .tab:not(.tabOn)::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--tab-sep-inset);
+  bottom: var(--tab-sep-inset);
+  width: var(--bw-1);
+  background: var(--line-2);
+  pointer-events: none;
+}
+
+/* hover 一条非活动的:顶两角圆的一块浅底(圆角已在 `.tab` 上)。 */
+.bar[data-look='joined'] .tab:not(.tabOn):hover {
+  background: var(--st-hover);
+}
+
+/* hover 那一块有了底色,左右两根细线就没有了理由 —— 底色自己已经把这一格分开了。 */
+.bar[data-look='joined'] .tab:not(.tabOn):hover + .tab:not(.tabOn)::before,
+.bar[data-look='joined'] .tab:not(.tabOn):hover::before {
+  opacity: 0;
+}
+
+/* ── 条内换序:抬起、让位、折起(W3-b 裁定 4/5)──────────────────────────
+ * 这三格属性由 `ui/tab-reorder.ts` 直接写在 DOM 上(**一帧不经过 React**,与
+ * `ui/Splitter` 的 liveVar 同一条纪律),这里只给它们各自的样子。 */
+
+/*
+ * `data-lift` = 这一格被拎起来了:浮起来、盖住邻居、**关掉过渡**。
+ * 关过渡不是省事:横向位移由每帧写 `transform` 给,留着过渡等于让它追着指针跑
+ * 一段固定的滞后 —— 手感上就是「tab 粘在后面」。让位的邻居**要**过渡(它们一帧
+ * 只跳一次,一步到位反而看不出发生了什么),两者因此不能共用一句 transition。
+ */
+.bar[data-look='joined'] .tab[data-lift] {
+  z-index: 2;
+  transition: none;
+  box-shadow: var(--sh-1);
+}
+
+/* 让位的邻居:只动 transform,过渡一档。 */
+.bar[data-look='joined'] .tab[data-shift] {
+  transition: transform var(--dur) var(--ease);
+}
+
+/*
+ * `data-torn` = 已经拖出这条条了:原位折成 0 宽,邻居合拢。
+ * **元素不卸载**(树 / 面常驻铁律的拖拽版,也是零重挂断言盯的那一格)——
+ * 它只是宽度归零、内容裁掉;Esc 一按,属性摘掉就原样展回来。
+ */
+.bar[data-look='joined'] .tab[data-torn] {
+  max-width: 0;
+  padding: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: max-width var(--dur) var(--ease), padding var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+
+/*
+ * 空位:落到**别的**一条条上时,那条条腾出来的那一格(`ui/tab-reorder.ts` 造,
+ * 类名从这份样式表里取 —— 「占位由 Tabs 自己画」)。宽度由 JS 每次写,
+ * 过渡让它「撑开 / 收拢」而不是瞬间跳出来。
+ */
+.ph {
+  flex: none;
+  align-self: flex-end;
+  height: var(--tab-joined-h);
+  border-radius: var(--tab-joined-r) var(--tab-joined-r) 0 0;
+  background: var(--st-hover);
+  transition: width var(--dur) var(--ease);
+  pointer-events: none;
+}

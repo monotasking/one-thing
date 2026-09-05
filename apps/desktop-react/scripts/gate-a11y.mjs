@@ -15,7 +15,8 @@
  *     八屏各扫一遍:产品外壳、模型抽屉、模型服务面(Dock 上点开的一块内容 —— 收着的面 axe
  *     一条都查不到,而它恰恰是表格 / 勾选框 / 分段器 / 禁用钮最密的一块)、
  *     所有应用面(08-31 加:一整列 `role="switch"` 加一整列打开钮,而且是这道门里
- *     唯一一屏 **真全屏**的面),**拖拽落点菜单**(W3 裁定 9:拖拽的键盘等价 ——
+ *     唯一一屏 **真全屏**的面),**拖拽落点菜单**(W3 裁定 9 + W3-b 裁定 8 的
+ *     左移 / 右移:拖拽的键盘等价 ——
  *     每个落点都能从既有 tab 菜单到达,落定后 `announce()` 播报),
  *     和 `?gallery` 那张组件规格页(28 个展位一次
  *     全在场,这是唯一能把每一件都摆上台的地方)。基线 **0** —— 有违例就修,不入基线。
@@ -983,8 +984,22 @@ async function main() {
             assert(menu.open, '叶动作组那张菜单开得出来')
             assert(menu.named, '菜单里每一项都说得出名字(零空项)')
             assert(
-              menu.texts.length >= 9,
-              `九档全在:分屏四向 + 移到架子四边 + 撕成浮窗(实测 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
+              menu.texts.length >= 11,
+              `十一档全在:分屏四向 + 左移 / 右移 + 移到架子四边 + 撕成浮窗(实测 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
+            )
+            /*
+             * **条内换序的键盘等价**(W3-b 裁定 8)。它与前面九档同一条判据:
+             * 「每个落点都能从既有 tab 菜单到达」—— 而 W3-b 新添的落点就是
+             * 「插到这条条的第几格」。两项走的是与拖着换序**同一只** `reorderTab`,
+             * 播报也在那一只里。
+             */
+            assert(
+              menu.texts.some((text) => /左移一位|Move left/.test(text)),
+              `菜单里有「左移一位」(${menu.texts.join(' / ')})`,
+            )
+            assert(
+              menu.texts.some((text) => /右移一位|Move right/.test(text)),
+              '菜单里有「右移一位」',
             )
             await settle(page, '叶动作组菜单')
             await scanAxe(page, '拖拽落点菜单', '[role="menu"]')

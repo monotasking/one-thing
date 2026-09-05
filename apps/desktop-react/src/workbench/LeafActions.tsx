@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
 import {
+  ChevronLeft,
+  ChevronRight,
   ChevronsDown,
   ChevronsLeft,
   ChevronsRight,
@@ -13,7 +15,7 @@ import { IconButton } from '../ui/IconButton'
 import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
 import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
-import { dropRef } from './drop-commit'
+import { dropRef, reorderTab } from './drop-commit'
 import { contentKindOf, refId } from './kinds'
 import { hiddenInRegion, regionOfLeafIn, useWorkbenchStore } from './store'
 import type { MessageKey } from '../i18n'
@@ -38,13 +40,15 @@ import s from './LeafActions.module.css'
  * `returnTo.region` 上,按它分组是它自己的读法(`store.hiddenInRegion`)。
  * 于是顶栏尾格(中央区)与架子叶檐两处各列各的,而判据只有这一句。
  *
- * ── 拖拽的键盘等价:**同一个动作,不是第二条路**(W3 裁定 9)────────────
+ * ── 拖拽的键盘等价:**同一个动作,不是第二条路**(W3 裁定 9;W3-b 补第四组)──
  * 「不加新键位组合;每个落点都能从既有 tab 菜单到达」。分屏 ▸ 四向本来就在,
- * W3 补上另外两组:**移到架子 ▸ 四边** 与 **撕成浮窗**。三组菜单项与拖拽落定
- * 调的是**同一只** `dropRef(ref, target)` —— 两条路走两个动作,迟早在某一条上
- * 悄悄分叉(那正是「菜单里搬过去和拖过去结果不一样」这类 bug 的全部来源)。
- * 落定后 `announce()` 播报一句(「已移到右侧」/「已并入 X」/「已撕成浮窗」),
- * 与拖拽那条路共用同一句话 —— 播报是**落定**的一部分,不是菜单的装饰。
+ * W3 补上另外两组:**移到架子 ▸ 四边** 与 **撕成浮窗**;W3-b 的条内换序补上
+ * **左移 / 右移**。四组菜单项与拖拽落定调的是**同一只**动作
+ * (`dropRef(ref, target)` / `reorderTab(leafId, from, at)`)—— 两条路走两个动作,
+ * 迟早在某一条上悄悄分叉(那正是「菜单里搬过去和拖过去结果不一样」这类 bug 的
+ * 全部来源)。落定后 `announce()` 播报一句(「已移到右侧」/「已撕成浮窗」/
+ * 「已移到第 2 位,共 3 位」),与拖拽那条路共用同一句话 —— 播报是**落定**的
+ * 一部分,不是菜单的装饰(所以换序那一句住在 `reorderTab` 里,不在这里)。
  *
  * `aria-grabbed` 已废弃,不用(裁定 9 末句)。
  *
@@ -53,7 +57,8 @@ import s from './LeafActions.module.css'
  *    `leaf` 这一格 prop —— 两张菜单的开合状态因此活过一次焦点叶切换(它们是
  *    「这个动作组此刻开着哪张菜单」,不是「那片叶的状态」);卸载 = 整台壳卸载。
  * ② UI 生命状态:**有隐藏**(⋯ 才画 —— 一颗永远按不动的钮是纯噪音)/ 有型工具条
- *    (活动那一格的种类自述了 `toolbar` 才画)/ 只有一格 tab(分屏四项禁灰而不消失)。
+ *    (活动那一格的种类自述了 `toolbar` 才画)/ 只有一格 tab(分屏四项禁灰而不消失)/
+ *    **活动格在两端**(左移 / 右移各自禁灰)。
  * ③ UI 交互状态:两颗钮随 `ui/IconButton`(rest/hover/focus/active/disabled 全套);
  *    菜单项随 `ui/Menu`。
  */
@@ -77,6 +82,12 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   // 型工具条走**种类自述**那条唯一的口 —— 动作组不认识「markdown 有个渲染⇄源码开关」。
   const toolbar = active ? contentKindOf(active.kind)?.toolbar?.(active) : null
   const canSplit = leaf.tabs.length > 1
+  /*
+   * 换序的两端:第一格没有「左移」、末格没有「右移」。**禁灰而不消失**
+   * (与分屏四项同一条):这张菜单的形状不该随上下文变。
+   */
+  const canMoveLeft = leaf.active > 0
+  const canMoveRight = leaf.active < leaf.tabs.length - 1
 
   return (
     <div className={s.actions} data-testid="leaf-actions" data-pane-actions={leaf.id}>
@@ -161,6 +172,42 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             结果逐字相同,包括架子展开、位置记忆与落定后的焦点跟随。
             没有活动 tab(空叶,屏幕上停不到一帧)时整组禁灰而不消失。
           */}
+          {/*
+            **条内换序的键盘等价**(W3-b 裁定 8)。`at` 是对着**本来那张表**的下标:
+            往左 = 插到前一格之前(`active - 1`);往右 = 插到后一格**之后**,
+            也就是 `active + 2` —— 落点说的是「第 at 格之前」,而 `active + 1`
+            指的正是自己后面那一格的**前面**(= 原地不动)。那格 +2 不是魔法数,
+            是这个坐标系的定义;`reorderTab` 里挡的两种「原地不动」写法
+            (`at === from` 与 `at === from + 1`)说的是同一件事。
+          */}
+          <MenuSeparator />
+          <MenuItem
+            disabled={!canMoveLeft}
+            onClick={() => {
+              if (!canMoveLeft) return
+              reorderTab(leaf.id, leaf.active, leaf.active - 1)
+              setSplitAt(null)
+            }}
+          >
+            <span className={s.menuLine}>
+              <ChevronLeft className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+              <span className={s.menuMain}>{t('drag.moveLeft')}</span>
+            </span>
+          </MenuItem>
+          <MenuItem
+            disabled={!canMoveRight}
+            onClick={() => {
+              if (!canMoveRight) return
+              reorderTab(leaf.id, leaf.active, leaf.active + 2)
+              setSplitAt(null)
+            }}
+          >
+            <span className={s.menuLine}>
+              <ChevronRight className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+              <span className={s.menuMain}>{t('drag.moveRight')}</span>
+            </span>
+          </MenuItem>
+
           <MenuSeparator />
           <MenuSection>{t('drag.menuMoveTo')}</MenuSection>
           {EDGE_CHOICES.map((choice) => (

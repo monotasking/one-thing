@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, X } from '../components/icons'
 import { StatusDot } from './StatusDot'
@@ -77,11 +77,30 @@ export interface TabSpec {
   home?: boolean
 }
 
+/**
+ * **这条 tab 条长什么样**(W3-b 裁定 1;09-05 用户看真机后选甲「浏览器式」)。
+ *
+ *   `line`    规范画布那一档:扁平,活动态只换字色 + 底缘 2px accent 指示条。
+ *             **缺省** —— 别处的分段条(设置页、面板内的小 tab)一个像素都不变。
+ *   `joined`  浏览器式:活动 tab 顶两角圆、无描边、底色 = 那片叶的脸,底部两侧
+ *             各长一只反向圆角的「肩」把它和条底接成一整块;非活动透明底,
+ *             相邻两条非活动之间一根细线。**拼贴台四个区域一律这一档**
+ *             (顶栏组 / 架子叶 / 浮窗叶 / 分屏叶),用户报的「两套标签语言」
+ *             就是这一句话治的。
+ *
+ * 它是**外观**,不是第二个组件:同一份数据表、同一套键盘行为、同一个 DOM 形状,
+ * 换的只是一格 `data-look`。两个组件会在「预览斜体」「未保存丸」「✕ 什么时候浮出」
+ * 这些地方各自漂一遍 —— 那正是这台壳里 tab 曾经有两套画法的病根。
+ */
+export type TabsLook = 'line' | 'joined'
+
 interface TabsProps {
   items: TabSpec[]
   activeId: string | null
   onSelect: (id: string) => void
   onClose?: (id: string) => void
+  /** 外观档。缺省 `line`(见 `TabsLook`)。 */
+  look?: TabsLook
   /**
    * 谁摆 Tabs 谁决定「按住一个 tab 意味着什么」。Tabs 自己不认识拖拽 ——
    * 它只把按下这件事连同 id 递出去,拖不拖得动、拖出去变成什么,是宿主的语法。
@@ -91,11 +110,32 @@ interface TabsProps {
   label?: string
 }
 
-export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, label }: TabsProps) {
+export function Tabs({
+  items,
+  activeId,
+  onSelect,
+  onClose,
+  onTabPointerDown,
+  look = 'line',
+  label,
+}: TabsProps) {
   const bar = useRef<HTMLDivElement>(null)
   useRoving(bar, { axis: 'horizontal' })
+  /*
+   * **活动的那一格必须在视野里**(W3-b 真机读数:顶栏非焦点组被尾格夹到 216px,
+   * 三格 tab 总宽 337,活动格排第三 —— `scrollLeft` 停在 0,活动格整颗裁在视野外,
+   * 屏幕上那一组像「没有活动格」,连体当场失效)。条是横滚容器(超量纪律:永不换行、
+   * 先收窄再横滚),所以活动格换人 / 条挂载时把它滚进来。`inline:'nearest'` 只在
+   * 它真的在外面时才动,滚过的距离最短;`block:'nearest'` 不许它顺手把页面竖着滚。
+   * 只滚不搬焦点(I3:`.focus()` 不在这里)。jsdom 没有 scrollIntoView,可选调用。
+   */
+  useEffect(() => {
+    if (activeId === null) return
+    const el = bar.current?.querySelector(`[data-tab-id="${activeId.replace(/["\\]/g, '\\$&')}"]`)
+    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [activeId])
   return (
-    <div ref={bar} className={s.bar} role="tablist" aria-label={label}>
+    <div ref={bar} className={s.bar} data-look={look} role="tablist" aria-label={label}>
       {items.map((tab) => {
         const Icon = tab.icon ? resolveIcon(tab.icon) : null
         const on = tab.id === activeId
@@ -123,6 +163,12 @@ export function Tabs({ items, activeId, onSelect, onClose, onTabPointerDown, lab
               .join(' ')}
             role="tab"
             aria-selected={on}
+            /*
+             * **取件口**(W3-b):条内换序那一件(`ui/tab-reorder.ts`)要按 id 认得出
+             * 每一格,而 `role="tab"` 只说得出「第几个」。门与用例也读它。
+             * 它是一格事实的投影,不是一件新功能 —— `id` 本来就在 props 里。
+             */
+            data-tab-id={tab.id}
             // roving 入组标记 + 初值。选中的那一条由 useRoving 改回 0 ——
             // 不给初值的话,一条八页的 tab 条要按八下 Tab 才走得出去。
             data-roving-item

@@ -27,10 +27,13 @@ import s from './DropOverlay.module.css'
  *   卸载   松手 / 取消:拖拽会话归零,这一层当场答 null
  *
  * ── ②:UI 生命状态 ───────────────────────────────────────────────────────
- *   无     没在拖 / 这一帧没有落区(`feedback.rect === null`,比如撕浮窗前的空档)
- *   接受   `--drop-band-face` 一层薄膜 + 一圈 `--accent` 描边(+ 可选一句话)
+ *   无     没在拖 / 这一帧没有落区(`feedback.rect === null`)—— 落在一条标签条
+ *          上就是这一形:那一档的预示是**条自己腾出来的空位**,不是盖一块高亮
+ *   薄膜   `film`:窗口边带那一档(一层膜 + 一圈实线 + 一句话),W3 的原样
+ *   细环   `ring`:并入一片叶 —— 只描一圈,叶里一个像素都不盖(W3-b 裁定 7)
+ *   杠     `bar`:在这一侧分屏 —— 那块矩形本身就是一根 4px 的杠
+ *   轮廓   `outline`:只画一圈虚线边不铺面 —— 撕成浮窗时那扇窗的预示
  *   拒绝   不换底、只留一圈虚线灰边(裁定 7:说得出「这里落不下去」)
- *   轮廓   `outline` 档:只画一圈边不铺面 —— 撕成浮窗时它就是那扇窗的预示
  *
  * ── ③:UI 交互状态 ───────────────────────────────────────────────────────
  * 与浮影同理,这一列恒为空:它 `pointer-events: none`,不接指针。
@@ -70,7 +73,7 @@ function DropBand({ feedback }: { feedback: DropFeedback }) {
       className={s.band}
       data-testid="drop-overlay"
       data-tone={feedback.tone}
-      data-outline={feedback.outline ? '' : undefined}
+      data-shape={feedback.shape ?? 'film'}
       style={{
         left: pos.left,
         top: pos.top,

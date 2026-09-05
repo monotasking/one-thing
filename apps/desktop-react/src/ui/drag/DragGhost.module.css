@@ -1,5 +1,10 @@
 /*
- * 浮影。一行:图标 + 名(+ 拒绝时那一句理由)。
+ * 浮影 = **一张 tab 形的卡片**(W3-b 裁定 4:一枚浮影一种形)。
+ *
+ * 图标 + 名(+ 拒绝时那一句理由),36 高、圆角、阴影、轻微倾斜,底色读
+ * `--pane-face` —— 它就是一格被抬离条的 tab,而 tab 的脸就是那片叶的脸。
+ * W3 那枚 28 高、`--surface-2` 底、带实线描边的「芯片」退役:文件行 / 会话行 /
+ * Dock 瓦 / tab 四种来源从此拖出同一枚东西,用户不必学两种形。
  *
  * **永不换行、永不撑破**(挤压纪律):`max-width` 封顶 + 名字截断。一条 200 字的
  * 会话标题拖起来不该长成半屏宽的一条带子。
@@ -11,22 +16,32 @@
   pointer-events: none;
   display: flex;
   align-items: center;
-  gap: var(--gap-1);
+  gap: var(--tab-gap);
   max-width: var(--drag-ghost-max-w);
   height: var(--drag-ghost-h);
   padding: 0 var(--drag-ghost-pad-x);
-  border: 1px solid var(--line-2);
-  border-radius: var(--r-2);
-  background: var(--surface-2);
+  /*
+   * **描边留着,但平时是透明的**。卡片本身无边(它靠阴影浮起来),而拒绝态要把
+   * 边变成灰虚线 —— 边框宽度一直占着位子,于是拒绝那一刻卡片的身量一个像素都不变
+   * (换 `border-style` 会重排,而重排发生在指针每一帧都在动的时候)。
+   */
+  border: var(--bw-1) solid transparent;
+  border-radius: var(--drag-ghost-r);
+  background: var(--pane-face);
   box-shadow: var(--sh-2);
   color: var(--text-1);
-  font-size: var(--fs-sm);
-  /* 手指底下那一点是「抓着的地方」,浮影从它右下方长出来(与 macOS 同形)。 */
-  transform: translate(var(--drag-ghost-dx), var(--drag-ghost-dy));
+  font-size: var(--fs-meta);
+  /*
+   * 卡片**横向居中在指针上**、纵向抬到指针上方 —— 指针因此落在卡片偏上那一点,
+   * 与「抓着一格 tab 的上半截」同形。轻微倾斜是「它被拎起来了」这句话的全部,
+   * 不加缩放不加透明度:那两样会让人以为它是个预览。
+   */
+  transform: translate(var(--drag-ghost-dx), var(--drag-ghost-dy)) rotate(var(--drag-ghost-tilt));
 }
 
 .ghost[data-refuse] {
   opacity: var(--drag-refuse-opacity);
+  border-color: var(--line-2);
   border-style: dashed;
 }
 

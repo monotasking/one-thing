@@ -15,7 +15,7 @@
   align-items: center;
   padding: 0 var(--sp-4) 0 0;
   border-bottom: 1px solid var(--line-1);
-  background: var(--surface-1);
+  background: var(--strip-face);
   -webkit-app-region: drag;
   /* 标签组是绝对定位的(`workbench/TopBarTabs.module.css` 的 `.group`),
    * 它们的定位参考系是带子里那格 `.band` —— 而 `.band` 自己是这条带的 flex 项。

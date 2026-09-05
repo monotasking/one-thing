@@ -59,9 +59,10 @@ import s from './TopBarTabs.module.css'
  *    **永不换行、永不挤掉右端动作组** —— 后者靠「组是绝对定位、带子止于尾格左缘」
  *    在结构上保证,不靠算)。
  * ③ UI 交互状态:**焦点组**亮(活动标签吃满 `--pane-face`,与下面那片叶连成一块)/
- *    **非焦点组**活动标签底色降一档(`--topbar-tab-face-dim`)/ **hover 一组** →
- *    对应那片叶亮一圈(`--accent-soft` 内描边);tab 自身的 rest/hover/focus/
- *    selected 随 `ui/Tabs`。
+ *    **非焦点组只降活动标签的字色、不降底色**(W3-b 裁定 2:`--tab-joined-ink`
+ *    改成 `--text-2`;「哪一组是活的」由叶自己的焦点圈与这一档字色说)/
+ *    **hover 一组** → 对应那片叶亮一圈(`--accent-soft` 内描边);tab 自身的
+ *    rest/hover/focus/selected 随 `ui/Tabs` 的 `joined` 档。
  */
 export function TopBarLeafTabs() {
   const t = useT()

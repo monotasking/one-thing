@@ -44,7 +44,9 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--surface-2);
+  /* 底色读**叶的脸**(`--pane-face`,W3-b):tab、叶、内容三者同一块面,连体才成立。
+   * 架子 / 浮窗 / 全屏把它就地改写成 surface-2,中央区是外壳底色 —— 由宿主说,不由查看器猜。 */
+  background: var(--pane-face);
   /*
    * 它同时是一个**尺寸容器**(名字 `viewer`)——查看器在五种宿主里宽度差一个
    * 数量级(架子里 125,盖里 1100+),而「型工具条并不并进名条」这件事该按

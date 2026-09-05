@@ -12,8 +12,17 @@ export { DragLayer } from './DragLayer'
 export { DropOverlay } from './DropOverlay'
 export {
   resetDragSession,
+  setDragPresentation,
   setDropFeedback,
   useDragSource,
   useDragState,
 } from './DragSession'
-export type { DragGhostSpec, DragSessionState, DragSourceSpec, DropFeedback } from './DragSession'
+export type {
+  DragBandState,
+  DragGhostSpec,
+  DragPresentation,
+  DragSessionState,
+  DragSourceSpec,
+  DropFeedback,
+  DropShape,
+} from './DragSession'

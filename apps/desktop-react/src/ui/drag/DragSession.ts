@@ -3,6 +3,9 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import { focusTree } from '../../focus/registry'
 import { DRAG_START_PX } from './constants'
 
+/** 拖拽进行中挂在根上的那一格属性;消费者只有 `styles/global.css` 那条 `user-select` 规则。 */
+const DRAG_ACTIVE_ATTR = 'data-drag-active'
+
 /**
  * **一次拖拽的会话**(W3,设计 `apps/desktop-react/docs/workbench-2026-09.md` §3)。
  *
@@ -48,8 +51,10 @@ import { DRAG_START_PX } from './constants'
  *   idle      `useDragState()` 答 null —— `DragLayer` / `DropOverlay` 一个 DOM
  *             节点都不画(不是画一个透明的)
  *   dragging  有 `ghost`(图标 + 名)与 `pointer`
- *   有落点    `drop` 非 null:`DropOverlay` 画那块高亮
- *   拒绝      `drop.tone === 'refuse'`:浮影变灰 + 一句理由,高亮换拒绝色
+ *   条内       `presentation === 'inline'`:**浮影一个节点都不画** —— 拖着的那个
+ *             东西是来源自己(W3-b 裁定 4/5)
+ *   有落点    `drop` 非 null:`DropOverlay` 按 `drop.shape` 画那一块
+ *   拒绝      `drop.tone === 'refuse'`:浮影变灰 + 一句理由(叶身上不再写字)
  *
  * ── ③:UI 交互状态 ───────────────────────────────────────────────────────
  * 浮影**没有交互状态** —— 它 `pointer-events: none`,鼠标穿过去落在底下那块面上
@@ -63,29 +68,57 @@ export interface DragGhostSpec {
   label: string
 }
 
+/**
+ * **高亮长什么样**(W3-b 裁定 7:落点反馈改轻)。
+ *
+ * 四档,一个开放的枚举而不是几个布尔 —— 「铺一层膜」「描一圈环」「画一根杠」
+ * 「画一圈虚线轮廓」是**互斥**的四种画法,两个布尔表达不了互斥。
+ *
+ *   `film`     一层薄膜 + 一圈实线(窗口边带那一档,W3 的原样)
+ *   `ring`     只在那块矩形里描一圈细环,里面什么都不画 —— **并入一片叶**
+ *              (用户原话:色块 + 边框 + 文字盖在内容上太重)
+ *   `bar`      那块矩形本身就是一根 4px 的实心杠 —— **在这一侧分屏**
+ *   `outline`  一圈虚线轮廓、里面是空的 —— 撕成浮窗时那扇窗的预示
+ */
+export type DropShape = 'film' | 'ring' | 'bar' | 'outline'
+
 /** 落点反馈:消费方每一帧算出来交回来的那一句结论。 */
 export interface DropFeedback {
   /**
-   * 要高亮的那块矩形(视口坐标)。null = 这一帧没有可指的落区(比如「撕成浮窗」
-   * 之外什么都没碰到),此时只有浮影在动。
+   * 要高亮的那块矩形(视口坐标)。null = 这一帧没有可指的落区(比如落在一条
+   * 标签条上 —— 那一档的预示是**条自己腾出来的空位**,不是盖一块高亮),
+   * 此时只有浮影在动。
    */
   rect: { left: number; top: number; width: number; height: number } | null
   /** `accept` = 松手会发生点什么;`refuse` = 松手什么都不会发生。 */
   tone: 'accept' | 'refuse'
   /**
-   * 一句人话。拒绝时**必须**给(裁定 7:结构化拒绝,不静默);接受时可给可不给
-   * (给了就画在高亮里,像「移到右侧」)。
+   * 一句人话。拒绝时**必须**给(裁定 7:结构化拒绝,不静默);接受时**只有
+   * 窗口边带与撕浮窗给** —— 叶身上不再写字(W3-b 裁定 7:那句话盖在内容上)。
    */
   label?: string
-  /** 撕浮窗那一形:高亮画成一圈窗子轮廓而不是一块实心的面(设计 §3.1)。 */
-  outline?: boolean
+  /** 画法。缺席 = `film`(W3 的那一档,窗口边带还在用)。 */
+  shape?: DropShape
 }
+
+/**
+ * **这一帧「拖着的那个东西」画在哪儿**(W3-b 裁定 4/5)。
+ *
+ *   `ghost`   一枚浮影跟着指针 —— 来源那一头原地不动(或折起来)
+ *   `inline`  **来源自己在动**(条内换序:那一格 tab 被抬起来横向跟手),
+ *             此时浮影**一个节点都不画** —— 屏幕上同时有两个「拖着的东西」
+ *             正是用户报的那句「手按着 tab,动的却是旁边一枚芯片」
+ *
+ * 它是一格**画法**,不是一格业务事实:`ui/drag` 仍旧不认识 tab、不认识条。
+ */
+export type DragPresentation = 'ghost' | 'inline'
 
 export interface DragSessionState {
   payload: unknown
   ghost: DragGhostSpec
   pointer: { x: number; y: number }
   drop: DropFeedback | null
+  presentation: DragPresentation
 }
 
 /*
@@ -128,10 +161,20 @@ export function setDropFeedback(drop: DropFeedback | null): void {
   emit({ ...current, drop })
 }
 
+/**
+ * 这一帧「拖着的东西」画在哪儿。与 `setDropFeedback` 同一条纪律:**只有正在拖的
+ * 时候才写得动**,而且同值不惊动订阅者(条内换序时它每帧都被写成同一个值)。
+ */
+export function setDragPresentation(presentation: DragPresentation): void {
+  if (!current) return
+  if (current.presentation === presentation) return
+  emit({ ...current, presentation })
+}
+
 function sameFeedback(a: DropFeedback | null, b: DropFeedback | null): boolean {
   if (a === b) return true
   if (!a || !b) return false
-  if (a.tone !== b.tone || a.label !== b.label || a.outline !== b.outline) return false
+  if (a.tone !== b.tone || a.label !== b.label || a.shape !== b.shape) return false
   if (a.rect === b.rect) return true
   if (!a.rect || !b.rect) return false
   return (
@@ -142,14 +185,47 @@ function sameFeedback(a: DropFeedback | null, b: DropFeedback | null): boolean {
   )
 }
 
+/**
+ * **「带」**(W3-b 裁定 5)—— 一次手势里那块「还没离开原位」的区域。
+ *
+ * 它是这一件里唯一一格**与来源有关的几何**,而且仍旧不认识来源是什么:交回来一块
+ * 矩形,这一层每帧只回答三个字 —— 在里面 / 在外面 / 刚出来。tab 条拿它区分
+ * 「条内换序」与「撕下来」;别的来源不给这一格,于是恒在外面,行为与 W3 逐字相同。
+ *
+ * ── 为什么它必须住在这一件里,而不是消费方自己每帧比一次 ────────────────
+ * 「从 inside 到 outside 的**那一帧**」是一次状态跃迁,而跃迁只有拿得到上一帧
+ * 的人算得出来。消费方自己存一格「上一帧在不在里面」,就等于**第二条会话**:
+ * 它会在 Esc 取消、pointercancel、窗口失焦这三条路上各漏一次归零(裁定 5 的
+ * 原话:一次手势一条 DragSession)。所以上一帧存在这里,与 `phase` 同寿。
+ */
+export interface DragBandState {
+  /** 这一帧指针在不在带里。 */
+  phase: 'inside' | 'outside'
+  /** 这一帧是不是**刚**离开带(撕下就发生在这一帧)。 */
+  left: boolean
+  /** 这一帧是不是**刚**回到带里(折起来的那一格该展回来)。 */
+  entered: boolean
+}
+
 export interface DragSourceSpec<T> {
   /**
    * 走过阈值的那一帧问一次:这一下拖的是什么、浮影画什么。
    * **答 null = 这一下不许拖**(整场作废,与一次普通点击逐字相同)。
    */
   onStart(e: PointerEvent): { payload: T; ghost: DragGhostSpec } | null
+  /**
+   * 这次拖拽的「带」此刻在哪儿(视口坐标)。缺席 / 答 null = 这一下没有带,
+   * `onMove` 收到的 `band.phase` 恒为 `outside`。
+   *
+   * 每帧问一次而不是起拖时量一次:条会横滚、会因为邻居让位而重排,而「指针还在
+   * 不在这条条上」问的正是**此刻**那块矩形。它读的是一个元素的 `getBoundingClientRect`
+   * —— 每帧一次,和拖拽本来就有的那一次合成同一帧,不构成额外的强制排版链。
+   */
+  band?(): { top: number; bottom: number; left: number; right: number } | null
+  /** 带的上下外扩:离带这么近仍算「在带内」。缺省 0。 */
+  bandSlack?: number
   /** 每一发 pointermove。消费方在这里算落点并 `setDropFeedback`。 */
-  onMove?(pointer: { x: number; y: number }, payload: T): void
+  onMove?(pointer: { x: number; y: number }, payload: T, band: DragBandState): void
   /** 松手。**在会话已经拆干净之后**才叫(见文件头生命周期表)。 */
   onDrop?(pointer: { x: number; y: number }, payload: T): void
   /** Esc / pointercancel / 窗口失焦。同样在拆干净之后叫。 */
@@ -188,6 +264,21 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
      */
     let phase: 'idle' | 'dragging' | 'cancelled' = 'idle'
     let offEscape: (() => void) | null = null
+    /** 上一帧在不在带里。见 `DragBandState` 的判词:跃迁只有拿得到上一帧的人算得出来。 */
+    let inBand = false
+
+    /** 指针在不在这一下的带里。没有带 = 恒在外面。 */
+    const bandPhaseAt = (pointer: { x: number; y: number }): boolean => {
+      const rect = specRef.current.band?.()
+      if (!rect) return false
+      const slack = specRef.current.bandSlack ?? 0
+      return (
+        pointer.x >= rect.left
+        && pointer.x <= rect.right
+        && pointer.y >= rect.top - slack
+        && pointer.y <= rect.bottom + slack
+      )
+    }
 
     /** 拆干净。幂等 —— 每条结束路径都先走它。 */
     const teardown = (): void => {
@@ -203,6 +294,7 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         /* 已经丢了就算了 —— 拆卸不该因为一次无害的失败中断 */
       }
       if (phase === 'dragging') emit(null)
+      document.documentElement.removeAttribute(DRAG_ACTIVE_ATTR)
       phase = 'idle'
     }
 
@@ -270,6 +362,13 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         payload = opened.payload
         phase = 'dragging'
         /*
+         * 整页选区关掉(规则在 `styles/global.css` 的 `:root[data-drag-active]`,判词在
+         * 那儿):按住横扫的缺省动作是拉选区,起拖这一刻 pointerdown 早过了,
+         * `preventDefault` 来不及;阈值内已经拉出的那一小段也一并清掉。
+         */
+        document.documentElement.setAttribute(DRAG_ACTIVE_ATTR, '')
+        document.getSelection()?.removeAllRanges()
+        /*
          * **capture 也只在真的起拖之后才抢**(09-05 真机门 `gate:focus` 场景 12
          * 当场抓到的第二条真 bug,读数与判据都写在这里)。
          *
@@ -297,12 +396,28 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
           escapeCancel()
           return true
         })
-        emit({ payload: opened.payload, ghost: opened.ghost, pointer, drop: null })
-        specRef.current.onMove?.(pointer, opened.payload)
+        emit({ payload: opened.payload, ghost: opened.ghost, pointer, drop: null, presentation: 'ghost' })
+        /*
+         * 起拖那一帧的带态:`entered` 恒 false —— 「刚进来」说的是一次跃迁,
+         * 而这一帧之前压根没有「上一帧」。一格 tab 起拖时通常已经在自己的条里,
+         * 消费方从 `phase === 'inside'` 就读得出来,不必再骗它有过一次跃迁。
+         */
+        inBand = bandPhaseAt(pointer)
+        specRef.current.onMove?.(pointer, opened.payload, {
+          phase: inBand ? 'inside' : 'outside',
+          left: false,
+          entered: false,
+        })
         return
       }
       if (current) emit({ ...current, pointer })
-      specRef.current.onMove?.(pointer, payload as T)
+      const was = inBand
+      inBand = bandPhaseAt(pointer)
+      specRef.current.onMove?.(pointer, payload as T, {
+        phase: inBand ? 'inside' : 'outside',
+        left: was && !inBand,
+        entered: !was && inBand,
+      })
     }
 
     const up = (ev: PointerEvent): void => {

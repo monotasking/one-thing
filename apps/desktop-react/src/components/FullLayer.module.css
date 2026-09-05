@@ -81,4 +81,6 @@
   min-width: 0;
   background: var(--surface-2);
   --surface-host: var(--surface-2);
+  /* 全屏层里那片内容的脸(W3-b:内容读 `--pane-face`,由宿主说)。 */
+  --pane-face: var(--surface-2);
 }

@@ -149,6 +149,15 @@ const LEAF_TAB_FILES = [
 ]
 
 /**
+ * **超量档的料**(W3-b:「30 格 tab 要横滚,不许换行、不许把动作组顶出去」)。
+ *
+ * 名字一律 `zz-` 打头,理由是次序:文件树按名排,第一段(6 格那一档)按**行下标**
+ * 开头六行 —— 这 24 份必须排在 `z.ts` 之后,那一档量的东西才一个字都不变。
+ * 内容与长度都不重要,这一档量的是「条会不会换行」,不是「名字会不会截断」。
+ */
+const OVERFLOW_TAB_FILES = Array.from({ length: 24 }, (_, i) => `zz-${String(i + 1).padStart(2, '0')}.ts`)
+
+/**
  * 允许的覆盖。每条 = 一对选择器片段(按 CSS 类名 / data 属性的子串匹配),
  * 命中即跳过这一对。**加一条就要写一句理由** —— 这张表是律三的例外表,
  * 不是「门太吵了就往里塞」的地方。
@@ -1658,12 +1667,33 @@ async function checkLeafChrome(page) {
       const r = el.getBoundingClientRect()
       return { top: Math.round(r.top), height: Math.round(r.height), width: Math.round(r.width) }
     })
-    const strip = band.querySelector('[role="tablist"]')?.getBoundingClientRect() ?? null
+    const listEl = band.querySelector('[role="tablist"]')
+    const strip = listEl?.getBoundingClientRect() ?? null
     const trailing = document.querySelector('[data-testid="topbar-trailing"]')
     const actions = trailing?.getBoundingClientRect() ?? null
     const bar = document.querySelector('[data-testid="topbar"]')?.getBoundingClientRect() ?? null
+    /*
+     * **肩**(W3-b `joined` 档):活动 tab 底部两侧那两块反向圆角,长在它盒子之外
+     * 各 `--tab-shoulder`。它们是伪元素,量不到矩形 —— 所以量的是那句撑着它们的
+     * 等式:**条的左右内边距 ≥ 肩的边长**。肩因此在任何一格上都落在条里,
+     * 「肩不许撑出组的跨度」这句话由几何保证,不靠算。
+     */
+    const listStyle = listEl ? getComputedStyle(listEl) : null
+    const shoulder = listEl
+      ? {
+          look: listEl.getAttribute('data-look'),
+          padLeft: Math.round(parseFloat(listStyle.paddingLeft) || 0),
+          padRight: Math.round(parseFloat(listStyle.paddingRight) || 0),
+          size: Math.round(
+            parseFloat(getComputedStyle(listEl).getPropertyValue('--tab-shoulder')) || 0,
+          ),
+          scrollWidth: Math.round(listEl.scrollWidth),
+          clientWidth: Math.round(listEl.clientWidth),
+        }
+      : null
     return {
       tabs,
+      shoulder,
       // 「檐的盒」在 D 稿里就是**整条顶栏**:动作组坐在它的尾格里,不在带子里。
       chrome: bar
         ? { left: Math.round(bar.left), right: Math.round(bar.right), height: Math.round(bar.height) }
@@ -1688,6 +1718,27 @@ async function checkLeafChrome(page) {
   }
   if (!shot.hasSplitButton) problems.push('顶栏尾格里没有那颗分屏钮(焦点叶的动作组不在场)')
 
+  /* ── W3-b:`joined` 档的两条 ─────────────────────────────────────────── */
+  if (!shot.shoulder) {
+    problems.push('顶栏那条 tablist 不在场')
+  } else {
+    seen.push(
+      `look=${shot.shoulder.look} 肩 ${shot.shoulder.size} 内边距 ${shot.shoulder.padLeft}/${shot.shoulder.padRight}`,
+    )
+    if (shot.shoulder.look !== 'joined') {
+      problems.push(`顶栏那条条不是 joined 档(读数 ${shot.shoulder.look})`)
+    }
+    if (shot.shoulder.size <= 0) problems.push('--tab-shoulder 没解析出来(joined 档的肩塌了)')
+    if (
+      shot.shoulder.padLeft < shot.shoulder.size
+      || shot.shoulder.padRight < shot.shoulder.size
+    ) {
+      problems.push(
+        `条的内边距小于肩(${shot.shoulder.padLeft}/${shot.shoulder.padRight} < ${shot.shoulder.size})—— 首末格是活动态时肩会被裁掉`,
+      )
+    }
+  }
+
   seen.push(`${shot.tabs.length} 格 tab`)
   const tops = [...new Set(shot.tabs.map((t) => t.top))]
   seen.push(`top 取值 ${tops.length} 种`)
@@ -1703,6 +1754,77 @@ async function checkLeafChrome(page) {
     if (shot.actions.width <= 0) problems.push('动作组宽度塌成 0')
     if (shot.strip && shot.strip.right > shot.actions.left + 1) {
       problems.push(`tab 条与动作组重叠(${shot.strip.right} > ${shot.actions.left})`)
+    }
+  }
+
+  /*
+   * ── ③b 超量档:30 格 tab(W3-b)────────────────────────────────────────
+   * 「多 tab 永不换行」在 6 格上量不出来 —— 6 格根本不会溢出。这一段把条灌到 30 格,
+   * 再问三件事:**还是一条线**(不换行)、**动作组没被顶出去**、**条自己横滚了**
+   * (`scrollWidth > clientWidth`)。第三条是前两条能同时成立的**唯一**方式:
+   * 不横滚的话,30 格要么换行、要么把 tab 压成看不清的一条缝、要么把动作组挤出檐。
+   */
+  const targetTabs = 30
+  const extra = Math.min(rowCount, targetTabs) - wanted
+  for (let i = 0; i < extra; i += 1) {
+    await page.evaluate(
+      ({ css, at }) => {
+        const row = document.querySelectorAll(css)[at]
+        if (row instanceof HTMLElement) row.focus()
+      },
+      { css: rowsCss, at: wanted + i },
+    )
+    await page.keyboard.press('Enter')
+    await delay(120)
+  }
+  await delay(300)
+  const many = await page.evaluate(() => {
+    const band = document.querySelector('[data-testid="topbar-tabs"]')
+    const list = band?.querySelector('[role="tablist"]')
+    if (!list) return null
+    const tabs = Array.from(list.querySelectorAll('[role="tab"]')).map((el) => {
+      const r = el.getBoundingClientRect()
+      return { top: Math.round(r.top), width: Math.round(r.width) }
+    })
+    const style = getComputedStyle(list)
+    const trailing = document.querySelector('[data-testid="topbar-trailing"]')?.getBoundingClientRect()
+    const bar = document.querySelector('[data-testid="topbar"]')?.getBoundingClientRect()
+    return {
+      count: tabs.length,
+      tops: [...new Set(tabs.map((t) => t.top))],
+      minWidth: tabs.length ? Math.min(...tabs.map((t) => t.width)) : 0,
+      overflowX: style.overflowX,
+      flexWrap: style.flexWrap,
+      scrollWidth: Math.round(list.scrollWidth),
+      clientWidth: Math.round(list.clientWidth),
+      actionsRight: trailing ? Math.round(trailing.right) : null,
+      barRight: bar ? Math.round(bar.right) : null,
+    }
+  })
+  if (!many) {
+    problems.push('超量档:顶栏那条条不在场')
+  } else {
+    seen.push(
+      `超量 ${many.count} 格:top ${many.tops.length} 种 · 滚 ${many.scrollWidth}/${many.clientWidth} · 最窄 ${many.minWidth}`,
+    )
+    if (many.count < 12) {
+      problems.push(`超量档只攒出 ${many.count} 格 tab(夹具里的文件不够)`)
+    }
+    if (many.tops.length !== 1) {
+      problems.push(`超量档 tab 条换行了(top 有 ${many.tops.length} 种:${many.tops.join(' / ')})`)
+    }
+    if (many.flexWrap === 'wrap') problems.push('超量档:条声明了 flex-wrap: wrap')
+    if (!/auto|scroll/.test(many.overflowX)) {
+      problems.push(`超量档:条不横滚(overflow-x=${many.overflowX})`)
+    }
+    if (many.scrollWidth <= many.clientWidth) {
+      problems.push(
+        `超量档:${many.count} 格都塞进了一条 ${many.clientWidth}px 的条(该溢出并横滚,读数 ${many.scrollWidth})`,
+      )
+    }
+    if (many.minWidth <= 0) problems.push('超量档:有 tab 被压成 0 宽')
+    if (many.actionsRight !== null && many.barRight !== null && many.actionsRight > many.barRight + 1) {
+      problems.push(`超量档:动作组被顶出顶栏(${many.actionsRight} > ${many.barRight})`)
     }
   }
 
@@ -1770,7 +1892,7 @@ async function main() {
      * 名字故意一长一短:挤压量的是「这一条会不会换行 / 会不会把右端动作组顶出去」,
      * 而那件事对长名最敏感。
      */
-    for (const file of LEAF_TAB_FILES) {
+    for (const file of [...LEAF_TAB_FILES, ...OVERFLOW_TAB_FILES]) {
       await writeFile(path.join(full, file), `export const squeeze = '${file}'\n`)
     }
     projectDirs.set(name, full)

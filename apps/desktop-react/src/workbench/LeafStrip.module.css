@@ -12,7 +12,7 @@
   display: flex;
   align-items: stretch;
   min-width: 0;
-  background: var(--surface-1);
+  background: var(--strip-face);
 }
 
 .tabs {

@@ -810,6 +810,10 @@ export const zh = {
   'drag.movedIntoLeaf': '已并入{name}',
   'drag.movedToFloat': '已撕成浮窗',
   'drag.menuMoveTo': '移到架子',
+  // W3-b 裁定 8:条内换序的键盘等价。走的是同一只 `reorderTab`。
+  'drag.moveLeft': '左移一位',
+  'drag.moveRight': '右移一位',
+  'drag.reordered': '已移到第 {at} 位,共 {total} 位',
   'drag.menuTearOff': '撕成浮窗',
   'drag.sideLeft': '左侧',
   'drag.sideRight': '右侧',

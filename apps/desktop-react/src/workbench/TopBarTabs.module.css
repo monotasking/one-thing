@@ -25,14 +25,17 @@
  *  · 右边夹到带子的右缘(`100%`)—— 尾格那一组动作在带子外面,结构上就挤不掉,
  *    这一句管的是**组自己别画出去**,好让 `ui/Tabs` 在正确的宽度里决定收窄还是横滚。
  *
- * `bottom: -1px` 是**连体**那一句:顶栏自己那条 border-bottom 在带子的下面一像素,
- * 组探出去一格,活动标签的底色因此**盖住那条线** —— 像浏览器的 tab 长在页面上。 */
+ * **这一层只剩几何**(W3-b 裁定 2)。W1-b 时它还兼着画皮肤:三面描边的活动标签、
+ * 非焦点组降底色、`bottom: -1px` 的连体。那一套整段退役 —— 皮肤归 `ui/Tabs` 的
+ * `joined` 档(四个区域读同一份),连体归那一档自己的 `margin-bottom: -1px`
+ * (谁用 joined 谁自动连体,宿主不必记得兑现这条契约)。留在这里的只有
+ * **位置 / 宽度 / 夹紧**与 `no-drag` —— 也就是只有顶栏答得出来的那几件。 */
 .group {
   --tabgrp-l: max(0px, var(--tabgrp-x));
   --tabgrp-r: min(calc(var(--tabgrp-x) + var(--tabgrp-w)), 100%);
   position: absolute;
   top: 0;
-  bottom: calc(var(--bw-1) * -1);
+  bottom: 0;
   left: var(--tabgrp-l);
   width: max(0px, calc(var(--tabgrp-r) - var(--tabgrp-l)));
   display: flex;
@@ -53,12 +56,15 @@
 
 /* 真正可点的那一件:一条 tab。`-webkit-app-region` **不继承**,但 Chromium 算
  * 拖拽区是按祖先声明来的(声明 drag 的把边框盒加进去,声明 no-drag 的减出去),
- * 所以写在这一层就够 —— tab 里面的名字、未保存丸、✕ 全在它的盒子里。 */
+ * 所以写在这一层就够 —— tab 里面的名字、未保存丸、✕ 全在它的盒子里。
+ *
+ * 肩是活动 tab 的两只**伪元素**,它们不改变那个盒子(伪元素不进拖拽区的计算,
+ * 也不参与布局)—— `gate:drag-region` 量的正是这一条。 */
 .group [data-pane-chrome] [role='tab'] {
   -webkit-app-region: no-drag;
 }
 
-/* 檐本身(`LeafStrip` 的 `.chrome`)在这一档里贴底、吃满组宽。
+/* 檐本身(`LeafStrip` 的 `.chrome`)在这一档里贴底、吃满组宽、底色透出顶栏。
  * 它在 A 稿里是 `flex: none` 的一条带 —— 那时它上面还有内容;这里它就是全部。 */
 .group [data-pane-chrome] {
   flex: 1;
@@ -68,41 +74,16 @@
   background: transparent;
 }
 
-/* tab 条那条底线**不画**:顶栏自己的 border-bottom 已经把整条线画满了,
- * 再画一条就是两条叠着(合檐那条判例的同型)。而且留着它会把活动标签的底色
- * 顶上去一像素,连体当场断开。 */
-.group [data-pane-chrome] [role='tablist'] {
-  border-bottom: none;
-}
-
-/* ── 连体:活动标签与它下面那片叶是同一块 ─────────────────────────────────
- * 同一底色(`--pane-face`,叶也读它)、上两角圆、三面细边、**无下边**。
+/* **非焦点组:只换活动标签的字色,不换底色**(W3-b 裁定 2)。
  *
- * 特异性写到 `.band .group …[aria-selected]`(0,5,1) 是必须的,不是洁癖:
- * `LeafStrip.module.css` 里「单 tab 身份带」那条 `.chrome[data-single]
- * [role='tab']:hover { background: transparent }` 是 (0,4,1) —— 而单叶恰恰是
- * 最常见的一形(只有一片会话叶)。少这一级,鼠标一划过顶栏,连体的底色就没了。 */
-.band .group [data-pane-chrome] [role='tab'][aria-selected='true'] {
-  background: var(--topbar-tab-face);
-  color: var(--text-1);
-  border: var(--bw-1) solid var(--line-1);
-  border-bottom: none;
-  border-radius: var(--r-2) var(--r-2) 0 0;
-  /* 底缘那条 accent 指示条在这一档里没有消费者:活动态已经由「连成一块」说清楚了,
-   * 再画一条线是同一件事说两遍,而且它正好落在要被盖住的那一像素上。 */
-  box-shadow: none;
-}
-
-/* **焦点组之外的那些组:活动标签底色降一档**(设计 §2.2 原话)。
- * 「哪一组是活的」于是看得出来,而不必靠文字说。 */
-.band .group:not([data-pane-focus]) [data-pane-chrome] [role='tab'][aria-selected='true'] {
-  background: var(--topbar-tab-face-dim);
-  color: var(--text-2);
-}
-
-/* 非活动标签:透明底,顶栏的底色透出来。hover 仍由 `ui/Tabs` 自己那条画。 */
-.band .group [data-pane-chrome] [role='tab']:not([aria-selected='true']) {
-  border: var(--bw-1) solid transparent;
-  border-bottom: none;
-  border-radius: var(--r-2) var(--r-2) 0 0;
+ * W1-b 那一版把非焦点组的活动标签底色降一档(`--topbar-tab-face-dim`),用户
+ * 09-05 的原话是「非焦点组还降底色,像塞进来的一段浏览器」—— 降底色把「这一组
+ * 不是活的」说成了「这一组是另一种东西」,而屏幕上同时有两三种底色的 tab 时,
+ * 「哪一块是当前的叶」反而更难读。今天这件事由两样说:叶自己的焦点圈
+ * (`data-pane-focus`,那是响应链的正本)与活动标签的字色降一档。
+ *
+ * 改的是一格**变量**而不是一条规则:`--tab-joined-ink` 是 `ui/Tabs` 的 `joined`
+ * 档留给宿主的那一口,所以这里没有一句「tab 长什么样」——皮肤仍旧只有一个产地。 */
+.band .group:not([data-pane-focus]) {
+  --tab-joined-ink: var(--text-2);
 }

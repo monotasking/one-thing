@@ -61,8 +61,11 @@ import s from './LeafStrip.module.css'
  *
  * ── 状态表 ③:UI 交互状态 ───────────────────────────────────────────────
  *   tab            rest / hover(`--st-hover`)/ focus(全局环)/ active(键盘位由
- *                  `ui/a11y/roving` 管)/ selected(`aria-selected` + 底缘指示条);
+ *                  `ui/a11y/roving` 管)/ selected(`aria-selected` → `joined` 档里
+ *                  是「与那片叶连成一块」:同底色 + 两只肩);
  *                  **单 tab 那一形只剩 rest 与 focus**(上面 CSS 收掉了另两样)
+ *   tab · 拖拽中    抬起(`data-lift`)/ 让位(`data-shift`)/ 折起(`data-torn`)——
+ *                  三格都由 `ui/tab-reorder` 直接写 DOM,一帧不经过 React
  *   tab · ✕        随 `ui/Tabs`(平时透明,hover 本 tab 或键盘走到时浮出)
  *   tab · 名       截断配 Tooltip 全名(`TabSpec.tip`,禁令区那条;文件那一种给的
  *                  是整条路径 —— 两个目录里的同名文件在屏幕上长得一模一样)
@@ -123,10 +126,18 @@ export function LeafStrip({
       onPointerDown={onChromePointerDown}
     >
       <div className={s.tabs}>
+        {/*
+          **四个宿主一套标签语言**(W3-b 裁定 1;09-05 用户看真机后选甲)。
+          这一格 `look` 不是可选项:这条檐**就是**拼贴台的标签条,顶栏组 / 架子叶 /
+          浮窗叶 / 分屏叶画的都是它。W3-b 之前顶栏那一组另有一套三面描边的皮肤长在
+          `TopBarTabs.module.css` 里,而这里画的是扁平下划线 —— 用户的原话是
+          「两套标签语言」。皮肤整段搬进了 `ui/Tabs` 的 `joined` 档,这里只声明档位。
+        */}
         <Tabs
           items={tabs as TabSpec[]}
           activeId={activeId}
           label={label}
+          look="joined"
           onSelect={select}
           onClose={onClose}
           onTabPointerDown={onTabPointerDown}
