@@ -140,6 +140,9 @@ export const PaneLeaf = memo(function PaneLeaf({
     () => new Set((active ? flattenContent(active) : []).map(refId)),
     [active],
   )
+  /** 画法层的排法(出生序,判词在 `useFrameOrder` 上)与「哪一格是活动的」。 */
+  const frames = useFrameOrder(leaf.tabs)
+  const activeId = active ? refId(active) : null
 
   /** 檐在不在这片叶身上。**唯一判据**,见文件头那张区域表。 */
   const stripInLeaf = region !== CENTER_REGION
@@ -265,9 +268,15 @@ export const PaneLeaf = memo(function PaneLeaf({
                 普通 tab 画的是一个空槽;两格标签画的是它那一种自述的身子
                 (分隔杆 + 两个格头 + 两个空槽)—— 这一层因此随标签的身份变,
                 二合一那一下它确实重挂,而它是**檐**,不是内容。
+
+                **次序是「出生序」,不是标签条上的次序**(W6-p,读数见 `useFrameOrder`):
+                这几层是绝对定位、同时只有一层可见的**画法层**,它们在 DOM 里谁前谁后
+                屏幕上看不出来;而按 `leaf.tabs` 排就意味着一次换序要 React 搬一层
+                —— 那一层里挂着整块内容的身子(`content-slots` 把 holder
+                `appendChild` 进它的槽),搬一次 = 整棵内容子树换爹。
               */}
-              {leaf.tabs.map((ref, index) => (
-                <PaneTabFrame key={refId(ref)} tabRef={ref} on={index === leaf.active} />
+              {frames.map((ref) => (
+                <PaneTabFrame key={refId(ref)} tabRef={ref} on={refId(ref) === activeId} />
               ))}
               {/*
                 **内容那一半:一格内容一层**(key = 那一格**内容**的 refId,复合的
@@ -469,6 +478,42 @@ const PaneContentLayer = memo(function PaneContentLayer({
     </>
   )
 })
+
+/**
+ * **画法层按「出生序」排,不按标签条上的次序**(W6-p,09-05;起因是 `gate:perf`
+ * 场景⑤c 逐任务归因)。
+ *
+ * ── 病历(真机 trace,一趟条内换序)──────────────────────────────────────
+ * 从前这几层按 `leaf.tabs` 排。两格标签换一次序,React 必须在 DOM 里搬走其中一层
+ * (它的算法搬的是「原本靠前、现在靠后」的那一个),而那一层的槽里 `appendChild`
+ * 着整块内容的身子 —— 于是一次「什么都没改」的换序变成**整棵内容子树换爹**:
+ * `UpdateLayoutTree n=33085` 31.1ms + `Layout n=65422` **153.5ms**,再加上焦点被
+ * 搬走的那一下让 React 走 `restoreSelection`(逐个祖先读 `scrollTop` 再 `focus()`)。
+ * 20 趟里一半是这一形,读数因此逐趟跳:`259 501 210 448 241 437 …`。
+ *
+ * ── 为什么可以换个次序排 ────────────────────────────────────────────────
+ * 这几层是 `position: absolute; inset: 0` 的**画法层**,而且**同时只有一层可见**
+ * (`.layerHidden` 给看不见的那几层挂 `content-visibility: hidden` + `inert`)。
+ * 它们在 DOM 里谁前谁后既不影响布局也不影响绘制次序 —— 屏幕上的标签次序由
+ * `LeafStrip` / `TopBarTabs` 那条真的标签条画,与这里无关。
+ *
+ * ── 为什么是「出生序」而不是排序 ────────────────────────────────────────
+ * 换个稳定的排法(比如按 refId 字典序)同样能让换序不动 DOM,但**新开一格标签**
+ * 时那一格会插到中间去,于是把已有的那几层往后搬 —— 把一次换序的代价挪成了一次
+ * 开标签的代价。出生序只追加:换序不动,开标签也不动,只有关掉那一格才从表里消失。
+ *
+ * 一格 `useRef` 存这张表 —— 它是**这只组件实例**的缓存(不是模块级状态,没有跨模块
+ * 存活的东西,不需要 HMR dispose)。渲染中改 ref 在这里是安全的:同样的输入跑两遍
+ * 得到同样的输出(StrictMode 的双渲染因此无感),而且它只决定次序,不决定画什么。
+ */
+function useFrameOrder(tabs: readonly ContentRef[]): readonly ContentRef[] {
+  const born = useRef<string[]>([])
+  const byId = new Map(tabs.map((ref) => [refId(ref), ref]))
+  const kept = born.current.filter((id) => byId.has(id))
+  for (const id of byId.keys()) if (!kept.includes(id)) kept.push(id)
+  born.current = kept
+  return kept.map((id) => byId.get(id) as ContentRef)
+}
 
 /**
  * **一格 tab 的画法层**(W6-a)。它只管「这一格标签占的那块地长什么样」,

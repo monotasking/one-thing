@@ -5,10 +5,41 @@ import { announce } from '../a11y/live-region'
 import { LAND_MS } from '../../components/motion'
 import { DRAG_START_PX } from './constants'
 
-/** 拖拽进行中挂在根上的那一格属性;消费者只有 `styles/global.css` 那条 `user-select` 规则。 */
+/**
+ * 拖拽进行中挂在根上的那一格**事实**。W6-p 起**没有任何 CSS 规则挂在它身上** ——
+ * 光标与选区那两件事搬去了罩子(见下面的 `dragShield`),留着它是因为「此刻在拖」
+ * 是排障与用例要问的一句话,而一格没人用的根属性是免费的(微基准:0.0ms)。
+ */
 const DRAG_ACTIVE_ATTR = 'data-drag-active'
-/** 这一帧落不下去:整扇窗的光标换成 `not-allowed`(规则同在 `styles/global.css`)。 */
+/**
+ * 这一帧落不下去。同样是根上的一格事实(`gate:drag` 三处按它断言),光标那一半
+ * 由 `:root[data-drag-refuse] [data-drag-shield]` 画 —— 主体是罩子那一格元素。
+ */
 const DRAG_REFUSE_ATTR = 'data-drag-refuse'
+/** 铺满视口的那格罩子(判词整段在 `styles/global.css` 的 `[data-drag-shield]` 上)。 */
+const DRAG_SHIELD_ATTR = 'data-drag-shield'
+
+/**
+ * **罩子:一格元素接管整扇窗的光标与命中测试**(W6-p)。
+ *
+ * 只有一只,造一次留着复用 —— 一次拖拽插一次、摘一次,插摘都幂等。
+ * 它不进 React:这一格的寿命是**一次手势**,而手势本来就不经过 React
+ * (与 `ui/tab-reorder` 那段「不改语义的东西不必经过 React」同源)。
+ * 模块作用域里存着它是有意的,所以文件末尾配了 HMR dispose(CLAUDE.md 那条法)。
+ */
+let dragShield: HTMLElement | null = null
+
+function showDragShield(): void {
+  if (typeof document === 'undefined') return
+  dragShield ??= document.createElement('div')
+  dragShield.setAttribute(DRAG_SHIELD_ATTR, '')
+  dragShield.setAttribute('aria-hidden', 'true')
+  if (dragShield.parentNode !== document.body) document.body.appendChild(dragShield)
+}
+
+function hideDragShield(): void {
+  dragShield?.remove()
+}
 
 /**
  * **一次拖拽的会话**(W3,设计 `apps/desktop-react/docs/workbench-2026-09.md` §3)。
@@ -210,11 +241,11 @@ export function setDropFeedback(drop: DropFeedback | null): void {
   if (!current) return
   if (sameFeedback(current.drop, drop)) return
   /*
-   * **拒绝态的光标由根属性驱动**(W6-b,§5「光标 not-allowed」)。规则在
-   * `styles/global.css` 的 `:root[data-drag-refuse]` 上,和 `data-drag-active`
-   * 那条 `user-select` 一样 —— 光标要盖住**整扇窗**里的每一个元素(拖到 Dock 上
-   * 时指针底下那块瓦自己声明着 `cursor: pointer`),这件事只有根属性做得到,
-   * 给浮影加一格类是够不着的。teardown 里一并摘掉。
+   * **拒绝态是根上的一格事实,光标由罩子画**(W6-b 立,W6-p 改落点)。
+   * `data-drag-refuse` 照旧写在根上 —— 门与用例按它断言「这一帧落不下去」;
+   * 而光标那一半的规则主体是罩子(`:root[data-drag-refuse] [data-drag-shield]`,
+   * 见 `styles/global.css` 的判词):通配后代那一版每翻一次面就是一次整树样式重算。
+   * teardown 里一并摘掉。
    */
   toggleRefuseCursor(drop?.tone === 'refuse')
   emit({ ...current, drop })
@@ -416,6 +447,8 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
       }
       if (phase === 'dragging') settleGhost(landing)
       document.documentElement.removeAttribute(DRAG_ACTIVE_ATTR)
+      // 罩子与那格属性同生同死 —— 一条结束路径漏掉它,整扇窗就再也点不动了。
+      hideDragShield()
       toggleRefuseCursor(false)
       phase = 'idle'
     }
@@ -487,11 +520,13 @@ export function useDragSource<T>(spec: DragSourceSpec<T>): (e: ReactPointerEvent
         payload = opened.payload
         phase = 'dragging'
         /*
-         * 整页选区关掉(规则在 `styles/global.css` 的 `:root[data-drag-active]`,判词在
-         * 那儿):按住横扫的缺省动作是拉选区,起拖这一刻 pointerdown 早过了,
-         * `preventDefault` 来不及;阈值内已经拉出的那一小段也一并清掉。
+         * 整页选区关掉、光标换成这一场的(判词整段在 `styles/global.css` 的
+         * `[data-drag-shield]` 上):按住横扫的缺省动作是拉选区,起拖这一刻
+         * pointerdown 早过了、`preventDefault` 来不及,所以铺一格罩子把命中测试
+         * 收走;阈值内已经拉出的那一小段也一并清掉。根上那格属性只是**事实**。
          */
         document.documentElement.setAttribute(DRAG_ACTIVE_ATTR, '')
+        showDragShield()
         document.getSelection()?.removeAllRanges()
         /*
          * **capture 也只在真的起拖之后才抢**(09-05 真机门 `gate:focus` 场景 12
@@ -648,6 +683,9 @@ function clearLandingTimer(): void {
 export function resetDragSession(): void {
   clearLandingTimer()
   toggleRefuseCursor(false)
+  // 罩子也归它收:热更时旧模块那一格若留在文档里,整扇窗从此点不动。
+  hideDragShield()
+  dragShield = null
   emit(null)
 }
 

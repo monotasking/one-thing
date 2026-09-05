@@ -27,6 +27,13 @@
  *     窗口(`performance.mark('perf5:switch:<n>:start'/'end')`),取 8 次里的最大值,
  *     判据 ≤ `sessionSwitchForcedLayouts`——这是一个整数计数,没有抖动。
  *     时间 p95 ≤ `sessionSwitchMs` 仍然断言,但只当参考,不再是唯一红绿线。
+ *  ⑤b **二合一 / 拆开 ×10**(W6-p 重写;从前是 W5-b 的「切焦点叶」,而中央区收成
+ *     一条标签条之后那个现场在结构上不存在了)。量的是**改标签的身份**这一下:
+ *     设计 §11 拍点 8 说「一格内容都不许重挂」,这一格就是那句话的秤。
+ *  ⑤c **条内换序 ×20**(W6-b)—— 三格里唯一「什么都没改」的那一格:换序期间树
+ *     冻着,动的只有一格 `transform`,所以读数一长起来,长的必定是每帧那条链或
+ *     松手之后那一段。窗口里再打一枚 `:up`,好把「12 发 move 各让一帧」与
+ *     「松手→稳定」分开读。
  *  ④ **大会话 + 真流**(09-03 批 A 补,`docs/design/event-subscription-audience-2026-09.md` §6)
  *     —— 门自己**种**一条与用户报障同量级的会话(≥3000 账本行、≥20 次工具调用),
  *     再让一只假 provider 吐 50KB 带 ```html 围栏的回答 + 2 次工具调用。判据两条:
@@ -84,9 +91,10 @@ function readBudget() {
     coldOpenMs: pick('coldOpenMs'),
     sessionSwitchMs: pick('sessionSwitchMs'),
     sessionSwitchForcedLayouts: pick('sessionSwitchForcedLayouts'),
-    focusLeafSwitchMs: pick('focusLeafSwitchMs'),
-    focusLeafSwitchForcedLayouts: pick('focusLeafSwitchForcedLayouts'),
+    tabPairSplitMs: pick('tabPairSplitMs'),
+    tabPairSplitForcedLayouts: pick('tabPairSplitForcedLayouts'),
     tabReorderMs: pick('tabReorderMs'),
+    tabReorderTailMs: pick('tabReorderTailMs'),
     tabReorderForcedLayouts: pick('tabReorderForcedLayouts'),
     longFrameMs: pick('longFrameMs'),
     streamFrameMs: pick('streamFrameMs'),
@@ -106,10 +114,19 @@ const BUDGET = readBudget()
 const SEED_SESSIONS = 400
 /**
  * 场景②钉进同一条右架子的三块面板。次序 = tab 次序,也是切换的循环次序。
+ *
+ * **它们的出厂摆法各不相同**(W6-a 起 sessions 出厂在左架子),所以夹具显式点名
+ * 右边 —— 判词在 `pinPanels` 上。
+ *
+ * **`files` 09-05 换成了 `diff`**(W6-p):W6-a 之后「文件」不再是一块面板,它是一块
+ * **启动瓦**(点它 = 开当前会话那个目录),右键给的是启动瓦那几行、**根本没有落点
+ * 单选**(真机原样读数:菜单上只有「Open a directory… | Dock settings…」)。场景②要的
+ * 是「一条架子上重面板与轻面板混在一组、来回切」,`diff` 与它同样是一块普通面板,
+ * 现场的形状一个字没变 —— 换的是一个已经不存在的取件口,不是放宽这道门。
  * 'sessions' 排头是刻意的:它是这块壳最重的一块面板(整份会话网格),
  * 「重面板 + 轻面板混在一组」才是用户报障时的现场。
  */
-const SHELF_PANELS = ['sessions', 'files', 'terminal']
+const SHELF_PANELS = ['sessions', 'diff', 'terminal']
 
 /** 场景③注入的那条长消息:5k 字。 */
 const LONG_MESSAGE = `性能门·长消息 ${'流式回放的稳态帧率是这一段要量的东西。'.repeat(200)}`.slice(0, 5000)
@@ -139,6 +156,8 @@ const PERF5_TURNS = 12
 const PERF5_SWITCHES = 8
 /** ⑤c 跑多少趟换序(派工令:「换序 20 次」不劣化)。 */
 const PERF5C_REORDERS = 20
+/** ⑤b 点多少下(奇数并、偶数拆 —— 所以是偶数,跑完条上还是两格)。 */
+const PERF5B_ACTIONS = 10
 const PERF4_SENTINEL = 'PERF4ENDMARK'
 /**
  * core 侧滞后预算(ms)—— **判据是 node 侧那条 SSE 上哨兵到达的时刻**,不是屏幕上的。
@@ -771,63 +790,59 @@ async function measureSessionSwitch(page, sessionId, marker, index) {
 }
 
 /**
- * **把第二条会话开成右边那片叶**(场景⑤b 的夹具,W5-b)。
+ * **量一下「二合一 / 拆开」这一下**(场景⑤b,W6-p 重写)。
  *
- * 走的是用户真走的那条路:会话行右键 →「在右侧」——它与拖拽落定共用同一只
- * `dropRef`,所以这道门量的是产品那条路,不是一句 store 直写。
+ * 走的是用户真走的那条路:叶的动作组 → 那张菜单里的一项(`LeafActions`),
+ * 落定动作与拖拽那条路共用同一只(`drop-commit.pairIntoIndex` / `store.unpairAt`)。
+ * 开菜单那一下**不在窗口里**:量的是「这一下改了树之后屏幕要花多少」,
+ * 不是「一张菜单画多久」。
+ *
+ * 三项按**是否可用**挑,不按下标猜:二合一那两项各有各的前提
+ * (`canPairRight` 要右边还有一格),而拆开只在活动那格是两格标签时可用。
  */
-async function openSecondSessionLeaf(page, sessionId) {
-  // **点瓦是开关**(同 `ensureOverviewRow` 的判词):这是第三处会被它咬到的地方。
-  await ensureOverviewRow(page, sessionId)
-  await page.evaluate(id => {
-    const row = document.querySelector(`[data-testid="session-row-${id}"]`)
-    row?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 80, clientY: 80 }))
-  }, sessionId)
-  await delay(400)
+async function measurePairSplit(page, kind, index) {
   const opened = await page.evaluate(() => {
-    const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
-    const right = items.find(el => /在右侧|Open to the right/.test(el.textContent ?? ''))
-    if (right instanceof HTMLElement) right.click()
-    return Boolean(right)
+    /*
+     * 点名**中央那片叶**的动作组,不是「屏幕上第一颗」:中央区的动作组坐在窗口顶栏
+     * 里(W1-b),而浮窗 / 架子里的叶各有各的一份 —— 拿第一颗会随屏幕上还开着什么变。
+     */
+    const leaf = document.querySelector('[data-pane-region="center"] [data-pane-leaf]')
+    const id = leaf?.getAttribute('data-pane-leaf')
+    const btn = id
+      ? document.querySelector(`[data-testid="pane-split:${id}"]`)
+      : document.querySelector('[data-testid^="pane-split:"]')
+    if (!(btn instanceof HTMLElement)) return false
+    btn.click()
+    return true
   })
-  if (!opened) return false
-  await delay(800)
-  // 总览收回去,别盖着两片叶。
-  await clickTestId(page, 'dock-tile-sessions').catch(() => undefined)
-  await delay(400)
-  const slots = await page.evaluate(
-    () => document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]').length,
-  )
-  return slots === 2
-}
-
-/**
- * 量一次**切焦点叶**:点第 `at` 片叶的身子,等两帧稳定。
- *
- * 与 `measureSessionSwitch` 的差别就是这一格要证的那句话:两片叶的内容**都已经
- * 在屏上**,所以没有「等这条会话的记号出现」这回事 —— 判据是双 rAF 之后的稳定,
- * 而红绿看的是窗口里的强制排版次数(整数计数,理由与 ⑤a 同)。
- */
-async function measureFocusLeafSwitch(page, at, index) {
-  return page.evaluate(
-    async ({ slot, i }) => {
-      const slots = Array.from(
-        document.querySelectorAll('[data-pane-region="center"] [data-pane-slot]'),
-      )
-      const target = slots[slot]
-      if (!(target instanceof HTMLElement)) throw new Error(`点不到第 ${slot} 片叶`)
-      performance.mark(`perf5b:leaf:${i}:start`)
+  if (!opened) throw new Error('中央那片叶的动作组不在屏幕上 —— ⑤b 的现场没搭起来')
+  await delay(200)
+  const ms = await page.evaluate(
+    async ({ k, i }) => {
+      // 角色两种都收:`ui/Menu` 传了 `checked` 的那些项是 `menuitemradio`。
+      const items = Array.from(document.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'))
+      const pick = (re) =>
+        items.find(el => re.test(el.textContent ?? '') && !el.hasAttribute('disabled'))
+      const target = k === 'pair'
+        ? (pick(/与右边的标签二合一|Join with the tab on the right/)
+          ?? pick(/与左边的标签二合一|Join with the tab on the left/))
+        : pick(/拆开|Split apart/)
+      if (!(target instanceof HTMLElement)) return null
+      performance.mark(`perf5b:pair:${i}:start`)
       const started = performance.now()
-      const body = target.querySelector('[data-pane-body]') ?? target
-      body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
-      body.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-      body.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      target.click()
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-      performance.mark(`perf5b:leaf:${i}:end`)
+      performance.mark(`perf5b:pair:${i}:end`)
       return Math.round(performance.now() - started)
     },
-    { slot: at, i: index },
+    { k: kind, i: index },
   )
+  if (ms === null) {
+    // 菜单开着就走人会把下一趟一起毁掉 —— Esc 收干净再把这一趟报成红。
+    await page.keyboard.press('Escape').catch(() => undefined)
+    throw new Error(`菜单里没有可用的「${kind === 'pair' ? '二合一' : '拆开'}」—— ⑤b 的现场塌了`)
+  }
+  return ms
 }
 
 /**
@@ -887,6 +902,14 @@ async function measureTabReorder(page, index) {
       fire(window, 'pointermove', x0 + ((x1 - x0) * s) / steps, 1)
       await new Promise((resolve) => requestAnimationFrame(resolve))
     }
+    /*
+     * **松手那一刻单独打一枚记号**(W6-p)。一趟的时长里有两段完全不同的东西:
+     * 12 发 move 各让一帧(那一段的下限是屏幕自己的刷新率,与产品无关)与
+     * 松手之后那一段(落定 + 收笔)。归因时要能把它们分开读,否则「一趟 450ms」
+     * 这句话说不出钱花在哪 —— W6-b 留账的那 ~230ms 正是后半段。
+     */
+    performance.mark(`perf5c:reorder:${i}:up`)
+    const upAt = performance.now()
     fire(window, 'pointerup', x1, 0)
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     performance.mark(`perf5c:reorder:${i}:end`)
@@ -902,6 +925,8 @@ async function measureTabReorder(page, index) {
       .join('|')
     return {
       ms: Math.round(performance.now() - started),
+      /** 松手之后那一段(落定 + 收笔)—— 这一格才是产品代码说了算的那一半。 */
+      tail: Math.round(performance.now() - upAt),
       moved: orderAfter !== orderBefore,
     }
   }, index)
@@ -1129,12 +1154,12 @@ async function main() {
     )
     if (cold.result.ms > BUDGET.coldOpenMs || coldStats.overLong > BUDGET.animationLongFrames) {
       console.log(
-        '    ↑ 08-30 起的已知红,**不是**架子 tab 那条路的回归:种子从 120 抬到 400 之后,'
-          + '冷开一次要画 400 张卡,那一段主线程任务 53–65ms 越过 50ms 的长帧线。\n'
-          + '      病根与场景②同源(400 张卡一次全画),但修法要给卡片加 containment,'
-          + '而 content-visibility 蕴含的 contain: paint 会剪掉卡片外沿的焦点柔光环\n'
-          + '      —— 08-30 刚为这条报障做过治理(见 Overview.module.css 的 .bodyInner)。'
-          + '所以它是一次要拍板的改动,故意留红,不在这里盲修。',
+        '    ↑ 这一格 08-30 起红了很久,W6-p 归因之后修掉了,所以再红就是**回归**,不再是存量:\n'
+          + '      真因不是「400 张卡画得慢」,是 `focus/registry` 的 `activate()` 在同一次提交里\n'
+          + '      `focus()` 那棵刚插好的树 —— `focus()` 要一份干净的排版,当场逼出一次整棵子树的\n'
+          + '      排版(trace:那一段 56.4ms 里 React 自己 26ms、`Layout n=19` 28.1ms)。\n'
+          + '      修法是 `SessionRow.module.css` 那两行 `content-visibility: auto`(判词写在那里,\n'
+          + '      含「行自己的 outline 不会被自己的 paint containment 剪掉」的截图反证)。',
       )
     }
 
@@ -1200,83 +1225,97 @@ async function main() {
       switchRun.events,
     )
 
-    /* ── 场景 ⑤b:两片会话叶并排,**切焦点叶** ×8(W5-b 裁定 9)────────────
+    /* ── 场景 ⑤b:**二合一 / 拆开 ×10**(W6-p 重写)────────────────────────
      *
-     * ⑤ 分裂成两半,因为会话多开之后「换一条会话看」有了**两种**手势,而它们的
-     * 代价完全不是一回事:
-     *  · ⑤a(上面那一段,手法一个字没改)= **同叶换 ref**:那片叶的内容整份换人,
-     *    折叠、装配、排版全要重来 —— 预算 393ms / 3 次强制排版;
-     *  · ⑤b = **切焦点叶**:两片叶的内容**都已经在屏上**,这一下只是把焦点(与
-     *    「当前会话」那条投影)指向另一片。它理应几乎不花钱 —— 而「理应」正是
-     *    要量的东西:投影那条订阅要是把整棵中央树重渲一遍,这一格当场变贵。
+     * 这一格从前量的是「两片会话叶并排,切焦点叶」(W5-b 裁定 9)。**那个现场在
+     * v3 里不存在了**:中央区收成一条标签条(W6-a),「在右侧」在 W6-b 之后改判成
+     * 二合一 —— 于是它的夹具在结构上再也搭不起来,门每趟都红在「中央区真成两片叶」
+     * 那一句上。夹具跟不上产品是**夹具的账**,不是产品回归。
      *
-     * 判据**两条,与 ⑤a 同形**:时间 p95(按下 → 稳定)与强制排版次数。后者是红绿的
-     * 主判据(整数计数,不随机器噪声抖),前者一起断言 —— 理由与 ⑤a 逐字相同。
+     * 换成量今天真有的那一下:**二合一 / 拆开**(设计 §7)。它与 ⑤a / ⑤c 的分工
+     * 仍旧是三种不同的「改了什么」:
+     *  · ⑤a = **同叶换 ref**:那片叶的内容整份换人(折叠、装配、排版全要重来);
+     *  · ⑤b = **改标签的身份**:两格普通标签并成一格 pair、再拆回来。按设计
+     *    §11 拍点 8,这一下**一格内容都不许重挂** —— 内容层按内容分格,改的只有
+     *    画法那一半。所以它理应几乎不花钱,而「理应」正是要量的东西:哪天内容层
+     *    跟着标签的身份走,这一格会当场跳进百毫秒(聊天区重跑一次进场、
+     *    查看器丢掉滚动位)。
+     *  · ⑤c = **什么都没改**(条内换序,树到落定那一刻才动)。
+     *
+     * 判据两条,与 ⑤a/⑤c 同形:强制排版次数是红绿主判据(整数、不抖),
+     * 时间 p95 一起断言当参考;另加一条「零长帧」——这一下屏幕上换的是同一块地方
+     * 的画法,不该出现 50ms 以上的任务。
      */
-    console.log(`\n[4b/8] 场景⑤b 两片会话叶并排 · 切焦点叶 ×${PERF5_SWITCHES}`)
+    console.log(`\n[4b/8] 场景⑤b 二合一 / 拆开 ×${PERF5B_ACTIONS}`)
     /*
-     * 夹具搭不起来 = **红**,不是跳过。这一格量的是 W5-b 自己交付的那条路
-     * (会话行右键 →「在右侧」),它不在 = 交付缺了一块,而一道会自己跳过新场景的门
-     * 等于没有这道门(与 `boundary:gate` 那两条「没有 ok 行也算红」的反脚枪守卫同源)。
+     * 夹具搭不起来 = **红**,不是跳过(与 `boundary:gate` 那两条反脚枪守卫同源)。
+     * 两格标签才有得并,所以先确保这条条上有两格 —— `ensureSecondTab` 是幂等的,
+     * ⑤c 随后再叫一次也不会叠出第三格。
      */
-    const paired = await openSecondSessionLeaf(page, normalIds[1])
-    assertScenario(
-      'focus-leaf-switch',
-      paired,
-      '会话行右键菜单开得出「在右侧」,中央区真成两片叶(⑤b 的夹具)',
-      [],
-    )
-    if (paired) {
-      const leafRun = await recordTrace(cdp, 'focus-leaf-switch', async () => {
+    const pairReady = await ensureSecondTab(page, normalIds)
+    assertScenario('pair-split', pairReady, '中央那条条上有两格标签(⑤b 的夹具)', [])
+    if (pairReady) {
+      const pairRun = await recordTrace(cdp, 'pair-split', async () => {
         const each = []
-        for (let i = 1; i <= PERF5_SWITCHES; i += 1) {
-          each.push(await measureFocusLeafSwitch(page, i % 2, i))
-          await delay(500)
+        for (let i = 1; i <= PERF5B_ACTIONS; i += 1) {
+          // 奇数并、偶数拆 —— 一趟结束时条上又是两格,与开工时逐字相同。
+          each.push(await measurePairSplit(page, i % 2 === 1 ? 'pair' : 'split', i))
+          await delay(400)
         }
         return { each }
       })
-      keepTrace('focus-leaf-switch', leafRun.events)
-      const leafEach = leafRun.result.each
-      const leafSorted = [...leafEach].sort((a, b) => a - b)
-      const leafP95 =
-        leafSorted[Math.min(leafSorted.length - 1, Math.ceil(leafSorted.length * 0.95) - 1)]
-      const leafStats = frameStats(leafRun.events, BUDGET.longFrameMs)
-      const forcedPerLeaf = []
-      for (let i = 1; i <= PERF5_SWITCHES; i += 1) {
-        const from = markTs(leafRun.events, `perf5b:leaf:${i}:start`)
-        const to = markTs(leafRun.events, `perf5b:leaf:${i}:end`)
+      keepTrace('pair-split', pairRun.events)
+      const pairEach = pairRun.result.each
+      const pairSorted = [...pairEach].sort((a, b) => a - b)
+      const pairP95 =
+        pairSorted[Math.min(pairSorted.length - 1, Math.ceil(pairSorted.length * 0.95) - 1)]
+      const pairStats = frameStats(pairRun.events, BUDGET.longFrameMs)
+      const forcedPerPair = []
+      for (let i = 1; i <= PERF5B_ACTIONS; i += 1) {
+        const from = markTs(pairRun.events, `perf5b:pair:${i}:start`)
+        const to = markTs(pairRun.events, `perf5b:pair:${i}:end`)
         if (from === undefined || to === undefined) {
-          throw new Error(`第 ${i} 次切焦点叶的 performance.mark 没落进 trace —— 量具本身坏了`)
+          throw new Error(`第 ${i} 下二合一/拆开的 performance.mark 没落进 trace —— 量具本身坏了`)
         }
-        forcedPerLeaf.push(forcedLayouts(leafRun.events, from, to))
+        forcedPerPair.push(forcedLayouts(pairRun.events, from, to))
       }
-      const maxLeafForced = Math.max(...forcedPerLeaf)
+      const maxPairForced = Math.max(...forcedPerPair)
+      const pairOverLong = pairStats.overLong
       console.log(
-        `  · 每次切焦点叶 按下→稳定(ms):${leafEach.join(' ')}`
-          + `\n  · p95 ${leafP95}ms,最慢 ${leafSorted[leafSorted.length - 1]}ms,`
-          + `最快 ${leafSorted[0]}ms`
-          + `\n  · 强制排版:${forcedPerLeaf.join(' ')}(最大 ${maxLeafForced});`
-          + `主线程任务 ${leafStats.tasks} 段,最长 ${leafStats.longest}ms`,
+        `  · 每下 二合一/拆开 点下→稳定(ms):${pairEach.join(' ')}`
+          + `\n  · p95 ${pairP95}ms,最慢 ${pairSorted[pairSorted.length - 1]}ms,`
+          + `最快 ${pairSorted[0]}ms`
+          + `\n  · 强制排版:${forcedPerPair.join(' ')}(最大 ${maxPairForced});`
+          + `主线程任务 ${pairStats.tasks} 段,最长 ${pairStats.longest}ms,`
+          + `>${BUDGET.longFrameMs}ms 的 ${pairOverLong} 段`,
       )
-      record_('⑤b 切焦点叶 ×8', leafStats, { ms: leafP95 })
-      record_('⑤b 切焦点叶 ×8·强制排版', leafStats, { ms: maxLeafForced })
+      record_(`⑤b 二合一/拆开 ×${PERF5B_ACTIONS}`, pairStats, { ms: pairP95 })
+      record_(`⑤b 二合一/拆开 ×${PERF5B_ACTIONS}·强制排版`, pairStats, { ms: maxPairForced })
       assertScenario(
-        'focus-leaf-switch',
-        leafP95 <= BUDGET.focusLeafSwitchMs,
-        `切焦点叶 按下→稳定 p95 ${leafP95}ms ≤ 预算 ${BUDGET.focusLeafSwitchMs}ms`,
-        leafRun.events,
-      )
-      assertScenario(
-        'focus-leaf-switch',
-        maxLeafForced <= BUDGET.focusLeafSwitchForcedLayouts,
-        `切焦点叶强制排版 最大 ${maxLeafForced} 次 ≤ 预算 ${BUDGET.focusLeafSwitchForcedLayouts} 次`,
-        leafRun.events,
+        'pair-split',
+        pairP95 <= BUDGET.tabPairSplitMs,
+        `二合一/拆开 点下→稳定 p95 ${pairP95}ms ≤ 预算 ${BUDGET.tabPairSplitMs}ms`,
+        pairRun.events,
       )
       assertScenario(
-        'focus-leaf-switch',
-        leafStats.longest <= BUDGET.sessionSwitchMs,
-        `切焦点叶最长主线程任务 ${leafStats.longest}ms ≤ 预算 ${BUDGET.sessionSwitchMs}ms`,
-        leafRun.events,
+        'pair-split',
+        maxPairForced <= BUDGET.tabPairSplitForcedLayouts,
+        `二合一/拆开强制排版 最大 ${maxPairForced} 次 ≤ 预算 ${BUDGET.tabPairSplitForcedLayouts} 次`,
+        pairRun.events,
+      )
+      /*
+       * **这一格没有「零长帧」那条断言**,理由写在 `perf-budget.tabPairSplitMs` 上:
+       * 一下二合一把那格地变窄了一半,一条 437KB 的会话按半幅重新折行本身就是
+       * 150ms 级的排版 —— 「零长帧」在这里是一条永远红的假线。换成断言**最长任务**
+       * (与 ⑤a 第三条同形):它接得住「一下变成两下」这种真回归,又不假装那次
+       * 正当的重排不存在。长帧段数照旧打印。
+       */
+      assertScenario(
+        'pair-split',
+        pairStats.longest <= BUDGET.tabPairSplitMs,
+        `二合一/拆开 最长主线程任务 ${pairStats.longest}ms ≤ 预算 ${BUDGET.tabPairSplitMs}ms`
+          + `(期间 >${BUDGET.longFrameMs}ms 的长帧 ${pairOverLong} 段 —— 见预算表判词)`,
+        pairRun.events,
       )
     }
 
@@ -1293,20 +1332,15 @@ async function main() {
      */
     console.log(`\n[4c/8] 场景⑤c 条内换序 ×${PERF5C_REORDERS}`)
     /*
-     * **⑤c 自己搭夹具,不借 ⑤b 留下的**(09-05 A/B 当场量出来的一条):
+     * **⑤c 自己确认自己的夹具,不借 ⑤b 留下的**(09-05 A/B 当场量出来的一条):
      * 从前它靠「⑤b 开出来的第二片叶恰好在同一条条上多出一格」白拿两格标签,
      * 而那是 W6-a 那句止血(中央区四带退成一格标签)的副产品 —— W6-b 把「在右侧」
      * 改判成二合一之后,两条会话并成**一格** `pair`,条上只剩一格,⑤c 当场没有对象。
-     * 借来的前置状态会随任何一个前置场景的改动一起塌(gate:drag 也踩过同一条),
-     * 所以这里点名走「在下方打开」——它在**两边**都是「末尾开一格新标签」,
-     * A/B 于是量的是同一个现场。
+     * 借来的前置状态会随任何一个前置场景的改动一起塌(gate:drag 也踩过同一条)。
+     * `ensureSecondTab` 是**幂等**的:⑤b 已经开好了它就一个字都不动,没开好它自己
+     * 走「在下方打开」那条路开一格 —— 两个场景于是各自成立,谁先谁后都量得对。
      */
-    await openSessionAsSecondTab(page, normalIds[2] ?? normalIds[0])
-    const reorderReady = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('[role="tablist"]')).some(
-        (el) => el.querySelectorAll('[data-tab-id]').length >= 2,
-      ),
-    )
+    const reorderReady = await ensureSecondTab(page, normalIds)
     assertScenario(
       'tab-reorder',
       reorderReady,
@@ -1316,15 +1350,17 @@ async function main() {
     if (reorderReady) {
       const reorderRun = await recordTrace(cdp, 'tab-reorder', async () => {
         const each = []
+        const tail = []
         const moved = []
         for (let i = 1; i <= PERF5C_REORDERS; i += 1) {
           const row = await measureTabReorder(page, i)
           each.push(row.ms)
+          tail.push(row.tail)
           moved.push(row.moved)
           // 每趟之间留一拍,让收笔那 150ms 的 FLIP 跑完再开下一趟。
           await delay(220)
         }
-        return { each, moved }
+        return { each, tail, moved }
       })
       keepTrace('tab-reorder', reorderRun.events)
       const reorderEach = reorderRun.result.each
@@ -1356,12 +1392,17 @@ async function main() {
         forcedPerReorder.push(forcedLayouts(reorderRun.events, from, to))
       }
       const maxReorderForced = Math.max(...forcedPerReorder)
+      const reorderTail = reorderRun.result.tail
+      const tailSorted = [...reorderTail].sort((a, b) => a - b)
+      const tailP95 =
+        tailSorted[Math.min(tailSorted.length - 1, Math.ceil(tailSorted.length * 0.95) - 1)]
       console.log(
         `  · 序真的换了的趟数:${reorderMoved}/${PERF5C_REORDERS}`
           + `(判据产地是 gate:drag 场景③,这里只作读数的上下文)`
           + `\n  · 每趟换序 按下→稳定(ms):${reorderEach.join(' ')}`
           + `\n  · p95 ${reorderP95}ms,最慢 ${reorderSorted[reorderSorted.length - 1]}ms,`
           + `最快 ${reorderSorted[0]}ms`
+          + `\n  · 其中**松手→稳定**(ms):${reorderTail.join(' ')};p95 ${tailP95}ms`
           + `\n  · 强制排版:${forcedPerReorder.join(' ')}(最大 ${maxReorderForced});`
           + `主线程任务 ${reorderStats.tasks} 段,最长 ${reorderStats.longest}ms`,
       )
@@ -1371,6 +1412,13 @@ async function main() {
         'tab-reorder',
         reorderP95 <= BUDGET.tabReorderMs,
         `换序一趟 按下→稳定 p95 ${reorderP95}ms ≤ 预算 ${BUDGET.tabReorderMs}ms`,
+        reorderRun.events,
+      )
+      assertScenario(
+        'tab-reorder',
+        tailP95 <= BUDGET.tabReorderTailMs,
+        `换序 松手→稳定 p95 ${tailP95}ms ≤ 预算 ${BUDGET.tabReorderTailMs}ms`
+          + `(这一段才是产品说了算的那一半 —— 判词在 perf-budget.tabReorderTailMs)`,
         reorderRun.events,
       )
       assertScenario(
@@ -1658,11 +1706,45 @@ async function switchDefaultOpenToPinned(page) {
 /**
  * 把点名的几块面板钉到右架子上,返回**真的钉上去了**的那一批 id(= tab 次序)。
  * 次序由 store 自己说了算,不由这里的输入次序猜 —— 读 DOM 上的 tablist。
+ *
+ * ── 为什么不是「点一下瓦」了(W6-p)───────────────────────────────────────
+ * 点瓦 = 按**它自己的出厂摆法**开。W6-a 把 `sessions` / `files` 的出厂摆法改成了
+ * **左架子**(理由:一块出厂就停在聊天区正中的浮窗会把那块地整个接管掉),而
+ * `terminal` 没有自述、落在「钉栏」档的缺省右架子上 —— 于是三块面板落进两条架子,
+ * 门在「『sessions』没钉进右架子(实际:terminal)」上红。
+ * **这是夹具跟不上出厂档,不是产品回归**:场景②量的是「一条架子上重面板与轻面板
+ * 混在一组、来回切」,**哪一条边不是它的判据**。所以夹具改成显式点名落点,走的是
+ * 用户自己那条路 —— Dock 瓦右键 →「钉到边 ▸ 右边」(`OPEN_PLACEMENT_CHOICES`
+ * 那一行,`openAs` 既执行也写记忆)。
  */
 async function pinPanels(page, ids) {
   for (const id of ids) {
-    await clickTestId(page, `dock-tile-${id}`)
+    await page.evaluate(tile => {
+      const el = document.querySelector(`[data-testid="dock-tile-${tile}"]`)
+      el?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 300 }))
+    }, id)
     await delay(250)
+    const picked = await page.evaluate(() => {
+      /*
+       * **落点那一排是 `menuitemradio`,不是 `menuitem`**(`ui/Menu` 的 `MenuItem`:
+       * 传了 `checked` 就换角色)。只问 `menuitem` 的话这一排一项都取不到 ——
+       * 09-05 本批第一趟真机就红在这里,而报错说的是「没有『右边』」,像是文案变了。
+       */
+      const items = Array.from(document.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'))
+      // 「右边」那一项:`dock.edgeRight` 的两份文案,整串比对(「右边」不与别的项撞)。
+      const right = items.find(el => /^(右边|Right)$/.test((el.textContent ?? '').trim()))
+      if (right instanceof HTMLElement) right.click()
+      else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      // 挑不中时把菜单上有什么一并交回来 —— 门红的时候要说得出「看见的是什么」。
+      return { ok: Boolean(right), saw: items.map(el => (el.textContent ?? '').trim()) }
+    })
+    if (!picked.ok) {
+      throw new Error(
+        `Dock 瓦「${id}」的右键菜单里没有「钉到边 ▸ 右边」—— 夹具的取件口变了。`
+          + `菜单上这几项:${picked.saw.length ? picked.saw.join(' | ') : '(一项都没有,菜单没开出来)'}`,
+      )
+    }
+    await delay(300)
   }
   const count = await page.evaluate(
     () => document.querySelectorAll('[data-shelf="right"] [role="tab"]').length,
@@ -1752,7 +1834,47 @@ async function measureTabSwitch(page, index, expectedPanel) {
 }
 
 /**
- * **在中央那条条的末尾再开一格标签**(⑤c 的夹具)。
+ * **中央那条条上至少两格标签**(⑤b 与 ⑤c 共用的夹具,W6-p)。
+ *
+ * **幂等**是它存在的理由:⑤b 与 ⑤c 各自要先确认自己的现场在(一道会「借前一个
+ * 场景留下的状态」的门,会随任何一个前置场景的改动一起塌 —— `gate:drag` 与这道门
+ * 的 ⑤c 都各踩过一次),而两个场景都叫一次又不该叠出第三格。所以这里**先问事实,
+ * 再决定开不开**,与 `ensureOverviewRow` 的判词同源。
+ */
+async function ensureSecondTab(page, candidates) {
+  const census = () =>
+    page.evaluate(() =>
+      Array.from(document.querySelectorAll('[role="tablist"]'))
+        .map(el => el.querySelectorAll('[data-tab-id]').length),
+    )
+  const enough = counts => counts.some(n => n >= 2)
+  if (enough(await census())) return true
+  /*
+   * **收的是一串候选,不是一条会话**(W6-p 第一趟真机当场撞上的):「在下方打开」
+   * 落的是 `dropRef({kind:'open'})`,而它对**已经开着的那一格**是幂等的 ——
+   * 只把它点亮,不会再添一格。⑤a 跑完停在哪一条会话是它自己的循环说了算
+   * (`i % normalIds.length`),夹具不该去猜那个余数;换成挨个试,开出第二格就收手。
+   */
+  let opened = false
+  const after = []
+  for (const id of candidates) {
+    opened = (await openSessionAsSecondTab(page, id)) || opened
+    const counts = await census()
+    after.length = 0
+    after.push(...counts)
+    if (enough(counts)) return true
+  }
+  // 夹具搭不起来时要说得出**哪一步**没成:菜单那一项在不在、条上此刻有几格。
+  console.log(
+    `  · 夹具没搭起来:「在下方打开」${opened ? '点到了' : '**没找到**'};`
+      + `试过 ${candidates.length} 条会话;此刻屏幕上的标签条各有几格:`
+      + `${after.length ? after.join(' / ') : '(一条都没有)'}`,
+  )
+  return false
+}
+
+/**
+ * **在中央那条条的末尾再开一格标签**(⑤b / ⑤c 的夹具)。
  *
  * 走的是用户真走的那条路:会话行右键 →「在下方打开」。挑这一项而不是「在右侧」
  * 是因为它在 main 与 W6-b 上是**同一个结果**(末尾开一格新标签)——「在右侧」
@@ -1766,7 +1888,7 @@ async function openSessionAsSecondTab(page, sessionId) {
   }, sessionId)
   await delay(400)
   const opened = await page.evaluate(() => {
-    const items = Array.from(document.querySelectorAll('[role="menuitem"]'))
+    const items = Array.from(document.querySelectorAll('[role="menuitem"],[role="menuitemradio"]'))
     const below = items.find((el) => /在下方|Open below/.test(el.textContent ?? ''))
     if (below instanceof HTMLElement) below.click()
     else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))

@@ -30,8 +30,9 @@ import s from './DragGhost.module.css'
  * ── 拒绝态(裁定 7:结构化拒绝,不静默)────────────────────────────────
  * `data-refuse` 一格属性:卡片变灰 + 虚线边,提示行前面补一个 ✕。不是「不画高亮」
  * ——「松手什么都不会发生」这件事必须说出口,否则用户只会以为是自己没拖准。
- * 光标那一半不在这里(它要盖住整扇窗,由根属性 `data-drag-refuse` 驱动,规则在
- * `styles/global.css`)。
+ * 光标那一半不在这里(它要盖住整扇窗):根属性 `data-drag-refuse` 是**事实**,
+ * 画的是那格铺满视口的罩子 —— `:root[data-drag-refuse] [data-drag-shield]`,
+ * 规则与判词在 `styles/global.css`。
  */
 export function DragGhost({
   ghost,

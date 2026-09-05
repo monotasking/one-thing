@@ -31,36 +31,46 @@ body,
 }
 
 /*
- * **拖拽进行中,整页不许选中文字**(W3-b 交卷截图当场量到:拖一格 tab 横穿窗口,
- * 文件树、顶栏、右端 AgentChip 的字全被刷成选区色)。指针按住横扫在浏览器里的
- * 缺省动作就是拉选区,而拖拽起手那一刻已经过了 pointerdown,`preventDefault`
- * 来不及。所以 `ui/drag/DragSession` 在**真起拖**那一帧给根挂这一格属性、清掉
- * 已有选区,每条结束路径(落定 / Esc / pointercancel / 失焦)都摘掉。
- * 没过阈值的一次点击**不挂** —— 点一下还是点一下,双击选词照旧。
+ * **拖拽期间接管整扇窗的光标与选区 —— 靠一格铺满视口的罩子,不靠根上的属性**
+ * (W6-p,09-05;起因是 `gate:perf` 场景⑤c 的逐任务归因)。
+ *
+ * 要办的两件事没变(W3-b / W6-b 立的):
+ *  · 拖着的时候整页不许拉出选区 —— 指针按住横扫的浏览器缺省动作就是拉选区,
+ *    而起拖那一刻 pointerdown 早过了,`preventDefault` 来不及;
+ *  · 光标是**这一场**的(拖着 = `grabbing`,落不下去 = `not-allowed`),
+ *    脚底下那颗按钮的 `pointer`、那段正文的 `text`、那根杆的 `col-resize` 都不算数。
+ *
+ * ── 为什么不再写成 `:root[data-drag-active] *` ──────────────────────────
+ * `cursor` 与 `user-select` **都是继承属性**,而它们从前挂在 `:root` 上:给根换
+ * 一格这样的属性 = **整棵树的样式重算**。真机读数(`gate:perf` 场景⑤c 的 trace,
+ * 一趟条内换序):起拖那一帧 `UpdateLayoutTree n=38696` **53.8ms**、松手那一帧
+ * 又一次 **41.4ms** —— 一趟拖拽白烧 ~95ms,而屏幕上该变的只有一格光标。
+ * 离线微基准(同样 38k 个元素的树)把三档分得干干净净:通配 `cursor` 18.8ms、
+ * 只 `user-select` 16.3ms、**插一格罩子 0.0ms**、根上留一格没有规则用的属性 0.0ms。
+ *
+ * 所以改成:`DragSession` 在真起拖那一帧往 `<body>` 插一格 `[data-drag-shield]`,
+ * 每条结束路径(落定 / Esc / pointercancel / 失焦)摘掉。它铺满视口、**吃命中测试**
+ * (`pointer-events` 不关),于是
+ *  ①光标由它一格说了算 —— 一格元素的样式,不动别人;
+ *  ②选区拉不出来 —— 拖拽期间每一次命中测试都落在它身上,浏览器找不到可选的文字
+ *    (离线实验四档对照:什么都不做会选出 163 个字,`user-select:none` 与罩子都是 0);
+ *  ③`:hover` 在拖拽期间自然全灭 —— 那正是设计 §4.5 第 2 条要的「换序全程不变色」。
+ * 根上那两格属性照旧写(`data-drag-active` / `data-drag-refuse`)—— 它们是**事实**,
+ * 门与用例按它们断言;只是不再有任何规则挂在它们身上,于是写它们不要钱。
  */
-:root[data-drag-active] {
-  user-select: none;
-  -webkit-user-select: none;
+[data-drag-shield] {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drag);
+  cursor: grabbing;
 }
 
 /*
- * **拖拽期间的光标是这一场的,不是脚底下那个元素的**(W6-b,设计 v3 §4.2 / §5)。
- *
- * 两档:拖着 = `grabbing`,这一帧落不下去 = `not-allowed`。两条都必须**盖住整扇
- * 窗里的每一个元素** —— 指针底下随时是一颗按钮(`cursor: pointer`)、一段正文
- * (`cursor: text`)、一根分隔杆(`col-resize`),而这一场手势期间它们说的都不算。
- * 那正是 `!important` 在这两条上成立的理由:它不是压过谁的样式没写对,是
- * **一次手势暂时接管了整扇窗的光标**,与 `user-select: none` 那条同源。
- * 属性由 `ui/drag/DragSession` 在起拖 / 落点变化时写,每条结束路径都摘掉。
+ * 拒绝态那一档。选择器的**主体是罩子**(具名属性),不是通配后代 —— 于是换
+ * `data-drag-refuse` 只让罩子那一格重算(微基准 0.4ms),而不是整棵树 17ms。
  */
-:root[data-drag-active],
-:root[data-drag-active] * {
-  cursor: grabbing !important;
-}
-
-:root[data-drag-refuse],
-:root[data-drag-refuse] * {
-  cursor: not-allowed !important;
+:root[data-drag-refuse] [data-drag-shield] {
+  cursor: not-allowed;
 }
 
 body {

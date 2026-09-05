@@ -16,6 +16,29 @@
   cursor: default;
   /* 无位移原则:hover / 当前 / 活动三态只上薄膜与环,一格位置都不动。 */
   transition: background-color var(--dur) var(--ease);
+  /*
+   * **看不见的行不排版**(W6-p,09-05;`gate:perf` 场景①「冷开会话总览」那一段长帧)。
+   *
+   * 病历:总览一次画 400 行,`focus/registry` 的 `activate()` 紧跟着在同一次提交里
+   * `focus()` 那棵树 —— 而 `focus()` 要一份干净的排版,于是当场逼出一次整棵子树的
+   * 排版。真机 trace:那一段主线程任务 56.4ms(React 自己的渲染 26ms +
+   * `Layout n=19` **28.1ms**),越过 50ms 的长帧线。离线复现逐字对得上:400 行的
+   * 列表插好之后 `focus()` 逼出 27.8ms;同一段加上这两行 → **0.0ms**。
+   *
+   * 08-30 留的那句「content-visibility 蕴含的 contain: paint 会剪掉焦点柔光环」
+   * **对这一形不成立,而且是量过的**:柔光环是这一行**自己**的 `outline`
+   * (见下面 `[data-active='true']`),而 paint containment 剪的是「内容」——
+   * 元素自己的边框与 outline 不在其中。离线对照截图数红色像素:开与不开都是 1218。
+   * (那句判词说的是从前那种「卡片外沿的柔光」——环画在**别人**身上、靠溢出露出来,
+   * 那一形确实会被剪掉。行是自己画自己的环,所以这里能用。)
+   *
+   * `contain-intrinsic-size` 的第二个值就是行高:行是定高的,所以跳过排版时给出的
+   * 占位尺寸与真值逐像素相同 —— 滚动条不会跳(离线对照:滚到第 300 行,
+   * `scrollTop` / 行高 / `scrollHeight` 三个数开与不开完全相同)。`auto` 那一半让
+   * 它排过一次之后记住真值。
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: auto var(--list-row-h);
 }
 
 /* 子行(派工 / 执行)缩进,其余同形 —— 缩的是内边距不是 margin,
