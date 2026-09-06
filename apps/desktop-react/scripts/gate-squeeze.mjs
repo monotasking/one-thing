@@ -1720,6 +1720,30 @@ async function checkLeafChrome(page) {
       actions: actions
         ? { left: Math.round(actions.left), right: Math.round(actions.right), width: Math.round(actions.width) }
         : null,
+      /*
+       * **W7-c 裁定 1:标签从顶栏自己的开头排**。第一格的左缘 = 红绿灯让位的右缘
+       * (全屏时让位归 0,所以那时它就是顶栏的左缘)。从前那颗「分屏」钮的在场判据
+       * 删了(裁定 2:那颗钮没了),换上来的是这一格与下面「右端两件」那一格。
+       */
+      trafficRight: (() => {
+        const t = document.querySelector('[data-testid="topbar-traffic"]')
+        return t ? Math.round(t.getBoundingClientRect().right) : null
+      })(),
+      firstTabLeft: (() => {
+        const first = band.querySelector('[role="tab"]')
+        return first ? Math.round(first.getBoundingClientRect().left) : null
+      })(),
+      trailingButtons: Array.from(
+        document.querySelectorAll('[data-testid="topbar-trailing"] button'),
+      ).map((el) => {
+        const r = el.getBoundingClientRect()
+        return {
+          label: (el.getAttribute('aria-label') ?? el.textContent ?? '').trim(),
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          width: Math.round(r.width),
+        }
+      }),
       hasSplitButton: Boolean(document.querySelector('[data-testid^="pane-split:"]')),
     }
   })
@@ -1733,7 +1757,63 @@ async function checkLeafChrome(page) {
   if (shot.actions && shot.band.right > shot.actions.left + 1) {
     problems.push(`标签带越过了尾格左缘(带右缘 ${shot.band.right} > 尾格 ${shot.actions.left})`)
   }
-  if (!shot.hasSplitButton) problems.push('顶栏尾格里没有那颗分屏钮(焦点叶的动作组不在场)')
+  /*
+   * ── W7-c 裁定 2:**顶栏右端只留两件**(⋯ 与 AgentChip)───────────────────
+   * 「分屏」那颗钮删了 —— 它再长回来就是减法白做了。上限是**两件**:那颗 ⋯ 只在
+   * 有够不着的标签时才画,所以下限不判(判了会在一条干净的条上假红)。
+   */
+  if (shot.hasSplitButton) problems.push('顶栏尾格里又长出了「分屏」那颗钮(W7-c 裁定 2:它删了)')
+  seen.push(`右端 ${shot.trailingButtons.length} 件:${shot.trailingButtons.map((b) => b.label).join(' / ') || '—'}`)
+  if (shot.trailingButtons.length > 2) {
+    problems.push(
+      `顶栏右端多于两件(实测 ${shot.trailingButtons.length}:`
+        + `${shot.trailingButtons.map((b) => b.label).join(' / ')})`,
+    )
+  }
+  // 右端那几件**不许被挤掉**:每一件都得有真身量,而且待在顶栏里。
+  for (const b of shot.trailingButtons) {
+    if (b.width <= 0) problems.push(`右端「${b.label}」被挤成 0 宽`)
+    if (b.right > shot.chrome.right + 1) {
+      problems.push(`右端「${b.label}」被挤出顶栏(右缘 ${b.right} > ${shot.chrome.right})`)
+    }
+  }
+
+  /*
+   * ── W7-c 裁定 1:**第一格标签的左缘 = 红绿灯让位的右缘** ────────────────
+   * 从前它对齐的是中央叶那个矩形(`leaf-geometry` 量出来的跨度);v3 单叶之后
+   * 那件事没有对象了,标签从顶栏自己的开头排。全屏时让位归 0 —— 那时这一条读作
+   * 「第一格贴着顶栏左缘」,同一句话不必分两档。容差 2px:让位那格宽度在过渡里
+   * 走 `--dur`,量到半路会差一两个像素。
+   */
+  if (shot.firstTabLeft === null || shot.trafficRight === null) {
+    problems.push('量不到第一格标签或红绿灯让位')
+  } else {
+    seen.push(
+      `带子左缘 ${shot.band.left} / 让位右缘 ${shot.trafficRight} / 第一格左缘 ${shot.firstTabLeft}`,
+    )
+    /*
+     * **带子的左缘就是让位的右缘** —— 这是「从顶栏自己的开头排」那句话的字面量法。
+     * 从前它对齐的是中央叶那个矩形(`leaf-geometry` 量出来的跨度),v3 单叶之后那件
+     * 事没有对象了。全屏时让位归 0,这一条读作「带子贴着顶栏左缘」,同一句话不分档。
+     */
+    if (Math.abs(shot.band.left - shot.trafficRight) > 2) {
+      problems.push(
+        `标签带没有从让位右边起(带左缘 ${shot.band.left} ≠ 让位右缘 ${shot.trafficRight})`
+          + ' —— W7-c 裁定 1:标签从顶栏自己的开头排',
+      )
+    }
+    /*
+     * 第一格 tab 与带子左缘之间**只许隔一个肩**(`--tab-shoulder`:`joined` 档活动
+     * 标签底部两侧那两块反向圆角要落在条里,所以条有那么宽的内边距)。这一条挡的是
+     * 「又有人在前面塞了一格」——那正是从前那套几何偏移回来的样子。
+     */
+    const shoulder = shot.shoulder?.padLeft ?? 0
+    if (shot.firstTabLeft - shot.band.left > shoulder + 2) {
+      problems.push(
+        `第一格标签与带子左缘之间多出一段(${shot.firstTabLeft - shot.band.left} > 肩 ${shoulder})`,
+      )
+    }
+  }
 
   /* ── W3-b:`joined` 档的两条 ─────────────────────────────────────────── */
   if (!shot.shoulder) {
@@ -2066,9 +2146,22 @@ async function checkLeafChrome(page) {
   })
   await delay(450)
   seen.push(`二合一挑的是最长那一格:「${widest?.label ?? '—'}」(${widest?.len ?? 0} 字)`)
+  /* W7-c 裁定 2:「分屏」那颗钮删了 —— 这张表的开口是**右键那一格标签**。 */
   await page.evaluate(() => {
-    const split = document.querySelector('[data-testid^="pane-split:"]')
-    if (split instanceof HTMLElement) split.click()
+    const tabs = Array.from(
+      document.querySelectorAll('[data-testid="topbar-tabs"] [role="tablist"] [role="tab"]'),
+    )
+    const active = tabs.find((el) => el.getAttribute('aria-selected') === 'true') ?? tabs[0]
+    if (!(active instanceof HTMLElement)) return
+    const box = active.getBoundingClientRect()
+    active.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: Math.round(box.left + box.width / 2),
+        clientY: Math.round(box.top + box.height / 2),
+      }),
+    )
   })
   await delay(350)
   const joined = await page.evaluate(() => {
@@ -2571,6 +2664,24 @@ async function main() {
        * 多一块六行高的输入面、少几百像素的窗口宽,量的就是另一套布局。 */
       await clearComposer(page).catch(() => {})
       await narrow.restore()
+      /*
+       * ── 还要还第三样:**被窄窗收起来的那条架子**(W7-c 施工时撞出来)────────
+       * 窗子缩到 320 时共同预算(`stage/transitions.reclampShelves`,W7-p 裁定 3)
+       * 判定右架子摆不下,把它 `collapsed: true` 收成细梁。**而拉回去的那一路没有
+       * 反向的一句** —— 收起来的架子不会自己展开(那是产品行为,不是门该替它拍的),
+       * 于是下一步「五档厚度」找不到那根拖杆(`[role="separator"]` 只在展开时画),
+       * 当场抛「厚度没拖到位:实际 -1」。
+       *
+       * 这是**夹具卫生**,与上面两句同一条:这一步弄乱了什么就还什么。产品那一格
+       * (窄→宽要不要自动展开)记在批报告的留账里,由用户拍。
+       * 展开走的是细梁上那颗真把手(与用户点它逐字同一条路)。
+       */
+      await page.evaluate(() => {
+        const rail = document.querySelector('[data-shelf="right"] button')
+        const collapsed = !document.querySelector('[data-shelf="right"] [role="separator"]')
+        if (collapsed && rail instanceof HTMLElement) rail.click()
+      })
+      await delay(500)
     }
 
     console.log('\n[7/11] 场景①总览:五档厚度,逐档滚一遍扫重叠')
@@ -2671,7 +2782,67 @@ async function main() {
         for (const problem of leaf.problems) console.log(`  ✗ 顶栏标签组:${problem}`)
         failures.push(`顶栏标签组:${leaf.problems.length} 条`)
       } else {
-        console.log('  ✓ 顶栏标签组:tab 条一条线 · 动作组在框里且零重叠 · 分隔杆报得出比例')
+        console.log('  ✓ 顶栏标签组:tab 条一条线 · 动作组在框里且零重叠 · 右端只两件 · 第一格贴让位')
+      }
+    }
+
+    /*
+     * ── W7-c 裁定 4:**架子檐只一颗「收起」,浮窗檐只一颗 ✕** ─────────────
+     * 被拿掉的那几件搬进了叶菜单(右键那条檐上的空白处开),所以这一步量的是
+     * **减法真的做了**:那条檐右端的动作组里,宿主自己那几颗只剩一颗。
+     *
+     * 数的是「叶自己那一组」之后的那一格 —— 结构上它们是同一个 `.actions` span 的
+     * 孩子,而叶自己那一组今天最多贡献一颗 ⋯(有够不着的标签时)。所以判据写成
+     * **上限 2**(叶的 ⋯ + 宿主那一颗),而不是「恰好 1」:那样会在条太窄时假红。
+     *
+     * 屏幕上没有架子 / 浮窗时如实跳过 —— 这一步不自己造夹具(前面几步已经把
+     * 出厂摆法折腾过一轮了,再造会把后面的读数搅乱)。
+     */
+    console.log('\n[10b-2/11] 架子檐与浮窗檐:减法真的做了(W7-c 裁定 4)')
+    const chrome = await page.evaluate(() => {
+      const readOne = (host) => {
+        const strip = host.querySelector('[data-pane-chrome]')
+        const actions = strip?.querySelector(':scope > span:last-child')
+        const buttons = Array.from(actions?.querySelectorAll(':scope > button') ?? [])
+        return {
+          buttons: buttons.map((el) => (el.getAttribute('aria-label') ?? '').trim()),
+        }
+      }
+      return {
+        shelves: Array.from(document.querySelectorAll('[data-shelf]')).map((el) => ({
+          side: el.getAttribute('data-shelf'),
+          ...readOne(el),
+        })),
+        floats: Array.from(document.querySelectorAll('[data-float-body]')).map((el) => ({
+          side: el.getAttribute('data-float-body'),
+          ...readOne(el),
+        })),
+      }
+    })
+    const chromeProblems = []
+    for (const row of [...chrome.shelves, ...chrome.floats]) {
+      if (row.buttons.length === 0) continue
+      if (row.buttons.length > 2) {
+        chromeProblems.push(`${row.side} 的檐上还有 ${row.buttons.length} 颗钮:${row.buttons.join(' / ')}`)
+      }
+      for (const bad of ['弹出', 'Pop', '关闭整栏', 'Close all', '钉到边', 'Pin to edge', '上舞台', 'To stage']) {
+        if (row.buttons.some((label) => label.includes(bad))) {
+          chromeProblems.push(`${row.side} 的檐上还留着「${bad}」那颗钮(它该进叶菜单)`)
+        }
+      }
+    }
+    const chromeSeen = [...chrome.shelves, ...chrome.floats]
+      .map((r) => `${r.side}:${r.buttons.join('+') || '—'}`)
+      .join(' | ')
+    if (chrome.shelves.length === 0 && chrome.floats.length === 0) {
+      console.log('  · 跳过:屏幕上此刻没有架子也没有浮窗')
+    } else {
+      console.log(`    ${chromeSeen}`)
+      if (chromeProblems.length) {
+        for (const problem of chromeProblems) console.log(`  ✗ 宿主檐:${problem}`)
+        failures.push(`宿主檐:${chromeProblems.length} 条`)
+      } else {
+        console.log('  ✓ 宿主檐:架子只剩「收起」、浮窗只剩 ✕')
       }
     }
 

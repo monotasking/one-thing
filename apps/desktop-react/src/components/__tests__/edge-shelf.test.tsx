@@ -127,6 +127,61 @@ describe('四边架子', () => {
  * keep-alive(08-30):同一条架子上的一组 tab **全部保持挂载**,切 tab 只换哪一层显形。
  * 这里钉的是它的三条边界 —— 别的都在门里量(gate-perf 场景②:延迟、长帧、滚动位置)。
  */
+/**
+ * **檐上只剩「收起」**(W7-c 裁定 4;用户 09-05「按钮太多」)。
+ *
+ * 「弹出为浮窗」与「关闭整栏」搬进了这片叶的动作菜单,开口是右键**这条架子的
+ * 檐**(标签条右边那片空白)。三条断言各管一半:
+ *  · 檐上恰好一颗钮,而且是「收起」——多一颗就是减法白做了;
+ *  · 那两行在菜单里(名字逐字是从前那两颗钮上的话);
+ *  · 点它们**真的做那件事** —— 调的是与从前那两颗钮**同一只** store 动作
+ *    (`edgeToFloat` / `closeShelf`),两条路走两个动作迟早分叉。
+ */
+describe('架子檐:只剩「收起」,弹出与关整栏进叶菜单', () => {
+  /** 右键这条架子的檐 = 开它的叶菜单。 */
+  function leafMenu(side: ShelfSide) {
+    /* 取件口是 `data-shelf`(与门那一头同一格判例:文案会跟着语言变,这一格不会)。 */
+    const shelf = document.querySelector(`[data-shelf="${side}"]`) as HTMLElement
+    const chrome = shelf.querySelector('[data-pane-chrome]') as HTMLElement
+    act(() => {
+      fireEvent.contextMenu(chrome, { clientX: 10, clientY: 10 })
+    })
+    return screen.getByRole('menu', { name: '标签动作' })
+  }
+
+  it('檐右端只有一颗钮,而且是「收起」', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'right')
+    const collapse = screen.getByLabelText(`收起${NAME.right}`)
+    expect(collapse.parentElement?.querySelectorAll(':scope > button')).toHaveLength(1)
+    expect(collapse.closest('[data-pane-chrome]')).toBeTruthy()
+    expect(screen.queryByLabelText(`弹出 ${NAME.right} 为浮窗`)).toBeNull()
+    expect(screen.queryByLabelText(`关闭整栏 ${NAME.right}`)).toBeNull()
+  })
+
+  it('叶菜单里的「弹出为浮窗」= 从前那颗钮走的 edgeToFloat', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'right')
+    const menu = leafMenu('right')
+    act(() => {
+      fireEvent.click(within(menu).getByText(`弹出 ${NAME.right} 为浮窗`))
+    })
+    expect(useStageStore.getState().placements.files).toEqual({ kind: 'float' })
+  })
+
+  it('叶菜单里的「关闭整栏」= 从前那颗钮走的 closeShelf', () => {
+    render(<AppShell />)
+    openOnEdge('files', 'right')
+    const menu = leafMenu('right')
+    act(() => {
+      fireEvent.click(within(menu).getByText(`关闭整栏 ${NAME.right}`))
+    })
+    // 整栏关掉 = 那棵树没了,瓦回 Dock(投影里就是「哪儿都不在」)。
+    expect(useWorkbenchStore.getState().regions['edge:right']).toBeUndefined()
+    expect(useStageStore.getState().placements.files).toBeUndefined()
+  })
+})
+
 describe('同组 tab 是 keep-alive 的', () => {
   /*
    * W4:一格 tab 的那一层从架子自己那份 `ShelfTabLayer` 换成了树的

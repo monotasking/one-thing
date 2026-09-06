@@ -276,7 +276,7 @@ async function pickFromTileMenu(page, id, labelRe) {
 }
 
 /** 标签右键 → 那张动作表里点一行(W6-c:标签右键与格头钮开同一张)。 */
-async function pickFromTabMenu(page, tabId, labelRe) {
+async function pickFromTabMenu(page, tabId, labelRe, submenuRe) {
   const opened = await page.evaluate((id) => {
     const tab = document.querySelector(`[role="tab"][data-tab-id="${id}"]`)
     if (!(tab instanceof HTMLElement)) return false
@@ -290,6 +290,19 @@ async function pickFromTabMenu(page, tabId, labelRe) {
   }, tabId)
   if (!opened) throw new Error(`屏幕上没有这一格标签:${tabId}`)
   await delay(350)
+  /*
+   * **先展开那一格子菜单**(W7-c 裁定 3:「移到架子 ▸」四条边折成了一格子菜单)。
+   * 给了 `submenuRe` 才展 —— 顶层那几项照旧一步点得到。
+   */
+  if (submenuRe) {
+    await page.evaluate((source) => {
+      const re = new RegExp(source)
+      const rows = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+      const parent = rows.find((el) => re.test((el.textContent ?? '').trim()))
+      if (parent instanceof HTMLElement) parent.click()
+    }, submenuRe.source)
+    await delay(300)
+  }
   const picked = await page.evaluate((source) => {
     const re = new RegExp(source)
     const rows = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"], [role="menu"] [role="menuitemradio"]'))
@@ -972,8 +985,16 @@ async function sceneSummon(store, udd, sessions) {
       split.centerTabs.length === 2 && split.centerTabs.some((t) => t.id === tabId),
       JSON.stringify(split.centerTabs.map((t) => t.id)),
     )
-    if (!(await pickFromTabMenu(page, tabId, /^Move to the right$|移到右边|钉到右边/))) {
-      throw new Error('标签动作表里没有「Move to the right」那一行')
+    /* W7-c 裁定 3:四条边折进「移到架子 ▸」,子表里那一行按**宾语**起名(B5)。 */
+    if (
+      !(await pickFromTabMenu(
+        page,
+        tabId,
+        /^Right shelf$|^右侧栏$/,
+        /^Move to shelf$|^移到架子$/,
+      ))
+    ) {
+      throw new Error('标签动作表的「移到架子 ▸」里没有「右侧栏」那一行')
     }
     const moved = await read(page)
     check(

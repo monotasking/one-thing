@@ -13,9 +13,9 @@ import { leavesOf } from '../workbench/tree'
 import { useLiveTitleStore } from '../stage/live-title'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
-import { Menu, MenuItem, MenuSection } from '../ui/Menu'
+import { MenuItem, MenuSeparator, Submenu } from '../ui/Menu'
 import { IconButton } from '../ui/IconButton'
-import { Maximize2, Pin, X } from './icons'
+import { X } from './icons'
 import { exitMs } from './motion'
 import { SHELF_SIDE_CHOICES } from '../stage/types'
 import type { PaneHostChrome } from '../workbench/PaneLeaf'
@@ -99,14 +99,8 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
 
   // 拖拽过程中的实时矩形。松手清空,渲染就自动回到 store 那份(两者此刻相等)。
   const [live, setLive] = useState<FloatRect | null>(null)
-  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const liveRef = useRef<FloatRect | null>(null)
-  /*
-   * 钉边菜单贴着**那颗钮**的下缘开,所以要能**在任意时刻**量到那颗钮的矩形。
-   * 刻意不改成「在 onPointerDown 里记一次」:那条路键盘按 ↵ 走不到,
-   * 菜单会开在 0,0。
-   */
-  const pinRef = useRef<HTMLButtonElement>(null)
+  /* W7-c:`pinRef` 退役 —— 钉边那张表不再贴着一颗钮开,它是叶菜单里的一格子菜单。 */
 
   /*
    * **离场那一帧画的是它最后那一份内容**(W4)。关一扇窗 = 树整棵没了
@@ -195,44 +189,54 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
     [begin],
   )
 
+  /**
+   * **檐上只剩 ✕**(W7-c 裁定 4;用户 09-05「按钮太多」)。
+   *
+   * 「钉到边 ▸」与「上舞台」搬进了**这片叶的动作菜单**(`menuRows`),开口是标题栏
+   * (= 根叶那条檐)上的右键。留下的是 ✕ 而不是别的两件,理由与架子那一处同源:
+   * 关窗是这扇窗上**最高频、且语义已经定死**的一件(关这扇窗 = 把里面的 tab 全部
+   * 隐藏,「隐藏的标签 ⋯」点得回来 —— 所以它也是可逆的);另两件都是**搬家**。
+   *
+   * 「钉到边」那张四边表随之从一格本地 `useState` 变成叶菜单里的一格 `Submenu`,
+   * `pinRef` 与那格 `menu` state 一起退役 —— 菜单不再需要贴着某颗钮开。
+   * 两组菜单项调的是**与从前那两颗钮同一只** store 动作(`floatToEdge` / `openAs`)。
+   */
   const host = useMemo<PaneHostChrome>(
     () => ({
       onChromePointerDown,
       actions: (
+        /* `onPointerDown` 那一下仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */
+        <IconButton
+          icon={X}
+          size="md"
+          label={t('float.close')}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => closeFloat(id)}
+        />
+      ),
+      menuRows: (
         <>
-          {/* 三颗全部消费 `ui/IconButton`(md 档 = 28×28)。`onPointerDown` 那一下
-            * 仍要拦住:不拦,按住钮就等于按住檐在拖窗。 */}
-          <IconButton
-            ref={pinRef}
-            icon={Pin}
-            size="md"
-            label={t('stage.pinToEdge')}
+          <MenuSeparator />
+          <Submenu label={t('stage.pinToEdge')} disabled={activeItemId === null}>
+            {SHELF_SIDE_CHOICES.map((c) => (
+              <MenuItem
+                key={c.value}
+                onClick={() => activeItemId && floatToEdge(activeItemId, c.value)}
+              >
+                {t(c.labelKey)}
+              </MenuItem>
+            ))}
+          </Submenu>
+          <MenuItem
             disabled={activeItemId === null}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => {
-              const r = pinRef.current?.getBoundingClientRect()
-              if (r) setMenu({ x: r.left, y: r.bottom })
-            }}
-          />
-          <IconButton
-            icon={Maximize2}
-            size="md"
-            label={t('float.toStage')}
-            disabled={activeItemId === null}
-            onPointerDown={(e) => e.stopPropagation()}
             onClick={() => activeItemId && openAs(activeItemId, { kind: 'stage' })}
-          />
-          <IconButton
-            icon={X}
-            size="md"
-            label={t('float.close')}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => closeFloat(id)}
-          />
+          >
+            {t('float.toStage')}
+          </MenuItem>
         </>
       ),
     }),
-    [onChromePointerDown, t, activeItemId, openAs, closeFloat, id],
+    [onChromePointerDown, t, activeItemId, openAs, closeFloat, floatToEdge, id],
   )
 
   if (!shownTree || !rect) return null
@@ -286,22 +290,6 @@ function FloatWindow({ id, order, leaving }: WindowProps) {
             />
           ))}
 
-          {menu && activeItemId && (
-            <Menu x={menu.x} y={menu.y} onClose={() => setMenu(null)} label={t('stage.pinToEdge')}>
-              <MenuSection>{t('stage.pinToEdge')}</MenuSection>
-              {SHELF_SIDE_CHOICES.map((c) => (
-                <MenuItem
-                  key={c.value}
-                  onClick={() => {
-                    floatToEdge(activeItemId, c.value)
-                    setMenu(null)
-                  }}
-                >
-                  {t(c.labelKey)}
-                </MenuItem>
-              ))}
-            </Menu>
-          )}
         </section>
       )}
     </FocusScope>

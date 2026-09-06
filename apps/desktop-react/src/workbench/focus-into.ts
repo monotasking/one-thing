@@ -1,4 +1,5 @@
 import { focusTree } from '../focus/registry'
+import { runAfterCommit } from '../focus/after-commit'
 import { focusIntoScopeOf, parseRefId } from './kinds'
 import type { ActivateReason } from './../focus/types'
 import type { ContentRefId } from './kinds'
@@ -29,10 +30,8 @@ import type { ContentRefId } from './kinds'
  * 两个调用点排这一拍的方式不同,所以**排队这件事留给调用方**:
  *  · tab 条那一头有 `activeId` 这个现成的信号,它等到那一格真的变成活动的、
  *    在 effect 里叫(见 `LeafStrip.useSelectIntoContent`);
- *  · 拖拽落定那一头没有这种信号(它不是一只组件),所以由这只函数自己排一拍
- *    微任务 + 一帧 —— `queueMicrotask` 接住同步 `set` 之后的那一拍,`rAF` 接住
- *    React 把新宿主层铺上来的那一拍。两拍都送,**幂等**:焦点已经在里面时
- *    `activate` 自己就不动(注册表那条判据①)。
+ *  · 拖拽落定那一头没有这种信号(它不是一只组件),所以走 `focus/after-commit`
+ *    的 `runAfterCommit` —— 一拍微任务 + 一帧,判词整件写在那只文件上。
  */
 export function focusIntoRef(id: ContentRefId, reason: ActivateReason = 'switch-tab'): boolean {
   /*
@@ -54,10 +53,12 @@ export function focusIntoRef(id: ContentRefId, reason: ActivateReason = 'switch-
 /**
  * 排在 React 提交之后再送(见上面「为什么要等一拍」)。
  * 给**不是组件**的那些调用点用 —— 组件那一头有 `activeId` 可等,不必走这条。
+ *
+ * **那副队列在 `focus/after-commit.ts`,不在这里**(W7-c 裁定 6,结清 W7-p 留的口)。
+ * 从前这只函数自己写了一遍「一拍微任务 + 一帧」,与 `expose/store` 那份逐字相同 ——
+ * 而它们要**互相排队**才对(同一拍里两条落焦规则,后注册的赢),所以「为什么是这副
+ * 队列」那句判词只能有一处。今天两处都消费 `runAfterCommit`,次序仍旧由调用次序说。
  */
 export function focusIntoRefAfterCommit(id: ContentRefId, reason: ActivateReason = 'switch-tab'): void {
-  if (typeof queueMicrotask === 'function') queueMicrotask(() => void focusIntoRef(id, reason))
-  if (typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(() => void focusIntoRef(id, reason))
-  }
+  runAfterCommit(() => void focusIntoRef(id, reason))
 }

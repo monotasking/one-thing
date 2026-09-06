@@ -7,37 +7,32 @@
  *  · DOM 一步都没离开 `.bar`,`-webkit-app-region: no-drag` 因此在同一分支上生效
  *    (坑 ①:portal 出去当场静默破,判例写在 `TopBar.module.css` 与本组件头上)。
  *
- * `position: relative` 是组的定位参考系,于是 `leaf-geometry.ts` 写进来的
- * `--leaf-x-*` 只需要是**相对带子左缘**的偏移 —— 组不必知道让位有多宽。 */
+ * **W7-c 裁定 1:组从带子的左缘起排**,不再对齐中央叶的矩形。带子自己就是
+ * 「红绿灯右边到尾格左边」这段地,所以第一格 tab 的左缘 = 让位宽度(全屏时 0),
+ * 一句算式都不必有。 */
 .band {
   flex: 1;
   min-width: 0;
   align-self: stretch;
-  position: relative;
+  display: flex;
+  align-items: stretch;
+  /* 多叶那一形(今天中央区不成立)按序铺开;组自己 `flex: 1` 平分。 */
 }
 
 /* ── 一组标签 ────────────────────────────────────────────────────────────
- * 左右界由两格算式给(`--tabgrp-x` / `--tabgrp-w`,行内 style;它们已经把
- * 「上下切分横向重叠时按序平分」算进去了),这里只做**夹紧**:
- *  · 左边夹到带子的左缘 —— 中央区在窗口左侧没有架子时是从 x=0 起的,而带子从
- *    让位之后才起,不夹的话第一格 tab 会缩到红绿灯底下去(那 80px 是原生视图,
- *    画在网页之上,谁也盖不住它);
- *  · 右边夹到带子的右缘(`100%`)—— 尾格那一组动作在带子外面,结构上就挤不掉,
- *    这一句管的是**组自己别画出去**,好让 `ui/Tabs` 在正确的宽度里决定收窄还是横滚。
+ * **W7-c 起它是带子里的一格普通 flex 项**:从带子的左缘起排,吃满剩下的宽度。
+ * 从前(W1-b–W6)它是绝对定位的,左右界由两格算式给(`--tabgrp-x` / `--tabgrp-w`,
+ * 由 `leaf-geometry.ts` 量出来写进带子),为的是精确坐在它那片叶的正上方;v3 把
+ * 中央区收成一条标签条之后那件事没有对象了,连同量它的那只 hook 一起退役。
+ * 「永不挤掉右端那两件」这句话没有变弱:带子止于尾格的左缘,组关在带子里。
  *
  * **这一层只剩几何**(W3-b 裁定 2)。W1-b 时它还兼着画皮肤:三面描边的活动标签、
  * 非焦点组降底色、`bottom: -1px` 的连体。那一套整段退役 —— 皮肤归 `ui/Tabs` 的
  * `joined` 档(四个区域读同一份),连体归那一档自己的 `margin-bottom: -1px`
  * (谁用 joined 谁自动连体,宿主不必记得兑现这条契约)。留在这里的只有
- * **位置 / 宽度 / 夹紧**与 `no-drag` —— 也就是只有顶栏答得出来的那几件。 */
+ * **宽度分配**与 `no-drag` —— 也就是只有顶栏答得出来的那几件。 */
 .group {
-  --tabgrp-l: max(0px, var(--tabgrp-x));
-  --tabgrp-r: min(calc(var(--tabgrp-x) + var(--tabgrp-w)), 100%);
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--tabgrp-l);
-  width: max(0px, calc(var(--tabgrp-r) - var(--tabgrp-l)));
+  flex: 1;
   display: flex;
   align-items: flex-end;
   min-width: 0;

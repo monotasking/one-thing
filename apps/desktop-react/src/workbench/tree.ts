@@ -147,6 +147,37 @@ export function seatOfRefIn(
   return null
 }
 
+/**
+ * **这一种内容此刻有没有一格开着;有就给出读序最靠前的那一格**(W7-c 裁定 6)。
+ *
+ * 它与 `seatOfRefIn` 是同一族查找的两个粒度:那只回答「**这一格**坐在哪」,这只
+ * 回答「**这一种**有没有人在场」。启动瓦的召唤要问的正是后者 —— 目录面板那块瓦
+ * 在会话没绑目录时答不出 `dragRef`(它拖不出东西),但屏幕上可能正开着一棵别的
+ * 目录树,而用户点那块瓦想要的是「让我看见目录」,不是「再开一个」。
+ *
+ * 判据与 `seatOfRefIn` 逐字同源:区域次序由 `regions.regionReadRank` 说
+ * (中央 → 四条边 → 浮窗),复合那一格**摊开之后再比**(`kinds.flattenContent`,
+ * 核心层照旧一个种类名都不认识)。
+ */
+export function firstRefOfKindIn(
+  regions: Readonly<Record<string, PaneNode>>,
+  kind: string,
+): ContentRef | null {
+  const order = [...Object.keys(regions)].sort((a, b) => regionReadRank(a) - regionReadRank(b))
+  for (const region of order) {
+    const tree = regions[region]
+    if (!tree) continue
+    for (const leaf of leavesOf(tree)) {
+      for (const tab of leaf.tabs) {
+        for (const part of flattenContent(tab)) {
+          if (part.kind === kind) return part
+        }
+      }
+    }
+  }
+  return null
+}
+
 /** 整棵树上所有 refId,按阅读序。 */
 export function refIdsOf(node: PaneNode): ContentRefId[] {
   return leavesOf(node).flatMap((leaf) => leaf.tabs.map(refId))

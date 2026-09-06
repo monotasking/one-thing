@@ -124,6 +124,21 @@ const DEFAULT_COMBOS: Partial<Record<CommandId, Combo>> = {
    */
   'workbench.toggleFull': { meta: true, shift: true, key: 'enter' },
   'workspace.palette': { meta: true, shift: true, key: 'w' },
+  /*
+   * ── 标签换序(W7-c 裁定 3)。**规格写的是 ⌘⌥← / ⌘⌥→,那两个位子有人**:
+   * 它们从 09-01 起就是**左 / 右架子的收展**(上面 `SHELF_TOGGLE_LABELS`,
+   * 「方向即语义」那一族)。规格给的是「若与既有键撞就换并写明」,所以换成
+   * **⌘⌥⇧← / ⌘⌥⇧→**,理由不是随手找一个空位:
+   *  · 它与架子那一族**同一根轴、只多一个 ⇧**,而 ⇧ 在跨应用里正是「带着这个东西
+   *    一起走」的意思(VS Code 的 ⌥⇧↑↓ 搬一行、多数应用的 ⇧+方向键扩选)——
+   *    「⌘⌥← 是让位给左架子,加一个 ⇧ 就是带着这一格标签往左走」读得出来;
+   *  · 全表零冲突:出厂表里带 ⌥ 的只有架子那四条(⌘⌥ + 四个方向,不带 ⇧),
+   *    带 ⇧ 的只有 ⌘⇧O / ⌘⇧W / ⌘⇧↩ —— 三个修饰键一起按的这两条是新长出来的,
+   *    没有挤掉谁(`workspace-commands.test.ts` 守着全表两两不同)。
+   * 行内结构键(裸方向键的焦点语义)不受影响:那一层根本不看修饰键。
+   */
+  'workbench.moveTabLeft': { meta: true, alt: true, shift: true, key: 'arrowleft' },
+  'workbench.moveTabRight': { meta: true, alt: true, shift: true, key: 'arrowright' },
   [workspaceSlotCommandId(1)]: { meta: true, key: '1' },
   [workspaceSlotCommandId(2)]: { meta: true, key: '2' },
   [workspaceSlotCommandId(3)]: { meta: true, key: '3' },
@@ -181,6 +196,10 @@ export const KEYMAP_COMMANDS: KeymapCommand[] = [
    * 决定的目标**,而不是「有没有目标」。
    */
   { id: 'workbench.toggleFull', labelKey: 'keymap.toggleFull', defaultCombo: DEFAULT_COMBOS['workbench.toggleFull'] ?? null },
+  /* 标签换序两条(W7-c)。它们与 `workbench.toggleFull` 同一族:对**焦点叶的活动
+   * tab** 做一件事,目标由 store 答,不需要键盘落在那片叶里。 */
+  { id: 'workbench.moveTabLeft', labelKey: 'keymap.moveTabLeft', defaultCombo: DEFAULT_COMBOS['workbench.moveTabLeft'] ?? null },
+  { id: 'workbench.moveTabRight', labelKey: 'keymap.moveTabRight', defaultCombo: DEFAULT_COMBOS['workbench.moveTabRight'] ?? null },
 ]
 
 export const initialKeymapState: KeymapState = { overrides: {} }

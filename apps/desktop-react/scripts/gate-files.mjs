@@ -409,10 +409,9 @@ async function main() {
         selected: tab?.getAttribute('aria-selected') ?? null,
         closeW: box ? Math.round(box.width) : 0,
         closeH: box ? Math.round(box.height) : 0,
-        // 树的两件动作在这一档**不该在**:面板内不是树,分不了屏也没有「隐藏的标签」。
-        treeActions: Boolean(
-          viewer?.querySelector('[data-testid^="pane-split"], [data-testid^="pane-hidden"]'),
-        ),
+        /* 树的动作在这一档**不该在**:面板内不是树,没有「够不着的标签」那一颗。
+         * (「分屏」那颗钮 W7-c 整格删了,所以这里只剩 `pane-hidden` 一族。) */
+        treeActions: Boolean(viewer?.querySelector('[data-testid^="pane-hidden"]')),
       }
     })
     assert(
@@ -1129,9 +1128,22 @@ async function main() {
       )
     /** 顶栏尾格那组动作里点一项(按正则取,与 `switchModeTo` 同一条理由)。 */
     const clickLeafAction = async pattern => {
+      /* W7-c 裁定 2:「分屏」那颗钮删了 —— 这张表的开口是**右键那一格标签**。 */
       await page.evaluate(() => {
-        const btn = document.querySelector('[data-testid^="pane-split:"]')
-        if (btn instanceof HTMLElement) btn.click()
+        const tabs = Array.from(
+          document.querySelectorAll('[data-testid="topbar-tabs"] [role="tablist"] [role="tab"]'),
+        )
+        const active = tabs.find(el => el.getAttribute('aria-selected') === 'true') ?? tabs[0]
+        if (!(active instanceof HTMLElement)) return
+        const box = active.getBoundingClientRect()
+        active.dispatchEvent(
+          new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: Math.round(box.left + box.width / 2),
+            clientY: Math.round(box.top + box.height / 2),
+          }),
+        )
       })
       await waitFor('动作菜单出来了', () =>
         page.evaluate(() => Boolean(document.querySelector('[role="menu"]'))),

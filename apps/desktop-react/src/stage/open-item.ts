@@ -1,5 +1,8 @@
 import { stageLauncherOf } from './launchers'
 import { useStageStore } from './store'
+import { firstRefOfKindIn } from '../workbench/tree'
+import { useWorkbenchStore } from '../workbench/store'
+import type { ContentRef } from '../workbench/kinds'
 
 /**
  * **召唤一块瓦**(W7-p 裁定 6 起,Dock 点击与 `toggle:<面>` 那族键盘命令的**同一只**)。
@@ -18,7 +21,8 @@ import { useStageStore } from './store'
  * 把同一格内容再摆一次是恒等变换,而「把架子展开」从来没人做。
  *
  * 今天先问**驻留投影**:它代表的那格内容已经在某片叶上 → 对那个位置走四态;
- * 哪儿都没有 → 才 `open()`。「它代表哪格内容」问的是 `StageLauncher.dragRef`
+ * 哪儿都没有 → 才 `open()`。W7-c 又补一格:`dragRef()` 答不出来时**按种类**再问
+ * 一次(判词在下面的 `residentRefOf`)—— 否则「会话没绑目录」这一形照旧整条绕过。「它代表哪格内容」问的是 `StageLauncher.dragRef`
  * (那一口答的本来就是这句话,拖拽只是它的第一个消费者 —— 判词在那张表上)。
  * 表上没有 `dragRef` 的启动瓦(将来可能有)照旧直接 `open()`:那时「它代表哪格
  * 内容」根本没有答案,先问也问不出东西。
@@ -26,13 +30,31 @@ import { useStageStore } from './store'
 export function summonStageItem(id: string): void {
   const launcher = stageLauncherOf(id)
   if (launcher) {
-    const ref = launcher.dragRef?.() ?? null
+    const ref = launcher.dragRef?.() ?? residentRefOf(launcher)
     // 已经开着 → 四态(展开架子 / 置顶浮窗 / 点名 tab / 送焦点 / 收起来)。
     if (ref && useStageStore.getState().summonRef(ref) !== null) return
     launcher.open()
     return
   }
   useStageStore.getState().summonItem(id)
+}
+
+/**
+ * **`dragRef()` 答不出来时的退一步**(W7-c 裁定 6,结清 W7-p 的留账)。
+ *
+ * 病历:目录面板已经开着一棵树,而**当前会话没绑目录** —— `files-launcher.dragRef()`
+ * 于是答 `null`(它答的是「此刻拖得出哪一格」,而 `~` 要一次后端往返才展得开,
+ * 拒绝比拖出一格假 tab 诚实)。W7-p 之后那一步只看 `dragRef`,答 null 就整条绕过
+ * 召唤直接 `open()`,于是点那块瓦**又是恒等变换**:架子收着的话屏幕上什么都不动 ——
+ * 与 A11 那桩病一模一样,只是触发条件更窄一格。
+ *
+ * 今天:再问一句「屏幕上有没有**同类**的一格开着」。种类名由这块瓦自述
+ * (`StageLauncher.residentKind`),所以这只文件与 `workbench/tree` 里那只查找
+ * 一样,**一个种类名都不出现**。
+ */
+function residentRefOf(launcher: { residentKind?: string }): ContentRef | null {
+  if (!launcher.residentKind) return null
+  return firstRefOfKindIn(useWorkbenchStore.getState().regions, launcher.residentKind)
 }
 
 /**

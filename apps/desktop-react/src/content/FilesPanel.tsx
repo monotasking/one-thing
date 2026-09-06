@@ -470,8 +470,40 @@ export function FilesPanel({ root }: { root: string }) {
       : undefined,
   }
 
+  /**
+   * **被召唤时焦点落在哪**(W7-c 裁定 6,结清 W7-p 的留账「目录面板召唤后焦点
+   * 不进去」)。
+   *
+   * 病历:这块面从前不声明 `restingTarget`,落点就是作用域的根 —— 而根是一格
+   * `tabIndex={-1}` 的 `div`,焦点确实进得去,但**进去之后一个键都不响**:树的
+   * 方向键长在行上(那些行是真 `<button>`),⌘I / ⌘↵ 那两条局部键要一格选中的行。
+   * 用户看到的就是「面开出来了,键盘还在别处」。
+   *
+   * 今天落在**选中的那一行**,没有选中就落**第一行**,连一行都没有(空目录 /
+   * 还在读)才退回根 —— 那时根确实是唯一能接住焦点的地方(不变量 I1:焦点永远
+   * 不落在「没有东西」上)。
+   *
+   * 取件口是行自己那格 `data-file-path`(门与用例用的同一格,判词写在 `TreeEntryRow`
+   * 上:文案会跟着语言变,路径不会)。查在 `bodyRef` 的子树里,所以两块目录面板
+   * 同时开着时各找各的。
+   */
+  const restingTarget = useCallback(() => {
+    const body = bodyRef.current
+    if (!body) return panelRef.current
+    const hit
+      = body.querySelector('[data-file-selected="true"]')
+        ?? body.querySelector('[data-file-path]')
+    return hit instanceof HTMLElement ? hit : panelRef.current
+  }, [bodyRef, panelRef])
+
   return (
-    <FocusScope scope="files" rootRef={panelRef} onEscape={onEscape} keyHandlers={filesKeys}>
+    <FocusScope
+      scope="files"
+      rootRef={panelRef}
+      restingTarget={restingTarget}
+      onEscape={onEscape}
+      keyHandlers={filesKeys}
+    >
       {({ scopeProps }) => (
         <div {...scopeProps} className={s.panel} data-testid="files-panel">
           <div className={s.head} data-panel-head="">

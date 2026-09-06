@@ -65,12 +65,19 @@ export function useLeafMenuAt(leafId: string): LeafMenuAt | null {
 }
 
 /**
- * 右键一格标签 = 在指针那一点开这片叶的动作菜单。
+ * **开这片叶的动作菜单**,开在给定的那一点上。
+ *
+ * ── 为什么参数是「一个点」而不是「一发事件」(W7-c)────────────────────────
+ * W6-c 时这只函数收的是 `MouseEvent`,因为它只有右键一个来源。W7-c 起这张表有
+ * **两个**来源:右键那一下(点 = 光标)与键盘 `Shift+F10` / 上下文菜单键
+ * (点 = 那一格标签的左下角)。两者的差别只在**点从哪儿来**,而那件事标签条自己
+ * 最清楚(它手上有那一格的矩形)—— 所以量点的活留在 `ui/Tabs`,这只函数只收结果。
+ * 收事件的话第二个来源就得伪造一发 MouseEvent,那是把「谁该量」答错了。
  *
  * **它不选中那一格**:选中这件事已经在 `LeafStrip.onTabDown` 里发生过了
- * (按下即激活,W6-b —— `pointerdown` 对右键一样派得出来),而那张表说的正是
- * 「这一格活动标签能做什么」。两处各选一次等于把同一句话说两遍。
+ * (按下即激活,W6-b —— `pointerdown` 对右键一样派得出来),键盘那条路更是本来
+ * 就站在那一格上;而那张表说的正是「这一格活动标签能做什么」。
  */
-export function openLeafMenuAtPointer(leafId: string, e: { clientX: number; clientY: number }): void {
-  useLeafMenuStore.getState().openLeafMenu(leafId, e.clientX, e.clientY)
+export function openLeafMenuAt(leafId: string, at: { x: number; y: number }): void {
+  useLeafMenuStore.getState().openLeafMenu(leafId, at.x, at.y)
 }

@@ -26,17 +26,24 @@ import type { ActivateReason, FocusScopeId } from './types'
  * 决定,读代码的次序就是落焦的次序。`expose/store.enterSession` 那两句的先后正是
  * 靠这一条(召唤那句在上、输入面板那句在下 —— 会话那条赢)。
  *
- * ── 留账:`workbench/focus-into.ts` 下一批切过来 ─────────────────────────
- * 那只文件是另一批(W7-t)正在改的避让区,本轮不碰。它自己那份排法与这里逐字
- * 相同;等那一批合树之后 `focusIntoRefAfterCommit` 改成
- * `activateScopeAfterCommit('leaf', { owner: id, reason })` 的一层壳,这一族就只剩
- * 一个产地了。
+ * ── 留账已结清(W7-c 裁定 6)────────────────────────────────────────────
+ * `workbench/focus-into.ts` 那份逐字相同的排法删了,它今天消费下面那只
+ * `runAfterCommit`。**切过来的是队列,不是 `activateScopeAfterCommit`**:
+ * 那只文件送的不是一格固定的作用域 —— 它先问内容自述想把焦点交给哪块面
+ * (`ContentKind.focusInto`),送不进去再退回 `leaf`,一发里可能问两处。
+ * 要收的那件事从来是**「排在 React 提交之后」这副队列**(以及那副队列的先后次序
+ * 决定谁最后说了算),而不是「送哪一层」。所以产地是 `runAfterCommit`,
+ * `activateScopeAfterCommit` 是它上面最常用的那一层壳。
  */
+export function runAfterCommit(send: () => void): void {
+  if (typeof queueMicrotask === 'function') queueMicrotask(send)
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(send)
+}
+
+/** 把焦点送进某一层,排在提交之后。`runAfterCommit` 之上最常用的那一层壳。 */
 export function activateScopeAfterCommit(
   scope: FocusScopeId,
   opts: { owner?: string; reason?: ActivateReason } = {},
 ): void {
-  const send = (): void => void focusTree.activateScope(scope, opts)
-  if (typeof queueMicrotask === 'function') queueMicrotask(send)
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(send)
+  runAfterCommit(() => void focusTree.activateScope(scope, opts))
 }

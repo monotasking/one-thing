@@ -104,7 +104,14 @@ export function useFloatDismiss(
  * 夹一次只会把高亮从它该盖的地方挪开。前三档夹视口是因为浮层要被看全,
  * 而这一档的「看全」就是「与锚重合」。
  */
-export type FloatPlace = 'below-start' | 'below-end' | 'above-center' | 'cover'
+export type FloatPlace = 'below-start' | 'below-end' | 'above-center' | 'cover' | 'right-start'
+
+/*
+ * `right-start` 是第五档(W7-c)。前四档回答的都是「贴着锚点的上 / 下 / 整个」,
+ * 而**子菜单**要的是第三个方向:贴着锚点这一行的**右缘**、顶缘对齐。它与
+ * `below-start` 是同一句话换一根轴,所以是这张表的一行,不是子菜单自己算坐标
+ * (「浮层摆哪儿」全仓只有这一个产地 —— 这是 `ui/float` 存在的全部理由)。
+ */
 
 /**
  * 锚 —— 两档,差别是**它会不会动**。
@@ -159,6 +166,16 @@ function place(anchor: FloatAnchor, w: number, h: number): FloatPosition | null 
   // 盖住锚:位置与身量都是锚自己的,不夹视口(理由写在 `FloatPlace` 上)。
   if (anchor.place === 'cover') {
     return { left: r.left, top: r.top, flipped: false, width: r.width, height: r.height }
+  }
+  // 贴右缘、顶对齐(子菜单那一档)。视口右边放不下就往左夹 —— 夹到贴着右边线为止。
+  if (anchor.place === 'right-start') {
+    return {
+      left: Math.max(0, Math.min(r.right, vw - w)),
+      top: Math.max(0, Math.min(r.top, vh - h)),
+      flipped: false,
+      width: null,
+      height: null,
+    }
   }
   if (anchor.place === 'below-start' || anchor.place === 'below-end') {
     // `below-end` 对的是锚点的**右缘**:左缘 = 右缘 − 身量。首帧 w=0 时它退化成

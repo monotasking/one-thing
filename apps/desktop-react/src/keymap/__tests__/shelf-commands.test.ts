@@ -89,11 +89,26 @@ describe('全表冲突检查(加键之前那一步的机器化)', () => {
     expect(clashes).toEqual([])
   })
 
-  it('这一族是全表唯一带 ⌥ 的 —— 它是干净长出来的,没挤掉谁', () => {
+  /*
+   * W7-c 之前这一条读作「全表唯一带 ⌥ 的」。标签换序两条(⌘⌥⇧←/→)长出来之后
+   * 那句话不成立了 —— 而它守的那件事**还在**:带 ⌥ 的键必须是**这一族与它的
+   * 近亲**,不许有第三伙人悄悄挤进这根轴。所以断言从「只有它」改成「它,加上
+   * 明写在这儿的那两条」;第三条带 ⌥ 的命令一出现就红,而那时要问的第一句话
+   * 仍旧是「它凭什么用这根轴」。
+   *
+   * 换序那两条与架子那四条**同一根轴、只多一个 ⇧**,而 ⇧ 在跨应用里正是「带着
+   * 这个东西一起走」(判词写在 `DEFAULT_COMBOS` 上)。上面那条「全表两两不同」
+   * 已经钉住它们没挤掉谁。
+   */
+  it('带 ⌥ 的只有这一族与标签换序那两条(第三伙人挤进来就红)', () => {
     const withAlt = KEYMAP_COMMANDS.filter((c) => effectiveCombo(EMPTY, c.id)?.alt === true).map(
       (c) => c.id,
     )
-    expect(withAlt).toEqual(SIDES.map(shelfToggleCommandId))
+    expect(withAlt).toEqual([
+      ...SIDES.map(shelfToggleCommandId),
+      'workbench.moveTabLeft',
+      'workbench.moveTabRight',
+    ])
   })
 })
 

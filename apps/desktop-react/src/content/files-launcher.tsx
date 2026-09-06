@@ -10,7 +10,7 @@ import { useStageStore } from '../stage/store'
 import { CENTER_REGION, edgeRegion, floatRegion } from '../workbench/regions'
 import { refId } from '../workbench/kinds'
 import { regionOfRefIn, useWorkbenchStore } from '../workbench/store'
-import { filesRootRef } from './kinds/files-root-ref'
+import { FILES_ROOT_KIND, filesRootRef } from './kinds/files-root-ref'
 import { useOpenDirDialog } from './files/open-dir-hub'
 import type { PlacementMemory } from '../stage/types'
 import type { ContentRef } from '../workbench/kinds'
@@ -151,6 +151,13 @@ registerStageLauncher(
       const cwd = sessionDirOf()
       return cwd ? filesRootRef(cwd) : null
     },
+    /*
+     * **答不出 `dragRef` 时的退一步**(W7-c 裁定 6)。会话没绑目录时上面那一口
+     * 答 null,而屏幕上可能正开着**别的**目录树 —— 点这块瓦要的是「让我看见目录」。
+     * 交出去的是一个**种类名**,查找归 `workbench/tree.firstRefOfKindIn`(判词在
+     * `stage/open-item.residentRefOf`):这块瓦只自述自己开的是哪一种。
+     */
+    residentKind: FILES_ROOT_KIND,
     MenuRows: FilesLauncherMenuRows,
   },
   import.meta.hot,

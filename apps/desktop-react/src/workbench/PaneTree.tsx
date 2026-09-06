@@ -75,14 +75,8 @@ export const PaneTree = memo(function PaneTree({
           className={s.slot}
           style={box}
           data-pane-slot={leaf.id}
-          /*
-           * **跨度的取件口**(W1-b)。顶栏上的标签组要坐在这片叶的正上方,而叶的
-           * 四个边是一串相对这个容器的 `calc()` —— 顶栏在另一棵子树里,没有共同的
-           * 参考系,所以那件事只有真实的排版说得出来(`leaf-geometry.ts` 量它)。
-           * 与 `data-pane-slot` 分两格属性:那一格说「这是谁的格子」,这一格说
-           * 「这块盒可以被别人量」——切分的那个盒也带这一格,而它不是任何叶的格子。
-           */
-          data-pane-span={leaf.id}
+          /* W7-c:`data-pane-span` 那一格删了 —— 它是「顶栏标签组坐在叶的正上方」
+           * 那条规则(W1-b)的取件口,而 v3 单叶之后标签改从顶栏自己的开头排。 */
         >
           <PaneLeaf leaf={leaf} host={leaf.id === rootLeafId ? rootHost : leafHost} />
         </div>
@@ -118,18 +112,10 @@ const PaneSeam = memo(function PaneSeam({
   return (
     <>
       {/*
-        这个盒**兼两份工**,两份都只是「量」:①拖杆时比例相对谁算(`containerRef`);
-        ②这一次切分整块地有多宽 —— **上下切分的两片叶横向重叠**,它们在顶栏上共用
-        的那一段跨度就是这块地(W1-b,`layout.topStrips` 的 `spanId` 会指到切分 id)。
-        两份工问的是同一个矩形,所以不必再加第二个盒。
+        这个盒只剩**一份工**:拖杆时比例相对谁算(`containerRef`)。第二份
+        (「这一次切分整块地有多宽」,给顶栏标签组量跨度用)随 W7-c 裁定 1 退役。
       */}
-      <div
-        ref={boxRef}
-        className={s.seamBox}
-        style={seam.box}
-        data-pane-span={seam.id}
-        aria-hidden="true"
-      />
+      <div ref={boxRef} className={s.seamBox} style={seam.box} aria-hidden="true" />
       <div
         className={vertical ? `${s.seam} ${s.seamV}` : `${s.seam} ${s.seamH}`}
         style={

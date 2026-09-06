@@ -13,6 +13,11 @@ import { refId } from '../../workbench/kinds'
  * 所以这只用例得把它们装上;别的组不需要,但装上对它们也是恒等的。
  */
 import '../../content/kinds'
+import { registerStageLauncher, resetStageLaunchers } from '../launchers'
+import { registerContentKind, resetContentKinds } from '../../workbench/kinds'
+import { edgeRegion } from '../../workbench/regions'
+import { makeLeaf } from '../../workbench/tree'
+import type { ContentRef } from '../../workbench/kinds'
 import type { StageState } from '../types'
 
 /**
@@ -368,5 +373,90 @@ describe('A9 全屏中召唤别的瓦', () => {
     expect(useWorkbenchStore.getState().full).toBeNull()
     // 退出即回原住处 —— 它从来没离开过。
     expect(useStageStore.getState().shelves.right.tabs).toEqual(['diff'])
+  })
+})
+
+/**
+ * **启动瓦答不出 `dragRef` 时,按种类再问一次驻留**(W7-c 裁定 6,结清 W7-p 的留账)。
+ *
+ * 病历:目录面板已经开着一棵树,而**当前会话没绑目录** —— `files-launcher.dragRef()`
+ * 于是答 `null`(它答的是「此刻拖得出哪一格」,而 `~` 要一次后端往返才展得开,
+ * 拒绝比拖出一格假 tab 诚实)。W7-p 之后那一步只看 `dragRef`,答 null 就整条绕过召唤
+ * 直接 `open()`,于是点那块瓦**又是恒等变换**:架子收着的话屏幕上什么都不动 ——
+ * 与 A11 那桩病一模一样,只是触发条件更窄一格。
+ *
+ * 反证实测:把 `open-item.summonStageItem` 里那句 `?? residentRefOf(launcher)` 去掉,
+ * 第一条当场红(`open()` 被叫了一次,而架子仍旧收着)。
+ */
+describe('启动瓦:dragRef 答不出时按种类找驻留(W7-c 裁定 6)', () => {
+  const KIND = 'w7c-resident'
+  const REF: ContentRef = { kind: KIND, key: 'k' }
+
+  beforeEach(() => {
+    resetStageLaunchers()
+    resetContentKinds()
+    registerContentKind({
+      id: KIND,
+      singleton: false,
+      title: (ref) => ({ text: ref.key }),
+      icon: () => 'File',
+      render: () => null,
+    })
+  })
+
+  afterEach(() => {
+    resetStageLaunchers()
+    resetContentKinds()
+  })
+
+  it('同类的一格开在收着的架子上 → 展开它并点名那一格,`open()` 一次都不叫', () => {
+    let opened = 0
+    registerStageLauncher('w7c-tile', {
+      open: () => { opened += 1 },
+      dragRef: () => null,
+      residentKind: KIND,
+    })
+    seedStage({
+      shelves: {
+        ...initialStageState.shelves,
+        right: { ...initialStageState.shelves.right, collapsed: true },
+      },
+    })
+    useWorkbenchStore.setState({
+      regions: { [edgeRegion('right')]: makeLeaf('L-res', [REF], 0) },
+    })
+
+    summonStageItem('w7c-tile')
+
+    expect(opened, '`open()` 一次都不叫 —— 它已经开着了').toBe(0)
+    expect(useStageStore.getState().shelves.right.collapsed, '收着的架子被展开了').toBe(false)
+  })
+
+  it('不自述 `residentKind` 的启动瓦照旧直接 `open()`(缺席 = 没有这个退路)', () => {
+    let opened = 0
+    registerStageLauncher('w7c-plain', { open: () => { opened += 1 }, dragRef: () => null })
+    seedStage({})
+    useWorkbenchStore.setState({
+      regions: { [edgeRegion('right')]: makeLeaf('L-res', [REF], 0) },
+    })
+
+    summonStageItem('w7c-plain')
+
+    expect(opened).toBe(1)
+  })
+
+  it('哪儿都没开着时也照旧 `open()`', () => {
+    let opened = 0
+    registerStageLauncher('w7c-tile', {
+      open: () => { opened += 1 },
+      dragRef: () => null,
+      residentKind: KIND,
+    })
+    seedStage({})
+    useWorkbenchStore.setState({ regions: {} })
+
+    summonStageItem('w7c-tile')
+
+    expect(opened).toBe(1)
   })
 })

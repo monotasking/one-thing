@@ -80,8 +80,6 @@ interface LeafStripProps {
   activeId: string | null
   /** tablist 的无障碍名(宿主经 i18n 给,组件里不落字面)。 */
   label: string
-  /** 这一型自己那一格工具条(`ContentKind.toolbar`)。没有就整格不画。 */
-  tool?: ReactNode
   /** 檐右端那组钮(中央叶:⋯ / 分屏)。没有就整格不画 —— 空 span 会多出一段 gap。 */
   actions?: ReactNode
   onSelect: (id: string) => void
@@ -93,11 +91,19 @@ interface LeafStripProps {
    */
   onTabPointerDown?: (id: string, e: ReactPointerEvent<HTMLElement>) => void
   /**
-   * **右键一格 tab 意味着什么**(W6-c,设计 v3 §7「动作单产地是标签的右键菜单」)。
-   * 与上面那一口同一条纪律:这条檐只把右键连同 id 递出去,开哪张表是宿主的语法
-   * —— 面板内那一档(不在树里)不接它,于是那一档的右键行为一个字没变。
+   * **「给这一格开动作菜单」这一句请求**(W6-c 立;W7-c 起点由标签条量)。
+   * 与上面那一口同一条纪律:这条檐只把请求连同 id 与那一点递出去,开哪张表是
+   * 宿主的语法 —— 面板内那一档(不在树里)不接它,那一档的右键行为一个字没变。
    */
-  onTabContextMenu?: (id: string, e: ReactMouseEvent<HTMLElement>) => void
+  onTabMenu?: (id: string, at: { x: number; y: number }) => void
+  /**
+   * **右键檐上的空白处意味着什么**(W7-c 裁定 4)。架子与浮窗把「弹出为浮窗 /
+   * 关闭整栏 / 钉到边 / 上舞台」这几件从檐上的钮搬进了叶菜单,而那两处的檐本来
+   * 就有大片空白(标签条右边)—— 右键那块空白 = 开同一张叶菜单,于是那几件事
+   * 在键盘、右键、菜单三条路上仍旧只有一个产地。中央区那一档不接它(顶栏那块
+   * 空白是窗口的拖拽把手,右键归系统)。
+   */
+  onChromeContextMenu?: (e: ReactMouseEvent<HTMLElement>) => void
   /**
    * **按在檐的空白处意味着什么**(W4:浮窗的标题栏就是它根叶的这条檐,
    * 设计 §2.2)。按在 tab / 钮上时宿主自己判要不要让开 —— 这一层只负责把
@@ -120,14 +126,14 @@ export function LeafStrip({
   tabs,
   activeId,
   label,
-  tool,
   actions,
   onSelect,
   onClose,
   onTabPointerDown,
-  onTabContextMenu,
+  onTabMenu,
   onOverflow,
   onChromePointerDown,
+  onChromeContextMenu,
   chromeId,
   testId,
 }: LeafStripProps) {
@@ -165,6 +171,7 @@ export function LeafStrip({
       data-testid={testId}
       data-single={tabs.length <= 1 || undefined}
       onPointerDown={onChromePointerDown}
+      onContextMenu={onChromeContextMenu}
     >
       <div className={s.tabs}>
         {/*
@@ -182,13 +189,12 @@ export function LeafStrip({
           onSelect={select}
           onClose={onClose}
           onTabPointerDown={onTabDown}
-          onTabContextMenu={onTabContextMenu}
+          onTabMenu={onTabMenu}
           onOverflow={onOverflow}
         />
       </div>
-      {/* 型工具条由**种类自述**(`ContentKind.toolbar`),檐只负责挂。
-        * 没有就整格不画 —— 一格空 span 会在 flex 里多出一段 gap。 */}
-      {tool && <span className={s.tool}>{tool}</span>}
+      {/* **型工具条那一格 W7-c 整格删掉**(裁定 2):内容的动作单产地是它自己的
+        * 右键菜单,檐上不再有第二个入口。留在这里的只有宿主那一组钮。 */}
       {actions && <span className={s.actions}>{actions}</span>}
     </div>
   )
@@ -332,8 +338,6 @@ export function SoloLeafStrip({
   const titles = useLiveTitleStore((st) => st.titles)
   const id = refId(contentRef)
   const tabs = useMemo(() => [tabSpecOf(contentRef, titles)], [contentRef, titles])
-  // 型工具条走种类自述那条唯一的口 —— 檐不认识「markdown 有个渲染⇄源码开关」。
-  const tool = contentKindOf(contentRef.kind)?.toolbar?.(contentRef) ?? null
   const close = useCallback(() => {
     void (async () => {
       if (await mayCloseContent(contentRef)) onClose()
@@ -344,7 +348,6 @@ export function SoloLeafStrip({
       tabs={tabs}
       activeId={id}
       label={t('workbench.leafTabs')}
-      tool={tool}
       onSelect={() => {
         /* 只有一格,切给谁?这一口是 `ui/Tabs` 的受控约定要的,不是一件功能。 */
       }}

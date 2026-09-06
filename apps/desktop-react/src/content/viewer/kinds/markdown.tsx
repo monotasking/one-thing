@@ -4,9 +4,7 @@ import { blockKey } from '../../assemble/key'
 import { BlockView } from '../../blocks/BlockView'
 import chat from '../../ChatStream.module.css'
 import { registerViewer, disposeRegistrations } from '../registry'
-import type { ViewerBodyProps } from '../registry'
-import { Segmented } from '../../../ui/Segmented'
-import { useT } from '../../../i18n'
+import type { ViewerBodyProps, ViewerViewMode } from '../registry'
 import { CodeCanvas, splitLines } from './code'
 import s from '../FileViewer.module.css'
 
@@ -72,29 +70,24 @@ function MarkdownBody({ file, view }: ViewerBodyProps) {
 }
 
 /**
- * 「渲染 ⇄ 源码」分段器。它是**这一型自己**的那一格,所以住工具条而不是头上
- * (头只放身份与去向)。两档互斥、就地切换 —— 那正是 ui/Segmented 的定义。
+ * 「渲染 ⇄ 源码」两档。**它是数据,不是一件工具条**(W7-c 裁定 2)。
+ *
+ * W1 起它是一件 `Segmented`,挂在叶檐的动作组里;W7-c 把顶栏的内容工具条槽位
+ * 整格删掉(用户 09-05:「按钮太多」),这两档跟着搬进**内容区自己的右键菜单**
+ * ——「一个文件能做什么」全仓只有那一张表(09-01 判例)。搬过去之后它不再需要
+ * 一件会自己读 store 的组件:菜单要的只是「有哪几档、此刻哪一档、选它写什么」。
  */
-function MarkdownToolbar({ view, onView }: ViewerBodyProps) {
-  const t = useT()
-  return (
-    <Segmented
-      label={t('viewer.mdView')}
-      value={view.showSource ? 'source' : 'rendered'}
-      onChange={(value) => onView({ showSource: value === 'source' })}
-      options={[
-        { value: 'rendered', label: t('viewer.mdRendered') },
-        { value: 'source', label: t('viewer.mdSource') },
-      ]}
-    />
-  )
-}
+const MARKDOWN_VIEW_MODES = [
+  { id: 'rendered', labelKey: 'viewer.mdRendered', on: (v) => !v.showSource, patch: { showSource: false } },
+  { id: 'source', labelKey: 'viewer.mdSource', on: (v) => v.showSource, patch: { showSource: true } },
+] as const satisfies readonly ViewerViewMode[]
 
 registerViewer({
   id: 'markdown',
   match: (file) => file.kind === 'markdown',
   Body: MarkdownBody,
-  Toolbar: MarkdownToolbar,
+  viewModes: MARKDOWN_VIEW_MODES,
+  viewModesLabelKey: 'viewer.mdView',
   editable: true,
   /* 渲染面不按行寻址(一段话可能是三行也可能是三十行);源码面按行。 */
   lineCount: ({ file, view }) =>

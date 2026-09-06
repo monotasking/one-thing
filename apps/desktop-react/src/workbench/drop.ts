@@ -263,13 +263,22 @@ function stripAt(
   rules: DropRules,
 ): DropTarget | null {
   if (!strips) return null
-  for (let i = strips.length - 1; i >= 0; i -= 1) {
-    const box = strips[i]
-    const r = box.rect
-    if (pointer.x < r.left || pointer.x > r.left + r.width) continue
-    if (pointer.y < r.top - TEAR_OFF_DISTANCE || pointer.y > r.top + r.height + TEAR_OFF_DISTANCE) {
-      continue
-    }
+  /*
+   * ── **落在条上的赢过只是够得着的**(W7-c)────────────────────────────────
+   * 上面那 24px 的上下外扩是「瞄准附近也算」;它**永远不许赢过一条指针真的落在
+   * 上面的条**。两者从前不分先后,因为屏幕上不可能有两条条挨这么近 —— W7-c 裁定 1
+   * 把顶栏标签改成从红绿灯右边起排之后,它与**左架子那条条**横向重叠了(从前顶栏
+   * 那一组坐在中央叶的正上方,而中央叶在架子右边),而架子那条条的 24px 外扩正好
+   * 够到顶栏里:于是指针明明在顶栏第 0 格上,判据交回的是「插进左架子第 1 位」。
+   *
+   * 修法不是把外扩改小(那是拿一个魔法数去躲另一个),是把这句话写成**两遍扫描**:
+   * 先找真的含住这一点的,没有再找够得着的。两遍都按 DOM 逆序(条重叠时靠后的
+   * 盖在上面 —— 那条纪律一个字没变)。
+   */
+  const hit = scanStrips(pointer, strips, 0) ?? scanStrips(pointer, strips, TEAR_OFF_DISTANCE)
+  if (!hit) return null
+  {
+    const box = hit
     const at = tabMiddleAt(pointer.x, box, rules.dragged?.id)
     if (at >= 0) {
       // 两格的标签不能再并(设计 §6「不允许」)—— 这里说得出理由,不是静默改判。
@@ -277,6 +286,25 @@ function stripAt(
       return { kind: 'pairTab', region: box.region, leafId: box.leafId, at }
     }
     return { kind: 'strip', leafId: box.leafId, at: stripIndexAt(pointer.x, box) }
+  }
+}
+
+/**
+ * 一遍扫描:哪条条在**这个上下容差**里接得住这一点。DOM 逆序 —— 条重叠时
+ * 靠后的盖在上面(宿主按 DOM 序交,那条纪律与叶那一头同源)。
+ * 横向**不外扩**:条的矩形本来就铺满那段跨度,末格右边那一大片空白已经在条里了。
+ */
+function scanStrips(
+  pointer: { x: number; y: number },
+  strips: readonly StripBox[],
+  slack: number,
+): StripBox | null {
+  for (let i = strips.length - 1; i >= 0; i -= 1) {
+    const box = strips[i]
+    const r = box.rect
+    if (pointer.x < r.left || pointer.x > r.left + r.width) continue
+    if (pointer.y < r.top - slack || pointer.y > r.top + r.height + slack) continue
+    return box
   }
   return null
 }

@@ -82,6 +82,20 @@ export type CommandId =
   /* 真全屏(W2)。它不呼出任何一块面,它**对焦点叶的活动 tab 做一件事** ——
    * 与 `session.new` 同一族。落点在 `workbench.toggleFull`。 */
   | 'workbench.toggleFull'
+  /*
+   * **把焦点叶的活动标签往左 / 往右挪一位**(W7-c 裁定 3)。
+   *
+   * 它们从**菜单**里升上来:W3-b 时「左移一位 / 右移一位」是标签动作表里的两行,
+   * 而 W7-c 把那张表收成六项时把它们拿掉了 —— 换序在真机上靠拖拽(W6-b 那套
+   * 「朝运动方向越过邻居中心」的判据比按两下菜单快得多)。**一件事从菜单里拿掉
+   * 不等于把它拿掉**:键盘那条路必须还在,而它本来就该是一条全局命令 ——
+   * 判据与 `workbench.toggleFull` 逐字相同:它要的目标是「焦点叶的活动 tab」,
+   * 那是 store 答得出的一句话,不需要键盘落在那片叶里。
+   *
+   * 落定走的仍是**拖拽落定同一只** `drop-commit.reorderTab`(播报在它里面)。
+   */
+  | 'workbench.moveTabLeft'
+  | 'workbench.moveTabRight'
 
 export interface KeymapCommand {
   id: CommandId

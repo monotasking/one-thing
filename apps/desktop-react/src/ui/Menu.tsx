@@ -1,7 +1,7 @@
 import { createContext, useContext, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
-import { Check } from '../components/icons'
+import { Check, ChevronRight } from '../components/icons'
 import { FocusScope } from '../focus/FocusScope'
 import { useRoving } from './a11y/roving'
 import { useFloatDismiss, useFloatPosition } from './float'
@@ -235,4 +235,128 @@ export function MenuItem({
 
 export function MenuSeparator() {
   return <div className={s.sep} role="separator" />
+}
+
+/**
+ * **一项带 ▸ 的子菜单**(W7-c 入库,菜单族的第四件)。
+ *
+ * ── 它为什么是库件,而不是某张表自己画的两层 ────────────────────────────────
+ * W7-c 把标签动作表收成六项,做法是把「移到架子 ▸ 四边」「分屏 ▸ 四向」这两组
+ * 从**八行平铺**折成**两行 + 两张子表**。折叠这件事本身与业务无关:一项、一个
+ * ▸、按下去在它右边开一张表、Esc 只关那一张 —— 换成任何一张菜单都是同一句话。
+ * 所以它进 `ui/Menu`(CLAUDE.md「基础件先行」),消费方一个坐标都不算。
+ *
+ * ── **不 portal**,这是硬约束不是风格 ──────────────────────────────────────
+ * 父菜单的点外关(`ui/float.useFloatDismiss`)判据是「按下那一点在不在我的 ref
+ * 子树里」。子表要是 portal 到 body,点它一下在父菜单眼里就是「点了外面」——
+ * 父表当场关掉,子表跟着一起没了,屏幕上是「点了一下什么都没发生」。
+ * 所以子表是父菜单 DOM 的**真孩子**,只是 `position: fixed` 自己摆位置。
+ * 父菜单那格 `animation` 只动 opacity(不动 transform),不会给 fixed 造包含块 ——
+ * 这一句是那条「fixed 的包含块被祖先 transform/filter 抢走」判例的反面:
+ * 这里恰好没有,所以孩子读的仍是视口坐标。
+ *
+ * ── 三张状态表 ────────────────────────────────────────────────────────────
+ * ① 生命周期:挂载 = 父表画出这一项;卸载 = 父表关掉(子表随之没,不必自己收)。
+ * ② UI 生命状态:**收着**(只有一行 + ▸)/ **开着**(右边那张表在场,`aria-expanded`
+ *    跟着翻)/ **禁灰**(`disabled`:整项按不动,也就开不出子表)。
+ * ③ UI 交互状态:行本身随 `.item`(rest/hover/active/disabled 全套,与兄弟项逐字
+ *    相同);子表里的项随 `MenuItem`;键盘 = ↵ / Space / → 开,Esc / ← 关
+ *    (Esc 由响应链问下来,子表是父表的孩子,所以一下只关一层)。
+ */
+export function Submenu({
+  label,
+  icon: Icon,
+  disabled,
+  children,
+}: {
+  label: ReactNode
+  /** 行首那一枚(与 `MenuItem` 的用法一致:消费方自己画在 children 里的那种不走这里)。 */
+  icon?: (props: { className?: string; strokeWidth?: number; 'aria-hidden'?: string }) => ReactNode
+  disabled?: boolean
+  children: ReactNode
+}) {
+  const rowRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false)
+
+  useRoving(panelRef, { axis: 'vertical' })
+
+  /*
+   * 子表贴在这一行的**右上角**:左缘 = 行的右缘(压掉父表那格内边距,两张表看起来
+   * 是咬合的一对而不是隔一条缝的两块),顶缘 = 行的上缘再抬一格内边距 —— 于是子表
+   * 的第一项与这一行**同高**,视线不必上下找。越界的那一档由 `useFloatPosition`
+   * 的视口 clamp 接住(它是浮层族唯一一处算坐标的地方)。
+   */
+  const anchor = (): DOMRect | null => rowRef.current?.getBoundingClientRect() ?? null
+  const pos = useFloatPosition(panelRef, { kind: 'rect', get: anchor, place: 'right-start' }, {
+    fallback: { left: 0, top: 0 },
+  })
+
+  return (
+    <div className={s.sub} role="presentation">
+      <button
+        ref={rowRef}
+        type="button"
+        className={s.item}
+        role="menuitem"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-roving-item
+        tabIndex={-1}
+        disabled={disabled}
+        onClick={() => setOpen((on) => !on)}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') {
+            e.preventDefault()
+            setOpen(true)
+          }
+        }}
+      >
+        <span className={s.itemLabel}>
+          {Icon ? (
+            <span className={s.subLead}>
+              <Icon className={s.subIcon} strokeWidth={1.75} aria-hidden="true" />
+              {label}
+            </span>
+          ) : (
+            label
+          )}
+        </span>
+        {/* ▸ 永远占着位:开合切换不动一个像素的布局(与 `MenuItem` 的勾位同一条)。 */}
+        <ChevronRight className={s.subArrow} strokeWidth={1.75} aria-hidden="true" />
+      </button>
+      {open && (
+        <FocusScope
+          scope="menu"
+          rootRef={panelRef}
+          activateOnMount
+          /* 关掉就够了 —— **归还是结构性的**(§4.5):这一格 `menu` 作用域摘掉时,
+           * 树按 `returnTo` 把焦点交回开它的那一行。手写一句 `.focus()` 既多一条
+           * 产地,又违反不变量 I3(跨作用域搬焦点一律走树)。 */
+          onEscape={() => (setOpen(false), true)}
+        >
+          {({ scopeProps }) => (
+            <div
+              {...scopeProps}
+              className={s.menu}
+              style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+              role="menu"
+              tabIndex={-1}
+              aria-label={typeof label === 'string' ? label : undefined}
+              onKeyDown={(e) => {
+                /* ← 收起子表。焦点回那一行同样靠结构性归还(见上面 onEscape)。 */
+                if (e.key === 'ArrowLeft') {
+                  e.preventDefault()
+                  setOpen(false)
+                }
+              }}
+              onContextMenu={(e) => e.preventDefault()}
+            >
+              {children}
+            </div>
+          )}
+        </FocusScope>
+      )}
+    </div>
+  )
 }

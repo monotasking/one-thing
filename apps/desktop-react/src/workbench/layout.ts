@@ -216,12 +216,10 @@ function spanGroups(node: PaneNode): SpanGroup[] {
   return [{ spanId: node.id, leafIds: leavesOf(node).map((leaf) => leaf.id) }]
 }
 
-/* ── 跨度那两格 CSS 变量的**唯一产地** ─────────────────────────────────────
- * 它们不是设计 token,是**运行期量出来的读数**,所以住在写它们的那个元素身上
- * (顶栏那条带),不在 `:root`。名字登记在 `styles/tokens.css` 的
- * 「拼贴树的跨度读数(运行期写入,不是设计 token)」一节。 */
-
-/** 这个节点的左缘(相对写变量的那个宿主元素)。 */
-export const spanXVar = (nodeId: string): string => `--leaf-x-${nodeId}`
-/** 这个节点的宽度。 */
-export const spanWVar = (nodeId: string): string => `--leaf-w-${nodeId}`
+/* ── 跨度那两格 CSS 变量 **W7-c 整条退役** ────────────────────────────────
+ * `spanXVar` / `spanWVar` / `workbench/leaf-geometry.ts` / `data-pane-span` 是
+ * 「顶栏的标签组精确坐在它那片叶的正上方」那条规则的全部机械(W1-b)。v3 把中央区
+ * 收成一条标签条之后那条规则没有对象了(裁定 1:标签从顶栏自己的开头排),这几件
+ * 随之零消费者 —— 而它同时是 `gate:perf` ⑤a 第 4 次强制排版的来源。
+ * `topStrips` 交出的 `spanId` / `index` / `count` 留着:它们描述的是**树的形状**,
+ * 与谁来消费无关。 */

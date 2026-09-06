@@ -830,6 +830,9 @@ export const zh = {
   'workbench.centerEmptyNew': '新建会话',
   /* 一个标签装两格(W6-a)。 */
   'workbench.pair': '二合一',
+  /* 关这一格标签(W7-c 裁定 3 的第六项)。它与 tab 上那颗 ✕、与 ⌘W 是同一件事,
+   * 所以句子只说动作、不带宾语 —— 宾语就是右键点中的那一格。 */
+  'workbench.tabClose': '关闭',
   'workbench.pairRight': '与右边的标签二合一',
   'workbench.pairLeft': '与左边的标签二合一',
   'workbench.unpair': '拆开',
@@ -857,9 +860,11 @@ export const zh = {
   'drag.movedIntoLeaf': '已并入{name}',
   'drag.movedToFloat': '已撕成浮窗',
   'drag.menuMoveTo': '移到架子',
-  // W3-b 裁定 8:条内换序的键盘等价。走的是同一只 `reorderTab`。
-  'drag.moveLeft': '左移一位',
-  'drag.moveRight': '右移一位',
+  /* W3-b 裁定 8 立、W7-c 从菜单里搬到**全局命令**:条内换序的键盘等价。
+   * 走的仍是同一只 `reorderTab`;命令名要在设置页那一列里说得出自己动的是什么,
+   * 所以带上宾语「标签」。 */
+  'keymap.moveTabLeft': '标签左移一位',
+  'keymap.moveTabRight': '标签右移一位',
   'drag.reordered': '已移到第 {at} 位,共 {total} 位',
   'drag.menuTearOff': '撕成浮窗',
   /* ── 浮影下那行字(W6-b,设计 v3 §5「浮影下那行字永远不空」)──────────────

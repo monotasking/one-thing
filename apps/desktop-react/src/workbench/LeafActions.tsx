@@ -1,24 +1,20 @@
 import { useMemo, useState } from 'react'
 import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsDown,
-  ChevronsLeft,
-  ChevronsRight,
-  ChevronsUp,
   Columns2,
   Ellipsis,
   PictureInPicture2,
   Rows2,
   Unlink,
+  X,
 } from '../components/icons'
 import { IconButton } from '../ui/IconButton'
-import { Menu, MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
+import { Menu, MenuItem, MenuSection, MenuSeparator, Submenu } from '../ui/Menu'
 import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
-import { dropRef, pairIntoIndex, reorderTab, unpairTab } from './drop-commit'
+import { dropRef, pairIntoIndex, unpairTab } from './drop-commit'
 import { useLeafMenuAt, useLeafMenuStore } from './leaf-menu'
 import { useLeafOverflow } from './leaf-overflow'
+import { useCloseLeafTab } from './leaf-tabs'
 import { contentKindOf, partsOfContent, refId } from './kinds'
 import {
   hiddenInRegion,
@@ -26,21 +22,42 @@ import {
   SINGLE_LEAF_REGIONS,
   useWorkbenchStore,
 } from './store'
+import type { ReactNode } from 'react'
 import type { MessageKey } from '../i18n'
 import type { ShelfSide } from '../stage/types'
 import type { PaneLeafNode } from './tree'
 import s from './LeafActions.module.css'
 
 /**
- * **一片叶的动作组**(W1-b 从 `PaneLeaf` 抽出来:分屏 ▸ / 隐藏的标签 ⋯ / 型工具条)。
+ * **一片叶的动作组**(W1-b 从 `PaneLeaf` 抽出来;W7-c 做减法之后只剩两件事:
+ * 檐右端那颗「够不着的标签 ⋯」,与**标签动作表**本身)。
  *
- * 设计 §2.2 的 D 稿把它摆在**顶栏右端**,而且只画**焦点叶**那一组:
- * 「顶栏从左到右:红绿灯让位 → 中央区各片叶的标签组 → 右端是焦点叶的动作组」。
- * 所以在**中央区**它不再是每片叶各画一份 —— 分屏出来的叶自己不画檐,也不画动作。
+ * ── W7-c 删掉了什么,为什么(用户 09-05「按钮太多、菜单太多」)────────────
+ *  · **「分屏」那颗钮**没了。它是这张表从 W1-b 起唯一的开口,而这张表说的是
+ *    「这一格标签能做什么」—— 一张作用在某个具体条目上的表,它的产地本来就该是
+ *    **那个条目的右键菜单**(CLAUDE.md「动作单产地=右键上下文菜单」)。留一颗钮
+ *    等于同一张表有两个入口,而其中一个还写着它第一项的名字。
+ *    键盘那条路没有跟着没:`Shift+F10` / 上下文菜单键落在焦点标签上开同一张表
+ *    (`ui/Tabs` 只量点、递请求,判词写在那格 prop 上)。
+ *  · **型工具条那一格**没了。内容的动作单产地是它自己的右键菜单,顶栏不再有
+ *    内容工具条槽位(markdown 的「渲染 / 源码」搬进了 `content/FileActionsMenu`)。
+ *  · **「左移一位 / 右移一位」**两项从表里删了。换序靠拖拽(W6-b 起那套判据是
+ *    「朝运动方向越过邻居中心」,真机上比按两下菜单快得多),键盘等价升格成
+ *    **全局命令**(`KEYMAP_COMMANDS` 的 `workbench.moveTabLeft` / `Right`)——
+ *    一件事从菜单里拿掉不等于把它拿掉。
+ *  · **「拆开」改成只在两格标签上出现**,不再禁灰。禁灰说的是「此刻不行」,而
+ *    一格普通标签上「拆开」根本没有对象 —— 那是**这张表在这一格上不存在这一项**。
+ *    (分屏四项在中央区不画,走的是同一条判据。)
+ *
+ * 于是顶栏右端只剩两件:这一组(常态下只有那颗 ⋯,而它两节都空时连自己都不画)
+ * 与 `AgentChip`。
  *
  * ── 第二个宿主:架子 / 浮窗那片叶的檐(W4)──────────────────────────────
  * 那两处没有第二条顶栏可借,檐就画在叶顶(`PaneLeaf` 的 `PaneLeafStrip`),
- * 这一组因此挂在那条檐的右端、宿主自己那几颗之前。**同一件**,不是第二份实现。
+ * 这一组因此挂在那条檐的右端、宿主自己那颗之前。**同一件**,不是第二份实现。
+ * W7-c 起那两处的宿主钮也做了减法(架子只剩「收起」、浮窗只剩 ✕),被拿掉的
+ * 几件搬进**这张表**——由宿主自述一段 `PaneHostChrome.menuRows` 递进来,所以
+ * 「叶菜单按宿主类型多几项」这件事只有一格事实,而这只组件一个宿主名都不认识。
  *
  * ── 「够不着的标签 ⋯」:一颗钮、一张表、两节(W7-t / B1)────────────────────
  * 「看不见的」(条太窄被滚出视野)与「隐藏的」(收进隐藏表)是同一句话的两种
@@ -49,35 +66,37 @@ import s from './LeafActions.module.css'
  * 自己量(`ui/Tabs` 的 `onOverflow` → `workbench/leaf-overflow`);这一组只画表。
  *
  * ── 「隐藏的标签」只列**本区域**藏起来的那些(W4;W1-a 的留账)─────────
- * 修前这格菜单列的是**全部**隐藏项,于是右架子的檐上会列出中央区藏起来的文件 ——
- * 点回去,它出现在你看不见的另一块地方。「回哪儿去」这件事本来就记在
- * `returnTo.region` 上,按它分组是它自己的读法(`store.hiddenInRegion`)。
- * 于是顶栏尾格(中央区)与架子叶檐两处各列各的,而判据只有这一句。
+ * 「回哪儿去」这件事本来就记在 `returnTo.region` 上,按它分组是它自己的读法
+ * (`store.hiddenInRegion`)。于是顶栏尾格(中央区)与架子叶檐两处各列各的。
  *
  * ── 拖拽的键盘等价:**同一个动作,不是第二条路**(W3 裁定 9;W3-b 补第四组)──
- * 「不加新键位组合;每个落点都能从既有 tab 菜单到达」。分屏 ▸ 四向本来就在,
- * W3 补上另外两组:**移到架子 ▸ 四边** 与 **撕成浮窗**;W3-b 的条内换序补上
- * **左移 / 右移**。四组菜单项与拖拽落定调的是**同一只**动作
- * (`dropRef(ref, target)` / `reorderTab(leafId, from, at)`)—— 两条路走两个动作,
+ * 「每个落点都能从既有 tab 菜单到达」。四组菜单项与拖拽落定调的是**同一只**动作
+ * (`dropRef(ref, target)` / `pairIntoIndex` / `unpairTab`)—— 两条路走两个动作,
  * 迟早在某一条上悄悄分叉(那正是「菜单里搬过去和拖过去结果不一样」这类 bug 的
- * 全部来源)。落定后 `announce()` 播报一句(「已移到右侧」/「已撕成浮窗」/
- * 「已移到第 2 位,共 3 位」),与拖拽那条路共用同一句话 —— 播报是**落定**的
- * 一部分,不是菜单的装饰(所以换序那一句住在 `reorderTab` 里,不在这里)。
+ * 全部来源)。落定后 `announce()` 播报一句,与拖拽那条路共用同一句话 —— 播报是
+ * **落定**的一部分,不是菜单的装饰(所以那几句住在 `drop-commit` 里,不在这里)。
  *
  * `aria-grabbed` 已废弃,不用(裁定 9 末句)。
  *
+ * ── 项名必须带宾语,不许裸方位词(W7-c / B5)────────────────────────────
+ * 「右侧」是一个方位,不是一件事。折成子菜单之后动词落在父行上(「移到架子 ▸」
+ * / 「分屏 ▸」),子行说的是**宾语**(「右侧栏」/「在右侧」)—— 读起来是一句
+ * 完整的话,而不是一列孤零零的方向词。
+ *
  * ── 三张状态表 ──────────────────────────────────────────────────────────
  * ① 生命周期:挂载 = 中央区有叶(恒有);**换住户**(焦点叶换人)不重挂,只换
- *    `leaf` 这一格 prop —— 两张菜单的开合状态因此活过一次焦点叶切换(它们是
- *    「这个动作组此刻开着哪张菜单」,不是「那片叶的状态」);卸载 = 整台壳卸载。
+ *    `leaf` 这一格 prop —— 「够不着的标签」那张菜单的开合因此活过一次焦点叶切换
+ *    (它是「这个动作组此刻开着哪张菜单」,不是「那片叶的状态」);动作表那张
+ *    的开合根本不在这只组件里(`workbench/leaf-menu` 那一格 store);
+ *    卸载 = 整台壳卸载。
  * ② UI 生命状态:**有够不着的标签**(看不见的 ∪ 隐藏的;⋯ 才画 —— 一颗永远按不动
- *    的钮是纯噪音)/ 有型工具条
- *    (活动那一格的种类自述了 `toolbar` 才画)/ 只有一格 tab(分屏四项禁灰而不消失)/
- *    **活动格在两端**(左移 / 右移各自禁灰)。
- * ③ UI 交互状态:两颗钮随 `ui/IconButton`(rest/hover/focus/active/disabled 全套);
- *    菜单项随 `ui/Menu`。
+ *    的钮是纯噪音)/ **两格并排**(表里多「拆开」一项)/ **多叶区域**(架子 / 浮窗:
+ *    表里多「分屏 ▸」一节)/ **宿主自带几项**(架子 / 浮窗:表尾多它们那一节)/
+ *    只有一格 tab(二合一两项禁灰而不消失)。
+ * ③ UI 交互状态:那颗 ⋯ 随 `ui/IconButton`(rest/hover/focus/active/disabled 全套);
+ *    菜单项随 `ui/Menu`,子菜单随 `ui/Menu` 的 `Submenu`。
  */
-export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
+export function LeafActions({ leaf, hostMenuRows }: { leaf: PaneLeafNode; hostMenuRows?: ReactNode }) {
   const t = useT()
   const allHidden = useWorkbenchStore((st) => st.hidden)
   /*
@@ -89,6 +108,7 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   const restoreHidden = useWorkbenchStore((st) => st.restoreHidden)
   const hidden = useMemo(() => hiddenInRegion(allHidden, region), [allHidden, region])
   const activateTab = useWorkbenchStore((st) => st.activateTab)
+  const closeAt = useCloseLeafTab(leaf)
   /*
    * **条上有几格没露全**(W7-t / B1)。量它的是标签条自己(`ui/Tabs` 是那个横滚
    * 容器),这里只读结果 —— 判词与两头的分工写在 `workbench/leaf-overflow.ts` 上。
@@ -104,33 +124,25 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   )
 
   /**
-   * 「够不着的标签 ⋯」那张开在哪一点(null = 没开)。它只有这一个开口,所以留在本地。
-   *
-   * ── 一颗钮、一张表、两节(W7-t / B1)────────────────────────────────────
-   * 「看不见的」与「隐藏的」是同一句话的两种成因:**这一格此刻点不到**。一格是
-   * 条太窄它被滚出了视野,一格是它被收进了隐藏表 —— 而用户要做的事一模一样:
-   * 认出它、点它、它回来。所以它们合成一颗钮一张表,哪一节空就不画哪一节;
-   * 两节都空 = 整颗钮不画(一颗永远按不动的钮是纯噪音,与修前那颗逐字同一条)。
+   * 「够不着的标签 ⋯」那张开在哪一点(null = 没开)。它只有这一个开口,所以留在本地
+   * —— 与动作表恰好相反,而那正是「有没有第二个开口」这条判据在两处的两个答案。
    */
   const [reachAt, setReachAt] = useState<{ x: number; y: number } | null>(null)
   /*
    * **动作表开在哪一点,住在 `workbench/leaf-menu` 里**(W6-c,设计 v3 §7)。
    *
-   * 它从一格本地 `useState` 搬出去,是因为这张表从此有**两个开口**:檐右端那颗钮
-   * (还在这只组件里)与**右键一格标签**(在标签条上 —— 顶栏那一档里它与这只组件
-   * 是 `TopBar` 的两兄弟,够不着彼此的 setState)。两个开口开的必须是**同一张表**,
-   * 所以「开不开、开在哪」这一格事实只能有一个产地。
+   * 它从一格本地 `useState` 搬出去,是因为这张表有**好几个开口**:右键一格标签、
+   * 键盘 `Shift+F10`、以及(架子 / 浮窗)右键檐上的空白处 —— 而在顶栏那一档里,
+   * 标签条与这只组件是 `TopBar` 的两兄弟,够不着彼此的 setState。几个开口开的必须
+   * 是**同一张表**,所以「开不开、开在哪」这一格事实只能有一个产地。
    * 判据、项目、动作一格都没搬 —— 它们仍旧整件在这只组件里。
    */
   const menuAt = useLeafMenuAt(leaf.id)
   const closeMenu = useLeafMenuStore((st) => st.closeLeafMenu)
-  const openMenu = useLeafMenuStore((st) => st.openLeafMenu)
   const active = leaf.tabs[leaf.active] ?? null
-  // 型工具条走**种类自述**那条唯一的口 —— 动作组不认识「markdown 有个渲染⇄源码开关」。
-  const toolbar = active ? contentKindOf(active.kind)?.toolbar?.(active) : null
   /*
-   * **单叶政策**(W6-a,设计 §2.1 / §9):中央区不画「分屏 ▸」那四项 ——
-   * 那里一条标签条,一个标签最多两格,而那件事由下面「二合一 / 拆开」三项说。
+   * **单叶政策**(W6-a,设计 §2.1 / §9):中央区不画「分屏 ▸」——
+   * 那里一条标签条,一个标签最多两格,而那件事由「二合一 / 拆开」三项说。
    * 架子与浮窗照旧(设计 §12:那两处的分屏能力不删)。
    *
    * 判据问的是**这个区域收不收成一条标签条**(`SINGLE_LEAF_REGIONS`),不是
@@ -140,8 +152,8 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   const canSplit = leaf.tabs.length > 1
   /*
    * ── 二合一 / 拆开的键盘等价(W6-a,设计 §7 那张表)────────────────────────
-   * 与「左移 / 右移」「移到架子 ▸」逐字同一条纪律:菜单项调的是**拖拽落定同一只
-   * 动作**(`store.pairRefs` / `store.unpairAt`),两条路走两个动作迟早分叉。
+   * 与「移到架子 ▸」逐字同一条纪律:菜单项调的是**拖拽落定同一只动作**
+   * (`drop-commit.pairIntoIndex` / `.unpairTab`),两条路走两个动作迟早分叉。
    *
    * 判据一个种类名都不点:「这一格是不是已经两格了」问的是**种类自述**
    * (`partsOfContent`),不是 `active.kind === 'pair'`。
@@ -152,21 +164,13 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
     = !isPair
       && leaf.active < leaf.tabs.length - 1
       && partsOfContent(leaf.tabs[leaf.active + 1]) === null
-  /*
-   * 换序的两端:第一格没有「左移」、末格没有「右移」。**禁灰而不消失**
-   * (与分屏四项同一条):这张菜单的形状不该随上下文变。
-   */
-  const canMoveLeft = leaf.active > 0
-  const canMoveRight = leaf.active < leaf.tabs.length - 1
 
   return (
     <div className={s.actions} data-testid="leaf-actions" data-pane-actions={leaf.id}>
-      {toolbar && <span className={s.tool}>{toolbar}</span>}
       {/*
         「够不着的标签 ⋯」。**两节都空就不画**:一颗永远按不动的钮是纯噪音,
         而「有没有够不着的东西」本身就是这一组的一格 UI 生命状态。
-        `testId` 保持 `pane-hidden:` 那一族 —— 这颗钮的职责只是长了一节,
-        取件口跟着**它是哪颗钮**走,不跟着它此刻列几节走。
+        W7-c 之后它是这一组**唯一**一颗钮 —— 顶栏右端的两件之一。
       */}
       {(hidden.length > 0 || offscreen.length > 0) && (
         <IconButton
@@ -180,16 +184,6 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
           }}
         />
       )}
-      <IconButton
-        icon={Columns2}
-        size="xs"
-        label={t('workbench.split')}
-        testId={`pane-split:${leaf.id}`}
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect()
-          openMenu(leaf.id, rect.left, rect.bottom)
-        }}
-      />
 
       {reachAt && (
         <Menu x={reachAt.x} y={reachAt.y} onClose={() => setReachAt(null)} label={t('workbench.reachTabs')}>
@@ -198,8 +192,6 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
             选一格 = 激活它 **+ 滚进视野**。滚那一下由标签条自己做
             (`TabsOverflow.reveal`)—— 同一个 refId 可以在两片叶里各开一格,
             外面按 id 现查 DOM 分不出该滚哪一条。
-            激活那一下就够让它进视野的场合(条自己那口 `scrollIntoView` 挂在
-            activeId 上)`reveal` 是幂等的,所以两句都发不会打架。
           */}
           {offscreen.length > 0 && (
             <>
@@ -254,48 +246,21 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
 
       {menuAt && (
         /*
-         * **无障碍名是「标签动作」,不是「分屏」**(W6-c):这张表里今天装着二合一 /
-         * 拆开 / 左移右移 / 移到架子 / 撕成浮窗,中央区连分屏四项都不画了。
-         * 读屏软件念出来的那个名字必须说得出这张表**是什么**,而不是它最早那一项
-         * 叫什么 —— 屏幕上那颗钮的提示不动(它仍旧只是这张表的一个开口)。
+         * **无障碍名是「标签动作」,不是「分屏」**(W6-c):这张表里装着二合一 /
+         * 拆开 / 移到架子 / 撕成浮窗 / 关闭,中央区连分屏都不画。读屏软件念出来的
+         * 那个名字必须说得出这张表**是什么**。
+         *
+         * ── 六项(W7-c 裁定 3)────────────────────────────────────────────
+         *   与右边的标签二合一 / 与左边的标签二合一 / 拆开(**只在两格标签上出现**)
+         *   / 撕成浮窗 / 移到架子 ▸ / 关闭
+         * 架子叶与浮窗叶多一节「分屏 ▸」,再多宿主自己那几项。
          */
         <Menu x={menuAt.x} y={menuAt.y} onClose={closeMenu} label={t('workbench.tabActions')}>
-          {/*
-            **分屏四项只在多叶区域画**(W6-a):中央区收成一条标签条之后,
-            那四项在那里根本没有落点 —— 一颗永远做不成的动作比禁灰更糟
-            (禁灰说的是「此刻不行」,而这里是「这个区域里不存在这件事」)。
-          */}
-          {!singleLeaf && (
-            <>
-              <MenuSection>{t('workbench.split')}</MenuSection>
-              {SPLIT_CHOICES.map((choice) => (
-                <MenuItem
-                  key={choice.id}
-                  /*
-                   * **禁灰而不消失**:只有一格 tab 时切不动(切出去原叶就空了),
-                   * 但这张菜单的形状不该随上下文变。
-                   */
-                  disabled={!canSplit}
-                  onClick={() => {
-                    splitLeaf(leaf.id, choice.dir, undefined, choice.before)
-                    closeMenu()
-                  }}
-                >
-                  <span className={s.menuLine}>
-                    <choice.Icon className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
-                    <span className={s.menuMain}>{t(choice.labelKey)}</span>
-                  </span>
-                </MenuItem>
-              ))}
-            </>
-          )}
-
           {/*
             **二合一 / 拆开**(W6-a,设计 §7)。三项作用在**这一格活动 tab** 上,
             调的是拖拽落定同一只动作。播报一句(与换序那一句同一条纪律:
             播报是**落定**的一部分)。
           */}
-          <MenuSection>{t('workbench.pair')}</MenuSection>
           <MenuItem
             disabled={!canPairRight}
             onClick={() => {
@@ -324,83 +289,35 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
               <span className={s.menuMain}>{t('workbench.pairLeft')}</span>
             </span>
           </MenuItem>
-          <MenuItem
-            disabled={!isPair}
-            onClick={() => {
-              if (!isPair) return
-              /* **同一只拆开动作**(W6-c):格头上那颗「拆开」走的也是它,播报那一句
-               * 在它里面 —— 修前这里自己念一句,而格头那颗一声不吭。 */
-              unpairTab(leaf.id, leaf.active)
-              closeMenu()
-            }}
-          >
-            <span className={s.menuLine}>
-              <Unlink className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
-              <span className={s.menuMain}>{t('workbench.unpair')}</span>
-            </span>
-          </MenuItem>
-
           {/*
-            **拖拽的键盘等价**(W3 裁定 9)。两组都作用在**这一格活动 tab** 上,
-            调的是拖拽落定那同一只 `dropRef` —— 所以「移到右侧」在菜单里与拖过去
-            结果逐字相同,包括架子展开、位置记忆与落定后的焦点跟随。
-            没有活动 tab(空叶,屏幕上停不到一帧)时整组禁灰而不消失。
+            **「拆开」只在两格标签上出现**(W7-c 裁定 3)。W6-a 时它是禁灰的一行,
+            理由是「这张菜单的形状不该随上下文变」;用户 09-05 说「菜单太多」,
+            而这一项与那条纪律恰好是两回事 —— 禁灰说的是「此刻做不了」,普通标签上
+            「拆开」**没有对象**,那与「分屏在中央区不画」是同一句话。
           */}
-          {/*
-            **条内换序的键盘等价**(W3-b 裁定 8)。`at` 是对着**本来那张表**的下标:
-            往左 = 插到前一格之前(`active - 1`);往右 = 插到后一格**之后**,
-            也就是 `active + 2` —— 落点说的是「第 at 格之前」,而 `active + 1`
-            指的正是自己后面那一格的**前面**(= 原地不动)。那格 +2 不是魔法数,
-            是这个坐标系的定义;`reorderTab` 里挡的两种「原地不动」写法
-            (`at === from` 与 `at === from + 1`)说的是同一件事。
-          */}
-          <MenuSeparator />
-          <MenuItem
-            disabled={!canMoveLeft}
-            onClick={() => {
-              if (!canMoveLeft) return
-              reorderTab(leaf.id, leaf.active, leaf.active - 1)
-              closeMenu()
-            }}
-          >
-            <span className={s.menuLine}>
-              <ChevronLeft className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
-              <span className={s.menuMain}>{t('drag.moveLeft')}</span>
-            </span>
-          </MenuItem>
-          <MenuItem
-            disabled={!canMoveRight}
-            onClick={() => {
-              if (!canMoveRight) return
-              reorderTab(leaf.id, leaf.active, leaf.active + 2)
-              closeMenu()
-            }}
-          >
-            <span className={s.menuLine}>
-              <ChevronRight className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
-              <span className={s.menuMain}>{t('drag.moveRight')}</span>
-            </span>
-          </MenuItem>
-
-          <MenuSeparator />
-          <MenuSection>{t('drag.menuMoveTo')}</MenuSection>
-          {EDGE_CHOICES.map((choice) => (
+          {isPair && (
             <MenuItem
-              key={choice.side}
-              disabled={!active}
               onClick={() => {
-                if (!active) return
-                dropRef(active, { kind: 'edge', side: choice.side })
-                announce(t('drag.movedToEdge', { side: t(choice.sideKey) }))
+                /* **同一只拆开动作**(W6-c):格缝中点那颗把手走的也是它,播报那一句
+                 * 在它里面 —— 修前这里自己念一句,而那颗把手一声不吭。 */
+                unpairTab(leaf.id, leaf.active)
                 closeMenu()
               }}
             >
               <span className={s.menuLine}>
-                <choice.Icon className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
-                <span className={s.menuMain}>{t(choice.labelKey)}</span>
+                <Unlink className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+                <span className={s.menuMain}>{t('workbench.unpair')}</span>
               </span>
             </MenuItem>
-          ))}
+          )}
+
+          {/*
+            **撕成浮窗 / 移到架子 ▸**(W3 裁定 9)。两组都作用在**这一格活动 tab**
+            上,调的是拖拽落定那同一只 `dropRef` —— 所以「移到右侧栏」在菜单里与
+            拖过去结果逐字相同,包括架子展开、位置记忆与落定后的焦点跟随。
+            没有活动 tab(空叶,屏幕上停不到一帧)时整组禁灰而不消失。
+          */}
+          <MenuSeparator />
           <MenuItem
             disabled={!active}
             onClick={() => {
@@ -415,33 +332,101 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
               <span className={s.menuMain}>{t('drag.menuTearOff')}</span>
             </span>
           </MenuItem>
+          {/*
+            四条边折成一格子菜单(W7-c):八行平铺是「菜单太多」的一半。
+            折叠那件事本身是库件(`ui/Menu` 的 `Submenu`),这里只交出**表**。
+          */}
+          <Submenu label={t('drag.menuMoveTo')} disabled={!active}>
+            {EDGE_CHOICES.map((choice) => (
+              <MenuItem
+                key={choice.side}
+                onClick={() => {
+                  if (!active) return
+                  dropRef(active, { kind: 'edge', side: choice.side })
+                  announce(t('drag.movedToEdge', { side: t(choice.sideKey) }))
+                  closeMenu()
+                }}
+              >
+                <span className={s.menuLine}>
+                  <span className={s.menuMain}>{t(choice.shelfKey)}</span>
+                </span>
+              </MenuItem>
+            ))}
+          </Submenu>
+
+          {/*
+            **分屏 ▸ 只在多叶区域画**(W6-a / W7-c):中央区收成一条标签条之后,
+            那四项在那里根本没有落点 —— 一颗永远做不成的动作比禁灰更糟。
+          */}
+          {!singleLeaf && (
+            <Submenu label={t('workbench.split')} disabled={!canSplit}>
+              {SPLIT_CHOICES.map((choice) => (
+                <MenuItem
+                  key={choice.id}
+                  onClick={() => {
+                    splitLeaf(leaf.id, choice.dir, undefined, choice.before)
+                    closeMenu()
+                  }}
+                >
+                  <span className={s.menuLine}>
+                    <choice.Icon className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+                    <span className={s.menuMain}>{t(choice.labelKey)}</span>
+                  </span>
+                </MenuItem>
+              ))}
+            </Submenu>
+          )}
+
+          {/*
+            **关闭这一格**(W7-c 裁定 3 的第六项)。它走的是与 tab 上那颗 ✕、
+            与 `⌘W` **同一只** `useCloseLeafTab` —— 那一口自己会先问种类
+            (`beforeClose`,脏文件那一问)、自己会在关不掉时播报。
+          */}
+          <MenuSeparator />
+          <MenuItem
+            disabled={!active}
+            onClick={() => {
+              if (!active) return
+              void closeAt(leaf.active)
+              closeMenu()
+            }}
+          >
+            <span className={s.menuLine}>
+              <X className={s.menuIcon} strokeWidth={1.75} aria-hidden="true" />
+              <span className={s.menuMain}>{t('workbench.tabClose')}</span>
+            </span>
+          </MenuItem>
+
+          {/*
+            **宿主自己那几项**(W7-c 裁定 4)。架子交「弹出为浮窗 / 关闭整栏」,
+            浮窗交「钉到边 ▸ / 上舞台」—— 它们从檐上的钮搬进来,调的仍是同一只
+            store 动作。这只组件一个宿主名都不认识:宿主自述,它只挂。
+          */}
+          {hostMenuRows}
         </Menu>
       )}
     </div>
   )
 }
 
-/* W6-b:`nameOf` 退役 —— 「与谁并排」那句话随播报一起搬进了
- * `drop-commit.pairIntoIndex`(拖拽 /「放到标签上」/ 菜单三条路的唯一产地),
- * 而它在那儿读的是**活的**标题(`live-title` 盖静的),比这里更准。 */
-
 /**
  * 「移到架子」四边。**一张表**,与 `SPLIT_CHOICES` 同一条纪律 —— 四条边不是
- * 四段 onClick。`sideKey` 单列一格是因为播报那句话要的是「右侧」这个名词,
- * 而菜单项上写的是「移到右侧」这个动词短语:同一件事的两种说法,各有各的键。
+ * 四段 onClick。三格键各有各的用处:`shelfKey` 是**菜单里那一行**(W7-c 起子菜单
+ * 里写的是宾语「右侧栏」,父行那句动词「移到架子」写在 `Submenu` 上,合起来读成
+ * 一句完整的话);`sideKey` 是**播报**里那个名词(「已移到右侧」)。
+ * 图标那一格随平铺一起退役了 —— 子菜单里四行同一个方向族,四枚双箭头只是噪音。
  */
 const EDGE_CHOICES: readonly {
   side: ShelfSide
-  Icon: typeof ChevronsLeft
-  labelKey: MessageKey
+  shelfKey: MessageKey
   sideKey: MessageKey
 }[] = [
-  /* 图标复用**架子那一族**的四向双箭头(`EdgeShelf` 的收 / 展用的就是它们):
-   * 同一个方向词汇在两处说的是同一件事,不新造一套。 */
-  { side: 'left', Icon: ChevronsLeft, labelKey: 'drag.toEdgeLeft', sideKey: 'drag.sideLeft' },
-  { side: 'right', Icon: ChevronsRight, labelKey: 'drag.toEdgeRight', sideKey: 'drag.sideRight' },
-  { side: 'top', Icon: ChevronsUp, labelKey: 'drag.toEdgeTop', sideKey: 'drag.sideTop' },
-  { side: 'bottom', Icon: ChevronsDown, labelKey: 'drag.toEdgeBottom', sideKey: 'drag.sideBottom' },
+  /* 架子那四个名字复用 `shelf.label*`(「左侧栏」…)—— 同一件东西在檐上、在
+   * 播报里、在这张表里说的是同一个词,i18n 那条「同一句话不该有第二个键」。 */
+  { side: 'left', shelfKey: 'shelf.labelLeft', sideKey: 'drag.sideLeft' },
+  { side: 'right', shelfKey: 'shelf.labelRight', sideKey: 'drag.sideRight' },
+  { side: 'top', shelfKey: 'shelf.labelTop', sideKey: 'drag.sideTop' },
+  { side: 'bottom', shelfKey: 'shelf.labelBottom', sideKey: 'drag.sideBottom' },
 ]
 
 /** 分屏四向。**一张表**,不是四个 onClick 各写一遍。 */

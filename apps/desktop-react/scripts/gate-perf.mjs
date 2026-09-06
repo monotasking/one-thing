@@ -803,19 +803,28 @@ async function measureSessionSwitch(page, sessionId, marker, index) {
 async function measurePairSplit(page, kind, index) {
   const opened = await page.evaluate(() => {
     /*
-     * 点名**中央那片叶**的动作组,不是「屏幕上第一颗」:中央区的动作组坐在窗口顶栏
-     * 里(W1-b),而浮窗 / 架子里的叶各有各的一份 —— 拿第一颗会随屏幕上还开着什么变。
+     * **右键那一格活动标签**(W7-c 裁定 2:「分屏」那颗钮删了,这张表只剩右键与
+     * `Shift+F10` 两个开口)。点名**顶栏那条条**上的那一格,不是「屏幕上第一格」:
+     * 中央区的标签坐在窗口顶栏里(W1-b),而浮窗 / 架子里的叶各有各的一条 ——
+     * 拿第一格会随屏幕上还开着什么变。
      */
-    const leaf = document.querySelector('[data-pane-region="center"] [data-pane-leaf]')
-    const id = leaf?.getAttribute('data-pane-leaf')
-    const btn = id
-      ? document.querySelector(`[data-testid="pane-split:${id}"]`)
-      : document.querySelector('[data-testid^="pane-split:"]')
-    if (!(btn instanceof HTMLElement)) return false
-    btn.click()
+    const tabs = Array.from(
+      document.querySelectorAll('[data-testid="topbar-tabs"] [role="tablist"] [role="tab"]'),
+    )
+    const active = tabs.find(el => el.getAttribute('aria-selected') === 'true') ?? tabs[0]
+    if (!(active instanceof HTMLElement)) return false
+    const box = active.getBoundingClientRect()
+    active.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: Math.round(box.left + box.width / 2),
+        clientY: Math.round(box.top + box.height / 2),
+      }),
+    )
     return true
   })
-  if (!opened) throw new Error('中央那片叶的动作组不在屏幕上 —— ⑤b 的现场没搭起来')
+  if (!opened) throw new Error('顶栏上没有中央那片叶的标签 —— ⑤b 的现场没搭起来')
   await delay(200)
   const ms = await page.evaluate(
     async ({ k, i }) => {

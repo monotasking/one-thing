@@ -19,7 +19,8 @@ import type { MessageKey } from '../i18n'
 import type { PaneHostChrome } from '../workbench/PaneLeaf'
 import { ButtonBase } from '../ui/ButtonBase'
 import { IconButton } from '../ui/IconButton'
-import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp, PictureInPicture2, X } from './icons'
+import { MenuItem, MenuSection, MenuSeparator } from '../ui/Menu'
+import { ChevronsDown, ChevronsLeft, ChevronsRight, ChevronsUp } from './icons'
 import type { LucideIcon } from './icons'
 import { FLASH_MS } from './motion'
 import type { ShelfSide, Viewport } from '../stage/types'
@@ -120,7 +121,8 @@ interface Props {
  * ── 状态表 ③:UI 交互状态 ───────────────────────────────────────────────
  *   厚度把手   不可见热区,hover 一层薄膜(`--st-hover`)
  *   细梁       整条可点,hover 一层薄膜 + 箭头转正色
- *   三颗钮     随 `ui/IconButton`(本地只剩落点几何:与 tab 同高、直角、下轨)
+ *   那一颗钮   随 `ui/IconButton`(本地只剩落点几何:与 tab 同高、直角、下轨);
+ *              另两件(弹出 / 关整栏)W7-c 进了叶菜单,右键檐上的空白处开
  *   tab / ✕ / 分屏 / ⋯   随 `LeafStrip` 与 `PaneLeaf`(这一层不重画)
  */
 export function EdgeShelf({ side }: Props) {
@@ -254,30 +256,40 @@ export function EdgeShelf({ side }: Props) {
    */
   const ownerId = activeItemId ?? side
 
+  /**
+   * **檐上只剩一颗「收起」**(W7-c 裁定 4;用户 09-05「按钮太多」)。
+   *
+   * 「弹出为浮窗」与「关闭整栏」搬进了**这片叶的动作菜单**(`menuRows`)。判据是
+   * 那条本仓判例的字面兑现(CLAUDE.md「动作单产地=右键上下文菜单」):一条架子
+   * 能做的事收进一张表,檐上只留**最顺手的那一件**。留下的是「收起」而不是别的
+   * 两件,因为它是三件里**唯一可逆、唯一高频**的一件 —— 关整栏会把架子上的瓦全
+   * 收回 Dock(有后果的写操作,与 `keymap/types.ts` 那条「不该被盲按的键直接触发」
+   * 同一条纪律),弹成浮窗是一次搬家。
+   *
+   * 两行菜单项调的是**与从前那两颗钮同一只** store 动作(`edgeToFloat` /
+   * `closeShelf`)—— parity 测试逐项钉着这一条。
+   */
   const host = useMemo<PaneHostChrome>(
     () => ({
       actions: (
+        <IconButton
+          icon={COLLAPSE_ICON[side]}
+          className={s.collapse}
+          onClick={toggleCollapsed}
+          label={t('shelf.collapse', { name })}
+        />
+      ),
+      menuRows: (
         <>
-          {/* 檐上三颗图标钮全部消费 `ui/IconButton`(09-01 立法)。本地只剩
-            * **落点几何**:与 tab 同高的 36×36 与下轨(`.collapse`)。 */}
-          <IconButton
-            icon={PictureInPicture2}
-            className={s.collapse}
+          <MenuSeparator />
+          <MenuSection>{name}</MenuSection>
+          <MenuItem
+            disabled={activeItemId === null}
             onClick={() => activeItemId && edgeToFloat(activeItemId)}
-            label={t('shelf.popOut', { name })}
-          />
-          <IconButton
-            icon={COLLAPSE_ICON[side]}
-            className={s.collapse}
-            onClick={toggleCollapsed}
-            label={t('shelf.collapse', { name })}
-          />
-          <IconButton
-            icon={X}
-            className={s.collapse}
-            onClick={() => closeShelf(side)}
-            label={t('shelf.closeAll', { name })}
-          />
+          >
+            {t('shelf.popOut', { name })}
+          </MenuItem>
+          <MenuItem onClick={() => closeShelf(side)}>{t('shelf.closeAll', { name })}</MenuItem>
         </>
       ),
     }),

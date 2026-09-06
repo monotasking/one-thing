@@ -1,20 +1,17 @@
 import { memo, useCallback, useMemo, useRef } from 'react'
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { FocusScope } from '../focus/FocusScope'
 import { useT } from '../i18n'
 import { refId } from './kinds'
 import { LeafActions } from './LeafActions'
-import { openLeafMenuAtPointer } from './leaf-menu'
+import { openLeafMenuAt } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
-import { useLeafGeometry } from './leaf-geometry'
 import { useReportOverflow } from './leaf-overflow'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
-import { spanWVar, spanXVar, topStrips } from './layout'
+import { topStrips } from './layout'
 import { CENTER_REGION } from './regions'
 import { focusLeafOf, useWorkbenchStore } from './store'
 import { useTabDrag } from './useTabDrag'
 import { findLeaf } from './tree'
-import type { TopStripSlot } from './layout'
 import type { PaneLeafNode } from './tree'
 import s from './TopBarTabs.module.css'
 
@@ -30,8 +27,8 @@ import s from './TopBarTabs.module.css'
  * ① **DOM 必须留在 `.bar` 子树里,不许 portal**(坑 ①,08 月拖拽区判例)。
  *    `-webkit-app-region: no-drag` 只在 drag 元素**同一分支的子孙**上才生效;
  *    portal 到 body 之后那句声明**静默失效** —— 屏幕上一模一样,点标签变成拖窗,
- *    没有任何报错。所以位置靠 CSS 变量(`leaf-geometry.ts` 量、`calc()` 读),
- *    DOM 一步都不离开顶栏。
+ *    没有任何报错。所以标签组 **DOM 一步都不离开顶栏** —— W7-c 之前它靠两格 CSS
+ *    变量把自己摆到叶的正上方(而不是 portal 过去),今天它连摆都不必摆了。
  *
  * ② **焦点归属靠 `FocusScope` 的 `owner`,不靠 DOM 位置**。顶栏上的标签**属于它
  *    所代表的那片叶的作用域**(设计 §2.2 原话)。响应链按活动路径判、不按 DOM
@@ -42,23 +39,28 @@ import s from './TopBarTabs.module.css'
  *    `inert`,所以「叶 inert 时它的标签一并不可达」那一句还没有落点;W4 架子 /
  *    浮窗进来时再谈。
  *
- * ③ **几何是算出来的,一帧不经过 React**。每一组的左右界读两格 CSS 变量;拖分隔杆
- *    时 `ui/Splitter` 把活值写进树根那格比例变量 → 叶的盒变 → `ResizeObserver`
- *    重写这两格 → 标签组跟着挪,整条链上没有一次 setState。
+ * ③ **标签从顶栏自己的开头排**(W7-c 裁定 1)。W1-b 到 W6 之间它不是这样:每一组
+ *    精确坐在**它那片叶的正上方**,左右界读两格 CSS 变量,由 `leaf-geometry.ts` 在
+ *    真实排版之后量出来。那条规则的前提是「中央区可能有好几片叶」,而 v3 把中央区
+ *    收成**一条标签条**之后它没有对象了 —— 屏幕上只有一组,「对准哪片叶」是一句
+ *    没有内容的话。它同时是 `gate:perf` ⑤a 第 4 次强制排版的来源(W6-p 留账:
+ *    `useLeafGeometry` 的每渲染重量,2.1ms / 11 个元素)。
+ *    今天:红绿灯让位右边就是第一格,组是带子里的普通 flex 项。`leaf-geometry.ts`
+ *    与 `spanXVar` / `spanWVar` / `data-pane-span` 整条随之删除 —— 零消费者。
  */
 
 /**
  * 顶栏上那条**标签带**:中央区每片叶一组,各坐各叶的正上方。
  *
  * ── 三张状态表 ──────────────────────────────────────────────────────────
- * ① 生命周期:挂载 = 顶栏挂载(恒有);**叶分屏 / 合并 / 架子收展时几何重算** ——
- *    分屏与合并改的是 `topStrips` 那张表(React 重渲、组的 key = 叶 id 所以留下来
- *    的组不重挂),架子收展与拖杆改的只是叶的盒(`ResizeObserver`,零渲染);
- *    卸载 = 整台壳卸载(带子把写过的几何变量逐格抹掉)。
- * ② UI 生命状态:**单叶**(一组,退化成一条身份带 = 今天的会话标题,左对齐,
- *    零视觉回退)/ **多叶**(多组,各坐各的;上下切分横向重叠时按序平分)/
+ * ① 生命周期:挂载 = 顶栏挂载(恒有);**叶分屏 / 合并**改的是 `topStrips` 那张表
+ *    (React 重渲、组的 key = 叶 id,所以留下来的组不重挂);架子收展与拖杆
+ *    **一次渲染都不引**(W7-c 起组不再量叶的跨度);卸载 = 整台壳卸载。
+ * ② UI 生命状态:**单叶**(一组,今天恒是这一形 —— 中央区收成一条标签条)/
+ *    **多叶**(多组按序铺开;这一形今天在中央区不成立,留着是因为这只组件读的是
+ *    `topStrips` 那张表,而不是「中央区只有一片叶」这句话)/
  *    **窄档溢出**(组内先按 `--tab-max-w` 收窄,再由 `ui/Tabs` 自己横滚;
- *    **永不换行、永不挤掉右端动作组** —— 后者靠「组是绝对定位、带子止于尾格左缘」
+ *    **永不换行、永不挤掉右端两件** —— 后者靠「带子是 flex 项、止于尾格左缘」
  *    在结构上保证,不靠算)。
  * ③ UI 交互状态:**焦点组**亮(活动标签吃满 `--pane-face`,与下面那片叶连成一块)/
  *    **非焦点组只降活动标签的字色、不降底色**(W3-b 裁定 2:`--tab-joined-ink`
@@ -73,18 +75,13 @@ export function TopBarLeafTabs() {
   const bandRef = useRef<HTMLDivElement>(null)
 
   const slots = useMemo(() => (tree ? topStrips(tree) : []), [tree])
-  /*
-   * 要量哪几个节点的跨度。**去重**:上下切分那一形里两组共用同一个 `spanId`,
-   * 量两遍是白量(而且会让 `ResizeObserver` 对同一个元素 observe 两次)。
-   */
-  const spanIds = useMemo(() => [...new Set(slots.map((slot) => slot.spanId))], [slots])
-  useLeafGeometry(bandRef, spanIds)
 
   return (
     /*
-     * 带子是顶栏里的一格 **flex 项**,吃掉让位与尾格之间的全部剩余宽度。
-     * 于是「标签永不挤掉右端动作组」这句话由**布局**保证:组是它的绝对定位子孙,
-     * 越不过它的右缘;而它的右缘就是尾格的左缘。
+     * 带子是顶栏里的一格 **flex 项**,吃掉让位与尾格之间的全部剩余宽度;组是它的
+     * 普通 flex 子项,**从它的左缘起排**(W7-c 裁定 1)。于是「标签永不挤掉右端
+     * 那两件」这句话仍旧由**布局**保证:组越不过带子的右缘,而它的右缘就是尾格的
+     * 左缘 —— 变的只是组从哪儿开始,不是它到哪儿为止。
      */
     <div
       ref={bandRef}
@@ -101,7 +98,6 @@ export function TopBarLeafTabs() {
             // key = 叶 id:分屏 / 关叶时留下来的那几组**不重挂**(零重挂断言)。
             key={leaf.id}
             leaf={leaf}
-            slot={slot}
             focused={focusLeafId === leaf.id}
           />
         )
@@ -117,11 +113,9 @@ export function TopBarLeafTabs() {
  */
 const LeafTabGroup = memo(function LeafTabGroup({
   leaf,
-  slot,
   focused,
 }: {
   leaf: PaneLeafNode
-  slot: TopStripSlot
   focused: boolean
 }) {
   const t = useT()
@@ -165,7 +159,8 @@ const LeafTabGroup = memo(function LeafTabGroup({
   const onTabPointerDown = useTabDrag(leaf)
 
   /*
-   * **右键一格标签 = 这片叶的动作表**(W6-c,设计 v3 §7)。
+   * **右键 / Shift+F10 一格标签 = 这片叶的动作表**(W6-c 立;W7-c 起它是**唯一**
+   * 的开口 —— 那颗「分屏」钮删掉了,判词写在 `LeafActions` 上)。
    *
    * 中央区这一档是这条路非有不可的理由:标签条(这只组件)与那张表
    * (`TopBarLeafActions`,顶栏尾格)在 `TopBar` 里是**两兄弟**,谁也够不着谁的
@@ -173,10 +168,9 @@ const LeafTabGroup = memo(function LeafTabGroup({
    * 上面那句 `onPointerDownCapture` 已经把焦点叶指过来了(右键的 pointerdown 一样派得出),
    * 所以尾格此刻画的正是这片叶的表。
    */
-  const onTabContextMenu = useCallback(
-    (_id: string, e: ReactMouseEvent<HTMLElement>) => {
-      e.preventDefault()
-      openLeafMenuAtPointer(leaf.id, e)
+  const onTabMenu = useCallback(
+    (_id: string, at: { x: number; y: number }) => {
+      openLeafMenuAt(leaf.id, at)
     },
     [leaf.id],
   )
@@ -207,17 +201,6 @@ const LeafTabGroup = memo(function LeafTabGroup({
         <div
           {...scopeProps}
           className={s.group}
-          style={
-            {
-              /*
-               * 这一组的跨度:整段宽度按序平分(上下切分横向重叠时 `count > 1`)。
-               * 两个数都是**结构**给的,所以它们只在树的形状变了之后才换;像素那一半
-               * 住在两格 CSS 变量里,由 `leaf-geometry.ts` 写,拖杆时不经过 React。
-               */
-              '--tabgrp-x': `calc(var(${spanXVar(slot.spanId)}, 0px) + var(${spanWVar(slot.spanId)}, 0px) * ${slot.index} / ${slot.count})`,
-              '--tabgrp-w': `calc(var(${spanWVar(slot.spanId)}, 0px) / ${slot.count})`,
-            } as CSSProperties
-          }
           data-topbar-leaf={leaf.id}
           data-pane-focus={focused || undefined}
           /*
@@ -241,7 +224,7 @@ const LeafTabGroup = memo(function LeafTabGroup({
             onSelect={onSelect}
             onClose={onClose}
             onTabPointerDown={onTabPointerDown}
-            onTabContextMenu={onTabContextMenu}
+            onTabMenu={onTabMenu}
             onOverflow={onOverflow}
           />
         </div>

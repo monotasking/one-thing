@@ -9,7 +9,8 @@ import { useT } from '../i18n'
 import type { TFn } from '../i18n'
 import { revealKey, revealMutation, useFilesSource } from '../data/files-source'
 import { viewerKindOfPath } from '../data/viewer-kinds'
-import { useViewerSource } from '../data/viewer-source'
+import { resolveViewerByKind } from './viewer/registry'
+import { useViewerInstance, useViewerSource } from '../data/viewer-source'
 import {
   FILE_OPEN_MODES,
   FILE_OPEN_MODE_LABELS,
@@ -129,6 +130,22 @@ export function FileActionsMenu({
     : null
   /** 这一份在树里的坐标(叶 + 下标)。答不出 = 它不在树里(没开 / 在分栏里 / 藏着)。 */
   const seat = file ? seatOf(regions, target.path) : null
+  /*
+   * **这一型自述的那几档看法**(W7-c)。判据只问**型**,不问这份文件读进来没有
+   * ——树行上右键那一路手上一个字节都没有,而「markdown 有两档看法」在那时就成立
+   * (判词写在 `resolveViewerByKind` 上)。没有 `viewModes` 的型整节不画。
+   */
+  const viewModes = (() => {
+    if (!file) return null
+    const handler = resolveViewerByKind(viewerKindOfPath(target.path))
+    if (!handler?.viewModes || !handler.viewModesLabelKey) return null
+    return { modes: handler.viewModes, labelKey: handler.viewModesLabelKey }
+  })()
+  /*
+   * 那一格勾读的是**这一份实例此刻的 view**。它是订阅(勾要跟着切换动),
+   * 而 `setView` 那一下走 `getState()`(动作,不是要渲染的值)。
+   */
+  const viewNow = useViewerInstance(target.path).view
   const openLabel = file
     ? t('files.menuOpen')
     : t(target.expanded ? 'files.menuCollapse' : 'files.menuExpand')
@@ -243,6 +260,37 @@ export function FileActionsMenu({
               <span className={s.menuMain}>{t('files.menuOpenBelow')}</span>
             </span>
           </MenuItem>
+        </>
+      )}
+
+      {/*
+        * ── 「视图」:这一型自己那组互斥的看法(W7-c 裁定 2)────────────────
+        * markdown 的「渲染 / 源码」从前是叶檐动作组上一件 `Segmented`
+        * (`ContentKind.toolbar` → `FileViewerToolbar`)。用户 09-05 说「按钮太多」,
+        * 顶栏的内容工具条槽位整格删掉,这一组跟着搬进**这张表** —— 一个文件能做
+        * 什么全仓只有一张表(09-01 判例),看法也是这个文件能做的事之一。
+        *
+        * 这里**一个型名都不出现**:有哪几档由那一型自述(`ViewerHandler.viewModes`),
+        * 没有 `viewModes` 的型整节不画。第二种型要加两档看法,只改它自己那一行。
+        */}
+      {file && viewModes && (
+        <>
+          <MenuSeparator />
+          <MenuSection>{t(viewModes.labelKey)}</MenuSection>
+          {viewModes.modes.map((mode2) => (
+            <MenuItem
+              key={mode2.id}
+              checked={mode2.on(viewNow)}
+              onClick={() => {
+                useViewerSource.getState().setView(target.path, mode2.patch)
+                onClose()
+              }}
+            >
+              <span className={s.menuLine}>
+                <span className={s.menuMain}>{t(mode2.labelKey)}</span>
+              </span>
+            </MenuItem>
+          ))}
         </>
       )}
 

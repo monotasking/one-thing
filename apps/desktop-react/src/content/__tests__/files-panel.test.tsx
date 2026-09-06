@@ -10,7 +10,8 @@ import type { FilesPort } from '../../data/files-port'
 import { FILES_ROW_H, useFilesSource } from '../../data/files-source'
 import { useViewerSource } from '../../data/viewer-source'
 import { ViewerCloseHost } from '../viewer/close-hub'
-import { useFileOpenMode } from '../../data/file-open-mode'
+import { FILE_OPEN_MODES, FILE_OPEN_MODE_LABELS, useFileOpenMode } from '../../data/file-open-mode'
+import { t } from '../../i18n'
 import { sessionMutation, useSessionsSource } from '../../data/sessions-source'
 import { configureSessionsPort } from '../../data/sessions-port'
 import { useExposeStore } from '../../expose/store'
@@ -21,6 +22,7 @@ import { FOCUS_SCOPES } from '../../focus/scopes'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { useWorkbenchStore } from '../../workbench/store'
+import { focusIntoScopeOf } from '../../workbench/kinds'
 import { leavesOf, refIdsOf } from '../../workbench/tree'
 import '../kinds'
 
@@ -837,13 +839,29 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual(byContext)
   })
 
+  /**
+   * **「打开方式」那七格单选**(W7-c 起它前面还站着「视图」那两格)。
+   * markdown 那一型自述了两档看法,而两组在无障碍树上是同一个角色 ——
+   * 这一口按 `FILE_OPEN_MODE_LABELS` 的文案认人,所以将来再多一节也不受影响。
+   */
+  function openModeOptions() {
+    const labels = new Set(FILE_OPEN_MODES.map((m) => t(FILE_OPEN_MODE_LABELS[m])))
+    return screen.getAllByRole('menuitemradio').filter((el) => labels.has(el.textContent ?? ''))
+  }
+
   it('「打开方式」七档全在,勾在当下那一档,选了就记住', async () => {
     installPort()
     renderFiles()
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
 
-    const options = screen.getAllByRole('menuitemradio')
+    /*
+     * **前两格是「视图」那一节**(W7-c 裁定 2:markdown 的「渲染 / 源码」从叶檐的
+     * 工具条搬进了这张表)。它们与「打开方式」同样是**一组值里选一个**,所以同样
+     * 报 `menuitemradio` —— 这一条问的是打开方式那七档,所以先把视图那两格切掉。
+     * `openModeOptions` 是这个切法的唯一产地,免得两条用例各数一次。
+     */
+    const options = openModeOptions()
     expect(options).toHaveLength(7)
     expect(options.map((el) => el.getAttribute('aria-checked'))).toEqual([
       'true',
@@ -872,7 +890,7 @@ describe('行菜单:行尾 ⋯ 与右键是同一张表', () => {
     await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
     await openMenu(`${ROOT}/README.md`)
 
-    const options = screen.getAllByRole('menuitemradio')
+    const options = openModeOptions()
     expect(options).toHaveLength(7)
     expect(options.filter((el) => el.hasAttribute('disabled'))).toHaveLength(0)
     expect(screen.queryAllByText('架子与浮窗的标签下一批')).toHaveLength(0)
@@ -1064,6 +1082,39 @@ describe('详情:附属浮层(不是打断式对话框)', () => {
     expect(node?.keys.slice().sort()).toEqual([
       ...new Set(FOCUS_SCOPES.files.keys?.map((k) => k.action) ?? []),
     ].sort())
+  })
+
+  /**
+   * **被召唤时焦点落在一行上,不是落在根上**(W7-c 裁定 6,结清 W7-p 的留账
+   * 「目录面板召唤后焦点不进去」)。
+   *
+   * 病历:这块面从前不声明 `restingTarget`,落点就是作用域的根 —— 根确实接得住
+   * 焦点(`tabIndex={-1}`),但**进去之后一个键都不响**:树的方向键长在行上
+   * (那些行是真 `<button>`),⌘I / ⌘↵ 那两条局部键要一格选中的行。用户看到的
+   * 就是「面开出来了,键盘还在别处」。
+   *
+   * 反证:把 `FilesPanel` 那句 `restingTarget` 拆掉 → 焦点落在 `files-panel` 上,
+   * 这一条当场红。
+   */
+  it('W7-c:`activateScope("files")` 把焦点送到**一行**上,不是送到面板根上', async () => {
+    installPort()
+    renderFiles()
+    await waitFor(() => expect(screen.getByText('README.md')).toBeTruthy())
+    act(() => {
+      focusTree.activateScope('files', { reason: 'open' })
+    })
+    const active = document.activeElement as HTMLElement | null
+    expect(active?.getAttribute('data-file-path'), '落在一行上').toBeTruthy()
+    expect(active?.closest('[data-testid="files-panel"]'), '而且那一行在这块面里').toBeTruthy()
+  })
+
+  /**
+   * **「进这一格 = 进哪块面」由种类自述**(与会话那一种同一条:`ContentKind.focusInto`)。
+   * 不声明的话 `focusIntoRef` 只能退回 `leaf` 那一层,能不能穿到这块面里要看那一刻
+   * 它登记好了没有。反证:把 `files-root` 那格 `focusInto` 删掉 → 这一条当场红。
+   */
+  it('W7-c:`files-root` 自述 focusInto = files', () => {
+    expect(focusIntoScopeOf(filesRootRef('/x'))).toBe('files')
   })
 
   it('一行都没拿焦点时 ⌘I **不接** —— 交不出处理器,这一下原样落给全局命令表', async () => {

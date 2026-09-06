@@ -696,6 +696,8 @@ export const en: Record<MessageKey, string> = {
   'workbench.centerEmptyNew': 'New session',
   /* Two panes in one tab (W6-a). */
   'workbench.pair': 'Two panes',
+  /* Close this tab (W7-c ruling 3, the sixth entry) — the same thing the tab's ✕ and ⌘W do. */
+  'workbench.tabClose': 'Close',
   'workbench.pairRight': 'Join with the tab on the right',
   'workbench.pairLeft': 'Join with the tab on the left',
   'workbench.unpair': 'Split apart',
@@ -719,8 +721,9 @@ export const en: Record<MessageKey, string> = {
   'drag.movedIntoLeaf': 'Merged into {name}',
   'drag.movedToFloat': 'Torn off into a window',
   'drag.menuMoveTo': 'Move to shelf',
-  'drag.moveLeft': 'Move left',
-  'drag.moveRight': 'Move right',
+  /* W3-b ruling 8; W7-c moved these out of the menu and into the global command table. */
+  'keymap.moveTabLeft': 'Move tab left',
+  'keymap.moveTabRight': 'Move tab right',
   'drag.reordered': 'Moved to position {at} of {total}',
   'drag.menuTearOff': 'Tear off into a window',
   /* W6-b: the one line under the ghost — the only text that appears while dragging. */

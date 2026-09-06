@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { LeafActions } from '../LeafActions'
-import { dropRef, unpairTab } from '../drop-commit'
+import { dropRef, reorderTab, unpairTab } from '../drop-commit'
+import { openLeafMenuAt } from '../leaf-menu'
 import { CENTER_REGION, edgeRegion } from '../regions'
 import { registerContentKind, refId, resetContentKinds } from '../kinds'
 import { useWorkbenchStore } from '../store'
@@ -11,6 +12,7 @@ import { pairContentKind } from '../../content/kinds/pair'
 import { DEFAULT_PANEL_VISIBILITY } from '../../content/visibility'
 import { pairRefOf } from '../../content/kinds/pair-ref'
 import { findLeaf, makeLeaf, refIdsOf } from '../tree'
+import { leafCount } from '../layout'
 import type { ContentRef } from '../kinds'
 import type { PaneLeafNode } from '../tree'
 
@@ -29,6 +31,50 @@ import type { PaneLeafNode } from '../tree'
 
 const A: ContentRef = { kind: 'parity-a', key: 'a' }
 const B: ContentRef = { kind: 'parity-b', key: 'b' }
+
+/**
+ * **开这片叶的动作表**(W7-c)。
+ *
+ * 从前这里按的是檐右端那颗「分屏」钮(`pane-split:<叶 id>`);裁定 2 把它删了 ——
+ * 一张作用在某一格标签上的表,它的产地本来就该是那一格的右键菜单,留一颗钮等于
+ * 同一张表有两个入口,而其中一个还写着它第一项的名字。
+ *
+ * 用例里没有真的标签条(它只渲染 `LeafActions` 一件),所以走**那个唯一的产地**:
+ * `workbench/leaf-menu` 那一格 store。真机上右键 / Shift+F10 / 右键檐上的空白
+ * 三条路调的都是它 —— 这一句因此不是「测试专用后门」,是那三条路的同一句话。
+ */
+function openLeafMenu(leafId: string): void {
+  act(() => {
+    openLeafMenuAt(leafId, { x: 10, y: 10 })
+  })
+}
+
+/** 菜单里那一项(按文案认人,与本文件既有那几条正则同一体例)。 */
+function menuItem(re: RegExp): HTMLElement {
+  const hit = screen.getAllByRole('menuitem').find((el) => re.test((el.textContent ?? '').trim()))
+  expect(hit, `菜单里有 ${re}`).toBeTruthy()
+  return hit as HTMLElement
+}
+
+/** 点一项。 */
+function clickItem(re: RegExp): void {
+  act(() => {
+    fireEvent.click(menuItem(re))
+  })
+}
+
+/** 展开一格子菜单,再点它里面那一项。 */
+function clickSubItem(parent: RegExp, child: RegExp): void {
+  clickItem(parent)
+  const sub = screen.getAllByRole('menu').at(-1) as HTMLElement
+  const hit = Array.from(sub.querySelectorAll('[role="menuitem"]')).find((el) =>
+    child.test((el.textContent ?? '').trim()),
+  )
+  expect(hit, `子菜单里有 ${child}`).toBeTruthy()
+  act(() => {
+    fireEvent.click(hit as HTMLElement)
+  })
+}
 
 function seedKinds(): void {
   resetContentKinds()
@@ -92,6 +138,15 @@ function snapshot() {
  */
 const UNPAIRED = t('workbench.unpaired')
 
+/** 「移到架子 ▸」那四行。名字取自字典 —— 与檐上、与播报说的是同一个词。 */
+const SHELF_SIDES = ['left', 'right', 'top', 'bottom'] as const
+const SHELF_LABEL: Record<(typeof SHELF_SIDES)[number], RegExp> = {
+  left: new RegExp(`^${t('shelf.labelLeft')}$`),
+  right: new RegExp(`^${t('shelf.labelRight')}$`),
+  top: new RegExp(`^${t('shelf.labelTop')}$`),
+  bottom: new RegExp(`^${t('shelf.labelBottom')}$`),
+}
+
 beforeEach(() => {
   // 播报那一拍要推得动(`announce` 是 `setTimeout(…, 0)` 的先清后写)。
   vi.useFakeTimers()
@@ -107,47 +162,37 @@ afterEach(() => {
 })
 
 describe('叶动作组菜单 = 拖拽落定,同一个事务', () => {
-  it('「移到右侧」与 dropRef(edge:right) 交出同一棵树', () => {
+  /*
+   * **「移到架子 ▸」四边全在,每一边都与拖过去同一只动作**(W7-c 裁定 3 起它是
+   * 一格子菜单:四行平铺是「菜单太多」的一半)。四条各跑一遍,不是只跑「右侧」——
+   * 「每个落点都能从菜单到达」是**可数的**,而一张按表生成的菜单最可能的错法是
+   * 那张表少一行。
+   */
+  it.each(SHELF_SIDES)('「移到架子 ▸ %s」与 dropRef(edge) 交出同一棵树', (side) => {
     // ① 菜单那条路。
     const leaf = seed()
     render(<LeafActions leaf={leaf} />)
-    act(() => {
-      fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
-    })
-    const item = screen
-      .getAllByRole('menuitem')
-      .find((el) => /移到右侧|Move to the right/.test(el.textContent ?? ''))
-    expect(item, '菜单里有「移到右侧」那一项(裁定 9:每个落点都能从菜单到达)').toBeTruthy()
-    act(() => {
-      fireEvent.click(item as HTMLElement)
-    })
+    openLeafMenu(leaf.id)
+    clickSubItem(/^移到架子|^Move to shelf/, SHELF_LABEL[side])
     const viaMenu = snapshot()
 
     // ② 拖拽落定那条路(同一份出厂树、同一个落点)。
     act(() => {
       seed()
-      dropRef(A, { kind: 'edge', side: 'right' })
+      dropRef(A, { kind: 'edge', side })
     })
     const viaDrag = snapshot()
 
     expect(viaMenu).toBe(viaDrag)
     // 顺带钉住「它真的搬过去了」——两边都空转的话上面那一句也会绿。
-    expect(JSON.parse(viaDrag).regions[edgeRegion('right')]).toEqual([refId(A)])
+    expect(JSON.parse(viaDrag).regions[edgeRegion(side)]).toEqual([refId(A)])
   })
 
   it('「撕成浮窗」与 dropRef(float) 交出同一棵树', () => {
     const leaf = seed()
     render(<LeafActions leaf={leaf} />)
-    act(() => {
-      fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
-    })
-    const item = screen
-      .getAllByRole('menuitem')
-      .find((el) => /撕成浮窗|Tear off/.test(el.textContent ?? ''))
-    expect(item, '菜单里有「撕成浮窗」那一项').toBeTruthy()
-    act(() => {
-      fireEvent.click(item as HTMLElement)
-    })
+    openLeafMenu(leaf.id)
+    clickItem(/撕成浮窗|Tear off/)
     const menuFloats = Object.keys(useWorkbenchStore.getState().regions).filter((r) =>
       r.startsWith('float:'),
     )
@@ -214,8 +259,29 @@ function leafNow(id: string): PaneLeafNode {
  * 反证:把 `LeafActions` 的「左移」改成自己拼一次 `moveRefIntoLeaf`,
  * 第二条断言当场红(那条路会把它插到末位)。
  */
-describe('条内换序:菜单与拖拽是同一个动作', () => {
-  it('拖着换序与菜单「左移」换出同一棵树', () => {
+/**
+ * **条内换序:键盘命令与拖拽是同一个动作**(W3-b 裁定 8 立;W7-c 换了主人)。
+ *
+ * W7-c 把「左移一位 / 右移一位」从标签动作表里删掉了(裁定 3:换序靠拖拽),
+ * 键盘那条路升格成两条**全局命令**(`workbench.moveTabLeft` / `Right`)。
+ * 这一组守的那件事一个字没变 —— **两条路必须调同一只 `reorderTab`** ——
+ * 变的只是平局的一边:从「菜单里那一项」换成「派发器跑那条命令」。
+ *
+ * 反证:把 `keymap/dispatch` 里那一段换成自己拼一次 `moveRefIntoLeaf`,
+ * 第二条断言当场红(那条路会把它插到末位)。
+ */
+describe('条内换序:键盘命令与拖拽是同一个动作', () => {
+  /** 派发器那条路真正跑的那一句(`keymap/dispatch` 里的 `step` 与这里同源)。 */
+  function runMoveCommand(step: -1 | 2): void {
+    const st = useWorkbenchStore.getState()
+    const leaf = findLeaf(st.regions[CENTER_REGION], 'leaf-reorder')
+    if (!leaf) throw new Error('没有这片叶')
+    act(() => {
+      reorderTab(leaf.id, leaf.active, leaf.active + step)
+    })
+  }
+
+  it('拖着换序与命令「标签左移一位」换出同一棵树', () => {
     // ① 拖拽那条路:把第 2 格拖到第 1 位。
     seedTwo()
     act(() => {
@@ -224,22 +290,37 @@ describe('条内换序:菜单与拖拽是同一个动作', () => {
     const viaDrag = leafNow('leaf-reorder')
     expect(viaDrag.tabs.map(refId), '序真的换了').toEqual([refId(B), refId(A)])
 
-    // ② 菜单那条路(左移),同一份出厂树 —— 两条路必须是同一个动作。
+    // ② 键盘命令那条路,同一份出厂树。
+    seedTwo()
+    runMoveCommand(-1)
+    const viaKey = leafNow('leaf-reorder')
+    expect(viaKey.tabs.map(refId)).toEqual(viaDrag.tabs.map(refId))
+    expect(viaKey.active).toBe(viaDrag.active)
+  })
+
+  it('命令「标签右移一位」= 插到后一格之后(那格 +2 是坐标系的定义,不是魔法数)', () => {
+    const leaf = makeLeaf('leaf-reorder', [A, B], 0)
+    useWorkbenchStore.setState({
+      regions: { [CENTER_REGION]: leaf },
+      hidden: [],
+      focusLeafId: leaf.id,
+      dragging: false,
+    })
+    runMoveCommand(2)
+    expect(leafNow('leaf-reorder').tabs.map(refId)).toEqual([refId(B), refId(A)])
+  })
+
+  /**
+   * **那张表里不许再长出这两行**(W7-c 裁定 3)。它守的不是「少两行好看」——
+   * 是「同一件事只有一个产地」:换序既然升格成了全局命令,菜单里再摆一份就等于
+   * 那件事有了两个落点,而两个落点迟早分叉。
+   */
+  it('标签动作表里没有「左移 / 右移」', () => {
     const leaf = seedTwo()
     render(<LeafActions leaf={leaf} />)
-    act(() => {
-      fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
-    })
-    const item = screen
-      .getAllByRole('menuitem')
-      .find((el) => /左移一位|Move left/.test(el.textContent ?? ''))
-    expect(item, '菜单里有「左移」那一项').toBeTruthy()
-    act(() => {
-      fireEvent.click(item as HTMLElement)
-    })
-    const viaMenu = leafNow('leaf-reorder')
-    expect(viaMenu.tabs.map(refId)).toEqual(viaDrag.tabs.map(refId))
-    expect(viaMenu.active).toBe(viaDrag.active)
+    openLeafMenu(leaf.id)
+    const texts = screen.getAllByRole('menuitem').map((el) => (el.textContent ?? '').trim())
+    expect(texts.filter((x) => /左移|右移|Move tab/.test(x))).toEqual([])
   })
 })
 
@@ -285,16 +366,8 @@ describe('二合一:菜单与拖拽是同一个动作', () => {
       dragging: false,
     })
     render(<LeafActions leaf={leaf} />)
-    act(() => {
-      fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
-    })
-    const item = screen
-      .getAllByRole('menuitem')
-      .find((el) => /与右边的标签二合一|Join with the tab on the right/.test(el.textContent ?? ''))
-    expect(item, '菜单里有「与右边的标签二合一」那一项').toBeTruthy()
-    act(() => {
-      fireEvent.click(item as HTMLElement)
-    })
+    openLeafMenu(leaf.id)
+    clickItem(/与右边的标签二合一|Join with the tab on the right/)
     expect(snapshot()).toBe(viaDrag)
   })
 })
@@ -334,16 +407,8 @@ describe('拆开:菜单与格头按钮是同一个动作', () => {
     // ② 菜单那条路。
     const leaf = seedPaired()
     render(<LeafActions leaf={leaf} />)
-    act(() => {
-      fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
-    })
-    const item = screen
-      .getAllByRole('menuitem')
-      .find((el) => /^(拆开|Split apart)$/.test((el.textContent ?? '').trim()))
-    expect(item, '菜单里有「拆开」那一项').toBeTruthy()
-    act(() => {
-      fireEvent.click(item as HTMLElement)
-    })
+    openLeafMenu(leaf.id)
+    clickItem(/^(拆开|Split apart)$/)
     expect(snapshot()).toBe(viaButton)
   })
 
@@ -371,15 +436,8 @@ describe('拆开:菜单与格头按钮是同一个动作', () => {
     clearLive()
     const leaf = seedPaired()
     render(<LeafActions leaf={leaf} />)
-    act(() => {
-      fireEvent.click(screen.getByTestId(`pane-split:${leaf.id}`))
-    })
-    const item = screen
-      .getAllByRole('menuitem')
-      .find((el) => /^(拆开|Split apart)$/.test((el.textContent ?? '').trim()))
-    act(() => {
-      fireEvent.click(item as HTMLElement)
-    })
+    openLeafMenu(leaf.id)
+    clickItem(/^(拆开|Split apart)$/)
     expect(liveText()).toBe(UNPAIRED)
   })
 
@@ -397,5 +455,121 @@ describe('拆开:菜单与格头按钮是同一个动作', () => {
     })
     expect(snapshot()).toBe(before)
     expect(liveText()).toBe('')
+  })
+})
+
+/**
+ * **「关闭」走的是 `useCloseLeafTab`,不是一句 `store.closeTab`**(W7-c 裁定 3 的
+ * 第六项)。
+ *
+ * 平局的两边是「菜单那一项」与「tab 上那颗 ✕ / ⌘W」——三条路共用那一只 hook,
+ * 而它自己会先问种类(`beforeClose`,脏文件那一问)、会在关不掉时播报。
+ * 判据因此不是「树少了一格」(那句话一句 `closeTab` 也能满足),而是
+ * **那一问真的被问了**:装一种 `beforeClose` 答 `'cancel'` 的内容,点「关闭」
+ * 之后树一个字都不许动。反证:把菜单那一项换成 `store().closeTab(...)`,
+ * 第一条当场红(它会绕过那一问直接关掉)。
+ */
+describe('关闭:菜单那一项与 ✕ / ⌘W 是同一只', () => {
+  function seedAsking(answer: 'close' | 'cancel'): PaneLeafNode {
+    resetContentKinds()
+    registerContentKind({
+      id: 'parity-ask',
+      singleton: false,
+      title: (ref) => ({ text: ref.key }),
+      icon: () => 'File',
+      render: () => null,
+      beforeClose: () => Promise.resolve(answer),
+    })
+    registerContentKind(pairContentKind)
+    const ref: ContentRef = { kind: 'parity-ask', key: 'q' }
+    const leaf = makeLeaf('leaf-close', [ref, { ...ref, key: 'q2' }], 0)
+    useWorkbenchStore.setState({
+      regions: { [CENTER_REGION]: leaf },
+      hidden: [],
+      focusLeafId: leaf.id,
+      dragging: false,
+    })
+    return leaf
+  }
+
+  it('种类答 cancel 时点「关闭」什么都不发生(那一问真的被问了)', async () => {
+    const leaf = seedAsking('cancel')
+    render(<LeafActions leaf={leaf} />)
+    openLeafMenu(leaf.id)
+    clickItem(/^(关闭|Close)$/)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    expect(refIdsOf(useWorkbenchStore.getState().regions[CENTER_REGION])).toHaveLength(2)
+  })
+
+  it('种类答 close 时那一格真的关掉', async () => {
+    const leaf = seedAsking('close')
+    render(<LeafActions leaf={leaf} />)
+    openLeafMenu(leaf.id)
+    clickItem(/^(关闭|Close)$/)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10)
+    })
+    expect(refIdsOf(useWorkbenchStore.getState().regions[CENTER_REGION])).toHaveLength(1)
+  })
+})
+
+/**
+ * **「分屏 ▸」四向:菜单与 `store.splitLeaf` 是同一只**,而且**只在多叶区域画**
+ * (W6-a / W7-c)。中央区收成一条标签条之后那四项在那里没有落点 ——
+ * 一颗永远做不成的动作比禁灰更糟(禁灰说的是「此刻不行」,而那里是「这个区域里
+ * 不存在这件事」)。所以这一组两件都守:架子叶上四向全在且都真分得开,
+ * 中央叶上整节不画。
+ */
+describe('分屏 ▸:只在多叶区域,四向各与 splitLeaf 平局', () => {
+  const SPLITS = [
+    { label: /^(在右侧|To the right)$/, dir: 'row', before: false },
+    { label: /^(在左侧|To the left)$/, dir: 'row', before: true },
+    { label: /^(在下方|Below)$/, dir: 'col', before: false },
+    { label: /^(在上方|Above)$/, dir: 'col', before: true },
+  ] as const
+
+  /** 架子上一片叶两格(分屏要两格才切得动)。 */
+  function seedOnShelf(): PaneLeafNode {
+    const leaf = makeLeaf('leaf-shelf', [A, B], 0)
+    useWorkbenchStore.setState({
+      regions: { [edgeRegion('right')]: leaf },
+      hidden: [],
+      focusLeafId: leaf.id,
+      dragging: false,
+    })
+    return leaf
+  }
+
+  it.each(SPLITS)('架子叶:「分屏 ▸ $dir/$before」与 splitLeaf 交出同一棵树', (choice) => {
+    // ① 菜单那条路。
+    const leaf = seedOnShelf()
+    render(<LeafActions leaf={leaf} />)
+    openLeafMenu(leaf.id)
+    clickSubItem(/^(分屏|Split)$/, choice.label)
+    const viaMenu = JSON.stringify(
+      refIdsOf(useWorkbenchStore.getState().regions[edgeRegion('right')]),
+    )
+    const shapeMenu = leafCount(useWorkbenchStore.getState().regions[edgeRegion('right')])
+
+    // ② store 那条路(拖拽落定与它同源;分屏没有拖拽手势,产地就是这一只)。
+    seedOnShelf()
+    act(() => {
+      useWorkbenchStore.getState().splitLeaf('leaf-shelf', choice.dir, undefined, choice.before)
+    })
+    expect(viaMenu).toBe(
+      JSON.stringify(refIdsOf(useWorkbenchStore.getState().regions[edgeRegion('right')])),
+    )
+    expect(shapeMenu).toBe(leafCount(useWorkbenchStore.getState().regions[edgeRegion('right')]))
+    expect(shapeMenu, '真的切成了两片').toBe(2)
+  })
+
+  it('中央叶上整节不画(单叶政策)', () => {
+    const leaf = seedTwo()
+    render(<LeafActions leaf={leaf} />)
+    openLeafMenu(leaf.id)
+    const texts = screen.getAllByRole('menuitem').map((el) => (el.textContent ?? '').trim())
+    expect(texts.filter((x) => /^(分屏|Split)$/.test(x))).toEqual([])
   })
 })

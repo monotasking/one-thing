@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, X } from '../components/icons'
 import { StatusDot } from './StatusDot'
 import { Tooltip } from './Tooltip'
@@ -97,7 +97,7 @@ export interface TabSpec {
  *
  * 溢出是**标签条自己的形**(它是那个横滚容器,谁在视野里只有它量得出),
  * 所以产地在这里;而「拿这份名单画一张表」是宿主的语法(拼贴台把它并进叶动作组
- * 那一颗 ⋯)。两件事分开的判据与 `onTabPointerDown` / `onTabContextMenu` 逐字
+ * 那一颗 ⋯)。两件事分开的判据与 `onTabPointerDown` / `onTabMenu` 逐字
  * 同源:`ui/Tabs` 只交出事实,不认识菜单。
  */
 export interface TabsOverflow {
@@ -179,15 +179,25 @@ interface TabsProps {
    */
   onTabPointerDown?: (id: string, e: ReactPointerEvent<HTMLElement>) => void
   /**
-   * **右键一格 tab 意味着什么**(W6-c)。与 `onTabPointerDown` 逐字同一条纪律:
-   * Tabs 自己不认识「动作菜单」这回事,它只把右键这一下连同 id 递出去,开什么表
-   * 是宿主的语法。不接就是不接 —— 没给这个 prop 时右键落到浏览器 / 宿主的缺省
-   * 上下文菜单上,与从前逐字相同。
+   * **「给这一格开上下文菜单」这一句请求**(W6-c 立;W7-c 收成一格「点」)。
+   *
+   * 与 `onTabPointerDown` 逐字同一条纪律:Tabs 自己不认识「动作菜单」这回事,
+   * 它只把请求连同 id 与**开在哪一点**递出去,开什么表是宿主的语法。不接就是
+   * 不接 —— 没给这个 prop 时右键落到浏览器 / 宿主的缺省上下文菜单上。
+   *
+   * **两个来源,一口出去**(W7-c):右键那一下(点 = 光标)与键盘 `Shift+F10` /
+   * 上下文菜单键(点 = 这一格的左下角)。「点从哪儿来」只有条自己答得出 ——
+   * 它手上有那一格的矩形 —— 所以量点的活留在这里,交出去的是**结果**。
+   * 递事件的话键盘那条路就得伪造一发 MouseEvent,那是把「谁该量」答错了。
+   *
+   * 键盘那一路是**删掉那颗钮之后唯一的键盘入口**(W7-c 裁定 3):动作表从此只有
+   * 右键与这两个键两个开口,而 `Shift+F10` 是 Windows / GTK / macOS 读屏软件通行
+   * 的「开上下文菜单」键,不是这台壳自造的。
    *
    * 它与 `useDragSource` 那句 `if (e.button !== 0) return`「右键要留给上下文菜单」
    * 是同一条判例的两半:那边让开,这边接住。
    */
-  onTabContextMenu?: (id: string, e: ReactMouseEvent<HTMLElement>) => void
+  onTabMenu?: (id: string, at: { x: number; y: number }) => void
   /**
    * **条上此刻有几格没露全**(W7-t / B1)。给了就在名单**真的变了**的时候叫一次
    * (滚动 / 改尺寸 / 换了几格都会重量);不接就是不接 —— 不给这个 prop 时这只
@@ -206,7 +216,7 @@ export function Tabs({
   onSelect,
   onClose,
   onTabPointerDown,
-  onTabContextMenu,
+  onTabMenu,
   onOverflow,
   look = 'line',
   label,
@@ -342,10 +352,30 @@ export function Tabs({
               if (closable && (e.key === 'Delete' || e.key === 'Backspace')) {
                 e.preventDefault()
                 onClose(tab.id)
+                return
+              }
+              /*
+               * **键盘开上下文菜单**(W7-c)。`ContextMenu` 是那颗菜单键自己的
+               * `KeyboardEvent.key`;`Shift+F10` 是没有那颗键的键盘上的通行等价。
+               * 点取**这一格的左下角** —— 与右键开在光标处是同一句话的两种量法,
+               * 而键盘没有光标,菜单只能贴着它作用的那个东西开。
+               */
+              if (onTabMenu && (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) {
+                e.preventDefault()
+                const box = e.currentTarget.getBoundingClientRect()
+                onTabMenu(tab.id, { x: Math.round(box.left), y: Math.round(box.bottom) })
               }
             }}
             onPointerDown={onTabPointerDown ? (e) => onTabPointerDown(tab.id, e) : undefined}
-            onContextMenu={onTabContextMenu ? (e) => onTabContextMenu(tab.id, e) : undefined}
+            onContextMenu={
+              onTabMenu
+                ? (e) => {
+                    // 挡掉宿主自己的上下文菜单 —— 两张菜单同时开是这类接管的经典漏法。
+                    e.preventDefault()
+                    onTabMenu(tab.id, { x: e.clientX, y: e.clientY })
+                  }
+                : undefined
+            }
           >
             <span className={s.main}>
               {Icon && <Icon className={s.icon} strokeWidth={1.75} aria-hidden="true" />}

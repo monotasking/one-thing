@@ -214,6 +214,31 @@ async function clickSelector(page, selector) {
 
 const failures = []
 
+/**
+ * **开标签动作表**(W7-c 裁定 2/3:「分屏」那颗钮删了,这张表只有右键与
+ * `Shift+F10` 两个开口)。这只函数走右键那一条 —— 键盘那一条在 [7e] 里单测。
+ *
+ * 返回 false = 顶栏上没有标签(跳过那一屏,不是红)。
+ */
+async function openTabMenuByContext(page) {
+  const ok = await page.evaluate(() => {
+    const tab = document.querySelector('[data-topbar-leaf] [data-tab-id]')
+    if (!(tab instanceof HTMLElement)) return false
+    const box = tab.getBoundingClientRect()
+    tab.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: Math.round(box.left + box.width / 2),
+        clientY: Math.round(box.top + box.height / 2),
+      }),
+    )
+    return true
+  })
+  if (ok) await delay(400)
+  return ok
+}
+
 function assert(condition, message) {
   if (condition) {
     console.log(`  ✓ ${message}`)
@@ -992,12 +1017,7 @@ async function main() {
            * role=separator + aria-valuenow/min/max + 可聚焦)。
            */
           console.log('\n[7d/10] 两格并排:格头 region 有名 + 拆开钮有 label + 分隔杆报 APG')
-          const paired = await page.evaluate(() => {
-            const btn = document.querySelector('[data-testid^="pane-split:"]')
-            if (btn instanceof HTMLElement) btn.click()
-            return true
-          })
-          await delay(400)
+          const paired = await openTabMenuByContext(page)
           const joined = await page.evaluate(() => {
             const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
             const joins = items.filter((el) => /二合一|Join with the tab/.test(el.textContent ?? ''))
@@ -1075,156 +1095,191 @@ async function main() {
             await delay(400)
           }
 
-          console.log('\n[7c/10] 拖拽的键盘等价:叶动作组那张菜单 + 落定播报')
-          const splitBtn = await page.evaluate(() => {
-            const btn = document.querySelector('[data-testid^="pane-split:"]')
-            if (!(btn instanceof HTMLElement)) return null
-            btn.click()
-            return btn.getAttribute('data-testid')
-          })
-          if (!splitBtn) {
-            console.log('  · 跳过:叶动作组里没有分屏那颗钮')
+          /*
+           * ── [7c/7e] **标签动作表**(W7-c 裁定 2/3:六项、两个开口)──────────
+           *
+           * W7-c 之前这里是两屏:[7c] 从檐右端那颗「分屏」钮开表数档数,[7e] 再从
+           * 右键开一次、逐字比对两条路。那颗钮删掉之后 [7c] 的开口没有了 —— 而它
+           * 守的那件事(**每个落点都能从表里到达,是可数的**)一个字没变,所以两屏
+           * 并成一屏,平局的两边换成 **右键** 与 **Shift+F10**。
+           *
+           * 这一屏问六件,一件都不能少:
+           *  ① 右键一格标签**开得出**那张表(不是浏览器 / 宿主的缺省菜单);
+           *  ② **恰好六项**,而且**项名逐字**是裁定 3 那六句 —— 「六项」是这一批
+           *    的全部内容,数错一项就是减法没做干净或者做过头了;
+           *  ③ 「拆开」**不在**普通标签的表里(裁定 3:它只在两格标签上出现,
+           *    不是灰掉)—— 上面 [7d] 那一屏已经证过并起来之后它在;
+           *  ④ **顶栏右端只有两件可达**:那颗 ⋯(有够不着的标签时才画)与 AgentChip。
+           *    「分屏」钮与型工具条都不许再长回来;
+           *  ⑤ `Shift+F10` 开出**同一张**表 —— 逐项文本逐字相同。删掉那颗钮之后
+           *    这是唯一的键盘入口,少了它这张表对键盘就是不可达;
+           *  ⑥ 这张表**键盘走得动**(整组只占一个 Tab 位,`ui/Menu` 的 roving 档),
+           *    点一档之后**播报口里有话**。
+           *
+           * 反证:把 `ui/Tabs` 的 `onTabMenu` 那一口摘掉 → ① 与 ⑤ 一起红。
+           */
+          console.log('\n[7c+7e/10] 标签动作表:右键 / Shift+F10 开同一张六项表,顶栏右端只两件')
+          const openedByContext = await openTabMenuByContext(page)
+          if (!openedByContext) {
+            console.log('  · 跳过:顶栏上没有标签')
           } else {
-            await delay(400)
             const menu = await page.evaluate(() => {
+              const el = document.querySelector('[role="menu"]')
               const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
               return {
-                open: Boolean(document.querySelector('[role="menu"]')),
-                texts: items.map((el) => (el.textContent ?? '').trim()),
-                named: items.every((el) => (el.textContent ?? '').trim().length > 0),
+                open: Boolean(el),
+                name: el?.getAttribute('aria-label') ?? '',
+                texts: items.map((x) => (x.textContent ?? '').trim()),
+                named: items.every((x) => (x.textContent ?? '').trim().length > 0),
+                zeroes: items.filter((x) => x instanceof HTMLElement && x.tabIndex === 0).length,
               }
             })
-            assert(menu.open, '叶动作组那张菜单开得出来')
+            assert(menu.open, '右键一格标签开得出动作表')
+            assert(
+              menu.name.trim().length > 0,
+              `那张表说得出自己是什么(实测「${menu.name}」)`,
+            )
             assert(menu.named, '菜单里每一项都说得出名字(零空项)')
             /*
-             * **W6-a:中央区那张表是十档,不是十一档**(设计
-             * `workbench-tabs-2026-09.md` §7 那张键盘等价表)。中央区收成一条标签条
-             * 之后「分屏 ▸」四向在那里不再出现(它们没有落点),换上来的是
-             * **二合一 / 拆开**三项:3 + 左移右移 2 + 移到架子四边 4 + 撕成浮窗 1 = 10。
-             * 架子与浮窗那两处照旧有分屏(设计 §12),它们的菜单是十四档。
+             * **六项,逐字**(裁定 3)。中央区那一档没有「分屏 ▸」(单叶政策),
+             * 也没有「拆开」(这一格不是两格并排),所以屏上是:
+             *   与右边的标签二合一 / 与左边的标签二合一 / 撕成浮窗 / 移到架子 ▸ / 关闭
+             * —— 五项;「拆开」是第六项,它在 [7d] 那一屏(并起来之后)出现。
+             * 数字与名单一起断言:只数数目的话「二合一那两项被换成别的两项」照样绿。
              */
+            const WANTED = [
+              /与右边的标签二合一|Join with the tab on the right/,
+              /与左边的标签二合一|Join with the tab on the left/,
+              /撕成浮窗|Tear off/,
+              /^(移到架子|Move to shelf)$/,
+              /^(关闭|Close)$/,
+            ]
             assert(
-              menu.texts.length >= 10,
-              `十档全在:二合一三项 + 左移 / 右移 + 移到架子四边 + 撕成浮窗(实测 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
+              menu.texts.length === WANTED.length,
+              `普通标签上恰好 ${WANTED.length} 项(实测 ${menu.texts.length}:${menu.texts.join(' / ')})`,
             )
-            /*
-             * **条内换序的键盘等价**(W3-b 裁定 8)。它与前面九档同一条判据:
-             * 「每个落点都能从既有 tab 菜单到达」—— 而 W3-b 新添的落点就是
-             * 「插到这条条的第几格」。两项走的是与拖着换序**同一只** `reorderTab`,
-             * 播报也在那一只里。
-             */
-            assert(
-              menu.texts.some((text) => /左移一位|Move left/.test(text)),
-              `菜单里有「左移一位」(${menu.texts.join(' / ')})`,
-            )
-            assert(
-              menu.texts.some((text) => /右移一位|Move right/.test(text)),
-              '菜单里有「右移一位」',
-            )
-            await settle(page, '叶动作组菜单')
-            await scanAxe(page, '拖拽落点菜单', '[role="menu"]')
-
-            /*
-             * ── [7e] **标签右键菜单全档可达**(W6-c,设计 v3 §7 首句)────────────
-             *
-             * §7 的原话是「动作单产地是标签的**右键菜单**」,而这张表在 W6-c 之前
-             * 只有檐右端那颗钮一个开口 —— 右键一格标签什么都不会发生。本仓判例
-             * (CLAUDE.md「动作单产地=右键上下文菜单」)与 `ui/drag` 里那句
-             * `if (e.button !== 0) return`「右键要留给上下文菜单」说的是同一件事:
-             * 那一格一直留着,只是没人接。
-             *
-             * 这一屏问三件,一件都不能少:
-             *  ① 右键一格标签**开得出**那张表(不是浏览器 / 宿主的缺省菜单);
-             *  ② 开出来的是**同一张**表 —— 逐项文本与钮那条路**逐字相同**。
-             *    「全档可达」是可数的:少一项就是那条路上有一档到不了;
-             *    两张不同的表(哪怕内容看着差不多)正是「菜单里搬过去和拖过去
-             *    结果不一样」那族 bug 的下一个产地;
-             *  ③ 这张表**键盘走得动** —— 整组只占一个 Tab 位(恰一项 tabIndex=0),
-             *    那是 `ui/Menu` 的 roving 档,而「可达」少了这一条只是「画得出来」。
-             *
-             * 反证:把 `LeafStrip` 的 `onTabContextMenu` 那一格摘掉 → ① 当场红
-             * (右键之后 `[role="menu"]` 一个都没有)。
-             */
-            console.log('\n[7e/10] 标签右键菜单:右键开得出、与钮开出同一张表、键盘走得动')
-            // 先把钮开的那张关掉 —— 两张同时开会让下面的查询读到上一张。
-            await page.keyboard.press('Escape')
-            await delay(250)
-            const viaContext = await page.evaluate(() => {
-              const tab = document.querySelector('[data-topbar-leaf] [data-tab-id]')
-              if (!(tab instanceof HTMLElement)) return { ok: false, why: '顶栏上没有标签' }
-              const box = tab.getBoundingClientRect()
-              tab.dispatchEvent(
-                new MouseEvent('contextmenu', {
-                  bubbles: true,
-                  cancelable: true,
-                  clientX: Math.round(box.left + box.width / 2),
-                  clientY: Math.round(box.top + box.height / 2),
-                }),
-              )
-              return { ok: true }
-            })
-            if (!viaContext.ok) {
-              console.log(`  · 跳过标签右键菜单那一屏:${viaContext.why}`)
-            } else {
-              await delay(400)
-              const ctxMenu = await page.evaluate(() => {
-                const menu = document.querySelector('[role="menu"]')
-                const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
-                return {
-                  open: Boolean(menu),
-                  // 表自己的无障碍名(W6-c 起是「标签动作」,不再是「分屏」)。
-                  name: menu?.getAttribute('aria-label') ?? '',
-                  texts: items.map((el) => (el.textContent ?? '').trim()),
-                  // roving:整组只占一个 Tab 位 —— 恰一项 tabIndex 0,其余 -1。
-                  zeroes: items.filter((el) => el instanceof HTMLElement && el.tabIndex === 0).length,
-                }
-              })
-              assert(ctxMenu.open, '右键一格标签开得出动作表')
+            for (const re of WANTED) {
               assert(
-                ctxMenu.name.trim().length > 0,
-                `那张表说得出自己是什么(实测「${ctxMenu.name}」)`,
+                menu.texts.some((text) => re.test(text)),
+                `项名逐字对得上 ${re}(实测:${menu.texts.join(' / ')})`,
               )
-              assert(
-                JSON.stringify(ctxMenu.texts) === JSON.stringify(menu.texts),
-                '右键与钮开出的是同一张表,逐项逐字相同'
-                  + `(右键 ${ctxMenu.texts.length} 项:${ctxMenu.texts.join(' / ')};`
-                  + ` 钮 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
-              )
-              assert(
-                ctxMenu.zeroes === 1,
-                `整组只占一个 Tab 位(实测 ${ctxMenu.zeroes} 项 tabIndex=0)`,
-              )
-              // 读数,不是断言 —— 上面那四条才是判据(打 ✓ 会在它们全红时也说一句好话)。
-              console.log(`  · 右键开出 ${ctxMenu.texts.length} 档表「${ctxMenu.name}」`)
             }
-            // 把菜单交回钮那条路 —— 后面「移到右侧」那一步照旧从它走。
-            await page.keyboard.press('Escape')
-            await delay(250)
-            await page.evaluate(() => {
-              const btn = document.querySelector('[data-testid^="pane-split:"]')
-              if (btn instanceof HTMLElement) btn.click()
-            })
-            await delay(400)
+            assert(
+              !menu.texts.some((text) => /^(拆开|Split apart)$/.test(text)),
+              `普通标签上没有「拆开」(它只在两格标签上出现,不是灰掉;实测:${menu.texts.join(' / ')})`,
+            )
+            assert(
+              !menu.texts.some((text) => /左移一位|右移一位|Move left|Move right/.test(text)),
+              '「左移 / 右移」不在表里(换序靠拖拽,键盘等价升格成全局命令)',
+            )
+            assert(
+              menu.zeroes === 1,
+              `整组只占一个 Tab 位(实测 ${menu.zeroes} 项 tabIndex=0)`,
+            )
+            await settle(page, '标签动作表')
+            await scanAxe(page, '标签动作表', '[role="menu"]')
 
-            // 点「移到右侧」——它与拖到窗口右边带调的是**同一只** `dropRef`。
-            const moved = await page.evaluate(() => {
+            /*
+             * **「移到架子 ▸」是一格子菜单**(W7-c:四行平铺是「菜单太多」的一半)。
+             * 展开它,四条边全在,而且**项名带宾语**(B5:不许裸方位词)。
+             */
+            const sub = await page.evaluate(() => {
               const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
-              const hit = items.find((el) => /移到右侧|Move to the right/.test(el.textContent ?? ''))
-              if (!(hit instanceof HTMLElement)) return false
-              hit.click()
+              const parent = items.find((el) => /^(移到架子|Move to shelf)$/.test((el.textContent ?? '').trim()))
+              if (!(parent instanceof HTMLElement)) return null
+              parent.click()
               return true
             })
-            if (!moved) {
-              console.log('  · 跳过:菜单里没有「移到右侧 / Move to the right」')
-            } else {
-              // `announce` 走一拍 setTimeout(先清空再写,读屏才会重念)。
+            if (sub) {
+              await delay(300)
+              const rows = await page.evaluate(() => {
+                const menus = Array.from(document.querySelectorAll('[role="menu"]'))
+                const last = menus.at(-1)
+                return Array.from(last?.querySelectorAll('[role="menuitem"]') ?? []).map((el) =>
+                  (el.textContent ?? '').trim(),
+                )
+              })
+              assert(rows.length === 4, `「移到架子 ▸」四条边全在(实测 ${rows.length}:${rows.join(' / ')})`)
+              assert(
+                rows.every((text) => /栏|shelf/i.test(text)),
+                `子菜单项名带宾语,不是裸方位词(实测:${rows.join(' / ')})`,
+              )
+              // 点一条 —— 它与拖到那条边调的是**同一只** `dropRef`,落定要播报。
+              await page.evaluate(() => {
+                const menus = Array.from(document.querySelectorAll('[role="menu"]'))
+                const last = menus.at(-1)
+                const hit = Array.from(last?.querySelectorAll('[role="menuitem"]') ?? [])[1]
+                if (hit instanceof HTMLElement) hit.click()
+              })
               await delay(400)
               const spoken = await page.evaluate(
                 () => document.querySelector('[data-live="polite"]')?.textContent ?? '',
               )
               assert(spoken.trim().length > 0, `落定之后播报口里有话(实测「${spoken.trim()}」)`)
+            } else {
+              console.log('  · 跳过子菜单那一步:表里没有「移到架子」')
             }
+            await page.keyboard.press('Escape')
+            await delay(250)
 
+            /*
+             * ── **顶栏右端只留两件**(裁定 2)────────────────────────────────
+             * 「可达」是可数的:尾格里能按的东西恰好是那颗 ⋯(有够不着的标签时才画)
+             * 与 AgentChip。「分屏」那颗钮与型工具条不许再长回来 —— 前者按 testid
+             * 认(它的名字随语言变,testid 不变),后者按「檐里有没有第三格」认。
+             */
+            const trailing = await page.evaluate(() => {
+              const box = document.querySelector('[data-testid="topbar-trailing"]')
+              const buttons = Array.from(box?.querySelectorAll('button') ?? [])
+              return {
+                split: Boolean(document.querySelector('[data-testid^="pane-split:"]')),
+                labels: buttons.map((el) => (el.getAttribute('aria-label') ?? el.textContent ?? '').trim()),
+                /* AgentChip 没有 testid,它是尾格里那颗**带名字的**钮 —— 这一格是
+                 * 读数不是判据(判据是上面那两条:没有分屏钮、最多两件)。 */
+                agent: buttons.length > 0,
+              }
+            })
+            assert(!trailing.split, '顶栏右端没有「分屏」那颗钮(W7-c 裁定 2:它删了)')
+            assert(
+              trailing.labels.length <= 2,
+              `顶栏右端最多两件可按(实测 ${trailing.labels.length}:${trailing.labels.join(' / ')})`,
+            )
+            console.log(`  · 顶栏右端:${trailing.labels.join(' / ') || '—'}(AgentChip ${trailing.agent ? '在' : '不在'})`)
+
+            /*
+             * ── **`Shift+F10` 是删钮之后唯一的键盘入口**(裁定 3)───────────
+             * 焦点先落到那一格标签上(`ui/Tabs` 的 roving 档:选中那一格 tabIndex=0),
+             * 再按键。开出来的必须与右键那一张**逐字相同** —— 两张不同的表(哪怕内容
+             * 看着差不多)正是「这条路上少一档」的下一个产地。
+             */
+            await page.evaluate(() => {
+              const tab = document.querySelector('[data-topbar-leaf] [data-tab-id]')
+              if (tab instanceof HTMLElement) tab.focus()
+            })
+            await delay(200)
+            await page.keyboard.down('Shift')
+            await page.keyboard.press('F10')
+            await page.keyboard.up('Shift')
+            await delay(400)
+            const viaKey = await page.evaluate(() => {
+              const el = document.querySelector('[role="menu"]')
+              return {
+                open: Boolean(el),
+                name: el?.getAttribute('aria-label') ?? '',
+                texts: Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]')).map(
+                  (x) => (x.textContent ?? '').trim(),
+                ),
+              }
+            })
+            assert(viaKey.open, 'Shift+F10 落在焦点标签上开得出动作表(删钮之后唯一的键盘入口)')
+            assert(
+              JSON.stringify(viaKey.texts) === JSON.stringify(menu.texts),
+              '右键与 Shift+F10 开出的是同一张表,逐项逐字相同'
+                + `(键盘 ${viaKey.texts.length} 项:${viaKey.texts.join(' / ')};`
+                + ` 右键 ${menu.texts.length} 项:${menu.texts.join(' / ')})`,
+            )
+            await page.keyboard.press('Escape')
+            await delay(250)
           }
         }
       }

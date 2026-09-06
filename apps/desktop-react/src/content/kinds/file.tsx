@@ -3,7 +3,6 @@ import { baseNameOf, revealMutation } from '../../data/files-source'
 import { tabIconOf } from '../../data/file-icons'
 import { isDirty, useViewerSource } from '../../data/viewer-source'
 import { FileViewer } from '../viewer/FileViewer'
-import { FileViewerToolbar } from '../viewer/FileViewerToolbar'
 import { askViewerClose } from '../viewer/close-hub'
 import type { ContentRef } from '../../workbench/kinds'
 
@@ -13,12 +12,14 @@ import type { ContentRef } from '../../workbench/kinds'
  * `key` = 绝对路径,`singleton: false` —— 同一份文件可以在两片叶里各开一个
  * (那正是 W3「拖一份到旁边对照着看」要的)。`resident` 缺席:文件当然关得掉。
  *
- * ── 四条自述各自替掉了什么 ──────────────────────────────────────────────
+ * ── 四条自述各自替掉了什么(其中 `toolbar` 已于 W7-c 退役) ──────────────────────────────────────────────
  *  · `title` —— 从前是 `ViewerPanel` 那只 effect 往 `live-title` 里发布的一句话。
  *    静态那一半(文件名)在这里;**未保存丸**那一半仍然是活的,由查看器
  *    发布进 `live-title`(键 = refId),叶檐读表时活的盖静的;
- *  · `toolbar` —— 从前是 `FileViewer` 里那个 `chromeless ? 自成一条 : 并进名条`
- *    的分支。现在它是一句自述,叶檐把它挂进动作组(设计 §2.2);
+ *  · `toolbar` —— **W7-c 整格退役**。W1 时它是一句自述、由叶檐挂进动作组;
+ *    顶栏右端做减法之后(裁定 2:只剩 ⋯ 与 AgentChip)那个槽位没有了,它唯一的
+ *    住户(markdown 的「渲染 ⇄ 源码」)搬进内容区自己的右键菜单,由查看器型
+ *    自述 `viewModes` 那组**纯数据**;
  *  · `beforeClose` —— 从前是 `FileViewer` 里那格 `confirmClose` state + 它自己
  *    挂的 `ViewerCloseConfirm`。现在关闭这件事发生在**叶檐**上(tab 的 ✕),
  *    所以那一问必须由这一种自己答,不能长在被关掉的那棵树里;
@@ -61,7 +62,6 @@ registerContentKind(
         onReveal={(path) => void revealMutation.run(path)}
       />
     ),
-    toolbar: (ref) => <FileViewerToolbar path={ref.key} />,
     beforeClose: (ref) => askViewerClose(ref.key),
     dispose: (ref) => useViewerSource.getState().dispose(ref.key),
   },

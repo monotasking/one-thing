@@ -316,3 +316,55 @@ describe('氛围:能放的地方有哪几块(§5 贯穿规则 1)', () => {
     expect(rects).not.toContainEqual(LEAF)
   })
 })
+
+/**
+ * **落在条上的赢过只是够得着的**(W7-c)。
+ *
+ * 病历(真机门 `gate:drag` 场景 ① 当场抓到):裁定 1 把顶栏标签改成从红绿灯右边
+ * 起排之后,它与**左架子那条条**横向重叠了 —— 从前顶栏那一组坐在中央叶的正上方,
+ * 而中央叶在架子右边,两条条永远不同 x。架子那条条的 24px 上下外扩(「瞄准附近
+ * 也算」)正好够到顶栏里,而 `stripAt` 从前一遍扫描、DOM 逆序先到先得,于是指针
+ * 明明在顶栏第 0 格的正中,判据交回的是「插进左架子第 1 位」。
+ *
+ * 反证:把 `stripAt` 改回一遍扫描(直接用 `TEAR_OFF_DISTANCE` 扫),这一条当场红。
+ */
+describe('两条条挨着时:落在上面的赢过只是够得着的(W7-c)', () => {
+  const topbar: StripBox = {
+    region: 'center',
+    leafId: 'leaf-center',
+    rect: { left: 80, top: 8, width: 1000, height: 28 },
+    tabs: [
+      { left: 89, top: 8, width: 120, height: 28, id: 'a', slots: 1 },
+      { left: 209, top: 8, width: 120, height: 28, id: 'b', slots: 1 },
+    ],
+    activeAt: 0,
+  }
+  /** 左架子那条:x 与顶栏重叠,顶缘只比顶栏底缘低 8px(24 的外扩够得到)。 */
+  const shelf: StripBox = {
+    region: 'edge:left',
+    leafId: 'leaf-shelf',
+    rect: { left: 0, top: 44, width: 300, height: 28 },
+    tabs: [{ left: 4, top: 44, width: 120, height: 28, id: 's', slots: 1 }],
+    activeAt: 0,
+  }
+  const geo: DropGeometry = { window: WINDOW, leaves: [], strips: [topbar, shelf], nodrop: [] }
+
+  it('指针在顶栏那一格的正中 → 与它二合一,而不是插进架子那条条', () => {
+    // DOM 逆序里架子排在后面(它盖在上面),所以一遍扫描时它先被问到。
+    expect(dropTargetAt({ x: 149, y: 22 }, geo, {})).toEqual({
+      kind: 'pairTab',
+      region: 'center',
+      leafId: 'leaf-center',
+      at: 0,
+    })
+  })
+
+  it('指针真的落在架子那条条上时照旧归它(容差没被削掉)', () => {
+    expect(dropTargetAt({ x: 60, y: 58 }, geo, {})).toMatchObject({ leafId: 'leaf-shelf' })
+  })
+
+  it('两条都够不着的地方仍旧靠外扩接住(24px 那一格没变)', () => {
+    // 架子条上缘之上 10px,x 只在架子里(顶栏从 80 起) → 仍归架子。
+    expect(dropTargetAt({ x: 40, y: 34 }, geo, {})).toMatchObject({ leafId: 'leaf-shelf' })
+  })
+})

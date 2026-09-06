@@ -52,7 +52,6 @@ beforeEach(() => {
     title: (ref) => ({ text: ref.key }),
     icon: () => 'FileText',
     render: (ref) => <div data-testid={`doc-body:${ref.key}`}>{ref.key}</div>,
-    toolbar: (ref) => <span data-testid={`doc-tool:${ref.key}`} />,
     beforeClose: () => Promise.resolve(answer),
     dispose: (ref) => closed.push(refId(ref)),
   })
@@ -158,12 +157,18 @@ describe('一格一檐:叶檐就是 tab 条', () => {
     expect(tabRow('a').className).not.toMatch(/tabHome/)
   })
 
-  it('型工具条由种类自述,叶檐把它挂进动作组(活动那一格的)', () => {
+  /*
+   * **型工具条那一格 W7-c 整格退役**(裁定 2:顶栏右端只剩 ⋯ 与 AgentChip)。
+   * 这一条从「它挂上去了」翻成「它不在了」——`ContentKind.toolbar` 连声明都没有,
+   * 所以判据是**中央叶的檐上零工具位**:一格 `.tool` 都不许长回来。
+   * 反证:把 `LeafStrip` 那格 `tool` prop 与它那句 JSX 恢复,这一条当场红。
+   */
+  it('W7-c:檐上没有型工具条那一格(内容的动作单产地是它自己的右键菜单)', () => {
     act(() => store().openRef(doc('a')))
     renderCenter()
-    expect(screen.getByTestId('doc-tool:a')).toBeTruthy()
-    // 换到没有工具条的那一格 → 整格不画,不留一段空 gap。
-    act(() => store().activateTab(centerLeaves()[0].id, 0))
+    const chrome = document.querySelector('[data-pane-chrome]') as HTMLElement
+    // 檐里只有两格结构:标签条与(有的话)动作组。第三格是那个已经退役的工具位。
+    expect(chrome.children.length).toBeLessThanOrEqual(2)
     expect(screen.queryByTestId('doc-tool:a')).toBeNull()
   })
 

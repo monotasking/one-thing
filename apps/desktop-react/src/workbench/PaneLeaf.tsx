@@ -7,7 +7,7 @@ import { claimContentSlot, registerContentHolder, unregisterContentHolder } from
 import { useFullSlot } from './full-slot'
 import { flattenContent, partsOfContent, refId } from './kinds'
 import { LeafActions } from './LeafActions'
-import { openLeafMenuAtPointer } from './leaf-menu'
+import { openLeafMenuAt } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
 import { useReportOverflow } from './leaf-overflow'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
@@ -96,6 +96,19 @@ import s from './PaneLeaf.module.css'
 export interface PaneHostChrome {
   /** 挂在檐右端、叶自己那一组动作之后的那一组。**只挂在根叶上**。 */
   actions?: ReactNode
+  /**
+   * **宿主自己那几行菜单项**(W7-c 裁定 4),挂在叶动作表的末尾。**只挂在根叶上**。
+   *
+   * 檐上的钮做减法之后(架子只剩「收起」、浮窗只剩 ✕),被拿掉的那几件不能凭空
+   * 消失 —— 它们搬进了**同一张叶菜单**。做成宿主自述的一段 `ReactNode` 而不是
+   * 「菜单按宿主类型分支」,是这一条的字面兑现:**动作表的判据 / 项目 / 动作整件
+   * 在 `LeafActions` 里,而它一个宿主名都不认识**;宿主交什么就多什么,加第三种
+   * 宿主时那只组件一个字不改。
+   *
+   * 交进来的项**必须调与它从前那颗钮同一只 store 动作**(parity 测试逐项钉着):
+   * 菜单与钮走两个动作,迟早在某一条上悄悄分叉。
+   */
+  menuRows?: ReactNode
   /**
    * 按住一格 tab 意味着什么。**W3 起没有宿主再给这一格** —— 拖拽是全壳统一的
    * 一件事(`workbench/useTabDrag`),不是每个宿主自己的手势。这一格留着是因为
@@ -357,18 +370,38 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
     [closeAt, leaf.tabs],
   )
   /*
-   * **右键一格标签 = 这片叶的动作表**(W6-c,设计 v3 §7)。开的是 `LeafActions`
+   * **右键一格标签 = 这片叶的动作表**(W6-c;W7-c 起点由标签条量)。开的是 `LeafActions`
    * 那**同一张**表(判词在 `workbench/leaf-menu.ts`),不是第二张;所以「右键搬过去」
    * 与「按钮搬过去」与「拖过去」三条路调的仍旧是同一只动作。
    *
-   * `preventDefault` 挡掉宿主自己的上下文菜单 —— 两张菜单同时开是这类接管的经典漏法。
+   * `preventDefault` 由 `ui/Tabs` 那一口自己发(它是量点的那一头,也是收事件的那一头)。
    */
-  const onTabContextMenu = useCallback(
-    (_id: string, e: ReactMouseEvent<HTMLElement>) => {
-      e.preventDefault()
-      openLeafMenuAtPointer(leaf.id, e)
+  const onTabMenu = useCallback(
+    (_id: string, at: { x: number; y: number }) => {
+      openLeafMenuAt(leaf.id, at)
     },
     [leaf.id],
+  )
+  /*
+   * **右键檐上的空白处 = 同一张表**(W7-c 裁定 4)。架子那两件与浮窗那两件搬进
+   * 叶菜单之后,那两处的檐上再没有第二个入口 —— 右键标签条右边那片空白是它们
+   * 最顺手的开口(浮窗的「标题栏右键」说的正是这块地)。
+   *
+   * **只在宿主自己有话说的时候接**(`host?.menuRows`):中央区那一档的「空白」
+   * 是窗口的拖拽把手,右键归系统;而判据不写成「是不是中央区」,写成「这个宿主
+   * 有没有交东西进来」—— 后者是宿主自述,前者是这只文件认识宿主。
+   */
+  const onChromeContextMenu = useCallback(
+    (e: ReactMouseEvent<HTMLElement>) => {
+      if (!host?.menuRows) return
+      /* 落在一格标签上的那一下**已经被标签自己接了**(`ui/Tabs` 先 preventDefault
+       * 再报点)。不让开的话同一张表会被开两次、开在两个点上 —— 后一次赢,
+       * 于是右键标签开出来的表贴着的是标签条,不是光标。 */
+      if (e.defaultPrevented) return
+      e.preventDefault()
+      openLeafMenuAt(leaf.id, { x: e.clientX, y: e.clientY })
+    },
+    [host?.menuRows, leaf.id],
   )
 
   /** 条上有几格没露全 → 这条檐右端那颗 ⋯(W7-t / B1,与顶栏那一档同一只 hook)。 */
@@ -383,12 +416,13 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
       onSelect={onSelect}
       onClose={onClose}
       onTabPointerDown={onTabPointerDown}
-      onTabContextMenu={onTabContextMenu}
+      onTabMenu={onTabMenu}
       onOverflow={onOverflow}
       onChromePointerDown={host?.onChromePointerDown}
+      onChromeContextMenu={onChromeContextMenu}
       actions={
         <>
-          <LeafActions leaf={leaf} />
+          <LeafActions leaf={leaf} hostMenuRows={host?.menuRows} />
           {/* 宿主自己那几颗排在最后 —— 叶的动作在前、宿主的在后。 */}
           {host?.actions}
         </>

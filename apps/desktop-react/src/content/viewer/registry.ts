@@ -9,7 +9,7 @@ import type { ViewerFile, ViewerView } from '../../data/viewer-source'
  * 查看器只画头(身份与去向)、脚(状态栏)、跳转条、编辑与确认这几件**公共**的事;
  * 「这种文件长什么样」「⌘L 能跳到哪儿」「哪个键做哪件事」分别由三张表回答:
  *
- *   registerViewer     型处理器:match → Body(+ 可选 Toolbar / status)
+ *   registerViewer     型处理器:match → Body(+ 可选 viewModes / status)
  *   registerNavigator  ⌘L 跳转条的候选提供者(**跳转只有这一个入口**)
  *   registerKeymap     键位档:模式标 / 命令行 / 状态栏那个开关(键位路由归响应链)
  *
@@ -46,6 +46,19 @@ export interface ViewerBodyProps {
   onReveal?: () => void
 }
 
+/**
+ * **一档看法**(W7-c)。`markdown` 的「渲染 / 源码」是今天唯一一组。
+ * 它是纯数据:菜单读它画一行 `MenuItem checked`,选中就把 `patch` 打进 `view`。
+ */
+export interface ViewerViewMode {
+  id: string
+  labelKey: MessageKey
+  /** 此刻是不是这一档(菜单里那个勾)。 */
+  on(view: ViewerView): boolean
+  /** 选它 = 往 `view` 上打这一格补丁。 */
+  patch: Partial<ViewerView>
+}
+
 /** 脚上那几格开关里,**这一型自己**的那些(壳画公共的三格)。 */
 export interface ViewerStatusItem {
   id: string
@@ -64,8 +77,18 @@ export interface ViewerHandler {
    */
   match(file: ViewerFile): boolean
   Body: ComponentType<ViewerBodyProps>
-  /** 头上那一格「这一型自己的动作」(折行 / 源码⇄渲染 / 缩放两档)。 */
-  Toolbar?: ComponentType<ViewerBodyProps>
+  /**
+   * **这一型自己那组互斥的看法**(W7-c;从前是 `Toolbar` 那件 React 元素)。
+   *
+   * 改成**数据**而不是组件,是因为它的落点从「叶檐上一格工具条」搬进了
+   * **内容区自己的右键菜单**(W7-c 裁定 2:动作单产地是右键菜单,顶栏不再有
+   * 内容工具条槽位)。菜单里一行就是一行,它要的不是一件会自己读 store 的组件,
+   * 而是「有哪几档、此刻是哪一档、选它写什么」这三句话 —— 交组件的话菜单还得
+   * 反过来去猜它渲染出了什么。
+   */
+  viewModes?: readonly ViewerViewMode[]
+  /** 那一组的小标题(菜单里那一节的名字)。有 `viewModes` 就得有它。 */
+  viewModesLabelKey?: MessageKey
   /** 状态栏左段那句「语言 · 编码 · 换行符」—— 只有处理器知道该说什么。 */
   status?(props: ViewerBodyProps): string | undefined
   /** 状态栏右段这一型自己的开关(折行就是这么来的)。 */
@@ -109,6 +132,11 @@ class ViewerHandlerRegistry {
     return this.handlers.map((h) => h.id)
   }
 
+  /** 认领了就给,都不认就是 undefined(**不落兜底** —— 判词在 `resolveViewerByKind`)。 */
+  matchOnly(file: ViewerFile): ViewerHandler | undefined {
+    return this.handlers.find((h) => h.match(file))
+  }
+
   /**
    * 摘掉一个处理器。**唯一的用户是 HMR 退役**(见下面 disposeViewerKind)——
    * 产品运行期没有「卸载一种文件型」这回事,所以它不出现在 registerViewer 旁边
@@ -129,6 +157,23 @@ export function registerViewer(handler: ViewerHandler, options?: { fallback?: bo
 
 export function resolveViewer(file: ViewerFile): ViewerHandler {
   return viewers.resolve(file)
+}
+
+/**
+ * **只知道「是哪一型」时取处理器**(W7-c)。
+ *
+ * 内容区的右键菜单要在文件**还没读进来**时就说得出「视图」那一节画不画
+ * (树行上右键的那一路手上一个字节都没有),而它手上只有 `data/viewer-kinds`
+ * 那张纯表预判出来的 `kind`。
+ *
+ * 这一句合法的理由写在 `ViewerHandler.match` 上:**每个处理器的 match 一律只读
+ * `file.kind`**(那条规矩就写在那格字段上 —— 不许自己再抄一份扩展名名单)。
+ * 所以一个只带 `kind` 的探针恰好是它们真正读的那一格;哪天有处理器违约去读别的
+ * 字段,它在这里会答不出来,而不是答错。
+ */
+export function resolveViewerByKind(kind: ViewerFile['kind']): ViewerHandler | undefined {
+  const probe = { kind } as ViewerFile
+  return viewers.ids().length > 0 ? viewers.matchOnly(probe) : undefined
 }
 
 export function registeredViewerIds(): string[] {

@@ -6,7 +6,9 @@ import { useAgentMenu } from '../components/agent-menu'
 import { useExposeStore } from '../expose/store'
 import { useWorkspacePalette } from '../workspace/components/palette-hub'
 import { useWorkspaceStore } from '../workspace/store'
-import { useWorkbenchStore } from '../workbench/store'
+import { focusLeafOf, useWorkbenchStore } from '../workbench/store'
+import { CENTER_REGION } from '../workbench/regions'
+import { reorderTab } from '../workbench/drop-commit'
 import { projectWorkspaces, workspaceAtSlot } from '../workspace/projection'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
@@ -52,10 +54,12 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
          * 旧那条纯开关与业界(VS Code ⌘⇧E 一族)分歧最大的一格。
          *
          * 命令 id 一个字没改(改了会作废用户已存的改绑),换的只有落点与文案。
-         * **鼠标点 Dock 瓦走的是 `clickDockIcon`**(开 / 收)—— 分工写在 §14:
-         * 指针那条路不 activate,那是 R2 与拍点 2 同批的裁定。旧那口纯开关
-         * `toggleItem` 已随 S2(09-04)删掉:零消费者的第二种打开语义留着只会
-         * 被下一个人叫起来。
+         * **鼠标点 Dock 瓦与这条键盘命令是同一台机器**(W7-p 裁定 6,09-05 更正):
+         * 两个入口都落在 `stage/open-item.summonStageItem`,只差寻址
+         * (`itemSummonTarget` / `refSummonTarget`)。这段注释从前写着「指针那条路
+         * 走 `clickDockIcon`、不 activate」—— 那台第二机器在 W7-p 里删掉了,
+         * 而注释留在原地,成了一句**过时的假话**(审计 A 的留账,W7-c 结清)。
+         * 旧那口纯开关 `toggleItem` 已随 S2(09-04)删掉。
          *
          * 四态判据、点名(`requestFocusOnOpen`)与分流全在 store 的 `summonItem`
          * 里,这里只剩「哪条命令走哪个动作」这一句 —— 这张表本来就只该有这一句。
@@ -128,6 +132,29 @@ export function useKeymapCommandRunner(): (id: CommandId) => void {
         if (useWorkbenchStore.getState().toggleFull() === 'refused') {
           notify({ level: 'info', source: 'workbench.full', title: t('full.refuseChat') })
         }
+        return
+      }
+      /*
+       * **标签换序**(W7-c 裁定 3)。它是「左移一位 / 右移一位」从标签动作表里
+       * 升上来的那条键盘路 —— 落定走的仍是**拖拽落定同一只** `reorderTab`
+       * (播报「已移到第 n 位」在它里面),所以键盘、菜单(已删)、拖拽三条路
+       * 从来只有一个动作。
+       *
+       * `at` 是对着**本来那张表**的下标:往左 = 插到前一格之前(`active - 1`);
+       * 往右 = 插到后一格**之后**,也就是 `active + 2` —— 落点说的是「第 at 格
+       * 之前」,而 `active + 1` 指的正是自己后面那一格的**前面**(= 原地不动)。
+       * 那个 +2 不是魔法数,是这个坐标系的定义;两端到头时 `reorderTab` 自己
+       * 判成空动作(它挡 `at === from` 与 `at === from + 1`)。
+       *
+       * 目标是**焦点叶的活动 tab**,与 `workbench.toggleFull` 同一句问法。
+       */
+      const step = id === 'workbench.moveTabLeft' ? -1 : id === 'workbench.moveTabRight' ? 2 : 0
+      if (step !== 0) {
+        const st = useWorkbenchStore.getState()
+        const tree = st.regions[CENTER_REGION]
+        if (!tree) return
+        const leaf = focusLeafOf(tree, st.focusLeafId)
+        reorderTab(leaf.id, leaf.active, leaf.active + step)
       }
     },
     [toggleShelfCollapsed, toggleToc, toggleAgentMenu, toggleWorkspacePalette],

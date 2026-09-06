@@ -123,11 +123,14 @@ export interface ContentKind {
   /** lucide 图标名(与 `StageItemSpec.icon` / `TabSpec.icon` 同一套字符串)。 */
   icon(ref: ContentRef): string
   render(ref: ContentRef, visibility: PanelVisibility): ReactNode
-  /**
-   * 这一型自己那一格工具条(markdown 的渲染 ⇄ 源码 …)。叶檐把它挂进动作组。
-   * 缺席 = 这一种没有工具条。**它是一个 React 元素**,所以只许在渲染期间调。
+  /*
+   * **`toolbar?(ref)` 整格退役**(W7-c 裁定 2)。W1 起这一格让内容把一件工具条挂
+   * 进叶檐的动作组;用户 09-05 说「按钮太多」,顶栏右端从此只剩 ⋯ 与 AgentChip。
+   * 它唯一的住户(markdown 的「渲染 ⇄ 源码」)搬进了**内容区自己的右键菜单**
+   * ——「一个文件能做什么」全仓只有那一张表(09-01 判例),看法也是它能做的事。
+   * 今天那一组由查看器型自述(`ViewerHandler.viewModes`,纯数据),不再是一个
+   * 会自己读 store 的 React 元素。
    */
-  toolbar?(ref: ContentRef): ReactNode
   /**
    * 关闭前的一问(脏文件确认)。缺席 = 直接关。
    * 回 `'cancel'` = 这一次关闭作废,树一个字不动。

@@ -5,7 +5,7 @@ import { TopBarLeafTabs } from '../TopBarTabs'
 import { CENTER_REGION } from '../regions'
 import { registerContentKind, resetContentKinds } from '../kinds'
 import { startWorkbench, useWorkbenchStore } from '../store'
-import { spanWVar, spanXVar, topStrips } from '../layout'
+import { topStrips } from '../layout'
 import { leavesOf, makeLeaf } from '../tree'
 import { useLiveTitleStore } from '../../stage/live-title'
 import { useStageStore } from '../../stage/store'
@@ -20,9 +20,10 @@ import type { PaneNode } from '../tree'
  * 这一组守五件:
  *  ① **落位是纯函数**:一片叶一组,左右分家各自成组,上下重叠按序平分,
  *     退化形(切分里还嵌着切分)宁偏勿叠 —— 顶栏上两组永远不许压在一起;
- *  ② **几何是量出来的**:两格 CSS 变量写在带子自己身上,值是相对带子左缘的偏移;
- *     卸载时抹掉(留着 = 下一次挂载先读到一份陈旧的几何);
- *  ③ **组的算式**把 index/count 折进去,所以「平分」这件事在 CSS 里也成立;
+ *  ② **标签从顶栏自己的开头排**(W7-c 裁定 1):组是带子里的普通 flex 项,
+ *     身上没有任何行内几何 —— 从前那两格 `--tabgrp-x/w` 与量它们的
+ *     `leaf-geometry.ts` 一起退役了;
+ *  ③ **中央区永远一组**(W6-a 单叶政策):开几格标签、切几次都只有一条标签条;
  *  ④ **焦点归属靠 owner**:顶栏那一组与叶身体是**同一个 owner 的两份实例**,
  *     ⌘W 在标签上也接得住;
  *  ⑤ **DOM 留在带子里**(坑 ①:portal 出去 = 静默破拖拽区)。
@@ -135,57 +136,51 @@ function renderBand() {
   )
 }
 
-describe('几何:量出来的两格变量写在带子自己身上', () => {
+describe('标签从顶栏自己的开头排(W7-c 裁定 1)', () => {
   /*
-   * jsdom 的 `getBoundingClientRect` 恒答全 0,所以**值**没法在这里断言 ——
-   * 能断言的是那条链:写了没有、写在谁身上、卸载抹没抹掉、以及**写的是哪几个
-   * 节点的跨度**(那正是「上下切分共用一段」的落地)。值那一半归真机门
-   * (`npm run gate:drag-region` 量组的 left/width 与叶的矩形对不对得上,≤1px)。
+   * W1-b 到 W6 之间这一组守的是**几何链**:`leaf-geometry.ts` 量出叶的跨度、
+   * 写成两格 CSS 变量、组读 `calc()` 坐上去、卸载抹掉。v3 把中央区收成一条
+   * 标签条之后「对准哪片叶」没有对象了(屏幕上只有一组),那条链整条删掉 ——
+   * 它同时是 `gate:perf` ⑤a 第 4 次强制排版的来源(W6-p 留账)。
+   *
+   * 于是这一组改守它的反面:**组身上一格行内几何都没有**,以及那两格变量
+   * 与它们的取件口在 DOM 上彻底不在场。反证:把 `useLeafGeometry` 那只 hook
+   * 与 `--tabgrp-*` 恢复回去,下面三条一起红。
    */
-  it('每一个 spanId 各写两格,写在带子上;卸载抹掉', () => {
+  it('组身上没有行内 style(几何不再经过 JS)', () => {
     act(() => store().openRef(doc('a')))
-    const view = renderBand()
-    const band = screen.getByTestId('topbar-tabs') as HTMLElement
+    renderBand()
     const leafId = centerLeaves()[0].id
-    expect(band.style.getPropertyValue(spanXVar(leafId))).toBe('0px')
-    expect(band.style.getPropertyValue(spanWVar(leafId))).toBe('0px')
-    view.unmount()
-    expect(band.style.getPropertyValue(spanXVar(leafId))).toBe('')
+    const group = document.querySelector(`[data-topbar-leaf="${leafId}"]`) as HTMLElement
+    expect(group.getAttribute('style')).toBeNull()
+    expect(group.style.getPropertyValue('--tabgrp-x')).toBe('')
+    expect(group.style.getPropertyValue('--tabgrp-w')).toBe('')
   })
 
-  /*
-   * **中央区永远一组**(W6-a 单叶政策,设计 §2.1)。从前这里有两条上下 / 左右
-   * 切分的几何断言 —— 中央区收成一条标签条之后那两形在这里不可能出现了
-   * (`splitLeaf` 在中央区不受理)。`topStrips` / `spanGroups` 那两只**纯函数没删**
-   * (架子与浮窗仍可分屏),它们的多组算式由 `layout.test.ts` 直接对着树测。
-   */
-  it('取件口在中央区那棵树里(单叶:只有那一片叶自己那一格)', () => {
+  it('带子身上没有跨度读数(`--leaf-x-*` / `--leaf-w-*` 整族退役)', () => {
+    act(() => store().openRef(doc('a')))
+    renderBand()
+    const band = screen.getByTestId('topbar-tabs') as HTMLElement
+    const leafId = centerLeaves()[0].id
+    expect(band.style.getPropertyValue(`--leaf-x-${leafId}`)).toBe('')
+    expect(band.style.getPropertyValue(`--leaf-w-${leafId}`)).toBe('')
+    expect(band.getAttribute('style')).toBeNull()
+  })
+
+  it('中央区那棵树上没有跨度取件口(`data-pane-span` 删了)', () => {
     act(() => {
       store().openRef(doc('a'))
       store().openRef(doc('b'))
     })
     renderBand()
-    const spans = Array.from(
+    expect(
       document.querySelectorAll(`[data-pane-region="${CENTER_REGION}"] [data-pane-span]`),
-    ).map((el) => el.getAttribute('data-pane-span'))
-    const leaves = centerLeaves()
-    expect(leaves).toHaveLength(1)
-    for (const leaf of leaves) expect(spans).toContain(leaf.id)
+    ).toHaveLength(0)
+    expect(centerLeaves()).toHaveLength(1)
   })
 })
 
-describe('组的算式:平分折进 calc()', () => {
-  it('单叶:count = 1,左缘就是那片叶的左缘', () => {
-    renderBand()
-    const leafId = centerLeaves()[0].id
-    const group = document.querySelector(`[data-topbar-leaf="${leafId}"]`) as HTMLElement
-    expect(group.style.getPropertyValue('--tabgrp-x')).toBe(
-      `calc(var(${spanXVar(leafId)}, 0px) + var(${spanWVar(leafId)}, 0px) * 0 / 1)`,
-    )
-    expect(group.style.getPropertyValue('--tabgrp-w')).toBe(
-      `calc(var(${spanWVar(leafId)}, 0px) / 1)`,
-    )
-  })
+describe('中央区永远一组(单叶政策)', () => {
 
   /**
    * **中央区永远一组**(W6-a 的核心断言之一)。从前这里演的是「上下切分之后两组
@@ -202,10 +197,7 @@ describe('组的算式:平分折进 calc()', () => {
     act(() => store().splitLeaf(centerLeaves()[0].id, 'col'))
     const groups = Array.from(document.querySelectorAll('[data-topbar-leaf]')) as HTMLElement[]
     expect(groups).toHaveLength(1)
-    const leafId = centerLeaves()[0].id
-    expect(groups[0].style.getPropertyValue('--tabgrp-x')).toBe(
-      `calc(var(${spanXVar(leafId)}, 0px) + var(${spanWVar(leafId)}, 0px) * 0 / 1)`,
-    )
+    expect(groups[0].getAttribute('style')).toBeNull()
   })
 })
 

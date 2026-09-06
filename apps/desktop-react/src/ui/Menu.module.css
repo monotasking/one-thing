@@ -105,3 +105,32 @@
   margin: var(--menu-sep-my) 0;
   background: var(--line-1);
 }
+
+/* ── 子菜单(W7-c)────────────────────────────────────────────────────────
+ * 包一层是因为子表是这一行的**真孩子**(不 portal —— 判词写在 `Submenu` 上),
+ * 而它自己 `position: fixed` 摆位置,所以这层只做 DOM 上的归属,不参与布局。 */
+.sub {
+  display: contents;
+}
+
+/* ▸ 永远占着位:开合切换不动一个像素的布局(与勾位同一条)。 */
+.subArrow {
+  width: var(--menu-check);
+  height: var(--menu-check);
+  flex: none;
+  color: var(--text-3);
+}
+
+/* 行首那一枚 + 文字。与 `MenuItem` 里消费方自己拼的那一形逐像素相同。 */
+.subLead {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--menu-item-gap);
+  min-width: 0;
+}
+
+.subIcon {
+  width: var(--menu-check);
+  height: var(--menu-check);
+  flex: none;
+}

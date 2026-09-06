@@ -49,6 +49,16 @@ registerContentKind(
     // 拼错了 `resolveIcon` 会静默退回 FolderTree —— 所以照表写。
     icon: () => 'FolderTree',
     render: (ref) => <FilesPanel root={ref.key} />,
+    /*
+     * **激活这一格 = 焦点进这棵树**(W7-c 裁定 6,与会话那一种同一条自述)。
+     *
+     * 不声明它的话,`focusIntoRef` 只能退回 `leaf` 那一层 —— 而 `leaf` 是
+     * `passThrough`,能不能穿到这块面里要看那一刻这块面登记好了没有。声明成
+     * 一句自述之后,「进这一格」说的就是**进它自己那块面**,与「落在哪一行」
+     * 那件事(`FilesPanel` 的 `restingTarget`)各归各的:一句说进哪块面,
+     * 一句说进去之后站哪儿。
+     */
+    focusInto: 'files',
   },
   import.meta.hot,
 )

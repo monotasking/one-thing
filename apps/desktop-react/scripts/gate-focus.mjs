@@ -2501,10 +2501,20 @@ async function main() {
         if (second instanceof HTMLElement) second.click()
       }, CENTER_TABS)
       await delay(400)
-      await page.evaluate(() => {
-        const btn = document.querySelector('[data-testid^="pane-split:"]')
-        if (btn instanceof HTMLElement) btn.click()
-      })
+      /* W7-c 裁定 2:「分屏」那颗钮删了 —— 这张表的开口是**右键一格标签**。 */
+      await page.evaluate((css) => {
+        const second = document.querySelectorAll(css)[1]
+        if (!(second instanceof HTMLElement)) return
+        const box = second.getBoundingClientRect()
+        second.dispatchEvent(
+          new MouseEvent('contextmenu', {
+            bubbles: true,
+            cancelable: true,
+            clientX: Math.round(box.left + box.width / 2),
+            clientY: Math.round(box.top + box.height / 2),
+          }),
+        )
+      }, CENTER_TABS)
       await delay(400)
       const joined = await page.evaluate(() => {
         const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
@@ -2555,8 +2565,13 @@ async function main() {
          *
          * 起手那一句自己也断言(焦点真在两格外面),不让它再静默退化。
          */
+        /*
+         * 停焦那一颗从「叶动作组那颗分屏钮」换成**顶栏尾格里的那颗**(W7-c 裁定 2
+         * 把分屏钮删了)。要的性质一个字没变:它在顶栏里、不在 pair 里、拆开之后
+         * 还在场 —— 尾格今天只剩 ⋯ 与 AgentChip 两件,取第一颗按得动的即可。
+         */
         await page.evaluate(() => {
-          const btn = document.querySelector('[data-testid^="pane-split:"]')
+          const btn = document.querySelector('[data-testid="topbar-trailing"] button')
           if (btn instanceof HTMLElement) btn.focus()
         })
         await delay(300)
@@ -2663,6 +2678,65 @@ async function main() {
         `(播报口里:「${said.spoken.trim() || '—'}」)`,
       )
       await assertNoOrphan(page, 'B12 ⌘W 被拒之后')
+    }
+
+    /* ── 场景 20:W7-c —— Shift+F10 开表,Esc 关表焦点回那格标签 ─────────── */
+    /*
+     * W7-c 裁定 3 把「分屏」那颗钮删了,标签动作表从此只有右键与 `Shift+F10`
+     * 两个开口。键盘那一条因此**必须**满足响应链第 5 条(「关掉什么,焦点回打开
+     * 它的地方」)—— 否则按一下 Esc 焦点掉进树里某处,再按 `Shift+F10` 开的就不是
+     * 同一格标签的表了(那正是 ⌘F「开一次之后再也开不出来」那桩病的同型)。
+     *
+     * 归还是**结构性的**(§4.5:菜单 portal 到 body,在树上是那一格标签的孩子),
+     * 所以这一条量的是那条结构而不是某处的簿记。
+     * 反证:把 `ui/Menu` 那格 `FocusScope` 的 `activateOnMount` 拆掉 → 第一条红
+     * (焦点根本没进菜单,Esc 也就无从谈起)。
+     */
+    scenario('Shift+F10 在焦点标签上开动作表 → Esc 关表,焦点回那格标签(W7-c 裁定 3)')
+    const tabForMenu = await page.evaluate((css) => {
+      const tab = document.querySelectorAll(css)[0]
+      if (!(tab instanceof HTMLElement)) return null
+      tab.focus()
+      return tab.getAttribute('data-tab-id')
+    }, CENTER_TABS)
+    if (!tabForMenu) {
+      skip('W7-c 键盘开表', '顶栏上没有标签')
+    } else {
+      await delay(300)
+      await page.keyboard.down('Shift')
+      await page.keyboard.press('F10')
+      await page.keyboard.up('Shift')
+      await delay(500)
+      const opened = await page.evaluate(() => {
+        const active = document.activeElement
+        return {
+          menu: Boolean(document.querySelector('[role="menu"]')),
+          scope: active?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+        }
+      })
+      assert(opened.menu, 'Shift+F10 开得出标签动作表(删钮之后唯一的键盘入口)')
+      assert(
+        opened.scope === 'menu',
+        '焦点当场进了那张表(`ui/Menu` 的 activateOnMount)',
+        `(此刻在作用域 ${opened.scope ?? '—'})`,
+      )
+      await page.keyboard.press('Escape')
+      await delay(500)
+      const back = await page.evaluate(() => {
+        const active = document.activeElement
+        return {
+          menu: Boolean(document.querySelector('[role="menu"]')),
+          tabId: active?.getAttribute?.('data-tab-id') ?? null,
+          role: active?.getAttribute?.('role') ?? null,
+        }
+      })
+      assert(!back.menu, 'Esc 把那张表关掉了')
+      assert(
+        back.tabId === tabForMenu,
+        '焦点结构性地回到**开它的那一格标签**上',
+        `(回到 ${back.tabId ?? back.role ?? '—'},开它的是 ${tabForMenu})`,
+      )
+      await assertNoOrphan(page, 'W7-c Esc 关表之后')
     }
 
     await app.close()
