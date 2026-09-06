@@ -13,7 +13,8 @@ import {
   enterSessionInWorkbench,
   openNewSessionPlaceholder,
 } from '../content/session-open'
-import { focusTree } from '../focus/registry'
+import { sessionRefOf } from '../content/session-ref'
+import { activateScopeAfterCommit } from '../focus/after-commit'
 import { findSession } from './projection'
 import { notify } from '../services/notify'
 import { t } from '../i18n'
@@ -155,6 +156,36 @@ interface ExposeStore extends ExposeState, PerSpaceState<ExposeFurniture> {
  */
 let creating = false
 
+/**
+ * **「开会话 → 焦点进输入面板」排在召唤那条落焦之后**(§3.5 规则 2;W7-p 裁定 6 的接缝)。
+ *
+ * ── 为什么不能是一句同步的 `activateScope` ──────────────────────────────
+ * 这一下同时有**两条**落焦规则在跑:
+ *  · 召唤那条 —— `stage.summonRef` 的第三态「看得见、焦点不在里面 → 送焦点」,
+ *    它经 `workbench/focus-into.focusIntoRefAfterCommit` **排在 React 提交之后**
+ *    (一拍微任务 + 一帧,判词写在那只文件上);
+ *  · 会话那条 —— 就是这一句,§3.5 规则 2。
+ * 同步写在这里的话它**先**跑,随后召唤那条后到,把焦点从输入框拽进聊天正文层 ——
+ * `gate:focus` 场景 8 当场红(真机读数:焦点落在 `[chat-stream]`,作用域 `chat`)。
+ *
+ * ── 谁该赢:会话那条 ────────────────────────────────────────────────────
+ * 中央区那一形里,「那格内容自己」与「输入面板」本来就是同一台聊天的两半,而
+ * §3.5 规则 2 明写落点是输入面板 —— 点一条会话就是要打字。所以这一句用**同一
+ * 副排法**(`focus/after-commit.activateScopeAfterCommit`,唯一产地),于是两条
+ * 规则落在同一拍的同两个队列里,而这一条排在后面注册 —— 队列是 FIFO,后注册的
+ * 后跑,它因此是最后一句话。次序不是巧合:`summonRef` 那一句就写在这一句上面,
+ * 读代码的次序就是落焦的次序。
+ *
+ * **排法本身不在这只文件里**(W7-p 修一轮裁定 5):它从前在这里抄了一份
+ * `focus-into.ts` 的微任务 + 帧,而「为什么是这一副队列」的判词只写在那一头 ——
+ * 抄的人看不见判词,改的人也就不知道自己在改什么。今天它整件在 `focus/after-commit.ts`。
+ *
+ * 架子 / 浮窗那两形不走这里(判词在调用点上):那时输入框不是它自己的。
+ */
+function focusComposerAfterCommit(): void {
+  activateScopeAfterCommit('composer', { reason: 'open' })
+}
+
 export const useExposeStore = create<ExposeStore>()(
   persist(
     (set, get) => ({
@@ -228,19 +259,36 @@ export const useExposeStore = create<ExposeStore>()(
       enterSession: (sessionId) => {
         set((s) => T.enterSession(s, sessionId))
         /*
-         * **换的是树,不是一格字段**(W5-b 裁定 3)。「进一条会话」= 让
-         * **焦点那片会话叶**看它(原位换 ref,叶不重挂);它已经开在别处就
-         * 点亮那一格并把焦点叶指过去。`currentSessionId` 随后由投影跟上 ——
-         * 这层壳一个字都不写它。三档的判词在 `content/session-open.ts`。
+         * **它已经开着 → 切过去**(W7-p 裁定 6 的 B4,审计 A)。
+         *
+         * 病历:那条会话开在**右架子**里(架子收着)/ 开在压在底下的一扇浮窗里 /
+         * 是某片叶上的非活动 tab —— 点它,屏幕上一动不动。从前这一层只有
+         * `enterSessionInWorkbench` 的第①档,而那一档只 `activateTab` 一句:
+         * 「点名那一格」对一条收起来的架子什么都不是。
+         *
+         * 今天先走**召唤**(`stage.summonRef`,与 Dock 瓦 / 快捷键同一台四态机器,
+         * 意图 `reveal` —— 「切过去」没有反面,焦点已经在里面时什么都不做)。
+         * 它答得出住处 = 这条会话开着,那一下已经办完(露架子 / 置顶浮窗 /
+         * 点名 tab / 送焦点);答 `null` = 哪儿都没开着 → 才走原来那条
+         * 「顶替焦点那片会话叶」(判词在 `content/session-open.ts` 的三档上)。
+         *
+         * **不新开、不顶替**正是这一格要的:一条已经摆在右架子上的会话,点它
+         * 不该在中央区再开一格,更不该把中央区正看着的那条顶掉。
          */
-        enterSessionInWorkbench(sessionId)
+        const where = useStageStore.getState().summonRef(sessionRefOf(sessionId), 'reveal')
+        if (where === null) enterSessionInWorkbench(sessionId)
         /*
          * 「开会话 → 焦点进它的输入面板」(§3.5 规则 2)。落在这一层而不是各个
          * 入口上,理由与这个函数头上那句话逐字相同:**进会话的唯一编排点**——
          * 卡上单击、Quick Look 里的 ↵、检索面里的一行、建完一条新会话,四条路
          * 都从这儿过。输入面板还没挂起来时它答 false,什么都不做。
+         *
+         * **切到架子 / 浮窗里那一条时不送**(W7-p 裁定 6):焦点刚由召唤送进了
+         * 那格内容自己(`focusIntoRefAfterCommit`),这里再抢一次就会把它拽回
+         * 中央区那台聊天的输入框 —— 用户点的是右架子里那条会话,键盘却落在
+         * 别处。中央区那一形照旧送:那时输入框正是它自己的。
          */
-        focusTree.activateScope('composer', { reason: 'open' })
+        if (where === null || where === 'center') focusComposerAfterCommit()
         // 进了会话,目录(钢琴键)与首页消息就都成了「此刻要看的东西」。
         void useSessionsSource.getState().ensureChapters(sessionId)
         void useSessionsSource.getState().ensureMessages(sessionId)

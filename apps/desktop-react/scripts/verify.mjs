@@ -250,6 +250,22 @@ run('gate:a11y', 'npm', ['run', '--silent', 'gate:a11y'])
  */
 run('gate:focus', 'npm', ['run', '--silent', 'gate:focus'])
 /*
+ * gate:layout 与 gate:focus **同一条理由、同一个价位**进得来(W7-p,09-06)。
+ * 它断言的是**排版与落盘**:关窗再起之后那三块家具还在不在、四条边与中央区分完地
+ * 之后中央区还剩多少、三档窗口尺寸下有没有元素出视口、四扇浮窗的矩形两两同不同 ——
+ * 同一份代码同一个视口跑一百遍是同一个答案,没有余量一说,不看机器状况
+ * (与 gate:perf 那种毫秒读数正相反)。
+ *
+ * 它守的病 typecheck / lint / 单测**一个都看不见**:A1 那条(重启丢布局)的病根是
+ * 模块图的求值次序,jsdom 里一个文件一份模块图,单测能证「水合那一遍不问种类」,
+ * 证不了「关窗再起之后屏幕上还是那三块」;A3/A4/A6 那三条要真排版才量得到
+ * (jsdom 的 `getBoundingClientRect` 一律答零)。
+ *
+ * 它比 gate:focus 贵一点:要起五次窗(其中两次是同 store 同 user-data-dir 的接力,
+ * 那正是 A1 的判据)。这是**排在最后**的理由,不是不进来的理由。
+ */
+run('gate:layout', 'npm', ['run', '--silent', 'gate:layout'])
+/*
  * gate:credentials 不在这里,理由与 gate:perf 不同:它**读的是这台机器上真实的
  * 生产 store**(要一份真的 safeStorage 密文才有得比),而 verify 必须在任何一台
  * checkout 上都能跑。它自己跑:`npm run gate:credentials`。
@@ -258,5 +274,5 @@ run('gate:focus', 'npm', ['run', '--silent', 'gate:focus'])
 process.stdout.write(
   '\n[verify] ok —— typecheck / lint(含 jsx-a11y)/ squeeze-gate / motion-gate / test / build'
     + ' / offline-fonts / buttonbase-css'
-    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus)全绿\n',
+    + ' / 真机门(connect·data·theme·chat·files·search·monotone·squeeze·motion·a11y·focus·layout)全绿\n',
 )

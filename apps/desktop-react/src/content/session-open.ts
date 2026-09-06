@@ -1,6 +1,7 @@
 import { CENTER_REGION } from '../workbench/regions'
 import { useWorkbenchStore } from '../workbench/store'
-import { leavesOf } from '../workbench/tree'
+import { leavesOf, seatOfRefIn } from '../workbench/tree'
+import { refId } from '../workbench/kinds'
 import { leafSessionOf, leafSessionTabOf, regionReadOrder, sessionRefOf } from './session-ref'
 import type { ContentRef } from '../workbench/kinds'
 import type { PaneLeafNode, PaneNode } from '../workbench/tree'
@@ -27,7 +28,7 @@ import type { PaneLeafNode, PaneNode } from '../workbench/tree'
 export function enterSessionInWorkbench(sessionId: string): string | null {
   const store = useWorkbenchStore.getState()
   const ref = sessionRefOf(sessionId)
-  const seat = seatOfRef(store.regions, ref)
+  const seat = seatOfRefIn(store.regions, refId(ref))
   if (seat) {
     store.activateTab(seat.leafId, seat.index)
     return seat.leafId
@@ -62,7 +63,7 @@ export function openNewSessionPlaceholder(): (() => void) | null {
   store.replaceRef(host.id, current, placeholder)
   return () => {
     const now = useWorkbenchStore.getState()
-    const seat = seatOfRef(now.regions, placeholder)
+    const seat = wholeTabSeatOf(now.regions, placeholder)
     if (seat) now.replaceRef(seat.leafId, placeholder, current)
   }
 }
@@ -79,7 +80,7 @@ export function openNewSessionPlaceholder(): (() => void) | null {
 export function bindNewSessionRef(sessionId: string): string | null {
   const store = useWorkbenchStore.getState()
   const placeholder = sessionRefOf('')
-  const seat = seatOfRef(store.regions, placeholder)
+  const seat = wholeTabSeatOf(store.regions, placeholder)
   if (!seat) return enterSessionInWorkbench(sessionId)
   store.replaceRef(seat.leafId, placeholder, sessionRefOf(sessionId))
   return seat.leafId
@@ -136,16 +137,20 @@ function focusSessionLeafOf(
   return null
 }
 
-/** 这一格此刻在哪(区域 + 叶 + 叶内下标)。哪棵树都不在 = null。 */
-function seatOfRef(
+/**
+ * **这一格此刻坐在哪** —— 转调全壳唯一那只(`workbench/tree.seatOfRefIn`,
+ * W7-p 修一轮裁定 2),外加一格过滤:**只认它自己就是一格标签**的那种座位。
+ *
+ * 为什么要那格过滤:这只文件的三个调用点里有两个(开保留键、把保留键绑成真 id)
+ * 接着要 `workbench.replaceRef` —— 而那一口改的是**顶层标签**。座位落在一格
+ * 二合一(`pair:`)的某一侧时 `replaceRef` 是空动作,于是保留键永远绑不上真 id,
+ * 屏幕上那片会话停在空态。所以这一格是**过滤,不是第二只查找器**:查找只有一处,
+ * 「这条路要哪一种座位」由用它的人说。
+ */
+function wholeTabSeatOf(
   regions: Readonly<Record<string, PaneNode>>,
   ref: ContentRef,
 ): { leafId: string; index: number } | null {
-  for (const tree of Object.values(regions)) {
-    for (const leaf of leavesOf(tree)) {
-      const at = leaf.tabs.findIndex((tab) => tab.kind === ref.kind && tab.key === ref.key)
-      if (at >= 0) return { leafId: leaf.id, index: at }
-    }
-  }
-  return null
+  const seat = seatOfRefIn(regions, refId(ref))
+  return seat && seat.partIndex === null ? { leafId: seat.leafId, index: seat.index } : null
 }

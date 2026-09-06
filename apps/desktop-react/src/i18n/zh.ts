@@ -175,6 +175,11 @@ export const zh = {
   'dock.magnifyLg': '大',
   'dock.runningDot': '运行中指示点',
   'dock.runningDotHint': '正开着的那几块瓦上画一颗小圆点',
+  /* **在 Dock 上隐藏**(W7-p 裁定 7,审计 A 的 A10)。从前这一档只在「所有应用」
+   * 那块面里有一颗开关 —— 一个「把这块瓦从条上收走」的动作,却要先打开另一块面
+   * 才找得到。右键这一行与那颗开关是**同一格状态**(`stage.hiddenItems`),
+   * 常驻 Dock 的那几块瓦禁灰不消失(判词在 ui/Menu 的 `disabled` 上)。 */
+  'dock.hideTile': '在 Dock 上隐藏',
   'dock.settings': 'Dock 设置…',
 
   /* ── Dock 上那几块瓷砖的名字(是界面标签,不是内容) ───────────────── */
@@ -844,6 +849,10 @@ export const zh = {
    * 它顶掉了 W3 那句专供会话行的 `drag.sessionOnlyCenter`:拒绝从此由种类自述
    * 生成,不再是某一处手写的判据。 */
   'drag.regionRefused': '这一种开不到这里',
+  /* **这条边摆不下**(W7-p 裁定 3):四条边与中央区分同一块地,预算不够时
+   * **拒绝并保持原样**,不许把中央区压成 0(审计 A 的 A3:四边各钉 400,
+   * 真机量到中央区 h=0、输入框浮在上架子的内容上)。拒绝要说话,不许静默。 */
+  'stage.shelfNoRoom': '{side}放不下了 —— 先收一条架子',
   'drag.movedToEdge': '已移到{side}',
   'drag.movedIntoLeaf': '已并入{name}',
   'drag.movedToFloat': '已撕成浮窗',

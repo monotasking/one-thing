@@ -14,8 +14,21 @@ import {
   STAGE_PERSIST_VERSION,
   clamp,
   clampFloatRect,
+  centerRectOf,
   clampShelfThickness,
+  canNailShelf,
+  CENTER_MIN_H,
+  CENTER_MIN_W,
+  OPPOSITE_SHELF,
+  reclampShelves,
+  SHELF_RAIL,
+  TOP_CHROME,
+  shelfExtentOf,
+  shelfThicknessBudget,
   defaultFloatRect,
+  freshFloatRect,
+  FLOAT_CASCADE_STEP,
+  FLOAT_SPAWN_INSET,
   defaultOpenMemory,
   factoryStageFurniture,
   fitFloatRect,
@@ -80,7 +93,7 @@ const base: StageState = initialStageState
 /*
  * ── 住处那一族**不再是纯函数**了(W4),这里给它们搭一层同形的壳 ────────────
  *
- * `openAs` / `closeToDock` / `clickDockIcon` / … 从前是 `(state, …) => state`。
+ * `openAs` / `closeToDock` / `openFromMemory` / … 从前是 `(state, …) => state`。
  * W4 把住处搬进了拼贴树(判词在 `stage/residency.ts`),它们于是要同时改两台
  * store,不再写得成一个纯函数 —— 整族搬进了 `stage/placement.ts`。
  *
@@ -178,15 +191,6 @@ function closeToDock(st: StageState, id: string): StageState {
   return run(st, FALLBACK_VIEWPORT, () => P.closeToDock(D, id))
 }
 
-function clickDockIcon(
-  st: StageState,
-  id: string,
-  open: PlacementMemory,
-  vp: Viewport = FALLBACK_VIEWPORT,
-): StageState {
-  return run(st, vp, () => P.clickDockIcon(D, id, open))
-}
-
 function openFromMemory(
   st: StageState,
   id: string,
@@ -252,7 +256,6 @@ const FLOAT: Placement = { kind: 'float' }
 /** 全屏不是一种 Placement(W2)—— 它是「打开方式」那张表上的一档。 */
 const FULL: PlacementTarget = { kind: 'full' }
 const RIGHT: Placement = { kind: 'edge', side: 'right' }
-const DOCK: Placement = { kind: 'dock' }
 
 /** 一块大得放得下默认浮窗的视口,免得每个用例都被钳制干扰。 */
 const VP: Viewport = { w: 1600, h: 1000 }
@@ -280,8 +283,13 @@ const atEnd = (st: StageState, side: ShelfSide = 'right'): PlacementMemory => ({
   index: (st.shelves[side].tabs ?? []).length,
 })
 
-/** 新浮窗那条记忆(矩形 = 这块视口下的默认身量)。 */
-const M_FLOAT: PlacementMemory = { kind: 'float', rect: defaultFloatRect(VP) }
+/**
+ * 新浮窗那条记忆。**没有矩形**(W7-p 修一轮裁定 1):「记得它浮着,但没人量过
+ * 它多大」——矩形由 `placeAs` 那一刻的唯一产地 `freshFloatRect` 现算(锚 + 层叠)。
+ * 从前这里带一个 `defaultFloatRect(VP)`,而那个恒定值正是「点瓦开出来的四扇窗
+ * 叠成一摞」的病根:记忆里有矩形 → `placeAs` 跳过产地。
+ */
+const M_FLOAT: PlacementMemory = { kind: 'float' }
 
 describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () => {
   /** 造一个「这块瓦有这么一条记忆」的态。 */
@@ -291,48 +299,48 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
   })
 
   it('没有记忆 → 落到全局默认档(舞台已不在档里)', () => {
-    expect(resolveOpen(base, 'files', 'pinned', VP)).toEqual({
+    expect(resolveOpen(base, 'files', 'pinned')).toEqual({
       kind: 'edge',
       side: 'right',
       index: 0,
     })
-    expect(resolveOpen(base, 'files', 'float', VP)).toEqual(M_FLOAT)
+    expect(resolveOpen(base, 'files', 'float')).toEqual(M_FLOAT)
   })
 
   it('记忆赢:打开还原最后一次显式落点,档只在无记忆时说话(08-30 晚定案)', () => {
     const rect = { x: 1, y: 2, w: 300, h: 400 }
-    expect(resolveOpen(withMemory('files', { kind: 'float', rect }), 'files', 'float', VP)).toEqual({
+    expect(resolveOpen(withMemory('files', { kind: 'float', rect }), 'files', 'float')).toEqual({
       kind: 'float',
       rect,
     })
     // 异形态照样还原 —— 「我亲手钉过它」是事实,档抹不掉它。
     expect(
-      resolveOpen(withMemory('files', { kind: 'edge', side: 'left', index: 2 }), 'files', 'float', VP),
+      resolveOpen(withMemory('files', { kind: 'edge', side: 'left', index: 2 }), 'files', 'float'),
     ).toEqual({ kind: 'edge', side: 'left', index: 2 })
-    expect(resolveOpen(withMemory('files', { kind: 'stage' }), 'files', 'float', VP)).toEqual({
+    expect(resolveOpen(withMemory('files', { kind: 'stage' }), 'files', 'float')).toEqual({
       kind: 'stage',
     })
   })
 
   it('用户流程逐字(08-30 晚定案):初开浮窗 → 钉右 → 关 → 开在右 → 弹出 → 关 → 开成浮窗', () => {
     // 初始无记忆:默认档 = 浮窗。
-    expect(resolveOpen(base, 'sessions', 'float', VP)).toEqual(M_FLOAT)
+    expect(resolveOpen(base, 'sessions', 'float')).toEqual(M_FLOAT)
     // 手势一:钉到右边(显式落点,openAs 落定即写记忆)。
     let st = openAs(base, 'sessions', { kind: 'edge', side: 'right' }, VP)
     st = closeToDock(st, 'sessions')
-    expect(resolveOpen(st, 'sessions', 'float', VP)).toEqual({ kind: 'edge', side: 'right', index: 0 })
+    expect(resolveOpen(st, 'sessions', 'float')).toEqual({ kind: 'edge', side: 'right', index: 0 })
     // 按记忆开回右边,再弹出成浮窗(手势二改写记忆),关掉。
-    st = openFromMemory(st, 'sessions', resolveOpen(st, 'sessions', 'float', VP), VP)
+    st = openFromMemory(st, 'sessions', resolveOpen(st, 'sessions', 'float'), VP)
     st = edgeToFloat(st, 'sessions', VP)
     st = closeToDock(st, 'sessions')
     // 再开:浮窗(带弹出时落定的矩形)。
-    const resolved = resolveOpen(st, 'sessions', 'float', VP)
+    const resolved = resolveOpen(st, 'sessions', 'float')
     expect(resolved.kind).toBe('float')
   })
 
   it('记忆只作用于自己那一个 id —— 别的瓦照旧跟默认档', () => {
     const st = withMemory('files', { kind: 'float', rect: { x: 1, y: 2, w: 300, h: 400 } })
-    expect(resolveOpen(st, 'diff', 'float', VP)).toEqual(M_FLOAT)
+    expect(resolveOpen(st, 'diff', 'float')).toEqual(M_FLOAT)
   })
 
   it('第三层「显式手势」不经过这个函数:手势自己说得出落点,直接调 openAs', () => {
@@ -357,58 +365,65 @@ describe('resolveOpen(解析序:显式手势 > 记忆 > 全局默认档)', () =>
     expect(clampDefaultOpen('float')).toBe('float')
     // 残值只影响**无记忆**的档兜底;有记忆时记忆照常还原(定案语义)。
     const pinnedOnce = withMemory('files', { kind: 'edge', side: 'right', index: 0 })
-    expect(resolveOpen(pinnedOnce, 'files', 'stage' as never, VP)).toEqual({
+    expect(resolveOpen(pinnedOnce, 'files', 'stage' as never)).toEqual({
       kind: 'edge',
       side: 'right',
       index: 0,
     })
-    expect(resolveOpen(base, 'files', 'stage' as never, VP)).toEqual(M_FLOAT)
+    expect(resolveOpen(base, 'files', 'stage' as never)).toEqual(M_FLOAT)
   })
 
   it('默认档补成记忆时,缺的那两件事按「就当它没来过」补', () => {
     // 钉边:排到那条边现有的末尾,不是插到最前。
     const two = withShelf(['files', 'diff'])
-    expect(defaultOpenMemory(two, 'pinned', VP)).toEqual({ kind: 'edge', side: 'right', index: 2 })
+    expect(defaultOpenMemory(two, 'pinned')).toEqual({ kind: 'edge', side: 'right', index: 2 })
     // 浮窗:新窗默认身量。
-    expect(defaultOpenMemory(base, 'float', VP)).toEqual(M_FLOAT)
+    expect(defaultOpenMemory(base, 'float')).toEqual(M_FLOAT)
   })
 
   it('检索面板是普通的一块瓦:参与 resolveOpen 全套(记忆照常还原)', () => {
-    expect(resolveOpen(base, 'search', 'float', VP)).toEqual(M_FLOAT)
-    expect(resolveOpen(withMemory('search', { kind: 'stage' }), 'search', 'pinned', VP)).toEqual({
+    expect(resolveOpen(base, 'search', 'float')).toEqual(M_FLOAT)
+    expect(resolveOpen(withMemory('search', { kind: 'stage' }), 'search', 'pinned')).toEqual({
       kind: 'stage',
     })
   })
 })
 
-describe('clickDockIcon', () => {
-  it("从收拢态点一下(落点 stage)→ 上舞台", () => {
-    expect(stageIdOf(clickDockIcon(base, 'files', STAGE))).toBe('files')
+/*
+ * ── `describe('clickDockIcon')` 那一组的去处(W7-p 裁定 6)────────────────────
+ * 「点 Dock 瓦这一下什么意思」从此**不是形态机的事**:两个入口(点瓦 / 快捷键)
+ * 都走同一台召唤机器(`summon.summonFromSituation`),而那台机器的状态表由
+ * `__tests__/summon.test.ts` 逐行钉着,两个入口逐字相同由
+ * `__tests__/summon-entries.test.ts` 在真 store 上钉着。
+ *
+ * 所以那一组里**问 toggle 语义的八条**(舞台再点一下关掉、看得见的再点收整栏、
+ * 收着的再点展开+闪、收展收一个来回、点非活动 tab 切过去、闪烁累加、浮窗再点
+ * 置顶)整组搬走了 —— 它们的主语已经不存在。剩下的七条问的是**「按记忆开出来」
+ * 这一支落在哪儿**,那仍旧是形态机的事,所以留在下面,只是改叫它真正的名字。
+ */
+describe('openFromMemory(「按记忆开出来」那一支 —— 召唤第一态的落点)', () => {
+  it('落点 stage → 上舞台', () => {
+    expect(stageIdOf(openFromMemory(base, 'files', STAGE))).toBe('files')
   })
 
-  it('舞台上的同一个再点一下 → 关舞台', () => {
-    const opened = clickDockIcon(base, 'files', STAGE)
-    expect(stageIdOf(clickDockIcon(opened, 'files', STAGE))).toBeNull()
-  })
-
-  it('舞台一次只有一个:点另一个是直接替换,不排队', () => {
-    const opened = clickDockIcon(base, 'files', STAGE)
-    const next = clickDockIcon(opened, 'diff', STAGE)
+  it('舞台一次只有一个:开另一个是直接替换,不排队', () => {
+    const opened = openFromMemory(base, 'files', STAGE)
+    const next = openFromMemory(opened, 'diff', STAGE)
     expect(stageIdOf(next)).toBe('diff')
     expect(formOf(next, 'files')).toBe('dock')
   })
 
   it('落点 edge → 追加成新 tab 并激活,不上舞台', () => {
-    const next = clickDockIcon(base, 'files', atEnd(base))
+    const next = openFromMemory(base, 'files', atEnd(base))
     expect(rightShelf(next).tabs).toEqual(['files'])
     expect(rightShelf(next).activeId).toBe('files')
     expect(stageIdOf(next)).toBeNull()
     expect(formOf(next, 'files')).toBe('edge')
   })
 
-  it('连开两个 edge → 两个 tab 共存,次序即点击次序,活动的是后来的那个', () => {
-    const one = clickDockIcon(base, 'files', atEnd(base))
-    const next = clickDockIcon(one, 'diff', atEnd(one))
+  it('连开两个 edge → 两个 tab 共存,次序即先后,活动的是后来的那个', () => {
+    const one = openFromMemory(base, 'files', atEnd(base))
+    const next = openFromMemory(one, 'diff', atEnd(one))
     expect(rightShelf(next).tabs).toEqual(['files', 'diff'])
     expect(rightShelf(next).activeId).toBe('diff')
     expect(formOf(next, 'files')).toBe('edge')
@@ -416,155 +431,29 @@ describe('clickDockIcon', () => {
 
   it('落点 edge 时舞台开着也不动它:架子与舞台正交', () => {
     const state = openAs(base, 'terminal', STAGE)
-    const next = clickDockIcon(state, 'files', atEnd(state))
+    const next = openFromMemory(state, 'files', atEnd(state))
     expect(stageIdOf(next)).toBe('terminal')
     expect(rightShelf(next).tabs).toEqual(['files'])
   })
 
-  it('已钉且看得见(活动 tab + 栏展开)的再点 → 收起整栏,不开舞台也不重复追加', () => {
+  it('钉住 A 时开 B 上舞台,两者共存', () => {
     const state = withShelf(['diff'])
-    const next = clickDockIcon(state, 'diff', STAGE)
-    expect(stageIdOf(next)).toBeNull()
-    expect(rightShelf(next).tabs).toEqual(['diff'])
-    expect(rightShelf(next).collapsed).toBe(true)
-    expect(rightShelf(next).activeId).toBe('diff')
-    // 收起不是「找到它」,所以不闪
-    expect(next.flashPinned).toBe(state.flashPinned)
-  })
-
-  it('已钉但栏收着的再点 → 激活 + 展开 + 闪一下(看不见就等于"找它")', () => {
-    const state = toggleShelfCollapsed(withShelf(['diff']), 'right')
-    const next = clickDockIcon(state, 'diff', STAGE)
-    expect(rightShelf(next).collapsed).toBe(false)
-    expect(rightShelf(next).activeId).toBe('diff')
-    expect(next.flashPinned).toBe(state.flashPinned + 1)
-  })
-
-  it('收 → 展 → 收:同一块瓦点三下走一个来回', () => {
-    const a = clickDockIcon(withShelf(['diff']), 'diff', STAGE)
-    expect(rightShelf(a).collapsed).toBe(true)
-    const b = clickDockIcon(a, 'diff', STAGE)
-    expect(rightShelf(b).collapsed).toBe(false)
-    expect(b.flashPinned).toBe(1)
-    const c = clickDockIcon(b, 'diff', STAGE)
-    expect(rightShelf(c).collapsed).toBe(true)
-    expect(c.flashPinned).toBe(1)
-  })
-
-  it('栏收着时点「非活动」的那个 → 切过去并展开', () => {
-    const state = toggleShelfCollapsed(withShelf(['files', 'diff'], 'diff'), 'right')
-    const next = clickDockIcon(state, 'files', STAGE)
-    expect(rightShelf(next).activeId).toBe('files')
-    expect(rightShelf(next).collapsed).toBe(false)
-    expect(next.flashPinned).toBe(1)
-  })
-
-  it('点架子上「非活动」的那个 → 活动 tab 切过去(落点是什么都一样)', () => {
-    const state = withShelf(['files', 'diff'], 'diff')
-    const next = clickDockIcon(state, 'files', atEnd(state))
-    expect(rightShelf(next).activeId).toBe('files')
-    expect(rightShelf(next).tabs).toEqual(['files', 'diff'])
-    expect(next.flashPinned).toBe(1)
-  })
-
-  it('闪烁是累加的:两次「找它」记两次', () => {
-    const state = withShelf(['files', 'diff'], 'diff')
-    const twice = clickDockIcon(clickDockIcon(state, 'files', STAGE), 'diff', STAGE)
-    expect(twice.flashPinned).toBe(2)
-  })
-
-  it('钉住 A 时点 B 上舞台,两者共存', () => {
-    const state = withShelf(['diff'])
-    const next = clickDockIcon(state, 'files', STAGE)
+    const next = openFromMemory(state, 'files', STAGE)
     expect(stageIdOf(next)).toBe('files')
     expect(rightShelf(next).tabs).toEqual(['diff'])
     expect(next.flashPinned).toBe(0)
   })
 
-  it('已是浮窗的再点 → 置顶它,不关也不新开第二扇', () => {
-    let st = openAs(base, 'files', FLOAT, VP)
-    st = openAs(st, 'diff', FLOAT, VP)
-    const next = clickDockIcon(st, 'files', STAGE, VP)
-    expect(next.floatOrder).toEqual(['diff', 'files'])
-    expect(formOf(next, 'files')).toBe('float')
-  })
-
   it('是纯函数:不改原对象', () => {
     const before = JSON.parse(JSON.stringify(base))
-    clickDockIcon(base, 'files', atEnd(base))
+    openFromMemory(base, 'files', atEnd(base))
     expect(base).toEqual(before)
-  })
-})
-
-describe('placements 是唯一事实源', () => {
-  it('一个 id 只在一处:上舞台会把它从架子上摘走', () => {
-    const st = openAs(withShelf(['files', 'diff'], 'files'), 'files', STAGE)
-    expect(formOf(st, 'files')).toBe('stage')
-    expect(rightShelf(st).tabs).toEqual(['diff'])
-    expect(rightShelf(st).activeId).toBe('diff')
-  })
-
-  it('变浮窗会把它从架子上摘走,反过来也一样', () => {
-    const floated = edgeToFloat(withShelf(['files']), 'files', VP)
-    expect(floated.floatOrder).toEqual(['files'])
-    expect(rightShelf(floated).tabs).toEqual([])
-
-    const back = floatToEdge(floated, 'files', 'left')
-    expect(back.floatOrder).toEqual([])
-    expect(back.shelves.left.tabs).toEqual(['files'])
-    expect(placementOf(back, 'files')).toEqual({ kind: 'edge', side: 'left' })
-  })
-
-  it('dock 是缺席态:收回 Dock 就是从表里消失,不留一条 {kind:dock}', () => {
-    const st = closeToDock(openAs(base, 'files', STAGE), 'files')
-    expect('files' in st.placements).toBe(false)
-    expect(placementOf(st, 'files')).toEqual(DOCK)
-  })
-
-  it('舞台至多一个:第二个上台,第一个落回 dock', () => {
-    const st = openAs(openAs(base, 'files', STAGE), 'diff', STAGE)
-    expect(Object.values(st.placements).filter((p) => p.kind === 'stage')).toHaveLength(1)
-    expect(stageIdOf(st)).toBe('diff')
-  })
-
-  it('四条边各有一份架子,互不干涉', () => {
-    let st = openAs(base, 'files', { kind: 'edge', side: 'left' })
-    st = openAs(st, 'diff', { kind: 'edge', side: 'bottom' })
-    expect(st.shelves.left.tabs).toEqual(['files'])
-    expect(st.shelves.bottom.tabs).toEqual(['diff'])
-    expect(st.shelves.right.tabs).toEqual([])
-    expect(st.shelves.top.tabs).toEqual([])
-  })
-})
-
-describe('toggleShelfCollapsed', () => {
-  it('收/展往返:两次回到原点,tab 次序与活动 tab 一个都不动', () => {
-    const state = withShelf(['files', 'diff'], 'files')
-    const collapsed = toggleShelfCollapsed(state, 'right')
-    expect(rightShelf(collapsed).collapsed).toBe(true)
-    expect(rightShelf(collapsed).tabs).toEqual(['files', 'diff'])
-    expect(rightShelf(collapsed).activeId).toBe('files')
-
-    const back = toggleShelfCollapsed(collapsed, 'right')
-    expect(rightShelf(back).collapsed).toBe(false)
-    expect(back).toEqual(state)
-  })
-
-  it('初始四条边都是展开的', () => {
-    for (const side of ['left', 'right', 'top', 'bottom'] as ShelfSide[]) {
-      expect(initialStageState.shelves[side].collapsed).toBe(false)
-    }
-  })
-
-  it('收的是这一条边,不碰别的边', () => {
-    const st = toggleShelfCollapsed(withShelf(['files']), 'right')
-    expect(st.shelves.left.collapsed).toBe(false)
   })
 })
 
 describe('stageToEdge / stageToFloat', () => {
   it('把舞台落成新 tab 并激活,舞台清空', () => {
-    const opened = clickDockIcon(base, 'files', STAGE)
+    const opened = openFromMemory(base, 'files', STAGE)
     const next = stageToEdge(opened, 'right')
     expect(rightShelf(next).tabs).toEqual(['files'])
     expect(rightShelf(next).activeId).toBe('files')
@@ -594,7 +483,9 @@ describe('stageToEdge / stageToFloat', () => {
     const next = stageToFloat(openAs(base, 'files', STAGE), VP)
     expect(formOf(next, 'files')).toBe('float')
     expect(stageIdOf(next)).toBeNull()
-    expect(next.floats.files).toEqual(defaultFloatRect(VP))
+    // 锚点的参考系是**中央区**(W7-p 裁定 5),所以期望值也得从同一把尺算 ——
+    // 这里没有架子,于是它就是「顶栏之下、视口右上角内缩一格」。
+    expect(next.floats.files).toEqual(freshFloatRect(base, VP))
   })
 
   it('收起态下舞台钉到边,栏展开(点了不能"看起来什么都没发生")', () => {
@@ -608,7 +499,7 @@ describe('stageToEdge / stageToFloat', () => {
 
   it('收起态下新图标入架子,栏展开', () => {
     const collapsed = toggleShelfCollapsed(base, 'right')
-    const st = clickDockIcon(collapsed, 'files', atEnd(collapsed))
+    const st = openFromMemory(collapsed, 'files', atEnd(collapsed))
     expect(rightShelf(st).tabs).toContain('files')
     expect(rightShelf(st).collapsed).toBe(false)
   })
@@ -676,16 +567,57 @@ describe('closeStage', () => {
 })
 
 describe('浮窗', () => {
-  it('开一扇:登记落点、进置顶序、给一个居中的默认矩形', () => {
+  it('开一扇:登记落点、进置顶序、给一个锚在右上角的默认矩形(W7-p 裁定 5)', () => {
     const st = openAs(base, 'files', FLOAT, VP)
     expect(formOf(st, 'files')).toBe('float')
     expect(st.floatOrder).toEqual(['files'])
+    // 反证:把 defaultFloatRect 换回「恒定居中」→ x 变成 (VP.w - w)/2,这条红。
     expect(st.floats.files).toEqual({
       w: FLOAT_DEFAULT_W,
       h: FLOAT_DEFAULT_H,
-      x: (VP.w - FLOAT_DEFAULT_W) / 2,
-      y: (VP.h - FLOAT_DEFAULT_H) / 2,
+      x: VP.w - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W,
+      // **顶栏那条带切在中央区之外**(W7-p 裁定 5 的修正,判词在 `TOP_CHROME` 上):
+      // 不切的话新窗一开就盖住标签条的右半截(`gate:drag` 场景①③的真机现场)。
+      y: TOP_CHROME + FLOAT_SPAWN_INSET,
     })
+  })
+
+  it('层叠:已有 n 扇未关时往左下挪 n×28,挪不动了就回绕到起点(W7-p 裁定 5)', () => {
+    // 层叠级数**从状态里读**(`floatOrder` 有几扇),不再由调用方递一个数进来 ——
+    // W7-p 修一轮裁定 1:新窗矩形只有 `freshFloatRect` 一个产地,读数装配在它里面。
+    const spawn = (open: number) =>
+      freshFloatRect({ ...base, floatOrder: Array.from({ length: open }, (_, i) => `w${i}`) }, VP)
+    const anchorX = VP.w - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W
+    const first = spawn(0)
+    const second = spawn(1)
+    expect(second.x).toBe(anchorX - FLOAT_CASCADE_STEP)
+    expect(second.y).toBe(TOP_CHROME + FLOAT_SPAWN_INSET + FLOAT_CASCADE_STEP)
+    // 四扇两两不同:审计 A 的 A6 现场是四扇一模一样地叠在一起。
+    const four = [0, 1, 2, 3].map(spawn)
+    expect(new Set(four.map((r) => `${r.x},${r.y}`)).size).toBe(4)
+    // 回绕:挪到出中央区就回起点(steps 由视口算,所以这里问的是「有没有回绕」)。
+    const center = centerRectOf(base, VP)
+    const steps = Math.min(
+      Math.floor((anchorX - center.left) / FLOAT_CASCADE_STEP),
+      Math.floor((center.bottom - center.top - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_H) / FLOAT_CASCADE_STEP),
+    )
+    expect(spawn(steps + 1)).toEqual(first)
+  })
+
+  it('锚是**中央区**的右上角,不是视口的 —— 钉了右架子就往里让(W7-p 裁定 5)', () => {
+    const withShelf = {
+      ...base,
+      shelves: {
+        ...base.shelves,
+        right: { ...base.shelves.right, thickness: 400, tabs: ['diff'], collapsed: false },
+      },
+    }
+    const center = centerRectOf(withShelf, VP)
+    expect(center.right).toBe(VP.w - 400)
+    const rect = freshFloatRect(withShelf, VP)
+    // 反证:把 `freshFloatRect` 换回 `defaultFloatRect`(参考系是整个视口)→
+    // x 回到贴视口右缘,新窗开在右架子底下。
+    expect(rect.x).toBe(VP.w - 400 - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W)
   })
 
   it('置顶:挪到序末;已经在末位或根本不是浮窗都是恒等变换', () => {
@@ -766,9 +698,11 @@ describe('浮窗', () => {
     const small: Viewport = { w: 500, h: 400 }
     // 09-04 §4 只加了**身量上界**这一格:从前是 500×400(整个视口),现在留出两道气口。
     // x/y 仍是 0 —— 拖拽那把尺的位置口径一字没改,居中算出来是 0 就是 0。
+    // W7-p 裁定 5:锚从「居中」换成「右上角内缩 24」,而这一档视口连一格身量都
+    // 塞不下,`clampFloatRect` 的 KEEP 口径把它按回 0 —— 位置口径仍旧一字没改。
     expect(defaultFloatRect(small)).toEqual({
-      x: 0,
-      y: 0,
+      x: 500 - FLOAT_SPAWN_INSET - (500 - 2 * FLOAT_MARGIN),
+      y: FLOAT_SPAWN_INSET,
       w: 500 - 2 * FLOAT_MARGIN,
       h: 400 - 2 * FLOAT_MARGIN,
     })
@@ -836,8 +770,18 @@ describe('浮窗', () => {
     expect(rect.y + rect.h).toBeLessThanOrEqual(vp.h - FLOAT_MARGIN)
     expect(rect.w).toBeGreaterThanOrEqual(FLOAT_MIN_W)
     expect(rect.x).toBeGreaterThanOrEqual(FLOAT_MARGIN)
-    // 记忆里那一份同样钳过 —— 不然关掉再开又是坏的。
-    expect(next.memory.sessions).toEqual({ kind: 'float', rect })
+    /*
+     * **记忆一个字不动**(W7-p 裁定 4 推翻 09-04 那句「记忆里那一份同样钳过」)。
+     * 记忆是用户的意图,只有手势与落定写得了它;重钳写它 = 一次临时的窄屏永久
+     * 改写用户摆好的身量(审计 A 的 A5)。关着的窗再开出来靠 `openFromMemory`
+     * 那一句 `clampFloatRect` 钳,不靠这里。
+     * 反证:把 `reclampFloatMap` 旁边那只 `reclampMemoryMap` 加回去 → 这条红。
+     */
+    expect(next.memory.sessions).toEqual({ kind: 'float', rect: { x: 260, y: 40, w: 879, h: 700 } })
+
+    // 变窄再变宽:活矩形从**同一份记忆**重算,所以逐字回到原样(裁定 4 的正题)。
+    const back = reclampAll(next, { w: 1600, h: 900 })
+    expect(back.floats.sessions).toEqual({ x: 260, y: 40, w: 879, h: 700 })
   })
 
   it('账上每个空间那一格家具也钳(切回去不会露出同一个病)', () => {
@@ -1110,14 +1054,17 @@ describe('厚度钳制(W2:下界 240 绝对值,上界 55% 比例)', () => {
   })
 
   it('setShelfThickness 走的是同一个钳子', () => {
-    expect(rightShelf(setShelfThickness(base, 'right', 100, 1600)).thickness).toBe(
+    // W7-p 裁定 3:递整个视口(共同预算要问对边);对边空着时预算不设限,
+    // 上界照旧是 55%,所以这两条读数与 W2 逐字相同。
+    const vp = { w: 1600, h: 1600 }
+    expect(rightShelf(setShelfThickness(base, 'right', 100, vp)).thickness).toBe(
       SHELF_MIN_THICKNESS,
     )
-    expect(rightShelf(setShelfThickness(base, 'right', 1400, 1600)).thickness).toBe(880)
+    expect(rightShelf(setShelfThickness(base, 'right', 1400, vp)).thickness).toBe(880)
   })
 
   it('改的是这一条边的厚度,别的边不动', () => {
-    const st = setShelfThickness(base, 'left', 500, 1600)
+    const st = setShelfThickness(base, 'left', 500, { w: 1600, h: 1600 })
     expect(st.shelves.left.thickness).toBe(500)
     expect(st.shelves.right.thickness).toBe(SHELF_DEFAULT_THICKNESS)
   })
@@ -1137,6 +1084,183 @@ describe('厚度钳制(W2:下界 240 绝对值,上界 55% 比例)', () => {
     expect(thicknessFromPointer('bottom', { x: 0, y: 700 }, 900)).toBe(200)
     // 顶架子的外缘不是 0(它在 TopBar 之下),所以外缘必须由宿主量出来递进来。
     expect(thicknessFromPointer('top', { x: 0, y: 344 }, 44)).toBe(300)
+  })
+})
+
+/**
+ * **共同预算:四条边与中央区分同一块地**(W7-p 裁定 3,审计 A 的 A3/A4)。
+ *
+ * 上面那一组问的是「一条边自己钳到哪」;这一组问的是**两条对边加起来还给中央
+ * 留没留下地方** —— 那正是 A3 的病根:`clampShelfThickness` 逐边算 55%,上下两条
+ * 各拿走 55% 加起来 110%,真机上中央区量到 h = 0,输入框浮在上架子的内容上。
+ */
+describe('架子共同预算(W7-p 裁定 3)', () => {
+  /** 一条边上有几格 tab、多厚、收没收。**只造几何**,不碰树。 */
+  const shelvesOf = (
+    spec: Partial<Record<ShelfSide, { thickness?: number; collapsed?: boolean; empty?: boolean }>>,
+  ): StageState['shelves'] => {
+    const shelves = emptyShelves()
+    for (const [side, cfg] of Object.entries(spec) as [ShelfSide, { thickness?: number; collapsed?: boolean; empty?: boolean }][]) {
+      shelves[side] = {
+        ...shelves[side],
+        tabs: cfg.empty ? [] : ['x'],
+        activeId: cfg.empty ? null : 'x',
+        thickness: cfg.thickness ?? SHELF_DEFAULT_THICKNESS,
+        collapsed: cfg.collapsed ?? false,
+      }
+    }
+    return shelves
+  }
+
+  it('「这条边此刻占多厚」三档:空的 0、收着的一条细梁、展开的才是厚度', () => {
+    const sh = shelvesOf({ left: { thickness: 400 }, right: { collapsed: true, thickness: 400 }, top: { empty: true } })
+    expect(shelfExtentOf(sh.left)).toBe(400)
+    expect(shelfExtentOf(sh.right)).toBe(SHELF_RAIL)
+    expect(shelfExtentOf(sh.top)).toBe(0)
+  })
+
+  it('预算 = 该轴**可用长度** − 中央最小 − 对边此刻厚度(竖轴先扣顶栏)', () => {
+    const st = { shelves: shelvesOf({ left: { thickness: 400 }, top: { thickness: 300 } }) }
+    const vp = { w: 1600, h: 1000 }
+    expect(shelfThicknessBudget(st, 'right', vp)).toBe(1600 - CENTER_MIN_W - 400)
+    /*
+     * **竖轴扣顶栏**(W7-p 修一轮裁定 6)。反证:把 `usableExtent` 换回
+     * `shelfViewportExtent`(即不扣 TOP_CHROME)→ 这条与下面那条一起红,而真机上的
+     * 样子是 860 高的窗里「上 300 + 下 240」被判为装得下、中央区实高只有 276。
+     */
+    expect(shelfThicknessBudget(st, 'bottom', vp)).toBe(1000 - TOP_CHROME - CENTER_MIN_H - 300)
+    // 对面空着 = 不占地:整条轴减中央最小就是全部预算。
+    expect(shelfThicknessBudget({ shelves: emptyShelves() }, 'right', vp)).toBe(1600 - CENTER_MIN_W)
+    expect(shelfThicknessBudget({ shelves: emptyShelves() }, 'top', vp)).toBe(
+      1000 - TOP_CHROME - CENTER_MIN_H,
+    )
+    // 预算与 `centerRectOf` 是**同一把尺**:上下都钉满预算时中央区正好等于最小高。
+    const filled = { shelves: shelvesOf({ top: { thickness: 300 }, bottom: { thickness: 1000 - TOP_CHROME - CENTER_MIN_H - 300 } }) }
+    const center = centerRectOf(filled, vp)
+    expect(center.bottom - center.top).toBe(CENTER_MIN_H)
+  })
+
+  it('对边配对只在一张表里:left↔right、top↔bottom', () => {
+    expect(OPPOSITE_SHELF).toEqual({ left: 'right', right: 'left', top: 'bottom', bottom: 'top' })
+  })
+
+  it('钉得上吗:预算够 240 才钉得上,不够就**拒绝**(不是压成 0)', () => {
+    const vp = { w: 1024, h: 768 }
+    // 1024 − 480 = 544;左边钉了 400 之后只剩 144 < 240 → 右边摆不下。
+    const st = { shelves: shelvesOf({ left: { thickness: 400 } }) }
+    expect(canNailShelf(st, 'right', vp)).toBe(false)
+    // 反证:去掉共同预算(退回逐边 55%)→ 这里会答 true,右架子当场钉上去,
+    // 中央区被压到 224 —— 那正是 A3。
+    expect(canNailShelf({ shelves: emptyShelves() }, 'right', vp)).toBe(true)
+  })
+
+  it('已经开着的那条边永远钉得上 —— 再插一格 tab 不改几何', () => {
+    const vp = { w: 700, h: 500 }
+    const st = { shelves: shelvesOf({ left: { thickness: 240 }, right: { thickness: 240 } }) }
+    // 预算此刻是负的,可这条边已经有东西:拒绝往一条开着的架子上再放一格是莫名其妙。
+    expect(shelfThicknessBudget(st, 'right', vp)).toBeLessThan(SHELF_MIN_THICKNESS)
+    expect(canNailShelf(st, 'right', vp)).toBe(true)
+  })
+
+  it('钳子的上界是「55% 与预算里小的那个」,而下界 240 永远赢', () => {
+    expect(clampShelfThickness(900, 1600, 500)).toBe(500)
+    expect(clampShelfThickness(900, 1600, 1200)).toBe(880)
+    // 预算比下界还小(挤到没地方了):钳到 240,而不是钳出一个比 240 还小的数。
+    expect(clampShelfThickness(900, 1600, 100)).toBe(SHELF_MIN_THICKNESS)
+  })
+
+  it('拖杆落定走同一把尺:对边占着 400 时,右边拖到底也只到预算那一格', () => {
+    const st: StageState = { ...initialStageState, shelves: shelvesOf({ left: { thickness: 400 }, right: { thickness: 300 } }) }
+    const next = setShelfThickness(st, 'right', 5000, { w: 1600, h: 1000 })
+    expect(next.shelves.right.thickness).toBe(1600 - CENTER_MIN_W - 400)
+    // 左边一个字没动。
+    expect(next.shelves.left.thickness).toBe(400)
+  })
+
+  it('视口重钳:窗子变小,四条边按同一把尺收回来(A4:右架子曾探出屏幕 204px)', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ left: { thickness: 400 }, right: { thickness: 400 } }),
+      shelfNailOrder: ['left', 'right'],
+    }
+    const next = reclampShelves(st, { w: 1200, h: 800 })
+    // 后钉的那条先让:right 先被钳到 1200 − 480 − 400 = 320。
+    expect(next.shelves.right.thickness).toBe(320)
+    expect(next.shelves.left.thickness).toBe(400)
+    // 中央区确实还站得住。
+    expect(1200 - next.shelves.left.thickness - next.shelves.right.thickness)
+      .toBeGreaterThanOrEqual(CENTER_MIN_W)
+  })
+
+  it('次序即语义:换一个钉边序,让路的就换一条', () => {
+    const base9: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ left: { thickness: 400 }, right: { thickness: 400 } }),
+      shelfNailOrder: ['right', 'left'],
+    }
+    const next = reclampShelves(base9, { w: 1200, h: 800 })
+    // 反证:把 `nailRank` 的排序方向翻过来 → 这两条读数对调,先摆好的那条被人挤。
+    expect(next.shelves.left.thickness).toBe(320)
+    expect(next.shelves.right.thickness).toBe(400)
+  })
+
+  /**
+   * **空的一格地都不占;收着的按细梁占地,但它的厚度照钳**。
+   *
+   * 后半句是这一格里最容易被「顺手优化掉」的一条,所以单独钉:收起来的架子屏幕上
+   * 只有 12px,重钳当然不必为它腾地 —— 可 `toggleShelfCollapsed` **不重钳**
+   * (它只翻一格布尔,见 `placement.setShelfCollapsed`)。于是「展开任何一条架子,
+   * 中央区仍旧站得住」这句话唯一的守处就是这里:重钳时连收着的那条一起钳,
+   * 它才不会在被展开的那一刻把中央区顶穿。
+   */
+  it('空着的边不参与;收着的按细梁占地,但它自己的厚度照样钳(展开即穿帮的唯一守处)', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ left: { collapsed: true, thickness: 400 }, right: { thickness: 900 }, top: { empty: true } }),
+      shelfNailOrder: ['left', 'right'],
+    }
+    const next = reclampShelves(st, { w: 1600, h: 900 })
+    // 右边算预算时左边只占一条细梁:min(1600×0.55 = 880, 1600 − 480 − 12 = 1108) → 880。
+    expect(next.shelves.right.thickness).toBe(880)
+    // 左边收着,可它的厚度按「展开之后还站得住」钳:1600 − 480 − 880 = 240。
+    expect(next.shelves.left.thickness).toBe(SHELF_MIN_THICKNESS)
+    // 空着那条一个字没动 —— 它不在场,谈不上钳。
+    expect(next.shelves.top.thickness).toBe(SHELF_DEFAULT_THICKNESS)
+    // 这一条才是上面那句话的意思:此刻把左边展开,中央区仍旧 ≥ 480。
+    expect(1600 - next.shelves.left.thickness - next.shelves.right.thickness).toBe(CENTER_MIN_W)
+  })
+
+  it('一条都没动就交回同一个对象(与 reclampAll 逐字同一条纪律)', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ right: { thickness: 400 } }),
+      shelfNailOrder: ['right'],
+    }
+    expect(reclampShelves(st, { w: 1600, h: 900 })).toBe(st)
+  })
+
+  it('钉边序缺席也确定:退到 SHELF_SIDES 的固定次序(冷启动第一帧)', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ left: { thickness: 400 }, right: { thickness: 400 } }),
+      shelfNailOrder: [],
+    }
+    const a = reclampShelves(st, { w: 1200, h: 800 })
+    const b = reclampShelves(st, { w: 1200, h: 800 })
+    expect(a.shelves.left.thickness).toBe(b.shelves.left.thickness)
+    expect(a.shelves.right.thickness).toBe(b.shelves.right.thickness)
+    expect(1200 - a.shelves.left.thickness - a.shelves.right.thickness)
+      .toBeGreaterThanOrEqual(CENTER_MIN_W)
+  })
+
+  it('reclampAll 把架子一起钳(它是 resize 那条路的唯一口)', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ left: { thickness: 400 }, right: { thickness: 400 } }),
+      shelfNailOrder: ['left', 'right'],
+    }
+    // 反证:把 `reclampAll` 里那句 `reclampShelves(...)` 拆掉 → 这条读到 400。
+    expect(reclampAll(st, { w: 1200, h: 800 }).shelves.right.thickness).toBe(320)
   })
 })
 
@@ -1265,8 +1389,8 @@ describe('items 表', () => {
     expect(findItem('search')).toBeDefined()
     expect(findItem(SESSIONS_ITEM_ID)).toBeDefined()
     // 落点解析也一视同仁:同一份设置、同一个没记忆的起点,两块瓦解析出同一条记忆。
-    expect(resolveOpen(base, SESSIONS_ITEM_ID, 'float', VP)).toEqual(
-      resolveOpen(base, 'search', 'float', VP),
+    expect(resolveOpen(base, SESSIONS_ITEM_ID, 'float')).toEqual(
+      resolveOpen(base, 'search', 'float'),
     )
   })
 
@@ -1278,9 +1402,9 @@ describe('items 表', () => {
 describe('closeShelf(整栏关闭)', () => {
   it('这条边上的 tab 全部收回 Dock,别的边不动', () => {
     let st = initialStageState
-    st = clickDockIcon(st, 'diff', atEnd(st))
-    st = clickDockIcon(st, 'terminal', atEnd(st))
-    st = clickDockIcon(st, 'files', atEnd(st, 'left'))
+    st = openFromMemory(st, 'diff', atEnd(st))
+    st = openFromMemory(st, 'terminal', atEnd(st))
+    st = openFromMemory(st, 'files', atEnd(st, 'left'))
     st = closeShelf(st, 'right')
     expect(st.shelves.right.tabs).toEqual([])
     expect(st.shelves.right.activeId).toBeNull()
@@ -1468,18 +1592,18 @@ describe('位置记忆:按记忆恢复(index 钳制与同边合流)', () => {
     expect(back.floats.browser.x).toBeLessThanOrEqual(tiny.w - FLOAT_KEEP)
   })
 
-  it('点 Dock 图标走的就是这条路:无记忆 → 档(浮窗);有记忆 → 还原记忆', () => {
+  it('召唤第一态走的就是这条路:无记忆 → 档(浮窗);有记忆 → 还原记忆', () => {
     const remembered: StageState = {
       ...base,
       memory: { files: { kind: 'edge', side: 'left', index: 0 } },
     }
     expect(
-      formOf(clickDockIcon(base, 'files', resolveOpen(base, 'files', 'float', VP), VP), 'files'),
+      formOf(openFromMemory(base, 'files', resolveOpen(base, 'files', 'float'), VP), 'files'),
     ).toBe('float')
-    const next = clickDockIcon(
+    const next = openFromMemory(
       remembered,
       'files',
-      resolveOpen(remembered, 'files', 'float', VP),
+      resolveOpen(remembered, 'files', 'float'),
       VP,
     )
     expect(placementOf(next, 'files')).toEqual({ kind: 'edge', side: 'left' })
@@ -1545,7 +1669,9 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
   it("配了 'float' 但老档没存过矩形 → 给新窗的默认身量", () => {
     const out = migrateStagePersisted(v3({ browser: 'float' }), 3) as Record<string, unknown>
     const memory = furniture(out).memory as Record<string, PlacementMemory>
-    expect(memory.browser).toEqual({ kind: 'float', rect: defaultFloatRect(FALLBACK_VIEWPORT) })
+    // **不编矩形**(W7-p 修一轮裁定 1):迁移期没有真视口,编出来的那一份会被
+    // 当成「用户摆过的身量」永久留在档案里。缺矩形 = 开的时候由唯一产地现算。
+    expect(memory.browser).toEqual({ kind: 'float', rect: undefined })
   })
 
   it("配了 'pinned' 但当时不在右架子上 → 排到末尾", () => {
@@ -1594,64 +1720,71 @@ describe('migrateStagePersisted v3 → v4(打开方式配置并入记忆)', () =
 
 /* ══ W2:「盖」退役,真全屏接替它 ═══════════════════════════════════════════ */
 
-describe('全屏(full):形态机这一侧只做三件事', () => {
+describe('全屏(full):形态机这一侧只做**一**件事(W7-p 裁定 2)', () => {
   /*
    * 全屏**不是一种 Placement**(判词在 `stage/types.ts`):树一个字不动、
-   * `placements` 里没有它的位子,真正那一格瞬态住在拼贴台那本账上。所以形态机
-   * 这一层能做也只做三件事,这一组逐条钉它们:
-   *  ① 把这块瓦从每棵树里摘干净(它铺满窗子,不住在任何区域里);
-   *  ② 落定即写记忆(与别的档同一条纪律);
-   *  ③ 把「谁去铺」**说出口**(`PlacementOutcome`)——落地那一步在 store 那一层,
-   *     由 `workbench/__tests__/full.test.ts` 那一组守。
+   * `placements` 里没有它的位子,真正那一格瞬态住在拼贴台那本账上。
+   *
+   * W2 交卷时这一层做了三件事,而其中两件是**同一个错**的两半 —— 它把全屏当成了
+   * 一种住处:摘树 + 写 `remember({kind:'full'})`。真机后果(审计 A 的 A2):
+   * 一块钉在右边的瓦全屏一次,记忆被改写成 full,退出后它回 Dock,此后**点它
+   * 永远进全屏**,右架子再也回不来。W7-p 裁定 2 把那两件删了,于是这一层只剩
+   * ③:把「谁去铺」说出口(`PlacementOutcome`)——落地在 store 那一层,由
+   * `workbench/__tests__/full.test.ts` 那一组守。
    */
-  it('① 摘干净:落定之后它哪棵树都不在(投影缺席即 dock)', () => {
+  it('① 不摘树:钉在右边的瓦全屏之后仍旧钉在右边(退出即回原位,不必搬)', () => {
     let st = openAs(base, 'files', RIGHT)
     expect(formOf(st, 'files')).toBe('edge')
     st = openAs(st, 'files', FULL)
-    expect(formOf(st, 'files')).toBe('dock')
+    // 反证:把 `placeAs` 的 full 支里那句 `detachItem(id)` 加回去 → 这条读到 'dock'。
+    expect(formOf(st, 'files')).toBe('edge')
   })
 
-  it('② 落定即记忆;`openFromMemory` 拿着那条记忆再走一遍是同一条路', () => {
-    const st = openAs(base, 'files', FULL)
-    expect(st.memory.files).toEqual({ kind: 'full' })
-    expect(outcomeOf(st, VP, () => P.openFromMemory(D, 'files', st.memory.files!))).toEqual({
-      kind: 'full',
-    })
+  it('② 不写记忆:进之前的住处原样留在记忆里', () => {
+    let st = openAs(base, 'files', RIGHT)
+    st = closeToDock(st, 'files')
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'right', index: 0 })
+    st = openAs(st, 'files', FULL)
+    // 反证:把 `remember(deps, id, { kind: 'full' })` 加回去 → 记忆变成 {kind:'full'},
+    // 「再点这块瓦」从此永远进全屏(A2 现场)。
+    expect(st.memory.files).toEqual({ kind: 'edge', side: 'right', index: 0 })
   })
 
-  it('③ 说出口:`placeAs` 与 `clickDockIcon` 都把这一档交回给调用方', () => {
+  it('③ 说出口:`placeAs` 与 `openFromMemory` 都把这一档交回给调用方', () => {
     expect(outcomeOf(base, VP, () => P.placeAs(D, 'files', FULL))).toEqual({ kind: 'full' })
-    // 在 Dock 里 + 记忆 = 全屏 → 点一下 Dock 图标走的是 `openFromMemory` 那一支。
+    // 在 Dock 里 + 记忆 = 全屏 → 召唤第一态走的是 `openFromMemory` 那一支。
     expect(
-      outcomeOf(base, VP, () => P.clickDockIcon(D, 'apps', { kind: 'full' })),
+      outcomeOf(base, VP, () => P.openFromMemory(D, 'apps', { kind: 'full' })),
     ).toEqual({ kind: 'full' })
     // 别的档一律不说话 —— 它们的效果全写在这两台 store 上了。
     expect(outcomeOf(base, VP, () => P.placeAs(D, 'files', RIGHT))).toBe(null)
     expect(outcomeOf(base, VP, () => P.placeAs(D, 'files', STAGE))).toBe(null)
   })
 
-  it('顶掉舞台:它先从瞬态那一格离开,再被摘出树', () => {
+  it('不顶掉舞台:全屏盖在它上面,退出即露出(W7-p 裁定 2)', () => {
     let st = openAs(base, 'files', STAGE)
     expect(stageIdOf(st)).toBe('files')
     st = openAs(st, 'files', FULL)
-    expect(stageIdOf(st)).toBeNull()
-    expect(st.memory.files).toEqual({ kind: 'full' })
+    // 反证:把 `clearTransientOf(deps, id)` 加回 full 那一支 → stageId 变 null,
+    // 退出全屏时那块面回了 Dock 而不是回舞台。
+    expect(stageIdOf(st)).toBe('files')
+    expect(st.memory.files).toEqual({ kind: 'stage' })
   })
 })
 
 describe('item 天生落点:解析序的第三层', () => {
   it('没记忆时听 item 的天生落点,而不是全局默认档', () => {
-    expect(resolveOpen(base, 'apps', 'float', VP, { kind: 'full' })).toEqual({ kind: 'full' })
+    expect(resolveOpen(base, 'apps', 'float', { kind: 'full' })).toEqual({ kind: 'full' })
   })
 
   it('有记忆时记忆压过天生落点 —— 「我亲手放过」永远赢', () => {
     const st = openAs(base, 'apps', RIGHT)
     const closed = closeToDock(st, 'apps')
-    expect(resolveOpen(closed, 'apps', 'float', VP, { kind: 'full' }).kind).toBe('edge')
+    expect(resolveOpen(closed, 'apps', 'float', { kind: 'full' }).kind).toBe('edge')
   })
 
   it('没有天生落点就落回全局默认档(与加这一层之前逐字相同)', () => {
-    expect(resolveOpen(base, 'files', 'pinned', VP)).toEqual(defaultOpenMemory(base, 'pinned', VP))
+    expect(resolveOpen(base, 'files', 'pinned')).toEqual(defaultOpenMemory(base, 'pinned'))
   })
 
   it('「所有应用」在 items 表上确实声明了 full 与「藏不掉」(W2 拍点 ②)', () => {
@@ -1971,6 +2104,24 @@ describe('--dock-wake-band / --dock-hold-pad 与 JS 常量同源', () => {
     if (!hit) throw new Error(`tokens.css 里没有 ${name}`)
     return Number(hit[1])
   }
+
+  it('顶栏那条带两侧同一个数(W7-p 裁定 5:它是新窗锚点的参考系,见 centerRectOf)', () => {
+    // 反证:把 `TOP_CHROME` 改回 0(第一版把顶栏留在「中央区」里)→ 这条当场红,
+    // 而真机上的样子是新窗盖住标签条的右半截(`gate:drag` 场景①③)。
+    expect(read('--topbar-h')).toBe(TOP_CHROME)
+  })
+
+  /**
+   * **细梁那一格**(W7-p 修一轮裁定 7)。`SHELF_RAIL` 是「收起来的架子还占多厚」——
+   * `shelfExtentOf` 拿它算预算、tokens.css 拿它画,两个数写在两处必然分叉,而
+   * 修一轮的裁定 6 让它多了一个消费者(装不下时把架子收成细梁),分叉的代价从
+   * 「差几个像素」变成「中央区还够不够 480×320」。
+   *
+   * 反证:把 `SHELF_RAIL` 改成 16 → 这一条当场红。
+   */
+  it('细梁两侧同一个数(W7-p 修一轮裁定 7:它是预算算式的一项)', () => {
+    expect(read('--shelf-rail')).toBe(SHELF_RAIL)
+  })
 
   it('唤醒窄带两侧同一个数', () => {
     expect(read('--dock-wake-band')).toBe(DOCK_WAKE_BAND)

@@ -1,4 +1,5 @@
-import { partsOfContent, refId, sameRef } from './kinds'
+import { flattenContent, partsOfContent, refId, sameRef } from './kinds'
+import { regionReadRank } from './regions'
 import type { ContentRef, ContentRefId } from './kinds'
 import type { RegionId } from './regions'
 
@@ -81,6 +82,67 @@ export function locateRef(
   for (const leaf of leavesOf(node)) {
     const at = leaf.tabs.findIndex((tab) => refId(tab) === id)
     if (at >= 0) return { region, leafId: leaf.id, index: at }
+  }
+  return null
+}
+
+/* ── 座位:一格内容此刻坐在全壳的哪儿 ─────────────────────────────────────── */
+
+/**
+ * **一格内容的座位**(区域 + 叶 + 叶内下标 + 它是不是那片叶露脸的那一格)。
+ *
+ * `partIndex` 是 W7-p 修一轮裁定 2 加的那一格:`null` = 这一格标签**就是**它;
+ * 0 / 1 / … = 它是那格**复合**标签(二合一)里的第几侧。调用方据此决定语义 ——
+ * 「切过去」对哪一侧都成立(激活那格标签 + 焦点进那一侧的内容层),而「原位换 ref」
+ * 那一族只对 `partIndex === null` 说得通(`replaceRef` 改的是顶层标签)。
+ */
+export interface RefSeat {
+  region: RegionId
+  leafId: string
+  index: number
+  /** 它是那片叶此刻露脸的那一格吗。 */
+  active: boolean
+  partIndex: number | null
+}
+
+/**
+ * **全壳唯一的「这格内容坐在哪」**(W7-p 修一轮裁定 2)。
+ *
+ * ── 病历 ──────────────────────────────────────────────────────────────────
+ * 从前有两只:`stage/summon.seatOfRefIn`(按顶层 `refId` 找)与
+ * `content/session-open.seatOfRef`(同样只看顶层,而且不问区域次序)。两只都
+ * **不摊复合**,于是「在右侧打开」造出一格 `pair:` 二合一之后,那条会话在两只
+ * 眼里都不存在:sidebar 单击它 → 召唤答 `null` → 走「顶替焦点那片会话叶」,
+ * 把中央区正看着的那条顶掉,而用户要的只是切到已经开着的那一格。
+ *
+ * 今天一只,而且**摊开复合**(`kinds.flattenContent` —— 核心层照旧一个种类名都
+ * 不认识,复合怎么摊由那一种自述)。区域次序由 `regions.regionReadRank` 说
+ * (中央 → 四条边 → 浮窗),判词在那儿。
+ */
+export function seatOfRefIn(
+  regions: Readonly<Record<string, PaneNode>>,
+  id: ContentRefId,
+): RefSeat | null {
+  const order = [...Object.keys(regions)].sort((a, b) => regionReadRank(a) - regionReadRank(b))
+  for (const region of order) {
+    const tree = regions[region]
+    if (!tree) continue
+    for (const leaf of leavesOf(tree)) {
+      for (let at = 0; at < leaf.tabs.length; at += 1) {
+        const tab = leaf.tabs[at]
+        if (refId(tab) === id) {
+          return { region: region as RegionId, leafId: leaf.id, index: at, active: leaf.active === at, partIndex: null }
+        }
+        // 复合那一格:摊开之后再比。摊的深度与「这个区域里这一种还剩几个」
+        // 那条判据同源(`flattenContent`),所以二合一里的会话到处都算在场。
+        const parts = flattenContent(tab)
+        if (parts.length <= 1) continue
+        const side = parts.findIndex((part) => refId(part) === id)
+        if (side >= 0) {
+          return { region: region as RegionId, leafId: leaf.id, index: at, active: leaf.active === at, partIndex: side }
+        }
+      }
+    }
   }
   return null
 }

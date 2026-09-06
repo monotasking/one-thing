@@ -383,6 +383,49 @@ export function normalizeRegions(regions: Record<string, PaneNode>): Record<stri
     const clean = T.sanitize(tree, SANITIZE_OPTIONS)
     if (clean) out[region] = foldIfSingleLeafRegion(region, clean)
   }
+  return seedResidents(out)
+}
+
+/**
+ * **水合那一遍:只问结构,不问种类**(W7-p 裁定 1,审计 A 的 A1)。
+ *
+ * ── 病历(真机:钉右 + 钉左 + 一扇浮窗 → 关窗 → 再起,三处全没了)───────────
+ * `main.tsx` 的 `import App from './App'` 排在 `import './content/kinds'` 前面,
+ * 而 App 那条 import 闭包会经过**这只 store** —— 于是 store 在种类表还空着的时候
+ * 就建出来了,persist 的 `merge` 是**同步**的,当场跑完。那一遍从前调的是
+ * `normalizeRegions`,它第一句就是 `T.sanitize(tree, { known: isKnownContentKind })`:
+ * 表是空的,于是**每一格标签都是「未知种类」**,四条边与每一扇浮窗的树被整棵剔掉,
+ * 中央区塌成一片新叶(`nextLeafId()` —— 连叶 id 都换了)。随后第一次 `set` 触发
+ * `partialize` 回写,档案里那份真布局被这份塌过的覆盖:**重启即失忆**。
+ *
+ * ── 修法:把「洗形状」与「按种类清洗」拆成两件事,各归各的时刻 ─────────────
+ * 结构级(剪空叶、单叶政策折叠、中央区兜底)**不问种类**,谁都跑得了 → 留在 merge,
+ * 首帧照旧就是用户摆好的布局;种类级(未知种类剔除 + 常驻播种)要读表 → 挪到
+ * `startWorkbench()`,而它在 `main.tsx` 里排在 `import './content/kinds'` **之后**。
+ *
+ * ── 为什么不是 `skipHydration` + 在 startWorkbench 里同步 rehydrate ──────────
+ * 那条路要求 rehydrate 排在**一切写这台 store 的动作之前**,而 `main.tsx` 里
+ * `startStage()` 正排在 `startWorkbench()` 前面、并且**会写这台 store**(它把存量
+ * 家具折进树)。未水合就写 = 拿出厂状态盖档案,再由 persist 回写落盘 —— 那是比
+ * A1 更大的失败面。要修就得连同「startStage 必须排在 startWorkbench 之前」那条
+ * 既有次序一起翻,而那条次序自己有判词(见 `main.tsx`)。所以选这一条:
+ * merge 保持同步、保持写回安全(它**不再丢任何东西**,所以回写的就是原样)。
+ */
+export function normalizeRegionShapes(
+  regions: Record<string, PaneNode>,
+): Record<string, PaneNode> {
+  const out: Record<string, PaneNode> = {}
+  for (const [region, tree] of Object.entries(regions ?? {})) {
+    const pruned = T.prune(tree)
+    if (pruned) out[region] = foldIfSingleLeafRegion(region, pruned)
+  }
+  // 中央区永远在(设计 §1.3)。这一句是结构的,不是种类的。
+  if (!out[CENTER_REGION]) out[CENTER_REGION] = T.makeLeaf(nextLeafId())
+  return out
+}
+
+/** 播种常驻的那些 —— **要读种类表**,所以只在 `normalizeRegions` 那一遍里跑。 */
+function seedResidents(out: Record<string, PaneNode>): Record<string, PaneNode> {
   for (const kind of contentKindList()) {
     const resident = kind.resident
     if (!resident) continue
@@ -494,11 +537,19 @@ export function normalizeRecentRoots(roots: unknown): string[] {
 
 /** 洗一遍隐藏表:未知种类剔掉、重复的只留第一条。 */
 export function normalizeHidden(hidden: HiddenEntry[]): HiddenEntry[] {
+  return normalizeHiddenShape(hidden).filter((entry) => isKnownContentKind(entry.ref.kind))
+}
+
+/**
+ * 隐藏表的**结构级**那一半(W7-p 裁定 1)—— 形状对不对 + 去重,**不问种类表**。
+ * 水合那一刻种类表还是空的,拿 `isKnownContentKind` 去筛会把整张表清空
+ * (与 `normalizeRegionShapes` 那段病历同一个机制,只是丢的是「藏起来的那几格」)。
+ */
+export function normalizeHiddenShape(hidden: HiddenEntry[]): HiddenEntry[] {
   const seen = new Set<ContentRefId>()
   const out: HiddenEntry[] = []
   for (const entry of hidden ?? []) {
     if (!entry?.ref || typeof entry.ref.kind !== 'string' || typeof entry.ref.key !== 'string') continue
-    if (!isKnownContentKind(entry.ref.kind)) continue
     const id = refId(entry.ref)
     if (seen.has(id)) continue
     seen.add(id)
@@ -1240,20 +1291,28 @@ export const useWorkbenchStore = create<WorkbenchState>()(
       storage: createJSONStorage(() => localStorage),
       /*
        * merge 是**同步**的、发生在 store 建出来那一刻,所以第一帧画的就是这个空间
-       * 的布局(理由与 stage 的 merge 逐字相同)。这里额外跑一遍 `sanitize` ——
-       * 迁移可以被在飞实例的写盘绕过(旧值配新版本号落盘,migrate 不再跑),
-       * 而 merge 每次都跑,所以「洗干净」这件事只能挂在这里。
+       * 的布局(理由与 stage 的 merge 逐字相同)。
        *
-       * 此刻种类表可能还是空的(播种要等 `startWorkbench()`),所以这一遍洗的
-       * 结果只是「形状合法」;`sanitize` 幂等,第二遍在播种时补上剔除与去重。
+       * **它只洗形状**(W7-p 裁定 1):此刻种类表**一定**是空的(不是「可能」——
+       * `App` 的 import 闭包经过这只文件,而 `import './content/kinds'` 排在它
+       * 后面),所以任何读种类表的清洗在这里跑等于「把全部标签当未知种类丢掉」。
+       * 那一遍(未知剔除 + 常驻播种)整件挪到 `startWorkbench()` 的 `seed()`,
+       * 它排在那句 import 之后;`sanitize` / 播种都幂等,一次就够。
        */
       merge: (persisted, current) => {
         const saved = (persisted ?? {}) as Partial<WorkbenchState>
         const merged: WorkbenchState = { ...current, ...saved }
         merged.byWorkspace = (merged.byWorkspace ?? {}) as WorkbenchState['byWorkspace']
         Object.assign(merged, spreadSpace(merged.byWorkspace, WORKBENCH_PER_SPACE))
-        merged.regions = normalizeRegions(merged.regions ?? {})
-        merged.hidden = normalizeHidden(merged.hidden ?? [])
+        /*
+         * **只洗形状,不问种类**(W7-p 裁定 1;病历整段写在 `normalizeRegionShapes`
+         * 上)。这一刻种类表必定是空的 —— `App` 的 import 闭包经过这只文件,而
+         * `import './content/kinds'` 排在它后面。用种类去筛的那两句(未知剔除 +
+         * 常驻播种、隐藏表按种类过滤)因此挪到 `startWorkbench()` 的 `seed()` 里,
+         * 它在 `main.tsx` 里排在那句 import 之后。
+         */
+        merged.regions = normalizeRegionShapes(merged.regions ?? {})
+        merged.hidden = normalizeHiddenShape(merged.hidden ?? [])
         merged.pairRatios = normalizePairRatios(merged.regions, merged.pairRatios ?? {})
         merged.recentRoots = normalizeRecentRoots(merged.recentRoots)
         // 瞬态那几格永远从零开始(它们不落盘,但 merge 收到的 current 里有)。

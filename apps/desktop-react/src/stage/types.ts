@@ -64,7 +64,14 @@ export type OpenPlacement = Exclude<PlacementTarget, { kind: 'dock' }>
  */
 export type PlacementMemory =
   | { kind: 'stage' }
-  | { kind: 'float'; rect: FloatRect }
+  /**
+   * 浮窗。**矩形是可选的**(W7-p 修一轮裁定 1):`rect` 缺席 = 「这块面记得自己
+   * 上次是浮着的,但没人量过它多大」——从没被亲手摆过的那一格就是这样。开的时候
+   * 由 `stage/placement.placeAs` 的唯一产地 `transitions.freshFloatRect` 现算
+   * (锚在中央区右上角 + 按已开窗数层叠)。写成必填的代价是每一条造记忆的路都得
+   * 当场编一个矩形出来,而那正是「点瓦开出来的四扇窗叠成一摞」的病根。
+   */
+  | { kind: 'float'; rect?: FloatRect }
   /*
    * **全屏**(W2)。它在这条联合里而不在 `Placement` 里,是这一批最容易读错的
    * 一格:记忆说的是「上次我是怎么把它打开的」,而 `Placement` 说的是「它此刻
@@ -185,6 +192,18 @@ export interface StageState {
    */
   floatOrder: string[]
   shelves: Record<ShelfSide, ShelfState>
+  /**
+   * **四条边的钉边先后**,先钉的在前(W7-p 裁定 3)。**投影**,与 `shelves[side].tabs`
+   * 同一条订阅算出来(`stage/residency.projectResidency`),所以它没有第二个产地。
+   *
+   * 它只有一个消费者:视口重钳(`transitions.reclampShelves`)——「共同预算不够时
+   * 谁先让」这个问题必须有一个确定的答案,而「后钉的那条先钳」是那个答案。
+   *
+   * **不落盘**(不在 `STAGE_FURNITURE_KEYS` 里):它是从树上现算的,存一份就是
+   * 第二份事实。重启后第一次投影会一次看见全部占着的边,那时按 `SHELF_SIDES` 的
+   * 固定次序排 —— 冷启动本来就没有「先后」可言,确定即可。
+   */
+  shelfNailOrder: ShelfSide[]
   /**
    * 位置记忆:id → 它**该**在哪(而 placements 说的是它**正**在哪)。
    * 关闭是归档不是删除,所以收回 Dock 时当下的落点先折进这里再摘活表;

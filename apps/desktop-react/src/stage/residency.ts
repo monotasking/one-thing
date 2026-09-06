@@ -143,6 +143,12 @@ export interface ResidencyProjection {
   placements: Record<string, Placement>
   shelves: Record<ShelfSide, ShelfState>
   floatOrder: string[]
+  /**
+   * 四条边的**钉边先后**,先钉的在前(W7-p 裁定 3)。算法与 `floatOrder` 逐字同型:
+   * 先剔掉已经空了的那些,再把新占上的排到末位。唯一消费者是视口重钳
+   * (`transitions.reclampShelves`:预算不够时后钉的先让)。
+   */
+  shelfNailOrder: ShelfSide[]
 }
 
 /** 投影的输入里属于「瞬态」的那一半(它们不在树里,见文件头)。 */
@@ -156,7 +162,7 @@ export interface TransientForms {
  */
 export function projectResidency(
   regions: Record<string, PaneNode>,
-  prev: Pick<StageState, 'shelves' | 'floatOrder'>,
+  prev: Pick<StageState, 'shelves' | 'floatOrder' | 'shelfNailOrder'>,
   transient: TransientForms,
 ): ResidencyProjection {
   const placements: Record<string, Placement> = {}
@@ -200,16 +206,31 @@ export function projectResidency(
     ? prev.floatOrder
     : [...alive, ...fresh]
 
-  return { placements, shelves, floatOrder }
+  /*
+   * 钉边序:同一句话换个对象。先剔掉已经空了的边(最后一格 tab 走了 = 那条架子
+   * 没了),再把新占上的排到末位 —— 于是「末位 = 最后钉的」,重钳按它倒着来。
+   */
+  const nailedNow = SHELF_SIDES.filter((side) => (shelves[side].tabs ?? []).length > 0)
+  const stillNailed = (prev.shelfNailOrder ?? []).filter((side) => nailedNow.includes(side))
+  const newlyNailed = nailedNow.filter((side) => !stillNailed.includes(side))
+  const shelfNailOrder =
+    newlyNailed.length === 0 && stillNailed.length === (prev.shelfNailOrder ?? []).length
+      ? (prev.shelfNailOrder ?? [])
+      : [...stillNailed, ...newlyNailed]
+
+  return { placements, shelves, floatOrder, shelfNailOrder }
 }
 
 /** 投影前后一不一样。一样就不 set —— 一次无谓的 set 会让 Dock / 架子 / 浮窗全重渲。 */
 export function sameProjection(
   a: ResidencyProjection,
-  b: Pick<StageState, 'placements' | 'shelves' | 'floatOrder'>,
+  b: Pick<StageState, 'placements' | 'shelves' | 'floatOrder' | 'shelfNailOrder'>,
 ): boolean {
   if (!samePlacementTable(a.placements, b.placements)) return false
   if (a.floatOrder !== b.floatOrder && !sameIds(a.floatOrder, b.floatOrder)) return false
+  if (a.shelfNailOrder !== b.shelfNailOrder && !sameIds(a.shelfNailOrder, b.shelfNailOrder ?? [])) {
+    return false
+  }
   for (const side of SHELF_SIDES) {
     const x = a.shelves[side]
     const y = b.shelves[side]

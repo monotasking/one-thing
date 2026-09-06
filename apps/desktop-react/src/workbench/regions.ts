@@ -25,3 +25,24 @@ export const edgeRegion = (side: ShelfSide): RegionId => `edge:${side}`
 
 /** 一扇浮窗的区域 id。 */
 export const floatRegion = (id: string): RegionId => `float:${id}`
+
+/**
+ * **区域的阅读序排位**(W7-p 修一轮裁定 9):中央区 0、四条边 1、浮窗 2。
+ *
+ * 「同一格内容可以同时开在两处」(会话不是单例那一种),而「切过去」必须每次都
+ * 切到同一格,否则同一下按出两种结果 —— 所以要一张**确定的**次序表,
+ * `Object.keys` 的次序不是判据。中央区打头是因为那是用户眼里的主区。
+ *
+ * 三种区域的形只有这只文件说得出,所以判据也只该在这里:前缀是拿
+ * `edgeRegion` / `floatRegion` **自己**造出来的,不是抄一遍 `'edge:'` 这三个字。
+ */
+const EDGE_PREFIX = edgeRegion('' as ShelfSide)
+const FLOAT_PREFIX = floatRegion('')
+
+export function regionReadRank(region: string): number {
+  if (region === CENTER_REGION) return 0
+  if (region.startsWith(EDGE_PREFIX)) return 1
+  if (region.startsWith(FLOAT_PREFIX)) return 2
+  // 认不得的区域排在最后 —— 存量档案里可能有,而它绝不该抢在中央区前面。
+  return 3
+}

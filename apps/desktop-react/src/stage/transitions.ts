@@ -33,6 +33,44 @@ export const SHELF_MIN_THICKNESS = 240
 export const SHELF_MAX_RATIO = 0.55
 export const SHELF_DEFAULT_THICKNESS = 400
 
+/**
+ * **中央区的最小身量**(W7-p 裁定 3,审计 A 的 A3/A4)。
+ *
+ * ── 病历 ──────────────────────────────────────────────────────────────────
+ * 四条边各钉 400 上去,真机量到中央区 **h = 0**:输入框浮在上架子的内容上,聊天区
+ * 一个像素都不剩。病根是 `clampShelfThickness` **逐边**算上界(`视口 × 0.55`)——
+ * 上下两条各拿走 55%,加起来 110%,而没有任何一处问过「那对边加起来还给中央
+ * 留没留下地方」。窗口变小时更糟:`clampShelfThickness` 从来不在 resize 那条路上,
+ * 右架子直接探出屏幕 204px。
+ *
+ * 所以这里立一个**中央区最小身量**,与 `SHELF_MIN_THICKNESS` 同一张表:一条边的
+ * 厚度上界从此是**共同预算**(见 `shelfThicknessBudget`),竖边与横边各算各的轴。
+ * 它是 JS 几何不是 CSS 间距(与 `FLOAT_MARGIN` 同一条判据),所以住在这里。
+ */
+export const CENTER_MIN_W = 480
+export const CENTER_MIN_H = 320
+
+/**
+ * 收起来的架子还占着的那条细梁。**`tokens.css` 的 `--shelf-rail` 是同一格事实** ——
+ * 那边画,这边算预算。两个数写在两处是必然要分叉的,但纯函数读不到 CSS
+ * (`FLOAT_MIN_W` 一族同一条理由),所以只能靠这句话把它们钉在一起。
+ */
+export const SHELF_RAIL = 12
+
+/**
+ * **顶栏那条带**(`--topbar-h`)。同一条理由、同一张对账表:纯函数读不到 CSS,
+ * 所以两个数写在两处,由 `transitions.test.ts` 的「与 JS 常量同源」那一组钉住。
+ *
+ * ── 它为什么进得了「中央区」这道算式(W7-p 裁定 5 的修正)──────────────────
+ * `centerRectOf` 答的是「新窗开在哪」的参考系,而那个参考系必须是**用户眼里的
+ * 主区**。顶栏不是主区:标签条就长在它上面(`workbench/TopBarTabs`),红绿灯与拖窗
+ * 区也在。第一版只切了四条架子、把顶栏留在里面,于是新窗锚在 y = 24 —— 真机上
+ * 它盖住标签条的右半截,`gate:drag` 场景①③当场红(指针按在「最右那格标签」上,
+ * 落到的是那扇窗)。四条边的厚度从**顶栏之下**起算(判词见 `thicknessFromPointer`
+ * 那句「顶架子的外缘不是 0」),所以这一格与它们相加,不是相减。
+ */
+export const TOP_CHROME = 44
+
 /** 浮窗的四条硬约束:最小身量、必须留在视口内的那一截、新窗默认身量。 */
 export const FLOAT_MIN_W = 280
 export const FLOAT_MIN_H = 200
@@ -64,8 +102,17 @@ export const FLOAT_MARGIN = 16
  * 才算修完:只加宽窗是把病往后推,只改阈值则默认一开还是挤的。
  * 高度没动 —— 报障说的是「挤」,而详情列这一批已经改成页级滚动,高度不是瓶颈。
  */
-export const FLOAT_DEFAULT_W = 880
-export const FLOAT_DEFAULT_H = 520
+/*
+ * **W7-p 裁定 5 把它改回 640×480**(审计 A 的 A6)。
+ *
+ * 上面那段 08-31 的账仍然成立 —— 模型服务那块两栏面在 640 里排不下七列表。它与
+ * 这一次的裁定是**两件事**:那一次问的是「一块特定的面要多宽」,这一次问的是
+ * 「一扇新窗该多大、开在哪」,而拿最宽那块面的需求去定全体的默认值,代价是每一扇
+ * 窗一开就吃掉大半个屏。**账留在这里**:模型服务在 640 里会重新变挤,修法是那块面
+ * 自述一个最小身量(形态机今天没有这一口),不是把全体默认值再抬回去。
+ */
+export const FLOAT_DEFAULT_W = 640
+export const FLOAT_DEFAULT_H = 480
 
 /**
  * 纯函数不许读 window,所以视口由调用方递进来;测试里给定值,store 里给真视口。
@@ -188,6 +235,7 @@ export const initialStageState: StageState = {
   floats: {},
   floatOrder: [],
   shelves: emptyShelves(),
+  shelfNailOrder: [],
   memory: {},
   flashPinned: 0,
   flashSide: null,
@@ -455,16 +503,14 @@ export function clamp(value: number, min: number, max: number): number {
  * 「折」是这一批的核心动词:活表(placements / floats / shelves)散在三处,
  * 记忆把它们压成一条能独立复原的记录 —— 关闭之后活表就问不出来了。
  */
-export function memoryOf(
-  state: StageState,
-  id: string,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-): PlacementMemory | null {
+export function memoryOf(state: StageState, id: string): PlacementMemory | null {
   const p = placementOf(state, id)
   if (p.kind === 'dock') return null
   if (p.kind === 'stage') return { kind: 'stage' }
   if (p.kind === 'float') {
-    return { kind: 'float', rect: state.floats[id] ?? defaultFloatRect(viewport) }
+    // **没有矩形就是没有**(W7-p 修一轮裁定 1):这里不造。开的时候由
+    // `placement.placeAs` 的那一只唯一产地(`freshFloatRect`)补,带上锚与层叠。
+    return { kind: 'float', rect: state.floats[id] }
   }
   const tabs = state.shelves[p.side].tabs ?? []
   const at = tabs.indexOf(id)
@@ -508,29 +554,33 @@ export function placementForOpen(open: ResolvedOpen): Exclude<MemorablePlacement
 
 /**
  * 把一个「说得出去哪儿」的落点补成一条完整记忆 —— 缺的那件事按「就当它没来过」补:
- * 浮窗取新窗默认矩形,钉边排到那条边的末尾,舞台与全屏本来就没有第二个参数。
+ * 钉边排到那条边的末尾,舞台与全屏本来就没有第二个参数。
+ *
+ * **浮窗那一档一个字都不补**(W7-p 修一轮裁定 1):记忆里没有矩形**就是没有**,
+ * 而不是「先随便给一个」。从前这里当场造一个 `defaultFloatRect(viewport)`(没有
+ * 中央区参考系、cascade 恒 0),它随后被 `openFromMemory` 写进 `floats[id]`,
+ * 于是 `placeAs` 认为矩形已经有了、跳过唯一那只产地 —— 点瓦开出来的窗永远叠成
+ * 一摞。判词整段在 `freshFloatRect` 上。
  *
  * 两个调用方共用它(全局默认档 / item 天生落点),所以「补什么」只写一次。
  */
-export function completeMemory(
-  state: StageState,
-  placement: OpenPlacement,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-): PlacementMemory {
-  if (placement.kind === 'float') return { kind: 'float', rect: defaultFloatRect(viewport) }
+export function completeMemory(state: StageState, placement: OpenPlacement): PlacementMemory {
+  if (placement.kind === 'float') return { kind: 'float' }
   if (placement.kind === 'edge') {
     return { kind: 'edge', side: placement.side, index: (state.shelves[placement.side].tabs ?? []).length }
   }
   return placement
 }
 
-/** 全局默认档补成一条完整记忆。 */
-export function defaultOpenMemory(
-  state: StageState,
-  open: ResolvedOpen,
-  viewport: Viewport = FALLBACK_VIEWPORT,
-): PlacementMemory {
-  return completeMemory(state, placementForOpen(open), viewport)
+/**
+ * 全局默认档补成一条完整记忆。
+ *
+ * **不再收视口**(W7-p 修一轮裁定 1):这一族从前收它只为了给浮窗那一档造一个
+ * 默认矩形,而那件事整个搬去了 `freshFloatRect`(唯一产地)。收着一个用不上的
+ * 视口就是留着一个「下一个人拿它再造一个矩形」的位子。
+ */
+export function defaultOpenMemory(state: StageState, open: ResolvedOpen): PlacementMemory {
+  return completeMemory(state, placementForOpen(open))
 }
 
 /**
@@ -547,7 +597,6 @@ export function resolveOpen(
   state: StageState,
   id: string,
   defaultOpen: ResolvedOpen,
-  viewport: Viewport = FALLBACK_VIEWPORT,
   itemDefault?: OpenPlacement,
 ): PlacementMemory {
   /*
@@ -570,8 +619,8 @@ export function resolveOpen(
    * (clampDefaultOpen)只作用于**默认档**,与记忆无关。
    */
   if (state.memory[id]) return state.memory[id]
-  if (itemDefault) return completeMemory(state, itemDefault, viewport)
-  return defaultOpenMemory(state, defaultOpen, viewport)
+  if (itemDefault) return completeMemory(state, itemDefault)
+  return defaultOpenMemory(state, defaultOpen)
 }
 
 /* ── 浮窗几何(纯算术,与 state 无关,所以能单独测) ────────────────────────── */
@@ -650,11 +699,121 @@ function fitFloatAxis(pos: number, size: number, extent: number, fallback: numbe
   return inside >= FLOAT_MARGIN ? clamp(pos, FLOAT_MARGIN, inside) : fallback
 }
 
-/** 新浮窗:居中、默认身量(视口比默认还小就取视口)。 */
+/**
+ * **中央区此刻的矩形**(W7-p 裁定 5)。四条架子各占一截,剩下的就是它。
+ *
+ * 它是新浮窗那个锚点的参考系 —— 「贴视口右上角」在钉了右架子的时候会开在架子
+ * **底下**,而用户看到的「右上角」从来是主区的右上角。**顶栏那条带也切掉**
+ * (`TOP_CHROME`,判词写在那格常量上):标签条就长在顶栏里,不切的话新窗一开
+ * 就盖住它的右半截。
+ */
+export function centerRectOf(state: Pick<StageState, 'shelves'>, viewport: Viewport): Rect {
+  const left = shelfExtentOf(state.shelves.left)
+  const right = shelfExtentOf(state.shelves.right)
+  const top = shelfExtentOf(state.shelves.top)
+  const bottom = shelfExtentOf(state.shelves.bottom)
+  // 竖轴的可用高度从**顶栏之下**起算 —— 与 `usableExtent` 是同一句话,判词写在那儿。
+  const topEdge = viewport.h - usableExtent('top', viewport) + top
+  return {
+    left,
+    top: topEdge,
+    right: Math.max(left, viewport.w - right),
+    bottom: Math.max(topEdge, viewport.h - bottom),
+  }
+}
+
+/** 新窗锚在中央区右上角往里缩这么多;第 n 扇往左下层叠这么多(W7-p 裁定 5)。 */
+export const FLOAT_SPAWN_INSET = 24
+export const FLOAT_CASCADE_STEP = 28
+
+/**
+ * **一扇新窗的矩形怎么算**(W7-p 裁定 5,审计 A 的 A6;W7-p 修一轮把它收成内部件)。
+ *
+ * ── 病历 ──────────────────────────────────────────────────────────────────
+ * 从前是**恒定居中**:①那个矩形正压着聊天区正中与输入框,一扇窗开出来就把用户
+ * 正在读的东西盖掉;②连开四扇,四扇一模一样地叠在一起 —— 屏幕上看起来只有一扇,
+ * 前三扇要靠拖才找得到。
+ *
+ * ── 今天:锚 + 层叠 + 回绕 ────────────────────────────────────────────────
+ * 锚在**中央区右上角**往里缩 24px:右上角是这台壳上最空的一块地(输入框在下、
+ * 正文靠左),而「往里缩」让它一眼看得出是浮在上面而不是钉在边上。已经有 n 扇
+ * 未关的窗时整体往**左下**挪 n×28 —— 左下是远离锚点的方向,于是每一扇的**标题栏
+ * 左上角**都露在外面,拿得住。挪到出了中央区就**回绕到起点**:层叠是为了都看得见,
+ * 而挪出屏幕正好相反。
+ *
+ * **它是算术,不是产地**:谁该拿到什么参考系由 `freshFloatRect`(唯一的产地)
+ * 与 `defaultFloatRect`(只要身量的那两个存量调用点)各自说,判词见它们各自的头上。
+ */
+function floatRectAt(viewport: Viewport, center: Rect, cascade: number): FloatRect {
+  // 身量先过一次那把尺(视口比默认还小的时候 640 会被压到 `视口 − 两道气口`),
+  // **锚点才拿得到真身量** —— 拿没钳过的宽去算右上角,窄视口下会算出负的 x。
+  const size = clampFloatSize(
+    { x: 0, y: 0, w: Math.min(FLOAT_DEFAULT_W, viewport.w), h: Math.min(FLOAT_DEFAULT_H, viewport.h) },
+    viewport,
+  )
+  const { w, h } = size
+  const anchorX = center.right - FLOAT_SPAWN_INSET - w
+  const anchorY = center.top + FLOAT_SPAWN_INSET
+  // 还能往左下挪几步(挪到锚点左边/下边出了中央区就不算一步)。
+  const stepsX = Math.floor(Math.max(0, anchorX - center.left) / FLOAT_CASCADE_STEP)
+  const stepsY = Math.floor(Math.max(0, center.bottom - anchorY - h) / FLOAT_CASCADE_STEP)
+  const steps = Math.max(0, Math.min(stepsX, stepsY))
+  // 回绕:第 steps+1 扇回到起点(steps = 0 时每一扇都在锚点上,那是「实在挪不动」)。
+  const at = steps === 0 ? 0 : Math.max(0, Math.trunc(cascade)) % (steps + 1)
+  return clampFloatRect(
+    { w, h, x: anchorX - at * FLOAT_CASCADE_STEP, y: anchorY + at * FLOAT_CASCADE_STEP },
+    viewport,
+  )
+}
+
+/**
+ * **开一扇新窗要的那两个读数**(W7-p 修一轮裁定 1)。
+ *
+ * 从前这两句(`{ center: centerRectOf(st, vp), cascade: floatOrder.length }`)在
+ * `stage/placement.ts` 与 `stage/store.ts` 里**各写了一遍** —— 两处算同一件事、
+ * 而下一个人只会改其中一处。收成一只之后「新窗的参考系是什么」只有这一个答案。
+ */
+export function floatSpawnContext(
+  state: Pick<StageState, 'shelves' | 'floatOrder'>,
+  viewport: Viewport,
+): { center: Rect; cascade: number } {
+  return { center: centerRectOf(state, viewport), cascade: state.floatOrder.length }
+}
+
+/**
+ * **一扇新窗的矩形 —— 全壳唯一的产地**(W7-p 修一轮裁定 1)。
+ *
+ * ── 病历(修一轮拆出来的那条 blocking)────────────────────────────────────
+ * 裁定 5 落地时锚与层叠只接在**这一只**上,而最常走的那条路(点 Dock 瓦 / 快捷键
+ * 第一态「开」)根本不经过它:`resolveOpen` 无记忆时由 `completeMemory` **当场造**
+ * 一个 `defaultFloatRect(viewport)` —— 没有中央区参考系、`cascade` 恒 0 —— 塞进
+ * 那条「记忆」里;`openFromMemory` 先把它写进 `floats[id]`,`placeAs` 于是看到
+ * 「已经有矩形了」直接跳过这一只。真机后果:连开四扇窗,四扇一模一样地叠在一起,
+ * 而裁定 5 的门只量右键菜单那条路,量不到。
+ *
+ * ── 今天:**记忆里没有矩形就是没有** ─────────────────────────────────────
+ * `completeMemory` 不再造矩形(`PlacementMemory` 的 float 那一档 `rect?` 因此是可选的),
+ * 缺矩形一律落到这一只 —— 于是「新窗开在哪」这句话只有一个答案,而不是「看它是从
+ * 哪条路开的」。
+ */
+export function freshFloatRect(
+  state: Pick<StageState, 'shelves' | 'floatOrder'>,
+  viewport: Viewport,
+): FloatRect {
+  const ctx = floatSpawnContext(state, viewport)
+  return floatRectAt(viewport, ctx.center, ctx.cascade)
+}
+
+/**
+ * **只要身量的那条兜底**:视口右上角、不层叠、不问架子。
+ *
+ * 它**不是**「新窗开在哪」的答案(那一只是 `freshFloatRect`),留着只为两个
+ * 存量调用点,而它们要的都只是**多大**:`workbench/drop-commit` 的
+ * 「这扇窗还没有矩形时先按默认身量落」与 `workbench/useContentDrag` 的
+ * 「从指针位置反推撕出来那扇窗的矩形」(位置由指针给,不由锚点给)。
+ */
 export function defaultFloatRect(viewport: Viewport): FloatRect {
-  const w = Math.min(FLOAT_DEFAULT_W, viewport.w)
-  const h = Math.min(FLOAT_DEFAULT_H, viewport.h)
-  return clampFloatRect({ w, h, x: (viewport.w - w) / 2, y: (viewport.h - h) / 2 }, viewport)
+  return floatRectAt(viewport, { left: 0, top: 0, right: viewport.w, bottom: viewport.h }, 0)
 }
 
 /**
@@ -664,10 +823,13 @@ export function defaultFloatRect(viewport: Viewport): FloatRect {
  * 换到 1100 宽的窗里既没人量也没人钳,于是右缘被切在屏幕外 —— 而拖它一下就好了,
  * 正说明少的不是判据(clampFloatRect 一直在),是**触发时机**。
  *
- * 钳的是三处、同一句话:
- *  · `floats` —— 此刻开着的那些窗;
- *  · `memory` 里 `kind: 'float'` 的那些 rect —— 关着的窗再开出来也得是钳过的;
- *  · `byWorkspace` 每个空间那一格家具里的同样两格 —— 别的空间切回来时同样在这扇窗里。
+ * 钳的是**活位置**,而且只有活位置(W7-p 裁定 4 收窄:`memory` 从此只由手势与落定
+ * 写,判词整段在 `reclampFloatMap` 上):
+ *  · `floats` —— 此刻开着的那些窗,源头取它们各自的**记忆**;
+ *  · `shelves` —— 四条架子按共同预算重钳(裁定 3,见 `reclampShelves`);
+ *  · `byWorkspace` 每个空间那一格家具里的 `floats` —— 别的空间切回来时同样在这扇窗里。
+ * 关着的窗不必在这里钳:`openFromMemory` 开出来的第一件事就是过一次
+ * `clampFloatRect`,那是同一条界的另一个时刻。
  *
  * 用的是**重钳那把尺** `fitFloatRect`(整扇拉回视口内),不是手势那把 —— 两把尺的
  * 分工见上面那张表。
@@ -679,7 +841,12 @@ export function reclampAll<S extends StageState & Partial<PerSpaceState<StageFur
   state: S,
   viewport: Viewport,
 ): S {
-  const live = reclampFloatGeometry(state, viewport)
+  /*
+   * **架子也重钳**(W7-p 裁定 3/裁定 4)。它只作用在**活状态**上:账上别的空间那
+   * 几格家具没有 `tabs`(那是投影,不落盘),所以「这条边此刻占了多厚」在那儿根本
+   * 问不出来 —— 切回那个空间时投影一响、这只函数再跑一遍,那才是它该被钳的时刻。
+   */
+  const live = reclampShelves(reclampFloatGeometry(state, viewport), viewport)
   const ledger = state.byWorkspace
   if (!ledger) return live
   let nextLedger: SpaceLedger<StageFurniture> | null = null
@@ -702,39 +869,46 @@ function reclampFloatGeometry<T extends Pick<StageState, 'floats' | 'memory'>>(
   source: T,
   viewport: Viewport,
 ): T {
-  const floats = reclampFloatMap(source.floats, viewport)
-  const memory = reclampMemoryMap(source.memory, viewport)
-  if (floats === source.floats && memory === source.memory) return source
-  return { ...source, floats, memory }
+  const floats = reclampFloatMap(source.floats, source.memory, viewport)
+  if (floats === source.floats) return source
+  return { ...source, floats }
 }
 
+/**
+ * **重钳只改活位置,而且它是从记忆里算出来的**(W7-p 裁定 4,审计 A 的 A5)。
+ *
+ * ── 病历 ──────────────────────────────────────────────────────────────────
+ * 从前这一遍**同时**改 `floats` 与 `memory`:窗口缩窄一次,那扇 880 宽的浮窗被
+ * 钳成 640 并**写进记忆**,窗口再拉回来时源头已经是 640 —— 一次临时的窄屏永久
+ * 改写了用户摆好的身量,而用户什么都没做。
+ *
+ * ── 修法:两格分工写清楚 ──────────────────────────────────────────────────
+ *  · `memory[id].rect` = **用户的意图**,只由手势与落定写(`withFloatRect` /
+ *    `rememberLanding`),重钳一个字都不碰;
+ *  · `floats[id]`      = 那份意图**在此刻这扇窗里**的样子 = `fitFloatRect(记忆, 视口)`。
+ * 于是「变窄再变宽」是纯函数的恒等:两次都从同一份记忆算,宽回去就逐字回去。
+ * 拿活矩形当源头算不出这件事 —— 那是「在已经钳过的结果上再钳一次」,信息已经丢了。
+ *
+ * 没有记忆的(此刻不是浮窗、或还没落定过一次)退回活矩形当源头:那时它就是唯一
+ * 的事实,而「不钳」比「拿别人的记忆钳」诚实。
+ */
 function reclampFloatMap(
   floats: StageState['floats'],
+  memory: StageState['memory'],
   viewport: Viewport,
 ): StageState['floats'] {
   let next: StageState['floats'] | null = null
   for (const [id, rect] of Object.entries(floats)) {
-    const clamped = fitFloatRect(rect, viewport)
+    const remembered = memory[id]
+    // 记忆里的浮窗矩形是**可选的**(W7-p 修一轮裁定 1)——「记得自己浮着但没人
+    // 量过多大」的那一格没有源头可言,退回活矩形,与「没有记忆」逐字同一档。
+    const source = (remembered?.kind === 'float' ? remembered.rect : undefined) ?? rect
+    const clamped = fitFloatRect(source, viewport)
     if (sameRect(clamped, rect)) continue
     next ??= { ...floats }
     next[id] = clamped
   }
   return next ?? floats
-}
-
-function reclampMemoryMap(
-  memory: StageState['memory'],
-  viewport: Viewport,
-): StageState['memory'] {
-  let next: StageState['memory'] | null = null
-  for (const [id, remembered] of Object.entries(memory)) {
-    if (remembered.kind !== 'float') continue
-    const clamped = fitFloatRect(remembered.rect, viewport)
-    if (sameRect(clamped, remembered.rect)) continue
-    next ??= { ...memory }
-    next[id] = { kind: 'float', rect: clamped }
-  }
-  return next ?? memory
 }
 
 /** 逐格相等 —— 「有没有变」是这一族恒等语义的判据,不能靠引用(钳制每次都造新对象)。 */
@@ -848,16 +1022,107 @@ export function shelfViewportExtent(side: ShelfSide, viewport: Viewport): number
   return side === 'left' || side === 'right' ? viewport.w : viewport.h
 }
 
+/** 对面那条边。四条边只在这一张表里配对,别处不许再写 `side === 'left' ? …`。 */
+export const OPPOSITE_SHELF: Record<ShelfSide, ShelfSide> = {
+  left: 'right',
+  right: 'left',
+  top: 'bottom',
+  bottom: 'top',
+}
+
+/** 这条轴上中央区至少要留多少(竖边吃宽,横边吃高)。与 `shelfViewportExtent` 同一把尺。 */
+export function centerMinOn(side: ShelfSide): number {
+  return side === 'left' || side === 'right' ? CENTER_MIN_W : CENTER_MIN_H
+}
+
 /**
- * 架子厚度钳到 [240, 视口对应维度的 55%];视口太窄时下界赢(clamp 自己保证)。
- * 上界取整:厚度最终是一个 px,55% 算出来的浮点尾巴不该被存进档案。
+ * **这条轴上「架子与中央区一起分」的那块地**(W7-p 修一轮裁定 6)。
+ *
+ * ── 病历 ──────────────────────────────────────────────────────────────────
+ * `shelfThicknessBudget` 从前直接减 `viewport.h`,而 `centerRectOf` 与架子的排布
+ * **都从顶栏之下起算** —— 两把尺差了一条 44px 的顶栏。真机后果:860 高的窗上
+ * 「上架子 300 + 下架子 240」被判为装得下(860 − 320 − 300 = 240 ≥ 240),而屏幕上
+ * 中央区实高只有 860 − 44 − 300 − 240 = 276 < 320。**同一件事只该有一把尺**,
+ * 所以预算与 `centerRectOf` 从今天起都问这一只。
+ *
+ * 横轴没有对应的一条(左右两侧顶到视口边),所以它就是视口宽。
  */
-export function clampShelfThickness(thickness: number, viewportExtent: number): number {
-  return clamp(
-    Math.round(thickness),
-    SHELF_MIN_THICKNESS,
-    Math.round(viewportExtent * SHELF_MAX_RATIO),
+export function usableExtent(side: ShelfSide, viewport: Viewport): number {
+  return side === 'left' || side === 'right' ? viewport.w : viewport.h - TOP_CHROME
+}
+
+/**
+ * 这条边**此刻真占了多厚**。三档,判据是「屏幕上能量到什么」而不是「档案里存了什么」:
+ * 空架子自己 `return null` 不进布局 = 0;收起来的只剩一条细梁;展开的才是厚度。
+ */
+export function shelfExtentOf(shelf: ShelfState): number {
+  if ((shelf.tabs ?? []).length === 0) return 0
+  return shelf.collapsed ? SHELF_RAIL : shelf.thickness
+}
+
+/**
+ * **一条边的共同预算**(W7-p 裁定 3):`该轴可用长度 − 中央最小 − 对边此刻厚度`。
+ *
+ * 「可用长度」是 `usableExtent`,不是视口 —— 竖轴上顶栏那 44px 不参与分地
+ * (W7-p 修一轮裁定 6,判词与病历写在那只函数上)。
+ *
+ * 它可以答出比 `SHELF_MIN_THICKNESS` 还小的数,甚至负数 —— 那不是「钳到多少」,
+ * 那是「这条边此刻**摆不下**」,由 `canNailShelf` 读同一个数答出来。把两件事写成
+ * 一个函数两种读法,是为了不出现「钉的时候用一把尺、拖杆的时候用另一把」。
+ */
+export function shelfThicknessBudget(
+  state: Pick<StageState, 'shelves'>,
+  side: ShelfSide,
+  viewport: Viewport,
+): number {
+  const opposite = state.shelves[OPPOSITE_SHELF[side]]
+  return (
+    usableExtent(side, viewport) -
+    centerMinOn(side) -
+    (opposite ? shelfExtentOf(opposite) : 0)
   )
+}
+
+/**
+ * **这份预算摆得下一条架子吗**。`canNailShelf`(钉一条新的)与 `reclampShelves`
+ * (视口变小之后重钳)读同一句话 —— 一个答「拒绝」,一个答「收成细梁」,而
+ * 「装不装得下」只有这一处判据。
+ */
+export function shelfFitsBudget(budget: number): boolean {
+  return budget >= SHELF_MIN_THICKNESS
+}
+
+/**
+ * **这条边现在钉得上吗**(W7-p 裁定 3)。
+ *
+ * 已经有东西在这条边上 = 永远钉得上:再插一格 tab 不改几何,而「拒绝往一条已经
+ * 开着的架子上再放一格」对用户是纯粹的莫名其妙。空着的那条才问预算 —— 摆不下就
+ * **拒绝并保持原样**,不许把中央区压成 0(那是 A3 的原始病)。
+ */
+export function canNailShelf(
+  state: Pick<StageState, 'shelves'>,
+  side: ShelfSide,
+  viewport: Viewport,
+): boolean {
+  if ((state.shelves[side]?.tabs ?? []).length > 0) return true
+  return shelfFitsBudget(shelfThicknessBudget(state, side, viewport))
+}
+
+/**
+ * 架子厚度钳到 `[240, min(视口 × 55%, 共同预算)]`;两条上界打架时**小的赢**,
+ * 而下界 240 永远赢(clamp 要求 min ≤ max,所以上界先被抬到不低于下界)。
+ * 上界取整:厚度最终是一个 px,55% 算出来的浮点尾巴不该被存进档案。
+ *
+ * `budget` 缺省 = 不设预算 —— 留给「只有一条边、对面空着」那类调用与存量单测;
+ * 真正的两条路(拖杆 `setShelfThickness`、resize 重钳 `reclampShelves`)都递。
+ */
+export function clampShelfThickness(
+  thickness: number,
+  viewportExtent: number,
+  budget: number = Number.POSITIVE_INFINITY,
+): number {
+  const ceiling = Math.min(Math.round(viewportExtent * SHELF_MAX_RATIO), Math.round(budget))
+  return clamp(Math.round(thickness), SHELF_MIN_THICKNESS, Math.max(SHELF_MIN_THICKNESS, ceiling))
 }
 
 /**
@@ -871,20 +1136,77 @@ export function thicknessFromPointer(side: ShelfSide, pointer: Point, outerEdge:
   return outerEdge - pointer.y
 }
 
+/**
+ * 拖杆落定。**上界走共同预算**(W7-p 裁定 3)—— 拖到底也只到「对边与中央都还
+ * 站得住」的那一格,而不是从前那条各算各的 55%。
+ */
 export function setShelfThickness(
   state: StageState,
   side: ShelfSide,
   thickness: number,
-  viewportExtent: number,
+  viewport: Viewport,
 ): StageState {
   const shelf = state.shelves[side]
-  return {
-    ...state,
-    shelves: {
-      ...state.shelves,
-      [side]: { ...shelf, thickness: clampShelfThickness(thickness, viewportExtent) },
-    },
+  const next = clampShelfThickness(
+    thickness,
+    shelfViewportExtent(side, viewport),
+    shelfThicknessBudget(state, side, viewport),
+  )
+  if (next === shelf.thickness) return state
+  return { ...state, shelves: { ...state.shelves, [side]: { ...shelf, thickness: next } } }
+}
+
+/**
+ * **视口变了之后把四条架子按同一把尺重钳**(W7-p 裁定 3,审计 A 的 A4)。
+ *
+ * 次序即语义:**后钉的那条先钳**。预算是两条对边分的一块地,先钳谁谁就先让 ——
+ * 让**后来的**让,是因为用户先摆好的那条是他的既有布局,新来的那条才是这一次
+ * 挤不下的原因。「哪条是后钉的」由 `shelfNailOrder` 说(投影现算,见
+ * `residency.projectResidency`);账上没有的(冷启动第一帧,四条边同时出现)
+ * 退到 `SHELF_SIDES` 那个固定次序 —— 确定、可复现,而且此刻本来就没有先后可言。
+ *
+ * ── **中央区最小身量优先**(W7-p 修一轮裁定 6 的第二半)────────────────────
+ * `clampShelfThickness` 的下界 240 永远赢,所以从前预算算出 96 也照样停在 240 ——
+ * 两条对边都钉着再把窗缩到 700×500,真机量到中央区 220×216(裁定 3 立的
+ * 480×320 当场失效)。裁定:**中央区的最小身量优先于架子的最小厚度**;预算装不下
+ * 时那条架子**收成细梁**(`SHELF_RAIL` 12px,它仍旧在、仍旧点得开),而不是停在
+ * 240 把中央区挤没。
+ *
+ * 谁让位:**后钉的先让** —— 与钳的次序是同一条(先处理的那条就是最后钉的),
+ * 所以「让位的那条是最后钉的」不是另一条规则,是这一条的直接结果。收成细梁之后
+ * 它只占 12px,对边接着算预算时看到的就是这个数,于是让位一条常常就够了。
+ *
+ * **不变即恒等**:一条都没动就交回同一个对象(与 `reclampAll` 逐字同一条纪律)。
+ */
+export function reclampShelves<S extends StageState>(state: S, viewport: Viewport): S {
+  const order = [...SHELF_SIDES].sort(
+    (a, b) => nailRank(state, b) - nailRank(state, a),
+  )
+  let shelves: Record<ShelfSide, ShelfState> | null = null
+  const read = (side: ShelfSide): ShelfState => (shelves ?? state.shelves)[side]
+  for (const side of order) {
+    const shelf = read(side)
+    if (shelfExtentOf(shelf) === 0) continue
+    const budget = shelfThicknessBudget({ shelves: shelves ?? state.shelves }, side, viewport)
+    if (!shelfFitsBudget(budget)) {
+      // 摆不下 —— 收成细梁(见上)。已经收着的就是恒等变换:厚度一个字不动,
+      // 窗口拉回去展开时它还是用户拖出来的那个数。
+      if (shelf.collapsed) continue
+      shelves ??= { ...state.shelves }
+      shelves[side] = { ...shelf, collapsed: true }
+      continue
+    }
+    const next = clampShelfThickness(shelf.thickness, shelfViewportExtent(side, viewport), budget)
+    if (next === shelf.thickness) continue
+    shelves ??= { ...state.shelves }
+    shelves[side] = { ...shelf, thickness: next }
   }
+  return shelves ? { ...state, shelves } : state
+}
+
+/** 这条边排在钉边序的第几位。不在账上 = -1(比任何真名次都早,于是最后才钳)。 */
+function nailRank(state: StageState, side: ShelfSide): number {
+  return state.shelfNailOrder?.indexOf(side) ?? -1
 }
 
 /* ── 拖拽吸附(纯判定:输入是坐标,输出是「该落哪条边」) ────────────────────── */
@@ -1171,8 +1493,13 @@ export function migrateStagePersisted(
       for (const [id, value] of Object.entries(openOverrides as Record<string, unknown>)) {
         if (value === 'stage') memory[id] = { kind: 'stage' }
         else if (value === 'float') {
-          // 有存过的矩形就用存过的;没有就给新窗的默认身量(恢复时还会再过一次视口钳制)。
-          memory[id] = { kind: 'float', rect: floats[id] ?? defaultFloatRect(FALLBACK_VIEWPORT) }
+          /*
+           * 有存过的矩形就用存过的;**没有就是没有**(W7-p 修一轮裁定 1)。
+           * 从前这里拿兜底视口编一个矩形出来 —— 迁移期根本没有真视口,编出来的
+           * 那一份随后被当成「用户摆过的身量」永久留在档案里。缺矩形一律落到
+           * 唯一那只产地(`freshFloatRect`),它开窗那一刻拿得到真视口与真中央区。
+           */
+          memory[id] = { kind: 'float', rect: floats[id] }
         } else if (value === 'pinned') {
           const tabs = shelves.right?.tabs ?? []
           const at = tabs.indexOf(id)

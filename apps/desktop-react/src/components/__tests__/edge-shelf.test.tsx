@@ -39,8 +39,26 @@ const NAME: Record<ShelfSide, string> = {
   bottom: '底栏',
 }
 
+/**
+ * 视口是**共同预算**的分母(W7-p 裁定 3),所以四条边那两例必须自己说清楚窗子多大 ——
+ * jsdom 的出厂视口是 1024×768,在那台窗子里「四条边各钉 400」本来就摆不下
+ * (1024 − 中央最小 480 = 544,两条竖边分不到两个 240)。
+ *
+ * **竖轴还要先扣顶栏**(W7-p 修一轮裁定 6):可用高度是 `视口高 − 44`,所以
+ * 1000 高的窗里「上 400 + 下 400」差 4px 就摆不下(1000 − 44 − 320 − 400 = 236 < 240)。
+ * 1100 是「四条边都摆得下」的那一档,不是随手加的高度。
+ */
+function setViewport(w: number, h: number) {
+  Object.defineProperty(window, 'innerWidth', { value: w, configurable: true })
+  Object.defineProperty(window, 'innerHeight', { value: h, configurable: true })
+}
+
 describe('四边架子', () => {
+  afterEach(() => setViewport(1024, 768))
+
   it('四条边各挂一个:哪条边上有 tab 就画哪一条', () => {
+    // 摆得下的窗子里才问「画不画」—— 摆不下那一档是下面那一例的事。
+    setViewport(1600, 1100)
     render(<AppShell />)
     openOnEdge('files', 'left')
     openOnEdge('diff', 'right')
@@ -49,6 +67,24 @@ describe('四边架子', () => {
     for (const side of ['left', 'right', 'top', 'bottom'] as ShelfSide[]) {
       expect(screen.getByRole('complementary', { name: NAME[side] })).toBeTruthy()
     }
+  })
+
+  /**
+   * **摆不下就拒绝,不许把中央区压成 0**(W7-p 裁定 3,审计 A 的 A3:真机上四边
+   * 各钉 400,中央区量到 h = 0,输入框浮在上架子的内容上)。
+   *
+   * 反证:把 `placeAs` 的 edge 支里那句 `canNailShelf` 拆掉 → 右架子照样画出来,
+   * 这一条当场红。
+   */
+  it('对边摆不下时拒绝并保持原样:窄窗里钉了左边就钉不上右边', () => {
+    setViewport(1024, 768)
+    render(<AppShell />)
+    openOnEdge('files', 'left')
+    openOnEdge('diff', 'right')
+    expect(screen.getByRole('complementary', { name: NAME.left })).toBeTruthy()
+    expect(screen.queryByRole('complementary', { name: NAME.right })).toBeNull()
+    // 拒绝 = **一格状态都不写**:那块瓦仍旧在 Dock 里,不是「开了但没画」。
+    expect(useStageStore.getState().shelves.right.tabs).toEqual([])
   })
 
   it('空架子不渲染 —— 也就不占一丝布局', () => {

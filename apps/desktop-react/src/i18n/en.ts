@@ -137,6 +137,8 @@ export const en: Record<MessageKey, string> = {
   'dock.magnifyLg': 'Large',
   'dock.runningDot': 'Running indicators',
   'dock.runningDotHint': 'Draw a small dot under each panel that is currently open',
+  /* W7-p ruling 7: the same state as the Apps panel switch, reachable where it is used. */
+  'dock.hideTile': 'Hide from Dock',
   'dock.settings': 'Dock settings…',
 
   /* ── dock tiles ───────────────────────────────────────────────────── */
@@ -711,6 +713,8 @@ export const en: Record<MessageKey, string> = {
   'drag.toEdgeBottom': 'Move below',
   /* Refused because that kind declared `ContentKind.regions` (W5-b ruling 8). */
   'drag.regionRefused': "This can't open here",
+  /* W7-p ruling 3: the four shelves and the centre share one budget — refuse, never squash. */
+  'stage.shelfNoRoom': 'No room on {side} — collapse a shelf first',
   'drag.movedToEdge': 'Moved to {side}',
   'drag.movedIntoLeaf': 'Merged into {name}',
   'drag.movedToFloat': 'Torn off into a window',

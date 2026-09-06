@@ -1,5 +1,11 @@
-import { isItemVisible, occluderOf, placementOf } from './transitions'
+import { isItemVisible, occluderOf, placementOf, stageIdOf } from './transitions'
+import { placementOfRegion, floatIdOfRegion } from './residency'
+import { panelRef } from './panel-ref'
+import { seatOfRefIn } from '../workbench/tree'
+import { refId } from '../workbench/kinds'
 import type { FocusScopeId } from '../focus/types'
+import type { ContentRefId } from '../workbench/kinds'
+import type { PaneNode } from '../workbench/tree'
 import type { Placement, ShelfSide, StageState } from './types'
 
 /**
@@ -114,7 +120,7 @@ export function takeOpenRequest(): string | null {
   return at
 }
 
-/** 露出一块面的三条路。每一条对应一个既有的形态动作,召唤自己不新写落点。 */
+/** 露出一块面的四条路。每一条对应一个既有的形态动作,召唤自己不新写落点。 */
 export type SummonRevealHow =
   /** 架子展开着,但当前露脸的是别的 tab —— 点名它。 */
   | 'shelf-tab'
@@ -122,13 +128,22 @@ export type SummonRevealHow =
   | 'shelf-expand'
   /** 浮窗被压在别的窗下面 —— 翻到最上面。 */
   | 'float-front'
+  /** 中央区那片叶上的非活动 tab —— 点名它(W7-p 裁定 6:召唤的对象可以是一格内容)。 */
+  | 'tab-activate'
 
-/** 收起一块面的两条路。哪一条由**形态**说了算(见文件头那段判词)。 */
+/** 收起一块面的三条路。哪一条由**形态**说了算(见文件头那段判词)。 */
 export type SummonHideHow =
   /** 钉在架子上 —— 收起整条架子,这块面仍是它的活动 tab。 */
   | 'shelf-collapse'
-  /** 舞台 / 浮窗 / 盖 —— 没有「收起」档,收回 Dock。 */
+  /** 舞台 / 浮窗 —— 没有「收起」档,收回 Dock。 */
   | 'close'
+  /**
+   * **中央区没有「收起」这一档**(W7-p 裁定 6)。它不是家具,它就是主区 ——
+   * 收起来之后屏幕上什么都不剩,那不是任何人按那一下想要的东西。所以第四格在
+   * 这一形上退成一个**诚实的空动作**,与 `blocked` 同一种诚实:表是完整的,
+   * 只是这一格的答案是「什么都不做」。
+   */
+  | 'none'
 
 /**
  * 召唤这一下该做什么。**可辨识联合**:每一格自带它那条路要的参数,
@@ -141,6 +156,53 @@ export type SummonAction =
   | { kind: 'hide'; how: SummonHideHow; side: ShelfSide | null }
   | { kind: 'blocked'; by: 'stage' }
 
+/**
+ * **召唤的对象此刻的处境**(W7-p 裁定 6)。
+ *
+ * ── 为什么把它单列出来 ────────────────────────────────────────────────────
+ * 四态判据从前直接读 `StageState` + 一个瓦 id,于是它**只答得了瓦**。而 W7-p 要求
+ * 同一台机器服务四个入口:点 Dock 瓦、按快捷键、点启动瓦(它的内容是
+ * `files-root:<路径>`,形态机那张表上根本没有它的名字)、以及 sidebar 单击一条
+ * 已经开着的会话。后两个的对象是**一格内容**,不是一块面。
+ *
+ * 所以判据吃的改成**处境**(在哪儿 / 看不看得见 / 被没被压着 / 焦点在不在里面),
+ * 而「怎么问出这四件事」由各自的适配器答:瓦问形态机(`summonSituationOfItem`),
+ * 内容问拼贴树(`stage/store.ts` 的 `situationOfRef`)。判据一份,对象两种 ——
+ * 加第三种对象是加一个适配器,不是在这只函数里加一个 if。
+ */
+export interface SummonSituation {
+  /** 它住在哪儿。**null = 没打开**(在 Dock 里 / 哪棵树都不在)。 */
+  where: SummonWhere | null
+  /** 此刻看得见吗(架子收着 / 非活动 tab / 被别的浮窗压着 = false)。 */
+  visible: boolean
+  /** 被哪一层压着。有值 = `blocked`,判词见文件头。 */
+  occludedBy: 'stage' | null
+  /** 焦点在不在它里面。 */
+  focused: boolean
+}
+
+/**
+ * **这一下要的是什么**(W7-p 裁定 6)。
+ *
+ *  · `toggle` —— 四态全走。Dock 瓦与快捷键两个入口都是它:同一个键 / 同一块瓦
+ *    按到底会把面收起来,那正是「召唤」这个词的业界语义(判词见文件头那张表);
+ *  · `reveal` —— **只走前三态**。第四态(看得见、焦点已经在里面)退成
+ *    `hide/none` 那个诚实的空动作。产地是 sidebar 单击一条**已经开着**的会话
+ *    (裁定 6 的 B4):那一下的意思是「切过去」,而「切过去」没有反面 ——
+ *    点一条你正在看的会话,应该什么都不发生,不该把它收掉。
+ *
+ * 它是判据的**入参**而不是两只函数:四态表只该有一份,两个意图的差别只有最后
+ * 一行。写成两只的第一天就会有人只改其中一只。
+ */
+export type SummonIntent = 'toggle' | 'reveal'
+
+/** 住处的四形。`collapsed` 只有架子答得出,所以它长在那一格上而不是另开一格。 */
+export type SummonWhere =
+  | { kind: 'edge'; side: ShelfSide; collapsed: boolean }
+  | { kind: 'float' }
+  | { kind: 'stage' }
+  | { kind: 'center' }
+
 /** 召唤时树那一头的读数。只要一句话:**焦点此刻在谁的层里**(没有就是 null)。 */
 export interface SummonFocus {
   /**
@@ -150,54 +212,160 @@ export interface SummonFocus {
   focusedOwner: string | null
 }
 
-/**
- * 召唤一块面时该做什么。**纯函数**,所以四态逐条钉得住(见文件头那张表)。
- */
-export function summonTransition(
-  state: StageState,
-  itemId: string,
-  focus: SummonFocus,
-): SummonAction {
-  const placement = placementOf(state, itemId)
+/** 住处 → 装着它的那一层作用域。中央区那一形答的是「那片叶里的这一格」。 */
+const SCOPE_OF_WHERE: Record<SummonWhere['kind'], FocusScopeId> = {
+  edge: 'shelf-layer',
+  float: 'float-layer',
+  stage: 'stage-layer',
+  center: 'leaf',
+}
 
-  // ① 未打开 —— 在 Dock 里就按它的记忆开出来。
-  if (placement.kind === 'dock') return { kind: 'open' }
+/**
+ * **召唤这一下该做什么**(W7-p 裁定 6 起:对象是一份处境,不是一个瓦 id)。
+ * 纯函数,所以四态逐条钉得住(见文件头那张表)。
+ */
+export function summonFromSituation(
+  s: SummonSituation,
+  intent: SummonIntent = 'toggle',
+): SummonAction {
+  // ① 未打开 —— 按它的记忆开出来。
+  if (!s.where) return { kind: 'open' }
 
   // ② 打开了但看不见。先问「是不是被压着」——压着就到此为止(不越过盖层)。
-  if (!isItemVisible(state, itemId)) {
-    const by = occluderOf(state, itemId)
-    if (by) return { kind: 'blocked', by }
-    if (placement.kind === 'float') {
-      return { kind: 'reveal', how: 'float-front', side: null }
-    }
-    if (placement.kind === 'edge') {
-      const shelf = state.shelves[placement.side]
+  if (!s.visible) {
+    if (s.occludedBy) return { kind: 'blocked', by: s.occludedBy }
+    if (s.where.kind === 'float') return { kind: 'reveal', how: 'float-front', side: null }
+    if (s.where.kind === 'center') return { kind: 'reveal', how: 'tab-activate', side: null }
+    if (s.where.kind === 'edge') {
       /*
        * 收着的架子先展开(顺带点名):细梁上一个 tab 的内容都不画,所以「换 tab」
        * 在那一档里根本不成立。展开着但露的是别人 —— 那才是纯粹的换 tab。
        */
-      const how: SummonRevealHow = shelf.collapsed ? 'shelf-expand' : 'shelf-tab'
-      return { kind: 'reveal', how, side: placement.side }
+      const how: SummonRevealHow = s.where.collapsed ? 'shelf-expand' : 'shelf-tab'
+      return { kind: 'reveal', how, side: s.where.side }
     }
     /*
      * `stage` 看不见只可能是被压着,而那一支上面已经答完了。
-     * 走到这里说明 `isItemVisible` 与 `occluderOf` 对不上口径 —— 那是自相矛盾,
+     * 走到这里说明「看得见吗」与「被谁压着」对不上口径 —— 那是自相矛盾,
      * 不是一种状态,所以这里当「没人压着但也露不出来」处理:什么都不做。
      */
     return { kind: 'blocked', by: 'stage' }
   }
 
-  const scope = LAYER_SCOPE_OF[placement.kind]
-  // 非 dock 的四种形态都有层,所以这一句恒不触发;留着是为了不把 null 咽下去。
-  if (!scope) return { kind: 'blocked', by: 'stage' }
-
   // ③ 看得见、焦点不在它里面:只把键盘送进去,形态零变化。
-  if (focus.focusedOwner !== itemId) return { kind: 'focus', scope }
+  if (!s.focused) return { kind: 'focus', scope: SCOPE_OF_WHERE[s.where.kind] }
 
-  // ④ 看得见、焦点在它里面:收起来 —— 收的对象按形态定(见文件头)。
-  return placement.kind === 'edge'
-    ? { kind: 'hide', how: 'shelf-collapse', side: placement.side }
-    : { kind: 'hide', how: 'close', side: null }
+  /*
+   * ④ 看得见、焦点在它里面:收起来 —— 收的对象按形态定(见文件头)。
+   * **`reveal` 意图到这里就到头了**:「去那儿」这句话没有反面,而按下同一下
+   * 却把刚要去的地方收掉,是审计 A 的 A7/A8 那种「点了像坏了」的另一副面孔。
+   */
+  if (intent === 'reveal') return { kind: 'hide', how: 'none', side: null }
+  if (s.where.kind === 'edge') {
+    return { kind: 'hide', how: 'shelf-collapse', side: s.where.side }
+  }
+  if (s.where.kind === 'center') return { kind: 'hide', how: 'none', side: null }
+  return { kind: 'hide', how: 'close', side: null }
+}
+
+/**
+ * **一块瓦的处境**:问形态机。这是两个适配器里的一个(另一个在 `stage/store.ts`
+ * 上,问的是拼贴树)—— 判据本身一个字都不认识「瓦」。
+ */
+export function summonSituationOfItem(
+  state: StageState,
+  itemId: string,
+  focus: SummonFocus,
+): SummonSituation {
+  const placement = placementOf(state, itemId)
+  const where: SummonWhere | null =
+    placement.kind === 'dock'
+      ? null
+      : placement.kind === 'edge'
+        ? {
+            kind: 'edge',
+            side: placement.side,
+            collapsed: state.shelves[placement.side].collapsed,
+          }
+        : placement.kind === 'float'
+          ? { kind: 'float' }
+          : { kind: 'stage' }
+  return {
+    where,
+    visible: isItemVisible(state, itemId),
+    occludedBy: occluderOf(state, itemId),
+    focused: focus.focusedOwner === itemId,
+  }
+}
+
+/* ── 第二个适配器:一格**内容**的处境 ────────────────────────────────────── */
+
+/*
+ * ── 座位那一只搬去了 `workbench/tree.ts`(W7-p 修一轮裁定 2)────────────────
+ * 「这格内容坐在哪」从前在这里与 `content/session-open.ts` 各有一份,两份都只看
+ * **顶层标签**,于是二合一(`pair:`)里的那条会话在两只眼里都不存在 —— sidebar
+ * 单击它会走「顶替焦点那片会话叶」,把中央区正看着的那条顶掉。
+ *
+ * 今天一只,住在树那一层:它答的是**树上的事实**(哪个区域、哪片叶、第几格、
+ * 露不露脸、以及**它在复合里的哪一侧**),而形态是形态机翻译出来的第二步
+ * (`residency.placementOfRegion`)。判据留在树那边,这里只读它。
+ */
+
+/**
+ * **一格内容的处境**:问拼贴树 + 形态机(W7-p 裁定 6)。这是两个适配器里的第二个
+ * (第一个是 `summonSituationOfItem`)—— 判据本身两种对象都不认识。
+ *
+ * 三处读数与瓦那条路**同源不同问法**,逐条:
+ *  · **在哪儿** —— 区域即形态(`residency.placementOfRegion`,全壳唯一那张翻译表);
+ *    中央区不是形态机的地方,所以它是这里独有的第四形 `center`;
+ *  · **看得见吗** —— 三个连乘:它是那片叶的活动 tab(`seat.active`)∧ 架子没收成
+ *    细梁 ∧ 浮窗在最上面。后两条与 `transitions.isItemVisible` 逐字同一句话,
+ *    只是那一只按瓦 id 问、这一只按区域问;
+ *  · **被谁压着** —— 舞台压着中央区与它底下的一切(与 `occluderOf` 同一条:
+ *    舞台是 scrim + 画布,「此刻请只看我」)。舞台上摆着的**正是这一格内容**时
+ *    不算压着 —— 那一句用 `panelRef` 翻译,这里不拼 `panel:` 那三个字。
+ */
+export function summonSituationOfRef(
+  regions: Readonly<Record<string, PaneNode>>,
+  stage: StageState,
+  id: ContentRefId,
+  focus: SummonFocus,
+): SummonSituation {
+  const seat = seatOfRefIn(regions, id)
+  if (!seat) return { where: null, visible: false, occludedBy: null, focused: false }
+  const placement = placementOfRegion(seat.region)
+  const where: SummonWhere =
+    placement?.kind === 'edge'
+      ? {
+          kind: 'edge',
+          side: placement.side,
+          collapsed: stage.shelves[placement.side].collapsed,
+        }
+      : placement?.kind === 'float'
+        ? { kind: 'float' }
+        : { kind: 'center' }
+  const floatId = floatIdOfRegion(seat.region)
+  const topFloat = stage.floatOrder[stage.floatOrder.length - 1] ?? null
+  const onTop = floatId === null || floatId === topFloat
+  const shelfOpen = where.kind !== 'edge' || !where.collapsed
+  const stageId = stageIdOf(stage)
+  const occludedBy: 'stage' | null =
+    stageId !== null && refId(panelRef(stageId)) !== id ? 'stage' : null
+  return {
+    where,
+    visible: occludedBy === null && seat.active && shelfOpen && onTop,
+    occludedBy,
+    focused: focus.focusedOwner === id,
+  }
+}
+
+/** 瓦那条路的门面(存量调用方与那 17 条状态表用例读的就是它)。 */
+export function summonTransition(
+  state: StageState,
+  itemId: string,
+  focus: SummonFocus,
+): SummonAction {
+  return summonFromSituation(summonSituationOfItem(state, itemId, focus))
 }
 
 

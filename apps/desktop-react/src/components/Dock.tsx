@@ -120,6 +120,8 @@ export function Dock() {
   const hiddenItems = useStageStore((st) => st.hiddenItems)
   const click = useStageStore((st) => st.clickDockIcon)
   const openAs = useStageStore((st) => st.openAs)
+  // 右键那一行「在 Dock 上隐藏」(A10)。与「所有应用」那颗开关同一口。
+  const setItemHidden = useStageStore((st) => st.setItemHidden)
   // 未读是**当下的事实**,所以在这里对上静态的 items 表(items.ts 里那条注释同一件事)。
   const unread = useUnreadCount()
   /*
@@ -341,6 +343,26 @@ export function Dock() {
                 </>
               )}
               <MenuSeparator />
+
+              {/*
+                **在 Dock 上隐藏**(W7-p 裁定 7,审计 A 的 A10)。它与「所有应用」
+                那块面里那颗开关是**同一格状态**(`stage.hiddenItems`,判据在
+                `transitions.setItemHidden`)—— 那颗开关不动,这里只是把同一个
+                动作放到用它的地方:一块瓦要收走,人正在右键的就是它。
+
+                常驻 Dock 的那几块瓦**禁灰而不消失**(`disabled`,判词在 ui/Menu 上):
+                同一张菜单在每块瓦上形状一样,而「这一项此刻做不了」说得比「它不见了」
+                清楚。真正挡住它的仍旧是纯函数那一句(UI 是绕得过去的)。
+              */}
+              <MenuItem
+                disabled={menu.item.alwaysInDock === true}
+                onClick={() => {
+                  setItemHidden(menu.item.id, true)
+                  closeMenu()
+                }}
+              >
+                {t('dock.hideTile')}
+              </MenuItem>
 
               <MenuItem
                 onClick={() => {

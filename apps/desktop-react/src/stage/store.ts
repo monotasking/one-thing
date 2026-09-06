@@ -5,15 +5,28 @@ import { useWorkbenchStore } from '../workbench/store'
 import { STAGE_ITEMS, findItem } from './items'
 import { panelRef } from './panel-ref'
 import { refId } from '../workbench/kinds'
-import { requestFocusOnOpen, summonTransition } from './summon'
+import {
+  LAYER_SCOPE_OF,
+  requestFocusOnOpen,
+  summonFromSituation,
+  summonSituationOfRef,
+  summonTransition,
+  type SummonAction,
+  type SummonIntent,
+  type SummonWhere,
+} from './summon'
+import { seatOfRefIn, type RefSeat } from '../workbench/tree'
+import { activateScopeAfterCommit } from '../focus/after-commit'
 import * as T from './transitions'
 import * as P from './placement'
 import { foldLegacyStageFurniture, stashLegacyStageResidency } from './legacy-furniture'
 import { nextLeafId } from '../workbench/ids'
-import { projectResidency, sameProjection } from './residency'
-import type { ContentRef } from '../workbench/kinds'
+import { floatIdOfRegion, projectResidency, sameProjection } from './residency'
+import type { ContentRef, ContentRefId } from '../workbench/kinds'
 import type { RegionId } from '../workbench/regions'
-import type { Locale } from '../i18n'
+import type { FocusScopeId } from '../focus/types'
+import { t, type Locale } from '../i18n'
+import { announce } from '../ui/a11y/live-region'
 import {
   spreadSpace,
   stashSpace,
@@ -27,6 +40,7 @@ import type {
   DockMagnifyLevel,
   DockSize,
   FloatRect,
+  Placement,
   PlacementTarget,
   ResolvedOpen,
   ShelfSide,
@@ -72,6 +86,20 @@ interface StageStore extends StageState, StageSettings, PerSpaceState<T.StageFur
    * 当成「另一种打开方式」叫起来,那时这台壳就有两种打开语义了。
    */
   summonItem: (id: string) => void
+  /**
+   * **召唤一格内容**(W7-p 裁定 6)。同一台四态机器,换一种对象:瓦问形态机,
+   * 内容问拼贴树(两个适配器都在 `stage/summon.ts`,判据一份)。
+   *
+   * 答**它此刻在哪一形**;`null` = 哪棵树上都没有它 —— 那时这一下什么都没做,
+   * 该怎么开由调用方说了算(启动瓦按它自己那句 `open()`,会话按「顶替焦点那片
+   * 会话叶」)。把「开」留在外面而不是在这里补一格 `open` 动作,是因为**开一格
+   * 内容的规矩不属于形态机**:它是那格内容自己的事(目录瓦要先解析目录、会话要
+   * 原位换 ref),形态机只认得住处。
+   *
+   * `intent` 见 `summon.SummonIntent`:Dock 瓦 / 快捷键是 `toggle`(按到底会收起),
+   * sidebar 单击一条已经开着的会话是 `reveal`(只去,不收)。
+   */
+  summonRef: (ref: ContentRef, intent?: SummonIntent) => SummonWhere['kind'] | null
   closeToDock: (id: string) => void
   closeStage: () => void
   /**
@@ -231,7 +259,7 @@ export const stagePlacementDeps: P.PlacementDeps = {
  * 两个入口(点瓦 / 快捷键)共用它,免得解析序在两处各写一遍。
  */
 function openMemoryFor(s: StageState & StageSettings, id: string) {
-  return T.resolveOpen(s, id, s.defaultOpen, viewport(), findItem(id)?.defaultPlacement)
+  return T.resolveOpen(s, id, s.defaultOpen, findItem(id)?.defaultPlacement)
 }
 
 /* ── 全屏那一档的两句接线(W2)──────────────────────────────────────────────
@@ -241,6 +269,24 @@ function openMemoryFor(s: StageState & StageSettings, id: string) {
  * `stage/placement.ts` 那一层也只拿得到形态机那两口(判词写在它的 `PlacementDeps` 上)。
  */
 
+/**
+ * **这一格内容此刻住在哪一形**(W7-p 修一轮裁定 4)。
+ *
+ * 只有全屏那一支用它:全屏**不摘树**(裁定 2),所以「它在哪儿」照旧问得出来 ——
+ * 从前那一支写死答 `'center'`,于是一条钉在右架子上的会话全屏着时,`enterSession`
+ * 据此又往中央区的输入框送一次焦点(而屏幕上根本没有那台聊天)。
+ * 判据仍旧只有 `summonSituationOfRef` 一处 —— 这里只读它的 `where`。
+ */
+function whereKindOfRef(id: string): SummonWhere['kind'] | null {
+  const situation = summonSituationOfRef(
+    useWorkbenchStore.getState().regions,
+    useStageStore.getState(),
+    id,
+    { focusedOwner: null },
+  )
+  return situation.where?.kind ?? null
+}
+
 /** 这块瓦此刻正铺着全屏吗。 */
 function isItemFull(id: string): boolean {
   const full = useWorkbenchStore.getState().full
@@ -248,13 +294,204 @@ function isItemFull(id: string): boolean {
 }
 
 /**
- * 把一次落定的外溢结果落地:`{kind:'full'}` = 去铺全屏。
- * `from: null` —— 那一支已经把这块瓦从每棵树里摘干净了,所以「退出全屏 = 回 Dock」
- * (投影缺席即 dock),判词写在 `workbench/store.ts` 的 `FullState` 上。
+ * **一次落定的外溢结果的唯一落点**(W7-p 裁定 2/3;修一轮把「唯一」变成事实)。
+ *
+ * 两档:`{kind:'full'}` = 去铺全屏;`{kind:'refused'}` = 摆不下,**播报那一句**。
+ *
+ * ── 修一轮补的那半条 ────────────────────────────────────────────────────
+ * 裁定 3 立的原话是「三条路都经 landFull」,但真机上不是:`stageToEdge` /
+ * `floatToEdge`(舞台檐与浮窗檐上的「钉到边」菜单)直接 `orchestrate(() => placeAs(…))`
+ * 把返回值丢了 —— 预算不够时它们**静默不动**,用户点了那一行,屏幕上什么都没发生、
+ * 读屏也没有一个字。今天凡「往边上钉」的路一律经这一只:点瓦四态、右键落点、
+ * 拖拽落定、舞台/浮窗檐上的钉到边。产地一个,守卫在 `store.test` 与 gate ③。
+ *
+ * **`from` 不递**(裁定 2):缺席 = 「问树」。全屏不再摘树,所以这块瓦此刻
+ * 住在哪儿,退出就回哪儿 —— 钉在右边的回右边、浮着的回那扇窗。哪棵树都不在的
+ * (出厂即全屏的那几块瓦)问出来是 `null`,于是退出即回 Dock,与 W2 逐字相同。
+ * 判词写在 `workbench/store.ts` 的 `FullState` 上。
  */
-function landFull(id: string, outcome: P.PlacementOutcome): void {
+function land(id: string, outcome: P.PlacementOutcome): void {
+  if (outcome?.kind === 'refused') {
+    announceRefusal(outcome)
+    return
+  }
   if (outcome?.kind !== 'full') return
-  useWorkbenchStore.getState().enterFull(panelRef(id), null)
+  useWorkbenchStore.getState().enterFull(panelRef(id))
+}
+
+/** 四条边 → 播报里那个名词。与 `LeafActions` 那张表读同一族 key。 */
+const SIDE_NAME_KEY: Record<ShelfSide, 'drag.sideLeft' | 'drag.sideRight' | 'drag.sideTop' | 'drag.sideBottom'> = {
+  left: 'drag.sideLeft',
+  right: 'drag.sideRight',
+  top: 'drag.sideTop',
+  bottom: 'drag.sideBottom',
+}
+
+/**
+ * **拒绝要说话**(W7-p 裁定 3)。播报是 DOM 副作用,所以它只能落在这一层 ——
+ * 判据在纯函数(`canNailShelf`)、编排在 `stage/placement.ts`,两处都碰不到 DOM。
+ * 全壳这一句只有这一个产地:凡「往边上钉」的路都经 `land`(判词在它头上)。
+ */
+function announceRefusal(outcome: { reason: 'shelf-budget'; side: ShelfSide }): void {
+  announce(t('stage.shelfNoRoom', { side: t(SIDE_NAME_KEY[outcome.side]) }))
+}
+
+/* ── 召唤四态的效果分流表(W7-p 修一轮裁定 4)──────────────────────────────── */
+
+/**
+ * **召唤的对象**。两个入口(一块瓦 / 一格内容)的差别整件收在这只接口的两份
+ * 实现里,于是四态的分流表(`applySummonAction`)只有一份。
+ *
+ * ── 病历 ──────────────────────────────────────────────────────────────────
+ * 裁定 6 说的是「一台机器,两个入口」,可落地时 `summonItem` 与 `summonRef` 各写了
+ * 一套 `switch`。同一份表抄两遍,**当场就已经分叉**:
+ *  · 第三态 `focus` —— 瓦那边同步 `activateScope`,内容那边排在提交之后;
+ *  · 第二态 `reveal` —— 瓦那边只留一格 `requestFocusOnOpen`(而形态并没有变,
+ *    `focus-follow` 那条差分判据根本不会响,于是那一格点名躺在那儿谁也没用),
+ *    内容那边真的把焦点送了进去;
+ *  · 「闪一下」两处各写一句 `flashPinned + 1`。
+ * 判据(纯函数 `summonFromSituation`)一直只有一份 —— 分叉的是**效果**,所以守卫
+ * 也要落在效果这一层(`summon-entries.test.ts` 比的就是「调用了哪些 store 动作、
+ * 什么次序」,不再只比 action 对象)。
+ */
+interface SummonTarget {
+  /** ① 未打开 —— 按它的记忆开出来。 */
+  open(): void
+  /** ② 露出:点名它坐的那一格(架子 tab / 叶内 tab,四个区域同一句话)。 */
+  activateSeat(): void
+  /** ② 浮窗那一形:翻到最上面。 */
+  frontFloat(): void
+  /**
+   * ③ 把键盘送进它那一层。`scope` 由判据点名(第三态);`null` = 由对象自己答
+   * 「我该落在哪一层」(第二态露出之后的跟焦)。
+   *
+   * **一律排在 React 提交之后**(裁定 5 那副队列,`focus/after-commit`):
+   * 落定那一刻宿主层还没挂上来,当场 `activate` 一定答 false —— 瓦那条路从前是
+   * 同步的,所以它其实一直没送成,只是没人量。
+   *
+   * 名字不叫 `focus`:跨作用域搬焦点在这台壳里只有 `activateScope` 一条路
+   * (响应链的 I3),而一个叫 `.focus(` 的方法读起来像在直接动 DOM ——
+   * `ui:consume` 的 `focus-outside-focus` 那条硬闸也是这么读的。
+   */
+  sendKeyboard(scope: FocusScopeId | null): void
+  /** ④ 收起来(架子那一形不走这里 —— 它收的是整条架子,与对象无关)。 */
+  hideAway(): void
+}
+
+/** 架子闪一下:「你要的东西已经在这儿了」。**一处** —— 两个入口同一句。 */
+function flashShelf(side: ShelfSide): void {
+  useStageStore.setState((st) => ({ flashPinned: st.flashPinned + 1, flashSide: side }))
+}
+
+/**
+ * **召唤这一下的效果 —— 全壳唯一一份分流表**(W7-p 修一轮裁定 4)。
+ *
+ * 判据(`summon.summonFromSituation`)答「做什么」,这一只答「怎么做」,
+ * 而「对谁做」由 `SummonTarget` 的两份实现答。三件事分开,所以加第三种对象是加
+ * 一份 `SummonTarget`,不是在这里加一个 if。
+ */
+function applySummonAction(action: SummonAction, target: SummonTarget): void {
+  switch (action.kind) {
+    case 'open':
+      target.open()
+      return
+    case 'reveal': {
+      if (action.how === 'float-front') target.frontFloat()
+      else target.activateSeat()
+      if (action.side !== null) {
+        // 先点名 tab(已经是活动的就是恒等变换),收着的再展开 —— 细梁上一个 tab
+        // 的内容都不画,所以两件事都要做。
+        if (action.how === 'shelf-expand') useStageStore.getState().toggleShelfCollapsed(action.side)
+        flashShelf(action.side)
+      }
+      target.sendKeyboard(null)
+      return
+    }
+    case 'focus':
+      target.sendKeyboard(action.scope)
+      return
+    case 'hide':
+      /*
+       * 09-04 改判的第四格:**收起来**(推翻 09-03 的「回去」)。收的**对象按形态定**
+       * (判词写在 summon.ts 的文件头):钉在架子上收整条架子,别的形态由对象自己
+       * 说(瓦收回 Dock、内容收掉那扇窗)。
+       *
+       * **焦点一个字都不搬**:面一收,装着它的那一层要么卸载要么变 inert,两条都是
+       * 结构变化,树的结构归还(§4.5)把焦点送回按键之前的地方。手动搬会与那条归还
+       * 打架(两个产地),门里那一步量的正是「不搬也回得去」。
+       */
+      if (action.how === 'none') return // 中央区没有「收起」这一档 —— 诚实的空动作。
+      if (action.how === 'shelf-collapse' && action.side !== null) {
+        useStageStore.getState().toggleShelfCollapsed(action.side)
+        return
+      }
+      target.hideAway()
+      return
+    case 'blocked':
+      // 不越过盖层(§14)。**诚实的空动作** —— 理由写在 summon.ts 的文件头。
+      return
+  }
+}
+
+/** 对象之一:**一块瓦**。住处问形态机,焦点落在装着它的那一层上。 */
+function itemSummonTarget(id: string): SummonTarget {
+  const placement = (): Placement => T.placementOf(useStageStore.getState(), id)
+  return {
+    open: () => {
+      /*
+       * 「这一次打开是键盘点的名」—— 形态**真的变了**的那条路由 `focus-follow`
+       * 在提交之后接(判词在 summon.ts 的 `requestFocusOnOpen` 上)。它与下面
+       * `focus()` 那一副队列是同一件事的两条路,都幂等,所以两条都留着。
+       */
+      requestFocusOnOpen(id)
+      const memory = openMemoryFor(useStageStore.getState(), id)
+      land(id, orchestrate(() => P.openFromMemory(stagePlacementDeps, id, memory)))
+    },
+    activateSeat: () => {
+      const at = placement()
+      if (at.kind === 'edge') useStageStore.getState().activateShelfTab(at.side, id)
+    },
+    frontFloat: () => orchestrate(() => P.focusFloatIn(stagePlacementDeps, id)),
+    sendKeyboard: (scope) => {
+      const layer = scope ?? LAYER_SCOPE_OF[placement().kind]
+      if (layer) activateScopeAfterCommit(layer, { owner: id, reason: 'open' })
+    },
+    hideAway: () => useStageStore.getState().closeToDock(id),
+  }
+}
+
+/** 对象之二:**一格内容**。住处问拼贴树,焦点落在那一格内容自己那一层上。 */
+function refSummonTarget(id: ContentRefId, seat: RefSeat | null, floatId: string | null): SummonTarget {
+  return {
+    // 到不了:`summonRef` 只在「它开着」时才走分流表(`where` 非空)。
+    open: () => {},
+    /*
+     * 点名那一格 tab —— 四个区域同一句话(树上的 tab 不分区域)。
+     *
+     * **经 `orchestrate`**(W7-p 修一轮裁定 4):它改的是树,而形态机那几格投影
+     * (`shelves[side].activeId` / `visible`)要跟着对上。瓦那条路走的是
+     * `activateShelfTab`,它本来就在编排里;两条路都进同一格缓冲,订阅者看到的
+     * 才是同一次干净的 A → B —— 否则同一份现场从两个入口召唤会落在两份状态上
+     * (`summon-entries.test.ts` 的「两个入口是同一台机器」当场量出来过)。
+     */
+    activateSeat: () => {
+      if (seat) orchestrate(() => useWorkbenchStore.getState().activateTab(seat.leafId, seat.index))
+    },
+    frontFloat: () => {
+      if (floatId) useStageStore.getState().focusFloat(floatId)
+    },
+    /*
+     * 内容那一层的 `owner` 就是它的 refId(判词在 `PaneLeaf.PaneContentLayer` 上),
+     * 所以**不看 scope**:判据点名的是「装着它的那一层」,而这里要的是更深的
+     * 那一格 —— 二合一的一格尤其:pair 的两侧各是一格 `leaf` 作用域,
+     * 要的是被召唤的**那一侧**。
+     */
+    sendKeyboard: () => activateScopeAfterCommit('leaf', { owner: id, reason: 'open' }),
+    // 浮窗那一形:收的是**那扇窗**(里面的 tab 全部转入隐藏表,内容不丢)。
+    hideAway: () => {
+      if (floatId) useStageStore.getState().closeFloat(floatId)
+    },
+  }
 }
 
 /**
@@ -279,89 +516,108 @@ export const useStageStore = create<StageStore>()(
       items: STAGE_ITEMS,
       dockDisplay: 'always',
 
-      clickDockIcon: (id) => {
-        /*
-         * **正铺着全屏的那块瓦,再点一下收回去**(W2)。这一格判据在 store 而不在
-         * 纯函数里,理由与 `summonItem` 逐字相同:它要同时读**两台机器**——形态机
-         * 说不出「谁在全屏」(那不是一种 Placement,判词在 `stage/types.ts`)。
-         * 它排在最前面,与「在舞台上 → 关掉」在 `clickDockIcon` 里排第一同型。
-         */
-        if (isItemFull(id)) {
-          useWorkbenchStore.getState().exitFullIfOpen()
-          return
-        }
-        landFull(id, orchestrate(() => P.clickDockIcon(stagePlacementDeps, id, openMemoryFor(get(), id))))
-      },
+      /**
+       * **点 Dock 瓦 = 召唤**(W7-p 裁定 6,审计 A 的 A7/A8)。
+       *
+       * ── 病历 ────────────────────────────────────────────────────────────
+       * 从前它是**另一台机器**(`placement.clickDockIcon` 的四条 if)。同一块面、
+       * 同一个状态,点瓦与按快捷键给出不同的答案:浮窗已经在最上面时点瓦是「再置顶
+       * 一次」(零反馈,用户以为点坏了),按键是「送焦点」;再点一下,点瓦还是零
+       * 反馈,按键收起来。两台机器讲两种语言,而用户只有一套心智。
+       *
+       * ── 今天:一台机器,两个入口 ──────────────────────────────────────────
+       * 两条路都走 `summonItem`,于是四态**逐字相同**。`placement.clickDockIcon`
+       * 那只函数整个删掉 —— 留着它就是留着第二个产地,而分叉的第一处必然是
+       * 「下一个人只改了其中一条」。
+       */
+      clickDockIcon: (id) => get().summonItem(id),
       openAs: (id, placement) =>
-        landFull(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, placement))),
-      placeRef: (ref, region, opts) =>
-        orchestrate(() => P.placeRefIn(stagePlacementDeps, ref, region, opts ?? {})),
+        land(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, placement))),
+      placeRef: (ref, region, opts) => {
+        // 拒绝要说话(W7-p 裁定 3)。`land` 是「落定结果」的唯一落点,
+        // 拖拽落定 / 右键落点 / 启动瓦三条路都经这里,所以那句话只有一个产地。
+        // (这一支答不出全屏,所以只有拒绝那一格 —— 但仍旧经同一只。)
+        const outcome = orchestrate(() => P.placeRefIn(stagePlacementDeps, ref, region, opts ?? {}))
+        if (outcome?.kind === 'refused') announceRefusal(outcome)
+      },
       /*
        * ── 召唤(S1)是 store 唯一那种「先问再分流」的动作 ──────────────────
        * 它不是一句 `set(纯函数)`,因为判据要同时读**两份**事实:形态机这一份
        * (在哪儿 / 看不看得见)与响应链那一份(焦点在不在它里面)。判据本身仍然
-       * 是纯的(`summonTransition`),这里只做三件事:把树那一头的读数取成一个
-       * 布尔递进去、按动作分流到**既有**的动作上、给键盘那条路点名(跟焦仍由
-       * `focus-follow` 那唯一一处接线在提交之后送 —— 落定那一刻宿主层还没挂上来)。
+       * 是纯的(`summonFromSituation`),而**效果**那一半整件在 `applySummonAction`
+       * (全壳一份,判词在它头上)。这两个入口因此只剩三句话:退全屏 / 问处境 /
+       * 交给分流表,差别只在「对象怎么寻址」(`SummonTarget` 的两份实现)。
        */
       summonItem: (id) => {
         /*
          * **它正铺着全屏 → 收起来**(W2;召唤四态的第四格「看得见、焦点在里面 →
-         * 收起来」在全屏这一形上的样子)。与 `clickDockIcon` 同一格判据、同一个理由:
-         * 「谁在全屏」只有拼贴台那本账知道,纯函数 `summonTransition` 问不出来。
+         * 收起来」在全屏这一形上的样子)。这一格判据在 store 而不在纯函数里:
+         * 「谁在全屏」只有拼贴台那本账知道,`summonFromSituation` 问不出来。
          */
         if (isItemFull(id)) {
           useWorkbenchStore.getState().exitFullIfOpen()
           return
         }
+        /*
+         * **A9:全屏开着时召唤别的瓦 —— 先退全屏**(W7-p 裁定 6)。
+         * 真机现场:全屏铺着,按 ⌘ 数字召唤另一块面,那块面开在全屏层**底下**,
+         * 屏幕上什么都没变、焦点也没进去 —— 用户按了一下,得到的是「没反应」。
+         * 退出按裁定 2 的规则(放回原住处,而它从来没离开过),再照常召唤。
+         */
+        useWorkbenchStore.getState().exitFullIfOpen()
         const action = summonTransition(get(), id, {
           focusedOwner: focusTree.isOwnerActive(id) ? id : null,
         })
-        switch (action.kind) {
-          case 'open':
-            requestFocusOnOpen(id)
-            landFull(id, orchestrate(() => P.openFromMemory(stagePlacementDeps, id, openMemoryFor(get(), id))))
-            return
-          case 'reveal':
-            requestFocusOnOpen(id)
-            if (action.how === 'float-front') {
-              orchestrate(() => P.focusFloatIn(stagePlacementDeps, id))
-              return
-            }
-            {
-              // 取成局部量再判:闭包里读 `action.side` 拿不到收窄(TS 只对本地
-              // const 保得住),而这两句正好都在闭包里。
-              const side = action.side
-              if (side === null) return
-              // 先点名 tab(已经是活动的就是恒等变换,zustand 连订阅都不推),
-              // 收着的再展开 —— 细梁上一个 tab 的内容都不画,所以两件事都要做。
-              get().activateShelfTab(side, id)
-              if (action.how === 'shelf-expand') get().toggleShelfCollapsed(side)
-            }
-            return
-          case 'focus':
-            focusTree.activateScope(action.scope, { owner: id, reason: 'open' })
-            return
-          case 'hide':
-            /*
-             * 09-04 改判的第四格:**收起来**(推翻 09-03 的「回去」)。收的**对象
-             * 按形态定**(判词写在 summon.ts 的文件头):钉在架子上收整条架子,
-             * 别的形态收回 Dock。两条走的都是 store 已有的那一口,不新写落点。
-             *
-             * **焦点一个字都不搬**:面一收,装着它的那一层要么卸载要么变 inert,
-             * 两条都是结构变化,树的结构归还(§4.5)把焦点送回按键之前的地方。
-             * 手动搬会与那条归还打架(两个产地),门里那一步量的正是「不搬也回得去」。
-             */
-            if (action.how === 'shelf-collapse' && action.side !== null) {
-              get().toggleShelfCollapsed(action.side)
-              return
-            }
-            get().closeToDock(id)
-            return
-          case 'blocked':
-            // 不越过盖层(§14)。**诚实的空动作** —— 理由写在 summon.ts 的文件头。
-            return
+        applySummonAction(action, itemSummonTarget(id))
+      },
+      /**
+       * **召唤一格内容**(W7-p 裁定 6)—— 第二个入口,同一台机器。
+       *
+       * ── 病历(两处,一个病根)────────────────────────────────────────────
+       *  · **启动瓦**(「目录」)从前整条**绕过**召唤:点它一律 `launcher.open()`,
+       *    于是「它已经钉在左架子上、架子收着」时点一下什么都看不见 —— 那块面板
+       *    早就开着,`openDirectoryPanel` 把同一格内容再摆一次是恒等变换;
+       *  · **sidebar 单击一条已经开着的会话**只 `activateTab` 一句:那条会话在
+       *    右架子里(收着)/ 在压在底下的浮窗里时,屏幕上一动不动。
+       * 两处都是同一件事没人做:**先问它此刻在哪,再对那个位置办事**。
+       *
+       * ── 这一层做什么 ────────────────────────────────────────────────────
+       * 与 `summonItem` 逐条同型:退全屏 → 取处境 → 交给**同一张**分流表。
+       * 它多的那一件事是**答住处**:调用方(sidebar 单击那条路)要据此决定
+       * 「这一下算办完了没有」以及「焦点该不该再进输入面板」。
+       */
+      summonRef: (ref, intent: SummonIntent = 'toggle') => {
+        const id = refId(ref)
+        const wb = useWorkbenchStore.getState()
+        /*
+         * **它正铺着全屏**:`toggle` 收起来(第四态在全屏这一形上的样子,与
+         * `summonItem` 逐字同一句),`reveal` 什么都不做 —— 铺满整扇窗已经是
+         * 「露出来」的极限,而「切过去」没有反面。
+         *
+         * 答的是**真实住处**(W7-p 修一轮裁定 4),不是从前那句写死的 `'center'`:
+         * 全屏不摘树(裁定 2),所以它此刻仍旧坐在某个区域里 —— 一条钉在右架子上
+         * 的会话全屏着时点它那一行,从前答 'center',`enterSession` 据此又往中央区的
+         * 输入框送一次焦点,而屏幕上根本没有那台聊天。
+         */
+        if (wb.full && refId(wb.full.ref) === id) {
+          if (intent === 'toggle') wb.exitFullIfOpen()
+          return whereKindOfRef(id)
         }
+        // A9:全屏铺着时召唤**别的**东西 —— 先退全屏,否则它开在全屏层底下。
+        if (wb.full) wb.exitFullIfOpen()
+        const situation = summonSituationOfRef(useWorkbenchStore.getState().regions, get(), id, {
+          focusedOwner: focusTree.isOwnerActive(id) ? id : null,
+        })
+        const where = situation.where
+        // 哪棵树上都没有 —— 这一下不归形态机管(判词在类型声明上)。
+        if (!where) return null
+        const seat = seatOfRefIn(useWorkbenchStore.getState().regions, id)
+        const action = summonFromSituation(situation, intent)
+        // 第一态到不了(`where` 非空就说明它开着)。答 null =「这一下没做成」,
+        // 不咽下去也不假装做了。
+        if (action.kind === 'open') return null
+        applySummonAction(action, refSummonTarget(id, seat, floatIdOfRegion(seat?.region ?? '')))
+        return where.kind
       },
       closeToDock: (id) => orchestrate(() => P.closeToDock(stagePlacementDeps, id)),
       closeStage: () => orchestrate(() => P.closeStage(stagePlacementDeps)),
@@ -385,29 +641,37 @@ export const useStageStore = create<StageStore>()(
         orchestrate(() => P.closeToDock(stagePlacementDeps, target.id))
         return true
       },
+      /*
+       * ── 四口形态搬家一律经 `land`(W7-p 修一轮裁定 3)────────────────────
+       * 它们从前把 `placeAs` 的返回值丢了,于是「这条边摆不下」在舞台檐与浮窗檐
+       * 那两张「钉到边」菜单上是**静默不动**:用户点了那一行,屏幕没变、读屏也
+       * 没有一个字。今天与点瓦 / 右键落点 / 拖拽落定同一只落点,那句播报因此
+       * 只有一个产地。
+       */
       stageToFloat: () => {
         const id = get().stageId
-        if (id !== null) orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'float' }))
+        if (id !== null) land(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'float' })))
       },
       stageToEdge: (side) => {
         const id = get().stageId
-        if (id !== null) orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'edge', side }))
+        if (id !== null) land(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'edge', side })))
       },
       floatToEdge: (id, side) => {
         if (T.placementOf(get(), id).kind !== 'float') return
-        orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'edge', side }))
+        land(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'edge', side })))
       },
       edgeToFloat: (id) => {
         if (T.placementOf(get(), id).kind !== 'edge') return
-        orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'float' }))
+        land(id, orchestrate(() => P.placeAs(stagePlacementDeps, id, { kind: 'float' })))
       },
       focusFloat: (id) => orchestrate(() => P.focusFloatIn(stagePlacementDeps, id)),
       ensureFloatRect: (id) =>
-        set((st) =>
-          st.floats[id]
-            ? st
-            : { floats: { ...st.floats, [id]: T.defaultFloatRect(viewport()) } },
-        ),
+        set((st) => {
+          if (st.floats[id]) return st
+          // 锚 + 层叠:**同一只产地**(W7-p 修一轮裁定 1)。读数装配也在那边
+          // (`floatSpawnContext`)—— 这里从前抄了一份,两份必然分叉。
+          return { floats: { ...st.floats, [id]: T.freshFloatRect(st, viewport()) } }
+        }),
       moveFloat: (id, x, y) => set((s) => T.moveFloat(s, id, x, y, viewport())),
       resizeFloat: (id, rect) => set((s) => T.resizeFloat(s, id, rect, viewport())),
       reclampFloats: (vp) => set((s) => T.reclampAll(s, vp)),
@@ -420,10 +684,10 @@ export const useStageStore = create<StageStore>()(
         orchestrate(() => P.setShelfCollapsed(stagePlacementDeps, side, !get().shelves[side].collapsed)),
       closeShelf: (side) => orchestrate(() => P.closeShelf(stagePlacementDeps, side)),
       closeFloat: (id) => orchestrate(() => P.closeFloat(stagePlacementDeps, id)),
+      // 递整个视口而不是那一条轴的长度(W7-p 裁定 3):共同预算要问对边,
+      // 而对边的轴可能是另一条 —— 一个标量说不出这件事。
       setShelfThickness: (side, thickness) =>
-        set((s) =>
-          T.setShelfThickness(s, side, thickness, T.shelfViewportExtent(side, viewport())),
-        ),
+        set((s) => T.setShelfThickness(s, side, thickness, viewport())),
       setDockDisplay: (dockDisplay) => set({ dockDisplay }),
       setDockEdge: (dockEdge) => set({ dockEdge }),
       setDockAlign: (dockAlign) => set({ dockAlign }),

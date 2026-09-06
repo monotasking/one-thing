@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from 'react'
 import { useStageStore } from '../stage/store'
 import {
   clampShelfThickness,
+  shelfThicknessBudget,
   shelfViewportExtent,
   thicknessFromPointer,
 } from '../stage/transitions'
@@ -179,13 +180,21 @@ export function EdgeShelf({ side }: Props) {
       try { el.setPointerCapture(e.pointerId) } catch { /* 不阻断 */ }
       // 外缘在整个拖拽期间不动,所以只测这一次。
       const outer = outerEdgeOf(side, box)
-      const extent = shelfViewportExtent(side, readViewport())
+      /*
+       * **拖着看到的与存下来的是同一把尺**(既有纪律),而那把尺从 W7-p 裁定 3
+       * 起多了一格:**共同预算**(该轴视口 − 中央最小 − 对边此刻厚度)。两个数
+       * 在整个拖拽期间都不动(视口不变、对边没人碰),所以照旧只测这一次。
+       */
+      const vp = readViewport()
+      const extent = shelfViewportExtent(side, vp)
+      const budget = shelfThicknessBudget(useStageStore.getState(), side, vp)
       let last = shelf.thickness
 
       const move = (ev: PointerEvent) => {
         last = clampShelfThickness(
           thicknessFromPointer(side, { x: ev.clientX, y: ev.clientY }, outer),
           extent,
+          budget,
         )
         setLiveThickness(last)
       }

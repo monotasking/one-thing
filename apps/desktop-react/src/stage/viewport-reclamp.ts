@@ -2,12 +2,13 @@ import { useEffect } from 'react'
 import { useStageStore, viewport } from './store'
 
 /**
- * **窗子变大变小 → 浮窗跟着回到视口里**(09-04,设计
+ * **窗子变大变小 → 浮窗与架子跟着回到视口里**(09-04;W7-p 裁定 3 起架子也归它,设计
  * `docs/design/react-shell-sessions-list-2026-09.md` §4)。
  *
- * 判据与算术整件在 `stage/transitions.ts`(`fitFloatRect` / `reclampAll`,纯的、
- * 测得起来);这里只有宿主那一半:**一条 window resize 监听**,量一次视口,交给
- * store 的 `reclampFloats`。走的是**重钳那把尺**(整扇拉回视口内),手势那把
+ * 判据与算术整件在 `stage/transitions.ts`(`fitFloatRect` / `reclampShelves` /
+ * `reclampAll`,纯的、测得起来);这里只有宿主那一半:**一条 window resize 监听 +
+ * 挂载时的一次**,量一次视口,交给 store 的 `reclampFloats`(名字留着 —— 它是
+ * 「按此刻的视口重钳一遍」这句话的口,钳什么由那只纯函数说了算)。走的是**重钳那把尺**(整扇拉回视口内),手势那把
  * (`clampFloatRect`,允许拖出界只留 40px)一字没动 —— 两把尺的分工表在
  * `transitions.ts` 的「浮窗几何」节开头。
  *
@@ -39,6 +40,14 @@ export function useViewportReclamp(): void {
         reclampFloats(viewport())
       })
     }
+    /*
+     * **挂上就先钳一次**(W7-p 裁定 3)。存下来的架子厚度与浮窗矩形是**上一台
+     * 窗口**的:上次 1600 宽时钉的 700 右架子,这次开在 900 的窗里就是「中央区
+     * 只剩 200」——而 resize 事件此刻还没有、也可能一直不来(用户不拉窗口)。
+     * 一格都没越界时 `reclampAll` 交回同一个对象,zustand 连订阅都不推,所以
+     * 这一句在正常开机路上是零成本。
+     */
+    schedule()
     window.addEventListener('resize', schedule)
     return () => {
       if (frame !== null) cancelAnimationFrame(frame)

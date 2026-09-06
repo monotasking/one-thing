@@ -72,8 +72,14 @@ describe('rehydrate:档案里的浮窗按当下视口钳一遍', () => {
     expect(rect.x + rect.w).toBeLessThanOrEqual(1100 - FLOAT_MARGIN)
     expect(rect.x).toBeLessThan(OVERFLOW.x)
     expect(rect.w).toBeGreaterThanOrEqual(FLOAT_MIN_W)
-    // 记忆那一份同样钳过 —— 不然关掉再开又是坏的。
-    expect(useStageStore.getState().memory.sessions).toEqual({ kind: 'float', rect })
+    /*
+     * **记忆一个字不动**(W7-p 裁定 4 推翻 09-04 那句「记忆那一份同样钳过」)。
+     * 记忆是用户的意图,只由手势与落定写;重钳写它 = 一次临时的窄屏永久改写
+     * 用户摆好的身量(审计 A 的 A5)。关着的窗再开出来由 `openFromMemory` 那句
+     * `clampFloatRect` 钳,不靠这里。
+     * 反证:把 `reclampMemoryMap` 加回 `reclampFloatGeometry` → 这条红。
+     */
+    expect(useStageStore.getState().memory.sessions).toEqual({ kind: 'float', rect: OVERFLOW })
   })
 
   it('视口量不出来(jsdom / SSR 的 0)就跳过,不把窗子压成最小档', async () => {
@@ -112,10 +118,28 @@ describe('useViewportReclamp:一条 resize 监听,rAF 合并', () => {
     }
   }
 
+  it('挂上就先钳一次:存下来的家具是上一台窗口的,而 resize 可能一直不来(W7-p 裁定 3)', () => {
+    const { frames, run } = stubFrames()
+    useStageStore.setState({ floats: { sessions: { ...OVERFLOW } } })
+    setViewport(1100, 800)
+    renderHook(() => useViewportReclamp())
+    // 反证:把 effect 里挂监听之前那句 `schedule()` 删掉 → frames 是 0,
+    // 那扇 879 宽的窗从开机起就探在屏幕外,拖它一下才好(A4 现场)。
+    expect(frames.length).toBe(1)
+    run()
+    const rect = useStageStore.getState().floats.sessions
+    expect(rect.x + rect.w).toBeLessThanOrEqual(1100 - FLOAT_MARGIN)
+  })
+
   it('窗子变窄 → 下一帧把越界的浮窗钳回视口里', () => {
     const { frames, run } = stubFrames()
     useStageStore.setState({ floats: { sessions: { ...OVERFLOW } } })
+    // 先在**宽**窗里挂载:挂载那一帧(裁定 3 加的)于是是恒等的,这一条量的
+    // 才是 resize 那一帧 —— 不然窄窗里一挂上就钳完了,下面那句「还没跑」不成立。
+    setViewport(1600, 900)
     renderHook(() => useViewportReclamp())
+    run()
+    expect(useStageStore.getState().floats.sessions).toEqual(OVERFLOW)
 
     setViewport(1100, 800)
     act(() => void window.dispatchEvent(new Event('resize')))
@@ -131,8 +155,9 @@ describe('useViewportReclamp:一条 resize 监听,rAF 合并', () => {
   })
 
   it('一帧之内连发多下 resize 只排一帧', () => {
-    const { frames } = stubFrames()
+    const { frames, run } = stubFrames()
     renderHook(() => useViewportReclamp())
+    run()
     act(() => {
       window.dispatchEvent(new Event('resize'))
       window.dispatchEvent(new Event('resize'))
@@ -143,8 +168,9 @@ describe('useViewportReclamp:一条 resize 监听,rAF 合并', () => {
   })
 
   it('卸载即退订:拆完再 resize 一帧都不排', () => {
-    const { frames } = stubFrames()
+    const { frames, run } = stubFrames()
     const { unmount } = renderHook(() => useViewportReclamp())
+    run()
     unmount()
     act(() => void window.dispatchEvent(new Event('resize')))
     // 反证:把 effect 的 return(removeEventListener)删掉 → 这里是 1。
