@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import type { ReactNode } from 'react'
 import { ButtonBase } from '../../ui/ButtonBase'
-import type { TFn } from '../../i18n'
+import type { MessageKey, TFn } from '../../i18n'
 import type { SearchIndexReadout } from '../capabilities'
 import s from './SearchPanel.module.css'
 
@@ -22,6 +22,17 @@ import s from './SearchPanel.module.css'
  * 「共 N 条」不在这里了:它随 `end` 那条读数进了**块尾**(落差 #12/#14)——
  * 一个数说的是「这一块全集有多大」,而页脚说的是整张清单的处境。
  */
+
+/**
+ * 放宽级数 → 那一句的键。**下标就是级数**,0 那一格恒缺席(没放宽 = 不说话)。
+ * 一张表而不是三条 `if`:加一级阶梯 = 表里加一行 + 字典加一对。
+ */
+const RELAXED_KEYS = [
+  undefined,
+  'search.relaxed1',
+  'search.relaxed2',
+  'search.relaxed3',
+] as const satisfies ReadonlyArray<MessageKey | undefined>
 
 export interface SearchFooterFailure {
   capability: string
@@ -59,10 +70,37 @@ export function SearchFooter({
       </span>,
     )
   }
-  if ((relaxed ?? 0) > 0) {
+  /*
+   * **放宽三级三句**(步⑦ 留账 E-6 第二条)。阶梯在 `core/search/pipeline/plan.ts`:
+   * ①严格(AND + 短语相邻)②去相邻 ③至少一半的词 ④任一词 —— `relaxed` 就是落在
+   * 第几级(0 = 没放宽)。从前一句「已放宽:按任一词匹配」包打三级,那在只放宽到
+   * ② 的时候是一句**谎话**:它说得比实际远。三句各说各的,键名带级数。
+   *
+   * 契约上 `relaxed` 是 `0|1|2|3`,但它来自网线 —— 越界的数走 `RELAXED_KEYS` 查不到
+   * 就**不画**(不画比编一句强)。
+   */
+  const relaxedKey = RELAXED_KEYS[relaxed ?? 0]
+  if (relaxedKey !== undefined) {
     parts.push(
       <span key="relaxed" className={s.readout} data-readout="relaxed">
-        {t('search.relaxed')}
+        {t(relaxedKey)}
+      </span>,
+    )
+  }
+  /*
+   * **语义召回还没就绪**(步⑦ 留账 E-6 第一条)。判据是 `indexReadoutOf` 算好的那两态;
+   * `ready` / `off` / 缺席都不画 —— 见 `capabilities.ts` 上那段判词。
+   */
+  if (indexReadout?.vector === 'downloading') {
+    parts.push(
+      <span key="vector" className={s.readout} data-readout="vector">
+        {t('search.vectorDownloading')}
+      </span>,
+    )
+  } else if (indexReadout?.vector === 'embedding') {
+    parts.push(
+      <span key="vector" className={s.readout} data-readout="vector">
+        {t('search.vectorEmbedding', { pending: indexReadout.vectorPending ?? 0 })}
       </span>,
     )
   }

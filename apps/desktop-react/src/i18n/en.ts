@@ -300,7 +300,16 @@ export const en: Record<MessageKey, string> = {
   /* ── list view: retired 09-04 (see zh.ts) ─────────────────────────── */
 
   /* ── search panel (search/: one search row + one flat hit list) ───── */
-  'search.placeholder': 'Search files, sections, messages, sessions…',
+  /* Fallback placeholder while the manifests are still on the wire: it names no
+   * scopes, because any name it printed there would be a guess. */
+  'search.placeholder': 'Search…',
+  /* The real one: the scope names come from the manifests via `scopeNamesOf`
+   * (gap #51 — the hardcoded "files, sections, messages, sessions" last told the
+   * truth back when "sections" was a scope of its own). */
+  'search.placeholderOf': 'Search {names}…',
+  /* The separator between scope names — punctuation, but not the same glyph in
+   * both languages, so it lives in the dictionary as a pair. */
+  'search.scopeJoin': ', ',
   'search.label': 'Search',
   'search.scopeLabel': 'Search scope',
   'search.scopeAll': 'All',
@@ -356,23 +365,26 @@ export const en: Record<MessageKey, string> = {
   'search.loadMoreCount': 'Load more · showing {shown} / {total}',
   'search.loading': 'Loading…',
   'search.loadFailed': "Didn't load · try again",
-  /* Two keys, picked by `plural()` — same shape as quicklook.messageCount*.
-   * "1 results · all shown" was on screen during the 08-31 walkthrough. */
-  'search.allShownOne': '{total} result · all shown',
-  'search.allShown': '{total} results · all shown',
-  /* Readout while the file side is still in flight: "showing", not "all" — the
-   * latter is a claim about the total that nobody may make yet (see moreState). */
-  'search.shownCount': 'Showing {shown}',
   /* ── Bottom status lines (§9). Four readouts; none of them merge. ── */
   'search.totalCount': '{total} in total',
-  'search.relaxed': 'Relaxed: matching any word',
+  /* Three sentences, one per ladder rung (core/search/pipeline/plan.ts):
+   * ① strict, ② adjacency dropped, ③ at least half the words, ④ any word.
+   * One sentence for all three used to say "any word" even when only adjacency
+   * had been dropped — a lie about how far we went. */
+  'search.relaxed1': 'Relaxed: words need not be adjacent',
+  'search.relaxed2': 'Relaxed: at least half the words matched',
+  'search.relaxed3': 'Relaxed: matching any word',
   'search.searching': 'Searching…',
   'search.blockFailed': "{name} didn't search",
   'search.retry': 'Retry',
   'search.indexUnavailable': 'Index unavailable · showing only unindexed results',
   'search.indexPending': 'Index catching up ({pending} left)',
   'search.indexReader': 'Maintained by {host}',
-  'search.viewAll': 'View all',
+  /* Semantic recall (S7) while it is still getting ready. Two of the four states
+   * are worth a line; 'ready' and 'off' draw nothing — a switch that is off is
+   * not news, and a retriever that works needs no announcement. */
+  'search.vectorDownloading': 'Semantic recall: downloading',
+  'search.vectorEmbedding': 'Semantic recall: embedding ({pending} left)',
   'search.action.createPrompt': 'Create prompt “{title}”',
   'search.action.createDailyNote': "Create today's note",
   'search.actionUnavailable': "This action can't be run here: {action}",

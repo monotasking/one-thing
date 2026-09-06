@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { SearchFilters, SearchResponse, SearchResult } from '@shared/ipc/search'
 import { SearchPanel } from './SearchPanel'
 import { useStageStore } from '../../stage/store'
@@ -829,6 +829,72 @@ describe('落点与读数', () => {
     render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(document.querySelector('[data-readout="relaxed"]')).toBeTruthy())
+  })
+
+  /**
+   * **三级三句**(步⑦ 留账 E-6 第二条)。阶梯在 `core/search/pipeline/plan.ts`:
+   * ①严格 ②去相邻 ③至少一半的词 ④任一词。从前一句「按任一词匹配」包打三级 ——
+   * 那在只放宽到 ② 的时候说得比实际远。
+   */
+  it('放宽那句话按级数换 —— 放宽到 ② 时不许说「按任一词」', async () => {
+    serveRows({ results: [hit()], relaxed: 1 })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(document.querySelector('[data-readout="relaxed"]')).toBeTruthy())
+    expect(document.querySelector('[data-readout="relaxed"]')?.textContent)
+      .toBe(translate('zh', 'search.relaxed1'))
+    expect(document.querySelector('[data-readout="relaxed"]')?.textContent)
+      .not.toBe(translate('zh', 'search.relaxed3'))
+  })
+
+  it('没放宽(0 / 缺席)= 那一行不画', async () => {
+    serveRows({ results: [hit()], relaxed: 0 })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows().length).toBe(1))
+    expect(document.querySelector('[data-readout="relaxed"]')).toBeNull()
+  })
+
+  /**
+   * **语义召回读数**(步⑦ 留账 E-6 第一条)。`ready` / `off` 不画 —— 页脚是
+   * 「此刻有什么不对劲」的地方,不是功能清单。
+   */
+  it('语义召回:建向量中画一行带真读数;就绪 / 关着一个字不画', async () => {
+    resetSearchCatalog()
+    serve(() => ({ success: true, results: [] }), {
+      status: async () => ({ mode: 'owner', pending: 0, vector: 'embedding', vectorPending: 41 }),
+    })
+    await ensureSearchCatalog()
+    render(<SearchPanel />)
+    await waitFor(() => expect(document.querySelector('[data-readout="vector"]')).toBeTruthy())
+    expect(document.querySelector('[data-readout="vector"]')?.textContent)
+      .toBe(translate('zh', 'search.vectorEmbedding', { pending: 41 }))
+
+    cleanup()
+    resetSearchCatalog()
+    serve(() => ({ success: true, results: [] }), {
+      status: async () => ({ mode: 'owner', pending: 0, vector: 'ready' }),
+    })
+    await ensureSearchCatalog()
+    render(<SearchPanel />)
+    await waitFor(() => expect(screen.getByTestId('search-panel')).toBeTruthy())
+    expect(document.querySelector('[data-readout="vector"]')).toBeNull()
+  })
+
+  /**
+   * **占位从自述生成**(步⑦ 留账 E-6 第三条;落差 #51)。写死那串「搜文件、章节、
+   * 消息、会话…」上一次说对是在「章节」还是一个档的时候。
+   */
+  it('输入框占位念的是自述里那几档,不是字典里写死的一串', async () => {
+    serveRows({ results: [] })
+    render(<SearchPanel />)
+    await waitFor(() => expect(screen.getByText('会话')).toBeTruthy())
+    const input = screen.getByLabelText(translate('zh', 'search.label')) as HTMLInputElement
+    expect(input.placeholder).toBe(translate('zh', 'search.placeholderOf', {
+      names: ['会话', '提示词', '笔记', '文件', '消息', '命令'].join(translate('zh', 'search.scopeJoin')),
+    }))
+    // 从前那句里的「章节」早就不是一个档了 —— 它不许再出现在屏幕上。
+    expect(input.placeholder).not.toContain('章节')
   })
 
   it('索引状态:pending > 0 才画「更新中」;reader 才画「由 … 维护」', async () => {

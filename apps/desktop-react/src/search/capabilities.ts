@@ -103,6 +103,26 @@ export function browseCapabilitiesOf(
 }
 
 /**
+ * **输入框占位里那串档名**(R12;落差 #51「占位文案过期」/ #125 / #129)。
+ *
+ * 从前占位是字典里写死的一句「搜文件、章节、消息、会话…」—— 那句话上一次说对是在
+ * 「章节」还是一个档的时候。名字要从**自述**来:能力表里有哪几档,占位就说哪几档,
+ * 注销一个它自己就消失,新注册一个它自己就出现,壳这一侧一个字不改。
+ *
+ * `all` 那一格不进去:它不是一类能搜的东西,是「不挑」这个动作。
+ * 次序与 tab 条同一条(`orderedManifests`)—— 屏幕上从左到右念下来就是这串字。
+ *
+ * 译文由调用方递进来(与 `labelTextOf` 同一体例:字典在 i18n,不在这里);
+ * 空表(自述还没回来)= 空数组,由调用方退回那句不带档名的占位。
+ */
+export function scopeNamesOf(
+  tabs: readonly SearchTab[],
+  labelOf: (tab: SearchTab) => string,
+): string[] {
+  return tabs.filter(tab => tab.id !== ALL_TAB).map(labelOf).filter(name => name.length > 0)
+}
+
+/**
  * 这个能力的文案键(自述原样)。查不到 = `undefined`。
  *
  * 用处只有一个:空词浏览态那几组是**壳自己拼的**(一组一次查询),后端没给
@@ -176,15 +196,39 @@ export interface SearchIndexReadout {
    * 判据只认 `mode` 这一格,不去匹配报错文案(那是字符串匹配当根因)。
    */
   unavailable?: boolean
+  /**
+   * **语义召回还没就绪**(S7 §15;步⑦ 留账 E-6 第一条)。
+   *
+   * 契约上 `status.vector` 有四态,而值得占一行字的只有中间那两态:
+   *  · `downloading` —— 嵌入模型还在下载(第一次开开关那一段,110MB);
+   *  · `embedding` —— 模型有了,还在把文档嵌进向量(`vectorPending` 是真读数)。
+   * `ready` 与 `off` **什么都不画**:开关关着不是新闻,能用了也不必宣布 ——
+   * 页脚是「此刻有什么不对劲」的地方,不是功能清单。
+   *
+   * 缺席 = 这一格答不上来(旧后端 / 索引问不出来),同样不画。
+   */
+  vector?: 'downloading' | 'embedding'
+  /** 还有几份文档没嵌进去(`vector==='embedding'` 时才有意义)。 */
+  vectorPending?: number
 }
 
 export function indexReadoutOf(status: SearchStatusResponse | undefined): SearchIndexReadout | undefined {
   if (status === undefined) return undefined
+  /*
+   * 语义召回那一格与 `mode` **无关**:索引是 reader / error 时它照样可能在下载模型。
+   * 所以它在三条 return 之前先算好,三条各自驮上 —— 不在其中一条里偷偷漏掉。
+   */
+  const vector = status.vector === 'downloading' || status.vector === 'embedding'
+    ? {
+      vector: status.vector,
+      ...(status.vectorPending === undefined ? {} : { vectorPending: status.vectorPending }),
+    }
+    : {}
   if (status.mode === 'reader') {
-    return { pending: status.pending, readerHost: status.owner?.host ?? '' }
+    return { pending: status.pending, readerHost: status.owner?.host ?? '', ...vector }
   }
   if (status.mode === 'error') {
-    return { pending: status.pending, unavailable: true }
+    return { pending: status.pending, unavailable: true, ...vector }
   }
-  return { pending: status.pending }
+  return { pending: status.pending, ...vector }
 }

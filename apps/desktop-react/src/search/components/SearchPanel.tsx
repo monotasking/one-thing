@@ -17,6 +17,7 @@ import {
   labelTextOf,
   nextTab,
   resolveTab,
+  scopeNamesOf,
   tabsOf,
 } from '../capabilities'
 import {
@@ -335,6 +336,17 @@ export function SearchPanel() {
     return labelTextOf(key, t(key as MessageKey))
   }
 
+  /**
+   * 输入框那句占位**从自述生成**(R12;落差 #51):「搜 会话、消息、笔记…」。
+   * 自述还没回来 = 一个档名都没有 = 退到那句不带档名的兜底,而不是印一串猜的。
+   */
+  const placeholder = useMemo(() => {
+    const names = scopeNamesOf(tabs, tab => labelTextOf(tab.labelKey, t(tab.labelKey as MessageKey)))
+    return names.length === 0
+      ? t('search.placeholder')
+      : t('search.placeholderOf', { names: names.join(t('search.scopeJoin')) })
+  }, [tabs, t])
+
   /* ── 画 ───────────────────────────────────────────────────────────── */
 
   return (
@@ -358,6 +370,7 @@ export function SearchPanel() {
             options={options}
             scope={scope}
             onScopeChange={setScope}
+            placeholder={placeholder}
             t={t}
           />
 

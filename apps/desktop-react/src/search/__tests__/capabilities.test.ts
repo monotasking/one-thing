@@ -8,6 +8,7 @@ import {
   labelTextOf,
   nextTab,
   resolveTab,
+  scopeNamesOf,
   tabsOf,
 } from '../capabilities'
 
@@ -151,6 +152,61 @@ describe('indexReadoutOf', () => {
 
   it('问不到状态 = 两行都不画(不是「一切正常」)', () => {
     expect(indexReadoutOf(undefined)).toBeUndefined()
+  })
+
+  /**
+   * **语义召回那一格**(S7 §15;步⑦ 留账 E-6 第一条)。四态里只有中间两态值一行字:
+   * `ready` 与 `off` 什么都不说 —— 开关关着不是新闻,能用了也不必宣布。
+   */
+  it('vector:只有 downloading / embedding 上表,ready 与 off 一个字不说', () => {
+    expect(indexReadoutOf(status({ vector: 'downloading' })))
+      .toEqual({ pending: 0, vector: 'downloading' })
+    expect(indexReadoutOf(status({ vector: 'embedding', vectorPending: 41 })))
+      .toEqual({ pending: 0, vector: 'embedding', vectorPending: 41 })
+    expect(indexReadoutOf(status({ vector: 'ready' }))).toEqual({ pending: 0 })
+    expect(indexReadoutOf(status({ vector: 'off' }))).toEqual({ pending: 0 })
+    // 旧后端不给这一格 = 不知道 = 不画(不是「关着」)。
+    expect(indexReadoutOf({ mode: 'owner', pending: 0 })).toEqual({ pending: 0 })
+  })
+
+  /** 它与 `mode` **无关**:索引是 reader / error 时模型照样可能在下载。 */
+  it('vector 与 mode 各说各的 —— 三条 return 都驮着它', () => {
+    expect(indexReadoutOf(status({ mode: 'error', vector: 'embedding', vectorPending: 3 })))
+      .toEqual({ pending: 0, unavailable: true, vector: 'embedding', vectorPending: 3 })
+    expect(indexReadoutOf(status({ mode: 'reader', vector: 'downloading' })))
+      .toEqual({ pending: 0, readerHost: '', vector: 'downloading' })
+  })
+})
+
+/**
+ * **输入框占位里那串档名**(R12;落差 #51 / #125 / #129)。
+ *
+ * 从前是字典里写死的「搜文件、章节、消息、会话…」——「章节」早就不是一个档了。
+ * 现在它是自述的投影:表里有哪几档就念哪几档,`all` 不算(它不是一类能搜的东西)。
+ */
+describe('scopeNamesOf(占位从自述生成)', () => {
+  const tabs = tabsOf([manifest('chats', 1), manifest('files', 2)])
+  const label = (tab: { id: string }) => ({ all: '所有', chats: '会话', files: '文件' })[tab.id] ?? ''
+
+  it('`all` 那一格不进去 —— 它是「不挑」这个动作,不是一类东西', () => {
+    expect(scopeNamesOf(tabs, label)).toEqual(['会话', '文件'])
+  })
+
+  it('次序与 tab 条同一条(order 升序)—— 屏幕上从左念到右就是这串字', () => {
+    const reordered = tabsOf([manifest('files', 9), manifest('chats', 1)])
+    expect(scopeNamesOf(reordered, label)).toEqual(['会话', '文件'])
+  })
+
+  it('注销一个能力,它那个名字自己就没了 —— 壳一个字不改', () => {
+    expect(scopeNamesOf(tabsOf([manifest('chats', 1)]), label)).toEqual(['会话'])
+  })
+
+  it('自述还没回来 = 空表(调用方据此退回那句不带档名的兜底,不印一串猜的)', () => {
+    expect(scopeNamesOf(tabsOf([]), label)).toEqual([])
+  })
+
+  it('名字空着的那一格丢掉 —— 一个「、、」比少一个名字更像坏了', () => {
+    expect(scopeNamesOf(tabs, tab => (tab.id === 'files' ? '' : '会话'))).toEqual(['会话'])
   })
 })
 

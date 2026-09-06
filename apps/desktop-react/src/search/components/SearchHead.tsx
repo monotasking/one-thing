@@ -28,6 +28,12 @@ export interface SearchHeadProps {
   options: Array<SegmentedOption<SearchScope>>
   scope: SearchScope
   onScopeChange(scope: SearchScope): void
+  /**
+   * 输入框里那句占位。**由自述生成**(`capabilities.ts` 的 `scopeNamesOf`),
+   * 不是字典里写死的一串档名 —— 那串字上一次说对是在「章节」还是一个档的时候
+   * (落差 #51)。自述还没回来时调用方递那句不带档名的兜底。
+   */
+  placeholder: string
   t: TFn
 }
 
@@ -37,6 +43,7 @@ export function SearchHead({
   options,
   scope,
   onScopeChange,
+  placeholder,
   t,
 }: SearchHeadProps) {
   return (
@@ -47,7 +54,7 @@ export function SearchHead({
         onValueChange={onQueryChange}
         size="lg"
         prefix={<Search className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
-        placeholder={t('search.placeholder')}
+        placeholder={placeholder}
         aria-label={t('search.label')}
       />
       <Segmented
