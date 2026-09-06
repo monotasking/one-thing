@@ -36,6 +36,12 @@ export interface SearchRowMenuProps {
   onOpen(row: SearchRow): void
   /** 走一条续搜。 */
   onContinuation(continuation: SearchContinuation): void
+  /**
+   * **只看这一类**(R1)。从前它是组头右边那颗「查看全部」——组头退役之后,
+   * 「把清单收成这一类」这件事唯一诚实的落点就是这一行自己的动作表
+   * (09-01 判例:动作单产地 = 右键上下文菜单)。
+   */
+  onScopeOnly(capability: string): void
 }
 
 const continuationsOf = (row: SearchRow): SearchContinuation[] =>
@@ -48,6 +54,7 @@ export function SearchRowMenu({
   onClose,
   onOpen,
   onContinuation,
+  onScopeOnly,
 }: SearchRowMenuProps) {
   if (state === null) return null
   return (
@@ -59,6 +66,9 @@ export function SearchRowMenu({
     >
       <MenuItem onClick={() => { onClose(); onOpen(state.row) }}>
         {t('search.rowOpen')}
+      </MenuItem>
+      <MenuItem onClick={() => { onClose(); onScopeOnly(state.row.capability) }}>
+        {t('search.onlyThisKind')}
       </MenuItem>
       {continuationsOf(state.row).map(continuation => (
         <MenuItem

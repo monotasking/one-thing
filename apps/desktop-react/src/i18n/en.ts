@@ -317,6 +317,9 @@ export const en: Record<MessageKey, string> = {
   'search.capability.actions': 'Commands',
   'search.resultsLabel': 'Results',
   'search.noResults': 'No results',
+  'search.noResultsFor': 'No results for “{query}”',
+  'search.emptySearchAllSpaces': 'Search all spaces',
+  'search.emptyClearFilters': 'Clear filters',
   /* Badge text rides the same fixed-width mono chip as file-type codes (TS/MD),
    * so English uses code-style caps that fit the chip; zh uses 会话/消息. */
   'search.badgeSession': 'CHAT',
@@ -329,6 +332,8 @@ export const en: Record<MessageKey, string> = {
    * "all spaces" filter — that filter chip is S4b, so today it never appears. */
   'search.badgeArchived': 'Archived',
   'search.badgeOtherSpace': 'Other space',
+  'search.badgeSemantic': 'Semantic',
+  'search.untitledSession': 'Untitled chat',
   'search.openedFile': 'Opened {file}',
   /* D5: the file side now speaks to a real producer. Both lines state a fact
    * about that producer, not a temporary gap — there is no "recently opened
@@ -348,9 +353,9 @@ export const en: Record<MessageKey, string> = {
    * the pagination section of search/transitions.ts), so until then we say
    * "Load more" and do not guess a number. */
   'search.loadMore': 'Load more',
-  'search.loadMoreCount': 'Load more · showing {shown} of {total}',
+  'search.loadMoreCount': 'Load more · showing {shown} / {total}',
   'search.loading': 'Loading…',
-  'search.loadFailed': 'Could not load — click to retry',
+  'search.loadFailed': "Didn't load · try again",
   /* Two keys, picked by `plural()` — same shape as quicklook.messageCount*.
    * "1 results · all shown" was on screen during the 08-31 walkthrough. */
   'search.allShownOne': '{total} result · all shown',
@@ -361,9 +366,15 @@ export const en: Record<MessageKey, string> = {
   /* ── Bottom status lines (§9). Four readouts; none of them merge. ── */
   'search.totalCount': '{total} in total',
   'search.relaxed': 'Relaxed: matching any word',
+  'search.searching': 'Searching…',
+  'search.blockFailed': "{name} didn't search",
+  'search.retry': 'Retry',
+  'search.indexUnavailable': 'Index unavailable · showing only unindexed results',
   'search.indexPending': 'Index catching up ({pending} left)',
   'search.indexReader': 'Maintained by {host}',
   'search.viewAll': 'View all',
+  'search.action.createPrompt': 'Create prompt “{title}”',
+  'search.action.createDailyNote': "Create today's note",
   'search.actionUnavailable': "This action can't be run here: {action}",
   'search.targetUnavailable': "This kind of result can't be opened yet: {kind}",
 
@@ -383,8 +394,10 @@ export const en: Record<MessageKey, string> = {
   'search.filterTimeWeek': '7 days',
   'search.filterTimeMonth': '30 days',
   'search.filterTimeCustom': 'Custom',
-  'search.filterArchived': 'With archived',
-  'search.filterReasoning': 'With reasoning',
+  'search.filterArchived': 'Archived',
+  'search.filterReasoning': 'Reasoning',
+  'search.filterWith': 'With',
+  'search.filterWithout': 'Without',
   /* Continue-search (S4b, design §4.6): a scope chip adds one filter and keeps
    * the query; a pivot replaces the whole query state. Two sentences, because
    * they are two different moves. */
@@ -397,6 +410,7 @@ export const en: Record<MessageKey, string> = {
   'search.historyForward': 'Next query',
   'search.rowActions': 'Actions for this result',
   'search.rowOpen': 'Open',
+  'search.onlyThisKind': 'Only this kind',
   /* Preview pane (S4b, design §4.5): five states, one sentence each. */
   'search.previewEmpty': 'Pick a result to preview',
   'search.previewNone': 'No preview for this kind',

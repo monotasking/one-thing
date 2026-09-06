@@ -1,5 +1,6 @@
 import { ButtonBase } from '../../ui/ButtonBase'
 import { blockOfItem, SEARCH_ITEM_KINDS } from '../sequence'
+import s from '../components/SearchPanel.module.css'
 import type { SearchItemKind } from './registry'
 
 /**
@@ -10,22 +11,47 @@ import type { SearchItemKind } from './registry'
  * 加载中**不 `disabled`** —— `gate-a11y` 会把 disabled 项剔出可达集,而焦点
  * 不该在翻页途中蒸发(判例保留自 `SearchPanel.tsx` 的「加载中也留在轮转序列里」)。
  *
- * 本批只立行为那一半;四态的文案、`aria-busy`、`data-more-state` 归第 ⑥⑦ 步
- * (`moreStateOf` 已经在 `../paging.ts` 备着)。
+ * ── 反馈是**文字**,不是 Spinner ────────────────────────────────────────
+ * Spinner 只许出现在按钮内或状态栏(壳的禁令);这是列表里的一条 item,所以
+ * 「加载中…」是它自己的字换掉,外加 `aria-busy` —— 屏幕阅读器与眼睛读的是同一件事。
+ *
+ * ── 忙态从哪来 ──────────────────────────────────────────────────────────
+ * `view.moreStateOf(cap)` 一处答:那只函数吃的是 `useAsyncPending` 口径的逐块
+ * pending(`${key}#${cap}`,律③)与整格的 `inflight / stale`(闸②)。项这一侧
+ * 不去问谁在飞。
  */
 export const moreItemKind: SearchItemKind = {
   kind: SEARCH_ITEM_KINDS.more,
 
-  Render({ item }) {
+  Render({ item, active, view }) {
+    const capability = item.block ?? ''
+    const state = view.moreStateOf(capability)
+    // 只有这三态是 item(`end` 是读数、`none` 什么都不画,两者都不进序列)。
+    if (state.kind !== 'more' && state.kind !== 'loading' && state.kind !== 'error') return null
+    const text = state.kind === 'loading'
+      ? view.t('search.loading')
+      : state.kind === 'error'
+        ? view.t('search.loadFailed')
+        : state.total === null
+          ? view.t('search.loadMore')
+          : view.t('search.loadMoreCount', { shown: state.shown, total: state.total })
     return (
       <ButtonBase
         role="option"
-        aria-selected={false}
+        aria-selected={active}
         tabIndex={-1}
         data-row="more"
+        data-testid="search-more"
         data-item-id={item.id}
-        data-block={item.block}
-      />
+        data-block={capability}
+        data-more-state={state.kind}
+        {...(state.kind === 'loading' ? { 'aria-busy': true } : {})}
+        className={active ? `${s.more} ${s.rowOn}` : s.more}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => view.onPointer(item, event)}
+      >
+        <span className={s.moreText}>{text}</span>
+      </ButtonBase>
     )
   },
 

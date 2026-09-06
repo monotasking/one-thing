@@ -13,8 +13,8 @@
  * **要改这份夹具,先在报告里说清楚为什么**:它变了就是「最近几间会话」这件事的
  * 行为变了,而那是一次用户可感知的改动。
  *
- * **步①一个字都没动**:占位名归空(检索面终稿 §6「无标题会话」)那一改留到**步⑧**
- * —— 判据函数 `sessionTitleOf` 已经备在 `capabilities/sessions.ts` 里,但要等壳把
+ * **步⑧接上了线**:占位名归空(检索面终稿 §6「无标题会话」)—— 判据函数
+ * `sessionTitleOf` 就在 `capabilities/sessions.ts`,而壳这一侧已经把
  * 兜底(首条用户消息 / 「未命名会话」)补上才接线,否则旧壳会画出一行空白。
  *
  * ## 为什么四种查询串都录
@@ -126,9 +126,9 @@ describe('chats 的空词浏览态(S5:与录下来的旧输出逐条同)', () =>
     expect(rows.some(row => row.id === 'chat:s4')).toBe(false)
   })
 
-  it('没名字的那间画 `New Chat`,而不是一行空标题(归空留到步⑧)', async () => {
+  it('没名字的那间**归空**(步⑧接线;画什么归壳:首条用户消息 / 「未命名会话」)', async () => {
     const rows = await browse('', 20)
-    expect(rows[0]).toMatchObject({ id: 'chat:s3', title: 'New Chat' })
+    expect(rows[0]).toMatchObject({ id: 'chat:s3', title: '' })
     expect('subtitle' in rows[0]!).toBe(false)
   })
 

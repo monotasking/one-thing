@@ -103,4 +103,17 @@ export interface SearchRow {
    * 缺席 = 走 `search.preview` 那条 lazy 路。
    */
   preview?: SearchPreviewPayload
+  /**
+   * **哪条召回器造的这枚候选**(契约 `SearchResult.source`;检索面终稿 §6「语义徽」)。
+   * `vector` 的行右列多一枚「语义」小徽 —— 说实话,不装成字面命中。
+   */
+  source?: 'lexical' | 'vector'
+  /**
+   * **这一行没有标题**(检索面终稿 §6「无标题会话」)。
+   *
+   * 后端把占位名(`New Chat`)归了空 —— 它不是标题,是「这间还没起名」的另一种
+   * 写法。归空之后画什么是**壳**的事:首条用户消息顶上(`text` 已经换成它),
+   * 两样都没有时这一格为真,由行画「未命名会话」。
+   */
+  untitled?: boolean
 }

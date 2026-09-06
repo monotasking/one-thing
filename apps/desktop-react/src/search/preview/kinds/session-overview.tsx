@@ -43,7 +43,11 @@ function SessionOverviewBody({ payload }: SearchPreviewProps) {
   if (overview === undefined) return <p className={s.meta}>{t('search.previewMalformed')}</p>
   return (
     <div className={s.body}>
-      <p className={s.title}>{overview.title}</p>
+      {/*
+        * **标题不在这里画**(R6:预览檐标题只出现一次)。檐已经画过 `payload.title`
+        * 了 —— 从前这里再画一遍,于是屏幕上同一句话上下叠两行。判据钉在
+        * `__tests__/preview.test.tsx`(「Body 不含 title」)。
+        */}
       <dl className={s.facts}>
         <dt className={s.factKey}>{t('search.previewMessageCount')}</dt>
         {/* 条数是**文字读数**不是计数徽(计数禁令的另一半:读数可以)。 */}

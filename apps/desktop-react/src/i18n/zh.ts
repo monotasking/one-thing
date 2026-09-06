@@ -371,6 +371,11 @@ export const zh = {
   'search.capability.actions': '命令',
   'search.resultsLabel': '结果',
   'search.noResults': '无结果',
+  /* 零结果那一屏:一句话说清**没搜到什么**,第二行给下一步(与当前生效的片对应)。
+   * 「无结果」三个字不说出用户搜的是什么,而那正是这一刻他最想确认的东西。 */
+  'search.noResultsFor': '没有和「{query}」匹配的结果',
+  'search.emptySearchAllSpaces': '搜全部空间',
+  'search.emptyClearFilters': '清除过滤',
   /* 徽上的字。**由目标渲染器点名**(`search/targets/<kind>.tsx` 的 `badge()`),
    * 一种 `target.kind` 一句;文件那一种的徽是**数据**(扩展名),不在这张表里。 */
   'search.badgeSession': '会话',
@@ -382,7 +387,12 @@ export const zh = {
    * 所以要让人一眼看出这一行来自一间已归档的会话;跨空间徽只在「全部空间」
    * 过滤下才画 —— 那格过滤片是 S4b,今天这一颗画不出来。 */
   'search.badgeArchived': '已归档',
-  'search.badgeOtherSpace': '其它空间',
+  'search.badgeOtherSpace': '别的空间',
+  /* 来自向量路的行。**不是计数徽** —— 它说的是「这一条未必逐字含那个词」。 */
+  'search.badgeSemantic': '语义',
+  /* 后端把占位名(`New Chat`)归了空;首条用户消息也没有时画这一句。
+   * 它是一个**状态**不是一个名字,所以行上斜体降一档。 */
+  'search.untitledSession': '未命名会话',
   'search.openedFile': '已打开 {file}',
   /* D5 文件侧接真数据之后新增的两句。两句说的都是**产地的实情**,不是暂时的空:
    * 「最近打开的文件」后端没有产地,所以空词时文件侧本来就没有东西可给;
@@ -403,9 +413,9 @@ export const zh = {
    * 而总数只有在文件侧取尽的那一刻才真的知道(后端不下发总数,判据见
    * search/transitions.ts 的「分页」一节)—— 不知道就只说「加载更多」,不猜一个数。 */
   'search.loadMore': '加载更多',
-  'search.loadMoreCount': '加载更多 · 已显示 {shown} / 共 {total}',
+  'search.loadMoreCount': '加载更多 · 已显示 {shown} / {total}',
   'search.loading': '加载中…',
-  'search.loadFailed': '没加载成,点一下重试',
+  'search.loadFailed': '没加载出来 · 再试一次',
   /* 两个键由 `plural()` 选,形状同 quicklook.messageCount*。中文不分单复数,
    * 所以这两句**逐字相同** —— 它们不是给中文用的,是给英文那份腾出位置:
    * 08-31 走查在英文界面上量到的是「1 results · all shown」。 */
@@ -421,6 +431,16 @@ export const zh = {
   /* 严格档没中、放宽之后才有的命中(§6.2)。不说出来,用户会以为自己那个词
    * 精确命中了这些行。 */
   'search.relaxed': '已放宽:按任一词匹配',
+  /* 这一发还在路上。**首发在飞时画的是它,不是「无结果」** —— 后者是一句谎话
+   * (检索面终稿 拍点 K,报备修正)。 */
+  'search.searching': '搜索中…',
+  /* 某一类的头页塌了。组头退役之后这句话唯一诚实的落点是页脚(拍点 A);
+   * 后端原话不上屏,进日志。 */
+  'search.blockFailed': '{name}没搜成',
+  'search.retry': '重试',
+  /* 这台上根本没起索引(`status.mode === 'error'`)。**没有重试** ——
+   * 重建索引不是一颗按钮能承诺的事。 */
+  'search.indexUnavailable': '索引不可用 · 只显示未建索引的结果',
   /* 现在答的这一份还没追上账本。数是**真读数**(`search.status` 的 pending)。 */
   'search.indexPending': '索引更新中(剩 {pending})',
   /* 折账本的是另一台进程(§5.6)。今天恒 owner,所以这一行画不出来 ——
@@ -430,6 +450,11 @@ export const zh = {
   'search.viewAll': '查看全部',
   /* 两句「这一下没接上」。**说出来而不是静默吞掉** —— 一次按下去什么都不发生的
    * 点击,比一句「还没接上」更让人怀疑是不是自己按错了。 */
+  /* ── 页级动作(R3:动作不是结果)────────────────────────────────────────
+   * 后端只交 `labelKey + params`(能力自报),句子在这里 —— 「新建提示词 “jira”」
+   * 里那个引号中间的字是**料**,不是句子的一部分。 */
+  'search.action.createPrompt': '新建提示词 “{title}”',
+  'search.action.createDailyNote': '新建今天的日记',
   'search.actionUnavailable': '这条动作在这里还打不开:{action}',
   'search.targetUnavailable': '这一类结果还打不开:{kind}',
 
@@ -451,8 +476,12 @@ export const zh = {
   'search.filterTimeMonth': '30 天',
   'search.filterTimeCustom': '自定',
   /* 两颗两态片。**缺省是「含」**(等价于一格都不发)—— 关掉它才落成一格过滤。 */
-  'search.filterArchived': '含归档',
-  'search.filterReasoning': '含推理',
+  /* 两颗从前的「两态片」改成两格选项(09-05 裁定:按下态语义反了,改形根治)。
+   * 片名是名词(「归档」),值才是「含 / 不含」—— 与空间 / 角色 / 时间同一形。 */
+  'search.filterArchived': '归档',
+  'search.filterReasoning': '推理',
+  'search.filterWith': '含',
+  'search.filterWithout': '不含',
   /* ── 续搜(S4b,§4.6)──────────────────────────────────────────────────
    * 范围片是「加一格过滤,词留着」;枢轴是「换一次查询」。两句话说清这个区别,
    * 所以不合并成一句「在这里搜」。 */
@@ -466,6 +495,8 @@ export const zh = {
   /* 行的右键动作表(动作单产地 = 右键上下文菜单,09-01 判例)。 */
   'search.rowActions': '这一条能做什么',
   'search.rowOpen': '打开',
+  /* 「查看全部」从组头搬进这张表(R1:组头退役)。说的是同一件事,落点换了。 */
+  'search.onlyThisKind': '只看这一类',
   /* ── 预览窗(S4b,§4.5)────────────────────────────────────────────────
    * 五种状态各有一句,一句都不合并:没选中 / 这一类没有预览 / 算不出(后端原话
    * 跟在下一行)/ 壳还画不出这种媒介 / 载荷不成形。 */

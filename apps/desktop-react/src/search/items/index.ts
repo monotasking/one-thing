@@ -28,4 +28,9 @@ if (import.meta.hot) {
 }
 
 export { registerItemKind, resolveItemKind, resetItemKinds, itemKindNames } from './registry'
-export type { SearchItemContext, SearchItemKind, SearchItemRenderProps } from './registry'
+export type {
+  SearchItemContext,
+  SearchItemKind,
+  SearchItemRenderProps,
+  SearchItemView,
+} from './registry'

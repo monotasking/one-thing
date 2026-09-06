@@ -152,3 +152,43 @@ describe('message-context:命中那条与上下文分得出来', () => {
     expect(turns).toEqual(['context', 'hit'])
   })
 })
+
+/**
+ * **R6:预览檐标题只出现一次**(09-05 用户报障「预览标题两遍」)。
+ *
+ * 标题的产地是**檐**(`SearchPreview` 的 `.previewTitle`),渲染器的 `Body` 一个字
+ * 都不许再画一遍 —— 从前 `session-overview` 与 `note-excerpt` 各画了第二次,于是
+ * 屏幕上同一句话上下叠两行。判据钉在这里,而不是靠下一个作者记得。
+ */
+describe('R6:Body 不含 title', () => {
+  it('session-overview 的 Body 里没有标题(檐已经画过了)', () => {
+    const renderer = resolvePreviewRenderer('session-overview')!
+    const { container } = render(
+      <renderer.Body
+        query=""
+        payload={{
+          sessionId: 's1',
+          title: '一间会话的标题',
+          messageCount: 7,
+          updatedAt: 1,
+          preview: '首条',
+        }}
+      />,
+    )
+    expect(container.textContent).not.toContain('一间会话的标题')
+    // 事实那几格照画 —— 删掉的只有标题那一行。
+    expect(container.querySelector('[data-fact="count"]')?.textContent).toBe('7')
+  })
+
+  it('note-excerpt 的 Body 里没有标题', () => {
+    const renderer = resolvePreviewRenderer('note-excerpt')!
+    const { container } = render(
+      <renderer.Body
+        query=""
+        payload={{ path: 'notes/a.md', title: '一篇笔记的标题', excerpt: '正文那一段' }}
+      />,
+    )
+    expect(container.textContent).not.toContain('一篇笔记的标题')
+    expect(container.querySelector('[data-fact="path"]')?.textContent).toBe('notes/a.md')
+  })
+})

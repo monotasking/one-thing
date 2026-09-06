@@ -1,5 +1,8 @@
+import { Plus } from '../../components/icons'
 import { ButtonBase } from '../../ui/ButtonBase'
+import type { MessageKey } from '../../i18n'
 import { actionOfItem, SEARCH_ITEM_KINDS } from '../sequence'
+import s from '../components/SearchPanel.module.css'
 import type { SearchItemKind } from './registry'
 
 /**
@@ -11,23 +14,39 @@ import type { SearchItemKind } from './registry'
  * ↑↓ 序列的**末项**(键盘也要能新建)。
  *
  * 它住在 listbox 里(`role="option"`)才承接得住 `aria-selected` 与 ↓ 到末位 ——
- * 评审点名的「`ui/Button` 进不了 listbox 语义」那一格。
+ * 评审点名的「`ui/Button` 进不了 listbox 语义」那一格。分隔线**不在这里画**:
+ * 一条线对应的是「动作那一段」而不是「每一条动作」,所以它归 `SearchActionRows`
+ * (§1 组件树里那一行写的就是「`role="separator"` 一条 + 每条动作行 `role="option"`」)。
  *
- * 本批只立行为那一半;`role="separator"` 那条线、`＋` 前缀、`labelKey + params`
- * 查字典归第 ⑥⑦ 步(句子由壳按键查出,后端只交数据 —— R12)。
+ * ── 句子由壳按键查出(R12)────────────────────────────────────────────────
+ * 后端只交 `labelKey + params`(`search.action.createPrompt` + `{ title }`),
+ * 这里查一次字典。所以这只文件里没有一句成品文案,也没有一个能力 id。
  */
 export const actionItemKind: SearchItemKind = {
   kind: SEARCH_ITEM_KINDS.action,
 
-  Render({ item }) {
+  Render({ item, listing, active, view }) {
+    const action = actionOfItem(listing, item)
+    if (action === undefined) return null
     return (
       <ButtonBase
         role="option"
-        aria-selected={false}
+        aria-selected={active}
         tabIndex={-1}
         data-row="action"
         data-item-id={item.id}
-      />
+        className={active ? `${s.action} ${s.rowOn}` : s.action}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={(event) => view.onPointer(item, event)}
+      >
+        {/* 「＋」是**前缀**不是图标钮:它与徽在同一列,所以整段读起来仍是一行。 */}
+        <span className={s.plus} aria-hidden="true">
+          <Plus className={s.plusIcon} strokeWidth={1.75} />
+        </span>
+        <span className={s.actionText}>
+          {view.t(action.labelKey as MessageKey, action.params)}
+        </span>
+      </ButtonBase>
     )
   },
 

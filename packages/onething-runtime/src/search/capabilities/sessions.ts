@@ -131,9 +131,9 @@ function asksForRecentSessions(query: SearchQuery): boolean {
  * 归空之后画什么(首条用户消息 / 「未命名会话」)是**壳**的事 —— 后端交事实,
  * 不替壳编一个标题。
  *
- * **步①还没接线**:今天的壳直接 `text: result.title`(`apps/desktop-react/src/search/
- * transitions.ts`),归空就是一行空白。所以这只函数先只备在这里,**等步⑧壳把兜底
- * (首条用户消息 / 「未命名会话」)补上之后再接线** —— 步①对旧壳必须不可见。
+ * **步⑧已接线**:壳这一侧 `resultRows` 把兜底补上了 —— 标题空了就把首条用户消息
+ * (候选的 `subtitle`)顶上来,两样都没有时行上画一句斜体的「未命名会话」。
+ * 所以这里可以如实归空,不再替壳编一个标题。
  */
 export function sessionTitleOf(name: string | undefined): string {
   return canApplyGeneratedSessionTitle(name, '') ? '' : (name ?? '')
@@ -181,8 +181,8 @@ function browseSessions(
       result: {
         id: `chat:${session.id}`,
         type: 'chat' as const,
-        // 步⑧壳补上兜底之后改成 `sessionTitleOf(session.name)`。
-        title: session.name || 'New Chat',
+        // 壳已经接上兜底(首条用户消息 / 「未命名会话」),所以这里如实归空。
+        title: sessionTitleOf(session.name),
         subtitle: session.previewText,
         sessionId: session.id,
         timestamp: session.updatedAt,
@@ -291,8 +291,8 @@ export function createChatsSearchCapability(
         const result: SearchServiceResult = {
           id: `chat:${sessionId}`,
           type: 'chat',
-          // 步⑧壳补上兜底之后改成 `sessionTitleOf(title)`(§6「无标题会话」)。
-          title: title || 'New Chat',
+          // §6「无标题会话」:占位名归空,画什么归壳(它有首条用户消息可顶)。
+          title: sessionTitleOf(title),
           subtitle: session?.previewText,
           sessionId,
           timestamp: doc.time,

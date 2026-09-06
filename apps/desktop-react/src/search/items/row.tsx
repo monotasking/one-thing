@@ -1,14 +1,21 @@
-import { ButtonBase } from '../../ui/ButtonBase'
+import { useMemo } from 'react'
+import { SearchRow } from '../components/SearchRow'
 import { rowOfItem, SEARCH_ITEM_KINDS } from '../sequence'
+import { resultRows } from '../transitions'
 import type { SearchItemKind } from './registry'
 
 /**
  * **结果行**那一种序列项(检索面终稿 附录 B §1)。
  *
- * 本批只立**行为**那一半:`activate`(⏎ / 素点 = 打开它)与 `survivesGrowth`
- * (追加一页之后这一行还在吗)。`Render` 是最小实现 —— 徽 / 正文 / 出处 / 右列
- * 那四段、高亮、右键菜单、`aria-selected` 都归第 ⑥⑦ 步(它们要 store、要 i18n、
- * 要目标渲染器,那三样这一批都还没接上)。
+ * 第 ⑤ 步只立了行为那一半(`activate` / `survivesGrowth`);第 ⑦ 步把 `Render`
+ * 接到真的那件画法上 —— `components/SearchRow.tsx`(徽 / 正文 / 出处 / 右列四段、
+ * 高亮、事实徽、`role="option"`)。
+ *
+ * ── 为什么中间夹一只 `resultRows` ──────────────────────────────────────────
+ * 格里那一行是**契约的形**(`SearchResult`),而画法认的是**壳的形**(`SearchRow`:
+ * 出处已经归成一格 `origin`、无标题已经兜过底、高亮已经挑过产地)。那一层收窄
+ * 从 S4b 起就只有 `resultRows` 一处产地,这里照旧走它 —— 不在项模块里再写第二遍
+ * 「出处取 subtitle 退到 detail」。
  *
  * 它**不认识任何一个能力的名字**:哪一行长什么样由 `targets/registry.ts` 那张表
  * 按 `target.kind` 答,这里只负责「一项」这件事。
@@ -16,20 +23,36 @@ import type { SearchItemKind } from './registry'
 export const rowItemKind: SearchItemKind = {
   kind: SEARCH_ITEM_KINDS.row,
 
-  Render({ item, listing }) {
-    const row = rowOfItem(listing, item)
+  Render({ item, listing, query, active, view }) {
+    const result = rowOfItem(listing, item)
+    const capability = item.block ?? ''
+    /*
+     * 一行现造一次收窄。**依赖只有那一条结果的身份** —— 格里没变的行会原样交回
+     * 同一个对象(数据层的 `equals` 保的就是这个),于是这只 memo 也不会重算。
+     */
+    const row = useMemo(
+      () => (result === undefined ? undefined : resultRows([result], capability)[0]),
+      [result, capability],
+    )
+    // 没有落点的候选**丢**(§4.3 的那一半:缺渲染器不丢,缺落点才丢)。
     if (row === undefined) return null
+    const index = view.rowIndexOf(item)
     return (
-      <ButtonBase
-        role="option"
-        aria-selected={false}
-        tabIndex={-1}
-        data-row=""
-        data-item-id={item.id}
-        data-capability={item.block}
-      >
-        {row.title}
-      </ButtonBase>
+      <SearchRow
+        row={row}
+        index={index ?? 0}
+        itemId={item.id}
+        first={item.first === true}
+        selected={active}
+        picked={view.picked(item)}
+        allSpaces={view.allSpaces}
+        spaceId={view.spaceId}
+        defaultSpaceId={view.defaultSpaceId}
+        query={query}
+        t={view.t}
+        onClick={(event) => view.onPointer(item, event)}
+        onContextMenu={(event) => view.onContextMenu(item, event)}
+      />
     )
   },
 

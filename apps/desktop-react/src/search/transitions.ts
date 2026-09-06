@@ -113,15 +113,28 @@ export function resultRows(
   const rows: SearchRow[] = []
   for (const result of results) {
     if (result.target === undefined) continue
+    /*
+     * ── 无标题(检索面终稿 §6「无标题会话」)────────────────────────────────
+     * 后端把占位名归了空(`sessionTitleOf`),所以 `title` 真的可能是空串。
+     * 兜底次序是**用户裁定的那一条**:首条用户消息(它就是 `subtitle`)顶上,
+     * 两样都没有才由行画「未命名会话」。顶上去之后出处那一格随之空掉 ——
+     * 同一句话不在一行里画两遍。
+     */
+    const title = result.title
+    const subtitle = result.subtitle ?? result.detail ?? ''
+    const titled = title.length > 0
+    const promoted = !titled && subtitle.length > 0
     rows.push({
       id: result.id,
       capability,
-      text: result.title,
-      origin: { kind: 'path', path: result.subtitle ?? result.detail ?? '' },
+      text: titled ? title : promoted ? subtitle : '',
+      origin: { kind: 'path', path: titled ? subtitle : '' },
       target: result.target,
-      ...(result.matchRanges === undefined ? {} : { highlight: result.matchRanges }),
+      ...(titled || promoted ? {} : { untitled: true }),
+      ...(result.matchRanges === undefined || !titled ? {} : { highlight: result.matchRanges }),
       ...(result.facets === undefined ? {} : { facets: result.facets }),
       ...(result.preview === undefined ? {} : { preview: result.preview }),
+      ...(result.source === undefined ? {} : { source: result.source }),
     })
   }
   return rows

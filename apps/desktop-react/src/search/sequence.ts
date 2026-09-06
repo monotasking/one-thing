@@ -44,6 +44,14 @@ export interface SearchItem {
   readonly block?: string
   /** 哪一行 / 哪一条动作(它自己那套 id)。块尾项没有。 */
   readonly rowId?: string
+  /**
+   * **这一块的第一行**(只有行项才可能为真)。
+   *
+   * 块之间那一格空 + 一条发线(R1:组头退役之后,块边界只剩这一条)由它画。
+   * 判据在这里而不是在画法里,理由与「id 不认前缀」同一条:画法不许去数
+   * 「我是第几行、上一行属于哪一块」—— 那是序列这一次遍历本来就知道的事。
+   */
+  readonly first?: boolean
 }
 
 /** 行的身份。 */
@@ -97,12 +105,14 @@ export function sequenceOf(
   const items: SearchItem[] = []
 
   for (const block of listing.blocks) {
-    for (const row of block.rows) {
+    for (const [at, row] of block.rows.entries()) {
       items.push({
         id: rowItemId(block.capability, row.id),
         kind: SEARCH_ITEM_KINDS.row,
         block: block.capability,
         rowId: row.id,
+        // 只在真的是块首那一行时才带这一格 —— 缺席与 `false` 同义,不摆一格恒假的事实。
+        ...(at === 0 ? { first: true } : {}),
       })
     }
     const state = more(block)

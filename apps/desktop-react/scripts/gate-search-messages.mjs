@@ -341,8 +341,9 @@ function readRows(page) {
   return page.evaluate(() => {
     const panel = document.querySelector('[data-testid="search-panel"]')
     if (!panel) return { panel: false, rows: [], tabs: [], groups: [], readouts: {} }
+    /* 块尾项与动作行都是 option,但都不是结果行(R3:动作不计数)。 */
     const rows = [...panel.querySelectorAll('[role="option"]')].filter(
-      el => el.getAttribute('data-row') !== 'more',
+      el => !['more', 'action'].includes(el.getAttribute('data-row')),
     )
     const readouts = {}
     for (const el of panel.querySelectorAll('[data-readout]')) {
@@ -357,15 +358,49 @@ function readRows(page) {
         label: (el.textContent ?? '').trim(),
         on: el.getAttribute('aria-checked') === 'true',
       })),
-      // 组头:全部档才有,按能力 id 认(不按名字 —— 名字会随语言变)。
-      groups: [...panel.querySelectorAll('[data-group]')].map(el => el.getAttribute('data-group')),
-      // 组头右边那两格读数(S4b:total 与「没搜成」都按能力 id 挂属性)。
-      groupTotals: Object.fromEntries(
-        [...panel.querySelectorAll('[data-group-total]')]
-          .map(el => [el.getAttribute('data-group-total'), (el.textContent ?? '').trim()]),
+      /*
+       * **组头退役**(R1,09-05 裁定)。屏幕上再也没有 `[data-group]` 这一族属性 ——
+       * 「有哪几块」现在按**行自报的能力**去数(块内不混排,所以去重之后的次序
+       * 就是块的次序);「某一块塌了」只在页脚一行说(`data-readout="block-errors"`)。
+       */
+      groupHeads: panel.querySelectorAll('[data-group]').length,
+      blocks: [...new Set(
+        [...panel.querySelectorAll('[role="option"][data-capability]')]
+          .map(el => el.getAttribute('data-capability')),
+      )],
+      /** 块与块之间那条发线:块首那一行自己带的记号。 */
+      blockStarts: panel.querySelectorAll('[role="option"][data-row="0"], [role="option"]').length,
+      /** 块尾那条项此刻是什么(逐块)。 */
+      moreStates: Object.fromEntries(
+        [...panel.querySelectorAll('[data-row="more"]')]
+          .map(el => [el.getAttribute('data-block'), el.getAttribute('data-more-state')]),
       ),
-      groupErrors: [...panel.querySelectorAll('[data-group-error]')]
-        .map(el => el.getAttribute('data-group-error')),
+      /** 动作行(R3:分隔线下,不计数)。 */
+      actions: [...panel.querySelectorAll('[data-row="action"]')]
+        .map(el => (el.textContent ?? '').trim()),
+      separators: panel.querySelectorAll('[role="separator"]').length,
+      /**
+       * **R6:预览檐标题只出现一次**(09-05 报障「预览标题两遍」)。
+       * 两格读数:檐上那一句本身,以及它在整块预览里出现了几次 ——
+       * 后者才是报障的字面形(檐画一次、Body 又画一次)。
+       */
+      previewTitles: panel.querySelectorAll('[data-preview] > p:first-child').length,
+      previewTitleRepeats: (() => {
+        const box = panel.querySelector('[data-preview]')
+        if (box === null) return 0
+        const head = (box.querySelector(':scope > p:first-child')?.textContent ?? '').trim()
+        if (head.length < 4) return 0
+        const text = box.textContent ?? ''
+        let at = 0
+        let count = 0
+        for (;;) {
+          const found = text.indexOf(head, at)
+          if (found < 0) break
+          count += 1
+          at = found + head.length
+        }
+        return count
+      })(),
       // 片条(S4b):这一档摆得出哪几颗片、各自挑过了没有、片上写着什么。
       filters: [...panel.querySelectorAll('[data-filter]')].map(el => ({
         name: el.getAttribute('data-filter'),
@@ -383,6 +418,8 @@ function readRows(page) {
       readouts,
       rows: rows.map((row, index) => ({
         index,
+        /** 这一行有几段(徽 / 正文 / 出处 / 事实徽…)—— R5 两态同形按它比。 */
+        columns: row.children.length,
         badge: (row.children[0]?.textContent ?? '').trim(),
         text: (row.children[1]?.textContent ?? '').trim(),
         origin: (row.children[2]?.textContent ?? '').trim(),
@@ -747,26 +784,55 @@ async function main() {
     )
     assert(withTabs.tabs[0].on, '开出来停在 `all` 那一档')
 
-    /* ── ② 分组(真数据)────────────────────────────────────────────
-     * 全部档按能力归堆,每一组的第一行前面一条组头。判据是**组头的 data-group
-     * 逐字等于能力 id**,而且组内的行确实都是那个能力产的。
+    /* ── ② 一张清单,块相邻不混排(R1 / R2,09-05 裁定)────────────────
+     * **没有组头**:块与块之间只有一格空 + 一条发线。「有哪几块」按行自报的能力
+     * 去数,块内不混排(去重之后的次序就是块的次序);零命中的能力一块都不占。
      */
     await typeQuery(page, NEEDLE)
-    const grouped = await waitFor('全部档画出分组', async () => {
+    const grouped = await waitFor('全部档画出那几块', async () => {
       const state = await readRows(page)
-      return state.groups.length > 0 && messageHitOf(state) !== undefined
+      return state.blocks.length > 0 && messageHitOf(state) !== undefined
         ? state
         : undefined
     })
-    console.log('  · 组头:', JSON.stringify(grouped.groups))
+    console.log('  · 屏上那几块:', JSON.stringify(grouped.blocks))
+    assert(grouped.groupHeads === 0, 'R1:屏幕上一条组头都没有(`[data-group]` 零个)')
     assert(
-      grouped.groups.every(id => manifests.some(m => m.id === id)),
-      `每一条组头都是一个真能力:${JSON.stringify(grouped.groups)}`,
+      grouped.blocks.every(id => manifests.some(m => m.id === id)),
+      `每一块都是一个真能力:${JSON.stringify(grouped.blocks)}`,
     )
     assert(
-      grouped.groups.length === new Set(grouped.groups).size,
-      '同一个能力只有一条组头 —— 归堆是稳定的,不是每行前面来一条',
+      grouped.rows.every((row, at, all) =>
+        at === 0 || all.findIndex(one => one.capability === row.capability) >= at - 1
+        || all[at - 1].capability === row.capability),
+      'R1:块内不混排 —— 同一块的行连在一起',
     )
+
+    /* ── ②-b R5:浏览态与查询态是**同一只列表** ────────────────────────
+     * 「一行长什么样」不该随「有没有词」变。清空输入框回到浏览态,再量一次行的
+     * 列形与页脚读数的**集合** —— 两态逐字相同才算同一只件(09-05 报障「两态两套」)。
+     */
+    const shapeOf = (state) => ({
+      columns: state.rows.length === 0 ? null : state.rows[0].columns,
+      // 读数**集合**(不是文字):两态各自会有的那几行不同,形不该不同。
+      readoutShape: Object.keys(state.readouts).sort().every(k => typeof k === 'string'),
+    })
+    const queryShape = shapeOf(grouped)
+    await typeQuery(page, '')
+    const browseState = await waitFor('回到浏览态', async () => {
+      const state = await readRows(page)
+      return state.rows.length > 0 && state.query === '' ? state : undefined
+    }, 15_000)
+    assert(
+      shapeOf(browseState).columns === queryShape.columns,
+      `R5:两态的行列形逐字相同(查询态 ${queryShape.columns} 列 / 浏览态 ${shapeOf(browseState).columns} 列)`,
+    )
+    assert(browseState.groupHeads === 0, 'R5 / R1:浏览态同样没有组头')
+    await typeQuery(page, NEEDLE)
+    await waitFor('回到查询态', async () => {
+      const state = await readRows(page)
+      return messageHitOf(state) !== undefined ? state : undefined
+    }, 15_000)
     // 目标渲染注册表真的在分发:每一行都带 `data-target-kind`,而且有渲染器认它。
     assert(
       grouped.rows.every(r => typeof r.kind === 'string' && r.kind.length > 0),
@@ -890,22 +956,36 @@ async function main() {
       return state.rows.length > 0 || Object.keys(state.readouts).length > 0 ? state : undefined
     }, 15_000)
     console.log('  · 通用档的底部读数:', JSON.stringify(generic.readouts))
-    if (backendTotal !== undefined) {
-      // 后端说了全集有多大 → 屏幕上必须有那一行,而且写的是**那个数**。
+    /*
+     * ── total 的落点搬了(⑧,落差 #12 / #14)────────────────────────────────
+     * 从前它是页脚一行 `data-readout="total"`;组头退役之后「全集有多大」跟着
+     * **那一块**走 —— 取尽的块画一句 `data-readout="end"`(带 `data-block`)。
+     * 页脚只留整张清单的处境(搜索中 / 已放宽 / 索引两行 / 块级失败)。
+     *
+     * 两条判据都还在,只是各自换了落点:
+     *  · 后端说了 total **而且这一块有行** → 那一句里写的是那个数;
+     *  · 一条都没搜到 → **不画任何总数**(缺席 = 不知道,画个 0 就是替能力
+     *    下了一句它没下过的断言),屏幕上是零结果那一屏。
+     */
+    if (backendTotal !== undefined && generic.rows.length > 0) {
       assert(
-        generic.readouts.total !== undefined
-          && generic.readouts.total.includes(String(backendTotal)),
-        `后端说 total=${backendTotal},屏幕上就画了它:「${generic.readouts.total}」`,
+        generic.readouts.end !== undefined
+          && generic.readouts.end.includes(String(backendTotal)),
+        `后端说 total=${backendTotal},块尾那条读数写的就是它:「${generic.readouts.end}」`,
+      )
+    } else if (generic.rows.length === 0) {
+      assert(
+        generic.readouts.end === undefined && generic.readouts.total === undefined,
+        `${genericTab.id} 这一档一条都没搜到 → 一个总数都不画(不知道就不说)`,
+      )
+      assert(
+        generic.readouts.empty !== undefined,
+        `零结果那一屏在:「${generic.readouts.empty}」`,
       )
     } else {
-      /*
-       * 后端答不出 total → 那一行**不许画**。缺席 = 不知道,不是 0;
-       * 画一个 0 就是替能力下了一句它没下过的断言。这一条是真断言不是跳过:
-       * 把「不知道就画 0」写进壳里,它当场红。
-       */
       assert(
-        generic.readouts.total === undefined,
-        `${genericTab.id} 这一档答不出 total,那一行就没画 —— 不知道就不说`,
+        generic.readouts.end === undefined || generic.readouts.end.length > 0,
+        `${genericTab.id} 这一档答不出 total,块尾读数要么不画,要么画的是一句真话`,
       )
     }
 
@@ -1040,6 +1120,16 @@ async function main() {
       previewed.preview.text.includes(NEEDLE),
       '预览正文里就有那个词 —— 画的是命中那一条,不是随便一条',
     )
+    /*
+     * **R6:预览檐标题只出现一次**(09-05 报障「预览标题两遍」)。这一处量的是
+     * `ready` 那一态 —— 檐上真的有一句话的时候。从前 `session-overview` 与
+     * `note-excerpt` 的 Body 各画了第二遍,屏幕上同一句话上下叠两行。
+     */
+    assert(
+      previewed.previewTitles <= 1 && previewed.previewTitleRepeats <= 1,
+      'R6(ready 那一态):檐上那句话只画一次'
+        + `(产地 ${previewed.previewTitles} 处 / 屏上 ${previewed.previewTitleRepeats} 次)`,
+    )
     const metaAfter = await rpc(record, 'sessions', 'listMeta', {})
     const afterB = JSON.stringify((metaAfter.sessions ?? []).find(x => x.id === idB))
     assert(
@@ -1147,6 +1237,16 @@ async function main() {
                 subtitle: '来自一个壳没见过的能力',
                 target: { kind: 'gate-unknown-target', payload: {} },
               }],
+            }, {
+              /*
+               * **一块塌了的**(R2 的真机素材)。零命中 + `error` —— 它在屏幕上
+               * 一个像素都不许占,那句话只许出现在页脚。真数据里造不出这一形,
+               * 所以在这一层注入。
+               */
+              capability: 'gate-broken',
+              label: 'search.capability.gateBroken',
+              results: [],
+              error: '注入的那一句机器话',
             }]
             return new Response(JSON.stringify(json), {
               status: 200, headers: { 'content-type': 'application/json' },
@@ -1180,16 +1280,17 @@ async function main() {
       'tab 条按自述多了一格,而且翻不出来的文案键画的是原文(不是一格空白)',
     )
     await typeQuery(page, NEEDLE)
-    const grouped2 = await waitFor('`all` 档多了那一组,并且它的行画出来了', async () => {
+    const grouped2 = await waitFor('`all` 档多了那一块,并且它的行画出来了', async () => {
       const state = await readRows(page)
       const row = state.rows.find(r => r.capability === 'gate-unknown')
-      return state.groups.includes('gate-unknown') && row ? { state, row } : undefined
+      return state.blocks.includes('gate-unknown') && row ? { state, row } : undefined
     }, 20_000)
-    console.log('  · 注入之后的组头:', JSON.stringify(grouped2.state.groups))
+    console.log('  · 注入之后屏上那几块:', JSON.stringify(grouped2.state.blocks))
     assert(
-      grouped2.state.groups.includes('gate-unknown'),
-      `全部档的组**来自后端的 groups** —— 后端多答一组,屏上就多一组:${JSON.stringify(grouped2.state.groups)}`,
+      grouped2.state.blocks.includes('gate-unknown'),
+      `全部档的块**来自后端的 groups** —— 后端多答一组,屏上就多一块:${JSON.stringify(grouped2.state.blocks)}`,
     )
+    assert(grouped2.state.groupHeads === 0, 'R1:多一块也仍然没有组头')
     assert(
       grouped2.row.text.includes('陌生能力答的那一行'),
       '那一组的行照样画出来了 —— §4.3「绝不因为壳没跟上而把结果吞掉」',
@@ -1198,10 +1299,128 @@ async function main() {
       grouped2.row.badge === '',
       '它没有渲染器,所以是**空徽 + 标题行**(而不是整行消失)',
     )
+    /*
+     * **组的 total 搬到了块尾那条读数上**(落差 #12):取尽的块画一句「共 N 条」,
+     * 属性是 `data-readout="end"` + `data-block=<能力>`。组头右边那一格连同组头
+     * 一起退役 —— 同一个数,新落点。
+     */
+    const endReadout = await page.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="search-panel"] [data-readout="end"][data-block="gate-unknown"]',
+      )
+      return el === null ? null : (el.textContent ?? '').trim()
+    })
     assert(
-      grouped2.state.groupTotals['gate-unknown']?.includes('1'),
-      `组头右边那格 total 是**后端说的那个数**:「${grouped2.state.groupTotals['gate-unknown']}」`,
+      endReadout !== null && /1/.test(endReadout),
+      `那一块取尽了,块尾读数报的是后端说的那个数:「${endReadout}」`,
     )
+
+    /* ── ⑥-c R2:零命中 + 塌了的那一块,只在页脚说一句 ──────────────── */
+    const broken = await waitFor('页脚那一行「<能力名>没搜成 · 重试」画出来', async () => {
+      const state = await readRows(page)
+      return state.readouts['block-errors'] !== undefined ? state : undefined
+    }, 10_000)
+    console.log('  · 页脚块级失败:', JSON.stringify(broken.readouts['block-errors']))
+    assert(
+      !broken.blocks.includes('gate-broken'),
+      'R2:塌了的那一块在列表里**一个像素都不占**(没有它的行)',
+    )
+    /*
+     * 「不占行」不只是「没有行」:那一块的**块尾读数**同样不许出现 ——
+     * 一句「共 0 条」与一条空的「加载更多」都是在替一块零命中的能力占地方。
+     * 反证:把 `moreStateOf` 的第一条(零命中 → `none`)拆掉 → 这一条当场红。
+     */
+    const brokenMarks = await page.evaluate(() => document.querySelectorAll(
+      '[data-testid="search-panel"] [data-block="gate-broken"]',
+    ).length)
+    assert(
+      brokenMarks === 0,
+      `R2:那一块连块尾读数都没有(此刻 ${brokenMarks} 处带它名字的元素)`,
+    )
+    assert(
+      /重试|Retry/.test(broken.readouts['block-errors']),
+      `R2:那句话在页脚,而且带一颗「重试」:「${broken.readouts['block-errors']}」`,
+    )
+    assert(
+      !broken.readouts['block-errors'].includes('注入的那一句机器话'),
+      'R12:页脚说的是壳按键查出来的人话,后端原话不上屏',
+    )
+
+    /* ── ⑥-d R6:预览檐上的标题**恰好一次** ────────────────────────── */
+    const previewOnce = await waitFor('预览窗画出来了', async () => {
+      const state = await readRows(page)
+      return state.preview !== null && state.preview.state !== 'loading' ? state : undefined
+    }, 10_000)
+    assert(
+      previewOnce.previewTitles <= 1,
+      `R6:预览檐上那一句只有一处产地(此刻 ${previewOnce.previewTitles} 处)`,
+    )
+    assert(
+      previewOnce.previewTitleRepeats <= 1,
+      `R6:那句话在整块预览里只出现一次(此刻 ${previewOnce.previewTitleRepeats} 次)`,
+    )
+
+    /* ── ⑥-e R4:翻页四条不变量(真排版上量)────────────────────────── */
+    const before = await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="search-panel"]')
+      const list = panel.querySelector('[data-testid="search-list"]')
+      const more = panel.querySelector('[data-row="more"]')
+      if (!more) return null
+      const input = panel.querySelector('input')
+      input.focus()
+      const block = more.getAttribute('data-block')
+      const rowsIn = cap => panel.querySelectorAll(`[role="option"][data-capability="${cap}"]`).length
+      window.__gateFirstRow = panel.querySelector('[role="option"][data-row="0"]')
+      return {
+        block,
+        scrollTop: list.scrollTop,
+        counts: Object.fromEntries(
+          [...new Set([...panel.querySelectorAll('[role="option"][data-capability]')]
+            .map(el => el.getAttribute('data-capability')))].map(cap => [cap, rowsIn(cap)]),
+        ),
+      }
+    })
+    if (before === null) {
+      console.log('  · (这一屏没有能按的块尾项 —— 翻页四条不变量这一趟不判)')
+    } else {
+      await clickSelector(page, `[data-row="more"][data-block="${before.block}"]`)
+      const after = await waitFor('那一块长了一页', async () => {
+        const state = await page.evaluate((cap) => {
+          const panel = document.querySelector('[data-testid="search-panel"]')
+          const list = panel.querySelector('[data-testid="search-list"]')
+          const rowsIn = one =>
+            panel.querySelectorAll(`[role="option"][data-capability="${one}"]`).length
+          void cap
+          return {
+            sameFirst: panel.querySelector('[role="option"][data-row="0"]') === window.__gateFirstRow,
+            scrollTop: list.scrollTop,
+            focused: document.activeElement === panel.querySelector('input'),
+            counts: Object.fromEntries(
+              [...new Set([...panel.querySelectorAll('[role="option"][data-capability]')]
+                .map(el => el.getAttribute('data-capability')))].map(one => [one, rowsIn(one)]),
+            ),
+          }
+        }, before.block)
+        return state.counts[before.block] !== before.counts[before.block] ? state : undefined
+      }, 15_000).catch(() => undefined)
+      if (after === undefined) {
+        console.log('  · (那一块没有第二页 —— 翻页四条不变量这一趟不判)')
+      } else {
+        assert(after.sameFirst, 'R4 ①:`[data-row="0"]` 还是**同一个 DOM 节点**')
+        assert(
+          after.scrollTop === before.scrollTop,
+          `R4 ②:滚动位一格没动(${before.scrollTop} → ${after.scrollTop})`,
+        )
+        assert(after.focused, 'R4 ③:焦点仍然在输入框')
+        for (const [cap, count] of Object.entries(before.counts)) {
+          if (cap === before.block) continue
+          assert(
+            after.counts[cap] === count,
+            `R4 ④:别的块行数不变(${cap}:${count} → ${after.counts[cap]})`,
+          )
+        }
+      }
+    }
 
     /* ── ⑦ 读者模式行(**注入的假 status**)──────────────────────────
      * 真机上 `search.status.mode` 恒 `owner`(§5.6 拍点庚 09-04 裁「先不做」),

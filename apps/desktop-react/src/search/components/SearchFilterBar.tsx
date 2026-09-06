@@ -79,26 +79,27 @@ export function SearchFilterBar({
           name={chip.id}
           label={t(chip.labelKey)}
           on={chip.on}
-          {...(chip.options === undefined
-            ? {
-                onToggle: () => onFilters(current => (chip.id === 'archived'
-                  ? { ...current, archived: !current.archived }
-                  : { ...current, reasoning: !current.reasoning })),
-              }
-            : {
-                value: chip.value,
-                options: chip.options.map(option => ({
-                  value: option.value,
-                  label: t(option.labelKey),
-                })),
-                onSelect: (value: string) => onFilters(current => (
-                  chip.id === 'space'
-                    ? { ...current, space: value as SearchFilterState['space'] }
-                    : chip.id === 'role'
-                      ? { ...current, role: value as SearchFilterState['role'] }
-                      : { ...current, time: value as SearchFilterState['time'] }
-                )),
-              })}
+          value={chip.value}
+          options={(chip.options ?? []).map(option => ({
+            value: option.value,
+            label: t(option.labelKey),
+          }))}
+          /*
+           * 五颗片今天都是「键 · 值」那一形(09-05 起归档 / 推理也是两格选项,
+           * 不再是「按下去代表反义」的两态片)。落点逐颗按 `chip.id` 分 ——
+           * 片是什么由 `filterChipsOf` 说,这里只负责把选中的那一格写回去。
+           */
+          onSelect={(value: string) => onFilters(current => (
+            chip.id === 'space'
+              ? { ...current, space: value as SearchFilterState['space'] }
+              : chip.id === 'role'
+                ? { ...current, role: value as SearchFilterState['role'] }
+                : chip.id === 'time'
+                  ? { ...current, time: value as SearchFilterState['time'] }
+                  : chip.id === 'archived'
+                    ? { ...current, archived: value === 'yes' }
+                    : { ...current, reasoning: value === 'yes' }
+          ))}
         />
       ))}
     </div>

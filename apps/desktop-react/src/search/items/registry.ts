@@ -1,7 +1,9 @@
-import type { ComponentType } from 'react'
+import type { ComponentType, MouseEvent as ReactMouseEvent } from 'react'
 import type { SearchActionDescriptor, SearchResult } from '@shared/ipc/search'
 import type { SearchListing } from '../../data/search-listing-source'
+import type { TFn } from '../../i18n'
 import { getLogger } from '../../services/log'
+import type { MoreState } from '../paging'
 import type { SearchItem } from '../sequence'
 
 /**
@@ -19,7 +21,34 @@ import type { SearchItem } from '../sequence'
  * 只删自己那一条、查不到不是错误(答 `undefined`,dev 下每种 kind 只 warn 一次)。
  */
 
-/** 一项画出来时拿到的东西。**只读事实 + 此刻的词**,没有 store、没有 client。 */
+/**
+ * 一项画出来时**宿主给的能力**(与 `SearchItemContext` 同一条分界:宿主给能力,
+ * 项只说要画什么 / 要干什么)。这里没有 store、没有数据层、没有 Placement ——
+ * 所以项模块脱离 React 树也测得动。
+ *
+ * 第 ⑦ 步把它立起来:第 ⑤ 步那三个 `Render` 只是最小骨架(徽 / 正文 / 出处 /
+ * 右列 / 高亮 / i18n 全缺),而那几样每一样都要一件宿主才拿得到的东西。
+ */
+export interface SearchItemView {
+  /** 字典。**句子由壳按键查出**(R12);项模块里一句成品文案都没有。 */
+  t: TFn
+  /** 当前空间 / 缺省空间 / 此刻是不是「全部空间」那一档 —— 事实徽读它们。 */
+  spaceId: string
+  defaultSpaceId: string
+  allSpaces: boolean
+  /** 这一块的块尾项此刻是什么(只有 `more` 那一种读它)。 */
+  moreStateOf(capability: string): MoreState
+  /** 点一项(素点 / ⇧⌘ 点 / 按块尾项 / 按动作行)。 */
+  onPointer(item: SearchItem, event: ReactMouseEvent): void
+  /** 右键一项(今天只有行有菜单;别的项按了不开表)。 */
+  onContextMenu(item: SearchItem, event: ReactMouseEvent): void
+  /** 这一项是不是被「挑」中了(多选;块尾项与动作行恒假)。 */
+  picked(item: SearchItem): boolean
+  /** 这一行在整张列表里的第几行(`data-row`;非行项给 `undefined`)。 */
+  rowIndexOf(item: SearchItem): number | undefined
+}
+
+/** 一项画出来时拿到的东西。**只读事实 + 此刻的词 + 宿主给的那几样能力**。 */
 export interface SearchItemRenderProps {
   item: SearchItem
   /** 屏上那份清单(项只带 id,内容从这里查:`rowOfItem` / `actionOfItem`)。 */
@@ -28,6 +57,7 @@ export interface SearchItemRenderProps {
   query: string
   /** 这一项是不是活动项(`aria-selected` 与 `--st-sel` 读它)。 */
   active: boolean
+  view: SearchItemView
 }
 
 /**

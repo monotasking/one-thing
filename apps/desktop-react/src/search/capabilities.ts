@@ -164,14 +164,27 @@ export interface SearchIndexReadout {
   pending: number
   /** 别人在维护索引时,那台宿主的名字;`owner` / `error` 时缺席。 */
   readerHost?: string
+  /**
+   * **这台上根本没起索引**(`status.mode === 'error'`;检索面终稿 落差 #19)。
+   *
+   * 从前这一格被吞掉了 —— 判词是「它对用户的可见后果已经由『搜不到东西』自己
+   * 说了」,而那正是问题:屏幕上「一条都没搜到」与「索引坏了所以只剩扫描那几类」
+   * 长得一模一样,用户没有任何办法分辨。09-05 裁定:上屏一句人话
+   * (「索引不可用 · 只显示未建索引的结果」),**没有重试** —— 重建索引不是
+   * 一颗按钮能承诺的事。
+   *
+   * 判据只认 `mode` 这一格,不去匹配报错文案(那是字符串匹配当根因)。
+   */
+  unavailable?: boolean
 }
 
 export function indexReadoutOf(status: SearchStatusResponse | undefined): SearchIndexReadout | undefined {
   if (status === undefined) return undefined
-  // `error`(这台机器上根本没起索引)**不在这两行里说** —— 它不是「更新中」也不是
-  // 「别人在维护」,而且它对用户的可见后果已经由「搜不到东西」自己说了。
   if (status.mode === 'reader') {
     return { pending: status.pending, readerHost: status.owner?.host ?? '' }
+  }
+  if (status.mode === 'error') {
+    return { pending: status.pending, unavailable: true }
   }
   return { pending: status.pending }
 }

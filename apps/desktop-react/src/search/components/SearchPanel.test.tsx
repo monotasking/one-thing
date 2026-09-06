@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { SearchResponse, SearchResult } from '@shared/ipc/search'
+import type { SearchFilters, SearchResponse, SearchResult } from '@shared/ipc/search'
 import { SearchPanel } from './SearchPanel'
 import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../../expose/store'
@@ -9,80 +9,64 @@ import { useToastHub } from '../../ui/Toast'
 import { useNotifyStore } from '../../services/notify-store'
 import { useLocateMessage } from '../../content/locate-message'
 import { translate } from '../../i18n'
-import {
-  capabilitySearchQuery,
-  ensureSearchCatalog,
-  resetSearchCatalog,
-  searchCatalogKey,
-} from '../../data/search-catalog-source'
-import type { SearchAsk } from '../../data/search-catalog-source'
+import { ensureSearchCatalog, resetSearchCatalog } from '../../data/search-catalog-source'
+import { refetchSearchListing, resetSearchListing } from '../../data/search-listing-source'
 import { configureSearchPort } from '../../data/search-port'
+import type { SearchPort } from '../../data/search-port'
 import {
   FAKE_BROWSE_MANIFEST,
   FAKE_CAPABILITY_MANIFESTS,
   FAKE_EXTRA_MANIFEST,
   fakeSearchPort,
 } from '../../test/fake-search-port'
-import { ALL_TAB } from '../capabilities'
-import { INITIAL_FILTERS, facetKeysOf, filtersOf } from '../filters'
-import type { SearchFilterState } from '../filters'
-import { DEFAULT_SPACE_ID } from '../../workspace/types'
-import { pageWindow } from '../transitions'
+import { useSearchStore } from '../store'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { FOCUS_SCOPES } from '../../focus/scopes'
 
 /**
- * 检索面板(S4b:**一条数据路,零能力 id**)。
+ * 检索面板(第 ⑦⑧ 步「换心 + 裁定落地」之后)。
  *
- * 这一批用例把断言全部搬到了那条唯一的路上:种的是 `search.query` 那一格的答案,
- * 验的是「屏幕上按后端说的画」。三件新东西各有一节:分组由后端 `groups` 说、
- * 过滤片以结构传、续搜与查询历史。
+ * ── 种答案的手法换了,而且是**更诚实的一版** ──────────────────────────────
+ * S4b 那一版是往 kernel 那一格里 `patch` 一份回执:查询族当年导出得到,所以
+ * 用例可以绕过取数直接摆一个「这个问题已经有答案了」。新数据层**不导出 family**
+ * (`search-listing-source.ts` 只交五口 —— 那是「零 `invalidate` 调用方」的结构
+ * 保证),于是种答案只剩一条路:**换掉端口**,让真 fetcher 跑一遍。
  *
- * ── 为什么种 kernel 那一格,而不是让端口真答一次 ────────────────────────
- * 面板那条取数副作用带 220ms 合并窗口(打字的余波)。让每个用例都等一次真窗口
- * 会把这份文件变成一份计时器测试 —— 而这一批验的是**面板怎么用这批答案**,
- * 取数本身在数据源自己的用例里验。`patch` 把那一格落成「这个问题已经有答案了」。
+ * 代价是每条用例要等一次合并窗口(220ms)—— 换来的是这份文件验的东西从「面板
+ * 怎么用这批答案」变成「从一次真取数到屏幕上那几行」整条链。`waitFor` 的缺省
+ * 超时(1s)足够。
  */
 
-/** 面板此刻会算出来的那份 `filters` —— **用产品那两只纯函数算**,不手抄一份。 */
-function wireOf(capability: string, state: SearchFilterState = INITIAL_FILTERS) {
-  return filtersOf(state, {
-    spaceId: DEFAULT_SPACE_ID,
-    defaultSpaceId: DEFAULT_SPACE_ID,
-    now: Date.now(),
-    available: facetKeysOf(FAKE_CAPABILITY_MANIFESTS, capability, ALL_TAB),
-  })
+interface Ask {
+  query: string
+  category: string
+  limit: number
+  filters?: SearchFilters
+  cursor?: string
 }
 
-/** 种一格答案:键 = 「问谁 + 什么词 + 要多少条 + 哪些过滤片」。 */
-function seed(
-  capability: SearchAsk,
-  query: string,
-  answer: Partial<SearchResponse> & { results: SearchResult[] },
-  options: { page?: number; filters?: SearchFilterState; tab?: string } = {},
+/** 这台假 core 此刻怎么答。每条用例自己换。 */
+let respond: (ask: Ask) => SearchResponse | Promise<SearchResponse>
+
+function serve(
+  next: (ask: Ask) => SearchResponse | Promise<SearchResponse>,
+  extra: Partial<SearchPort> = {},
 ): void {
-  const page = options.page ?? 1
-  const limit = pageWindow(page)
-  /*
-   * 过滤片按**面板此刻那一档**算(`options.tab`),不按「问谁」算 —— 空词的
-   * 「所有」档问的是 chats,而片仍然是 `all` 档那份并集(面板的 `scope` 没变)。
-   * 今天这两份恰好算出同一份 `filters`,写出判据是为了它们哪天不一样时不静默错开。
-   */
-  const key = searchCatalogKey(
-    capability,
-    query,
-    limit,
-    wireOf(options.tab ?? (typeof capability === 'string' ? capability : ALL_TAB), options.filters),
-  )
-  capabilitySearchQuery.get(key).patch({
-    results: answer.results,
-    limit,
-    ...(answer.groups === undefined ? {} : { groups: answer.groups }),
-    ...(answer.total === undefined ? {} : { total: answer.total }),
-    ...(answer.cursor === undefined ? {} : { cursor: answer.cursor }),
-    ...(answer.relaxed === undefined ? {} : { relaxed: answer.relaxed }),
-  })
+  respond = next
+  configureSearchPort(fakeSearchPort({
+    query: async (query, category, limit, filters, cursor) =>
+      respond({ query, category, limit, filters, ...(cursor === undefined ? {} : { cursor }) }),
+    ...extra,
+  }))
+}
+
+/** 一发就答这些行(最常见的那一形)。 */
+function serveRows(
+  answer: Partial<SearchResponse> & { results: SearchResult[] },
+  extra: Partial<SearchPort> = {},
+): void {
+  serve(() => ({ success: true, ...answer }), extra)
 }
 
 const hit = (over: Partial<SearchResult> = {}): SearchResult => ({
@@ -105,16 +89,18 @@ const chatHit = (over: Partial<SearchResult> = {}): SearchResult => ({
 
 beforeEach(async () => {
   resetSearchCatalog()
+  resetSearchListing()
+  useSearchStore.getState().reset()
   useLocateMessage.getState().reset()
   useStageStore.setState({ ...initialStageState, locale: 'zh' })
   useExposeStore.setState({ view: { mode: 'overview' }, query: '' })
   useToastHub.setState({ toasts: [], folded: 0 })
   useNotifyStore.setState({ items: [] })
-  configureSearchPort(fakeSearchPort())
+  serve(() => ({ success: true, results: [] }))
   /*
    * 自述**先喂饱再渲染**:tab 条与片条都是从它算出来的,而那条 query 是异步的。
-   * 这不是把异步藏起来 —— 面板自己那条 `ensureSearchCatalog` 照样跑(幂等),
-   * 这里只是让用例从「自述已经到手」那一帧开始。
+   * 面板自己那条 `ensureSearchCatalog` 照样跑(幂等),这里只是让用例从
+   * 「自述已经到手」那一帧开始。
    */
   await ensureSearchCatalog()
 })
@@ -124,8 +110,14 @@ afterEach(() => {
 })
 
 const input = () => screen.getByLabelText('搜索')
+/** 屏幕上那几条**结果行** —— 块尾项与动作行都是 option,但都不是结果。 */
 const rows = () => [...document.querySelectorAll('[role="option"]')]
-  .filter(el => el.getAttribute('data-row') !== 'more')
+  .filter(el => {
+    const at = el.getAttribute('data-row')
+    return at !== 'more' && at !== 'action'
+  })
+const actionRows = () => [...document.querySelectorAll('[data-row="action"]')]
+const moreItems = () => [...document.querySelectorAll('[data-row="more"]')]
 
 function type(value: string): void {
   fireEvent.change(input(), { target: { value } })
@@ -141,9 +133,9 @@ describe('tab 条 = 自述表(§9 第一条)', () => {
   /** §4.0 的硬指标 + §11 S4 的反证:注册表多一个能力,壳一个字不改就跟上。 */
   it('注册表多一个**设计时没想过的**能力 → tab 条自己多一格,落在它自己声明的位置上', async () => {
     resetSearchCatalog()
-    configureSearchPort(fakeSearchPort({
+    serve(() => ({ success: true, results: [] }), {
       capabilities: async () => [...FAKE_CAPABILITY_MANIFESTS, FAKE_EXTRA_MANIFEST],
-    }))
+    })
     await ensureSearchCatalog()
     render(<SearchPanel />)
     const labels = [...document.querySelectorAll('[role="radio"]')].map(el => el.textContent)
@@ -158,9 +150,9 @@ describe('tab 条 = 自述表(§9 第一条)', () => {
     fireEvent.click(screen.getByText('笔记'))
     await waitFor(() => expect(screen.getByText('笔记').getAttribute('aria-checked')).toBe('true'))
     resetSearchCatalog()
-    configureSearchPort(fakeSearchPort({
+    serve(() => ({ success: true, results: [] }), {
       capabilities: async () => FAKE_CAPABILITY_MANIFESTS.filter(m => m.id !== 'daily'),
-    }))
+    })
     await ensureSearchCatalog()
     await waitFor(() => expect(screen.queryByText('笔记')).toBeNull())
     expect(screen.getByText('所有').getAttribute('aria-checked')).toBe('true')
@@ -176,127 +168,145 @@ describe('tab 条 = 自述表(§9 第一条)', () => {
 })
 
 /**
- * 空词的「所有」档 = **浏览态**(S4b 修;09-01 用户裁定「我要能够在这里面看到所有
- * 的条数,所有的记录,要能够翻页」)。
- *
- * 判据全在自述的那一格 `browse` 上 —— 这一节里没有一个能力 id 是面板认识的:
- * 用例点名 `chats` 是因为**用例**要验它,面板那一侧读的是表。
+ * 空词的「所有」档 = **浏览态**。判据全在自述那一格 `browse` 上 —— 这一节里没有
+ * 一个能力 id 是面板认识的:用例点名 `chats` 是因为**用例**要验它。
  */
 describe('空词的「所有」档 = 浏览态(§9 / 09-01 裁定)', () => {
-  const chatRows = (count: number): SearchResult[] => Array.from({ length: count }, (_, i) => chatHit({
-    id: `c${i}`,
-    title: `会话 ${i}`,
-    target: { kind: 'chat', payload: { sessionId: `s${i}` } },
-  }))
+  const chatRows = (count: number, from = 0): SearchResult[] =>
+    Array.from({ length: count }, (_, i) => chatHit({
+      id: `c${i + from}`,
+      title: `会话 ${i + from}`,
+      target: { kind: 'chat', payload: { sessionId: `s${i + from}` } },
+    }))
 
   it('空词不发 `all`,而是问自报浏览态的那个能力 —— 一张平铺列表,**没有组头**', async () => {
+    const asked: string[] = []
+    serve((ask) => {
+      asked.push(ask.category)
+      return { success: true, results: chatRows(5) }
+    })
     render(<SearchPanel />)
-    seed('chats', '', { results: chatRows(5) }, { tab: ALL_TAB })
     await waitFor(() => expect(rows()).toHaveLength(5))
+    expect(asked).toEqual(['chats'])
     // 「所有」仍然是选中的那一格 —— 变的是问谁,不是用户看见的档。
     expect(screen.getByText('所有').getAttribute('aria-checked')).toBe('true')
     expect(document.querySelectorAll('[data-group]')).toHaveLength(0)
   })
 
-  it('取尽那一刻报**总条数**(「共 N 条 · 已全部显示」)', async () => {
+  it('取尽那一刻块尾换成一条读数,报的是**这一块**的条数', async () => {
+    serveRows({ results: chatRows(5), total: 5 })
     render(<SearchPanel />)
-    seed('chats', '', { results: chatRows(5) }, { tab: ALL_TAB })
     await waitFor(() => expect(rows()).toHaveLength(5))
-    expect(screen.getByText('共 5 条 · 已全部显示')).toBeTruthy()
+    expect(moreItems()).toHaveLength(0)
+    expect(document.querySelector('[data-readout="end"]')?.textContent).toContain('5')
   })
 
-  it('**翻得了页**:给满了就画「加载更多」,按一下窗口放大、剩下的出来', async () => {
+  it('**翻得了页**:有游标就画块尾那条,按一下这一块自己长一页', async () => {
+    serve((ask) => (ask.cursor === undefined
+      ? { success: true, results: chatRows(20), cursor: 'c1', total: 25 }
+      : { success: true, results: chatRows(5, 20), total: 25 }))
     render(<SearchPanel />)
-    // 第一页给满(20 = limit)= 「后面可能还有」,那一刻不许诺总数。
-    seed('chats', '', { results: chatRows(pageWindow(1)) }, { tab: ALL_TAB })
-    await waitFor(() => expect(rows()).toHaveLength(pageWindow(1)))
-    expect(screen.getByTestId('search-more').textContent).toBe('加载更多')
-    seed('chats', '', { results: chatRows(25) }, { page: 2, tab: ALL_TAB })
+    await waitFor(() => expect(rows()).toHaveLength(20))
+    expect(screen.getByTestId('search-more').textContent).toContain('20')
     fireEvent.click(screen.getByTestId('search-more'))
     await waitFor(() => expect(rows()).toHaveLength(25))
-    expect(screen.getByText('共 25 条 · 已全部显示')).toBeTruthy()
-  })
-
-  it('**有词**照旧是分组总览 —— 判据是「有没有词」,不是别的', async () => {
-    render(<SearchPanel />)
-    seed(ALL_TAB, '词', {
-      results: [chatHit()],
-      groups: [{ capability: 'chats', label: 'search.capability.chats', results: [chatHit()] }],
-    })
-    type('词')
-    await waitFor(() => expect(document.querySelectorAll('[data-group]')).toHaveLength(1))
+    expect(document.querySelector('[data-readout="end"]')?.textContent).toContain('25')
   })
 
   /**
-   * §4.0 的硬指标:**注册表再来一个自报浏览态的能力,空词那一屏自己多一组**,
-   * 面板 / 数据源一个字不改。这一条走的是真 fetcher(不是种一格答案)——
-   * 「多能力时一组一发」正是它要验的东西。
+   * **翻页四条不变量**(R4 / §5.4)。这一条是第 ⑦ 步唯一改行为那一步的自证:
+   * 从前翻页换整把查询键 → 新格 `data === undefined` → 列表清空 → 容器高度归零
+   * → `scrollTop` 被浏览器钳到 0(就是用户报的「Load more 跳回顶部」)。
    */
-  it('注册表多一个 `browse` 的陌生能力 → 空词多一组,组名从自述读', async () => {
+  it('按了「加载更多」:首行同一个 DOM 节点、scrollTop 不变、焦点仍在输入框、新行追加在块尾', async () => {
+    serve((ask) => (ask.cursor === undefined
+      ? { success: true, results: chatRows(20), cursor: 'c1' }
+      : { success: true, results: chatRows(5, 20) }))
+    render(<SearchPanel />)
+    await waitFor(() => expect(rows()).toHaveLength(20))
+
+    const list = document.querySelector('[data-testid="search-list"]') as HTMLElement
+    const firstBefore = document.querySelector('[data-row="0"]')
+    input().focus()
+    // jsdom 不排版,所以这一格量的是「有没有人去改它」,不是真滚动距离。
+    list.scrollTop = 0
+    const topBefore = list.scrollTop
+
+    fireEvent.click(screen.getByTestId('search-more'))
+    await waitFor(() => expect(rows()).toHaveLength(25))
+
+    expect(document.querySelector('[data-row="0"]')).toBe(firstBefore)
+    expect(list.scrollTop).toBe(topBefore)
+    expect(document.activeElement).toBe(input())
+    expect(rows()[24].textContent).toContain('会话 24')
+  })
+
+  /**
+   * §4.0 的硬指标:**注册表再来一个自报浏览态的能力,空词那一屏自己多一块**,
+   * 面板 / 数据源一个字不改。
+   */
+  it('注册表多一个 `browse` 的陌生能力 → 空词多一块,次序按自述', async () => {
     resetSearchCatalog()
-    configureSearchPort(fakeSearchPort({
-      capabilities: async () => [FAKE_BROWSE_MANIFEST, ...FAKE_CAPABILITY_MANIFESTS],
-      query: async (_query, category) => ({
+    resetSearchListing()
+    serve(
+      (ask) => ({
         success: true,
-        results: [chatHit({ id: `${category}:1`, title: `${category} 的一行` })],
+        results: [chatHit({ id: `${ask.category}:1`, title: `${ask.category} 的一行` })],
       }),
-    }))
+      { capabilities: async () => [FAKE_BROWSE_MANIFEST, ...FAKE_CAPABILITY_MANIFESTS] },
+    )
     await ensureSearchCatalog()
     render(<SearchPanel />)
-    await waitFor(
-      () => expect([...document.querySelectorAll('[data-group]')].map(el => el.getAttribute('data-group')))
-        // order 0.5 在 chats(1)前面 —— 次序也来自自述。
-        .toEqual([FAKE_BROWSE_MANIFEST.id, 'chats']),
-      { timeout: 3000 },
-    )
-    /*
-     * 组名:后端这几发没给名字(是壳自己拼的组),于是从自述表读那个能力自己的
-     * `labelKey` —— 翻得出画译文(chats → 「会话」),翻不出画原文(陌生能力那一格)。
-     */
-    const head = (capability: string) =>
-      document.querySelector(`[data-group="${capability}"]`)?.textContent ?? ''
-    expect(head('chats')).toContain('会话')
-    expect(head(FAKE_BROWSE_MANIFEST.id)).toContain(FAKE_BROWSE_MANIFEST.labelKey)
+    await waitFor(() => expect(rows()).toHaveLength(2), { timeout: 3000 })
+    // order 0.5 在 chats(1)前面 —— 次序也来自自述。
+    expect(rows().map(el => el.getAttribute('data-capability')))
+      .toEqual([FAKE_BROWSE_MANIFEST.id, 'chats'])
+    // 块之间只有一格空 + 一条发线:第二块的首行自报 `first`,没有任何组头。
+    expect(document.querySelectorAll('[data-group]')).toHaveLength(0)
   })
 })
 
-describe('全部档的分组由**后端的 groups** 说(§7.2 / §9 第四条)', () => {
+describe('全部档:一张清单,块相邻不混排(R1 / R2)', () => {
   const groups: SearchResponse['groups'] = [
     { capability: 'chats', label: 'search.capability.chats', total: 12, results: [chatHit()] },
     { capability: 'messages', label: 'search.capability.messages', results: [hit()] },
     { capability: 'files', label: 'search.capability.files', results: [], error: '索引不可用' },
   ]
 
-  it('组头逐条 = 后端那几组,次序原样(壳不按行归堆)', async () => {
+  it('**没有组头、没有「in total」、没有「View all」**', async () => {
+    serveRows({ results: [chatHit(), hit()], groups })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [chatHit(), hit()], groups })
     type('词')
-    await waitFor(() => expect(document.querySelectorAll('[data-group]').length).toBe(3))
-    expect([...document.querySelectorAll('[data-group]')].map(el => el.getAttribute('data-group')))
-      .toEqual(['chats', 'messages', 'files'])
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(document.querySelectorAll('[data-group]')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-group-total]')).toHaveLength(0)
+    expect(screen.queryByText('查看全部')).toBeNull()
   })
 
-  it('组的 total 是**后端给的真数**(能力知道才给),缺席就不画那一格', async () => {
+  it('块相邻不混排,次序原样;零命中的那一块**一个像素都不占**', async () => {
+    serveRows({ results: [chatHit(), hit()], groups })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [chatHit(), hit()], groups })
     type('词')
-    await waitFor(() => expect(document.querySelector('[data-group-total="chats"]')).toBeTruthy())
-    expect(document.querySelector('[data-group-total="chats"]')?.textContent).toContain('12')
-    expect(document.querySelector('[data-group-total="messages"]')).toBeNull()
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(rows().map(el => el.getAttribute('data-capability'))).toEqual(['chats', 'messages'])
+    // files 那一块零命中(而且塌了)→ DOM 里不出现它。
+    expect(document.querySelector('[data-capability="files"]')).toBeNull()
   })
 
-  it('某组塌了 → 那一组的组头一句「没搜成」,别的组照常出结果', async () => {
+  it('块级失败只在**页脚**说一句「<能力名>没搜成 · 重试」(拍点 A)', async () => {
+    serveRows({ results: [chatHit(), hit()], groups })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [chatHit(), hit()], groups })
     type('词')
-    await waitFor(() => expect(document.querySelector('[data-group-error="files"]')).toBeTruthy())
+    await waitFor(() => expect(document.querySelector('[data-readout="block-errors"]')).toBeTruthy())
+    const line = document.querySelector('[data-readout="block-errors"]')?.textContent ?? ''
+    expect(line).toContain('文件')
+    expect(line).toContain('重试')
+    // 别的块照常出结果。
     expect(rows()).toHaveLength(2)
   })
 
-  /** §4.0 的硬指标:后端多答一组,屏幕上就多一组 —— 壳一个字不改。 */
-  it('后端多答一组(陌生能力)→ 屏上多一组,它的行走「缺渲染器画标题行」那条路', async () => {
-    render(<SearchPanel />)
-    seed(ALL_TAB, '词', {
+  it('后端多答一组(陌生能力)→ 屏上多一块,它的行走「缺渲染器画标题行」那条路', async () => {
+    serveRows({
       results: [hit()],
       groups: [
         ...groups,
@@ -312,8 +322,9 @@ describe('全部档的分组由**后端的 groups** 说(§7.2 / §9 第四条)',
         },
       ],
     })
+    render(<SearchPanel />)
     type('词')
-    await waitFor(() => expect(document.querySelectorAll('[data-group]').length).toBe(4))
+    await waitFor(() => expect(rows()).toHaveLength(3))
     const alien = rows().find(el => el.getAttribute('data-capability') === FAKE_EXTRA_MANIFEST.id)
     expect(alien).toBeTruthy()
     // 缺渲染器 = 空徽 + 照样画出正文(§4.3:绝不因为壳没跟上而把结果吞掉)。
@@ -321,9 +332,9 @@ describe('全部档的分组由**后端的 groups** 说(§7.2 / §9 第四条)',
     expect(alien?.children[1].textContent).toContain('陌生能力的一行')
   })
 
-  it('单类档不分组 —— 一张平铺列表就是它自己那一组', async () => {
+  it('单类档就是一块 —— 与全部档同一只列表', async () => {
+    serveRows({ results: [hit()] })
     render(<SearchPanel />)
-    seed('messages', '词', { results: [hit()] })
     fireEvent.click(screen.getByText('消息'))
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
@@ -331,8 +342,53 @@ describe('全部档的分组由**后端的 groups** 说(§7.2 / §9 第四条)',
   })
 })
 
+describe('动作行(R3):分隔线下、不计数、序列末项', () => {
+  const withAction: Partial<SearchResponse> & { results: SearchResult[] } = {
+    results: [hit()],
+    actions: [{
+      id: 'create-prompt:jira',
+      labelKey: 'search.action.createPrompt',
+      capability: 'prompts',
+      kind: 'create',
+      params: { title: 'jira' },
+    }],
+  }
+
+  it('画在分隔线下,带「＋」前缀,**不计入结果行**', async () => {
+    serveRows(withAction)
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(actionRows()).toHaveLength(1))
+    expect(rows()).toHaveLength(1)
+    expect(document.querySelectorAll('[role="separator"]')).toHaveLength(1)
+    expect(actionRows()[0].textContent).toContain('新建提示词 “jira”')
+  })
+
+  it('零结果那一屏上它**照样在** —— 它是动作不是结果', async () => {
+    serveRows({ results: [], actions: withAction.actions ?? [] })
+    render(<SearchPanel />)
+    type('jira')
+    await waitFor(() => expect(actionRows()).toHaveLength(1))
+    expect(rows()).toHaveLength(0)
+    expect(screen.getByText('没有和「jira」匹配的结果')).toBeTruthy()
+  })
+
+  it('↓ 走得到它(序列末项),⏎ 落在它身上', async () => {
+    serveRows(withAction)
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(actionRows()).toHaveLength(1))
+    // 首项是那一行;再往下就是动作项(这一块取尽,所以没有块尾项)。
+    fireEvent.keyDown(input(), { key: 'ArrowDown' })
+    await waitFor(() => expect(actionRows()[0].getAttribute('aria-selected')).toBe('true'))
+    fireEvent.keyDown(input(), { key: 'Enter' })
+    // 壳今天没有落点:如实说一句,不静默吞掉。
+    await waitFor(() => expect(useNotifyStore.getState().items).toHaveLength(1))
+  })
+})
+
 describe('过滤片(§9 第五条):画不画由自述说,传的是结构', () => {
-  it('messages 档画四颗(空间 / 角色 / 时间 / 含归档);files 档一颗都不画', async () => {
+  it('messages 档画四颗(空间 / 角色 / 时间 / 归档);files 档一颗都不画', async () => {
     render(<SearchPanel />)
     fireEvent.click(screen.getByText('消息'))
     await waitFor(() => expect(document.querySelectorAll('[data-filter]').length).toBe(4))
@@ -342,16 +398,39 @@ describe('过滤片(§9 第五条):画不画由自述说,传的是结构', () =>
     await waitFor(() => expect(document.querySelectorAll('[data-filter]').length).toBe(0))
   })
 
-  it('挑一格角色 → 换一个 query 键(结构传的那一格进了键),屏幕上只剩那一档的结果', async () => {
+  /** ⑧:两态片改成两格选项 —— 片名是名词,值才是「含 / 不含」。 */
+  it('归档那一颗是「归档 · 含 / 不含」两格,不是一个反义的按下态', async () => {
     render(<SearchPanel />)
     fireEvent.click(screen.getByText('消息'))
-    seed('messages', '词', { results: [hit({ title: '用户说的那句' }), hit({ id: 'r2', title: '助手说的那句' })] })
+    await waitFor(() => expect(document.querySelector('[data-filter="archived"]')).toBeTruthy())
+    const chip = document.querySelector('[data-filter="archived"]') as HTMLElement
+    expect(chip.textContent).toContain('归档')
+    expect(chip.textContent).toContain('含')
+    fireEvent.click(chip.querySelector('button') as HTMLElement)
+    expect(await screen.findByText('不含')).toBeTruthy()
+  })
+
+  /** ⑧:时间那颗不摆死选项 —— 「自定」挑下去开不出任何日期件。 */
+  it('时间片上没有「自定」', async () => {
+    render(<SearchPanel />)
+    fireEvent.click(screen.getByText('消息'))
+    await waitFor(() => expect(document.querySelector('[data-filter="time"]')).toBeTruthy())
+    fireEvent.click(document.querySelector('[data-filter="time"] button') as HTMLElement)
+    expect(await screen.findByText('7 天')).toBeTruthy()
+    expect(screen.queryByText('自定')).toBeNull()
+  })
+
+  it('挑一格角色 → 换一把键(结构传的那一格进了键),屏幕上只剩那一档的结果', async () => {
+    serve((ask) => ({
+      success: true,
+      results: ask.filters?.role === 'user'
+        ? [hit({ title: '用户说的那句' })]
+        : [hit({ title: '用户说的那句' }), hit({ id: 'r2', title: '助手说的那句' })],
+    }))
+    render(<SearchPanel />)
+    fireEvent.click(screen.getByText('消息'))
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(2))
-
-    // 角色片选「用户」——同一个词、同一档,但键换了,所以这是**另一份答案**。
-    const roleState: SearchFilterState = { ...INITIAL_FILTERS, role: 'user' }
-    seed('messages', '词', { results: [hit({ title: '用户说的那句' })] }, { filters: roleState })
     fireEvent.click(screen.getByText('角色'))
     fireEvent.click(await screen.findByText('用户'))
     await waitFor(() => expect(rows()).toHaveLength(1))
@@ -359,26 +438,50 @@ describe('过滤片(§9 第五条):画不画由自述说,传的是结构', () =>
   })
 
   it('跨空间徽**只在「全部空间」下画** —— 默认那一档里一颗都没有', async () => {
+    serveRows({ results: [hit({ facets: { spaceId: 'w9' } })] })
     render(<SearchPanel />)
     fireEvent.click(screen.getByText('消息'))
-    const cross = hit({ facets: { spaceId: 'w9' } })
-    seed('messages', '词', { results: [cross] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     expect(document.querySelectorAll('[data-tag="space"]')).toHaveLength(0)
-
-    const allSpaces: SearchFilterState = { ...INITIAL_FILTERS, space: 'all' }
-    seed('messages', '词', { results: [cross] }, { filters: allSpaces })
     fireEvent.click(screen.getByText('空间'))
     fireEvent.click(await screen.findByText('全部'))
     await waitFor(() => expect(document.querySelectorAll('[data-tag="space"]')).toHaveLength(1))
   })
 
   it('归档徽按**事实**画(facets.archived 为真),与过滤片无关', async () => {
+    serveRows({ results: [hit({ facets: { archived: true } })] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit({ facets: { archived: true } })] })
     type('词')
     await waitFor(() => expect(document.querySelectorAll('[data-tag="archived"]')).toHaveLength(1))
+  })
+
+  /** ⑧:语义徽 —— 来自向量路的行右列一枚小徽(不是计数徽)。 */
+  it('`source: vector` 的行多一枚「语义」徽,lexical 的没有', async () => {
+    serveRows({
+      results: [hit({ source: 'vector' }), hit({ id: 'r2', source: 'lexical' })],
+    })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    expect(document.querySelectorAll('[data-tag="semantic"]')).toHaveLength(1)
+    expect(rows()[0].querySelector('[data-tag="semantic"]')).toBeTruthy()
+  })
+})
+
+describe('无标题会话(§6):后端归空,壳兜底', () => {
+  it('标题空 + 有首条用户消息 → 把它顶上来当正文', async () => {
+    serveRows({ results: [chatHit({ title: '', subtitle: '我今天很难受…' })] })
+    render(<SearchPanel />)
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(rows()[0].children[1].textContent).toContain('我今天很难受…')
+  })
+
+  it('两样都没有 → 行上画一句「未命名会话」,不是一行空白', async () => {
+    serveRows({ results: [chatHit({ title: '', subtitle: '' })] })
+    render(<SearchPanel />)
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    expect(rows()[0].children[1].textContent).toBe('未命名会话')
   })
 })
 
@@ -387,19 +490,38 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
     fireEvent.contextMenu(rows()[0])
   }
 
-  it('右键一条消息 → 菜单里有「打开」与「在此会话内搜」', async () => {
+  it('右键一条消息 → 菜单里有「打开」「只看这一类」与「在此会话内搜」', async () => {
+    serveRows({ results: [hit()] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
     expect(await screen.findByText('打开')).toBeTruthy()
+    expect(screen.getByText('只看这一类')).toBeTruthy()
     expect(screen.getByText('在此会话内搜')).toBeTruthy()
   })
 
-  it('按「在此会话内搜」→ 片条上多一颗范围片,而且**词留着**', async () => {
+  /** ⑧:「查看全部」从组头搬进右键菜单。 */
+  it('按「只看这一类」→ 换到那一档', async () => {
+    /* 全部档的行归在**它自己那一块**名下,所以这一发要带 `groups`(真机上就是)。 */
+    serveRows({
+      results: [hit()],
+      groups: [{ capability: 'messages', label: 'search.capability.messages', results: [hit()] }],
+    })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    openRowMenu()
+    fireEvent.click(await screen.findByText('只看这一类'))
+    /* 「消息」两处有:tab 条那一格与行首那颗徽 —— 按 role 取,不按文案取。 */
+    const tab = () => [...document.querySelectorAll('[role="radio"]')]
+      .find(el => (el.textContent ?? '').trim() === '消息')
+    await waitFor(() => expect(tab()?.getAttribute('aria-checked')).toBe('true'))
+  })
+
+  it('按「在此会话内搜」→ 片条上多一颗范围片,而且**词留着**', async () => {
+    serveRows({ results: [hit()] })
+    render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
@@ -410,8 +532,8 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
   })
 
   it('范围片的 × 去掉它 —— 它就是 filters 的可视化,不是第二种状态', async () => {
+    serveRows({ results: [hit()] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
@@ -422,8 +544,7 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
   })
 
   it('枢轴「提到它的消息」→ 换到消息那一档 + 种子词是**文件名**', async () => {
-    render(<SearchPanel />)
-    seed(ALL_TAB, '词', {
+    serveRows({
       results: [{
         id: 'f1',
         type: 'file',
@@ -431,6 +552,7 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
         target: { kind: 'file', payload: { filePath: '/repo/a/model-registry.ts' } },
       }],
     })
+    render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
@@ -439,13 +561,8 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
     expect(screen.getByText('消息').getAttribute('aria-checked')).toBe('true')
   })
 
-  /**
-   * S4b 修:files 在自述里声明了 `dir`(扫描根),所以这一条**按得动了** ——
-   * 而 `targets/file.tsx` 与面板都一个字没改。「片可不可用由能力自述答」。
-   */
   it('「在此目录内搜」按得动 —— files 自述里有 `dir` 这个 facet', async () => {
-    render(<SearchPanel />)
-    seed(ALL_TAB, '词', {
+    serveRows({
       results: [{
         id: 'f1',
         type: 'file',
@@ -453,6 +570,7 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
         target: { kind: 'file', payload: { filePath: '/repo/a/x.ts' } },
       }],
     })
+    render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
@@ -462,9 +580,7 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
 
   /** 反面:一个不声明 `dir` 的档上它仍然按不动(判据真的是自述,不是「恒真」)。 */
   it('换到一个不认 `dir` 的档,「在此目录内搜」又灰回去', async () => {
-    render(<SearchPanel />)
-    fireEvent.click(screen.getByText('消息'))
-    seed('messages', '词', {
+    serveRows({
       results: [{
         id: 'f1',
         type: 'file',
@@ -472,6 +588,8 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
         target: { kind: 'file', payload: { filePath: '/repo/a/x.ts' } },
       }],
     })
+    render(<SearchPanel />)
+    fireEvent.click(screen.getByText('消息'))
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
@@ -480,8 +598,8 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
   })
 
   it('走过一步之后 ⌘[ 退回去,四格**原样还原**(词 / 档 / 片)', async () => {
+    serveRows({ results: [hit()] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
@@ -492,9 +610,32 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
     expect((input() as HTMLInputElement).value).toBe('词')
   })
 
-  it('前进钮在没走过之前是**禁灰而不消失**', async () => {
+  /** 落差 #18:历史条目按 `activeId` 记,不按下标 —— 翻一页下标就全变了。 */
+  it('历史记的是**活动项的 id**:回去时那一项还在就回它', async () => {
+    serveRows({ results: [hit(), hit({ id: 'r2' })] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    fireEvent.keyDown(input(), { key: 'ArrowDown' })
+    await waitFor(() => expect(rows()[1].getAttribute('aria-selected')).toBe('true'))
+    /* 右键会把活动位落到被点的那一行 —— 记进历史的就该是**它**的 id。 */
+    fireEvent.contextMenu(rows()[0])
+    const activeNow = useSearchStore.getState().selection.id
+    expect(activeNow).toBe(rows()[0].getAttribute('data-item-id'))
+    fireEvent.click(await screen.findByText('在此会话内搜'))
+    await waitFor(() => expect(document.querySelector('[data-filter="scope"]')).toBeTruthy())
+    /*
+     * 历史那一格是 **id 串**,不是下标(落差 #18)—— 翻一页下标就全变了,
+     * 而「我刚才停在这一条上」不该跟着页码漂。
+     */
+    const recorded = useSearchStore.getState().history.entries.map(e => e.activeId)
+    expect(recorded).toContain(activeNow)
+    expect(typeof activeNow).toBe('string')
+  })
+
+  it('前进钮在没走过之前是**禁灰而不消失**', async () => {
+    serveRows({ results: [hit()] })
+    render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     openRowMenu()
@@ -506,9 +647,9 @@ describe('续搜(§4.6):范围片 / 枢轴 / 查询历史', () => {
       expect((screen.getByLabelText('再往前一条') as HTMLButtonElement).disabled).toBe(false))
   })
 
-  it('↑ 在**输入框空着且停在第一行**时回上一条查询;有词的时候它只走行', async () => {
+  it('↑ 在**输入框空着且停在第一项**时回上一条查询;有词的时候它只走行', async () => {
+    serveRows({ results: [hit(), hit({ id: 'r2' })] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit(), hit({ id: 'r2' })] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(2))
     openRowMenu()
@@ -533,8 +674,7 @@ describe('预览窗(§4.5)', () => {
   })
 
   it('inline 那一种(chats)**零请求**:随候选带的载荷当场画出来', async () => {
-    render(<SearchPanel />)
-    seed(ALL_TAB, '词', {
+    serveRows({
       results: [chatHit({
         preview: {
           kind: 'session-overview',
@@ -542,28 +682,29 @@ describe('预览窗(§4.5)', () => {
         },
       })],
     })
+    render(<SearchPanel />)
     type('词')
-    await waitFor(() => expect(rows()).toHaveLength(1))
     await waitFor(() =>
       expect(document.querySelector('[data-preview-kind="session-overview"]')).toBeTruthy())
     expect(document.querySelector('[data-fact="count"]')?.textContent).toBe('7')
   })
 
-  it('lazy 那一种走 `search.preview`;后端算不出时画**它的原话**', async () => {
-    configureSearchPort(fakeSearchPort({
+  /** ⑦:预览 error 只画字典句,原话进日志 + `data-preview-error`。 */
+  it('lazy 那一种走 `search.preview`;算不出时画**字典句**,原话不上屏', async () => {
+    serveRows({ results: [hit()] }, {
       preview: async () => ({ success: false, error: '那条消息不在账本里了' }),
-    }))
+    })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
-    await waitFor(() => expect(rows()).toHaveLength(1))
     await waitFor(() => expect(document.querySelector('[data-preview="error"]')).toBeTruthy())
-    expect(document.querySelector('[data-preview="error"]')?.textContent)
-      .toContain('那条消息不在账本里了')
+    const box = document.querySelector('[data-preview="error"]') as HTMLElement
+    expect(box.textContent).toBe('预览算不出来')
+    expect(box.textContent).not.toContain('那条消息不在账本里了')
+    expect(box.getAttribute('data-preview-error')).toBe('那条消息不在账本里了')
   })
 
   it('后端画得出来时按 kind 从注册表取组件', async () => {
-    configureSearchPort(fakeSearchPort({
+    serveRows({ results: [hit()] }, {
       preview: async () => ({
         success: true,
         preview: {
@@ -577,39 +718,58 @@ describe('预览窗(§4.5)', () => {
           },
         },
       }),
-    }))
+    })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
-    await waitFor(() => expect(rows()).toHaveLength(1))
     await waitFor(() =>
       expect(document.querySelector('[data-preview-kind="message-context"]')).toBeTruthy())
     expect(screen.getByText('命中那一条')).toBeTruthy()
     expect(screen.getByText('前一条')).toBeTruthy()
   })
 
-  it('壳画不出这种媒介时画**Row 放大版**,而不是把结果吞掉', async () => {
-    configureSearchPort(fakeSearchPort({
+  it('壳画不出这种媒介时画**Row 放大版**,零解释句', async () => {
+    serveRows({ results: [hit()] }, {
       preview: async () => ({ success: true, preview: { kind: '外星媒介', payload: {}, title: '一个标题' } }),
-    }))
+    })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
-    await waitFor(() => expect(rows()).toHaveLength(1))
     await waitFor(() => expect(document.querySelector('[data-preview="fallback"]')).toBeTruthy())
-    expect(document.querySelector('[data-preview="fallback"]')?.textContent).toContain('一个标题')
+    const box = document.querySelector('[data-preview="fallback"]') as HTMLElement
+    expect(box.textContent).toContain('一个标题')
+    expect(box.textContent).not.toContain('外星媒介')
+  })
+
+  /** ⑦:自述里没有 `preview` 那一格的能力 —— **一发请求都不出门**。 */
+  it('自述说这一类没有预览 → 零请求,窗里是行的放大版', async () => {
+    let asked = 0
+    serveRows({
+      results: [{
+        id: 'p1',
+        type: 'prompt',
+        title: '周报模板',
+        subtitle: '工作 · 周报',
+        target: { kind: 'prompt', payload: { actionId: 'insert-prompt:p1', promptId: 'p1' } },
+      }],
+    }, {
+      preview: async () => { asked += 1; return { success: true } },
+    })
+    render(<SearchPanel />)
+    fireEvent.click(screen.getByText('提示词'))
+    type('周报')
+    await waitFor(() => expect(document.querySelector('[data-preview="none"]')).toBeTruthy())
+    expect(document.querySelector('[data-preview="none"]')?.textContent).toContain('周报模板')
+    expect(asked).toBe(0)
   })
 
   it('⌘ 点两条同 kind → compare;点第三条 → batch(基数是请求的一部分)', async () => {
     const modes: string[] = []
-    configureSearchPort(fakeSearchPort({
+    serveRows({ results: [hit(), hit({ id: 'r2' }), hit({ id: 'r3' })] }, {
       preview: async (_items, mode) => {
         modes.push(mode)
         return { success: true }
       },
-    }))
+    })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit(), hit({ id: 'r2' }), hit({ id: 'r3' })] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(3))
     fireEvent.click(rows()[0], { metaKey: true })
@@ -620,8 +780,8 @@ describe('预览窗(§4.5)', () => {
   })
 
   it('⌘ 点**不打开**那一行 —— 带修饰键的点击是「挑」,不带的才是「做」', async () => {
+    serveRows({ results: [hit()] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.click(rows()[0], { metaKey: true })
@@ -632,8 +792,8 @@ describe('预览窗(§4.5)', () => {
 
 describe('落点与读数', () => {
   it('点一条正文命中 = 进会话 + 留一格「落到那条消息」的待办', async () => {
+    serveRows({ results: [hit()] })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.click(rows()[0])
@@ -641,10 +801,10 @@ describe('落点与读数', () => {
   })
 
   it('缺渲染器的行按下去**如实说一句**,不静默吞掉', async () => {
-    render(<SearchPanel />)
-    seed(ALL_TAB, '词', {
+    serveRows({
       results: [{ id: 'x', type: 'plugin', title: '外星行', target: { kind: '外星形', payload: {} } }],
     })
+    render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.click(rows()[0])
@@ -652,27 +812,30 @@ describe('落点与读数', () => {
       .toBe(translate('zh', 'search.targetUnavailable', { kind: '外星形' }))
   })
 
-  it('后端给了真 total 才画那一行;答不出就不画(不知道 ≠ 0)', async () => {
+  it('后端给了真 total → 取尽那一刻块尾读数报的是它(不知道 ≠ 0)', async () => {
+    serveRows({
+      results: [hit({ target: { kind: 'daily', payload: { filePath: '/a.md' } } })],
+      total: 42,
+    })
     render(<SearchPanel />)
     fireEvent.click(screen.getByText('笔记'))
-    seed('daily', '词', { results: [hit({ target: { kind: 'daily', payload: { filePath: '/a.md' } } })], total: 42 })
     type('词')
-    await waitFor(() => expect(document.querySelector('[data-readout="total"]')).toBeTruthy())
-    expect(document.querySelector('[data-readout="total"]')?.textContent).toContain('42')
+    await waitFor(() => expect(document.querySelector('[data-readout="end"]')).toBeTruthy())
+    expect(document.querySelector('[data-readout="end"]')?.textContent).toContain('42')
   })
 
   it('放宽过才画「已放宽」那一行', async () => {
+    serveRows({ results: [hit()], relaxed: 2 })
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()], relaxed: 2 })
     type('词')
     await waitFor(() => expect(document.querySelector('[data-readout="relaxed"]')).toBeTruthy())
   })
 
   it('索引状态:pending > 0 才画「更新中」;reader 才画「由 … 维护」', async () => {
     resetSearchCatalog()
-    configureSearchPort(fakeSearchPort({
+    serve(() => ({ success: true, results: [] }), {
       status: async () => ({ mode: 'reader', pending: 7, owner: { host: 'other', pid: 1 }, vector: 'off' }),
-    }))
+    })
     await ensureSearchCatalog()
     render(<SearchPanel />)
     await waitFor(() => expect(document.querySelector('[data-readout="index-reader"]')).toBeTruthy())
@@ -680,33 +843,98 @@ describe('落点与读数', () => {
     expect(document.querySelector('[data-readout="index-reader"]')?.textContent).toContain('other')
   })
 
-  it('这一发塌了:上面一行「没搜成」+ 后端原话,**旧结果不清屏**(律②)', async () => {
+  /** ⑧:索引不可用不再被吞 —— 一句人话,没有重试。 */
+  it('索引 `mode: error` → 页脚一句「索引不可用 · 只显示未建索引的结果」', async () => {
+    resetSearchCatalog()
+    serve(() => ({ success: true, results: [] }), {
+      status: async () => ({ mode: 'error', pending: 0, vector: 'off' }),
+    })
+    await ensureSearchCatalog()
     render(<SearchPanel />)
-    seed(ALL_TAB, '词', { results: [hit()] })
+    await waitFor(() =>
+      expect(document.querySelector('[data-readout="index-unavailable"]')).toBeTruthy())
+    expect(document.querySelector('[data-readout="index-unavailable"]')?.textContent)
+      .toContain('索引不可用')
+  })
+
+  it('这一发塌了:上面一行「没搜成」+ 后端原话,**旧结果不清屏**(律②)', async () => {
+    let fail = false
+    serve(() => {
+      if (fail) throw new Error('后端说的那句原话')
+      return { success: true, results: [hit()] }
+    })
+    render(<SearchPanel />)
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
+    fail = true
     /*
-     * 让**同一格**再问一次而这一次塌了 —— 那正是律②说的那一形:
-     * 错误与旧答案共存,列表一行都不清。
+     * **同一把键**再问一次(「重试」那一下的落点 —— 五口里的 `refetch`)。
+     * 律②说的正是这一形:错误与旧答案共存,列表一行都不清。
      */
-    configureSearchPort(fakeSearchPort({
-      query: async () => { throw new Error('后端说的那句原话') },
-    }))
-    const key = searchCatalogKey(ALL_TAB, '词', pageWindow(1), wireOf(ALL_TAB))
-    await capabilitySearchQuery.get(key).refetch()
+    await refetchSearchListing(useSearchStore.getState().committedKey)
     await waitFor(() => expect(screen.getByText('后端说的那句原话')).toBeTruthy())
     expect(rows()).toHaveLength(1)
+  })
+
+  /**
+   * **R11:换词在飞的那一段,上一把键的行留在屏上**(律②′)。
+   * 列表根挂 `data-stale`(文字降一档),页脚「搜索中…」,**不闪「无结果」**。
+   */
+  it('换词在飞:旧行留屏 + `data-stale` + 页脚「搜索中…」,不闪「无结果」', async () => {
+    let hang = false
+    serve(() => (hang
+      ? new Promise<SearchResponse>(() => {})
+      : { success: true, results: [hit()] }))
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(1))
+    hang = true
+    type('词二')
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="search-list"][data-stale]')).toBeTruthy())
+    // 旧那一行还在屏上 —— 换词不清屏。
+    expect(rows()).toHaveLength(1)
+    expect(document.querySelector('[data-readout="searching"]')).toBeTruthy()
+    expect(document.querySelector('[data-readout="empty"]')).toBeNull()
+  })
+
+  /** 拍点 K(报备修正):首发在飞画的是「搜索中…」,不是「无结果」。 */
+  it('首发在飞:列表空、**不画「无结果」**,页脚一行「搜索中…」', async () => {
+    serve(() => new Promise<SearchResponse>(() => {}))
+    render(<SearchPanel />)
+    await waitFor(() => expect(document.querySelector('[data-readout="searching"]')).toBeTruthy())
+    expect(document.querySelector('[data-readout="empty"]')).toBeNull()
+    expect(rows()).toHaveLength(0)
+  })
+})
+
+/**
+ * **R10:IME 组字期间不接键**。中文输入法选字用的正是 ↑↓ 与 ⏎ ——
+ * 组字那一段里把它们当成「走行 / 打开」,用户就打不出字。
+ */
+describe('R10:IME 组字期间那一下键归输入法', () => {
+  it('`isComposing` 的 ↓ 不动活动项,也不被吞', async () => {
+    serveRows({ results: [hit(), hit({ id: 'r2' })] })
+    render(<SearchPanel />)
+    type('词')
+    await waitFor(() => expect(rows()).toHaveLength(2))
+    const before = useSearchStore.getState().selection.id
+
+    const composing = new KeyboardEvent('keydown', {
+      key: 'ArrowDown', bubbles: true, cancelable: true,
+    })
+    Object.defineProperty(composing, 'isComposing', { value: true })
+    input().dispatchEvent(composing)
+    expect(useSearchStore.getState().selection.id).toBe(before)
+    expect(composing.defaultPrevented).toBe(false)
+
+    // 反面:组完字之后那一下照常走行。
+    fireEvent.keyDown(input(), { key: 'ArrowDown' })
+    await waitFor(() => expect(useSearchStore.getState().selection.id).not.toBe(before))
   })
 })
 
 describe('面域局部键:⌘[ / ⌘](§4.6 的查询历史)', () => {
-  /**
-   * 声明与落点是**两处**:正本在 `focus/scopes.ts` 的 `FOCUS_SCOPES.search.keys`,
-   * 落点是作用域实例注入的那张 `keyHandlers`。两处会不会分叉,要在**真的挂起来
-   * 的实例**上对一次 —— 读的是树自己的排障口(与文件树那条逐字同款)。
-   *
-   * 反证:把 `searchKeys` 里那两格改个名(`history.back` → `back`),这一条当场红。
-   */
   it('实例注入的 keyHandlers 名单 = FOCUS_SCOPES.search.keys 的 action 集合', async () => {
     render(<SearchPanel />)
     await waitFor(() => expect(screen.getByLabelText('搜索')).toBeTruthy())
@@ -717,24 +945,14 @@ describe('面域局部键:⌘[ / ⌘](§4.6 的查询历史)', () => {
   })
 
   it('那两格真的能走历史 —— 与两颗方向钮落的是同一条路', async () => {
-    /*
-     * **要把那台派发器一起摆进树里**:响应链上线之后,单独渲染一块面去按键
-     * 等于「在一台没有外壳的机器上按键」—— 真正听 window 的只有
-     * `focus/dispatch.ts` 那一个,而它挂在 `AppShell` 上。
-     */
+    serveRows({ results: [hit()] })
     render(<><FocusDispatchHarness /><SearchPanel /></>)
-    seed(ALL_TAB, '词', { results: [hit()] })
     type('词')
     await waitFor(() => expect(rows()).toHaveLength(1))
     fireEvent.contextMenu(rows()[0])
     fireEvent.click(await screen.findByText('在此会话内搜'))
     await waitFor(() => expect(document.querySelector('[data-filter="scope"]')).toBeTruthy())
 
-    /*
-     * 走的是**真的那条路**:window 上的捕获相位 keydown → 唯一那个派发器 →
-     * 沿活动路径找局部键 → 实例注入的处理器。不去戳注册表的内部,
-     * 因为「这一下到底谁接住了」正是这条用例要证的东西。
-     */
     fireEvent.keyDown(window, { key: '[', metaKey: true })
     await waitFor(() => expect(document.querySelector('[data-filter="scope"]')).toBeNull())
     fireEvent.keyDown(window, { key: ']', metaKey: true })

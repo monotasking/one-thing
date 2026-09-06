@@ -29,6 +29,10 @@ export interface SearchRowProps {
   row: SearchRowModel
   /** 这一行在**整张扁平列表**里的下标(`data-row`;门与用例按它点行)。 */
   index: number
+  /** 这一项在序列里的身份(`data-item-id`;滚入视野与 `reconcile` 按它认)。 */
+  itemId: string
+  /** 这一块的**第一行**吗 —— 块之间那一格空 + 一条发线(R1)由它画。 */
+  first: boolean
   /** 键盘位落在它身上吗(`aria-selected` 与 `--st-sel` 读它)。 */
   selected: boolean
   /** 明确挑出来的那几条之一吗(多选,`data-picked`)。 */
@@ -66,6 +70,8 @@ function badgeText(row: SearchRowModel, t: TFn): string {
 export function SearchRow({
   row,
   index,
+  itemId,
+  first,
   selected,
   picked,
   allSpaces,
@@ -80,15 +86,20 @@ export function SearchRow({
     <ButtonBase
       role="option"
       aria-selected={selected}
+      tabIndex={-1}
       data-row={index}
+      data-item-id={itemId}
       data-target-kind={row.target.kind}
       data-capability={row.capability}
       data-picked={picked ? 'true' : undefined}
       className={[
         s.row,
+        first ? s.blockStart : '',
         selected ? s.rowOn : '',
         picked ? s.rowPicked : '',
       ].filter(Boolean).join(' ')}
+      /* 焦点恒在输入框:按下去那一刻不许把它抢走(判例与 items/more 同一条)。 */
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
       onContextMenu={onContextMenu}
     >
@@ -101,13 +112,21 @@ export function SearchRow({
         <span className={s.chipText}>{badgeText(row, t)}</span>
       </span>
       <span className={s.text}>
-        {/* 高亮两条产地一条渲染:行自带 `highlight`(后端判的)就用那一份,
-          * 没有就照当前的词自己切 —— 判据写在 Highlight 上。 */}
-        <Highlight
-          text={row.text}
-          query={query}
-          {...(row.highlight ? { ranges: row.highlight } : {})}
-        />
+        {/*
+          * 没有标题的那一行(后端把占位名归了空)画一句**壳自己的**「未命名会话」,
+          * 降一档、斜体 —— 它是一个状态,不是一个名字(检索面终稿 §6)。
+          */}
+        {row.untitled === true ? (
+          <span className={s.untitled}>{t('search.untitledSession')}</span>
+        ) : (
+          /* 高亮两条产地一条渲染:行自带 `highlight`(后端判的)就用那一份,
+            * 没有就照当前的词自己切 —— 判据写在 Highlight 上。 */
+          <Highlight
+            text={row.text}
+            query={query}
+            {...(row.highlight ? { ranges: row.highlight } : {})}
+          />
+        )}
       </span>
       <span className={s.origin}>{originText(row.origin)}</span>
       {/*
@@ -123,6 +142,14 @@ export function SearchRow({
       )}
       {allSpaces && isOtherSpace(row.facets?.spaceId, spaceId, defaultSpaceId) && (
         <span className={s.tag} data-tag="space">{t('search.badgeOtherSpace')}</span>
+      )}
+      {/*
+        * 语义徽(检索面终稿 §6 最后一行)。**不是计数徽** —— 它说的是「这一条是
+        * 向量路召回的」,一句实话:它未必逐字含那个词。判据是候选自己带的 `source`,
+        * 壳不猜。
+        */}
+      {row.source === 'vector' && (
+        <span className={s.tag} data-tag="semantic">{t('search.badgeSemantic')}</span>
       )}
     </ButtonBase>
   )

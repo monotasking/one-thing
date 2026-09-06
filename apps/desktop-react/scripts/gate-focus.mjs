@@ -556,6 +556,87 @@ async function main() {
       `(开之前 ${before ?? '—'} → 收之后 ${after ?? '—'})`,
     )
 
+    /* ── 场景 2b:检索面的三条焦点纪律(检索面终稿 R10)────────────────────
+     * 三件都只有真机量得到,而三件都是 09-05 报障里点过名的:
+     *  ① **⌘P 开面,焦点进的是那格输入框**(不是面板根,也不是 Dock 上那颗瓦)——
+     *    落点由作用域的 `restingTarget` 答,第 ⑦ 步它从 `activateOnMount` 换成了
+     *    `SearchBindings` 的 `placed` 上升沿,行为必须一个字不变;
+     *  ② **Tab 在这块面里是「换搜索范围」**,不是把焦点交出去(行内结构键,
+     *    不进任何表);焦点因此**留在输入框**;
+     *  ③ **IME 组字期间不接键**:`isComposing` 的那一下 ↓ 不许去走行 ——
+     *    中文输入法选字用的正是方向键,抢走它就打不出字。
+     */
+    scenario('检索面:⌘P 落焦进输入框 / Tab 换档不交焦点 / IME 组字期间不接键')
+    await page.keyboard.press('Meta+p')
+    await delay(400)
+    const searchInputReady = await page.evaluate(() =>
+      Boolean(document.querySelector('[data-testid="search-panel"] input')),
+    )
+    if (!searchInputReady) {
+      skip('检索面没开出来', '这台的默认布局里 ⌘P 没把它摆出来')
+    } else {
+      const landed = await page.evaluate(() => {
+        const input = document.querySelector('[data-testid="search-panel"] input')
+        return document.activeElement === input
+      })
+      assert(landed, '① ⌘P 开面之后焦点落在**那格输入框**上')
+      await assertNoOrphan(page, '⌘P 开检索面之后')
+
+      const tabbed = await page.evaluate(() => {
+        const panel = document.querySelector('[data-testid="search-panel"]')
+        const input = panel.querySelector('input')
+        const before = [...panel.querySelectorAll('[role="radio"]')]
+          .findIndex(el => el.getAttribute('aria-checked') === 'true')
+        input.dispatchEvent(new KeyboardEvent('keydown', {
+          key: 'Tab', bubbles: true, cancelable: true,
+        }))
+        return { before, panelHasFocus: document.activeElement === input }
+      })
+      await delay(200)
+      const afterTab = await page.evaluate(() => {
+        const panel = document.querySelector('[data-testid="search-panel"]')
+        return {
+          at: [...panel.querySelectorAll('[role="radio"]')]
+            .findIndex(el => el.getAttribute('aria-checked') === 'true'),
+          focused: document.activeElement === panel.querySelector('input'),
+        }
+      })
+      assert(
+        afterTab.at === tabbed.before + 1,
+        '② Tab 是**换搜索范围**(档位往后挪一格)',
+        `(${tabbed.before} → ${afterTab.at})`,
+      )
+      assert(afterTab.focused, '② Tab 之后焦点**仍然在输入框**,没有交出去')
+
+      /*
+       * ③ IME:派一下 `isComposing` 的 ↓。判据是「活动项一格没动」——
+       * 组字期间那一下方向键归输入法,列表连看都不该看它。
+       */
+      const ime = await page.evaluate(() => {
+        const panel = document.querySelector('[data-testid="search-panel"]')
+        const input = panel.querySelector('input')
+        const activeOf = () => panel.querySelector('[role="option"][aria-selected="true"]')
+          ?.getAttribute('data-item-id') ?? null
+        const before = activeOf()
+        const event = new KeyboardEvent('keydown', {
+          key: 'ArrowDown', bubbles: true, cancelable: true,
+        })
+        // jsdom / Chromium 都不让直接构造 isComposing,所以就地定义它。
+        Object.defineProperty(event, 'isComposing', { value: true })
+        input.dispatchEvent(event)
+        return { before, after: activeOf(), prevented: event.defaultPrevented }
+      })
+      assert(
+        ime.after === ime.before,
+        '③ IME 组字期间那一下 ↓ **不动活动项**(方向键归输入法)',
+        `(${ime.before ?? '—'} → ${ime.after ?? '—'})`,
+      )
+      assert(!ime.prevented, '③ 而且**不吞**它:组字那一下要原样交给输入法')
+      await page.keyboard.press('Escape')
+      await delay(300)
+      await assertNoOrphan(page, '收回检索面之后')
+    }
+
     /* ── 场景 3:架子切 tab ──────────────────────────────────────────── */
     scenario('架子两 tab 切换 → 焦点在新层内;旧层 inert')
     // 夹具:右键两块瓦,各自选「右侧栏」——「钉到边」是菜单里那一组的语义,

@@ -37,7 +37,7 @@ function NoteExcerptBody({ payload, query }: SearchPreviewProps) {
   if (note === undefined) return <p className={s.meta}>{t('search.previewMalformed')}</p>
   return (
     <div className={s.body}>
-      {note.title.length > 0 && <p className={s.title}>{note.title}</p>}
+      {/* 标题归檐(R6);这里只画出处与正文 —— 同一句话不在一块面里画两遍。 */}
       {note.path.length > 0 && <p className={s.meta} data-fact="path">{note.path}</p>}
       <p className={s.text}>
         <Highlight text={note.excerpt} query={query} />

@@ -136,9 +136,17 @@ describe('indexReadoutOf', () => {
       .toEqual({ pending: 0, readerHost: '' })
   })
 
-  it('error(这台机器上根本没起索引)不在这两行里说', () => {
-    // 它既不是「更新中」也不是「别人在维护」,而且后果已经由「搜不到东西」自己说了。
-    expect(indexReadoutOf(status({ mode: 'error' }))).toEqual({ pending: 0 })
+  /**
+   * **`error` 不再被吞**(检索面终稿 落差 #19,09-05 裁定)。
+   *
+   * 从前的判词是「后果已经由『搜不到东西』自己说了」——而那正是病:屏幕上
+   * 「一条都没搜到」与「索引坏了、只剩扫描那几类」长得一模一样,用户没有任何
+   * 办法分辨。现在它自报一格 `unavailable`,页脚据此上屏一句人话(无重试)。
+   */
+  it('error(这台机器上根本没起索引)自报一格 unavailable —— 页脚据此说一句人话', () => {
+    expect(indexReadoutOf(status({ mode: 'error' }))).toEqual({ pending: 0, unavailable: true })
+    // 它不是「别人在维护」:那一格仍然缺席,两句话不混。
+    expect(indexReadoutOf(status({ mode: 'error' }))?.readerHost).toBeUndefined()
   })
 
   it('问不到状态 = 两行都不画(不是「一切正常」)', () => {

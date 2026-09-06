@@ -236,7 +236,7 @@ function readList(page) {
     const panel = document.querySelector('[data-testid="search-panel"]')
     if (!panel) return { panel: false, rows: 0, more: null, readouts: [] }
     const all = [...panel.querySelectorAll('[role="option"]')]
-    const rows = all.filter(el => el.getAttribute('data-row') !== 'more')
+    const rows = all.filter(el => !['more', 'action'].includes(el.getAttribute('data-row')))
     const more = panel.querySelector('[data-testid="search-more"]')
     /*
      * 取尽之后那条读数不是 option,是一段 p —— 两者只会出现一个。
@@ -275,8 +275,9 @@ function measureBadges(page) {
   return page.evaluate(() => {
     const panel = document.querySelector('[data-testid="search-panel"]')
     if (!panel) return { error: '检索面板不在 DOM 里' }
+    /* 块尾项与动作行都是 option,但都不是结果行(R3:动作不计数、不戴徽)。 */
     const rows = [...panel.querySelectorAll('[role="option"]')].filter(
-      el => el.getAttribute('data-row') !== 'more',
+      el => !['more', 'action'].includes(el.getAttribute('data-row')),
     )
     const chips = rows.map(row => {
       const chip = row.children[0]
@@ -484,18 +485,61 @@ async function main() {
      * 这件事在屏幕上就是「滚到底」。图与形制一致,不为了好看去挪它的位置。
      */
     await page.evaluate(() => {
-      const body = document.querySelector('[data-testid="search-more"]')?.parentElement
+      // 滚动容器是 `.list`(⑦ 之后页脚是 listbox 的兄弟,所以那张网自己不滚)。
+      const body = document.querySelector('[data-testid="search-list"]')
       if (body) body.scrollTop = body.scrollHeight
     })
     await delay(200)
     await page.screenshot({ path: path.join(shotDir, 'search-browse-readout.png') })
 
+    /*
+     * ── R4:翻页四条不变量(检索面终稿 §5.4)──────────────────────────────
+     * 这四条只有真排版量得到,而它们正是「点了 Load more 跳回顶部」那条报障的
+     * 判词:病根是翻页换了整把查询键(新格 `data === undefined` → 列表清空 →
+     * 容器高度归零 → 浏览器把 `scrollTop` 钳到 0)。第 ⑦ 步之后翻页是对**同一格**
+     * 追加,所以下面四条同时成立。
+     *
+     * 反证(十步表那一列):把滚动 effect 的依赖改回 `[activeId, rows]` →
+     * 「滚动位一格没动」当场红。
+     */
+    /*
+     * **前提:那条 more 项完全可见**(§5.4 ④ 的原话)。它必须先摆在视野里,
+     * 理由不是为了让断言好过:用户按得到它,就说明它在视野里 —— 而「点一个此刻
+     * 在视野外的候选」会正当地触发一次 `scrollIntoView`(那是**指针改 active**
+     * 的既有语义,不是翻页引起的)。把前提摆好,这一条量的才是「行集增长有没有
+     * 动屏幕」。
+     */
+    const beforeMore = await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="search-panel"]')
+      const list = panel.querySelector('[data-testid="search-list"]')
+      const input = panel.querySelector('input')
+      input.focus()
+      panel.querySelector('[data-row="more"]')?.scrollIntoView({ block: 'nearest' })
+      window.__gateFirstRow = panel.querySelector('[role="option"][data-row="0"]')
+      return { scrollTop: list.scrollTop }
+    })
+    await delay(120)
     await clickSelector(page, '[data-testid="search-more"]')
     const second = await waitFor('翻页之后', async () => {
       const state = await readList(page)
       return state.rows > FIRST_PAGE ? state : undefined
     }, 10_000)
     console.log('  · 翻页后读数:', JSON.stringify(second))
+    const afterMore = await page.evaluate(() => {
+      const panel = document.querySelector('[data-testid="search-panel"]')
+      const list = panel.querySelector('[data-testid="search-list"]')
+      return {
+        sameFirst: panel.querySelector('[role="option"][data-row="0"]') === window.__gateFirstRow,
+        scrollTop: list.scrollTop,
+        focused: document.activeElement === panel.querySelector('input'),
+      }
+    })
+    assert(afterMore.sameFirst, 'R4 ①:`[data-row="0"]` 翻页前后是**同一个 DOM 节点**')
+    assert(
+      afterMore.scrollTop === beforeMore.scrollTop,
+      `R4 ②:滚动位一格没动(${beforeMore.scrollTop} → ${afterMore.scrollTop})`,
+    )
+    assert(afterMore.focused, 'R4 ③:焦点仍然在输入框(行是 tabIndex=-1 的候选)')
     assert(second.rows === SEED_SESSIONS, `翻一页就把剩下的都放出来了(${second.rows} 行 = 全部)`)
     assert(second.more === null, '取尽那一刻「加载更多」不再是能按的 item')
     const tailReadout = second.readouts.find(text => text.includes(String(SEED_SESSIONS)))
@@ -505,9 +549,22 @@ async function main() {
     console.log('\n[5/5] 用检索面自己进那条会话(文件侧按活跃会话的工作目录取根),再量行首徽')
     // 一直都在「所有」这一档上(第 4 步没切过档),直接打字。
     await typeQuery(page, FIRST_SESSION_NAME)
-    await waitForRows(page, '那条会话在命中里')
+    /*
+     * **等那一条真的上屏,再点它自己那一行**(而不是盲点 `[data-row="0"]`)。
+     *
+     * 判据变了是因为产品的行为变了:R11 起换词在飞的那一段**上一把键的行留在
+     * 屏上**(`useQueryHeld`,律②′)—— 屏幕上有行不等于「新答案到了」。盲点第一行
+     * 会点到上一屏(浏览态)的第一条会话,于是后面整段量的是另一条会话的工作目录。
+     * 这一条是第 ⑦ 步真机门抓到的,记在这里免得下一个人再踩。
+     */
+    const at = await waitFor('那条会话出现在命中里', () => page.evaluate((name) => {
+      const rows = [...document.querySelectorAll('[data-testid="search-panel"] [role="option"]')]
+        .filter(el => /^\d+$/.test(el.getAttribute('data-row') ?? ''))
+      const found = rows.find(el => (el.textContent ?? '').includes(name))
+      return found ? found.getAttribute('data-row') : undefined
+    }, FIRST_SESSION_NAME))
     // 点一行 = enterSession + 收回 Dock(面板自己那条路,顺带真跑一遍)。
-    await clickSelector(page, '[data-testid="search-panel"] [role="option"][data-row="0"]')
+    await clickSelector(page, `[data-testid="search-panel"] [role="option"][data-row="${at}"]`)
     await waitFor('面板收回 Dock 了', () =>
       page.evaluate(() => !document.querySelector('[data-testid="search-panel"]')),
     )
@@ -530,7 +587,7 @@ async function main() {
     await typeQuery(page, SEARCH_QUERY)
     const measured = await waitFor('文件命中画出来', async () => {
       const state = await measureBadges(page)
-      if (state.error) return undefined
+      if (state.error) { console.log('  · (measure error)', state.error); return undefined }
       const words = new Set(state.chips.map(c => c.word))
       return BADGE_FILES.every(f => words.has(f.badge)) ? state : undefined
     })
@@ -601,6 +658,56 @@ async function main() {
      * 这一档的行只可能来自 `files` 能力,而它的扫描根就是壳递过去的那一格
      * `filters.dir`(= 活跃会话的工作目录)。五个种子文件一个都不能少。
      */
+    /*
+     * ── R4 ④:**全部档有词,点某一块的 more 只有那一块长**(§0 ②「每块自己
+     * 原地续页」)。从前全部档根本没有块级游标,「加载更多」只能把整把查询键做大
+     * 重发 —— 一发下去每一块都换一批行。
+     */
+    await typeQuery(page, SEARCH_QUERY)
+    const perBlock = await waitFor('全部档画出至少两块', async () => {
+      const state = await page.evaluate(() => {
+        const panel = document.querySelector('[data-testid="search-panel"]')
+        if (!panel) return { blocks: {}, more: null }
+        const rows = [...panel.querySelectorAll('[role="option"][data-capability]')]
+        const blocks = {}
+        for (const row of rows) {
+          const cap = row.getAttribute('data-capability')
+          blocks[cap] = (blocks[cap] ?? 0) + 1
+        }
+        const more = panel.querySelector('[data-row="more"]')
+        return { blocks, more: more ? more.getAttribute('data-block') : null }
+      })
+      return Object.keys(state.blocks).length >= 2 && state.more !== null ? state : undefined
+    }, 15_000).catch(() => undefined)
+    if (perBlock === undefined) {
+      console.log('  · (这一屏没有「两块 + 一条能按的块尾项」—— R4 ④ 这一趟不判)')
+    } else {
+      await clickSelector(page, `[data-row="more"][data-block="${perBlock.more}"]`)
+      const grown = await waitFor('那一块自己长了一页', async () => {
+        const state = await page.evaluate(() => {
+          const panel = document.querySelector('[data-testid="search-panel"]')
+          const blocks = {}
+          for (const row of panel.querySelectorAll('[role="option"][data-capability]')) {
+            const cap = row.getAttribute('data-capability')
+            blocks[cap] = (blocks[cap] ?? 0) + 1
+          }
+          return blocks
+        })
+        return state[perBlock.more] !== perBlock.blocks[perBlock.more] ? state : undefined
+      }, 15_000).catch(() => undefined)
+      if (grown === undefined) {
+        console.log('  · (那一块没有第二页 —— R4 ④ 这一趟不判)')
+      } else {
+        for (const [cap, count] of Object.entries(perBlock.blocks)) {
+          if (cap === perBlock.more) continue
+          assert(
+            grown[cap] === count,
+            `R4 ④:只有被按的那一块长了 —— ${cap} 仍然是 ${count} 行`,
+          )
+        }
+      }
+    }
+
     await selectTab(page, FILES_TAB)
     const inFiles = await waitFor('文件档把会话工作目录下的种子文件全搜出来', async () => {
       const state = await measureBadges(page)

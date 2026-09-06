@@ -284,10 +284,17 @@ async function fetchOne(
     }
   }
 
+  /*
+   * 单发那一形:`response.actions` 是**页级**的(契约上它就摆在 `SearchResponse`
+   * 上,不在 `groups[]` 里)。把同一批动作再挂进这一块,屏幕上就会画两遍
+   * ——「一条动作两个产地」,与 `groups[].actions` 那一支的语义也不一致。
+   * 所以这里把块级那一格摘掉,页级留在 listing 上。
+   */
+  const { actions: _pageActions, ...page } = pageOf(response)
   return {
     mode: 'single',
     query,
-    blocks: [blockOf({ capability, ...pageOf(response), pages: 1 })],
+    blocks: [blockOf({ capability, ...page, pages: 1 })],
     ...(response.total === undefined ? {} : { total: response.total }),
     ...(response.relaxed === undefined ? {} : { relaxed: response.relaxed }),
     ...(response.index === undefined ? {} : { index: response.index }),

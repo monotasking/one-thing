@@ -40,26 +40,33 @@
  * 行自己那份 padding / border-left 不用挪:subgrid 会把子项在这条轴上的
  * 边框内补收进最外侧的轨道,而每一行的这份内缩逐字相同 —— 所以各行对得齐,
  * 底部那条 item(同一份 padding + border)也对得齐。 */
-.body {
+.list {
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 换词 / 换档 / 换片在飞的那一段,屏上留着的是**上一把键**的行(律②′)。
+ * 降一档文字色**不换底** —— 它说的是「这是上一次的答案」,不是一次错误。 */
+.list[data-stale] .row .text {
+  color: var(--text-2);
+}
+
+.list[data-stale] .row .origin,
+.list[data-stale] .more {
+  color: var(--text-3);
+}
+
+.body {
+  min-width: 0;
   padding: var(--sp-2);
   display: grid;
   grid-template-columns: minmax(0, max-content) minmax(0, 1fr) minmax(0, auto);
   /* 行按内容高,不许被拉满 —— 默认的 normal 会把几行撑成一屏。 */
   align-content: start;
   column-gap: var(--sp-3);
-}
-
-/* 无结果:居中一行灰字,别的什么都不画。 */
-.none {
-  grid-column: 1 / -1;
-  margin: 0;
-  padding: var(--sp-5) var(--sp-3);
-  text-align: center;
-  font-size: var(--fs-meta);
-  color: var(--text-3);
 }
 
 /* 一行三件:徽 / 命中原文 / 出处。
@@ -210,40 +217,35 @@
   white-space: nowrap;
 }
 
-/* ── 组头的**皮肤**(全部档,§9 第四条)──────────────────────────────────
- * 组头这件东西本身是 `ui/GroupHead`(视觉词汇立件,09-01 批 2a) —— 名字、
- * 右侧读数槽、caret、三类状态全在那件里,这里**只给落点自己的皮肤**:
- * 让它认领这张列表的 subgrid,以及把两组隔开的那条上线。库件的文件头写明
- * 「sticky、底色、边线归消费方给」,这一段就是那句话的兑现。
+/* ── 块边界(R1:组头退役)──────────────────────────────────────────────
+ * 09-05 用户裁定「全部档不画组头」。块与块之间剩下的**只有**一格空 + 一条发线,
+ * 而这条线画在**块首那一行**身上(`item.first`),不是一个独立的分隔元素 ——
+ * 一条线不该占一个可聚焦、可数、可被读屏念出来的位置。
  *
- * 认领 subgrid 的理由与 `.more` / `.end` 逐字相同:名字要从**第二列**起笔,
- * 与上面每一行的正文同一条竖线(徽列换成内容自适应之后,对齐只能靠 subgrid)。 */
-.groupBand {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: subgrid;
-  align-items: center;
-  padding: var(--sp-2) var(--sp-3);
-  border-left: var(--search-mark) solid transparent;
+ * 线用伪元素画在行的上方内缩处:行自己那份 padding 与选中膜因此一点不受影响
+ * (`.rowOn` 的底与左缘线仍然贴着行的四边)。列表**第一块**的首行不画线 ——
+ * 列表顶上不该先来一条横杠。 */
+.blockStart {
+  margin-top: var(--sp-2);
+  position: relative;
 }
 
-/* 第一组的组头不画上线 —— 列表顶上不该先来一条横杠。 */
-.row + .groupBand {
-  border-top: var(--bw-1) solid var(--line-2);
+.blockStart::before {
+  content: "";
+  position: absolute;
+  left: var(--sp-3);
+  right: var(--sp-3);
+  top: calc(var(--sp-1) * -1);
+  height: var(--bw-1);
+  background: var(--line-1);
 }
 
-/* 「查看全部」:行内微型文字动作(判例:③ 类,走 ButtonBase 保本地皮肤,
- * 不换成 28px 描边的 ui/Button —— 那是改版不是等价迁移)。 */
-.groupAll {
-  justify-self: end;
-  grid-column: -2 / -1;
-  color: var(--text-3);
-  font-size: var(--fs-meta);
-  transition: color var(--dur) var(--ease);
+.body > .blockStart:first-child {
+  margin-top: 0;
 }
 
-.groupAll:hover {
-  color: var(--text-1);
+.body > .blockStart:first-child::before {
+  content: none;
 }
 
 /* ── 事实徽(归档 / 跨空间)────────────────────────────────────────────
@@ -350,26 +352,132 @@
   background: var(--st-hover);
 }
 
-/* ── 组头右侧那一格(§9 第四条)────────────────────────────────────────────
- * 三件都是**文字读数**,不是计数徽:「没搜成」/「共 N 条」/「查看全部」。 */
-.groupNote {
+/* ── 动作那一段(R3)──────────────────────────────────────────────────────
+ * 清单末尾一条分隔线,线下是动作行。**它们不是结果**:不计数、不进预览、不参与
+ * 「零结果」判据 —— 但它们在 ↑↓ 序列的末位(键盘也要能新建)。 */
+.sep {
+  grid-column: 1 / -1;
+  height: var(--bw-1);
+  margin: var(--sp-2) var(--sp-3) var(--sp-1);
+  background: var(--line-1);
+}
+
+/* 动作行与结果行同一套骨架(整宽 / 同一份 padding / 左缘那条选中线常态占位),
+ * 差别只有一件:第一列不是徽,是一枚「＋」。 */
+.action {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: var(--search-mark) solid transparent;
+  border-radius: var(--r-1);
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.action:hover {
+  background: var(--st-hover);
+}
+
+.plus {
+  justify-self: center;
   display: inline-flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: var(--sp-2);
-  min-width: 0;
-  width: 100%;
-}
-
-/* 这一组塌了。状态色只上字不换底(token 纪律)。 */
-.groupFailed {
-  flex: none;
-  color: var(--danger);
-}
-
-.groupTotal {
-  flex: none;
+  align-items: center;
   color: var(--text-3);
+}
+
+.plusIcon {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+}
+
+.actionText {
+  grid-column: 2 / -1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 零结果那一屏 ────────────────────────────────────────────────────────
+ * 一句话说清没搜到什么,第二行点名当前生效的片并给下一步。 */
+.empty {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-5) var(--sp-3) var(--sp-3);
+}
+
+.emptyHead {
+  margin: 0;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+}
+
+.emptyNext {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+/* 行内微型文字动作(裸 button 三类判的第③类:走 ButtonBase 保本地皮肤)。 */
+.link {
+  color: var(--accent);
+  font-size: inherit;
+  transition: color var(--dur) var(--ease);
+}
+
+.link:hover {
+  color: var(--text-1);
+}
+
+/* ── 页脚(listbox 的兄弟)────────────────────────────────────────────────
+ * 几条读数**合成一行**,`' · '` 串起来;每一条仍然是自己那一个 `[data-readout]`
+ * 元素(门按属性认,不按行认)。 */
+.foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+}
+
+.readout {
+  min-width: 0;
+}
+
+/* 状态色只上字不换底(token 纪律)。 */
+.warn {
+  color: var(--warn);
+}
+
+.footSep {
+  padding: 0 var(--sp-1);
+  color: var(--text-4);
+}
+
+/* ── 无标题那一行(§6「无标题会话」)──────────────────────────────────────
+ * 「未命名会话」是一个**状态**不是一个名字,所以它降一档、斜体 ——
+ * 一眼分得出「这间还没起名」与「这间叫『未命名会话』」。 */
+.untitled {
+  font-style: italic;
+  color: var(--text-3);
+}
+
+/* 预览窗里那一行出处(行的放大版第二行)。 */
+.previewOrigin {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-3);
+  overflow-wrap: anywhere;
 }
 
 /* ── 多选(§4.5 ③)────────────────────────────────────────────────────────

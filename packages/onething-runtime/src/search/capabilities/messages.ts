@@ -61,6 +61,7 @@ import {
 } from './indexed.js'
 import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
 import { normalizeSearchQuery } from './text-match.js'
+import { sessionTitleOf } from './sessions.js'
 import { sessionScopeVisibility } from './visibility.js'
 import {
   PreviewUnavailableError,
@@ -202,8 +203,8 @@ export function createMessagesSearchCapability(
           id: `msg:${sessionId}:${messageId}`,
           type: 'message',
           title: snippet.text,
-          // 步⑧壳补上兜底之后改成 sessionTitleOf
-          subtitle: session?.name || 'New Chat',
+          // §6「无标题会话」:占位名归空,画什么归壳。
+          subtitle: sessionTitleOf(session?.name),
           detail: role === 'user' ? 'User message' : 'Assistant message',
           sessionId,
           messageId,
@@ -243,8 +244,8 @@ export function createMessagesSearchCapability(
           id: `msg:${sessionId}:${messageId}`,
           type: 'message',
           title: snippet.text,
-          // 步⑧壳补上兜底之后改成 sessionTitleOf
-          subtitle: session?.name || 'New Chat',
+          // §6「无标题会话」:占位名归空,画什么归壳。
+          subtitle: sessionTitleOf(session?.name),
           detail: role === 'user' ? 'User message' : 'Assistant message',
           sessionId,
           messageId,
@@ -312,8 +313,8 @@ export function createMessagesSearchCapability(
         id: `msg:${sessionId}:${message.id}`,
         type: 'message',
         title: snippet.text,
-        // 步⑧壳补上兜底之后改成 sessionTitleOf
-        subtitle: session?.name || 'New Chat',
+        // §6「无标题会话」:占位名归空,画什么归壳。
+        subtitle: sessionTitleOf(session?.name),
         detail: role === 'user' ? 'User message' : 'Assistant message',
         sessionId,
         messageId: message.id,

@@ -278,7 +278,11 @@ export interface FilterChipSpec {
   labelKey: MessageKey
   /** 它此刻是不是「挑过了」(挑过的片描边加重,与缺省一眼分得开)。 */
   on: boolean
-  /** 有几个可选值 = 一张小菜单;只有两态的(含归档 / 含推理)是一次切换。 */
+  /**
+   * 有几个可选值 = 一张小菜单。**五颗片今天全是这一形**(09-05 起归档 / 推理也
+   * 改成「含 / 不含」两格)—— 库件那条两态口(`onToggle`)因此这块面不再消费,
+   * 但它对别的消费方仍然成立,不动。
+   */
   options?: Array<{ value: string; labelKey: MessageKey }>
   /** 此刻选中的那一格(`options` 在场时)。 */
   value?: string
@@ -295,12 +299,29 @@ const ROLE_OPTIONS: FilterChipSpec['options'] = [
   { value: 'assistant', labelKey: 'search.filterRoleAssistant' },
 ]
 
+/**
+ * 时间那几格。**「自定」删掉了**(09-05 裁定;检索面终稿 §6「设置极简:不摆死
+ * 选项」)—— 它挑下去开不出任何日期件,是一格按了什么都不会发生的死选项。
+ * `TimeFilter` 的 `'custom'` 与 `customFrom/To` 两格**留着**:`filtersOf` 那一支
+ * 仍然算得对,日期件到位那天只要把这一行加回来。
+ */
 const TIME_OPTIONS: FilterChipSpec['options'] = [
   { value: 'any', labelKey: 'search.filterTimeAny' },
   { value: 'today', labelKey: 'search.filterTimeToday' },
   { value: 'week', labelKey: 'search.filterTimeWeek' },
   { value: 'month', labelKey: 'search.filterTimeMonth' },
-  { value: 'custom', labelKey: 'search.filterTimeCustom' },
+]
+
+/**
+ * 「含 / 不含」那两格。
+ *
+ * 从前归档与推理是**两态片**:片上写「含归档」,按下去表示「不含」—— 语义正好
+ * 反了(09-05 用户报障)。改形根治:片名是名词(「归档」),值才是「含 / 不含」,
+ * 与空间 / 角色 / 时间三颗**同一形**,屏幕上再也没有「按下去代表反义」这回事。
+ */
+const WITH_OPTIONS: FilterChipSpec['options'] = [
+  { value: 'yes', labelKey: 'search.filterWith' },
+  { value: 'no', labelKey: 'search.filterWithout' },
 ]
 
 /**
@@ -351,6 +372,8 @@ export function filterChipsOf(
       facet: ARCHIVED_FACET,
       labelKey: 'search.filterArchived',
       on: state.archived !== INITIAL_FILTERS.archived,
+      options: WITH_OPTIONS,
+      value: state.archived ? 'yes' : 'no',
     })
   }
   if (available.has(REASONING_FACET)) {
@@ -359,6 +382,8 @@ export function filterChipsOf(
       facet: REASONING_FACET,
       labelKey: 'search.filterReasoning',
       on: state.reasoning !== INITIAL_FILTERS.reasoning,
+      options: WITH_OPTIONS,
+      value: state.reasoning ? 'yes' : 'no',
     })
   }
   return chips

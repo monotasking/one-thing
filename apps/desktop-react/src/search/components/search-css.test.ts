@@ -81,6 +81,40 @@ describe('行首徽:胶囊 hug 内容,列宽交给容器', () => {
   })
 })
 
+/**
+ * **组头退役**(R1,09-05 用户裁定「全部档不画组头」)。
+ *
+ * 类留在样式表里就会有人再把它画回来 —— 这一条是那句裁定在静态那一半的执法。
+ * 块边界剩下的只有块首那一行上的 `.blockStart`(一格空 + 一条发线)。
+ */
+describe('R1:组头的五个类一个都不许回来', () => {
+  for (const gone of ['.groupBand', '.groupAll', '.groupNote', '.groupFailed', '.groupTotal']) {
+    it(`样式表里没有 ${gone}`, () => {
+      expect(css).not.toContain(`${gone} {`)
+    })
+  }
+
+  it('块边界改由块首那一行画:`.blockStart` 一格空 + 一条发线', () => {
+    expect(block('.blockStart')).toMatch(/margin-top:\s*var\(--sp-2\)/)
+    expect(css).toMatch(/\.blockStart::before \{/)
+  })
+})
+
+/**
+ * **页脚是 listbox 的兄弟**(⑦)。滚动容器 `.list` 与那张网 `.body` 拆成两层 ——
+ * 拆之前页脚只能塞在 listbox 里面(APG:它的孩子只该是选项与分隔)。
+ */
+describe('⑦:滚动容器与那张网分成两层', () => {
+  it('`.list` 是滚动容器(纵向滚,竖向排)', () => {
+    expect(block('.list')).toMatch(/overflow-y:\s*auto/)
+    expect(block('.list')).toMatch(/flex-direction:\s*column/)
+  })
+
+  it('`.body` 只剩那张网 —— 它自己不再滚', () => {
+    expect(block('.body')).not.toMatch(/overflow-y:/)
+  })
+})
+
 describe('token 侧:定宽那一格已经换成上下限', () => {
   const tokens = readFileSync(resolve(process.cwd(), 'src/styles/tokens.css'), 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
