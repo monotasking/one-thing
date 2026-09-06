@@ -74,6 +74,18 @@ export interface SearchState {
    */
   readonly picked: readonly string[]
   readonly history: SearchHistory
+  /**
+   * **每把键各自的滚动位**(第 ⑤ 步的留账,第 ⑥ 步补上)。
+   *
+   * 键是 `held.shownKey`(屏上这份是哪把键的),不是「请求键」—— 换词在飞的那几帧
+   * 屏上还是上一把键的行,这一格必须跟着**看得见的那份**走,否则一换词就把新键的
+   * 记忆写成旧列表的位置。
+   *
+   * 为什么它在 store 而不在组件:换宿主(舞台 → 浮窗 / 钉边)是**真重挂**,
+   * 组件寿命的状态那一刻就没了;而「我滚到哪儿了」不该因为把面板拖到别处就归零。
+   * 读写两口由 `ui/scroll-memory` 的 `{ read, write }` 接上(第 ⑦ 步)。
+   */
+  readonly scrollByKey: Readonly<Record<string, number>>
 }
 
 export const initialSearchState: SearchState = {
@@ -84,6 +96,7 @@ export const initialSearchState: SearchState = {
   selection: INITIAL_SELECTION,
   picked: [],
   history: EMPTY_HISTORY,
+  scrollByKey: {},
 }
 
 /* ── 主语三格 ──────────────────────────────────────────────────────────── */
@@ -155,6 +168,27 @@ export function pick(state: SearchState, id: string): SearchState {
 
 export function clearPicks(state: SearchState): SearchState {
   return state.picked.length === 0 ? state : { ...state, picked: [] }
+}
+
+/* ── 滚动记忆 ──────────────────────────────────────────────────────────── */
+
+/**
+ * 记下某把键此刻滚到哪儿。**同值恒等**(连引用都不换)—— 滚动是高频事件,
+ * 每一像素换一次 store 引用会把每个订阅者都叫醒一遍。
+ *
+ * `top <= 0` 一律记 `0`:负的 `scrollTop` 是橡皮筋回弹的中间值,不是位置。
+ * 「没记过」与「记着 0」是同一件事(`scrollOf` 对两者都答 0),所以把 0 写进一把
+ * 从没记过的键也是恒等变换 —— 否则列表一挂上来就会为每把键长出一格空账。
+ */
+export function setScroll(state: SearchState, key: string, top: number): SearchState {
+  const next = top > 0 ? top : 0
+  if (scrollOf(state, key) === next) return state
+  return { ...state, scrollByKey: { ...state.scrollByKey, [key]: next } }
+}
+
+/** 某把键的滚动位。没记过 = `0`(从顶上开始,不猜)。 */
+export function scrollOf(state: SearchState, key: string): number {
+  return state.scrollByKey[key] ?? 0
 }
 
 /* ── 对账 ──────────────────────────────────────────────────────────────── */

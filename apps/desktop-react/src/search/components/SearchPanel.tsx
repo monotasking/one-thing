@@ -2,26 +2,18 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react'
 import { useStageStore } from '../../stage/store'
 import { useExposeStore } from '../../expose/store'
-import { Highlight } from '../../expose/components/Highlight'
 import { FocusScope } from '../../focus/FocusScope'
 import { useListSelection } from '../../ui/a11y/list-selection'
 import { ButtonBase } from '../../ui/ButtonBase'
-import { FilterChip } from '../../ui/FilterChip'
 import { GroupHead } from '../../ui/GroupHead'
-import { IconButton } from '../../ui/IconButton'
-import { Input } from '../../ui/Input'
-import { Menu, MenuItem } from '../../ui/Menu'
-import { Segmented } from '../../ui/Segmented'
 import type { SegmentedOption } from '../../ui/Segmented'
 import { notify } from '../../services/notify'
-import { ChevronLeft, ChevronRight, Search } from '../../components/icons'
 import { plural, useT } from '../../i18n'
-import type { MessageKey, TFn } from '../../i18n'
+import type { MessageKey } from '../../i18n'
 import {
   flatRows,
   itemRefOf,
   moreState,
-  originText,
   pageWindow,
   remoteSide,
   sectionsOf,
@@ -45,12 +37,10 @@ import {
   facetKeysOf,
   filterChipsOf,
   filtersOf,
-  isOtherSpace,
 } from '../filters'
 import type { SearchFilterState } from '../filters'
-import { continuationEnabled } from '../continuations'
 import type { SearchContinuation } from '../continuations'
-import { EMPTY_HISTORY, canGoBack, canGoForward, goBack, goForward, pushHistory } from '../history'
+import { EMPTY_HISTORY, canGoBack, goBack, goForward, pushHistory } from '../history'
 import type { SearchHistoryEntry } from '../history'
 import { resolveTargetRenderer } from '../targets'
 import type { SearchTargetContext } from '../targets'
@@ -68,6 +58,13 @@ import { useSessionCwd } from '../../data/files-source'
 import { currentSpaceId } from '../../workspace/current'
 import { DEFAULT_SPACE_ID } from '../../workspace/types'
 import { SearchPreview } from './SearchPreview'
+import { SearchFailedLine } from './SearchFailedLine'
+import { SearchFilterBar } from './SearchFilterBar'
+import { SearchFooter } from './SearchFooter'
+import { SearchHead } from './SearchHead'
+import { SearchRow as SearchRowView } from './SearchRow'
+import { SearchRowMenu } from './SearchRowMenu'
+import type { RowMenuState } from './SearchRowMenu'
 import s from './SearchPanel.module.css'
 
 /**
@@ -128,26 +125,10 @@ const NO_ROWS: readonly SearchRow[] = []
  */
 const SEARCH_DEBOUNCE_MS = 220
 
-/**
- * 徽上的字 —— **由这一行的目标渲染器答**,不是面板自己 `switch` 一遍。
- *
- * 两种产地照旧分得清清楚楚:`labelKey` 那种是界面文案(走字典),`text` 那种是
- * 从数据推出来的(扩展名之类,换语言不该变)。缺渲染器时是空徽 —— 那一行仍然
- * 画出来(标题行),只是没有徽可写:§4.3「绝不因为壳没跟上而把结果吞掉」。
+/*
+ * 徽上那个字怎么来的、右键菜单开在哪儿这两件事**搬出去了**(第 ⑥ 步拆件):
+ * `./SearchRow.tsx` 的 `badgeText`、`./SearchRowMenu.tsx` 的 `RowMenuState`。
  */
-function badgeText(row: SearchRow, t: TFn): string {
-  const renderer = resolveTargetRenderer(row.target.kind)
-  if (renderer === undefined) return ''
-  const badge = renderer.badge(row)
-  return 'labelKey' in badge ? t(badge.labelKey as MessageKey) : badge.text
-}
-
-/** 行的右键菜单开在哪儿(点锚,§ 浮层两档:点锚不跟滚)。 */
-interface RowMenuState {
-  row: SearchRow
-  x: number
-  y: number
-}
 
 export function SearchPanel() {
   const t = useT()
@@ -676,9 +657,6 @@ export function SearchPanel() {
     activate(row)
   }
 
-  const rowContinuations = (row: SearchRow): SearchContinuation[] =>
-    resolveTargetRenderer(row.target.kind)?.continuations?.(row) ?? []
-
   /* ── 画 ───────────────────────────────────────────────────────────────── */
 
   return (
@@ -695,23 +673,14 @@ export function SearchPanel() {
          * 输入框(落点声明),↑↓/⏎ 从它冒泡上来,由面板统一按当前 cursor 处理。
          * 面板内的 Tab / ⇧Tab 是**换搜索范围**,仍然是这一层的行内结构键(不进任何表)。 */
         <div {...scopeProps} className={s.panel} data-testid="search-panel" onKeyDown={onKeyDown}>
-          <div className={s.head}>
-            <Input
-              className={s.input}
-              value={query}
-              onValueChange={setQuery}
-              size="lg"
-              prefix={<Search className={s.icon} strokeWidth={1.75} aria-hidden="true" />}
-              placeholder={t('search.placeholder')}
-              aria-label={t('search.label')}
-            />
-            <Segmented
-              options={options}
-              value={scope}
-              onChange={setScope}
-              label={t('search.scopeLabel')}
-            />
-          </div>
+          <SearchHead
+            query={query}
+            onQueryChange={setQuery}
+            options={options}
+            scope={scope}
+            onScopeChange={setScope}
+            t={t}
+          />
 
           {/*
             * ── 片条(§9 第五条 + §4.6 结论 1)──────────────────────────────
@@ -719,78 +688,21 @@ export function SearchPanel() {
             * 一颗片都摆不出、也没有范围片、历史也是空的时候整条不画 ——
             * 一条恒空的横条只是在占地方。
             */}
-          {(chips.length > 0 || filters.scope !== undefined
-            || canGoBack(history) || canGoForward(history)) && (
-            <div className={s.filters} data-testid="search-filters">
-              <IconButton
-                icon={ChevronLeft}
-                size="xs"
-                label={t('search.historyBack')}
-                disabled={!canGoBack(history)}
-                onClick={() => stepHistory('back')}
-                testId="search-history-back"
-              />
-              <IconButton
-                icon={ChevronRight}
-                size="xs"
-                label={t('search.historyForward')}
-                disabled={!canGoForward(history)}
-                onClick={() => stepHistory('forward')}
-                testId="search-history-forward"
-              />
-              {/* 范围片(续搜)。它就是 `filters` 的可视化,× 去掉它。 */}
-              {filters.scope !== undefined && (
-                <FilterChip
-                  name="scope"
-                  label={filters.scope.label}
-                  on
-                  disabled={!available.has(filters.scope.key)}
-                  onRemove={() => setFilters(current => ({ ...current, scope: undefined }))}
-                  removeLabel={t('search.scopeChipRemove')}
-                />
-              )}
-              {chips.map(chip => (
-                <FilterChip
-                  key={chip.id}
-                  name={chip.id}
-                  label={t(chip.labelKey)}
-                  on={chip.on}
-                  {...(chip.options === undefined
-                    ? {
-                        onToggle: () => setFilters(current => (chip.id === 'archived'
-                          ? { ...current, archived: !current.archived }
-                          : { ...current, reasoning: !current.reasoning })),
-                      }
-                    : {
-                        value: chip.value,
-                        options: chip.options.map(option => ({
-                          value: option.value,
-                          label: t(option.labelKey),
-                        })),
-                        onSelect: (value: string) => setFilters(current => (
-                          chip.id === 'space'
-                            ? { ...current, space: value as SearchFilterState['space'] }
-                            : chip.id === 'role'
-                              ? { ...current, role: value as SearchFilterState['role'] }
-                              : { ...current, time: value as SearchFilterState['time'] }
-                        )),
-                      })}
-                />
-              ))}
-            </div>
-          )}
+          <SearchFilterBar
+            filters={filters}
+            chips={chips}
+            available={available}
+            history={history}
+            onFilters={setFilters}
+            onStepHistory={stepHistory}
+            t={t}
+          />
 
           {/*
             * 检索失败不许静默:它与「没搜到」是两件事,合成一句「无结果」等于把一次
-            * 失败说成一次空结果。这一行在**有命中时也画**(旧结果还在屏上,而这一发
-            * 确实塌了),后端原话原样跟在后面(律②:错误不抹掉旧答案)。
+            * 失败说成一次空结果。判据与原话都搬进了 `./SearchFailedLine.tsx`。
             */}
-          {answer.error !== undefined && (
-            <p className={s.failed}>
-              {t('search.queryFailed')}
-              <span className={s.failedDetail}>{answer.error}</span>
-            </p>
-          )}
+          <SearchFailedLine error={answer.error} t={t} />
 
           <div className={s.main}>
           <div className={s.body} ref={listRef} role="listbox" aria-label={t('search.resultsLabel')}>
@@ -838,68 +750,33 @@ export function SearchPanel() {
                       }
                     />
                   )}
-                  {section.rows.map((row, i) => {
-                    const index = section.offset + i
+                  {section.rows.map((row, k) => {
+                    const index = section.offset + k
                     return (
-                    /* 一条命中 = 结构件(role=option)→ `ui/ButtonBase` 只清 UA。 */
-                    <ButtonBase
-                      key={row.id}
-                      role="option"
-                      aria-selected={!onMore && index === cursor}
-                      data-row={index}
-                      data-target-kind={row.target.kind}
-                      data-capability={row.capability}
-                      data-picked={picked.includes(row.id) ? 'true' : undefined}
-                      className={[
-                        s.row,
-                        !onMore && index === cursor ? s.rowOn : '',
-                        picked.includes(row.id) ? s.rowPicked : '',
-                      ].filter(Boolean).join(' ')}
-                      onClick={(e) => onRowClick(row, index, e)}
-                      onContextMenu={(e) => {
-                        /*
-                         * **动作单产地 = 右键上下文菜单**(09-01 判例)。这一行的全部
-                         * 动作(打开 + 续搜那几条)收进同一张表,不散在行尾挂几颗钮。
-                         */
-                        e.preventDefault()
-                        selection.select(index)
-                        setOnMore(false)
-                        setRowMenu({ row, x: e.clientX, y: e.clientY })
-                      }}
-                    >
-                      {/*
-                        * 徽是**两层**:外层那颗胶囊 hug 内容(宽度由内容定,不写死),
-                        * 内层负责弯腰 —— text-overflow 只在块容器上生效,而胶囊为了居中
-                        * 是 inline-flex,直接挂在它身上的省略号永远不会出现。
-                        */}
-                      <span className={s.chip}>
-                        <span className={s.chipText}>{badgeText(row, t)}</span>
-                      </span>
-                      <span className={s.text}>
-                        {/* 高亮两条产地一条渲染:行自带 `highlight`(后端判的)就用那一份,
-                          * 没有就照当前的词自己切 —— 判据写在 Highlight 上。 */}
-                        <Highlight
-                          text={row.text}
-                          query={searching ? query : ''}
-                          {...(row.highlight ? { ranges: row.highlight } : {})}
-                        />
-                      </span>
-                      <span className={s.origin}>{originText(row.origin)}</span>
-                      {/*
-                        * 徽(§9「徽」那一条)。两颗,都只在**事实成立**时画:
-                        *  · 归档 —— `facets.archived` 为真。索引照建归档会话的文档,
-                        *    所以它们**搜得到**,但得让人一眼看出来。
-                        *  · 跨空间 —— `facets.spaceId` 与当前空间不同,**且此刻是
-                        *    「全部空间」那一档**(§9 原话):默认那一档里根本不会出现
-                        *    别的空间的行,画一颗恒不出现的徽等于骗自己。
-                        */}
-                      {row.facets?.archived === true && (
-                        <span className={s.tag} data-tag="archived">{t('search.badgeArchived')}</span>
-                      )}
-                      {allSpaces && isOtherSpace(row.facets?.spaceId, spaceId, DEFAULT_SPACE_ID) && (
-                        <span className={s.tag} data-tag="space">{t('search.badgeOtherSpace')}</span>
-                      )}
-                    </ButtonBase>
+                      /* 一条命中 = 结构件(role=option);画法整件在 `./SearchRow.tsx`。 */
+                      <SearchRowView
+                        key={row.id}
+                        row={row}
+                        index={index}
+                        selected={!onMore && index === cursor}
+                        picked={picked.includes(row.id)}
+                        allSpaces={allSpaces}
+                        spaceId={spaceId}
+                        defaultSpaceId={DEFAULT_SPACE_ID}
+                        query={searching ? query : ''}
+                        t={t}
+                        onClick={(e) => onRowClick(row, index, e)}
+                        onContextMenu={(e) => {
+                          /*
+                           * **动作单产地 = 右键上下文菜单**(09-01 判例)。这一行的全部
+                           * 动作(打开 + 续搜那几条)收进同一张表,不散在行尾挂几颗钮。
+                           */
+                          e.preventDefault()
+                          selection.select(index)
+                          setOnMore(false)
+                          setRowMenu({ row, x: e.clientX, y: e.clientY })
+                        }}
+                      />
                     )
                   })}
                 </Fragment>
@@ -952,34 +829,15 @@ export function SearchPanel() {
 
             {/*
               * ── 底部状态行(§9 第三条)────────────────────────────────────
-              * 四条读数,**各说各的一件事,一条都不合并**。每一条都只在事实成立时画。
+              * 四条读数,**各说各的一件事,一条都不合并**。整件在 `./SearchFooter.tsx`;
+              * 它今天仍然画在 listbox **里面** —— 搬出去是第 ⑦ 步(a11y 那一格)。
               */}
-            {answer.data?.total !== undefined && (
-              <p className={s.end} data-readout="total">
-                <span className={s.moreText}>
-                  {t('search.totalCount', { total: answer.data.total })}
-                </span>
-              </p>
-            )}
-            {(answer.data?.relaxed ?? 0) > 0 && (
-              <p className={s.end} data-readout="relaxed">
-                <span className={s.moreText}>{t('search.relaxed')}</span>
-              </p>
-            )}
-            {indexReadout !== undefined && indexReadout.pending > 0 && (
-              <p className={s.end} data-readout="index-pending">
-                <span className={s.moreText}>
-                  {t('search.indexPending', { pending: indexReadout.pending })}
-                </span>
-              </p>
-            )}
-            {indexReadout?.readerHost !== undefined && (
-              <p className={s.end} data-readout="index-reader">
-                <span className={s.moreText}>
-                  {t('search.indexReader', { host: indexReadout.readerHost })}
-                </span>
-              </p>
-            )}
+            <SearchFooter
+              total={answer.data?.total}
+              relaxed={answer.data?.relaxed}
+              indexReadout={indexReadout}
+              t={t}
+            />
           </div>
 
           {/*
@@ -995,28 +853,16 @@ export function SearchPanel() {
           />
           </div>
 
-          {/* 行的动作表(右键)。「打开」+ 这一类自报的续搜(§4.6)。 */}
-          {rowMenu !== null && (
-            <Menu
-              x={rowMenu.x}
-              y={rowMenu.y}
-              label={t('search.rowActions')}
-              onClose={() => setRowMenu(null)}
-            >
-              <MenuItem onClick={() => { setRowMenu(null); activate(rowMenu.row) }}>
-                {t('search.rowOpen')}
-              </MenuItem>
-              {rowContinuations(rowMenu.row).map(continuation => (
-                <MenuItem
-                  key={`${continuation.kind}:${continuation.labelKey}`}
-                  disabled={!continuationEnabled(continuation, available)}
-                  onClick={() => { setRowMenu(null); runContinuation(continuation) }}
-                >
-                  {t(continuation.labelKey)}
-                </MenuItem>
-              ))}
-            </Menu>
-          )}
+          {/* 行的动作表(右键)。「打开」+ 这一类自报的续搜(§4.6);整件在
+            * `./SearchRowMenu.tsx`。 */}
+          <SearchRowMenu
+            state={rowMenu}
+            available={available}
+            t={t}
+            onClose={() => setRowMenu(null)}
+            onOpen={activate}
+            onContinuation={runContinuation}
+          />
         </div>
       )}
     </FocusScope>

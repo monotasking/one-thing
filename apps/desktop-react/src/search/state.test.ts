@@ -151,6 +151,37 @@ describe('reconcile(唯一那条落位规则)', () => {
   })
 })
 
+/* ── 滚动记忆 ──────────────────────────────────────────────────────────── */
+
+describe('滚动记忆(第 ⑤ 步留账,第 ⑥ 步补上)', () => {
+  it('按键各记各的;没记过的键读 0(不猜)', () => {
+    const after = T.setScroll(T.setScroll(state(), 'k1', 120), 'k2', 40)
+    expect(T.scrollOf(after, 'k1')).toBe(120)
+    expect(T.scrollOf(after, 'k2')).toBe(40)
+    expect(T.scrollOf(after, 'k3')).toBe(0)
+  })
+
+  it('同值恒等 —— 滚动是高频事件,不许每一像素换一次引用', () => {
+    const before = T.setScroll(state(), 'k1', 120)
+    expect(T.setScroll(before, 'k1', 120)).toBe(before)
+  })
+
+  it('负数(橡皮筋回弹的中间值)记成 0', () => {
+    expect(T.scrollOf(T.setScroll(state(), 'k1', -30), 'k1')).toBe(0)
+  })
+
+  it('把 0 写进一把从没记过的键也是恒等 —— 不为每把键长出一格空账', () => {
+    const before = state()
+    expect(T.setScroll(before, 'k1', 0)).toBe(before)
+  })
+
+  it('**只动这一格** —— 词 / 档 / 选中一个字不改', () => {
+    const before = state({ query: 'jira', selection: { id: 'row:a', by: 'keyboard', at: 2 } })
+    const after = T.setScroll(before, 'k1', 9)
+    expect({ ...after, scrollByKey: null }).toEqual({ ...before, scrollByKey: null })
+  })
+})
+
 /* ── 历史 ──────────────────────────────────────────────────────────────── */
 
 describe('历史', () => {
