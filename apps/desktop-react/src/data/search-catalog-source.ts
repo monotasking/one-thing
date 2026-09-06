@@ -98,6 +98,18 @@ export interface CapabilitySearchAnswer {
   /** 放宽到第几级才有的命中(§6.2);0 / 缺席 = 严格档就中了。 */
   relaxed?: number
   /**
+   * **索引在干什么**(检索面终稿 §4:「查询响应带 `index`」)。
+   *
+   * 后端每一次查询回执里本来就有这一格(`SearchResponse.index`),从前这条 fetcher
+   * 把它丢了 —— 于是「索引更新中(剩 n)」那行读数只能靠挂载时问一次
+   * `search.status`,查询回来的**更新的**那一份反而看不见。带回来不改任何行为
+   * (今天没有读者;页脚读数换产地是第 ⑦ 步的事),它只是不再扔掉已经到手的事实。
+   *
+   * 多能力那一形(浏览态 fanout)这一格**缺席**:那是 n 发回执,选哪一发的都是
+   * 编出来的答案 —— 新数据层(`search-listing-source.ts`)也照这条办。
+   */
+  index?: SearchResponse['index']
+  /**
    * **这一份是空词的浏览态**(S4b 修)—— 也就是「所有」档在零词元时问了
    * 声明 `browse` 的那几个能力,一组一发(见下面的 fetcher)。
    *
@@ -211,6 +223,7 @@ export const capabilitySearchQuery = createQueryFamily<CapabilitySearchAnswer>(
       ...(response.total === undefined ? {} : { total: response.total }),
       ...(response.cursor === undefined ? {} : { cursor: response.cursor }),
       ...(response.relaxed === undefined ? {} : { relaxed: response.relaxed }),
+      ...(response.index === undefined ? {} : { index: response.index }),
     }
   },
 )
