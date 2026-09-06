@@ -2,6 +2,11 @@
 
 > 起因:09-05 用户看真机检索面连报「割裂」「组头多余」「零命中占行」「Create prompt 冒充结果」「预览标题两遍」「Load more 跳回顶部」,并斥「你明明知道应该什么样,还得我一个问题一个问题说」「设计时就说了组件的设计模式、生命周期、交互、状态,你注意了个屁」。两条都成立:S4 两批没交方案 §9 要求的三张状态表,也没人把整面的每个状态对着屏过一遍。
 > 本稿是补交:整面 139 处问题(七个镜头独立找、按相似度归并、逐条反驳核实)全部收进一份规格,骨架不换(顶栏 / 输入框 / 档位条 / 过滤片行 / 左列表右预览),状态机、组件树、三张状态表、分页设计在附录 B 逐条落到 file:line。取舍全部由编排者定,不再列拍点问用户;每条取舍写在 §6,不同意就改那一行。
+> **落地记录 2026-09-06**:十步全部入库(§7 十步表逐行带 sha:①`ae9cbcde` ②`43fcf0a2` ③`054e70a3`
+> ④`e3ae05c1` ⑤`36b1d554` ⑥`10f97cc9` ⑦⑧`e6986e06` ⑨⑩本批)。§8 落差总账 35 行全部已落;
+> §9 的拍点全部生效(三处落地时改了口,逐条在末列),还开着的九条搬进 §9 末尾的「本批留账」。
+> 附录 B 的三张状态表已按落地改成事实 —— 它现在描述的是屏幕上真有的东西,不是计划。
+>
 > 落点:壳 `apps/desktop-react/src/search/**`、`src/data/search-listing-source.ts`(新)、`src/ui/scroll-memory.ts`(新)、`src/ui/FilterChip`、`src/expose/components/Highlight`;契约 `packages/shared/ipc/search.ts` 只加;后端 `runtime/src/search/{service,capabilities/*}.ts`、`core/search/pipeline/snippet.ts`。检索方案正本 `docs/design/search-index-2026-09.md` §7.2 / §9 / §4.5 ⑤ 三处旧裁定由本稿推翻(§7)。
 
 ## 0. 一页结论
@@ -282,7 +287,7 @@
 
 ```
 SearchPanel                         骨架(≤120 行,零业务状态)
-├─ SearchBindings                   渲染 null 的叶:去抖取数 / placed 上升沿 activate / 收回 Dock 时 reset
+├─ SearchBindings                   渲染 null 的叶:去抖取数 / placed 上升沿 activate / 卸载时若形态已回 dock 则 reset
 ├─ SearchHead                       ui/Input + ui/Segmented
 ├─ SearchFilterBar                  ui/IconButton ×2(历史)+ ui/FilterChip
 ├─ SearchFailedLine                 整发塌了那一行(列表上方,滚动容器外)
@@ -300,11 +305,11 @@ SearchPanel                         骨架(≤120 行,零业务状态)
 | 组件 / 模块 | 目录 | 拥有的状态 | 只消费什么 | 对外暴露 | 依据 |
 | --- | --- | --- | --- | --- | --- |
 | `SearchPanel` | `src/search/components/SearchPanel.tsx` | `panelRef` 一个 ref,**零业务状态** | `FocusScope`(`scope="search"`、`restingTarget`=输入框、`keyHandlers` 来自 `useSearchKeys`、**不声明 `onEscape`**、**不用 `activateOnMount`**);`useSearchKeys` 交出的 `onKeyDown` 挂作用域根(事件委托,今天 `SearchPanel.tsx:680-684` 的判词保留) | 默认导出给 `src/content/index.tsx:44` 那张表 | 三件声明(`CLAUDE.md` 验收轴 2);`focus/scopes.ts:128` 的 `search` 是 `region`,`keys` 正本在 `:78-91` |
-| `SearchBindings` | `src/search/components/SearchBindings.tsx` | 无(三条副作用) | `useStageStore` 的 `formOf(st,'search')`、`useFocusScope().activate`、`usePanelVisibility().visible`、store 的 `subjectKey / committedKey` | 无 | ①`placed` 由假翻真且 `live` → `activate('placement')`,**逐字照** `src/expose/components/Overview.tsx:39-70` 的 `AutoFocusSearch`(指针点 Dock 瓦开出也送焦点——今天 `activateOnMount` 无条件送,行为不变;`focus-follow.ts:25` 那句「指针留瓦上」说的是 focus-follow 自己不跟,把这一格留给面板);②去抖取数(见 §5);③`placed` 由真翻假 → `store.reset()`(默认保旧,拍点 G) |
+| `SearchBindings` | `src/search/components/SearchBindings.tsx` | 无(三条副作用) | `useStageStore` 的 `formOf(st,'search')`、`useFocusScope().activate`、`usePanelVisibility().visible`、store 的 `subjectKey / committedKey` | 无 | ①`placed` 由假翻真且 `live` → `activate('placement')`,**逐字照** `src/expose/components/Overview.tsx:39-70` 的 `AutoFocusSearch`(指针点 Dock 瓦开出也送焦点——今天 `activateOnMount` 无条件送,行为不变;`focus-follow.ts:25` 那句「指针留瓦上」说的是 focus-follow 自己不跟,把这一格留给面板);②去抖取数(见 §5);③**卸载时**现问一次形态,是 `dock` 才 `store.reset()`(默认保旧,拍点 G)。**落地改口**:原写「`placed` 由真翻假」,而那条下降沿在组件里**等不到** —— 面与形态同生共死,收回 Dock 那一刻它当场从树上摘掉,下一次渲染不会发生(⑦ 真机门抓到:`gate:search` 第 5 步进会话再开面板还是上一个词)。换宿主也是卸载,所以判据只能是「此刻它还在不在某棵树里」 |
 | `SearchHead` | `src/search/components/SearchHead.tsx` | 无 | `ui/Input`(`data-search-input`)、`ui/Segmented`(`options = tabsOf(manifests)`,`capabilities.ts:54-60`);store 的 `query / scope` | 无 | `Segmented` 是封闭集合走数据表(`CLAUDE.md` 库件 API 两种风格);点段后焦点留在段上,**不**调 `activate()`(`FocusScope.tsx:96`「指针操作不要调」;两路评审都点名) |
 | `SearchFilterBar` | `src/search/components/SearchFilterBar.tsx` | 无 | `ui/IconButton`(⌘[ ⌘] 两钮,`disabled={!canGoBack}` 禁灰不消失,今天 `SearchPanel.tsx:710-726`)、`ui/FilterChip`(范围片 `onRemove`、两态 `onToggle`、多值 `options/onSelect`);store 的 `filters / history` | 无 | 今天 `SearchPanel.tsx:700-770` 搬出 |
 | `SearchFailedLine` | `src/search/components/SearchFailedLine.tsx` | 无 | `held.error` | `data-readout="failed"` | 今天 `SearchPanel.tsx:775-780`;**保留后端原话并陈**(用户裁定只说预览栏不露原话;列表这一行是既有行为,改它是拍点 A′) |
-| `SearchList` | `src/search/components/SearchList.tsx` | `listRef`;右键菜单锚点 `rowMenu`(**组件 `useState`**,寿命 = 这份 DOM) | `useSearchListing()`、store 的 `selection / picked`、`useScrollMemory(listRef, held.shownKey, {read, write})`、items 注册表 | 滚动容器 `data-testid="search-list"`;里面 `role="listbox"` 与 `SearchFooter` 是兄弟 | listbox 只装 option/separator(APG;今天 `SearchPanel.tsx:783-970` 把 `<p>` 读数塞在 listbox 里是既有 a11y 债,顺手修) |
+| `SearchList` | `src/search/components/SearchList.tsx` | `listRef`(**落地改口**:右键菜单锚点 `rowMenu` 留在 `SearchPanel` 那一格 `useState` 里 —— 开菜单要 `rowModelOf` / `available` / `runContinuation` 三样,它们都在面板手上;搬进列表等于把三条口再穿一遍) | `useSearchListing()`、store 的 `selection / picked`、`useScrollMemory(listRef, held.shownKey, {read, write})`、items 注册表 | 滚动容器 `data-testid="search-list"`;里面 `role="listbox"` 与 `SearchFooter` 是兄弟 | listbox 只装 option/separator(APG;今天 `SearchPanel.tsx:783-970` 把 `<p>` 读数塞在 listbox 里是既有 a11y 债,顺手修) |
 | `SearchBlockRows` | `src/search/components/SearchBlockRows.tsx` | 无 | 一块的 `rows` + 该块的 `more` 项;**不画组头**;`rows.length===0 && error===undefined` 的块整块不渲染 | 无 | 用户裁定「全部档不画组头、零命中不占行」 |
 | `SearchRow`(memo) | `src/search/items/row.tsx` | 无 | `ui/ButtonBase`(结构件③)、`expose/components/Highlight`、`resolveTargetRenderer(kind).badge`(`targets/registry.ts:56`) | `role="option"` `data-row=<index>` `data-item-id=<id>` `data-target-kind` `data-capability` `data-tag` | `gate-search-messages.mjs:345` 按 `data-row` 取件,`:435` 按 `data-row="<at>"` 点行——保留下标属性(只是属性,不影响 key = id) |
 | `SearchMoreItem` | `src/search/items/more.tsx` | 无 | `ui/ButtonBase`;`moreStateOf(block, pending, inflight)`(`paging.ts`);`useAsyncPending(searchLoadMore, \`${key}#${cap}\`)`(`kernel/react.ts:37-42`) | `role="option"` `data-row="more"` `data-block=<cap>` `data-more-state` `aria-busy` | 加载中**不 `disabled`**(`gate-a11y.mjs:534/560/568` 会把 disabled 项剔出可达集;今天 `SearchPanel.tsx:334` 「加载中也留在轮转序列里」的判例保留);文字反馈,**无 Spinner**(它是 item,不是按钮) |
@@ -354,7 +359,7 @@ SearchPanel                         骨架(≤120 行,零业务状态)
 | **叶内换序 / 二合一 / 拆开**(holder 同节点) | 不动 | DOM 没动,浏览器保住 `scrollTop`;`useScrollMemory` 不触发 | focus-follow 处理 | 不动 |
 | **架子收起 / 叶内切到别的 tab / 被全屏盖住**(keep-alive) | 不动;`SearchBindings` 的去抖 effect 依赖 `visible`(`content/visibility.ts:10`,「在不在屏幕上」那一格),翻假时 cleanup 清计时器、`committedKey` 不换;翻页 mutation 若在飞照常 `settle` 进格 | DOM 留着,`content-visibility: hidden` 保住 `scrollTop`;`selection` 不动;选中滚入 effect 因 `selection` 没变不跑 | 层 `inert`,树在这里截断,Esc 候选都轮不到它(`PaneLeaf.tsx:396-401`) | 不动 |
 | **重开(切回 tab / 展开架子)** | `visible` 翻真那一帧若 `committedKey !== subjectKey` 当场 `ensure`(补发被清掉的那一发);索引推送若在隐藏期间把格标了脏且有订阅者,kernel 已后台补拉(`query.ts:288-293`),旧行未曾清空 | 原样(节点没动过) | 宿主 `activate()`(focus-follow 架子分支) | 不动 |
-| **收回 Dock(卸载)** | 格留着 = 缓存;`resetSearchListing()` 与 HMR dispose 是仅有两口退役 | layout cleanup 写回 `scrollByKey`;随后 `SearchBindings` 看到 `placed` 翻假 → `store.reset()`(默认档) | 树按 `returnTo` 结构归还(响应链规则 5),面板零焦点代码 | 默认档随 `reset()` 清空(与今天 `SearchPanel.tsx:104`「卸载本地状态全没了」逐字相同);拍点 G |
+| **收回 Dock(卸载)** | 格留着 = 缓存;`resetSearchListing()` 与 HMR dispose 是仅有两口退役 | layout cleanup 写回 `scrollByKey`;随后 `SearchBindings` 的**卸载 cleanup** 现问一次形态,是 `dock` 才 `store.reset()`(默认档;**落地改口**,见 §1 那一行的判词:下降沿等不到) | 树按 `returnTo` 结构归还(响应链规则 5),面板零焦点代码 | 默认档随 `reset()` 清空(与今天 `SearchPanel.tsx:104`「卸载本地状态全没了」逐字相同);拍点 G |
 | **会话切换**(`useSessionCwd()` 变 → 只有摆得出 `dir` facet 的档键才变,`filters.ts` `filtersOf`) | 键变 → 新格;`useQueryHeld` 把上一把键的行留在屏上直到新格落地 | `resetForListing(key)`:`activeId=null`(落地后 `reconcile` 到首项)、`picked=[]`;`scrollByKey` 的 key 换了 → 新格 ready 那一帧 `scrollTop=0` | 不动 | **不入栈**(不是用户在这块面上走的一步) |
 | **空间切换**(`currentSpaceId()` 变且 `filters.space==='current'`) | 同上 | 同上 | 不动 | 不入栈 |
 | **能力注销 / 注册**(自述重拉) | `resolveTab`(`capabilities.ts:147-149`)把停在被注销档上的 `scope` 退回 `all` → 键变 | 同「键变」 | 不动 | 不入栈 |
@@ -370,7 +375,7 @@ SearchPanel                         骨架(≤120 行,零业务状态)
 | 状态 | 判据(全是可读字段) | 列表 | 块尾 Load more 项 | 预览栏 | 页脚 | 旧内容留不留 |
 | --- | --- | --- | --- | --- | --- | --- |
 | idle(自述未回) | `capabilities.phase==='initial'` | 空,不画骨架 | 不画 | 「选一条看看」 | 不画 | 无旧内容 |
-| 浏览态 | `query.trim()===''` ∧ `scope===all` ∧ `browseCapabilitiesOf(manifests).length>0`(`capabilities.ts:97-103`)∧ `held.phase==='ready'` | 各 browse 能力一块,块相邻不混排,**无组头**;与查询态同一只 `SearchList` | 每块各自一条(`cursor` 在才画) | 活动行 inline 预览 | 取尽后 `end` 读数「共 N 条 · 已全部显示」(拍点 J,默认保留) | — |
+| 浏览态 | `query.trim()===''` ∧ `scope===all` ∧ `browseCapabilitiesOf(manifests).length>0`(`capabilities.ts:97-103`)∧ `held.phase==='ready'` | 各 browse 能力一块,块相邻不混排,**无组头**;与查询态同一只 `SearchList` | 每块各自一条(`cursor` 在才画) | 活动行 inline 预览 | 取尽后块尾 `end` 读数「共 N 条」(**落地改口**:拍点 J 的「· 已全部显示」那半句删了 —— 「共 N 条」已经把话说完,后半句是同一件事说两遍;样例为准) | — |
 | 打字去抖中 | `store.query.trim() !== parse(committedKey).query`(去抖窗口未到,订阅键未换) | **一格不动**(订的还是旧键) | 不动 | 不动 | 不动 | 留(根本没换) |
 | 已提交、未起飞 | `committedKey` 已换 ∧ 新格 `phase==='initial'` ∧ `!inflight`(`useSearchListing` 建格与 `ensure` 之间的一帧) | 同下一行 | 同下一行 | 同下一行 | 同下一行 | 留(`stale`) |
 | 查询在飞(首发,无任何旧答案) | `held.data===undefined` ∧ `!held.stale` ∧ (`inflight` ∨ 未起飞) | **空**,不画「无结果」(今天 `SearchPanel.tsx:784` 在首发期间就画「无结果」,是谎话——修正,报备) | 不画 | 「选一条看看」 | 一行「搜索中…」(文字,`data-readout="searching"`) | 无 |
@@ -389,7 +394,8 @@ SearchPanel                         骨架(≤120 行,零业务状态)
 | 已放宽 | `held.data.relaxed>0` | 行照画 | 照旧 | 照旧 | 「已放宽匹配」 | — |
 | 预览 loading | `preview.data===undefined ∧ preview.error===undefined ∧ !inline ∧ useDelayedFlag(pending, SKELETON_DELAY_MS)` | 不受影响 | 不受影响 | 150ms 内什么都不换,之后骨架 | 不受影响 | 上一条在 150ms 内留着 |
 | 预览 ready | `payload!==undefined ∧ renderer!==undefined` | — | — | 檐画一次 `payload.title`(`Highlight`),`Body` 不画标题(测试钉死) | — | — |
-| 预览无 | 成功但 `preview===undefined` | — | — | 「这一条没有预览」 | — | — |
+| 预览无 | **自述里明说没有 `preview` 那一格**(零请求)∨ 发出去了但成功而 `preview===undefined` | — | — | 行的放大版(标题 + 出处),零解释句 | — | — |
+| | **落地改口**:判据分成两条,而且「查不到那份自述」**不算明说** —— 全部档的行归在 `all` 名下而 `all` 不是一个能力,拿「我没查到」当「它没有」会让全部档整档丢预览(⑦ 施工时真撞上过) | | | | | |
 | 预览缺渲染器 | `resolvePreviewRenderer(kind)===undefined`(`preview/registry.ts:72-79`) | — | — | Row 放大版 + dev warn 一次 | — | — |
 | 预览 error | `answer.data?.error ?? answer.error` | 不受影响 | 不受影响 | 字典句「预览不可用」;原话进 `getLogger('search.preview').warn` + `data-preview-error` | — | 列表不受影响 |
 | 预览动作在飞 | `invokeMutation.isPending(key)` | 不动 | 不动 | 那颗 `ui/AsyncButton` 自己 disabled + 换字;`danger` 先 `ui/Dialog` | 不动 | — |
@@ -403,7 +409,7 @@ SearchPanel                         骨架(≤120 行,零业务状态)
 
 | 动作 | 前置 | 后置(转移) | 屏上变化 | 焦点 | 滚动 | 历史 |
 | --- | --- | --- | --- | --- | --- | --- |
-| 打字 | 任意 | `setQuery`;220ms 后 `commitKey(subjectKey)` → `ensure` | 去抖内旧行原样;在飞期间旧行 `data-stale`;落地后按新格重画(行 key = id,共同行不重挂) | 输入框 | 不动;新格落地那一帧 `scrollTop=0`(`useScrollMemory` 的 key = `held.shownKey` 换了——**不是**请求键换了) | 否 |
+| 打字 | 任意 | `setQuery`;220ms 后 `commitKey(subjectKey)` → `ensure` | 去抖内旧行原样;在飞期间旧行 `data-stale`;落地后按新格重画(行 key = id,共同行不重挂) | 输入框 | 不动;新格落地那一帧 `scrollTop=0`(`useScrollMemory` 的 key = `held.shownKey` 换了——**不是**请求键换了)。**落地一条血的教训**:`shownKey` 是 kernel 交出来的**格全名**(带族名前缀 `search.listing:…`),它只配当身份串;拿它去 `searchListingQuery.get()` 会建出一格崭新的空格,`patch` 打在那上面等于什么都没发生(⑦ 撞到过,读数是「APPEND prev=undefined」)。翻页 / 重拉要的是**族里那把键**,hook 交的是 `listing.key`(= `store.committedKey`) | 否 |
 | 清空(⌫ 到空 / ×) | `query!==''` | `setQuery('')` → 浏览态那把键(命中则零请求) | 换成浏览态 | 输入框 | 落地归零 | 否 |
 | 换档(点 Segmented) | 自述已回 | `setScope` → 键变(确定的一步,不等去抖);`resetForListing` | 档位换;旧行留到新格 ready | **留在那一段上**(`Segmented.tsx:80-101` roving radio,APG 既定;不调 `activate()`,保旧) | 落地归零 | 否(保旧) |
 | Tab / ⇧Tab | 焦点在面内 | `setScope(nextTab(tabs, scope, ±1))`(`capabilities.ts:135-141`),`preventDefault` | 同换档 | 输入框(`SearchPanel.tsx:594-598` 判例,Tab 是换范围) | 落地归零 | 否 |
@@ -422,7 +428,7 @@ SearchPanel                         骨架(≤120 行,零业务状态)
 | ⌘[ / ⌘] | `canGoBack / canGoForward` | `keyHandlers['history.back'/'history.forward']`(`scopes.ts:78-91` 正本)→ `stepHistory` → `applyEntry`:四格还原,`selection = { id: entry.activeId, by: 'history' }`(`history.ts:34` 的 `selected: number` 改 `activeId: string \| null`) | 四格还原;格命中则零请求 | 输入框 | `by:'history'` → `nearest` 滚到还原项 | 挪指针 |
 | ⇧点 / ⌘点行 | 行在 | `setActive(id,'pointer')` + `pick(id)` toggle(今天 `:656-660`,拍点 C 保旧) | `data-picked`;预览基数按 `picked.length` 与 kind 切 single / compare / batch | 输入框 | `nearest` | 否 |
 | 素点行 | 行在 | `setActive(id,'pointer')` + `clearPicks` + activate | 同 ⏎ row | 目标接管 | 面收回 | 否 |
-| 右键行 | 行在 | `setActive(id,'pointer')`;`SearchList` 的 `rowMenu={row,x,y}` | `ui/Menu` 点锚开出(不跟滚) | `menu` modal 接管;关后归还输入框 | `nearest` | 否 |
+| 右键行 | 行在 | `setActive(id,'pointer')`;**`SearchPanel` 的** `rowMenu={row,x,y}`(落地改口,见 §1) | `ui/Menu` 点锚开出(不跟滚) | `menu` modal 接管;关后归还输入框 | `nearest` | 否 |
 | 点预览动作 | `payload.actions` 非空 | `invoke` mutation;`danger` 先 `ui/Dialog` | `AsyncButton` 自己变字 + disabled;成功 `previewQuery.invalidate()` | Dialog modal;关后归还 | 无 | 否 |
 | 鼠标掠过行 | — | **零转移**(`:hover` 画 `--st-hover`) | — | 不动 | 无 | 否 |
 | 点组头 | — | **无此动作**(无组头) | — | — | — | — |
@@ -495,7 +501,7 @@ export function moreStateOf(b: SearchBlock, pending: boolean, inflight: boolean)
 | `more` | 「加载更多」/ total 已知「已显示 a / 共 b」 | item,在 | 是 |
 | `loading` | 「加载中…」+ `aria-busy` | item,**在**(免得焦点途中蒸发,`SearchPanel.tsx:334`) | 按下无效,不 `disabled` |
 | `error` | 「没加载出来 · 再试一次」 | item,在 | 是(同一 cursor) |
-| `end` | 「共 N 条 · 已全部显示」(拍点 J,默认保留,`gate-search.mjs:500-503` 照过) | `role="presentation"` 读数,不在 | — |
+| `end` | 「共 N 条」(拍点 J 落地时去掉后半句;`gate-search.mjs` 照过 —— 门读的是数,不是那半句话) | `role="presentation"` 读数,不在 | — |
 | `none` | 不画 | 不在;`reconcile` 把停在 `more:<cap>` 上的活动位挪到本次追加首行 | — |
 
 给不出 cursor 的能力**按取尽画**;要浏览态可翻页是让 `chats` 的 `recentSessions`(`capabilities/sessions.ts:118-140`)经 `paginate` 产位置 cursor——填的是既有 `SearchResponse.cursor`,不是契约新格。`transitions.ts:244-248` 「回来的 < 要的」那条退路删除。
@@ -564,7 +570,7 @@ export interface HeldSnapshot<T> extends QuerySnapshot<T> { readonly stale: bool
 export function useQueryHeld<T>(query: Query<T>): HeldSnapshot<T>
 ```
 
-语义:`useQuery(query)` 原样透传 `phase / inflight / error`(**`phase` 如实**,不造第二种语义);当 `query.key` 换了且新格 `data===undefined && error===undefined`,`data` 是上一把键最后一次 ready 的值、`stale:true`、`shownKey` = 上一把键;新格落地(成或败)即放手。骨架判据改为 `phase==='initial' && !stale`。实现用「渲染期派生 state」而不是 `useRef`(并发渲染下 ref 不保证),单读者(`useSearchListing`);测试进新开的 `src/data/kernel/react.test.tsx`(`laws.test.ts:1-25` 是零 React 的 deferred 剧本,hook 用例不该混进去),正反两条:`useQueryHeld` 换键在飞 `data` 是旧值 ∧ `stale`;裸 `useQuery` 同一帧读到 `undefined`。
+语义:`useQuery(query)` 原样透传 `phase / inflight / error`(**`phase` 如实**,不造第二种语义);当 `query.key` 换了且新格 `data===undefined && error===undefined`,`data` 是上一把键最后一次 ready 的值、`stale:true`、`shownKey` = 上一把键;新格**有了自己的 `data`** 即放手。**落地改口**:原写「成或败即放手」,而 `error` 那一支不放手 —— 与律②同格里「错误与旧答案共存」逐字一致(错误不抹掉旧答案,如实并陈),放手会让一次失败把屏幕清空。骨架判据改为 `phase==='initial' && !stale`。实现用「渲染期派生 state」而不是 `useRef`(并发渲染下 ref 不保证),单读者(`useSearchListing`);测试进新开的 `src/data/kernel/react.test.tsx`(`laws.test.ts:1-25` 是零 React 的 deferred 剧本,hook 用例不该混进去),正反两条:`useQueryHeld` 换键在飞 `data` 是旧值 ∧ `stale`;裸 `useQuery` 同一帧读到 `undefined`。
 
 ### 组件订阅面
 
@@ -578,98 +584,119 @@ export function useQueryHeld<T>(query: Query<T>): HeldSnapshot<T>
 
 | 步 | 做什么 | 改哪些测试 / 门 | 为什么绿 | 反证 |
 | --- | --- | --- | --- | --- |
-| 1 契约 | `groups[].cursor?`、`SearchResult.role?`;`allResponse` 投影 cursor;`prompts.ts` 标 `action` 且不计数;`sessions.ts` 浏览支产 cursor;`search-port.ts` 透传 cursor;`gate:search-index` 第九步 | runtime `search/__tests__` 加「all 每组带 cursor」「all 组 cursor 回传单类不重不漏」;`golden-snapshot` 命中集不变 | 全是可选字段,旧壳不读 | 删投影那一行 → 第九步红 |
-| 2 kernel | `FetchContext.previous`;`useQueryHeld` + `react.test.tsx` | 新增;`laws.test.ts` 不动 | 纯新增 | `useQueryHeld` 换回 `useQuery` → 律②′ 红 |
-| 3 基础件 | `src/ui/scroll-memory.ts` + `ui/__tests__/scroll-memory.test.tsx`(挂载还原 / key 换归零 / layout cleanup 写回);`useViewerScroll.ts:64-76` 改消费 | `ui:consume` 基线不增;查看器既有用例照跑 | 等价替换 | cleanup 改 `useEffect` → 写回 0 那条红 |
-| 4 数据层 | `src/data/search-listing-source.ts`(键 / 格 / fetcher+回放 / `searchLoadMore` / 五口 / reset / HMR);旧族原样留 | 新 `search-listing-source.test.ts`:键无 limit、追加去重、cursor 幂等、零新增取尽、`pageError` 留行、`invalidate` 回放不缩行、`equals` 不换引用、飞行期 refetch 落地后旧 cursor 的 settle 被丢弃 | 旧路未动 | 去掉闸① → 双发用例红 |
-| 5 纯模型 | `state.ts / sequence.ts / paging.ts / keys.ts / items/registry.ts` + 三个 item 模块;`history.ts` `selected → activeId` | 各自单测;`transitions.test.ts:88-221` 五个 describe 移到 `paging.test.ts` / `sequence.test.ts`;`history.test.ts` 改一格 | 无消费者 | `reconcile` 改 tick → 「不滚」用例红 |
-| 6 store + 拆件(等价) | `search/store.ts`(照 `expose/store.ts` 体例 + HMR);从 `SearchPanel.tsx` 抽 Head / FilterBar / FailedLine / Row / RowMenu / Footer,props 原样,**仍吃旧数据路** | `SearchPanel.test.tsx` 42 例不改(按 role / data-row / testid 认);逐态截图对照(rest/hover/focus/pending/empty/error/超量) | 像素零差 | — |
-| 7 换心 | `SearchPanel` 改吃 store + `useSearchListing` + `useSearchKeys`;`SearchBindings` 替 `activateOnMount`;`SearchList` / `SearchBlockRows` / `SearchMoreItem` 接上;删 `page/cursor/onMore/picked/history/query/scope/filters` 八格 state;删 `transitions.ts` 五函数;页脚移出 listbox;`SearchPreview` 标题一次 + 不露原话 + `useDelayedFlag` | `SearchPanel.test.tsx`:删 `pageWindow`(`:30/:66/:695`),`seed` 按三元键;`:208-218` 翻页例改「按 more 后首行同节点、`scrollTop` 不变、新行追加块尾」;`:482-495` 历史按 `activeId`;`preview.test.tsx` 加「Body 不含 title」「error 不含原话」;`gate-search.mjs:487-503` 加三条断言(同节点 / `scrollTop` 差 0 / `activeElement` 输入框)+「全部档有词点某块 more 只该块增长」;`gate:focus` 场景 10 与「⌘P 开面焦点进输入框」必跑 | 唯一改行为的一步;门里的新断言就是反证 | 滚动 effect 依赖改回 `[activeId, rows]` → `scrollTop` 断言红 |
-| 8 裁定落地 | 删组头(GroupHead 退出、五个 CSS 类删)、零命中不占行、动作行分隔线下、「只看这一类」进右键菜单、索引 `error` 档上屏一句 | `SearchPanel.test.tsx:263-333` 组头四例改「无组头、块相邻、零命中不占行、动作行不计数」;`gate-search-messages.mjs:361-368` `data-group*` 改读 `[data-readout="block-errors"]`;`search-css.test.ts` 加「无 `.groupBand`」;`gate:a11y` 扫描屏加 `[data-testid=search-panel]`(今天不扫,补账) | 每条是用户 09-05 裁定,改断言不改产品 | — |
-| 9 删旧 | 删 `search-catalog-source.ts:85-320` 查询族;i18n 删 `search.viewAll`(`zh.ts:425` / `en.ts:364` 成对);`squeeze-gate` 基线若有 `.groupBand` 行则减 | `i18n.test` 成对;全门 | 无消费者 | — |
-| 10 文档 | `docs/design/search-index-2026-09.md` §9 改写、§12 加三条「拆掉的旧裁定」(§7.2 不分页 / §9 组头带 total 与查看全部 / §4.5 ⑤ 预览原话);三张表落 `apps/desktop-react/docs/search-panel-2026-09.md`;`SearchPanel.tsx:94-119` 那张与代码不符的表删,只留指针 | — | 纯文档 | — |
+| 1 契约 | `groups[].cursor?`、`SearchResult.role?`;`allResponse` 投影 cursor;`prompts.ts` 标 `action` 且不计数;`sessions.ts` 浏览支产 cursor;`search-port.ts` 透传 cursor;`gate:search-index` 第九步 | runtime `search/__tests__` 加「all 每组带 cursor」「all 组 cursor 回传单类不重不漏」;`golden-snapshot` 命中集不变 | 全是可选字段,旧壳不读 | 删投影那一行 → 第九步红 落地 `ae9cbcde` |
+| 2 kernel | `FetchContext.previous`;`useQueryHeld` + `react.test.tsx` | 新增;`laws.test.ts` 不动 | 纯新增 | `useQueryHeld` 换回 `useQuery` → 律②′ 红 落地 `43fcf0a2` |
+| 3 基础件 | `src/ui/scroll-memory.ts` + `ui/__tests__/scroll-memory.test.tsx`(挂载还原 / key 换归零 / layout cleanup 写回);`useViewerScroll.ts:64-76` 改消费 | `ui:consume` 基线不增;查看器既有用例照跑 | 等价替换 | cleanup 改 `useEffect` → 写回 0 那条红 落地 `054e70a3` |
+| 4 数据层 | `src/data/search-listing-source.ts`(键 / 格 / fetcher+回放 / `searchLoadMore` / 五口 / reset / HMR);旧族原样留 | 新 `search-listing-source.test.ts`:键无 limit、追加去重、cursor 幂等、零新增取尽、`pageError` 留行、`invalidate` 回放不缩行、`equals` 不换引用、飞行期 refetch 落地后旧 cursor 的 settle 被丢弃 | 旧路未动 | 去掉闸① → 双发用例红 落地 `e3ae05c1` |
+| 5 纯模型 | `state.ts / sequence.ts / paging.ts / keys.ts / items/registry.ts` + 三个 item 模块;`history.ts` `selected → activeId` | 各自单测;`transitions.test.ts:88-221` 五个 describe 移到 `paging.test.ts` / `sequence.test.ts`;`history.test.ts` 改一格 | 无消费者 | `reconcile` 改 tick → 「不滚」用例红 落地 `36b1d554` |
+| 6 store + 拆件(等价) | `search/store.ts`(照 `expose/store.ts` 体例 + HMR);从 `SearchPanel.tsx` 抽 Head / FilterBar / FailedLine / Row / RowMenu / Footer,props 原样,**仍吃旧数据路** | `SearchPanel.test.tsx` 42 例不改(按 role / data-row / testid 认);逐态截图对照(rest/hover/focus/pending/empty/error/超量) | 像素零差 | — 落地 `10f97cc9` |
+| 7 换心 | `SearchPanel` 改吃 store + `useSearchListing` + `useSearchKeys`;`SearchBindings` 替 `activateOnMount`;`SearchList` / `SearchBlockRows` / `SearchMoreItem` 接上;删 `page/cursor/onMore/picked/history/query/scope/filters` 八格 state;删 `transitions.ts` 五函数;页脚移出 listbox;`SearchPreview` 标题一次 + 不露原话 + `useDelayedFlag` | `SearchPanel.test.tsx`:删 `pageWindow`(`:30/:66/:695`),`seed` 按三元键;`:208-218` 翻页例改「按 more 后首行同节点、`scrollTop` 不变、新行追加块尾」;`:482-495` 历史按 `activeId`;`preview.test.tsx` 加「Body 不含 title」「error 不含原话」;`gate-search.mjs:487-503` 加三条断言(同节点 / `scrollTop` 差 0 / `activeElement` 输入框)+「全部档有词点某块 more 只该块增长」;`gate:focus` 场景 10 与「⌘P 开面焦点进输入框」必跑 | 唯一改行为的一步;门里的新断言就是反证 | 滚动 effect 依赖改回 `[activeId, rows]` → `scrollTop` 断言红 落地 `e6986e06` |
+| 8 裁定落地 | 删组头(GroupHead 退出、五个 CSS 类删)、零命中不占行、动作行分隔线下、「只看这一类」进右键菜单、索引 `error` 档上屏一句 | `SearchPanel.test.tsx:263-333` 组头四例改「无组头、块相邻、零命中不占行、动作行不计数」;`gate-search-messages.mjs:361-368` `data-group*` 改读 `[data-readout="block-errors"]`;`search-css.test.ts` 加「无 `.groupBand`」;`gate:a11y` 扫描屏加 `[data-testid=search-panel]`(今天不扫,补账) | 每条是用户 09-05 裁定,改断言不改产品 | — 落地 `e6986e06` |
+| 9 删旧 | 删 `search-catalog-source.ts` 的查询族(`CapabilitySearchAnswer` / 四元键 `searchCatalogKey` / `capabilitySearchQuery` / `browseFanout` / `ensure` / `refetch` / `useCapabilitySearch` / LRU 账,只留自述 · 状态 · 预览三口)、两份同名 `SearchAsk` 归一、`resetSearchCatalog()` 顺带调 `resetSearchListing()`;删 `transitions.ts` 的分节与分页两台机(`SearchSection` / `sectionsOf` / `flatRows` / `sectionsWindow` / `SEARCH_FIRST_PAGE` / `SEARCH_PAGE_SIZE` / `pageWindow` / `remoteSide` / `SearchMore` / `moreState` + 「递增 limit 重查」那段注释),`paging.test` / `sequence.test` 里搬来的旧两组随之删;i18n 删 `search.viewAll` / `allShownOne` / `allShown` / `shownCount`(zh · en 成对)+ `i18n.test` 的单复数对;补一条 jsdom 用例 `SearchList.scroll.test.tsx`(⑦ 留账:滚动 effect 的反证没咬住) | `i18n.test` 键集合相等 + 单复数表;整壳 vitest;typecheck(缺键在这里就红) | 无消费者 | 删 `search.viewAll` 后故意留一处引用 → tsc 红;`SearchList` 的 `by==='reconcile'` 早退去掉 → 新 jsdom 用例红 | 落地 **本批** |
+| 10 文档 | `docs/design/search-index-2026-09.md`:§9(壳)按落地改写成事实、§12 加三条「拆掉的旧裁定」(§7.2 不分页 / §9 组头带 total 与查看全部 / §4.5 ⑤ 预览原话)、§7.2 与 §4.5 ⑤ 就地划掉指过去、§0 拍点己改口、文首加落地记录;本稿附录 B §1 / §2 / §3 / §4 / §5.3 / §6 六处按落地改成事实、§7 十步表逐行盖 sha、§8 落差表逐行标「已落」、§9 未决删已解决的加本批留账;`apps/desktop-react/CLAUDE.md` 加检索面两行(正本指针 + 分页四条不变量) | — | 纯文档 | — | 落地 **本批** |
 
 ---
 
 ## 8. 与今天代码的落差总账
 
-| # | 文件 | 今天怎样 | 改成怎样 |
+> **2026-09-06:35 行全部已落**,末列括号里是落在第几步(十步表见 §7,每步带 sha)。
+> 「今天怎样」那一列说的是 09-05 立稿那天的代码,留着是为了让人看得出改的是什么;它已经不是现状。
+
+| # | 文件 | 立稿那天怎样 | 改成怎样 |
 | --- | --- | --- | --- |
-| 1 | `src/data/search-catalog-source.ts:121-128` | 键四元含 `limit` | 三元键,搬到 `search-listing-source.ts` |
-| 2 | `src/search/components/SearchPanel.tsx:278-280` | `limit = pageWindow(page)` 建格,翻页换键 | `useQueryHeld(listing.get(committedKey))`,翻页 `patch` |
-| 3 | `SearchPanel.tsx:396-401` | `useEffect([cursor,onMore,visibleRows])` scrollIntoView | 依赖 `[selection]`,`by==='reconcile'` 不滚 |
-| 4 | `SearchPanel.tsx:154-175` | 八格 `useState`(词/档/cursor/page/onMore/filters/history/picked)+ rowMenu | 前八格进 `search/store.ts`;`rowMenu` 留 `SearchList` 组件态 |
-| 5 | `SearchPanel.tsx:161,165,616-628` | 下标 `cursor` + `onMore` 布尔 | `selection = { id, by }`,more 项是序列里的一个 id |
-| 6 | `SearchPanel.tsx:293-316, 326-328` | 三分支 `remote` 合成 + 「窗口 × 组数」放大器 | 逐块 `block.cursor`;删 |
-| 7 | `SearchPanel.tsx:355-375` | 去抖 effect 在面板,一敲字就换订阅键 | `SearchBindings`;`committedKey` 去抖到点才换,打字期间旧列表原样 |
-| 8 | `SearchPanel.tsx:386-388` | `moreIsItem` 变假就 `setOnMore(false)` | `reconcile(sequence)` 单一落位规则 |
-| 9 | `SearchPanel.tsx:479-486` | Load more = `setPage(p+1)` | `searchLoadMore.run({key,cap,cursor})` |
-| 10 | `SearchPanel.tsx:672-678` | `activateOnMount` | `SearchBindings` 的 `placed` 上升沿(照 `Overview.tsx:39-70`);行为不变 |
-| 11 | `SearchPanel.tsx:783-970` | 读数 `<p>` 在 `role=listbox` 里 | `SearchFooter` 是 listbox 兄弟 |
-| 12 | `SearchPanel.tsx:796-827` + `SearchPanel.module.css:221-245,355-370` | `GroupHead` 组头(total / 没搜成 / 查看全部) | 删;「查看全部」→ 右键「只看这一类」;组失败 → 页脚 `block-errors`;total → 块尾 `end` 读数 |
-| 13 | `SearchPanel.tsx:902-923` | more 项按 `page>1 && pending` 猜忙态 | `useAsyncPending(searchLoadMore, key#cap)`;`aria-busy` 不 `disabled` |
-| 14 | `SearchPanel.tsx:924-938` | `end` / `count` 两条读数 | `end` 保留(逐块);`count` 删(首发在飞不再画「已显示 N 条」,画「搜索中…」) |
-| 15 | `SearchPanel.tsx:784` | 首发在飞画「无结果」 | 首发在飞列表空、页脚「搜索中…」 |
-| 16 | `SearchPanel.tsx:93-119` | 文件头三张表「loading:旧行留在屏上」与代码不符 | 删,正本在 `docs/search-panel-2026-09.md` |
-| 17 | `src/search/transitions.ts:184-231, 258-306, 364-375` | `sectionsOf / flatRows / sectionsWindow / pageWindow / remoteSide / moreState` | 删;`paging.ts` / `sequence.ts` 接替 |
-| 18 | `src/search/history.ts:34` | `selected: number` | `activeId: string \| null` |
-| 19 | `src/search/capabilities.ts:171-172` | `mode==='error'` 被吞 | `unavailable: true` 一格,页脚一句人话 |
-| 20 | `src/search/components/SearchPreview.tsx:53-54` | 自己的 `PREVIEW_SKELETON_DELAY_MS=120` + `useState` 计时 | `useDelayedFlag(pending, SKELETON_DELAY_MS)`(`motion.ts:33`) |
-| 21 | `SearchPreview.tsx` error 态 | 画后端原话 | 字典句 + logger + `data-preview-error` |
-| 22 | `src/search/preview/kinds/session-overview.tsx:46`、`note-excerpt.tsx:40` | Body 里第二次画 title | 删(`preview/registry.ts:28-37` 契约钉成测试) |
-| 23 | `src/data/kernel/query.ts:41-50` | `FetchContext{key, force}` | 加 `previous?: T` |
-| 24 | `src/data/kernel/react.ts` | 三个 hook | 加 `useQueryHeld` |
-| 25 | `src/content/viewer/useViewerScroll.ts:64-76` | 手写还原 / 写回 | 消费 `ui/scroll-memory` |
-| 26 | `src/data/search-port.ts:96-106` | `query` 不递 cursor | 透传 |
-| 27 | `packages/shared/ipc/search.ts:95-101` | `groups[]` 无 cursor | 加 `cursor?` |
-| 28 | `packages/shared/ipc/search.ts:41-80` | 无 `role` | 加 `role?`(拍点 I) |
-| 29 | `service.ts:401-407` | 丢 `page.cursor` | 投影 |
-| 30 | `prompts.ts:83-95` | Create prompt 是普通结果行 | `role:'action'`,不计数 |
-| 31 | `capabilities/sessions.ts:118-140` | 浏览支无 cursor | 经 `paginate` 产 |
-| 32 | `scripts/gate-search.mjs:487-503` | 拉到底点 more,不断言 `scrollTop` | 加三条断言 + 逐块增长 |
-| 33 | `scripts/gate-a11y.mjs` | 不扫检索面 | 加扫描屏 |
-| 34 | `src/i18n/zh.ts:425` / `en.ts:364` | `search.viewAll` | 删;`allShown*` 保留 |
-| 35 | `SearchPanel.test.tsx:30,66,208-218,263-333,482-495,695` | 依赖 `pageWindow` / 组头 / 下标 | 按第 7、8 步改 |
+| 1 | `src/data/search-catalog-source.ts:121-128` | 键四元含 `limit` | 三元键,搬到 `search-listing-source.ts` **已落(④)** |
+| 2 | `src/search/components/SearchPanel.tsx:278-280` | `limit = pageWindow(page)` 建格,翻页换键 | `useQueryHeld(listing.get(committedKey))`,翻页 `patch` **已落(⑦)** |
+| 3 | `SearchPanel.tsx:396-401` | `useEffect([cursor,onMore,visibleRows])` scrollIntoView | 依赖 `[selection]`,`by==='reconcile'` 不滚 **已落(⑦)** |
+| 4 | `SearchPanel.tsx:154-175` | 八格 `useState`(词/档/cursor/page/onMore/filters/history/picked)+ rowMenu | 前八格进 `search/store.ts`;`rowMenu` 留 `SearchList` 组件态 **已落(⑥⑦)** —— **改口**:`rowMenu` 留在 `SearchPanel`(开菜单要 `rowModelOf` / `available` / `runContinuation` 三样,都在面板手上) |
+| 5 | `SearchPanel.tsx:161,165,616-628` | 下标 `cursor` + `onMore` 布尔 | `selection = { id, by }`,more 项是序列里的一个 id **已落(⑤⑦)** |
+| 6 | `SearchPanel.tsx:293-316, 326-328` | 三分支 `remote` 合成 + 「窗口 × 组数」放大器 | 逐块 `block.cursor`;删 **已落(④⑦)** |
+| 7 | `SearchPanel.tsx:355-375` | 去抖 effect 在面板,一敲字就换订阅键 | `SearchBindings`;`committedKey` 去抖到点才换,打字期间旧列表原样 **已落(⑦)** |
+| 8 | `SearchPanel.tsx:386-388` | `moreIsItem` 变假就 `setOnMore(false)` | `reconcile(sequence)` 单一落位规则 **已落(⑤⑦)** |
+| 9 | `SearchPanel.tsx:479-486` | Load more = `setPage(p+1)` | `searchLoadMore.run({key,cap,cursor})` **已落(④⑦)** |
+| 10 | `SearchPanel.tsx:672-678` | `activateOnMount` | `SearchBindings` 的 `placed` 上升沿(照 `Overview.tsx:39-70`);行为不变 **已落(⑦)** |
+| 11 | `SearchPanel.tsx:783-970` | 读数 `<p>` 在 `role=listbox` 里 | `SearchFooter` 是 listbox 兄弟 **已落(⑦)** |
+| 12 | `SearchPanel.tsx:796-827` + `SearchPanel.module.css:221-245,355-370` | `GroupHead` 组头(total / 没搜成 / 查看全部) | 删;「查看全部」→ 右键「只看这一类」;组失败 → 页脚 `block-errors`;total → 块尾 `end` 读数 **已落(⑧)** |
+| 13 | `SearchPanel.tsx:902-923` | more 项按 `page>1 && pending` 猜忙态 | `useAsyncPending(searchLoadMore, key#cap)`;`aria-busy` 不 `disabled` **已落(⑦)** |
+| 14 | `SearchPanel.tsx:924-938` | `end` / `count` 两条读数 | `end` 保留(逐块);`count` 删(首发在飞不再画「已显示 N 条」,画「搜索中…」) **已落(⑦⑧)** |
+| 15 | `SearchPanel.tsx:784` | 首发在飞画「无结果」 | 首发在飞列表空、页脚「搜索中…」 **已落(⑦)** |
+| 16 | `SearchPanel.tsx:93-119` | 文件头三张表「loading:旧行留在屏上」与代码不符 | 删,正本在 `docs/search-panel-2026-09.md` **已落(⑦)** |
+| 17 | `src/search/transitions.ts:184-231, 258-306, 364-375` | `sectionsOf / flatRows / sectionsWindow / pageWindow / remoteSide / moreState` | 删;`paging.ts` / `sequence.ts` 接替 **已落(⑨)** |
+| 18 | `src/search/history.ts:34` | `selected: number` | `activeId: string \| null` **已落(⑤)** |
+| 19 | `src/search/capabilities.ts:171-172` | `mode==='error'` 被吞 | `unavailable: true` 一格,页脚一句人话 **已落(⑦⑧)** |
+| 20 | `src/search/components/SearchPreview.tsx:53-54` | 自己的 `PREVIEW_SKELETON_DELAY_MS=120` + `useState` 计时 | `useDelayedFlag(pending, SKELETON_DELAY_MS)`(`motion.ts:33`) **已落(⑦)** |
+| 21 | `SearchPreview.tsx` error 态 | 画后端原话 | 字典句 + logger + `data-preview-error` **已落(⑦)** |
+| 22 | `src/search/preview/kinds/session-overview.tsx:46`、`note-excerpt.tsx:40` | Body 里第二次画 title | 删(`preview/registry.ts:28-37` 契约钉成测试) **已落(⑦)** |
+| 23 | `src/data/kernel/query.ts:41-50` | `FetchContext{key, force}` | 加 `previous?: T` **已落(②)** |
+| 24 | `src/data/kernel/react.ts` | 三个 hook | 加 `useQueryHeld` **已落(②)** |
+| 25 | `src/content/viewer/useViewerScroll.ts:64-76` | 手写还原 / 写回 | 消费 `ui/scroll-memory` **已落(③)** |
+| 26 | `src/data/search-port.ts:96-106` | `query` 不递 cursor | 透传 **已落(①)** |
+| 27 | `packages/shared/ipc/search.ts:95-101` | `groups[]` 无 cursor | 加 `cursor?` **已落(①)** |
+| 28 | `packages/shared/ipc/search.ts:41-80` | 无 `role` | 加 `role?`(拍点 I) **已落(①)** —— **改口**:契约上没有加 `SearchResult.role`,页级 `actions` 那一格已经把「动作不是结果」说完了 —— 结果里根本不放动作,不需要第二格去标记它 |
+| 29 | `service.ts:401-407` | 丢 `page.cursor` | 投影 **已落(①)** |
+| 30 | `prompts.ts:83-95` | Create prompt 是普通结果行 | `role:'action'`,不计数 **已落(①)** |
+| 31 | `capabilities/sessions.ts:118-140` | 浏览支无 cursor | 经 `paginate` 产 **已落(①)** |
+| 32 | `scripts/gate-search.mjs:487-503` | 拉到底点 more,不断言 `scrollTop` | 加三条断言 + 逐块增长 **已落(⑦)** |
+| 33 | `scripts/gate-a11y.mjs` | 不扫检索面 | 加扫描屏 **已落(⑦⑧)** |
+| 34 | `src/i18n/zh.ts:425` / `en.ts:364` | `search.viewAll` | 删;`allShown*` 保留 **已落(⑨)** —— `allShownOne` / `allShown` / `shownCount` 一并删(取尽读数只剩「共 N 条」) |
+| 35 | `SearchPanel.test.tsx:30,66,208-218,263-333,482-495,695` | 依赖 `pageWindow` / 组头 / 下标 | 按第 7、8 步改 **已落(⑦⑧)** |
 
 ---
 
 ## 9. 未决与风险
 
-**拍点(用户可感知的行为裁定,默认一律保旧;按「行为裁定须先问」列候选)**
+> **2026-09-06 收账**:十步全部入库(§7 逐行带 sha)。下表的「本稿默认」那一列**已经全部落地**,
+> 所以它不再是「待拍」而是「已生效的裁定」——三处落地时改了口,逐条写在末列。
+> 真正还开着的东西,搬到本节末尾的「本批留账」。
 
-| # | 拍点 | 今天 | 候选 | 本稿默认 |
+**拍点(全部已落地;末列 = 落地时与本稿默认的出入)**
+
+| # | 拍点 | 立稿那天 | 本稿默认 | 落地 |
 | --- | --- | --- | --- | --- |
-| A | 块级失败(某类头页塌)画在哪 | 组头一句「没搜成」 | (a) 页脚一行「<能力名> 没搜成 · 重试」;(b) 该块位置一条 `role=presentation` 读数 | (a) |
-| A′ | 整发失败那行露不露后端原话 | 露(`SearchPanel.tsx:775-780`) | 保旧 / 与预览同口径只进日志 | 保旧 |
-| B | 空格语义 | 输入空格 | 保旧 / 挑选 toggle | 保旧 |
-| C | ⇧ 点行 | 与 ⌘ 同,单条 toggle(`:656-660`) | 保旧 / 区间选 | 保旧 |
-| D | Esc | 不认领,宿主退层(`:589-591`) | 保旧 / 先清词再退层(`ExposeView.tsx:140-149`) | 保旧 |
-| E | 索引变了列表怎么办 | 挂载问一次状态,不推送 | (a) 只标脏 + 页脚「索引已更新 · 重新搜索」文字动作;(b) 自动回放补拉(用户翻到第 5 页会被悄悄改行集) | (a),推送本身留账 |
-| F | ⏎ 进入后收面 | 恒 `closeToDock`(`:471`) | 保旧 / 照 `expose/store.ts:247-259` 08-30 裁定「钉边常驻不收」 | 保旧;建议采 08-30 裁定 |
-| G | 收回 Dock 再开,词 / 档 / 片 / 历史 / 选中 | 全没了(`:104`) | 保旧(`placed` 翻假 `reset()`)/ 保留并全选 | 保旧 |
-| H | 每块行数封顶 | 无 | 无 / `MAX_ROWS_PER_BLOCK=200` 到顶换读数 | 无;`gate:perf` 加「20 页累加后 heap 增量」读数留账 |
-| I | 第二格契约 `SearchResult.role` | 无 | 加 / 不加(不加则 Create prompt 仍是结果行,「不计数」做不到) | 加 |
-| J | 取尽读数「共 N 条 · 已全部显示」 | 有 | 保留(逐块)/ 删 | 保留 |
-| K | 首发在飞画「无结果」 | 画 | 修正为不画(它是谎话) | 修正,报备 |
+| A | 块级失败(某类头页塌)画在哪 | 组头一句「没搜成」 | (a) 页脚一行「<能力名> 没搜成 · 重试」 | **照做**(`[data-readout="block-errors"]`,`gate:search-messages` 照着) |
+| A′ | 整发失败那行露不露后端原话 | 露 | 保旧 | **照做**(`SearchFailedLine`) |
+| B | 空格语义 | 输入空格 | 保旧 | **照做** |
+| C | ⇧ 点行 | 与 ⌘ 同,单条 toggle | 保旧 | **照做** |
+| D | Esc | 不认领,宿主退层 | 保旧 | **照做**(面板不声明 `onEscape`) |
+| E | 索引变了列表怎么办 | 挂载问一次状态,不推送 | (a) 只标脏 + 页脚文字动作 | **只做了半条**:查询回执里的 `index` 带回来了(读数跟着最近一次答复走),推送与「索引已更新 · 重新搜索」那句文字动作没做 → 见「本批留账」 |
+| F | ⏎ 进入后收面 | 恒 `closeToDock` | 保旧;建议采 08-30 裁定 | **照做保旧**(建议那半条没做,是一次可感知的行为裁定,要用户点头)|
+| G | 收回 Dock 再开,词 / 档 / 片 / 历史 / 选中 | 全没了 | 保旧 | **照做,但判据换了**:不是 `placed` 下降沿(等不到),是**卸载时现问一次形态是不是 `dock`**(⑦ 真机门抓出来的,见附录 B §1 / §2) |
+| H | 每块行数封顶 | 无 | 无 | **照做**(不封顶;行 `content-visibility: auto`)|
+| I | 第二格契约 `SearchResult.role` | 无 | 加 | **没加,而且不需要**:页级 `actions` 那一格把「动作不是结果」说完了 —— 结果里根本不放动作,不必再加一格去标记「这条结果其实不是结果」 |
+| J | 取尽读数「共 N 条 · 已全部显示」 | 有 | 保留(逐块) | **保留,但去掉后半句**:块尾读数是「共 N 条」——「已全部显示」与它是同一件事说两遍(样例为准) |
+| K | 首发在飞画「无结果」 | 画 | 修正为不画(它是谎话) | **照做**:首发在飞列表空、页脚「搜索中…」 |
 
 **风险与取舍**
 
-| # | 风险 | 处置 |
-| --- | --- | --- |
-| 1 | keep-alive + 累加页常驻内存 | LRU 24 键不变;拍点 H;行 `content-visibility: auto` |
-| 2 | 回放链代价:`invalidate` 一次 = 首页 + 已翻页数次请求 | family 不导出,只有 `refetch`(用户显式)与拍点 E (a) 会触发 |
-| 3 | cursor 过期:两页之间索引变了 | `appendPage` 按 id 去重;`generation` 进指纹(`indexed.ts:150`)→ 归零 → 闸③ 取尽 + warn;keyset 分页固有,记账不修 |
-| 4 | `all` 首页由 `defaultBudgetPolicy` 产、第二页由单类 `singleCapabilityBudgetPolicy` 产(`service.ts:256-263`),放宽 `level` 若不同则第 21 行有缝甚至指纹不匹配 | 第 1 步第九步门先跑;不匹配则由闸③ 兜住不死循环;后端若要修是让两条路共用同一阶梯 |
-| 5 | `useQueryHeld` stale 行用旧词高亮、点它打开的是旧结果 | 格里带 `query`;`data-stale` 降一档文字色;旧行是真结果,打开无害 |
-| 6 | `useQueryHeld` 进 kernel 公共面,「上一把键」按 hook 实例记 | 单读者;若将来多读者改成 store `shownKey`(评审给的替代),不动 kernel |
-| 7 | abort 缺席:换词快时多发请求 | 既有留账(`search-catalog-source.ts:327-333`);transport 收 `AbortSignal` 是跨包一批 |
-| 8 | 历史与多选耦合:条目记 `activeId` 不记 `picked`;⌘[ 回去 `picked` 清空 | 有意:多选是预览基数的瞬态;要记就 `SearchHistoryEntry` 加一格 |
-| 9 | LRU `drop` 掉的格 ⌘[ 回来只有第一页,`activeId` 不在 → 落首项 | 如实;历史条目顺带记页数并回放是 n 次请求,留账 |
-| 10 | 同一能力同一 id 出现两次让两行共用键 | 能力内 id 唯一是契约义务;`golden-snapshot` 加断言 |
-| 11 | Tab = 换档与 `region` 档「Tab 走得出去」的张力 | 既有行为保留;`gate:a11y` 补扫时若被裁「必须能走出去」,换档改 ⌘⇧[ / ⌘⇧] 进 `FOCUS_SCOPES.search.keys` |
-| 12 | more 项当 `role="option"` 在 APG 上是可选项不是动作 | 既有裁定保留;替代形(`presentation` 里一颗 Button + 焦点真送过去)会破坏「焦点恒在输入框」,不做 |
-| 13 | `SearchBindings` 的 `placed` 上升沿与键盘路 `requestFocusOnOpen` 同帧两次 `activate` | 都落输入框,无害;`gate:focus` 若按次数断言放宽到「最终焦点在输入框」 |
-| 14 | `data-row` 保留下标属性,行 memo 在下标变时重渲 | 只有追加行的下标是新的,存量行下标不变,不重渲 |
-| 15 | store 模块级 = 一台一份 | 检索瓦 `singleton:true`;若将来多开,store 按 owner 分族(`FocusScope owner` 先例) |
-| 16 | 与设计正本三处出入(§7.2 不分页 / §9 组头 / §4.5 ⑤ 原话) | 第 10 步记进 §12,不留两份真相 |
-| 17 | 组件行数上限只在表里没有门 | 留账;若漂则加 `assembly-gate` 式棘轮 |
+| # | 风险 | 处置 | 今天 |
+| --- | --- | --- | --- |
+| 1 | keep-alive + 累加页常驻内存 | LRU 24 键不变;拍点 H;行 `content-visibility: auto` | 照做;`gate:perf` 那条 heap 读数没加 → 留账 |
+| 2 | 回放链代价:`invalidate` 一次 = 首页 + 已翻页数次请求 | family 不导出,只有 `refetch`(用户显式)会触发 | 照做(五口 + 不导出 family,结构保证) |
+| 3 | cursor 过期:两页之间索引变了 | `appendPage` 按 id 去重;`generation` 进指纹 → 闸③ 取尽 + warn | 照做 |
+| 4 | `all` 首页与第二页出自两张预算策略,放宽 `level` 若不同则第 21 行有缝 | 第 ① 步 `gate:search-index` 第九步先跑;不匹配由闸③ 兜住不死循环 | 第九步绿(第二页非空 / 不重 / 两页合起来不漏);两条路共用同一阶梯的事**没做**,留账 |
+| 5 | `useQueryHeld` stale 行用旧词高亮、点它打开的是旧结果 | 格里带 `query`;`data-stale` 降一档文字色 | 照做(`SearchListing.query`,列表根 `data-stale`) |
+| 6 | `useQueryHeld` 进 kernel 公共面,「上一把键」按 hook 实例记 | 单读者;将来多读者改成 store `shownKey` | 照做,单读者仍是 `useSearchListing` |
+| 7 | abort 缺席:换词快时多发请求 | transport 收 `AbortSignal` 是跨包一批 | **仍然如此** → 留账 |
+| 8 | 历史与多选耦合:条目记 `activeId` 不记 `picked` | 有意 | 照做 |
+| 9 | LRU `drop` 掉的格 ⌘[ 回来只有第一页 | 如实 | 照做 |
+| 10 | 同一能力同一 id 出现两次让两行共用键 | 能力内 id 唯一是契约义务 | 照做;`golden-snapshot` 那条断言**没加** → 留账 |
+| 11 | Tab = 换档与 `region` 档「Tab 走得出去」的张力 | 既有行为保留 | 照做;`gate:a11y` 补扫之后没有裁「必须走得出去」,张力仍在 |
+| 12 | more 项当 `role="option"` 在 APG 上是可选项不是动作 | 既有裁定保留 | 照做(`gate:a11y` 检索面那一屏零违例) |
+| 13 | `SearchBindings` 的 `placed` 上升沿与键盘路 `requestFocusOnOpen` 同帧两次 `activate` | 都落输入框,无害 | 照做;`gate:focus` 场景 3 判的是「最终焦点在输入框」 |
+| 14 | `data-row` 保留下标属性,行 memo 在下标变时重渲 | 只有追加行的下标是新的 | 照做 |
+| 15 | store 模块级 = 一台一份 | 检索瓦 `singleton:true` | 照做 |
+| 16 | 与设计正本三处出入(§7.2 不分页 / §9 组头 / §4.5 ⑤ 原话) | 第 ⑩ 步记进 §12,不留两份真相 | **已结**(`docs/design/search-index-2026-09.md` §12 三行 + §7.2 / §4.5 就地划掉) |
+| 17 | 组件行数上限只在表里没有门 | 留账;若漂则加棘轮 | 仍然只有表,没有门 → 留账 |
+
+**本批留账(2026-09-06,十步走完之后还开着的)**
+
+| # | 事 | 现状 | 下一步 |
+| --- | --- | --- | --- |
+| 1 | 拍点 E 的另一半:索引推送 | 查询回执的 `index` 已经带回来,读数跟着最近一次答复走;**推送没有**,页脚也没有「索引已更新 · 重新搜索」那句文字动作 | 一次可感知的行为裁定(会不会在用户翻到第 5 页时改行集),要用户点头再做 |
+| 2 | 拍点 F 的建议半条:钉边常驻不收 | ⏎ 之后恒 `closeToDock('search')` | 同上,是行为裁定 |
+| 3 | abort | 换词快时多发请求,靠「上一发落在它自己那一格」不上屏 | `@onething/client` 的 http Transport 收 `AbortSignal`,跨包一批 |
+| 4 | 语义召回设置开关不热生效 | `settings.search.semantic.enabled` 在装配时读一次;页脚现在会说「下载中 / 建向量中(剩 n)」,但改开关要等下一次 core 启动 | 归检索方案 §13 留账(后端的事) |
+| 5 | `gate:perf` 的「20 页累加后 heap 增量」读数 | 没加(风险 1 里许过) | 归 perf 线 |
+| 6 | `golden-snapshot` 的「能力内 id 唯一」断言 | 没加(风险 10 里许过) | 一行断言,归后端 |
+| 7 | 组件行数上限没有门 | 附录 B §1 的「≤120 行骨架」只在表里 | 若漂再加 `assembly-gate` 式棘轮 |
+| 8 | 全部档两条预算路共用同一放宽阶梯 | 第九步门证明了「第二页不重不漏」,但两条路的 `level` 仍可能不同 | 后端让两条路共用一张阶梯,归检索方案 |
+| 9 | `search.placeholder` 那句兜底 | 自述还没回来时画「搜索…」;真机上这一帧短到看不见 | 无 |
