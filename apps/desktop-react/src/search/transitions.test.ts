@@ -16,12 +16,11 @@ import {
  *  · 造行只认后端的回执(`resultRows`);
  *  · 出处的拼法只有一处产地(`originText` / `targetText`)。
  *
- * ── 分页与分节那五组用例搬走了(迁移第 ⑤ 步)─────────────────────────────
- * `sectionsOf` / `sectionsWindow` / `flatRows` 归 `./sequence.test.ts`,
- * `remoteSide` / `pageWindow` / `moreState` 归 `./paging.test.ts` —— 它们验的是
- * **分节与分页**这两件事,而这两件事从这一批起各有自己的产地(`sequence.ts` /
- * `paging.ts`)。函数本体本批一个都没删(删旧是第 ⑨ 步),只是用例先按新家归位:
- * 到第 ⑨ 步删旧那一天,该跟着走的用例已经在它该在的文件里了。
+ * ── 分页与分节那五组用例与它们的函数本体都没有了(第 ⑤ 步搬用例,第 ⑨ 步删本体)─
+ * `sectionsOf` / `sectionsWindow` / `flatRows` / `remoteSide` / `pageWindow` /
+ * `moreState` 那台旧机整台作废:分节的产地成了 `sequence.ts`,分页的产地成了
+ * `paging.ts` + `data/search-listing-source.ts`(逐块真游标,`limit` 不进查询键)。
+ * 第 ⑤ 步先把用例按新家归位,第 ⑨ 步删本体时该跟着走的用例已经在它该在的文件里。
  */
 
 const result = (over: Partial<SearchResult> = {}): SearchResult => ({

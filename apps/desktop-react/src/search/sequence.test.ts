@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { SearchResponse, SearchResult } from '@shared/ipc/search'
+import type { SearchResult } from '@shared/ipc/search'
 import type { SearchBlock, SearchListing } from '../data/search-listing-source'
 import {
   actionItemId,
@@ -12,15 +12,16 @@ import {
   rowOfItem,
   sequenceOf,
 } from './sequence'
-import { flatRows, sectionsOf, sectionsWindow } from './transitions'
 
 /**
  * **序列**的判据(检索面终稿 附录 B §1 / §5.4 ②)。
  *
- * 文件里有两批用例:
- *  · 新的一组(`sequenceOf` 与它的反查)—— 本批立的产地;
- *  · 旧的两组(`sectionsOf` / `sectionsWindow` + `flatRows`)—— 从
- *    `transitions.test.ts` 搬过来的,函数本体还在那边活着(删旧是第 ⑨ 步)。
+ * 一组:`sequenceOf` 与它的三只反查(`rowOfItem` / `blockOfItem` / `actionOfItem`)。
+ *
+ * ── 第 ⑨ 步:旧那两组用例随函数本体一起下葬 ────────────────────────────────
+ * 第 ⑤ 步把 `sectionsOf` / `sectionsWindow` / `flatRows` 的用例从 `transitions.test.ts`
+ * 搬来这里「按新家归位」,那时函数本体还在 `transitions.ts` 活着。本批删旧:
+ * 分节那台机整台作废(块 → 序列项由 `sequenceOf` 一次 flatten 产出),用例跟着走。
  */
 
 /* ── 装置 ──────────────────────────────────────────────────────────────── */
@@ -133,83 +134,5 @@ describe('反查(项 → 它指的那件东西)', () => {
     expect(indexOfItem(seq, seq[0].id)).toBe(0)
     expect(indexOfItem(seq, 'row:nope:x')).toBe(-1)
     expect(indexOfItem(seq, null)).toBe(-1)
-  })
-})
-
-/* ══════════════════════════════════════════════════════════════════════════
- * 以下两组从 `transitions.test.ts` 搬过来(第 ⑤ 步),函数本体还在那边。
- * ══════════════════════════════════════════════════════════════════════════ */
-
-const result = (over: Partial<SearchResult> = {}): SearchResult => ({
-  id: 'r1',
-  type: 'message',
-  title: '命中的那一行',
-  target: { kind: 'message', payload: { sessionId: 's1', messageId: 'm1' } },
-  ...over,
-})
-
-describe('sectionsOf(§7.2 全部档 = 分组总览)', () => {
-  const groups: SearchResponse['groups'] = [
-    { capability: 'chats', label: 'search.capability.chats', total: 12, results: [result({ id: 'c1' })] },
-    { capability: 'messages', label: 'search.capability.messages', results: [result({ id: 'm1' }), result({ id: 'm2' })] },
-    { capability: 'files', label: 'search.capability.files', results: [], error: '索引不可用' },
-  ]
-
-  it('组的次序**原样保留** —— 后端已按 manifest 的 order 排好,壳不再排一遍', () => {
-    expect(sectionsOf({ results: [], groups }, 'all').map(s => s.capability))
-      .toEqual(['chats', 'messages', 'files'])
-  })
-
-  it('offset 是**扁平下标**:第二组从第一组结束的地方数起', () => {
-    const sections = sectionsOf({ results: [], groups }, 'all')
-    expect(sections.map(s => s.offset)).toEqual([0, 1, 3])
-  })
-
-  it('一条结果都没有但**塌了**的组照样有节头(§9 第四条)', () => {
-    const failed = sectionsOf({ results: [], groups }, 'all')[2]
-    expect(failed.rows).toEqual([])
-    expect(failed.error).toBe('索引不可用')
-    expect(failed.head).toBe(true)
-  })
-
-  it('total 缺席 = 不知道,**不是 0**', () => {
-    const sections = sectionsOf({ results: [], groups }, 'all')
-    expect(sections[0].total).toBe(12)
-    expect('total' in sections[1]).toBe(false)
-  })
-
-  it('单类档:一节、不画节头、labelKey 就是能力 id(节头本来就不画)', () => {
-    const sections = sectionsOf({ results: [result()] }, 'messages')
-    expect(sections).toHaveLength(1)
-    expect(sections[0].head).toBe(false)
-    expect(sections[0].capability).toBe('messages')
-  })
-
-  it('还没有答案 = 一节都没有(不是一节空的)', () => {
-    expect(sectionsOf(undefined, 'all')).toEqual([])
-  })
-})
-
-describe('sectionsWindow / flatRows(翻页只是把窗口拉大)', () => {
-  const groups: SearchResponse['groups'] = [
-    { capability: 'a', label: 'a', results: [result({ id: 'a1' }), result({ id: 'a2' })] },
-    { capability: 'b', label: 'b', results: [result({ id: 'b1' }), result({ id: 'b2' })] },
-  ]
-  const sections = sectionsOf({ results: [], groups }, 'all')
-
-  it('切在**扁平下标**上 —— 第一组吃不光配额,第二组照样露得出来', () => {
-    const window = sectionsWindow(sections, 3)
-    expect(flatRows(window).map(r => r.id)).toEqual(['a1', 'a2', 'b1'])
-  })
-
-  it('切空了的节**仍然留着**(节头是读数,不是行)', () => {
-    const window = sectionsWindow(sections, 2)
-    expect(window.map(s => s.capability)).toEqual(['a', 'b'])
-    expect(window[1].rows).toEqual([])
-  })
-
-  it('单类档那一节切空了就整节不要(它本来就没有节头要说的话)', () => {
-    const single = sectionsOf({ results: [result()] }, 'messages')
-    expect(sectionsWindow(single, 0)).toEqual([])
   })
 })

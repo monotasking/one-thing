@@ -37,9 +37,9 @@ import { searchPort } from './search-port'
  *
  * | 旧消费者 | 读的是什么 | 本批动了没有 |
  * | --- | --- | --- |
- * | `SearchPanel.tsx` | `useCapabilitySearch` / `ensureCapabilitySearch` / `refetchCapabilitySearch`(旧族) | 没动 —— 那一族一个字未改(除了 fetcher 多带回一格 `index`,没有读者) |
- * | `search-catalog-source.ts` 的自述 / 状态 / 预览三口 | 各自的格 | 没动 |
- * | `resetSearchCatalog()` | 旧族 + 三口 | 没动;这个文件有**自己的** `resetSearchListing()` 与 HMR dispose |
+ * | `SearchPanel.tsx` | 步④ 当时是旧族(`useCapabilitySearch` / `ensureCapabilitySearch` / `refetchCapabilitySearch`) | **步⑦ 换心改吃这一族,步⑨ 旧族整段删了** —— 今天这个文件是唯一那条查询路 |
+ * | `search-catalog-source.ts` 的自述 / 状态 / 预览三口 | 各自的格 | 没动(那三口至今原样) |
+ * | `resetSearchCatalog()` | 三口 | **步⑨ 起它顺带调 `resetSearchListing()`** —— 两个模块合起来才是「这块面此刻记得的一切」,每个用例要两句 `reset` 的写法迟早漏一句 |
  * | 端口 `searchPort().query` | 位置参数第五格 `cursor` | 步①已经透传,这里只是第一个真的递它的调用方 |
  *
  * ── 为什么家门口不摆 `invalidate` ────────────────────────────────────────

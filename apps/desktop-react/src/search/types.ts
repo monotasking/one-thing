@@ -4,8 +4,10 @@ import type { SearchPreviewPayload } from '@shared/ipc/search'
  * 检索面的形状。和 expose/ 一样:这里只有数据,没有 React、没有 DOM。
  *
  * 终稿的形状决定了这张表长什么样:一行就是 SearchRow,列表就是 SearchRow[];
- * `all` 档的**组**不是行模型里的一层 —— 它由后端的 `groups` 说,由
- * `transitions.ts` 的 `SearchSection` 装(见那里)。
+ * **块**不是行模型里的一层 —— 它由后端的 `groups` 说,由数据层的
+ * `SearchListing.blocks` 装(`data/search-listing-source.ts`),序列由
+ * `sequence.ts` 一次 flatten 产出。(第 ⑨ 步改口:从前这里指的
+ * `transitions.ts` 的 `SearchSection` 与分节那台机整台删了。)
  */
 
 /**

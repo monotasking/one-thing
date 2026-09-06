@@ -2,23 +2,17 @@ import { describe, expect, it } from 'vitest'
 import type { SearchResult } from '@shared/ipc/search'
 import type { SearchBlock, SearchListing, SearchPage } from '../data/search-listing-source'
 import { appendPage, markPageError, moreStateOf } from './paging'
-import {
-  SEARCH_FIRST_PAGE,
-  SEARCH_PAGE_SIZE,
-  moreState,
-  pageWindow,
-  remoteSide,
-} from './transitions'
-import type { SearchMore, SearchRemoteSide } from './transitions'
 
 /**
  * **分页**那一台机的判据(检索面终稿 附录 B §5.2–§5.3)。
  *
- * 文件里有两批用例:
- *  · 新的三件(`moreStateOf` / `appendPage` / `markPageError`)—— 本批立的产地;
- *  · 旧的三组(`remoteSide` / `pageWindow` / `moreState`)—— 从
- *    `transitions.test.ts` 搬过来的,函数本体还在那边活着(删旧是第 ⑨ 步),
- *    用例先按新家归位。
+ * 三件产地:`moreStateOf`(块尾那条项此刻是什么)/ `appendPage`(落一页)/
+ * `markPageError`(这一页没落成)。
+ *
+ * ── 第 ⑨ 步:旧那三组用例随函数本体一起下葬 ────────────────────────────────
+ * 第 ⑤ 步把 `remoteSide` / `pageWindow` / `moreState` 的用例从 `transitions.test.ts`
+ * 搬来这里「按新家归位」,那时函数本体还在 `transitions.ts` 活着。本批删旧:
+ * 那三只函数没有消费者(旧那台「递增 limit 重查」的分页机整台作废),用例跟着走。
  */
 
 /* ── 装置 ──────────────────────────────────────────────────────────────── */
@@ -153,62 +147,5 @@ describe('markPageError(行留着)', () => {
     expect(markPageError(undefined, 'messages', 'boom')).toBeUndefined()
     const before = listing(block())
     expect(markPageError(before, 'files', 'boom')).toBe(before)
-  })
-})
-
-/* ══════════════════════════════════════════════════════════════════════════
- * 以下三组从 `transitions.test.ts` 搬过来(第 ⑤ 步),函数本体还在那边。
- * ══════════════════════════════════════════════════════════════════════════ */
-
-describe('remoteSide(次序是判据,不是口味)', () => {
-  const cases: Array<[SearchRemoteSide[], SearchRemoteSide]> = [
-    [['exhausted', 'failed'], 'failed'],
-    [['pending', 'more'], 'more'],
-    [['exhausted', 'pending'], 'pending'],
-    [['exhausted', 'exhausted'], 'exhausted'],
-    [[], 'exhausted'],
-  ]
-  for (const [sides, want] of cases) {
-    it(`${JSON.stringify(sides)} → ${want}`, () => {
-      expect(remoteSide(...sides)).toBe(want)
-    })
-  }
-})
-
-describe('pageWindow', () => {
-  it('第一页 = 首屏;之后每页加一个增量', () => {
-    expect(pageWindow(1)).toBe(SEARCH_FIRST_PAGE)
-    expect(pageWindow(3)).toBe(SEARCH_FIRST_PAGE + 2 * SEARCH_PAGE_SIZE)
-  })
-})
-
-describe('moreState(底部那条 item 的判据表)', () => {
-  const at = (over: Partial<Parameters<typeof moreState>[0]>): SearchMore =>
-    moreState({ page: 1, total: 5, remote: 'exhausted', ...over })
-
-  it('一条行都没有 = 什么都不画', () => {
-    expect(at({ total: 0 })).toEqual({ kind: 'none' })
-  })
-
-  it('取尽 + 全装得下 = 读数「共 N 条 · 已全部显示」(第一页就取尽也算数)', () => {
-    expect(at({})).toEqual({ kind: 'end', total: 5 })
-  })
-
-  it('窗口装不下:取尽时报真总数,没取尽时不猜(null)', () => {
-    expect(at({ total: 50 })).toEqual({ kind: 'more', shown: 20, total: 50 })
-    expect(at({ total: 50, remote: 'more' })).toEqual({ kind: 'more', shown: 20, total: null })
-  })
-
-  it('远端还没落定的第一页:**报数不许诺** —— 「已显示 N 条」,不是「加载更多」', () => {
-    expect(at({ remote: 'pending' })).toEqual({ kind: 'count', shown: 5 })
-  })
-
-  it('翻过页之后,加载中 / 失败才由这条 item 说', () => {
-    expect(at({ page: 2, remote: 'pending' })).toEqual({ kind: 'loading' })
-    expect(at({ page: 2, remote: 'failed' })).toEqual({ kind: 'error' })
-  })
-
-  it('第一页那次失败仍然给一条**能按的** item —— 「再试一次」得有地方按', () => {
-    expect(at({ remote: 'failed' })).toEqual({ kind: 'more', shown: 5, total: null })
   })
 })

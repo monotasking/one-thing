@@ -35,7 +35,11 @@ describe('单复数', () => {
   /** 每一对「一个 / 多个」键 —— 加一对计数文案就在这里加一行。 */
   const PAIRS: ReadonlyArray<readonly [MessageKey, MessageKey, string]> = [
     ['quicklook.messageCountOne', 'quicklook.messageCount', 'count'],
-    ['search.allShownOne', 'search.allShown', 'total'],
+    /*
+     * `search.allShownOne` / `search.allShown` 那一对在第 ⑨ 步随「共 N 条 · 已全部
+     * 显示」一起退役:取尽读数搬进块尾之后只画「共 N 条」(`search.totalCount`),
+     * 那句话里没有名词跟在数后面,不需要单复数。键删了,这一行跟着删。
+     */
   ]
 
   it('1 走单数键,0 与 2 走复数键', () => {

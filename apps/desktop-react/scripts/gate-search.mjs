@@ -64,7 +64,7 @@ const shotDir = path.join(appRoot, 'dist', 'gate-shots')
 const OWNER_UID = 'local-user'
 const OWNER_WID = 'default'
 
-/** 一页多少条 —— 与 `src/search/transitions.ts` 的 SEARCH_FIRST_PAGE 是同一个数。 */
+/** 一页多少条 —— 与 `src/data/search-listing-source.ts` 的 SEARCH_LISTING_PAGE 是同一个数。 */
 const FIRST_PAGE = 20
 /** 种子会话数。必须 > 一页,否则「翻页」这件事在屏幕上根本不发生。 */
 const SEED_SESSIONS = 25
@@ -451,7 +451,7 @@ async function main() {
      * ── S4b:第一页那一行**不再报总数**,而这是更诚实的一版 ────────────────
      * 从前壳手上有整张会话表,所以第一页就说得出「共 25 条」。今天这一档的行
      * 来自 `search.query`,而它这一路(空词绕开索引调旧 `searchChats`,S3b)
-     * **不下发 total** —— 于是判据表(`transitions.moreState`)落在
+     * **不下发 total** —— 于是判据表(`src/search/paging.ts` 的 `moreStateOf`)落在
      * 「给满了、后面可能还有,但没人说过有」那一格:画「加载更多」,**不猜一个数**。
      *
      * 「看得到全部条数」这件事没有丢,它挪到了**取尽那一刻**(下面第二页那条
