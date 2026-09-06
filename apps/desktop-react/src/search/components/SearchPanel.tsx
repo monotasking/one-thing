@@ -487,15 +487,28 @@ export function SearchPanel() {
 
   /* ── 续搜(§4.6)───────────────────────────────────────────────────────── */
 
-  /** 此刻这一步(记历史用)。 */
-  const entryNow = (): SearchHistoryEntry => ({ query, capability: scope, filters, selected: cursor })
+  /**
+   * 此刻这一步(记历史用)。
+   *
+   * `activeId` 是**行的 id**,不是下标(检索面终稿 落差 #18,`../history.ts` 那一格
+   * 改名时随手过来的最小适配):这条旧路仍然按下标走行,所以两头各翻译一次 ——
+   * 记的时候把下标翻成 id,还原的时候翻回来(见 `applyEntry`)。
+   */
+  const entryNow = (): SearchHistoryEntry => ({
+    query,
+    capability: scope,
+    filters,
+    activeId: visibleRows[cursor]?.id ?? null,
+  })
 
   /** 把一步落成屏幕上的状态。**替换**,不是 push 一帧 —— 退回去靠历史。 */
   const applyEntry = (entry: SearchHistoryEntry): void => {
     setQuery(entry.query)
     setScope(entry.capability)
     setFilters(entry.filters)
-    setCursor(entry.selected)
+    // 那一条还在屏上就回到它,不在就回列表首 —— 与第 ⑦ 步 `reconcile` 的落位
+    // 规则同一句话(找不到就落序列首项)。
+    setCursor(Math.max(0, visibleRows.findIndex(row => row.id === entry.activeId)))
     setOnMore(false)
     setPicked([])
   }
@@ -508,7 +521,7 @@ export function SearchPanel() {
     const next = pushHistory(history, entryNow())
     if (continuation.kind === 'scope') {
       const filtersNext = { ...filters, scope: continuation.chip }
-      setHistory(pushHistory(next, { query, capability: scope, filters: filtersNext, selected: 0 }))
+      setHistory(pushHistory(next, { query, capability: scope, filters: filtersNext, activeId: null }))
       setFilters(filtersNext)
       setCursor(0)
       setPicked([])
@@ -521,13 +534,13 @@ export function SearchPanel() {
       query: continuation.query,
       capability: continuation.capability,
       filters: filtersNext,
-      selected: 0,
+      activeId: null,
     }))
     applyEntry({
       query: continuation.query,
       capability: continuation.capability,
       filters: filtersNext,
-      selected: 0,
+      activeId: null,
     })
   }
 

@@ -1,30 +1,27 @@
 import { describe, expect, it } from 'vitest'
-import type { SearchResponse, SearchResult } from '@shared/ipc/search'
+import type { SearchResult } from '@shared/ipc/search'
 import {
-  SEARCH_FIRST_PAGE,
-  SEARCH_PAGE_SIZE,
   fileExt,
   fileName,
-  flatRows,
   itemRefOf,
-  moreState,
   originText,
-  pageWindow,
-  remoteSide,
   resultRows,
-  sectionsOf,
-  sectionsWindow,
   targetText,
 } from './transitions'
-import type { SearchMore, SearchRemoteSide } from './transitions'
 
 /**
  * 检索面的纯函数(S4b 之后**只剩一条造行路**)。
  *
- * 这一批用例守的三件事,每一件都对着 §4.0 那张枚举点清账表的一格:
+ * 这一批用例守的两件事,每一件都对着 §4.0 那张枚举点清账表的一格:
  *  · 造行只认后端的回执(`resultRows`);
- *  · `all` 档的节由**后端的 groups** 说,壳不归堆(`sectionsOf`);
- *  · 底部那条 item 的判据表(`moreState`)一格没变,只是少了一个入参。
+ *  · 出处的拼法只有一处产地(`originText` / `targetText`)。
+ *
+ * ── 分页与分节那五组用例搬走了(迁移第 ⑤ 步)─────────────────────────────
+ * `sectionsOf` / `sectionsWindow` / `flatRows` 归 `./sequence.test.ts`,
+ * `remoteSide` / `pageWindow` / `moreState` 归 `./paging.test.ts` —— 它们验的是
+ * **分节与分页**这两件事,而这两件事从这一批起各有自己的产地(`sequence.ts` /
+ * `paging.ts`)。函数本体本批一个都没删(删旧是第 ⑨ 步),只是用例先按新家归位:
+ * 到第 ⑨ 步删旧那一天,该跟着走的用例已经在它该在的文件里了。
  */
 
 const result = (over: Partial<SearchResult> = {}): SearchResult => ({
@@ -85,71 +82,6 @@ describe('itemRefOf(预览 / 动作请求里那条 items)', () => {
   })
 })
 
-describe('sectionsOf(§7.2 全部档 = 分组总览)', () => {
-  const groups: SearchResponse['groups'] = [
-    { capability: 'chats', label: 'search.capability.chats', total: 12, results: [result({ id: 'c1' })] },
-    { capability: 'messages', label: 'search.capability.messages', results: [result({ id: 'm1' }), result({ id: 'm2' })] },
-    { capability: 'files', label: 'search.capability.files', results: [], error: '索引不可用' },
-  ]
-
-  it('组的次序**原样保留** —— 后端已按 manifest 的 order 排好,壳不再排一遍', () => {
-    expect(sectionsOf({ results: [], groups }, 'all').map(s => s.capability))
-      .toEqual(['chats', 'messages', 'files'])
-  })
-
-  it('offset 是**扁平下标**:第二组从第一组结束的地方数起', () => {
-    const sections = sectionsOf({ results: [], groups }, 'all')
-    expect(sections.map(s => s.offset)).toEqual([0, 1, 3])
-  })
-
-  it('一条结果都没有但**塌了**的组照样有节头(§9 第四条)', () => {
-    const failed = sectionsOf({ results: [], groups }, 'all')[2]
-    expect(failed.rows).toEqual([])
-    expect(failed.error).toBe('索引不可用')
-    expect(failed.head).toBe(true)
-  })
-
-  it('total 缺席 = 不知道,**不是 0**', () => {
-    const sections = sectionsOf({ results: [], groups }, 'all')
-    expect(sections[0].total).toBe(12)
-    expect('total' in sections[1]).toBe(false)
-  })
-
-  it('单类档:一节、不画节头、labelKey 就是能力 id(节头本来就不画)', () => {
-    const sections = sectionsOf({ results: [result()] }, 'messages')
-    expect(sections).toHaveLength(1)
-    expect(sections[0].head).toBe(false)
-    expect(sections[0].capability).toBe('messages')
-  })
-
-  it('还没有答案 = 一节都没有(不是一节空的)', () => {
-    expect(sectionsOf(undefined, 'all')).toEqual([])
-  })
-})
-
-describe('sectionsWindow / flatRows(翻页只是把窗口拉大)', () => {
-  const groups: SearchResponse['groups'] = [
-    { capability: 'a', label: 'a', results: [result({ id: 'a1' }), result({ id: 'a2' })] },
-    { capability: 'b', label: 'b', results: [result({ id: 'b1' }), result({ id: 'b2' })] },
-  ]
-  const sections = sectionsOf({ results: [], groups }, 'all')
-
-  it('切在**扁平下标**上 —— 第一组吃不光配额,第二组照样露得出来', () => {
-    const window = sectionsWindow(sections, 3)
-    expect(flatRows(window).map(r => r.id)).toEqual(['a1', 'a2', 'b1'])
-  })
-
-  it('切空了的节**仍然留着**(节头是读数,不是行)', () => {
-    const window = sectionsWindow(sections, 2)
-    expect(window.map(s => s.capability)).toEqual(['a', 'b'])
-    expect(window[1].rows).toEqual([])
-  })
-
-  it('单类档那一节切空了就整节不要(它本来就没有节头要说的话)', () => {
-    const single = sectionsOf({ results: [result()] }, 'messages')
-    expect(sectionsWindow(single, 0)).toEqual([])
-  })
-})
 
 describe('路径与出处', () => {
   it('fileName / fileExt:没有扩展名就把整个名字大写', () => {
@@ -170,55 +102,3 @@ describe('路径与出处', () => {
   })
 })
 
-describe('remoteSide(次序是判据,不是口味)', () => {
-  const cases: Array<[SearchRemoteSide[], SearchRemoteSide]> = [
-    [['exhausted', 'failed'], 'failed'],
-    [['pending', 'more'], 'more'],
-    [['exhausted', 'pending'], 'pending'],
-    [['exhausted', 'exhausted'], 'exhausted'],
-    [[], 'exhausted'],
-  ]
-  for (const [sides, want] of cases) {
-    it(`${JSON.stringify(sides)} → ${want}`, () => {
-      expect(remoteSide(...sides)).toBe(want)
-    })
-  }
-})
-
-describe('pageWindow', () => {
-  it('第一页 = 首屏;之后每页加一个增量', () => {
-    expect(pageWindow(1)).toBe(SEARCH_FIRST_PAGE)
-    expect(pageWindow(3)).toBe(SEARCH_FIRST_PAGE + 2 * SEARCH_PAGE_SIZE)
-  })
-})
-
-describe('moreState(底部那条 item 的判据表)', () => {
-  const at = (over: Partial<Parameters<typeof moreState>[0]>): SearchMore =>
-    moreState({ page: 1, total: 5, remote: 'exhausted', ...over })
-
-  it('一条行都没有 = 什么都不画', () => {
-    expect(at({ total: 0 })).toEqual({ kind: 'none' })
-  })
-
-  it('取尽 + 全装得下 = 读数「共 N 条 · 已全部显示」(第一页就取尽也算数)', () => {
-    expect(at({})).toEqual({ kind: 'end', total: 5 })
-  })
-
-  it('窗口装不下:取尽时报真总数,没取尽时不猜(null)', () => {
-    expect(at({ total: 50 })).toEqual({ kind: 'more', shown: 20, total: 50 })
-    expect(at({ total: 50, remote: 'more' })).toEqual({ kind: 'more', shown: 20, total: null })
-  })
-
-  it('远端还没落定的第一页:**报数不许诺** —— 「已显示 N 条」,不是「加载更多」', () => {
-    expect(at({ remote: 'pending' })).toEqual({ kind: 'count', shown: 5 })
-  })
-
-  it('翻过页之后,加载中 / 失败才由这条 item 说', () => {
-    expect(at({ page: 2, remote: 'pending' })).toEqual({ kind: 'loading' })
-    expect(at({ page: 2, remote: 'failed' })).toEqual({ kind: 'error' })
-  })
-
-  it('第一页那次失败仍然给一条**能按的** item —— 「再试一次」得有地方按', () => {
-    expect(at({ remote: 'failed' })).toEqual({ kind: 'more', shown: 5, total: null })
-  })
-})

@@ -23,7 +23,7 @@ const entry = (over: Partial<SearchHistoryEntry> = {}): SearchHistoryEntry => ({
   query: 'q',
   capability: 'all',
   filters: INITIAL_FILTERS,
-  selected: 0,
+  activeId: null,
   ...over,
 })
 
@@ -34,10 +34,10 @@ describe('pushHistory', () => {
     expect(h.at).toBe(0)
   })
 
-  it('同一步再推一次**不多记一格**,只更新「停在第几行」', () => {
-    const h = pushHistory(pushHistory(EMPTY_HISTORY, entry()), entry({ selected: 4 }))
+  it('同一步再推一次**不多记一格**,只更新「停在哪一项」', () => {
+    const h = pushHistory(pushHistory(EMPTY_HISTORY, entry()), entry({ activeId: 'row:messages:m4' }))
     expect(h.entries).toHaveLength(1)
-    expect(h.entries[0].selected).toBe(4)
+    expect(h.entries[0].activeId).toBe('row:messages:m4')
   })
 
   it('后退到中间再走一条新路 → **前进那一段被砍掉**(与地址栏同形)', () => {
@@ -80,10 +80,10 @@ describe('goBack / goForward', () => {
 
   it('后退再前进回到原处(**四格原样**,不是只还原一个词)', () => {
     const filters = { ...INITIAL_FILTERS, role: 'user' as const }
-    const h = pushHistory(three, entry({ query: 'd', capability: 'messages', filters, selected: 3 }))
+    const h = pushHistory(three, entry({ query: 'd', capability: 'messages', filters, activeId: 'row:messages:m3' }))
     const back = goBack(h)!
     const forward = goForward(back.history)!
-    expect(forward.entry).toEqual({ query: 'd', capability: 'messages', filters, selected: 3 })
+    expect(forward.entry).toEqual({ query: 'd', capability: 'messages', filters, activeId: 'row:messages:m3' })
   })
 
   it('↑ 与 ⌘[ 落的是同一格历史(recallPrevious 就是 goBack)', () => {
