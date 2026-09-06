@@ -18,6 +18,16 @@
  *   律① 写操作就地更新,重拉后台对账 → `mutation.optimistic` + `settle`
  *   律② 重拉期间旧内容保留在屏     → `query.data` 在 refetch 期间**永不清空**;
  *                                    骨架只看 `phase === 'initial'`
+ *   律②′ 换键在飞时旧内容也留在屏  → `useQueryHeld(query)`(`react.ts`):律②
+ *                                    只守得住**同一格**,换一把键就是换一个
+ *                                    `Query`,新格天生空 —— 于是列表清空、
+ *                                    容器高度归零、`scrollTop` 被钳成 0。
+ *                                    垫的只有 `data` 一格,`phase/inflight/error`
+ *                                    一律如实;骨架判据随之改成
+ *                                    `phase === 'initial' && !stale`。
+ *                                    **不是** query 的性质,是读法:哪些面要
+ *                                    「换词不清屏」由消费方自己说(检索面要,
+ *                                    换一坑换一份目录那种不要)。
  *   律③ 异步动作必有进行中反馈,长在发起它的那个控件上
  *                                  → `AsyncSource.isPending(key)` + `ui/AsyncButton`
  *   律④ 列表 key 稳定,禁整树重挂   → 快照身份稳定:数据没变不换引用
@@ -63,4 +73,5 @@ export type { FetchContext, Query, QueryFamily, QueryFetcher, QueryOptions, Quer
 export { createQuery, createQueryFamily } from './query'
 export type { Mutation, MutationOptions, MutationSnapshot, Rollback } from './mutation'
 export { createMutation } from './mutation'
-export { useAsyncPending, useMutation, useQuery } from './react'
+export type { HeldSnapshot } from './react'
+export { useAsyncPending, useMutation, useQuery, useQueryHeld } from './react'

@@ -38,7 +38,7 @@ export interface QuerySnapshot<T> {
   readonly dataRev: number
 }
 
-export interface FetchContext {
+export interface FetchContext<T = unknown> {
   /** 这一发是哪一格。单例 query 是空串。 */
   readonly key: string
   /**
@@ -47,9 +47,24 @@ export interface FetchContext {
    * 把「刷新」这个意图原样递下去,而不是在 kernel 里替它决定。
    */
   readonly force: boolean
+  /**
+   * **这一格此刻屏上那份答案**(没有过就是 `undefined`)。
+   *
+   * 它服务的是一种取数口:一格的内容是**分几发攒出来的**(检索面翻页把第 2、3 页
+   * 就地 `patch` 追加进同一格),于是 `invalidate()` 之后那一发重拉如果只拿头页,
+   * 行集会当场缩回去 —— 用户翻到第 5 页,后台对了一次账,屏幕上少了四页。
+   * fetcher 读这一格就能知道「上次交出去的那份攒到了第几页」,顺着自己的游标
+   * 把同样多的页再走一遍,整份交回。**回放的账在 fetcher 手里**,kernel 不认识
+   * 页、游标、块 —— 它只是把上一份答案原样递过去。
+   *
+   * 三件事不要指望它:①它**不是**缓存(kernel 不据它跳过请求);②它是**当下**
+   * 的 data,包括别人刚 `patch` 进去的补丁;③失败那一发不清 data(律②),
+   * 所以重试时它仍然是上次成功那份。
+   */
+  readonly previous?: T
 }
 
-export type QueryFetcher<T> = (ctx: FetchContext) => Promise<T>
+export type QueryFetcher<T> = (ctx: FetchContext<T>) => Promise<T>
 
 export interface QueryOptions<T> {
   /**
@@ -228,7 +243,9 @@ function createEntryQuery<T>(
       inflight = true
       emit()
       try {
-        const value = await fetcher({ key, force })
+        // `previous` 在**发车这一刻**取,不是在 settle 那一刻 —— 中途别人 patch 了
+        // 这一格,那份补丁属于下一发的回放依据,不属于已经出发的这一发。
+        const value = await fetcher({ key, force, previous: state.data })
         settle(value)
       } catch (error) {
         // **不动 data**:错误与旧答案共存,屏幕上该同时看得见「这是上次的」
