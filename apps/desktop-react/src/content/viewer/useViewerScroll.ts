@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect } from 'react'
-import type { RefObject, UIEvent } from 'react'
+import { useEffect, useMemo } from 'react'
+import type { RefObject } from 'react'
+import type { ScrollMemory } from '../../ui/scroll-memory'
+import { useScrollMemory } from '../../ui/scroll-memory'
 import { useViewerSource } from '../../data/viewer-source'
 
 /**
@@ -20,6 +22,13 @@ import { useViewerSource } from '../../data/viewer-source'
  * 知道自己被摆在哪儿,而「换宿主」这件事本来就是一次真重挂(新的组件实例,
  * layout effect 自然重跑),不需要一个字符串来提醒它。
  *
+ * ── 09-06 检索面 ③:②③ 两件搬进库件 ──────────────────────────────────
+ * 「还原 / 写回」这一对不是查看器的私事 —— 检索面换词之后要保住列表滚动位,
+ * 要的是**同一件**。所以它立成了 `ui/scroll-memory`(四条判例连同「写回必须在
+ * layout cleanup」都在那儿),这里只剩**接线**:键是 `path`,数存在
+ * `viewer-source` 的 `scrolls` 表里。行为逐字不变 —— 这一批的通过条件就是
+ * 查看器既有那五个用例一字不改照过。
+ *
  * ── 三张状态表 ──────────────────────────────────────────────────────────
  *  ① 生命周期:两个 effect 跟着调用它的组件挂载 / 卸载。无订阅、无计时器、
  *     无模块级副作用 → 不需要 HMR dispose。
@@ -33,10 +42,8 @@ export interface ViewerScrollContext {
   path: string
 }
 
-export interface ViewerScroll {
-  /** 挂到 `.body` 的 `onScroll` 上。 */
-  onScroll: (event: UIEvent<HTMLElement>) => void
-}
+/** 形状就是库件的 `ScrollMemory` —— 这一层只是给它一个查看器口径的名字。 */
+export type ViewerScroll = ScrollMemory
 
 export function useViewerScroll(
   bodyRef: RefObject<HTMLElement | null>,
@@ -52,28 +59,16 @@ export function useViewerScroll(
     el?.scrollIntoView({ block: 'center' })
   }, [bodyRef, currentLine, path])
 
-  /*
-   * ── ② 换宿主不丢滚动位 ────────────────────────────────────────────────
-   * 换宿主 = 这棵组件树真的重挂。挂上来的第一帧就把 store 里那个数贴回去,
-   * 用户看到的是「同一份内容还停在原地」,而不是弹回顶上。
-   *
-   * `useLayoutEffect` 而不是 `useEffect`:后者在**画完之后**才跑,屏幕上会先闪
-   * 一帧顶部。高亮是懒加载的,所以极长的文件在首帧可能还没排到那么高 ——
-   * 那时贴不满是事实(浏览器把 scrollTop 钳到当下的可滚范围)。
-   */
-  useLayoutEffect(() => {
-    const el = bodyRef.current
-    if (!el) return
-    // 读 `getState()` 而不是订阅:订阅了就等于每一帧滚动都重渲这块面。
-    el.scrollTop = useViewerSource.getState().scrolls[path] ?? 0
-  }, [bodyRef, path])
-
-  /* ── ③ 抄进 store 好让 ② 贴得回去 ──────────────────────────────────────
-   * 没有组件订阅 `scrolls`,所以这一口每帧调都不引起重渲。 */
-  const onScroll = useCallback(
-    (event: UIEvent<HTMLElement>) => setScrollTop(path, event.currentTarget.scrollTop),
-    [setScrollTop, path],
+  /* ── ②③ 换宿主不丢滚动位 + 抄进 store —— 整件是 `ui/scroll-memory` ─────
+   * 读 `getState()` 而不是订阅:订阅了就等于每一帧滚动都重渲这块面。
+   * 高亮是懒加载的,所以极长的文件在首帧可能还没排到那么高 —— 那时贴不满是
+   * 事实(浏览器把 scrollTop 钳到当下的可滚范围),这一档写在库件的数据状态里。 */
+  const ports = useMemo(
+    () => ({
+      read: (key: string) => useViewerSource.getState().scrolls[key],
+      write: setScrollTop,
+    }),
+    [setScrollTop],
   )
-
-  return { onScroll }
+  return useScrollMemory(bodyRef, path, ports)
 }
