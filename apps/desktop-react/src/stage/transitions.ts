@@ -1,5 +1,6 @@
 import type {
   DockEdge,
+  FloatMinSize,
   FloatRect,
   MemorablePlacement,
   OpenPlacement,
@@ -16,9 +17,12 @@ import type {
 } from './types'
 import { DOCK_WAKE_DWELL_MS } from '../components/motion'
 /*
- * v8 迁移要清掉存量档案里那块退役的「查看器」瓦。名字从 `stage/items` 取 ——
- * 那只文件运行期**不 import 任何东西**(它对 `./types` 是 `import type`,编译后
- * 整条边消失),所以这条边不会碰到 stage 那圈已知的 import 环。
+ * v8 迁移要清掉存量档案里那块退役的「查看器」瓦。名字从 `stage/items` 取。
+ *
+ * 这条边为什么碰不到 stage 那圈已知的 import 环:`stage/items` 运行期只有**一条**
+ * 出边 —— W7-d 起它 import `expose/float-min` 那格常量(会话总览自述的浮窗下限),
+ * 而那只文件本身是一片**零运行期 import 的叶子**(它对 `./types` 是 `import type`,
+ * 编译后整条边消失)。除此之外 items 仍旧只有类型边。
  */
 import { VIEWER_ITEM_ID } from './items'
 import { foldFlatIntoDefaultSpace } from '../workspace/per-space'
@@ -743,16 +747,39 @@ export const FLOAT_CASCADE_STEP = 28
  *
  * **它是算术,不是产地**:谁该拿到什么参考系由 `freshFloatRect`(唯一的产地)
  * 与 `defaultFloatRect`(只要身量的那两个存量调用点)各自说,判词见它们各自的头上。
+ *
+ * ── **身量:默认与自述取大的那个**(W7-d 裁定 1)────────────────────────────
+ * `min` 是**那块内容自述的下限**,由壳读表读出来递进来(`stage/items.floatMinOfItem`)
+ * —— 这只纯函数只认得一对数,它不知道也不许知道那是哪块瓦。缺席 = 只有默认值。
+ *
+ * 装不下时**不硬撑**:身量先被中央区那块地夹一道(缩到中央区那么大),锚点再被
+ * 中央区左缘兜一道(贴中央区左上)。理由是「自述」说的是「它最好有这么大」,
+ * 而「窗子不许一开就出中央区」是更硬的一条 —— 一扇探到架子底下 / 屏幕外的窗,
+ * 用户连标题栏都抓不住。两道都只在装不下时才生效,装得下时逐字是老路。
  */
-function floatRectAt(viewport: Viewport, center: Rect, cascade: number): FloatRect {
+function floatRectAt(
+  viewport: Viewport,
+  center: Rect,
+  cascade: number,
+  min?: FloatMinSize,
+): FloatRect {
+  const centerW = Math.max(0, center.right - center.left)
+  const centerH = Math.max(0, center.bottom - center.top)
+  // 想要多大 = 默认与自述取大;能有多大 = 中央区与视口取小(中央区量不出来时
+  // 退回视口 —— 冷启动第一帧四条边还没投影,那时中央区就是整块地)。
+  const wantW = Math.max(FLOAT_DEFAULT_W, min?.w ?? 0)
+  const wantH = Math.max(FLOAT_DEFAULT_H, min?.h ?? 0)
+  const roomW = centerW > 0 ? Math.min(centerW, viewport.w) : viewport.w
+  const roomH = centerH > 0 ? Math.min(centerH, viewport.h) : viewport.h
   // 身量先过一次那把尺(视口比默认还小的时候 640 会被压到 `视口 − 两道气口`),
   // **锚点才拿得到真身量** —— 拿没钳过的宽去算右上角,窄视口下会算出负的 x。
   const size = clampFloatSize(
-    { x: 0, y: 0, w: Math.min(FLOAT_DEFAULT_W, viewport.w), h: Math.min(FLOAT_DEFAULT_H, viewport.h) },
+    { x: 0, y: 0, w: Math.min(wantW, roomW), h: Math.min(wantH, roomH) },
     viewport,
   )
   const { w, h } = size
-  const anchorX = center.right - FLOAT_SPAWN_INSET - w
+  // 锚在中央区右上角内缩;缩过还是塞不进去(中央区比 FLOAT_MIN_* 还窄)就贴左上。
+  const anchorX = Math.max(center.left, center.right - FLOAT_SPAWN_INSET - w)
   const anchorY = center.top + FLOAT_SPAWN_INSET
   // 还能往左下挪几步(挪到锚点左边/下边出了中央区就不算一步)。
   const stepsX = Math.floor(Math.max(0, anchorX - center.left) / FLOAT_CASCADE_STEP)
@@ -795,13 +822,18 @@ export function floatSpawnContext(
  * `completeMemory` 不再造矩形(`PlacementMemory` 的 float 那一档 `rect?` 因此是可选的),
  * 缺矩形一律落到这一只 —— 于是「新窗开在哪」这句话只有一个答案,而不是「看它是从
  * 哪条路开的」。
+ *
+ * ── `min` 那一格(W7-d 裁定 1)────────────────────────────────────────────
+ * 那块内容自述的最小身量,由壳读表递进来。这只函数照旧只是「参考系 + 算术」,
+ * 它不问也答不出「这是哪块瓦」——判词与那张表在 `stage/items.floatMinOfItem`。
  */
 export function freshFloatRect(
   state: Pick<StageState, 'shelves' | 'floatOrder'>,
   viewport: Viewport,
+  min?: FloatMinSize,
 ): FloatRect {
   const ctx = floatSpawnContext(state, viewport)
-  return floatRectAt(viewport, ctx.center, ctx.cascade)
+  return floatRectAt(viewport, ctx.center, ctx.cascade, min)
 }
 
 /**
@@ -812,8 +844,8 @@ export function freshFloatRect(
  * 「这扇窗还没有矩形时先按默认身量落」与 `workbench/useContentDrag` 的
  * 「从指针位置反推撕出来那扇窗的矩形」(位置由指针给,不由锚点给)。
  */
-export function defaultFloatRect(viewport: Viewport): FloatRect {
-  return floatRectAt(viewport, { left: 0, top: 0, right: viewport.w, bottom: viewport.h }, 0)
+export function defaultFloatRect(viewport: Viewport, min?: FloatMinSize): FloatRect {
+  return floatRectAt(viewport, { left: 0, top: 0, right: viewport.w, bottom: viewport.h }, 0, min)
 }
 
 /**
@@ -1003,10 +1035,21 @@ export function resizeFloat(
 
 /* ── 架子 ──────────────────────────────────────────────────────────────────── */
 
+/**
+ * 收 / 展一条架子 —— **用户那条路**(W7-d 裁定 2:它一律清掉 `collapsedBy`)。
+ *
+ * 手动动过一次,这条架子就归用户管了:后面预算再宽也不许替他展开(他刚收的),
+ * 预算再窄收起来的也不是他收的。两向都清,是因为「谁收的」这一格记的是**当下
+ * 这一态的来源**,而用户一动就换了来源 —— 留着旧标记等于让下一次 reclamp
+ * 拿一条过期的授权去改用户刚做的决定。
+ */
 function setShelfCollapsed(state: StageState, side: ShelfSide, collapsed: boolean): StageState {
   const shelf = state.shelves[side]
-  if (shelf.collapsed === collapsed) return state
-  return { ...state, shelves: { ...state.shelves, [side]: { ...shelf, collapsed } } }
+  if (shelf.collapsed === collapsed && shelf.collapsedBy === undefined) return state
+  return {
+    ...state,
+    shelves: { ...state.shelves, [side]: { ...shelf, collapsed, collapsedBy: undefined } },
+  }
 }
 
 /** 收/展整条架子。tab 次序与活动 tab 一个都不动 —— 收起的是栏,不是内容。 */
@@ -1176,30 +1219,69 @@ export function setShelfThickness(
  * 所以「让位的那条是最后钉的」不是另一条规则,是这一条的直接结果。收成细梁之后
  * 它只占 12px,对边接着算预算时看到的就是这个数,于是让位一条常常就够了。
  *
+ * ── **地回来了就还回去**(W7-d 裁定 2)────────────────────────────────────
+ * 收成细梁这件事从前是**单向**的:窗子缩到 320 再拉回 1280,那条架子留在细梁上,
+ * 用户什么都没做却丢了一条架子(真机现场,`gate:squeeze` 那一步只好在夹具里手动
+ * 还原)。今天让位时记一格 `collapsedBy: 'budget'`,预算再装得下就把**记着这一格
+ * 的那些**展开并清标记 —— **用户自己收起来的一条都不碰**(判词在 `ShelfState.collapsedBy`)。
+ *
+ * 两趟,次序相反,而这不是两条规则:
+ *  · 归还这一趟按**先钉的先回**(nailRank 升序)—— 用户先摆好的那条是他的既有布局,
+ *    地不够两条一起回来时该先站住的是它;
+ *  · 让位那一趟照旧**后钉的先让**(降序)。
+ * 两句合起来就是同一条:**先摆好的那份布局优先**。归还先跑,是因为它只把地
+ * 交出去、不占地——跑完之后让位那一趟看到的预算才是最终的那份。
+ *
  * **不变即恒等**:一条都没动就交回同一个对象(与 `reclampAll` 逐字同一条纪律)。
  */
 export function reclampShelves<S extends StageState>(state: S, viewport: Viewport): S {
-  const order = [...SHELF_SIDES].sort(
-    (a, b) => nailRank(state, b) - nailRank(state, a),
-  )
+  const byNail = [...SHELF_SIDES].sort((a, b) => nailRank(state, a) - nailRank(state, b))
   let shelves: Record<ShelfSide, ShelfState> | null = null
   const read = (side: ShelfSide): ShelfState => (shelves ?? state.shelves)[side]
-  for (const side of order) {
+  const write = (side: ShelfSide, next: ShelfState): void => {
+    shelves ??= { ...state.shelves }
+    shelves[side] = next
+  }
+  // 第一趟:预算收起来的、如今又装得下的,展开并清标记(先钉的先回)。
+  for (const side of byNail) {
+    const shelf = read(side)
+    if (!shelf.collapsed || shelf.collapsedBy !== 'budget') continue
+    if (shelfExtentOf(shelf) === 0) continue
+    /*
+     * 问的是「**展开之后**这条边站不站得住」,所以拿它自己的厚度试算:预算这只
+     * 函数只看**对边**,而这一条此刻还是细梁 —— 不试算就会把「细梁装得下」当成
+     * 「厚架子装得下」,一展开对边当场被挤。
+     */
+    const budget = shelfThicknessBudget({ shelves: shelves ?? state.shelves }, side, viewport)
+    if (!shelfFitsBudget(budget)) continue
+    const thickness = clampShelfThickness(
+      shelf.thickness,
+      shelfViewportExtent(side, viewport),
+      budget,
+    )
+    write(side, { ...shelf, collapsed: false, collapsedBy: undefined, thickness })
+  }
+  // 第二趟:装不下的收成细梁、装得下的按预算钳厚度(后钉的先让)。
+  for (const side of [...byNail].reverse()) {
     const shelf = read(side)
     if (shelfExtentOf(shelf) === 0) continue
     const budget = shelfThicknessBudget({ shelves: shelves ?? state.shelves }, side, viewport)
     if (!shelfFitsBudget(budget)) {
-      // 摆不下 —— 收成细梁(见上)。已经收着的就是恒等变换:厚度一个字不动,
-      // 窗口拉回去展开时它还是用户拖出来的那个数。
+      /*
+       * 摆不下 —— 收成细梁(见上)。厚度一个字不动:窗口拉回去展开时它还是用户
+       * 拖出来的那个数。
+       *
+       * **已经收着的一格都不碰**,包括不补标记:那一条是用户自己收的(预算收的
+       * 已经带着 `'budget'` 了),给它盖上「预算收的」这个章,等于让下一次拉宽
+       * 窗口替他展开一条他刚亲手收起来的架子。
+       */
       if (shelf.collapsed) continue
-      shelves ??= { ...state.shelves }
-      shelves[side] = { ...shelf, collapsed: true }
+      write(side, { ...shelf, collapsed: true, collapsedBy: 'budget' })
       continue
     }
     const next = clampShelfThickness(shelf.thickness, shelfViewportExtent(side, viewport), budget)
     if (next === shelf.thickness) continue
-    shelves ??= { ...state.shelves }
-    shelves[side] = { ...shelf, thickness: next }
+    write(side, { ...shelf, thickness: next })
   }
   return shelves ? { ...state, shelves } : state
 }

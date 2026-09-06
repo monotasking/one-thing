@@ -2665,22 +2665,20 @@ async function main() {
       await clearComposer(page).catch(() => {})
       await narrow.restore()
       /*
-       * ── 还要还第三样:**被窄窗收起来的那条架子**(W7-c 施工时撞出来)────────
+       * ── 第三样**不还了**:被窄窗收起来的那条架子由产品自己展开(W7-d 裁定 2)──
        * 窗子缩到 320 时共同预算(`stage/transitions.reclampShelves`,W7-p 裁定 3)
-       * 判定右架子摆不下,把它 `collapsed: true` 收成细梁。**而拉回去的那一路没有
-       * 反向的一句** —— 收起来的架子不会自己展开(那是产品行为,不是门该替它拍的),
-       * 于是下一步「五档厚度」找不到那根拖杆(`[role="separator"]` 只在展开时画),
-       * 当场抛「厚度没拖到位:实际 -1」。
+       * 判定右架子摆不下,把它收成细梁。W7-c 那会儿**没有反向的一句**,于是这里
+       * 手动点了一下细梁上的把手把它展开 —— 否则下一步「五档厚度」找不到那根拖杆
+       * (`[role="separator"]` 只在展开时画),当场抛「厚度没拖到位:实际 -1」。
        *
-       * 这是**夹具卫生**,与上面两句同一条:这一步弄乱了什么就还什么。产品那一格
-       * (窄→宽要不要自动展开)记在批报告的留账里,由用户拍。
-       * 展开走的是细梁上那颗真把手(与用户点它逐字同一条路)。
+       * W7-d 给了反向那一句(`collapsedBy: 'budget'` + 归还那一趟),所以这一步
+       * **靠产品**:`narrow.restore()` 把窗还回去,`useViewportReclamp` 那条 resize
+       * 监听重钳一遍,预算装得下就把预算收起来的那条展开。手动那一段删掉之后,
+       * 下一步「五档厚度」拖得到杆,就是这条裁定在真机上的**反证**:
+       * 把归还那一趟拆掉 → 这道门当场红在 `[7/11]` 的「厚度没拖到位:实际 -1」。
+       *
+       * 只等一拍:重钳走的是 rAF 合并(判词在 `stage/viewport-reclamp.ts`)。
        */
-      await page.evaluate(() => {
-        const rail = document.querySelector('[data-shelf="right"] button')
-        const collapsed = !document.querySelector('[data-shelf="right"] [role="separator"]')
-        if (collapsed && rail instanceof HTMLElement) rail.click()
-      })
       await delay(500)
     }
 

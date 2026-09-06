@@ -2,7 +2,9 @@ import { useCallback, useRef } from 'react'
 import type { PointerEvent as ReactPointerEvent } from 'react'
 import { setDragPresentation, setDropAmbient, setDropFeedback, useDragSource } from '../ui/drag'
 import { useT } from '../i18n'
+import { floatMinOfItem } from '../stage/items'
 import { useLiveTitleStore } from '../stage/live-title'
+import { panelIdOf } from '../stage/panel-ref'
 import { defaultFloatRect, floatRectForGrab, FALLBACK_VIEWPORT } from '../stage/transitions'
 import { dropRef } from './drop-commit'
 import { ambientRectsOf, dropTargetAt, targetRectOf } from './drop'
@@ -245,7 +247,7 @@ export function useContentDrag(spec: ContentDragSpec): (e: ReactPointerEvent<Ele
        */
       const target = dropTargetAt(pointer, held.geometry, held.rules)
       held.target = target
-      setDropFeedback(feedbackOf(target, held.geometry, pointer, t))
+      setDropFeedback(feedbackOf(target, held.geometry, pointer, held.ref, t))
       /*
        * **氛围每帧交一次**(同值不惊动订阅者,判词在 `setDropAmbient` 上)。
        * 它**不能**在 `onStart` 里铺:那一刻 `DragSession` 还没 `emit` 出这一场
@@ -523,6 +525,7 @@ function feedbackOf(
   target: DropTarget,
   geometry: DropGeometry,
   pointer: { x: number; y: number },
+  ref: ContentRef,
   t: (key: MessageKey, vars?: Record<string, string | number>) => string,
 ) {
   if (target.kind === 'refuse') {
@@ -543,7 +546,14 @@ function feedbackOf(
       typeof window === 'undefined'
         ? FALLBACK_VIEWPORT
         : { w: window.innerWidth, h: window.innerHeight }
-    const rect = floatRectForGrab(pointer, defaultFloatRect(viewport), viewport)
+    /* 轮廓的身量与**落定那一句**逐字同源(`drop-commit` 的撕窗那一支):默认身量
+     * 也要读一次那块内容自述的浮窗下限(W7-d 裁定 1)。两处不同源的下场是预示画
+     * 640、松手落出 800 —— 预示就不再是预示。 */
+    const rect = floatRectForGrab(
+      pointer,
+      defaultFloatRect(viewport, floatMinOfItem(panelIdOf(ref))),
+      viewport,
+    )
     return {
       rect: { left: rect.x, top: rect.y, width: rect.w, height: rect.h },
       tone: 'accept' as const,

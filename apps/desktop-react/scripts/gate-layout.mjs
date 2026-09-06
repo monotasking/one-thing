@@ -68,6 +68,19 @@ function token(name) {
   return Number(hit[1])
 }
 
+/**
+ * **那块面自述的浮窗下限**(W7-d 裁定 1)。与上面几格同一条纪律:**从源码里读**,
+ * 不抄。产地是 `src/expose/float-min.ts`(会话总览自己说的),名册上那一行
+ * (`stage/items.ts` 的 `floatMin: EXPOSE_FLOAT_MIN`)只是把它挂上去。
+ */
+const EXPOSE_FLOAT_MIN_SRC = readFileSync(path.join(appRoot, 'src/expose/float-min.ts'), 'utf-8')
+function exposeFloatMinW() {
+  const hit = /EXPOSE_FLOAT_MIN: FloatMinSize = \{ w: (\d+)/.exec(EXPOSE_FLOAT_MIN_SRC)
+  if (!hit) throw new Error('expose/float-min.ts 里读不出 EXPOSE_FLOAT_MIN.w —— 判据与产品对不上了')
+  return Number(hit[1])
+}
+const EXPOSE_FLOAT_MIN_W = exposeFloatMinW()
+
 const CENTER_MIN_W = num('CENTER_MIN_W')
 const CENTER_MIN_H = num('CENTER_MIN_H')
 const FLOAT_MARGIN = num('FLOAT_MARGIN')
@@ -706,6 +719,42 @@ async function sceneBudget(store, udd) {
         )
       }
     }
+    /*
+     * ── **地回来了就还回去**(W7-d 裁定 2)。
+     * 上面那趟 SIZES 走到 700×500 时,共同预算把摆不下的那几条收成了细梁。
+     * 病历:从前**没有反向的一句** —— 窗子拉回 1280×860,架子留在细梁上,
+     * 用户什么都没做却丢了一条架子(`gate:squeeze` 那一步只好在夹具里手动点开它)。
+     *
+     * 判据两条:收起来的那几条**回到展开**,而且**厚度逐字是缩窗之前那个数**
+     * (后一条对着落盘那一份读 —— 屏幕上的细梁只说得出「收着」,说不出「厚度还在不在」)。
+     * 反证:把 `reclampShelves` 的归还那一趟拆掉 → 这两条当场红。
+     */
+    await setSize(app, page, SIZES[0].w, SIZES[0].h)
+    const restored = await read(page)
+    const thicknessOf = (layout, side) => layout.persist.stageShelves?.[side]?.thickness
+    const stillRailed = Object.entries(restored.shelves)
+      .filter(([, sh]) => sh && sh.collapsed)
+      .map(([side]) => side)
+    check(
+      '700×500 → 1280×860:被预算收起来的架子全部自己展开了',
+      stillRailed.length === 0,
+      `仍旧收着的=${JSON.stringify(stillRailed)}`,
+    )
+    const drift = Object.keys(restored.shelves).filter(
+      (side) =>
+        restored.shelves[side]
+        && thicknessOf(nailed, side) !== undefined
+        && thicknessOf(restored, side) !== thicknessOf(nailed, side),
+    )
+    check(
+      '而且厚度逐字回到缩窗之前那个数(缩窗是临时的,不许永久改写用户的布局)',
+      drift.length === 0,
+      JSON.stringify(
+        Object.fromEntries(
+          drift.map((side) => [side, `${thicknessOf(nailed, side)} → ${thicknessOf(restored, side)}`]),
+        ),
+      ),
+    )
   } finally {
     await shut(handle)
   }
@@ -812,6 +861,31 @@ async function sceneFloats(store, udd) {
       `层叠步长 = ${FLOAT_CASCADE_STEP}px(往左下)`,
       steps.every((d) => d === FLOAT_CASCADE_STEP),
       JSON.stringify(steps),
+    )
+    /*
+     * ── **自述了 floatMin 的瓦,开出来不小于那个数**(W7-d 裁定 1)────────────
+     * 病历:W7-p 把新窗默认改成 640×480,而会话总览的宽档阈值是容器 761 ——
+     * 640 < 761,浮窗形的总览一开出来就落进窄档(侧栏没了、Tab 序多一格 combobox),
+     * `gate:a11y` [8/10] 两条红。修法不是改默认也不是改断点,是让那块面**自述**。
+     *
+     * 这一条只判**几何**(窗有多宽);「窄档真的没上来」由 `gate:a11y` 那一屏判 ——
+     * 两道门各判自己那一半,不互相冒充。
+     * 反证:把 `stage/items.ts` 那一行 `floatMin` 拆掉 → 这一条读到 ${FLOAT_DEFAULT_W}。
+     */
+    await pickFromTileMenu(page, 'sessions', /^Float$/)
+    const withMin = await read(page)
+    const sessionsWin = withMin.floats.find((f) => f.id === 'sessions')
+    check(
+      `会话总览自述 floatMin.w=${EXPOSE_FLOAT_MIN_W},开出来就有那么宽`,
+      Boolean(sessionsWin) && sessionsWin.rect.w >= EXPOSE_FLOAT_MIN_W,
+      `rect=${JSON.stringify(sessionsWin?.rect)}`,
+    )
+    check(
+      '而且它仍旧在视口里、不压着顶栏那条标签条(自述改的是身量,不是那条锚)',
+      Boolean(sessionsWin)
+        && inViewport(sessionsWin.rect, withMin.vp)
+        && !intersects(sessionsWin.rect, withMin.topBar),
+      `topBar=${JSON.stringify(withMin.topBar)}`,
     )
   } finally {
     await shut(handle)

@@ -620,6 +620,48 @@ describe('浮窗', () => {
     expect(rect.x).toBe(VP.w - 400 - FLOAT_SPAWN_INSET - FLOAT_DEFAULT_W)
   })
 
+  /* ── W7-d 裁定 1:身量 = 默认与「那块面自述的下限」取大 ─────────────────── */
+
+  it('自述了 floatMin 的开出来至少那么大;没自述的一个像素都不变', () => {
+    const bare = freshFloatRect(base, VP)
+    expect(bare.w).toBe(FLOAT_DEFAULT_W)
+    // 反证:把 `floatRectAt` 里那句 `Math.max(FLOAT_DEFAULT_W, min?.w ?? 0)` 换回
+    // `FLOAT_DEFAULT_W` → 下面两条红(开出来还是 640,总览落进窄档)。
+    const wide = freshFloatRect(base, VP, { w: 800 })
+    expect(wide.w).toBe(800)
+    expect(wide.h).toBe(FLOAT_DEFAULT_H)
+    // 仍旧锚在中央区右上角内缩 —— 自述改的是身量,不是那条锚。
+    expect(wide.x).toBe(VP.w - FLOAT_SPAWN_INSET - 800)
+    expect(wide.y).toBe(TOP_CHROME + FLOAT_SPAWN_INSET)
+  })
+
+  it('自述比默认小 = 没意见(取大的那个,不许把窗压小)', () => {
+    expect(freshFloatRect(base, VP, { w: 320, h: 100 })).toEqual(freshFloatRect(base, VP))
+  })
+
+  it('自述装不下时:缩到中央区那么大、贴中央区左上,不探出中央区(裁定 1)', () => {
+    const withShelf: StageState = {
+      ...base,
+      shelves: {
+        ...base.shelves,
+        left: { ...base.shelves.left, thickness: 700, tabs: ['diff'], collapsed: false },
+      },
+    }
+    const center = centerRectOf(withShelf, VP)
+    const rect = freshFloatRect(withShelf, VP, { w: 900 })
+    // 中央区只剩 VP.w − 700 = 580 宽 —— 900 装不下,缩到中央区那么大。
+    expect(center.right - center.left).toBe(VP.w - 700)
+    expect(rect.w).toBe(center.right - center.left)
+    // 贴中央区左上,而不是探到左架子底下去(反证:把 `Math.max(center.left, …)`
+    // 那一句拆掉 → x 变成 center.right − 24 − w,比 center.left 还小)。
+    expect(rect.x).toBe(center.left)
+  })
+
+  it('撕窗那条兜底也读同一格自述(菜单开 800、拖拽撕 640 是同一块面的两个答案)', () => {
+    expect(defaultFloatRect(VP).w).toBe(FLOAT_DEFAULT_W)
+    expect(defaultFloatRect(VP, { w: 800 }).w).toBe(800)
+  })
+
   it('置顶:挪到序末;已经在末位或根本不是浮窗都是恒等变换', () => {
     let st = openAs(base, 'files', FLOAT, VP)
     st = openAs(st, 'diff', FLOAT, VP)
@@ -1096,17 +1138,25 @@ describe('厚度钳制(W2:下界 240 绝对值,上界 55% 比例)', () => {
  */
 describe('架子共同预算(W7-p 裁定 3)', () => {
   /** 一条边上有几格 tab、多厚、收没收。**只造几何**,不碰树。 */
+  type ShelfSpec = {
+    thickness?: number
+    collapsed?: boolean
+    empty?: boolean
+    /** W7-d 裁定 2:谁把它收起来的(缺席 = 用户自己收的)。 */
+    collapsedBy?: 'budget'
+  }
   const shelvesOf = (
-    spec: Partial<Record<ShelfSide, { thickness?: number; collapsed?: boolean; empty?: boolean }>>,
+    spec: Partial<Record<ShelfSide, ShelfSpec>>,
   ): StageState['shelves'] => {
     const shelves = emptyShelves()
-    for (const [side, cfg] of Object.entries(spec) as [ShelfSide, { thickness?: number; collapsed?: boolean; empty?: boolean }][]) {
+    for (const [side, cfg] of Object.entries(spec) as [ShelfSide, ShelfSpec][]) {
       shelves[side] = {
         ...shelves[side],
         tabs: cfg.empty ? [] : ['x'],
         activeId: cfg.empty ? null : 'x',
         thickness: cfg.thickness ?? SHELF_DEFAULT_THICKNESS,
         collapsed: cfg.collapsed ?? false,
+        collapsedBy: cfg.collapsedBy,
       }
     }
     return shelves
@@ -1251,6 +1301,97 @@ describe('架子共同预算(W7-p 裁定 3)', () => {
     expect(a.shelves.right.thickness).toBe(b.shelves.right.thickness)
     expect(1200 - a.shelves.left.thickness - a.shelves.right.thickness)
       .toBeGreaterThanOrEqual(CENTER_MIN_W)
+  })
+
+  /* ── W7-d 裁定 2:让位是记账的,地回来了要还回去 ─────────────────────── */
+
+  it('预算收成细梁时记一格 collapsedBy=budget(它是「谁收的」,不是「是不是自动的」)', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ left: { thickness: 400 }, right: { thickness: 400 } }),
+      shelfNailOrder: ['left', 'right'],
+    }
+    // 700 宽:1×480 的中央区之外只剩 220,两条都摆不下 → 后钉的先让、再让第二条。
+    const narrow = reclampShelves(st, { w: 700, h: 500 })
+    expect(narrow.shelves.right.collapsed).toBe(true)
+    expect(narrow.shelves.right.collapsedBy).toBe('budget')
+    // 厚度一个字不动 —— 它是用户拖出来的那个数,窗口拉回去要还给他。
+    expect(narrow.shelves.right.thickness).toBe(400)
+  })
+
+  it('地回来了就还回去:700×500 → 1280×860,两条都回到原厚度(裁定 2)', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ left: { thickness: 300 }, right: { thickness: 300 } }),
+      shelfNailOrder: ['left', 'right'],
+    }
+    const narrow = reclampShelves(st, { w: 700, h: 500 })
+    expect(narrow.shelves.left.collapsed && narrow.shelves.right.collapsed).toBe(true)
+    const back = reclampShelves(narrow, { w: 1280, h: 860 })
+    // 反证:把第一趟(归还)整段拆掉 → 这四条全红,架子永远留在细梁上。
+    expect(back.shelves.left).toMatchObject({ collapsed: false, thickness: 300 })
+    expect(back.shelves.right).toMatchObject({ collapsed: false, thickness: 300 })
+    expect(back.shelves.left.collapsedBy).toBeUndefined()
+    expect(back.shelves.right.collapsedBy).toBeUndefined()
+  })
+
+  it('**用户自己收起来的那条一格都不碰** —— 拉宽窗口不许替他展开', () => {
+    const st: StageState = {
+      ...initialStageState,
+      // 没有 collapsedBy = 用户自己收的。
+      shelves: shelvesOf({ right: { collapsed: true, thickness: 300 } }),
+      shelfNailOrder: ['right'],
+    }
+    const wide = reclampShelves(st, { w: 1600, h: 900 })
+    expect(wide.shelves.right.collapsed).toBe(true)
+    expect(wide.shelves.right.collapsedBy).toBeUndefined()
+  })
+
+  it('窄窗里用户手动收过的那条,也不会被补上「预算收的」这个章', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({
+        left: { thickness: 400 },
+        right: { collapsed: true, thickness: 400 },
+      }),
+      shelfNailOrder: ['left', 'right'],
+    }
+    // 700 宽下 right 就算展开也摆不下,但它已经收着了 —— 一格都不许写。
+    const narrow = reclampShelves(st, { w: 700, h: 500 })
+    expect(narrow.shelves.right.collapsedBy).toBeUndefined()
+    expect(reclampShelves(narrow, { w: 1600, h: 900 }).shelves.right.collapsed).toBe(true)
+  })
+
+  it('归还是**先钉的先回**:地只够一条时,回来的是用户先摆好的那条', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({
+        left: { collapsed: true, collapsedBy: 'budget', thickness: 400 },
+        right: { collapsed: true, collapsedBy: 'budget', thickness: 400 },
+      }),
+      shelfNailOrder: ['left', 'right'],
+    }
+    // 1024 宽:1024 − 480 − 12(对边细梁)= 532 够一条;第二条只剩 1024 − 480 − 400 = 144。
+    const next = reclampShelves(st, { w: 1024, h: 800 })
+    // 反证:把归还那一趟改成降序(与让位同序)→ 回来的变成 right,用户先摆的那条留在细梁上。
+    expect(next.shelves.left.collapsed).toBe(false)
+    expect(next.shelves.right.collapsed).toBe(true)
+    expect(next.shelves.right.collapsedBy).toBe('budget')
+  })
+
+  it('用户手动收 / 展一律清掉 collapsedBy —— 动过一次就归他管', () => {
+    const st: StageState = {
+      ...initialStageState,
+      shelves: shelvesOf({ right: { collapsed: true, collapsedBy: 'budget', thickness: 300 } }),
+      shelfNailOrder: ['right'],
+    }
+    const expanded = toggleShelfCollapsed(st, 'right')
+    expect(expanded.shelves.right).toMatchObject({ collapsed: false })
+    expect(expanded.shelves.right.collapsedBy).toBeUndefined()
+    // 再收回去仍旧是「用户收的」:下一次拉宽窗口不会替他展开。
+    const recollapsed = toggleShelfCollapsed(expanded, 'right')
+    expect(recollapsed.shelves.right.collapsedBy).toBeUndefined()
+    expect(reclampShelves(recollapsed, { w: 1600, h: 900 }).shelves.right.collapsed).toBe(true)
   })
 
   it('reclampAll 把架子一起钳(它是 resize 那条路的唯一口)', () => {

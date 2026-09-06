@@ -1,4 +1,5 @@
-import type { StageItemSpec } from './types'
+import { EXPOSE_FLOAT_MIN } from '../expose/float-min'
+import type { FloatMinSize, StageItemSpec } from './types'
 
 /**
  * 会话总览这块瓦的 id。它被三处**非本地**地引用(顶栏那道入口 / 内容表 /
@@ -144,12 +145,16 @@ export const STAGE_ITEMS: StageItemSpec[] = [
   // 和别的瓦逐字走同一条路 —— 「换一整屏」那种特权形态已经退役。
   /* 出厂摆法 = 左架子(W6-a,设计 §8:浮窗仍是合法落点,但不再是任何面板的出厂档
    * —— 一块出厂就停在聊天区正中的浮窗会把那块地整个接管掉)。存量记忆压过它。 */
+  /* `floatMin`(W7-d 裁定 1):这块面自述「摆成浮窗至少要 800 宽」—— 低于它
+   * 侧栏会整个不在场(容器阈值 761)。数与判词的产地是 `expose/float-min.ts`,
+   * 这一行只是把它挂在名册上。 */
   {
     id: SESSIONS_ITEM_ID,
     titleKey: 'item.sessions',
     scope: 'global',
     icon: 'MessagesSquare',
     defaultPlacement: { kind: 'edge', side: 'left' },
+    floatMin: EXPOSE_FLOAT_MIN,
   },
   // 未读**不在这张表里**:表是静态声明,未读是当下的事实(住在 services/notify-store)。
   // Dock 渲染时才把两者对上 —— 表里写死一个 dot 就等于让声明冒充状态。
@@ -182,4 +187,17 @@ export const GLOBAL_ITEMS = STAGE_ITEMS.filter((i) => i.scope === 'global')
 export function findItem(id: string | null): StageItemSpec | undefined {
   if (!id) return undefined
   return STAGE_ITEMS.find((i) => i.id === id)
+}
+
+/**
+ * **这块瓦自述的浮窗最小身量**(W7-d 裁定 1)。不认识的 id / 没自述的瓦 =
+ * `undefined`(听全体默认身量的)。
+ *
+ * 它是「**壳读表**」那一句:形态机的纯函数只收一对数,壳这一侧负责回答
+ * 「这一格是谁、它自述了什么」。所以 `stage/transitions.ts` 里一个瓦名都没有,
+ * 而这只函数是全壳唯一一处把「开窗身量」与「哪块瓦」对上的地方 —— 再来一块
+ * 自述的面,只是 `STAGE_ITEMS` 那一行上多一格,形态机与这里一个字都不动。
+ */
+export function floatMinOfItem(id: string | null): FloatMinSize | undefined {
+  return findItem(id)?.floatMin
 }

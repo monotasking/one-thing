@@ -2,6 +2,7 @@ import { useWorkbenchStore } from '../workbench/store'
 import { refId } from '../workbench/kinds'
 import { edgeRegion, floatRegion } from '../workbench/regions'
 import { findLeaf, leavesOf } from '../workbench/tree'
+import { floatMinOfItem } from './items'
 import { panelIdOf, panelRef } from './panel-ref'
 import { leafIndexForPanelIndex, regionOfPanel } from './residency'
 import {
@@ -121,7 +122,7 @@ function rememberLanding(deps: PlacementDeps, id: string): void {
     return
   }
   if (region.startsWith('float:')) {
-    const rect = state.floats[id] ?? freshFloatRect(deps)
+    const rect = state.floats[id] ?? freshFloatRect(deps, id)
     remember(deps, id, { kind: 'float', rect })
     return
   }
@@ -156,13 +157,15 @@ function panelIndexOf(region: RegionId, id: string): number {
 /**
  * **一扇新窗开在哪**(W7-p 裁定 5;修一轮把判据与读数装配一起收进纯函数)。
  *
- * 这一层只剩一句话:把此刻的形态机读数交给唯一那只产地
- * (`transitions.freshFloatRect` —— 锚在中央区右上角 + 按已开窗数层叠)。
- * 从前「中央区矩形 + 已开窗数」这两句在这里与 `stage/store.ensureFloatRect` 里
- * **各写了一遍**,收成 `transitions.floatSpawnContext` 一只之后两处调同一个。
+ * 这一层只剩两句话:把此刻的形态机读数交给唯一那只产地
+ * (`transitions.freshFloatRect` —— 锚在中央区右上角 + 按已开窗数层叠),
+ * 外加**读一次表**(W7-d 裁定 1):`itemId` 那块瓦自述了浮窗最小身量就一并递进去。
+ * 「这一格是谁」是壳这一侧的问题,纯函数只收一对数 —— 判词在
+ * `stage/items.floatMinOfItem` 与 `transitions.floatRectAt` 上。
+ * `itemId` 缺席(窗号是 `win-…` 那种、装的不是一块瓦)= 没有自述,听默认身量的。
  */
-function freshFloatRect(deps: PlacementDeps): FloatRect {
-  return T_freshFloatRect(deps.stage(), deps.viewport())
+function freshFloatRect(deps: PlacementDeps, itemId?: string | null): FloatRect {
+  return T_freshFloatRect(deps.stage(), deps.viewport(), floatMinOfItem(itemId ?? null))
 }
 
 /**
@@ -275,7 +278,7 @@ export function placeAs(
    * 置顶序与位置记忆一个字都不用改。矩形在建窗之前先钳好 —— 投影器随后把这扇窗
    * 排进 `floatOrder` 的末位(末位最上)。
    */
-  const rect = clampFloatRect(deps.stage().floats[id] ?? freshFloatRect(deps), viewport)
+  const rect = clampFloatRect(deps.stage().floats[id] ?? freshFloatRect(deps, id), viewport)
   deps.patchStage({ floats: { ...deps.stage().floats, [id]: rect } })
   placeItemIn(id, floatRegion(id))
   rememberLanding(deps, id)
@@ -377,8 +380,15 @@ export function activateShelfTabIn(_deps: PlacementDeps, side: ShelfSide, id: st
 /** 收 / 展整条架子。tab 次序与活动 tab 一个都不动 —— 收起的是栏,不是内容。 */
 export function setShelfCollapsed(deps: PlacementDeps, side: ShelfSide, collapsed: boolean): void {
   const shelves = deps.stage().shelves
-  if (shelves[side].collapsed === collapsed) return
-  deps.patchStage({ shelves: { ...shelves, [side]: { ...shelves[side], collapsed } } })
+  if (shelves[side].collapsed === collapsed && shelves[side].collapsedBy === undefined) return
+  /*
+   * **`collapsedBy` 一并清掉**(W7-d 裁定 2,与 `transitions.setShelfCollapsed` 逐字
+   * 同一条)。这条路是「往这条边上放了一格东西,顺手展开它」—— 那是**用户的动作
+   * 意图**,所以从这一刻起这条架子归用户管,预算不许再替他收展。
+   */
+  deps.patchStage({
+    shelves: { ...shelves, [side]: { ...shelves[side], collapsed, collapsedBy: undefined } },
+  })
 }
 
 /* ── 整栏 / 整扇 ───────────────────────────────────────────────────────── */
@@ -495,8 +505,10 @@ export function placeRefIn(
   const floatId = region.startsWith('float:') ? region.slice('float:'.length) : null
   if (floatId === null) return null
   const viewport = deps.viewport()
+  /* 窗号(`win-…`)不是瓦 id —— 自述要从**这一格装的内容**上问(`panelIdOf`:
+   * 不是一块瓦就是 null,那就没有自述)。判词在 `freshFloatRect` 的头上。 */
   const rect = clampFloatRect(
-    opts.rect ?? deps.stage().floats[floatId] ?? freshFloatRect(deps),
+    opts.rect ?? deps.stage().floats[floatId] ?? freshFloatRect(deps, panelIdOf(ref)),
     viewport,
   )
   deps.patchStage({ floats: { ...deps.stage().floats, [floatId]: rect } })

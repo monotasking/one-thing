@@ -1,3 +1,5 @@
+import { floatMinOfItem } from '../stage/items'
+import { panelIdOf } from '../stage/panel-ref'
 import { nextFloatId } from '../stage/placement'
 import { useStageStore } from '../stage/store'
 import {
@@ -127,7 +129,11 @@ export function dropRef(ref: ContentRef, target: DropTarget, opts: DropCommitOpt
   // 出去,因为浮窗的三张表按瓦 id 记;现在窗号自己铸,任何一种 ref 都撕得出来)。
   const already = regionOfRefIn(useWorkbenchStore.getState().regions, refId(ref))
   const winId = already?.startsWith('float:') ? already.slice('float:'.length) : nextFloatId()
-  const size = useStageStore.getState().floats[winId] ?? defaultFloatRect(viewport())
+  /* 身量:窗子已有的记忆优先,没有就按默认 —— 而**默认要读一次表**(W7-d 裁定 1):
+   * 这一格装的要是一块自述了浮窗下限的瓦,撕出来的窗照样得有那么大,否则「撕成
+   * 浮窗」这条路会绕过自述,同一块面从菜单开是 800、从拖拽撕是 640。 */
+  const size =
+    useStageStore.getState().floats[winId] ?? defaultFloatRect(viewport(), floatMinOfItem(panelIdOf(ref)))
   const rect: FloatRect = opts.pointer ? floatRectForGrab(opts.pointer, size, viewport()) : size
   useStageStore.getState().placeRef(ref, floatRegion(winId), { rect })
   land(ref)
