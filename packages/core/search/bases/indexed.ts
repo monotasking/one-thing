@@ -142,14 +142,28 @@ export function indexedCapability(options: IndexedCapabilityOptions): SearchCapa
 
     async search(query: SearchQuery, page: PageRequest, ctx: SearchContext): Promise<SearchPage> {
       const startedAt = now()
-      const queryHash = hashQueryShape({
+      /*
+       * **读游标用「这一趟之前」的代次,发游标用「这一趟之后」的代次。**
+       *
+       * `generation()` 是**同步**的,而真代次住在 Worker 上,只能跟着上一次查询的
+       * 回答捎回来(见 `trackIndexGeneration` 的注释)。两边都用「之前」的值,
+       * 第一次查询就必然对不上:那一趟发游标时代次还是 0、下一趟读游标时已经是 1,
+       * 于是**每个进程的第一页游标永远失效** —— 表现是「加载更多」把第一页原样再答
+       * 一遍(重行)。这是 2026-09-06 由「组游标回传单类不重不漏」那条用例照出来的。
+       *
+       * 分成两个哈希之后恒等式成立:**第 N 趟发的 = 第 N+1 趟读的**(都是第 N 趟
+       * 之后的代次)。索引在两趟之间变了,失效仍然晚一拍 —— 那是同步 `generation()`
+       * 的固有代价,与从前一模一样,只是不再连第一页都算进去。
+       */
+      const shapeOf = (generation: number | string): string => hashQueryShape({
         raw: query.raw,
         intent: query.intent,
         filters: query.filters,
         level: query.ladder?.level ?? 0,
-        generation: options.generation?.() ?? 0,
+        generation,
       })
-      const offset = readOffsetCursor(codec, page.cursor, { capability: manifest.id, queryHash })
+      const readHash = shapeOf(options.generation?.() ?? 0)
+      const offset = readOffsetCursor(codec, page.cursor, { capability: manifest.id, queryHash: readHash })
 
       // **这一次跑哪几路**(§15.4)。判据全在 manifest 那张表里,`indexed.ts` 只是读
       // 表然后算 —— 这个文件里既没有能力名,也没有召回器名。
@@ -175,7 +189,8 @@ export function indexedCapability(options: IndexedCapabilityOptions): SearchCapa
       return paginate(items, page, {
         capability: manifest.id,
         codec,
-        queryHash,
+        // 发游标用**这一趟之后**的代次(检索器刚刚捎回来的那个)。
+        queryHash: shapeOf(options.generation?.() ?? 0),
         total,
         offset,
       }, now() - startedAt)

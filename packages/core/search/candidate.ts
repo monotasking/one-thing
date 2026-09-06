@@ -120,6 +120,17 @@ export interface SearchPage {
   cursor?: string
   relaxed?: RelaxLevel
   took: number
+  /**
+   * **这一页上能做的动作**,与 `items` 分开的一格(检索面终稿 §0 ③)。
+   *
+   * 「新建一条叫 jira 的提示词」不是一条搜到的东西:它不该占配额、不该计进
+   * `total`、不该被当成命中。能力从前只能把它 `unshift` 进 `items` 里冒充结果,
+   * 因为页上没有第二个地方放它 —— 这一格就是那个地方。
+   *
+   * core 不解释动作的 `kind`,也不认识任何一个动作 id(法条同 `target`)。
+   * 缺席 = 这一页没有动作。
+   */
+  actions?: ActionDescriptor[]
 }
 
 /** 一次搜索的现场:唯一带「谁 / 在哪 / 还要不要」的东西。 */
@@ -166,6 +177,20 @@ export interface ActionDescriptor {
   label?: string
   danger?: boolean
   payload?: unknown
+  /**
+   * **文案键**(检索面终稿 R12:后端只交数据,给人看的句子由壳按键查出)。
+   *
+   * `label` 那一格是**成品文案**(能力自己写的字),它上了屏就是后端在替壳说话,
+   * 而且必然只有一种语言。新代码填这一格;`label` 留着不删,它有旧读者。
+   */
+  labelKey?: string
+  /**
+   * `labelKey` 的插值格。「新建提示词 “jira”」里的 `jira` 依赖**这一次的查询词**,
+   * 所以句子拼不得,只能把料交出去。
+   */
+  params?: Record<string, string | number>
+  /** 按下去要 `invoke` 哪个能力;页级动作没有这一格就问不出该找谁。 */
+  capability?: string
 }
 
 /** 续搜的值对象(§4.6):三格一起换。 */

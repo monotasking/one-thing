@@ -112,6 +112,151 @@ describe('SearchService(S2 门面)', () => {
     expect(response.groups).toBeDefined()
   })
 
+  /*
+   * ── 全部档的每一块自己续页(检索面终稿 §0 ②)────────────────────────────
+   *
+   * 这三条钉的是 §4「后端」那一段的全部要害:组的 `cursor` 投影出来了没有、那个
+   * 游标**回传到单类档**是不是真的接得上(两条路的配额与放宽档不同,这正是风险 #4),
+   * 以及动作到底有没有从结果里拿出去。
+   */
+  describe('全部档:每块带自己的游标(§0 ②)', () => {
+    /** 一类多灌几份文档,好让配额(chats 6 / messages 5)真的不够用。 */
+    function manyDocs(): IndexedDoc[] {
+      const docs: IndexedDoc[] = []
+      for (let i = 1; i <= 9; i += 1) {
+        docs.push({
+          docId: i,
+          capability: 'chats',
+          key: `s${i}`,
+          time: 1000 - i,
+          facets: { sessionId: `s${i}`, spaceId: '', archived: false, time: 1000 - i },
+          fields: { title: `alpha ${i}` },
+        })
+      }
+      for (let i = 1; i <= 9; i += 1) {
+        docs.push({
+          docId: 100 + i,
+          capability: 'messages',
+          key: `s1:m${i}`,
+          time: 2000 - i,
+          facets: { sessionId: 's1', spaceId: '', role: 'user', archived: false, time: 2000 - i },
+          fields: { content: `alpha message ${i}` },
+        })
+      }
+      return docs
+    }
+
+    const serviceWithMany = () =>
+      createOnethingSearchService(makeAdapters(), { index: fakeIndexFace(manyDocs(), { matched: ['alpha'] }) })
+
+    it('每组带 cursor / relaxed —— 从前这两格在 allResponse 里被整个丢掉', async () => {
+      const response = await serviceWithMany().query({ query: 'alpha', category: 'all' })
+      const chats = (response.groups ?? []).find(group => group.capability === 'chats')
+      const messages = (response.groups ?? []).find(group => group.capability === 'messages')
+
+      // 配额没吃完全集 → 还有下一页 → 必须有游标(契约:缺席 = 取尽)。
+      expect(chats?.results).toHaveLength(6)
+      expect(chats?.total).toBe(9)
+      expect(chats?.cursor).toBeTypeOf('string')
+      expect(chats?.relaxed).toBe(0)
+      expect(messages?.results).toHaveLength(5)
+      expect(messages?.cursor).toBeTypeOf('string')
+      // 两块的游标各是各的 —— 它们编着各自的能力 id。
+      expect(chats?.cursor).not.toBe(messages?.cursor)
+    })
+
+    it('组游标回传给同词同片的单类档:第二页不重不漏(gate 第九步的单测半边)', async () => {
+      const service = serviceWithMany()
+      const all = await service.query({ query: 'alpha', category: 'all' })
+      const group = (all.groups ?? []).find(entry => entry.capability === 'messages')
+      const firstIds = (group?.results ?? []).map(result => result.id)
+
+      const next = await service.query({
+        query: 'alpha',
+        category: 'messages',
+        limit: 5,
+        cursor: group?.cursor,
+      })
+      const nextIds = next.results.map(result => result.id)
+
+      // 不重:两页 id 不相交。
+      expect(nextIds.some(id => firstIds.includes(id))).toBe(false)
+      // 不漏:接着第 6 条开始,两页合起来正好是前 9 条里的 9 条。
+      expect(nextIds).toHaveLength(4)
+      expect(new Set([...firstIds, ...nextIds]).size).toBe(9)
+      // 取尽 = 没有游标。
+      expect(next.cursor).toBeUndefined()
+    })
+
+    it('过期 / 换词的游标当「从头来」,不抛也不空页', async () => {
+      const service = serviceWithMany()
+      const all = await service.query({ query: 'alpha', category: 'all' })
+      const group = (all.groups ?? []).find(entry => entry.capability === 'messages')
+      // 同一个游标换一个词 —— 指纹对不上。
+      const other = await service.query({ query: 'message', category: 'messages', limit: 5, cursor: group?.cursor })
+      expect(other.success).toBe(true)
+      expect(other.results.length).toBeGreaterThan(0)
+    })
+  })
+
+  describe('动作不是结果(§0 ③)', () => {
+    it('「新建提示词」在 actions 上,不进 results、不计 total', async () => {
+      const service = makeService()
+      // 一条提示词都搜不到的词 —— 旧路这时会 unshift 一行「Create prompt "zzz"」。
+      const response = await service.query({ query: 'zzz', category: 'prompts', limit: 5 })
+
+      expect(response.results).toEqual([])
+      expect(response.total).toBe(0)
+      const action = response.actions?.[0]
+      expect(response.actions).toHaveLength(1)
+      expect(action?.kind).toBe('create')
+      expect(action?.capability).toBe('prompts')
+      // 句子归壳:只有键与料,没有「Create prompt "zzz"」这种成品句(R12)。
+      expect(action?.labelKey).toBe('search.action.createPrompt')
+      expect(action?.params).toEqual({ title: 'zzz' })
+      expect(JSON.stringify(action)).not.toContain('Create prompt')
+    })
+
+    it('全部档:动作挂在组上也挂在页上,两处都不进 results', async () => {
+      const service = makeService()
+      const response = await service.query({ query: 'zzz', category: 'all' })
+      const prompts = (response.groups ?? []).find(group => group.capability === 'prompts')
+
+      expect(prompts?.actions).toHaveLength(1)
+      expect(response.actions).toHaveLength(1)
+      expect(response.results.some(result => result.id.startsWith('create-prompt'))).toBe(false)
+      expect(prompts?.results).toEqual([])
+    })
+
+    it('搜得到提示词时不提议新建(判据与旧路那句 wantsCreate 逐字同)', async () => {
+      const service = makeService()
+      const response = await service.query({ query: 'alpha', category: 'prompts', limit: 5 })
+      expect(response.results.map(result => result.id)).toEqual(['prompt:p1'])
+      expect(response.actions).toBeUndefined()
+    })
+  })
+
+  it('单类档某一路塌了 = 整发失败,不是「没有匹配的结果」(§4)', async () => {
+    const service = new OnethingSearchService()
+    service.register({
+      manifest: {
+        id: 'boom',
+        labelKey: 'search.capability.boom',
+        icon: 'X',
+        kind: 'static',
+        budget: { default: 5, timeoutMs: 100 },
+        order: 1,
+        relax: false,
+      },
+      supports: () => true,
+      search: () => Promise.reject(new Error('索引开不了库')),
+    })
+    const response = await service.query({ query: 'alpha', category: 'boom' })
+    expect(response.success).toBe(false)
+    expect(response.error).toBe('索引开不了库')
+    expect(response.results).toEqual([])
+  })
+
   it('§11 反证:注销一个能力 → capabilities 少一项、all 档少一组', async () => {
     const adapters = makeAdapters()
     const service = new OnethingSearchService()

@@ -30,6 +30,8 @@
  */
 import type { CapabilityManifest, PreviewPayload } from '@onething/core/search'
 import {
+  NoPreviewError,
+  PreviewUnavailableError,
   getOnethingSearchServiceSafe,
   type OnethingSearchService,
   type SearchPreviewItem,
@@ -151,9 +153,16 @@ function previewDto(preview: PreviewPayload): SearchPreviewPayload {
   const actions = preview.actions?.map(action => ({
     id: action.id,
     // core 那份的 `label` 是**成品文案**(能力自己写的字);契约那格叫 `labelKey`
-    // 是因为壳要查字典。缺席时退到 id —— 画一个 id 比画一个空按钮诚实。
-    labelKey: action.label ?? action.id,
+    // 是因为壳要查字典。新代码填 `labelKey`,`label` 是旧读者的退路,再退到 id ——
+    // 画一个 id 比画一个空按钮诚实。
+    labelKey: action.labelKey ?? action.label ?? action.id,
     ...(action.danger === undefined ? {} : { danger: action.danger }),
+    // S4a 那条留账(「`kind` 与 `payload` 这一趟过不去」)在检索面终稿 §4 补上了
+    // 契约,于是这里照搬 —— 不再把 kind 塞进 id 里凑合。
+    ...(action.capability === undefined ? {} : { capability: action.capability }),
+    ...(action.kind === undefined ? {} : { kind: action.kind }),
+    ...(action.payload === undefined ? {} : { payload: action.payload }),
+    ...(action.params === undefined ? {} : { params: action.params }),
   }))
   return {
     kind: preview.kind,
@@ -161,6 +170,20 @@ function previewDto(preview: PreviewPayload): SearchPreviewPayload {
     ...(preview.title === undefined ? {} : { title: preview.title }),
     ...(actions === undefined ? {} : { actions }),
   }
+}
+
+/**
+ * 预览失败 → 一个**码**(契约 `SearchPreviewResponse.reason`;检索面终稿 R6)。
+ *
+ * 只认类型不认文案:`NoPreviewError` = 这个能力自述里就没有预览(调用方问错了
+ * 地方,壳画「行的放大版」);`PreviewUnavailableError` = 有预览但这一条算不出
+ * (账本里没这条了 / 读不到那个文件),壳画那句字典化的「预览不可用」。
+ * 认不出的错**不归码** —— 缺席 = 「这次失败还没有归到码上」,而不是硬塞一个。
+ */
+function previewFailureReason(error: unknown): SearchPreviewResponse['reason'] {
+  if (error instanceof NoPreviewError) return 'no-preview'
+  if (error instanceof PreviewUnavailableError) return 'gone'
+  return undefined
 }
 
 export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
@@ -208,10 +231,20 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
       const preview = await requireSearchService().preview(
         request.items as readonly SearchPreviewItem[],
         request.mode,
+        // 列表上那次查询的词(检索面终稿 §4):预览与列表的高亮走同一条判据。
+        request.query === undefined ? {} : { query: request.query },
       )
       return { success: true, preview: previewDto(preview) }
     } catch (error) {
-      return { success: false, error: (error as Error).message }
+      // **原话照旧交**(§4.5 ⑤),但另外归一个**码**:壳按码画字典句(R6),
+      // 原话只进日志。归码这件事只看错误的**类型**,不去匹配文案 —— 拿字符串
+      // 认错误是这个仓里立过案的病(判例「别拿报错串当根因」)。
+      const reason = previewFailureReason(error)
+      return {
+        success: false,
+        error: (error as Error).message,
+        ...(reason === undefined ? {} : { reason }),
+      }
     }
   },
 

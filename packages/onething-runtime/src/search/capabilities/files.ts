@@ -142,10 +142,17 @@ export const filesSearchManifest: CapabilityManifest = {
   order: 4,
   orderWhenIntent: { actions: 5 },
   relax: false,
-  // **lazy**,而且答的只是一条路径(见下面 `filePreview`)。标 lazy 不是因为算得贵,
-  // 是因为**壳选中了才该去开查看器的 peek 态** —— 随候选带一条路径等于让列表上
-  // 十条命中各声明一次「请预备打开我」。
-  preview: { mode: 'lazy' },
+  /*
+   * **inline**(检索面终稿 §4;S4b 起是 `lazy`)。
+   *
+   * 从前标 lazy 的理由是「壳选中了才该去开查看器的 peek 态」。真机上它换来的是
+   * 相反的东西:每停一行就发一次 `search.preview` 往返,而那一趟回来的**只有一条
+   * 路径** —— 那条路径在候选身上一直就有(`filePath`)。一次往返换零新信息,
+   * 而「什么时候开 peek」本来就是壳自己的节流,不该拿一次 RPC 去表达。
+   *
+   * 后端仍然一个字节都不读(见下面 `filePreview` 的整段理由)。
+   */
+  preview: { mode: 'inline' },
 }
 
 /**
@@ -191,6 +198,12 @@ export function createFilesSearchCapability(
     // 空词这一路答 `[]`;恒真是为了让 `all` 档的分组里有这一格。
     supports: () => true,
     target: result => ({ kind: 'file', payload: { filePath: result.filePath ?? '' } } satisfies FileTarget),
+    // 随候选带的那条路径 —— 与下面 `filePreview` 是**同一个投影**,不是第二份。
+    preview: result => ({
+      kind: 'file-excerpt',
+      payload: { path: result.filePath ?? '' } satisfies FileExcerptPreview,
+      title: result.title,
+    }),
   })
   return { ...scan, preview: async candidates => filePreview(candidates) }
 }

@@ -5,13 +5,19 @@
  * (用户设置里的「不索引这些会话 / 目录 / 模式」)与**脱敏**(密钥样式整段替换为
  * 占位,不进倒排也不进摘要)。空间隔离不在这里做 —— 它是查询时的 facet,索引照建。」
  *
- * 两个都是 `(doc, ctx) => doc | null` 的纯函数,按注册序串行(`composeDocumentFilters`
- * 在 core),任一返回 `null` 即止。顺序是注册顺序说了算,不是运气:**排除在前、
- * 脱敏在后** —— 不索引的那些根本不必洗。
+ * 三个(检索面终稿 R8 起多了纯文本那一道)都是 `(doc, ctx) => doc | null` 的纯函数,
+ * 按注册序串行(`composeDocumentFilters` 在 core),任一返回 `null` 即止。顺序是注册
+ * 顺序说了算,不是运气:**排除 → 纯文本 → 脱敏**。
+ *
+ *  · 排除在最前 —— 不索引的那些根本不必洗;
+ *  · 纯文本在脱敏之前 —— 脱敏的占位串(`<redacted:token>`)长得像行内 HTML / 强调
+ *    记号,先脱敏再剥记号有可能把占位本身剥掉,那就把「这里有东西被隐去了」这件事
+ *    也隐去了。
  */
 
 import type { DocPayload, DocumentFilter, DocumentFilterContext } from '@onething/core/search'
 import { redactText } from '@onething/core/search/redact'
+import { plainTextOf } from '../text/plain.js'
 
 /**
  * 脱敏:把每一个字段的正文过一遍 core 的规则表(八条,`core/search/redact.ts`)。
@@ -34,6 +40,27 @@ export const redactionFilter: DocumentFilter = doc => {
   return changed ? { ...doc, fields } : doc
 }
 
+/**
+ * **纯文本**:字段正文进倒排之前先把 markdown 记号剥掉(检索面终稿 R8)。
+ *
+ * `fields` 既是倒排的输入、也是摘要开窗的正文(§5.1),所以在这里洗一次两处都干净:
+ * 行上再也不会露出 `**` 与反引号,而 `title` / `subtitle` 的高亮区间也不必跨一层
+ * 记号去映射。剥法的**唯一产地**是 `text/plain.ts`(它是幂等的,所以查询路上的
+ * `snippetOf` 再跑一遍不会打架 —— 老索引里那些还带记号的文档就靠那一遍兜住)。
+ *
+ * 与 `redactionFilter` 同一条「没变就返回同一个对象」的判据。
+ */
+export const plainTextFilter: DocumentFilter = doc => {
+  let changed = false
+  const fields: Record<string, string> = {}
+  for (const [field, value] of Object.entries(doc.fields)) {
+    const plain = plainTextOf(value)
+    if (plain !== value) changed = true
+    fields[field] = plain
+  }
+  return changed ? { ...doc, fields } : doc
+}
+
 /** 「这一份该不该索引」的判据。`true` = 排除。 */
 export type ExclusionPredicate = (doc: DocPayload, ctx: DocumentFilterContext) => boolean
 
@@ -51,5 +78,5 @@ export function exclusionFilter(predicate?: ExclusionPredicate): DocumentFilter 
  * 缺省的过滤器列表(顺序即语义,见文件头)。装配层可以在两侧再加自己的。
  */
 export function defaultDocumentFilters(predicate?: ExclusionPredicate): DocumentFilter[] {
-  return [exclusionFilter(predicate), redactionFilter]
+  return [exclusionFilter(predicate), plainTextFilter, redactionFilter]
 }

@@ -405,7 +405,12 @@ describe('merge / rank / snippet', () => {
 })
 
 describe('三种基座', () => {
-  it('静态型一次全给,cursor 恒缺席', async () => {
+  /*
+   * 检索面终稿 §4 推翻了「静态型一次全给、cursor 恒缺席」那一条:表小不等于配额大 ——
+   * `all` 档给 prompts 的配额是 6,提示词表有 40 条时屏上那一块永远只有 6 行、而且
+   * 说不出还有多少。静态型现在与索引型同一只 `paginate`:真 `total` + 偏移游标。
+   */
+  it('静态型切页:total 是全集真数,没取尽就发游标', async () => {
     const capability = staticCapability({
       manifest: makeManifest({ id: 'static-one', kind: 'static' }),
       items: ['alpha one', 'alpha two', 'beta'],
@@ -415,6 +420,28 @@ describe('三种基座', () => {
     const page = await capability.search(parse('alpha'), { limit: 1 }, makeContext())
     expect(page.items).toHaveLength(1)
     expect(page.total).toBe(2)
+    expect(page.cursor).toBeTypeOf('string')
+
+    const second = await capability.search(
+      parse('alpha'),
+      { limit: 1, cursor: page.cursor },
+      makeContext(),
+    )
+    // 第二页接着走,不重不漏;取尽 = 没有游标。
+    expect(second.items.map(item => item.id)).not.toEqual(page.items.map(item => item.id))
+    expect(second.items).toHaveLength(1)
+    expect(second.cursor).toBeUndefined()
+  })
+
+  it('静态型取尽了就不发游标(「恰好装满」不等于还有下一页)', async () => {
+    const capability = staticCapability({
+      manifest: makeManifest({ id: 'static-full', kind: 'static' }),
+      items: ['alpha one', 'alpha two'],
+      score: (item, query) => (item.includes(query.raw) ? item.length : null),
+      toCandidate: (item, score) => candidate(item, { score }),
+    })
+    const page = await capability.search(parse('alpha'), { limit: 2 }, makeContext())
+    expect(page.items).toHaveLength(2)
     expect(page.cursor).toBeUndefined()
   })
 

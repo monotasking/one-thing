@@ -20,7 +20,7 @@ import {
   searchResultOf,
 } from '@onething/runtime/search/capabilities'
 import type { SearchQuery } from '@onething/core/search'
-import { createPrompt, setPromptsPathForTests } from '@onething/runtime/prompts/store-bound'
+import { createPrompt, listPrompts, setPromptsPathForTests } from '@onething/runtime/prompts/store-bound'
 import { createAppSearchProvidersAdapters } from '../adapters.js'
 
 let tmpDir: string
@@ -35,8 +35,11 @@ afterEach(async () => {
   await fs.rm(tmpDir, { recursive: true, force: true })
 })
 
-async function searchPrompts(raw: string, limit: number) {
-  const capability = createPromptsSearchCapability(createAppSearchProvidersAdapters())
+function promptsCapability() {
+  return createPromptsSearchCapability(createAppSearchProvidersAdapters())
+}
+
+async function promptsPage(raw: string, limit: number) {
   const query: SearchQuery = {
     raw,
     ast: { type: 'and', children: [] },
@@ -44,8 +47,11 @@ async function searchPrompts(raw: string, limit: number) {
     filters: {},
     capability: 'prompts',
   }
-  const page = await capability.search(query, { limit }, createSearchContext())
-  return page.items.map(searchResultOf)
+  return await promptsCapability().search(query, { limit }, createSearchContext())
+}
+
+async function searchPrompts(raw: string, limit: number) {
+  return (await promptsPage(raw, limit)).items.map(searchResultOf)
 }
 
 describe('Search Everywhere prompt provider', () => {
@@ -64,24 +70,57 @@ describe('Search Everywhere prompt provider', () => {
     expect(results.some(result => result.actionId === `insert-prompt:${weak.id}`)).toBe(true)
   })
 
-  it('offers a create shortcut when no prompt matches', async () => {
+  /*
+   * 检索面终稿 §0 ③ 起,「新建提示词」是**页级动作**,不是结果行:它不占配额、
+   * 不计 `total`、不进 `results`,句子也不再由后端拼(R12 —— `Create prompt "…"`
+   * 这种成品英文句从此由壳按 `labelKey + params` 查字典)。断言跟着落点改,
+   * 判据(什么时候提议新建 / 引号里那个 title 怎么取)一字未动。
+   */
+  it('offers a create action when no prompt matches —— 在 actions 上,不在 results 里', async () => {
     createPrompt({ title: 'Existing', body: 'Something else' })
 
-    const results = await searchPrompts('new reusable thing', 10)
+    const page = await promptsPage('new reusable thing', 10)
 
-    expect(results[0]).toMatchObject({
-      type: 'prompt',
-      title: 'Create prompt "new reusable thing"',
-      actionId: 'create-prompt:new%20reusable%20thing',
+    expect(page.items).toEqual([])
+    expect(page.actions).toHaveLength(1)
+    expect(page.actions?.[0]).toMatchObject({
+      kind: 'create',
+      capability: 'prompts',
+      labelKey: 'search.action.createPrompt',
+      params: { title: 'new reusable thing' },
+      id: 'create-prompt:new%20reusable%20thing',
     })
   })
 
   it('preserves casing when creating from a create prompt query', async () => {
-    const results = await searchPrompts('Create Prompt Refactor Plan', 10)
+    const page = await promptsPage('Create Prompt Refactor Plan', 10)
 
-    expect(results[0]).toMatchObject({
-      title: 'Create prompt "Refactor Plan"',
-      actionId: 'create-prompt:Refactor%20Plan',
+    expect(page.actions?.[0]).toMatchObject({
+      params: { title: 'Refactor Plan' },
+      id: 'create-prompt:Refactor%20Plan',
+    })
+  })
+
+  it('那条动作按下去真的建出一条提示词(`invoke` → 装配层接的提示词仓)', async () => {
+    const page = await promptsPage('Brand New Thing', 10)
+    const action = page.actions?.[0]
+    expect(action).toBeDefined()
+
+    const capability = promptsCapability()
+    await capability.invoke?.(action!.id, [], createSearchContext())
+
+    expect(listPrompts().map(prompt => prompt.title)).toContain('Brand New Thing')
+
+    // 不认识的动作 id 结构化拒绝,不悄悄成功。
+    await expect(capability.invoke?.('nope', [], createSearchContext())).rejects.toThrow()
+  })
+
+  it('结果行的 target 带 promptId —— 壳不必再去 actionId 里剖 id(落差 #54)', async () => {
+    const made = createPrompt({ title: 'Deploy Helper', body: 'release steps' })
+    const page = await promptsPage('deploy', 10)
+    expect(page.items[0]?.target).toEqual({
+      kind: 'prompt',
+      payload: { actionId: `insert-prompt:${made.id}`, promptId: made.id },
     })
   })
 })

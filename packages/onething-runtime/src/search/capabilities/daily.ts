@@ -30,15 +30,19 @@
  * 文档**,索引在结构上答不出它。判定与那一行的形状**逐字沿用旧实现**:
  * `daily-notes.ts` 的 `resolveDailyTodayShortcut` 就是从旧扫描器循环体里抽出来的
  * 同一份代码(S3b 抽出、S5 随每日笔记的配置一起搬到这一类自己的模块里)。位置
- * 也照旧扫描器那只 `sort`:
- * **「新建」那条排最后、「打开今天」那条排最前**(它的 timestamp 是此刻,
- * 而笔记的 timestamp 是文件名那天)。今天的笔记已经存在时索引也会答出它,
- * 于是按 `filePath` 去重 —— 旧路那只 `seen` 的同一件事。
+ * 「打开今天」那条排最前(它的 timestamp 是此刻,而笔记的 timestamp 是文件名那天);
+ * 今天的笔记已经存在时索引也会答出它,于是按 `filePath` 去重 —— 旧路那只 `seen`
+ * 的同一件事。
+ *
+ * **「新建今天的日记」那条 2026-09-06 起不再是一行结果**(检索面终稿 §0 ③):它指的
+ * 文件还不存在,占一格配额、计进 total、还画不出预览。它现在是 `SearchPage.actions`
+ * 上的一个动作,见 `createDailyAction` 与这一类的 `invoke`。
  */
 
 import { readFile } from 'node:fs/promises'
 import {
   indexedCapability,
+  type ActionDescriptor,
   type Candidate,
   type CapabilityManifest,
   type PageRequest,
@@ -50,8 +54,14 @@ import {
 } from '@onething/core/search'
 import { createSqliteLexicalRetriever } from '../index/service.js'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
-import { resolveDailyTodayShortcut, type DailySearchResult } from './daily-notes.js'
-import { snippetOf, trackIndexGeneration, type SearchIndexQueryFace } from './indexed.js'
+import { createDailyNote, resolveDailyTodayShortcut, type DailySearchResult } from './daily-notes.js'
+import {
+  queryRangesOf,
+  snippetOf,
+  snippetWindowOf,
+  trackIndexGeneration,
+  type SearchIndexQueryFace,
+} from './indexed.js'
 import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
 import { normalizeSearchQuery } from './text-match.js'
 import {
@@ -122,7 +132,10 @@ function noteExcerptOf(text: string, title: string, hint: string | undefined): s
  * 「今天还没建」那条快捷项(`actionId` 在 payload 上)在这里**不许**顺手把文件建出来,
  * 那是 `invoke` 的活,不是看一眼的活。所以那一条直接抛原话。
  */
-async function noteExcerptPreview(candidates: Candidate[]): Promise<PreviewPayload> {
+async function noteExcerptPreview(
+  candidates: Candidate[],
+  query: string | undefined,
+): Promise<PreviewPayload> {
   const candidate = firstCandidate(candidates)
   const payload = targetPayloadOf(candidate, 'daily')
   if (typeof payload?.actionId === 'string') {
@@ -135,12 +148,38 @@ async function noteExcerptPreview(candidates: Candidate[]): Promise<PreviewPaylo
   } catch (error) {
     throw new PreviewUnavailableError(`读不到 ${path}:${(error as Error).message}`)
   }
+  const body = noteExcerptOf(text, candidate.title, candidate.subtitle)
+  // 与列表行同一条高亮判据(`queryRangesOf`);没带查询词就不标(不是「没命中」)。
+  const ranges = query === undefined ? [] : queryRangesOf(body, query)
   const excerpt: NoteExcerptPreview = {
     path,
     title: candidate.title,
-    excerpt: noteExcerptOf(text, candidate.title, candidate.subtitle),
+    excerpt: body,
+    ...(ranges.length === 0 ? {} : { ranges }),
   }
   return { kind: 'note-excerpt', payload: excerpt, title: candidate.title }
+}
+
+/** 这一类自报的动作 id(壳按 `kind` 画,按 `id` 回调 `search.invoke`)。 */
+export const CREATE_DAILY_ACTION = 'create-daily'
+
+/**
+ * 「新建今天的日记」这个**动作**。
+ *
+ * 目标路径进 `payload` 也进 `id` 的后半段:`invoke` 只收得到一个 actionId,而
+ * 「建哪个文件」这件事不能靠 `invoke` 那一侧再算一遍(那就是第二个「今天是哪天、
+ * 笔记根在哪」的产地)。`labelKey + params` 的理由同 prompts:句子归壳。
+ */
+function createDailyAction(shortcut: DailySearchResult): ActionDescriptor {
+  const filePath = shortcut.filePath ?? ''
+  return {
+    id: `${CREATE_DAILY_ACTION}:${encodeURIComponent(filePath)}`,
+    kind: 'create',
+    capability: dailySearchManifest.id,
+    labelKey: 'search.action.createDailyNote',
+    params: { path: filePath },
+    payload: { filePath },
+  }
 }
 
 /** 「今天那一条」→ 一枚候选。`result` 一格原样驮着,投影出来的键序不变。 */
@@ -178,6 +217,7 @@ export function createDailySearchCapability(
         const filePath = typeof doc.facets.path === 'string' ? doc.facets.path : doc.key
         const title = doc.fields.title ?? doc.key
         const titleSnippet = snippetOf(title, hit.matched)
+        const titleWindow = snippetWindowOf(titleSnippet)
         // 标题里没命中就把摘要开在正文上 —— 用户想看的是「命中的那句话」。
         const body = hit.fields.includes('content')
           ? snippetOf(doc.fields.content ?? '', hit.matched).text
@@ -192,6 +232,8 @@ export function createDailySearchCapability(
           filePath,
           timestamp: doc.time,
           matchRanges: titleSnippet.ranges,
+          ...(titleWindow === undefined ? {} : { snippet: titleWindow }),
+          source: 'lexical',
         }
         const candidate: ResultBackedCandidate = {
           capability: dailySearchManifest.id,
@@ -223,26 +265,50 @@ export function createDailySearchCapability(
       .catch(() => undefined)
     if (shortcut === undefined) return indexedPage
 
+    /*
+     * 「今天还没建」那一条**不是结果,是动作**(检索面终稿 §0 ③)。
+     *
+     * 它从前排在结果末尾、占一格 `page.limit`、还给 `total` 加一 —— 而它指的文件
+     * 根本不存在,停在它上面预览只能抛「这一条还没有文件可看」。搬到
+     * `SearchPage.actions` 之后:不占位、不计数、句子由壳按键拼(R12)。
+     * 「今天那篇已经存在」的那一条仍然是**真结果**(有文件、打得开、看得了),
+     * 照旧排在最前。
+     */
+    if (shortcut.isCreateShortcut === true) {
+      return { ...indexedPage, actions: [createDailyAction(shortcut)] }
+    }
+
     // 今天的笔记已经存在时索引也答得出它 —— 去重(旧路那只 `seen`)。
     const filePath = shortcut.filePath ?? ''
     const rest = indexedPage.items.filter(item => item.id !== `daily:${filePath}`)
     const deduped = rest.length !== indexedPage.items.length
-    // 分数只在**组内**排序时有意义(§6.5);排头就给一个比谁都大的、排尾就给最小的。
+    // 分数只在**组内**排序时有意义(§6.5);排头就给一个比谁都大的。
     const scores = rest.map(item => item.score)
-    const candidate = shortcut.isCreateShortcut === true
-      ? shortcutCandidate(shortcut, Math.min(0, ...scores) - 1)
-      : shortcutCandidate(shortcut, Math.max(0, ...scores) + 1)
-    const items = shortcut.isCreateShortcut === true
-      ? [...rest, candidate].slice(0, page.limit)
-      : [candidate, ...rest].slice(0, page.limit)
+    const candidate = shortcutCandidate(shortcut, Math.max(0, ...scores) + 1)
 
     return {
       ...indexedPage,
-      items,
+      items: [candidate, ...rest].slice(0, page.limit),
       ...(indexedPage.total === undefined
         ? {}
         : { total: deduped ? indexedPage.total : indexedPage.total + 1 }),
     }
+  }
+
+  /**
+   * 「新建今天的日记」按下去那一下(§8 `invoke`)。
+   *
+   * 真建文件的那一句是 `daily-notes.ts` 的 `createDailyNote` —— 与从前壳走
+   * `searchWindowRouter.executeAction('create-daily-note:…')` 落到的**同一个函数**,
+   * 不是第二份实现。路径从 actionId 里解出来(动作产它时编进去的那一段)。
+   */
+  const invoke = async (actionId: string): Promise<void> => {
+    if (!actionId.startsWith(`${CREATE_DAILY_ACTION}:`)) {
+      throw new Error(`no such action: ${actionId}`)
+    }
+    const filePath = decodeURIComponent(actionId.slice(`${CREATE_DAILY_ACTION}:`.length))
+    if (filePath.length === 0) throw new Error('create-daily action carries no path')
+    await createDailyNote(filePath, adapters)
   }
 
   return {
@@ -252,6 +318,7 @@ export function createDailySearchCapability(
     // `supports`,所以「空词的 daily 档先给今天那一条」照旧成立。
     supports: (query: SearchQuery) => normalizeSearchQuery(query.raw).length > 0,
     search,
-    preview: noteExcerptPreview,
+    preview: async (candidates, _ctx, options) => noteExcerptPreview(candidates, options?.query),
+    invoke,
   }
 }

@@ -1864,6 +1864,10 @@ async function createServerRuntimeOverServerBackend(
 					: emptyServerFileSearchResults();
 			},
 			listPrompts: () => getPromptStoreForContext(context).list(),
+			// 「新建提示词」那个页级动作按下去的落点(检索面终稿 §0 ③)。
+			// 与 listPrompts 同一份 per-owner 仓 —— 建到别人的仓里是越权。
+			createPrompt: (request) =>
+				getPromptStoreForContext(context).create({ title: request.title, body: "" }),
 		};
 	};
 

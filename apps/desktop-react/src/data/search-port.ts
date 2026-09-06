@@ -4,6 +4,7 @@ import {
   type SearchFilters,
   type SearchItemRef,
   type SearchPreviewPayload,
+  type SearchPreviewResponse,
   type SearchResponse,
   type SearchStatusResponse,
 } from '@shared/ipc/search'
@@ -57,6 +58,14 @@ export interface SearchPort {
     category: string,
     limit: number,
     filters?: SearchFilters,
+    /**
+     * **上一页的游标**,原样回传(契约 `SearchRequest.cursor`,S3 起有值)。
+     *
+     * 这条口从前不递它,于是壳只能靠换整把查询键(把 `limit` 做大)去「翻页」——
+     * 那正是「Load more 跳回顶部」的病根(检索面终稿 落差 #26)。端口这一层只负责
+     * **递**:哪一块的游标、什么时候递,是数据层的判据。
+     */
+    cursor?: string,
   ): Promise<SearchResponse>
   /** 有哪些能力(tab / 图标 / 次序 / 有哪几颗过滤片全从它算)。 */
   capabilities(surface?: string): Promise<SearchCapabilityManifestDto[]>
@@ -72,7 +81,14 @@ export interface SearchPort {
   preview(
     items: readonly SearchItemRef[],
     mode: 'single' | 'compare' | 'batch',
-  ): Promise<{ success: boolean; preview?: SearchPreviewPayload; error?: string }>
+    /** 列表上那次查询的词 —— 预览与列表的高亮走同一条判据(契约 `SearchPreviewRequest.query`)。 */
+    query?: string,
+  ): Promise<{
+    success: boolean
+    preview?: SearchPreviewPayload
+    error?: string
+    reason?: SearchPreviewResponse['reason']
+  }>
 }
 
 let port: SearchPort | undefined
@@ -93,7 +109,7 @@ async function realPort(): Promise<SearchPort> {
   const searchApi = client.api(searchRouter)
   return {
     ready: () => whenConnected(),
-    query: async (query, category, limit, filters) => {
+    query: async (query, category, limit, filters, cursor) => {
       const response = await searchApi.query({
         query,
         category,
@@ -101,10 +117,16 @@ async function realPort(): Promise<SearchPort> {
         // 缺席与空表是两回事:一格过滤都没有时**不发这个键**,而不是发一个 `{}`
         // —— 后端那边 `filters: {}` 与缺席同义,但线上少一格总比多一格诚实。
         ...(filters === undefined || Object.keys(filters).length === 0 ? {} : { filters }),
+        // 同一条判据:没有游标就不发这个键(缺席 = 从第一页起)。
+        ...(cursor === undefined ? {} : { cursor }),
       })
       return { ...response, results: response.results ?? [] }
     },
-    preview: (items, mode) => searchApi.preview({ items: [...items], mode }),
+    preview: (items, mode, query) => searchApi.preview({
+      items: [...items],
+      mode,
+      ...(query === undefined ? {} : { query }),
+    }),
     capabilities: async surface => {
       const response = await searchApi.capabilities(surface === undefined ? {} : { surface })
       return response.capabilities ?? []

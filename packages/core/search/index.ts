@@ -43,6 +43,7 @@ export type {
   CapabilityRegistry,
   FacetDeclaration,
   FieldSchema,
+  PreviewOptions,
   RankingDeclaration,
   RetrieverPolicy,
   RetrieverWhen,

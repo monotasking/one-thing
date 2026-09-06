@@ -26,7 +26,7 @@
  * 不读 —— 后端只给路径,壳按查看器的 peek 态画(§4.5 ②那张表最后一行)。
  */
 
-import type { Candidate } from '@onething/core/search'
+import type { Candidate, TextRange } from '@onething/core/search'
 
 /** 预览算不出时的原话。壳把它照抄到 error 态那一行上(§4.5 ⑤)。 */
 export class PreviewUnavailableError extends Error {
@@ -49,6 +49,13 @@ export interface PreviewMessage {
   /** 正文。非字符串的 `content`(多模态那些)在这一层是空串 —— 与旧扫描路同一刀。 */
   text: string
   timestamp?: number
+  /**
+   * 这次查询在 `text` 里命中了哪几处(检索面终稿 §4)。**相对上面那格 `text`**。
+   *
+   * 只有命中那一条会填 —— 上下文那几条是「前后说了什么」,标亮它们没有意义。
+   * 缺席 = 这次预览请求没带查询词(从预览面板直接打开的那一路),不是「没命中」。
+   */
+  ranges?: TextRange[]
 }
 
 /** `kind: 'message-context'` 的载荷:命中那条 ± N 条。 */
@@ -70,6 +77,14 @@ export interface SessionOverviewPreview {
   updatedAt: number
   /** 首条用户消息的截断(`SessionMeta.previewText`);没有就是空串。 */
   preview: string
+  /**
+   * 这间会话属于哪个空间 —— **交 id,不交名字**(检索面终稿 R12)。
+   *
+   * 方案里那一格写的是 `spaceLabel`,这里落成 `spaceId`:一个 label 是给人看的
+   * 一句话,后端交它就是在替壳说话、而且只能有一种语言。空间叫什么壳手上就有
+   * (它画空间树用的是同一张表)。缺席 = 不知道(不是「没有空间」)。
+   */
+  spaceId?: string
 }
 
 /** `kind: 'note-excerpt'` 的载荷:一篇笔记里命中行的上下文。 */
@@ -78,6 +93,8 @@ export interface NoteExcerptPreview {
   title: string
   /** 命中行 ±N 行拼成的一段;判不出命中行时是文件开头那几行。 */
   excerpt: string
+  /** 这次查询在 `excerpt` 里命中了哪几处;缺席 = 请求没带查询词。 */
+  ranges?: TextRange[]
 }
 
 /**

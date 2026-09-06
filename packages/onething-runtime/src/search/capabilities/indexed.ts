@@ -25,6 +25,8 @@ import {
 } from '@onething/core/search'
 
 import type { SearchIndexService } from '../index/service.js'
+import { mapDisplayRangeToSource, toDisplayText } from '../text/plain.js'
+import type { SearchResultSnippetWindow } from './scan-adapter.js'
 
 /**
  * 能力要的索引面 —— 只有两句话。
@@ -41,25 +43,98 @@ export interface FieldSnippet {
   text: string
   /** 相对 `text` 的高亮区间(旧字段 `matchRanges` 就是它)。 */
   ranges: TextRange[]
+  /**
+   * 这扇窗在**剥过记号的全文**里的起点,以及两端截没截(检索面终稿 §4)。
+   *
+   * 坐标系与 `text` / `ranges` 是同一个:那串**屏上看得见的字**。不是 markdown
+   * 原文的坐标 —— 混两套坐标只会让壳画的省略号与高亮各说各的。
+   */
+  offset: number
+  truncatedStart: boolean
+  truncatedEnd: boolean
+}
+
+/**
+ * 一个词元算不算命中了 `matched` 里那几个词(检索面终稿 §4)。
+ *
+ * 判据是「**等于查询词,或以它为前缀**」而不是逐字相等。相等那一版在前缀命中上
+ * 一条高亮都画不出:用户打 `jir`,索引把它展开成 `jira` 去查(`expand.ts` 的前缀
+ * 展开),回来的 `matched` 里是哪一个串取决于展开的方向,而正文里的词元是 `jira`。
+ * 两边只要有一边是另一边的前缀,那就是用户眼里的「这里命中了」。
+ */
+function tokenMatches(token: string, wanted: readonly string[]): boolean {
+  return wanted.some(term => token === term || token.startsWith(term) || term.startsWith(token))
 }
 
 /**
  * 从一段正文里开一扇 120 字的窗,窗里带上命中高亮。
  *
- * `matched` 是索引答的那几个词元(`LexicalHit.matched`)。这里把正文按**同一只
- * 分析器**切一遍、留下在 `matched` 里的那些 token,再让 core 的 `buildSnippet`
- * 挑「装得下最多命中」的那一扇窗。一个命中都对不上时退回开头那一段 —— 那不是
- * 错:前缀展开命中的词元与原文里的词元可以不是同一个串。
+ * 三步:**先剥 markdown 记号**(`toDisplayText`,R8:行上的字是给人读的一句话,
+ * 不是源码),再把剥过的串按**同一只分析器**切一遍、留下命中 `matched` 的那些
+ * token,最后让 core 的 `buildSnippet` 挑「装得下最多命中」的那一扇窗。
+ *
+ * 剥记号在**开窗之前**是判据的一部分:先开窗再剥,窗里那 120 个字会被剥掉一截,
+ * 屏上就短了一块、区间也全错位。
+ *
+ * 一个命中都对不上时退回开头那一段 —— 那不是错:向量路根本没有「命中词」这回事
+ * (`matched` 是空表)。
  */
 export function snippetOf(source: string, matched: readonly string[]): FieldSnippet {
-  if (source.length === 0) return { text: '', ranges: [] }
-  const wanted = new Set(matched)
-  const normalized = normalize(source)
-  const tokens = wanted.size === 0
+  if (source.length === 0) {
+    return { text: '', ranges: [], offset: 0, truncatedStart: false, truncatedEnd: false }
+  }
+  const display = toDisplayText(source).text
+  const normalized = normalize(display)
+  const tokens = matched.length === 0
     ? []
-    : compositeAnalyzer.analyze(normalized.text).filter(token => wanted.has(token.text))
-  const snippet = buildSnippet(source, hitRangesFromTokens(normalized, tokens))
-  return { text: snippet.text, ranges: snippet.ranges }
+    : compositeAnalyzer.analyze(normalized.text).filter(token => tokenMatches(token.text, matched))
+  const snippet = buildSnippet(display, hitRangesFromTokens(normalized, tokens))
+  return {
+    text: snippet.text,
+    ranges: snippet.ranges,
+    offset: snippet.offset,
+    truncatedStart: snippet.truncatedStart,
+    truncatedEnd: snippet.truncatedEnd,
+  }
+}
+
+/**
+ * **一段正文里,这次查询命中了哪几处**(检索面终稿 §4:预览与列表同一个高亮产地)。
+ *
+ * 与 `snippetOf` 的差别只有两处:它不开窗(预览要画整段),而且命中词是从**查询串**
+ * 自己切出来的 —— 预览请求上没有索引答的 `LexicalHit.matched`,只有用户打的那个词。
+ * 判据(剥记号 → 同一只分析器 → 词元等于或互为前缀)与 `snippetOf` **逐字同源**,
+ * 所以两处标出来的是同一批字。
+ *
+ * 返回的区间相对**传进来的那段原文**(`source`),不是剥过记号的串 —— 预览体画的
+ * 就是原文那一段(块渲染),两边坐标必须是同一套。
+ */
+export function queryRangesOf(source: string, query: string): TextRange[] {
+  if (source.length === 0 || query.trim().length === 0) return []
+  const display = toDisplayText(source)
+  const wanted = compositeAnalyzer.analyze(normalize(query).text).map(token => token.text)
+  if (wanted.length === 0) return []
+  const normalized = normalize(display.text)
+  const tokens = compositeAnalyzer.analyze(normalized.text)
+    .filter(token => tokenMatches(token.text, wanted))
+  // 两段映射串起来:归一化坐标 → 剥过记号的串 → 原文。
+  return hitRangesFromTokens(normalized, tokens).map(range => mapDisplayRangeToSource(display, range))
+}
+
+/**
+ * 一条结果上那三格 `snippet`(契约 `SearchResult.snippet`)。
+ *
+ * **窗口就是全文时不加这一格** —— 契约上「缺席 = 那串字就是全文」,而一个
+ * `{offset:0,truncatedStart:false,truncatedEnd:false}` 与缺席在 JSON 上不可区分、
+ * 在键比对上却是两件事(同 `scan-adapter.ts` 里 `preview` 那条判据)。
+ */
+export function snippetWindowOf(snippet: FieldSnippet): SearchResultSnippetWindow | undefined {
+  if (!snippet.truncatedStart && !snippet.truncatedEnd) return undefined
+  return {
+    offset: snippet.offset,
+    truncatedStart: snippet.truncatedStart,
+    truncatedEnd: snippet.truncatedEnd,
+  }
 }
 
 /**

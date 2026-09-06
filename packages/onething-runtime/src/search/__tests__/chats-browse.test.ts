@@ -13,6 +13,10 @@
  * **要改这份夹具,先在报告里说清楚为什么**:它变了就是「最近几间会话」这件事的
  * 行为变了,而那是一次用户可感知的改动。
  *
+ * **步①一个字都没动**:占位名归空(检索面终稿 §6「无标题会话」)那一改留到**步⑧**
+ * —— 判据函数 `sessionTitleOf` 已经备在 `capabilities/sessions.ts` 里,但要等壳把
+ * 兜底(首条用户消息 / 「未命名会话」)补上才接线,否则旧壳会画出一行空白。
+ *
  * ## 为什么四种查询串都录
  *
  * 空词那一支的判据是 `normalizeSearchQuery(raw) === ''`,而裸 `/` 与 `>` 归一化
@@ -92,6 +96,19 @@ async function browse(raw: string, limit: number): Promise<Array<Record<string, 
   })
 }
 
+/** 同一条路,但要的是**整页**(游标 / total 那两格判据在页上,不在行上)。 */
+async function page(raw: string, limit: number, cursor?: string) {
+  const capability = createChatsSearchCapability(adaptersOf(fixture.sessions), fakeIndexFace([]))
+  const query: SearchQuery = {
+    raw,
+    ast: { type: 'and', children: [] },
+    intent: 'content',
+    filters: {},
+    capability: 'chats',
+  }
+  return await capability.search(query, cursor === undefined ? { limit } : { limit, cursor }, createSearchContext())
+}
+
 describe('chats 的空词浏览态(S5:与录下来的旧输出逐条同)', () => {
   for (const [key, expected] of Object.entries(fixture.cases)) {
     const [rawJson, limitText] = key.split('@')
@@ -109,9 +126,42 @@ describe('chats 的空词浏览态(S5:与录下来的旧输出逐条同)', () =>
     expect(rows.some(row => row.id === 'chat:s4')).toBe(false)
   })
 
-  it('没名字的那间画 `New Chat`,而不是一行空标题', async () => {
+  it('没名字的那间画 `New Chat`,而不是一行空标题(归空留到步⑧)', async () => {
     const rows = await browse('', 20)
     expect(rows[0]).toMatchObject({ id: 'chat:s3', title: 'New Chat' })
     expect('subtitle' in rows[0]!).toBe(false)
+  })
+
+  it('浏览态可翻页:第一页带 cursor、total 是真数,第二页接着走且不重不漏', async () => {
+    const first = await page('', 2)
+    expect(first.total).toBe(4)
+    expect(first.cursor).toBeTypeOf('string')
+    expect(first.items.map(item => item.id)).toEqual(['chat:s3', 'chat:s5'])
+
+    const second = await page('', 2, first.cursor)
+    expect(second.items.map(item => item.id)).toEqual(['chat:s1', 'chat:s2'])
+    // 取尽 = 没有游标(契约:cursor 缺席 = 到底了)。
+    expect(second.cursor).toBeUndefined()
+    // 不重:两页的 id 集合不相交,合起来正好是全集。
+    expect(new Set([...first.items, ...second.items].map(item => item.id)).size).toBe(4)
+  })
+
+  it('spaceId 那格过滤片在浏览态里也认 —— 判据是会话表上的 workspaceId', async () => {
+    const sessions: OnethingSearchSessionMeta[] = fixture.sessions.map(session => ({
+      ...session,
+      workspaceId: session.id === 's1' ? 'w1' : 'w2',
+    }))
+    const capability = createChatsSearchCapability(adaptersOf(sessions), fakeIndexFace([]))
+    const query: SearchQuery = {
+      raw: '',
+      ast: { type: 'and', children: [] },
+      intent: 'content',
+      filters: { spaceId: 'w1' },
+      capability: 'chats',
+    }
+    const found = await capability.search(query, { limit: 20 }, createSearchContext())
+    // 只剩 w1 那一间;`total` 是**过滤之后**的真数,不是全表条数。
+    expect(found.items.map(item => item.id)).toEqual(['chat:s1'])
+    expect(found.total).toBe(1)
   })
 })

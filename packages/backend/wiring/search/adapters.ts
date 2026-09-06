@@ -10,7 +10,7 @@
  * 进程单槽。
  */
 import type { OnethingSearchProvidersAdapters } from '@onething/runtime/search'
-import { listPrompts } from '@onething/runtime/prompts/store-bound'
+import { createPrompt, listPrompts } from '@onething/runtime/prompts/store-bound'
 import { getVariablesStore } from '@onething/runtime/variables/store-bound'
 import { getCurrentSessionId } from '../../stores/app-state.js'
 import { getConnectedDirectoriesForSession } from '../../stores/connected-directories.js'
@@ -32,5 +32,8 @@ export function createAppSearchProvidersAdapters(): OnethingSearchProvidersAdapt
     getConnectedDirectories: () => getConnectedDirectoriesForSession(getCurrentSessionId()),
     listFiles,
     listPrompts,
+    // 「新建提示词」那个页级动作按下去的落点(检索面终稿 §0 ③)。空正文是有意的:
+    // 这一下建的是一条**壳接着要去编辑**的空提示词,不是在这里替用户写内容。
+    createPrompt: request => createPrompt({ title: request.title, body: '' }),
   }
 }

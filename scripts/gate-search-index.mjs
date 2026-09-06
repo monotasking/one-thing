@@ -7,7 +7,7 @@
  * (`dist/server/search-worker.cjs`)真的被 `worker_threads` 起了起来、真的在折账本。
  * 单测里的 Worker 是同线程的 `MessageChannel`(S3a 的手法),那条路证不了这一件。
  *
- * 七条(①–④ S3b,⑤–⑦ S3c):
+ * 九条(①–④ S3b,⑤–⑦ S3c,⑧ S7,⑨ 检索面终稿):
  *   ① `search.status` → `mode: 'owner'`(起不来就是 `'error'`)
  *   ② 发一条消息(假 provider 回一段固定文本)→ 1s 内 messages 档搜得到**用户那句**
  *      与**助手那段**(这条走的是完整链:`user/message` / `run/end` → append 观察者
@@ -27,6 +27,10 @@
  *   ⑦ **另一个进程写的账本**:门自己起一个 `node` 子进程往某间会话的 `events.jsonl`
  *      追加一条 `user/message` —— 进程内的 append 观察者对它一无所知,能把它折进去的
  *      只有 Worker 里的目录监视(§5.2 / §5.6)
+ *   ⑨ **组游标回传**(检索面终稿 §0 ②):全部档拿到的 `groups[].cursor` 回传给
+ *      同词同片的单类请求,第二页不重不漏 —— 这条证的是「每块自己原地续页」那一格
+ *      契约真的接得住,而且两条路(全部档的配额 vs 单类档的页大小)的游标指纹一致
+ *      (设计里的风险 #4 只能由门跑出来)
  *   ⑧ **语义召回整条链**(S7,§15):开关打开(设置里那一格,`modelId` 由
  *      `ONETHING_SEARCH_EMBEDDER=fake` 换成确定性的假嵌入器 —— 门不下 110MB 模型)
  *      → `status.vector` 走过 downloading / embedding 到 `'ready'` → 黄金复述集里
@@ -241,6 +245,58 @@ try {
   const indexPath = path.join(storePath, 'index', 'search.v1.sqlite')
   const sizeKiB = fs.existsSync(indexPath) ? (fs.statSync(indexPath).size / 1024).toFixed(1) : '?'
   console.log(`  info 库:${indexPath} ${sizeKiB} KiB`)
+
+  /*
+   * ── ⑨ 组游标回传:全部档拿到的那一格,在单类档上接得住 ───────────────
+   *
+   * 检索面终稿 §0 ② 的那一格 `groups[].cursor`。风险 #4 说的正是这一条:全部档的
+   * 首页由 `defaultBudgetPolicy` 产(messages 配额 5)、第二页由
+   * `singleCapabilityBudgetPolicy` 产,两条路的放宽档 `level` 若不一致,游标的指纹
+   * 就对不上 —— 那件事**只能由门跑出来**,单测里的假索引证不了(它不跑放宽阶梯)。
+   *
+   * 判据三条:全部档那一组带游标;回传之后第二页与第一页 **id 不相交**(不重);
+   * 两页合起来的条数等于 `total` 能覆盖的那一段(不漏)。
+   */
+  const PAGE_MARKER = `gatepage${letters(8)}`
+  const PAGE_ROWS = 9
+  for (let i = 0; i < PAGE_ROWS; i += 1) {
+    await rpc('sessions', 'addSystemMessage', {
+      sessionId,
+      message: {
+        id: `${PAGE_MARKER}-${i}`,
+        role: 'system',
+        content: `${PAGE_MARKER} 第 ${i} 条`,
+        timestamp: Date.now() + i,
+      },
+    })
+  }
+  const paged = await waitForHit(PAGE_MARKER, 'all',
+    result => result.id.includes(PAGE_MARKER), 10_000)
+  check(paged.hit !== undefined, `⑨ 全部档搜得到那 ${PAGE_ROWS} 条(${paged.ms}ms)`)
+
+  const all = await rpc('search', 'query', { query: PAGE_MARKER, category: 'all' })
+  const group = (all?.groups ?? []).find(entry => entry.capability === 'messages')
+  const firstIds = (group?.results ?? []).map(result => result.id)
+  check(typeof group?.cursor === 'string' && group.cursor.length > 0,
+    `⑨ messages 那一组带 cursor(本页 ${firstIds.length} 条 / total ${group?.total};`
+    + `${group?.cursor === undefined ? '缺席 = 投影那一行没了' : '有'})`)
+
+  if (typeof group?.cursor === 'string') {
+    const second = await rpc('search', 'query', {
+      query: PAGE_MARKER,
+      category: 'messages',
+      limit: firstIds.length,
+      cursor: group.cursor,
+    })
+    const nextIds = (second?.results ?? []).map(result => result.id)
+    const overlap = nextIds.filter(id => firstIds.includes(id))
+    check(nextIds.length > 0,
+      `⑨ 第二页不是空的(${nextIds.length} 条;空 = 游标的指纹没对上,风险 #4)`)
+    check(overlap.length === 0,
+      `⑨ 第二页与第一页不重(重了 ${overlap.length} 条${overlap.length ? `:${overlap.join(', ')}` : ''})`)
+    check(new Set([...firstIds, ...nextIds]).size === firstIds.length + nextIds.length,
+      `⑨ 两页合起来 ${firstIds.length + nextIds.length} 条互不相同(不漏)`)
+  }
 
   /*
    * ── ⑦ 另一个进程写的账本 ─────────────────────────────────────────

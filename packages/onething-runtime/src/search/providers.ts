@@ -39,6 +39,17 @@ export interface OnethingSearchSessionMeta {
    * (单测里的假 adapters 就是),预览按 0 画,**不去数账本补**。
    */
   messageCount?: number
+  /**
+   * 这间会话属于哪个空间(检索面终稿 §4)。
+   *
+   * 有词那一路的空间来自索引写进 `doc_facets` 的 `spaceId`;**浏览态那一路根本不问
+   * 索引**,它读的是这张会话表 —— 表上没有这一格,那一路就答不出空间,于是
+   * `spaceId` 那格过滤片在浏览态里必然落空。加它是把两条路的 facet 补齐到同一套。
+   *
+   * 缺席 = 这台宿主的会话表不带这一格,浏览态退回用**这一次搜索的空间语境**
+   * (`ctx.spaceId`);那与从前的行为逐字相同。
+   */
+  workspaceId?: string
 }
 
 export interface OnethingSearchMessage {
@@ -107,6 +118,14 @@ export interface OnethingSearchProvidersAdapters {
   getConnectedDirectories?(): string[]
   listFiles(options: OnethingSearchListFilesOptions): AsyncIterable<string>
   listPrompts(): OnethingSearchPrompt[]
+  /**
+   * 建一条提示词(检索面终稿:「新建提示词」那个页级动作按下去的落点)。
+   *
+   * **可选**是判据不是省事:这一格由宿主接(桌面接进程里那份提示词仓,server 接
+   * per-owner 的那份),接不上的宿主 —— 单测的假件、只读的部署 —— 让 `invoke`
+   * 如实说「这台宿主建不了提示词」,而不是悄悄成功。
+   */
+  createPrompt?(request: { title: string }): Promise<unknown> | unknown
 }
 
 let configuredAdapters: OnethingSearchProvidersAdapters | undefined

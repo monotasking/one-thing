@@ -77,6 +77,25 @@ export interface SearchResult {
    * 注册表取组件,契约层不解释。
    */
   preview?: SearchPreviewPayload
+  /**
+   * **这条摘要是从哪一段原文开的窗**(检索面终稿 §4;`apps/desktop-react/docs/search-panel-2026-09.md`)。
+   *
+   * `title` / `subtitle` 上的那串字往往只是正文的一扇窗。壳要画「…」、要「跳到原文」
+   * 就得知道窗口在原文里的起点与两端截没截 —— 这三格就是 core 的 `Snippet` 已经
+   * 算出来、从前没往外交的那三格。**缺席 = 那串字就是全文**(短标题、命令名、
+   * 文件名),不是「不知道」。
+   *
+   * `matchRanges` 永远相对**屏上那串字**(窗口内坐标),不是原文坐标 —— 这一格
+   * 不改变那条规矩,它只是让壳能补省略号并说得出「省掉的是哪一头」。
+   */
+  snippet?: { offset: number; truncatedStart: boolean; truncatedEnd: boolean }
+  /**
+   * **这条是哪一路召回的**(S7 的语义徽;缺席 = 不知道 / 这一类只有一路)。
+   *
+   * 壳按它在右列画一枚「语义」小徽 —— 说实话,不装成字面命中。判据在产它的能力
+   * 那一侧(哪条召回器造的这枚候选),契约层只是搬运。
+   */
+  source?: 'lexical' | 'vector'
 }
 
 export interface SearchResponse {
@@ -91,6 +110,23 @@ export interface SearchResponse {
   relaxed?: 0 | 1 | 2 | 3
   /** 索引还在追账本吗(§5)。 */
   index?: { pending: number; stale: boolean }
+  /**
+   * **整发失败**的结构化说法(检索面终稿 §4)。`success:false` 只说了「没成」,
+   * 说不出「为什么」;壳按这一格查字典画一句人话,**原话只进日志**。
+   *
+   * 与 `groups[].error` 是两件事:那一格说的是「某一类没搜成,别的类照旧」。
+   */
+  error?: string
+  /**
+   * **页级动作**(检索面终稿 §0 ③:「动作不是结果」)。
+   *
+   * 「新建提示词 “jira”」「新建今天的日记」这些从前混在 `results` 里冒充命中 ——
+   * 占配额、计入 `total`、被当成一条搜到的东西。它们现在由能力自报在这一格上:
+   * **不在 `results` 里、不计入任何 `total`**,壳把它们画在清单末尾的分隔线下。
+   *
+   * 缺席 = 这一次没有动作可做。旧壳不读这一格,于是它看见的只是「少了一行假结果」。
+   */
+  actions?: SearchActionDescriptor[]
   /** `category: 'all'` 时的分组总览(§7.2);单类档缺席。 */
   groups?: Array<{
     capability: string
@@ -98,6 +134,20 @@ export interface SearchResponse {
     total?: number
     results: SearchResult[]
     error?: string
+    /**
+     * **这一块的下一页**(检索面终稿 §0 ②「每块自己原地续页」)。
+     *
+     * 全部档从前把各能力答的 `page.cursor` 整个丢掉,于是「加载更多」只能靠换整把
+     * 查询键重发 —— 那正是「Load more 跳回顶部」的病根。这一格原样回传给
+     * `SearchRequest.cursor` + 这一块的 `category`,就是那一块的第二页。
+     *
+     * 缺席 = 这一块取尽了。
+     */
+    cursor?: string
+    /** 这一块零命中后放宽了几级(0 = 没放宽);壳按块画「已放宽」。 */
+    relaxed?: 0 | 1 | 2 | 3
+    /** 这一块自报的动作(同 `SearchResponse.actions`,只是归属到块)。 */
+    actions?: SearchActionDescriptor[]
   }>
 }
 
@@ -290,24 +340,61 @@ export interface SearchPreviewPayload {
   actions?: SearchActionDescriptor[]
 }
 
-/** 能力自报的一个后端动作;`danger` 的壳先二段确认(§8 `invoke`)。 */
+/**
+ * 能力自报的一个后端动作;`danger` 的壳先二段确认(§8 `invoke`)。
+ *
+ * 四格新加的都是可选(检索面终稿 §4),补上的正是 S4a 留账里那两格「过不去」的东西:
+ *
+ *  - `capability` —— 按下去要 `search.invoke` 谁。页级动作不挂在某一条结果上,
+ *    没有这一格壳就问不出该找谁(预览上的动作从 `SearchItemRef` 里知道,所以缺席)。
+ *  - `kind` —— 「这是开还是新建还是续搜」。**开放**,壳按 kind 从动作渲染表取图标
+ *    与落地方式;契约层不枚举。
+ *  - `payload` —— `kind` 那一类自己的载荷(续搜的 SearchScope、新建的目标路径…)。
+ *  - `params` —— `labelKey` 的插值格。「新建提示词 “jira”」里的 `jira` 依赖**当前
+ *    这次查询**,所以句子不能在后端拼好(R12:后端只交数据,句子由壳按键查出)。
+ */
 export interface SearchActionDescriptor {
   id: string
   labelKey: string
   icon?: string
   danger?: boolean
+  capability?: string
+  kind?: string
+  payload?: unknown
+  params?: Record<string, string | number>
 }
 
 export interface SearchPreviewRequest {
   items: SearchItemRef[]
   /** 基数是请求的一部分(§4.5 ③);缺席按 `single`。 */
   mode?: 'single' | 'compare' | 'batch'
+  /**
+   * **列表上那次查询的词**(检索面终稿 §4)。
+   *
+   * 预览里的高亮必须与列表行是**同一个产地**:壳自己再 `indexOf` 一遍就是第二套
+   * 「什么算命中」。递上来,能力用与摘要逐字同一条 `snippetOf` 链算出 `ranges`。
+   * 缺席 = 不要高亮(从预览面板直接打开的那一路)。
+   */
+  query?: string
 }
 
 export interface SearchPreviewResponse {
   success: boolean
   preview?: SearchPreviewPayload
   error?: string
+  /**
+   * **为什么没有预览**(检索面终稿 R6:壳只画字典句,后端原话只进日志)。
+   *
+   * | 码 | 意思 |
+   * | --- | --- |
+   * | `no-preview` | 这个能力自述里就没说有预览 —— 调用方问错了地方 |
+   * | `gone` | 指的那条东西已经不在了(账本压缩过、会话删了) |
+   * | `unreadable` | 在,但读不到(权限 / IO) |
+   * | `malformed` | 读到了,但不是能画的形 |
+   *
+   * 缺席 = 这次失败还没有归到码上(`error` 里那句原话是唯一线索)。
+   */
+  reason?: 'no-preview' | 'gone' | 'unreadable' | 'malformed'
 }
 
 export interface SearchInvokeRequest {

@@ -10,9 +10,9 @@
 
 export { createActionsSearchCapability, actionsSearchManifest } from './actions.js'
 export type { ActionTarget } from './actions.js'
-export { createChatsSearchCapability, chatsSearchManifest } from './sessions.js'
+export { createChatsSearchCapability, chatsSearchManifest, sessionTitleOf } from './sessions.js'
 export type { ChatTarget } from './sessions.js'
-export { createDailySearchCapability, dailySearchManifest } from './daily.js'
+export { CREATE_DAILY_ACTION, createDailySearchCapability, dailySearchManifest } from './daily.js'
 export type { DailyTarget } from './daily.js'
 export {
   createDailyNote,
@@ -25,7 +25,11 @@ export { createFilesSearchCapability, filesSearchManifest } from './files.js'
 export type { FileTarget } from './files.js'
 export { createMessagesSearchCapability, messagesSearchManifest } from './messages.js'
 export type { MessageTarget } from './messages.js'
-export { createPromptsSearchCapability, promptsSearchManifest } from './prompts.js'
+export {
+  CREATE_PROMPT_ACTION,
+  createPromptsSearchCapability,
+  promptsSearchManifest,
+} from './prompts.js'
 export type { PromptTarget } from './prompts.js'
 export {
   scanBackedCapability,
@@ -35,6 +39,7 @@ export {
 export type {
   ResultBackedCandidate,
   ResultBackedCapabilityOptions,
+  SearchResultSnippetWindow,
   SearchServiceResult,
 } from './scan-adapter.js'
 export {
@@ -49,7 +54,13 @@ export {
   sessionScopeVisibility,
 } from './visibility.js'
 export type { SearchVisibilityPort } from './visibility.js'
-export { createSessionShellLookup, snippetOf, trackIndexGeneration } from './indexed.js'
+export {
+  createSessionShellLookup,
+  queryRangesOf,
+  snippetOf,
+  snippetWindowOf,
+  trackIndexGeneration,
+} from './indexed.js'
 export type { FieldSnippet, SearchIndexQueryFace } from './indexed.js'
 export {
   PreviewUnavailableError,

@@ -158,6 +158,18 @@ export type VisibilityRule = (principal: SearchPrincipal) => VisibilityScope
 /** 范围形是开放的:键由能力定义,core 只负责搬进 filters。 */
 export type VisibilityScope = Record<string, FacetFilter>
 
+/**
+ * 预览请求上除了「哪几条」之外的话(检索面终稿 §4)。
+ *
+ * 今天只有一格:**列表上那次查询的词**。预览里的高亮必须与列表行是同一个产地,
+ * 否则壳只能自己再匹配一遍 —— 那是第二套「什么算命中」。第三个参数而不是塞进
+ * `SearchContext`:`ctx` 是「谁在什么现场问」,查询词是**这一次请求**的内容,
+ * 而搜索流水线从不设它。**可选**,所以两参数的旧实现照样满足这个接口。
+ */
+export interface PreviewOptions {
+  query?: string
+}
+
 /** 能力接口只有这一份(§4.2:v2 那份平铺 id / labelKey 的旧形已删)。 */
 export interface SearchCapability {
   readonly manifest: CapabilityManifest
@@ -167,7 +179,7 @@ export interface SearchCapability {
   /** 索引型自带来源(§5.2b);索引服务从这里收 */
   feed?: DocumentFeed
   /** 选中一条(或几条)时的富预览(§4.5);lazy 模式才有意义 */
-  preview?(candidates: Candidate[], ctx: SearchContext): Promise<PreviewPayload>
+  preview?(candidates: Candidate[], ctx: SearchContext, options?: PreviewOptions): Promise<PreviewPayload>
   /** 两条同 kind 的候选可以给一个更好的形(如 diff) */
   compare?(a: Candidate, b: Candidate, ctx: SearchContext): Promise<PreviewPayload>
   /** 结果上的后端动作(§8 invoke 路由) */

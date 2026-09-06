@@ -31,11 +31,13 @@ import {
   compose,
   createCapabilityRegistry,
   singleCapabilityBudgetPolicy,
+  type ActionDescriptor,
   type Candidate,
   type CapabilityManifest,
   type CapabilityRegistry,
   type FacetFilter,
   type GroupResult,
+  type PreviewOptions,
   type PreviewPayload,
   type RelaxLevel,
   type SearchCapability,
@@ -68,6 +70,35 @@ export interface SearchServiceGroup {
   total?: number
   results: SearchServiceResult[]
   error?: string
+  /**
+   * **这一块的下一页**(检索面终稿 §0 ②)。从前 `allResponse` 把各能力答出来的
+   * `page.cursor` 整个丢掉,于是全部档只能靠换整把查询键重发才翻得动 —— 那正是
+   * 「Load more 跳回顶部」的病根。原样回传给 `{ category: 这一块, cursor }` 就是
+   * 这一块的第二页。缺席 = 这一块取尽了。
+   */
+  cursor?: string
+  /** 这一块零命中后放宽了几级(0 = 没放宽)。 */
+  relaxed?: RelaxLevel
+  /** 这一块自报的动作(不在 `results` 里、不计进 `total`)。 */
+  actions?: SearchServiceAction[]
+}
+
+/**
+ * 一个动作的**线上形**(契约层 `SearchActionDescriptor` 的同形件)。
+ *
+ * 与 core 的 `ActionDescriptor` **同形不同命**:那一份带 `label`(能力自己写的
+ * 成品文案),这一份只带 `labelKey + params`(R12:给人看的句子由壳按键查出)。
+ * 投影在 `actionDto` 那一个纯函数里,别处不许再拼一份。
+ */
+export interface SearchServiceAction {
+  id: string
+  labelKey: string
+  icon?: string
+  danger?: boolean
+  capability?: string
+  kind?: string
+  payload?: unknown
+  params?: Record<string, string | number>
 }
 
 export interface SearchServiceResponse {
@@ -79,6 +110,16 @@ export interface SearchServiceResponse {
   /** 索引还在追账本吗(§8);S3b 起是真读数,由 `index.status()` 填。 */
   index?: { pending: number; stale: boolean }
   groups?: SearchServiceGroup[]
+  /**
+   * **页级动作**(§0 ③「动作不是结果」)。全部档 = 各组动作按组序拼起来;
+   * 单类档 = 那一组的。缺席 = 这一次没有动作可做。
+   */
+  actions?: SearchServiceAction[]
+  /**
+   * 整发失败的结构化说法。`success:false` 只说了「没成」;这一格说「为什么」,
+   * 壳按它查字典画一句人话(R12),原话进日志。
+   */
+  error?: string
 }
 
 /**
@@ -135,6 +176,23 @@ export type SearchPreviewMode = 'single' | 'compare' | 'batch'
 
 /** 能力没有这个动作时的那句话;`invoke` 路由把它照抄给调用方。 */
 export const NO_SUCH_ACTION = 'no such action'
+
+/**
+ * **这个能力自述里就没有预览**(检索面终稿 R6)。
+ *
+ * 与「有预览但这一条算不出」(`PreviewUnavailableError`)是两件事:前者是调用方
+ * 问错了地方,后者是这一条恰好画不出来。分成两个类型是为了让路由层能把它折成
+ * `reason: 'no-preview'` —— 壳据此画「行的放大版」而不是一句错误。
+ */
+export class NoPreviewError extends Error {
+  readonly capability: string
+
+  constructor(capability: string) {
+    super(`capability ${capability} has no preview`)
+    this.name = 'NoPreviewError'
+    this.capability = capability
+  }
+}
 
 /**
  * 一条 item → 一枚**只够用来定位**的候选。
@@ -306,11 +364,15 @@ export class OnethingSearchService {
    * 能力没有 `preview` = **结构化拒绝**,不是空预览:自述里没说有预览的能力被问到,
    * 那是调用方问错了地方,不是「这一条恰好没有内容」。
    */
-  async preview(items: readonly SearchPreviewItem[], mode: SearchPreviewMode = 'single'): Promise<PreviewPayload> {
+  async preview(
+    items: readonly SearchPreviewItem[],
+    mode: SearchPreviewMode = 'single',
+    options: PreviewOptions = {},
+  ): Promise<PreviewPayload> {
     if (items.length === 0) throw new Error('没有指定要预览哪一条')
-    if (mode === 'compare') return await this.comparePreview(items)
-    if (mode === 'batch') return await this.batchPreview(items)
-    return await this.previewOne(items[0])
+    if (mode === 'compare') return await this.comparePreview(items, options)
+    if (mode === 'batch') return await this.batchPreview(items, options)
+    return await this.previewOne(items[0], options)
   }
 
   /**
@@ -335,19 +397,25 @@ export class OnethingSearchService {
     await capability.invoke(actionId, items.map(itemCandidate), createSearchContext(context))
   }
 
-  /** 一条 item → 它那个能力的预览。 */
-  private async previewOne(item: SearchPreviewItem): Promise<PreviewPayload> {
+  /** 一条 item → 它那个能力的预览。`options` 里那格查询词原样递下去(高亮同产地)。 */
+  private async previewOne(
+    item: SearchPreviewItem,
+    options: PreviewOptions = {},
+  ): Promise<PreviewPayload> {
     const capability = this.registry.get(item.capability)
     if (capability === undefined) throw new Error(`no such capability: ${item.capability}`)
     if (capability.preview === undefined) {
-      throw new Error(`capability ${item.capability} has no preview`)
+      throw new NoPreviewError(item.capability)
     }
-    return await capability.preview([itemCandidate(item)], createSearchContext())
+    return await capability.preview([itemCandidate(item)], createSearchContext(), options)
   }
 
-  private async comparePreview(items: readonly SearchPreviewItem[]): Promise<PreviewPayload> {
+  private async comparePreview(
+    items: readonly SearchPreviewItem[],
+    options: PreviewOptions = {},
+  ): Promise<PreviewPayload> {
     const [a, b] = items
-    if (b === undefined) return await this.previewOne(a)
+    if (b === undefined) return await this.previewOne(a, options)
     // 能力自己给的 `compare` 只在**同一个能力、同一种 kind**时才问得着:diff 一条
     // 消息和一个文件没有意义,而「可比」的判据(§4.5 ③)是壳与这一层的事。
     if (a.capability === b.capability && a.target?.kind === b.target?.kind) {
@@ -356,7 +424,7 @@ export class OnethingSearchService {
         return await capability.compare(itemCandidate(a), itemCandidate(b), createSearchContext())
       }
     }
-    const both = await Promise.all([this.previewOne(a), this.previewOne(b)])
+    const both = await Promise.all([this.previewOne(a, options), this.previewOne(b, options)])
     return { kind: 'composite', payload: { layout: 'side-by-side', items: both } }
   }
 
@@ -366,9 +434,12 @@ export class OnethingSearchService {
    * 算不出的那几条**不让整批塌掉** —— batch 的语义是「这一堆大概是些什么」,
    * 一条读不到文件不该把另外九条也吞了。汇总里如实报「几条没画出来」。
    */
-  private async batchPreview(items: readonly SearchPreviewItem[]): Promise<PreviewPayload> {
+  private async batchPreview(
+    items: readonly SearchPreviewItem[],
+    options: PreviewOptions = {},
+  ): Promise<PreviewPayload> {
     const settled = await Promise.all(
-      items.map(item => this.previewOne(item).then(payload => payload, () => undefined)),
+      items.map(item => this.previewOne(item, options).then(payload => payload, () => undefined)),
     )
     const previews = settled.filter((payload): payload is PreviewPayload => payload !== undefined)
     const kinds = [...new Set(previews.map(payload => payload.kind))]
@@ -382,15 +453,39 @@ export class OnethingSearchService {
     }
   }
 
+  /**
+   * core 的 `ActionDescriptor` → 线上形。`labelKey` 缺席时退到 `label`、再退到 `id`
+   * —— 画一个 id 比画一个空按钮诚实(与 `previewDto` 那条判例逐字同源)。
+   */
+  private static actionDto(action: ActionDescriptor): SearchServiceAction {
+    return {
+      id: action.id,
+      labelKey: action.labelKey ?? action.label ?? action.id,
+      ...(action.danger === undefined ? {} : { danger: action.danger }),
+      ...(action.capability === undefined ? {} : { capability: action.capability }),
+      ...(action.kind === undefined ? {} : { kind: action.kind }),
+      ...(action.payload === undefined ? {} : { payload: action.payload }),
+      ...(action.params === undefined ? {} : { params: action.params }),
+    }
+  }
+
+  /**
+   * 单类档。**组带 error 时整发算失败**(检索面终稿 §4):单类档只有一组,那一组
+   * 塌了就是这一次什么都没搜到 —— 从前它答 `success:true` 配零条结果,屏上画出来
+   * 的是「没有匹配的结果」,而真相是「这一类没搜成」。两件事不能画成一件。
+   */
   private singleResponse(groups: readonly GroupResult[]): SearchServiceResponse {
     const group = groups[0]
+    if (group?.error !== undefined) return { success: false, results: [], error: group.error }
     const page = group?.page
+    const actions = (page?.actions ?? []).map(OnethingSearchService.actionDto)
     return {
       success: true,
       results: (page?.items ?? []).map(searchResultOf),
       total: page?.total,
       cursor: page?.cursor,
       relaxed: page?.relaxed,
+      ...(actions.length === 0 ? {} : { actions }),
     }
   }
 
@@ -398,18 +493,31 @@ export class OnethingSearchService {
     const labels = new Map(
       this.registry.list().map(capability => [capability.manifest.id, capability.manifest.labelKey]),
     )
-    const projected: SearchServiceGroup[] = groups.map(group => ({
-      capability: group.capability,
-      label: labels.get(group.capability) ?? group.capability,
-      total: group.page?.total,
-      results: (group.page?.items ?? []).map(searchResultOf),
-      error: group.error,
-    }))
+    const projected: SearchServiceGroup[] = groups.map(group => {
+      const page = group.page
+      const actions = (page?.actions ?? []).map(OnethingSearchService.actionDto)
+      return {
+        capability: group.capability,
+        label: labels.get(group.capability) ?? group.capability,
+        total: page?.total,
+        results: (page?.items ?? []).map(searchResultOf),
+        error: group.error,
+        // **这三格是全部档从前丢掉的东西**(检索面终稿 §4)。`fanout` 本来就按
+        // `{limit, cursor}` 跑、`page.ts` 给满即产游标 —— 缺的只是这一次投影。
+        ...(page?.cursor === undefined ? {} : { cursor: page.cursor }),
+        ...(page?.relaxed === undefined ? {} : { relaxed: page.relaxed }),
+        ...(actions.length === 0 ? {} : { actions }),
+      }
+    })
+    // 页级动作 = 各组的动作按组序拼起来。它们**不在 `results` 里**,所以下面那一刀
+    // 切不到它们,`total` 也数不到它们 —— 这正是「动作不是结果」的全部意思。
+    const actions = projected.flatMap(group => group.actions ?? [])
     return {
       success: true,
       // 旧路那一刀:各组按 order 拼接之后切到本档的页大小。
       results: projected.flatMap(group => group.results).slice(0, Math.max(0, limit)),
       groups: projected,
+      ...(actions.length === 0 ? {} : { actions }),
     }
   }
 }

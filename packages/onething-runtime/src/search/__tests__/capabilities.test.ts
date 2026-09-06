@@ -466,7 +466,12 @@ describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)'
       return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
     }
 
-    it('今天的笔记不存在:多一条「新建今天的日记」,排在**最后**(旧扫描器那只 sort)', async () => {
+    /*
+     * 检索面终稿 §0 ③ 推翻了「『新建今天的日记』是排在最后的一条结果」:它指的文件
+     * 还不存在 —— 占一格配额、计进 total、停在它上面预览只能抛「还没有文件可看」。
+     * 它现在是**页级动作**(`SearchPage.actions`),不在 `items` 里、不计任何数。
+     */
+    it('今天的笔记不存在:它是一条**动作**,不进 results、不计 total', async () => {
       const { adapters } = notesAdapters()
       const capability = createDailySearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
       // 查询要「像今天」才有这一条 —— 判据是旧路的 `todayMatchesQuery`(空词恒真,
@@ -474,15 +479,36 @@ describe('索引答不出的那两件(S3b:空词最近会话 / 今天那一条)'
       const page = await capability.search(query('today', 'daily'), { limit: 5 }, createSearchContext())
       const results = page.items.map(searchResultOf)
 
-      const last = results[results.length - 1]
-      expect(last?.title).toBe(`Create today's daily note: ${todayIso()}`)
-      expect(last?.actionId).toBe(`create-daily-note:${encodeURIComponent(last?.filePath ?? '')}`)
-      expect(last?.target).toEqual({
-        kind: 'daily',
-        payload: { filePath: last?.filePath, actionId: last?.actionId },
-      })
-      // 索引答的那一条还在,而且还在前面。
+      // 一条都不在结果里(旧路它在 results 的末尾)。
+      expect(results.some(result => result.id.startsWith('daily-create:'))).toBe(false)
       expect(results[0]?.id).toBe('daily:/notes/2026-09-05.md')
+
+      const action = page.actions?.[0]
+      expect(page.actions).toHaveLength(1)
+      expect(action?.kind).toBe('create')
+      expect(action?.capability).toBe('daily')
+      // **句子不在后端**(R12):只交键与料,`Create today's daily note: …` 这种
+      // 成品英文句从此由壳按 `labelKey + params` 拼。
+      expect(action?.labelKey).toBe('search.action.createDailyNote')
+      expect(action?.label).toBeUndefined()
+      const filePath = (action?.payload as { filePath: string }).filePath
+      expect(filePath.endsWith(`${todayIso()}.md`)).toBe(true)
+      expect(action?.id).toBe(`create-daily:${encodeURIComponent(filePath)}`)
+    })
+
+    it('那条动作按下去真的把文件建出来(`invoke`,与旧 executeAction 同一个函数)', async () => {
+      const { adapters } = notesAdapters()
+      const capability = createDailySearchCapability(adapters, fakeIndexFace(makeDocs(), { matched: ['alpha'] }))
+      const page = await capability.search(query('today', 'daily'), { limit: 5 }, createSearchContext())
+      const action = page.actions?.[0]
+      const filePath = (action?.payload as { filePath: string }).filePath
+      expect(fs.existsSync(filePath)).toBe(false)
+
+      await capability.invoke?.(action!.id, [], createSearchContext())
+      expect(fs.existsSync(filePath)).toBe(true)
+
+      // 不认识的动作 id **结构化拒绝**,不悄悄成功。
+      await expect(capability.invoke?.('nope', [], createSearchContext())).rejects.toThrow()
     })
 
     it('今天的笔记已经存在:那一条变成「打开今天」排在**最前**,并与索引答的同一份去重', async () => {

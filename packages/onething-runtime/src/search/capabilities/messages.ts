@@ -34,21 +34,33 @@
  */
 
 import {
+  createCursorCodec,
+  hashQueryShape,
   indexedCapability,
+  paginate,
+  readOffsetCursor,
   type Candidate,
   type CapabilityManifest,
+  type FacetFilter,
+  type PageRequest,
   type PreviewPayload,
   type SearchCapability,
+  type SearchContext,
+  type SearchPage,
+  type SearchQuery,
 } from '@onething/core/search'
 import { createSqliteLexicalRetriever, createSqliteVectorRetriever } from '../index/service.js'
 import type { OnethingSearchMessage, OnethingSearchProvidersAdapters } from '../providers.js'
 import {
   createSessionShellLookup,
+  queryRangesOf,
   snippetOf,
+  snippetWindowOf,
   trackIndexGeneration,
   type SearchIndexQueryFace,
 } from './indexed.js'
 import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
+import { normalizeSearchQuery } from './text-match.js'
 import { sessionScopeVisibility } from './visibility.js'
 import {
   PreviewUnavailableError,
@@ -134,6 +146,7 @@ function previewMessageOf(message: OnethingSearchMessage): PreviewMessage {
 function messageContextPreview(
   adapters: OnethingSearchProvidersAdapters,
   candidates: Candidate[],
+  query: string | undefined,
 ): PreviewPayload {
   const candidate = firstCandidate(candidates)
   const payload = targetPayloadOf(candidate, 'message')
@@ -148,10 +161,14 @@ function messageContextPreview(
     throw new PreviewUnavailableError(`会话 ${sessionId} 的账本里已经没有这条消息了`)
   }
 
+  // 命中那一条的高亮:与列表行**同一条判据**(`queryRangesOf` 与 `snippetOf` 共用
+   // 剥记号 → 同一只分析器 → 词元等于或互为前缀那三步),所以壳两边看见的是同一批字。
+  const hit = previewMessageOf(messages[at])
+  const ranges = query === undefined ? [] : queryRangesOf(hit.text, query)
   const context: MessageContextPreview = {
     sessionId,
     messageId,
-    hit: previewMessageOf(messages[at]),
+    hit: ranges.length === 0 ? hit : { ...hit, ranges },
     before: messages.slice(Math.max(0, at - MESSAGE_CONTEXT_RADIUS), at).map(previewMessageOf),
     after: messages.slice(at + 1, at + 1 + MESSAGE_CONTEXT_RADIUS).map(previewMessageOf),
   }
@@ -178,18 +195,22 @@ export function createMessagesSearchCapability(
         const messageId = doc.key.slice(sessionId.length + 1)
         const role = typeof doc.facets.role === 'string' ? doc.facets.role : ''
         const snippet = snippetOf(doc.fields.content ?? '', hit.matched)
+        const snippetWindow = snippetWindowOf(snippet)
         const session = sessionOf(sessionId)
 
         const result: SearchServiceResult = {
           id: `msg:${sessionId}:${messageId}`,
           type: 'message',
           title: snippet.text,
+          // 步⑧壳补上兜底之后改成 sessionTitleOf
           subtitle: session?.name || 'New Chat',
           detail: role === 'user' ? 'User message' : 'Assistant message',
           sessionId,
           messageId,
           timestamp: doc.time,
           matchRanges: snippet.ranges,
+          ...(snippetWindow === undefined ? {} : { snippet: snippetWindow }),
+          source: 'lexical',
         }
         const candidate: ResultBackedCandidate = {
           capability: messagesSearchManifest.id,
@@ -215,18 +236,23 @@ export function createMessagesSearchCapability(
         const messageId = doc.key.slice(sessionId.length + 1)
         const role = typeof doc.facets.role === 'string' ? doc.facets.role : ''
         const snippet = snippetOf(doc.fields.content ?? '', [])
+        const snippetWindow = snippetWindowOf(snippet)
         const session = sessionOf(sessionId)
 
         const result: SearchServiceResult = {
           id: `msg:${sessionId}:${messageId}`,
           type: 'message',
           title: snippet.text,
+          // 步⑧壳补上兜底之后改成 sessionTitleOf
           subtitle: session?.name || 'New Chat',
           detail: role === 'user' ? 'User message' : 'Assistant message',
           sessionId,
           messageId,
           timestamp: doc.time,
           matchRanges: snippet.ranges,
+          ...(snippetWindow === undefined ? {} : { snippet: snippetWindow }),
+          // **说实话**:这一条是向量路捞回来的,不是字面命中(壳按它画「语义」小徽)。
+          source: 'vector',
         }
         const candidate: ResultBackedCandidate = {
           capability: messagesSearchManifest.id,
@@ -245,7 +271,91 @@ export function createMessagesSearchCapability(
     })],
   })
 
+  const codec = createCursorCodec()
+
+  /**
+   * **空词 + 一格 `sessionId` 过滤片 = 列这间会话的消息**(检索面终稿 §6「枢轴」)。
+   *
+   * 为什么必须在这一层而不是壳里:零词元的查询对 FTS 恒零命中(没有「全都要」这一形),
+   * 所以「这间会话有哪些消息」这件事索引答不出来 —— 但账本答得出,而这一类手上正好有
+   * 那个 raw 取材口(预览就用它读命中前后各两条)。少了这一支,壳上的枢轴「它的消息」
+   * **必然是空的**(落差 #104)。
+   *
+   * 按时间**倒序**:同一间会话里最近说的话在前,与会话列表的次序同向。
+   * 翻页是偏移游标,与静态型 / 浏览态同一条判例(表变了 = 游标过期,壳按 id 去重)。
+   */
+  const sessionIdOf = (filters: Readonly<Record<string, FacetFilter>>): string | undefined => {
+    const value = filters.sessionId
+    return typeof value === 'string' && value.length > 0 ? value : undefined
+  }
+
+  const asksForSessionMessages = (query: SearchQuery): string | undefined =>
+    normalizeSearchQuery(query.raw).length === 0 ? sessionIdOf(query.filters) : undefined
+
+  const browse = async (
+    sessionId: string,
+    query: SearchQuery,
+    page: PageRequest,
+  ): Promise<SearchPage> => {
+    const session = sessionOf(sessionId)
+    const rows = [...adapters.iterateSessionMessages(sessionId)].reverse()
+    const queryHash = hashQueryShape({ raw: query.raw, intent: query.intent, filters: query.filters })
+    const offset = readOffsetCursor(codec, page.cursor, { capability: messagesSearchManifest.id, queryHash })
+    const window = rows.slice(offset, offset + Math.max(0, page.limit))
+
+    const items: ResultBackedCandidate[] = window.map((message, index) => {
+      const text = typeof message.content === 'string' ? message.content : ''
+      const snippet = snippetOf(text, [])
+      const snippetWindow = snippetWindowOf(snippet)
+      const role = message.role ?? ''
+      const result: SearchServiceResult = {
+        id: `msg:${sessionId}:${message.id}`,
+        type: 'message',
+        title: snippet.text,
+        // 步⑧壳补上兜底之后改成 sessionTitleOf
+        subtitle: session?.name || 'New Chat',
+        detail: role === 'user' ? 'User message' : 'Assistant message',
+        sessionId,
+        messageId: message.id,
+        timestamp: message.timestamp,
+        ...(snippetWindow === undefined ? {} : { snippet: snippetWindow }),
+      }
+      return {
+        capability: messagesSearchManifest.id,
+        id: result.id,
+        title: result.title,
+        subtitle: result.subtitle,
+        // 逆序名次:排序恒等,倒序原样保留。
+        score: window.length - index,
+        time: message.timestamp,
+        target: { kind: 'message', payload: { sessionId, messageId: message.id } } satisfies MessageTarget,
+        facets: { sessionId, role },
+        result,
+      }
+    })
+
+    return paginate(items, page, {
+      capability: messagesSearchManifest.id,
+      codec,
+      queryHash,
+      total: rows.length,
+      offset,
+    })
+  }
+
   // 基座只管「怎么搜」;`preview` 是能力自己多说的一句话,所以在这里摊开而不是
   // 塞进 `indexedCapability` 的选项(基座不认识预览,§4.2 三种基座一格没加)。
-  return { ...indexed, preview: async candidates => messageContextPreview(adapters, candidates) }
+  return {
+    ...indexed,
+    // 空词那一支**只在指名了会话时**才答 —— 没有那一格过滤片,「所有消息」不是一个
+    // 说得通的问题(几十万条),照旧由基座的缺省判据答「我不参与」。
+    supports: (query: SearchQuery) =>
+      asksForSessionMessages(query) !== undefined || indexed.supports(query),
+    search: (query: SearchQuery, page: PageRequest, ctx: SearchContext) => {
+      const sessionId = asksForSessionMessages(query)
+      return sessionId === undefined ? indexed.search(query, page, ctx) : browse(sessionId, query, page)
+    },
+    preview: async (candidates, _ctx, options) =>
+      messageContextPreview(adapters, candidates, options?.query),
+  }
 }

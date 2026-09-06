@@ -68,9 +68,12 @@ export function buildSnippet(
   }
 
   const start = chooseWindowStart(source, hits, size)
-  const end = Math.min(source.length, start + size)
+  const end = alignWindowEnd(source, Math.min(source.length, start + size), start, hits)
+  // **窗口边缘的半个命中不标**(检索面终稿 R7:高亮的区间永远相对屏上那串字,
+  // 而半截高亮画出来就是在说「这里命中了一个 `ji`」)。所以只留**整段都在窗里**
+  // 的那些;被切掉的那一半由 `truncatedStart/End` 的省略号如实交代。
   const ranges = hits
-    .filter(range => range.end > start && range.start < end)
+    .filter(range => range.start >= start && range.end <= end)
     .map(range => clampRange({ start: range.start - start, end: range.end - start }, 0, end - start))
 
   return {
@@ -82,14 +85,68 @@ export function buildSnippet(
   }
 }
 
+/**
+ * 命中**前置**多少:窗宽的 1/6(检索面终稿 §4)。
+ *
+ * 从前是 1/3 —— 居中好看,但摘要是一行字、屏上先读到的是左边那一段,一个命中被
+ * 推到行中央就意味着前面 40 个字全是与查询无关的上文。1/6 把命中拉到靠前的位置,
+ * 又留够「这句话是从哪儿说起的」那一小段。
+ */
+const HIT_LEAD_IN_DIVISOR = 6
+
+/**
+ * CJK 与它的标点:这些字**每一个都是词**,所以任何两字之间都是可断处。
+ * 拉丁字母不是 —— 从 `constraints` 中间断开会画出一截没意义的 `raints`。
+ */
+const CJK = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/
+
+/** 这个下标断得开吗:开头 / 空白之后 / CJK 的两侧。 */
+function isWordBoundary(source: string, at: number): boolean {
+  if (at <= 0 || at >= source.length) return true
+  const before = source[at - 1]!
+  const here = source[at]!
+  return /\s/.test(before) || CJK.test(before) || CJK.test(here)
+}
+
+/**
+ * 把窗口起点**往后**挪到最近的可断处,但绝不越过 `limit`(那是第一个命中的起点,
+ * 挪过头会把命中本身切掉)。找不到可断处就留在原地 —— 一整段没有空白的串
+ * (URL、base64)本来就没有更好的断法。
+ */
+function alignWindowStart(source: string, start: number, limit: number): number {
+  if (start <= 0) return 0
+  for (let at = start; at <= limit; at += 1) {
+    if (isWordBoundary(source, at)) return at
+  }
+  return start
+}
+
+/** 同理,窗口终点**往前**收到最近的可断处,但不收进最后一个命中里去。 */
+function alignWindowEnd(source: string, end: number, start: number, hits: readonly TextRange[]): number {
+  if (end >= source.length) return source.length
+  const floor = hits.reduce(
+    (low, hit) => (hit.start >= start && hit.end <= end ? Math.max(low, hit.end) : low),
+    start,
+  )
+  for (let at = end; at >= floor; at -= 1) {
+    if (isWordBoundary(source, at)) return at
+  }
+  return end
+}
+
 function chooseWindowStart(source: string, hits: readonly TextRange[], size: number): number {
   if (hits.length === 0) return 0
 
   let bestStart = 0
   let bestCount = -1
   for (const hit of hits) {
-    // 让命中大致居中,再钳进原文范围内。
-    const candidate = clamp(hit.start - Math.floor(size / 3), 0, Math.max(0, source.length - size))
+    // 命中前置 1/6 窗宽,再钳进原文范围内,最后挪到最近的可断处。
+    const raw = clamp(
+      hit.start - Math.floor(size / HIT_LEAD_IN_DIVISOR),
+      0,
+      Math.max(0, source.length - size),
+    )
+    const candidate = alignWindowStart(source, raw, hit.start)
     const covered = hits.filter(other =>
       other.start >= candidate && other.end <= candidate + size).length
     if (covered > bestCount) {

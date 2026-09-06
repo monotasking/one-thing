@@ -34,12 +34,14 @@
 import {
   scanCapability,
   staticCapability,
+  type ActionDescriptor,
   type Candidate,
   type CapabilityManifest,
   type FacetFilter,
   type PreviewPayload,
   type SearchCapability,
   type SearchContext,
+  type SearchPage,
   type SearchQuery,
 } from '@onething/core/search'
 
@@ -74,6 +76,20 @@ export interface SearchServiceResult {
    * 只有自述里说了 `preview: { mode: 'inline' }` 的能力才会有这一格。
    */
   preview?: { kind: string; payload: unknown; title?: string }
+  /**
+   * 这条摘要是从哪一段开的窗(检索面终稿 §4)。坐标系是**剥过记号的全文**,
+   * 与 `title` / `matchRanges` 同一个。缺席 = 那串字就是全文。
+   */
+  snippet?: SearchResultSnippetWindow
+  /** 这条是哪一路召回的(语义徽);缺席 = 不知道 / 这一类只有一路。 */
+  source?: 'lexical' | 'vector'
+}
+
+/** `SearchServiceResult.snippet` 那三格(契约层 `SearchResult.snippet` 的同形件)。 */
+export interface SearchResultSnippetWindow {
+  offset: number
+  truncatedStart: boolean
+  truncatedEnd: boolean
 }
 
 /** 驮着一条成品结果的候选。 */
@@ -110,6 +126,35 @@ export interface ResultBackedCapabilityOptions {
    * `undefined`(一条候选没有预览,不是整页失败)。
    */
   preview?(result: SearchServiceResult): PreviewPayload | undefined
+  /**
+   * 这一页上的**动作**(检索面终稿 §0 ③「动作不是结果」)。
+   *
+   * 「新建提示词 “jira”」从前是匹配器 `unshift` 进结果里的一行,靠 `slice(0, limit-1)`
+   * 给自己留位置 —— 于是它占配额、计进 `total`、被当成一条命中。现在它走这一格:
+   * 基座把它挂到 `SearchPage.actions` 上,与 `items` 分开,谁都不用替谁让位置。
+   *
+   * 回调收**这一页的结果**,因为「一条都没搜到时才提议新建」这种判据要看见页。
+   * 返回空表或 `undefined` = 这一次没有动作。
+   */
+  actions?(query: SearchQuery, items: readonly SearchServiceResult[]): ActionDescriptor[] | undefined
+}
+
+/**
+ * 静态型的匹配器交的是**全集**,不是一页。
+ *
+ * 从前它交一页(`run(query, page.limit)`),理由写在文件头:`searchPrompts` 的
+ * 「新建提示词」快捷项要按 `slice(0, limit - 1)` 之后是不是空来决定出不出。那条
+ * 理由随「动作不是结果」一起消失了(快捷项现在是 `actions`,不占结果的位置),
+ * 而交全集是 `staticCapability` 能答出**真 `total`** 与偏移游标的前提 —— 一个
+ * 已经被切成 6 条的表,后面还有 34 条这件事在结构上就丢了。
+ *
+ * 匹配器那一侧的 `slice(0, limit)` 因此变成恒等,一行都不用改。
+ */
+const STATIC_FULL_LIMIT = Number.MAX_SAFE_INTEGER
+
+/** 一页的动作:能力给了就挂上,没给就一格都不加(缺席 = 没有动作)。 */
+function withActions(page: SearchPage, actions: ActionDescriptor[] | undefined): SearchPage {
+  return actions === undefined || actions.length === 0 ? page : { ...page, actions }
 }
 
 /**
@@ -175,7 +220,7 @@ export function scanBackedCapability(options: ResultBackedCapabilityOptions): Se
     async search(query: SearchQuery, page, ctx: SearchContext) {
       const rows = await options.run(query.raw, page.limit, query.filters)
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
-      return scanCapability<ResultBackedCandidate>({
+      const scanned = await scanCapability<ResultBackedCandidate>({
         manifest,
         supports,
         scan: async function* scan() {
@@ -184,11 +229,12 @@ export function scanBackedCapability(options: ResultBackedCapabilityOptions): Se
         match: () => candidate => candidate,
         positionOf: candidate => candidate.id,
       }).search(query, page, ctx)
+      return withActions(scanned, options.actions?.(query, rows))
     },
   }
 }
 
-/** 静态型(§4.2 第三行):全量小表,一次全给,`cursor` 恒缺席,`total` 是真数。 */
+/** 静态型(§4.2 第三行):全量小表交上来,基座切页 —— `total` 是真数,游标是偏移形。 */
 export function staticBackedCapability(options: ResultBackedCapabilityOptions): SearchCapability {
   const manifest = options.manifest
   const supports = options.supports ?? (() => true)
@@ -197,15 +243,16 @@ export function staticBackedCapability(options: ResultBackedCapabilityOptions): 
     manifest,
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
-      const rows = await options.run(query.raw, page.limit, query.filters)
+      const rows = await options.run(query.raw, STATIC_FULL_LIMIT, query.filters)
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
-      return staticCapability<ResultBackedCandidate>({
+      const paged = await staticCapability<ResultBackedCandidate>({
         manifest,
         supports,
         items: () => candidates,
         score: candidate => candidate.score,
         toCandidate: candidate => candidate,
       }).search(query, page, ctx)
+      return withActions(paged, options.actions?.(query, rows))
     },
   }
 }

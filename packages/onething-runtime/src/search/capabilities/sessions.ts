@@ -33,24 +33,33 @@
  */
 
 import {
+  createCursorCodec,
+  hashQueryShape,
   indexedCapability,
+  matchesFacetFilters,
+  paginate,
+  readOffsetCursor,
   type Candidate,
   type CapabilityManifest,
+  type FacetFilter,
+  type FacetValue,
   type PageRequest,
   type PreviewPayload,
   type SearchCapability,
   type SearchContext,
+  type SearchPage,
   type SearchQuery,
 } from '@onething/core/search'
+import { canApplyGeneratedSessionTitle } from '@onething/core/engine'
 import { createSqliteLexicalRetriever } from '../index/service.js'
 import type { OnethingSearchProvidersAdapters, OnethingSearchSessionMeta } from '../providers.js'
 import {
   createSessionShellLookup,
   snippetOf,
+  snippetWindowOf,
   trackIndexGeneration,
   type SearchIndexQueryFace,
 } from './indexed.js'
-import { scanBackedCapability } from './scan-adapter.js'
 import { sessionScopeVisibility } from './visibility.js'
 import type { ResultBackedCandidate, SearchServiceResult } from './scan-adapter.js'
 import { normalizeSearchQuery } from './text-match.js'
@@ -112,29 +121,73 @@ function asksForRecentSessions(query: SearchQuery): boolean {
 }
 
 /**
- * 浏览态那一页:**最近 N 间未归档的会话**,按 `updatedAt` 降序。
+ * **占位名归空**(检索面终稿 §6「无标题会话」那一行)。
  *
- * 四步逐字沿用 S5 之前那只 `searchChats` 在空词下走过的路 —— 它当时是「打分排序」
- * 的一个退化形:空查询下每条的分都是 1,于是排序整段退化成 `updatedAt` 降序,
- * `matchRanges` 恒缺席。这里把那个退化形**直接写出来**,不再留一只只在空词下
- * 才被调到的打分器。
+ * 「New Chat」不是标题,是「这间还没起名」的另一种写法 —— 它上了检索面就成了一堆
+ * 长得一模一样的行。判据不新写:`canApplyGeneratedSessionTitle(name, '')` 恰好就是
+ * 「这个名字是空的或是那句占位」,而它正是**起标题**那条路判「能不能覆盖」用的
+ * 同一句话(`core/engine/title.ts`)。两处一个判据,占位名的写法将来变了也只改一处。
+ *
+ * 归空之后画什么(首条用户消息 / 「未命名会话」)是**壳**的事 —— 后端交事实,
+ * 不替壳编一个标题。
+ *
+ * **步①还没接线**:今天的壳直接 `text: result.title`(`apps/desktop-react/src/search/
+ * transitions.ts`),归空就是一行空白。所以这只函数先只备在这里,**等步⑧壳把兜底
+ * (首条用户消息 / 「未命名会话」)补上之后再接线** —— 步①对旧壳必须不可见。
+ */
+export function sessionTitleOf(name: string | undefined): string {
+  return canApplyGeneratedSessionTitle(name, '') ? '' : (name ?? '')
+}
+
+/** 一间会话在浏览态里的 facets —— 键与 manifest 声明的四格逐字对应。 */
+function sessionFacets(session: OnethingSearchSessionMeta, workspaceId: string): Record<string, FacetValue> {
+  return {
+    sessionId: session.id,
+    // 会话自己说得出空间就听它的;说不出就是这一次搜索的空间语境(`ctx.spaceId`)——
+    // 与索引那一路写进 `doc_facets` 的 `spaceId` 同一个键、同一个意思。
+    spaceId: session.workspaceId ?? workspaceId,
+    archived: session.isArchived === true,
+    time: session.updatedAt,
+  }
+}
+
+/**
+ * 浏览态那一页:**未归档的会话**,按 `updatedAt` 降序,**可翻页**。
+ *
+ * 排序与投影逐字沿用 S5 之前那只 `searchChats` 在空词下走过的路(空查询下每条的分
+ * 都是 1,排序整段退化成 `updatedAt` 降序,`matchRanges` 恒缺席)。
+ *
+ * **改的是切页那一刀**(检索面终稿 §4):从前它交 `slice(0, limit)` 给扫描型基座,
+ * 而扫描型要「多扫出一条」才发游标 —— 交的正好是 limit 条,于是**游标恒缺席**,
+ * 浏览态永远只有第一页、也说不出一共有几间。现在整张表交给 `paginate`:`total` 是
+ * 真数(未归档且过滤片放行的条数),游标是偏移形。
  *
  * 归档会话不出现在这一页:与有词那一路(索引照建归档文档、`archived` 是一格
  * facet)是**两件事** —— 「最近几间」说的是「接着干哪一间」,归档的按定义不是。
+ * 用户显式递 `archived: true` 那一格过滤片时照它说的办。
  */
-function recentSessions(sessions: readonly OnethingSearchSessionMeta[], limit: number): SearchServiceResult[] {
+function browseSessions(
+  sessions: readonly OnethingSearchSessionMeta[],
+  workspaceId: string,
+  filters: Readonly<Record<string, FacetFilter>>,
+): Array<{ result: SearchServiceResult; facets: Record<string, FacetValue> }> {
+  const asksArchived = filters.archived !== undefined
   return sessions
-    .filter(session => !session.isArchived)
-    .slice()
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-    .slice(0, limit)
-    .map(session => ({
-      id: `chat:${session.id}`,
-      type: 'chat' as const,
-      title: session.name || 'New Chat',
-      subtitle: session.previewText,
-      sessionId: session.id,
-      timestamp: session.updatedAt,
+    .filter(session => asksArchived || !session.isArchived)
+    .map(session => ({ session, facets: sessionFacets(session, workspaceId) }))
+    .filter(entry => matchesFacetFilters(entry.facets, filters))
+    .sort((a, b) => b.session.updatedAt - a.session.updatedAt)
+    .map(({ session, facets }) => ({
+      result: {
+        id: `chat:${session.id}`,
+        type: 'chat' as const,
+        // 步⑧壳补上兜底之后改成 `sessionTitleOf(session.name)`。
+        title: session.name || 'New Chat',
+        subtitle: session.previewText,
+        sessionId: session.id,
+        timestamp: session.updatedAt,
+      },
+      facets,
     }))
 }
 
@@ -147,13 +200,16 @@ function recentSessions(sessions: readonly OnethingSearchSessionMeta[], limit: n
  * 六次折账本,预览再便宜也不能便宜到这个价钱上。
  */
 function sessionOverviewOf(session: OnethingSearchSessionMeta, title: string): SessionOverviewPreview {
-  return {
+  const overview: SessionOverviewPreview = {
     sessionId: session.id,
     title,
     messageCount: session.messageCount ?? 0,
     updatedAt: session.updatedAt,
     preview: session.previewText ?? '',
   }
+  // **交 id 不交名字**(R12):空间叫什么是给人看的一句话,壳手上就有那张表。
+  // 会话表上没有这一格的宿主(单测的假件)就缺席 —— 缺席 = 不知道,不是「没有空间」。
+  return session.workspaceId === undefined ? overview : { ...overview, spaceId: session.workspaceId }
 }
 
 function sessionOverviewPreview(session: OnethingSearchSessionMeta, title: string): PreviewPayload {
@@ -167,20 +223,56 @@ export function createChatsSearchCapability(
   const sessionOf = createSessionShellLookup(() => adapters.getSessionsList(), session => session.id)
   const tracked = trackIndexGeneration(index)
 
-  // 空词那一路。基座按每次 `search()` 现造,因为「最近几间」的 N **就是本次的
-  // limit**(`scan-adapter.ts` 里那条同样的理由),而翻页靠基座的游标接着往下走。
-  const recent = scanBackedCapability({
-    manifest: chatsSearchManifest,
-    run: (_raw, limit) => recentSessions(adapters.getSessionsList(), limit),
-    supports: asksForRecentSessions,
-    target: result => ({ kind: 'chat', payload: { sessionId: result.sessionId ?? '' } } satisfies ChatTarget),
-    // 空词那一路也带内联预览:自述说的是「这个能力的候选带 inline 预览」,
-    // 不是「有词的时候才带」—— 两条路一句话,否则壳会看见半张表。
-    preview: result => {
-      const session = sessionOf(result.sessionId ?? '')
-      return session === undefined ? undefined : sessionOverviewPreview(session, result.title)
-    },
-  })
+  const codec = createCursorCodec()
+
+  /**
+   * 空词那一路。**不再借扫描型基座**(那条路交多少就是多少,游标永远发不出来),
+   * 直接把整张表交给 `paginate`:真 `total` + 偏移游标(检索面终稿 §4)。
+   *
+   * 指纹里没有「索引代次」——这一路根本不问索引,它读的是会话表。表变了而游标还在
+   * 的那一次会漏行或重行,壳按 id 去重(§5.4 闸③),与静态型同一条判例。
+   */
+  const browse = async (
+    query: SearchQuery,
+    page: PageRequest,
+    ctx: SearchContext,
+  ): Promise<SearchPage> => {
+    const rows = browseSessions(adapters.getSessionsList(), ctx.spaceId, query.filters)
+
+    const queryHash = hashQueryShape({ raw: query.raw, intent: query.intent, filters: query.filters })
+    const offset = readOffsetCursor(codec, page.cursor, { capability: chatsSearchManifest.id, queryHash })
+    const window = rows.slice(offset, offset + Math.max(0, page.limit))
+
+    const items: ResultBackedCandidate[] = window.map((entry, index) => {
+      const session = sessionOf(entry.result.sessionId ?? '')
+      const candidate: ResultBackedCandidate = {
+        capability: chatsSearchManifest.id,
+        id: entry.result.id,
+        title: entry.result.title,
+        subtitle: entry.result.subtitle,
+        // 逆序名次:严格递减且唯一 → 组内排序恒等,`updatedAt` 降序原样保留
+        // (`scan-adapter.ts` 里那条同一个手法)。
+        score: window.length - index,
+        time: entry.result.timestamp,
+        target: { kind: 'chat', payload: { sessionId: entry.result.sessionId ?? '' } } satisfies ChatTarget,
+        facets: entry.facets,
+        result: { ...entry.result, facets: entry.facets },
+      }
+      // 空词那一路也带内联预览:自述说的是「这个能力的候选带 inline 预览」,
+      // 不是「有词的时候才带」—— 两条路一句话,否则壳会看见半张表。
+      return session === undefined
+        ? candidate
+        : { ...candidate, preview: sessionOverviewPreview(session, entry.result.title) }
+    })
+
+    return paginate(items, page, {
+      capability: chatsSearchManifest.id,
+      codec,
+      queryHash,
+      total: rows.length,
+      offset,
+    })
+  }
 
   const indexed = indexedCapability({
     manifest: chatsSearchManifest,
@@ -193,16 +285,20 @@ export function createChatsSearchCapability(
         const sessionId = doc.key
         const title = doc.fields.title ?? ''
         const snippet = snippetOf(title, hit.matched)
+        const snippetWindow = snippetWindowOf(snippet)
         const session = sessionOf(sessionId)
 
         const result: SearchServiceResult = {
           id: `chat:${sessionId}`,
           type: 'chat',
+          // 步⑧壳补上兜底之后改成 `sessionTitleOf(title)`(§6「无标题会话」)。
           title: title || 'New Chat',
           subtitle: session?.previewText,
           sessionId,
           timestamp: doc.time,
           matchRanges: snippet.ranges,
+          ...(snippetWindow === undefined ? {} : { snippet: snippetWindow }),
+          source: 'lexical',
         }
         const candidate: ResultBackedCandidate = {
           capability: chatsSearchManifest.id,
@@ -249,7 +345,7 @@ export function createChatsSearchCapability(
     // **空词也答**:全部档的分组里要有「最近几间会话」那一格(旧壳的空态)。
     supports: (query: SearchQuery) => asksForRecentSessions(query) || indexed.supports(query),
     search: (query: SearchQuery, page: PageRequest, ctx: SearchContext) =>
-      (asksForRecentSessions(query) ? recent : indexed).search(query, page, ctx),
+      asksForRecentSessions(query) ? browse(query, page, ctx) : indexed.search(query, page, ctx),
     preview,
   }
 }
