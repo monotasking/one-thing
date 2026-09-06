@@ -42,6 +42,14 @@
  *     (弹窗 / 浮窗 / 盖满 / 钉右边,种在 files 上),把 `openFromMemory` 的四条
  *     支路各走一遍 —— 从前这道门只量过「新 store 的缺省档」。
  *
+ * 14. 两条会话同屏(W5-b / W6-a):点列表只换活动那一格;⌘N 落活动格;⌘W 关活动格,
+ *     而最后一格会话关不掉(T0 拍点 2)。
+ * 15. **B3**(W7-t):点会话那一格标签 → 焦点进它的输入面板,**而且直接打字就进得去**。
+ *     落点那半句在场景 3b 的 ③-a 里(那一格分成了「点会话 / 点文件」两半);这一条
+ *     多量最后半句 —— 落点对了但键盘没真进去,用户报的病还在。
+ * 16. **B11**(W7-t):二合一之后拆开 → 焦点跟到**左格**(它留在原标签)。
+ * 17. **B12**(W7-t):⌘W 落在关不掉的那一格上 → **说一句话**,而不是静默的空动作。
+ *
  * (打表时的编号比这里多一格:总览那条键盘交接是 8b,自成一个场景。)
  *
  *  每个场景**每一步**之后断言 I1(`activeElement` 不是 body)。
@@ -758,31 +766,62 @@ async function main() {
              * ③ 切回第一格(聊天),再问一次同一句话 —— inert 跟着翻,不是只翻一次。
              * **点与读都限定在中央区**(W4:架子的叶檐也画 `data-pane-chrome`,
              * 不限定的话这一下点的是架子上那条 tab 条)。
+             *
+             * ── W7-t / B3:这一格分成两半 ──────────────────────────────────
+             * 09-05 那句裁定(「点顶栏一格 tab → 焦点进那片叶的内容」)一个字没变;
+             * 变的是「内容」这两个字对**会话**那一种意味着什么 —— 它自述
+             * `focusInto: 'composer'`(`ContentKind.focusInto`),而它自述的理由正是
+             * 用户报的那条:修前点回会话标签,焦点落在消息流上,直接打字进不去。
+             * 所以两半各读一次,谁都不被另一半的答案盖住:
+             *  · ③-a 点**会话**那一格(自述了落点的那一种)→ 焦点进输入面板;
+             *  · ③-b 再点回**文件**那一格(没自述的那一种)→ 原判据逐字不变。
+             * 两半共有的那一句(inert 跟着翻)各问一遍 —— 翻两次才叫「跟着翻」。
              */
-            await page.evaluate((css) => {
-              const tabs = Array.from(document.querySelectorAll(css))
-              const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
-              if (off instanceof HTMLElement) off.click()
-            }, CENTER_TABS)
-            await delay(400)
-            const flipped = await page.evaluate(() => {
-              const center = document.querySelector('[data-pane-region="center"]')
-              const layers = Array.from(center?.querySelectorAll('[data-pane-tab]') ?? [])
-              const live = layers.filter((l) => !l.hasAttribute('inert'))
-              const active = document.activeElement
-              return {
-                inertOff: layers.filter((l) => l.hasAttribute('inert')).length,
-                live: live.map((l) => l.getAttribute('data-pane-tab')),
-                // 「切 tab 进内容」在中央区的读数(09-05 裁定,与场景 3 同一句话)。
-                focusInLive: live.some((l) => active instanceof Node && l.contains(active)),
-                onTab: active instanceof Element ? active.getAttribute('role') === 'tab' : false,
-                /*
-                 * 焦点那一格作用域。**要读到内容自己那一格** —— `leaf` 是家具
-                 * (`passThrough`),停在它身上就说明穿透那一步没走完。
-                 */
-                scope: active?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
-              }
-            })
+            const flipTab = async () => {
+              await page.evaluate((css) => {
+                const tabs = Array.from(document.querySelectorAll(css))
+                const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
+                if (off instanceof HTMLElement) off.click()
+              }, CENTER_TABS)
+              await delay(400)
+              return page.evaluate(() => {
+                const center = document.querySelector('[data-pane-region="center"]')
+                const layers = Array.from(center?.querySelectorAll('[data-pane-tab]') ?? [])
+                const live = layers.filter((l) => !l.hasAttribute('inert'))
+                const active = document.activeElement
+                return {
+                  inertOff: layers.filter((l) => l.hasAttribute('inert')).length,
+                  live: live.map((l) => l.getAttribute('data-pane-tab')),
+                  // 「切 tab 进内容」在中央区的读数(09-05 裁定,与场景 3 同一句话)。
+                  focusInLive: live.some((l) => active instanceof Node && l.contains(active)),
+                  onTab: active instanceof Element ? active.getAttribute('role') === 'tab' : false,
+                  // 焦点此刻真的落在哪一件上(B3 要的是**那块可编辑区本身**)。
+                  testid: active instanceof Element ? active.getAttribute('data-testid') : null,
+                  /*
+                   * 焦点那一格作用域。**要读到内容自己那一格** —— `leaf` 是家具
+                   * (`passThrough`),停在它身上就说明穿透那一步没走完。
+                   */
+                  scope: active?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+                }
+              })
+            }
+
+            /* ③-a 点回会话那一格 —— B3 的读数。 */
+            const toChat = await flipTab()
+            assert(
+              toChat.scope === 'composer' && toChat.testid === 'composer-input',
+              '点会话那一格 tab → 焦点落进它的输入面板(W7-t / B3,`ContentKind.focusInto`)',
+              `(作用域 ${toChat.scope ?? '—'} / 落在 ${toChat.testid ?? '—'} 上;停在 tab 上:${toChat.onTab})`,
+            )
+            assert(
+              toChat.inertOff === leafState.layers - 1 && toChat.live.length === 1,
+              '切到会话那一格:inert 跟着翻,活的永远只有一层',
+              `(活的:${toChat.live.join(' / ') || '—'})`,
+            )
+            await assertNoOrphan(page, '中央叶切到会话那一格之后')
+
+            /* ③-b 再点回文件那一格 —— 没自述落点的那一种,原判据逐字不变。 */
+            const flipped = await flipTab()
             /*
              * ── 中央区的「切 tab 进内容」(09-05 裁定,与场景 3 同款)────────
              * 那条檐在顶栏上、内容在中央区那块地里,两者在 DOM 上互不包含 ——
@@ -852,12 +891,20 @@ async function main() {
         })
         : null
 
-      // 把中央区那一组标签里**不是当前选中**的那一格点亮 = 切回文件那一格。
+      /*
+       * 把中央区那一组标签里**文件那一格**点亮。
+       *
+       * 修前这里写的是「点不是当前选中的那一格」—— 一个**奇偶数**的写法:它成立
+       * 全靠「上一步之后活动的恰好是聊天那一格」。W7-t / B3 把场景 3b 的 ③ 拆成
+       * 了两半(先点会话、再点回文件),翻了两次,这里再翻一次就落到**聊天**那格
+       * 上,而聊天自述 `fullable: false` —— 于是这一整段(⌘⇧↩ 进全屏)在夹具都没
+       * 搭对的情况下跑完并红了八条。夹具该按**它要的是谁**说话,不按奇偶说话。
+       */
       const picked = await page.evaluate((css) => {
         const tabs = Array.from(document.querySelectorAll(css))
-        const off = tabs.find((t) => t.getAttribute('aria-selected') !== 'true')
-        if (off instanceof HTMLElement) {
-          off.click()
+        const file = tabs.find((t) => (t.getAttribute('data-tab-id') ?? '').startsWith('file:'))
+        if (file instanceof HTMLElement) {
+          file.click()
           return true
         }
         return false
@@ -870,7 +917,12 @@ async function main() {
         )
         return live?.getAttribute('data-pane-tab') ?? null
       })
-      if (!picked || !liveTab || liveTab.startsWith('chat:')) {
+      /*
+       * 跳过的判据也一起修:内容 refId 里会话那一种的前缀是 `session:`
+       * (`content/session-ref.ts` 的 `SESSION_KIND`),`chat:` 是一个从来没有
+       * 命中过的旧名 —— 于是「夹具没搭起来」这条出口一直是死的,夹具错了也照跑。
+       */
+      if (!picked || !liveTab || !liveTab.startsWith('file:')) {
         skip('文件叶 ⌘⇧↩ 进全屏', `中央叶此刻活的是 ${liveTab ?? '—'} —— 夹具没搭起来`)
       } else {
         await page.keyboard.press('Meta+Shift+Enter')
@@ -2325,6 +2377,292 @@ async function main() {
       }))
       assert(rebooted.scope === 'composer', '重载之后第一响应者仍是输入面板', String(rebooted.scope))
       await assertNoOrphan(page, '并排场景收尾重载之后')
+    }
+
+    /* ── 场景 17-19:W7-t 的三条(B3 / B11 / B12)──────────────────────────
+     *
+     * 三条各自成一个场景(记分板上一条红指得出该修哪一件),共用一份夹具:
+     * 中央区那条条上摆着「会话 + a.ts + b.ts」。夹具走用户真走的那条路 ——
+     * 落点记忆在场景 3b 里已经改成「主区域」,所以树上 ↵ 开出来的文件就落在中央区。
+     *
+     *  · **B3**  点会话那一格标签 → 焦点进它的输入面板,而且**直接打字进得去**
+     *            (场景 3b 的 ③-a 已经量过落点;这一条多量最后那半句 —— 落点对了
+     *            但键盘没真的进去,用户报的病还在);
+     *  · **B11** 二合一之后**拆开** → 焦点跟到**左格**(它留在原标签);
+     *  · **B12** ⌘W 落在关不掉的那一格上 → **说一句话**(修前是静默的空动作:
+     *            真机读数「before 5 / after 5」,人听不出是坏了还是不许)。
+     */
+    const w7tRowsCss = '[data-testid="files-tree"] [data-file-path][data-file-type="file"]'
+    let w7tFixture = null
+    {
+      await page.goto(shellUrl())
+      await waitFor('壳回来了', () =>
+        page.evaluate(() => Boolean(document.querySelector('[data-testid="composer-input"]'))),
+      )
+      await enterGateSession(page, sessionId)
+      if (!(await hasFileRow(page))) {
+        await clickSelector(page, '[data-testid="dock-tile-files"]')
+        await delay(500)
+      }
+      await ensureFilesInteractive(page)
+      // 头两行文件各 ↵ 一次(↵ = 固定 tab;单击是预览,攒不出两格)。
+      for (const at of [0, 1]) {
+        await page.evaluate(
+          ({ css, index }) => {
+            const row = document.querySelectorAll(css)[index]
+            if (row instanceof HTMLElement) row.focus()
+          },
+          { css: w7tRowsCss, index: at },
+        )
+        await page.keyboard.press('Enter')
+        await delay(600)
+      }
+      w7tFixture = await page.evaluate((css) => {
+        const tabs = Array.from(document.querySelectorAll(css))
+        return {
+          tabs: tabs.length,
+          labels: tabs.map((t) => (t.textContent ?? '').trim()),
+        }
+      }, CENTER_TABS)
+    }
+
+    /* ── 场景 17:B3 —— 点会话标签,键盘真的进得去输入框 ─────────────────── */
+    scenario('点会话那一格标签 → 焦点进输入面板,而且直接打字就进得去(W7-t / B3)')
+    if (!w7tFixture || w7tFixture.tabs < 3) {
+      skip('B3', `中央区只攒出 ${w7tFixture?.tabs ?? 0} 格 tab —— 夹具没搭起来`)
+    } else {
+      // 先把键盘扔进别处(消息流那一层),不然「点了才进去」量的是「本来就在那儿」。
+      await page.evaluate((css) => {
+        const tabs = Array.from(document.querySelectorAll(css))
+        const last = tabs[tabs.length - 1]
+        if (last instanceof HTMLElement) last.click()
+      }, CENTER_TABS)
+      await delay(400)
+      const before = await page.evaluate(
+        () => document.activeElement?.getAttribute?.('data-testid') ?? null,
+      )
+      assert(before !== 'composer-input', '起手焦点不在输入框里(这一条才量得出「点了才进去」)', String(before))
+
+      // 点第一格 tab —— 那是常驻的会话(`resident` 那一种,seed 出来的第一格)。
+      await page.evaluate((css) => {
+        const first = document.querySelectorAll(css)[0]
+        if (first instanceof HTMLElement) first.click()
+      }, CENTER_TABS)
+      await delay(500)
+      const landed = await page.evaluate(() => ({
+        testid: document.activeElement?.getAttribute?.('data-testid') ?? null,
+        scope:
+          document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+          ?? null,
+      }))
+      assert(
+        landed.testid === 'composer-input' && landed.scope === 'composer',
+        '焦点落在输入框本身(不是消息流,也不是叶那格家具)',
+        `(落在 ${landed.testid ?? '—'} / 作用域 ${landed.scope ?? '—'})`,
+      )
+      /*
+       * **最后那半句**:落点对了不等于打得进去。这一下走 CDP 的键盘
+       * (`keyboard.type` 底下就是 `Input.dispatchKeyEvent`,只进这个窗口),
+       * 打完再退格擦掉 —— 这道门不给下一步留下一份脏草稿。
+       */
+      await page.keyboard.type('焦')
+      await delay(200)
+      const typed = await page.evaluate(
+        () => document.querySelector('[data-testid="composer-input"]')?.textContent ?? '',
+      )
+      assert(typed.includes('焦'), '直接打字就落进那块可编辑区里', `(读到「${typed}」)`)
+      await page.keyboard.press('Backspace')
+      await delay(150)
+      await assertNoOrphan(page, 'B3 点会话标签之后')
+    }
+
+    /* ── 场景 18:B11 —— 拆开之后焦点跟到左格 ───────────────────────────── */
+    scenario('二合一之后拆开 → 焦点进**左格**那一格内容(W7-t / B11)')
+    if (!w7tFixture || w7tFixture.tabs < 3) {
+      skip('B11', `中央区只攒出 ${w7tFixture?.tabs ?? 0} 格 tab —— 夹具没搭起来`)
+    } else {
+      /*
+       * ① 把**第二格**(a.ts)点成活动的,再与**左边**那一格二合一
+       *    → 左格 = 第一格,也就是那条**会话**。
+       *
+       * ── 左格必须是会话,这条门才有分辨力(09-06 审查第三次改)──────────
+       * 这一场要量的是产品那一句 `unpairTab` 末尾的 `focusIntoRefAfterCommit(左格)`。
+       * 左格是**文件**时它送的落点(那一格 tab 的内容层)与焦点系统自己的孤儿回收
+       * 送到的落点是**同一处**,读数一字不差 —— 前两版就是这么绿的。
+       *
+       * 左格是**会话**时两者当场分岔:产品那一句问的是**种类自述的落焦偏好**
+       * (`ContentKind.focusInto: 'composer'`,W7-t / B3),焦点落在**输入面板**上
+       * —— 而输入面板在 `.center` 上、根本不在拼贴树里;回收只会把焦点收回活动内容
+       * 那一层(树里的容器)。所以「落在 composer-input / 作用域 composer」这一读数
+       * **只有产品那一句送得到**,反证(把那一句注释掉重跑)当场红。
+       */
+      await page.evaluate((css) => {
+        const second = document.querySelectorAll(css)[1]
+        if (second instanceof HTMLElement) second.click()
+      }, CENTER_TABS)
+      await delay(400)
+      await page.evaluate(() => {
+        const btn = document.querySelector('[data-testid^="pane-split:"]')
+        if (btn instanceof HTMLElement) btn.click()
+      })
+      await delay(400)
+      const joined = await page.evaluate(() => {
+        const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+        const left = items.find((el) => /与左边的标签二合一|Join with the tab on the left/.test(el.textContent ?? ''))
+        if (!(left instanceof HTMLElement) || (left instanceof HTMLButtonElement && left.disabled)) return false
+        left.click()
+        return true
+      })
+      await delay(600)
+      const pair = await page.evaluate(() => {
+        const left = document.querySelector('[data-pair-side="left"] [data-pair-head]')
+        return {
+          sides: document.querySelectorAll('[data-pair-side]').length,
+          leftId: left?.getAttribute('data-pair-head') ?? null,
+        }
+      })
+      if (!joined || pair.sides !== 2) {
+        skip('B11', `二合一没成(菜单可用:${joined} / 屏幕上 ${pair.sides} 格)`)
+      } else if (!pair.leftId?.startsWith('session:')) {
+        // 夹具没摆成「左格是会话」——这一场就没有分辨力,宁可跳过也不留一条假绿。
+        skip('B11', `左格不是会话(读到 ${pair.leftId ?? '—'})—— 夹具没摆成有分辨力的样子`)
+      } else {
+        assert(Boolean(pair.leftId), '左格说得出自己是谁(格头带着它的 refId)', String(pair.leftId))
+        /*
+         * ② 先把焦点停在**这两格外面**,再拆。
+         *
+         * ── 两版都没有分辨力的病历(09-06 审查逮到)────────────────────────
+         * 第一版写的是「丢进输入框」,用的是这只文件里的 `clickSelector` —— 它派的
+         * 是 `el.click()`,一发合成 click,**不带 pointerdown、也不搬焦点**,于是
+         * 焦点一动没动,这一整场从来没有起手条件。
+         *
+         * 第二版改成真指针点**右格**并断言起手在右格,起手条件是真的了,可这一条
+         * **照样量不出那句产品代码**:审查把 `unpairTab` 末尾那句
+         * `focusIntoRefAfterCommit` 注释掉重跑,读数与基线一字不差 —— 因为右格被
+         * 拆走那一刻,焦点系统自己的**孤儿回收**(那一层没了 / 变 inert → settle
+         * 把焦点收回活动内容 = 左格)独立地把焦点送到了同一处。焦点起手在**这两格
+         * 里面**,这条门就永远绿。
+         *
+         * 第三版把焦点停在**两格外面**的一颗按钮上(叶动作组那颗,它在顶栏里、
+         * 不在 pair 里,而且拆开之后它还在场),起手条件这才干净:这时没有任何东西
+         * 被拆成孤儿。**但仅有这一条还不够** —— 拆开会把左格那一层从
+         * `pair:…` 换成 `session:…`,那一层重挂,焦点系统照样有理由 settle 一次,
+         * 而 settle 送到的落点与「产品送到左格」在**文件**左格上是同一处。
+         *
+         * 第四版(现在这一版)因此把分辨力做进**读数本身**:左格摆成**会话**,
+         * 于是产品那一句送的是它自述的落焦偏好(输入面板,树**外面**),回收 /
+         * settle 送的是树**里面**那一层 —— 两个读数结构上不可能相同(见上面 ① 段)。
+         *
+         * 起手那一句自己也断言(焦点真在两格外面),不让它再静默退化。
+         */
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-testid^="pane-split:"]')
+          if (btn instanceof HTMLElement) btn.focus()
+        })
+        await delay(300)
+        const parked = await page.evaluate(() => {
+          const active = document.activeElement
+          const side = active?.closest?.('[data-pair-side]')
+          return {
+            testid: active?.getAttribute?.('data-testid') ?? active?.tagName ?? null,
+            side: side?.getAttribute('data-pair-side') ?? null,
+          }
+        })
+        assert(
+          parked.side === null && parked.testid !== null && parked.testid !== 'BODY',
+          '拆之前焦点停在这两格**外面**的一颗钮上(这一条给下面那一条分辨力)',
+          `(此刻在 ${parked.testid ?? '—'},格 ${parked.side ?? '外面'})`,
+        )
+        // ③ 拆开 —— 缝中点那颗小把手(与右键菜单同一只 `unpairTab`)。
+        await page.evaluate(() => {
+          const btn = document.querySelector('[data-testid^="pair-unpair:"]')
+          if (btn instanceof HTMLElement) btn.click()
+        })
+        await delay(700)
+        const after = await page.evaluate(() => {
+          const active = document.activeElement
+          const layer = active?.closest?.('[data-pane-tab]') ?? null
+          return {
+            sides: document.querySelectorAll('[data-pair-side]').length,
+            landedIn: layer?.getAttribute('data-pane-tab') ?? null,
+            testid: active?.getAttribute?.('data-testid') ?? null,
+            scope:
+              active?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope') ?? null,
+          }
+        })
+        assert(after.sides === 0, '拆开之后屏幕上没有两格了', `(${after.sides} 格)`)
+        /*
+         * **量的是左格那一种内容的落焦偏好目标,不是「进了树里某个容器」**。
+         * 左格是会话 → 偏好是它的输入面板(`ContentKind.focusInto: 'composer'`),
+         * 而输入面板在 `.center` 上、根本不在拼贴树里 —— 回收路送不到那儿。
+         * 所以这一条读数只有 `unpairTab` 末尾那一句送得到:拆掉它就红。
+         */
+        assert(
+          after.testid === 'composer-input' && after.scope === 'composer',
+          '焦点跟到**左格那一格内容自己说的落点**(会话 → 它的输入面板),而不是被回收送回某个容器',
+          `(落在 ${after.testid ?? '—'} / 作用域 ${after.scope ?? '—'} / 树层 ${after.landedIn ?? '树外'})`,
+        )
+        await assertNoOrphan(page, 'B11 拆开之后')
+      }
+    }
+
+    /* ── 场景 19:B12 —— ⌘W 落在关不掉的那一格上要说话 ───────────────────── */
+    scenario('⌘W 落在关不掉的那一格上 → 播报一句「关不掉」,而且那一格真的还在(W7-t / B12)')
+    if (!w7tFixture || w7tFixture.tabs < 3) {
+      skip('B12', `中央区只攒出 ${w7tFixture?.tabs ?? 0} 格 tab —— 夹具没搭起来`)
+    } else {
+      // ① 把会话那一格点成活动的,并把键盘交回那片叶(⌘W 是叶的面域局部键)。
+      await page.evaluate((css) => {
+        const first = document.querySelectorAll(css)[0]
+        if (first instanceof HTMLElement) first.click()
+      }, CENTER_TABS)
+      await delay(500)
+      await page.evaluate(() => {
+        const layer = document.querySelector(
+          '[data-pane-region="center"] [data-pane-tab][data-pane-on]',
+        )
+        const stream = layer?.querySelector('[data-testid="chat-stream"]')
+        if (stream instanceof HTMLElement) stream.focus()
+      })
+      await delay(400)
+      const armed = await page.evaluate(
+        () =>
+          document.activeElement?.closest?.('[data-focus-scope]')?.getAttribute('data-focus-scope')
+          ?? null,
+      )
+      assert(armed === 'chat', '键盘先回到那一格会话里(⌘W 是叶的局部键)', String(armed))
+
+      /*
+       * ② **把播报口先擦干净**再按。这道门此前几步已经往那格里写过话(拖拽落定 /
+       * 拆开),不擦的话读到的可能是上一句 —— 探针擦的是**自己的量具**,
+       * 不是产品状态。
+       */
+      await page.evaluate(() => {
+        const slot = document.querySelector('[data-live="polite"]')
+        if (slot) slot.textContent = ''
+      })
+      const tabsBefore = await page.evaluate(
+        (css) => document.querySelectorAll(css).length,
+        CENTER_TABS,
+      )
+      await page.keyboard.press('Meta+w')
+      // `announce` 先清空、下一拍再写(读屏要两次差分才重念),所以等得比一帧长。
+      await delay(700)
+      const said = await page.evaluate((css) => ({
+        spoken: document.querySelector('[data-live="polite"]')?.textContent ?? '',
+        tabs: document.querySelectorAll(css).length,
+      }), CENTER_TABS)
+      assert(
+        said.tabs === tabsBefore,
+        '那一格真的关不掉(⌘W 之后 tab 数一个没变)',
+        `(before ${tabsBefore} / after ${said.tabs})`,
+      )
+      assert(
+        /关不掉|can.t be closed/.test(said.spoken),
+        '而且它**说了一句话** —— 不再是静默的空动作',
+        `(播报口里:「${said.spoken.trim() || '—'}」)`,
+      )
+      await assertNoOrphan(page, 'B12 ⌘W 被拒之后')
     }
 
     await app.close()

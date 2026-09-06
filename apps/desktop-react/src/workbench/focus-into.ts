@@ -1,4 +1,5 @@
 import { focusTree } from '../focus/registry'
+import { focusIntoScopeOf, parseRefId } from './kinds'
 import type { ActivateReason } from './../focus/types'
 import type { ContentRefId } from './kinds'
 
@@ -34,6 +35,19 @@ import type { ContentRefId } from './kinds'
  *    `activate` 自己就不动(注册表那条判据①)。
  */
 export function focusIntoRef(id: ContentRefId, reason: ActivateReason = 'switch-tab'): boolean {
+  /*
+   * ── 先问**内容自己想把焦点交给哪块面**(W7-t / B3)──────────────────────
+   * 报障:切到一格会话标签,焦点落在消息流上,直接打字进不去 —— 而那一格内容
+   * 真正的「进它」就是「进它的输入面板」。这一句读的是种类自述那张表
+   * (`ContentKind.focusInto`),所以这只文件里**一个种类名都没有**:下一种有
+   * 同样需求的内容(终端 / 表单)只改它自己那一行。
+   *
+   * 送不进去就往下走(那块面此刻一份可交互的实例都没有,比如输入面板还没铺根)
+   * —— 与整只函数「送不进去答 false、焦点原地不动」同一条纪律。
+   */
+  const ref = parseRefId(id)
+  const into = ref ? focusIntoScopeOf(ref) : undefined
+  if (into && focusTree.activateScope(into, { reason })) return true
   return focusTree.activateScope('leaf', { owner: id, reason })
 }
 

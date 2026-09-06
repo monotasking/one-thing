@@ -17,7 +17,8 @@ import type { ShelfSide } from '../../stage/types'
  *  · 一条架子上可以同时装瓦与文件(那正是「打开方式」五档解灰的机械前提);
  *  · 架子里分得了屏,而且分屏**不重挂兄弟叶**(零重挂断言);
  *  · 树一变(加一格 / 关一格 / 分一次屏),既有那一格**还是同一个 DOM 节点**;
- *  · 「隐藏的标签 ⋯」**只列本区域的**(W1-a 留的账)。
+ *  · 「够不着的标签 ⋯」里**隐藏的那一节只列本区域的**(W1-a 留的账;
+ *    W7-t / B1 起那颗钮多了「看不见的」一节,判据一个字没变)。
  */
 
 const layerOf = (id: string) => document.querySelector(`[data-pane-tab="${id}"]`)
@@ -151,9 +152,14 @@ describe('隐藏的标签按区域分', () => {
       wb.hideTab(center.id, center.tabs.findIndex((tab) => tab.kind === 'file'))
     })
 
+    /*
+     * W7-t / B1 起这颗 ⋯ 叫「够不着的标签」,表里两节(看不见的 / 隐藏的),
+     * 哪一节空就不画哪一节 —— 这一屏里条没溢出,所以只画「隐藏的」那一节。
+     * 判据一个字没变:那一节仍旧**只列本区域**藏起来的。
+     */
     const shelf = shelfOf('right') as HTMLElement
-    act(() => within(shelf).getByLabelText('隐藏的标签').click())
-    const menu = screen.getByRole('menu', { name: '隐藏的标签' })
+    act(() => within(shelf).getByLabelText('够不着的标签').click())
+    const menu = screen.getByRole('menu', { name: '够不着的标签' })
     expect(within(menu).getByText('shelf.ts')).toBeTruthy()
     // 反证:把 `hiddenInRegion` 换回「列全部」→ 下面这句红。
     expect(within(menu).queryByText('center.ts')).toBeNull()

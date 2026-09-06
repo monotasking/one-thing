@@ -8,3 +8,26 @@
   display: flex;
   flex-direction: column;
 }
+
+/* ── 中央区什么都没有的那一态(W7-t / A12)──────────────────────────────────
+ * 它接的是从前那一句 `return null` 留下的一片白。居中一列:一枚淡图标 + 一句话
+ * + 一颗钮 —— 说得出「这儿本来该有什么」和「怎么让它回来」。
+ * 底色吃 `--pane-face`(与一片叶的脸同一格),不然这一态与整台壳的底分不出层。
+ */
+.empty {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  background: var(--pane-face);
+  color: var(--text-3);
+}
+
+.emptyText {
+  margin: 0;
+  font-size: var(--fs-body);
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createRef } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { Splitter } from '../Splitter'
+import { Splitter, SPLITTER_STEP } from '../Splitter'
 
 /**
  * **Splitter(第 19 件)的规格测试** —— 09-01 报障「file open 之后,没办法调整宽度」。
@@ -55,13 +55,26 @@ describe('Splitter:APG 的 window splitter 语义', () => {
 })
 
 describe('Splitter:键盘那一套', () => {
-  it('←/→ 各走一格 step', () => {
+  /*
+   * **缺省步长是 5,而 5 只有一个产地**(W7-t / B8)。设计
+   * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §6 的原话是「键盘 ←/→
+   * 5% 一步」,而代码里曾经写着 2 —— 一条写在正本里、屏幕上从来没兑现过的规格。
+   *
+   * 断言读的是 `SPLITTER_STEP` 而不是字面 5:把 5 抄进用例里,哪天常量改了
+   * 用例会替一份过期的规格说话(与 `gate:squeeze` 读 `--pair-head-h` 同一条)。
+   * **反证**:把 `SPLITTER_STEP` 改回 2 → 下面第二条(它对着设计里那个 5)当场红。
+   */
+  it('←/→ 各走一格 step,缺省就是 SPLITTER_STEP', () => {
     const { onCommit } = setup()
     const bar = screen.getByTestId('splitter')
     fireEvent.keyDown(bar, { key: 'ArrowLeft' })
-    expect(onCommit).toHaveBeenLastCalledWith(43)
+    expect(onCommit).toHaveBeenLastCalledWith(45 - SPLITTER_STEP)
     fireEvent.keyDown(bar, { key: 'ArrowRight' })
-    expect(onCommit).toHaveBeenLastCalledWith(47)
+    expect(onCommit).toHaveBeenLastCalledWith(45 + SPLITTER_STEP)
+  })
+
+  it('设计 §6 那个数就是这一格常量:5%', () => {
+    expect(SPLITTER_STEP).toBe(5)
   })
 
   it('竖杆不接 ↑↓(那是别人的键)', () => {
@@ -105,7 +118,7 @@ describe('Splitter:钳制与跟手', () => {
   it('键盘走一格也把实时值写进容器那个变量(拖与按走同一条输出口)', () => {
     const { containerRef } = setup()
     fireEvent.keyDown(screen.getByTestId('splitter'), { key: 'ArrowRight' })
-    expect(containerRef.current?.style.getPropertyValue('--x')).toBe('47')
+    expect(containerRef.current?.style.getPropertyValue('--x')).toBe(String(45 + SPLITTER_STEP))
   })
 
   /*

@@ -76,3 +76,21 @@
   display: flex;
   flex-direction: column;
 }
+
+/* ── 缝中点那颗「拆开」小把手(W7-t / B7)────────────────────────────────────
+ * 拆开作用在**整格标签**上,所以它长在两格中间,而不是任何一格的格头里
+ * (格头只放这一格的身份与关闭 —— 判词在 `pair.tsx` 组件头状态表 ③)。
+ *
+ * 绝对定位居中、压在杆上面一格(`--z-sticky`:同一个层叠上下文里的一次抬高,
+ * 不是一层新浮层)。它只吃掉那条抓手中间的一小段,其余部分照样抓得住;
+ * 缝这一列不设 `overflow: hidden`,所以它可以往两边溢出。
+ * 底色吃 `--pane-face`(与两格的脸同一格),不然那条线会从钮下面穿过去。
+ */
+.seamHandle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: var(--z-sticky);
+  background: var(--pane-face);
+}

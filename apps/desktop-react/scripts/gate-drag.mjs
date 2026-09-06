@@ -1319,14 +1319,67 @@ async function main() {
         assert(false, '条上有两格普通标签可以并', JSON.stringify(s2.tabs.map((t) => t.id)))
       }
 
-      // ③ 换比例(拖那根分隔杆)+ ④ 拆开(格头上那颗)。
+      /*
+       * ③ 换比例(拖那根分隔杆)。
+       *
+       * **抓点由命中测试挑,而且要真的问一句「比例变了没有」**(W7-t / B7)。
+       * 修前这里按的是 `centerOf` 那一点,而那一点身上此刻站着三样东西:B7 新添
+       * 的缝中点拆开把手(`pair.module.css` 的 `.seamHandle`)、右边那格
+       * (抓手有意溢出到缝两边,右半边被后一个兄弟盖着)、以及这道门此刻还开着
+       * 的那块会话总览浮面(实测 y≈204–689)。三样都在,于是这一下按在别人身上,
+       * 杆一动没动 —— 而旧断言只问「内容根还是同一个节点」,对空动作是绿的。
+       */
       const seam = await centerOf(page, '[data-testid^="pair-splitter"]')
+      const ratioNow = () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-testid^="pair-splitter"]')
+          const now = Number(el?.getAttribute('aria-valuenow'))
+          return Number.isFinite(now) ? now : null
+        })
       if (seam) {
-        await stroke(cdp, seam, { x: seam.x - 60, y: seam.y }, { steps: 8, release: true })
+        const before = await ratioNow()
+        /*
+         * **抓点由命中测试挑,不由几何猜**。两件东西会盖住杆的一段:B7 那颗
+         * 拆开小把手(压在正中),以及这道门此刻还开着的那块会话总览(实测它
+         * 从 y≈204 铺到 689,把杆的中段整个盖住 —— 旧代码按的正是那一点,于是
+         * 这一步一直在按一块别人的面,而旧断言只问「内容根还在不在」,对
+         * 「一动没动」是绿的)。所以沿杆自上而下找第一段**顶上真的是它自己**的
+         * 位置;一段都找不到 = 这条杆鼠标够不着,那本身就是一条红。
+         */
+        const grabAt = await page.evaluate((rect) => {
+          const bar = document.querySelector('[data-testid^="pair-splitter"]')
+          if (!bar) return null
+          /*
+           * x 也要扫:那条 6px 的抓手**有意溢出**到 1px 的缝两边
+           * (`Splitter.module.css`「抓手比列宽」),而右边那格是它的后一个兄弟、
+           * 又是 `position: relative` —— 于是抓手的右半边被右格盖着,只有左半边
+           * 真的接得到指针。
+           */
+          for (let y = rect.top + 8; y < rect.top + rect.height - 8; y += 12) {
+            for (const x of [rect.left + 1, rect.left + Math.round(rect.width / 2), rect.left + rect.width - 1]) {
+              const top = document.elementFromPoint(x, y)
+              if (top === bar || (top && bar.contains(top))) return { x, y }
+            }
+          }
+          return null
+        }, seam.rect)
+        assert(grabAt !== null, '这条杆身上有鼠标够得着的一段(把手只吃掉中间一小截)')
+        if (grabAt !== null) {
+          const grab = grabAt
+          await stroke(cdp, grab, { x: grab.x - 60, y: grab.y }, { steps: 8, release: true })
+          await delay(240)
+          const after = await ratioNow()
+          assert(
+            before !== null && after !== null && after < before,
+            '按住那一段往左拖 60px:比例真的变小了(不是一次空动作)',
+            `${before} → ${after} @${grab.x},${grab.y}`,
+          )
+        }
         assert(await stampSurvives(page, bodySel, 'body-node'), '换比例之后内容根还是同一个节点')
       } else {
         assert(false, '两格标签里有一根分隔杆', 'pair-splitter 不在 DOM 里')
       }
+      // ④ 拆开 —— W7-t / B7 起它是**缝中点那颗小把手**(格头上换成了只关这一格的 ✕)。
       const unpaired = await page.evaluate(() => {
         const btn = document.querySelector('[data-testid^="pair-unpair"]')
         if (!(btn instanceof HTMLElement)) return false
@@ -1334,7 +1387,7 @@ async function main() {
         return true
       })
       await delay(320)
-      assert(unpaired, '格头上那颗「拆开」按得到')
+      assert(unpaired, '缝中点那颗「拆开」按得到')
       if (unpaired) {
         assert(await stampSurvives(page, bodySel, 'body-node'), '拆开之后内容根还是同一个节点')
       }

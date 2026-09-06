@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useModelsSource } from '../data/models-source'
 import { composerSink } from './sink'
+import { configureDraftRevoke, resetComposerDrafts } from './drafts'
 import * as T from './transitions'
 import type {
   AskSpec,
@@ -50,6 +51,14 @@ function revoke(atts: readonly Attachment[]): void {
   if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') return
   for (const a of atts) if (a.url) URL.revokeObjectURL(a.url)
 }
+
+/*
+ * **「谁造谁销」的第三个销点**(W7-t / B2):一条会话的草稿被丢掉时,挂在它上面
+ * 那些附件的对象 URL 也该销。草稿表(`composer/drafts.ts`)不认识 `URL` ——
+ * 造 URL 的是这只 store,所以销那一句也留在这里,由它注入过去。
+ * 注入是模块级的一次登记,幂等,没有可拆卸的尾巴。
+ */
+configureDraftRevoke(revoke)
 
 interface ComposerStore extends ComposerState {
   /* 抽屉(单一槽) */
@@ -238,8 +247,13 @@ export function revokeAllAttachments(): void {
   revoke(useComposerStore.getState().attachments)
 }
 
-/** 测试与「新会话」用:把这块面板恢复成刚打开的样子。 */
+/**
+ * 测试与「新会话」用:把这块面板恢复成刚打开的样子。
+ * **连同各条会话那几份草稿**(W7-t / B2)—— 不然重置完屏幕是干净的,
+ * 一切回上一条会话稿又冒出来了。
+ */
 export function resetComposerStore(): void {
   revoke(useComposerStore.getState().attachments)
+  resetComposerDrafts()
   useComposerStore.setState({ ...initialState })
 }

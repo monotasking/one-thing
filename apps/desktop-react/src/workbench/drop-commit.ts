@@ -9,13 +9,15 @@ import { flashLandedTab } from '../ui/tab-reorder'
 import { announce } from '../ui/a11y/live-region'
 import { t } from '../i18n'
 import { focusIntoRefAfterCommit } from './focus-into'
-import { contentKindOf, refId } from './kinds'
+import { contentKindOf, mayCloseContent, partsOfContent, refId } from './kinds'
 import { useLiveTitleStore } from '../stage/live-title'
 import { edgeRegion, floatRegion } from './regions'
-import { regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from './store'
+import { canDetachTab, regionOfLeafIn, regionOfRefIn, useWorkbenchStore } from './store'
+import * as T from './tree'
 import { findLeaf, leavesOf } from './tree'
 import type { DropTarget } from './drop'
 import type { ContentRef } from './kinds'
+import type { PaneNode } from './tree'
 import type { FloatRect, ShelfSide, Viewport } from '../stage/types'
 
 /**
@@ -265,9 +267,125 @@ export function unpairTab(leafId: string, index: number): void {
   const region = regionOfLeafIn(store.regions, leafId)
   if (!region) return
   const before = store.regions[region]
+  /* 拆完焦点进哪儿:**左格**(它留在原标签,而原标签仍旧是活动的 —— 设计 §6
+   * 「左格留在原标签里,焦点留在原标签」)。要在拆之前取,拆完那一格 ref 就没了。 */
+  const tab = findLeaf(before, leafId)?.tabs[index]
+  const left = tab ? partsOfContent(tab)?.[0] : undefined
   store.unpairAt(leafId, index)
   if (useWorkbenchStore.getState().regions[region] === before) return
   announce(t('workbench.unpaired'))
+  /*
+   * **拆开也是一次落定,焦点跟过去**(W7-t / B11)。修前这里只播报不送焦点,
+   * 于是拆完焦点掉在叶容器上 —— 与 `land()` 那半句(裁定 8「落定后焦点跟到新叶」)
+   * 逐字同一条纪律,产地也是同一只 `focusIntoRefAfterCommit`。
+   * 排一拍才送:这一刻新的那两层还没铺上来(判词整段在 `focus-into` 上)。
+   */
+  if (left) focusIntoRefAfterCommit(refId(left))
+}
+
+/**
+ * **关两格标签里的一格**(W7-t / B7,设计 v3 §6:「关格头上的 ✕ 只关这一格,
+ * 另一格变回一格标签」)。与 `unpairTab` 同产地、同体例。
+ *
+ * 三件事按序:**问那一格**(`beforeClose` —— 脏文件那一问,只问要走的那格,
+ * 留下的那格什么都没发生)、**拆散**(`store.unpairAt`)、**关掉走的那一格**
+ * (`store.closeTab`,判据 + 摘 + `dispose` 全在那一只里)。
+ *
+ * ── 病历:它为什么不是一次原位换 ref(09-06 审查逮到的账)──────────────
+ * 修前这里走的是 `store.replaceRef(leafId, pair, staying)` —— 一次 `set`,
+ * 屏幕上确实干净,可 `replaceRef` 的**非复合**那条路不归一 `pairRatios`
+ * (只有「换的是复合标签里的一格」那一支才 `normalizePairRatios`)。于是那格
+ * pair 的分栏比例在 ✕ 这条路上**留尾**:表里躺着一格谁也不认识的比例,而下一次
+ * 同样两格再并起来读到的是一份陈年的比例。同一件事(把一格 pair 拆散)从此
+ * **两处判据、两套记账** —— `unpairAt` 那条路 `delete` 得干干净净,这条路不。
+ *
+ * 治法是**这只函数一个 `T.*` 都不写**:拆散整件在 `store.unpairAt`(比例记账
+ * 长在它身上),关掉整件在 `store.closeTab`(`canDetachTab` + `removeTab` +
+ * `ContentKind.dispose` 长在它身上)。这里只负责**按序把两只现成的动作接起来**。
+ *
+ * 两次 `set` 会不会在屏幕上闪?不会。中间那一态是**合法的**(两格标签并排),
+ * 不是「少一格」—— `unpairAt` 内部那句「分两次写中间少一格」说的是它自己那两步
+ * (换 ref 与插 tab 之间树上真的少一格);而这两下同在一拍里(React 18 自动
+ * 批处理),画面只提交一次。非 React 的那位订阅者(`stage/store` 的常驻同步)
+ * 确实逐次看得见中间那一态,但它问的是「常驻的还在不在」——两格此刻都在场,
+ * 答案与最终态相同。
+ *
+ * **第二步之前先复核**:拆没拆成要读回来看。拆不成时 `index` 上躺着的还是那格
+ * pair,照着关下去会把**两格一起**关掉 —— 这是两步动作必须自己付的那笔税。
+ *
+ * 关得掉吗由 `canClosePairSide` 答,而它把判据借给 `canDetachTab` —— 判据只有
+ * 一个产地(T0 拍点 2「最后一格常驻的关不掉」对 `pair(会话, 文件)` 里的会话
+ * 同样成立)。屏幕上那颗 ✕ 因此**关不掉就不画**(与 `ui/Tabs` 那颗逐字同一条:
+ * 一颗按不动的 ✕ 与「按了没反应」在屏幕上是同一件事);这里再问一遍是防手滑,
+ * 走到就播报,不静默。第二步 `closeTab` 自己还会拿同一只判据再问一遍 ——
+ * 三处问的是同一句话,不是三份判据。
+ */
+export function closePairSide(leafId: string, index: number, side: 'left' | 'right'): void {
+  const store = useWorkbenchStore.getState()
+  const region = regionOfLeafIn(store.regions, leafId)
+  if (!region) return
+  const tree = store.regions[region]
+  const tab = findLeaf(tree, leafId)?.tabs[index]
+  const parts = tab ? partsOfContent(tab) : null
+  if (!tab || !parts || parts.length < 2) return
+  const going = side === 'left' ? parts[0] : parts[1]
+  const staying = side === 'left' ? parts[1] : parts[0]
+  if (!canClosePairSide(tree, leafId, index, side)) {
+    announce(t('workbench.tabNotClosable'))
+    return
+  }
+  void (async () => {
+    if (!(await mayCloseContent(going))) return
+    /* await 之后重新定位:那一问是异步的,回来时下标可能已经不指着同一格
+     * (病历与 `leaf-tabs.useCloseLeafTab` 逐字同源)。 */
+    const live = useWorkbenchStore.getState()
+    const at = regionOfLeafIn(live.regions, leafId)
+    if (!at) return
+    const now = findLeaf(live.regions[at], leafId)?.tabs[index]
+    if (!now || refId(now) !== refId(tab)) return
+    // ① 拆散(比例记账在这一只里)。② 复核。③ 关掉走的那一格(dispose 在那一只里)。
+    live.unpairAt(leafId, index)
+    const goingAt = side === 'left' ? index : index + 1
+    const after = useWorkbenchStore.getState()
+    const region2 = regionOfLeafIn(after.regions, leafId)
+    const split = region2 ? findLeaf(after.regions[region2], leafId)?.tabs[goingAt] : undefined
+    if (!split || refId(split) !== refId(going)) return
+    after.closeTab(leafId, goingAt)
+    focusIntoRefAfterCommit(refId(staying))
+  })()
+}
+
+/**
+ * **两格标签里这一格关得掉吗**(W7-t / B7)。格头那颗 ✕ 画不画、按下去做不做,
+ * 读的都是这一只。
+ *
+ * 判据**不新写**:把这一格拆开之后再问 `canDetachTab` —— 那正是「关掉之后这个
+ * 区域里还剩不剩同种常驻的」那句话(T0 拍点 2),与 `closePairSide` 第二步里
+ * `store.closeTab` 自己问的是同一只。
+ *
+ * 它算的是一棵**假想的**树:这一问要在渲染里答(画不画那颗 ✕),所以只能是纯的
+ * —— 一个字都不许落到 store 上。假想那一步预演的正是 `closePairSide` 的第一步
+ * `store.unpairAt`。
+ *
+ * ── 预演与真拆读的是**同一只**(09-06 审查那笔留账的了结)────────────────
+ * 从前这里手抄了 `store.unpairAt` 里那两句 `T.replaceRef` + `T.insertTab`,于是
+ * 同一个树变换有两处产地 —— 改一处漏一处的下场是那颗 ✕ 按下去做的事,与它画出来
+ * 时预演的不是同一件。现在两头读的都是纯函数 `tree.unpair`(判词在那只函数上):
+ * 真拆那条路多做的只有**记账**(`pairRatios`),而账搬不进一次只读的预演里。
+ *
+ * **引用恒等 = 拆不动**,`canDetachTab` 因此在一棵原样的树上作答 —— 而上面那三句
+ * 守卫已经把「不是复合的」挡在门外了,走到这里的必定拆得动。
+ */
+export function canClosePairSide(
+  tree: PaneNode,
+  leafId: string,
+  index: number,
+  side: 'left' | 'right',
+): boolean {
+  const tab = findLeaf(tree, leafId)?.tabs[index]
+  const parts = tab ? partsOfContent(tab) : null
+  if (!tab || !parts || parts.length < 2) return false
+  return canDetachTab(T.unpair(tree, leafId, index), leafId, side === 'left' ? index : index + 1)
 }
 
 /** 一格内容此刻的名字(活的盖静的 —— 与标签条读的是同一份)。 */

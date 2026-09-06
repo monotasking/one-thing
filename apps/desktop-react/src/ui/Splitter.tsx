@@ -16,7 +16,7 @@ import s from './Splitter.module.css'
  *   aria-orientation                     竖杆(左右分栏)= vertical
  *   aria-valuenow / -valuemin / -valuemax 前一栏占的百分比
  *   aria-controls                        它调的是哪一块(前一栏的 id)
- *   ←/→(竖杆)· ↑/↓(横杆)             走一格 step
+ *   ←/→(竖杆)· ↑/↓(横杆)             走一格 step(缺省 `SPLITTER_STEP`)
  *   Home / End                           到两头
  *   Enter                                回默认(APG 的 restore 那一格;
  *                                        与**双击杆**是同一个动作的两种手势)
@@ -29,13 +29,24 @@ import s from './Splitter.module.css'
  * 拖拽期间容器上会挂 `data-splitting="true"`:分栏那条 `transition` 得在这段
  * 时间里关掉,否则列宽会**追着**指针走(过渡把每一帧都拖慢一拍)。
  */
+/**
+ * **键盘走一格是多少**(W7-t / B8)。设计
+ * `apps/desktop-react/docs/workbench-tabs-2026-09.md` §6 的原话:
+ * 「分隔杆:`ui/Splitter`,比例存在标签上,**键盘 ←/→ 5% 一步**」。
+ *
+ * 它是**一个常量、一个产地**:设计里那个 5 与代码里这个 5 只该有一份,
+ * 而修前代码里是 2 —— 一条写在正本里两个月、屏幕上从来没兑现过的规格。
+ * 消费方要更细的档自己传 `step`(今天一处都没有),缺省一律读这一格。
+ */
+export const SPLITTER_STEP = 5
+
 export function Splitter({
   containerRef,
   orientation = 'vertical',
   value,
   min = 15,
   max = 85,
-  step = 2,
+  step = SPLITTER_STEP,
   defaultValue,
   label,
   controls,

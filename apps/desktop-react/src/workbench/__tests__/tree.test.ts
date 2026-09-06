@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as T from '../tree'
-import { refId } from '../kinds'
+import { refId, registerContentKind } from '../kinds'
 import type { ContentRef } from '../kinds'
 import type { PaneNode } from '../tree'
 
@@ -271,5 +271,61 @@ describe('搬一格', () => {
   it('同叶内排序:摘掉之后目标下标要往前收一格(splice 双动作那个经典坑)', () => {
     const next = T.moveTab(T.makeLeaf('L1', [A, B, C], 0), { leafId: 'L1', index: 0 }, { leafId: 'L1', at: 2 })
     expect(T.leavesOf(next)[0].tabs.map(refId)).toEqual(['k:b', 'k:a', 'k:c'])
+  })
+})
+
+/**
+ * **拆开一格复合标签**(W7-t 收尾)。这一组守的是「树变换只有一个产地」那条:
+ * `store.unpairAt`(真拆)与 `drop-commit.canClosePairSide`(格头那颗 ✕ 的只读
+ * 预演)读的是这同一只,所以它的语义与它的三条恒等出口都得钉死。
+ *
+ * 这里注册的仍是**占位种类**(`'two'` / `'k'`)—— 与整只文件同一条纪律:树不认识
+ * 任何一种真内容,它只知道「有些内容自述得出自己由哪几格组成」。
+ */
+describe('拆开一格复合标签', () => {
+  const two = (a: ContentRef, b: ContentRef): ContentRef => ({
+    kind: 'two',
+    key: `${refId(a)}|${refId(b)}`,
+  })
+  let off: (() => void) | undefined
+
+  beforeEach(() => {
+    off = registerContentKind({
+      id: 'two',
+      singleton: false,
+      title: (r) => ({ text: r.key }),
+      icon: () => 'Layers',
+      render: () => null,
+      composite: {
+        parts: (r) => r.key.split('|').map((half) => {
+          const at = half.indexOf(':')
+          return { kind: half.slice(0, at), key: half.slice(at + 1) }
+        }),
+        compose: (a, b) => two(a, b),
+      },
+    })
+  })
+  afterEach(() => off?.())
+
+  it('两格 → 左格顶回原位、右格插在它后面、活动格不动', () => {
+    // [A, two(B,C)],活动 = 那格复合的(下标 1)。
+    const before = T.makeLeaf('L1', [A, two(B, C)], 1)
+    const next = T.unpair(before, 'L1', 1)
+    const l = T.findLeaf(next, 'L1')!
+    expect(l.tabs.map(refId)).toEqual(['k:a', 'k:b', 'k:c'])
+    // 活动仍是**原下标**那一格(左格顶回了原位,焦点留在原标签 —— 设计 §6)。
+    expect(l.active).toBe(1)
+  })
+
+  it('那一格不是复合的 = 恒等**引用**(调用方拿它当「什么都没换」的判据)', () => {
+    const before = T.makeLeaf('L1', [A, B], 0)
+    expect(T.unpair(before, 'L1', 0)).toBe(before)
+  })
+
+  it('下标越界 / 叶不在 = 同样交回同一个引用', () => {
+    const before = T.makeLeaf('L1', [A, two(B, C)], 0)
+    expect(T.unpair(before, 'L1', 5)).toBe(before)
+    expect(T.unpair(before, 'L1', -1)).toBe(before)
+    expect(T.unpair(before, 'L9', 1)).toBe(before)
   })
 })

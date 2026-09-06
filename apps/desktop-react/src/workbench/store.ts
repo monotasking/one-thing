@@ -1007,15 +1007,20 @@ export const useWorkbenchStore = create<WorkbenchState>()(
           const tree = s.regions[region]
           const tab = T.findLeaf(tree, leafId)?.tabs[index]
           if (!tab) return
-          const parts = partsOfContent(tab)
-          if (!parts || parts.length < 2) return
           /*
-           * 左格顶回原位、右格插在它后面、**活动格不动**(设计 §6:「焦点留在
-           * 原标签」)。两步在**一次 `set`** 里:分两次写的话中间那一拍屏幕上
-           * 少一格,而订阅者(投影 / 焦点跟随)会把它读成「关掉了一格」。
+           * **树变换整件在 `tree.unpair`**(W7-t 收尾;判词在那只函数上):左格顶回
+           * 原位、右格插在它后面、活动格不动 —— 而它同时是格头那颗 ✕ 的**只读预演**
+           * (`drop-commit.canClosePairSide`)读的那一只。同一个形状只有一个产地。
+           *
+           * 那两步在**一次 `set`** 里落地:分两次写的话中间那一拍屏幕上少一格,
+           * 而订阅者(投影 / 焦点跟随)会把它读成「关掉了一格」。
+           *
+           * **引用恒等 = 拆不动**(不是复合的 / 下标越界):当场返回,一个字不写。
+           * 这里留下的只有**记账**那一半 —— `pairRatios` 是 store 的账,树不知道
+           * 有这本账,所以那格比例由这里 `delete`。
            */
-        const swapped = T.replaceRef(tree, leafId, tab, parts[0])
-          const next = T.insertTab(swapped, leafId, parts[1], { at: index + 1, activate: false })
+          const next = T.unpair(tree, leafId, index)
+          if (next === tree) return
           const regions = { ...s.regions, [region]: next }
           const ratios = { ...s.pairRatios }
           delete ratios[refId(tab)]

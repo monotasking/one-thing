@@ -32,6 +32,15 @@ export interface ComposerInputHandle {
   insert: (kind: 'files' | 'commands', label: string, token?: string) => void
   text: () => string
   clear: () => void
+  /**
+   * **这块可编辑区此刻的 HTML**(W7-t / B2)。存草稿存的是它而不是 `text()` ——
+   * `@` 引用是**真节点**(不可编辑的 chip,真正代表的那截文本挂在 `data-token`
+   * 上),存纯文本等于换一格会话回来 chip 就散成几个字,而散掉之后发出去的那句话
+   * 与人看见的不再是同一句。
+   */
+  html: () => string
+  /** 把一份存下来的稿铺回去(空串 = 清空,与 `clear()` 同义)。 */
+  restore: (html: string) => void
 }
 
 /**
@@ -123,6 +132,15 @@ export function ComposerInput({
     text: () => (ref.current ? readDraft(ref.current) : ''),
     clear: () => {
       if (ref.current) ref.current.innerHTML = ''
+    },
+    html: () => ref.current?.innerHTML ?? '',
+    /*
+     * 铺一份稿回去。写 `innerHTML` 是这块面板本来就有的那一手(`clear()` 写的是
+     * 空串,同一句),而**这份 HTML 的来源只有它自己**(上一拍从这块可编辑区
+     * 读出来的),所以没有第二方的字节进这里。
+     */
+    restore: (html) => {
+      if (ref.current) ref.current.innerHTML = html
     },
     insert: (kind, label, token) => {
       const el = ref.current

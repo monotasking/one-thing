@@ -7,6 +7,7 @@ import { LeafActions } from './LeafActions'
 import { openLeafMenuAtPointer } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
 import { useLeafGeometry } from './leaf-geometry'
+import { useReportOverflow } from './leaf-overflow'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { spanWVar, spanXVar, topStrips } from './layout'
 import { CENTER_REGION } from './regions'
@@ -180,6 +181,9 @@ const LeafTabGroup = memo(function LeafTabGroup({
     [leaf.id],
   )
 
+  /** 条上有几格没露全 → 叶动作组那颗 ⋯(W7-t / B1,判词在 `useReportOverflow`)。 */
+  const onOverflow = useReportOverflow(leaf.id)
+
   /*
    * **联动靠空间与光,不靠文字**(设计 §2.2:用户看过第一版后指出「跟 Chat 的联动
    * 很少,不知道这一排是这个 Chat 的」)。悬停这一组 → 它下面那片叶亮一圈。
@@ -238,6 +242,7 @@ const LeafTabGroup = memo(function LeafTabGroup({
             onClose={onClose}
             onTabPointerDown={onTabPointerDown}
             onTabContextMenu={onTabContextMenu}
+            onOverflow={onOverflow}
           />
         </div>
       )}

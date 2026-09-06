@@ -1,17 +1,18 @@
 import { useCallback, useRef } from 'react'
 import type { CSSProperties } from 'react'
-import { Unlink } from '../../components/icons'
+import { Unlink, X } from '../../components/icons'
 import { useT } from '../../i18n'
 import { IconButton } from '../../ui/IconButton'
 import { Splitter } from '../../ui/Splitter'
 import { Tooltip } from '../../ui/Tooltip'
 import { ContentSlot } from '../../workbench/PaneLeaf'
-import { unpairTab } from '../../workbench/drop-commit'
+import { canClosePairSide, closePairSide, unpairTab } from '../../workbench/drop-commit'
 import { contentKindOf, refId, registerContentKind } from '../../workbench/kinds'
 import {
   PAIR_RATIO_DEFAULT,
   PAIR_RATIO_MAX,
   PAIR_RATIO_MIN,
+  regionOfLeafIn,
   useWorkbenchStore,
 } from '../../workbench/store'
 import { leavesOf } from '../../workbench/tree'
@@ -60,9 +61,19 @@ import s from './pair.module.css'
  *    自己说(查看器的「正在读取…」、聊天区的空态)。它唯一自己的一格是
  *    **拆不出两格**(手改过的档案里那个 key 拆不出合法的 ref):画一句注,
  *    而不是一块空白 —— 空白说不出任何事实。
- * ③ UI 交互状态:格头上那颗「拆开」随 `ui/IconButton`(rest/hover/focus/active
- *    全套);分隔杆随 `ui/Splitter`(含它的键盘档:←/→ 一步、Home/End、↵ 回默认);
- *    两格的身子各自的交互状态归各自。
+ * ③ UI 交互状态:格头上那颗 ✕ 与缝中点那颗「拆开」把手都随 `ui/IconButton`
+ *    (rest/hover/focus/active 全套);分隔杆随 `ui/Splitter`(含它的键盘档:
+ *    ←/→ 5% 一步、Home/End、↵ 回默认);两格的身子各自的交互状态归各自。
+ *
+ * ── W7-t / B7:格头那颗钮从「拆开」换成 ✕ ────────────────────────────────
+ * 设计 §6 写着「关格头上的 ✕ 只关这一格,另一格变回一格标签」,而 W6-a 落地时
+ * 格头上画的是**两颗一模一样的「拆开」** —— 同一件事画两遍,而「只关这一格」
+ * 这件真正属于格头的事一处都没有。所以:
+ *  · 格头 = 身份 + **关这一格**(与叶檐那条「头部檐只放身份与关闭」逐字同一条判例);
+ *  · 拆开退到**右键菜单**与**缝中点那一颗小把手** —— 它作用在整格标签上,
+ *    本来就不属于任何一格的格头。
+ * 三条路(菜单 / 把手 / ✕)各自只有一个产地:前两条是 `drop-commit.unpairTab`,
+ * 第三条是 `drop-commit.closePairSide`。
  */
 
 /** 两格标题中间那个记号(设计 §6:`A ⫽ B`)。 */
@@ -123,6 +134,37 @@ function PairPane({ contentRef }: { contentRef: ContentRef }) {
     if (seat) unpairTab(seat.leafId, seat.index)
   }, [id])
 
+  /**
+   * **关掉其中一格**(W7-t / B7)。与 `unpair` 逐字同一条:动作现查一次坐标,
+   * 判据本体在 `drop-commit.closePairSide`(它问 `beforeClose`、原位换 ref、
+   * 丢实例、送焦点,一处产地)。
+   */
+  const closeSide = useCallback((side: 'left' | 'right') => {
+    const seat = seatOfPair(useWorkbenchStore.getState().regions, id)
+    if (seat) closePairSide(seat.leafId, seat.index, side)
+  }, [id])
+
+  /*
+   * **哪一格的 ✕ 画得出来**(W7-t / B7)。判据整件在 `canClosePairSide`
+   * (它把问题拆成「拆开之后这一格关得掉吗」交给 `canDetachTab`)—— 关不掉就
+   * **不画**,与 `ui/Tabs` 那颗 ✕ 逐字同一条:一颗按不动的 ✕ 与「按了没反应」
+   * 在屏幕上是同一件事。
+   *
+   * 订的是**两个布尔**,不是整张 `regions`:别处任何一棵树动一下都会让这一格
+   * 重渲的话,代价与「这两颗钮画不画」完全无关(与 `PaneLeaf` 那句
+   * `regionOfLeafIn` 只选一个字符串同一条判据)。
+   */
+  const closable = useWorkbenchStore((st) => {
+    const seat = seatOfPair(st.regions, id)
+    if (!seat) return 0
+    const tree = st.regions[regionOfLeafIn(st.regions, seat.leafId) ?? '']
+    if (!tree) return 0
+    return (
+      (canClosePairSide(tree, seat.leafId, seat.index, 'left') ? 1 : 0)
+      | (canClosePairSide(tree, seat.leafId, seat.index, 'right') ? 2 : 0)
+    )
+  })
+
   if (!parts) {
     // 拆不出两格合法的 ref —— 画一句注,不画一块空白(见组件头状态表 ②)。
     return <p className={s.head}>{tr('workbench.pairBroken')}</p>
@@ -136,7 +178,13 @@ function PairPane({ contentRef }: { contentRef: ContentRef }) {
       /* 比例进一格**无单位**自定义属性,列宽由样式表按它算(判词在样式表头)。 */
       style={{ '--pair-split': `${ratio}` } as CSSProperties}
     >
-      <PairSide part={parts[0]} titles={titles} side="left" onUnpair={unpair} />
+      <PairSide
+        part={parts[0]}
+        titles={titles}
+        side="left"
+        closable={(closable & 1) !== 0}
+        onClose={closeSide}
+      />
       <div className={s.seam}>
         <Splitter
           containerRef={boxRef}
@@ -150,8 +198,30 @@ function PairPane({ contentRef }: { contentRef: ContentRef }) {
           testId={`pair-splitter:${id}`}
           onCommit={(next) => setPairRatio(id, next)}
         />
+        {/*
+          * **缝中点那一颗小把手 = 拆开**(W7-t / B7)。它作用在**整格标签**上,
+          * 所以它长在两格中间而不是任何一格的格头里 —— 格头只放这一格的身份与
+          * 关闭(判词在组件头状态表 ③)。
+          * 走的是与右键菜单同一只 `drop-commit.unpairTab`(播报在它里面)。
+          * `testId` 保持 `pair-unpair:` 那一族:拆开这件事的取件口只有一个,
+          * 它跟着**动作**走,不跟着它画在哪儿走。
+          */}
+        <IconButton
+          icon={Unlink}
+          size="xs"
+          className={s.seamHandle}
+          label={tr('workbench.unpair')}
+          testId={`pair-unpair:${id}`}
+          onClick={unpair}
+        />
       </div>
-      <PairSide part={parts[1]} titles={titles} side="right" onUnpair={unpair} />
+      <PairSide
+        part={parts[1]}
+        titles={titles}
+        side="right"
+        closable={(closable & 2) !== 0}
+        onClose={closeSide}
+      />
     </div>
   )
 }
@@ -167,12 +237,15 @@ function PairSide({
   part,
   titles,
   side,
-  onUnpair,
+  closable,
+  onClose,
 }: {
   part: ContentRef
   titles: Record<string, LiveTitle>
   side: 'left' | 'right'
-  onUnpair: () => void
+  /** 这一格关得掉吗。关不掉就**不画** ✕(判词在 `PairPane` 的 `closable` 上)。 */
+  closable: boolean
+  onClose: (side: 'left' | 'right') => void
 }) {
   const tr = useT()
   const title = titleOfPart(part, titles)
@@ -184,13 +257,16 @@ function PairSide({
         <Tooltip content={title.tip ?? title.text}>
           <span className={s.name}>{title.text}</span>
         </Tooltip>
-        <IconButton
-          icon={Unlink}
-          size="xs"
-          label={tr('workbench.unpair')}
-          testId={`pair-unpair:${id}`}
-          onClick={onUnpair}
-        />
+        {/* 格头 = **身份 + 关这一格**(设计 §6;判词在组件头状态表 ③)。 */}
+        {closable && (
+          <IconButton
+            icon={X}
+            size="xs"
+            label={tr('workbench.closePairSide', { name: title.text })}
+            testId={`pair-close:${id}`}
+            onClick={() => onClose(side)}
+          />
+        )}
       </div>
       {/* 身 = 一格槽。这一格内容的身子由 `workbench/content-slots` 挂进来。 */}
       <div className={s.body}>
@@ -266,6 +342,13 @@ export const pairContentKind: ContentKind = {
    * `session` 那一种同一条理由(判词在 `ContentKind.fullable` 上)。
    */
   fullable: false,
+  /*
+   * **标签条上给它更宽的上限**(W7-t / B6,设计 §6:「最大宽度 260px,长了各自
+   * 截断」)。它是这一种的**自述**:一格标签装两个名字,常规那 160 连一个长文件名
+   * 都装不下,两个一起削剩「a-rea… ⫽ b-rea…」。`ui/Tabs` 与样式表读的是这一格
+   * 变成的 `TabSpec.wide`,谁都不认识 `pair` 这四个字母(判词在那两处)。
+   */
+  tabWide: true,
 }
 
 registerContentKind(pairContentKind, import.meta.hot)

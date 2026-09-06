@@ -1,4 +1,6 @@
 import { useCallback, useMemo } from 'react'
+import { announce } from '../ui/a11y/live-region'
+import { t } from '../i18n'
 import { useLiveTitleStore } from '../stage/live-title'
 import { contentKindOf, mayCloseContent, refId } from './kinds'
 import { tabSpecOf } from './LeafStrip'
@@ -32,6 +34,27 @@ export function useCloseLeafTab(leaf: PaneLeafNode): (index: number) => Promise<
     async (index: number) => {
       const ref = leaf.tabs[index]
       if (!ref) return
+      /*
+       * ── **关不掉的那一格要说话**(W7-t / B12)───────────────────────────
+       * 屏幕上那颗 ✕ 对这一格是不画的(`ui/Tabs`:「一颗按不动的 ✕ 与『按了没
+       * 反应』在屏幕上是同一件事」),所以走到这里的只可能是**键盘**那条路
+       * (⌘W / Delete)—— 而键盘那条路从前是一次**静默的空动作**:真机读数
+       * 「before 5 / after 5」,人听不出是坏了还是不许。
+       *
+       * 判据一个字都不新写:`canDetachTab`(种类自述,不是种类名)。播报走的是
+       * 拖拽拒绝那同一口 `announce` —— 「这里不能放」与「这一格不能关」是同一
+       * 族的话,只该有一个出口。
+       *
+       * 它排在 `beforeClose` **之前**:先问用户「存不存」再告诉他「反正也关不掉」
+       * 是把两次打断叠在一起。
+       */
+      const before = useWorkbenchStore.getState()
+      const beforeRegion = regionOfLeaf(before.regions, leaf.id)
+      const beforeTree = beforeRegion ? before.regions[beforeRegion] : undefined
+      if (beforeTree && !canDetachTab(beforeTree, leaf.id, index)) {
+        announce(t('workbench.tabNotClosable'))
+        return
+      }
       if (!(await mayCloseContent(ref))) return
       const live = useWorkbenchStore.getState()
       const region = regionOfLeaf(live.regions, leaf.id)

@@ -1,4 +1,4 @@
-import { refId, sameRef } from './kinds'
+import { partsOfContent, refId, sameRef } from './kinds'
 import type { ContentRef, ContentRefId } from './kinds'
 import type { RegionId } from './regions'
 
@@ -247,6 +247,37 @@ export function moveTab(
   const at =
     to.at !== undefined && from.leafId === to.leafId && to.at > from.index ? to.at - 1 : to.at
   return insertTab(lifted, to.leafId, ref, { at, activate: true })
+}
+
+/**
+ * **拆开一格复合标签**(W7-t / B7 收尾;设计 §6:「左格顶回原位、右格插在它后面、
+ * 活动格不动」)。这一个**树变换只有这一个产地**。
+ *
+ * ── 为什么它得是一只纯函数,而不是 store 里那两句 ────────────────────────
+ * 「拆开之后这棵树长什么样」有**两个**读者:真拆(`store.unpairAt`,它还要顺手
+ * 把那格 pair 的分栏比例从账上删掉)与**只读的预演**(`drop-commit.canClosePairSide`
+ * —— 格头那颗 ✕ 画不画要在渲染里答,一个字都不许落到 store 上)。09-06 审查逮到
+ * 的账正是这一条:那时预演在 `drop-commit` 里手抄了同样两句 `T.replaceRef` +
+ * `T.insertTab`,于是同一个形状有两处产地 —— 改一处漏一处的下场是那颗 ✕ 按下去
+ * 做的事与它画出来时预演的不是同一件。
+ *
+ * **它只搬结构,不记账**:`pairRatios` 那本账是 store 的(树不知道有这本账),
+ * 所以 `store.unpairAt` 仍旧自己 `delete` 那一格比例。
+ *
+ * 摊开那一句是**种类自述**(`partsOfContent` 问的是登记表),所以这只文件照旧
+ * 一个种类名都不认识 —— 它只知道「有些内容自述得出自己由哪几格组成」。
+ *
+ * **拆不动就交回同一个引用**:那一格不是复合的 / 下标越界 / 叶不在 —— 三种都
+ * 原样返回 `node`。调用方因此可以拿引用恒等当「什么都没换」的判据(`store.unpairAt`
+ * 的早退、`drop-commit` 那几句「引用恒等就不播报」读的都是这一条)。
+ */
+export function unpair(node: PaneNode, leafId: string, index: number): PaneNode {
+  const tab = findLeaf(node, leafId)?.tabs[index]
+  if (!tab) return node
+  const parts = partsOfContent(tab)
+  if (!parts || parts.length < 2) return node
+  const swapped = replaceRef(node, leafId, tab, parts[0])
+  return insertTab(swapped, leafId, parts[1], { at: index + 1, activate: false })
 }
 
 /**

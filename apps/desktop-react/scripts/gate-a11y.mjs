@@ -1021,6 +1021,15 @@ async function main() {
               const sides = Array.from(document.querySelectorAll('[data-pair-side]'))
               const splitter = document.querySelector('[data-testid^="pair-splitter:"]')
               const unpair = document.querySelector('[data-testid^="pair-unpair:"]')
+              /*
+               * **格头上那颗 ✕**(W7-t / B7)。它是这一屏新长出来的一件语义:
+               * 格头 = 身份 + **关这一格**,而 iconOnly 的钮必须说得出自己关的是谁
+               * ——「关闭」三个字对两格并排来说是两个答案。它**关不掉就不画**
+               * (`canClosePairSide`),所以这里问的是「在场的那些都说得出名字」+
+               * 「至少一颗在场」;两格都关不掉这一形在这屏夹具里不成立
+               * (并的是聊天 + 文件,文件那一格恒关得掉)。
+               */
+              const closes = Array.from(document.querySelectorAll('[data-testid^="pair-close:"]'))
               return {
                 count: sides.length,
                 named: sides.every((el) => (el.getAttribute('aria-label') ?? '').trim().length > 0),
@@ -1029,6 +1038,9 @@ async function main() {
                 valuenow: Number(splitter?.getAttribute('aria-valuenow')),
                 tabIndex: splitter instanceof HTMLElement ? splitter.tabIndex : -2,
                 unpairLabel: unpair?.getAttribute('aria-label') ?? '',
+                unpairInHead: Boolean(unpair?.closest('[data-pair-head]')),
+                closeCount: closes.length,
+                closeNames: closes.map((el) => (el.getAttribute('aria-label') ?? '').trim()),
               }
             })
             assert(pane.count === 2, `屏幕上恰有两格(实测 ${pane.count})`)
@@ -1038,7 +1050,20 @@ async function main() {
             assert(pane.tabIndex === 0, '它可聚焦(APG:可调的 separator 进 Tab 序)')
             assert(
               pane.unpairLabel.trim().length > 0,
-              `格头上那颗「拆开」说得出自己是什么(实测「${pane.unpairLabel}」)`,
+              `那颗「拆开」说得出自己是什么(实测「${pane.unpairLabel}」)`,
+            )
+            /* W7-t / B7:拆开退到缝中点那颗小把手 —— 它不再长在格头里。 */
+            assert(
+              !pane.unpairInHead,
+              '「拆开」不在格头里(它作用在整格标签上,不属于任何一格)',
+            )
+            assert(
+              pane.closeCount >= 1,
+              `格头上有 ✕(只关这一格;实测 ${pane.closeCount} 颗)`,
+            )
+            assert(
+              pane.closeNames.every((name) => name.length > 0),
+              `每颗 ✕ 都说得出自己关的是谁(实测「${pane.closeNames.join('」「') || '—'}」)`,
             )
             await settle(page, '两格并排')
             await scanAxe(page, '两格并排', '[data-pane-region="center"]')

@@ -6,7 +6,7 @@ import { useLiveTitleStore } from '../stage/live-title'
 import { useT } from '../i18n'
 import { contentKindOf, mayCloseContent, partsOfContent, refId } from './kinds'
 import type { LiveTitle } from '../stage/live-title'
-import type { TabSpec } from '../ui/Tabs'
+import type { TabSpec, TabsOverflow } from '../ui/Tabs'
 import type { ContentRef } from './kinds'
 import s from './LeafStrip.module.css'
 
@@ -56,7 +56,9 @@ import s from './LeafStrip.module.css'
  *   多 tab    正常 tab 条 + 溢出横滚(`ui/Tabs` 自带 `overflow-x:auto`)
  *   有动作组  宿主给了才画(中央叶:⋯ / 二合一;**面板内:不画** —— 它不是树,
  *             既没有「隐藏的标签」也分不了屏)
- *   超量      `--tab-max-w` 160 封顶 + 横滚,**永不换行**(挤压纪律)
+ *   超量      `--tab-max-w` 160 封顶 + 横滚,**永不换行**(挤压纪律);W7-t 起横滚
+ *             有两条鼠标出口 —— 条上的**竖滚轮**映射成横滚(`ui/Tabs` 自己那一口),
+ *             以及叶动作组那颗 ⋯ 里「看不见的」那一节(名单由 `onOverflow` 交出)
  *
  * ── 状态表 ③:UI 交互状态 ───────────────────────────────────────────────
  *   tab            rest / hover(`--st-hover`)/ focus(全局环)/ active(键盘位由
@@ -102,6 +104,12 @@ interface LeafStripProps {
    * 事件递出去,不替宿主决定「什么算空白」。
    */
   onChromePointerDown?: (e: ReactPointerEvent<HTMLElement>) => void
+  /**
+   * **条上有几格没露全**(W7-t / B1)。与上面那两口同一条纪律:这条檐只把
+   * 标签条量出来的那份读数原样递出去,拿它画什么(那颗 ⋯ 与它那张表)是宿主的
+   * 语法 —— 面板内那一档(不在树里,一格标签)不接它,行为一个字没变。
+   */
+  onOverflow?: (state: TabsOverflow) => void
   /** 中央叶用它给自己那条檐留取件口(`data-pane-chrome`);别的宿主不给。 */
   chromeId?: string
   /** 门与用例的取件口。 */
@@ -118,6 +126,7 @@ export function LeafStrip({
   onClose,
   onTabPointerDown,
   onTabContextMenu,
+  onOverflow,
   onChromePointerDown,
   chromeId,
   testId,
@@ -174,6 +183,7 @@ export function LeafStrip({
           onClose={onClose}
           onTabPointerDown={onTabDown}
           onTabContextMenu={onTabContextMenu}
+          onOverflow={onOverflow}
         />
       </div>
       {/* 型工具条由**种类自述**(`ContentKind.toolbar`),檐只负责挂。
@@ -289,6 +299,12 @@ export function tabSpecOf(
      * 与「内容区左带仅 host 单格」两条 —— 判词在 `workbench/drop.TabBox` 上。
      */
     slots: partsOfContent(ref)?.length ?? 1,
+    /*
+     * **这一格用哪一档宽度上限**(W7-t / B6)。问的仍旧是**种类自述**
+     * (`ContentKind.tabWide`),所以这只函数照旧不认识 `pair` 这四个字母,
+     * 而下一种「天生装两个名字」的内容出现时它一个字都不用改。
+     */
+    wide: kind?.tabWide === true,
   }
 }
 

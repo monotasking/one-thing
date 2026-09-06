@@ -271,7 +271,12 @@ describe('⑥ 零重挂:二合一 / 拆开 / 换比例', () => {
     // 两格的内容层各带自己的取件口。
     expect(document.querySelector('[data-pane-tab="doc:a"]')).toBeTruthy()
     expect(document.querySelector('[data-pane-tab="doc:b"]')).toBeTruthy()
-    // 格头上各一颗「拆开」。
-    expect(screen.getAllByLabelText('拆开')).toHaveLength(2)
+    /*
+     * 格头上各一颗 ✕(**只关这一格**),而「拆开」只有一颗、长在两格中间的缝上
+     * (W7-t / B7,设计 §6:格头 = 身份 + 关闭;拆开作用在整格标签上)。
+     * **反证**:把两颗 ✕ 换回两颗「拆开」→ 下面第二句读到 3,当场红。
+     */
+    expect(screen.getAllByLabelText(/^关闭/)).toHaveLength(2)
+    expect(screen.getAllByLabelText('拆开')).toHaveLength(1)
   })
 })

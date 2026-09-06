@@ -9,6 +9,7 @@ import { flattenContent, partsOfContent, refId } from './kinds'
 import { LeafActions } from './LeafActions'
 import { openLeafMenuAtPointer } from './leaf-menu'
 import { LeafStrip } from './LeafStrip'
+import { useReportOverflow } from './leaf-overflow'
 import { useCloseLeafTab, useLeafTabSpecs } from './leaf-tabs'
 import { CENTER_REGION } from './regions'
 import { renderRef } from './render'
@@ -370,6 +371,9 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
     [leaf.id],
   )
 
+  /** 条上有几格没露全 → 这条檐右端那颗 ⋯(W7-t / B1,与顶栏那一档同一只 hook)。 */
+  const onOverflow = useReportOverflow(leaf.id)
+
   return (
     <LeafStrip
       tabs={tabs}
@@ -380,6 +384,7 @@ const PaneLeafStrip = memo(function PaneLeafStrip({
       onClose={onClose}
       onTabPointerDown={onTabPointerDown}
       onTabContextMenu={onTabContextMenu}
+      onOverflow={onOverflow}
       onChromePointerDown={host?.onChromePointerDown}
       actions={
         <>

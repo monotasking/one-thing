@@ -6,6 +6,7 @@ import { Composer } from './Composer'
 import { focusTree } from '../../focus/registry'
 import { FocusDispatchHarness } from '../../test/focus-harness'
 import { useComposerStore, resetComposerStore } from '../store'
+import { composerDraftKeys, readComposerDraft } from '../drafts'
 import { configureComposerSink } from '../sink'
 import { ASK_DEMO_SPEC } from '../data'
 import { useStageStore } from '../../stage/store'
@@ -1413,5 +1414,119 @@ describe('庚:模型选择器带思考档位', () => {
     const { label, text } = await pillFaces({ thinkingLevels: null })
     expect(label).toBe('选择模型:m-1')
     expect(text).toBe('m-1')
+  })
+})
+
+
+/*
+ * ── **一条会话一份草稿**(W7-t / B2)────────────────────────────────────────
+ *
+ * 真机读数(审计 B 第 79 条):A、B 两格会话并排,在 A 里打字 → 切到 B,B 的输入框
+ * 里躺着 A 的稿;在 B 里接着打 → 回到 A,A 的稿已经被顶掉了。
+ *
+ * 病根是**输入框是外壳级的一件、而它的内容没有主人**。修法与 W5-a 同一条路:
+ * 状态按 `sessionId` 分家(表在 `composer/drafts.ts`),这只组件渲染的是「当前活动
+ * 会话那一份」—— 所以这一组用例走的正是用户那三步:A 打字 → 切 B → 回 A。
+ *
+ * 这里换会话是**直接改 `currentSessionId`**,而不是去点一格 tab:那一格是
+ * 投影(`content/session-projection`),点标签与从列表里换会话最后都落在它上面,
+ * 组件这一层认得的只有它。
+ */
+describe('B2:一条会话一份草稿', () => {
+  beforeEach(() => {
+    useExposeStore.setState({ currentSessionId: 'A' })
+  })
+  afterEach(() => {
+    useExposeStore.setState({ currentSessionId: '' })
+  })
+
+  /** 换一条会话(与点一格会话标签、从列表里换会话走的是同一格投影)。 */
+  const switchTo = (id: string) => act(() => void useExposeStore.setState({ currentSessionId: id }))
+
+  it('A 打字 → 切 B 是空的 → B 打字 → 回 A 仍是 A 的稿', () => {
+    renderComposer()
+    act(() => type(inputBox(), 'A 的稿'))
+
+    switchTo('B')
+    /*
+     * **反证**:把 `Composer` 里那句 layout effect 删掉 → 这一条当场读到「A 的稿」,
+     * 也就是用户报的那一半(A 的字跟着切标签跑到 B 里)。
+     */
+    expect(inputBox().textContent).toBe('')
+
+    act(() => type(inputBox(), 'B 的稿'))
+    switchTo('A')
+    /*
+     * **反证**:把那句 effect 里「先存旧的」那半删掉 → 这一条读到空串,
+     * 也就是用户报的另一半(A 的稿被顶掉了)。
+     */
+    expect(inputBox().textContent).toBe('A 的稿')
+
+    switchTo('B')
+    expect(inputBox().textContent).toBe('B 的稿')
+  })
+
+  /**
+   * 存的是 **HTML** 而不是纯文本:`@` 引用是真节点(不可编辑的 chip,真正代表的
+   * 那截文本挂在 `data-token` 上)。存纯文本等于换一格会话回来 chip 就散成几个字,
+   * 而散掉之后**发出去的那句话与人看见的不再是同一句**。
+   * **反证**:把 `saveComposerDraft` 那一句的 `html()` 换成 `text()` → 这一条读到
+   * 的是 `{{file:…}}` 那串字面,而不是一枚 chip。
+   */
+  it('@ 引用是真节点:切走再回来,它仍旧是一枚 chip,交出去的仍是那截 token', async () => {
+    // `@` 候选那条口是去抖的,所以这一条要一台假钟(与那一族用例同一手)。
+    vi.useFakeTimers()
+    renderComposer()
+    const box = inputBox()
+    act(() => type(box, '@model'))
+    await settleMentions()
+    // 抽屉里第一行 = 那份假工作区的第一个文件。
+    const first = screen.getAllByRole('button').find((b) => (b.textContent ?? '').includes('model-capability'))
+    expect(first).toBeTruthy()
+    await act(async () => void fireEvent.mouseDown(first as HTMLElement))
+
+    const chips = () => box.querySelectorAll('[data-token]')
+    expect(chips()).toHaveLength(1)
+    const token = chips()[0]?.getAttribute('data-token') ?? ''
+    expect(token).toBe(createFileToken(REPO_FILES[0]))
+
+    switchTo('B')
+    expect(chips()).toHaveLength(0)
+    switchTo('A')
+    expect(chips()).toHaveLength(1)
+    expect(chips()[0]?.getAttribute('data-token')).toBe(token)
+  })
+
+  /**
+   * 附件那半边走 store 的 `setState`(它是这块面板的状态产地):**摞里有什么**与
+   * **摞开着没有**是同一件事的两半,所以两格一起搬。
+   */
+  it('附件与那只摞的开合跟着会话走', () => {
+    renderComposer()
+    act(() => {
+      useComposerStore.setState({
+        attachments: [{ id: 'a1', name: 'a.png' }],
+        attOpen: true,
+      })
+    })
+    switchTo('B')
+    expect(state().attachments).toEqual([])
+    expect(state().attOpen).toBe(false)
+    switchTo('A')
+    expect(state().attachments.map((a) => a.id)).toEqual(['a1'])
+    expect(state().attOpen).toBe(true)
+  })
+
+  /**
+   * **空稿不进表**:打完字又清空,那条会话在表里不该留下一具空壳
+   * (判词与反证在 `composer/drafts.test.ts`;这一条量的是编排这一头真的走到了它)。
+   */
+  it('打完又清空的那条会话,切走时不在表里留空壳', () => {
+    renderComposer()
+    act(() => type(inputBox(), '写了又删'))
+    act(() => type(inputBox(), ''))
+    switchTo('B')
+    expect(composerDraftKeys()).toEqual([])
+    expect(readComposerDraft('A').html).toBe('')
   })
 })

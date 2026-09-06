@@ -29,6 +29,8 @@ function fakeInput(): { ref: { current: ComposerInputHandle | null }; clears: ()
     insert: () => {},
     text: () => '',
     clear: () => void (clears += 1),
+    html: () => '',
+    restore: () => {},
   }
   return { ref: { current: handle }, clears: () => clears }
 }

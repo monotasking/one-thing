@@ -671,6 +671,13 @@ export const en: Record<MessageKey, string> = {
   'workbench.leafTabs': 'Tabs',
   'workbench.hiddenTabs': 'Hidden tabs',
   'workbench.hiddenNote': 'hidden',
+  /* One ⋯, one menu, two sections (W7-t / B1): tabs scrolled out of view and tabs put
+   * away. Both answer the same question — "I can't reach this one right now". */
+  'workbench.reachTabs': 'Tabs you can’t reach',
+  'workbench.offscreenTabs': 'Out of view',
+  /* Said out loud when ⌘W lands on a tab that can't be closed (W7-t / B12) —
+   * same announce() the drag refusal uses. */
+  'workbench.tabNotClosable': "This tab can't be closed — it's the last one of its kind here",
   /* The tab action menu's accessible name (W6-c). The button that opens it still says
    * "Split"; the menu itself is named for what it is, not for its first entry. */
   'workbench.tabActions': 'Tab actions',
@@ -681,11 +688,17 @@ export const en: Record<MessageKey, string> = {
   'workbench.splitUp': 'Above',
   'workbench.splitterLabel': 'Split handle',
   'workbench.topbarTabs': 'Main area tabs',
+  /* The main area with nothing in it (W7-t / A12). An empty state says two things:
+   * what belongs here, and how to get it back. */
+  'workbench.centerEmpty': 'Nothing open here',
+  'workbench.centerEmptyNew': 'New session',
   /* Two panes in one tab (W6-a). */
   'workbench.pair': 'Two panes',
   'workbench.pairRight': 'Join with the tab on the right',
   'workbench.pairLeft': 'Join with the tab on the left',
   'workbench.unpair': 'Split apart',
+  /* The × on a pane head closes just that pane (W7-t / B7, design §6). */
+  'workbench.closePairSide': 'Close {name}',
   'workbench.unpaired': 'Split apart',
   'workbench.pairedWith': 'Now side by side with {name}',
   'workbench.pairSplitter': 'Pane split handle',

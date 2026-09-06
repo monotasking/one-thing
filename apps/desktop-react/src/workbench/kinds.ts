@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { PanelVisibility } from '../content/visibility'
+import type { FocusScopeId } from '../focus/types'
 import type { LiveTitle } from '../stage/live-title'
 import type { RegionId } from './regions'
 
@@ -154,6 +155,29 @@ export interface ContentKind {
    * 判词与两只口的分工写在 `ContentComposite` 上。
    */
   composite?: ContentComposite
+  /**
+   * **这一格被激活时,焦点落进哪一格作用域**(W7-t / B3)。缺席 = 落进它自己的
+   * 内容层(`leaf` 那一格 passThrough 下去,也就是从前唯一那条路)。
+   *
+   * ── 它为什么是一格自述,而不是 `focus-into` 里的一条 if ──────────────────
+   * 报障是「切到会话标签,焦点落在消息流上,直接打字进不去」。修法有两种写法:
+   * 在 `focus-into` 里写一句「如果这一格是会话就送去输入面板」——那就是**核心层
+   * 点名一种内容**,而下一种有「激活时该落在别处」需求的内容(终端?表单?)
+   * 会在同一处再长一条 if;或者让**内容自己说**它想把焦点交给哪块面,壳只读表。
+   * 这一格是后者,与 `resident` / `fullable` / `composite` 同族。
+   *
+   * 值是**声明 id**(`focus/scopes.ts` 那张封闭表里的一格),不是实例 ——
+   * 挑哪一份实例是注册表的事(MRU + owner,判词在 `FocusTree.activateScope` 上)。
+   * 送不进去(那块面此刻一份可交互的实例都没有)一律回落到内容层,
+   * 与「送不进去不追」同一条纪律。
+   */
+  focusInto?: FocusScopeId
+  /**
+   * **这一种在标签条上要更宽的上限**(W7-t / B6,设计 v3 §6:「最大宽度 260px」)。
+   * 缺席 = 常规上限。它经 `LeafStrip.tabSpecOf` 变成 `TabSpec.wide` 那一格事实;
+   * `ui/Tabs` 与样式表照旧认不得任何一种内容(判词在 `TabSpec.wide` 上)。
+   */
+  tabWide?: boolean
 }
 
 /** Vite 的 `import.meta.hot` 里这一批只用得到 `dispose` 一口(照 `content/blocks/registry` 的形)。 */
@@ -256,6 +280,14 @@ export function flattenContent(ref: ContentRef, depth = 4): ContentRef[] {
 /** 认不认得这个种类名。`tree.sanitize` 拿它剔存量档案里的未知种类。 */
 export function isKnownContentKind(id: string): boolean {
   return REGISTRY.has(id)
+}
+
+/**
+ * **这一格被激活时焦点该落进哪一格作用域**(W7-t / B3;缺席 = 内容层)。
+ * `workbench/focus-into` 只经这一只问 —— 于是它里面一个种类名都不出现。
+ */
+export function focusIntoScopeOf(ref: ContentRef): FocusScopeId | undefined {
+  return REGISTRY.get(ref.kind)?.focusInto
 }
 
 /** 这个种类是不是单例。`tree.sanitize` 拿它去重。 */

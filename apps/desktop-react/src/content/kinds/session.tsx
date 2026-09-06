@@ -11,6 +11,7 @@ import { useLiveTitleStore } from '../../stage/live-title'
 import { t, useT } from '../../i18n'
 import { useExposeStore } from '../../expose/store'
 import { NEW_SESSION_KEY, SESSION_KIND, sessionIdOfRef } from '../session-ref'
+import { dropComposerDraft } from '../../composer/drafts'
 import type { ContentRef } from '../../workbench/kinds'
 import s from './ChatLeaf.module.css'
 
@@ -191,6 +192,39 @@ registerContentKind(
     },
     icon: () => 'MessagesSquare',
     render: (ref) => <SessionLeaf contentRef={ref} />,
+    /*
+     * **激活这一格 = 焦点进它的输入面板**(W7-t / B3,`ContentKind.focusInto`)。
+     *
+     * 报障:点一格会话标签,焦点落在消息流上,直接打字进不去。而 §3.5 规则 1/2
+     * 的原话就是「应用启动时是主内容(有会话则是它的输入面板)」「开会话 → 它的
+     * 输入面板」—— 切一格会话标签与开一条会话是同一件事的两种手势,该落在同一处。
+     *
+     * 它是**这一种的自述**,不是 `focus-into` 里的一条 if:壳只读表,于是那只
+     * 文件里一个种类名都没有(判词在 `ContentKind.focusInto` 上)。
+     */
+    focusInto: 'composer',
+    /**
+     * **关掉 = 丢实例**(与 `file` / `pair` 同一条)。这一种要清的是**这条会话
+     * 那一份草稿**(W7-t / B2):输入框里没发出去的话、挂着的附件都跟着会话走,
+     * 会话被关掉之后留着它等于让下一次开同一条会话读到一份陈年的草稿。
+     *
+     * 数据机器(`chat-source`)的寿命**不在这里** —— 它由引用账管(判词在
+     * `content/session-projection.ts`:六条路会让一格会话离开树,`dispose` 只是
+     * 其中一条,各写一遍迟早漏)。草稿相反:它只有「这条会话被真的关掉」这一个
+     * 丢弃时机,藏起来的会话叶照样该留着稿。
+     */
+    dispose: (ref) => {
+      /*
+       * **空串是一格键,不是缺席**(09-06 审查逮到的账):`sessionIdOfRef` 对
+       * 「新会话」那格保留键答的是 `''`(「是会话叶,但还没绑」),对「根本不是
+       * 会话」才答 `null` —— 两者在调用方这里从来不是一件事(判词在
+       * `content/session-ref.ts` 与 `composer/drafts.ts` 上,后者明写「不拿空串
+       * 当缺席」)。修前这一句写的是 `if (id)`,于是**关掉「新会话」那一格永远
+       * 丢不掉它的稿**(连同挂着的附件 URL),与「关掉 = 唯一的丢弃时机」相悖。
+       */
+      const id = sessionIdOfRef(ref)
+      if (id !== null) dropComposerDraft(id)
+    },
   },
   import.meta.hot,
 )

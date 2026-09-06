@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react'
 import { resolveIcon, X } from '../components/icons'
 import { StatusDot } from './StatusDot'
@@ -79,6 +79,73 @@ export interface TabSpec {
    * 缺省 1;与 `dirty` / `home` 同族:**数据表驱动的一格事实**。
    */
   slots?: number
+  /**
+   * **这一格要不要更宽的上限**(W7-t / B6,设计 v3 §6:「最大宽度 260px」)。
+   *
+   * 与 `dirty` / `home` / `slots` 同族:**数据表驱动的一格事实**。缺省 = 常规
+   * 上限(`--tab-max-w` 160);`true` = 这一格天生装着两个名字,给它 `--tab-wide-max`。
+   *
+   * 判据由宿主从**内容种类的自述**里取(`ContentKind.tabWide`),`ui/Tabs` 照旧
+   * 认不得任何一种内容 —— 它读的只是「这一格宽不宽」。CSS 那一头也不按种类开
+   * 分支:`.tab[data-tab-wide]` 说的是这一格的档,不是它装着谁。
+   */
+  wide?: boolean
+}
+
+/**
+ * **条上此刻有哪几格没完全露出来**(W7-t / B1)。
+ *
+ * 溢出是**标签条自己的形**(它是那个横滚容器,谁在视野里只有它量得出),
+ * 所以产地在这里;而「拿这份名单画一张表」是宿主的语法(拼贴台把它并进叶动作组
+ * 那一颗 ⋯)。两件事分开的判据与 `onTabPointerDown` / `onTabContextMenu` 逐字
+ * 同源:`ui/Tabs` 只交出事实,不认识菜单。
+ */
+export interface TabsOverflow {
+  /** 不完全可见的那几格(按条上次序;整颗裁在外面的与只露一半的都算)。 */
+  ids: readonly string[]
+  /** 把一格滚进视野。滚这件事归条自己 —— 同一个 id 可能在两条条上各有一格。 */
+  reveal: (id: string) => void
+}
+
+/** 一格 tab 的取件口(id 里的引号 / 反斜杠要转义 —— key 允许带路径)。 */
+function tabElementIn(bar: HTMLElement | null, id: string): HTMLElement | null {
+  const el = bar?.querySelector(`[data-tab-id="${id.replace(/["\\]/g, '\\$&')}"]`)
+  return el instanceof HTMLElement ? el : null
+}
+
+/**
+ * **「完全落在条里」的亚像素容差**(px)。它不是一格设计尺寸,是量子:
+ * `getBoundingClientRect` 交出来的是小数,一格正贴着边缘的 tab 会读到零点几
+ * 像素的越界 —— 不留这一格容差,右端那颗 ⋯ 会永远挂着一个假名单。
+ *
+ * `scripts/gate-squeeze.mjs`(B1 那一档「选中的那一格完全可见」)按名字**从这只
+ * 文件里读它**,不再自己抄一个 1 —— 两处同源,改这里门跟着改。改名要连门一起改。
+ */
+export const TAB_CLIP_EPSILON_PX = 1
+
+/**
+ * 量一遍:哪几格没完全落在条的可视矩形里。
+ *
+ * 用 `getBoundingClientRect` 而不是 `offsetLeft`:`.bar` 自己不是定位元素,
+ * 而 `.tab` 是(`position: relative`),于是 `offsetLeft` 量的是别人家的原点 ——
+ * 拿它跟 `scrollLeft` 比会得到一份看起来很像的错读数。
+ *
+ * **条还没排出盒就答空**(jsdom 里所有矩形恒 0):那时「谁在视野里」不成立,
+ * 答「全都不在」会让宿主画出一颗永远按不动的 ⋯。
+ */
+function clippedTabIds(bar: HTMLElement): string[] {
+  if (bar.clientWidth <= 0) return []
+  const box = bar.getBoundingClientRect()
+  if (box.width <= 0) return []
+  const out: string[] = []
+  for (const el of Array.from(bar.querySelectorAll<HTMLElement>('[data-tab-id]'))) {
+    const r = el.getBoundingClientRect()
+    if (r.left < box.left - TAB_CLIP_EPSILON_PX || r.right > box.right + TAB_CLIP_EPSILON_PX) {
+      const id = el.dataset.tabId
+      if (id) out.push(id)
+    }
+  }
+  return out
 }
 
 /**
@@ -121,6 +188,15 @@ interface TabsProps {
    * 是同一条判例的两半:那边让开,这边接住。
    */
   onTabContextMenu?: (id: string, e: ReactMouseEvent<HTMLElement>) => void
+  /**
+   * **条上此刻有几格没露全**(W7-t / B1)。给了就在名单**真的变了**的时候叫一次
+   * (滚动 / 改尺寸 / 换了几格都会重量);不接就是不接 —— 不给这个 prop 时这只
+   * 组件一次都不量,DOM 与从前逐字相同。
+   *
+   * 只在名单变化时叫,是为了不造一条「宿主重渲 → 回调换身份 → 重量 → 再报」的
+   * 环:交回去的 `ids` 内容一样就一声不吭。
+   */
+  onOverflow?: (state: TabsOverflow) => void
   label?: string
 }
 
@@ -131,11 +207,66 @@ export function Tabs({
   onClose,
   onTabPointerDown,
   onTabContextMenu,
+  onOverflow,
   look = 'line',
   label,
 }: TabsProps) {
   const bar = useRef<HTMLDivElement>(null)
   useRoving(bar, { axis: 'horizontal' })
+  /*
+   * **竖着的滚轮在这条条上算横滚**(W7-t / B1;真机读数:13 格时 4 格整颗看不见,
+   * 竖滚轮 120 → `scrollLeft` 一格不动 —— 鼠标用户够不着那几格)。
+   *
+   * 三件事写在这一段里,缺一条都不成立:
+   *  · **只映射 `deltaY`**:`deltaX` 那条是触控板自己的横滚,浏览器已经做对了,
+   *    再加一遍会走双倍;
+   *  · **原生监听 + `{ passive: false }`**:React 把 `wheel` 注册成被动的,
+   *    合成事件里 `preventDefault()` 是一句空话 —— 不拦的话这一下会继续冒泡给
+   *    外面那个竖滚容器,屏幕上就是「条没动、页面滚了」;
+   *  · **滚不动就让开**(`max <= 0`):没溢出的条(设置页那些分段器)一个字
+   *    都不该改,竖滚轮该原样交给外面。
+   */
+  useEffect(() => {
+    const el = bar.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaX !== 0 || e.deltaY === 0) return
+      if (el.scrollWidth - el.clientWidth <= 0) return
+      el.scrollLeft += e.deltaY
+      e.preventDefault()
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+  /** 把一格滚进视野。交给宿主的那一口(见 `TabsOverflow.reveal`)。 */
+  const reveal = useCallback((id: string) => {
+    tabElementIn(bar.current, id)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+  }, [])
+  /*
+   * **谁没露全**(B1)。重量的三个由头:条滚了、条的盒变了、格数 / 格宽变了。
+   * `seen` 挡住「内容一样但数组换了身份」那一发 —— 宿主多半把它写进一格 store,
+   * 而那会让它重渲、回调换身份、这条 effect 重跑:不挡就是一条自激的环。
+   */
+  const seen = useRef('')
+  useEffect(() => {
+    const el = bar.current
+    if (!el || !onOverflow) return
+    const measure = () => {
+      const ids = clippedTabIds(el)
+      const key = ids.join('\u0000')
+      if (key === seen.current) return
+      seen.current = key
+      onOverflow({ ids, reveal })
+    }
+    measure()
+    el.addEventListener('scroll', measure, { passive: true })
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+    ro?.observe(el)
+    return () => {
+      el.removeEventListener('scroll', measure)
+      ro?.disconnect()
+    }
+  }, [items, onOverflow, reveal])
   /*
    * **活动的那一格必须在视野里**(W3-b 真机读数:顶栏非焦点组被尾格夹到 216px,
    * 三格 tab 总宽 337,活动格排第三 —— `scrollLeft` 停在 0,活动格整颗裁在视野外,
@@ -146,8 +277,7 @@ export function Tabs({
    */
   useEffect(() => {
     if (activeId === null) return
-    const el = bar.current?.querySelector(`[data-tab-id="${activeId.replace(/["\\]/g, '\\$&')}"]`)
-    el?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    tabElementIn(bar.current, activeId)?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
   }, [activeId])
   return (
     <div ref={bar} className={s.bar} data-look={look} role="tablist" aria-label={label}>
@@ -190,6 +320,11 @@ export function Tabs({
              * 只在 > 1 时写:一格标签的 DOM 与从前逐字相同。
              */
             data-tab-slots={tab.slots && tab.slots > 1 ? String(tab.slots) : undefined}
+            /*
+             * **这一格用哪一档宽度上限**(W7-t / B6,见 `TabSpec.wide`)。
+             * 只在 `true` 时写:常规那一格的 DOM 与从前逐字相同。
+             */
+            data-tab-wide={tab.wide ? '' : undefined}
             // roving 入组标记 + 初值。选中的那一条由 useRoving 改回 0 ——
             // 不给初值的话,一条八页的 tab 条要按八下 Tab 才走得出去。
             data-roving-item

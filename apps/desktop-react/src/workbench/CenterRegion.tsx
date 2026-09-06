@@ -1,4 +1,7 @@
 import { useLayoutEffect } from 'react'
+import { useExposeStore } from '../expose/store'
+import { useT } from '../i18n'
+import { Button } from '../ui/Button'
 import { useWorkbenchStore } from './store'
 import { CENTER_REGION } from './regions'
 import { PaneTree } from './PaneTree'
@@ -37,11 +40,54 @@ export function CenterRegion() {
   useLayoutEffect(() => {
     useWorkbenchStore.getState().seed()
   }, [])
-  if (!tree) return null
+  if (!tree) return <CenterEmpty />
   const multi = leafCount(tree) > 1
   return (
     <div className={s.panes} data-pane-region={CENTER_REGION} data-pane-multi={multi || undefined}>
       <PaneTree node={tree} />
+    </div>
+  )
+}
+
+/**
+ * **中央区什么都没有的那一态**(W7-t / A12)。
+ *
+ * ── 它为什么存在 ────────────────────────────────────────────────────────
+ * 常驻那条规矩(`ContentKind.resident`)保证「最后一格会话关不掉」,所以正常用
+ * 到不了这里;但这棵树**剪得成 `null`**(`tree.prune` 的原话:「判断『空了怎么办』
+ * 不是树的事」),而修前那一句 `return null` 的下场是**整块中央区变成一片白**
+ * ——一片白说不出任何事实,也给不出任何出路。
+ *
+ * 空态说两句话:这儿本来该有什么、以及**怎么让它回来**。那颗钮调的是 ⌘N 那**同一只
+ * 动作**(`expose.newSessionInCurrentProject`,落在哪个项目下由它自己判)——
+ * 键盘那条路与这颗钮走两个动作,迟早在某一条上悄悄分叉。
+ *
+ * ── 三张状态表 ──────────────────────────────────────────────────────────
+ * ① 生命周期:挂载 = 那棵树被剪成 null;卸载 = 播种 / 新建回来一格,树重新在场。
+ *    它自己没有异步、没有订阅,所以没有可拆卸的尾巴。
+ * ② UI 生命状态:它**就是** empty 那一格 —— loading / error 不归它(建会话在飞
+ *    的反馈由那颗钮自己给,见 ③)。
+ * ③ UI 交互状态:那颗钮随 `ui/Button`(rest/hover/focus/active);建会话是一次
+ *    往返,而这一处**刻意不画进行中反馈** —— 与 `useComposerSend` 里那两把闸
+ *    同一条判词:建会话快到人看不见一帧,画一个转圈只会闪。
+ *
+ * 它**不戴 `data-pane-region`**(09-06 审查):那格属性说的是「这儿是中央区那棵
+ * 树」,而空态恰恰是「那棵树不在场」。戴上去的下场是凡按它找树的选择器
+ * (`[data-pane-region="center"] [data-pane-tab]` 之类)连空态一起命中。
+ * 取件走 `data-testid="center-empty"`。
+ */
+function CenterEmpty() {
+  const t = useT()
+  return (
+    <div className={s.empty} data-testid="center-empty">
+      <p className={s.emptyText}>{t('workbench.centerEmpty')}</p>
+      <Button
+        variant="primary"
+        onClick={() => void useExposeStore.getState().newSessionInCurrentProject()}
+        data-testid="center-empty-new"
+      >
+        {t('workbench.centerEmptyNew')}
+      </Button>
     </div>
   )
 }

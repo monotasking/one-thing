@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { useT } from '../../i18n'
 import { ChevronDown, resolveIcon } from '../../components/icons'
@@ -15,6 +15,8 @@ import {
 import { useAsyncPending } from '../../data/kernel'
 import { useExposeStore } from '../../expose/store'
 import { composerSink, useComposerBusy } from '../sink'
+import { readComposerDraft, saveComposerDraft } from '../drafts'
+import type { ComposerDraft } from '../drafts'
 import { revokeAllAttachments, useComposerStore } from '../store'
 import { isTypingTarget, THINKING_LABEL_KEY, thinkingRungOf } from '../transitions'
 import { useComposerSend } from '../useComposerSend'
@@ -230,6 +232,65 @@ export function Composer() {
    * composer 本批还没接树(R2),所以它自己那三层照旧由 `useComposerKeys` 的
    * window 监听接。那格 prop 随着浮层栈一起退役,语义一个字没变。 */
   useFloatDismiss(panelRef, closeDrawer, drawerKind === 'model', { outside: 'capture' })
+
+  /*
+   * ── **一条会话一份草稿**(W7-t / B2,判词整段在 `composer/drafts.ts`)────────
+   *
+   * 这块面板只有一只(路线 B:它在 `.center` 上、不进树),而屏幕上会话有好几条
+   * —— 修前的下场是真机读数第 79 条:在 A 里打的字跟着切标签跑到 B 里,再打一句
+   * 就把 A 的稿顶掉了。修法与 W5-a 同一条路:**状态按 sessionId 分家**,这只组件
+   * 渲染的是「当前活动会话那一份」。
+   *
+   * 三件事写在这一段里:
+   *  · **`useLayoutEffect`**:铺稿要排在这一帧绘制**之前**,不然切标签会先闪一帧
+   *    上一条会话的字。它的 cleanup 也因此排在 `revokeAllAttachments` 那条
+   *    passive cleanup **之前** —— 整台壳下场时稿先存走(附件跟着进表),
+   *    那一口才不会把刚存走的 URL 销掉;
+   *  · **先存旧的、再铺新的**,两件在同一拍里做完;
+   *  · 附件那半边走 store 的 `setState`(它是这块面板的状态产地),
+   *    `attachments` / `attOpen` 两格一起搬 —— 摞开着与摞里有什么是同一件事的两半。
+   *
+   * `sessionId` 是**投影**(焦点叶那一格活动会话标签,`content/session-projection`),
+   * 所以「切一格会话标签」与「从列表里换一条会话」走的是同一条路,不必各接一遍。
+   */
+  const shown = useRef<string | null>(null)
+  /*
+   * **「此刻这块面板的一份稿」只有一个说法**(09-06 审查):存稿有两处
+   * (换会话时存旧的 / 卸载时存当下那份),两处各拼一遍 `{ html, attachments,
+   * attOpen }` 的下场是草稿再多一格字段就要改两处 —— 而漏改的那一处不会报错,
+   * 只会悄悄丢掉那一格。这只闭包因此是**唯一产地**:它读的是这块面板此刻的
+   * 两个真相(可编辑区的 HTML、store 里的附件),不带任何时机的判断。
+   */
+  const snapshotDraft = useCallback((): ComposerDraft => {
+    const live = useComposerStore.getState()
+    return {
+      html: inputRef.current?.html() ?? '',
+      attachments: live.attachments,
+      attOpen: live.attOpen,
+    }
+  }, [])
+  useLayoutEffect(() => {
+    const prev = shown.current
+    if (prev === sessionId) return
+    if (prev !== null) saveComposerDraft(prev, snapshotDraft())
+    const next = readComposerDraft(sessionId)
+    inputRef.current?.restore(next.html)
+    /* `ComposerState.attachments` 是可变数组,草稿表里那份是 readonly ——
+     * 交出去的是**一份拷贝**,于是表里那份不会被这块面板后面的增删改到。 */
+    useComposerStore.setState({ attachments: [...next.attachments], attOpen: next.attOpen })
+    shown.current = sessionId
+  }, [sessionId, snapshotDraft])
+  useLayoutEffect(
+    () => () => {
+      const at = shown.current
+      if (at === null) return
+      saveComposerDraft(at, snapshotDraft())
+      /* 存走之后本地这一份就不是「还挂着的」了 —— 交给下面那口销的只该是
+       * 真的没人要的。附件的 URL 此刻活在草稿表里,由 `dropComposerDraft` 销。 */
+      useComposerStore.setState({ attachments: [], attOpen: false })
+    },
+    [snapshotDraft],
+  )
 
   // 整块面板下场时把还挂着的缩略图 URL 销掉(造它的是 store,所以销也调 store 那口)。
   useEffect(() => revokeAllAttachments, [])

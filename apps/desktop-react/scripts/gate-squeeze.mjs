@@ -173,6 +173,23 @@ const ALLOWED_OVERLAP = [
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * **「完全落在条里」的容差从产品那只文件里读**(09-06 审查:同一个 ±1 不许两处
+ * 各写一遍)。产地是 `src/ui/Tabs.tsx` 的 `TAB_CLIP_EPSILON_PX` —— 它是亚像素
+ * 容差,不是设计尺寸,所以门与组件必须同源:那边改了这边跟着改,那边没了这里
+ * 当场红(而不是拿一个过期的数字继续判)。
+ */
+function tabClipEpsilonPx() {
+  const src = readFileSync(path.join(appRoot, 'src/ui/Tabs.tsx'), 'utf-8')
+  const hit = /export const TAB_CLIP_EPSILON_PX\s*=\s*(\d+(?:\.\d+)?)/.exec(src)
+  if (!hit) {
+    throw new Error(
+      'gate:squeeze 读不到 src/ui/Tabs.tsx 的 TAB_CLIP_EPSILON_PX —— 容差只有一个产地,改名了就把这里一起改',
+    )
+  }
+  return Number(hit[1])
+}
+
 function readDiscovery(store) {
   try {
     return JSON.parse(readFileSync(path.join(store, 'run', 'http.json'), 'utf-8'))
@@ -1829,14 +1846,226 @@ async function checkLeafChrome(page) {
   }
 
   /*
+   * ── ③c **溢出要有鼠标出口**(W7-t / B1)──────────────────────────────────
+   *
+   * ③b 证的是「30 格塞不下时条会横滚」。审计 B 第 1 条量出来的病是**下一句**:
+   * 会滚 ≠ 够得着 —— 13 格时 4 格整颗看不见,而条上竖滚轮 120 `scrollLeft`
+   * 一格不动、右端没有 ⋯ 也没有箭头,**鼠标用户到不了那几格**。所以这一档
+   * 问的是三件「出口」:
+   *  ① 条上的**竖滚轮**映射成横滚(`ui/Tabs` 自己那一口:只映射 `deltaY`,
+   *    原生监听 + `passive:false` —— 不拦的话这一下会滚外面那个竖容器);
+   *  ② 条溢出时右端**有一颗 ⋯**,表里列得出够不着的那几格;
+   *  ③ 点其中一格 → 它**变成活动格,而且整颗落进条的视野里**。
+   *
+   * 滚轮走的是 playwright 的 `mouse.wheel`(底下是 CDP `Input.dispatchMouseEvent`
+   * 的 mouseWheel)—— 只进这个窗口,不动真光标(09-01 那条纪律)。
+   * **反证**:把 `ui/Tabs` 里那段 wheel effect 删掉 → ① 当场红。
+   *
+   * ── **「+1」:表里必须两节同时在场**(09-06 审查补的一格)────────────────
+   * 裁定的原话是「⋯ 出现且列出 4+1 格」—— 4 格滚出视野的 + 1 格**隐藏的**,
+   * **一颗钮一张表两节**。只量滚出视野那几格的话,这一档量到的是半件事:
+   * 合表这个裁定的全部内容就是「两种成因合成一张表」,而两节从未同屏出现过的
+   * 门证不出它们合过。所以夹具先经**用户真走的那条路**(树行右键 →「隐藏」)
+   * 藏掉一格,再断言两节的小标题都在、两节的项加起来 ≥ 4+1。
+   */
+  // 先藏一格:树行右键 →「隐藏」(动作单产地 = 右键菜单,与用户走的是同一条路)。
+  const hid = await page.evaluate(async ({ css }) => {
+    const row = document.querySelector(css)
+    if (!(row instanceof HTMLElement)) return { ok: false, why: '树上没有文件行' }
+    const name = row.getAttribute('data-file-path') ?? ''
+    row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }))
+    await new Promise((r) => setTimeout(r, 260))
+    const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+    const hide = items.find((el) => /^(隐藏|Hide)$/.test((el.textContent ?? '').trim()))
+    if (!(hide instanceof HTMLElement)) {
+      // 表开着就关掉它,别把一张浮层留给下一档。
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      return { ok: false, why: `右键表里没有「隐藏」(${items.length} 项)` }
+    }
+    hide.click()
+    return { ok: true, name }
+  }, { css: rowsCss })
+  await delay(450)
+  seen.push(`B1 夹具:藏一格 ${hid.ok ? hid.name : `失败(${hid.why})`}`)
+  if (!hid.ok) problems.push(`B1:夹具藏不掉一格标签 —— ${hid.why}(两节同屏这一条量不成)`)
+  // 先把条滚回头:点第一格 tab(条自己会把活动格滚进视野)。
+  await page.evaluate(() => {
+    const first = document.querySelector('[data-testid="topbar-tabs"] [role="tablist"] [role="tab"]')
+    if (first instanceof HTMLElement) first.click()
+  })
+  await delay(450)
+  const reach = await page.evaluate(() => {
+    const list = document.querySelector('[data-testid="topbar-tabs"] [role="tablist"]')
+    if (!list) return null
+    const r = list.getBoundingClientRect()
+    return {
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+      scrollLeft: Math.round(list.scrollLeft),
+      room: Math.round(list.scrollWidth - list.clientWidth),
+    }
+  })
+  if (!reach) {
+    problems.push('B1:顶栏那条 tablist 不在场')
+  } else if (reach.room <= 0) {
+    problems.push('B1:条没有可滚的余量 —— 上一档说它溢出了,这一档却滚不动')
+  } else {
+    await page.mouse.move(reach.x, reach.y)
+    await page.mouse.wheel(0, 120)
+    await delay(350)
+    const rolled = await page.evaluate(() => {
+      const list = document.querySelector('[data-testid="topbar-tabs"] [role="tablist"]')
+      return list ? Math.round(list.scrollLeft) : -1
+    })
+    seen.push(`B1 竖滚轮 120:scrollLeft ${reach.scrollLeft} → ${rolled}(余量 ${reach.room})`)
+    if (!(rolled > reach.scrollLeft)) {
+      problems.push(
+        `B1:条上竖滚轮 120 之后 scrollLeft 没动(${reach.scrollLeft} → ${rolled})—— 鼠标够不着滚出去的那几格`,
+      )
+    }
+
+    // ② 右端那颗 ⋯(「够不着的标签」:看不见的 ∪ 隐藏的,一颗钮一张表两节)。
+    const dots = await page.evaluate(() => {
+      const btn = document.querySelector('[data-testid^="pane-hidden:"]')
+      if (!(btn instanceof HTMLElement)) return null
+      btn.click()
+      return btn.getAttribute('aria-label') ?? ''
+    })
+    if (dots === null) {
+      problems.push('B1:条溢出了,右端却没有那颗「够不着的标签 ⋯」')
+    } else {
+      await delay(400)
+      const table = await page.evaluate(() => {
+        const menu = document.querySelector('[role="menu"]')
+        const items = Array.from(menu?.querySelectorAll('[role="menuitem"]') ?? [])
+        /*
+         * **两节各有几项**:节小标题是 `role="presentation"`(`ui/Menu` 的
+         * `MenuSection`),所以按 DOM 次序走一遍菜单的孩子,遇到小标题换节。
+         * 不按文案认节 —— 文案是 i18n 的,双语各一份;节的**结构**才是判据,
+         * 而两节的名字另外单独读出来给人看。
+         */
+        const sections = []
+        for (const child of Array.from(menu?.children ?? [])) {
+          if (child.getAttribute('role') === 'presentation') {
+            sections.push({ label: (child.textContent ?? '').trim(), rows: [] })
+          } else if (child.getAttribute('role') === 'menuitem' && sections.length > 0) {
+            sections[sections.length - 1].rows.push((child.textContent ?? '').trim())
+          }
+        }
+        return {
+          open: Boolean(menu),
+          count: items.length,
+          sections: sections.map((sec) => ({ label: sec.label, n: sec.rows.length })),
+          /*
+           * 最后一项的**名字**要读它那一格主文本(`.menuMain`),不是整项的
+           * `textContent` —— 隐藏那一节的每项后面还挂着一句「已隐藏」的尾注
+           * (`.menuTrail`),连着读会得到「xxx.ts已隐藏」,与标签上的名字对不上。
+           */
+          last: (
+            items[items.length - 1]?.querySelector('[class*="menuMain"]')?.textContent
+            ?? items[items.length - 1]?.textContent
+            ?? ''
+          ).trim(),
+        }
+      })
+      seen.push(
+        `B1 ⋯「${dots}」列出 ${table.count} 格,${table.sections.length} 节:`
+        + table.sections.map((sec) => `${sec.label}×${sec.n}`).join(' / '),
+      )
+      if (!table.open) problems.push('B1:那颗 ⋯ 点开没有表')
+      /*
+       * **两节同时在场**(裁定的「4+1」那个加号):看不见的那节 + 隐藏的那节。
+       * 两节各自至少一项 —— 一节空就不画那一节是产品的规矩,而这一刻夹具两边都
+       * 有货,只画出一节说明合表没合成。
+       */
+      if (table.sections.length !== 2 || table.sections.some((sec) => sec.n < 1)) {
+        problems.push(
+          `B1:那张表不是「两节同时在场」的样子(读到 ${table.sections.length} 节:`
+          + `${table.sections.map((sec) => `${sec.label}×${sec.n}`).join(' / ') || '—'})`
+          + ' —— 一颗钮一张表两节,看不见的 ∪ 隐藏的',
+        )
+      }
+      if (table.count < 5) {
+        problems.push(
+          `B1:表里只列出 ${table.count} 格(该是 4 格看不见的 + 1 格隐藏的,至少 5)`,
+        )
+      }
+      if (table.count > 0) {
+        /*
+         * ③ 点**最后一项** → 它成为活动格,而且**整颗**落进条的视野里。
+         * 最后一项恰是**隐藏那一节**里的一格(隐藏节画在第二节),所以这一下量的
+         * 正是裁定里的那个「+1」:藏起来的那一格也能从这张表里点回来、点回来之后
+         * 与「看不见的」那一节里的格走的是同一条落定路(激活 + 滚进视野)。
+         */
+        if (table.sections.length === 2 && table.sections[1].n < 1) {
+          problems.push('B1:最后一项不在「隐藏的」那一节里 —— 下面量的不是「+1」那一格')
+        }
+        await page.evaluate(() => {
+          const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+          const last = items[items.length - 1]
+          if (last instanceof HTMLElement) last.click()
+        })
+        await delay(550)
+        const landed = await page.evaluate((eps) => {
+          const list = document.querySelector('[data-testid="topbar-tabs"] [role="tablist"]')
+          const on = list?.querySelector('[role="tab"][aria-selected="true"]')
+          if (!list || !on) return null
+          const lb = list.getBoundingClientRect()
+          const ab = on.getBoundingClientRect()
+          return {
+            label: (on.querySelector('[class*="label"]')?.textContent ?? '').trim(),
+            // 容差与 `ui/Tabs.clippedTabIds` **同源**(见 `tabClipEpsilonPx`)。
+            fully: ab.left >= lb.left - eps && ab.right <= lb.right + eps,
+            menuGone: !document.querySelector('[role="menu"]'),
+          }
+        }, tabClipEpsilonPx())
+        if (!landed) {
+          problems.push('B1:点完那一格之后读不到活动 tab')
+        } else {
+          seen.push(`B1 选中「${landed.label}」完全可见=${landed.fully}`)
+          if (!landed.menuGone) problems.push('B1:选了一格之后那张表没关')
+          if (landed.label !== table.last) {
+            problems.push(`B1:选的是「${table.last}」,活动格却是「${landed.label}」`)
+          }
+          if (!landed.fully) problems.push('B1:选中的那一格没有完全滚进条的视野里')
+        }
+      }
+    }
+  }
+
+  /*
    * ④ **二合一一次,量那条分隔杆 + 两格标签的标题 + 格头**(W6-a,设计 §6)。
    *
    * W6-a 之前这里量的是「分屏之后中央区那条分隔杆」。中央区收成一条标签条之后
    * 那一形在那里不存在了(单叶政策,§2.1),而它要守的挤压纪律**原样搬到了两格
    * 标签上**,而且多了两件只有两格标签才有的:
-   *  · 标签上那个 `A ⫽ B` 最大宽 260(`--tab-pair-max`),长了**只截断不换行**;
-   *  · 每格顶上那条 28px 的格头:一行,名字截断,「拆开」那颗钮不被挤出去。
+   *  · 标签上那个 `A ⫽ B` 最大宽 260(`--tab-wide-max`),长了**只截断不换行**;
+   *  · 每格顶上那条 28px 的格头:一行,名字截断,那颗钮不被挤出去。
+   *
+   * ── W7-t / B6:先挑一格**长名字的**标签,再与它右边那一格并 ────────────
+   * 修前这一步并的是「此刻活动的那一格」—— 走到这里活动的是超量档最后开的
+   * `zz-30.ts`,并出来的标签一共十几个字符,**离 260 差得远**:那条「不超过最大宽」
+   * 的断言于是在陪跑,而 §6 那个 260 从来没有被真的量到过(实测 W6-a 落地时
+   * 标签上限还是 160,门照样全绿)。所以这一档改成:挑条上**标签最长**的那一格
+   * (夹具里那两个 50 多字符的文件名之一),再明确走「与**右边**的标签二合一」——
+   * 两边都是文件,而且并出来的名字必然撑破常规上限。
    */
+  const widest = await page.evaluate(() => {
+    const tabs = Array.from(
+      document.querySelectorAll('[data-testid="topbar-tabs"] [role="tablist"] [role="tab"]'),
+    )
+    // 末格没有「右边那一格」可并 —— 这一步走的正是「与右边二合一」。
+    const pool = tabs.slice(0, -1)
+    let best = null
+    for (const el of pool) {
+      const label = (el.querySelector('[class*="label"]')?.textContent ?? el.textContent ?? '').trim()
+      if (!best || label.length > best.len) best = { len: label.length, label, el }
+    }
+    if (best?.el instanceof HTMLElement) best.el.click()
+    return best ? { len: best.len, label: best.label } : null
+  })
+  await delay(450)
+  seen.push(`二合一挑的是最长那一格:「${widest?.label ?? '—'}」(${widest?.len ?? 0} 字)`)
   await page.evaluate(() => {
     const split = document.querySelector('[data-testid^="pane-split:"]')
     if (split instanceof HTMLElement) split.click()
@@ -1844,28 +2073,53 @@ async function checkLeafChrome(page) {
   await delay(350)
   const joined = await page.evaluate(() => {
     const items = Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
-    const joins = items.filter((el) => /二合一|Join with the tab/.test(el.textContent ?? ''))
-    // `ui/Menu` 走原生 `disabled`;活动格在两端时另一条禁灰,挑按得动的那一条。
-    const join = joins.find((el) => !(el instanceof HTMLButtonElement && el.disabled))
-    if (!(join instanceof HTMLElement)) return false
-    join.click()
-    return true
+    const enabled = (el) => !(el instanceof HTMLButtonElement && el.disabled)
+    // 明确走**右边**那一条(左边那条会把它与更短的邻居并起来,量不到 260 那一档)。
+    const right = items.find(
+      (el) => /与右边的标签二合一|Join with the tab on the right/.test(el.textContent ?? '') && enabled(el),
+    )
+    const any = items.find((el) => /二合一|Join with the tab/.test(el.textContent ?? '') && enabled(el))
+    const hit = right ?? any
+    if (!(hit instanceof HTMLElement)) return false
+    hit.click()
+    return right ? 'right' : 'any'
   })
   await delay(500)
   if (!joined) {
     problems.push('菜单里没有一条按得动的「二合一」')
     return { problems, seen }
   }
+  if (joined !== 'right') seen.push('二合一走的是兜底那一条(「与右边」不可用)')
   const pair = await page.evaluate(() => {
     const el = document.querySelector('[data-testid^="pair-splitter:"]')
     const r = el?.getBoundingClientRect() ?? null
     const heads = Array.from(document.querySelectorAll('[data-pair-head]'))
     const tab = document.querySelector('[data-testid="topbar"] [role="tab"][aria-selected="true"]')
     const label = tab?.querySelector('[class*="label"]')
-    const max = Number.parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue('--tab-pair-max'),
-    )
+    /*
+     * **两档上限都从声明里读**(W7-t / B6)。260 住在 `--tab-wide-max`(Tabs 族的
+     * 一格档位),常规那一档住在 `--tab-max-w` —— 把数字抄进门里,哪天 token
+     * 改了门会替一份过期的规格说话(与格头读 `--pair-head-h` 同一条)。
+     * 修前这里读的是 `--tab-pair-max`,而那一格已经随 B6 退役 —— 读一个不存在的
+     * 变量会静默落进 `: 260` 那个兜底,门于是拿一个**猜来的数**判绿。
+     */
+    const rootStyle = getComputedStyle(document.documentElement)
+    const max = Number.parseFloat(rootStyle.getPropertyValue('--tab-wide-max'))
+    const normal = Number.parseFloat(rootStyle.getPropertyValue('--tab-max-w'))
+    // 条上一格**没有** `data-tab-wide` 的标签(常规那一档的对照面)。
+    const plain = Array.from(
+      document.querySelectorAll('[data-testid="topbar-tabs"] [role="tablist"] [role="tab"]'),
+    ).find((el) => !el.hasAttribute('data-tab-wide'))
     return {
+      wideFlag: tab?.hasAttribute('data-tab-wide') ?? false,
+      tabMaxNormal: Number.isFinite(normal) ? normal : 160,
+      plainW: plain ? Math.round(plain.getBoundingClientRect().width) : 0,
+      /* 标签上那个 `A ⫽ B` 有没有**真的被削**(削了才谈得上「长了各自截断」)。 */
+      labelClipped: label
+        ? label.scrollWidth > label.clientWidth + 1
+          && getComputedStyle(label).textOverflow === 'ellipsis'
+        : false,
+      labelOverflows: label ? label.scrollWidth > label.clientWidth + 1 : false,
       bar: el
         ? {
             role: el.getAttribute('role'),
@@ -1897,6 +2151,9 @@ async function checkLeafChrome(page) {
         return {
           h: Math.round(box.height),
           nameClipped: name ? getComputedStyle(name).textOverflow === 'ellipsis' : false,
+          /* W7-t / B7:那颗 ✕ **关不掉就不画** —— 在不在场自己是一格事实。 */
+          hasBtn: Boolean(btn),
+          btnName: btn?.getAttribute('aria-label') ?? '',
           btnInside: nb ? nb.right <= box.right + 1 && nb.left >= box.left - 1 : false,
           /*
            * **一行**(W6-c):两件缺一不可 —— 这一行不许换行(`flex-wrap`),
@@ -1924,17 +2181,60 @@ async function checkLeafChrome(page) {
     if (!(bar.width > 0 && bar.height > 0)) problems.push(`杆没有排出盒(${bar.width}×${bar.height})`)
     if (!Number.isFinite(bar.now)) problems.push('杆报不出 aria-valuenow')
   }
-  seen.push(`两格标签 ${pair.tabW}px(上限 ${pair.tabMax})| 格头 ${pair.heads.map((h) => h.h).join('/')}`)
+  seen.push(
+    `两格标签 ${pair.tabW}px(宽档上限 ${pair.tabMax} / 常规 ${pair.tabMaxNormal};`
+      + `对照的常规格 ${pair.plainW}px)| 格头 ${pair.heads.map((h) => h.h).join('/')}`,
+  )
+  /*
+   * ── W7-t / B6:**更宽的那一档真的落到了这一格上** ────────────────────────
+   * 四句话围成一个圈,少一句都能被「其实还是 160」蒙混过去:
+   *  · 这一格带着 `data-tab-wide`(那是种类自述 `ContentKind.tabWide` 走完
+   *    `TabSpec.wide` 之后在 DOM 上的样子);
+   *  · 它**不超过** 260;
+   *  · 它**超过**常规那一档 160 —— 这一句才是「宽档生效了」的证据;
+   *  · 同一条条上**没戴这一格属性**的标签仍旧不超过 160(档是**这一格**的,
+   *    不是整条条的)。
+   * **反证**:把 `pairContentKind.tabWide` 删掉 → 第三句当场红(标签缩回 160)。
+   */
+  if (!pair.wideFlag) {
+    problems.push('两格标签没戴 `data-tab-wide` —— 种类自述的那一档没走到 DOM 上')
+  }
   if (pair.tabW > pair.tabMax + 1) {
-    problems.push(`两格标签超过最大宽:${pair.tabW} > ${pair.tabMax}`)
+    problems.push(`两格标签超过宽档上限:${pair.tabW} > ${pair.tabMax}`)
+  }
+  if (pair.tabW <= pair.tabMaxNormal + 1) {
+    problems.push(
+      `两格标签只有 ${pair.tabW}px,没超过常规上限 ${pair.tabMaxNormal} ——`
+        + ' 要么宽档没生效,要么这一格的名字短到量不出这一档(夹具的事)',
+    )
+  }
+  if (pair.plainW > pair.tabMaxNormal + 1) {
+    problems.push(
+      `常规那一格标签也被放宽到了 ${pair.plainW} > ${pair.tabMaxNormal} —— 宽档该只落在自述过的那一格上`,
+    )
   }
   if (!pair.labelOneLine) problems.push('两格标签的标题换行了(挤压纪律:结构行只截断不换行)')
+  // 「长了各自截断」:撑破上限的那一格必须是**省略号**收场,不是换行、不是溢出。
+  if (pair.labelOverflows && !pair.labelClipped) {
+    problems.push('两格标签的标题挤不下,却不是省略号收场(设计 §6:长了各自截断)')
+  }
   if (pair.heads.length !== 2) {
     problems.push(`格头不是两条(实测 ${pair.heads.length})`)
   } else {
+    /*
+     * ── W7-t / B7:格头上那颗钮从「拆开」换成 **✕(只关这一格)** ─────────────
+     * 判据因此多一格「在不在场」:那颗 ✕ **关不掉就不画**(`canClosePairSide` ——
+     * 与 `ui/Tabs` 那颗逐字同一条:一颗按不动的 ✕ 与「按了没反应」在屏幕上是同一
+     * 件事),所以「每格必有一颗钮」是**错的规格**。改成:在场的那些必须在框里、
+     * 与名字零重叠,而且**至少有一格在场**(两格都关不掉这一形在这道门的夹具里
+     * 不成立 —— 并的是两个文件)。「拆开」退到缝中点那颗小把手,由 ⑥ 收尾那一步验。
+     */
+    if (!pair.heads.some((head) => head.hasBtn)) {
+      problems.push('两格格头上一颗 ✕ 都没有(夹具里并的是两个关得掉的文件)')
+    }
     for (const [i, head] of pair.heads.entries()) {
       if (!head.nameClipped) problems.push(`格头 ${i} 的名字不截断`)
-      if (!head.btnInside) problems.push(`格头 ${i} 的「拆开」被挤出框`)
+      if (head.hasBtn && !head.btnInside) problems.push(`格头 ${i} 的 ✕ 被挤出框`)
       /* ── W6-c:格头 28px 一行不换行 ───────────────────────────────── */
       if (pair.headH > 0 && Math.abs(head.h - pair.headH) > 1) {
         problems.push(`格头 ${i} 的高不是声明的 ${pair.headH}(实测 ${head.h})`)
@@ -1981,7 +2281,8 @@ async function checkLeafChrome(page) {
         const nb = btn?.getBoundingClientRect() ?? null
         const rb = name?.getBoundingClientRect() ?? null
         return {
-          btnInside: nb ? nb.right <= hb.right + 1 && nb.left >= hb.left - 1 : false,
+          // 没有那颗 ✕(这一格关不掉)= 没有可被挤出去的东西,不是一条红。
+          btnInside: nb ? nb.right <= hb.right + 1 && nb.left >= hb.left - 1 : true,
           // 名字与钮**零重叠**(律四的原话)—— 最窄那一档才量得到。
           clear: nb && rb ? rb.right <= nb.left + 1 : true,
         }
@@ -2005,8 +2306,8 @@ async function checkLeafChrome(page) {
       )
     }
     for (const [i, head] of band.heads.entries()) {
-      if (!head.btnInside) problems.push(`杆推到 ${key}:格头 ${i} 的「拆开」被挤出框`)
-      if (!head.clear) problems.push(`杆推到 ${key}:格头 ${i} 的名字与「拆开」重叠`)
+      if (!head.btnInside) problems.push(`杆推到 ${key}:格头 ${i} 的 ✕ 被挤出框`)
+      if (!head.clear) problems.push(`杆推到 ${key}:格头 ${i} 的名字与 ✕ 重叠`)
     }
   }
   seen.push(`杆到两头 ${clampSeen.join(' · ')}`)
@@ -2023,6 +2324,30 @@ async function checkLeafChrome(page) {
    * 留着它当活动格的话,下一步(10d 全屏檐带)按 ⌘⇧↩ 会被结构化拒绝 —— 那一步
    * 量的是檐带的几何,不该被上一步留下的形态挡住。
    */
+  /*
+   * **拆开只有一颗,而且长在两格中间那条缝上**(W7-t / B7)。格头 = 身份 + 关这
+   * 一格,拆开作用在**整格标签**上,所以它不属于任何一格的格头。修前这里是两颗
+   * 一模一样的「拆开」(一件事画两遍),而「只关这一格」一处都没有。
+   */
+  const seam = await page.evaluate(() => {
+    const btns = Array.from(document.querySelectorAll('[data-testid^="pair-unpair:"]'))
+    const box = document.querySelector('[data-testid^="pair:"]')?.getBoundingClientRect() ?? null
+    const one = btns[0]?.getBoundingClientRect() ?? null
+    const inHead = btns.some((el) => el.closest('[data-pair-head]'))
+    return {
+      count: btns.length,
+      inHead,
+      // 「在缝上」= 它横向落在两格中线附近(缝自己就在那里)。
+      onSeam: box && one ? Math.abs(one.left + one.width / 2 - (box.left + box.width / 2)) < box.width : false,
+      closes: Array.from(document.querySelectorAll('[data-testid^="pair-close:"]')).length,
+    }
+  })
+  seen.push(`拆开 ${seam.count} 颗(在格头里:${seam.inHead})· 格头 ✕ ${seam.closes} 颗`)
+  if (seam.count !== 1) problems.push(`「拆开」不是一颗(实测 ${seam.count} 颗)`)
+  if (seam.inHead) problems.push('「拆开」长在格头里 —— 它作用在整格标签上,不属于任何一格')
+  if (seam.count === 1 && !seam.onSeam) problems.push('「拆开」没长在两格中间那条缝上')
+  if (seam.closes < 1) problems.push('格头上一颗 ✕ 都没有(B7:关这一格是格头自己的事)')
+
   await page.evaluate(() => {
     const btn = document.querySelector('[data-testid^="pair-unpair:"]')
     if (btn instanceof HTMLElement) btn.click()

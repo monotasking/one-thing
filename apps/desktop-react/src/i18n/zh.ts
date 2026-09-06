@@ -802,6 +802,13 @@ export const zh = {
   'workbench.leafTabs': '标签',
   'workbench.hiddenTabs': '隐藏的标签',
   'workbench.hiddenNote': '已隐藏',
+  /* 一颗 ⋯、一张表、两节(W7-t / B1):滚出视野的与收起来的。
+   * 两节答的是同一句话 —— 「这一格此刻点不到」。 */
+  'workbench.reachTabs': '够不着的标签',
+  'workbench.offscreenTabs': '看不见的',
+  /* ⌘W 落在关不掉的那一格上时说的那句话(W7-t / B12)——
+   * 与拖拽拒绝那句同一口 announce。 */
+  'workbench.tabNotClosable': '这一格关不掉 —— 它是这儿最后一格同类',
   /* 动作表自己的无障碍名(W6-c)。开它那颗钮上仍旧写着「分屏」;
    * 表自己按它**是什么**起名,不按它第一项叫什么起名。 */
   'workbench.tabActions': '标签动作',
@@ -812,11 +819,17 @@ export const zh = {
   'workbench.splitUp': '在上方',
   'workbench.splitterLabel': '分隔杆',
   'workbench.topbarTabs': '中央区标签',
+  /* 中央区什么都没有的那一态(W7-t / A12)。空态说两句话:
+   * 这儿本来该有什么、以及怎么让它回来。 */
+  'workbench.centerEmpty': '这儿什么都没开着',
+  'workbench.centerEmptyNew': '新建会话',
   /* 一个标签装两格(W6-a)。 */
   'workbench.pair': '二合一',
   'workbench.pairRight': '与右边的标签二合一',
   'workbench.pairLeft': '与左边的标签二合一',
   'workbench.unpair': '拆开',
+  /* 格头上那颗 × 只关这一格(W7-t / B7,设计 §6)。 */
+  'workbench.closePairSide': '关闭{name}',
   'workbench.unpaired': '已拆开',
   'workbench.pairedWith': '已与{name}并排',
   'workbench.pairSplitter': '两格分隔杆',

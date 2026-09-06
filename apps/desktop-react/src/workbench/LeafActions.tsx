@@ -18,6 +18,7 @@ import { announce } from '../ui/a11y/live-region'
 import { useT } from '../i18n'
 import { dropRef, pairIntoIndex, reorderTab, unpairTab } from './drop-commit'
 import { useLeafMenuAt, useLeafMenuStore } from './leaf-menu'
+import { useLeafOverflow } from './leaf-overflow'
 import { contentKindOf, partsOfContent, refId } from './kinds'
 import {
   hiddenInRegion,
@@ -41,7 +42,13 @@ import s from './LeafActions.module.css'
  * 那两处没有第二条顶栏可借,檐就画在叶顶(`PaneLeaf` 的 `PaneLeafStrip`),
  * 这一组因此挂在那条檐的右端、宿主自己那几颗之前。**同一件**,不是第二份实现。
  *
- * ── 「隐藏的标签 ⋯」只列**本区域**藏起来的那些(W4;W1-a 的留账)─────────
+ * ── 「够不着的标签 ⋯」:一颗钮、一张表、两节(W7-t / B1)────────────────────
+ * 「看不见的」(条太窄被滚出视野)与「隐藏的」(收进隐藏表)是同一句话的两种
+ * 成因 —— **这一格此刻点不到**,而用户要做的事一模一样。所以它们不是两颗 ⋯:
+ * 一颗钮、一张表、两节,哪一节空就不画哪一节。看不见的那一节的名单由标签条
+ * 自己量(`ui/Tabs` 的 `onOverflow` → `workbench/leaf-overflow`);这一组只画表。
+ *
+ * ── 「隐藏的标签」只列**本区域**藏起来的那些(W4;W1-a 的留账)─────────
  * 修前这格菜单列的是**全部**隐藏项,于是右架子的檐上会列出中央区藏起来的文件 ——
  * 点回去,它出现在你看不见的另一块地方。「回哪儿去」这件事本来就记在
  * `returnTo.region` 上,按它分组是它自己的读法(`store.hiddenInRegion`)。
@@ -63,7 +70,8 @@ import s from './LeafActions.module.css'
  * ① 生命周期:挂载 = 中央区有叶(恒有);**换住户**(焦点叶换人)不重挂,只换
  *    `leaf` 这一格 prop —— 两张菜单的开合状态因此活过一次焦点叶切换(它们是
  *    「这个动作组此刻开着哪张菜单」,不是「那片叶的状态」);卸载 = 整台壳卸载。
- * ② UI 生命状态:**有隐藏**(⋯ 才画 —— 一颗永远按不动的钮是纯噪音)/ 有型工具条
+ * ② UI 生命状态:**有够不着的标签**(看不见的 ∪ 隐藏的;⋯ 才画 —— 一颗永远按不动
+ *    的钮是纯噪音)/ 有型工具条
  *    (活动那一格的种类自述了 `toolbar` 才画)/ 只有一格 tab(分屏四项禁灰而不消失)/
  *    **活动格在两端**(左移 / 右移各自禁灰)。
  * ③ UI 交互状态:两颗钮随 `ui/IconButton`(rest/hover/focus/active/disabled 全套);
@@ -80,9 +88,31 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
   const splitLeaf = useWorkbenchStore((st) => st.splitLeaf)
   const restoreHidden = useWorkbenchStore((st) => st.restoreHidden)
   const hidden = useMemo(() => hiddenInRegion(allHidden, region), [allHidden, region])
+  const activateTab = useWorkbenchStore((st) => st.activateTab)
+  /*
+   * **条上有几格没露全**(W7-t / B1)。量它的是标签条自己(`ui/Tabs` 是那个横滚
+   * 容器),这里只读结果 —— 判词与两头的分工写在 `workbench/leaf-overflow.ts` 上。
+   * 名单是 refId,要在这条条上找回下标才能激活它。
+   */
+  const overflow = useLeafOverflow(leaf.id)
+  const offscreen = useMemo(
+    () =>
+      (overflow?.ids ?? [])
+        .map((id) => ({ id, at: leaf.tabs.findIndex((ref) => refId(ref) === id) }))
+        .filter((row) => row.at >= 0),
+    [overflow, leaf.tabs],
+  )
 
-  /** 「隐藏的标签 ⋯」那张开在哪一点(null = 没开)。它只有这一个开口,所以留在本地。 */
-  const [hiddenAt, setHiddenAt] = useState<{ x: number; y: number } | null>(null)
+  /**
+   * 「够不着的标签 ⋯」那张开在哪一点(null = 没开)。它只有这一个开口,所以留在本地。
+   *
+   * ── 一颗钮、一张表、两节(W7-t / B1)────────────────────────────────────
+   * 「看不见的」与「隐藏的」是同一句话的两种成因:**这一格此刻点不到**。一格是
+   * 条太窄它被滚出了视野,一格是它被收进了隐藏表 —— 而用户要做的事一模一样:
+   * 认出它、点它、它回来。所以它们合成一颗钮一张表,哪一节空就不画哪一节;
+   * 两节都空 = 整颗钮不画(一颗永远按不动的钮是纯噪音,与修前那颗逐字同一条)。
+   */
+  const [reachAt, setReachAt] = useState<{ x: number; y: number } | null>(null)
   /*
    * **动作表开在哪一点,住在 `workbench/leaf-menu` 里**(W6-c,设计 v3 §7)。
    *
@@ -133,18 +163,20 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
     <div className={s.actions} data-testid="leaf-actions" data-pane-actions={leaf.id}>
       {toolbar && <span className={s.tool}>{toolbar}</span>}
       {/*
-        「隐藏的标签 ⋯」。**没有隐藏就不画**:一颗永远按不动的钮是纯噪音,
-        而「有没有藏起来的东西」本身就是这一组的一格 UI 生命状态。
+        「够不着的标签 ⋯」。**两节都空就不画**:一颗永远按不动的钮是纯噪音,
+        而「有没有够不着的东西」本身就是这一组的一格 UI 生命状态。
+        `testId` 保持 `pane-hidden:` 那一族 —— 这颗钮的职责只是长了一节,
+        取件口跟着**它是哪颗钮**走,不跟着它此刻列几节走。
       */}
-      {hidden.length > 0 && (
+      {(hidden.length > 0 || offscreen.length > 0) && (
         <IconButton
           icon={Ellipsis}
           size="xs"
-          label={t('workbench.hiddenTabs')}
+          label={t('workbench.reachTabs')}
           testId={`pane-hidden:${leaf.id}`}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect()
-            setHiddenAt({ x: rect.left, y: rect.bottom })
+            setReachAt({ x: rect.left, y: rect.bottom })
           }}
         />
       )}
@@ -159,27 +191,64 @@ export function LeafActions({ leaf }: { leaf: PaneLeafNode }) {
         }}
       />
 
-      {hiddenAt && (
-        <Menu x={hiddenAt.x} y={hiddenAt.y} onClose={() => setHiddenAt(null)} label={t('workbench.hiddenTabs')}>
-          <MenuSection>{t('workbench.hiddenTabs')}</MenuSection>
-          {hidden.map((entry) => {
-            const id = refId(entry.ref)
-            const kind = contentKindOf(entry.ref.kind)
-            return (
-              <MenuItem
-                key={id}
-                onClick={() => {
-                  restoreHidden(id)
-                  setHiddenAt(null)
-                }}
-              >
-                <span className={s.menuLine}>
-                  <span className={s.menuMain}>{kind?.title(entry.ref).text ?? entry.ref.key}</span>
-                  <span className={s.menuTrail}>{t('workbench.hiddenNote')}</span>
-                </span>
-              </MenuItem>
-            )
-          })}
+      {reachAt && (
+        <Menu x={reachAt.x} y={reachAt.y} onClose={() => setReachAt(null)} label={t('workbench.reachTabs')}>
+          {/*
+            ── 第一节:**看不见的**(条太窄,它被滚出了视野)────────────────
+            选一格 = 激活它 **+ 滚进视野**。滚那一下由标签条自己做
+            (`TabsOverflow.reveal`)—— 同一个 refId 可以在两片叶里各开一格,
+            外面按 id 现查 DOM 分不出该滚哪一条。
+            激活那一下就够让它进视野的场合(条自己那口 `scrollIntoView` 挂在
+            activeId 上)`reveal` 是幂等的,所以两句都发不会打架。
+          */}
+          {offscreen.length > 0 && (
+            <>
+              <MenuSection>{t('workbench.offscreenTabs')}</MenuSection>
+              {offscreen.map((row) => {
+                const ref = leaf.tabs[row.at]
+                return (
+                  <MenuItem
+                    key={row.id}
+                    onClick={() => {
+                      activateTab(leaf.id, row.at)
+                      overflow?.reveal(row.id)
+                      setReachAt(null)
+                    }}
+                  >
+                    <span className={s.menuLine}>
+                      <span className={s.menuMain}>
+                        {contentKindOf(ref.kind)?.title(ref).text ?? ref.key}
+                      </span>
+                    </span>
+                  </MenuItem>
+                )
+              })}
+            </>
+          )}
+          {/* ── 第二节:**隐藏的**(收进了隐藏表)。判词见 `hiddenInRegion`。 ── */}
+          {hidden.length > 0 && (
+            <>
+              <MenuSection>{t('workbench.hiddenTabs')}</MenuSection>
+              {hidden.map((entry) => {
+                const id = refId(entry.ref)
+                const kind = contentKindOf(entry.ref.kind)
+                return (
+                  <MenuItem
+                    key={id}
+                    onClick={() => {
+                      restoreHidden(id)
+                      setReachAt(null)
+                    }}
+                  >
+                    <span className={s.menuLine}>
+                      <span className={s.menuMain}>{kind?.title(entry.ref).text ?? entry.ref.key}</span>
+                      <span className={s.menuTrail}>{t('workbench.hiddenNote')}</span>
+                    </span>
+                  </MenuItem>
+                )
+              })}
+            </>
+          )}
         </Menu>
       )}
 
