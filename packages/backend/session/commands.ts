@@ -56,18 +56,9 @@ import {
   type SessionAccountState,
   type SessionAccountTruncationEffect,
 } from '@onething/core/session'
-import {
-  flushSessionSave,
-  getSession,
-  patchSessionFields,
-  saveSessionForCommands,
-  stampCollabAgentId,
-  updateSessionsIndexMetaForCommands,
-} from '../stores/sessions.js'
-import { sessionCommandEvents } from './command-events.js'
-import { eventsHasMessage } from './events-reads.js'
-import { peekSessionAccount } from './projection-cache.js'
-import { sessionReads } from './reads.js'
+import type { sessionCommandEvents } from './command-events.js'
+import type { sessionReads } from './reads.js'
+import { getCurrentBackend } from '../current.js'
 
 /**
  * `patchMessage` 的落盘档提示(从 `core/session/commands.ts` 搬过来 —— 批 3 之后
@@ -106,6 +97,8 @@ export interface SessionTruncateUsage {
 }
 
 export interface SessionCommandsPorts {
+  reads: Pick<typeof sessionReads, 'countMessages' | 'getMessage' | 'findMessage' | 'listMessages'>
+  hasMessage(sessionId: string, messageId: string): boolean
   getSession(sessionId: string): ChatSession | undefined
   /**
    * 落盘调度。**只有 `lazy` 这一格**:写计划(`SessionWritePlan`)自 S3w-3 批 6b
@@ -204,12 +197,15 @@ export interface SessionCommands {
 }
 
 export interface CreateSessionCommandsOptions {
+  /** The owner rejects calls through retained command references after disposal. */
+  assertActive?: () => void
+  assertWritable?: (sessionId: string) => void
   /**
    * **命令的事件产地**(F2,§16.2 的 F2 行)。命令先在这里把事件构造出来并 append,
    * F1 保证 `append` 返回前活投影 / 活 surface / 会话账都已经前进。
    *
    * 是**选项**而不是硬接线:命令面的单元测试要的是"命令做对了什么",不该顺带把
-   * 一份事件日志写到某个临时目录里去。生产默认接上。
+   * 一份事件日志写到某个临时目录里去。生产由会话装配层显式接上。
    */
   events?: typeof sessionCommandEvents | null
   /**
@@ -218,8 +214,7 @@ export interface CreateSessionCommandsOptions {
    */
   now?: () => number
   /**
-   * 会话账的取处(缺省 = 活投影上的折叠块)。可注入只为单测能在没有账本的地方
-   * 造一本账;生产永远是折叠。
+   * 会话账的取处。生产显式绑定本实例的活投影；未提供时没有会话账。
    */
   account?: (sessionId: string) => SessionAccountState | undefined
 }
@@ -295,15 +290,17 @@ export function createSessionCommands(
   ports: SessionCommandsPorts,
   options: CreateSessionCommandsOptions = {},
 ): SessionCommands {
-  const events = options.events === undefined
-    ? sessionCommandEvents
-    : options.events
+  const events = options.events ?? null
   const now = options.now ?? Date.now
-  const readAccount = options.account ?? peekSessionAccount
+  const readAccount = options.account ?? (() => undefined)
+  const assertActive = (sessionId: string): void => {
+    options.assertActive?.()
+    options.assertWritable?.(sessionId)
+  }
 
   /** 这条消息在不在 —— **投影节点表**,O(1),不物化(三口退役后的唯一判据)。 */
   const hasMessage = (sessionId: string, messageId: string): boolean =>
-    eventsHasMessage(sessionId, messageId)
+    ports.hasMessage(sessionId, messageId)
 
   /**
    * **会话列表投影**的两格(`messageCount` / `lastMessagePreview`)。
@@ -323,14 +320,14 @@ export function createSessionCommands(
     lastMessage: ChatMessage | Readonly<ChatMessage> | undefined,
   ): void => {
     applySessionListProjectionToMeta(meta as never, {
-      messageCount: sessionReads.countMessages(sessionId),
+      messageCount: ports.reads.countMessages(sessionId),
       lastMessage,
     })
   }
 
   /** 截断 / 删除之后"最后一条说过的话"是谁 —— 只有这两支需要回头找。 */
   const lastPreviewableMessage = (sessionId: string): Readonly<ChatMessage> | undefined =>
-    sessionReads.findMessage(
+    ports.reads.findMessage(
       sessionId,
       message => message.role === 'user' || message.role === 'assistant',
       { from: 'end' },
@@ -338,6 +335,7 @@ export function createSessionCommands(
 
   return {
     appendMessage(sessionId, payload) {
+      assertActive(sessionId)
       const message = payload.stampCollab && ports.stampCollabAgentId
         ? ports.stampCollabAgentId(sessionId, payload.message)
         : payload.message
@@ -367,6 +365,7 @@ export function createSessionCommands(
      * patch 两档,索引元数据用它分"要不要按追加盖章"。
      */
     upsertMessage(sessionId, payload) {
+      assertActive(sessionId)
       const message = payload.message
       const streamingAssistant = message.role === 'assistant' && Boolean(message.isStreaming)
       const at = streamingAssistant && typeof message.timestamp === 'number'
@@ -394,6 +393,7 @@ export function createSessionCommands(
      * 的补丁不该把会话顶到列表最前面)。它只落盘,而且按 hint / 键集合定写档。
      */
     patchMessage(sessionId, payload) {
+      assertActive(sessionId)
       if (!hasMessage(sessionId, payload.messageId)) return false
       const session = ports.getSession(sessionId)
       if (!session) return false
@@ -421,9 +421,10 @@ export function createSessionCommands(
      *    折叠都新建一个 effect 对象)—— 不然上一次的效果会被再扣一遍。
      */
     truncateFrom(sessionId, payload) {
+      assertActive(sessionId)
       const before = payload.inclusive
         ? undefined
-        : editBaseline(sessionReads.getMessage(sessionId, payload.messageId))
+        : editBaseline(ports.reads.getMessage(sessionId, payload.messageId))
       const present = payload.inclusive
         ? hasMessage(sessionId, payload.messageId)
         : before !== undefined
@@ -452,10 +453,11 @@ export function createSessionCommands(
      * 而事件要写 id)—— 找的那一份现在来自投影物化。
      */
     deleteMessage(sessionId, payload) {
+      assertActive(sessionId)
       const at = now()
       const messageId = 'messageId' in payload
         ? (hasMessage(sessionId, payload.messageId) ? payload.messageId : undefined)
-        : sessionReads.listMessages(sessionId).messages.find(payload.matchMarker)?.id
+        : ports.reads.listMessages(sessionId).messages.find(payload.matchMarker)?.id
       if (messageId === undefined) return false
       const session = ports.getSession(sessionId)
       if (!session) return false
@@ -481,9 +483,10 @@ export function createSessionCommands(
      * 删它要连带改三处形状 —— 零流量的分支不值得一次形状变更(见批 3 报告)。
      */
     async replaceAll(sessionId, payload) {
+      assertActive(sessionId)
       const session = ports.getSession(sessionId)
       if (!session) return { replaced: false, previousCount: 0 }
-      const previousCount = sessionReads.countMessages(sessionId)
+      const previousCount = ports.reads.countMessages(sessionId)
       const isClear = payload.reason === 'clear'
       const at = now()
 
@@ -518,6 +521,7 @@ export function createSessionCommands(
      * 事件构造对顺序中立,四处共用同一份(见 `sessionCommandEvents.patchSession`)。
      */
     patchSession(sessionId, payload) {
+      assertActive(sessionId)
       const before = ports.getSession(sessionId)
       if (before) {
         events?.patchSession(sessionId, payload.patch, {
@@ -532,26 +536,9 @@ export function createSessionCommands(
   }
 }
 
-// ============ 生产接线 ============
-
-let singleton: SessionCommands | undefined
-
-/**
- * 生产实例(懒建):导入本模块**不做任何装配动作**
- * (`backend/__tests__/import-side-effect-free.test.ts` 守着这条)。
- */
+/** Compatibility edge; production bindings belong to createSessionLayer. */
 export function getSessionCommands(): SessionCommands {
-  if (!singleton) {
-    singleton = createSessionCommands({
-      getSession,
-      saveSession: saveSessionForCommands,
-      updateSessionsIndexMeta: updateSessionsIndexMetaForCommands,
-      flushSessionSave,
-      stampCollabAgentId,
-      patchSession: patchSessionFields,
-    })
-  }
-  return singleton
+  return getCurrentBackend('sessionLayer').sessionLayer.commands
 }
 
 /** 命令面的门牌:P0.2/P0.3 的调用点全部改成 `sessionCommands.<cmd>(...)`。 */

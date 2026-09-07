@@ -22,6 +22,7 @@ vi.mock('electron', () => ({ app: { isPackaged: false } }))
 let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../sessions.js') | null = null
+let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 async function loadIsolatedStores(): Promise<typeof import('../sessions.js')> {
   vi.resetModules()
@@ -29,6 +30,7 @@ async function loadIsolatedStores(): Promise<typeof import('../sessions.js')> {
   const sessions = await import('../sessions.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
+  fixture = await (await import('../../session/testing/store-layer.js')).installStoreSessionLayerForTest()
   return sessions
 }
 
@@ -41,6 +43,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await loadedSessions?.flushAllPendingSaves()
+  await fixture?.dispose()
+  fixture = undefined
   process.env.HOME = previousHome
   fs.rmSync(tempHome, { recursive: true, force: true })
 })

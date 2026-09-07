@@ -44,13 +44,17 @@ import {
   type SessionLogicalDelta,
   type SessionProjectionState,
 } from '@onething/core/session'
-import {
-  drainSessionLogEventTail,
-  readSessionLogEventsSync,
-  registerSessionLogEventAppendObserver,
-} from './event-log.js'
-import { prepareSessionEventsOnce } from './prepare.js'
-import { sessionProjectionOptions } from './projection-blobs.js'
+import type { SessionLogEventAppendObserver } from './event-log.js'
+import type { sessionProjectionOptions } from './projection-blobs.js'
+import { getCurrentBackend } from '../current.js'
+
+export interface SessionProjectionPorts {
+  readEvents(sessionId: string): SessionLogEventRecord[]
+  drainTail: typeof import('./event-log.js').drainSessionLogEventTail
+  prepareOnce(sessionId: string): void
+  materializeOptions: typeof sessionProjectionOptions
+  observe(observer: SessionLogEventAppendObserver): () => void
+}
 
 interface LiveProjection {
   state: SessionProjectionState
@@ -78,13 +82,13 @@ interface LiveProjection {
  * 现在这件事住在节点自己身上(`BaseNode.rev`,由归约器的 `forWrite` 前进),
  * 这一层只管把事件折进去。
  */
+export function createSessionProjectionCache(ports: SessionProjectionPorts) {
 const projections = new Map<string, LiveProjection>()
-
 /**
  * 观察者的注册发生在**运行期**(第一次要建活投影的那一刻),不在 import 期 ——
  * 装配层的 import 纯净栅栏管着这条(`__tests__/import-side-effect-free.test.ts`)。
  */
-let appendObserverRegistered = false
+
 
 /**
  * 会话账折叠的上下文:**只有截断类事件**会真的调它(一个会话一生几次),
@@ -97,7 +101,7 @@ function accountFoldContext(sessionId: string, live: LiveProjection) {
   return {
     sessionId,
     messagesAfter(): CoreTimelineMessage[] {
-      const materialize = sessionProjectionOptions(sessionId)
+      const materialize = ports.materializeOptions(sessionId)
       return live.state.nodes
         .filter(node => !node.hidden)
         .map(node => materializeNode(node, materialize) as unknown as CoreTimelineMessage)
@@ -111,10 +115,7 @@ function foldRecord(sessionId: string, live: LiveProjection, record: SessionLogE
   live.account = reduceSessionAccount(live.account, record, accountFoldContext(sessionId, live))
 }
 
-function ensureAppendObserver(): void {
-  if (appendObserverRegistered) return
-  appendObserverRegistered = true
-  registerSessionLogEventAppendObserver((sessionId, record, options) => {
+const unsubscribe = ports.observe((sessionId, record, options) => {
     const live = projections.get(sessionId)
     if (!live) return
     if (record.seq <= live.lastSeq) return
@@ -141,31 +142,41 @@ function ensureAppendObserver(): void {
       throw error
     }
   })
-}
 
 /** 这条会话的活投影,**推进到此刻**。 */
-export function getLiveSessionProjection(sessionId: string): SessionProjectionState {
-  ensureAppendObserver()
+function getLiveSessionProjection(sessionId: string): SessionProjectionState {
   let live = projections.get(sessionId)
+  // 一份**什么都没折进来**的投影不算数(工单 4 A4 追出来的)。
+  //
+  // 这份缓存建起来之后靠追加观察者保持最新,而观察者只认走写入口的那些事件。
+  // legacy 整文件会话的**首触迁移**(`storage-driver.migrateLegacySessionNow`)
+  // 是直接写盘换入的 —— 会话目录与整份 `events.jsonl` 凭空出现,观察者一无所知。
+  // 于是「读一眼(建起一份空投影)→ 别处一句 `getSession` 触发迁移 → 再读」会
+  // 一直读到那份空的,整段历史当场消失。空投影重折的代价是一次 open(文件不在
+  // 就是一次失败的 open);非空的照旧命中缓存。
+  if (live && live.lastSeq === 0) {
+    projections.delete(sessionId)
+    live = undefined
+  }
   if (!live) {
     // 打开会话的那一刻(投影第一次建起来 = 事件层意义上的"打开"):把上一次
     // 进程死亡留下的未闭合 run 收掉。它自己每会话只真的跑一次,合成出来的事件
     // 走写入口那条尾巴,下面的 drain 会把它们折进来。
-    prepareSessionEventsOnce(sessionId)
+    ports.prepareOnce(sessionId)
     live = {
       state: createSessionProjectionState(),
       account: createSessionAccountState(),
       lastSeq: 0,
       aheadDeltas: 0,
     }
-    for (const event of readSessionLogEventsSync(sessionId)) {
+    for (const event of ports.readEvents(sessionId)) {
       foldRecord(sessionId, live, event)
       live.lastSeq = Math.max(live.lastSeq, event.seq)
     }
     projections.set(sessionId, live)
     // 首次是从文件折的,写入口那条尾巴里的记录已经在文件里(或即将写进去),
     // 丢掉它以免同一条被折两次。
-    const drained = drainSessionLogEventTail(sessionId)
+    const drained = ports.drainTail(sessionId)
     for (const event of drained.records) {
       if (event.seq <= live.lastSeq) continue
       foldRecord(sessionId, live, event)
@@ -174,7 +185,7 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
     return live.state
   }
 
-  const { records, overflowed } = drainSessionLogEventTail(sessionId)
+  const { records, overflowed } = ports.drainTail(sessionId)
   if (overflowed) {
     projections.delete(sessionId)
     return getLiveSessionProjection(sessionId)
@@ -198,7 +209,7 @@ export function getLiveSessionProjection(sessionId: string): SessionProjectionSt
  * 两条边界与 F1 那个观察者逐字相同:**不主动建表**(建表要同步读整份文件,挂在
  * 逐 token 的热路径上就是每条 delta 一次全文件 IO),**折坏了就丢缓存**。
  */
-export function foldLiveSessionLogicalDelta(
+function foldLiveSessionLogicalDelta(
   sessionId: string,
   runId: string,
   delta: SessionLogicalDelta,
@@ -208,12 +219,12 @@ export function foldLiveSessionLogicalDelta(
   try {
     if (!foldSessionLogicalDeltaAhead(live.state, runId, delta)) return false
     live.aheadDeltas += 1
-    return true
   } catch {
     // 折不进去 = 这份投影已经不可信(移动语义下 state 可能只改了一半)。
     projections.delete(sessionId)
     return false
   }
+  return true
 }
 
 /**
@@ -222,7 +233,7 @@ export function foldLiveSessionLogicalDelta(
  * `refold` 那道耐久门只在 0 的时候可比 —— 与它原本那条游标守卫同一个道理:
  * 采样撞上写,比出来的"多了一段"说明的是采样时机,不是账本坏了。
  */
-export function liveSessionProjectionAheadDeltas(sessionId: string): number {
+function liveSessionProjectionAheadDeltas(sessionId: string): number {
   return projections.get(sessionId)?.aheadDeltas ?? 0
 }
 
@@ -236,12 +247,12 @@ export function liveSessionProjectionAheadDeltas(sessionId: string): number {
  *
  * 不推进(不 drain 尾巴):推进由 `getLiveSessionProjection` 负责,这里只读游标。
  */
-export function liveSessionProjectionCursor(sessionId: string): number | undefined {
+function liveSessionProjectionCursor(sessionId: string): number | undefined {
   return projections.get(sessionId)?.lastSeq
 }
 
 /** 这条会话现在有活投影吗(读路径据此决定走内存还是走文件分页)。 */
-export function hasLiveSessionProjection(sessionId: string): boolean {
+function hasLiveSessionProjection(sessionId: string): boolean {
   return projections.has(sessionId)
 }
 
@@ -252,12 +263,12 @@ export function hasLiveSessionProjection(sessionId: string): boolean {
  * 影子对拍(挂在命令写路的尾巴上)。为一次对拍付一次全文件 IO 是本末倒置,
  * 与 `portTargetExists` / F1 观察者的边界同源。
  */
-export function peekSessionAccount(sessionId: string): SessionAccountState | undefined {
+function peekSessionAccount(sessionId: string): SessionAccountState | undefined {
   return projections.get(sessionId)?.account
 }
 
 /** 会话删除 / 测试:丢掉活投影。 */
-export function resetSessionProjectionCache(sessionId?: string): void {
+function resetSessionProjectionCache(sessionId?: string): void {
   if (sessionId) {
     projections.delete(sessionId)
     return
@@ -266,6 +277,30 @@ export function resetSessionProjectionCache(sessionId?: string): void {
 }
 
 /** 仅测试:直接看某条会话的活投影(不推进)。 */
-export function peekSessionProjection(sessionId: string): SessionProjectionState | undefined {
+function peekSessionProjection(sessionId: string): SessionProjectionState | undefined {
   return projections.get(sessionId)?.state
 }
+
+  return {
+    getLiveSessionProjection,
+    foldLiveSessionLogicalDelta,
+    liveSessionProjectionAheadDeltas,
+    liveSessionProjectionCursor,
+    hasLiveSessionProjection,
+    peekSessionAccount,
+    resetSessionProjectionCache,
+    peekSessionProjection,
+    dispose() { unsubscribe(); projections.clear() },
+  }
+}
+
+export type SessionProjectionCache = ReturnType<typeof createSessionProjectionCache>
+const currentProjections = (): SessionProjectionCache => getCurrentBackend('sessionLayer').sessionLayer.events.projections
+export const getLiveSessionProjection: SessionProjectionCache['getLiveSessionProjection'] = (...args) => currentProjections().getLiveSessionProjection(...args)
+export const foldLiveSessionLogicalDelta: SessionProjectionCache['foldLiveSessionLogicalDelta'] = (...args) => currentProjections().foldLiveSessionLogicalDelta(...args)
+export const liveSessionProjectionAheadDeltas: SessionProjectionCache['liveSessionProjectionAheadDeltas'] = (...args) => currentProjections().liveSessionProjectionAheadDeltas(...args)
+export const liveSessionProjectionCursor: SessionProjectionCache['liveSessionProjectionCursor'] = (...args) => currentProjections().liveSessionProjectionCursor(...args)
+export const hasLiveSessionProjection: SessionProjectionCache['hasLiveSessionProjection'] = (...args) => currentProjections().hasLiveSessionProjection(...args)
+export const peekSessionAccount: SessionProjectionCache['peekSessionAccount'] = (...args) => currentProjections().peekSessionAccount(...args)
+export const resetSessionProjectionCache: SessionProjectionCache['resetSessionProjectionCache'] = (...args) => currentProjections().resetSessionProjectionCache(...args)
+export const peekSessionProjection: SessionProjectionCache['peekSessionProjection'] = (...args) => currentProjections().peekSessionProjection(...args)

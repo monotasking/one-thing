@@ -11,14 +11,20 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '../../wiring/logging/index.js'
+import { createBackendHandle, setCurrentBackend } from '../../current.js'
 
-const state = vi.hoisted(() => ({ sessionsDir: '' }))
+const state = vi.hoisted(() => ({ sessionsDir: '', failStatsPath: false }))
 
 vi.mock('@onething/runtime/storage', () => ({
   getOnethingSessionsDir: () => state.sessionsDir,
+  getOnethingLogDir: () => {
+    if (state.failStatsPath) throw new Error('diagnostic store unavailable')
+    return path.join(state.sessionsDir, 'log')
+  },
 }))
 
 const {
+  acquireSessionEventLogStore,
   appendSessionEvent,
   findLastSessionEventSync,
   flushSessionEventLog,
@@ -27,16 +33,23 @@ const {
   readSessionEvents,
   resetSessionEventLogCache,
 } = await import('../event-log.js')
+let journal: ReturnType<typeof acquireSessionEventLogStore>
 
 beforeEach(() => {
+  state.failStatsPath = false
   state.sessionsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-events-'))
+  journal = acquireSessionEventLogStore(state.sessionsDir, { sessionsDir: state.sessionsDir })
+  setCurrentBackend(createBackendHandle({ journalStore: journal }))
   resetSessionEventLogCache()
 })
 
 afterEach(async () => {
-  await flushSessionEventLog()
-  fs.rmSync(state.sessionsDir, { recursive: true, force: true })
-  vi.restoreAllMocks()
+  try { await journal.drainAndRelease() }
+  finally {
+    setCurrentBackend(null)
+    fs.rmSync(state.sessionsDir, { recursive: true, force: true })
+    vi.restoreAllMocks()
+  }
 })
 
 function makeJsonlSession(sessionId: string): void {
@@ -136,15 +149,23 @@ describe('appendSessionEvent', () => {
     expect(records.map(r => [r.seq, r.type])).toEqual([[1, 'request/start']])
   })
 
-  it('swallows write failures instead of breaking the caller', async () => {
-    makeJsonlSession('s4')
+  it.each([false, true])('rejects the failed checkpoint and reports independently when diagnostic path failure=%s', async failStatsPath => {
+    const sessionId = failStatsPath ? 's4-diagnostics-failed' : 's4'
+    makeJsonlSession(sessionId)
+    state.failStatsPath = failStatsPath
     const logs = collectLogRecordsForTests()
     vi.spyOn(fs.promises, 'appendFile').mockRejectedValue(new Error('disk on fire'))
 
-    expect(() => appendSessionEvent('s4', 'request/end', { requestIndex: 1 })).not.toThrow()
-    await flushSessionEventLog('s4')
-    expect(logs.records.filter(record => record.level === 'warn')).toHaveLength(1)
-    logs.stop()
+    try {
+      expect(() => appendSessionEvent(sessionId, 'request/end', { requestIndex: 1 })).not.toThrow()
+      await expect(flushSessionEventLog(sessionId)).rejects.toThrow('session event log write failed')
+      expect(logs.records.filter(record => record.level === 'warn')).toHaveLength(1)
+    } finally {
+      await Promise.allSettled([flushSessionEventLog(sessionId)])
+      logs.stop()
+      // Deliberately failed fixture, already drained; this is not a production recovery path.
+      resetSessionEventLogCache(sessionId)
+    }
   })
 })
 

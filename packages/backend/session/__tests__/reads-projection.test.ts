@@ -1,3 +1,5 @@
+import * as testSessionStore from '../../stores/sessions.js'
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * 读门面的取数 —— **S3w-3 批 6b 之后只有一条路**(§13.14-C / §15.22)。
  *
@@ -62,13 +64,16 @@ const RUN = 'run-1'
 /** core 默认配方:纯文本消息上与桌面端逐字节一致(见 model-history.ts 注释)。 */
 const RECIPE = { buildMessageContent: defaultHistoryMessageContent }
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-reads-read-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.messages = new Map()
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest({ store: testSessionStore })
   resetSessionProjectionCache()
   resetSessionEventReadCache()
   resetSessionPrepareCache()
@@ -83,6 +88,7 @@ beforeEach(() => {
 afterEach(async () => {
   await flushSessionEventLog()
   configureSessionHistoryBuilder(undefined)
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

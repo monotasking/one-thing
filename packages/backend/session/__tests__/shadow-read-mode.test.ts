@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * **读侧唯一真相**(F4-c c4 改判,§16.24;原 F11 §13.2/§13.4)。
  *
@@ -55,13 +56,16 @@ const { resetSessionEventStatsCache } = await import('../event-stats.js')
 const SESSION = 'read-mode-1'
 const RUN = 'run-1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-shadow-read-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.messages = new Map()
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionEventStatsCache()
   resetSessionProjectionCache()
   resetSessionEventReadCache()
@@ -71,6 +75,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

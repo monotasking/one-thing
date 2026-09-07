@@ -33,17 +33,20 @@ const { createSessionWithoutFocus, flushAllPendingSaves, getSession, renameSessi
 
 const SESSION = '9a7b1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d'
 const MISSING = '00000000-1111-4222-8333-444444444444'
+let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js').installStoreSessionLayerForTest>>
 
-beforeEach(() => {
+beforeEach(async () => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-rename-applied-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
+  fixture = await (await import('../../session/testing/store-layer.js')).installStoreSessionLayerForTest()
 })
 
 afterEach(async () => {
   // 建会话会排一次节流异步写;删目录排在它之后,不然就是在跟自己的在途写赛跑
   // (与 sessions-delete-cascade.test.ts 同一句收尾)。
   await flushAllPendingSaves()
+  await fixture?.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

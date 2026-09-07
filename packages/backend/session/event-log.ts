@@ -20,10 +20,11 @@
  *    无条件上抛**(裁定 7,从前是 `ONETHING_SESSION_TRANSCRIPT=off` 那一档的
  *    特例,而那个开关已随抄本写代码退役):抄本不在了,`events.jsonl` 是唯一
  *    持久化,写不进去不是"影子少一笔"而是"账本少一笔",必须让调用方感知得到
- *    (`SessionEventWriteError`)。落点是**下一次同步写口**(append 是排队异步
- *    落盘的,失败天生晚于调用它的那一句),见 `writeFailure`。
- * 3. **语义检查点 fsync** —— `flushSessionEventLog(sessionId)` 排空队列**并**
- *    fsync。调模型前 / 调工具前 / 响应收齐 / run 结束各一次(dsh 判例)。
+ *    (`SessionEventWriteError`)。检查点和后续同步写口都传播失败;写队列永久停止,
+ *    不允许跳过失败事件继续追加。
+ * 3. **语义检查点 fsync** —— `flushSessionEventLog(sessionId, throughSeq?)`
+ *    固定目标水位,等待真实追加并 fsync;首次还同步文件及祖先目录项。
+ *    调模型前 / 调工具前 / 响应收齐 / run 结束各一次(dsh 判例)。
  *    300ms 节流那种"按时间刷"换成"按语义刷":崩溃时丢的是"还没到检查点的那
  *    一小段",而不是"随机的 300ms"。
  * 4. **G12 跨进程守卫** —— 首次启用读文件 lastSeq;之后按字节数比对,发现文件
@@ -37,8 +38,11 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
+import { BackendNotAssembledError, getCurrentBackendSafe } from '../current.js'
 import {
   encodeSessionLogEventLine,
+  collectSessionBlobRefHashes,
   parseSessionLogEventLog,
   type SessionLogEventDataFor,
   type SessionLogEventRecord,
@@ -79,10 +83,19 @@ export const SESSION_EVENTS_LOG_FILENAME = 'events.jsonl'
  */
 export class SessionEventWriteError extends Error {
   readonly sessionId: string
-  constructor(sessionId: string, what: string, options?: { cause?: unknown }) {
+  /** First sequence whose persistence this failure prevents. */
+  readonly seq?: number
+  readonly operation?: 'append' | 'open' | 'sync' | 'directory' | 'encode' | 'blob'
+  constructor(sessionId: string, what: string, options?: {
+    cause?: unknown
+    seq?: number
+    operation?: SessionEventWriteError['operation']
+  }) {
     super(`session event log write failed (${what}): ${sessionId}`)
     this.name = 'SessionEventWriteError'
     this.sessionId = sessionId
+    this.seq = options?.seq
+    this.operation = options?.operation
     if (options && 'cause' in options) (this as { cause?: unknown }).cause = options.cause
   }
 }
@@ -138,6 +151,27 @@ interface SessionEventLogState {
   lastRequestIndex: number
   /** 每会话一条写入链:保证落盘顺序 == 调用顺序。 */
   queue: Promise<void>
+  /** Real completion for each accepted event, installed before notifying readers. */
+  writes: Map<number, Promise<void>>
+  /** Serializes checkpoints, independently of subsequent appends. */
+  checkpoints: Promise<void>
+  durableSeq: number
+  /** The first checkpoint also makes the file and its directory entries durable. */
+  directoriesSynced: boolean
+  /** blob 目录链的首次屏障已经做过;之后每个新 blob 只需要 `blobs/` 自己那一级。 */
+  blobDirectoriesSynced: boolean
+  blobDependencies: Map<number, Set<string>>
+  durableBlobs: Set<string>
+  /**
+   * 内容已经**核对过**的 blob(工单 4 C12)。与 `durableBlobs` 不是一回事:
+   * 那张表记「已经 fsync 到盘上」,失败重试时会被清掉重来;这张表记「读过一遍、
+   * 算过一次 sha256、对得上」。校验是内容寻址的,同一个 hash 在同一进程里
+   * 不会有第二个答案 —— 而一份 blob 可以有几 MB,重试路上再整读整算一遍是白烧,
+   * 而且烧在耐久路径上(用户正等着这一轮落盘)。fsync 照旧每次都做。
+   */
+  verifiedBlobs: Set<string>
+  pendingIO: number
+  pendingCheckpoints: Set<Promise<void>>
   /**
    * 我们相信这份文件有多少字节(已落盘 + 在途)。G12 守卫拿它与真实大小比:
    * 真实的更大 = 有第二个写者。
@@ -156,14 +190,15 @@ interface SessionEventLogState {
    * S3w-2(裁定 7):这个会话的**落盘队列上出过错**。
    *
    * append 是排队异步落盘的,所以"写失败"这件事天生比调用它的那一句晚 ——
-   * 没有任何同步返回值能当场说出它。于是把失败**粘住**:`off` 档下一次
-   * `appendSessionLogEvent` 直接抛(见 `appendSessionLogEvent` 开头),调用方
-   * 于是在**下一次写口**上感知到"这本账已经不完整了"。
+   * 没有任何同步返回值能当场说出它。于是把失败**粘住**:后续 append 直接抛,
+   * 检查点按目标水位拒绝,调用方不会把“已接受”误当成“已可靠保存”。
    *
    * 一旦粘上就不翻回去:一段丢掉的事件补不回来,后面写得再顺也不改变
    * "这份文件缺了一截"这个事实。
    */
-  writeFailure?: Error
+  writeFailure?: SessionEventWriteError
+  /** Keep lower-prefix sync failures even if a later append already failed. */
+  failures: SessionEventWriteError[]
   /** 影子投影还没取走的记录(见 `SHADOW_TAIL_MAX`)。关闸时永远是空的。 */
   shadowTail: SessionLogEventRecord[]
   /** 尾巴溢出过 = 这一段事件没进活投影,消费者必须从文件重折。 */
@@ -200,10 +235,93 @@ interface SessionEventLogState {
 /** 会记在内存里的类型(见 `lastByType`)。 */
 const REMEMBERED_LAST_EVENT_TYPES = new Set<string>(['request/tools', 'request/header'])
 
-const states = new Map<string, SessionEventLogState>()
+export interface SessionEventLogStoreHandle {
+  storePath: string
+  sessionsDir: string
+  states: Map<string, SessionEventLogState>
+  accepting: boolean
+  drained: boolean
+  release?: Promise<void>
+  assertSessionWritable?(sessionId: string): void
+  flush(): Promise<void>
+  drainAndRelease(): Promise<void>
+}
+
+function activeStore(): SessionEventLogStoreHandle | undefined {
+  try {
+    const owner = getCurrentBackendSafe()?.journalStore
+    return owner?.drained ? undefined : owner
+  } catch (error) {
+    if (error instanceof BackendNotAssembledError) return undefined
+    throw error
+  }
+}
+
+function sessionLogStates(): Map<string, SessionEventLogState> {
+  return activeStore()?.states ?? new Map()
+}
+
+function canonicalPath(input: string): string {
+  const absolute = path.resolve(input)
+  try { return fs.realpathSync.native(absolute) } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    const parent = path.dirname(absolute)
+    if (parent === absolute) throw error
+    return path.join(canonicalPath(parent), path.basename(absolute))
+  }
+}
+
+/** Backend acquires this after StoreLease and before initializing any session writers. */
+export function acquireSessionEventLogStore(storePath: string, options: { sessionsDir?: string } = {}): SessionEventLogStoreHandle {
+  const existing = activeStore()
+  if (existing) throw new Error(`session event log store is already owned: ${existing.storePath}`)
+  const owner: SessionEventLogStoreHandle = {
+    storePath: canonicalPath(storePath),
+    sessionsDir: canonicalPath(options.sessionsDir ?? path.join(storePath, 'sessions')),
+    states: new Map(),
+    accepting: true,
+    drained: false,
+    flush(): Promise<void> {
+      if (owner.drained) return Promise.reject(new Error('session event log store has been released'))
+      return Promise.all([...owner.states].map(([id, state]) => flushOneSessionEventLog(id, undefined, state))).then(() => undefined)
+    },
+    drainAndRelease(): Promise<void> {
+      if (owner.release) return owner.release
+      owner.accepting = false
+      owner.release = (async () => {
+        let failure: unknown
+        try { await owner.flush() } catch (error) { failure = error }
+        // Promise.all may reject before other sessions finish. Never hand off the owner
+        // while any append/checkpoint can still touch its paths; a stall keeps this pending.
+        const pending = [...owner.states.values()].flatMap(state => [state.queue, ...state.pendingCheckpoints])
+        await Promise.allSettled(pending)
+        flushSessionEventStats()
+        owner.drained = true
+        owner.states.clear()
+        if (failure) throw failure
+      })()
+      return owner.release
+    },
+  }
+  return owner
+}
+
+/** Blob producers use the same owner and sticky failure gate as event producers. */
+export function assertSessionEventLogWritable(sessionId: string): void {
+  const owner = activeStore()
+  if (!owner?.accepting) throw new Error('session event log store is not accepting writes')
+  owner.assertSessionWritable?.(sessionId)
+  const state = ensureState(sessionId)
+  if (state.writeFailure) throw state.writeFailure
+}
+
+export function failSessionEventDependency(sessionId: string, cause: unknown): SessionEventWriteError {
+  const state = ensureState(sessionId)
+  return rememberWriteFailure(state, sessionId, state.lastSeq + 1, 'blob', cause)
+}
 
 function sessionDirPath(sessionId: string): string {
-  return path.join(getOnethingSessionsDir(), sessionId)
+  return path.join(activeStore()?.sessionsDir ?? getOnethingSessionsDir(), sessionId)
 }
 
 export function getSessionEventsLogPath(sessionId: string): string {
@@ -230,7 +348,7 @@ function resolveEnabled(sessionId: string): boolean {
  * 没启用过才现算 —— "还没有账本"的会话本来就该按当前 store 去找。
  */
 function sessionLogPathFor(sessionId: string): string {
-  return states.get(sessionId)?.logPath || getSessionEventsLogPath(sessionId)
+  return sessionLogStates().get(sessionId)?.logPath || getSessionEventsLogPath(sessionId)
 }
 
 /** 若目录已出现则就地启用:恢复计数器与字节数。失败保持 disabled。 */
@@ -243,8 +361,8 @@ function tryEnable(state: SessionEventLogState, sessionId: string): void {
     reloadCounters(state, logPath)
     state.logPath = logPath
     state.enabled = true
-  } catch {
-    // 保持 disabled,下次 append 再试。
+  } catch (error) {
+    rememberWriteFailure(state, sessionId, state.lastSeq + 1, 'open', error)
   }
 }
 
@@ -261,12 +379,28 @@ function reloadCounters(state: SessionEventLogState, logPath: string): void {
     state.lastRequestIndex = counters.lastRequestIndex
   }
   state.expectedBytes = Buffer.byteLength(text, 'utf8')
+  for (const event of parseSessionLogEventLog(text)) {
+    const hashes = collectEventBlobDependencies(event)
+    if (hashes.size) state.blobDependencies.set(event.seq, hashes)
+  }
+}
+
+function collectEventBlobDependencies(event: SessionLogEventRecord, encoded?: string): Set<string> {
+  const hashes = collectSessionBlobRefHashes([event])
+  // Synthesized images also store references inside text rather than a BlobRef object.
+  for (const match of (encoded ?? JSON.stringify(event.data)).matchAll(/onething-blob:\/\/([0-9a-f]{16})(?![0-9a-f])/g)) {
+    hashes.add(match[1])
+  }
+  return hashes
 }
 
 function ensureState(sessionId: string): SessionEventLogState {
+  const owner = activeStore()
+  if (!owner) throw new Error('session event log store has no owner')
+  const states = owner.states
   const existing = states.get(sessionId)
   if (existing) {
-    if (!existing.enabled) tryEnable(existing, sessionId)
+    if (!existing.enabled && !existing.writeFailure) tryEnable(existing, sessionId)
     return existing
   }
 
@@ -275,9 +409,20 @@ function ensureState(sessionId: string): SessionEventLogState {
     lastSeq: 0,
     lastRequestIndex: 0,
     queue: Promise.resolve(),
+    writes: new Map(),
+    checkpoints: Promise.resolve(),
+    durableSeq: 0,
+    directoriesSynced: false,
+    blobDirectoriesSynced: false,
+    blobDependencies: new Map(),
+    durableBlobs: new Set(),
+    verifiedBlobs: new Set(),
+    pendingIO: 0,
+    pendingCheckpoints: new Set(),
     expectedBytes: 0,
     lastForeignCheckAt: 0,
     foreignWriter: false,
+    failures: [],
     shadowTail: [],
     shadowTailOverflowed: false,
     lastByType: new Map(),
@@ -286,6 +431,26 @@ function ensureState(sessionId: string): SessionEventLogState {
   tryEnable(state, sessionId)
   states.set(sessionId, state)
   return state
+}
+
+function rememberWriteFailure(
+  state: SessionEventLogState,
+  sessionId: string,
+  seq: number,
+  operation: NonNullable<SessionEventWriteError['operation']>,
+  cause: unknown,
+): SessionEventWriteError {
+  if (cause instanceof SessionEventWriteError && state.failures.includes(cause)) return cause
+  const failure = new SessionEventWriteError(sessionId, operation, { cause, seq, operation })
+  state.failures.push(failure)
+  if (!state.writeFailure) {
+    state.writeFailure = failure
+    // This report is independent of the failed event file and must never replace its error.
+    try {
+      countSessionEventFailure(sessionId, cause, `event log ${operation} failed`)
+    } catch { /* retain the original persistence failure */ }
+  }
+  return failure
 }
 
 /**
@@ -351,7 +516,7 @@ function ensureSessionEventDir(state: SessionEventLogState, sessionId: string): 
     state.logPath = logPath
     state.enabled = true
   } catch (error) {
-    countSessionEventFailure(sessionId, error, 'event dir create failed')
+    throw rememberWriteFailure(state, sessionId, state.lastSeq + 1, 'directory', error)
   }
 }
 
@@ -359,8 +524,8 @@ function ensureSessionEventDir(state: SessionEventLogState, sessionId: string): 
  * F1(§16.6):**写侧同步可见钩子**。
  *
  * 一条事件被分配到 seq 的那一刻,还在**同一个同步段里**就交给进程内的活状态
- * (活投影 `projection-cache.ts` / 活 surface `event-surface.ts`),然后才排队
- * 落盘。于是"命令内读得到自己刚写的"从纪律变成机制:调用方拿到 seq 返回值时,
+ * (活投影 `projection-cache.ts` / 活 surface `event-surface.ts`)。真实写入 Promise
+ * 必须先绑定,使观察者重入检查点也包含这条事件。调用方拿到 seq 返回值时,
  * 这条事件已经在内存的每一份活状态上了 —— 不必等落盘,也不必等下一次读把尾巴
  * 折进去。
  *
@@ -453,21 +618,16 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
     time?: number
   } & SessionLogEventAppendHints = {},
 ): number | undefined {
+  assertSessionEventLogWritable(sessionId)
   let state: SessionEventLogState
   try {
     state = ensureState(sessionId)
   } catch {
     return undefined
   }
+  if (state.writeFailure) throw state.writeFailure
   if (type === 'session/created') ensureSessionEventDir(state, sessionId)
   if (!state.enabled) return undefined
-
-  // 裁定 7:这本账上一次落盘就没落进去 —— 它已经不完整了。
-  if (state.writeFailure) {
-    throw new SessionEventWriteError(sessionId, 'queued append failed earlier', {
-      cause: state.writeFailure,
-    })
-  }
 
   // G12(S3w-0b):外写者在场 = 本次拒写。记一笔失败(每会话 warn 一次由
   // `countSessionEventFailure` 负责),而且**上抛**(裁定 7):抄本不在了,一条
@@ -479,7 +639,6 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
   }
 
   const seq = state.lastSeq + 1
-  state.lastSeq = seq
   const record = {
     seq,
     time: options.time ?? Date.now(),
@@ -488,21 +647,35 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
     ...(options.surfaceOp !== undefined ? { surfaceOp: options.surfaceOp } : {}),
     ...(options.sourceEventSeqs !== undefined ? { sourceEventSeqs: options.sourceEventSeqs } : {}),
   } as SessionLogEventRecord
+  let line: string
+  try {
+    line = encodeSessionLogEventLine(record)
+  } catch (error) {
+    throw rememberWriteFailure(state, sessionId, seq, 'encode', error)
+  }
+  state.lastSeq = seq
   if (REMEMBERED_LAST_EVENT_TYPES.has(type)) state.lastByType.set(type, record)
-  const line = encodeSessionLogEventLine(record)
   state.expectedBytes += Buffer.byteLength(line, 'utf8')
+  const blobs = collectEventBlobDependencies(record, line)
+  if (blobs.size) state.blobDependencies.set(seq, blobs)
 
-  // F1(§16.6):**先折进活状态,再排队落盘**。中间没有 await,所以调用方拿到
-  // 返回值的那一刻,内存里的每一份活状态都已经含有这条事件。
-  notifySessionLogEventAppended(sessionId, record, {
-    ...(options.projectionPreFolded !== undefined
-      ? { projectionPreFolded: options.projectionPreFolded }
-      : {}),
-    ...(options.preFoldedDeltaCount !== undefined
-      ? { preFoldedDeltaCount: options.preFoldedDeltaCount }
-      : {}),
-  })
+  // Bind the completion before publishing seq: observers may synchronously flush or append.
+  const logPath = state.logPath
+  state.pendingIO++
+  const write = state.queue.then(async () => {
+    if (state.writeFailure) throw state.writeFailure
+    try {
+      await fs.promises.appendFile(logPath, line, 'utf8')
+    } catch (error) {
+      throw rememberWriteFailure(state, sessionId, seq, 'append', error)
+    }
+  }).finally(() => { state.pendingIO-- })
+  state.queue = write
+  state.writes.set(seq, write)
+  // Observe rejection without converting the stored completion into success.
+  void write.catch(() => undefined)
 
+  // Keep the tail ordered even when an observer appends another event synchronously.
   if (wantsEventTail()) {
     if (state.shadowTail.length >= SHADOW_TAIL_MAX) {
       state.shadowTail = []
@@ -511,25 +684,14 @@ export function appendSessionLogEvent<TType extends SessionLogEventType>(
     state.shadowTail.push(record)
   }
 
-  // §16.22:**落点在同步段就定死**,闭包进队列回调。从前这里是
-  // `getSessionEventsLogPath(sessionId)` 写在回调**里面**,于是路径要等队列跑到
-  // 那一刻才解析 —— 中间进程的 store 环境(`ONETHING_STORE_PATH` / `HOME`)若已
-  // 变过,这条属于旧 store 的事件就落进新 store 的库里,seq 与 expectedBytes 却
-  // 还记在旧 state 上:两边都不报错,两边的账都是错的。
-  const logPath = state.logPath
-  state.queue = state.queue
-    .then(async () => {
-      await fs.promises.appendFile(logPath, line, 'utf8')
-    })
-    .catch(error => {
-      countSessionEventFailure(sessionId, error, 'event log write failed')
-      // S3w-2:粘住(见 `writeFailure`)。这里**不抛** —— 这条链是队列自己的
-      // promise,抛出去只会变成一次没人接的 unhandledRejection;上抛的落点是
-      // 下一次同步写口。
-      if (!state.writeFailure) {
-        state.writeFailure = error instanceof Error ? error : new Error(String(error))
-      }
-    })
+  notifySessionLogEventAppended(sessionId, record, {
+    ...(options.projectionPreFolded !== undefined
+      ? { projectionPreFolded: options.projectionPreFolded }
+      : {}),
+    ...(options.preFoldedDeltaCount !== undefined
+      ? { preFoldedDeltaCount: options.preFoldedDeltaCount }
+      : {}),
+  })
 
   return seq
 }
@@ -584,7 +746,7 @@ export function findLastSessionEventSync<TType extends SessionEventType>(
   type: TType,
 ): Extract<SessionEventRecord, { type: TType }> | undefined {
   // F13:**先问这个进程自己刚写过什么**(见 `lastByType`),文件是冷启动兜底。
-  const remembered = states.get(sessionId)?.lastByType.get(type)
+  const remembered = sessionLogStates().get(sessionId)?.lastByType.get(type)
   if (remembered) return remembered as Extract<SessionEventRecord, { type: TType }>
   try {
     // §16.22:读侧也吃钉死的落点 —— 判定"要不要写"的依据必须来自**我们自己
@@ -598,18 +760,21 @@ export function findLastSessionEventSync<TType extends SessionEventType>(
 }
 
 /**
- * 等待该会话(或全部会话)的在途写入落盘,**并 fsync**(§10.3 ③)。
+ * 固定该会话(或全部会话)当前已接受的水位,等待落盘并 fsync。
+ * `throughSeq` 可指定已接受的较早目标;非法/未来序号拒绝。后续追加不会延长
+ * 本次等待,已持久化的前缀也不受更晚写入失败影响。成功仍返回 void。
  *
  * fsync 的理由:`appendFile` 回来只说明字节交给了内核页缓存,断电/内核崩溃后
  * 那一段就没了。语义检查点(调模型前 / 调工具前 / 响应收齐 / run 结束)是
  * "这一刻的事实必须在盘上"的地方,所以在这几处、也只在这几处付这个代价。
  */
-export async function flushSessionEventLog(sessionId?: string): Promise<void> {
+export async function flushSessionEventLog(sessionId?: string, throughSeq?: number): Promise<void> {
   if (sessionId) {
-    await flushOneSessionEventLog(sessionId)
+    await flushOneSessionEventLog(sessionId, throughSeq)
     return
   }
-  await Promise.all([...states.keys()].map(flushOneSessionEventLog))
+  if (throughSeq !== undefined) throw new RangeError('throughSeq requires a sessionId')
+  await Promise.all([...sessionLogStates()].map(([id, state]) => flushOneSessionEventLog(id, undefined, state)))
 }
 
 /**
@@ -622,12 +787,143 @@ export async function flushSessionEventLog(sessionId?: string): Promise<void> {
  * 没有 state = 这个进程没往这个会话写过任何东西,自然也没有在途写入要刷 ——
  * 从前那一次 fsync 打开的是"当前 store 里同名会话"的文件,能刷到什么纯属巧合。
  */
-async function flushOneSessionEventLog(sessionId: string): Promise<void> {
-  const state = states.get(sessionId)
-  if (!state) return
+function flushOneSessionEventLog(sessionId: string, throughSeq?: number, state = sessionLogStates().get(sessionId)): Promise<void> {
+  const target = throughSeq ?? state?.lastSeq ?? 0
+  if (!Number.isSafeInteger(target) || target < 0 || target > (state?.lastSeq ?? 0)) {
+    return Promise.reject(new RangeError(`invalid event log checkpoint ${target}: ${sessionId}`))
+  }
+  if (!state) return Promise.resolve()
+  if (target === 0) return state.writeFailure ? Promise.reject(state.writeFailure) : Promise.resolve()
+  if (target <= state.durableSeq) return Promise.resolve()
   const logPath = state.logPath
-  await state.queue
-  if (logPath) await fsyncSessionLog(logPath)
+  // An absent completion is a prefix read from disk, never a future append.
+  const write = state.writes.get(target) ?? Promise.resolve()
+  // Queue only a checkpoint whose target write has completed. A checkpoint through a
+  // later, stalled write must not prevent an independent earlier prefix from syncing.
+  state.pendingIO++
+  const checkpoint = write.then(() => {
+    const sync = state.checkpoints.catch(() => undefined).then(async () => {
+      if (target <= state.durableSeq) return
+      const earlierFailure = state.failures.find(failure => failure.seq! <= target)
+      if (earlierFailure) throw earlierFailure
+      let operation: NonNullable<SessionEventWriteError['operation']> = 'open'
+      let failureSeq = state.durableSeq + 1
+      let handle: fs.promises.FileHandle | undefined
+      try {
+        const blobs = new Set<string>()
+        const firstBlobSeq = new Map<string, number>()
+        for (const [seq, hashes] of state.blobDependencies) {
+          if (seq <= target) for (const hash of hashes) if (!state.durableBlobs.has(hash)) {
+            blobs.add(hash)
+            firstBlobSeq.set(hash, Math.min(seq, firstBlobSeq.get(hash) ?? seq))
+          }
+        }
+        operation = 'blob'
+        for (const hash of blobs) {
+          failureSeq = firstBlobSeq.get(hash)!
+          // 首个 blob 走整条链(`blobs/` 这一级可能是刚创建的,它的父目录也要看得见
+          // 这个新名字);之后每个新 blob 只需要 `blobs/` 自己(工单 5 §2 的 once 闸)。
+          await syncSessionBlob(logPath, hash, state.verifiedBlobs, state.blobDirectoriesSynced)
+        }
+        failureSeq = state.durableSeq + 1
+        operation = 'open'
+        handle = await fs.promises.open(logPath, 'r+')
+        operation = 'sync'
+        await handle.sync()
+        if (!state.directoriesSynced) {
+          operation = 'directory'
+          await syncSessionLogDirectories(logPath, sessionsRootOf(logPath))
+        }
+        // A concurrent later append failure cannot invalidate this durable prefix.
+        const concurrentFailure = state.failures.find(failure => failure.seq! <= target)
+        if (concurrentFailure) throw concurrentFailure
+        state.directoriesSynced = true
+        if (blobs.size) state.blobDirectoriesSynced = true
+        state.durableSeq = Math.max(state.durableSeq, target)
+        for (const hash of blobs) state.durableBlobs.add(hash)
+        for (const seq of state.writes.keys()) {
+          if (seq <= state.durableSeq) state.writes.delete(seq)
+        }
+        for (const seq of state.blobDependencies.keys()) if (seq <= target) state.blobDependencies.delete(seq)
+      } catch (error) {
+        throw rememberWriteFailure(state, sessionId, failureSeq, operation, error)
+      } finally {
+        await handle?.close().catch(() => undefined)
+      }
+    })
+    state.checkpoints = sync
+    return sync
+  }).finally(() => {
+    state.pendingIO--
+    state.pendingCheckpoints.delete(checkpoint)
+  })
+  state.pendingCheckpoints.add(checkpoint)
+  void checkpoint.catch(() => undefined)
+  return checkpoint
+}
+
+/** POSIX needs a directory barrier; Win32 FlushFileBuffers flushes file metadata. */
+export const SESSION_EVENT_DIRECTORY_SYNC_SUPPORTED = process.platform !== 'win32'
+export const SESSION_EVENT_DURABILITY_STRATEGY = process.platform === 'win32'
+  ? 'windows-file-metadata' as const
+  : 'posix-file-and-directories' as const
+
+/** `<store>/sessions` —— 目录屏障的上界,见 `syncSessionLogDirectories`。 */
+function sessionsRootOf(logPath: string): string {
+  return path.dirname(path.dirname(logPath))
+}
+
+async function syncSessionBlob(logPath: string, hash: string, verified: Set<string>, blobDirectoriesSynced: boolean): Promise<void> {
+  if (!/^[a-f0-9]{16}$/.test(hash)) throw new Error(`invalid session blob reference: ${hash}`)
+  const blobPath = path.join(path.dirname(logPath), 'blobs', hash)
+  const handle = await fs.promises.open(blobPath, 'r+')
+  try {
+    // 校验只做一次(工单 4 C12);fsync 每次都做 —— 前者是关于内容的事实,
+    // 后者是关于这一次落盘的事实。
+    if (!verified.has(hash)) {
+      const content = await handle.readFile()
+      const actual = createHash('sha256').update(content).digest('hex').slice(0, 16)
+      if (actual !== hash) throw new Error(`session blob content does not match its reference: ${hash}`)
+      verified.add(hash)
+    }
+    await handle.sync()
+    await syncSessionLogDirectories(blobPath, blobDirectoriesSynced ? path.dirname(blobPath) : sessionsRootOf(logPath))
+  } finally {
+    await handle.close().catch(() => undefined)
+  }
+}
+
+/**
+ * 账本(或它的 blob)所在目录链的屏障,**上界是 `sessions/`**(工单 5 §2,triage A2)。
+ *
+ * 屏障要保证的是"这个新文件名在它的父目录里可见";`<store>/sessions/<id>/` 是这次
+ * 可能刚被创建的那一级,`sessions/` 是它的父级 —— 到此为止。再往上是 `<store>`、
+ * 用户主目录、整块卷:与这一次追加没有因果关系,而 fsync 一个热目录的代价是真金白银。
+ * 与 `durable-json.ts` 的 `syncDirectoryChain` 同一条口径(那边是同步版本;这里的
+ * 写路是 async 的,共用一份实现就等于在流式主路径上引入一次同步 fsync)。
+ */
+async function syncSessionLogDirectories(logPath: string, sessionsDir: string): Promise<void> {
+  if (!SESSION_EVENT_DIRECTORY_SYNC_SUPPORTED) {
+    // Windows uses the writable file handle's FlushFileBuffers barrier above, including
+    // creation metadata. Opening a directory with Node's POSIX-like API is not required.
+    // Microsoft: https://learn.microsoft.com/en-us/windows/win32/fileio/file-caching
+    // CreateFileW, Caching Behavior (new empty-file metadata also requires flushing):
+    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+    // libuv src/win/fs.c fs__sync_impl calls FlushFileBuffers; GENERIC_WRITE is why all
+    // event/blob handles use r+, not r. Release verification must run on local NTFS.
+    return
+  }
+  const boundary = path.resolve(sessionsDir)
+  for (let directory = path.resolve(path.dirname(logPath)); ; directory = path.dirname(directory)) {
+    const handle = await fs.promises.open(directory, 'r')
+    try {
+      await handle.sync()
+    } finally {
+      await handle.close().catch(() => undefined)
+    }
+    if (directory === boundary) break
+    if (path.dirname(directory) === directory) break
+  }
 }
 
 /**
@@ -655,11 +951,11 @@ export async function flushAllSessionEventLogs(
   options: { timeoutMs?: number } = {},
 ): Promise<{ timedOut: boolean }> {
   const timeoutMs = options.timeoutMs ?? SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS
-  if (states.size === 0) return { timedOut: false }
+  if (sessionLogStates().size === 0) return { timedOut: false }
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const timedOut = await Promise.race([
-      flushSessionEventLog().then(() => false, () => false),
+      flushSessionEventLog().then(() => false),
       new Promise<boolean>(resolve => {
         timer = setTimeout(() => resolve(true), timeoutMs)
         // 计时器自己不该把进程留住:它只是罩子,不是任务。
@@ -686,27 +982,17 @@ export async function flushAllSessionEventLogs(
 export async function flushSessionEventLedger(
   options: { timeoutMs?: number } = {},
 ): Promise<{ timedOut: boolean }> {
-  const result = await flushAllSessionEventLogs(options)
-  if (result.timedOut) {
-    log.warn('session event log flush timed out during shutdown', {
-      sessions: states.size,
-      timeoutMs: options.timeoutMs ?? SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS,
-    })
-  }
-  flushSessionEventStats()
-  return result
-}
-
-async function fsyncSessionLog(logPath: string): Promise<void> {
-  let handle: fs.promises.FileHandle | undefined
   try {
-    handle = await fs.promises.open(logPath, 'r')
-    await handle.sync()
-  } catch {
-    // 文件不存在(这个会话还没记过账)不是错误;fsync 本身失败也不该炸 ——
-    // 它只是"更保险"的那一档,队列已经排空了。
+    const result = await flushAllSessionEventLogs(options)
+    if (result.timedOut) {
+      log.warn('session event log flush timed out during shutdown', {
+        sessions: sessionLogStates().size,
+        timeoutMs: options.timeoutMs ?? SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS,
+      })
+    }
+    return result
   } finally {
-    await handle?.close().catch(() => undefined)
+    flushSessionEventStats()
   }
 }
 
@@ -746,7 +1032,7 @@ export async function readSessionLogEvents(sessionId: string): Promise<SessionLo
 export function drainSessionLogEventTail(
   sessionId: string,
 ): { records: SessionLogEventRecord[]; overflowed: boolean } {
-  const state = states.get(sessionId)
+  const state = sessionLogStates().get(sessionId)
   if (!state) return { records: [], overflowed: false }
   const records = state.shadowTail
   const overflowed = state.shadowTailOverflowed
@@ -756,16 +1042,32 @@ export function drainSessionLogEventTail(
 }
 
 /** 同步版:surface 索引首次建表要在同步路径上作答(seq 是同步分配的)。 */
-export function readSessionLogEventsSync(sessionId: string): SessionLogEventRecord[] {
+export function readSessionLogEventsSync(sessionId: string, options?: { strict?: boolean }): SessionLogEventRecord[] {
   try {
-    return parseSessionLogEventLog(fs.readFileSync(sessionLogPathFor(sessionId), 'utf8'))
-  } catch {
+    const text = fs.readFileSync(sessionLogPathFor(sessionId), 'utf8')
+    const records = parseSessionLogEventLog(text)
+    if (options?.strict && records.length !== text.split(/\r?\n/).filter(line => line.trim()).length) {
+      throw new Error(`Invalid session event record while checking execution recovery: ${sessionId}`)
+    }
+    return records
+  } catch (error) {
+    if (options?.strict) throw error
     return []
   }
 }
 
 /** 清空进程内缓存(计数器 / 队列)。会话删除与测试用。 */
+export function assertSessionEventLogIdle(sessionIds: readonly string[]): void {
+  const states = sessionLogStates()
+  for (const id of sessionIds) {
+    if ((states.get(id)?.pendingIO ?? 0) > 0) throw new Error(`Session event log still has pending IO: ${id}`)
+  }
+}
+
 export function resetSessionEventLogCache(sessionId?: string): void {
+  const states = sessionLogStates()
+  const resetting = sessionId ? [states.get(sessionId)].filter(Boolean) : [...states.values()]
+  if (resetting.some(state => state!.pendingIO > 0)) throw new Error('cannot reset a session event log with pending IO')
   if (sessionId) {
     states.delete(sessionId)
     return

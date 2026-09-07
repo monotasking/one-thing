@@ -1,3 +1,5 @@
+import * as testSessionStore from '../../stores/sessions.js'
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * **写侧取材:store 侧的那几口与产品读面必须是两口井。**
  *
@@ -63,6 +65,8 @@ vi.mock('../../stores/sessions.js', () => ({
 }))
 
 const { createSessionCommands } = await import('../commands.js')
+const { eventsHasMessage } = await import('../events-reads.js')
+const { peekSessionAccount } = await import('../projection-cache.js')
 const { sessionCommandEvents } = await import('../command-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
   '../event-log.js'
@@ -77,13 +81,16 @@ const { sessionReads } = await import('../reads.js')
 
 const SESSION = 'write-side-1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-write-side-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.messages = new Map()
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest({ store: testSessionStore })
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -94,6 +101,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 
@@ -113,13 +121,15 @@ async function events(): Promise<SessionLogEventRecord[]> {
 function commandsOverTranscript(now: number) {
   return createSessionCommands(
     {
+      reads: sessionReads,
+      hasMessage: eventsHasMessage,
       getSession: id => ({ id, messages: state.messages.get(id) ?? [] }) as never,
       saveSession: () => {},
       updateSessionsIndexMeta: () => true,
       flushSessionSave: async () => {},
       patchSession: () => false,
     },
-    { now: () => now },
+    { now: () => now, events: sessionCommandEvents, account: peekSessionAccount },
   )
 }
 

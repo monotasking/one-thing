@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * **F4-c c3-a 合同:逻辑 delta 盖章即折**
  * (`docs/design/session-event-sourcing-2026-08.md` §16.23)。
@@ -67,13 +68,16 @@ const SESSION = 'c3a-delta-visibility'
 const RUN = 'run-1'
 const MESSAGE = 'a1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-c3a-delta-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.messages = new Map()
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -84,6 +88,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

@@ -27,31 +27,14 @@ import {
   type ProjectModelHistoryOptions,
 } from '@onething/core/session'
 import { sanitizeOnethingMessagesForRendererResult } from '@onething/runtime/sessions'
-import {
-  getSession,
-  getSessionMessages,
-  getSessionMessagesPage,
-  getSessionRaw,
-  getSessionUserMessageMarkers,
-  getSessions,
-  readSessionTranscriptFile,
-} from '../stores/sessions.js'
-import {
-  getOnethingSessionsDir,
-} from '@onething/runtime/storage'
-import {
-  eventsCountMessages,
-  eventsGetMessage,
-  eventsGetMessageIndex,
-  eventsLastMessageOfRole,
-  eventsListMessages,
-  eventsListUserMarkers,
-  eventsPageMessages,
-} from './events-reads.js'
+import type * as SessionStore from '../stores/sessions.js'
+import type { SessionEventReads } from './events-reads.js'
+import type { SessionProjectionCache } from './projection-cache.js'
+import { getCurrentBackend } from '../current.js'
 import { isSessionFreezeEnabled } from './freeze.js'
-import { getLiveSessionProjection } from './projection-cache.js'
-import { sessionProjectionOptions } from './projection-blobs.js'
+import type { sessionProjectionOptions } from './projection-blobs.js'
 import { getLogger } from '../wiring/logging/index.js'
+import { readLegacySessionMessages } from './legacy-reads.js'
 
 const log = getLogger('sessions')
 
@@ -81,6 +64,11 @@ function guard<T>(value: T): T {
  * 读数才真的是"事件里折不出这段历史",而那种会话在真机上是零(400 间已
  * `message/imported`、33 间原生覆盖、10 间空壳)。legacy 整文件会话按裁定 9b
  * 在冷加载那一刻就被迁进事件账本,不再需要读路兜。
+ *
+ * **今天仍然剩下的那一格**(工单 4 A4):`messagesForRead` 右边还留着一条旧抄本
+ * 读法,但它**只在投影折出来是空的时候**才轮得到 —— 那是「这条会话还没有
+ * `events.jsonl`」这一种情形(`readLegacySessionMessages` 见到账本就自己交白卷)。
+ * 顺序不能反:抄本排在投影前面,等于让一份只读化石去盖住今天的唯一账本。
  *
  * **出错仍然吞**:一次物化异常不该把整个会话面炸掉,调用方拿到 `undefined` 走
  * 各自的空值语义(从前那句 "falling back to messages" 已经不成立 —— 没有第二侧
@@ -118,11 +106,17 @@ export interface SessionHistoryBuilder {
   recipe(session: Readonly<ChatSession> | undefined): ProjectModelHistoryOptions<unknown>
 }
 
-let historyBuilder: SessionHistoryBuilder | undefined
-
-/** 装上模型历史构造器(宿主在 `configureAppRuntimeAdapters()` 里调,幂等)。 */
+/** Compatibility setter; the history recipe is owned by the active layer. */
 export function configureSessionHistoryBuilder(builder: SessionHistoryBuilder | undefined): void {
-  historyBuilder = builder
+  getCurrentBackend('sessionLayer').sessionLayer.reads.configureHistoryBuilder(builder)
+}
+
+export interface SessionReadPorts {
+  store: Pick<typeof SessionStore, 'getSession' | 'getSessionMessages' | 'getSessionMessagesPage' | 'getSessionRaw' | 'getSessionUserMessageMarkers' | 'getSessions' | 'readSessionTranscriptFile'>
+  events: Pick<SessionEventReads, 'eventsCountMessages' | 'eventsGetMessage' | 'eventsGetMessageIndex' | 'eventsLastMessageOfRole' | 'eventsListMessages' | 'eventsListUserMarkers' | 'eventsPageMessages'>
+  getProjection: SessionProjectionCache['getLiveSessionProjection']
+  materializeOptions: typeof sessionProjectionOptions
+  getSessionsDir(): string
 }
 
 /**
@@ -143,10 +137,42 @@ export function sessionPreviewText(
   return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text
 }
 
-export const sessionReads = {
+export function createSessionReads(ports: SessionReadPorts, initialHistoryBuilder?: SessionHistoryBuilder) {
+  let historyBuilder = initialHistoryBuilder
+  let disposed = false
+  const assertActive = (): void => {
+    if (disposed) throw new Error('Session read layer has been disposed')
+  }
+  /**
+   * 「这条会话没有旧抄本可读」——**只缓存这一种答案**(工单 4 A4)。
+   *
+   * `readLegacySessionMessages` 每问一次要拍 1–3 次 `existsSync`,而它对今天的会话
+   * 恒答 undefined:每一次列消息都在白交这几次系统调用。缓存只记否定答案,所以
+   * 不会有「迁移完了还端出化石」那种陈旧:账本一旦出现,答案本来就变成 undefined。
+   * 会话删除时由 `createSessionLayer` 清掉这一格。
+   */
+  const legacySourceAbsent = new Set<string>()
+  const legacyMessages = (id: string) => {
+    if (legacySourceAbsent.has(id)) return undefined
+    const messages = fromEvents(() => readLegacySessionMessages(ports.getSessionsDir(), id))
+    if (messages === undefined) legacySourceAbsent.add(id)
+    return messages
+  }
+  /**
+   * **投影优先,抄本只兜空**(工单 4 A4)。倒过来写(抄本 `??` 投影)的后果是:
+   * 一条既有 `messages.jsonl` 化石又有 `events.jsonl` 账本的老会话,读到的是化石 ——
+   * 今天的账本才是唯一真相。`readLegacySessionMessages` 自己也守着同一条线(见到
+   * `events.jsonl` 就交白卷),这里是第二道。
+   */
+  const messagesForRead = (id: string) => {
+    const projected = fromEvents(() => ports.events.eventsListMessages(id))
+    if (projected && projected.length > 0) return projected
+    return legacyMessages(id) ?? projected
+  }
+  const sessionReads = {
   /** 一条会话的全部消息。`sanitize` 打开时同时告诉调用方"到底动没动"。 */
   listMessages(sessionId: string, options: ListMessagesOptions = {}): ListMessagesResult {
-    const messages = fromEvents(() => eventsListMessages(sessionId))
+    const messages = messagesForRead(sessionId)
     if (!messages) return { messages: [], changed: false }
     if (!options.sanitize) return { messages: guard(messages), changed: false }
     // F9:`changed` 由 sanitizer 自己带回来,不再靠 `===` 比引用。
@@ -199,7 +225,7 @@ export const sessionReads = {
    * 上什么都没有 —— 事件账本记的是事实,不是意图。
    */
   hasSessionInStore(sessionId: string): boolean {
-    return getSessionMessages(sessionId) !== undefined
+    return ports.store.getSessionMessages(sessionId) !== undefined
   },
 
   /**
@@ -211,18 +237,19 @@ export const sessionReads = {
    * store(自 S3w-1 起由投影补水),不是第二份真相。
    */
   pageMessages(request: GetSessionMessagesPageRequest): GetSessionMessagesPageResponse {
-    return fromEvents(() => eventsPageMessages(request))
-      ?? getSessionMessagesPage(request)
+    return fromEvents(() => ports.events.eventsPageMessages(request))
+      ?? ports.store.getSessionMessagesPage(request)
   },
 
   /** 用户消息锚点(会话目录 / 跳转用)。右边同 `pageMessages`:空会话的形状口。 */
   listUserMarkers(sessionId: string): readonly UserMessageMarker[] | undefined {
-    return fromEvents(() => eventsListUserMarkers(sessionId))
-      ?? getSessionUserMessageMarkers(sessionId);
+    return fromEvents(() => ports.events.eventsListUserMarkers(sessionId))
+      ?? ports.store.getSessionUserMessageMarkers(sessionId);
   },
 
   getMessage(sessionId: string, messageId: string): Readonly<ChatMessage> | undefined {
-    const fromEventLog = fromEvents(() => eventsGetMessage(sessionId, messageId))
+    const fromEventLog = legacyMessages(sessionId)?.find(message => message.id === messageId)
+      ?? fromEvents(() => ports.events.eventsGetMessage(sessionId, messageId))
     return fromEventLog ? guard(fromEventLog) : undefined
   },
 
@@ -231,7 +258,7 @@ export const sessionReads = {
     predicate: (message: ChatMessage, index: number) => boolean,
     options: { from?: 'start' | 'end' } = {},
   ): Readonly<ChatMessage> | undefined {
-    const messages = fromEvents(() => eventsListMessages(sessionId))
+    const messages = messagesForRead(sessionId)
     if (!messages) return undefined
     if (options.from === 'end') {
       for (let index = messages.length - 1; index >= 0; index--) {
@@ -244,21 +271,23 @@ export const sessionReads = {
   },
 
   getMessageIndex(sessionId: string, messageId: string): number {
-    return fromEvents(() => eventsGetMessageIndex(sessionId, messageId)) ?? -1
+    return legacyMessages(sessionId)?.findIndex(message => message.id === messageId)
+      ?? fromEvents(() => ports.events.eventsGetMessageIndex(sessionId, messageId)) ?? -1
   },
 
   countMessages(sessionId: string): number {
-    return fromEvents(() => eventsCountMessages(sessionId)) ?? 0
+    return legacyMessages(sessionId)?.length ?? fromEvents(() => ports.events.eventsCountMessages(sessionId)) ?? 0
   },
 
   lastMessageOfRole(sessionId: string, role: ChatMessage['role']): Readonly<ChatMessage> | undefined {
-    const fromEventLog = fromEvents(() => eventsLastMessageOfRole(sessionId, role))
+    const fromEventLog = legacyMessages(sessionId)?.reverse().find(message => message.role === role)
+      ?? fromEvents(() => ports.events.eventsLastMessageOfRole(sessionId, role))
     return fromEventLog ? guard(fromEventLog) : undefined
   },
 
   /** 第一条用户消息的预览文本(标题回退 / 列表预览;server 那三份实现的归口)。 */
   firstUserPreview(sessionId: string, maxLength = 120): string | undefined {
-    const messages = fromEvents(() => eventsListMessages(sessionId))
+    const messages = messagesForRead(sessionId)
     return sessionPreviewText(messages ?? [], maxLength)
   },
 
@@ -281,12 +310,12 @@ export const sessionReads = {
     sessionId: string,
     options: { upToMessageId?: string; includeUpTo?: boolean } = {},
   ): readonly unknown[] {
-    const session = getSession(sessionId)
+    const session = ports.store.getSession(sessionId)
     const fromEventLog = fromEvents(() => {
       if (!historyBuilder) return undefined
       // upToMessageId 的事件版要按 seq 折(无调用点),退回消息模式。
       if (options.upToMessageId) return undefined
-      const state = getLiveSessionProjection(sessionId)
+      const state = ports.getProjection(sessionId)
       if (state.nodes.length === 0) return undefined
       const meta: ProjectModelHistoryMeta = session
         ? {
@@ -299,13 +328,13 @@ export const sessionReads = {
         : {}
       const projectModelHistoryOptions: ProjectModelHistoryOptions<unknown> = {
         ...historyBuilder.recipe(session),
-        ...sessionProjectionOptions(sessionId),
+        ...ports.materializeOptions(sessionId),
       };
       return materializeModelHistory(state, meta, projectModelHistoryOptions)
     })
     if (fromEventLog !== undefined) return fromEventLog
 
-    const messages = getSessionMessages(sessionId)
+    const messages = ports.store.getSessionMessages(sessionId)
     if (!messages) return []
     const slice = !options.upToMessageId
       ? messages
@@ -320,7 +349,7 @@ export const sessionReads = {
 
   /** 不物化整份数组的遍历(搜索 / 媒体 / 权限扫描)。 */
   *iterateMessages(sessionId: string): Generator<Readonly<ChatMessage>> {
-    const messages = fromEvents(() => eventsListMessages(sessionId))
+    const messages = messagesForRead(sessionId)
     if (!messages) return
     for (const message of messages) yield guard(message)
   },
@@ -332,7 +361,7 @@ export const sessionReads = {
    * 会话库灌进 LRU —— 差别是真实的,所以给它自己的名字。
    */
   *iterateMessagesRaw(sessionId: string): Generator<Readonly<ChatMessage>> {
-    const session = getSessionRaw(sessionId)
+    const session = ports.store.getSessionRaw(sessionId)
     if (!session?.messages) return
     for (const message of session.messages) yield guard(message)
   },
@@ -343,18 +372,18 @@ export const sessionReads = {
    */
   *scanSessionsForSearch(sessionIds?: readonly string[]): Generator<Readonly<ChatSession>> {
     if (!sessionIds) {
-      for (const session of getSessions()) yield session
+      for (const session of ports.store.getSessions()) yield session
       return
     }
     for (const sessionId of sessionIds) {
-      const session = getSessionRaw(sessionId)
+      const session = ports.store.getSessionRaw(sessionId)
       if (session) yield session
     }
   },
 
   /** 原始 jsonl 抄本(collab 的两处绕驱动直读的归口)。 */
   readTranscriptFile(sessionId: string): string | undefined {
-    return readSessionTranscriptFile(sessionId)
+    return ports.store.readSessionTranscriptFile(sessionId)
   },
 
   /**
@@ -366,7 +395,7 @@ export const sessionReads = {
    */
   readTranscriptBuffer(sessionId: string): Uint8Array | undefined {
     try {
-      return fs.readFileSync(path.join(getOnethingSessionsDir(), sessionId, 'messages.jsonl'))
+      return fs.readFileSync(path.join(ports.getSessionsDir(), sessionId, 'messages.jsonl'))
     } catch {
       return undefined
     }
@@ -374,8 +403,44 @@ export const sessionReads = {
 
   /** 整会话(命令面之外唯一允许拿到会话体的地方)。 */
   getSession(sessionId: string): Readonly<ChatSession> | undefined {
-    return getSession(sessionId)
+    return ports.store.getSession(sessionId)
   },
 }
 
-export type SessionReads = typeof sessionReads
+  return {
+    ...new Proxy(sessionReads, {
+      get(target, key, receiver) {
+        const read = Reflect.get(target, key, receiver)
+        return typeof read === 'function'
+          ? (...args: unknown[]) => { assertActive(); return Reflect.apply(read, target, args) }
+          : read
+      },
+    }),
+    configureHistoryBuilder(builder: SessionHistoryBuilder | undefined): void { assertActive(); historyBuilder = builder },
+    /** 会话没了,连它那一格「没有旧抄本」的记忆一起丢掉(工单 4 A4)。 */
+    forgetSession(sessionId: string): void { legacySourceAbsent.delete(sessionId) },
+    dispose(): void { disposed = true; historyBuilder = undefined; legacySourceAbsent.clear() },
+  }
+}
+
+export type SessionReads = ReturnType<typeof createSessionReads>
+const currentReads = (): SessionReads => getCurrentBackend('sessionLayer').sessionLayer.reads
+export const sessionReads: Omit<SessionReads, 'configureHistoryBuilder' | 'dispose' | 'forgetSession'> = {
+  listMessages: (...args) => currentReads().listMessages(...args),
+  hasSessionInStore: (...args) => currentReads().hasSessionInStore(...args),
+  pageMessages: (...args) => currentReads().pageMessages(...args),
+  listUserMarkers: (...args) => currentReads().listUserMarkers(...args),
+  getMessage: (...args) => currentReads().getMessage(...args),
+  findMessage: (...args) => currentReads().findMessage(...args),
+  getMessageIndex: (...args) => currentReads().getMessageIndex(...args),
+  countMessages: (...args) => currentReads().countMessages(...args),
+  lastMessageOfRole: (...args) => currentReads().lastMessageOfRole(...args),
+  firstUserPreview: (...args) => currentReads().firstUserPreview(...args),
+  sliceForHistory: (...args) => currentReads().sliceForHistory(...args),
+  iterateMessages: (...args) => currentReads().iterateMessages(...args),
+  iterateMessagesRaw: (...args) => currentReads().iterateMessagesRaw(...args),
+  scanSessionsForSearch: (...args) => currentReads().scanSessionsForSearch(...args),
+  readTranscriptFile: (...args) => currentReads().readTranscriptFile(...args),
+  readTranscriptBuffer: (...args) => currentReads().readTranscriptBuffer(...args),
+  getSession: (...args) => currentReads().getSession(...args),
+}

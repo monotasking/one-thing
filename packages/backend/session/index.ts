@@ -1,17 +1,6 @@
 /**
- * Session Layer — 纯工厂 + 当前实例的访问器
- *
- * A2(`docs/design/backend-composition-root-2026-09.md` §2.2)之后这里没有任何
- * 模块级 `let`:`createSessionLayer(eventBus, streamChannel)` 造一只
- * `SessionManager` 并把校验订阅一起收进它的 `dispose`,`getSessionManager()` 读
- * 进程当前实例。
- *
- * **不再经 core 的 `initializeCoreSessionLayer`**:那个函数除了
- * `new SessionManager(eventBus, streamChannel)` 与"存进 core 自己那个模块级槽"
- * 之外什么也不做,而 core 内部没有任何一处靠 `getCoreSessionManager()` 找 manager
- * (全仓调用方只有本文件与 core 自己的那份单测)。装配层因此直接构造,不再往
- * core 的槽里塞第二份真相;`packages/core/session/lifecycle.ts` 原样留给它自己的
- * 测试。
+ * 会话组合根：绑定命令、查询、账本写入、恢复与投影，统一持有并释放运行期状态。
+ * 兼容入口只读取已装配实例；业务工厂通过窄端口工作，不自行寻找生产依赖。
  */
 
 import { setupValidation } from './validation.js'
@@ -22,9 +11,30 @@ import {
   Session,
   SessionManager,
   createEmptySessionState,
+  collectSessionCascadeDeleteIds,
   type SessionState,
 } from '@onething/core/session'
 import { getCurrentBackend } from '../current.js'
+import { createSessionEventLayer } from './event-layer.js'
+import { createSessionCommands } from './commands.js'
+import { createSessionReads, type SessionHistoryBuilder, type SessionReads } from './reads.js'
+import * as store from '../stores/sessions.js'
+import type { SessionsListRequest } from '@shared/ipc/sessions.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { getOnethingSessionsDir } from '@onething/runtime/storage'
+import { sessionProjectionOptions } from './projection-blobs.js'
+import { createSessionAccess, type SessionOwnershipRecord, type SessionAccessContext } from './access.js'
+import { createSessionListQuery } from './queries.js'
+import { createSessionWritable } from './writable.js'
+import { flushSessionEventLog, readSessionLogEventsSync } from './event-log.js'
+import { createSessionDeletion } from './deletion.js'
+
+export { createSessionListQuery } from './queries.js'
+
+export const listSessions = (request: SessionsListRequest = {}, context: SessionAccessContext = DESKTOP_RPC_CONTEXT) =>
+  getCurrentBackend('sessionLayer').sessionLayer.listSessions(context, request)
+export const ensureSessionWritable = (sessionId: string): Promise<void> =>
+  getCurrentBackend('sessionLayer').sessionLayer.ensureWritable(sessionId)
 
 /**
  * Get the singleton SessionManager instance.
@@ -35,24 +45,103 @@ export function getSessionManager(): SessionManager {
 }
 
 /**
- * 造会话层。纯工厂:入参就是它要的两件依赖(而不是自己去 `getEventBus()`),
- * 返回值里的 `dispose` 是它留下的**全部**尾巴 —— 校验订阅 + manager 自身。
+ * 生产接线集中在此：事件系统与历史配方由宿主给出，其余端口绑定现有存储适配。
+ * dispose 释放校验、真实活投影、分页索引、历史配方及所有写入口观察者。
  */
 export function createSessionLayer(
   eventBus: EventBus,
   streamChannel: StreamChannel,
-): { sessionManager: SessionManager; dispose: () => void } {
+  options: { historyBuilder?: SessionHistoryBuilder; abortAndDrain?(sessionId: string): Promise<void> } = {},
+): SessionLayer {
   const sessionManager = new SessionManager(eventBus, streamChannel)
+  const deletion = createSessionDeletion<store.DeleteSessionResult>({
+    targets: id => collectSessionCascadeDeleteIds(store.getSessionsList(), id),
+    abortAndDrain: id => {
+      if (!options.abortAndDrain) throw new Error('Session deletion requires an execution drain port')
+      return options.abortAndDrain(id)
+    },
+    flush: async id => {
+      await store.flushSessionSave(id)
+      await flushSessionEventLog(id)
+    },
+    remove: async (id, expectedIds) => {
+      const result = await store.deleteSession(id, expectedIds)
+      for (const deletedId of result.deletedIds) {
+        events.projections.resetSessionProjectionCache(deletedId)
+        events.prepare.reset(deletedId)
+        events.reads.resetSessionEventReadCache(deletedId)
+        ensureWritable.forget(deletedId)
+        reads.forgetSession(deletedId)
+      }
+      return result
+    },
+  })
+  const events = createSessionEventLayer({ assertWritable: deletion.assertWritable })
+  const reads = createSessionReads({
+    store,
+    events: events.reads,
+    getProjection: events.projections.getLiveSessionProjection,
+    materializeOptions: sessionProjectionOptions,
+    getSessionsDir: getOnethingSessionsDir,
+  }, options.historyBuilder)
+  const commands = createSessionCommands({
+    getSession: (...args) => store.getSession(...args),
+    saveSession: (...args) => store.saveSessionForCommands(...args),
+    updateSessionsIndexMeta: (...args) => store.updateSessionsIndexMetaForCommands(...args),
+    flushSessionSave: (...args) => store.flushSessionSave(...args),
+    stampCollabAgentId: (...args) => store.stampCollabAgentId(...args),
+    patchSession: (...args) => store.patchSessionFields(...args),
+    reads,
+    hasMessage: events.reads.eventsHasMessage,
+  }, {
+    events: events.commandEvents,
+    account: events.projections.peekSessionAccount,
+    assertActive: events.assertActive,
+    assertWritable: deletion.assertWritable,
+  })
   let validationUnsub: Unsubscribe | null = setupValidation(eventBus, sessionManager)
+  const ensureWritable = createSessionWritable({
+    assertActive: events.assertActive,
+    getSession: id => store.getSessionRaw(id) ?? store.getSession(id),
+    readEvents: readSessionLogEventsSync,
+    write: events.writer.write,
+    flush: flushSessionEventLog,
+  })
 
+  const access = createSessionAccess({
+    findMeta: id => store.findSessionIndexMeta(id) as SessionOwnershipRecord | undefined,
+    assertAccepting: deletion.assertAccepting,
+  })
   return {
     sessionManager,
+    events,
+    commands,
+    reads,
+    deletion,
+    access,
+    ensureWritable,
+    listSessions: createSessionListQuery({ listSessions: () => store.getSessionsList(), access }),
     dispose: () => {
       validationUnsub?.()
       validationUnsub = null
       sessionManager.shutdown()
+      events.dispose()
+      reads.dispose()
+      deletion.dispose()
     },
   }
+}
+
+export interface SessionLayer {
+  sessionManager: SessionManager
+  events: ReturnType<typeof createSessionEventLayer>
+  commands: ReturnType<typeof createSessionCommands>
+  reads: SessionReads
+  deletion: ReturnType<typeof createSessionDeletion<store.DeleteSessionResult>>
+  access: ReturnType<typeof createSessionAccess>
+  ensureWritable: ReturnType<typeof createSessionWritable>
+  listSessions: ReturnType<typeof createSessionListQuery<ReturnType<typeof store.getSessionsList>[number]>>
+  dispose(): void
 }
 
 // Re-export for direct use

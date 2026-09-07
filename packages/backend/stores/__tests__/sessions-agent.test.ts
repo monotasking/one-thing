@@ -32,6 +32,7 @@ vi.mock('../session-repository/sqlite-repository.js', () => ({
 let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../sessions.js') | null = null
+let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 async function loadIsolatedStores(): Promise<{
   paths: typeof import('@onething/runtime/storage')
@@ -42,6 +43,7 @@ async function loadIsolatedStores(): Promise<{
   const sessions = await import('../sessions.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
+  fixture = await (await import('../../session/testing/store-layer.js')).installStoreSessionLayerForTest()
   return { paths, sessions }
 }
 
@@ -63,6 +65,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await loadedSessions?.flushAllPendingSaves()
+  await fixture?.dispose()
+  fixture = undefined
   process.env.HOME = previousHome
   fs.rmSync(tempHome, { recursive: true, force: true })
 })

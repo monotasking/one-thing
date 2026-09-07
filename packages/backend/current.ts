@@ -28,6 +28,15 @@
 import type { EventBus } from './events/event-bus.js'
 import type { StreamChannel } from './events/stream-channel.js'
 import type { SessionManager } from '@onething/core/session'
+import type { SessionLayer } from './session/index.js'
+import type { SessionEventLogStoreHandle } from './session/event-log.js'
+import type { TaskDispatchLayer } from './wiring/tasks/dispatch.js'
+import type { SessionDeletionRecovery } from '@onething/runtime/sessions'
+import type { MediaLibraryService } from '@onething/runtime/media'
+import type { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
+import type { PracticeService } from '@onething/runtime/practice/service.wiring'
+import type { MusicSubsystem } from './wiring/music/subsystem.js'
+import type { CollabDigestRunner } from './wiring/collab/digest-runner.js'
 import type { StreamEngine } from './wiring/engine/stream-engine-bound.js'
 import type { MainOnethingRuntime } from './wiring/engine/index.js'
 import type { OnethingBackend } from './backend.js'
@@ -80,6 +89,15 @@ export interface BackendHandle {
   readonly eventBus: EventBus
   readonly streamChannel: StreamChannel
   readonly sessionManager: SessionManager
+  readonly sessionLayer: SessionLayer
+  readonly journalStore: SessionEventLogStoreHandle
+  readonly taskDispatchLayer: TaskDispatchLayer
+  readonly sessionDeletionRecovery: SessionDeletionRecovery
+  readonly mediaLibrary: MediaLibraryService
+  readonly toolExecutions: ToolExecutionRegistry
+  readonly practice: PracticeService
+  readonly music: MusicSubsystem
+  readonly collabDigests: CollabDigestRunner
   readonly engine: StreamEngine
   readonly runtime: MainOnethingRuntime
 }
@@ -121,6 +139,33 @@ export function createBackendHandle(parts: BackendHandleParts): BackendHandle {
     },
     get sessionManager() {
       return requireBackendField(parts, 'sessionManager')
+    },
+    get sessionLayer() {
+      return requireBackendField(parts, 'sessionLayer')
+    },
+    get mediaLibrary() {
+      return requireBackendField(parts, 'mediaLibrary')
+    },
+    get toolExecutions() {
+      return requireBackendField(parts, 'toolExecutions')
+    },
+    get practice() {
+      return requireBackendField(parts, 'practice')
+    },
+    get music() {
+      return requireBackendField(parts, 'music')
+    },
+    get collabDigests() {
+      return requireBackendField(parts, 'collabDigests')
+    },
+    get journalStore() {
+      return requireBackendField(parts, 'journalStore')
+    },
+    get taskDispatchLayer() {
+      return requireBackendField(parts, 'taskDispatchLayer')
+    },
+    get sessionDeletionRecovery() {
+      return requireBackendField(parts, 'sessionDeletionRecovery')
     },
     get engine() {
       return requireBackendField(parts, 'engine')

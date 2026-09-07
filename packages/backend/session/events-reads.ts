@@ -24,17 +24,27 @@ import type { ChatMessage, GetSessionMessagesPageRequest, GetSessionMessagesPage
 import fs from 'node:fs'
 import {
   buildSessionEventJumpIndex,
+  materializeNode,
   materializeChatMessages,
   pageEventMessages,
   userMarkersFromProjected,
   type ProjectedChatMessage,
   type SessionEventByteReader,
   type SessionEventJumpIndex,
+  type ProjectionNode,
+  type SessionProjectionState,
 } from '@onething/core/session'
-import { getSessionEventsLogPath } from './event-log.js'
-import { sessionProjectionOptions } from './projection-blobs.js'
-import { getLiveSessionProjection, hasLiveSessionProjection } from './projection-cache.js'
+import type { SessionProjectionCache } from './projection-cache.js'
+import type { sessionProjectionOptions } from './projection-blobs.js'
+import { getCurrentBackend } from '../current.js'
 
+export interface SessionEventReadPorts {
+  getLogPath(sessionId: string): string
+  projections: Pick<SessionProjectionCache, 'getLiveSessionProjection' | 'hasLiveSessionProjection'>
+  materializeOptions: typeof sessionProjectionOptions
+}
+
+export function createSessionEventReads(ports: SessionEventReadPorts) {
 // ============ 字节面(core 的 fs 适配器) ============
 
 /**
@@ -46,7 +56,7 @@ import { getLiveSessionProjection, hasLiveSessionProjection } from './projection
 function withEventReader<T>(sessionId: string, run: (reader: SessionEventByteReader) => T): T | undefined {
   let fd: number | undefined
   try {
-    const logPath = getSessionEventsLogPath(sessionId)
+    const logPath = ports.getLogPath(sessionId)
     const size = fs.statSync(logPath).size
     if (size === 0) return undefined
     fd = fs.openSync(logPath, 'r')
@@ -74,6 +84,18 @@ function withEventReader<T>(sessionId: string, run: (reader: SessionEventByteRea
 // ============ 跳转索引(每会话一次,只在内存) ============
 
 const jumpIndexes = new Map<string, SessionEventJumpIndex>()
+interface MessageViewCache {
+  nodes: WeakMap<ProjectionNode, { rev: number; message: ChatMessage }>
+  lists: WeakMap<SessionProjectionState, ChatMessage[]>
+}
+// Owned by this read layer, one cache per session. Nodes and projection
+// generations are weak keys, so eviction does not retain history.
+const messageViews = new Map<string, MessageViewCache>()
+function messageView(sessionId: string): MessageViewCache {
+  let cache = messageViews.get(sessionId)
+  if (!cache) { cache = { nodes: new WeakMap(), lists: new WeakMap() }; messageViews.set(sessionId, cache) }
+  return cache
+}
 
 /**
  * `anchor.messageId` / `anchor.seq` → 文件偏移。首次跳转时正向扫一遍建表
@@ -90,12 +112,14 @@ function jumpIndexOf(sessionId: string): SessionEventJumpIndex | undefined {
   })
 }
 
-export function resetSessionEventReadCache(sessionId?: string): void {
+function resetSessionEventReadCache(sessionId?: string): void {
   if (sessionId) {
     jumpIndexes.delete(sessionId)
+    messageViews.delete(sessionId)
     return
   }
   jumpIndexes.clear()
+  messageViews.clear()
 }
 
 // ============ 投影 → ChatMessage ============
@@ -115,12 +139,35 @@ function toChatMessage(_sessionId: string, message: ProjectedChatMessage): ChatM
 }
 
 /** 这条会话的全部**可见**消息(投影)。折不出节点 = 事件里没有它的历史。 */
-export function eventsListMessages(sessionId: string): ChatMessage[] | undefined {
-  const state = getLiveSessionProjection(sessionId)
+function eventsListMessages(sessionId: string): ChatMessage[] | undefined {
+  const state = ports.projections.getLiveSessionProjection(sessionId)
   if (state.nodes.length === 0) return undefined
-  const messages = materializeChatMessages(state, sessionProjectionOptions(sessionId)).messages
+  const cache = messageView(sessionId)
+  const options = ports.materializeOptions(sessionId)
+  const messages: ChatMessage[] = []
+  for (const node of state.nodes) {
+    // Visibility is independent of rev and must be checked on every read.
+    if (node.hidden) continue
+    const memo = cache.nodes.get(node)
+    if (memo?.rev === node.rev) { messages.push(memo.message); continue }
+    let degraded = false
+    const projected = materializeNode(node, { ...options, onIssue(issue) {
+      degraded = true
+      options.onIssue?.(issue)
+    } })
+    // Imported nodes share nested mutable projection objects. Detach only the
+    // changed node once, before publishing or memoizing it; never clone a whole
+    // cached history. Blob checks run on misses; failed reads remain retryable.
+    const message = toChatMessage(sessionId, structuredClone(projected))
+    if (degraded) cache.nodes.delete(node)
+    else cache.nodes.set(node, { rev: node.rev, message })
+    messages.push(message)
+  }
   if (messages.length === 0) return undefined
-  return messages.map(message => toChatMessage(sessionId, message))
+  const previous = cache.lists.get(state)
+  if (previous?.length === messages.length && previous.every((message, index) => message === messages[index])) return previous
+  cache.lists.set(state, messages)
+  return messages
 }
 
 /**
@@ -131,34 +178,34 @@ export function eventsListMessages(sessionId: string): ChatMessage[] | undefined
  * 也不深拷 —— 它挂在逐 token 的热路径上,`eventsGetMessage`(每次物化整会话)
  * 在这里是绝对不能用的。
  */
-export function eventsHasMessage(sessionId: string, messageId: string): boolean {
-  const node = getLiveSessionProjection(sessionId).byMessageId.get(messageId)
+function eventsHasMessage(sessionId: string, messageId: string): boolean {
+  const node = ports.projections.getLiveSessionProjection(sessionId).byMessageId.get(messageId)
   return node !== undefined && !node.hidden
 }
 
 /** 这条会话在事件里有历史吗(路由的短路闸)。 */
-export function sessionHasEventHistory(sessionId: string): boolean {
-  return getLiveSessionProjection(sessionId).nodes.length > 0
+function sessionHasEventHistory(sessionId: string): boolean {
+  return ports.projections.getLiveSessionProjection(sessionId).nodes.length > 0
 }
 
-export function eventsCountMessages(sessionId: string): number | undefined {
-  const state = getLiveSessionProjection(sessionId)
+function eventsCountMessages(sessionId: string): number | undefined {
+  const state = ports.projections.getLiveSessionProjection(sessionId)
   if (state.nodes.length === 0) return undefined
   return state.nodes.filter(node => !node.hidden).length
 }
 
-export function eventsGetMessage(sessionId: string, messageId: string): ChatMessage | undefined {
+function eventsGetMessage(sessionId: string, messageId: string): ChatMessage | undefined {
   const messages = eventsListMessages(sessionId)
   return messages?.find(message => message.id === messageId)
 }
 
-export function eventsGetMessageIndex(sessionId: string, messageId: string): number | undefined {
+function eventsGetMessageIndex(sessionId: string, messageId: string): number | undefined {
   const messages = eventsListMessages(sessionId)
   if (!messages) return undefined
   return messages.findIndex(message => message.id === messageId)
 }
 
-export function eventsLastMessageOfRole(
+function eventsLastMessageOfRole(
   sessionId: string,
   role: ChatMessage['role'],
 ): ChatMessage | undefined {
@@ -170,10 +217,10 @@ export function eventsLastMessageOfRole(
   return undefined
 }
 
-export function eventsListUserMarkers(sessionId: string): UserMessageMarker[] | undefined {
-  const state = getLiveSessionProjection(sessionId)
+function eventsListUserMarkers(sessionId: string): UserMessageMarker[] | undefined {
+  const state = ports.projections.getLiveSessionProjection(sessionId)
   if (state.nodes.length === 0) return undefined
-  return userMarkersFromProjected(materializeChatMessages(state, sessionProjectionOptions(sessionId)).messages)
+  return userMarkersFromProjected(materializeChatMessages(state, ports.materializeOptions(sessionId)).messages)
 }
 
 /**
@@ -183,17 +230,17 @@ export function eventsListUserMarkers(sessionId: string): UserMessageMarker[] | 
  * 没有就走 core 的倒读 pager —— 那条路**不建活投影**,否则"不整份加载"这句话
  * 当场作废。
  */
-export function eventsPageMessages(
+function eventsPageMessages(
   request: GetSessionMessagesPageRequest,
 ): GetSessionMessagesPageResponse | undefined {
-  if (hasLiveSessionProjection(request.sessionId)) {
+  if (ports.projections.hasLiveSessionProjection(request.sessionId)) {
     const messages = eventsListMessages(request.sessionId)
     if (messages) return pageFromMemory(request, messages)
   }
 
   const paged = withEventReader(request.sessionId, reader => pageEventMessages(reader, request, {
     // A8/A9:分页与整会话读用**同一份**物化选项(见 pager 里那条注释)。
-    materialize: sessionProjectionOptions(request.sessionId),
+    materialize: ports.materializeOptions(request.sessionId),
     resolveAnchor: anchor => {
       const index = jumpIndexOf(request.sessionId)
       if (!index) return undefined
@@ -276,3 +323,31 @@ function pageFromMemory(
     totalCount: messages.length,
   }
 }
+
+  return {
+    resetSessionEventReadCache,
+    eventsListMessages,
+    eventsHasMessage,
+    sessionHasEventHistory,
+    eventsCountMessages,
+    eventsGetMessage,
+    eventsGetMessageIndex,
+    eventsLastMessageOfRole,
+    eventsListUserMarkers,
+    eventsPageMessages,
+    dispose() { resetSessionEventReadCache() },
+  }
+}
+
+export type SessionEventReads = ReturnType<typeof createSessionEventReads>
+const currentReads = (): SessionEventReads => getCurrentBackend('sessionLayer').sessionLayer.events.reads
+export const resetSessionEventReadCache: SessionEventReads['resetSessionEventReadCache'] = (...args) => currentReads().resetSessionEventReadCache(...args)
+export const eventsListMessages: SessionEventReads['eventsListMessages'] = (...args) => currentReads().eventsListMessages(...args)
+export const eventsHasMessage: SessionEventReads['eventsHasMessage'] = (...args) => currentReads().eventsHasMessage(...args)
+export const sessionHasEventHistory: SessionEventReads['sessionHasEventHistory'] = (...args) => currentReads().sessionHasEventHistory(...args)
+export const eventsCountMessages: SessionEventReads['eventsCountMessages'] = (...args) => currentReads().eventsCountMessages(...args)
+export const eventsGetMessage: SessionEventReads['eventsGetMessage'] = (...args) => currentReads().eventsGetMessage(...args)
+export const eventsGetMessageIndex: SessionEventReads['eventsGetMessageIndex'] = (...args) => currentReads().eventsGetMessageIndex(...args)
+export const eventsLastMessageOfRole: SessionEventReads['eventsLastMessageOfRole'] = (...args) => currentReads().eventsLastMessageOfRole(...args)
+export const eventsListUserMarkers: SessionEventReads['eventsListUserMarkers'] = (...args) => currentReads().eventsListUserMarkers(...args)
+export const eventsPageMessages: SessionEventReads['eventsPageMessages'] = (...args) => currentReads().eventsPageMessages(...args)

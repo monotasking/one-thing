@@ -14,6 +14,7 @@ import type {
 	UserMessageMarker,
 } from "@shared/ipc.js";
 import { join } from "node:path";
+import { getCurrentBackend } from '../current.js'
 import { existsSync, readFileSync, statSync } from "node:fs";
 import {
 	getOnethingSessionsDir,
@@ -26,8 +27,10 @@ import {
 import { getCurrentSessionId, setCurrentSessionId } from "./app-state.js";
 import { sessionLifecycleEvents } from "../session/lifecycle-events.js";
 import { sessionCommandEvents } from "../session/command-events.js";
-import { sessionCommands } from "../session/commands.js";
-import { resetSessionEventLogCache } from "../session/event-log.js";
+import { assertSessionEventLogIdle, resetSessionEventLogCache } from "../session/event-log.js";
+import { sessionDeletion } from '../session/deletion.js'
+import { withSessionRemovalOwner } from '../session/removal-event.js'
+import type { SessionOwnershipRecord } from '../session/access.js'
 import { resetSessionSurfaceCache } from "../session/event-surface.js";
 import { resetSessionRuns } from "../session/runs.js";
 import { hydrateSessionMessagesFromProjection } from "../session/hydrate.js";
@@ -35,13 +38,12 @@ import { materializeSessionMessages } from "../session/materialized-messages.js"
 import { eventsHasMessage } from "../session/events-reads.js";
 import { hasLiveSessionProjection } from "../session/projection-cache.js";
 import { getSettings } from "./settings.js";
-import { expandPath } from "../wiring/tools/core/sandbox.js";
+import { expandOnethingToolSandboxPath as expandPath } from '@onething/runtime/tools/sandbox-runtime';
 import {
 	createHybridSessionStorageDriver,
 	createOnethingSessionRepository,
 } from "@onething/runtime/sessions";
 import { COLLAB_MESSAGE_SOURCE, COLLAB_TURN_SOURCE } from "@onething/runtime/collab";
-import { deleteSessionTraces } from "@onething/runtime/evals/trace-store";
 import {
 	DEFAULT_SPACE_ID as DEFAULT_WORKSPACE_ID,
 	isValidSpaceId,
@@ -64,7 +66,7 @@ import { assertContentPartIsCarriable } from '../session/content-part-guard.js'
 import { assertPortFactIsFolded } from '../session/port-fact-assert.js'
 import { consolePort, getLogger } from '../wiring/logging/index.js'
 import type { HybridSessionStorageDriverOptions } from '@onething/runtime/sessions/storage-driver'
-import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger } from '@onething/runtime/sessions/session-repository'
+import type { OnethingSessionRepositoryOptions, OnethingSessionRepositoryLogger, SessionCreateOptions, SessionInitialOwner } from '@onething/runtime/sessions/session-repository'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 
 const log = getLogger('sessions')
@@ -110,6 +112,13 @@ const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ChatSession, Ch
 	writeJsonFileAsync: writeSessionJsonFileAsync,
 	deleteJsonFile,
 	storageDriver: sessionStorageDriver,
+	deleteSessionsDurably: async ids => {
+		const recovery = getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery
+		const intent = recovery.prepare(ids)
+		await recovery.commit(intent)
+	},
+	isSessionDeleted: (id, generation) =>
+		getCurrentBackend('sessionDeletionRecovery').sessionDeletionRecovery.isDeleted(id, generation),
 	// S3w-1:冷加载补水源。F4-a 起**无条件**走投影(档位 `ONETHING_SESSION_HYDRATE`
 	// 已退役);返回 undefined = 这条会话的事件里折不出历史,仓库照旧自己加载。
 	hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
@@ -421,8 +430,9 @@ export function getSession(sessionId: string): ChatSession | undefined {
 export function createSession(
 	sessionId: string,
 	name: string,
-	options: { workspaceId?: string } = {},
+	options: SessionCreateOptions = {},
 ): ChatSession {
+	sessionDeletion.reopen(sessionId)
 	return recordSessionCreated(
 		sessionRepository.createSession(sessionId, name, options),
 	);
@@ -437,11 +447,7 @@ export function createSession(
  * `session-repository.ts` 是产品层,事件落盘住在装配层,方向不能反过来。
  */
 function recordSessionCreated(session: ChatSession): ChatSession {
-	try {
-		sessionLifecycleEvents.sessionCreated(session);
-	} catch (error) {
-		log.warn("session created event not recorded", { sessionId: session.id }, error);
-	}
+	sessionLifecycleEvents.sessionCreated(session);
 	return session;
 }
 
@@ -489,8 +495,9 @@ export function countSessionsInWorkspace(workspaceId: string): number {
 export function createSessionWithoutFocus(
 	sessionId: string,
 	name: string,
-	options: { workspaceId?: string } = {},
+	options: SessionCreateOptions = {},
 ): ChatSession {
+	sessionDeletion.reopen(sessionId)
 	const previousSessionId = getCurrentSessionId();
 	const session = recordSessionCreated(
 		sessionRepository.createSession(sessionId, name, options),
@@ -532,13 +539,16 @@ export function createBranchSession(
 	parentSessionId: string,
 	branchFromMessageId: string,
 	inheritedMessages: ChatMessage[],
+	options: { initialOwner?: SessionInitialOwner } = {},
 ): ChatSession {
+	sessionDeletion.reopen(sessionId)
 	return sessionRepository.createBranchSession(
 		sessionId,
 		name,
 		parentSessionId,
 		branchFromMessageId,
 		inheritedMessages,
+		options,
 	);
 }
 
@@ -568,49 +578,36 @@ export function onSessionsDeleted(listener: SessionsDeletedListener): () => void
 	};
 }
 
-/**
- * **删会话的推送**(E 批)——`session:removed` 是一条会话事件,骑既有的
- * `session:event` 面(桌面 IPCBridge / web SSE 都观察这条总线),零新通道。
- *
- * 三件事解释这段代码为什么长这样:
- *
- * 1. **必须发在真正删之前**。web 侧通配订阅逐条问"这条会话你读得到吗"
- *    (`ownerMatchesContext` → `resolveSession`);会话删掉之后那把尺子只会回
- *    false,删完再发等于发进黑洞。
- * 2. **id 表因此要提前算**。级联的那批 id 是 `deleteSession` 内部的产物,所以
- *    这里用**同一个纯函数**(`collectSessionCascadeDeleteIds`)在同一份索引上
- *    先算一遍。中间没有 `await`,单线程下两次算的是同一个答案。
- * 3. **每个 id 各发一条**。归属判据是逐会话问的,合成一条会让被级联掉的子会话
- *    失去自己那次判定。
- *
- * `emit` 的扇出是同步段(`fanOut` 在 `emit` 的第一个 await 之前),所以"发完再删"
- * 是真的先后,不是排队。发不出去只记一行 —— 删会话不能因为推送失败而失败。
- */
-function announceSessionsAboutToBeDeleted(sessionId: string): void {
-	// 没装事件系统的进程(轻量单测 / 脚本)照样得能删会话 —— 问一句,而不是
-	// 让 `getEventBus()` 抛出来再吞掉。
+/** Removal is published after file deletion, using trusted pre-delete ownership. */
+function announceSessionsDeleted(cascadedSessionIds: string[], owners: Map<string, SessionMeta>): void {
 	if (!isEventSystemInitialized()) return;
 	try {
-		const cascadedSessionIds = collectSessionCascadeDeleteIds(
-			sessionRepository.getSessionsList(),
-			sessionId,
-		);
 		for (const deletedId of cascadedSessionIds) {
-			void getEventBus().emit(deletedId, {
+			const event = withSessionRemovalOwner({
 				type: SESSION_EVENT_TYPES.SESSION_REMOVED,
 				sessionId: deletedId,
 				cascadedSessionIds,
-			} as never);
+			}, owners.get(deletedId) as SessionOwnershipRecord ?? {})
+			void getEventBus().emit(deletedId, event as never).catch(error => {
+				log.warn('session deleted event delivery failed', { sessionId: deletedId }, error)
+			})
 		}
 	} catch (error) {
-		log.warn("session deleted event not emitted", { sessionId }, error);
+		log.warn("session deleted event not emitted", { cascadedSessionIds }, error);
 	}
 }
 
-// Delete a session and all its child sessions (cascade delete)
-export function deleteSession(sessionId: string): DeleteSessionResult {
-	announceSessionsAboutToBeDeleted(sessionId);
-	const result = sessionRepository.deleteSession(sessionId);
+// Called only after the session layer seals all authorized writers.
+export async function deleteSession(sessionId: string, expectedIds: readonly string[]): Promise<DeleteSessionResult> {
+	const index = sessionRepository.getSessionsList()
+	const ids = collectSessionCascadeDeleteIds(index, sessionId)
+	if (ids.length !== expectedIds.length || ids.some(id => !expectedIds.includes(id))) {
+		throw new Error('Session deletion targets changed')
+	}
+	sessionDeletion.assertSealed(ids)
+	assertSessionEventLogIdle(ids)
+	const owners = new Map(index.filter(meta => ids.includes(meta.id)).map(meta => [meta.id, { ...meta }]))
+	const result = await sessionRepository.deleteSession(sessionId);
 	// 会话目录整棵被 `rmSync(recursive)` 掉(events.jsonl 与 blobs/ 都在里面),
 	// 所以这里只需要把进程内那三张表跟着摘掉 —— 留着的话,同 id 的新会话会接着
 	// 旧的 seq 数下去,而盘上那份已经没了。
@@ -620,10 +617,7 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
 		resetSessionEventLogCache(deletedId);
 		resetSessionSurfaceCache(deletedId);
 		resetSessionRuns(deletedId);
-		// 轮次轨迹住在会话目录**外面**(`evals/traces/<sessionId>/`),所以
-		// `rmSync(sessions/<id>)` 收不掉它。环形淘汰只按年龄/体积赶人,永远不会
-		// 因为「这个会话没了」而赶 —— 不在这里级联,删掉的会话会把轨迹永远留在盘上。
-		deleteSessionTraces(deletedId);
+		// 目录外的轨迹已由同一持久删除意图处理，重启恢复也遵守相同代际边界。
 	}
 	for (const listener of sessionsDeletedListeners) {
 		try {
@@ -632,6 +626,7 @@ export function deleteSession(sessionId: string): DeleteSessionResult {
 			log.error("session delete listener failed", { deletedIds: result.deletedIds }, error);
 		}
 	}
+	announceSessionsDeleted(result.deletedIds, owners)
 	return result;
 }
 
@@ -988,71 +983,6 @@ function portTargetExists(sessionId: string, messageId: string): boolean {
 			.getSessionMessages(sessionId)
 			?.some((message) => message.id === messageId) ?? false
 	);
-}
-
-/**
- * Add a message to a session.
- *
- * S1a:这四条 store 端口(add / delete / truncate 两式)是 **core 引擎**写消息
- * 的入口 —— 它们与 `sessionCommands` 是同一件事的两个门牌(P0 §6 把端口形状
- * 冻住了,所以不能直接删)。事件翻译挂在 `sessionCommands` 上,于是这里改成
- * **转调命令面**:一条消息只可能从一扇门进出,账本才不会漏记引擎写的那半边
- * (真机脚本第一次跑出来的 events.jsonl 里没有 `user/message`,病根正是这条)。
- *
- * 语义逐字不变:`appendMessage{stampCollab:true}` 就是原来的
- * `stampCollabAgentId(...) → runtime.addMessage(...)`。
- *
- * **F4-a(§16.12):返回真正入库的那一条。** 盖章是 COW 的,所以调用方手里那条与
- * 入库那条是两个对象;从前"我刚写进去的是什么"只能事后回读一次(引擎入口拿它把
- * 助手占位的时刻 / origin 带进 `run/start`),而那次回读是一个可以不存在的时序
- * 窗口。core 那一侧的端口签名跟着改了一格 —— **P0 形状冻结的唯一指名豁免**
- * (§16.11 拍板 1 的注)。不盖章的会话原样返回入参,调用方不关心就当它是 void。
- */
-export function addMessage(sessionId: string, message: ChatMessage): ChatMessage {
-	return sessionCommands.appendMessage(sessionId, { message, stampCollab: true });
-}
-
-// Delete a message from a session
-export function deleteMessage(sessionId: string, messageId: string): boolean {
-	return sessionCommands.deleteMessage(sessionId, { messageId });
-}
-
-// Delete a message and all messages after it.
-// Used when regenerating an earlier assistant response so later conversation is discarded.
-export function deleteMessageAndTruncate(
-	sessionId: string,
-	messageId: string,
-): boolean {
-	return sessionCommands.truncateFrom(sessionId, { messageId, inclusive: true });
-}
-
-/*
- * `clearSessionMessages` —— **已删除**(F4-a,§16.12 / §16.11 拍板 5)。
- *
- * 它曾是群聊「清空聊天记录」的存储原语。P0.2 把那条路整体迁到命令面之后
- * (`sessionCommands.replaceAll{reason:'clear'}`,唯一调用点
- * `wiring/collab/room-config.ts`),这个函数就**零生产调用点**了 —— 批 6b 查明
- * 并记账,本批按拍板 5 删除。它的全部语义(整份日志换掉 → 索引计数归零 →
- * 强刷一次;`tokenUsage` 不动;不再留档)都在 `session/commands.ts` 的
- * `replaceAll` 里,那一条同时才是 `session/cleared` 的产地。
- */
-
-// Update a message and remove all messages after it
-// Returns true if successful, also subtracts token usage of deleted messages from session total
-export function updateMessageAndTruncate(
-	sessionId: string,
-	messageId: string,
-	newContent: string,
-	options?: { contentParts?: ChatMessage["contentParts"] | null },
-): boolean {
-	return sessionCommands.truncateFrom(sessionId, {
-		messageId,
-		inclusive: false,
-		newContent,
-		...(options && Object.prototype.hasOwnProperty.call(options, "contentParts")
-			? { contentParts: options.contentParts }
-			: {}),
-	});
 }
 
 // Update message content (for streaming, does not affect sort order)

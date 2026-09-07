@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "private": true,
-  "//exports": "以全仓实际 import 说明符集合生成(含 .js 后缀与 vi.mock 字符串):每个用到的子路径一条显式映射,末尾两条通配兜底 ./*.js 与 ./* 接住新写法。新增子路径优先补显式条目;wiring/<d>/ 是薄接线,不与 runtime/<d> 同名。",
+  "//exports": "Explicit public subpaths only. Migrated session commands/writers/projections are internal to Backend; add deliberate capability entries instead of wildcard fallbacks.",
   "exports": {
     ".": "./backend.ts",
     "./backend.js": "./backend.ts",
@@ -26,14 +26,9 @@
     "./server/http.js": "./server/http.ts",
     "./server/host-trust.js": "./server/host-trust.ts",
     "./server/runtime.js": "./server/runtime.ts",
-    "./session/commands.js": "./session/commands.ts",
-    "./session/event-log.js": "./session/event-log.ts",
-    "./session/event-surface.js": "./session/event-surface.ts",
     "./session/lifecycle-events.js": "./session/lifecycle-events.ts",
     "./session/index.js": "./session/index.ts",
-    "./session/prepare.js": "./session/prepare.ts",
     "./session/read-mode.js": "./session/read-mode.ts",
-    "./session/reads.js": "./session/reads.ts",
     "./session/trace.js": "./session/trace.ts",
     "./session/usage.js": "./session/usage.ts",
     "./store.js": "./store.ts",
@@ -84,8 +79,7 @@
     "./wiring/variables/gateways.js": "./wiring/variables/gateways.ts",
     "./wiring/voice/providers.js": "./wiring/voice/providers.ts",
     "./wiring/voice/service.js": "./wiring/voice/service.ts",
-    "./*.js": "./*.ts",
-    "./*": "./*.ts"
+    "./host-ports.js": "./host-ports.ts"
   },
   "dependencies": {
     "@onething/core": "*",

@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * E2:会话列表投影的**存量回填**(`session/list-projection-backfill.ts`)。
  *
@@ -62,13 +63,16 @@ const {
   sessionNeedsListProjectionBackfill,
 } = await import('../list-projection-backfill.js')
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-e2-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
   state.index = []
   state.failOn = new Set()
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionEventStatsCache()
   resetSessionProjectionCache()
   delete process.env.ONETHING_SESSION_LIST_BACKFILL
@@ -77,6 +81,7 @@ beforeEach(() => {
 afterEach(async () => {
   await flushSessionEventLog()
   resetSessionProjectionCache()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
   delete process.env.ONETHING_SESSION_LIST_BACKFILL
   vi.restoreAllMocks()

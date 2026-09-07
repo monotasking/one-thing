@@ -157,7 +157,7 @@ const EMPTY: SessionShadowStats = {
 }
 const WRITE_THROTTLE_MS = 1000
 
-let cached: SessionShadowStats | undefined
+let cached: { path: string; stats: SessionShadowStats } | undefined
 let dirty = false
 let timer: ReturnType<typeof setTimeout> | null = null
 const warnedSessions = new Set<string>()
@@ -167,10 +167,16 @@ export function getSessionShadowStatsPath(): string {
 }
 
 function load(): SessionShadowStats {
-  if (cached) return cached
+  const filePath = getSessionShadowStatsPath()
+  if (cached?.path === filePath) return cached.stats
+  // Diagnostic buffers keep their original destination across a store switch.
+  // Flush A before loading B; warning dedupe also belongs to that store.
+  if (cached) flushSessionEventStats()
+  warnedSessions.clear()
+  let stats: SessionShadowStats
   try {
-    const parsed = JSON.parse(fs.readFileSync(getSessionShadowStatsPath(), 'utf8')) as Partial<SessionShadowStats>
-    cached = {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<SessionShadowStats>
+    stats = {
       appendFailures: Number(parsed.appendFailures) || 0,
       runs: Number(parsed.runs) || 0,
       historyChecks: Number(parsed.historyChecks) || 0,
@@ -192,19 +198,20 @@ function load(): SessionShadowStats {
       ...(Number(parsed.lastMismatchAt) ? { lastMismatchAt: Number(parsed.lastMismatchAt) } : {}),
     }
   } catch {
-    cached = { ...EMPTY, byKind: {}, skipped: {} }
+    stats = { ...EMPTY, byKind: {}, skipped: {} }
   }
-  return cached
+  cached = { path: filePath, stats }
+  return stats
 }
 
 function writeNow(): void {
   if (!dirty || !cached) return
   dirty = false
   try {
-    fs.mkdirSync(getOnethingLogDir(), { recursive: true })
+    fs.mkdirSync(path.dirname(cached.path), { recursive: true })
     fs.writeFileSync(
-      getSessionShadowStatsPath(),
-      `${JSON.stringify({ ...cached, updatedAt: Date.now() }, null, 2)}\n`,
+      cached.path,
+      `${JSON.stringify({ ...cached.stats, updatedAt: Date.now() }, null, 2)}\n`,
       'utf8',
     )
   } catch {
@@ -292,7 +299,9 @@ export function isSessionShadowEnabled(): boolean {
  * 失败几百次,刷屏之后真正的第一条错误就找不到了。总次数在账单里。
  */
 export function countSessionEventFailure(sessionId: string, error: unknown, what: string): void {
-  bumpSessionShadowStats({ appendFailures: 1 })
+  // Reporting a failed journal must survive failure of the diagnostic store
+  // itself. Keep the original write error visible through the independent log.
+  try { bumpSessionShadowStats({ appendFailures: 1 }) } catch { /* warn below */ }
   if (warnedSessions.has(sessionId)) return
   warnedSessions.add(sessionId)
   log.warn('session event append failed', { sessionId, what }, error)

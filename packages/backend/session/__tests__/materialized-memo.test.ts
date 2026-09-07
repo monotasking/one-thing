@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * **按节点缓存的物化视图 ≡ 每次重算**(§17.7.1 批 1)。
  *
@@ -38,11 +39,14 @@ const { materializeSessionMessages } = await import('../materialized-messages.js
 
 const SESSION = 'memo-1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-memo-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionProjectionCache()
   resetSessionPrepareCache()
   resetSessionEventStatsCache()
@@ -50,6 +54,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

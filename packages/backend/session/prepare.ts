@@ -46,8 +46,15 @@ import {
   type SessionEventByteReader,
   type SessionLogEventRecord,
 } from '@onething/core/session'
-import { writeSessionEvent } from './event-writer.js'
-import { getSessionEventsLogPath, isSessionEventLogEnabled } from './event-log.js'
+import type { SessionEventWriter } from './event-writer.js'
+import { getCurrentBackend } from '../current.js'
+
+export interface SessionPreparePorts {
+  writeRecovery: SessionEventWriter['write']
+  getLogPath(sessionId: string): string
+  isEnabled(sessionId: string): boolean
+}
+
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -77,6 +84,18 @@ export interface PrepareSessionEventsResult {
   truncatedScan: boolean
 }
 
+interface OpenRunState {
+  runId: string
+  startSeq: number
+  calls: Array<{ callId: string; seq: number }>
+  results: Set<string>
+}
+
+export function isSessionPrepareEnabled(): boolean {
+  return process.env.ONETHING_SESSION_PREPARE !== '0'
+}
+
+export function createSessionPrepare(ports: SessionPreparePorts) {
 const prepared = new Set<string>()
 
 /**
@@ -89,12 +108,9 @@ const prepared = new Set<string>()
  */
 const closedRuns = new Map<string, Set<string>>()
 
-export function isSessionPrepareEnabled(): boolean {
-  return process.env.ONETHING_SESSION_PREPARE !== '0'
-}
 
 /** 会话删除 / 测试:忘掉"这条会话已经 prepare 过了"。 */
-export function resetSessionPrepareCache(sessionId?: string): void {
+function resetSessionPrepareCache(sessionId?: string): void {
   if (sessionId) {
     prepared.delete(sessionId)
     closedRuns.delete(sessionId)
@@ -108,32 +124,29 @@ export function resetSessionPrepareCache(sessionId?: string): void {
  * 每进程每会话最多真的跑一次(打开会话的那一次)。热路径上第二次起是一次
  * `Set.has`。
  */
-export function prepareSessionEventsOnce(sessionId: string): void {
+function prepareSessionEventsOnce(sessionId: string): void {
   if (prepared.has(sessionId)) return
   prepared.add(sessionId)
   try {
     prepareSessionEvents(sessionId)
   } catch (error) {
+    prepared.delete(sessionId)
     log.warn('session events prepare failed', { sessionId }, error)
+    throw error
   }
 }
 
-interface OpenRunState {
-  runId: string
-  startSeq: number
-  calls: Array<{ callId: string; seq: number }>
-  results: Set<string>
-}
-
-export function prepareSessionEvents(sessionId: string): PrepareSessionEventsResult {
+function prepareSessionEvents(sessionId: string): PrepareSessionEventsResult {
+  // Recovery records re-enter the same writer; mark before scanning or committing.
+  prepared.add(sessionId)
   const empty: PrepareSessionEventsResult = { status: 'no-events', runs: 0, toolResults: 0, stoppedAt: 'head', truncatedScan: false }
   if (!isSessionPrepareEnabled()) return { ...empty, status: 'disabled' }
-  if (!isSessionEventLogEnabled(sessionId)) return empty
+  if (!ports.isEnabled(sessionId)) return empty
 
   let fd: number | undefined
   let scan: ReturnType<typeof scanUnclosedRuns>
   try {
-    const logPath = getSessionEventsLogPath(sessionId)
+    const logPath = ports.getLogPath(sessionId)
     const size = fs.statSync(logPath).size
     if (size === 0) return empty
     fd = fs.openSync(logPath, 'r')
@@ -157,7 +170,7 @@ export function prepareSessionEvents(sessionId: string): PrepareSessionEventsRes
   for (const run of [...open].sort((a, b) => a.startSeq - b.startSeq)) {
     for (const call of run.calls) {
       if (run.results.has(call.callId)) continue
-      writeSessionEvent(sessionId, 'tool/result', {
+      ports.writeRecovery(sessionId, 'tool/result', {
         callId: call.callId,
         isError: true,
         resultPreview: INTERRUPTED_RESULT_TEXT,
@@ -167,7 +180,7 @@ export function prepareSessionEvents(sessionId: string): PrepareSessionEventsRes
       })
       toolResults += 1
     }
-    writeSessionEvent(sessionId, 'run/end', { runId: run.runId, outcome: 'interrupted' })
+    ports.writeRecovery(sessionId, 'run/end', { runId: run.runId, outcome: 'interrupted' })
     const closed = closedRuns.get(sessionId) ?? new Set<string>()
     closed.add(run.runId)
     closedRuns.set(sessionId, closed)
@@ -185,6 +198,20 @@ export function prepareSessionEvents(sessionId: string): PrepareSessionEventsRes
     truncatedScan: scan.stoppedAt === 'window',
   }
 }
+
+  return {
+    once: prepareSessionEventsOnce,
+    prepare: prepareSessionEvents,
+    reset: resetSessionPrepareCache,
+    dispose() { prepared.clear(); closedRuns.clear() },
+  }
+}
+
+export type SessionPrepare = ReturnType<typeof createSessionPrepare>
+const currentPrepare = (): SessionPrepare => getCurrentBackend('sessionLayer').sessionLayer.events.prepare
+export const prepareSessionEventsOnce = (sessionId: string): void => currentPrepare().once(sessionId)
+export const prepareSessionEvents = (sessionId: string): PrepareSessionEventsResult => currentPrepare().prepare(sessionId)
+export const resetSessionPrepareCache = (sessionId?: string): void => currentPrepare().reset(sessionId)
 
 function byteReader(fd: number, size: number): SessionEventByteReader {
   return {

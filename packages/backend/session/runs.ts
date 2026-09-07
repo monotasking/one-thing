@@ -16,12 +16,22 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { awaitAgentExecutionCheckpoint } from '@onething/core/agent-loop'
 import type { SessionRunKind } from '@onething/core/session'
 import { writeSessionEvent } from './event-writer.js'
 import { prepareSessionEventsOnce } from './prepare.js'
 import { flushSessionEventLog } from './event-log.js'
 import { scheduleSessionRefold } from './refold.js'
 import { bumpSessionShadowStats, isSessionShadowEnabled } from './event-stats.js'
+import { getLogger } from '../wiring/logging/index.js'
+
+const log = getLogger('session.runs')
+
+function observeDetachedRunEnd(pending: Promise<void>, sessionId: string): void {
+  // Synchronous run rotation cannot await; the authoritative journal retains
+  // the fault for the next checkpoint. Observe the detached promise explicitly.
+  void pending.catch(error => log.error('session run end was not durably saved', { sessionId }, error))
+}
 
 export interface BeginSessionRunInput {
   kind: SessionRunKind
@@ -170,7 +180,7 @@ export function beginSessionRun(
   const stale = currentRuns.get(sessionId)
   // `void`:开一次执行是同步路径(返回 handle),不能为了旧 run 的 fsync 停下来。
   // 落账与清账都在 `endSessionRun` 的第一个 await 之前完成,所以顺序仍然是对的。
-  if (stale) void endSessionRun(sessionId, stale.runId, { outcome: 'interrupted' })
+  if (stale) observeDetachedRunEnd(endSessionRun(sessionId, stale.runId, { outcome: 'interrupted' }), sessionId)
 
   const runId = randomUUID()
   const agentId = input.agentId
@@ -301,14 +311,11 @@ export async function endSessionRun(
     outcome,
     ...(error ? { error } : {}),
   })
-  // 语义检查点:run 结束(§10.3 ③)。S3w-4 起**交给调用方 await**(见函数头):
-  // 收一次执行时"已落盘"必须是真的。`catch` 兜底是因为这个 promise 现在有两个
-  // 消费者(返回值 + 下面那条链),而 flush 的失败不该变成收尾路径上的异常
-  // —— 写失败自己的出口是 `appendFailures` 与裁定 7 的上抛,不是这里。
+  // The returned promise carries checkpoint failure to the execution owner.
   // F4-c c4:"这一轮跑了多少个 run"从前是恒等门顺手记的一笔;门退役之后由这里记
   // (见 `SessionShadowStats.runs`)。它是 `run/end` 落账的事实,与哪道门在比无关。
   if (isSessionShadowEnabled()) bumpSessionShadowStats({ runs: 1 })
-  const flushed = flushSessionEventLog(sessionId).catch(() => undefined)
+  const flushed = flushSessionEventLog(sessionId)
   //
   // 对账排在检查点**之后**(§10.4:"`run/end` 落盘后"):比对读的是活投影,
   // 但一条还没落盘的 run 万一进程当场没了,记下的"相等"就没有对应的账。
@@ -323,8 +330,9 @@ export async function endSessionRun(
       // 在语义检查点之后成立。自己按会话采样,不是每个 run 都跑。
       scheduleSessionRefold(sessionId, handle.runId)
     })
+    .catch(error => log.error('session run follow-up skipped or failed', { sessionId, runId: handle.runId }, error))
 
-  await flushed
+  await awaitAgentExecutionCheckpoint('run end', () => flushed)
 }
 
 function normalizeRunError(error: unknown): { name?: string; message: string } | undefined {
@@ -394,12 +402,12 @@ export function rotateSessionRun(
   if (previous) {
     // `void`:轮换发生在 agent-loop 的**同步点**上(返回新 handle),这里等一次
     // fsync 等于把每一次 steering 都加一次盘等待。收账本身是同步的(见函数头)。
-    void endSessionRun(sessionId, previous.runId, {
+    observeDetachedRunEnd(endSessionRun(sessionId, previous.runId, {
       outcome: 'completed',
       // U0:轮换现在发生在 agent-loop 的同步点,而引擎把上一条消息写完要晚
       // 一步 —— 影子等引擎那边收完再比(见 `EndSessionRunInput.shadowGate`)。
       ...(options.shadowGate ? { shadowGate: options.shadowGate } : {}),
-    })
+    }), sessionId)
   }
   const handle = beginSessionRun(sessionId, {
     ...input,

@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * R-b(§13.6)采集点 + 翻译器守卫(§13.6 第 9 条)。
  *
@@ -46,11 +47,14 @@ const { setSessionFreezeEnabled } = await import('../freeze.js')
 
 const SESSION = 'imaged'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-synth-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionEventStatsCache()
   resetSessionSurfaceCache()
   resetSessionProjectionCache()
@@ -62,6 +66,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

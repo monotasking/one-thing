@@ -45,13 +45,15 @@ import type {
   SessionLogEventType,
   SessionSurfaceOp,
 } from '@onething/core/session'
-import {
-  appendSessionLogEvent,
-  registerSessionLogEventAppendObserver,
-  type SessionLogEventAppendObserver,
-} from './event-log.js'
-import { ensureSessionSurfaceState } from './event-surface.js'
-import { prepareSessionEventsOnce } from './prepare.js'
+import type { SessionLogEventAppendObserver } from './event-log.js'
+import { getCurrentBackend } from '../current.js'
+
+export interface SessionEventWriterPorts {
+  prepareOnce(sessionId: string): void
+  ensureSurface(sessionId: string): void
+  append: typeof import('./event-log.js').appendSessionLogEvent
+  observe(observer: SessionLogEventAppendObserver): () => void
+}
 
 export interface WriteSessionEventOptions {
   /** 这条事件在 surface 上怎么落格(`append` / `replace` 段)。非 surface 事件不给。 */
@@ -73,7 +75,8 @@ export interface WriteSessionEventOptions {
  * (F1 同步可见,§16.6);落盘仍然是排队异步的。账本写不进去的那一类失败
  * (`SessionEventWriteError`)**往上抛**(§14.6 裁定 7)。
  */
-export function writeSessionEvent<TType extends SessionLogEventType>(
+export function createSessionEventWriter(ports: SessionEventWriterPorts) {
+function writeSessionEvent<TType extends SessionLogEventType>(
   sessionId: string,
   type: TType,
   data: SessionLogEventDataFor<TType>,
@@ -82,22 +85,32 @@ export function writeSessionEvent<TType extends SessionLogEventType>(
   // 1. 崩溃残留:这个进程往这份账本写第一个字之前收掉(§13.10 M6)。
   //    递归安全 —— `prepareSessionEventsOnce` 在真跑之前就把会话记进了 `prepared`,
   //    它自己合成的那几条事件走回这里时是一次 `Set.has`。
-  prepareSessionEventsOnce(sessionId)
+  ports.prepareOnce(sessionId)
   // 2. 活 surface 立起来(**只立表,不推进**:推进归门内那只观察者)。首次会从
   //    文件 fold 一遍;之后是一次 Map 查询。素门从前不做这一步,于是"本进程内
   //    落的 surface 格进不了活索引"——`ec2437ff` 那条病历。
-  ensureSessionSurfaceState(sessionId)
+  ports.ensureSurface(sessionId)
   // 3. 落账:分配 seq → 编码 → 同步通知观察者(活 surface / 活投影 / 会话账)
   //    → 排队落盘。
-  return appendSessionLogEvent(sessionId, type, data, options)
+  return ports.append(sessionId, type, data, options)
 }
 
-/**
- * 注册一个**跟着事件走**的观察者(活 surface / 活投影 + 会话账都是它的用户)。
- *
- * 它是门的契约的一部分:门保证在 `writeSessionEvent` 返回**之前**、在同一个
- * 同步段里把这条事件交给每一位观察者。返回注销函数。
- */
-export const registerSessionEventObserver: (
-  observer: SessionLogEventAppendObserver,
-) => () => void = registerSessionLogEventAppendObserver
+
+  return { write: writeSessionEvent, observe: ports.observe }
+}
+
+export type SessionEventWriter = ReturnType<typeof createSessionEventWriter>
+
+/** Compatibility edge: every call belongs to the assembled session layer. */
+export function writeSessionEvent<TType extends SessionLogEventType>(
+  sessionId: string,
+  type: TType,
+  data: SessionLogEventDataFor<TType>,
+  options: WriteSessionEventOptions = {},
+): number | undefined {
+  return getCurrentBackend('sessionLayer').sessionLayer.events.writer.write(sessionId, type, data, options)
+}
+
+export function registerSessionEventObserver(observer: SessionLogEventAppendObserver): () => void {
+  return getCurrentBackend('sessionLayer').sessionLayer.events.writer.observe(observer)
+}

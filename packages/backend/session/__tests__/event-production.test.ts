@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * 命令 / 采集点 → 事件的**产出表**(§9.3 / §10.6 第 2 条)。
  *
@@ -35,7 +36,8 @@ vi.mock('@onething/runtime/storage', () => ({
 }))
 
 // 事件产地只从读门面取消息(`session:gate` 的那条纪律),所以测试替的也是它。
-vi.mock('../reads.js', () => ({
+vi.mock('../reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../reads.js')>(),
   sessionReads: {
     getMessage: (_sessionId: string, messageId: string) =>
       state.messages.find(message => message.id === messageId),
@@ -63,13 +65,16 @@ const { resetSessionEventStatsCache } = await import('../event-stats.js')
 
 const SESSION = 's1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-translate-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   fs.writeFileSync(path.join(state.sessionsDir, SESSION, 'meta.json'), '{}')
   state.messages = []
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -77,6 +82,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

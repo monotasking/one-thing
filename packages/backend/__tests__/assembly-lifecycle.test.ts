@@ -142,10 +142,14 @@ async function assemble(
   localTrust: LocalTrust = null,
   // C0 R6 的 ⑫ 用它:除了那一条,每次装配都是 `null`(= 这个宿主没有语音)。
   voice: Record<string, never> | null = null,
+  // 只有 CLI daemon 那一档才取 store 锁(08-24 拍板「store 不要锁」),所以缺省
+  // 不给 owner —— 唯一要看真 lease 生命周期的那一条自己把它交上来。
+  owner?: 'daemon',
 ): Promise<Backend> {
   const { createOnethingBackend } = await import('../backend.js')
   return createOnethingBackend({
     ...(hooks ? { hooks } : {}),
+    ...(owner ? { owner } : {}),
     host: {
       storePath: {},
       sandbox: {},
@@ -359,10 +363,10 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
     expect(afterDispose).toBe('ran')
     expect(eighth.ownedLabels()).toEqual([])
 
-    // 抛错记日志、不上抛 —— 调用点是"登记"语句,不是"关机"语句。
+    // Late cleanup still runs immediately; its caller receives the failure.
     await expect(eighth.own(() => {
       throw new Error('disposer exploded')
-    }, 'ownedAfterDisposeThrows')).resolves.toBeUndefined()
+    }, 'ownedAfterDisposeThrows')).rejects.toThrow('disposer exploded')
   })
 
   /**
@@ -440,6 +444,137 @@ describe('createOnethingBackend 的装配生命周期(A0)', () => {
       openGate()
       initialize.mockRestore()
       shutdown.mockRestore()
+    }
+  })
+
+  it('accepted transport work drains before the journal and lease are released', { timeout: 180_000 }, async () => {
+    const backend = await assemble(undefined, null, null, 'daemon')
+    const lease = backend.storeLease
+    const { writeSessionEvent } = await import('../session/event-writer.js')
+    const { getSessionEventsLogPath } = await import('../session/event-log.js')
+    const sessionId = 'shutdown-accepted-request'
+    const logPath = getSessionEventsLogPath(sessionId)
+    let finish!: () => void
+    const gate = new Promise<void>(resolve => { finish = resolve })
+    const accepted = backend.runTask('test accepted request', async () => {
+      await gate
+      writeSessionEvent(sessionId, 'session/created', { sessionId, model: 'saved-before-exit' })
+    })
+    const closing = backend.requestShutdown('test')
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve))
+      expect(lease.held).toBe(true)
+      expect(() => backend.runTask('new request', () => {})).toThrow('shutting down')
+      finish()
+      await accepted
+      await closing
+      expect(lease.held).toBe(false)
+      expect(fs.readFileSync(logPath, 'utf8')).toContain('saved-before-exit')
+    } finally {
+      finish()
+      await closing
+    }
+  })
+
+  it('binds each Backend connector generation before afterSettings', { timeout: 180_000 }, async () => {
+    const runtime = await import('@onething/runtime/external-agents')
+    const registry = await import('../wiring/external-agents/index.js')
+    const original = runtime.createClaudeCodeConnector
+    const created = vi.spyOn(runtime, 'createClaudeCodeConnector').mockImplementation(options => original(options))
+    try {
+      let earlyConnector: ReturnType<typeof original> | undefined
+      const backend = await assemble({
+        afterSettings: () => {
+          earlyConnector = registry.getExternalAgentConnectors()['claude-code-agent']
+        },
+      })
+      const dispose = vi.spyOn(earlyConnector!, 'dispose')
+      try {
+        expect(created).toHaveBeenCalledTimes(1)
+        expect(registry.getExternalAgentConnectors()['claude-code-agent']).toBe(earlyConnector)
+        // A rejected second assembly cannot overwrite the live instance's options.
+        await expect(assemble()).rejects.toMatchObject({ name: 'BackendAlreadyAssembledError' })
+        expect(registry.getExternalAgentConnectors()['claude-code-agent']).toBe(earlyConnector)
+        const closing = backend.dispose()
+        expect(() => registry.getExternalAgentConnectors()).toThrow('shutting down')
+        await closing
+        // Early rollback ownership and the established late cleanup share one operation.
+        expect(dispose).toHaveBeenCalledTimes(1)
+        expect(() => registry.getExternalAgentConnectors()).toThrow('shutting down')
+      } finally {
+        await backend.dispose()
+        dispose.mockRestore()
+      }
+    } finally {
+      created.mockRestore()
+    }
+  })
+
+  it('drains a connector created by a failing early hook before allowing the next Backend', { timeout: 180_000 }, async () => {
+    const registry = await import('../wiring/external-agents/index.js')
+    const { getCurrentBackendSafe } = await import('../current.js')
+    const boom = new Error('afterSettings failed after creating a connector')
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let markDisposing!: () => void
+    const disposing = new Promise<void>(resolve => { markDisposing = resolve })
+    let dispose: ReturnType<typeof vi.spyOn> | undefined
+    let settled = false
+    const failed = assemble({
+      afterSettings: () => {
+        const connector = registry.getExternalAgentConnectors()['claude-code-agent']!
+        const original = connector.dispose.bind(connector)
+        dispose = vi.spyOn(connector, 'dispose').mockImplementation(async () => {
+          markDisposing()
+          await gate
+          await original()
+        })
+        throw boom
+      },
+    })
+    void failed.then(() => { settled = true }, () => { settled = true })
+    try {
+      await disposing
+      expect(settled).toBe(false)
+      expect(getCurrentBackendSafe()).not.toBeNull()
+      expect(() => registry.getExternalAgentConnectors()).toThrow('shutting down')
+      await expect(assemble()).rejects.toMatchObject({ name: 'BackendAlreadyAssembledError' })
+      release()
+      await expect(failed).rejects.toBe(boom)
+      expect(dispose).toHaveBeenCalledTimes(1)
+      expect(getCurrentBackendSafe()).toBeNull()
+      const next = await assemble()
+      try {
+        expect(registry.getExternalAgentConnectors()['claude-code-agent']).toBeTruthy()
+      } finally {
+        await next.dispose()
+      }
+    } finally {
+      release()
+      await failed.catch(() => {})
+      dispose?.mockRestore()
+    }
+  })
+
+  it('cleans an unused early connector binding when afterSettings fails before any getter', { timeout: 180_000 }, async () => {
+    const runtime = await import('@onething/runtime/external-agents')
+    const original = runtime.createClaudeCodeConnector
+    const created = vi.spyOn(runtime, 'createClaudeCodeConnector').mockImplementation(options => original(options))
+    const registry = await import('../wiring/external-agents/index.js')
+    const boom = new Error('afterSettings failed without creating a connector')
+    try {
+      await expect(assemble({ afterSettings: () => { throw boom } }))
+        .rejects.toBe(boom)
+      expect(created).not.toHaveBeenCalled()
+      const next = await assemble()
+      try {
+        registry.getExternalAgentConnectors()
+        expect(created).toHaveBeenCalledTimes(1)
+      } finally {
+        await next.dispose()
+      }
+    } finally {
+      created.mockRestore()
     }
   })
 })

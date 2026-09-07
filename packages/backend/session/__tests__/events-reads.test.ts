@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * S2a:读门面的两种模式(§11.1)。
  *
@@ -65,12 +66,15 @@ const { sessionReads } = await import('../reads.js')
 
 const SESSION = 'sess-1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-s2a-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.messages = new Map()
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionEventStatsCache()
   resetSessionProjectionCache()
   resetSessionEventReadCache()
@@ -79,6 +83,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

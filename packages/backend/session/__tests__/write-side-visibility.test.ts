@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * **F1 合同:写侧同步可见**(`docs/design/session-event-sourcing-2026-08.md` §16.6)。
  *
@@ -61,13 +62,16 @@ const { checkSessionRefold, resetSessionRefoldSampling } = await import('../refo
 
 const SESSION = 'f1-visibility'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-f1-visible-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.messages = new Map()
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -79,6 +83,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

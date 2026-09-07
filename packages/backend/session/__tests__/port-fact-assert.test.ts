@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * **端口事实断言**(F4-c c4,§16.24)—— 恒等门退役之后"A 类端口的事实已经在流上"
  * 那句话的逐格证人。
@@ -46,12 +47,15 @@ const {
 const SESSION = 'port-assert-1'
 const RUN = 'run-1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-port-assert-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionEventStatsCache()
   resetSessionProjectionCache()
   resetSessionPrepareCache()
@@ -62,6 +66,7 @@ beforeEach(() => {
 afterEach(async () => {
   setSessionPortAssertEnabled(undefined)
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

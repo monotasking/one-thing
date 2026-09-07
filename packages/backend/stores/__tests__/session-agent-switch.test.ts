@@ -35,12 +35,13 @@ const { resetSessionPrepareCache } = await import('../../session/prepare.js')
 const { foldSessionProjection, projectChatMessages } = await import('@onething/core/session')
 
 const SESSION = '11111111-2222-4333-8444-555555555555'
+let fixture: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js').installStoreSessionLayerForTest>>
 
-beforeEach(() => {
+beforeEach(async () => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-agent-switch-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
-  resetSessionEventLogCache()
+  fixture = await (await import('../../session/testing/store-layer.js')).installStoreSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionEventStatsCache()
   resetSessionPrepareCache()
@@ -48,6 +49,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await fixture?.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

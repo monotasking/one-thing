@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * **F2 合同:命令即事件**(`docs/design/session-event-sourcing-2026-08.md`
  * §16.7 = F2-a、§16.8 = F2-b)。
@@ -55,6 +56,9 @@ vi.mock('../../stores/sessions.js', () => ({
 }))
 
 const { createSessionCommands } = await import('../commands.js')
+const { sessionReads } = await import('../reads.js')
+const { eventsHasMessage } = await import('../events-reads.js')
+const { peekSessionAccount } = await import('../projection-cache.js')
 const { sessionCommandEvents } = await import('../command-events.js')
 const { sessionLifecycleEvents } = await import('../lifecycle-events.js')
 const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCache } = await import(
@@ -70,6 +74,9 @@ const { resetSessionPrepareCache } = await import('../prepare.js')
 
 const SESSION = 'f2a-order'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-f2a-'))
@@ -78,7 +85,7 @@ beforeEach(() => {
   state.messages = new Map([[SESSION, []]])
   state.seenByStorePort = []
   state.sessionMetaAtPort = []
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -89,6 +96,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 
@@ -120,6 +128,8 @@ function noteStorePort(port: string): void {
 function commandsOverStore(now = 4242) {
   return createSessionCommands(
     {
+      reads: sessionReads,
+      hasMessage: eventsHasMessage,
       saveSession: () => noteStorePort('saveSession'),
       // 与真 store 同义:那条会话不在就答不上来(F2-c 的判据靠它)。
       getSession: id => (state.messages.has(id)
@@ -137,7 +147,7 @@ function commandsOverStore(now = 4242) {
         return state.messages.has(id)
       },
     },
-    { now: () => now },
+    { now: () => now, events: sessionCommandEvents, account: peekSessionAccount },
   )
 }
 

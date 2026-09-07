@@ -36,10 +36,10 @@ import { createHash } from 'node:crypto'
 import type { BlobRef } from '@onething/core/session'
 import { SESSION_EVENT_BLOB_THRESHOLD_BYTES } from '@onething/core/session'
 import {
-  getOnethingSessionsDir,
-} from '@onething/runtime/storage'
-import { countSessionEventFailure } from './event-stats.js'
-import { SessionEventWriteError } from './event-log.js'
+  assertSessionEventLogWritable,
+  failSessionEventDependency,
+  getSessionBlobsDirPath,
+} from './event-log.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 const log = getLogger('sessions.events')
@@ -52,7 +52,7 @@ export function hashSessionBlob(data: Buffer): string {
 }
 
 export function getSessionBlobsDir(sessionId: string): string {
-  return path.join(getOnethingSessionsDir(), sessionId, SESSION_BLOBS_DIRNAME)
+  return getSessionBlobsDirPath(sessionId)
 }
 
 export function getSessionBlobPath(sessionId: string, hash: string): string {
@@ -71,6 +71,7 @@ export function putSessionBlob(
   data: string | Buffer,
   mime?: string,
 ): BlobRef | undefined {
+  assertSessionEventLogWritable(sessionId)
   const buffer = typeof data === 'string' ? Buffer.from(data, 'utf8') : data
   const hash = hashSessionBlob(buffer)
   const target = getSessionBlobPath(sessionId, hash)
@@ -80,11 +81,12 @@ export function putSessionBlob(
       // 同一 hash 必然同一内容,所以"另一个写者同时在写"是无害的重复写,
       // 不是竞态 —— 不加锁,也不做 rename 原子发布(那要多一次落盘)。
       fs.writeFileSync(target, buffer)
+    } else if (hashSessionBlob(fs.readFileSync(target)) !== hash) {
+      throw new Error(`existing session blob is corrupt: ${hash}`)
     }
   } catch (error) {
-    countSessionEventFailure(sessionId, error, 'blob write failed')
     // 裁定 7:抄本没了,blob 写失败 = 正文永久丢失,不再可吞。
-    throw new SessionEventWriteError(sessionId, 'blob write failed', { cause: error })
+    throw failSessionEventDependency(sessionId, error)
   }
   return {
     hash,

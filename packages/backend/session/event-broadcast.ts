@@ -43,16 +43,23 @@ import { registerSessionEventObserver } from './event-writer.js'
 
 const log = getLogger('session.ledger-broadcast')
 
-let unregister: (() => void) | undefined
-/** 每会话一条 promise 链 —— 同一条会话的事件按 seq 顺序上总线。 */
-const chains = new Map<string, Promise<void>>()
+interface BroadcastOwner {
+  bus: ReturnType<typeof getEventBus>
+  unregister(): void
+  chains: Map<string, Promise<void>>
+  accepting: boolean
+  closing?: Promise<void>
+}
+let installation: BroadcastOwner | undefined
 
 /** 观察者是同步段:排进链里就返回,绝不 await(写账不等推送)。 */
-function enqueue(sessionId: string, record: SessionLogEventRecord): void {
+function enqueue(owner: BroadcastOwner, sessionId: string, record: SessionLogEventRecord): void {
+  if (!owner.accepting) return
+  const chains = owner.chains
   const previous = chains.get(sessionId) ?? Promise.resolve()
   const next = previous
     .then(() =>
-      getEventBus().emit(sessionId, {
+      owner.bus.emit(sessionId, {
         type: SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT,
         record,
       } as never),
@@ -75,19 +82,28 @@ function enqueue(sessionId: string, record: SessionLogEventRecord): void {
  * 装上广播(幂等)。`createOnethingBackend` 在事件系统与会话层都就位之后调一次。
  */
 export function installSessionLedgerEventBroadcaster(): void {
-  if (unregister) return
-  unregister = registerSessionEventObserver((sessionId, record) => {
+  if (installation) return
+  const owner: BroadcastOwner = { bus: getEventBus(), chains: new Map(), accepting: true, unregister() {} }
+  owner.unregister = registerSessionEventObserver((sessionId, record) => {
     try {
-      enqueue(sessionId, record)
+      enqueue(owner, sessionId, record)
     } catch (error) {
       log.warn('ledger event broadcast enqueue failed', { sessionId }, error)
     }
   })
+  installation = owner
 }
 
-/** 拆掉广播(关机 / 测试)。 */
-export function uninstallSessionLedgerEventBroadcaster(): void {
-  unregister?.()
-  unregister = undefined
-  chains.clear()
+/** 摘订阅后等待已接收的真实广播，下一只 Backend 不能接手上一只的尾巴。 */
+export function uninstallSessionLedgerEventBroadcaster(): Promise<void> {
+  const owner = installation
+  if (!owner) return Promise.resolve()
+  if (owner.closing) return owner.closing
+  owner.accepting = false
+  owner.unregister()
+  owner.closing = Promise.allSettled([...owner.chains.values()]).then(() => {
+    owner.chains.clear()
+    if (installation === owner) installation = undefined
+  })
+  return owner.closing
 }

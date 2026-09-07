@@ -16,7 +16,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '', skills: [] as unknown[][] }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
@@ -42,31 +43,32 @@ vi.mock('../index.js', () => ({
   getStreamChannel: () => ({ push: () => {} }),
 }))
 
-const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } = await import(
+const { flushSessionEventLog, readSessionLogEvents } = await import(
   '../../session/event-log.js'
 )
-const { resetSessionSurfaceCache } = await import('../../session/event-surface.js')
-const { beginSessionRun, resetSessionRuns } = await import('../../session/runs.js')
-const { resetSessionEventStatsCache } = await import('../../session/event-stats.js')
+const { installSessionLayerForTest } = await import('../../session/testing/session-layer.js')
+const { beginSessionRun, endSessionRun } = await import('../../session/runs.js')
 const { createEventOnlyEmitter } = await import('../event-only-emitter.js')
 
 const SESSION = 'skill-landing'
+let fixture: ReturnType<typeof installSessionLayerForTest>
+let run: ReturnType<typeof beginSessionRun>
 
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-skill-'))
+  vi.stubEnv('ONETHING_STORE_PATH', state.storeDir)
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   state.skills = []
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   fs.writeFileSync(path.join(state.sessionsDir, SESSION, 'meta.json'), '{}')
-  resetSessionEventLogCache()
-  resetSessionSurfaceCache()
-  resetSessionRuns()
-  resetSessionEventStatsCache()
-  beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
+  fixture = installSessionLayerForTest()
+  run = beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
 })
 
 afterEach(async () => {
-  await flushSessionEventLog()
+  await endSessionRun(SESSION, run.runId, { outcome: 'completed' })
+  await fixture.dispose()
+  vi.unstubAllEnvs()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

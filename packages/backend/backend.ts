@@ -16,11 +16,31 @@
  * 不再手抄第二份。一个进程里已有活实例时再装配一次,`assemble` 第一行就抛
  * `BackendAlreadyAssembledError`。
  */
-import { initializeStores, flushAllPendingSaves } from './store.js'
-import { flushSessionEventLedger } from './session/event-log.js'
+import { initializeStores, flushAllPendingSaves, getSession } from './store.js'
+import { acquireSessionEventLogStore, type SessionEventLogStoreHandle } from './session/event-log.js'
+import { createStoreLease, getOnethingMediaIndexPath, getOnethingMediaImagesDir, getOnethingMediaFilesDir, type StoreLease, type StoreLockOwner } from '@onething/runtime/storage'
+import { MediaLibraryService } from '@onething/runtime/media'
+import { configureMediaLibraryService } from '@onething/runtime/media/library-service-bound'
+import { OnethingUsageLedger } from '@onething/runtime/usage'
+import { configureUsageLedger, captureUsageRecorder } from './wiring/usage/index.js'
+import { createCollabDigestStore, configureCollabDigestStore } from '@onething/runtime/collab/digest-store'
+import { createCollabDigestRunner, type CollabDigestRunner } from './wiring/collab/digest-runner.js'
+import { createCollabInspector, configureCollabInspector } from './wiring/collab/inspector.js'
+import { PluginLlmService } from './wiring/plugins/llm.js'
+import { CredentialStrategyService } from './wiring/providers/credential-strategy-lifetime.js'
+import { disposeCredentialStrategyState } from './wiring/providers/credential-strategy.js'
+import { TodoPlanRuntime } from './wiring/todo-plan/store.js'
+import { BackendResources, type BackendShutdownPhase, type Quiescible } from './lifecycle.js'
+import { PracticeService, configurePracticeService } from '@onething/runtime/practice/service.wiring'
+import { MusicSubsystem } from './wiring/music/subsystem.js'
+import { createVoiceService, configureVoiceService } from './wiring/voice/service.js'
+import { createTaskDispatchLayer, type TaskDispatchLayer } from './wiring/tasks/dispatch.js'
+import { createSessionDeletionRecovery, type SessionDeletionRecovery } from '@onething/runtime/sessions'
+import { getTracesDir } from '@onething/runtime/evals/trace-store'
+import path from 'node:path'
 import { scheduleSessionBlobGcOnStartup } from './session/blob-gc.js'
 import { scheduleSessionListProjectionBackfillOnStartup } from './session/list-projection-backfill.js'
-import { getSettings, initializeSettings } from './stores/settings.js'
+import { getSettings, initializeSettings, invalidateSettingsCache } from './stores/settings.js'
 import { applyDiagnosticsMode } from './wiring/logging/diagnostics.js'
 import { initializeAgents } from './wiring/agents/index.js'
 import { configureAppToolSandbox } from './wiring/tools/core/sandbox.js'
@@ -40,7 +60,7 @@ import { configureAppSkillManage } from './wiring/skills/manage.js'
 import { configureAppSkillsLoader } from './wiring/skills/loader.js'
 import { configureAppPermissionGrants } from './wiring/permission/permission-grants.js'
 import { createEventSystem } from './events/index.js'
-import { createSessionLayer } from './session/index.js'
+import { createSessionLayer, type SessionLayer } from './session/index.js'
 import {
   installSessionPermissionEventRecorders,
   uninstallSessionPermissionEventRecorders,
@@ -53,15 +73,19 @@ import { createStreamEngineLayer, type MainOnethingRuntime } from './wiring/engi
 import type { PermissionMode } from '@shared/ipc.js'
 import type { BindableStreamSender, StreamEngine } from './wiring/engine/stream-engine-bound.js'
 import { registerBuiltinTriggers } from './wiring/engine/triggers/index.js'
+import { createSessionTocTrigger } from './wiring/engine/triggers/session-toc.js'
 import { initializeCollabV3Runtime, shutdownCollabV3Runtime } from './wiring/collab/index.js'
 import { Permission } from './wiring/permission/index.js'
 import { Interaction } from '@onething/core/interaction'
 import { bootstrapVariableSystem } from './wiring/variables/index.js'
 import { bootstrapGoalStreamBreakers } from './wiring/goals/runtime-hooks.js'
+import { flushGoalRuntimeUsage, disposeGoalRuntimeState } from './wiring/goals/index.js'
 import { bootstrapProjectDirs } from './wiring/project-dirs/index.js'
 import { createAppSearchService } from './wiring/search/index.js'
 import { configureToolkitMCPCapabilitiesChangedHandler } from '@onething/runtime/mcp/capabilities-changed'
 import { buildToolkitCatalog, refreshToolkitMcpTools } from './wiring/toolkit/wiring.js'
+import { ToolExecutionRegistry } from './wiring/toolkit/executions.js'
+import { configureEvalsTaskOwner, EvalsTaskOwner } from './wiring/evals/task-owner.js'
 import { registerAppRpcDomains } from './rpc/index.js'
 import { initializeSessionSkills } from './wiring/skills/session-skills.js'
 import { MCPManager, registerMCPTools } from '@onething/runtime/mcp/index.wiring'
@@ -71,9 +95,9 @@ import { McpSubsystem } from './wiring/mcp/subsystem.js'
 import { AcpSubsystem } from './wiring/acp/subsystem.js'
 import { killTrackedDetachedChildren } from '@onething/runtime/tools/bash-executor'
 import { killAllTerminals } from '@onething/runtime/terminal/service.wiring'
-import { configureSessionHistoryBuilder, type SessionHistoryBuilder } from './session/reads.js'
+import type { SessionHistoryBuilder } from './session/reads.js'
 import { buildHistoryMessages, historyProjectionRecipe } from './wiring/engine/stream/message-helpers.js'
-import { getLogger } from './wiring/logging/index.js'
+import { configureLogging, getLogger, shutdownAppLogging, type ConfigureLoggingOptions } from './wiring/logging/index.js'
 import {
   BackendAlreadyAssembledError,
   BackendNotAssembledError,
@@ -111,11 +135,13 @@ export function configureAppRuntimeAdapters(): void {
   // (消息侧 `buildHistoryMessages`、事件侧 `historyProjectionRecipe` →
   // `projectModelHistory`),但它们身后是整棵 provider 树,`reads.ts` 不能静态
   // 引用(会拖垮上游轻量单测),所以在这里装进读门面。
-  const sessionHistoryBuilder: SessionHistoryBuilder = {
+}
+
+function createSessionHistoryBuilder(): SessionHistoryBuilder {
+  return {
     fromMessages: (messages, session) => buildHistoryMessages([...messages], session),
     recipe: session => historyProjectionRecipe(session),
   }
-  configureSessionHistoryBuilder(sessionHistoryBuilder)
 }
 
 /**
@@ -167,6 +193,18 @@ export interface OnethingBackendOptions {
   /** Engine sender to bind; hosts that observe the EventBus directly can omit it. */
   sender?: BindableStreamSender
   hooks?: OnethingBackendHooks
+  /**
+   * Give an owner and this Backend takes the store mutex; today only the CLI
+   * daemon does. Omit it and the host takes **no lock** (2026-08-24 ruling,
+   * 「store 不要锁」): the single writer is settled by `<store>/run/http.json` —
+   * whoever already serves the store keeps it, and a newcomer defers instead of
+   * racing for a lock file that a crash would leave behind.
+   */
+  owner?: StoreLockOwner
+  storePath?: string
+  shutdownTimeoutMs?: number
+  /** File logging and its janitor start only after this Backend owns the store. */
+  logging?: ConfigureLoggingOptions
 }
 
 /**
@@ -180,7 +218,9 @@ export interface OnethingBackendOptions {
  */
 export class OnethingBackend implements BackendHandle {
   private readonly parts: BackendHandleParts = {}
-  private readonly disposers: Array<{ label: string; run: () => void | Promise<void> }> = []
+  private readonly resources: BackendResources
+  private lease: StoreLease | undefined
+  private readonly activeTasks = new Map<Promise<unknown>, string>()
   private disposing: Promise<void> | null = null
   /**
    * `dispose()` 开跑了没有 —— **同步**的那一格。
@@ -204,11 +244,60 @@ export class OnethingBackend implements BackendHandle {
    */
   private mcpSubsystem: McpSubsystem | null = null
   private acpSubsystem: AcpSubsystem | null = null
+  private pluginModelService: PluginLlmService | undefined
+  private credentialStrategyService: CredentialStrategyService | undefined
+  private todoPlanRuntime: TodoPlanRuntime | undefined
 
   readonly options: Readonly<OnethingBackendOptions>
 
   private constructor(options: OnethingBackendOptions) {
     this.options = options
+    this.resources = new BackendResources(options.shutdownTimeoutMs, failure => {
+      log.error('backend disposer failed', { step: failure.step }, failure.cause)
+    })
+    this.own(async () => {
+      while (this.activeTasks.size) await Promise.allSettled([...this.activeTasks.keys()])
+    }, 'activeRequests', 'drain')
+  }
+
+  get storeLease(): StoreLease {
+    if (!this.lease) throw new BackendNotAssembledError()
+    this.lease.assertHeld()
+    return this.lease
+  }
+
+  get isShuttingDown(): boolean { return this.resources.isClosing }
+
+  get pluginModels(): PluginLlmService {
+    if (!this.pluginModelService) throw new BackendNotAssembledError()
+    return this.pluginModelService
+  }
+
+  get todoPlans(): TodoPlanRuntime {
+    if (!this.todoPlanRuntime) throw new BackendNotAssembledError()
+    return this.todoPlanRuntime
+  }
+
+  get credentialStrategies(): CredentialStrategyService {
+    if (!this.credentialStrategyService) throw new BackendNotAssembledError()
+    return this.credentialStrategyService
+  }
+
+  get mediaLibrary(): MediaLibraryService { return requireBackendField(this.parts, 'mediaLibrary') }
+  get toolExecutions(): ToolExecutionRegistry { return requireBackendField(this.parts, 'toolExecutions') }
+  get practice(): PracticeService { return requireBackendField(this.parts, 'practice') }
+  get music(): MusicSubsystem { return requireBackendField(this.parts, 'music') }
+  get collabDigests(): CollabDigestRunner { return requireBackendField(this.parts, 'collabDigests') }
+
+  assertActive(): void { this.resources.assertActive() }
+
+  /** Every accepted transport operation remains owned until its work settles. */
+  runTask<T>(label: string, run: () => T | Promise<T>): Promise<T> {
+    this.assertActive()
+    const task = Promise.resolve().then(run)
+    this.activeTasks.set(task, label)
+    void task.then(() => { this.activeTasks.delete(task) }, () => { this.activeTasks.delete(task) })
+    return task
   }
 
   get eventBus(): EventBus {
@@ -221,6 +310,22 @@ export class OnethingBackend implements BackendHandle {
 
   get sessionManager(): SessionManager {
     return requireBackendField(this.parts, 'sessionManager')
+  }
+
+  get sessionLayer(): SessionLayer {
+    return requireBackendField(this.parts, 'sessionLayer')
+  }
+
+  get journalStore(): SessionEventLogStoreHandle {
+    return requireBackendField(this.parts, 'journalStore')
+  }
+
+  get taskDispatchLayer(): TaskDispatchLayer {
+    return requireBackendField(this.parts, 'taskDispatchLayer')
+  }
+
+  get sessionDeletionRecovery(): SessionDeletionRecovery {
+    return requireBackendField(this.parts, 'sessionDeletionRecovery')
   }
 
   get engine(): StreamEngine {
@@ -263,17 +368,8 @@ export class OnethingBackend implements BackendHandle {
    * 让它抛等于把一次收尾失败变成一条启动路径上的异常。与 `dispose()` 里逐个
    * try/catch 同口径。
    */
-  own(disposer: () => void | Promise<void>, label = 'anonymous'): void | Promise<void> {
-    if (this.disposeStarted) {
-      return (async () => {
-        try {
-          await disposer()
-        } catch (error) {
-          log.error('backend disposer failed after dispose', { step: label }, error)
-        }
-      })()
-    }
-    this.disposers.push({ label, run: disposer })
+  own(disposer: () => void | Promise<void>, label = 'anonymous', phase: BackendShutdownPhase = 'resources'): void | Promise<void> {
+    return this.resources.own(disposer, label, phase)
   }
 
   /**
@@ -283,21 +379,13 @@ export class OnethingBackend implements BackendHandle {
    * 上排在最后的是**落盘**,让它被前面某个 shutdown 的异常吞掉是这条链最坏的
    * 失败形态。
    */
-  async dispose(): Promise<void> {
+  dispose(reason = 'shutdown'): Promise<void> {
     if (this.disposing) return this.disposing
     // 同步先立旗(见 `disposeStarted` 的注释):IIFE 的 promise 要到第一个 await
     // 之后才赋回 `this.disposing`,而 `own()` 的守卫在那之前就得说得出话。
     this.disposeStarted = true
     this.disposing = (async () => {
-      for (let i = this.disposers.length - 1; i >= 0; i -= 1) {
-        const disposer = this.disposers[i]!
-        try {
-          await disposer.run()
-        } catch (error) {
-          log.error('backend disposer failed', { step: disposer.label }, error)
-        }
-      }
-      this.disposers.length = 0
+      await this.resources.dispose(reason)
       /*
        * C0 R10:装配产物那五格也清掉。
        *
@@ -325,8 +413,32 @@ export class OnethingBackend implements BackendHandle {
    * 返回的是拷贝 —— 没人能从这里改清单。
    */
   ownedLabels(): readonly string[] {
-    return this.disposers.map(disposer => disposer.label)
+    return this.resources.labels()
   }
+
+  /**
+   * 收编一台子系统的关机(工单 5 §1,triage B1)。
+   *
+   * 从前这里是三十几行机械重复:每台子系统两句 `own()`,一句进 `quiesce` 阶段、
+   * 一句进 `drain` 阶段,标签手拼。那是**骨架按能力枚举**——加一台子系统要在
+   * 装配里多写两句同形的话,而两句里任何一句忘了、阶段填错了、标签拼错了,
+   * 都要等到真机关机才发作。
+   *
+   * 改成 `adopt` 之后,子系统自述它是 `Quiescible`,骨架读表:一次登记两条,
+   * 标签由 `label` 推,阶段是常量。**这里没有、也不许有按子系统分叉的分支**——
+   * 接不上接口的(只有 `stop()` 的触发器 / 任务派发层)在**它自己那边**补一个
+   * `quiesce` 别名,不在这里认名字。
+   *
+   * 资源级的收尾(`dispose()` / 解绑单槽 / 归还进程状态)仍然各自一句 `own()`:
+   * 十四台里只有一台有 `dispose`,把它折进来只会让"这台到底登记了几条"变成
+   * 要读实现才答得出的问题。
+   */
+  adopt(label: string, subsystem: Quiescible): void {
+    this.own(() => subsystem.quiesce(), `${label}Admission`, 'quiesce')
+    this.own(() => subsystem.drain(), `${label}Drain`, 'drain')
+  }
+
+  requestShutdown(reason = 'shutdown'): Promise<void> { return this.dispose(reason) }
 
   /** @deprecated 过渡别名 = `dispose()`。 */
   async shutdown(): Promise<void> {
@@ -347,13 +459,25 @@ export class OnethingBackend implements BackendHandle {
     } catch (error) {
       // 失败的装配不许在进程里留下一个半死的槽:逆序跑掉已经登记的收尾,清槽,
       // 再把**原来那个**错误抛出去(`dispose()` 自己每步 try/catch,不会盖掉它)。
-      await backend.dispose()
+      try {
+        await backend.dispose('assembly failed')
+      } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], 'Backend assembly and cleanup failed', { cause: error })
+      }
       throw error
     }
   }
 
   private async assembleSteps(): Promise<void> {
     const options = this.options
+    if (options.storePath) {
+      const previous = process.env.ONETHING_STORE_PATH
+      process.env.ONETHING_STORE_PATH = options.storePath
+      this.own(() => {
+        if (previous === undefined) delete process.env.ONETHING_STORE_PATH
+        else process.env.ONETHING_STORE_PATH = previous
+      }, 'storePath', 'restore')
+    }
     configureAppRuntimeAdapters()
     // 宿主能力先落位:它们是**输入**,装配的每一步都可能读到(sandbox 在工具目录
     // 之前、auth 在凭证升级之前、storePath 在 docs 目录之前)。一次性交出来的好处
@@ -364,7 +488,76 @@ export class OnethingBackend implements BackendHandle {
     // 登记在这里 = dispose 之后这个进程回到"没有宿主注入过任何能力"的状态,
     // 于是同一个进程里先后装配两只 backend 时,第二只不会继承第一只的语音 /
     // 插件 / 沙箱端口。
-    this.own(applyHostPorts(options.host), 'hostPorts')
+    this.own(applyHostPorts(options.host), 'hostPorts', 'restore')
+
+    const { bindExternalAgentConnectors } = await import('./wiring/external-agents/index.js')
+    const externalAgents = bindExternalAgentConnectors({
+      isAccepting: () => !this.isShuttingDown,
+    })
+    // afterSettings can already invoke the lazy provider factory, then throw.
+    // Own that generation immediately; the later registration preserves the
+    // established successful-shutdown order and shares this idempotent disposer.
+    this.own(externalAgents.dispose, 'externalAgentsAssemblyRollback')
+    this.own(externalAgents.quiesce, 'externalAgentsAdmission', 'quiesce')
+    await externalAgents.ready
+
+    const lease = createStoreLease({ storePath: options.storePath, ...(options.owner ? { owner: options.owner } : {}) })
+    await lease.acquire(options.owner ?? 'server')
+    this.lease = lease
+    this.own(() => lease.release(), 'storeLease', 'release')
+    invalidateSettingsCache()
+    const usageLedger = new OnethingUsageLedger({
+      ledgerDir: path.join(lease.storePath, 'usage'),
+      assertOwned: () => lease.assertHeld(),
+    })
+    this.own(configureUsageLedger(usageLedger), 'usageLedgerBinding', 'restore')
+    this.own(() => usageLedger.close(), 'usageLedger', 'flush')
+    const pluginModels = new PluginLlmService(this)
+    this.pluginModelService = pluginModels
+    this.adopt('pluginModels', pluginModels)
+    const credentialStrategies = new CredentialStrategyService()
+    this.credentialStrategyService = credentialStrategies
+    this.adopt('credentialStrategies', credentialStrategies)
+    this.own(() => disposeCredentialStrategyState(), 'credentialStrategyState', 'resources')
+    const todoPlans = new TodoPlanRuntime({ storePath: lease.storePath, assertActive: () => this.assertActive() })
+    this.todoPlanRuntime = todoPlans
+    this.adopt('todoPlan', todoPlans)
+    this.own(() => todoPlans.dispose(), 'todoPlanRuntime', 'resources')
+    const evalsTasks = new EvalsTaskOwner(() => lease.assertHeld())
+    this.own(configureEvalsTaskOwner(evalsTasks), 'evalsTaskBinding', 'resources')
+    this.adopt('evalsTask', evalsTasks)
+    const mediaLibrary = new MediaLibraryService({
+      indexPath: getOnethingMediaIndexPath({ storePath: lease.storePath }),
+      imagesDir: getOnethingMediaImagesDir({ storePath: lease.storePath }),
+      filesDir: getOnethingMediaFilesDir({ storePath: lease.storePath }),
+    })
+    this.parts.mediaLibrary = mediaLibrary
+    this.own(configureMediaLibraryService(mediaLibrary), 'mediaLibraryBinding', 'resources')
+    this.adopt('mediaLibrary', mediaLibrary)
+    const practice = new PracticeService({ storePath: lease.storePath, assertOwned: () => lease.assertHeld() })
+    this.parts.practice = practice
+    this.own(configurePracticeService(practice), 'practiceBinding', 'resources')
+    this.adopt('practice', practice)
+    const music = new MusicSubsystem({ storePath: lease.storePath, assertOwned: () => lease.assertHeld() })
+    this.parts.music = music
+    this.adopt('music', music)
+    const voice = createVoiceService()
+    this.own(configureVoiceService(voice), 'voiceBinding', 'resources')
+    this.adopt('voice', voice)
+    if (options.logging) {
+      this.own(() => shutdownAppLogging(), 'logging', 'endpoints')
+      configureLogging(options.logging)
+    }
+    const deletionRecovery = createSessionDeletionRecovery({
+      sessionsDir: path.join(lease.storePath, 'sessions'),
+      assertOwned: () => lease.assertHeld(),
+      associatedDirectories: { traces: getTracesDir({ storePath: lease.storePath }) },
+    })
+    this.parts.sessionDeletionRecovery = deletionRecovery
+    await deletionRecovery.recover()
+    const journal = acquireSessionEventLogStore(lease.storePath)
+    this.parts.journalStore = journal
+    this.own(() => journal.drainAndRelease(), 'flushSessionEventLedger', 'flush')
 
     initializeStores()
     /*
@@ -375,10 +568,7 @@ export class OnethingBackend implements BackendHandle {
      * 抄本停写之后那就是唯一持久化,退出那一刻队列里剩什么就丢什么。
      * 账本那一步自带 2s 时限,超时记一行 warn 不阻退出。
      */
-    this.own(async () => {
-      await flushSessionEventLedger()
-    }, 'flushSessionEventLedger')
-    this.own(() => flushAllPendingSaves(), 'flushAllPendingSaves')
+    this.own(() => flushAllPendingSaves(), 'flushAllPendingSaves', 'flush')
 
     await initializeSettings()
     // 「诊断模式」是设置里的一格,但生效面在日志系统(等级 spec + provider 转储)。
@@ -417,9 +607,61 @@ export class OnethingBackend implements BackendHandle {
       log.info('event system shut down')
     }, 'eventSystem')
 
-    const sessionLayer = createSessionLayer(eventBus, streamChannel)
+    /**
+     * 删一条会话之前要排空的**生产者表** —— 每一台在自己造出来的那一行登记自己
+     * (工单 4 C10)。
+     *
+     * 从前这里是一段闭包,直接点名 `sessionToc`(在它下面四十行才声明)和三个
+     * `this.parts.X!`。那三个非空断言掩盖的正是这条时序:装配跑到这一行时,它们
+     * 真的还不存在;断言只是让 `tsc` 别问。改成后填的表之后,时序变成数据 ——
+     * 表是空的就是「这一刻还没有生产者」,而不是一个会在运行时炸的 undefined。
+     * 加一台生产者 = 造它那一行多一句 push,这里一个字不改。
+     */
+    const sessionProducers: { abortAndDrain(sessionId: string): Promise<void> }[] = []
+    const sessionLayer = createSessionLayer(eventBus, streamChannel, {
+      historyBuilder: createSessionHistoryBuilder(),
+      abortAndDrain: async id => {
+        const settled = await Promise.allSettled(sessionProducers.map(producer => producer.abortAndDrain(id)))
+        const errors = settled.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+        if (errors.length) throw new AggregateError(errors, `Session producers failed to drain: ${id}`)
+      },
+    })
+    this.parts.sessionLayer = sessionLayer
+    // MindPort/typing can publish room state without starting the room actors.
+    // The view therefore belongs to every Backend, not only options.collab.
+    const collabInspector = createCollabInspector({
+      getSession,
+      emit: eventBus.emit.bind(eventBus),
+      isActive: () => !this.isShuttingDown && getCurrentBackendSafe() === this,
+      onError: error => log.error('collab inspector broadcast failed', {}, error),
+    })
+    this.own(configureCollabInspector(collabInspector), 'collabInspectorBinding', 'resources')
+    this.adopt('collabInspector', collabInspector)
+    const toolExecutions = new ToolExecutionRegistry(sessionLayer.access)
+    this.parts.toolExecutions = toolExecutions
+    sessionProducers.push(toolExecutions)
+    this.adopt('toolExecution', toolExecutions)
+    const digestStore = createCollabDigestStore({ storePath: lease.storePath, assertOwned: () => lease.assertHeld() })
+    this.own(configureCollabDigestStore(digestStore), 'collabDigestBinding', 'resources')
+    const collabDigests = createCollabDigestRunner({
+      store: digestStore, access: sessionLayer.access, assertOwned: () => lease.assertHeld(),
+      recordUsage: captureUsageRecorder(),
+    })
+    this.parts.collabDigests = collabDigests
+    sessionProducers.push(collabDigests)
+    // 摘要档的关闸由 runner 自己带上(它是那份 store 唯一的写者),于是这里也只是一句 adopt。
+    this.adopt('collabDigest', collabDigests)
+    journal.assertSessionWritable = sessionLayer.deletion.assertWritable
     this.parts.sessionManager = sessionLayer.sessionManager
     this.own(() => sessionLayer.dispose(), 'sessionLayer')
+    this.own(() => sessionLayer.deletion.drain(), 'sessionDeletions', 'drain')
+
+    const sessionToc = createSessionTocTrigger({
+      runTask: (label, work) => this.runTask(label, work),
+      assertAccepting: id => sessionLayer.deletion.assertAccepting(id),
+    })
+    sessionProducers.push(sessionToc)
+    this.adopt('sessionToc', sessionToc)
 
     // B 期(§17.8):写入口每落一条事件,原样在总线上广播一份 —— 桌面 IPC 与
     // web SSE 都观察总线,于是"两个传输同步"是构造性的。必须在事件系统之后
@@ -427,9 +669,27 @@ export class OnethingBackend implements BackendHandle {
     installSessionLedgerEventBroadcaster()
     this.own(() => uninstallSessionLedgerEventBroadcaster(), 'sessionLedgerBroadcaster')
 
-    const engineLayer = createStreamEngineLayer({ eventBus, streamChannel })
+    const engineLayer = createStreamEngineLayer({
+      eventBus,
+      streamChannel,
+      assertAccepting: id => {
+        this.assertActive()
+        if (id) sessionLayer.deletion.assertAccepting(id)
+      },
+    })
     this.parts.engine = engineLayer.engine
+    sessionProducers.push(engineLayer.engine)
     this.parts.runtime = engineLayer.runtime
+    this.own(() => engineLayer.quiesceOutboundReplies(), 'outboundRepliesAdmission', 'quiesce')
+    this.own(() => engineLayer.drainOutboundReplies(), 'outboundRepliesDrain', 'drain')
+    const taskDispatchLayer = createTaskDispatchLayer({
+      eventBus,
+      engine: engineLayer.engine,
+      access: sessionLayer.access,
+      reads: sessionLayer.reads,
+    })
+    this.parts.taskDispatchLayer = taskDispatchLayer
+    this.adopt('taskDispatch', taskDispatchLayer)
     /*
      * A3(方案 §2.5,(b) 类闩):内置触发器注册返回 disposer。
      *
@@ -438,7 +698,7 @@ export class OnethingBackend implements BackendHandle {
      * 跑的是第一份的尸体。登记在这里(而不是并进下面那处显式反序块):触发器是
      * 被动的,谁先谁后都不影响关机语义。
      */
-    this.own(registerBuiltinTriggers(), 'builtinTriggers')
+    this.own(registerBuiltinTriggers({ sessionToc }), 'builtinTriggers')
 
     if (options.promptVersion) {
       // promptVersion stamps eval traces with the live minimal-scene output so
@@ -499,7 +759,12 @@ export class OnethingBackend implements BackendHandle {
     // PROVIDER_CONFLICT、目标断路器的五条订阅挂在这一份的总线上 —— 闩放回去而
     // 不摘干净,第二次装配不是"重跑"而是"抛错"或"挂在死总线上"。
     this.own(bootstrapVariableSystem(), 'variableSystem')
-    this.own(bootstrapGoalStreamBreakers(), 'goalStreamBreakers')
+    const goalBreakers = bootstrapGoalStreamBreakers()
+    this.own(goalBreakers, 'goalStreamBreakers')
+    this.adopt('goalRetry', goalBreakers)
+    // All accepted tasks drained; goal metadata must reach the still-live
+    // session layer before that layer is disposed and its stores are flushed.
+    this.own(() => { flushGoalRuntimeUsage(); disposeGoalRuntimeState() }, 'goalUsage', 'resources')
     this.own(bootstrapProjectDirs(), 'projectDirs')
 
     // 缝 4 —— 三档目录。R4b 之后它是**唯一**一本工具册子(旧注册表已删)。
@@ -558,7 +823,7 @@ export class OnethingBackend implements BackendHandle {
       //
       // `await`:迁移与房账续播都要落盘,而它们必须排在第一条用户消息之前 ——
       // 一间还没续播完的房收到 posted,会把上一条命没投完的广播与新消息交错投出去。
-      await initializeCollabV3Runtime()
+      await initializeCollabV3Runtime({ storePath: lease.storePath, assertOwned: () => lease.assertHeld() })
     }
 
     /*
@@ -608,7 +873,7 @@ export class OnethingBackend implements BackendHandle {
        * (`import-side-effect-free` 那条纪律)。
        */
       const plugins = await import('./wiring/plugins/manager.js')
-      plugins.getPluginManager()?.shutdown()
+      await plugins.getPluginManager()?.shutdown()
     }, 'pluginManager')
     /*
      * C1:从前这里是一格 `'mcpAcp'`,里面手写 `ACPManager.shutdown()` 然后
@@ -619,25 +884,15 @@ export class OnethingBackend implements BackendHandle {
      */
     this.own(() => mcp.dispose(), 'mcp')
     this.own(() => acp.dispose(), 'acp')
-    this.own(async () => {
-      /**
-       * 外部执行体跟着收摊(E4/G10)。`abortAll` 停的是我们这一侧的流,外部 agent
-       * 的进程要它自己的 dispose 才会走 —— 漏了它,退出之后 CLI 子进程还活着。
-       *
-       * 无条件调:连接器是懒建的,没建过就是一次 no-op。桌面端另有一条
-       * `shutdownACP` 也会调到它,dispose 本身幂等(表清空后再调直接返回)。
-       */
-      const externalAgents = await import('./wiring/external-agents/index.js')
-      await externalAgents.disposeExternalAgentConnectors()
-    }, 'externalAgents')
-    this.own(() => engineLayer.engine.abortAll(), 'engineAbortAll')
+    this.own(externalAgents.dispose, 'externalAgents')
+    this.own(() => engineLayer.engine.abortAll(), 'engineAbortAll', 'drain')
     this.own(async () => {
       if (!options.collab) return
       await shutdownCollabV3Runtime()
-    }, 'collab')
+    }, 'collab', 'quiesce')
     // Reversible registration: a second assemble in the same process (tests,
     // host restarts) must not trip the duplicate-domain guard.
-    this.own(() => disposeRpcDomains(), 'rpcDomains')
+    this.own(() => disposeRpcDomains(), 'rpcDomains', 'quiesce')
 
     /*
      * C1:`mcpAcp: true`(CLI daemon)才在装配里起。行为与 C1 之前逐字相同 ——

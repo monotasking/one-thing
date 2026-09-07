@@ -26,12 +26,14 @@ import {
   type SessionLogEventType,
   type SessionSurfaceOp,
 } from '@onething/core/session'
-import {
-  isSessionEventLogEnabled,
-  readSessionLogEventsSync,
-} from './event-log.js'
-import { registerSessionEventObserver } from './event-writer.js'
-import { prepareSessionEventsOnce } from './prepare.js'
+import type { SessionLogEventAppendObserver } from './event-log.js'
+import { getCurrentBackend } from '../current.js'
+
+export interface SessionSurfacePorts {
+  readEvents(sessionId: string): SessionLogEventRecord[]
+  isEnabled(sessionId: string): boolean
+  observe(observer: SessionLogEventAppendObserver): () => void
+}
 
 interface SessionSurfaceState {
   index: SurfaceIndex
@@ -54,6 +56,28 @@ interface SessionSurfaceState {
   lastRunStartSeq?: number
 }
 
+export interface SessionSurfaceView {
+  /** 这条消息在 surface 上那一格的 eventSeq。 */
+  seqOf(messageId: string): number | undefined
+  /** surface 上现在依次是哪些 eventSeq(呈现序,不是升序)。 */
+  order(): number[]
+  /**
+   * "从这条消息(含)到 surface 末尾"的那一段 —— 编辑重发 / 截断的 replace
+   * range 与 `sourceEventSeqs` 都从这里来。
+   *
+   * **按位置切,不按 seq 大小**:压缩之后那个节点排在最前面而 seq 最大,
+   * 按大小筛会把它一起圈进来。
+   *
+   * F1-a(§16.15):**尾随的"别人家的 `tool/result`"不进这一段**。见
+   * `trimForeignTrailingToolResults`。
+   */
+  rangeFrom(messageId: string): { start: number; end: number; seqs: number[] } | undefined
+  /** 整条 surface 的 replace range(清空 / 全量替换用)。 */
+  wholeRange(): { start: number; end: number; seqs: number[] } | undefined
+}
+
+
+export function createSessionSurface(ports: SessionSurfacePorts) {
 const states = new Map<string, SessionSurfaceState>()
 
 /**
@@ -70,18 +94,10 @@ const states = new Map<string, SessionSurfaceState>()
  *
  * 注册同样发生在运行期(第一次建表时),不在 import 期。
  */
-let appendObserverRegistered = false
-
-function ensureAppendObserver(): void {
-  if (appendObserverRegistered) return
-  appendObserverRegistered = true
-  registerSessionEventObserver((sessionId, record) => {
-    // 不主动建表:没建表 = 这个会话的 surface 还没有人要,建表要读整份文件。
-    const state = states.get(sessionId)
-    if (!state) return
-    applyToState(state, record)
-  })
-}
+const unsubscribe = ports.observe((sessionId, record) => {
+  const state = states.get(sessionId)
+  if (state) applyToState(state, record)
+})
 
 /**
  * 立起这条会话的活 surface(**只立表,不推进**)。
@@ -89,12 +105,11 @@ function ensureAppendObserver(): void {
  * §17.7 #6:唯一的调用者是**那扇门**(`event-writer.ts`)——"写一条事件"这件事
  * 的第二步。首次会从 `events.jsonl` 同步 fold 一遍;之后是一次 Map 查询。
  */
-export function ensureSessionSurfaceState(sessionId: string): void {
+function ensureSessionSurfaceState(sessionId: string): void {
   ensureState(sessionId)
 }
 
 function ensureState(sessionId: string): SessionSurfaceState {
-  ensureAppendObserver()
   const existing = states.get(sessionId)
   if (existing) return existing
   const state: SessionSurfaceState = {
@@ -107,7 +122,7 @@ function ensureState(sessionId: string): SessionSurfaceState {
   // 首次使用:把盘上已有的那份 fold 一遍。老会话(只有 E0 七类)fold 出来是
   // 一张空 surface —— 那是**对的**:它的消息事实还在 messages.jsonl 里,
   // S2 的迁移脚本才会把它们变成 `message/imported`。
-  for (const event of readSessionLogEventsSync(sessionId)) {
+  for (const event of ports.readEvents(sessionId)) {
     applyToState(state, event)
   }
   states.set(sessionId, state)
@@ -164,25 +179,6 @@ function resolveRunStartSeq(state: SessionSurfaceState, runId: string | undefine
   return state.lastRunStartSeq
 }
 
-export interface SessionSurfaceView {
-  /** 这条消息在 surface 上那一格的 eventSeq。 */
-  seqOf(messageId: string): number | undefined
-  /** surface 上现在依次是哪些 eventSeq(呈现序,不是升序)。 */
-  order(): number[]
-  /**
-   * "从这条消息(含)到 surface 末尾"的那一段 —— 编辑重发 / 截断的 replace
-   * range 与 `sourceEventSeqs` 都从这里来。
-   *
-   * **按位置切,不按 seq 大小**:压缩之后那个节点排在最前面而 seq 最大,
-   * 按大小筛会把它一起圈进来。
-   *
-   * F1-a(§16.15):**尾随的"别人家的 `tool/result`"不进这一段**。见
-   * `trimForeignTrailingToolResults`。
-   */
-  rangeFrom(messageId: string): { start: number; end: number; seqs: number[] } | undefined
-  /** 整条 surface 的 replace range(清空 / 全量替换用)。 */
-  wholeRange(): { start: number; end: number; seqs: number[] } | undefined
-}
 
 /**
  * F1-a(§16.15):把"从 `at` 到末尾"这一段**尾部**那些归属在段外的 `tool/result`
@@ -223,7 +219,7 @@ function trimForeignTrailingToolResults(
   return end === seqs.length ? seqs : seqs.slice(0, end)
 }
 
-export function sessionSurface(sessionId: string): SessionSurfaceView {
+function sessionSurface(sessionId: string): SessionSurfaceView {
   const state = ensureState(sessionId)
   const orderOf = (): number[] => state.index.snapshot().order
   return {
@@ -257,15 +253,31 @@ export function sessionSurface(sessionId: string): SessionSurfaceView {
  */
 
 /** 这个会话在记账吗 —— 翻译器的短路闸(legacy 会话一条都不写)。 */
-export function isSessionTranslationEnabled(sessionId: string): boolean {
-  return isSessionEventLogEnabled(sessionId)
+function isSessionTranslationEnabled(sessionId: string): boolean {
+  return ports.isEnabled(sessionId)
 }
 
 /** 清空进程内 surface 缓存。会话删除与测试用。 */
-export function resetSessionSurfaceCache(sessionId?: string): void {
+function resetSessionSurfaceCache(sessionId?: string): void {
   if (sessionId) {
     states.delete(sessionId)
     return
   }
   states.clear()
 }
+
+  return {
+    ensure: ensureSessionSurfaceState,
+    view: sessionSurface,
+    isEnabled: isSessionTranslationEnabled,
+    reset: resetSessionSurfaceCache,
+    dispose() { unsubscribe(); states.clear() },
+  }
+}
+
+export type SessionSurface = ReturnType<typeof createSessionSurface>
+const currentSurface = (): SessionSurface => getCurrentBackend('sessionLayer').sessionLayer.events.surface
+export const ensureSessionSurfaceState = (sessionId: string): void => currentSurface().ensure(sessionId)
+export const sessionSurface = (sessionId: string): SessionSurfaceView => currentSurface().view(sessionId)
+export const isSessionTranslationEnabled = (sessionId: string): boolean => currentSurface().isEnabled(sessionId)
+export const resetSessionSurfaceCache = (sessionId?: string): void => currentSurface().reset(sessionId)

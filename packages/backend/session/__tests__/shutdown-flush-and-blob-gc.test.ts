@@ -11,10 +11,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installSessionLayerForTest } from '../testing/session-layer.js'
+
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
+let previousStorePath: string | undefined
+let expectedPersistenceFailure = false
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
@@ -34,16 +40,25 @@ const {
 } = await import('../blob-gc.js')
 
 beforeEach(() => {
+  expectedPersistenceFailure = false
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-s3w4-'))
+  previousStorePath = process.env.ONETHING_STORE_PATH
+  process.env.ONETHING_STORE_PATH = state.storeDir
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
+  sessionFixture = installSessionLayerForTest()
   resetSessionEventLogCache()
   resetSessionEventStatsCache()
   delete process.env.ONETHING_SESSION_BLOB_GC
 })
 
 afterEach(async () => {
-  await flushSessionEventLog()
+  await sessionFixture.dispose().catch(error => {
+    if (!expectedPersistenceFailure) throw error
+    expect(error).toMatchObject({ name: 'SessionEventWriteError' })
+  })
+  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+  else process.env.ONETHING_STORE_PATH = previousStorePath
   delete process.env.ONETHING_SESSION_BLOB_GC
   fs.rmSync(state.storeDir, { recursive: true, force: true })
   vi.restoreAllMocks()
@@ -91,12 +106,13 @@ describe('flushSessionEventLedger (§15.12 (a)(b))', () => {
       message: { id: 'm1', role: 'user', content: 'hi', timestamp: 1 },
     })
 
-    await flushSessionEventLedger()
+    await expect(flushSessionEventLedger()).rejects.toThrow('session event log write failed')
 
     const stats = JSON.parse(fs.readFileSync(getSessionShadowStatsPath(), 'utf8')) as {
       appendFailures: number
     }
     expect(stats.appendFailures).toBeGreaterThanOrEqual(1)
+    resetSessionEventLogCache(sessionId)
   })
 
   it('returns timedOut instead of hanging (and never throws) when the queue stalls', async () => {
@@ -105,9 +121,13 @@ describe('flushSessionEventLedger (§15.12 (a)(b))', () => {
     writeSessionEvent(sessionId, 'session/created', { sessionId })
     await flushSessionEventLog(sessionId)
     // 卡住那一刀落在 append 上:排空 = 等这条队列。
-    vi.spyOn(fs.promises, 'appendFile').mockImplementation(
-      () => new Promise<void>(() => undefined),
-    )
+    let release!: () => void
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    const appendFile = fs.promises.appendFile.bind(fs.promises)
+    vi.spyOn(fs.promises, 'appendFile').mockImplementation(async (...args) => {
+      await blocked
+      await appendFile(...args)
+    })
     writeSessionEvent(sessionId, 'user/message', {
       message: { id: 'm1', role: 'user', content: 'hi', timestamp: 1 },
     })
@@ -119,10 +139,9 @@ describe('flushSessionEventLedger (§15.12 (a)(b))', () => {
     // 上限是"按时回来",不是"立刻回来"。
     expect(Date.now() - started).toBeLessThan(SESSION_EVENT_SHUTDOWN_FLUSH_TIMEOUT_MS)
 
-    // 那条 append 永远不会 resolve —— 把这个会话的状态丢掉,否则 afterEach 的
-    // 排空会挂在它上面(队列是每会话一条链)。
-    vi.restoreAllMocks()
-    resetSessionEventLogCache(sessionId)
+    // Release the actual IO; deleting its cache would conceal a still-live writer.
+    release()
+    await flushSessionEventLog(sessionId)
   })
 
   it('is a no-op with no sessions in memory', async () => {
@@ -235,6 +254,7 @@ describe('session blob GC (§15.12 B1)', () => {
   })
 
   it('reports missing references even for sessions it skips', async () => {
+    expectedPersistenceFailure = true
     const sessionId = 's-missing'
     makeJsonlSession(sessionId)
     writeSessionEvent(sessionId, 'session/created', { sessionId })
@@ -247,7 +267,7 @@ describe('session blob GC (§15.12 B1)', () => {
         blob: { hash: 'deadbeefdeadbeef', bytes: 10 },
       },
     })
-    await flushSessionEventLog(sessionId)
+    await expect(flushSessionEventLog(sessionId)).rejects.toMatchObject({ operation: 'blob' })
 
     const report = runSessionBlobGc({ sessionsDir: state.sessionsDir })
     expect(report.skipped['no-blobs']).toBe(1)

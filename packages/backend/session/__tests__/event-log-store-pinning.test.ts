@@ -16,6 +16,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { installSessionLayerForTest } from '../testing/session-layer.js'
+
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 
 const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } =
   await import('../event-log.js')
@@ -40,11 +43,13 @@ beforeEach(() => {
   // 用例要挡的就是"静悄悄写对了地方以外的地方"。
   fs.mkdirSync(path.join(storeB, 'sessions', SESSION), { recursive: true })
   process.env.ONETHING_STORE_PATH = storeA
+  sessionFixture = installSessionLayerForTest()
   resetSessionEventLogCache()
 })
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await sessionFixture.dispose()
   resetSessionEventLogCache()
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
   else process.env.ONETHING_STORE_PATH = previousStorePath

@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * S2a:冷加载收尾合成(§11.1 的 `prepare`)。
  *
@@ -28,11 +29,14 @@ const { prepareSessionEvents, prepareSessionEventsOnce, resetSessionPrepareCache
 
 const SESSION = 'crashed'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-prepare-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionEventStatsCache()
   resetSessionSurfaceCache()
   resetSessionProjectionCache()
@@ -43,6 +47,7 @@ beforeEach(() => {
 afterEach(async () => {
   await flushSessionEventLog()
   delete process.env.ONETHING_SESSION_PREPARE
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

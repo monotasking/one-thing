@@ -13,38 +13,36 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { EventBus } from '@onething/core'
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 
 const { resetSessionEventLogCache } = await import('../event-log.js')
 const { writeSessionEvent } = await import('../event-writer.js')
 const { installSessionLedgerEventBroadcaster, uninstallSessionLedgerEventBroadcaster } =
   await import('../event-broadcast.js')
-const { createEventSystem, getEventBus } = await import('../../events/index.js')
-const { createBackendHandle, setCurrentBackend } = await import('../../current.js')
+const { getEventBus } = await import('../../events/index.js')
+const { setCurrentBackend, getCurrentBackend, createBackendHandle } = await import('../../current.js')
 
 const SESSION = 'ledger-broadcast-1'
 
 let store = ''
 let previousStorePath: string | undefined
 /** A2:事件系统是造出来的,不是"初始化"出来的;槽里只填它那两格。 */
-let disposeEventSystem: (() => void) | null = null
+let disposeEventSystem: (() => Promise<void>) | null = null
 
 beforeEach(() => {
   previousStorePath = process.env.ONETHING_STORE_PATH
   store = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ledger-cast-'))
   process.env.ONETHING_STORE_PATH = store
   resetSessionEventLogCache()
-  const { eventBus, streamChannel } = createEventSystem()
-  setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
-  disposeEventSystem = () => {
-    eventBus.shutdown()
-    streamChannel.shutdown()
-  }
+  const fixture = installSessionLayerForTest()
+  disposeEventSystem = fixture.dispose
   installSessionLedgerEventBroadcaster()
 })
 
-afterEach(() => {
-  uninstallSessionLedgerEventBroadcaster()
-  disposeEventSystem?.()
+afterEach(async () => {
+  await uninstallSessionLedgerEventBroadcaster()
+  await disposeEventSystem?.()
   disposeEventSystem = null
   setCurrentBackend(null)
   if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
@@ -109,7 +107,7 @@ describe('会话账本事件的推送广播', () => {
   })
 
   it('拆掉之后总线上不再有账本行(退出可逆)', async () => {
-    uninstallSessionLedgerEventBroadcaster()
+    await uninstallSessionLedgerEventBroadcaster()
     const seen: string[] = []
     getEventBus().onAnySessionAny(envelope => {
       seen.push((envelope as unknown as { event: { type: string } }).event.type)
@@ -119,5 +117,41 @@ describe('会话账本事件的推送广播', () => {
     await settle()
 
     expect(seen).not.toContain(SESSION_EVENT_TYPES.SESSION_LEDGER_EVENT)
+  })
+
+  it('drains accepted broadcasts against their original bus before allowing a new installation', async () => {
+    const original = getCurrentBackend()
+    const busA = getEventBus()
+    const busB = new EventBus()
+    const seenA: number[] = []; const seenB: number[] = []
+    let started!: () => void; let release!: () => void
+    const firstStarted = new Promise<void>(resolve => { started = resolve })
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    busA.onAnySessionAny(async envelope => {
+      const event = envelope.event as unknown as { record?: { seq: number } }
+      if (!event.record) return
+      seenA.push(event.record.seq)
+      if (event.record.seq === 1) { started(); await blocked }
+    }, 'original-bus')
+    busB.onAnySessionAny(envelope => {
+      const event = envelope.event as unknown as { record?: { seq: number } }
+      if (event.record) seenB.push(event.record.seq)
+    }, 'replacement-bus')
+    writeSessionEvent(SESSION, 'session/created', { sessionId: SESSION })
+    writeSessionEvent(SESSION, 'session/created', { sessionId: SESSION })
+    let drained = false
+    const closing = uninstallSessionLedgerEventBroadcaster().then(() => { drained = true })
+    // Deliberately change the process slot before the queued emission starts.
+    setCurrentBackend(createBackendHandle({ eventBus: busB as never }))
+    try {
+      await firstStarted
+      expect(drained).toBe(false)
+      expect(seenA).toEqual([1]); expect(seenB).toEqual([])
+      release(); await closing
+      expect(seenA).toEqual([1, 2]); expect(seenB).toEqual([])
+    } finally {
+      release(); await closing
+      setCurrentBackend(original); busB.shutdown()
+    }
   })
 })

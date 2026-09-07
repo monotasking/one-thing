@@ -16,10 +16,16 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installSessionLayerForTest } from '../testing/session-layer.js'
+
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
+let previousStorePath: string | undefined
+let expectedPersistenceFailure = false
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
@@ -27,7 +33,8 @@ vi.mock('@onething/runtime/storage', () => ({
 // refold 经 `shadow.ts` 拽进读面,而读面会把整只 app store 拉起来(设置仓库、
 // 会话仓库…)。这一套用例问的是"文件字节 vs 内存活投影",与抄本无关 ——
 // 与 `shadow.test.ts` 同款,把读面替换成一只空壳。
-vi.mock('../reads.js', () => ({
+vi.mock('../reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../reads.js')>(),
   sessionReads: {
     listMessagesFromStore: () => [],
     getMessage: () => undefined,
@@ -48,9 +55,13 @@ const { getSessionShadowLogPath } = await import('../shadow.js')
 const { resetSessionProjectionCache, getLiveSessionProjection } = await import('../projection-cache.js')
 
 beforeEach(() => {
+  expectedPersistenceFailure = false
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-s3w2-'))
+  previousStorePath = process.env.ONETHING_STORE_PATH
+  process.env.ONETHING_STORE_PATH = state.storeDir
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
+  sessionFixture = installSessionLayerForTest()
   resetSessionEventLogCache()
   resetSessionEventStatsCache()
   resetSessionProjectionCache()
@@ -58,7 +69,12 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await flushSessionEventLog()
+  await sessionFixture.dispose().catch(error => {
+    if (!expectedPersistenceFailure) throw error
+    expect(error).toMatchObject({ name: 'SessionEventWriteError' })
+  })
+  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+  else process.env.ONETHING_STORE_PATH = previousStorePath
   delete process.env.ONETHING_SESSION_REFOLD
   delete process.env.ONETHING_SESSION_REFOLD_EVERY
   fs.rmSync(state.storeDir, { recursive: true, force: true })
@@ -93,7 +109,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
     expect(writeSessionEvent('w1', 'user/message', {
       message: { id: 'm2', role: 'user', content: 'x' },
     })).toBeDefined()
-    await flushSessionEventLog('w1')
+    await expect(flushSessionEventLog('w1')).rejects.toThrow(SessionEventWriteError)
     flushSessionEventStats()
     expect(readSessionShadowStats().appendFailures).toBeGreaterThan(0)
 
@@ -103,6 +119,7 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
     })).toThrow(SessionEventWriteError)
 
     appendFile.mockRestore()
+    resetSessionEventLogCache('w1')
   })
 
   it('a G12 refusal is a throw, not a silent undefined', async () => {
@@ -136,16 +153,18 @@ describe('write failure escalation (§14.6 裁定 7;批 6b 起无条件)', () =>
     const appendFile = vi.spyOn(fs.promises, 'appendFile')
       .mockRejectedValue(Object.assign(new Error('EACCES'), { code: 'EACCES' }))
     sessionCommandEvents.appendMessage('w4', message('m2'))
-    await flushSessionEventLog('w4')
+    await expect(flushSessionEventLog('w4')).rejects.toThrow(SessionEventWriteError)
 
     // 同一条错误穿过 `safely` 上抛 —— 命令面于是报得出来。
     expect(() => sessionCommandEvents.appendMessage('w4', message('m3')))
       .toThrow(SessionEventWriteError)
 
     appendFile.mockRestore()
+    resetSessionEventLogCache('w4')
   })
 
   it('a blob write failure raises instead of degrading to undefined', () => {
+    expectedPersistenceFailure = true
     makeJsonlSession('w3')
     const writeFile = vi.spyOn(fs, 'writeFileSync')
       .mockImplementation(() => { throw new Error('ENOSPC') })

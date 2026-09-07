@@ -64,6 +64,8 @@ vi.mock('../reads.js', () => ({
 }))
 
 const { createSessionCommands } = await import('../commands.js')
+const { sessionReads } = await import('../reads.js')
+const { eventsHasMessage } = await import('../events-reads.js')
 
 interface SaveCall {
   sessionId: string
@@ -101,6 +103,8 @@ function harness(
 
   const commands = createSessionCommands(
     {
+      reads: sessionReads,
+      hasMessage: eventsHasMessage,
       getSession: id => (id === 's1' ? session : undefined),
       saveSession: (sessionId, _session, options) => {
         saves.push({ sessionId, lazy: Boolean(options?.lazy) })

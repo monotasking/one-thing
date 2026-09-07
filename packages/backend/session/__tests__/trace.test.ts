@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * 轨迹读实现(S3,§12)。
  *
@@ -21,11 +22,17 @@ vi.mock('@onething/runtime/storage', () => ({
 
 const { readSessionTrace, readSessionTraceResponseText, isSafeSessionId } = await import('../trace.js')
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+// The real subscriptions and projection maps are released by their owner.
+
+
 beforeEach(() => {
   state.sessionsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-trace-'))
+  testSessionLayer = installSessionLayerForTest()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await testSessionLayer.dispose()
   fs.rmSync(state.sessionsDir, { recursive: true, force: true })
 })
 

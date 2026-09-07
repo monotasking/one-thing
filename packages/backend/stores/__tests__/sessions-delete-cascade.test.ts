@@ -18,6 +18,7 @@ let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../sessions.js') | null = null
 let sessionsDir = ''
+let storeLayer: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 async function loadIsolatedStores(): Promise<typeof import('../sessions.js')> {
   vi.resetModules()
@@ -26,14 +27,9 @@ async function loadIsolatedStores(): Promise<typeof import('../sessions.js')> {
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
   sessionsDir = paths.getOnethingSessionsDir()
+  const { installStoreSessionLayerForTest } = await import('../../session/testing/store-layer.js')
+  storeLayer = await installStoreSessionLayerForTest()
   return sessions
-}
-
-/** 会话目录的删除排在该会话在途异步写之后,所以这里等它落地而不是立刻断言。 */
-async function waitGone(target: string): Promise<void> {
-  for (let i = 0; i < 100 && fs.existsSync(target); i++) {
-    await new Promise(resolve => setTimeout(resolve, 10))
-  }
 }
 
 beforeEach(() => {
@@ -44,7 +40,8 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await loadedSessions?.flushAllPendingSaves()
+  await storeLayer?.dispose()
+  storeLayer = undefined
   process.env.HOME = previousHome
   fs.rmSync(tempHome, { recursive: true, force: true })
 })
@@ -61,12 +58,11 @@ describe('deleteSession 的盘上级联', () => {
     expect(fs.existsSync(path.join(sessionsDir, 's-doomed'))).toBe(true)
     expect(fs.existsSync(turnDir)).toBe(true)
 
-    const result = sessions.deleteSession('s-doomed')
+    const result = await storeLayer!.deleteSession('s-doomed')
     expect(result.deletedIds).toContain('s-doomed')
 
     // 轨迹是同步删的 —— 会话删完那一刻它已经不在了。
     expect(fs.existsSync(getSessionTraceDir('s-doomed'))).toBe(false)
-    await waitGone(path.join(sessionsDir, 's-doomed'))
     expect(fs.existsSync(path.join(sessionsDir, 's-doomed'))).toBe(false)
   })
 
@@ -81,7 +77,7 @@ describe('deleteSession 的盘上级联', () => {
       fs.writeFileSync(path.join(turnDir, 'round-1.json'), '{"v":1}', 'utf-8')
     }
 
-    sessions.deleteSession('s-doomed')
+    await storeLayer!.deleteSession('s-doomed')
 
     expect(fs.existsSync(getSessionTraceDir('s-doomed'))).toBe(false)
     expect(fs.existsSync(getTurnTraceDir('s-keeper', 'turn-1'))).toBe(true)
@@ -91,7 +87,7 @@ describe('deleteSession 的盘上级联', () => {
     const sessions = await loadIsolatedStores()
     sessions.createSession('s-plain', '没有轨迹')
 
-    expect(() => sessions.deleteSession('s-plain')).not.toThrow()
+    await expect(storeLayer!.deleteSession('s-plain')).resolves.toMatchObject({ deletedIds: ['s-plain'] })
     expect(fs.existsSync(getSessionTraceDir('s-plain'))).toBe(false)
   })
 })

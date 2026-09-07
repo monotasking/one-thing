@@ -1,3 +1,4 @@
+import { installSessionLayerForTest } from '../testing/session-layer.js'
 /**
  * 记录面(`session/shadow.ts`)—— **恒等门退役之后剩下的那半边**(F4-c c4,§16.24)。
  *
@@ -47,13 +48,16 @@ const {
 
 const SESSION = 'shadow-1'
 
+let testSessionLayer: ReturnType<typeof installSessionLayerForTest>
+
+
 beforeEach(() => {
   delete process.env.ONETHING_SESSION_SHADOW
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-shadow-'))
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   state.session = { id: SESSION }
-  resetSessionEventLogCache()
+  testSessionLayer = installSessionLayerForTest()
   resetSessionRuns()
   resetSessionEventStatsCache()
   resetSessionShadowCache()
@@ -62,6 +66,7 @@ beforeEach(() => {
 afterEach(async () => {
   delete process.env.ONETHING_SESSION_SHADOW
   await flushSessionEventLog()
+  await testSessionLayer.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

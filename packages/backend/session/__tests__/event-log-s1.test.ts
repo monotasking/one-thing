@@ -12,10 +12,16 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '../../wiring/logging/index.js'
+import { installSessionLayerForTest } from '../testing/session-layer.js'
+
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
+let previousStorePath: string | undefined
+let expectedPersistenceFailure = false
 
 const state = vi.hoisted(() => ({ storeDir: '', sessionsDir: '' }))
 
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
   getOnethingSessionsDir: () => state.sessionsDir,
   getOnethingLogDir: () => path.join(state.storeDir, 'log'),
 }))
@@ -41,15 +47,24 @@ const { sessionProjectionOptions } = await import('../projection-blobs.js')
 const { projectChatMessages } = await import('@onething/core/session')
 
 beforeEach(() => {
+  expectedPersistenceFailure = false
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-s1-'))
+  previousStorePath = process.env.ONETHING_STORE_PATH
+  process.env.ONETHING_STORE_PATH = state.storeDir
   state.sessionsDir = path.join(state.storeDir, 'sessions')
   fs.mkdirSync(state.sessionsDir, { recursive: true })
+  sessionFixture = installSessionLayerForTest()
   resetSessionEventLogCache()
   resetSessionEventStatsCache()
 })
 
 afterEach(async () => {
-  await flushSessionEventLog()
+  await sessionFixture.dispose().catch(error => {
+    if (!expectedPersistenceFailure) throw error
+    expect(error).toMatchObject({ name: 'SessionEventWriteError' })
+  })
+  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+  else process.env.ONETHING_STORE_PATH = previousStorePath
   fs.rmSync(state.storeDir, { recursive: true, force: true })
   vi.restoreAllMocks()
 })
@@ -84,15 +99,17 @@ describe('event-log discipline flip (§10.3)', () => {
 
     writeSessionEvent('s1', 'request/end', { requestIndex: 1 })
     writeSessionEvent('s1', 'request/end', { requestIndex: 2 })
-    await flushSessionEventLog('s1')
+    await expect(flushSessionEventLog('s1')).rejects.toThrow('session event log write failed')
     flushSessionEventStats()
 
-    expect(readSessionShadowStats().appendFailures).toBe(2)
+    // The first failed append stops the queue; later accepted events are never attempted.
+    expect(readSessionShadowStats().appendFailures).toBe(1)
     // 每会话只 warn 一次:一个坏掉的会话会在一个回合里失败几百次。
-    expect(logs.records.filter(record => record.fields?.what === 'event log write failed'))
+    expect(logs.records.filter(record => record.fields?.what === 'event log append failed'))
       .toHaveLength(1)
     logs.stop()
-    expect(JSON.parse(fs.readFileSync(getSessionShadowStatsPath(), 'utf8')).appendFailures).toBe(2)
+    expect(JSON.parse(fs.readFileSync(getSessionShadowStatsPath(), 'utf8')).appendFailures).toBe(1)
+    resetSessionEventLogCache('s1')
   })
 
   it('has everything on disk after a checkpoint flush', async () => {
@@ -179,6 +196,7 @@ describe('blob store (§10.6 第 6 条)', () => {
   })
 
   it('raises and counts the failure when the write fails (批 6b 起不再降级)', () => {
+    expectedPersistenceFailure = true
     makeJsonlSession('b3')
     vi.spyOn(fs, 'writeFileSync').mockImplementation(() => {
       throw new Error('EACCES')

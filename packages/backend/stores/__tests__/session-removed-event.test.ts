@@ -24,6 +24,7 @@ vi.mock('electron', () => ({ app: { isPackaged: false } }))
 let previousHome: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../sessions.js') | null = null
+let storeLayer: Awaited<ReturnType<typeof import('../../session/testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 interface Seen {
   sessionId: string
@@ -36,16 +37,11 @@ async function loadIsolatedStores() {
   vi.resetModules()
   const paths = await import('@onething/runtime/storage')
   const sessions = await import('../sessions.js')
-  const events = await import('../../events/index.js')
-  // A2:`vi.resetModules()` 之后连"进程当前实例槽"也是新的一份,所以这里连
-  // `current.js` 一起重新 import —— 装进旧那份模块实例的槽,`sessions.ts` 读的
-  // 是新那份,`isEventSystemInitialized()` 会答"没有"。
-  const current = await import('../../current.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
-  const { eventBus, streamChannel } = events.createEventSystem()
-  current.setCurrentBackend(current.createBackendHandle({ eventBus, streamChannel }))
-  return { sessions, eventBus }
+  const { installStoreSessionLayerForTest } = await import('../../session/testing/store-layer.js')
+  storeLayer = await installStoreSessionLayerForTest()
+  return { sessions, eventBus: storeLayer.eventBus }
 }
 
 beforeEach(() => {
@@ -56,15 +52,14 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
-  await loadedSessions?.flushAllPendingSaves()
-  const current = await import('../../current.js')
-  current.setCurrentBackend(null)
+  await storeLayer?.dispose()
+  storeLayer = undefined
   process.env.HOME = previousHome
   fs.rmSync(tempHome, { recursive: true, force: true })
 })
 
 describe('deleteSession 发 session:removed', () => {
-  it('一条独苗:一条事件,发在自己的 sessionId 上,而且此刻会话还在', async () => {
+  it('单会话删除完成后发送自己的事件，数据已不可读取', async () => {
     const { sessions, eventBus } = await loadIsolatedStores()
     sessions.createSession('s-alone', '要被删的')
 
@@ -79,15 +74,14 @@ describe('deleteSession 发 session:removed', () => {
       })
     })
 
-    sessions.deleteSession('s-alone')
+    await storeLayer!.deleteSession('s-alone')
     off()
 
     expect(seen).toHaveLength(1)
     expect(seen[0].sessionId).toBe('s-alone')
     expect(seen[0].event.sessionId).toBe('s-alone')
     expect(seen[0].event.cascadedSessionIds).toEqual(['s-alone'])
-    // 这一条就是"必须发在删之前"的证据。
-    expect(seen[0].stillResolvable).toBe(true)
+    expect(seen[0].stillResolvable).toBe(false)
   })
 
   it('级联删子会话:每个 id 各一条,每条都带完整的那批 id', async () => {
@@ -109,14 +103,14 @@ describe('deleteSession 发 session:removed', () => {
       })
     })
 
-    const result = sessions.deleteSession('s-parent')
+    const result = await storeLayer!.deleteSession('s-parent')
     off()
 
     expect(new Set(result.deletedIds)).toEqual(new Set(['s-parent', 's-child']))
     expect(new Set(seen.map(item => item.sessionId))).toEqual(new Set(['s-parent', 's-child']))
     for (const item of seen) {
       expect(new Set(item.event.cascadedSessionIds)).toEqual(new Set(['s-parent', 's-child']))
-      expect(item.stillResolvable).toBe(true)
+      expect(item.stillResolvable).toBe(false)
     }
   })
 
@@ -141,12 +135,12 @@ describe('deleteSession 发 session:removed', () => {
       }
     })
 
-    const real = sessions.deleteSession('s-real')
+    const real = await storeLayer!.deleteSession('s-real')
     expect(new Set(announced)).toEqual(new Set(real.deletedIds))
 
     announced.length = 0
-    const phantom = sessions.deleteSession('never-existed')
-    expect(new Set(announced)).toEqual(new Set(phantom.deletedIds))
+    expect(() => storeLayer!.deleteSession('never-existed')).toThrow()
+    expect(announced).toEqual([])
     off()
   })
 })

@@ -47,8 +47,14 @@
 import type { ChatMessage, ChatSession, MessageAttachment } from '@shared/ipc.js'
 import type { BlobRef } from '@onething/core/session'
 import { putSessionBlob } from './blob-store.js'
-import { isSessionTranslationEnabled, sessionSurface } from './event-surface.js'
-import { writeSessionEvent } from './event-writer.js'
+import type { SessionSurface } from './event-surface.js'
+import type { SessionEventWriter } from './event-writer.js'
+import { getCurrentBackend } from '../current.js'
+
+export interface SessionCommandEventsPorts {
+  surface: Pick<SessionSurface, 'view' | 'isEnabled'>
+  write: SessionEventWriter['write']
+}
 import { SessionEventWriteError } from './event-log.js'
 import { getLogger } from '../wiring/logging/index.js'
 
@@ -112,7 +118,8 @@ export function messageForEvent(sessionId: string, message: ChatMessage): Record
 
 // ============ 已翻转的命令:事件是第一手产出 ============
 
-export const sessionCommandEvents = {
+export function createSessionCommandEvents(ports: SessionCommandEventsPorts) {
+const sessionCommandEvents = {
   /**
    * `appendMessage`(F2-a)。三条分支:
    *  - user → `user/message`;
@@ -122,11 +129,11 @@ export const sessionCommandEvents = {
    *    role 原样。它是一条**完整消息**,和 `message/imported` 同形。
    */
   appendMessage(sessionId: string, message: ChatMessage, time?: number): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
+    if (!ports.surface.isEnabled(sessionId)) return
     safely('appendMessage', () => {
       if (message.role === 'assistant' && message.isStreaming) return
       const type = message.role === 'user' ? 'user/message' : 'system/message'
-      writeSessionEvent(
+      ports.write(
         sessionId,
         type,
         { message: messageForEvent(sessionId, message) as never },
@@ -137,10 +144,10 @@ export const sessionCommandEvents = {
 
   /** `deleteMessage`(F2-a):只遮蔽它自己那一格(后面的照旧在 surface 上)。 */
   deleteMessage(sessionId: string, messageId: string, time?: number): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
+    if (!ports.surface.isEnabled(sessionId)) return
     safely('deleteMessage', () => {
-      const seq = sessionSurface(sessionId).seqOf(messageId)
-      writeSessionEvent(
+      const seq = ports.surface.view(sessionId).seqOf(messageId)
+      ports.write(
         sessionId,
         'message/deleted',
         { messageId },
@@ -168,12 +175,12 @@ export const sessionCommandEvents = {
     patch: Partial<ChatMessage>,
     options: { fullBody?: boolean; time?: number } = {},
   ): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
+    if (!ports.surface.isEnabled(sessionId)) return
     safely('patchMessage', () => {
       const at = options.time !== undefined ? { time: options.time } : {}
       const turnContext = (patch as { turnContext?: { set?: Record<string, string>; removed?: string[] } }).turnContext
       if (turnContext) {
-        writeSessionEvent(
+        ports.write(
           sessionId,
           'context/turn-update',
           {
@@ -198,7 +205,7 @@ export const sessionCommandEvents = {
           : value
       }
       if (Object.keys(kept).length === 0) return
-      writeSessionEvent(
+      ports.write(
         sessionId,
         'message/patched',
         {
@@ -271,9 +278,9 @@ export const sessionCommandEvents = {
     },
     context: { before?: Readonly<ChatMessage>; now: number },
   ): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
+    if (!ports.surface.isEnabled(sessionId)) return
     safely('truncateFrom', () => {
-      const range = sessionSurface(sessionId).rangeFrom(payload.messageId)
+      const range = ports.surface.view(sessionId).rangeFrom(payload.messageId)
       const surfaceOp = range
         ? ({ op: 'replace', start: range.start, end: range.end } as const)
         : undefined
@@ -285,13 +292,13 @@ export const sessionCommandEvents = {
       }
 
       if (payload.inclusive) {
-        writeSessionEvent(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
+        ports.write(sessionId, 'message/deleted', { messageId: payload.messageId }, options)
         return
       }
       // 底稿不在 = 这次命令什么都改不成(reducer 的 `index === -1`)。命令面已经
       // 用同一个判据挡在前面,这里是第二道 —— 只写事实。
       if (!context.before) return
-      writeSessionEvent(
+      ports.write(
         sessionId,
         'user/message-edited',
         {
@@ -322,11 +329,11 @@ export const sessionCommandEvents = {
     time?: number,
   ): void {
     if (reason === 'normalize') return
-    if (!isSessionTranslationEnabled(sessionId)) return
+    if (!ports.surface.isEnabled(sessionId)) return
     safely('replaceAll', () => {
       const at = time !== undefined ? { time } : {}
-      const whole = sessionSurface(sessionId).wholeRange()
-      writeSessionEvent(
+      const whole = ports.surface.view(sessionId).wholeRange()
+      ports.write(
         sessionId,
         'session/cleared',
         { reason },
@@ -342,7 +349,7 @@ export const sessionCommandEvents = {
       )
       if (reason !== 'replaced') return
       for (const message of messages) {
-        writeSessionEvent(
+        ports.write(
           sessionId,
           'message/imported',
           { message: messageForEvent(sessionId, message) as never },
@@ -369,16 +376,16 @@ export const sessionCommandEvents = {
     patch: Partial<ChatSession>,
     before: Pick<ChatSession, 'agentId' | 'lastModel' | 'lastProvider' | 'workingDirectory'> | undefined,
   ): void {
-    if (!isSessionTranslationEnabled(sessionId)) return
+    if (!ports.surface.isEnabled(sessionId)) return
     safely('patchSession', () => {
       if (patch.agentId !== undefined && patch.agentId !== before?.agentId) {
-        writeSessionEvent(sessionId, 'session/agent-changed', {
+        ports.write(sessionId, 'session/agent-changed', {
           ...(before?.agentId ? { from: before.agentId } : {}),
           to: patch.agentId,
         })
       }
       if (patch.lastModel !== undefined && patch.lastModel !== before?.lastModel) {
-        writeSessionEvent(sessionId, 'session/model-changed', {
+        ports.write(sessionId, 'session/model-changed', {
           ...(before?.lastModel ? { from: before.lastModel } : {}),
           to: patch.lastModel,
           ...(patch.lastProvider ? { provider: patch.lastProvider } : {}),
@@ -388,13 +395,28 @@ export const sessionCommandEvents = {
         patch.workingDirectory !== undefined
         && patch.workingDirectory !== before?.workingDirectory
       ) {
-        writeSessionEvent(sessionId, 'session/workdir-changed', {
+        ports.write(sessionId, 'session/workdir-changed', {
           ...(before?.workingDirectory ? { from: before.workingDirectory } : {}),
           to: patch.workingDirectory,
         })
       }
     })
   },
+}
+
+  return sessionCommandEvents
+}
+
+export type SessionCommandEvents = ReturnType<typeof createSessionCommandEvents>
+const currentEvents = (): SessionCommandEvents => getCurrentBackend('sessionLayer').sessionLayer.events.commandEvents
+export const sessionCommandEvents: SessionCommandEvents = {
+  appendMessage: (...args) => currentEvents().appendMessage(...args),
+  deleteMessage: (...args) => currentEvents().deleteMessage(...args),
+  patchMessage: (...args) => currentEvents().patchMessage(...args),
+  upsertMessage: (...args) => currentEvents().upsertMessage(...args),
+  truncateFrom: (...args) => currentEvents().truncateFrom(...args),
+  replaceAll: (...args) => currentEvents().replaceAll(...args),
+  patchSession: (...args) => currentEvents().patchSession(...args),
 }
 
 /**
