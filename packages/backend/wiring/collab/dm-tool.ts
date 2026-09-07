@@ -46,6 +46,9 @@ import { resolveUserIdentity } from './user-identity.js'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { collabLinkedRoomSessionId, collabToolAllowedInSession } from './venue.js'
 import { registerCollabWakeFollowup } from './wake-followup.js'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import type { RuntimeRequestContext } from '@onething/core'
 
 /** 拒绝文案。每一条都说清"是哪一种拒绝",因为模型能据此改做别的事。 */
 const DM_REFUSED_NO_SELF = '这一轮没有可用的发言身份,私聊发不出去。'
@@ -105,7 +108,9 @@ export async function sendCollabDm(input: {
   wake?: boolean
   /** wake 的目标群。缺省 = 这一轮在答的那间房。 */
   wakeRoom?: string
-}): Promise<CollabDmSendResult> {
+}, options: { executionContext?: unknown } = {}): Promise<CollabDmSendResult> {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  sessionAccess.resolveOptional(executionContext, input.sessionId, 'write')
   const session = store.getSession(input.sessionId)
   const selfId = session?.agentId
   if (!selfId) return { ok: false, error: DM_REFUSED_NO_SELF }
@@ -162,7 +167,7 @@ export async function sendCollabDm(input: {
     // 用户没有执行会话可拉(agent-dm-user.md §3.2 的同一条事实):TA 收到通知
     // 就会看到,没有"读完之后"这个时刻可以挂唤醒。
     if (input.wake) return { ok: false, error: COLLAB_WAKE_REFUSED_USER_TARGET }
-    return sendDmToUser(input, selfId)
+    return sendDmToUser(input, selfId, executionContext)
   }
 
   const targetId = resolved.target.agentId
@@ -192,8 +197,9 @@ export async function sendCollabDm(input: {
       })
     : null
   if (wake && !wake.ok) return { ok: false, error: wake.error }
+  if (wake?.ok) sessionAccess.resolve(executionContext, wake.roomSessionId, 'write')
 
-  const roomSessionId = ensureAgentDmRoom(selfId, targetId)
+  const roomSessionId = ensureAgentDmRoom(selfId, targetId, { executionContext })
   if (!roomSessionId) return { ok: false, error: DM_REFUSED_NO_ROOM }
 
   // 落库走 send_message 的执行器:显式指定房间,于是"发进哪间房"这件事不靠会话指针。
@@ -203,7 +209,7 @@ export async function sendCollabDm(input: {
     content: input.message,
     room: roomSessionId,
     chainReset: true,
-  })
+  }, { executionContext })
   // 冻结、超预算、空正文 —— 发送执行器的拒绝文案原样透传,措辞本身就是可操作的。
   if (!said.ok || !said.messageId) {
     return { ok: false, error: said.error ?? DM_REFUSED_NO_ROOM }
@@ -229,7 +235,7 @@ export async function sendCollabDm(input: {
       senderSessionId: input.sessionId,
       senderAgentId: selfId,
       sinceMessageId: said.messageId,
-    })
+    }, { executionContext })
   }
 
   return {
@@ -260,15 +266,16 @@ export async function sendCollabDm(input: {
 async function sendDmToUser(
   input: { sessionId: string; message: string },
   selfId: string,
+  executionContext: RuntimeRequestContext,
 ): Promise<CollabDmSendResult> {
-  const roomSessionId = ensureUserDmRoom(selfId)
+  const roomSessionId = ensureUserDmRoom(selfId, { executionContext })
   if (!roomSessionId) return { ok: false, error: DM_REFUSED_NO_ROOM }
 
   const said = await speakIntoCollabRoom({
     sessionId: input.sessionId,
     content: input.message,
     room: roomSessionId,
-  })
+  }, { executionContext })
   if (!said.ok || !said.messageId) {
     return { ok: false, error: said.error ?? DM_REFUSED_NO_ROOM }
   }

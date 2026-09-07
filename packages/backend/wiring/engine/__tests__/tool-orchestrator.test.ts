@@ -8,6 +8,10 @@ import type { StreamContext, StreamProcessor } from '../stream/stream-processor.
 const mockBus = {
   emit: vi.fn(async () => undefined),
 }
+vi.mock('../../../session/reads.js', async () => {
+  const store = await import('../../../store.js')
+  return { sessionReads: { getMessage: (sessionId: string, messageId: string) => store.getSession(sessionId)?.messages.find(message => message.id === messageId) } }
+})
 
 vi.mock('../../../store.js', () => ({
   updateMessageToolCalls: vi.fn(),

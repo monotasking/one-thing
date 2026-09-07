@@ -28,6 +28,10 @@ import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
 import { findAgent } from '../agents/index.js'
 import { ensureCollabRoomFolder } from './room-folder.js'
+import type { RuntimeRequestContext } from '@onething/core'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import { ownedCollabSessionId } from './owned-session-id.js'
 
 /**
  * Get (or lazily create) an agent's execution session and point it at the room
@@ -43,22 +47,27 @@ import { ensureCollabRoomFolder } from './room-folder.js'
 export function ensureCollabAgentSession(
   agentId: string,
   roomSessionId?: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
 ): string | null {
-  const sessionId = collabAgentSessionId(agentId, roomSessionId)
+  const executionContext = fixedExecutionContext(options.executionContext)
+  if (roomSessionId) sessionAccess.resolve(executionContext, roomSessionId, 'write')
+  const sessionId = ownedCollabSessionId(collabAgentSessionId(agentId, roomSessionId), executionContext)
   if (!sessionId) return null
   const agent = findAgent(agentId)
   if (!agent) return null
 
   const existing = store.getSession(sessionId)
+  if (existing) sessionAccess.resolve(executionContext, sessionId, 'write')
   if (!existing) {
     // 幕后建的会话不该抢走用户正在看的标签页 —— 指针纪律收在 store 那一侧
     // (`createSessionWithoutFocus`),这里只是"我不要焦点"这一句声明。
-    store.createSessionWithoutFocus(sessionId, collabAgentSessionName(agent.name))
+    store.createSessionWithoutFocus(sessionId, collabAgentSessionName(agent.name), { initialOwner: executionContext })
     store.updateSessionArchived(sessionId, true, Date.now())
   }
 
   const session = store.getSession(sessionId)
   if (!session) return null
+  sessionAccess.resolve(executionContext, sessionId, 'write')
 
   // collab-team-v2 §1.1:指针在创建时写一次,之后永不改写。
   //

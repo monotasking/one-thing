@@ -1,6 +1,8 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { type IncomingMessage, type ServerResponse } from 'node:http'
+import { createManagedHttpServer, type ManagedHttpServer } from './http-lifecycle.js'
+import { bindSessionSseDelivery, writeSse, type SseDelivery } from './sse-delivery.js'
+import { createHttpRequestIdentity, readHeader, type HttpIdentityOptions } from './http-identity.js'
 import type {
   JsonObject,
   OnethingRuntimeFacade,
@@ -13,7 +15,8 @@ import type { SessionEventEnvelope, StreamChunk } from '@shared/events/index.js'
 import { SessionStreamCoalescer } from '@onething/backend/events/stream-coalescer.js'
 import { dispatchRpc } from '@onething/backend/rpc/registry.js'
 import { RPC_ERROR_CODES, type RpcDispatchContext, type RpcRequest, type RpcResponse } from '@shared/ipc/rpc.js'
-import { createServerRpcDispatchContext } from './runtime.js'
+import { createServerRpcDispatchContext, createServerRpcDispatchPorts } from './runtime.js'
+import type { RpcDispatchPorts } from '../rpc/registry.js'
 import { getLogger } from '../wiring/logging/index.js'
 
 /**
@@ -35,19 +38,11 @@ export type OnethingServerRequestHandler = (
   response: ServerResponse,
 ) => void
 
-export interface OnethingHttpServerOptions {
+export interface OnethingHttpServerOptions extends HttpIdentityOptions {
   runtime: OnethingRuntimeFacade
   corsOrigin?: string
-  defaultUserId?: string
-  defaultWorkspaceId?: string
-  /**
-   * Shared secret required as a Bearer token on every request. Identity headers
-   * (x-onething-user-id / x-onething-workspace-id) select an owner scope, so they
-   * are rejected unless this token is configured and presented — otherwise any
-   * process that can reach the port could read/write another owner's data by
-   * spoofing headers.
-   */
-  authToken?: string
+  /** Backend tracks admitted requests so shutdown can drain them. */
+  runRequest?: (work: () => Promise<void>) => Promise<void>
   /**
    * Root under which each owner's workspace sandbox lives. Required by the
    * sandbox-scoped RPC domains (主线 T 批 3); without it the app-layer guard
@@ -57,25 +52,29 @@ export interface OnethingHttpServerOptions {
 }
 
 interface RouteContext {
+  sse?: SseDelivery
   request: IncomingMessage
   response: ServerResponse
   url: URL
   runtime: OnethingRuntimeFacade
   corsOrigin?: string
   requestContext: RuntimeRequestContext
-  /** Derived from `requestContext` (bearer-gated headers), never the body. */
+  /** Derived from the authenticated operator and allowed tenant scope, never the body. */
   rpcContext: RpcDispatchContext
+  /** 这条 surface 自己带来的函数端口(工单 4 C3);纯数据的身份留在 rpcContext。 */
+  rpcPorts?: RpcDispatchPorts
 }
 
 type RouteHandler = (context: RouteContext) => Promise<void> | void
 
-export function createOnethingHttpServer(options: OnethingHttpServerOptions): Server {
-  return createServer(createOnethingServerRequestHandler(options))
+export function createOnethingHttpServer(options: OnethingHttpServerOptions): ManagedHttpServer {
+  return createManagedHttpServer(createOnethingServerRequestHandler(options))
 }
 
 export function createOnethingServerRequestHandler(
   options: OnethingHttpServerOptions,
 ): OnethingServerRequestHandler {
+  const identifyRequest = createHttpRequestIdentity(options)
   return (request, response) => {
     const url = getRequestUrl(request)
     const startedAt = Date.now()
@@ -102,15 +101,13 @@ export function createOnethingServerRequestHandler(
     response.on('close', logRequest)
 
     const corsOrigin = resolveCorsOrigin(readHeader(request, 'origin'), options.corsOrigin)
-    if (request.method !== 'OPTIONS') {
-      const authError = checkRequestAuthorization(request, url, options)
-      if (authError) {
-        sendJson(response, 401, { success: false, error: authError }, corsOrigin)
-        return
-      }
+    const identity = identifyRequest(request)
+    if (identity.error !== undefined) {
+      sendJson(response, 401, { success: false, error: identity.error }, corsOrigin)
+      return
     }
-    const requestContext = getRuntimeRequestContext(request, options)
-    void handleRequest({
+    const requestContext = identity.context
+    const executeRequest = async () => handleRequest({
       request,
       response,
       url,
@@ -118,7 +115,14 @@ export function createOnethingServerRequestHandler(
       corsOrigin,
       requestContext,
       rpcContext: createServerRpcDispatchContext(options.workspaceRoot, requestContext),
-    }).catch(error => {
+      rpcPorts: createServerRpcDispatchPorts(options.runtime.files),
+    })
+    void (options.runRequest ? options.runRequest(executeRequest) : executeRequest()).catch(error => {
+      if (response.headersSent || response.destroyed) {
+        httpLog.error('request failed after response started', { method: request.method, path: url.pathname }, error)
+        response.destroy()
+        return
+      }
       sendJson(response, 500, {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -275,7 +279,7 @@ async function handleRpc(context: RouteContext): Promise<void> {
     } satisfies RpcResponse, context.corsOrigin)
     return
   }
-  sendJson(context.response, 200, await dispatchRpc(request, context.rpcContext), context.corsOrigin)
+  sendJson(context.response, 200, await dispatchRpc(request, context.rpcContext, context.rpcPorts), context.corsOrigin)
 }
 
 async function handleReadMediaFile(context: RouteContext): Promise<void> {
@@ -321,7 +325,7 @@ function handleOAuthEvents(context: RouteContext): void {
   context.response.write('\n')
 
   const unsubscribe = adapter.subscribe((event) => {
-    writeSse(context.response, event.type, event)
+    writeSse(context, event.type, event)
   }, context.requestContext)
   context.request.on('close', unsubscribe)
 }
@@ -353,7 +357,7 @@ function handleVoiceEvents(context: RouteContext): void {
   context.response.write('\n')
 
   const unsubscribe = adapter.subscribeEvents((event) => {
-    writeSse(context.response, 'voice:event', event)
+    writeSse(context, 'voice:event', event)
   }, context.requestContext)
   context.request.on('close', unsubscribe)
 }
@@ -374,7 +378,7 @@ function handleVoiceRuntimeCommands(context: RouteContext): void {
   context.response.write('\n')
 
   const unsubscribe = adapter.subscribeRuntimeCommands((command) => {
-    writeSse(context.response, 'voice:runtime-command', command)
+    writeSse(context, 'voice:runtime-command', command)
   }, context.requestContext)
   context.request.on('close', unsubscribe)
 }
@@ -431,6 +435,7 @@ async function handleAbortStream(context: RouteContext): Promise<void> {
   const response = await dispatchRpc(
     { domain: 'chat', method: 'abortStream', payload: { sessionId: body?.sessionId } },
     context.rpcContext,
+    context.rpcPorts,
   )
   sendJson(
     context.response,
@@ -469,6 +474,8 @@ function handleEvents(context: RouteContext): void {
   const options = Number.isFinite(afterSeq) ? { afterSeq } : undefined
   const unsubs: RuntimeUnsubscribe[] = []
 
+  context.sse = bindSessionSseDelivery(context, unsubs)
+
   context.response.writeHead(200, {
     ...corsHeaders(context.corsOrigin),
     'content-type': 'text/event-stream',
@@ -479,13 +486,20 @@ function handleEvents(context: RouteContext): void {
   context.response.flushHeaders()
   context.response.write(': connected\n\n')
 
+  unsubs.push(subscribeLiveSessionEvents(context, sessionId, options))
+  subscribeSettingsEvents(context, unsubs)
+}
+
+function subscribeLiveSessionEvents(context: RouteContext, sessionId: string, options?: { afterSeq: number }): RuntimeUnsubscribe {
+  const unsubs: RuntimeUnsubscribe[] = []
+
   // Per-connection coalescing: real providers emit hundreds of delta chunks
   // per second; the shared coalescer batches them on a 16ms ordered buffer,
   // stamps the active stream's messageId, and flushes pending deltas before
   // any session event goes out (same semantics as the desktop IPCBridge).
   const coalescer = new SessionStreamCoalescer({
     sendChunk: (chunkSessionId, chunk) => {
-      writeSse(context.response, 'session:stream', { sessionId: chunkSessionId, chunk })
+      writeSse(context, 'session:stream', { sessionId: chunkSessionId, chunk })
     },
   }, { debugLabel: 'ServerSSE' })
 
@@ -493,7 +507,7 @@ function handleEvents(context: RouteContext): void {
     coalescer.handleEvent(envelope as unknown as SessionEventEnvelope)
     // Stamp the SSE id from the committed sequence so clients can resume
     // with Last-Event-ID after a reconnect.
-    writeSse(context.response, 'session:event', envelope, envelope.sequence)
+    writeSse(context, 'session:event', envelope, envelope.sequence)
   }, options, context.requestContext))
 
   if (context.runtime.streams) {
@@ -502,6 +516,13 @@ function handleEvents(context: RouteContext): void {
     }, options, context.requestContext))
   }
 
+  return () => {
+    for (const unsubscribe of unsubs) unsubscribe()
+    coalescer.dispose()
+  }
+}
+
+function subscribeSettingsEvents(context: RouteContext, unsubs: RuntimeUnsubscribe[]): void {
   // 设置变更(E 批):**骑这条已有的 SSE**,不新开 `/api/settings/events` ——
   // 它不是会话事件,所以不进合批器、不占 `session:event` 的 seq(重连的
   // Last-Event-ID 只对会话事件序号有意义)。载荷是脱敏过的整份设置,与
@@ -509,14 +530,9 @@ function handleEvents(context: RouteContext): void {
   const settingsAdapter = context.runtime.settings
   if (settingsAdapter?.subscribeChanged) {
     unsubs.push(settingsAdapter.subscribeChanged((settings: unknown) => {
-      writeSse(context.response, 'settings:changed', settings)
+      writeSse(context, 'settings:changed', settings)
     }, context.requestContext))
   }
-
-  context.request.on('close', () => {
-    for (const unsubscribe of unsubs) unsubscribe()
-    coalescer.dispose()
-  })
 }
 
 function handleScratchpadEvents(context: RouteContext): void {
@@ -537,7 +553,7 @@ function handleScratchpadEvents(context: RouteContext): void {
   context.response.write(': connected\n\n')
 
   const unsubscribe = adapter.subscribeChanged((payload: unknown) => {
-    writeSse(context.response, 'scratchpad:changed', payload)
+    writeSse(context, 'scratchpad:changed', payload)
   }, context.requestContext)
 
   context.request.on('close', () => {
@@ -563,7 +579,7 @@ function handleTodoPlanEvents(context: RouteContext): void {
   context.response.write(': connected\n\n')
 
   const unsubscribe = adapter.subscribeChanged((payload: unknown) => {
-    writeSse(context.response, 'todo-plan:changed', payload)
+    writeSse(context, 'todo-plan:changed', payload)
   }, context.requestContext)
 
   context.request.on('close', () => {
@@ -589,7 +605,7 @@ function handleMediaEvents(context: RouteContext): void {
   context.response.write(': connected\n\n')
 
   const unsubscribe = adapter.subscribeImageGenerated((payload: unknown) => {
-    writeSse(context.response, 'media:image-generated', payload)
+    writeSse(context, 'media:image-generated', payload)
   }, context.requestContext)
 
   context.request.on('close', () => {
@@ -604,23 +620,39 @@ function handleWorkspaceFileEvents(context: RouteContext): void {
     return
   }
 
-  context.response.writeHead(200, {
-    ...corsHeaders(context.corsOrigin),
-    'content-type': 'text/event-stream',
-    'cache-control': 'no-cache',
-    'x-accel-buffering': 'no',
-    connection: 'keep-alive',
-  })
-  context.response.flushHeaders()
-  context.response.write(': connected\n\n')
-
+  // Subscribe before committing 200: a closed owner must return a normal error.
+  // Preserve synchronous initial notifications from adapters until headers exist.
+  let connected = false
+  let disposed = false
+  const pending: unknown[] = []
   const unsubscribe = adapter.subscribeWorkspaceFileChanged((payload: unknown) => {
-    writeSse(context.response, 'workspace:file-changed', payload)
+    if (disposed) return
+    if (!connected) { pending.push(payload); return }
+    writeSse(context, 'workspace:file-changed', payload)
   }, context.requestContext)
-
-  context.request.on('close', () => {
+  const dispose = () => {
+    if (disposed) return
+    disposed = true
+    pending.length = 0
     unsubscribe()
-  })
+  }
+  context.response.once('close', dispose)
+  try {
+    context.response.writeHead(200, {
+      ...corsHeaders(context.corsOrigin),
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      'x-accel-buffering': 'no',
+      connection: 'keep-alive',
+    })
+    context.response.flushHeaders()
+    context.response.write(': connected\n\n')
+    connected = true
+    for (const payload of pending.splice(0)) writeSse(context, 'workspace:file-changed', payload)
+  } catch (error) {
+    dispose()
+    throw error
+  }
 }
 
 function handleUnsupported(context: RouteContext): void {
@@ -646,63 +678,6 @@ function getRequestUrl(request: IncomingMessage): URL {
   return new URL(request.url || '/', 'http://127.0.0.1')
 }
 
-function getRuntimeRequestContext(
-  request: IncomingMessage,
-  options: OnethingHttpServerOptions,
-): RuntimeRequestContext {
-  // Identity headers select an owner scope; checkRequestAuthorization has already
-  // rejected them unless the configured Bearer token was presented, so honoring
-  // them here is safe only when a token is configured.
-  const identityTrusted = Boolean(options.authToken)
-  return {
-    userId: (identityTrusted ? readHeader(request, 'x-onething-user-id') : undefined)
-      || options.defaultUserId || 'local-user',
-    workspaceId: (identityTrusted ? readHeader(request, 'x-onething-workspace-id') : undefined)
-      || options.defaultWorkspaceId || 'default',
-    authToken: readBearerToken(request),
-    origin: readHeader(request, 'origin'),
-  }
-}
-
-
-function checkRequestAuthorization(
-  request: IncomingMessage,
-  url: URL,
-  options: OnethingHttpServerOptions,
-): string | undefined {
-  if (options.authToken) {
-    // 2026-09-04 起只认 Bearer 头:从前 `GET /api/events` 额外认 `?token=`,是给浏览器 `EventSource`
-    // (带不了 header)留的口;@onething/client 用 fetch 流解析 SSE 后全仓无人再构造它,Vue 壳退役时删。
-    const bearer = readBearerToken(request)
-    if (!bearer || !tokenMatches(bearer, options.authToken)) {
-      return 'Unauthorized: this server requires a Bearer token (ONETHING_SERVER_TOKEN).'
-    }
-    return undefined
-  }
-  if (readHeader(request, 'x-onething-user-id') || readHeader(request, 'x-onething-workspace-id')) {
-    return 'Unauthorized: identity headers are rejected unless the server has an auth token configured (ONETHING_SERVER_TOKEN).'
-  }
-  return undefined
-}
-
-function tokenMatches(provided: string, expected: string): boolean {
-  // Hash both sides so the comparison is constant-time regardless of length.
-  const providedDigest = createHash('sha256').update(provided).digest()
-  const expectedDigest = createHash('sha256').update(expected).digest()
-  return timingSafeEqual(providedDigest, expectedDigest)
-}
-
-function readHeader(request: IncomingMessage, name: string): string | undefined {
-  const value = request.headers[name]
-  return Array.isArray(value) ? value[0] : value
-}
-
-function readBearerToken(request: IncomingMessage): string | undefined {
-  const authorization = readHeader(request, 'authorization')
-  if (!authorization?.startsWith('Bearer ')) return undefined
-  return authorization.slice('Bearer '.length)
-}
-
 async function readJson<T = unknown>(request: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = []
   for await (const chunk of request) {
@@ -725,18 +700,12 @@ function sendJson(response: ServerResponse, status: number, body: unknown, corsO
   response.end(JSON.stringify(body))
 }
 
-function writeSse(response: ServerResponse, eventName: string, payload: unknown, id?: number): void {
-  if (typeof id === 'number' && Number.isFinite(id)) response.write(`id: ${id}\n`)
-  response.write(`event: ${eventName}\n`)
-  response.write(`data: ${JSON.stringify(payload)}\n\n`)
-}
-
 /**
  * 每请求解析一次「回给浏览器的 CORS 源」。
  *
  * 这张面是「一个 core,任何 UI」的门面:web 前端(5174)、React 壳的 vite
  * dev(5175)、打包壳的 `file://`(Origin 为 `null`)都会跨源打过来,而真正的
- * 安全闸是 Bearer token(`checkRequestAuthorization`,loopback 启动也铸 token)——
+ * 安全闸是 Bearer token(`http-identity.ts`,loopback 启动也铸 token)——
  * CORS 在这里只挡「浏览器网页顺手骑车」,不该再按端口一个个点名(2026-08-29,
  * 新壳 5175 被写死的 5174 拒掉,预检 204 之后真请求全军覆没的现场)。
  *

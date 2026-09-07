@@ -1,5 +1,5 @@
 import { registerCapability } from '@onething/runtime/permissions'
-import { todoPlanStore } from '../todo-plan/store.js'
+import { getTodoPlanStore } from '../todo-plan/store.js'
 
 /**
  * The capabilities this app ships with — see docs/design/capability-registry.md.
@@ -19,7 +19,7 @@ export function registerBuiltinCapabilities(): void {
   registerCapability({
     id: 'todo.sessions',
     label: 'AI todo',
-    directory: () => todoPlanStore.sessionsDirectory(),
+    directory: () => getTodoPlanStore().sessionsDirectory(),
     actions: ['read', 'write'],
     authority: 'builtin',
   })
@@ -27,7 +27,7 @@ export function registerBuiltinCapabilities(): void {
   registerCapability({
     id: 'todo.user-notes',
     label: 'Todo notes',
-    directory: () => todoPlanStore.userNotesDirectory(),
+    directory: () => getTodoPlanStore().userNotesDirectory(),
     actions: ['read', 'write'],
     authority: 'builtin',
   })

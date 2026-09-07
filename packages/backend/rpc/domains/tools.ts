@@ -89,6 +89,7 @@ import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { isPathInside, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { isHistoricalLocalOperator, requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingToolsIpcLogger } from '@onething/runtime/tools/ipc-operations'
 import type { OnethingToolListIpcLogger } from '@onething/runtime/tools/tool-list-presentation'
@@ -119,6 +120,8 @@ const HTTP_UPDATE_TOOL_CALL_DISABLED =
   'Tool call updates are not available in the web server runtime yet.'
 const HTTP_BACKGROUND_JOBS_DISABLED =
   'Background jobs are not available in the web server runtime.'
+const BACKGROUND_JOB_ALREADY_FINISHED =
+  'That background job has already finished.'
 
 interface SessionWorkspaceLike {
   workingDirectory?: string
@@ -179,6 +182,7 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
 
   async executeTool(request, context = DESKTOP_RPC_CONTEXT) {
     const { toolId, arguments: args, messageId, sessionId } = request
+    sessionAccess.resolve(context, sessionId, 'write')
     if (!isHostLocallyTrusted()) {
       // 三道闸,逐字照搬旧 `/api/tools/execute` 背后的那份 adapter。
       // (B2 之前的判据是 `context.transport === 'http'`;沙箱根仍从上下文取 ——
@@ -209,7 +213,7 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
         const outcome = await runToolkitToolDirectly(
           id,
           toolArgs,
-          runContext as Parameters<typeof runToolkitToolDirectly>[2],
+          { ...runContext, toolCallId: request.toolCallId, executionContext: requestSessionOwner(context) } as Parameters<typeof runToolkitToolDirectly>[2],
         )
         return outcome ?? failure(`Tool not found: ${id}`)
       },
@@ -220,29 +224,45 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
 
   async cancelTool(request) {
     // http 与 ipc 同一条:旧 server adapter 的 `cancelTool` 也只是回 `{success:true}`。
+    //
+    // 2026-09-06/07 那轮把这里改成了**真取消**(授权 + 掐掉在跑的那次调用 + 等收尾)。
+    // 那是一次用户可感知的行为变化 —— 一个从前什么都不做的按钮忽然会中断执行 ——
+    // 按 08-18 判例默认回旧,等用户点头(裁定正本 §3;它是个值得单独做的小单)。
     return cancelOnethingToolForIpc({ toolCallId: request.toolCallId, logger: consoleLog })
   },
 
-  async backgroundJobsList(request) {
+  async backgroundJobsList(request, context = DESKTOP_RPC_CONTEXT) {
     // 旧 adapter 在联网宿主上恒报空表(那里没有后台任务这个概念)。这里换的是
     // **货源**而不是投影:同一个产品层投影,只是 lister 交出去一张空表 —— 响应形状
     // 因此逐字相同,而「投影不许在传输层重抄」那条线也没被绕过去。
     // 后台任务表是**本进程**的表,本机可信的调用方本来就该看得见它(B2)。
-    const listJobs = isHostLocallyTrusted() ? listBackgroundJobs : () => []
+    const listJobs = isHostLocallyTrusted() ? (options: Parameters<typeof listBackgroundJobs>[0]) =>
+      listBackgroundJobs(options).filter(job => job.sessionId
+        ? sessionAccess.filterIds(context, [job.sessionId]).length > 0
+        : isHistoricalLocalOperator(context)) : () => []
     return listOnethingBackgroundJobsForIpc({
       includeInactive: request.includeInactive,
       listJobs,
     })
   },
 
-  async backgroundJobsStop(request) {
+  async backgroundJobsStop(request, context = DESKTOP_RPC_CONTEXT) {
     if (!isHostLocallyTrusted()) return failure(HTTP_BACKGROUND_JOBS_DISABLED)
+    const job = listBackgroundJobs({ includeInactive: true }).find(item => item.id === request.jobId)
+    // 表里没有这个 id = **它已经结束了**(登记簿只留活的与最近结束的)。从前这里
+    // 抛 `SessionAccessError`(「Session not found」),于是「点停一个刚跑完的任务」
+    // 和「越权去停别人的任务」在界面上是同一句话 —— 前者是常事,后者是攻击。
+    // 如实答「没有可停的」,与 `stopBackgroundJob` 找不到 id 时的答案逐字相同。
+    if (!job) return failure(BACKGROUND_JOB_ALREADY_FINISHED)
+    if (job.sessionId) sessionAccess.resolve(context, job.sessionId, 'abort')
+    else if (!isHistoricalLocalOperator(context)) throw new SessionAccessError()
     return stopOnethingBackgroundJobForIpc({ jobId: request.jobId, stopJob: stopBackgroundJob })
   },
 
-  async updateToolCall(request) {
+  async updateToolCall(request, context = DESKTOP_RPC_CONTEXT) {
     if (!isHostLocallyTrusted()) return failure(HTTP_UPDATE_TOOL_CALL_DISABLED)
     const { sessionId, messageId, toolCallId, updates } = request
+    sessionAccess.resolve(context, sessionId, 'write')
     const applyOnethingToolCallUpdateOptions: ApplyOnethingToolCallUpdateOptions<OnethingToolCallStateLike, OnethingToolStepStateLike<OnethingToolCallStateLike>, OnethingToolMessageStateLike<OnethingToolCallStateLike, OnethingToolStepStateLike<OnethingToolCallStateLike>>, ChatSession> & { logger?: OnethingToolCallStateIpcLogger | undefined; } = {
       sessionId,
       messageId,
@@ -267,4 +287,3 @@ export const toolsRpcHandlers: RpcRouteHandlers<ToolsRoutes> = {
     return applyOnethingToolCallUpdateForIpc(applyOnethingToolCallUpdateOptions)
   },
 }
-

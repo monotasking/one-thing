@@ -46,6 +46,8 @@ const { flushSessionEventLog, resetSessionEventLogCache } = await import(
   '../../../../session/event-log.js'
 )
 const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
+const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, resetSessionRuns } = await import('../../../../session/runs.js')
 const { resetSessionEventStatsCache } = await import('../../../../session/event-stats.js')
 const { createSessionEventRecorder, SESSION_CHUNK_BATCH_SIZE } = await import(
@@ -61,6 +63,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   fs.writeFileSync(path.join(state.sessionsDir, SESSION, 'meta.json'), '{}')
   resetSessionEventLogCache()
+  sessionFixture = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -69,6 +72,7 @@ beforeEach(() => {
 afterEach(async () => {
   vi.useRealTimers()
   await flushSessionEventLog()
+  await sessionFixture.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

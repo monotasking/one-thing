@@ -108,3 +108,8 @@ describe('scratchpad RPC domain', () => {
       .resolves.toEqual({ ok: true, data: { success: false, error: 'EACCES' } })
   })
 })
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
+})

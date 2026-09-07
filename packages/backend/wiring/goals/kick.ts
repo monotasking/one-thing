@@ -71,10 +71,10 @@ export async function emitGoalDrive(
 	}
 }
 
-export function kickGoalRunIfIdle(sessionId: string, goal?: SessionGoal): void {
+export function kickGoalRunIfIdle(sessionId: string, goal?: SessionGoal): Promise<void> | undefined {
 	if (isCollabSession(sessionId)) return;
 	const target = goal ?? getGoal(sessionId);
 	if (!target || target.status !== "active") return;
 	if (getStreamEngineSafe()?.getController(sessionId)) return;
-	void emitGoalDrive(sessionId, target);
+	return emitGoalDrive(sessionId, target);
 }

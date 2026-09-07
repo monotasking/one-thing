@@ -10,7 +10,8 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { installStoreSessionLayerForTest } from '../../../session/testing/store-layer.js'
 import { Decision } from '@onething/core/toolkit'
 import type { Authorizer, Invocation } from '@onething/core/toolkit'
 import type { BashOperations } from '@onething/runtime/tools/bash-executor'
@@ -29,8 +30,14 @@ import { AuditProjector, type ToolAuditRecord } from '@onething/runtime/toolkit/
 import { createAppToolRunner } from '../runner.js'
 
 const dirs: string[] = []
+let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>
+
+beforeEach(async () => {
+  sessionFixture = await installStoreSessionLayerForTest()
+})
 
 afterEach(async () => {
+  await sessionFixture.dispose()
   await Promise.all(dirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true })))
 })
 

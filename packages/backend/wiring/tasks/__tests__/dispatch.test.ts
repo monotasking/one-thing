@@ -10,6 +10,8 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 
 interface FakeSession {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   name: string
   workingDirectory?: string
@@ -22,8 +24,12 @@ interface FakeSession {
 }
 
 const sessions = new Map<string, FakeSession>()
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => sessions.get(id) }) }
+})
 const storeCalls = {
-  created: [] as Array<{ id: string; name: string }>,
+  created: [] as Array<{ id: string; name: string; initialOwner?: { userId: string; workspaceId: string } }>,
   task: [] as Array<{ id: string; task: unknown }>,
   workdir: [] as Array<{ id: string; dir: string }>,
   workdirRoots: [] as Array<{ id: string; roots: string[] }>,
@@ -39,10 +45,16 @@ vi.mock('../../../session/commands.js', () => import('../../../session/testing/f
 bindSessionFacadeMock((id: string) => sessions.get(id))
 
 vi.mock('../../../store.js', () => ({
+  patchSessionFields: (id: string, patch: object) => {
+    const session = sessions.get(id)
+    if (!session) return false
+    Object.assign(session, patch)
+    return true
+  },
   getSession: (id: string) => sessions.get(id),
-  createSessionWithoutFocus: (id: string, name: string) => {
-    storeCalls.created.push({ id, name })
-    const session: FakeSession = { id, name, messages: [] }
+  createSessionWithoutFocus: (id: string, name: string, options?: { initialOwner?: { userId: string; workspaceId: string } }) => {
+    storeCalls.created.push({ id, name, initialOwner: options?.initialOwner })
+    const session: FakeSession = { id, name, messages: [], ownerUserId: options?.initialOwner?.userId, ownerWorkspaceId: options?.initialOwner?.workspaceId }
     sessions.set(id, session)
     return session
   },
@@ -131,7 +143,36 @@ vi.mock('../../plugins/sessions.js', () => ({
 }))
 
 async function load() {
-  return import('../dispatch.js')
+  return { dispatchTask: taskLayer.dispatch, runningTaskCount: taskLayer.runningCount }
+}
+
+it('delegates the production facade to the current Backend task layer', async () => {
+  const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
+  const { dispatchTask, runningTaskCount } = await import('../dispatch.js')
+  const dispatch = vi.fn(async () => ({ ok: false as const, reason: 'unsupported' as const, detail: 'closed' }))
+  const runningCount = vi.fn(() => 2)
+  const layer = { dispatch, runningCount, stop() {}, quiesce() {}, async drain() {} }
+  const request = { callerSessionId: 'caller', prompt: 'test' }
+  const options = { executionContext: { userId: 'alice', workspaceId: 'work' } }
+  setCurrentBackend(createBackendHandle({ taskDispatchLayer: layer }))
+  try {
+    await expect(dispatchTask(request, options)).resolves.toMatchObject({ ok: false, detail: 'closed' })
+    expect(dispatch).toHaveBeenCalledWith(request, options)
+    expect(runningTaskCount('caller')).toBe(2)
+    expect(runningCount).toHaveBeenCalledWith('caller')
+  } finally {
+    setCurrentBackend(null)
+  }
+})
+
+let taskLayer: import('../dispatch.js').TaskDispatchLayer
+
+async function newTaskLayer(overrides: Partial<Parameters<typeof import('../dispatch.js').createTaskDispatchLayer>[0]> = {}) {
+  const [{ createTaskDispatchLayer }, { getEventBus }, { getStreamEngineSafe }, { sessionAccess }, { sessionReads }] = await Promise.all([
+    import('../dispatch.js'), import('../../../events/index.js'), import('../../engine/index.js'),
+    import('../../../session/access.js'), import('../../../session/reads.js'),
+  ])
+  return createTaskDispatchLayer({ eventBus: getEventBus(), engine: getStreamEngineSafe()!, access: sessionAccess, reads: sessionReads, ...overrides })
 }
 
 function seedCaller(id: string, overrides: Partial<FakeSession> = {}): void {
@@ -145,6 +186,8 @@ function seedCaller(id: string, overrides: Partial<FakeSession> = {}): void {
     ...(overrides.lastProvider ? { lastProvider: overrides.lastProvider } : {}),
     ...(overrides.lastModel ? { lastModel: overrides.lastModel } : {}),
     ...(overrides.task ? { task: overrides.task } : {}),
+    ...(overrides.ownerUserId ? { ownerUserId: overrides.ownerUserId } : {}),
+    ...(overrides.ownerWorkspaceId ? { ownerWorkspaceId: overrides.ownerWorkspaceId } : {}),
   })
 }
 
@@ -158,8 +201,6 @@ const nextId = () => `task-session-${++seed}`
 
 beforeEach(async () => {
   vi.useFakeTimers()
-  const { resetTaskDispatchLedger } = await load()
-  resetTaskDispatchLedger()
   sessions.clear()
   busHandlers.clear()
   emitted.length = 0
@@ -171,13 +212,79 @@ beforeEach(async () => {
   storeCalls.permission.length = 0
   storeCalls.model.length = 0
   seed = 0
+  taskLayer = await newTaskLayer()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  taskLayer.stop()
+  await taskLayer.drain()
   vi.useRealTimers()
 })
 
 describe('dispatchTask', () => {
+  it('stops waiters and rejects new work without allowing an old layer to report through a replacement', async () => {
+    seedCaller('caller')
+    const result = await taskLayer.dispatch({ callerSessionId: 'caller', prompt: 'Work' }, { newTaskSessionId: nextId })
+    expect(result.ok).toBe(true)
+    expect(vi.getTimerCount()).toBe(2)
+    const oldLayer = taskLayer
+    oldLayer.stop()
+    taskLayer = await newTaskLayer()
+    await oldLayer.drain()
+    expect(vi.getTimerCount()).toBe(0)
+    expect([...busHandlers.values()].every(handlers => handlers.size === 0)).toBe(true)
+    if (result.ok) fireTerminal(result.taskSessionId, 'stream:complete')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(delivered).toEqual([])
+    expect(oldLayer.runningCount('caller')).toBe(0)
+    await expect(oldLayer.dispatch({ callerSessionId: 'caller', prompt: 'late' })).resolves.toMatchObject({ ok: false })
+    expect(storeCalls.created).toHaveLength(1)
+  })
+
+  it('drain waits for an accepted dispatch to finish its asynchronous event delivery', async () => {
+    seedCaller('caller')
+    let release!: () => void
+    const emitting = new Promise<void>(resolve => { release = resolve })
+    const { getEventBus } = await import('../../../events/index.js')
+    taskLayer.stop()
+    await taskLayer.drain()
+    taskLayer = await newTaskLayer({ eventBus: { ...getEventBus(), emit: async () => emitting } as unknown as ReturnType<typeof getEventBus> })
+    const dispatched = taskLayer.dispatch({ callerSessionId: 'caller', prompt: 'Work' }, { newTaskSessionId: nextId })
+    taskLayer.stop()
+    let drained = false
+    const drain = taskLayer.drain().then(() => { drained = true })
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    release()
+    await Promise.all([dispatched, drain])
+    expect(delivered).toEqual([])
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('rejects cross-owner dispatch and ignores ownership hidden in the model request', async () => {
+    const { dispatchTask } = await load()
+    seedCaller('caller', { ownerUserId: 'alice', ownerWorkspaceId: 'space-a' })
+    const request = { callerSessionId: 'caller', prompt: 'Work', executionContext: { userId: 'alice', workspaceId: 'space-a' } }
+    const denied = await dispatchTask(request, { executionContext: { userId: 'bob', workspaceId: 'space-a' } })
+    expect(denied.ok).toBe(false)
+    expect(storeCalls.created).toEqual([])
+    expect(emitted).toEqual([])
+  })
+
+  it('stamps a child with the captured owner and refuses a late report after parent ownership changes', async () => {
+    const { dispatchTask } = await load()
+    seedCaller('caller', { ownerUserId: 'alice', ownerWorkspaceId: 'space-a' })
+    const context = { userId: 'alice', workspaceId: 'space-a' }
+    const result = await dispatchTask({ callerSessionId: 'caller', prompt: 'Work' }, { executionContext: context, newTaskSessionId: nextId })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(sessions.get(result.taskSessionId)).toMatchObject({ ownerUserId: 'alice', ownerWorkspaceId: 'space-a' })
+    expect(storeCalls.created[0]?.initialOwner).toEqual({ userId: 'alice', workspaceId: 'space-a' })
+    context.userId = 'bob'
+    sessions.get('caller')!.ownerUserId = 'bob'
+    fireTerminal(result.taskSessionId, 'stream:complete')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(delivered).toEqual([])
+  })
   it('starts a background session and returns immediately (fire-and-report)', async () => {
     const { dispatchTask } = await load()
     seedCaller('caller', {
@@ -194,7 +301,9 @@ describe('dispatchTask', () => {
 
     expect(outcome).toMatchObject({ ok: true, taskSessionId: 'task-session-1', running: 1 })
     // 不抢焦点。
-    expect(storeCalls.created).toEqual([{ id: 'task-session-1', name: '[派工] 数 test' }])
+    expect(storeCalls.created).toEqual([{
+      id: 'task-session-1', name: '[派工] 数 test', initialOwner: { userId: 'local-user', workspaceId: 'default' },
+    }])
     // 派工戳指回调用方 —— 完成回流靠它。
     expect(storeCalls.task[0]?.task).toMatchObject({ parentSessionId: 'caller' })
     // 驱动走的是既有的 command:send-message,身份戳是 task 一族。

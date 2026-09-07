@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   CORE_PLUGIN_STATUS_MAX_PER_PLUGIN,
   CORE_PLUGIN_STATUS_MAX_SESSIONS,
@@ -425,6 +425,12 @@ describe('R6 status — 装配层接线', () => {
 })
 
 describe('R6 status — 插件 API 面', () => {
+  let pluginApi: typeof import('../api.js')
+  beforeAll(async () => {
+    // Preparing the shared Backend module graph belongs to setup, not the
+    // five-second deadline of the first status behavior assertion.
+    pluginApi = await import('../api.js')
+  })
   async function createApi(pluginId = 'demo') {
     const status = await import('@onething/runtime/plugins/status-bound')
     status.resetPluginStatusHostForTests()
@@ -432,7 +438,7 @@ describe('R6 status — 插件 API 面', () => {
     status.configurePluginStatusHost({
       emitSessionEvent: (sessionId, event) => { emitted.push({ sessionId, event }) },
     })
-    const { createPluginAPI, disposePlugin } = await import('../api.js')
+    const { createPluginAPI, disposePlugin } = pluginApi
     const bus = { emitGlobal: () => {}, onGlobal: () => () => {}, onAnySession: () => () => {} }
     const created = createPluginAPI(pluginId, bus as never, {} as never)
     return { ...created, emitted, status, disposePlugin }

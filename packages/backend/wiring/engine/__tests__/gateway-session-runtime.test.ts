@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  sessions: new Map<string, { id: string; name: string }>(),
+  sessions: new Map<string, { id: string; name: string; ownerUserId?: string; ownerWorkspaceId?: string }>(),
   currentSessionId: 'regular-session',
-  createSession: vi.fn((id: string, name: string) => {
-    const session = { id, name }
+  createSession: vi.fn((id: string, name: string, options: { initialOwner: { userId: string; workspaceId: string } }) => {
+    const session = { id, name, ownerUserId: options.initialOwner.userId, ownerWorkspaceId: options.initialOwner.workspaceId }
     mocks.sessions.set(id, session)
     mocks.currentSessionId = id
     return session
@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
   getOrCreate: vi.fn(),
   destroySession: vi.fn(),
 }))
+
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => mocks.sessions.get(id) }) }
+})
 
 vi.mock('../stream-engine-runtime.js', () => ({
   createMainStreamEngineRuntime: vi.fn(() => ({})),
@@ -37,6 +42,7 @@ vi.mock('../../../events/index.js', () => ({
 }))
 
 vi.mock('../../../session/index.js', () => ({
+  ensureSessionWritable: vi.fn(async () => undefined),
   getSessionManager: vi.fn(() => ({
     getOrCreate: mocks.getOrCreate,
     destroySession: mocks.destroySession,
@@ -81,12 +87,13 @@ describe('main gateway conversation runtime sessions', () => {
     expect(mocks.createSession).toHaveBeenCalledWith(
       'gateway:wechat:user@im.wechat',
       'WeChat - user@im.wechat',
+      { initialOwner: { userId: 'local-user', workspaceId: 'default' } },
     )
     expect(mocks.setCurrentSessionId).toHaveBeenCalledWith('regular-session')
     expect(mocks.getOrCreate).toHaveBeenCalledWith('gateway:wechat:user@im.wechat')
     expect(mocks.currentSessionId).toBe('regular-session')
 
-    layer.dispose()
+    await layer.dispose()
     setCurrentBackend(null)
   })
 
@@ -113,7 +120,25 @@ describe('main gateway conversation runtime sessions', () => {
     expect(mocks.setCurrentSessionId).not.toHaveBeenCalled()
     expect(mocks.getOrCreate).toHaveBeenCalledWith('gateway:wechat:user@im.wechat')
 
-    layer.dispose()
+    await layer.dispose()
     setCurrentBackend(null)
+  })
+
+  it('does not adopt an existing gateway session belonging to another product owner', async () => {
+    const id = 'gateway:wechat:user@im.wechat'
+    mocks.sessions.set(id, { id, name: 'Private', ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
+    const { getConversationRuntime, createStreamEngineLayer } = await import('../index.js')
+    const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
+    const { getEventBus, getStreamChannel } = await import('../../../events/index.js')
+    const layer = createStreamEngineLayer({ eventBus: getEventBus(), streamChannel: getStreamChannel() })
+    setCurrentBackend(createBackendHandle({ engine: layer.engine, runtime: layer.runtime }))
+    try {
+      expect(() => getConversationRuntime().ensureSession(id)).toThrow('Session not found')
+      expect(mocks.getOrCreate).not.toHaveBeenCalled()
+      expect(mocks.createSession).not.toHaveBeenCalled()
+    } finally {
+      await layer.dispose()
+      setCurrentBackend(null)
+    }
   })
 })

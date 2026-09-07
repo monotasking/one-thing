@@ -41,8 +41,9 @@ import * as store from '../../store.js'
 import { getSettings } from '../../stores/settings.js'
 import { createRequiredAppFetch } from '../../provider-binding/bound-fetch.js'
 import { getGoal, goalLimits, updateGoalFromModel } from '../goals/index.js'
-import { getPracticeSummary, getRecentPracticeRecords, logPractice } from '@onething/runtime/practice/service.wiring'
-import { radioToolClose, radioToolOpen, radioToolStatus, requestSong } from '../music/radio.js'
+import { getPracticeServiceSafe, PracticeServiceClosedError } from '@onething/runtime/practice/service.wiring'
+import { getCurrentBackendInstance } from '../../current.js'
+import { assertMusicOperator } from '../music/access.js'
 import { dispatchTask } from '../tasks/dispatch.js'
 import { Interaction } from '@onething/core/interaction'
 import { NO_HUMAN_DECLINE_REASON, noHumanInTheRoom } from '../interaction/no-human.js'
@@ -55,6 +56,8 @@ import { collabLinkedRoomSessionId } from '../collab/venue.js'
 // R4b:落盘口不再在这里重建一份 —— 与旧 `app/collab/actors/notebook-tool.ts` 的
 // `appendNote` 曾经"逐字相同"的那份代码,现在直接用原处那一个(它已导出)。
 import { appendNote } from '../collab/actors/notebook-tool.js'
+import { sessionAccess, SessionAccessError } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
 import type { BraveSearchProviderAdapters } from '@onething/runtime/tools/builtin/web-search/providers/brave'
 
 // ── 网络 ────────────────────────────────────────────────────────────────────
@@ -87,7 +90,7 @@ export function goalAdapters(): GoalToolAdapters {
 }
 
 export function taskPorts(): TaskToolPorts {
-  return { dispatch: request => dispatchTask(request) }
+  return { dispatch: (request, executionContext) => dispatchTask(request, { executionContext }) }
 }
 
 // ── 交互 ────────────────────────────────────────────────────────────────────
@@ -122,25 +125,47 @@ export function askUserAdapters(): AskUserToolAdapters {
 // ── 生活面 ──────────────────────────────────────────────────────────────────
 
 export function practiceAdapters(): PracticeToolAdapters {
+  const captured = getPracticeServiceSafe()
+  const service = () => {
+    if (!captured) throw new PracticeServiceClosedError()
+    return captured
+  }
   return {
-    log: input => logPractice({
+    log: input => service().logPractice({
       name: input.name,
       source: 'agent',
       note: input.note,
       exercise: input.exercise ?? {},
       ts: input.ts,
     }),
-    query: request => getPracticeSummary(request),
-    recent: (days, limit) => getRecentPracticeRecords(days, limit),
+    query: request => service().getPracticeSummary(request),
+    recent: (days, limit) => service().getRecentPracticeRecords(days, limit),
   }
 }
 
 export function radioAdapters(): RadioToolAdapters {
+  const captured = getCurrentBackendInstance()?.music.radio
+  const radio = () => {
+    if (!captured) throw new Error('Music service is unavailable')
+    return captured
+  }
   return {
-    open: radioToolOpen,
-    close: radioToolClose,
-    status: radioToolStatus,
-    request: requestSong,
+    open: (intent, options, executionContext) => {
+      assertMusicOperator(fixedExecutionContext(executionContext))
+      return radio().radioToolOpen(intent, options)
+    },
+    close: executionContext => {
+      assertMusicOperator(fixedExecutionContext(executionContext))
+      return radio().radioToolClose()
+    },
+    status: executionContext => {
+      assertMusicOperator(fixedExecutionContext(executionContext))
+      return radio().radioToolStatus()
+    },
+    request: (song, executionContext) => {
+      assertMusicOperator(fixedExecutionContext(executionContext))
+      return radio().requestSong(song)
+    },
   }
 }
 
@@ -166,12 +191,12 @@ export function collabAdapters(): CollabToolAdapters {
 export function sendMessageAdapters(): SendMessageToolAdapters {
   return {
     ...collabAdapters(),
-    speak: speakIntoCollabRoom,
+    speak: (input, executionContext) => speakIntoCollabRoom(input, { executionContext }),
     /**
      * `sendDm` 走**动态 import**:模块图上 `dm-tool → say-tool` 这条边早就存在
      * (私聊落库就是 say 的执行器),反向再加一条静态边就是一个环。
      */
-    async sendDm(input) {
+    async sendDm(input, executionContext) {
       const { sendCollabDm } = await import('../collab/dm-tool.js')
       return sendCollabDm({
         sessionId: input.sessionId,
@@ -179,7 +204,7 @@ export function sendMessageAdapters(): SendMessageToolAdapters {
         message: input.content,
         ...(input.wake ? { wake: true } : {}),
         ...(input.wakeRoom ? { wakeRoom: input.wakeRoom } : {}),
-      })
+      }, { executionContext })
     },
   }
 }
@@ -192,13 +217,16 @@ function agentName(agentId: string): string {
 export function boardAdapters(): BoardToolAdapters {
   return {
     ...collabAdapters(),
-    resolveLinkedRoom: sessionId =>
-      collabLinkedRoomSessionId(store.getSession(sessionId) as CollabSessionLike | undefined),
+    resolveLinkedRoom: (sessionId, executionContext) => {
+      sessionAccess.resolve(fixedExecutionContext(executionContext), sessionId, 'read')
+      return collabLinkedRoomSessionId(store.getSession(sessionId) as CollabSessionLike | undefined)
+    },
     /**
      * 指派给谁。走统一解析器而不是自己遍历:名字、句柄、`名字#句柄`、全 id 四种
      * 写法一视同仁,而**重名**是明确拒绝,不是"遍历撞上的第一个"。
      */
-    resolveMember(roomSessionId, nameOrId) {
+    resolveMember(roomSessionId, nameOrId, executionContext) {
+      sessionAccess.resolve(fixedExecutionContext(executionContext), roomSessionId, 'read')
       const room = store.getSession(roomSessionId)?.room
       if (!room) return null
       // 纯文本解析:头像与职责说明都进不了判据,所以两样都不取。
@@ -207,15 +235,21 @@ export function boardAdapters(): BoardToolAdapters {
       return resolved.ok ? resolved.agentId : null
     },
     agentName,
-    applyAction: (roomSessionId, action: CollabBoardAction, actor) =>
-      applyBoardAction(roomSessionId, action, actor),
+    applyAction: (roomSessionId, action: CollabBoardAction, actor, options) => {
+      if (!options?.sourceSessionId) throw new SessionAccessError()
+      const executionContext = fixedExecutionContext(options.executionContext)
+      const authorize = () => sessionAccess.resolveAll(executionContext,
+        [options.sourceSessionId, roomSessionId], action.action === 'list' ? 'read' : 'write')
+      authorize()
+      return applyBoardAction(roomSessionId, action, actor, { beforeReadOrWrite: authorize })
+    },
   }
 }
 
 export function historyAdapters(): HistoryToolAdapters {
-  return { ...collabAdapters(), search: searchCollabHistory }
+  return { ...collabAdapters(), search: (input, executionContext) => searchCollabHistory(input, { executionContext }) }
 }
 
 export function notebookAdapters(): NotebookToolAdapters {
-  return { ...collabAdapters(), append: appendNote }
+  return { ...collabAdapters(), append: (input, executionContext) => appendNote(input, { executionContext }) }
 }

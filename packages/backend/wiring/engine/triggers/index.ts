@@ -11,7 +11,6 @@ import {
 } from "@onething/core/engine";
 import { createGoalContinuationTrigger } from "./goal-continuation.js";
 import { createTurnEvaluationTrigger } from "./turn-evaluation.js";
-import { createSessionTocTrigger } from "./session-toc.js";
 
 export interface TriggerContext
 	extends CoreTriggerContext<
@@ -41,7 +40,7 @@ let builtinTriggersRegistered = false;
  * `unregister` 按 id 摘(core 的 `CoreTriggerManager.unregister`),所以摘的只有
  * 这三只 —— 别人(feature / 插件)往同一张表里注册的不受影响。
  */
-export function registerBuiltinTriggers(): () => void {
+export function registerBuiltinTriggers(options: { sessionToc: Trigger }): () => void {
 	if (builtinTriggersRegistered) return () => {};
 	builtinTriggersRegistered = true;
 	// Skill review is intentionally not registered: createSkillReviewTrigger()
@@ -50,7 +49,7 @@ export function registerBuiltinTriggers(): () => void {
 	const triggers = [
 		createGoalContinuationTrigger(),
 		createTurnEvaluationTrigger(),
-		createSessionTocTrigger(),
+		options.sessionToc,
 	];
 	for (const trigger of triggers) triggerManager.register(trigger);
 	return () => {

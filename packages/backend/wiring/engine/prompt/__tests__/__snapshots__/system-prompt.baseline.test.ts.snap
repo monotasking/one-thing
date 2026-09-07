@@ -48,7 +48,7 @@ Whenever you mention a file you created, edited, or want the user to look at, wr
     "content": "You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md",
+Detailed examples and syntax: /resources/docs/macos-automation.md",
     "role": "developer",
   },
   {
@@ -94,7 +94,7 @@ Whenever you mention a file you created, edited, or want the user to look at, wr
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md"
+Detailed examples and syntax: /resources/docs/macos-automation.md"
 `;
 
 exports[`system prompt baseline > custom agent prompt > agent-systemPrompt 1`] = `
@@ -134,7 +134,7 @@ Whenever you mention a file you created, edited, or want the user to look at, wr
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md"
+Detailed examples and syntax: /resources/docs/macos-automation.md"
 `;
 
 exports[`system prompt baseline > no tools > no-tools-systemPrompt 1`] = `
@@ -167,7 +167,7 @@ Whenever you mention a file you created, edited, or want the user to look at, wr
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md"
+Detailed examples and syntax: /resources/docs/macos-automation.md"
 `;
 
 exports[`system prompt baseline > openai full context > openai-messages 1`] = `
@@ -208,7 +208,7 @@ Whenever you mention a file you created, edited, or want the user to look at, wr
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md",
+Detailed examples and syntax: /resources/docs/macos-automation.md",
     "role": "system",
   },
   {
@@ -254,7 +254,7 @@ Whenever you mention a file you created, edited, or want the user to look at, wr
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md"
+Detailed examples and syntax: /resources/docs/macos-automation.md"
 `;
 
 exports[`system prompt baseline > openai full context > openai-turn 1`] = `
@@ -323,5 +323,5 @@ Whenever you mention a file you created, edited, or want the user to look at, wr
 You are running on macOS.
 
 For macOS native app automation (Notes, Reminders, Mail, Calendar, Finder), use \`osascript\`.
-Detailed examples and syntax: /Users/yitiansong/data/code/start-electron/resources/docs/macos-automation.md"
+Detailed examples and syntax: /resources/docs/macos-automation.md"
 `;

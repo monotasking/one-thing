@@ -4,6 +4,7 @@ import {
   previewOnethingSchedulerPrompt,
   runOnethingSchedulerAgentTask,
   type OnethingSchedulerRunDetail,
+  type OnethingSchedulerUserTask,
 } from '@onething/runtime/scheduler'
 import type {
   SchedulerCreateTaskRequest,
@@ -26,6 +27,8 @@ import { consolePort, getLogger } from '../logging/index.js'
 import type { OnethingSchedulerAgentTaskEventBus, OnethingSchedulerAgentTaskSessionStore, OnethingSchedulerAgentTaskRunnerOptions, OnethingSchedulerAgentTaskLogger } from '@onething/runtime/scheduler/agent-task-runner'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingSchedulerUserTaskLogger } from '@onething/runtime/scheduler/user-tasks'
+import { DEFAULT_SESSION_OWNER, isHistoricalLocalOperator, ownsSessionRecord, requestSessionOwner, sessionOwnerOf, sessionAccess, type SessionAccessContext } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
 
 const log = getLogger('scheduler')
 /** 注入式鸭子 logger 端口的过渡替身(app/logging/console-port.ts,area ① 统一后删)。 */
@@ -47,8 +50,15 @@ function nowMs(): number {
   return Date.now()
 }
 
-function getUserTask(id: string): SchedulerUserTaskDTO | undefined {
-  return userTaskStore.get(id) as SchedulerUserTaskDTO | undefined
+function getUserTask(id: string): OnethingSchedulerUserTask | undefined {
+  return userTaskStore.get(id)
+}
+
+export function canAccessSchedulerTask(context: SessionAccessContext, id: string): boolean {
+  const task = getUserTask(id)
+  if (task) return ownsSessionRecord(task, context)
+  // Built-in/plugin tasks and historical records have one fixed local owner.
+  return Boolean(getScheduler().getStatus(id)) && isHistoricalLocalOperator(context)
 }
 
 function registerUserTask(task: SchedulerUserTaskDTO): SchedulerTaskSnapshotDTO | undefined {
@@ -126,8 +136,8 @@ export function isUserSchedulerTask(id: string): boolean {
   return id.startsWith('user:') || Boolean(getUserTask(id))
 }
 
-export function createUserSchedulerTask(input: SchedulerCreateTaskRequest): SchedulerTaskSnapshotDTO {
-  const task = userTaskStore.create(input)
+export function createUserSchedulerTask(input: SchedulerCreateTaskRequest, context: SessionAccessContext = DEFAULT_SESSION_OWNER): SchedulerTaskSnapshotDTO {
+  const task = userTaskStore.create(input, requestSessionOwner(context))
   const snapshot = registerUserTask(task as SchedulerUserTaskDTO)
   if (!snapshot) throw new Error('Failed to register scheduled task')
   return snapshot
@@ -150,12 +160,20 @@ export function setUserSchedulerTaskEnabled(id: string, enabled: boolean): Sched
 }
 
 async function runAgentTask(taskId: string, context: SchedulerTaskContext): Promise<Record<string, unknown>> {
+  const task = getUserTask(taskId)
+  if (!task) throw new Error('Scheduled task not found')
+  // Snapshot the persisted creator, never the owner of a session selected later.
+  const executionContext = fixedExecutionContext(sessionOwnerOf(task))
   const eventBus = getEventBus()
   const eventBusPort: OnethingSchedulerAgentTaskEventBus = {
-    onAny: (sessionId, handler, label) =>
-      eventBus.onAny(sessionId, handler as unknown as Parameters<typeof eventBus.onAny>[1], label),
-    emit: (sessionId, event) =>
-      eventBus.emit(sessionId, event as unknown as Parameters<typeof eventBus.emit>[1]),
+    onAny: (sessionId, handler, label) => {
+      sessionAccess.resolve(executionContext, sessionId, 'subscribe')
+      return eventBus.onAny(sessionId, handler as unknown as Parameters<typeof eventBus.onAny>[1], label)
+    },
+    emit: (sessionId, event) => {
+      sessionAccess.resolve(executionContext, sessionId, 'write')
+      return eventBus.emit(sessionId, event as unknown as Parameters<typeof eventBus.emit>[1], { executionContext })
+    },
   };
   const sessionsPort: OnethingSchedulerAgentTaskSessionStore = {
     getCurrentSessionId: store.getCurrentSessionId,
@@ -164,11 +182,30 @@ async function runAgentTask(taskId: string, context: SchedulerTaskContext): Prom
     updateSessionWorkingDirectory: store.updateSessionWorkingDirectory,
     updateSessionArchived: store.updateSessionArchived,
     setCurrentSessionId: store.setCurrentSessionId,
-    getSession: store.getSession,
+    getSession: sessionId => {
+      sessionAccess.resolve(executionContext, sessionId, 'read')
+      return store.getSession(sessionId)
+    },
   };
   const schedulerAgentTaskRunnerOptions: OnethingSchedulerAgentTaskRunnerOptions = {
-    getTask: getUserTask,
-    getStreamHost: getStreamEngineSafe,
+    initialOwner: executionContext,
+    getTask: () => task,
+    getStreamHost: () => {
+      const engine = getStreamEngineSafe()
+      return engine && {
+        hasBoundSender: () => engine.hasBoundSender(),
+        abort: sessionId => {
+          try {
+            sessionAccess.resolve(executionContext, sessionId, 'abort')
+            return engine.abort(sessionId)
+          } catch (error) {
+            // Timer/signal callbacks must not throw after session deletion or shutdown.
+            log.warn('scheduled session abort refused', { taskId, sessionId }, error)
+            return false
+          }
+        },
+      }
+    },
     eventBus: eventBusPort,
     sessions: sessionsPort,
     saveRunDetail: detail => saveSchedulerRunDetail(detail as SchedulerRunDetailDTO) as OnethingSchedulerRunDetail,

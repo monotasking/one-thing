@@ -20,9 +20,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { sessionAccess } from '../../../../session/access.js'
 import { bindSessionFacadeMock } from '../../../../session/testing/facade-mock.js'
 
 interface FakeSession {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   name: string
   kind?: string
@@ -135,6 +138,13 @@ vi.mock('../../../../events/index.js', () => ({
   }),
 }))
 
+vi.mock('../../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
+  }) }
+})
+
 vi.mock('../../../../store.js', () => ({
   getSettings: () => ({}),
   getSession: (id: string) => mocks.sessions.get(id),
@@ -143,7 +153,7 @@ vi.mock('../../../../store.js', () => ({
     (mocks.sessions.get(sessionId) as FakeSession | undefined)?.messages.push(message)
   },
   createSession: (id: string, name: string) => createFake(id, name),
-  createSessionWithoutFocus: (id: string, name: string) => createFake(id, name),
+  createSessionWithoutFocus: (id: string, name: string, options?: { initialOwner?: { userId: string; workspaceId: string } }) => Object.assign(createFake(id, name), { ownerUserId: options?.initialOwner?.userId, ownerWorkspaceId: options?.initialOwner?.workspaceId }),
   updateSessionCollab: (id: string, patch: Record<string, unknown>) => {
     const session = mocks.sessions.get(id) as FakeSession | undefined
     if (!session) return false
@@ -199,6 +209,7 @@ const {
   peekCollabV3Agent,
   peekCollabV3Room,
   peekCollabV3RoomSnapshot,
+  postCollabV3RoomMessage,
   revokeCollabV3RoomLease,
   shutdownCollabV3Runtime,
   stopCollabV3RoomFloor,
@@ -238,8 +249,25 @@ function fireBus(eventType: string, sessionId: string, event: Record<string, unk
   for (const handler of mocks.busHandlers.get(eventType) ?? []) handler({ sessionId, event })
 }
 
+const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/runtime/collab/digest-store')
+const { createCollabInspector, configureCollabInspector } = await import('../../inspector.js')
+const { getSession } = await import('../../../../store.js')
+const { getEventBus } = await import('../../../../events/index.js')
+let digestStore: ReturnType<typeof createCollabDigestStore>
+let releaseDigestStore: () => void
+let inspector: ReturnType<typeof createCollabInspector>
+let releaseInspector: () => void
+
 beforeEach(() => {
   mocks.storePath = fs.mkdtempSync(path.join(os.tmpdir(), 'collab-v3-wiring-'))
+  digestStore = createCollabDigestStore({ storePath: mocks.storePath })
+  releaseDigestStore = configureCollabDigestStore(digestStore)
+  // This fixture assembles the actor runtime directly; own the same separate
+  // view that a real Backend creates even when its actors are disabled.
+  inspector = createCollabInspector({
+    getSession, emit: getEventBus().emit, isActive: () => true, onError: error => { throw error },
+  })
+  releaseInspector = configureCollabInspector(inspector)
   mocks.sessions.clear()
   mocks.emitted.length = 0
   mocks.busHandlers.clear()
@@ -252,11 +280,32 @@ beforeEach(() => {
 
 afterEach(async () => {
   await shutdownCollabV3Runtime()
+  await inspector.drain()
+  releaseInspector()
+  digestStore.quiesce()
+  releaseDigestStore()
   await new Promise(resolve => setTimeout(resolve, 0))
   fs.rmSync(mocks.storePath, { recursive: true, force: true })
 })
 
 describe('D6-a 装配:一条用户消息走完整条环', () => {
+  it('an activated actor refuses a changed room owner without deriving sessions or running a mind', async () => {
+    const room = seedRoom()
+    room.ownerUserId = 'alice'
+    room.ownerWorkspaceId = 'tenant-a'
+    const mind = createCollabScriptedMindPort([])
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind } })
+    await warmCollabV3Agents()
+    const ids = [...mocks.sessions.keys()]
+    room.ownerUserId = 'bob'
+    await expect(postCollabV3RoomMessage(ROOM, {
+      id: 'late', role: 'user', content: '@小李 late', timestamp: Date.now(),
+      mentions: [{ agentId: 'fe', label: '小李' }],
+    })).rejects.toThrow('Session not found')
+    expect([...mocks.sessions.keys()]).toEqual(ids)
+    expect(mind.calls).toEqual([])
+  })
+
   it('@ 直通授牌 → 心智回合 → speak → 转录 + 广播 + 已读水位', async () => {
     seedRoom()
     const mind = createCollabScriptedMindPort([
@@ -265,7 +314,7 @@ describe('D6-a 装配:一条用户消息走完整条环', () => {
     // 裁判判"这一轮没别人该说" —— 于是唯一的发言者是被 @ 直通授牌的那位,
     // 这条用例问的就是**直通**那条路。
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     const consumed = await handleCollabRoomSendMessage(ROOM, {
@@ -314,7 +363,7 @@ describe('D6-a 装配:一条用户消息走完整条环', () => {
       { agentId: 'pm', roomId: ROOM, says: ['我来接'] },
     ])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: ['pm'] }])
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, { content: '这个需求谁跟一下' })
@@ -340,7 +389,7 @@ describe('D6-a 装配:喊停清三样', () => {
     ])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
     mind.hold()
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, {
@@ -427,7 +476,7 @@ describe('E5:人级停止(撤一张牌)', () => {
       { agentId: 'pm', roomId: ROOM, says: ['阿明在想'] },
     ])
     mind.hold()
-    await initializeCollabV3Runtime({ ports: { mind } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, {
@@ -539,7 +588,7 @@ describe('E5:人级停止(撤一张牌)', () => {
 
   it('不是一间 v3 房 = not-a-room,不漏 null 到界面', async () => {
     seedRoom(['fe'])
-    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort([]) } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort([]) } })
     expect(await revokeCollabV3RoomLease({
       roomSessionId: 'chat-1',
       leaseId: 'lease-x',
@@ -560,7 +609,7 @@ describe('E5:人级停止(撤一张牌)', () => {
     seedRoom(['fe'])
     const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: [] }])
     mind.hold()
-    await initializeCollabV3Runtime({ ports: { mind } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind } })
     await warmCollabV3Agents()
     await handleCollabRoomSendMessage(ROOM, {
       content: '@小李 在吗',
@@ -617,7 +666,7 @@ describe('D6-a 装配:send_message 走租约', () => {
     seedRoom(['fe'])
     const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: [] }])
     mind.hold()
-    await initializeCollabV3Runtime({ ports: { mind } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, {
@@ -677,13 +726,13 @@ describe('D6-a 装配:send_message 走租约', () => {
 describe('D6-a 装配:迁移是一趟单向门', () => {
   it('marker 门控 —— 起两次只迁一次', async () => {
     seedRoom()
-    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort() } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort() } })
     expect(fs.existsSync(collabV3MigrationMarkerPath())).toBe(true)
     const first = readCollabV3MigrationMarker()
     expect(first?.at).toBeTruthy()
 
     await shutdownCollabV3Runtime()
-    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort() } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort() } })
     // 第二趟整体跳过:marker 里那个时刻一个字节都没变。
     expect(readCollabV3MigrationMarker()?.at).toBe(first?.at)
   })
@@ -692,8 +741,8 @@ describe('D6-a 装配:迁移是一趟单向门', () => {
 describe('D6-a 装配:生命周期', () => {
   it('起停幂等,而且收摊之后令牌与发言口一起作废', async () => {
     seedRoom()
-    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort() } })
-    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort() } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort() } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort() } })
     expect(isCollabV3RuntimeRunning()).toBe(true)
     // 令牌是 drive 的凭据:起来之后随便一个假令牌都进不去,而真令牌进得去。
     expect(isTrustedCollabDrive({ collabDriveToken: 'nope' })).toBe(false)
@@ -734,7 +783,7 @@ describe('D8 O1:agent 快照的发射与补水', () => {
     ])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
     mind.hold()
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, {
@@ -774,7 +823,7 @@ describe('D8 O1:agent 快照的发射与补水', () => {
     seedRoom()
     const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: ['嗯'] }])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, {
@@ -792,7 +841,7 @@ describe('D8 O1:agent 快照的发射与补水', () => {
     seedRoom()
     const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: ['嗯'] }])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, {
@@ -819,7 +868,7 @@ describe('D8 O1:agent 快照的发射与补水', () => {
 
   it('没在跑循环的同事也回一份空闲快照,不是被跳过', async () => {
     seedRoom()
-    await initializeCollabV3Runtime({ ports: { mind: createCollabScriptedMindPort() } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind: createCollabScriptedMindPort() } })
     const [ghost] = getCollabAgentActivity(['ghost'])
     expect(ghost).toMatchObject({ agentId: 'ghost', mind: { state: 'idle' }, deadLetterCount: 0 })
   })
@@ -847,7 +896,7 @@ describe('D8 O1:房间快照的发射时机', () => {
     seedRoom()
     const mind = createCollabScriptedMindPort([{ agentId: 'pm', roomId: ROOM, says: ['我来接'] }])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, hangs: true }])
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, { content: '这个需求谁跟一下' })
@@ -880,7 +929,7 @@ describe('D8 O1:房间快照的发射时机', () => {
     seedRoom()
     const mind = createCollabScriptedMindPort([{ agentId: 'pm', roomId: ROOM, says: ['我来接'] }])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, degraded: true }])
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, { content: '这个需求谁跟一下' })
@@ -904,7 +953,7 @@ describe('D8 O1:房间快照的发射时机', () => {
     const mind = createCollabScriptedMindPort([{ agentId: 'fe', roomId: ROOM, says: ['我想想'] }])
     const judge = createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }])
     mind.hold()
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     await handleCollabRoomSendMessage(ROOM, {
@@ -955,7 +1004,7 @@ describe('D8 O1:房间快照的发射时机', () => {
     seedRoom(['fe'])
     const mind = createCollabScriptedMindPort([])
     const judge = createCollabScriptedRefereeJudgePort([])
-    await initializeCollabV3Runtime({ ports: { mind, judge } })
+    await initializeCollabV3Runtime({ access: sessionAccess, ports: { mind, judge } })
     await warmCollabV3Agents()
 
     // 提问跑在执行会话上,而人看的是房 —— 这一行验的正是那次翻译。

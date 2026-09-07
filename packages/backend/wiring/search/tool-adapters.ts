@@ -66,6 +66,7 @@ function contextOf(principal: SearchToolPrincipal): Partial<SearchContext> {
     principal: searchPrincipalOf(principal),
     surface: AGENT_TOOL_SURFACE,
     spaceId: principal.spaceId,
+    executionContext: principal.executionContext,
   }
 }
 
@@ -155,7 +156,7 @@ export function createAppSearchToolAdapters(service: OnethingSearchService): Sea
       }
     },
 
-    async preview(ref) {
+    async preview(ref, principal) {
       const at = ref.indexOf(':')
       if (at <= 0) throw new Error(`认不出这个结果号:${ref}`)
       const capability = ref.slice(0, at)
@@ -163,7 +164,7 @@ export function createAppSearchToolAdapters(service: OnethingSearchService): Sea
       const target = targets.get(ref)
       const payload = await service.preview([
         { capability, id, ...(target === undefined ? {} : { target }) },
-      ])
+      ], 'single', {}, contextOf(principal))
       return {
         kind: payload.kind,
         payload: payload.payload,

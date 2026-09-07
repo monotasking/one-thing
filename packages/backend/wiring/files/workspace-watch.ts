@@ -1,33 +1,9 @@
-/**
- * 工作区文件监视 —— 结构债 P4c 第八批。
- *
- * `watchStart` / `watchStop` 两条**请求面**随 `filesRouter` 迁到了通用 RPC 通道,
- * 而 router 今天没有推送面,所以变更事件仍旧由各宿主自己的推送通道发出去
- * (server 的 `GET /api/files/watch/events` SSE)。请求面与推送面因此需要一个
- * 共同的住处 —— 就是这个文件:**监视器登记簿住在装配层,两侧都指着它**。
- *
- * ## 作用域 = 沙箱根
- *
- * 从前这套登记簿住在 `server/runtime.ts` 的闭包里,按 `ownerKey(context)`
- * (`<uid>|<wid>`)分表。这里改按**沙箱根绝对路径**分表 —— 两者一一对应
- * (`ownerSandboxRoot(workspaceRoot, uid, wid)`),但沙箱根是域处理者手上本来
- * 就有的东西(`resolveRpcSandbox(context).root`),不需要再把 owner 身份透传
- * 一遍。server 那侧订阅时用同一个公式算出同一个键。
- *
- * ## 桌面不在这里
- *
- * 桌面(`transport:'ipc'`)的 `watchStart` / `watchStop` 走的是
- * `@onething/runtime/files` 那对**投影桩**(校验 root 之后回 `{success:true}`),
- * 迁移前 `@main/ipc/files.ts` 就是这么做的:全仓没有任何地方往
- * `FILE_WATCH_EVENT` 发过一条消息,桌面从来没有真的监视过。在这一批里给桌面
- * 装上真监视器会是一次**未经拍板的行为变化**(而且是一个没有消费者的
- * fs.watch 泄漏),所以不做 —— 逐条口径见 `rpc/domains/files.ts` 的表。
- */
-import { type FSWatcher, watch } from 'node:fs'
+/** Workspace watches belong to one server surface, shared by its RPC and SSE. */
 import { stat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { isPathInside } from '../../rpc/sandbox.js'
 import { getLogger } from '../logging/index.js'
+import { createWorkspaceWatchDriver, type WorkspaceWatchDriver } from './workspace-watch-driver.js'
 
 const log = getLogger('files.watch')
 
@@ -36,106 +12,160 @@ export interface WorkspaceFileChangedPayload {
   path: string
   eventType: string
 }
-
 export type WorkspaceFileChangedHandler = (payload: WorkspaceFileChangedPayload) => void
+export interface WorkspaceWatchResult { success: boolean; error?: string }
 
-/** `<沙箱根> → <被监视目录> → watcher`。 */
-const watchersByScope = new Map<string, Map<string, FSWatcher>>()
-/** `<沙箱根> → 订阅者`。 */
-const handlersByScope = new Map<string, Set<WorkspaceFileChangedHandler>>()
-
-function notify(scope: string, payload: WorkspaceFileChangedPayload): void {
-  const handlers = handlersByScope.get(scope)
-  if (!handlers) return
-  for (const handler of handlers) handler(payload)
+export interface WorkspaceWatchService {
+  start(scope: string, root: string): Promise<WorkspaceWatchResult>
+  stop(scope: string, root: string): Promise<WorkspaceWatchResult>
+  subscribe(scope: string, handler: WorkspaceFileChangedHandler): () => void
+  close(): Promise<void>
 }
 
-/**
- * 订阅某个沙箱根下的文件变更。返回退订函数。
- *
- * 语义与被替换掉的 `server/runtime.ts` 闭包版逐字一致:同一个作用域的订阅者
- * 共用一份监视器,最后一个订阅者走掉时只清订阅表 —— 监视器由 `watchStop` 关,
- * 因为「谁开的谁关」这条约定是 `watchStart` / `watchStop` 那对请求定的。
- */
-export function subscribeWorkspaceFileChanged(
-  scope: string,
-  handler: WorkspaceFileChangedHandler,
-): () => void {
-  let handlers = handlersByScope.get(scope)
-  if (!handlers) {
-    handlers = new Set()
-    handlersByScope.set(scope, handlers)
-  }
-  handlers.add(handler)
-  return () => {
-    handlers?.delete(handler)
-    if (handlers?.size === 0) handlersByScope.delete(scope)
-  }
+interface WatchEntry {
+  scope: string
+  root: string
+  stopped: boolean
+  driver?: WorkspaceWatchDriver
+  setup: Promise<void>
+  ready: Promise<WorkspaceWatchResult>
+  closing?: Promise<void>
 }
 
-/**
- * 开始监视 `watchRoot`(**必须已经夹进沙箱**:夹紧是域处理者的事,这里只认
- * 已解析的绝对路径)。重复开同一个目录是幂等的。
- */
-export async function startWorkspaceWatch(
-  scope: string,
-  watchRoot: string,
-): Promise<{ success: boolean; error?: string }> {
-  const rootStats = await stat(watchRoot).catch(() => null)
-  if (!rootStats?.isDirectory()) {
-    return { success: false, error: 'Workspace watch root must be an existing directory.' }
-  }
-
-  let watchers = watchersByScope.get(scope)
-  if (!watchers) {
-    watchers = new Map()
-    watchersByScope.set(scope, watchers)
-  }
-  if (watchers.has(watchRoot)) return { success: true }
-
-  const createWatcher = (recursive: boolean): FSWatcher =>
-    watch(watchRoot, { recursive }, (eventType, fileName) => {
-      const changedPath = typeof fileName === 'string' && fileName.length > 0
-        ? resolve(watchRoot, fileName)
-        : watchRoot
-      // 二次夹紧:递归监视在 symlink 上可能报出根外的路径。
-      if (!isPathInside(changedPath, scope)) return
-      notify(scope, { root: watchRoot, path: changedPath, eventType: eventType || 'change' })
-    })
-
-  let watcher: FSWatcher
-  try {
-    watcher = createWatcher(true)
-  } catch {
-    watcher = createWatcher(false)
-  }
-  watcher.on('error', error => {
-    log.warn('workspace watcher failed', { watchRoot }, error)
-  })
-  watchers.set(watchRoot, watcher)
-  return { success: true }
+const closedMessage = 'Workspace watches are closed.'
+function failed(error: unknown): WorkspaceWatchResult {
+  return { success: false, error: error instanceof Error ? error.message : String(error) }
 }
 
-/** 停止监视 `watchRoot`。没在监视也算成功(与旧 adapter 同义)。 */
-export function stopWorkspaceWatch(
-  scope: string,
-  watchRoot: string,
-): { success: boolean; error?: string } {
-  const watchers = watchersByScope.get(scope)
-  const watcher = watchers?.get(watchRoot)
-  if (watcher) {
-    watcher.close()
-    watchers?.delete(watchRoot)
-  }
-  if (watchers?.size === 0) watchersByScope.delete(scope)
-  return { success: true }
-}
+/** No process-wide registry: closing one owner cannot affect another owner. */
+export function createWorkspaceWatchService(
+  options: { createDriver?: typeof createWorkspaceWatchDriver } = {},
+): WorkspaceWatchService {
+  const createDriver = options.createDriver ?? createWorkspaceWatchDriver
+  const entries = new Map<string, Map<string, WatchEntry>>()
+  // A closing entry remains owned until its actual close succeeds. Failed close
+  // stays here so a later surface shutdown still observes the failure.
+  const owned = new Set<WatchEntry>()
+  const handlers = new Map<string, Set<WorkspaceFileChangedHandler>>()
+  let closed = false
+  let disposal: Promise<void> | undefined
 
-/** 关掉全部监视器 —— 宿主 shutdown 与测试用。 */
-export function closeAllWorkspaceWatches(): void {
-  for (const watchers of watchersByScope.values()) {
-    for (const watcher of watchers.values()) watcher.close()
+  function removeEntry(entry: WatchEntry): void {
+    const roots = entries.get(entry.scope)
+    if (roots?.get(entry.root) !== entry) return
+    roots.delete(entry.root)
+    if (roots.size === 0) entries.delete(entry.scope)
   }
-  watchersByScope.clear()
-  handlersByScope.clear()
+
+  function closeEntry(entry: WatchEntry): Promise<void> {
+    if (entry.closing) return entry.closing
+    entry.stopped = true
+    let complete!: () => void
+    let reject!: (error: unknown) => void
+    entry.closing = new Promise<void>((resolve, fail) => { complete = resolve; reject = fail })
+    void entry.closing.catch(() => {})
+    // Cancel a ready wait before awaiting setup, which may be waiting for ready.
+    let driverClose: Promise<void> | undefined
+    try { driverClose = entry.driver?.close() }
+    catch (error) { driverClose = Promise.reject(error) }
+    void driverClose?.catch(() => {})
+    void (async () => {
+      await entry.setup.catch(() => {}) // Start reports its own setup failure.
+      if (!driverClose && entry.driver) driverClose = entry.driver.close()
+      await driverClose
+      removeEntry(entry)
+      owned.delete(entry)
+    })().then(complete, reject)
+    return entry.closing
+  }
+
+  const service: WorkspaceWatchService = {
+    start(scopeInput, rootInput) {
+      if (closed) return Promise.resolve(failed(closedMessage))
+      const scope = resolve(scopeInput)
+      const root = resolve(rootInput)
+      if (!isPathInside(root, scope)) {
+        return Promise.resolve(failed('Workspace watch root must stay inside the workspace sandbox root.'))
+      }
+      let roots = entries.get(scope)
+      const existing = roots?.get(root)
+      if (existing) {
+        return existing.stopped
+          ? Promise.resolve(failed('Workspace watch is stopping or failed to close.'))
+          : existing.ready
+      }
+      if (!roots) { roots = new Map(); entries.set(scope, roots) }
+      // Register ownership before the first asynchronous stat/import/ready wait.
+      const entry: WatchEntry = {
+        scope, root, stopped: false,
+        setup: Promise.resolve(), ready: Promise.resolve({ success: false }),
+      }
+      roots.set(root, entry)
+      owned.add(entry)
+      entry.setup = (async () => {
+        const rootStats = await stat(root).catch(() => null)
+        if (entry.stopped || closed) throw new Error(closedMessage)
+        if (!rootStats?.isDirectory()) throw new Error('Workspace watch root must be an existing directory.')
+        entry.driver = createDriver(root, (changedPath, eventType) => {
+          if (closed || entry.stopped || !isPathInside(changedPath, scope)) return
+          for (const handler of handlers.get(scope) ?? []) {
+            try { handler({ root, path: changedPath, eventType }) }
+            catch (error) { log.warn('workspace change subscriber failed', { root }, error) }
+          }
+        }, error => {
+          log.warn('workspace watcher failed', { watchRoot: root }, error)
+          // Errors after ready still own their actual close.
+          void closeEntry(entry).catch(() => {})
+        })
+        // A driver may report an error synchronously while being constructed.
+        if (entry.stopped || closed) void entry.driver.close().catch(() => {})
+        await entry.driver.ready
+        if (entry.stopped || closed) throw new Error(closedMessage)
+      })()
+      entry.ready = entry.setup.then(
+        () => ({ success: true }),
+        async error => {
+          try { await closeEntry(entry) }
+          catch (cleanupError) {
+            log.warn('workspace watcher cleanup failed', { watchRoot: root }, cleanupError)
+          }
+          return failed(error)
+        },
+      )
+      return entry.ready
+    },
+    async stop(scopeInput, rootInput) {
+      const entry = entries.get(resolve(scopeInput))?.get(resolve(rootInput))
+      if (entry) await closeEntry(entry)
+      return { success: true }
+    },
+    subscribe(scopeInput, handler) {
+      if (closed) throw new Error(closedMessage)
+      const scope = resolve(scopeInput)
+      let subscriptions = handlers.get(scope)
+      if (!subscriptions) { subscriptions = new Set(); handlers.set(scope, subscriptions) }
+      subscriptions.add(handler)
+      return () => {
+        subscriptions.delete(handler)
+        if (subscriptions.size === 0 && handlers.get(scope) === subscriptions) handlers.delete(scope)
+      }
+    },
+    close() {
+      if (disposal) return disposal
+      closed = true
+      handlers.clear()
+      let complete!: () => void
+      let reject!: (error: unknown) => void
+      disposal = new Promise<void>((resolve, fail) => { complete = resolve; reject = fail })
+      void disposal.catch(() => {})
+      const closing = [...owned].map(closeEntry)
+      void Promise.allSettled(closing).then(results => {
+        const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : [])
+        if (errors.length === 1) throw errors[0]
+        if (errors.length) throw new AggregateError(errors, 'Workspace watchers failed to close.')
+      }).then(complete, reject)
+      return disposal
+    },
+  }
+  return service
 }

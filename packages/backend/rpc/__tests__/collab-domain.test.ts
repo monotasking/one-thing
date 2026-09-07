@@ -26,6 +26,18 @@ import type {
 } from '@shared/ipc/collab.js'
 import { collabRouter } from '@shared/ipc/collab.js'
 
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => id === 'alice-room' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }
+      : ['room-1', 'chat-1'].includes(id) ? {} : undefined,
+  }) }
+})
+vi.mock('../../stores/sessions.js', () => ({ getSessionsList: () => [{ id: 'room-1' }, { id: 'chat-1' }] }))
+
+const executionOptions = { executionContext: { userId: 'local-user', workspaceId: 'default' } }
+const activityScope = { canReadSession: expect.any(Function), includeUnscoped: true }
+
 const mocks = vi.hoisted(() => ({
   loadCollabBoard: vi.fn(() => ({ version: 1, tasks: [] }) as unknown),
   getCollabAgentActivity: vi.fn((_agentIds?: readonly string[]) => [] as unknown[]),
@@ -121,6 +133,18 @@ afterEach(() => {
 })
 
 describe('collab RPC domain', () => {
+  it.each(['boardGet', 'boardAct', 'taskStop', 'roomRevokeLease', 'coordinatorGet',
+    'schedulerLogTail', 'roomSetFrozen', 'roomSetBudgets', 'roomSpendGet', 'roomUpdate',
+    'roomClearHistory', 'roomFolderList', 'messageReact'])('denies Bob %s on Alice before any service call', async method => {
+    const { dispatchRpc } = await loadDomain()
+    const result = await dispatchRpc({ domain: 'collab', method, payload: {
+      roomSessionId: 'alice-room', taskId: 'task', action: { action: 'list' }, includeMemberDms: true,
+      leaseId: 'lease', expectedEpoch: 1, frozen: true, messageId: 'message', emoji: '👍',
+      executionContext: { userId: 'alice', workspaceId: 'tenant' },
+    } }, { transport: 'http', ownerUid: 'bob', workspaceId: 'tenant' })
+    expect(result).toMatchObject({ ok: true, data: { success: false, error: 'Session not found' } })
+    for (const mock of Object.values(mocks)) expect(mock).not.toHaveBeenCalled()
+  })
   it('binds all fifteen methods — an unlisted one never reaches a handler', async () => {
     const { dispatchRpc } = await loadDomain()
     const methods = [
@@ -258,7 +282,7 @@ describe('roomSetFrozen', () => {
   it('翻译裸 false,成功时只回 success', async () => {
     await expect(call('roomSetFrozen', { roomSessionId: 'room-1', frozen: true }))
       .resolves.toEqual({ success: true })
-    expect(mocks.setCollabRoomFrozen).toHaveBeenCalledWith('room-1', true)
+    expect(mocks.setCollabRoomFrozen).toHaveBeenCalledWith('room-1', true, executionOptions)
 
     mocks.setCollabRoomFrozen.mockReturnValue(false)
     await expect(call('roomSetFrozen', { roomSessionId: 'chat-1', frozen: false }))
@@ -270,7 +294,7 @@ describe('taskStop', () => {
   it('回报「这张卡此刻有没有在跑的执行」', async () => {
     await expect(call('taskStop', { roomSessionId: 'room-1', taskId: 't1' }))
       .resolves.toEqual({ success: true, stopped: true })
-    expect(mocks.stopCollabTaskWork).toHaveBeenCalledWith('room-1', 't1')
+    expect(mocks.stopCollabTaskWork).toHaveBeenCalledWith('room-1', 't1', executionOptions)
   })
 
   it('turns a thrown error into a failed response', async () => {
@@ -393,7 +417,7 @@ describe('dmRoomEnsure', () => {
   it('returns the derived room id the app layer resolved', async () => {
     await expect(call('dmRoomEnsure', { agentId: 'fe' }))
       .resolves.toEqual({ success: true, roomSessionId: 'agent-dm-fe' })
-    expect(mocks.ensureUserDmRoom).toHaveBeenCalledWith('fe')
+    expect(mocks.ensureUserDmRoom).toHaveBeenCalledWith('fe', executionOptions)
   })
 
   it('turns "no room for this agent" into an explicit refusal, not an empty success', async () => {
@@ -420,12 +444,12 @@ describe('roomClearHistory', () => {
     await expect(call('roomClearHistory', { roomSessionId: 'room-1' }))
       .resolves.toEqual({ success: true, clearedMessageCount: 3 })
     // includeMemberDms 缺席时显式落 false —— 处理者归一化,不让 undefined 过河。
-    expect(mocks.clearCollabRoomHistory).toHaveBeenCalledWith('room-1', { includeMemberDms: false })
+    expect(mocks.clearCollabRoomHistory).toHaveBeenCalledWith('room-1', { includeMemberDms: false, ...executionOptions })
   })
 
   it('includeMemberDms 只在显式为 true 时透传为 true', async () => {
     await call('roomClearHistory', { roomSessionId: 'room-1', includeMemberDms: true })
-    expect(mocks.clearCollabRoomHistory).toHaveBeenCalledWith('room-1', { includeMemberDms: true })
+    expect(mocks.clearCollabRoomHistory).toHaveBeenCalledWith('room-1', { includeMemberDms: true, ...executionOptions })
   })
 
   it('turns a thrown error into a failed response', async () => {
@@ -491,21 +515,21 @@ describe('agentActivityGet (D8 O1)', () => {
     mocks.getCollabAgentActivity.mockReturnValue([ACTIVITY])
     await expect(call('agentActivityGet', { agentIds: ['iris'] }))
       .resolves.toEqual({ success: true, activities: [ACTIVITY] })
-    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(['iris'])
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(['iris'], activityScope)
   })
 
   it('`agentIds` 缺席就是缺席 —— 处理者不替 app 层决定它等于什么', async () => {
     await call('agentActivityGet', {})
-    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(undefined)
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(undefined, activityScope)
     // 连整个 payload 都没有也一样(信封化之后 payload 一定在,但发一个 undefined
     // 的调用方仍然存在 —— daemon / 测试)。
     await call('agentActivityGet')
-    expect(mocks.getCollabAgentActivity).toHaveBeenLastCalledWith(undefined)
+    expect(mocks.getCollabAgentActivity).toHaveBeenLastCalledWith(undefined, activityScope)
   })
 
   it('空数组原样过河,不被兜回"全要"', async () => {
     await call('agentActivityGet', { agentIds: [] })
-    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith([])
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith([], activityScope)
   })
 
   it('turns a thrown error into a failed response', async () => {
@@ -520,7 +544,7 @@ describe('agentActivityGet (D8 O1)', () => {
       agentIds: ['iris', 'bram'],
     }
     await call('agentActivityGet', request)
-    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(['iris', 'bram'])
+    expect(mocks.getCollabAgentActivity).toHaveBeenCalledWith(['iris', 'bram'], activityScope)
   })
 })
 
@@ -566,7 +590,7 @@ describe('roomRevokeLease (E5 人级停止)', () => {
       roomSessionId: 'room-1',
       leaseId: 'room-1#L2',
       expectedEpoch: 7,
-    })
+    }, executionOptions)
   })
 
   it('可操作的失败原因原样回给界面,不被翻译成 error', async () => {
@@ -589,6 +613,6 @@ describe('roomRevokeLease (E5 人级停止)', () => {
       expectedEpoch: 3,
     }
     await call('roomRevokeLease', request)
-    expect(mocks.revokeCollabRoomLease).toHaveBeenCalledWith(request)
+    expect(mocks.revokeCollabRoomLease).toHaveBeenCalledWith(request, executionOptions)
   })
 })

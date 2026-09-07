@@ -26,6 +26,8 @@ import * as store from '../../store.js'
 import { findAgent } from '../agents/index.js'
 import { emitCollabRoomUpdated } from './room-runtime.js'
 import { getLogger } from '../logging/index.js'
+import { sessionDeletion } from '../../session/deletion.js'
+import type { SessionInitialOwner } from '@onething/runtime/sessions/session-repository'
 
 const log = getLogger('collab.room')
 
@@ -51,6 +53,8 @@ export interface EnsureCollabGroupRoomOptions {
    * 所以那条路会把自己的 id 递进来;缺省时由调用方给一个新 UUID。
    */
   sessionId: string
+  /** Trusted caller ownership, persisted with the first session metadata. */
+  initialOwner?: SessionInitialOwner
 }
 
 export interface EnsureCollabGroupRoomResult {
@@ -129,7 +133,9 @@ export function ensureCollabGroupRoom(
   try {
     // 幕后落库,不动用户正在看的标签页:界面上"新建群"之后的切换由渲染层显式
     // 发起(workspace.openSession),从来不是靠这次写入的副作用。
-    session = store.createSessionWithoutFocus(options.sessionId, name)
+    session = store.createSessionWithoutFocus(options.sessionId, name, {
+      initialOwner: options.initialOwner,
+    })
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : String(error) }
   }
@@ -138,7 +144,11 @@ export function ensureCollabGroupRoom(
     // 半成品回滚:见文件头「落库的原子性」。删不掉也照样报错 —— 报一条假的成功
     // 比留一条孤儿会话更贵。
     try {
-      store.deleteSession(session.id)
+      // This freshly created id is the only rollback target. Its asynchronous
+      // cleanup is retained by the session layer and drained during shutdown.
+      void sessionDeletion.delete(session.id, [session.id], () => {}).catch(error => {
+        log.error('room create rollback failed', { sessionId: session.id }, error)
+      })
     } catch (error) {
       log.error('room create rollback failed', { sessionId: session.id }, error)
     }

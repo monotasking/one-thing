@@ -355,6 +355,44 @@ describe('批 E 凭证策略 —— 红线 2:失效不阻塞,只记账', () => {
 })
 
 describe('批 E 凭证策略 —— 拆除', () => {
+  it('ignores a replaced registration after its select finishes and preserves the successor decision', async () => {
+    const mods = await load()
+    const { CredentialStrategyService } = await import('../credential-strategy-lifetime.js')
+    const service = new CredentialStrategyService()
+    const credentials = await import('@onething/runtime/spaces/credentials')
+    mods.registry.configureAppPluginCredentialStrategyHost()
+    let entered!: () => void
+    const started = new Promise<void>(resolve => { entered = resolve })
+    let release!: (choice: string) => void
+    const oldResult = new Promise<string>(resolve => { release = resolve })
+    let oldSignal: AbortSignal | undefined
+    const unregister = mods.registry.registerPluginCredentialStrategy('replace', {
+      name: 'pick', title: 'Old', select: ctx => { oldSignal = ctx.signal; entered(); return oldResult },
+    }, service.createScope())
+    const input = { policy: 'plugin:replace:pick', spaceId: 'work', providerId: 'deepseek', candidates: [entry('a'), entry('b')] }
+    const first = mods.registry.refreshCredentialStrategyDecision(input)
+    await started
+    try {
+      mods.registry.registerPluginCredentialStrategy('replace', {
+        name: 'pick', title: 'New', select: () => 'b',
+      }, service.createScope())
+      expect(oldSignal?.aborted).toBe(true)
+      await expect(first).resolves.toBeUndefined()
+      await expect(mods.registry.refreshCredentialStrategyDecision(input)).resolves.toBe('b')
+      unregister()
+      release('a')
+      await Promise.resolve()
+      expect(credentials.selectSpaceCredentialEntryDetailed({ entries: input.candidates, policy: input.policy }, {
+        providerId: input.providerId, spaceId: input.spaceId, now: Date.now(),
+      })).toMatchObject({ entry: { id: 'b' }, pluginPolicy: { applied: true } })
+    } finally {
+      release('a')
+      service.quiesce()
+      await service.drain()
+      mods.registry.resetAppPluginCredentialStrategyHostForTests()
+    }
+  })
+
   it('unregisters on release and on dispose, and drops the stale decision with it', async () => {
     const mods = await load()
     const { api, state } = makeApi(mods, 'b', [PLUGIN_PERMISSION_CREDENTIAL_STRATEGY])

@@ -101,6 +101,11 @@ import { getStreamEngineSafe } from '../../engine/index.js'
 import * as store from '../../../store.js'
 import { sessionCommands } from '../../../session/commands.js'
 import { sessionReads } from '../../../session/reads.js'
+import { getCurrentBackend } from '../../../current.js'
+import { sessionAccess, type SessionAccess, type SessionOwnershipRecord } from '../../../session/access.js'
+import { fixedExecutionContext } from '../../engine/execution-context.js'
+import type { RuntimeRequestContext } from '@onething/core'
+import { createCollabActorAuthorization, type CollabActorAuthorization } from './execution-authorization.js'
 import { advanceSeenCursor, ensureCollabAgentSession } from '../agent-session.js'
 import {
   forgetCollabBoardRoom,
@@ -118,7 +123,6 @@ import {
   broadcastCollabCoordinator,
   configureCollabRoomSnapshotSource,
   forgetCollabInspector,
-  shutdownCollabInspector,
 } from '../inspector.js'
 import { collabRoomMembers } from '../members.js'
 import {
@@ -136,10 +140,11 @@ import {
   type CollabAgentActorHost,
   type CollabAgentRoomContextInput, type CollabAgentActorOptions,
 } from '@onething/runtime/collab/actors/agent-actor'
-import { openCollabAgentMailbox } from '@onething/runtime/collab/actors/agent-mailbox'
+import { openCollabAgentMailbox, createCollabAgentAccountFileStore } from '@onething/runtime/collab/actors/agent-mailbox'
+import { getOnethingStorePath } from '@onething/runtime/storage'
 import { createCollabEngineMindPort } from './engine-mind-port.js'
 import type { CollabMindPort } from '@onething/runtime/collab/actors/mind-port'
-import { createCollabNotebookFileStore } from '@onething/runtime/collab/actors/notebook-store'
+import { createCollabActorNotebookStore } from './owned-notebook-store.js'
 import {
   CollabRefereeActor,
   type CollabRefereeActorHost,
@@ -205,10 +210,16 @@ interface BudgetCell {
 }
 
 interface RuntimeState {
+  storePath: string
+  assertOwned(): void
+  authorization: CollabActorAuthorization
+  access: SessionAccess
   rooms: Map<string, RoomEntry>
   agents: Map<string, AgentEntry>
   roomPending: Map<string, Promise<RoomEntry | undefined>>
   agentPending: Map<string, Promise<AgentEntry | undefined>>
+  background: Set<Promise<unknown>>
+  persistenceFailures: Set<unknown>
   budget: Map<string, BudgetCell>
   /**
    * 每间房那扇**还没去买**的裁决窗(见 `scheduleJudgment`)。
@@ -239,6 +250,10 @@ let booting: Promise<void> | null = null
 /* ── 生命周期 ─────────────────────────────────────────────────────────── */
 
 export interface CollabV3RuntimeOptions {
+  storePath?: string
+  assertOwned?: () => void
+  /** The Backend-owned authorization port; tests bind their own explicit store. */
+  access?: SessionAccess
   /**
    * boot 时执行迁移(marker 门控)。默认 **true**。
    *
@@ -299,14 +314,21 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   }
 
   const slots = createCollabWorkerSlotLedger()
+  const access = options.access ?? getCurrentBackend('sessionLayer').sessionLayer.access
+  const authorization = createCollabActorAuthorization({ access, isAccepting: () => state === runtime && !runtime.stopping })
   const ports = {
-    mind: options.ports?.mind ?? createCollabEngineMindPort(),
-    worker: options.ports?.worker ?? createCollabEngineWorkerPort(),
+    mind: options.ports?.mind ?? createCollabEngineMindPort({ authorization }),
+    worker: options.ports?.worker ?? createCollabEngineWorkerPort({ authorization }),
   }
-  const schedulerLog = createCollabSchedulerLogFileStore()
+  const storePath = options.storePath ?? getOnethingStorePath()
+  const assertOwned = () => {
+    if (state !== runtime) throw new Error('Collab runtime is no longer owned')
+    options.assertOwned?.()
+  }
+  const schedulerLog = createCollabSchedulerLogFileStore({ storePath, assertOwned })
   const collabRefereeActorOptions: CollabRefereeActorOptions = {
     refereeId: 'referee',
-    host: refereeHost(),
+    host: refereeHost(() => runtime),
     judge: options.ports?.judge ?? createCollabEngineRefereeJudgePort(),
     // 裁决的三格(why / elapsedMs / model)在这里被接住 —— 时间轴上
     // `judge-verdict` / `judge-degraded` 两类行的唯一产生点(D8 §3.3)。
@@ -331,10 +353,16 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
     },
   };
   const runtime: RuntimeState = {
+    storePath,
+    assertOwned,
+    access,
+    authorization,
     rooms: new Map(),
     agents: new Map(),
     roomPending: new Map(),
     agentPending: new Map(),
+    background: new Set(),
+    persistenceFailures: new Set(),
     budget: new Map(),
     judgments: new Map(),
     slots,
@@ -367,12 +395,23 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   configureCollabV3RoomResetPort(resetRoomAccount)
   // ④ 状态条:C4 快照协议的供数改由房账出(seq / typing / 「刚才」仍归 inspector,
   //    见 `configureCollabRoomSnapshotSource` 的注释)。
-  configureCollabRoomSnapshotSource(roomId => roomSnapshotOf(runtime, roomId))
+  runtime.disposers.push(configureCollabRoomSnapshotSource(roomId => roomSnapshotOf(runtime, roomId)))
   // ④' Agent 视角(D8 §3.1):另一本账,九格全部现算,供数口的实现在下面。
   configureCollabAgentActivitySource({
     agent: agentId => agentActivityViewOf(runtime, agentId),
     agentIds: () => [...runtime.agents.keys()],
     rooms: () => collabRoomAccountsOf(runtime),
+    scopeForRoom: roomId => {
+      let context: RuntimeRequestContext
+      try { context = runtime.authorization.contextForRoom(roomId) } catch { return undefined }
+      const canReadSession = (sessionId: string) => {
+        try { runtime.access.resolve(context, sessionId, 'read'); return true } catch { return false }
+      }
+      return {
+        canReadSession,
+        includeUnscoped: store.getSessionsList().every(meta => canReadSession(meta.id)),
+      }
+    },
     now: () => Date.now(),
   })
   // ④'' 回合登记簿:起落两端各推一次(房间那侧的 `executing`、agent 那侧的
@@ -408,14 +447,22 @@ async function boot(options: CollabV3RuntimeOptions): Promise<void> {
   // ⑤ 删房:actor 跟着走。房目录整个被删掉(`removeCollabRoomDirectory`),
   //    v3 的账与信箱就在那个目录下,所以这里只需要把内存里的循环停掉。
   runtime.disposers.push(store.onSessionsDeleted(sessionIds => {
-    for (const sessionId of sessionIds) void disposeRoom(sessionId)
+    for (const sessionId of sessionIds) {
+      // Register before cleanup can remove the room from the installed map.
+      // Shutdown must still own its actual stop/flush promises after removal.
+      void trackRuntimeTask(runtime, Promise.resolve().then(() => disposeRoom(sessionId, runtime)))
+        .catch((error: unknown) => {
+          log.error('deleted room cleanup failed', { roomSessionId: sessionId }, error)
+        })
+    }
   }))
 
   // ⑥ 看板:开工是一个动作(collab-team-v2 §3)。`task-started` 派一只手,
   //    其余板事件只是**卡的动静** —— 进房间当 `room:card-event`,由各成员的
   //    折叠信封在下一轮 drive 里读到。
   runtime.disposers.push(onCollabBoardEvent((roomSessionId, event) => {
-    void handleBoardEvent(roomSessionId, event).catch((error: unknown) => {
+    if (runtime.stopping || state !== runtime) return
+    void trackRuntimeTask(runtime, handleBoardEvent(runtime, roomSessionId, event)).catch((error: unknown) => {
       log.error('board event handling failed', { roomSessionId }, error)
     })
   }))
@@ -442,7 +489,6 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   configureCollabV3SpeakPort(null)
   configureCollabV3RoomPostPort(null)
   configureCollabV3RoomResetPort(null)
-  configureCollabRoomSnapshotSource(null)
   configureCollabAgentActivitySource(null)
   configureCollabV3TurnObserver(null)
   configureCollabExternalLogSink(null)
@@ -452,14 +498,13 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   }
   runtime.disposers = []
   /**
-   * 三样带定时器的东西跟着收摊(与 v2 协调器逐条对齐 —— 它们在 v3 里仍然是生产)。
+   * 看板与跨房唤醒的定时器跟着演员运行时收摊。
+   * Inspector 由 Backend 无条件拥有:没有启动演员的 MindPort 同样会用它。
    *
-   *  - 状态条的节流待发:一发已经排好的广播不该活过它要描述的那个运行时;
    *  - 看板的合并广播:同上;
    *  - 还在等对方读完的跨房唤醒:它的 120s 定时器到点会往房里发一条 poke,而那时
    *    已经没有房间在听了(collab-send-channel-and-wake.md §3.2)。
    */
-  shutdownCollabInspector()
   shutdownCollabAgentActivity()
   shutdownCollabBoardBroadcasts()
   clearCollabWakeFollowups()
@@ -467,6 +512,10 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   // `runtime.judgements.abort()` 是同一条纪律)。
   for (const entry of runtime.judgments.values()) clearTimeout(entry.timer)
   runtime.judgments.clear()
+
+  // Lazy mailbox opens and board event handlers precede actor registration.
+  // Keep their real IO promises until uninstalled mailboxes have been closed.
+  await drainRuntimeTasks(runtime)
 
   // 先停 agent 再停房:agent 的收尾会往房间投交牌信,反过来的话那几封信投进
   // 一个已经关掉的信箱(`append after close`),而它们本可以被正常处理掉。
@@ -480,10 +529,11 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
       log.error('room stop failed', {}, error)
     }
   }
+  await drainRuntimeTasks(runtime)
   // 在途的追加写落盘再走。`close()` 只停迭代,不等写链 —— 一封已经排在链上的信
   // 会在进程收摊之后才落地,而那时它的目录可能已经被删房带走了。
   for (const entry of [...runtime.agents.values(), ...runtime.rooms.values()]) {
-    try { await entry.mailbox.flush() } catch { /* 写不进去就算了,账已经在盘上 */ }
+    try { await flushRuntimeMailbox(runtime, entry.mailbox) } catch { /* Report after every mailbox has drained. */ }
   }
 
   clearCollabV3Turns()
@@ -492,7 +542,45 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
   runtime.roomPending.clear()
   runtime.agentPending.clear()
   runtime.budget.clear()
-  state = null
+  if (state === runtime) state = null
+  if (runtime.persistenceFailures.size) {
+    throw new AggregateError([...runtime.persistenceFailures], 'Collab mailboxes could not be persisted')
+  }
+}
+
+function trackRuntimeTask<T>(runtime: RuntimeState, task: Promise<T>): Promise<T> {
+  runtime.background.add(task)
+  const settled = () => { runtime.background.delete(task) }
+  void task.then(settled, settled)
+  return task
+}
+
+async function drainRuntimeTasks(runtime: RuntimeState): Promise<void> {
+  while (runtime.roomPending.size || runtime.agentPending.size || runtime.background.size) {
+    await Promise.allSettled([
+      ...runtime.roomPending.values(), ...runtime.agentPending.values(), ...runtime.background,
+    ])
+  }
+}
+
+function runtimeAccepting(runtime: RuntimeState): boolean {
+  return state === runtime && !runtime.stopping
+}
+
+async function flushRuntimeMailbox(runtime: RuntimeState, mailbox: DurableMailbox<ActorEvent<CollabActorVerb>>): Promise<void> {
+  try {
+    await mailbox.flush()
+  } catch (error) {
+    // Only persistence failures enter the shutdown result. A board/model task
+    // can still fail normally without being treated as a failed durable write.
+    runtime.persistenceFailures.add(error)
+    throw error
+  }
+}
+
+async function closeUninstalledMailbox(runtime: RuntimeState, mailbox: DurableMailbox<ActorEvent<CollabActorVerb>>): Promise<void> {
+  mailbox.close()
+  await flushRuntimeMailbox(runtime, mailbox)
 }
 
 /**
@@ -504,8 +592,7 @@ export async function shutdownCollabV3Runtime(): Promise<void> {
  * 顺序有讲究:内存里的循环先停(它还可能往目录里写账),再删目录。反过来的话
  * 一次收尾写入会把刚删掉的目录重新造出来,留下一个只有半个文件的孤儿房。
  */
-async function disposeRoom(roomId: string): Promise<void> {
-  const runtime = state
+async function disposeRoom(roomId: string, runtime = state): Promise<void> {
   const entry = runtime?.rooms.get(roomId)
   if (runtime && entry) {
     runtime.rooms.delete(roomId)
@@ -517,6 +604,7 @@ async function disposeRoom(roomId: string): Promise<void> {
       runtime.judgments.delete(roomId)
     }
     try { await entry.actor.stop() } catch { /* 房已经没了,停不动也不必再管 */ }
+    await flushRuntimeMailbox(runtime, entry.mailbox)
   }
   // 三张进程内的表 + 磁盘上那个目录(state.json / board.json / activity.jsonl /
   // actors/)。它们此前挂在 v2 协调器的 `disposeCollabRoom` 上,而那个文件在
@@ -529,38 +617,57 @@ async function disposeRoom(roomId: string): Promise<void> {
 
 /* ── actor 开箱 ───────────────────────────────────────────────────────── */
 
-async function ensureRoom(roomId: string): Promise<RoomEntry | undefined> {
-  const runtime = state
-  if (!runtime || runtime.stopping) return undefined
+async function ensureRoom(roomId: string, runtime = state): Promise<RoomEntry | undefined> {
+  if (!runtime || !runtimeAccepting(runtime)) return undefined
   const existing = runtime.rooms.get(roomId)
-  if (existing) return existing
+  if (existing) {
+    runtime.authorization.contextForRoom(roomId)
+    return existing
+  }
   const pending = runtime.roomPending.get(roomId)
   if (pending) return pending
-  if (store.getSession(roomId)?.kind !== 'room') return undefined
+  const persistedRoom = store.getSession(roomId)
+  if (persistedRoom?.kind !== 'room') return undefined
+  runtime.authorization.activateRoom(roomId, persistedRoom as typeof persistedRoom & SessionOwnershipRecord)
 
   const task = (async (): Promise<RoomEntry | undefined> => {
     const mailbox = await DurableMailbox.open<ActorEvent<CollabActorVerb>>({
-      dir: collabRoomActorsDir(roomId),
+      dir: collabRoomActorsDir(roomId, runtime.storePath),
       ownerId: roomId,
     })
-    const actor = new WiredRoomActor({
-      roomId,
-      host: roomHost(),
-      mailbox,
-      schedulerLog: runtime.schedulerLog,
-      onDeadLetter: deadLetterSink(`room:${roomId}`, roomId),
-    })
-    const entry: RoomEntry = { roomId, actor, mailbox }
-    runtime.rooms.set(roomId, entry)
-    // 续播在起循环**之前**:账里那几条在飞广播是上一条命留下的,先补完再收新信,
-    // 成员看到的次序才与崩溃前一致。
-    await actor.resumeBroadcasts()
-    // 再把设置里的响应模式打进账(D6 接线)。排在续播**之后**:那几条广播是上
-    // 一档留下的事实,先补完再换档;排在起循环**之前**:第一条新消息就该按新档走。
-    // 设置没变(绝大多数情况)时它是一次纯比较,连账都不写。
-    await actor.syncFloorPolicy()
-    actor.start()
-    return entry
+    let entry: RoomEntry | undefined
+    let installed = false
+    try {
+      if (!runtimeAccepting(runtime)) return undefined
+      runtime.authorization.contextForRoom(roomId)
+      const actor = new WiredRoomActor({
+        roomId,
+        store: createCollabRoomAccountFileStore({ storePath: runtime.storePath, assertOwned: runtime.assertOwned }),
+        host: roomHost(runtime, roomId),
+        mailbox,
+        schedulerLog: runtime.schedulerLog,
+        onDeadLetter: deadLetterSink(runtime, `room:${roomId}`, roomId),
+      })
+      entry = { roomId, actor, mailbox }
+      runtime.rooms.set(roomId, entry)
+      // 续播在起循环**之前**:账里那几条在飞广播是上一条命留下的,先补完再收新信,
+      // 成员看到的次序才与崩溃前一致。
+      await actor.resumeBroadcasts()
+      if (!runtimeAccepting(runtime)) return undefined
+      // 再把设置里的响应模式打进账(D6 接线)。排在续播**之后**:那几条广播是上
+      // 一档留下的事实,先补完再换档;排在起循环**之前**:第一条新消息就该按新档走。
+      // 设置没变(绝大多数情况)时它是一次纯比较,连账都不写。
+      await actor.syncFloorPolicy()
+      if (!runtimeAccepting(runtime)) return undefined
+      actor.start()
+      installed = true
+      return entry
+    } finally {
+      if (!installed) {
+        if (entry && runtime.rooms.get(roomId) === entry) runtime.rooms.delete(roomId)
+        await closeUninstalledMailbox(runtime, mailbox)
+      }
+    }
   })()
 
   runtime.roomPending.set(roomId, task)
@@ -571,9 +678,8 @@ async function ensureRoom(roomId: string): Promise<RoomEntry | undefined> {
   }
 }
 
-async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
-  const runtime = state
-  if (!runtime || runtime.stopping) return undefined
+async function ensureAgent(agentId: string, runtime = state): Promise<AgentEntry | undefined> {
+  if (!runtime || !runtimeAccepting(runtime)) return undefined
   const existing = runtime.agents.get(agentId)
   if (existing) return existing
   const pending = runtime.agentPending.get(agentId)
@@ -584,47 +690,59 @@ async function ensureAgent(agentId: string): Promise<AgentEntry | undefined> {
   if (!agent || !isActiveAgent(agent)) return undefined
 
   const task = (async (): Promise<AgentEntry | undefined> => {
-    const mailbox = await openCollabAgentMailbox(agentId)
-    const collabAgentActorOptions: CollabAgentActorOptions = {
-      agentId,
-      host: agentHost(),
-      mindPort: runtime.ports.mind,
-      notebook: createCollabNotebookFileStore(),
-      mailbox,
-      handEvaluator: wiredHandEvaluator(),
-      worker: {
-        port: runtime.ports.worker,
-        board: boardPort(),
-        // 全局并发那本账必须是**同一个实例**,不然"全局"就退化成 per-agent。
-        slots: runtime.slots,
-        postResult: verb => postToAgent(agentId, verb, collabActorRef('worker', verb.workerId)),
-      },
-      onTurnFailure: failure => {
-        log.error('agent turn failed', { agentId, roomId: failure.roomId }, failure.error)
-      },
-      onWorkerFailure: failure => {
-        log.error('agent worker failed', { agentId, workerId: failure.workerId }, failure.error)
-      },
-      schedulerLog: runtime.schedulerLog,
-      onDeadLetter: deadLetterSink(`agent:${agentId}`, undefined, agentId),
-      /**
-       * D8 §3.1 的发射点接线。档位按转变认:大脑 / 牌 / 手是界面上会**动**的东西
-       * (成员条那四态徽标读的就是它们),走 120ms;`inbox` 是一个数字,走秒。
-       */
-      onActivity: transition => {
-        broadcastCollabAgentActivity(agentId, { activity: transition !== 'inbox' })
-      },
-    };
-    const actor = new CollabAgentActor(collabAgentActorOptions)
-    const entry: AgentEntry = { agentId, actor, mailbox }
-    runtime.agents.set(agentId, entry)
-    actor.start()
-    // 重启对账:上一条命里还在跑的手全部标断,卡推回"没人在做"。**不 await**
-    // 起循环 —— 对账要写板,而板的写队列是异步的。
-    void actor.recoverWorkers().catch((error: unknown) => {
-      log.error('worker recovery after restart failed', { agentId }, error)
-    })
-    return entry
+    const mailbox = await openCollabAgentMailbox(agentId, { storePath: runtime.storePath })
+    if (!runtimeAccepting(runtime)) {
+      await closeUninstalledMailbox(runtime, mailbox)
+      return undefined
+    }
+    let installed = false
+    try {
+      const collabAgentActorOptions: CollabAgentActorOptions = {
+        agentId,
+        store: createCollabAgentAccountFileStore({ storePath: runtime.storePath, assertOwned: runtime.assertOwned }),
+        host: agentHost(runtime),
+        mindPort: runtime.ports.mind,
+        notebook: createCollabActorNotebookStore(runtime.authorization),
+        mailbox,
+        handEvaluator: wiredHandEvaluator(),
+        worker: {
+          port: runtime.ports.worker,
+          board: boardPort(runtime),
+          // 全局并发那本账必须是**同一个实例**,不然"全局"就退化成 per-agent。
+          slots: runtime.slots,
+          postResult: verb => postToAgent(agentId, verb, collabActorRef('worker', verb.workerId), runtime),
+        },
+        onTurnFailure: failure => {
+          log.error('agent turn failed', { agentId, roomId: failure.roomId }, failure.error)
+        },
+        onWorkerFailure: failure => {
+          log.error('agent worker failed', { agentId, workerId: failure.workerId }, failure.error)
+        },
+        schedulerLog: runtime.schedulerLog,
+        onDeadLetter: deadLetterSink(runtime, `agent:${agentId}`, undefined, agentId),
+        /**
+         * D8 §3.1 的发射点接线。档位按转变认:大脑 / 牌 / 手是界面上会**动**的东西
+         * (成员条那四态徽标读的就是它们),走 120ms;`inbox` 是一个数字,走秒。
+         */
+        onActivity: transition => {
+          if (!runtimeAccepting(runtime)) return
+          broadcastCollabAgentActivity(agentId, { activity: transition !== 'inbox' })
+        },
+      };
+      const actor = new CollabAgentActor(collabAgentActorOptions)
+      const entry: AgentEntry = { agentId, actor, mailbox }
+      runtime.agents.set(agentId, entry)
+      actor.start()
+      installed = true
+      // 重启对账:上一条命里还在跑的手全部标断,卡推回"没人在做"。**不 await**
+      // 起循环 —— 对账要写板,而板的写队列是异步的。
+      void trackRuntimeTask(runtime, actor.recoverWorkers()).catch((error: unknown) => {
+        log.error('worker recovery after restart failed', { agentId }, error)
+      })
+      return entry
+    } finally {
+      if (!installed) await closeUninstalledMailbox(runtime, mailbox)
+    }
   })()
 
   runtime.agentPending.set(agentId, task)
@@ -760,6 +878,7 @@ function agentActivityViewOf(
  * 的话那个红点要等下一件事顺带才亮**,而系统静默变哑正是死信要治的那个病。
  */
 function deadLetterSink(
+  runtime: RuntimeState,
   actorId: string,
   fallbackRoomId?: string,
   agentId?: string,
@@ -767,11 +886,10 @@ function deadLetterSink(
   const sink = createCollabDeadLetterSink({
     actorId,
     ...(fallbackRoomId ? { roomId: fallbackRoomId } : {}),
-    // 装配时运行时一定在(两个调用点都在 `ensureRoom` / `ensureAgent` 里),
-    // 但闭包活得比它长 —— 收摊之后的迟到死信写进一份孤儿 store 好过 NPE。
-    log: { append: (roomId, row) => state?.schedulerLog.append(roomId, row) },
+    log: runtime.schedulerLog,
   })
   return deadLetter => {
+    if (!runtimeAccepting(runtime)) return
     sink(deadLetter)
     // 红点走普通档:它是一个计数,不是一盏会闪的灯。
     if (fallbackRoomId) broadcastCollabCoordinator(fallbackRoomId)
@@ -792,9 +910,11 @@ async function postToRoom(
   roomId: string,
   verb: CollabActorVerb,
   from: ReturnType<typeof collabActorRef>,
+  runtime = state,
 ): Promise<void> {
-  const entry = await ensureRoom(roomId)
-  if (!entry) return
+  if (!runtime || !runtimeAccepting(runtime)) return
+  const entry = await ensureRoom(roomId, runtime)
+  if (!entry || !runtimeAccepting(runtime)) return
   await entry.mailbox.append(createActorEvent<CollabActorVerb>({
     id: nextEventId(from.id, verb),
     at: Date.now(),
@@ -809,9 +929,11 @@ async function postToAgent(
   agentId: string,
   verb: CollabActorVerb,
   from: ReturnType<typeof collabActorRef>,
+  runtime = state,
 ): Promise<void> {
-  const entry = await ensureAgent(agentId)
-  if (!entry) return
+  if (!runtime || !runtimeAccepting(runtime)) return
+  const entry = await ensureAgent(agentId, runtime)
+  if (!entry || !runtimeAccepting(runtime)) return
   await entry.mailbox.append(createActorEvent<CollabActorVerb>({
     id: nextEventId(from.id, verb),
     at: Date.now(),
@@ -822,7 +944,7 @@ async function postToAgent(
   }))
   // 积压涨了一条(D8 §3.1 的 `inbox`)。普通档:这是一个数字,不是一盏会闪的灯。
   // 消化那一侧由 AgentActor 的 `handleEvent` 收尾通知 —— 一进一出各有一处。
-  broadcastCollabAgentActivity(agentId)
+  if (runtimeAccepting(runtime)) broadcastCollabAgentActivity(agentId)
 }
 
 /**
@@ -970,13 +1092,19 @@ function buildCollabV3ReplyTo(
  *
  * 返回 `null` = 这不是一间 v3 房(运行时没起、或会话不是房),调用方回落 v2。
  */
-export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
+export function stopCollabV3RoomFloor(
+  sessionId: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
+): boolean | null {
   const runtime = state
   if (!runtime) return null
   const entry = runtime.rooms.get(sessionId)
   if (!entry) return null
 
   const turns = collabV3TurnsInRoom(sessionId)
+  const executionContext = fixedExecutionContext(options.executionContext)
+  const targetIds = [sessionId, ...turns.map(turn => turn.execSessionId)]
+  runtime.access.resolveAll(executionContext, targetIds, 'write')
   const engine = getStreamEngineSafe()
   for (const turn of turns) engine?.abort(turn.execSessionId)
   engine?.abort(sessionId)
@@ -995,6 +1123,7 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
   if (turns.length > 0) {
     void import('../../external-agents/index.js')
       .then(async module => {
+        runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {
           await module.interruptExternalAgentSessions(turn.execSessionId)
         }
@@ -1009,6 +1138,15 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
     log.error('epoch bump failed', {}, error)
   })
   return hadFloor || turns.length > 0
+}
+
+/** Side-effect-free expansion for batch RPC authorization before the first abort. */
+export function preflightCollabRoomStop(
+  roomSessionId: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
+): readonly string[] {
+  const targets = [roomSessionId, ...collabV3TurnsInRoom(roomSessionId).map(turn => turn.execSessionId)]
+  return (state?.access ?? sessionAccess).resolveAll(fixedExecutionContext(options.executionContext), targets, 'write')
 }
 
 /**
@@ -1048,6 +1186,7 @@ export function stopCollabV3RoomFloor(sessionId: string): boolean | null {
  */
 export async function revokeCollabV3RoomLease(
   request: CollabRoomRevokeLeaseRequest,
+  options: { executionContext?: RuntimeRequestContext } = {},
 ): Promise<CollabRoomRevokeLeaseResult> {
   const runtime = state
   if (!runtime) return { ok: false, reason: 'not-a-room' }
@@ -1069,6 +1208,9 @@ export async function revokeCollabV3RoomLease(
    */
   const turns = collabV3TurnsInRoom(request.roomSessionId)
     .filter(turn => turn.leaseId === request.leaseId)
+  const executionContext = fixedExecutionContext(options.executionContext)
+  const targetIds = [request.roomSessionId, ...turns.map(turn => turn.execSessionId)]
+  runtime.access.resolveAll(executionContext, targetIds, 'write')
   const engine = getStreamEngineSafe()
   // abort 顺带结算这条会话的 pending 审批/提问(见上「职责划分」)。
   for (const turn of turns) engine?.abort(turn.execSessionId)
@@ -1079,6 +1221,7 @@ export async function revokeCollabV3RoomLease(
   if (turns.length > 0) {
     void import('../../external-agents/index.js')
       .then(async module => {
+        runtime.access.resolveAll(executionContext, targetIds, 'write')
         for (const turn of turns) {
           await module.interruptExternalAgentSessions(turn.execSessionId)
         }
@@ -1179,13 +1322,19 @@ function findCollabV3Worker(
 export async function stopCollabV3TaskWork(
   roomSessionId: string,
   taskId: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
 ): Promise<boolean> {
-  if (!state) return false
+  const runtime = state
+  if (!runtime) return false
   const found = findCollabV3Worker(taskId, roomSessionId)
   if (!found) return false
+  const executionContext = fixedExecutionContext(options.executionContext)
+  const targetIds = [roomSessionId, ...(found.record.workSessionId ? [found.record.workSessionId] : [])]
+  runtime.access.resolveAll(executionContext, targetIds, 'write')
   const task = getCollabTask(roomSessionId, taskId)
 
   await patchCollabTask(roomSessionId, taskId, { status: 'todo' })
+  runtime.access.resolveAll(executionContext, targetIds, 'write')
   // 掐的是**工作会话**那条流,不是房间流:停一张卡不该让同房其他人的对话跟着断。
   if (found.record.workSessionId) getStreamEngineSafe()?.abort(found.record.workSessionId)
   if (task) {
@@ -1208,16 +1357,36 @@ export async function stopCollabV3TaskWork(
  * 卡留在 `doing` 上,恢复时由下面那个函数原地续做 —— 中断说明也因此被抑制,
  * 因为「暂停」本身已经在群里说过一次了。
  */
-export function freezeCollabV3RoomWork(roomSessionId: string): void {
-  const runtime = state
-  if (!runtime) return
-  const engine = getStreamEngineSafe()
-  for (const entry of runtime.agents.values()) {
+export function collabV3RoomStopTargets(roomSessionId: string): readonly string[] {
+  const targets = [roomSessionId, ...collabV3TurnsInRoom(roomSessionId).map(turn => turn.execSessionId)]
+  for (const entry of state?.agents.values() ?? []) {
     for (const record of entry.actor.account.workers) {
-      if (record.status !== 'running' || record.roomId !== roomSessionId) continue
-      if (record.workSessionId) engine?.abort(record.workSessionId)
+      if (record.status === 'running' && record.roomId === roomSessionId && record.workSessionId) {
+        targets.push(record.workSessionId)
+      }
     }
   }
+  return [...new Set(targets)]
+}
+
+export function freezeCollabV3RoomWork(
+  roomSessionId: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
+): void {
+  const runtime = state
+  if (!runtime) return
+  const executionContext = fixedExecutionContext(options.executionContext)
+  const workIds: string[] = []
+  for (const entry of runtime.agents.values()) {
+    for (const record of entry.actor.account.workers) {
+      if (record.status === 'running' && record.roomId === roomSessionId && record.workSessionId) {
+        workIds.push(record.workSessionId)
+      }
+    }
+  }
+  runtime.access.resolveAll(executionContext, [roomSessionId, ...workIds], 'write')
+  const engine = getStreamEngineSafe()
+  for (const workId of workIds) engine?.abort(workId)
 }
 
 /**
@@ -1389,7 +1558,10 @@ function scheduleJudgment(request: CollabRoomJudgmentRequest): void {
     runtime.judgments.delete(request.roomId)
     // 起飞:这一拍过完,窗从「防抖」翻成「在飞」—— 钱是从这一刻开始花的。
     broadcastCollabCoordinator(request.roomId, { activity: true })
-    void runtime.referee.adjudicate(request).catch((error: unknown) => {
+    void Promise.resolve().then(() => {
+      runtime.authorization.contextForRoom(request.roomId)
+      return runtime.referee.adjudicate(request)
+    }).catch((error: unknown) => {
       log.error('adjudication failed', { roomId: request.roomId }, error)
     })
   }, JUDGMENT_DEBOUNCE_MS)
@@ -1416,6 +1588,7 @@ async function flushJudgments(): Promise<void> {
     // 与定时器那条路同一帧:窗从「防抖」翻成「在飞」。
     broadcastCollabCoordinator(entry.request.roomId, { activity: true })
     try {
+      runtime.authorization.contextForRoom(entry.request.roomId)
       await runtime.referee.adjudicate(entry.request)
     } catch (error) {
       log.error('adjudication failed', { roomId: entry.request.roomId }, error)
@@ -1423,13 +1596,17 @@ async function flushJudgments(): Promise<void> {
   }
 }
 
-function roomHost(): CollabRoomActorHost {
+function roomHost(runtime: RuntimeState, activatedRoomId: string): CollabRoomActorHost {
+  const authorize = (roomId = activatedRoomId) => {
+    const context = runtime.authorization.contextForRoom(activatedRoomId)
+    runtime.authorization.assertSessions(context, [roomId])
+  }
   return {
-    members: roomMembersOf,
+    members: roomId => { authorize(roomId); return roomMembersOf(roomId) },
     // 授权面(谁能被发牌)与识别面(哪串字符是一个真身份)分家 —— 用户与退休
     // 成员的句柄要认得出来,但他们不在名册里(collab-handle-codec.md §2.1)。
     directory: () => buildCollabIdentityDirectory(),
-    frozen: roomId => store.getSession(roomId)?.room?.frozen === true,
+    frozen: roomId => { authorize(roomId); return store.getSession(roomId)?.room?.frozen === true },
     overBudget: roomOverBudget,
     maxChain: roomId => {
       const session = store.getSession(roomId)
@@ -1442,8 +1619,9 @@ function roomHost(): CollabRoomActorHost {
     // 设置里的「响应模式三件套」→ 发言策略档。这一口只在装配与改设置时被问
     // (`syncFloorPolicy()`),不是每次决策现读 —— 理由见端口自己的注释。
     floorPolicy: roomId => resolveCollabRoomFloorPolicy(store.getSession(roomId)?.room),
-    openJudgment: scheduleJudgment,
+    openJudgment: request => { authorize(request.roomId); scheduleJudgment(request) },
     appendMessage: (roomId, message) => {
+      authorize(roomId)
       const chat = message as ChatMessage
       sessionCommands.appendMessage(roomId, { message: chat, stampCollab: true })
       // 与 v2 say / ingress 共用同一条广播:房间 UI 与 SSE 镜像不必认新事件。
@@ -1454,10 +1632,12 @@ function roomHost(): CollabRoomActorHost {
     },
     memberMailbox: agentId => ({
       append: async event => {
+        authorize()
         const entry = await ensureAgent(agentId)
         // 开不出信箱(人退休了 / 被删了)不算投递失败:房间那侧会把它当"这位
         // 此刻没有信箱"跳过,而不是让整条广播炸掉。
         if (!entry) return
+        authorize()
         await entry.mailbox.append(event)
       },
     }),
@@ -1466,21 +1646,29 @@ function roomHost(): CollabRoomActorHost {
   }
 }
 
-function agentHost(): CollabAgentActorHost {
+function agentHost(runtime: RuntimeState): CollabAgentActorHost {
   return {
-    execSessionId: (agentId, roomId) => ensureCollabAgentSession(agentId, roomId),
-    buildRoomContext: buildV3RoomContext,
+    execSessionId: (agentId, roomId) => ensureCollabAgentSession(agentId, roomId, {
+      executionContext: runtime.authorization.contextForRoom(roomId),
+    }),
+    buildRoomContext: input => {
+      const context = runtime.authorization.contextForRoom(input.roomId)
+      runtime.authorization.assertSessions(context, [input.roomId, input.execSessionId])
+      return buildV3RoomContext(input)
+    },
     roomOutbox: roomId => ({
       post: verb => postToRoom(roomId, verb, collabActorRef('agent', collabVerbAgentId(verb))),
     }),
-    members: roomMembersOf,
+    members: roomId => { runtime.authorization.contextForRoom(roomId); return roomMembersOf(roomId) },
     dm: roomId => {
+      runtime.authorization.contextForRoom(roomId)
       const room = store.getSession(roomId)?.room
       return isUserDmRoom(room) || isAgentPairDmRoom(room)
     },
-    roomLabel: roomId => store.getSession(roomId)?.name,
+    roomLabel: roomId => { runtime.authorization.contextForRoom(roomId); return store.getSession(roomId)?.name },
     speakerLabel: agentId => findAgent(agentId)?.name,
     projectedThrough: roomId => {
+      runtime.authorization.contextForRoom(roomId)
       const messages = sessionReads.listMessages(roomId).messages
       for (let index = messages.length - 1; index >= 0; index -= 1) {
         const message = messages[index]
@@ -1493,6 +1681,10 @@ function agentHost(): CollabAgentActorHost {
       return undefined
     },
     persistSeen: input => {
+      const roomId = store.getSession(input.execSessionId)?.collab?.roomSessionId
+      if (!roomId) return
+      const context = runtime.authorization.contextForRoom(roomId)
+      runtime.authorization.assertSessions(context, [roomId, input.execSessionId])
       advanceSeenCursor(input.execSessionId, input.messageId)
     },
     formatSteerBody: formatV3SteerBody,
@@ -1626,12 +1818,16 @@ function takeCollabV3AdoptedEcho(
   return { messageId, ...(typeof at === 'number' ? { at } : {}) }
 }
 
-function refereeHost(): CollabRefereeActorHost {
+function refereeHost(getRuntime: () => RuntimeState): CollabRefereeActorHost {
+  const authorize = (roomId: string) => getRuntime().authorization.contextForRoom(roomId)
   return {
-    candidates: (roomId): readonly CollabRaisedHand[] =>
-      state?.rooms.get(roomId)?.actor.account.hands ?? [],
-    members: roomMembersOf,
+    candidates: (roomId): readonly CollabRaisedHand[] => {
+      authorize(roomId)
+      return getRuntime().rooms.get(roomId)?.actor.account.hands ?? []
+    },
+    members: roomId => { authorize(roomId); return roomMembersOf(roomId) },
     recent: roomId => {
+      authorize(roomId)
       const messages = sessionReads.listMessages(roomId).messages as readonly CollabMessageLike[]
       return messages.filter(isCollabRoomFact).slice(-REFEREE_RECENT_LIMIT)
     },
@@ -1640,7 +1836,8 @@ function refereeHost(): CollabRefereeActorHost {
     persona: agentId => findAgent(agentId)?.systemPrompt,
     agentName: agentId => findAgent(agentId)?.name,
     constraints: roomId => {
-      const account = state?.rooms.get(roomId)?.actor.account
+      authorize(roomId)
+      const account = getRuntime().rooms.get(roomId)?.actor.account
       if (!account) return []
       const session = store.getSession(roomId)
       const maxChain = session ? maxChainFor(session) : 0
@@ -1656,7 +1853,8 @@ function refereeHost(): CollabRefereeActorHost {
       return lines
     },
     mentioned: roomId => {
-      const account = state?.rooms.get(roomId)?.actor.account
+      authorize(roomId)
+      const account = getRuntime().rooms.get(roomId)?.actor.account
       const sourceMessageId = account?.judgment?.sourceMessageId
       if (!sourceMessageId) return []
       const source = sessionReads.getMessage(roomId, sourceMessageId)
@@ -1680,9 +1878,14 @@ function refereeHost(): CollabRefereeActorHost {
  * 用 `applyBoardAction` 的话,"开工写 doing"会再发一次 `task-started`,而那正是
  * 触发开工的那个事件:一只手会派出第二只手。
  */
-function boardPort(): CollabWorkerBoardPort {
+function boardPort(runtime: RuntimeState): CollabWorkerBoardPort {
+  const authorize = (input: { roomId: string; workSessionId?: string }) => {
+    const context = runtime.authorization.contextForRoom(input.roomId)
+    runtime.authorization.assertSessions(context, [input.roomId, ...(input.workSessionId ? [input.workSessionId] : [])])
+  }
   return {
     started: async input => {
+      authorize(input)
       const task = loadCollabBoard(input.roomId).tasks.find(entry => entry.id === input.cardId)
       if (!task) return
       const resuming = input.workSessionId
@@ -1696,6 +1899,7 @@ function boardPort(): CollabWorkerBoardPort {
       })
     },
     settled: async input => {
+      authorize(input)
       // 终局 → 卡的去处。交付进评审(人/PM 验收),受阻留 blocked,其余一律推回
       // todo —— 一段没跑完的执行不该把卡留在"在做"上,那是看板与进程说的不是
       // 同一件事的开始。
@@ -1708,22 +1912,24 @@ function boardPort(): CollabWorkerBoardPort {
       })
     },
     interrupted: async input => {
+      authorize(input)
       await patchCollabTask(input.roomId, input.cardId, { status: 'todo' })
     },
-    digest: input => renderCollabBoardDigest(
-      loadCollabBoard(input.roomId),
-      agentId => findAgent(agentId)?.name ?? agentId,
-      { agentId: input.agentId },
-    ),
+    digest: input => {
+      authorize(input)
+      return renderCollabBoardDigest(loadCollabBoard(input.roomId),
+        agentId => findAgent(agentId)?.name ?? agentId, { agentId: input.agentId })
+    },
   }
 }
 
 /** 板事件 → v3。开工派手,其余进房间当卡的动静。 */
 async function handleBoardEvent(
+  runtime: RuntimeState,
   roomSessionId: string,
   event: { type: string; task: { id: string; title: string; description?: string; assigneeAgentId?: string; workSessionIds: string[] } },
 ): Promise<void> {
-  if (!state) return
+  if (!runtimeAccepting(runtime)) return
   const task = event.task
   const assignee = task.assigneeAgentId
 
@@ -1738,11 +1944,11 @@ async function handleBoardEvent(
       title: task.title,
       ...(task.description ? { description: task.description } : {}),
       ...(previous ? { workSessionId: previous } : {}),
-    }), collabActorRef('room', roomSessionId))
+    }), collabActorRef('room', roomSessionId), runtime)
   }
 
   const kind = boardEventKind(event.type)
-  if (!kind) return
+  if (!kind || !runtimeAccepting(runtime)) return
   if (event.type === 'task-assigned' && assignee) {
     postTaskSystemLine(roomSessionId, `「${task.title}」→ ${findAgent(assignee)?.name ?? assignee}`)
   }
@@ -1752,7 +1958,7 @@ async function handleBoardEvent(
     event: kind,
     ...(assignee ? { assigneeId: assignee } : {}),
     title: task.title,
-  }), collabActorRef('room', roomSessionId))
+  }), collabActorRef('room', roomSessionId), runtime)
 }
 
 function boardEventKind(type: string): CollabCardEventKind | undefined {
@@ -1799,17 +2005,18 @@ async function resetRoomAccount(roomSessionId: string): Promise<boolean> {
   const epoch = entry.actor.account.floor.epoch + 1
   // 先按住在飞的那几条(掐流 + 换代),再动账 —— 反过来的话一条正在收尾的回合
   // 会把它的 say 写进一间刚被清空的房。
-  stopCollabV3RoomFloor(roomSessionId)
+  stopCollabV3RoomFloor(roomSessionId, { executionContext: runtime.authorization.contextForRoom(roomSessionId) })
   try {
     await entry.actor.stop()
-    await entry.mailbox.flush()
   } catch (error) {
     log.error('stop room loop before clear failed', { roomSessionId }, error)
   }
+  await flushRuntimeMailbox(runtime, entry.mailbox)
   runtime.rooms.delete(roomSessionId)
   runtime.budget.delete(roomSessionId)
   const fresh = createCollabRoomAccount(roomSessionId)
-  createCollabRoomAccountFileStore().save({ ...fresh, floor: { ...fresh.floor, epoch } })
+  createCollabRoomAccountFileStore({ storePath: runtime.storePath, assertOwned: runtime.assertOwned })
+    .save({ ...fresh, floor: { ...fresh.floor, epoch } })
   broadcastCollabCoordinator(roomSessionId)
   return true
 }

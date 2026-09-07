@@ -18,6 +18,10 @@ import { isActiveAgent } from '@shared/ipc.js'
 import { agentDmRoomId, isColleague } from '@onething/runtime/agents'
 import * as store from '../../store.js'
 import { findAgent } from '../agents/index.js'
+import type { RuntimeRequestContext } from '@onething/core'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import { ownedCollabSessionId } from './owned-session-id.js'
 
 /** 房名分隔符。「⇄」而不是「/」或「&」:一眼看出这是双向的一对一。 */
 const PAIR_NAME_SEPARATOR = ' ⇄ '
@@ -40,8 +44,13 @@ const PAIR_NAME_SEPARATOR = ' ⇄ '
  * 还是旧名字",收益是不必在 agent 改名链路上挂一个跨模块的 rooms 遍历。房名
  * 本来就只是显示层的东西,归属永远读 `memberAgentIds`。
  */
-export function ensureAgentDmRoom(agentIdA: string, agentIdB: string): string | null {
-  const roomSessionId = agentDmRoomId(agentIdA, agentIdB)
+export function ensureAgentDmRoom(
+  agentIdA: string,
+  agentIdB: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
+): string | null {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  const roomSessionId = ownedCollabSessionId(agentDmRoomId(agentIdA, agentIdB), executionContext)
   if (!roomSessionId) return null
 
   // 成员按字典序落库,与 id 的派生顺序同源:两处各排一次而不是互相推导,是因为
@@ -56,14 +65,16 @@ export function ensureAgentDmRoom(agentIdA: string, agentIdB: string): string | 
   const roomName = `${first!.name}${PAIR_NAME_SEPARATOR}${second!.name}`
 
   const existing = store.getSession(roomSessionId)
+  if (existing) sessionAccess.resolve(executionContext, roomSessionId, 'write')
   if (!existing) {
     // 建房的发起者是一个 agent 的回合,把用户正在看的标签页抢走完全说不通 ——
     // 所以走不动指针的那个变体(指针纪律见 stores/sessions.ts)。
-    store.createSessionWithoutFocus(roomSessionId, roomName)
+    store.createSessionWithoutFocus(roomSessionId, roomName, { initialOwner: executionContext })
   }
 
   const session = store.getSession(roomSessionId)
   if (!session) return null
+  sessionAccess.resolve(executionContext, roomSessionId, 'write')
 
   // 形态:双成员 + dm 标记。members 与标记一起写,于是"人数即形态"这条约定
   // (D1/D3)在数据落库的那一刻就成立。

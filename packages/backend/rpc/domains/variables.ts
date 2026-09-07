@@ -23,7 +23,9 @@
  * (`bootstrapVariableSystem()` 装的 app 单例),不再是 server 自己那台
  * per-owner registry。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { sessionAccess } from '../../session/access.js'
 import {
   deleteOnethingVariableForIpc,
   listOnethingVariablesForIpc,
@@ -32,20 +34,23 @@ import {
 import { getVariableRegistry } from '@onething/runtime/variables/registry'
 import type { VariablesRoutes } from '@shared/ipc/variables.js'
 
-export const variablesRpcHandlers: RouteHandlers<VariablesRoutes> = {
-  async list(request) {
+export const variablesRpcHandlers: RpcRouteHandlers<VariablesRoutes> = {
+  async list(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'read')
     return listOnethingVariablesForIpc({
       request,
       listVariables: context => getVariableRegistry().list(context),
     })
   },
-  async set(request) {
+  async set(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'write')
     return setOnethingVariableForIpc({
       request,
       setVariable: (context, input) => getVariableRegistry().set(context, input),
     })
   },
-  async delete(request) {
+  async delete(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'write')
     return deleteOnethingVariableForIpc({
       request,
       deleteVariable: (context, name, scope) =>
@@ -53,4 +58,3 @@ export const variablesRpcHandlers: RouteHandlers<VariablesRoutes> = {
     })
   },
 }
-

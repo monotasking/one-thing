@@ -25,7 +25,9 @@
  * 校验通道亲和性。授权账页(列/撤/清)是 `permissionGrants` 域。
  */
 import type { PermissionInfo } from '@shared/ipc/permissions.js'
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { sessionAccess } from '../../session/access.js'
 import {
   clearOnethingPermissionSessionForIpc,
   getOnethingPendingPermissionsForIpc,
@@ -40,10 +42,11 @@ const log = getLogger('rpc.permission')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */
 const consoleLog: ConsoleLikePort & OnethingPermissionSessionIpcLogger = consolePort(log)
 
-export const permissionRpcHandlers: RouteHandlers<PermissionRoutes> = {
+export const permissionRpcHandlers: RpcRouteHandlers<PermissionRoutes> = {
   // 全景(含 promptState 标注的排队 prompt),这样重载的客户端能按 toolCallId
   // 重建每一张等待卡 —— 只给 actionable 的那批,排队中的卡片就会凭空消失。
-  async getPending(request) {
+  async getPending(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'permission')
     return getOnethingPendingPermissionsForIpc<PermissionInfo>({
       sessionId: request.sessionId,
       getPending: sessionId =>
@@ -51,7 +54,8 @@ export const permissionRpcHandlers: RouteHandlers<PermissionRoutes> = {
       logger: consoleLog,
     })
   },
-  async clearSession(request) {
+  async clearSession(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'permission')
     return clearOnethingPermissionSessionForIpc({
       sessionId: request.sessionId,
       clearSession: Permission.clearSession,
@@ -59,4 +63,3 @@ export const permissionRpcHandlers: RouteHandlers<PermissionRoutes> = {
     })
   },
 }
-

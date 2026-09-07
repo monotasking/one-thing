@@ -91,6 +91,7 @@ import {
 import { getPluginFootprint } from '../../wiring/plugins/loader.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { requestSessionOwner, sessionAccess } from '../../session/access.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
 
@@ -235,6 +236,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
   },
 
   async executeCommand(request, context = DESKTOP_RPC_CONTEXT) {
+    if (request?.sessionId) sessionAccess.resolve(context, request.sessionId, 'write')
     const catalog = pluginCatalogFallback()
     if (catalog) {
       return (await catalog.executeCommand(request, runtimeContext(context))) as {
@@ -247,7 +249,7 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
       commandName: request?.commandName ?? '',
       args: request?.args,
       sessionId: request?.sessionId ?? '',
-    })
+    }, { executionContext: requestSessionOwner(context) })
   },
 
   /**
@@ -464,4 +466,3 @@ export const pluginsRpcHandlers: RpcRouteHandlers<PluginsRoutes> = {
     return pickPluginFileOnHost(request, context.callerId)
   },
 }
-

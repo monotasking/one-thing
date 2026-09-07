@@ -67,6 +67,16 @@ afterEach(() => {
 })
 
 describe('collab:board-changed coalescing', () => {
+  it('checks queued authorization before reading, writing, auditing, or broadcasting a board', async () => {
+    const run = boardStore.applyBoardAction(ROOM, { action: 'create', title: 'must not exist' }, USER, {
+      beforeReadOrWrite: () => { throw new Error('Session not found') },
+    })
+    await expect(run).rejects.toThrow('Session not found')
+    expect(mocks.files.size).toBe(0)
+    expect(mocks.appended).toEqual([])
+    expect(mocks.emitted).toEqual([])
+  })
+
   it('collapses a burst into ONE broadcast carrying the final board', async () => {
     for (let index = 0; index < 5; index++) {
       await boardStore.applyBoardAction(ROOM, { action: 'create', title: `卡 ${index}` }, USER)

@@ -41,6 +41,8 @@ import {
   type OnethingMusicSetupRequest,
 } from '@onething/runtime/music'
 import type { MusicRoutes } from '@shared/ipc/music.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { assertMusicOperator } from '../../wiring/music/access.js'
 import { getSettings } from '../../stores/settings.js'
 import { resolveDjSpeakDone } from '../../wiring/music/dj-voice.js'
 import {
@@ -65,11 +67,13 @@ import {
 import type { RpcRouteHandlers } from '../registry.js'
 
 export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
-  async getState() {
+  async getState(_input, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return getOnethingMusicStateForIpc({ getState: () => getMusicService().getState() })
   },
 
-  async setup(request) {
+  async setup(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     const result = await runOnethingMusicSetupForIpc({
       request: request as OnethingMusicSetupRequest,
       service: getMusicService(),
@@ -89,31 +93,37 @@ export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
     return result
   },
 
-  async command(request) {
+  async command(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return runMusicCommand(request)
   },
 
   // The watcher's cache, not a fresh poll: answering a window reload must not
   // cost a subprocess. Position is at most one poll interval stale, and the
   // renderer interpolates anyway.
-  async getNowPlaying() {
+  async getNowPlaying(_input, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return getMusicNowPlaying()
   },
 
-  async getRadio() {
+  async getRadio(_input, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return readRadioBrief()
   },
 
-  async getLyrics() {
+  async getLyrics(_input, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return getMusicLyrics()
   },
 
   /** Renderer acks a DJ patter finished playing → main resumes the music. */
-  async djSpeakDone(request) {
+  async djSpeakDone(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     if (request?.id) resolveDjSpeakDone(request.id)
   },
 
-  async openRadio(request) {
+  async openRadio(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     const settings = getSettings()
     if (settings.music?.enabled !== true) {
       return { success: false, error: '音乐电台未启用:请在 设置 → 音乐 打开总开关' }
@@ -124,28 +134,33 @@ export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
     return { success: true }
   },
 
-  async search(request) {
+  async search(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     const query = request?.query?.trim()
     if (!query) return { success: false, error: 'query is required' }
     return searchMusicSongs(query)
   },
 
-  async requestSong(request) {
+  async requestSong(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     const query = request?.query?.trim()
     return query ? requestSong(query) : { success: false, error: 'query is required' }
   },
 
-  async getProgramme() {
+  async getProgramme(_input, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return { success: true, ...getProgrammeSnapshot() }
   },
 
-  async programmeAction(request) {
+  async programmeAction(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return request?.action
       ? applyProgrammeAction(request.action as Parameters<typeof applyProgrammeAction>[0])
       : { success: false, error: 'action is required' }
   },
 
-  async listProviders() {
+  async listProviders(_input, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return {
       success: true,
       providers: listMusicProviderDescriptors(),
@@ -153,10 +168,10 @@ export const musicRpcHandlers: RpcRouteHandlers<MusicRoutes> = {
     }
   },
 
-  async setProvider(request) {
+  async setProvider(request, context = DESKTOP_RPC_CONTEXT) {
+    assertMusicOperator(context)
     return request?.providerId
       ? setMusicProvider(request.providerId)
       : { success: false, error: 'providerId is required' }
   },
 }
-

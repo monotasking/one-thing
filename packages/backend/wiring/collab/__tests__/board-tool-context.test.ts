@@ -13,6 +13,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface FakeSession {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   kind?: string
   agentId?: string
@@ -21,9 +23,17 @@ interface FakeSession {
 }
 
 const mocks = vi.hoisted(() => ({
+  beforeReadOrWrite: undefined as (() => void) | undefined,
   sessions: new Map<string, unknown>(),
   applied: [] as Array<{ roomSessionId: string; actor: { type: string; agentId?: string } }>,
 }))
+
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
+  }) }
+})
 
 vi.mock('../../../store.js', () => ({
   // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
@@ -41,7 +51,10 @@ vi.mock('../board-store.js', () => ({
     roomSessionId: string,
     _action: unknown,
     actor: { type: string; agentId?: string },
+    options: { beforeReadOrWrite?: () => void },
   ) => {
+    mocks.beforeReadOrWrite = options.beforeReadOrWrite
+    options.beforeReadOrWrite?.()
     mocks.applied.push({ roomSessionId, actor })
     return { board: { version: 1, tasks: [] } }
   },
@@ -52,7 +65,7 @@ const { createBoardTool } = await import('@onething/runtime/toolkit')
 const { Decision, ToolRunner } = await import('@onething/core/toolkit')
 const { ZodValidator } = await import('@onething/runtime/toolkit')
 
-async function board(sessionId: string): Promise<{ output: string }> {
+async function board(sessionId: string, executionContext?: unknown): Promise<{ output: string }> {
   const runner = new ToolRunner({
     authorizer: { async decide() { return Decision.allow() } },
     observer: { on: () => {} },
@@ -65,6 +78,7 @@ async function board(sessionId: string): Promise<{ output: string }> {
     sessionId,
     messageId: 'm-1',
     principal: undefined as never,
+    executionContext,
   })
   if (outcome.kind !== 'ok') throw new Error(`unexpected outcome: ${outcome.kind}`)
   return {
@@ -75,6 +89,7 @@ async function board(sessionId: string): Promise<{ output: string }> {
 beforeEach(() => {
   mocks.sessions.clear()
   mocks.applied.length = 0
+  mocks.beforeReadOrWrite = undefined
   mocks.sessions.set('room-1', {
     id: 'room-1',
     kind: 'room',
@@ -90,6 +105,24 @@ beforeEach(() => {
 })
 
 describe('board context from an execution session (W18)', () => {
+  it('carries the invocation owner separately and rechecks before the queued board operation', async () => {
+    const executionContext = { userId: 'alice', workspaceId: 'tenant-a' }
+    for (const id of ['agent-exec-fe', 'room-1']) {
+      Object.assign(mocks.sessions.get(id)!, { ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
+    }
+    await board('agent-exec-fe', executionContext)
+    expect(mocks.applied).toHaveLength(1)
+    Object.assign(mocks.sessions.get('room-1')!, { ownerUserId: 'bob' })
+    expect(() => mocks.beforeReadOrWrite!()).toThrow('Session not found')
+  })
+
+  it.each(['source', 'target'] as const)('refuses a foreign %s before calling the board store', async target => {
+    const id = target === 'source' ? 'agent-exec-fe' : 'room-1'
+    Object.assign(mocks.sessions.get(id)!, { ownerUserId: 'bob' })
+    await expect(board('agent-exec-fe')).rejects.toThrow('unexpected outcome: failed')
+    expect(mocks.applied).toEqual([])
+  })
+
   it('acts on the room the drive pointed the session at, as that agent', async () => {
     await board('agent-exec-fe')
     expect(mocks.applied).toEqual([

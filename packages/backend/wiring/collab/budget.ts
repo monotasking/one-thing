@@ -113,7 +113,7 @@ export function msUntilNextBudgetDay(now: number = Date.now()): number {
  * Uncached on purpose: the gate below wraps it in its own 60s cache, and the
  * settings panel wants a fresh number the moment it opens.
  */
-export async function readCollabRoomSpentTodayUSD(roomSessionId: string): Promise<number> {
+export async function readCollabRoomSpentTodayUSD(roomSessionId: string, options?: { canReadSession(id: string): boolean }): Promise<number> {
   const records = await getUsageLedger().readRecordsInRange(
     budgetDayStart(Date.now()),
     Date.now() + 60_000,
@@ -138,7 +138,7 @@ export async function readCollabRoomSpentTodayUSD(roomSessionId: string): Promis
   }
   let spent = 0
   for (const record of records) {
-    if (record.sessionId && ids.has(record.sessionId) && record.costUSD != null) {
+    if (record.sessionId && ids.has(record.sessionId) && record.costUSD != null && (!options || options.canReadSession(record.sessionId))) {
       spent += record.costUSD
     }
   }
@@ -149,7 +149,7 @@ export async function readCollabRoomSpentTodayUSD(roomSessionId: string): Promis
  * Read-only spend view for the room settings panel (W13.5). The limit rides
  * along so the caller never has to re-derive the default.
  */
-export async function getCollabRoomSpend(roomSessionId: string): Promise<{
+export async function getCollabRoomSpend(roomSessionId: string, options?: { canReadSession(id: string): boolean }): Promise<{
   success: boolean
   error?: string
   spentTodayUSD?: number
@@ -160,7 +160,7 @@ export async function getCollabRoomSpend(roomSessionId: string): Promise<{
   try {
     return {
       success: true,
-      spentTodayUSD: await readCollabRoomSpentTodayUSD(roomSessionId),
+      spentTodayUSD: await readCollabRoomSpentTodayUSD(roomSessionId, options),
       dailyCostUSD: session.room?.budgets?.dailyCostUSD ?? COLLAB_DEFAULT_DAILY_COST_USD,
     }
   } catch (error) {

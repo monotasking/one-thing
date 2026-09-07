@@ -13,6 +13,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcResponse } from '@shared/ipc/rpc.js'
 import { musicRouter } from '@shared/ipc/music.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 
 const runner = vi.hoisted(() => ({ run: vi.fn() }))
 const provider = vi.hoisted(() => ({
@@ -87,8 +88,13 @@ function unwrap(response: RpcResponse): Record<string, unknown> {
 describe('music RPC domain', () => {
   let dispatchRpc: typeof import('../registry.js')['dispatchRpc']
   let dispose: (() => void) | undefined
+  let operations: ReturnType<typeof import('../../wiring/music/operations.js')['createMusicOperationsScope']>
 
   beforeEach(async () => {
+    const { createMusicOperationsScope } = await import('../../wiring/music/operations.js')
+    const { setCurrentBackend, createBackendHandle } = await import('../../current.js')
+    operations = createMusicOperationsScope({ service: { ...service, runner }, radio } as unknown as Parameters<typeof createMusicOperationsScope>[0])
+    setCurrentBackend(createBackendHandle({ music: { operations } as unknown as import('../../wiring/music/subsystem.js').MusicSubsystem }))
     const [registry, domain] = await Promise.all([
       import('../registry.js'),
       import('../domains/music.js'),
@@ -102,7 +108,10 @@ describe('music RPC domain', () => {
     radio.openRadioStation.mockReset()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await operations.drain()
+    const { setCurrentBackend } = await import('../../current.js')
+    setCurrentBackend(null)
     dispose?.()
     dispose = undefined
     vi.clearAllMocks()
@@ -110,6 +119,23 @@ describe('music RPC domain', () => {
 
   const call = (method: string, payload: unknown = {}) =>
     dispatchRpc({ domain: 'music', method, payload })
+
+  it.each(musicRouter.methods)('rejects a foreign operator before %s touches the host player', async method => {
+    for (const context of [
+      { ...DESKTOP_RPC_CONTEXT, ownerUid: 'alice' },
+      { ...DESKTOP_RPC_CONTEXT, workspaceId: 'another-tenant' },
+    ]) {
+      const response = await dispatchRpc({ domain: 'music', method, payload: {} }, context)
+      expect(response).toEqual({ ok: false, error: { message: 'Session not found' } })
+    }
+    expect(runner.run).not.toHaveBeenCalled()
+    expect(settings.getSettings).not.toHaveBeenCalled()
+    expect(settings.saveSettings).not.toHaveBeenCalled()
+    expect(service.getMusicService).not.toHaveBeenCalled()
+    expect(radio.openRadioStation).not.toHaveBeenCalled()
+    expect(radio.requestSong).not.toHaveBeenCalled()
+    expect(radio.applyProgrammeAction).not.toHaveBeenCalled()
+  })
 
   it('reports the wizard state and the radio brief', async () => {
     const state = unwrap(await call('getState'))

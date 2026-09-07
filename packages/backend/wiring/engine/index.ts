@@ -26,15 +26,18 @@ import {
 } from './stream-engine-runtime.js'
 import {
   getSessionManager,
+  ensureSessionWritable,
 } from '../../session/index.js'
 import * as store from '../../store.js'
 import {
-  getOutboundReplyDispatcher,
+  OutboundReplyDispatcher,
   registerChannelPromptContextProvider,
   unregisterChannelPromptContextProvider,
 } from '../../channel/index.js'
 import { getCurrentBackend, getCurrentBackendSafe } from '../../current.js'
 import { getLogger } from '../logging/index.js'
+import { DEFAULT_SESSION_OWNER, sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from './execution-context.js'
 
 const log = getLogger('engine.stream')
 
@@ -88,14 +91,18 @@ export function getConversationRuntime(): CoreConversationRuntime<StreamChunk> {
 export function createStreamEngineLayer(deps: {
   eventBus: EventBus
   streamChannel: StreamChannel
+  assertAccepting?: (sessionId?: string) => void
 }): {
   engine: StreamEngine
   runtime: MainOnethingRuntime | undefined
-  dispose: () => void
+  quiesceOutboundReplies: () => void
+  drainOutboundReplies: () => Promise<void>
+  dispose: () => Promise<void>
 } {
   const streamRuntime = createMainStreamEngineRuntime()
   registerChannelPromptContextProvider()
-  const engine = createBoundStreamEngine(streamRuntime)
+  const engine = createBoundStreamEngine(streamRuntime, deps.assertAccepting, ensureSessionWritable,
+    (sessionId, executionContext) => sessionAccess.resolve(fixedExecutionContext(executionContext), sessionId, 'write'))
 
   let runtime: MainOnethingRuntime | undefined
   try {
@@ -118,6 +125,7 @@ export function createStreamEngineLayer(deps: {
           getSessionManager().destroySession(sessionId)
         },
         setSessionPermissionMode: (sessionId, mode) => {
+          sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'permission')
           store.updateSessionPermissionMode(sessionId, mode)
         },
       },
@@ -125,8 +133,9 @@ export function createStreamEngineLayer(deps: {
   } catch {
     // EventBus may not be initialized yet in test scenarios
   }
+  const outboundReplies = new OutboundReplyDispatcher()
   try {
-    getOutboundReplyDispatcher().start(deps.eventBus)
+    outboundReplies.start(deps.eventBus)
   } catch {
     // EventBus may not be initialized yet in test scenarios
   }
@@ -136,10 +145,12 @@ export function createStreamEngineLayer(deps: {
   return {
     engine,
     runtime,
-    dispose: () => {
+    quiesceOutboundReplies: () => outboundReplies.quiesce(),
+    drainOutboundReplies: () => outboundReplies.drain(),
+    dispose: async () => {
       if (disposed) return
       disposed = true
-      getOutboundReplyDispatcher().stop()
+      await outboundReplies.stop()
       unregisterChannelPromptContextProvider()
       engine.shutdown()
     },
@@ -147,10 +158,16 @@ export function createStreamEngineLayer(deps: {
 }
 
 function ensurePersistentGatewaySession(sessionId: string): void {
-  if (!sessionId.startsWith('gateway:') || store.getSession(sessionId)) return
+  if (!sessionId.startsWith('gateway:')) return
+  // Gateway currently serves one local operator. IM identities are message
+  // origins, not product-account principals.
+  if (store.getSession(sessionId)) {
+    sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
+    return
+  }
 
   const currentSessionId = store.getCurrentSessionId()
-  store.createSession(sessionId, createGatewaySessionName(sessionId))
+  store.createSession(sessionId, createGatewaySessionName(sessionId), { initialOwner: DEFAULT_SESSION_OWNER })
   if (currentSessionId) {
     store.setCurrentSessionId(currentSessionId)
   }

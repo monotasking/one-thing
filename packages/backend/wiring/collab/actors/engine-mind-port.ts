@@ -62,6 +62,7 @@ import {
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../../logging/index.js'
+import { getCurrentBackendInstance } from '../../../current.js'
 
 const log = getLogger('collab.actors.mind')
 
@@ -176,6 +177,7 @@ function harvestTurnMessage(
 }
 
 export interface CreateCollabEngineMindPortOptions {
+  authorization: import('./execution-authorization.js').CollabActorAuthorization
   /** 时钟注入(排障脚本按转录时刻重放时用)。 */
   now?: () => number
   startTimeoutMs?: number
@@ -190,14 +192,19 @@ export interface CreateCollabEngineMindPortOptions {
  * settle —— 那一轮会坐满整个起流超时,然后被当成它从来不是的僵尸掐掉(v2 P2-7)。
  */
 export function createCollabEngineMindPort(
-  options: CreateCollabEngineMindPortOptions = {},
+  options: CreateCollabEngineMindPortOptions,
 ): CollabMindPort {
   const now = options.now ?? Date.now
+  // Capture the owner before a turn can await anything. A late finally must
+  // never resolve a digest service belonging to a replacement Backend.
+  const digests = getCurrentBackendInstance()?.collabDigests
 
   return {
     name: 'engine',
 
     async runConversationalTurn(request: CollabMindTurnRequest): Promise<CollabMindTurnResult> {
+      const executionContext = options.authorization.contextForRoom(request.roomSessionId)
+      options.authorization.assertSessions(executionContext, [request.roomSessionId, request.execSessionId])
       const engine = getStreamEngineSafe()
       // 引擎没绑就不驱动:没有 sender 的命令会被引擎静默丢掉,而那一轮会白白
       // 烧掉一张牌(等待的判断归房间,见文件头)。
@@ -259,11 +266,12 @@ export function createCollabEngineMindPort(
           // 这一轮答的是哪张牌。落在执行会话里 = 一份比内存账活得久的幂等凭据。
           collabLeaseId: request.lease.leaseId,
           ...collabAgentModelFields(agent, modelPinned),
-        } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+        } as Parameters<ReturnType<typeof getEventBus>['emit']>[1], { executionContext })
 
         const outcome = await turnEnded
         // 等待放弃了,请求并没有:它会继续拿整个上下文来回打,而这一轮已经没有人在听。
         abortCollabZombieStream(outcome, request.execSessionId)
+        options.authorization.assertSessions(executionContext, [request.roomSessionId, request.execSessionId])
 
         // 不论结局都收割:一个被 abort 的半截回合里说出去的话**已经在房间里了**。
         const roomMessages = sessionReads.listMessages(request.roomSessionId).messages
@@ -310,16 +318,19 @@ export function createCollabEngineMindPort(
          * `<Folded count>` 在此期间照旧诚实地说少了多少条。开关见
          * `room.context.dailyDigest`。
          *
-         * **动态 import 是刻意的**:摘要跑模型,所以它的静态图里挂着整个 provider
-         * 栈(settings 仓库 → stores/paths)。静态引它,这个文件就把那条依赖带给
-         * 每一个 import 它的装配测试 —— 那些测试 partial-mock `stores/paths`,
-         * 于是会在收集阶段就炸。这是一个真正的后台子系统,按需加载正合适。
+         * Backend 已持有摘要服务;这里同步登记后台任务再返回,不留动态导入完成前
+         * 没人持有它的窗口。current 的接口只有类型边,不会把 provider 图拉进本文件。
          */
-        void import('../digest-runner.js')
-          .then(module => module.ensureCollabDigestsForRoom(request.roomSessionId))
-          .catch((error: unknown) => {
+        if (digests) {
+          try {
+            options.authorization.assertSessions(executionContext, [request.roomSessionId])
+            void digests.ensureCollabDigestsForRoom(request.roomSessionId, executionContext).catch((error: unknown) => {
+              log.error('daily digest trigger failed', { roomSessionId: request.roomSessionId }, error)
+            })
+          } catch (error) {
             log.error('daily digest trigger failed', { roomSessionId: request.roomSessionId }, error)
-          })
+          }
+        }
       }
     },
 
@@ -331,6 +342,8 @@ export function createCollabEngineMindPort(
      * 才以一个完全错位的时序出现在它眼前。所以迟到要撤回(v2 steer.ts 第三处收窄)。
      */
     async steer(request: CollabMindSteerRequest): Promise<boolean> {
+      const executionContext = options.authorization.contextForRoom(request.roomSessionId)
+      options.authorization.assertSessions(executionContext, [request.roomSessionId, request.execSessionId])
       const engine = getStreamEngineSafe()
       const body = request.body.trim()
       if (!engine || !body) return false

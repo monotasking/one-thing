@@ -9,6 +9,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { channelIdentityRouter } from '@shared/ipc/channel-identity.js'
 
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
+    id === 'alice-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }
+      : id === 'bob-session' ? { ownerUserId: 'bob', ownerWorkspaceId: 'tenant' } : undefined,
+  }) }
+})
+
 const channel = vi.hoisted(() => ({
   store: {
     listProfiles: vi.fn(),
@@ -72,6 +80,16 @@ describe('channelIdentity RPC domain', () => {
   afterEach(() => {
     dispose?.()
     dispose = undefined
+  })
+
+  it('filters delivery records by the actual session owner and hides missing-session history', async () => {
+    const { dispatchRpc } = await loadDomain()
+    const alice = { sessionId: 'alice-session', assistantMessageId: 'alice-message', replyTarget: { secret: 'alice' } }
+    const bob = { sessionId: 'bob-session', assistantMessageId: 'bob-message' }
+    channel.store.listDeliveries.mockReturnValue([alice, bob, { sessionId: 'deleted-session', error: 'private failure' }])
+    await expect(dispatchRpc({ domain: 'channelIdentity', method: 'listDeliveries', payload: {} }, {
+      transport: 'http', ownerUid: 'bob', workspaceId: 'tenant',
+    })).resolves.toEqual({ ok: true, data: { success: true, deliveries: [bob] } })
   })
 
   it('reads profiles and links off the app-layer store', async () => {

@@ -11,12 +11,16 @@
  * 从没被驱动过的房按下停止,答案是"没停下任何东西",而不是一个 null 漏到界面上。
  */
 import { stopCollabV3RoomFloor } from './runtime.js'
+import type { RuntimeRequestContext } from '@onething/core'
 
 /**
  * 停下这间房的对话。返回 true = 真的停下了什么(渲染层据此决定要不要提示)。
  *
  * **工作会话刻意不碰**:停对话不是停干活 —— 那是冻结开关的语义,它有自己的按钮。
  */
-export function abortCollabRoomTurnForStop(sessionId: string): boolean {
-  return stopCollabV3RoomFloor(sessionId) ?? false
+export function abortCollabRoomTurnForStop(
+  sessionId: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
+): boolean {
+  return stopCollabV3RoomFloor(sessionId, options) ?? false
 }

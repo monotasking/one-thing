@@ -10,7 +10,7 @@
  * The runtime state machine and record helpers are deliberately NOT mocked —
  * the point is the real read/write round trip through a stand-in session store.
  */
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 import type { SessionGoal } from '@onething/runtime/goals'
 
@@ -25,13 +25,11 @@ type FileChange = { path: string; added: number; removed: number }
 
 const mocks = vi.hoisted(() => {
   const sessions = new Map<string, StoredSession>()
-  // Keyed by session rather than a single time-varying return value. The
-  // completion path fires enrichment as a detached promise whose dynamic
-  // import resolves at an unpredictable point — often during a *later* test —
-  // so a global mockResolvedValue gets read by the wrong straggler. Keying by
-  // session makes the answer correct whenever it happens to be asked.
+  // Each fixture owns and drains its asynchronous summary tasks. Results stay
+  // keyed by session so concurrent goal histories still resolve independently.
   const fileChangesBySession = new Map<string, Array<{ path: string; added: number; removed: number }>>()
   return {
+    tasks: new Set<Promise<unknown>>(),
     sessions,
     fileChangesBySession,
     emit: vi.fn(),
@@ -75,14 +73,23 @@ vi.mock('../file-changes.js', () => ({
   collectGoalFileChanges: mocks.collectGoalFileChanges,
 }))
 
+vi.mock('../../../current.js', () => ({ getCurrentBackendInstance: () => ({
+  runTask: (_label: string, run: () => Promise<unknown>) => {
+    const task = Promise.resolve().then(run)
+    mocks.tasks.add(task)
+    void task.then(() => mocks.tasks.delete(task), () => mocks.tasks.delete(task))
+    return task
+  },
+}) }))
+
+afterEach(async () => { await Promise.allSettled([...mocks.tasks]) })
+
 const { clearGoal, createGoal, getGoal, getGoals, updateGoalFromModel, updateGoalFromUser } =
   await import('../index.js')
 
 /**
- * Fresh per test. The completion path fires the fileChanges enrichment as a
- * detached promise, which can outlive the test that started it; a unique id
- * means a straggler can never find a record to write into and cannot bleed
- * into the next test.
+ * Fresh per test. afterEach drains every accepted summary before the next
+ * fixture may replace the store, matching the Backend ownership contract.
  */
 let SESSION = 's1'
 let sessionSeq = 0

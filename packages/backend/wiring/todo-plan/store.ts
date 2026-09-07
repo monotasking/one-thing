@@ -1,6 +1,7 @@
 import {
   OnethingTodoPlanStore,
   OnethingTodoPlanWatcher,
+  resolveOnethingTodoPlanDirectory,
   type TodoPlanChangedPayload,
   type TodoPlanContext,
   type TodoPlanDocument,
@@ -8,13 +9,10 @@ import {
   type TodoPlanUpdateRequest,
 } from '@onething/runtime/todo-plan'
 import { getSettings } from '../../stores/settings.js'
-import {
-  getOnethingStorePath,
-} from '@onething/runtime/storage'
+import { getOnethingStorePath } from '@onething/runtime/storage'
+import { getCurrentBackendInstance } from '../../current.js'
 import { getCurrentSessionId } from '../../stores/app-state.js'
 import { getLogger } from '../logging/index.js'
-import type { OnethingTodoPlanWatcherOptions } from '@onething/runtime/todo-plan/watcher'
-import type { OnethingTodoPlanStoreOptions } from '@onething/runtime/todo-plan/store'
 
 const log = getLogger('todo-plan')
 
@@ -66,33 +64,65 @@ function broadcast(payload: TodoPlanChangedPayload): void {
   hostPorts.broadcastChanged?.(payload)
 }
 
-const todoPlanStoreOptions: OnethingTodoPlanStoreOptions = {
-  getConfiguredDirectory: () => getSettings().general?.todoPlan?.directory,
-  getDefaultStorePath: () => getOnethingStorePath(),
-  notifyChanged: broadcast,
-  revealDirectory: directory => hostPorts.revealDirectory?.(directory),
-};
-export const todoPlanStore = new OnethingTodoPlanStore(todoPlanStoreOptions)
+/** One Backend owns the store's self-write cache and the watcher of that same store. */
+export class TodoPlanRuntime {
+  readonly store: OnethingTodoPlanStore
+  readonly watcher: OnethingTodoPlanWatcher
+  private disposed = false
 
-// The AI writes its todo with the ordinary write/edit tools, which do not go
-// through this store, so the watcher is what tells the UI those edits happened.
-const todoPlanWatcherOptions: OnethingTodoPlanWatcherOptions = {
-  store: todoPlanStore,
-  notifyChanged: broadcast,
-  onError: error => log.error('todo plan watch failed', {}, error),
-};
-const todoPlanWatcher = new OnethingTodoPlanWatcher(todoPlanWatcherOptions)
+  constructor(private readonly options: { storePath: string; assertActive(): void }) {
+    this.store = new OnethingTodoPlanStore({
+      getConfiguredDirectory: () => {
+        if (this.disposed) throw new Error('Todo runtime is disposed')
+        return getSettings().general?.todoPlan?.directory
+      },
+      getDefaultStorePath: () => options.storePath,
+      notifyChanged: payload => { if (!this.disposed) broadcast(payload) },
+      revealDirectory: directory => {
+        if (this.disposed) throw new Error('Todo runtime is disposed')
+        return hostPorts.revealDirectory?.(directory)
+      },
+    })
+    this.watcher = new OnethingTodoPlanWatcher({
+      store: this.store,
+      notifyChanged: payload => { if (!this.disposed) broadcast(payload) },
+      onError: error => log.error('todo plan watch failed', {}, error),
+    })
+  }
 
-export function startTodoPlanWatcher(): Promise<void> {
-  return todoPlanWatcher.start()
+  async start(): Promise<void> {
+    this.options.assertActive()
+    return this.watcher.start()
+  }
+
+  stop(): void { this.watcher.stop() }
+  quiesce(): void { this.watcher.quiesce() }
+  drain(): Promise<void> { return this.watcher.drain() }
+  dispose(): void { this.disposed = true; this.watcher.quiesce() }
+}
+
+function getTodoPlanRuntime(): TodoPlanRuntime {
+  const backend = getCurrentBackendInstance()
+  if (!backend) throw new Error('Todo runtime is not bound to a backend')
+  return backend.todoPlans
+}
+
+export function getTodoPlanStore(): OnethingTodoPlanStore { return getTodoPlanRuntime().store }
+
+export async function startTodoPlanWatcher(): Promise<void> {
+  return getTodoPlanRuntime().start()
 }
 
 export function stopTodoPlanWatcher(): void {
-  todoPlanWatcher.stop()
+  getTodoPlanRuntime().stop()
 }
 
 export function getTodoPlanDirectory(): string {
-  return todoPlanStore.getDirectory()
+  const backend = getCurrentBackendInstance()
+  if (backend) return backend.todoPlans.store.getDirectory()
+  // Prompt composition also runs without an assembled Backend. Resolve only
+  // the path there; no store, watcher, cache or writable fallback is created.
+  return resolveOnethingTodoPlanDirectory(getOnethingStorePath(), getSettings().general?.todoPlan?.directory)
 }
 
 // The detached todo window has no session of its own — it is a view of whatever
@@ -103,30 +133,35 @@ function resolveSessionId(sessionId?: string): string | undefined {
 }
 
 export function readTodoPlanSnapshot(context: TodoPlanContext = {}): Promise<TodoPlanSnapshot> {
-  return todoPlanStore.readSnapshot({ sessionId: resolveSessionId(context.sessionId) })
+  return readTodoPlanSnapshotForSession({ sessionId: resolveSessionId(context.sessionId) })
+}
+
+/** Read a target already resolved and authorized by an application entry. */
+export function readTodoPlanSnapshotForSession(context: TodoPlanContext): Promise<TodoPlanSnapshot> {
+  return getTodoPlanStore().readSnapshot(context)
 }
 
 export function createUserTodoNote(title: string, content?: string): Promise<TodoPlanDocument> {
-  return todoPlanStore.createUserNote(title, content)
+  return getTodoPlanStore().createUserNote(title, content)
 }
 
 export function updateTodoPlanDocument(request: TodoPlanUpdateRequest): Promise<TodoPlanDocument> {
-  return todoPlanStore.updateDocument({
+  return getTodoPlanStore().updateDocument({
     ...request,
     sessionId: resolveSessionId(request.sessionId),
   })
 }
 
 export function renameUserTodoNote(id: string, title: string): Promise<TodoPlanDocument> {
-  return todoPlanStore.renameUserNote(id, title)
+  return getTodoPlanStore().renameUserNote(id, title)
 }
 
 export function deleteUserTodoNote(id: string): Promise<void> {
-  return todoPlanStore.deleteUserNote(id)
+  return getTodoPlanStore().deleteUserNote(id)
 }
 
 export function deleteSessionAiTodo(sessionId: string): Promise<void> {
-  return todoPlanStore.deleteSessionAiTodo(sessionId)
+  return getTodoPlanStore().deleteSessionAiTodo(sessionId)
 }
 
 // The detached todo window follows the active session, which it learns only by
@@ -136,9 +171,9 @@ export function notifyTodoPlanActiveSessionChanged(): void {
 }
 
 export function revealTodoPlanDirectory(): Promise<void> {
-  return todoPlanStore.revealDirectory()
+  return getTodoPlanStore().revealDirectory()
 }
 
 export function broadcastTodoPlanChanged(payload: TodoPlanChangedPayload): void {
-  todoPlanStore.notifyChanged(payload)
+  getTodoPlanStore().notifyChanged(payload)
 }

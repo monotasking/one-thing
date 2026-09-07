@@ -52,6 +52,9 @@ export type StreamEngine = ProductStreamEngine<EventBus>;
 
 export function createBoundStreamEngine(
 	streamRuntime: MainStreamEngineRuntime = createMainStreamEngineRuntime(),
+	assertAccepting?: (sessionId?: string) => void,
+	prepareSession?: (sessionId: string) => Promise<void>,
+	authorizeExecution?: (sessionId: string, executionContext: unknown) => void,
 ): StreamEngine {
 	// 回投端口要调引擎自己的 steerMessage,而引擎此刻还没造出来 —— 端口在回合中
 	// 才被调用,所以这里留一个惰性引用,而不是把引擎塞进端口的签名里。
@@ -98,6 +101,9 @@ export function createBoundStreamEngine(
 	};
 
 	const ports: ProductStreamEnginePorts = {
+		assertAccepting,
+		prepareSession,
+		authorizeExecution,
 		router,
 		roomIngress,
 		pluginIntercept,

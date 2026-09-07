@@ -12,6 +12,7 @@ const DAY = 86_400_000
 const NOW = new Date(2026, 7, 2, 12, 0, 0).getTime()
 
 const mocks = vi.hoisted(() => ({
+  bodyReads: [] as string[],
   sessions: new Map<string, any>(),
   metas: [] as any[],
 }))
@@ -21,13 +22,21 @@ const mocks = vi.hoisted(() => ({
 // 读写落在下面同一份假会话表上 —— 与迁移前 `store.js` 假表的语义逐条对齐。
 vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
 vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
-bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
+bindSessionFacadeMock((id: string) => { mocks.bodyReads.push(id); return mocks.sessions.get(id) })
+
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.metas.find(meta => meta.id === id) ?? mocks.sessions.get(id),
+  }) }
+})
 
 vi.mock('../../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
   getSessionsList: () => mocks.metas,
   getSettings: () => ({ general: {} }),
 }))
+vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({}) }))
 vi.mock('../../agents/index.js', () => ({
   findAgent: (id: string) => {
     const names: Record<string, string> = { iris: 'Iris', bram: 'Bram', nova: 'Nova' }
@@ -44,7 +53,8 @@ vi.mock('../user-identity.js', () => ({
 }))
 // 直接读盘那一支在测试里没有真实文件 —— 让它落到 store 兜底分支，
 // 转录数据仍然由上面的 store mock 提供（读盘与否是性能问题，不是语义问题）。
-vi.mock('@onething/runtime/storage', () => ({
+vi.mock('@onething/runtime/storage', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/runtime/storage')>(),
   getOnethingSessionsDir: () => '/nonexistent-for-tests',
 }))
 
@@ -69,6 +79,7 @@ function room(id: string, name: string, members: string[], messages: any[], extr
 }
 
 beforeEach(() => {
+  mocks.bodyReads.length = 0
   mocks.sessions = new Map()
   mocks.metas = []
   // Iris 的执行会话（工具的 ctx.sessionId）
@@ -89,12 +100,92 @@ beforeEach(() => {
   ], { dm: true })
 })
 
+/**
+ * 给一条会话/房间盖归属章。
+ *
+ * 归属判定的规则是「两格都空 = 无主,谁都读得到」(工单 4 A3 修回 HEAD 语义):
+ * **不盖章的房间是公共的**,不是「归 local-user 私有」。所以下面三条授权用例要验
+ * 「别人的房读不到」,就必须把别人的房**明确盖成别人的** —— 拿不盖章冒充私有,
+ * 验的是一条不存在的规则。
+ */
+function ownedBy(id: string, userId: string, workspaceId: string): void {
+  const owner = { ownerUserId: userId, ownerWorkspaceId: workspaceId }
+  Object.assign(mocks.sessions.get(id) ?? {}, owner)
+  const meta = mocks.metas.find(entry => entry.id === id)
+  if (meta) Object.assign(meta, owner)
+}
+
+/** 出厂那三间房都盖成 bob 的;要归 alice 的那几间由用例自己再盖。 */
+function stampFixtureRoomsForeign(): void {
+  for (const id of ['cumo', 'dm-iris-bram', 'dm-bram-nova']) ownedBy(id, 'bob', 'tenant-b')
+}
+
 const search = (over: Record<string, unknown> = {}) =>
   searchCollabHistory({ sessionId: 'exec-iris', limit: 30, ...over } as any)
 
 const text = (r: any) => (r.entries ?? []).map((e: any) => e.line).join('\n')
 
 describe('授权（多给一条就是事故）', () => {
+  it('uses the separate invocation context through the real history adapter, ignoring identity in tool arguments', async () => {
+    const executionContext = { userId: 'alice', workspaceId: 'tenant-a' }
+    stampFixtureRoomsForeign()
+    ownedBy('exec-iris', 'alice', 'tenant-a')
+    ownedBy('cumo', 'alice', 'tenant-a')
+    const { historyAdapters } = await import('../../toolkit/adapters.js')
+    const { createHistoryTool, ZodValidator } = await import('@onething/runtime/toolkit')
+    const { ToolRunner, Decision } = await import('@onething/core/toolkit')
+    const runner = new ToolRunner({
+      authorizer: { async decide() { return Decision.allow() } },
+      observer: { on() {} }, validator: new ZodValidator(),
+    })
+    const result = await runner.run(createHistoryTool(historyAdapters()), {
+      callId: 'history-owner', toolId: 'history', sessionId: 'exec-iris', messageId: 'message',
+      principal: undefined as never,
+      input: { limit: 30, executionContext: { userId: 'local-user', workspaceId: 'default' } },
+      executionContext,
+    })
+    expect(result.kind).toBe('ok')
+    const output = result.kind === 'ok' ? JSON.stringify(result.result) : ''
+    expect(output).toContain('我来当上帝')
+    expect(output).not.toContain('你的身份')
+    expect(new Set(mocks.bodyReads)).toEqual(new Set(['cumo']))
+    // 这条用例在体内动态 import 整棵 toolkit(实测编译约 5s,正压在 vitest 默认
+    // 单例预算线上)。给它自己的预算,免得按机器忙闲随机红 —— 红的会是编译时间。
+  }, 60_000)
+
+  it('filters the same agent across owners and tenants before reading room bodies or counting them', async () => {
+    const executionContext = { userId: 'alice', workspaceId: 'tenant-a' }
+    stampFixtureRoomsForeign()
+    ownedBy('exec-iris', 'alice', 'tenant-a')
+    for (const [id, userId, tenant] of [
+      ['own', 'alice', 'tenant-a'], ['other-user', 'bob', 'tenant-a'], ['other-tenant', 'alice', 'tenant-b'],
+    ]) {
+      const meta = room(id, id, ['iris'], [say(`${id}-message`, 'iris', `${id}-secret`, NOW)])
+      Object.assign(meta, { ownerUserId: userId, ownerWorkspaceId: tenant })
+      Object.assign(mocks.sessions.get(id), { ownerUserId: userId, ownerWorkspaceId: tenant })
+    }
+    const result = await searchCollabHistory({ sessionId: 'exec-iris', limit: 30 }, { executionContext })
+    expect(text(result)).toContain('own-secret')
+    expect(text(result)).not.toContain('other-user-secret')
+    expect(text(result)).not.toContain('other-tenant-secret')
+    expect(result.scannedRooms).toBe(1)
+    expect(new Set(mocks.bodyReads)).toEqual(new Set(['own']))
+    mocks.bodyReads.length = 0
+    const unknown = await searchCollabHistory({ sessionId: 'exec-iris', limit: 30, where: 'other-user' }, { executionContext })
+    expect(unknown.unknownRoom?.available).toEqual(['own'])
+    expect(unknown.entries).toEqual([])
+    expect(mocks.bodyReads).toEqual([])
+  })
+
+  it('rejects a foreign source before any transcript read', async () => {
+    // 执行会话**明确归 bob**:无主会话是公共的,拿它冒充「别人的」验不出东西。
+    ownedBy('exec-iris', 'bob', 'tenant-b')
+    await expect(searchCollabHistory({ sessionId: 'exec-iris', limit: 30 }, {
+      executionContext: { userId: 'alice', workspaceId: 'tenant-a' },
+    })).rejects.toThrow('Session not found')
+    expect(mocks.bodyReads).toEqual([])
+  })
+
   it('只返回我在场的房；别人之间的私聊一条都不返回', async () => {
     const r = await search()
     expect(text(r)).toContain('我来当上帝')

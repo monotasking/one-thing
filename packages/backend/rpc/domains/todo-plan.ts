@@ -8,7 +8,10 @@
  * `revealDirectory` 反而可以：它走的是 `configureTodoPlanHost({ revealDirectory })`
  * 端口，未注入端口的宿主（server / CLI daemon）自然降级成 no-op，而不是报错。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { sessionAccess, SessionAccessError } from '../../session/access.js'
+import { getCurrentSessionId } from '../../stores/app-state.js'
 import type { TodoPlanRoutes } from '@shared/ipc/todo-plan.js'
 import {
   createOnethingTodoNoteForIpc,
@@ -22,17 +25,19 @@ import {
   canRevealTodoPlanDirectory,
   createUserTodoNote,
   deleteUserTodoNote,
-  readTodoPlanSnapshot,
+  readTodoPlanSnapshotForSession,
   renameUserTodoNote,
   revealTodoPlanDirectory,
   updateTodoPlanDocument,
 } from '../../wiring/todo-plan/store.js'
 
-export const todoPlanRpcHandlers: RouteHandlers<TodoPlanRoutes> = {
-  async get(request) {
+export const todoPlanRpcHandlers: RpcRouteHandlers<TodoPlanRoutes> = {
+  async get(request, context = DESKTOP_RPC_CONTEXT) {
+    const sessionId = request.sessionId ?? getCurrentSessionId() ?? undefined
+    if (sessionId !== undefined) sessionAccess.resolve(context, sessionId, 'read')
     return getOnethingTodoPlanForIpc({
-      request,
-      readSnapshot: readTodoPlanSnapshot,
+      request: { sessionId },
+      readSnapshot: readTodoPlanSnapshotForSession,
     })
   },
   async create(request) {
@@ -41,7 +46,13 @@ export const todoPlanRpcHandlers: RouteHandlers<TodoPlanRoutes> = {
       createUserNote: createUserTodoNote,
     })
   },
-  async update(request) {
+  async update(request, context = DESKTOP_RPC_CONTEXT) {
+    if (request.scope === 'session-ai-todo') {
+      const sessionId = request.sessionId ?? getCurrentSessionId() ?? undefined
+      if (sessionId === undefined) throw new SessionAccessError()
+      sessionAccess.resolve(context, sessionId, 'write')
+      request = { ...request, sessionId }
+    }
     return updateOnethingTodoPlanDocumentForIpc({
       request,
       updateDocument: updateTodoPlanDocument,
@@ -73,4 +84,3 @@ export const todoPlanRpcHandlers: RouteHandlers<TodoPlanRoutes> = {
     })
   },
 }
-

@@ -47,10 +47,15 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   })
 }
 
+import { MusicWorkOwner } from './lifetime.js'
+import { getCurrentBackend } from '../../current.js'
+
+export function createDjVoiceScope(assertOwned?: () => void) {
+  const owner = new MusicWorkOwner(assertOwned)
 const pending = new Map<string, () => void>()
 
 /** Renderer → main: a patter finished (or failed) playing. */
-export function resolveDjSpeakDone(id: string): void {
+function resolveDjSpeakDone(id: string): void {
   pending.get(id)?.()
 }
 
@@ -87,11 +92,11 @@ function synthesizeDjPatterCached(text: string, title: string): Promise<DjSpeech
       const synthStart = Date.now()
       try {
         const speech = await withTimeout(
-          synthesizeSpeech(text, settings),
+          owner.track(synthesizeSpeech(text, settings, owner.signal)),
           DJ_SYNTH_MAX_MS,
           'DJ patter synthesis',
         )
-        if (!speech.audioBase64) return null
+        if (owner.signal.aborted || !speech.audioBase64) return null
         log.debug('dj patter synthesized', {
           title,
           ms: Date.now() - synthStart,
@@ -117,12 +122,13 @@ function synthesizeDjPatterCached(text: string, title: string): Promise<DjSpeech
 }
 
 /** Fire-and-forget synthesis warm-up; speakDjPatter later joins the result. */
-export function prefetchDjPatter(text: string, title: string): void {
-  void synthesizeDjPatterCached(text, title)
+function prefetchDjPatter(text: string, title: string): void {
+  owner.assertActive()
+  void owner.track(synthesizeDjPatterCached(text, title))
 }
 
 /** Test/dispose seam: forget cached and in-flight synthesis. */
-export function resetDjPatterCache(): void {
+function resetDjPatterCache(): void {
   patterCache.clear()
   patterInflight.clear()
 }
@@ -133,9 +139,9 @@ export function resetDjPatterCache(): void {
  * is to resume the music no matter what, so a swallowed error here beats a
  * radio stuck on pause.
  */
-export async function speakDjPatter(text: string, title: string): Promise<void> {
+async function speakDjPatter(text: string, title: string): Promise<void> {
   const speech = await synthesizeDjPatterCached(text, title)
-  if (!speech) return
+  if (owner.signal.aborted || !speech) return
 
   const id = randomUUID()
   const payload: MusicDjSpeak = {
@@ -162,3 +168,26 @@ export async function speakDjPatter(text: string, title: string): Promise<void> 
   })
   log.debug('dj patter played in renderer', { title, ms: Date.now() - playStart })
 }
+
+  function quiesce(): void {
+    owner.quiesce()
+    for (const finish of pending.values()) finish()
+  }
+  async function drain(): Promise<void> {
+    quiesce()
+    await owner.drain()
+    patterCache.clear()
+    patterInflight.clear()
+  }
+  return { quiesce, drain,
+    resolveDjSpeakDone: owner.wrap(resolveDjSpeakDone),
+    prefetchDjPatter: owner.wrap(prefetchDjPatter),
+    resetDjPatterCache: owner.wrap(resetDjPatterCache),
+    speakDjPatter: owner.wrap(speakDjPatter),
+  }
+}
+export type DjVoiceScope = ReturnType<typeof createDjVoiceScope>
+export const resolveDjSpeakDone: DjVoiceScope['resolveDjSpeakDone'] = (...args) => getCurrentBackend('music').music.djVoice.resolveDjSpeakDone(...args)
+export const prefetchDjPatter: DjVoiceScope['prefetchDjPatter'] = (...args) => getCurrentBackend('music').music.djVoice.prefetchDjPatter(...args)
+export const resetDjPatterCache: DjVoiceScope['resetDjPatterCache'] = (...args) => getCurrentBackend('music').music.djVoice.resetDjPatterCache(...args)
+export const speakDjPatter: DjVoiceScope['speakDjPatter'] = (...args) => getCurrentBackend('music').music.djVoice.speakDjPatter(...args)

@@ -18,6 +18,23 @@ afterEach(() => {
 })
 
 describe('voice input provider configuration', () => {
+  it('passes the owner cancellation through the actual provider fetch adapter', async () => {
+    const settings = createDefaultSettings().voice!
+    settings.asr.provider = 'openrouter-transcribe'
+    settings.asr.openrouter.apiKey = 'test'
+    const controller = new AbortController()
+    let observed!: AbortSignal
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      observed = init!.signal!
+      return await new Promise<Response>((_resolve, reject) => observed.addEventListener('abort', () => reject(observed.reason), { once: true }))
+    })
+    const running = transcribeUtterance({ audioBase64: 'AA==', mimeType: 'audio/wav' }, settings, controller.signal)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    controller.abort(new Error('owner closed'))
+    await expect(running).rejects.toThrow('owner closed')
+    expect(observed.aborted).toBe(true)
+  })
+
   it('requires a WebSocket URL for the streaming FunASR voice input path', () => {
     const settings = createDefaultSettings().voice!
 

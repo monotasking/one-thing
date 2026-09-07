@@ -78,8 +78,11 @@ const { createDesktopCatalog } = await import('../catalog.js')
 const { resetToolkitCatalogForTests } = await import('../wiring.js')
 const { syncMcpToolsIntoCatalog, resetMcpCatalogSyncForTests } = await import('@onething/runtime/toolkit/mcp-catalog.wiring')
 const { executeToolDirectly } = await import('../../engine/stream/tool-execution.js')
-const { createEventSystem, getStreamChannel } = await import('../../../events/index.js')
-const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
+const { getStreamChannel } = await import('../../../events/index.js')
+
+const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')
+const store = await import('../../../stores/sessions.js')
+let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>
 
 const SESSION_ID = 'wiring-session'
 const workspace = path.join(harness.root, 'workspace')
@@ -96,10 +99,11 @@ function echoOps(output = 'hello\n'): BashOperations {
   }
 }
 
-function hangingOps(output = 'partial line\n'): BashOperations {
+function hangingOps(output = 'partial line\n', onOutput?: () => void): BashOperations {
   return {
     exec: (_command: string, _cwd: string, options: { onData: (data: Buffer) => void; signal?: AbortSignal }) => {
       options.onData(Buffer.from(output))
+      onOutput?.()
       return new Promise<{ exitCode: number | null }>((_resolve, reject) => {
         options.signal?.addEventListener('abort', () => {
           const error = new Error('The operation was aborted')
@@ -154,7 +158,10 @@ function contextFor(overrides: Partial<Parameters<typeof executeToolDirectly>[2]
   return { context: context as Parameters<typeof executeToolDirectly>[2], recorded }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  sessionFixture = await installStoreSessionLayerForTest()
+  if (!store.getSession(SESSION_ID)) store.createSession(SESSION_ID, 'Tool session')
+
   harness.enforce.mockReset()
   harness.enforce.mockResolvedValue(undefined)
   harness.callIntercept.mockReset()
@@ -173,7 +180,9 @@ beforeEach(() => {
   installCatalog()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await sessionFixture.dispose()
+
   resetToolkitCatalogForTests()
   vi.clearAllMocks()
 })
@@ -273,11 +282,13 @@ describe('R2b:权限的两路', () => {
 
 describe('R2b:取消', () => {
   it('bash 跑到一半被掐 → aborted,已收到的输出进 <partial_output>', async () => {
-    installCatalog(hangingOps())
+    let outputReceived!: () => void
+    const started = new Promise<void>(resolve => { outputReceived = resolve })
+    installCatalog(hangingOps('partial line\n', outputReceived))
     const controller = new AbortController()
     const { context } = contextFor({ abortSignal: controller.signal })
     const pending = executeToolDirectly('bash', { command: 'sleep 30' }, context)
-    await new Promise(resolve => setTimeout(resolve, 60))
+    await started
     controller.abort()
 
     const result = await pending
@@ -454,26 +465,14 @@ describe('C2-b 工具进度:executeToolDirectly 是唯一接线点', () => {
     }
   }
 
-  let dispose: (() => void) | null = null
   let seen: Array<{ type?: string; toolCallId?: string; outputTail?: string; message?: string }> = []
 
   beforeEach(() => {
     delete process.env.ONETHING_TOOL_PROGRESS
-    const { eventBus, streamChannel } = createEventSystem()
-    setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
-    dispose = () => {
-      eventBus.shutdown()
-      streamChannel.shutdown()
-    }
     seen = []
     getStreamChannel().subscribe(SESSION_ID, chunk => seen.push(chunk as typeof seen[number]))
   })
 
-  afterEach(() => {
-    dispose?.()
-    dispose = null
-    setCurrentBackend(null)
-  })
 
   it('bash 逐行吐输出 → 一路 tool-progress 上流管,尾行**逐条在变**', async () => {
     installCatalog(chattyOps(['line 1', 'line 2', 'line 3', 'line 4']))

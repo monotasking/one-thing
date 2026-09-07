@@ -25,8 +25,8 @@ import type {
   CollabCoordinatorLogEntry,
   CollabCoordinatorState,
 } from '@shared/ipc.js'
-import * as store from '../../store.js'
-import { getEventBus } from '../../events/index.js'
+import type * as store from '../../store.js'
+import type { EventBus } from '../../events/event-bus.js'
 import { maxChainFor, maxConcurrentTurnsFor } from './room-runtime.js'
 import {
   clearCollabSnapshotThrottle,
@@ -60,7 +60,74 @@ interface InspectorRoomState {
   throttle: CollabSnapshotThrottle
 }
 
-const rooms = new Map<string, InspectorRoomState>()
+interface InspectorOwner {
+  rooms: Map<string, InspectorRoomState>
+  source: CollabRoomSnapshotSource | null
+  accepting: boolean
+  emissions: Set<Promise<unknown>>
+  options: CollabInspectorOptions
+}
+
+export interface CollabInspectorOptions {
+  getSession: typeof store.getSession
+  emit: EventBus['emit']
+  isActive(): boolean
+  onError(error: unknown): void
+}
+
+export interface CollabInspector {
+  build(roomSessionId: string): CollabCoordinatorState | null
+  broadcast(roomSessionId: string, options?: { activity?: boolean }): void
+  note(roomSessionId: string, entry: Omit<CollabCoordinatorLogEntry, 'at'>): void
+  typing(roomSessionId: string, agentId: string, typing: boolean): void
+  forget(roomSessionId: string): void
+  configureSource(source: CollabRoomSnapshotSource | null): () => void
+  quiesce(): void
+  drain(): Promise<void>
+}
+
+/** Every Backend owns this view, including hosts that do not boot room actors. */
+export function createCollabInspector(options: CollabInspectorOptions): CollabInspector {
+  const owner: InspectorOwner = { rooms: new Map(), source: null, accepting: true, emissions: new Set(), options }
+  const quiesce = () => {
+    owner.accepting = false
+    owner.source = null
+    for (const state of owner.rooms.values()) clearCollabSnapshotThrottle(state.throttle)
+    owner.rooms.clear()
+  }
+  return {
+    build: id => buildCoordinatorState(owner, id),
+    broadcast: (id, options) => broadcastCoordinator(owner, id, options),
+    note: (id, entry) => noteSchedule(owner, id, entry),
+    typing: (id, agentId, typing) => setTypingState(owner, id, agentId, typing),
+    forget: id => forgetInspectorRoom(owner, id),
+    configureSource(source) {
+      if (!isActive(owner)) return () => {}
+      owner.source = source
+      return () => { if (owner.source === source) owner.source = null }
+    },
+    quiesce,
+    async drain() {
+      quiesce()
+      while (owner.emissions.size) await Promise.allSettled([...owner.emissions])
+    },
+  }
+}
+
+let currentInspector: CollabInspector | null = null
+
+export function configureCollabInspector(inspector: CollabInspector): () => void {
+  currentInspector?.quiesce()
+  currentInspector = inspector
+  return () => { if (currentInspector === inspector) currentInspector = null }
+}
+
+/** Capture before scheduling work; a callback from A must never resolve B here. */
+export function getCollabInspector(): CollabInspector | null { return currentInspector }
+
+function isActive(owner: InspectorOwner): boolean {
+  return owner.accepting && owner.options.isActive()
+}
 
 /**
  * v3 房账的供数口(D6-a 接线)。
@@ -79,38 +146,36 @@ const rooms = new Map<string, InspectorRoomState>()
  * 会让两间房各说各的号,而渲染层拿它做的是「比屏幕上那份新吗」的判断。
  */
 type CollabRoomSnapshotSource = (roomSessionId: string) => CollabCoordinatorState | null
-let v3SnapshotSource: CollabRoomSnapshotSource | null = null
-
-export function configureCollabRoomSnapshotSource(source: CollabRoomSnapshotSource | null): void {
-  v3SnapshotSource = source
+export function configureCollabRoomSnapshotSource(source: CollabRoomSnapshotSource | null): () => void {
+  return currentInspector?.configureSource(source) ?? (() => {})
 }
 
-function inspectorState(roomSessionId: string): InspectorRoomState | null {
-  let state = rooms.get(roomSessionId)
+function inspectorState(owner: InspectorOwner, roomSessionId: string): InspectorRoomState | null {
+  if (!isActive(owner)) return null
+  let state = owner.rooms.get(roomSessionId)
   if (!state) {
     // 死房不复活(2026-08-02 三审):删房时 `forgetCollabInspector` 已经清过表项,
     // 但被中止回合的**异步收尾**(silent note、泵的 finally 广播)还会路过这里 ——
     // 无条件重建的话,表项(log + 可能armed的节流 timer)从此常驻,反复建删房的
     // 长进程里单调增长。会话已经不是房间就不再立新表项;已有表项照常用,
     // 它们由 forget 负责收。
-    if (store.getSession(roomSessionId)?.kind !== 'room') return null
+    if (owner.options.getSession(roomSessionId)?.kind !== 'room') return null
     state = { log: [], typing: new Set(), seq: 0, throttle: createCollabSnapshotThrottle() }
-    rooms.set(roomSessionId, state)
+    owner.rooms.set(roomSessionId, state)
   }
   return state
 }
 
 /** 房间没了,它的「刚才」也就没了(与 `deleteRoomRuntime` 同一时机)。 */
-export function forgetCollabInspector(roomSessionId: string): void {
-  const state = rooms.get(roomSessionId)
+function forgetInspectorRoom(owner: InspectorOwner, roomSessionId: string): void {
+  const state = owner.rooms.get(roomSessionId)
   if (state) clearCollabSnapshotThrottle(state.throttle)
-  rooms.delete(roomSessionId)
+  owner.rooms.delete(roomSessionId)
 }
 
 /** 进程收摊:清掉所有待发的定时器,别让一次广播活过协调器本身。 */
 export function shutdownCollabInspector(): void {
-  for (const state of rooms.values()) clearCollabSnapshotThrottle(state.throttle)
-  rooms.clear()
+  currentInspector?.quiesce()
 }
 
 /**
@@ -129,13 +194,14 @@ function finiteMax(value: number): number {
  * 运行时不存在(这间房从没被驱动过)时仍然给一个完整快照 —— 空闲也是状态,
  * 而"读不到"和"空闲"在界面上必须是同一个样子,否则冷启动会闪一下空白。
  */
-export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordinatorState | null {
-  const session = store.getSession(roomSessionId)
+function buildCoordinatorState(owner: InspectorOwner, roomSessionId: string): CollabCoordinatorState | null {
+  if (!isActive(owner)) return null
+  const session = owner.options.getSession(roomSessionId)
   if (session?.kind !== 'room') return null
-  const inspector = rooms.get(roomSessionId)
+  const inspector = owner.rooms.get(roomSessionId)
 
   // 调度那几格来自房账(D6-a 接线);seq / typing / 「刚才」仍归这里(见上)。
-  const v3 = v3SnapshotSource?.(roomSessionId) ?? null
+  const v3 = owner.source?.(roomSessionId) ?? null
   if (v3) {
     return {
       ...v3,
@@ -194,11 +260,12 @@ export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordi
  *
  * 协调器各处的状态变化点调它 —— 一行,不用管节流也不用管房间存不存在。
  */
-export function noteCollabSchedule(
+function noteSchedule(
+  owner: InspectorOwner,
   roomSessionId: string,
   entry: Omit<CollabCoordinatorLogEntry, 'at'>,
 ): void {
-  const state = inspectorState(roomSessionId)
+  const state = inspectorState(owner, roomSessionId)
   if (!state) return
   state.log.push({ at: Date.now(), ...entry })
   // 定长:超了从头砍。`splice` 而不是 `slice` —— 快照读的是同一个数组引用的拷贝,
@@ -206,7 +273,7 @@ export function noteCollabSchedule(
   if (state.log.length > COLLAB_LOG_LIMIT) {
     state.log.splice(0, state.log.length - COLLAB_LOG_LIMIT)
   }
-  broadcastCollabCoordinator(roomSessionId)
+  broadcastCoordinator(owner, roomSessionId)
 }
 
 /**
@@ -219,14 +286,14 @@ export function noteCollabSchedule(
  *
  * 与灯同步推一次快照,走短窗口:这盏灯是会动的东西,按秒节流会把短句整个吞掉。
  */
-export function setCollabTypingState(roomSessionId: string, agentId: string, typing: boolean): void {
-  const state = inspectorState(roomSessionId)
+function setTypingState(owner: InspectorOwner, roomSessionId: string, agentId: string, typing: boolean): void {
+  const state = inspectorState(owner, roomSessionId)
   if (!state) return
   const changed = typing ? !state.typing.has(agentId) : state.typing.delete(agentId)
   if (typing) state.typing.add(agentId)
   // 没变就不推:一轮里 `say` 会连着确认好几次 true,每次都推等于把节流白费掉。
   if (!changed) return
-  broadcastCollabCoordinator(roomSessionId, { activity: true })
+  broadcastCoordinator(owner, roomSessionId, { activity: true })
 }
 
 /**
@@ -235,28 +302,53 @@ export function setCollabTypingState(roomSessionId: string, agentId: string, typ
  * 双档规则与它的三条论证全在 `snapshot-throttle.ts` —— agent 快照那条链用的是同
  * 一个件,而不是同一段被抄了第二遍的代码。这里只负责「谁在播、播的是什么」。
  */
-export function broadcastCollabCoordinator(
+function broadcastCoordinator(
+  owner: InspectorOwner,
   roomSessionId: string,
   options: { activity?: boolean } = {},
 ): void {
-  const state = inspectorState(roomSessionId)
+  const state = inspectorState(owner, roomSessionId)
   if (!state) return
   scheduleCollabSnapshot(
     state.throttle,
-    () => { emitCoordinatorState(roomSessionId, state) },
+    () => { emitCoordinatorState(owner, roomSessionId, state) },
     options,
   )
 }
 
-function emitCoordinatorState(roomSessionId: string, state: InspectorRoomState): void {
+function emitCoordinatorState(owner: InspectorOwner, roomSessionId: string, state: InspectorRoomState): void {
+  if (!isActive(owner) || owner.rooms.get(roomSessionId) !== state) return
   // 号在 build 之前 +1 —— `buildCollabCoordinatorState` 读的就是这个字段,
   // 于是发出去的那一份自带比上一发更大的号。
   state.seq += 1
-  const snapshot = buildCollabCoordinatorState(roomSessionId)
+  const snapshot = buildCoordinatorState(owner, roomSessionId)
   if (!snapshot) return
   state.throttle.lastSentAt = Date.now()
-  void getEventBus().emit(roomSessionId, {
+  const emission = owner.options.emit(roomSessionId, {
     type: SESSION_EVENT_TYPES.COLLAB_COORDINATOR_CHANGED,
     state: snapshot,
-  } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+  } as Parameters<EventBus['emit']>[1])
+  owner.emissions.add(emission)
+  void emission.then(() => owner.emissions.delete(emission), error => {
+    owner.emissions.delete(emission)
+    owner.options.onError(error)
+  })
+}
+
+export function buildCollabCoordinatorState(roomSessionId: string): CollabCoordinatorState | null {
+  return currentInspector?.build(roomSessionId) ?? null
+}
+
+export function forgetCollabInspector(roomSessionId: string): void { currentInspector?.forget(roomSessionId) }
+
+export function noteCollabSchedule(roomSessionId: string, entry: Omit<CollabCoordinatorLogEntry, 'at'>): void {
+  currentInspector?.note(roomSessionId, entry)
+}
+
+export function setCollabTypingState(roomSessionId: string, agentId: string, typing: boolean): void {
+  currentInspector?.typing(roomSessionId, agentId, typing)
+}
+
+export function broadcastCollabCoordinator(roomSessionId: string, options: { activity?: boolean } = {}): void {
+  currentInspector?.broadcast(roomSessionId, options)
 }

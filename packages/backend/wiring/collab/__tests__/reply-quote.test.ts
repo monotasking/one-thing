@@ -50,6 +50,13 @@ vi.mock('../../../session/commands.js', async () => {
 })
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
 
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
+  }) }
+})
+
 vi.mock('../../../store.js', () => ({
   updateSessionWorkingDirectory: vi.fn(),
   // 用户身份现取(agent-dm-user.md §2.2):引用快照的作者行读它。

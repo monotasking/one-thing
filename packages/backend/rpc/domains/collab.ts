@@ -33,7 +33,10 @@
  * `collab:*-changed` 与 `message:updated` 会话事件 —— 推送面,而 router 今天只有
  * 请求/响应面。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { requestSessionOwner, sessionAccess } from '../../session/access.js'
+import { getSessionsList } from '../../stores/sessions.js'
 import type { CollabRoutes, CollabSchedulerLogEntry } from '@shared/ipc/collab.js'
 import { loadCollabBoard } from '../../wiring/collab/board-store.js'
 import {
@@ -61,9 +64,10 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
-  async boardGet(request) {
+export const collabRpcHandlers: RpcRouteHandlers<CollabRoutes> = {
+  async boardGet(request, context = DESKTOP_RPC_CONTEXT) {
     try {
+      sessionAccess.resolve(context, request.roomSessionId, 'read')
       return { success: true, board: loadCollabBoard(request.roomSessionId) }
     } catch (error) {
       return { success: false, error: message(error) }
@@ -72,9 +76,10 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
 
   // 看板写入。动作**原样过河** —— 什么合法(状态机、rev 前置、「只有承办人能
   // 完成它」)是纯 reducer 的裁量,在这里复述一遍就是第二本会漂的规则。
-  async boardAct(request) {
+  async boardAct(request, context = DESKTOP_RPC_CONTEXT) {
     try {
       if (!request?.action) return { success: false, error: 'Missing board action' }
+      sessionAccess.resolve(context, request.roomSessionId, 'write')
       return await applyUserCollabBoardAction(request.roomSessionId, request.action)
     } catch (error) {
       return { success: false, error: message(error) }
@@ -84,9 +89,10 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
   // 卡级停止(collab-team-v2 §5.1 入口②)。刻意不是一个 board action:动作表
   // 描述的是卡在状态机里怎么走,而「停掉正在跑的那条流」是运行时的事,让模型
   // 也能调它等于给了它一个停别人活的开关。
-  async taskStop(request) {
+  async taskStop(request, context = DESKTOP_RPC_CONTEXT) {
     try {
-      const stopped = await stopCollabTaskWork(request.roomSessionId, request.taskId)
+      sessionAccess.resolve(context, request.roomSessionId, 'abort')
+      const stopped = await stopCollabTaskWork(request.roomSessionId, request.taskId, { executionContext: requestSessionOwner(context) })
       return { success: true, stopped }
     } catch (error) {
       return { success: false, error: message(error) }
@@ -103,17 +109,19 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
    * 失败原因不翻译成 `error`:`epoch-stale` / `not-found` / `not-a-room` 三条都是
    * **可操作的**结果,不是异常。真异常(运行时炸了)才走下面那条。
    */
-  async roomRevokeLease(request) {
+  async roomRevokeLease(request, context = DESKTOP_RPC_CONTEXT) {
     try {
-      return { success: true, result: await revokeCollabRoomLease(request) }
+      sessionAccess.resolve(context, request.roomSessionId, 'abort')
+      return { success: true, result: await revokeCollabRoomLease(request, { executionContext: requestSessionOwner(context) }) }
     } catch (error) {
       return { success: false, error: message(error) }
     }
   },
 
   // 协调器状态条的冷启动读取。纯读 —— 快照是从运行时现算的,不碰磁盘。
-  async coordinatorGet(request) {
+  async coordinatorGet(request, context = DESKTOP_RPC_CONTEXT) {
     try {
+      sessionAccess.resolve(context, request.roomSessionId, 'read')
       const state = getCollabCoordinatorState(request.roomSessionId)
       return state ? { success: true, state } : { success: false, error: 'Not a room session' }
     } catch (error) {
@@ -127,9 +135,14 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
    * 整体透传:`agentIds` 缺席就是缺席,处理者不替调用方决定「缺席等于全要」还是
    * 「缺席等于零个」—— 那条语义在 app 层(`getCollabAgentActivity`)。
    */
-  async agentActivityGet(request) {
+  async agentActivityGet(request, context = DESKTOP_RPC_CONTEXT) {
     try {
-      return { success: true, activities: getCollabAgentActivity(request?.agentIds) }
+      const all = getSessionsList()
+      const visibleIds = new Set(sessionAccess.filter(context, all).map(session => session.id))
+      return { success: true, activities: getCollabAgentActivity(request?.agentIds, {
+        canReadSession: id => visibleIds.has(id),
+        includeUnscoped: visibleIds.size === all.length,
+      }) }
     } catch (error) {
       return { success: false, error: message(error) }
     }
@@ -142,9 +155,10 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
    * 会漂的枚举。递一个不存在的类型的后果是「过滤出空」,不是错误 —— 而那正是想要
    * 的失败模式。
    */
-  async schedulerLogTail(request) {
+  async schedulerLogTail(request, context = DESKTOP_RPC_CONTEXT) {
     try {
       if (!request?.roomSessionId) return { success: false, error: 'Missing roomSessionId' }
+      sessionAccess.resolve(context, request.roomSessionId, 'read')
       const rows = readCollabSchedulerLogTail(request.roomSessionId, {
         ...(typeof request.limit === 'number' ? { limit: request.limit } : {}),
         ...(request.types?.length ? { types: request.types as CollabSchedulerLogTailTypes } : {}),
@@ -159,17 +173,21 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
     }
   },
 
-  async roomSetFrozen(request) {
-    const success = setCollabRoomFrozen(request.roomSessionId, request.frozen)
-    return success ? { success } : { success, error: 'Not a room session' }
+  async roomSetFrozen(request, context = DESKTOP_RPC_CONTEXT) {
+    try {
+      sessionAccess.resolve(context, request.roomSessionId, 'write')
+      const success = setCollabRoomFrozen(request.roomSessionId, request.frozen, { executionContext: requestSessionOwner(context) })
+      return success ? { success } : { success, error: 'Not a room session' }
+    } catch (error) { return { success: false, error: message(error) } }
   },
 
   // 整体透传:请求减去它的**地址**就是 patch,所以这里只做一次解构,一个字段名
   // 都不出现。逐字段手抄的那一版活生生丢过一个字段(`maxConcurrentTurns`),而且
   // 不报错 —— 于是「同时发言上限」从桌面端根本写不进去。
-  async roomSetBudgets(request) {
+  async roomSetBudgets(request, context = DESKTOP_RPC_CONTEXT) {
     try {
       const { roomSessionId, ...patch } = request ?? ({} as CollabRoutes['roomSetBudgets']['input'])
+      sessionAccess.resolve(context, roomSessionId, 'write')
       const success = setCollabRoomBudgets(roomSessionId, patch)
       return success ? { success } : { success, error: 'Not a room session' }
     } catch (error) {
@@ -179,8 +197,13 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
 
   // 房间已花预算(W13.5):只读,设置面板打开时一次。刻意是**自己的一个方法**而
   // 不是 `boardGet` 上的一格 —— 看板补水是热路径,不该每次都付一遍账本扫描。
-  async roomSpendGet(request) {
-    return getCollabRoomSpend(request.roomSessionId)
+  async roomSpendGet(request, context = DESKTOP_RPC_CONTEXT) {
+    try {
+      sessionAccess.resolve(context, request.roomSessionId, 'read')
+      return getCollabRoomSpend(request.roomSessionId, {
+        canReadSession: id => sessionAccess.filterIds(context, [id]).length === 1,
+      })
+    } catch (error) { return { success: false, error: message(error) } }
   },
 
   // 群设置(W6):改名 / 名册 / PM / 权限档。校验与那条入群公告都在 app 层 ——
@@ -189,9 +212,10 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
   // 同样是整体透传。逐字段的那一版还额外维护了一条「undefined 不要过河」的规矩,
   // 而 app 层的每一处判据本来就是 `patch.x !== undefined` —— 那条规矩什么也没保护,
   // 只是让每加一个字段就得记着回来补一行。
-  async roomUpdate(request) {
+  async roomUpdate(request, context = DESKTOP_RPC_CONTEXT) {
     try {
       const { roomSessionId, ...patch } = request ?? ({} as CollabRoutes['roomUpdate']['input'])
+      sessionAccess.resolve(context, roomSessionId, 'write')
       return setCollabRoomConfig(roomSessionId, patch)
     } catch (error) {
       return { success: false, error: message(error) }
@@ -200,10 +224,12 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
 
   // 清空聊天记录。次序(先停后删再播)与「到底清哪几处」全在 app 层 —— 这里只把
   // 房间 id 带过去,并把 `includeMemberDms` 归一化成布尔(不让 undefined 过河)。
-  async roomClearHistory(request) {
+  async roomClearHistory(request, context = DESKTOP_RPC_CONTEXT) {
     try {
+      sessionAccess.resolve(context, request?.roomSessionId, 'write')
       return await clearCollabRoomHistory(request?.roomSessionId, {
         includeMemberDms: request?.includeMemberDms === true,
+        executionContext: requestSessionOwner(context),
       })
     } catch (error) {
       return { success: false, error: message(error) }
@@ -212,9 +238,9 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
 
   // 托管私聊房的 get-or-create(agent-im-dm.md D1)。校验(同事、在职、查得到)
   // 全在 app 层;这里只把「开不了房」翻译成一句用户读得懂的失败。
-  async dmRoomEnsure(request) {
+  async dmRoomEnsure(request, context = DESKTOP_RPC_CONTEXT) {
     try {
-      const roomSessionId = ensureUserDmRoom(request?.agentId)
+      const roomSessionId = ensureUserDmRoom(request?.agentId, { executionContext: requestSessionOwner(context) })
       return roomSessionId
         ? { success: true, roomSessionId }
         : { success: false, error: '这个 agent 不能开私聊(已退休、不是同事,或者查无此人)' }
@@ -226,8 +252,9 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
   // 群 folder 的只读列目录(agent-im-chat-ui.md §3.2)。folder 的位置只有 app 层
   // 算得出(workingDirectory ?? <store>/rooms/<id>),所以这是个按房间 id 问的
   // 方法,而不是让渲染进程拿 file:list-directory 去猜路径。只读:没有建/删/写。
-  async roomFolderList(request) {
+  async roomFolderList(request, context = DESKTOP_RPC_CONTEXT) {
     try {
+      sessionAccess.resolve(context, request?.roomSessionId, 'read')
       const listing = listCollabRoomFolder(request?.roomSessionId)
       return { success: true, ...listing }
     } catch (error) {
@@ -245,8 +272,9 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
    * emoji 读作它的回答(§3.5 B),所以从 wire 上取 actor 就等于让界面把一个表态
    * 安在别人名下。请求上那个字段是**被刻意无视**的,不是被校验的。
    */
-  async messageReact(request) {
+  async messageReact(request, context = DESKTOP_RPC_CONTEXT) {
     try {
+      sessionAccess.resolve(context, request.roomSessionId, 'write')
       return reactToCollabMessage(
         request.roomSessionId,
         request.messageId,
@@ -258,4 +286,3 @@ export const collabRpcHandlers: RouteHandlers<CollabRoutes> = {
     }
   },
 }
-

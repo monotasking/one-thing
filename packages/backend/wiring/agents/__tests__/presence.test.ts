@@ -13,9 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ app: { isPackaged: false } }))
 
-let previousHome: string | undefined
+let previousStorePath: string | undefined
 let tempHome: string
 let loadedSessions: typeof import('../../../stores/sessions.js') | null = null
+let sessionFixture: Awaited<ReturnType<typeof import('../../../session/testing/store-layer.js').installStoreSessionLayerForTest>> | undefined
 
 interface IsolatedModules {
   sessions: typeof import('../../../stores/sessions.js')
@@ -29,19 +30,24 @@ async function loadIsolated(): Promise<IsolatedModules> {
   const presence = await import('../presence.js')
   loadedSessions = sessions
   paths.ensureOnethingStoreDirs()
+  const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')
+  sessionFixture = await installStoreSessionLayerForTest()
   return { sessions, presence }
 }
 
 beforeEach(() => {
-  previousHome = process.env.HOME
+  previousStorePath = process.env.ONETHING_STORE_PATH
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-agent-presence-test-'))
-  process.env.HOME = tempHome
+  process.env.ONETHING_STORE_PATH = tempHome
   loadedSessions = null
 })
 
 afterEach(async () => {
   await loadedSessions?.flushAllPendingSaves()
-  process.env.HOME = previousHome
+  await sessionFixture?.dispose()
+  sessionFixture = undefined
+  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+  else process.env.ONETHING_STORE_PATH = previousStorePath
   fs.rmSync(tempHome, { recursive: true, force: true })
 })
 

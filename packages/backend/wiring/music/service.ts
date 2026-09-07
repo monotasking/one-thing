@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -29,6 +28,15 @@ const log = getLogger('music')
 const consoleLog = consolePort(log)
 
 
+import { MusicWorkOwner } from './lifetime.js'
+import { getCurrentBackend } from '../../current.js'
+
+export function createMusicServiceScope(options: { storePath: string; assertOwned?: () => void }) {
+  const owner = new MusicWorkOwner(options.assertOwned)
+  const runner = createElectronMusicProcessRunner({ env: { ONETHING_STORE_PATH: options.storePath }, signal: owner.signal })
+  const setups = new Set<MusicSetupService>()
+  const watchers = new Set<NowPlayingWatcher>()
+  let activated = false
 let service: MusicSetupService | null = null
 let nowPlayingWatcher: NowPlayingWatcher | null = null
 /**
@@ -38,7 +46,7 @@ let nowPlayingWatcher: NowPlayingWatcher | null = null
  */
 let sampleListener: ((nowPlaying: OnethingMusicNowPlaying | null) => void) | null = null
 
-export function setMusicSampleListener(
+function setMusicSampleListener(
   listener: ((nowPlaying: OnethingMusicNowPlaying | null) => void) | null,
 ): void {
   sampleListener = listener
@@ -49,7 +57,9 @@ export function setMusicSampleListener(
  * Every per-CLI fact this module needs — binary name, probe paths, wire
  * parsers, the setup backend — comes off this object.
  */
-export function getActiveMusicProvider(): MusicProvider {
+function getActiveMusicProvider(): MusicProvider {
+  owner.assertActive()
+  activated = true
   return getMusicProvider(getSettings().music?.provider)
 }
 
@@ -82,6 +92,7 @@ function persistMusicSettings(patch: Partial<typeof DEFAULT_MUSIC_SETTINGS>): vo
 }
 
 function emitMusicEvent(event: OnethingMusicEvent): void {
+  if (owner.signal.aborted) return
   broadcastVoiceHostMessage({
     channel: IPC_CHANNELS.MUSIC_EVENT,
     payload: event,
@@ -98,13 +109,13 @@ function emitMusicEvent(event: OnethingMusicEvent): void {
   }
 }
 
-export function getMusicService(): MusicSetupService {
+function getMusicService(): MusicSetupService {
   if (service) return service
 
   const provider = getActiveMusicProvider()
   const musicSetupServiceOptions: MusicSetupServiceOptions = {
     backend: provider.createBackend({
-      runner: createElectronMusicProcessRunner(),
+      runner: runner,
       writeSecretFile: writeElectronMusicSecretFile,
       logger: consoleLog,
     }),
@@ -113,7 +124,14 @@ export function getMusicService(): MusicSetupService {
     tools: provider.descriptor.tools,
     logger: consoleLog,
   };
-  service = new MusicSetupService(musicSetupServiceOptions)
+  const instance = new MusicSetupService(musicSetupServiceOptions)
+  setups.add(instance)
+  service = new Proxy(instance, {
+    get(target, property) {
+      const value = Reflect.get(target, property)
+      return typeof value === 'function' ? owner.wrap(value.bind(target)) : value
+    },
+  })
   return service
 }
 
@@ -121,18 +139,15 @@ export function getMusicService(): MusicSetupService {
  * Stop whatever is playing — e.g. after switching to orpheus, where the
  * 网易云音乐 App takes over and a lingering mpv session would double up.
  */
-export function stopMusicPlayerKeepalive(): void {
-  const socket = playerSocketPath()
-  if (socket && !existsSync(socket)) return
-  const provider = getActiveMusicProvider()
-  try {
-    spawn(provider.descriptor.binary, provider.cli.build.stop(), {
-      detached: true,
-      stdio: 'ignore',
-    }).unref()
-  } catch (error) {
-    log.warn('stop playback failed', {}, error)
-  }
+function stopMusicPlayerKeepalive(): Promise<void> {
+  const provider = getMusicProvider(getSettings().music?.provider)
+  const socket = provider.reliability.probePaths?.playerSocket
+  if (socket && !existsSync(expandHome(socket))) return Promise.resolve()
+  const stopRunner = createElectronMusicProcessRunner({ env: { ONETHING_STORE_PATH: options.storePath } })
+  return owner.track(stopRunner.run({ command: provider.descriptor.binary, args: provider.cli.build.stop(), timeoutMs: 3000 })
+    .then(() => undefined)
+    .catch(error => { log.warn('stop playback failed', {}, error) })
+    .finally(() => stopRunner.drain()))
 }
 
 // ----------------------------------------------------------------------------
@@ -142,7 +157,7 @@ export function stopMusicPlayerKeepalive(): void {
 function getNowPlayingWatcher(): NowPlayingWatcher {
   const provider = getActiveMusicProvider()
   const nowPlayingWatcherOptions: NowPlayingWatcherOptions = {
-    runner: createElectronMusicProcessRunner(),
+    runner: runner,
     cli: {
       binary: provider.descriptor.binary,
       parseNowPlaying: provider.cli.parse.nowPlaying,
@@ -152,15 +167,19 @@ function getNowPlayingWatcher(): NowPlayingWatcher {
       return socket ? existsSync(socket) : true
     },
     emit: nowPlaying => {
+      if (owner.signal.aborted) return
       broadcastVoiceHostMessage({
         channel: IPC_CHANNELS.MUSIC_NOW_PLAYING,
         payload: nowPlaying,
       })
     },
-    onSample: nowPlaying => sampleListener?.(nowPlaying),
+    onSample: nowPlaying => { if (!owner.signal.aborted) sampleListener?.(nowPlaying) },
     logger: consoleLog,
   };
-  nowPlayingWatcher ??= createNowPlayingWatcher(nowPlayingWatcherOptions)
+  if (!nowPlayingWatcher) {
+    nowPlayingWatcher = createNowPlayingWatcher(nowPlayingWatcherOptions)
+    watchers.add(nowPlayingWatcher)
+  }
   return nowPlayingWatcher
 }
 
@@ -169,16 +188,16 @@ function getNowPlayingWatcher(): NowPlayingWatcher {
  * `ncm-cli state` cannot start a player even if it did run (measured — it logs
  * nothing and spawns nothing). Unlike the keepalive, watching cannot make sound.
  */
-export function startMusicNowPlayingWatch(): void {
+function startMusicNowPlayingWatch(): void {
   getNowPlayingWatcher().start()
 }
 
-export function getMusicNowPlaying(): OnethingMusicNowPlaying | null {
+function getMusicNowPlaying(): OnethingMusicNowPlaying | null {
   return nowPlayingWatcher?.current() ?? null
 }
 
 /** Poll immediately — used right after a bar command, so the UI does not lag a tick. */
-export async function refreshMusicNowPlaying(): Promise<void> {
+async function refreshMusicNowPlaying(): Promise<void> {
   await getNowPlayingWatcher().refresh()
 }
 
@@ -189,7 +208,7 @@ export async function refreshMusicNowPlaying(): Promise<void> {
  * silent — the watcher, which only announces changes, would never carry the
  * news. Costs one IPC message, no subprocess.
  */
-export function nudgeMusicClients(): void {
+function nudgeMusicClients(): void {
   broadcastVoiceHostMessage({
     channel: IPC_CHANNELS.MUSIC_NOW_PLAYING,
     payload: nowPlayingWatcher?.current() ?? null,
@@ -202,21 +221,59 @@ export function nudgeMusicClients(): void {
  * binary/parser. The sample listener (conductor tap) survives — the watcher
  * restart re-subscribes nothing; radio.ts re-wires itself separately.
  */
-export function resetMusicServiceForProviderSwitch(): void {
-  service?.dispose()
+async function resetMusicServiceForProviderSwitch(): Promise<void> {
+  const previousService = service
+  const previousWatcher = nowPlayingWatcher
+  previousService?.dispose()
+  previousWatcher?.quiesce()
+  await Promise.all([previousService?.drain(), previousWatcher?.drain()])
+  owner.assertActive()
   service = null
-  nowPlayingWatcher?.stop()
   nowPlayingWatcher = null
   startMusicNowPlayingWatch()
 }
 
-export function disposeMusicService(): void {
-  service?.dispose()
-  service = null
-  nowPlayingWatcher?.stop()
-  nowPlayingWatcher = null
-  // Legacy playback (NCM_LEGACY_PLAY) runs as detached processes that outlive
-  // us, and once the window is gone there is no bar left to stop them — quit
-  // must take the music with it (fire-and-forget inside).
-  stopMusicPlayerKeepalive()
+function quiesce(): void {
+  if (owner.signal.aborted) return
+  sampleListener = null
+  for (const watcher of watchers) watcher.quiesce()
+  for (const setup of setups) setup.dispose()
+  owner.quiesce()
+  runner.quiesce()
+  if (activated) void stopMusicPlayerKeepalive()
 }
+
+async function drain(): Promise<void> {
+  quiesce()
+  await Promise.all([
+    owner.drain(), runner.drain(),
+    ...[...watchers].map(watcher => watcher.drain()),
+    ...[...setups].map(setup => setup.drain()),
+  ])
+}
+
+  return {
+    quiesce, drain, runner,
+    setMusicSampleListener: owner.wrap(setMusicSampleListener),
+    getActiveMusicProvider: owner.wrap(getActiveMusicProvider),
+    getMusicService: owner.wrap(getMusicService),
+    stopMusicPlayerKeepalive: owner.wrap(stopMusicPlayerKeepalive),
+    startMusicNowPlayingWatch: owner.wrap(startMusicNowPlayingWatch),
+    getMusicNowPlaying: owner.wrap(getMusicNowPlaying),
+    refreshMusicNowPlaying: owner.wrap(refreshMusicNowPlaying),
+    nudgeMusicClients: owner.wrap(nudgeMusicClients),
+    resetMusicServiceForProviderSwitch: owner.wrap(resetMusicServiceForProviderSwitch),
+  }
+}
+
+export type MusicServiceScope = ReturnType<typeof createMusicServiceScope>
+export const setMusicSampleListener: MusicServiceScope['setMusicSampleListener'] = (...args) => getCurrentBackend('music').music.service.setMusicSampleListener(...args)
+export const getActiveMusicProvider: MusicServiceScope['getActiveMusicProvider'] = (...args) => getCurrentBackend('music').music.service.getActiveMusicProvider(...args)
+export const getMusicService: MusicServiceScope['getMusicService'] = (...args) => getCurrentBackend('music').music.service.getMusicService(...args)
+export const stopMusicPlayerKeepalive: MusicServiceScope['stopMusicPlayerKeepalive'] = (...args) => getCurrentBackend('music').music.service.stopMusicPlayerKeepalive(...args)
+export const startMusicNowPlayingWatch: MusicServiceScope['startMusicNowPlayingWatch'] = (...args) => getCurrentBackend('music').music.service.startMusicNowPlayingWatch(...args)
+export const getMusicNowPlaying: MusicServiceScope['getMusicNowPlaying'] = (...args) => getCurrentBackend('music').music.service.getMusicNowPlaying(...args)
+export const refreshMusicNowPlaying: MusicServiceScope['refreshMusicNowPlaying'] = (...args) => getCurrentBackend('music').music.service.refreshMusicNowPlaying(...args)
+export const nudgeMusicClients: MusicServiceScope['nudgeMusicClients'] = (...args) => getCurrentBackend('music').music.service.nudgeMusicClients(...args)
+export const resetMusicServiceForProviderSwitch: MusicServiceScope['resetMusicServiceForProviderSwitch'] = (...args) => getCurrentBackend('music').music.service.resetMusicServiceForProviderSwitch(...args)
+export function disposeMusicService(): Promise<void> { return getCurrentBackend('music').music.service.drain() }

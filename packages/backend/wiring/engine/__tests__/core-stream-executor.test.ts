@@ -262,7 +262,7 @@ describe('core stream executor helpers', () => {
       sessionName: 'Sketch',
     })
     expect(executeTextStream).not.toHaveBeenCalled()
-    expect(registry.removeController).toHaveBeenCalledWith('s1')
+    expect(registry.removeController).toHaveBeenCalledWith('s1', expect.anything())
     expect(result).toMatchObject({
       handled: true,
       usedSpecialStream: true,

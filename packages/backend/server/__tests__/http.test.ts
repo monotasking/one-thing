@@ -7,26 +7,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createOnethingRuntimeFacade } from '@onething/core'
 import { defineRouter } from '@onething/core/ipc'
 import type { CorePluginCommandContext } from '@onething/core/plugins'
-import { registerRouterHandlers, resetRpcRegistryForTests } from '@onething/backend/rpc/registry.js'
-import { pluginsRpcHandlers } from '@onething/backend/rpc/domains/plugins.js'
+import { registerRouterHandlers, resetRpcRegistryForTests } from '../../rpc/registry.js'
+import { pluginsRpcHandlers } from '../../rpc/domains/plugins.js'
 import { pluginsRouter } from '@shared/ipc/plugins.js'
-import { searchRpcHandlers } from '@onething/backend/rpc/domains/search.js'
+import { searchRpcHandlers } from '../../rpc/domains/search.js'
 import { searchRouter } from '@shared/ipc/search.js'
 import { configureServerSearchPort } from '../search-providers.js'
-import { filesRpcHandlers } from '@onething/backend/rpc/domains/files.js'
-import { toolsRpcHandlers } from '@onething/backend/rpc/domains/tools.js'
-import { markdownRpcHandlers } from '@onething/backend/rpc/domains/markdown.js'
-import { permissionGrantsRpcHandlers } from '@onething/backend/rpc/domains/permission-grants.js'
+import { filesRpcHandlers } from '../../rpc/domains/files.js'
+import { toolsRpcHandlers } from '../../rpc/domains/tools.js'
+import { markdownRpcHandlers } from '../../rpc/domains/markdown.js'
+import { permissionGrantsRpcHandlers } from '../../rpc/domains/permission-grants.js'
 import { filesRouter } from '@shared/ipc/files.js'
 import { toolsRouter } from '@shared/ipc/tools.js'
 import { markdownRouter } from '@shared/ipc/markdown.js'
 import { permissionGrantsRouter } from '@shared/ipc/permission-grants.js'
 import { projectDirsRouter } from '@shared/ipc/project-dirs.js'
-import { appStateRouter } from '@shared/ipc/app-state.js'
-import { resetPermissionGrantsForTests } from '@onething/core/permission'
+import { Permission, resetPermissionGrantsForTests } from '@onething/core/permission'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { chatRouter } from '@shared/ipc/chat.js'
-import { createOnethingHttpServer } from '../http.js'
+import { createOnethingHttpServer as createRawHttpServer, type OnethingHttpServerOptions } from '../http.js'
 import {
   SERVER_REDACTED_SECRET,
   createAppBackedServerSessionStore,
@@ -37,7 +36,7 @@ import {
   mergeServerSettingsUpdate,
   sanitizeSettingsForClient,
 } from '../settings-projection.js'
-import { createEchoServerBackend, createTestServerRuntime } from './test-helpers.js'
+import { createAppServerRuntime, createEchoServerBackend, createTestServerRuntime } from './test-helpers.js'
 
 const servers: Server[] = []
 const runtimes: OnethingServerRuntime[] = []
@@ -45,6 +44,32 @@ const tempDirs: string[] = []
 const originalOnethingStorePath = process.env.ONETHING_STORE_PATH
 
 const TEST_SERVER_AUTH_TOKEN = 'test-server-token'
+
+// Each actor gets a separately configured listener. Headers never choose the
+// operator of a listener; these transport fixtures route to that actor's server.
+const pairedServers = new WeakMap<Server, Server>()
+const actorOrigins = new Map<string, string>()
+const actorScopes = ['default', 'search-workspace', 'plugin-workspace', 'voice-workspace',
+  'chat-dev-workspace', 'search-dev-workspace', 'files-workspace', 'markdown-workspace',
+  'project-workspace', 'media-workspace', 'tool-workspace', 'workspace-a',
+  'workspace-prompts', 'workspace-permissions', 'workspace-grants', 'abort-workspace', 'rpc-workspace']
+
+function createOnethingHttpServer(options: OnethingHttpServerOptions): Server {
+  if (!options.authToken) return createRawHttpServer(options)
+  const alice = createRawHttpServer({ ...options, defaultUserId: 'alice', allowedWorkspaceIds: actorScopes })
+  const bob = createRawHttpServer({ ...options, defaultUserId: 'bob', allowedWorkspaceIds: actorScopes })
+  pairedServers.set(alice, bob)
+  return alice
+}
+
+function fetchActor(input: string, init?: RequestInit): Promise<Response> {
+  const url = new URL(input)
+  if (new Headers(init?.headers).get('x-onething-user-id') === 'bob') {
+    const origin = actorOrigins.get(url.origin)
+    if (origin) return globalThis.fetch(`${origin}${url.pathname}${url.search}`, init)
+  }
+  return globalThis.fetch(input, init)
+}
 
 
 beforeEach(async () => {
@@ -63,6 +88,7 @@ afterEach(async () => {
     })
   })))
   servers.length = 0
+  actorOrigins.clear()
   await Promise.all(runtimes.map(runtime => runtime.shutdown()))
   runtimes.length = 0
   resetPermissionGrantsForTests()
@@ -80,7 +106,7 @@ describe('createOnethingHttpServer', () => {
       runtime: serverRuntime.runtime,
     }))
 
-    const response = await fetch(`${baseUrl(server)}/api/capabilities`)
+    const response = await fetchActor(`${baseUrl(server)}/api/capabilities`)
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toEqual({
       localFileSystem: false,
@@ -136,14 +162,14 @@ describe('createOnethingHttpServer', () => {
     await backendBus!.emit(sessionId!, { type: 'stream:aborted' })
 
     // Learn the committed sequences via a full replay (?after=0).
-    const full = await fetch(`${baseUrl(server)}/api/sessions/${sessionId}/events?after=0`)
+    const full = await fetchActor(`${baseUrl(server)}/api/sessions/${sessionId}/events?after=0`)
     const fullReplay = await readUntil(full, text => text.includes('stream:aborted'))
     const startSeq = sseIdFor(fullReplay, 'stream:start')
     const abortedSeq = sseIdFor(fullReplay, 'stream:aborted')
     expect(abortedSeq).toBeGreaterThan(startSeq)
 
     // (a) Last-Event-ID alone resumes strictly after it → replay yields the next event.
-    const headerOnly = await fetch(`${baseUrl(server)}/api/sessions/${sessionId}/events`, {
+    const headerOnly = await fetchActor(`${baseUrl(server)}/api/sessions/${sessionId}/events`, {
       headers: { 'last-event-id': String(startSeq) },
     })
     expect(headerOnly.headers.get('content-type')).toContain('text/event-stream')
@@ -153,7 +179,7 @@ describe('createOnethingHttpServer', () => {
     expect(headerReplay).not.toContain(`id: ${startSeq}\n`)
 
     // (b) Explicit ?after= beats a stale Last-Event-ID header.
-    const queryWins = await fetch(
+    const queryWins = await fetchActor(
       `${baseUrl(server)}/api/sessions/${sessionId}/events?after=${startSeq}`,
       { headers: { 'last-event-id': String(abortedSeq) } },
     )
@@ -253,7 +279,7 @@ describe('createOnethingHttpServer', () => {
       const execResult = await ctx.exec('echo', ['blocked'])
       ctx.notify(`exec:${execResult.exitCode}`, 'warn')
     })
-    const serverRuntime = await createTestServerRuntime({
+    const serverRuntime = await createAppServerRuntime({
       dataRoot,
       workspaceRoot,
       pluginCommands: [{
@@ -278,8 +304,7 @@ describe('createOnethingHttpServer', () => {
     // P4 终态批 C2:两条走 `POST /api/rpc` 的 `plugins` 域,而不是从前那两条 REST。
     // **断言一条没减** —— 域在 http 上调的就是 `server/plugin-catalog.ts` 那个单槽
     // 端口里的同一批闭包,包括「bob 看不见 alice 的会话」这道归属护栏。
-    const dispose = registerRouterHandlers(pluginsRouter, pluginsRpcHandlers)
-    try {
+    {
       await expect(rpcData(baseUrlValue, aliceHeaders, 'commands', {})).resolves.toEqual({
         success: true,
         commands: [{
@@ -304,10 +329,8 @@ describe('createOnethingHttpServer', () => {
         commandName: 'demo',
         args: '--fast',
         sessionId,
-      })).resolves.toEqual({ success: false, error: 'Session not found' })
+      })).rejects.toThrow('Session not found')
       expect(handler).toHaveBeenCalledTimes(1)
-    } finally {
-      dispose()
     }
   })
 
@@ -341,11 +364,11 @@ describe('createOnethingHttpServer', () => {
     const baseUrlValue = baseUrl(server)
     const headers = contextHeaders('alice', 'voice-workspace')
 
-    const voiceEvents = await fetch(`${baseUrlValue}/api/voice/events`, { headers })
+    const voiceEvents = await fetchActor(`${baseUrlValue}/api/voice/events`, { headers })
     expect(voiceEvents.headers.get('content-type')).toContain('text/event-stream')
     await expect(readFirstChunk(voiceEvents)).resolves.toBe('\n')
 
-    const runtimeCommands = await fetch(`${baseUrlValue}/api/voice/runtime-commands`, { headers })
+    const runtimeCommands = await fetchActor(`${baseUrlValue}/api/voice/runtime-commands`, { headers })
     expect(runtimeCommands.headers.get('content-type')).toContain('text/event-stream')
     await expect(readFirstChunk(runtimeCommands)).resolves.toBe('\n')
   })
@@ -641,7 +664,7 @@ describe('createOnethingHttpServer', () => {
         headers: { ...headers, 'content-type': 'application/json' },
         body: JSON.stringify({ domain: 'files', method, payload }),
       })
-    const ok = (data: unknown) => ({ ok: true, data })
+    const ok = (data: unknown) => ({ ok: true, data });
     const aliceHeaders = contextHeaders('alice', 'files-workspace')
     const bobHeaders = contextHeaders('bob', 'files-workspace')
     let fileEvents: Response | undefined
@@ -656,7 +679,7 @@ describe('createOnethingHttpServer', () => {
       const renamedPath = join(srcDir, 'main.txt')
 
       // ── watch:RPC 开、SSE 收、RPC 关 ────────────────────────────
-      fileEvents = await fetch(`${baseUrlValue}/api/files/watch/events`, { headers: aliceHeaders })
+      fileEvents = await fetchActor(`${baseUrlValue}/api/files/watch/events`, { headers: aliceHeaders })
       expect(fileEvents.status).toBe(200)
       await expect(rpc(aliceHeaders, 'watchStart', { root: workspaceDir }))
         .resolves.toEqual(ok({ success: true }))
@@ -966,7 +989,7 @@ describe('createOnethingHttpServer', () => {
     const aliceHeaders = contextHeaders('alice', 'media-workspace')
     const bobHeaders = contextHeaders('bob', 'media-workspace')
 
-    const mediaEvents = await fetch(`${baseUrlValue}/api/media/events`, { headers: aliceHeaders })
+    const mediaEvents = await fetchActor(`${baseUrlValue}/api/media/events`, { headers: aliceHeaders })
     expect(mediaEvents.status).toBe(200)
 
     // 直接往 alice 那份 owner 媒体库里存一张图 —— 从前这一步走
@@ -974,6 +997,7 @@ describe('createOnethingHttpServer', () => {
     // 同一台 `MediaLibraryService`、同一个目录布局。
     const { MediaLibraryService } = await import('@onething/runtime/media')
     const aliceMediaRoot = join(dataRoot, 'owners', 'alice', 'media-workspace', 'media')
+    const sourceSession = await createSession(baseUrlValue, 'Alice media source', aliceHeaders)
     const aliceLibrary = new MediaLibraryService({
       indexPath: join(aliceMediaRoot, 'index.json'),
       imagesDir: join(aliceMediaRoot, 'images'),
@@ -983,18 +1007,18 @@ describe('createOnethingHttpServer', () => {
       base64: Buffer.from('image-bytes').toString('base64'),
       prompt: 'A saved image',
       model: 'local-image',
-      sessionId: 'session-1',
+      sessionId: sourceSession.session!.id,
       messageId: 'message-1',
     })
     const fileUrl = `/api/media/file/${encodeURIComponent(saved.filePath.split('/').pop() ?? '')}`
 
-    const mediaFileResponse = await fetch(`${baseUrlValue}${fileUrl}`, { headers: aliceHeaders })
+    const mediaFileResponse = await fetchActor(`${baseUrlValue}${fileUrl}`, { headers: aliceHeaders })
     expect(mediaFileResponse.status).toBe(200)
     expect(mediaFileResponse.headers.get('content-type')).toBe('image/png')
     expect(await mediaFileResponse.text()).toBe('image-bytes')
 
     // 换一个 owner 就查无此文件 —— 这条隔离是这条路由存在的全部理由。
-    const bobFileResponse = await fetch(`${baseUrlValue}${fileUrl}`, { headers: bobHeaders })
+    const bobFileResponse = await fetchActor(`${baseUrlValue}${fileUrl}`, { headers: bobHeaders })
     expect(bobFileResponse.status).toBe(404)
   })
 
@@ -1018,7 +1042,7 @@ describe('createOnethingHttpServer', () => {
       }),
     }))
 
-    const response = await fetch(`${baseUrl(server)}/api/events?sessionId=session-1&after=7`)
+    const response = await fetchActor(`${baseUrl(server)}/api/events?sessionId=session-1&after=7`)
     expect(response.status).toBe(200)
     const chunk = await readFirstChunk(response)
 
@@ -1050,7 +1074,7 @@ describe('createOnethingHttpServer', () => {
       }),
     }))
 
-    const response = await fetch(`${baseUrl(server)}/api/sessions/session-1/events?after=11`)
+    const response = await fetchActor(`${baseUrl(server)}/api/sessions/session-1/events?after=11`)
     expect(response.status).toBe(200)
     expect(response.headers.get('x-accel-buffering')).toBe('no')
     const chunk = await readFirstChunk(response)
@@ -1078,7 +1102,7 @@ describe('createOnethingHttpServer', () => {
       }),
     }))
 
-    const response = await fetch(`${baseUrl(server)}/api/sessions`, {
+    const response = await fetchActor(`${baseUrl(server)}/api/sessions`, {
       method: 'OPTIONS',
       headers: {
         origin: 'http://localhost:5173',
@@ -1111,7 +1135,7 @@ describe('createOnethingHttpServer', () => {
       }),
     }))
 
-    const preflight = (origin: string) => fetch(`${baseUrl(server)}/api/rpc`, {
+    const preflight = (origin: string) => fetchActor(`${baseUrl(server)}/api/rpc`, {
       method: 'OPTIONS',
       headers: { origin, 'access-control-request-headers': 'authorization,content-type' },
     })
@@ -1129,7 +1153,7 @@ describe('createOnethingHttpServer', () => {
 
     // 真请求(非预检)同一把尺:回环源的 401 回包也带回显的 ACAO,
     // 浏览器才能把「差的是 token」如实交给页面,而不是折成一次 CORS 失败。
-    const real = await fetch(`${baseUrl(server)}/api/capabilities`, {
+    const real = await fetchActor(`${baseUrl(server)}/api/capabilities`, {
       headers: { origin: 'http://localhost:5175' },
     })
     expect(real.headers.get('access-control-allow-origin')).toBe('http://localhost:5175')
@@ -1157,10 +1181,9 @@ describe('createOnethingHttpServer', () => {
    */
   it('serves the tool methods over the generic RPC route, keeping the http guards verbatim', async () => {
     const workspaceRoot = await createTempDir('onething-server-tools-')
-    const serverRuntime = await createTestServerRuntime({ workspaceRoot })
+    const serverRuntime = await createAppServerRuntime({ workspaceRoot })
     runtimes.push(serverRuntime)
-    // 装配层在 echo backend 下不跑,域要自己挂上(与 files / markdown 同款)。
-    const disposeDomain = registerRouterHandlers(toolsRouter, toolsRpcHandlers)
+    // The real Backend owns the production router registration and its lifetime.
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
@@ -1168,22 +1191,23 @@ describe('createOnethingHttpServer', () => {
     }))
     const baseUrlValue = baseUrl(server)
     const aliceHeaders = contextHeaders('alice', 'tool-workspace')
+    const created = await createSession(baseUrlValue, 'Owned tools session', aliceHeaders)
     const rpc = (method: string, payload: unknown) =>
       fetchJson(`${baseUrlValue}/api/rpc`, {
         method: 'POST',
         headers: { ...aliceHeaders, 'content-type': 'application/json' },
         body: JSON.stringify({ domain: 'tools', method, payload }),
       })
-    const ok = (data: unknown) => ({ ok: true, data })
+    function ok(data: unknown) { return { ok: true, data } }
 
-    try {
+    {
       // ① 执行白名单:除了 read,一律拒绝(文案逐字沿用旧 server adapter)。
       for (const toolId of ['bash', 'glob', 'grep']) {
         await expect(rpc('executeTool', {
           toolId,
           arguments: { command: 'pwd' },
           messageId: 'message-1',
-          sessionId: 'whatever',
+          sessionId: created.session!.id,
         })).resolves.toEqual(ok({
           success: false,
           error: `Tool execution for "${toolId}" is disabled in the web server runtime.`,
@@ -1196,9 +1220,11 @@ describe('createOnethingHttpServer', () => {
         arguments: { path: 'notes/a.txt' },
         messageId: 'message-1',
         sessionId: 'ghost-session',
-      })).resolves.toEqual(ok({ success: false, error: 'Session not found' }))
+      })).resolves.toMatchObject({ ok: false, error: { message: 'Session not found' } })
 
-      // ③ 取消是空操作,两条传输面同一个答案。
+      // ③ `cancelTool` 两边同一个答案 —— 它今天是**空操作**(记一行日志恒回
+      //    success),与旧 server adapter 逐字相同。真取消是一次用户可感知的行为
+      //    变化,已按默认口径回旧(工单 4 B1);等用户点头再作独立小单合回来。
       await expect(rpc('cancelTool', { toolCallId: 'tool-1' }))
         .resolves.toEqual(ok({ success: true }))
 
@@ -1220,8 +1246,6 @@ describe('createOnethingHttpServer', () => {
         success: false,
         error: 'Tool call updates are not available in the web server runtime yet.',
       }))
-    } finally {
-      disposeDomain()
     }
   })
 
@@ -1232,7 +1256,7 @@ describe('createOnethingHttpServer', () => {
       runtime: serverRuntime.runtime,
     }))
 
-    const createResponse = await fetch(`${baseUrl(server)}/api/sessions`, {
+    const createResponse = await fetchActor(`${baseUrl(server)}/api/sessions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ name: 'Web smoke' }),
@@ -1244,7 +1268,7 @@ describe('createOnethingHttpServer', () => {
     expect(created.session).not.toHaveProperty('userId')
     expect(created.session).not.toHaveProperty('workspaceId')
 
-    const eventsResponse = await fetch(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`)
+    const eventsResponse = await fetchActor(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`)
     expect(eventsResponse.status).toBe(200)
 
     await expect(sendSessionCommand(serverRuntime, sessionId!, {
@@ -1271,7 +1295,7 @@ describe('createOnethingHttpServer', () => {
     const sessionId = created.session?.id
     expect(sessionId).toBeTruthy()
 
-    let eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
+    let eventsResponse = await fetchActor(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
     await expect(sendSessionCommand(serverRuntime, sessionId!, {
       type: 'command:send-message',
       content: 'first',
@@ -1284,7 +1308,7 @@ describe('createOnethingHttpServer', () => {
       'assistant:Echo: first',
     ])
 
-    eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
+    eventsResponse = await fetchActor(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
     await expect(sendSessionCommand(serverRuntime, sessionId!, {
       type: 'command:retry-message',
       messageId: messages[1].id,
@@ -1298,7 +1322,7 @@ describe('createOnethingHttpServer', () => {
       'assistant:Echo: first',
     ])
 
-    eventsResponse = await fetch(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
+    eventsResponse = await fetchActor(`${baseUrlValue}/api/sessions/${encodeURIComponent(sessionId!)}/events`)
     await expect(sendSessionCommand(serverRuntime, sessionId!, {
       type: 'command:edit-and-resend',
       messageId: messages[0].id,
@@ -1370,8 +1394,9 @@ describe('createOnethingHttpServer', () => {
     await writeFile(join(sessionsDir, `${session.id}.json`), `${JSON.stringify(session)}\n`, 'utf8')
 
     try {
-      const serverRuntime = await createTestServerRuntime({
-        dataRoot: await createTempDir('onething-server-data-'),
+      const serverRuntime = await createAppServerRuntime({
+        storePath: storeRoot,
+        workspaceRoot: await createTempDir('onething-server-workspace-'),
       })
       runtimes.push(serverRuntime)
       const server = await listen(createOnethingHttpServer({
@@ -1379,12 +1404,7 @@ describe('createOnethingHttpServer', () => {
       }))
       const baseUrlValue = baseUrl(server)
 
-      // app-state 域已迁到通用 RPC 通道(P4c),`GET /api/app-state` 不再存在;
-      // 同一份 `app-state.json` 现在经 `POST /api/rpc` 的 appState.get 读出来。
-      // 这个 fixture 的 runtime 是手搭的,不走 `registerAppRpcDomains`,所以域要
-      // 自己挂一下 —— 挂的是**真** handler,读的正是 ONETHING_STORE_PATH 那份。
-      const { appStateRpcHandlers } = await import('../../rpc/domains/app-state.js')
-      const disposeAppStateDomain = registerRouterHandlers(appStateRouter, appStateRpcHandlers)
+      // The real Backend supplies the app-state access port and registers the domain.
       await expect(fetchJson(`${baseUrlValue}/api/rpc`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -1393,7 +1413,6 @@ describe('createOnethingHttpServer', () => {
         ok: true,
         data: expect.objectContaining({ currentSessionId: session.id }),
       }))
-      disposeAppStateDomain()
 
       const list = await fetchJson(`${baseUrlValue}/api/sessions`)
       expect(list.sessions).toEqual([
@@ -1527,11 +1546,11 @@ describe('createOnethingHttpServer', () => {
     expect(aliceList.sessions?.map((session: { id: string }) => session.id)).toContain(sessionId)
     expect(bobList.sessions ?? []).toHaveLength(0)
 
-    const bobEvents = await fetch(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`, {
+    const bobEvents = await fetchActor(`${baseUrl(server)}/api/events?sessionId=${encodeURIComponent(sessionId!)}`, {
       headers: bobHeaders,
     })
     expect(bobEvents.status).toBe(200)
-    const bobSessionEvents = await fetch(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/events`, {
+    const bobSessionEvents = await fetchActor(`${baseUrl(server)}/api/sessions/${encodeURIComponent(sessionId!)}/events`, {
       headers: bobHeaders,
     })
     expect(bobSessionEvents.status).toBe(200)
@@ -1665,12 +1684,8 @@ describe('createOnethingHttpServer', () => {
     // 生产形态:HTTP 面与引擎面共用**同一个** app 会话库。归属校验搬进
     // `@onething/backend` 之后它读的就是这一份 —— echo backend 默认那份独立的
     // 内存库会让「同一个 server 两本账」的老毛病在测试里假绿。
-    const serverRuntime = await createTestServerRuntime({
-      dataRoot,
-      sessionStore: createAppBackedServerSessionStore(),
-    })
+    const serverRuntime = await createAppServerRuntime({ dataRoot })
     runtimes.push(serverRuntime)
-    const disposeDomain = registerRouterHandlers(permissionGrantsRouter, permissionGrantsRpcHandlers)
     const server = await listen(createOnethingHttpServer({
       authToken: TEST_SERVER_AUTH_TOKEN,
       runtime: serverRuntime.runtime,
@@ -1694,22 +1709,24 @@ describe('createOnethingHttpServer', () => {
     expect(sessionId).toBeTruthy()
     expect(workspaceRoot).toBeTruthy()
 
-    await (serverRuntime.eventBus as any).emit(sessionId!, {
-      type: 'permission:request',
-      requestId: 'permission-session-grant',
-      targetChannel: 'api',
-      toolCallId: 'tool-session',
+    const sessionAsk = Permission.ask({
+      sessionId: sessionId!,
+      type: 'bash',
+      callId: 'tool-session',
       messageId: 'message-session',
-      permissionType: 'bash',
       title: 'Run session command',
       pattern: 'git status',
       metadata: {},
+      workingDirectory: workspaceRoot,
+      userId: 'alice', workspaceId: 'workspace-grants',
     })
-    await fetchJson(`${baseUrl(server)}/api/permissions/permission-session-grant/respond`, {
+    const sessionPromptId = Permission.getPendingPrompts(sessionId!)[0].id
+    await fetchJson(`${baseUrl(server)}/api/permissions/${sessionPromptId}/respond`, {
       method: 'POST',
       headers: { ...aliceHeaders, 'content-type': 'application/json' },
       body: JSON.stringify({ decision: 'session' }),
     })
+    await sessionAsk
 
     const listedSessionGrants = await grantsRpc(aliceHeaders, 'list', { sessionId })
     const sessionGrantId = listedSessionGrants.sessionGrants?.[0]?.id
@@ -1734,22 +1751,24 @@ describe('createOnethingHttpServer', () => {
     await expect(grantsRpc(aliceHeaders, 'revoke', { id: sessionGrantId }))
       .resolves.toEqual({ success: true })
 
-    await (serverRuntime.eventBus as any).emit(sessionId!, {
-      type: 'permission:request',
-      requestId: 'permission-workspace-grant',
-      targetChannel: 'api',
-      toolCallId: 'tool-workspace',
+    const workspaceAsk = Permission.ask({
+      sessionId: sessionId!,
+      type: 'file_write',
+      callId: 'tool-workspace',
       messageId: 'message-workspace',
-      permissionType: 'file_write',
       title: 'Write file',
       pattern: 'notes.md',
       metadata: {},
+      workingDirectory: workspaceRoot,
+      userId: 'alice', workspaceId: 'workspace-grants',
     })
-    await fetchJson(`${baseUrl(server)}/api/permissions/permission-workspace-grant/respond`, {
+    const workspacePromptId = Permission.getPendingPrompts(sessionId!)[0].id
+    await fetchJson(`${baseUrl(server)}/api/permissions/${workspacePromptId}/respond`, {
       method: 'POST',
       headers: { ...aliceHeaders, 'content-type': 'application/json' },
       body: JSON.stringify({ decision: 'workdir' }),
     })
+    await workspaceAsk
 
     const listedWorkspaceGrants = await grantsRpc(aliceHeaders, 'list', { workspaceRoot })
     expect(listedWorkspaceGrants).toEqual(expect.objectContaining({
@@ -1776,7 +1795,6 @@ describe('createOnethingHttpServer', () => {
       .resolves.toEqual({ success: true })
 
     const afterClear = await grantsRpc(aliceHeaders, 'list', { workspaceRoot })
-    disposeDomain()
     expect(afterClear).toEqual({ success: true, sessionGrants: [], workspaceGrants: [] })
   })
 
@@ -1787,12 +1805,12 @@ describe('createOnethingHttpServer', () => {
       runtime: serverRuntime.runtime,
     }))
 
-    const spoofed = await fetch(`${baseUrl(server)}/api/capabilities`, {
+    const spoofed = await fetchActor(`${baseUrl(server)}/api/capabilities`, {
       headers: { 'x-onething-user-id': 'someone-else' },
     })
     expect(spoofed.status).toBe(401)
 
-    const plain = await fetch(`${baseUrl(server)}/api/capabilities`)
+    const plain = await fetchActor(`${baseUrl(server)}/api/capabilities`)
     expect(plain.status).toBe(200)
   })
 
@@ -1804,15 +1822,15 @@ describe('createOnethingHttpServer', () => {
       runtime: serverRuntime.runtime,
     }))
 
-    const missing = await fetch(`${baseUrl(server)}/api/capabilities`)
+    const missing = await fetchActor(`${baseUrl(server)}/api/capabilities`)
     expect(missing.status).toBe(401)
 
-    const wrong = await fetch(`${baseUrl(server)}/api/capabilities`, {
+    const wrong = await fetchActor(`${baseUrl(server)}/api/capabilities`, {
       headers: { authorization: 'Bearer wrong-token' },
     })
     expect(wrong.status).toBe(401)
 
-    const authorized = await fetch(`${baseUrl(server)}/api/capabilities`, {
+    const authorized = await fetchActor(`${baseUrl(server)}/api/capabilities`, {
       headers: { authorization: `Bearer ${TEST_SERVER_AUTH_TOKEN}` },
     })
     expect(authorized.status).toBe(200)
@@ -1834,7 +1852,7 @@ describe('createOnethingHttpServer', () => {
 
       const controller = new AbortController()
       try {
-        const response = await fetch(
+        const response = await fetchActor(
           `${baseUrl(server)}/api/events?token=${encodeURIComponent(TEST_SERVER_AUTH_TOKEN)}`,
           { signal: controller.signal },
         )
@@ -1852,10 +1870,10 @@ describe('createOnethingHttpServer', () => {
         runtime: serverRuntime.runtime,
       }))
 
-      const wrong = await fetch(`${baseUrl(server)}/api/events?token=nope`)
+      const wrong = await fetchActor(`${baseUrl(server)}/api/events?token=nope`)
       expect(wrong.status).toBe(401)
 
-      const missing = await fetch(`${baseUrl(server)}/api/events`)
+      const missing = await fetchActor(`${baseUrl(server)}/api/events`)
       expect(missing.status).toBe(401)
     })
 
@@ -1867,12 +1885,12 @@ describe('createOnethingHttpServer', () => {
         runtime: serverRuntime.runtime,
       }))
 
-      const capabilities = await fetch(
+      const capabilities = await fetchActor(
         `${baseUrl(server)}/api/capabilities?token=${encodeURIComponent(TEST_SERVER_AUTH_TOKEN)}`,
       )
       expect(capabilities.status).toBe(401)
 
-      const rpc = await fetch(
+      const rpc = await fetchActor(
         `${baseUrl(server)}/api/rpc?token=${encodeURIComponent(TEST_SERVER_AUTH_TOKEN)}`,
         {
           method: 'POST',
@@ -1919,11 +1937,13 @@ describe('createOnethingHttpServer', () => {
         body: JSON.stringify({ sessionId: 'session-1' }),
       })).resolves.toEqual({ success: true })
       // 处理者收到的是**信封**,以及宿主自己铸的 dispatch context。
+      // 处理者收到三样:信封 / 宿主铸的 dispatch context(**纯数据**)/ 这条 surface
+      // 自己带来的函数端口(工单 4 C3:端口不再用 Symbol 塞进 context)。
       expect(abortStream).toHaveBeenCalledWith({ sessionId: 'session-1' }, expect.objectContaining({
         transport: 'http',
         ownerUid: 'alice',
         workspaceId: 'abort-workspace',
-      }))
+      }), expect.objectContaining({ workspaceWatch: expect.any(Object) }))
     } finally {
       dispose()
       resetRpcRegistryForTests()
@@ -1970,7 +1990,7 @@ describe('createOnethingHttpServer', () => {
     })
 
     try {
-      const unauthorized = await fetch(rpcUrl, {
+      const unauthorized = await fetchActor(rpcUrl, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ domain: 'http-probe', method: 'echo', payload: { value: 'hi' } }),
@@ -1987,7 +2007,8 @@ describe('createOnethingHttpServer', () => {
         ownerUid: 'alice',
         workspaceId: 'rpc-workspace',
         sandboxRoot: join(serverRuntime.workspaceRoot, 'alice', 'rpc-workspace'),
-      })
+        // context 里一个函数都没有(工单 4 C3):能力走第三个参数。
+      }, expect.objectContaining({ workspaceWatch: expect.any(Object) }))
 
       // 客户端在信封里塞 context 是徒劳的：wire 上没有这个字段。
       await post({
@@ -2001,7 +2022,7 @@ describe('createOnethingHttpServer', () => {
         ownerUid: 'alice',
         workspaceId: 'rpc-workspace',
         sandboxRoot: join(serverRuntime.workspaceRoot, 'alice', 'rpc-workspace'),
-      })
+      }, expect.objectContaining({ workspaceWatch: expect.any(Object) }))
 
       await expect(post({ domain: 'nope', method: 'echo', payload: {} })).resolves.toEqual({
         ok: false,
@@ -2020,7 +2041,7 @@ describe('createOnethingHttpServer', () => {
 
       // Garbage body: still 200 + an RpcResponse, so one client-side branch
       // handles every failure shape.
-      const malformed = await fetch(rpcUrl, {
+      const malformed = await fetchActor(rpcUrl, {
         method: 'POST',
         headers: jsonHeaders,
         body: 'not json',
@@ -2040,6 +2061,11 @@ async function listen(server: Server): Promise<Server> {
   servers.push(server)
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
+  const bob = pairedServers.get(server)
+  if (bob) {
+    await listen(bob)
+    actorOrigins.set(baseUrl(server), baseUrl(bob))
+  }
   return server
 }
 
@@ -2116,7 +2142,7 @@ async function postSessionAction(
 }
 
 async function fetchJson(url: string, init?: RequestInit): Promise<any> {
-  const response = await fetch(url, init)
+  const response = await fetchActor(url, init)
   return response.json()
 }
 

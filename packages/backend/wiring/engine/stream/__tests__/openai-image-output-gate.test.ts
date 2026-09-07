@@ -12,7 +12,31 @@
  * `onethingModelServesImageOutputInLoop`,所以「官方支持表」这条事实是真的被
  * 问了一次,不是被 mock 编出来的。
  */
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { installSessionLayerForTest } from '../../../../session/testing/session-layer.js'
+import { resetSessionRuns } from '../../../../session/runs.js'
+
+let storeDir: string
+let fixture: ReturnType<typeof installSessionLayerForTest>
+beforeEach(() => {
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'image-gate-'))
+  vi.stubEnv('ONETHING_STORE_PATH', storeDir)
+  fixture = installSessionLayerForTest({ store: { getSessionRaw: id => ({ id, name: 'Session', messages: [], createdAt: 1, updatedAt: 1 }) } })
+  resetSessionRuns()
+})
+afterEach(async () => {
+  resetSessionRuns()
+  await fixture.dispose()
+  vi.unstubAllEnvs()
+  fs.rmSync(storeDir, { recursive: true, force: true })
+})
+vi.mock('../../../../session/commands.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../session/commands.js')>(),
+  sessionCommands: { patchMessage: vi.fn(() => true) },
+}))
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { ToolSettings } from '@shared/ipc.js'
 import type { AgentOutputModality, AgentTurnStreamEvent } from '@onething/core/agent-loop'

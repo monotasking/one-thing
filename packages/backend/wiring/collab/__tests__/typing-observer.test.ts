@@ -15,6 +15,12 @@ const mocks = vi.hoisted(() => ({
   listeners: [] as Array<{ sessionId: string; handler: (envelope: unknown) => void }>,
 }))
 
+// This test owns bus routing; inspector state has separate store-backed tests.
+vi.mock('../inspector.js', () => ({
+  setCollabTypingState: vi.fn(),
+  broadcastCollabCoordinator: vi.fn(),
+}))
+
 vi.mock('../../../events/index.js', () => ({
   getEventBus: () => ({
     emit: async (sessionId: string, event: Record<string, unknown>) => {

@@ -44,6 +44,8 @@ import { getSettings, saveSettings } from '../../stores/settings.js'
 import { getCurrentBackendInstance } from '../../current.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { sessionAccess } from '../../session/access.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingACPIpcLogger } from '@onething/runtime/acp/ipc-operations'
 import type { OnethingACPIpcAdapters } from '@onething/runtime/acp/ipc-operations'
@@ -131,7 +133,8 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
       logger: consoleLog,
     }) as Promise<AcpRoutes['refreshAgent']['output']>
   },
-  async cancelSession(request) {
+  async cancelSession(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'abort')
     return cancelOnethingACPSessionForIpc({
       sessionId: request.sessionId,
       agentId: request.agentId,
@@ -140,4 +143,3 @@ export const acpRpcHandlers: RpcRouteHandlers<AcpRoutes> = {
     })
   },
 }
-

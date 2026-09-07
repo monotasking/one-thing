@@ -5,11 +5,12 @@
  * revises the current segment in place rather than accumulating notes, so the
  * entry always reads as the work's current state (docs/design/session-toc.md).
  *
- * Everything here is best-effort: a failure loses one segment revision, never
- * the turn that produced it.
+ * Provider failures may skip a revision. Persistence failures remain visible to
+ * the owning background task; they must not be mistaken for a completed call.
  */
 import { randomUUID } from "node:crypto";
-import { runAgentLoop } from "@onething/core/agent-loop";
+import { runAgentLoop, isAgentExecutionCheckpointError, createAgentExecutionLifetime } from "@onething/core/agent-loop";
+import { beginAuxiliaryModelRequest } from '../engine/auxiliary-model-checkpoint.js';
 import {
 	applyTurnDecision,
 	buildTocPrompt,
@@ -77,7 +78,9 @@ export interface TocTurnContext {
  */
 export async function recordTocTurn(
 	context: TocTurnContext,
+	options: { signal?: AbortSignal } = {},
 ): Promise<SessionSegment[] | undefined> {
+	options.signal?.throwIfAborted();
 	if (
 		isTrivialTurn({
 			userMessage: context.userMessage,
@@ -94,12 +97,14 @@ export async function recordTocTurn(
 		workingDirectory: context.workingDirectory,
 		sessionId: context.sessionId,
 	});
+	options.signal?.throwIfAborted();
 	if (!utility) {
 		log("skipped: no tool-call model configured (settings.tools.toolCallModel)");
 		return undefined;
 	}
 
 	const existing = await segmentStore.read(context.sessionId);
+	options.signal?.throwIfAborted();
 	const open = openSegmentOf(existing);
 
 	const prompt = buildTocPrompt({
@@ -122,16 +127,23 @@ export async function recordTocTurn(
 	// nothing in the log to say why.
 	const abort = new AbortController();
 	const timeout = setTimeout(() => abort.abort(), TOC_CALL_TIMEOUT_MS);
+	const signal = options.signal ? AbortSignal.any([options.signal, abort.signal]) : abort.signal;
+	const executionLifetime = createAgentExecutionLifetime();
+	const messages = [
+		{ role: 'system' as const, content: renderTocTurnSystemPrompt() },
+		{ role: 'user' as const, content: prompt.text },
+	];
+	let checkpoint: Awaited<ReturnType<typeof beginAuxiliaryModelRequest>> | undefined;
+	let attemptText = '';
+	let retryError: string | undefined;
 
 	let result: Awaited<ReturnType<typeof runAgentLoop>>;
 	try {
 		result = await runAgentLoop({
 			provider: utility.provider,
+			executionLifetime,
 			model: utility.model,
-			messages: [
-				{ role: "system", content: renderTocTurnSystemPrompt() },
-				{ role: "user", content: prompt.text },
-			],
+			messages,
 			tools: [],
 			selectedToolNames: [],
 			maxTurns: 1,
@@ -149,9 +161,32 @@ export async function recordTocTurn(
 			sessionId: context.sessionId,
 			messageId: `toc:${context.assistantMessageId}`,
 			workingDirectory: context.workingDirectory,
-			abortSignal: abort.signal,
+			abortSignal: signal,
+			beforeModelRequest: async ({ providerId, model, attempt }) => {
+				signal.throwIfAborted();
+				if (checkpoint) await checkpoint.failed(new Error(retryError ?? 'Provider attempt failed'));
+				checkpoint = undefined;
+				attemptText = '';
+				retryError = undefined;
+				checkpoint = await beginAuxiliaryModelRequest({
+					sessionId: context.sessionId, purpose: 'toc', provider: providerId, model, messages,
+					params: { attempt, assistantMessageId: context.assistantMessageId, maxTokens: 500, thinking: 'disabled' },
+				});
+			},
+			onEvent: event => {
+				if (event.type === 'text-delta') attemptText += event.delta;
+				if (event.type === 'auto-retry') retryError = event.error;
+			},
+			afterModelResponse: async () => {
+				if (!checkpoint) throw new Error('TOC response has no recorded request intent');
+				await checkpoint.completed(attemptText);
+				checkpoint = undefined;
+			},
 		});
 	} catch (error) {
+		if (isAgentExecutionCheckpointError(error)) throw error;
+		if (checkpoint) await checkpoint.failed(error);
+		if (options.signal?.aborted) throw error;
 		log(
 			abort.signal.aborted
 				? `model call timed out after ${TOC_CALL_TIMEOUT_MS}ms`
@@ -160,7 +195,9 @@ export async function recordTocTurn(
 		return undefined;
 	} finally {
 		clearTimeout(timeout);
+		await executionLifetime.drain();
 	}
+	signal.throwIfAborted();
 
 	if (result.usage) {
 		billTocUsage(utility.providerId, utility.model, context.sessionId)(result.usage);
@@ -192,6 +229,7 @@ export async function recordTocTurn(
 	// folded on read, so writing untouched ones would be dead weight.
 	const before = new Map(existing.map((segment) => [segment.id, segment]));
 	const changed = next.filter((segment) => before.get(segment.id) !== segment);
+	signal.throwIfAborted();
 	await segmentStore.append(context.sessionId, changed);
 
 	log(

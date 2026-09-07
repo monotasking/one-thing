@@ -1,4 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { tenantDirectory, tenantKey } from './tenant-paths.js'
+import { sessionDeletion } from '../session/deletion.js'
+import { sessionAccess, createSessionAccess } from '../session/access.js'
+import { createServerLiveSessionDelivery } from './live-session-delivery.js'
+import { createServerMediaDelivery } from './media-delivery.js'
+import { collectSessionCascadeDeleteIds } from '@onething/core/session'
 import type { OnethingPermissionGrantStorageAdapters } from "@onething/runtime/permissions";
 import { EventEmitter } from "node:events";
 import {
@@ -48,7 +54,8 @@ import {
 	type RuntimeUnsubscribe,
 } from "@onething/core";
 import { createOnethingBackend, type OnethingBackend } from "@onething/backend/backend.js";
-import type { McpSubsystem } from "@onething/backend/wiring/mcp/subsystem.js";
+import type { McpSubsystem } from "../wiring/mcp/subsystem.js";
+import type { ConfigureLoggingOptions } from "../wiring/logging/index.js";
 import {
 	createTenantAudienceFactory,
 	ownerMatchesContext,
@@ -70,7 +77,6 @@ import { configureMCPClientIdentity } from "@onething/runtime/mcp/identity";
 import {
 	createBranchSession as createAppStoreBranchSession,
 	createSession as createAppStoreSession,
-	deleteSession as deleteAppStoreSession,
 	flushAllPendingSaves as flushAllAppStorePendingSaves,
 	flushSessionSave as flushAppStoreSessionSave,
 	getCurrentSessionId as getAppStoreCurrentSessionId,
@@ -86,15 +92,13 @@ import {
 	createSessionCommands,
 	sessionCommands as appSessionCommands,
 	type SessionCommands,
-} from "@onething/backend/session/commands.js";
-import { sessionLifecycleEvents } from "@onething/backend/session/lifecycle-events.js";
-import { materializeSessionMessages } from "@onething/backend/session/materialized-messages.js";
+} from "../session/commands.js";
+import { createEchoMessageEvents } from './echo-message-events.js';
 import {
 	sessionReads as appSessionReads,
 	sessionPreviewText,
-} from "@onething/backend/session/reads.js";
-import { sessionCommandEvents } from "@onething/backend/session/command-events.js";
-import { hydrateSessionMessagesFromProjection } from "@onething/backend/session/hydrate.js";
+} from "../session/reads.js";
+import { sessionCommandEvents } from "../session/command-events.js";
 import { updateSessionsIndexMetaForCommands as updateAppStoreSessionsIndexMeta } from "@onething/backend/stores/sessions.js";
 import {
 	findSessionIndexMeta as findAppStoreSessionIndexMeta,
@@ -153,10 +157,7 @@ import {
 } from "@onething/runtime/search";
 import { unavailableIndexFace } from "../wiring/search/index.js";
 import { createDailyNote as createDailyNoteWith } from "@onething/runtime/search/capabilities";
-import {
-	MediaLibraryService,
-	type OnethingMediaLibraryPaths,
-} from "@onething/runtime/media";
+import type { MediaLibraryService, OnethingMediaLibraryPaths } from "@onething/runtime/media";
 import {
 	ONETHING_LOG_MONITOR_MANIFEST,
 	ONETHING_NOTE_SKILLS_MANIFEST,
@@ -273,7 +274,6 @@ import {
 	setOnethingCurrentSessionId,
 } from "@onething/runtime/storage";
 import { createOnethingSessionRepository, type OnethingSessionRepositoryOptions, type OnethingSessionRepositoryLogger } from "@onething/runtime/sessions/session-repository";
-import { createHybridSessionStorageDriver, type HybridSessionStorageDriverOptions } from "@onething/runtime/sessions/storage-driver";
 import {
 	deleteJsonFile,
 	readJsonFile as readCoreJsonFile,
@@ -288,14 +288,14 @@ import { mergeWithDefaults } from "@shared/defaults/settings.js";
 import { toJsonValue } from "@shared/json.js";
 import type { RpcDispatchContext } from "@shared/ipc/rpc.js";
 import { ownerSandboxRoot } from "@onething/backend/rpc/sandbox.js";
+import type { RpcDispatchPorts } from "../rpc/registry.js";
 /*
  * P4c 第九批:"有哪些工具 / 跑一个工具"整只迁到 `backend/rpc/domains/tools.ts`。
  * 连同 echo/test 假路那份本地只读目录 + 本地 runner 一起消失 —— 一个 store 一份
  * 工具目录,http 侧的白名单与路径校验搬进了域处理者的 `transport:'http'` 分叉。
  */
 import {
-	closeAllWorkspaceWatches,
-	subscribeWorkspaceFileChanged,
+	createWorkspaceWatchService,
 	type WorkspaceFileChangedHandler,
 } from "../wiring/files/workspace-watch.js";
 import type {
@@ -346,7 +346,7 @@ import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from "@shared/events/index
 import { consolePort, getLogger } from '../wiring/logging/index.js'
 import type { VariablesStorePersistence } from '@onething/runtime/variables/store'
 import type { OnethingPromptStoreAdapters } from '@onething/runtime/prompts/store'
-import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimeEventsAdapter, RuntimeStreamsAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeMediaAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/core/runtime-facade'
+import type { RuntimeCapabilitiesAdapter, RuntimeSessionsAdapter, RuntimeMessagesAdapter, RuntimePermissionsAdapter, RuntimeFilesAdapter, RuntimeTodoPlanAdapter, RuntimeScratchpadAdapter, RuntimeOAuthAdapter, RuntimeVoiceAdapter } from '@onething/core/runtime-facade'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
 import type { RuntimeSearchAdapter, RuntimeMutationResult, RuntimeSettingsAdapter } from '@onething/core/runtime-facade'
@@ -392,7 +392,11 @@ type ServerChatSession = ChatSession & {
 export type ServerMCPClientFactory = (config: MCPServerConfig) => MCPClientLike;
 type ServerMCPManager = HeadlessMCPManager<MCPClientLike>;
 
+import type { SessionLayer } from '../session/index.js';
+
 export interface OnethingServerRuntime {
+	/** Present for a production Backend; absent only for explicit test adapters. */
+	backend?: OnethingBackend;
 	runtime: OnethingRuntimeFacade;
 	eventBus: EventBus<AgentEngineSessionEvent>;
 	streamChannel: ServerStreamChannelLike;
@@ -423,6 +427,8 @@ export interface ServerStreamChannelLike {
 }
 
 export interface OnethingServerBackend {
+	mediaLibrary?: MediaLibraryService;
+	sessionLayer?: Pick<SessionLayer, 'reads' | 'events' | 'access'>;
 	eventBus: EventBus<AgentEngineSessionEvent>;
 	streamChannel: ServerStreamChannelLike;
 	/**
@@ -451,6 +457,7 @@ export interface OnethingServerBackend {
 export interface OnethingServerRuntimeOptions {
 	createBackend?: () => Promise<OnethingServerBackend>;
 	storePath?: string;
+	logging?: ConfigureLoggingOptions;
 	workspaceRoot?: string;
 	dataRoot?: string;
 	settingsRoot?: string;
@@ -542,10 +549,10 @@ export interface ServerSessionStore {
 	 * 会话消息的写口(§2 的 12 命令)。写计划 / COW / lazy 档只有命令面算一次。
 	 */
 	messages: SessionCommands;
-	deleteSession(sessionId: string): {
+	deleteSession(sessionId: string, context?: RuntimeRequestContext): Promise<{
 		deletedIds: string[];
 		parentSessionId?: string;
-	};
+	}>;
 	flushSession(sessionId: string): Promise<void>;
 	flushAll(): Promise<void>;
 	getMessagesPage(
@@ -669,10 +676,7 @@ class ServerPluginCatalogManager {
 		commands: ServerPluginCommandDefinition[] = [],
 	) {
 		this.storePath = join(
-			dataRoot,
-			"owners",
-			safePathSegment(context.userId),
-			safePathSegment(context.workspaceId),
+			tenantDirectory(join(dataRoot, "owners"), context.userId, context.workspaceId),
 			"plugin-store",
 		);
 		this.pluginsDir = getCorePluginsDir({ storePath: this.storePath });
@@ -813,6 +817,8 @@ export function toOnethingServerBackend(
 		eventBus: backend.eventBus as unknown as EventBus<AgentEngineSessionEvent>,
 		streamChannel: backend.streamChannel as unknown as ServerStreamChannelLike,
 		persistsMessages: true,
+		mediaLibrary: backend.mediaLibrary,
+		sessionLayer: backend.sessionLayer,
 		// C1 收尾:MCP 的起法从 server runtime 手写的那三句改成问子系统要。透传的
 		// 是**同一只** `MCPManager` 进程单例的门面 —— 子系统构造时拿的就是它。
 		mcp: backend.mcp,
@@ -825,13 +831,7 @@ export function toOnethingServerBackend(
 	};
 }
 
-async function createRealServerBackend(storePath: string): Promise<OnethingBackend> {
-	// The @onething/backend path layer resolves its root from ONETHING_STORE_PATH.
-	// One server process assembles one backend; pin the root before booting so
-	// engine writes land in the same store the server serves.
-	if (resolve(getOnethingStorePath()) !== storePath) {
-		process.env.ONETHING_STORE_PATH = storePath;
-	}
+async function createRealServerBackend(storePath: string, logging?: ConfigureLoggingOptions): Promise<OnethingBackend> {
 	// The engine drops commands silently when no sender is bound (the guard
 	// exists for the desktop's window lifecycle); the server observes the
 	// EventBus/StreamChannel directly, so bind a no-op sender like the CLI
@@ -854,7 +854,11 @@ async function createRealServerBackend(storePath: string): Promise<OnethingBacke
 			reason: "ONETHING_SERVER_TOOLS=readonly",
 		});
 	}
+	// No `owner`: 2026-08-24 ruling — apps/server takes no store lock. It defers
+	// through `<store>/run/http.json` (see apps/server/src/main.ts) instead.
 	return createOnethingBackend({
+		storePath,
+		logging,
 		/*
 		 * A1:宿主能力一次交清。这个进程是个无头 server —— 除了下载目录之外
 		 * 一件宿主能力都没有,于是十四个 `null` 就是这里的事实清单(从前那是
@@ -919,10 +923,24 @@ export async function createOnethingServerRuntimeOverBackend(
 	backend: OnethingBackend,
 	options: OnethingServerRuntimeOverBackendOptions = {},
 ): Promise<OnethingServerRuntime> {
-	return createServerRuntimeOverServerBackend(
-		toOnethingServerBackend(backend, { ownsBackend: options.ownsBackend }),
-		options,
-	);
+	backend.assertActive();
+	let surface: OnethingServerRuntime
+	try {
+		surface = await createServerRuntimeOverServerBackend(
+			toOnethingServerBackend(backend, { ownsBackend: false }), options,
+		)
+	} catch (error) {
+		if (options.ownsBackend !== false) {
+			try { await backend.requestShutdown('server runtime startup failed') }
+			catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Server startup and cleanup failed', { cause: error }) }
+		}
+		throw error
+	}
+	if (options.ownsBackend !== false) {
+		backend.own(() => surface.shutdown(), 'serverRuntime');
+		return { ...surface, backend, shutdown: () => backend.requestShutdown('server shutdown') };
+	}
+	return { ...surface, backend };
 }
 
 export async function createDevelopmentOnethingServerRuntime(
@@ -938,7 +956,7 @@ export async function createDevelopmentOnethingServerRuntime(
 		});
 	}
 	return createOnethingServerRuntimeOverBackend(
-		await createRealServerBackend(storePath),
+		await createRealServerBackend(storePath, options.logging),
 		{ ...options, storePath, ownsBackend: true },
 	);
 }
@@ -960,7 +978,7 @@ async function createServerRuntimeOverServerBackend(
 		options.sessionStore ??
 		(backend.persistsMessages
 			? createAppBackedServerSessionStore(storePath)
-			: createLocalServerSessionStore(storePath));
+			: createEchoServerSessionStore(storePath));
 	// 触碰即驻留的工作集,不再启动全量镜像:同一 sessionId 在本进程内保持
 	// 单一对象身份(事件回放与 API 变更共用),冷会话按需从存储加载。
 	const sessions = new Map<string, ServerChatSession>();
@@ -983,15 +1001,9 @@ async function createServerRuntimeOverServerBackend(
 		string,
 		ServerPluginCatalogManager
 	>();
-	const mediaServicesByOwner = new Map<string, MediaLibraryService>();
-	const mediaImageGeneratedHandlersByOwner = new Map<
-		string,
-		Set<(payload: unknown) => void>
-	>();
 	const variableRuntimesByOwner = new Map<string, ServerVariablesRuntime>();
-	// P4c 第八批:监视器登记簿与订阅表搬到了 `wiring/files/workspace-watch.ts`
-	// (按沙箱根分表),请求面(router 上的 `watchStart` / `watchStop`)与推送面
-	// (这里的 SSE 货源)从此指着同一张表。
+	// This surface owns both RPC watches and SSE subscriptions, including setup.
+	const workspaceWatches = createWorkspaceWatchService();
 	const workspaceRoot = resolve(
 		options.workspaceRoot ??
 			process.env.ONETHING_SERVER_WORKSPACE_ROOT ??
@@ -1061,12 +1073,7 @@ async function createServerRuntimeOverServerBackend(
 	): string =>
 		isDefaultContext(context)
 			? storePath
-			: join(
-					dataRoot,
-					"owners",
-					safePathSegment(context.userId),
-					safePathSegment(context.workspaceId),
-				);
+			: tenantDirectory(join(dataRoot, "owners"), context.userId, context.workspaceId);
 
 	const agentStorePathForContext = (
 		context = defaultRequestContext(),
@@ -1218,7 +1225,10 @@ async function createServerRuntimeOverServerBackend(
 		sessionId = createSessionId(),
 	): ServerChatSession => {
 		const existing = resolveSession(sessionId);
-		if (existing) return existing;
+		if (existing) {
+			if (!ownsSession(existing, context)) throw new Error('Session not found')
+			return existing;
+		}
 
 		const root = workspaceSandboxRoot(workspaceRoot, context);
 		// Synchronous: callers (file watch, tools) may stat this root right
@@ -1250,7 +1260,7 @@ async function createServerRuntimeOverServerBackend(
 		return session;
 	};
 
-	eventBus.onAnySessionAny((envelope) => {
+	const unsubscribeRuntimeStore = eventBus.onAnySessionAny((envelope) => {
 		const eventType = (envelope.event as { type?: string }).type;
 		if (eventType === SESSION_EVENT_TYPES.STREAM_START) {
 			activeStreamSessions.add(envelope.sessionId);
@@ -1603,10 +1613,7 @@ async function createServerRuntimeOverServerBackend(
 			const promptStoreAdapters: OnethingPromptStoreAdapters = {
 				getPath: () =>
 					join(
-						dataRoot,
-						"owners",
-						safePathSegment(context.userId),
-						safePathSegment(context.workspaceId),
+						tenantDirectory(join(dataRoot, "owners"), context.userId, context.workspaceId),
 						"prompts.json",
 					),
 				readJson: readServerRuntimeJsonFile,
@@ -2192,7 +2199,7 @@ async function createServerRuntimeOverServerBackend(
 			persistSession(session);
 			// 翻译排在写成功之后(翻译器的纪律 1)。三格里没变的那些由翻译器
 			// 自己按 before 逐格比对丢掉,这里不预筛。
-			sessionCommandEvents.patchSession(
+			if (backend.persistsMessages) sessionCommandEvents.patchSession(
 				sessionId,
 				sessionMetaFieldsOf(session),
 				beforeMeta,
@@ -2216,131 +2223,29 @@ async function createServerRuntimeOverServerBackend(
 				: sessionStore.getMessagesPage(request);
 		},
 	};
-	const eventsPort: RuntimeEventsAdapter<AgentEngineSessionEvent> = {
-		subscribe(
-			sessionId,
-			handler,
-			options,
-			context = defaultRequestContext(),
-		) {
-			// 批 A:受众在**订阅建立那一刻**算一次,之后 `covers` 是 O(1)、零 I/O。
-			// 从前这里每一条 envelope 都要 `getSession` → 整条会话全量物化。
-			const audience = audienceFactory(context);
-			const closed = (): RuntimeUnsubscribe => {
-				audience.dispose();
-				return () => {};
-			};
-
-			if (sessionId !== "*" && options?.afterSeq !== undefined) {
-				if (!audience.covers(sessionId)) return closed();
-				for (const envelope of eventBus.replay(
-					sessionId,
-					options.afterSeq + 1,
-				)) {
-					handler(envelope);
-				}
-			}
-
-			if (sessionId === "*") {
-				const off = eventBus.onAnySessionAny((envelope) => {
-					if (audience.covers(envelope.sessionId)) handler(envelope);
-				}, "ServerRuntimeEvents");
-				return () => {
-					off();
-					audience.dispose();
-				};
-			}
-			if (!audience.covers(sessionId)) return closed();
-			const off = eventBus.onAny(sessionId, handler, "ServerRuntimeEvents");
-			return () => {
-				off();
-				audience.dispose();
-			};
-		},
-	};
-	const streamsPort: RuntimeStreamsAdapter<AgentEngineStreamChunk> = {
-		subscribe(
-			sessionId,
-			handler,
-			_options,
-			context = defaultRequestContext(),
-		) {
-			// 与 `eventsPort` 同一条规矩:受众一次算定,分片上只问 `covers`。
-			const audience = audienceFactory(context);
-
-			if (sessionId === "*") {
-				const off = streamChannel.subscribeAny((payload) => {
-					if (audience.covers(payload.sessionId)) handler(payload);
-				});
-				return () => {
-					off();
-					audience.dispose();
-				};
-			}
-			if (!audience.covers(sessionId)) {
-				audience.dispose();
-				return () => {};
-			}
-			const off = streamChannel.subscribe(sessionId, (chunk) =>
-				handler({ sessionId, chunk }),
-			);
-			return () => {
-				off();
-				audience.dispose();
-			};
-		},
-		// P4c 第五批:`abort` / `active` 随 `chatRouter` 迁走。停止从此走桌面
-		// 那条完整收尾(取消挂起的 step、落 isStreaming:false、补
-		// stream:complete),活流表从此读引擎自己的 `getActiveSessionIds()` ——
-		// 下面 `activeStreamSessions` 这本影子账只剩「消息分页该读内存还是读盘」
-		// 与「热会话缓存」两个用途。
-	};
+	const liveSessionDelivery = createServerLiveSessionDelivery({ eventBus, streamChannel, audienceFactory, defaultContext: defaultRequestContext });
 	const permissionsPort: RuntimePermissionsAdapter<unknown> = {
 		async respond(requestId, response, context = defaultRequestContext()) {
 			return respondToPermission(requestId, response, context);
 		},
 	};
 	const filesPort: RuntimeFilesAdapter = {
+		startWorkspaceWatch: (scope, root) => workspaceWatches.start(scope, root),
+		stopWorkspaceWatch: (scope, root) => workspaceWatches.stop(scope, root),
 		subscribeWorkspaceFileChanged: (
 			handler,
 			context = defaultRequestContext(),
 		) =>
-			subscribeWorkspaceFileChanged(
+			workspaceWatches.subscribe(
 				workspaceSandboxRoot(workspaceRoot, context),
 				handler as WorkspaceFileChangedHandler,
 			),
 	};
-	const mediaPort: RuntimeMediaAdapter = {
-		async resolveFile(fileName: string, context = defaultRequestContext()) {
-			const resolved = resolveServerMediaFilePath(
-				mediaServicesByOwner,
-				dataRoot,
-				context,
-				fileName,
-				isDefaultContext(context) ? storePath : undefined,
-			);
-			return resolved
-				? { success: true, path: resolved.path, mimeType: resolved.mimeType }
-				: { success: false, error: "Media file not found" };
-		},
-		subscribeImageGenerated(
-			handler: (payload: unknown) => void,
-			context = defaultRequestContext(),
-		) {
-			const key = ownerKey(context);
-			let handlers = mediaImageGeneratedHandlersByOwner.get(key);
-			if (!handlers) {
-				handlers = new Set<(payload: unknown) => void>();
-				mediaImageGeneratedHandlersByOwner.set(key, handlers);
-			}
-			handlers.add(handler);
-			return () => {
-				handlers?.delete(handler);
-				if (handlers?.size === 0)
-					mediaImageGeneratedHandlersByOwner.delete(key);
-			};
-		},
-	};
+	const mediaDelivery = createServerMediaDelivery({
+		defaultContext: defaultRequestContext, ownerKey,
+		access: createSessionAccess({ findMeta: findSessionIndexMeta }), sharedLibrary: backend.mediaLibrary,
+		libraryPaths: context => serverMediaLibraryPaths(dataRoot, context, isDefaultContext(context) ? storePath : undefined),
+	});
 	const todoPlanPort: RuntimeTodoPlanAdapter<unknown> = {
 		subscribeChanged: subscribeTodoPlanChanged,
 	};
@@ -2369,6 +2274,7 @@ async function createServerRuntimeOverServerBackend(
 			return resolveSearchActionForContext(actionId, context);
 		},
 	};
+	let shutdownPromise: Promise<void> | undefined;
 	const runtime = createOnethingRuntimeFacade<
 		unknown,
 		unknown,
@@ -2391,8 +2297,8 @@ async function createServerRuntimeOverServerBackend(
 		// `sessionsRouter` 走,剩下的三条真正的聊天面(getHistory / generateTitle /
 		// updateMessageThinkingTime)随 `chatRouter` 走 —— 两个宿主从此是同一条
 		// 实现,这里不再留第二份。
-		events: eventsPort,
-		streams: streamsPort,
+		events: liveSessionDelivery.events,
+		streams: liveSessionDelivery.streams,
 		permissions: permissionsPort,
 		// P4c 第十一批:`settings` / `network` 两格 adapter 整只没了 —— 四条数据面
 		// (读 / 存 / 系统深浅色 / 代理自检)随 `settingsRouter` 走通用 RPC。
@@ -2449,7 +2355,7 @@ async function createServerRuntimeOverServerBackend(
 		 *    走了,而桌面那条真通知走的是引擎的 `IPC_CHANNELS.IMAGE_GENERATED`
 		 *    (server 的 sender 是 noop)—— 事件下行的收敛是主线 T2 的事。
 		 */
-		media: mediaPort,
+		media: mediaDelivery.adapter,
 		// todo/plan 的数据面已迁到通用 RPC 通道(todoPlanRouter);这里只剩事件订阅,
 		// 它给 `/api/todo-plan/events` 那条 SSE 供货 —— 事件下行的收敛是主线 T2。
 		todoPlan: todoPlanPort,
@@ -2483,60 +2389,52 @@ async function createServerRuntimeOverServerBackend(
 		// 护栏跟着走:域处理者按 `context.transport` 逐方法保留这份 adapter 的语义
 		// (执行面只放 `read` + 会话必须存在 + 路径夹进会话沙箱;后台任务表恒空;
 		// 停任务与回写工具调用按原话拒绝)。facade 上因此一格都不剩。
-		async shutdown() {
-			// 必须等 flush 完成:jsonl 会话是多文件写,fire-and-forget 会与
-			// 调用方随后的目录清理(如测试 teardown 的 rm)竞态
-			try {
-				await sessionStore.flushAll();
-			} catch (error) {
-				log.error("flush local sessions failed", {}, error);
-			}
-			// 事件账本的排空 + fsync 就在这一步里(§15.12(d)):
-			// `backend.shutdown()`(这里的 `backend` 是 `OnethingServerBackend`
-			// 包装,它自己按 `ownsBackend` 决定要不要调装配产物的 `dispose()`)
-			// → 装配途中 `own()` 登记的收尾清单 →
-			// `flushSessionEventLedger()`。所以 `apps/server` SIGTERM 的 5s 预算
-			// (`SHUTDOWN_FLUSH_TIMEOUT_MS`)天然罩住它,而账本自己还带一层 2s 时限
-			// —— 两层都不会把进程钉死。借来的 backend(桌面内嵌 HTTP 面,
-			// `ownsBackend:false`)这一步是 no-op:那份账本归宿主的 before-quit 收。
-			await backend.shutdown();
-			// C1 收尾之后,默认 owner 那一格(`appMCPManager`)在上面
-			// `backend.shutdown()` → `dispose()` → `own('mcp')` → 子系统 dispose 里
-			// **已经**关过一次了,这一圈对它是第二次调用 —— 保留不动:
-			// `HeadlessMCPManager.shutdown()` 是幂等的(它 enqueue 一次
-			// `disconnectAllInternal`,而 clients 表第一次就清空了,第二次遍历空表)。
-			// 这一圈真正还有活干的是 scoped owner 的那些 server-local manager,
-			// 它们不归任何 backend 管。借来的 backend(`ownsBackend:false`)那一格
-			// 更是没关过 —— 宿主的 before-quit 才关。
-			for (const manager of mcpManagersByOwner.values()) {
-				manager.shutdown().catch(() => {});
-			}
-			mcpManagersByOwner.clear();
-			// Release the injected client factory: it closes over this runtime's
-			// config, and the app singleton outlives us (module scope).
-			if (backend.persistsMessages && ownsProcessPorts) configureMCPClientHost(null);
-			// 单槽端口还原:串联上去的那一层必须摘掉,否则宿主的广播会经过一个
-			// 已经关掉的 runtime 的闭包(handler 集合虽已清空,但链子还在)。
-			configureTodoPlanHost(previousTodoPlanHostPorts);
-			configureScratchpadHost(previousScratchpadHostPorts);
-			restoreOAuthEventBroadcaster();
-			restoreSettingsEventBroadcaster();
-			restoreServerPluginCatalogPort();
-			restoreServerSearchPort();
-			for (const variableRuntime of variableRuntimesByOwner.values()) {
-				variableRuntime.unsubscribe();
-				variableRuntime.registry.reset();
-			}
-			variableRuntimesByOwner.clear();
-			// 监视器与订阅表现在住在 `wiring/files/workspace-watch.ts`(P4c 第八批)。
-			closeAllWorkspaceWatches();
-			todoPlanChangedHandlers.clear();
-			if (ownsProcessPorts) stopScratchpadWatcher();
-			scratchpadChangedHandlers.clear();
-			mediaImageGeneratedHandlersByOwner.clear();
-			agentStoresByOwner.clear();
-			promptStoresByOwner.clear();
-			pluginCatalogManagersByOwner.clear();
+		shutdown() {
+			return shutdownPromise ??= (async () => {
+				// Close watch admission before the first await in surface teardown.
+				const workspaceWatchClosing = workspaceWatches.close();
+				void workspaceWatchClosing.catch(() => {});
+				const failures: unknown[] = [];
+				const attempt = async (step: string, run: () => void | Promise<void>): Promise<void> => {
+					try { await run(); }
+					catch (error) { failures.push(error); log.error('server surface cleanup failed', { step }, error); }
+				};
+				// Stop scoped workers before saving. The default manager belongs to
+				// the Backend and is disposed only by its own resource registration.
+				for (const manager of mcpManagersByOwner.values()) {
+					if (backend.persistsMessages && manager === appMCPManager) continue;
+					await attempt('scoped MCP manager', () => manager.shutdown());
+				}
+				mcpManagersByOwner.clear();
+				const restores: Array<[string, () => void | Promise<void>]> = [
+					['live session delivery', () => liveSessionDelivery.dispose()],
+					['media delivery', () => mediaDelivery.dispose()],
+					['runtime store subscription', () => { unsubscribeRuntimeStore(); }],
+					['MCP host', () => { if (backend.persistsMessages && ownsProcessPorts) configureMCPClientHost(null); }],
+					['todo host', () => configureTodoPlanHost(previousTodoPlanHostPorts)],
+					['scratchpad host', () => configureScratchpadHost(previousScratchpadHostPorts)],
+					['OAuth broadcaster', restoreOAuthEventBroadcaster],
+					['settings broadcaster', restoreSettingsEventBroadcaster],
+					['plugin catalog', restoreServerPluginCatalogPort],
+					['search port', restoreServerSearchPort],
+					['workspace watches', () => workspaceWatchClosing],
+					['scratchpad watcher', () => { if (ownsProcessPorts) stopScratchpadWatcher(); }],
+				];
+				for (const [label, restore] of restores) await attempt(label, restore);
+				for (const variableRuntime of variableRuntimesByOwner.values()) {
+					await attempt('variable subscription', () => variableRuntime.unsubscribe());
+					await attempt('variable registry', () => variableRuntime.registry.reset());
+				}
+				variableRuntimesByOwner.clear();
+				todoPlanChangedHandlers.clear();
+				scratchpadChangedHandlers.clear();
+				agentStoresByOwner.clear();
+				promptStoresByOwner.clear();
+				pluginCatalogManagersByOwner.clear();
+				await attempt('session store', () => sessionStore.flushAll());
+				await attempt('backend adapter', () => backend.shutdown());
+				if (failures.length) throw new AggregateError(failures, 'Server surface cleanup failed');
+			})();
 		},
 	});
 
@@ -2546,7 +2444,7 @@ async function createServerRuntimeOverServerBackend(
 		streamChannel,
 		workspaceRoot,
 		shutdown() {
-			return runtime.shutdown().catch(() => {});
+			return runtime.shutdown();
 		},
 	};
 }
@@ -3398,7 +3296,13 @@ export function createAppBackedServerSessionStore(
 		getMessages: (sessionId) =>
 			appSessionReads.listMessages(sessionId).messages,
 		messages: appSessionCommands,
-		deleteSession: (sessionId) => deleteAppStoreSession(sessionId),
+		deleteSession: (sessionId, context = defaultRequestContext()) => {
+			const ids = sessionAccess.resolveAll(context,
+				collectSessionCascadeDeleteIds(getAppStoreSessionsList(), sessionId), 'delete')
+			return sessionDeletion.delete(sessionId, ids, targets => {
+				sessionAccess.resolveAll(context, targets, 'delete')
+			})
+		},
 		flushSession: (sessionId) => flushAppStoreSessionSave(sessionId),
 		flushAll: () => flushAllAppStorePendingSaves(),
 		// S2b:app-store 背书的这只读门面两条读法都收口到 `appSessionReads`,
@@ -3412,7 +3316,7 @@ export function createAppBackedServerSessionStore(
 	};
 }
 
-export function createLocalServerSessionStore(
+export function createEchoServerSessionStore(
 	storePath = getOnethingStorePath(),
 ): ServerSessionStore {
 	const resolvedStorePath = resolve(storePath);
@@ -3424,18 +3328,6 @@ export function createLocalServerSessionStore(
 	// 会话体紧凑序列化,与 Electron 宿主保持一致;index.json 仍走 pretty。
 	const writeSessionJsonFileAsync = (filePath: string, data: unknown) =>
 		writeCoreJsonFileAsync(filePath, data, { pretty: false });
-	const hybridSessionStorageDriverOptions: HybridSessionStorageDriverOptions = {
-		getSessionsDir: () =>
-			getOnethingSessionsDir({ storePath: resolvedStorePath }),
-		getLegacySessionPath: getSessionFilePath,
-		// 与 Electron 宿主一致走 jsonl;legacy 读路径仅作为兼容保险保留
-		newSessionFormat: () => "jsonl",
-		readJsonFile: readCoreJsonFile,
-		writeJsonFileAsync: writeSessionJsonFileAsync,
-		deleteJsonFile,
-		logger: consoleLog,
-	};
-	const storageDriver = createHybridSessionStorageDriver<ServerChatSession>(hybridSessionStorageDriverOptions);
 	const sessionRepositoryOptions: OnethingSessionRepositoryOptions<ServerChatSession, ChatMessage, SessionMeta, SessionDetails, UserMessageMarker> = {
 		defaultAgentId: DEFAULT_ONETHING_AGENT_ID,
 		getSessionsDir: () =>
@@ -3445,27 +3337,8 @@ export function createLocalServerSessionStore(
 		writeJsonFile: writeCoreJsonFile,
 		writeJsonFileAsync: writeSessionJsonFileAsync,
 		deleteJsonFile,
-		storageDriver,
-		// S3w-1 的冷加载补水岔口。**这只仓库也得接**(与 app store 那只同一句):
-		// 裁定 9b 之后 legacy 整文件会话在首次冷加载那一刻就被迁进 `events.jsonl`,
-		// 从那以后**只有认事件的读者看得见它的历史** —— 少接一处,这只仓库就会把
-		// 一条刚迁完的会话读成空(`session-messages/page` 的最后一级兜底正是它)。
-		//
-		// 条件是路径对得上:补水口读的是**进程级** store 路径
-		// (`event-log.ts` 的 `getSessionEventsLogPath`),而这只仓库可以被开在任意
-		// `storePath` 上。开在别处时不接 —— 接了会去读另一个 store 的账本,那比读空
-		// 还坏。生产上这只仓库只服务 echo/test 后端,而它跟着进程 store 走。
-		//
-		// §17.7.1 批 3 补上第二句(`materializeMessagesFromProjection`):c4-d 把
-		// **活**消息数组的维护者交给折叠产物时只接了 app store 那一只 —— 这只仓库
-		// 当时还有老 reducer 在写它的数组,所以看不出少接。reducer 一删,少接的
-		// 那一句就是"消息没有维护者了"。判据与上面那句逐字相同(同一个 store 才接)。
-		...(resolvedStorePath === resolve(getOnethingStorePath())
-			? {
-					hydrateMessagesFromProjection: hydrateSessionMessagesFromProjection,
-					materializeMessagesFromProjection: materializeSessionMessages,
-				}
-			: {}),
+		// The explicit echo host stores complete JSON transcripts. It never
+		// reads, migrates or writes through the production session ledger.
 		getCurrentSessionId: () => getOnethingCurrentSessionId(appStatePath),
 		setCurrentSessionId: (sessionId) => {
 			setOnethingCurrentSessionId(appStatePath, sessionId);
@@ -3491,6 +3364,22 @@ export function createLocalServerSessionStore(
 	// 装的是同一个工厂,判据 / 会话账 / 落盘档的算法只有那一份(§17.7.1 批 3 起
 	// 归约器退役,那层执行体也没有了)。
 	const messageCommands = createSessionCommands({
+		reads: {
+			countMessages: sessionId => repository.getSessionMessages(sessionId)?.length ?? 0,
+			getMessage: (sessionId, messageId) => repository.getSessionMessages(sessionId)?.find(message => message.id === messageId),
+			findMessage: (sessionId, predicate, options) => {
+				const messages = repository.getSessionMessages(sessionId) ?? [];
+				if (options?.from === 'end') {
+					for (let index = messages.length - 1; index >= 0; index--) {
+						if (predicate(messages[index]!, index)) return messages[index];
+					}
+					return undefined;
+				}
+				return messages.find(predicate);
+			},
+			listMessages: sessionId => ({ messages: repository.getSessionMessages(sessionId) ?? [], changed: false }),
+		},
+		hasMessage: (sessionId, messageId) => repository.getSessionMessages(sessionId)?.some(message => message.id === messageId) ?? false,
 		getSession: (sessionId) => repository.getSession(sessionId),
 		// §17.7.1 批 3:落盘调度归写门(归约器退役,`result.lazy` 没有了产地)。
 		saveSession: (sessionId, session, options) =>
@@ -3504,7 +3393,7 @@ export function createLocalServerSessionStore(
 			repository.patchSession(sessionId, patch, mutateIndexMeta),
 		// 协作署名是桌面/引擎侧的事,server 不盖章(与迁移前 `session.messages.push`
 		// 的行为一致)。
-	});
+	}, { events: createEchoMessageEvents(id => repository.getSession(id)), account: () => undefined });
 
 	const readMessages = (sessionId: string): readonly ChatMessage[] =>
 		repository.getSessionMessages(sessionId) ?? [];
@@ -3544,10 +3433,9 @@ export function createLocalServerSessionStore(
 			readMessages(session.id),
 		);
 		repository.saveSessionToFile(normalized.id, normalized);
-		// 同步直写只适用于 legacy 文件;jsonl 会话走 300ms 队列(与 Electron 宿主一致),
-		// 不在这里 fire-and-forget 地 flush——已启动的异步写会与 deleteSession 的目录删除竞态。
-		// 关键时点的落盘由 facade 的 flushSession / 退出时 flushAll 保证。
-		if (storageDriver.format(normalized.id) === "legacy-json") {
+		// Echo owns a complete transcript; queued command writes still drain
+		// through flushSession/flushAll before this store is released.
+		{
 			writeCoreJsonFile(getSessionFilePath(normalized.id), normalized, {
 				pretty: false,
 			});
@@ -3600,12 +3488,6 @@ export function createLocalServerSessionStore(
 				preserveUpdatedAt: true,
 			});
 			saveSessionImmediately(session);
-			// §17.7.1 批 3(**补产地**):这只仓库从前不写 `session/created`,于是它
-			// 的会话**没有账本** —— 消息只活在内存 store 那份数组里,而那份数组的
-			// 维护者(老 reducer)批 3 删了。账本一开(`session/created` 顺手建目录,
-			// 见 `event-log.ts` 的 `ensureSessionEventDir`),这条路就和桌面 / 真
-			// server 走同一条:事件是产地,投影是读面。
-			sessionLifecycleEvents.sessionCreated(session as never);
 			return session;
 		},
 		createBranchSession(
@@ -3665,6 +3547,9 @@ export function createLocalServerSessionStore(
 			repository.getSessionUserMessageMarkers(sessionId),
 	};
 }
+
+/** Compatibility name for the explicitly selected echo-host store. */
+export const createLocalServerSessionStore = createEchoServerSessionStore;
 
 /**
  * P0.3:`session.messages = Array.isArray(...) ? ... : []` 这句删了 —— 它是死代码
@@ -3951,23 +3836,6 @@ function getServerPluginCatalogManagerForContext(
 	return manager;
 }
 
-function getServerMediaServiceForContext(
-	services: Map<string, MediaLibraryService>,
-	dataRoot: string,
-	context: RuntimeRequestContext,
-	desktopStorePath?: string,
-): MediaLibraryService {
-	const key = ownerKey(context);
-	let service = services.get(key);
-	if (!service) {
-		service = new MediaLibraryService(
-			serverMediaLibraryPaths(dataRoot, context, desktopStorePath),
-		);
-		services.set(key, service);
-	}
-	return service;
-}
-
 function serverMediaLibraryPaths(
 	dataRoot: string,
 	context: RuntimeRequestContext,
@@ -3982,10 +3850,7 @@ function serverMediaLibraryPaths(
 	}
 
 	const root = join(
-		dataRoot,
-		"owners",
-		safePathSegment(context.userId),
-		safePathSegment(context.workspaceId),
+		tenantDirectory(join(dataRoot, "owners"), context.userId, context.workspaceId),
 		"media",
 	);
 	return {
@@ -3993,51 +3858,6 @@ function serverMediaLibraryPaths(
 		imagesDir: join(root, "images"),
 		filesDir: join(root, "files"),
 	};
-}
-
-function normalizeServerMediaFileName(input: string): string {
-	const trimmed = input.trim();
-	if (trimmed.startsWith("/api/media/file/")) {
-		return basename(
-			decodeURIComponent(trimmed.slice("/api/media/file/".length)),
-		);
-	}
-	if (trimmed.startsWith("media://")) {
-		return basename(decodeURIComponent(trimmed.slice("media://".length)));
-	}
-	return basename(trimmed);
-}
-
-function resolveServerMediaFilePath(
-	services: Map<string, MediaLibraryService>,
-	dataRoot: string,
-	context: RuntimeRequestContext,
-	input: string,
-	desktopStorePath?: string,
-): { path: string; mimeType: string } | null {
-	const fileName = normalizeServerMediaFileName(input);
-	if (!fileName || fileName === "." || fileName === "..") return null;
-
-	const service = getServerMediaServiceForContext(
-		services,
-		dataRoot,
-		context,
-		desktopStorePath,
-	);
-	const paths = serverMediaLibraryPaths(dataRoot, context, desktopStorePath);
-	const candidates = service.listAssets({ includeHidden: true });
-	for (const asset of candidates) {
-		if (!asset.filePath || basename(asset.filePath) !== fileName) continue;
-		const resolvedPath = resolve(asset.filePath);
-		const inImages = isPathInside(resolvedPath, resolve(paths.imagesDir));
-		const inFiles = isPathInside(resolvedPath, resolve(paths.filesDir));
-		if (!inImages && !inFiles) return null;
-		return {
-			path: resolvedPath,
-			mimeType: asset.mimeType,
-		};
-	}
-	return null;
 }
 
 function serverProjectDirsPathError(): {
@@ -4166,10 +3986,7 @@ function serverVariablesFilePath(
 	}
 
 	return join(
-		dataRoot,
-		"owners",
-		safePathSegment(context.userId),
-		safePathSegment(context.workspaceId),
+		tenantDirectory(join(dataRoot, "owners"), context.userId, context.workspaceId),
 		"variables.json",
 	);
 }
@@ -4267,8 +4084,8 @@ function workspaceSandboxRoot(
  *
  * 住在 runtime 而不是 http.ts,是因为「owner 的沙箱根长什么样」本来就是这个
  * 文件的知识;http.ts 只负责在鉴权之后把它取出来交给 `dispatchRpc`。
- * 全部字段来自 `RuntimeRequestContext` —— 那是 bearer 门放行之后的身份头,
- * 与 RPC 信封(客户端可控)零关系。
+ * 身份字段来自 bearer 门放行之后的 RuntimeRequestContext；私有监听能力来自
+ * 当前 surface 的 files 端口。两者均不从客户端可控的 RPC 信封恢复。
  */
 export function createServerRpcDispatchContext(
 	workspaceRoot: string | undefined,
@@ -4281,6 +4098,25 @@ export function createServerRpcDispatchContext(
 		sandboxRoot: workspaceRoot
 			? workspaceSandboxRoot(workspaceRoot, context)
 			: undefined,
+	};
+}
+
+/**
+ * 这条 surface 自己带来的函数端口(工单 4 C3)。
+ *
+ * 与上面那个 context 分开:context 是纯数据(身份 + 作用域,到处被 spread),
+ * 端口是函数。从前监听端口是用一个 Symbol + 非枚举属性挂在 context 上的 ——
+ * 类型上说不出口,而且任何一次 `{ ...context }` 都会把它悄悄丢掉。
+ */
+export function createServerRpcDispatchPorts(
+	files?: RuntimeFilesAdapter,
+): RpcDispatchPorts | undefined {
+	if (!files) return undefined;
+	return {
+		workspaceWatch: {
+			startWorkspaceWatch: files.startWorkspaceWatch?.bind(files),
+			stopWorkspaceWatch: files.stopWorkspaceWatch?.bind(files),
+		},
 	};
 }
 
@@ -4300,14 +4136,10 @@ function workspaceSandboxRootForSession(
 	session: SessionWorkspaceRef,
 ): string {
 	const owner = sessionOwner(session);
-	return join(
+	return tenantDirectory(
 		workspaceRoot,
-		safePathSegment(owner.userId ?? defaultRequestContext().userId),
-		safePathSegment(
-			owner.workspaceId
-				?? session.workspaceId
-				?? defaultRequestContext().workspaceId,
-		),
+		owner.userId ?? defaultRequestContext().userId,
+		owner.workspaceId ?? defaultRequestContext().workspaceId,
 	);
 }
 
@@ -4333,12 +4165,8 @@ function isPathInside(candidate: string, root: string): boolean {
 	);
 }
 
-function safePathSegment(value: string): string {
-	return value.replace(/[^a-zA-Z0-9._-]/g, "_") || "default";
-}
-
 function ownerKey(context = defaultRequestContext()): string {
-	return `${context.userId}:${context.workspaceId}`;
+	return tenantKey(context.userId, context.workspaceId);
 }
 
 function getCurrentSessionId(

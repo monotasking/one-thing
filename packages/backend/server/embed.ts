@@ -61,6 +61,7 @@ export interface EmbeddedOnethingHttpServer {
   url: string
   runtime: OnethingServerRuntime
   server: Server
+  stopAccepting(): void
   close(): Promise<void>
 }
 
@@ -89,6 +90,8 @@ export async function startEmbeddedOnethingHttpServer(
   backend: OnethingBackend,
   options: EmbeddedOnethingHttpServerOptions = {},
 ): Promise<EmbeddedOnethingHttpServer> {
+  backend.assertActive()
+  const lease = backend.storeLease
   if (current) return current
   const logger = options.logger ?? console
   const host = options.host ?? process.env.ONETHING_SERVER_HOST ?? '127.0.0.1'
@@ -105,6 +108,7 @@ export async function startEmbeddedOnethingHttpServer(
     ...(options.audienceFactory ? { audienceFactory: options.audienceFactory } : {}),
   })
   const server = createOnethingHttpServer({
+    runRequest: run => backend.runTask('http request', run),
     runtime: runtime.runtime,
     corsOrigin,
     authToken: token,
@@ -150,6 +154,7 @@ export async function startEmbeddedOnethingHttpServer(
       })
     })
 
+    backend.assertActive()
     writeHttpDiscovery({
       port,
       host,
@@ -157,10 +162,11 @@ export async function startEmbeddedOnethingHttpServer(
       pid: process.pid,
       startedAt: Date.now(),
       owner: options.owner ?? 'desktop',
-    })
+    }, { lease })
     const url = `http://${host}:${port}`
     logger.log(`[core-http] embedded HTTP/SSE surface listening on ${url}`)
 
+    let closing: Promise<void> | undefined
     const embedded: EmbeddedOnethingHttpServer = {
       port,
       host,
@@ -168,14 +174,20 @@ export async function startEmbeddedOnethingHttpServer(
       url,
       runtime,
       server,
-      async close() {
-        if (current === embedded) current = null
-        restoreFilesTrust()
-        removeHttpDiscovery()
-        await new Promise<void>(resolve => server.close(() => resolve()))
-        // 这只 runtime 不拥有 backend(ownsBackend: false),shutdown 只收自己的
-        // 订阅、管理器与串联上去的单槽端口。
-        await runtime.shutdown()
+      stopAccepting: () => server.stopAccepting(),
+      close() {
+        return closing ??= (async () => {
+          const failures: unknown[] = []
+          server.stopAccepting()
+          try { restoreFilesTrust() } catch (error) { failures.push(error) }
+          // Borrowed runtime cleanup and connection cleanup both run on failure.
+          try { await runtime.shutdown() } catch (error) { failures.push(error) }
+          try { await server.whenClosed() } catch (error) { failures.push(error) }
+          if (failures.length) throw new AggregateError(failures, 'Embedded HTTP shutdown failed')
+          removeHttpDiscovery({ lease })
+          // A remount cannot publish an endpoint while the old close can still remove it.
+          if (current === embedded) current = null
+        })()
       },
     }
     current = embedded
@@ -183,9 +195,13 @@ export async function startEmbeddedOnethingHttpServer(
   } catch (error) {
     // 监听失败就把刚建起来的 runtime 收回去,别留一只挂着订阅的僵尸 ——
     // 连同那条还没派上用场的本机可信声明。
-    restoreFilesTrust()
-    await runtime.shutdown().catch(() => {})
-    throw error
+    const failures: unknown[] = [error]
+    try { restoreFilesTrust() } catch (cleanupError) { failures.push(cleanupError) }
+    server.stopAccepting()
+    try { await runtime.shutdown() } catch (cleanupError) { failures.push(cleanupError) }
+    try { await server.whenClosed() } catch (cleanupError) { failures.push(cleanupError) }
+    if (failures.length === 1) throw error
+    throw new AggregateError(failures, 'Embedded HTTP startup and cleanup failed', { cause: error })
   }
 }
 

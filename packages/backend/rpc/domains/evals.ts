@@ -48,6 +48,7 @@
  * evals 面自己的根。两条都过才放行。
  */
 import fs from 'node:fs'
+import { canAccessEvalSource, requireEvalRepositoryAccess, requireEvalSourceAccess } from './evals-access.js'
 import path from 'node:path'
 import { getOnethingEvalsFixturesAutoDir } from '@onething/runtime/storage'
 import type {
@@ -73,6 +74,7 @@ import {
 import { getLogger } from '../../wiring/logging/index.js'
 import { getSkillsForSession } from '../../wiring/skills/session-skills.js'
 import { analyzeIncidentInBackground } from './evals-workbench.js'
+import { getEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
 import { isPathInside, resolveRpcSandbox } from '../sandbox.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import type { RpcRouteHandlers } from '../registry.js'
@@ -247,22 +249,14 @@ async function loadAllCases(repoDir: string): Promise<EvalCaseMeta[]> {
 
 // ── Running state ──────────────────────────────────────
 //
-// 单跑闸,逐字沿用:一次只允许一个跑批在飞。`runCancel` 只发信号,清空由后台
-// 跑批自己的 finally 做 —— 在这里清会让第二个跑批在第一个还在写结果时起飞。
-
-let activeRunAbort: AbortController | null = null
-
-/** 测试用:把单跑闸复位到「没有跑批在飞」。 */
-export function resetEvalsRunStateForTests(): void {
-  activeRunAbort = null
-}
+// Backend 持有单跑闸。取消只发信号,真实任务结束后才释放,防止结果写入重叠。
 
 // ── Background Run (delegates to runner.ts) ─────────────
 
 async function runEvalsInBackground(
   repoDir: string,
   request: EvalsRunStartRequest,
-  abortController: AbortController,
+  signal: AbortSignal,
 ): Promise<void> {
   const emitProgress = (event: EvalsRunProgressEvent) => {
     // Persist run detail on run-done (adapter responsibility, not runner)
@@ -302,7 +296,7 @@ async function runEvalsInBackground(
   try {
     const { runEvals } = await import('@onething/runtime')
 
-    const callModel = createEvalsModelCaller(request.providerId, request.model)
+    const callModel = createEvalsModelCaller(request.providerId, request.model, { signal })
 
     await runEvals({
       repoDir,
@@ -313,7 +307,7 @@ async function runEvalsInBackground(
       callModel,
       providerLabel: request.providerId,
       modelLabel: request.model,
-      signal: abortController.signal,
+      signal,
       onProgress: emitProgress,
     })
   } catch (error) {
@@ -321,15 +315,14 @@ async function runEvalsInBackground(
       type: 'error',
       error: error instanceof Error ? error.message : 'Unknown error',
     })
-  } finally {
-    activeRunAbort = null
   }
 }
 
 // ── Handlers ───────────────────────────────────────────
 
 export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
-  async recordDownvote(request) {
+  async recordDownvote(request, context = { transport: 'ipc' }) {
+    requireEvalSourceAccess(context, request.sessionId, 'write')
     try {
       if (!request.sessionId || !request.turnId) {
         return { success: false, error: 'Missing sessionId or turnId' }
@@ -410,11 +403,11 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async listRecords(request) {
+  async listRecords(request, context = { transport: 'ipc' }) {
     try {
       const { loadMergedRecords, recordHasNegative } = await import('@onething/runtime')
 
-      let records = loadMergedRecords()
+      let records = loadMergedRecords().filter(record => canAccessEvalSource(context, record.sessionId))
 
       // Filter: negative only (default true for review)
       if (request.negativeOnly !== false) {
@@ -458,7 +451,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async listFixtures() {
+  async listFixtures(_request, context = { transport: 'ipc' }) {
     try {
       const fixtures: EvalFixtureMeta[] = []
       const autoDir = getEvalsFixturesAutoDir()
@@ -479,7 +472,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
         (a, b) => new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime(),
       )
 
-      return { success: true, fixtures }
+      return { success: true, fixtures: fixtures.filter(fixture => canAccessEvalSource(context, fixture.sessionId)) }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
       log.error('list fixtures failed', undefined, error)
@@ -487,7 +480,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async readSnapshot(request, context) {
+  async readSnapshot(request, context = { transport: 'ipc' }) {
     try {
       const clamped = clampEvalsWirePath(request.path, context)
       if (!clamped.ok) return { success: false, error: clamped.error }
@@ -505,12 +498,15 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       if (isPrompt) {
         const content = fs.readFileSync(snapshotPath, 'utf-8')
         const promptSnapshot = JSON.parse(content)
+        requireEvalSourceAccess(context, promptSnapshot.sessionId ?? promptSnapshot.sessionRef?.sessionId)
         return { success: true, snapshotType: 'prompt', promptSnapshot }
       }
 
       // Context: read jsonl with pagination
       const raw = fs.readFileSync(snapshotPath, 'utf-8')
       const allLines = raw.split('\n').filter(Boolean)
+      const header = JSON.parse(allLines[0] ?? '{}')
+      requireEvalSourceAccess(context, header.sessionId ?? header.sessionRef?.sessionId)
       // First line is header, rest are messages
       const messages: ContextSnapshotMessage[] = []
       for (const line of allLines.slice(1)) {
@@ -539,7 +535,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async readFixture(request, context) {
+  async readFixture(request, context = { transport: 'ipc' }) {
     try {
       const clamped = clampEvalsWirePath(request.fixturePath, context)
       if (!clamped.ok) return { success: false, error: clamped.error }
@@ -548,6 +544,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       }
       const content = fs.readFileSync(clamped.path, 'utf-8')
       const fixture = JSON.parse(content)
+      requireEvalSourceAccess(context, fixture.sessionRef?.sessionId)
       return { success: true, fixture }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
@@ -556,7 +553,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async listResults() {
+  async listResults(_request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -593,7 +591,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async listCases() {
+  async listCases(_request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -610,7 +609,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async getCase(request) {
+  async getCase(request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -631,7 +631,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async runStart(request) {
+  async runStart(request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       log.debug('run start received', {
         provider: request.providerId,
@@ -640,7 +641,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
         caseIds: request.caseIds?.length ?? 0,
         disabledSections: request.disabledSections,
       })
-      if (activeRunAbort) {
+      const tasks = getEvalsTaskOwner()
+      if (tasks.has('run')) {
         log.warn('run start blocked', { reason: 'run already in progress' })
         return { success: false, error: 'A run is already in progress' }
       }
@@ -664,15 +666,12 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
         return { success: false, error: credentials.reason }
       }
 
-      const abortController = new AbortController()
-      activeRunAbort = abortController
-
       log.info('background run launching', {
         provider: request.providerId,
         model: request.model,
       })
-      // Fire and forget — progress is sent via push events
-      runEvalsInBackground(repoDir, request, abortController).catch(err => {
+      // Progress is asynchronous, but Backend shutdown owns the actual job.
+      tasks.start('run', signal => runEvalsInBackground(repoDir, request, signal)).catch(err => {
         log.error('background run failed', undefined, err)
       })
 
@@ -685,18 +684,17 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async runCancel() {
-    if (activeRunAbort) {
-      // Only signal — the background run's finally clears activeRunAbort
-      // once it has actually exited. Clearing here would let a second run
-      // start while the first is still writing progress/results.
-      activeRunAbort.abort()
+  async runCancel(_request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
+    if (getEvalsTaskOwner().cancel('run')) {
+      // The slot stays reserved until the real job settles.
       return { success: true }
     }
     return { success: false, error: 'No run in progress' }
   },
 
-  async promoteFixture(request, context) {
+  async promoteFixture(request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -712,6 +710,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
       }
       const fixtureContent = fs.readFileSync(fixturePath, 'utf-8')
       const fixture = JSON.parse(fixtureContent)
+      requireEvalSourceAccess(context, fixture.sessionRef?.sessionId, 'write')
 
       // Copy fixture to repo evals/fixtures/
       const repoFixturesDir = getEvalsFixturesDir(repoDir)
@@ -791,7 +790,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async retireCase(request) {
+  async retireCase(request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -817,7 +817,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async generateTriage(request) {
+  async generateTriage(request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -828,7 +829,7 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
         '@onething/runtime'
       )
 
-      const records = loadMergedRecords()
+      const records = loadMergedRecords().filter(record => canAccessEvalSource(context, record.sessionId))
       const filtered = filterRecordsByWeeks(records, request?.weeks ?? 1)
       const report = generateTriageReport(filtered)
 
@@ -852,7 +853,8 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 
-  async readRunDetail(request, context) {
+  async readRunDetail(request, context = { transport: 'ipc' }) {
+    requireEvalRepositoryAccess(context)
     try {
       const repoDir = resolveEvalsRepoDir()
       if (!repoDir) {
@@ -875,4 +877,3 @@ export const evalsRpcHandlers: RpcRouteHandlers<EvalsRoutes> = {
     }
   },
 }
-

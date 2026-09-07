@@ -27,6 +27,7 @@ import { getCurrentSessionId } from '../../stores/app-state.js'
 import { getSettings, saveSettings } from '../../stores/settings.js'
 import { agentExists } from '../agents/index.js'
 import { updateSessionAgent } from '../../stores/sessions.js'
+import { DEFAULT_SESSION_OWNER, sessionAccess } from '../../session/access.js'
 import { getVoiceInputConfigurationError, streamSynthesizeSpeech, transcribeUtterance } from './providers.js'
 import {
   applyOnethingVoiceRuntimeError,
@@ -41,7 +42,6 @@ import {
   splitOnethingSpeakableSentences,
 } from '@onething/runtime/voice/index'
 import {
-  broadcastVoiceHostMessage,
   getVoiceHostPorts,
   sendVoiceHostMessageToWindow,
   type VoiceHostWebContents,
@@ -51,16 +51,6 @@ import {
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import type { OnethingVoiceSpeechStreamHandlers } from '@onething/runtime/voice/providers'
 
-// Host-surface delegates: the audio runtime window and tray are Electron
-// concepts injected via configureVoiceHost; headless hosts no-op them.
-const ensureVoiceRuntimeWindow = (): void => getVoiceHostPorts().runtimeWindow?.ensure?.()
-const destroyVoiceRuntimeWindow = (): void => getVoiceHostPorts().runtimeWindow?.destroy?.()
-const sendVoiceRuntimeCommand = (command: VoiceRuntimeCommand): void =>
-  getVoiceHostPorts().runtimeWindow?.sendCommand?.(command)
-const markVoiceRuntimeReady = (): void => getVoiceHostPorts().runtimeWindow?.markReady?.()
-const isVoiceRuntimeReady = (): boolean => getVoiceHostPorts().runtimeWindow?.isReady?.() ?? false
-const flushVoiceRuntimeCommands = (): void => getVoiceHostPorts().runtimeWindow?.flushCommands?.()
-const updateVoiceTray = (): void => getVoiceHostPorts().updateTray?.()
 const voiceWebContentsId = (webContents: { id: number } | null | undefined): number | undefined =>
   webContents?.id
 
@@ -77,6 +67,27 @@ type VoiceWebContents = VoiceHostWebContents
 type VoiceWindow = VoiceHostWindow
 
 class VoiceService {
+  private readonly host = getVoiceHostPorts()
+  private readonly cancellation = new AbortController()
+  private readonly pending = new Set<Promise<unknown>>()
+  private accepting = true
+  private closing?: Promise<void>
+  private ownedBus?: ReturnType<typeof getEventBus>
+  private ownedStream?: ReturnType<typeof getStreamChannel>
+
+  private eventBus(): ReturnType<typeof getEventBus> { return this.ownedBus ??= getEventBus() }
+  private streamChannel(): ReturnType<typeof getStreamChannel> { return this.ownedStream ??= getStreamChannel() }
+  private sendCommand(command: VoiceRuntimeCommand): void { if (this.accepting) this.host.runtimeWindow?.sendCommand?.(command) }
+  private track<T>(work: Promise<T>): Promise<T> {
+    this.pending.add(work)
+    void work.then(() => this.pending.delete(work), () => this.pending.delete(work))
+    return work
+  }
+  private run<T extends { success: boolean; error?: string }>(work: () => Promise<T>): Promise<T> {
+    if (!this.accepting) return Promise.resolve({ success: false, error: 'Voice service is shutting down.' } as T)
+    return this.track(work())
+  }
+
   private state: VoiceRuntimeState = {
     status: 'disabled',
     enabled: false,
@@ -96,10 +107,21 @@ class VoiceService {
   private resumeTimer: ReturnType<typeof setTimeout> | null = null
   private callActive = false
 
+  /** Device callbacks retain the one local operator; a late callback cannot adopt a new owner. */
+  private canUseSession(sessionId?: string): boolean {
+    if (!this.accepting) return false
+    const ids = [sessionId, this.state.currentSessionId, this.replyPlayback?.sessionId]
+      .filter((id): id is string => Boolean(id))
+    if (!ids.length) return true
+    try { sessionAccess.resolveAll(DEFAULT_SESSION_OWNER, ids, 'write'); return true }
+    catch { return false }
+  }
+
   private getAudioRouter(): VoiceAudioRouter {
     if (!this.audioRouter) {
       this.audioRouter = new VoiceAudioRouter({
         onPartialTranscript: (text, sessionId) => {
+          if (!this.canUseSession(sessionId)) return
           this.state.lastTranscript = text
           if (!this.doubaoFirstPartialSeen) {
             this.doubaoFirstPartialSeen = true
@@ -118,7 +140,8 @@ class VoiceService {
           })
         },
         onFinalTranscript: ({ text, sessionId, durationMs }) => {
-          sendVoiceRuntimeCommand({ type: 'stop-recording', reason: 'asr-finalized' })
+          if (!this.canUseSession(sessionId)) return
+          this.sendCommand({ type: 'stop-recording', reason: 'asr-finalized' })
           this.emitMilestone('asr-finalized', {
             sessionId,
             transcriptId: this.doubaoTranscriptId,
@@ -150,7 +173,8 @@ class VoiceService {
           })
         },
         onRecordingError: (error, _sessionId) => {
-          sendVoiceRuntimeCommand({ type: 'stop-recording', reason: 'asr-error' })
+          if (!this.accepting) return
+          this.sendCommand({ type: 'stop-recording', reason: 'asr-error' })
           if (this.currentTurnReason === 'resume') {
             // A silent resume window simply falls back to wake listening.
             const settings = getSettings().voice
@@ -185,11 +209,13 @@ class VoiceService {
       phrase: settings!.wake.phrase,
       sensitivity: settings!.wake.sensitivity,
       onDetected: keyword => {
+        if (!this.accepting) return
         if (this.state.status === 'recording' || this.state.status === 'transcribing') return
         this.emit({ type: 'wake-detected', phrase: keyword, sessionId: this.state.currentSessionId })
         void this.start({ reason: 'wake' })
       },
       onError: error => {
+        if (!this.accepting) return
         if (this.fallbackToMicButtonForWakeError(error)) {
           this.setStatus('idle')
           return
@@ -200,31 +226,33 @@ class VoiceService {
   }
 
   applySettings(settings: AppSettings = getSettings()): void {
+    if (!this.accepting) return
     const voice = settings.voice
     this.state.enabled = Boolean(voice?.enabled)
     this.syncWakeEngine(voice)
 
     if (!voice?.enabled) {
       this.setStatus('disabled')
-      destroyVoiceRuntimeWindow()
-      updateVoiceTray()
+      this.host.runtimeWindow?.destroy?.()
+      this.host.updateTray?.()
       return
     }
 
-    ensureVoiceRuntimeWindow()
+    this.host.runtimeWindow?.ensure?.()
     const status: VoiceRuntimeStatus = voice.alwaysOn ? 'wake-listening' : 'idle'
     this.setStatus(status)
-    sendVoiceRuntimeCommand({
+    this.sendCommand({
       type: voice.alwaysOn ? 'start-wake' : 'configure',
       settings: voice,
       sessionId: getCurrentSessionId() || undefined,
     })
-    updateVoiceTray()
+    this.host.updateTray?.()
   }
 
   attachMainWindow(window: VoiceWindow): void {
+    if (!this.accepting) return
     if (this.state.enabled) {
-      ensureVoiceRuntimeWindow()
+      this.host.runtimeWindow?.ensure?.()
     }
     this.broadcastState(window)
   }
@@ -233,7 +261,11 @@ class VoiceService {
     return { ...this.state, callActive: this.callActive }
   }
 
-  async start(request: VoiceStartRequest = {}): Promise<{ success: boolean; error?: string }> {
+  start(request: VoiceStartRequest = {}): Promise<{ success: boolean; error?: string }> {
+    return this.run(() => this.performStart(request))
+  }
+
+  private async performStart(request: VoiceStartRequest = {}): Promise<{ success: boolean; error?: string }> {
     const settings = getSettings().voice!
     if (!settings?.enabled) {
       return { success: false, error: 'Voice is disabled.' }
@@ -243,16 +275,17 @@ class VoiceService {
     if (!sessionId) {
       return { success: false, error: 'No active session for voice input.' }
     }
+    if (!this.canUseSession(sessionId)) return { success: false, error: 'Session not found' }
     const configurationError = getVoiceInputConfigurationError(settings)
     if (configurationError) {
       this.setError(configurationError)
       return { success: false, error: configurationError }
     }
 
-    ensureVoiceRuntimeWindow()
+    this.host.runtimeWindow?.ensure?.()
     if (settings.bargeIn) {
       this.cancelReplyPlayback()
-      sendVoiceRuntimeCommand({ type: 'stop-playback' })
+      this.sendCommand({ type: 'stop-playback' })
       getStreamEngineSafe()?.abort(sessionId)
     }
 
@@ -276,9 +309,9 @@ class VoiceService {
           ? text => stripWakePhrasePrefix(text, settings.wake.phrase).length === 0
           : undefined,
       };
-      void this.getAudioRouter().startDoubaoRecording(settings, sessionId, voiceDoubaoRecordingOptions)
+      void this.track(this.getAudioRouter().startDoubaoRecording(settings, sessionId, voiceDoubaoRecordingOptions))
     }
-    sendVoiceRuntimeCommand({
+    this.sendCommand({
       type: 'start-recording',
       settings,
       sessionId,
@@ -288,22 +321,24 @@ class VoiceService {
   }
 
   handleAudioChunk(payload: VoiceAudioChunkPayload): void {
+    if (!this.canUseSession(payload.sessionId)) return
     this.getAudioRouter().handleChunk(payload)
   }
 
   stop(request: VoiceStopRequest = {}): { success: boolean } {
+    if (!this.canUseSession()) return { success: false }
     this.clearResumeTimer()
     this.resumeChainCount = 0
     this.callActive = false
     const submit = request.submit ?? request.reason === 'mic-button'
     if (this.audioRouter?.isRecording) {
       if (submit) {
-        void this.audioRouter.finishRecording()
+        void this.track(this.audioRouter.finishRecording())
       } else {
         this.audioRouter.abortRecording(request.reason || 'stopped')
       }
     }
-    sendVoiceRuntimeCommand({
+    this.sendCommand({
       type: 'stop',
       reason: request.reason,
       submit,
@@ -313,16 +348,22 @@ class VoiceService {
     return { success: true }
   }
 
-  async submitUtterance(request: VoiceSubmitUtteranceRequest): Promise<{ success: boolean; transcript?: string; transcriptId?: string; error?: string }> {
+  submitUtterance(request: VoiceSubmitUtteranceRequest): Promise<{ success: boolean; transcript?: string; transcriptId?: string; error?: string }> {
+    return this.run(() => this.performSubmitUtterance(request))
+  }
+
+  private async performSubmitUtterance(request: VoiceSubmitUtteranceRequest): Promise<{ success: boolean; transcript?: string; transcriptId?: string; error?: string }> {
     const settings = getSettings().voice
     if (!settings?.enabled) return { success: false, error: 'Voice is disabled.' }
 
     const sessionId = request.sessionId || this.state.currentSessionId || getCurrentSessionId()
     if (!sessionId) return { success: false, error: 'No active session for voice transcript.' }
 
+    if (!this.canUseSession(sessionId)) return { success: false, error: 'Session not found' }
+
     this.setStatus('transcribing')
     try {
-      const transcript = await transcribeUtterance({ ...request, sessionId }, settings)
+      const transcript = await transcribeUtterance({ ...request, sessionId }, settings, this.cancellation.signal)
       return await this.submitRecognizedTranscript({
         sessionId,
         transcriptId: transcript.transcriptId,
@@ -338,7 +379,11 @@ class VoiceService {
     }
   }
 
-  async submitTranscript(request: VoiceSubmitTranscriptRequest): Promise<{ success: boolean; transcript?: string; transcriptId?: string; error?: string }> {
+  submitTranscript(request: VoiceSubmitTranscriptRequest): Promise<{ success: boolean; transcript?: string; transcriptId?: string; error?: string }> {
+    return this.run(() => this.performSubmitTranscript(request))
+  }
+
+  private async performSubmitTranscript(request: VoiceSubmitTranscriptRequest): Promise<{ success: boolean; transcript?: string; transcriptId?: string; error?: string }> {
     const settings = getSettings().voice
     if (!settings?.enabled) return { success: false, error: 'Voice is disabled.' }
     const sessionId = request.sessionId || this.state.currentSessionId || getCurrentSessionId()
@@ -347,6 +392,7 @@ class VoiceService {
   }
 
   private async submitRecognizedTranscript(request: VoiceSubmitTranscriptRequest & { sessionId: string }): Promise<{ success: boolean; transcript?: string; transcriptId?: string; error?: string }> {
+    if (!this.canUseSession(request.sessionId)) return { success: false, error: 'Session not found' }
     const settings = getSettings().voice!
     const text = request.text.trim()
     if (!text) return { success: false, error: 'Voice transcription returned an empty transcript.' }
@@ -368,7 +414,7 @@ class VoiceService {
       })
 
       this.beginReplyPlayback(request.sessionId)
-      await getEventBus().emit(request.sessionId, {
+      await this.eventBus().emit(request.sessionId, {
         type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
         channel: 'voice',
         source: 'voice',
@@ -379,7 +425,7 @@ class VoiceService {
           asrModel: request.asrModel,
           durationMs: request.durationMs,
         },
-      })
+      }, { executionContext: DEFAULT_SESSION_OWNER })
 
       this.setStatus('thinking')
       this.emit({ type: 'submitted', sessionId: request.sessionId, transcriptId, text })
@@ -391,7 +437,11 @@ class VoiceService {
     }
   }
 
-  async synthesize(request: VoiceSynthesizeRequest): Promise<{ success: boolean; requestId?: string; mimeType?: string; error?: string }> {
+  synthesize(request: VoiceSynthesizeRequest): Promise<{ success: boolean; requestId?: string; mimeType?: string; error?: string }> {
+    return this.run(() => this.performSynthesize(request))
+  }
+
+  private async performSynthesize(request: VoiceSynthesizeRequest): Promise<{ success: boolean; requestId?: string; mimeType?: string; error?: string }> {
     const settings = getSettings().voice
     if (!settings?.enabled) return { success: false, error: 'Voice is disabled.' }
     if (!settings.tts.autoSpeak && !this.callActive) return { success: false, error: 'Voice auto speak is disabled.' }
@@ -403,7 +453,7 @@ class VoiceService {
       this.setStatus('speaking')
       const requestId = request.requestId || randomUUID()
       const startedAt = Date.now()
-      ensureVoiceRuntimeWindow()
+      this.host.runtimeWindow?.ensure?.()
       this.emitMilestone('tts-request-start', {
         requestId,
         provider: settings.tts.provider,
@@ -427,6 +477,7 @@ class VoiceService {
       try {
         const voiceSpeechStreamHandlers: OnethingVoiceSpeechStreamHandlers = {
           onStart: ({ mimeType }) => {
+            if (!this.accepting) return
             streamStarted = true
             streamMimeType = mimeType
             this.emitMilestone('tts-audio-stream-start', {
@@ -435,16 +486,17 @@ class VoiceService {
               provider: settings.tts.provider,
               model: getOnethingTTSModelName(settings),
             })
-            sendVoiceRuntimeCommand({
+            this.sendCommand({
               type: 'play-audio-stream-start',
               requestId,
               mimeType,
             })
           },
           onChunk: chunk => {
+            if (!this.accepting) return
             if (!streamStarted) {
               streamStarted = true
-              sendVoiceRuntimeCommand({
+              this.sendCommand({
                 type: 'play-audio-stream-start',
                 requestId,
                 mimeType: 'audio/mpeg',
@@ -459,16 +511,17 @@ class VoiceService {
                 model: getOnethingTTSModelName(settings),
               })
             }
-            sendVoiceRuntimeCommand({
+            this.sendCommand({
               type: 'play-audio-stream-chunk',
               requestId,
               chunkBase64: Buffer.from(chunk).toString('base64'),
             })
           },
         };
-        await streamSynthesizeSpeech(text, settings, voiceSpeechStreamHandlers)
+        await streamSynthesizeSpeech(text, settings, voiceSpeechStreamHandlers, this.cancellation.signal)
+        if (!this.accepting) return { success: false, error: 'Voice service is shutting down.' }
         if (streamStarted) {
-          sendVoiceRuntimeCommand({ type: 'play-audio-stream-end', requestId })
+          this.sendCommand({ type: 'play-audio-stream-end', requestId })
           this.emitMilestone('tts-audio-stream-end', {
             requestId,
             elapsedMs: Date.now() - startedAt,
@@ -478,7 +531,7 @@ class VoiceService {
         }
       } catch (error: any) {
         if (streamStarted) {
-          sendVoiceRuntimeCommand({
+          this.sendCommand({
             type: 'play-audio-stream-end',
             requestId,
             error: error?.message || 'Voice synthesis stream failed.',
@@ -499,7 +552,7 @@ class VoiceService {
   }
 
   private speakWithSystemRuntime(text: string, requestId: string, settings: VoiceSettings): void {
-    sendVoiceRuntimeCommand({
+    this.sendCommand({
       type: 'speak-text',
       requestId,
       text,
@@ -511,14 +564,19 @@ class VoiceService {
   }
 
   handleRuntimeReady(sender: VoiceWebContents): void {
-    markVoiceRuntimeReady()
+    if (!this.accepting) return
+    this.host.runtimeWindow?.markReady?.()
     this.state.runtimeReady = true
     this.emit({ type: 'runtime-ready' }, sender)
     this.applySettings()
-    flushVoiceRuntimeCommands()
+    this.host.runtimeWindow?.flushCommands?.()
   }
 
   handleRuntimeEvent(event: VoiceRuntimeEvent | VoiceEvent): void {
+    if (!this.accepting) return
+    const sessionId = 'sessionId' in event ? event.sessionId
+      : event.type === 'latency-milestone' ? event.milestone.sessionId : undefined
+    if (!this.canUseSession(sessionId || (event.type === 'wake-detected' ? getCurrentSessionId() || undefined : undefined))) return
     switch (event.type) {
       case 'wake-detected':
         this.emit(event)
@@ -575,31 +633,47 @@ class VoiceService {
     }
   }
 
-  shutdown(): void {
+  quiesce(): void {
+    if (!this.accepting) return
+    this.accepting = false
+    this.cancellation.abort(new Error('Voice service is shutting down'))
+    this.callActive = false
     this.cancelReplyPlayback()
     this.clearResumeTimer()
-    this.audioRouter?.shutdown()
+    if (this.audioRouter) this.track(this.audioRouter.shutdown())
     this.wakeEngine?.stop()
-    sendVoiceRuntimeCommand({ type: 'stop', reason: 'shutdown' })
-    destroyVoiceRuntimeWindow()
+    this.host.runtimeWindow?.sendCommand?.({ type: 'stop', reason: 'shutdown' })
+    this.host.runtimeWindow?.destroy?.()
     this.state.runtimeReady = false
-    this.setStatus('disabled')
+    this.state.status = 'disabled'
   }
 
+  drain(): Promise<void> {
+    this.quiesce()
+    return this.closing ??= (async () => {
+      await this.speechChain
+      while (this.pending.size) await Promise.allSettled([...this.pending])
+    })()
+  }
+
+  shutdown(): Promise<void> { return this.drain() }
+
   private setStatus(status: VoiceRuntimeStatus): void {
+    if (!this.accepting) return
     this.state = applyOnethingVoiceRuntimeStatus(this.state, {
       status,
       voiceEnabled: Boolean(getSettings().voice?.enabled),
-      runtimeReady: isVoiceRuntimeReady(),
+      runtimeReady: (this.host.runtimeWindow?.isReady?.() ?? false),
     })
     this.emit({ type: 'state', state: this.getState() })
   }
 
   private setError(error: string): void {
+    if (!this.accepting) return
     this.state = applyOnethingVoiceRuntimeError(this.state, {
       error,
       voiceEnabled: Boolean(getSettings().voice?.enabled),
-      runtimeReady: isVoiceRuntimeReady(),
+      runtimeReady: (this.host.runtimeWindow?.isReady?.() ?? false),
     })
     this.emit({ type: 'state', state: this.getState() })
     this.emit({ type: 'error', error, recoverable: true })
@@ -627,10 +701,10 @@ class VoiceService {
       buffer: '',
     }
 
-    turn.unsubscribeStream = getStreamChannel().subscribe(sessionId, chunk => {
+    turn.unsubscribeStream = this.streamChannel().subscribe(sessionId, chunk => {
       this.handleReplyStreamChunk(turn, chunk)
     })
-    turn.unsubscribeEvents = getEventBus().onAny(sessionId, envelope => {
+    turn.unsubscribeEvents = this.eventBus().onAny(sessionId, envelope => {
       if (envelope.event.type === SESSION_EVENT_TYPES.STREAM_COMPLETE
         || envelope.event.type === SESSION_EVENT_TYPES.STREAM_ERROR
         || envelope.event.type === SESSION_EVENT_TYPES.STREAM_ABORTED) {
@@ -725,6 +799,7 @@ class VoiceService {
   // window so multi-turn conversations don't need the wake phrase again.
   // On an active call this is the core loop: it always re-opens.
   private maybeStartResumeWindow(): void {
+    if (!this.accepting) return
     const settings = getSettings().voice
     if (!settings?.enabled) return
     if (!this.callActive) {
@@ -764,19 +839,20 @@ class VoiceService {
     const nextSettings = fallback.settings
 
     saveSettings(nextSettings)
-    sendVoiceRuntimeCommand({ type: 'stop', reason: 'wake-unavailable' })
-    broadcastVoiceHostMessage({
+    this.sendCommand({ type: 'stop', reason: 'wake-unavailable' })
+    this.host.broadcastMessage?.({
       channel: IPC_CHANNELS.SETTINGS_CHANGED,
       payload: nextSettings,
     })
-    updateVoiceTray()
+    this.host.updateTray?.()
     return true
   }
 
   private emit(event: VoiceEvent, exceptSender?: VoiceWebContents): void {
+    if (!this.accepting) return
     const exceptWebContentsId = voiceWebContentsId(exceptSender)
     if (event.type !== 'state') {
-      broadcastVoiceHostMessage({
+      this.host.broadcastMessage?.({
         channel: IPC_CHANNELS.VOICE_EVENT,
         payload: event,
         exceptWebContentsId,
@@ -784,7 +860,7 @@ class VoiceService {
     }
 
     const stateEvent: VoiceEvent = { type: 'state', state: this.getState() }
-    broadcastVoiceHostMessage({
+    this.host.broadcastMessage?.({
       channel: IPC_CHANNELS.VOICE_EVENT,
       payload: event.type === 'state' ? event : stateEvent,
       exceptWebContentsId,
@@ -792,11 +868,12 @@ class VoiceService {
   }
 
   private broadcastState(target?: VoiceWindow): void {
+    if (!this.accepting) return
     const event: VoiceEvent = { type: 'state', state: this.getState() }
     if (sendVoiceHostMessageToWindow(target, IPC_CHANNELS.VOICE_EVENT, event)) {
       return
     }
-    broadcastVoiceHostMessage({
+    this.host.broadcastMessage?.({
       channel: IPC_CHANNELS.VOICE_EVENT,
       payload: event,
     })
@@ -815,6 +892,13 @@ let service: VoiceService | null = null
 export function getVoiceService(): VoiceService {
   if (!service) service = new VoiceService()
   return service
+}
+
+export function createVoiceService(): VoiceService { return new VoiceService() }
+
+export function configureVoiceService(next: VoiceService): () => void {
+  service = next
+  return () => { if (service === next) service = null }
 }
 
 export function getVoiceServiceSafe(): VoiceService | null {

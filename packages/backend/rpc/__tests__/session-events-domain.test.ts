@@ -15,6 +15,7 @@ import {
   type SessionEventRecord,
 } from '@onething/runtime/sessions/session-events'
 import { sessionEventsRouter } from '@shared/ipc/session-events.js'
+import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
 
 const paths = vi.hoisted(() => ({ sessionsDir: '' }))
 
@@ -27,6 +28,7 @@ vi.mock('@onething/runtime/storage', () => ({
 const SESSION_ID = 'session-under-test'
 
 let root = ''
+let fixture: ReturnType<typeof installSessionLayerForTest>
 
 function event(record: SessionEventRecord): string {
   return encodeSessionEventLine(record)
@@ -140,6 +142,7 @@ describe('sessionEvents RPC domain', () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-session-events-'))
     paths.sessionsDir = path.join(root, 'sessions')
     fs.mkdirSync(paths.sessionsDir, { recursive: true })
+    fixture = installSessionLayerForTest()
     writeLog()
   })
 
@@ -148,6 +151,7 @@ describe('sessionEvents RPC domain', () => {
     unregister = undefined
     const { resetRpcRegistryForTests } = await loadDomain()
     resetRpcRegistryForTests()
+    await fixture.dispose()
     fs.rmSync(root, { recursive: true, force: true })
   })
 
@@ -319,4 +323,9 @@ describe('sessionEvents RPC domain', () => {
       payload: { sessionId: '../outside', run: 'r' },
     })).toEqual({ ok: true, data: { response: null } })
   })
+})
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

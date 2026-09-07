@@ -66,7 +66,7 @@ import {
   reportPluginRuntimeFailure,
   reportPluginRuntimeSuccess,
 } from '@onething/runtime/plugins/health'
-import { getUsageLedger } from '../usage/index.js'
+import { captureCredentialStrategyScope, type CredentialStrategyScope } from './credential-strategy-lifetime.js'
 
 /**
  * 用量统计窗口。
@@ -80,6 +80,8 @@ export const PLUGIN_CREDENTIAL_USAGE_WINDOW_MS = 24 * 60 * 60_000
 const USAGE_CACHE_TTL_MS = 60_000
 
 interface RegisteredCredentialStrategy {
+  scope: CredentialStrategyScope
+  cancellation: AbortController
   pluginId: string
   policy: string
   name: string
@@ -98,6 +100,7 @@ const strategies = new Map<string, RegisteredCredentialStrategy>()
  * 它变成需要迁移、需要并发保护的状态,而重启后多走一次内置 failover 的代价近乎为零。
  */
 interface CredentialStrategyDecision {
+  strategy: RegisteredCredentialStrategy
   policy: string
   entryId: string
   /** 算这条裁决时的候选集指纹 —— 池变了就作废(否则会指向一条已删的 entry)。 */
@@ -108,7 +111,7 @@ interface CredentialStrategyDecision {
 const decisions = new Map<string, CredentialStrategyDecision>()
 
 /** 正在跑的异步刷新(去重:同一 key 不并发问两次)。 */
-const inflight = new Map<string, Promise<void>>()
+const inflight = new Map<string, { strategy: RegisteredCredentialStrategy; promise: Promise<void> }>()
 
 /** 每条 entry 最近一次的失败分类 —— 喂给 ctx.entries[].lastErrorKind。 */
 const lastFailureByEntry = new Map<string, PluginCredentialFailureKind>()
@@ -118,7 +121,7 @@ interface UsageCacheSlot {
   byCredential: Record<string, PluginCredentialUsage>
 }
 
-const usageCache = new Map<string, UsageCacheSlot>()
+const usageCache = new Map<CredentialStrategyScope, Map<string, UsageCacheSlot>>()
 
 function decisionKey(spaceId: string, providerId: string): string {
   return `${spaceId}:${providerId}`
@@ -139,11 +142,15 @@ function fingerprintOf(candidates: readonly { id: string }[]): string {
 export function registerPluginCredentialStrategy(
   pluginId: string,
   registration: CorePluginCredentialStrategyRegistration,
+  scope: CredentialStrategyScope = captureCredentialStrategyScope(),
 ): () => void {
+  if (scope.closed) throw new Error('Credential strategy is closed')
   const name = String(registration?.name ?? '').trim()
   if (!name) return () => {}
   const policy = `plugin:${pluginId}:${name}`
   const entry: RegisteredCredentialStrategy = {
+    scope,
+    cancellation: new AbortController(),
     pluginId,
     policy,
     name,
@@ -151,13 +158,15 @@ export function registerPluginCredentialStrategy(
     ...(registration.description?.trim() ? { description: registration.description.trim() } : {}),
     registration,
   }
+  strategies.get(policy)?.cancellation.abort(new Error('Credential strategy replaced'))
   strategies.set(policy, entry)
   let released = false
-  return () => {
+  const unregister = () => {
     if (released) return
     released = true
+    entry.cancellation.abort(new Error('Credential strategy unregistered'))
     // 只删自己那一份:竞态窗口里可能有新登记覆盖了它,别把别人的删了。
-    if (strategies.get(policy)?.registration === registration) {
+    if (strategies.get(policy) === entry) {
       strategies.delete(policy)
       // 裁决跟着策略走 —— 留着一条属于已撤下策略的裁决,下一次选择就会拿它
       // 当"策略还在生效"用。
@@ -165,7 +174,11 @@ export function registerPluginCredentialStrategy(
         if (decision.policy === policy) decisions.delete(key)
       }
     }
+    for (const [key, work] of inflight) if (work.strategy === entry) inflight.delete(key)
+    usageCache.delete(scope)
   }
+  scope.own(unregister)
+  return unregister
 }
 
 export interface PluginCredentialStrategyInfo {
@@ -201,7 +214,16 @@ export function isPluginCredentialStrategyAvailable(policy: string): boolean {
 
 /** 测试专用:清空注册表与全部缓存。 */
 export function resetPluginCredentialStrategiesForTests(): void {
+  for (const strategy of strategies.values()) strategy.scope.quiesce()
   strategies.clear()
+  decisions.clear()
+  inflight.clear()
+  lastFailureByEntry.clear()
+  usageCache.clear()
+}
+
+/** Called only after the Backend's real strategy work has drained. */
+export function disposeCredentialStrategyState(): void {
   decisions.clear()
   inflight.clear()
   lastFailureByEntry.clear()
@@ -219,16 +241,19 @@ export function notePluginCredentialFailure(
 /* ── 用量聚合(账本按 credentialId 归因)─────────────────────────────────── */
 
 async function loadUsage(
+  scope: CredentialStrategyScope,
   spaceId: string,
   providerId: string,
   now: number,
 ): Promise<Record<string, PluginCredentialUsage>> {
   const key = decisionKey(spaceId, providerId)
-  const cached = usageCache.get(key)
+  const cache = usageCache.get(scope) ?? new Map<string, UsageCacheSlot>()
+  usageCache.set(scope, cache)
+  const cached = cache.get(key)
   if (cached && now - cached.at < USAGE_CACHE_TTL_MS) return cached.byCredential
   let records: readonly OnethingUsageLedgerRecord[] = []
   try {
-    records = await getUsageLedger().readRecordsInRange(
+    records = await scope.captureLedger().readRecordsInRange(
       now - PLUGIN_CREDENTIAL_USAGE_WINDOW_MS,
       now + 1,
     )
@@ -237,7 +262,7 @@ async function loadUsage(
     records = []
   }
   const byCredential = computeOnethingCredentialUsage(records, { providerId, workspaceId: spaceId })
-  usageCache.set(key, { at: now, byCredential })
+  if (!scope.closed) cache.set(key, { at: now, byCredential })
   return byCredential
 }
 
@@ -259,19 +284,17 @@ function buildEntryViews(
 
 /* ── 异步侧:算一条裁决 ─────────────────────────────────────────────────── */
 
-function runWithTimeout<T>(run: () => T | Promise<T>, timeoutMs: number): Promise<T> {
+function runWithTimeout<T>(work: Promise<T>, signal: AbortSignal, request: AbortController, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`credential strategy timed out after ${timeoutMs}ms`)),
-      timeoutMs,
-    )
-    timer.unref?.()
-    Promise.resolve()
-      .then(run)
-      .then(
-        value => { clearTimeout(timer); resolve(value) },
-        error => { clearTimeout(timer); reject(error) },
-      )
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cleanup = () => { clearTimeout(timer); signal.removeEventListener('abort', aborted) }
+    const aborted = () => { cleanup(); reject(signal.reason ?? new Error('Credential strategy cancelled')) }
+    signal.addEventListener('abort', aborted, { once: true })
+    if (signal.aborted) aborted()
+    else timer = setTimeout(() => request.abort(new Error(`credential strategy timed out after ${timeoutMs}ms`)), timeoutMs)
+    timer?.unref?.()
+    // The timeout settles only this response. The scope still owns raw work.
+    void work.then(value => { cleanup(); resolve(value) }, error => { cleanup(); reject(error) })
   })
 }
 
@@ -296,7 +319,8 @@ export async function refreshCredentialStrategyDecision(
   input: RefreshCredentialStrategyInput,
 ): Promise<string | undefined> {
   const strategy = strategies.get(input.policy)
-  if (!strategy || input.candidates.length === 0) return undefined
+  if (!strategy || strategy.scope.closed || input.candidates.length === 0) return undefined
+  const active = () => !strategy.scope.closed && !strategy.cancellation.signal.aborted && strategies.get(input.policy) === strategy
   const surface = pluginCredentialStrategySurface(input.policy)
   // 降级的策略:半开满一个间隔才放行一次探测,否则**连 handler 都不调** ——
   // 每一次起流白等一个超时预算,是这条路径上最贵的浪费。
@@ -305,50 +329,60 @@ export async function refreshCredentialStrategyDecision(
     return undefined
   }
 
-  const now = input.now ?? Date.now()
-  const usage = await loadUsage(input.spaceId, input.providerId, now)
-  const entries = buildEntryViews(input.candidates, usage)
-  const ctx: CorePluginCredentialStrategyContext = {
-    providerId: input.providerId,
-    spaceId: input.spaceId,
-    entries,
-    attempt: input.attempt ?? 1,
-    ...(input.lastFailure ? { lastFailure: input.lastFailure } : {}),
-    usageWindowMs: PLUGIN_CREDENTIAL_USAGE_WINDOW_MS,
-    now,
-  }
-
-  const scope = pluginScope.credentialStrategy(input.policy)
-  try {
-    const choice = await runWithTimeout(
-      () => strategy.registration.select(ctx),
-      input.timeoutMs ?? PLUGIN_CREDENTIAL_STRATEGY_TIMEOUT_MS,
-    )
-    // 「返回非法 id」与「返回冷却中的 id」在这里同归一路:候选集里本来就没有
-    // 冷却中的条目,所以一条判据覆盖两种错法。
-    if (!isPluginCredentialChoiceValid(choice, entries)) {
-      reportPluginRuntimeFailure(
-        strategy.pluginId,
-        scope,
-        new Error(
-          `credential strategy "${input.policy}" returned an id that is not among the `
-          + `${entries.length} available credential(s): ${JSON.stringify(choice)}`,
-        ),
-      )
+  return strategy.scope.run(async () => {
+    if (!active()) return undefined
+    const now = input.now ?? Date.now()
+    const usage = await loadUsage(strategy.scope, input.spaceId, input.providerId, now)
+    if (!active()) return undefined
+    const entries = buildEntryViews(input.candidates, usage)
+    const request = new AbortController()
+    const signal = AbortSignal.any([strategy.scope.signal, strategy.cancellation.signal, request.signal])
+    const ctx: CorePluginCredentialStrategyContext = {
+      providerId: input.providerId,
+      spaceId: input.spaceId,
+      entries,
+      attempt: input.attempt ?? 1,
+      ...(input.lastFailure ? { lastFailure: input.lastFailure } : {}),
+      usageWindowMs: PLUGIN_CREDENTIAL_USAGE_WINDOW_MS,
+      now,
+      signal,
+    }
+    const scope = pluginScope.credentialStrategy(input.policy)
+    try {
+      const raw = strategy.scope.run(() => {
+        signal.throwIfAborted()
+        if (!active()) throw new Error('Credential strategy replaced')
+        return strategy.registration.select(ctx)
+      })
+      const choice = await runWithTimeout(raw, signal, request, input.timeoutMs ?? PLUGIN_CREDENTIAL_STRATEGY_TIMEOUT_MS)
+      if (!active() || signal.aborted) return undefined
+      // 「返回非法 id」与「返回冷却中的 id」在这里同归一路:候选集里本来就没有
+      // 冷却中的条目,所以一条判据覆盖两种错法。
+      if (!isPluginCredentialChoiceValid(choice, entries)) {
+        reportPluginRuntimeFailure(
+          strategy.pluginId,
+          scope,
+          new Error(
+            `credential strategy "${input.policy}" returned an id that is not among the `
+            + `${entries.length} available credential(s): ${JSON.stringify(choice)}`,
+          ),
+        )
+        return undefined
+      }
+      reportPluginRuntimeSuccess(strategy.pluginId, scope)
+      decisions.set(decisionKey(input.spaceId, input.providerId), {
+        strategy,
+        policy: input.policy,
+        entryId: choice,
+        fingerprint: fingerprintOf(input.candidates),
+        at: now,
+      })
+      return choice
+    } catch (error) {
+      if (active()) reportPluginRuntimeFailure(strategy.pluginId, scope, error)
       return undefined
     }
-    reportPluginRuntimeSuccess(strategy.pluginId, scope)
-    decisions.set(decisionKey(input.spaceId, input.providerId), {
-      policy: input.policy,
-      entryId: choice,
-      fingerprint: fingerprintOf(input.candidates),
-      at: now,
-    })
-    return choice
-  } catch (error) {
-    reportPluginRuntimeFailure(strategy.pluginId, scope, error)
-    return undefined
-  }
+  }).catch(() => undefined)
 }
 
 /* ── 同步侧:分叉点的裁决口 ─────────────────────────────────────────────── */
@@ -375,13 +409,14 @@ function decide(input: DecideInput): string | undefined {
   const fingerprint = fingerprintOf(input.candidates)
   // 池变了(加/删/排序)= 旧裁决作废:它可能指向一条已经被删掉的 entry。
   const usable = decision
+    && decision.strategy === strategy
     && decision.policy === input.policy
     && decision.fingerprint === fingerprint
     ? decision.entryId
     : undefined
   if (!usable) decisions.delete(key)
 
-  if (!inflight.has(key)) {
+  if (inflight.get(key)?.strategy !== strategy) {
     const task = refreshCredentialStrategyDecision({
       policy: input.policy,
       spaceId: input.spaceId,
@@ -392,8 +427,8 @@ function decide(input: DecideInput): string | undefined {
     })
       .then(() => {})
       .catch(() => {})
-      .finally(() => { inflight.delete(key) })
-    inflight.set(key, task)
+      .finally(() => { if (inflight.get(key)?.promise === task) inflight.delete(key) })
+    inflight.set(key, { strategy, promise: task })
   }
   return usable
 }
@@ -419,5 +454,5 @@ export function resetAppPluginCredentialStrategyHostForTests(): void {
 
 /** 测试专用:等所有在途刷新落地(同步裁决口是 fire-and-forget 的)。 */
 export async function flushPluginCredentialStrategyRefreshForTests(): Promise<void> {
-  while (inflight.size > 0) await Promise.all([...inflight.values()])
+  while (inflight.size > 0) await Promise.all([...inflight.values()].map(work => work.promise))
 }

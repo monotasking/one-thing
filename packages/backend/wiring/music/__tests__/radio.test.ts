@@ -76,7 +76,7 @@ vi.mock('../service.js', async () => {
 // music/__tests__/ 下,radio.ts 的 '@onething/runtime/storage/index' 对本文件是 '@onething/runtime/storage/index'。
 // 曾因少写一层目录,paths mock 静默失效、getOnethingStorePath 走真实实现,7 个夹具把
 // ~/.onething/music/ 的真实电台状态反复清空(2026-07-17 事故),而测试自读自写全绿。
-vi.mock('../dj-voice.js', () => ({ speakDjPatter: vi.fn().mockResolvedValue(undefined) }))
+vi.mock('../dj-voice.js', () => ({ speakDjPatter: vi.fn().mockResolvedValue(undefined), prefetchDjPatter: vi.fn() }))
 vi.mock('@onething/runtime/agents/store-bound.wiring', () => ({
   agentExists: () => true,
   createAgent: vi.fn(),
@@ -97,8 +97,15 @@ const entry = (n: number) => ({ encryptedId: HEX + n, originalId: String(n), tit
 
 async function loadRadio() {
   const radio = await import('../radio.js')
-  return radio
+  activeRadio ??= radio.createRadioScope({
+    storePath: mocks.dir,
+    service: { ...await import('../service.js'), runner: (await import('@onething/runtime/music/process-runner')).createElectronMusicProcessRunner() },
+    djVoice: await import('../dj-voice.js'),
+  } as unknown as Parameters<typeof radio.createRadioScope>[0])
+  return { ...radio, ...activeRadio }
 }
+
+let activeRadio: ReturnType<typeof import('../radio.js')['createRadioScope']> | undefined
 
 describe('main radio playback (legacy starter)', () => {
   beforeEach(() => {
@@ -112,7 +119,9 @@ describe('main radio playback (legacy starter)', () => {
     mocks.settings = { music: {} }
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await activeRadio?.drain()
+    activeRadio = undefined
     rmSync(mocks.dir, { recursive: true, force: true })
     vi.useRealTimers()
   })

@@ -10,7 +10,9 @@
  * 八个方法都是同步的 store 调用,这里逐个包成 `{ success, ... }` ——
  * 那层信封是渲染侧既有的消费形状,不是传输层能替它决定的东西。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { sessionAccess } from '../../session/access.js'
 import type { ChannelIdentityRoutes } from '@shared/ipc/channel-identity.js'
 import {
   getChannelIdentityService,
@@ -22,7 +24,7 @@ function failure(error: unknown): { success: false; error: string } {
   return { success: false, error: error instanceof Error ? error.message : String(error) }
 }
 
-export const channelIdentityRpcHandlers: RouteHandlers<ChannelIdentityRoutes> = {
+export const channelIdentityRpcHandlers: RpcRouteHandlers<ChannelIdentityRoutes> = {
   async listProfiles() {
     try {
       return { success: true, profiles: getChannelIdentityStore().listProfiles() }
@@ -79,12 +81,13 @@ export const channelIdentityRpcHandlers: RouteHandlers<ChannelIdentityRoutes> = 
       return failure(error)
     }
   },
-  async listDeliveries() {
+  async listDeliveries(_request, context = DESKTOP_RPC_CONTEXT) {
     try {
-      return { success: true, deliveries: getChannelIdentityStore().listDeliveries() }
+      const deliveries = getChannelIdentityStore().listDeliveries()
+      const visible = new Set(sessionAccess.filterIds(context, deliveries.map(item => item.sessionId)))
+      return { success: true, deliveries: deliveries.filter(item => visible.has(item.sessionId)) }
     } catch (error) {
       return failure(error)
     }
   },
 }
-

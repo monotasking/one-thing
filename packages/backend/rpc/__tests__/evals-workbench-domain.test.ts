@@ -15,6 +15,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcResponse } from '@shared/ipc/rpc.js'
 import { evalsWorkbenchRouter } from '@shared/ipc/evals-workbench.js'
+import { EvalsTaskOwner, configureEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
 
 const incidentDirs = vi.hoisted(() => ({ root: '' }))
 const runtime = vi.hoisted(() => ({
@@ -51,6 +52,8 @@ const credentials = vi.hoisted(() => ({
 const settings = vi.hoisted(() => ({ getSettings: vi.fn(() => ({} as Record<string, unknown>)) }))
 
 vi.mock('@onething/runtime', () => runtime)
+// 授权判据(`requireIncidentAccess`)直取子路径(工单 4 C2),替身跟着搬。
+vi.mock('@onething/runtime/evals/incident', () => ({ readIncident: runtime.readIncident }))
 vi.mock('../../store.js', () => ({ getSettings: settings.getSettings }))
 vi.mock('../../stores/settings.js', () => settings)
 vi.mock('../../wiring/evals/provider-adapter.js', () => credentials)
@@ -65,6 +68,8 @@ describe('evalsWorkbench RPC domain', () => {
   let configureEvalsHost: (typeof import('../../wiring/evals/host-ports.js'))['configureEvalsHost']
   let dispose: (() => void) | undefined
   let tmpDir: string
+  let tasks: EvalsTaskOwner
+  let unbindTasks: () => void
 
   beforeEach(async () => {
     const [registry, domain, ports] = await Promise.all([
@@ -75,7 +80,8 @@ describe('evalsWorkbench RPC domain', () => {
     dispatchRpc = registry.dispatchRpc
     configureEvalsHost = ports.configureEvalsHost
     registry.resetRpcRegistryForTests()
-    domain.resetEvalsWorkbenchOpsForTests()
+    tasks = new EvalsTaskOwner()
+    unbindTasks = configureEvalsTaskOwner(tasks)
     dispose = registry.registerRouterHandlers(evalsWorkbenchRouter, domain.evalsWorkbenchRpcHandlers)
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evals-wb-'))
     incidentDirs.root = tmpDir
@@ -84,9 +90,12 @@ describe('evalsWorkbench RPC domain', () => {
     settings.getSettings.mockReturnValue({})
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     dispose?.()
     dispose = undefined
+    tasks.quiesce()
+    await tasks.drain()
+    unbindTasks()
     configureEvalsHost({})
     fs.rmSync(tmpDir, { recursive: true, force: true })
     vi.clearAllMocks()
@@ -141,6 +150,7 @@ describe('evalsWorkbench RPC domain', () => {
     const first = unwrap(await call('replayStart', { incidentId: 'inc-1', runs: 1 }))
     expect(first.success).toBe(true)
     expect(String(first.runId)).toMatch(/^replay-/)
+    await vi.waitFor(() => expect(typeof release).toBe('function'))
 
     expect(unwrap(await call('replayStart', { incidentId: 'inc-1', runs: 1 }))).toEqual({
       success: false,
@@ -148,6 +158,9 @@ describe('evalsWorkbench RPC domain', () => {
     })
 
     expect(unwrap(await call('replayCancel', { incidentId: 'inc-1' }))).toEqual({ success: true })
+    expect(unwrap(await call('replayStart', { incidentId: 'inc-1', runs: 1 }))).toEqual({
+      success: false, error: 'An operation is already running for this incident',
+    })
     release?.()
   })
 
@@ -181,4 +194,9 @@ describe('evalsWorkbench RPC domain', () => {
       unwrap(await call('incidentReadFile', { incidentId: 'inc-1', relativePath: '../escape.txt' })),
     ).toEqual({ success: false, error: 'Path escapes incident bundle' })
   })
+})
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

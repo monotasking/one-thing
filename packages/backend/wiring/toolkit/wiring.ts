@@ -39,6 +39,9 @@ import { refreshMcpToolsInCatalog, syncMcpToolsIntoCatalog } from '@onething/run
 import { runPluginToolCallIntercept } from '@onething/runtime/plugins/tool-call-intercept-bound'
 import { runPluginToolResultIntercept } from '@onething/runtime/plugins/tool-result-intercept-bound'
 import { getLogger } from '../logging/index.js'
+import { getCurrentBackend } from '../../current.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import type { ToolExecutionControl } from './executions.js'
 
 const log = getLogger('toolkit')
 
@@ -210,6 +213,7 @@ function withSideEffectGate(
 }
 
 export interface ToolkitDirectContext {
+  executionContext?: unknown
   sessionId: string
   messageId: string
   toolCallId?: string
@@ -259,9 +263,37 @@ export async function runToolkitToolDirectly(
   }
   if (!tool) return undefined
 
+  const toolCallId = context.toolCallId ?? mintCallId()
+  const executionContext = fixedExecutionContext(context.executionContext)
+  return getCurrentBackend('toolExecutions').toolExecutions.run({
+    sessionId: context.sessionId, toolCallId, executionContext, signal: context.abortSignal,
+  }, execution => runPreparedTool(tool!, catalog, toolName, args, {
+    ...context, toolCallId, executionContext,
+  }, execution))
+}
+
+async function runPreparedTool(
+  tool: import('@onething/core/toolkit').Tool,
+  catalog: Catalog,
+  toolName: string,
+  args: JsonObject,
+  context: ToolkitDirectContext,
+  execution: ToolExecutionControl,
+): Promise<OnethingToolExecutionResult> {
+  const projector = new IpcProjector({
+    onMetadata: context.onMetadata,
+    onPartialResult: context.onPartialResult,
+    onStepStart: context.onStepStart,
+    onStepComplete: context.onStepComplete,
+    onProgress: context.onProgress,
+  })
   try {
-    await catalog.ensurePrepared(tool.spec.id)
+    execution.assertActive()
+    await execution.track(catalog.ensurePrepared(tool.spec.id))
+    // Preparation may await external IO; authorize again before Runner reads a session snapshot.
+    execution.assertActive()
   } catch (error) {
+    if (execution.signal.aborted) return projector.toExecutionResult(OutcomeOps.aborted())
     /*
      * 懒初始化失败(MCP 连不上)= 这次调用跑不了。R4b 之前这里返回 `undefined`
      * 让旧路自己报错;旧路没了之后返回 `undefined` 会被读成"没有这个工具",那是
@@ -284,18 +316,12 @@ export async function runToolkitToolDirectly(
     // 这里同样原样透传:补一个默认主体会把"不知道是谁"变成"是某个人",而权限
     // 授予是按主体记的。
     principal: context.principal as Principal,
+    executionContext: context.executionContext,
     cwd: context.workingDirectory,
     workspaceRoot: context.workingDirectory,
     ...(context.workingDirectoryRoots ? { workingDirectoryRoots: context.workingDirectoryRoots } : {}),
   }
 
-  const projector = new IpcProjector({
-    onMetadata: context.onMetadata,
-    onPartialResult: context.onPartialResult,
-    onStepStart: context.onStepStart,
-    onStepComplete: context.onStepComplete,
-    onProgress: context.onProgress,
-  })
   const interceptor = new PluginInterceptor(projector, args)
   const isMcp = tool.spec.effects.includes('mcp')
   const authorizer = withSideEffectGate(
@@ -307,10 +333,41 @@ export async function runToolkitToolDirectly(
   const runner = createAppToolRunner({
     observer: projector,
     audit: toolkitAuditSink,
-    interceptor,
-    authorizer,
+    interceptor: {
+      beforePlan: invocation => execution.track(Promise.resolve(interceptor.beforePlan(invocation))),
+      afterApply: async (outcome, invocation) => {
+        try {
+          const projected = await execution.track(Promise.resolve(interceptor.afterApply(outcome, invocation)))
+          // Runner disposes its scope before result interception. The Backend
+          // still owns this finalization, so a targeted stop must remain aborted.
+          return execution.signal.aborted
+            ? outcome.kind === 'aborted' ? outcome : OutcomeOps.aborted()
+            : projected
+        } catch (error) {
+          if (execution.signal.aborted) return outcome.kind === 'aborted' ? outcome : OutcomeOps.aborted()
+          throw error
+        }
+      },
+    },
+    authorizer: {
+      decide: (...args) => execution.track(Promise.resolve(authorizer.decide(...args))),
+    },
   })
 
-  const outcome = await runner.run(tool, invocation, context.abortSignal)
+  const trackedTool: import('@onething/core/toolkit').Tool = {
+    id: tool.id,
+    spec: tool.spec,
+    prepare: env => tool.prepare(env),
+    visibleIn: scene => tool.visibleIn(scene),
+    plan: (input, ctx) => {
+      execution.assertActive()
+      return execution.track(tool.plan(input, ctx))
+    },
+    apply: (intent, ctx) => {
+      execution.assertActive()
+      return execution.track(tool.apply(intent, ctx))
+    },
+  }
+  const outcome = await runner.run(trackedTool, invocation, execution.signal)
   return projector.toExecutionResult(outcome)
 }

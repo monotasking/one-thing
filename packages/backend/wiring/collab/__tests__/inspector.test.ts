@@ -5,7 +5,7 @@
  * 广播按秒节流但**不丢最后一帧**——最后那一次通常正是"停下来了"这种最该被看见
  * 的状态,丢了界面就永远停在倒数第二帧。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 
 interface FakeSession {
@@ -76,6 +76,9 @@ const {
   setCollabTypingState,
   shutdownCollabInspector,
   configureCollabRoomSnapshotSource,
+  configureCollabInspector,
+  createCollabInspector,
+  getCollabInspector,
   COLLAB_LOG_LIMIT,
 } = await import('../inspector.js')
 const { emitCollabRoomUpdated } = await import('../room-runtime.js')
@@ -136,15 +139,22 @@ function events(): Array<Record<string, unknown>> {
     .map(entry => entry.event)
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.useRealTimers()
   shutdownCollabInspector()
+  const { getSession } = await import('../../../store.js')
+  const { getEventBus } = await import('../../../events/index.js')
+  configureCollabInspector(createCollabInspector({
+    getSession, emit: getEventBus().emit, isActive: () => true, onError: error => { throw error },
+  }))
   v3Snapshot = null
   configureCollabRoomSnapshotSource(roomId => (roomId === ROOM ? v3Snapshot : null) as never)
   mocks.sessions.clear()
   mocks.emitted.length = 0
   seed()
 })
+
+afterEach(async () => { await getCollabInspector()?.drain(); vi.useRealTimers() })
 
 describe('快照', () => {
   it('不是房间会话 → 没有状态可谈', () => {

@@ -40,6 +40,8 @@ import {
 import type { JsonObject } from '@shared/json.js'
 import type { HostMcpHostTool } from '@onething/runtime/external-agents'
 import { getSession } from '../../stores/sessions.js'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
 import { resolveAgentProfileForSession } from '../agents/profile.js'
 import { collabVenueOf } from '../collab/venue.js'
 import { findCollabV3Turn } from '@onething/runtime/collab/actors/turn-context.wiring'
@@ -79,6 +81,7 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
       const result = await runToolkitToolDirectly(tool.spec.id, args as unknown as JsonObject, {
         sessionId: ctx.sessionId,
         messageId: ctx.messageId,
+        executionContext: ctx.executionContext,
         ...(ctx.workingDirectory ? { workingDirectory: ctx.workingDirectory } : {}),
         ...(ctx.abortSignal ? { abortSignal: ctx.abortSignal } : {}),
       })
@@ -100,6 +103,8 @@ function toolkitHostTool(toolId: string): HostMcpHostTool | undefined {
  */
 export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (request) => {
   const execSessionId = request.localSessionId
+  const executionContext = fixedExecutionContext(request.executionContext)
+  sessionAccess.resolveOptional(executionContext, execSessionId, 'read')
   const session = getSession(execSessionId)
   if (!session) return undefined
 
@@ -142,6 +147,7 @@ export const resolveClaudeCodeHostToolSurface: HostMcpSurfaceResolver = async (r
     ?? execSessionId
   const release = bindHostToolContext({
     agentId,
+    executionContext,
     roomSessionId,
     execSessionId,
     ...(turn?.leaseId ? { leaseId: turn.leaseId } : {}),

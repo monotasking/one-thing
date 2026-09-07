@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
+    id === 'session-1' ? {} : id === 'foreign-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' } : undefined,
+  }) }
+})
+
 const mocks = {
   settings: null as any,
   commands: [] as any[],
@@ -111,8 +118,9 @@ describe('voice service TTS', () => {
       await handlers.onChunk?.(new Uint8Array([1, 2, 3]))
       return { mimeType: 'audio/mpeg' }
     })
-    const { getVoiceServiceSafe } = await import('../service.js')
-    getVoiceServiceSafe()?.shutdown()
+    const { getVoiceServiceSafe, createVoiceService, configureVoiceService } = await import('../service.js')
+    await getVoiceServiceSafe()?.shutdown()
+    configureVoiceService(createVoiceService())
     mocks.commands = []
     mocks.eventHandler = null
     mocks.streamHandler = null
@@ -120,6 +128,19 @@ describe('voice service TTS', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('rejects a native transcript or wake callback targeting another owner before playback or publication', async () => {
+    const { getVoiceService } = await import('../service.js')
+    const service = getVoiceService()
+    const before = service.getState()
+    await expect(service.submitTranscript({ sessionId: 'foreign-session', text: 'secret', asrProvider: 'openrouter-transcribe', asrModel: 'whisper' }))
+      .resolves.toMatchObject({ success: false, error: 'Session not found' })
+    service.handleRuntimeEvent({ type: 'wake-detected', sessionId: 'foreign-session' })
+    expect(service.getState()).toEqual(before)
+    expect(mocks.commands).toEqual([])
+    expect(mocks.eventHandler).toBeNull()
+    expect(mocks.streamHandler).toBeNull()
   })
 
   it('sends system TTS text to the voice runtime', async () => {

@@ -20,6 +20,10 @@ const permission = vi.hoisted(() => ({
 }))
 
 vi.mock('../../wiring/permission/index.js', () => permission)
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
+})
 
 const ACTIONABLE = {
   id: 'p1',

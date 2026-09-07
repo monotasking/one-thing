@@ -22,9 +22,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { sessionAccess } from '../../../../session/access.js'
 import { bindSessionFacadeMock } from '../../../../session/testing/facade-mock.js'
 
 interface FakeSession {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   name: string
   kind?: string
@@ -127,6 +130,13 @@ vi.mock('../../../../events/index.js', () => ({
   }),
 }))
 
+vi.mock('../../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
+  }) }
+})
+
 vi.mock('../../../../store.js', () => ({
   getSettings: () => ({}),
   getSession: (id: string) => mocks.sessions.get(id),
@@ -135,7 +145,7 @@ vi.mock('../../../../store.js', () => ({
     (mocks.sessions.get(sessionId) as FakeSession | undefined)?.messages.push(message)
   },
   createSession: (id: string, name: string) => createFake(id, name),
-  createSessionWithoutFocus: (id: string, name: string) => createFake(id, name),
+  createSessionWithoutFocus: (id: string, name: string, options?: { initialOwner?: { userId: string; workspaceId: string } }) => Object.assign(createFake(id, name), { ownerUserId: options?.initialOwner?.userId, ownerWorkspaceId: options?.initialOwner?.workspaceId }),
   updateSessionCollab: (id: string, patch: Record<string, unknown>) => {
     const session = mocks.sessions.get(id) as FakeSession | undefined
     if (!session) return false
@@ -228,7 +238,7 @@ function seedRoom(members: string[] = ['fe', 'pm']): FakeSession {
 
 /** 起一个只有心智端口的运行时(不需要手的用例走这条)。 */
 async function bootRuntime(): Promise<void> {
-  await initializeCollabV3Runtime({
+  await initializeCollabV3Runtime({ access: sessionAccess,
     ports: {
       mind: createCollabScriptedMindPort([]),
       judge: createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }]),
@@ -258,8 +268,14 @@ function roomEvents(type: string): Array<Record<string, unknown>> {
   return mocks.emitted.filter(entry => entry.event.type === type).map(entry => entry.event)
 }
 
+const { createCollabDigestStore, configureCollabDigestStore } = await import('@onething/runtime/collab/digest-store')
+let digestStore: ReturnType<typeof createCollabDigestStore>
+let releaseDigestStore: () => void
+
 beforeEach(() => {
   mocks.storePath = fs.mkdtempSync(path.join(os.tmpdir(), 'collab-v3-roomcfg-'))
+  digestStore = createCollabDigestStore({ storePath: mocks.storePath })
+  releaseDigestStore = configureCollabDigestStore(digestStore)
   mocks.sessions.clear()
   mocks.emitted.length = 0
   mocks.deleteListeners.length = 0
@@ -269,6 +285,8 @@ beforeEach(() => {
 
 afterEach(async () => {
   await shutdownCollabV3Runtime()
+  digestStore.quiesce()
+  releaseDigestStore()
   await new Promise(resolve => setTimeout(resolve, 0))
   fs.rmSync(mocks.storePath, { recursive: true, force: true })
 })
@@ -276,6 +294,32 @@ afterEach(async () => {
 /* ── ① 清空历史 ───────────────────────────────────────────────────────── */
 
 describe('清空历史:六处一起归零', () => {
+  it.each(['member execution', 'included DM'] as const)('refuses a foreign %s before aborting or clearing any target', async kind => {
+    const room = seedRoom()
+    room.messages.push({ id: 'keep', role: 'user', content: 'keep', timestamp: 1 })
+    await bootRuntime()
+    const foreign = createFake(kind === 'member execution'
+      ? collabAgentSessionId('fe', ROOM)!
+      : 'foreign-dm', 'keep')
+    foreign.ownerUserId = 'bob'
+    foreign.messages.push({ id: 'foreign-keep', role: 'user', content: 'keep', timestamp: 1 })
+    if (kind === 'included DM') {
+      foreign.kind = 'room'
+      foreign.room = { dm: true, memberAgentIds: ['fe', 'pm'] }
+    }
+    await applyBoardAction(ROOM, { action: 'create', title: CARD_TITLE }, { type: 'user' })
+    mocks.aborted.length = 0
+    mocks.cleared.length = 0
+    const emittedCount = mocks.emitted.length
+    await expect(clearCollabRoomHistory(ROOM, { includeMemberDms: true })).rejects.toThrow('Session not found')
+    expect(mocks.aborted).toEqual([])
+    expect(mocks.cleared).toEqual([])
+    expect(mocks.emitted.length).toBe(emittedCount)
+    expect(room.messages).toHaveLength(1)
+    expect(foreign.messages).toHaveLength(1)
+    expect(loadCollabBoard(ROOM).tasks).toHaveLength(1)
+  })
+
   it('房间转录、成员执行会话、看板、房账水位一起清,并各播一条 messages:replaced', async () => {
     seedRoom()
     await bootRuntime()
@@ -386,7 +430,7 @@ describe('卡级停止:账在子清单里(D6-b 缺口①)', () => {
   async function startHeldWorker(): Promise<{ cardId: string; worker: ReturnType<typeof createCollabScriptedWorkerPort> }> {
     const worker = createCollabScriptedWorkerPort([])
     worker.hold()
-    await initializeCollabV3Runtime({
+    await initializeCollabV3Runtime({ access: sessionAccess,
       ports: {
         mind: createCollabScriptedMindPort([]),
         judge: createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }]),
@@ -551,7 +595,7 @@ describe('总闸与预算', () => {
     seedRoom()
     const worker = createCollabScriptedWorkerPort([])
     worker.hold()
-    await initializeCollabV3Runtime({
+    await initializeCollabV3Runtime({ access: sessionAccess,
       ports: {
         mind: createCollabScriptedMindPort([]),
         judge: createCollabScriptedRefereeJudgePort([{ roomId: ROOM, grants: [] }]),

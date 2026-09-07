@@ -1,4 +1,28 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { installSessionLayerForTest } from '../../../../session/testing/session-layer.js';
+import { resetSessionRuns } from '../../../../session/runs.js';
+
+let storeDir: string;
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>;
+beforeEach(() => {
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stream-integration-'));
+  vi.stubEnv('ONETHING_STORE_PATH', storeDir);
+  sessionFixture = installSessionLayerForTest({ store: {
+    getSessionRaw: () => mocks.store.getSession(),
+    getSession: () => mocks.store.getSession(),
+    readSessionTranscriptFile: () => '',
+  } });
+  resetSessionRuns();
+});
+afterEach(async () => {
+  resetSessionRuns();
+  await sessionFixture.dispose();
+  vi.unstubAllEnvs();
+  fs.rmSync(storeDir, { recursive: true, force: true });
+});
 import {
 	createDefaultSettings,
 	DEFAULT_CHAT_SETTINGS,
@@ -212,6 +236,19 @@ vi.mock("../../../../events/index.js", () => ({
 vi.mock("../../../../store.js", () => ({
 	...mocks.store,
 }));
+// Metadata lookup must use the fixture that owns this stream's session too.
+// The session layer above still owns the real journal and checkpoint barrier.
+vi.mock('../../../../stores/sessions.js', () => ({
+  getSession: mocks.store.getSession,
+  resolveSessionSpaceId: () => 'default',
+}));
+vi.mock('../../../../session/commands.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../session/commands.js')>(),
+  sessionCommands: {
+    appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.store.addMessage(sessionId, message),
+    patchMessage: vi.fn(() => true),
+  },
+}));
 
 vi.mock("../../../providers/model-registry.js", () => ({
 	modelSupportsImageGeneration: mocks.modelSupportsImageGeneration,
@@ -337,6 +374,35 @@ describe("agent-loop stream entry integration", () => {
 		vi.clearAllMocks();
 	});
 
+	it.each(['runTurn', 'streamTurn'] as const)('keeps the executor and controller alive until a cancelled %s settles', async mode => {
+		let entered!: () => void;
+		let release!: () => void;
+		const started = new Promise<void>(resolve => { entered = resolve; });
+		const held = new Promise<void>(resolve => { release = resolve; });
+		const abort = new AbortController();
+		const unregister = registerAgentProviderRuntime('owned-provider', () => ({
+			id: 'owned-provider',
+			capabilities: { capabilities: ['text-input', 'text-output', 'streaming'], inputModalities: ['text'], outputModalities: ['text'] },
+			...(mode === 'runTurn' ? {
+				async runTurn() { entered(); await held; return { message: { role: 'assistant' as const, content: 'late' }, finishReason: 'stop' as const }; },
+			} : {
+				async *streamTurn(request) { entered(); await held; yield { type: 'finish' as const, turn: request.turn, finishReason: 'stop' as const }; },
+			}),
+		} satisfies AgentProvider));
+		let settled = false;
+		const work = executeMessageStream(params({ providerId: 'owned-provider' }), abort).then(result => { settled = true; return result; });
+		try {
+			await started;
+			abort.abort();
+			await vi.waitFor(() => expect(mocks.eventBusEmit).toHaveBeenCalledWith('s1', expect.objectContaining({ type: 'stream:aborted' })));
+			expect(settled).toBe(false);
+			expect(mocks.engine.removeController).not.toHaveBeenCalled();
+			release();
+			await work;
+			expect(mocks.engine.removeController).toHaveBeenCalledTimes(1);
+		} finally { release(); await work; unregister(); }
+	});
+
 	it("runs executeMessageStream through the real agent-loop runtime and executor for registered providers", async () => {
 		const providerRequests: RecordedAgentRequest[] = [];
 		const unregister = registerAgentProviderRuntime(
@@ -375,7 +441,7 @@ describe("agent-loop stream entry integration", () => {
 				isImageGeneration: false,
 				pausedForConfirmation: false,
 			});
-			expect(providerRequests).toHaveLength(1);
+			expect(providerRequests, JSON.stringify(mocks.store.updateMessageError.mock.calls)).toHaveLength(1);
 			expect(messageContents(providerRequests[0])).toEqual([
 				"system prompt",
 				"hello",
@@ -393,6 +459,7 @@ describe("agent-loop stream entry integration", () => {
 				type: "text-delta",
 				text: "agent says hi",
 				turnIndex: 1,
+				stamp: expect.objectContaining({ messageId: 'm1', requestIndex: 1, kind: 'text', charOffset: 0 }),
 			});
 			expect(mocks.store.updateMessageUsage).toHaveBeenCalledWith(
 				"s1",
@@ -414,7 +481,7 @@ describe("agent-loop stream entry integration", () => {
 					type: "stream:complete",
 				}),
 			);
-			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1");
+			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1", expect.any(AbortController));
 			expect(mocks.triggerRunPostResponse).toHaveBeenCalled();
 			expect(mocks.runAfterAssistantResponseHooks).toHaveBeenCalled();
 		} finally {
@@ -641,7 +708,7 @@ describe("agent-loop stream entry integration", () => {
 			expect.objectContaining({ totalTokens: 12 }),
 			expect.objectContaining({ inputTokens: 8, outputTokens: 4 }),
 		);
-		expect(mocks.engine.removeController).toHaveBeenCalledWith("s1");
+			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1", expect.any(AbortController));
 	});
 
 	it("emits aborted and skips completion when the agent-loop stream is stopped mid-turn", async () => {
@@ -706,7 +773,7 @@ describe("agent-loop stream entry integration", () => {
 			);
 			expect(mocks.triggerRunPostResponse).not.toHaveBeenCalled();
 			expect(mocks.runAfterAssistantResponseHooks).not.toHaveBeenCalled();
-			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1");
+			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1", expect.any(AbortController));
 		} finally {
 			unregister();
 		}
@@ -795,7 +862,7 @@ describe("agent-loop stream entry integration", () => {
 				"m1",
 				"skill prompt ok",
 			);
-			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1");
+			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1", expect.any(AbortController));
 		} finally {
 			unregister();
 		}
@@ -866,7 +933,7 @@ describe("agent-loop stream entry integration", () => {
 				"m1",
 				"vision ok",
 			);
-			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1");
+			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1", expect.any(AbortController));
 		} finally {
 			unregister();
 		}
@@ -929,7 +996,7 @@ describe("agent-loop stream entry integration", () => {
 				"m1",
 				"text-only response",
 			);
-			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1");
+			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1", expect.any(AbortController));
 		} finally {
 			unregister();
 		}
@@ -1082,18 +1149,20 @@ describe("agent-loop stream entry integration", () => {
 				type: "tool-input-delta",
 				toolCallId: "call_lookup",
 				argsTextDelta: '{"query":"moon"}',
+				stamp: expect.objectContaining({ messageId: 'm1', requestIndex: 1, kind: 'tool-input', charOffset: 0 }),
 			});
 			expect(mocks.streamPush).toHaveBeenCalledWith("s1", {
 				type: "text-delta",
 				text: "final with lookup",
 				turnIndex: 2,
+				stamp: expect.objectContaining({ messageId: 'm1', requestIndex: 2, kind: 'text', charOffset: 0 }),
 			});
 			expect(mocks.store.updateMessageContent).toHaveBeenCalledWith(
 				"s1",
 				"m1",
 				"final with lookup",
 			);
-			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1");
+			expect(mocks.engine.removeController).toHaveBeenCalledWith("s1", expect.any(AbortController));
 		} finally {
 			unregister();
 		}

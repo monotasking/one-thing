@@ -1,7 +1,8 @@
-import * as fs from 'fs/promises'
+import * as fs from 'node:fs/promises'
+import type { Dirent, PathLike } from 'node:fs'
 import * as os from 'os'
 import * as path from 'path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import { createDefaultVariablesFile } from '@onething/runtime/variables/schema'
 import { resetVariablesStoreForTests } from '@onething/runtime/variables/store-bound'
@@ -18,6 +19,11 @@ import {
   configureHostLocalTrust,
   resetHostLocalTrustForTests,
 } from '../../../server/host-trust.js'
+
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, readdir: vi.fn(actual.readdir) }
+})
 
 /**
  * 主线 T 批 3 之后这两个方法的唯一入口是域 handler。这里用桌面 context 薄封一层,
@@ -140,16 +146,35 @@ describe('Markdown asset service', () => {
     await fs.writeFile(notePath, '# Today')
     await fs.writeFile(attachmentPath, 'sheet')
 
-    await Promise.all(Array.from({ length: 5005 }, (_, index) =>
-      fs.writeFile(path.join(vault, `filler-${index}.txt`), 'filler'),
-    ))
+    // Exercise the old 5000-entry cutoff without thousands of unrelated writes
+    // competing with the full suite. The vault, config and target remain real.
+    const [fileEntry] = await fs.readdir(path.dirname(notePath), { withFileTypes: true })
+    const fillerEntries = Array.from({ length: 5005 }, (_, index) => new Proxy(fileEntry, {
+      get: (entry, property, receiver) => property === 'name'
+        ? `filler-${index}.txt`
+        : Reflect.get(entry, property, receiver),
+    }))
+    const { readdir: readDirectory } = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises')
+    let indexedEntryCount = 0
+    const directoryRead = vi.spyOn(fs, 'readdir').mockImplementation((async (directory: PathLike, ...options: unknown[]) => {
+      const entries = await Reflect.apply(readDirectory, fs, [directory, ...options])
+      if (directory !== vault || !(options[0] as { withFileTypes?: boolean })?.withFileTypes) return entries
+      const wideDirectory: Dirent[] = [...fillerEntries, ...entries]
+      indexedEntryCount = wideDirectory.length
+      return wideDirectory
+    }) as typeof fs.readdir)
+    let asset: MarkdownAssetResolution
+    try {
+      asset = await resolveMarkdownAsset({
+        documentPath: notePath,
+        workspaceRoot: vault,
+        rawTarget: 'IN_Think-Idea_8068857301_VQ_List.xlsx',
+      })
+    } finally {
+      directoryRead.mockRestore()
+    }
 
-    const asset = await resolveMarkdownAsset({
-      documentPath: notePath,
-      workspaceRoot: vault,
-      rawTarget: 'IN_Think-Idea_8068857301_VQ_List.xlsx',
-    })
-
+    expect(indexedEntryCount).toBeGreaterThan(5000)
     expect(asset).toMatchObject({
       kind: 'file',
       absolutePath: attachmentPath,

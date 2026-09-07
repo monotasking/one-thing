@@ -90,7 +90,7 @@ describe('usage RPC domain', () => {
 
     expect(usageModule.getUsageSummaryWithProjects).toHaveBeenCalledTimes(1)
     expect(usageModule.getUsageSummaryWithProjects).toHaveBeenCalledWith(
-      usageModule.ledger,
+      { readRecordsInRange: expect.any(Function) },
       { granularity: 'week', count: 12 },
     )
     expect(response).toEqual({ ok: true, data: SUMMARY })
@@ -102,7 +102,7 @@ describe('usage RPC domain', () => {
     await dispatchRpc({ domain: 'usage', method: 'getSummary', payload: { granularity: 'century' } })
 
     expect(usageModule.getUsageSummaryWithProjects).toHaveBeenCalledWith(
-      usageModule.ledger,
+      { readRecordsInRange: expect.any(Function) },
       { granularity: 'day', count: undefined },
     )
   })
@@ -141,4 +141,9 @@ describe('usage RPC domain', () => {
       error: { message: 'Unknown RPC method "usage.recordUsage"', code: 'UNKNOWN_METHOD' },
     })
   })
+})
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

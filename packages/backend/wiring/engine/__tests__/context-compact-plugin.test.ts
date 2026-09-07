@@ -7,6 +7,23 @@
  * (core/plugins lifecycle-compact.test.ts)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { installSessionLayerForTest } from '../../../session/testing/session-layer.js'
+
+let storeDir: string
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
+beforeEach(() => {
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'compact-test-'))
+  vi.stubEnv('ONETHING_STORE_PATH', storeDir)
+  sessionFixture = installSessionLayerForTest({ store: { getSessionRaw: () => sessionRef.current, readSessionTranscriptFile: () => '' } })
+})
+afterEach(async () => {
+  await sessionFixture.dispose()
+  vi.unstubAllEnvs()
+  fs.rmSync(storeDir, { recursive: true, force: true })
+})
 import type { ChatMessage, ChatSession } from '@shared/ipc.js'
 
 const runBeforeContextCompactHooks = vi.fn()
@@ -29,8 +46,17 @@ vi.mock('../stream/message-helpers.js', () => ({
 }))
 
 const sessionRef: { current: ChatSession } = { current: null as unknown as ChatSession }
+vi.mock('../../../session/commands.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../session/commands.js')>(),
+  sessionCommands: {
+  appendMessage: (_sessionId: string, { message }: { message: ChatMessage }) => {
+    sessionRef.current.messages.push(message)
+    return message
+  },
+} }))
 
-vi.mock('../../../session/reads.js', () => ({
+vi.mock('../../../session/reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../session/reads.js')>(),
   // 读门面(P0.2 C1):这份 mock 与下面的 store mock 是同一个假会话
   // —— compact 的取数改走 `sessionReads.listMessages` 了。
   sessionReads: {

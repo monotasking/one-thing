@@ -57,20 +57,26 @@ function clampPaths(sandbox: RpcSandbox, paths: string[]): string[] | null {
 }
 
 export const projectDirsRpcHandlers: RpcRouteHandlers<ProjectDirsRoutes> = {
-  // list 不带路径,所以不需要夹;它要两个端口(名册索引 + 逐条详情),投影据此拼摘要。
-  async list(request) {
+  async list(request, context = DESKTOP_RPC_CONTEXT) {
+    const sandbox = resolveRpcSandbox(context)
     const store = getProjectsStore(request?.workspaceId)
     return listOnethingProjectDirsForIpc({
-      listEntries: () => store.list(),
+      // Filter indexed roots before loading a project's detailed description.
+      listEntries: () => store.list().filter(entry =>
+        clampPaths(sandbox, [entry.path, ...entry.paths]) !== null),
       getProject: path => store.get(path),
     })
   },
   async get(request, context = DESKTOP_RPC_CONTEXT) {
-    const path = resolveInsideSandbox(resolveRpcSandbox(context), request.path)
+    const sandbox = resolveRpcSandbox(context)
+    const path = resolveInsideSandbox(sandbox, request.path)
     if (!path) return PATH_ERROR
     return getOnethingProjectDirForIpc({
       request: { path },
-      getProject: targetPath => getProjectsStore(request.workspaceId).get(targetPath),
+      getProject: targetPath => {
+        const project = getProjectsStore(request.workspaceId).get(targetPath)
+        return project && clampPaths(sandbox, [project.path, ...project.paths]) !== null ? project : null
+      },
     })
   },
   async add(request, context = DESKTOP_RPC_CONTEXT) {
@@ -116,4 +122,3 @@ export const projectDirsRpcHandlers: RpcRouteHandlers<ProjectDirsRoutes> = {
     })
   },
 }
-

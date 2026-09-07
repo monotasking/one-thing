@@ -28,6 +28,7 @@ import type { PermissionGrantsRoutes } from '@shared/ipc/permission-grants.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import * as PermissionGrants from '../../wiring/permission/permission-grants.js'
 import { getSessionsList } from '../../stores/sessions.js'
+import { isHistoricalLocalOperator, ownsSessionRecord, requestSessionOwner } from '../../session/access.js'
 import { resolveInsideSandbox, resolveRpcSandbox, type RpcSandbox } from '../sandbox.js'
 import type { RpcRouteHandlers } from '../registry.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
@@ -45,6 +46,22 @@ const WORKSPACE_ROOT_OUTSIDE_SANDBOX =
   'Workspace root must stay inside the workspace sandbox root.'
 const SESSION_NOT_FOUND = 'Session not found'
 const GRANT_NOT_FOUND = 'Permission grant not found'
+
+function listWorkspaceGrantsForOwner(root: string, owner: { userId?: string; workspaceId?: string }): PermissionGrant[] {
+  const grants = PermissionGrants.listWorkspaceGrants(root, owner)
+  // Unstamped workspace grants predate ownership; only the fixed local owner inherits them.
+  if (isHistoricalLocalOperator({ userId: owner.userId ?? 'local-user', workspaceId: owner.workspaceId ?? 'default' })) {
+    return [...new Map([...grants, ...PermissionGrants.listWorkspaceGrants(root)].map(grant => [grant.id, grant])).values()]
+  }
+  return grants
+}
+
+function clearWorkspaceGrantsForOwner(root: string, owner: { userId?: string; workspaceId?: string }): void {
+  PermissionGrants.clearWorkspaceGrants(root, owner)
+  if (isHistoricalLocalOperator({ userId: owner.userId ?? 'local-user', workspaceId: owner.workspaceId ?? 'default' })) {
+    PermissionGrants.clearWorkspaceGrants(root)
+  }
+}
 
 /**
  * 会话索引里的所有权字段。共享的 `SessionMeta` 不声明它们 —— 它们是
@@ -74,24 +91,16 @@ type OwnedSessionMeta = {
  */
 function listOwnedSessions(context: RpcDispatchContext): OwnedSessionMeta[] {
   const metas = getSessionsList() as unknown as OwnedSessionMeta[]
-  return metas.filter(meta => {
-    // 租户两格;存量只回落 `userId`(它历来只由服务端盖)。缺席的一格不参与比较。
-    const ownerUserId = meta.ownerUserId ?? meta.userId
-    const ownerWorkspaceId = meta.ownerWorkspaceId
-    if (!ownerUserId && !ownerWorkspaceId) return true
-    return (ownerUserId ?? context.ownerUid) === context.ownerUid
-      && (ownerWorkspaceId ?? context.workspaceId) === context.workspaceId
-  })
+  return metas.filter(meta => ownsSessionRecord(meta, context))
 }
 
 /** 夹紧宿主上 owner 一律以 context 为准；未夹紧宿主沿用请求体（桌面语义）。 */
 function grantOwner(
-  sandbox: RpcSandbox,
+  _sandbox: RpcSandbox,
   context: RpcDispatchContext,
-  request: { userId?: string; workspaceId?: string },
+  _request: { userId?: string; workspaceId?: string },
 ): { userId?: string; workspaceId?: string } {
-  if (!sandbox.confined) return { userId: request.userId, workspaceId: request.workspaceId }
-  return { userId: context.ownerUid, workspaceId: context.workspaceId }
+  return requestSessionOwner(context)
 }
 
 function ownsSession(context: RpcDispatchContext, sessionId: string): boolean {
@@ -110,10 +119,13 @@ function canReachGrant(
   context: RpcDispatchContext,
   grantId: string,
 ): boolean {
-  if (!sandbox.confined) return true
-
+  const workspaceGrant = PermissionGrants.findWorkspaceGrant(grantId)
+  if (workspaceGrant) {
+    return ownsSessionRecord({ ownerUserId: workspaceGrant.userId, ownerWorkspaceId: workspaceGrant.workspaceId }, context)
+      && Boolean(workspaceGrant.workspaceRoot && resolveInsideSandbox(sandbox, workspaceGrant.workspaceRoot))
+  }
   const sessions = listOwnedSessions(context)
-  const workspaceRoots = new Set<string>([sandbox.root])
+  const workspaceRoots = new Set<string>(sandbox.confined ? [sandbox.root] : [])
   for (const session of sessions) {
     if (PermissionGrants.listSessionGrants(session.id).some(grant => grant.id === grantId)) {
       return true
@@ -121,9 +133,9 @@ function canReachGrant(
     if (session.workingDirectory) workspaceRoots.add(session.workingDirectory)
   }
 
-  const owner = { userId: context.ownerUid, workspaceId: context.workspaceId }
+  const owner = requestSessionOwner(context)
   for (const workspaceRoot of workspaceRoots) {
-    if (PermissionGrants.listWorkspaceGrants(workspaceRoot, owner).some(g => g.id === grantId)) {
+    if (listWorkspaceGrantsForOwner(workspaceRoot, owner).some(g => g.id === grantId)) {
       return true
     }
   }
@@ -141,7 +153,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
       if (!clamped) return { success: false, error: WORKSPACE_ROOT_OUTSIDE_SANDBOX }
       workspaceRoot = clamped
     }
-    if (input.sessionId && sandbox.confined && !ownsSession(context, input.sessionId)) {
+    if (input.sessionId && !ownsSession(context, input.sessionId)) {
       return { success: false, error: SESSION_NOT_FOUND }
     }
 
@@ -152,7 +164,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
       userId: owner.userId,
       workspaceId: owner.workspaceId,
       listSessionGrants: PermissionGrants.listSessionGrants,
-      listWorkspaceGrants: PermissionGrants.listWorkspaceGrants,
+      listWorkspaceGrants: listWorkspaceGrantsForOwner,
       logger: consoleLog,
     };
     return listOnethingPermissionGrantsForIpc(listOnethingPermissionGrantsOptions)
@@ -174,7 +186,7 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
   async clearSession(request, context = DESKTOP_RPC_CONTEXT) {
     const sandbox = resolveRpcSandbox(context)
     const sessionId = request?.sessionId ?? ''
-    if (sandbox.confined && !ownsSession(context, sessionId)) {
+    if (!ownsSession(context, sessionId)) {
       return { success: false, error: SESSION_NOT_FOUND }
     }
     return clearOnethingSessionPermissionGrantsForIpc({
@@ -195,9 +207,8 @@ export const permissionGrantsRpcHandlers: RpcRouteHandlers<PermissionGrantsRoute
       workspaceRoot,
       userId: owner.userId,
       workspaceId: owner.workspaceId,
-      clearWorkspaceGrants: PermissionGrants.clearWorkspaceGrants,
+      clearWorkspaceGrants: clearWorkspaceGrantsForOwner,
       logger: consoleLog,
     })
   },
 }
-

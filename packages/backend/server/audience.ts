@@ -13,61 +13,9 @@
  *     = 这里多一个类 + 装配层一行注册,订阅代码一个字不改(§5 陌生能力演练)。
  */
 import type { RuntimeRequestContext } from "@onething/core";
-
-/** 一条会话的租户归属(两格都可能缺席 —— 缺席 = 无主)。 */
-export interface SessionOwner {
-	userId?: string;
-	workspaceId?: string;
-}
-
-/**
- * 归属取材的最小形状。会话对象(`ServerChatSession`)与索引元数据
- * (`ServerSessionIndexMeta`)都结构性满足它 —— 于是「按会话判」与「按索引元数据判」
- * 用的是**同一个谓词**,不是两份各算一遍的规则。
- */
-export interface SessionOwnershipRecord {
-	/** @deprecated 存量租户 userId(只读兼容)。 */
-	userId?: string;
-	ownerUserId?: string;
-	ownerWorkspaceId?: string;
-}
-
-/**
- * 读一条会话/元数据的**租户归属**。
- *
- * 存量兼容只认 `userId` 那一格:老盘上的 `workspaceId` 存的是**产品空间**,把它读成
- * 租户正是要修的那个 bug,所以这里**故意不回落**到它。
- */
-export function sessionOwnerOf(record: SessionOwnershipRecord): SessionOwner {
-	return {
-		userId: record.ownerUserId ?? record.userId,
-		workspaceId: record.ownerWorkspaceId,
-	};
-}
-
-/**
- * 归属判定:**两格都空 = 无主,谁都读得到**(单用户服务端的常态);有值的那格才比。
- * 缺席的一格不参与比较 —— 老会话只盖过 `userId` 的那种,不该因为「没有租户作用域」
- * 就对所有人隐身。
- */
-export function ownerMatchesContext(
-	owner: SessionOwner,
-	context: RuntimeRequestContext,
-): boolean {
-	if (!owner.userId && !owner.workspaceId) return true;
-	return (
-		(owner.userId ?? context.userId) === context.userId &&
-		(owner.workspaceId ?? context.workspaceId) === context.workspaceId
-	);
-}
-
-/** 一步到位的归属判定 —— `ownsSession` / `ownsSessionMeta` 共用的那一句。 */
-export function ownsSessionRecord(
-	record: SessionOwnershipRecord,
-	context: RuntimeRequestContext,
-): boolean {
-	return ownerMatchesContext(sessionOwnerOf(record), context);
-}
+import { ownsSessionRecord, type SessionOwnershipRecord } from '../session/access.js'
+export { sessionOwnerOf, ownerMatchesContext, ownsSessionRecord } from '../session/access.js'
+export type { SessionOwner, SessionOwnershipRecord } from '../session/access.js'
 
 /** 一条订阅的受众。 */
 export interface SessionAudience {

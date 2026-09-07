@@ -36,26 +36,16 @@ import {
 import { broadcastVoiceHostMessage } from '@onething/runtime/voice/host-ports.wiring'
 import { IPC_CHANNELS } from '@shared/ipc.js'
 import type { MusicLyricLine, MusicLyrics } from '@shared/ipc/music.js'
-import { createElectronMusicProcessRunner } from '@onething/runtime/music/process-runner'
 import { addGrant } from '@onething/core'
 import { writeJsonFile } from '@onething/core/storage'
 import { agentExists, createAgent, findAgent, updateAgent } from '@onething/runtime/agents/store-bound.wiring'
 import { markSessionUnattended } from '@onething/runtime/permissions/unattended'
-import {
-  getOnethingStorePath,
-} from '@onething/runtime/storage/index'
 import { getSettings } from '../../stores/settings.js'
 import * as sessions from '../../stores/sessions.js'
 import { sessionReads } from '../../session/reads.js'
-import {
-  getActiveMusicProvider,
-  getMusicNowPlaying,
-  getMusicService,
-  nudgeMusicClients,
-  refreshMusicNowPlaying,
-  setMusicSampleListener,
-} from './service.js'
-import { prefetchDjPatter, resetDjPatterCache, speakDjPatter } from './dj-voice.js'
+import { DEFAULT_SESSION_OWNER, sessionAccess, SessionAccessError } from '../../session/access.js'
+import type { MusicServiceScope } from './service.js'
+import type { DjVoiceScope } from './dj-voice.js'
 
 import { SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { consolePort, getLogger } from '../logging/index.js'
@@ -66,24 +56,70 @@ const log = getLogger('music.radio')
 const consoleLog = consolePort(log)
 
 
+import { MusicWorkOwner } from './lifetime.js'
+import { getCurrentBackend } from '../../current.js'
+
+/** Transcript-weight thresholds for rotating the DJ session. */
+const DJ_SESSION_MAX_CONTEXT_TOKENS = 60_000
+const DJ_SESSION_MAX_MESSAGES = 40
+
+export function isDjSessionOversized(
+  session: { messages?: unknown[]; contextSize?: number } | undefined | null,
+): boolean {
+  if (!session) return false
+  const contextSize = typeof session.contextSize === 'number' ? session.contextSize : 0
+  const messageCount = Array.isArray(session.messages) ? session.messages.length : 0
+  return contextSize > DJ_SESSION_MAX_CONTEXT_TOKENS || messageCount > DJ_SESSION_MAX_MESSAGES
+}
+
+/** Newest radio-dj session light enough to keep using (index metadata only). */
+export function pickReusableRadioDjSession(
+  list: Array<{ id: string; agentId?: string; updatedAt: number; messageCount?: number }>,
+): string | null {
+  const candidates = list
+    .filter(
+      meta =>
+        meta.agentId === RADIO_DJ_AGENT_ID && (meta.messageCount ?? 0) <= DJ_SESSION_MAX_MESSAGES,
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+  return candidates[0]?.id ?? null
+}
+
+export function createRadioScope(options: {
+  storePath: string; assertOwned?: () => void; service: MusicServiceScope; djVoice: DjVoiceScope
+}) {
+  const owner = new MusicWorkOwner(options.assertOwned)
+  const { getActiveMusicProvider, getMusicNowPlaying, getMusicService, nudgeMusicClients,
+    refreshMusicNowPlaying, setMusicSampleListener } = options.service
+  const { prefetchDjPatter, speakDjPatter } = options.djVoice
 let radioStore: OnethingRadioStore | null = null
 let conductor: OnethingRadioConductor | null = null
 /** Sessions this process already pre-granted music-dir writes to. */
 const grantedSessions = new Set<string>()
 
-export function getRadioStore(): OnethingRadioStore {
+function getRadioStore(): OnethingRadioStore {
+  owner.assertActive()
   const provider = getActiveMusicProvider()
-  radioStore ??= createOnethingRadioStore(path.join(getOnethingStorePath(), 'music'), {
-    ids: provider.ids,
-    providerId: provider.descriptor.id,
-  })
+  if (!radioStore) {
+    const instance = createOnethingRadioStore(path.join(options.storePath, 'music'), {
+      ids: provider.ids, providerId: provider.descriptor.id,
+    })
+    radioStore = new Proxy(instance, {
+      get(target, property) {
+        const value = Reflect.get(target, property)
+        return typeof value === 'function' ? owner.wrap(value.bind(target)) : value
+      },
+    })
+  }
+  const sessionId = radioStore.readBrief().sessionId
+  if (sessionId) sessionAccess.resolveOptional(DEFAULT_SESSION_OWNER, sessionId, 'read')
   return radioStore
 }
 
 function getReliableRunner() {
   const provider = getActiveMusicProvider()
   return createOnethingMusicReliableRunner({
-    runner: createElectronMusicProcessRunner(),
+    runner: options.service.runner,
     logger: consoleLog,
     cli: {
       binary: provider.descriptor.binary,
@@ -101,6 +137,8 @@ function getReliableRunner() {
  * this only ever creates.
  */
 function ensureRadioSession(store: OnethingRadioStore): string {
+  const brief = store.readBrief()
+  if (brief.sessionId) sessionAccess.resolveOptional(DEFAULT_SESSION_OWNER, brief.sessionId, 'write')
   const factoryPrompt = renderRadioDjAgentPrompt({
     inboxPath: store.inboxPath,
     cliCheatsheet: getActiveMusicProvider().prose.cliCheatsheet,
@@ -152,7 +190,6 @@ function ensureRadioSession(store: OnethingRadioStore): string {
     }
   }
 
-  const brief = store.readBrief()
   if (brief.sessionId) {
     const existing = sessions.getSession(brief.sessionId)
     if (existing && !isDjSessionOversized(existing)) return brief.sessionId
@@ -173,44 +210,19 @@ function ensureRadioSession(store: OnethingRadioStore): string {
   // session every wake" — five sessions in one morning, field-measured. Reuse
   // the newest still-reasonable radio-dj session from the index first.
   if (brief.sessionId && !sessions.getSession(brief.sessionId)) {
-    const candidate = pickReusableRadioDjSession(sessions.getSessionsList())
+    const candidate = pickReusableRadioDjSession(sessionAccess.filter(DEFAULT_SESSION_OWNER, sessions.getSessionsList()))
     if (candidate) {
+      sessionAccess.resolve(DEFAULT_SESSION_OWNER, candidate, 'write')
       store.writeBrief({ ...brief, sessionId: candidate })
       return candidate
     }
   }
 
   const sessionId = randomUUID()
-  sessions.createSession(sessionId, '电台')
+  sessions.createSession(sessionId, '电台', { initialOwner: DEFAULT_SESSION_OWNER })
   sessions.updateSessionAgent(sessionId, RADIO_DJ_AGENT_ID)
   store.writeBrief({ ...brief, sessionId })
   return sessionId
-}
-
-/** Transcript-weight thresholds for rotating the DJ session. */
-const DJ_SESSION_MAX_CONTEXT_TOKENS = 60_000
-const DJ_SESSION_MAX_MESSAGES = 40
-
-export function isDjSessionOversized(
-  session: { messages?: unknown[]; contextSize?: number } | undefined | null,
-): boolean {
-  if (!session) return false
-  const contextSize = typeof session.contextSize === 'number' ? session.contextSize : 0
-  const messageCount = Array.isArray(session.messages) ? session.messages.length : 0
-  return contextSize > DJ_SESSION_MAX_CONTEXT_TOKENS || messageCount > DJ_SESSION_MAX_MESSAGES
-}
-
-/** Newest radio-dj session light enough to keep using (index metadata only). */
-export function pickReusableRadioDjSession(
-  list: Array<{ id: string; agentId?: string; updatedAt: number; messageCount?: number }>,
-): string | null {
-  const candidates = list
-    .filter(
-      meta =>
-        meta.agentId === RADIO_DJ_AGENT_ID && (meta.messageCount ?? 0) <= DJ_SESSION_MAX_MESSAGES,
-    )
-    .sort((a, b) => b.updatedAt - a.updatedAt)
-  return candidates[0]?.id ?? null
 }
 
 /**
@@ -238,6 +250,7 @@ const MUSIC_DIR_GRANT_TYPES = [
 ] as const
 
 function grantMusicDirAccess(sessionId: string, musicDir: string): void {
+  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'permission')
   if (grantedSessions.has(sessionId)) return
   grantedSessions.add(sessionId)
   const pattern = path.join(musicDir, '*')
@@ -266,12 +279,17 @@ const LIFE_CONTEXT_EXCLUDED = new Set(['music', 'workdir', 'background_jobs'])
  * Best-effort — an empty string just means a plain opening.
  */
 async function buildRadioLifeContext(sessionId: string): Promise<string> {
+  owner.assertActive()
+  return owner.track((async () => {
+  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
   try {
     // Dynamic import mirrors the engine imports below: radio.ts is reachable
     // from the variable gateways, and static graph edges here have bitten
     // unrelated test module graphs before.
     const { getVariableRegistry } = await import('@onething/runtime/variables/registry')
+    sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
     const variables = await getVariableRegistry().list({ sessionId })
+    sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'read')
     const lines: string[] = []
     let total = 0
     for (const variable of variables) {
@@ -285,9 +303,12 @@ async function buildRadioLifeContext(sessionId: string): Promise<string> {
     }
     return lines.join('\n')
   } catch (error) {
+    if (error instanceof SessionAccessError) throw error
     log.warn('life context unavailable, opening plain', {}, error)
     return ''
   }
+
+  })())
 }
 
 /**
@@ -299,12 +320,15 @@ async function buildRadioLifeContext(sessionId: string): Promise<string> {
 const RADIO_INTENT_TTL_MS = 6 * 60 * 60 * 1_000
 
 async function wakeRadioDj(): Promise<void> {
+  owner.assertActive()
+  return owner.track((async () => {
   if (!isMusicEnabled()) return
   const store = getRadioStore()
   // Before rendering the DJ prompt, age out a stale intent so a resumed or
   // conductor-woken station (no fresh open) doesn't quote an old direction.
-  store.expireStaleIntent(RADIO_INTENT_TTL_MS)
   const brief = store.readBrief()
+  if (brief.sessionId) sessionAccess.resolveOptional(DEFAULT_SESSION_OWNER, brief.sessionId, 'write')
+  store.expireStaleIntent(RADIO_INTENT_TTL_MS)
   const opening = !brief.sessionId || !sessions.getSession(brief.sessionId)
   const sessionId = ensureRadioSession(store)
   grantMusicDirAccess(sessionId, path.dirname(store.programmePath))
@@ -319,6 +343,7 @@ async function wakeRadioDj(): Promise<void> {
     import('../engine/index.js'),
     import('../../events/index.js'),
   ])
+  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
 
   // A run already active in the radio session IS the DJ working — kicking
   // again would interleave two curations in one transcript.
@@ -352,6 +377,8 @@ async function wakeRadioDj(): Promise<void> {
       }
     : {}
 
+  owner.assertActive()
+  sessionAccess.resolve(DEFAULT_SESSION_OWNER, sessionId, 'write')
   await getEventBus().emit(sessionId, {
     type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
     content,
@@ -360,7 +387,9 @@ async function wakeRadioDj(): Promise<void> {
     // The session is deliberately named 电台; the drive prompt is not a title.
     suppressTitleGeneration: true,
     ...modelOverride,
-  })
+  }, { executionContext: DEFAULT_SESSION_OWNER })
+
+  })())
 }
 
 /**
@@ -429,7 +458,9 @@ const NCM_LOGIN_EXPIRED_MESSAGE =
  * arrives as a thrown `未登录` message. Anything else (timeout, missing
  * binary) is "can't tell" — fail open so per-song handling keeps working.
  */
-export async function diagnoseRadioStartFailure(): Promise<string | null> {
+async function diagnoseRadioStartFailure(): Promise<string | null> {
+  owner.assertActive()
+  return owner.track((async () => {
   try {
     await getReliableRunner().run('read', getActiveMusicProvider().cli.build.loginCheck())
     return null
@@ -444,6 +475,8 @@ export async function diagnoseRadioStartFailure(): Promise<string | null> {
       .catch(() => {})
     return NCM_LOGIN_EXPIRED_MESSAGE
   }
+
+  })())
 }
 
 /**
@@ -455,6 +488,8 @@ export async function diagnoseRadioStartFailure(): Promise<string | null> {
  * generic verdict.
  */
 async function isSongRightsRestricted(entry: OnethingRadioProgrammeEntry): Promise<boolean> {
+  owner.assertActive()
+  return owner.track((async () => {
   try {
     const provider = getActiveMusicProvider()
     // Deep enough that album variants surface: the curated version of a song
@@ -470,6 +505,8 @@ async function isSongRightsRestricted(entry: OnethingRadioProgrammeEntry): Promi
   } catch {
     return false
   }
+
+  })())
 }
 
 /**
@@ -498,7 +535,8 @@ function isEntryReusableFailure(error: unknown): boolean {
  * next timer so `total` measures from the actual click. */
 let gestureStart: { at: number; label: string } | null = null
 
-export function markRadioGesture(label: string): void {
+function markRadioGesture(label: string): void {
+  owner.assertActive()
   gestureStart = { at: Date.now(), label }
 }
 
@@ -533,7 +571,8 @@ let playStartingEntry: OnethingRadioProgrammeEntry | null = null
  * the spoken line, play spawn, verify — so the UI stops reading a normal
  * transition as "the radio stalled" (field complaint).
  */
-export function getRadioStartingTitle(): string | undefined {
+function getRadioStartingTitle(): string | undefined {
+  owner.assertActive()
   return playStarting ? (playStartingEntry?.title ?? undefined) : undefined
 }
 
@@ -552,6 +591,8 @@ export function getRadioStartingTitle(): string | undefined {
  * finishes, their own song choice is stale.
  */
 async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<void> {
+  owner.assertActive()
+  return owner.track((async () => {
   if (playStarting) {
     await playStarting.catch(() => {})
     throw new RadioStartNotSongsFaultError(`另一次起播正在进行,放弃「${entry.title}」`)
@@ -621,9 +662,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
       // running in the background for the lyrics push after the song starts.
       const lines = await Promise.race([
         getLyricLines(entry).catch(() => [] as MusicLyricLine[]),
-        new Promise<MusicLyricLine[]>(resolve =>
-          setTimeout(() => resolve([]), LYRIC_DECISION_TIMEOUT_MS),
-        ),
+        owner.sleep(LYRIC_DECISION_TIMEOUT_MS).then(() => [] as MusicLyricLine[]),
       ])
       timer.mark('歌词获取(判定口播时机)')
       const vocalAt = firstVocalStartAt(lines)
@@ -651,6 +690,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     // 'start' class: zero retries — play is NOT idempotent, and an automatic
     // re-run after a "failure" that actually made sound plays the song twice.
     // Argv + env (ncm: NCM_LEGACY_PLAY=1) are the provider's measured law.
+    owner.assertActive()
     const startCommand = getActiveMusicProvider().cli.build.start(entry)
     await reliable.run('start', startCommand.args, startCommand.env)
     timer.mark('play 命令返回')
@@ -671,7 +711,7 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
         const state = await reliable.readState().catch(() => null)
         if (isFreshPlayback(state)) return state
         if (Date.now() >= deadline) return null
-        await new Promise(resolve => setTimeout(resolve, PLAY_VERIFY_INTERVAL_MS))
+        await owner.sleep(PLAY_VERIFY_INTERVAL_MS)
       }
     }
     const confirmedState = await waitForFreshPlayback(PLAY_VERIFY_DEADLINE_MS)
@@ -745,13 +785,16 @@ async function playProgrammeEntry(entry: OnethingRadioProgrammeEntry): Promise<v
     playStarting = null
     nudgeMusicClients()
   }
+
+  })())
 }
 
 /**
  * The bar's "next" is a skip — the strongest taste signal the DJ gets. Called
  * by the music IPC layer before it forwards the command.
  */
-export function recordRadioSkip(): void {
+function recordRadioSkip(): void {
+  owner.assertActive()
   const store = getRadioStore()
   const brief = store.readBrief()
   if (!brief.active) return
@@ -800,7 +843,9 @@ function recordStartFailure(entry: { title: string }, error: unknown): string {
 }
 
 /** Resume playback by hand — the bar button. Same starter the conductor uses. */
-export async function resumeRadioPlayback(): Promise<boolean> {
+async function resumeRadioPlayback(): Promise<boolean> {
+  owner.assertActive()
+  return owner.track((async () => {
   const store = getRadioStore()
   // ▶ on a CLOSED station with songs left is a re-open: flip active back on so
   // the conductor re-engages (auto-advance, DJ wakes) instead of playing one
@@ -829,6 +874,8 @@ export async function resumeRadioPlayback(): Promise<boolean> {
     recordStartFailure(entry, error)
     return false
   }
+
+  })())
 }
 
 /**
@@ -837,7 +884,9 @@ export async function resumeRadioPlayback(): Promise<boolean> {
  * to advance anymore, the conductor is the queue. No onDeck fallback: the user
  * is skipping AWAY from that song, replaying it would be mockery.
  */
-export async function skipToNextRadioSong(): Promise<boolean> {
+async function skipToNextRadioSong(): Promise<boolean> {
+  owner.assertActive()
+  return owner.track((async () => {
   const store = getRadioStore()
   store.noteUserEngagement()
   const entry = takeNextPlayableEntry(store)
@@ -851,13 +900,17 @@ export async function skipToNextRadioSong(): Promise<boolean> {
     recordStartFailure(entry, error)
     return false
   }
+
+  })())
 }
 
 /**
  * The bar's "prev" while the radio is on: there is no player queue to step
  * back through, so ⏮ means "this song from the top" — replay onDeck.
  */
-export async function replayCurrentRadioSong(): Promise<boolean> {
+async function replayCurrentRadioSong(): Promise<boolean> {
+  owner.assertActive()
+  return owner.track((async () => {
   const store = getRadioStore()
   const entry = store.readBrief().onDeck
   if (!entry) return false
@@ -869,9 +922,12 @@ export async function replayCurrentRadioSong(): Promise<boolean> {
     recordStartFailure(entry, error)
     return false
   }
+
+  })())
 }
 
-export function isRadioActive(): boolean {
+function isRadioActive(): boolean {
+  owner.assertActive()
   return getRadioStore().readBrief().active
 }
 
@@ -886,6 +942,7 @@ function radioToolStatus(): {
   nowPlayingTitle?: string
   lastError?: string
 } {
+  owner.assertActive()
   const store = getRadioStore()
   const brief = store.readBrief()
   return {
@@ -909,7 +966,8 @@ function radioToolStatus(): {
  * intent-line degradation turns it into "按时段和历史自主定调" — "让 DJ 看着办"
  * costs zero new logic.
  */
-export function openRadioStation(intent: string, options: { clearProgramme: boolean }): void {
+function openRadioStation(intent: string, options: { clearProgramme: boolean }): void {
+  owner.assertActive()
   const store = getRadioStore()
   if (options.clearProgramme) {
     store.writeProgramme({ entries: [] })
@@ -924,20 +982,26 @@ export function openRadioStation(intent: string, options: { clearProgramme: bool
   void refreshMusicNowPlaying()
 }
 
-export async function radioToolOpen(
+async function radioToolOpen(
   intent: string,
   options: { clearProgramme: boolean },
 ): Promise<ReturnType<typeof radioToolStatus>> {
+  owner.assertActive()
+  return owner.track((async () => {
   if (!isMusicEnabled()) {
     // Honest failure beats a receipt that promises a DJ who will never wake.
     throw new Error('音乐电台未启用:请在 设置 → 音乐 完成配置并打开总开关')
   }
   openRadioStation(intent, options)
   return radioToolStatus()
+
+  })())
 }
 
 /** Close the station: inactive FIRST, then stop — the order that avoids auto-revive. */
-export async function radioToolClose(): Promise<ReturnType<typeof radioToolStatus>> {
+async function radioToolClose(): Promise<ReturnType<typeof radioToolStatus>> {
+  owner.assertActive()
+  return owner.track((async () => {
   const store = getRadioStore()
   writeJsonFile(store.intentPath, { active: false })
   store.mergeIntent()
@@ -948,9 +1012,10 @@ export async function radioToolClose(): Promise<ReturnType<typeof radioToolStatu
   }
   await refreshMusicNowPlaying()
   return radioToolStatus()
+
+  })())
 }
 
-export { radioToolStatus }
 
 // ----------------------------------------------------------------------------
 // Song requests (chat's radio tool + the panel's search, one shared channel)
@@ -963,9 +1028,11 @@ export { radioToolStatus }
  * them in the panel. Honest failures: nothing found / only grey versions /
  * already queued or playing.
  */
-export async function requestSong(
+async function requestSong(
   query: string,
 ): Promise<{ success: boolean; title?: string; error?: string }> {
+  owner.assertActive()
+  return owner.track((async () => {
   if (!isMusicEnabled()) return { success: false, error: '音乐电台未启用' }
   const store = getRadioStore()
   if (!store.readBrief().active) {
@@ -1015,13 +1082,15 @@ export async function requestSong(
   // The request cut in at the queue head — warm ITS caches, not the old head's.
   prefetchUpcomingEntry()
   return { success: true, title: entry.title }
+
+  })())
 }
 
 // ----------------------------------------------------------------------------
 // Programme panel (visible, editable queue)
 // ----------------------------------------------------------------------------
 
-export function getProgrammeSnapshot(): {
+function getProgrammeSnapshot(): {
   entries: Array<{
     encryptedId: string
     title: string
@@ -1031,6 +1100,7 @@ export function getProgrammeSnapshot(): {
   }>
   onDeck?: string
 } {
+  owner.assertActive()
   const store = getRadioStore()
   return {
     entries: store.readProgramme().entries.map(entry => ({
@@ -1050,12 +1120,13 @@ export function getProgrammeSnapshot(): {
  * is no interleaving to race. The conductor stays the only CONSUMER of the
  * programme; these are the user's explicit orders about what it consumes.
  */
-export function applyProgrammeAction(
+function applyProgrammeAction(
   action:
     | { kind: 'remove'; encryptedId: string }
     | { kind: 'promote'; encryptedId: string }
     | { kind: 'move'; encryptedId: string; toIndex: number },
 ): { success: boolean; error?: string } {
+  owner.assertActive()
   const store = getRadioStore()
   const programme = store.readProgramme()
   const index = programme.entries.findIndex(
@@ -1089,7 +1160,9 @@ export function applyProgrammeAction(
  * song id comes from onDeck (the only place the current song's id survives),
  * so this works for radio-started songs only.
  */
-export async function likeCurrentSong(): Promise<{ success: boolean; error?: string }> {
+async function likeCurrentSong(): Promise<{ success: boolean; error?: string }> {
+  owner.assertActive()
+  return owner.track((async () => {
   const store = getRadioStore()
   // Radio-started songs are known via onDeck; anything else may have been
   // reverse-identified from the player's title (a same-source compare, which
@@ -1115,6 +1188,8 @@ export async function likeCurrentSong(): Promise<{ success: boolean; error?: str
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : '红心失败' }
   }
+
+  })())
 }
 
 // ----------------------------------------------------------------------------
@@ -1126,7 +1201,8 @@ const lyricCache = new Map<string, MusicLyricLine[]>()
 const lyricInflight = new Map<string, Promise<MusicLyricLine[]>>()
 let currentLyrics: MusicLyrics | null = null
 
-export function getMusicLyrics(): MusicLyrics | null {
+function getMusicLyrics(): MusicLyrics | null {
+  owner.assertActive()
   return currentLyrics
 }
 
@@ -1138,6 +1214,8 @@ export function getMusicLyrics(): MusicLyrics | null {
 /** Fetch (cached) the timed lyric lines for a song — shared by the lyric push
  * and the talk-over-the-intro timing decision. */
 async function getLyricLines(entry: OnethingRadioProgrammeEntry): Promise<MusicLyricLine[]> {
+  owner.assertActive()
+  return owner.track((async () => {
   const cached = lyricCache.get(entry.encryptedId)
   if (cached) return cached
   let inflight = lyricInflight.get(entry.encryptedId)
@@ -1164,18 +1242,25 @@ async function getLyricLines(entry: OnethingRadioProgrammeEntry): Promise<MusicL
     lyricInflight.set(entry.encryptedId, inflight)
   }
   return inflight
+
+  })())
 }
 
 async function pushLyricsFor(entry: OnethingRadioProgrammeEntry, playerTitle: string): Promise<void> {
+  owner.assertActive()
+  return owner.track((async () => {
   try {
     const lines = await getLyricLines(entry)
     // The PLAYER's title, not the DJ's: the renderer guards lyrics against the
     // bar's now-playing title, and only the player agrees with itself.
+    if (owner.signal.aborted) return
     currentLyrics = { title: playerTitle, lines }
     broadcastVoiceHostMessage({ channel: IPC_CHANNELS.MUSIC_LYRICS, payload: currentLyrics })
   } catch (error) {
     log.warn('fetch lyrics failed', { title: entry.title }, error)
   }
+
+  })())
 }
 
 // ----------------------------------------------------------------------------
@@ -1195,6 +1280,8 @@ let identifiedCurrent: (OnethingMusicIdentifiedSong & { title: string }) | null 
  * worse than no caption.
  */
 async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promise<void> {
+  owner.assertActive()
+  return owner.track((async () => {
   if (sample?.status !== 'playing' || !sample.title) return
   if (sample.title === lastObservedTitle) return
   lastObservedTitle = sample.title
@@ -1217,6 +1304,7 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
       identifyMisses.add(sample.title)
       return
     }
+    if (owner.signal.aborted) return
     identifiedCurrent = { ...match, title: sample.title }
     void pushLyricsFor(
       { encryptedId: match.encryptedId, originalId: match.originalId, title: sample.title },
@@ -1225,6 +1313,8 @@ async function observeUnknownSong(sample: OnethingMusicNowPlaying | null): Promi
   } catch (error) {
     log.warn('identify current track failed', { title: sample.title }, error)
   }
+
+  })())
 }
 
 /**
@@ -1265,8 +1355,10 @@ function logSampleTransition(sample: OnethingMusicNowPlaying | null): void {
   log.debug('player state changed', { from: describeSample(prev), to: describeSample(sample) })
 }
 
-export function startRadioConductor(): void {
+function startRadioConductor(): void {
+  owner.assertActive()
   if (conductor) return
+  const store = getRadioStore()
   // Cold-start correctness for the backend gate in playProgrammeEntry: the
   // in-memory playerBackend defaults to mpv until an env probe runs, and
   // nothing probes unless the settings tab is opened — an orpheus install
@@ -1275,7 +1367,7 @@ export function startRadioConductor(): void {
     .refreshEnv()
     .catch(() => {})
   const radioConductorOptions: OnethingRadioConductorOptions = {
-    store: getRadioStore(),
+    store,
     runner: getReliableRunner(),
     playSong: playProgrammeEntry,
     wakeDj: wakeRadioDj,
@@ -1295,6 +1387,7 @@ export function startRadioConductor(): void {
   };
   conductor = createOnethingRadioConductor(radioConductorOptions)
   setMusicSampleListener(sample => {
+    if (owner.signal.aborted) return
     // The master switch, enforced where everything converges: with music
     // disabled the conductor never ticks (no advance, no DJ wakes, no merges)
     // and the radio stays genuinely dormant — the switch used to be cosmetic.
@@ -1305,22 +1398,62 @@ export function startRadioConductor(): void {
   })
 }
 
-export function disposeRadioConductor(): void {
-  setMusicSampleListener(null)
-  conductor = null
-  radioStore = null
-  // Full module-state reset: a dispose→re-init cycle (tests, future hot
-  // reconfiguration) must not inherit stale grants, caches, or a held mutex.
+function quiesce(): void {
+  if (owner.signal.aborted) return
+  try { setMusicSampleListener(null) } finally {
+    conductor?.quiesce()
+    owner.quiesce()
+  }
+}
+async function drain(): Promise<void> {
+  quiesce()
+  await Promise.all([owner.drain(), conductor?.idle()])
   grantedSessions.clear()
   lyricCache.clear()
   lyricInflight.clear()
-  resetDjPatterCache()
-  currentLyrics = null
-  identifyMisses.clear()
-  lastObservedTitle = undefined
-  identifiedCurrent = null
-  playStarting = null
-  playStartingEntry = null
-  gestureStart = null
-  lastWatchedSample = null
 }
+
+  return { quiesce, drain,
+    getRadioStore,
+    diagnoseRadioStartFailure,
+    markRadioGesture,
+    getRadioStartingTitle,
+    recordRadioSkip,
+    resumeRadioPlayback,
+    skipToNextRadioSong,
+    replayCurrentRadioSong,
+    isRadioActive,
+    openRadioStation,
+    radioToolOpen,
+    radioToolClose,
+    requestSong,
+    getProgrammeSnapshot,
+    applyProgrammeAction,
+    likeCurrentSong,
+    getMusicLyrics,
+    startRadioConductor,
+    radioToolStatus,
+  }
+}
+
+export type RadioScope = ReturnType<typeof createRadioScope>
+export const getRadioStore: RadioScope['getRadioStore'] = (...args) => getCurrentBackend('music').music.radio.getRadioStore(...args)
+export const diagnoseRadioStartFailure: RadioScope['diagnoseRadioStartFailure'] = (...args) => getCurrentBackend('music').music.radio.diagnoseRadioStartFailure(...args)
+export const markRadioGesture: RadioScope['markRadioGesture'] = (...args) => getCurrentBackend('music').music.radio.markRadioGesture(...args)
+export const getRadioStartingTitle: RadioScope['getRadioStartingTitle'] = (...args) => getCurrentBackend('music').music.radio.getRadioStartingTitle(...args)
+export const recordRadioSkip: RadioScope['recordRadioSkip'] = (...args) => getCurrentBackend('music').music.radio.recordRadioSkip(...args)
+export const resumeRadioPlayback: RadioScope['resumeRadioPlayback'] = (...args) => getCurrentBackend('music').music.radio.resumeRadioPlayback(...args)
+export const skipToNextRadioSong: RadioScope['skipToNextRadioSong'] = (...args) => getCurrentBackend('music').music.radio.skipToNextRadioSong(...args)
+export const replayCurrentRadioSong: RadioScope['replayCurrentRadioSong'] = (...args) => getCurrentBackend('music').music.radio.replayCurrentRadioSong(...args)
+export const isRadioActive: RadioScope['isRadioActive'] = (...args) => getCurrentBackend('music').music.radio.isRadioActive(...args)
+export const openRadioStation: RadioScope['openRadioStation'] = (...args) => getCurrentBackend('music').music.radio.openRadioStation(...args)
+export const radioToolOpen: RadioScope['radioToolOpen'] = (...args) => getCurrentBackend('music').music.radio.radioToolOpen(...args)
+export const radioToolClose: RadioScope['radioToolClose'] = (...args) => getCurrentBackend('music').music.radio.radioToolClose(...args)
+export const requestSong: RadioScope['requestSong'] = (...args) => getCurrentBackend('music').music.radio.requestSong(...args)
+export const getProgrammeSnapshot: RadioScope['getProgrammeSnapshot'] = (...args) => getCurrentBackend('music').music.radio.getProgrammeSnapshot(...args)
+export const applyProgrammeAction: RadioScope['applyProgrammeAction'] = (...args) => getCurrentBackend('music').music.radio.applyProgrammeAction(...args)
+export const likeCurrentSong: RadioScope['likeCurrentSong'] = (...args) => getCurrentBackend('music').music.radio.likeCurrentSong(...args)
+export const getMusicLyrics: RadioScope['getMusicLyrics'] = (...args) => getCurrentBackend('music').music.radio.getMusicLyrics(...args)
+export const startRadioConductor: RadioScope['startRadioConductor'] = (...args) => getCurrentBackend('music').music.radio.startRadioConductor(...args)
+export const radioToolStatus: RadioScope['radioToolStatus'] = (...args) => getCurrentBackend('music').music.radio.radioToolStatus(...args)
+export function disposeRadioConductor(): Promise<void> { return getCurrentBackend('music').music.resetRadio() }

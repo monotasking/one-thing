@@ -45,7 +45,7 @@ import {
 } from "@onething/runtime/variables/format";
 import type { ContextVariable } from "@onething/runtime/variables";
 
-import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
+import { createVariableSnapshotBridge } from './snapshot-bridge.js'
 import { getLogger } from '../logging/index.js'
 import type { CoreProviderAdapters } from '@onething/runtime/variables/providers/core'
 
@@ -53,7 +53,7 @@ const log = getLogger('variables')
 
 
 let bootstrapped = false;
-let unsubscribeBridge: (() => void) | null = null;
+let unsubscribeBridge: (() => Promise<void>) | null = null;
 
 /**
  * A3(方案 §2.5,(b) 类闩):注册返回 disposer,由 `assembleSteps` 的 `own()`
@@ -65,8 +65,8 @@ let unsubscribeBridge: (() => void) | null = null;
  * disposer 走 `registry.reset()` —— 它一次清掉 providers / listeners /
  * externalUnsubs / writeChains 四样,正是这里装进去的那四样。
  */
-export function bootstrapVariableSystem(): () => void {
-	if (bootstrapped) return () => {};
+export function bootstrapVariableSystem(): () => Promise<void> {
+	if (bootstrapped) return async () => {};
 	bootstrapped = true;
 
 	// Persistence layer comes online first — providers read from it.
@@ -114,92 +114,33 @@ export function bootstrapVariableSystem(): () => void {
 
 	// Bridge registry change events to the EventBus so the renderer
 	// refreshes via the existing session:variables-updated channel.
-	unsubscribeBridge = registry.subscribe((ctx, snapshot) => {
-		if (ctx.sessionId) {
-			emitVariablesSnapshot(ctx.sessionId, snapshot);
-			return;
-		}
-		// Broadcast (empty sessionId): a shared-scope write (global/agent/
-		// project) or an external variables.json change. The affected variables
-		// are visible from other sessions whose panels would otherwise go
-		// stale, so re-snapshot every recently-active (LRU-cached) session.
-		// Coalesced per tick — a write emits its own session snapshot AND a
-		// broadcast back-to-back.
-		scheduleBroadcastRefresh(registry);
-	});
+	let bus: ReturnType<typeof getEventBus> | undefined
+	try { bus = getEventBus() } catch { /* Pre-bootstrap tests have no event bus. */ }
+	const stopBridge = createVariableSnapshotBridge(registry, bus,
+		() => appStore.getSessionCacheStats().cachedSessionIds,
+		error => log.error('variables snapshot refresh failed', {}, error))
 
 	log.info("variables subsystem bootstrapped");
 
-	return () => {
-		unsubscribeBridge?.();
+	const dispose = async () => {
+		await stopBridge();
+		if (unsubscribeBridge !== dispose) return
 		unsubscribeBridge = null;
 		// providers / listeners / 外部变更订阅一并清掉 —— 下一次装配从空表开始。
 		registry.reset();
 		bootstrapped = false;
 		log.info("variables subsystem shut down");
 	};
-}
-
-function emitVariablesSnapshot(
-	sessionId: string,
-	snapshot: ContextVariable[],
-): void {
-	const workdirVariable = snapshot.find((v) => v.name === "workdir");
-	const workdir = workdirVariable?.value || undefined;
-	const workdirRoots = workdirVariable?.values?.slice(workdir ? 1 : 0);
-	try {
-		getEventBus()
-			.emit(sessionId, {
-				type: SESSION_EVENT_TYPES.SESSION_VARIABLES_UPDATED,
-				workingDirectory: workdir,
-				workingDirectoryRoots: workdirRoots,
-				variables: snapshot,
-			})
-			.catch((err) => log.error("variables snapshot emit failed", { sessionId }, err));
-	} catch {
-		// EventBus not initialized (test or pre-bootstrap path) — ignore.
-	}
-}
-
-let broadcastRefreshScheduled = false;
-
-function scheduleBroadcastRefresh(
-	registry: ReturnType<typeof getVariableRegistry>,
-): void {
-	if (broadcastRefreshScheduled) return;
-	broadcastRefreshScheduled = true;
-	queueMicrotask(() => {
-		broadcastRefreshScheduled = false;
-		let sessionIds: string[];
-		try {
-			sessionIds = appStore.getSessionCacheStats().cachedSessionIds;
-		} catch {
-			return;
-		}
-		for (const sessionId of sessionIds) {
-			registry
-				.list({ sessionId })
-				.then((snapshot) => emitVariablesSnapshot(sessionId, snapshot))
-				.catch((err) =>
-					log.error(
-						"broadcast refresh failed",
-						{ sessionId },
-						err,
-					),
-				);
-		}
-	});
+	unsubscribeBridge = dispose
+	return dispose
 }
 
 /**
  * Tear down the subsystem. Used in tests; the runtime app does not
  * normally need this since the process exits on shutdown.
  */
-export function shutdownVariableSystem(): void {
-	if (unsubscribeBridge) {
-		unsubscribeBridge();
-		unsubscribeBridge = null;
-	}
+export async function shutdownVariableSystem(): Promise<void> {
+	if (unsubscribeBridge) { await unsubscribeBridge(); return }
 	getVariableRegistry().reset();
 	bootstrapped = false;
 }

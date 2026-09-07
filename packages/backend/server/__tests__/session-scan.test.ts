@@ -125,10 +125,9 @@ describe('server session scan regression guards', () => {
     expect(metas).toHaveLength(3)
     for (const meta of metas) expect(meta.ownerVersion).toBe(2)
     expect(metas.find(meta => meta.id === 's-owned')).toMatchObject({ ownerUserId: 'u1' })
-    expect(metas.find(meta => meta.id === 's-free')?.ownerUserId).toBeUndefined()
-    // 空间不是归属:它不该被抄进租户格。
-    expect(metas.find(meta => meta.id === 's-space')?.ownerUserId).toBeUndefined()
-    expect(metas.find(meta => meta.id === 's-space')?.ownerWorkspaceId).toBeUndefined()
+    expect(metas.find(meta => meta.id === 's-free')).toMatchObject({ ownerUserId: 'local-user', ownerWorkspaceId: 'default' })
+    // 未盖租户章的旧会话归固定本地主体;产品空间不进入租户格。
+    expect(metas.find(meta => meta.id === 's-space')).toMatchObject({ ownerUserId: 'local-user', ownerWorkspaceId: 'default' })
 
     // 回填只跑一次:重开 store 不再触发会话体读取。
     const secondStore = createLocalServerSessionStore(storePath)
@@ -146,6 +145,8 @@ describe('server session scan regression guards', () => {
     expect(ids).toContain('s-free')
     expect(ids).toContain('s-space')
     expect(ids).not.toContain('s-owned')
+    const otherList = await serverRuntime.runtime.sessions.list({ userId: 'other', workspaceId: 'default' }) as ListResult
+    expect(otherList.sessions).toEqual([])
     const listedFree = list.sessions.find(session => session.id === 's-free') as Record<string, unknown>
     expect(listedFree.ownerUserId).toBeUndefined()
     expect(listedFree.ownerVersion).toBeUndefined()

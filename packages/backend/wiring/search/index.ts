@@ -72,6 +72,7 @@ import { createAppSearchProvidersAdapters } from './adapters.js'
 import { syncPluginSearchCapabilities } from './plugin-search-registry.js'
 import { createAppSearchToolAdapters } from './tool-adapters.js'
 import { createAppSearchVisibilityPort } from './visibility.js'
+import { createAppSearchAuthorization } from './authorization.js'
 import { createSearchWorkerFactory, resolveSearchWorkerPath } from './worker.js'
 
 export { AGENT_TOOL_SURFACE, createAppSearchToolAdapters } from './tool-adapters.js'
@@ -203,10 +204,13 @@ export async function createAppSearchService(
   overrides: AppSearchServiceOverrides = {},
 ): Promise<AppSearchServiceHandle> {
   const adapters = createAppSearchProvidersAdapters()
+  const access = createAppSearchAuthorization(adapters)
+  adapters.getSearchDirectories = access.fileRoots
   const indexService = await startSearchIndexService(adapters, overrides)
   const unsubscribes = indexService === undefined ? [] : subscribeLedger(indexService)
 
   const service = createOnethingSearchService(adapters, {
+    authorization: access.authorization,
     index: indexService ?? unavailableIndexFace(),
     // §6.4b 的兜底核验:候选逃出可见范围是「能力实现有 bug」的证据,记 warn 不抛。
     warn: (message, detail) => log.warn(message, detail),

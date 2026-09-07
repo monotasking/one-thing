@@ -16,6 +16,10 @@ import { isColleague, userDmRoomId } from '@onething/runtime/agents'
 import * as store from '../../store.js'
 import { findAgent } from '../agents/index.js'
 import { emitCollabRoomUpdated } from './room-runtime.js'
+import type { RuntimeRequestContext } from '@onething/core'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import { ownedCollabSessionId } from './owned-session-id.js'
 
 /**
  * Get(或惰性创建)某个 agent 的托管私聊房,返回房间会话 id。
@@ -33,21 +37,27 @@ import { emitCollabRoomUpdated } from './room-runtime.js'
  * 短暂显示旧名,收益是不需要在 agent 改名链路上挂一个跨模块的 rooms 遍历。
  * 房名本来就只是显示层的东西,归属永远读 `memberAgentIds`。
  */
-export function ensureUserDmRoom(agentId: string): string | null {
-  const roomSessionId = userDmRoomId(agentId)
+export function ensureUserDmRoom(
+  agentId: string,
+  options: { executionContext?: RuntimeRequestContext } = {},
+): string | null {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  const roomSessionId = ownedCollabSessionId(userDmRoomId(agentId), executionContext)
   if (!roomSessionId) return null
   const agent = findAgent(agentId)
   if (!agent || !isColleague(agent) || !isActiveAgent(agent)) return null
 
   const existing = store.getSession(roomSessionId)
+  if (existing) sessionAccess.resolve(executionContext, roomSessionId, 'write')
   if (!existing) {
     // 建房这件事本身不该切换用户在看的东西 —— 指针纪律收在 store 那一侧
     // (stores/sessions.ts 的 createSessionWithoutFocus)。
-    store.createSessionWithoutFocus(roomSessionId, agent.name)
+    store.createSessionWithoutFocus(roomSessionId, agent.name, { initialOwner: executionContext })
   }
 
   const session = store.getSession(roomSessionId)
   if (!session) return null
+  sessionAccess.resolve(executionContext, roomSessionId, 'write')
 
   // 形态:单成员 + dm 标记。members 与标记一起写,于是"人数即形态"这条约定
   // (D1/D3)在数据落库的那一刻就成立。

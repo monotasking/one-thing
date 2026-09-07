@@ -6,6 +6,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { OnethingUsageLedger } from '@onething/runtime/usage'
 
 const storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-record-usage-'))
 
@@ -32,9 +33,13 @@ vi.mock('../../../session/reads.js', () => ({
 }))
 
 async function loadRecordUsage() {
-  const { recordUsage } = await import('../index.js')
+  const { recordUsage, configureUsageLedger } = await import('../index.js')
+  ledger = new OnethingUsageLedger({ ledgerDir: path.join(storeDir, 'usage') })
+  release = configureUsageLedger(ledger)
   return recordUsage
 }
+let ledger: OnethingUsageLedger | undefined
+let release: (() => void) | undefined
 
 const BASE = {
   providerId: 'openrouter',
@@ -48,7 +53,9 @@ describe('recordUsage —— 厂商报价', () => {
     vi.resetModules()
   })
 
-  afterEach(() => {
+  afterEach(async () => {
+    await ledger?.close()
+    release?.()
     fs.rmSync(path.join(storeDir, 'usage'), { recursive: true, force: true })
   })
 

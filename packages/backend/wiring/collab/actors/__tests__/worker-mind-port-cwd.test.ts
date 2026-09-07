@@ -9,10 +9,14 @@
  * 现在的口径与紧邻的 permissionMode 同一条:**缺席才给默认值**。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSessionAccess } from '../../../../session/access.js'
+import { createCollabActorAuthorization } from '../execution-authorization.js'
 import { bindSessionFacadeMock } from '../../../../session/testing/facade-mock.js'
 
 const mocks = vi.hoisted(() => ({
-  sessions: new Map<string, { workingDirectory?: string; messages: unknown[] }>(),
+  emitted: [] as Array<{ sessionId: string; options: unknown }>,
+  created: [] as Array<{ id: string; options: unknown }>,
+  sessions: new Map<string, { ownerUserId?: string; ownerWorkspaceId?: string; workingDirectory?: string; messages: unknown[] }>(),
   workdirWrites: [] as Array<{ sessionId: string; workingDirectory: string }>,
   ensuredRooms: [] as string[],
   roomFolder: '/store/collab-rooms/room-1',
@@ -43,7 +47,8 @@ vi.mock('../../../../events/index.js', () => ({
       return () => {}
     },
     // 总线是同步投递的:一 emit 就把这条工作回合收成 complete,免得测试等墙钟。
-    emit: async (sessionId: string) => {
+    emit: async (sessionId: string, _event: unknown, options: unknown) => {
+      mocks.emitted.push({ sessionId, options })
       for (const handler of handlers) handler({ sessionId, event: { type: 'stream:complete' } })
     },
   }),
@@ -51,8 +56,9 @@ vi.mock('../../../../events/index.js', () => ({
 
 vi.mock('../../../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
-  createSessionWithoutFocus: (id: string) => {
-    mocks.sessions.set(id, { messages: [] })
+  createSessionWithoutFocus: (id: string, _name: string, options: { initialOwner: { userId: string; workspaceId: string } }) => {
+    mocks.created.push({ id, options })
+    mocks.sessions.set(id, { messages: [], ownerUserId: options.initialOwner.userId, ownerWorkspaceId: options.initialOwner.workspaceId })
   },
   updateSessionCollab: () => true,
   updateSessionAgent: () => true,
@@ -89,6 +95,15 @@ const handlers: Array<(envelope: unknown) => void> = []
 
 const { createCollabEngineWorkerPort } = await import('../worker-mind-port.js')
 
+function createAuthorization() {
+  const authorization = createCollabActorAuthorization({
+    access: createSessionAccess({ findMeta: id => mocks.sessions.get(id) }),
+    isAccepting: () => true,
+  })
+  authorization.activateRoom('room-1', mocks.sessions.get('room-1')!)
+  return authorization
+}
+
 function runRequest(overrides: Record<string, unknown> = {}) {
   return {
     agentId: 'fe',
@@ -103,13 +118,47 @@ function runRequest(overrides: Record<string, unknown> = {}) {
 describe('collab worker port · 工作会话的 cwd', () => {
   beforeEach(() => {
     mocks.sessions.clear()
+    mocks.sessions.set('room-1', { messages: [] })
+    mocks.created.length = 0
+    mocks.emitted.length = 0
     mocks.workdirWrites = []
     mocks.ensuredRooms = []
     handlers.length = 0
   })
 
+  it('uses the actor activation owner for initial metadata and the independent engine option', async () => {
+    mocks.sessions.set('room-1', { messages: [], ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
+    const port = createCollabEngineWorkerPort({ authorization: createAuthorization(), newWorkSessionId: () => 'work-1' })
+    expect((await port.runWorkTurn(runRequest())).outcome).toBe('complete')
+    expect(mocks.created).toEqual([{ id: 'work-1', options: {
+      initialOwner: { userId: 'alice', workspaceId: 'tenant-a' },
+    } }])
+    expect(mocks.emitted).toEqual([{ sessionId: 'work-1', options: {
+      executionContext: { userId: 'alice', workspaceId: 'tenant-a' },
+    } }])
+  })
+
+  it('does not create or drive after the activated room changes owner', async () => {
+    const port = createCollabEngineWorkerPort({ authorization: createAuthorization(), newWorkSessionId: () => 'work-1' })
+    mocks.sessions.get('room-1')!.ownerUserId = 'bob'
+    await expect(port.runWorkTurn(runRequest())).rejects.toThrow('Session not found')
+    expect(mocks.created).toEqual([])
+    expect(mocks.emitted).toEqual([])
+    expect(mocks.ensuredRooms).toEqual([])
+  })
+
+  it('refuses a foreign resumed worker before changing metadata, folders, or driving it', async () => {
+    mocks.sessions.set('work-foreign', { messages: [], ownerUserId: 'bob', ownerWorkspaceId: 'default' })
+    const port = createCollabEngineWorkerPort({ authorization: createAuthorization(), newWorkSessionId: () => 'work-1' })
+    await expect(port.runWorkTurn(runRequest({ workSessionId: 'work-foreign' }))).rejects.toThrow('Session not found')
+    expect(mocks.created).toEqual([])
+    expect(mocks.emitted).toEqual([])
+    expect(mocks.workdirWrites).toEqual([])
+    expect(mocks.ensuredRooms).toEqual([])
+  })
+
   it('一条全新的工作会话仍然落在群 folder 上(交付物语义不变)', async () => {
-    const port = createCollabEngineWorkerPort({ newWorkSessionId: () => 'work-1' })
+    const port = createCollabEngineWorkerPort({ authorization: createAuthorization(), newWorkSessionId: () => 'work-1' })
     const result = await port.runWorkTurn(runRequest())
 
     expect(result.outcome).toBe('complete')
@@ -122,7 +171,7 @@ describe('collab worker port · 工作会话的 cwd', () => {
   it('任务自带工作目录时不被切回群目录', async () => {
     mocks.sessions.set('work-1', { workingDirectory: '/Users/me/repo', messages: [] })
 
-    const port = createCollabEngineWorkerPort({ newWorkSessionId: () => 'work-1' })
+    const port = createCollabEngineWorkerPort({ authorization: createAuthorization(), newWorkSessionId: () => 'work-1' })
     await port.runWorkTurn(runRequest({ workSessionId: 'work-1' }))
 
     expect(mocks.workdirWrites).toEqual([])
@@ -132,7 +181,7 @@ describe('collab worker port · 工作会话的 cwd', () => {
   })
 
   it('续做时一轮一轮地重盖也不会发生(第二轮读到的仍是原 cwd)', async () => {
-    const port = createCollabEngineWorkerPort({ newWorkSessionId: () => 'work-1' })
+    const port = createCollabEngineWorkerPort({ authorization: createAuthorization(), newWorkSessionId: () => 'work-1' })
     await port.runWorkTurn(runRequest())
     // 第一轮之后会话上有了群 folder;此时用户把它指向真正的仓库。
     mocks.sessions.get('work-1')!.workingDirectory = '/Users/me/repo'
@@ -147,7 +196,7 @@ describe('collab worker port · 工作会话的 cwd', () => {
 
   it('空白串不算「带了 cwd」', async () => {
     mocks.sessions.set('work-1', { workingDirectory: '   ', messages: [] })
-    const port = createCollabEngineWorkerPort({ newWorkSessionId: () => 'work-1' })
+    const port = createCollabEngineWorkerPort({ authorization: createAuthorization(), newWorkSessionId: () => 'work-1' })
     await port.runWorkTurn(runRequest({ workSessionId: 'work-1' }))
     expect(mocks.workdirWrites).toEqual([
       { sessionId: 'work-1', workingDirectory: '/store/collab-rooms/room-1' },

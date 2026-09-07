@@ -77,22 +77,39 @@ function channelProfileId(input: {
   return sanitizeProfileId(`channel-${input.connector}-${workspaceId}-${input.externalUserId}`, 'channel-user')
 }
 
-function readStore(): ChannelIdentityStoreData {
-  const data = readJsonFile<ChannelIdentityStoreData>(storePath(), DEFAULT_DATA)
+function readStore(filePath = storePath()): ChannelIdentityStoreData {
+  const data = readJsonFile<ChannelIdentityStoreData>(filePath, DEFAULT_DATA)
   const now = Date.now()
-  const profiles = Array.isArray(data.profiles) ? data.profiles : []
+  const profiles = Array.isArray(data.profiles) ? [...data.profiles] : []
   if (!profiles.some(profile => profile.id === LOCAL_CLIENT_USER_ID)) {
     profiles.unshift(defaultProfile(now))
   }
   return {
     profiles: profiles.map(profile => migrateLegacyProfile(profile)),
-    links: Array.isArray(data.links) ? data.links : [],
-    deliveries: Array.isArray(data.deliveries) ? data.deliveries : [],
+    links: Array.isArray(data.links) ? [...data.links] : [],
+    deliveries: Array.isArray(data.deliveries) ? [...data.deliveries] : [],
   }
 }
 
-function writeStore(data: ChannelIdentityStoreData): void {
-  writeJsonFile(storePath(), data)
+function writeStore(data: ChannelIdentityStoreData, filePath = storePath()): void {
+  writeJsonFile(filePath, data)
+}
+
+/** A send owns its delivery receipt path even if the process later changes store. */
+export function createChannelReplyDeliveryStore(storeRoot: string) {
+  const filePath = path.join(storeRoot, 'channel-identity.json')
+  return {
+    getDelivery(assistantMessageId: string): ChannelReplyDeliveryRecord | undefined {
+      return readStore(filePath).deliveries.find(record => record.assistantMessageId === assistantMessageId)
+    },
+    upsertDelivery(record: ChannelReplyDeliveryRecord): void {
+      const data = readStore(filePath)
+      const index = data.deliveries.findIndex(item => item.assistantMessageId === record.assistantMessageId)
+      if (index >= 0) data.deliveries[index] = record
+      else data.deliveries.push(record)
+      writeStore(data, filePath)
+    },
+  }
 }
 
 export class ChannelIdentityStore {
@@ -319,18 +336,11 @@ export class ChannelIdentityStore {
   }
 
   getDelivery(assistantMessageId: string): ChannelReplyDeliveryRecord | undefined {
-    return readStore().deliveries.find(record => record.assistantMessageId === assistantMessageId)
+    return createChannelReplyDeliveryStore(getOnethingStorePath()).getDelivery(assistantMessageId)
   }
 
   upsertDelivery(record: ChannelReplyDeliveryRecord): void {
-    const data = readStore()
-    const existingIndex = data.deliveries.findIndex(item => item.assistantMessageId === record.assistantMessageId)
-    if (existingIndex >= 0) {
-      data.deliveries[existingIndex] = record
-    } else {
-      data.deliveries.push(record)
-    }
-    writeStore(data)
+    createChannelReplyDeliveryStore(getOnethingStorePath()).upsertDelivery(record)
   }
 }
 

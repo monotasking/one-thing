@@ -89,6 +89,12 @@ export interface CollabAgentActivityView {
   deadLetterCount: number
 }
 
+export interface CollabAgentActivityScope {
+  canReadSession(sessionId: string): boolean
+  /** Inbox/dead letters have no room attribution and require store-wide visibility. */
+  includeUnscoped: boolean
+}
+
 export interface CollabAgentActivityRegistry {
   /** 这位同事此刻的事实。没开心智循环 = undefined(下面按"空闲"处理)。 */
   agent(agentId: string): CollabAgentActivityView | undefined
@@ -97,6 +103,7 @@ export interface CollabAgentActivityRegistry {
   /** 各房账 —— **租约的唯一权威**。 */
   rooms(): Iterable<{ roomSessionId: string; account: CollabRoomAccount }>
   now(): number
+  scopeForRoom?(roomSessionId: string): CollabAgentActivityScope | undefined
 }
 
 let registry: CollabAgentActivityRegistry | null = null
@@ -164,7 +171,7 @@ function idleActivity(agentId: string, seq: number, at: number): CollabAgentActi
  * `seq` 从广播通道现取而**不发号** —— 一次冷启动 GET 是读,它不该显得比刚发出去
  * 的那一帧更新(C4 纪律逐字沿用)。
  */
-export function buildCollabAgentActivity(agentId: string): CollabAgentActivitySnapshot {
+export function buildCollabAgentActivity(agentId: string, scope?: CollabAgentActivityScope): CollabAgentActivitySnapshot {
   const seq = channels.get(agentId)?.seq ?? 0
   const source = registry
   if (!source) return idleActivity(agentId, seq, Date.now())
@@ -174,22 +181,25 @@ export function buildCollabAgentActivity(agentId: string): CollabAgentActivitySn
 
   // 登记簿:这几张牌里哪些**真在生成**。「持牌等大脑」与「生成中」的分界只有它
   // 说得出来(D8 §1 的词汇表修正)——租约只证明「轮到它了」。
-  const turns = collabV3TurnsOfAgent(agentId)
+  const canRead = scope?.canReadSession ?? (() => true)
+  const turns = collabV3TurnsOfAgent(agentId).filter(turn => canRead(turn.roomSessionId) && canRead(turn.execSessionId))
   const executingLeaseIds = new Set(turns.map(turn => turn.leaseId))
-  const lastSpokeAt = lastSpokeAtOf(view.account)
+  const lastSpokeAt = lastSpokeAtOf(view.account, canRead)
+  const scopedView = view.inFlight && !canRead(view.inFlight.roomSessionId) ? { ...view, inFlight: null } : view
+  const unscoped = !scope || scope.includeUnscoped
 
   return {
     agentId,
     seq,
     at: now,
-    mind: buildMind(view, turns),
-    heldLeases: buildHeldLeases(agentId, source, executingLeaseIds, now),
-    inbox: view.inbox.oldestAt === undefined
+    mind: buildMind(scopedView, turns),
+    heldLeases: buildHeldLeases(agentId, source, executingLeaseIds, now).filter(lease => canRead(lease.roomSessionId)),
+    inbox: !unscoped ? { depth: 0 } : view.inbox.oldestAt === undefined
       ? { depth: view.inbox.depth }
       : { depth: view.inbox.depth, oldestAt: view.inbox.oldestAt },
-    workers: buildWorkers(view.account),
+    workers: buildWorkers(view.account).filter(worker => canRead(worker.roomSessionId)),
     ...(lastSpokeAt === undefined ? {} : { lastSpokeAt }),
-    deadLetterCount: view.deadLetterCount,
+    deadLetterCount: unscoped ? view.deadLetterCount : 0,
     ...(() => {
       const waitingOn = buildWaitingOn(turns)
       return waitingOn ? { waitingOn } : {}
@@ -302,9 +312,10 @@ function buildWorkers(account: CollabAgentAccount): CollabAgentWorkerCard[] {
  * speak 时另记一个 `lastSpokeAt`)就是第二本会漂的账,而它能提供的精度差别
  * (「说完话的时刻」vs「跑完回合的时刻」)在界面上是一个人读不出来的量。
  */
-function lastSpokeAtOf(account: CollabAgentAccount): number | undefined {
+function lastSpokeAtOf(account: CollabAgentAccount, canRead: (id: string) => boolean): number | undefined {
   let latest: number | undefined
-  for (const room of Object.values(account.rooms)) {
+  for (const [roomId, room] of Object.entries(account.rooms)) {
+    if (!canRead(roomId)) continue
     if (room.lastTurnAt === undefined) continue
     if (latest === undefined || room.lastTurnAt > latest) latest = room.lastTurnAt
   }
@@ -343,9 +354,13 @@ function emitAgentActivity(agentId: string, state: AgentChannelState): void {
   state.throttle.lastSentAt = Date.now()
   const bus = getEventBus()
   for (const roomSessionId of targets) {
+    const scope = registry?.scopeForRoom?.(roomSessionId) ?? {
+      canReadSession: (id: string) => id === roomSessionId,
+      includeUnscoped: false,
+    }
     void bus.emit(roomSessionId, {
       type: SESSION_EVENT_TYPES.COLLAB_AGENT_CHANGED,
-      activity,
+      activity: buildCollabAgentActivity(agentId, scope),
     } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
   }
 }
@@ -376,7 +391,8 @@ function broadcastRoomsOf(activity: CollabAgentActivitySnapshot): string[] {
  */
 export function getCollabAgentActivity(
   agentIds?: readonly string[],
+  scope?: CollabAgentActivityScope,
 ): CollabAgentActivitySnapshot[] {
   const ids = agentIds ?? registry?.agentIds() ?? []
-  return ids.map(agentId => buildCollabAgentActivity(agentId))
+  return ids.map(agentId => buildCollabAgentActivity(agentId, scope))
 }

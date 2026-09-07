@@ -19,6 +19,7 @@ import {
 	tryBeginContinuation,
 } from "./index.js";
 import { kickGoalRunIfIdle } from "./kick.js";
+import { GoalRetryScheduler } from './retry-scheduler.js'
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 import { getLogger } from '../logging/index.js'
@@ -30,45 +31,6 @@ const log = getLogger('goals')
 // session approximate active time. Entries are dropped when a run ends.
 const lastUsageTick = new Map<string, number>();
 const MAX_TICK_GAP_SECONDS = 3600;
-
-// Transient-error retries: backoff per consecutive failed run. The pending
-// timer doubles as the dedupe guard — stream:error and stream:complete{error}
-// both fire for one failed run and must count as a single failure.
-const GOAL_RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
-const pendingGoalRetries = new Map<string, ReturnType<typeof setTimeout>>();
-
-function cancelGoalRetry(sessionId: string): void {
-	const timer = pendingGoalRetries.get(sessionId);
-	if (timer === undefined) return;
-	clearTimeout(timer);
-	pendingGoalRetries.delete(sessionId);
-}
-
-function scheduleGoalRetry(sessionId: string, attempt: number): void {
-	if (pendingGoalRetries.has(sessionId)) return;
-	const delay =
-		GOAL_RETRY_DELAYS_MS[
-			Math.min(Math.max(attempt - 1, 0), GOAL_RETRY_DELAYS_MS.length - 1)
-		];
-	const timer = setTimeout(() => {
-		pendingGoalRetries.delete(sessionId);
-		// Conditions are re-checked at fire time: the kick no-ops when the
-		// goal is gone / paused / cleared or a stream is already running.
-		try {
-			kickGoalRunIfIdle(sessionId);
-		} catch (error) {
-			log.error("goal retry kick failed", { sessionId }, error);
-		}
-	}, delay);
-	timer.unref?.();
-	pendingGoalRetries.set(sessionId, timer);
-}
-
-function handleGoalStreamFailure(sessionId: string, error: string): void {
-	if (pendingGoalRetries.has(sessionId)) return;
-	const outcome = handleGoalRunError(sessionId, error);
-	if (outcome?.willRetry) scheduleGoalRetry(sessionId, outcome.attempt);
-}
 
 export const goalRuntimeHooks: OnethingAgentLoopGoalHooks = {
 	recordUsage(sessionId, usage) {
@@ -111,11 +73,18 @@ let bootstrapped = false;
  * 还是 true,第二份装配一条都不订阅,于是"目标续推"在第二份 backend 上静默
  * 消失(总线换了一条,而没有人往新的那条挂过)。disposer 摘订阅 + 放闩。
  */
-export function bootstrapGoalStreamBreakers(): () => void {
-	if (bootstrapped) return () => {};
+export function bootstrapGoalStreamBreakers(): (() => void) & { quiesce(): void; drain(): Promise<void> } {
+	if (bootstrapped) return Object.assign(() => {}, { quiesce() {}, async drain() {} });
 	bootstrapped = true;
 	const bus = getEventBus();
 	const unsubscribes: Array<() => void> = [];
+	const retries = new GoalRetryScheduler(kickGoalRunIfIdle, (sessionId, error) => log.error('goal retry kick failed', { sessionId }, error));
+	const cancelGoalRetry = (sessionId: string) => retries.cancel(sessionId);
+	const handleGoalStreamFailure = (sessionId: string, error: string) => {
+		if (retries.has(sessionId)) return;
+		const outcome = handleGoalRunError(sessionId, error);
+		if (outcome?.willRetry) retries.schedule(sessionId, outcome.attempt);
+	};
 
 	// A new run supersedes any pending retry: whatever started it (user
 	// message, retry kick, continuation) is now the goal's driver.
@@ -184,9 +153,14 @@ export function bootstrapGoalStreamBreakers(): () => void {
 		"goal-breaker",
 	));
 
-	return () => {
+	let disposed = false;
+	return Object.assign(() => {
+		if (disposed) return;
+		disposed = true;
+		retries.quiesce();
 		for (const unsubscribe of unsubscribes) unsubscribe();
 		unsubscribes.length = 0;
+		lastUsageTick.clear();
 		bootstrapped = false;
-	};
+	}, { quiesce: () => retries.quiesce(), drain: () => retries.drain() });
 }

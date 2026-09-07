@@ -114,6 +114,26 @@ describe('install/update 的 catalog-changed 广播(审查回归)', () => {
     expect(manager.getPlugins().find(info => info.definition.id === 'demo')
       ?.definition.manifest.version).toBe('2.0.0')
 
-    manager.shutdown()
+    await manager.shutdown()
+  })
+
+  it('releases a drained bootstrap manager and ignores repeated shutdown of the old instance', async () => {
+    const { writePluginSettingsFile, getCorePluginSettingsPath } = await import('@onething/core/plugins')
+    writePluginSettingsFile(getCorePluginSettingsPath({ storePath: storeRoot }), {
+      enabled: { 'log-monitor': false, 'note-skills': false },
+    })
+    const { bootstrapPluginSystem, getPluginManager } = await import('../manager.js')
+    const first = await bootstrapPluginSystem(bus, {})
+    await first.shutdown()
+    expect(getPluginManager()).toBeNull()
+    const second = await bootstrapPluginSystem(bus, {})
+    try {
+      expect(second).not.toBe(first)
+      const detach = vi.spyOn(first, 'detachHostSubscriptions')
+      await first.shutdown()
+      expect(detach).not.toHaveBeenCalled()
+      expect(getPluginManager()).toBe(second)
+      detach.mockRestore()
+    } finally { await second.shutdown() }
   })
 })

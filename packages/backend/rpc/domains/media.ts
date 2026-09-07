@@ -28,97 +28,113 @@
  * **server 本机**的那些路径 —— 这与桌面语义相同(单用户、同一台机、同一个 store),
  * 但它确实比从前的 REST 面宽:旧的 `/api/media/ingest` 走的是同一份投影,同样
  * 收 filePath,所以这不是本批新开的口子,只是换了通道。
+ *
+ * ---
+ * 2026-09-07 之后:域改成 `createMediaRpcHandlers(ports)` 的工厂,十一条口在库本体
+ * 之前先过一道归属闸(`wiring/media/access.ts`:资产按它挂的会话判、路径按沙箱判)。
+ * 上面那些判例一条没作废 —— 换的是「谁看得见」,不是「货从哪来」。
  */
 import {
-  clearOnethingMediaLibrary,
-  deleteOnethingMediaItem,
-  getOnethingMediaGallery,
-  hideOnethingMediaAsset,
-  ingestOnethingMediaFilesForIpc,
-  listOnethingLegacyMediaImages,
-  listOnethingMediaAssets,
-  readOnethingImageFileDataUrlForIpc,
-  rebuildOnethingMediaLibraryForIpc,
-  type OnethingMediaIngestLocalFilesInput,
-  type OnethingMediaQuery,
+  ingestOnethingMediaFilesForIpc, readOnethingImageFileDataUrlForIpc,
+  type OnethingMediaLibraryService, type OnethingMediaSession, type OnethingImagePreviewRegistry,
 } from '@onething/runtime/media'
 import { imagePreviewRegistry } from '@onething/runtime/media/image-preview-registry-bound'
 import { mediaLibraryService } from '@onething/runtime/media/library-service-bound'
-import { saveMediaImage } from '@onething/runtime/media/save-image'
+import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { MediaRoutes } from '@shared/ipc/media.js'
-import { getSessions } from '../../stores/index.js'
+import { getSession, getSessionsList } from '../../stores/sessions.js'
+import { DEFAULT_SESSION_OWNER, SessionAccessError, ownerMatchesContext, requestSessionOwner, sessionAccess, type SessionAccess } from '../../session/access.js'
+import { assertMediaAccess, assertMediaPathSources, createMediaPathAccess, mediaVisible, resolveMediaInputPath } from '../../wiring/media/access.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
-import type { ClearOnethingMediaLibraryOptions, OnethingMediaIpcLogger } from '@onething/runtime/media/media-library-presentation'
-import type { ConsoleLikePort } from '@onething/runtime/logging'
-import type { OnethingImageFileDataUrlIpcLogger } from '@onething/runtime/media/image-file-data-url'
-import type { OnethingLegacyMediaItem } from '@onething/runtime/media/media-library-service'
-import type { ListOnethingLegacyMediaImagesOptions } from '@onething/runtime/media/media-library-presentation'
 
-const log = getLogger('rpc.media')
-/** 投影层收的是鸭子 logger;过渡替身与旧的 `@main` 适配用的是同一个(area ① 统一后删)。 */
-const consoleLog: ConsoleLikePort & OnethingImageFileDataUrlIpcLogger & OnethingMediaIpcLogger = consolePort(log)
+const consoleLog = consolePort(getLogger('rpc.media'))
 
-export const mediaRpcHandlers: RpcRouteHandlers<MediaRoutes> = {
-  async listAssets(request) {
-    return listOnethingMediaAssets({
-      query: (request?.query as OnethingMediaQuery | undefined) || {},
-      listAssets: mediaQuery => mediaLibraryService.listAssets(mediaQuery),
-    })
-  },
-  async ingestFiles(request) {
-    return ingestOnethingMediaFilesForIpc({
-      request: (request as OnethingMediaIngestLocalFilesInput | undefined) || { files: [] },
-      ingestFiles: input => mediaLibraryService.ingestLocalFiles(input),
-      logger: consoleLog,
-    })
-  },
-  async hideAsset(request) {
-    return hideOnethingMediaAsset({
-      id: request.id,
-      hideAsset: assetId => mediaLibraryService.hideAsset(assetId),
-    })
-  },
-  async rebuildLibrary() {
-    return rebuildOnethingMediaLibraryForIpc({
-      listSessions: getSessions,
-      rebuildFromSessions: sessions => mediaLibraryService.rebuildFromSessions(sessions),
-      logger: consoleLog,
-    })
-  },
-  async getGallery(request) {
-    return getOnethingMediaGallery({
-      assetId: request.assetId,
-      query: (request.query as OnethingMediaQuery | undefined) || {},
-      getGallery: (assetId, mediaQuery) => mediaLibraryService.getGallery(assetId, mediaQuery),
-    })
-  },
-  async saveImage(request) {
-    return saveMediaImage(request)
-  },
-  async loadAll() {
-    const listOnethingLegacyMediaImagesOptions: ListOnethingLegacyMediaImagesOptions<OnethingLegacyMediaItem> = {
-      listLegacyImages: () => mediaLibraryService.listLegacyImages(),
-    };
-    return listOnethingLegacyMediaImages(listOnethingLegacyMediaImagesOptions)
-  },
-  async delete(request) {
-    return deleteOnethingMediaItem({
-      id: request.id,
-      hideAsset: assetId => mediaLibraryService.hideAsset(assetId),
-    })
-  },
-  async clearAll() {
-    const clearOnethingMediaLibraryOptions: ClearOnethingMediaLibraryOptions = {
-      hideAllAssets: () => mediaLibraryService.hideAllAssets(),
-    };
-    await clearOnethingMediaLibrary(clearOnethingMediaLibraryOptions)
-  },
-  async readImageBase64(request) {
-    return readOnethingImageFileDataUrlForIpc(request.filePath, { logger: consoleLog })
-  },
-  async getPreview(request) {
-    return imagePreviewRegistry.get(request.previewId)
-  },
+export interface MediaRpcPorts {
+  library: OnethingMediaLibraryService
+  access: SessionAccess
+  listSessions(): readonly { id: string }[]
+  getSession(id: string): OnethingMediaSession | undefined
+  previews: Pick<OnethingImagePreviewRegistry, 'get'>
 }
 
+/** Transport supplies identity; the library owns bytes and provenance, never caller payloads. */
+export function createMediaRpcHandlers(ports: MediaRpcPorts): RpcRouteHandlers<MediaRoutes> {
+  const { library, access } = ports
+  const { readPath, previewSource } = createMediaPathAccess(library, access)
+  function assertAsset(context: RpcDispatchContext, id: string, write = false) {
+    const asset = library.listAssetAccess().find(asset => asset.id === id)
+    if (!asset) throw new SessionAccessError()
+    assertMediaAccess(access, context, asset, write ? 'write' : 'read')
+    return asset
+  }
+  return {
+    async listAssets(request, context = DESKTOP_RPC_CONTEXT) {
+      return library.listAssets(request?.query ?? {}, mediaVisible(access, context))
+    },
+    async ingestFiles(request, context = DESKTOP_RPC_CONTEXT) {
+      const input = request ?? { files: [] }
+      for (const link of input.links ?? []) {
+        if (!link.sessionId) throw new SessionAccessError()
+        access.resolve(context, link.sessionId, 'write')
+      }
+      // Preflight every path before the first file read or library mutation.
+      const files = input.files.map(file => {
+        if (!file.filePath) return file
+        const filePath = resolveMediaInputPath(context, file.filePath)
+        assertMediaPathSources(library, access, context, filePath)
+        return { ...file, filePath }
+      })
+      return ingestOnethingMediaFilesForIpc({
+        request: { files, source: input.source, links: input.links },
+        ingestFiles: value => library.ingestLocalFiles(value, requestSessionOwner(context)), logger: consoleLog,
+      })
+    },
+    async hideAsset(request, context = DESKTOP_RPC_CONTEXT) {
+      assertAsset(context, request.id, true)
+      return { success: library.hideAsset(request.id) }
+    },
+    async rebuildLibrary(_request, context = DESKTOP_RPC_CONTEXT) {
+      const ids = ports.listSessions().map(meta => meta.id)
+      access.resolveAll(context, ids, 'write')
+      library.listAssetAccess().forEach(asset => assertMediaAccess(access, context, asset, 'write'))
+      const sessions = ids.map(id => ports.getSession(id)).filter((session): session is OnethingMediaSession => !!session)
+      return { success: true, ...library.rebuildFromSessions(sessions) }
+    },
+    async getGallery(request, context = DESKTOP_RPC_CONTEXT) {
+      assertAsset(context, request.assetId)
+      return library.getGallery(request.assetId, request.query ?? {}, mediaVisible(access, context))
+    },
+    async saveImage(request, context = DESKTOP_RPC_CONTEXT) {
+      const authorize = () => access.resolve(context, request.sessionId, 'write')
+      authorize()
+      return library.saveGeneratedImageAsLegacyItem(request, authorize)
+    },
+    async loadAll(_request, context = DESKTOP_RPC_CONTEXT) {
+      return library.listLegacyImages(mediaVisible(access, context))
+    },
+    async delete(request, context = DESKTOP_RPC_CONTEXT) {
+      assertAsset(context, request.id, true)
+      return library.hideAsset(request.id)
+    },
+    async clearAll(_request, context = DESKTOP_RPC_CONTEXT) {
+      library.listAssetAccess().forEach(asset => assertMediaAccess(access, context, asset, 'write'))
+      library.hideAllAssets()
+    },
+    async readImageBase64(request, context = DESKTOP_RPC_CONTEXT) {
+      return readOnethingImageFileDataUrlForIpc(readPath(context, request.filePath), { logger: consoleLog })
+    },
+    async getPreview(request, context = DESKTOP_RPC_CONTEXT) {
+      // This registry is created exclusively by native desktop preview windows.
+      if (!ownerMatchesContext(DEFAULT_SESSION_OWNER, context)) throw new SessionAccessError()
+      const preview = ports.previews.get(request.previewId)
+      if (preview.success) previewSource(context, preview.src)
+      return preview
+    },
+  }
+}
+
+export const mediaRpcHandlers = createMediaRpcHandlers({
+  library: mediaLibraryService, access: sessionAccess, listSessions: getSessionsList, getSession,
+  previews: imagePreviewRegistry,
+})

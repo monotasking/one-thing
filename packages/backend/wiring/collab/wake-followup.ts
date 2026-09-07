@@ -32,6 +32,9 @@ import { getEventBus } from '../../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { speakIntoCollabRoom } from './say-tool.js'
 import { noteCollabSchedule } from './inspector.js'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import type { RuntimeRequestContext } from '@onething/core'
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
@@ -46,6 +49,7 @@ const log = getLogger('collab.wake')
 export const COLLAB_WAKE_TIMEOUT_MS = 120_000
 
 interface PendingWake {
+  executionContext: Readonly<RuntimeRequestContext>
   dmRoomSessionId: string
   targetAgentId: string
   wakeRoomSessionId: string
@@ -85,7 +89,10 @@ export function registerCollabWakeFollowup(input: {
   senderSessionId: string
   senderAgentId: string
   sinceMessageId: string
-}): void {
+}, options: { executionContext?: unknown } = {}): void {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  sessionAccess.resolveAll(executionContext,
+    [input.senderSessionId, input.dmRoomSessionId, input.wakeRoomSessionId], 'write')
   const key = keyOf(input.dmRoomSessionId, input.targetAgentId)
   // 已经在等同一个人了:锚点换成新的那条,不叠第二次 poke。
   if (pending.has(key)) return
@@ -98,18 +105,19 @@ export function registerCollabWakeFollowup(input: {
       if (event.agentId !== input.targetAgentId) return
       // 落边才是 settle:起边(true)只是说回合开始了。
       if (event.active !== false) return
-      void fulfill(key, 'settled')
+      void fulfill(key, 'settled').catch(error => log.warn('wake followup failed', {}, error))
     },
     'collab-wake-followup',
   )
 
   const timer = setTimeout(() => {
-    void fulfill(key, 'timeout')
+    void fulfill(key, 'timeout').catch(error => log.warn('wake followup failed', {}, error))
   }, COLLAB_WAKE_TIMEOUT_MS)
   // 一个还没兑现的 wake 不该拖住进程退出(CLI/守护进程都会等 timer)。
   timer.unref?.()
 
   pending.set(key, {
+    executionContext,
     dmRoomSessionId: input.dmRoomSessionId,
     targetAgentId: input.targetAgentId,
     wakeRoomSessionId: input.wakeRoomSessionId,
@@ -128,6 +136,8 @@ export function registerCollabWakeFollowup(input: {
 async function fulfill(key: string, why: 'settled' | 'timeout'): Promise<void> {
   const entry = dispose(key)
   if (!entry) return
+  sessionAccess.resolveAll(entry.executionContext,
+    [entry.senderSessionId, entry.dmRoomSessionId, entry.wakeRoomSessionId], 'write')
 
   const target = findAgent(entry.targetAgentId)
   if (!target) return
@@ -141,7 +151,7 @@ async function fulfill(key: string, why: 'settled' | 'timeout'): Promise<void> {
     room: entry.wakeRoomSessionId,
     // 清零的**可重放**那一半:标记落在这条 poke 上,boot 重算认它作边界。
     chainReset: true,
-  })
+  }, { executionContext: entry.executionContext })
   if (!said.ok || !said.messageId) {
     // 发起回合早就结束了,没有人可以回执(§3.2 失败面):只留痕。
     log.warn('wake poke not delivered to room', {

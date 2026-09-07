@@ -33,6 +33,13 @@ const mocks = vi.hoisted(() => ({
   created: [] as string[],
 }))
 
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
+  }) }
+})
+
 vi.mock('../../../store.js', () => ({
   // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
   getSettings: () => ({}),
@@ -104,6 +111,7 @@ beforeEach(() => {
   tempStore = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-collab-agent-gone-'))
   process.env.ONETHING_STORE_PATH = tempStore
   mocks.sessions.clear()
+  for (const id of ['room-1', 'room-2']) mocks.sessions.set(id, { id, name: id, kind: 'room', messages: [] })
   mocks.created.length = 0
   mocks.currentSessionId = 'chat-user-was-here'
   invalidateAgentsCache()

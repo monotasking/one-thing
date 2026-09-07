@@ -132,6 +132,7 @@ export interface StreamContext {
    * its presence proves nothing (docs/design/agent-permission-system-2026-08.md §1.1).
    */
   principal?: Principal
+  executionContext?: unknown
   /**
    * This turn's agent capability profile (tool surface, turn budget, model
    * binding), resolved once when the run starts —

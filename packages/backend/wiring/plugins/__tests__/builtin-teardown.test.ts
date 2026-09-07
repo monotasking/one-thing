@@ -12,10 +12,12 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import type { PluginState } from '../api.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-teardown-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
+const ownedStates = new Set<PluginState>()
 
 type LoadedModules = Awaited<ReturnType<typeof loadModules>>
 
@@ -215,12 +217,18 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
-  else process.env.ONETHING_STORE_PATH = previousStorePath
-  // fs.createWriteStream 的 open 是异步的:dispose 里 end() 之后,句柄可能还没
-  // 落地。先让事件循环把它跑完再删目录,否则删的是"正在打开的文件"。
-  await new Promise(resolve => setTimeout(resolve, 150))
-  fs.rmSync(storeRoot, { recursive: true, force: true })
+  try {
+    const results = await Promise.allSettled([...ownedStates].map(async state => {
+      modules.api.disposePlugin(state)
+      await modules.api.drainPlugin(state)
+    }))
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'Built-in plugin cleanup failed')
+    fs.rmSync(storeRoot, { recursive: true, force: true })
+  } finally {
+    if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+    else process.env.ONETHING_STORE_PATH = previousStorePath
+  }
 })
 
 describe('built-in plugin teardown leaves no residue', () => {
@@ -240,6 +248,7 @@ describe('built-in plugin teardown leaves no residue', () => {
         eventBus as never,
         createStreamEngineStub() as never,
       )
+      ownedStates.add(state)
       const entry = definition.entry
       expect(entry, `built-in plugin "${definition.id}" must carry a bundled entry`).toBeTypeOf('function')
       await entry!(api)
@@ -271,6 +280,7 @@ describe('built-in plugin teardown leaves no residue', () => {
       ).toBeGreaterThan(0)
 
       modules.api.disposePlugin(state)
+      await modules.api.drainPlugin(state)
 
       const after = snapshot(modules, eventBus)
       expect(after, `built-in plugin "${definition.id}" left residue after dispose`).toEqual(before)
@@ -296,6 +306,7 @@ describe('built-in plugin teardown leaves no residue', () => {
           eventBus as never,
           createStreamEngineStub() as never,
         )
+        ownedStates.add(state)
         await definition.entry!(api)
 
         // 插件在启用期间写一份自己的数据。
@@ -304,6 +315,7 @@ describe('built-in plugin teardown leaves no residue', () => {
         expect(fs.existsSync(dataFile)).toBe(true)
 
         modules.api.disposePlugin(state)
+        await modules.api.drainPlugin(state)
 
         // 停用保留数据 —— 归档是卸载的语义,不是停用的。
         expect(fs.existsSync(dataFile), `${definition.id} data must survive disable`).toBe(true)

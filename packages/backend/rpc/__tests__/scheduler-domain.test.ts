@@ -25,6 +25,7 @@ const scheduler = vi.hoisted(() => ({
 }))
 
 const userTasks = vi.hoisted(() => ({
+  canAccessSchedulerTask: vi.fn(),
   createUserSchedulerTask: vi.fn(),
   deleteUserSchedulerTask: vi.fn(),
   isUserSchedulerTask: vi.fn(),
@@ -63,9 +64,26 @@ async function loadDomain() {
 }
 
 describe('scheduler RPC domain', () => {
+  it('filters foreign tasks and refuses every task control and history read before side effects', async () => {
+    userTasks.canAccessSchedulerTask.mockReturnValue(false)
+    const { dispatchRpc } = await loadDomain()
+    const context = { transport: 'http' as const, ownerUid: 'foreign', workspaceId: 'space' }
+    const listed = await dispatchRpc({ domain: 'scheduler', method: 'list', payload: {} }, context)
+    expect(listed).toEqual({ ok: true, data: { success: true, tasks: [] } })
+    for (const method of ['get', 'runNow', 'setEnabled', 'updateTask', 'deleteTask', 'listRuns', 'getRun']) {
+      const result = await dispatchRpc({ domain: 'scheduler', method, payload: { id: TASK.id, taskId: TASK.id, runId: 'run-1' } }, context)
+      expect(result).toEqual({ ok: true, data: { success: false, error: 'Scheduled task not found' } })
+    }
+    expect(scheduler.runNow).not.toHaveBeenCalled()
+    expect(userTasks.updateUserSchedulerTask).not.toHaveBeenCalled()
+    expect(userTasks.deleteUserSchedulerTask).not.toHaveBeenCalled()
+    expect(runHistory.listSchedulerRunDetails).not.toHaveBeenCalled()
+    expect(runHistory.getSchedulerRunDetail).not.toHaveBeenCalled()
+  })
   let dispose: (() => void) | undefined
 
   beforeEach(async () => {
+    userTasks.canAccessSchedulerTask.mockReset().mockReturnValue(true)
     scheduler.list.mockReset().mockReturnValue([TASK])
     scheduler.getStatus.mockReset().mockReturnValue(TASK)
     scheduler.runNow.mockReset().mockResolvedValue({ runId: 'run-1', taskId: 'user:task-1' })

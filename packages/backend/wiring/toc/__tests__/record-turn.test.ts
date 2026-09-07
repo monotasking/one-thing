@@ -9,6 +9,10 @@
  * traceable.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import type { AgentLoopOptions, AgentProvider } from '@onething/core/agent-loop'
 import { collectLogRecordsForTests } from '../../logging/index.js'
 
 const mocks = vi.hoisted(() => ({
@@ -18,7 +22,11 @@ const mocks = vi.hoisted(() => ({
     toolResults: [],
   })),
   createUtilityProvider: vi.fn(async () => ({
-    provider: {} as never,
+    provider: {
+      id: 'deepseek',
+      capabilities: { capabilities: ['text-input', 'text-output'], inputModalities: ['text'], outputModalities: ['text'] },
+      runTurn: vi.fn(async () => ({ message: { role: 'assistant', content: '{"action":"new","kind":"task","title":"Fix the parser","detail":"off-by-one"}' }, finishReason: 'stop' })),
+    } as AgentProvider,
     providerId: 'deepseek',
     model: 'deepseek-v4-flash',
     thinking: undefined as boolean | undefined,
@@ -28,12 +36,14 @@ const mocks = vi.hoisted(() => ({
   billTocUsage: vi.fn(() => vi.fn()),
 }))
 
-vi.mock('@onething/core/agent-loop', () => ({ runAgentLoop: mocks.runAgentLoop }))
+vi.mock('@onething/core/agent-loop', async importOriginal => ({
+  ...await importOriginal<typeof import('@onething/core/agent-loop')>(),
+  runAgentLoop: mocks.runAgentLoop,
+}))
 vi.mock('../../providers/utility-provider.js', () => ({
   createUtilityProvider: mocks.createUtilityProvider,
 }))
 vi.mock('../../../stores/settings.js', () => ({ getSettings: () => ({}) }))
-vi.mock('@onething/runtime/storage', () => ({ getOnethingSessionsDir: () => '/tmp/toc-test' }))
 vi.mock('../../usage/bill-side-line.js', () => ({ billTocUsage: mocks.billTocUsage }))
 vi.mock('@onething/runtime/toc', async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -50,6 +60,11 @@ vi.mock('@onething/runtime/toc', async (importOriginal) => {
 })
 
 const { recordTocTurn } = await import('../index.js')
+const { installSessionLayerForTest } = await import('../../../session/testing/session-layer.js')
+const { readSessionLogEventsSync } = await import('../../../session/event-log.js')
+const realAgentLoop = await vi.importActual<typeof import('@onething/core/agent-loop')>('@onething/core/agent-loop')
+let fixture: ReturnType<typeof installSessionLayerForTest>
+let storeDir: string
 
 function turn(overrides: Record<string, unknown> = {}) {
   return {
@@ -68,6 +83,12 @@ function turn(overrides: Record<string, unknown> = {}) {
 let logs: ReturnType<typeof collectLogRecordsForTests>
 
 beforeEach(() => {
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'toc-record-'))
+  vi.stubEnv('ONETHING_STORE_PATH', storeDir)
+  fixture = installSessionLayerForTest({ store: {
+    getSessionRaw: id => ({ id, name: 'test', messages: [], createdAt: 1, updatedAt: 1 }),
+    readSessionTranscriptFile: () => '',
+  } })
   vi.clearAllMocks()
   mocks.read.mockResolvedValue([])
   mocks.billTocUsage.mockReturnValue(vi.fn())
@@ -75,7 +96,11 @@ beforeEach(() => {
   logs = collectLogRecordsForTests()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await fixture.dispose().catch(() => undefined)
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
+  fs.rmSync(storeDir, { recursive: true, force: true })
   logs.stop()
 })
 
@@ -84,6 +109,42 @@ function loggedLines(): string {
 }
 
 describe('recordTocTurn model call', () => {
+  it.each(['auxiliary-model/intent', 'auxiliary-model/result'])('propagates real %s persistence failure and never retries it', async eventType => {
+    const provider = await mocks.createUtilityProvider()
+    const runTurn = vi.fn(async () => {
+      expect(readSessionLogEventsSync('s1').at(-1)).toMatchObject({ type: 'auxiliary-model/intent', data: { purpose: 'toc' } })
+      return { message: { role: 'assistant' as const, content: '{"action":"new","kind":"task","title":"Fix the parser","detail":"off-by-one"}' }, finishReason: 'stop' as const }
+    })
+    mocks.createUtilityProvider.mockResolvedValueOnce({ ...provider, provider: { ...provider.provider, runTurn } } as never)
+    mocks.runAgentLoop.mockImplementationOnce(options => realAgentLoop.runAgentLoop(options as unknown as AgentLoopOptions) as never)
+    const append = fs.promises.appendFile.bind(fs.promises)
+    vi.spyOn(fs.promises, 'appendFile').mockImplementation(async (...args) => {
+      if (JSON.parse(String(args[1])).type === eventType) throw Object.assign(new Error('EIO checkpoint'), { code: 'EIO' })
+      return append(...args)
+    })
+    await expect(recordTocTurn(turn())).rejects.toMatchObject({ code: 'AGENT_EXECUTION_CHECKPOINT_FAILED' })
+    expect(runTurn).toHaveBeenCalledTimes(eventType.endsWith('/intent') ? 0 : 1)
+    expect(mocks.append).not.toHaveBeenCalled()
+    expect(mocks.billTocUsage).not.toHaveBeenCalled()
+  })
+
+  it('records each provider retry separately before it reaches the provider', async () => {
+    const provider = await mocks.createUtilityProvider()
+    let attempts = 0
+    const runTurn = vi.fn(async () => {
+      expect(readSessionLogEventsSync('s1').at(-1)).toMatchObject({ type: 'auxiliary-model/intent', data: { params: { attempt: attempts } } })
+      if (attempts++ === 0) throw new Error('503 overloaded')
+      return { message: { role: 'assistant' as const, content: '{"action":"new","kind":"task","title":"Fix the parser","detail":"off-by-one"}' }, finishReason: 'stop' as const }
+    })
+    mocks.createUtilityProvider.mockResolvedValueOnce({ ...provider, provider: { ...provider.provider, runTurn } } as never)
+    mocks.runAgentLoop.mockImplementationOnce(options => realAgentLoop.runAgentLoop({ ...options as unknown as AgentLoopOptions, turnRetryDelaysMs: [0] }) as never)
+    await recordTocTurn(turn())
+    const records = readSessionLogEventsSync('s1').filter(event => event.type.startsWith('auxiliary-model/'))
+    expect(records.map(event => event.type)).toEqual(['auxiliary-model/intent', 'auxiliary-model/result', 'auxiliary-model/intent', 'auxiliary-model/result'])
+    expect(records[1]).toMatchObject({ data: { outcome: 'error' } })
+    expect(records[3]).toMatchObject({ data: { outcome: 'completed' } })
+    expect(runTurn).toHaveBeenCalledTimes(2)
+  })
   it('disables thinking explicitly rather than inheriting the provider default', async () => {
     await recordTocTurn(turn() as never)
 

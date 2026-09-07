@@ -11,6 +11,7 @@ import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js
 
 const mocks = vi.hoisted(() => ({
   getSessionsList: vi.fn(() => [] as unknown[]),
+  findWorkspaceGrant: vi.fn(() => undefined),
   listSessionGrants: vi.fn((_sessionId: string) => [] as { id: string }[]),
   listWorkspaceGrants: vi.fn(
     (_root: string, _owner?: { userId?: string; workspaceId?: string }) => [] as { id: string }[],
@@ -27,6 +28,7 @@ vi.mock('../../stores/sessions.js', () => ({
 }))
 
 vi.mock('../../wiring/permission/permission-grants.js', () => ({
+  findWorkspaceGrant: mocks.findWorkspaceGrant,
   listSessionGrants: mocks.listSessionGrants,
   listWorkspaceGrants: mocks.listWorkspaceGrants,
   revokeGrant: mocks.revokeGrant,
@@ -78,8 +80,9 @@ beforeEach(() => {
 })
 
 describe('permissionGrants RPC domain · desktop context', () => {
-  it('passes the request through untouched — no ownership, no clamping', async () => {
+  it('keeps desktop paths unconfined but binds grant ownership to the local operator', async () => {
     const handlers = await loadDesktopDomain()
+    mocks.getSessionsList.mockReturnValue([{ id: 'session-1' }])
 
     await handlers.list(
       { sessionId: 'session-1', workspaceRoot: '/anywhere/on/disk', userId: 'bob' },
@@ -89,19 +92,19 @@ describe('permissionGrants RPC domain · desktop context', () => {
     // 桌面上 owner 沿用请求体,不被 context 覆盖(桌面 context 本来就没有 owner)。
     expect(mocks.listWorkspaceGrants).toHaveBeenCalledWith(
       '/anywhere/on/disk',
-      expect.objectContaining({ userId: 'bob' }),
+      expect.objectContaining({ userId: 'local-user', workspaceId: 'default' }),
     )
     // 会话列表根本没被读 —— 桌面路径不付归属枚举的代价。
-    expect(mocks.getSessionsList).not.toHaveBeenCalled()
+    expect(mocks.getSessionsList).toHaveBeenCalled()
   })
 
-  it('revokes any grant without an ownership lookup', async () => {
+  it('refuses unknown grants on desktop too', async () => {
     const handlers = await loadDesktopDomain()
 
     await expect(handlers.revoke({ id: 'grant-from-nowhere' }, DESKTOP_RPC_CONTEXT))
-      .resolves.toEqual({ success: true })
-    expect(mocks.revokeGrant).toHaveBeenCalledWith('grant-from-nowhere')
-    expect(mocks.getSessionsList).not.toHaveBeenCalled()
+      .resolves.toEqual({ success: false, error: 'Permission grant not found' })
+    expect(mocks.revokeGrant).not.toHaveBeenCalled()
+    expect(mocks.getSessionsList).toHaveBeenCalled()
   })
 })
 
@@ -161,12 +164,21 @@ describe('permissionGrants RPC domain · networked context', () => {
     expect(mocks.listSessionGrants).toHaveBeenCalledWith('mine')
   })
 
-  it('treats unstamped legacy sessions as owned — existing data keeps working', async () => {
-    mocks.getSessionsList.mockReturnValue([{ id: 'legacy' }])
+  it('treats an ownerless legacy session as unowned — every caller reads it, a stamped one only its owner', async () => {
+    // 归属判定:**两格都空 = 无主,谁都读得到**;有值的那格才比(工单 4 A3 修回
+    // HEAD 语义)。老会话只是没盖过章,不该因此变成 local-user 的私产 ——
+    // 变成私产的后果是任何带真实租户身份的调用者都读不到自己的历史授权。
+    mocks.getSessionsList.mockReturnValue([{ id: 'legacy' }, { id: 'theirs', userId: 'bob', workspaceId: 'default' }])
     const handlers = await loadDomain()
 
     await handlers.list({ sessionId: 'legacy' }, httpContext())
     expect(mocks.listSessionGrants).toHaveBeenCalledWith('legacy')
+    await handlers.list({ sessionId: 'legacy' }, { ...httpContext(), ownerUid: 'local-user' })
+    expect(mocks.listSessionGrants).toHaveBeenCalledTimes(2)
+
+    mocks.listSessionGrants.mockClear()
+    await expect(handlers.list({ sessionId: 'theirs' }, httpContext())).resolves.toMatchObject({ success: false })
+    expect(mocks.listSessionGrants).not.toHaveBeenCalled()
   })
 
   it('refuses to revoke a grant that belongs to nobody the caller owns', async () => {

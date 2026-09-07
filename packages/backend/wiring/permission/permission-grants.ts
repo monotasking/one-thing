@@ -31,6 +31,7 @@ export {
   createPermissionGrantFileStorage,
   getPermissionWorkspaceGrantsPath,
   listSessionGrants,
+  findWorkspaceGrant,
   listWorkspaceGrants,
   matchGrant,
   resetPermissionGrantsForTests,

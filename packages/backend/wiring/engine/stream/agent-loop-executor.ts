@@ -1,6 +1,7 @@
 import * as store from "../../../store.js";
 import { sessionCommands } from "../../../session/commands.js";
 import { sessionReads } from "../../../session/reads.js";
+import { ensureSessionWritable } from "../../../session/index.js";
 import { synthesizeCoreToolAnchors } from "@onething/core/session/render-anchors";
 import {
 	endSessionRun,
@@ -28,6 +29,8 @@ import type {
 } from "@onething/core/events";
 import {
 	streamAgentLoopProviderChunks,
+	isAgentExecutionCheckpointError,
+	createAgentExecutionLifetime,
 	type AgentProviderStreamChunk,
 } from "@onething/core/agent-loop";
 import type { HistoryMessage } from "./message-helpers.js";
@@ -266,10 +269,9 @@ function rotateAssistantWriterIdentity(state: AgentLoopExecutorState): void {
 	// 回读:这次要写的 `run/start` 就是这条占位消息的产地,而"入库的它长什么样"
 	// 现在是写入那扇门自己的返回值 —— 盖章(`stampCollabAgentId`,COW)已经在
 	// 那一刻发生过,所以 `plan` 里那条与这一条不是同一个对象,要用的是这一条。
-	const storedAssistantMessage = store.addMessage(
-		state.ctx.sessionId,
-		assistantMessage,
-	);
+	const storedAssistantMessage = sessionCommands.appendMessage(state.ctx.sessionId, {
+		message: assistantMessage, stampCollab: true,
+	});
 	// 收尾门的闸:旧 run 现在收得比引擎写完上一条消息**早**,所以对账要等一下
 	// (见 `EndSessionRunInput.shadowGate`)。开闸的两处 = 消费侧接手完成、
 	// 以及执行收尾的 finally(闸永远不开就等于这条 run 不比)。
@@ -858,6 +860,8 @@ export async function executeAgentLoopStreamGeneration(
 	sessionName?: string,
 	options: ExecuteAgentLoopStreamGenerationOptions = {},
 ): Promise<AgentLoopStreamGenerationResult> {
+	const executionLifetime = createAgentExecutionLifetime();
+	await ensureSessionWritable(ctx.sessionId);
 	// One resolution per turn, at the only door every run comes through (the
 	// ordinary send path AND the resume-after-confirmation path). Everything
 	// downstream reads this snapshot instead of re-deriving its own answer, so
@@ -1025,6 +1029,7 @@ export async function executeAgentLoopStreamGeneration(
 			state.eventRecorder = recorded.recorder;
 			return streamAgentLoopProviderChunks({
 				...recorded.runtime,
+				executionLifetime,
 				// per-space 凭证轮换(批 D)。挂在 core 的 turn 级重试边界上,
 				// **不另起重试链**;没有池(默认空间 / 单条)时这里是 undefined,
 				// core 的行为一行不变。
@@ -1086,7 +1091,7 @@ export async function executeAgentLoopStreamGeneration(
 		isAbortError: (error) => {
 			// 收尾闸:攒着的最后一批 delta 必须落账(abort 也是一种收场)。
 			state.eventRecorder?.flush();
-			return error.name === "AbortError" || ctx.abortSignal.aborted;
+			return !isAgentExecutionCheckpointError(error) && (error.name === "AbortError" || ctx.abortSignal.aborted);
 		},
 		sendStreamAborted: (reason) => {
 			// 中断在这里被接住,不再往上抛 —— 不留这一句,`run/end` 会把一次
@@ -1115,6 +1120,7 @@ export async function executeAgentLoopStreamGeneration(
 			Extract<BuildAgentLoopStreamRuntimeResult, { supported: true }>
 		>(lifecycleOptions);
 	} catch (error) {
+		await executionLifetime.drain();
 		if (resumeRun.started) {
 			// §15.12(c):等那一次 fsync —— 收账时「已落盘」必须是真的。
 			await endSessionRun(ctx.sessionId, resumeRun.run.runId, {
@@ -1124,7 +1130,11 @@ export async function executeAgentLoopStreamGeneration(
 		}
 		throw error;
 	} finally {
-		state.eventRecorder?.flush();
+		let saveFailure: unknown;
+		try { await executionLifetime.drain(); } catch (error) { saveFailure = error; }
+		try {
+			state.eventRecorder?.flush();
+		} catch (error) { saveFailure ??= error; }
 		/*
 		 * **散场收台面**(R1 交接台,09-02 补)。
 		 *
@@ -1145,7 +1155,10 @@ export async function executeAgentLoopStreamGeneration(
 		state.pendingAssistantRotation = undefined;
 		// 幂等(见 `endSessionRun`);`started:false` 时收尾归 `executeMessageStream`。
 		if (resumeRun.started) {
-			await endSessionRun(ctx.sessionId, resumeRun.run.runId, { outcome: "completed" });
+			try { await endSessionRun(ctx.sessionId, resumeRun.run.runId, { outcome: saveFailure ? "error" : "completed", error: saveFailure }); }
+			catch (error) { saveFailure ??= error; }
 		}
+		// eslint-disable-next-line no-unsafe-finally -- 落盘失败必须抵达调用方(事件账本第二定律);这里抛的就是本轮唯一在手的错误,没有可被顶掉的对象
+		if (saveFailure) throw saveFailure;
 	}
 }

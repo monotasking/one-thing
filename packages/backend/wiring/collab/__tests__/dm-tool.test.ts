@@ -47,6 +47,13 @@ const mocks = vi.hoisted(() => ({
   wakes: [] as Array<Record<string, string>>,
 }))
 
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
+  }) }
+})
+
 vi.mock('../../../store.js', () => ({
   getSettings: () => mocks.settings,
   getSession: (id: string) => mocks.sessions.get(id),

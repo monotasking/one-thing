@@ -32,6 +32,7 @@ import { OnethingTokenStore } from '@onething/runtime/auth'
 import {
   readSpaceCredentials,
   readSpaceCredentialsAtRest,
+  hasSpaceCredentialEntries,
   spaceCredentialsEncryptionAtRest,
   writeSpaceCredentials,
   createSpaceCredentialEntryId,
@@ -357,17 +358,7 @@ async function migrateOAuthTokens(
   // 把 store 根挪走时它照旧指着 `~/.onething` —— 而这个函数会**写**那个文件。
   // 2026-08-18 的实测教训:一次单测把真实 `oauth-tokens.json` 清成了 `{}`。
   const tokenFilePath = path.join(getOnethingStorePath(), 'oauth-tokens.json')
-  if (!fs.existsSync(tokenFilePath)) return { file, providers: [] }
-
-  let raw: unknown
-  try {
-    raw = JSON.parse(fs.readFileSync(tokenFilePath, 'utf-8'))
-  } catch {
-    // 读不动的 token 文件不该把整次迁移拖住(它本来就已经不能用了)。
-    return { file, providers: [] }
-  }
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { file, providers: [] }
-  const providerIds = Object.keys(raw as Record<string, unknown>)
+  const providerIds = legacyOAuthProviderIds(tokenFilePath)
   if (providerIds.length === 0) return { file, providers: [] }
 
   const backup = copyFileToBackup(tokenFilePath, 'oauth-tokens', now)
@@ -410,6 +401,18 @@ async function migrateOAuthTokens(
   return { file: { providers }, providers: migrated, ...(backup ? { backup } : {}) }
 }
 
+/** Inspect the legacy envelope without decrypting tokens or contacting Keychain. */
+function legacyOAuthProviderIds(tokenFilePath: string): string[] {
+  if (!fs.existsSync(tokenFilePath)) return []
+  try {
+    const raw: unknown = JSON.parse(fs.readFileSync(tokenFilePath, 'utf-8'))
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.keys(raw) : []
+  } catch {
+    // Preserve the migration's existing behavior for unreadable legacy files.
+    return []
+  }
+}
+
 /** 空间名录 + default —— 迁移与升级都按同一份清单走。 */
 function allSpaceIdsForCredentials(): Set<string> {
   const spaceIds = new Set<string>([DEFAULT_SPACE_ID])
@@ -437,14 +440,17 @@ function allSpaceIdsForCredentials(): Set<string> {
  * 直接返回,绝不"顺手"把密文降级回明文。
  */
 export function upgradeSpaceCredentialsEncryptionAtRest(): string[] {
-  if (spaceCredentialsEncryptionAtRest() !== 'safeStorage') return []
-
   const upgraded: string[] = []
   for (const spaceId of allSpaceIdsForCredentials()) {
     if (readSpaceCredentialsAtRest(spaceId) !== 'none') continue
     try {
+      const credentials = readSpaceCredentials(spaceId)
+      if (!hasSpaceCredentialEntries(credentials)) continue
+      // A fresh store (or an empty legacy pool) must not ask the operating
+      // system for a secret merely to discover there is nothing to encrypt.
+      if (spaceCredentialsEncryptionAtRest() !== 'safeStorage') return upgraded
       // 读得出来(明文那条路读侧一直认),原样写回去 —— 写侧此刻是 safeStorage。
-      writeSpaceCredentials(spaceId, readSpaceCredentials(spaceId))
+      writeSpaceCredentials(spaceId, credentials)
       upgraded.push(spaceId)
       log.info('credentials pool re-encrypted at rest', { spaceId })
     } catch (err) {
@@ -489,8 +495,18 @@ export async function migrateProviderConfigToDefaultSpace(
   }
   if (typeof storage?.spaceProviderSettingsMigratedAt === 'number') return empty
 
+  const secondStageOnly = typeof storage?.providerConfigMigratedAt === 'number'
+  const providers = {
+    ...((settings.ai?.providers ?? {}) as Record<string, ProviderConfig | undefined>),
+    ...customProviderConfigs(settings.ai),
+  }
+  const hasLegacyCredentials = !secondStageOnly && (
+    hasSpaceCredentialEntries(buildMigratedCredentialEntries(providers, { providers: {} }, { now }).file)
+    || legacyOAuthProviderIds(path.join(getOnethingStorePath(), 'oauth-tokens.json')).length > 0
+  )
+
   /**
-   * **没有加密能力就不迁**(2026-08-31 真机定位的明文雷)。
+   * **存在需搬运的凭据且没有加密能力就不迁**。普通配置与空凭据池不访问 Keychain。
    *
    * 这次迁移把 API key 与 OAuth 令牌搬进 `workspaces/<space>/credentials.json`,
    * 而写侧是「按此刻的能力产出」(`serializeSpaceCredentialsDocument` 的惰性升级)。
@@ -528,7 +544,7 @@ export async function migrateProviderConfigToDefaultSpace(
    * `gate:monotone` 因此改成用环境变量种假 key(它们从前靠 `settings.ai` 种,
    * 正是这条闸挡下的那种写法)。
    */
-  if (spaceCredentialsEncryptionAtRest() !== 'safeStorage') {
+  if (hasLegacyCredentials && spaceCredentialsEncryptionAtRest() !== 'safeStorage') {
     // 日志是**给部署者看的**:它必须说清「这是有意为之」和「那我该怎么配」,
     // 否则读到它的人只会以为迁移坏了,然后去把这条闸拆掉。
     log.warn(
@@ -548,25 +564,20 @@ export async function migrateProviderConfigToDefaultSpace(
     return { ...empty, deferredReason: 'no-credential-encryption' }
   }
 
-  const secondStageOnly = typeof storage?.providerConfigMigratedAt === 'number'
   const settingsBackup = copyFileToBackup(getOnethingSettingsPath(), 'settings', now)
 
   let credentials: string[] = []
   let oauthTokens: string[] = []
   let oauthBackup: string | undefined
 
-  if (!secondStageOnly) {
+  if (hasLegacyCredentials) {
     // ① 凭证:内置 provider + 自定义 provider,一起进 default 池。
-    const providers = {
-      ...((settings.ai?.providers ?? {}) as Record<string, ProviderConfig | undefined>),
-      ...customProviderConfigs(settings.ai),
-    }
     const built = buildMigratedCredentialEntries(providers, readSpaceCredentials(DEFAULT_SPACE_ID), {
       now,
     })
     // ② OAuth token。
     const withTokens = await migrateOAuthTokens(built.file, now)
-    writeSpaceCredentials(DEFAULT_SPACE_ID, withTokens.file)
+    if (hasSpaceCredentialEntries(withTokens.file)) writeSpaceCredentials(DEFAULT_SPACE_ID, withTokens.file)
     credentials = built.migrated
     oauthTokens = withTokens.providers
     oauthBackup = withTokens.backup

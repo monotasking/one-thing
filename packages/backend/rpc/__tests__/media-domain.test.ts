@@ -1,228 +1,220 @@
-/**
- * media 域,端到端穿过 dispatcher(结构债 P4c 第三批)。
- *
- * 接的是被删掉的三处转发的测试位:`apps/electron/src/ipc/media.ts` 工厂里那十一条
- * (连同 `__tests__/media.test.ts` 里对应的断言)、`@main/ipc/media.ts` 的壳适配、
- * bridge 上那十一条包装,以及 server 的十一条 REST 路由 + media facade adapter 的
- * 十一个方法。
- *
- * 只桩**库本体**(`library-service-bound` 那台单例)与会话表,**投影不桩** ——
- * `@onething/runtime/media` 的那批 `*OnethingMedia*` / `*ForIpc` 是真跑的,所以这组
- * 用例证的是「域把端口接对了」,而不是「域自己又实现了一遍」。
- *
- * 值得钉的三件:
- *  - 十一条方法都在 router 的白名单上,一条不多一条不少 —— 尤其是**没有**
- *    `saveAs` / `openPreview` / `openGallery`:那三条要宿主本体,按 P4 终态留在
- *    手写通道上;
- *  - `getPreview` 读的是那本**进程内**登记簿,而写它的是留在宿主侧的「开预览窗」——
- *    两半共用 `@onething/runtime/media/image-preview-registry-bound` 的同一个单例,
- *    这条用例就是它们仍然是同一本簿子的判据;
- *  - `readImageBase64` 收的是**绝对路径**。从前 web 那一侧收的是
- *    `/api/media/file/<name>`(server 壳改写过 `filePath`),迁移之后两边读同一份
- *    记录、拿到同一个绝对路径,"该用哪种 URL 去渲染"才回到渲染侧按 environment 判断。
- */
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createServer } from 'node:http'
+import { once } from 'node:events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { imagePreviewRegistry } from '@onething/runtime/media/image-preview-registry-bound'
-import { openOnethingImagePreviewForIpc } from '@onething/runtime/media'
+import { OnethingMediaLibraryService, OnethingImagePreviewRegistry, type OnethingMediaAsset, type OnethingMediaSession } from '@onething/runtime/media'
 import { mediaRouter } from '@shared/ipc/media.js'
+import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
+import { createSessionAccess } from '../../session/access.js'
+import { configureHostLocalTrust } from '../../server/host-trust.js'
+import { createServerMediaDelivery } from '../../server/media-delivery.js'
+import { createMediaRpcHandlers } from '../domains/media.js'
+import { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests } from '../registry.js'
 
-const library = vi.hoisted(() => ({
-  listAssets: vi.fn(),
-  ingestLocalFiles: vi.fn(),
-  hideAsset: vi.fn(),
-  hideAllAssets: vi.fn(),
-  rebuildFromSessions: vi.fn(),
-  getGallery: vi.fn(),
-  listLegacyImages: vi.fn(),
-  saveGeneratedImageAsLegacyItem: vi.fn(),
-}))
-
-const stores = vi.hoisted(() => ({
-  getSessions: vi.fn(() => []),
-}))
-
-vi.mock('@onething/runtime/media/library-service-bound', () => ({
-  mediaLibraryService: library,
-}))
-vi.mock('../../stores/index.js', () => stores)
-
-const ASSET = {
-  id: 'asset-1',
-  kind: 'image' as const,
-  source: 'ai-generated' as const,
-  mimeType: 'image/png',
-  size: 12,
-  fileName: 'a.png',
-  filePath: '/store/media/images/a.png',
-  links: [],
-  createdAt: 1,
-}
-
-const LEGACY_ITEM = {
-  id: 'item-1',
-  type: 'image' as const,
-  filePath: '/store/media/images/a.png',
-  prompt: 'a cat',
-  model: 'gpt-image',
-  createdAt: 1,
-  sessionId: 'session-1',
-  messageId: 'message-1',
-}
-
-async function loadDomain() {
-  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { mediaRpcHandlers }] =
-    await Promise.all([import('../registry.js'), import('../domains/media.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, mediaRpcHandlers }
-}
-
-describe('media RPC domain', () => {
-  let dispose: (() => void) | undefined
-
-  beforeEach(async () => {
-    for (const fn of Object.values(library)) fn.mockReset()
-    library.listAssets.mockResolvedValue([ASSET])
-    library.hideAsset.mockResolvedValue(true)
-    library.hideAllAssets.mockResolvedValue(undefined)
-    library.rebuildFromSessions.mockResolvedValue({ added: 2, skipped: 1 })
-    library.getGallery.mockResolvedValue({ images: [ASSET], currentIndex: 0 })
-    library.listLegacyImages.mockResolvedValue([LEGACY_ITEM])
-    library.saveGeneratedImageAsLegacyItem.mockResolvedValue(LEGACY_ITEM)
-    library.ingestLocalFiles.mockResolvedValue({
-      assets: [ASSET], created: 1, skipped: 0, errors: [],
-    })
-    stores.getSessions.mockReset().mockReturnValue([])
-    imagePreviewRegistry.clear()
-
-    const { resetRpcRegistryForTests, registerRouterHandlers, mediaRpcHandlers } = await loadDomain()
+describe('media RPC authorization with the actual library', () => {
+  let dir: string
+  let library: OnethingMediaLibraryService
+  let previews: OnethingImagePreviewRegistry
+  let dispose: () => void
+  let restoreTrust: () => void
+  let bodyRead: ReturnType<typeof vi.fn<(id: string) => OnethingMediaSession>>
+  const records = new Map<string, { id: string; ownerUserId?: string; ownerWorkspaceId?: string }>()
+  const access = createSessionAccess({ findMeta: id => records.get(id) })
+  const rpc = (method: string, payload: unknown = {}, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) => dispatchRpc({ domain: 'media', method, payload }, context)
+  const actor = (ownerUid = 'alice', workspaceId = 'a'): RpcDispatchContext => ({ transport: 'http', ownerUid, workspaceId, sandboxRoot: path.join(dir, ownerUid, workspaceId) })
+  async function image(sessionId: string, bytes = sessionId) {
+    return library.ingestGeneratedImage({ sessionId, messageId: `${sessionId}-message`, base64: Buffer.from(bytes).toString('base64'), prompt: `${sessionId} private prompt`, model: 'image' })
+  }
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'media-access-'))
+    library = new OnethingMediaLibraryService({ indexPath: path.join(dir, 'index.json'), imagesDir: path.join(dir, 'images'), filesDir: path.join(dir, 'files') })
+    records.clear()
+    records.set('local', { id: 'local' })
+    records.set('alice-a', { id: 'alice-a', ownerUserId: 'alice', ownerWorkspaceId: 'a' })
+    records.set('alice-b', { id: 'alice-b', ownerUserId: 'alice', ownerWorkspaceId: 'b' })
+    records.set('bob-a', { id: 'bob-a', ownerUserId: 'bob', ownerWorkspaceId: 'a' })
+    bodyRead = vi.fn((id: string) => ({ id, messages: [] }))
+    let id = 0
+    previews = new OnethingImagePreviewRegistry({ createId: () => `preview-${++id}` })
     resetRpcRegistryForTests()
-    dispose = registerRouterHandlers(mediaRouter, mediaRpcHandlers)
+    dispose = registerRouterHandlers(mediaRouter, createMediaRpcHandlers({ library, access, listSessions: () => [...records.values()], getSession: bodyRead, previews }))
+    restoreTrust = configureHostLocalTrust({ origin: 'desktop-embedded' })
+  })
+  afterEach(() => {
+    dispose(); restoreTrust(); resetRpcRegistryForTests(); vi.restoreAllMocks()
+    fs.rmSync(dir, { recursive: true, force: true })
   })
 
-  afterEach(async () => {
-    dispose?.()
-    dispose = undefined
-    const { resetRpcRegistryForTests } = await loadDomain()
-    resetRpcRegistryForTests()
-    imagePreviewRegistry.clear()
-    vi.restoreAllMocks()
+  it('retains all eleven data methods and excludes native window actions', () => {
+    expect([...mediaRouter.methods]).toEqual(['listAssets', 'ingestFiles', 'hideAsset', 'rebuildLibrary', 'getGallery', 'saveImage', 'loadAll', 'delete', 'clearAll', 'readImageBase64', 'getPreview'])
   })
 
-  it('exposes exactly the eleven data-plane methods — and none of the three host-residual ones', async () => {
-    const { mediaRouter } = await import('@shared/ipc/media.js')
-    expect([...mediaRouter.methods]).toEqual([
-      'listAssets',
-      'ingestFiles',
-      'hideAsset',
-      'rebuildLibrary',
-      'getGallery',
-      'saveImage',
-      'loadAll',
-      'delete',
-      'clearAll',
-      'readImageBase64',
-      'getPreview',
-    ])
-    for (const hostResidual of ['saveAs', 'openPreview', 'openGallery']) {
-      expect(mediaRouter.methods).not.toContain(hostResidual)
+  it('checks source metadata before searching prompts or projecting legacy images', async () => {
+    const own = await image('alice-a')
+    const foreign = await image('bob-a')
+    await image('alice-b')
+    Object.defineProperty(foreign, 'metadata', { configurable: true, get() { throw new Error('foreign prompt read') } })
+    expect(await rpc('listAssets', { query: { search: 'private' } }, actor())).toEqual({ ok: true, data: [own] })
+    expect(await rpc('getGallery', { assetId: own.id }, actor())).toEqual({ ok: true, data: { images: [own], currentIndex: 0 } })
+    const result = await rpc('loadAll', {}, actor())
+    expect(result).toMatchObject({ ok: true, data: [{ id: own.id, sessionId: 'alice-a' }] })
+    expect(await rpc('getGallery', { assetId: foreign.id }, actor())).toMatchObject({ ok: false })
+    expect(bodyRead).not.toHaveBeenCalled()
+  })
+
+  it('keeps all source links authoritative, including deleted and unknown sessions', async () => {
+    const mixed = await image('alice-a')
+    mixed.links.push({ sessionId: 'bob-a' })
+    const orphan = await image('alice-b')
+    records.delete('alice-b')
+    for (const context of [actor(), DESKTOP_RPC_CONTEXT]) {
+      expect(await rpc('listAssets', {}, context)).toEqual({ ok: true, data: [] })
+      for (const asset of [mixed, orphan]) {
+        expect(await rpc('getGallery', { assetId: asset.id }, context)).toMatchObject({ ok: false })
+        expect(await rpc('hideAsset', { id: asset.id }, context)).toMatchObject({ ok: false })
+      }
     }
+    expect(library.getAsset(mixed.id)?.libraryHiddenAt).toBeUndefined()
   })
 
-  it('routes the library reads and writes onto the one bound media service', async () => {
-    const { dispatchRpc } = await loadDomain()
-
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'listAssets', payload: { query: { kind: 'image' } } }),
-    ).resolves.toEqual({ ok: true, data: [ASSET] })
-    expect(library.listAssets).toHaveBeenCalledWith({ kind: 'image' })
-
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'hideAsset', payload: { id: 'asset-1' } }),
-    ).resolves.toEqual({ ok: true, data: { success: true } })
-
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'getGallery', payload: { assetId: 'asset-1' } }),
-    ).resolves.toEqual({ ok: true, data: { images: [ASSET], currentIndex: 0 } })
-
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'loadAll', payload: {} }),
-    ).resolves.toEqual({ ok: true, data: [LEGACY_ITEM] })
-
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'delete', payload: { id: 'item-1' } }),
-    ).resolves.toEqual({ ok: true, data: true })
-
-    await dispatchRpc({ domain: 'media', method: 'clearAll', payload: {} })
-    expect(library.hideAllAssets).toHaveBeenCalled()
-
-    // rebuild 读的是**装配层的会话表**,不是它自己缓存的一份。
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'rebuildLibrary', payload: {} }),
-    ).resolves.toEqual({ ok: true, data: { success: true, added: 2, skipped: 1 } })
-    expect(stores.getSessions).toHaveBeenCalled()
+  it('denies bytes before reading files and rejects cross-owner, cross-tenant and symlink paths', async () => {
+    const own = await image('alice-a')
+    const foreign = await image('bob-a')
+    const otherTenant = await image('alice-b')
+    const read = vi.spyOn(fs, 'readFileSync')
+    for (const filePath of [foreign.filePath, otherTenant.filePath]) expect(await rpc('readImageBase64', { filePath }, actor())).toMatchObject({ ok: false })
+    expect(read).not.toHaveBeenCalled()
+    expect(await rpc('readImageBase64', { filePath: own.filePath }, actor())).toEqual({ ok: true, data: `data:image/png;base64,${Buffer.from('alice-a').toString('base64')}` })
+    fs.mkdirSync(actor().sandboxRoot!, { recursive: true })
+    const alias = path.join(actor().sandboxRoot!, 'foreign.png')
+    fs.symlinkSync(foreign.filePath!, alias)
+    read.mockClear()
+    expect(await rpc('readImageBase64', { filePath: alias }, actor())).toMatchObject({ ok: false })
+    expect(read).not.toHaveBeenCalled()
   })
 
-  it('saves a generated image through the same library the engine writes to', async () => {
-    const { dispatchRpc } = await loadDomain()
-    const request = {
-      base64: 'aW1hZ2U=',
-      prompt: 'a cat',
-      model: 'gpt-image',
-      sessionId: 'session-1',
-      messageId: 'message-1',
-      source: 'user-upload' as const,
-      usageTags: ['persona-avatar' as const],
-    }
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'saveImage', payload: request }),
-    ).resolves.toEqual({ ok: true, data: LEGACY_ITEM })
-    expect(library.saveGeneratedImageAsLegacyItem).toHaveBeenCalledWith(request)
+  it('preflights every clear/rebuild target with zero body reads or writes on mixed ownership', async () => {
+    const own = await image('alice-a')
+    await image('bob-a')
+    const writes = vi.spyOn(fs, 'writeFileSync')
+    expect(await rpc('clearAll', {}, actor())).toMatchObject({ ok: false })
+    expect(await rpc('rebuildLibrary', {}, actor())).toMatchObject({ ok: false })
+    expect(bodyRead).not.toHaveBeenCalled()
+    expect(writes).not.toHaveBeenCalled()
+    expect(library.getAsset(own.id)?.libraryHiddenAt).toBeUndefined()
   })
 
-  it('reads an image off an ABSOLUTE path — the shape both hosts now receive', async () => {
-    const { dispatchRpc } = await loadDomain()
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-media-domain-'))
-    const file = path.join(dir, 'pixel.png')
-    fs.writeFileSync(file, Buffer.from('89504e47', 'hex'))
+  it('still rebuilds and clears an entirely authorized local library', async () => {
+    records.clear(); records.set('local', { id: 'local' })
+    bodyRead.mockReturnValue({ id: 'local', messages: [{ id: 'm', role: 'user', attachments: [{ id: 'att', fileName: 'pixel.png', mimeType: 'image/png', mediaType: 'image', size: 5, base64Data: 'aW1hZ2U=' }] }] })
+    expect(await rpc('rebuildLibrary')).toEqual({ ok: true, data: { success: true, added: 1, skipped: 0 } })
+    const asset = library.listAssets()[0]
+    expect(await rpc('hideAsset', { id: asset.id })).toEqual({ ok: true, data: { success: true } })
+    expect(await rpc('delete', { id: asset.id })).toEqual({ ok: true, data: true })
+    expect(await rpc('clearAll')).toEqual({ ok: true, data: null })
+  })
+
+  it('checks all import links and paths before the first read or side effect', async () => {
+    const root = actor().sandboxRoot!
+    fs.mkdirSync(root, { recursive: true })
+    const good = path.join(root, 'good.png')
+    const outside = path.join(dir, 'outside.png')
+    fs.writeFileSync(good, 'good'); fs.writeFileSync(outside, 'outside')
+    const alias = path.join(root, 'escape.png'); fs.symlinkSync(outside, alias)
+    library.listAssetAccess()
+    const read = vi.spyOn(fs, 'readFileSync'), write = vi.spyOn(fs, 'writeFileSync')
+    for (const payload of [
+      { files: [{ filePath: good, fileName: 'good.png' }], links: [{ sessionId: 'alice-a' }, { sessionId: 'bob-a' }] },
+      { files: [{ filePath: good, fileName: 'good.png' }, { filePath: alias, fileName: 'escape.png' }] },
+    ]) expect(await rpc('ingestFiles', payload, actor())).toMatchObject({ ok: false })
+    expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled()
+  })
+
+  it('stamps independent upload ownership in its first index write and partitions deduplication', async () => {
+    const payload = { files: [{ fileName: 'pixel.png', base64Data: 'aW1hZ2U=' }], ownerUserId: 'bob', ownerWorkspaceId: 'a' }
+    const first = await rpc('ingestFiles', payload, actor())
+    expect(first).toMatchObject({ ok: true, data: { created: 1, assets: [{ ownerUserId: 'alice', ownerWorkspaceId: 'a', links: [] }] } })
+    expect(await rpc('ingestFiles', payload, actor())).toMatchObject({ ok: true, data: { skipped: 1 } })
+    expect(await rpc('ingestFiles', payload, actor('bob'))).toMatchObject({ ok: true, data: { created: 1 } })
+    expect(await rpc('ingestFiles', payload, actor('alice', 'b'))).toMatchObject({ ok: true, data: { created: 1 } })
+    const restored = new OnethingMediaLibraryService(library.storagePaths())
+    expect(restored.listAssets()).toHaveLength(3)
+    expect(new Set(restored.listAssets().map(asset => `${asset.ownerUserId}/${asset.ownerWorkspaceId}`))).toEqual(new Set(['alice/a', 'alice/b', 'bob/a']))
+    expect(await rpc('listAssets', {}, actor())).toMatchObject({ ok: true, data: [{ ownerUserId: 'alice', ownerWorkspaceId: 'a' }] })
+  })
+
+  it('does not merge identical generated or attached bytes across source sessions', async () => {
+    const first = await image('alice-a', 'same')
+    const second = await image('bob-a', 'same')
+    expect(first.id).not.toBe(second.id)
+    expect(first.links.map(link => link.sessionId)).toEqual(['alice-a'])
+    const attachment = { id: 'a', fileName: 'a.png', mimeType: 'image/png', mediaType: 'image' as const, size: 4, base64Data: 'c2FtZQ==' }
+    const a = library.ingestAttachment({ sessionId: 'alice-a', messageId: 'm', role: 'user', attachment })!
+    const b = library.ingestAttachment({ sessionId: 'bob-a', messageId: 'm', role: 'user', attachment })!
+    expect(a.id).not.toBe(b.id)
+    const write = vi.spyOn(fs, 'writeFileSync')
+    expect(await rpc('saveImage', { sessionId: 'bob-a', messageId: 'm', base64: 'c2FtZQ==', prompt: 'spoofed', model: 'm' }, actor())).toMatchObject({ ok: false })
+    expect(write).not.toHaveBeenCalled()
+    expect(await rpc('saveImage', { sessionId: 'alice-a', messageId: 'm2', base64: 'c2FtZQ==', prompt: 'own', model: 'm' }, actor())).toMatchObject({ ok: true, data: { id: first.id } })
+  })
+
+  it('keeps native previews local and validates source assets before returning their content', async () => {
+    const local = await image('local'), foreign = await image('bob-a')
+    const ownPreview = previews.create(`media://${path.basename(local.filePath!)}`, 'local')
+    const foreignPreview = previews.create(`media://${path.basename(foreign.filePath!)}`, 'secret')
+    expect(await rpc('getPreview', { previewId: ownPreview })).toMatchObject({ ok: true, data: { success: true, alt: 'local' } })
+    expect(await rpc('getPreview', { previewId: foreignPreview })).toMatchObject({ ok: false })
+    const lookup = vi.spyOn(previews, 'get')
+    expect(await rpc('getPreview', { previewId: ownPreview }, actor())).toMatchObject({ ok: false })
+    expect(lookup).not.toHaveBeenCalled()
+    expect(await rpc('getPreview', { previewId: 'missing' })).toMatchObject({ ok: true, data: { success: false } })
+  })
+
+  it('rechecks source ownership after an actual download and before storing generated bytes', async () => {
+    let release!: () => void, started!: () => void
+    const receiving = new Promise<void>(resolve => { started = resolve })
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const server = createServer(async (_request, response) => { started(); await gate; response.end('downloaded') })
+    server.listen(0, '127.0.0.1'); await once(server, 'listening')
     try {
-      await expect(
-        dispatchRpc({ domain: 'media', method: 'readImageBase64', payload: { filePath: file } }),
-      ).resolves.toEqual({ ok: true, data: 'data:image/png;base64,iVBORw==' })
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true })
-    }
+      const saving = rpc('saveImage', { sessionId: 'alice-a', messageId: 'm', prompt: 'image', model: 'image', url: `http://127.0.0.1:${(server.address() as { port: number }).port}/image` }, actor())
+      await receiving
+      records.get('alice-a')!.ownerUserId = 'bob'
+      release()
+      expect(await saving).toMatchObject({ ok: false })
+      expect(fs.existsSync(library.storagePaths().indexPath)).toBe(false)
+      expect(fs.existsSync(library.storagePaths().imagesDir)).toBe(false)
+    } finally { release(); await new Promise<void>(resolve => server.close(() => resolve())) }
   })
 
-  it('reads the SAME preview ledger the host-side 「开预览窗」 writes', async () => {
-    const { dispatchRpc } = await loadDomain()
-    const openPreviewWindow = vi.fn(async () => {})
-    // 宿主那半:`@main/ipc/media.ts` 逐字这样调。
-    const opened = await openOnethingImagePreviewForIpc({
-      registry: imagePreviewRegistry,
-      src: 'media://a.png',
-      alt: 'a cat',
-      openPreviewWindow,
-    })
-    expect(opened.success).toBe(true)
-    const previewId = opened.success ? opened.previewId : ''
-
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'getPreview', payload: { previewId } }),
-    ).resolves.toEqual({ ok: true, data: { success: true, src: 'media://a.png', alt: 'a cat' } })
-
-    await expect(
-      dispatchRpc({ domain: 'media', method: 'getPreview', payload: { previewId: 'nope' } }),
-    ).resolves.toEqual({
-      ok: true,
-      data: { success: false, error: 'Image preview expired or was not found' },
-    })
+  it('serves bytes through the actual delivery adapter with the same all-source rule', async () => {
+    const own = await image('alice-a'), foreign = await image('bob-a'), mixed = await image('alice-a', 'mixed')
+    mixed.links.push({ sessionId: 'bob-a' })
+    const delivery = createServerMediaDelivery({ defaultContext: () => ({ userId: 'alice', workspaceId: 'a' }), ownerKey: context => `${context.userId}/${context.workspaceId}`, libraryPaths: () => ({ indexPath: path.join(dir, 'old/index.json'), imagesDir: path.join(dir, 'old/images'), filesDir: path.join(dir, 'old/files') }), sharedLibrary: library, access })
+    const file = (asset: OnethingMediaAsset) => `/api/media/file/${path.basename(asset.filePath!)}`
+    try {
+      const result = await delivery.adapter.resolveFile!(file(own))
+      expect(result).toMatchObject({ success: true, path: fs.realpathSync(own.filePath!) })
+      if (result.success && result.path) expect(fs.readFileSync(result.path, 'utf8')).toBe('alice-a')
+      for (const asset of [foreign, mixed]) expect(await delivery.adapter.resolveFile!(file(asset))).toMatchObject({ success: false })
+      const foreignPath = foreign.filePath
+      foreign.filePath = own.filePath
+      expect(await delivery.adapter.resolveFile!(file(own))).toMatchObject({ success: false })
+      foreign.filePath = foreignPath
+      records.delete('alice-a')
+      expect(await delivery.adapter.resolveFile!(file(own))).toMatchObject({ success: false })
+      expect(await delivery.adapter.resolveFile!('/api/media/file/%2e%2e%2fsecret.png')).toMatchObject({ success: false })
+    } finally { delivery.dispose() }
   })
 
-  it('rejects a method that is not on the router allowlist', async () => {
-    const { dispatchRpc } = await loadDomain()
-    const response = await dispatchRpc({ domain: 'media', method: 'saveAs', payload: {} })
-    expect(response.ok).toBe(false)
+  it('keeps legacy index reads metadata-only and never promotes unknown sources to local imports', async () => {
+    const filePath = path.join(dir, 'legacy.png'); fs.writeFileSync(filePath, 'secret')
+    fs.writeFileSync(library.storagePaths().indexPath, JSON.stringify({ items: [{ id: 'old', type: 'image', filePath, prompt: 'secret', model: 'm', sessionId: 'missing', messageId: 'm', createdAt: 1 }] }))
+    const read = vi.spyOn(fs, 'readFileSync'), write = vi.spyOn(fs, 'writeFileSync')
+    expect(await rpc('listAssets')).toEqual({ ok: true, data: [] })
+    expect(read.mock.calls.some(call => String(call[0]) === filePath)).toBe(false)
+    expect(write).not.toHaveBeenCalled()
   })
 })

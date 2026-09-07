@@ -46,6 +46,10 @@ vi.mock('../../wiring/engine/index.js', () => ({ getStreamEngine: () => engine }
 vi.mock('../../wiring/permission/index.js', () => ({ Permission: permission }))
 vi.mock('../../wiring/evals/incident.js', () => incident)
 vi.mock('@onething/runtime', () => runtimeAmend)
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
+})
 
 const IPC = { transport: 'ipc' } as const
 const HTTP = { transport: 'http', sandboxRoot: '/store', ownerUid: 'local-user' } as const
@@ -188,7 +192,7 @@ describe('session-command RPC domain', () => {
       payload: { sessionId: 's1', command },
     }, IPC)
 
-    expect(bus.emit).toHaveBeenCalledWith('s1', command)
+    expect(bus.emit).toHaveBeenCalledWith('s1', command, { executionContext: { userId: 'local-user', workspaceId: 'default' } })
     expect(incident.createIncidentForTurn).not.toHaveBeenCalled()
   })
 
@@ -231,7 +235,7 @@ describe('session-command RPC domain', () => {
       type: 'command:permission-respond',
       toolCallId: 'call_denied',
       channel: 'ipc',
-    }))
+    }), { executionContext: { userId: 'local-user', workspaceId: 'default' } })
 
     // 没有待批的那条 → 退回 'api'(与被删掉的 adapter 逐字一致)。
     bus.emit.mockClear()
@@ -244,7 +248,7 @@ describe('session-command RPC domain', () => {
         command: { type: 'command:permission-respond', requestId: 'req-x', decision: 'once' },
       },
     }, HTTP)
-    expect(bus.emit).toHaveBeenCalledWith('s1', expect.objectContaining({ channel: 'api' }))
+    expect(bus.emit).toHaveBeenCalledWith('s1', expect.objectContaining({ channel: 'api' }), { executionContext: { userId: 'local-user', workspaceId: 'default' } })
 
     // 显式带了 channel 就不认领。
     bus.emit.mockClear()
@@ -256,7 +260,7 @@ describe('session-command RPC domain', () => {
         command: { type: 'command:permission-respond', requestId: 'req-x', decision: 'once', channel: 'wechat' },
       },
     }, HTTP)
-    expect(bus.emit).toHaveBeenCalledWith('s1', expect.objectContaining({ channel: 'wechat' }))
+    expect(bus.emit).toHaveBeenCalledWith('s1', expect.objectContaining({ channel: 'wechat' }), { executionContext: { userId: 'local-user', workspaceId: 'default' } })
   })
 
   it('http: a send-message forwards WHOLE — no desktop origin is stamped onto a network command', async () => {
@@ -269,7 +273,7 @@ describe('session-command RPC domain', () => {
       payload: { sessionId: 's1', command },
     }, HTTP)
 
-    expect(bus.emit).toHaveBeenCalledWith('s1', command)
+    expect(bus.emit).toHaveBeenCalledWith('s1', command, { executionContext: { userId: 'local-user', workspaceId: 'default' } })
     expect(incident.createIncidentForTurn).not.toHaveBeenCalled()
   })
 

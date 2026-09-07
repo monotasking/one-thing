@@ -166,3 +166,8 @@ describe('goal RPC domain', () => {
     })
   })
 })
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
+})

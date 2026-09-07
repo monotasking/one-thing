@@ -14,22 +14,29 @@ import {
   httpDiscoveryUrl,
   isHttpDiscoveryAlive,
   readHttpDiscovery,
-  removeHttpDiscovery,
-  writeHttpDiscovery,
+  removeHttpDiscovery as removeDiscovery,
+  writeHttpDiscovery as writeDiscovery,
   type HttpDiscoveryRecord,
 } from '../discovery.js'
+import { StoreLock } from '@onething/runtime/storage'
 
 describe('http discovery file', () => {
   let storePath: string
   let previousStorePath: string | undefined
+  let lease: StoreLock
+  const writeHttpDiscovery = (record: HttpDiscoveryRecord) => writeDiscovery(record, { lease })
+  const removeHttpDiscovery = () => removeDiscovery({ lease })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     previousStorePath = process.env.ONETHING_STORE_PATH
     storePath = mkdtempSync(path.join(tmpdir(), 'onething-discovery-'))
     process.env.ONETHING_STORE_PATH = storePath
+    lease = new StoreLock({ storePath })
+    await lease.acquire('server')
   })
 
   afterEach(() => {
+    if (lease.held) lease.release()
     if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
     else process.env.ONETHING_STORE_PATH = previousStorePath
     rmSync(storePath, { recursive: true, force: true })
@@ -37,6 +44,23 @@ describe('http discovery file', () => {
 
   it('lands in <store>/run/http.json', () => {
     expect(getHttpDiscoveryPath()).toBe(path.join(storePath, 'run', 'http.json'))
+  })
+
+  it('an old lease cannot delete the successor discovery file', async () => {
+    const previous = lease
+    previous.release()
+    lease = new StoreLock({ storePath })
+    await lease.acquire('server')
+    writeHttpDiscovery({ port: 2, host: '127.0.0.1', pid: process.pid, startedAt: 2, owner: 'server' })
+    expect(() => removeDiscovery({ lease: previous })).toThrow()
+    expect(readHttpDiscovery()?.port).toBe(2)
+  })
+
+  it('rejects discovery changes outside the held store', () => {
+    expect(() => writeDiscovery({ port: 2, host: '127.0.0.1', pid: process.pid, startedAt: 2, owner: 'server' }, {
+      lease, storePath: path.join(storePath, 'other-store'),
+    })).toThrow('outside the held store lease')
+    expect(existsSync(path.join(storePath, 'other-store'))).toBe(false)
   })
 
   it('round-trips a record and keeps the token file private', () => {

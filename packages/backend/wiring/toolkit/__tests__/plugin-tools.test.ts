@@ -38,6 +38,10 @@ const { executeToolDirectly } = await import('../../engine/stream/tool-execution
 const { getPluginRuntimeHealth, resetPluginRuntimeHealthForTests } = await import('@onething/runtime/plugins/health')
 const { z } = await import('zod')
 
+const { installStoreSessionLayerForTest } = await import('../../../session/testing/store-layer.js')
+const store = await import('../../../stores/sessions.js')
+let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>
+
 const SESSION_ID = 'plugin-tools-session'
 const workspace = path.join(harness.root, 'workspace')
 fs.mkdirSync(workspace, { recursive: true })
@@ -88,14 +92,19 @@ function registerHello(
   })
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  sessionFixture = await installStoreSessionLayerForTest()
+  if (!store.getSession(SESSION_ID)) store.createSession(SESSION_ID, 'Tool session')
+
   harness.enforce.mockReset()
   harness.enforce.mockResolvedValue(undefined)
   resetPluginRuntimeHealthForTests()
   install()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await sessionFixture.dispose()
+
   resetToolkitCatalogForTests()
   vi.restoreAllMocks()
 })

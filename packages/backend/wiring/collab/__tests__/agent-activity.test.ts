@@ -139,6 +139,7 @@ beforeEach(() => {
     agentIds: () => [...agents.keys()],
     rooms: () => rooms,
     now: () => NOW,
+    scopeForRoom: () => ({ canReadSession: () => true, includeUnscoped: true }),
   })
 })
 
@@ -484,6 +485,32 @@ describe('发射', () => {
 /* ── GET 补水 ─────────────────────────────────────────────────────────────── */
 
 describe('GET 补水', () => {
+  it('filters every room fact and unattributed counters for both GET and room broadcasts', () => {
+    serve('iris', {
+      inFlight: { roomSessionId: 'bob-room', since: 9 },
+      inbox: { depth: 7, oldestAt: 2 }, deadLetterCount: 4,
+      account: account({
+        rooms: { 'alice-room': { lastTurnAt: 3, turns: 1 }, 'bob-room': { lastTurnAt: 99, turns: 1 } },
+        workers: [{ roomId: 'bob-room', cardId: 'secret', status: 'running', startedAt: 1 }] as CollabAgentAccount['workers'],
+      }),
+    })
+    rooms = [
+      { roomSessionId: 'alice-room', account: roomAccount('alice-room', [{ agentId: 'iris', leaseId: 'alice-lease', issuedAt: 1 }]) },
+      { roomSessionId: 'bob-room', account: roomAccount('bob-room', [{ agentId: 'iris', leaseId: 'bob-lease', issuedAt: 1 }]) },
+    ]
+    const scope = { canReadSession: (id: string) => id === 'alice-room', includeUnscoped: false }
+    const [activity] = getCollabAgentActivity(['iris'], scope)
+    expect(activity).toMatchObject({ mind: { state: 'idle' }, workers: [], inbox: { depth: 0 }, deadLetterCount: 0, lastSpokeAt: 3 })
+    expect(activity.heldLeases.map(lease => lease.leaseId)).toEqual(['alice-lease'])
+    configureCollabAgentActivitySource({
+      agent: id => agents.get(id), agentIds: () => [...agents.keys()], rooms: () => rooms, now: () => NOW,
+      scopeForRoom: roomId => ({ canReadSession: id => id === roomId, includeUnscoped: false }),
+    })
+    broadcastCollabAgentActivity('iris')
+    const aliceFrame = mocks.emitted.find(frame => frame.sessionId === 'alice-room')!
+    expect(JSON.stringify(aliceFrame)).not.toMatch(/bob-room|bob-lease|secret/)
+    expect(aliceFrame.event.activity).toEqual(expect.objectContaining({ lastSpokeAt: 3, inbox: { depth: 0 }, deadLetterCount: 0 }))
+  })
   it('不带 agentIds = 此刻开着心智循环的全部', () => {
     serve('iris')
     serve('bram')

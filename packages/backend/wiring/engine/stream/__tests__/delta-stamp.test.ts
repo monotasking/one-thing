@@ -39,6 +39,8 @@ const { flushSessionEventLog, readSessionLogEvents, resetSessionEventLogCache } 
   '../../../../session/event-log.js'
 )
 const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
+const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, resetSessionRuns } = await import('../../../../session/runs.js')
 const { resetSessionEventStatsCache } = await import('../../../../session/event-stats.js')
 const { createSessionEventRecorder, attachSessionEventRecorder } = await import(
@@ -67,6 +69,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
   fs.writeFileSync(path.join(state.sessionsDir, SESSION, 'meta.json'), '{}')
   resetSessionEventLogCache()
+  sessionFixture = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -76,6 +79,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await sessionFixture.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
   clearDeltaStamps()
 })
@@ -234,13 +238,15 @@ describe('R1 性质:乱序无害、重分片同终态(审查条 7 第一块砖)'
     const results: Array<Map<number, string>> = []
     for (const size of sizes) {
       // 每一轮换一条干净的会话账,免得四次跑的打包行叠在一起。
+      await flushSessionEventLog()
+      await sessionFixture.dispose()
       resetSessionEventLogCache()
-      resetSessionSurfaceCache()
       resetSessionRuns()
-      beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
       fs.rmSync(path.join(state.sessionsDir, SESSION), { recursive: true, force: true })
       fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
       fs.writeFileSync(path.join(state.sessionsDir, SESSION, 'meta.json'), '{}')
+      sessionFixture = installSessionLayerForTest()
+      beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
 
       const minted = run(script(size))
       expect(offsetGaps(minted), `切片 ${size}`).toEqual([])

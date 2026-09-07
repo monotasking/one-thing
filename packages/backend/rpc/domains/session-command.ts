@@ -63,6 +63,7 @@ import { getStreamEngine } from '../../wiring/engine/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { requestSessionOwner, sessionAccess, SessionAccessError } from '../../session/access.js'
 
 const log = getLogger('rpc.session-command')
 /** 旧线传的是裸 `console`;结构化 logger 的鸭子端口替身(area ① 统一后删)。 */
@@ -174,7 +175,7 @@ function adoptPendingPermissionChannel(
   return pending?.targetChannel ?? 'api'
 }
 
-function emitToBus(sessionId: string, command: unknown): Promise<SessionCommandEmitResult> {
+function emitToBus(sessionId: string, command: unknown, context: RpcDispatchContext): Promise<SessionCommandEmitResult> {
   return emitCoreSessionCommandForIpc({
     sessionId,
     // 命令面的形状是 `SessionCommand`(11 条 `SESSION_COMMAND_TYPES` 之一),
@@ -182,6 +183,7 @@ function emitToBus(sessionId: string, command: unknown): Promise<SessionCommandE
     command: command as SessionCommand,
     eventBus: getEventBus(),
     logger: consoleLog,
+    executionContext: requestSessionOwner(context),
   })
 }
 
@@ -189,6 +191,11 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
   async emit(request, context: RpcDispatchContext = DESKTOP_RPC_CONTEXT) {
     const sessionId = request?.sessionId
     const command = request?.command as unknown
+    sessionAccess.resolve(context, sessionId, 'write')
+    if (command && typeof command === 'object' && 'sessionId' in command
+      && command.sessionId !== undefined && command.sessionId !== sessionId) {
+      throw new SessionAccessError()
+    }
 
     if (context.transport === 'http') {
       const record = (command && typeof command === 'object'
@@ -203,12 +210,11 @@ export const sessionCommandRpcHandlers: RpcRouteHandlers<SessionCommandRoutes> =
         return emitToBus(sessionId, {
           ...record,
           channel: adoptPendingPermissionChannel(sessionId, record),
-        })
+        }, context)
       }
-      return emitToBus(sessionId, command)
+      return emitToBus(sessionId, command, context)
     }
 
-    return emitToBus(sessionId, sanitizeRendererCommand(command))
+    return emitToBus(sessionId, sanitizeRendererCommand(command), context)
   },
 }
-

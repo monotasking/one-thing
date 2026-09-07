@@ -97,6 +97,8 @@ vi.mock('../../../../store.js', () => ({
   getSession: mocks.getSession,
   getSettings: mocks.getSettings,
 }))
+// Agent profile lookup uses the same explicit metadata fixture as prompt assembly.
+vi.mock('../../../../stores/sessions.js', () => ({ getSession: mocks.getSession }))
 
 // 解析纪律(M4):快照 host 走 `findAgent(id) ?? defaultAgent()`;夹具对任何
 // id 都返回同一个 agent,两条腿的结果一致。

@@ -1,4 +1,31 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { installSessionLayerForTest } from '../../../../session/testing/session-layer.js'
+import { resetSessionRuns } from '../../../../session/runs.js'
+
+let storeDir: string
+let fixture: ReturnType<typeof installSessionLayerForTest>
+beforeEach(() => {
+  storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stream-executor-'))
+  vi.stubEnv('ONETHING_STORE_PATH', storeDir)
+  fixture = installSessionLayerForTest({ store: {
+    getSessionRaw: id => ({ id, name: 'Session', messages: [], createdAt: 1, updatedAt: 1 }),
+    readSessionTranscriptFile: () => '',
+  } })
+  resetSessionRuns()
+})
+afterEach(async () => {
+  resetSessionRuns()
+  await fixture.dispose()
+  vi.unstubAllEnvs()
+  fs.rmSync(storeDir, { recursive: true, force: true })
+})
+vi.mock('../../../../session/commands.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../session/commands.js')>(),
+  sessionCommands: { patchMessage: vi.fn(() => true) },
+}))
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import type { ToolSettings } from '@shared/ipc.js'
 import type { StreamSender } from '../stream-processor.js'
@@ -104,7 +131,7 @@ describe('stream executor agent-loop routing', () => {
       [{ role: 'user', content: 'hello' }],
       'Session',
     )
-    expect(mocks.engine.removeController).toHaveBeenCalledWith('s1')
+    expect(mocks.engine.removeController).toHaveBeenCalledWith('s1', expect.any(AbortController))
   })
 
   it('keeps the controller registered when agent-loop pauses for confirmation', async () => {
@@ -137,7 +164,7 @@ describe('stream executor agent-loop routing', () => {
       [{ role: 'user', content: 'hello' }],
       'Session',
     )
-    expect(mocks.engine.removeController).toHaveBeenCalledWith('s1')
+    expect(mocks.engine.removeController).toHaveBeenCalledWith('s1', expect.any(AbortController))
   })
 
   it('keeps image generation on the dedicated image path', async () => {
@@ -156,7 +183,7 @@ describe('stream executor agent-loop routing', () => {
       model: 'deepseek-v4-flash',
     }))
     expect(mocks.executeAgentLoopStreamGeneration).not.toHaveBeenCalled()
-    expect(mocks.engine.removeController).toHaveBeenCalledWith('s1')
+    expect(mocks.engine.removeController).toHaveBeenCalledWith('s1', expect.any(AbortController))
   })
 
   it('requests image output for codex oauth so the native image_generation tool attaches', async () => {

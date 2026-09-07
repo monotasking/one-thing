@@ -64,6 +64,9 @@ import { getSettings } from '../../stores/settings.js'
 import { getOpenRouterTTSModels, transcribeUtterance } from '../../wiring/voice/providers.js'
 import { getVoiceService } from '../../wiring/voice/service.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
+import { isHistoricalLocalOperator, sessionAccess, SessionAccessError } from '../../session/access.js'
+import { getCurrentSessionId } from '../../stores/app-state.js'
 
 /** 逐字沿用被删掉的 server `voice` adapter 的那句话。 */
 const SERVER_VOICE_UNAVAILABLE_ERROR =
@@ -82,14 +85,44 @@ function createServerVoiceState(lastError?: string): VoiceRuntimeState {
 
 type VoiceRuntimeSender = Parameters<ReturnType<typeof getVoiceService>['handleRuntimeReady']>[0]
 
+/** One desktop microphone/playback service belongs to the historical local operator. */
+function assertVoiceOperator(context: RpcDispatchContext): void {
+  if (!isHistoricalLocalOperator(context)) throw new SessionAccessError()
+}
+
+/**
+ * 操作员闸 + **这次调用要写的那条会话**的写权限。
+ *
+ * 工单 4 A5 已经把「麦克风当前绑在哪条会话上」判成**设备状态**,并让 `getState` /
+ * `stop` 绕开这里。工单 5 §7 把同一条道理落到函数本身:校验的对象只有 `target`
+ * —— 这次调用真要写的那一条 —— 而不再连带那条 `current` 绑定。
+ *
+ * 从前连带 `current` 的后果是同一种病换了四张脸:`synthesize` / `testTTS` /
+ * `runtimeReady` / 不指名会话的 `runtimeEvent` 这四口**一个字都不写会话**(合成一段
+ * 音、试一次 TTS、认一下运行时窗、收一条设备事件),却会因为麦克风还绑在一条**已删**
+ * 的会话上而抛 —— 于是一次删会话就能把语音的半边功能锁死,而"能不能用这台设备"
+ * 那个真正的判据(`assertVoiceOperator`)明明已经答过了。
+ *
+ * 现在:有 `target` 就判那一条,没有就只判操作员。**没有按方法名分叉的分支** ——
+ * 谁写会话,谁自然就带得出 target。
+ */
+function authorizeVoice(context: RpcDispatchContext, requested?: string, fallback: 'current' | 'voice' | 'none' = 'none'): string | undefined {
+  assertVoiceOperator(context)
+  const target = requested || (fallback === 'current' ? getCurrentSessionId()
+    : fallback === 'voice' ? getVoiceService().getState().currentSessionId || getCurrentSessionId() : undefined) || undefined
+  if (target) sessionAccess.resolve(context, target, 'write')
+  return target
+}
+
 export const voiceRpcHandlers: RpcRouteHandlers<VoiceRoutes> = {
-  async getState(_input) {
+  async getState(_input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: true, state: createServerVoiceState() }
+    assertVoiceOperator(context)
     return getOnethingVoiceStateForIpc({
       getState: () => getVoiceService().getState(),
     })
   },
-  async start(input) {
+  async start(input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) {
       return {
         success: false,
@@ -97,22 +130,27 @@ export const voiceRpcHandlers: RpcRouteHandlers<VoiceRoutes> = {
         state: createServerVoiceState(SERVER_VOICE_UNAVAILABLE_ERROR),
       }
     }
-    return getVoiceService().start(input)
+    const sessionId = authorizeVoice(context, input?.sessionId, 'current')
+    return getVoiceService().start({ ...input, ...(sessionId ? { sessionId } : {}) })
   },
-  async stop(input) {
+  async stop(input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: true }
+    assertVoiceOperator(context)
     return getVoiceService().stop(input)
   },
-  async submitUtterance(input) {
+  async submitUtterance(input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
-    return getVoiceService().submitUtterance(input)
+    const sessionId = authorizeVoice(context, input?.sessionId, 'voice')
+    return getVoiceService().submitUtterance({ ...input, ...(sessionId ? { sessionId } : {}) })
   },
-  async submitTranscript(input) {
+  async submitTranscript(input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
-    return getVoiceService().submitTranscript(input)
+    const sessionId = authorizeVoice(context, input?.sessionId, 'voice')
+    return getVoiceService().submitTranscript({ ...input, ...(sessionId ? { sessionId } : {}) })
   },
-  async synthesize(input) {
+  async synthesize(input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+    authorizeVoice(context)
     return getVoiceService().synthesize(input)
   },
   async testASR(input) {
@@ -123,8 +161,9 @@ export const voiceRpcHandlers: RpcRouteHandlers<VoiceRoutes> = {
       transcribeUtterance,
     })
   },
-  async testTTS(input) {
+  async testTTS(input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+    authorizeVoice(context)
     return testOnethingVoiceTTSForIpc({
       request: input,
       synthesize: nextRequest => getVoiceService().synthesize(nextRequest),
@@ -137,20 +176,22 @@ export const voiceRpcHandlers: RpcRouteHandlers<VoiceRoutes> = {
       getTTSModels: force => getOpenRouterTTSModels(force),
     })
   },
-  async runtimeReady(_input) {
+  async runtimeReady(_input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+    authorizeVoice(context)
     return acknowledgeOnethingVoiceRuntimeReadyForIpc({
       // 宿主认得那扇窗;未注入 = 不抑制回声(headless 上根本没有运行时窗)。
       sender: (getVoiceHostPorts().runtimeWindow?.getWebContents?.() ?? undefined) as VoiceRuntimeSender,
       handleRuntimeReady: runtimeSender => getVoiceService().handleRuntimeReady(runtimeSender),
     })
   },
-  async runtimeEvent(input) {
+  async runtimeEvent(input, context = DESKTOP_RPC_CONTEXT) {
     if (!hasVoiceHost()) return { success: false, error: SERVER_VOICE_UNAVAILABLE_ERROR }
+    authorizeVoice(context, 'sessionId' in input ? input.sessionId : input.type === 'latency-milestone' ? input.milestone.sessionId : undefined,
+      input.type === 'wake-detected' ? 'current' : 'none')
     return handleOnethingVoiceRuntimeEventForIpc({
       event: input,
       handleRuntimeEvent: event => getVoiceService().handleRuntimeEvent(event),
     })
   },
 }
-

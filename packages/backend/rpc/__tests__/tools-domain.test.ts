@@ -49,7 +49,7 @@ vi.mock('@onething/runtime/mcp/index.wiring', () => ({
 const IPC: RpcDispatchContext = { transport: 'ipc' }
 
 function http(sandboxRoot = '/sandbox/alice/w1'): RpcDispatchContext {
-  return { transport: 'http', ownerUid: 'alice', workspaceId: 'w1', sandboxRoot }
+  return { transport: 'http', ownerUid: 'local-user', workspaceId: 'default', sandboxRoot }
 }
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
@@ -187,6 +187,7 @@ describe('tools RPC domain', () => {
   })
 
   it('answers cancelTool identically on both transports (the old adapter was a no-op too)', async () => {
+    // 工单 4 B1:真取消是一次可感知的行为变化,已回旧;这里钉的是「两边同一个答案」。
     for (const context of [IPC, http()]) {
       expect(unwrap(await call('cancelTool', { toolCallId: 't1' }, context))).toEqual({
         success: true,
@@ -213,6 +214,7 @@ describe('tools RPC domain', () => {
 
   it('stops a job when trusted and refuses when not, with the old server wording', async () => {
     configureHostLocalTrust({ origin: 'desktop-embedded' })
+    jobs.listBackgroundJobs.mockReturnValue([{ id: 'job-1', sessionId: 'session-1' }])
     expect(unwrap(await call('backgroundJobsStop', { jobId: 'job-1' }, IPC))).toEqual({
       success: true,
     })
@@ -223,6 +225,17 @@ describe('tools RPC domain', () => {
       success: false,
       error: 'Background jobs are not available in the web server runtime.',
     })
+  })
+
+  it('answers "already finished" for an unknown job id instead of "session not found"', async () => {
+    // 工单 4 C1:登记簿里没有这个 id 是**常事**(任务刚跑完就点了停),不是越权。
+    configureHostLocalTrust({ origin: 'desktop-embedded' })
+    jobs.listBackgroundJobs.mockReturnValue([])
+    expect(unwrap(await call('backgroundJobsStop', { jobId: 'gone' }, IPC))).toEqual({
+      success: false,
+      error: 'That background job has already finished.',
+    })
+    expect(jobs.stopBackgroundJob).not.toHaveBeenCalled()
   })
 
   it('refuses tool-call writes when untrusted with the old server wording, and never touches the store', async () => {
@@ -302,4 +315,9 @@ describe('tools RPC domain', () => {
     )
     expect(response.ok).toBe(false)
   })
+})
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

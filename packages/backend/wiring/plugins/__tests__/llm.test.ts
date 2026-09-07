@@ -6,7 +6,7 @@
  * 未配置时的 unsupported。声明门与输入校验在 core 那一份(core/plugins llm.test.ts)。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT } from '@onething/core/plugins'
+import { PLUGIN_LLM_COMPLETE_TIMEOUT_MS, PLUGIN_LLM_RATE_LIMIT, type PluginLlmCompleteOptions } from '@onething/core/plugins'
 
 const settingsRef: { current: any } = { current: null }
 const generateChatResponse = vi.fn()
@@ -22,10 +22,17 @@ vi.mock('../../providers/index.js', () => ({
   generateChatResponse: (...args: unknown[]) => generateChatResponse(...args),
 }))
 vi.mock('../../usage/index.js', () => ({
-  recordUsage: (...args: unknown[]) => recordUsage(...args),
+  captureUsageRecorder: () => (...args: unknown[]) => recordUsage(...args),
 }))
 
-import { pluginLlmComplete, resetPluginLlmLedgers } from '../llm.js'
+import { PluginLlmService, type PluginLlmScope } from '../llm.js'
+
+let service: PluginLlmService
+const scopes = new Map<string, PluginLlmScope>()
+const pluginLlmComplete = (id: string, options: PluginLlmCompleteOptions) => {
+  if (!scopes.has(id)) scopes.set(id, service.createScope(id))
+  return scopes.get(id)!.complete(options)
+}
 
 function withProvider() {
   settingsRef.current = {
@@ -37,17 +44,89 @@ function withProvider() {
 }
 
 beforeEach(() => {
-  resetPluginLlmLedgers()
+  service = new PluginLlmService()
+  scopes.clear()
   generateChatResponse.mockReset()
   recordUsage.mockReset()
   withProvider()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  service.quiesce()
+  await service.drain()
   vi.useRealTimers()
 })
 
 describe('pluginLlmComplete (受管三要素)', () => {
+  it('detaches the plugin signal listener on success and provider failure', async () => {
+    const controller = new AbortController()
+    const add = vi.spyOn(controller.signal, 'addEventListener')
+    const remove = vi.spyOn(controller.signal, 'removeEventListener')
+    generateChatResponse.mockResolvedValueOnce('ok').mockRejectedValueOnce(new Error('failed'))
+    await pluginLlmComplete('listener', { messages: [{ role: 'user', content: 'x' }], signal: controller.signal })
+    await expect(pluginLlmComplete('listener', { messages: [{ role: 'user', content: 'x' }], signal: controller.signal }))
+      .rejects.toMatchObject({ code: 'provider-error' })
+    expect(remove.mock.calls.map(call => call[1])).toEqual(add.mock.calls.map(call => call[1]))
+  })
+
+  it('rejects an already-aborted call before contacting the provider', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    await expect(pluginLlmComplete('aborted', { messages: [{ role: 'user', content: 'x' }], signal: controller.signal }))
+      .rejects.toMatchObject({ code: 'timeout' })
+    expect(generateChatResponse).not.toHaveBeenCalled()
+  })
+
+  it('returns a hard timeout but retains an uncooperative provider until its real promise settles', async () => {
+    vi.useFakeTimers()
+    let finish!: (text: string) => void
+    const provider = new Promise<string>(resolve => { finish = resolve })
+    generateChatResponse.mockReturnValue(provider)
+    const pending = pluginLlmComplete('uncooperative', { messages: [{ role: 'user', content: 'x' }] })
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'timeout' })
+    try {
+      await vi.advanceTimersByTimeAsync(PLUGIN_LLM_COMPLETE_TIMEOUT_MS)
+      await rejected
+      let drained = false
+      service.quiesce()
+      const drain = service.drain().then(() => { drained = true })
+      await Promise.resolve()
+      expect(drained).toBe(false)
+      const opts = generateChatResponse.mock.calls[0][3]
+      expect(opts.abortSignal.aborted).toBe(true)
+      opts.onUsage({ inputTokens: 2, outputTokens: 1, totalTokens: 3 })
+      expect(recordUsage).toHaveBeenCalledTimes(1)
+      finish('late')
+      await drain
+      opts.onUsage({ inputTokens: 99, outputTokens: 99, totalTokens: 198 })
+      expect(recordUsage).toHaveBeenCalledTimes(1)
+    } finally { finish('cleanup') }
+  })
+
+  it('quiesces only the captured plugin state and drains it before release', async () => {
+    let finish!: (text: string) => void
+    generateChatResponse.mockReturnValueOnce(new Promise<string>(resolve => { finish = resolve })).mockResolvedValue('new')
+    const old = service.createScope('same-id')
+    const current = service.createScope('same-id')
+    const pending = old.complete({ messages: [{ role: 'user', content: 'old' }] })
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'unsupported' })
+    await Promise.resolve()
+    old.quiesce()
+    try {
+      await rejected
+      await expect(old.complete({ messages: [{ role: 'user', content: 'late' }] })).rejects.toMatchObject({ code: 'unsupported' })
+      await expect(current.complete({ messages: [{ role: 'user', content: 'new' }] })).resolves.toEqual({ text: 'new' })
+      let drained = false
+      const drain = old.drain().then(() => { drained = true })
+      await Promise.resolve()
+      expect(drained).toBe(false)
+      finish('late')
+      await drain
+      service.quiesce()
+      expect(() => service.createScope('later')).toThrow(/shutting down/)
+    } finally { finish('cleanup') }
+  })
+
   it('计费:每次调用记进账本,source = plugin:<id>', async () => {
     generateChatResponse.mockImplementation(async (_p, _c, _m, opts: any) => {
       opts.onUsage({ inputTokens: 100, outputTokens: 40, totalTokens: 140 })

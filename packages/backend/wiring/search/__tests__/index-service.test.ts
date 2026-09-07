@@ -68,7 +68,8 @@ vi.mock('../../../session/event-log.js', () => ({
  * 而「笔记目录算对了没有」正是①要证的事之一。
  */
 const stubAdapters: OnethingSearchProvidersAdapters = {
-  getSessionsList: () => [{ id: 's1', name: '开局', previewText: '预览', updatedAt: 200 }],
+  getSessionsList: () => fs.readdirSync(sessionsDir).filter(id => fs.existsSync(path.join(sessionsDir, id, 'meta.json')))
+    .map(id => ({ id, updatedAt: 200, ...JSON.parse(fs.readFileSync(path.join(sessionsDir, id, 'meta.json'), 'utf8')) })),
   iterateSessionMessages: () => [],
   getSession: () => undefined,
   getCurrentSessionId: () => undefined,
@@ -218,6 +219,7 @@ afterEach(async () => {
   handle = undefined
   started?.close()
   started = undefined
+  vi.restoreAllMocks()
 })
 
 afterAll(() => {
@@ -230,6 +232,107 @@ async function search(query: string, category: string) {
   const response = await handle!.service.query({ query, category, limit: 10 })
   return response.results
 }
+
+describe('search authorization before retrieval, preview and actions', () => {
+  const alice = { transport: 'http' as const, ownerUid: 'alice', workspaceId: 'tenant-a' }
+  const bob = { transport: 'http' as const, ownerUid: 'bob', workspaceId: 'tenant-a' }
+  async function seedOwners() {
+    for (const [id, ownerUserId, ownerWorkspaceId] of [
+      ['alice-a', 'alice', 'tenant-a'], ['alice-b', 'alice', 'tenant-b'], ['bob-a', 'bob', 'tenant-a'],
+    ]) {
+      writeSession(id, 'sharedneedle private body', 'sharedneedle title')
+      const metaPath = path.join(sessionsDir, id, 'meta.json')
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'))
+      fs.writeFileSync(metaPath, JSON.stringify({ ...meta, ownerUserId, ownerWorkspaceId, workspaceId: 'same-product-space', workingDirectory: path.join(storeRoot, id) }))
+    }
+    await mount()
+    const { configureHostLocalTrust } = await import('../../../server/host-trust.js')
+    const restore = configureHostLocalTrust({ origin: 'loopback-server' })
+    const { searchRpcHandlers } = await import('../../../rpc/domains/search.js')
+    return { rpc: searchRpcHandlers, restore }
+  }
+  function messageItem(id: string) {
+    return { capability: 'messages', id: `msg:${id}:m1`, target: { kind: 'message', payload: { sessionId: id, messageId: 'm1' } } }
+  }
+
+  it('restricts the real SQL query by owner and tenant before retrieving matching bodies', async () => {
+    const { rpc, restore } = await seedOwners()
+    try {
+      const response = await rpc.query({ query: 'sharedneedle', category: 'messages', limit: 20 }, alice)
+      expect(response.results.map(result => result.sessionId)).toEqual(['alice-a'])
+      expect(response.total).toBe(1)
+      const escaped = await rpc.query({ query: 'sharedneedle', category: 'messages', filters: { sessionId: 'bob-a', spaceId: 'same-product-space' } }, alice)
+      expect(escaped.results).toEqual([])
+      // The product-space filter is not an identity or tenant override.
+      const otherTenant = await rpc.query({ query: 'sharedneedle', category: 'messages' }, { ...alice, workspaceId: 'tenant-b' })
+      expect(otherTenant.results.map(result => result.sessionId)).toEqual(['alice-b'])
+    } finally { restore() }
+  })
+
+  it('preflights all preview targets and actions before reading any body or invoking a provider', async () => {
+    const { rpc, restore } = await seedOwners()
+    const body = vi.spyOn(stubAdapters, 'iterateSessionMessages').mockReturnValue([{ id: 'm1', role: 'user', content: 'allowed body' }])
+    const action = vi.fn(async () => {})
+    handle!.service.registry.get('messages')!.invoke = action
+    try {
+      const denied = await rpc.preview({ items: [messageItem('alice-a'), messageItem('bob-a')], mode: 'batch' }, alice)
+      expect(denied.success).toBe(false)
+      expect(body).not.toHaveBeenCalled()
+      expect((await rpc.invoke({ capability: 'messages', actionId: 'open', items: [messageItem('bob-a')] }, alice)).success).toBe(false)
+      expect(action).not.toHaveBeenCalled()
+      expect((await rpc.preview({ items: [messageItem('alice-a')] }, alice)).success).toBe(true)
+      expect(body).toHaveBeenCalledWith('alice-a')
+      expect((await rpc.invoke({ capability: 'messages', actionId: 'open', items: [messageItem('alice-a')] }, alice)).success).toBe(true)
+      expect(action).toHaveBeenCalledTimes(1)
+      const metaPath = path.join(sessionsDir, 'alice-a', 'meta.json')
+      fs.writeFileSync(metaPath, JSON.stringify({ ...JSON.parse(fs.readFileSync(metaPath, 'utf8')), ownerUserId: 'bob' }))
+      body.mockClear()
+      expect((await rpc.preview({ items: [messageItem('alice-a')] }, alice)).success).toBe(false)
+      expect(body).not.toHaveBeenCalled()
+    } finally { restore() }
+  })
+
+  it('uses the caller of tool expansion, even when another caller populated the result memo', async () => {
+    const { restore } = await seedOwners()
+    const { createAppSearchToolAdapters } = await import('../tool-adapters.js')
+    const tools = createAppSearchToolAdapters(handle!.service)
+    const principal = { kind: 'user' as const, id: 'alice', sessionId: 'alice-a', spaceId: 'same-product-space', executionContext: { userId: 'alice', workspaceId: 'tenant-a' } }
+    const body = vi.spyOn(stubAdapters, 'iterateSessionMessages')
+    try {
+      const page = await tools.search({ query: 'sharedneedle', capability: 'messages', limit: 10 }, principal)
+      await expect(tools.preview(page.hits[0].ref, { ...principal, id: 'bob', sessionId: 'bob-a', executionContext: { userId: 'bob', workspaceId: 'tenant-a' } })).rejects.toThrow('Session not found')
+      expect(body).not.toHaveBeenCalled()
+    } finally { restore() }
+  })
+
+  it('rejects arbitrary file roots and symlinked daily paths before enumeration, reads or writes', async () => {
+    const { rpc, restore } = await seedOwners()
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'search-private-'))
+    fs.writeFileSync(path.join(outside, 'secret.md'), 'private')
+    fs.symlinkSync(outside, path.join(notesDir, 'escape'))
+    const listFiles = vi.spyOn(stubAdapters, 'listFiles')
+    const read = vi.spyOn(fs.promises, 'readFile')
+    const write = vi.spyOn(fs.promises, 'writeFile')
+    const dailyPreview = vi.spyOn(handle!.service.registry.get('daily')!, 'preview')
+    const dailyInvoke = vi.spyOn(handle!.service.registry.get('daily')!, 'invoke')
+    try {
+      expect((await rpc.query({ query: 'secret', category: 'files', filters: { dir: outside } }, alice)).success).toBe(false)
+      expect(listFiles).not.toHaveBeenCalled()
+      const escaped = path.join(notesDir, 'escape', 'secret.md')
+      expect((await rpc.preview({ items: [{ capability: 'daily', id: `daily:${escaped}`, target: { kind: 'daily', payload: { filePath: escaped } } }] }, { transport: 'ipc' })).success).toBe(false)
+      expect(read.mock.calls.some(call => String(call[0]).endsWith('secret.md'))).toBe(false)
+      expect(dailyPreview).not.toHaveBeenCalled()
+      expect((await rpc.invoke({ capability: 'daily', actionId: `create-daily:${encodeURIComponent(path.join(outside, 'new.md'))}`, items: [] }, { transport: 'ipc' })).success).toBe(false)
+      expect(write).not.toHaveBeenCalled()
+      expect(dailyInvoke).not.toHaveBeenCalled()
+      expect(fs.existsSync(path.join(outside, 'new.md'))).toBe(false)
+      const allowed = path.join(notesDir, 'allowed.md')
+      expect((await rpc.invoke({ capability: 'daily', actionId: `create-daily:${encodeURIComponent(allowed)}`, items: [] }, { transport: 'ipc' })).success).toBe(true)
+      expect(fs.existsSync(allowed)).toBe(true)
+      expect((await rpc.preview({ items: [{ capability: 'daily', id: `daily:${allowed}`, target: { kind: 'daily', payload: { filePath: allowed } } }] }, { transport: 'ipc' })).success).toBe(true)
+    } finally { restore(); fs.rmSync(outside, { recursive: true, force: true }) }
+  })
+})
 
 // ---- ① 起停 ------------------------------------------------------------
 

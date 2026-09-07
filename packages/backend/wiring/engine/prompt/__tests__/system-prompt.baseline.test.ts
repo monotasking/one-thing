@@ -27,6 +27,9 @@ vi.mock('../../../agents/index.js', () => ({
 
 function baseOptions(overrides: Partial<BuildPromptContextOptions> = {}): BuildPromptContextOptions {
   return {
+    // Host facts are fixture inputs; the baseline must be identical on every runner.
+    platform: 'darwin',
+    macOSAutomationDocsPath: '/resources/docs/macos-automation.md',
     hasTools: true,
     skills: [],
     activeProject: { hasActive: false },

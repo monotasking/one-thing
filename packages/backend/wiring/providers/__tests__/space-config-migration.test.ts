@@ -10,6 +10,7 @@ import * as fs from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createDefaultSettings } from '@shared/defaults/settings.js'
 
 const mocks = vi.hoisted(() => ({
   settings: {} as Record<string, unknown>,
@@ -437,6 +438,105 @@ describe('备份 / 标记 / 清字段', () => {
  * 此后有能力的宿主也不会重迁。取证读数见 `apps/desktop-react/scripts/gate-credentials.mjs`。
  */
 describe('凭证落盘加密:没能力就不迁,已明文就升级', () => {
+  it('全新默认配置完成迁移与升级检查,不访问安全存储或创建空凭据文件', async () => {
+    mocks.settings = { ...createDefaultSettings() }
+    const cryptoProvider = vi.fn(() => {
+      throw new Error('empty startup must not access secure storage')
+    })
+    configureSpaceCredentialsCrypto(cryptoProvider)
+
+    const report = await migrateProviderConfigToDefaultSpace()
+    expect(report.migrated).toBe(true)
+    expect(report.deferredReason).toBeUndefined()
+    expect(report.credentials).toEqual([])
+    expect(report.oauthTokens).toEqual([])
+    expect(report.providerSettings).toEqual(['default'])
+    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect((await migrateProviderConfigToDefaultSpace()).migrated).toBe(false)
+    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(fs.existsSync(spaceCredentialsFilePath('default'))).toBe(false)
+    expect(cryptoProvider).not.toHaveBeenCalled()
+  })
+
+  it('空 OAuth 文件与仅有策略的空明文池不触发安全存储,原池保持不变', async () => {
+    mocks.settings = { ...createDefaultSettings() }
+    const tokenPath = path.join(tmpDir, 'oauth-tokens.json')
+    fs.writeFileSync(tokenPath, '{}', 'utf-8')
+    const poolPath = spaceCredentialsFilePath('default')
+    fs.mkdirSync(path.dirname(poolPath), { recursive: true })
+    const emptyPool = JSON.stringify({
+      version: 2,
+      encryption: 'none',
+      providers: { deepseek: { entries: [], policy: 'single' } },
+    })
+    fs.writeFileSync(poolPath, emptyPool, 'utf-8')
+    const cryptoProvider = vi.fn(() => {
+      throw new Error('empty pool must not access secure storage')
+    })
+    configureSpaceCredentialsCrypto(cryptoProvider)
+
+    expect((await migrateProviderConfigToDefaultSpace()).migrated).toBe(true)
+    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(fs.readFileSync(poolPath, 'utf-8')).toBe(emptyPool)
+    expect(fs.readFileSync(tokenPath, 'utf-8')).toBe('{}')
+    expect(cryptoProvider).not.toHaveBeenCalled()
+  })
+
+  it('已完成凭据迁移只补配置,已有密文池的升级检查无需解密', async () => {
+    mocks.settings.storage = { providerConfigMigratedAt: 1000 }
+    const poolPath = spaceCredentialsFilePath('default')
+    fs.mkdirSync(path.dirname(poolPath), { recursive: true })
+    const encryptedPool = JSON.stringify({ version: 2, encryption: 'safeStorage', data: 'b3BhcXVl' })
+    fs.writeFileSync(poolPath, encryptedPool, 'utf-8')
+    const cryptoProvider = vi.fn(() => {
+      throw new Error('config migration must not decrypt an existing pool')
+    })
+    configureSpaceCredentialsCrypto(cryptoProvider)
+
+    const report = await migrateProviderConfigToDefaultSpace()
+    expect(report.migrated).toBe(true)
+    expect(report.secondStageOnly).toBe(true)
+    expect(report.credentials).toEqual([])
+    expect(upgradeSpaceCredentialsEncryptionAtRest()).toEqual([])
+    expect(fs.readFileSync(poolPath, 'utf-8')).toBe(encryptedPool)
+    expect(cryptoProvider).not.toHaveBeenCalled()
+  })
+
+  it('只有旧 OAuth 令牌时仍要求加密,无能力则不清令牌或落迁移标记', async () => {
+    mocks.settings = { ...createDefaultSettings() }
+    const tokenPath = path.join(tmpDir, 'oauth-tokens.json')
+    const tokens = JSON.stringify({
+      codex: JSON.stringify({ accessToken: 'at', expiresAt: 4000000000000, tokenType: 'Bearer' }),
+    })
+    fs.writeFileSync(tokenPath, tokens, 'utf-8')
+    const isEncryptionAvailable = vi.fn(() => false)
+    const encryptString = vi.fn(fakeCrypto.encryptString)
+    configureSpaceCredentialsCrypto(() => ({ ...fakeCrypto, isEncryptionAvailable, encryptString }))
+
+    const report = await migrateProviderConfigToDefaultSpace()
+    expect(report.deferredReason).toBe('no-credential-encryption')
+    expect(isEncryptionAvailable).toHaveBeenCalled()
+    expect(encryptString).not.toHaveBeenCalled()
+    expect(fs.readFileSync(tokenPath, 'utf-8')).toBe(tokens)
+    expect(fs.existsSync(spaceCredentialsFilePath('default'))).toBe(false)
+    expect(fs.existsSync(path.join(tmpDir, 'backups'))).toBe(false)
+    expect(mocks.saved).toEqual([])
+  })
+
+  it('实际加密失败保留旧 API key 与未迁移标记,不回退写明文', async () => {
+    configureSpaceCredentialsCrypto(() => ({
+      ...fakeCrypto,
+      encryptString: () => { throw new Error('secure storage write failed') },
+    }))
+
+    await expect(migrateProviderConfigToDefaultSpace()).rejects.toThrow('secure storage write failed')
+    expect(fs.existsSync(spaceCredentialsFilePath('default'))).toBe(false)
+    expect(mocks.settings.storage).toBeUndefined()
+    expect(mocks.saved).toEqual([])
+    const ai = mocks.settings.ai as Record<string, Record<string, Record<string, unknown>>>
+    expect(ai.providers.deepseek.apiKey).toBe('sk-d')
+  })
+
   it('无加密适配器 → 一个字节都不写,标记不落,旧位置的钥匙原样在(功能不破)', async () => {
     configureSpaceCredentialsCrypto(undefined)
 

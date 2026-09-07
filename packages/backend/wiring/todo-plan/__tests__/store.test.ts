@@ -4,6 +4,10 @@ import path from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let root: string
+let runtime: import('../store.js').TodoPlanRuntime | undefined
+vi.mock('../../../current.js', () => ({
+  getCurrentBackendInstance: () => runtime ? { todoPlans: runtime } : null,
+}))
 
 vi.mock('electron', () => ({
   BrowserWindow: {
@@ -41,9 +45,14 @@ describe('todo-plan store', () => {
   beforeEach(async () => {
     root = await mkdtemp(path.join(tmpdir(), 'todo-plan-store-'))
     activeSessionId = ''
+    const { TodoPlanRuntime } = await import('../store.js')
+    runtime = new TodoPlanRuntime({ storePath: root, assertActive() {} })
   })
 
   afterEach(async () => {
+    await runtime?.drain()
+    runtime?.dispose()
+    runtime = undefined
     await rm(root, { recursive: true, force: true })
     vi.clearAllMocks()
   })

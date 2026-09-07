@@ -384,14 +384,14 @@ export function saveProviderModels(
 	});
 }
 
-async function fetchModelsDevData(): Promise<OnethingModelsDevResponse> {
+async function fetchModelsDevData(signal?: AbortSignal): Promise<OnethingModelsDevResponse> {
 	log.debug("fetching models.dev catalog");
 
 	const data = await fetchOnethingModelsDevData(
 		createRequiredAppFetch({ policy: "default" }),
 		{
 			headers: { "User-Agent": "onething-electron/1.0" },
-			signal: AbortSignal.timeout(15000),
+			signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
 		},
 	);
 
@@ -421,7 +421,8 @@ export async function refreshProviderModels(providerId: string): Promise<void> {
 /**
  * Refresh models for all configured providers.
  */
-export async function refreshAllProviders(): Promise<void> {
+export async function refreshAllProviders(options: { signal?: AbortSignal } = {}): Promise<void> {
+	options.signal?.throwIfAborted();
 	// Ensure grok / grok-oauth have settings entries so they are included
 	// in the model refresh cycle. The builtin list already advertises them,
 	// but the refresh only iterates configured providers.
@@ -436,7 +437,11 @@ export async function refreshAllProviders(): Promise<void> {
 	const modelRegistryRefreshAdapters2: OnethingModelRegistryRefreshAdapters<AppSettings> = {
 		getSettings: () => settings,
 		saveSettings: (s) => saveSettings(s as any),
-		fetchModelsDevData,
+		fetchModelsDevData: async () => {
+			const data = await fetchModelsDevData(options.signal);
+			options.signal?.throwIfAborted();
+			return data;
+		},
 		logger: consoleLog,
 	};
 	await refreshAllOnethingProviderModels(modelRegistryRefreshAdapters2);

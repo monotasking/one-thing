@@ -20,10 +20,15 @@ type SpeechStreamResult = OnethingVoiceSpeechStreamResult
 
 export type SpeechStreamHandlers = OnethingVoiceSpeechStreamHandlers
 
-function getVoiceProviderRuntimeAdapters(): OnethingVoiceProviderRuntimeAdapters {
+function getVoiceProviderRuntimeAdapters(signal?: AbortSignal): OnethingVoiceProviderRuntimeAdapters {
   const appSettings = getSettings()
+  const fetch = createRequiredAppFetch({ policy: 'default' })
   return {
-    fetch: createRequiredAppFetch({ policy: 'default' }),
+    signal,
+    fetch: signal ? (input, init) => fetch(input, {
+      ...init,
+      signal: init?.signal ? AbortSignal.any([signal, init.signal]) : signal,
+    }) : fetch,
     providerApiKeys: {
       openai: (appSettings.ai.providers.openai as any)?.apiKey,
       openrouter: (appSettings.ai.providers.openrouter as any)?.apiKey,
@@ -34,8 +39,9 @@ function getVoiceProviderRuntimeAdapters(): OnethingVoiceProviderRuntimeAdapters
 export async function transcribeUtterance(
   request: VoiceSubmitUtteranceRequest,
   settings: VoiceSettings,
+  signal?: AbortSignal,
 ): Promise<TranscriptionResult> {
-  return transcribeOnethingUtterance(request, settings, getVoiceProviderRuntimeAdapters())
+  return transcribeOnethingUtterance(request, settings, getVoiceProviderRuntimeAdapters(signal))
 }
 
 export function getVoiceInputConfigurationError(settings: VoiceSettings): string | null {
@@ -46,14 +52,15 @@ export async function getOpenRouterTTSModels(force = false): Promise<{ models: V
   return getOnethingOpenRouterTTSModels(force, getVoiceProviderRuntimeAdapters())
 }
 
-export async function synthesizeSpeech(text: string, settings: VoiceSettings): Promise<SpeechResult> {
-  return synthesizeOnethingSpeech(text, settings, getVoiceProviderRuntimeAdapters())
+export async function synthesizeSpeech(text: string, settings: VoiceSettings, signal?: AbortSignal): Promise<SpeechResult> {
+  return synthesizeOnethingSpeech(text, settings, getVoiceProviderRuntimeAdapters(signal))
 }
 
 export async function streamSynthesizeSpeech(
   text: string,
   settings: VoiceSettings,
   handlers: SpeechStreamHandlers = {},
+  signal?: AbortSignal,
 ): Promise<SpeechStreamResult> {
-  return streamSynthesizeOnethingSpeech(text, settings, handlers, getVoiceProviderRuntimeAdapters())
+  return streamSynthesizeOnethingSpeech(text, settings, handlers, getVoiceProviderRuntimeAdapters(signal))
 }

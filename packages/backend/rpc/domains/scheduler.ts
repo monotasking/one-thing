@@ -24,7 +24,8 @@
  *  - `setEnabled` / `deleteTask` / `updateTask` 靠 `isUserSchedulerTask` 分叉:
  *    用户任务改自己的账本再重挂,内置/插件任务只动调度器的开关位。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import {
   createOnethingSchedulerRunDetailFromRecord,
   createOnethingUserSchedulerTaskForIpc,
@@ -54,6 +55,7 @@ import {
 import type { SchedulerRunRecord } from '@onething/runtime/scheduler'
 import {
   createUserSchedulerTask,
+  canAccessSchedulerTask,
   deleteUserSchedulerTask,
   isUserSchedulerTask,
   setUserSchedulerTaskEnabled,
@@ -77,15 +79,16 @@ function toRunDetail(record: SchedulerRunRecord): SchedulerRunDetailDTO {
   }) as SchedulerRunDetailDTO
 }
 
-export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
-  async list() {
+export const schedulerRpcHandlers: RpcRouteHandlers<SchedulerRoutes> = {
+  async list(_request, context = DESKTOP_RPC_CONTEXT) {
     const listOnethingSchedulerTasksOptions: ListOnethingSchedulerTasksOptions<SchedulerTaskSnapshotDTO> & { logger?: OnethingSchedulerIpcLogger | undefined; } = {
-      listTasks: () => getScheduler().list() as SchedulerTaskSnapshotDTO[],
+      listTasks: () => (getScheduler().list() as SchedulerTaskSnapshotDTO[]).filter(task => canAccessSchedulerTask(context, task.id)),
       logger: consoleLog,
     };
     return listOnethingSchedulerTasksForIpc(listOnethingSchedulerTasksOptions)
   },
-  async get(request) {
+  async get(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!canAccessSchedulerTask(context, request.id)) return { success: false, error: 'Scheduled task not found' }
     return getOnethingSchedulerTaskForIpc({
       id: request.id,
       getTaskStatus: id =>
@@ -94,7 +97,8 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
     })
   },
   // `force` 的缺省(true)住在投影里 —— 传输面只把键递过去。
-  async runNow(request) {
+  async runNow(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!canAccessSchedulerTask(context, request.id)) return { success: false, error: 'Scheduled task not found' }
     const runOnethingSchedulerTaskNowOptions: RunOnethingSchedulerTaskNowOptions<SchedulerRunRecord, SchedulerRunDetailDTO> & { logger?: OnethingSchedulerIpcLogger | undefined; } = {
       id: request.id,
       force: request.force,
@@ -106,7 +110,8 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
     };
     return runOnethingSchedulerTaskNowForIpc(runOnethingSchedulerTaskNowOptions) as Promise<{ success: true; record: SchedulerRunRecordDTO } | { success: false; error: string }>
   },
-  async setEnabled(request) {
+  async setEnabled(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!canAccessSchedulerTask(context, request.id)) return { success: false, error: 'Scheduled task not found' }
     const setOnethingSchedulerTaskEnabledOptions: SetOnethingSchedulerTaskEnabledOptions<SchedulerTaskSnapshotDTO> & { logger?: OnethingSchedulerIpcLogger | undefined; } = {
       id: request.id,
       enabled: request.enabled,
@@ -118,14 +123,15 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
     };
     return setOnethingSchedulerTaskEnabledForIpc(setOnethingSchedulerTaskEnabledOptions)
   },
-  async createTask(request) {
+  async createTask(request, context = DESKTOP_RPC_CONTEXT) {
     return createOnethingUserSchedulerTaskForIpc({
       request,
-      createUserTask: createUserSchedulerTask,
+      createUserTask: input => createUserSchedulerTask(input, context),
       logger: consoleLog,
     }) as Promise<{ success: true; task: SchedulerTaskSnapshotDTO } | { success: false; error: string }>
   },
-  async updateTask(request) {
+  async updateTask(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!canAccessSchedulerTask(context, request.id)) return { success: false, error: 'Scheduled task not found' }
     const updateOnethingUserSchedulerTaskOptions: UpdateOnethingUserSchedulerTaskOptions<SchedulerUpdateTaskRequest, SchedulerTaskSnapshotDTO> & { logger?: OnethingSchedulerIpcLogger | undefined; } = {
       request,
       isUserTask: isUserSchedulerTask,
@@ -134,7 +140,8 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
     };
     return updateOnethingUserSchedulerTaskForIpc(updateOnethingUserSchedulerTaskOptions) as Promise<{ success: true; task: SchedulerTaskSnapshotDTO } | { success: false; error: string }>
   },
-  async deleteTask(request) {
+  async deleteTask(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!canAccessSchedulerTask(context, request.id)) return { success: false, error: 'Scheduled task not found' }
     const deleteOnethingUserSchedulerTaskOptions: DeleteOnethingUserSchedulerTaskOptions & { logger?: OnethingSchedulerUserTaskLogger } = {
       id: request.id,
       isUserTask: isUserSchedulerTask,
@@ -144,7 +151,8 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
     return deleteOnethingUserSchedulerTaskForIpc(deleteOnethingUserSchedulerTaskOptions)
   },
   // 存过的运行详情优先;一条都没有时回落到任务快照里的 recentRuns。
-  async listRuns(request) {
+  async listRuns(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!canAccessSchedulerTask(context, request.taskId)) return { success: false, error: 'Scheduled task not found' }
     const listOnethingSchedulerRunsOptions: ListOnethingSchedulerRunsOptions<SchedulerRunRecord, SchedulerTaskSnapshotDTO, SchedulerRunDetailDTO> & { logger?: OnethingSchedulerIpcLogger | undefined; } = {
       taskId: request.taskId,
       limit: request.limit,
@@ -156,7 +164,8 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
     };
     return listOnethingSchedulerRunsForIpc(listOnethingSchedulerRunsOptions)
   },
-  async getRun(request) {
+  async getRun(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!canAccessSchedulerTask(context, request.taskId)) return { success: false, error: 'Scheduled task not found' }
     const getOnethingSchedulerRunOptions: GetOnethingSchedulerRunOptions<SchedulerRunRecord, SchedulerTaskSnapshotDTO, SchedulerRunDetailDTO> & { logger?: OnethingSchedulerIpcLogger | undefined; } = {
       taskId: request.taskId,
       runId: request.runId,
@@ -169,4 +178,3 @@ export const schedulerRpcHandlers: RouteHandlers<SchedulerRoutes> = {
     return getOnethingSchedulerRunForIpc(getOnethingSchedulerRunOptions)
   },
 }
-

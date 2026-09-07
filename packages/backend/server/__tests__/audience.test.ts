@@ -25,7 +25,7 @@ import {
 	type SessionOwnershipRecord,
 } from "../audience.js";
 
-const CONTEXT = { userId: "u1", workspaceId: "w1" } as const;
+const CONTEXT = { userId: "u1", workspaceId: "default" } as const;
 
 /** 一张手写的索引:`findMeta` 读它,`onChanged` 由用例自己打。 */
 function createIndexStub(rows: Record<string, SessionOwnershipRecord>): {
@@ -90,7 +90,7 @@ describe("TenantAudience 与归属判定逐字同判", () => {
 		{ label: "只有 userId,对不上", meta: { ownerUserId: "u2" }, expected: false },
 		{
 			label: "只有 workspaceId,且对得上",
-			meta: { ownerWorkspaceId: "w1" },
+			meta: { ownerWorkspaceId: "default" },
 			expected: true,
 		},
 		{
@@ -100,12 +100,12 @@ describe("TenantAudience 与归属判定逐字同判", () => {
 		},
 		{
 			label: "两格全,且都对得上",
-			meta: { ownerUserId: "u1", ownerWorkspaceId: "w1" },
+			meta: { ownerUserId: "u1", ownerWorkspaceId: "default" },
 			expected: true,
 		},
 		{
 			label: "两格全,主体对不上",
-			meta: { ownerUserId: "u2", ownerWorkspaceId: "w1" },
+			meta: { ownerUserId: "u2", ownerWorkspaceId: "default" },
 			expected: false,
 		},
 		{
@@ -134,11 +134,11 @@ describe("TenantAudience 与归属判定逐字同判", () => {
 	it("存量兼容只认 userId 那一格,workspaceId(产品空间)故意不回落", () => {
 		expect(sessionOwnerOf({ userId: "u1" })).toEqual({
 			userId: "u1",
-			workspaceId: undefined,
+			workspaceId: 'default',
 		});
 		expect(sessionOwnerOf({ ownerUserId: "u9", userId: "u1" })).toEqual({
 			userId: "u9",
-			workspaceId: undefined,
+			workspaceId: 'default',
 		});
 	});
 
@@ -199,7 +199,7 @@ describe("受众的失效口 = 索引写点", () => {
 		const rows: Record<string, SessionOwnershipRecord> = {
 			a: { ownerUserId: "u2" },
 			b: { ownerUserId: "u2" },
-			c: {},
+			c: { ownerUserId: "u1" },
 		};
 		const index = createIndexStub(rows);
 		const audience = new TenantAudience(index.port, CONTEXT);

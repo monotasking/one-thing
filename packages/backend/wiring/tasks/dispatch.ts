@@ -58,14 +58,19 @@ import type {
 } from '@onething/runtime/toolkit'
 
 import * as store from '../../store.js'
-import { sessionReads } from '../../session/reads.js'
-import { getEventBus } from '../../events/index.js'
-import { getStreamEngineSafe } from '../engine/index.js'
+import type { sessionReads } from '../../session/reads.js'
+import type { EventBus } from '../../events/event-bus.js'
+import type { StreamEngine } from '../engine/stream-engine-bound.js'
+import { getCurrentBackend } from '../../current.js'
+import type { Quiescible } from '@onething/core/lifecycle'
 import { taskMessageSource } from '@onething/runtime/engine/message-sources'
 import { deliverInternalMessage } from '../plugins/sessions.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../logging/index.js'
+import type { RuntimeRequestContext } from '@onething/core'
+import { SessionAccessError, type SessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
 
 const log = getLogger('tasks')
 
@@ -73,243 +78,307 @@ const log = getLogger('tasks')
 /* ── 在飞的账(内存态,单一属主)────────────────────────────────────────────── */
 
 interface ActiveTask {
+  readonly executionContext: Readonly<RuntimeRequestContext>
   callerSessionId: string
   description?: string
   startedAt: number
 }
 
-const activeTasks = new Map<string, ActiveTask>()
-
-/** 这条调用方会话上此刻在跑几个。 */
-export function runningTaskCount(callerSessionId: string): number {
-  let count = 0
-  for (const task of activeTasks.values()) {
-    if (task.callerSessionId === callerSessionId) count += 1
-  }
-  return count
-}
-
-/** 测试与进程收摊用。 */
-export function resetTaskDispatchLedger(): void {
-  activeTasks.clear()
-}
-
-/* ── 终端事件 ─────────────────────────────────────────────────────────────── */
-
-/**
- * 等这条工作会话上下一个流的终端事件。
- *
- * 与 collab 的 `waitForTerminalEvent` 逐行同义(两个默认值不同)。没有抽成共用件,
- * 与那边同一条理由:这三十行没有任何分支,复制的是**机械动作**不是决策,而真正
- * 会漂的那部分(墙钟数字)在产品层只有一份。
- *
- * `timeout` 的两种成因都是真的、都要如实报:引擎压根没起流(命令被丢掉),或者
- * 这一轮跑得太久 / 停在了一张没人答的审批卡上。
- */
-function waitForTaskTerminalEvent(sessionId: string): Promise<TaskOutcome> {
-  return new Promise<TaskOutcome>(resolve => {
-    let sawStart = false
-    let settled = false
-    const finish = (outcome: TaskOutcome): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(startTimer)
-      clearTimeout(totalTimer)
-      unsubscribe()
-      resolve(outcome)
-    }
-    const unsubscribe = getEventBus().onAny(
-      sessionId,
-      envelope => {
-        const type = (envelope.event as { type?: string } | undefined)?.type
-        if (type === SESSION_EVENT_TYPES.STREAM_START) sawStart = true
-        else if (type === SESSION_EVENT_TYPES.STREAM_COMPLETE) finish('complete')
-        else if (type === SESSION_EVENT_TYPES.STREAM_ERROR) finish('error')
-        else if (type === SESSION_EVENT_TYPES.STREAM_ABORTED) finish('aborted')
-      },
-      'task-dispatch-wait',
-    )
-    const startTimer = setTimeout(() => {
-      if (!sawStart) finish('timeout')
-    }, TASK_START_TIMEOUT_MS)
-    const totalTimer = setTimeout(() => finish('timeout'), TASK_WALL_CLOCK_MS)
-  })
-}
-
-/** 工作会话留下的最后一条助手正文 —— **整条**。 */
-function lastAssistantText(sessionId: string): string | undefined {
-  const message = sessionReads.findMessage(
-    sessionId,
-    candidate => candidate?.role === 'assistant'
-      && typeof candidate.content === 'string'
-      && candidate.content.trim() !== '',
-    { from: 'end' },
-  )
-  return message ? (message.content as string).trim() : undefined
-}
-
-/* ── 回投 ─────────────────────────────────────────────────────────────────── */
-
-function taskOrigin(taskSessionId: string, hop: number, now: number): MessageOrigin {
-  return {
-    transport: 'api',
-    source: taskMessageSource(taskSessionId),
-    receivedAt: now,
-    task: { sessionId: taskSessionId, hop },
-  }
-}
-
-/**
- * 把结果投回调用方。`triggerTurn: true` = 三态矩阵的「空闲起一轮 / 在忙降级 steer」,
- * 结果里 `delivered` 如实说走了哪一格 —— 这就是「被唤醒」的兑现。
- */
-async function reportBack(
-  taskSessionId: string,
-  task: ActiveTask,
-  outcome: TaskOutcome,
-): Promise<void> {
-  const engine = getStreamEngineSafe()
-  if (!engine) return
-  const body = lastAssistantText(taskSessionId)
-  const content = renderTaskReport({
-    taskSessionId,
-    ...(task.description ? { description: task.description } : {}),
-    outcome,
-    ...(body ? { body } : {}),
-  })
-  const result = await deliverInternalMessage(
-    { eventBus: getEventBus(), streamEngine: engine },
-    {
-      actorKey: taskMessageSource(taskSessionId),
-      sessionId: task.callerSessionId,
-      content,
-      options: { triggerTurn: true },
-      origin: (hop, now) => taskOrigin(taskSessionId, hop, now),
-    },
-  )
-  if (!result.ok) {
-    log.warn(
-      'task report not delivered',
-      { taskSessionId, reason: result.reason, detail: result.detail },
-    )
-  }
-}
-
-/* ── 派工 ─────────────────────────────────────────────────────────────────── */
-
 export interface DispatchTaskOptions {
-  /** 测试注入确定性种子。 */
+  /** Trusted context of the invoking execution, independent of model arguments. */
+  executionContext?: unknown
   newTaskSessionId?: () => string
   now?: () => number
 }
 
-export async function dispatchTask(
-  request: TaskDispatchRequest,
-  options: DispatchTaskOptions = {},
-): Promise<TaskDispatchOutcome> {
-  const now = options.now?.() ?? Date.now()
-  const caller = store.getSession(request.callerSessionId)
-  if (!caller) {
-    return { ok: false, reason: 'unsupported', detail: 'the calling session no longer exists' }
+export interface TaskDispatchLayer extends Quiescible {
+  dispatch(request: TaskDispatchRequest, options?: DispatchTaskOptions): Promise<TaskDispatchOutcome>
+  runningCount(callerSessionId: string): number
+  stop(): void
+  drain(): Promise<void>
+}
+
+export function createTaskDispatchLayer(deps: {
+  eventBus: EventBus
+  engine: StreamEngine
+  access: SessionAccess
+  reads: Pick<typeof sessionReads, 'findMessage'>
+}): TaskDispatchLayer {
+  const activeTasks = new Map<string, ActiveTask>()
+  const cancelWaiters = new Map<string, () => void>()
+  const pending = new Set<Promise<void>>()
+  let accepting = true
+
+  function track<T>(work: () => Promise<T>): Promise<T> {
+    let settled!: () => void
+    const completion = new Promise<void>(resolve => { settled = resolve })
+    pending.add(completion)
+    let result: Promise<T>
+    try { result = work() } catch (error) { result = Promise.reject(error) }
+    return result.finally(() => { pending.delete(completion); settled() })
   }
 
-  // 闸一:禁止套娃。工具面上工作会话本来就看不见 `task`(产品层
-  // `sessionHiddenToolIds`),这一条是**不能被绕过的那一层** —— 工具面是给模型看的。
-  if (isTaskSession(caller)) {
-    return { ok: false, reason: 'nested' }
+  /** 这条调用方会话上此刻在跑几个。 */
+  function runningTaskCount(callerSessionId: string): number {
+    let count = 0
+    for (const task of activeTasks.values()) {
+      if (task.callerSessionId === callerSessionId) count += 1
+    }
+    return count
   }
 
-  // 闸二:并发。超限**不排队**,当场拒绝 —— 悄悄排队会让模型以为活已经派出去了。
-  const running = runningTaskCount(request.callerSessionId)
-  if (running >= TASK_MAX_CONCURRENT_PER_SESSION) {
+  /* ── 终端事件 ─────────────────────────────────────────────────────────────── */
+
+  /**
+   * 等这条工作会话上下一个流的终端事件。
+   *
+   * 与 collab 的 `waitForTerminalEvent` 逐行同义(两个默认值不同)。没有抽成共用件,
+   * 与那边同一条理由:这三十行没有任何分支,复制的是**机械动作**不是决策,而真正
+   * 会漂的那部分(墙钟数字)在产品层只有一份。
+   *
+   * `timeout` 的两种成因都是真的、都要如实报:引擎压根没起流(命令被丢掉),或者
+   * 这一轮跑得太久 / 停在了一张没人答的审批卡上。
+   */
+  function waitForTaskTerminalEvent(sessionId: string): Promise<TaskOutcome> {
+    return new Promise<TaskOutcome>(resolve => {
+      let sawStart = false
+      let settled = false
+      const finish = (outcome: TaskOutcome): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(startTimer)
+        clearTimeout(totalTimer)
+        unsubscribe()
+        cancelWaiters.delete(sessionId)
+        resolve(outcome)
+      }
+      const unsubscribe = deps.eventBus.onAny(
+        sessionId,
+        envelope => {
+          const type = (envelope.event as { type?: string } | undefined)?.type
+          if (type === SESSION_EVENT_TYPES.STREAM_START) sawStart = true
+          else if (type === SESSION_EVENT_TYPES.STREAM_COMPLETE) finish('complete')
+          else if (type === SESSION_EVENT_TYPES.STREAM_ERROR) finish('error')
+          else if (type === SESSION_EVENT_TYPES.STREAM_ABORTED) finish('aborted')
+        },
+        'task-dispatch-wait',
+      )
+      const startTimer = setTimeout(() => {
+        if (!sawStart) finish('timeout')
+      }, TASK_START_TIMEOUT_MS)
+      const totalTimer = setTimeout(() => finish('timeout'), TASK_WALL_CLOCK_MS)
+      cancelWaiters.set(sessionId, () => finish('aborted'))
+    })
+  }
+
+  /** 工作会话留下的最后一条助手正文 —— **整条**。 */
+  function lastAssistantText(sessionId: string): string | undefined {
+    const message = deps.reads.findMessage(
+      sessionId,
+      candidate => candidate?.role === 'assistant'
+        && typeof candidate.content === 'string'
+        && candidate.content.trim() !== '',
+      { from: 'end' },
+    )
+    return message ? (message.content as string).trim() : undefined
+  }
+
+  /* ── 回投 ─────────────────────────────────────────────────────────────────── */
+
+  function taskOrigin(taskSessionId: string, hop: number, now: number): MessageOrigin {
     return {
-      ok: false,
-      reason: 'concurrency',
-      detail: `${running} running: ${[...activeTasks]
-        .filter(([, task]) => task.callerSessionId === request.callerSessionId)
-        .map(([id]) => id)
-        .join(', ')}`,
+      transport: 'api',
+      source: taskMessageSource(taskSessionId),
+      receivedAt: now,
+      task: { sessionId: taskSessionId, hop },
     }
   }
 
-  const taskSessionId = (options.newTaskSessionId ?? randomUUID)()
-  const description = request.description?.trim()
-
-  try {
-    // 幕后建的会话不该抢走用户正在看的东西。
-    store.createSessionWithoutFocus(taskSessionId, taskSessionName(description, request.prompt))
-    const mark: TaskSessionRef = {
-      parentSessionId: request.callerSessionId,
-      createdAt: now,
-      ...(description ? { description } : {}),
+  /**
+   * 把结果投回调用方。`triggerTurn: true` = 三态矩阵的「空闲起一轮 / 在忙降级 steer」,
+   * 结果里 `delivered` 如实说走了哪一格 —— 这就是「被唤醒」的兑现。
+   */
+  async function reportBack(
+    taskSessionId: string,
+    task: ActiveTask,
+    outcome: TaskOutcome,
+  ): Promise<void> {
+    if (!accepting) return
+    const engine = deps.engine
+    deps.access.resolve(task.executionContext, taskSessionId, 'read')
+    deps.access.resolve(task.executionContext, task.callerSessionId, 'write')
+    const body = lastAssistantText(taskSessionId)
+    const content = renderTaskReport({
+      taskSessionId,
+      ...(task.description ? { description: task.description } : {}),
+      outcome,
+      ...(body ? { body } : {}),
+    })
+    const result = await deliverInternalMessage(
+      { eventBus: deps.eventBus, streamEngine: engine },
+      {
+        actorKey: taskMessageSource(taskSessionId),
+        sessionId: task.callerSessionId,
+        content,
+        options: { triggerTurn: true },
+        origin: (hop, now) => taskOrigin(taskSessionId, hop, now),
+      },
+      { executionContext: task.executionContext },
+    )
+    if (!result.ok) {
+      log.warn(
+        'task report not delivered',
+        { taskSessionId, reason: result.reason, detail: result.detail },
+      )
     }
-    store.updateSessionTask(taskSessionId, mark)
+  }
 
-    /**
-     * cwd:**参数优先,否则继承调用方**。绝不是 collab 那个群目录 ——
-     * 审计 P0-4 的教训是「一张『去仓库里改这个 bug』的卡,worker 一开工就被切进
-     * 一间空屋子」。派工的默认工作面就是派它的人正在看的那一面。
-     */
-    const workingDirectory = request.workingDirectory?.trim() || caller.workingDirectory?.trim()
-    if (workingDirectory) {
-      store.updateSessionWorkingDirectory(taskSessionId, workingDirectory)
-      if (caller.workingDirectoryRoots?.length) {
-        store.updateSessionWorkingDirectoryRoots(taskSessionId, [...caller.workingDirectoryRoots])
+  /* ── 派工 ─────────────────────────────────────────────────────────────────── */
+
+  async function dispatchTask(
+    request: TaskDispatchRequest,
+    options: DispatchTaskOptions = {},
+  ): Promise<TaskDispatchOutcome> {
+    if (!accepting) return { ok: false, reason: 'unsupported', detail: 'Backend is closing' }
+    const executionContext = fixedExecutionContext(options.executionContext)
+    try { deps.access.resolve(executionContext, request.callerSessionId, 'write') } catch (error) {
+      if (!(error instanceof SessionAccessError)) throw error
+      return { ok: false, reason: 'unsupported', detail: 'the calling session no longer exists' }
+    }
+    const now = options.now?.() ?? Date.now()
+    const caller = store.getSession(request.callerSessionId)
+    if (!caller) {
+      return { ok: false, reason: 'unsupported', detail: 'the calling session no longer exists' }
+    }
+
+    // 闸一:禁止套娃。工具面上工作会话本来就看不见 `task`(产品层
+    // `sessionHiddenToolIds`),这一条是**不能被绕过的那一层** —— 工具面是给模型看的。
+    if (isTaskSession(caller)) {
+      return { ok: false, reason: 'nested' }
+    }
+
+    // 闸二:并发。超限**不排队**,当场拒绝 —— 悄悄排队会让模型以为活已经派出去了。
+    const running = runningTaskCount(request.callerSessionId)
+    if (running >= TASK_MAX_CONCURRENT_PER_SESSION) {
+      return {
+        ok: false,
+        reason: 'concurrency',
+        detail: `${running} running: ${[...activeTasks]
+          .filter(([, task]) => task.callerSessionId === request.callerSessionId)
+          .map(([id]) => id)
+          .join(', ')}`,
       }
     }
 
-    // 权限模式继承调用方(v1 口径:worker 里的审批卡照常出现在**那条**会话上)。
-    if (caller.permissionMode) {
-      store.updateSessionPermissionMode(taskSessionId, caller.permissionMode)
-    }
+    const taskSessionId = (options.newTaskSessionId ?? randomUUID)()
+    const description = request.description?.trim()
 
-    /**
-     * 模型:缺省与调用方同款。`model` 参数只换 modelId,**provider 仍是调用方的** ——
-     * 一个裸模型 id 反查 provider 在这个仓库里没有单一答案(provider 解析链的旧账),
-     * 猜错的后果是任务在一个不存在的模型上失败。工具描述里如实写了这一条。
-     */
-    const providerId = caller.lastProvider
-    const modelId = request.model || caller.lastModel
-    if (providerId && modelId) {
-      store.updateSessionModel(taskSessionId, providerId, modelId, { pinned: Boolean(request.model) })
-    }
+    try {
+      // 幕后建的会话不该抢走用户正在看的东西。
+      store.createSessionWithoutFocus(taskSessionId, taskSessionName(description, request.prompt), {
+        initialOwner: executionContext,
+      })
+      deps.access.resolve(executionContext, taskSessionId, 'write')
+      const mark: TaskSessionRef = {
+        parentSessionId: request.callerSessionId,
+        createdAt: now,
+        ...(description ? { description } : {}),
+      }
+      store.updateSessionTask(taskSessionId, mark)
 
-    const task: ActiveTask = {
-      callerSessionId: request.callerSessionId,
-      ...(description ? { description } : {}),
-      startedAt: now,
-    }
-    activeTasks.set(taskSessionId, task)
+      /**
+       * cwd:**参数优先,否则继承调用方**。绝不是 collab 那个群目录 ——
+       * 审计 P0-4 的教训是「一张『去仓库里改这个 bug』的卡,worker 一开工就被切进
+       * 一间空屋子」。派工的默认工作面就是派它的人正在看的那一面。
+       */
+      const workingDirectory = request.workingDirectory?.trim() || caller.workingDirectory?.trim()
+      if (workingDirectory) {
+        store.updateSessionWorkingDirectory(taskSessionId, workingDirectory)
+        if (caller.workingDirectoryRoots?.length) {
+          store.updateSessionWorkingDirectoryRoots(taskSessionId, [...caller.workingDirectoryRoots])
+        }
+      }
 
-    // **先订阅后驱动**:总线是同步投递的,一个在 `emit` 里就起完又结束的流会在
-    // 等待者存在之前 settle(collab v2 P2-7 踩过的那一脚)。
-    const terminal = waitForTaskTerminalEvent(taskSessionId)
+      // 权限模式继承调用方(v1 口径:worker 里的审批卡照常出现在**那条**会话上)。
+      if (caller.permissionMode) {
+        store.updateSessionPermissionMode(taskSessionId, caller.permissionMode)
+      }
 
-    await getEventBus().emit(taskSessionId, {
-      type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
-      content: request.prompt,
-      source: taskMessageSource(taskSessionId),
-      origin: taskOrigin(taskSessionId, 0, now),
-    } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+      /**
+       * 模型:缺省与调用方同款。`model` 参数只换 modelId,**provider 仍是调用方的** ——
+       * 一个裸模型 id 反查 provider 在这个仓库里没有单一答案(provider 解析链的旧账),
+       * 猜错的后果是任务在一个不存在的模型上失败。工具描述里如实写了这一条。
+       */
+      const providerId = caller.lastProvider
+      const modelId = request.model || caller.lastModel
+      if (providerId && modelId) {
+        store.updateSessionModel(taskSessionId, providerId, modelId, { pinned: Boolean(request.model) })
+      }
 
-    // 不 await:工具当场返回,调用方这一回合继续往下走(fire-and-report)。
-    void terminal
-      .then(outcome => reportBack(taskSessionId, task, outcome))
-      .catch(error => log.error('task report failed', { taskSessionId }, error))
-      .finally(() => activeTasks.delete(taskSessionId))
+      const task: ActiveTask = {
+        executionContext,
+        callerSessionId: request.callerSessionId,
+        ...(description ? { description } : {}),
+        startedAt: now,
+      }
+      activeTasks.set(taskSessionId, task)
 
-    return {
-      ok: true,
-      taskSessionId,
-      ...(workingDirectory ? { workingDirectory } : {}),
-      running: runningTaskCount(request.callerSessionId),
-    }
-  } catch (error) {
-    activeTasks.delete(taskSessionId)
-    return {
-      ok: false,
-      reason: 'error',
-      detail: error instanceof Error ? error.message : String(error),
+      // **先订阅后驱动**:总线是同步投递的,一个在 `emit` 里就起完又结束的流会在
+      // 等待者存在之前 settle(collab v2 P2-7 踩过的那一脚)。
+      const terminal = waitForTaskTerminalEvent(taskSessionId)
+
+      await deps.eventBus.emit(taskSessionId, {
+        type: SESSION_COMMAND_TYPES.SEND_MESSAGE,
+        content: request.prompt,
+        source: taskMessageSource(taskSessionId),
+        origin: taskOrigin(taskSessionId, 0, now),
+      } as Parameters<EventBus['emit']>[1], { executionContext })
+
+      // 不 await:工具当场返回,调用方这一回合继续往下走(fire-and-report)。
+      void track(async () => {
+        try { await reportBack(taskSessionId, task, await terminal) }
+        catch (error) { log.error('task report failed', { taskSessionId }, error) }
+        finally { activeTasks.delete(taskSessionId) }
+      })
+
+      return {
+        ok: true,
+        taskSessionId,
+        ...(workingDirectory ? { workingDirectory } : {}),
+        running: runningTaskCount(request.callerSessionId),
+      }
+    } catch (error) {
+      cancelWaiters.get(taskSessionId)?.()
+      activeTasks.delete(taskSessionId)
+      return {
+        ok: false,
+        reason: 'error',
+        detail: error instanceof Error ? error.message : String(error),
+      }
     }
   }
+
+  function stop(): void {
+    accepting = false
+    for (const cancel of [...cancelWaiters.values()]) cancel()
+  }
+
+  return {
+    dispatch: (request, options) => track(() => dispatchTask(request, options)),
+    runningCount: runningTaskCount,
+    stop,
+    /** `Quiescible` 的那一半:关机链读的是这个名字,`stop()` 留给既有调用方。 */
+    quiesce: stop,
+    async drain() {
+      while (pending.size > 0) await Promise.all([...pending])
+    },
+  }
+}
+
+export function dispatchTask(request: TaskDispatchRequest, options?: DispatchTaskOptions): Promise<TaskDispatchOutcome> {
+  return getCurrentBackend('taskDispatchLayer').taskDispatchLayer.dispatch(request, options)
+}
+
+export function runningTaskCount(callerSessionId: string): number {
+  return getCurrentBackend('taskDispatchLayer').taskDispatchLayer.runningCount(callerSessionId)
 }

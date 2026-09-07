@@ -1,4 +1,21 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { installSessionLayerForTest } from '../../../../session/testing/session-layer.js'
+
+let testStore: string
+let fixture: ReturnType<typeof installSessionLayerForTest>
+beforeEach(() => {
+  testStore = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-executor-test-'))
+  vi.stubEnv('ONETHING_STORE_PATH', testStore)
+  fixture = installSessionLayerForTest()
+})
+afterEach(async () => {
+  await fixture.dispose()
+  vi.unstubAllEnvs()
+  fs.rmSync(testStore, { recursive: true, force: true })
+})
 import { IPC_CHANNELS, type ToolCall } from '@shared/ipc.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
 import {
@@ -51,6 +68,12 @@ const storeMocks = vi.hoisted(() => ({
 
 vi.mock('../../../../store.js', () => ({
   ...storeMocks,
+}))
+vi.mock('../../../../session/commands.js', () => ({
+  sessionCommands: {
+    appendMessage: (sessionId: string, { message }: { message: unknown }) => storeMocks.addMessage(sessionId, message),
+    patchMessage: vi.fn(() => true),
+  },
 }))
 
 vi.mock('../../triggers/index.js', () => ({

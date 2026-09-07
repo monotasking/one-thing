@@ -187,9 +187,11 @@ export async function applyBoardAction(
   roomSessionId: string,
   action: CollabBoardAction,
   actor: CollabBoardActor,
+  options: { beforeReadOrWrite?: () => void } = {},
 ): Promise<CollabBoardActionOutcome> {
   const previous = writeQueues.get(roomSessionId) ?? Promise.resolve()
   const run = previous.then(() => {
+    options.beforeReadOrWrite?.()
     const board = loadCollabBoard(roomSessionId)
     const result = applyCollabBoardAction(board, action, actor, {
       now: Date.now(),

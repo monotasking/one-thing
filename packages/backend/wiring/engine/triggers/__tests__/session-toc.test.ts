@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   sessions: new Map<string, { messages: Array<{ role: string; id: string; timestamp: number; reasoning?: string }> }>(),
-  recordTocTurn: vi.fn(async (_input: Record<string, unknown>) => undefined),
+  recordTocTurn: vi.fn(async (_input: Record<string, unknown>, _options: { signal?: AbortSignal }) => undefined),
   collectGoalFileChanges: vi.fn(async () => [] as Array<{ path: string; added: number; removed: number }>),
 }))
 
@@ -25,6 +25,16 @@ vi.mock('../../../goals/file-changes.js', () => ({
 
 const { bindSessionFacadeMock } = await import('../../../../session/testing/facade-mock.js')
 const { createSessionTocTrigger } = await import('../session-toc.js')
+const triggers: ReturnType<typeof createSessionTocTrigger>[] = []
+const runTask = vi.fn()
+function createTrigger() {
+  const trigger = createSessionTocTrigger({
+    async runTask(label, run) { runTask(label); return run() },
+    assertAccepting: () => {},
+  })
+  triggers.push(trigger)
+  return trigger
+}
 
 bindSessionFacadeMock((sessionId: string) => mocks.sessions.get(sessionId))
 
@@ -51,9 +61,12 @@ beforeEach(() => {
   mocks.sessions.clear()
   mocks.recordTocTurn.mockClear()
   mocks.collectGoalFileChanges.mockClear()
+  runTask.mockClear()
 })
 
-afterEach(() => {
+afterEach(async () => {
+  for (const trigger of triggers) trigger.stop()
+  await Promise.allSettled(triggers.splice(0).map(trigger => trigger.drain()))
   vi.useRealTimers()
 })
 
@@ -61,7 +74,7 @@ describe('session TOC trigger', () => {
   it('returns without calling the model, deferring the work to a timer', async () => {
     seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
 
-    await createSessionTocTrigger().execute(ctx())
+    await createTrigger().execute(ctx())
 
     // The whole point: turn teardown does not wait on a model call.
     expect(mocks.recordTocTurn).not.toHaveBeenCalled()
@@ -71,7 +84,7 @@ describe('session TOC trigger', () => {
   })
 
   it('collapses a rapid back-and-forth into a single call for the newest turn', async () => {
-    const trigger = createSessionTocTrigger()
+    const trigger = createTrigger()
 
     seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
     await trigger.execute(ctx())
@@ -92,7 +105,7 @@ describe('session TOC trigger', () => {
   it('abandons a fired timer whose turn is no longer the newest', async () => {
     // Belt-and-braces for a missed clearTimeout: the fired timer re-checks
     // that its turn is still current before spending anything.
-    const trigger = createSessionTocTrigger()
+    const trigger = createTrigger()
     seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
     await trigger.execute(ctx())
 
@@ -111,7 +124,7 @@ describe('session TOC trigger', () => {
       { role: 'assistant', id: 'a2', timestamp: 6 * 60_000, reasoning: 'thinking hard' },
     ])
 
-    await createSessionTocTrigger().execute(ctx())
+    await createTrigger().execute(ctx())
     await vi.advanceTimersByTimeAsync(60_000)
 
     expect(mocks.recordTocTurn.mock.calls[0]?.[0]).toMatchObject({
@@ -125,21 +138,106 @@ describe('session TOC trigger', () => {
   it('does nothing for a session with no assistant message yet', async () => {
     seed([{ role: 'user', id: 'u1', timestamp: 1000 }])
 
-    await createSessionTocTrigger().execute(ctx())
+    await createTrigger().execute(ctx())
     await vi.advanceTimersByTimeAsync(60_000)
 
     expect(mocks.recordTocTurn).not.toHaveBeenCalled()
   })
 
-  it('survives a segmentation failure without escaping to the caller', async () => {
+  it('reports a deferred failure to its owner when draining', async () => {
     mocks.recordTocTurn.mockRejectedValueOnce(new Error('provider exploded') as never)
     seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
 
-    await createSessionTocTrigger().execute(ctx())
-    // The rejection is swallowed inside the timer; nothing escapes to a caller
-    // that has long since returned.
+    const trigger = createTrigger()
+    await trigger.execute(ctx())
     await vi.advanceTimersByTimeAsync(60_000)
 
     expect(mocks.recordTocTurn).toHaveBeenCalledTimes(1)
+    await expect(trigger.drain()).rejects.toThrow('Session TOC task failed')
+  })
+
+  it('drops the session after a failed write instead of throwing the stale failure at it', async () => {
+    // 工单 4 A2:失败表从前只增不清 —— 一次写盘失败之后,这个会话**每一次**删除
+    // 都会拿那条陈年错误再抛一遍,于是删不掉。
+    mocks.recordTocTurn.mockRejectedValueOnce(new Error('disk full') as never)
+    seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
+
+    const trigger = createTrigger()
+    await trigger.execute(ctx())
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    await expect(trigger.abortAndDrain(SESSION)).resolves.toBeUndefined()
+    // 销过账:接下来的关机也不再被这条陈年失败绊住。
+    await expect(trigger.drain()).resolves.toBeUndefined()
+  })
+
+  it('reports a failure to shutdown once, not on every drain', async () => {
+    mocks.recordTocTurn.mockRejectedValueOnce(new Error('provider exploded') as never)
+    seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
+
+    const trigger = createTrigger()
+    await trigger.execute(ctx())
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    await expect(trigger.drain()).rejects.toThrow('Session TOC task failed')
+    await expect(trigger.drain()).resolves.toBeUndefined()
+  })
+
+  it('clears the session\u0027s failures on its next successful write', async () => {
+    mocks.recordTocTurn.mockRejectedValueOnce(new Error('disk full') as never)
+    seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
+
+    const trigger = createTrigger()
+    await trigger.execute(ctx())
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    // 下一轮写盘成功 —— 上一条失败销账。
+    seed([
+      { role: 'assistant', id: 'a1', timestamp: 1000 },
+      { role: 'assistant', id: 'a2', timestamp: 2000 },
+    ])
+    await trigger.execute(ctx())
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(mocks.recordTocTurn).toHaveBeenCalledTimes(2)
+    await expect(trigger.drain()).resolves.toBeUndefined()
+  })
+
+  it('cancels idle work on disposal and leaves a newly assembled trigger usable', async () => {
+    seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
+    const old = createTrigger()
+    await old.execute(ctx())
+    old.stop()
+    await old.drain()
+    const fresh = createTrigger()
+    await fresh.execute(ctx())
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(runTask).toHaveBeenCalledTimes(1)
+    expect(mocks.recordTocTurn).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['shutdown', 'delete'] as const)('waits for non-cooperative work after %s cancels it', async reason => {
+    let release!: () => void
+    let signal: AbortSignal | undefined
+    mocks.recordTocTurn.mockImplementationOnce(async (_input, options) => {
+      signal = options.signal
+      await new Promise<void>(resolve => { release = resolve })
+      signal?.throwIfAborted()
+      return undefined
+    })
+    seed([{ role: 'assistant', id: 'a1', timestamp: 1000 }])
+    const trigger = createTrigger()
+    await trigger.execute(ctx())
+    await vi.advanceTimersByTimeAsync(60_000)
+    if (reason === 'shutdown') trigger.stop()
+    const waiting = reason === 'shutdown' ? trigger.drain() : trigger.abortAndDrain(SESSION)
+    let drained = false
+    void waiting.then(() => { drained = true })
+    await Promise.resolve()
+    expect(signal?.aborted).toBe(true)
+    expect(drained).toBe(false)
+    release()
+    await waiting
+    expect(drained).toBe(true)
   })
 })

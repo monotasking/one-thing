@@ -34,27 +34,31 @@ vi.mock('../../../../session/shadow.js', () => ({
   resetSessionShadowCache: () => undefined,
 }))
 
-vi.mock('../../../../session/event-writer.js', () => ({
+vi.mock('../../../../session/event-writer.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../session/event-writer.js')>()
+  return {
+  ...actual,
   writeSessionEvent: (_sessionId: string, type: string, data: unknown) => {
     written.types.push(type)
     written.payloads.push(data)
+    return actual.writeSessionEvent(_sessionId, type as never, data as never)
   },
-  registerSessionEventObserver: () => () => undefined,
-}))
+  }
+})
 
-const { resetSessionEventLogCache } = await import('../../../../session/event-log.js')
+const { resetSessionEventLogCache, flushSessionEventLog } = await import('../../../../session/event-log.js')
 const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
 const { beginSessionRun, resetSessionRuns } = await import('../../../../session/runs.js')
 const { resetSessionEventStatsCache } = await import('../../../../session/event-stats.js')
 const { createSessionEventRecorder } = await import('../session-event-recorder.js')
-const { createEventSystem, getStreamChannel } = await import('../../../../events/index.js')
-const { createBackendHandle, setCurrentBackend } = await import('../../../../current.js')
+const { getStreamChannel } = await import('../../../../events/index.js')
+const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
 const { pushSessionToolProgress } = await import('../../../../events/tool-progress-stream.js')
 
 const SESSION = 'progress-ledger'
 const CALL_ID = 'c1'
 
-let disposeEventSystem: (() => void) | null = null
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 
 beforeEach(() => {
   state.storeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-progress-'))
@@ -64,23 +68,16 @@ beforeEach(() => {
   written.types = []
   written.payloads = []
   resetSessionEventLogCache()
+  sessionFixture = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
   beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
-  const { eventBus, streamChannel } = createEventSystem()
-  setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
-  disposeEventSystem = () => {
-    eventBus.shutdown()
-    streamChannel.shutdown()
-  }
   delete process.env.ONETHING_TOOL_PROGRESS
 })
 
-afterEach(() => {
-  disposeEventSystem?.()
-  disposeEventSystem = null
-  setCurrentBackend(null)
+afterEach(async () => {
+  await sessionFixture.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 
@@ -138,17 +135,23 @@ describe('C2-b:tool-progress 不进 events.jsonl', () => {
     expect(dumped).not.toContain('outputTail')
   })
 
-  it('进度关掉(ONETHING_TOOL_PROGRESS=0)时账本写的东西逐条相同', () => {
+  it('进度关掉(ONETHING_TOOL_PROGRESS=0)时账本写的东西逐条相同', async () => {
     const withProgress = (() => {
       driveWithProgress()
       return [...written.types]
     })()
 
     // 重置一趟,这次关着进度再跑同一段流。
-    written.types = []
-    written.payloads = []
+    await flushSessionEventLog()
+    await sessionFixture.dispose()
+    fs.rmSync(path.join(state.sessionsDir, SESSION), { recursive: true, force: true })
+    fs.mkdirSync(path.join(state.sessionsDir, SESSION), { recursive: true })
+    fs.writeFileSync(path.join(state.sessionsDir, SESSION, 'meta.json'), '{}')
     resetSessionEventLogCache()
     resetSessionRuns()
+    sessionFixture = installSessionLayerForTest()
+    written.types = []
+    written.payloads = []
     beginSessionRun(SESSION, { kind: 'send', assistantMessageId: 'a1' })
     process.env.ONETHING_TOOL_PROGRESS = '0'
     const { chunks } = driveWithProgress()

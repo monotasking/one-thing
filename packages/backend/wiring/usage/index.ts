@@ -9,7 +9,6 @@
  * as 'chat'. Side-line calls run on the tool-call model in the background —
  * `source` is the only thing that makes that spend visible in the usage panel.
  */
-import path from "node:path";
 import {
 	OnethingUsageLedger,
 	getOnethingSessionUsageTotal,
@@ -22,9 +21,6 @@ import {
 } from "@onething/runtime/usage";
 import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
 import type { MessageOrigin } from "@shared/ipc/channel-identity.js";
-import {
-  getOnethingStorePath,
-} from '@onething/runtime/storage'
 import { getModelCapabilityEntry } from "../providers/model-registry.js";
 import { resolveSessionCredentialId } from "../providers/space-credentials.js";
 import * as store from "../../store.js";
@@ -105,12 +101,21 @@ function resolveWorkspaceId(sessionId: string | undefined): string {
 let ledgerInstance: OnethingUsageLedger | null = null;
 
 export function getUsageLedger(): OnethingUsageLedger {
-	if (!ledgerInstance) {
-		ledgerInstance = new OnethingUsageLedger({
-			ledgerDir: () => path.join(getOnethingStorePath(), "usage"),
-		});
-	}
+	if (!ledgerInstance) throw new Error('Usage ledger is not bound to a backend');
 	return ledgerInstance;
+}
+
+/** Bind one fixed store instance; an old release cannot detach its successor. */
+export function configureUsageLedger(ledger: OnethingUsageLedger): () => void {
+  if (ledgerInstance) throw new Error('Usage ledger is already bound to a backend')
+  ledgerInstance = ledger
+  return () => { if (ledgerInstance === ledger) ledgerInstance = null }
+}
+
+/** Capture before asynchronous work, so a late callback never resolves a newer binding. */
+export function captureUsageRecorder(): (input: RecordUsageInput) => OnethingUsageLedgerRecord {
+  const ledger = getUsageLedger()
+  return input => recordUsageIn(ledger, input)
 }
 
 export function resolveUsageBillingMode(providerId: string): OnethingUsageBillingMode {
@@ -123,7 +128,7 @@ export function resolveUsageBillingMode(providerId: string): OnethingUsageBillin
  * the unbound '' group.
  */
 export async function getUsageSummaryWithProjects(
-	ledger: OnethingUsageLedger,
+	ledger: Pick<OnethingUsageLedger, 'readRecordsInRange'>,
 	request: OnethingUsageSummaryRequest,
 ): Promise<OnethingUsageSummaryResult> {
 	return getOnethingUsageSummary(ledger, {
@@ -169,9 +174,14 @@ export async function getSessionUsageTotal(sessionId: string): Promise<SessionUs
 
 /** Single entry point for billing: builds the ledger record and queues it for append. */
 export function recordUsage(input: RecordUsageInput): OnethingUsageLedgerRecord {
+  return recordUsageIn(getUsageLedger(), input)
+}
+
+function recordUsageIn(ledger: OnethingUsageLedger, input: RecordUsageInput): OnethingUsageLedgerRecord {
+  ledger.assertWritable()
 	const capability = getModelCapabilityEntry(input.modelId, input.providerId);
 	const billing = resolveUsageBillingMode(input.providerId);
-	return getUsageLedger().record({
+	return ledger.record({
 		sessionId: input.sessionId,
 		workspaceId: resolveWorkspaceId(input.sessionId),
 		// 默认空间不写 credentialId(诚实缺席):它的凭证源是 settings.ai,

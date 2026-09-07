@@ -11,6 +11,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface FakeSession {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   name: string
   kind?: string
@@ -32,6 +34,13 @@ const mocks = vi.hoisted(() => ({
   collabWrites: [] as Array<{ id: string; fields: unknown }>,
 }))
 
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as { ownerUserId?: string; ownerWorkspaceId?: string } | undefined,
+  }) }
+})
+
 vi.mock('../../../store.js', () => ({
   // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
   getSettings: () => ({}),
@@ -48,8 +57,9 @@ vi.mock('../../../store.js', () => ({
   },
   // 幕后建会话走"不动 current 指针"的那个变体:真实 store 里它建完把指针原样
   // 还原,所以这里就是"会话建了、指针没动"。
-  createSessionWithoutFocus: (id: string, name: string) => {
-    const session: FakeSession = { id, name, messages: [] }
+  createSessionWithoutFocus: (id: string, name: string, options: { initialOwner?: { userId: string; workspaceId: string } } = {}) => {
+    const session: FakeSession = { id, name, messages: [],
+      ownerUserId: options.initialOwner?.userId, ownerWorkspaceId: options.initialOwner?.workspaceId }
     mocks.sessions.set(id, session)
     mocks.created.push(id)
     return session
@@ -93,12 +103,28 @@ function session(): FakeSession {
 
 beforeEach(() => {
   mocks.sessions.clear()
+  for (const id of ['room-1', 'room-2']) mocks.sessions.set(id, { id, name: id, kind: 'room', messages: [] })
   mocks.created.length = 0
   mocks.collabWrites.length = 0
   mocks.currentSessionId = 'chat-user-was-here'
 })
 
 describe('ensureCollabAgentSession', () => {
+  it('uses a distinct owned execution id and publishes the owner during creation', () => {
+    const executionContext = { userId: 'alice', workspaceId: 'tenant-a' }
+    Object.assign(mocks.sessions.get('room-1')!, { ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
+    const id = ensureCollabAgentSession('fe', 'room-1', { executionContext })!
+    expect(id).not.toBe(AGENT_SESSION)
+    expect(mocks.sessions.get(id)).toMatchObject({ ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
+    expect(ensureCollabAgentSession('fe', 'room-1', { executionContext })).toBe(id)
+    Object.assign(mocks.sessions.get('room-1')!, { ownerUserId: 'bob' })
+    mocks.created.length = 0
+    mocks.collabWrites.length = 0
+    expect(() => ensureCollabAgentSession('fe', 'room-1', { executionContext })).toThrow('Session not found')
+    expect(mocks.created).toEqual([])
+    expect(mocks.collabWrites).toEqual([])
+  })
+
   it('creates one hidden, agent-bound session and points it at the room', () => {
     expect(ensureCollabAgentSession('fe', 'room-1')).toBe(AGENT_SESSION)
     expect(session()).toMatchObject({

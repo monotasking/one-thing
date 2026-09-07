@@ -1,108 +1,83 @@
-/**
- * app-state 域,端到端穿过 dispatcher(结构债 P4c)。
- *
- * 接的是被删掉的三处转发的测试位:`apps/electron/src/ipc/app-state{,-controller}.ts`
- * 的工厂、bridge 上那两条包装、server 的 `GET /api/app-state` 与
- * `POST /api/app-state/ui`。值得钉的是:
- *  - 两个方法都在 router 的白名单上;
- *  - `get` 把整份状态**原样**交出去(不是像旧 server adapter 那样现场拼一份最小态);
- *  - `saveUiState` 是**补丁**语义:整个信封原样递给存储层,传输面不拆包、不补默认值 ——
- *    补一个 `sidebarCollapsed: false` 之类的默认值就会把「没说」变成「说了 false」;
- *  - 存储层报错时回的是 `{ success:false, error }`,而不是让 dispatcher 变成 `ok:false`。
- */
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { appStateRouter } from '@shared/ipc/app-state.js'
+import { getOnethingAppStatePath, writeOnethingAppState } from '@onething/runtime/storage'
+import { createSessionAccess } from '../../session/access.js'
+import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests } from '../registry.js'
+import { appStateRpcHandlers } from '../domains/app-state.js'
 
-const store = vi.hoisted(() => ({
-  getAppState: vi.fn(),
-}))
+const alice = { transport: 'http' as const, ownerUid: 'alice', workspaceId: 'tenant' }
+const bob = { transport: 'http' as const, ownerUid: 'bob', workspaceId: 'tenant' }
+const rows = new Map([
+  ['session-1', {}],
+  ['alice-session', { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }],
+])
+let root: string
+let fixture: ReturnType<typeof installSessionLayerForTest>
+let dispose: () => void
 
-const paths = vi.hoisted(() => ({
-  getOnethingAppStatePath: vi.fn(() => '/store/app-state.json'),
-}))
+beforeEach(() => {
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'ui-state-access-'))
+  vi.stubEnv('ONETHING_STORE_PATH', root)
+  fixture = installSessionLayerForTest({ access: createSessionAccess({ findMeta: id => rows.get(id) }) })
+  resetRpcRegistryForTests()
+  dispose = registerRouterHandlers(appStateRouter, appStateRpcHandlers)
+})
 
-const storage = vi.hoisted(() => ({
-  saveOnethingUiStateForIpc: vi.fn(),
-}))
+afterEach(async () => {
+  dispose()
+  await fixture.dispose()
+  vi.unstubAllEnvs()
+  fs.rmSync(root, { recursive: true, force: true })
+})
 
-vi.mock('../../stores/app-state.js', () => store)
-vi.mock('@onething/runtime/storage', () => ({ ...paths, ...storage }))
+const getRequest = { domain: 'appState', method: 'get', payload: {} }
+const save = (payload: Record<string, unknown>) => ({ domain: 'appState', method: 'saveUiState', payload })
 
-const STATE = {
-  currentSessionId: 'session-1',
-  currentWorkspaceId: 'default',
-  sidebarCollapsed: true,
-  workspace: { version: 5, spaces: {} },
-}
-
-async function loadDomain() {
-  const [{ dispatchRpc, registerRouterHandlers, resetRpcRegistryForTests }, { appStateRpcHandlers }] =
-    await Promise.all([import('../registry.js'), import('../domains/app-state.js')])
-  return { dispatchRpc, resetRpcRegistryForTests, registerRouterHandlers, appStateRpcHandlers }
-}
-
-describe('app-state RPC domain', () => {
-  let dispose: (() => void) | undefined
-
-  beforeEach(async () => {
-    store.getAppState.mockReset().mockReturnValue(STATE)
-    storage.saveOnethingUiStateForIpc.mockReset().mockReturnValue({ success: true, state: STATE })
-    paths.getOnethingAppStatePath.mockClear()
-
-    const { resetRpcRegistryForTests, registerRouterHandlers, appStateRpcHandlers } = await loadDomain()
-    resetRpcRegistryForTests()
-    dispose = registerRouterHandlers(appStateRouter, appStateRpcHandlers)
-  })
-
-  afterEach(() => {
-    dispose?.()
-    dispose = undefined
-  })
-
-  it('binds both methods — an unlisted one never reaches a handler', async () => {
-    const { dispatchRpc } = await loadDomain()
-
-    for (const method of ['get', 'saveUiState']) {
-      const response = await dispatchRpc({ domain: 'appState', method, payload: {} })
-      expect(response.ok, `${method} should dispatch`).toBe(true)
+describe('operator-scoped UI persistence through the RPC dispatcher', () => {
+  it('preserves the default owner file, opaque layout, and empty patch semantics', async () => {
+    const state = {
+      currentSessionId: 'session-1', currentWorkspaceId: 'default', sidebarCollapsed: true,
+      workspace: { version: 5, spaces: { personal: { tabs: ['session-1'] } } },
     }
-
-    await expect(dispatchRpc({ domain: 'appState', method: 'nope', payload: {} }))
-      .resolves.toMatchObject({ ok: false })
+    fs.writeFileSync(getOnethingAppStatePath(), JSON.stringify(state))
+    expect(await dispatchRpc(getRequest)).toEqual({ ok: true, data: state })
+    expect(await dispatchRpc(save({}))).toEqual({ ok: true, data: { success: true, state } })
+    expect(JSON.parse(fs.readFileSync(getOnethingAppStatePath(), 'utf8'))).toEqual(state)
   })
 
-  it('get hands the whole stored state through, not a synthesized minimum', async () => {
-    const { dispatchRpc } = await loadDomain()
-
-    await expect(dispatchRpc({ domain: 'appState', method: 'get', payload: {} }))
-      .resolves.toEqual({ ok: true, data: STATE })
+  it('isolates complete opaque layouts and read marks across operators and tenants', async () => {
+    const first = { workspace: { version: 5, privateLabel: 'Alice layout' }, sessionReadMarks: { version: 1, marks: { 'alice-session': { readAt: 1, inboundAt: 2 } } } }
+    const second = { workspace: { version: 6, privateLabel: 'Bob layout' } }
+    expect(await dispatchRpc(save(first), alice)).toMatchObject({ ok: true, data: { success: true, state: first } })
+    expect(await dispatchRpc(getRequest, bob)).toEqual({ ok: true, data: { currentSessionId: '', currentWorkspaceId: null } })
+    expect(await dispatchRpc(getRequest, { ...alice, workspaceId: 'another' })).toEqual({ ok: true, data: { currentSessionId: '', currentWorkspaceId: null } })
+    await dispatchRpc(save(second), bob)
+    expect(await dispatchRpc(getRequest, alice)).toMatchObject({ ok: true, data: first })
+    expect(await dispatchRpc(getRequest, bob)).toMatchObject({ ok: true, data: second })
+    expect(fs.existsSync(getOnethingAppStatePath())).toBe(false)
   })
 
-  it('saveUiState is a patch: the envelope reaches storage untouched', async () => {
-    const { dispatchRpc } = await loadDomain()
-    const patch = { sessionReadMarks: { 'session-1': { readAt: 1, inboundAt: 1 } } }
-
-    await expect(dispatchRpc({ domain: 'appState', method: 'saveUiState', payload: patch }))
-      .resolves.toEqual({ ok: true, data: { success: true, state: STATE } })
-    expect(storage.saveOnethingUiStateForIpc).toHaveBeenCalledWith('/store/app-state.json', patch)
+  it('does not expose a foreign globally focused session through get or save responses', async () => {
+    writeOnethingAppState(getOnethingAppStatePath(), { currentSessionId: 'alice-session', currentWorkspaceId: null })
+    expect(await dispatchRpc(getRequest)).toMatchObject({ ok: true, data: { currentSessionId: '' } })
+    expect(await dispatchRpc(save({ sidebarCollapsed: true }))).toMatchObject({ ok: true, data: { success: true, state: { currentSessionId: '' } } })
   })
 
-  it('an empty patch stays empty — the transport adds no defaults', async () => {
-    const { dispatchRpc } = await loadDomain()
-
-    await dispatchRpc({ domain: 'appState', method: 'saveUiState', payload: {} })
-
-    expect(storage.saveOnethingUiStateForIpc).toHaveBeenCalledWith('/store/app-state.json', {})
+  it('rejects invalid tenant paths before creating UI state files', async () => {
+    expect(await dispatchRpc(save({ sidebarCollapsed: true }), { ...alice, workspaceId: '..' })).toMatchObject({ ok: false })
+    expect(fs.existsSync(path.join(root, 'ui-state'))).toBe(false)
   })
 
-  it('a storage failure stays a { success:false } payload, not an ok:false envelope', async () => {
-    const { dispatchRpc } = await loadDomain()
-    storage.saveOnethingUiStateForIpc.mockReturnValue({ success: false, error: 'disk full' })
+  it('keeps storage failures in the established response payload', async () => {
+    fs.mkdirSync(getOnethingAppStatePath())
+    expect(await dispatchRpc(save({ sidebarCollapsed: true }))).toMatchObject({ ok: true, data: { success: false, error: expect.any(String) } })
+  })
 
-    await expect(dispatchRpc({
-      domain: 'appState',
-      method: 'saveUiState',
-      payload: { sidebarCollapsed: true },
-    })).resolves.toEqual({ ok: true, data: { success: false, error: 'disk full' } })
+  it('does not register unknown methods', async () => {
+    expect(await dispatchRpc({ domain: 'appState', method: 'nope', payload: {} })).toMatchObject({ ok: false })
   })
 })

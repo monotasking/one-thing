@@ -58,7 +58,7 @@ import * as store from '../../store.js'
 import { getEventBus } from '../../events/index.js'
 import { currentSessionRun } from '../../session/runs.js'
 import { sessionReads } from '../../session/reads.js'
-import { abortCollabRoomTurnForStop } from '../../wiring/collab/index.js'
+import { abortCollabRoomTurnForStop, preflightCollabRoomStop } from '../../wiring/collab/index.js'
 import { getStreamEngine } from '../../wiring/engine/index.js'
 import { buildSystemPromptSnapshot } from '../../wiring/engine/prompt/system-prompt-snapshot.js'
 import {
@@ -73,6 +73,8 @@ import {
 } from '../../wiring/providers/index.js'
 import { billTitleUsage } from '../../wiring/usage/bill-side-line.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { requestSessionOwner, sessionAccess } from '../../session/access.js'
 import type { ListOnethingActiveStreamsForIpcOptions, AbortOnethingStreamsForIpcLogger } from '@onething/runtime/sessions/stream-abort'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-operations'
@@ -156,18 +158,23 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
       logger: consoleLog,
     })
   },
-  async abortStream(request) {
+  async abortStream(request, context = DESKTOP_RPC_CONTEXT) {
+    if (!request.sessionId) {
+      const ids = sessionAccess.filterIds(context, getStreamEngine().getActiveSessionIds())
+      sessionAccess.resolveAll(context, ids, 'abort')
+      const executionContext = requestSessionOwner(context)
+      const targets = ids.flatMap(id => preflightCollabRoomStop(id, { executionContext }))
+      sessionAccess.resolveAll(context, targets, 'abort')
+      for (const sessionId of ids) await chatRpcHandlers.abortStream({ sessionId }, context)
+      return { success: true }
+    }
+    sessionAccess.resolve(context, request.sessionId, 'abort')
+    preflightCollabRoomStop(request.sessionId, { executionContext: requestSessionOwner(context) })
     const abortOnethingStreamsForIpcOptions: AbortOnethingStreamsForIpcOptions<OnethingAbortToolCallLike, OnethingAbortStepLike<OnethingAbortToolCallLike>, OnethingAbortMessageLike<OnethingAbortStepLike<OnethingAbortToolCallLike>>, ChatSession> = {
       sessionId: request.sessionId,
       // 群聊房间的停止按钮(collab-team-v2 §5.1 入口①):房间会话上没有流,
       // 真正要停的是本轮发言人的执行会话。装配层在这里注入,产品层不 import app。
-      abortCollabRoomTurn: sid => {
-        try {
-          return abortCollabRoomTurnForStop(sid)
-        } catch {
-          return false
-        }
-      },
+      abortCollabRoomTurn: sid => abortCollabRoomTurnForStop(sid, { executionContext: requestSessionOwner(context) }),
       abortEngineStream: sid => {
         try {
           return getStreamEngine().abort(sid)
@@ -212,11 +219,10 @@ export const chatRpcHandlers: RpcRouteHandlers<ChatRoutes> = {
     };
     return abortOnethingStreamsForIpc(abortOnethingStreamsForIpcOptions)
   },
-  async getActiveStreams() {
+  async getActiveStreams(_request, context = DESKTOP_RPC_CONTEXT) {
     const listOnethingActiveStreamsForIpcOptions: ListOnethingActiveStreamsForIpcOptions = {
-      getEngineActiveSessionIds: () => getStreamEngine().getActiveSessionIds(),
+      getEngineActiveSessionIds: () => sessionAccess.filterIds(context, getStreamEngine().getActiveSessionIds()),
     };
     return listOnethingActiveStreamsForIpc(listOnethingActiveStreamsForIpcOptions)
   },
 }
-

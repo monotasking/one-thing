@@ -11,6 +11,7 @@ import type {
   OnethingServerRuntimeOptions,
 } from '../runtime.js'
 import { createDevelopmentOnethingServerRuntime } from '../runtime.js'
+import { EventEmitter } from 'node:events'
 
 type AnyEvent = { type?: string } & Record<string, unknown>
 
@@ -116,4 +117,18 @@ export function createTestServerRuntime(
     createBackend: createEchoServerBackend,
     ...options,
   })
+}
+
+/** Production RPC domains share the host's explicitly assembled session layer. */
+export async function createAppServerRuntime(options: Omit<OnethingServerRuntimeOptions, 'createBackend' | 'sessionStore'> = {}): Promise<OnethingServerRuntime> {
+  const { createOnethingBackend } = await import('../../backend.js')
+  const { createOnethingServerRuntimeOverBackend } = await import('../runtime.js')
+  class Sender extends EventEmitter { isDestroyed() { return false } send() {} }
+  const backend = await createOnethingBackend({
+    host: { storePath: {}, sandbox: {}, auth: null, logging: null, shell: null, voice: null,
+      terminal: null, skillsEnvironment: null, todoPlan: null, scratchpad: null, plugins: null,
+      gateway: null, settings: null, evals: null, mcp: null, localTrust: null },
+    sender: new Sender() as never, toolRegistry: 'headless',
+  })
+  return createOnethingServerRuntimeOverBackend(backend, { ...options, processPorts: 'host', ownsBackend: true })
 }

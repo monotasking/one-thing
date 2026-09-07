@@ -170,6 +170,9 @@ vi.mock('../../../../store.js', () => ({
   getSession: mocks.getSession,
   addMessage: mocks.addMessage,
 }))
+vi.mock('../../../../session/commands.js', () => ({ sessionCommands: {
+  appendMessage: (sessionId: string, { message }: { message: unknown }) => mocks.addMessage(sessionId, message),
+} }))
 
 vi.mock('@onething/runtime/mcp/index.wiring', () => ({
   getMCPRouterToolDefinition: mocks.getMCPRouterToolDefinition,

@@ -68,11 +68,11 @@
  * 3. **`watchStart` / `watchStop` 的真假**。桌面这两条从来是**投影桩**
  *    (`startOnethingFileWatchForIpc`:校验 root 之后回 `{success:true}`)——
  *    全仓没有任何地方往 `FILE_WATCH_EVENT` 发过消息,桌面从来没有真的监视过。
- *    http 那侧是真的:开 `fs.watch`,喂 `/api/files/watch/events` 的 SSE。
+ *    http 那侧等待原生监听就绪,喂 `/api/files/watch/events` 的 SSE。
  *    这里**逐字保留这个差别**:给桌面装上真监视器会是一次未经拍板的行为变化
- *    (而且是一个没有消费者的 watcher 泄漏)。登记簿搬到了
- *    `../../wiring/files/workspace-watch.ts`,按沙箱根分表,server 的 SSE 从
- *    同一张表订阅。
+ *    (而且是一个没有消费者的 watcher 泄漏)。每个 server surface 拥有独立的
+ *    `../../wiring/files/workspace-watch.ts` 实例；鉴权后的请求 context 只绑定
+ *    当前实例的两个监听端口，SSE 从同一实例订阅，退出等待真实关闭。
  */
 import * as fs from 'node:fs/promises'
 import { homedir } from 'node:os'
@@ -101,10 +101,6 @@ import { getConnectedDirectoriesForSession } from '../../stores/connected-direct
 import { listFiles as ripgrepListFiles } from '../../utils/ripgrep.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { getDownloadsDirectory } from '../../wiring/tools/core/sandbox.js'
-import {
-  startWorkspaceWatch,
-  stopWorkspaceWatch,
-} from '../../wiring/files/workspace-watch.js'
 import { walkWorkspaceFiles } from '../../wiring/files/workspace-walk.js'
 import { isHostLocallyTrusted } from '../../server/host-trust.js'
 import {
@@ -112,7 +108,8 @@ import {
   resolveRpcSandbox,
   type RpcSandbox,
 } from '../sandbox.js'
-import type { RpcRouteHandlers } from '../registry.js'
+import type { RpcDispatchPorts, RpcRouteHandlersWithPorts } from '../registry.js'
+import { sessionAccess } from '../../session/access.js'
 import type { ListOnethingFileSearchEntriesForIpcOptions, OnethingFilesIpcLogger } from '@onething/runtime/files/file-search'
 import type { RollbackOnethingFileOptions } from '@onething/runtime/files/file-rollback'
 import type { ReadOnethingFileContentOptions, SaveOnethingFileContentOptions, ListOnethingDirectoryOptions, RevealOnethingPathOptions } from '@onething/runtime/files/file-operations'
@@ -178,8 +175,9 @@ function homeOf(sandbox: RpcSandbox): string {
   return sandbox.confined ? sandbox.root : homedir()
 }
 
-export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
+export const filesRpcHandlers: RpcRouteHandlersWithPorts<FilesRoutes> = {
   async list(request, context = DESKTOP_RPC_CONTEXT) {
+    if (request?.sessionId) sessionAccess.resolve(context, request.sessionId, 'read')
     const sandbox = resolveFilesSandbox(context)
     const homeDir = homeOf(sandbox)
 
@@ -426,7 +424,7 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
     return revealOnethingPath(revealOnethingPathOptions)
   },
 
-  async watchStart(request, context = DESKTOP_RPC_CONTEXT) {
+  async watchStart(request, context = DESKTOP_RPC_CONTEXT, ports?: RpcDispatchPorts) {
     const sandbox = resolveFilesSandbox(context)
     // 桌面:投影桩,与迁移前逐字一致(全仓没有 FILE_WATCH_EVENT 的发送方)。
     if (!sandbox.confined) return startOnethingFileWatchForIpc({ root: request?.root })
@@ -434,17 +432,22 @@ export const filesRpcHandlers: RpcRouteHandlers<FilesRoutes> = {
     if (!root) {
       return pathError('Workspace watch root must stay inside the workspace sandbox root.')
     }
-    return startWorkspaceWatch(sandbox.root, root)
+    // 端口是**这次派发显式递进来的**(工单 4 C3),不是从 context 上摸出来的。
+    const start = ports?.workspaceWatch?.startWorkspaceWatch
+    if (!start) return pathError('Workspace file watching is not available in this runtime.')
+    return start(sandbox.root, root)
   },
 
-  async watchStop(request, context = DESKTOP_RPC_CONTEXT) {
+  async watchStop(request, context = DESKTOP_RPC_CONTEXT, ports?: RpcDispatchPorts) {
     const sandbox = resolveFilesSandbox(context)
     if (!sandbox.confined) return stopOnethingFileWatchForIpc({ root: request?.root })
     const root = resolveInsideSandbox(sandbox, request?.root ?? '')
     if (!root) {
       return pathError('Workspace watch root must stay inside the workspace sandbox root.')
     }
-    return stopWorkspaceWatch(sandbox.root, root)
+    const stop = ports?.workspaceWatch?.stopWorkspaceWatch
+    if (!stop) return pathError('Workspace file watching is not available in this runtime.')
+    return stop(sandbox.root, root)
   },
 }
 
@@ -464,4 +467,3 @@ function clampWith(sandbox: RpcSandbox, path: string | undefined): string | null
   if (!sandbox.confined) return path ?? ''
   return resolveInsideSandbox(sandbox, path ?? '')
 }
-

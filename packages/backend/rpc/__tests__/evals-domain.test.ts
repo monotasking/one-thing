@@ -8,7 +8,7 @@
  *    `listCases` 回空表、`getCase` 回「Evals repo not configured」——
  *    与迁移前 `!app.isPackaged` 那条分支逐字同义;
  *  - **单跑闸**:第二次 `runStart` 拿到「A run is already in progress」,
- *    `runCancel` 只发信号(清空由后台跑批自己的 finally 做);
+ *    `runCancel` 只发信号(真实后台任务结束后才释放单跑闸);
  *  - **`listRecords` 的过滤 / 分页 / 预览**与迁移前逐字相同;
  *  - **`readSnapshot` 的两种快照类型**,以及 **http 侧的路径夹紧**(P4 终态批 B:
  *    按 wire 路径读盘的四条不再一律拒,改成必须落在 evals 面自己那两棵树里)。
@@ -19,6 +19,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RpcDispatchContext, RpcResponse } from '@shared/ipc/rpc.js'
 import { evalsRouter } from '@shared/ipc/evals.js'
+import { EvalsTaskOwner, configureEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
 
 const runtime = vi.hoisted(() => ({
   loadMergedRecords: vi.fn(() => [] as Array<Record<string, unknown>>),
@@ -65,6 +66,8 @@ describe('evals RPC domain', () => {
   let resetHostLocalTrustForTests: (typeof import('../../server/host-trust.js'))['resetHostLocalTrustForTests']
   let dispose: (() => void) | undefined
   let tmpDir: string
+  let tasks: EvalsTaskOwner
+  let unbindTasks: () => void
 
   beforeEach(async () => {
     const [registry, domain, ports, trust] = await Promise.all([
@@ -80,16 +83,20 @@ describe('evals RPC domain', () => {
     // 可信是**进程级单槽**:每条用例从"未声明"起跑。
     resetHostLocalTrustForTests()
     registry.resetRpcRegistryForTests()
-    domain.resetEvalsRunStateForTests()
+    tasks = new EvalsTaskOwner()
+    unbindTasks = configureEvalsTaskOwner(tasks)
     dispose = registry.registerRouterHandlers(evalsRouter, domain.evalsRpcHandlers)
     configureEvalsHost({})
     settings.getSettings.mockReturnValue({})
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'evals-domain-'))
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     dispose?.()
     dispose = undefined
+    tasks.quiesce()
+    await tasks.drain()
+    unbindTasks()
     configureEvalsHost({})
     resetHostLocalTrustForTests()
     fs.rmSync(tmpDir, { recursive: true, force: true })
@@ -248,8 +255,11 @@ describe('evals RPC domain', () => {
     expect(second).toEqual({ success: false, error: 'A run is already in progress' })
 
     expect(unwrap(await call('runCancel'))).toEqual({ success: true })
+    expect(unwrap(await call('runStart', { providerId: 'deepseek', model: 'm', runs: 1 }))).toEqual({
+      success: false, error: 'A run is already in progress',
+    })
     release?.()
-    // 后台跑批退出之后闸才放开(清空在它自己的 finally 里,不在 cancel 里)
+    // 后台跑批退出之后闸才放开。
     await vi.waitFor(async () => {
       expect(unwrap(await call('runCancel'))).toEqual({
         success: false,

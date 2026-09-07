@@ -12,7 +12,7 @@ import {
   type CorePluginUninstallResult,
   type CorePluginUpdateResult, type CorePluginBootstrapperOptions,
 } from '@onething/core/plugins'
-import { createPluginAPI, disposePlugin, type PluginState } from './api.js'
+import { createPluginAPI, disposePlugin, drainPlugin, type PluginState } from './api.js'
 import {
   archiveCorePluginData,
   decidePluginOrphanArchive,
@@ -99,6 +99,7 @@ function createHost(): CorePluginManagerHost<
       return createPluginAPI(pluginId, context.eventBus, context.streamEngine)
     },
     disposePlugin,
+    drainPlugin,
     setPluginEnabled,
     getPluginHealth: getPluginRuntimeHealth,
     // 请求通道的失败/成功进 R1 的熔断账(scope = `request:<action>`)。
@@ -211,6 +212,7 @@ export class PluginManager extends CorePluginManager<
 
   /** 流结束清扫的订阅句柄(R6)。重复 initialize 不能叠加订阅。 */
   private unsubscribeStatusSweep: (() => void) | undefined
+  private shutdownWork: Promise<void> | undefined
 
   constructor() {
     super(createHost())
@@ -272,9 +274,18 @@ export class PluginManager extends CorePluginManager<
     configurePluginConfigHost(null)
   }
 
-  override shutdown(): void {
-    super.shutdown()
-    this.detachHostSubscriptions()
+  override shutdown(): Promise<void> {
+    if (this.shutdownWork) return this.shutdownWork
+    let resolve!: () => void
+    let reject!: (error: unknown) => void
+    const pending = new Promise<void>((done, failed) => { resolve = done; reject = failed })
+    this.shutdownWork = pending
+    try {
+      const drained = super.shutdown()
+      this.detachHostSubscriptions()
+      void drained.then(() => { pluginBootstrapper.release(this); resolve() }, reject)
+    } catch (error) { reject(error) }
+    return pending
   }
 
   async uninstallPlugin(pluginId: string): Promise<CorePluginUninstallResult> {
@@ -319,6 +330,8 @@ export class PluginManager extends CorePluginManager<
   async initialize(context: PluginManagerContext): Promise<void>
   async initialize(eventBus: any, streamEngine: any): Promise<void>
   async initialize(eventBusOrContext: any, streamEngine?: any): Promise<void> {
+    if (this.shutdownWork) await this.shutdownWork
+    this.shutdownWork = undefined
     const context = streamEngine === undefined
       ? eventBusOrContext as PluginManagerContext
       : { eventBus: eventBusOrContext, streamEngine }

@@ -44,7 +44,7 @@ const permission = vi.hoisted(() => ({ clearSession: vi.fn() }))
 // 消息本体从折叠产物取。域把这两口接对了没有,就是本用例要钉的事。
 const runs = vi.hoisted(() => ({ currentSessionRun: vi.fn() }))
 const reads = vi.hoisted(() => ({ sessionReads: { getMessage: vi.fn() } }))
-const collab = vi.hoisted(() => ({ abortCollabRoomTurnForStop: vi.fn(() => false) }))
+const collab = vi.hoisted(() => ({ abortCollabRoomTurnForStop: vi.fn(() => false), preflightCollabRoomStop: vi.fn((id: string) => [id]) }))
 const eventBus = vi.hoisted(() => ({ emit: vi.fn(async () => {}) }))
 const prompt = vi.hoisted(() => ({ buildSystemPromptSnapshot: vi.fn() }))
 const providers = vi.hoisted(() => ({
@@ -86,6 +86,7 @@ describe('chat RPC domain', () => {
     engine.getActiveSessionIds.mockReset().mockReturnValue([])
     permission.clearSession.mockReset()
     collab.abortCollabRoomTurnForStop.mockReset().mockReturnValue(false)
+    collab.preflightCollabRoomStop.mockReset().mockImplementation(id => [id])
     eventBus.emit.mockReset().mockResolvedValue(undefined)
     prompt.buildSystemPromptSnapshot.mockReset()
     runs.currentSessionRun.mockReset()
@@ -273,13 +274,14 @@ describe('chat RPC domain', () => {
     expect(permission.clearSession).toHaveBeenCalledWith(SESSION_ID)
   })
 
-  it('aborts every session when no id is given', async () => {
+  it('fixes the authorized active target list before aborting each session', async () => {
     const { dispatchRpc } = await loadDomain()
+    engine.getActiveSessionIds.mockReturnValue([SESSION_ID, 'session-2'])
     await expect(
       dispatchRpc({ domain: 'chat', method: 'abortStream', payload: {} }),
     ).resolves.toEqual({ ok: true, data: { success: true } })
-    expect(engine.abortAll).toHaveBeenCalledTimes(1)
-    expect(engine.abort).not.toHaveBeenCalled()
+    expect(engine.abortAll).not.toHaveBeenCalled()
+    expect(engine.abort.mock.calls).toEqual([[SESSION_ID], ['session-2']])
   })
 
   it('routes a room stop to the collab turn before the engine ever sees it', async () => {
@@ -292,7 +294,22 @@ describe('chat RPC domain', () => {
     await expect(
       dispatchRpc({ domain: 'chat', method: 'abortStream', payload: { sessionId: 'room-1' } }),
     ).resolves.toEqual({ ok: true, data: { success: true } })
-    expect(collab.abortCollabRoomTurnForStop).toHaveBeenCalledWith('room-1')
+    expect(collab.abortCollabRoomTurnForStop).toHaveBeenCalledWith('room-1', { executionContext: { userId: 'local-user', workspaceId: 'default' } })
+  })
+
+  it('rejects the entire batch before stopping an earlier room when a later room has a foreign execution target', async () => {
+    const { dispatchRpc } = await loadDomain()
+    engine.getActiveSessionIds.mockReturnValue(['room-1', 'room-2'])
+    collab.preflightCollabRoomStop.mockImplementation(id => {
+      if (id === 'room-2') throw new Error('Session not found')
+      return [id, 'local-execution']
+    })
+    await expect(dispatchRpc({ domain: 'chat', method: 'abortStream', payload: {} }))
+      .resolves.toMatchObject({ ok: false })
+    expect(engine.abort).not.toHaveBeenCalled()
+    expect(collab.abortCollabRoomTurnForStop).not.toHaveBeenCalled()
+    expect(permission.clearSession).not.toHaveBeenCalled()
+    expect(eventBus.emit).not.toHaveBeenCalled()
   })
 
   it('lists active streams off the engine, under the one field name `sessionIds`', async () => {
@@ -311,4 +328,9 @@ describe('chat RPC domain', () => {
     // 被删掉的 `GET /api/streams/active` 回的是 `streams` —— 那个名字不再存在。
     expect(response.data).not.toHaveProperty('streams')
   })
+})
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

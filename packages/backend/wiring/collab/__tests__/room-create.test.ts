@@ -21,6 +21,8 @@ interface FakeSession {
   kind?: string
   room?: Record<string, unknown>
   messages: unknown[]
+  ownerUserId?: string
+  ownerWorkspaceId?: string
 }
 
 const mocks = vi.hoisted(() => ({
@@ -32,8 +34,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../../store.js', () => ({
   getSession: (id: string) => mocks.sessions.get(id),
-  createSessionWithoutFocus: (id: string, name: string) => {
-    const session: FakeSession = { id, name, messages: [] }
+  createSessionWithoutFocus: (id: string, name: string, options?: { initialOwner?: { userId: string; workspaceId: string } }) => {
+    const session: FakeSession = { id, name, messages: [], ownerUserId: options?.initialOwner?.userId, ownerWorkspaceId: options?.initialOwner?.workspaceId }
     mocks.sessions.set(id, session)
     return session
   },
@@ -49,6 +51,17 @@ vi.mock('../../../store.js', () => ({
     mocks.deleted.push(id)
     mocks.sessions.delete(id)
     return { deletedIds: [id] }
+  },
+}))
+
+vi.mock('../../../session/deletion.js', () => ({
+  sessionDeletion: {
+    async delete(id: string, targets: string[], authorize: (ids: string[]) => void) {
+      authorize(targets)
+      mocks.deleted.push(id)
+      mocks.sessions.delete(id)
+      return { deletedIds: targets }
+    },
   },
 }))
 
@@ -133,6 +146,14 @@ describe('ensureCollabGroupRoom — 校验', () => {
 })
 
 describe('ensureCollabGroupRoom — 落库的原子性', () => {
+  it('passes trusted ownership into the initial session creation', () => {
+    const created = ensureCollabGroupRoom('群', { memberAgentIds: ['pm'] }, {
+      sessionId: ID,
+      initialOwner: { userId: 'alice', workspaceId: 'tenant-a' },
+    })
+    expect(created.session).toMatchObject({ ownerUserId: 'alice', ownerWorkspaceId: 'tenant-a' })
+  })
+
   it('第二次写失败时把半成品会话删掉再报错', () => {
     mocks.collabWriteOk = false
     expect(ensureCollabGroupRoom('群', { memberAgentIds: ['pm'] }, { sessionId: ID }))

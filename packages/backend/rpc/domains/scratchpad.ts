@@ -19,7 +19,9 @@
  * `{ success:false, error }`(渲染侧那套 `response.success` 判断照旧成立),
  * `get`/`update` 成功时带 `document`,`delete`/`adopt` 只回 `{ success:true }`。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { sessionAccess } from '../../session/access.js'
 import type { ScratchpadRoutes } from '@shared/ipc/scratchpad.js'
 import {
   adoptScratchpad,
@@ -32,7 +34,8 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export const scratchpadRpcHandlers: RouteHandlers<ScratchpadRoutes> = {
+export const scratchpadRpcHandlers: RpcRouteHandlers<ScratchpadRoutes> = {
+  // 三条的会话闸(含"未物化的草稿不拦")都由契约自述,`dispatchRpc` 执法。
   async get(request) {
     try {
       return { success: true, document: await readScratchpad(request.sessionId) }
@@ -59,7 +62,9 @@ export const scratchpadRpcHandlers: RouteHandlers<ScratchpadRoutes> = {
     }
   },
   // 草稿会话物化成真会话时把那份纸改名认领过去 —— 一次搬家,不是复制。
-  async adopt(request) {
+  async adopt(request, context = DESKTOP_RPC_CONTEXT) {
+    // 搬进去那一条由契约自述;搬出来这一条留在这里(一条命令只有一格自述)。
+    sessionAccess.resolveOptional(context, request.fromSessionId, 'write')
     try {
       await adoptScratchpad(request.fromSessionId, request.toSessionId)
       return { success: true }
@@ -68,4 +73,3 @@ export const scratchpadRpcHandlers: RouteHandlers<ScratchpadRoutes> = {
     }
   },
 }
-

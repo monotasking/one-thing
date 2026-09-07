@@ -17,6 +17,11 @@ vi.mock('../../../stores/settings.js', () => ({
   getSettings: () => mocks.settings,
 }))
 
+// Pool behavior must not depend on credentials present in the test host's environment.
+vi.mock('@onething/runtime/providers/env.wiring', () => ({
+  getProviderEnvStatus: () => ({ detectedEnvVar: undefined }),
+}))
+
 vi.mock('../../../stores/sessions.js', async () => {
   const { DEFAULT_SPACE_ID, isValidSpaceId } = await import('@onething/runtime/spaces/types')
   return {

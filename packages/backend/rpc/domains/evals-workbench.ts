@@ -27,6 +27,7 @@
  * 渲染侧仍由能力位 `evals`(web 默认关)挡着,与 evals 域同一个口径。
  */
 import fs from 'node:fs'
+import { canAccessEvalSource, requireIncidentAccess, requireEvalRepositoryAccess } from './evals-access.js'
 import path from 'node:path'
 import type { EvalsWorkbenchRoutes } from '@shared/ipc/evals-workbench.js'
 import type {
@@ -49,18 +50,13 @@ import {
 } from '../../wiring/evals/provider-adapter.js'
 import { getLogger } from '../../wiring/logging/index.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { getEvalsTaskOwner } from '../../wiring/evals/task-owner.js'
 
 const log = getLogger('rpc.evals-workbench')
 
 const READ_FILE_MAX_BYTES = 4 * 1024 * 1024
 
-// Single-flight per incident for replay/diagnosis
-const activeOps = new Map<string, AbortController>()
-
-/** 测试用:清空「每事故单飞」表。 */
-export function resetEvalsWorkbenchOpsForTests(): void {
-  activeOps.clear()
-}
+const incidentTaskKey = (id: string) => `incident:${id}`
 
 function getAnalysisModelConfig(): { providerId: string; model: string } {
   const settings = store.getSettings()
@@ -75,14 +71,14 @@ function getAnalysisModelConfig(): { providerId: string; model: string } {
  * to the replay provider when the configured analysis provider has no
  * credentials.
  */
-async function resolveAnalysis(fallbackProviderId?: string, fallbackModel?: string) {
+async function resolveAnalysis(fallbackProviderId?: string, fallbackModel?: string, signal?: AbortSignal) {
   let { providerId, model } = getAnalysisModelConfig()
   if (!resolveEvalsCredentials(providerId).ok && fallbackProviderId) {
     providerId = fallbackProviderId
     model = fallbackModel ?? model
   }
   if (!resolveEvalsCredentials(providerId).ok) return null
-  return { callModel: createEvalsModelCaller(providerId, model), model }
+  return { callModel: createEvalsModelCaller(providerId, model, { signal }), model }
 }
 
 function listRunSummaries(incidentDir: string): EvalsIncidentRunSummary[] {
@@ -157,7 +153,7 @@ async function runReplayInBackground(options: {
   analysis: { callModel: ReturnType<typeof createEvalsModelCaller>; model: string } | null
   rubric?: string
   simulateTool?: import('@onething/runtime').ToolSimulator
-  abort: AbortController
+  signal: AbortSignal
 }): Promise<void> {
   const { runtime, incident, scene, request, runId } = options
   const push = (payload: EvalsReplayProgressEvent) => broadcastEvalsReplayProgress(payload)
@@ -170,7 +166,7 @@ async function runReplayInBackground(options: {
 
   try {
     for (let i = 1; i <= attempts; i++) {
-      if (options.abort.signal.aborted) break
+      if (options.signal.aborted) break
       push({ incidentId: incident.id, runId, type: 'attempt-start', attempt: i })
 
       const result = await runtime.runReplay({
@@ -199,7 +195,7 @@ async function runReplayInBackground(options: {
             attempt: i,
             event: event as unknown as Record<string, unknown>,
           }),
-        signal: options.abort.signal,
+        signal: options.signal,
       })
 
       runtime.writeTranscript(
@@ -229,7 +225,7 @@ async function runReplayInBackground(options: {
           passes,
           disabledSections: request.disabledSections,
           judged: request.judge !== false && !!options.rubric,
-          aborted: options.abort.signal.aborted || undefined,
+          aborted: options.signal.aborted || undefined,
         },
         null,
         2,
@@ -252,8 +248,10 @@ async function runReplayInBackground(options: {
 /** Fire-and-forget analysis for the 👎 flow (never throws). */
 export async function analyzeIncidentInBackground(incidentId: string): Promise<void> {
   try {
-    const runtime = await import('@onething/runtime')
-    await analyzeIncidentById(runtime, incidentId)
+    await getEvalsTaskOwner().start(incidentTaskKey(incidentId), async signal => {
+      const runtime = await import('@onething/runtime')
+      await analyzeIncidentById(runtime, incidentId, signal)
+    })
   } catch (error) {
     log.error('background analysis failed', { incidentId }, error)
   }
@@ -262,13 +260,14 @@ export async function analyzeIncidentInBackground(incidentId: string): Promise<v
 async function analyzeIncidentById(
   runtime: typeof import('@onething/runtime'),
   incidentId: string,
+  signal?: AbortSignal,
 ): Promise<
   | { ok: true; incident: import('@onething/runtime').IncidentMeta }
   | { ok: false; error: string }
 > {
   const incident = runtime.readIncident(incidentId)
   if (!incident) return { ok: false, error: 'Incident not found' }
-  const analysis = await resolveAnalysis(incident.provider, incident.model)
+  const analysis = await resolveAnalysis(incident.provider, incident.model, signal)
   if (!analysis) {
     return { ok: false, error: 'No analysis model available' }
   }
@@ -279,6 +278,7 @@ async function analyzeIncidentById(
     turnTrace: trace,
     sectionNames,
     analysis,
+    signal,
   })
   if (!result) return { ok: false, error: 'Analysis produced no result' }
 
@@ -305,19 +305,20 @@ async function analyzeIncidentById(
 // ── Handlers ───────────────────────────────────────────
 
 export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> = {
-  async incidentList() {
+  async incidentList(_request, context = { transport: 'ipc' }) {
     try {
       const { listIncidents } = await import('@onething/runtime')
       return {
         success: true,
-        incidents: listIncidents({ limit: 200 }) as unknown as EvalsIncidentMetaDTO[],
+        incidents: listIncidents({ limit: 200 }).filter(incident => canAccessEvalSource(context, incident.sessionId)) as unknown as EvalsIncidentMetaDTO[],
       }
     } catch (error) {
       return { success: false, error: errorMessage(error) }
     }
   },
 
-  async incidentGet(request) {
+  async incidentGet(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'read')
     try {
       const { readIncident, getIncidentDir } = await import('@onething/runtime')
       const incident = readIncident(request.incidentId)
@@ -340,7 +341,8 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     }
   },
 
-  async incidentUpdate(request) {
+  async incidentUpdate(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'write')
     try {
       const { updateIncident } = await import('@onething/runtime')
       const incident = updateIncident(request.incidentId, request.patch as never)
@@ -354,7 +356,8 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     }
   },
 
-  async incidentReadFile(request) {
+  async incidentReadFile(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'read')
     try {
       const { getIncidentDir } = await import('@onething/runtime')
       const dir = getIncidentDir(request.incidentId)
@@ -376,9 +379,11 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     }
   },
 
-  async replayStart(request) {
+  async replayStart(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'write')
     try {
-      if (activeOps.has(request.incidentId)) {
+      const tasks = getEvalsTaskOwner()
+      if (tasks.has(incidentTaskKey(request.incidentId))) {
         return {
           success: false,
           error: 'An operation is already running for this incident',
@@ -398,46 +403,34 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
       if (!credentials.ok) {
         return { success: false, error: credentials.reason }
       }
-      const callModel = createEvalsModelCaller(providerId, model)
-      const analysis = await resolveAnalysis(providerId, model)
-      const rubric = incident.rubric || incident.note
-      const simulateTool = analysis ? runtime.createAiToolSimulator(analysis) : undefined
-
       const runId = `replay-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`
-      const abort = new AbortController()
-      activeOps.set(request.incidentId, abort)
-
-      void runReplayInBackground({
-        runtime,
-        incident,
-        scene,
-        request,
-        runId,
-        callModel,
-        analysis,
-        rubric,
-        simulateTool,
-        abort,
-      }).finally(() => activeOps.delete(request.incidentId))
+      void tasks.start(incidentTaskKey(request.incidentId), async signal => {
+        const callModel = createEvalsModelCaller(providerId, model, { signal })
+        const analysis = await resolveAnalysis(providerId, model, signal)
+        const rubric = incident.rubric || incident.note
+        const simulateTool = analysis ? runtime.createAiToolSimulator(analysis) : undefined
+        await runReplayInBackground({ runtime, incident, scene, request, runId, callModel, analysis, rubric, simulateTool, signal })
+      }).catch(error => {
+        broadcastEvalsReplayProgress({ incidentId: incident.id, runId, type: 'error', error: errorMessage(error) })
+      })
 
       return { success: true, runId }
     } catch (error) {
-      activeOps.delete(request.incidentId)
       return { success: false, error: errorMessage(error) }
     }
   },
 
-  async replayCancel(request) {
-    const abort = activeOps.get(request.incidentId)
-    if (!abort) return { success: false, error: 'No operation in progress' }
-    abort.abort()
+  async replayCancel(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'abort')
+    if (!getEvalsTaskOwner().cancel(incidentTaskKey(request.incidentId))) return { success: false, error: 'No operation in progress' }
     return { success: true }
   },
 
-  async incidentAnalyze(request) {
+  async incidentAnalyze(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'write')
     try {
       const runtime = await import('@onething/runtime')
-      const updated = await analyzeIncidentById(runtime, request.incidentId)
+      const updated = await getEvalsTaskOwner().start(incidentTaskKey(request.incidentId), signal => analyzeIncidentById(runtime, request.incidentId, signal))
       if (!updated.ok) return { success: false, error: updated.error }
       return {
         success: true,
@@ -448,7 +441,9 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     }
   },
 
-  async incidentPromote(request) {
+  async incidentPromote(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'write')
+    requireEvalRepositoryAccess(context)
     try {
       const runtime = await import('@onething/runtime')
       const repoDir = resolveEvalsRepoDir()
@@ -496,7 +491,8 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     }
   },
 
-  async roundList(request) {
+  async roundList(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'read')
     try {
       const runtime = await import('@onething/runtime')
       const incident = runtime.readIncident(request.incidentId)
@@ -531,7 +527,8 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     }
   },
 
-  async roundReplay(request) {
+  async roundReplay(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'write')
     try {
       const runtime = await import('@onething/runtime')
       const incident = runtime.readIncident(request.incidentId)
@@ -555,17 +552,12 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
       if (!credentials.ok) {
         return { success: false, error: credentials.reason }
       }
-      const callModel = createEvalsModelCaller(
-        providerId,
-        request.model || roundData.request.model,
-      )
-
-      const result = await runtime.replayRound({
+      const result = await getEvalsTaskOwner().start(incidentTaskKey(request.incidentId), signal => runtime.replayRound({
         roundData,
-        callModel,
+        callModel: createEvalsModelCaller(providerId, request.model || roundData.request.model, { signal }),
         runs: request.runs,
         editedMessages: request.editedMessages,
-      })
+      }))
       return {
         success: true,
         attempts: result.attempts,
@@ -576,9 +568,11 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
     }
   },
 
-  async diagnoseStart(request) {
+  async diagnoseStart(request, context = { transport: 'ipc' }) {
+    await requireIncidentAccess(request.incidentId, context, 'write')
     try {
-      if (activeOps.has(request.incidentId)) {
+      const tasks = getEvalsTaskOwner()
+      if (tasks.has(incidentTaskKey(request.incidentId))) {
         return {
           success: false,
           error: 'An operation is already running for this incident',
@@ -598,33 +592,31 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
       if (!credentials.ok) {
         return { success: false, error: credentials.reason }
       }
-      const analysis = await resolveAnalysis(providerId, model)
-      if (!analysis) {
+      if (!await resolveAnalysis(providerId, model)) {
         return {
           success: false,
           error: 'No analysis model available for judging',
         }
       }
 
-      const abort = new AbortController()
-      activeOps.set(request.incidentId, abort)
-
-      void (async () => {
+      void tasks.start(incidentTaskKey(request.incidentId), async signal => {
         const push = (payload: EvalsDiagnoseProgressEvent) =>
           broadcastEvalsDiagnoseProgress(payload)
         try {
+          const analysis = await resolveAnalysis(providerId, model, signal)
+          if (!analysis) throw new Error('No analysis model available for judging')
           // Rubric is required for judging — auto-run analysis first
           if (!incident.rubric && !incident.note) {
             push({ incidentId: request.incidentId, type: 'step', step: 'analyze' })
-            await analyzeIncidentById(runtime, request.incidentId)
+            await analyzeIncidentById(runtime, request.incidentId, signal)
           }
           const result = await runtime.diagnoseIncident({
             incidentId: request.incidentId,
-            callModel: createEvalsModelCaller(providerId, model),
+            callModel: createEvalsModelCaller(providerId, model, { signal }),
             analysis,
             simulateTool: runtime.createAiToolSimulator(analysis),
             quick: request.quick,
-            signal: abort.signal,
+            signal,
             onProgress: p =>
               push({
                 incidentId: request.incidentId,
@@ -648,16 +640,14 @@ export const evalsWorkbenchRpcHandlers: RpcRouteHandlers<EvalsWorkbenchRoutes> =
             type: 'error',
             error: errorMessage(error),
           })
-        } finally {
-          activeOps.delete(request.incidentId)
         }
-      })()
+      }).catch(error => {
+        broadcastEvalsDiagnoseProgress({ incidentId: request.incidentId, type: 'error', error: errorMessage(error) })
+      })
 
       return { success: true }
     } catch (error) {
-      activeOps.delete(request.incidentId)
       return { success: false, error: errorMessage(error) }
     }
   },
 }
-

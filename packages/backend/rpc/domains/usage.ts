@@ -8,7 +8,9 @@
  * This file replaces `apps/electron/src/main/ipc/usage.ts` (deleted) and the
  * server's `/api/usage/*` routes: one implementation, both hosts.
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { isHistoricalLocalOperator, sessionAccess } from '../../session/access.js'
 import type { UsageRoutes } from '@shared/ipc/usage.js'
 import {
   getSessionUsageTotal,
@@ -26,15 +28,22 @@ function normalizeGranularity(value: unknown): 'day' | 'week' | 'month' {
   return value === 'week' || value === 'month' ? value : 'day'
 }
 
-export const usageRpcHandlers: RouteHandlers<UsageRoutes> = {
-  async getSummary(request) {
-    return getUsageSummaryWithProjects(getUsageLedger(), {
+export const usageRpcHandlers: RpcRouteHandlers<UsageRoutes> = {
+  async getSummary(request, context = DESKTOP_RPC_CONTEXT) {
+    const ledger = getUsageLedger()
+    return getUsageSummaryWithProjects({
+      async readRecordsInRange(start, end) {
+        const records = await ledger.readRecordsInRange(start, end)
+        const visible = new Set(sessionAccess.filterIds(context, records.map(record => record.sessionId).filter((id): id is string => typeof id === 'string')))
+        return records.filter(record => record.sessionId ? visible.has(record.sessionId) : isHistoricalLocalOperator(context))
+      },
+    }, {
       granularity: normalizeGranularity(request?.granularity),
       count: request?.count,
     })
   },
-  async getSession(request) {
+  async getSession(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request?.sessionId ?? '', 'read')
     return getSessionUsageTotal(request?.sessionId ?? '')
   },
 }
-

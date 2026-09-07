@@ -1,9 +1,12 @@
 import type { AppSettings, ChatMessage, ChatSession } from '@shared/ipc.js'
 import type { ProviderConfigWithKey } from './stream/stream-executor.js'
 import { generateChatResponse } from '../providers/index.js'
+import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
+import { isAgentExecutionCheckpointError } from '@onething/core/agent-loop'
 import { runBeforeContextCompactHooks, type BeforeContextCompactContext } from '@onething/runtime/plugins/lifecycle.wiring'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
+import { sessionCommands } from '../../session/commands.js'
 import { landSessionAccountUsage } from '../../session/usage.js'
 import { sessionLifecycleEvents } from '../../session/lifecycle-events.js'
 import { billCompactUsage } from '../usage/bill-side-line.js'
@@ -110,7 +113,7 @@ export async function compactSessionContext(options: {
   // 渲染器的 handleMessageCreated 一律 push 到末尾 —— 从前实时与重载后的位置
   // 不一致(标记「跳位」)。切点语义没丢:它写在 compactedThroughMessageId 里。
   // 模型历史只按 summaryUpToMessageId 切片,标记在数组里的位置对请求零影响。
-  store.addMessage(options.sessionId, compactMessage)
+  sessionCommands.appendMessage(options.sessionId, { message: compactMessage, stampCollab: true })
   await options.onMessageCreated?.(compactMessage)
 
   try {
@@ -262,6 +265,7 @@ export async function compactSessionContext(options: {
     }
   } catch (error) {
     log.error('compact session failed', { sessionId: options.sessionId }, error)
+    if (isAgentExecutionCheckpointError(error)) throw error
     const errorMessage = normalizeContextCompactError(error)
     const failedContent = buildContextCompactFailedContent(
       errorMessage,
@@ -433,10 +437,18 @@ async function summarizeInChunks(options: {
       )
       let finishReason: string | undefined
       try {
-        const text = await generateChatResponse(
+        const messages = buildContextCompactSummaryMessages(request)
+        const text = await runAuxiliaryModelRequest({
+          sessionId: options.sessionId,
+          purpose: request.kind === 'merge' ? 'compact-merge' : 'compact-chunk',
+          provider: options.providerId, model: options.configWithApiKey.model,
+          messages, params: { temperature: 0, thinking: false, ...(maxTokens !== undefined ? { maxTokens } : {}) },
+        }, () => {
+          if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Context compact aborted')
+          return generateChatResponse(
           options.providerId,
           options.configWithApiKey,
-          buildContextCompactSummaryMessages(request),
+          messages,
           {
             temperature: 0,
             ...(maxTokens !== undefined ? { maxTokens } : {}),
@@ -454,7 +466,8 @@ async function summarizeInChunks(options: {
               options.sessionId,
             ),
           },
-        )
+          )
+        })
         // 截断必须可见(2026-08-15):此前被 max_tokens 掐断的半截/空摘要照走成功
         // 路径,用户只看到"压缩完成"却不知道为什么摘要残缺、更不知道该去哪调。
         // 现在说清楚是谁掐的、掐在多少,并走失败路径不覆盖旧摘要。
@@ -467,7 +480,7 @@ async function summarizeInChunks(options: {
         }
         return text
       } catch (error) {
-        const failure = timedOut
+        const failure = timedOut && !isAgentExecutionCheckpointError(error)
           ? new Error(
               `Context compact timed out after ${Math.round(chunkTimeoutMs / 1000)}s while summarizing.`,
             )

@@ -75,6 +75,7 @@ import type {
 
 import { SESSION_EVENT_TYPES } from '@shared/events/index.js'
 import { getLogger } from '../../logging/index.js'
+import type { CollabActorAuthorization } from './execution-authorization.js'
 
 const log = getLogger('collab.actors.mind')
 
@@ -179,6 +180,7 @@ function agentLabel(agentId: string): string {
 }
 
 export interface CreateCollabEngineWorkerPortOptions {
+  authorization: CollabActorAuthorization
   /** 时钟注入(排障脚本按转录时刻重放时用)。 */
   now?: () => number
   startTimeoutMs?: number
@@ -197,7 +199,7 @@ export interface CreateCollabEngineWorkerPortOptions {
  * 等待者存在之前 settle(v2 P2-7)。
  */
 export function createCollabEngineWorkerPort(
-  options: CreateCollabEngineWorkerPortOptions = {},
+  options: CreateCollabEngineWorkerPortOptions,
 ): CollabWorkerMindPort {
   const now = options.now ?? Date.now
   const newWorkSessionId = options.newWorkSessionId ?? randomUUID
@@ -206,6 +208,7 @@ export function createCollabEngineWorkerPort(
     name: 'engine-worker',
 
     async runWorkTurn(request: CollabWorkerRunRequest): Promise<CollabWorkerRunResult> {
+      const executionContext = options.authorization.contextForRoom(request.roomSessionId)
       const engine = getStreamEngineSafe()
       // 引擎没绑就不驱动 —— 没有 sender 的命令会被引擎静默丢掉,而这张卡会
       // 显示成「在做」却什么都不会发生。等待的判断归派活那一侧,不归这里
@@ -226,13 +229,15 @@ export function createCollabEngineWorkerPort(
        */
       const previous = request.workSessionId
       const resuming = Boolean(previous && store.getSession(previous))
+      if (resuming) options.authorization.assertSessions(executionContext, [request.roomSessionId, previous!])
       const workSessionId = resuming ? previous! : newWorkSessionId()
 
       try {
         if (!resuming) {
           // 工作会话是幕后基础设施,建它不该动用户正在看的标签页。
-          store.createSessionWithoutFocus(workSessionId, `[任务] ${request.title}`)
+          store.createSessionWithoutFocus(workSessionId, `[任务] ${request.title}`, { initialOwner: executionContext })
         }
+        options.authorization.assertSessions(executionContext, [request.roomSessionId, workSessionId])
         // C3-5:工作身份进了 system prompt(engine/prompt 的 work 分支),它要的
         // 卡框架从这份 meta 取。每次开工/续做都重盖一遍。
         store.updateSessionCollab(workSessionId, {
@@ -312,12 +317,13 @@ export function createCollabEngineWorkerPort(
           // 同 engine-mind-port:验过票的 drive 才有资格指名主体。
           ...(driveToken ? { principal: { kind: 'agent', agentId: request.agentId } } : {}),
           ...collabAgentModelFields(agent, pinned),
-        } as Parameters<ReturnType<typeof getEventBus>['emit']>[1])
+        } as Parameters<ReturnType<typeof getEventBus>['emit']>[1], { executionContext })
 
         const outcome = await turnEnded
         // 超时不留僵尸流:槽位马上要放,而「一张卡同时只有一只手」这条不变式
         // 指望流真的结束。
         abortCollabZombieStream(outcome, workSessionId)
+        options.authorization.assertSessions(executionContext, [request.roomSessionId, workSessionId])
 
         // 不论结局都收割:一个被 abort 的半截回合里说出去的话**已经在房间里了**。
         const roomMessages = sessionReads.listMessages(request.roomSessionId).messages

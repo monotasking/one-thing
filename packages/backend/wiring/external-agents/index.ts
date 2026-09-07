@@ -300,10 +300,90 @@ export function resolveExternalAgentSpawnEnv(): Record<string, string | undefine
 // Connector registry
 // ---------------------------------------------------------------------------
 
-let connectors: Record<string, ExternalAgentConnector | undefined> | undefined
+type ConnectorMap = Record<string, ExternalAgentConnector | undefined>
 
-export function getExternalAgentConnectors(): Record<string, ExternalAgentConnector | undefined> {
-  if (connectors) return connectors
+interface ExternalAgentConnectorRegistryOptions {
+  isAccepting?: () => boolean
+}
+
+class ExternalAgentConnectorRegistry {
+  connectors: ConnectorMap | undefined
+  readonly ready: Promise<void>
+  disposed = false
+  private accepting = true
+  private initialized: boolean
+  private closing: Promise<void> | undefined
+
+  constructor(
+    readonly managed: boolean,
+    private readonly options: ExternalAgentConnectorRegistryOptions = {},
+    previous?: ExternalAgentConnectorRegistry,
+  ) {
+    this.initialized = !previous
+    // The new owner stays visible while a legacy registry drains, including on
+    // failure. Its getter cannot start another connector before that work ends.
+    this.ready = previous
+      ? Promise.resolve().then(() => previous.dispose()).then(() => { this.initialized = true })
+      : Promise.resolve()
+    void this.ready.catch(() => {})
+  }
+
+  get isAccepting(): boolean {
+    return this.accepting && this.initialized && (this.options.isAccepting?.() ?? true)
+  }
+
+  get(): ConnectorMap {
+    if (!this.isAccepting) throw new Error('External agent connectors are initializing or shutting down')
+    return this.connectors ??= createExternalAgentConnectors()
+  }
+
+  quiesce = (): void => { this.accepting = false }
+
+  dispose = (): Promise<void> => {
+    if (this.closing) return this.closing
+    this.quiesce()
+    this.closing = Promise.resolve().then(async () => {
+      await this.ready
+      const results = await Promise.allSettled(
+        Object.values(this.connectors ?? {}).flatMap(connector =>
+          connector ? [Promise.resolve().then(() => connector.dispose())] : []),
+      )
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+      if (failures.length === 1) throw failures[0]!.reason
+      if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'External agent connector disposal failed')
+      this.connectors = undefined
+      this.disposed = true
+    })
+    return this.closing
+  }
+}
+
+let connectorRegistry: ExternalAgentConnectorRegistry | undefined
+
+/** Bind one Backend before exposing its initialization hooks or provider factory. */
+export function bindExternalAgentConnectors(options: ExternalAgentConnectorRegistryOptions = {}): {
+  ready: Promise<void>
+  quiesce: () => void
+  dispose: () => Promise<void>
+} {
+  const previous = connectorRegistry
+  if (previous?.managed && !previous.disposed) {
+    throw new Error('External agent connectors already belong to a Backend that has not finished shutting down')
+  }
+  previous?.quiesce()
+  const registry = new ExternalAgentConnectorRegistry(true, options, previous)
+  connectorRegistry = registry
+  // These closures only touch this generation. Repeating an old disposer after
+  // the next Backend binds cannot clear or close the next Backend's connectors.
+  return { ready: registry.ready, quiesce: registry.quiesce, dispose: registry.dispose }
+}
+
+export function getExternalAgentConnectors(): ConnectorMap {
+  connectorRegistry ??= new ExternalAgentConnectorRegistry(false)
+  return connectorRegistry.get()
+}
+
+function createExternalAgentConnectors(): ConnectorMap {
   const observerPort: ExternalAgentObserver = {
     turn: input => { recordExternalAgentTurn(input) },
     toolDecision: input => { recordExternalAgentTool(input) },
@@ -326,10 +406,9 @@ export function getExternalAgentConnectors(): Record<string, ExternalAgentConnec
     observer: observerPort,
     logger: consoleLog,
   };
-  connectors = {
+  return {
     [CLAUDE_CODE_AGENT_CONNECTOR_ID]: createClaudeCodeConnector(claudeCodeConnectorOptions),
   }
-  return connectors
 }
 
 /**
@@ -366,6 +445,8 @@ export function getExternalAgentConnectors(): Record<string, ExternalAgentConnec
  * 冒到 `steerMessage` 里会让用户的一次插话炸掉整条 steering 通路。
  */
 export function takeExternalAgentSteering(localSessionId: string, content: string): boolean {
+  if (!connectorRegistry?.isAccepting) return false
+  const connectors = connectorRegistry.connectors
   if (!connectors) return false
   for (const [connectorId, connector] of Object.entries(connectors)) {
     if (!connector?.steer) continue
@@ -385,6 +466,7 @@ export function takeExternalAgentSteering(localSessionId: string, content: strin
 }
 
 export async function interruptExternalAgentSessions(localSessionId: string): Promise<void> {
+  const connectors = connectorRegistry?.connectors
   if (!connectors) return
   await Promise.allSettled(
     Object.entries(connectors).flatMap(([connectorId, connector]) => {
@@ -396,9 +478,10 @@ export async function interruptExternalAgentSessions(localSessionId: string): Pr
 }
 
 export async function disposeExternalAgentConnectors(): Promise<void> {
-  if (!connectors) return
-  await Promise.allSettled(
-    Object.values(connectors).filter(Boolean).map(connector => connector!.dispose()),
-  )
-  connectors = undefined
+  const registry = connectorRegistry
+  if (!registry) return
+  await registry.dispose()
+  // Unowned lightweight callers retain their historical lazy recreation. A
+  // closed Backend generation stays closed until another Backend explicitly binds.
+  if (!registry.managed && connectorRegistry === registry) connectorRegistry = undefined
 }

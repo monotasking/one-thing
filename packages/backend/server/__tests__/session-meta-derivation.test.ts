@@ -14,25 +14,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionReads } from "../../session/reads.js";
 import {
 	clearAllSessionCache,
-	deleteSession,
 	findSessionIndexMeta,
 	onSessionIndexChanged,
 	updateSessionsIndexMetaForCommands,
 } from "../../stores/sessions.js";
 import { createAppBackedServerSessionStore } from "../runtime.js";
+import { installStoreSessionLayerForTest } from "../../session/testing/store-layer.js";
+let storeLayer: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>;
 
 describe("app 仓库背书的会话读面", () => {
 	let storePath: string;
 	let previousStorePath: string | undefined;
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		previousStorePath = process.env.ONETHING_STORE_PATH;
 		storePath = mkdtempSync(path.join(tmpdir(), "onething-meta-"));
 		process.env.ONETHING_STORE_PATH = storePath;
 		clearAllSessionCache();
+		storeLayer = await installStoreSessionLayerForTest();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		await storeLayer?.dispose();
 		vi.restoreAllMocks();
 		clearAllSessionCache();
 		if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH;
@@ -101,21 +104,23 @@ describe("索引写点的通知口", () => {
 	let storePath: string;
 	let previousStorePath: string | undefined;
 
-	beforeEach(() => {
+	beforeEach(async () => {
 		previousStorePath = process.env.ONETHING_STORE_PATH;
 		storePath = mkdtempSync(path.join(tmpdir(), "onething-index-port-"));
 		process.env.ONETHING_STORE_PATH = storePath;
 		clearAllSessionCache();
+		storeLayer = await installStoreSessionLayerForTest();
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		await storeLayer?.dispose();
 		clearAllSessionCache();
 		if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH;
 		else process.env.ONETHING_STORE_PATH = previousStorePath;
 		rmSync(storePath, { recursive: true, force: true });
 	});
 
-	it("命令面的索引写门发通知,删会话那条路也发,退订之后不再发", () => {
+	it("命令面的索引写门发通知,删会话那条路也发,退订之后不再发", async () => {
 		const store = createAppBackedServerSessionStore(storePath);
 		store.createSession("port-1", "通知口", {
 			userId: "local-user",
@@ -131,7 +136,7 @@ describe("索引写点的通知口", () => {
 		expect(seen).toContain("port-1");
 
 		seen.length = 0;
-		deleteSession("port-1");
+		await storeLayer.deleteSession("port-1");
 		expect(seen).toContain("port-1");
 
 		off();

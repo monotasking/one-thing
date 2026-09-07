@@ -3,6 +3,12 @@ import type { JsonObject } from '@shared/json.js'
 import { Permission } from '../../permission/index.js'
 import { enforcePermissionPolicy } from '../../tools/core/permission-policy.js'
 import type { ToolEffect } from '@onething/core/tools'
+// This policy component fixture is a non-collaborative session; it owns no store.
+vi.mock('../../../stores/sessions.js', () => ({ getSession: () => undefined }))
+vi.mock('../../../session/reads.js', () => ({ sessionReads: {
+  listMessages: () => ({ messages: [], changed: false }),
+  lastMessageOfRole: () => undefined,
+} }))
 
 vi.mock('../../permission/index.js', () => {
   class RejectedError extends Error {

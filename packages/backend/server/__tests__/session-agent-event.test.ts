@@ -8,18 +8,13 @@
  * 值,于是 agent / model / workdir 三格一条事件都写不出来。
  */
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  createLocalServerSessionStore,
-  type OnethingServerRuntime,
-} from '../runtime.js'
-import { createTestServerRuntime } from './test-helpers.js'
-import { flushSessionEventLog, resetSessionEventLogCache } from '@onething/backend/session/event-log.js'
-import { resetSessionSurfaceCache } from '@onething/backend/session/event-surface.js'
-import { resetSessionPrepareCache } from '@onething/backend/session/prepare.js'
+import type { OnethingServerRuntime } from '../runtime.js'
+import { createAppServerRuntime } from './test-helpers.js'
+import { flushSessionEventLog } from '../../session/event-log.js'
 
 const runtimes: OnethingServerRuntime[] = []
 const tempDirs: string[] = []
@@ -31,9 +26,6 @@ beforeEach(async () => {
   const dir = await mkdtemp(join(tmpdir(), 'onething-session-agent-event-'))
   tempDirs.push(dir)
   process.env.ONETHING_STORE_PATH = dir
-  resetSessionEventLogCache()
-  resetSessionSurfaceCache()
-  resetSessionPrepareCache()
 })
 
 afterEach(async () => {
@@ -45,20 +37,9 @@ afterEach(async () => {
 })
 
 async function createRuntime() {
-  const sessionStore = createLocalServerSessionStore(process.env.ONETHING_STORE_PATH!)
-  const serverRuntime = await createTestServerRuntime({ sessionStore })
+  const serverRuntime = await createAppServerRuntime({ storePath: process.env.ONETHING_STORE_PATH! })
   runtimes.push(serverRuntime)
   return serverRuntime.runtime
-}
-
-/**
- * 事件账本按"会话目录在不在"启用(`resolveEnabled`)。echo 后端的本地仓库走的是
- * legacy 单文件布局,所以这里把 jsonl 布局那个目录建出来 —— 这条会话因此**在**
- * 账本上,与桌面/真后端同一档。
- */
-function enableLedger(): void {
-  mkdirSync(join(process.env.ONETHING_STORE_PATH!, 'sessions', SESSION), { recursive: true })
-  resetSessionEventLogCache(SESSION)
 }
 
 async function ledger(): Promise<Array<{ type: string; data: Record<string, unknown> }>> {
@@ -74,7 +55,6 @@ describe('§13.10 M7: sessions.update writes the agent switch to the ledger', ()
   it('records session/agent-changed with the before value, not the mutated one', async () => {
     const runtime = await createRuntime()
     await runtime.sessions.create('Switch me', undefined, SESSION)
-    enableLedger()
 
     await runtime.sessions.update!(SESSION, { agentId: 'claude-code-agent' })
     await runtime.sessions.update!(SESSION, { agentId: 'another-agent' })
@@ -89,7 +69,6 @@ describe('§13.10 M7: sessions.update writes the agent switch to the ledger', ()
   it('writes nothing for a patch that touches none of the three fields', async () => {
     const runtime = await createRuntime()
     await runtime.sessions.create('Switch me', undefined, SESSION)
-    enableLedger()
 
     await runtime.sessions.update!(SESSION, { isArchived: true })
 

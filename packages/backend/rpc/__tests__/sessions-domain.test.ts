@@ -24,6 +24,12 @@ import path from 'node:path'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { sessionsRouter } from '@shared/ipc/sessions.js'
 import { SESSION_EVENT_TYPES } from '@onething/core/events'
+import { collectSessionCascadeDeleteIds } from '@onething/core/session'
+import { installSessionLayerForTest } from '../../session/testing/session-layer.js'
+import { createSessionListQuery } from '../../session/index.js'
+import type { SessionCommands } from '../../session/commands.js'
+import type { SessionReadPorts } from '../../session/reads.js'
+import { createSessionAccess } from '../../session/access.js'
 
 const store = vi.hoisted(() => ({
   getSessionsList: vi.fn(() => [] as unknown[]),
@@ -67,7 +73,7 @@ const agents = vi.hoisted(() => ({
 
 /** 三处 `http` 分支要碰的进程内设施(收尾那三件)。 */
 const engine = vi.hoisted(() => ({
-  getController: vi.fn(() => undefined as unknown),
+  getController: vi.fn((_sessionId: string) => undefined as unknown),
   abort: vi.fn(),
 }))
 const events = vi.hoisted(() => ({
@@ -95,7 +101,10 @@ const eventsReads = vi.hoisted(() => ({
 
 vi.mock('../../store.js', () => store)
 vi.mock('../../stores/sessions.js', () => storesSessions)
-vi.mock('../../session/events-reads.js', () => eventsReads)
+vi.mock('../../session/events-reads.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../../session/events-reads.js')>(),
+  ...eventsReads,
+}))
 vi.mock('../../wiring/collab/index.js', () => collab)
 vi.mock('../../wiring/todo-plan/store.js', () => todoPlan)
 vi.mock('../../wiring/toc/index.js', () => toc)
@@ -111,8 +120,8 @@ vi.mock('../../events/index.js', () => ({
 /** 联网宿主的 dispatch context —— server 壳 mint 出来的那一只的形状。 */
 const HTTP_CONTEXT = {
   transport: 'http' as const,
-  ownerUid: 'alice',
-  workspaceId: 'w1',
+  ownerUid: 'local-user',
+  workspaceId: 'default',
   sandboxRoot: '/tmp/onething-sandbox/alice/w1',
 }
 
@@ -126,9 +135,33 @@ async function loadDomain() {
 }
 
 describe('sessions RPC domain', () => {
+  const ownership = new Map<string, import('../../session/access.js').SessionOwnershipRecord>()
   let dispose: (() => void) | undefined
+  let fixture: ReturnType<typeof installSessionLayerForTest>
 
   beforeEach(async () => {
+    ownership.clear()
+    fixture = installSessionLayerForTest({
+      // Domain adaptation fixtures have an owned index record even when the body port fails.
+      access: createSessionAccess({ findMeta: id => ownership.get(id) ?? {} }),
+      deletionPorts: {
+        targets: id => collectSessionCascadeDeleteIds(store.getSessionsList() as never, id),
+        abortAndDrain: async id => { if (engine.getController(id)) engine.abort(id, 'session deleted') },
+        flush: async () => {},
+        remove: async id => store.deleteSession(id),
+      },
+      listSessions: createSessionListQuery({
+        listSessions: () => store.getSessionsList() as never,
+        access: createSessionAccess({ findMeta: id => ownership.get(id) ?? {} }),
+      }),
+      store: storesSessions as unknown as SessionReadPorts['store'],
+      eventReads: eventsReads,
+      commands: {
+        patchSession: () => true,
+        appendMessage: (id, payload) => store.addMessage(id, payload.message),
+        deleteMessage: (id, payload) => store.deleteMessage(id, 'messageId' in payload ? payload.messageId : undefined),
+      } satisfies Pick<SessionCommands, 'patchSession' | 'appendMessage' | 'deleteMessage'> as unknown as SessionCommands,
+    })
     for (const fn of Object.values(store)) fn.mockReset()
     store.getSessionsList.mockReturnValue([])
     store.getSession.mockReturnValue(undefined)
@@ -159,6 +192,7 @@ describe('sessions RPC domain', () => {
     const { resetRpcRegistryForTests } = await loadDomain()
     resetRpcRegistryForTests()
     vi.restoreAllMocks()
+    await fixture.dispose()
   })
 
   it('exposes exactly the twenty-six methods — including the four ex-literal channels', async () => {
@@ -210,6 +244,31 @@ describe('sessions RPC domain', () => {
       dispatchRpc({ domain: 'sessions', method: 'list', payload: {} }),
     ).resolves.toEqual({ ok: true, data: { success: true, sessions: [{ id: SESSION_ID, name: 'One' }] } })
     expect(store.getSessionsList).toHaveBeenCalledTimes(2)
+  })
+
+  it('applies the same workspace query after authorization for both aliases and transports', async () => {
+    const { dispatchRpc } = await loadDomain()
+    const visible = { id: SESSION_ID, workspaceId: 'project-a', ownerUserId: 'alice', ownerWorkspaceId: 'tenant' }
+    const elsewhere = { ...visible, id: 'elsewhere', workspaceId: 'project-b' }
+    const foreign = { ...visible, id: 'foreign', ownerUserId: 'bob' }
+    const foreignTenant = { ...visible, id: 'foreign-tenant', ownerWorkspaceId: 'project-a' }
+    const legacy = { ...visible, id: 'legacy', workspaceId: undefined }
+    const records = [elsewhere, foreign, visible, foreignTenant, legacy]
+    store.getSessionsList.mockReturnValue(records)
+    for (const transport of ['ipc', 'http'] as const) {
+      const context = { transport, ownerUid: 'alice', workspaceId: 'tenant' }
+      for (const method of ['list', 'listMeta']) {
+        await expect(dispatchRpc({ domain: 'sessions', method, payload: { workspaceId: 'project-a' } }, context))
+          .resolves.toEqual({ ok: true, data: { success: true, sessions: [visible] } })
+        await expect(dispatchRpc({ domain: 'sessions', method, payload: {} }, context))
+          .resolves.toEqual({ ok: true, data: { success: true, sessions: [elsewhere, visible, legacy] } })
+        await expect(dispatchRpc({ domain: 'sessions', method, payload: { workspaceId: 'default' } }, context))
+          .resolves.toEqual({ ok: true, data: { success: true, sessions: [legacy] } })
+      }
+    }
+    expect(records).toEqual([elsewhere, foreign, visible, foreignTenant, legacy])
+    expect(store.createSession).not.toHaveBeenCalled()
+    expect(store.addMessage).not.toHaveBeenCalled()
   })
 
   /**
@@ -275,7 +334,7 @@ describe('sessions RPC domain', () => {
       ok: true,
       data: { success: true, session: { id: SESSION_ID, name: 'Named', messages: [] } },
     })
-    expect(store.createSession).toHaveBeenCalledWith(SESSION_ID, 'Named', { workspaceId: undefined })
+    expect(store.createSession).toHaveBeenCalledWith(SESSION_ID, 'Named', { workspaceId: undefined, initialOwner: { userId: 'local-user', workspaceId: 'default' } })
   })
 
   it("routes kind:'room' onto the one room rulebook, not the plain create path", async () => {
@@ -291,7 +350,7 @@ describe('sessions RPC domain', () => {
     expect(collab.ensureCollabGroupRoom).toHaveBeenCalledWith(
       'New Chat',
       { memberAgentIds: ['a1'] },
-      { sessionId: SESSION_ID },
+      { sessionId: SESSION_ID, initialOwner: { userId: 'local-user', workspaceId: 'default' } },
     )
     expect(store.createSession).not.toHaveBeenCalled()
   })
@@ -391,6 +450,7 @@ describe('sessions RPC domain', () => {
 
   it('cascades the AI todo delete over every session the store删掉的 id', async () => {
     const { dispatchRpc } = await loadDomain()
+    store.getSessionsList.mockReturnValue([{ id: SESSION_ID }, { id: 'child-1', parentSessionId: SESSION_ID }])
     store.deleteSession.mockReturnValue({ deletedIds: [SESSION_ID, 'child-1'], deletedCount: 2 })
 
     await expect(
@@ -398,6 +458,20 @@ describe('sessions RPC domain', () => {
     ).resolves.toEqual({ ok: true, data: { success: true, deletedCount: 2 } })
     expect(todoPlan.deleteSessionAiTodo).toHaveBeenCalledWith(SESSION_ID)
     expect(todoPlan.deleteSessionAiTodo).toHaveBeenCalledWith('child-1')
+  })
+
+  it('rejects the complete cascade before abort or delete if a child belongs to another owner', async () => {
+    const { dispatchRpc } = await loadDomain()
+    store.getSessionsList.mockReturnValue([{ id: SESSION_ID }, { id: 'alice-child', parentSessionId: SESSION_ID }])
+    ownership.set('alice-child', { ownerUserId: 'alice', ownerWorkspaceId: 'default' })
+    engine.getController.mockReturnValue({})
+    const result = await dispatchRpc({ domain: 'sessions', method: 'delete', payload: { sessionId: SESSION_ID } })
+    expect(result).toMatchObject({ ok: false, error: { message: 'Session not found' } })
+    expect(engine.abort).not.toHaveBeenCalled()
+    expect(store.deleteSession).not.toHaveBeenCalled()
+    expect(todoPlan.deleteSessionAiTodo).not.toHaveBeenCalled()
+    expect(permission.clearSession).not.toHaveBeenCalled()
+    expect(events.destroySession).not.toHaveBeenCalled()
   })
 
   it('carries the four ex-literal channels: add / remove-files-changed / remove-git-status / remove', async () => {
@@ -569,6 +643,7 @@ describe('sessions RPC domain', () => {
    */
   it('delete aborts the live stream and tears the session channels down on both transports (B2)', async () => {
     const { dispatchRpc } = await loadDomain()
+    store.getSessionsList.mockReturnValue([{ id: SESSION_ID }, { id: 'child-1', parentSessionId: SESSION_ID }])
     store.deleteSession.mockReturnValue({ deletedIds: [SESSION_ID, 'child-1'], deletedCount: 2 })
     engine.getController.mockReturnValue({})
 
@@ -588,6 +663,8 @@ describe('sessions RPC domain', () => {
     events.destroySession.mockReset()
     events.streamDestroySession.mockReset()
     permission.clearSession.mockReset()
+    fixture.sessionLayer.deletion.reopen(SESSION_ID)
+    fixture.sessionLayer.deletion.reopen('child-1')
     await dispatchRpc({ domain: 'sessions', method: 'delete', payload: { sessionId: SESSION_ID } })
     expect(engine.abort.mock.calls).toEqual([
       [SESSION_ID, 'session deleted'],

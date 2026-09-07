@@ -16,44 +16,31 @@
 import { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createElectronMusicProcessRunner } from '@onething/runtime/music/process-runner'
-import { listMusicProviderDescriptors } from '@onething/runtime/music'
-import { DEFAULT_MUSIC_SETTINGS } from '@shared/defaults/settings.js'
 import type {
   MusicCommand,
   MusicCommandRequest,
   MusicCommandResponse,
   MusicRadioState,
 } from '@shared/ipc/music.js'
-import { getSettings, saveSettings } from '../../stores/settings.js'
-import {
-  getActiveMusicProvider,
-  getMusicNowPlaying,
-  refreshMusicNowPlaying,
-  resetMusicServiceForProviderSwitch,
-  stopMusicPlayerKeepalive,
-} from './service.js'
-import {
-  disposeRadioConductor,
-  getRadioStartingTitle,
-  getRadioStore,
-  isRadioActive,
-  likeCurrentSong,
-  markRadioGesture,
-  radioToolClose,
-  recordRadioSkip,
-  replayCurrentRadioSong,
-  resumeRadioPlayback,
-  skipToNextRadioSong,
-  startRadioConductor,
-} from './radio.js'
+import type { MusicServiceScope } from './service.js'
+import type { RadioScope } from './radio.js'
 
+import { MusicWorkOwner } from './lifetime.js'
+import { getCurrentBackend } from '../../current.js'
+import { listMusicProviderDescriptors } from '@onething/runtime/music'
+import { getSettings } from '../../stores/settings.js'
+
+export function createMusicOperationsScope(options: { service: MusicServiceScope; radio: RadioScope; assertOwned?: () => void }) {
+  const owner = new MusicWorkOwner(options.assertOwned)
+  const { getActiveMusicProvider, getMusicNowPlaying, refreshMusicNowPlaying } = options.service
+  const { getRadioStartingTitle, getRadioStore, isRadioActive, likeCurrentSong, markRadioGesture,
+    radioToolClose, recordRadioSkip, replayCurrentRadioSong, resumeRadioPlayback, skipToNextRadioSong } = options.radio
 /**
  * Where the bar's volume number comes from is the provider's business: ncm
  * persists it in a prefs file because `state` reports volume as null. Foreign
  * format — read defensively, absence just means the knob shows nothing.
  */
-export function readPlayerVolume(): number | undefined {
+function readPlayerVolume(): number | undefined {
   const provider = getActiveMusicProvider()
   if (provider.reliability.volumeSource !== 'prefs-file') return undefined
   const prefsPath = provider.reliability.probePaths?.volumePrefs
@@ -73,7 +60,7 @@ export function readPlayerVolume(): number | undefined {
 }
 
 /** 播放条要的那份电台简报。组合逻辑逐字沿用迁移前的 `getRadio` handler。 */
-export function readRadioBrief(): MusicRadioState {
+function readRadioBrief(): MusicRadioState {
   const store = getRadioStore()
   const brief = store.readBrief()
   const programme = store.readProgramme()
@@ -114,7 +101,7 @@ function argsWithValue(request: MusicCommandRequest): string[] | { error: string
   return ['volume', String(Math.max(0, Math.min(100, Math.round(value))))]
 }
 
-export async function runMusicCommand(
+async function runMusicCommand(
   request: MusicCommandRequest,
 ): Promise<MusicCommandResponse> {
   if (request.command === 'radio-resume') {
@@ -185,7 +172,7 @@ export async function runMusicCommand(
   }
 
   try {
-    const result = await createElectronMusicProcessRunner().run({
+    const result = await options.service.runner.run({
       command: getActiveMusicProvider().descriptor.binary,
       args,
       timeoutMs: 10_000,
@@ -211,12 +198,12 @@ export async function runMusicCommand(
 }
 
 /** 面板的搜索框:一次搜索,只取可展示的三格。 */
-export async function searchMusicSongs(
+async function searchMusicSongs(
   query: string,
 ): Promise<{ success: boolean; records?: Array<{ title: string; artist?: string; playFlag?: boolean }>; error?: string }> {
   try {
     const provider = getActiveMusicProvider()
-    const runner = createElectronMusicProcessRunner()
+    const runner = options.service.runner
     const result = await runner.run({
       command: provider.descriptor.binary,
       args: provider.cli.build.search(query, 10),
@@ -233,38 +220,21 @@ export async function searchMusicSongs(
   }
 }
 
-/**
- * Switching CLIs is a retune with paperwork: stop the OLD provider's
- * playback, discard the programme (its ids belong to the old service; the
- * brief's taste history is titles and survives), persist the choice with
- * configured=false so the new wizard runs, and rebuild every provider-bound
- * singleton. Unreachable from the UI while only one provider is registered.
- */
-export async function setMusicProvider(
-  providerId: string,
-): Promise<{ success: boolean; error?: string }> {
-  const known = listMusicProviderDescriptors().some(descriptor => descriptor.id === providerId)
-  if (!known) return { success: false, error: `未知的音乐 CLI:${providerId}` }
 
-  const settings = getSettings()
-  const music = settings.music ?? { ...DEFAULT_MUSIC_SETTINGS }
-  if (music.provider === providerId) return { success: true }
-
-  // Old provider's stop, before the registry answer changes underneath it.
-  stopMusicPlayerKeepalive()
-
-  const store = getRadioStore()
-  store.writeProgramme({ entries: [] })
-  const brief = store.readBrief()
-  store.writeBrief({ ...brief, active: false, onDeck: undefined })
-
-  saveSettings({
-    ...settings,
-    music: { ...music, provider: providerId, configured: false },
-  })
-
-  disposeRadioConductor()
-  resetMusicServiceForProviderSwitch()
-  startRadioConductor()
-  return { success: true }
+  return { quiesce: () => owner.quiesce(), drain: () => owner.drain(),
+    readPlayerVolume: owner.wrap(readPlayerVolume),
+    readRadioBrief: owner.wrap(readRadioBrief),
+    runMusicCommand: owner.wrap(runMusicCommand),
+    searchMusicSongs: owner.wrap(searchMusicSongs),
+  }
+}
+export type MusicOperationsScope = ReturnType<typeof createMusicOperationsScope>
+export const readPlayerVolume: MusicOperationsScope['readPlayerVolume'] = (...args) => getCurrentBackend('music').music.operations.readPlayerVolume(...args)
+export const readRadioBrief: MusicOperationsScope['readRadioBrief'] = (...args) => getCurrentBackend('music').music.operations.readRadioBrief(...args)
+export const runMusicCommand: MusicOperationsScope['runMusicCommand'] = (...args) => getCurrentBackend('music').music.operations.runMusicCommand(...args)
+export const searchMusicSongs: MusicOperationsScope['searchMusicSongs'] = (...args) => getCurrentBackend('music').music.operations.searchMusicSongs(...args)
+export async function setMusicProvider(providerId: string): Promise<{ success: boolean; error?: string }> {
+  if (!listMusicProviderDescriptors().some(provider => provider.id === providerId)) return { success: false, error: `未知的音乐 CLI:${providerId}` }
+  if (getSettings().music?.provider === providerId) return { success: true }
+  return getCurrentBackend('music').music.switchProvider(providerId)
 }

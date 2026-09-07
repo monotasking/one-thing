@@ -32,28 +32,23 @@ import {
   type PluginLlmCompleteResult,
 } from '@onething/core/plugins'
 
+import { QuiescibleScopes } from '@onething/core/lifecycle'
 import { getSettings } from '../../stores/settings.js'
 import { resolveProviderApiKey } from '@onething/runtime/providers/env.wiring'
 import { resolveUtilityModel } from '@onething/runtime/providers/utility-model.wiring'
 import { generateChatResponse } from '../providers/index.js'
-import { recordUsage } from '../usage/index.js'
+import { captureUsageRecorder } from '../usage/index.js'
 import type { ProviderConfigWithKey } from '../engine/stream/stream-executor.js'
 import { getLogger } from '../logging/index.js'
+import { getCurrentBackendInstance } from '../../current.js'
 
 const log = getLogger('plugins')
 
 
 /* ── 配额:每插件的调用时刻环 ─────────────────────────────────────────────── */
 
-const rateWindows = new Map<string, number[]>()
-
-/** 测试与进程收摊用:配额账清零。 */
-export function resetPluginLlmLedgers(): void {
-  rateWindows.clear()
-}
-
 /** 超限即抛(不入账);未超则记一次时刻并放行。 */
-function enforceQuota(pluginId: string, now: number): void {
+function enforceQuota(rateWindows: Map<string, number[]>, pluginId: string, now: number): void {
   const window = (rateWindows.get(pluginId) ?? []).filter(at => now - at < PLUGIN_LLM_RATE_WINDOW_MS)
   if (window.length >= PLUGIN_LLM_RATE_LIMIT) {
     rateWindows.set(pluginId, window)
@@ -108,75 +103,123 @@ function resolveManagedProvider(): ResolvedManagedProvider | null {
  * 失败一律抛 `PluginLlmError`(quota / unsupported / timeout / provider-error),
  * 由插件自己 catch;在 compact 钩子里没 catch 时 N7-a 的 fail-open 兜底。
  */
-export async function pluginLlmComplete(
-  pluginId: string,
-  options: PluginLlmCompleteOptions,
-): Promise<PluginLlmCompleteResult> {
-  const now = Date.now()
-  // 配额先于一切副作用(包括 provider 解析)——超限就是超限。
-  enforceQuota(pluginId, now)
+export interface PluginLlmOwner {
+  assertActive(): void
+  runTask<T>(label: string, work: () => Promise<T>): Promise<T>
+}
 
-  const resolved = resolveManagedProvider()
-  if (!resolved) {
-    throw new PluginLlmError('unsupported', 'no chat provider is configured on this host')
-  }
-  const { providerId, config } = resolved
-  const maxTokens = clampPluginLlmMaxTokens(options.maxTokens)
+/** One Backend owns every raw provider promise, including a timed-out caller. */
+export class PluginLlmService {
+  /* 「闸 + 一群档」与凭证策略逐字相同,收进了 core(工单 5 §1)。 */
+  private readonly scopes = new QuiescibleScopes<PluginLlmScope>()
+  private readonly rateWindows = new Map<string, number[]>()
 
-  // 硬超时:自建 AbortController,与插件自己的 signal 取较早的那个。
-  const controller = new AbortController()
-  let timedOut = false
-  const timer = setTimeout(() => {
-    timedOut = true
-    controller.abort()
-  }, PLUGIN_LLM_COMPLETE_TIMEOUT_MS)
-  ;(timer as unknown as { unref?: () => void }).unref?.()
-  const pluginSignal = options.signal
-  if (pluginSignal) {
-    if (pluginSignal.aborted) controller.abort()
-    else pluginSignal.addEventListener('abort', () => controller.abort(), { once: true })
+  constructor(private readonly owner?: PluginLlmOwner) {}
+
+  createScope(pluginId: string): PluginLlmScope {
+    this.assertActive()
+    return this.scopes.add(new PluginLlmScope(pluginId, this))
   }
 
-  try {
-    const text = await generateChatResponse(providerId, config, options.messages, {
-      temperature: options.temperature,
-      maxTokens,
-      abortSignal: controller.signal,
-      debugPurpose: `plugin:${pluginId}:llm.complete`,
-      // 计费:每次调用进账本,source = plugin:<id>。billing 失败绝不打断调用本身。
-      onUsage: (usage) => {
-        try {
-          recordUsage({
-            providerId,
-            modelId: config.model,
-            source: `plugin:${pluginId}`,
-            usage: {
-              inputTokens: usage.inputTokens,
-              outputTokens: usage.outputTokens,
-              totalTokens: usage.totalTokens,
-            },
-          })
-        } catch (error) {
-          log.error('plugin llm.complete usage billing failed', { pluginId }, error)
-        }
-      },
-    })
-    return { text }
-  } catch (error) {
-    if (timedOut) {
-      throw new PluginLlmError(
-        'timeout',
-        `llm.complete exceeded the ${PLUGIN_LLM_COMPLETE_TIMEOUT_MS}ms host timeout`,
-      )
+  assertActive(): void {
+    if (this.scopes.closed) throw new PluginLlmError('unsupported', 'plugin model service is shutting down')
+    this.owner?.assertActive()
+  }
+
+  admit(pluginId: string): void {
+    this.assertActive()
+    enforceQuota(this.rateWindows, pluginId, Date.now())
+  }
+
+  run<T>(pluginId: string, work: () => Promise<T>): Promise<T> {
+    return this.owner
+      ? this.owner.runTask(`plugin:${pluginId}:llm.complete`, work)
+      : Promise.resolve().then(work)
+  }
+
+  quiesce(): void { this.scopes.quiesce() }
+
+  drain(): Promise<void> { return this.scopes.drain() }
+
+  release(scope: PluginLlmScope): void { this.scopes.release(scope) }
+}
+
+/** A PluginState captures this scope; re-enabling the same id gets a new one. */
+export class PluginLlmScope {
+  private closing = false
+  private readonly pending = new Map<Promise<string>, AbortController>()
+
+  constructor(private readonly pluginId: string, private readonly service: PluginLlmService) {}
+
+  quiesce(): void {
+    this.closing = true
+    for (const controller of this.pending.values()) {
+      controller.abort(new PluginLlmError('unsupported', 'plugin was disposed'))
     }
-    if (pluginSignal?.aborted) {
-      throw new PluginLlmError('timeout', 'llm.complete was aborted by the plugin signal')
-    }
-    throw new PluginLlmError(
-      'provider-error',
-      error instanceof Error ? error.message : String(error),
-    )
-  } finally {
-    clearTimeout(timer)
   }
+
+  async drain(): Promise<void> {
+    while (this.pending.size) await Promise.allSettled([...this.pending.keys()])
+    if (this.closing) this.service.release(this)
+  }
+
+  async complete(options: PluginLlmCompleteOptions): Promise<PluginLlmCompleteResult> {
+    if (this.closing) throw new PluginLlmError('unsupported', 'plugin was disposed')
+    this.service.assertActive()
+    if (options.signal?.aborted) throw new PluginLlmError('timeout', 'llm.complete was aborted by the plugin signal')
+    this.service.admit(this.pluginId)
+    const resolved = resolveManagedProvider()
+    if (!resolved) throw new PluginLlmError('unsupported', 'no chat provider is configured on this host')
+    const { providerId, config } = resolved
+    // Capture before any await. Billing remains attached to the store that paid for the request.
+    const record = captureUsageRecorder()
+    const controller = new AbortController()
+    const onPluginAbort = () => controller.abort(new PluginLlmError('timeout', 'llm.complete was aborted by the plugin signal'))
+    const pluginSignal = options.signal
+    pluginSignal?.addEventListener('abort', onPluginAbort, { once: true })
+    let rejectAbort!: (error: unknown) => void
+    const cancelled = new Promise<never>((_resolve, reject) => { rejectAbort = reject })
+    const onAbort = () => rejectAbort(controller.signal.reason)
+    controller.signal.addEventListener('abort', onAbort, { once: true })
+    const timer = setTimeout(() => {
+      controller.abort(new PluginLlmError('timeout', `llm.complete exceeded the ${PLUGIN_LLM_COMPLETE_TIMEOUT_MS}ms host timeout`))
+    }, PLUGIN_LLM_COMPLETE_TIMEOUT_MS)
+    timer.unref?.()
+    let rawSettled = false
+    try {
+      const raw = this.service.run(this.pluginId, async () => {
+        controller.signal.throwIfAborted()
+        return generateChatResponse(providerId, config, options.messages, {
+          temperature: options.temperature,
+          maxTokens: clampPluginLlmMaxTokens(options.maxTokens),
+          abortSignal: controller.signal,
+          debugPurpose: `plugin:${this.pluginId}:llm.complete`,
+          onUsage: usage => {
+            // A provider emitting after its own promise has settled no longer owns a write.
+            if (rawSettled) return
+            try {
+              record({ providerId, modelId: config.model, source: `plugin:${this.pluginId}`, usage })
+            } catch (error) {
+              log.error('plugin llm.complete usage billing failed', { pluginId: this.pluginId }, error)
+            }
+          },
+        })
+      })
+      this.pending.set(raw, controller)
+      const finished = () => { rawSettled = true; this.pending.delete(raw) }
+      void raw.then(finished, finished)
+      return { text: await Promise.race([raw, cancelled]) }
+    } catch (error) {
+      if (error instanceof PluginLlmError) throw error
+      throw new PluginLlmError('provider-error', error instanceof Error ? error.message : String(error))
+    } finally {
+      clearTimeout(timer)
+      pluginSignal?.removeEventListener('abort', onPluginAbort)
+      controller.signal.removeEventListener('abort', onAbort)
+    }
+  }
+}
+
+export function capturePluginLlmScope(pluginId: string): PluginLlmScope | undefined {
+  return getCurrentBackendInstance()?.pluginModels.createScope(pluginId)
 }

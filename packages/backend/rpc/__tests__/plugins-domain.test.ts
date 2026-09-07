@@ -23,8 +23,8 @@ import { pluginsRouter } from '@shared/ipc/plugins.js'
 const IPC: RpcDispatchContext = { transport: 'ipc', callerId: 7 }
 const HTTP: RpcDispatchContext = {
   transport: 'http',
-  ownerUid: 'alice',
-  workspaceId: 'w1',
+  ownerUid: 'local-user',
+  workspaceId: 'default',
   sandboxRoot: '/sandbox/alice/w1',
 }
 
@@ -189,7 +189,7 @@ describe('plugins RPC domain', () => {
       commandName: '/demo',
       args: '--fast',
       sessionId: 's1',
-    })
+    }, { executionContext: { userId: 'local-user', workspaceId: 'default' } })
   })
 
   it('ipc:npm 生命周期四条 + 预读 + 足迹逐条转调', async () => {
@@ -278,9 +278,9 @@ describe('plugins RPC domain', () => {
 
     it('list / enable / disable / refresh / commands / executeCommand 全走端口', async () => {
       expect(unwrap(await call('list', {}, HTTP))).toMatchObject({ success: true })
-      expect(catalog.list).toHaveBeenCalledWith({ userId: 'alice', workspaceId: 'w1' })
+      expect(catalog.list).toHaveBeenCalledWith({ userId: 'local-user', workspaceId: 'default' })
       await call('enable', { pluginId: 'note-skills' }, HTTP)
-      expect(catalog.enable).toHaveBeenCalledWith('note-skills', { userId: 'alice', workspaceId: 'w1' })
+      expect(catalog.enable).toHaveBeenCalledWith('note-skills', { userId: 'local-user', workspaceId: 'default' })
       await call('disable', { pluginId: 'note-skills' }, HTTP)
       expect(catalog.disable).toHaveBeenCalled()
       await call('refresh', {}, HTTP)
@@ -431,4 +431,9 @@ describe('plugins RPC domain', () => {
       expect(manager.installPlugin).toHaveBeenCalled()
     })
   })
+})
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

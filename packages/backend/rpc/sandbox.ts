@@ -38,6 +38,7 @@
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import type { RpcDispatchContext } from '@shared/ipc/rpc.js'
 import { isHostLocallyTrusted } from '../server/host-trust.js'
+import { tenantDirectory, validateTenantId } from '../server/tenant-paths.js'
 
 /** 未夹紧：桌面宿主，请求可以碰用户机器上的任何路径（迁移前的行为）。 */
 export interface UnconfinedRpcSandbox {
@@ -133,7 +134,7 @@ export function isAllowedBySandbox(sandbox: RpcSandbox, absolutePath: string): b
  * 正则。
  */
 export function safeOwnerPathSegment(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]/g, '_') || 'default'
+  return validateTenantId(value)
 }
 
 /** `<workspaceRoot>/<uid>/<wid>` —— 联网宿主的 per-owner 沙箱根。 */
@@ -142,5 +143,5 @@ export function ownerSandboxRoot(
   ownerUid: string,
   workspaceId: string,
 ): string {
-  return join(workspaceRoot, safeOwnerPathSegment(ownerUid), safeOwnerPathSegment(workspaceId))
+  return tenantDirectory(workspaceRoot, ownerUid, workspaceId)
 }

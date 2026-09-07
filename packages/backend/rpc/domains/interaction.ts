@@ -52,6 +52,7 @@ import {
 import type { InteractionRoutes } from '@shared/ipc/interaction.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { RpcRouteHandlers } from '../registry.js'
+import { sessionAccess } from '../../session/access.js'
 
 /**
  * 这次应答该盖哪条通道的章。桌面恒 `'ipc'`;联网宿主认领那次提问自己的
@@ -72,10 +73,11 @@ function resolveRespondChannel(
 
 export const interactionRpcHandlers: RpcRouteHandlers<InteractionRoutes> = {
   async respond(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'permission')
     return respondInteractionForIpc(request, resolveRespondChannel(request, context))
   },
-  async getPending(request) {
+  async getPending(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'permission')
     return getPendingInteractionsForIpc(request.sessionId)
   },
 }
-

@@ -214,7 +214,7 @@ function createAgentLoopRuntimeAdapters(
       }
     },
     persistInjectedChatMessage(sessionId: string, injectedMessage: unknown) {
-      store.addMessage(sessionId, injectedMessage as ChatMessage)
+      sessionCommands.appendMessage(sessionId, { message: injectedMessage as ChatMessage, stampCollab: true })
     },
     executeToolDirectly: (
       toolName: string,

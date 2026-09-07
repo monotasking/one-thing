@@ -46,6 +46,8 @@ import { type ChatMessage } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
 import { sessionReads } from '../../session/reads.js'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
 import { getEventBus } from '../../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { collabRoomMembers } from './members.js'
@@ -226,9 +228,12 @@ export async function speakIntoCollabRoom(input: {
    * 没有它,无人类在场的 pair 房重启一次就顶格冻死。房内的普通发言不传。
    */
   chainReset?: boolean
-}): Promise<SayToolResult> {
+}, options: { executionContext?: unknown } = {}): Promise<SayToolResult> {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  sessionAccess.resolveOptional(executionContext, input.sessionId, 'write')
   const context = resolveSayContext(input.sessionId, input.room)
   if (!context) return { ok: false, error: COLLAB_SAY_REFUSED_NO_ROOM }
+  sessionAccess.resolveOptional(executionContext, context.roomSessionId, 'write')
 
   const content = normalizeCollabSayContent(input.content)
   if (!content) return { ok: false, error: COLLAB_SAY_REFUSED_EMPTY }
@@ -268,6 +273,7 @@ export async function speakIntoCollabRoom(input: {
   if (await isRoomOverBudget(context.roomSessionId)) {
     return { ok: false, error: COLLAB_SAY_REFUSED_BUDGET }
   }
+  sessionAccess.resolveAll(executionContext, [input.sessionId, context.roomSessionId], 'write')
 
   // 授权面(谁能被点名激活)与识别面(哪串字符是真身份)从这里开始**分家** ——
   // 两者此前共用 `members` 一个数组,于是收紧前者顺手收窄了后者,用户/退休成员

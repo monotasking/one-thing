@@ -54,6 +54,7 @@ import type {
   SearchStatusResponse,
 } from '@shared/ipc/search.js'
 import { getServerSearchPort } from '../../server/search-providers.js'
+import { requestSessionOwner } from '../../session/access.js'
 import type { RpcRouteHandlers } from '../registry.js'
 
 /**
@@ -196,7 +197,7 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
     const response = await requireSearchService().query(
       request as SearchServiceRequest,
       // 「谁在问」由宿主铸的 dispatch context 造,永远不从信封上读(§6.4b + RPC 判例)。
-      { principal: { kind: 'user', id: context.ownerUid ?? 'local' }, spaceId: context.workspaceId ?? '' },
+      { principal: { kind: 'user', id: requestSessionOwner(context).userId! }, executionContext: requestSessionOwner(context) },
     )
     return response as SearchResponse
   },
@@ -226,13 +227,14 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
    * `requireSearchService()` 会结构化拒绝;给它接上是 server 端口的事(同 `query`),
    * 不是在这里偷偷去查桌面那一份。
    */
-  async preview(request: SearchPreviewRequest): Promise<SearchPreviewResponse> {
+  async preview(request: SearchPreviewRequest, context = DESKTOP_RPC_CONTEXT): Promise<SearchPreviewResponse> {
     try {
       const preview = await requireSearchService().preview(
         request.items as readonly SearchPreviewItem[],
         request.mode,
         // 列表上那次查询的词(检索面终稿 §4):预览与列表的高亮走同一条判据。
         request.query === undefined ? {} : { query: request.query },
+        { principal: { kind: 'user', id: requestSessionOwner(context).userId! }, executionContext: requestSessionOwner(context) },
       )
       return { success: true, preview: previewDto(preview) }
     } catch (error) {
@@ -252,12 +254,13 @@ export const searchRpcHandlers: RpcRouteHandlers<SearchRoutes> = {
    * 结果上的后端动作(§8)。S4a **接通**,但本批没有任何一个内置能力声明动作 ——
    * 所以今天它恒答 `no such action`,而那句话来自服务层的常量,不是这里编的。
    */
-  async invoke(request: SearchInvokeRequest): Promise<SearchInvokeResponse> {
+  async invoke(request: SearchInvokeRequest, context = DESKTOP_RPC_CONTEXT): Promise<SearchInvokeResponse> {
     try {
       await requireSearchService().invoke(
         request.capability,
         request.actionId,
         request.items as readonly SearchPreviewItem[],
+        { principal: { kind: 'user', id: requestSessionOwner(context).userId! }, executionContext: requestSessionOwner(context) },
       )
       return { success: true }
     } catch (error) {

@@ -13,6 +13,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { collabRoomVisibleUntil } from '@onething/runtime/collab'
 
 interface FakeSession {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   name: string
   kind?: string
@@ -40,6 +42,13 @@ const mocks = vi.hoisted(() => ({
   renamed: [] as Array<{ id: string; name: string }>,
 }))
 
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
+  }) }
+})
+
 vi.mock('../../../store.js', () => ({
   // drive 现在要渲染用户署名(v3 V1),因此读一次设置里的身份。
   getSettings: () => ({}),
@@ -54,8 +63,9 @@ vi.mock('../../../store.js', () => ({
   },
   // 幕后建会话走"不动 current 指针"的那个变体:真实 store 里它建完把指针原样
   // 还原,所以这里就是"会话建了、指针没动"。
-  createSessionWithoutFocus: (id: string, name: string) => {
-    const session: FakeSession = { id, name, messages: [] }
+  createSessionWithoutFocus: (id: string, name: string, options: { initialOwner?: { userId: string; workspaceId: string } } = {}) => {
+    const session: FakeSession = { id, name, messages: [],
+      ownerUserId: options.initialOwner?.userId, ownerWorkspaceId: options.initialOwner?.workspaceId }
     mocks.sessions.set(id, session)
     mocks.created.push(id)
     return session
@@ -104,6 +114,38 @@ beforeEach(() => {
 })
 
 describe('ensureUserDmRoom', () => {
+  it('scopes one agent by owner and tenant while preserving the local room id', () => {
+    const owners = [
+      { userId: 'alice', workspaceId: 'a' },
+      { userId: 'bob', workspaceId: 'a' },
+      { userId: 'alice', workspaceId: 'b' },
+    ]
+    const ids = owners.map(executionContext => ensureUserDmRoom('fe', { executionContext }))
+    expect(new Set([...ids, ensureUserDmRoom('fe')]).size).toBe(4)
+    expect(ensureUserDmRoom('fe')).toBe(DM_ROOM)
+    owners.forEach((executionContext, index) => {
+      expect(ensureUserDmRoom('fe', { executionContext })).toBe(ids[index])
+      expect(mocks.sessions.get(ids[index]!)).toMatchObject({
+        ownerUserId: executionContext.userId, ownerWorkspaceId: executionContext.workspaceId,
+      })
+    })
+  })
+
+  it('rejects an existing room whose owner changed before any repair or rename', () => {
+    const executionContext = { userId: 'alice', workspaceId: 'a' }
+    const id = ensureUserDmRoom('fe', { executionContext })!
+    const existing = mocks.sessions.get(id) as FakeSession
+    existing.ownerUserId = 'bob'
+    existing.name = 'keep'
+    existing.kind = 'chat'
+    mocks.created.length = 0
+    mocks.renamed.length = 0
+    expect(() => ensureUserDmRoom('fe', { executionContext })).toThrow('Session not found')
+    expect(mocks.created).toEqual([])
+    expect(mocks.renamed).toEqual([])
+    expect(existing.kind).toBe('chat')
+  })
+
   it('建出一间单成员 dm 房,房名就是 agent 的名字,而且不藏起来', () => {
     expect(ensureUserDmRoom('fe')).toBe(DM_ROOM)
     expect(room()).toMatchObject({

@@ -35,6 +35,7 @@ import type { SessionGoal, SessionGoalLimits } from "@onething/runtime/goals";
 import { getEventBus } from "../../events/index.js";
 import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";
+import { getCurrentBackendInstance } from '../../current.js';
 
 import { SESSION_EVENT_TYPES } from "@shared/events/index.js";
 import { getLogger } from '../logging/index.js'
@@ -204,7 +205,13 @@ export function updateGoalFromModel(
 	const next = applyModelGoalStatus(goal, status, Date.now(), reason);
 	persistGoal(sessionId, next);
 	if (next.status === "complete") {
-		void enrichCompletedGoalWithFileChanges(sessionId, next);
+		const owner = getCurrentBackendInstance();
+		try {
+			if (owner) void owner.runTask('goalFileChangeSummary', () => enrichCompletedGoalWithFileChanges(sessionId, next))
+				.catch(error => log.error('goal file-change summary failed', { sessionId }, error));
+		} catch (error) {
+			log.error('goal file-change summary admission closed', { sessionId }, error);
+		}
 	}
 	return next;
 }
@@ -273,6 +280,17 @@ export function flushUsage(sessionId: string): void {
 	const goal = storedGoal(sessionId);
 	if (!goal || goal.status !== "active") return;
 	persistGoal(sessionId, applyGoalUsage(goal, pending, Date.now(), goalLimits()));
+}
+
+/** Final accounting runs before the shared metadata and journal flush. */
+export function flushGoalRuntimeUsage(): void {
+	for (const sessionId of pendingUsage.keys()) flushUsage(sessionId);
+}
+
+/** Invoked after accepted work and final accounting, never to hide in-flight work. */
+export function disposeGoalRuntimeState(): void {
+	pendingUsage.clear();
+	roundsSinceContinuation.clear();
 }
 
 /**

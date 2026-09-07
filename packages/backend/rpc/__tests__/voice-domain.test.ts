@@ -23,6 +23,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { voiceRouter } from '@shared/ipc/voice.js'
 
+const sessionState = vi.hoisted(() => ({ currentId: undefined as string | undefined }))
+vi.mock('../../stores/app-state.js', () => ({ getCurrentSessionId: () => sessionState.currentId }))
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id =>
+    id === 's1' ? {} : id === 'alice-session' ? { ownerUserId: 'alice', ownerWorkspaceId: 'tenant' } : undefined,
+  }) }
+})
+
 const service = vi.hoisted(() => ({
   getState: vi.fn(),
   start: vi.fn(),
@@ -77,6 +86,7 @@ describe('voice RPC domain', () => {
   let dispose: (() => void) | undefined
 
   beforeEach(() => {
+    sessionState.currentId = undefined
     service.getState.mockReset().mockReturnValue({ status: 'idle', enabled: true, runtimeReady: true, updatedAt: 1 })
     service.start.mockReset().mockResolvedValue({ success: true })
     service.stop.mockReset().mockReturnValue({ success: true })
@@ -123,6 +133,70 @@ describe('voice RPC domain', () => {
     expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'getTTSModels', payload: { force: true } })))
       .toEqual(expect.objectContaining({ success: true }))
     expect(providers.getOpenRouterTTSModels).toHaveBeenCalledWith(true)
+  })
+
+  it('still reads state and stops after the bound session is gone', async () => {
+    // 工单 4 A5:麦克风绑在哪条会话上是**设备状态**,不是这次调用的对象。从前
+    // getState / stop 都要先对那条会话 `resolveAll(…, 'write')`,于是会话一删,
+    // 麦克风既问不出状态、也停不下来 —— 一个删会话就能把它锁在开着的状态。
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    configureVoiceHost({})
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
+    service.getState.mockReturnValue({ status: 'listening', enabled: true, runtimeReady: true, updatedAt: 1, currentSessionId: 'deleted-session' })
+
+    expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'getState', payload: {} })))
+      .toEqual({ success: true, state: expect.objectContaining({ status: 'listening' }) })
+    expect(unwrap(await dispatchRpc({ domain: 'voice', method: 'stop', payload: { reason: 'manual', submit: false } })))
+      .toEqual({ success: true })
+    expect(service.stop).toHaveBeenCalledWith({ reason: 'manual', submit: false })
+
+    // 会写那条会话的口仍然照拒。
+    expect(await dispatchRpc({ domain: 'voice', method: 'submitTranscript', payload: { text: 'x' } }))
+      .toMatchObject({ ok: false })
+  })
+
+  /*
+   * 工单 5 §7:同一种病的另外四张脸。
+   *
+   * 这四口一个字都不写会话 —— 合成一段音、试一次 TTS、认一下运行时窗、收一条不指名
+   * 会话的设备事件。从前它们跟着 `authorizeVoice` 连带校验那条**绑定**会话,于是
+   * 会话一删,语音的半边功能跟着锁死。判据换成「这次调用要写哪条会话」之后,它们
+   * 只过操作员闸。
+   * 反证:把 `authorizeVoice` 里 `current` 那一格加回 `resolve` 的入参 → 四条全红。
+   */
+  it.each([
+    ['synthesize', { text: 'hello' }],
+    ['testTTS', { text: 'hello' }],
+    ['runtimeReady', {}],
+    ['runtimeEvent', { type: 'runtime-error', message: 'boom' }],
+  ])('still serves %s after the bound session is gone', async (method, payload) => {
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    configureVoiceHost({})
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
+    service.getState.mockReturnValue({ status: 'listening', enabled: true, runtimeReady: true, updatedAt: 1, currentSessionId: 'deleted-session' })
+
+    expect(await dispatchRpc({ domain: 'voice', method, payload })).toMatchObject({ ok: true })
+  })
+
+  it.each(['getState', 'start', 'stop', 'submitUtterance', 'submitTranscript', 'synthesize', 'testTTS', 'runtimeReady', 'runtimeEvent'])('refuses non-local device control through %s before reading or mutating the service', async method => {
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    configureVoiceHost({})
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
+    const result = await dispatchRpc({ domain: 'voice', method, payload: {
+      sessionId: 's1', type: 'wake-detected', text: 'stolen', executionContext: { userId: 'local-user', workspaceId: 'default' },
+    } }, { transport: 'http', ownerUid: 'bob', workspaceId: 'tenant' })
+    expect(result).toMatchObject({ ok: false })
+    for (const fn of Object.values(service)) expect(fn).not.toHaveBeenCalled()
+  })
+
+  it.each(['start', 'submitUtterance', 'submitTranscript', 'runtimeEvent'])('does not let omitted session IDs in %s select a foreign current session', async method => {
+    const { dispatchRpc, registerRouterHandlers, voiceRpcHandlers, configureVoiceHost } = await loadDomain()
+    configureVoiceHost({})
+    dispose = registerRouterHandlers(voiceRouter, voiceRpcHandlers)
+    sessionState.currentId = 'alice-session'
+    const result = await dispatchRpc({ domain: 'voice', method, payload: { text: 'stolen', type: 'wake-detected' } })
+    expect(result).toMatchObject({ ok: false })
+    for (const [name, fn] of Object.entries(service)) if (name !== 'getState') expect(fn).not.toHaveBeenCalled()
   })
 
   it('keeps the PCM uplink off the router (one-way channel, 拍板 #10)', async () => {

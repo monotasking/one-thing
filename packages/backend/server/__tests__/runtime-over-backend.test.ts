@@ -44,6 +44,7 @@ function createFakeBackend(): {
     eventBus: new EventBus() as unknown as OnethingBackend['eventBus'],
     streamChannel: new StreamChannel() as unknown as OnethingBackend['streamChannel'],
     dispose,
+    assertActive: vi.fn(),
   } as unknown as OnethingBackend
   return { backend, abort, dispose }
 }

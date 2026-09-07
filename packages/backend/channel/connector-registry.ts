@@ -96,6 +96,17 @@ export async function sendIMReply(
   },
 ): Promise<void> {
   const registered = connectors.get(target.connector)
+  /*
+   * **在这一刻把钩子抓住**(工单 4 C5 复核后保留)。
+   *
+   * `hooks` 是个可以被 `configureIMConnectorHooks` 改写的模块槽,而这个函数下面
+   * 有 `await`:一次投递发出去、还没回来的时候,宿主可能已经换过一轮网关接线
+   * (关旧的、起新的)。不抓住的话,这次投递的成功/失败回调会打到**新那一套**
+   * 钩子上 —— 旧那一套等不到自己的收据,新那一套收到一份不属于它的。
+   * `channel/__tests__/outbound-reply-lifecycle.test.ts` 两条用例钉着这一点。
+   * (裁定表把这一行记作「噪音」,是把捕获看成了重命名;它不是。)
+   */
+  const ownerHooks = hooks
   if (!registered) {
     // fail-open(策略表已如实声明):说得清地失败,由调用方记为投递失败,
     // 而不是静默丢消息。没有"宿主默认渠道"可以回落。
@@ -106,12 +117,12 @@ export async function sendIMReply(
   // 而不是未注册 —— 两者的处置完全不同(一个等恢复,一个是配置错了)。
   if (registered.ownerPluginId) {
     const surface = `connector:${target.connector}`
-    const degraded = hooks.isSurfaceDegraded?.(registered.ownerPluginId, surface)
+    const degraded = ownerHooks.isSurfaceDegraded?.(registered.ownerPluginId, surface)
     // 半开:满一个间隔放行一次真投递。成功则 onSendSuccess 解除降级,
     // 失败则重新计入熔断账 —— 这是这条渠道唯一可能自己走出来的路。
-    const probing = degraded ? hooks.probeSurface?.(registered.ownerPluginId, surface) ?? false : false
+    const probing = degraded ? ownerHooks.probeSurface?.(registered.ownerPluginId, surface) ?? false : false
     if (degraded && !probing) {
-      const reason = hooks.describeDegradedSurface?.(registered.ownerPluginId, surface)
+      const reason = ownerHooks.describeDegradedSurface?.(registered.ownerPluginId, surface)
       throw new Error(
         `IM connector "${target.connector}" is switched off after repeated failures`
         + (reason ? `: ${reason}` : '.'),
@@ -121,13 +132,13 @@ export async function sendIMReply(
   try {
     await registered.connector.sendReply(target, payload)
     if (registered.ownerPluginId) {
-      hooks.onSendSuccess?.(registered.ownerPluginId, target.connector)
+      ownerHooks.onSendSuccess?.(registered.ownerPluginId, target.connector)
     }
   } catch (error) {
     // 运行期失败进熔断账(scope `connector:<id>`)—— 策略表判为 degrade-surface:
     // 一条渠道坏掉不该放大成插件故障。
     if (registered.ownerPluginId) {
-      hooks.onSendFailure?.(registered.ownerPluginId, target.connector, error)
+      ownerHooks.onSendFailure?.(registered.ownerPluginId, target.connector, error)
     }
     throw error
   }

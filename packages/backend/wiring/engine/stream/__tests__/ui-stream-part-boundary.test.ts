@@ -29,6 +29,8 @@ const { flushSessionEventLog, readSessionLogEventsSync, resetSessionEventLogCach
   '../../../../session/event-log.js'
 )
 const { resetSessionSurfaceCache } = await import('../../../../session/event-surface.js')
+const { installSessionLayerForTest } = await import('../../../../session/testing/session-layer.js')
+let sessionFixture: ReturnType<typeof installSessionLayerForTest>
 const { beginSessionRun, endSessionRun, resetSessionRuns } = await import(
   '../../../../session/runs.js'
 )
@@ -45,6 +47,7 @@ beforeEach(() => {
   fs.mkdirSync(path.join(state.sessionsDir, SESSION_ID), { recursive: true })
   fs.writeFileSync(path.join(state.sessionsDir, SESSION_ID, 'meta.json'), '{}')
   resetSessionEventLogCache()
+  sessionFixture = installSessionLayerForTest()
   resetSessionSurfaceCache()
   resetSessionRuns()
   resetSessionEventStatsCache()
@@ -52,6 +55,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   await flushSessionEventLog()
+  await sessionFixture.dispose()
   fs.rmSync(state.storeDir, { recursive: true, force: true })
 })
 

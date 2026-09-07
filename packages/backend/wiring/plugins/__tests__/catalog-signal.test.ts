@@ -12,21 +12,40 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 
-const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-catalog-'))
+const storeRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'onething-plugin-catalog-')))
 const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
+const cleanups: Array<() => Promise<void>> = []
+const agentLogStreams: fs.WriteStream[] = []
+const createWriteStream = fs.createWriteStream
+// Observe real streams without changing open/write/end behavior. Production
+// shutdown must close them; the fixture must not finish them on its behalf.
+const streamObserver = vi.spyOn(fs, 'createWriteStream').mockImplementation((...args) => {
+  const stream = createWriteStream(...args)
+  const file = args[0]
+  if (typeof file === 'string' && path.dirname(file) === path.join(storeRoot, 'log')
+    && /^agent-.*\.log$/.test(path.basename(file))) agentLogStreams.push(stream)
+  return stream
+})
 
 afterAll(async () => {
-  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
-  else process.env.ONETHING_STORE_PATH = previousStorePath
-  // dispose 里那次收尾 flush 是异步的;删目录太早会撞出一条对着已删路径的
-  // unhandled ENOENT。这里**让出若干轮事件循环**让它有机会落完 —— 比
-  // `setTimeout(100)` 少一点猜测,但仍是启发式,不是保证。
-  // 根治项:PluginStore / diskWriter 暴露一个 flush() 让收尾可等待。
-  for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve))
-  fs.rmSync(storeRoot, { recursive: true, force: true })
+  try {
+    const results = await Promise.allSettled(cleanups.reverse().map(cleanup => Promise.resolve().then(cleanup)))
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failures.length === 1) throw failures[0]!.reason
+    if (failures.length > 1) throw new AggregateError(failures.map(result => result.reason), 'Plugin fixture shutdown failed')
+    expect(agentLogStreams.length, 'the real log-monitor streams must be observed').toBeGreaterThan(0)
+    expect(agentLogStreams.every(stream => stream.closed), 'production shutdown must await every real log stream close').toBe(true)
+    fs.rmSync(storeRoot, { recursive: true, force: true })
+  } finally {
+    // Preserve the fixture directory when shutdown fails, but always restore
+    // process state so the error cannot redirect later tests into this store.
+    streamObserver.mockRestore()
+    if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+    else process.env.ONETHING_STORE_PATH = previousStorePath
+  }
 })
 
 interface Emitted {
@@ -54,6 +73,7 @@ describe('plugin catalog-changed signal', () => {
     const { PluginManager } = await import('../manager.js')
     const emitted: Emitted[] = []
     const manager = new PluginManager()
+    cleanups.push(() => manager.shutdown())
 
     await manager.initialize({
       eventBus: stubEventBus(emitted) as never,
@@ -88,11 +108,6 @@ describe('plugin catalog-changed signal', () => {
     await manager.uninstallPlugin('definitely-not-installed')
     expect(catalogSignals().length).toBe(beforeUninstall + 1)
 
-    // 收尾:插件带着定时器(log-monitor 的 flush),不停掉的话临时目录被删之后
-    // 它还会往一个不存在的路径写,变成一条 unhandled ENOENT。
-    for (const info of manager.getPlugins()) {
-      await manager.disablePlugin(info.definition.id)
-    }
   })
 })
 
@@ -100,7 +115,7 @@ describe('panel refresh fan-out', () => {
   it('coalesces a burst of ctx.refresh() into one signal per panel', async () => {
     // 插件在一次批量操作里对每个变化调一次 refresh 是完全合理的写法 ——
     // 但那是 N 条一模一样的信号,每条都会让 renderer 拉出同一棵树。
-    const { createPluginAPI, disposePlugin } = await import('../api.js')
+    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../api.js')
     const emitted: Emitted[] = []
     const { api, state } = createPluginAPI(
       'demo',
@@ -108,6 +123,10 @@ describe('panel refresh fan-out', () => {
       {} as never,
       { declaredPanelIds: ['main', 'other'] },
     )
+    cleanups.push(async () => {
+      disposePlugin(state)
+      await drainPlugin(state)
+    })
 
     let panelCtx: { refresh(): void } | undefined
     api.registerWorkspacePanel({
@@ -144,7 +163,5 @@ describe('panel refresh fan-out', () => {
     otherCtx?.refresh()
     expect(refreshes()).toHaveLength(2)
     expect(refreshes().map(event => event.panelId)).toEqual(['main', 'other'])
-
-    disposePlugin(state)
   })
 })

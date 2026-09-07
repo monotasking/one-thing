@@ -27,7 +27,9 @@ import type { NotebookToolResult } from '@onething/runtime/toolkit'
 
 import * as store from '../../../store.js'
 import { collabVenueOf } from '../venue.js'
-import { createCollabNotebookFileStore, type CollabNotebookStore } from '@onething/runtime/collab/actors/notebook-store'
+import { createOwnedCollabNotebookStore } from './owned-notebook-store.js'
+import { sessionAccess } from '../../../session/access.js'
+import { fixedExecutionContext } from '../../engine/execution-context.js'
 
 /** 场子不对时那句话。说出这个工具**在哪儿**能用,而不是它在这儿不能用。 */
 export const COLLAB_NOTEBOOK_WRONG_VENUE =
@@ -37,10 +39,13 @@ export const COLLAB_NOTEBOOK_WRONG_VENUE =
 export const COLLAB_NOTEBOOK_NO_IDENTITY =
   '这条会话认不出是哪位同事的,笔记没有可归属的本子。'
 
-const notebookStore: CollabNotebookStore = createCollabNotebookFileStore()
-
 /** 笔记落盘口。R4b:`app/toolkit/adapters.ts` 从这里取,不再自己重建一份。 */
-export function appendNote(input: { sessionId: string; note: string }): Promise<NotebookToolResult> {
+export function appendNote(
+  input: { sessionId: string; note: string },
+  options: { executionContext?: unknown } = {},
+): Promise<NotebookToolResult> {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  sessionAccess.resolveOptional(executionContext, input.sessionId, 'write')
   const session = store.getSession(input.sessionId)
   const venue = collabVenueOf(session)
   if (venue !== 'agent' && venue !== 'work') {
@@ -53,8 +58,9 @@ export function appendNote(input: { sessionId: string; note: string }): Promise<
   if (!agentId) return Promise.resolve({ ok: false, error: COLLAB_NOTEBOOK_NO_IDENTITY })
 
   const roomId = session?.collab?.roomSessionId
+  if (roomId) sessionAccess.resolve(executionContext, roomId, 'read')
   const roomLabel = roomId ? store.getSession(roomId)?.name?.trim() : undefined
-  const written = notebookStore.append({
+  const written = createOwnedCollabNotebookStore(executionContext).append({
     agentId,
     note: input.note,
     at: Date.now(),
@@ -67,4 +73,3 @@ export function appendNote(input: { sessionId: string; note: string }): Promise<
     budgetChars: COLLAB_NOTEBOOK_INJECT_MAX_CHARS,
   })
 }
-

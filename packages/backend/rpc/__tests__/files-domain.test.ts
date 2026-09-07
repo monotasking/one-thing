@@ -48,7 +48,7 @@ async function* emit(items: string[]) {
 const IPC: RpcDispatchContext = { transport: 'ipc' }
 
 function http(sandboxRoot: string): RpcDispatchContext {
-  return { transport: 'http', ownerUid: 'alice', workspaceId: 'w1', sandboxRoot }
+  return { transport: 'http', ownerUid: 'local-user', workspaceId: 'default', sandboxRoot }
 }
 
 function unwrap(response: RpcResponse): Record<string, unknown> {
@@ -360,4 +360,9 @@ describe('files RPC domain', () => {
     if (response.ok) throw new Error('expected a rejection')
     expect(response.error.code).toBe('UNKNOWN_METHOD')
   })
+})
+// Adapter fixtures explicitly belong to the local operator on both transports.
+vi.mock('../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: () => ({}) }) }
 })

@@ -91,15 +91,10 @@ describe('结算态进账本', () => {
     const store = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-bg-status-'))
     const previous = process.env.ONETHING_STORE_PATH
     process.env.ONETHING_STORE_PATH = store
-    const { resetSessionEventLogCache, readSessionLogEvents, flushSessionEventLog } =
-      await import('../../../session/event-log.js')
-    const { createEventSystem } = await import('../../../events/index.js')
-    const { createBackendHandle, setCurrentBackend } = await import('../../../current.js')
+    const { readSessionLogEvents, flushSessionEventLog } = await import('../../../session/event-log.js')
+    const { installSessionLayerForTest } = await import('../../../session/testing/session-layer.js')
     const { publishExternalAgentBackgroundStatus } = await import('../background-status.js')
-    resetSessionEventLogCache()
-    // A2:造一套事件系统装进进程当前实例槽(只填它那两格)。
-    const { eventBus, streamChannel } = createEventSystem()
-    setCurrentBackend(createBackendHandle({ eventBus, streamChannel }))
+    const fixture = installSessionLayerForTest()
 
     try {
       // 账本得先开张(真机上这条会话早就有账了)。
@@ -129,9 +124,7 @@ describe('结算态进账本', () => {
         durationMs: 4200,
       })
     } finally {
-      eventBus.shutdown()
-      streamChannel.shutdown()
-      setCurrentBackend(null)
+      await fixture.dispose()
       if (previous === undefined) delete process.env.ONETHING_STORE_PATH
       else process.env.ONETHING_STORE_PATH = previous
       fs.rmSync(store, { recursive: true, force: true })

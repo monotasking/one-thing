@@ -30,7 +30,10 @@
  * part)。攒批之后崩溃最多丢最后一批(≤2s),而 token 级回放与 TTFT/tps 全都
  * 还在。
  *
- * 本模块的所有异常自吞:记账坏了绝不能影响聊天。
+ * 意图同步落入统一写队列。**记账失败上抛、并粘住**(A2 保存屏障):账本坏了
+ * 不许假装聊天还好着 —— 这与从前「所有异常自吞」是反过来的。四点执行检查点
+ * (模型前/工具前/工具后/响应后同步 fsync)已于 2026-09-07 整条撤回,三处语义
+ * 检查点回到 `void flushSessionEventLog(...)` 的非阻塞形态。
  */
 
 import type {
@@ -56,7 +59,7 @@ import {
   SESSION_CHUNK_BATCH_SIZE,
 } from '@onething/core/session/events/chunk-codec'
 import type { StreamDeltaStamp, UiAssistantDeltaChunk, UiAssistantPartEndChunk } from '@onething/core/events'
-import { safeParseAgentToolArguments } from '@onething/core/agent-loop'
+import { safeParseAgentToolArguments, AgentExecutionCheckpointError, isAgentExecutionCheckpointError } from '@onething/core/agent-loop'
 // §13.9:回合号的判定规则只有一份,住在引擎那边。引那**一个叶子文件**而不是
 // `@onething/core/engine` barrel —— barrel 会把整棵执行器模块图拖进记录器
 // (与上面 provider-data 那条 import 同一条理由)。
@@ -424,6 +427,15 @@ export interface SessionCancelledToolResult {
 export function createSessionEventRecorder(
   ctx: SessionEventRecorderContext,
 ): SessionEventRecorder {
+  let recordingFailure: AgentExecutionCheckpointError | undefined
+  function rememberFailure(error: unknown): AgentExecutionCheckpointError {
+    recordingFailure ??= isAgentExecutionCheckpointError(error)
+      ? error : new AgentExecutionCheckpointError('session event recording', error)
+    return recordingFailure
+  }
+  function assertRecordingHealthy(): void {
+    if (recordingFailure) throw recordingFailure
+  }
   const state: RecorderState = {
     // 引擎那边同一格的初值也是 1(`agent-loop-executor.ts` 的 `turnIndex: 1`)。
     turnIndex: 1,
@@ -580,6 +592,16 @@ export function createSessionEventRecorder(
    * 落账时机与字节与从前逐字节相同:编码器就是从前这几个函数原样搬过去的。
    */
   const encoder = createSessionChunkEncoder({
+    schedule(callback, ms) {
+      const timer = setTimeout(() => {
+        try { assertRecordingHealthy(); callback() }
+        catch (error) {
+          log.error('session event batch failed; execution checkpoint will reject', { sessionId: ctx.sessionId }, rememberFailure(error))
+        }
+      }, ms)
+      timer.unref?.()
+      return () => clearTimeout(timer)
+    },
     // U0:号由**这次执行**发(`nextSessionRunPartIndex`)。开不出段的条件与从前
     // 逐字相同:没有请求号 / 没有活跃 run 就一个号都不分。
     allocate: () => allocatePartIndex(),
@@ -807,7 +829,7 @@ export function createSessionEventRecorder(
     switch (event.type) {
       case 'turn-start': {
         const requestIndex = nextSessionRequestIndex(ctx.sessionId)
-        if (requestIndex === undefined) return
+        if (requestIndex === undefined) throw new Error(`Cannot record execution intent for unprepared session: ${ctx.sessionId}`)
         state.requestIndex = requestIndex
         setSessionRunRequestIndex(ctx.sessionId, requestIndex)
         // §13.9:引擎那一行是 `state.turnIndex = options.turn`
@@ -933,7 +955,8 @@ export function createSessionEventRecorder(
           turnIndex: state.turnIndex,
           ...withRunId(),
         })
-        if (seq !== undefined) state.callSeqByCallId.set(event.toolCall.id, seq)
+        if (seq === undefined) throw new Error(`Cannot record tool intent for unprepared session: ${ctx.sessionId}`)
+        state.callSeqByCallId.set(event.toolCall.id, seq)
         state.toolCallIds.push(event.toolCall.id)
         // 语义检查点:调工具之前(§10.3 ③)。`void` 同 `request/start` 处的理由。
         void flushSessionEventLog(ctx.sessionId)
@@ -1091,10 +1114,10 @@ export function createSessionEventRecorder(
   return {
     handle(event) {
       try {
+        assertRecordingHealthy()
         handle(event)
       } catch (error) {
-        // 记账绝不打断聊天。
-        log.warn('event recorder failed', { sessionId: ctx.sessionId }, error)
+        throw rememberFailure(error)
       }
     },
     recordRequestError(error) {
@@ -1119,7 +1142,7 @@ export function createSessionEventRecorder(
           attempt: state.attempt,
         })
       } catch (cause) {
-        log.warn('event recorder error record failed', { sessionId: ctx.sessionId }, cause)
+        throw rememberFailure(cause)
       }
     },
     recordSynthesizedText(text) {
@@ -1128,7 +1151,7 @@ export function createSessionEventRecorder(
         if (state.requestIndex === undefined) return
         deltaInto('text', text)
       } catch (error) {
-        log.warn('event recorder synthesized text failed', { sessionId: ctx.sessionId }, error)
+        throw rememberFailure(error)
       }
     },
     recordCancelledToolResults(calls) {
@@ -1163,16 +1186,17 @@ export function createSessionEventRecorder(
           written += 1
         }
       } catch (error) {
-        log.warn('event recorder cancelled tool result record failed', { sessionId: ctx.sessionId }, error)
+        throw rememberFailure(error)
       }
       return written
     },
     flush() {
       try {
+        assertRecordingHealthy()
         endAllOpenParts()
         encoder.flushAll()
       } catch (error) {
-        log.warn('event recorder flush failed', { sessionId: ctx.sessionId }, error)
+        throw rememberFailure(error)
       }
     },
   }

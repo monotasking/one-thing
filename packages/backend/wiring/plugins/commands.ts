@@ -25,6 +25,8 @@ import { execPluginCommandOnHost } from './host-ports.js'
 import { getPluginManager } from './manager.js'
 import type { ConsoleLikePort } from '@onething/runtime/logging'
 import type { OnethingPluginIpcLogger } from '@onething/runtime/plugins/ipc-operations'
+import type { RuntimeRequestContext } from '@onething/core'
+import { DEFAULT_SESSION_OWNER, sessionAccess } from '../../session/access.js'
 
 const log = getLogger('plugins.commands')
 const consoleLog: ConsoleLikePort & OnethingPluginIpcLogger = consolePort(log)
@@ -38,15 +40,25 @@ export interface ExecutePluginCommandOnHostRequest {
 /** 一次插件命令执行(桌面 IPC 与网关共用的同一条路)。 */
 export function executePluginCommandOnHost(
   request: ExecutePluginCommandOnHostRequest,
+  options: { executionContext?: RuntimeRequestContext } = {},
 ): Promise<ExecuteOnethingPluginCommandResult> {
+  const executionContext = Object.freeze({ ...(options.executionContext ?? DEFAULT_SESSION_OWNER) })
+  if (request.sessionId) sessionAccess.resolve(executionContext, request.sessionId, 'write')
   const eventBus = getEventBus()
   return executeOnethingPluginCommandForIpc({
     manager: getPluginManager(),
     commandName: request.commandName,
     args: request.args,
     sessionId: request.sessionId,
-    getSession: sessionId => store.getSession(sessionId),
-    emitSessionCommand: (sessionId, event) => eventBus.emit(sessionId, event),
+    getSession: sessionId => {
+      if (!sessionId) return undefined
+      sessionAccess.resolve(executionContext, sessionId, 'read')
+      return store.getSession(sessionId)
+    },
+    emitSessionCommand: (sessionId, event) => {
+      sessionAccess.resolve(executionContext, sessionId, 'write')
+      return eventBus.emit(sessionId, event, { executionContext })
+    },
     emitGlobalEvent: event => eventBus.emitGlobal(event),
     exec: (commandToRun, args = [], options) =>
       execPluginCommandOnHost(commandToRun, args, { cwd: options.cwd }),

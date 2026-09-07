@@ -22,7 +22,21 @@ import {
   readHttpDiscoveryAt,
 } from '@shared/backend/http-discovery.js'
 import type { HttpDiscoveryRecord } from '@shared/backend/http-discovery.js'
-import { getOnethingRunDir, type OnethingStorePathOptions } from '@onething/runtime/storage'
+import { canonicalizeStorePath, getOnethingRunDir, type OnethingStorePathOptions, type StoreLease } from '@onething/runtime/storage'
+import { getCurrentBackendInstance } from '../current.js'
+
+export interface DiscoveryWriteOptions extends OnethingStorePathOptions {
+  lease?: StoreLease
+}
+
+function writableDiscoveryOptions(options: DiscoveryWriteOptions): OnethingStorePathOptions {
+  const lease = options.lease ?? getCurrentBackendInstance()?.storeLease
+  if (!lease) throw new Error('HTTP discovery changes require the Backend store lease')
+  lease.assertHeld()
+  const storePath = options.storePath ?? lease.storePath
+  if (canonicalizeStorePath(storePath) !== lease.storePath) throw new Error('HTTP discovery path is outside the held store lease')
+  return { ...options, storePath: lease.storePath }
+}
 
 export {
   HTTP_DISCOVERY_FILENAME,
@@ -47,9 +61,9 @@ export function readHttpDiscovery(
 
 export function writeHttpDiscovery(
   record: HttpDiscoveryRecord,
-  options: OnethingStorePathOptions = {},
+  options: DiscoveryWriteOptions = {},
 ): string {
-  const runDir = getOnethingRunDir(options)
+  const runDir = getOnethingRunDir(writableDiscoveryOptions(options))
   mkdirSync(runDir, { recursive: true, mode: 0o700 })
   const filePath = path.join(runDir, HTTP_DISCOVERY_FILENAME)
   writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 })
@@ -78,12 +92,9 @@ export function writeHttpDiscovery(
  * 陈旧记录不靠这里清 —— `isHttpDiscoveryAlive` 的两段探活(pid 活着 ∧ 端口连得上)
  * 才是判"这份宣告还算不算数"的地方,而写一份新的会直接覆盖旧的。
  */
-export function removeHttpDiscovery(options: OnethingStorePathOptions = {}): void {
-  try {
-    const record = readHttpDiscovery(options)
-    if (record?.pid !== process.pid) return
-    rmSync(getHttpDiscoveryPath(options), { force: true })
-  } catch {
-    /* 退出路径上不为删不掉一个瞬时文件而报错。 */
-  }
+export function removeHttpDiscovery(options: DiscoveryWriteOptions = {}): void {
+  const resolved = writableDiscoveryOptions(options)
+  const record = readHttpDiscovery(resolved)
+  if (record?.pid !== process.pid) return
+  rmSync(getHttpDiscoveryPath(resolved), { force: true })
 }

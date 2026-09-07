@@ -161,4 +161,33 @@ describe('project-dirs RPC domain', () => {
     })
     expect(response).toMatchObject({ ok: true, data: { success: false } })
   })
+  it('filters all indexed project roots before reading descriptions on a confined host', async () => {
+    const { resetHostLocalTrustForTests } = await import('../../server/host-trust.js')
+    resetHostLocalTrustForTests()
+    const context = { transport: 'http' as const, ownerUid: 'alice', workspaceId: 'tenant', sandboxRoot: '/workspace/alice' }
+    const owned = { id: 'owned', path: '/workspace/alice/project', paths: ['/workspace/alice/project'], lastUsedAt: 1 }
+    stores.store.list.mockReturnValue([
+      owned,
+      { id: 'foreign', path: '/workspace/bob/project', paths: ['/workspace/bob/project'] },
+      { id: 'mixed', path: '/workspace/alice/mixed', paths: ['/workspace/alice/mixed', '/workspace/bob/private'] },
+    ])
+    stores.store.get.mockReturnValue({ ...PROJECT, ...owned })
+    const { dispatchRpc } = await loadDomain()
+    const response = await dispatchRpc({ domain: 'projectDirs', method: 'list', payload: {} }, context)
+    expect(response).toMatchObject({ ok: true, data: { success: true, entries: [{ path: owned.path }] } })
+    expect(stores.store.get).toHaveBeenCalledTimes(1)
+    expect(stores.store.get).toHaveBeenCalledWith(owned.path)
+  })
+
+  it('does not return secondary project roots outside the caller sandbox', async () => {
+    const { resetHostLocalTrustForTests } = await import('../../server/host-trust.js')
+    resetHostLocalTrustForTests()
+    stores.store.get.mockReturnValue({ ...PROJECT, path: '/workspace/alice/project', paths: ['/workspace/alice/project', '/workspace/bob/private'] })
+    const { dispatchRpc } = await loadDomain()
+    expect(await dispatchRpc({
+      domain: 'projectDirs', method: 'get', payload: { path: '/workspace/alice/project' },
+    }, { transport: 'http', ownerUid: 'alice', workspaceId: 'tenant', sandboxRoot: '/workspace/alice' }))
+      .toMatchObject({ ok: true, data: { success: true, project: null } })
+  })
+
 })

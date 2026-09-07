@@ -13,6 +13,7 @@ import { Permission } from "../permission/index.js";
 import { Interaction } from '@onething/core/interaction';
 import * as store from "../../store.js";
 import { sessionReads } from "../../session/reads.js";
+import { sessionCommands } from "../../session/commands.js";
 import { getSkillsForSession } from "../skills/session-skills.js";
 import { mediaLibraryService } from "@onething/runtime/media/library-service-bound";
 import {
@@ -41,6 +42,8 @@ import {
 } from "./context-compact.js";
 import type { OnethingStreamProviderAdapterOptions } from '@onething/runtime/providers/stream-provider-adapter'
 import type { StreamEngineStoreAdapter, StreamEngineModelRegistryAdapter } from '@onething/core/engine'
+import { buildOnethingChatTitleGenerationRequest } from '@onething/runtime/providers'
+import { runAuxiliaryModelRequest } from './auxiliary-model-checkpoint.js'
 
 export type MainStreamEngineRuntime = OnethingProductStreamRuntime<
 	AppSettings,
@@ -68,19 +71,18 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 		listMessages: (sessionId) => sessionReads.listMessages(sessionId).messages,
 		getMessage: (sessionId, messageId) =>
 			sessionReads.getMessage(sessionId, messageId) as ChatMessage | undefined,
-		addMessage: (sessionId, message) => store.addMessage(sessionId, message),
+		addMessage: (sessionId, message) => sessionCommands.appendMessage(sessionId, { message, stampCollab: true }),
 		renameSession: (sessionId, name) => store.renameSession(sessionId, name),
 		updateMessageAndTruncate: (sessionId, messageId, newContent, options) =>
-			store.updateMessageAndTruncate(
-				sessionId,
-				messageId,
-				newContent,
-				options as Parameters<typeof store.updateMessageAndTruncate>[3],
-			),
+			sessionCommands.truncateFrom(sessionId, {
+				messageId, inclusive: false, newContent,
+				...(options && Object.prototype.hasOwnProperty.call(options, 'contentParts')
+					? { contentParts: options.contentParts as ChatMessage['contentParts'] } : {}),
+			}),
 		deleteMessageAndTruncate: (sessionId, messageId) =>
-			store.deleteMessageAndTruncate(sessionId, messageId),
+			sessionCommands.truncateFrom(sessionId, { messageId, inclusive: true }),
 		deleteMessage: (sessionId, messageId) =>
-			store.deleteMessage(sessionId, messageId),
+			sessionCommands.deleteMessage(sessionId, { messageId }),
 	};
 	const providerPort: OnethingStreamProviderAdapterOptions<ProviderConfig, AppSettings, ProviderAuthContext, ChatSession> = {
 		getSession: (sessionId) => store.getSession(sessionId),
@@ -101,7 +103,7 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 		createApiKeyAuth: (apiKey) => ({ kind: "api-key", apiKey }),
 		generateTitle: (providerId, providerConfig, content, options) => {
 			const titleOptions = options as Parameters<typeof generateChatTitle>[3];
-			return generateChatTitle(
+			const generate = () => generateChatTitle(
 				providerId,
 				providerConfig as unknown as Parameters<typeof generateChatTitle>[1],
 				content,
@@ -117,6 +119,13 @@ export function createMainStreamEngineRuntime(): MainStreamEngineRuntime {
 					),
 				},
 			);
+			const sessionId = titleOptions?.debugSessionId;
+			if (!sessionId) return generate();
+			const request = buildOnethingChatTitleGenerationRequest(content, titleOptions);
+			return runAuxiliaryModelRequest({
+				sessionId, purpose: 'title', provider: providerId, model: String(providerConfig?.model || ''),
+				messages: request.messages, params: request.options,
+			}, generate);
 		},
 	};
 	const modelsPort: StreamEngineModelRegistryAdapter = {

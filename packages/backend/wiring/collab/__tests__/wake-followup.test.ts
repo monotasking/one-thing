@@ -15,11 +15,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 type BusHandler = (envelope: { event?: Record<string, unknown> }) => void
 
 const mocks = vi.hoisted(() => ({
+  sessions: new Map<string, { ownerUserId?: string; ownerWorkspaceId?: string }>(),
   handlers: new Map<string, Set<BusHandler>>(),
   said: [] as Array<{ sessionId: string; content: string; room?: string }>,
   sayResult: { ok: true, messageId: 'poke-1' } as { ok: boolean; messageId?: string; error?: string },
   notes: [] as Array<{ roomSessionId: string; entry: Record<string, unknown> }>,
 }))
+
+vi.mock('../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({ findMeta: id => mocks.sessions.get(id) }) }
+})
 
 vi.mock('../../../events/index.js', () => ({
   getEventBus: () => ({
@@ -85,6 +91,8 @@ async function settleMicrotasks(): Promise<void> {
 }
 
 beforeEach(() => {
+  mocks.sessions.clear()
+  for (const id of [DM_ROOM, GAME_ROOM, 'agent-exec-fe-room-game']) mocks.sessions.set(id, {})
   vi.useFakeTimers()
   mocks.handlers.clear()
   mocks.said.length = 0
@@ -98,6 +106,16 @@ afterEach(() => {
 })
 
 describe('兑现时机', () => {
+  it('does not post after a captured target changes owner', async () => {
+    register()
+    mocks.sessions.get(GAME_ROOM)!.ownerUserId = 'foreign'
+    turnActive('pm', false)
+    await settleMicrotasks()
+    expect(mocks.said).toEqual([])
+    expect(mocks.notes).toEqual([])
+    expect(pendingCollabWakeCount()).toBe(0)
+  })
+
   it('对方回合 settle → poke 落群(带清零标记)', async () => {
     register()
     expect(pendingCollabWakeCount()).toBe(1)

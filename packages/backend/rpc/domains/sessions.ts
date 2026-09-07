@@ -63,7 +63,6 @@ import {
   getOnethingSessionMessagesForIpc,
   getOnethingSessionMessagesPageForIpc,
   getOnethingSessionTokenUsageForIpc,
-  listOnethingSessionsForIpc,
   listOnethingSessionUserMarkersForIpc,
   removeOnethingMessageForIpc,
   removeOnethingSystemMarkerMessageForIpc,
@@ -78,11 +77,16 @@ import {
 } from '@onething/runtime/sessions'
 import { isValidSpaceId } from '@onething/runtime/spaces/types'
 import { SESSION_EVENT_TYPES, emitCoreSessionEventSafely } from '@onething/core/events'
+import { collectSessionCascadeDeleteIds } from '@onething/core/session'
 import type { ChatMessage, ChatSession, GetSessionMessagesPageRequest, PermissionMode } from '@shared/ipc.js'
 import { DESKTOP_RPC_CONTEXT, type RpcDispatchContext } from '@shared/ipc/rpc.js'
 import type { SessionsRoutes } from '@shared/ipc/sessions.js'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
+import { listSessions } from '../../session/index.js'
+import { sessionCommands } from '../../session/commands.js'
+import { sessionDeletion } from '../../session/deletion.js'
+import { requestSessionOwner, sessionAccess, SessionAccessError, type SessionOwnershipRecord } from '../../session/access.js'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
 import { DEFAULT_AGENT_ID, agentExists } from '../../wiring/agents/index.js'
 import {
@@ -90,7 +94,6 @@ import {
   isCollabV3RuntimeRunning,
   type CollabGroupRoomInput,
 } from '../../wiring/collab/index.js'
-import { getStreamEngine } from '../../wiring/engine/index.js'
 import { consolePort, getLogger } from '../../wiring/logging/index.js'
 import { Permission } from '../../wiring/permission/index.js'
 import { readSessionSegments } from '../../wiring/toc/index.js'
@@ -108,6 +111,11 @@ import type { OnethingSessionsIpcLogger } from '@onething/runtime/sessions/ipc-o
 const log = getLogger('rpc.sessions')
 /** 投影层收的是鸭子 logger;与迁移前 `@main` 适配里那个 `console` 同一个位置。 */
 const consoleLog: ConsoleLikePort & OnethingSessionsIpcLogger = consolePort(log)
+
+function publicCreatedSession(session: ChatSession): ChatSession {
+  const { ownerUserId: _user, ownerWorkspaceId: _workspace, userId: _legacy, storageGeneration: _generation, ...publicSession } = session as ChatSession & SessionOwnershipRecord & { storageGeneration?: string }
+  return publicSession
+}
 
 /** 会话切换时把「当前会话」写进 app-state,并叫醒那扇独立的 todo 窗。 */
 function setCurrentSession(sessionId: string): void {
@@ -138,26 +146,18 @@ const WORKDIR_SANDBOX_ERROR = {
  * 底,往一个已经不存在的会话上写)。
  */
 function releaseServedSession(sessionId: string): void {
-  if (getStreamEngine().getController(sessionId)) {
-    getStreamEngine().abort(sessionId, 'session deleted')
-  }
+  // Cancellation and its settled result precede physical deletion in SessionDeletion.
   Permission.clearSession(sessionId)
   getEventBus().destroySession(sessionId)
   getStreamChannel().destroySession(sessionId)
 }
 
 export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
-  async list() {
-    return listOnethingSessionsForIpc({
-      listSessions: () => store.getSessionsList(),
-      logger: consoleLog,
-    })
+  async list(request, context = DESKTOP_RPC_CONTEXT) {
+    return listSessions(request, context)
   },
-  async listMeta() {
-    return listOnethingSessionsForIpc({
-      listSessions: () => store.getSessionsList(),
-      logger: consoleLog,
-    })
+  async listMeta(request, context = DESKTOP_RPC_CONTEXT) {
+    return sessionsRpcHandlers.list(request, context)
   },
   async activate(request) {
     return activateOnethingSessionForIpc({
@@ -226,7 +226,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       return { success: false, segments: [] }
     }
   },
-  async create(request) {
+  async create(request, context = DESKTOP_RPC_CONTEXT) {
     const { name, sessionId, workspaceId, kind, room } = request
     // **建房要 in-process 的 collab v3 actor 运行时**。P4 终态批 B(拍板 #12)
     // 之前这里对 `http` 上任何 `kind` 一律拒;放开 `collabRooms` 能力位之后,拒的
@@ -257,6 +257,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     // workspaceId 进 `workspaces/<id>/` 的路径片段,字符集卡死;非法值
     // 不报错、直接当没带(缺席 = default),不给它拖垮建会话这条路。
     const resolvedWorkspaceId = isValidSpaceId(workspaceId) ? workspaceId : undefined
+    if (sessionId) sessionAccess.resolveOptional(context, sessionId, 'write')
     // 建会话请求的三条规矩(自带 id 的格式、不认领已存在的会话、kind 只认
     // 'room')连同失败文案都在运行时里;这里只把请求递过去、把判定原样递回。
     const invalidRequest = await describeInvalidOnethingCreateSessionRequestForIpc({
@@ -269,17 +270,21 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       // 建房的规则书只有一本,在装配层(wiring/collab/room-create.ts)—— 成员过滤、
       // 查无此人、退休拒收、PM 在册、budgets 归一、dm 字面 true,连文案都与
       // 「改房」那条路(setCollabRoomConfig)对齐。这里只递形状,不留规则。
-      return ensureCollabGroupRoom(name || 'New Chat', room as CollabGroupRoomInput | undefined, {
+      const result = await ensureCollabGroupRoom(name || 'New Chat', room as CollabGroupRoomInput | undefined, {
         sessionId: sessionId ?? uuidv4(),
+        initialOwner: requestSessionOwner(context),
       })
+      if (result.session) result.session = publicCreatedSession(result.session)
+      return result
     }
-    return await createOnethingSessionForIpc({
+    const result = await createOnethingSessionForIpc({
       sessionId: sessionId ?? uuidv4(),
       name,
-      createSession: (id, nextName) =>
-        store.createSession(id, nextName, { workspaceId: resolvedWorkspaceId }),
+      createSession: (id, nextName) => publicCreatedSession(
+        store.createSession(id, nextName, { workspaceId: resolvedWorkspaceId, initialOwner: requestSessionOwner(context) })),
       logger: consoleLog,
     })
+    return result
   },
   async switch(request) {
     return switchOnethingSessionForIpc({
@@ -296,11 +301,14 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
-  async delete(request) {
+  async delete(request, context = DESKTOP_RPC_CONTEXT) {
+    const authorizedIds = sessionAccess.resolveAll(context,
+      collectSessionCascadeDeleteIds(store.getSessionsList(), request.sessionId), 'delete')
     return deleteOnethingSessionForIpc({
       sessionId: request.sessionId,
-      deleteSession: (id) => {
-        const result = store.deleteSession(id)
+      deleteSession: async (id) => {
+        const result = await sessionDeletion.delete(id, authorizedIds,
+          ids => { sessionAccess.resolveAll(context, ids, 'delete') })
         // The AI todo is keyed by session id, so it goes with the session
         // — including any children the delete cascaded to.
         for (const deletedId of result.deletedIds) {
@@ -440,17 +448,18 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
         store.updateSessionPermissionMode(id, nextPermissionMode),
     })
   },
-  async createBranch(request) {
+  async createBranch(request, context = DESKTOP_RPC_CONTEXT) {
     const adaptersPort: CreateOnethingBranchSessionAdapters<ChatSession, ChatMessage, ChatSession> = {
       createId: uuidv4,
       getSession: id => store.getSession(id),
-      createBranchSession: input => store.createBranchSession(
+      createBranchSession: input => publicCreatedSession(store.createBranchSession(
         input.branchId,
         input.branchName,
         input.parentSessionId,
         input.branchFromMessageId,
         input.inheritedMessages,
-      ),
+        { initialOwner: requestSessionOwner(context) },
+      )),
     };
     return createOnethingBranchSessionForIpc<ChatSession, ChatMessage, ChatSession>({
       parentSessionId: request.parentSessionId,
@@ -459,8 +468,13 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       logger: consoleLog,
     })
   },
-  async getCacheStats() {
-    return store.getSessionCacheStats()
+  async getCacheStats(_request, context = DESKTOP_RPC_CONTEXT) {
+    const stats = store.getSessionCacheStats()
+    const cachedSessionIds = stats.cachedSessionIds.filter(id => {
+      try { sessionAccess.resolve(context, id, 'read'); return true }
+      catch (error) { if (error instanceof SessionAccessError) return false; throw error }
+    })
+    return { ...stats, size: cachedSessionIds.length, cachedSessionIds }
   },
   async evictCache(request) {
     store.invalidateSessionCache(request.sessionId)
@@ -477,7 +491,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     return addOnethingSystemMessageForIpc({
       sessionId: request.sessionId,
       message: request.message,
-      addMessage: (id, nextMessage) => store.addMessage(id, nextMessage),
+      addMessage: (id, message) => sessionCommands.appendMessage(id, { message, stampCollab: true }),
       logger: consoleLog,
     })
   },
@@ -486,7 +500,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       sessionId: request.sessionId,
       markerType: 'files-changed',
       getSession: id => store.getSession(id),
-      deleteMessage: (id, messageId) => store.deleteMessage(id, messageId),
+      deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
       logger: consoleLog,
     })
   },
@@ -495,7 +509,7 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
       sessionId: request.sessionId,
       markerType: 'git-status',
       getSession: id => store.getSession(id),
-      deleteMessage: (id, messageId) => store.deleteMessage(id, messageId),
+      deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
       logger: consoleLog,
     })
   },
@@ -503,9 +517,8 @@ export const sessionsRpcHandlers: RpcRouteHandlers<SessionsRoutes> = {
     return removeOnethingMessageForIpc({
       sessionId: request.sessionId,
       messageId: request.messageId,
-      deleteMessage: (id, nextMessageId) => store.deleteMessage(id, nextMessageId),
+      deleteMessage: (id, messageId) => sessionCommands.deleteMessage(id, { messageId }),
       logger: consoleLog,
     })
   },
 }
-

@@ -55,6 +55,7 @@ export async function executeToolDirectly(
     sessionId: string
     messageId: string
     toolCallId?: string
+    executionContext?: unknown
     workingDirectory?: string  // Session's active working directory
     workingDirectoryRoots?: string[] // Additional sandbox roots
     abortSignal?: AbortSignal
@@ -161,7 +162,7 @@ export async function executeToolAndUpdate(
     store: toolExecutionStore,
     emitter,
     executeToolDirectly: (name, directArgs, directContext) =>
-      executeToolDirectly(name, directArgs, directContext as Parameters<typeof executeToolDirectly>[2]),
+      executeToolDirectly(name, directArgs, { ...directContext, executionContext: ctx.executionContext } as Parameters<typeof executeToolDirectly>[2]),
     createStep,
     now: Date.now,
     logger: consoleLog,

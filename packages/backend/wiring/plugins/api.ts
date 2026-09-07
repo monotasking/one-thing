@@ -20,7 +20,7 @@ import {
   isLocalPlugin,
 } from './loader.js'
 import { createPluginSessionHostPorts } from './sessions.js'
-import { pluginLlmComplete } from './llm.js'
+import { capturePluginLlmScope, type PluginLlmScope } from './llm.js'
 import { forgetPluginNotifySoundThrottle, resolvePluginNotifySound } from './notify-sound.js'
 import { clearPluginBackgroundParams, setPluginBackgroundParams } from './background.js'
 import { pluginStorageImageExists } from './file-import.js'
@@ -28,10 +28,12 @@ import { registerIMConnector } from '../../channel/connector-registry.js'
 import { registerPluginDeepLinkAction } from '../deeplink/registry.js'
 import { registerPluginSearchProvider } from '../search/plugin-search-registry.js'
 import { registerPluginCredentialStrategy } from '../providers/credential-strategy.js'
+import { captureCredentialStrategyScope, type CredentialStrategyScope } from '../providers/credential-strategy-lifetime.js'
 import {
   forgetUiActionGestures,
   PLUGIN_FILES_QUOTA_WARNING_EVENT,
   PLUGIN_PERMISSION_STORAGE_EXTERNAL_ROOT, type DisposeCorePluginStateOptions,
+  PluginLlmError,
 } from '@onething/core/plugins'
 import type { PluginContributionUiSlot, PluginFailureScope } from '@onething/core/plugins'
 import type { IMConnector } from '@shared/ipc.js'
@@ -233,6 +235,8 @@ export function createPluginAPI(
   // stateRef 后填(createCorePluginAPI 的返回值才有 state),而 store 只在调用时
   // 读它 —— 所以先建 store、后接 state 是安全的。
   const stateRef: { current: PluginState | null } = { current: null }
+  const llmScope = capturePluginLlmScope(pluginId)
+  const credentialScope = captureCredentialStrategyScope()
   const store = new PluginStore(pluginId, {
     isDisposing: () => Boolean(stateRef.current?.disposing),
   })
@@ -432,7 +436,7 @@ export function createPluginAPI(
      * 某个 provider 上把 policy 选成 `plugin:<id>:<name>` 之后,它才会被问到。
      */
     registerCredentialStrategy(id, registration) {
-      return registerPluginCredentialStrategy(id, registration)
+      return registerPluginCredentialStrategy(id, registration, credentialScope)
     },
     emitPluginEvent(id, eventName, payload) {
       // 自定义事件名是运行期拼出来的,不在 GlobalEvent 联合里 —— 这处 cast
@@ -459,7 +463,10 @@ export function createPluginAPI(
      * N7-b:受管 LLM 调用。实现在 `./llm.ts` —— provider 解析 / 计费 /
      * 超时 / 配额三要素全在那里,core 只做声明门与输入校验。
      */
-    llmComplete: (id, options) => pluginLlmComplete(id, options),
+    llmComplete: (_id, options) => {
+      if (!llmScope) throw new PluginLlmError('unsupported', 'plugin model service is not bound to a backend')
+      return llmScope.complete(options)
+    },
     /**
      * 横幅 + 可选一声(M1)。
      *
@@ -619,6 +626,8 @@ export function createPluginAPI(
   >(createPluginApiOptions)
 
   stateRef.current = result.state
+  if (llmScope) llmScopes.set(result.state, llmScope)
+  credentialScopes.set(result.state, credentialScope)
   // 级联(§3.3):消息/会话删除事件携带坐标,存在即清。订阅的生命周期与
   // 插件 state 对齐 —— 排进 storeClosers,拆除时最先退订。
   const cascadeUnsubs = [
@@ -664,8 +673,23 @@ export function createPluginAPI(
  * 两份 state(refresh 与 enable 各一份),按 id 索引会关错那一份。
  */
 const storeClosers = new WeakMap<PluginState, () => void>()
+const llmScopes = new WeakMap<PluginState, PluginLlmScope>()
+const credentialScopes = new WeakMap<PluginState, CredentialStrategyScope>()
+
+export async function drainPlugin(state: PluginState): Promise<void> {
+  const results = await Promise.allSettled([
+    state.disposal,
+    Promise.resolve().then(() => llmScopes.get(state)?.drain()),
+    Promise.resolve().then(() => credentialScopes.get(state)?.drain()),
+  ])
+  const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+  if (failures.length === 1) throw failures[0]!.reason
+  if (failures.length > 1) throw new AggregateError(failures.map(result => result.reason), 'Plugin cleanup failed')
+}
 
 export function disposePlugin(state: PluginState): void {
+  llmScopes.get(state)?.quiesce()
+  credentialScopes.get(state)?.quiesce()
   const disposeCorePluginStateOptions: DisposeCorePluginStateOptions = {
     /*
      * core 按注册过的工具 id 逐个调这个口(`builtin-teardown.test.ts` 钉的就是
@@ -673,15 +697,11 @@ export function disposePlugin(state: PluginState): void {
      * 失败模式了。目录没建起来时返回 false,无害。
      */
     unregisterTool: (toolId: string) => unregisterPluginToolFromCatalog(toolId),
+    // Keep both write faces available while asynchronous onDispose callbacks
+    // save their final state. A close failure remains owned by drainPlugin.
+    finalize: () => storeClosers.get(state)?.(),
   };
-  disposeCorePluginState(state, disposeCorePluginStateOptions)
-  // KV **在 onDispose 回调全部跑完之后**才关 —— 插件在 onDispose 里
-  // `api.store.set` 存盘是最自然的收尾写法,提前关掉就是静默丢数据。
-  try {
-    storeClosers.get(state)?.()
-  } catch (error) {
-    log.error('close plugin KV store failed', {}, error)
-  }
+  void disposeCorePluginState(state, disposeCorePluginStateOptions)
   // R5 携带项:还没到点的面板刷新补发一并取消 —— 否则一个已停用的插件会在
   // 200ms 后要求重画一个已经不存在的面板。
   if (state.api?.id) cancelPanelRefreshWindows(state.api.id)

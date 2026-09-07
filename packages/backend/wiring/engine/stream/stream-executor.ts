@@ -17,6 +17,7 @@ import {
   type BeginSessionRunInput,
 } from '../../../session/runs.js'
 import { sessionCommands } from '../../../session/commands.js'
+import { ensureSessionWritable } from '../../../session/index.js'
 import * as modelRegistry from '../../providers/model-registry.js'
 import {
   CODEX_NATIVE_IMAGE_GENERATION_TOOL,
@@ -83,6 +84,7 @@ export interface StreamExecutionParams {
   initialToolChoice?: CoreInitialToolChoice
   /** Actor behind this turn; minted at the engine boundary, carried to tools. */
   principal?: Principal
+  executionContext?: unknown
   /**
    * S1a(§10.2):这次执行是**哪一种** —— send / retry / edit-resend / resume。
    * 由 core 引擎的四个入口各自盖章;缺省按 `send` 记(总比记成"不知道"强,
@@ -313,6 +315,7 @@ export async function executeMessageStream(
   params: StreamExecutionParams,
   abortController?: AbortController
 ): Promise<StreamExecutionResult> {
+  await ensureSessionWritable(params.sessionId)
   const engine = getStreamEngine()
   // 助手占位消息在进这扇门之前就建好了 —— 把它的时刻带进 `run/start`,投影
   // 物化出来的那一条才与事实同一个时刻(S1b 的影子断言按它比)。
@@ -384,7 +387,7 @@ async function runMessageStream(
 ): Promise<StreamExecutionResult> {
   const streamControllerRegistry: CoreStreamControllerRegistry<AbortController, PendingMessageQueue> = {
     registerController: (sessionId, controller) => engine.registerController(sessionId, controller),
-    removeController: sessionId => engine.removeController(sessionId),
+    removeController: (sessionId, controller) => engine.removeController(sessionId, controller),
     getSteeringQueue: sessionId => engine.getSteeringQueue(sessionId),
     getFollowUpQueue: sessionId => engine.getFollowUpQueue(sessionId),
   };

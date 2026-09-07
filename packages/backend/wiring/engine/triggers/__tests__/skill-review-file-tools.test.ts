@@ -7,7 +7,7 @@
  * `toolkitFileToolAdapter`(目录里的 `Tool` → 同一张适配器),外加两条新语义:
  * 恒 allow 的授权者(后台触发不弹卡),以及"三只缺一整组不给"。
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Catalog, Intent, Tool as ToolkitTool } from '@onething/core/toolkit'
 import type { Result, RunContext, ToolSpec } from '@onething/core/toolkit'
 import { configureToolkitCatalog, createReadTool } from '@onething/runtime/toolkit'
@@ -15,6 +15,8 @@ import {
   createToolkitSkillReviewFileToolAdapters,
   toolkitFileToolAdapter,
 } from '../skill-review.js'
+// Schema/adapter tests provide metadata only; the fake FileTool performs no I/O.
+vi.mock('../../../../stores/sessions.js', () => ({ getSession: () => ({ id: 's1' }) }))
 
 class FileTool extends ToolkitTool<{ path: string }, { path: string }> {
   readonly spec: ToolSpec

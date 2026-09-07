@@ -40,6 +40,9 @@ import { scanJsonlLog } from '@onething/core/session'
 import type { ChatMessage, SessionMeta } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionReads } from '../../session/reads.js'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import type { RuntimeRequestContext } from '@onething/core'
 import { findAgent, listAgents } from '../agents/index.js'
 import { resolveDmTarget } from './dm-target.js'
 import { resolveUserIdentity } from './user-identity.js'
@@ -105,9 +108,9 @@ function resolveSelfAgentId(
  * 排序按 `updatedAt` 降序：上限截断时留下的是最近活动过的那些，那也是命中概率
  * 最高的那些。
  */
-function candidateRooms(agentId: string): Candidate[] {
+function candidateRooms(agentId: string, executionContext: RuntimeRequestContext): Candidate[] {
   const out: Candidate[] = []
-  for (const meta of store.getSessionsList()) {
+  for (const meta of sessionAccess.filter(executionContext, store.getSessionsList())) {
     if (meta.kind !== 'room') continue
     const visibleUntil = collabRoomVisibleUntil(meta.room, agentId)
     if (visibleUntil === undefined) continue
@@ -340,12 +343,14 @@ export async function searchCollabHistory(input: {
   until?: string
   limit: number
   cursor?: string
-}): Promise<HistoryToolResult> {
+}, options: { executionContext?: unknown } = {}): Promise<HistoryToolResult> {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  sessionAccess.resolveOptional(executionContext, input.sessionId, 'read')
   const self = resolveSelfAgentId(input.sessionId)
   if (!self.ok) return { ok: false, error: self.error }
   const agentId = self.agentId
 
-  const candidates = candidateRooms(agentId)
+  const candidates = candidateRooms(agentId, executionContext)
   if (candidates.length === 0) return { ok: true, entries: [], total: 0, noRooms: true }
 
   let scope = candidates
@@ -395,6 +400,7 @@ export async function searchCollabHistory(input: {
 
   for (const candidate of toScan) {
     if (bytes >= HISTORY_MAX_BYTES) break
+    sessionAccess.resolveAll(executionContext, [input.sessionId, candidate.meta.id], 'read')
     const { messages, bytes: read } = readRoomMessages(candidate.meta.id)
     bytes += read
     scannedRooms += 1
@@ -462,4 +468,3 @@ export async function searchCollabHistory(input: {
     ...(hasMore && last ? { nextCursor: cursorOf(last, print) } : {}),
   }
 }
-

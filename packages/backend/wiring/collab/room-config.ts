@@ -35,6 +35,10 @@ import {
 } from '@shared/ipc.js'
 import * as store from '../../store.js'
 import { sessionCommands } from '../../session/commands.js'
+import { sessionAccess } from '../../session/access.js'
+import { fixedExecutionContext } from '../engine/execution-context.js'
+import type { RuntimeRequestContext } from '@onething/core'
+import { ownedCollabSessionId } from './owned-session-id.js'
 import { getEventBus } from '../../events/index.js'
 import { findAgent } from '../agents/index.js'
 import { applyBoardAction, clearCollabBoard } from './board-store.js'
@@ -51,6 +55,7 @@ import { forgetCollabRoomBudgetCache } from './budget.js'
 import { abortCollabRoomTurnForStop } from './actors/stop-door.js'
 import {
   forgetCollabV3RoomBudget,
+  collabV3RoomStopTargets,
   freezeCollabV3RoomWork,
   postCollabV3MembershipChanged,
   resumeCollabV3RoomWork,
@@ -114,106 +119,104 @@ const QUIESCE_INTERVAL_MS = 50
  */
 export async function clearCollabRoomHistory(
   roomSessionId: string,
-  options: { includeMemberDms?: boolean } = {},
+  options: { includeMemberDms?: boolean; executionContext?: RuntimeRequestContext } = {},
 ): Promise<CollabRoomClearHistoryResult> {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  sessionAccess.resolve(executionContext, roomSessionId, 'write')
   const session = store.getSession(roomSessionId)
   if (!session || session.kind !== 'room' || !session.room) {
     return { success: false, error: 'Not a room session' }
   }
 
-  // ① 先停。**幂等**地反复停:等待期间还可能有回合从别的路醒过来(一条刚投进
-  //    房间信箱的 posted 会在这几十毫秒里被处理成一次授牌)。喊停走的就是停止
-  //    按钮那扇门 —— 换代 + 撤牌 + 掐流,「喊停清三样」一件不少。
-  for (let attempt = 0; attempt < QUIESCE_ATTEMPTS; attempt++) {
-    abortCollabRoomTurnForStop(roomSessionId)
-    freezeCollabV3RoomWork(roomSessionId)
-    if (collabV3TurnsInRoom(roomSessionId).length === 0) break
-    await new Promise(resolve => setTimeout(resolve, QUIESCE_INTERVAL_MS))
-  }
-  // 等待耗尽不再无声放行(四审 A-3):一个长工具回合能活过 3s,放行的下场是
-  // "清空成功"之后房间又冒出消息。此刻**什么都还没删**,失败是干净的 —— 用户
-  // 稍后重试即可,比一半旧一半新的房间体面得多。
-  if (collabV3TurnsInRoom(roomSessionId).length > 0) {
-    return { success: false, error: '仍有回合在收尾,请稍后重试' }
-  }
-
-  // ② 再删。成员取「在册 ∪ 曾在册」:一位被移出的同事,它的执行会话里同样躺着
-  //    这间房的历史,而它随时可能被拉回来 —— 那时旧记忆会原地复活。
-  const memberAgentIds = [...new Set([
-    ...(session.room.memberAgentIds ?? []),
-    ...(session.room.formerMembers ?? []).map(entry => entry.agentId),
+  // Freeze the full expansion before aborting or changing anything. A member DM
+  // is shared by its participants, so room access alone never authorizes it.
+  const membersOf = (room: NonNullable<typeof session>) => [...new Set([
+    ...(room.room?.memberAgentIds ?? []),
+    ...(room.room?.formerMembers ?? []).map(entry => entry.agentId),
   ])]
-  // 看板与它的审计轨**排在转录前面**:上面停掉的执行会走一趟收尾,而收尾的第一
-  // 句是「这张卡还在不在」——卡先没了,它就一行都贴不出来;反过来先清转录,
-  // 那行说明会落进一间已经清空的房。
-  const { clearedTaskCount } = await clearCollabBoard(roomSessionId)
-  const room = await sessionCommands.replaceAll(roomSessionId, { messages: [], reason: 'clear' })
-  let clearedSessionCount = 0
-  for (const agentId of memberAgentIds) {
-    // **只清按房 scoped 的执行会话**(四审 A-4)。全局 legacy 会话
-    // (`agent-exec-<agentId>`,team-v2 之前的形状)是该 agent **所有房间**共用的:
-    // 清房 A 会抹掉它在房 B/C 的转录与 W23 幂等台账,旧房 boot 时已应答的消息
-    // 会被整批重放。legacy 里的旧内容进不了新回合的上下文(投影与游标只读
-    // scoped 会话),清它对记忆卫生零收益,只有跨房代价。
-    const execSessionId = collabAgentSessionId(agentId, roomSessionId)
-    if (!execSessionId || !store.getSession(execSessionId)) continue
-    const cleared = await sessionCommands.replaceAll(execSessionId, { messages: [], reason: 'clear' })
-    if (!cleared.replaced) continue
-    clearedSessionCount += 1
-    resetCollabSeenCursor(execSessionId)
-    broadcastClearedTranscript(execSessionId)
-  }
-
-  /**
-   * v3 的那本账整个换新。
-   *
-   * 「对话记忆」在 v2 散在七处(其中三处是协调器的进程内表);v3 里房间那一份
-   * **全在账里**(水位、链数、举手、租约、发言策略),所以这里只剩一行 —— 但
-   * 少这一行,清空之后的第一个回合会带着旧水位跑:模型读到的"未读"是空的,
-   * 而房间以为讨论已经进行到第 6 轮。
-   *
-   * 运行时没起(或这不是一间 v3 房)时它是空操作。
-   */
-  await resetCollabV3RoomAccount(roomSessionId)
-  forgetCollabDigests(roomSessionId)
-  // 「刚才」清零。表项被删之后活房间会按需重建 —— 重建出来的正是一份空的。
-  forgetCollabInspector(roomSessionId)
-
-  // ③ 再播。
-  broadcastClearedTranscript(roomSessionId)
-  broadcastCollabCoordinator(roomSessionId)
-
-  // ④ 连带成员间私聊房(可选,2026-08-02 真机诉求:狼人杀发牌记录全在私聊里,
-  //    只清群房等于没清干净)。pair 房是**跨群共享**的(Iris⇄Bram 只有一间),
-  //    所以这是显式选项而不是默认行为;递归调用自身走完全同一套停-删-播,
-  //    `includeMemberDms: false` 封住递归(pair 房的成员对就是它自己)。
-  let clearedDmRoomCount = 0
-  let clearedDmTaskCount = 0
+  const plannedRooms = [session]
   if (options.includeMemberDms) {
-    const memberSet = new Set(memberAgentIds)
-    for (const meta of store.getSessionsList() as Array<{ id: string; kind?: string }>) {
+    const members = new Set(membersOf(session))
+    for (const meta of store.getSessionsList()) {
       if (meta.kind !== 'room' || meta.id === roomSessionId) continue
       const candidate = store.getSession(meta.id)
-      if (candidate?.kind !== 'room' || candidate.room?.dm !== true) continue
-      const pair = candidate.room?.memberAgentIds ?? []
-      if (pair.length !== 2 || !pair.every(agentId => memberSet.has(agentId))) continue
-      const dmResult = await clearCollabRoomHistory(meta.id, { includeMemberDms: false })
-      if (!dmResult.success) continue
-      clearedDmRoomCount += 1
-      clearedSessionCount += dmResult.clearedSessionCount ?? 0
-      clearedDmTaskCount += dmResult.clearedTaskCount ?? 0
+      const pair = candidate?.room?.memberAgentIds ?? []
+      if (candidate?.kind === 'room' && candidate.room?.dm === true
+        && pair.length === 2 && pair.every(agentId => members.has(agentId))) {
+        plannedRooms.push(candidate)
+      }
+    }
+  }
+  const plan = plannedRooms.map(room => ({
+    roomId: room.id,
+    executionIds: membersOf(room)
+      .map(agentId => ownedCollabSessionId(collabAgentSessionId(agentId, room.id), executionContext))
+      .filter((id): id is string => Boolean(id && store.getSession(id))),
+  }))
+  const targetIds = plan.flatMap(room => [...collabV3RoomStopTargets(room.roomId), ...room.executionIds])
+  const authorize = () => {
+    if (plan.some(room => collabV3RoomStopTargets(room.roomId).some(id => !targetIds.includes(id)))) {
+      throw new Error('房间执行状态已变化,请重试')
+    }
+    return sessionAccess.resolveAll(executionContext, targetIds, 'write')
+  }
+  authorize()
+
+  // Quiesce every planned room before deleting any transcript. Never discover
+  // additional targets after this point, including after an asynchronous wait.
+  for (const target of plan) {
+    for (let attempt = 0; attempt < QUIESCE_ATTEMPTS; attempt++) {
+      authorize()
+      // A late activation must not silently enlarge the authorized batch.
+      if (collabV3RoomStopTargets(target.roomId).some(id => !targetIds.includes(id))) {
+        return { success: false, error: '房间执行状态已变化,请重试' }
+      }
+      abortCollabRoomTurnForStop(target.roomId, { executionContext })
+      authorize()
+      freezeCollabV3RoomWork(target.roomId, { executionContext })
+      if (collabV3TurnsInRoom(target.roomId).length === 0) break
+      await new Promise(resolve => setTimeout(resolve, QUIESCE_INTERVAL_MS))
+    }
+    if (collabV3TurnsInRoom(target.roomId).length > 0) {
+      return { success: false, error: '仍有回合在收尾,请稍后重试' }
     }
   }
 
+  let clearedMessageCount = 0
+  let clearedSessionCount = 0
+  let clearedTaskCount = 0
+  for (const target of plan) {
+    authorize()
+    const board = await clearCollabBoard(target.roomId)
+    authorize()
+    const room = await sessionCommands.replaceAll(target.roomId, { messages: [], reason: 'clear' })
+    if (target.roomId === roomSessionId) clearedMessageCount = room.previousCount
+    clearedTaskCount += board.clearedTaskCount
+    for (const execSessionId of target.executionIds) {
+      authorize()
+      const cleared = await sessionCommands.replaceAll(execSessionId, { messages: [], reason: 'clear' })
+      if (!cleared.replaced) continue
+      authorize()
+      clearedSessionCount += 1
+      resetCollabSeenCursor(execSessionId)
+      broadcastClearedTranscript(execSessionId)
+    }
+    authorize()
+    await resetCollabV3RoomAccount(target.roomId)
+    authorize()
+    forgetCollabDigests(target.roomId)
+    forgetCollabInspector(target.roomId)
+    broadcastClearedTranscript(target.roomId)
+    broadcastCollabCoordinator(target.roomId)
+  }
   return {
     success: true,
-    clearedMessageCount: room.previousCount,
+    clearedMessageCount,
     clearedSessionCount,
-    clearedTaskCount: clearedTaskCount + clearedDmTaskCount,
-    ...(options.includeMemberDms ? { clearedDmRoomCount } : {}),
+    clearedTaskCount,
+    ...(options.includeMemberDms ? { clearedDmRoomCount: plan.length - 1 } : {}),
   }
 }
-
 /**
  * 让渲染层把这条会话的消息列表整体换成空的。
  *
@@ -229,7 +232,13 @@ function broadcastClearedTranscript(sessionId: string): void {
 }
 
 /** Room-wide pause switch (总闸): freezes activations AND all work streams. */
-export function setCollabRoomFrozen(roomSessionId: string, frozen: boolean): boolean {
+export function setCollabRoomFrozen(
+  roomSessionId: string,
+  frozen: boolean,
+  options: { executionContext?: RuntimeRequestContext } = {},
+): boolean {
+  const executionContext = fixedExecutionContext(options.executionContext)
+  sessionAccess.resolveAll(executionContext, collabV3RoomStopTargets(roomSessionId), 'write')
   const session = store.getSession(roomSessionId)
   if (!session || session.kind !== 'room' || !session.room) return false
   const updated = store.updateSessionCollab(roomSessionId, {
@@ -240,8 +249,8 @@ export function setCollabRoomFrozen(roomSessionId: string, frozen: boolean): boo
     // 冻结门本身是房间**现读** `session.room.frozen`(v3 的 gates),所以落盘那一行
     // 已经把闸关上了。这里要做的只剩"把已经在跑的停下来":在外的牌与在飞的流走
     // 停止按钮那扇门,在飞的活走子清单。
-    abortCollabRoomTurnForStop(roomSessionId)
-    freezeCollabV3RoomWork(roomSessionId)
+    abortCollabRoomTurnForStop(roomSessionId, { executionContext })
+    freezeCollabV3RoomWork(roomSessionId, { executionContext })
     postSystemLine(roomSessionId, '房间已全部暂停:进行中的执行已中止,恢复后可重新指派')
   } else {
     void resumeCollabV3RoomWork(roomSessionId).catch((error: unknown) => {

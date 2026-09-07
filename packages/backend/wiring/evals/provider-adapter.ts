@@ -6,8 +6,8 @@
  * configured provider credentials.
  *
  * Design D3: The runner does not embed an HTTP client. This adapter
- * provides the model-call function using settings-derived API keys
- * and base URLs, so eval runs use the same provider configuration
+ * provides the model-call function using the default space's selected
+ * credential and configured base URL, so eval runs use the same provider configuration
  * as real chats (same base URL, same API key, same auth).
  *
  * Future: replace raw fetch with proper provider-stack integration
@@ -24,7 +24,10 @@
 import * as store from "../../store.js";
 import type { EvalModelCaller } from "@onething/runtime";
 import { onethingBaseBuiltinProviders } from "@onething/runtime/providers";
-import { recordUsage } from "../usage/index.js";
+import { resolveProviderApiKey } from "@onething/runtime/providers/env.wiring";
+import { DEFAULT_SPACE_ID } from "@onething/runtime/spaces/types";
+import { resolveSpaceProviderCredentialForSpace } from "../providers/space-credentials.js";
+import { captureUsageRecorder } from "../usage/index.js";
 import { getLogger } from "../logging/index.js";
 
 const log = getLogger("evals.provider");
@@ -46,16 +49,23 @@ export function resolveEvalsCredentials(
 ): ResolvedEvalsCredentials {
 	const settings = store.getSettings();
 	const providerConfig = (settings?.ai?.providers as any)?.[providerId];
+	const resolution = resolveSpaceProviderCredentialForSpace(DEFAULT_SPACE_ID, providerId);
 
-	if (providerConfig?.authType === "oauth") {
+	if (providerConfig?.authType === "oauth"
+		|| resolution.kind === "oauth-entry"
+		|| (resolution.kind === "unavailable" && resolution.reason === "oauth")) {
 		return {
 			ok: false,
 			reason: `Provider "${providerId}" uses OAuth; eval runs currently support API-key providers only`,
 		};
 	}
 
-	const apiKey: string =
-		providerConfig?.apiKey || (settings?.ai as any)?.apiKey || "";
+	if (resolution.kind === "unavailable" && resolution.reason === "exhausted") {
+		return { ok: false, reason: resolution.message };
+	}
+	const apiKey = resolution.kind === "entry"
+		? resolution.entry.apiKey?.trim()
+		: resolution.kind === "env" ? resolveProviderApiKey(providerId, undefined) : undefined;
 	// Fall back to the provider's own registered default base URL, not a
 	// hardcoded OpenAI endpoint — e.g. deepseek without an explicit baseUrl
 	// must resolve to https://api.deepseek.com.
@@ -63,7 +73,8 @@ export function resolveEvalsCredentials(
 		(p) => p.id === providerId,
 	)?.info.defaultBaseUrl;
 	const baseUrl: string =
-		providerConfig?.baseUrl || builtinDefault || "https://api.openai.com/v1";
+		(resolution.kind === "entry" && resolution.entry.baseUrl)
+		|| providerConfig?.baseUrl || builtinDefault || "https://api.openai.com/v1";
 
 	if (!apiKey) {
 		return {
@@ -78,8 +89,13 @@ export function resolveEvalsCredentials(
 export function createEvalsModelCaller(
 	providerId: string,
 	model: string,
+	lifecycle: { signal?: AbortSignal } = {},
 ): EvalModelCaller {
+	const recordUsage = captureUsageRecorder();
 	return async (opts) => {
+		const signal = lifecycle.signal && opts.signal
+			? AbortSignal.any([lifecycle.signal, opts.signal]) : lifecycle.signal ?? opts.signal;
+		signal?.throwIfAborted();
 		// Scene replays carry the ORIGIN provider/model (scene/params.json).
 		// Route to that provider when its credentials resolve — otherwise a
 		// claude incident would silently "reproduce" on the eval-default
@@ -175,7 +191,7 @@ export function createEvalsModelCaller(
 				Authorization: `Bearer ${apiKey}`,
 			},
 			body: JSON.stringify(body),
-			signal: opts.signal,
+			signal,
 		});
 
 		if (!response.ok) {

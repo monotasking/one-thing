@@ -17,6 +17,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { collectLogRecordsForTests } from '../../logging/index.js'
 import { bindSessionFacadeMock } from '../../../session/testing/facade-mock.js'
 import { COLLAB_SAY_SOURCE } from '@onething/runtime/collab'
+import { tmpdir } from 'node:os'
+import { planAgentLoopRuntimePreparation } from '@onething/core/engine'
+import { createAgentProviderFromRuntime, type AgentProviderRuntimeConfig } from '@onething/runtime/agent-loop/providers/factory'
 import {
   clearHostToolContexts,
   resolveHostToolContext,
@@ -34,6 +37,8 @@ interface FakeMessage {
 
 interface FakeSession {
   id: string
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   kind?: string
   agentId?: string
   room?: { memberAgentIds: string[]; frozen?: boolean }
@@ -53,6 +58,7 @@ const mocks = vi.hoisted(() => ({
   profileTools: null as string[] | null,
   /** 注册表里有哪些工具对象。 */
   registry: new Map<string, unknown>(),
+  hostTools: [] as import('@onething/runtime/external-agents').HostMcpHostTool[],
 }))
 
 // P0.2 ③:业务代码改走 `sessionCommands` / `sessionReads`,而它们静态依赖真的
@@ -61,6 +67,28 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../session/reads.js', () => import('../../../session/testing/facade-mock.js'))
 vi.mock('../../../session/commands.js', () => import('../../../session/testing/facade-mock.js'))
 bindSessionFacadeMock((id: string) => mocks.sessions.get(id))
+
+vi.mock('../../../session/access.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
+  }) }
+})
+
+// Keep the actual host tool wrapper and MCP handler, replacing only SDK registration.
+vi.mock('@onething/runtime/external-agents', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@onething/runtime/external-agents')>(),
+  createHostMcpServer: async (input: { tools: typeof mocks.hostTools }) => {
+    mocks.hostTools = [...input.tools]
+    return { name: 'onething', config: {}, toolNames: input.tools.map(tool => `mcp__onething__${tool.id}`) }
+  },
+}))
+
+vi.mock('../../toolkit/wiring.js', () => ({
+  runToolkitToolDirectly: async (_id: string, args: Record<string, unknown>, context: {
+    sessionId: string; messageId: string; executionContext?: unknown
+  }) => ({ success: true, data: await sendMessageHostTool.execute(args, context) }),
+}))
 
 vi.mock('../../../store.js', () => ({
   getSettings: () => mocks.settings,
@@ -124,7 +152,7 @@ const {
 const sendMessageTool = createSendMessageTool({
   sessionKind: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.kind,
   sessionAgentId: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.agentId,
-  speak: speakIntoCollabRoom,
+  speak: (input, executionContext) => speakIntoCollabRoom(input, { executionContext }),
   sendDm: async () => ({ ok: false, error: '这个文件不测私聊档' }),
 })
 
@@ -136,7 +164,7 @@ const sendMessageHostTool = {
   id: 'send_message',
   description: sendMessageTool.spec.description,
   parameters: contractForSchema(sendMessageTool.spec.input)?.zod,
-  async execute(args: Record<string, unknown>, ctx: { sessionId: string; messageId: string }) {
+  async execute(args: Record<string, unknown>, ctx: { sessionId: string; messageId: string; executionContext?: unknown }) {
     const runner = new ToolRunner({
       authorizer: { async decide() { return Decision.allow() } },
       observer: { on: () => {} },
@@ -148,6 +176,7 @@ const sendMessageHostTool = {
       input: args,
       sessionId: ctx.sessionId,
       messageId: ctx.messageId,
+      executionContext: ctx.executionContext,
       principal: undefined as never,
     })
     if (outcome.kind !== 'ok') throw new Error(`unexpected outcome: ${outcome.kind}`)
@@ -198,6 +227,7 @@ function roomSays(): FakeMessage[] {
 beforeEach(() => {
   mocks.sessions.clear()
   mocks.emitted.length = 0
+  mocks.hostTools = []
   mocks.profileTools = null
   configureToolkitCatalog(new Catalog().register(sendMessageTool))
   speakPort.mockClear()
@@ -236,11 +266,58 @@ function startTurn(): void {
 
 /** 模型经 MCP 调 `send_message` 的那一下。 */
 async function callSendMessage(args: Record<string, unknown>) {
-  const definition = toHostMcpToolDefinition(sendMessageHostTool, EXEC)
+  const definition = toHostMcpToolDefinition(mocks.hostTools.find(tool => tool.id === 'send_message')!, EXEC)
   return definition.handler(args, undefined)
 }
 
 describe('发言权真的收回来了', () => {
+  it('可信 owner 从 provider 经 connector/MCP 到工具，参数不能越权改写身份', async () => {
+    const owner = { userId: 'alice', workspaceId: 'team-a' }
+    for (const id of [ROOM, EXEC]) Object.assign(mocks.sessions.get(id)!, {
+      ownerUserId: owner.userId, ownerWorkspaceId: owner.workspaceId,
+    })
+    mocks.sessions.set('foreign-room', {
+      id: 'foreign-room', kind: 'room', agentId: 'fe',
+      ownerUserId: 'bob', ownerWorkspaceId: 'team-a',
+      room: { memberAgentIds: ['fe'] }, messages: [],
+    } satisfies FakeSession)
+    startTurn()
+    const { createClaudeCodeConnector } = await import('@onething/runtime/external-agents')
+    const results: Awaited<ReturnType<typeof callSendMessage>>[] = []
+    const connector = createClaudeCodeConnector({
+      hostToolSurface: resolveClaudeCodeHostToolSurface,
+      queryFn: () => (async function* () {
+        yield { type: 'system' as const, subtype: 'init' as const, session_id: 'sdk-owned' }
+        results.push(await callSendMessage({ content: '本人发言' }))
+        results.push(await callSendMessage({ content: '本人发言' }))
+        results.push(await callSendMessage({
+          content: '越权发言', room: 'foreign-room',
+          executionContext: { userId: 'bob', workspaceId: 'team-a' },
+        }))
+        yield { type: 'result' as const, subtype: 'success' as const }
+      })(),
+    })
+    const providerConfig: AgentProviderRuntimeConfig & { model: string } = { model: 'claude-code-agent' }
+    const preparation = planAgentLoopRuntimePreparation({
+      ctx: { sessionId: EXEC, executionContext: owner, providerConfig, settings: {} },
+      session: { workingDirectory: tmpdir() },
+    })
+    const provider = createAgentProviderFromRuntime('claude-code-agent', preparation.providerRuntimeConfig, {
+      ...preparation.providerHostContext,
+      externalAgentConnectors: { 'claude-code-agent': connector },
+    })!
+    for await (const _event of provider.streamTurn!({
+      model: 'claude-code-agent', messages: [{ role: 'user', content: '汇报进展' }], turn: 1,
+    })) { /* consume the real provider/connector bridge */ }
+    expect(results[0].isError).toBeUndefined()
+    expect(results[1]).toEqual(results[0])
+    expect(results[2].isError).toBe(true)
+    expect(speakPort).toHaveBeenCalledTimes(1)
+    expect(roomSays()).toHaveLength(1)
+    expect((mocks.sessions.get('foreign-room') as FakeSession).messages).toEqual([])
+    expect(resolveHostToolContext(EXEC)).toBeUndefined()
+  })
+
   it('经 MCP 的 send_message 走持牌路径落库,不是 v2 落库分支', async () => {
     startTurn()
     const injection = await resolveClaudeCodeHostToolSurface({
@@ -348,6 +425,7 @@ describe('装配面:场子门、注册表、语境绑定', () => {
 
     expect(resolveHostToolContext(EXEC)).toEqual({
       agentId: 'fe',
+      executionContext: { userId: 'local-user', workspaceId: 'default' },
       roomSessionId: ROOM,
       execSessionId: EXEC,
       leaseId: LEASE,

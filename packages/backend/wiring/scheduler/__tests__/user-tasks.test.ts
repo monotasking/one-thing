@@ -8,6 +8,7 @@ import {
 import { getScheduler } from '@onething/runtime/scheduler/scheduler-bound'
 import {
   createUserSchedulerTask,
+  canAccessSchedulerTask,
   deleteUserSchedulerTask,
   initializeUserSchedulerTasks,
   stopUserSchedulerTasks,
@@ -25,21 +26,41 @@ vi.mock('electron', () => ({
   },
 }))
 
-let previousHome: string | undefined
-let tempHome: string
+let previousStorePath: string | undefined
+let tempStorePath: string
 
 beforeEach(() => {
-  previousHome = process.env.HOME
-  tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-scheduler-test-'))
-  process.env.HOME = tempHome
+  previousStorePath = process.env.ONETHING_STORE_PATH
+  tempStorePath = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-scheduler-test-'))
+  process.env.ONETHING_STORE_PATH = tempStorePath
 })
 
 afterEach(() => {
-  process.env.HOME = previousHome
-  fs.rmSync(tempHome, { recursive: true, force: true })
+  stopUserSchedulerTasks()
+  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+  else process.env.ONETHING_STORE_PATH = previousStorePath
+  fs.rmSync(tempStorePath, { recursive: true, force: true })
 })
 
 describe('user scheduler tasks', () => {
+  it('persists the trusted creator across update and reload, ignoring payload owner fields', () => {
+    const alice = { userId: 'alice', workspaceId: 'space-a' }
+    const bob = { userId: 'bob', workspaceId: 'space-a' }
+    const input = { name: 'Owner test', prompt: 'Work', agentId: 'default', enabled: false,
+      schedule: { kind: 'interval' as const, everyMs: 60000 }, ownerUserId: 'bob', ownerWorkspaceId: 'spoofed' }
+    const task = createUserSchedulerTask(input, alice)
+    expect(canAccessSchedulerTask(alice, task.id)).toBe(true)
+    expect(canAccessSchedulerTask(bob, task.id)).toBe(false)
+    expect(canAccessSchedulerTask({ ...alice, workspaceId: 'other' }, task.id)).toBe(false)
+    const update = { id: task.id, name: 'Renamed', ownerUserId: 'bob' }
+    updateUserSchedulerTask(update)
+    stopUserSchedulerTasks()
+    initializeUserSchedulerTasks()
+    expect(canAccessSchedulerTask(alice, task.id)).toBe(true)
+    expect(canAccessSchedulerTask(bob, task.id)).toBe(false)
+    const persisted = JSON.parse(fs.readFileSync(getOnethingSchedulerTasksPath()!, 'utf8')).tasks[0]
+    expect(persisted).toMatchObject({ ownerUserId: 'alice', ownerWorkspaceId: 'space-a', name: 'Renamed' })
+  })
   /**
    * A3(`docs/design/backend-composition-root-2026-09.md` §2.4)。
    *

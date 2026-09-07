@@ -10,7 +10,9 @@
  * 只搬 RPC 面。目标的实时变化仍走 `session:goal-updated`（SESSION_EVENT），
  * 事件下行的收敛是主线 T2 的事。
  */
-import type { RouteHandlers } from '@onething/core/ipc'
+import type { RpcRouteHandlers } from '../registry.js'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
+import { sessionAccess } from '../../session/access.js'
 import type { GoalRoutes } from '@shared/ipc/goal.js'
 import type { SessionGoal } from '@shared/ipc/goal.js'
 import { collectGoalFileDiffs } from '../../wiring/goals/file-changes.js'
@@ -27,8 +29,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export const goalRpcHandlers: RouteHandlers<GoalRoutes> = {
-  async get(request) {
+export const goalRpcHandlers: RpcRouteHandlers<GoalRoutes> = {
+  async get(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'read')
     try {
       return {
         success: true,
@@ -40,7 +43,8 @@ export const goalRpcHandlers: RouteHandlers<GoalRoutes> = {
     }
   },
 
-  async set(request) {
+  async set(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'write')
     try {
       switch (request.action) {
         case 'create': {
@@ -82,7 +86,8 @@ export const goalRpcHandlers: RouteHandlers<GoalRoutes> = {
     }
   },
 
-  async diffs(request) {
+  async diffs(request, context = DESKTOP_RPC_CONTEXT) {
+    sessionAccess.resolve(context, request.sessionId, 'read')
     try {
       // Review a specific goal when asked (history holds several now), else
       // the current one.
@@ -103,4 +108,3 @@ export const goalRpcHandlers: RouteHandlers<GoalRoutes> = {
     }
   },
 }
-

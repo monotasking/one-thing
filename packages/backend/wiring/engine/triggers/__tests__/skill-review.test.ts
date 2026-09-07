@@ -30,6 +30,8 @@ import {
 import { createSkillReviewTrigger } from '../skill-review.js'
 import { clearSkillReviewState } from '@onething/runtime/triggers/skill-review-state.wiring'
 import type { TriggerContext } from '../index.js'
+import { installStoreSessionLayerForTest } from '../../../../session/testing/store-layer.js'
+import { clearAllSessionCache } from '../../../../stores/sessions.js'
 
 vi.mock('electron', () => ({
   app: { isPackaged: false },
@@ -66,6 +68,7 @@ vi.mock('@onething/core/agent-loop', async importOriginal => {
 
 const originalEnv = { ...process.env }
 let tmpDir: string
+let sessionFixture: Awaited<ReturnType<typeof installStoreSessionLayerForTest>>
 
 function restoreEnv(): void {
   for (const key of Object.keys(process.env)) {
@@ -74,10 +77,12 @@ function restoreEnv(): void {
   Object.assign(process.env, originalEnv)
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   restoreEnv()
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-skill-review-'))
-  process.env.HOME = tmpDir
+  process.env.ONETHING_STORE_PATH = path.join(tmpDir, '.onething')
+  clearAllSessionCache()
+  sessionFixture = await installStoreSessionLayerForTest()
   vi.mocked(createAgentProviderFromRuntime).mockClear()
   vi.mocked(createAgentProviderFromRuntime).mockReturnValue({
     id: 'tool-provider',
@@ -113,7 +118,8 @@ beforeEach(() => {
   )
 })
 
-afterEach(() => {
+afterEach(async () => {
+  await sessionFixture.dispose()
   configureToolkitCatalog(undefined)
   invalidateSkillsCache()
   clearSkillReviewState()

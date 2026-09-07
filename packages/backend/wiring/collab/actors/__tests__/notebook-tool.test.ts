@@ -12,6 +12,8 @@ import path from 'node:path'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 interface FakeSession {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   name?: string
   kind?: string
@@ -21,6 +23,13 @@ interface FakeSession {
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-notebook-tool-'))
 const mocks = vi.hoisted(() => ({ sessions: new Map<string, unknown>() }))
+
+vi.mock('../../../../session/access.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../../../session/access.js')>()
+  return { ...actual, sessionAccess: actual.createSessionAccess({
+    findMeta: id => mocks.sessions.get(id) as FakeSession | undefined,
+  }) }
+})
 
 vi.mock('@onething/runtime/storage', () => ({ getOnethingStorePath: () => storeRootRef.value }))
 const storeRootRef = { value: storeRoot }
@@ -35,6 +44,9 @@ const {
 } = await import('../notebook-tool.js')
 const { collabAgentNotebookPath } = await import('@onething/runtime/collab/actors/agent-mailbox')
 const { createNotebookTool, NotebookInputSchema } = await import('@onething/runtime/toolkit')
+const { createCollabActorNotebookStore } = await import('../owned-notebook-store.js')
+const { createCollabActorAuthorization } = await import('../execution-authorization.js')
+const { createSessionAccess } = await import('../../../../session/access.js')
 const { Decision, ToolRunner } = await import('@onething/core/toolkit')
 const { ZodValidator } = await import('@onething/runtime/toolkit')
 
@@ -46,10 +58,10 @@ const { ZodValidator } = await import('@onething/runtime/toolkit')
 const notebookTool = createNotebookTool({
   sessionKind: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.kind,
   sessionAgentId: (sessionId: string) => (mocks.sessions.get(sessionId) as FakeSession | undefined)?.agentId,
-  append: appendNote,
+  append: (input, executionContext) => appendNote(input, { executionContext }),
 })
 
-async function note(sessionId: string, text: string): Promise<{ output: string; metadata: unknown }> {
+async function note(sessionId: string, text: string, executionContext?: unknown): Promise<{ output: string; metadata: unknown }> {
   const runner = new ToolRunner({
     authorizer: { async decide() { return Decision.allow() } },
     observer: { on: () => {} },
@@ -62,6 +74,7 @@ async function note(sessionId: string, text: string): Promise<{ output: string; 
     sessionId,
     messageId: 'm-1',
     principal: undefined as never,
+    executionContext,
   })
   if (outcome.kind !== 'ok') throw new Error(`unexpected outcome: ${outcome.kind}`)
   return {
@@ -90,6 +103,7 @@ beforeEach(() => {
   mocks.sessions.set(CHAT, { id: CHAT, kind: 'chat', agentId: 'iris' } satisfies FakeSession)
   mocks.sessions.set('room-1', { id: 'room-1', kind: 'room', name: '产品房' } satisfies FakeSession)
   fs.rmSync(path.join(storeRoot, 'agents-v3'), { recursive: true, force: true })
+  fs.rmSync(path.join(storeRoot, 'owned-collab-notebooks'), { recursive: true, force: true })
 })
 
 describe('场子门', () => {
@@ -114,6 +128,51 @@ describe('场子门', () => {
 })
 
 describe('身份与落盘', () => {
+  it('isolates writes and actor prompt reads by user and tenant, while the default owner keeps the historical notebook', async () => {
+    await note(EXEC, 'historical local note')
+    const historicalFile = fs.readFileSync(collabAgentNotebookPath('iris'), 'utf8')
+    const authorization = createCollabActorAuthorization({
+      access: createSessionAccess({ findMeta: id => mocks.sessions.get(id) as FakeSession | undefined }),
+      isAccepting: () => true,
+    })
+    authorization.activateRoom('room-1', {})
+    const notebooks = createCollabActorNotebookStore(authorization)
+    const owners = [
+      { userId: 'alice', workspaceId: 'tenant-a' },
+      { userId: 'bob', workspaceId: 'tenant-a' },
+      { userId: 'alice', workspaceId: 'tenant-b' },
+    ]
+    for (const [index, executionContext] of owners.entries()) {
+      const roomId = `owned-room-${index}`
+      const sessionId = `owned-exec-${index}`
+      const owner = { ownerUserId: executionContext.userId, ownerWorkspaceId: executionContext.workspaceId }
+      mocks.sessions.set(roomId, { id: roomId, kind: 'room', ...owner })
+      mocks.sessions.set(sessionId, { id: sessionId, kind: 'agent', agentId: 'iris', collab: { roomSessionId: roomId }, ...owner })
+      authorization.activateRoom(roomId, owner)
+      expect(notebooks.read('iris', { roomId })).toBe('')
+      await note(sessionId, `private note ${index}`, executionContext)
+    }
+    owners.forEach((_owner, index) => {
+      const value = notebooks.read('iris', { roomId: `owned-room-${index}` })
+      expect(value).toContain(`private note ${index}`)
+      expect(value).not.toContain('historical local note')
+      owners.forEach((_other, otherIndex) => {
+        if (otherIndex !== index) expect(value).not.toContain(`private note ${otherIndex}`)
+      })
+    })
+    expect(notebooks.read('iris', { roomId: 'room-1' })).toBe(historicalFile)
+    expect(fs.readFileSync(collabAgentNotebookPath('iris'), 'utf8')).toBe(historicalFile)
+    Object.assign(mocks.sessions.get('owned-room-0')!, { ownerUserId: 'bob' })
+    expect(() => notebooks.read('iris', { roomId: 'owned-room-0' })).toThrow('Session not found')
+  })
+
+  it.each(['source', 'linked room'] as const)('refuses a foreign %s before creating any notebook', async target => {
+    Object.assign(mocks.sessions.get(target === 'source' ? EXEC : 'room-1')!, { ownerUserId: 'bob' })
+    await expect(note(EXEC, 'must not be stored')).rejects.toThrow('unexpected outcome: failed')
+    expect(fs.existsSync(path.join(storeRoot, 'agents-v3'))).toBe(false)
+    expect(fs.existsSync(path.join(storeRoot, 'owned-collab-notebooks'))).toBe(false)
+  })
+
   it('写进自己那本,带房间语境;工具参数里没有 agentId 这一格', async () => {
     await note(EXEC, '答应老王周四前给方案')
     const book = fs.readFileSync(collabAgentNotebookPath('iris'), 'utf-8')

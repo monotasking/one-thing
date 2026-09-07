@@ -30,10 +30,9 @@ import {
   upsertOnethingHeadlessProviderConfig,
   useOnethingHeadlessProvider,
 } from '@onething/runtime/headless/index'
-import { createOnethingBackend, type OnethingBackend } from '../../backend.js'
+import { createOnethingBackend, type OnethingBackend, type OnethingBackendOptions } from '../../backend.js'
 import {
   createSession,
-  deleteSession,
   getCurrentSessionId,
   getSession,
   getSessionsList,
@@ -53,6 +52,8 @@ import { ensureCollabGroupRoom } from '../collab/room-create.js'
 import { getSettings } from '../../stores/settings.js'
 import { toolkitCatalogToolDefinitions } from '@onething/runtime/toolkit/catalog-projection.wiring'
 import { getEventBus, getStreamChannel } from '../../events/index.js'
+import { collectSessionCascadeDeleteIds } from '@onething/core/session'
+import { DESKTOP_RPC_CONTEXT } from '@shared/ipc/rpc.js'
 import { sessionReads } from '../../session/reads.js'
 import { getStreamEngine } from '../engine/index.js'
 import { createDefaultSettings } from '@shared/defaults/settings.js'
@@ -93,10 +94,18 @@ export class HeadlessBackend {
   private activeStreams = new Map<string, ActiveStreamRecord>()
   private activeStreamBySession = new Map<string, string>()
 
-  async start(): Promise<void> {
+  get ownedBackend(): OnethingBackend {
+    if (!this.backend) throw new Error('Headless backend is not started')
+    return this.backend
+  }
+
+  async start(options: { storePath?: string; logging?: OnethingBackendOptions['logging'] } = {}): Promise<void> {
     if (this.started) return
 
     this.backend = await createOnethingBackend({
+      owner: 'daemon',
+      storePath: options.storePath,
+      logging: options.logging,
       /*
        * A1:宿主能力一次交清。CLI daemon 除了下载目录之外一件宿主能力都没有
        * (它没有窗口、没有托盘、没有 Keychain 身份),十四个 `null` 就是这里的
@@ -155,7 +164,7 @@ export class HeadlessBackend {
     // 顺序是登记逆序(引擎收流 → 外部执行体 → MCP/ACP → 插件 → 子进程/终端 →
     // 引擎 → 权限 → 会话层 → 事件系统 → 两次落盘)。daemon 起 `mcpAcp: true`,
     // 所以 MCP/ACP 那一步在装配层那一份里是真的会跑的。
-    await this.backend?.dispose()
+    await this.backend?.requestShutdown(reason)
     this.backend = null
     this.activeStreams.clear()
     this.activeStreamBySession.clear()
@@ -393,8 +402,13 @@ export class HeadlessBackend {
     updateSessionArchived(sessionId, archived, archived ? Date.now() : null)
   }
 
-  deleteSession(sessionId: string): void {
-    deleteSession(sessionId)
+  async deleteSession(sessionId: string): Promise<void> {
+    const layer = this.ownedBackend.sessionLayer
+    const ids = layer.access.resolveAll(DESKTOP_RPC_CONTEXT,
+      collectSessionCascadeDeleteIds(getSessionsList(), sessionId), 'delete')
+    await layer.deletion.delete(sessionId, ids, targets => {
+      layer.access.resolveAll(DESKTOP_RPC_CONTEXT, targets, 'delete')
+    })
   }
 
   // ── Collab (multi-agent rooms) — docs/design/multi-agent-collab.md ──

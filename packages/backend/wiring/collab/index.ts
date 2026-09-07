@@ -41,6 +41,7 @@ export {
 } from '@onething/runtime/collab/actors/scheduler-log'
 /** 停止按钮那扇门(D6-b 起只有 v3 一条实现)—— 见 `actors/stop-door.ts`。 */
 export { abortCollabRoomTurnForStop } from './actors/stop-door.js'
+export { preflightCollabRoomStop } from './actors/runtime.js'
 /** Collab v3 运行时(D6-a):`createOnethingBackend` 的协作装配点。 */
 export {
   initializeCollabV3Runtime,

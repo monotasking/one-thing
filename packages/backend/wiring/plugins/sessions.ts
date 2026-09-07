@@ -184,6 +184,7 @@ export interface InternalDeliveryRequest {
 export async function deliverInternalMessage(
   deps: PluginSessionHostDeps,
   request: InternalDeliveryRequest,
+  deliveryContext?: { executionContext?: unknown },
 ): Promise<PluginSendMessageResult> {
   const { actorKey, sessionId, content, options } = request
   const now = deps.now?.() ?? Date.now()
@@ -250,7 +251,7 @@ export async function deliverInternalMessage(
         content,
         source,
         origin,
-      } as Parameters<EventBus['emit']>[1])
+      } as Parameters<EventBus['emit']>[1], deliveryContext)
       break
     case 'followed-up':
       engine.followUpMessage(sessionId, content, source, origin)

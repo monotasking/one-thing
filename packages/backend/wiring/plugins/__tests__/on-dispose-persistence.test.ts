@@ -13,16 +13,32 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
+import type { PluginState } from '../api.js'
 
 const storeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-ondispose-'))
 const previousStorePath = process.env.ONETHING_STORE_PATH
 process.env.ONETHING_STORE_PATH = storeRoot
+const cleanups: Array<() => Promise<void>> = []
+
+function ownState(state: PluginState, expectedError?: Error) {
+  cleanups.push(async () => {
+    const { disposePlugin, drainPlugin } = await import('../api.js')
+    disposePlugin(state)
+    if (expectedError) await expect(drainPlugin(state)).rejects.toBe(expectedError)
+    else await drainPlugin(state)
+  })
+}
 
 afterAll(async () => {
-  if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
-  else process.env.ONETHING_STORE_PATH = previousStorePath
-  for (let i = 0; i < 5; i += 1) await new Promise(resolve => setImmediate(resolve))
-  fs.rmSync(storeRoot, { recursive: true, force: true })
+  try {
+    const results = await Promise.allSettled(cleanups.map(cleanup => cleanup()))
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'Plugin test cleanup failed')
+    fs.rmSync(storeRoot, { recursive: true, force: true })
+  } finally {
+    if (previousStorePath === undefined) delete process.env.ONETHING_STORE_PATH
+    else process.env.ONETHING_STORE_PATH = previousStorePath
+  }
 })
 
 const bus = { emitGlobal: () => {}, onGlobal: () => () => {}, onAnySession: () => () => {} }
@@ -31,6 +47,7 @@ describe('onDispose persistence through the real plugin API', () => {
   it('lets a plugin write through BOTH storage and the KV store while tearing down', async () => {
     const { createPluginAPI, disposePlugin } = await import('../api.js')
     const { api, state } = createPluginAPI('closer', bus as never, {} as never)
+    ownState(state)
 
     const failures: Record<string, unknown> = {}
     api.onDispose(() => {
@@ -65,6 +82,7 @@ describe('onDispose persistence through the real plugin API', () => {
   it('still refuses both write faces once teardown has finished', async () => {
     const { createPluginAPI, disposePlugin } = await import('../api.js')
     const { api, state } = createPluginAPI('late-writer', bus as never, {} as never)
+    ownState(state)
 
     disposePlugin(state)
 
@@ -78,5 +96,65 @@ describe('onDispose persistence through the real plugin API', () => {
     if (fs.existsSync(kvPath)) {
       expect(JSON.parse(fs.readFileSync(kvPath, 'utf-8'))).not.toHaveProperty('too-late')
     }
+  })
+
+  it('waits for async cleanup, saves both write faces after an await, and closes them exactly once', async () => {
+    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../api.js')
+    const { api, state } = createPluginAPI('async-closer', bus as never, {} as never)
+    ownState(state)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    let calls = 0
+    api.onDispose(async () => {
+      calls++
+      await gate
+      api.storage.writeJson('final.json', { saved: true })
+      api.store.set('final', 7)
+    })
+    disposePlugin(state)
+    disposePlugin(state)
+    let drained = false
+    const completion = drainPlugin(state).then(() => { drained = true })
+    try {
+      await Promise.resolve()
+      expect(calls).toBe(1)
+      expect(drained).toBe(false)
+      expect(fs.existsSync(path.join(storeRoot, 'plugins/async-closer/storage/final.json'))).toBe(false)
+    } finally { release() }
+    await completion
+    const home = path.join(storeRoot, 'plugins/async-closer')
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'storage/final.json'), 'utf8'))).toEqual({ saved: true })
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'kv.json'), 'utf8'))).toMatchObject({ final: 7 })
+    expect(() => api.storage.writeJson('late.json', {})).toThrow()
+    api.store.set('final', 99)
+    expect(JSON.parse(fs.readFileSync(path.join(home, 'kv.json'), 'utf8'))).toMatchObject({ final: 7 })
+  })
+
+  it('keeps the first cleanup failure but waits for another callback to finish saving', async () => {
+    const { createPluginAPI, disposePlugin, drainPlugin } = await import('../api.js')
+    const { api, state } = createPluginAPI('failed-closer', bus as never, {} as never)
+    const failure = new Error('first cleanup failed')
+    ownState(state, failure)
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    api.onDispose(() => { throw failure })
+    api.onDispose(async () => {
+      await gate
+      api.storage.writeJson('other-cleanup.json', { saved: true })
+    })
+    disposePlugin(state)
+    let drained = false
+    const completion = drainPlugin(state).then(
+      () => { drained = true; return undefined },
+      error => { drained = true; return error },
+    )
+    try {
+      await Promise.resolve()
+      expect(drained).toBe(false)
+    } finally { release() }
+    expect(await completion).toBe(failure)
+    expect(JSON.parse(fs.readFileSync(path.join(storeRoot, 'plugins/failed-closer/storage/other-cleanup.json'), 'utf8'))).toEqual({ saved: true })
+    expect(() => api.storage.writeJson('late.json', {})).toThrow()
+    await expect(drainPlugin(state)).rejects.toBe(failure)
   })
 })
