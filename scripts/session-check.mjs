@@ -239,7 +239,11 @@ function scan(sourceFile, checker) {
   const allowA = test || RULE_A_ALLOWED.has(rel)
   const allowB = test || RULE_B_ALLOWED.has(rel)
   const allowC = test || RULE_C_ALLOWED.has(rel)
-
+  // 2026-09-07 那轮在这里加过两个就地豁免(echo host 的抄本替换、迁移入口的
+  // 历史捕获),判据是**逐字比对源码表达式的文本** —— 改一个空格、把那行拆两行,
+  // 豁免就悄悄失效或悄悄扩大,而检查器自己不会说一声。工单 4 D2 把它们删了:
+  // 豁免归豁免的地方(`docs/audit/session-gate-baseline-2026-08-19.txt`,每条带
+  // 一行理由),检查器只回答「这里有没有命中」。
   const visit = node => {
     // 规则 C:<session>.messages = …(整体赋值)
     if (

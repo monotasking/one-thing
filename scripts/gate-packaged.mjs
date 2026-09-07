@@ -18,10 +18,9 @@
  *
  * ── 钥匙串那一格(必读)────────────────────────────────────────────────────
  * 打包出来的 app 是一个**新的代码签名身份**;`safeStorage` 是绑身份的 Keychain 门面,
- * 第一次起会弹「onething 想访问钥匙串」授权框,脚本起的进程没人点,core 就卡在
- * `createOnethingBackend` 里(0% CPU、无日志、无窗口;判例见根 CLAUDE.md)。本门在
- * ③ 超时后检测那只框:见到就**明说「需要人手点一次始终允许」并以 3 退出**,不挂死。
- * 这不是回归,是 macOS 凭证隔离按设计工作;点过一次以后同一份包再起就正常。
+ * 首次启动可能等待系统授权。本门在 ③ 超时且检测到 SecurityAgent 时以 3 退出，
+ * 提示人工检查；这个全局进程检测不能证明对话框属于本次子进程，也不能排除回归。
+ * 所有失败路径都先等待隔离子进程退出，再删除测试目录；不以 process.exit 跳过清理。
  */
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -34,7 +33,7 @@ const noBuild = process.argv.includes('--no-build')
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
 function log(line) { process.stdout.write(`[gate:packaged] ${line}\n`) }
-function fail(line, code = 1) { process.stderr.write(`[gate:packaged] FAIL: ${line}\n`); process.exit(code) }
+function fail(line, code = 1) { throw Object.assign(new Error(line), { exitCode: code }) }
 const sleep = (ms) => new Promise(r => setTimeout(r, ms))
 
 function packagedBinary() {
@@ -49,6 +48,7 @@ function packagedBinary() {
   return found
 }
 
+async function main() {
 // ① 打包
 if (!noBuild) {
   log('① npm run build:unpack')
@@ -67,9 +67,17 @@ const child = spawn(binary, [`--user-data-dir=${userData}`, `--remote-debugging-
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 let exited = null
-child.on('exit', (code, signal) => { exited = { code, signal } })
-const stderrTail = []
-child.stderr.on('data', d => { stderrTail.push(String(d)); if (stderrTail.length > 40) stderrTail.shift() })
+const exitPromise = new Promise(resolve => {
+  child.once('exit', (code, signal) => { exited = { code, signal }; resolve() })
+  child.once('error', error => { exited = { code: 1, signal: null, error: error.message }; resolve() })
+})
+let stderrTail = ''
+let stdoutTail = ''
+child.stderr.on('data', d => { stderrTail = (stderrTail + String(d)).slice(-16384) })
+// Always consume both pipes: the probe itself must not stall app startup by
+// leaving stdout unread. Bounded tails remain available on every failure path.
+child.stdout.on('data', d => { stdoutTail = (stdoutTail + String(d)).slice(-16384) })
+const startupDiagnostics = () => `stdout:\n${stdoutTail}\nstderr:\n${stderrTail}`
 
 const discoveryPath = path.join(store, 'run', 'http.json')
 
@@ -77,8 +85,12 @@ async function cleanup() {
   if (!exited && child.pid) {
     try { child.kill('SIGTERM') } catch {}
     for (let i = 0; i < 100 && !exited; i++) await sleep(100)
-    if (!exited) { try { child.kill('SIGKILL') } catch {} }
+    if (!exited) {
+      try { child.kill('SIGKILL') } catch {}
+      await Promise.race([exitPromise, sleep(5000)])
+    }
   }
+  if (!exited) fail(`验收子进程仍未退出，保留隔离目录用于诊断:${store}`)
   rmSync(store, { recursive: true, force: true })
   rmSync(userData, { recursive: true, force: true })
 }
@@ -89,7 +101,7 @@ try {
   let record = null
   const deadline = Date.now() + 25_000
   while (Date.now() < deadline) {
-    if (exited) fail(`app 提前退出 code=${exited.code} signal=${exited.signal}\n${stderrTail.join('')}`)
+    if (exited) fail(`app 提前退出 code=${exited.code} signal=${exited.signal}\n${startupDiagnostics()}`)
     if (existsSync(discoveryPath)) {
       try { record = JSON.parse(readFileSync(discoveryPath, 'utf8')) } catch {}
       if (record?.port && record?.token) break
@@ -99,12 +111,10 @@ try {
   if (!record) {
     const agent = spawnSync('pgrep', ['-x', 'SecurityAgent'], { encoding: 'utf8' })
     if (agent.status === 0) {
-      await cleanup()
-      fail('25s 内 core 没起来,且 SecurityAgent 在跑 —— 是钥匙串授权框:打包出来的 app 是新签名身份,' +
-        '需要**人手起一次并点「始终允许」**,之后再跑本门。(这不是回归,见文件头)', 3)
+      fail('25s 内 core 没起来，且检测到 SecurityAgent。新签名应用可能在等待钥匙串授权；' +
+        `需人工检查首次启动，不能仅凭此检测排除其他启动问题。\n${startupDiagnostics()}`, 3)
     }
-    await cleanup()
-    fail(`25s 内没见 ${discoveryPath}\n${stderrTail.join('')}`)
+    fail(`25s 内没见 ${discoveryPath}\n${startupDiagnostics()}`)
   }
   log(`core 起来了:http://${record.host}:${record.port} owner=${record.owner} pid=${record.pid}`)
   if (record.owner !== 'shell') fail(`owner 应为 shell(React 壳),读到 ${record.owner} —— 起的不是 React 壳`)
@@ -254,3 +264,9 @@ try {
 } finally {
   await cleanup()
 }
+}
+
+void main().catch(error => {
+  process.stderr.write(`[gate:packaged] FAIL: ${error instanceof Error ? error.message : String(error)}\n`)
+  process.exitCode = Number.isInteger(error?.exitCode) ? error.exitCode : 1
+})

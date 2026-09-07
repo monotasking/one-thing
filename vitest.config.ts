@@ -2,8 +2,8 @@ import { defineConfig } from 'vitest/config'
 import path from 'path'
 
 /**
- * 根级 vitest:node 环境跑 packages/** 与 apps/**(React 壳与 mobile 各有自己的 jsdom 跑法,
- * 根 cwd 下它们的套件因无 window 而红,权威口径是各壳自己那一跑)。
+ * 根级 vitest 在 Node 环境运行后端、脚本和不依赖浏览器的宿主测试。
+ * React 页面由 apps/desktop-react 的 jsdom 配置运行；CI 分别执行两套入口。
  * Vue 宿主 / renderer 于 2026-09-04 退役(运行时统一第四步),vue 插件与 @main / @preload / @
  * 别名随之删除;`@shared` 不是包,是 packages/shared 这棵树,所以仍要一条别名。
  */
@@ -17,6 +17,7 @@ export default defineConfig({
     // 下的可执行文件本来就是 `.mjs`(`headless-boundary-check.ts` 那几个 `.ts` 由
     // bun 直接跑,不进 vitest)。
     include: ['packages/**/*.test.ts', 'apps/**/*.test.ts', 'scripts/**/*.test.mjs'],
+    exclude: ['apps/desktop-react/src/**', '**/node_modules/**'],
     alias: {
       '@shared': path.resolve(__dirname, 'packages/shared'),
     },

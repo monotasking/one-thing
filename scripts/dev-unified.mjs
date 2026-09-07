@@ -12,9 +12,25 @@ import {
   lanePorts,
   laneServerOutDir,
 } from './lib/dev-self.mjs'
+import {
+  createChildShutdown,
+  DEV_SHUTDOWN_GRACE_MS,
+  DEV_RUNNER_SHUTDOWN_GRACE_MS,
+  shutdownFailed,
+  stopPidSnapshot,
+} from './lib/dev-process-shutdown.mjs'
 
 const children = new Map()
+const childShutdowns = new WeakMap()
 let shuttingDown = false
+let shutdownPromise
+/**
+ * 关机开始之后不再把子进程的输出转出来(HEAD 行为,工单 4 B2 回旧)。
+ *
+ * 理由是 Ctrl-C 之后的终端体验:三条泳道同时收尾,vite / electron / server 各自
+ * 吐几十行退出噪音,把「dev 正在关」那几行有用的话冲得看不见。要看那些收尾细节
+ * 的人有 `<store>/log/app.jsonl`。
+ */
 let forwardChildOutput = true
 
 const isWindows = process.platform === 'win32'
@@ -157,6 +173,12 @@ function spawnManaged(label, command, args, options = {}) {
     shell: isWindows,
     detached: !isWindows,
   })
+  const lifecycle = createChildShutdown({
+    child,
+    sendSignal: signal => killProcessGroup(child, signal),
+    onTimeout: () => log(label, 'shutdown exceeded 10 s; forcing the owned process group to stop. Shutdown failed; the store lock may be retained.'),
+  })
+  childShutdowns.set(child, lifecycle)
   children.set(label, child)
   prefixedPipe(label, child.stdout, process.stdout)
   prefixedPipe(label, child.stderr, process.stderr)
@@ -164,11 +186,11 @@ function spawnManaged(label, command, args, options = {}) {
     log(label, `error: ${error.message}`)
     shutdown(1)
   })
-  child.on('exit', (code, signal) => {
+  void lifecycle.closed.then(({ code, signal }) => {
     children.delete(label)
     if (shuttingDown) return
-    log(label, `exited code=${code ?? 'null'} signal=${signal ?? 'null'}`)
-    shutdown(code && code !== 0 ? code : 0)
+    log(label, `closed code=${code ?? 'null'} signal=${signal ?? 'null'}`)
+    return shutdown(code === 0 && !signal ? 0 : 1)
   })
   return child
 }
@@ -177,16 +199,16 @@ function processExists(pid) {
   try {
     process.kill(pid, 0)
     return true
-  } catch {
-    return false
+  } catch (error) {
+    return error?.code !== 'ESRCH'
   }
 }
 
 function killPid(pid, signal = 'SIGTERM') {
   try {
     process.kill(pid, signal)
-  } catch {
-    // Process already exited.
+  } catch (error) {
+    if (error?.code !== 'ESRCH') throw error
   }
 }
 
@@ -280,19 +302,17 @@ async function wait(ms) {
 
 async function cleanupPids(label, pids, options = {}) {
   if (pids.length === 0) return
-  const signal = options.signal ?? 'SIGTERM'
-  const graceMs = options.graceMs ?? 2000
+  const graceMs = options.graceMs ?? DEV_SHUTDOWN_GRACE_MS
   const quiet = options.quiet ?? false
   if (!quiet) log('dev', `stopping stale ${label}: ${pids.join(', ')}`)
-  for (const pid of pids) killPid(pid, signal)
-  for (let attempt = 0; attempt < Math.ceil(graceMs / 100); attempt += 1) {
-    await wait(100)
-    if (pids.every(pid => !processExists(pid))) return
-  }
-  if (signal === 'SIGKILL') return
-  for (const pid of pids) {
-    if (processExists(pid)) killPid(pid, 'SIGKILL')
-  }
+  // 清不干净**不拒绝启动**(HEAD 行为,工单 4 B2 回旧)。这里的残留恰恰是上一条
+  // 泳道留下的,新泳道起来本来就是要接管它们;把它变成硬失败,`bun run dev` 就成了
+  // 一个会因为上一次没退干净而打不开的命令。强杀之后如实记一行,然后继续。
+  const result = await stopPidSnapshot({
+    pids, graceMs, isAlive: processExists, sendSignal: killPid,
+    onTimeout: pending => log('dev', `${label} shutdown exceeded ${graceMs} ms; forcing only the recorded PIDs ${pending.join(', ')}. Shutdown failed; the store lock may be retained.`),
+  })
+  if (shutdownFailed(result)) log('dev', `${label} did not shut down cleanly; continuing anyway`)
 }
 
 async function cleanupPort(port) {
@@ -362,22 +382,26 @@ async function cleanupStaleProjectRunners(options = {}) {
   )
 }
 
-async function waitForNoStaleProjectProcesses(timeoutMs = 5000) {
+async function waitForNoStaleProjectProcesses(timeoutMs = DEV_RUNNER_SHUTDOWN_GRACE_MS) {
   const attempts = Math.ceil(timeoutMs / 100)
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (staleProjectProcessPids().length === 0) return
     await wait(100)
   }
-  await cleanupPids('project dev process', staleProjectProcessPids(), {
-    signal: 'SIGKILL',
-    graceMs: 300,
-    quiet: true,
-  })
+  // 强杀残留然后继续(HEAD 行为,工单 4 B2 回旧;理由同 `cleanupPids`)。
+  // 只碰**这一刻**还在的那几个 pid,不重新扫描。
+  const leftovers = staleProjectProcessPids()
+  if (leftovers.length === 0) return
+  for (const pid of leftovers) killPid(pid, 'SIGKILL')
+  for (let attempt = 0; attempt < 3 && leftovers.some(processExists); attempt += 1) await wait(100)
+  if (leftovers.some(processExists)) {
+    log('dev', `project dev processes survived SIGKILL: ${leftovers.filter(processExists).join(', ')}; continuing anyway`)
+  }
 }
 
 async function stopExistingDevProcesses() {
-  await cleanupStaleProjectRunners({ graceMs: 5000 })
-  await cleanupStaleProjectProcesses({ graceMs: 3500 })
+  await cleanupStaleProjectRunners({ graceMs: DEV_RUNNER_SHUTDOWN_GRACE_MS })
+  await cleanupStaleProjectProcesses({ graceMs: DEV_SHUTDOWN_GRACE_MS })
   if (managesWeb) {
     await cleanupPort(ports.web)
     // 只有真的要自己拉 server 时才清那个口:electron 在场时 core 用的是动态端口,
@@ -432,36 +456,33 @@ function restoreTty() {
 }
 
 function shutdown(code = 0, signal = 'SIGTERM') {
-  if (shuttingDown) return
+  if (shutdownPromise) return shutdownPromise
   shuttingDown = true
   restoreTty()
-  log('dev', 'stopping managed dev processes; child logs muted')
+  log('dev', 'stopping managed dev processes; child logs muted, waiting for child close and backend cleanup')
   forwardChildOutput = false
   // 只清扫 shutdown 进场时已存在的泳道进程:之后新出现的属于接管方 runner,
   // 重新扫描会把接管方刚起的子进程一并杀掉(被接管的 runner 曾因此误杀新 vite)。
   const sweepPids = managedLaneProcessPids()
-  for (const child of children.values()) {
-    killProcessGroup(child, signal)
-  }
-
-  void (async () => {
-    await wait(1200)
-    await cleanupPids('project dev process', sweepPids.filter(processExists), {
-      signal: 'SIGTERM',
-      graceMs: 1200,
-      quiet: true,
-    })
-    await wait(1800)
-    for (const child of children.values()) {
-      killProcessGroup(child, 'SIGKILL')
+  const ownedChildren = [...children.values()]
+  shutdownPromise = Promise.resolve().then(async () => {
+    const results = await Promise.all([
+      ...ownedChildren.map(child => childShutdowns.get(child).stop(signal)),
+      stopPidSnapshot({
+        pids: sweepPids, signal, isAlive: processExists, sendSignal: killPid,
+        onTimeout: pending => log('dev', `shutdown exceeded 10 s; forcing only the recorded PIDs ${pending.join(', ')}. Shutdown failed; the store lock may be retained.`),
+      }),
+    ])
+    for (const result of results) {
+      for (const error of result.signalErrors) log('dev', `could not signal an owned process: ${error.message}`)
     }
-    await cleanupPids('project dev process', sweepPids.filter(processExists), {
-      signal: 'SIGKILL',
-      graceMs: 300,
-      quiet: true,
-    })
-    process.exit(code)
-  })()
+    // 两件事分开判(工单 4 A6)。从前写作 `code || results.some(...) ? 1 : 0`,
+    // `||` 绑得比 `?:` 紧,于是**任何**调用者给的退出码都被压平成 1 ——
+    // 「子进程退 3」与「关机没干净」在终端上长得一模一样。
+    if (code) process.exit(code)
+    process.exit(results.some(shutdownFailed) ? 1 : 0)
+  })
+  return shutdownPromise
 }
 
 async function startBackendLane() {

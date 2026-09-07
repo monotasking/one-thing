@@ -9,10 +9,12 @@
 // 比对口径是 (文件, 规则) 的计数,不含行号:行号级比对在无关编辑挪动行号时会制造
 // 假新增,棘轮会因此失去公信力。
 //
-// 基线 **= 0**(P0.4 收口后重录:白名单之外一条不剩)。所以这道闸从棘轮变成硬闸 ——
-// 任何一条新命中都是新增,直接红。重录:
+// 基线曾经 = 0(P0.4 收口后重录)。2026-09-07(工单 4 D2)变成 **4 条**:那四条
+// 从前是藏在 `session-check.mjs` 里逐字比对源码表达式的就地豁免 —— 豁免属于基线,
+// 不属于检查器,检查器只该回答「这里有没有命中」。判据不变:任何**新**命中直接红。
+// 重录:
 //   node scripts/session-check.mjs > docs/audit/session-gate-baseline-2026-08-19.txt
-// 只在**开新白名单条目**时才该重录,而开白名单要在 session-check.mjs 里写清理由。
+// 重录之后**必须**把基线文件顶部那段逐条理由补上(基线里的 `#` 行不参与比对)。
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'

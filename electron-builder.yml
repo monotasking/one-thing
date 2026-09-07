@@ -1,8 +1,8 @@
 appId: com.onething.app
 productName: onething
 # 这棵树里的原生模块**一块二进制同时喂两个运行时**,所以不重建:
-#   node-pty / sherpa-onnx-node(+ 各平台包)
-# 两件全是 **N-API** 插件 —— N-API 是 ABI 稳定的 C 接口,不吃 V8 的内部 ABI,
+#   node-pty / sherpa-onnx-node(+ 各平台包) / fsevents(macOS optional)
+# 这些是 **N-API** 插件 —— N-API 是 ABI 稳定的 C 接口,不吃 V8 的内部 ABI,
 # 同一份 .node 在 Node(server / CLI / vitest)与 Electron(桌面)下都能 dlopen。
 # 重建对它们只是白烧一遍工具链,还会把 sherpa 的预编译平台包顶掉。
 #
@@ -81,10 +81,19 @@ asarUnpack:
   # node-pty ships a native addon plus a `spawn-helper` binary it execs; neither
   # can be loaded or run from inside the asar archive.
   - "**/node_modules/node-pty/**"
+  # macOS workspace watcher: keep its optional runtime package and relative
+  # N-API addon together on disk. Other platforms do not install/load it.
+  - "**/node_modules/fsevents/**"
   # 检索索引 Worker(检索重建 S3b)。`new Worker(path)` 走的是 Node 的模块加载,
   # 不是 Electron 的 asar 补丁过的那条 fs 路 —— 从 asar 里起一条 Worker 线程不可靠。
   # 这一句由 `gate:packaged` 证(打包后经 /api/rpc 问 search.status,mode 必须是
   # 'owner';worker 起不来那里会答 'error'),不靠这行注释成立。
+  #
+  # 工单 4 B3:2026-09-06/07 那轮把它放宽成整个 `dist-electron/**`,理由是
+  # electron-builder 26.4 的流式归档在「单文件 unpack」上有个 header/写入流不一致的
+  # 坑。那个理由只证了「新的能跑」,没证「旧的坏了」—— 而放宽的代价是
+  # `main.cjs` / `preload.cjs` 一起出 asar,签名姿态跟着变。所以回单文件,
+  # 由 `gate:packaged` 定夺;真红了再按那条坑改回来,并把复现步骤写在这里。
   - "apps/desktop-react/dist-electron/search-worker.cjs"
   # 语义召回的 SQLite 扩展(检索重建 S7)。两条理由都要解包:
   #  ① `loadExtension` 走的是系统的 dlopen,asar 里那条路径它打不开;

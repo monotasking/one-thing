@@ -55,6 +55,7 @@
 		"gate:native": "node scripts/gate-native-abi.mjs",
 		"gate:client": "node scripts/gate-client-runtimes.mjs",
 		"gate:packaged": "node scripts/gate-packaged.mjs",
+		"gate:store-backup": "node scripts/gate-store-backup.mjs",
 		"log:check": "node scripts/log-check.mjs",
 		"log:gate": "node scripts/log-gate.mjs",
 		"log:tail": "node scripts/log-tail.mjs",
@@ -102,6 +103,9 @@
 		"ws": "^8.20.0",
 		"yaml": "^2.8.2",
 		"zod": "^4.2.0"
+	},
+	"optionalDependencies": {
+		"fsevents": "2.3.2"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.17.0",

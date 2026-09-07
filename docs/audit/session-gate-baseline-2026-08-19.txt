@@ -1,1 +1,22 @@
-[session] complete: 1966 file(s) scanned, 0 finding(s)
+# 会话读写路径基线(P0.4 起。2026-09-07 工单 4 D2 重录:从 0 变成 4 条)
+#
+# 从前这四条是**藏在 `scripts/session-check.mjs` 里的就地豁免**,判据是逐字比对
+# 源码表达式的文本 —— 改一个空格、把那行拆两行,豁免就悄悄失效或悄悄扩大,而
+# 检查器不会说一声。豁免搬回这里,每条带一行理由;`bun run session:gate` 仍然是
+# 硬闸,只是判据换成「与这张表逐条对得上」。新增一条命中照旧当场红。
+#
+# ── 理由 ────────────────────────────────────────────────────────────────
+# packages/backend/server/echo-message-events.ts:10 / :17
+#   echo host 是 server 的**显式假路**(测试/自检用),整条会话就是一份 JSON 抄本,
+#   它自己既是仓库也是投影;真 Backend 装配从不绑这个适配器。它把 core 投影物化
+#   回一份 messages 数组交出去,读与整体赋值各一处。
+#
+# packages/backend/session/writable.ts:26
+#   legacy 会话的迁移入口:**开账本之前**先把旧抄本捕获下来(`structuredClone`)。
+#   开了账本再读就读不到历史了(读路以投影为准)。导入本身仍然逐条走唯一写入口。
+# ────────────────────────────────────────────────────────────────────────
+[session] failed: packages/backend/server/echo-message-events.ts:10 session-messages-access
+[session] failed: packages/backend/server/echo-message-events.ts:17 session-messages-assign
+[session] failed: packages/backend/server/echo-message-events.ts:17 session-messages-access
+[session] failed: packages/backend/session/writable.ts:26 session-messages-access
+[session] complete: 2314 file(s) scanned, 4 finding(s)

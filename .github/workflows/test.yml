@@ -1,6 +1,7 @@
 name: Test
 
 on:
+  workflow_call:
   push:
     branches: [main, dev]
   pull_request:
@@ -13,6 +14,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -20,8 +25,80 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Mobile's pure reducer/SSE tests are part of the root Node suite. Its Expo
+      # tsconfig belongs to the standalone mobile package, outside the workspaces.
+      - name: Install mobile test dependencies
+        working-directory: apps/mobile
+        run: bun install --frozen-lockfile
+
+      - name: Install desktop and web test dependencies
+        working-directory: apps/desktop-react
+        run: bun install --frozen-lockfile
+
+      # node-pty 是 N-API 插件,一份 .node 同时喂 Node 与 Electron —— 没有 ABI 要对,
+      # `npm rebuild node-pty` 只是白烧一遍工具链,而且它顶撞仓库顶上那条
+      # 「原生模块只许 N-API,且不许靠注释证明 ABI」的律(工单 4 D4 删)。
+      # 真要证 ABI 走 `bun run gate:native`,它把每个 .node 在两个运行时下各加载一次。
+      - name: Prepare native terminal tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zsh ripgrep
+
       - name: Run tests
         run: bun run test
+
+      - name: Run desktop and web renderer tests
+        run: npm --prefix apps/desktop-react test
+
+  # Native filesystem behavior must pass on every supported desktop platform.
+  # A green local macOS run does not substitute for the Windows/NTFS runner.
+  #
+  # **先观察一轮,不挡任何东西**(2026-09-07,工单 4 D4):这套矩阵从来没在
+  # Windows / Linux 上真跑过 —— 一次都没有。没跑过的门第一次上线时红的多半是
+  # 门自己(路径分隔符、fsync 语义、临时目录权限),而 `build.yml` 的 tag 发布链
+  # 通过 `workflow_call` 把整个 test.yml 拉进去当前置,于是它一红就是**发不了版**。
+  # `continue-on-error: true` 让它照跑照报,但不拦 PR、也不拦发布。
+  # 摘掉这一行的条件:三平台各连绿一轮,并在这里写上那一轮的日期。
+  persistence:
+    name: Persistence (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Check journal, blob, lifecycle and store lease durability
+        run: >-
+          bun run test
+          packages/backend/session/__tests__/event-log.test.ts
+          packages/backend/session/__tests__/event-log-checkpoint.test.ts
+          packages/backend/session/__tests__/event-log-s1.test.ts
+          packages/backend/session/__tests__/event-log-store-pinning.test.ts
+          packages/backend/session/__tests__/event-write-failure.test.ts
+          packages/backend/session/__tests__/shutdown-flush-and-blob-gc.test.ts
+          packages/backend/session/__tests__/event-log-store-lifecycle.test.ts
+          packages/backend/session/__tests__/event-log-blob-checkpoint.test.ts
+          packages/core/actors/__tests__/mailbox-failure.test.ts
+          packages/backend/__tests__/collab-mailbox-failure-lifecycle.test.ts
+          packages/onething-runtime/src/storage/__tests__/store-lock.test.ts
+          packages/onething-runtime/src/storage/__tests__/durable-json.test.ts
+          packages/onething-runtime/src/storage/__tests__/store-backup.test.ts
+          packages/onething-runtime/src/storage/__tests__/store-backup-crash.test.ts
+          packages/backend/__tests__/store-backup-activation.test.ts
+          packages/onething-runtime/src/sessions/__tests__/deletion-recovery.test.ts
+          packages/onething-runtime/src/sessions/__tests__/storage-driver.test.ts
+          packages/onething-runtime/src/sessions/__tests__/session-repository.test.ts
+          packages/backend/server/__tests__/session-crash-recovery.test.ts
 
   # 结构门禁(docs/design/structural-debt-plan-2026-08.md §2 P0.5):五道棘轮只在有人手动跑时
   # 才说话,transport 门红了两天无人理。进 CI 后任一红则 PR 红。
@@ -42,11 +119,14 @@ jobs:
       - name: boundary:gate
         run: bun run boundary:gate
 
+      - name: assembly:gate
+        run: bun run assembly:gate
+
       - name: transport:gate
         run: bun run transport:gate
 
-      - name: ui:gate
-        run: bun run ui:gate
+      - name: Renderer UI boundary gate
+        run: npm --prefix apps/desktop-react run ui:consume
 
       - name: log:gate
         run: bun run log:gate

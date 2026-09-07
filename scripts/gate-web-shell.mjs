@@ -291,11 +291,10 @@ async function main() {
     await waitFor('Dock 上的「会话总览」瓦就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="dock-tile-sessions"]'))),
     )
-    await clickTestId(page, 'dock-tile-sessions')
-    await waitFor('总览画出那张卡', () =>
-      page.evaluate(id => Boolean(document.querySelector(`[data-testid="card-${id}"]`)), sessionId),
-    )
-    await clickTestId(page, `card-${sessionId}`)
+    const sessionRow = page.getByTestId(`session-row-${sessionId}`)
+    if (!await sessionRow.isVisible()) await clickTestId(page, 'dock-tile-sessions')
+    await waitFor('总览画出会话行', () => sessionRow.isVisible())
+    await clickTestId(page, `session-row-${sessionId}`)
     await waitFor('聊天区就位', () =>
       page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
     )

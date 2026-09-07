@@ -1,5 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { findSourceControlCharacters } from './lib/source-text-policy.mjs'
+import { checkBackendPublicBoundaries, objectMethodBody } from './lib/backend-public-boundary.mjs'
 
 const root = process.cwd()
 
@@ -1341,7 +1343,6 @@ const MAIN_SESSIONS_IPC_BRANCH_FORBIDDEN_PATTERNS: RegExp[] = [
   /sanitizeOnethingSessionForRenderer/,
   /Error creating branch/,
   /Failed to create branch/,
-  /return\s+\{\s*success:\s*false,\s*error:/,
 ]
 
 const MAIN_SESSIONS_IPC_UPDATE_FORBIDDEN_PATTERNS: RegExp[] = [
@@ -2023,13 +2024,6 @@ const SHARED_IPC_ROUTER_FORBIDDEN_PATTERNS: RegExp[] = [
   /function\s+toKebab/,
   /function\s+getChannelName/,
   /function\s+defineRouter/,
-]
-
-const SHARED_VOICE_TEXT_RUNTIME_FORBIDDEN_PATTERNS: RegExp[] = [
-  /const\s+SENTENCE_END_RE/,
-  /function\s+findLowLatencyBreak/,
-  /function\s+applyTag/,
-  /return\s+chunk\.text\s*\|\|\s*chunk\.voiceSpeakText/,
 ]
 
 /**
@@ -4544,6 +4538,14 @@ function checkRuntimeOwnsSessionBranchCreation(): void {
       : ['packages/backend/rpc/domains/sessions.ts: missing sessions RPC domain']),
   ]
 
+  if (fs.existsSync(mainFile)) {
+    const branch = objectMethodBody(mainFile, fs.readFileSync(mainFile, 'utf8'), 'sessionsRpcHandlers', 'createBranch')
+    branch.split('\n').forEach((line, i) => {
+      if (/return\s+\{\s*success:\s*false,\s*error:/.test(line)) {
+        lines.push(`${rel(mainFile)}:${i + 1}: branch errors must come from runtime orchestration`)
+      }
+    })
+  }
   assertNoMatches('packages/onething-runtime owns session branch creation orchestration', lines)
 }
 
@@ -4591,23 +4593,59 @@ function checkRuntimeOwnsSessionUpdateFlows(): void {
  * 静默的:`ec2437ff` 那条病历里,`tool/result` 走素门落账,于是本进程内的那些
  * surface 格进不了活索引,压缩写下的 `sourceEventSeqs` 少 84 格。
  *
- * 所以这里守一条:**除了那扇门,没有人该提到 `appendSessionLogEvent`**。
- * (`event-log.ts` 自己是定义处;测试里也不许 —— 测试绕开门就等于在验一条
- * 生产上不存在的路。)
+ * 装配层只可把低层 append 绑定到 Writer 端口(`event-layer.ts` 那一行);业务只能
+ * 通过 Writer 写入,**测试也一样** —— 存储组件的故障注入用例照样从
+ * `createSessionEventLayer().writer.write` 进去,验的是同一条落盘契约,少的只是
+ * 一个后门。这里从前有一张三条的测试白名单(2026-09-07 那轮为了让新加的三个
+ * 存储测试过闸而加),工单 4 D1 删掉了它:闸门不迁就代码。
  */
 function checkSessionEventSingleWriteDoor(): void {
   const door = 'packages/backend/session/event-writer.ts'
   const definition = 'packages/backend/session/event-log.ts'
+  const assembly = 'packages/backend/session/event-layer.ts'
   const offenders = walkFiles(path.join(root, 'packages'), [], { includeTests: true })
     .filter(file => /\.ts$/.test(file))
     .filter(file => rel(file) !== door && rel(file) !== definition)
     // 只看**剥掉注释之后**的代码(与形状类规则同一条纪律:注释里提一句名字
     // 不该打假红,假红会逼人放宽规则)。
     .flatMap(file => codeOnlyLines(fs.readFileSync(file, 'utf-8'))
-      .filter(({ code }) => /\bappendSessionLogEvent\b/.test(code))
+      .filter(({ code }) => /\bappendSessionLogEvent\b/.test(code)
+        && !(rel(file) === assembly && /^\s*(?:appendSessionLogEvent,|append:\s*appendSessionLogEvent,)\s*$/.test(code)))
       .map(({ raw, lineNo }) => `${rel(file)}:${lineNo}: ${raw.trim()}`))
   assertNoMatches(
     'session event log has a single write door (packages/backend/session/event-writer.ts)',
+    offenders,
+  )
+}
+
+/**
+ * **契约层只放形状**(工单 4 E)。
+ *
+ * `packages/shared/contracts/**` 是那几份「持久化与传输两侧都要认」的可序列化
+ * 形状(`TurnEvalRecord` / practice / usage)。它存在的理由,就是让契约不必为了
+ * 被两侧共用而反向 import 产品树 —— 2026-09-06/07 那轮把它从 runtime 里拆出来,
+ * 修的正是这条反向依赖。
+ *
+ * 一旦它开始 import `@onething/*`,或者开始 `defineRouter`(那是**通道**,不是
+ * 形状),这一层就重新变成了一个薄薄的产品层,反向依赖当场长回来。所以这里守三条:
+ *
+ *  1. 不许 import 任何 `@onething/*`(`@shared/*` 同层可以);
+ *  2. 不许 `defineRouter` —— 路由契约住 `@shared/ipc/<domain>.ts`;
+ *  3. 顶层只许 `export type` / `export interface` / `export const`(纯形状与常量表);
+ *     `export function` / `export class` / `export default` 都是**行为**,不属于这里。
+ */
+function checkSharedContractsHoldShapesOnly(): void {
+  const contracts = path.join(root, 'packages/shared/contracts')
+  const offenders = walkFiles(contracts, [], { extensions: /\.tsx?$/ })
+    .flatMap(file => codeOnlyLines(fs.readFileSync(file, 'utf-8'))
+      .filter(({ code }) =>
+        /\bfrom\s+['"]@onething\//.test(code)
+        || /\bimport\s*\(\s*['"]@onething\//.test(code)
+        || /\bdefineRouter\b/.test(code)
+        || /^\s*export\s+(?:async\s+)?(?:function|class|default|let|var)\b/.test(code))
+      .map(({ raw, lineNo }) => `${rel(file)}:${lineNo}: ${raw.trim()}`))
+  assertNoMatches(
+    'packages/shared/contracts holds serializable shapes only (no @onething/* import, no defineRouter, no behaviour)',
     offenders,
   )
 }
@@ -5257,29 +5295,8 @@ function checkCoreKnowsNoConcreteFeatures(): void {
  * 制表符/换行/回车(0x09/0x0a/0x0d)照常放行。
  */
 function checkNoRawControlCharacters(): void {
-  const offenders: string[] = []
-  const roots = ['packages', 'apps', 'scripts']
-  // 扩展名比默认集合宽:.vue 的 SFC、.css、.md 里的裸控制字符同样让 git 判
-  // 二进制、同样不可审。任何进 git 的文本文件都适用同一条规则。
-  const walkOptions: WalkFilesOptions = {
-    includeTests: true,
-    extensions: /\.(ts|tsx|js|mjs|cjs|json|vue|css|md)$/,
-    // 构建产物不进 git,不在本规则的立法射程内(minified 产物里出现控制字节也轮不到人审)。
-    excludeDirs: ['dist', 'dist-electron', 'dist-web', 'out', 'release', 'ds-bundle', '.ds-sync', 'coverage'],
-  }
-  for (const dirName of roots) {
-    for (const filePath of walkFiles(path.join(root, dirName), [], walkOptions)) {
-      const buffer = fs.readFileSync(filePath)
-      for (let i = 0; i < buffer.length; i += 1) {
-        const byte = buffer[i]
-        const isControl = byte < 0x09 || byte === 0x0b || byte === 0x0c || (byte >= 0x0e && byte <= 0x1f)
-        if (!isControl) continue
-        const line = buffer.subarray(0, i).toString('utf-8').split('\n').length
-        offenders.push(`${rel(filePath)}:${line}: raw control character 0x${byte.toString(16).padStart(2, '0')} (write an escape instead)`)
-        break
-      }
-    }
-  }
+  const offenders = findSourceControlCharacters(root).map(({ file, line, byte }) =>
+    `${file}:${line}: raw control character 0x${byte.toString(16).padStart(2, '0')} (write an escape instead)`)
   assertNoMatches('source files carry no raw control characters', offenders)
 }
 
@@ -5695,9 +5712,6 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
   const runtimeTestContent = fs.existsSync(runtimeTestFile) ? fs.readFileSync(runtimeTestFile, 'utf-8') : ''
   const runtimeIndexContent = fs.existsSync(runtimeIndexFile) ? fs.readFileSync(runtimeIndexFile, 'utf-8') : ''
   const mainContent = fs.existsSync(mainFile) ? fs.readFileSync(mainFile, 'utf-8') : ''
-  const sharedContent = sharedFiles
-    .map(file => fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '')
-    .join('\n')
   const requiredRuntimeSymbols = [
     'splitOnethingSpeakableSentences',
     'getOnethingSpeakableTextFromDelta',
@@ -5727,15 +5741,8 @@ function checkRuntimeOwnsVoiceTextProcessing(): void {
     ...requiredMainDelegations
       .filter(symbol => !mainContent.includes(symbol))
       .map(symbol => `${rel(mainFile)}: main voice service must delegate voice text processing ${symbol} to runtime`),
-    ...(!sharedContent.includes('@onething/runtime/voice/text')
-      ? ['packages/shared/voice: legacy shared voice files must re-export browser-safe runtime voice text helpers']
-      : []),
-    ...(/from\s+['"]@onething\/runtime\/voice['"]/.test(sharedContent)
-      ? ['packages/shared/voice: renderer-facing voice text facades must not import Node-capable runtime voice entrypoint']
-      : []),
-    ...sharedFiles.flatMap(file => fs.existsSync(file)
-      ? matchingLines(file, SHARED_VOICE_TEXT_RUNTIME_FORBIDDEN_PATTERNS)
-      : [`${rel(file)}: missing legacy voice text facade`]),
+    ...sharedFiles.filter(file => fs.existsSync(file))
+      .map(file => `${rel(file)}: retired shared implementation facade must not be restored; import the runtime voice/text public entry`),
   ]
 
   assertNoMatches('packages/onething-runtime owns voice text processing', lines)
@@ -5795,6 +5802,39 @@ function checkSearchHasOneQueryPath(): void {
   ]
 
   assertNoMatches('search has exactly one query path (registry + capabilities)', lines)
+}
+
+/**
+ * **会话状态只经账本到达客户端**(2026-09-07 撤回会话同步协议;
+ * 验尸单 `docs/audit/session-sync-retirement-2026-09-07.md`)。
+ *
+ * 曾经有过第二套真相:服务端在每个 token 上重新取整会话消息、深比对、序列化,
+ * 再经 `GET /api/sync` + `GET /api/events?sync=1` + `session:sync` 帧推给客户端,
+ * 与流管道并行跑。仓里已有唯一账本 `sessions/<id>/events.jsonl` —— 渲染层自己
+ * 折投影、`StreamWater` 走流水位、缺号整会话重折;断线恢复是 SSE 的 `?after=`
+ * 从环形缓冲续播。整条协议已删,这条规则是它的验尸台:下面这些名字不许长回来。
+ *
+ * 扫 `packages/` / `apps/` / `scripts/` 的非测试 `.ts` / `.tsx`(本文件自己除外
+ * —— 规则的模式串就写在这儿)。
+ */
+function checkSessionStateReachesClientsOnlyThroughTheLedger(): void {
+  const retiredSyncProtocolPatterns: RegExp[] = [
+    /session-sync/,
+    /\/api\/sync/,
+    /SessionSync/,
+    /onSync\(/,
+    /setSyncScopes/,
+    /x-onething-sync-protocol/,
+  ]
+  const selfPath = path.join(root, 'scripts/headless-boundary-check.ts')
+  const trees = ['packages', 'apps', 'scripts']
+    .map(dir => path.join(root, dir))
+    .filter(dir => fs.existsSync(dir))
+  const lines = trees
+    .flatMap(dir => walkFiles(dir, [], { extensions: /\.tsx?$/, excludeDirs: ['dist', 'dist-electron', 'release', 'out'] }))
+    .filter(file => file !== selfPath && !/\.(test|spec)\.tsx?$/.test(path.basename(file)))
+    .flatMap(file => matchingCodeLines(file, retiredSyncProtocolPatterns))
+  assertNoMatches('session state reaches clients only through the ledger', lines)
 }
 
 function checkRuntimeOwnsHeadlessCliProjections(): void {
@@ -7044,6 +7084,7 @@ checkRuntimeOwnsMcpIpcOperations()
 checkRuntimeOwnsSessionBranchCreation()
 checkRuntimeOwnsSessionUpdateFlows()
 checkSessionEventSingleWriteDoor()
+checkSharedContractsHoldShapesOnly()
 checkRuntimeOwnsSessionWorkingDirectoryFlow()
 checkRuntimeOwnsSessionSystemMarkerFlow()
 checkRuntimeOwnsSessionIpcOperations()
@@ -7078,6 +7119,7 @@ checkRuntimeOwnsVoiceProviderRuntime()
 checkRuntimeOwnsVoiceServicePolicy()
 checkRuntimeOwnsVoiceTextProcessing()
 checkSearchHasOneQueryPath()
+checkSessionStateReachesClientsOnlyThroughTheLedger()
 checkRuntimeOwnsHeadlessCliProjections()
 checkRuntimeOwnsPromptsStore()
 checkRuntimeOwnsSystemPromptSnapshot()
@@ -7101,6 +7143,8 @@ checkRuntimeOwnsRipgrepFileSearchRuntime()
 checkRuntimeOwnsToolSandboxRuntime()
 checkRuntimeOwnsToolEditEngine()
 checkRuntimeOwnsConcreteBuiltinTools()
+
+assertNoMatches('backend public boundaries and shared contracts', checkBackendPublicBoundaries({ root }).violations)
 
 if (!process.exitCode) {
   console.log('[boundary] ok: headless core boundary checks passed')

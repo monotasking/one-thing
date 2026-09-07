@@ -28,6 +28,7 @@
  * ## 覆盖面
  *
  * 枚举**这个仓今天真的装了 / 真的产出**的原生插件:
+ *   - `fsevents`(macOS workspace watch 的 optional 运行依赖)
  *   - `node-pty`(终端)
  *   - `sherpa-onnx-node` + 当前平台的 `sherpa-onnx-<platform>-<arch>`(语音)
  *   - `onnxruntime-node` 与 `@img/sharp-<platform>-<arch>`(S7 起随
@@ -57,6 +58,18 @@ const asJson = process.argv.includes('--json')
 /** 一条目标:名字 + 一段「在某个运行时里把它加载起来」的源码 + 要 nm 的那块二进制。 */
 function targets() {
 	const list = []
+
+	// macOS workspace watching uses this optional runtime N-API addon. It is
+	// intentionally not installed or required by Linux/Windows builds.
+	if (process.platform === 'darwin') {
+		list.push({
+			name: 'fsevents',
+			kind: 'require',
+			specifier: 'fsevents',
+			binary: join(repoRoot, 'node_modules', 'fsevents', 'fsevents.node'),
+			packageDir: join(repoRoot, 'node_modules', 'fsevents'),
+		})
+	}
 
 	// ── node-pty:一个普通的 npm 原生包,require 包名即可(它自己去找 .node)。
 	list.push({

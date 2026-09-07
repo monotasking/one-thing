@@ -29,11 +29,16 @@ import path from 'node:path'
 import { searchWorkerEsbuildOptions } from '../apps/desktop-react/scripts/build-electron.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const outdir = path.join(repoRoot, 'dist/server')
+const args = process.argv.slice(2)
+if (!(args.length === 0 || (args.length === 2 && args[0] === '--outDir' && args[1] && !args[1].includes('\0')))) {
+  throw new Error('Usage: node scripts/build-server.mjs [--outDir <directory>]')
+}
+// dev-unified 的 dev-self 泳道传入 --outDir;两个产物必须跟同一实际宿主目录。
+const outdir = path.resolve(repoRoot, args[1] ?? 'dist/server')
 const vite = path.join(repoRoot, 'node_modules/.bin/vite')
 
-process.stdout.write('[server:build] ① vite SSR → dist/server/main.js\n')
-const ssr = spawnSync(process.execPath, [vite, 'build', '--config', 'apps/server/vite.config.ts'], {
+process.stdout.write(`[server:build] ① vite SSR → ${path.join(outdir, 'main.js')}\n`)
+const ssr = spawnSync(process.execPath, [vite, 'build', '--config', 'apps/server/vite.config.ts', '--outDir', outdir], {
   cwd: repoRoot,
   stdio: 'inherit',
   env: process.env,
@@ -43,6 +48,6 @@ if (ssr.status !== 0) {
   process.exit(ssr.status ?? 1)
 }
 
-process.stdout.write('[server:build] ② esbuild → dist/server/search-worker.cjs\n')
+process.stdout.write(`[server:build] ② esbuild → ${path.join(outdir, 'search-worker.cjs')}\n`)
 await esbuild(searchWorkerEsbuildOptions({ outdir, repoRoot }))
 process.stdout.write('[server:build] 完成\n')
