@@ -7,12 +7,12 @@ import type {
   DaemonRequest,
   DaemonResponse,
   DaemonStatus,
+  DaemonFrame,
 } from '@shared/cli/protocol.js'
-import { StoreLock, LockConflictError, formatCliLockConflict } from '@shared/backend/store-lock.js'
 import { getCliRuntimePaths, ensureRuntimeDirs, assertSupportedPlatform } from './paths.js'
 import { NdjsonReader, encodeFrame } from './ndjson.js'
 import { HeadlessBackend } from '@onething/backend/wiring/headless/backend.js'
-import { configureLogging, getLogger, shutdownAppLogging } from '@onething/backend/wiring/logging/index.js'
+import { configureLogging, getLogger } from '@onething/backend/wiring/logging/index.js'
 
 interface DaemonServerOptions {
   storePath?: string
@@ -30,7 +30,7 @@ export class DaemonServer {
   private readonly clients = new Map<Socket, ClientRecord>()
   private readonly startedAt = Date.now()
   private server: net.Server | null = null
-  private lock: StoreLock | null = null
+  private stopping: Promise<void> | undefined
   private acceptingStreams = true
 
   constructor(private readonly options: DaemonServerOptions = {}) {
@@ -39,50 +39,50 @@ export class DaemonServer {
 
   async start(): Promise<void> {
     assertSupportedPlatform()
-    ensureRuntimeDirs(this.paths)
-    removeStaleSocket(this.paths.socketPath)
-
-    this.lock = new StoreLock({ storePath: this.paths.storePath })
-    try {
-      await this.lock.acquire('daemon')
-    } catch (error) {
-      if (error instanceof LockConflictError) {
-        throw new Error(formatCliLockConflict(error.holder, this.paths.storePath))
+    await this.backend.start({ storePath: this.paths.storePath, logging: { fileBaseName: 'daemon', src: 'daemon', consoleEcho: false } })
+    const owned = this.backend.ownedBackend
+    const lease = owned.storeLease
+    let connectionsClosed: Promise<void> = Promise.resolve()
+    owned.own(() => {
+      this.acceptingStreams = false
+      for (const client of this.clients.values()) client.socket.destroySoon()
+      if (this.server) {
+        connectionsClosed = new Promise<void>((resolve, reject) => {
+          this.server!.close(error => error ? reject(error) : resolve())
+        })
+        void connectionsClosed.catch(() => {})
       }
+    }, 'daemonIngress', 'quiesce')
+    owned.own(() => connectionsClosed, 'daemonConnections')
+    owned.own(() => {
+      lease.assertHeld()
+      safeUnlink(this.paths.socketPath)
+      safeUnlink(this.paths.pidPath)
+    }, 'daemonDiscovery', 'endpoints')
+    try {
+      ensureRuntimeDirs(this.paths)
+      lease.assertHeld()
+      safeUnlink(this.paths.socketPath)
+      fs.writeFileSync(this.paths.pidPath, `${process.pid}\n`)
+      this.server = net.createServer(socket => this.handleConnection(socket))
+      await new Promise<void>((resolve, reject) => {
+        this.server!.once('error', reject)
+        this.server!.listen(this.paths.socketPath, () => {
+          this.server!.off('error', reject)
+          fs.chmodSync(this.paths.socketPath, 0o600)
+          resolve()
+        })
+      })
+      this.log.info('daemon listening', { socketPath: this.paths.socketPath, pid: process.pid })
+    } catch (error) {
+      try { await this.backend.shutdown('daemon startup failed') }
+      catch (cleanupError) { throw new AggregateError([error, cleanupError], 'Daemon startup and cleanup failed', { cause: error }) }
       throw error
     }
-
-    fs.writeFileSync(this.paths.pidPath, `${process.pid}\n`)
-    await this.backend.start()
-
-    this.server = net.createServer(socket => this.handleConnection(socket))
-    await new Promise<void>((resolve, reject) => {
-      this.server!.once('error', reject)
-      this.server!.listen(this.paths.socketPath, () => {
-        this.server!.off('error', reject)
-        fs.chmodSync(this.paths.socketPath, 0o600)
-        resolve()
-      })
-    })
-
-    this.log.info('daemon listening', { socketPath: this.paths.socketPath, pid: process.pid })
   }
 
-  async stop(reason = 'daemon shutdown'): Promise<void> {
-    this.acceptingStreams = false
-    for (const client of this.clients.values()) {
-      client.socket.end()
-    }
-    await new Promise<void>(resolve => {
-      if (!this.server) return resolve()
-      this.server.close(() => resolve())
-    })
-    this.server = null
-    await this.backend.shutdown(reason)
-    this.lock?.release()
-    this.lock = null
-    safeUnlink(this.paths.socketPath)
-    safeUnlink(this.paths.pidPath)
+  stop(reason = 'daemon shutdown'): Promise<void> {
+    return this.stopping ??= this.backend.shutdown(reason).then(() => { this.server = null })
   }
 
   private handleConnection(socket: Socket): void {
@@ -95,8 +95,9 @@ export class DaemonServer {
     )
     socket.on('data', chunk => reader.push(chunk))
     socket.on('end', () => reader.end())
-    socket.on('close', () => this.clients.delete(socket))
-    socket.on('error', () => this.clients.delete(socket))
+    const close = () => { this.clients.delete(socket) }
+    socket.on('close', close)
+    socket.on('error', close)
   }
 
   private handleRequest(client: ClientRecord, request: DaemonRequest): void {
@@ -110,6 +111,10 @@ export class DaemonServer {
   }
 
   private async dispatch(client: ClientRecord, request: DaemonRequest): Promise<unknown> {
+    return this.backend.ownedBackend.runTask(`cli:${request.method}`, () => this.dispatchAccepted(client, request))
+  }
+
+  private async dispatchAccepted(client: ClientRecord, request: DaemonRequest): Promise<unknown> {
     switch (request.method) {
       case 'daemon.health':
         return { ok: true, pid: process.pid }
@@ -118,7 +123,7 @@ export class DaemonServer {
       case 'daemon.prepareRestart':
         return this.prepareRestart(Boolean((request.params as { force?: boolean } | undefined)?.force))
       case 'daemon.shutdown':
-        setImmediate(() => void this.stop('daemon shutdown').then(() => process.exit(0)))
+        setImmediate(() => void this.stop('daemon shutdown').then(() => process.exit(0), () => process.exit(1)))
         return { ok: true }
       case 'chat.ask': {
         if (!this.acceptingStreams) throw namedError('ERR_DAEMON_RESTART', 'Daemon is restarting')
@@ -172,7 +177,7 @@ export class DaemonServer {
         this.backend.archiveSession(requiredString(request.params, 'sessionId'), Boolean((request.params as { archived?: boolean }).archived))
         return { ok: true }
       case 'session.delete':
-        this.backend.deleteSession(requiredString(request.params, 'sessionId'))
+        await this.backend.deleteSession(requiredString(request.params, 'sessionId'))
         return { ok: true }
       case 'session.cwd': {
         const params = request.params as { sessionId?: string; cwd?: string | null } | undefined
@@ -242,7 +247,7 @@ export class DaemonServer {
     }
     this.acceptingStreams = false
     if (force) {
-      setImmediate(() => void this.stop('daemon restart').then(() => process.exit(0)))
+      setImmediate(() => void this.stop('daemon restart').then(() => process.exit(0), () => process.exit(1)))
       return { ok: true }
     }
     const deadline = Date.now() + 10_000
@@ -253,7 +258,7 @@ export class DaemonServer {
       this.acceptingStreams = true
       throw namedError('ERR_TIMEOUT', 'Timed out waiting for active streams to finish')
     }
-    setImmediate(() => void this.stop('daemon restart').then(() => process.exit(0)))
+    setImmediate(() => void this.stop('daemon restart').then(() => process.exit(0), () => process.exit(1)))
     return { ok: true }
   }
 
@@ -270,9 +275,15 @@ export class DaemonServer {
     }
   }
 
-  private write(socket: Socket, frame: DaemonResponse | DaemonEvent): void {
+  private write(socket: Socket, frame: DaemonFrame): void {
     if (socket.destroyed) return
-    socket.write(encodeFrame(frame))
+    const encoded = encodeFrame(frame)
+    // Stop slow readers instead of retaining an unbounded native write queue.
+    if (socket.writableLength + Buffer.byteLength(encoded) > 8 * 1024 * 1024) {
+      socket.destroy(new Error('Daemon output buffer overflow'))
+      return
+    }
+    socket.write(encoded)
   }
 }
 
@@ -288,19 +299,17 @@ export function configureDaemonLogging(storePath?: string): ReturnType<typeof co
 }
 
 export async function runDaemonServer(options: DaemonServerOptions = {}): Promise<void> {
-  // 第一件事:接上日志(L2)。这之前的行只进内存环 —— 但这之前只有参数解析。
-  // `configureLogging` 自带 `installProcessCrashHooks`,所以守护进程的
-  // unhandledRejection / uncaughtException 从此有人听(P7)。
-  configureDaemonLogging(options.storePath)
   const server = new DaemonServer(options)
   await server.start()
   const shutdown = (reason: string) => {
+    if (shuttingDown) { process.exit(1); return }
+    shuttingDown = true
     void server.stop(reason)
-      .finally(() => shutdownAppLogging())
-      .finally(() => process.exit(0))
+      .then(() => process.exit(0), () => process.exit(1))
   }
-  process.once('SIGTERM', () => shutdown('SIGTERM'))
-  process.once('SIGINT', () => shutdown('SIGINT'))
+  let shuttingDown = false
+  process.on('SIGTERM', () => shutdown('SIGTERM'))
+  process.on('SIGINT', () => shutdown('SIGINT'))
 }
 
 function errorResponse(id: string, code: string, message: string): DaemonResponse {
@@ -323,21 +332,10 @@ function randomClientId(): string {
   return `client-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`
 }
 
-function removeStaleSocket(socketPath: string): void {
-  if (!fs.existsSync(socketPath)) return
-  try {
-    const socket = net.connect(socketPath)
-    socket.once('connect', () => socket.end())
-    socket.once('error', () => safeUnlink(socketPath))
-  } catch {
-    safeUnlink(socketPath)
-  }
-}
-
 function safeUnlink(filePath: string): void {
   try {
     fs.unlinkSync(filePath)
-  } catch {
-    // Best effort.
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
   }
 }

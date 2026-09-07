@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import type { RefObject } from 'react'
-import { createFileToken } from '@shared/prompt-references'
+import { createFileToken } from '@onething/runtime/prompts/prompt-references'
 import type { CommandEntry } from '../data/commands-source'
 import { useCommandsSource } from '../data/commands-source'
 import {

@@ -15,7 +15,7 @@ import {
   writeHttpDiscovery,
 } from '@onething/backend/server/discovery.js'
 import { configureHostLocalTrust } from '@onething/backend/server/host-trust.js'
-import { configureLogging } from '@onething/backend/wiring/logging/index.js'
+import { getAppLogPath, getLogger } from '@onething/backend/wiring/logging/index.js'
 import { warnOnForeignCoreForEventsRead } from '@onething/backend/session/read-mode.js'
 import { randomBytes } from 'node:crypto'
 
@@ -97,28 +97,21 @@ if (existing && existing.owner !== 'server') {
 }
 
 const runtimeCreateStart = Date.now()
-// 装配失败(最典型的是 P0.4 新加的 store 单实例锁被别人占着)要给一句人话,
-// 而不是把 top-level await 的 unhandled rejection 连栈一起糊在终端上。
+// 装配失败要给一句人话,而不是把 top-level await 的 unhandled rejection
+// 连栈一起糊在终端上。
 const serverRuntime = await createDevelopmentOnethingServerRuntime({
   workspaceRoot,
   dataRoot,
   settingsRoot,
+  logging: { fileBaseName: 'server', src: 'server', consoleEcho: 'pretty' },
 }).catch((error: unknown) => {
-  // 启动期 FATAL:装配都没成,日志接线在它之后 —— 直写 stderr。
+  // 装配失败也可能发生在日志配置前，启动错误直接保留到 stderr。
   // eslint-disable-next-line no-console
   console.error(`[onething-server] FATAL: ${error instanceof Error ? error.message : String(error)}`)
   process.exit(1)
 })
-// 日志接线(L2 的 server 那半,L1 一起落):`<store>/log/server.jsonl` + 进程钩子
-// + log/ 目录治理。位置在 runtime 之后是**故意的** —— store 根(`ONETHING_STORE_PATH`)
-// 由 runtime 装配时钉死,提前接线会把日志写进另一个 store 的 log/ 目录。
-// 桌面里那只**嵌入式** HTTP 面不会走到这里(它在主进程,`configureLogging` 幂等,
-// 记录进 app.jsonl),所以不存在两个进程抢同一个 server.jsonl 的情况。
-// `consoleEcho: 'pretty'` 是这只**独立进程**的终端那一侧:接线之后所有输出都走
-// logger,没有回显的话终端就哑了(桌面不需要 —— 它的 console 由 LegacyConsoleSink
-// 原样透传)。回显跳过 `ns='console'`,免得未迁移的行打两遍。
-const logging = configureLogging({ fileBaseName: 'server', src: 'server', consoleEcho: 'pretty' })
-const log = logging.getLogger('server')
+// Backend 在取得目录 lease 后配置日志，并在最终解锁前关闭日志句柄。
+const log = getLogger('server')
 // R-c(§13.6):切读之后还有别的 core 拿着这个 store,喊一声(不崩)。
 // 拦是迁移脚本的事;这里只让"两个写者"这件事在日志里留下一行。
 warnOnForeignCoreForEventsRead(
@@ -128,14 +121,18 @@ warnOnForeignCoreForEventsRead(
     : undefined,
 )
 log.info('runtime created', { ms: Date.now() - runtimeCreateStart })
-log.info('logging to file', { path: logging.logPath })
+log.info('logging to file', { path: getAppLogPath() })
 // 本机宿主可信(2026-08-30 拍板,`@onething/backend/server/host-trust.ts`):
 // **只有回环绑定才声明可信**。回环 = 服务的是本机同一个用户的同一个 store,那时
 // `POST /api/rpc` 的 files 面与桌面 IPC 同权;绑到别的地址上就是"别人也够得着"的
 // 独立部署,护栏原样不动。`ONETHING_SERVER_FILES_SANDBOX=1` 压得住这条声明。
 // 端口自己会按现状打一行日志(可信 / 强制收紧 / 保持夹紧)。
 configureHostLocalTrust(isLoopback ? { origin: 'loopback-server', host } : null)
+// 先拿到 Backend,再造服务器(工单 4 C11):`runRequest` 那条闭包引用它,而它
+// 从前是在下面几行才声明的 —— 只要有一个请求赶在那之前进来就是 TDZ 崩。
+const ownedBackend = serverRuntime.backend ?? (() => { throw new Error('Standalone server requires an owned Backend') })()
 const server = createOnethingHttpServer({
+  runRequest: run => ownedBackend.runTask('http request', run),
   runtime: serverRuntime.runtime,
   corsOrigin,
   authToken,
@@ -145,6 +142,10 @@ const server = createOnethingHttpServer({
   // sandbox-scoped RPC domains would mean clamping against the wrong tree.
   workspaceRoot: serverRuntime.workspaceRoot,
 })
+const storeLease = ownedBackend.storeLease
+ownedBackend.own(() => server.stopAccepting(), 'httpIngress', 'quiesce')
+ownedBackend.own(() => server.whenClosed(), 'httpConnections')
+ownedBackend.own(() => removeHttpDiscovery({ lease: storeLease }), 'httpDiscovery', 'endpoints')
 
 // 固定端口被占 = 明确报错,绝不静默换一个:换了的话客户端(和发现文件的读者)
 // 会连到一个它没打算连的实例上。
@@ -158,7 +159,7 @@ server.on('error', (error: NodeJS.ErrnoException) => {
   } else {
     log.fatal('listen failed', { port, host }, error)
   }
-  process.exit(1)
+  void ownedBackend.requestShutdown('listen failed').then(() => process.exit(1), () => process.exit(1))
 })
 
 server.listen(port, host, () => {
@@ -166,14 +167,24 @@ server.listen(port, host, () => {
   const actualPort = typeof address === 'object' && address ? address.port : port
   log.info('listening', { url: `http://${host}:${actualPort}` })
   // 发现文件:客户端(web dev 代理 / CLI / B 期 renderer)一律靠它找到这个进程。
-  writeHttpDiscovery({
-    port: actualPort,
-    host,
-    token: authToken,
-    pid: process.pid,
-    startedAt: Date.now(),
-    owner: 'server',
-  })
+  if (ownedBackend.isShuttingDown) return
+  try {
+    writeHttpDiscovery({
+      port: actualPort,
+      host,
+      token: authToken,
+      pid: process.pid,
+      startedAt: Date.now(),
+      owner: 'server',
+    }, { lease: storeLease })
+  } catch (error) {
+    log.error('discovery publication failed', {}, error)
+    void ownedBackend.requestShutdown('discovery publication failed').then(
+      () => process.exit(1),
+      () => process.exit(1),
+    )
+    return
+  }
   // Pairing line for mobile clients: scan/encode this JSON as a QR code.
   const pairing: Record<string, unknown> = { host, port: actualPort }
   if (authToken) pairing.token = authToken
@@ -193,44 +204,19 @@ server.listen(port, host, () => {
  * 超时就带非零码退出,把"没刷干净"这件事说出来而不是假装干净。
  * 重复信号直接硬退,不再排第二次队。
  */
-const SHUTDOWN_FLUSH_TIMEOUT_MS = 5000
 let shuttingDown = false
 
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) {
     log.warn('signal received again while shutting down, exiting now', { signal })
-    removeHttpDiscovery()
     process.exit(1)
   }
   shuttingDown = true
   log.info('signal received, shutting down', { signal })
-  // 发现文件先删:它是"我还在服务"的宣告,关端口这一步开始就已经不成立了。
-  removeHttpDiscovery()
-
-  // 超时罩住整段(close 也算在内):挂着的 SSE 连接会让 `server.close()` 的回调
-  // 迟迟不来,那种情况下也必须走到刷盘,不能被卡在关端口这一步。
-  const drained = (async () => {
-    await new Promise<void>(resolve => server.close(() => resolve()))
-    await serverRuntime.shutdown()
-  })()
-
-  let timer: NodeJS.Timeout | undefined
-  const timedOut = await Promise.race([
-    drained.then(() => false),
-    new Promise<boolean>(resolve => {
-      timer = setTimeout(() => resolve(true), SHUTDOWN_FLUSH_TIMEOUT_MS)
-      timer.unref?.()
-    }),
-  ]).catch(error => {
+  try {
+    await ownedBackend.requestShutdown(signal)
+  } catch (error) {
     log.error('shutdown failed', {}, error)
-    return true
-  })
-  if (timer) clearTimeout(timer)
-
-  if (timedOut) {
-    log.error('shutdown did not finish in time; pending session writes may be lost', {
-      timeoutMs: SHUTDOWN_FLUSH_TIMEOUT_MS,
-    })
     process.exit(1)
   }
   process.exit(0)

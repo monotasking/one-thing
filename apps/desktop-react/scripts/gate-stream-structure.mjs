@@ -1273,14 +1273,18 @@ async function runCell({ record, page, kind, piece, index }) {
     sessionId,
     command: { type: 'command:send-message', content: `${TRIGGER} 请开始`, suppressTitleGeneration: true },
   })
-  if (lateOpen) {
-    await sendTrigger()
-    await delay(LATE_OPEN_MS)
-  }
   /*
    * **点瓦是开关,最多点三下、每下之后各问一次**(W6-a:会话总览出厂钉左架子,
    * 而架子上那一块「看得见时点一下 = 收起整条架子」)。判词与 `runTwoLeafCell`
    * 里那只 `showOverview` 逐字同源。
+   *
+   * **这一趟必须排在 `sendTrigger()` 之前**(工单 4 D6;裁定正本 §4)。它是**门的
+   * 布景**,不是被测行为:今天的壳进场要先绕一趟 Dock 才看得见总览,实测 +505ms。
+   * 从前它排在 `sendTrigger()` + `LATE_OPEN_MS` 之后,于是这 505ms 是从**直播窗口**
+   * 里扣的 —— 810ms 的窗口只剩 666ms,而门要在窗口里完成「n>60 后触发 + 300ms
+   * 延时 + 两次点击」,重连必然落在 `run/end` 之后,`seenLive` 恒 0。
+   * midjoin V2 因此红,而逐帧读数证明在飞的正文一帧都没丢 —— 红的是预算,不是内容。
+   * 挪到前面 = 把落地期的预算还回去;`LATE_OPEN_MS` 与 `n > 60` 一个数都不动。
    */
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const there = await page.evaluate(
@@ -1294,6 +1298,11 @@ async function runCell({ record, page, kind, piece, index }) {
   await waitFor('总览画出那一行', () =>
     page.evaluate(id => Boolean(document.querySelector(`[data-testid="session-row-${id}"]`)), sessionId),
   )
+  if (lateOpen) {
+    await sendTrigger()
+    await delay(LATE_OPEN_MS)
+  }
+  // 「壳来晚」的那一下仍然在延时**之后**:开会话这个动作本身就是中途入场。
   await clickTestId(page, `session-row-${sessionId}`)
   await waitFor('聊天区就位', () =>
     page.evaluate(() => Boolean(document.querySelector('[data-testid="chat-stream"]'))),
@@ -1983,7 +1992,7 @@ async function runCell({ record, page, kind, piece, index }) {
 
 /* ── 主流程 ────────────────────────────────────────────────────────────── */
 
-async function runCase(kind) {
+async function runCase(kind, owner = 'server') {
   const spec = CASES[kind]
   const store = await mkdtemp(path.join(tmpdir(), `structure-gate-${kind}-`))
   /*
@@ -1995,6 +2004,35 @@ async function runCase(kind) {
   let mock
   let server
   let app
+  let desktopProcess
+  let desktopClosed
+  let desktopProcessError
+  let desktopLaunchAttempted = false
+  let caseError
+  const ownerErr = []
+  const launchApp = async () => {
+    if (owner === 'desktop') desktopLaunchAttempted = true
+    app = await electron.launch({
+      executablePath: electronBinary,
+      args: [mainEntry, `--user-data-dir=${userDataDir}`],
+      env: {
+        ...process.env,
+        ONETHING_STORE_PATH: store,
+        ONETHING_REACT_DEV_SERVER_URL: '',
+        ONETHING_GATE_HEADLESS: '1',
+        ...(owner === 'desktop' ? { DEEPSEEK_API_KEY: 'sk-structure-gate' } : {}),
+      },
+    })
+    if (owner === 'desktop') {
+      desktopProcess = app.process()
+      desktopClosed = new Promise(resolve => {
+        desktopProcess.once('error', error => { desktopProcessError ??= error })
+        desktopProcess.once('close', (code, signal) => resolve({ code, signal }))
+      })
+      desktopProcess.stderr?.on('data', chunk => ownerErr.push(chunk.toString()))
+      desktopProcess.stdout?.on('data', () => {})
+    }
+  }
   try {
     mockState.tools = spec.tools
     mockState.script = spec.script
@@ -2024,36 +2062,28 @@ async function runCase(kind) {
       tools: { enableToolCalls: spec.tools },
     }))
 
-    server = spawn(process.execPath, [serverEntry], {
-      cwd: repoRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-structure-gate' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    const serverErr = []
-    server.stderr.on('data', chunk => serverErr.push(chunk.toString()))
+    if (owner === 'desktop') await launchApp()
+    else {
+      server = spawn(process.execPath, [serverEntry], {
+        cwd: repoRoot,
+        env: { ...process.env, ONETHING_STORE_PATH: store, DEEPSEEK_API_KEY: 'sk-structure-gate' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      server.stderr.on('data', chunk => ownerErr.push(chunk.toString()))
+    }
+    const ownerPid = owner === 'desktop' ? desktopProcess.pid : server.pid
     const record = await waitFor('core 写出发现文件', () => {
       const found = readDiscovery(store)
-      return found && found.pid === server.pid ? found : undefined
+      return found && found.pid === ownerPid ? found : undefined
     }).catch(error => {
-      throw new Error(`${error.message}\nserver stderr:\n${serverErr.join('')}`)
+      throw new Error(`${error.message}\n${owner} stderr:\n${ownerErr.join('')}`)
     })
+    if (owner === 'desktop') assert(record.owner === 'shell', `[${kind}] discovery owner=shell, PID=${ownerPid}`)
     assert(await portConnects(record.host, record.port), `[${kind}] core 端口 ${record.port} 可连`)
 
-    app = await electron.launch({
-      executablePath: electronBinary,
-      args: [mainEntry, `--user-data-dir=${userDataDir}`],
-      env: {
-        ...process.env,
-        ONETHING_STORE_PATH: store,
-        ONETHING_REACT_DEV_SERVER_URL: '',
-        /*
-         * **离屏起窗**(09-04 S4 立的纪律「真机门不许抢用户的机器」)。窗子不 show()、
-         * 不进 Dock;页面照样渲染、照样跑布局与 rAF,焦点由 CDP
-         * `Emulation.setFocusEmulationEnabled` 补上(只进这个窗口,不动真光标)。
-         */
-        ONETHING_GATE_HEADLESS: '1',
-      },
-    })
+    // Default mode borrows the standalone server; desktop mode already owns
+    // its Backend and HTTP surface. Both use the same offscreen window setup.
+    if (!app) await launchApp()
     const page = await app.firstWindow()
     const cdp = await app.context().newCDPSession(page)
     await cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true })
@@ -2105,20 +2135,70 @@ async function runCase(kind) {
      */
     if (kind === TWO_LEAF_KIND) await runTwoLeafCell({ record, page, kind })
 
-    await app.close()
-    app = undefined
+    if (owner !== 'desktop') {
+      await app.close()
+      app = undefined
+    }
+  } catch (error) {
+    caseError = error
+    throw error
   } finally {
-    if (app) await app.close().catch(() => {})
-    if (server && pidAlive(server.pid)) server.kill('SIGTERM')
-    if (mock) mock.close()
-    await delay(600)
-    await rm(store, { recursive: true, force: true })
-    await rm(userDataDir, { recursive: true, force: true })
+    /* eslint-disable no-unsafe-finally -- 这段清理正是「不许顶掉在飞错误」的实现:
+       caseError 被收进 AggregateError 一起抛,门要的就是清理失败也红 */
+    if (owner === 'desktop') {
+      const cleanupErrors = []
+      try {
+        if (desktopLaunchAttempted && !desktopProcess) throw new Error('Desktop launch did not return an owned process; retaining evidence')
+        if (desktopProcess) {
+          let timer
+          let closeError
+          const closing = app.close().catch(error => { closeError = error })
+          let result
+          try {
+            const closed = Promise.all([closing, desktopClosed]).then(([, value]) => value)
+            result = await Promise.race([closed, new Promise((_, reject) => {
+              timer = setTimeout(() => reject(new Error(`Desktop PID ${desktopProcess.pid} did not close within 15s`)), 15000)
+            })])
+          } finally { clearTimeout(timer) }
+          if (desktopProcessError || closeError) throw desktopProcessError ?? closeError
+          if (result.code !== 0 || result.signal !== null) throw new Error(`Desktop exited unsuccessfully: ${JSON.stringify(result)}`)
+          let gone = false
+          try { process.kill(desktopProcess.pid, 0) } catch (error) {
+            if (error.code !== 'ESRCH') throw error
+            gone = true
+          }
+          if (!gone) throw new Error(`Desktop PID ${desktopProcess.pid} is still alive after close`)
+          assert(true, `[${kind}] desktop actual close code=0, PID=${desktopProcess.pid} gone`)
+        }
+        if (existsSync(path.join(store, 'run', 'backend.lock'))) throw new Error('Backend lock still exists after desktop close')
+        if (existsSync(path.join(store, 'run', 'http.json'))) throw new Error('HTTP discovery still exists after desktop close')
+      } catch (error) { cleanupErrors.push(error) }
+      if (mock) {
+        mock.closeAllConnections()
+        await new Promise(resolve => mock.close(resolve))
+      }
+      if (cleanupErrors.length) throw new AggregateError(
+        [...(caseError ? [caseError] : []), ...cleanupErrors],
+        `Desktop cleanup failed; retained store=${store}, userData=${userDataDir}, PID=${desktopProcess?.pid ?? 'unknown'}`,
+      )
+      await rm(store, { recursive: true, force: true })
+      await rm(userDataDir, { recursive: true, force: true })
+      /* eslint-enable no-unsafe-finally */
+    } else {
+      if (app) await app.close().catch(() => {})
+      if (server && pidAlive(server.pid)) server.kill('SIGTERM')
+      if (mock) mock.close()
+      await delay(600)
+      await rm(store, { recursive: true, force: true })
+      await rm(userDataDir, { recursive: true, force: true })
+    }
   }
 }
 
 async function main() {
-  if (!existsSync(serverEntry)) {
+  const owner = process.argv.find(argument => argument.startsWith('--owner='))?.slice(8) ?? 'server'
+  if (owner !== 'server' && owner !== 'desktop') throw new Error(`Unsupported owner: ${owner}`)
+  if (owner === 'server' && !existsSync(serverEntry)) {
     console.error(`[structure-gate] 找不到 ${path.relative(repoRoot, serverEntry)} —— 先在仓根跑 \`bun run server:build\``)
     process.exit(1)
   }
@@ -2134,7 +2214,7 @@ async function main() {
   for (const kind of kinds) {
     if (!CASES[kind]) throw new Error(`没有这条素材:${kind}(有的是 ${Object.keys(CASES).join(' / ')})`)
     if (pieces) CASES[kind].pieces = pieces.split(',').map(Number)
-    await runCase(kind)
+    await runCase(kind, owner)
   }
   console.log('\n[structure-gate] ok —— 思考块不消失不搬家、表格不回退;工具边界正文不消失不跨界、工具行不重挂、参数流式期有呈现')
 }

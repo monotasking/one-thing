@@ -6,6 +6,16 @@
 .pre {
   margin: 0;
   /* 不在这里 overflow:auto —— 横滚是壳的事,两层滚动条会互相吃滚动。 */
+  /*
+   * 撑成一个按内容定宽的**块盒**(09-03 用户带截图报「行尾的字贴到块的右边上」)。
+   * 病历:壳的 `.body` 是 `padding + overflow-x:auto`,而 `white-space:pre` 的字是
+   * **行内**溢出 —— Chromium(真机 148 量的)只把滚动容器的尾端内边距算进**块级**
+   * 后代的可滚区,行内内容不算:横滚到底,文字右缘与 `.body` 外缘重合(gap −0.2px),
+   * 右边那 12px 内边距凭空没了。`min-width: max-content` 让 pre 自己宽到最长那行,
+   * 溢出的就是这个块盒而不是字,尾端内边距随之回来(gap 11.8px);短代码仍铺满
+   * `.body`(min-width 不是 width)。与 Diff.module.css 的 `.diff` 是同一条配方。
+   */
+  min-width: max-content;
   font-family: var(--font-mono);
   /* 比正文小一号(阅读轴:--pr-fs − 1)。等宽字在同一号数上看着比比例字大,
    * 减一档之后两者的视觉重量才齐 —— 这是比稿定的相对关系,不是一个绝对 px。 */

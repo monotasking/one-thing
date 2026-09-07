@@ -23,6 +23,7 @@
     "gate:search-messages": "node scripts/gate-search-messages.mjs",
     "gate:monotone": "node scripts/gate-stream-monotone.mjs",
     "gate:stream-structure": "node scripts/gate-stream-structure.mjs",
+    "gate:stream-structure:desktop": "node scripts/gate-stream-structure.mjs --owner=desktop",
     "gate:tool-stream": "node scripts/gate-tool-stream.mjs",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix",

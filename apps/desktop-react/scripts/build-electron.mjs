@@ -25,7 +25,7 @@
  *     `createRequire(undefined)` 抛 ERR_INVALID_ARG_VALUE —— 而且是**模块求值期**
  *     抛,整只 bundle 一起死。banner 里现算一个 `file://` 的 __filename 顶上。
  *
- *  ③ 四个模块 external —— 打进 bundle 只会得到一个找不到二进制的假副本。
+ *  ③ 原生与延迟加载模块 external —— 打进 bundle 会得到找不到二进制的假副本。
  *     `node-pty` 是真触达的(终端工具);`sherpa-onnx-node`(语音)今天在导入图里
  *     不可达,列在这里是零成本的护栏:哪天有人把它接进来,得到的是「模块没装」的
  *     诚实报错,而不是一次静默的错误绑定。
@@ -88,8 +88,10 @@ export function shellEsbuildOptions({ entryPoints, outdir, nodeShims = true }) {
     target: 'node20',
     format: 'cjs',
     sourcemap: true,
-    // ③ electron 本体由运行时提供;node: 内建同理;两个原生模块见文件头。
-    external: ['electron', 'node-pty', 'sherpa-onnx-node', 'sqlite-vec', '@huggingface/transformers'],
+    // ③ electron 本体由运行时提供;node: 内建同理;原生模块见文件头。
+    // macOS workspace watching loads this optional N-API package at runtime;
+    // bundling its JS would detach the relative fsevents.node resource.
+    external: ['electron', 'node-pty', 'sherpa-onnx-node', 'sqlite-vec', '@huggingface/transformers', 'fsevents'],
     // ② 见文件头。banner 现算一次,define 把每个 import.meta.url 指过去。
     ...(nodeShims
       ? {

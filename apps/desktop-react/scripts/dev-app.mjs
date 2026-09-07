@@ -27,17 +27,20 @@ import { createServer } from 'vite'
 import electronPath from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { createChildShutdown, observeChildClose, shutdownFailed } from '../../../scripts/lib/dev-process-shutdown.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 // main/preload 每次都重打:它们不参与 vite 的依赖图。
-await new Promise((resolve, reject) => {
+await (async () => {
   const build = spawn(process.execPath, [path.join(appRoot, 'scripts/build-electron.mjs')], {
     cwd: appRoot,
     stdio: 'inherit',
   })
-  build.on('exit', code => (code === 0 ? resolve() : reject(new Error(`electron:build 退出码 ${code}`))))
-})
+  const result = await observeChildClose(build).promise
+  if (result.error) throw result.error
+  if (result.code !== 0) throw new Error(`electron:build 退出码 ${result.code}, signal ${result.signal}`)
+})()
 
 const server = await createServer({ configFile: path.join(appRoot, 'vite.config.ts') })
 await server.listen()
@@ -51,13 +54,35 @@ const electron = spawn(electronPath, [path.join(appRoot, 'dist-electron/main.cjs
   env: { ...process.env, ONETHING_REACT_DEV_SERVER_URL: url },
 })
 
-electron.on('exit', async code => {
-  await server.close()
-  process.exit(code ?? 0)
+const electronShutdown = createChildShutdown({
+  child: electron,
+  onTimeout: () => console.error('[electron:dev] Electron did not close within 10 s; forcing its owned process to stop. Shutdown failed; the store lock may be retained.'),
+})
+let shuttingDown
+
+function shutdown(signal = 'SIGTERM') {
+  if (shuttingDown) return shuttingDown
+  shuttingDown = Promise.resolve().then(async () => {
+    const result = await electronShutdown.stop(signal)
+    let exitCode = shutdownFailed(result) || process.exitCode ? 1 : 0
+    try { await server.close() }
+    catch (error) {
+      console.error('[electron:dev] Vite shutdown failed:', error)
+      exitCode = 1
+    }
+    for (const error of result.signalErrors) console.error('[electron:dev] Could not signal Electron:', error)
+    if (result.error) console.error('[electron:dev] Electron process failed:', result.error)
+    process.exit(exitCode)
+  })
+  return shuttingDown
+}
+
+void electronShutdown.closed.then(result => {
+  // An unexpected signal is a failed child, not a successful application exit.
+  if (!shuttingDown && result.signal) process.exitCode = 1
+  return shutdown()
 })
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    electron.kill()
-  })
+  process.on(signal, () => { void shutdown(signal) })
 }

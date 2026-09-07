@@ -20,6 +20,9 @@ async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2))
   if (parsed.storePath) process.env.ONETHING_STORE_PATH = parsed.storePath
 
+  if (parsed.args[0] === 'store' && parsed.flags['daemon-child']) {
+    throw new Error('Store commands are offline-only and cannot be combined with --daemon-child.')
+  }
   if (parsed.flags['daemon-child']) {
     process.env.ONETHING_HEADLESS = '1'
     const { runDaemonServer } = await import('./daemon-server.js')
@@ -34,6 +37,9 @@ async function main(): Promise<void> {
   }
 
   switch (scope) {
+    case 'store':
+      await (await import('./store-command.js')).storeCommand(command, rest, parsed.storePath, parsed.flags)
+      break
     case 'daemon':
       await daemonCommand(command, rest, parsed)
       break
@@ -532,7 +538,8 @@ async function handleChatSlash(
 function parseArgs(argv: string[]): ParsedArgs {
   const args: string[] = []
   const flags: Record<string, string | boolean> = {}
-  const booleanFlags = new Set(['clear', 'daemon-child', 'force', 'h', 'help', 'json', 'last', 'y', 'yes'])
+  const booleanFlags = new Set(['clear', 'daemon-child', 'force', 'h', 'help', 'json', 'last', 'y', 'yes',
+    'all-hosts-stopped', 'automatic-restarts-disabled'])
   const valueShortFlags = new Set(['n', 's'])
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
@@ -619,6 +626,12 @@ Usage:
   onething tools list|enable|disable
   onething permission set <mode>
   onething plugin install <path.tgz | market id> [more...]
+  onething store backup <new-backup-dir> --store <stopped-store>
+  onething store verify <backup-dir>
+  onething store restore <backup-dir> <new-store-dir>
+  onething store lock [inspect] [--store <path>]
+  onething store lock recover --store <stopped-store> --identity-file <reviewed-diagnostic.json>
+      --all-hosts-stopped --automatic-restarts-disabled
   onething plugin list
   onething plugin uninstall <id | package name>
   onething trace <sessionId> [--run <id> | --last] [--json] [--response <requestIndex>]
@@ -627,6 +640,11 @@ Global:
   --store <path>  Use a non-default store directory
 
 Notes:
+  store lock defaults to read-only JSON diagnosis. Recovery requires a reviewed
+  diagnostic from the same store, every host stopped, and automatic restarts
+  disabled. It preserves the old lock in a diagnostic archive; there is no force
+  mode and no automatic recovery based only on a missing PID.
+
   trace reads <store>/sessions/<id>/events.jsonl directly (no daemon needed) and
   never writes. --response prints the assistant text of one request, folded from
   the recorded chunks.

@@ -13,12 +13,18 @@ export default defineConfig({
       { find: '@shared', replacement: resolve(projectRoot, 'packages/shared') },
     ],
   },
+  // macOS-only optional native addon. Preserve the real package (and its
+  // relative .node file) instead of bundling a detached JavaScript wrapper.
+  ssr: { external: ['fsevents'] },
   build: {
     ssr: resolve(projectRoot, 'apps/server/src/main.ts'),
     target: 'node20',
     outDir: resolve(projectRoot, 'dist/server'),
     emptyOutDir: true,
     rollupOptions: {
+      // Keep the guarded import external even when Linux or Windows omit this
+      // optional darwin addon; Rollup must not resolve it during the build.
+      external: ['fsevents'],
       output: {
         entryFileNames: 'main.js',
         // Single-file bundle: split dynamic-import chunks re-import main.js,

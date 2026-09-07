@@ -99,6 +99,24 @@ describe('块体的滚动契约', () => {
     expect(slice('.bodyClamped {', '.bodyExpanded {')).toContain('mask-image: linear-gradient(')
     expect(rules.slice(at('.bodyExpanded {')).split('}')[0]).not.toContain('mask-image')
   })
+
+  /*
+   * 横滚到底,行尾的字与块的右缘之间要留着 `.body` 的内边距(09-03 用户带截图报
+   * 「行尾的文本贴到了边上」)。Chromium 只把滚动容器的尾端内边距算进**块级**后代的
+   * 可滚区,`white-space: pre` 的字是行内溢出,不算 —— 所以两个横滚的本体
+   * (code 的 `.pre`、diff 的 `.diff`)都必须自己撑成按内容定宽的块盒。
+   * 真机读数(Chrome 148):没有这一句 gap −0.2px,有了 11.8px。这层只能守字面。
+   */
+  it('横滚的本体自己撑成 max-content 块盒:code 与 diff 同一条配方', () => {
+    for (const file of ['kinds/code/Code.module.css', 'kinds/diff/Diff.module.css']) {
+      const text = readFileSync(resolve(process.cwd(), 'src/content/blocks', file), 'utf8')
+      const lines = text
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n')
+        .map((line) => line.trim())
+      expect(lines, file).toContain('min-width: max-content;')
+    }
+  })
 })
 
 describe('单块错误边界:降级成源码,不是一张错误卡', () => {

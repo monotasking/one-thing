@@ -19,7 +19,7 @@
  *  3. 开窗口。
  *  4. 一条 IPC:`host:connection` → `{ baseUrl, token }`。发现文件是 0600 的秘密,
  *     渲染层不许自己读盘 —— 挂别人的面和挂自己的面,渲染层看到的形状逐字相同。
- *  5. 退出时按 引擎 → HTTP 面 → 发现文件 的顺序收尾。
+ *  5. 退出由 Backend 的资源阶段协调:停止接入 → 排空 → 保存 → 摘发现文件。
  *
  * 它**仍然不**做的事(边界,别越):不取 StoreLock、不注册第二张 IPC 表。
  * 不取锁是 08-24 的拍板(「store 不要锁」),与 apps/server 同口径:单写者靠发现
@@ -39,12 +39,13 @@ import {
 import {
   startEmbeddedOnethingHttpServer,
   stopEmbeddedOnethingHttpServer,
+  getEmbeddedOnethingHttpServer,
 } from '@onething/backend/server/embed.js'
 import { removeHttpDiscovery } from '@onething/backend/server/discovery.js'
 import { initializeUserSchedulerTasks } from '@onething/backend/wiring/scheduler/user-tasks.js'
-import { createOpenAudienceFactory } from '@onething/backend/server/audience.js'
-import { configureLogging, getLogger } from '@onething/backend/wiring/logging/index.js'
+import { getLogger } from '@onething/backend/wiring/logging/index.js'
 import { applyShellNetworkProxySettings, createShellHostPorts } from './host-ports.js'
+import { createDesktopShutdownRequest } from './shutdown.js'
 
 /**
  * ── 同店同钥:app 名字就是 safeStorage 的钥匙名 ─────────────────────────────
@@ -164,6 +165,8 @@ class ShellNoopSender extends EventEmitter {
 }
 
 let backend: OnethingBackend | undefined
+let ownCoreAssembly: Promise<OnethingBackend> | undefined
+let quitting = false
 /**
  * `host:connection` 的答案。是 Promise 而不是值:内嵌那条路上 HTTP 面是**开窗之后**
  * 才起来的(非阻塞,不让一次 listen 拖住第一帧),而渲染层第一件事就是问这条。
@@ -177,18 +180,16 @@ function connectionOf(record: { host: string; port: number; token?: string }): H
 
 /**
  * 自己当 core。顺序不是随手排的:
- *   configureLogging  —— 必须最早。它之后的每一条记录才落进 `<store>/log/shell.jsonl`;
- *                        在它之前抛的错只留在内存环里。
  *   createOnethingBackend —— 唯一的装配配方,顺序约束都在它里面。宿主能力经
  *                        `host:` 一次交清(A1),由它的第一步 `applyHostPorts`
  *                        接线 —— 壳这边不再有"记得在装配前调"这件事。
+ *                        **不给 `owner`** = 这个宿主不取 store 锁(见文件头)。
  */
 async function assembleOwnCore(): Promise<OnethingBackend> {
   // 日志单开一本 `shell.jsonl`:过渡期两个壳可能先后服务同一个 store,混进 app.jsonl
   // 会让那本账在「谁在当家」这件事上说谎。代价见文件末尾的留账①。
-  configureLogging({ fileBaseName: 'shell', src: 'main' })
-
   return createOnethingBackend({
+    logging: { fileBaseName: 'shell', src: 'main' },
     host: createShellHostPorts(),
     toolRegistry: 'full',
     promptVersion: true,
@@ -221,7 +222,6 @@ function startPostWindowServices(): void {
     // 恒真,所以把那句话说出口(批 A §3.1),而不是让过滤代码每条分片重新问一遍。
     const mounting = startEmbeddedOnethingHttpServer(b, {
       owner: 'shell',
-      audienceFactory: createOpenAudienceFactory(),
     })
     connectionReady = mounting
       .then(embedded => {
@@ -249,11 +249,13 @@ function startPostWindowServices(): void {
      */
     b.own(async () => {
       await connectionReady
-      await stopEmbeddedOnethingHttpServer().catch(() => {})
-      // `close()` 里已经删过一次;这一发兜的是"根本没挂上"的那条路 —— 那时
-      // 发现文件也没写过,`rmSync({force:true})` 是 no-op。
-      removeHttpDiscovery()
+      getEmbeddedOnethingHttpServer()?.stopAccepting()
+    }, 'embeddedHttpIngress', 'quiesce')
+    b.own(async () => {
+      await connectionReady
+      await stopEmbeddedOnethingHttpServer()
     }, 'embeddedHttpSurface')
+    b.own(() => removeHttpDiscovery({ lease: b.storeLease }), 'httpDiscovery', 'endpoints')
 
     /*
      * C0 R1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
@@ -267,7 +269,7 @@ function startPostWindowServices(): void {
      * `own()` 的守卫(同批)兜的是**兜不干净的那些**(MCP 那处是真异步);能同步的
      * 就别靠守卫兜 —— 守卫让漏登记变得安全,不代表漏登记本身该留着。
      */
-    b.own(initializeUserSchedulerTasks(), 'userSchedulerTasks')
+    b.own(initializeUserSchedulerTasks(), 'userSchedulerTasks', 'quiesce')
 
     /*
      * C1(方案 `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §2.2):
@@ -284,16 +286,21 @@ function startPostWindowServices(): void {
     void b.mcp.start().catch((error: unknown) => {
       log.error('subsystem startup failed', { subsystem: 'mcp', blocking: false }, error)
     })
+    const refreshController = new AbortController()
+    b.own(() => refreshController.abort(), 'modelRegistryRefresh', 'quiesce')
+    void b.runTask('desktop:model-registry', () => refreshModelsOnFirstStartup(refreshController.signal)).catch((error: unknown) => {
+      if (refreshController.signal.aborted && (error === refreshController.signal.reason || (error as Error)?.name === 'AbortError')) {
+        log.debug('model registry refresh cancelled during shutdown')
+      } else log.error('subsystem startup failed', { subsystem: 'model-registry', blocking: false }, error)
+    })
   }
-
-  void refreshModelsOnFirstStartup().catch((error: unknown) => {
-    log.error('subsystem startup failed', { subsystem: 'model-registry', blocking: false }, error)
-  })
 }
 
 /** 首次启动从 models.dev 拉一次模型目录(已有目录就跳过)。 */
-async function refreshModelsOnFirstStartup(): Promise<void> {
+async function refreshModelsOnFirstStartup(signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted()
   const { getSettings } = await import('@onething/backend/stores/settings.js')
+  signal.throwIfAborted()
   const providers = getSettings()?.ai?.providers
   if (!providers) return
   const hasModels = Object.values(providers).some(
@@ -301,7 +308,8 @@ async function refreshModelsOnFirstStartup(): Promise<void> {
   )
   if (hasModels) return
   const { refreshAllProviders } = await import('@onething/backend/wiring/providers/model-registry.js')
-  await refreshAllProviders()
+  signal.throwIfAborted()
+  await refreshAllProviders({ signal })
 }
 
 /**
@@ -423,27 +431,22 @@ void app.whenReady().then(async () => {
   if (GATE_HEADLESS) app.dock?.hide()
   const existing = readDiscovery()
   if (existing && (await isAlive(existing))) {
-    /*
-     * 有活的 core → 挂它,一个字节不动它(S3 拍板,2026-08-31)。
-     *
-     * **这里刻意没有做的事**:让位是单向的 —— 壳在当家时如果用户再启动旧 Vue 桌面,
-     * 那个桌面**不会**读这份记录后退让(`apps/electron` 今天没有让位判定,而 S3 拍板
-     * 这一批不动它)。已知后果:两个进程各自装配一份 backend 写同一个 store,
-     * 就是 08-19 那条「两个 LRU + 两条节流写队列」的双写风险。
-     * 记在这里而不是文档里,是因为修它的人第一眼会看的就是这一段。
-     */
+    // 借用活的core只建立窗口连接;自有写者始终由Backend的store lease排他。
     connectionReady = Promise.resolve(connectionOf(existing))
     createWindow()
   } else {
     try {
-      backend = await assembleOwnCore()
+      ownCoreAssembly = assembleOwnCore()
+      backend = await ownCoreAssembly
     } catch (error) {
       // 装配失败也要开窗:错误交给渲染层显示,比静默白屏强(启发式⑨)。
+      getLogger('shell.boot').error('embedded backend assembly failed', { stage: 'backend-assembly' }, error)
       connectionReady = Promise.resolve({
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       })
     }
+    if (quitting) return
     createWindow()
     if (backend) startPostWindowServices()
   }
@@ -461,35 +464,40 @@ void app.whenReady().then(async () => {
  * 没有"壳自己记得关什么"这件事 —— 顺序(宿主起的三件 → 引擎 → 落盘)由登记
  * 逆序给出,不再由这个函数复述。
  */
-async function shutdownOwnCore(): Promise<void> {
-  const b = backend
-  backend = undefined
+async function shutdownOwnCore(reason = 'window closed'): Promise<void> {
+  const b = backend ?? await ownCoreAssembly
   if (!b) return
-  // 它跑的是装配途中与 post-window `own()` 登记下来的清单,逆序、每步单独 try/catch。
-  await b.dispose()
+  await b.requestShutdown(reason)
+  backend = undefined
+}
+
+const shutdownRequest = createDesktopShutdownRequest({
+  shutdown: shutdownOwnCore,
+  exit: code => app.exit(code),
+  onFailure: (reason, error) => {
+    getLogger('shell.shutdown').error('shutdown failed; store lease retained', { reason }, error)
+  },
+})
+
+function requestShutdown(reason: string): Promise<void> {
+  quitting = true
+  return shutdownRequest(reason)
 }
 
 // D0 是单窗薄壳:窗关了就退(mac 上的常驻托盘行为留给 P4 的窗口系批)。
 app.on('window-all-closed', () => app.quit())
 
-let quitting = false
 app.on('will-quit', event => {
-  if (quitting || !backend) return
-  quitting = true
+  if (!backend && !ownCoreAssembly) return
   // `will-quit` 不等 Promise,所以先拦一次、收完尾再真退。
   event.preventDefault()
-  void shutdownOwnCore().finally(() => app.exit(0))
+  void requestShutdown('window closed')
 })
 
-/*
- * dev 重启走的是 SIGTERM/SIGINT,`will-quit` 那条链根本不触发。发现文件是
- * 「这个 store 由我在服务」的宣告 —— 留着它下一次启动就得靠探活才敢无视,
- * 所以同步段至少要把它删掉。形状照 main-process.ts:380-389。
- */
+/* OS信号和窗口退出走同一条保存链;装配仍在途时先等到实例可收尾。 */
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
   process.on(signal, () => {
-    if (backend) removeHttpDiscovery()
-    process.exit(signal === 'SIGINT' ? 130 : 143)
+    void requestShutdown(signal)
   })
 }
 
@@ -501,6 +509,5 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
  * ② 内建 skills 目录按 cwd 解析成 `apps/desktop-react/resources/skills`(不存在),
  *    于是自演化那颗默认关闭的 builtin skill 在这个壳里加载不到。旧壳靠
  *    `configureSkillsEnvironmentHost` 指路;这个壳还没注入那个端口。
- * ③ 让位是单向的(见 whenReady 里那段注释)—— S3 拍板不动 apps/electron。
  * ──────────────────────────────────────────────────────────────────────
  */

@@ -44,6 +44,7 @@ export interface SseMessage {
 export interface ParseSseStreamOptions {
   /** 收到一条合法 `retry:` 就立刻回调 —— 不等分发(见文件头坑 2)。 */
   onRetry?: (retryMs: number) => void
+  signal?: AbortSignal
 }
 
 /** SSE 规范说 `id` 值里出现 U+0000 就整条忽略。写成转义常量，源文件里不留真 NUL 字节。 */
@@ -68,6 +69,9 @@ export async function* parseSseStream(
 ): AsyncIterable<SseMessage> {
   const decoder = new TextDecoder('utf-8')
   const reader = stream.getReader()
+  const abort = (): void => { void reader.cancel().catch(() => {}) }
+  options.signal?.addEventListener('abort', abort, { once: true })
+  if (options.signal?.aborted) abort()
 
   let buffer = ''
   let dataLines: string[] = []
@@ -176,6 +180,7 @@ export async function* parseSseStream(
     }
     // 流断了但最后一行没有换行符:那是半条,按规范丢掉(见函数注释)。
   } finally {
+    options.signal?.removeEventListener('abort', abort)
     // 消费者 `break` 出去时也要放开底层连接。
     try {
       await reader.cancel()

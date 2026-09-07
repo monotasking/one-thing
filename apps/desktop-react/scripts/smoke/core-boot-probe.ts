@@ -25,7 +25,8 @@
  *
  * 同一份产物,另一条路:store 里预先配好一台 stdio MCP(探针自带的
  * `fake-mcp-server.mjs`,命令行上带一个 marker),装配完**不 await** 地
- * `backend.mcp.start()`,紧接着 `dispose()` —— 逐字就是"壳起来一秒内 Cmd+Q"。
+ * `backend.mcp.start()`,紧接着 `dispose()` —— 验证MCP子系统的早退回收。
+ * 实际桌面的SIGTERM和关窗链由同一runner中的desktop-lifecycle单独验证。
  * 探针退出之后由脚本侧 `pgrep -f <marker>` 数残留:必须是 0。
  *
  * 这条判的是单测判不到的那一半:真的 spawn 了一个 stdio 子进程,真的在它还没连完
@@ -36,10 +37,8 @@ import { createRequire } from 'node:module'
 import { createOnethingBackend } from '@onething/backend/backend.js'
 import {
   startEmbeddedOnethingHttpServer,
-  stopEmbeddedOnethingHttpServer,
 } from '@onething/backend/server/embed.js'
-import { readHttpDiscovery, removeHttpDiscovery } from '@onething/backend/server/discovery.js'
-import { configureLogging } from '@onething/backend/wiring/logging/index.js'
+import { readHttpDiscovery } from '@onething/backend/server/discovery.js'
 
 /**
  * `configureLogging` 之后 `console.*` 与 stdout 都被 LegacyConsoleSink 收进账本
@@ -63,8 +62,8 @@ class NoopSender extends EventEmitter {
 
 async function probe(): Promise<void> {
   const started = Date.now()
-  configureLogging({ fileBaseName: 'shell', src: 'main' })
   const backend = await createOnethingBackend({
+    logging: { fileBaseName: 'shell', src: 'main' },
     // 探针不是宿主:它验的是构建链,不接任何 Electron 能力(壳自己那张表在
     // `electron/host-ports.ts`)。两件必填项给空对象 —— 与"从未注入"逐字相同。
     // 唯一跟着壳走的一格是 `localTrust`(B3):探针要验的正是"装配之后能力位就是
@@ -96,6 +95,8 @@ async function probe(): Promise<void> {
   emit(`READY_MS ${Date.now() - started}\n`)
 
   const embedded = await startEmbeddedOnethingHttpServer(backend, { owner: 'shell' })
+  backend.own(() => embedded.stopAccepting(), 'probeHttpIngress', 'quiesce')
+  backend.own(() => embedded.close(), 'probeHttpSurface')
   emit(`OWNER ${readHttpDiscovery()?.owner ?? 'missing'}\n`)
 
   const response = await fetch(`${embedded.url}/api/capabilities`, {
@@ -127,8 +128,6 @@ async function probe(): Promise<void> {
   emit(`PTY ${pty}\n`)
 
   await backend.dispose()
-  await stopEmbeddedOnethingHttpServer()
-  removeHttpDiscovery()
   emit('DONE\n')
 }
 
@@ -137,8 +136,8 @@ async function probe(): Promise<void> {
  * `mcp.start()` 上来一发 `dispose()`,那台已经 spawn 出去的 stdio 子进程有没有人收。
  */
 async function probeMcpEarlyExit(): Promise<void> {
-  configureLogging({ fileBaseName: 'shell', src: 'main' })
   const backend = await createOnethingBackend({
+    logging: { fileBaseName: 'shell', src: 'main' },
     host: {
       storePath: {},
       sandbox: {},

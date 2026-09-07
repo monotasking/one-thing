@@ -48,7 +48,7 @@ export interface ComposerInputHandle {
  *
  * 与 `textContent` 的唯一差别是那一句 `data-token`:一枚文件 chip 屏幕上写的是
  * `@src/a.ts`(人心里的名字),而草稿里它代表的是 `{{file:/abs/src/a.ts}}` ——
- * 「chip 是呈现,token 才是位置」正是 `@shared/prompt-references` 里
+ * 「chip 是呈现,token 才是位置」正是 `@onething/runtime/prompts/prompt-references` 里
  * `FILE_REF_PATTERN` 那段注释说的事(Vue 壳把 token 直接放在纯文本草稿里,
  * 由编辑器画成 chip;这块 contenteditable 反过来,chip 是真节点、token 挂在它身上。
  * 两边**交出去的那句话逐字相同**,那才是要紧的)。

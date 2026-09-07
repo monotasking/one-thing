@@ -11,8 +11,8 @@
  *                (undici vs Chromium net)与原生模块加载路径都与 node 不同。
  *
  * 每条泳道用一个一次性 store,四条读数逐条断言(见探针文件头)。
- * 与 gate:connect 的分工:这里不开窗、不碰渲染层 —— 坏了要一眼看出是构建链坏了,
- * 而不是在一条要拉起 Electron 窗口的门里去猜。
+ * 前两条泳道不开窗,只验证构建链。后面的desktop生命周期泳道构建真实main.ts,
+ * 使用隔离profile与隐藏空窗口,分别走OS信号和原生关窗路线。
  *
  * ## 第三条泳道:`mcp-early-exit`(C1,方案
  * `docs/design/backend-principal-and-mcp-lifecycle-2026-09.md` §3 的 C1 行)
@@ -33,6 +33,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import electronBinary from 'electron'
 import { shellEsbuildOptions } from './build-electron.mjs'
+import { runDesktopLifecycleLanes } from './smoke/desktop-lifecycle.mjs'
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outDir = path.join(appRoot, 'dist-electron/smoke')
@@ -62,9 +63,11 @@ function readingsOf(stdout) {
 
 function runProbe(executable, args, store, extraEnv = {}) {
   return new Promise((resolve, reject) => {
+    const env = { ...process.env, ONETHING_STORE_PATH: store, ...extraEnv }
+    delete env.ELECTRON_RUN_AS_NODE
     const child = spawn(executable, args, {
       cwd: appRoot,
-      env: { ...process.env, ONETHING_STORE_PATH: store, ...extraEnv },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     })
     const out = []
@@ -90,7 +93,8 @@ async function runLane(label, executable, args, extraEnv) {
   process.stdout.write(`\n[${label}] 跑同一份产物\n`)
   const store = await mkdtemp(path.join(tmpdir(), `a1-smoke-${label}-`))
   try {
-    const result = await runProbe(executable, args, store, extraEnv)
+    const isolatedArgs = executable === electronBinary ? [...args, `--user-data-dir=${path.join(store, 'chromium')}`] : args
+    const result = await runProbe(executable, isolatedArgs, store, extraEnv)
     const readings = readingsOf(result.stdout)
     const context = `\nexit=${result.code}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr.slice(-4000)}`
     assert(result.code === 0, `探针退出码 0${result.code === 0 ? '' : context}`)
@@ -205,6 +209,7 @@ async function main() {
   // 与 Chromium 那套 net stack 在场时的行为。
   const electronMs = await runLane('electron-main', electronBinary, [probeBundle])
   await runMcpEarlyExitLane()
+  await runDesktopLifecycleLanes({ appRoot, outDir, assert })
 
   process.stdout.write(`\n[smoke:core] ok —— node ${nodeMs}ms / electron-main ${electronMs}ms\n`)
 }

@@ -8,7 +8,7 @@ import type { SessionStreamPayload } from '@shared/events/envelope'
 import { IPC_CHANNELS } from '@shared/ipc/channels'
 import { sessionEventsRouter } from '@shared/ipc/session-events'
 import { sessionCommandRouter } from '@shared/ipc/session-command'
-import { expandFileTokens } from '@shared/prompt-references'
+import { expandFileTokens } from '@onething/runtime/prompts/prompt-references'
 
 /**
  * 聊天数据源与 core 的客户端(`@onething/client`)之间的那一层**端口**(D3,路线 A)。

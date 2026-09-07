@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import { createFileToken } from '@shared/prompt-references'
+import { createFileToken } from '@onething/runtime/prompts/prompt-references'
 import type { FilesListRequest } from '@shared/ipc/files'
 import { Composer } from './Composer'
 import { focusTree } from '../../focus/registry'

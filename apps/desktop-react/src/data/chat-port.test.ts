@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createFileToken } from '@shared/prompt-references'
+import { createFileToken } from '@onething/runtime/prompts/prompt-references'
 import { SESSION_COMMAND_TYPES } from '@shared/events/session-commands'
 import { createMemoryTransport, createOnethingClient } from '@onething/client'
 import type { RpcRequest } from '@shared/ipc/rpc'
