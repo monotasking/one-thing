@@ -53,6 +53,7 @@ import { resolveAgentToolSurface } from '../../agents/profile.js'
 export interface HostMcpToolContext {
   sessionId: string
   messageId: string
+  executionContext?: unknown
   workingDirectory?: string
   abortSignal?: AbortSignal
   metadata(update: { title?: string; metadata?: Record<string, unknown> }): void
@@ -184,6 +185,8 @@ export function toHostMcpToolDefinition(
   tool: HostMcpHostTool,
   execSessionId: string,
 ): HostMcpToolDefinition {
+  // A server belongs to one binding, not whichever turn later reuses its session ID.
+  const boundContext = resolveHostToolContext(execSessionId)
   return {
     name: tool.id,
     description: tool.description,
@@ -193,7 +196,7 @@ export function toHostMcpToolDefinition(
       const context = resolveHostToolContext(execSessionId)
       // 绑定不在 = 这一轮的宿主工具面已经收了。不落库、不报红,给模型一句它能
       // 据以行动的话。
-      if (!context) return textResult(HOST_MCP_TURN_GONE, true)
+      if (!boundContext || context !== boundContext) return textResult(HOST_MCP_TURN_GONE, true)
 
       try {
         const result = await tool.execute(args, hostToolContext(context))
@@ -229,6 +232,7 @@ function hostToolContext(context: HostToolTurnContext): HostMcpToolContext {
   return {
     sessionId: context.execSessionId,
     messageId: context.messageId ?? '',
+    ...(context.executionContext === undefined ? {} : { executionContext: context.executionContext }),
     ...(context.workingDirectory ? { workingDirectory: context.workingDirectory } : {}),
     ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
     metadata: () => {},

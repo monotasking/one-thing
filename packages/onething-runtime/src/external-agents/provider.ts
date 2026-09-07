@@ -19,6 +19,7 @@ export interface CreateExternalAgentProviderOptions {
   providerId: string
   connector: ExternalAgentConnector
   localSessionId?: string
+  executionContext?: unknown
   workingDirectory?: string
   messageId?: string
   /** Previously persisted link for this session, to resume the external session. */
@@ -266,6 +267,7 @@ class ExternalAgentProvider extends BaseAgentProvider {
 
     for await (const event of options.connector.streamTurn({
       localSessionId,
+      executionContext: options.executionContext,
       messageId: options.messageId,
       prompt,
       ...(deliverableImages.length > 0 ? { images: deliverableImages } : {}),

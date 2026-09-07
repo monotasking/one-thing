@@ -122,6 +122,8 @@ export interface NowPlayingWatcherOptions {
 export interface NowPlayingWatcher {
   start(): void
   stop(): void
+  quiesce(): void
+  drain(): Promise<void>
   /** Poll now instead of waiting for the next tick (e.g. right after a command). */
   refresh(): Promise<void>
   current(): OnethingMusicNowPlaying | null
@@ -135,6 +137,8 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
   let running = false
   let latest: OnethingMusicNowPlaying | null = null
   let polling: Promise<void> | null = null
+  let closed = false
+  let generation = 0
 
   const publish = (next: OnethingMusicNowPlaying | null) => {
     if (sameNowPlaying(latest, next)) {
@@ -154,18 +158,19 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
     }
   }
 
-  const pollOnce = async (): Promise<void> => {
+  const pollOnce = async (epoch: number): Promise<void> => {
     if (!(await options.isPlayerRunning())) {
-      sample(null)
+      if (!closed && epoch === generation) sample(null)
       return
     }
+    if (closed || epoch !== generation) return
     try {
       const result = await options.runner.run({
         command: options.cli?.binary ?? 'ncm-cli',
         args: ['state'],
         timeoutMs: 8_000,
       })
-      sample((options.cli?.parseNowPlaying ?? parseNowPlaying)(result.stdout))
+      if (!closed && epoch === generation) sample((options.cli?.parseNowPlaying ?? parseNowPlaying)(result.stdout))
     } catch (error) {
       // Not knowing is not the same as "nothing is playing" — leave the last
       // answer standing rather than blinking the bar out on one bad read.
@@ -174,36 +179,47 @@ export function createNowPlayingWatcher(options: NowPlayingWatcherOptions): NowP
   }
 
   const schedule = () => {
-    if (!running) return
+    if (!running || closed) return
     const delay = latest?.status === 'playing' ? playingInterval : idleInterval
     timer = setTimeout(() => {
       void tick()
     }, delay)
   }
 
+  const refresh = (): Promise<void> => {
+    if (closed) return Promise.reject(new Error('Music watcher is shutting down'))
+    if (polling) return polling
+    const work = pollOnce(generation)
+    polling = work
+    void work.then(() => { if (polling === work) polling = null }, () => { if (polling === work) polling = null })
+    return work
+  }
+
   const tick = async () => {
-    polling = pollOnce()
-    await polling
-    polling = null
-    schedule()
+    const epoch = generation
+    await refresh().catch(error => options.logger?.warn('[music] poll failed', error))
+    if (epoch === generation) schedule()
+  }
+
+  const stop = () => {
+    running = false
+    ++generation
+    if (timer) clearTimeout(timer)
+    timer = null
+    latest = null
   }
 
   return {
     start() {
+      if (closed) throw new Error('Music watcher is shutting down')
       if (running) return
       running = true
       void tick()
     },
-    stop() {
-      running = false
-      if (timer) clearTimeout(timer)
-      timer = null
-      latest = null
-    },
-    async refresh() {
-      if (polling) return polling
-      await pollOnce()
-    },
+    stop,
+    quiesce() { closed = true; stop() },
+    async drain() { closed = true; stop(); await polling },
+    refresh,
     current: () => latest,
   }
 }

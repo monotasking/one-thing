@@ -214,6 +214,11 @@ export function parseSpaceCredentialsFile(value: unknown): SpaceCredentialsFile 
   return { providers }
 }
 
+/** Empty pool metadata needs no credential migration or encryption upgrade. */
+export function hasSpaceCredentialEntries(file: SpaceCredentialsFile): boolean {
+  return Object.values(file.providers).some(provider => provider.entries.length > 0)
+}
+
 /** 只接受门口卡死过的 id —— id 是路径片段,非法 id 一律当 default。 */
 function resolveCredentialsSpaceId(spaceId: string | undefined | null): string {
   return spaceId && isValidSpaceId(spaceId) ? spaceId : DEFAULT_SPACE_ID

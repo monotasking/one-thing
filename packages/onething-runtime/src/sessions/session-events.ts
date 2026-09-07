@@ -52,6 +52,7 @@ import type {
   SessionToolAuditEventData,
   SessionToolCallEvent,
   SessionToolCallEventData,
+  SessionToolCallInspection,
   SessionToolResultEvent,
   SessionToolResultEventData,
 } from '@onething/core/session'
@@ -251,22 +252,7 @@ export function isSameRequestHeaderEnvelope(
   return a.toolsHash === b.toolsHash
 }
 
-export interface SessionToolCallInspection {
-  callId: string
-  name: string
-  argumentsRaw: string
-  callTime: number
-  callSeq: number
-  resultPreview?: string
-  isError?: boolean
-  resultTime?: number
-  /**
-   * 该调用发生时,模型看到的这个工具的 schema。取的是 seq 不大于本次调用的
-   * 最后一条 `request/tools` —— 工具后来改了 schema,历史调用照旧解析到
-   * 当时那一份。拿不到就是 undefined,由 UI 显示 unavailable,绝不回填。
-   */
-  schema?: SessionEventToolSchema
-}
+export type { SessionToolCallInspection } from '@onething/core/session'
 
 /**
  * 配对某次工具调用的 (参数, 结果, 当时 schema, 起止时刻)。

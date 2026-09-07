@@ -101,11 +101,14 @@ export interface CoreAgentLoopRuntimeContextLike<
   providerConfig: TProviderConfig
   settings: TSettings
   toolSettings?: TToolSettings
+  executionContext?: unknown
 }
 
 export interface CoreAgentLoopProviderHostContext {
   workingDirectory?: string
   localSessionId: string
+  /** Opaque trusted host context; never read from model input. */
+  executionContext?: unknown
 }
 
 export interface CoreAgentLoopRuntimePreparationPlan<
@@ -357,6 +360,7 @@ export interface CoreAgentLoopToolPlan<TTool extends AgentSourceToolDefinition =
 }
 
 export interface CoreAgentLoopDirectToolRuntimeContext {
+  executionContext?: unknown
   sessionId: string
   messageId: string
   workingDirectory?: string
@@ -407,6 +411,7 @@ export interface BuildAgentLoopDirectToolsWithAdaptersOptions<
       sessionId: string
       messageId: string
       toolCallId: string
+      executionContext?: unknown
       workingDirectory?: string
       workingDirectoryRoots?: string[]
       abortSignal?: AbortSignal
@@ -648,6 +653,7 @@ export function planAgentLoopRuntimePreparation<
     providerHostContext: {
       workingDirectory: sessionWorkingDir,
       localSessionId: input.ctx.sessionId,
+      ...(input.ctx.executionContext === undefined ? {} : { executionContext: input.ctx.executionContext }),
     },
   }
 }
@@ -746,6 +752,7 @@ export function buildAgentLoopDirectToolsWithAdapters<
       workingDirectoryRoots: options.context.workingDirectoryRoots,
       abortSignal: toolCtx.abortSignal ?? options.context.abortSignal,
       principal: options.context.principal,
+      executionContext: options.context.executionContext,
       agentId: options.context.agentId,
       onMetadata: toolCtx.onMetadata
         ? update => toolCtx.onMetadata?.({

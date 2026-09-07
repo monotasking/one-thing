@@ -170,6 +170,7 @@ interface TerminalRecord {
 export class ACPClient {
   private child: ChildProcessWithoutNullStreams | null = null
   private connection: ClientSideConnection | null = null
+  private connectionGeneration = {}
   private initResponse: InitializeResponse | null = null
   private statusValue: ACPConnectionStatus = 'disconnected'
   private errorValue: string | undefined
@@ -253,6 +254,7 @@ export class ACPClient {
     this.errorValue = undefined
     this.stderrTail = ''
     this.unexpectedExit = true
+    const generation = this.connectionGeneration = {}
 
     try {
       const child = spawn(this.config.command, this.config.args ?? [], {
@@ -273,6 +275,7 @@ export class ACPClient {
       })
 
       child.once('exit', (code, signal) => {
+        if (this.connectionGeneration !== generation) return
         const suffix = this.stderrTail ? ` stderr: ${this.stderrTail.slice(-1000)}` : ''
         if (this.unexpectedExit) {
           this.statusValue = 'error'
@@ -354,7 +357,7 @@ export class ACPClient {
       child.kill()
       await new Promise<void>((resolveDone) => {
         const timer = setTimeout(() => {
-          if (!child.killed) child.kill('SIGKILL')
+          if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
           resolveDone()
         }, 1500)
         child.once('exit', () => {
@@ -384,10 +387,12 @@ export class ACPClient {
     if (!this.connection) throw new Error('ACP connection is not available')
 
     const session = await this.ensureSession(options.localSessionId, options.cwd)
+    if (this.updateQueues.has(session.acpSessionId)) throw new Error('An ACP prompt is already active for this session')
     const queue = new BoundedAsyncQueue<ACPPromptStreamEvent>(
       Math.max(1, this.config.maxBufferedUpdates ?? DEFAULT_MAX_BUFFERED_UPDATES)
     )
     this.updateQueues.set(session.acpSessionId, queue)
+    const connection = this.connection
     this.promptContexts.set(session.acpSessionId, {
       localSessionId: options.localSessionId,
       messageId: options.messageId,
@@ -399,7 +404,7 @@ export class ACPClient {
     let abortListener: (() => void) | undefined
     if (options.abortSignal) {
       abortListener = () => {
-        this.connection?.cancel({ sessionId: session.acpSessionId }).catch(error => {
+        connection.cancel({ sessionId: session.acpSessionId }).catch(error => {
           log.warn('cancel failed', { agentId: this.id }, error)
         })
       }
@@ -411,7 +416,7 @@ export class ACPClient {
     }
 
     const promptPromise = withTimeout(
-      this.connection.prompt({
+      connection.prompt({
         sessionId: session.acpSessionId,
         messageId: randomUUID(),
         prompt: [{ type: 'text', text: options.prompt }],
@@ -436,15 +441,17 @@ export class ACPClient {
         queue.end()
       })
       .catch((error) => {
-        this.connection?.cancel({ sessionId: session.acpSessionId }).catch(cancelError => {
+        connection.cancel({ sessionId: session.acpSessionId }).catch(cancelError => {
           log.warn('cancel after prompt failure failed', { agentId: this.id }, cancelError)
         })
         queue.error(error instanceof Error ? error : new Error(String(error)))
       })
       .finally(() => {
-        this.updateQueues.delete(session.acpSessionId)
-        this.promptContexts.delete(session.acpSessionId)
-        this.activePromptCountValue = Math.max(0, this.activePromptCountValue - 1)
+        if (this.updateQueues.get(session.acpSessionId) === queue) {
+          this.updateQueues.delete(session.acpSessionId)
+          this.promptContexts.delete(session.acpSessionId)
+          this.activePromptCountValue = Math.max(0, this.activePromptCountValue - 1)
+        }
         this.lastUsedAtValue = Date.now()
         if (options.abortSignal && abortListener) {
           options.abortSignal.removeEventListener('abort', abortListener)
@@ -718,6 +725,7 @@ export class ACPClient {
       queue.error(error)
     }
     this.updateQueues.clear()
+    this.promptContexts.clear()
     this.activePromptCountValue = 0
   }
 

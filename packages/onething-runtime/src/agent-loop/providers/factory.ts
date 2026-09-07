@@ -134,6 +134,7 @@ export interface AgentProviderRuntimeConfig {
 }
 
 export interface CreateAgentProviderFromRuntimeOptions {
+  executionContext?: unknown;
 	workingDirectory?: string;
 	localSessionId?: string;
 	fetchImpl?: typeof globalThis.fetch;
@@ -478,6 +479,7 @@ registerAgentProviderRuntime(
 			providerId: "claude-code-agent",
 			connector,
 			localSessionId: options.localSessionId,
+			executionContext: options.executionContext,
 			workingDirectory: options.workingDirectory,
 			resolveSessionLink: (localSessionId) =>
 				options.resolveExternalAgentSessionLink?.(

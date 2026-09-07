@@ -21,10 +21,18 @@ const zdotdir = mkdtempSync(path.join(os.tmpdir(), 'onething-pty-smoke-'))
 writeFileSync(path.join(zdotdir, '.zshrc'), '')
 process.env.ZDOTDIR = zdotdir
 
-const service = new TerminalService(createNodePtyBackend(), () => null)
+const native = createNodePtyBackend()
+const pids: number[] = []
+const exited = new Set<number>()
+const service = new TerminalService({ spawn(request) {
+  const pty = native.spawn(request)
+  pids.push(pty.pid)
+  pty.onExit(() => exited.add(pty.pid))
+  return pty
+} }, () => null)
 
-afterAll(() => {
-  service.killAll()
+afterAll(async () => {
+  await service.killAll()
   if (previousZdotdir === undefined) delete process.env.ZDOTDIR
   else process.env.ZDOTDIR = previousZdotdir
   rmSync(zdotdir, { recursive: true, force: true })
@@ -62,7 +70,9 @@ describe('TerminalService real-pty smoke', () => {
     expect(attach.info?.cols).toBe(80)
     expect((attach.lastSeq ?? 0)).toBeGreaterThan(0)
 
-    service.kill(info.id)
+    await service.kill(info.id)
     expect(service.list()).toHaveLength(0)
+    expect(exited.has(pids[0])).toBe(true)
+    expect(() => process.kill(pids[0], 0)).toThrow()
   }, 20000)
 })

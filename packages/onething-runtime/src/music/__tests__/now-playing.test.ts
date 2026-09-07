@@ -91,6 +91,30 @@ function createHarness(options: { alive?: boolean; reply?: string } = {}) {
 }
 
 describe('createNowPlayingWatcher', () => {
+  it('drains an actual in-flight poll and suppresses its sample after quiesce', async () => {
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const emit = vi.fn()
+    const onSample = vi.fn()
+    const run = vi.fn(async () => { await held; return { code: 0, stdout: PLAYING, stderr: '' } })
+    const watcher = createNowPlayingWatcher({ runner: { run, spawn: vi.fn() }, isPlayerRunning: () => true, emit, onSample })
+    const first = watcher.refresh()
+    const second = watcher.refresh()
+    await Promise.resolve()
+    expect(run).toHaveBeenCalledOnce()
+    watcher.quiesce()
+    let drained = false
+    const closing = watcher.drain().then(() => { drained = true })
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    await expect(watcher.refresh()).rejects.toThrow('shutting down')
+    expect(() => watcher.start()).toThrow('shutting down')
+    release()
+    await Promise.all([first, second, closing])
+    expect(emit).not.toHaveBeenCalled()
+    expect(onSample).not.toHaveBeenCalled()
+    expect(watcher.current()).toBeNull()
+  })
   it('reports what is playing', async () => {
     const h = createHarness()
     await h.watcher.refresh()

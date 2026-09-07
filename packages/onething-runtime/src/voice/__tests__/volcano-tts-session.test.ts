@@ -78,6 +78,18 @@ async function connect(socket: FakeSocket) {
 }
 
 describe('doubao tts session', () => {
+  it('closes a socket whose factory resolves after the connection was stopped', async () => {
+    const socket = new FakeSocket()
+    let release!: (value: FakeSocket) => void
+    const connection = new OnethingDoubaoTTSConnection({ apiKey: 'test' }, () => new Promise(resolve => { release = resolve }))
+    const opening = connection.connect()
+    connection.close()
+    release(socket)
+    await expect(opening).rejects.toThrow('closed')
+    expect(socket.readyState).toBe(3)
+    expect(socket.listeners.size).toBe(0)
+  })
+
   it('maps output formats to playable mime types', () => {
     expect(getOnethingDoubaoTTSMimeType({ format: 'mp3' })).toBe('audio/mpeg')
     expect(getOnethingDoubaoTTSMimeType({ format: 'ogg_opus' })).toBe('audio/ogg')

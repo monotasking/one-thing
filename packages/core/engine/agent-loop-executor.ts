@@ -15,7 +15,7 @@ import {
 import type { CorePromptCapture } from "./triggers.js";
 import type { AgentProviderStreamChunk } from "../agent-loop/provider-stream.js";
 import type { AgentProviderData } from "../agent-loop/types.js";
-import { isAgentLoopPauseForConfirmationError } from "../agent-loop/errors.js";
+import { isAgentLoopPauseForConfirmationError, isAgentExecutionCheckpointError } from "../agent-loop/errors.js";
 import {
 	coreDiffHunksFromJson,
 	type CoreDiffHunk,
@@ -2389,6 +2389,7 @@ export async function executeAgentLoopStreamLifecycleWithAdapters<
 		return { pausedForConfirmation: false };
 	} catch (error) {
 		const caught = error instanceof Error ? error : new Error(String(error));
+		if (isAgentExecutionCheckpointError(caught)) throw caught;
 		if (isAgentLoopPauseForConfirmationError(caught)) {
 			return { pausedForConfirmation: true };
 		}

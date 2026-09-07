@@ -39,6 +39,9 @@ export interface OnethingMediaAssetMetadata {
 
 export interface OnethingMediaAsset {
   id: string
+  /** Independent uploads only; linked assets derive authority from their sessions. */
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   kind: OnethingMediaKind
   source: OnethingMediaSource
   mimeType: string
@@ -113,6 +116,15 @@ export interface OnethingMediaLibraryPaths {
   indexPath: string
   imagesDir: string
   filesDir: string
+}
+
+export type OnethingMediaAssetAccess = Pick<OnethingMediaAsset, 'id' | 'links' | 'ownerUserId' | 'ownerWorkspaceId' | 'filePath' | 'thumbnailPath'>
+export type OnethingMediaVisibility = (asset: OnethingMediaAssetAccess) => boolean
+export interface OnethingMediaImportOwner { userId: string; workspaceId: string }
+
+function provenanceKey(links: readonly OnethingMediaAssetLink[], owner?: OnethingMediaImportOwner): string {
+  const sessions = [...new Set(links.map(link => link.sessionId).filter((id): id is string => !!id))].sort()
+  return sessions.length ? JSON.stringify(['sessions', sessions]) : JSON.stringify(['owner', owner?.userId ?? 'local-user', owner?.workspaceId ?? 'default'])
 }
 
 export interface OnethingMediaIngestAttachmentInput {
@@ -333,10 +345,13 @@ async function downloadToBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const protocol = url.startsWith('https') ? https : http
     protocol.get(url, (response) => {
+      response.on('error', reject)
+      response.on('aborted', () => reject(new Error('Image download was interrupted')))
       if (response.statusCode === 301 || response.statusCode === 302) {
         const redirectUrl = response.headers.location
         if (redirectUrl) {
-          downloadToBuffer(redirectUrl).then(resolve).catch(reject)
+          response.on('end', () => { downloadToBuffer(redirectUrl).then(resolve, reject) })
+          response.resume()
           return
         }
       }
@@ -371,13 +386,36 @@ export function mediaAssetToLegacyImage(asset: OnethingMediaAsset): OnethingLega
 
 export class OnethingMediaLibraryService {
   private indexCache: OnethingMediaLibraryIndex | null = null
+  private closed = false
+  private readonly downloads = new Set<Promise<Buffer>>()
 
-  constructor(private readonly paths: OnethingMediaLibraryPaths) {}
+  private readonly fixedPaths: Readonly<OnethingMediaLibraryPaths>
+  constructor(paths: OnethingMediaLibraryPaths) { this.fixedPaths = Object.freeze({ ...paths }) }
 
-  listAssets(query: OnethingMediaQuery = {}): OnethingMediaAsset[] {
+  private get paths(): OnethingMediaLibraryPaths {
+    if (this.closed) throw new Error('Media library has been stopped')
+    return this.fixedPaths
+  }
+
+  quiesce(): void { this.closed = true }
+
+  async drain(): Promise<void> {
+    while (this.downloads.size) await Promise.allSettled([...this.downloads])
+  }
+
+  storagePaths(): Readonly<OnethingMediaLibraryPaths> { return { ...this.paths } }
+
+  /** This projection contains only access metadata, never prompts or file bytes. */
+  listAssetAccess(): OnethingMediaAssetAccess[] {
+    return this.loadIndex().assets.map(({ id, links, ownerUserId, ownerWorkspaceId, filePath, thumbnailPath }) =>
+      ({ id, links, ownerUserId, ownerWorkspaceId, filePath, thumbnailPath }))
+  }
+
+  listAssets(query: OnethingMediaQuery = {}, visible: OnethingMediaVisibility = () => true): OnethingMediaAsset[] {
     const index = this.loadIndex()
     const search = query.search?.trim().toLowerCase()
     return index.assets
+      .filter(visible)
       .filter(asset => query.includeHidden || !asset.libraryHiddenAt)
       .filter(asset => !query.kind || asset.kind === query.kind)
       .filter(asset => !query.source || asset.source === query.source)
@@ -395,8 +433,8 @@ export class OnethingMediaLibraryService {
       .sort((a, b) => b.createdAt - a.createdAt)
   }
 
-  listLegacyImages(): OnethingLegacyMediaItem[] {
-    return this.listAssets({ kind: 'image' })
+  listLegacyImages(visible?: OnethingMediaVisibility): OnethingLegacyMediaItem[] {
+    return this.listAssets({ kind: 'image' }, visible)
       .filter(asset => asset.filePath && fs.existsSync(asset.filePath))
       .map(mediaAssetToLegacyImage)
   }
@@ -428,13 +466,13 @@ export class OnethingMediaLibraryService {
     this.saveIndex(index)
   }
 
-  getGallery(assetId: string, query: OnethingMediaQuery = {}): { images: OnethingMediaAsset[]; currentIndex: number } {
-    const images = this.listAssets({ ...query, kind: 'image' })
+  getGallery(assetId: string, query: OnethingMediaQuery = {}, visible: OnethingMediaVisibility = () => true): { images: OnethingMediaAsset[]; currentIndex: number } {
+    const images = this.listAssets({ ...query, kind: 'image' }, visible)
     let currentIndex = images.findIndex(asset => asset.id === assetId)
 
     if (currentIndex === -1) {
       const target = this.getAsset(assetId, true)
-      if (target?.kind === 'image') {
+      if (target?.kind === 'image' && visible(target)) {
         images.unshift(target)
         currentIndex = 0
       }
@@ -453,21 +491,29 @@ export class OnethingMediaLibraryService {
     return result.asset
   }
 
-  async ingestGeneratedImage(input: OnethingMediaIngestGeneratedImageInput): Promise<OnethingMediaAsset> {
+  async ingestGeneratedImage(input: OnethingMediaIngestGeneratedImageInput, beforeCommit?: () => void): Promise<OnethingMediaAsset> {
+    const operationIndex = this.paths.indexPath
     if (!input.base64 && !input.url) {
       throw new Error('No image data provided')
     }
-    const buffer = input.base64
-      ? base64ToBuffer(input.base64)
-      : await downloadToBuffer(input.url!)
+    let buffer: Buffer
+    if (input.base64) buffer = base64ToBuffer(input.base64)
+    else {
+      const pending = downloadToBuffer(input.url!)
+      this.downloads.add(pending)
+      void pending.then(() => this.downloads.delete(pending), () => this.downloads.delete(pending))
+      buffer = await pending
+    }
+    if (this.paths.indexPath !== operationIndex) throw new Error('Media library changed during image download')
+    beforeCommit?.()
     const contentHash = hashBuffer(buffer)
     const source: OnethingMediaSource = input.source ?? 'ai-generated'
-    const existing = this.findByHash('image', source, contentHash)
     const link: OnethingMediaAssetLink = {
       sessionId: input.sessionId,
       messageId: input.messageId,
       role: 'assistant',
     }
+    const existing = this.findByHashInIndex(this.loadIndex(), 'image', source, contentHash, [link])
 
     if (existing) {
       const index = this.loadIndex()
@@ -507,8 +553,9 @@ export class OnethingMediaLibraryService {
 
   async saveGeneratedImageAsLegacyItem(
     input: OnethingMediaIngestGeneratedImageInput,
+    beforeCommit?: () => void,
   ): Promise<OnethingLegacyMediaItem> {
-    const asset = await this.ingestGeneratedImage(input)
+    const asset = await this.ingestGeneratedImage(input, beforeCommit)
     return mediaAssetToLegacyImage(asset)
   }
 
@@ -517,15 +564,15 @@ export class OnethingMediaLibraryService {
    * Media panel, a "选择文件" pick, a web upload.
    *
    * Three things it deliberately reuses rather than reinvents: the mime→kind
-   * rule (`kindFromMimeType`), the dedup key ((kind, source, contentHash), same
-   * as attachment ingest), and `createStoredAssetInIndex` — still the ONLY
+   * rule (`kindFromMimeType`), the dedup key (kind, source, contentHash and
+   * provenance, shared with attachment ingest), and `createStoredAssetInIndex` — the ONLY
    * place in this class that writes bytes to disk.
    *
    * Errors are per file. A missing path is one line in `errors`, not a thrown
    * batch: dropping five files and losing all five because one was a dangling
    * symlink is the wrong failure mode.
    */
-  ingestLocalFiles(input: OnethingMediaIngestLocalFilesInput): OnethingMediaIngestLocalFilesResult {
+  ingestLocalFiles(input: OnethingMediaIngestLocalFilesInput, owner?: OnethingMediaImportOwner): OnethingMediaIngestLocalFilesResult {
     const index = this.loadIndex()
     const source: OnethingMediaSource = input.source ?? 'user-upload'
     const links = input.links ?? []
@@ -547,7 +594,7 @@ export class OnethingMediaLibraryService {
         const kind = kindFromMimeType(mimeType)
         const contentHash = hashBuffer(buffer)
 
-        const existing = this.findByHashInIndex(index, kind, source, contentHash)
+        const existing = this.findByHashInIndex(index, kind, source, contentHash, links, owner)
         if (existing) {
           for (const link of links) {
             changed = mergeLink(existing, link) || changed
@@ -565,6 +612,7 @@ export class OnethingMediaLibraryService {
           fileName,
           link: links[0] ?? {},
           contentHash,
+          owner: links.some(link => link.sessionId) ? undefined : owner,
         })
         // `createStoredAssetInIndex` always seeds one link; with no caller-supplied
         // links that seed is an empty object, which would read as "linked to
@@ -704,7 +752,7 @@ export class OnethingMediaLibraryService {
 
     const buffer = base64ToBuffer(attachment.base64Data)
     const contentHash = hashBuffer(buffer)
-    const existing = this.findByHashInIndex(index, kind, source, contentHash)
+    const existing = this.findByHashInIndex(index, kind, source, contentHash, [link])
     if (existing) {
       const changed = mergeLink(existing, link)
       return {
@@ -830,6 +878,7 @@ export class OnethingMediaLibraryService {
       link: OnethingMediaAssetLink
       contentHash: string
       metadata?: OnethingMediaAsset['metadata']
+      owner?: OnethingMediaImportOwner
     },
   ): OnethingMediaAsset {
     const id = createMediaId()
@@ -844,6 +893,7 @@ export class OnethingMediaLibraryService {
     const now = Date.now()
     const asset: OnethingMediaAsset = {
       id,
+      ...(input.owner ? { ownerUserId: input.owner.userId, ownerWorkspaceId: input.owner.workspaceId } : {}),
       kind: input.kind,
       source: input.source,
       mimeType: input.mimeType,
@@ -863,35 +913,27 @@ export class OnethingMediaLibraryService {
     return asset
   }
 
-  private findByHash(
-    kind: OnethingMediaKind,
-    source: OnethingMediaSource,
-    contentHash: string,
-  ): OnethingMediaAsset | undefined {
-    return this.findByHashInIndex(this.loadIndex(), kind, source, contentHash)
-  }
-
   private findByHashInIndex(
     index: OnethingMediaLibraryIndex,
     kind: OnethingMediaKind,
     source: OnethingMediaSource,
     contentHash: string,
+    links: readonly OnethingMediaAssetLink[],
+    owner?: OnethingMediaImportOwner,
   ): OnethingMediaAsset | undefined {
     return index.assets.find(asset =>
       asset.kind === kind &&
       asset.source === source &&
-      asset.contentHash === contentHash
+      asset.contentHash === contentHash &&
+      provenanceKey(asset.links, { userId: asset.ownerUserId ?? 'local-user', workspaceId: asset.ownerWorkspaceId ?? 'default' }) === provenanceKey(links, owner)
     )
   }
 
   private loadIndex(): OnethingMediaLibraryIndex {
+    const paths = this.paths
     if (this.indexCache) return this.indexCache
 
-    ensureDir(dirnamePath(this.paths.indexPath))
-    ensureDir(this.paths.imagesDir)
-    ensureDir(this.paths.filesDir)
-
-    const raw = readJsonFile<unknown>(this.paths.indexPath, { version: 2, assets: [] })
+    const raw = readJsonFile<unknown>(paths.indexPath, { version: 2, assets: [] })
     if (isMediaLibraryIndex(raw)) {
       this.indexCache = {
         version: 2,
@@ -905,7 +947,7 @@ export class OnethingMediaLibraryService {
 
     if (isLegacyIndex(raw)) {
       const migrated = this.migrateLegacyIndex(raw.items)
-      this.saveIndex(migrated)
+      this.indexCache = migrated
       return migrated
     }
 
@@ -914,6 +956,7 @@ export class OnethingMediaLibraryService {
   }
 
   private saveIndex(index: OnethingMediaLibraryIndex): void {
+    ensureDir(dirnamePath(this.paths.indexPath))
     this.indexCache = index
     writeJsonFile(this.paths.indexPath, {
       version: 2,
@@ -927,20 +970,14 @@ export class OnethingMediaLibraryService {
 
     for (const item of items) {
       const fileName = basenamePath(item.filePath || `${item.id}.png`)
-      const stat = item.filePath && fs.existsSync(item.filePath) ? fs.statSync(item.filePath) : undefined
-      const contentHash = item.filePath && fs.existsSync(item.filePath)
-        ? hashBuffer(fs.readFileSync(item.filePath))
-        : undefined
-
       assets.push({
         id: item.id,
         kind: 'image',
         source: 'ai-generated',
         mimeType: 'image/png',
-        size: stat?.size || 0,
+        size: 0,
         fileName,
         filePath: item.filePath,
-        contentHash,
         links: [{
           sessionId: item.sessionId,
           messageId: item.messageId,

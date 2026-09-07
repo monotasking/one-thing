@@ -84,10 +84,7 @@ describe('runtime log-monitor plugin config', () => {
       })
       expect(notifications).toHaveLength(1)
     } finally {
-      // close() 之后句柄还没落地(createWriteStream 的 open 是异步的)——
-      // 立刻 rmSync 会让那个 open 以 ENOENT 变成 unhandled rejection。
-      runtime.diskWriter.close()
-      await new Promise(resolve => setTimeout(resolve, 60))
+      await runtime.diskWriter.close()
       fs.rmSync(logDir, { recursive: true, force: true })
     }
   })
@@ -108,10 +105,7 @@ describe('runtime log-monitor plugin config', () => {
       // 没有 api.settings(旧宿主 / 未配置)也要照常跑,用的就是原来的常量。
       expect(() => runtime.diskWriter.cleanupOldLogs()).not.toThrow()
     } finally {
-      // close() 之后句柄还没落地(createWriteStream 的 open 是异步的)——
-      // 立刻 rmSync 会让那个 open 以 ENOENT 变成 unhandled rejection。
-      runtime.diskWriter.close()
-      await new Promise(resolve => setTimeout(resolve, 60))
+      await runtime.diskWriter.close()
       fs.rmSync(logDir, { recursive: true, force: true })
     }
   })
@@ -130,11 +124,12 @@ describe('runtime log-monitor plugin', () => {
     }).success).toBe(true)
   })
 
-  it('registers the log monitor plugin through runtime defaults and host log dir adapter', () => {
+  it('registers the log monitor plugin through runtime defaults and host log dir adapter', async () => {
     const logDir = createTempLogDir()
     const handlers = new Map<string, (envelope: any) => void>()
     const commands = new Map<string, unknown>()
     const notifications: Array<{ message: string; level?: 'info' | 'warn' | 'error' }> = []
+    let dispose!: () => void | Promise<void>
     const api: OnethingLogMonitorPluginApi = {
       on(eventType, handler) {
         handlers.set(eventType, handler)
@@ -148,6 +143,7 @@ describe('runtime log-monitor plugin', () => {
           notifications.push({ message, level })
         },
       },
+      onDispose: callback => { dispose = callback },
     }
 
     const runtime = registerOnethingLogMonitorPlugin(api, {
@@ -184,8 +180,12 @@ describe('runtime log-monitor plugin', () => {
         { message: '[AgentLog] Stream error: boom', level: 'error' },
       ])
     } finally {
-      runtime.diskWriter.flush()
-      runtime.diskWriter.close()
+      const closed = dispose()
+      expect(closed).toBe(runtime.diskWriter.close())
+      await closed
+      const logFile = fs.readdirSync(logDir).find(file => file.startsWith('agent-'))!
+      expect(fs.readFileSync(path.join(logDir, logFile), 'utf8')).toContain('Stream error: boom')
+      fs.rmSync(logDir, { recursive: true, force: true })
     }
   })
 })

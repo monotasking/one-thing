@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   CORE_LOG_MONITOR_DEFAULT_FLUSH_INTERVAL_MS,
   CORE_LOG_MONITOR_DEFAULT_MAX_BUFFER,
@@ -28,7 +28,21 @@ import {
   shouldDeleteLogMonitorFile,
   shouldNotifyLogEntry,
   summarizeLogEvent,
+  type CoreLogMonitorDiskStreamLike,
 } from '@onething/core/plugins'
+
+function barrier<T = void>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+
+function testStream(options: { write?: (content: string) => boolean; end?: () => void; onDrain?: (handler: () => void) => void } = {}): CoreLogMonitorDiskStreamLike {
+  const closed = barrier()
+  return { closed: closed.promise, destroyed: false, write: options.write ?? (() => true),
+    end: () => { options.end?.(); closed.resolve() }, onDrain: options.onDrain ?? (() => {}), onError: () => {} }
+}
 
 describe('core log-monitor helpers', () => {
   it('plans log file naming and retention cleanup in core', () => {
@@ -276,63 +290,60 @@ describe('core log-monitor helpers', () => {
       diskWriterOptions: {
         flushIntervalMs: 100000,
         adapters: {
-          createWriteStream: () => ({
-            destroyed: false,
-            write: () => true,
-            end: () => {},
-            onDrain: () => {},
-          }),
+          createWriteStream: () => testStream(),
           listFiles: () => [],
           deleteFile: () => {},
         },
       },
     })
 
-    expect(handlers.has('stream:error')).toBe(true)
-    expect(registeredTool.name).toBe('search_agent_logs')
-    expect(commands.has('/log-tail')).toBe(true)
-    expect(commands.has('/log-clear')).toBe(true)
+    try {
+      expect(handlers.has('stream:error')).toBe(true)
+      expect(registeredTool.name).toBe('search_agent_logs')
+      expect(commands.has('/log-tail')).toBe(true)
+      expect(commands.has('/log-clear')).toBe(true)
 
-    handlers.get('stream:error')?.({
-      sessionId: 's1',
-      sequence: 1,
-      timestamp: 100,
-      event: { type: 'stream:error', data: { error: 'boom' } },
-    })
+      handlers.get('stream:error')?.({
+        sessionId: 's1',
+        sequence: 1,
+        timestamp: 100,
+        event: { type: 'stream:error', data: { error: 'boom' } },
+      })
 
-    expect(runtime.buffer.entries).toHaveLength(1)
-    expect(runtime.diskWriter.pendingLineCount).toBe(1)
-    expect(notifications).toEqual([
-      { message: '[AgentLog] Stream error: boom', level: 'error' },
-    ])
+      expect(runtime.buffer.entries).toHaveLength(1)
+      expect(runtime.diskWriter.pendingLineCount).toBe(1)
+      expect(notifications).toEqual([
+        { message: '[AgentLog] Stream error: boom', level: 'error' },
+      ])
 
-    const metadataCalls: unknown[] = []
-    const result = await registeredTool.execute({
-      query: 'boom',
-    }, {
-      metadata(input: unknown) {
-        metadataCalls.push(input)
-      },
-    })
-    expect(metadataCalls).toEqual([{ title: 'Searching logs...' }])
-    expect(result.title).toBe('Logs: 1 results')
+      const metadataCalls: unknown[] = []
+      const result = await registeredTool.execute({
+        query: 'boom',
+      }, {
+        metadata(input: unknown) {
+          metadataCalls.push(input)
+        },
+      })
+      expect(metadataCalls).toEqual([{ title: 'Searching logs...' }])
+      expect(result.title).toBe('Logs: 1 results')
 
-    await commands.get('/log-tail')?.handler('5', {
-      notify(message, level) {
-        notifications.push({ message, level })
-      },
-    })
-    expect(notifications[notifications.length - 1]?.message).toContain('Last 1 events:')
+      await commands.get('/log-tail')?.handler('5', {
+        notify(message, level) {
+          notifications.push({ message, level })
+        },
+      })
+      expect(notifications[notifications.length - 1]?.message).toContain('Last 1 events:')
 
-    await commands.get('/log-clear')?.handler('', {
-      notify(message, level) {
-        notifications.push({ message, level })
-      },
-    })
-    expect(runtime.buffer.size).toBe(0)
+      await commands.get('/log-clear')?.handler('', {
+        notify(message, level) {
+          notifications.push({ message, level })
+        },
+      })
+      expect(runtime.buffer.size).toBe(0)
+    } finally { await runtime.diskWriter.close() }
   })
 
-  it('runs disk writer rotation, flushing, cleanup, and backpressure in core', () => {
+  it('runs disk writer rotation, flushing, cleanup, and backpressure in core', async () => {
     const writes: Array<{ fileName: string; content: string }> = []
     const ended: string[] = []
     const deleted: string[] = []
@@ -346,8 +357,7 @@ describe('core log-monitor helpers', () => {
       now: () => currentDate,
       random: () => 0,
       adapters: {
-        createWriteStream: fileName => ({
-          destroyed: false,
+        createWriteStream: fileName => testStream({
           write: content => {
             writes.push({ fileName, content })
             return writeOk
@@ -393,32 +403,200 @@ describe('core log-monitor helpers', () => {
 
     drainHandlers.at(-1)?.()
     expect(writer.isBackpressure).toBe(false)
-    writer.close()
+    await writer.close()
     expect(ended).toContain('agent-2026-06-25.log')
   })
 
   it('creates file-system disk adapters in core without main-process wiring', async () => {
     const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'core-log-monitor-'))
+    let stream: CoreLogMonitorDiskStreamLike | undefined
     try {
       const messages: string[] = []
       ensureCoreLogMonitorDirectory(logDir)
       const adapters = createCoreLogMonitorFileDiskAdapters(logDir, {
         log: message => messages.push(message),
       })
-      const stream = adapters.createWriteStream('agent-2026-06-24.log')
+      stream = adapters.createWriteStream('agent-2026-06-24.log')
       stream.write('line 1\n')
       stream.end()
+      await stream.closed
       const targetPath = path.join(logDir, 'agent-2026-06-24.log')
-      for (let attempt = 0; attempt < 20 && !fs.existsSync(targetPath); attempt += 1) {
-        await new Promise(resolve => setTimeout(resolve, 5))
-      }
-
+      expect(fs.readFileSync(targetPath, 'utf8')).toBe('line 1\n')
       expect(adapters.listFiles()).toContain('agent-2026-06-24.log')
       expect(messages).toEqual([])
       adapters.deleteFile('agent-2026-06-24.log')
       expect(adapters.listFiles()).not.toContain('agent-2026-06-24.log')
     } finally {
+      stream?.end()
+      await stream?.closed
       fs.rmSync(logDir, { recursive: true, force: true })
     }
+  })
+
+  it('owns a real asynchronous open failure through close and refuses later writes', async () => {
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'core-log-open-error-'))
+    const date = new Date(2026, 8, 7, 12)
+    fs.mkdirSync(path.join(logDir, getLogMonitorFileName(date)))
+    const original = fs.createWriteStream.bind(fs)
+    const streams: fs.WriteStream[] = []
+    const openedError = barrier<Error>()
+    const observer = vi.spyOn(fs, 'createWriteStream').mockImplementation((...args) => {
+      const stream = original(...args)
+      streams.push(stream)
+      stream.once('error', openedError.resolve)
+      return stream
+    })
+    const writer = new CoreLogMonitorDiskWriter({ now: () => date, adapters: createCoreLogMonitorFileDiskAdapters(logDir) })
+    try {
+      writer.rotateIfNeeded()
+      const firstError = await openedError.promise
+      expect(firstError).toMatchObject({ code: 'EISDIR' })
+      expect(writer.push('must not be accepted')).toBe(false)
+      const closing = writer.close()
+      expect(writer.close()).toBe(closing)
+      await expect(closing).rejects.toBe(firstError)
+      expect(streams).toHaveLength(1)
+      expect(streams[0].closed).toBe(true)
+      writer.rotateIfNeeded()
+      expect(writer.push('still closed')).toBe(false)
+      expect(streams).toHaveLength(1)
+      await expect(writer.close()).rejects.toBe(firstError)
+    } finally {
+      await writer.close().catch(() => {})
+      observer.mockRestore()
+      fs.rmSync(logDir, { recursive: true, force: true })
+    }
+  })
+
+  it('waits for the real open and close when closed before its file has opened', async () => {
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'core-log-pending-open-'))
+    const originalOpen = fs.open.bind(fs)
+    const entered = barrier()
+    let openRequested = false, resumeOpen: (() => void) | undefined
+    const releaseOpen = () => { openRequested = true; const resume = resumeOpen; resumeOpen = undefined; resume?.() }
+    const open = vi.spyOn(fs, 'open').mockImplementation((...args: any[]) => {
+      if (!String(args[0]).startsWith(logDir + path.sep)) return Reflect.apply(originalOpen, fs, args)
+      const callback = args.pop()
+      Reflect.apply(originalOpen, fs, [...args, (error: NodeJS.ErrnoException | null, fd: number) => {
+        if (openRequested) callback(error, fd)
+        else resumeOpen = () => callback(error, fd)
+        entered.resolve()
+      }])
+    })
+    const date = new Date(2026, 8, 7, 12)
+    const writer = new CoreLogMonitorDiskWriter({ now: () => date, adapters: createCoreLogMonitorFileDiskAdapters(logDir) })
+    let settled = false
+    try {
+      writer.push('accepted before first rotation')
+      const closing = writer.close()
+      void closing.then(() => { settled = true }, () => { settled = true })
+      expect(writer.close()).toBe(closing)
+      expect(writer.push('late')).toBe(false)
+      await entered.promise
+      expect(settled).toBe(false)
+      releaseOpen()
+      await closing
+      expect(settled).toBe(true)
+      expect(fs.readFileSync(path.join(logDir, getLogMonitorFileName(date)), 'utf8')).toBe('accepted before first rotation\n')
+    } finally {
+      releaseOpen()
+      try { await writer.close() } finally {
+        open.mockRestore()
+        fs.rmSync(logDir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('retains a rotated old stream until its actual close even after the current stream closes', async () => {
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'core-log-rotation-close-'))
+    const firstDate = new Date(2026, 8, 7, 12), secondDate = new Date(2026, 8, 8, 12)
+    let date = firstDate
+    const originalCreate = fs.createWriteStream.bind(fs), originalClose = fs.close.bind(fs)
+    const streams: Array<{ stream: fs.WriteStream; opened: Promise<number>; closed: Promise<void> }> = []
+    const create = vi.spyOn(fs, 'createWriteStream').mockImplementation((...args) => {
+      const stream = originalCreate(...args)
+      streams.push({ stream, opened: new Promise(resolve => stream.once('open', resolve)),
+        closed: new Promise(resolve => stream.once('close', () => resolve())) })
+      return stream
+    })
+    const entered = barrier()
+    let oldFd: number | undefined, closeRequested = false, resumeClose: (() => void) | undefined
+    const releaseClose = () => { closeRequested = true; const resume = resumeClose; resumeClose = undefined; resume?.() }
+    const close = vi.spyOn(fs, 'close').mockImplementation((fd, callback) => {
+      if (fd !== oldFd) return originalClose(fd, callback)
+      if (closeRequested) { oldFd = undefined; originalClose(fd, callback) }
+      else resumeClose = () => { oldFd = undefined; originalClose(fd, callback) }
+      entered.resolve()
+    })
+    const writer = new CoreLogMonitorDiskWriter({ now: () => date, cleanupChance: 0, adapters: createCoreLogMonitorFileDiskAdapters(logDir) })
+    let settled = false
+    try {
+      writer.push('first day'); writer.flush()
+      oldFd = await streams[0].opened
+      date = secondDate
+      writer.rotateIfNeeded()
+      await entered.promise
+      writer.push('second day')
+      const closing = writer.close()
+      void closing.then(() => { settled = true }, () => { settled = true })
+      await streams[1].closed
+      expect(settled).toBe(false)
+      expect(streams[0].stream.closed).toBe(false)
+      expect(fs.fstatSync(oldFd!).isFile()).toBe(true)
+      expect(streams[1].stream.closed).toBe(true)
+      releaseClose()
+      await closing
+      expect(streams.every(item => item.stream.closed)).toBe(true)
+      expect(fs.readFileSync(path.join(logDir, getLogMonitorFileName(firstDate)), 'utf8')).toBe('first day\n')
+      expect(fs.readFileSync(path.join(logDir, getLogMonitorFileName(secondDate)), 'utf8')).toBe('second day\n')
+    } finally {
+      releaseClose()
+      try { await writer.close() } finally {
+        create.mockRestore(); close.mockRestore()
+        fs.rmSync(logDir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('keeps the first real error from a rotated stream after a later stream succeeds', async () => {
+    const logDir = fs.mkdtempSync(path.join(os.tmpdir(), 'core-log-rotation-error-'))
+    let date = new Date(2026, 8, 7, 12)
+    fs.mkdirSync(path.join(logDir, getLogMonitorFileName(date)))
+    const writer = new CoreLogMonitorDiskWriter({ now: () => date, adapters: createCoreLogMonitorFileDiskAdapters(logDir) })
+    try {
+      writer.rotateIfNeeded()
+      date = new Date(2026, 8, 8, 12)
+      writer.rotateIfNeeded()
+      writer.push('new stream still drains')
+      const closing = writer.close()
+      const firstError = await closing.catch(error => error)
+      expect(firstError).toMatchObject({ code: 'EISDIR' })
+      expect(fs.readFileSync(path.join(logDir, getLogMonitorFileName(date)), 'utf8')).toBe('new stream still drains\n')
+      await expect(writer.close()).rejects.toBe(firstError)
+      expect(writer.push('no retry')).toBe(false)
+    } finally {
+      await writer.close().catch(() => {})
+      fs.rmSync(logDir, { recursive: true, force: true })
+    }
+  })
+
+  it('propagates a close failure only after every owned stream has closed', async () => {
+    let date = new Date(2026, 8, 7, 12)
+    const old = barrier(), current = barrier()
+    let index = 0
+    const writer = new CoreLogMonitorDiskWriter({ now: () => date, adapters: {
+      createWriteStream: () => ({ ...testStream(), closed: index++ === 0 ? old.promise : current.promise }),
+      listFiles: () => [], deleteFile: () => {},
+    } })
+    writer.rotateIfNeeded(); date = new Date(2026, 8, 8, 12); writer.rotateIfNeeded()
+    const closing = writer.close()
+    let settled = false
+    void closing.then(() => { settled = true }, () => { settled = true })
+    const firstError = new Error('adapter close failure')
+    old.reject(firstError)
+    await Promise.resolve(); await Promise.resolve()
+    expect(settled).toBe(false)
+    current.resolve()
+    await expect(closing).rejects.toBe(firstError)
   })
 })

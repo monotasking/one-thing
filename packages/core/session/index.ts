@@ -53,6 +53,7 @@ export * from './interrupted.js'
 // 与打包/解包同住 `events/chunk-codec.ts`(经上面的 `events/index.js` 出口)。
 // S3 只读查询面(§12):事件 → 轨迹树的纯装配器。CLI / HTTP / 轨迹面板同源。
 export * from './trace/index.js'
+export type { SessionToolCallInspection } from './tool-call-inspection.js'
 export {
   applySessionContextSize,
   applyInheritedSessionWorkingDirectory,

@@ -1,11 +1,9 @@
-export interface OnethingUsageTokens {
-  input: number
-  output: number
-  cacheRead: number
-  cacheWrite: number
-  reasoning: number
-  total: number
-}
+import type {
+  OnethingUsageTokens,
+} from '@shared/contracts/usage.js'
+export type {
+  OnethingUsageTokens,
+} from '@shared/contracts/usage.js'
 
 export interface OnethingUsageUnitPrice {
   /** USD per 1M tokens */

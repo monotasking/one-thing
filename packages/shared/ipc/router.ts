@@ -4,6 +4,7 @@ export type {
   RouteConfig,
   RouteHandlers,
   RoutePayload,
+  RouteSessionAccess,
   Router,
 } from '@onething/core/ipc'
 export {

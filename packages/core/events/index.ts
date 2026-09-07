@@ -45,6 +45,7 @@ export type { SessionCommandType } from './session-command-types.js'
 export type { SessionEventType } from './session-event-types.js'
 export type {
   EmitResult,
+  EventDeliveryOptions,
   EventBase,
   GlobalEventEnvelope,
   GlobalObserveHandler,

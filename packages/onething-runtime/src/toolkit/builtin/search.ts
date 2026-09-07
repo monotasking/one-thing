@@ -74,6 +74,7 @@ export interface SearchToolQuery {
 
 /** 一次调用的坐标 —— 授权用的那三格(§14.3)。 */
 export interface SearchToolPrincipal {
+  executionContext?: unknown
   kind: 'user' | 'agent' | 'plugin'
   id: string
   sessionId: string
@@ -411,9 +412,10 @@ function principalOf(ctx: RunContext): SearchToolPrincipal {
     ? metadata.workspaceId
     : ''
 
-  if (principal.kind === 'user') return { kind: 'user', id: principal.userId, sessionId, spaceId }
-  if (principal.kind === 'agent') return { kind: 'agent', id: principal.agentId, sessionId, spaceId }
-  return { kind: 'agent', id: `system:${principal.component}`, sessionId, spaceId }
+  const executionContext = ctx.invocation.executionContext
+  if (principal.kind === 'user') return { kind: 'user', id: principal.userId, sessionId, spaceId, executionContext }
+  if (principal.kind === 'agent') return { kind: 'agent', id: principal.agentId, sessionId, spaceId, executionContext }
+  return { kind: 'agent', id: `system:${principal.component}`, sessionId, spaceId, executionContext }
 }
 
 function withValue(key: 'since' | 'until', value: number | undefined): Record<string, number> {

@@ -85,6 +85,7 @@ export class OnethingDoubaoTTSConnection {
   }
 
   async connect(): Promise<void> {
+    if (this.closed) throw new Error('Doubao TTS connection is closed')
     if (this.connectPromise) return this.connectPromise
     const configurationError = getOnethingDoubaoConfigurationError(this.settings)
     if (configurationError) throw new Error(configurationError)
@@ -94,6 +95,7 @@ export class OnethingDoubaoTTSConnection {
       const resourceId = (this.settings.ttsResourceId || '').trim() || DOUBAO_TTS_DEFAULT_RESOURCE_ID
       const headers = buildOnethingDoubaoHeaders(this.settings, resourceId)
       const socket = await this.createWebSocket(`${endpoint}${DOUBAO_TTS_PATH}`, headers)
+      if (this.closed) { socket.close(); throw new Error('Doubao TTS connection is closed') }
       this.socket = socket
 
       await new Promise<void>((resolve, reject) => {

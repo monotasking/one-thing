@@ -28,6 +28,8 @@ export interface Invocation {
   readonly sessionId: string
   readonly messageId?: string
   readonly principal: Principal
+  /** Opaque trusted host context; never reconstructed from the tool input or target session. */
+  readonly executionContext?: unknown
   readonly cwd?: string
   readonly workspaceRoot?: string
   /**

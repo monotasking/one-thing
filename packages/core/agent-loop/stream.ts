@@ -7,6 +7,7 @@ import type {
   AgentTurnRequest,
   AgentTurnStreamEvent,
 } from './types.js'
+import type { AgentExecutionLifetime } from './execution-lifetime.js'
 import {
   isAgentRunnableProvider,
   isAgentStreamingProvider,
@@ -86,9 +87,14 @@ export function throwIfAgentAborted(signal: AbortSignal | undefined): void {
 export async function runWithAgentAbort<T>(
   signal: AbortSignal | undefined,
   operation: () => Promise<T> | T,
+  lifetime?: AgentExecutionLifetime,
 ): Promise<T> {
   throwIfAgentAborted(signal)
-  if (!signal) return operation()
+  const start = () => {
+    throwIfAgentAborted(signal)
+    return operation()
+  }
+  if (!signal) return lifetime ? lifetime.track(start) : start()
 
   let removeAbortListener = () => {}
   const abortPromise = new Promise<never>((_, reject) => {
@@ -99,7 +105,7 @@ export async function runWithAgentAbort<T>(
 
   try {
     return await Promise.race([
-      Promise.resolve().then(operation),
+      lifetime ? lifetime.track(start) : Promise.resolve().then(start),
       abortPromise,
     ])
   } finally {
@@ -110,18 +116,20 @@ export async function runWithAgentAbort<T>(
 export async function* abortableAgentEvents<T>(
   events: AsyncIterable<T>,
   signal: AbortSignal | undefined,
+  lifetime?: AgentExecutionLifetime,
 ): AsyncGenerator<T, void, void> {
   throwIfAgentAborted(signal)
   const iterator = events[Symbol.asyncIterator]()
 
   try {
     while (true) {
-      const next = await runWithAgentAbort(signal, () => iterator.next())
+      const next = await runWithAgentAbort(signal, () => iterator.next(), lifetime)
       if (next.done) return
       yield next.value
     }
   } finally {
-    await iterator.return?.()
+    if (lifetime) await lifetime.track(() => iterator.return?.())
+    else await iterator.return?.()
   }
 }
 
@@ -335,7 +343,7 @@ export async function* streamAgentProviderTurnEvents(
   request: AgentTurnRequest,
 ): AsyncGenerator<AgentTurnStreamEvent, void, void> {
   if (isAgentStreamingProvider(provider)) {
-    yield* abortableAgentEvents(provider.streamTurn(request), request.abortSignal)
+    yield* abortableAgentEvents(provider.streamTurn(request), request.abortSignal, request.executionLifetime)
     return
   }
 
@@ -355,7 +363,7 @@ export async function* streamAgentProviderTurnEvents(
             queue.push(event)
           }
         },
-      }))
+      }), request.executionLifetime)
       emitMissingAgentTurnStreamEvents(
         turn,
         request.turn,

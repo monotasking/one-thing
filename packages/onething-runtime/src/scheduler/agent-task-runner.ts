@@ -11,6 +11,7 @@ import {
 } from './run-detail.js'
 import type { SchedulerTaskContext } from './types.js'
 import type { OnethingSchedulerUserTask } from './user-tasks.js'
+import type { SessionInitialOwner } from '../sessions/session-repository.js'
 
 import { SESSION_EVENT_TYPES, SESSION_COMMAND_TYPES } from '@shared/events/index.js'
 
@@ -60,7 +61,7 @@ export interface OnethingSchedulerAgentTaskSession {
 
 export interface OnethingSchedulerAgentTaskSessionStore {
   getCurrentSessionId(): string | undefined
-  createSession(sessionId: string, name: string): OnethingSchedulerAgentTaskSession
+  createSession(sessionId: string, name: string, options?: { initialOwner?: SessionInitialOwner }): OnethingSchedulerAgentTaskSession
   updateSessionAgent(sessionId: string, agentId: string): unknown
   updateSessionWorkingDirectory(sessionId: string, workingDirectory: string): unknown
   updateSessionArchived(sessionId: string, isArchived: boolean, archivedAt?: number | null): unknown
@@ -69,6 +70,8 @@ export interface OnethingSchedulerAgentTaskSessionStore {
 }
 
 export interface OnethingSchedulerAgentTaskRunnerOptions {
+  /** Trusted persisted task creator, passed separately from task/model input. */
+  initialOwner?: SessionInitialOwner
   getTask(taskId: string): MaybePromise<OnethingSchedulerUserTask | undefined>
   getStreamHost(): OnethingSchedulerAgentTaskStreamHost | null | undefined
   eventBus: OnethingSchedulerAgentTaskEventBus
@@ -162,7 +165,9 @@ export async function runOnethingSchedulerAgentTask(
 
   const previousSessionId = options.sessions.getCurrentSessionId()
   const sessionId = createId(options)
-  const session = options.sessions.createSession(sessionId, `Scheduled: ${task.name}`)
+  const session = options.sessions.createSession(sessionId, `Scheduled: ${task.name}`, {
+    initialOwner: options.initialOwner,
+  })
   options.sessions.updateSessionAgent(sessionId, task.agentId)
   if (task.workingDirectory) options.sessions.updateSessionWorkingDirectory(sessionId, task.workingDirectory)
   options.sessions.updateSessionArchived(sessionId, true, startedAt)

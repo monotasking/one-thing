@@ -193,15 +193,14 @@ describe('进程内 MCP 服务器:起、停、枚举', () => {
 describe('语境绑定:并发隔离与生命周期', () => {
   it('两间房同时跑,各自的 handler 只看得见自己的会话', async () => {
     // 每轮一台服务器,execSessionId 闭包进 handler —— 隔离是结构事实,不是纪律。
-    const handlerA = toHostMcpToolDefinition(echoTool('send_message'), 'exec-A').handler
-    const handlerB = toHostMcpToolDefinition(echoTool('send_message'), 'exec-B').handler
-
     const releaseA = bindHostToolContext({
       agentId: 'fe', roomSessionId: 'room-A', execSessionId: 'exec-A', leaseId: 'lease-A',
     })
     const releaseB = bindHostToolContext({
       agentId: 'pm', roomSessionId: 'room-B', execSessionId: 'exec-B', leaseId: 'lease-B',
     })
+    const handlerA = toHostMcpToolDefinition(echoTool('send_message'), 'exec-A').handler
+    const handlerB = toHostMcpToolDefinition(echoTool('send_message'), 'exec-B').handler
     expect(activeHostToolContextCount()).toBe(2)
 
     // 交错调用 —— 一个模块级的「当前回合」变量会让后绑的那个赢,而症状是一句话
@@ -221,15 +220,44 @@ describe('语境绑定:并发隔离与生命周期', () => {
   })
 
   it('解绑之后的迟到调用:一句可行动的话,不是一次静默失败', async () => {
-    const handler = toHostMcpToolDefinition(echoTool('send_message'), 'exec-1').handler
     const release = bindHostToolContext({
       agentId: 'fe', roomSessionId: 'room-1', execSessionId: 'exec-1',
     })
+    const execute = vi.fn(echoTool('send_message').execute)
+    const handler = toHostMcpToolDefinition({ ...echoTool('send_message'), execute }, 'exec-1').handler
     release()
 
     const result = await handler({ content: '迟到了' }, undefined)
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toBe(HOST_MCP_TURN_GONE)
+    expect(execute).not.toHaveBeenCalled()
+  })
+
+  it('旧服务器不能借用同一执行会话的新 owner 或新牌，当前服务器照常执行', async () => {
+    const execute = vi.fn(async (_args, ctx) => ({ output: JSON.stringify(ctx.executionContext) }))
+    const tool: HostMcpHostTool = { ...echoTool('send_message'), execute }
+    const releaseOld = bindHostToolContext({
+      agentId: 'fe', roomSessionId: 'room-1', execSessionId: 'exec-1', leaseId: 'lease-old',
+      executionContext: { userId: 'alice', workspaceId: 'team-a' },
+    })
+    const oldHandler = toHostMcpToolDefinition(tool, 'exec-1').handler
+    const releaseCurrent = bindHostToolContext({
+      agentId: 'fe', roomSessionId: 'room-1', execSessionId: 'exec-1', leaseId: 'lease-current',
+      executionContext: { userId: 'bob', workspaceId: 'team-b' },
+    })
+    const currentHandler = toHostMcpToolDefinition(tool, 'exec-1').handler
+    releaseOld()
+    expect(await oldHandler({}, undefined)).toEqual({
+      isError: true, content: [{ type: 'text', text: HOST_MCP_TURN_GONE }],
+    })
+    expect(execute).not.toHaveBeenCalled()
+    const current = await currentHandler({}, undefined)
+    expect(current.isError).toBeUndefined()
+    expect(JSON.parse(current.content[0].text)).toEqual({ userId: 'bob', workspaceId: 'team-b' })
+    expect(execute).toHaveBeenCalledTimes(1)
+    releaseCurrent()
+    expect((await currentHandler({}, undefined)).isError).toBe(true)
+    expect(execute).toHaveBeenCalledTimes(1)
   })
 
   it('解绑按身份:一次迟到的收尾不会把已经起跑的下一轮的语境删掉', async () => {
@@ -262,8 +290,8 @@ describe('语境绑定:并发隔离与生命周期', () => {
         throw new Error('board store offline')
       },
     } as unknown as HostMcpHostTool
-    const handler = toHostMcpToolDefinition(throwing, 'exec-1').handler
     bindHostToolContext({ agentId: 'fe', roomSessionId: 'room-1', execSessionId: 'exec-1' })
+    const handler = toHostMcpToolDefinition(throwing, 'exec-1').handler
 
     const result = await handler({}, undefined)
     expect(result.isError).toBe(true)

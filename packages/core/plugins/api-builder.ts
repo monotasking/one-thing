@@ -334,7 +334,7 @@ export interface CreateCorePluginAPIOptions<
    */
   statusRegistry?: CorePluginStatusRegistry
   scheduler: TScheduler
-  disposeCallbacks?: Array<() => void>
+  disposeCallbacks?: Array<() => void | Promise<void>>
   host: CorePluginAPIHost<
     TTool,
     TEventHandler,
@@ -1306,7 +1306,7 @@ export function createCorePluginAPI<
       },
     },
 
-    onDispose(callback: () => void): void {
+    onDispose(callback: () => void | Promise<void>): void {
       if (rejectLateCall('onDispose')) return
       disposeCallbacks.push(callback)
     },

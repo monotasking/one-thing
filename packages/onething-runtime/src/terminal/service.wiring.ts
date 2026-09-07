@@ -81,11 +81,15 @@ interface TerminalRecord {
   paused: boolean
   stallTimer: ReturnType<typeof setTimeout> | null
   exited: boolean
+  disposing: boolean
+  exit: Promise<void>
+  resolveExit(): void
   killTimer: ReturnType<typeof setTimeout> | null
 }
 
 export class TerminalService {
   private readonly terminals = new Map<string, TerminalRecord>()
+  private readonly pendingExits = new Map<string, Promise<void>>()
   private readonly options: Required<TerminalServiceOptions>
 
   constructor(
@@ -108,6 +112,8 @@ export class TerminalService {
       rows: profile.rows,
       createdAt: Date.now(),
     }
+    let resolveExit!: () => void
+    const exit = new Promise<void>(resolve => { resolveExit = resolve })
     const record: TerminalRecord = {
       info,
       pty,
@@ -123,9 +129,13 @@ export class TerminalService {
       paused: false,
       stallTimer: null,
       exited: false,
+      disposing: false,
+      exit,
+      resolveExit,
       killTimer: null,
     }
     this.terminals.set(info.id, record)
+    this.pendingExits.set(info.id, exit)
     pty.onData(data => this.handleData(record, data))
     pty.onExit(event => this.handleExit(record, event.exitCode))
     return { ...info }
@@ -200,21 +210,24 @@ export class TerminalService {
     for (const record of this.terminals.values()) this.detach(record)
   }
 
-  kill(terminalId: string): void {
+  kill(terminalId: string): Promise<void> {
     const record = this.terminals.get(terminalId)
-    if (!record) return
+    if (!record) return this.pendingExits.get(terminalId) ?? Promise.resolve()
     this.disposeRecord(record)
     this.terminals.delete(terminalId)
+    return record.exit
   }
 
   /** No-op safe for hosts where no terminal was ever created. */
-  killAll(): void {
+  async killAll(): Promise<void> {
     for (const record of this.terminals.values()) this.disposeRecord(record)
     this.terminals.clear()
+    // Includes shells removed from the visible list by an earlier kill().
+    await Promise.all([...this.pendingExits.values()])
   }
 
   private handleData(record: TerminalRecord, data: string): void {
-    if (record.exited) return
+    if (record.exited || record.disposing) return
     record.pending += data
     if (record.flushTimer === null) {
       record.flushTimer = setTimeout(() => this.flushNow(record), this.options.flushIntervalMs)
@@ -269,15 +282,27 @@ export class TerminalService {
     if (record.exited) return
     // Flush BEFORE the exit event so exit can never overtake tail output
     // (same flush-before-event rule as the stream coalescer).
-    this.flushNow(record)
+    if (!record.disposing) this.flushNow(record)
     record.exited = true
     record.info.exited = { code: exitCode }
     this.clearStallTimer(record)
-    if (record.killTimer !== null) {
-      clearTimeout(record.killTimer)
-      record.killTimer = null
-    }
-    this.getBroadcaster()?.sendExit({ terminalId: record.info.id, exitCode })
+    this.finishExit(record)
+    if (!record.disposing) this.getBroadcaster()?.sendExit({ terminalId: record.info.id, exitCode })
+  }
+
+  private finishExit(record: TerminalRecord): boolean {
+    if (!record.exited || (record.disposing && record.pty.isProcessGroupAlive?.())) return false
+    if (record.killTimer !== null) clearTimeout(record.killTimer)
+    record.killTimer = null
+    this.pendingExits.delete(record.info.id)
+    record.resolveExit()
+    return true
+  }
+
+  private waitForExit(record: TerminalRecord): void {
+    if (this.finishExit(record)) return
+    record.killTimer = setTimeout(() => this.waitForExit(record), 25)
+    record.killTimer.unref?.()
   }
 
   private detach(record: TerminalRecord): void {
@@ -301,6 +326,8 @@ export class TerminalService {
   }
 
   private disposeRecord(record: TerminalRecord): void {
+    if (record.disposing) return
+    record.disposing = true
     if (record.flushTimer !== null) {
       clearTimeout(record.flushTimer)
       record.flushTimer = null
@@ -311,14 +338,17 @@ export class TerminalService {
       record.killTimer = null
     }
     if (record.exited) return
-    record.exited = true
+    this.resumeIfPaused(record)
     // Graceful first (whole process group — SIGHUP-ignoring grandchildren
     // included via the follow-up SIGKILL), forceful after a short grace.
-    record.pty.kill('SIGHUP')
     record.killTimer = setTimeout(() => {
+      record.killTimer = null
+      if (this.finishExit(record)) return
       record.pty.kill('SIGKILL')
+      this.waitForExit(record)
     }, this.options.killGraceMs)
     record.killTimer.unref?.()
+    record.pty.kill('SIGHUP')
   }
 }
 
@@ -344,14 +374,11 @@ export function getTerminalService(): TerminalService {
 }
 
 /**
- * Shutdown reaping — wired into the desktop beforeQuit cleanup table (the
- * host's real quit path; backend.shutdown() is NOT run by the Electron host)
- * and mirrored in backend.ts/HeadlessBackend for symmetry. No-op when no
- * terminal was ever created, so the daemon and readonly servers never touch
- * the native module.
+ * Backend's resource registry awaits real PTY exit before releasing storage.
+ * No-op when no terminal was created: headless hosts do not load node-pty.
  */
-export function killAllTerminals(): void {
-  serviceInstance?.killAll()
+export async function killAllTerminals(): Promise<void> {
+  await serviceInstance?.killAll()
 }
 
 /** Detach edge for host wiring (window reload/close). No-op safe. */

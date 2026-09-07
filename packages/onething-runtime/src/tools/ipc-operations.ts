@@ -4,6 +4,16 @@ export interface OnethingToolsIpcLogger {
   log?: (...args: unknown[]) => void
 }
 
+export interface OnethingToolsIpcLogger {
+  log?: (...args: unknown[]) => void
+}
+
+/**
+ * 取消一次工具调用 —— **今天仍然是空操作**(工单 4 B1,回 HEAD)。
+ *
+ * 2026-09-06/07 那轮把它换成了真取消(`cancelTool` 端口 + 授权 + 等收尾)。那是
+ * 一次用户可感知的行为变化,按默认口径回旧,等用户点头再单独做。
+ */
 export interface CancelOnethingToolForIpcOptions {
   toolCallId?: string
   logger?: OnethingToolsIpcLogger

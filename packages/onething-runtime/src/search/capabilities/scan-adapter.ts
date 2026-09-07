@@ -114,6 +114,7 @@ export interface ResultBackedCapabilityOptions {
     query: string,
     limit: number,
     filters: Readonly<Record<string, FacetFilter>>,
+    context: SearchContext,
   ): Promise<readonly SearchServiceResult[]> | readonly SearchServiceResult[]
   target: ResultTargetOf
   /** 缺省 = 恒真(这一类在 `all` 档里被无条件问到)。 */
@@ -218,7 +219,7 @@ export function scanBackedCapability(options: ResultBackedCapabilityOptions): Se
     manifest,
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
-      const rows = await options.run(query.raw, page.limit, query.filters)
+      const rows = await options.run(query.raw, page.limit, query.filters, ctx)
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
       const scanned = await scanCapability<ResultBackedCandidate>({
         manifest,
@@ -243,7 +244,7 @@ export function staticBackedCapability(options: ResultBackedCapabilityOptions): 
     manifest,
     supports,
     async search(query: SearchQuery, page, ctx: SearchContext) {
-      const rows = await options.run(query.raw, STATIC_FULL_LIMIT, query.filters)
+      const rows = await options.run(query.raw, STATIC_FULL_LIMIT, query.filters, ctx)
       const candidates = toCandidates(manifest.id, rows, options.target, options.preview)
       const paged = await staticCapability<ResultBackedCandidate>({
         manifest,

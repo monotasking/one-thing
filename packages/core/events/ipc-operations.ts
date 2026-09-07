@@ -1,5 +1,5 @@
 import type { SessionCommandType } from './session-command-types.js'
-import type { EventBase } from './types.js'
+import type { EventBase, EventDeliveryOptions } from './types.js'
 
 type MaybePromise<T> = T | Promise<T>
 
@@ -16,7 +16,7 @@ export interface CoreSessionCommandEmitterLike<
   TCommand extends SessionCommandLike = SessionCommandLike,
   TResult = unknown,
 > {
-  emit(sessionId: string, command: TCommand): MaybePromise<TResult>
+  emit(sessionId: string, command: TCommand, options?: EventDeliveryOptions): MaybePromise<TResult>
 }
 
 export interface CoreSessionEventEmitterLike<
@@ -32,6 +32,7 @@ export interface EmitCoreSessionCommandForIpcOptions<
 > {
   sessionId: string
   command: TCommand
+  executionContext?: unknown
   /**
    * `NoInfer`:`TCommand` 由 `command` 一处决定。总线的 `emit` 收的是事件 ∪ 命令
    * 的并集,让它也参与推断会把 `TCommand` 拽回并集(或直接退回约束默认值)。
@@ -66,7 +67,9 @@ export async function emitCoreSessionCommandForIpc<
   options: EmitCoreSessionCommandForIpcOptions<TCommand, TResult>,
 ): Promise<CoreSessionCommandIpcResult<TResult>> {
   try {
-    const result = await options.eventBus.emit(options.sessionId, options.command)
+    const result = options.executionContext === undefined
+      ? await options.eventBus.emit(options.sessionId, options.command)
+      : await options.eventBus.emit(options.sessionId, options.command, { executionContext: options.executionContext })
     return { success: true, result }
   } catch (error) {
     options.logger?.error?.('[CoreEvents] session command emit failed:', error)

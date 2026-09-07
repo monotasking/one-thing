@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import fsp from 'node:fs/promises'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { OnethingUsageLedger, onethingUsageLedgerFileName } from '../ledger.js'
 
 describe('OnethingUsageLedger', () => {
@@ -37,6 +38,51 @@ describe('OnethingUsageLedger', () => {
     const parsed = JSON.parse(lines[0])
     expect(parsed.sessionId).toBe('s1')
     expect(parsed.usage.total).toBe(150)
+  })
+
+  it('writes to its own directory and closes only after the accepted disk write settles', async () => {
+    // 工单 4 C7:目录是**一个字符串**,一台账本一个目录 —— 从前签名收 getter 而
+    // 构造函数当场就把它调掉了,那个「惰性」是假的。想换目录就换一台账本。
+    const selected = path.join(dir, 'a')
+    const other = path.join(dir, 'b')
+    const ledger = new OnethingUsageLedger({ ledgerDir: selected })
+    const input = { providerId: 'p', modelId: 'm', platform: 'electron', source: 'plugin:p', billing: 'api' as const, usage: { input: 1, output: 2 } }
+    let resume!: () => void
+    let entered!: () => void
+    const blocked = new Promise<void>(resolve => { resume = resolve })
+    const started = new Promise<void>(resolve => { entered = resolve })
+    const append = fsp.appendFile.bind(fsp)
+    const spy = vi.spyOn(fsp, 'appendFile').mockImplementation(async (...args) => {
+      entered()
+      await blocked
+      return append(...args)
+    })
+    try {
+      const record = ledger.record(input)
+      let closed = false
+      const closing = ledger.close().then(() => { closed = true })
+      await started
+      expect(closed).toBe(false)
+      expect(() => ledger.record(input)).toThrow(/closed/)
+      resume()
+      await closing
+      expect(JSON.parse(fs.readFileSync(path.join(dir, 'a', onethingUsageLedgerFileName(record.ts)), 'utf8')).source).toBe('plugin:p')
+      expect(ledger.getLedgerDir()).toBe(selected)
+      expect(fs.existsSync(other)).toBe(false)
+    } finally { resume(); spy.mockRestore(); await ledger.close() }
+  })
+
+  it('propagates a failed flush through close and prevents later writes', async () => {
+    const ledger = new OnethingUsageLedger({ ledgerDir: dir })
+    const failure = new Error('disk unavailable')
+    const spy = vi.spyOn(fsp, 'appendFile').mockRejectedValue(failure)
+    try {
+      ledger.record({ providerId: 'p', modelId: 'm', platform: 'electron', source: 'chat', billing: 'api', usage: { input: 1, output: 1 } })
+      await expect(ledger.flush()).rejects.toBe(failure)
+      await expect(ledger.close()).rejects.toBe(failure)
+      expect(ledger.getLastError()).toBe('disk unavailable')
+      expect(spy).toHaveBeenCalledTimes(1)
+    } finally { spy.mockRestore() }
   })
 
   /**

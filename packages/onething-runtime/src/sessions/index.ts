@@ -9,6 +9,7 @@ export * from './session-dehydrate.js'
  */
 export * from './session-repository.js'
 export * from './storage-driver.js'
+export * from './deletion-recovery.js'
 export * from './session-usage.js'
 export * from './stream-abort.js'
 export * from './session-updates.js'

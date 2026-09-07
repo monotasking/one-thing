@@ -50,7 +50,7 @@ export type TaskDispatchOutcome =
   | { ok: false; reason: TaskRejectionReason; detail?: string }
 
 export interface TaskToolPorts {
-  dispatch(request: TaskDispatchRequest): Promise<TaskDispatchOutcome>
+  dispatch(request: TaskDispatchRequest, executionContext?: unknown): Promise<TaskDispatchOutcome>
 }
 
 export const TaskInputSchema = z.object({
@@ -137,7 +137,7 @@ export class TaskTool extends SessionTool<TaskInput> {
       ...(input.workingDirectory?.trim() ? { workingDirectory: input.workingDirectory.trim() } : {}),
       ...(input.model?.trim() ? { model: input.model.trim() } : {}),
       ...(input.description?.trim() ? { description: input.description.trim() } : {}),
-    })
+    }, ctx.invocation.executionContext)
 
     if (!outcome.ok) {
       return this.done(ctx, 'Task rejected', describeTaskRejection(outcome.reason, outcome.detail), { rejected: true })

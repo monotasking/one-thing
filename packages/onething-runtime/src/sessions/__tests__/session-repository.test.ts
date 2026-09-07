@@ -55,11 +55,104 @@ async function writeJsonFileAsync(filePath: string, data: unknown): Promise<void
   writeJsonFile(filePath, data)
 }
 
+function deletionRepository(overrides: {
+  writeJsonFileAsync?: typeof writeJsonFileAsync
+  deleteJsonFile?: (filePath: string) => void
+} = {}) {
+  const sessionsDir = createTempSessionsDir()
+  let current = ''
+  const repository = createOnethingSessionRepository<TestSession, TestMessage, TestMeta, CoreSessionDetails>({
+    defaultAgentId: 'default-agent',
+    getSessionsDir: () => sessionsDir,
+    getSessionPath: id => path.join(sessionsDir, `${id}.json`),
+    readJsonFile, writeJsonFile,
+    writeJsonFileAsync: overrides.writeJsonFileAsync ?? writeJsonFileAsync,
+    deleteJsonFile: overrides.deleteJsonFile ?? (filePath => fs.rmSync(filePath, { force: true })),
+    getCurrentSessionId: () => current,
+    setCurrentSessionId: id => { current = id },
+    getDefaultWorkingDirectory: () => sessionsDir,
+    expandPath: value => value,
+    logger: { error: vi.fn() },
+  })
+  return { repository, file: (id: string) => path.join(sessionsDir, `${id}.json`) }
+}
+
 describe('onething session repository', () => {
   afterEach(() => {
+    vi.restoreAllMocks()
     for (const dir of tempDirs.splice(0)) {
       fs.rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  it('persists distinct create and branch generations before either is returned', async () => {
+    const f = deletionRepository()
+    f.repository.createSession('parent', 'parent')
+    const parent = readJsonFile<{ storageGeneration: string }>(f.file('parent'), {} as never)
+    expect(parent.storageGeneration).toMatch(/^[a-f0-9-]{36}$/)
+    f.repository.createBranchSession('branch', 'branch', 'parent', 'message', [])
+    const branch = readJsonFile<{ storageGeneration: string }>(f.file('branch'), {} as never)
+    expect(branch.storageGeneration).toMatch(/^[a-f0-9-]{36}$/)
+    expect(branch.storageGeneration).not.toBe(parent.storageGeneration)
+    const index = f.repository.loadSessionsIndex() as Array<TestMeta & { storageGeneration: string }>
+    expect(index.find(meta => meta.id === 'branch')?.storageGeneration).toBe(branch.storageGeneration)
+    await f.repository.flushAllPendingSaves()
+  })
+
+  it('does not publish a generation whose initial file barrier failed', () => {
+    const f = deletionRepository()
+    vi.spyOn(fs, 'fsyncSync').mockImplementationOnce(() => { throw new Error('initial save failed') })
+    expect(() => f.repository.createSession('failed-initial', 'failed')).toThrow('initial save failed')
+    expect(f.repository.getCachedSession('failed-initial')).toBeUndefined()
+    expect(f.repository.loadSessionsIndex()).toEqual([])
+    expect(fs.existsSync(f.file('failed-initial'))).toBe(false)
+  })
+
+  it('does not report deletion complete before an in-flight file write settles', async () => {
+    let paused = false
+    let entered!: () => void
+    let release!: () => void
+    const started = new Promise<void>(resolve => { entered = resolve })
+    const held = new Promise<void>(resolve => { release = resolve })
+    const f = deletionRepository({ writeJsonFileAsync: async (filePath, value) => {
+      if (paused) { entered(); await held }
+      await writeJsonFileAsync(filePath, value)
+    } })
+    const session = f.repository.createSession('held', 'held')
+    await f.repository.flushSessionSave('held')
+    paused = true
+    session.name = 'updated'
+    f.repository.saveSessionToFile('held', session)
+    const saving = f.repository.flushSessionSave('held')
+    await started
+    const deleting = f.repository.deleteSession('held')
+    expect(fs.existsSync(f.file('held'))).toBe(true)
+    expect(f.repository.getSessionRaw('held')).toBeUndefined()
+    release()
+    await saving
+    await expect(deleting).resolves.toMatchObject({ deletedIds: ['held'] })
+    expect(fs.existsSync(f.file('held'))).toBe(false)
+  })
+
+  it('propagates file deletion failure and prevents cold reads from resurrecting the orphan', async () => {
+    const failure = Object.assign(new Error('permission denied'), { code: 'EACCES' })
+    const f = deletionRepository({ deleteJsonFile: () => { throw failure } })
+    f.repository.createSession('failed', 'failed')
+    await f.repository.flushSessionSave('failed')
+    const result = await f.repository.deleteSession('failed').catch(error => error as AggregateError)
+    expect(result).toBeInstanceOf(AggregateError)
+    expect((result as AggregateError).errors).toContain(failure)
+    expect(fs.existsSync(f.file('failed'))).toBe(true)
+    expect(f.repository.getSessionRaw('failed')).toBeUndefined()
+  })
+
+  it('detects legacy JSON helpers that report removal failure without throwing', async () => {
+    const f = deletionRepository({ deleteJsonFile: () => false })
+    f.repository.createSession('silent-failure', 'saved')
+    await f.repository.flushSessionSave('silent-failure')
+    await expect(f.repository.deleteSession('silent-failure')).rejects.toThrow('Failed to delete session')
+    expect(fs.existsSync(f.file('silent-failure'))).toBe(true)
+    expect(f.repository.getSessionRaw('silent-failure')).toBeUndefined()
   })
 
   it('owns session index, cache, JSON persistence, paging, and deletion behind host adapters', async () => {
@@ -117,7 +210,7 @@ describe('onething session repository', () => {
       { id: 'm1', seq: 1, timestamp: 100, preview: 'hello runtime' },
     ])
 
-    expect(repository.deleteSession('s1')).toEqual({ deletedIds: ['s1'] })
+    await expect(repository.deleteSession('s1')).resolves.toEqual({ deletedIds: ['s1'] })
     expect(repository.getSessionsList()).toEqual([])
     expect(repository.getSessionRaw('s1')).toBeUndefined()
   })

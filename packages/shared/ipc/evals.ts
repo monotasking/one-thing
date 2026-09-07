@@ -3,7 +3,7 @@
  * Prompt evaluation IPC type definitions
  */
 
-import type { TurnEvalRecord } from "@onething/runtime";
+import type { TurnEvalRecord } from "../contracts/eval-record.js";
 
 // Re-export for convenience
 export type { TurnEvalRecord };

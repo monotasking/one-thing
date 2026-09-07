@@ -374,31 +374,39 @@ function normalizeFile(raw: unknown, timestamp: number): OnethingAgentsFile {
 
 export function createOnethingAgentStore(options: CreateOnethingAgentStoreOptions): OnethingAgentStore {
   const now = options.now ?? (() => Date.now())
-  // One cache per store instance; the app layer keeps a single instance so the
-  // whole process shares it (a room turn used to re-read agents.json once per
-  // member, synchronously, on the main thread).
-  const state = createCoreCachedJsonState<OnethingAgentsFile>()
+  // The compatibility facade resolves its root after boot and can be reused
+  // by another Backend. Cache values and initialization promises belong to
+  // the resolved file, never to that process-wide facade alone.
+  let current: ReturnType<typeof createBinding> | undefined
 
   function resolvePath(): string {
     return typeof options.agentsPath === 'function' ? options.agentsPath() : options.agentsPath
   }
 
-  function fileOptions(): CoreCachedJsonFileOptions<OnethingAgentsFile> {
-    return {
-      filePath: resolvePath(),
+  function createBinding(filePath: string) {
+    const target: CoreCachedJsonFileOptions<OnethingAgentsFile> = {
+      filePath,
       defaultValue: () => normalizeFile(null, now()),
       normalize: raw => normalizeFile(raw, now()),
     }
+    return { target, state: createCoreCachedJsonState<OnethingAgentsFile>() }
+  }
+
+  function binding() {
+    const filePath = resolvePath()
+    if (!current || current.target.filePath !== filePath) current = createBinding(filePath)
+    return current
   }
 
   function loadFile(): OnethingAgentsFile {
-    return getCoreCachedJsonFile(state, fileOptions())
+    const owner = binding()
+    return getCoreCachedJsonFile(owner.state, owner.target)
   }
 
-  function saveFile(file: OnethingAgentsFile): void {
+  function saveFile(file: OnethingAgentsFile, owner = binding()): void {
     // Cross-process mutex: desktop / daemon / server may all hold a store over
     // the same agents.json. Same trade-off the settings repository makes.
-    const target = fileOptions()
+    const { target, state } = owner
     // `target.normalize` runs inside saveCoreCachedJsonFile, so what lands on
     // disk and what lands in the cache are the same normalized object.
     withFileLockSync(`${target.filePath}.lock`, () =>
@@ -469,20 +477,23 @@ export function createOnethingAgentStore(options: CreateOnethingAgentStoreOption
 
   return {
     async initialize() {
-      const target = fileOptions()
+      // Capture before asynchronous IO: a late normalization belongs to the
+      // original file even if another root has become current meanwhile.
+      const owner = binding()
+      const { target, state } = owner
       const raw = readJsonFile<unknown | null>(target.filePath, null)
       const file = await initializeCoreCachedJsonFile(state, target)
       // Normalization used to land on disk as a side effect of reading. It is
       // now an explicit boot-time migration: a missing file was already written
       // by the initializer, so only a present-but-stale file needs the write.
       if (raw !== null && JSON.stringify(raw) !== JSON.stringify(file)) {
-        saveFile(file)
+        saveFile(file, owner)
       }
       return file
     },
 
     invalidate() {
-      invalidateCoreCachedJsonFile(state)
+      if (current) invalidateCoreCachedJsonFile(current.state)
     },
 
     listAgents() {

@@ -51,6 +51,19 @@ function createSessions(session: OnethingSchedulerAgentTaskSession): OnethingSch
 }
 
 describe('runOnethingSchedulerAgentTask', () => {
+  it('does not subscribe or start execution when the host cannot persist the new session owner', async () => {
+    const emit = vi.fn()
+    const onAny = vi.fn()
+    await expect(runOnethingSchedulerAgentTask('task-1', createContext(), {
+      getTask: () => createTask(),
+      getStreamHost: () => ({ hasBoundSender: () => true, abort: vi.fn() }),
+      eventBus: { emit, onAny },
+      sessions: { ...createSessions({ id: '', messages: [] }), createSession: () => { throw new Error('owner save failed') } },
+      saveRunDetail: detail => detail,
+    })).rejects.toThrow('owner save failed')
+    expect(onAny).not.toHaveBeenCalled()
+    expect(emit).not.toHaveBeenCalled()
+  })
   it('saves a skipped run when no stream host is available', async () => {
     const saved: OnethingSchedulerRunDetail[] = []
     const streamHost: OnethingSchedulerAgentTaskStreamHost = {
@@ -88,6 +101,7 @@ describe('runOnethingSchedulerAgentTask', () => {
   })
 
   it('runs a scheduler task through injected session, event, and stream adapters', async () => {
+    let ownerInitialized = false
     let eventHandler: ((envelope: OnethingSchedulerAgentTaskEventEnvelope) => void) | undefined
     let id = 0
     let now = 100
@@ -99,6 +113,7 @@ describe('runOnethingSchedulerAgentTask', () => {
     }
     const eventBus: OnethingSchedulerAgentTaskEventBus = {
       onAny: (_sessionId, handler) => {
+        expect(ownerInitialized).toBe(true)
         eventHandler = handler
         return vi.fn()
       },
@@ -140,7 +155,16 @@ describe('runOnethingSchedulerAgentTask', () => {
       getTask: () => createTask(),
       getStreamHost: () => streamHost,
       eventBus,
-      sessions: createSessions(session),
+      initialOwner: { userId: 'alice', workspaceId: 'tenant-1' },
+      sessions: {
+        ...createSessions(session),
+        createSession: (sessionId, _name, options) => {
+          expect(options?.initialOwner).toEqual({ userId: 'alice', workspaceId: 'tenant-1' })
+          ownerInitialized = true
+          session.id = sessionId
+          return session
+        },
+      },
       saveRunDetail: detail => {
         saved.push(detail)
         return detail

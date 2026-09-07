@@ -26,6 +26,7 @@ import {
   createBranchSessionWithAdapters,
   createSessionWithAdapters,
   deleteSessionWithAdapters,
+  planSessionCascadeDelete,
   loadSessionWithAdapters,
   normalizeWorkingDirectoryRoots,
   resolveSessionDetailsSnapshot,
@@ -54,6 +55,9 @@ import { getMessagesPageFromJsonFilePath } from '@onething/core/session/storage/
 import { AsyncSaveQueue, LRUCache, withFileLockSync, type AsyncSaveQueueOptions } from '@onething/core/storage'
 import { dehydrateSessionForStorage, rehydrateSessionFromStorage } from './session-dehydrate.js'
 import { STRUCTURAL_WRITE_PLAN, type SessionStorageDriver, type SessionWritePlan } from './storage-driver.js'
+import { randomUUID } from 'node:crypto'
+import fs from 'node:fs'
+import { writeDurableJson } from '../storage/durable-json.js'
 import type { ResolveSessionMessagesPageOptions, ResolveSessionUserMessageMarkersOptions } from '@onething/core/session/storage'
 
 export interface OnethingSessionRepositoryLogger {
@@ -62,6 +66,10 @@ export interface OnethingSessionRepositoryLogger {
   warn?(...args: unknown[]): void
   error?(...args: unknown[]): void
 }
+
+/** Trusted creator identity; workspaceId is the tenant, not a product workspace. */
+export interface SessionInitialOwner { userId: string; workspaceId: string }
+export interface SessionCreateOptions { workspaceId?: string; initialOwner?: SessionInitialOwner }
 
 export interface OnethingSessionRepositoryOptions<
   TSession extends CoreSession<TMessage> & {
@@ -93,6 +101,9 @@ export interface OnethingSessionRepositoryOptions<
   cancelPendingSideEffects?(sessionId: string): void
   /** 格式感知的存储驱动(legacy/jsonl 混合路由);缺省时退回整文件 JSON 直写 */
   storageDriver?: SessionStorageDriver<TSession>
+  /** Production store-owned deletion transaction; absent in isolated legacy adapters. */
+  deleteSessionsDurably?(ids: readonly string[]): Promise<void>
+  isSessionDeleted?(sessionId: string, storageGeneration?: string): boolean
   /**
    * **冷加载补水源**(S3w-1,`docs/design/session-event-sourcing-2026-08.md`
    * §14.4)。装上了就在冷加载时用它物化出来的消息顶掉 `messages.jsonl` 那一份
@@ -297,11 +308,12 @@ export class OnethingSessionRepository<
    * 与会话级时间线元数据那几格仍然只有它管。
    */
   private loadStoredSession(sessionId: string): TSession | undefined {
-    if (this.deletionTombstones.has(sessionId)) return undefined
+    if (this.deletionTombstones.has(sessionId) || this.options.isSessionDeleted?.(sessionId)) return undefined
     const stored = this.options.storageDriver
       ? this.options.storageDriver.load(sessionId)
       : this.options.readJsonFile<TSession | null>(this.options.getSessionPath(sessionId), null) ?? undefined
     if (!stored) return undefined
+    if (this.options.isSessionDeleted?.(sessionId, (stored as TSession & { storageGeneration?: string }).storageGeneration)) return undefined
     const projected = this.options.hydrateMessagesFromProjection?.(sessionId)
     // 整体替换用展开(命令面 COW 的同一条纪律:`session.messages = …` 不许)。
     const hydrated = projected && projected.length > 0 ? { ...stored, messages: projected } : stored
@@ -366,11 +378,37 @@ export class OnethingSessionRepository<
   }
 
   loadSessionsIndex(): TMeta[] {
-    return this.options.readJsonFile<TMeta[]>(this.getSessionsIndexPath(), [])
+    const index = this.options.readJsonFile<TMeta[]>(this.getSessionsIndexPath(), [])
+    return this.options.isSessionDeleted
+      ? index.filter(meta => !this.options.isSessionDeleted!(meta.id, (meta as TMeta & { storageGeneration?: string }).storageGeneration))
+      : index
   }
 
   saveSessionsIndex(index: TMeta[]): void {
     this.runWithSessionsIndexLock(() => {
+      // Core metadata builders intentionally know nothing about physical storage.
+      // Carry the repository's immutable incarnation into their list projection.
+      for (const meta of index) {
+        const carried = meta as TMeta & { storageGeneration?: string; ownerUserId?: string; ownerWorkspaceId?: string }
+        const cached = this.sessionCache.get(meta.id) as (TSession & { storageGeneration?: string; ownerUserId?: string; ownerWorkspaceId?: string }) | undefined
+        /*
+         * 工单 5 §3:身份**不许只从 LRU 取**。
+         *
+         * 缓存命中就用它(那是最新的一份);没命中、而这一条自己也还没带全身份时,
+         * 才去问驱动读一次盘上的 meta。从前这里只有 LRU 一条路 —— 一条被挤出缓存
+         * 的会话写出去的索引条目于是**没有代际**,而代际是删除墓碑唯一的判据:
+         * 没有它,`isDeleted` 对这一条永远说不出话。
+         *
+         * 稳态零读盘:索引条目一旦带全三格就不再问驱动。
+         */
+        const identity = cached ?? (carried.storageGeneration && carried.ownerUserId && carried.ownerWorkspaceId
+          ? undefined
+          : this.options.storageDriver?.readIdentity?.(meta.id))
+        if (identity?.storageGeneration) carried.storageGeneration = identity.storageGeneration
+        if (identity?.ownerUserId && identity.ownerWorkspaceId) Object.assign(meta, {
+          ownerUserId: identity.ownerUserId, ownerWorkspaceId: identity.ownerWorkspaceId,
+        })
+      }
       this.options.writeJsonFile(this.getSessionsIndexPath(), index)
     })
   }
@@ -740,7 +778,7 @@ export class OnethingSessionRepository<
     return sanitizeSessionOnStartup(session)
   }
 
-  createSession(sessionId: string, name: string, options: { workspaceId?: string } = {}): TSession {
+  createSession(sessionId: string, name: string, options: SessionCreateOptions = {}): TSession {
     const workingDirectory = this.resolveDefaultWorkingDirectory()
 
     return this.runWithSessionsIndexLock(() => {
@@ -750,7 +788,7 @@ export class OnethingSessionRepository<
         defaultAgentId: this.options.defaultAgentId,
         workingDirectory,
         workspaceId: options.workspaceId,
-        saveSession: (id, session) => this.saveSessionToFile(id, session),
+        saveSession: (id, session) => this.saveInitialSession(id, session, options.initialOwner),
         syncSession: session => this.syncSessionToSqliteIfReady(session),
         syncFullSession: session => this.options.sqlite?.syncFullSession?.(session),
         loadIndex: () => this.loadSessionsIndex(),
@@ -767,8 +805,14 @@ export class OnethingSessionRepository<
     parentSessionId: string,
     branchFromMessageId: string,
     inheritedMessages: TMessage[],
+    options: { initialOwner?: SessionInitialOwner } = {},
   ): TSession {
     const parentSession = this.getSession(parentSessionId)
+    const parentOwner = parentSession as (TSession & { ownerUserId?: string; ownerWorkspaceId?: string; userId?: string }) | undefined
+    const initialOwner = options.initialOwner ?? {
+      userId: parentOwner?.ownerUserId ?? parentOwner?.userId ?? 'local-user',
+      workspaceId: parentOwner?.ownerWorkspaceId ?? 'default',
+    }
     const workingDirectory = parentSession?.workingDirectory ?? this.resolveDefaultWorkingDirectory()
 
     return this.runWithSessionsIndexLock(() => {
@@ -785,7 +829,7 @@ export class OnethingSessionRepository<
           active: workingDirectory,
           expandPath: this.options.expandPath,
         }),
-        saveSession: (id, session) => this.saveSessionToFile(id, session),
+        saveSession: (id, session) => this.saveInitialSession(id, session, initialOwner),
         syncSession: session => this.syncSessionToSqliteIfReady(session),
         syncFullSession: session => this.options.sqlite?.syncFullSession?.(session),
         loadIndex: () => this.loadSessionsIndex(),
@@ -796,11 +840,78 @@ export class OnethingSessionRepository<
     })
   }
 
-  deleteSession(sessionId: string): OnethingDeleteSessionResult {
+  private saveInitialSession(sessionId: string, session: TSession, initialOwner: SessionInitialOwner = { userId: 'local-user', workspaceId: 'default' }): void {
+    // A branch must never inherit its parent's physical incarnation. Publish the
+    // complete new metadata before cache/index observers can see the new session.
+    const created = session as TSession & { storageGeneration: string }
+    if (!initialOwner.userId || !initialOwner.workspaceId) throw new Error('Session creation requires a complete trusted owner')
+    Object.assign(created, { ownerUserId: initialOwner.userId, ownerWorkspaceId: initialOwner.workspaceId })
+    created.storageGeneration = randomUUID()
+    const stored = dehydrateSessionForStorage(session) as TSession
+    if (this.options.storageDriver?.initialize) this.options.storageDriver.initialize(sessionId, stored)
+    // 目录屏障的上界是 `sessions/`(工单 5 §2):再往上是用户主目录与整块卷。
+    else writeDurableJson(this.options.getSessionPath(sessionId), stored, this.options.getSessionsDir())
+    this.saveSessionToFile(sessionId, session)
+  }
+
+  /** Await the actual file removals and preserve their original failures. */
+  async deleteSession(sessionId: string): Promise<OnethingDeleteSessionResult> {
+    if (this.options.deleteSessionsDurably) return this.deleteSessionDurably(sessionId)
+    const pending: Promise<void>[] = []
+    const failures: unknown[] = []
+    let result: OnethingDeleteSessionResult | undefined
+    try { result = this.beginSessionDeletion(sessionId, pending) }
+    catch (error) { failures.push(error) }
+    const settled = await Promise.allSettled(pending)
+    for (const outcome of settled) if (outcome.status === 'rejected') failures.push(outcome.reason)
+    if (failures.length) throw new AggregateError(failures, `Failed to delete session ${sessionId}`)
+    return result!
+  }
+
+  private readonly durableDeletionPlans = new Map<string, {
+    deletedIds: string[]; parentSessionId?: string; nextCurrentSessionId?: string
+  }>()
+
+  private async deleteSessionDurably(sessionId: string): Promise<OnethingDeleteSessionResult> {
+    let plan = this.durableDeletionPlans.get(sessionId)
+    if (!plan) {
+      plan = this.runWithSessionsIndexLock(() => {
+        // Keep the exact retry target set even while the public index suppresses
+        // pending tombstones. No file hydration/recovery occurs during planning.
+        const index = this.options.readJsonFile<TMeta[]>(this.getSessionsIndexPath(), [])
+        const parentSessionId = index.find(meta => meta.id === sessionId)?.parentSessionId
+        return { ...planSessionCascadeDelete(index, {
+          sessionId, parentSessionId, currentSessionId: this.options.getCurrentSessionId(),
+        }), parentSessionId }
+      })
+      this.durableDeletionPlans.set(sessionId, plan)
+    }
+    for (const id of plan.deletedIds) {
+      this.deletionTombstones.add(id)
+      this.processOwnedSessions.delete(id)
+      this.cancelPendingSave(id)
+    }
+    // The application coordinator already drained the target writers; ensure no
+    // adapter save remains active before the transaction captures its generations.
+    await Promise.all(plan.deletedIds.map(id => this.sessionSaveQueue.runExclusive(id, async () => {})))
+    await this.options.deleteSessionsDurably!(plan.deletedIds)
+    for (const id of plan.deletedIds) {
+      this.deleteCachedSession(id)
+      this.deletionTombstones.delete(id)
+    }
+    this.options.sqlite?.deleteSessions?.(plan.deletedIds)
+    if (plan.nextCurrentSessionId !== undefined) this.options.setCurrentSessionId(plan.nextCurrentSessionId)
+    this.durableDeletionPlans.delete(sessionId)
+    return { deletedIds: plan.deletedIds, parentSessionId: plan.parentSessionId }
+  }
+
+  private beginSessionDeletion(sessionId: string, pending: Promise<void>[]): OnethingDeleteSessionResult {
     return this.runWithSessionsIndexLock(() => {
-      const deleteSessionOptions: DeleteSessionWithAdaptersOptions<TSession, TMeta> = {
+      const deleteSessionOptions: DeleteSessionWithAdaptersOptions<Pick<TSession, 'parentSessionId'>, TMeta> = {
         sessionId,
-        getSession: id => this.getSession(id),
+        // Deletion only needs the parent id. Loading a cold session here can
+        // schedule recovery writes after its execution and save queues drained.
+        getSession: id => this.loadSessionsIndex().find(meta => meta.id === id),
         getCurrentSessionId: () => this.options.getCurrentSessionId(),
         loadIndex: () => this.loadSessionsIndex(),
         saveIndex: index => this.saveSessionsIndex(index),
@@ -811,23 +922,32 @@ export class OnethingSessionRepository<
         deleteSessionFile: id => {
           this.processOwnedSessions.delete(id)
           this.deletionTombstones.add(id)
-          void this.sessionSaveQueue.runExclusive(id, () => {
+          const deletion = this.sessionSaveQueue.runExclusive(id, () => {
             if (this.options.storageDriver) {
               this.options.storageDriver.delete(id)
               return
             }
-            this.options.deleteJsonFile(this.options.getSessionPath(id))
-          }).catch(error => {
-            this.options.logger?.error?.(`[Sessions] failed to delete session files for ${id}:`, error)
-          }).finally(() => {
+            const filePath = this.options.getSessionPath(id)
+            this.options.deleteJsonFile(filePath)
+            try {
+              fs.statSync(filePath)
+              throw new Error(`Failed to delete legacy session file: ${filePath}`)
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            }
+          }).then(() => {
             this.deletionTombstones.delete(id)
+          })
+          pending.push(deletion)
+          void deletion.catch(error => {
+            this.options.logger?.error?.(`[Sessions] failed to delete session files for ${id}:`, error)
           })
         },
         deleteSessionCache: id => this.deleteCachedSession(id),
         deleteSessionsFromSqlite: ids => this.options.sqlite?.deleteSessions?.(ids),
         setCurrentSessionId: sessionId => this.options.setCurrentSessionId(sessionId),
       }
-      return deleteSessionWithAdapters<TSession, TMeta>(deleteSessionOptions)
+      return deleteSessionWithAdapters<Pick<TSession, 'parentSessionId'>, TMeta>(deleteSessionOptions)
     })
   }
 

@@ -39,7 +39,6 @@
     "prompt_cache_key": "session-fixture-0001",
     "store": false,
     "stream": true,
-    "tool_choice": "auto",
     "tools": []
   }
 }

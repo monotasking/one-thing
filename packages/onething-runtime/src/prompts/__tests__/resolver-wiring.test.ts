@@ -9,7 +9,7 @@ import {
   createSkillToken,
   formatPromptForModel,
   formatSkillForModel,
-} from '@shared/prompt-references.js'
+} from '../prompt-references.js'
 import type { SkillDefinition } from '@shared/ipc.js'
 
 let tmpDir: string

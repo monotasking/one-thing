@@ -170,6 +170,7 @@ export {
 export type {
 	AbortLikeCommand,
 	CoreCommandEnvelope,
+	CoreExecutionOptions,
 	CoreContextCompactResultLike,
 	CoreEventBusEmitterLike,
 	CoreProviderConfigWithKeyLike,

@@ -265,6 +265,49 @@ describe('TerminalService', () => {
     expect(backend.spawned[0].pty.written).toHaveLength(0)
   })
 
+  it('killAll waits for a previously removed terminal and cancels its late force-kill after real exit', async () => {
+    const { backend, broadcaster, service } = createHarness()
+    const first = service.create({})
+    service.create({})
+    const pty = backend.spawned[0].pty
+    const stoppingOne = service.kill(first.id)
+    expect(service.kill(first.id)).toBe(stoppingOne)
+    let finished = false
+    const stoppingAll = service.killAll().then(() => { finished = true })
+    backend.spawned[1].pty.emitExit(0)
+    await Promise.resolve()
+    expect(finished).toBe(false)
+    pty.emitData('late output')
+    pty.emitExit(0)
+    await stoppingOne
+    await stoppingAll
+    vi.advanceTimersByTime(2000)
+    expect(pty.signals).toEqual(['SIGHUP'])
+    expect(broadcaster.data).toEqual([])
+    expect(broadcaster.exits).toEqual([])
+  })
+
+  it('retains the force-kill and drain while the exited shell still has a live process group', async () => {
+    const { backend, service } = createHarness({ killGraceMs: 100 })
+    const info = service.create({})
+    const pty = backend.spawned[0].pty
+    let alive = true
+    Object.assign(pty, { isProcessGroupAlive: () => alive })
+    let finished = false
+    const stopping = service.kill(info.id).then(() => { finished = true })
+    pty.emitExit(0)
+    await Promise.resolve()
+    expect(finished).toBe(false)
+    vi.advanceTimersByTime(100)
+    expect(pty.signals).toEqual(['SIGHUP', 'SIGKILL'])
+    expect(finished).toBe(false)
+    alive = false
+    vi.advanceTimersByTime(25)
+    await stopping
+    expect(finished).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('write and resize reach the pty and update info', () => {
     const { backend, service } = createHarness()
     const info = service.create({})

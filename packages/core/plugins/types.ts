@@ -647,7 +647,8 @@ export interface CorePluginAPI<
       image?: string | null
     }): void
   }
-  onDispose(callback: () => void): void
+  /** The host waits for cleanup and propagates failures before releasing ownership. */
+  onDispose(callback: () => void | Promise<void>): void
   store: TStore
   /**
    * 插件的数据目录(R4)。作用域是**全局 per-plugin**:

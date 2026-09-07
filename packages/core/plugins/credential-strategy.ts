@@ -141,6 +141,8 @@ export interface PluginCredentialEntryView {
  * 冷却的口子。
  */
 export interface CorePluginCredentialStrategyContext {
+  /** Aborted when the owning plugin or Backend closes; raw select work is still drained. */
+  signal?: AbortSignal
   providerId: string
   /** 空间 id。默认空间不参与轮换(它的凭证源是 settings.ai,无池)。 */
   spaceId: string

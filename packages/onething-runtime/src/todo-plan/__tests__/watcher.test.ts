@@ -43,7 +43,7 @@ describe('OnethingTodoPlanWatcher', () => {
   })
 
   afterEach(async () => {
-    watcher.stop()
+    await watcher.drain()
     await rm(root, { recursive: true, force: true })
   })
 

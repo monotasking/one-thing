@@ -40,6 +40,7 @@ function makePracticeRecordId(ts: number): string {
 export interface OnethingPracticeLedgerOptions {
   ledgerDir?: string | (() => string)
   now?: () => number
+  assertOwned?: () => void
 }
 
 /**
@@ -49,18 +50,24 @@ export interface OnethingPracticeLedgerOptions {
  * scanning records, never stored.
  */
 export class OnethingPracticeLedger {
-  private readonly ledgerDirSource: string | (() => string)
+  private readonly ledgerDir: string
   private readonly now: () => number
+  private readonly assertOwned: () => void
   private writeChain: Promise<void> = Promise.resolve()
   private lastError: string | undefined
+  private writeFailure: unknown
+  private closed = false
+  private readonly reads = new Set<Promise<unknown>>()
 
   constructor(options: OnethingPracticeLedgerOptions = {}) {
-    this.ledgerDirSource = options.ledgerDir ?? (() => path.join(process.cwd(), '.onething', 'practice'))
+    const source = options.ledgerDir ?? (() => path.join(process.cwd(), '.onething', 'practice'))
+    this.ledgerDir = path.resolve(typeof source === 'function' ? source() : source)
     this.now = options.now ?? Date.now
+    this.assertOwned = options.assertOwned ?? (() => {})
   }
 
   getLedgerDir(): string {
-    return typeof this.ledgerDirSource === 'function' ? this.ledgerDirSource() : this.ledgerDirSource
+    return this.ledgerDir
   }
 
   getLastError(): string | undefined {
@@ -69,11 +76,14 @@ export class OnethingPracticeLedger {
 
   /** Fills id/ts defaults and queues the append. Returns the full record immediately. */
   record(input: OnethingPracticeRecordInput): OnethingPracticeLedgerRecord {
+    this.assertActive()
     const ts = input.ts ?? this.now()
-    const record: OnethingPracticeLedgerRecord = { id: makePracticeRecordId(ts), ...input, ts }
+    const record: OnethingPracticeLedgerRecord = { id: makePracticeRecordId(ts), ...structuredClone(input), ts }
+    const queued = structuredClone(record)
     this.writeChain = this.writeChain
-      .then(() => this.append(record))
+      .then(() => this.append(queued))
       .catch(error => {
+        this.writeFailure ??= error
         this.lastError = error instanceof Error ? error.message : String(error)
       })
     return record
@@ -82,9 +92,27 @@ export class OnethingPracticeLedger {
   /** Waits for queued appends to hit disk. Call before reading for consistency. */
   async flush(): Promise<void> {
     await this.writeChain
+    if (this.writeFailure) throw this.writeFailure
   }
 
-  async listLedgerFiles(): Promise<string[]> {
+  private assertActive(): void {
+    if (this.closed) throw new Error('Practice ledger is shutting down')
+    this.assertOwned()
+  }
+
+  private trackRead<T>(operation: Promise<T>): Promise<T> {
+    this.reads.add(operation)
+    void operation.then(() => this.reads.delete(operation), () => this.reads.delete(operation))
+    return operation
+  }
+
+  listLedgerFiles(): Promise<string[]> {
+    this.assertActive()
+    return this.trackRead(this.listFiles())
+  }
+
+  private async listFiles(): Promise<string[]> {
+    this.assertOwned()
     const dir = this.getLedgerDir()
     try {
       const entries = await fsp.readdir(dir, { withFileTypes: true })
@@ -99,9 +127,14 @@ export class OnethingPracticeLedger {
   }
 
   /** Reads all records whose ts falls in [startTs, endTs). Scans only overlapping monthly files; bad lines are skipped. */
-  async readRecordsInRange(startTs: number, endTs: number): Promise<OnethingPracticeLedgerRecord[]> {
+  readRecordsInRange(startTs: number, endTs: number): Promise<OnethingPracticeLedgerRecord[]> {
+    this.assertActive()
+    return this.trackRead(this.readRange(startTs, endTs))
+  }
+
+  private async readRange(startTs: number, endTs: number): Promise<OnethingPracticeLedgerRecord[]> {
     await this.flush()
-    const files = await this.listLedgerFiles()
+    const files = await this.listFiles()
     const records: OnethingPracticeLedgerRecord[] = []
     for (const filePath of files) {
       const range = monthFileRange(path.basename(filePath))
@@ -118,9 +151,18 @@ export class OnethingPracticeLedger {
   }
 
   private async append(record: OnethingPracticeLedgerRecord): Promise<void> {
+    this.assertOwned()
     const dir = this.getLedgerDir()
     await fsp.mkdir(dir, { recursive: true })
     await fsp.appendFile(path.join(dir, onethingPracticeLedgerFileName(record.ts)), `${JSON.stringify(record)}\n`, 'utf-8')
+  }
+
+  quiesce(): void { this.closed = true }
+
+  async drain(): Promise<void> {
+    this.quiesce()
+    while (this.reads.size) await Promise.allSettled([...this.reads])
+    await this.flush()
   }
 }
 

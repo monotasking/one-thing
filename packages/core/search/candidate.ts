@@ -136,6 +136,8 @@ export interface SearchPage {
 /** 一次搜索的现场:唯一带「谁 / 在哪 / 还要不要」的东西。 */
 export interface SearchContext {
   principal: SearchPrincipal
+  /** Captured host authority; search targets and product-space filters never set it. */
+  executionContext?: unknown
   /** 消费面:命令面板 / 输入框 / CLI / agent 工具 / 插件自报 —— core 不枚举 */
   surface: string
   spaceId: string

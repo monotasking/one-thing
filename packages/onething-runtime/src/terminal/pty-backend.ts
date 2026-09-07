@@ -35,6 +35,8 @@ export interface PtyHandle {
    * leader), so SIGHUP-ignoring grandchildren get collected too.
    */
   kill(signal: 'SIGHUP' | 'SIGTERM' | 'SIGKILL'): void
+  /** Native process-group ownership can outlive the shell's exit event. */
+  isProcessGroupAlive?(): boolean
   onData(callback: (data: string) => void): void
   onExit(callback: (event: PtyExitEvent) => void): void
 }
@@ -75,6 +77,10 @@ export function createNodePtyBackend(): PtyBackend {
               // Already gone.
             }
           }
+        },
+        isProcessGroupAlive: () => {
+          try { process.kill(process.platform === 'win32' ? pty.pid : -pty.pid, 0); return true }
+          catch (error) { return (error as NodeJS.ErrnoException).code !== 'ESRCH' }
         },
         onData: callback => {
           pty.onData(callback)

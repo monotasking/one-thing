@@ -53,13 +53,13 @@ export const COLLAB_AGENT_NOTEBOOK_FILE = 'notebook.md'
 export const COLLAB_AGENT_MAILBOX_NAME = 'inbox'
 
 /** `<store>/agents-v3/<agentId>/`。 */
-export function collabAgentActorDir(agentId: string): string {
-  return path.join(getOnethingStorePath(), COLLAB_AGENTS_V3_DIR, agentId)
+export function collabAgentActorDir(agentId: string, storePath = getOnethingStorePath()): string {
+  return path.join(storePath, COLLAB_AGENTS_V3_DIR, agentId)
 }
 
 /** `<store>/agents-v3/<agentId>/state.json`。 */
-export function collabAgentAccountPath(agentId: string): string {
-  return path.join(collabAgentActorDir(agentId), COLLAB_AGENT_ACCOUNT_FILE)
+export function collabAgentAccountPath(agentId: string, storePath?: string): string {
+  return path.join(collabAgentActorDir(agentId, storePath), COLLAB_AGENT_ACCOUNT_FILE)
 }
 
 /** `<store>/agents-v3/<agentId>/notebook.md`。 */
@@ -75,10 +75,10 @@ export function collabAgentNotebookPath(agentId: string): string {
  */
 export function openCollabAgentMailbox(
   agentId: string,
-  options: { now?: () => number; seenWindowSize?: number } = {},
+  options: { now?: () => number; seenWindowSize?: number; storePath?: string } = {},
 ): Promise<DurableMailbox<ActorEvent<CollabActorVerb>>> {
   return DurableMailbox.open<ActorEvent<CollabActorVerb>>({
-    dir: collabAgentActorDir(agentId),
+    dir: collabAgentActorDir(agentId, options.storePath),
     ownerId: agentId,
     name: COLLAB_AGENT_MAILBOX_NAME,
     ...(options.now ? { now: options.now } : {}),
@@ -98,14 +98,18 @@ export interface CollabAgentAccountStore {
 }
 
 /** 真机的那一个:同步原子写(`writeJsonFile` = writeFileSync + renameSync)。 */
-export function createCollabAgentAccountFileStore(): CollabAgentAccountStore {
+export function createCollabAgentAccountFileStore(
+  options: { storePath?: string; assertOwned?: () => void } = {},
+): CollabAgentAccountStore {
   return {
     load(agentId: string): CollabAgentAccount {
-      const raw = readJsonFile<unknown>(collabAgentAccountPath(agentId), null)
+      options.assertOwned?.()
+      const raw = readJsonFile<unknown>(collabAgentAccountPath(agentId, options.storePath), null)
       return raw === null ? createCollabAgentAccount(agentId) : normalizeCollabAgentAccount(raw, agentId)
     },
     save(account: CollabAgentAccount): void {
-      writeJsonFile(collabAgentAccountPath(account.agentId), account)
+      options.assertOwned?.()
+      writeJsonFile(collabAgentAccountPath(account.agentId, options.storePath), account)
     },
   }
 }

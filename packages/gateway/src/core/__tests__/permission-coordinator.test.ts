@@ -65,6 +65,7 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'user-1',
+      conversationId: 'user-1',
       sendText: async text => {
         sent.push(text)
       },
@@ -80,7 +81,7 @@ describe('GatewayPermissionCoordinator', () => {
     expect(sent[0]).toContain('AI 想执行：运行 bash')
     expect(sent[0]).toContain('5 分钟内未回复将自动拒绝')
 
-    await expect(coordinator.tryHandleReply('wechat', 'user-1', '1')).resolves.toBe(true)
+    await expect(coordinator.tryHandleReply('wechat', 'user-1', 'user-1', '1')).resolves.toBe(true)
 
     expect(permissions.responses).toEqual([expect.objectContaining({
       sessionId: 'session-1',
@@ -108,6 +109,7 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'user-1',
+      conversationId: 'user-1',
       sendText: async () => {},
     })
 
@@ -118,7 +120,7 @@ describe('GatewayPermissionCoordinator', () => {
     })
     await flushPromises()
 
-    await expect(coordinator.tryHandleReply('wechat', 'user-1', reply)).resolves.toBe(true)
+    await expect(coordinator.tryHandleReply('wechat', 'user-1', 'user-1', reply)).resolves.toBe(true)
 
     expect(permissions.responses[0]).toMatchObject({
       requestId: `request-${decision}`,
@@ -134,6 +136,7 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'user-1',
+      conversationId: 'user-1',
       sendText: async text => {
         sent.push(text)
       },
@@ -146,13 +149,13 @@ describe('GatewayPermissionCoordinator', () => {
     })
     await flushPromises()
 
-    await expect(coordinator.tryHandleReply('wechat', 'user-1', 'maybe')).resolves.toBe(true)
+    await expect(coordinator.tryHandleReply('wechat', 'user-1', 'user-1', 'maybe')).resolves.toBe(true)
 
     expect(permissions.responses).toEqual([])
     expect(sent.at(-1)).toBe('未能识别，请回复 1 / 2 / 3。')
   })
 
-  it('uses the only pending channel request when the approval reply user id changes', async () => {
+  it('rejects another user even when there is only one pending channel request', async () => {
     const permissions = new FakePermissionSurface()
     const sent: string[] = []
     const coordinator = new GatewayPermissionCoordinator({ permissions, timeoutMs: 300_000 })
@@ -160,6 +163,7 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'original-user',
+      conversationId: 'original-user',
       sendText: async text => {
         sent.push(text)
       },
@@ -172,7 +176,10 @@ describe('GatewayPermissionCoordinator', () => {
     })
     await flushPromises()
 
-    await expect(coordinator.tryHandleReply('wechat', 'reply-user', '1')).resolves.toBe(true)
+    await expect(coordinator.tryHandleReply('wechat', 'reply-user', 'reply-user', '1')).resolves.toBe(true)
+    expect(permissions.responses).toEqual([])
+    expect(sent).not.toContain('已允许一次。')
+    await expect(coordinator.tryHandleReply('wechat', 'original-user', 'original-user', '1')).resolves.toBe(true)
 
     expect(permissions.responses).toEqual([expect.objectContaining({
       requestId: 'request-1',
@@ -189,12 +196,14 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'user-1',
+      conversationId: 'user-1',
       sendText: async () => {},
     })
     coordinator.watch({
       sessionId: 'session-2',
       channelId: 'wechat',
       userId: 'user-2',
+      conversationId: 'user-2',
       sendText: async () => {},
     })
 
@@ -210,9 +219,58 @@ describe('GatewayPermissionCoordinator', () => {
     })
     await flushPromises()
 
-    await expect(coordinator.tryHandleReply('wechat', 'other-user', '1')).resolves.toBe(false)
+    await expect(coordinator.tryHandleReply('wechat', 'other-user', 'other-user', '1')).resolves.toBe(true)
 
     expect(permissions.responses).toEqual([])
+  })
+
+  it.each(['pending', 'cancelled'] as const)('binds %s approval replies to channel, user and conversation', async state => {
+    const permissions = new FakePermissionSurface()
+    const sent: string[] = []
+    const coordinator = new GatewayPermissionCoordinator({ permissions, timeoutMs: 300_000 })
+    const unwatch = coordinator.watch({
+      sessionId: 'session-1',
+      channelId: 'wechat',
+      userId: 'alice',
+      conversationId: 'room-1',
+      sendText: async text => { sent.push(text) },
+    })
+    permissions.emitRequest('session-1', { requestId: 'request-1', title: 'Write a file' })
+    await flushPromises()
+    if (state === 'cancelled') unwatch()
+    await flushPromises()
+    const before = [...sent]
+
+    await coordinator.tryHandleReply('wechat', 'bob', 'room-1', '1')
+    await coordinator.tryHandleReply('wechat', 'alice', 'room-2', '1')
+    await coordinator.tryHandleReply('telegram', 'alice', 'room-1', '1')
+    expect(permissions.responses).toEqual([])
+    expect(sent).toEqual(before)
+
+    await expect(coordinator.tryHandleReply('wechat', 'alice', 'room-1', '1')).resolves.toBe(true)
+    expect(permissions.responses).toHaveLength(state === 'pending' ? 1 : 0)
+    expect(sent).toHaveLength(before.length + 1)
+    unwatch()
+  })
+
+  it('keeps simultaneous approvals by the same user in different rooms independent', async () => {
+    const permissions = new FakePermissionSurface()
+    const coordinator = new GatewayPermissionCoordinator({ permissions, timeoutMs: 300_000 })
+    for (const room of ['room-1', 'room-2']) {
+      coordinator.watch({
+        sessionId: room,
+        channelId: 'wechat',
+        userId: 'alice',
+        conversationId: room,
+        sendText: async () => {},
+      })
+      permissions.emitRequest(room, { requestId: room, title: 'Write a file' })
+    }
+    await flushPromises()
+    await coordinator.tryHandleReply('wechat', 'alice', 'room-2', '3')
+    expect(permissions.responses).toEqual([expect.objectContaining({ requestId: 'room-2', decision: 'reject' })])
+    await coordinator.tryHandleReply('wechat', 'alice', 'room-1', '1')
+    expect(permissions.responses[1]).toMatchObject({ requestId: 'room-1', decision: 'once' })
   })
 
   it('rejects automatically when the approval times out', async () => {
@@ -224,6 +282,7 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'user-1',
+      conversationId: 'user-1',
       sendText: async text => {
         sent.push(text)
       },
@@ -247,7 +306,7 @@ describe('GatewayPermissionCoordinator', () => {
     })])
     expect(sent).toContain('审批超时，已自动拒绝。')
 
-    await expect(coordinator.tryHandleReply('wechat', 'user-1', '1')).resolves.toBe(true)
+    await expect(coordinator.tryHandleReply('wechat', 'user-1', 'user-1', '1')).resolves.toBe(true)
     expect(permissions.responses).toHaveLength(1)
     expect(sent).toContain('审批已过期，请重新发送请求。')
   })
@@ -261,6 +320,7 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'user-1',
+      conversationId: 'user-1',
       sendText: async text => {
         sent.push(text)
       },
@@ -279,12 +339,12 @@ describe('GatewayPermissionCoordinator', () => {
     expect(permissions.responses).toEqual([])
     expect(sent).toContain('审批已失效，请重新发送请求。')
 
-    await expect(coordinator.tryHandleReply('wechat', 'user-1', '1')).resolves.toBe(true)
+    await expect(coordinator.tryHandleReply('wechat', 'user-1', 'user-1', '1')).resolves.toBe(true)
     expect(permissions.responses).toEqual([])
     expect(sent.filter(text => text === '审批已失效，请重新发送请求。')).toHaveLength(2)
 
     await vi.advanceTimersByTimeAsync(60_001)
-    await expect(coordinator.tryHandleReply('wechat', 'user-1', '1')).resolves.toBe(false)
+    await expect(coordinator.tryHandleReply('wechat', 'user-1', 'user-1', '1')).resolves.toBe(false)
   })
 
   it('processes multiple pending requests in FIFO order for one chat', async () => {
@@ -295,6 +355,7 @@ describe('GatewayPermissionCoordinator', () => {
       sessionId: 'session-1',
       channelId: 'wechat',
       userId: 'user-1',
+      conversationId: 'user-1',
       sendText: async text => {
         sent.push(text)
       },
@@ -315,13 +376,13 @@ describe('GatewayPermissionCoordinator', () => {
     expect(sent.filter(text => text.startsWith('AI 想执行'))).toHaveLength(1)
     expect(sent[0]).toContain('第一个工具')
 
-    await coordinator.tryHandleReply('wechat', 'user-1', '1')
+    await coordinator.tryHandleReply('wechat', 'user-1', 'user-1', '1')
     await flushPromises()
 
     expect(sent.filter(text => text.startsWith('AI 想执行'))).toHaveLength(2)
     expect(sent.at(-1)).toContain('第二个工具')
 
-    await coordinator.tryHandleReply('wechat', 'user-1', '3')
+    await coordinator.tryHandleReply('wechat', 'user-1', 'user-1', '3')
 
     expect(permissions.responses.map(response => [response.requestId, response.decision])).toEqual([
       ['request-1', 'once'],

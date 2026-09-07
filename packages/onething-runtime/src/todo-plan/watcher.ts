@@ -1,5 +1,5 @@
-import * as fsSync from 'node:fs'
-import * as fs from 'node:fs/promises'
+import fsSync from 'node:fs'
+import fs from 'node:fs/promises'
 import * as path from 'node:path'
 import type { OnethingTodoPlanStore, TodoPlanChangedPayload } from './store.js'
 
@@ -26,46 +26,85 @@ export class OnethingTodoPlanWatcher {
   private pending: ReturnType<typeof setTimeout> | null = null
   private readonly changedPaths = new Set<string>()
   private watchedDirectory = ''
+  private generation = 0
+  private accepting = true
+  private readonly operations = new Set<Promise<void>>()
 
   constructor(private readonly options: OnethingTodoPlanWatcherOptions) {}
 
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    if (!this.accepting) return Promise.reject(new Error('Todo watcher is shutting down'))
     const directory = this.options.store.getDirectory()
-    if (this.watcher && this.watchedDirectory === directory) return
+    if (this.watcher && this.watchedDirectory === directory) return Promise.resolve()
     this.stop()
+    return this.track(this.open(directory, this.generation))
+  }
 
+  private track(work: Promise<void>): Promise<void> {
+    this.operations.add(work)
+    void work.then(() => this.operations.delete(work), () => this.operations.delete(work))
+    return work
+  }
+
+  private async open(directory: string, generation: number): Promise<void> {
     try {
       await fs.mkdir(directory, { recursive: true })
-      this.watcher = fsSync.watch(directory, { recursive: true, persistent: false }, (_event, filename) => {
+      if (!this.accepting || this.generation !== generation) return
+      const watcher = fsSync.watch(directory, { recursive: true, persistent: false }, (_event, filename) => {
+        if (!this.accepting || this.generation !== generation) return
         if (!filename) return
         this.changedPaths.add(path.resolve(directory, filename.toString()))
         this.schedule()
       })
+      this.watcher = watcher
       this.watchedDirectory = directory
-      this.watcher.on('error', error => this.options.onError?.(error))
+      // Register at creation: an OS error may close it before stop() is called.
+      this.track(new Promise<void>(resolve => watcher.once('close', () => {
+        if (this.watcher === watcher) {
+          this.watcher = null
+          this.watchedDirectory = ''
+        }
+        resolve()
+      })))
+      watcher.on('error', error => this.options.onError?.(error))
     } catch (error) {
       this.options.onError?.(error)
     }
   }
 
   stop(): void {
+    this.generation += 1
     if (this.pending) {
       clearTimeout(this.pending)
       this.pending = null
     }
-    this.watcher?.close()
+    if (this.watcher) {
+      this.watcher.close()
+    }
     this.watcher = null
     this.watchedDirectory = ''
     this.changedPaths.clear()
   }
 
+  quiesce(): void { this.accepting = false; this.stop() }
+
+  async drain(): Promise<void> {
+    this.quiesce()
+    while (this.operations.size) await Promise.allSettled([...this.operations])
+  }
+
   private schedule(): void {
     if (this.pending) clearTimeout(this.pending)
+    const generation = this.generation
     this.pending = setTimeout(() => {
       this.pending = null
+      if (!this.accepting || generation !== this.generation) return
       const paths = [...this.changedPaths]
       this.changedPaths.clear()
-      for (const payload of this.classify(paths)) this.options.notifyChanged(payload)
+      for (const payload of this.classify(paths)) {
+        if (!this.accepting || generation !== this.generation) break
+        this.options.notifyChanged(payload)
+      }
     }, DEBOUNCE_MS)
   }
 

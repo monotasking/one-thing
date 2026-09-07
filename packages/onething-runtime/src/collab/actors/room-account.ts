@@ -33,13 +33,13 @@ export const COLLAB_ACTORS_DIR = 'actors'
 export const COLLAB_ROOM_ACCOUNT_FILE = 'room.json'
 
 /** `<store>/collab/<roomId>/actors/`。 */
-export function collabRoomActorsDir(roomId: string): string {
-  return path.join(getOnethingStorePath(), 'collab', roomId, COLLAB_ACTORS_DIR)
+export function collabRoomActorsDir(roomId: string, storePath = getOnethingStorePath()): string {
+  return path.join(storePath, 'collab', roomId, COLLAB_ACTORS_DIR)
 }
 
 /** `<store>/collab/<roomId>/actors/room.json`。 */
-export function collabRoomAccountPath(roomId: string): string {
-  return path.join(collabRoomActorsDir(roomId), COLLAB_ROOM_ACCOUNT_FILE)
+export function collabRoomAccountPath(roomId: string, storePath?: string): string {
+  return path.join(collabRoomActorsDir(roomId, storePath), COLLAB_ROOM_ACCOUNT_FILE)
 }
 
 /**
@@ -54,16 +54,20 @@ export interface CollabRoomAccountStore {
 }
 
 /** 真机的那一个:同步原子写。 */
-export function createCollabRoomAccountFileStore(): CollabRoomAccountStore {
+export function createCollabRoomAccountFileStore(
+  options: { storePath?: string; assertOwned?: () => void } = {},
+): CollabRoomAccountStore {
   return {
     load(roomId: string): CollabRoomAccount {
-      const raw = readJsonFile<unknown>(collabRoomAccountPath(roomId), null)
+      options.assertOwned?.()
+      const raw = readJsonFile<unknown>(collabRoomAccountPath(roomId, options.storePath), null)
       // 认不出形状就当新账(`normalizeCollabRoomAccount` 的既定行为):半份账会在
       // 第一次发牌时炸在离成因很远的地方。
       return raw === null ? createCollabRoomAccount(roomId) : normalizeCollabRoomAccount(raw, roomId)
     },
     save(account: CollabRoomAccount): void {
-      writeJsonFile(collabRoomAccountPath(account.roomId), account)
+      options.assertOwned?.()
+      writeJsonFile(collabRoomAccountPath(account.roomId, options.storePath), account)
     },
   }
 }

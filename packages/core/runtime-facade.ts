@@ -20,6 +20,7 @@ export interface RuntimeStreamPayload<TChunk = unknown> {
 
 export interface RuntimeRequestContext {
   userId: string
+  /** Authenticated tenant scope, separate from the session's product workspaceId. */
   workspaceId: string
   roles?: string[]
   authToken?: string
@@ -204,10 +205,13 @@ export interface RuntimeSearchAdapter<TSearchActionResponse = RuntimeMutationRes
  * P4c 第八批:十四条数据面(list / rollback / listDirs / readContent / saveContent /
  * listDirectory / stat / create / createDirectory / rename / delete / reveal /
  * watchStart / watchStop)已迁到通用 RPC 通道(`filesRouter`),**护栏跟着走** ——
- * 域处理者按 `RpcDispatchContext.transport` 逐方法夹紧 sandboxRoot。留在 facade
- * 上的只有变更订阅:`GET /api/files/watch/events` 那条 SSE 的货源,归主线 T2。
+ * 域处理者按 `RpcDispatchContext.transport` 逐方法夹紧 sandboxRoot。监听由当前
+ * surface 拥有，RPC 在授权后调用其窄端口，SSE 订阅同一实例；不另设 REST 数据面。
  */
 export interface RuntimeFilesAdapter {
+  /** Host-only ports: scope and root have already passed the RPC sandbox guard. */
+  startWorkspaceWatch?(scope: string, root: string): Promise<RuntimeMutationResult>
+  stopWorkspaceWatch?(scope: string, root: string): Promise<RuntimeMutationResult>
   subscribeWorkspaceFileChanged?(
     handler: (payload: unknown) => void,
     context?: RuntimeRequestContext,

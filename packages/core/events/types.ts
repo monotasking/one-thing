@@ -14,6 +14,12 @@ export type SessionEventEnvelope<TEvent extends EventBase = EventBase> = {
   sequence: number
   timestamp: number
   event: TEvent
+  /** Trusted host context, supplied separately from the event and never serialized. */
+  readonly executionContext?: unknown
+}
+
+export interface EventDeliveryOptions {
+  readonly executionContext?: unknown
 }
 
 export type GlobalEventEnvelope<TEvent extends EventBase = EventBase> = {

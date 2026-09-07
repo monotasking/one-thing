@@ -18,6 +18,7 @@ import type { MessageOrigin } from './channel-identity.js'
 import type { SessionGoal } from './goal.js'
 import type { JsonObject } from '../json.js'
 import { defineRouter } from './router.js'
+import type { SessionAccessOperation } from '../contracts/session-access.js'
 
 /**
  * @deprecated Kept as a type alias for one version so old persisted
@@ -1154,11 +1155,17 @@ export type ChatRoutes = {
   }
 }
 
-export const chatRouter = defineRouter<ChatRoutes>('chat', [
+/* 会话授权写在契约里(工单 5 §6);`abortStream` 不在表内 —— 它省略 sessionId 时
+ * 是"停掉我拥有的全部会话"的扇出,闸在处理者里,行为一字未变。 */
+export const chatRouter = defineRouter<ChatRoutes, SessionAccessOperation>('chat', [
   'getHistory',
   'generateTitle',
   'getSystemPromptSnapshot',
   'updateMessageThinkingTime',
   'abortStream',
   'getActiveStreams',
-])
+], {
+  getHistory: { param: 'sessionId', op: 'read' },
+  getSystemPromptSnapshot: { param: 'sessionId', op: 'read' },
+  updateMessageThinkingTime: { param: 'sessionId', op: 'write' },
+})

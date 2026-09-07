@@ -95,6 +95,27 @@ describe('radio conductor', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
+  it('waits for an in-flight state read and prevents late playback or DJ work after quiesce', async () => {
+    const h = harness({ dir })
+    let release!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    vi.mocked(h.runner.readState).mockImplementationOnce(async () => { await pending; return null })
+    h.conductor.onSample(null)
+    expect(h.runner.readState).toHaveBeenCalledOnce()
+    h.conductor.quiesce()
+    let drained = false
+    const closing = h.conductor.idle().then(() => { drained = true })
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    release()
+    await closing
+    h.conductor.onSample(null)
+    expect(h.runner.readState).toHaveBeenCalledOnce()
+    expect(h.playSong).not.toHaveBeenCalled()
+    expect(h.wakeDj).not.toHaveBeenCalled()
+    expect(h.store.readProgramme().entries).toHaveLength(6)
+  })
+
   it('does nothing while the radio is off', async () => {
     const h = harness({ dir })
     h.store.writeBrief({ active: false, intent: '', played: [], skipped: [], loved: [] })

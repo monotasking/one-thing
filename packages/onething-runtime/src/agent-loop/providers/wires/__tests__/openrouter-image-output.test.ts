@@ -362,7 +362,7 @@ describe('openrouter image output — message placement', () => {
       result: 'iVBORw0KGgo=',
       mediaType: 'image/png',
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const applied = await applyOnethingAgentLoopProviderData(harness.options as any)
 
     expect(applied).toBe(true)
@@ -401,7 +401,7 @@ describe('openrouter image output — message placement', () => {
       },
       '/store/media/media_1.webp',
     )
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     await applyOnethingAgentLoopProviderData(harness.options as any)
 
     expect(harness.saveMediaImage).toHaveBeenCalledWith(
@@ -426,7 +426,7 @@ describe('openrouter image output — message placement', () => {
       status: 'completed',
       url: 'https://cdn.example.com/moon.png',
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const applied = await applyOnethingAgentLoopProviderData(harness.options as any)
 
     expect(applied).toBe(true)
@@ -447,7 +447,7 @@ describe('openrouter image output — message placement', () => {
       type: 'image-generation-start',
       callId: '1-img-0',
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const applied = await applyOnethingAgentLoopProviderData(harness.options as any)
 
     expect(applied).toBe(true)

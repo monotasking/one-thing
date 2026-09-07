@@ -39,6 +39,7 @@ import type {
 } from './chat.js'
 import type { GetSessionSegmentsResponse } from './toc.js'
 import { defineRouter } from './router.js'
+import type { SessionAccessOperation } from '../contracts/session-access.js'
 
 /** 只有 `{ success, error? }` 的那批写面共用的回执。 */
 export interface SessionMutationResponse {
@@ -104,6 +105,11 @@ export interface AddSystemMessageRequest {
   message: ChatMessage
 }
 
+export interface SessionsListRequest {
+  /** Optional product workspace filter, independent of the caller's tenant scope. */
+  workspaceId?: string
+}
+
 export type SessionsRoutes = {
   /**
    * 旧 `sessions:get-all`。**它返回的一直是元数据**(`store.getSessionsList()`),
@@ -111,8 +117,8 @@ export type SessionsRoutes = {
    * (含 messages)是一处说谎的类型,搬家时按事实改成 `GetSessionsListResponse`。
    * 零调用点,留着只为「26 条一条不少」的对账。
    */
-  list: { input: Record<string, never>; output: GetSessionsListResponse }
-  listMeta: { input: Record<string, never>; output: GetSessionsListResponse }
+  list: { input: SessionsListRequest; output: GetSessionsListResponse }
+  listMeta: { input: SessionsListRequest; output: GetSessionsListResponse }
   activate: { input: { sessionId: string }; output: ActivateSessionResponse }
   getMessages: { input: { sessionId: string }; output: GetSessionMessagesResponse }
   getMessagesPage: { input: GetSessionMessagesPageRequest; output: GetSessionMessagesPageResponse }
@@ -160,7 +166,16 @@ export type SessionsRoutes = {
   removeMessage: { input: { sessionId: string; messageId: string }; output: SessionMutationResponse }
 }
 
-export const sessionsRouter = defineRouter<SessionsRoutes>('sessions', [
+/*
+ * 会话授权**写在契约里**(工单 5 §6,triage C1):每个方法自述"我拿哪一格当会话 id、
+ * 对它做哪种操作",执法在 `dispatchRpc` 一处。加一个会话相关的域 = 这里一格,
+ * `rpc/registry.ts` 零改动。
+ *
+ * 没列进这张表的方法(`list` / `listMeta` / `create` / `delete` / `getCacheStats`)
+ * 各有各的理由:它们要么本来就按调用者过滤整张表,要么一次动多条会话、要么会话还
+ * 没物化 —— 那几条的闸留在处理者里,并且**它们的行为一个字没变**。
+ */
+export const sessionsRouter = defineRouter<SessionsRoutes, SessionAccessOperation>('sessions', [
   'list',
   'listMeta',
   'activate',
@@ -187,4 +202,26 @@ export const sessionsRouter = defineRouter<SessionsRoutes>('sessions', [
   'removeFilesChangedMessage',
   'removeGitStatusMessage',
   'removeMessage',
-])
+], {
+  activate: { param: 'sessionId', op: 'write' },
+  getMessages: { param: 'sessionId', op: 'read' },
+  getMessagesPage: { param: 'sessionId', op: 'read' },
+  getUserMarkers: { param: 'sessionId', op: 'read' },
+  getSegments: { param: 'sessionId', op: 'read' },
+  switch: { param: 'sessionId', op: 'write' },
+  get: { param: 'sessionId', op: 'read' },
+  rename: { param: 'sessionId', op: 'write' },
+  updatePin: { param: 'sessionId', op: 'write' },
+  updateArchived: { param: 'sessionId', op: 'write' },
+  updateWorkingDirectory: { param: 'sessionId', op: 'write' },
+  updateModel: { param: 'sessionId', op: 'write' },
+  updateAgent: { param: 'sessionId', op: 'write' },
+  updatePermissionMode: { param: 'sessionId', op: 'permission' },
+  evictCache: { param: 'sessionId', op: 'write' },
+  getTokenUsage: { param: 'sessionId', op: 'read' },
+  addSystemMessage: { param: 'sessionId', op: 'write' },
+  removeFilesChangedMessage: { param: 'sessionId', op: 'write' },
+  removeGitStatusMessage: { param: 'sessionId', op: 'write' },
+  removeMessage: { param: 'sessionId', op: 'write' },
+  createBranch: { param: 'parentSessionId', op: 'write' },
+})

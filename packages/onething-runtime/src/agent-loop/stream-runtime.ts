@@ -128,6 +128,7 @@ export interface OnethingAgentLoopRuntimeContext<
 	initialToolChoice?: AgentToolChoice;
 	/** Actor behind this turn; minted at the engine boundary, carried to tools. */
 	principal?: Principal;
+	executionContext?: unknown;
 	/**
 	 * The turn's capability profile, resolved ONCE by the assembly layer before
 	 * the run starts (product code cannot read the agent store — that would
@@ -291,6 +292,7 @@ export interface OnethingAgentLoopRuntimeAdapters<
 		toolName: string,
 		args: JsonObject,
 		context: {
+			executionContext?: unknown;
 			sessionId: string;
 			messageId: string;
 			toolCallId: string;
@@ -412,6 +414,7 @@ export interface OnethingAgentLoopRuntimeHostAdapters<
 		toolName: string,
 		args: JsonObject,
 		context: {
+			executionContext?: unknown;
 			sessionId: string;
 			messageId: string;
 			toolCallId: string;
@@ -964,6 +967,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 		const latestSession = adapters.getSession(ctx.sessionId);
 		return adapters.executeToolDirectly(toolName, args, {
 			...toolContext,
+			executionContext: ctx.executionContext,
 			workingDirectory:
 				latestSession?.workingDirectory ?? toolContext.workingDirectory,
 			workingDirectoryRoots:
@@ -1032,6 +1036,7 @@ export async function buildOnethingAgentLoopStreamRuntime<
 					workingDirectoryRoots: sessionWorkingDirRoots,
 					abortSignal: ctx.abortSignal,
 					principal: ctx.principal,
+					executionContext: ctx.executionContext,
 					// F4:身份透传。取的是回合入口解析好的那一个 —— 与喂给
 					// buildPrompt 的 `agentId: preparation.agentId` 是同一个值,
 					// 所以提示词、插件 promptContext、插件工具 ctx 三处恒同解。

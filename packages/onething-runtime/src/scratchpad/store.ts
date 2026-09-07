@@ -1,5 +1,30 @@
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
+import { randomUUID } from 'node:crypto'
+
+const missingFile = (error: unknown): boolean => (error as NodeJS.ErrnoException)?.code === 'ENOENT'
+
+async function syncDirectory(directory: string): Promise<void> {
+  if (process.platform === 'win32') return // File flush below includes Windows file-system metadata.
+  const handle = await fs.open(directory, 'r')
+  try { await handle.sync() } finally { await handle.close() }
+}
+
+/** Temp content is complete before publication; the rename publishes one whole file. */
+async function writeScratchpadAtomically(filePath: string, content: string): Promise<void> {
+  const directory = path.dirname(filePath)
+  await fs.mkdir(directory, { recursive: true })
+  const temporary = `${filePath}.${randomUUID()}.tmp`
+  try {
+    const handle = await fs.open(temporary, 'wx', 0o600)
+    try { await handle.writeFile(content, 'utf8'); await handle.sync() } finally { await handle.close() }
+    await fs.rename(temporary, filePath)
+    const published = await fs.open(filePath, 'r+')
+    try { await published.sync() } finally { await published.close() }
+    await syncDirectory(directory)
+    await syncDirectory(path.dirname(directory))
+  } finally { await fs.unlink(temporary).catch(error => { if (!missingFile(error)) throw error }) }
+}
 
 export interface ScratchpadDocument {
   sessionId: string
@@ -101,8 +126,7 @@ export class OnethingScratchpadStore {
   async update(sessionId: string, content: string): Promise<ScratchpadDocument> {
     const filePath = this.scratchpadPath(sessionId)
     this.markSelfWrite(filePath)
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.writeFile(filePath, content, 'utf-8')
+    await writeScratchpadAtomically(filePath, content)
     const document = await this.read(sessionId)
     this.notifyChanged({ sessionId, document })
     return document
@@ -120,13 +144,12 @@ export class OnethingScratchpadStore {
     const toPath = this.scratchpadPath(toSessionId)
     this.markSelfWrite(fromPath)
     this.markSelfWrite(toPath)
-    try {
-      await fs.rename(fromPath, toPath)
-    } catch {
-      return
-    }
-    const document = await this.read(toSessionId)
-    this.notifyChanged({ sessionId: toSessionId, document })
+    if (fromPath === toPath) return
+    let content: string
+    try { content = await fs.readFile(fromPath, 'utf8') }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error }
+    await this.update(toSessionId, content)
+    await fs.unlink(fromPath)
   }
 
   notifyChanged(payload: ScratchpadChangedPayload): void {

@@ -98,12 +98,13 @@ export function resetCollabSchedulerLogWarnings(): void {
 }
 
 export function createCollabSchedulerLogFileStore(
-  options: { now?: () => number } = {},
+  options: { now?: () => number; storePath?: string; assertOwned?: () => void } = {},
 ): CollabSchedulerLogStore {
   const now = options.now ?? Date.now
   return {
     append(roomId: string, row: CollabSchedulerLogRow): void {
-      const dir = collabRoomActorsDir(roomId)
+      options.assertOwned?.()
+      const dir = collabRoomActorsDir(roomId, options.storePath)
       const file = path.join(dir, collabSchedulerLogFileName(row.at || now()))
       try {
         fs.mkdirSync(dir, { recursive: true })
@@ -113,10 +114,11 @@ export function createCollabSchedulerLogFileStore(
       }
     },
     readTail(roomId: string, tail: CollabSchedulerLogTailOptions = {}): CollabSchedulerLogRow[] {
+      options.assertOwned?.()
       const limit = Math.max(0, tail.limit ?? COLLAB_SCHEDULER_LOG_TAIL_DEFAULT)
       if (limit === 0) return []
       const wanted = tail.types && tail.types.length > 0 ? new Set<string>(tail.types) : null
-      const dir = collabRoomActorsDir(roomId)
+      const dir = collabRoomActorsDir(roomId, options.storePath)
       const rows: CollabSchedulerLogRow[] = []
       // 新的一天在前:攒够 limit 条就不再打开更老的文件(尾读的全部意义)。
       for (const file of listCollabSchedulerLogFiles(dir).reverse()) {

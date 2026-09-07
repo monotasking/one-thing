@@ -12,7 +12,6 @@ import {
   findAgent,
   getAgent,
   initializeAgents,
-  invalidateAgentsCache,
   listAgents,
   requireAgent,
   updateAgent,
@@ -35,9 +34,7 @@ beforeEach(() => {
   previousHome = process.env.HOME
   tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'onething-agents-test-'))
   process.env.HOME = tempHome
-  // The module is a process-wide singleton with a memory cache; each test
-  // moves the store root, so the cache from the previous one must go.
-  invalidateAgentsCache()
+  // The facade must notice the new root itself, as a second Backend does.
 })
 
 afterEach(() => {

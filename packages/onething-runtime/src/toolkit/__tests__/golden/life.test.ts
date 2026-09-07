@@ -3,7 +3,7 @@
  * time.test.ts 的头注释)。
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { zodToJsonSchema } from '../../contract.js'
 import type { OnethingPracticeBucket, OnethingPracticeSummaryResult } from '../../../practice/summary.js'
 import type { OnethingPracticeLedgerRecord } from '../../../practice/types.js'
@@ -13,7 +13,8 @@ import { annotationsOf, modelTextOf, normalizeDetails, runNewTool } from '../sup
 
 const RECORD: OnethingPracticeLedgerRecord = {
   id: 'r1',
-  ts: Date.UTC(2026, 7, 18, 3, 4),
+  // This fixture exercises local display time, not conversion from a UTC instant.
+  ts: new Date(2026, 7, 18, 11, 4).getTime(),
   kind: 'exercise',
   source: 'agent',
   name: '俯卧撑',
@@ -45,6 +46,15 @@ function practiceAdapters(options: {
 }
 
 describe('golden: practice', () => {
+  const toLocaleString = Date.prototype.toLocaleString
+  beforeEach(() => {
+    // Locale is a fixture input too; preserve the real Date formatting behavior.
+    vi.spyOn(Date.prototype, 'toLocaleString').mockImplementation(function (this: Date, locales, options) {
+      return toLocaleString.call(this, locales ?? 'en-US', options)
+    })
+  })
+  afterEach(() => vi.restoreAllMocks())
+
   it('spec 钉住', () => {
     const tool = createPracticeTool(practiceAdapters())
     expect(tool.spec.description).toMatchSnapshot('description')

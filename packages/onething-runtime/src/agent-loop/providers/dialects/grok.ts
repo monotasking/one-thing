@@ -41,11 +41,16 @@ import type {
 	AgentModelCapabilities,
 	AgentTurnStreamEvent,
 } from "@onething/core/agent-loop";
-import type { TurnContext } from "../base/index.js";
+import type {
+	RequestBodyBuilder,
+	ToolChoicePolicy,
+	TurnContext,
+} from "../base/index.js";
 import { GROK_RESPONSES_THINKING_WIRES } from "../thinking/grok-responses-reasoning.js";
 import {
 	CodexResponsesUsageNormalizer,
 	OPENAI_RESPONSES_IMAGE_DETAIL_VALUES,
+	toCodexToolChoice,
 	type CodexResponsesUsage,
 } from "../wires/index.js";
 import { promptCacheKeyExtraBody } from "./recipe.js";
@@ -192,6 +197,30 @@ export const GROK_TRANSPORT_CAPABILITIES: AgentModelCapabilities = {
 	supportsForcedToolUse: true,
 };
 
+/**
+ * xAI 版 `tool_choice` 拼法 —— 与这条线的默认「恒发」分道:**有工具才发**。
+ *
+ * xAI 的 Open Responses 端点不容忍「请求里没有工具却带 `tool_choice`」,直接
+ * 400 "A tool_choice was set on the request but no tools were specified"。
+ * compact 摘要 / 标题生成这类无工具旁线请求(`generateChatResponse`)以前
+ * 每次都撞它。OpenAI 官方端点对同一组合宽容,codex 照旧走 wire 默认策略
+ * (`baseline.request.json` 钉着恒发)。
+ *
+ * 判空看 builder 里的实际工具表(`buildBody` 先写 `tools`,策略后跑)——
+ * 原生工具也算数,与 `OpenAIToolChoicePolicy` 同一条判据;拼法沿用
+ * `toCodexToolChoice`(指名工具是扁平的 `{type:'function', name}`)。
+ */
+class GrokResponsesToolChoicePolicy implements ToolChoicePolicy {
+	apply(turn: TurnContext, builder: RequestBodyBuilder): void {
+		const tools = builder.get<unknown[]>("tools");
+		if (!Array.isArray(tools) || tools.length === 0) return;
+		builder.set("tool_choice", toCodexToolChoice(turn.request.toolChoice));
+	}
+}
+
+export const grokResponsesToolChoicePolicy: ToolChoicePolicy =
+	new GrokResponsesToolChoicePolicy();
+
 /** 两条通路共用的配方主体 —— 只有 id 不同(见 `grok-oauth.ts` 的抬头)。 */
 export const GROK_DIALECT_SPEC = {
 	defaultBaseUrl: GROK_BASE_URL,
@@ -208,6 +237,8 @@ export const GROK_DIALECT_SPEC = {
 	// 「Plumbed to x-grok-conv-id for Open Responses compatibility, used for
 	//  routing.」 与 chat 通路上逐字同一个字段名(P0b-B 泳道甲 #4)。
 	extraBody: promptCacheKeyExtraBody,
+	// 无工具不发 tool_choice(xAI 端点对「有 tool_choice 无 tools」直接 400)。
+	toolChoice: grokResponsesToolChoicePolicy,
 	decodeOutputItem: decodeGrokResponsesCitations,
 	transport: GROK_TRANSPORT_CAPABILITIES,
 } satisfies Omit<ResponsesDialectSpec, "id">;

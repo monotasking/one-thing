@@ -1,4 +1,5 @@
 import type { JsonObject } from "../json.js";
+import { isAgentExecutionCheckpointError } from '../agent-loop/errors.js';
 import {
 	buildContextCompactContent,
 	type CoreContextCompactMessage,
@@ -404,8 +405,9 @@ async function mapWithConcurrency<T, R>(
 		await Promise.all(lanes);
 	} catch (error) {
 		stopped = true;
-		for (const lane of lanes) lane.catch(() => {});
-		throw error;
+		const settled = await Promise.allSettled(lanes);
+		const checkpointFailure = settled.find(result => result.status === 'rejected' && isAgentExecutionCheckpointError(result.reason));
+		throw checkpointFailure?.status === 'rejected' ? checkpointFailure.reason : error;
 	}
 
 	return results;

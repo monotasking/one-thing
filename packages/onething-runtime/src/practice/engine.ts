@@ -5,17 +5,18 @@ import type {
   OnethingPracticeRecordInput,
 } from './types.js'
 
-export type OnethingPracticeSessionKind = 'kegel' | 'pomodoro'
-
-export type OnethingPracticePhase = 'hold' | 'relax' | 'setRest' | 'focus'
-
-/** Phase-entry edges. The renderer keys its sound cues off these. */
-export type OnethingPracticePhaseEdge =
-  | 'hold-start'
-  | 'relax-start'
-  | 'set-rest-start'
-  | 'focus-start'
-  | 'finished'
+import type {
+  OnethingPracticeSessionKind,
+  OnethingPracticePhase,
+  OnethingPracticePhaseEdge,
+  OnethingPracticeEngineSnapshot,
+} from '@shared/contracts/practice.js'
+export type {
+  OnethingPracticeSessionKind,
+  OnethingPracticePhase,
+  OnethingPracticePhaseEdge,
+  OnethingPracticeEngineSnapshot,
+} from '@shared/contracts/practice.js'
 
 export interface OnethingPracticeKegelPlan {
   holdSec: number
@@ -31,23 +32,6 @@ export interface OnethingPracticePomodoroPlan {
   /** Category — becomes the ledger record's name. */
   category: string
   label?: string
-}
-
-export interface OnethingPracticeEngineSnapshot {
-  status: 'idle' | 'running' | 'paused'
-  kind?: OnethingPracticeSessionKind
-  name?: string
-  phase?: OnethingPracticePhase
-  /** Whole seconds left in the current phase (ceil). */
-  phaseSecLeft?: number
-  elapsedSec?: number
-  totalSec?: number
-  /** Kegel: 1-based rep within the current set / reps per set. */
-  rep?: number
-  reps?: number
-  set?: number
-  sets?: number
-  startedAt?: number
 }
 
 export interface OnethingPracticeEngineTickResult {

@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from '../json.js'
+import type { AgentExecutionLifetime } from './execution-lifetime.js'
 
 export type AgentRole = 'system' | 'user' | 'assistant' | 'tool'
 
@@ -362,7 +363,15 @@ export type AgentTurnStreamEvent = Extract<
   | { type: 'finish' }
 >
 
-export interface AgentTurnRequest {
+export interface AgentExecutionCheckpoints {
+  /** The owner drains actual provider/tool work even after an abort race returns. */
+  executionLifetime?: AgentExecutionLifetime
+  /** Awaited before every provider attempt, so the utility-model ledger records intent first. */
+  beforeModelRequest?: (context: { turn: number; providerId: string; model: string; attempt: number; reason?: string }) => void | Promise<void>
+  afterModelResponse?: (context: { turn: number }) => void | Promise<void>
+}
+
+export interface AgentTurnRequest extends AgentExecutionCheckpoints {
   model: string
   messages: AgentMessage[]
   tools?: AgentTool[]
@@ -438,7 +447,7 @@ export interface AgentCredentialRotation {
   reason?: string
 }
 
-export interface AgentLoopOptions {
+export interface AgentLoopOptions extends AgentExecutionCheckpoints {
   provider: AgentProvider
   model: string
   messages: AgentMessage[]

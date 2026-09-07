@@ -13,7 +13,9 @@ import {
  * doing a synchronous read + parse + normalize of agents.json — and `getAgent`
  * is called once per room member (roster, say-tool, willingness), so an N-member
  * room paid N full reads on the main thread per turn. The path is passed as a
- * function because the store root is only known after boot.
+ * function because the store root is only known after boot. The store keeps
+ * its cache and initialization Promise with the resolved file, so a later
+ * Backend using another root starts from that root's agents.json.
  */
 const store = createOnethingAgentStore({
   agentsPath: () => getOnethingAgentsPath(),

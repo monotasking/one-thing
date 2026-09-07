@@ -27,7 +27,7 @@ import {
   throwIfAgentAborted,
 } from './stream.js'
 import { applyPromptInjectors, createSkillPromptInjector } from './prompts.js'
-import { AgentLoopPauseForConfirmationError, isAgentLoopPauseForConfirmationError } from './errors.js'
+import { AgentLoopPauseForConfirmationError, isAgentLoopPauseForConfirmationError, awaitAgentExecutionCheckpoint, isAgentExecutionCheckpointError } from './errors.js'
 import {
   agentToolResultIsError,
   agentToolResultToMessageContentForCapabilities,
@@ -129,6 +129,9 @@ function throwPrioritizedTurnError(
   streamError: unknown,
 ): void {
   const ordered = [...failures].sort((a, b) => a.index - b.index)
+  if (isAgentExecutionCheckpointError(streamError)) throw streamError
+  const checkpointFailure = ordered.find(failure => isAgentExecutionCheckpointError(failure.error))
+  if (checkpointFailure) throw checkpointFailure.error
   const abortFailure = ordered.find(failure => isAbortError(failure.error))
   if (abortFailure) throw abortFailure.error
   if (streamError) throw streamError
@@ -337,8 +340,9 @@ async function executeAgentToolCall(input: {
         onPartialResult(update) {
           options.onEvent?.({ type: 'tool-partial-result', turn, toolCall, update })
         },
-      }))
+      }), options.executionLifetime)
   } catch (error) {
+    if (isAgentExecutionCheckpointError(error)) throw error
     const caught = error instanceof Error ? error : new Error(String(error))
     if (options.abortSignal?.aborted || isAbortError(caught)) {
       throw isAbortError(caught) ? caught : createAgentAbortError()
@@ -489,6 +493,13 @@ async function executeProviderTurn(options: ExecuteProviderTurnOptions): Promise
 }
 
 export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoopResult> {
+  let checkpointFailure: unknown
+  async function checkpoint(phase: string, run?: () => void | Promise<void>): Promise<void> {
+    if (checkpointFailure) throw checkpointFailure
+    try { await awaitAgentExecutionCheckpoint(phase, run) }
+    catch (error) { checkpointFailure = error; throw error }
+    if (checkpointFailure) throw checkpointFailure
+  }
   throwIfAgentAborted(options.abortSignal)
   assertAgentProviderCanRunTurn(options.provider)
   const maxTurns = options.maxTurns ?? DEFAULT_MAX_TURNS
@@ -533,7 +544,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         workingDirectory: options.workingDirectory,
         abortSignal: options.abortSignal,
       },
-    ))
+    ), options.executionLifetime)
   assertAgentMessagesSupportedByCapabilities(messages, capabilities)
   const toolMap = new Map(tools.map(tool => [tool.name, tool]))
   const allToolResults: AgentLoopToolResult[] = []
@@ -568,7 +579,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
       turn,
       workingDirectory: options.workingDirectory,
       abortSignal: options.abortSignal,
-    }))
+    }), options.executionLifetime)
     throwIfAgentAborted(options.abortSignal)
     const beforeTurnReplacement = normalizeTurnHookResult(beforeTurnResult)
     if (beforeTurnReplacement) {
@@ -605,6 +616,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     }
 
     const resultsByToolCallId = new Map<string, AgentToolResult>()
+    let toolExecutionStarted = false
     // The provider is a `let` only so the credential-rotation hook can swap it
     // BETWEEN attempts. Nothing reassigns it while a stream is open.
     let activeProvider = options.provider
@@ -624,6 +636,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
           providerOptions: options.providerOptions,
           abortSignal: options.abortSignal,
           onEvent: options.onEvent,
+          executionLifetime: options.executionLifetime,
           turn,
         },
         provider: activeProvider,
@@ -640,12 +653,10 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
               error: `Repeated identical tool call detected (${toolCall.name} failed ${priorFailures} times with the same arguments). Stop and reassess instead of retrying the same arguments.`,
             }
           } else {
-            result = await runGated(() => executeAgentToolCall({
-              options,
-              toolMap,
-              turn,
-              toolCall,
-            }))
+            result = await runGated(async () => {
+              toolExecutionStarted = true
+              return executeAgentToolCall({ options, toolMap, turn, toolCall })
+            })
             if (result.error && !result.aborted) {
               toolFailureSignatureCounts.set(signature, priorFailures + 1)
             } else if (!result.error) {
@@ -662,7 +673,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
             throw new AgentLoopPauseForConfirmationError(toolCall, result)
           }
         },
-      }))
+      }), options.executionLifetime)
 
     // Turn-level auto-retry for transient provider failures (network cuts,
     // overload, 5xx). Only retries while no tool has executed in the failed
@@ -672,13 +683,18 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     let agentTurn: Awaited<ReturnType<typeof runProviderTurn>>
     for (let attempt = 0; ; attempt++) {
       try {
+        await checkpoint('model request', () => options.beforeModelRequest?.({
+          turn, providerId: activeProvider.id, model: options.model, attempt,
+        }))
+        throwIfAgentAborted(options.abortSignal)
         agentTurn = await runProviderTurn()
         break
       } catch (error) {
         // The side-effect guard comes first and applies to rotation too: once a
         // tool has produced a result this attempt, re-running the request could
         // double-execute it — a fresh key does not make that safe.
-        if (attempt >= retryDelays.length || resultsByToolCallId.size > 0) {
+        if (isAgentExecutionCheckpointError(error) || toolExecutionStarted
+          || attempt >= retryDelays.length || resultsByToolCallId.size > 0) {
           throw error
         }
 
@@ -776,6 +792,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
     finishReason = agentTurn.finishReason
     usage = addUsage(usage, agentTurn.usage)
     options.onEvent?.({ type: 'turn-end', turn, finishReason, usage: agentTurn.usage })
+    await checkpoint('model response', () => options.afterModelResponse?.({ turn }))
 
     // Externally-executed calls must not trigger another round: the provider
     // already ran its full tool loop internally and the turn is complete.
@@ -827,7 +844,7 @@ export async function runAgentLoop(options: AgentLoopOptions): Promise<AgentLoop
         turnResult: agentTurn,
         workingDirectory: options.workingDirectory,
         abortSignal: options.abortSignal,
-      }))
+      }), options.executionLifetime)
       throwIfAgentAborted(options.abortSignal)
       const afterTurnReplacement = normalizeTurnHookResult(afterTurnResult)
       if (afterTurnReplacement) {

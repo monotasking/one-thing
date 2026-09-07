@@ -45,7 +45,7 @@ export interface HistoryToolAdapters extends CollabToolAdapters {
     until?: string
     limit: number
     cursor?: string
-  }): Promise<HistoryToolResult>
+  }, executionContext?: unknown): Promise<HistoryToolResult>
 }
 
 /** 一次最多返回多少条。上限而非建议。 */
@@ -142,7 +142,7 @@ export class HistoryTool extends CollabTool<HistoryInput> {
       ...(args.until ? { until: args.until } : {}),
       limit: Math.min(args.limit ?? HISTORY_DEFAULT_LIMIT, HISTORY_MAX_LIMIT),
       ...(args.cursor ? { cursor: args.cursor } : {}),
-    })
+    }, ctx.invocation.executionContext)
 
     if (!result.ok) {
       return this.done(ctx, 'History — 查不了', result.error ?? '翻不了历史。', { ok: false })

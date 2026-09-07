@@ -1,46 +1,25 @@
-export type OnethingPracticeKind = 'kegel' | 'pomodoro' | 'exercise'
-
-/** Who wrote the entry: the rhythm timer, the strip's quick-log form, or the agent tool. */
-export type OnethingPracticeSource = 'timer' | 'manual' | 'agent'
-
-export interface OnethingPracticeKegelDetail {
-  holdSec: number
-  relaxSec: number
-  /** Total reps completed across the whole session (all sets). */
-  repsDone: number
-  /** Reps per set. */
-  repsTarget: number
-  setsDone: number
-  setsTarget: number
-}
-
-export interface OnethingPracticePomodoroDetail {
-  minutes: number
-  elapsedMin: number
-  completed: boolean
-  /** Optional free-form name given at start, on top of the category in `name`. */
-  label?: string
-}
-
-export interface OnethingPracticeExerciseDetail {
-  sets?: number
-  repsPerSet?: number
-  durationMin?: number
-}
-
-export interface OnethingPracticeLedgerRecord {
-  id: string
-  /** Epoch ms of when the entry was recorded (session end for timer entries). */
-  ts: number
-  kind: OnethingPracticeKind
-  source: OnethingPracticeSource
-  /** kegel: '凯格尔'; pomodoro: the category; exercise: the activity name (俯卧撑…). */
-  name: string
-  note?: string
-  kegel?: OnethingPracticeKegelDetail
-  pomodoro?: OnethingPracticePomodoroDetail
-  exercise?: OnethingPracticeExerciseDetail
-}
+import type {
+  OnethingPracticeKind,
+  OnethingPracticeSource,
+  OnethingPracticeKegelDetail,
+  OnethingPracticePomodoroDetail,
+  OnethingPracticeExerciseDetail,
+  OnethingPracticeLedgerRecord,
+  OnethingPracticeKegelConfig,
+  OnethingPracticePomodoroConfig,
+  OnethingPracticeConfig,
+} from '@shared/contracts/practice.js'
+export type {
+  OnethingPracticeKind,
+  OnethingPracticeSource,
+  OnethingPracticeKegelDetail,
+  OnethingPracticePomodoroDetail,
+  OnethingPracticeExerciseDetail,
+  OnethingPracticeLedgerRecord,
+  OnethingPracticeKegelConfig,
+  OnethingPracticePomodoroConfig,
+  OnethingPracticeConfig,
+} from '@shared/contracts/practice.js'
 
 export interface OnethingPracticeRecordInput {
   ts?: number
@@ -51,28 +30,6 @@ export interface OnethingPracticeRecordInput {
   kegel?: OnethingPracticeKegelDetail
   pomodoro?: OnethingPracticePomodoroDetail
   exercise?: OnethingPracticeExerciseDetail
-}
-
-export interface OnethingPracticeKegelConfig {
-  holdSec: number
-  relaxSec: number
-  /** Reps per set. */
-  reps: number
-  sets: number
-  setRestSec: number
-  sound: boolean
-}
-
-export interface OnethingPracticePomodoroConfig {
-  minutes: number
-  categories: string[]
-  /** Category used by the menu's one-click start; set on every pomodoro start. */
-  lastCategory?: string
-}
-
-export interface OnethingPracticeConfig {
-  kegel: OnethingPracticeKegelConfig
-  pomodoro: OnethingPracticePomodoroConfig
 }
 
 export const ONETHING_PRACTICE_DEFAULT_CONFIG: OnethingPracticeConfig = {

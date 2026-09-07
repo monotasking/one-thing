@@ -123,6 +123,9 @@ export interface StreamEngineSteeringDeliveryPort {
 }
 
 export interface ProductStreamEnginePorts {
+  assertAccepting?: (sessionId?: string) => void
+  prepareSession?: (sessionId: string) => Promise<void>
+  authorizeExecution?: (sessionId: string, executionContext: unknown) => void
   router?: StreamEngineSessionRouterPort
   roomIngress?: StreamEngineRoomIngressPort
   pluginIntercept?: StreamEnginePluginInterceptPort

@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  superHandleSendMessage: vi.fn(async () => {}),
+  superPerformSendMessage: vi.fn(async () => {}),
   route: vi.fn(() => ({
     sessionId: 'identity:api:api:default:api-anonymous',
     origin: { transport: 'api', source: 'api', receivedAt: 1 },
@@ -19,12 +19,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@onething/core/engine', async importOriginal => ({
   ...(await importOriginal<typeof import('@onething/core/engine')>()),
   CoreStreamEngine: class {
+    authorizeExecution(): void {}
+    assertAccepting(): void {}
+    trackSessionExecution<T>(_sessionId: string, work: () => Promise<T>): Promise<T> { return work() }
     constructor(_runtime: unknown) {
       void _runtime
     }
 
-    async handleSendMessage(...args: unknown[]): Promise<void> {
-      await mocks.superHandleSendMessage(...(args as []))
+    async performSendMessage(...args: unknown[]): Promise<void> {
+      await mocks.superPerformSendMessage(...(args as []))
     }
   },
 }))
@@ -40,7 +43,7 @@ const sender = {} as never
 
 describe('ProductStreamEngine goal-continuation routing', () => {
   beforeEach(() => {
-    mocks.superHandleSendMessage.mockClear()
+    mocks.superPerformSendMessage.mockClear()
     mocks.route.mockClear()
   })
 
@@ -55,8 +58,8 @@ describe('ProductStreamEngine goal-continuation routing', () => {
     await engine().handleSendMessage('goal-session', command, sender)
 
     expect(mocks.route).not.toHaveBeenCalled()
-    expect(mocks.superHandleSendMessage).toHaveBeenCalledTimes(1)
-    const [sessionId, forwarded] = mocks.superHandleSendMessage.mock.calls[0] as unknown as [
+    expect(mocks.superPerformSendMessage).toHaveBeenCalledTimes(1)
+    const [sessionId, forwarded] = mocks.superPerformSendMessage.mock.calls[0] as unknown as [
       string,
       typeof command,
     ]
@@ -72,7 +75,7 @@ describe('ProductStreamEngine goal-continuation routing', () => {
     )
 
     expect(mocks.route).toHaveBeenCalledTimes(1)
-    const [sessionId] = mocks.superHandleSendMessage.mock.calls[0] as unknown as [string]
+    const [sessionId] = mocks.superPerformSendMessage.mock.calls[0] as unknown as [string]
     expect(sessionId).toBe('identity:api:api:default:api-anonymous')
   })
 })

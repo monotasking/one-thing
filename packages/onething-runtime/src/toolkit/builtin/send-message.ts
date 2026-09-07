@@ -57,7 +57,7 @@ export interface SendMessageToolAdapters extends CollabToolAdapters {
     mentions?: string[]
     replyTo?: string
     room?: string
-  }): Promise<SayToolResult>
+  }, executionContext?: unknown): Promise<SayToolResult>
 
   sendDm(input: {
     sessionId: string
@@ -65,7 +65,7 @@ export interface SendMessageToolAdapters extends CollabToolAdapters {
     content: string
     wake?: boolean
     wakeRoom?: string
-  }): Promise<CollabDmSendResult>
+  }, executionContext?: unknown): Promise<CollabDmSendResult>
 }
 
 export const SendMessageInputSchema = z.object({
@@ -162,7 +162,7 @@ export class SendMessageTool extends CollabTool<SendMessageInput> {
         content: args.content,
         ...(args.wake ? { wake: true } : {}),
         ...(args.wakeRoom ? { wakeRoom: args.wakeRoom } : {}),
-      })
+      }, ctx.invocation.executionContext)
       if (!dm.ok) {
         return this.done(ctx, 'Send message — 未送达', dm.error ?? '私聊未送达。', { ok: false })
       }
@@ -184,7 +184,7 @@ export class SendMessageTool extends CollabTool<SendMessageInput> {
       ...(args.mentions ? { mentions: args.mentions } : {}),
       ...(args.replyTo ? { replyTo: args.replyTo } : {}),
       ...(args.room ? { room: args.room } : {}),
-    })
+    }, ctx.invocation.executionContext)
 
     if (!result.ok) {
       return this.done(ctx, 'Send message — 未送达', result.error ?? '消息未送达。', { ok: false })

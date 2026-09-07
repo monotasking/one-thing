@@ -13,6 +13,7 @@ import {
 	CoreStreamEngine,
 	resolveStreamPermissionMode,
 	type CoreEventBusEmitterLike,
+	type CoreExecutionOptions,
 	type CoreInitialToolChoice,
 	type CoreStreamEngineRuntime,
 	type CoreStreamPermissionModeSession,
@@ -105,7 +106,7 @@ export class ProductStreamEngine<
 		runtime: CoreStreamEngineRuntime,
 		protected readonly ports: ProductStreamEnginePorts = {},
 	) {
-		super(runtime);
+		super(runtime, { assertAccepting: ports.assertAccepting, prepareSession: ports.prepareSession, authorizeExecution: ports.authorizeExecution });
 	}
 
 	/**
@@ -141,11 +142,30 @@ export class ProductStreamEngine<
 		return this.hasCommandTarget(sender => !sender.isDestroyed());
 	}
 
-	override async handleSendMessage(
+	override handleSendMessage(sessionId: string, command: ProductSendMessageCommand, sender: StreamSender, options: CoreExecutionOptions = {}): Promise<void> {
+		return this.trackSessionExecution(sessionId, () => this.performProductSendMessage(sessionId, command, sender, options));
+	}
+
+	private async performProductSendMessage(
 		sessionId: string,
 		command: ProductSendMessageCommand,
 		sender: StreamSender,
+		options: CoreExecutionOptions,
 	): Promise<void> {
+		/*
+		 * 授权与收活闸,一条发送**各判一次**(工单 5 §4,triage B8/D4)。
+		 *
+		 * 从前这两句之后 `super.handleSendMessage` 会再经公开入口跑一遍 track +
+		 * 授权,`prepareSessionExecution` 前后再各一遍 —— 同一个谓词一次发送跑三到
+		 * 四遍。现在产品层接的是父类的**模板步骤** `performSendMessage`,于是
+		 * 「入口一层」这句话在代码里就是真的:track 一层、授权一次。
+		 *
+		 * `this.assertAccepting()`(父类的,读 `options.assertAccepting`)与
+		 * `this.ports.assertAccepting?.()` 本是同一个闭包的两个名字 —— 统一走父类
+		 * 那一个,产品层不再自己拿端口调一遍。
+		 */
+		this.authorizeExecution(sessionId, options.executionContext);
+		this.assertAccepting(sessionId);
 		// System-internal re-drives (goal continuations, ...) have no channel
 		// identity behind them. The router would resolve their `api` origin to
 		// an anonymous channel identity, remap the command into an identity
@@ -172,13 +192,14 @@ export class ProductStreamEngine<
 				});
 				return;
 			}
-			await super.handleSendMessage(
+			await super.performSendMessage(
 				sessionId,
 				this.withAgentModelBinding(sessionId, {
 					...command,
 					principal: mintTurnPrincipal(command, command.origin),
 				}),
 				sender,
+				options,
 			);
 			return;
 		}
@@ -198,6 +219,10 @@ export class ProductStreamEngine<
 			fallbackTransport: fallbackTransportForCommand(command),
 			preserveSessionId: shouldPreserveSessionId(command),
 		});
+
+		// 路由把这条命令换到了另一条会话上:写的是**那一条**,所以那一条也要判一次。
+		// 不换(桌面 / web / 每一条非网关路径)就是零次 —— 一次发送恰好一次授权。
+		if (routed.sessionId !== sessionId) this.authorizeExecution(routed.sessionId, options.executionContext);
 
 		// ── N2: the plugin input-intercept chain ───────────────────────────────
 		//
@@ -250,10 +275,11 @@ export class ProductStreamEngine<
 			// word for exactly that (no provider resolution, no title call, no
 			// stream): "handled" must cost zero tokens or the whole point of a
 			// local macro is gone.
-			await super.handleSendMessage(
+			await super.performSendMessage(
 				routed.sessionId,
 				{ ...nextCommand, persistOnly: true },
 				sender,
+				options,
 			);
 			if (intercepted.reply && intercepted.handledBy) {
 				this.ports.pluginIntercept?.postReply(
@@ -265,10 +291,11 @@ export class ProductStreamEngine<
 			return;
 		}
 
-		await super.handleSendMessage(
+		await super.performSendMessage(
 			routed.sessionId,
 			this.withAgentModelBinding(routed.sessionId, nextCommand),
 			sender,
+			options,
 		);
 	}
 
@@ -328,11 +355,18 @@ export class ProductStreamEngine<
 		};
 	}
 
-	override async handleEditAndResend(
+	override handleEditAndResend(sessionId: string, command: ProductEditAndResendCommand, sender: StreamSender, options: CoreExecutionOptions = {}): Promise<void> {
+		return this.trackSessionExecution(sessionId, () => this.performProductEditAndResend(sessionId, command, sender, options));
+	}
+
+	private async performProductEditAndResend(
 		sessionId: string,
 		command: ProductEditAndResendCommand,
 		sender: StreamSender,
+		options: CoreExecutionOptions,
 	): Promise<void> {
+		this.authorizeExecution(sessionId, options.executionContext);
+		this.assertAccepting(sessionId);
 		// P0: edit/retry semantics in rooms are undefined (a retry would replay
 		// with the CURRENT session persona, not the message's original one).
 		// The renderer hides these affordances; this is the engine backstop —
@@ -354,19 +388,26 @@ export class ProductStreamEngine<
 			source: command.source || routed.origin.source,
 			channel: command.channel || channelForOrigin(routed.origin),
 		};
-		await super.handleEditAndResend(routed.sessionId, nextCommand, sender);
+		await super.performEditAndResend(routed.sessionId, nextCommand, sender, options);
 	}
 
-	override async handleRetryMessage(
+	override handleRetryMessage(sessionId: string, command: Parameters<CoreStreamEngine<TEventBus, StreamSender>["handleRetryMessage"]>[1], sender: StreamSender, options: CoreExecutionOptions = {}): Promise<void> {
+		return this.trackSessionExecution(sessionId, () => this.performProductRetryMessage(sessionId, command, sender, options));
+	}
+
+	private async performProductRetryMessage(
 		sessionId: string,
 		command: Parameters<CoreStreamEngine<TEventBus, StreamSender>["handleRetryMessage"]>[1],
 		sender: StreamSender,
+		options: CoreExecutionOptions,
 	): Promise<void> {
+		this.authorizeExecution(sessionId, options.executionContext);
+		this.assertAccepting(sessionId);
 		if (this.ports.roomIngress?.isRoomSession(sessionId)) {
 			this.refuseCollab(sessionId, "群聊房间不支持重试");
 			return;
 		}
-		await super.handleRetryMessage(sessionId, command, sender);
+		await super.performRetryMessage(sessionId, command, sender, options);
 	}
 
 	override steerMessage(
@@ -375,6 +416,7 @@ export class ProductStreamEngine<
 		source = "api",
 		origin?: EngineMessageOrigin,
 	): void {
+		this.assertAccepting(sessionId);
 		// Same bypass as handleSendMessage, same reason: a system-internal
 		// injection (goal / radio / collab / plugin push) has no channel identity
 		// behind it, and the router would resolve its origin to an anonymous one,
@@ -405,6 +447,7 @@ export class ProductStreamEngine<
 		source = "api",
 		origin?: EngineMessageOrigin,
 	): void {
+		this.assertAccepting(sessionId);
 		// See steerMessage: system-internal injections bypass routing.
 		if (isSystemInternalSource(source)) {
 			super.followUpMessage(sessionId, content, source, origin);

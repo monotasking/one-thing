@@ -57,16 +57,63 @@ function createInitialState(source: OnethingMusicRadioSource): OnethingMusicRunt
 
 export class MusicSetupService {
   private state: OnethingMusicRuntimeState
+  private closed = false
+  private readonly pending = new Set<Promise<unknown>>()
 
   constructor(private readonly options: MusicSetupServiceOptions) {
     this.state = createInitialState(options.getSource())
+    const backend = options.backend
+    this.options = { ...options, backend: this.guarded(backend) }
+    this.cancelBackendLogin = () => backend.cancelLogin()
+  }
+
+  private readonly cancelBackendLogin: () => void
+
+  /**
+   * 关机闸 + 未决登记,**逐个方法显式包**(工单 4 C8)。
+   *
+   * 从前这里是一只 `Proxy`,`get` trap 上「凡是函数就包、凡是返回 thenable 就
+   * 登记」。代价有三:契约变成运行时猜的(后端多一个方法就自动多一道闸,没人
+   * 决定过);读代码的人在这个文件里看不出哪几件受闸;而 `typeof value ===
+   * 'function'` 与 `result.then` 这两条鸭子判据,对一个只是恰好返回 thenable 的
+   * 属性会误伤。列出来是十行,换来的是「受闸的就是这十件,一件不多」。
+   */
+  private guarded(backend: OnethingMusicBackend): OnethingMusicBackend {
+    const guard = <A extends unknown[], R>(run: (...args: A) => Promise<R>) =>
+      (...args: A): Promise<R> => {
+        this.assertActive()
+        return this.track(run.apply(backend, args))
+      }
+    return {
+      checkEnv: guard(backend.checkEnv),
+      installTool: guard(backend.installTool),
+      setCredentials: guard(backend.setCredentials),
+      isConfigured: guard(backend.isConfigured),
+      getPlayer: guard(backend.getPlayer),
+      setPlayer: guard(backend.setPlayer),
+      startLogin: guard(backend.startLogin),
+      checkLogin: guard(backend.checkLogin),
+      logout: guard(backend.logout),
+      // 唯一同步的一件:照样过闸,但没有可登记的未决工作。
+      cancelLogin: () => { this.assertActive(); backend.cancelLogin() },
+    }
+  }
+
+  private assertActive(): void { if (this.closed) throw new Error('Music setup service is shutting down') }
+
+  private track<T>(work: Promise<T>): Promise<T> {
+    this.pending.add(work)
+    void work.then(() => this.pending.delete(work), () => this.pending.delete(work))
+    return work
   }
 
   getState(): OnethingMusicRuntimeState {
+    this.assertActive()
     return this.state
   }
 
   private patch(patch: Partial<OnethingMusicRuntimeState>): void {
+    if (this.closed) return
     this.state = { ...this.state, ...patch }
     this.options.emit({ type: 'state', state: this.state })
   }
@@ -110,6 +157,8 @@ export class MusicSetupService {
   }
 
   async refreshEnv(): Promise<OnethingMusicEnvStatus | undefined> {
+    this.assertActive()
+    return this.track((async () => {
     const env = await this.options.backend.checkEnv()
 
     // With the CLI itself missing there is nothing to probe further.
@@ -152,15 +201,23 @@ export class MusicSetupService {
       setupStage: this.resolveSetupStage(env, configured, loggedIn, playerBackend),
     })
     return env
+
+    })())
   }
 
   async ensureSetupStage(): Promise<OnethingMusicSetupStage> {
+    this.assertActive()
+    return this.track((async () => {
     if (!this.state.env) await this.refreshEnv()
     return this.state.setupStage
+
+    })())
   }
 
   /** Switching player is a setup action: it can change the stage (mpv gate). */
   async setPlayerBackend(player: OnethingMusicPlayerBackend): Promise<void> {
+    this.assertActive()
+    return this.track((async () => {
     try {
       await this.options.backend.setPlayer(player)
     } catch (error) {
@@ -168,20 +225,28 @@ export class MusicSetupService {
     }
     this.patch({ playerBackend: player })
     this.refreshSetupStage()
+
+    })())
   }
 
   async installTool(tool: string): Promise<void> {
+    this.assertActive()
+    return this.track((async () => {
     try {
       await this.options.backend.installTool(tool, chunk => {
-        this.options.emit({ type: 'install-output', tool, chunk })
+        if (!this.closed) this.options.emit({ type: 'install-output', tool, chunk })
       })
     } catch (error) {
       throw this.handleError(error, `${tool} 安装失败`)
     }
     await this.refreshEnv()
+
+    })())
   }
 
   async setCredentials(appId: string, privateKey: string): Promise<void> {
+    this.assertActive()
+    return this.track((async () => {
     try {
       await this.options.backend.setCredentials(appId, privateKey)
     } catch (error) {
@@ -189,16 +254,22 @@ export class MusicSetupService {
     }
     this.patch({ configured: true })
     this.refreshSetupStage()
+
+    })())
   }
 
   async startLogin(): Promise<void> {
+    this.assertActive()
+    return this.track((async () => {
     try {
       await this.options.backend.startLogin(chunk => {
-        this.options.emit({ type: 'login-output', chunk })
+        if (!this.closed) this.options.emit({ type: 'login-output', chunk })
       })
     } catch (error) {
       throw this.handleError(error, '登录启动失败')
     }
+
+    })())
   }
 
   cancelLogin(): void {
@@ -206,13 +277,19 @@ export class MusicSetupService {
   }
 
   async checkLogin(): Promise<boolean> {
+    this.assertActive()
+    return this.track((async () => {
     const loggedIn = await this.options.backend.checkLogin()
     this.patch({ loggedIn })
     this.refreshSetupStage()
     return loggedIn
+
+    })())
   }
 
   async logout(): Promise<void> {
+    this.assertActive()
+    return this.track((async () => {
     try {
       await this.options.backend.logout()
     } catch (error) {
@@ -220,13 +297,23 @@ export class MusicSetupService {
     }
     this.patch({ loggedIn: false })
     this.refreshSetupStage()
+
+    })())
   }
 
   setSource(source: OnethingMusicRadioSource): void {
+    this.assertActive()
     this.patch({ source })
   }
 
   dispose(): void {
-    this.cancelLogin()
+    if (this.closed) return
+    this.closed = true
+    this.cancelBackendLogin()
+  }
+
+  async drain(): Promise<void> {
+    this.dispose()
+    while (this.pending.size) await Promise.allSettled([...this.pending])
   }
 }

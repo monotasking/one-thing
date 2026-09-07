@@ -1,7 +1,7 @@
 import type {
-  SessionEventRecord,
+  SessionLegacyEventRecord as SessionEventRecord,
   SessionToolCallInspection,
-} from "@onething/runtime/sessions/session-events";
+} from "@onething/core/session";
 import type { SessionLogEventRecord } from "@onething/core/session/events";
 import type {
   SessionTrace,
@@ -18,16 +18,12 @@ import type {
 import { defineRouter } from "./router.js";
 
 /**
- * 类型从产品层原样再导出(与 `usage.ts` 同一手法)。
- *
- * 全部是 `export type` —— 编译期擦除,所以 renderer 引这个模块不会把
- * `sessions/session-events.ts`(它 import 了 `node:crypto`)拽进浏览器包。
+ * 事件和检查投影沿用 core 的权威契约,不依赖产品层实现。
  */
 export type {
   SessionAssistantFirstTokenEvent,
-  SessionEventRecord,
+  SessionLegacyEventRecord as SessionEventRecord,
   SessionEventToolSchema,
-  SessionEventType,
   SessionRequestEndEvent,
   SessionRequestEndUsage,
   SessionRequestHeaderEvent,
@@ -37,7 +33,9 @@ export type {
   SessionToolCallEvent,
   SessionToolCallInspection,
   SessionToolResultEvent,
-} from "@onething/runtime/sessions/session-events";
+} from "@onething/core/session";
+
+export type SessionEventType = SessionEventRecord['type'];
 
 /**
  * 轨迹树的形状住在 core(`packages/core/session/trace/`),这里同样只是

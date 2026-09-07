@@ -98,6 +98,8 @@ export interface OnethingVoiceProviderApiKeys {
 export type OnethingVoiceFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 export interface OnethingVoiceProviderRuntimeAdapters {
+  /** The calling service's lifetime, including reusable speech connections. */
+  signal?: AbortSignal
   fetch?: OnethingVoiceFetch
   providerApiKeys?: OnethingVoiceProviderApiKeys
   createId?: () => string
@@ -429,6 +431,7 @@ async function transcribeWithDoubao(
     audio: Buffer.from(request.audioBase64, 'base64'),
     mimeType: request.mimeType,
     settings: settings.doubao!,
+    signal: adapters.signal,
   })).trim()
   if (!text) throw new Error('Doubao transcription returned an empty transcript.')
   return {
@@ -473,62 +476,74 @@ export async function streamSynthesizeOnethingSpeech(
     return streamWithQwen(text, settings, handlers, adapters)
   }
   if (settings.tts.provider === 'doubao') {
-    return streamWithDoubao(text, settings, handlers)
+    return streamWithDoubao(text, settings, handlers, adapters)
   }
   return streamWithOpenAI(text, settings, handlers, adapters)
 }
 
-// One cached bidirectional connection per credential set so consecutive reply
-// sentences skip the WebSocket handshake.
-let doubaoTTSConnectionCache: { key: string; connection: any; idleTimer?: ReturnType<typeof setTimeout> } | null = null
+// Reuse within the calling service's lifetime. Abort removes both the socket
+// and idle timer; a later Backend cannot adopt the previous service's cache.
+interface DoubaoTtsCache {
+  key: string
+  connection: import('./volcano/tts-session.js').OnethingDoubaoTTSConnection
+  idleTimer?: ReturnType<typeof setTimeout>
+  dispose: () => void
+}
+let doubaoTTSConnectionCache: DoubaoTtsCache | null = null
+const doubaoTTSLifetimeCaches = new WeakMap<AbortSignal, DoubaoTtsCache>()
 const DOUBAO_TTS_IDLE_MS = 30000
 
 async function streamWithDoubao(
   text: string,
   settings: OnethingVoiceSettingsLike,
   handlers: OnethingVoiceSpeechStreamHandlers,
+  adapters: OnethingVoiceProviderRuntimeAdapters,
 ): Promise<OnethingVoiceSpeechStreamResult> {
+  const signal = adapters.signal
+  signal?.throwIfAborted()
   const doubao = settings.doubao
   if (!doubao?.apiKey?.trim() && !(doubao?.appId?.trim() && doubao?.accessToken?.trim())) {
     throw new Error('Add a Doubao (Volcano Engine) API key in Voice settings before using Doubao speech.')
   }
-
   const { OnethingDoubaoTTSConnection, getOnethingDoubaoTTSMimeType } = await import('./volcano/tts-session.js')
+  signal?.throwIfAborted()
   const key = JSON.stringify([doubao.apiKey, doubao.appId, doubao.accessToken, doubao.ttsResourceId, doubao.endpoint])
-
-  let connection = doubaoTTSConnectionCache?.key === key && doubaoTTSConnectionCache.connection.isUsable
-    ? doubaoTTSConnectionCache.connection
-    : null
-  if (!connection) {
-    doubaoTTSConnectionCache?.connection.close()
-    connection = new OnethingDoubaoTTSConnection(doubao)
-    doubaoTTSConnectionCache = { key, connection }
-    await connection.connect()
-  }
-  if (doubaoTTSConnectionCache?.idleTimer) clearTimeout(doubaoTTSConnectionCache.idleTimer)
-
-  const mimeType = getOnethingDoubaoTTSMimeType(doubao)
-  await handlers.onStart?.({ mimeType })
-  try {
-    await connection.synthesize(text, {
-      onChunk: (chunk: Uint8Array) => handlers.onChunk?.(chunk),
-    })
-  } catch (error) {
-    if (doubaoTTSConnectionCache?.connection === connection) {
-      doubaoTTSConnectionCache = null
-    }
-    connection.close()
-    throw error
-  }
-
-  const cache = doubaoTTSConnectionCache
-  if (cache && cache.connection === connection) {
-    cache.idleTimer = setTimeout(() => {
-      if (doubaoTTSConnectionCache?.connection === connection) {
-        doubaoTTSConnectionCache = null
+  const current = () => signal ? doubaoTTSLifetimeCaches.get(signal) : doubaoTTSConnectionCache
+  let cache = current()
+  if (!cache || cache.key !== key || !cache.connection.isUsable) {
+    cache?.dispose()
+    const connection = new OnethingDoubaoTTSConnection(doubao)
+    const created: DoubaoTtsCache = { key, connection, dispose: () => {
+      if (created.idleTimer) clearTimeout(created.idleTimer)
+      signal?.removeEventListener('abort', created.dispose)
+      if (current() === created) {
+        if (signal) doubaoTTSLifetimeCaches.delete(signal)
+        else doubaoTTSConnectionCache = null
       }
       connection.close()
-    }, DOUBAO_TTS_IDLE_MS)
+    } }
+    cache = created
+    if (signal) {
+      doubaoTTSLifetimeCaches.set(signal, cache)
+      signal.addEventListener('abort', cache.dispose, { once: true })
+    } else doubaoTTSConnectionCache = cache
+  }
+  if (cache.idleTimer) clearTimeout(cache.idleTimer)
+  const owned = cache
+  const mimeType = getOnethingDoubaoTTSMimeType(doubao)
+  try {
+    await owned.connection.connect()
+    signal?.throwIfAborted()
+    await handlers.onStart?.({ mimeType })
+    await owned.connection.synthesize(text, { onChunk: chunk => handlers.onChunk?.(chunk) })
+    signal?.throwIfAborted()
+  } catch (error) {
+    owned.dispose()
+    throw error
+  }
+  if (current() === owned) {
+    owned.idleTimer = setTimeout(owned.dispose, DOUBAO_TTS_IDLE_MS)
+    owned.idleTimer.unref?.()
   }
   return { mimeType }
 }

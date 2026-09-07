@@ -61,9 +61,12 @@ export interface CoreLogMonitorCleanupOptions {
 
 export interface CoreLogMonitorDiskStreamLike {
   destroyed?: boolean
+  /** Settles only after the underlying handle actually closes; rejects its first I/O error. */
+  closed: Promise<void>
   write(content: string): boolean
   end(): void
   onDrain(handler: () => void): void
+  onError(handler: (error: Error) => void): void
 }
 
 export interface CoreLogMonitorDiskWriterAdapters {
@@ -87,7 +90,21 @@ export function createCoreLogMonitorFileDiskAdapters(
     createWriteStream(fileName) {
       ensureCoreLogMonitorDirectory(logDir)
       const stream = fs.createWriteStream(path.join(logDir, fileName), { flags: 'a' })
+      let firstError: Error | undefined
+      const errorHandlers = new Set<(error: Error) => void>()
+      // Own errors immediately: opening the file is asynchronous, including
+      // when end() was already requested before open completed.
+      stream.on('error', error => {
+        firstError ??= error
+        for (const handler of errorHandlers) handler(firstError)
+      })
+      const closed = new Promise<void>((resolve, reject) => stream.once('close', () => {
+        errorHandlers.clear()
+        if (firstError) reject(firstError)
+        else resolve()
+      }))
       return {
+        closed,
         get destroyed() {
           return stream.destroyed
         },
@@ -95,6 +112,11 @@ export function createCoreLogMonitorFileDiskAdapters(
         end: () => stream.end(),
         onDrain: handler => {
           stream.on('drain', handler)
+          stream.once('close', () => stream.off('drain', handler))
+        },
+        onError: handler => {
+          if (firstError) handler(firstError)
+          if (!stream.closed) errorHandlers.add(handler)
         },
       }
     },
@@ -157,7 +179,7 @@ export interface CoreLogMonitorPluginApi<TToolParameters> {
   ui: {
     notify(message: string, level?: 'info' | 'warn' | 'error'): void
   }
-  onDispose?(callback: () => void): void
+  onDispose?(callback: () => void | Promise<void>): void
   /** 插件自有配置的访问面(R3);宿主注入,插件只读快照。 */
   settings?: {
     get<T = Record<string, unknown>>(): T
@@ -457,9 +479,13 @@ export class CoreLogMonitorDiskWriter {
   private readonly writeBuffer: string[] = []
   private flushTimer: ReturnType<typeof setTimeout> | null = null
   private writeStream: CoreLogMonitorDiskStreamLike | null = null
+  private readonly streams = new Map<CoreLogMonitorDiskStreamLike, { fileName: string; ended: boolean; closed: Promise<void> }>()
   private currentLogFileName = ''
   private backpressure = false
   private dropped = 0
+  private closing = false
+  private closePromise: Promise<void> | undefined
+  private firstError: Error | undefined
 
   constructor(options: CoreLogMonitorDiskWriterOptions) {
     this.flushIntervalMsOption = options.flushIntervalMs ?? 1000
@@ -500,14 +526,65 @@ export class CoreLogMonitorDiskWriter {
   }
 
   rotateIfNeeded(): void {
-    const nextLogFileName = getLogMonitorFileName(this.now())
-    if (nextLogFileName === this.currentLogFileName) return
+    if (this.closing) return
+    try { this.rotateStreamIfNeeded() } catch (error) { throw this.rememberFailure(error) }
+  }
 
-    this.writeStream?.end()
+  private rememberFailure(error: unknown): Error {
+    this.firstError ??= error instanceof Error ? error : new Error(String(error))
+    this.clearFlushTimer()
+    return this.firstError
+  }
+
+  private clearFlushTimer(): void {
+    if (this.flushTimer) clearTimeout(this.flushTimer)
+    this.flushTimer = null
+  }
+
+  private scheduleFlush(milliseconds: number): void {
+    if (this.closing || this.firstError || this.flushTimer) return
+    this.flushTimer = setTimeout(() => {
+      this.flushTimer = null
+      try { this.flush() } catch (error) {
+        // The owner reports this sticky failure from close(), rather than
+        // throwing an unowned exception out of the timer callback.
+        this.rememberFailure(error)
+      }
+    }, milliseconds)
+  }
+
+  private endStream(stream: CoreLogMonitorDiskStreamLike): void {
+    const owned = this.streams.get(stream)
+    if (!owned || owned.ended) return
+    owned.ended = true
+    try { stream.end() } catch (error) { this.rememberFailure(error) }
+  }
+
+  private rotateStreamIfNeeded(): void {
+    if (this.firstError) throw this.firstError
+    const nextLogFileName = getLogMonitorFileName(this.now())
+    if (nextLogFileName === this.currentLogFileName && this.writeStream) return
+
+    if (this.writeStream) this.endStream(this.writeStream)
+    if (this.firstError) throw this.firstError
+    const stream = this.adapters.createWriteStream(nextLogFileName)
+    const owned = { fileName: nextLogFileName, ended: false, closed: Promise.resolve() }
+    this.streams.set(stream, owned)
+    // Retain rotated streams until real close. Observe every rejection now,
+    // even if plugin disposal happens much later, and preserve the first error.
+    owned.closed = stream.closed.then(() => {
+      if (!owned.ended) this.rememberFailure(new Error('Log stream closed before end'))
+      this.streams.delete(stream)
+    }, error => {
+      this.rememberFailure(error)
+      this.streams.delete(stream)
+    })
+    stream.onError(error => { this.rememberFailure(error) })
     this.currentLogFileName = nextLogFileName
-    this.writeStream = this.adapters.createWriteStream(nextLogFileName)
-    this.writeStream.onDrain(() => {
-      this.backpressure = false
+    this.writeStream = stream
+    this.backpressure = false
+    stream.onDrain(() => {
+      if (this.writeStream === stream && !this.closing && !this.firstError) this.backpressure = false
     })
     this.adapters.log?.(`[AgentLog] Rotated to ${nextLogFileName}`)
   }
@@ -519,6 +596,7 @@ export class CoreLogMonitorDiskWriter {
         retentionDays: this.retentionDays,
       })
       for (const fileName of filesToDelete) {
+        if (Array.from(this.streams.values()).some(stream => stream.fileName === fileName)) continue
         this.adapters.deleteFile(fileName)
       }
     } catch {
@@ -527,57 +605,53 @@ export class CoreLogMonitorDiskWriter {
   }
 
   flush(): void {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer)
-      this.flushTimer = null
-    }
+    this.clearFlushTimer()
+    if (this.closing) return
+    try {
+      if (this.firstError) throw this.firstError
+      if (this.writeBuffer.length === 0) return
+      this.writePending()
+      if (this.writeBuffer.length > 0) this.scheduleFlush(this.retryFlushIntervalMs)
+      if (!this.flushTimer && this.random() < this.cleanupChance) this.cleanupOldLogs()
+    } catch (error) { throw this.rememberFailure(error) }
+  }
 
-    if (this.writeBuffer.length === 0) {
-      return
+  private writePending(): void {
+    if (this.writeBuffer.length === 0) return
+    this.rotateStreamIfNeeded()
+    if (!this.writeStream || this.writeStream.destroyed) {
+      throw new Error('Log stream is not writable')
     }
-
-    this.rotateIfNeeded()
-    const lines = this.writeBuffer.splice(0)
-    if (this.writeStream && !this.writeStream.destroyed) {
-      const ok = this.writeStream.write(lines.join('\n') + '\n')
-      if (!ok) this.backpressure = true
-    }
-
-    this.flushTimer = this.writeBuffer.length > 0
-      ? setTimeout(() => this.flush(), this.retryFlushIntervalMs)
-      : null
-
-    if (!this.flushTimer && this.random() < this.cleanupChance) {
-      this.cleanupOldLogs()
-    }
+    const lines = this.writeBuffer.slice()
+    const ok = this.writeStream.write(lines.join('\n') + '\n')
+    this.writeBuffer.splice(0, lines.length)
+    if (!ok) this.backpressure = true
   }
 
   push(line: string): boolean {
-    if (this.backpressure) {
+    if (this.closing || this.firstError || this.backpressure) {
       this.dropped++
       return false
     }
 
     this.writeBuffer.push(line)
-    if (!this.flushTimer) {
-      this.flushTimer = setTimeout(() => this.flush(), this.flushIntervalMs)
-    }
+    this.scheduleFlush(this.flushIntervalMs)
     return true
   }
 
-  close(): void {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer)
-      this.flushTimer = null
-    }
+  close(): Promise<void> {
+    if (this.closePromise) return this.closePromise
+    this.closing = true
+    this.clearFlushTimer()
     // 先把缓冲写出去再收流:flush 间隔是 1s,直接 end() 等于把禁用前最后一秒的
     // 日志丢掉 —— 而那一秒往往正是用户要禁用它的原因。
-    const pending = this.writeBuffer.splice(0)
-    if (pending.length > 0 && this.writeStream && !this.writeStream.destroyed) {
-      this.writeStream.write(pending.join('\n') + '\n')
-    }
-    this.writeStream?.end()
+    try { if (!this.firstError) this.writePending() } catch (error) { this.rememberFailure(error) }
+    for (const stream of this.streams.keys()) this.endStream(stream)
     this.writeStream = null
+    this.closePromise = Promise.all(Array.from(this.streams.values(), stream => stream.closed)).then(() => {
+      if (this.firstError) throw this.firstError
+    })
+    return this.closePromise
   }
 }
 

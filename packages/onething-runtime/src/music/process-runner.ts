@@ -21,9 +21,9 @@ import type {
  * globally installed CLIs (npm -g, Homebrew) are commonly invisible to a
  * double-clicked Electron app. Add the usual install prefixes.
  */
-function resolvePath(): string {
+function resolvePath(environment: NodeJS.ProcessEnv): string {
   const extras = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin']
-  const current = process.env.PATH?.split(path.delimiter) ?? []
+  const current = environment.PATH?.split(path.delimiter) ?? []
   const merged = [...current]
   for (const entry of extras) {
     if (!merged.includes(entry)) merged.push(entry)
@@ -31,21 +31,52 @@ function resolvePath(): string {
   return merged.join(path.delimiter)
 }
 
-function buildEnv(overrides?: Record<string, string | undefined>): NodeJS.ProcessEnv {
-  return { ...process.env, ...overrides, PATH: resolvePath() }
-}
+export function createElectronMusicProcessRunner(options: {
+  env?: NodeJS.ProcessEnv
+  signal?: AbortSignal
+} = {}): OnethingMusicProcessRunner & { quiesce(): void; drain(): Promise<void> } {
+  const environment = { ...process.env, ...options.env }
+  const active = new Set<OnethingMusicProcessHandle>()
+  let closed = false
+  const quiesce = () => {
+    closed = true
+    for (const handle of active) handle.kill()
+  }
+  if (options.signal?.aborted) quiesce()
+  else options.signal?.addEventListener('abort', quiesce, { once: true })
 
-export function createElectronMusicProcessRunner(): OnethingMusicProcessRunner {
   function spawnProcess(options: OnethingMusicProcessStreamOptions): OnethingMusicProcessHandle {
+    if (closed) throw new Error('Music process runner is shutting down')
+    const processGroup = process.platform !== 'win32'
     const child = spawn(options.command, options.args, {
-      env: buildEnv(options.env),
+      env: { ...environment, ...options.env, PATH: resolvePath(environment) },
       stdio: ['pipe', 'pipe', 'pipe'],
+      // Own only this invocation's descendants; never signal the host's group.
+      detached: processGroup,
     })
 
     let stdout = ''
     let stderr = ''
     let timer: ReturnType<typeof setTimeout> | null = null
     let timedOut = false
+    let killTimer: ReturnType<typeof setTimeout> | undefined
+    let spawnError: Error | undefined
+    let settled = false
+
+    const signal = (value: NodeJS.Signals) => {
+      if (settled) return
+      if (processGroup && child.pid) {
+        try { process.kill(-child.pid, value) } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') child.kill(value)
+        }
+      } else child.kill(value)
+    }
+
+    const kill = () => {
+      if (settled) return
+      signal('SIGTERM')
+      killTimer ??= setTimeout(() => signal('SIGKILL'), 1000)
+    }
 
     child.stdout?.setEncoding('utf-8')
     child.stderr?.setEncoding('utf-8')
@@ -69,17 +100,19 @@ export function createElectronMusicProcessRunner(): OnethingMusicProcessRunner {
       if (options.timeoutMs) {
         timer = setTimeout(() => {
           timedOut = true
-          child.kill('SIGTERM')
+          kill()
         }, options.timeoutMs)
       }
 
       child.on('error', error => {
-        if (timer) clearTimeout(timer)
-        reject(error)
+        spawnError = error
       })
 
       child.on('close', code => {
+        settled = true
         if (timer) clearTimeout(timer)
+        if (killTimer) clearTimeout(killTimer)
+        if (spawnError) { reject(spawnError); return }
         if (timedOut) {
           reject(new Error(`${options.command} 执行超时（${options.timeoutMs}ms）`))
           return
@@ -88,18 +121,27 @@ export function createElectronMusicProcessRunner(): OnethingMusicProcessRunner {
       })
     })
 
-    return {
+    const handle = {
       done,
       kill: () => {
         if (timer) clearTimeout(timer)
-        child.kill('SIGTERM')
+        kill()
       },
     }
+    active.add(handle)
+    void done.then(() => active.delete(handle), () => active.delete(handle))
+    return handle
   }
 
   return {
     run: options => spawnProcess(options).done,
     spawn: spawnProcess,
+    quiesce,
+    async drain() {
+      quiesce()
+      while (active.size) await Promise.allSettled([...active].map(handle => handle.done))
+      options.signal?.removeEventListener('abort', quiesce)
+    },
   }
 }
 

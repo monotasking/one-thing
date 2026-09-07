@@ -70,6 +70,7 @@ export interface ScratchpadChangedPayload {
  * `GET /api/scratchpad/events` SSE 同理保留。
  */
 import { defineRouter } from "./router.js";
+import type { SessionAccessOperation } from "../contracts/session-access.js";
 
 export type ScratchpadRoutes = {
 	get: { input: ScratchpadGetRequest; output: ScratchpadGetResponse };
@@ -78,9 +79,19 @@ export type ScratchpadRoutes = {
 	adopt: { input: ScratchpadAdoptRequest; output: ScratchpadAdoptResponse };
 };
 
-export const scratchpadRouter = defineRouter<ScratchpadRoutes>("scratchpad", [
+/*
+ * 会话授权写在契约里(工单 5 §6)。三条读写都是 `optional` —— 草稿纸的会话可能还没
+ * 物化,已物化的照常过归属闸。`adopt` 声明的是**搬进去**那一条(真会话,必须存在);
+ * 搬出来那一条仍在处理者里,因为一条命令只有一格自述。
+ */
+export const scratchpadRouter = defineRouter<ScratchpadRoutes, SessionAccessOperation>("scratchpad", [
 	"get",
 	"update",
 	"delete",
 	"adopt",
-]);
+], {
+	get: { param: "sessionId", op: "read", optional: true },
+	update: { param: "sessionId", op: "write", optional: true },
+	delete: { param: "sessionId", op: "write", optional: true },
+	adopt: { param: "toSessionId", op: "write" },
+});

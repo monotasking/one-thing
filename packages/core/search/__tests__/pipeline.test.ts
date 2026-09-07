@@ -246,26 +246,33 @@ describe('fanout', () => {
   })
 
   it('预算是整条阶梯的:四级放宽加起来也不许超过一路的 timeoutMs 太多', async () => {
-    // 每级都比半个预算略长再答空页:逐级各派生一次的话四级能占到 4 × timeoutMs。
-    const timeoutMs = 60
-    const perStep = 40
-    const registry = createCapabilityRegistry()
-    registry.register({
-      manifest: makeManifest({ id: 'creeper', budget: { default: 5, timeoutMs } }),
-      supports: () => true,
-      search: async () => {
-        await new Promise(resolve => setTimeout(resolve, perStep))
-        return { items: [] as Candidate[], took: perStep }
-      },
-    })
-
-    const startedAt = Date.now()
-    const groups = await collect(fanout(registry, budgetPolicy)(makeContext(), parse('a b c d')))
-    const elapsed = Date.now() - startedAt
-
-    expect(groups).toHaveLength(1)
-    expect(groups[0]!.error).toBe('timeout')
-    expect(elapsed).toBeLessThan(2 * timeoutMs)
+    vi.useFakeTimers()
+    try {
+      // 每级都比半个预算略长再答空页:逐级各派生一次的话四级能占到 4 × timeoutMs。
+      const timeoutMs = 60
+      const perStep = 40
+      const registry = createCapabilityRegistry()
+      registry.register({
+        manifest: makeManifest({ id: 'creeper', budget: { default: 5, timeoutMs } }),
+        supports: () => true,
+        search: async () => {
+          await new Promise(resolve => setTimeout(resolve, perStep))
+          return { items: [] as Candidate[], took: perStep }
+        },
+      })
+  
+      const startedAt = Date.now()
+      const pending = collect(fanout(registry, budgetPolicy)(makeContext(), parse('a b c d')))
+      await vi.runAllTimersAsync()
+      const groups = await pending
+      const elapsed = Date.now() - startedAt
+  
+      expect(groups).toHaveLength(1)
+      expect(groups[0]!.error).toBe('timeout')
+      expect(elapsed).toBeLessThan(2 * timeoutMs)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('按能力各自逐级试:一路放宽到 ③ 不影响另一路停在 ①', async () => {

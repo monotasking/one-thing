@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { createSpeakMarkupFilter, getProtocolSpeakText } from '../speak-markup'
+import {
+  createOnethingSpeakMarkupFilter as createSpeakMarkupFilter,
+  getOnethingProtocolSpeakText as getProtocolSpeakText,
+} from '../text.js'
 
 describe('speak markup filter', () => {
   it('strips speak tags from display text and emits only speak text for voice', () => {

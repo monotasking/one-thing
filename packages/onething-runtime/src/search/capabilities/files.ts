@@ -13,6 +13,7 @@ import type {
   FacetFilter,
   PreviewPayload,
   SearchCapability,
+  SearchContext,
 } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from '../providers.js'
 import { scanBackedCapability, type SearchServiceResult } from './scan-adapter.js'
@@ -55,7 +56,8 @@ const DIR_FACET = 'dir'
  *
  * 去重是 `add` 自带的,所以某个根与会话工作目录重合时不会搜两遍。
  */
-function getSearchDirs(adapters: OnethingSearchProvidersAdapters): string[] {
+function getSearchDirs(adapters: OnethingSearchProvidersAdapters, context?: SearchContext): string[] {
+  if (context && adapters.getSearchDirectories) return adapters.getSearchDirectories(context)
   const seen = new Set<string>()
   const dirs: string[] = []
 
@@ -92,8 +94,9 @@ export async function searchFiles(
   limit: number,
   adapters: OnethingSearchProvidersAdapters,
   dir?: string,
+  context?: SearchContext,
 ): Promise<SearchServiceResult[]> {
-  const dirs = dir ? [expandPath(dir)] : getSearchDirs(adapters)
+  const dirs = dir ? [expandPath(dir)] : getSearchDirs(adapters, context)
   if (dirs.length === 0) return []
 
   const q = normalizeSearchQuery(query)
@@ -194,7 +197,7 @@ export function createFilesSearchCapability(
 ): SearchCapability {
   const scan = scanBackedCapability({
     manifest: filesSearchManifest,
-    run: (query, limit, filters) => searchFiles(query, limit, adapters, scanDirOf(filters)),
+    run: (query, limit, filters, context) => searchFiles(query, limit, adapters, scanDirOf(filters), context),
     // 空词这一路答 `[]`;恒真是为了让 `all` 档的分组里有这一格。
     supports: () => true,
     target: result => ({ kind: 'file', payload: { filePath: result.filePath ?? '' } } satisfies FileTarget),

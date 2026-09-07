@@ -26,7 +26,8 @@ export interface AgentRuntimePromptOptions {
   injectSkills?: boolean
 }
 
-export interface BuildAgentLoopRuntimeOptions {
+export interface BuildAgentLoopRuntimeOptions extends Pick<AgentLoopOptions,
+  'beforeModelRequest' | 'afterModelResponse'> {
   provider: AgentProvider
   model: string
   messages: AgentMessage[]
@@ -89,6 +90,8 @@ export async function buildAgentLoopRuntime(
     maxTurns: options.maxTurns,
     beforeTurn: options.beforeTurn,
     afterTurn: options.afterTurn,
+    beforeModelRequest: options.beforeModelRequest,
+    afterModelResponse: options.afterModelResponse,
     onEvent: options.onEvent,
     onTurnTrace: options.onTurnTrace,
   }

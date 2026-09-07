@@ -69,6 +69,27 @@ function createSession(socket: FakeSocket, callbacks: Partial<{
 }
 
 describe('doubao asr session', () => {
+  it('closes a socket whose factory resolves after the session was stopped', async () => {
+    const socket = new FakeSocket()
+    let release!: (value: FakeSocket) => void
+    const session = new OnethingDoubaoASRSession({ settings: { apiKey: 'test' }, createWebSocket: () => new Promise(resolve => { release = resolve }) })
+    const opening = session.connect()
+    session.close()
+    release(socket)
+    await expect(opening).rejects.toThrow('closed')
+    expect(socket.readyState).toBe(3)
+    expect(socket.listeners.size).toBe(0)
+  })
+
+  it('rejects a pending handshake when stopped before open', async () => {
+    const socket = new FakeSocket()
+    const session = new OnethingDoubaoASRSession({ settings: { apiKey: 'test' }, createWebSocket: () => socket })
+    const opening = session.connect()
+    await Promise.resolve()
+    session.close()
+    await expect(opening).rejects.toThrow('closed before opening')
+  })
+
   it('flags missing credentials', () => {
     expect(getOnethingDoubaoConfigurationError({})).toMatch(/API key/)
     expect(getOnethingDoubaoConfigurationError({ apiKey: 'k' })).toBeNull()

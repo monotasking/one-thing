@@ -831,6 +831,37 @@ export interface SessionPluginStatusEventData {
 
 // ============ 联合 ============
 
+/** Utility model calls do not create chat messages or consume assistant request indices. */
+export interface SessionAuxiliaryModelIntentData {
+  actionId: string
+  purpose: 'title' | 'compact-chunk' | 'compact-merge' | 'toc'
+  provider: string
+  model: string
+  input: { text: string } | { blob: BlobRef }
+  params?: Record<string, unknown>
+}
+export interface SessionAuxiliaryModelResultData {
+  actionId: string
+  outcome: 'completed' | 'error'
+  outputHash?: string
+  outputBytes?: number
+  error?: { name?: string; message: string }
+}
+export type SessionAuxiliaryModelIntentEvent = SessionEventRecordShape<'auxiliary-model/intent', SessionAuxiliaryModelIntentData>
+export type SessionAuxiliaryModelResultEvent = SessionEventRecordShape<'auxiliary-model/result', SessionAuxiliaryModelResultData>
+
+/** External actions keep their complete wire payload in the session's durable blob closure. */
+export interface SessionExternalExecutionData {
+  executionId: string
+  actionId: string
+  parentActionId?: string
+  kind: 'model' | 'tool'
+  phase: 'before' | 'after'
+  payloadHash: string
+  payload: { text: string } | { blob: BlobRef }
+}
+export type SessionExternalExecutionEvent = SessionEventRecordShape<'external/execution', SessionExternalExecutionData>
+
 export type SessionRequestToolsEvent = SessionEventRecordShape<'request/tools', SessionRequestToolsEventData>
 export type SessionRequestHeaderEvent = SessionEventRecordShape<'request/header', SessionRequestHeaderEventData>
 export type SessionRequestStartEvent = SessionEventRecordShape<'request/start', SessionRequestStartEventData>
@@ -887,6 +918,9 @@ export type SessionLegacyEventRecord =
 
 export type SessionLogEventRecord =
   | SessionLegacyEventRecord
+  | SessionAuxiliaryModelIntentEvent
+  | SessionAuxiliaryModelResultEvent
+  | SessionExternalExecutionEvent
   | SessionCreatedEvent
   | SessionAgentChangedEvent
   | SessionModelChangedEvent
@@ -938,6 +972,9 @@ export const SESSION_LEGACY_EVENT_TYPES = [
  */
 export const SESSION_LOG_EVENT_TYPES = [
   ...SESSION_LEGACY_EVENT_TYPES,
+  'auxiliary-model/intent',
+  'auxiliary-model/result',
+  'external/execution',
   'session/created',
   'session/agent-changed',
   'session/model-changed',

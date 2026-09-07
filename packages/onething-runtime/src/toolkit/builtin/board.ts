@@ -43,14 +43,15 @@ export interface BoardToolAdapters extends CollabToolAdapters {
    * 这条会话挂着的那间房(work 的母房、agent 这一轮在答的那间房)。
    * `room` 场子**不**走它 —— 那间房就是它自己。
    */
-  resolveLinkedRoom(sessionId: string): string | undefined
+  resolveLinkedRoom(sessionId: string, executionContext?: unknown): string | undefined
   /** Member display name → agent id (accepts an id passthrough too). */
-  resolveMember(roomSessionId: string, nameOrId: string): string | null
+  resolveMember(roomSessionId: string, nameOrId: string, executionContext?: unknown): string | null
   agentName(agentId: string): string
   applyAction(
     roomSessionId: string,
     action: CollabBoardAction,
     actor: { type: 'user' | 'agent'; agentId?: string },
+    options?: { executionContext?: unknown; sourceSessionId: string },
   ): Promise<{ board: CollabBoard; task?: CollabTask; error?: string }>
 }
 
@@ -104,21 +105,21 @@ export class BoardTool extends CollabTool<BoardInput> {
     this.adapters = adapters
   }
 
-  private contextOf(scope: CollabScope<BoardInput>): BoardToolContext | null {
+  private contextOf(scope: CollabScope<BoardInput>, executionContext?: unknown): BoardToolContext | null {
     if (!scope.allowed) return null
     if (scope.venue === 'room') {
       return { roomSessionId: scope.sessionId, ...(scope.actorAgentId ? { actorAgentId: scope.actorAgentId } : {}) }
     }
     // W18: a room turn runs in the agent's own execution session, which carries
     // the room it is currently answering — same shape a work session uses.
-    const linked = this.adapters.resolveLinkedRoom(scope.sessionId)
+    const linked = this.adapters.resolveLinkedRoom(scope.sessionId, executionContext)
     if (linked) return { roomSessionId: linked, ...(scope.actorAgentId ? { actorAgentId: scope.actorAgentId } : {}) }
     return null
   }
 
   protected async perform(scope: CollabScope<BoardInput>, ctx: RunContext): Promise<Result> {
     const args = scope.input
-    const context = this.contextOf(scope)
+    const context = this.contextOf(scope, ctx.invocation.executionContext)
     if (!context) {
       return this.done(
         ctx,
@@ -131,12 +132,14 @@ export class BoardTool extends CollabTool<BoardInput> {
       ? { type: 'agent' as const, agentId: context.actorAgentId }
       : { type: 'user' as const }
 
-    const planned = this.toAction(args, context)
+    const planned = this.toAction(args, context, ctx.invocation.executionContext)
     if ('error' in planned) {
       return this.done(ctx, 'Board — invalid call', planned.error, { action: args.action, taskId: args.taskId })
     }
 
-    const result = await this.adapters.applyAction(context.roomSessionId, planned, actor)
+    const result = await this.adapters.applyAction(context.roomSessionId, planned, actor, {
+      executionContext: ctx.invocation.executionContext, sourceSessionId: scope.sessionId,
+    })
     if (result.error) {
       return this.done(ctx, 'Board — rejected', result.error, { action: args.action, taskId: args.taskId })
     }
@@ -164,7 +167,7 @@ export class BoardTool extends CollabTool<BoardInput> {
   }
 
   /** 与旧实现逐字相同的动作映射。 */
-  private toAction(args: BoardInput, context: BoardToolContext): CollabBoardAction | { error: string } {
+  private toAction(args: BoardInput, context: BoardToolContext, executionContext?: unknown): CollabBoardAction | { error: string } {
     switch (args.action) {
       case 'list':
         return { action: 'list' }
@@ -174,7 +177,7 @@ export class BoardTool extends CollabTool<BoardInput> {
           title: args.title ?? '',
           description: args.description,
           assigneeAgentId: args.assignee
-            ? this.adapters.resolveMember(context.roomSessionId, args.assignee) ?? undefined
+            ? this.adapters.resolveMember(context.roomSessionId, args.assignee, executionContext) ?? undefined
             : undefined,
         }
       case 'start':
@@ -188,7 +191,7 @@ export class BoardTool extends CollabTool<BoardInput> {
       case 'assign': {
         if (!args.taskId) return { error: 'assign requires taskId' }
         const member = args.assignee
-          ? this.adapters.resolveMember(context.roomSessionId, args.assignee)
+          ? this.adapters.resolveMember(context.roomSessionId, args.assignee, executionContext)
           : null
         if (!member) return { error: `Unknown member: ${args.assignee ?? '(missing assignee)'}` }
         return { action: 'assign', taskId: args.taskId, assigneeAgentId: member, expectedRev: args.expectedRev }

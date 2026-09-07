@@ -100,6 +100,7 @@ export interface OnethingRadioConductor {
   onSample(nowPlaying: OnethingMusicNowPlaying | null): void
   /** In-flight work, for tests and for hosts that want to drain on dispose. */
   idle(): Promise<void>
+  quiesce(): void
 }
 
 export function createOnethingRadioConductor(
@@ -113,6 +114,7 @@ export function createOnethingRadioConductor(
 
   let pending: Promise<void> = Promise.resolve()
   let ticking = false
+  let closed = false
   /**
    * Guards against the one sound nobody asked for: an app launch resurrecting
    * yesterday's station. Auto-advance is armed only once music has played in
@@ -164,12 +166,14 @@ export function createOnethingRadioConductor(
   let consumedCutIntentAppliedAt: string | undefined
 
   const advance = async (): Promise<void> => {
+    if (closed) return
     if (now() - lastAdvanceAt < advanceCooldownMs) return
     if (options.startInFlight?.()) return
     if (systemicFault) {
       if (now() - lastSystemicCheckAt < SYSTEMIC_RECHECK_MS) return
       lastSystemicCheckAt = now()
       const fault = (await options.diagnoseStartFailure?.().catch(() => null)) ?? null
+      if (closed) return
       if (fault) {
         options.store.recordError(fault)
         return
@@ -183,6 +187,7 @@ export function createOnethingRadioConductor(
     // started something in the meantime, starting ours too means two songs at
     // once. One fresh read closes most of that window.
     const fresh = await options.runner.readState().catch(() => null)
+    if (closed) return
     if (fresh?.status === 'playing') return
     // No onDeck fallback here: onDeck is by construction the song that just
     // finished, and auto-replaying it is exactly the "同一首连放两遍" the field
@@ -204,8 +209,10 @@ export function createOnethingRadioConductor(
     cutOverOwed = false
     try {
       await options.playSong(entry)
+      if (closed) return
       options.store.recordError(undefined)
     } catch (error) {
+      if (closed) return
       // The host marks failures that are NOT the song's fault (station just
       // closed, another start in flight): put the entry back and stand down —
       // dropping it would burn a curated song for a reason that had nothing
@@ -217,6 +224,7 @@ export function createOnethingRadioConductor(
         return
       }
       const fault = (await options.diagnoseStartFailure?.().catch(() => null)) ?? null
+      if (closed) return
       if (fault) {
         // Not this song's fault — the world is broken. Hold the programme and
         // put the entry back at the front: with the hold there is no re-fail
@@ -243,6 +251,7 @@ export function createOnethingRadioConductor(
     brief: { intentAppliedAt?: string },
     entriesLeft: number,
   ): Promise<void> => {
+    if (closed) return
     if (entriesLeft > programmeLow) {
       djFailures = 0
       wakesWithoutGrowth = 0
@@ -292,8 +301,10 @@ export function createOnethingRadioConductor(
     }
     try {
       await options.wakeDj()
+      if (closed) return
       djFailures = 0
     } catch (error) {
+      if (closed) return
       djFailures += 1
       options.logger?.warn(`[radio] DJ wake failed (${djFailures})`, error)
       if (djFailures >= DJ_FAILURES_BEFORE_REPORTING) {
@@ -396,7 +407,7 @@ export function createOnethingRadioConductor(
     onSample(sample) {
       // Samples arrive every few seconds; one slow tick must not pile up a
       // queue of stale reactions behind it. Skip instead of buffering.
-      if (ticking) return
+      if (closed || ticking) return
       ticking = true
       pending = tick(sample)
         .catch(error => options.logger?.warn('[radio] conductor tick failed', error))
@@ -405,5 +416,6 @@ export function createOnethingRadioConductor(
         })
     },
     idle: () => pending,
+    quiesce() { closed = true },
   }
 }

@@ -102,7 +102,7 @@ export class GatewayBridge {
     }
 
     if (this.permissionCoordinator
-      && await this.permissionCoordinator.tryHandleReply(msg.channelId, msg.userId, msg.text)) {
+      && await this.permissionCoordinator.tryHandleReply(msg.channelId, msg.userId, msg.conversationId, msg.text)) {
       return
     }
 
@@ -239,6 +239,7 @@ export class GatewayBridge {
       sessionId: session.coreSessionId,
       channelId: msg.channelId,
       userId: msg.userId,
+      conversationId: msg.conversationId,
       sendText: text => this.send(channel, {
         conversationId: msg.conversationId,
         userId: msg.userId,

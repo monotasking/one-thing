@@ -1586,6 +1586,7 @@ export function createClaudeCodeConnector(
         try {
           hostTools = await options.hostToolSurface({
             localSessionId: request.localSessionId,
+            ...(request.executionContext === undefined ? {} : { executionContext: request.executionContext }),
             ...(request.messageId ? { messageId: request.messageId } : {}),
             cwd: request.cwd,
           })

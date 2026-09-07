@@ -122,6 +122,15 @@ async function writeFileEnsured(filePath: string, content: string): Promise<void
 // time, so self-writes are remembered briefly and skipped by the watcher.
 const SELF_WRITE_TTL_MS = 2_000
 
+/** Directory lookup is a pure query; it does not require opening a writable store. */
+export function resolveOnethingTodoPlanDirectory(storePath: string, configuredDirectory?: string): string {
+  const configured = configuredDirectory?.trim()
+  if (!configured) return path.join(storePath, 'todo-plan')
+  return configured === '~' || configured.startsWith('~/')
+    ? path.join(os.homedir(), configured.slice(2))
+    : configured
+}
+
 export class OnethingTodoPlanStore {
   private readonly selfWrites = new Map<string, number>()
 
@@ -156,11 +165,7 @@ export class OnethingTodoPlanStore {
   }
 
   getDirectory(): string {
-    const configured = this.options.getConfiguredDirectory?.()?.trim()
-    if (!configured) return path.join(this.options.getDefaultStorePath(), 'todo-plan')
-    return configured === '~' || configured.startsWith('~/')
-      ? path.join(os.homedir(), configured.slice(2))
-      : configured
+    return resolveOnethingTodoPlanDirectory(this.options.getDefaultStorePath(), this.options.getConfiguredDirectory?.())
   }
 
   async readSnapshot(context: TodoPlanContext = {}): Promise<TodoPlanSnapshot> {

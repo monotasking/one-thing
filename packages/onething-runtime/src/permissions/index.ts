@@ -61,6 +61,7 @@ export {
   unregisterCapability,
   configurePermissionGrantStorage,
   listSessionGrants,
+  findWorkspaceGrant,
   listWorkspaceGrants,
   matchGrant,
   resetPermissionGrantsForTests,

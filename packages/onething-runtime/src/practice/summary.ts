@@ -1,36 +1,25 @@
 import type { OnethingPracticeLedger } from './ledger.js'
 import type { OnethingPracticeLedgerRecord } from './types.js'
 
-export type OnethingPracticeSummaryGranularity = 'day' | 'week' | 'month'
+import type {
+  OnethingPracticeSummaryGranularity,
+  OnethingPracticeCategoryStat,
+  OnethingPracticeExerciseStat,
+  OnethingPracticeBucket,
+  OnethingPracticeSummaryResult,
+} from '@shared/contracts/practice.js'
+export type {
+  OnethingPracticeSummaryGranularity,
+  OnethingPracticeCategoryStat,
+  OnethingPracticeExerciseStat,
+  OnethingPracticeBucket,
+  OnethingPracticeSummaryResult,
+} from '@shared/contracts/practice.js'
 
 const DEFAULT_BUCKET_COUNT: Record<OnethingPracticeSummaryGranularity, number> = {
   day: 14,
   week: 12,
   month: 12,
-}
-
-export interface OnethingPracticeCategoryStat {
-  key: string
-  sessions: number
-  minutes: number
-}
-
-export interface OnethingPracticeExerciseStat {
-  key: string
-  entries: number
-  sets: number
-  reps: number
-  durationMin: number
-}
-
-export interface OnethingPracticeBucket {
-  bucketKey: string
-  startTs: number
-  endTs: number
-  records: number
-  kegel: { sessions: number; completedSessions: number; reps: number }
-  pomodoro: { sessions: number; completedSessions: number; minutes: number; byCategory: OnethingPracticeCategoryStat[] }
-  exercise: { entries: number; byName: OnethingPracticeExerciseStat[] }
 }
 
 export interface OnethingPracticeSummaryRequest {
@@ -40,10 +29,6 @@ export interface OnethingPracticeSummaryRequest {
   now?: number
 }
 
-export interface OnethingPracticeSummaryResult {
-  granularity: OnethingPracticeSummaryGranularity
-  buckets: OnethingPracticeBucket[]
-}
 
 function startOfLocalDay(ts: number): number {
   const d = new Date(ts)

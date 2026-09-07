@@ -44,6 +44,29 @@ function createHarness() {
 }
 
 describe('MusicSetupService', () => {
+  it('closes admission and drains a real backend promise without late state emissions or new probes', async () => {
+    const h = createHarness()
+    let release!: () => void
+    const pending = new Promise<void>(resolve => { release = resolve })
+    h.backend.checkEnv.mockImplementationOnce(async () => {
+      await pending
+      return { tools: { 'ncm-cli': { installed: true } }, npmAvailable: false, brewAvailable: false }
+    })
+    const probing = h.service.refreshEnv()
+    h.service.dispose()
+    let drained = false
+    const closing = h.service.drain().then(() => { drained = true })
+    await Promise.resolve()
+    expect(drained).toBe(false)
+    await expect(h.service.checkLogin()).rejects.toThrow('shutting down')
+    expect(() => h.service.setSource('fm')).toThrow('shutting down')
+    release()
+    await probing
+    await closing
+    expect(h.backend.checkLogin).not.toHaveBeenCalled()
+    expect(h.events).toEqual([])
+    expect(h.backend.cancelLogin).toHaveBeenCalledOnce()
+  })
   it('walks the setup stages as prerequisites are met', async () => {
     const harness = createHarness()
     harness.backend.checkEnv.mockResolvedValueOnce({

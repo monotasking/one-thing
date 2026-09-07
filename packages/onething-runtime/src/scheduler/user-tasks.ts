@@ -9,6 +9,8 @@ export interface OnethingSchedulerUserTaskLogger {
 }
 
 export interface OnethingSchedulerUserTask {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
   id: string
   name: string
   prompt: string
@@ -110,9 +112,13 @@ export class OnethingSchedulerUserTaskStore {
     return this.list().find(task => task.id === id)
   }
 
-  create(input: OnethingSchedulerCreateTaskRequest): OnethingSchedulerUserTask {
+  create(input: OnethingSchedulerCreateTaskRequest, owner?: { userId: string; workspaceId: string }): OnethingSchedulerUserTask {
     const file = this.readTasksFile()
     const task = this.validateTaskInput(input)
+    if (owner) {
+      task.ownerUserId = owner.userId
+      task.ownerWorkspaceId = owner.workspaceId
+    }
     file.tasks.push(task)
     this.writeTasksFile(file)
     return task
@@ -188,6 +194,8 @@ export class OnethingSchedulerUserTaskStore {
           : {}),
         createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : this.nowMs(),
         updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : this.nowMs(),
+        ...(typeof raw.ownerUserId === 'string' ? { ownerUserId: raw.ownerUserId } : {}),
+        ...(typeof raw.ownerWorkspaceId === 'string' ? { ownerWorkspaceId: raw.ownerWorkspaceId } : {}),
       }
     } catch {
       return null
@@ -227,6 +235,8 @@ export class OnethingSchedulerUserTaskStore {
       ...(workingDirectory ? { workingDirectory } : {}),
       createdAt: current?.createdAt ?? timestamp,
       updatedAt: timestamp,
+      ...(current?.ownerUserId !== undefined ? { ownerUserId: current.ownerUserId } : {}),
+      ...(current?.ownerWorkspaceId !== undefined ? { ownerWorkspaceId: current.ownerWorkspaceId } : {}),
     }
   }
 

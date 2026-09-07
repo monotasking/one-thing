@@ -49,8 +49,16 @@ function safeJsonLine(value: unknown): string {
 }
 
 export interface OnethingUsageLedgerOptions {
-  ledgerDir?: string | (() => string)
+  /**
+   * 账本目录 —— **一个字符串,创建那一刻定死**(工单 4 C7)。
+   *
+   * 从前签名是 `string | (() => string)`,而构造函数当场就把函数调掉了:惰性的
+   * 签名 + 立即的求值 = 一个骗人的类型。调用方会以为「每次写都重新问一次目录」
+   * 于是把切库写成传个 getter,实际上换库对它毫无作用。想换目录就换一台账本。
+   */
+  ledgerDir?: string
   now?: () => number
+  assertOwned?: () => void
 }
 
 /**
@@ -59,33 +67,72 @@ export interface OnethingUsageLedgerOptions {
  * aggregation is computed by scanning records, not stored separately.
  */
 export class OnethingUsageLedger {
-  private readonly ledgerDirSource: string | (() => string)
+  private readonly ledgerDir: string
   private readonly now: () => number
+  private readonly assertOwned: () => void
   private writeBuffer: string[] = []
   private flushTimer: NodeJS.Timeout | null = null
   private lastError: string | undefined
   private pendingFlush: Promise<void> | null = null
+  private closed = false
+  private closing: Promise<void> | null = null
+  private failure: unknown
 
   constructor(options: OnethingUsageLedgerOptions = {}) {
-    this.ledgerDirSource = options.ledgerDir ?? (() => path.join(process.cwd(), '.onething', 'usage'))
+    this.ledgerDir = options.ledgerDir ?? path.join(process.cwd(), '.onething', 'usage')
     this.now = options.now ?? Date.now
+    this.assertOwned = options.assertOwned ?? (() => {})
   }
 
   getLedgerDir(): string {
-    return typeof this.ledgerDirSource === 'function' ? this.ledgerDirSource() : this.ledgerDirSource
+    return this.ledgerDir
   }
 
   /** Builds the full record (cost calc, defaults) and queues it for append. */
+  assertWritable(): void {
+    if (this.closed) throw new Error('Usage ledger is closed')
+    this.assertOwned()
+    if (this.failure) throw this.failure
+  }
+
+  /**
+   * 记一笔。**会抛**:账本已关、不归这台拥有、或先前一次落盘失败留下的粘住错误。
+   *
+   * 抛是对的 —— 悄悄吞掉的账等于账错了。它成立的前提是**每一个调用方都接得住**,
+   * 这一条 2026-09-07 逐个核实过:`recordUsage` 的四条真路(chat 流
+   * `agent-loop-executor`、side-line 计费 `bill-side-line`、协作摘要 `digest-runner`、
+   * 评估 `provider-adapter`)全部包在 try/catch 里并记 `record usage failed`,
+   * 计费失败不会打断聊天流。新加调用方要么照做,要么把这里降回 warn。
+   */
   record(input: OnethingUsageRecordInput): OnethingUsageLedgerRecord {
+    this.assertWritable()
     const record = buildOnethingUsageLedgerRecord(input, this.now)
     this.queueWrite(record)
     return record
   }
 
   /** Waits for any buffered writes to hit disk. Call before reading for consistency. */
-  async flush(): Promise<void> {
-    if (this.pendingFlush) await this.pendingFlush
-    await this.flushNow()
+  flush(): Promise<void> {
+    if (this.flushTimer) clearTimeout(this.flushTimer)
+    this.flushTimer = null
+    const task = (this.pendingFlush ?? Promise.resolve()).then(async () => {
+      if (this.failure) throw this.failure
+      await this.flushNow()
+    })
+    this.pendingFlush = task
+    void task.catch(error => {
+      this.failure = error
+      this.lastError = error instanceof Error ? error.message : String(error)
+    })
+    return task
+  }
+
+  /** Close only after producers have drained; accepted records are still flushed. */
+  close(): Promise<void> {
+    if (this.closing) return this.closing
+    this.closed = true
+    this.closing = this.flush()
+    return this.closing
   }
 
   getLastError(): string | undefined {
@@ -132,15 +179,14 @@ export class OnethingUsageLedger {
     if (!this.flushTimer) {
       this.flushTimer = setTimeout(() => {
         this.flushTimer = null
-        this.pendingFlush = this.flushNow().catch(error => {
-          this.lastError = error instanceof Error ? error.message : String(error)
-        })
+        void this.flush().catch(() => {})
       }, FLUSH_INTERVAL_MS)
       this.flushTimer.unref?.()
     }
   }
 
   private async flushNow(): Promise<void> {
+    if (this.writeBuffer.length) this.assertOwned()
     const lines = this.writeBuffer.splice(0)
     if (lines.length === 0) return
     const byFile = new Map<string, string[]>()
@@ -154,6 +200,7 @@ export class OnethingUsageLedger {
     const dir = this.getLedgerDir()
     await fsp.mkdir(dir, { recursive: true })
     for (const [fileName, fileLines] of byFile) {
+      this.assertOwned()
       await fsp.appendFile(path.join(dir, fileName), `${fileLines.join('\n')}\n`, 'utf-8')
     }
   }

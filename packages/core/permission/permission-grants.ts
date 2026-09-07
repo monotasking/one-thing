@@ -247,6 +247,12 @@ export function listWorkspaceGrants(workspaceRoot: string, owner: PermissionGran
   ))
 }
 
+/** Application authorization needs the grant's resource and owner before revocation. */
+export function findWorkspaceGrant(grantId: string): PermissionGrant | undefined {
+  const grant = loadWorkspaceGrants().find(item => item.id === grantId)
+  return grant ? { ...grant } : undefined
+}
+
 export function clearWorkspaceGrants(workspaceRoot: string, owner: PermissionGrantOwner = {}): void {
   const root = normalizeRoot(workspaceRoot)
   workspaceGrantsCache = loadWorkspaceGrants().filter(grant => (

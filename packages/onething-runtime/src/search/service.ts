@@ -43,6 +43,7 @@ import {
   type SearchCapability,
   type SearchContext,
   type SearchPrincipal,
+  type SearchQuery,
 } from '@onething/core/search'
 import type { OnethingSearchProvidersAdapters } from './providers.js'
 import { createBuiltinSearchCapabilities } from './capabilities/index.js'
@@ -213,6 +214,10 @@ function itemCandidate(item: SearchPreviewItem): Candidate {
 }
 
 export interface SearchServiceOptions {
+  authorization?: {
+    query(capability: string, query: SearchQuery, context: SearchContext): SearchQuery | Promise<SearchQuery>
+    targets(capability: string, items: readonly SearchPreviewItem[], context: SearchContext, actionId?: string): void | Promise<void>
+  }
   registry?: CapabilityRegistry
   /** 候选逃出可见范围时的报警口(§6.4b 的兜底核验)。 */
   warn?: (message: string, detail: Record<string, unknown>) => void
@@ -225,6 +230,7 @@ const DEFAULT_PRINCIPAL: SearchPrincipal = { kind: 'user', id: 'local' }
 export function createSearchContext(partial: Partial<SearchContext> = {}): SearchContext {
   return {
     principal: partial.principal ?? DEFAULT_PRINCIPAL,
+    executionContext: partial.executionContext,
     surface: partial.surface ?? DEFAULT_SEARCH_SURFACE,
     spaceId: partial.spaceId ?? '',
     signal: partial.signal ?? new AbortController().signal,
@@ -234,12 +240,14 @@ export function createSearchContext(partial: Partial<SearchContext> = {}): Searc
 }
 
 export class OnethingSearchService {
+  private readonly authorization: SearchServiceOptions['authorization']
   readonly registry: CapabilityRegistry
   private readonly warn: SearchServiceOptions['warn']
   private readonly now: () => number
   private readonly index: SearchIndexQueryFace | undefined
 
   constructor(options: SearchServiceOptions & { index?: SearchIndexQueryFace } = {}) {
+    this.authorization = options.authorization
     this.registry = options.registry ?? createCapabilityRegistry()
     this.warn = options.warn
     this.now = options.now ?? (() => Date.now())
@@ -248,7 +256,14 @@ export class OnethingSearchService {
 
   /** 一行注册,返回注销(§4.3)。插件能力用的就是它。 */
   register(capability: SearchCapability): () => void {
-    return this.registry.register(capability)
+    const authorization = this.authorization
+    if (!authorization) return this.registry.register(capability)
+    return this.registry.register({
+      ...capability,
+      search: async (query, page, context) => capability.search(
+        await authorization.query(capability.manifest.id, query, context), page, context,
+      ),
+    })
   }
 
   /**
@@ -368,11 +383,15 @@ export class OnethingSearchService {
     items: readonly SearchPreviewItem[],
     mode: SearchPreviewMode = 'single',
     options: PreviewOptions = {},
+    context: Partial<SearchContext> = {},
   ): Promise<PreviewPayload> {
+    const ctx = createSearchContext(context)
+    // Validate the complete batch before any provider reads a body.
+    for (const item of items) await this.authorization?.targets(item.capability, [item], ctx)
     if (items.length === 0) throw new Error('没有指定要预览哪一条')
-    if (mode === 'compare') return await this.comparePreview(items, options)
-    if (mode === 'batch') return await this.batchPreview(items, options)
-    return await this.previewOne(items[0], options)
+    if (mode === 'compare') return await this.comparePreview(items, options, ctx)
+    if (mode === 'batch') return await this.batchPreview(items, options, ctx)
+    return await this.previewOne(items[0], options, ctx)
   }
 
   /**
@@ -391,40 +410,44 @@ export class OnethingSearchService {
     items: readonly SearchPreviewItem[],
     context: Partial<SearchContext> = {},
   ): Promise<void> {
+    const ctx = createSearchContext(context)
+    await this.authorization?.targets(capabilityId, items, ctx, actionId)
     const capability = this.registry.get(capabilityId)
     if (capability === undefined) throw new Error(`no such capability: ${capabilityId}`)
     if (capability.invoke === undefined) throw new Error(NO_SUCH_ACTION)
-    await capability.invoke(actionId, items.map(itemCandidate), createSearchContext(context))
+    await capability.invoke(actionId, items.map(itemCandidate), ctx)
   }
 
   /** 一条 item → 它那个能力的预览。`options` 里那格查询词原样递下去(高亮同产地)。 */
   private async previewOne(
     item: SearchPreviewItem,
     options: PreviewOptions = {},
+    context: SearchContext = createSearchContext(),
   ): Promise<PreviewPayload> {
     const capability = this.registry.get(item.capability)
     if (capability === undefined) throw new Error(`no such capability: ${item.capability}`)
     if (capability.preview === undefined) {
       throw new NoPreviewError(item.capability)
     }
-    return await capability.preview([itemCandidate(item)], createSearchContext(), options)
+    return await capability.preview([itemCandidate(item)], context, options)
   }
 
   private async comparePreview(
     items: readonly SearchPreviewItem[],
     options: PreviewOptions = {},
+    context: SearchContext = createSearchContext(),
   ): Promise<PreviewPayload> {
     const [a, b] = items
-    if (b === undefined) return await this.previewOne(a, options)
+    if (b === undefined) return await this.previewOne(a, options, context)
     // 能力自己给的 `compare` 只在**同一个能力、同一种 kind**时才问得着:diff 一条
     // 消息和一个文件没有意义,而「可比」的判据(§4.5 ③)是壳与这一层的事。
     if (a.capability === b.capability && a.target?.kind === b.target?.kind) {
       const capability = this.registry.get(a.capability)
       if (capability?.compare !== undefined) {
-        return await capability.compare(itemCandidate(a), itemCandidate(b), createSearchContext())
+        return await capability.compare(itemCandidate(a), itemCandidate(b), context)
       }
     }
-    const both = await Promise.all([this.previewOne(a, options), this.previewOne(b, options)])
+    const both = await Promise.all([this.previewOne(a, options, context), this.previewOne(b, options, context)])
     return { kind: 'composite', payload: { layout: 'side-by-side', items: both } }
   }
 
@@ -437,9 +460,10 @@ export class OnethingSearchService {
   private async batchPreview(
     items: readonly SearchPreviewItem[],
     options: PreviewOptions = {},
+    context: SearchContext = createSearchContext(),
   ): Promise<PreviewPayload> {
     const settled = await Promise.all(
-      items.map(item => this.previewOne(item, options).then(payload => payload, () => undefined)),
+      items.map(item => this.previewOne(item, options, context).then(payload => payload, () => undefined)),
     )
     const previews = settled.filter((payload): payload is PreviewPayload => payload !== undefined)
     const kinds = [...new Set(previews.map(payload => payload.kind))]

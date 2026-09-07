@@ -102,6 +102,9 @@ export const INDEX_DOCUMENT_EFFECTS: Record<SessionLogEventType, boolean> = {
   'tool/call': true,
 
   // ---- 只折进投影,产出逐字不变 ----
+  'auxiliary-model/intent': false,
+  'auxiliary-model/result': false,
+  'external/execution': false,
   'assistant/chunks': false,
   'assistant/part-end': false,
   'assistant/first-token': false,

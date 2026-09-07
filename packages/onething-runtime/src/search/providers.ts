@@ -24,7 +24,13 @@
  * 那一侧的取材面是 per-owner 的,组不出进程单例。
  */
 
+import type { SearchContext } from '@onething/core/search'
+
 export interface OnethingSearchSessionMeta {
+  ownerUserId?: string
+  ownerWorkspaceId?: string
+  userId?: string
+  workingDirectory?: string
   id: string
   name?: string
   previewText?: string
@@ -103,6 +109,8 @@ export interface OnethingSearchListFilesOptions {
 }
 
 export interface OnethingSearchProvidersAdapters {
+  /** Host-authorized roots for this captured request, before file enumeration. */
+  getSearchDirectories?(context: SearchContext): string[]
   getSessionsList(): OnethingSearchSessionMeta[]
   /**
    * 按会话取消息(`messages` 那一类的**预览**要读命中那条前后各两条)。

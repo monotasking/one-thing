@@ -29,7 +29,7 @@ export interface NotebookToolResult {
 }
 
 export interface NotebookToolAdapters extends CollabToolAdapters {
-  append(input: { sessionId: string; note: string }): Promise<NotebookToolResult>
+  append(input: { sessionId: string; note: string }, executionContext?: unknown): Promise<NotebookToolResult>
 }
 
 /** 单次写入的字符上限。落盘那一侧按同一个数截并声明。 */
@@ -72,7 +72,7 @@ export class NotebookTool extends CollabTool<NotebookInput> {
   }
 
   protected async perform(scope: CollabScope<NotebookInput>, ctx: RunContext): Promise<Result> {
-    const result = await this.adapters.append({ sessionId: scope.sessionId, note: scope.input.note })
+    const result = await this.adapters.append({ sessionId: scope.sessionId, note: scope.input.note }, ctx.invocation.executionContext)
 
     if (!result.ok) {
       return this.done(ctx, 'Notebook — 记不了', result.error ?? '这条笔记没能记下来。', { ok: false })

@@ -3,6 +3,7 @@ import { SESSION_COMMAND_TYPES } from '../events/session-command-types.js'
 import type { SessionCommandType } from '../events/session-command-types.js'
 import type { Unsubscribe } from '../events/types.js'
 import { PendingMessageQueue } from './message-queue.js'
+import { isAgentExecutionCheckpointError } from '../agent-loop/errors.js'
 import type { PendingMessage } from './message-queue.js'
 import { getCoreLogger } from '../logging/index.js'
 import type { CoreInitialToolChoice } from './stream-executor.js'
@@ -44,6 +45,11 @@ const log = getCoreLogger('core.engine')
 export interface CoreCommandEnvelope<TCommand = unknown> {
   sessionId: string
   event: TCommand
+  readonly executionContext?: unknown
+}
+
+export interface CoreExecutionOptions {
+  readonly executionContext?: unknown
 }
 
 export interface AbortLikeCommand {
@@ -208,7 +214,10 @@ export interface CoreStreamErrorInfo {
 }
 
 export interface CoreStreamEngineOptions {
+  authorizeExecution?: (sessionId: string, executionContext: unknown) => void
   normalizeStreamError?: (error: Error) => CoreStreamErrorInfo
+  assertAccepting?: (sessionId?: string) => void
+  prepareSession?: (sessionId: string) => Promise<void>
 }
 
 /**
@@ -423,6 +432,39 @@ export class CoreStreamEngine<
   TCompactResult extends CoreContextCompactResultLike = CoreContextCompactResultLike,
 > {
   protected activeStreams = new Map<string, AbortController>()
+  private readonly activeExecutions = new Map<string, Set<Promise<void>>>()
+
+  /** Tracks preparation and final recorder writes, independently of controller replacement. */
+  protected trackSessionExecution<T>(sessionId: string, work: () => Promise<T>): Promise<T> {
+    let settled!: () => void
+    const drained = new Promise<void>(resolve => { settled = resolve })
+    const executions = this.activeExecutions.get(sessionId) ?? new Set<Promise<void>>()
+    this.activeExecutions.set(sessionId, executions)
+    executions.add(drained)
+    let pending: Promise<T>
+    try { pending = work() } catch (error) { pending = Promise.reject(error) }
+    return pending.finally(() => {
+      executions.delete(drained)
+      if (executions.size === 0 && this.activeExecutions.get(sessionId) === executions) this.activeExecutions.delete(sessionId)
+      settled()
+    })
+  }
+
+  private async drainSessionExecutions(sessionId?: string): Promise<void> {
+    for (;;) {
+      const pending = sessionId === undefined
+        ? [...this.activeExecutions.values()].flatMap(executions => [...executions])
+        : [...(this.activeExecutions.get(sessionId) ?? [])]
+      if (pending.length === 0) return
+      await Promise.all(pending)
+    }
+  }
+
+  /** Admission must already be closed for this session before a destructive caller invokes this. */
+  async abortAndDrain(sessionId: string): Promise<void> {
+    this.abort(sessionId, 'Session is closing')
+    await this.drainSessionExecutions(sessionId)
+  }
   protected sessionChannels = new Map<string, string>()
   protected eventBus: TEventBus | null = null
   protected commandTarget: TCommandTarget | null = null
@@ -454,6 +496,7 @@ export class CoreStreamEngine<
   }
 
   followUpMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
+    this.assertAccepting(sessionId)
     const queue = this.getFollowUpQueue(sessionId)
     queue.enqueue({
       content,
@@ -497,6 +540,7 @@ export class CoreStreamEngine<
   }
 
   registerController(sessionId: string, controller: AbortController): void {
+    this.assertAccepting(sessionId)
     const existing = this.activeStreams.get(sessionId)
     if (existing) {
       this.log(`Aborting previous stream for session: ${sessionId}`)
@@ -506,7 +550,8 @@ export class CoreStreamEngine<
     this.activeStreams.set(sessionId, controller)
   }
 
-  removeController(sessionId: string): void {
+  removeController(sessionId: string, expectedController?: AbortController): void {
+    if (expectedController && this.activeStreams.get(sessionId) !== expectedController) return
     this.activeStreams.delete(sessionId)
     this.sessionChannels.delete(sessionId)
   }
@@ -526,7 +571,7 @@ export class CoreStreamEngine<
     return Boolean(controller)
   }
 
-  abortAll(): void {
+  abortAll(): Promise<void> {
     if (this.activeStreams.size > 0) {
       this.log(`Aborting ${this.activeStreams.size} active stream(s)`)
       for (const [sessionId, controller] of this.activeStreams) {
@@ -537,10 +582,11 @@ export class CoreStreamEngine<
       this.activeStreams.clear()
       this.sessionChannels.clear()
     }
+    return this.drainSessionExecutions()
   }
 
   shutdown(): void {
-    this.abortAll()
+    void this.abortAll()
     this.unsubscribeCommands()
     this.steeringQueues.clear()
     this.followUpQueues.clear()
@@ -568,23 +614,23 @@ export class CoreStreamEngine<
       [SESSION_COMMAND_TYPES.SEND_MESSAGE]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
-        this.handleSendMessage(envelope.sessionId, envelope.event as SendMessageCommandLike, target)
+        this.handleSendMessage(envelope.sessionId, envelope.event as SendMessageCommandLike, target, envelope)
           .catch(err => this.logError(`${SESSION_COMMAND_TYPES.SEND_MESSAGE} error:`, err))
       },
       [SESSION_COMMAND_TYPES.EDIT_AND_RESEND]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
-        this.handleEditAndResend(envelope.sessionId, envelope.event as EditAndResendCommandLike, target)
+        this.handleEditAndResend(envelope.sessionId, envelope.event as EditAndResendCommandLike, target, envelope)
           .catch(err => this.logError(`${SESSION_COMMAND_TYPES.EDIT_AND_RESEND} error:`, err))
       },
       [SESSION_COMMAND_TYPES.RETRY_MESSAGE]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
-        this.handleRetryMessage(envelope.sessionId, envelope.event as RetryMessageCommandLike, target)
+        this.handleRetryMessage(envelope.sessionId, envelope.event as RetryMessageCommandLike, target, envelope)
           .catch(err => this.logError(`${SESSION_COMMAND_TYPES.RETRY_MESSAGE} error:`, err))
       },
       [SESSION_COMMAND_TYPES.COMPACT_CONTEXT]: (envelope) => {
-        this.handleCompactContext(envelope.sessionId, envelope.event as CompactContextCommandLike)
+        this.handleCompactContext(envelope.sessionId, envelope.event as CompactContextCommandLike, envelope)
           .catch(err => this.logError(`${SESSION_COMMAND_TYPES.COMPACT_CONTEXT} error:`, err))
       },
       [SESSION_COMMAND_TYPES.ABORT]: (envelope) => {
@@ -593,7 +639,7 @@ export class CoreStreamEngine<
       [SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM]: (envelope) => {
         const target = this.commandTarget
         if (!target) return
-        this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommandLike, target)
+        this.handleResumeAfterConfirm(envelope.sessionId, envelope.event as ResumeAfterConfirmCommandLike, target, envelope)
           .catch(err => this.logError(`${SESSION_COMMAND_TYPES.RESUME_AFTER_CONFIRM} error:`, err))
       },
       [SESSION_COMMAND_TYPES.INJECT_STEERING]: (envelope) => {
@@ -614,7 +660,10 @@ export class CoreStreamEngine<
   protected subscribeToCommands(eventBus: TEventBus): void {
     for (const [commandType, handler] of Object.entries(this.buildCommandHandlers())) {
       if (!handler) continue
-      this.unsubs.push(eventBus.onAnySession(commandType, handler, 'StreamEngine'))
+      this.unsubs.push(eventBus.onAnySession(commandType, envelope => {
+        if (commandType !== SESSION_COMMAND_TYPES.ABORT) this.assertAccepting(envelope.sessionId)
+        handler(envelope)
+      }, 'StreamEngine'))
     }
   }
 
@@ -664,6 +713,29 @@ export class CoreStreamEngine<
     private readonly options: CoreStreamEngineOptions = {},
   ) {}
 
+  protected assertAccepting(sessionId?: string): void {
+    this.options.assertAccepting?.(sessionId)
+  }
+
+  protected authorizeExecution(sessionId: string, executionContext?: unknown): void {
+    this.options.authorizeExecution?.(sessionId, executionContext)
+  }
+
+  /**
+   * 工单 5 §4(triage B8/D4):这里**不再授权**。
+   *
+   * 授权("这个主体能不能写这条会话")是**入口**的事,而这一步是五条命令共用的
+   * 准备段 —— 从前它在 `prepareSession` 前后各判一次,加上产品层入口自己那一次,
+   * 一次发送要跑三到四遍同一个谓词。归属在一次执行里不会变,所以重复判只是重复
+   * 读:真正随 `await` 变化的是"这条会话还收不收活",那由留下来的两次
+   * `assertAccepting` 判 —— 它们一个字没动。
+   */
+  private async prepareSessionExecution(sessionId: string): Promise<void> {
+    this.assertAccepting(sessionId)
+    await this.options.prepareSession?.(sessionId)
+    this.assertAccepting(sessionId)
+  }
+
   protected get store(): StreamEngineStoreAdapter<TSettings, TSession, TMessage> {
     return this.runtime.store
   }
@@ -677,6 +749,7 @@ export class CoreStreamEngine<
   }
 
   steerMessage(sessionId: string, content: string, source = 'api', origin?: unknown): void {
+    this.assertAccepting(sessionId)
     const queue = this.getSteeringQueue(sessionId)
     const timestamp = this.now()
 
@@ -806,11 +879,18 @@ export class CoreStreamEngine<
     }
   }
 
-  async handleSendMessage(
+  handleSendMessage(sessionId: string, cmd: SendMessageCommandLike, sender: TCommandTarget, options: CoreExecutionOptions = {}): Promise<void> {
+    this.authorizeExecution(sessionId, options.executionContext)
+    return this.trackSessionExecution(sessionId, () => this.performSendMessage(sessionId, cmd, sender, options))
+  }
+
+  protected async performSendMessage(
     sessionId: string,
     cmd: SendMessageCommandLike,
     sender: TCommandTarget,
+    options: CoreExecutionOptions,
   ): Promise<void> {
+    this.assertAccepting(sessionId)
     /**
      * 忙时闸门(2026-08-17)。一个会话同一时刻只有一条流:这里之前对
      * `activeStreams` 不闻不问,第二条 send-message 会 `registerController` 把
@@ -842,6 +922,7 @@ export class CoreStreamEngine<
       // P2:持久化任何消息之前先等压缩收尾。从前用户消息**先落库**再撞
       // activeCompactions,那一轮就永远不会有回应。
       await this.waitForCompactionIdle(sessionId)
+      await this.prepareSessionExecution(sessionId)
 
       const sessionForRefs = this.store.getSession(sessionId)
       const settingsForRefs = this.store.getSettings()
@@ -898,6 +979,9 @@ export class CoreStreamEngine<
       if (cmd.persistOnly) return
 
       if ((isFirstUserMessage || isBranchFirstMessage) && !cmd.suppressTitleGeneration) {
+        // 标题是**发后不管**的旁路(工单 4 A1,回 HEAD 形状):它自己是一次模型
+        // 调用,`await` 它等于让新会话第一条消息在标题模型跑完之前一个字都不出。
+        // 失败只记日志,不进主路的错误面。
         this.generateAndApplySessionTitle(
           sessionId,
           resolvedPromptRefs.displayContent,
@@ -976,6 +1060,7 @@ export class CoreStreamEngine<
       const sessionName = sessionForHistory?.name
 
       await this.runtime.streams.executeMessageStream({
+        executionContext: options.executionContext,
         sender, sessionId, assistantMessageId, messageContent: resolvedPromptRefs.modelContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName,
@@ -999,6 +1084,7 @@ export class CoreStreamEngine<
       const streamError = this.normalizeStreamError(error)
       this.logError('handleSendMessage error:', streamError.error)
       this.emitStreamError(sessionId, streamError.message)
+      if (isAgentExecutionCheckpointError(error)) throw error
     }
   }
 
@@ -1076,10 +1162,18 @@ export class CoreStreamEngine<
     })
   }
 
-  async handleCompactContext(
+  handleCompactContext(sessionId: string, cmd: CompactContextCommandLike, options: CoreExecutionOptions = {}): Promise<void> {
+    // 授权在入口判一次(工单 5 §4);这两条入口产品层没有覆写,所以它归这里。
+    this.authorizeExecution(sessionId, options.executionContext)
+    return this.trackSessionExecution(sessionId, () => this.performCompactContext(sessionId, cmd, options))
+  }
+
+  private async performCompactContext(
     sessionId: string,
     cmd: CompactContextCommandLike,
+    options: CoreExecutionOptions,
   ): Promise<void> {
+    this.assertAccepting(sessionId)
     if (this.activeStreams.has(sessionId)) {
       await this.eventBus?.emit(sessionId, {
         type: SESSION_EVENT_TYPES.CONTEXT_COMPACT_COMPLETED,
@@ -1105,6 +1199,7 @@ export class CoreStreamEngine<
     const release = this.openCompactionGate(sessionId)
 
     try {
+      await this.prepareSessionExecution(sessionId)
       const resolved = await this.resolveProvider(sessionId)
       if (!resolved) {
         await this.eventBus?.emit(sessionId, {
@@ -1147,17 +1242,25 @@ export class CoreStreamEngine<
     }
   }
 
-  async handleEditAndResend(
+  handleEditAndResend(sessionId: string, cmd: EditAndResendCommandLike, sender: TCommandTarget, options: CoreExecutionOptions = {}): Promise<void> {
+    this.authorizeExecution(sessionId, options.executionContext)
+    return this.trackSessionExecution(sessionId, () => this.performEditAndResend(sessionId, cmd, sender, options))
+  }
+
+  protected async performEditAndResend(
     sessionId: string,
     cmd: EditAndResendCommandLike,
     sender: TCommandTarget,
+    options: CoreExecutionOptions,
   ): Promise<void> {
+    this.assertAccepting(sessionId)
     this.sessionChannels.set(sessionId, cmd.channel || 'ipc')
     const { messageId, newContent } = cmd
 
     try {
       // P2 入口闸(见 handleSendMessage):truncate 也是一次持久化。
       await this.waitForCompactionIdle(sessionId)
+      await this.prepareSessionExecution(sessionId)
 
       const sessionForRefs = this.store.getSession(sessionId)
       const settingsForRefs = this.store.getSettings()
@@ -1231,6 +1334,7 @@ export class CoreStreamEngine<
 
       await this.runtime.streams.executeMessageStream({
         sender, sessionId, assistantMessageId,
+        executionContext: options.executionContext,
         messageContent: resolvedPromptRefs.modelContent,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
@@ -1243,19 +1347,28 @@ export class CoreStreamEngine<
       const streamError = this.normalizeStreamError(error)
       this.logError('handleEditAndResend error:', streamError.error)
       this.emitStreamError(sessionId, streamError.message)
+      if (isAgentExecutionCheckpointError(error)) throw error
     }
   }
 
-  async handleRetryMessage(
+  handleRetryMessage(sessionId: string, cmd: RetryMessageCommandLike, sender: TCommandTarget, options: CoreExecutionOptions = {}): Promise<void> {
+    this.authorizeExecution(sessionId, options.executionContext)
+    return this.trackSessionExecution(sessionId, () => this.performRetryMessage(sessionId, cmd, sender, options))
+  }
+
+  protected async performRetryMessage(
     sessionId: string,
     cmd: RetryMessageCommandLike,
     sender: TCommandTarget,
+    options: CoreExecutionOptions,
   ): Promise<void> {
+    this.assertAccepting(sessionId)
     const { messageId } = cmd
 
     try {
       // P2 入口闸(见 handleSendMessage)。
       await this.waitForCompactionIdle(sessionId)
+      await this.prepareSessionExecution(sessionId)
 
       const targetMessage = this.store.getMessage(sessionId, messageId)
       if (!targetMessage) {
@@ -1336,6 +1449,7 @@ export class CoreStreamEngine<
 
       await this.runtime.streams.executeMessageStream({
         sender, sessionId, assistantMessageId, messageContent,
+        executionContext: options.executionContext,
         historyMessages, configWithApiKey, providerId, settings,
         toolSettings: settings.tools, sessionName: session?.name,
         runKind: 'retry',
@@ -1347,6 +1461,7 @@ export class CoreStreamEngine<
       const streamError = this.normalizeStreamError(error)
       this.logError('handleRetryMessage error:', streamError.error)
       this.emitStreamError(sessionId, streamError.message)
+      if (isAgentExecutionCheckpointError(error)) throw error
     }
   }
 
@@ -1396,16 +1511,24 @@ export class CoreStreamEngine<
     }
   }
 
-  async handleResumeAfterConfirm(
+  handleResumeAfterConfirm(sessionId: string, cmd: ResumeAfterConfirmCommandLike, sender: TCommandTarget, options: CoreExecutionOptions = {}): Promise<void> {
+    this.authorizeExecution(sessionId, options.executionContext)
+    return this.trackSessionExecution(sessionId, () => this.performResumeAfterConfirm(sessionId, cmd, sender, options))
+  }
+
+  private async performResumeAfterConfirm(
     sessionId: string,
     cmd: ResumeAfterConfirmCommandLike,
     sender: TCommandTarget,
+    options: CoreExecutionOptions,
   ): Promise<void> {
+    this.assertAccepting(sessionId)
     const { messageId } = cmd
 
     try {
       // P2 入口闸(见 handleSendMessage):恢复也要在压缩后的历史上重建。
       await this.waitForCompactionIdle(sessionId)
+      await this.prepareSessionExecution(sessionId)
 
       const session = this.store.getSession(sessionId)
       if (!session) {
@@ -1449,6 +1572,7 @@ export class CoreStreamEngine<
       this.registerController(sessionId, abortController)
 
       const ctx = {
+        executionContext: options.executionContext,
         sender, sessionId,
         assistantMessageId: messageId,
         abortSignal: abortController.signal,
@@ -1480,7 +1604,7 @@ export class CoreStreamEngine<
         this.log(`Agent loop resume completed in ${requestDuration.toFixed(2)}s`)
 
         if (!result.pausedForConfirmation) {
-          this.removeController(sessionId)
+          this.removeController(sessionId, abortController)
         }
       } catch (error) {
         const streamError = this.normalizeStreamError(error)
@@ -1504,12 +1628,14 @@ export class CoreStreamEngine<
             data: { error: streamError.message, errorDetails: streamError.details },
           }).catch(err => this.logError('stream:error emit error:', err))
         }
-        this.removeController(sessionId)
+        this.removeController(sessionId, abortController)
+        if (isAgentExecutionCheckpointError(error)) throw error
       }
     } catch (error) {
       const streamError = this.normalizeStreamError(error)
       this.logError('handleResumeAfterConfirm error:', streamError.error)
       this.emitStreamError(sessionId, streamError.message || 'Resume error')
+      if (isAgentExecutionCheckpointError(error)) throw error
     }
   }
 
@@ -1541,6 +1667,7 @@ export class CoreStreamEngine<
         name: title,
       })
     } catch (error) {
+      if (isAgentExecutionCheckpointError(error)) throw error
       const fallbackTitle = generateTitleFromMessage(displayContent)
       const session = this.store.getSession(sessionId)
       if (

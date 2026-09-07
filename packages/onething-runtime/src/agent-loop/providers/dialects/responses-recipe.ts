@@ -44,6 +44,7 @@ import {
 	type PartCodec,
 	type ProviderContext,
 	type ThinkingWire,
+	type ToolChoicePolicy,
 	type TurnContext,
 	type UsageNormalizer,
 } from "../base/index.js";
@@ -343,6 +344,12 @@ export interface ResponsesDialectSpec {
 	providerOptions?: OpenAIResponsesProviderOptionSupport;
 	/** 这家自己的额外请求体字段(`prompt_cache_key` 等)。 */
 	extraBody?: Dialect["extraBody"];
+	/**
+	 * `tool_choice` 策略;不给 = 这条线的默认「恒发」(codex 的
+	 * `baseline.request.json` 钉着)。xAI 的端点不容忍「无工具却带
+	 * `tool_choice`」,grok 两条通路用它换成「有工具才发」。
+	 */
+	toolChoice?: ToolChoicePolicy;
 	/** 完成的 output item → 额外事件(xAI 的引文 annotations)。 */
 	decodeOutputItem?(
 		item: Record<string, unknown>,
@@ -380,6 +387,7 @@ export function responsesDialect(spec: ResponsesDialectSpec): ResponsesDialect {
 		providerDataTag,
 		...(spec.store === undefined ? {} : { store: spec.store }),
 		...(spec.usage ? { usage: spec.usage } : {}),
+		...(spec.toolChoice ? { toolChoice: spec.toolChoice } : {}),
 		...(spec.nativeTools ? { nativeTools: spec.nativeTools } : {}),
 		...(spec.decodeOutputItem ? { decodeOutputItem: spec.decodeOutputItem } : {}),
 		request: {

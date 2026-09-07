@@ -1,4 +1,5 @@
 export { runAgentLoop } from './runner.js'
+export { createAgentExecutionLifetime, type AgentExecutionLifetime } from './execution-lifetime.js'
 export {
   isRetryableAgentError,
   sleepWithAbort,
@@ -7,6 +8,9 @@ export {
   MAX_TURN_RETRIES,
 } from './retry.js'
 export {
+  AgentExecutionCheckpointError,
+  isAgentExecutionCheckpointError,
+  awaitAgentExecutionCheckpoint,
   AgentLoopPauseForConfirmationError,
   isAgentLoopPauseForConfirmationError,
 } from './errors.js'
@@ -101,6 +105,7 @@ export {
 } from './tool-names.js'
 
 export type {
+  AgentExecutionCheckpoints,
   AgentCapability,
   AgentAfterTurnHook,
   AgentAudioContentPart,

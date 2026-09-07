@@ -43,6 +43,15 @@ const WAKE_FOLLOW_UP_WINDOW_MS = 8000
  * main-process ASR session while recording.
  */
 export class VoiceAudioRouter {
+  private closed = false
+  private readonly pending = new Set<Promise<void>>()
+
+  private track(work: Promise<void>): Promise<void> {
+    this.pending.add(work)
+    void work.then(() => this.pending.delete(work), () => this.pending.delete(work))
+    return work
+  }
+
   private readonly hooks: VoiceAudioRouterHooks
   private preRoll: Uint8Array[] = []
   private preRollBytes = 0
@@ -57,6 +66,7 @@ export class VoiceAudioRouter {
   }
 
   handleChunk(payload: VoiceAudioChunkPayload): void {
+    if (this.closed) return
     const bytes = payload.chunkBase64 ? Buffer.from(payload.chunkBase64, 'base64') : null
 
     if (payload.phase === 'wake') {
@@ -90,7 +100,16 @@ export class VoiceAudioRouter {
     }
   }
 
-  async startDoubaoRecording(
+  startDoubaoRecording(
+    settings: VoiceSettings,
+    sessionId?: string,
+    options: VoiceDoubaoRecordingOptions = {},
+  ): Promise<void> {
+    if (this.closed) return Promise.reject(new Error('Voice audio router is closed'))
+    return this.track(this.openDoubaoRecording(settings, sessionId, options))
+  }
+
+  private async openDoubaoRecording(
     settings: VoiceSettings,
     sessionId?: string,
     options: VoiceDoubaoRecordingOptions = {},
@@ -179,7 +198,9 @@ export class VoiceAudioRouter {
     recording.pendingChunks = []
   }
 
-  async finishRecording(): Promise<void> {
+  finishRecording(): Promise<void> { return this.track(this.finishActiveRecording()) }
+
+  private async finishActiveRecording(): Promise<void> {
     const recording = this.recording
     if (!recording || recording.finalized) return
     const text = await recording.session.finish()
@@ -199,9 +220,11 @@ export class VoiceAudioRouter {
     this.preRollBytes = 0
   }
 
-  shutdown(): void {
+  async shutdown(): Promise<void> {
+    this.closed = true
     this.abortRecording('shutdown')
     this.clearPreRoll()
+    while (this.pending.size) await Promise.allSettled([...this.pending])
   }
 
   private finalizeRecording(recording: ActiveDoubaoRecording, text: string): void {

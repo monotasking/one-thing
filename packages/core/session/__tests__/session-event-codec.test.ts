@@ -175,6 +175,9 @@ describe('codec backward compatibility', () => {
       { seq: 25, time: 34, type: 'message/imported', data: { message: { id: 'old1', role: 'user', content: 'legacy' } }, surfaceOp: 'append' },
       { seq: 26, time: 35, type: 'skill/activated', data: { runId: 'r1', messageId: 'a1', skill: 'agent-plan' } },
       { seq: 27, time: 36, type: 'tool/annotate', data: { runId: 'r1', callId: 'c1', title: 'sleep 20', result: { text: '{"command":"sleep 20"}' } } },
+      { seq: 28, time: 37, type: 'auxiliary-model/intent', data: { actionId: 'title-1', purpose: 'title', provider: 'test', model: 'test', input: { text: '[]' } } },
+      { seq: 29, time: 38, type: 'auxiliary-model/result', data: { actionId: 'title-1', outcome: 'completed', outputHash: 'hash', outputBytes: 5 } },
+      { seq: 30, time: 39, type: 'external/execution', data: { executionId: 'external-1', actionId: 'action-1', kind: 'model', phase: 'before', payloadHash: 'hash', payload: { text: '{"model":"test","input":[]}' } } },
     ]
 
     for (const record of samples) {

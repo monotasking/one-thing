@@ -25,12 +25,12 @@ export interface RadioToolStatus {
 
 export interface RadioToolAdapters {
   /** Stage+apply the intent (open or retune); retune also clears the programme. */
-  open(intent: string, options: { clearProgramme: boolean }): Promise<RadioToolStatus>
+  open(intent: string, options: { clearProgramme: boolean }, executionContext?: unknown): Promise<RadioToolStatus>
   /** active:false + stop playback, in the order that avoids auto-revive. */
-  close(): Promise<RadioToolStatus>
-  status(): RadioToolStatus
+  close(executionContext?: unknown): Promise<RadioToolStatus>
+  status(executionContext?: unknown): RadioToolStatus
   /** Cut a named song in as the next track (search + playability check inside). */
-  request(song: string): Promise<{ success: boolean; title?: string; error?: string }>
+  request(song: string, executionContext?: unknown): Promise<{ success: boolean; title?: string; error?: string }>
 }
 
 export const RadioInputSchema = z.object({
@@ -98,7 +98,7 @@ export class RadioTool extends ReadOnlyTool<RadioInput> {
       if (!song) {
         return this.done(ctx, '缺少歌名', 'request 需要 song:用户点名想听的歌,尽量带歌手,如「晴天 周杰伦」。', { action: input.action })
       }
-      const requested = await this.adapters.request(song)
+      const requested = await this.adapters.request(song, ctx.invocation.executionContext)
       if (!requested.success) {
         return this.done(ctx, '点歌失败', requested.error ?? '点歌失败', { action: input.action })
       }
@@ -111,12 +111,12 @@ export class RadioTool extends ReadOnlyTool<RadioInput> {
     }
 
     if (input.action === 'status') {
-      const status = this.adapters.status()
+      const status = this.adapters.status(ctx.invocation.executionContext)
       return this.done(ctx, status.active ? '电台状态' : '电台未开', describeStatus(status), { action: input.action })
     }
 
     if (input.action === 'close') {
-      const status = await this.adapters.close()
+      const status = await this.adapters.close(ctx.invocation.executionContext)
       return this.done(ctx, '电台已关', describeStatus(status), { action: input.action })
     }
 
@@ -132,7 +132,7 @@ export class RadioTool extends ReadOnlyTool<RadioInput> {
       )
     }
 
-    const status = await this.adapters.open(intent, { clearProgramme: input.action === 'retune' })
+    const status = await this.adapters.open(intent, { clearProgramme: input.action === 'retune' }, ctx.invocation.executionContext)
     return this.done(
       ctx,
       input.action === 'retune' ? '已换台' : '电台已开',

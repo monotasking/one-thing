@@ -37,7 +37,7 @@ export interface CoreStreamControllerRegistry<
   TQueue = unknown,
 > {
   registerController(sessionId: string, controller: TController): void
-  removeController(sessionId: string): void
+  removeController(sessionId: string, expectedController?: TController): void
   getSteeringQueue(sessionId: string): TQueue | undefined
   getFollowUpQueue(sessionId: string): TQueue | undefined
 }
@@ -69,6 +69,7 @@ export interface CoreMessageStreamParams<
   initialToolChoice?: CoreInitialToolChoice
   /** Actor behind this turn; minted at the host boundary (permission/principal.ts). */
   principal?: Principal
+  executionContext?: unknown
 }
 
 export type CoreTextStreamContext<
@@ -99,6 +100,7 @@ export type CoreTextStreamContext<
   initialToolChoice?: CoreInitialToolChoice
   /** Actor behind this turn; minted at the host boundary (permission/principal.ts). */
   principal?: Principal
+  executionContext?: unknown
 }
 
 export interface CoreSpecialStreamExecutionInput<
@@ -239,6 +241,7 @@ export async function executeCoreMessageStream<
     usageSource,
     initialToolChoice,
     principal,
+    executionContext,
   } = options.params
   const logger = options.logger ?? console
   const controller = options.controller ?? options.createController()
@@ -263,7 +266,7 @@ export async function executeCoreMessageStream<
       })
 
       const result = specialStreamExecutionResult(handled)
-      if (result.shouldRemoveController) options.registry.removeController(sessionId)
+      if (result.shouldRemoveController) options.registry.removeController(sessionId, controller)
       return result
     }
 
@@ -282,6 +285,7 @@ export async function executeCoreMessageStream<
         usageSource,
         initialToolChoice,
         principal,
+        executionContext,
       },
       steeringQueue: options.registry.getSteeringQueue(sessionId),
       followUpQueue: options.registry.getFollowUpQueue(sessionId),
@@ -296,13 +300,13 @@ export async function executeCoreMessageStream<
     )
     const result = textStreamExecutionResult(generationResult)
     if (result.shouldRemoveController) {
-      options.registry.removeController(sessionId)
+      options.registry.removeController(sessionId, controller)
     }
     return result
   } catch (error) {
     logger.error?.('[StreamExecutor] Error:', error)
     if (streamExecutionErrorResult().shouldRemoveController) {
-      options.registry.removeController(sessionId)
+      options.registry.removeController(sessionId, controller)
     }
     throw error
   }

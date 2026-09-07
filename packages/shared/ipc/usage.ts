@@ -3,10 +3,10 @@ import type {
   OnethingUsagePricingQuality,
   OnethingUsageProjectTotals,
   OnethingUsageSummaryGranularity,
-} from "@onething/runtime/usage";
+} from "../contracts/usage.js";
 import { defineRouter } from "./router.js";
 
-export type { OnethingUsageBreakdownEntry, OnethingUsageBucket, OnethingUsagePricingQuality, OnethingUsageProjectTotals, OnethingUsageSummaryGranularity } from "@onething/runtime/usage";
+export type { OnethingUsageBreakdownEntry, OnethingUsageBucket, OnethingUsagePricingQuality, OnethingUsageProjectTotals, OnethingUsageSummaryGranularity } from "../contracts/usage.js";
 
 export interface GetUsageSummaryRequest {
   granularity: OnethingUsageSummaryGranularity;

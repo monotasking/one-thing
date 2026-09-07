@@ -62,6 +62,8 @@ export function stripHostMcpToolPrefix(toolName: string): string {
  */
 export interface HostToolTurnContext {
   agentId: string
+  /** Trusted invocation identity from the executing host. */
+  executionContext?: unknown
   /** 这一轮在答的那间房。 */
   roomSessionId: string
   /** 回合真正跑在哪条会话上。**绑定表的键**。 */
@@ -102,6 +104,7 @@ export interface HostMcpInjection {
  */
 export type HostMcpSurfaceResolver = (request: {
   localSessionId: string
+  executionContext?: unknown
   messageId?: string
   cwd: string
 }) => Promise<HostMcpInjection | undefined> | HostMcpInjection | undefined

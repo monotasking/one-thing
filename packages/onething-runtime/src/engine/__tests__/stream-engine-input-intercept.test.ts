@@ -13,7 +13,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
-  superHandleSendMessage: vi.fn(async () => {}),
+  superPerformSendMessage: vi.fn(async () => {}),
   route: vi.fn((input: { sessionId: string }) => ({
     sessionId: input.sessionId,
     origin: { transport: 'desktop', source: 'text', receivedAt: 1 },
@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
     ran: 0,
   })),
   postReply: vi.fn(() => {}),
+  authorizeExecution: vi.fn((..._args: unknown[]) => {}),
   steerMessage: vi.fn(() => {}),
 }))
 
@@ -33,12 +34,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@onething/core/engine', async importOriginal => ({
   ...(await importOriginal<typeof import('@onething/core/engine')>()),
   CoreStreamEngine: class {
+    authorizeExecution(...args: unknown[]): void { mocks.authorizeExecution(...(args as [])) }
+    assertAccepting(): void {}
+    trackSessionExecution<T>(_sessionId: string, work: () => Promise<T>): Promise<T> { return work() }
     constructor(_runtime: unknown) {
       void _runtime
     }
 
-    async handleSendMessage(...args: unknown[]): Promise<void> {
-      await mocks.superHandleSendMessage(...(args as []))
+    async performSendMessage(...args: unknown[]): Promise<void> {
+      await mocks.superPerformSendMessage(...(args as []))
     }
 
     steerMessage(...args: unknown[]): void {
@@ -72,7 +76,7 @@ type Forwarded = {
 }
 
 function forwarded(): Forwarded {
-  const calls = mocks.superHandleSendMessage.mock.calls as unknown as unknown[][]
+  const calls = mocks.superPerformSendMessage.mock.calls as unknown as unknown[][]
   return calls[0]?.[1] as Forwarded
 }
 
@@ -120,7 +124,36 @@ describe('N2 挂点:谁进链', () => {
     // 一条都不进链:否则 N1 的插件投递会被别的插件二次改写,盘上那条消息
     // 再也说不清是谁写的。
     expect(mocks.runIntercept).not.toHaveBeenCalled()
-    expect(mocks.superHandleSendMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.superPerformSendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  /*
+   * 工单 5 §4:一条发送 = 一次授权。判次数,不判结果。
+   *
+   * 第二条是那唯一的例外并且它是**必须**的:路由把消息改派到另一条会话时,写的是
+   * 那一条,所以那一条也要判 —— 少了它,一个网关主体就能靠"发给我自己的收件箱、
+   * 让路由改派"写进它并不拥有的会话。
+   * 反证:把产品层那句 `this.authorizeExecution(sessionId, …)` 删掉 → 第一条
+   * expected 1 got 0;把路由后那一句删掉 → 第二条 expected 2 got 1。
+   */
+  it('一条发送恰好授权一次;路由改派了会话才多判那一条', async () => {
+    await engine().handleSendMessage('same', { content: 'hi' }, sender, {
+      executionContext: { userId: 'u', workspaceId: 'w' },
+    })
+    expect(mocks.authorizeExecution).toHaveBeenCalledTimes(1)
+    expect(mocks.authorizeExecution).toHaveBeenCalledWith('same', { userId: 'u', workspaceId: 'w' })
+
+    mocks.authorizeExecution.mockClear()
+    mocks.route.mockReturnValueOnce({
+      sessionId: 'identity:gateway:wechat:default:u1',
+      origin: { transport: 'gateway', source: 'gateway', receivedAt: 1 },
+    } as never)
+    await engine().handleSendMessage('inbox', { content: 'hi' }, sender, {
+      executionContext: { userId: 'u', workspaceId: 'w' },
+    })
+    expect(mocks.authorizeExecution.mock.calls.map(call => call[0])).toEqual([
+      'inbox', 'identity:gateway:wechat:default:u1',
+    ])
   })
 })
 
@@ -165,7 +198,7 @@ describe('N2 挂点:三个分支落到引擎上的样子', () => {
 
     await engine().handleSendMessage('s1', { content: '=1+2' }, sender)
 
-    expect(mocks.superHandleSendMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.superPerformSendMessage).toHaveBeenCalledTimes(1)
     expect(forwarded()).toMatchObject({ content: '=1+2', persistOnly: true })
     // 没给 reply 就不贴任何东西。
     expect(mocks.postReply).not.toHaveBeenCalled()

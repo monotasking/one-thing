@@ -68,6 +68,8 @@ export interface ExternalAgentImageInput {
 
 export interface ExternalAgentTurnRequest {
   localSessionId: string
+  /** Trusted host option for in-process tools; never serialized to the SDK prompt. */
+  executionContext?: unknown
   /** Assistant message the turn streams into; threads into permission asks. */
   messageId?: string
   prompt: string

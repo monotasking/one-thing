@@ -31,6 +31,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import { writeDurableJson } from '../storage/durable-json.js'
 import {
   buildSessionMessagesPageResponse,
   collectTailMessages,
@@ -58,7 +59,25 @@ export interface SessionWritePlan {
 
 export const STRUCTURAL_WRITE_PLAN: SessionWritePlan = { kind: 'structural' }
 
+/** 一条会话的"身份"三格:物理化身 + 归属。索引条目要带的就是这三格。 */
+export interface SessionStoredIdentity {
+  storageGeneration?: string
+  ownerUserId?: string
+  ownerWorkspaceId?: string
+}
+
 export interface SessionStorageDriver<TSession> {
+  /** Complete initial metadata, including its immutable generation, before publication. */
+  initialize?(sessionId: string, session: TSession): void
+  /**
+   * 只读盘上的身份三格,**不补水消息**(工单 5 §3)。
+   *
+   * 索引落盘时要给每条补上代际与归属,从前那份只从 LRU 取 —— 一条被挤出缓存的
+   * 会话于是写出一条**没有代际**的索引条目,而代际正是删除墓碑唯一的判据。
+   * 布局是驱动的知识(`<sessions>/<id>/meta.json` 还是 `<sessions>/<id>.json`),
+   * 所以这一口开在驱动上,不是让仓库自己去拼路径。
+   */
+  readIdentity?(sessionId: string): SessionStoredIdentity | undefined
   /** 该会话当前(或将要)使用的存储格式 */
   format(sessionId: string): SessionStorageFormat
   load(sessionId: string): TSession | undefined
@@ -481,6 +500,25 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
   return {
     format,
 
+    initialize(sessionId, session) {
+      if (jsonlExists(sessionId) || legacyExists(sessionId)) throw new Error(`Session id already exists: ${sessionId}`)
+      // 目录屏障的上界是 `sessions/`(工单 5 §2):再往上是用户主目录与整块卷。
+      if (options.newSessionFormat() === 'jsonl') writeDurableJson(metaPath(sessionId), buildMeta(session), options.getSessionsDir())
+      else writeDurableJson(options.getLegacySessionPath(sessionId), session, options.getSessionsDir())
+    },
+
+    readIdentity(sessionId) {
+      const record = jsonlExists(sessionId)
+        ? options.readJsonFile<SessionStoredIdentity | null>(metaPath(sessionId), null)
+        : options.readJsonFile<SessionStoredIdentity | null>(options.getLegacySessionPath(sessionId), null)
+      if (!record) return undefined
+      return {
+        ...(record.storageGeneration ? { storageGeneration: record.storageGeneration } : {}),
+        ...(record.ownerUserId ? { ownerUserId: record.ownerUserId } : {}),
+        ...(record.ownerWorkspaceId ? { ownerWorkspaceId: record.ownerWorkspaceId } : {}),
+      }
+    },
+
     load(sessionId) {
       if (jsonlExists(sessionId)) return loadJsonl(sessionId)
       const legacy = options.readJsonFile<TSession | null>(options.getLegacySessionPath(sessionId), null) ?? undefined
@@ -516,17 +554,29 @@ export function createHybridSessionStorageDriver<TSession extends SessionLike>(
     },
 
     delete(sessionId) {
-      states.delete(sessionId)
-      if (jsonlExists(sessionId)) {
+      // A previous partial removal may already have removed meta.json. Its
+      // remaining event/blob directory is still part of this deletion.
+      if (fs.existsSync(sessionDir(sessionId))) {
         try {
           fs.rmSync(sessionDir(sessionId), { recursive: true, force: true })
         } catch (error) {
           logger?.error?.(`[Sessions] failed to delete jsonl session dir ${sessionId}:`, error)
+          throw error
         }
       }
       if (legacyExists(sessionId)) {
-        options.deleteJsonFile(options.getLegacySessionPath(sessionId))
+        const legacyPath = options.getLegacySessionPath(sessionId)
+        options.deleteJsonFile(legacyPath)
+        // The historical JSON helper reports failure as false and logs it.
+        // A deletion checkpoint must not mistake that adapter result for success.
+        try {
+          fs.statSync(legacyPath)
+          throw new Error(`Failed to delete legacy session file: ${legacyPath}`)
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
       }
+      states.delete(sessionId)
     },
 
     getMessagesPage(request) {

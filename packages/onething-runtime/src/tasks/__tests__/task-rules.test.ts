@@ -123,7 +123,7 @@ describe('task tool', () => {
       callerSessionId: 'caller',
       prompt: 'go',
       description: 'label',
-    })
+    }, undefined)
     expect(result.output).toContain('task-1')
     expect(result.output).toContain(`1/${TASK_MAX_CONCURRENT_PER_SESSION}`)
     expect(result.metadata.taskSessionId).toBe('task-1')

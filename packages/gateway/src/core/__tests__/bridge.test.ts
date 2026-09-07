@@ -255,7 +255,10 @@ describe('GatewayBridge', () => {
     expect(channel.sent.map(message => message.text)).not.toContain('请求太频繁，请稍后再试。')
   })
 
-  it('consumes approval replies when the inbound reply user id differs from the original request', async () => {
+  it.each([
+    ['another user', 'reply-user', 'user-1'],
+    ['another conversation', 'user-1', 'another-room'],
+  ])('does not approve or start a model request for %s approval reply', async (_label, replyUser, replyConversation) => {
     const permissions = new MockPermissionSurface()
     let allowPermission!: () => void
     const permissionAllowed = new Promise<void>(resolve => {
@@ -295,10 +298,19 @@ describe('GatewayBridge', () => {
 
     await bridge.handle({
       channelId: 'mock',
-      userId: 'reply-user',
-      conversationId: 'reply-user',
+      userId: replyUser,
+      conversationId: replyConversation,
       text: '１',
-      raw: { from_user_id: 'reply-user', context_token: 'token-1' },
+      raw: { from_user_id: replyUser, context_token: 'token-1' },
+    })
+    expect(permissions.responses).toEqual([])
+    expect(runtime.messages.map(message => message.content)).toEqual(['create a tmp.md'])
+    await bridge.handle({
+      channelId: 'mock',
+      userId: 'user-1',
+      conversationId: 'user-1',
+      text: '1',
+      raw,
     })
     await handlePromise
 

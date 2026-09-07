@@ -6,12 +6,17 @@ import { defineRouter } from "./router.js";
 import type {
 	OnethingPracticeConfig,
 	OnethingPracticeEngineSnapshot,
+	OnethingPracticeEventPayload,
 	OnethingPracticeExerciseDetail,
 	OnethingPracticeLedgerRecord,
+	OnethingPracticeLogRequest,
+	OnethingPracticeSetConfigRequest,
+	OnethingPracticeStartRequest,
+	OnethingPracticeSummaryRequest,
 	OnethingPracticePhaseEdge,
 	OnethingPracticeSummaryGranularity,
 	OnethingPracticeSummaryResult,
-} from "@onething/runtime/practice";
+} from "../contracts/practice.js";
 
 export type PracticeSnapshot = OnethingPracticeEngineSnapshot;
 export type PracticePhaseEdge = OnethingPracticePhaseEdge;
@@ -20,9 +25,8 @@ export type PracticeLedgerRecord = OnethingPracticeLedgerRecord;
 export type PracticeSummaryGranularity = OnethingPracticeSummaryGranularity;
 export type PracticeSummaryResult = OnethingPracticeSummaryResult;
 
-export type PracticeStartRequest =
-	| { kind: "kegel" }
-	| { kind: "pomodoro"; category: string; label?: string };
+/* 五个请求/事件形状住在契约层(工单 5 §5);这里只是传输面的名字。 */
+export type PracticeStartRequest = OnethingPracticeStartRequest;
 
 export interface PracticeStopRequest {
 	/** Cancel: drop the session without settling a ledger record. */
@@ -34,22 +38,13 @@ export interface PracticeStateResponse {
 }
 
 /** Manual/agent quick-log: either sets×reps or a duration (or both). */
-export interface PracticeLogRequest {
-	name: string;
-	source: "manual" | "agent";
-	exercise: OnethingPracticeExerciseDetail;
-	note?: string;
-	ts?: number;
-}
+export type PracticeLogRequest = OnethingPracticeLogRequest;
 
 export interface PracticeLogResponse {
 	record: PracticeLedgerRecord;
 }
 
-export interface PracticeSummaryRequest {
-	granularity: PracticeSummaryGranularity;
-	count?: number;
-}
+export type PracticeSummaryRequest = OnethingPracticeSummaryRequest;
 
 export interface PracticeRecentRequest {
 	/** Trailing window in days (default 7). */
@@ -61,12 +56,7 @@ export interface PracticeRecentResponse {
 	records: PracticeLedgerRecord[];
 }
 
-export interface PracticeSetConfigRequest {
-	config: {
-		kegel?: Partial<PracticeConfig["kegel"]>;
-		pomodoro?: Partial<PracticeConfig["pomodoro"]>;
-	};
-}
+export type PracticeSetConfigRequest = OnethingPracticeSetConfigRequest;
 
 export interface PracticeConfigResponse {
 	config: PracticeConfig;
@@ -76,11 +66,7 @@ export interface PracticeConfigResponse {
  * Pushed to the renderer on every engine transition and ~1 Hz while running.
  * `settled` is present exactly once per session, when it lands in the ledger.
  */
-export interface PracticeEventPayload {
-	snapshot: PracticeSnapshot;
-	edges: PracticePhaseEdge[];
-	settled?: PracticeLedgerRecord;
-}
+export type PracticeEventPayload = OnethingPracticeEventPayload;
 
 /**
  * practice(练习:kegel / 番茄钟 / 运动账本)域 —— 结构债 P4a 的第二个域

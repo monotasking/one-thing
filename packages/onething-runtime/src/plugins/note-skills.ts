@@ -41,7 +41,7 @@ export interface OnethingNoteSkillRootDescriptorOptions extends OnethingNoteSkil
 export interface OnethingNoteSkillsPluginApi<TSkillRootProvider> {
   readonly id: string
   registerSkillRoot(provider: TSkillRootProvider): void
-  onDispose(callback: () => void): void
+  onDispose(callback: () => void | Promise<void>): void
 }
 
 export interface RegisterOnethingNoteSkillsPluginOptions extends OnethingNoteSkillRootDirOptions {

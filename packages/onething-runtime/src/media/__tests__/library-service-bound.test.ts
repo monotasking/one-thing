@@ -248,7 +248,7 @@ describe('MediaLibraryService', () => {
       expect(fs.readFileSync(result.assets[0].filePath!).toString()).toBe('browser-bytes')
     })
 
-    it('dedupes on (kind, source, contentHash) and merges the new links in', () => {
+    it('dedupes within the same source session and merges its message links', () => {
       const filePath = sourceFile('twice.png', 'same-bytes')
 
       const first = service.ingestLocalFiles({
@@ -257,7 +257,7 @@ describe('MediaLibraryService', () => {
       })
       const second = service.ingestLocalFiles({
         files: [{ filePath, fileName: 'renamed.png' }],
-        links: [{ sessionId: 'session-2', messageId: 'message-2' }],
+        links: [{ sessionId: 'session-1', messageId: 'message-2' }],
       })
 
       expect(first.created).toBe(1)
@@ -266,7 +266,7 @@ describe('MediaLibraryService', () => {
       expect(second.assets[0].id).toBe(first.assets[0].id)
       expect(second.assets[0].links).toEqual([
         { sessionId: 'session-1', messageId: 'message-1' },
-        { sessionId: 'session-2', messageId: 'message-2' },
+        { sessionId: 'session-1', messageId: 'message-2' },
       ])
       expect(service.listAssets()).toHaveLength(1)
     })

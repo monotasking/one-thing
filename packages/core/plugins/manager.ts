@@ -72,7 +72,9 @@ export interface CorePluginManagerHost<
    */
   loadPluginEntry(definition: TDefinition, reloadToken?: number): Promise<TEntry | null>
   createPluginAPI(pluginId: string, context: TContext): { api: TApi; state: TState }
-  disposePlugin(state: TState): void
+  disposePlugin(state: TState): void | Promise<void>
+  /** Wait for real owned work after dispose has synchronously closed admission. */
+  drainPlugin?(state: TState): Promise<void>
   setPluginEnabled(pluginId: string, enabled: boolean): void
   /** 运行期健康(app 层持有);getPlugins() 只是把它贴到插件信息上。 */
   getPluginHealth?(pluginId: string): CorePluginRuntimeHealth | undefined
@@ -186,6 +188,7 @@ export class CorePluginManager<
 > {
   private plugins = new Map<string, CorePluginInfo<TEntry, TDefinition>>()
   private pluginStates = new Map<string, TState>()
+  private readonly loadingStates = new Map<string, Set<TState>>()
   private context: TContext | null = null
   private refreshInFlight: Promise<void> | null = null
   private generation = 0
@@ -216,6 +219,11 @@ export class CorePluginManager<
   private readonly log: Logger
 
   async initialize(context: TContext): Promise<void> {
+    if (this.shuttingDown) {
+      const generation = this.generation
+      await this.drainDisposedPlugins()
+      if (generation !== this.generation) return
+    }
     // 重新装配:把拆除闩放开,否则 shutdown 之后再 initialize 会一个插件也装不上。
     this.shuttingDown = false
     this.context = context
@@ -241,15 +249,15 @@ export class CorePluginManager<
     return this.runExclusive(pluginId, async () => this.disablePluginNow(pluginId))
   }
 
-  private disablePluginNow(pluginId: string): void {
+  private async disablePluginNow(pluginId: string): Promise<void> {
     // 该插件名下所有在飞请求先中止 —— 否则它们会在一个已经被拆掉的插件里跑完。
     this.requests.abortForPlugin(pluginId)
 
+    const states = new Set(this.loadingStates.get(pluginId))
     const state = this.pluginStates.get(pluginId)
-    if (state) {
-      this.host.disposePlugin(state)
-      this.pluginStates.delete(pluginId)
-    }
+    if (state) states.add(state)
+    for (const state of states) this.disposePluginState(state)
+    this.pluginStates.delete(pluginId)
 
     const info = this.plugins.get(pluginId)
     if (info) {
@@ -261,20 +269,32 @@ export class CorePluginManager<
       info.error = info.definition.loadBlockedReason
     }
 
-    this.host.setPluginEnabled(pluginId, false)
-    this.log.debug(`[PluginManager] Disabled plugin: ${pluginId}`)
+    await this.settleDisposalWork([
+      Promise.resolve().then(() => {
+        this.host.setPluginEnabled(pluginId, false)
+        this.log.debug(`[PluginManager] Disabled plugin: ${pluginId}`)
+      }),
+      this.drainPluginDisposals(pluginId),
+    ])
   }
 
   async enablePlugin(pluginId: string): Promise<void> {
     return this.runExclusive(pluginId, async () => {
+      const generation = this.generation
+      // A removed state can still own pending I/O or a permanent close error.
+      // Re-enabling the same id must not hide either behind a fresh state.
+      await this.drainPluginDisposals(pluginId)
+      if (this.shuttingDown || generation !== this.generation) return
       const info = this.plugins.get(pluginId)
       if (!info) return
-      if (info.loaded) this.disablePluginNow(pluginId)
+      if (info.loaded) await this.disablePluginNow(pluginId)
+      if (this.shuttingDown || generation !== this.generation) return
       info.definition.enabled = true
       this.host.setPluginEnabled(pluginId, true)
       // 重新启用要拿新模块:改完插件代码 disable→enable 就该生效,不必重启 app。
       this.bumpReloadToken(pluginId)
       await this.loadPlugin(info.definition)
+      await this.drainPluginDisposals(pluginId)
     })
   }
 
@@ -503,7 +523,7 @@ export class CorePluginManager<
 
     return this.runExclusive(pluginId, async () => {
       const definition = info.definition
-      this.disablePluginNow(pluginId)
+      await this.disablePluginNow(pluginId)
 
       const archive = this.host.archivePluginData?.(pluginId) ?? { archived: false }
       if (archive.error) {
@@ -747,6 +767,8 @@ export class CorePluginManager<
     this.plugins.clear()
     // 代次推进:这一轮之前发出的 loadPlugin 迟到回来时会看到代次已变,自行退场。
     const generation = ++this.generation
+    await this.drainDisposedPlugins()
+    if (this.shuttingDown || generation !== this.generation) return
 
     this.host.ensurePluginDirs()
     const definitions = this.host.scanPlugins()
@@ -786,7 +808,12 @@ export class CorePluginManager<
       this.log.error('[PluginManager] Orphan plugin data scan failed:', undefined, error)
     }
 
-    await Promise.all(definitions.map(def => this.loadPlugin(def, generation)))
+    const loads = await Promise.allSettled(definitions.map(def => this.loadPlugin(def, generation)))
+    // A host error outside loadPlugin's entry guard must not skip a peer's
+    // accepted cleanup. Preserve both load errors and actual drain failures.
+    const drains = await Promise.allSettled([this.drainDisposedPlugins()])
+    this.throwDisposalFailures([...loads, ...drains]
+      .flatMap(result => result.status === 'rejected' ? [result.reason] : []))
   }
 
   getPlugins(): Array<CorePluginInfo<TEntry, TDefinition>> {
@@ -815,7 +842,7 @@ export class CorePluginManager<
     return undefined
   }
 
-  shutdown(): void {
+  shutdown(): Promise<void> {
     // 闩 + 推进代次:在飞的加载回来时一律作废,不许再落表。
     this.shuttingDown = true
     this.generation += 1
@@ -824,6 +851,7 @@ export class CorePluginManager<
     this.loadTokens.clear()
     this.disposeAll()
     this.plugins.clear()
+    return this.drainDisposedPlugins()
   }
 
   protected getPluginState(pluginId: string): TState | undefined {
@@ -927,6 +955,10 @@ export class CorePluginManager<
     }
 
     const { api, state } = this.host.createPluginAPI(def.id, this.context)
+    this.statePluginIds.set(state, def.id)
+    const loading = this.loadingStates.get(def.id) ?? new Set<TState>()
+    loading.add(state)
+    this.loadingStates.set(def.id, loading)
     try {
       // entry(api) 无超时是"一个坏插件卡住整队"的最后一环。超时不取消插件那一
       // 侧的工作,但宿主不再等它 —— 晚到的注册由 state 的 disposed 闸拦住。
@@ -937,14 +969,16 @@ export class CorePluginManager<
       )
 
       if (stale()) {
-        this.host.disposePlugin(state)
+        this.disposePluginState(state)
+        await this.drainPluginState(state)
         return
       }
       // 被更晚的一次加载超过了:那一次已经(或即将)落表,这一份必须自己拆掉,
       // 否则就是一个谁也不认识、谁也不会 dispose 的孤儿。
       if (this.loadTokens.get(def.id) !== loadToken) {
         this.log.debug(`[PluginManager] Dropping superseded load of "${def.id}"`)
-        this.host.disposePlugin(state)
+        this.disposePluginState(state)
+        await this.drainPluginState(state)
         return
       }
       // 落表前复查最新的启停意图:这一轮 refresh 在飞期间用户可能把它关了,
@@ -953,7 +987,8 @@ export class CorePluginManager<
       // 不是函数入口处那个已被 TS 收窄为 true 的 def.enabled。
       if (this.plugins.get(def.id)?.definition.enabled === false) {
         this.log.debug(`[PluginManager] Plugin "${def.id}" was disabled while loading; dropping the load`)
-        this.host.disposePlugin(state)
+        this.disposePluginState(state)
+        await this.drainPluginState(state)
         return
       }
 
@@ -962,10 +997,13 @@ export class CorePluginManager<
       const previous = this.pluginStates.get(def.id)
       if (previous && previous !== state) {
         this.log.error(`[PluginManager] Replacing an orphaned state for "${def.id}"`, undefined)
-        try {
-          this.host.disposePlugin(previous)
-        } catch (error) {
-          this.log.error(`[PluginManager] Error disposing orphaned state for "${def.id}":`, undefined, error)
+        this.disposePluginState(previous)
+        await this.drainPluginState(previous)
+        if (stale() || this.loadTokens.get(def.id) !== loadToken
+          || this.plugins.get(def.id)?.definition.enabled === false) {
+          this.disposePluginState(state)
+          await this.drainPluginState(state)
+          return
         }
       }
       this.pluginStates.set(def.id, state)
@@ -986,18 +1024,88 @@ export class CorePluginManager<
       // 装到一半的注册要收掉,否则失败的插件仍在工具表/事件总线上留着半截足迹。
       // dispose 同时落下 disposed 闩:超时后恢复的 entry 再注册也进不来了。
       try {
-        this.host.disposePlugin(state)
+        this.disposePluginState(state)
+        await this.drainPluginState(state)
       } catch (disposeError) {
         this.log.error(`[PluginManager] Error disposing half-loaded plugin "${def.id}":`, undefined, disposeError)
       }
-      if (stale()) return
+      if (stale() || this.loadTokens.get(def.id) !== loadToken) return
       this.plugins.set(def.id, {
         definition: def,
         loaded: false,
         commands: [],
         error: error instanceof Error ? error.message : 'Unknown error',
       })
+    } finally {
+      loading.delete(state)
+      if (!loading.size && this.loadingStates.get(def.id) === loading) this.loadingStates.delete(def.id)
     }
+  }
+
+  private readonly pendingDisposals = new Map<TState, Promise<void>>()
+  private readonly failedDisposals = new Map<TState, unknown>()
+  private readonly statePluginIds = new WeakMap<TState, string>()
+  private readonly disposedStates = new WeakSet<TState>()
+
+  private disposePluginState(state: TState): void {
+    if (this.disposedStates.has(state)) return
+    this.disposedStates.add(state)
+    let resolve!: () => void
+    let reject!: (error: unknown) => void
+    const pending = new Promise<void>((done, failed) => { resolve = done; reject = failed })
+    // Register before invoking host code: even a synchronous throw or a
+    // reentrant shutdown must see this state's unfinished cleanup.
+    this.pendingDisposals.set(state, pending)
+    void pending.catch(() => {})
+    let disposing: Promise<void>
+    try {
+      disposing = Promise.resolve(this.host.disposePlugin(state))
+    } catch (error) {
+      disposing = Promise.reject(error)
+    }
+    const draining = Promise.resolve().then(() => this.host.drainPlugin?.(state))
+    void this.settleDisposalWork([disposing, draining]).then(() => {
+      this.pendingDisposals.delete(state)
+      resolve()
+    }, error => {
+      this.failedDisposals.set(state, error)
+      this.pendingDisposals.delete(state)
+      reject(error)
+    })
+  }
+
+  private throwDisposalFailures(errors: unknown[]): void {
+    const failures = [...new Set(errors)]
+    if (failures.length === 1) throw failures[0]
+    if (failures.length > 1) throw new AggregateError(failures, 'Plugin resource disposal failed')
+  }
+
+  private async settleDisposalWork(work: Promise<void>[]): Promise<void> {
+    const results = await Promise.allSettled(work)
+    this.throwDisposalFailures(results.flatMap(result => result.status === 'rejected' ? [result.reason] : []))
+  }
+
+  private async drainPluginState(state: TState): Promise<void> {
+    await this.pendingDisposals.get(state)
+    if (this.failedDisposals.has(state)) throw this.failedDisposals.get(state)
+  }
+
+  private async drainPluginDisposals(pluginId: string): Promise<void> {
+    for (;;) {
+      const pending = [...this.pendingDisposals]
+        .filter(([state]) => this.statePluginIds.get(state) === pluginId)
+        .map(([, work]) => work)
+      if (!pending.length) break
+      await Promise.allSettled(pending)
+    }
+    this.throwDisposalFailures([...this.failedDisposals]
+      .filter(([state]) => this.statePluginIds.get(state) === pluginId)
+      .map(([, error]) => error))
+  }
+
+  private async drainDisposedPlugins(): Promise<void> {
+    while (this.pendingDisposals.size) await Promise.allSettled([...this.pendingDisposals.values()])
+    this.throwDisposalFailures([...this.failedDisposals.values()])
   }
 
   private disposeAll(): void {
@@ -1008,9 +1116,12 @@ export class CorePluginManager<
     if (aborted > 0) {
       this.log.debug(`[PluginManager] Aborted ${aborted} in-flight plugin request(s) during teardown`)
     }
-    for (const [id, state] of this.pluginStates) {
+    const states = new Map<TState, string>()
+    for (const [id, state] of this.pluginStates) states.set(state, id)
+    for (const [id, loading] of this.loadingStates) for (const state of loading) states.set(state, id)
+    for (const [state, id] of states) {
       try {
-        this.host.disposePlugin(state)
+        this.disposePluginState(state)
       } catch (error) {
         this.log.error(`[PluginManager] Error disposing plugin "${id}":`, undefined, error)
       }
@@ -1050,6 +1161,13 @@ export class CorePluginBootstrapper<TManager, TContext> {
 
   isBootstrapped(): boolean {
     return this.bootstrapped
+  }
+
+  /** A drained manager releases only its own slot, never a subsequent instance. */
+  release(manager: TManager): void {
+    if (this.manager !== manager) return
+    this.bootstrapped = false
+    this.manager = null
   }
 
   resetForTests(): void {

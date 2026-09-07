@@ -40,7 +40,8 @@ describe('golden: time', () => {
       vi.useFakeTimers({ toFake: ['Date'] })
       vi.setSystemTime(new Date('2026-08-18T09:51:43.115Z'))
 
-      const run = await runNewTool(new TimeTool(), fixture.args)
+      // Pin the output timezone instead of inheriting the runner's local zone.
+      const run = await runNewTool(new TimeTool(), { timezone: 'Asia/Shanghai', ...fixture.args })
       expect(run.outcome.kind).toBe('ok')
 
       // (a) 模型看到的文本

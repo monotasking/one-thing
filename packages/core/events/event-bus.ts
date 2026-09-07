@@ -30,6 +30,7 @@ import type {
   EmitResult,
   SessionEventEnvelope,
   GlobalEventEnvelope,
+  EventDeliveryOptions,
 } from './types.js'
 import { RingBuffer } from './ring-buffer.js'
 import { getCoreLogger, toLogger, type CompatLogger, type Logger } from '../logging/index.js'
@@ -90,7 +91,7 @@ export class EventBus<
   /**
    * Emit a session event through the intercept → commit → fan-out pipeline.
    */
-  async emit(sessionId: string, event: TSessionEvent): Promise<EmitResult<TSessionEvent>> {
+  async emit(sessionId: string, event: TSessionEvent, options?: EventDeliveryOptions): Promise<EmitResult<TSessionEvent>> {
     // Phase 1: Intercept (pass-through if no interceptors)
     let finalEvent = event
     for (const interceptor of this.interceptors) {
@@ -117,6 +118,9 @@ export class EventBus<
       sequence: seq,
       timestamp: Date.now(),
       event: finalEvent,
+    }
+    if (options?.executionContext !== undefined) {
+      Object.defineProperty(envelope, 'executionContext', { value: options.executionContext })
     }
 
     let buffer = this.buffers.get(sessionId)

@@ -48,7 +48,7 @@ export interface RpcDispatchContext {
 	 * handler that needs an owner label uses its own local default).
 	 */
 	ownerUid?: string;
-	/** Authenticated workspace id. Undefined on desktop, same reason. */
+	/** Authenticated tenant scope; never ChatSession.workspaceId (a product space). */
 	workspaceId?: string;
 	/**
 	 * Which renderer surface asked — the host's own word on it, minted from

@@ -44,7 +44,6 @@
     },
     "store": false,
     "stream": true,
-    "tool_choice": "auto",
     "tools": []
   }
 }

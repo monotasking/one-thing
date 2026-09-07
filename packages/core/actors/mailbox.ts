@@ -134,6 +134,7 @@ export class DurableMailbox<TEvent extends ActorEvent = ActorEvent> implements A
   private closed = false
   private iterating = false
   private writeChain: Promise<void> = Promise.resolve()
+  private persistenceFailure: { cause: unknown } | undefined
   private waiters: Array<() => void> = []
   /** 因为已在持久窗口里而被丢掉的重投数,观测用。 */
   private duplicates = 0
@@ -231,12 +232,19 @@ export class DurableMailbox<TEvent extends ActorEvent = ActorEvent> implements A
     if (this.closed) return Promise.reject(new Error('[actor-mailbox] append after close'))
     const task = this.writeChain.then(async () => {
       const seq = this.nextSeq
-      await appendTextFile(this.logPath, encodeJsonlMessageLine(seq, event))
+      const line = encodeJsonlMessageLine(seq, event)
+      try {
+        await appendTextFile(this.logPath, line)
+      } catch (error) {
+        this.persistenceFailure ??= { cause: error }
+        throw error
+      }
       this.nextSeq = seq + 1
       this.entries.push({ seq, event })
       this.wake()
     })
-    // 一次失败不许掐断整条链:后续 append 仍要能排队。
+    // Preserve queue progress, but never turn a failed save into a successful
+    // flush. A later successful append does not repair the missing event.
     this.writeChain = task.then(
       () => undefined,
       () => undefined,
@@ -245,8 +253,9 @@ export class DurableMailbox<TEvent extends ActorEvent = ActorEvent> implements A
   }
 
   /** 等待在途的追加写落盘。 */
-  flush(): Promise<void> {
-    return this.writeChain
+  async flush(): Promise<void> {
+    await this.writeChain
+    if (this.persistenceFailure) throw this.persistenceFailure.cause
   }
 
   /** 未 ack 的积压(含在飞的那一批)。 */
@@ -323,7 +332,12 @@ export class DurableMailbox<TEvent extends ActorEvent = ActorEvent> implements A
       at: this.now(),
       seen: this.seen.snapshot(),
     }
-    writeJsonFile(this.cursorPath, record)
+    try {
+      writeJsonFile(this.cursorPath, record)
+    } catch (error) {
+      this.persistenceFailure ??= { cause: error }
+      throw error
+    }
   }
 
   private waitForArrival(): Promise<void> {

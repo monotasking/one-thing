@@ -132,6 +132,7 @@ export class OnethingDoubaoASRSession {
   }
 
   async connect(audioFormat: { format: string; codec?: string; rate?: number } = { format: 'pcm', codec: 'raw' }): Promise<void> {
+    if (this.closed) throw new Error('Doubao ASR session is closed')
     const settings = this.options.settings
     const configurationError = getOnethingDoubaoConfigurationError(settings)
     if (configurationError) throw new Error(configurationError)
@@ -141,6 +142,7 @@ export class OnethingDoubaoASRSession {
     const headers = buildOnethingDoubaoHeaders(settings, resourceId)
     const factory = this.options.createWebSocket ?? defaultCreateWebSocket
     const socket = await factory(`${endpoint}${DOUBAO_ASR_PATH}`, headers)
+    if (this.closed) { socket.close(); throw new Error('Doubao ASR session is closed') }
     this.socket = socket
 
     await new Promise<void>((resolve, reject) => {
@@ -167,7 +169,10 @@ export class OnethingDoubaoASRSession {
         this.fail(new Error(`Doubao ASR socket error: ${error?.message || String(error)}`))
       })
       socket.on('message', (data: Uint8Array) => this.handleMessage(data))
-      socket.on('close', () => this.handleClose())
+      socket.on('close', () => {
+        if (!settled) { settled = true; reject(new Error('Doubao ASR connection closed before opening')) }
+        this.handleClose()
+      })
     })
   }
 
@@ -305,7 +310,9 @@ export async function transcribeOnethingDoubaoUtterance(input: {
   settings: OnethingDoubaoSettingsLike
   uid?: string
   createWebSocket?: OnethingDoubaoWebSocketFactory
+  signal?: AbortSignal
 }): Promise<string> {
+  input.signal?.throwIfAborted()
   const format = doubaoFormatFromMimeType(input.mimeType)
   if (!format) {
     throw new Error(`Doubao ASR does not accept "${input.mimeType}" audio. Use wav, pcm, ogg/opus or mp3.`)
@@ -320,15 +327,20 @@ export async function transcribeOnethingDoubaoUtterance(input: {
       failure = failure || error
     },
   })
-  await session.connect(format)
+  const abort = () => session.close()
+  input.signal?.addEventListener('abort', abort, { once: true })
   try {
+    await session.connect(format)
+    input.signal?.throwIfAborted()
     for (let offset = 0; offset < input.audio.length; offset += DOUBAO_UPLOAD_SLICE_BYTES) {
       session.pushAudio(input.audio.subarray(offset, offset + DOUBAO_UPLOAD_SLICE_BYTES))
     }
     const text = await session.finish(15000)
+    input.signal?.throwIfAborted()
     if (failure) throw failure
     return text
   } finally {
+    input.signal?.removeEventListener('abort', abort)
     session.close()
   }
 }

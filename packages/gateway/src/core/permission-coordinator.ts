@@ -19,6 +19,7 @@ export interface GatewayPermissionWatchInput {
   sessionId: string
   channelId: string
   userId: string
+  conversationId: string
   sendText: (text: string) => Promise<void>
 }
 
@@ -26,6 +27,7 @@ interface PendingGatewayPermission {
   sessionId: string
   channelId: string
   userId: string
+  conversationId: string
   request: CorePermissionRequestEvent
   sendText: (text: string) => Promise<void>
   owner: Set<PendingGatewayPermission>
@@ -35,6 +37,7 @@ interface PendingGatewayPermission {
 interface StaleGatewayPermissionReply {
   channelId: string
   userId: string
+  conversationId: string
   sendText: (text: string) => Promise<void>
   replyText: string
   expiresAt: number
@@ -53,11 +56,12 @@ export class GatewayPermissionCoordinator {
   watch(input: GatewayPermissionWatchInput): Unsubscribe {
     const ownedPending = new Set<PendingGatewayPermission>()
     const unsubscribe = this.options.permissions.onPermissionRequest(input.sessionId, (request) => {
-      if (request.targetChannel !== input.channelId) return
+      if (request.targetChannel !== input.channelId || request.sessionId !== input.sessionId) return
       const pending: PendingGatewayPermission = {
         sessionId: input.sessionId,
         channelId: input.channelId,
         userId: input.userId,
+        conversationId: input.conversationId,
         request,
         sendText: input.sendText,
         owner: ownedPending,
@@ -74,9 +78,9 @@ export class GatewayPermissionCoordinator {
     }
   }
 
-  async tryHandleReply(channelId: string, userId: string, text: string): Promise<boolean> {
+  async tryHandleReply(channelId: string, userId: string, conversationId: string, text: string): Promise<boolean> {
     this.pruneStaleReplies()
-    const key = permissionQueueKey(channelId, userId)
+    const key = permissionQueueKey(channelId, userId, conversationId)
     const pending = this.queues.get(key)?.[0]
 
     const decision = parsePermissionReply(text)
@@ -92,21 +96,24 @@ export class GatewayPermissionCoordinator {
 
     if (!decision) return false
 
-    const fallback = this.findUniquePendingForChannel(channelId)
-    if (fallback) {
-      await this.resolvePending(fallback.key, fallback.pending, decision)
-      return true
+    const stale = this.takeFirstStaleReply(key)
+    if (!stale) {
+      // A reply from another identity must neither settle an approval nor become
+      // a new model request while this channel is exchanging approval decisions.
+      return this.hasApprovalExchange(channelId)
     }
-
-    const stale = this.takeStaleReply(key, channelId)
-    if (!stale) return false
 
     await sendTextSafely(stale, stale.replyText)
     return true
   }
 
+  private hasApprovalExchange(channelId: string): boolean {
+    return Array.from(this.queues.values()).some(queue => queue[0]?.channelId === channelId)
+      || Array.from(this.staleReplies.values()).some(replies => replies[0]?.channelId === channelId)
+  }
+
   private enqueue(pending: PendingGatewayPermission): void {
-    const key = permissionQueueKey(pending.channelId, pending.userId)
+    const key = permissionQueueKey(pending.channelId, pending.userId, pending.conversationId)
     const queue = this.queues.get(key) ?? []
     queue.push(pending)
     this.queues.set(key, queue)
@@ -197,7 +204,7 @@ export class GatewayPermissionCoordinator {
   }
 
   private cancelPending(pending: PendingGatewayPermission, replyText: string): void {
-    const key = permissionQueueKey(pending.channelId, pending.userId)
+    const key = permissionQueueKey(pending.channelId, pending.userId, pending.conversationId)
     const queue = this.queues.get(key)
     if (!queue) {
       pending.owner.delete(pending)
@@ -231,46 +238,19 @@ export class GatewayPermissionCoordinator {
     }
   }
 
-  private findUniquePendingForChannel(channelId: string): { key: string; pending: PendingGatewayPermission } | null {
-    let match: { key: string; pending: PendingGatewayPermission } | null = null
-    for (const [key, queue] of this.queues) {
-      const pending = queue[0]
-      if (!pending || pending.channelId !== channelId) continue
-      if (match) return null
-      match = { key, pending }
-    }
-    return match
-  }
-
   private recordStaleReply(pending: PendingGatewayPermission, replyText: string): void {
     this.pruneStaleReplies()
-    const key = permissionQueueKey(pending.channelId, pending.userId)
+    const key = permissionQueueKey(pending.channelId, pending.userId, pending.conversationId)
     const replies = this.staleReplies.get(key) ?? []
     replies.push({
       channelId: pending.channelId,
       userId: pending.userId,
+      conversationId: pending.conversationId,
       sendText: pending.sendText,
       replyText,
       expiresAt: Date.now() + STALE_PERMISSION_REPLY_TTL_MS,
     })
     this.staleReplies.set(key, replies)
-  }
-
-  private takeStaleReply(key: string, channelId: string): StaleGatewayPermissionReply | null {
-    this.pruneStaleReplies()
-    const exact = this.takeFirstStaleReply(key)
-    if (exact) return exact
-
-    let match: { key: string; reply: StaleGatewayPermissionReply } | null = null
-    for (const [candidateKey, replies] of this.staleReplies) {
-      const reply = replies[0]
-      if (!reply || reply.channelId !== channelId) continue
-      if (match) return null
-      match = { key: candidateKey, reply }
-    }
-    if (!match) return null
-    this.takeFirstStaleReply(match.key)
-    return match.reply
   }
 
   private takeFirstStaleReply(key: string): StaleGatewayPermissionReply | null {
@@ -294,8 +274,8 @@ export class GatewayPermissionCoordinator {
   }
 }
 
-function permissionQueueKey(channelId: string, userId: string): string {
-  return `${channelId}:${userId}`
+function permissionQueueKey(channelId: string, userId: string, conversationId: string): string {
+  return JSON.stringify([channelId, userId, conversationId])
 }
 
 async function sendTextSafely(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getSpeakableTextFromDelta } from '../tts-stream'
+import { getOnethingSpeakableTextFromDelta as getSpeakableTextFromDelta } from '../text.js'
 
 describe('getSpeakableTextFromDelta', () => {
   it('falls back to visible text when no speak protocol text is present', () => {

@@ -7,6 +7,7 @@ import {
 
 describe('tools IPC operations', () => {
   it('normalizes cancel tool requests', async () => {
+    // 工单 4 B1:取消今天仍然是空操作 —— 记一行日志、恒回 success。
     const log = vi.fn()
 
     await expect(cancelOnethingToolForIpc({

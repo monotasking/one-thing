@@ -1053,6 +1053,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
     const roomLabel = verb.roomId ? this.host.roomLabel?.(verb.roomId) : undefined
     this.notebook.append({
       agentId: this.agentId,
+      ...(verb.roomId ? { roomId: verb.roomId } : {}),
       note,
       at,
       ...(roomLabel ? { roomLabel } : {}),
@@ -1091,7 +1092,7 @@ export class CollabAgentActor extends ActorBase<ActorEvent<CollabActorVerb>> {
       ...this.foldLimits,
     })
 
-    const notebook = buildCollabAgentNotebookBlock(this.notebook, this.agentId, this.notebookBudget)
+    const notebook = buildCollabAgentNotebookBlock(this.notebook, this.agentId, this.notebookBudget, { roomId })
 
     return buildCollabMindDrive({
       roomContext,

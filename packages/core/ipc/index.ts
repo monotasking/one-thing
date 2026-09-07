@@ -20,11 +20,35 @@ export interface RouteConfig<Input extends RoutePayload = RoutePayload, Output e
 /** Domain routes - maps method names to their route configs */
 export type DomainRoutes = Record<string, RouteConfig>
 
+/**
+ * 一个方法的**会话授权自述**(工单 5 §6,triage C1)。
+ *
+ * 从前每个域处理者自己在函数第一行手写一句「解析这条会话的写权限」—— 27 个域 153
+ * 处,加一个域就要记得抄一次,而漏抄不会有任何东西红。改成契约里一格之后,执法只
+ * 在 `dispatchRpc` 一处:**加一个域接授权 = 契约里一格 + 零改 registry**。
+ *
+ * `param` 是 payload 里承载会话 id 的字段名;`op` 是动词(词汇表由上层钉,core 不
+ * 认识任何一个具体动词 —— 这正是它能住在零依赖包里的原因);`optional` 为真时走
+ * 「会话不在盘上也放行」那一档(草稿纸那种未落地的会话)。
+ */
+export interface RouteSessionAccess<Op extends string = string> {
+  param: string
+  op: Op
+  optional?: boolean
+}
+
 /** Router instance - carries domain name, channel map, and type info */
-export interface Router<T extends DomainRoutes> {
+export interface Router<T extends DomainRoutes, Op extends string = string> {
   readonly domain: string
   readonly channels: { readonly [K in keyof T]: string }
   readonly methods: readonly (keyof T & string)[]
+  /**
+   * 声明了会话授权的方法;没声明的方法在这张表里缺席,派发行为一字不变。
+   *
+   * 整张表**可缺席** —— feature 在运行时手搓一个 router 字面量挂域是开着的扩展点
+   * (`features/builtin/self-evolution.ts` 那条),它没有理由被迫写一格空对象。
+   */
+  readonly session?: { readonly [K in keyof T & string]?: RouteSessionAccess<Op> }
 }
 
 /**
@@ -61,17 +85,24 @@ export function getChannelName(domain: string, method: string): string {
   return `${domain}:${toKebab(method)}`
 }
 
-export function defineRouter<T extends DomainRoutes>(
+export function defineRouter<T extends DomainRoutes, Op extends string = string>(
   domain: string,
   methods: (keyof T & string)[],
-): Router<T> {
+  session: { [K in keyof T & string]?: RouteSessionAccess<Op> } = {},
+): Router<T, Op> {
   const channels = {} as Record<keyof T & string, string>
   for (const method of methods) {
     channels[method] = getChannelName(domain, method)
+  }
+  for (const method of Object.keys(session)) {
+    if (!methods.includes(method as keyof T & string)) {
+      throw new Error(`[router] "${domain}" declares session access for unknown method "${method}"`)
+    }
   }
   return Object.freeze({
     domain,
     channels: Object.freeze(channels),
     methods: Object.freeze(methods),
-  }) as Router<T>
+    session: Object.freeze({ ...session }),
+  }) as Router<T, Op>
 }

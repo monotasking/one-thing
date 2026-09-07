@@ -44,6 +44,8 @@ export interface CollabNotebookAppendInput {
   at: number
   /** 记于哪间房。可空 —— 不是每条笔记都有房间语境。 */
   roomLabel?: string
+  /** Room scope for a host-owned notebook resolver. Not an authorization claim. */
+  roomId?: string
 }
 
 /**
@@ -54,14 +56,17 @@ export interface CollabNotebookAppendInput {
  */
 export interface CollabNotebookStore {
   append(input: CollabNotebookAppendInput): CollabNotebookAppendResult
-  read(agentId: string): string
+  read(agentId: string, scope?: { roomId?: string }): string
 }
 
 /** 真机的那一个:`appendFileSync`。 */
-export function createCollabNotebookFileStore(): CollabNotebookStore {
+export function createCollabNotebookFileStore(options: {
+  pathForAgent?: (agentId: string) => string
+} = {}): CollabNotebookStore {
+  const pathForAgent = options.pathForAgent ?? collabAgentNotebookPath
   return {
     append(input: CollabNotebookAppendInput): CollabNotebookAppendResult {
-      const file = collabAgentNotebookPath(input.agentId)
+      const file = pathForAgent(input.agentId)
       fs.mkdirSync(path.dirname(file), { recursive: true })
       const entry = formatCollabNotebookEntry({
         note: escapeCollabPromptText(input.note),
@@ -76,7 +81,7 @@ export function createCollabNotebookFileStore(): CollabNotebookStore {
       return { entry, totalChars: fs.readFileSync(file, 'utf-8').length }
     },
     read(agentId: string): string {
-      const file = collabAgentNotebookPath(agentId)
+      const file = pathForAgent(agentId)
       try {
         return fs.readFileSync(file, 'utf-8')
       } catch {
@@ -115,6 +120,7 @@ export function buildCollabAgentNotebookBlock(
   store: CollabNotebookStore,
   agentId: string,
   maxChars: number = COLLAB_NOTEBOOK_INJECT_MAX_CHARS,
+  scope?: { roomId?: string },
 ): string {
-  return buildCollabNotebookBlock({ text: store.read(agentId), maxChars })
+  return buildCollabNotebookBlock({ text: store.read(agentId, scope), maxChars })
 }

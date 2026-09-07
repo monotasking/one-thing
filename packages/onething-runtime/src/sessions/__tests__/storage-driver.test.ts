@@ -10,7 +10,7 @@
  *  - **legacy 整文件**:首触**同步**迁进 `events.jsonl`(裁定 9b),逐条
  *    `message/imported`,原件进 legacy-backup。
  */
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -105,7 +105,28 @@ describe('hybrid session storage driver', () => {
   })
 
   afterEach(() => {
+    vi.restoreAllMocks()
     fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('propagates actual removal errors and retries event-only partial directories', () => {
+    fs.mkdirSync(path.join(dir, 'partial'))
+    fs.writeFileSync(eventsPath('partial'), 'retained event')
+    const failure = Object.assign(new Error('removal failed'), { code: 'EIO' })
+    vi.spyOn(fs, 'rmSync').mockImplementationOnce(() => { throw failure })
+    expect(() => driver.delete('partial')).toThrow(failure)
+    expect(fs.existsSync(eventsPath('partial'))).toBe(true)
+    driver.delete('partial')
+    expect(fs.existsSync(path.join(dir, 'partial'))).toBe(false)
+  })
+
+  it('rejects a legacy adapter that swallows its deletion failure', () => {
+    fs.writeFileSync(legacyPath('legacy'), JSON.stringify(makeSession('legacy', 1)))
+    const silentFailure = createHybridSessionStorageDriver<TestSession>({ ...driverOptions(), deleteJsonFile: () => false })
+    expect(() => silentFailure.delete('legacy')).toThrow('Failed to delete legacy session file')
+    expect(fs.existsSync(legacyPath('legacy'))).toBe(true)
+    driver.delete('legacy')
+    expect(fs.existsSync(legacyPath('legacy'))).toBe(false)
   })
 
   // ============ 写:只剩会话外壳 ============

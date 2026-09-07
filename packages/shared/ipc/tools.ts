@@ -18,6 +18,8 @@ export interface ExecuteToolRequest {
   arguments: JsonObject
   messageId: string  // Associated message ID
   sessionId: string
+  /** Optional stable invocation ID for subsequent targeted cancellation. */
+  toolCallId?: string
 }
 
 export interface ExecuteToolResponse {
@@ -257,6 +259,8 @@ import { defineRouter } from './router.js'
 
 export interface CancelToolRequest {
   toolCallId: string
+  /** Disambiguates providers which reuse call IDs in different sessions. */
+  sessionId?: string
 }
 
 export interface CancelToolResponse {
